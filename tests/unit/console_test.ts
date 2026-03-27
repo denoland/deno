@@ -154,11 +154,11 @@ Deno.test(
         },
       ),
       `{
-  [Symbol("foo\\b")]: 'Symbol("foo\\n")',
-  [Symbol("bar\\n")]: 'Symbol("bar\\n")',
-  [Symbol("bar\\r")]: 'Symbol("bar\\r")',
-  [Symbol("baz\\t")]: 'Symbol("baz\\t")',
-  [Symbol("qux\\x00")]: 'Symbol("qux\\x00")'
+  Symbol(foo\\b): 'Symbol("foo\\n")',
+  Symbol(bar\\n): 'Symbol("bar\\n")',
+  Symbol(bar\\r): 'Symbol("bar\\r")',
+  Symbol(baz\\t): 'Symbol("baz\\t")',
+  Symbol(qux\\x00): 'Symbol("qux\\x00")'
 }`,
     );
     assertEquals(
@@ -362,19 +362,40 @@ Deno.test(function consoleTestStringifyCircular() {
   profileEnd: [Function: profileEnd],
   timeStamp: [Function: timeStamp],
   indentLevel: 0,
-  [Symbol(isConsoleInstance)]: true
+  Symbol(isConsoleInstance): true
 }`,
   );
   assertEquals(
     stringify({ str: 1, [Symbol.for("sym")]: 2, [Symbol.toStringTag]: "TAG" }),
     `Object [TAG] {
   str: 1,
-  [Symbol(sym)]: 2,
-  [Symbol(Symbol.toStringTag)]: "TAG"
+  Symbol(sym): 2,
+  Symbol(Symbol.toStringTag): "TAG"
 }`,
   );
   // test inspect is working the same
   assertEquals(stripAnsiCode(Deno.inspect(nestedObj)), nestedObjExpected);
+});
+
+Deno.test(function consoleTestStringifyToStringTagGetterThrows() {
+  // Symbol.toStringTag getter that throws should not crash console.log
+  // https://github.com/denoland/deno/issues/32894
+  class Circular {
+    self: Circular;
+    constructor() {
+      this.self = this;
+    }
+    get [Symbol.toStringTag]() {
+      // This throws due to circular reference
+      JSON.stringify(this);
+      return "Circular";
+    }
+  }
+  const obj = new Circular();
+  // Should not throw, should handle the error gracefully
+  const result = stringify(obj);
+  assertStringIncludes(result, "Circular");
+  assertStringIncludes(result, "[Circular");
 });
 
 Deno.test(function consoleTestStringifyMultipleCircular() {
@@ -1214,6 +1235,26 @@ Deno.test(function consoleTestWithObjectFormatSpecifier() {
   );
 });
 
+Deno.test(function consoleTestWithJsonFormatSpecifier() {
+  assertEquals(stringify("%j"), "%j");
+  assertEquals(stringify("%j", { foo: "bar" }), `{"foo":"bar"}`);
+  assertEquals(stringify("%j", 42), "42");
+  assertEquals(stringify("%j", "foo"), `"foo"`);
+  assertEquals(stringify("%j", null), "null");
+  assertEquals(stringify("%j", [1, 2, 3]), "[1,2,3]");
+  assertEquals(
+    stringify("%j %s", { foo: "bar" }, "Hello"),
+    `{"foo":"bar"} Hello`,
+  );
+  assertEquals(stringify("%j %j", { a: 1 }, { b: 2 }), `{"a":1} {"b":2}`);
+  // Circular reference
+  const circular: Record<string, unknown> = {};
+  circular.self = circular;
+  assertEquals(stringify("%j", circular), "[Circular]");
+  // Non-circular errors (e.g., BigInt) should be re-thrown
+  assertThrows(() => stringify("%j", BigInt(1)));
+});
+
 Deno.test(function consoleTestWithStyleSpecifier() {
   assertEquals(stringify("%cfoo%cbar"), "%cfoo%cbar");
   assertEquals(stringify("%cfoo%cbar", ""), "foo%cbar");
@@ -1722,6 +1763,35 @@ Deno.test(function consoleTable() {
 `,
     );
   });
+  // Objects with long values should stay on a single line (#18828)
+  mockConsole((console, out) => {
+    console.table([
+      ["b0a6d0c1-7b6c-4fea-9efa-cb2629ce6068", {
+        id: "b0a6d0c1-7b6c-4fea-9efa-cb2629ce6068",
+        name: "Trenitalia",
+        countryCode: "IT",
+      }],
+      ["371fe41e-349c-40b7-be93-10c58fbbb95f", {
+        id: "371fe41e-349c-40b7-be93-10c58fbbb95f",
+        name: "Deutsche Bahn",
+        countryCode: "DE",
+      }],
+    ]);
+    const output = stripAnsiCode(out.toString());
+    // Each row should be a single line (no newlines within cell values)
+    const rows = output.split("\n").filter((line) => line.startsWith("│"));
+    for (const row of rows) {
+      // The row should not contain embedded newlines (the cell value should be flat)
+      assert(!row.includes("\n  "), "Table row should be single-line");
+    }
+    // Verify object values are rendered on one line
+    assert(
+      output.includes(
+        'name: "Deutsche Bahn", countryCode: "DE"',
+      ),
+      "Object should be on single line",
+    );
+  });
   mockConsole((console, out) => {
     console.table([]);
     assertEquals(
@@ -1853,6 +1923,56 @@ Deno.test(function consoleTable() {
 │     2 │ 2 │   │   │
 │     3 │ 3 │   │ 3 │
 └───────┴───┴───┴───┘
+`,
+    );
+  });
+  // console.table with iterators (https://github.com/denoland/deno/issues/20725)
+  mockConsole((console, out) => {
+    console.table(
+      new Map([[1, 1], [2, 2], [3, 3]]).entries(),
+    );
+    assertEquals(
+      stripAnsiCode(out.toString()),
+      `\
+┌────────────┬───┬───┐
+│ (iter idx) │ 0 │ 1 │
+├────────────┼───┼───┤
+│          0 │ 1 │ 1 │
+│          1 │ 2 │ 2 │
+│          2 │ 3 │ 3 │
+└────────────┴───┴───┘
+`,
+    );
+  });
+  mockConsole((console, out) => {
+    console.table(
+      new Map([[1, 1], [2, 2], [3, 3]]).values(),
+    );
+    assertEquals(
+      stripAnsiCode(out.toString()),
+      `\
+┌────────────┬────────┐
+│ (iter idx) │ Values │
+├────────────┼────────┤
+│          0 │      1 │
+│          1 │      2 │
+│          2 │      3 │
+└────────────┴────────┘
+`,
+    );
+  });
+  mockConsole((console, out) => {
+    console.table(new Set([1, 2, 3]).values());
+    assertEquals(
+      stripAnsiCode(out.toString()),
+      `\
+┌────────────┬────────┐
+│ (iter idx) │ Values │
+├────────────┼────────┤
+│          0 │      1 │
+│          1 │      2 │
+│          2 │      3 │
+└────────────┴────────┘
 `,
     );
   });

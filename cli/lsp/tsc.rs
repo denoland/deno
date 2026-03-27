@@ -22,7 +22,6 @@ use deno_config::deno_json::CompilerOptions;
 use deno_core::JsRuntime;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
-use deno_core::PollEventLoopOptions;
 use deno_core::RuntimeOptions;
 use deno_core::anyhow::anyhow;
 use deno_core::convert::Smi;
@@ -50,7 +49,6 @@ use deno_runtime::deno_inspector_server::InspectPublishUid;
 use deno_runtime::deno_inspector_server::InspectorServer;
 use deno_runtime::deno_node::SUPPORTED_BUILTIN_NODE_MODULES;
 use deno_runtime::tokio_util::create_basic_runtime;
-use indexmap::IndexMap;
 use indexmap::IndexSet;
 use lazy_regex::lazy_regex;
 use lsp_types::Uri;
@@ -97,6 +95,7 @@ use crate::lsp::completions::CompletionItemData;
 use crate::lsp::documents::Document;
 use crate::lsp::logging::lsp_warn;
 use crate::lsp::resolver::SingleReferrerGraphResolver;
+use crate::lsp::urls::normalize_path;
 use crate::tsc::MISSING_DEPENDENCY_SPECIFIER;
 use crate::tsc::ResolveArgs;
 use crate::util::path::relative_specifier;
@@ -105,16 +104,12 @@ use crate::util::v8::convert;
 
 static BRACKET_ACCESSOR_RE: Lazy<Regex> =
   lazy_regex!(r#"^\[['"](.+)[\['"]\]$"#);
-static CAPTION_RE: Lazy<Regex> =
-  lazy_regex!(r"<caption>(.*?)</caption>\s*\r?\n((?:\s|\S)*)");
 static CODEBLOCK_RE: Lazy<Regex> = lazy_regex!(r"^\s*[~`]{3}"m);
-static EMAIL_MATCH_RE: Lazy<Regex> = lazy_regex!(r"(.+)\s<([-.\w]+@[-.\w]+)>");
 static HTTP_RE: Lazy<Regex> = lazy_regex!(r#"(?i)^https?:"#);
 static JSDOC_LINKS_RE: Lazy<Regex> = lazy_regex!(
   r"(?i)\{@(link|linkplain|linkcode) (https?://[^ |}]+?)(?:[| ]([^{}\n]+?))?\}"
 );
 static PART_KIND_MODIFIER_RE: Lazy<Regex> = lazy_regex!(r",|\s+");
-static PART_RE: Lazy<Regex> = lazy_regex!(r"^(\S+)\s*-?\s*");
 static SCOPE_RE: Lazy<Regex> = lazy_regex!(r"scope_(\d)");
 
 const FILE_EXTENSION_KIND_MODIFIERS: &[&str] =
@@ -135,10 +130,10 @@ type Request = (
 #[derive(Debug, Clone, Copy, Serialize_repr)]
 #[repr(u8)]
 pub enum IndentStyle {
-  #[allow(dead_code)]
+  #[allow(dead_code, reason = "unsupported")]
   None = 0,
   Block = 1,
-  #[allow(dead_code)]
+  #[allow(dead_code, reason = "unsupported")]
   Smart = 2,
 }
 
@@ -230,7 +225,7 @@ pub enum SemicolonPreference {
 }
 
 // Allow due to false positive https://github.com/rust-lang/rust-clippy/issues/13170
-#[allow(clippy::needless_borrows_for_generic_args)]
+#[allow(clippy::needless_borrows_for_generic_args, reason = "clippy bug")]
 fn normalize_diagnostic(
   diagnostic: &mut crate::tsc::Diagnostic,
   specifier_map: &TscSpecifierMap,
@@ -734,7 +729,7 @@ impl TsJsServer {
       .await
   }
 
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "TODO: cleanup")]
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
   pub async fn get_code_fixes(
     &self,
@@ -780,7 +775,7 @@ impl TsJsServer {
       })
   }
 
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "TODO: cleanup")]
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
   pub async fn get_applicable_refactors(
     &self,
@@ -821,7 +816,7 @@ impl TsJsServer {
   }
 
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "TODO: cleanup")]
   pub async fn get_combined_code_fix(
     &self,
     snapshot: Arc<StateSnapshot>,
@@ -864,7 +859,7 @@ impl TsJsServer {
       })
   }
 
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "TODO: cleanup")]
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
   pub async fn get_edits_for_refactor(
     &self,
@@ -910,7 +905,7 @@ impl TsJsServer {
   }
 
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "TODO: cleanup")]
   pub async fn get_edits_for_file_rename(
     &self,
     snapshot: Arc<StateSnapshot>,
@@ -961,7 +956,7 @@ impl TsJsServer {
       })
   }
 
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "TODO: cleanup")]
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
   pub async fn get_document_highlights(
     &self,
@@ -1057,7 +1052,7 @@ impl TsJsServer {
       })
   }
 
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "TODO: cleanup")]
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
   pub async fn get_completions(
     &self,
@@ -1107,7 +1102,7 @@ impl TsJsServer {
   }
 
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "TODO: cleanup")]
   pub async fn get_completion_details(
     &self,
     snapshot: Arc<StateSnapshot>,
@@ -1319,7 +1314,7 @@ impl TsJsServer {
       })
   }
 
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "TODO: cleanup")]
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
   pub async fn find_rename_locations(
     &self,
@@ -1417,7 +1412,7 @@ impl TsJsServer {
       .await
   }
 
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "TODO: cleanup")]
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
   pub async fn get_signature_help_items(
     &self,
@@ -1446,7 +1441,7 @@ impl TsJsServer {
       .await
   }
 
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "TODO: cleanup")]
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
   pub async fn get_navigate_to_items(
     &self,
@@ -1480,7 +1475,7 @@ impl TsJsServer {
       })
   }
 
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "TODO: cleanup")]
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
   pub async fn provide_inlay_hints(
     &self,
@@ -1516,7 +1511,6 @@ impl TsJsServer {
     &self,
     snapshot: Arc<StateSnapshot>,
     module: &DocumentModule,
-    document_has_errors: bool,
     token: &CancellationToken,
   ) -> Result<Vec<FileTextChanges>, AnyError> {
     let req = TscRequest::OrganizeImports((
@@ -1527,11 +1521,7 @@ impl TsJsServer {
             .specifier_map
             .denormalize(&module.specifier, module.media_type),
         },
-        mode: if document_has_errors {
-          Some(OrganizeImportsMode::SortAndCombine)
-        } else {
-          Some(OrganizeImportsMode::All)
-        },
+        mode: Some(OrganizeImportsMode::All),
       },
       (&snapshot
         .config
@@ -1618,83 +1608,83 @@ impl TsJsServer {
   }
 }
 
-fn get_tag_body_text(
-  tag: &JsDocTagInfo,
-  module: &DocumentModule,
-  snapshot: &StateSnapshot,
-) -> Option<String> {
-  tag.text.as_ref().map(|display_parts| {
-    // TODO(@kitsonk) check logic in vscode about handling this API change in
-    // tsserver
-    let text = display_parts_to_string(display_parts, module, snapshot);
-    match tag.name.as_str() {
-      "example" => {
-        if CAPTION_RE.is_match(&text) {
-          CAPTION_RE
-            .replace(&text, |c: &Captures| {
-              format!("{}\n\n{}", &c[1], make_codeblock(&c[2]))
-            })
-            .to_string()
-        } else {
-          make_codeblock(&text)
-        }
-      }
-      "author" => EMAIL_MATCH_RE
-        .replace(&text, |c: &Captures| format!("{} {}", &c[1], &c[2]))
-        .to_string(),
-      "default" => make_codeblock(&text),
-      _ => replace_links(&text),
-    }
-  })
-}
-
 fn get_tag_documentation(
   tag: &JsDocTagInfo,
   module: &DocumentModule,
   snapshot: &StateSnapshot,
 ) -> String {
+  let mut result = format!("*@{}*", tag.name);
+  let Some(display_parts) = &tag.text else {
+    return result;
+  };
   match tag.name.as_str() {
-    "augments" | "extends" | "param" | "template" => {
-      if let Some(display_parts) = &tag.text {
-        // TODO(@kitsonk) check logic in vscode about handling this API change
-        // in tsserver
-        let text = display_parts_to_string(display_parts, module, snapshot);
-        let body: Vec<&str> = PART_RE.split(&text).collect();
-        if body.len() == 3 {
-          let param = body[1];
-          let doc = body[2];
-          let label = format!("*@{}* `{}`", tag.name, param);
-          if doc.is_empty() {
-            return label;
-          }
-          if doc.contains('\n') {
-            return format!("{}  \n{}", label, replace_links(doc));
-          } else {
-            return format!("{} - {}", label, replace_links(doc));
-          }
+    "param" => {
+      let mut display_parts = display_parts.iter().peekable();
+      if display_parts
+        .peek()
+        .is_some_and(|p| p.kind == "parameterName")
+      {
+        let parameter_name = &display_parts.next().unwrap().text;
+        result.push_str(" `");
+        result.push_str(parameter_name);
+        result.push('`');
+        if display_parts.peek().is_some_and(|p| p.kind == "space") {
+          display_parts.next();
+        }
+      }
+      let doc =
+        replace_links(display_parts_to_string(display_parts, module, snapshot));
+      if !doc.is_empty() {
+        if doc.starts_with('-') {
+          result.push(' ');
+          result.push_str(&doc);
+        } else {
+          result.push_str(" — ");
+          result.push_str(&doc);
         }
       }
     }
-    _ => (),
-  }
-  let label = format!("*@{}*", tag.name);
-  let maybe_text = get_tag_body_text(tag, module, snapshot);
-  if let Some(text) = maybe_text {
-    if text.contains('\n') {
-      format!("{label}  \n{text}")
-    } else {
-      format!("{label} - {text}")
+    "example" => {
+      let text = display_parts_to_string(display_parts, module, snapshot);
+      let code = if let Some(suffix_for_caption) =
+        text.strip_prefix("<caption>")
+        && let Some((caption, code)) =
+          suffix_for_caption.split_once("</caption>")
+      {
+        result.push_str(" — ");
+        result.push_str(&replace_links(caption));
+        code.trim_start()
+      } else {
+        text.as_str()
+      };
+      if !code.is_empty() {
+        result.push('\n');
+        result.push_str(&make_codeblock(code));
+      }
     }
-  } else {
-    label
+    _ => {
+      let doc =
+        replace_links(display_parts_to_string(display_parts, module, snapshot));
+      if !doc.is_empty() {
+        if doc.starts_with('-') {
+          result.push(' ');
+          result.push_str(&doc);
+        } else {
+          result.push_str(" — ");
+          result.push_str(&doc);
+        }
+      }
+    }
   }
+  result.push('\n');
+  result
 }
 
 fn make_codeblock(text: &str) -> String {
   if CODEBLOCK_RE.is_match(text) {
     text.to_string()
   } else {
-    format!("```\n{text}\n```")
+    format!("```tsx\n{text}\n```")
   }
 }
 
@@ -1942,14 +1932,14 @@ pub struct TextSpan {
 impl TextSpan {
   pub fn from_range(
     range: lsp::Range,
-    line_index: Arc<LineIndex>,
+    line_index: &LineIndex,
   ) -> Result<Self, AnyError> {
     let start = line_index.offset_tsc(range.start)?;
     let length = line_index.offset_tsc(range.end)? - start;
     Ok(Self { start, length })
   }
 
-  pub fn to_range(&self, line_index: Arc<LineIndex>) -> lsp::Range {
+  pub fn to_range(&self, line_index: &LineIndex) -> lsp::Range {
     lsp::Range {
       start: line_index.position_utf16(self.start.into()),
       end: line_index.position_utf16(TextSize::from(self.start + self.length)),
@@ -2002,15 +1992,27 @@ struct Link {
 /// Takes `SymbolDisplayPart` items and converts them into a string, handling
 /// any `{@link Symbol}` and `{@linkcode Symbol}` JSDoc tags and linking them
 /// to the their source location.
-fn display_parts_to_string(
-  parts: &[SymbolDisplayPart],
+fn display_parts_to_string<'a>(
+  parts: impl IntoIterator<Item = &'a SymbolDisplayPart>,
   module: &DocumentModule,
   snapshot: &StateSnapshot,
 ) -> String {
   let mut out = Vec::<String>::new();
 
   let mut current_link: Option<Link> = None;
-  for part in parts {
+  let mut parts = parts.into_iter().peekable();
+  while let Some(part) = parts.next() {
+    // Skip `import` lines.
+    if part.kind == "lineBreak"
+      && parts
+        .peek()
+        .is_some_and(|p| p.kind == "keyword" && p.text == "import")
+    {
+      while parts.next().is_some()
+        && parts.peek().is_none_or(|p| p.kind != "lineBreak")
+      {}
+      continue;
+    }
     match part.kind.as_str() {
       "link" => {
         if let Some(link) = current_link.as_mut() {
@@ -2117,40 +2119,36 @@ impl QuickInfo {
     module: &DocumentModule,
     snapshot: &StateSnapshot,
   ) -> lsp::Hover {
-    let mut parts = Vec::new();
+    let mut value = String::new();
     if let Some(display_string) = self
       .display_parts
       .clone()
       .map(|p| display_parts_to_string(&p, module, snapshot))
       && !display_string.is_empty()
     {
-      parts.push(format!("```typescript\n{}\n```", display_string));
+      value.push_str("```tsx\n");
+      value.push_str(&display_string);
+      value.push_str("\n```\n");
     }
     if let Some(documentation) = self
       .documentation
       .clone()
       .map(|p| display_parts_to_string(&p, module, snapshot))
-      && !documentation.is_empty()
     {
-      parts.push(documentation);
+      value.push_str(&documentation);
     }
     if let Some(tags) = &self.tags {
-      let tags_preview = tags
-        .iter()
-        .map(|tag_info| get_tag_documentation(tag_info, module, snapshot))
-        .collect::<Vec<String>>()
-        .join("  \n\n");
-      if !tags_preview.is_empty() {
-        parts.push(tags_preview);
+      for tag_info in tags {
+        value.push_str("\n\n");
+        value.push_str(&get_tag_documentation(tag_info, module, snapshot));
       }
     }
-    let value = parts.join("\n\n");
     lsp::Hover {
       contents: lsp::HoverContents::Markup(lsp::MarkupContent {
         kind: lsp::MarkupKind::Markdown,
         value,
       }),
-      range: Some(self.text_span.to_range(module.line_index.clone())),
+      range: Some(self.text_span.to_range(&module.line_index)),
     }
   }
 }
@@ -2179,33 +2177,33 @@ impl DocumentSpan {
 impl DocumentSpan {
   pub fn to_link(
     &self,
-    module: &DocumentModule,
+    origin_module: &DocumentModule,
     snapshot: &StateSnapshot,
   ) -> Option<lsp::LocationLink> {
     let target_specifier = resolve_url(&self.file_name).ok()?;
     let target_module = snapshot.document_modules.module_for_specifier(
       &target_specifier,
-      module.scope.as_deref(),
-      Some(&module.compiler_options_key),
+      origin_module.scope.as_deref(),
+      Some(&origin_module.compiler_options_key),
     )?;
     let (target_range, target_selection_range) =
       if let Some(context_span) = &self.context_span {
         (
-          context_span.to_range(target_module.line_index.clone()),
-          self.text_span.to_range(target_module.line_index.clone()),
+          context_span.to_range(&target_module.line_index),
+          self.text_span.to_range(&target_module.line_index),
         )
       } else {
         (
-          self.text_span.to_range(target_module.line_index.clone()),
-          self.text_span.to_range(target_module.line_index.clone()),
+          self.text_span.to_range(&target_module.line_index),
+          self.text_span.to_range(&target_module.line_index),
         )
       };
     let origin_selection_range =
       if let Some(original_context_span) = &self.original_context_span {
-        Some(original_context_span.to_range(module.line_index.clone()))
+        Some(original_context_span.to_range(&origin_module.line_index))
       } else {
         self.original_text_span.as_ref().map(|original_text_span| {
-          original_text_span.to_range(module.line_index.clone())
+          original_text_span.to_range(&origin_module.line_index)
         })
       };
     let link = lsp::LocationLink {
@@ -2231,30 +2229,36 @@ impl DocumentSpan {
       module.scope.as_deref(),
       Some(&module.compiler_options_key),
     )?;
-    let range = self.text_span.to_range(target_module.line_index.clone());
+    let range = self.text_span.to_range(&target_module.line_index);
     let mut target = uri_to_url(&target_module.uri);
     target.set_fragment(Some(&format!(
-      "L{},{}",
+      "{},{}-{},{}",
       range.start.line + 1,
-      range.start.character + 1
+      range.start.character + 1,
+      range.end.line + 1,
+      range.end.character + 1,
     )));
 
     Some(target)
   }
-}
 
-// TODO(bartlomieju): in Rust 1.90 some structs started getting flagged as not used
-#[allow(dead_code)]
-#[derive(Debug, Clone, Deserialize)]
-pub enum MatchKind {
-  #[serde(rename = "exact")]
-  Exact,
-  #[serde(rename = "prefix")]
-  Prefix,
-  #[serde(rename = "substring")]
-  Substring,
-  #[serde(rename = "camelCase")]
-  CamelCase,
+  pub fn collect_into_goto_definition_response<'a>(
+    document_spans: impl IntoIterator<Item = (&'a DocumentSpan, &'a DocumentModule)>,
+    snapshot: &StateSnapshot,
+    token: &CancellationToken,
+  ) -> Result<Option<lsp::GotoDefinitionResponse>, AnyError> {
+    let mut links = Vec::new();
+    for (document_span, origin_module) in document_spans {
+      if token.is_cancelled() {
+        return Err(anyhow!("request cancelled"));
+      }
+      links.extend(document_span.to_link(origin_module, snapshot));
+    }
+    if links.is_empty() {
+      return Ok(None);
+    }
+    Ok(Some(lsp::GotoDefinitionResponse::Link(links)))
+  }
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash, Deserialize)]
@@ -2294,7 +2298,7 @@ impl NavigateToItem {
       scope,
       Some(compiler_options_key),
     )?;
-    let range = self.text_span.to_range(target_module.line_index.clone());
+    let range = self.text_span.to_range(&target_module.line_index);
     let location = lsp::Location {
       uri: target_module.uri.as_ref().clone(),
       range,
@@ -2307,16 +2311,20 @@ impl NavigateToItem {
     }
 
     // The field `deprecated` is deprecated but SymbolInformation does not have
-    // a default, therefore we have to supply the deprecated deprecated
+    // a default, therefore we have to supply the deprecated
     // field. It is like a bad version of Inception.
-    #[allow(deprecated)]
+    #[allow(deprecated, reason = "see comment")]
     Some(lsp::SymbolInformation {
       name: self.name.clone(),
       kind: self.kind.clone().into(),
       tags,
       deprecated: None,
       location,
-      container_name: self.container_name.clone(),
+      container_name: self
+        .container_name
+        .as_ref()
+        .filter(|s| !s.is_empty())
+        .cloned(),
     })
   }
 }
@@ -2345,7 +2353,7 @@ impl InlayHintDisplayPart {
       let range = self
         .span
         .as_ref()
-        .map(|s| s.to_range(target_module.line_index.clone()))
+        .map(|s| s.to_range(&target_module.line_index))
         .unwrap_or_else(|| {
           lsp::Range::new(lsp::Position::new(0, 0), lsp::Position::new(0, 0))
         });
@@ -2433,7 +2441,7 @@ pub struct NavigationTree {
 impl NavigationTree {
   pub fn to_code_lens(
     &self,
-    line_index: Arc<LineIndex>,
+    line_index: &LineIndex,
     uri: &Uri,
     source: code_lens::CodeLensSource,
   ) -> lsp::CodeLens {
@@ -2457,7 +2465,7 @@ impl NavigationTree {
 
   pub fn collect_document_symbols(
     &self,
-    line_index: Arc<LineIndex>,
+    line_index: &LineIndex,
     document_symbols: &mut Vec<lsp::DocumentSymbol>,
   ) -> bool {
     let mut should_include = self.should_include_entry();
@@ -2487,8 +2495,8 @@ impl NavigationTree {
           })
           .any(|child_range| range.intersect(child_range).is_some());
         if should_traverse_child {
-          let included_child = child
-            .collect_document_symbols(line_index.clone(), &mut symbol_children);
+          let included_child =
+            child.collect_document_symbols(line_index, &mut symbol_children);
           should_include = should_include || included_child;
         }
       }
@@ -2526,14 +2534,14 @@ impl NavigationTree {
         };
 
         // The field `deprecated` is deprecated but DocumentSymbol does not have
-        // a default, therefore we have to supply the deprecated deprecated
+        // a default, therefore we have to supply the deprecated
         // field. It is like a bad version of Inception.
-        #[allow(deprecated)]
+        #[allow(deprecated, reason = "see comment")]
         document_symbols.push(lsp::DocumentSymbol {
           name,
           kind: self.kind.clone().into(),
-          range: span.to_range(line_index.clone()),
-          selection_range: selection_span.to_range(line_index.clone()),
+          range: span.to_range(line_index),
+          selection_range: selection_span.to_range(line_index),
           tags,
           children,
           detail: None,
@@ -2613,14 +2621,6 @@ impl ImplementationLocation {
     self.document_span.normalize(specifier_map)?;
     Ok(())
   }
-
-  pub fn to_link(
-    &self,
-    module: &DocumentModule,
-    snapshot: &StateSnapshot,
-  ) -> Option<lsp::LocationLink> {
-    self.document_span.to_link(module, snapshot)
-  }
 }
 
 #[derive(Debug, Eq, PartialEq, Hash, Deserialize)]
@@ -2651,7 +2651,7 @@ impl RenameLocation {
     language_server: &language_server::Inner,
     token: &CancellationToken,
   ) -> Result<lsp::WorkspaceEdit, AnyError> {
-    let mut text_document_edit_map = IndexMap::new();
+    let mut changes = HashMap::new();
     let mut includes_non_files = false;
     for (location, module) in locations_with_modules {
       if token.is_cancelled() {
@@ -2671,16 +2671,9 @@ impl RenameLocation {
       else {
         continue;
       };
-      let document_edit = text_document_edit_map
-        .entry(target_module.uri.clone())
-        .or_insert_with(|| lsp::TextDocumentEdit {
-          text_document: lsp::OptionalVersionedTextDocumentIdentifier {
-            uri: target_module.uri.as_ref().clone(),
-            version: target_module.open_data.as_ref().map(|d| d.version),
-          },
-          edits: Vec::<lsp::OneOf<lsp::TextEdit, lsp::AnnotatedTextEdit>>::new(
-          ),
-        });
+      let text_edits: &mut Vec<_> = changes
+        .entry(target_module.uri.as_ref().clone())
+        .or_default();
       let new_text = [
         location.prefix_text.as_deref(),
         Some(new_name),
@@ -2690,13 +2683,13 @@ impl RenameLocation {
       .flatten()
       .collect::<Vec<_>>()
       .join("");
-      document_edit.edits.push(lsp::OneOf::Left(lsp::TextEdit {
+      text_edits.push(lsp::TextEdit {
         range: location
           .document_span
           .text_span
-          .to_range(target_module.line_index.clone()),
+          .to_range(&target_module.line_index),
         new_text,
-      }));
+      });
     }
 
     if includes_non_files {
@@ -2705,10 +2698,8 @@ impl RenameLocation {
 
     Ok(lsp::WorkspaceEdit {
       change_annotations: None,
-      changes: None,
-      document_changes: Some(lsp::DocumentChanges::Edits(
-        text_document_edit_map.values().cloned().collect(),
-      )),
+      changes: Some(changes),
+      document_changes: None,
     })
   }
 }
@@ -2773,28 +2764,6 @@ impl DefinitionInfoAndBoundSpan {
     }
     Ok(())
   }
-
-  pub fn to_definition(
-    &self,
-    module: &DocumentModule,
-    snapshot: &StateSnapshot,
-    token: &CancellationToken,
-  ) -> Result<Option<lsp::GotoDefinitionResponse>, AnyError> {
-    if let Some(definitions) = &self.definitions {
-      let mut location_links = Vec::<lsp::LocationLink>::new();
-      for di in definitions {
-        if token.is_cancelled() {
-          return Err(anyhow!("request cancelled"));
-        }
-        if let Some(link) = di.document_span.to_link(module, snapshot) {
-          location_links.push(link);
-        }
-      }
-      Ok(Some(lsp::GotoDefinitionResponse::Link(location_links)))
-    } else {
-      Ok(None)
-    }
-  }
 }
 
 #[derive(Debug, Deserialize)]
@@ -2807,7 +2776,7 @@ pub struct DocumentHighlights {
 impl DocumentHighlights {
   pub fn to_highlight(
     &self,
-    line_index: Arc<LineIndex>,
+    line_index: &LineIndex,
     token: &CancellationToken,
   ) -> Result<Vec<lsp::DocumentHighlight>, AnyError> {
     let mut highlights = Vec::with_capacity(self.highlight_spans.len());
@@ -2816,7 +2785,7 @@ impl DocumentHighlights {
         return Err(anyhow!("request cancelled"));
       }
       highlights.push(lsp::DocumentHighlight {
-        range: hs.text_span.to_range(line_index.clone()),
+        range: hs.text_span.to_range(line_index),
         kind: match hs.kind {
           HighlightSpanKind::WrittenReference => {
             Some(lsp::DocumentHighlightKind::WRITE)
@@ -2837,7 +2806,7 @@ pub struct TextChange {
 }
 
 impl TextChange {
-  pub fn as_text_edit(&self, line_index: Arc<LineIndex>) -> lsp::TextEdit {
+  pub fn as_text_edit(&self, line_index: &LineIndex) -> lsp::TextEdit {
     lsp::TextEdit {
       range: self.span.to_range(line_index),
       new_text: self.new_text.clone(),
@@ -2846,7 +2815,7 @@ impl TextChange {
 
   pub fn as_text_or_annotated_text_edit(
     &self,
-    line_index: Arc<LineIndex>,
+    line_index: &LineIndex,
   ) -> lsp::OneOf<lsp::TextEdit, lsp::AnnotatedTextEdit> {
     lsp::OneOf::Left(lsp::TextEdit {
       range: self.span.to_range(line_index),
@@ -2873,11 +2842,11 @@ impl FileTextChanges {
     Ok(())
   }
 
-  pub fn to_text_document_edit(
+  pub fn to_text_edits(
     &self,
     module: &DocumentModule,
     language_server: &language_server::Inner,
-  ) -> Option<lsp::TextDocumentEdit> {
+  ) -> Option<(Uri, Vec<lsp::TextEdit>)> {
     let is_new_file = self.is_new_file.unwrap_or(false);
     let target_specifier = resolve_url(&self.file_name).ok()?;
     let target_module = if is_new_file {
@@ -2895,23 +2864,14 @@ impl FileTextChanges {
       .or_else(|| url_to_uri(&target_specifier).ok().map(Arc::new))?;
     let line_index = target_module
       .as_ref()
-      .map(|m| m.line_index.clone())
-      .unwrap_or_else(|| Arc::new(LineIndex::new("")));
+      .map(|m| Cow::Borrowed(m.line_index.as_ref()))
+      .unwrap_or_else(|| Cow::Owned(LineIndex::new("")));
     let edits = self
       .text_changes
       .iter()
-      .map(|tc| tc.as_text_or_annotated_text_edit(line_index.clone()))
+      .map(|tc| tc.as_text_edit(&line_index))
       .collect();
-    Some(lsp::TextDocumentEdit {
-      text_document: lsp::OptionalVersionedTextDocumentIdentifier {
-        uri: target_uri.as_ref().clone(),
-        version: target_module
-          .as_ref()
-          .and_then(|m| m.open_data.as_ref())
-          .map(|d| d.version),
-      },
-      edits,
-    })
+    Some((target_uri.as_ref().clone(), edits))
   }
 
   pub fn to_text_document_change_ops(
@@ -2937,8 +2897,8 @@ impl FileTextChanges {
       .or_else(|| url_to_uri(&target_specifier).ok().map(Arc::new))?;
     let line_index = target_module
       .as_ref()
-      .map(|m| m.line_index.clone())
-      .unwrap_or_else(|| Arc::new(LineIndex::new("")));
+      .map(|m| Cow::Borrowed(m.line_index.as_ref()))
+      .unwrap_or_else(|| Cow::Owned(LineIndex::new("")));
 
     if is_new_file {
       ops.push(lsp::DocumentChangeOperation::Op(lsp::ResourceOp::Create(
@@ -2956,7 +2916,7 @@ impl FileTextChanges {
     let edits = self
       .text_changes
       .iter()
-      .map(|tc| tc.as_text_or_annotated_text_edit(line_index.clone()))
+      .map(|tc| tc.as_text_or_annotated_text_edit(&line_index))
       .collect();
     ops.push(lsp::DocumentChangeOperation::Edit(lsp::TextDocumentEdit {
       text_document: lsp::OptionalVersionedTextDocumentIdentifier {
@@ -2982,7 +2942,7 @@ pub struct Classifications {
 impl Classifications {
   pub fn to_semantic_tokens(
     &self,
-    line_index: Arc<LineIndex>,
+    line_index: &LineIndex,
     token: &CancellationToken,
   ) -> Result<lsp::SemanticTokens, AnyError> {
     // https://github.com/microsoft/vscode/blob/1.89.0/extensions/typescript-language-features/src/languageFeatures/semanticTokens.ts#L89-L115
@@ -3178,7 +3138,9 @@ pub fn file_text_changes_to_workspace_edit<'a>(
     };
     all_ops.extend(ops);
   }
-
+  if all_ops.is_empty() {
+    return Ok(None);
+  }
   Ok(Some(lsp::WorkspaceEdit {
     document_changes: Some(lsp::DocumentChanges::Operations(all_ops)),
     ..Default::default()
@@ -3391,7 +3353,7 @@ impl ReferenceEntry {
       range: self
         .document_span
         .text_span
-        .to_range(target_module.line_index.clone()),
+        .to_range(&target_module.line_index),
     })
   }
 }
@@ -3423,10 +3385,8 @@ impl CallHierarchyItem {
     &self,
     module: &DocumentModule,
     snapshot: &StateSnapshot,
-    maybe_root_path: Option<&Path>,
   ) -> Option<lsp::CallHierarchyItem> {
-    let (item, _) =
-      self.to_call_hierarchy_item(module, snapshot, maybe_root_path)?;
+    let (item, _) = self.to_call_hierarchy_item(module, snapshot)?;
     Some(item)
   }
 
@@ -3434,7 +3394,6 @@ impl CallHierarchyItem {
     &self,
     module: &DocumentModule,
     snapshot: &StateSnapshot,
-    maybe_root_path: Option<&Path>,
   ) -> Option<(lsp::CallHierarchyItem, Arc<DocumentModule>)> {
     let target_specifier = resolve_url(&self.file).ok()?;
     let target_module = snapshot.document_modules.module_for_specifier(
@@ -3447,35 +3406,12 @@ impl CallHierarchyItem {
     let maybe_file_path = url_to_file_path(&target_module.specifier).ok();
     let name = if use_file_name {
       if let Some(file_path) = &maybe_file_path {
-        file_path
-          .file_name()
-          .unwrap()
-          .to_string_lossy()
-          .into_owned()
+        normalize_path(file_path).to_string_lossy().into_owned()
       } else {
         target_module.uri.to_string()
       }
     } else {
       self.name.clone()
-    };
-    let detail = if use_file_name {
-      if let Some(file_path) = &maybe_file_path {
-        // TODO: update this to work with multi root workspaces
-        let parent_dir = file_path.parent().unwrap();
-        if let Some(root_path) = maybe_root_path {
-          parent_dir
-            .strip_prefix(root_path)
-            .unwrap_or(parent_dir)
-            .to_string_lossy()
-            .into_owned()
-        } else {
-          parent_dir.to_string_lossy().into_owned()
-        }
-      } else {
-        String::new()
-      }
-    } else {
-      self.container_name.as_ref().cloned().unwrap_or_default()
     };
 
     let mut tags: Option<Vec<lsp::SymbolTag>> = None;
@@ -3491,12 +3427,12 @@ impl CallHierarchyItem {
         name,
         tags,
         uri: target_module.uri.as_ref().clone(),
-        detail: Some(detail),
+        detail: self.container_name.clone(),
         kind: self.kind.clone().into(),
-        range: self.span.to_range(target_module.line_index.clone()),
+        range: self.span.to_range(&target_module.line_index),
         selection_range: self
           .selection_span
-          .to_range(target_module.line_index.clone()),
+          .to_range(&target_module.line_index),
         data: None,
       },
       target_module,
@@ -3530,18 +3466,15 @@ impl CallHierarchyIncomingCall {
     &self,
     module: &DocumentModule,
     snapshot: &StateSnapshot,
-    maybe_root_path: Option<&Path>,
   ) -> Option<lsp::CallHierarchyIncomingCall> {
     let (from, target_module) =
-      self
-        .from
-        .to_call_hierarchy_item(module, snapshot, maybe_root_path)?;
+      self.from.to_call_hierarchy_item(module, snapshot)?;
     Some(lsp::CallHierarchyIncomingCall {
       from,
       from_ranges: self
         .from_spans
         .iter()
-        .map(|span| span.to_range(target_module.line_index.clone()))
+        .map(|span| span.to_range(&target_module.line_index))
         .collect(),
     })
   }
@@ -3567,18 +3500,14 @@ impl CallHierarchyOutgoingCall {
     &self,
     module: &DocumentModule,
     snapshot: &StateSnapshot,
-    maybe_root_path: Option<&Path>,
   ) -> Option<lsp::CallHierarchyOutgoingCall> {
-    let (to, _) =
-      self
-        .to
-        .to_call_hierarchy_item(module, snapshot, maybe_root_path)?;
+    let (to, _) = self.to.to_call_hierarchy_item(module, snapshot)?;
     Some(lsp::CallHierarchyOutgoingCall {
       to,
       from_ranges: self
         .from_spans
         .iter()
-        .map(|span| span.to_range(module.line_index.clone()))
+        .map(|span| span.to_range(&module.line_index))
         .collect(),
     })
   }
@@ -3602,7 +3531,7 @@ fn parse_code_actions(
       for change in &ts_action.changes {
         if module.specifier.as_str() == change.file_name {
           additional_text_edits.extend(change.text_changes.iter().map(|tc| {
-            let mut text_edit = tc.as_text_edit(module.line_index.clone());
+            let mut text_edit = tc.as_text_edit(&module.line_index);
             if let Some(specifier_rewrite) = &data.specifier_rewrite {
               let specifier_index = text_edit
                 .new_text
@@ -3771,15 +3700,19 @@ impl CompletionEntryDetails {
           .iter()
           .map(|tag_info| get_tag_documentation(tag_info, module, snapshot))
           .collect::<Vec<String>>()
-          .join("  \n\n");
+          .join("\n\n");
         if !tags_preview.is_empty() {
           value = format!("{value}\n\n{tags_preview}");
         }
       }
-      Some(lsp::Documentation::MarkupContent(lsp::MarkupContent {
-        kind: lsp::MarkupKind::Markdown,
-        value,
-      }))
+      if value.is_empty() {
+        None
+      } else {
+        Some(lsp::Documentation::MarkupContent(lsp::MarkupContent {
+          kind: lsp::MarkupKind::Markdown,
+          value,
+        }))
+      }
     } else {
       None
     };
@@ -3907,7 +3840,7 @@ impl CompletionInfo {
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all, fields(entries = %self.entries.len())))]
   pub fn as_completion_response(
     &self,
-    line_index: Arc<LineIndex>,
+    line_index: &LineIndex,
     settings: &config::CompletionSettings,
     module: &DocumentModule,
     position: u32,
@@ -3924,7 +3857,7 @@ impl CompletionInfo {
         return Err(anyhow!("request cancelled"));
       }
       if let Some(item) = entry.as_completion_item(
-        line_index.clone(),
+        line_index,
         self,
         settings,
         module,
@@ -4169,10 +4102,10 @@ impl CompletionEntry {
     self.insert_text.clone()
   }
 
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "TODO: cleanup")]
   fn as_completion_item(
     &self,
-    line_index: Arc<LineIndex>,
+    line_index: &LineIndex,
     info: &CompletionInfo,
     settings: &config::CompletionSettings,
     module: &DocumentModule,
@@ -4396,11 +4329,11 @@ const FOLD_END_PAIR_CHARACTERS: &[u8] = b"}])`";
 impl OutliningSpan {
   pub fn to_folding_range(
     &self,
-    line_index: Arc<LineIndex>,
+    line_index: &LineIndex,
     content: &[u8],
     line_folding_only: bool,
   ) -> lsp::FoldingRange {
-    let range = self.text_span.to_range(line_index.clone());
+    let range = self.text_span.to_range(line_index);
     lsp::FoldingRange {
       start_line: range.start.line,
       start_character: if line_folding_only {
@@ -4427,7 +4360,7 @@ impl OutliningSpan {
   fn adjust_folding_end_line(
     &self,
     range: &lsp::Range,
-    line_index: Arc<LineIndex>,
+    line_index: &LineIndex,
     content: &[u8],
     line_folding_only: bool,
   ) -> u32 {
@@ -4472,7 +4405,7 @@ impl SignatureHelpItems {
     snapshot: &StateSnapshot,
     token: &CancellationToken,
   ) -> Result<lsp::SignatureHelp, AnyError> {
-    let signatures = self
+    let mut signatures = self
       .items
       .into_iter()
       .map(|item| {
@@ -4481,12 +4414,23 @@ impl SignatureHelpItems {
         }
         Ok(item.into_signature_information(module, snapshot))
       })
-      .collect::<Result<_, _>>()?;
-    Ok(lsp::SignatureHelp {
-      signatures,
-      active_parameter: Some(self.argument_index),
-      active_signature: Some(self.selected_item_index),
-    })
+      .collect::<Result<Vec<_>, _>>()?;
+    if let Some(active_signature) =
+      signatures.get_mut(self.selected_item_index as usize)
+    {
+      active_signature.active_parameter = Some(self.argument_index);
+      Ok(lsp::SignatureHelp {
+        signatures,
+        active_parameter: None,
+        active_signature: Some(self.selected_item_index),
+      })
+    } else {
+      Ok(lsp::SignatureHelp {
+        signatures,
+        active_parameter: Some(self.argument_index),
+        active_signature: Some(self.selected_item_index),
+      })
+    }
   }
 }
 
@@ -4557,8 +4501,10 @@ impl SignatureHelpParameter {
     module: &DocumentModule,
     snapshot: &StateSnapshot,
   ) -> lsp::ParameterInformation {
-    let documentation =
-      display_parts_to_string(&self.documentation, module, snapshot);
+    let documentation = format!(
+      "{}\n",
+      display_parts_to_string(&self.documentation, module, snapshot)
+    );
     lsp::ParameterInformation {
       label: lsp::ParameterLabel::Simple(display_parts_to_string(
         &self.display_parts,
@@ -4586,10 +4532,10 @@ pub struct SelectionRange {
 impl SelectionRange {
   pub fn to_selection_range(
     &self,
-    line_index: Arc<LineIndex>,
+    line_index: &LineIndex,
   ) -> lsp::SelectionRange {
     lsp::SelectionRange {
-      range: self.text_span.to_range(line_index.clone()),
+      range: self.text_span.to_range(line_index),
       parent: self.parent.as_ref().map(|parent_selection| {
         Box::new(parent_selection.to_selection_range(line_index))
       }),
@@ -4844,7 +4790,7 @@ fn op_release(
 }
 
 #[op2]
-#[allow(clippy::type_complexity)]
+#[allow(clippy::type_complexity, reason = "op")]
 fn op_resolve(
   state: &mut OpState,
   #[string] base: &str,
@@ -4959,7 +4905,7 @@ async fn op_poll_requests(
 }
 
 #[inline]
-#[allow(clippy::type_complexity)]
+#[allow(clippy::type_complexity, reason = "op")]
 fn op_resolve_inner(
   state: &mut OpState,
   args: ResolveArgs,
@@ -5020,7 +4966,9 @@ fn op_respond(
   }
 }
 
-struct TracingSpan(#[allow(dead_code)] Option<super::trace::EnteredSpan>);
+struct TracingSpan(
+  #[allow(dead_code, reason = "unsupported")] Option<super::trace::EnteredSpan>,
+);
 
 deno_core::external!(TracingSpan, "lsp::TracingSpan");
 
@@ -5402,10 +5350,7 @@ fn run_tsc_thread(
           .lock()
           .await
           .js_runtime
-          .run_event_loop(PollEventLoopOptions {
-            wait_for_inspector: false,
-            pump_v8_message_loop: true,
-          })
+          .run_event_loop(Default::default())
           .await
         {
           log::error!("Error in TSC event loop: {e}");
@@ -5517,7 +5462,7 @@ pub type ImportModuleSpecifierPreference = config::ImportModuleSpecifier;
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "kebab-case")]
-#[allow(dead_code)]
+#[allow(dead_code, reason = "unsupported")]
 pub enum ImportModuleSpecifierEnding {
   Auto,
   Minimal,
@@ -5527,7 +5472,7 @@ pub enum ImportModuleSpecifierEnding {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "kebab-case")]
-#[allow(dead_code)]
+#[allow(dead_code, reason = "unsupported")]
 pub enum IncludeInlayParameterNameHints {
   None,
   Literals,
@@ -5548,7 +5493,7 @@ impl From<&config::InlayHintsParamNamesEnabled>
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "kebab-case")]
-#[allow(dead_code)]
+#[allow(dead_code, reason = "unsupported")]
 pub enum IncludePackageJsonAutoImports {
   Auto,
   On,
@@ -5827,7 +5772,10 @@ pub struct CombinedCodeFixScope {
 #[derive(Debug, Serialize, Clone)]
 pub enum OrganizeImportsMode {
   All,
+  #[allow(unused, reason = "unsupported")]
   SortAndCombine,
+  #[allow(unused, reason = "unsupported")]
+  RemoveUnused,
 }
 
 #[derive(Debug, Serialize, Clone)]
@@ -5840,7 +5788,7 @@ pub struct OrganizeImportsArgs {
 }
 
 #[derive(Serialize, Clone, Copy)]
-#[allow(dead_code)]
+#[allow(dead_code, reason = "currently unused")]
 pub struct JsNull;
 
 #[derive(Debug, Clone, Serialize)]
@@ -5917,7 +5865,7 @@ enum TscRequest {
     )>,
   ),
   // https://github.com/denoland/deno/blob/v1.37.1/cli/tsc/dts/typescript.d.ts#L6205
-  #[allow(clippy::type_complexity)]
+  #[allow(clippy::type_complexity, reason = "TODO: cleanup")]
   GetCompletionEntryDetails(
     Box<(
       String,
@@ -6975,12 +6923,12 @@ mod tests {
 
   #[test]
   fn test_classification_to_semantic_tokens_multiline_tokens() {
-    let line_index = Arc::new(LineIndex::new("  to\nken  \n"));
+    let line_index = LineIndex::new("  to\nken  \n");
     let classifications = Classifications {
       spans: vec![2, 6, 2057],
     };
     let semantic_tokens = classifications
-      .to_semantic_tokens(line_index, &Default::default())
+      .to_semantic_tokens(&line_index, &Default::default())
       .unwrap();
     assert_eq!(
       &semantic_tokens.data,

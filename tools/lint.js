@@ -31,11 +31,13 @@ if (!js && !rs) {
 if (rs) {
   promises.push(clippy());
   promises.push(ensureNoNonPermissionCapitalLetterShortFlags());
+  promises.push(ensureDisallowedMethodsEnforced());
 }
 
 if (js) {
   promises.push(dlint());
   promises.push(dlintPreferPrimordials());
+  promises.push(lintNodePolyfillDenoApis());
   promises.push(ensureCiYmlUpToDate());
   promises.push(ensureNoUnusedOutFiles());
   promises.push(ensureNoNewTopLevelEntries());
@@ -63,6 +65,7 @@ async function dlint() {
     ":!:.github/mtime_cache/action.js",
     ":!:cli/compilers/wasm_wrap.js",
     ":!:cli/tools/coverage/script.js",
+    ":!:runtime/cpu_profiler/flamegraph.js",
     ":!:cli/tools/doc/prism.css",
     ":!:cli/tools/doc/prism.js",
     ":!:cli/tsc/dts/**",
@@ -82,6 +85,7 @@ async function dlint() {
     ":!:tests/unit_node/testdata/**",
     ":!:tests/wpt/runner/**",
     ":!:tests/wpt/suite/**",
+    ":!:libs/**",
   ]);
 
   if (!sourceFiles.length) {
@@ -129,6 +133,7 @@ async function dlintPreferPrimordials() {
     ":!:ext/**/*.d.ts",
     "ext/node/polyfills/*.mjs",
     ":!:ext/node/polyfills/deps/**",
+    ":!:runtime/cpu_profiler/flamegraph.js",
   ]);
 
   if (!sourceFiles.length) {
@@ -151,6 +156,155 @@ async function dlintPreferPrimordials() {
   }
 }
 
+// Lint ext/node/polyfills for Deno.* API usage. These should be migrated
+// to internal ops or ext: imports. The expected violation counts are tracked
+// per file in no_deno_api_in_polyfills.ts -- any mismatch is a hard error.
+async function lintNodePolyfillDenoApis() {
+  const pluginPath = import.meta.resolve(
+    "./lint_plugins/no_deno_api_in_polyfills.ts",
+  );
+
+  const { EXPECTED_VIOLATIONS } = await import(pluginPath);
+
+  // Create a temp deno.json config that only enables our plugin.
+  const configPath = await Deno.makeTempFile({ suffix: ".json" });
+  try {
+    await Deno.writeTextFile(
+      configPath,
+      JSON.stringify({
+        lint: {
+          plugins: [pluginPath],
+        },
+      }),
+    );
+
+    const sourceFiles = await getSources(ROOT_PATH, [
+      "ext/node/polyfills/*.ts",
+      "ext/node/polyfills/*.js",
+      "ext/node/polyfills/*.mjs",
+      "ext/node/polyfills/**/*.ts",
+      "ext/node/polyfills/**/*.js",
+      "ext/node/polyfills/**/*.mjs",
+      ":!:ext/node/polyfills/deps/**",
+    ]);
+
+    if (!sourceFiles.length) {
+      return;
+    }
+
+    const cmd = new Deno.Command(Deno.execPath(), {
+      cwd: ROOT_PATH,
+      args: [
+        "lint",
+        "--config=" + configPath,
+        ...sourceFiles,
+      ],
+      stdout: "piped",
+      stderr: "piped",
+    });
+
+    const { stdout, stderr } = await cmd.output();
+    const output = new TextDecoder().decode(stdout) +
+      new TextDecoder().decode(stderr);
+
+    // Strip ANSI codes for reliable parsing.
+    // deno-lint-ignore no-control-regex
+    const clean = output.replace(/\x1b\[[0-9;]*m/g, "");
+
+    // Count actual violations per file.
+    const actualCounts = {};
+    const lineRegex = /--> (.+):(\d+):(\d+)/g;
+    const allMatches = [...clean.matchAll(lineRegex)];
+    for (const match of allMatches) {
+      const absPath = match[1];
+      const relPath = absPath.replace(ROOT_PATH + "/", "").replace(
+        ROOT_PATH + "\\",
+        "",
+      ).replaceAll("\\", "/");
+      actualCounts[relPath] = (actualCounts[relPath] || 0) + 1;
+    }
+
+    // Debug: show what we parsed.
+    console.log(
+      `[no-deno-api] ROOT_PATH: ${ROOT_PATH}`,
+    );
+    console.log(
+      `[no-deno-api] deno lint output length: stdout=${
+        new TextDecoder().decode(stdout).length
+      } stderr=${new TextDecoder().decode(stderr).length}`,
+    );
+    console.log(
+      `[no-deno-api] regex matched ${allMatches.length} violation(s)`,
+    );
+    if (allMatches.length === 0 && clean.length > 0) {
+      // Show first few lines with --> to debug format mismatch
+      const arrowLines = clean.split("\n").filter((l) => l.includes("-->"));
+      console.log(
+        `[no-deno-api] lines containing "-->": ${arrowLines.length}`,
+      );
+      for (const line of arrowLines.slice(0, 5)) {
+        console.log(`[no-deno-api]   ${JSON.stringify(line)}`);
+      }
+    } else if (allMatches.length > 0) {
+      // Show a sample match
+      const m = allMatches[0];
+      console.log(
+        `[no-deno-api] sample match: path=${JSON.stringify(m[1])} -> relPath=${
+          JSON.stringify(
+            m[1].replace(ROOT_PATH + "/", "").replace(ROOT_PATH + "\\", "")
+              .replaceAll("\\", "/"),
+          )
+        }`,
+      );
+    }
+    console.log(
+      `[no-deno-api] actualCounts has ${
+        Object.keys(actualCounts).length
+      } file(s)`,
+    );
+
+    // Compare actual vs expected.
+    const errors = [];
+    const allFiles = new Set([
+      ...Object.keys(EXPECTED_VIOLATIONS),
+      ...Object.keys(actualCounts),
+    ]);
+
+    for (const file of [...allFiles].sort()) {
+      const expected = EXPECTED_VIOLATIONS[file] || 0;
+      const actual = actualCounts[file] || 0;
+
+      if (actual > expected) {
+        errors.push(
+          `${file}: expected ${expected} Deno.* violations but found ${actual} (+${
+            actual - expected
+          }). ` +
+            "New Deno.* API usage is not allowed in node polyfills.",
+        );
+      } else if (actual < expected) {
+        errors.push(
+          `${file}: expected ${expected} Deno.* violations but found ${actual} (-${
+            expected - actual
+          }). ` +
+            "Please update EXPECTED_VIOLATIONS in tools/lint_plugins/no_deno_api_in_polyfills.ts.",
+        );
+      }
+    }
+
+    if (errors.length > 0) {
+      console.log("\n------ node polyfills Deno API usage ------");
+      for (const err of errors) {
+        console.error(err);
+      }
+      throw new Error(
+        `${errors.length} file(s) have mismatched Deno.* API violation counts`,
+      );
+    }
+  } finally {
+    await Deno.remove(configPath);
+  }
+}
+
 function splitToChunks(paths, initCmdLen) {
   let cmdLen = initCmdLen;
   const MAX_COMMAND_LEN = 30000;
@@ -169,37 +323,91 @@ function splitToChunks(paths, initCmdLen) {
 
 async function clippy() {
   const currentBuildMode = buildMode();
-  const cmd = ["clippy", "--all-targets", "--all-features", "--locked"];
 
-  if (currentBuildMode != "debug") {
-    cmd.push("--release");
+  const clippyDenyFlags = [
+    "--",
+    "-D",
+    "warnings",
+    "--deny",
+    "clippy::unused_async",
+    // generally prefer the `log` crate, but ignore
+    // these print_* rules if necessary
+    "--deny",
+    "clippy::print_stderr",
+    "--deny",
+    "clippy::print_stdout",
+    "--deny",
+    "clippy::large_futures",
+    "--deny",
+    "clippy::allow_attributes_without_reason",
+  ];
+
+  // Run clippy for the whole workspace except deno_core with --all-features.
+  // deno_core is excluded because --all-features enables
+  // v8_enable_pointer_compression which is not available on all platforms.
+  {
+    const cmd = [
+      "clippy",
+      "--all-targets",
+      "--all-features",
+      "--locked",
+      "--workspace",
+      "--exclude",
+      "deno_core",
+    ];
+
+    if (currentBuildMode != "debug") {
+      cmd.push("--release");
+    }
+
+    const cargoCmd = new Deno.Command("cargo", {
+      cwd: ROOT_PATH,
+      args: [...cmd, ...clippyDenyFlags],
+      stdout: "inherit",
+      stderr: "inherit",
+    });
+    const { code } = await cargoCmd.output();
+
+    if (code > 0) {
+      throw new Error("clippy failed");
+    }
   }
 
-  const cargoCmd = new Deno.Command("cargo", {
-    cwd: ROOT_PATH,
-    args: [
-      ...cmd,
-      "--",
-      "-D",
-      "warnings",
-      "--deny",
-      "clippy::unused_async",
-      // generally prefer the `log` crate, but ignore
-      // these print_* rules if necessary
-      "--deny",
-      "clippy::print_stderr",
-      "--deny",
-      "clippy::print_stdout",
-      "--deny",
-      "clippy::large_futures",
-    ],
-    stdout: "inherit",
-    stderr: "inherit",
-  });
-  const { code } = await cargoCmd.output();
+  // Run clippy for deno_core with specific features, matching the invocation
+  // from https://github.com/denoland/deno_core/blob/main/tools/lint.ts
+  {
+    const DENO_CORE_CLIPPY_FEATURES = [
+      "default",
+      "include_js_files_for_snapshotting",
+      "unsafe_runtime_options",
+      "unsafe_use_unprotected_platform",
+    ].join(",");
 
-  if (code > 0) {
-    throw new Error("clippy failed");
+    const cmd = [
+      "clippy",
+      "-p",
+      "deno_core",
+      "--all-targets",
+      "--locked",
+      "--features",
+      DENO_CORE_CLIPPY_FEATURES,
+    ];
+
+    if (currentBuildMode != "debug") {
+      cmd.push("--release");
+    }
+
+    const cargoCmd = new Deno.Command("cargo", {
+      cwd: ROOT_PATH,
+      args: [...cmd, ...clippyDenyFlags],
+      stdout: "inherit",
+      stderr: "inherit",
+    });
+    const { code } = await cargoCmd.output();
+
+    if (code > 0) {
+      throw new Error("clippy failed for deno_core");
+    }
   }
 }
 
@@ -342,6 +550,126 @@ async function listTopLevelEntries() {
   ].sort();
 }
 
+// every ext/ and libs/ crate must have a clippy.toml with the correct
+// disallowed methods
+async function ensureDisallowedMethodsEnforced() {
+  // methods that must be banned in both ext and libs crates
+  const COMMON_METHODS = [
+    "std::path::Path::canonicalize",
+    "std::path::Path::is_dir",
+    "std::path::Path::is_file",
+    "std::path::Path::is_symlink",
+    "std::path::Path::metadata",
+    "std::path::Path::read_dir",
+    "std::path::Path::read_link",
+    "std::path::Path::symlink_metadata",
+    "std::path::Path::try_exists",
+    "std::path::Path::exists",
+    "std::fs::canonicalize",
+    "std::fs::copy",
+    "std::fs::create_dir_all",
+    "std::fs::create_dir",
+    "std::fs::DirBuilder::new",
+    "std::fs::hard_link",
+    "std::fs::metadata",
+    "std::fs::OpenOptions::new",
+    "std::fs::read_dir",
+    "std::fs::read_link",
+    "std::fs::read_to_string",
+    "std::fs::read",
+    "std::fs::remove_dir_all",
+    "std::fs::remove_dir",
+    "std::fs::remove_file",
+    "std::fs::rename",
+    "std::fs::set_permissions",
+    "std::fs::symlink_metadata",
+    "std::fs::write",
+    "url::Url::to_file_path",
+    "url::Url::from_file_path",
+    "url::Url::from_directory_path",
+  ];
+
+  // additional methods that must be banned in libs crates
+  const LIBS_EXTRA_METHODS = [
+    "std::path::absolute",
+    "std::env::var",
+    "std::env::var_os",
+    "std::env::current_dir",
+    "std::env::set_current_dir",
+    "std::env::temp_dir",
+    "std::time::SystemTime::now",
+    "chrono::Utc::now",
+  ];
+
+  const errors = [];
+
+  async function checkCrateDir(crateDir, kind) {
+    const clippyToml = join(crateDir, "clippy.toml");
+    let clippyContent;
+    try {
+      clippyContent = await Deno.readTextFile(clippyToml);
+    } catch {
+      errors.push(`Missing clippy.toml: ${clippyToml}`);
+      return;
+    }
+
+    const requiredMethods = kind === "libs"
+      ? [...COMMON_METHODS, ...LIBS_EXTRA_METHODS]
+      : COMMON_METHODS;
+    for (const method of requiredMethods) {
+      if (!clippyContent.includes(`"${method}"`)) {
+        errors.push(`Missing disallowed method "${method}" in: ${clippyToml}`);
+      }
+    }
+  }
+
+  // check ext crates
+  for await (
+    const entry of Deno.readDir(join(ROOT_PATH, "ext"))
+  ) {
+    if (!entry.isDirectory) continue;
+    const crateDir = join(ROOT_PATH, "ext", entry.name);
+    try {
+      await Deno.stat(join(crateDir, "Cargo.toml"));
+    } catch {
+      continue;
+    }
+    await checkCrateDir(crateDir, "ext");
+  }
+
+  // check libs crates
+  for await (
+    const entry of Deno.readDir(join(ROOT_PATH, "libs"))
+  ) {
+    if (entry.name === "core_testing") {
+      continue; // skip only test crates
+    }
+    if (!entry.isDirectory) continue;
+    const crateDir = join(ROOT_PATH, "libs", entry.name);
+    try {
+      await Deno.stat(join(crateDir, "Cargo.toml"));
+    } catch {
+      continue;
+    }
+    await checkCrateDir(crateDir, "libs");
+  }
+
+  // check runtime crate (treated like ext - no env/time restrictions)
+  await checkCrateDir(join(ROOT_PATH, "runtime"), "ext");
+  // check runtime/permissions (treated like libs)
+  await checkCrateDir(join(ROOT_PATH, "runtime", "permissions"), "libs");
+
+  if (errors.length > 0) {
+    errors.sort();
+    for (const msg of errors) {
+      console.error(msg);
+    }
+    throw new Error(
+      `${errors.length} disallowed-methods enforcement error(s)`,
+    );
+  }
+}
+
 async function ensureNoNewTopLevelEntries() {
   const currentEntries = await listTopLevelEntries();
 
@@ -351,6 +679,7 @@ async function ensureNoNewTopLevelEntries() {
     ".cargo",
     ".devcontainer",
     ".github",
+    "x",
     "cli",
     "ext",
     "libs",

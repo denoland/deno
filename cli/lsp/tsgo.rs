@@ -2,9 +2,8 @@
 
 use std::collections::BTreeMap;
 use std::collections::HashMap;
-use std::io::BufRead;
-use std::io::Write;
 use std::path::Path;
+use std::path::PathBuf;
 use std::process::Child;
 use std::process::Command;
 use std::process::Stdio;
@@ -13,13 +12,17 @@ use std::sync::Arc;
 use std::sync::atomic::AtomicI64;
 use std::sync::atomic::Ordering;
 
+use deno_ast::MediaType;
 use deno_config::deno_json::CompilerOptions;
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
 use deno_core::serde_json;
 use deno_graph::source::Resolver;
+use deno_lib::util::hash::FastInsecureHasher;
+use deno_path_util::url_from_directory_path;
 use deno_resolver::deno_json::CompilerOptionsKey;
+use deno_runtime::tokio_util::create_basic_runtime;
 use indexmap::IndexSet;
 use lsp_types::Uri;
 use node_resolver::NodeResolutionKind;
@@ -28,6 +31,8 @@ use serde::Deserialize;
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 use serde_json::json;
+use tokio::io::AsyncBufReadExt;
+use tokio::io::AsyncReadExt;
 use tokio::sync::oneshot;
 use tokio_util::sync::CancellationToken;
 use tower_lsp::lsp_types as lsp;
@@ -38,9 +43,12 @@ use crate::cache::DenoDir;
 use crate::http_util::HttpClientProvider;
 use crate::lsp::completions::CompletionItemData;
 use crate::lsp::documents::Document;
+use crate::lsp::documents::ServerDocumentKind;
 use crate::lsp::logging::lsp_log;
 use crate::lsp::logging::lsp_warn;
 use crate::lsp::resolver::SingleReferrerGraphResolver;
+use crate::lsp::urls::normalize_path;
+use crate::lsp::urls::normalize_uri;
 use crate::lsp::urls::uri_to_url;
 use crate::tsc::IGNORED_DIAGNOSTIC_CODES;
 
@@ -63,6 +71,7 @@ impl TsGoCompilerOptions {
     let Some(object) = value.as_object_mut() else {
       return Self(serde_json::Value::Object(Default::default()));
     };
+    object.insert("allowNonTsExtensions".to_string(), json!(true));
     let jsx = object.remove("jsx");
     if let Some(jsx) = jsx.as_ref().and_then(|v| v.as_str()) {
       let tsgo_jsx = match jsx {
@@ -171,6 +180,17 @@ enum TsGoCallbackParams {
     resolution_mode: deno_typescript_go_client_rust::types::ResolutionMode,
     compiler_options_key: CompilerOptionsKey,
   },
+  #[serde(rename_all = "camelCase")]
+  ResolveJsxImportSource {
+    compiler_options_key: CompilerOptionsKey,
+  },
+  #[serde(rename_all = "camelCase")]
+  GetPackageScopeForPath { directory_path: PathBuf },
+  #[serde(rename_all = "camelCase")]
+  GetImpliedNodeFormatForFile {
+    uri: Uri,
+    compiler_options_key: CompilerOptionsKey,
+  },
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Serialize)]
@@ -198,7 +218,7 @@ struct TsGoFileChange {
   kind: TsGoFileChangeKind,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct TsGoProjectConfig {
   compiler_options: Arc<TsGoCompilerOptions>,
@@ -209,11 +229,13 @@ struct TsGoProjectConfig {
   notebook_uri: Option<Arc<Uri>>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct TsGoWorkspaceConfig {
   by_compiler_options_key: BTreeMap<CompilerOptionsKey, TsGoProjectConfig>,
   by_notebook_uri: BTreeMap<Arc<Uri>, TsGoProjectConfig>,
+  #[serde(skip_serializing)]
+  project_files_hash: u64,
 }
 
 impl TsGoWorkspaceConfig {
@@ -281,40 +303,110 @@ impl TsGoWorkspaceConfig {
     let mut workspace_config = Self {
       by_compiler_options_key,
       by_notebook_uri,
+      project_files_hash: 0,
     };
-    fill_workspace_config_file_names(&mut workspace_config, snapshot);
+    fill_project_files(&mut workspace_config, snapshot);
     workspace_config
   }
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct TsGoWorkspaceChange {
   file_changes: Vec<TsGoFileChange>,
-  new_configuration: Option<TsGoWorkspaceConfig>,
+  new_configuration: Option<Arc<TsGoWorkspaceConfig>>,
 }
 
-impl TsGoWorkspaceChange {
-  fn coalesce(&mut self, incoming: Self) {
-    for change in incoming.file_changes {
-      if let Some(existing_change) =
-        self.file_changes.iter_mut().find(|c| c.uri == change.uri)
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct TsGoWorkspaceInfo {
+  compiler_options_keys_for_assets: HashMap<Uri, CompilerOptionsKey>,
+}
+
+#[derive(Debug)]
+struct PendingChangeTracker {
+  file_changes: Vec<TsGoFileChange>,
+  valid_config: Option<Arc<TsGoWorkspaceConfig>>,
+  snapshot: Arc<StateSnapshot>,
+}
+
+impl PendingChangeTracker {
+  fn new(snapshot: Arc<StateSnapshot>) -> Self {
+    Self {
+      file_changes: Vec::new(),
+      valid_config: None,
+      snapshot,
+    }
+  }
+
+  fn update(
+    &mut self,
+    documents: &[(Document, super::tsc::ChangeKind)],
+    configuration_changed: bool,
+    snapshot: Arc<StateSnapshot>,
+  ) {
+    for (document, change_kind) in documents {
+      if let Some(existing_change) = self
+        .file_changes
+        .iter_mut()
+        .find(|c| &c.uri == document.uri())
       {
         // Modified should never override Opened or Closed.
-        if change.kind != TsGoFileChangeKind::Modified {
-          existing_change.kind = change.kind;
+        if *change_kind != super::tsc::ChangeKind::Modified {
+          existing_change.kind = (*change_kind).into();
         }
       } else {
-        self.file_changes.push(change);
+        self.file_changes.push(TsGoFileChange {
+          uri: document.uri().clone(),
+          kind: (*change_kind).into(),
+        });
       }
     }
-    if incoming.new_configuration.is_some() {
-      self.new_configuration = incoming.new_configuration;
+    if configuration_changed {
+      self.valid_config = None;
+    }
+    self.snapshot = snapshot.clone();
+  }
+
+  fn take_change(&mut self) -> Option<TsGoWorkspaceChange> {
+    let file_changes = std::mem::take(&mut self.file_changes);
+    if let Some(valid_config) = &self.valid_config {
+      if file_changes.iter().any(|c| {
+        matches!(
+          c.kind,
+          TsGoFileChangeKind::Opened | TsGoFileChangeKind::Closed
+        )
+      }) {
+        let mut new_config = valid_config.as_ref().clone();
+        if fill_project_files(&mut new_config, &self.snapshot) {
+          let new_config = Arc::new(new_config);
+          self.valid_config = Some(new_config.clone());
+          return Some(TsGoWorkspaceChange {
+            file_changes,
+            new_configuration: Some(new_config),
+          });
+        }
+      }
+      if !file_changes.is_empty() {
+        return Some(TsGoWorkspaceChange {
+          file_changes,
+          new_configuration: None,
+        });
+      }
+      None
+    } else {
+      let new_config =
+        Arc::new(TsGoWorkspaceConfig::from_snapshot(&self.snapshot));
+      self.valid_config = Some(new_config.clone());
+      Some(TsGoWorkspaceChange {
+        file_changes,
+        new_configuration: Some(new_config),
+      })
     }
   }
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 enum TsGoRequest {
   #[serde(rename_all = "camelCase")]
@@ -333,17 +425,27 @@ enum TsGoRequest {
   WorkspaceSymbol { query: String },
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-struct TsGoRequestParams {
-  request: TsGoRequest,
-  workspace_change: Option<TsGoWorkspaceChange>,
+enum TsGoRequestParams {
+  ApplyWorkspaceChange(TsGoWorkspaceChange),
+  #[serde(untagged)]
+  Request(TsGoRequest),
 }
 
-fn fill_workspace_config_file_names(
+/// Returns if the project files were changed.
+fn fill_project_files(
   workspace_config: &mut TsGoWorkspaceConfig,
   snapshot: &StateSnapshot,
-) {
+) -> bool {
+  for project_config in workspace_config
+    .by_compiler_options_key
+    .values_mut()
+    .chain(workspace_config.by_notebook_uri.values_mut())
+  {
+    project_config.files = Default::default();
+  }
+
   let scopes_with_node_specifier =
     snapshot.document_modules.scopes_with_node_specifier();
 
@@ -482,6 +584,9 @@ fn fill_workspace_config_file_names(
     .into_values()
   {
     for module in modules {
+      if !module.is_diagnosable() {
+        continue;
+      }
       let is_open = module.open_data.is_some();
       let types_uri = (|| {
         let types_specifier = module
@@ -515,6 +620,18 @@ fn fill_workspace_config_file_names(
       }
     }
   }
+  let previous_hash = workspace_config.project_files_hash;
+  let mut hasher = FastInsecureHasher::new_without_deno_version();
+  for uri in workspace_config
+    .by_compiler_options_key
+    .values()
+    .chain(workspace_config.by_notebook_uri.values())
+    .flat_map(|c| &c.files)
+  {
+    hasher.write_hashable(uri);
+  }
+  workspace_config.project_files_hash = hasher.finish();
+  workspace_config.project_files_hash != previous_hash
 }
 
 type PendingRequests =
@@ -522,19 +639,19 @@ type PendingRequests =
 
 struct TsGoServerInner {
   snapshot: Arc<Mutex<Arc<StateSnapshot>>>,
-  pending_change: Mutex<Option<TsGoWorkspaceChange>>,
+  pending_change_tracker: Mutex<PendingChangeTracker>,
   pending_change_lock: tokio::sync::RwLock<()>,
   stdin: Arc<Mutex<std::process::ChildStdin>>,
   pending_requests: Arc<PendingRequests>,
   next_request_id: AtomicI64,
-  #[allow(dead_code)]
+  #[allow(dead_code, reason = "TODO: investigate")]
   child: Mutex<Child>,
+  runtime_handle: tokio::runtime::Handle,
 }
 
 impl std::fmt::Debug for TsGoServerInner {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     f.debug_struct("TsGoServerInner")
-      .field("pending_change", &self.pending_change)
       .field("next_request_id", &self.next_request_id)
       .finish_non_exhaustive()
   }
@@ -544,6 +661,7 @@ fn write_lsp_message(
   stdin: &mut std::process::ChildStdin,
   message: &serde_json::Value,
 ) -> std::io::Result<()> {
+  use std::io::Write;
   let content = serde_json::to_string(message)?;
   write!(
     stdin,
@@ -554,13 +672,13 @@ fn write_lsp_message(
   stdin.flush()
 }
 
-fn read_lsp_message(
-  reader: &mut std::io::BufReader<std::process::ChildStdout>,
+async fn read_lsp_message(
+  reader: &mut tokio::io::BufReader<tokio::process::ChildStdout>,
 ) -> std::io::Result<serde_json::Value> {
   let mut content_length: Option<usize> = None;
   loop {
     let mut line = String::new();
-    reader.read_line(&mut line)?;
+    reader.read_line(&mut line).await?;
     let line = line.trim();
     if line.is_empty() {
       break;
@@ -578,7 +696,7 @@ fn read_lsp_message(
     )
   })?;
   let mut buf = vec![0u8; content_length];
-  std::io::Read::read_exact(reader, &mut buf)?;
+  reader.read_exact(&mut buf).await?;
   serde_json::from_slice(&buf)
     .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))
 }
@@ -594,7 +712,9 @@ impl TsGoServerInner {
       .unwrap();
 
     let stdin = Arc::new(Mutex::new(child.stdin.take().unwrap()));
-    let stdout = child.stdout.take().unwrap();
+    let stdout =
+      tokio::process::ChildStdout::from_std(child.stdout.take().unwrap())
+        .unwrap();
     let snapshot = Arc::new(Mutex::new(snapshot));
 
     let pending_requests: Arc<PendingRequests> =
@@ -603,10 +723,10 @@ impl TsGoServerInner {
     let pending_requests_clone = pending_requests.clone();
     let stdin_clone = stdin.clone();
     let snapshot_clone = snapshot.clone();
-    std::thread::spawn(move || {
-      let mut reader = std::io::BufReader::new(stdout);
+    let read_loop = async move {
+      let mut reader = tokio::io::BufReader::new(stdout);
       loop {
-        let message = match read_lsp_message(&mut reader) {
+        let message = match read_lsp_message(&mut reader).await {
           Ok(msg) => msg,
           Err(e) => {
             lsp_warn!("Error reading from tsgo: {}", e);
@@ -724,8 +844,79 @@ impl TsGoServerInner {
           }
         }
       }
-    });
+    };
 
+    let (runtime_handle_tx, runtime_handle_rx) =
+      std::sync::mpsc::channel::<tokio::runtime::Handle>();
+    std::thread::spawn(move || {
+      let rt = create_basic_runtime();
+      let _ = runtime_handle_tx.send(rt.handle().clone());
+      rt.block_on(read_loop);
+    });
+    let runtime_handle = runtime_handle_rx.recv().unwrap();
+
+    let capabilities = {
+      let snapshot = snapshot.lock();
+      let mut text_document = lsp::TextDocumentClientCapabilities {
+        synchronization: None,
+        formatting: None,
+        range_formatting: None,
+        on_type_formatting: None,
+        publish_diagnostics: None,
+        ..snapshot
+          .config
+          .client_capabilities
+          .text_document
+          .clone()
+          .unwrap_or_default()
+      };
+      text_document.diagnostic.get_or_insert_default();
+      let mut value = json!(lsp::ClientCapabilities {
+        text_document: Some(text_document),
+        workspace: Some(lsp::WorkspaceClientCapabilities {
+          symbol: snapshot
+            .config
+            .client_capabilities
+            .workspace
+            .as_ref()
+            .and_then(|w| w.symbol.clone()),
+          ..Default::default()
+        }),
+        ..Default::default()
+      });
+      // TODO(nayeemrmn): Remove these when missing fields are added:
+      // https://github.com/tower-lsp-community/ls-types/issues/31
+      value
+        .as_object_mut()
+        .unwrap()
+        .get_mut("textDocument")
+        .unwrap()
+        .as_object_mut()
+        .unwrap()
+        .get_mut("diagnostic")
+        .unwrap()
+        .as_object_mut()
+        .unwrap()
+        .insert("relatedInformation".to_string(), json!(true));
+      value
+        .as_object_mut()
+        .unwrap()
+        .get_mut("textDocument")
+        .unwrap()
+        .as_object_mut()
+        .unwrap()
+        .get_mut("diagnostic")
+        .unwrap()
+        .as_object_mut()
+        .unwrap()
+        .insert(
+          "tagSupport".to_string(),
+          json!({
+            "valueSet": [1, 2],
+          }),
+        );
+      value
+    };
     let initialize_request = json!({
       "jsonrpc": "2.0",
       "id": 0,
@@ -735,7 +926,7 @@ impl TsGoServerInner {
           "disablePushDiagnostics": true,
         },
         "processId": std::process::id(),
-        "capabilities": {},
+        "capabilities": capabilities,
         "rootUri": null,
         "workspaceFolders": null,
       },
@@ -761,21 +952,18 @@ impl TsGoServerInner {
       write_lsp_message(&mut stdin, &initialized_notification).unwrap();
     }
 
-    let pending_change = Mutex::new(Some(TsGoWorkspaceChange {
-      file_changes: Vec::new(),
-      new_configuration: Some(TsGoWorkspaceConfig::from_snapshot(
-        snapshot.lock().as_ref(),
-      )),
-    }));
+    let pending_change_tracker =
+      Mutex::new(PendingChangeTracker::new(snapshot.lock().clone()));
 
     Self {
       snapshot,
-      pending_change,
+      pending_change_tracker,
       pending_change_lock: Default::default(),
       stdin,
       pending_requests,
       next_request_id: AtomicI64::new(1),
       child: Mutex::new(child),
+      runtime_handle,
     }
   }
 
@@ -785,6 +973,7 @@ impl TsGoServerInner {
   ) -> Result<serde_json::Value, AnyError> {
     match params {
       TsGoCallbackParams::GetDocument { uri } => {
+        let uri = normalize_uri(&uri);
         let document = snapshot
           .document_modules
           .documents
@@ -793,6 +982,17 @@ impl TsGoServerInner {
         let text = document.text();
         Ok(json!({
           "text": &text,
+          "scriptKind": match &document {
+            Document::Open(document) => document.language_id.as_ts_script_kind(),
+            Document::Server(document) => {
+              let mut media_type = document.media_type();
+              if media_type == MediaType::Wasm {
+                media_type = MediaType::Dmts;
+              }
+              crate::tsc::as_ts_script_kind(media_type)
+            }
+          },
+          "isNotebookCell": document.open().is_some_and(|d| d.notebook_uri.is_some()),
           "lineStarts": document
             .line_index()
             .line_starts()
@@ -805,14 +1005,14 @@ impl TsGoServerInner {
       TsGoCallbackParams::ResolveModuleName {
         module_name,
         referrer_uri,
-        // TODO(nayeemrmn): Use this to redirect bytes/text imports.
-        import_attribute_type: _import_attribute_type,
+        import_attribute_type,
         resolution_mode,
         compiler_options_key,
       } => {
+        let referrer_uri = normalize_uri(&referrer_uri);
         let referrer_module = snapshot
           .document_modules
-          .module_for_tsgo_referrer(&referrer_uri, &compiler_options_key)
+          .module_for_tsgo_document(&referrer_uri, &compiler_options_key)
           .ok_or_else(|| anyhow!("Referrer module not found"))?;
         let Some((uri, media_type)) = snapshot
           .document_modules
@@ -830,35 +1030,112 @@ impl TsGoServerInner {
               ResolutionMode::Import
             }
           },
+          import_attribute_type.as_deref(),
         ) else {
           return Ok(json!(null));
         };
+        if import_attribute_type.is_none()
+          && !matches!(
+            media_type,
+            MediaType::JavaScript
+              | MediaType::Jsx
+              | MediaType::Mjs
+              | MediaType::Cjs
+              | MediaType::TypeScript
+              | MediaType::Tsx
+              | MediaType::Mts
+              | MediaType::Cts
+              | MediaType::Dts
+              | MediaType::Dmts
+              | MediaType::Dcts
+              | MediaType::Json
+              | MediaType::Wasm
+          )
+        {
+          return Ok(json!(null));
+        }
         Ok(json!({
           "uri": uri,
           "extension": media_type.as_ts_extension(),
         }))
+      }
+      TsGoCallbackParams::ResolveJsxImportSource {
+        compiler_options_key,
+      } => {
+        let compiler_options_data = snapshot
+          .compiler_options_resolver
+          .for_key(&compiler_options_key)
+          .unwrap();
+        let specifier = compiler_options_data
+          .jsx_import_source_config
+          .as_ref()
+          .and_then(|c| c.specifier());
+        Ok(json!(specifier))
+      }
+      TsGoCallbackParams::GetPackageScopeForPath { directory_path } => {
+        let Ok(directory_url) = url_from_directory_path(&directory_path) else {
+          return Ok(json!(null));
+        };
+        let scoped_resolver =
+          snapshot.resolver.get_scoped_resolver(Some(&directory_url));
+        let Ok(Some(package_json)) = scoped_resolver
+          .as_pkg_json_resolver()
+          .get_closest_package_json(&directory_path.join("package.json"))
+        else {
+          return Ok(json!(null));
+        };
+        Ok(json!({
+          "packageDirectoryPath": package_json.path.parent(),
+          "packageJsonText": serde_json::to_string(&package_json).unwrap(),
+        }))
+      }
+      TsGoCallbackParams::GetImpliedNodeFormatForFile {
+        uri,
+        compiler_options_key,
+      } => {
+        let uri = normalize_uri(&uri);
+        let referrer_module = snapshot
+          .document_modules
+          .module_for_tsgo_document(&uri, &compiler_options_key)
+          .ok_or_else(|| anyhow!("Module not found"))?;
+        let resolution_mode =
+          match (referrer_module.resolution_mode, referrer_module.media_type) {
+            (
+              _,
+              MediaType::Css
+              | MediaType::Json
+              | MediaType::Html
+              | MediaType::Sql
+              | MediaType::Wasm
+              | MediaType::SourceMap
+              | MediaType::Unknown,
+            ) => deno_typescript_go_client_rust::types::ResolutionMode::None,
+            (ResolutionMode::Import, _) => {
+              deno_typescript_go_client_rust::types::ResolutionMode::ESM
+            }
+            (ResolutionMode::Require, _) => {
+              deno_typescript_go_client_rust::types::ResolutionMode::CommonJS
+            }
+          };
+        Ok(json!(resolution_mode))
       }
     }
   }
 
   async fn request<R>(
     &self,
-    request: TsGoRequest,
-    _token: &CancellationToken,
+    params: TsGoRequestParams,
+    token: &CancellationToken,
   ) -> Result<R, AnyError>
   where
     R: DeserializeOwned,
   {
-    let workspace_change = self.pending_change.lock().take();
-    let (_read, _write) = if workspace_change.is_some() {
-      (None, Some(self.pending_change_lock.write().await))
-    } else {
-      (Some(self.pending_change_lock.read().await), None)
-    };
-    let params = TsGoRequestParams {
-      request,
-      workspace_change,
-    };
+    let (_read, _write) =
+      if matches!(&params, TsGoRequestParams::ApplyWorkspaceChange(_)) {
+        (None, Some(self.pending_change_lock.write().await))
+      } else {
+        (Some(self.pending_change_lock.read().await), None)
+      };
 
     let request_id = self.next_request_id.fetch_add(1, Ordering::SeqCst);
 
@@ -877,9 +1154,32 @@ impl TsGoServerInner {
       write_lsp_message(&mut stdin, &message)?;
     }
 
-    let result = rx
-      .await
-      .map_err(|_| anyhow!("Channel closed"))?
+    // Spawn this task on the reader thread which should be mostly idle. It's
+    // important that cancellations are passed through quickly.
+    let token_clone = token.clone();
+    let stdin = self.stdin.clone();
+    let pending_requests = self.pending_requests.clone();
+    let cancel_handle = self.runtime_handle.spawn(async move {
+      token_clone.cancelled().await;
+      let cancel_message = json!({
+        "jsonrpc": "2.0",
+        "method": "$/cancelRequest",
+        "params": { "id": request_id },
+      });
+      {
+        let mut stdin = stdin.lock();
+        let _ = write_lsp_message(&mut stdin, &cancel_message);
+      }
+      pending_requests.lock().remove(&request_id);
+    });
+
+    let result = rx.await;
+    cancel_handle.abort();
+    let result = result
+      .map_err(|_| {
+        debug_assert!(token.is_cancelled());
+        anyhow!("request cancelled")
+      })?
       .map_err(|e| anyhow!("{}", e))?;
 
     Ok(serde_json::from_value(result)?)
@@ -890,7 +1190,7 @@ impl TsGoServerInner {
 pub struct TsGoServer {
   deno_dir: DenoDir,
   http_client_provider: Arc<HttpClientProvider>,
-  inner: tokio::sync::OnceCell<TsGoServerInner>,
+  inner: tokio::sync::OnceCell<Arc<TsGoServerInner>>,
 }
 
 impl TsGoServer {
@@ -905,7 +1205,7 @@ impl TsGoServer {
     }
   }
 
-  async fn inner(&self, snapshot: Arc<StateSnapshot>) -> &TsGoServerInner {
+  async fn inner(&self, snapshot: Arc<StateSnapshot>) -> &Arc<TsGoServerInner> {
     self
       .inner
       .get_or_init(async || {
@@ -915,7 +1215,7 @@ impl TsGoServer {
         )
         .await
         .unwrap();
-        TsGoServerInner::init(tsgo_path, snapshot).await
+        Arc::new(TsGoServerInner::init(tsgo_path, snapshot).await)
       })
       .await
   }
@@ -934,23 +1234,11 @@ impl TsGoServer {
       return;
     };
     *inner.snapshot.lock() = snapshot.clone();
-    let incoming = TsGoWorkspaceChange {
-      file_changes: documents
-        .iter()
-        .map(|(d, k)| TsGoFileChange {
-          uri: d.uri().clone(),
-          kind: (*k).into(),
-        })
-        .collect(),
-      new_configuration: configuration_changed
-        .then(|| TsGoWorkspaceConfig::from_snapshot(&snapshot)),
-    };
-    let mut pending_change = inner.pending_change.lock();
-    if let Some(existing) = pending_change.as_mut() {
-      existing.coalesce(incoming);
-    } else {
-      *pending_change = Some(incoming);
-    }
+    inner.pending_change_tracker.lock().update(
+      documents,
+      configuration_changed,
+      snapshot.clone(),
+    );
   }
 
   async fn request<R>(
@@ -962,8 +1250,36 @@ impl TsGoServer {
   where
     R: DeserializeOwned,
   {
-    let inner = self.inner(snapshot).await;
-    inner.request(request, token).await
+    let inner = self.inner(snapshot.clone()).await;
+    let inner_clone = inner.clone();
+    tokio::task::spawn(async move {
+      let workspace_change =
+        inner_clone.pending_change_tracker.lock().take_change();
+      if let Some(workspace_change) = workspace_change {
+        let workspace_info = inner_clone
+          .request::<TsGoWorkspaceInfo>(
+            TsGoRequestParams::ApplyWorkspaceChange(workspace_change),
+            &Default::default(),
+          )
+          .await
+          .unwrap();
+        let asset_scopes = workspace_info
+          .compiler_options_keys_for_assets
+          .into_iter()
+          .map(|(asset_uri, compiler_options_key)| {
+            (
+              Arc::new(normalize_uri(&asset_uri)),
+              (None, compiler_options_key),
+            )
+          });
+        snapshot.document_modules.assign_scopes(asset_scopes);
+      }
+    })
+    .await
+    .unwrap();
+    inner
+      .request(TsGoRequestParams::Request(request), token)
+      .await
   }
 
   pub async fn get_ambient_modules(
@@ -988,7 +1304,7 @@ impl TsGoServer {
   pub async fn provide_diagnostics(
     &self,
     module: &DocumentModule,
-    snapshot: Arc<StateSnapshot>,
+    snapshot: &Arc<StateSnapshot>,
     token: &CancellationToken,
   ) -> Result<lsp::DocumentDiagnosticReport, AnyError> {
     let mut report = self
@@ -999,7 +1315,7 @@ impl TsGoServer {
           compiler_options_key: module.compiler_options_key.clone(),
           notebook_uri: module.notebook_uri.clone(),
         },
-        snapshot,
+        snapshot.clone(),
         token,
       )
       .await?;
@@ -1011,8 +1327,17 @@ impl TsGoServer {
           let Some(lsp::NumberOrString::Number(code)) = &diagnostic.code else {
             return true;
           };
+          if module.notebook_uri.is_some() {
+            // Top-level-await, standard and loops.
+            if *code == 1375 || *code == 1431 {
+              return false;
+            }
+          }
           !IGNORED_DIAGNOSTIC_CODES.contains(&(*code as _))
         });
+      for diagnostic in &mut report.full_document_diagnostic_report.items {
+        normalize_diagnostic(diagnostic, snapshot);
+      }
     }
     Ok(report)
   }
@@ -1022,11 +1347,11 @@ impl TsGoServer {
     module: &DocumentModule,
     position: lsp::Position,
     context: lsp::ReferenceContext,
-    snapshot: Arc<StateSnapshot>,
+    snapshot: &Arc<StateSnapshot>,
     token: &CancellationToken,
   ) -> Result<Option<Vec<lsp::Location>>, AnyError> {
-    self
-      .request(
+    let mut references = self
+      .request::<Option<Vec<lsp::Location>>>(
         TsGoRequest::LanguageServiceMethod {
           name: "ProvideReferences".to_string(),
           args: json!([{
@@ -1037,10 +1362,16 @@ impl TsGoServer {
           compiler_options_key: module.compiler_options_key.clone(),
           notebook_uri: module.notebook_uri.clone(),
         },
-        snapshot,
+        snapshot.clone(),
         token,
       )
-      .await
+      .await?;
+    if let Some(locations) = &mut references {
+      for location in locations {
+        normalize_location(location, snapshot)
+      }
+    }
+    Ok(references)
   }
 
   pub async fn provide_code_lenses(
@@ -1109,11 +1440,11 @@ impl TsGoServer {
     module: &DocumentModule,
     range: lsp::Range,
     context: &lsp::CodeActionContext,
-    snapshot: Arc<StateSnapshot>,
+    snapshot: &Arc<StateSnapshot>,
     token: &CancellationToken,
   ) -> Result<Option<lsp::CodeActionResponse>, AnyError> {
-    self
-      .request(
+    let mut response = self
+      .request::<Option<lsp::CodeActionResponse>>(
         TsGoRequest::LanguageServiceMethod {
           name: "ProvideCodeActions".to_string(),
           args: json!([{
@@ -1124,10 +1455,14 @@ impl TsGoServer {
           compiler_options_key: module.compiler_options_key.clone(),
           notebook_uri: module.notebook_uri.clone(),
         },
-        snapshot,
+        snapshot.clone(),
         token,
       )
-      .await
+      .await?;
+    if let Some(response) = &mut response {
+      normalize_code_action_response(response, snapshot);
+    }
+    Ok(response)
   }
 
   pub async fn provide_document_highlights(
@@ -1155,42 +1490,50 @@ impl TsGoServer {
     &self,
     module: &DocumentModule,
     position: lsp::Position,
-    snapshot: Arc<StateSnapshot>,
+    snapshot: &Arc<StateSnapshot>,
     token: &CancellationToken,
   ) -> Result<Option<lsp::GotoDefinitionResponse>, AnyError> {
-    self
-      .request(
+    let mut response = self
+      .request::<Option<lsp::GotoDefinitionResponse>>(
         TsGoRequest::LanguageServiceMethod {
           name: "ProvideDefinition".to_string(),
           args: json!([&module.uri, position]),
           compiler_options_key: module.compiler_options_key.clone(),
           notebook_uri: module.notebook_uri.clone(),
         },
-        snapshot,
+        snapshot.clone(),
         token,
       )
-      .await
+      .await?;
+    if let Some(response) = &mut response {
+      normalize_goto_definition_response(response, snapshot);
+    }
+    Ok(response)
   }
 
   pub async fn provide_type_definition(
     &self,
     module: &DocumentModule,
     position: lsp::Position,
-    snapshot: Arc<StateSnapshot>,
+    snapshot: &Arc<StateSnapshot>,
     token: &CancellationToken,
   ) -> Result<Option<lsp::request::GotoTypeDefinitionResponse>, AnyError> {
-    self
-      .request(
+    let mut response = self
+      .request::<Option<lsp::request::GotoTypeDefinitionResponse>>(
         TsGoRequest::LanguageServiceMethod {
           name: "ProvideTypeDefinition".to_string(),
           args: json!([&module.uri, position]),
           compiler_options_key: module.compiler_options_key.clone(),
           notebook_uri: module.notebook_uri.clone(),
         },
-        snapshot,
+        snapshot.clone(),
         token,
       )
-      .await
+      .await?;
+    if let Some(response) = &mut response {
+      normalize_goto_definition_response(response, snapshot);
+    }
+    Ok(response)
   }
 
   pub async fn provide_completion(
@@ -1201,8 +1544,8 @@ impl TsGoServer {
     snapshot: Arc<StateSnapshot>,
     token: &CancellationToken,
   ) -> Result<Option<lsp::CompletionResponse>, AnyError> {
-    let mut response: Result<Option<lsp::CompletionResponse>, AnyError> = self
-      .request(
+    let mut response = self
+      .request::<Option<lsp::CompletionResponse>>(
         TsGoRequest::LanguageServiceMethod {
           name: "ProvideCompletion".to_string(),
           args: json!([&module.uri, position, context]),
@@ -1212,8 +1555,8 @@ impl TsGoServer {
         snapshot,
         token,
       )
-      .await;
-    if let Ok(Some(response)) = &mut response {
+      .await?;
+    if let Some(response) = &mut response {
       let items = match response {
         lsp::CompletionResponse::Array(items) => items,
         lsp::CompletionResponse::List(list) => &mut list.items,
@@ -1230,7 +1573,7 @@ impl TsGoServer {
         }
       }
     }
-    response
+    Ok(response)
   }
 
   pub async fn resolve_completion_item(
@@ -1242,8 +1585,8 @@ impl TsGoServer {
     token: &CancellationToken,
   ) -> Result<lsp::CompletionItem, AnyError> {
     item.data = Some(data.data);
-    self
-      .request(
+    let mut item = self
+      .request::<lsp::CompletionItem>(
         TsGoRequest::LanguageServiceMethod {
           name: "ResolveCompletionItem".to_string(),
           args: json!([item]),
@@ -1253,31 +1596,37 @@ impl TsGoServer {
         snapshot,
         token,
       )
-      .await
+      .await?;
+    item.data = None;
+    Ok(item)
   }
 
   pub async fn provide_implementations(
     &self,
     module: &DocumentModule,
     position: lsp::Position,
-    snapshot: Arc<StateSnapshot>,
+    snapshot: &Arc<StateSnapshot>,
     token: &CancellationToken,
   ) -> Result<Option<lsp::request::GotoImplementationResponse>, AnyError> {
-    self
-      .request(
+    let mut response = self
+      .request::<Option<lsp::request::GotoImplementationResponse>>(
         TsGoRequest::LanguageServiceMethod {
           name: "ProvideImplementations".to_string(),
-          args: json!({
+          args: json!([{
             "textDocument": { "uri": &module.uri },
             "position": position,
-          }),
+          }]),
           compiler_options_key: module.compiler_options_key.clone(),
           notebook_uri: module.notebook_uri.clone(),
         },
-        snapshot,
+        snapshot.clone(),
         token,
       )
-      .await
+      .await?;
+    if let Some(response) = &mut response {
+      normalize_goto_definition_response(response, snapshot);
+    }
+    Ok(response)
   }
 
   pub async fn provide_folding_range(
@@ -1304,63 +1653,81 @@ impl TsGoServer {
     &self,
     module: &DocumentModule,
     item: &lsp::CallHierarchyItem,
-    snapshot: Arc<StateSnapshot>,
+    snapshot: &Arc<StateSnapshot>,
     token: &CancellationToken,
   ) -> Result<Option<Vec<lsp::CallHierarchyIncomingCall>>, AnyError> {
-    self
-      .request(
+    let mut incoming_calls = self
+      .request::<Option<Vec<lsp::CallHierarchyIncomingCall>>>(
         TsGoRequest::LanguageServiceMethod {
           name: "ProvideCallHierarchyIncomingCalls".to_string(),
           args: json!([item]),
           compiler_options_key: module.compiler_options_key.clone(),
           notebook_uri: module.notebook_uri.clone(),
         },
-        snapshot,
+        snapshot.clone(),
         token,
       )
-      .await
+      .await?;
+    if let Some(incoming_calls) = &mut incoming_calls {
+      for incoming_call in incoming_calls {
+        normalize_call_hierarchy_incoming_call(incoming_call, snapshot);
+      }
+    }
+    Ok(incoming_calls)
   }
 
   pub async fn provide_call_hierarchy_outgoing_calls(
     &self,
     module: &DocumentModule,
     item: &lsp::CallHierarchyItem,
-    snapshot: Arc<StateSnapshot>,
+    snapshot: &Arc<StateSnapshot>,
     token: &CancellationToken,
   ) -> Result<Option<Vec<lsp::CallHierarchyOutgoingCall>>, AnyError> {
-    self
-      .request(
+    let mut outgoing_calls = self
+      .request::<Option<Vec<lsp::CallHierarchyOutgoingCall>>>(
         TsGoRequest::LanguageServiceMethod {
           name: "ProvideCallHierarchyOutgoingCalls".to_string(),
           args: json!([item]),
           compiler_options_key: module.compiler_options_key.clone(),
           notebook_uri: module.notebook_uri.clone(),
         },
-        snapshot,
+        snapshot.clone(),
         token,
       )
-      .await
+      .await?;
+    if let Some(outgoing_calls) = &mut outgoing_calls {
+      for outgoing_call in outgoing_calls {
+        normalize_call_hierarchy_outgoing_call(outgoing_call, snapshot);
+      }
+    }
+    Ok(outgoing_calls)
   }
 
   pub async fn provide_prepare_call_hierarchy(
     &self,
     module: &DocumentModule,
     position: lsp::Position,
-    snapshot: Arc<StateSnapshot>,
+    snapshot: &Arc<StateSnapshot>,
     token: &CancellationToken,
   ) -> Result<Option<Vec<lsp::CallHierarchyItem>>, AnyError> {
-    self
-      .request(
+    let mut call_hierarchy = self
+      .request::<Option<Vec<lsp::CallHierarchyItem>>>(
         TsGoRequest::LanguageServiceMethod {
           name: "ProvidePrepareCallHierarchy".to_string(),
           args: json!([&module.uri, position]),
           compiler_options_key: module.compiler_options_key.clone(),
           notebook_uri: module.notebook_uri.clone(),
         },
-        snapshot,
+        snapshot.clone(),
         token,
       )
-      .await
+      .await?;
+    if let Some(call_hierarchy_items) = &mut call_hierarchy {
+      for call_hierarchy_item in call_hierarchy_items {
+        normalize_call_hierarchy_item(call_hierarchy_item, snapshot);
+      }
+    }
+    Ok(call_hierarchy)
   }
 
   pub async fn provide_rename(
@@ -1368,11 +1735,11 @@ impl TsGoServer {
     module: &DocumentModule,
     position: lsp::Position,
     new_name: &str,
-    snapshot: Arc<StateSnapshot>,
+    snapshot: &Arc<StateSnapshot>,
     token: &CancellationToken,
   ) -> Result<Option<lsp::WorkspaceEdit>, AnyError> {
-    self
-      .request(
+    let mut response = self
+      .request::<Option<lsp::WorkspaceEdit>>(
         TsGoRequest::LanguageServiceMethod {
           name: "ProvideRename".to_string(),
           args: json!([{
@@ -1383,10 +1750,14 @@ impl TsGoServer {
           compiler_options_key: module.compiler_options_key.clone(),
           notebook_uri: module.notebook_uri.clone(),
         },
-        snapshot,
+        snapshot.clone(),
         token,
       )
-      .await
+      .await?;
+    if let Some(response) = &mut response {
+      normalize_workspace_edit(response, snapshot);
+    }
+    Ok(response)
   }
 
   pub async fn provide_selection_ranges(
@@ -1439,11 +1810,11 @@ impl TsGoServer {
     &self,
     module: &DocumentModule,
     range: lsp::Range,
-    snapshot: Arc<StateSnapshot>,
+    snapshot: &Arc<StateSnapshot>,
     token: &CancellationToken,
   ) -> Result<Option<Vec<lsp::InlayHint>>, AnyError> {
-    self
-      .request(
+    let mut response = self
+      .request::<Option<Vec<lsp::InlayHint>>>(
         TsGoRequest::LanguageServiceMethod {
           name: "ProvideInlayHint".to_string(),
           args: json!([{
@@ -1453,26 +1824,259 @@ impl TsGoServer {
           compiler_options_key: module.compiler_options_key.clone(),
           notebook_uri: module.notebook_uri.clone(),
         },
-        snapshot,
+        snapshot.clone(),
         token,
       )
-      .await
+      .await?;
+    if let Some(inlay_hints) = &mut response {
+      for inlay_hint in inlay_hints {
+        normalize_inlay_hint(inlay_hint, snapshot);
+      }
+    }
+    Ok(response)
   }
 
   pub async fn provide_workspace_symbol(
     &self,
     query: &str,
-    snapshot: Arc<StateSnapshot>,
+    snapshot: &Arc<StateSnapshot>,
     token: &CancellationToken,
   ) -> Result<Option<Vec<lsp::SymbolInformation>>, AnyError> {
-    self
-      .request(
+    let mut symbol_information = self
+      .request::<Option<Vec<lsp::SymbolInformation>>>(
         TsGoRequest::WorkspaceSymbol {
           query: query.to_string(),
         },
-        snapshot,
+        snapshot.clone(),
         token,
       )
-      .await
+      .await?;
+    if let Some(symbol_information) = &mut symbol_information {
+      for symbol_information in symbol_information {
+        normalize_symbol_information(symbol_information, snapshot);
+      }
+    }
+    Ok(symbol_information)
+  }
+}
+
+fn normalize_uri_and_positions<'a>(
+  uri: &mut Uri,
+  positions: impl IntoIterator<Item = &'a mut lsp::Position>,
+  snapshot: &StateSnapshot,
+) {
+  *uri = normalize_uri(uri);
+  let Some(document) = snapshot.document_modules.documents.get(uri) else {
+    return;
+  };
+  let Document::Server(server_document) = document else {
+    return;
+  };
+  let ServerDocumentKind::RawImportTypes { resource_uri, .. } =
+    &server_document.kind
+  else {
+    return;
+  };
+  *uri = resource_uri.clone();
+  for position in positions {
+    *position = Default::default();
+  }
+}
+
+fn normalize_location(location: &mut lsp::Location, snapshot: &StateSnapshot) {
+  normalize_uri_and_positions(
+    &mut location.uri,
+    [&mut location.range.start, &mut location.range.end],
+    snapshot,
+  )
+}
+
+fn normalize_location_link(
+  location_link: &mut lsp::LocationLink,
+  snapshot: &StateSnapshot,
+) {
+  normalize_uri_and_positions(
+    &mut location_link.target_uri,
+    [
+      &mut location_link.target_range.start,
+      &mut location_link.target_range.end,
+      &mut location_link.target_selection_range.start,
+      &mut location_link.target_selection_range.end,
+    ],
+    snapshot,
+  )
+}
+
+fn normalize_goto_definition_response(
+  response: &mut lsp::GotoDefinitionResponse,
+  snapshot: &StateSnapshot,
+) {
+  match response {
+    lsp::GotoDefinitionResponse::Scalar(location) => {
+      normalize_location(location, snapshot)
+    }
+    lsp::GotoDefinitionResponse::Array(locations) => {
+      for location in locations {
+        normalize_location(location, snapshot)
+      }
+    }
+    lsp::GotoDefinitionResponse::Link(location_links) => {
+      for location_link in location_links {
+        normalize_location_link(location_link, snapshot)
+      }
+    }
+  }
+}
+
+fn normalize_call_hierarchy_item(
+  call_hierarchy_item: &mut lsp::CallHierarchyItem,
+  snapshot: &StateSnapshot,
+) {
+  if call_hierarchy_item.name.contains('/') {
+    call_hierarchy_item.name = normalize_path(&call_hierarchy_item.name)
+      .to_string_lossy()
+      .into_owned();
+  }
+  normalize_uri_and_positions(
+    &mut call_hierarchy_item.uri,
+    [
+      &mut call_hierarchy_item.range.start,
+      &mut call_hierarchy_item.range.end,
+      &mut call_hierarchy_item.selection_range.start,
+      &mut call_hierarchy_item.selection_range.end,
+    ],
+    snapshot,
+  )
+}
+
+fn normalize_call_hierarchy_incoming_call(
+  incoming_call: &mut lsp::CallHierarchyIncomingCall,
+  snapshot: &StateSnapshot,
+) {
+  normalize_call_hierarchy_item(&mut incoming_call.from, snapshot);
+}
+
+fn normalize_call_hierarchy_outgoing_call(
+  outgoing_call: &mut lsp::CallHierarchyOutgoingCall,
+  snapshot: &StateSnapshot,
+) {
+  normalize_call_hierarchy_item(&mut outgoing_call.to, snapshot);
+}
+
+fn normalize_symbol_information(
+  symbol_information: &mut lsp::SymbolInformation,
+  snapshot: &StateSnapshot,
+) {
+  normalize_location(&mut symbol_information.location, snapshot)
+}
+
+fn normalize_diagnostic(
+  diagnostic: &mut lsp::Diagnostic,
+  snapshot: &StateSnapshot,
+) {
+  diagnostic.source = Some("deno-ts".to_string());
+  if let Some(lsp::NumberOrString::Number(code)) = &diagnostic.code {
+    diagnostic.message = crate::tsc::go::maybe_rewrite_message(
+      std::mem::take(&mut diagnostic.message),
+      *code as _,
+    );
+  }
+  if let Some(related_information) = &mut diagnostic.related_information {
+    for info in related_information {
+      normalize_location(&mut info.location, snapshot);
+    }
+  }
+}
+
+fn normalize_workspace_edit(
+  workspace_edit: &mut lsp::WorkspaceEdit,
+  _snapshot: &StateSnapshot,
+) {
+  if let Some(changes) = &mut workspace_edit.changes {
+    let changes = std::mem::take(changes);
+    *workspace_edit.changes.as_mut().unwrap() = changes
+      .into_iter()
+      .map(|(mut uri, edits)| {
+        uri = normalize_uri(&uri);
+        (uri, edits)
+      })
+      .collect();
+  }
+  if let Some(document_changes) = &mut workspace_edit.document_changes {
+    match document_changes {
+      lsp::DocumentChanges::Edits(edits) => {
+        for edit in edits {
+          edit.text_document.uri = normalize_uri(&edit.text_document.uri);
+        }
+      }
+      lsp::DocumentChanges::Operations(operations) => {
+        for operation in operations {
+          match operation {
+            lsp::DocumentChangeOperation::Edit(edit) => {
+              edit.text_document.uri = normalize_uri(&edit.text_document.uri);
+            }
+            lsp::DocumentChangeOperation::Op(op) => match op {
+              lsp::ResourceOp::Create(create) => {
+                create.uri = normalize_uri(&create.uri);
+              }
+              lsp::ResourceOp::Rename(rename) => {
+                rename.old_uri = normalize_uri(&rename.old_uri);
+                rename.new_uri = normalize_uri(&rename.new_uri);
+              }
+              lsp::ResourceOp::Delete(delete) => {
+                delete.uri = normalize_uri(&delete.uri);
+              }
+            },
+          }
+        }
+      }
+    }
+  }
+}
+
+fn normalize_code_action(
+  code_action: &mut lsp::CodeAction,
+  snapshot: &StateSnapshot,
+) {
+  if let Some(edit) = &mut code_action.edit {
+    normalize_workspace_edit(edit, snapshot);
+  }
+}
+
+fn normalize_code_action_response(
+  response: &mut lsp::CodeActionResponse,
+  snapshot: &StateSnapshot,
+) {
+  if snapshot.config.client_provided_organize_imports_capable() {
+    response.retain(|item| {
+      let lsp::CodeActionOrCommand::CodeAction(code_action) = item else {
+        return true;
+      };
+      code_action
+        .kind
+        .as_ref()
+        .is_none_or(|k| *k != lsp::CodeActionKind::SOURCE_ORGANIZE_IMPORTS)
+    });
+  }
+  for item in response {
+    match item {
+      lsp::CodeActionOrCommand::CodeAction(code_action) => {
+        normalize_code_action(code_action, snapshot);
+      }
+      lsp::CodeActionOrCommand::Command(_) => {}
+    }
+  }
+}
+
+fn normalize_inlay_hint(
+  inlay_hint: &mut lsp::InlayHint,
+  snapshot: &StateSnapshot,
+) {
+  if let lsp::InlayHintLabel::LabelParts(parts) = &mut inlay_hint.label {
+    for part in parts {
+      if let Some(location) = &mut part.location {
+        normalize_location(location, snapshot);
+      }
+    }
   }
 }

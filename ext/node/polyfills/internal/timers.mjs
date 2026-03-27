@@ -3,15 +3,22 @@
 
 import { core, primordials } from "ext:core/mod.js";
 const {
+  createTimer: createTimer_,
+  cancelTimer: cancelTimer_,
+  refreshTimer: refreshTimer_,
+  refTimer: refTimer_,
+  unrefTimer: unrefTimer_,
   getAsyncContext,
   setAsyncContext,
+  immediateRefCount,
 } = core;
 const {
-  FunctionPrototypeBind,
+  FunctionPrototypeCall,
   MapPrototypeDelete,
   MapPrototypeGet,
   MapPrototypeSet,
   NumberIsFinite,
+  ObjectDefineProperty,
   ReflectApply,
   SafeArrayIterator,
   SafeMap,
@@ -19,10 +26,13 @@ const {
   SymbolToPrimitive,
 } = primordials;
 import {
-  op_immediate_count,
-  op_immediate_ref_count,
-  op_immediate_set_has_outstanding,
-} from "ext:core/ops";
+  emitAfter,
+  emitBefore,
+  emitDestroy,
+  emitInit,
+  executionAsyncId,
+  newAsyncId as nextAsyncId,
+} from "ext:deno_node/internal/async_hooks.ts";
 import { inspect } from "ext:deno_node/internal/util/inspect.mjs";
 import {
   validateFunction,
@@ -30,12 +40,6 @@ import {
 } from "ext:deno_node/internal/validators.mjs";
 import { ERR_OUT_OF_RANGE } from "ext:deno_node/internal/errors.ts";
 import { emitWarning } from "node:process";
-import {
-  clearTimeout as clearTimeout_,
-  setInterval as setInterval_,
-  setTimeout as setTimeout_,
-} from "ext:deno_web/02_timers.js";
-import { runNextTicks } from "ext:deno_node/_next_tick.ts";
 
 // Timeout values > TIMEOUT_MAX are set to 1.
 export const TIMEOUT_MAX = 2 ** 31 - 1;
@@ -43,7 +47,7 @@ export const TIMEOUT_MAX = 2 ** 31 - 1;
 export const kDestroy = Symbol("destroy");
 export const kTimerId = Symbol("timerId");
 export const kTimeout = Symbol("timeout");
-export const kRefed = Symbol("refed");
+export const kRefed = core.kRefed;
 const createTimer = Symbol("createTimer");
 
 /**
@@ -73,40 +77,80 @@ export function Timeout(callback, after, args, isRepeat, isRefed) {
   this._isRepeat = isRepeat;
   this._destroyed = false;
   this[kRefed] = isRefed;
+
+  const asyncId = nextAsyncId();
+  const triggerAsyncId = executionAsyncId();
+  this._asyncId = asyncId;
+  this._triggerAsyncId = triggerAsyncId;
+  this._asyncDestroyed = false;
+
   this[kTimerId] = this[createTimer]();
+
+  emitInit(asyncId, "Timeout", triggerAsyncId, this);
 }
 
 Timeout.prototype[createTimer] = function () {
+  const self = this;
   const callback = this._onTimeout;
-  const cb = (...args) => {
-    if (!this._isRepeat) {
-      MapPrototypeDelete(activeTimers, this[kTimerId]);
+  const asyncContext = getAsyncContext();
+  const asyncId = this._asyncId;
+  const triggerAsyncId = this._triggerAsyncId;
+  const cb = function () {
+    const oldContext = getAsyncContext();
+    try {
+      setAsyncContext(asyncContext);
+      emitBefore(asyncId, triggerAsyncId, self);
+      if (!self._isRepeat) {
+        MapPrototypeDelete(activeTimers, self[kTimerId]);
+      }
+      const args = self._timerArgs;
+      let ret;
+      if (args !== undefined && args.length > 0) {
+        ret = ReflectApply(callback, self, args);
+      } else {
+        ret = FunctionPrototypeCall(callback, self);
+      }
+      // Only emit after/destroy on success. On error, the domain's
+      // uncaught exception handler manages the stack cleanup.
+      emitAfter(asyncId);
+      if (!self._isRepeat && !self._asyncDestroyed) {
+        self._asyncDestroyed = true;
+        emitDestroy(asyncId);
+      }
+      return ret;
+    } finally {
+      setAsyncContext(oldContext);
     }
-    return FunctionPrototypeBind(callback, this)(
-      ...new SafeArrayIterator(args),
-    );
   };
-  const id = this._isRepeat
-    ? setInterval_(
-      cb,
-      this._idleTimeout,
-      ...new SafeArrayIterator(this._timerArgs),
-    )
-    : setTimeout_(
-      cb,
-      this._idleTimeout,
-      ...new SafeArrayIterator(this._timerArgs),
-    );
-  if (!this[kRefed]) {
-    Deno.unrefTimer(id);
-  }
+  const timer = createTimer_(
+    cb,
+    this._idleTimeout,
+    undefined,
+    this._isRepeat,
+    this[kRefed],
+  );
+  ObjectDefineProperty(this, "_timer", {
+    __proto__: null,
+    value: timer,
+    writable: true,
+    enumerable: false,
+    configurable: true,
+  });
+  const id = timer._timerId;
   MapPrototypeSet(activeTimers, id, this);
   return id;
 };
 
 Timeout.prototype[kDestroy] = function () {
-  this._destroyed = true;
-  MapPrototypeDelete(activeTimers, this[kTimerId]);
+  if (!this._destroyed) {
+    this._destroyed = true;
+    cancelTimer_(this._timer);
+    MapPrototypeDelete(activeTimers, this[kTimerId]);
+    if (this._asyncId !== undefined && !this._asyncDestroyed) {
+      this._asyncDestroyed = true;
+      emitDestroy(this._asyncId);
+    }
+  }
 };
 
 // Make sure the linked list only shows the minimal necessary information.
@@ -122,9 +166,7 @@ Timeout.prototype[inspect.custom] = function (_, options) {
 
 Timeout.prototype.refresh = function () {
   if (!this._destroyed) {
-    clearTimeout_(this[kTimerId]);
-    MapPrototypeDelete(activeTimers, this[kTimerId]);
-    this[kTimerId] = this[createTimer]();
+    refreshTimer_(this._timer);
   }
   return this;
 };
@@ -132,7 +174,9 @@ Timeout.prototype.refresh = function () {
 Timeout.prototype.unref = function () {
   if (this[kRefed]) {
     this[kRefed] = false;
-    Deno.unrefTimer(this[kTimerId]);
+    if (!this._destroyed) {
+      unrefTimer_(this._timer);
+    }
   }
   return this;
 };
@@ -140,7 +184,9 @@ Timeout.prototype.unref = function () {
 Timeout.prototype.ref = function () {
   if (!this[kRefed]) {
     this[kRefed] = true;
-    Deno.refTimer(this[kTimerId]);
+    if (!this._destroyed) {
+      refTimer_(this._timer);
+    }
   }
   return this;
 };
@@ -184,136 +230,9 @@ export function setUnrefTimeout(callback, timeout, ...args) {
   return new Timeout(callback, timeout, args, false, false);
 }
 
-// This code was forked from Node.js
-// Copyright Node.js contributors. All rights reserved.
-//
-// A linked list for storing `setImmediate()` requests
-class ImmediateList {
-  constructor() {
-    this.head = null;
-    this.tail = null;
-  }
-
-  // Appends an item to the end of the linked list, adjusting the current tail's
-  // next pointer and the item's previous pointer where applicable
-  append(item) {
-    // console.log("append", this.tail);
-    if (this.tail !== null) {
-      this.tail._idleNext = item;
-      item._idlePrev = this.tail;
-    } else {
-      this.head = item;
-    }
-    this.tail = item;
-  }
-
-  // Removes an item from the linked list, adjusting the pointers of adjacent
-  // items and the linked list's head or tail pointers as necessary
-  remove(item) {
-    if (item._idleNext) {
-      item._idleNext._idlePrev = item._idlePrev;
-    }
-
-    if (item._idlePrev) {
-      item._idlePrev._idleNext = item._idleNext;
-    }
-
-    if (item === this.head) {
-      this.head = item._idleNext;
-    }
-    if (item === this.tail) {
-      this.tail = item._idlePrev;
-    }
-
-    item._idleNext = null;
-    item._idlePrev = null;
-  }
-}
-
-// Create a single linked list instance only once at startup
-export const immediateQueue = new ImmediateList();
-// If an uncaught exception was thrown during execution of immediateQueue,
-// this queue will store all remaining Immediates that need to run upon
-// resolution of all error handling (if process is still alive).
-const outstandingQueue = new ImmediateList();
-
-export function runImmediates() {
-  const queue = outstandingQueue.head !== null
-    ? outstandingQueue
-    : immediateQueue;
-  let immediate = queue.head;
-  // Clear the linked list early in case new `setImmediate()`
-  // calls occur while immediate callbacks are executed
-  if (queue !== outstandingQueue) {
-    queue.head = queue.tail = null;
-    op_immediate_set_has_outstanding(true);
-  }
-
-  let prevImmediate;
-  let ranAtLeastOneImmediate = false;
-  while (immediate !== null) {
-    if (ranAtLeastOneImmediate) {
-      runNextTicks();
-    } else {
-      ranAtLeastOneImmediate = true;
-    }
-
-    // It's possible for this current Immediate to be cleared while executing
-    // the next tick queue above, which means we need to use the previous
-    // Immediate's _idleNext which is guaranteed to not have been cleared.
-    if (immediate._destroyed) {
-      outstandingQueue.head = immediate = prevImmediate._idleNext;
-      continue;
-    }
-
-    immediate._destroyed = true;
-
-    op_immediate_count(false);
-    if (immediate[kRefed]) {
-      op_immediate_ref_count(false);
-    }
-    immediate[kRefed] = null;
-
-    prevImmediate = immediate;
-
-    // TODO:
-    // const priorContextFrame = AsyncContextFrame.exchange(
-    // immediate[async_context_frame],
-    // );
-
-    // TODO:
-    // const asyncId = immediate[async_id_symbol];
-    // emitBefore(asyncId, immediate[trigger_async_id_symbol], immediate);
-
-    try {
-      const argv = immediate._argv;
-      if (!argv) {
-        immediate._onImmediate();
-      } else {
-        immediate._onImmediate(...new SafeArrayIterator(argv));
-      }
-    } finally {
-      immediate._onImmediate = null;
-
-      // TODO:
-      // if (destroyHooksExist()) {
-      // emitDestroy(asyncId);
-      // }
-
-      outstandingQueue.head = immediate = immediate._idleNext;
-    }
-    // emitAfter(asyncId);
-
-    // TODO:
-    // AsyncContextFrame.set(priorContextFrame);
-  }
-
-  if (queue === outstandingQueue) {
-    outstandingQueue.head = null;
-  }
-
-  op_immediate_set_has_outstanding(false);
-}
+// Re-export immediate queue and runImmediates from core for consumers
+export const immediateQueue = core.immediateQueue;
+export const runImmediates = core.runImmediates;
 
 export class Immediate {
   constructor(unboundCallback, ...args) {
@@ -335,18 +254,20 @@ export class Immediate {
     this._destroyed = false;
     this[kRefed] = false;
 
-    // TODO:
-    // initAsyncResource(this, "Immediate");
+    const asyncId = nextAsyncId();
+    const triggerAsyncId = executionAsyncId();
+    this.asyncId = asyncId;
+    this.triggerAsyncId = triggerAsyncId;
+    emitInit(asyncId, "Immediate", triggerAsyncId, this);
 
     this.ref();
-    op_immediate_count(true);
-    immediateQueue.append(this);
+    core.queueImmediate(this);
   }
 
   ref() {
     if (this[kRefed] === false) {
       this[kRefed] = true;
-      op_immediate_ref_count(true);
+      immediateRefCount(true);
     }
     return this;
   }
@@ -354,7 +275,7 @@ export class Immediate {
   unref() {
     if (this[kRefed] === true) {
       this[kRefed] = false;
-      op_immediate_ref_count(false);
+      immediateRefCount(false);
     }
     return this;
   }

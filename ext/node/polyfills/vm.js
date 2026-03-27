@@ -6,6 +6,7 @@ import { notImplemented } from "ext:deno_node/_utils.ts";
 import {
   op_vm_compile_function,
   op_vm_create_context,
+  op_vm_create_context_without_contextify,
   op_vm_create_script,
   op_vm_is_context,
   op_vm_script_create_cached_data,
@@ -186,6 +187,45 @@ export function createContext(
   contextObject = {},
   options = { __proto__: null },
 ) {
+  if (contextObject === DONT_CONTEXTIFY) {
+    validateObject(options, "options");
+
+    const {
+      name = `VM Context ${defaultContextNameIndex++}`,
+      origin,
+      codeGeneration,
+      microtaskMode,
+    } = options;
+
+    validateString(name, "options.name");
+    if (origin !== undefined) {
+      validateString(origin, "options.origin");
+    }
+    if (codeGeneration !== undefined) {
+      validateObject(codeGeneration, "options.codeGeneration");
+    }
+
+    let strings = true;
+    let wasm = true;
+    if (codeGeneration !== undefined) {
+      ({ strings = true, wasm = true } = codeGeneration);
+      validateBoolean(strings, "options.codeGeneration.strings");
+      validateBoolean(wasm, "options.codeGeneration.wasm");
+    }
+
+    validateOneOf(microtaskMode, "options.microtaskMode", [
+      "afterEvaluate",
+      undefined,
+    ]);
+    const microtaskQueue = microtaskMode === "afterEvaluate";
+
+    return op_vm_create_context_without_contextify(
+      strings,
+      wasm,
+      microtaskQueue,
+    );
+  }
+
   if (isContext(contextObject)) {
     return contextObject;
   }

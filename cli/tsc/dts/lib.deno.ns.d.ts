@@ -1577,6 +1577,22 @@ declare namespace Deno {
   /** An interface containing methods to interact with the process environment
    * variables.
    *
+   * Environment variables can also be loaded from a `.env` file by using the
+   * `--env-file` flag when running a Deno program:
+   *
+   * ```sh
+   * deno run --env-file=.env --allow-env main.ts
+   * ```
+   *
+   * If `--env-file` is specified without a value, it defaults to loading `.env`
+   * from the current working directory:
+   *
+   * ```sh
+   * deno run --env-file --allow-env main.ts
+   * ```
+   *
+   * Learn more at [the Deno docs](https://docs.deno.com/runtime/reference/env_variables/).
+   *
    * @tags allow-env
    * @category Runtime
    */
@@ -3678,8 +3694,8 @@ declare namespace Deno {
    * );
    * ```
    *
-   * _Note_: On Windows only `"SIGINT"` (CTRL+C) and `"SIGBREAK"` (CTRL+Break)
-   * are supported.
+   * _Note_: On Windows only `"SIGINT"` (CTRL+C), `"SIGBREAK"` (CTRL+Break),
+   * `"SIGTERM"`, `"SIGQUIT"`, `"SIGHUP"`, and `"SIGWINCH"` are supported.
    *
    * @category Runtime
    */
@@ -3696,8 +3712,8 @@ declare namespace Deno {
    * Deno.removeSignalListener("SIGTERM", listener);
    * ```
    *
-   * _Note_: On Windows only `"SIGINT"` (CTRL+C) and `"SIGBREAK"` (CTRL+Break)
-   * are supported.
+   * _Note_: On Windows only `"SIGINT"` (CTRL+C), `"SIGBREAK"` (CTRL+Break),
+   * `"SIGTERM"`, `"SIGQUIT"`, `"SIGHUP"`, and `"SIGWINCH"` are supported.
    *
    * @category Runtime
    */
@@ -3970,6 +3986,168 @@ declare namespace Deno {
     /** The buffered output from the child process' `stderr`. */
     readonly stderr: Uint8Array<ArrayBuffer>;
   }
+
+  /** Spawns a new subprocess, returning a {@linkcode Deno.ChildProcess} handle.
+   *
+   * @experimental **UNSTABLE**: New API, yet to be vetted.
+   *
+   * This is a shorthand for `new Deno.Command(command, options).spawn()`.
+   *
+   * By default, `stdin`, `stdout`, and `stderr` are set to `"inherit"`.
+   *
+   * @example Spawn a subprocess
+   *
+   * ```ts
+   * const child = Deno.spawn(Deno.execPath(), {
+   *   args: ["eval", "console.log('hello')"],
+   *   stdout: "piped",
+   * });
+   * const output = await child.stdout.text();
+   * console.log(output); // "hello\n"
+   * const status = await child.status;
+   * ```
+   *
+   * @tags allow-run
+   * @category Subprocess
+   */
+  export function spawn(
+    command: string | URL,
+    options?: CommandOptions,
+  ): ChildProcess;
+  /** Spawns a new subprocess with the given arguments, returning a
+   * {@linkcode Deno.ChildProcess} handle.
+   *
+   * @experimental **UNSTABLE**: New API, yet to be vetted.
+   *
+   * This is a shorthand for `new Deno.Command(command, { ...options, args }).spawn()`.
+   *
+   * By default, `stdin`, `stdout`, and `stderr` are set to `"inherit"`.
+   *
+   * @example Spawn a subprocess with args
+   *
+   * ```ts
+   * const child = Deno.spawn(Deno.execPath(), ["eval", "console.log('hello')"], {
+   *   stdout: "piped",
+   * });
+   * const output = await child.stdout.text();
+   * console.log(output); // "hello\n"
+   * const status = await child.status;
+   * ```
+   *
+   * @tags allow-run
+   * @category Subprocess
+   */
+  export function spawn(
+    command: string | URL,
+    args: string[],
+    options?: Omit<CommandOptions, "args">,
+  ): ChildProcess;
+
+  /** Spawns a subprocess, waits for it to finish, and returns the output.
+   *
+   * @experimental **UNSTABLE**: New API, yet to be vetted.
+   *
+   * This is a shorthand for `new Deno.Command(command, options).output()`.
+   *
+   * Will throw an error if `stdin: "piped"` is set.
+   *
+   * @example Spawn and wait for output
+   *
+   * ```ts
+   * const { code, stdout, stderr } = await Deno.spawnAndWait(Deno.execPath(), {
+   *   args: ["eval", "console.log('hello')"],
+   * });
+   * console.log(new TextDecoder().decode(stdout)); // "hello\n"
+   * ```
+   *
+   * @tags allow-run
+   * @category Subprocess
+   */
+  export function spawnAndWait(
+    command: string | URL,
+    options?: CommandOptions,
+  ): Promise<CommandOutput>;
+  /** Spawns a subprocess with the given arguments, waits for it to finish,
+   * and returns the output.
+   *
+   * @experimental **UNSTABLE**: New API, yet to be vetted.
+   *
+   * This is a shorthand for `new Deno.Command(command, { ...options, args }).output()`.
+   *
+   * Will throw an error if `stdin: "piped"` is set.
+   *
+   * @example Spawn and wait with args
+   *
+   * ```ts
+   * const { code, stdout } = await Deno.spawnAndWait(
+   *   Deno.execPath(),
+   *   ["eval", "console.log('hello')"],
+   * );
+   * console.log(new TextDecoder().decode(stdout)); // "hello\n"
+   * ```
+   *
+   * @tags allow-run
+   * @category Subprocess
+   */
+  export function spawnAndWait(
+    command: string | URL,
+    args: string[],
+    options?: Omit<CommandOptions, "args">,
+  ): Promise<CommandOutput>;
+
+  /** Synchronously spawns a subprocess, waits for it to finish, and returns
+   * the output.
+   *
+   * @experimental **UNSTABLE**: New API, yet to be vetted.
+   *
+   * This is a shorthand for `new Deno.Command(command, options).outputSync()`.
+   *
+   * Will throw an error if `stdin: "piped"` is set.
+   *
+   * @example Spawn and wait synchronously
+   *
+   * ```ts
+   * const { code, stdout } = Deno.spawnAndWaitSync(Deno.execPath(), {
+   *   args: ["eval", "console.log('hello')"],
+   * });
+   * console.log(new TextDecoder().decode(stdout)); // "hello\n"
+   * ```
+   *
+   * @tags allow-run
+   * @category Subprocess
+   */
+  export function spawnAndWaitSync(
+    command: string | URL,
+    options?: CommandOptions,
+  ): CommandOutput;
+  /** Synchronously spawns a subprocess with the given arguments, waits for it
+   * to finish, and returns the output.
+   *
+   * @experimental **UNSTABLE**: New API, yet to be vetted.
+   *
+   * This is a shorthand for
+   * `new Deno.Command(command, { ...options, args }).outputSync()`.
+   *
+   * Will throw an error if `stdin: "piped"` is set.
+   *
+   * @example Spawn and wait synchronously with args
+   *
+   * ```ts
+   * const { code, stdout } = Deno.spawnAndWaitSync(
+   *   Deno.execPath(),
+   *   ["eval", "console.log('hello')"],
+   * );
+   * console.log(new TextDecoder().decode(stdout)); // "hello\n"
+   * ```
+   *
+   * @tags allow-run
+   * @category Subprocess
+   */
+  export function spawnAndWaitSync(
+    command: string | URL,
+    args: string[],
+    options?: Omit<CommandOptions, "args">,
+  ): CommandOutput;
 
   /** Option which can be specified when performing {@linkcode Deno.inspect}.
    *

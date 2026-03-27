@@ -936,7 +936,7 @@ fn compile_node_modules_symlink_outside() {
   // it fails on the Windows CI because Deno makes the root directory
   // a common ancestor of the symlinked temp dir and the canonicalized
   // temp dir, which causes the warnings to not be surfaced
-  #[allow(deprecated)]
+  #[allow(deprecated, reason = "needed for canonicalized temp dir")]
   let context = TestContextBuilder::for_npm()
     .use_canonicalized_temp_dir()
     .use_copy_temp_dir("compile/node_modules_symlink_outside")

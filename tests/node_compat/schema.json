@@ -1,0 +1,86 @@
+{
+  "$id": "https://github.com/denoland/deno/blob/main/tests/node_compat/schema.json",
+  "$schema": "http://json-schema.org/draft-07/schema",
+  "description": "Schema for the node_compat config.jsonc file that controls which Node.js compatibility tests are enabled and their expected behavior.",
+  "title": "Node compat test config schema",
+  "type": "object",
+  "required": ["tests"],
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "tests": {
+      "type": "object",
+      "description": "Map of test file paths to their configuration. Keys are relative paths like 'parallel/test-foo.js'.",
+      "additionalProperties": {
+        "$ref": "#/definitions/testConfig"
+      }
+    }
+  },
+  "additionalProperties": false,
+  "definitions": {
+    "expectedFailure": {
+      "type": "object",
+      "description": "Describes an expected test failure with optional exit code and/or output pattern.",
+      "properties": {
+        "exitCode": {
+          "type": "integer",
+          "description": "Expected exit code when the test fails."
+        },
+        "output": {
+          "type": "string",
+          "description": "Expected output pattern. Supports [WILDCARD] for matching any text."
+        }
+      },
+      "additionalProperties": false
+    },
+    "platformExpectation": {
+      "description": "Per-platform expectation: true = run normally (expect pass), false = skip, or an object describing an expected failure.",
+      "oneOf": [
+        {
+          "type": "boolean",
+          "description": "true = enabled (expect pass), false = disabled (skip on this platform)"
+        },
+        {
+          "$ref": "#/definitions/expectedFailure"
+        }
+      ]
+    },
+    "testConfig": {
+      "type": "object",
+      "description": "Configuration for a single test.",
+      "properties": {
+        "flaky": {
+          "type": "boolean",
+          "description": "If true, the test is considered flaky and may be retried in CI."
+        },
+        "ignore": {
+          "type": "boolean",
+          "description": "If true, the test is skipped on all platforms. Must be used together with 'reason'."
+        },
+        "windows": {
+          "$ref": "#/definitions/platformExpectation"
+        },
+        "darwin": {
+          "$ref": "#/definitions/platformExpectation"
+        },
+        "linux": {
+          "$ref": "#/definitions/platformExpectation"
+        },
+        "reason": {
+          "type": "string",
+          "description": "Explanation for why the test is disabled or has special configuration."
+        },
+        "exitCode": {
+          "type": "integer",
+          "description": "Expected exit code for all platforms (overridden by per-platform config)."
+        },
+        "output": {
+          "type": "string",
+          "description": "Expected output pattern for all platforms. Supports [WILDCARD] matching."
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

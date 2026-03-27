@@ -1,0 +1,25 @@
+# Copyright 2018-2026 the Deno authors. MIT license.
+
+[package]
+name = "deno_npmrc"
+version = "0.2.0"
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "npm registry configuration (.npmrc) parser"
+
+[lib]
+path = "./lib.rs"
+
+[dependencies]
+log.workspace = true
+monch.workspace = true
+serde = { workspace = true, features = ["derive", "rc"] }
+sys_traits = { workspace = true }
+thiserror.workspace = true
+url.workspace = true
+
+[dev-dependencies]
+pretty_assertions.workspace = true
+sys_traits = { workspace = true, features = ["memory"] }

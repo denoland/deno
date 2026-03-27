@@ -522,6 +522,20 @@
               "default": false
             }
           }
+        },
+        "include": {
+          "type": "array",
+          "description": "List of files, directories or globs that will be included in deployments.",
+          "items": {
+            "type": "string"
+          }
+        },
+        "exclude": {
+          "type": "array",
+          "description": "List of files, directories or globs that will not be included in deployments.",
+          "items": {
+            "type": "string"
+          }
         }
       }
     },
@@ -755,6 +769,16 @@
         },
         "spaceSurroundingProperties": {
           "description": "Whether to add a space surrounding the properties of single line object-like nodes in JavaScript and TypeScript.",
+          "default": true,
+          "type": "boolean"
+        },
+        "vueComponentCase": {
+          "description": "Case style for Vue component tags.",
+          "default": "ignore",
+          "enum": ["ignore", "pascal-case", "kebab-case"]
+        },
+        "angularNextControlFlowSameLine": {
+          "description": "Whether Angular next control-flow clauses stay on the same line.",
           "default": true,
           "type": "boolean"
         },

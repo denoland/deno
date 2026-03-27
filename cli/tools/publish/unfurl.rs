@@ -1161,6 +1161,7 @@ impl Visit for ImportMetaResolveCollector {
   }
 }
 
+#[allow(clippy::disallowed_methods, reason = "test code")]
 #[cfg(test)]
 mod tests {
   use std::path::Path;

@@ -1,19 +1,22 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
+use std::collections::HashMap;
 use std::collections::HashSet;
+use std::ffi::OsString;
+use std::num::NonZeroUsize;
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
 
 use dashmap::DashMap;
 use deno_core::error::AnyError;
+use deno_core::futures::StreamExt;
 use deno_core::serde_json;
 use deno_core::url::Url;
 use deno_error::JsErrorBox;
 use deno_lib::version::DENO_VERSION_INFO;
 use deno_npm::NpmResolutionPackage;
-use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm::registry::NpmPackageInfo;
 use deno_npm::registry::NpmPackageVersionInfosIterator;
 use deno_npm::resolution::NpmResolutionSnapshot;
@@ -27,7 +30,10 @@ use deno_npm_installer::lifecycle_scripts::LIFECYCLE_SCRIPTS_RUNNING_ENV_VAR;
 use deno_npm_installer::lifecycle_scripts::LifecycleScriptsExecutor;
 use deno_npm_installer::lifecycle_scripts::LifecycleScriptsExecutorOptions;
 use deno_npm_installer::lifecycle_scripts::PackageWithScript;
+use deno_npm_installer::lifecycle_scripts::compute_lifecycle_script_layers;
 use deno_npm_installer::lifecycle_scripts::is_broken_default_install_script;
+use deno_npmrc::RegistryConfig;
+use deno_npmrc::ResolvedNpmRc;
 use deno_resolver::npm::ByonmNpmResolverCreateOptions;
 use deno_resolver::npm::ManagedNpmResolverRc;
 use deno_runtime::deno_io::FromRawIoHandle;
@@ -64,21 +70,42 @@ pub type CliNpmGraphResolver = deno_npm_installer::graph::NpmDenoGraphResolver<
   CliSys,
 >;
 
+pub use deno_npm_cache::NpmPackumentFormat;
+
 #[derive(Debug)]
 pub struct CliNpmCacheHttpClient {
   http_client_provider: Arc<HttpClientProvider>,
   progress_bar: ProgressBar,
+  packument_format: NpmPackumentFormat,
 }
 
 impl CliNpmCacheHttpClient {
   pub fn new(
     http_client_provider: Arc<HttpClientProvider>,
     progress_bar: ProgressBar,
+    packument_format: NpmPackumentFormat,
   ) -> Self {
     Self {
       http_client_provider,
       progress_bar,
+      packument_format,
     }
+  }
+
+  fn get_or_create_http_client(
+    &self,
+    maybe_registry_config: Option<&RegistryConfig>,
+  ) -> Result<crate::http_util::HttpClient, deno_error::JsErrorBox> {
+    if let Some(config) = maybe_registry_config
+      && let (Some(certfile), Some(keyfile)) =
+        (&config.certfile, &config.keyfile)
+    {
+      return self.http_client_provider.get_or_create_with_client_cert(
+        std::path::Path::new(certfile),
+        std::path::Path::new(keyfile),
+      );
+    }
+    self.http_client_provider.get_or_create()
   }
 }
 
@@ -89,14 +116,15 @@ impl deno_npm_cache::NpmCacheHttpClient for CliNpmCacheHttpClient {
     url: Url,
     maybe_auth: Option<String>,
     maybe_etag: Option<String>,
+    maybe_registry_config: Option<&RegistryConfig>,
   ) -> Result<NpmCacheHttpClientResponse, deno_npm_cache::DownloadError> {
     let guard = self.progress_bar.update(url.as_str());
-    let client = self.http_client_provider.get_or_create().map_err(|err| {
-      deno_npm_cache::DownloadError {
+    let client = self
+      .get_or_create_http_client(maybe_registry_config)
+      .map_err(|err| deno_npm_cache::DownloadError {
         status_code: None,
         error: err,
-      }
-    })?;
+      })?;
     let mut headers = http::HeaderMap::new();
     if let Some(auth) = maybe_auth {
       headers.append(
@@ -110,25 +138,33 @@ impl deno_npm_cache::NpmCacheHttpClient for CliNpmCacheHttpClient {
         http::header::HeaderValue::try_from(etag).unwrap(),
       );
     }
-    client
-      .download_with_progress_and_retries(url, &headers, &guard)
+    if self.packument_format == NpmPackumentFormat::Abbreviated {
+      // Request the abbreviated install manifest when possible. This is 2-5x
+      // smaller than the full packument (e.g. @types/node: 2.3 MB vs 10.9 MB).
+      // Uses content negotiation with quality factors for registry compatibility
+      // (some registries like older Artifactory don't support the abbreviated
+      // format and need the JSON fallback).
+      //
+      // Not used when minimumDependencyAge is configured, because the
+      // abbreviated format omits the `time` field needed for date filtering.
+      headers.insert(
+        http::header::ACCEPT,
+        http::header::HeaderValue::from_static(
+          "application/vnd.npm.install-v1+json; q=1.0, application/json; q=0.8, */*",
+        ),
+      );
+    }
+    // Request gzip and bypass the tower-http Decompression middleware so
+    // that gzip inflate happens on a blocking thread instead of inline on
+    // the async event loop. This prevents large packument decompression
+    // (~12% of CPU during resolution) from blocking other HTTP/2 streams.
+    headers.insert(
+      http::header::ACCEPT_ENCODING,
+      http::header::HeaderValue::from_static("gzip"),
+    );
+    let response = client
+      .download_with_progress_and_retries_no_decompress(url, &headers, &guard)
       .await
-      .map(|response| match response {
-        crate::http_util::HttpClientResponse::Success { headers, body } => {
-          NpmCacheHttpClientResponse::Bytes(NpmCacheHttpClientBytesResponse {
-            etag: headers
-              .get(http::header::ETAG)
-              .and_then(|e| e.to_str().map(|t| t.to_string()).ok()),
-            bytes: body,
-          })
-        }
-        crate::http_util::HttpClientResponse::NotFound => {
-          NpmCacheHttpClientResponse::NotFound
-        }
-        crate::http_util::HttpClientResponse::NotModified => {
-          NpmCacheHttpClientResponse::NotModified
-        }
-      })
       .map_err(|err| {
         use crate::http_util::DownloadErrorKind::*;
         let status_code = match err.as_kind() {
@@ -150,8 +186,57 @@ impl deno_npm_cache::NpmCacheHttpClient for CliNpmCacheHttpClient {
           status_code,
           error: JsErrorBox::from_err(err),
         }
-      })
+      })?;
+    match response {
+      crate::http_util::HttpClientResponse::Success { headers, body } => {
+        // Decompress gzip on a blocking thread to keep the event loop free
+        let body = if headers
+          .get(http::header::CONTENT_ENCODING)
+          .and_then(|v| v.to_str().ok())
+          .is_some_and(|v| v == "gzip")
+        {
+          tokio::task::spawn_blocking(move || decompress_gzip(body))
+            .await
+            .map_err(|e| deno_npm_cache::DownloadError {
+              status_code: None,
+              error: JsErrorBox::generic(e.to_string()),
+            })?
+            .map_err(|e| deno_npm_cache::DownloadError {
+              status_code: None,
+              error: e,
+            })?
+        } else {
+          body
+        };
+        Ok(NpmCacheHttpClientResponse::Bytes(
+          NpmCacheHttpClientBytesResponse {
+            etag: headers
+              .get(http::header::ETAG)
+              .and_then(|e| e.to_str().map(|t| t.to_string()).ok()),
+            bytes: body,
+          },
+        ))
+      }
+      crate::http_util::HttpClientResponse::NotFound => {
+        Ok(NpmCacheHttpClientResponse::NotFound)
+      }
+      crate::http_util::HttpClientResponse::NotModified => {
+        Ok(NpmCacheHttpClientResponse::NotModified)
+      }
+    }
   }
+}
+
+fn decompress_gzip(compressed: Vec<u8>) -> Result<Vec<u8>, JsErrorBox> {
+  use std::io::Read;
+
+  use flate2::read::GzDecoder;
+  let mut decoder = GzDecoder::new(compressed.as_slice());
+  let mut decompressed = Vec::new();
+  decoder.read_to_end(&mut decompressed).map_err(|e| {
+    JsErrorBox::generic(format!("gzip decompression failed: {e}"))
+  })?;
+  Ok(decompressed)
 }
 
 #[derive(Debug)]
@@ -284,6 +369,12 @@ pub enum DenoTaskLifecycleScriptsError {
 pub struct DenoTaskLifeCycleScriptsExecutor {
   progress_bar: ProgressBar,
   npm_resolver: ManagedNpmResolverRc<CliSys>,
+  system_info: deno_npm::NpmSystemInfo,
+}
+
+struct PackageScriptResult<'a> {
+  package: &'a NpmResolutionPackage,
+  failed: Option<&'a PackageNv>,
 }
 
 #[async_trait::async_trait(?Send)]
@@ -315,105 +406,48 @@ impl LifecycleScriptsExecutor for DenoTaskLifeCycleScriptsExecutor {
     // so the subprocess can detect that it is running as part of a lifecycle script,
     // and avoid trying to set up node_modules again
     env_vars.insert(LIFECYCLE_SCRIPTS_RUNNING_ENV_VAR.into(), "1".into());
-    // we want to pass the current state of npm resolution down to the deno subprocess
-    // (that may be running as part of the script). we do this with an inherited temp file
-    //
-    // SAFETY: we are sharing a single temp file across all of the scripts. the file position
-    // will be shared among these, which is okay since we run only one script at a time.
-    // However, if we concurrently run scripts in the future we will
-    // have to have multiple temp files.
-    let temp_file_fd = deno_runtime::deno_process::npm_process_state_tempfile(
-      options.process_state.as_bytes(),
-    )
-    .map_err(DenoTaskLifecycleScriptsError::CreateNpmProcessState)?;
-    // SAFETY: fd/handle is valid
-    let _temp_file = unsafe { std::fs::File::from_raw_io_handle(temp_file_fd) }; // make sure the file gets closed
-    env_vars.insert(
-      deno_runtime::deno_process::NPM_RESOLUTION_STATE_FD_ENV_VAR_NAME.into(),
-      (temp_file_fd as usize).to_string().into(),
+
+    let concurrency = std::thread::available_parallelism()
+      .ok()
+      .and_then(|n| NonZeroUsize::new(n.get().saturating_sub(1)))
+      .unwrap_or_else(|| NonZeroUsize::new(2).unwrap())
+      .get();
+
+    let layers = compute_lifecycle_script_layers(
+      options.packages_with_scripts,
+      options.snapshot,
     );
-    for PackageWithScript {
-      package,
-      scripts,
-      package_folder,
-    } in options.packages_with_scripts
-    {
-      // add custom commands for binaries from the package's dependencies. this will take precedence over the
-      // baseline commands, so if the package relies on a bin that conflicts with one higher in the dependency tree, the
-      // correct bin will be used.
-      let custom_commands = self
-        .resolve_custom_commands_from_deps(
-          options.extra_info_provider,
-          base.clone(),
-          package,
-          options.snapshot,
-        )
-        .await;
-      for script_name in ["preinstall", "install", "postinstall"] {
-        if let Some(script) = scripts.get(script_name) {
-          if script_name == "install"
-            && is_broken_default_install_script(&sys, script, package_folder)
-          {
-            continue;
-          }
-          let _guard = self.progress_bar.update_with_prompt(
-            ProgressMessagePrompt::Initialize,
-            &format!("{}: running '{script_name}' script", package.id.nv),
-          );
-          let crate::task_runner::TaskResult {
-            exit_code,
-            stderr,
-            stdout,
-          } =
-            crate::task_runner::run_task(crate::task_runner::RunTaskOptions {
-              task_name: script_name,
-              script,
-              cwd: package_folder.clone(),
-              env_vars: env_vars.clone(),
-              custom_commands: custom_commands.clone(),
-              init_cwd: options.init_cwd,
-              argv: &[],
-              root_node_modules_dir: Some(options.root_node_modules_dir_path),
-              stdio: Some(crate::task_runner::TaskIo {
-                stderr: TaskStdio::piped(),
-                stdout: TaskStdio::piped(),
-              }),
-              kill_signal: kill_signal.clone(),
-            })
-            .await
-            .map_err(DenoTaskLifecycleScriptsError::Task)?;
-          let stdout = stdout.unwrap();
-          let stderr = stderr.unwrap();
-          if exit_code != 0 {
-            log::warn!(
-              "error: script '{}' in '{}' failed with exit code {}{}{}",
-              script_name,
-              package.id.nv,
-              exit_code,
-              if !stdout.trim_ascii().is_empty() {
-                format!(
-                  "\nstdout:\n{}\n",
-                  String::from_utf8_lossy(&stdout).trim()
-                )
-              } else {
-                String::new()
-              },
-              if !stderr.trim_ascii().is_empty() {
-                format!(
-                  "\nstderr:\n{}\n",
-                  String::from_utf8_lossy(&stderr).trim()
-                )
-              } else {
-                String::new()
-              },
-            );
-            failed_packages.push(&package.id.nv);
-            // assume if earlier script fails, later ones will fail too
-            break;
-          }
+
+    for layer in &layers {
+      log::debug!(
+        "Running lifecycle scripts layer: {}",
+        layer
+          .iter()
+          .map(|l| l.package.id.as_serialized())
+          .collect::<Vec<_>>()
+          .join(", ")
+      );
+
+      let mut results =
+        deno_core::futures::stream::iter(layer.iter().map(|pkg| {
+          self.run_single_package_scripts(
+            pkg,
+            &env_vars,
+            &base,
+            &options,
+            &kill_signal,
+            &sys,
+          )
+        }))
+        .buffer_unordered(concurrency);
+
+      while let Some(result) = results.next().await {
+        let result = result?;
+        if let Some(nv) = result.failed {
+          failed_packages.push(nv);
         }
+        (options.on_ran_pkg_scripts)(result.package)?;
       }
-      (options.on_ran_pkg_scripts)(package)?;
     }
 
     // re-set up bin entries for the packages which we've run scripts for.
@@ -452,11 +486,125 @@ impl DenoTaskLifeCycleScriptsExecutor {
   pub fn new(
     npm_resolver: ManagedNpmResolverRc<CliSys>,
     progress_bar: ProgressBar,
+    system_info: deno_npm::NpmSystemInfo,
   ) -> Self {
     Self {
       npm_resolver,
       progress_bar,
+      system_info,
     }
+  }
+
+  /// Runs lifecycle scripts for a single package (preinstall, install,
+  /// postinstall in order). Each package gets its own temp file for
+  /// npm process state so concurrent execution is safe.
+  async fn run_single_package_scripts<'a>(
+    &self,
+    pkg: &'a PackageWithScript<'a>,
+    env_vars: &HashMap<OsString, OsString>,
+    base_custom_commands: &crate::task_runner::TaskCustomCommands,
+    options: &LifecycleScriptsExecutorOptions<'a>,
+    kill_signal: &KillSignal,
+    sys: &CliSys,
+  ) -> Result<PackageScriptResult<'a>, AnyError> {
+    let PackageWithScript {
+      package,
+      scripts,
+      package_folder,
+    } = pkg;
+
+    // each concurrent package gets its own temp file to avoid fd races
+    let temp_file_fd = deno_runtime::deno_process::npm_process_state_tempfile(
+      options.process_state.as_bytes(),
+    )
+    .map_err(DenoTaskLifecycleScriptsError::CreateNpmProcessState)?;
+    // SAFETY: fd/handle is valid
+    let _temp_file = unsafe { std::fs::File::from_raw_io_handle(temp_file_fd) };
+    let mut env_vars = env_vars.clone();
+    env_vars.insert(
+      deno_runtime::deno_process::NPM_RESOLUTION_STATE_FD_ENV_VAR_NAME.into(),
+      (temp_file_fd as usize).to_string().into(),
+    );
+
+    // add custom commands for binaries from the package's dependencies.
+    // this will take precedence over the baseline commands, so if the
+    // package relies on a bin that conflicts with one higher in the
+    // dependency tree, the correct bin will be used.
+    let custom_commands = self
+      .resolve_custom_commands_from_deps(
+        options.extra_info_provider,
+        base_custom_commands.clone(),
+        package,
+        options.snapshot,
+      )
+      .await;
+
+    let mut failed = None;
+    for script_name in ["preinstall", "install", "postinstall"] {
+      if let Some(script) = scripts.get(script_name) {
+        if script_name == "install"
+          && is_broken_default_install_script(sys, script, package_folder)
+        {
+          continue;
+        }
+        let _guard = self.progress_bar.update_with_prompt(
+          ProgressMessagePrompt::Initialize,
+          &format!("{}: running '{script_name}' script", package.id.nv),
+        );
+        let crate::task_runner::TaskResult {
+          exit_code,
+          stderr,
+          stdout,
+        } = crate::task_runner::run_task(crate::task_runner::RunTaskOptions {
+          task_name: script_name,
+          script,
+          cwd: package_folder.clone(),
+          env_vars: env_vars.clone(),
+          custom_commands: custom_commands.clone(),
+          init_cwd: options.init_cwd,
+          argv: &[],
+          root_node_modules_dir: Some(options.root_node_modules_dir_path),
+          stdio: Some(crate::task_runner::TaskIo {
+            stderr: TaskStdio::piped(),
+            stdout: TaskStdio::piped(),
+          }),
+          kill_signal: kill_signal.clone(),
+        })
+        .await
+        .map_err(DenoTaskLifecycleScriptsError::Task)?;
+        let stdout = stdout.unwrap();
+        let stderr = stderr.unwrap();
+        if exit_code != 0 {
+          log::warn!(
+            "error: script '{}' in '{}' failed with exit code {}{}{}",
+            script_name,
+            package.id.nv,
+            exit_code,
+            if !stdout.trim_ascii().is_empty() {
+              format!(
+                "\nstdout:\n{}\n",
+                String::from_utf8_lossy(&stdout).trim()
+              )
+            } else {
+              String::new()
+            },
+            if !stderr.trim_ascii().is_empty() {
+              format!(
+                "\nstderr:\n{}\n",
+                String::from_utf8_lossy(&stderr).trim()
+              )
+            } else {
+              String::new()
+            },
+          );
+          failed = Some(&package.id.nv);
+          // assume if earlier script fails, later ones will fail too
+          break;
+        }
+      }
+    }
+
+    Ok(PackageScriptResult { package, failed })
   }
 
   // take in all (non copy) packages from snapshot,
@@ -572,10 +720,16 @@ impl DenoTaskLifeCycleScriptsExecutor {
         &mut bin_entries,
         baseline,
         snapshot,
-        package
-          .dependencies
-          .values()
-          .map(|id| snapshot.package_from_id(id).unwrap()),
+        package.dependencies.iter().filter_map(|(name, id)| {
+          let dep = snapshot.package_from_id(id).unwrap();
+          // Skip optional dependencies that don't match the current system
+          if package.optional_dependencies.contains(name)
+            && !dep.system.matches_system(&self.system_info)
+          {
+            return None;
+          }
+          Some(dep)
+        }),
       )
       .await
   }

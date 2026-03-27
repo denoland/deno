@@ -1,5 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
+import { primordials } from "ext:core/mod.js";
+const { ObjectFreeze } = primordials;
 import { op_node_build_os, op_node_fs_constants } from "ext:core/ops";
 
 let os: {
@@ -195,13 +197,14 @@ let os: {
     SIGXCPU?: number;
     SIGXFSZ?: number;
   };
-  UV_UDP_IPV6ONLY?: number;
+  UV_UDP_IPV6ONLY: number;
   UV_UDP_REUSEADDR: number;
 };
 
 const buildOs = op_node_build_os();
 if (buildOs === "darwin") {
   os = {
+    UV_UDP_IPV6ONLY: 2,
     UV_UDP_REUSEADDR: 4,
     dlopen: {
       RTLD_LAZY: 1,
@@ -334,6 +337,7 @@ if (buildOs === "darwin") {
   };
 } else if (buildOs === "linux" || buildOs === "android") {
   os = {
+    UV_UDP_IPV6ONLY: 2,
     UV_UDP_REUSEADDR: 4,
     dlopen: {
       RTLD_LAZY: 1,
@@ -470,6 +474,7 @@ if (buildOs === "darwin") {
   };
 } else {
   os = {
+    UV_UDP_IPV6ONLY: 2,
     UV_UDP_REUSEADDR: 4,
     dlopen: {},
     errno: {
@@ -630,6 +635,8 @@ if (buildOs === "darwin") {
     },
   };
 }
+
+ObjectFreeze(os.signals);
 
 export { os };
 

@@ -112,10 +112,10 @@ pub type DenoNodeCodeTranslatorRc<TSys> = NodeCodeTranslatorRc<
   NpmResolver<TSys>,
   TSys,
 >;
-#[allow(clippy::disallowed_types)]
+#[allow(clippy::disallowed_types, reason = "definition")]
 pub type NpmVersionResolverRc = deno_maybe_sync::MaybeArc<NpmVersionResolver>;
 #[cfg(feature = "graph")]
-#[allow(clippy::disallowed_types)]
+#[allow(clippy::disallowed_types, reason = "definition")]
 pub type JsrVersionResolverRc =
   deno_maybe_sync::MaybeArc<deno_graph::packages::JsrVersionResolver>;
 
@@ -219,7 +219,7 @@ pub struct WorkspaceFactoryOptions {
   pub vendor: Option<bool>,
 }
 
-#[allow(clippy::disallowed_types)]
+#[allow(clippy::disallowed_types, reason = "definition")]
 pub type WorkspaceFactoryRc<TSys> =
   deno_maybe_sync::MaybeArc<WorkspaceFactory<TSys>>;
 
@@ -293,6 +293,7 @@ impl<TSys: WorkspaceFactorySys> WorkspaceFactory<TSys> {
       new_rc(DenoDirProvider::new(
         self.sys.clone(),
         DenoDirOptions {
+          maybe_initial_cwd: Some(self.initial_cwd.clone()),
           maybe_custom_root: self.options.maybe_custom_deno_dir_root.clone(),
         },
       ))
@@ -1068,10 +1069,11 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
               .join("node_modules"),
             },
           ),
+          search_stop_dir: None,
         })
       } else {
         NpmResolverCreateOptions::Managed(ManagedNpmResolverCreateOptions {
-          sys: self.workspace_factory.sys.clone(),
+          sys: self.sys.clone(),
           npm_resolution: self.npm_resolution().clone(),
           npm_cache_dir: self.workspace_factory.npm_cache_dir()?.clone(),
           maybe_node_modules_path: self
@@ -1116,7 +1118,10 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
           .workspace_npm_link_packages()?
           .0
           .clone(),
-        #[allow(clippy::disallowed_types)] // allow Arc
+        #[allow(
+          clippy::disallowed_types,
+          reason = "Arc needed for shared overrides"
+        )]
         overrides: std::sync::Arc::new(overrides),
       }))
     })

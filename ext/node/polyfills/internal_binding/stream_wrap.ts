@@ -37,6 +37,7 @@ const {
   PromisePrototypeThen,
   Symbol,
   TypedArrayPrototypeSlice,
+  Int32Array,
   Uint8Array,
   Uint8ArrayPrototype,
 } = primordials;
@@ -54,6 +55,8 @@ import {
 import { codeMap } from "ext:deno_node/internal_binding/uv.ts";
 import { _readWithCancelHandle } from "ext:deno_io/12_io.js";
 import { NodeTypeError } from "ext:deno_node/internal/errors.ts";
+
+export const kUseNativeWrap = Symbol("useNativeWrap");
 
 export interface Reader {
   read(p: Uint8Array): Promise<number | null>;
@@ -89,7 +92,7 @@ export const kLastWriteWasAsync = StreamBaseStateFields.kLastWriteWasAsync;
 export const kNumStreamBaseStateFields =
   StreamBaseStateFields.kNumStreamBaseStateFields;
 
-export const streamBaseState = new Uint8Array(5);
+export const streamBaseState = new Int32Array(5);
 
 // This is Deno, it always will be async.
 streamBaseState[kLastWriteWasAsync] = 1;
@@ -210,6 +213,13 @@ export class LibuvStreamWrap extends HandleWrap {
       );
     }
 
+    // Mark as async so afterWriteDispatched does not fire the callback
+    // synchronously. The Rust write_buffer path sets this on the shared
+    // streamBaseState array (0 for sync, 1 for async), but the JS #write
+    // path is always async. Without this, a preceding Rust sync write
+    // leaves kLastWriteWasAsync=0, causing a double callback.
+    streamBaseState[kLastWriteWasAsync] = 1;
+
     this.#write(req, data);
 
     return 0;
@@ -231,19 +241,18 @@ export class LibuvStreamWrap extends HandleWrap {
     const rid = this[kStreamBaseField]![internalRidSymbol];
     // Fast case optimization: two chunks, and all buffers.
     if (
-      chunks.length === 2 && allBuffers && supportsWritev &&
+      chunks.length === 2 &&
+      allBuffers &&
+      supportsWritev &&
       op_can_write_vectored(rid)
     ) {
       // String chunks.
       if (typeof chunks[0] === "string") chunks[0] = Buffer.from(chunks[0]);
       if (typeof chunks[1] === "string") chunks[1] = Buffer.from(chunks[1]);
 
+      streamBaseState[kLastWriteWasAsync] = 1;
       PromisePrototypeThen(
-        op_raw_write_vectored(
-          rid,
-          chunks[0],
-          chunks[1],
-        ),
+        op_raw_write_vectored(rid, chunks[0], chunks[1]),
         (nwritten) => {
           try {
             req.oncomplete(0);
@@ -378,9 +387,7 @@ export class LibuvStreamWrap extends HandleWrap {
     } catch (e) {
       // Try to read again if the underlying stream resource
       // changed. This can happen during TLS upgrades (eg. STARTTLS)
-      if (
-        ridBefore != this[kStreamBaseField]![internalRidSymbol]
-      ) {
+      if (ridBefore != this[kStreamBaseField]![internalRidSymbol]) {
         return this.#read();
       }
 
@@ -388,7 +395,8 @@ export class LibuvStreamWrap extends HandleWrap {
 
       if (
         ObjectPrototypeIsPrototypeOf(Deno.errors.Interrupted.prototype, e) ||
-        ObjectPrototypeIsPrototypeOf(Deno.errors.BadResource.prototype, e)
+        ObjectPrototypeIsPrototypeOf(Deno.errors.BadResource.prototype, e) ||
+        ObjectPrototypeIsPrototypeOf(Deno.errors.UnexpectedEof.prototype, e)
       ) {
         nread = MapPrototypeGet(codeMap, "EOF")!;
       } else if (
@@ -454,17 +462,17 @@ export class LibuvStreamWrap extends HandleWrap {
     } catch (e) {
       // Try to read again if the underlying stream resource
       // changed. This can happen during TLS upgrades (eg. STARTTLS)
-      if (
-        ridBefore != this[kStreamBaseField]![internalRidSymbol]
-      ) {
+      if (ridBefore != this[kStreamBaseField]![internalRidSymbol]) {
         return this.#write(req, data.subarray(nwritten));
       }
 
       let status: number;
-      // TODO(cmorten): map err to status codes
       if (
-        ObjectPrototypeIsPrototypeOf(Deno.errors.BadResource.prototype, e) ||
         ObjectPrototypeIsPrototypeOf(Deno.errors.BrokenPipe.prototype, e)
+      ) {
+        status = MapPrototypeGet(codeMap, "EPIPE")!;
+      } else if (
+        ObjectPrototypeIsPrototypeOf(Deno.errors.BadResource.prototype, e)
       ) {
         status = MapPrototypeGet(codeMap, "EBADF")!;
       } else {

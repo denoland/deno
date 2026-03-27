@@ -3,6 +3,7 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use boxed_error::Boxed;
 use deno_error::JsError;
 use deno_error::JsErrorBox;
 use deno_npm::resolution::NpmResolutionSnapshot;
@@ -115,17 +116,20 @@ impl<TSys: LockfileSys> NpmResolutionInitializer<TSys> {
   }
 }
 
+#[derive(Debug, Clone, JsError, Boxed)]
+#[class(inherit)]
+pub struct ResolveSnapshotError(Box<ResolveSnapshotErrorData>);
+
 #[derive(Debug, Error, Clone, JsError)]
 #[error("failed reading lockfile '{}'", lockfile_path.display())]
 #[class(inherit)]
-pub struct ResolveSnapshotError {
+pub struct ResolveSnapshotErrorData {
   lockfile_path: PathBuf,
   #[inherit]
   #[source]
   source: SnapshotFromLockfileError,
 }
 
-#[allow(clippy::result_large_err)]
 fn resolve_snapshot<TSys: LockfileSys>(
   snapshot: NpmResolverManagedSnapshotOption<TSys>,
   link_packages: &WorkspaceNpmLinkPackagesRc,
@@ -134,9 +138,12 @@ fn resolve_snapshot<TSys: LockfileSys>(
     NpmResolverManagedSnapshotOption::ResolveFromLockfile(lockfile) => {
       if !lockfile.overwrite() {
         let snapshot = snapshot_from_lockfile(lockfile.clone(), link_packages)
-          .map_err(|source| ResolveSnapshotError {
-            lockfile_path: lockfile.filename.clone(),
-            source,
+          .map_err(|source| {
+            ResolveSnapshotErrorData {
+              lockfile_path: lockfile.filename.clone(),
+              source,
+            }
+            .into_box()
           })?;
         Ok(Some(snapshot))
       } else {
