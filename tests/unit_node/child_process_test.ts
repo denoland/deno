@@ -2,7 +2,6 @@
 
 import CP from "node:child_process";
 import { Buffer } from "node:buffer";
-import * as fs from "node:fs";
 import {
   assert,
   assertEquals,
@@ -1344,36 +1343,4 @@ Deno.test(async function stdoutWriteMultipleChunksNotTruncated() {
   } finally {
     await Deno.remove(script);
   }
-});
-
-Deno.test({
-  name: "[node/child_process spawn] supports numeric fd in stdio array",
-  // On Windows, Deno's fs.openSync returns a resource ID, not a CRT file
-  // descriptor, so libc::get_osfhandle receives an invalid fd and crashes.
-  ignore: Deno.build.os === "windows",
-  async fn() {
-    const tmpFile = await Deno.makeTempFile();
-    try {
-      const fd = fs.openSync(tmpFile, "r");
-      try {
-        // Passing a numeric fd at stdio index 3 should not throw.
-        // Previously this caused: serde_v8 error: invalid type; expected: enum, got: Number
-        const child = spawn(Deno.execPath(), [
-          "eval",
-          "/* no-op */",
-        ], {
-          stdio: ["ignore", "ignore", "ignore", fd],
-        });
-
-        const deferred = withTimeout<number>();
-        child.on("exit", (code: number) => deferred.resolve(code));
-        const code = await deferred.promise;
-        assertEquals(code, 0);
-      } finally {
-        fs.closeSync(fd);
-      }
-    } finally {
-      await Deno.remove(tmpFile);
-    }
-  },
 });

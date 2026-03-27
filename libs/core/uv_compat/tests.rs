@@ -1380,6 +1380,452 @@ async fn tcp_shutdown_no_stream() {
   .await;
 }
 
+// ========== Deferred bind error: EADDRINUSE reported at listen ==========
+
+#[tokio::test(flavor = "current_thread")]
+async fn tcp_bind_eaddrinuse_deferred_to_listen() {
+  run_test(async |_runtime, uv_loop| {
+    // Server A: bind + listen to get a real port.
+    let mut server_a = std::mem::MaybeUninit::<uv_tcp_t>::uninit();
+    let server_a_ptr = server_a.as_mut_ptr();
+
+    unsafe extern "C" fn noop_conn(_: *mut uv_stream_t, _: i32) {}
+
+    let port: u16;
+    unsafe {
+      uv_tcp_init(uv_loop, server_a_ptr);
+      let mut addr = std::mem::MaybeUninit::<sockaddr_in>::uninit();
+      let ip = std::ffi::CString::new("127.0.0.1").unwrap();
+      uv_ip4_addr(ip.as_ptr(), 0, addr.as_mut_ptr());
+      assert_ok(uv_tcp_bind(
+        server_a_ptr,
+        addr.as_ptr() as *const c_void,
+        0,
+        0,
+      ));
+      assert_ok(uv_listen(
+        server_a_ptr as *mut uv_stream_t,
+        128,
+        Some(noop_conn),
+      ));
+
+      let mut name = std::mem::MaybeUninit::<sockaddr_in>::zeroed();
+      let mut namelen = std::mem::size_of::<sockaddr_in>() as i32;
+      uv_tcp_getsockname(
+        server_a_ptr,
+        name.as_mut_ptr() as *mut c_void,
+        &mut namelen,
+      );
+      port = u16::from_be(name.assume_init_ref().sin_port);
+    }
+
+    // Server B: bind to same port — bind returns 0 (deferred),
+    // but listen should report EADDRINUSE.
+    let mut server_b = std::mem::MaybeUninit::<uv_tcp_t>::uninit();
+    let server_b_ptr = server_b.as_mut_ptr();
+    unsafe {
+      uv_tcp_init(uv_loop, server_b_ptr);
+      let mut addr = std::mem::MaybeUninit::<sockaddr_in>::uninit();
+      let ip = std::ffi::CString::new("127.0.0.1").unwrap();
+      uv_ip4_addr(ip.as_ptr(), port as i32, addr.as_mut_ptr());
+      let bind_status =
+        uv_tcp_bind(server_b_ptr, addr.as_ptr() as *const c_void, 0, 0);
+      assert_eq!(bind_status, 0, "bind should defer the error");
+
+      let listen_status =
+        uv_listen(server_b_ptr as *mut uv_stream_t, 128, Some(noop_conn));
+      assert_eq!(
+        listen_status, UV_EADDRINUSE,
+        "listen should report the deferred EADDRINUSE"
+      );
+
+      uv_close(server_a_ptr as *mut uv_handle_t, None);
+      uv_close(server_b_ptr as *mut uv_handle_t, None);
+    }
+  })
+  .await;
+}
+
+// ========== TCP connect returns UV_EALREADY on duplicate ==========
+
+#[tokio::test(flavor = "current_thread")]
+async fn tcp_connect_returns_ealready() {
+  run_test(async |_runtime, uv_loop| {
+    // Set up a server to connect to.
+    let mut server = std::mem::MaybeUninit::<uv_tcp_t>::uninit();
+    let server_ptr = server.as_mut_ptr();
+
+    unsafe extern "C" fn noop_conn(_: *mut uv_stream_t, _: i32) {}
+    unsafe extern "C" fn noop_connect(_: *mut uv_connect_t, _: i32) {}
+
+    let port: u16;
+    unsafe {
+      uv_tcp_init(uv_loop, server_ptr);
+      let mut addr = std::mem::MaybeUninit::<sockaddr_in>::uninit();
+      let ip = std::ffi::CString::new("127.0.0.1").unwrap();
+      uv_ip4_addr(ip.as_ptr(), 0, addr.as_mut_ptr());
+      assert_ok(uv_tcp_bind(
+        server_ptr,
+        addr.as_ptr() as *const c_void,
+        0,
+        0,
+      ));
+      assert_ok(uv_listen(
+        server_ptr as *mut uv_stream_t,
+        128,
+        Some(noop_conn),
+      ));
+      let mut name = std::mem::MaybeUninit::<sockaddr_in>::zeroed();
+      let mut namelen = std::mem::size_of::<sockaddr_in>() as i32;
+      uv_tcp_getsockname(
+        server_ptr,
+        name.as_mut_ptr() as *mut c_void,
+        &mut namelen,
+      );
+      port = u16::from_be(name.assume_init_ref().sin_port);
+    }
+
+    // Client: connect, then try to connect again.
+    let mut client = std::mem::MaybeUninit::<uv_tcp_t>::uninit();
+    let client_ptr = client.as_mut_ptr();
+    let mut req1 = std::mem::MaybeUninit::<uv_connect_t>::uninit();
+    let mut req2 = std::mem::MaybeUninit::<uv_connect_t>::uninit();
+    unsafe {
+      uv_tcp_init(uv_loop, client_ptr);
+      let mut addr = std::mem::MaybeUninit::<sockaddr_in>::uninit();
+      let ip = std::ffi::CString::new("127.0.0.1").unwrap();
+      uv_ip4_addr(ip.as_ptr(), port as i32, addr.as_mut_ptr());
+
+      assert_ok(uv_tcp_connect(
+        req1.as_mut_ptr(),
+        client_ptr,
+        addr.as_ptr() as *const c_void,
+        Some(noop_connect),
+      ));
+
+      let status = uv_tcp_connect(
+        req2.as_mut_ptr(),
+        client_ptr,
+        addr.as_ptr() as *const c_void,
+        Some(noop_connect),
+      );
+      assert_eq!(status, UV_EALREADY);
+
+      uv_close(client_ptr as *mut uv_handle_t, None);
+      uv_close(server_ptr as *mut uv_handle_t, None);
+    }
+  })
+  .await;
+}
+
+// ========== TCP shutdown returns UV_EALREADY on duplicate ==========
+
+#[tokio::test(flavor = "current_thread")]
+async fn tcp_shutdown_returns_ealready() {
+  run_test(async |runtime, uv_loop| {
+    // Server
+    let mut server = std::mem::MaybeUninit::<uv_tcp_t>::uninit();
+    let server_ptr = server.as_mut_ptr();
+    unsafe extern "C" fn noop_conn(_: *mut uv_stream_t, _: i32) {}
+
+    let port: u16;
+    unsafe {
+      uv_tcp_init(uv_loop, server_ptr);
+      let mut addr = std::mem::MaybeUninit::<sockaddr_in>::uninit();
+      let ip = std::ffi::CString::new("127.0.0.1").unwrap();
+      uv_ip4_addr(ip.as_ptr(), 0, addr.as_mut_ptr());
+      assert_ok(uv_tcp_bind(
+        server_ptr,
+        addr.as_ptr() as *const c_void,
+        0,
+        0,
+      ));
+      assert_ok(uv_listen(
+        server_ptr as *mut uv_stream_t,
+        128,
+        Some(noop_conn),
+      ));
+      let mut name = std::mem::MaybeUninit::<sockaddr_in>::zeroed();
+      let mut namelen = std::mem::size_of::<sockaddr_in>() as i32;
+      uv_tcp_getsockname(
+        server_ptr,
+        name.as_mut_ptr() as *mut c_void,
+        &mut namelen,
+      );
+      port = u16::from_be(name.assume_init_ref().sin_port);
+    }
+
+    // Client: connect, wait for connection, then double-shutdown.
+    let connected = Rc::new(Cell::new(false));
+    let connected_ptr = Rc::into_raw(connected.clone());
+
+    unsafe extern "C" fn on_connect(req: *mut uv_connect_t, status: i32) {
+      assert_eq!(status, 0);
+      let c = unsafe { Rc::from_raw((*req).data as *const Cell<bool>) };
+      c.set(true);
+      let _ = Rc::into_raw(c);
+    }
+
+    let mut client = std::mem::MaybeUninit::<uv_tcp_t>::uninit();
+    let client_ptr = client.as_mut_ptr();
+    let mut connect_req = std::mem::MaybeUninit::<uv_connect_t>::uninit();
+    unsafe {
+      uv_tcp_init(uv_loop, client_ptr);
+      (*connect_req.as_mut_ptr()).data = connected_ptr as *mut c_void;
+      let mut addr = std::mem::MaybeUninit::<sockaddr_in>::uninit();
+      let ip = std::ffi::CString::new("127.0.0.1").unwrap();
+      uv_ip4_addr(ip.as_ptr(), port as i32, addr.as_mut_ptr());
+      assert_ok(uv_tcp_connect(
+        connect_req.as_mut_ptr(),
+        client_ptr,
+        addr.as_ptr() as *const c_void,
+        Some(on_connect),
+      ));
+    }
+
+    // Poll until connected.
+    for _ in 0..100 {
+      tick(runtime).await;
+      if connected.get() {
+        break;
+      }
+      tokio::time::sleep(std::time::Duration::from_millis(1)).await;
+    }
+    assert!(connected.get(), "client should be connected");
+
+    // First shutdown succeeds, second returns EALREADY.
+    let mut req1 = std::mem::MaybeUninit::<uv_shutdown_t>::uninit();
+    let mut req2 = std::mem::MaybeUninit::<uv_shutdown_t>::uninit();
+    unsafe {
+      assert_ok(uv_shutdown(
+        req1.as_mut_ptr(),
+        client_ptr as *mut uv_stream_t,
+        None,
+      ));
+      let status =
+        uv_shutdown(req2.as_mut_ptr(), client_ptr as *mut uv_stream_t, None);
+      assert_eq!(status, UV_EALREADY);
+
+      uv_close(client_ptr as *mut uv_handle_t, None);
+      uv_close(server_ptr as *mut uv_handle_t, None);
+    }
+    // Clean up Rc leak.
+    unsafe { drop(Rc::from_raw(connected_ptr)) };
+  })
+  .await;
+}
+
+// ========== read_start on closing handle returns UV_EINVAL ==========
+
+#[tokio::test(flavor = "current_thread")]
+async fn tcp_read_start_on_closing_handle() {
+  run_test(async |_runtime, uv_loop| {
+    unsafe extern "C" fn noop_alloc(
+      _: *mut uv_handle_t,
+      _: usize,
+      _: *mut uv_buf_t,
+    ) {
+    }
+    unsafe extern "C" fn noop_read(
+      _: *mut uv_stream_t,
+      _: isize,
+      _: *const uv_buf_t,
+    ) {
+    }
+
+    let mut tcp = std::mem::MaybeUninit::<uv_tcp_t>::uninit();
+    let tcp_ptr = tcp.as_mut_ptr();
+    unsafe {
+      uv_tcp_init(uv_loop, tcp_ptr);
+      uv_close(tcp_ptr as *mut uv_handle_t, None);
+
+      let status = uv_read_start(
+        tcp_ptr as *mut uv_stream_t,
+        Some(noop_alloc),
+        Some(noop_read),
+      );
+      assert_eq!(status, UV_EINVAL);
+    }
+  })
+  .await;
+}
+
+// ========== shutdown on closing handle returns UV_ENOTCONN ==========
+
+#[tokio::test(flavor = "current_thread")]
+async fn tcp_shutdown_on_closing_handle() {
+  run_test(async |_runtime, uv_loop| {
+    let mut tcp = std::mem::MaybeUninit::<uv_tcp_t>::uninit();
+    let tcp_ptr = tcp.as_mut_ptr();
+    let mut req = std::mem::MaybeUninit::<uv_shutdown_t>::uninit();
+    unsafe {
+      uv_tcp_init(uv_loop, tcp_ptr);
+      uv_close(tcp_ptr as *mut uv_handle_t, None);
+
+      let status =
+        uv_shutdown(req.as_mut_ptr(), tcp_ptr as *mut uv_stream_t, None);
+      assert_eq!(status, UV_ENOTCONN);
+    }
+  })
+  .await;
+}
+
+// ========== getsockname works after bind, before listen ==========
+
+#[tokio::test(flavor = "current_thread")]
+async fn tcp_getsockname_after_bind_before_listen() {
+  run_test(async |_runtime, uv_loop| {
+    let mut tcp = std::mem::MaybeUninit::<uv_tcp_t>::uninit();
+    let tcp_ptr = tcp.as_mut_ptr();
+    unsafe {
+      uv_tcp_init(uv_loop, tcp_ptr);
+      let mut addr = std::mem::MaybeUninit::<sockaddr_in>::uninit();
+      let ip = std::ffi::CString::new("127.0.0.1").unwrap();
+      uv_ip4_addr(ip.as_ptr(), 0, addr.as_mut_ptr());
+      assert_ok(uv_tcp_bind(tcp_ptr, addr.as_ptr() as *const c_void, 0, 0));
+
+      // getsockname should resolve the ephemeral port from the
+      // pre-created socket, even before listen/connect.
+      let mut name = std::mem::MaybeUninit::<sockaddr_in>::zeroed();
+      let mut namelen = std::mem::size_of::<sockaddr_in>() as i32;
+      assert_ok(uv_tcp_getsockname(
+        tcp_ptr,
+        name.as_mut_ptr() as *mut c_void,
+        &mut namelen,
+      ));
+      let port = u16::from_be(name.assume_init_ref().sin_port);
+      assert!(port > 0, "Expected OS-assigned port > 0, got {port}");
+
+      uv_close(tcp_ptr as *mut uv_handle_t, None);
+    }
+  })
+  .await;
+}
+
+// ========== close cancels pending writes with UV_ECANCELED ==========
+
+#[tokio::test(flavor = "current_thread")]
+async fn tcp_close_cancels_pending_writes() {
+  run_test(async |runtime, uv_loop| {
+    // Server
+    let mut server = std::mem::MaybeUninit::<uv_tcp_t>::uninit();
+    let server_ptr = server.as_mut_ptr();
+    unsafe extern "C" fn noop_conn(_: *mut uv_stream_t, _: i32) {}
+
+    let port: u16;
+    unsafe {
+      uv_tcp_init(uv_loop, server_ptr);
+      let mut addr = std::mem::MaybeUninit::<sockaddr_in>::uninit();
+      let ip = std::ffi::CString::new("127.0.0.1").unwrap();
+      uv_ip4_addr(ip.as_ptr(), 0, addr.as_mut_ptr());
+      assert_ok(uv_tcp_bind(
+        server_ptr,
+        addr.as_ptr() as *const c_void,
+        0,
+        0,
+      ));
+      assert_ok(uv_listen(
+        server_ptr as *mut uv_stream_t,
+        128,
+        Some(noop_conn),
+      ));
+      let mut name = std::mem::MaybeUninit::<sockaddr_in>::zeroed();
+      let mut namelen = std::mem::size_of::<sockaddr_in>() as i32;
+      uv_tcp_getsockname(
+        server_ptr,
+        name.as_mut_ptr() as *mut c_void,
+        &mut namelen,
+      );
+      port = u16::from_be(name.assume_init_ref().sin_port);
+    }
+
+    // Client: connect, write, then close — write should be canceled.
+    let connected = Rc::new(Cell::new(false));
+    let connected_ptr = Rc::into_raw(connected.clone());
+
+    unsafe extern "C" fn on_connect(req: *mut uv_connect_t, status: i32) {
+      assert_eq!(status, 0);
+      let c = unsafe { Rc::from_raw((*req).data as *const Cell<bool>) };
+      c.set(true);
+      let _ = Rc::into_raw(c);
+    }
+
+    let mut client = std::mem::MaybeUninit::<uv_tcp_t>::uninit();
+    let client_ptr = client.as_mut_ptr();
+    let mut connect_req = std::mem::MaybeUninit::<uv_connect_t>::uninit();
+    unsafe {
+      uv_tcp_init(uv_loop, client_ptr);
+      (*connect_req.as_mut_ptr()).data = connected_ptr as *mut c_void;
+      let mut addr = std::mem::MaybeUninit::<sockaddr_in>::uninit();
+      let ip = std::ffi::CString::new("127.0.0.1").unwrap();
+      uv_ip4_addr(ip.as_ptr(), port as i32, addr.as_mut_ptr());
+      assert_ok(uv_tcp_connect(
+        connect_req.as_mut_ptr(),
+        client_ptr,
+        addr.as_ptr() as *const c_void,
+        Some(on_connect),
+      ));
+    }
+
+    for _ in 0..100 {
+      tick(runtime).await;
+      if connected.get() {
+        break;
+      }
+      tokio::time::sleep(std::time::Duration::from_millis(1)).await;
+    }
+    assert!(connected.get(), "client should be connected");
+
+    // Queue a write, then immediately close.
+    let write_status = Rc::new(Cell::new(None::<i32>));
+    let write_status_ptr = Rc::into_raw(write_status.clone());
+
+    unsafe extern "C" fn on_write(req: *mut uv_write_t, status: i32) {
+      let s = unsafe { Rc::from_raw((*req).data as *const Cell<Option<i32>>) };
+      s.set(Some(status));
+      let _ = Rc::into_raw(s);
+    }
+
+    let mut write_req = std::mem::MaybeUninit::<uv_write_t>::uninit();
+    let msg = b"hello";
+    unsafe {
+      (*write_req.as_mut_ptr()).data = write_status_ptr as *mut c_void;
+      let buf = uv_buf_t {
+        base: msg.as_ptr() as *mut i8,
+        len: msg.len(),
+      };
+      assert_ok(uv_write(
+        write_req.as_mut_ptr(),
+        client_ptr as *mut uv_stream_t,
+        &buf,
+        1,
+        Some(on_write),
+      ));
+
+      // Close immediately — should cancel pending write.
+      uv_close(client_ptr as *mut uv_handle_t, None);
+    }
+
+    // Tick to let close cleanup fire.
+    for _ in 0..5 {
+      tick(runtime).await;
+    }
+
+    assert_eq!(
+      write_status.get(),
+      Some(UV_ECANCELED),
+      "write callback should fire with UV_ECANCELED on close"
+    );
+
+    unsafe {
+      uv_close(server_ptr as *mut uv_handle_t, None);
+      drop(Rc::from_raw(connected_ptr));
+      drop(Rc::from_raw(write_status_ptr));
+    }
+  })
+  .await;
+}
+
 // ========== TTY tests ==========
 
 /// Helper: create a PTY pair and return (master_fd, slave_fd).
