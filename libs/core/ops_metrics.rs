@@ -92,3 +92,47 @@ pub fn dispatch_metrics_async(opctx: &OpCtx, metrics: OpMetricsEvent) {
     )
   }
 }
+
+/// Shared metrics wrapper for slow op dispatch. Replaces per-op generated metrics
+/// wrappers, reducing binary size and compile time. Calls `slow_fn_impl` via OpCtx
+/// and dispatches the appropriate metrics events.
+///
+/// SAFETY: this is only registered as the V8 callback when metrics are enabled for the op.
+#[doc(hidden)]
+pub unsafe extern "C" fn slow_metrics_dispatch(
+  info: *const v8::FunctionCallbackInfo,
+) {
+  // SAFETY: info is a valid pointer from V8
+  let info_ref = unsafe { &*info };
+  let args =
+    v8::FunctionCallbackArguments::from_function_callback_info(info_ref);
+  // SAFETY: data is always an External pointing to OpCtx
+  let opctx: &OpCtx = unsafe {
+    &*(v8::Local::<v8::External>::cast_unchecked(args.data()).value()
+      as *const OpCtx)
+  };
+
+  let source = if opctx.decl.is_async {
+    OpMetricsSource::Async
+  } else {
+    OpMetricsSource::Slow
+  };
+
+  // SAFETY: metrics_fn is always Some when this wrapper is selected
+  let metrics_fn = unsafe { opctx.metrics_fn.as_ref().unwrap_unchecked() };
+
+  metrics_fn(opctx, OpMetricsEvent::Dispatched, source);
+  let res = (opctx.decl.slow_fn_impl)(info);
+
+  if opctx.decl.is_async {
+    if res == 0 {
+      metrics_fn(opctx, OpMetricsEvent::Completed, source);
+    } else if res == 1 {
+      metrics_fn(opctx, OpMetricsEvent::Error, source);
+    }
+  } else if res == 0 {
+    metrics_fn(opctx, OpMetricsEvent::Completed, source);
+  } else {
+    metrics_fn(opctx, OpMetricsEvent::Error, source);
+  }
+}

@@ -678,6 +678,45 @@ impl JsRuntimeInspector {
     );
   }
 
+  /// Broadcast `Runtime.executionContextDestroyed` to all connected sessions
+  /// without requiring a V8 scope. This is used during `process.exit()` to
+  /// notify debuggers that the execution context is being torn down before
+  /// calling `std::process::exit()`, which would skip the normal event-loop
+  /// shutdown path where V8's `context_destroyed` is called.
+  pub fn broadcast_context_destroyed(&self) {
+    let sessions = self.state.sessions.borrow();
+    for session in sessions.local.values() {
+      (session.state.send)(InspectorMsg::notification(json!({
+        "method": "Runtime.executionContextDestroyed",
+        "params": { "executionContextId": Self::CONTEXT_GROUP_ID }
+      })));
+    }
+  }
+
+  /// Block the current thread until all inspector sessions have disconnected.
+  /// Used after `broadcast_context_destroyed` to give debuggers a chance to
+  /// process the notification before the process exits.
+  ///
+  /// Note: this intentionally does not set a blocking flag on `poll_sessions`.
+  /// Unlike `wait_for_session` (which blocks waiting for a *new* WS
+  /// connection handled by a separate server thread), disconnect detection
+  /// requires the async I/O reactor to process WebSocket close frames.
+  /// Parking the thread would prevent those events from being delivered.
+  /// The loop spins with `poll_sessions(None)` which returns quickly when
+  /// idle, yielding a brief busy-wait that is acceptable given this only
+  /// runs during process exit.
+  pub fn wait_for_sessions_disconnect(&self) {
+    loop {
+      {
+        let sessions = self.state.sessions.borrow();
+        if sessions.local.is_empty() && sessions.established.is_empty() {
+          break;
+        }
+      }
+      let _ = self.state.poll_sessions(None);
+    }
+  }
+
   pub fn sessions_state(&self) -> SessionsState {
     self.state.sessions.borrow().sessions_state()
   }

@@ -1584,19 +1584,15 @@ impl CompilerOptionsResolver {
     }
   }
 
+  /// Returns only `compilerOptions.types` entries as graph imports,
+  /// excluding tsconfig `files` entries.
   #[cfg(feature = "graph")]
-  pub fn to_graph_imports(&self) -> Vec<deno_graph::ReferrerImports> {
-    // Resolve all the imports from every config file. These can be separated
-    // them later based on the folder we're type checking.
+  pub fn to_compiler_options_types_imports(
+    &self,
+  ) -> Vec<deno_graph::ReferrerImports> {
     let mut imports_by_referrer =
       IndexMap::<_, Vec<_>>::with_capacity(self.size());
-    for (_, compiler_options_data, maybe_files) in self.entries() {
-      if let Some((referrer, files)) = maybe_files {
-        imports_by_referrer
-          .entry(referrer.as_ref())
-          .or_default()
-          .extend(files.iter().map(|f| f.relative_specifier.clone()));
-      }
+    for (_, compiler_options_data, _) in self.entries() {
       for (referrer, types) in
         compiler_options_data.compiler_options_types().as_ref()
       {
@@ -1610,6 +1606,33 @@ impl CompilerOptionsResolver {
       .into_iter()
       .map(|(referrer, imports)| deno_graph::ReferrerImports {
         referrer: referrer.clone(),
+        imports,
+      })
+      .collect()
+  }
+
+  #[cfg(feature = "graph")]
+  pub fn to_graph_imports(&self) -> Vec<deno_graph::ReferrerImports> {
+    // Start with compilerOptions.types imports, then add tsconfig files.
+    let mut imports_by_referrer = IndexMap::<Url, Vec<String>>::new();
+    for ri in self.to_compiler_options_types_imports() {
+      imports_by_referrer
+        .entry(ri.referrer)
+        .or_default()
+        .extend(ri.imports);
+    }
+    for (_, _, maybe_files) in self.entries() {
+      if let Some((referrer, files)) = maybe_files {
+        imports_by_referrer
+          .entry(referrer.as_ref().clone())
+          .or_default()
+          .extend(files.iter().map(|f| f.relative_specifier.clone()));
+      }
+    }
+    imports_by_referrer
+      .into_iter()
+      .map(|(referrer, imports)| deno_graph::ReferrerImports {
+        referrer,
         imports,
       })
       .collect()

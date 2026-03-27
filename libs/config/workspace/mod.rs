@@ -2095,6 +2095,14 @@ impl WorkspaceDirectory {
           .options
           .space_surrounding_properties
           .or(root_config.options.space_surrounding_properties),
+        vue_component_case: member_config
+          .options
+          .vue_component_case
+          .or(root_config.options.vue_component_case),
+        angular_next_control_flow_same_line: member_config
+          .options
+          .angular_next_control_flow_same_line
+          .or(root_config.options.angular_next_control_flow_same_line),
       },
       files: combine_patterns(root_config.files, member_config.files),
     })
@@ -3647,6 +3655,8 @@ pub mod test {
           type_literal_separator_kind: Some(SeparatorKind::SemiColon),
           space_around: Some(true),
           space_surrounding_properties: Some(true),
+          vue_component_case: None,
+          angular_next_control_flow_same_line: None,
         },
         files: FilePatterns {
           base: root_dir().join("member"),
@@ -3689,6 +3699,8 @@ pub mod test {
           type_literal_separator_kind: Some(SeparatorKind::Comma),
           space_around: Some(false),
           space_surrounding_properties: Some(false),
+          vue_component_case: None,
+          angular_next_control_flow_same_line: None,
         },
         files: FilePatterns {
           base: root_dir(),

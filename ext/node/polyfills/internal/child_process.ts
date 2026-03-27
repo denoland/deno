@@ -1470,7 +1470,7 @@ function buildCommand(
   env: Record<string, string | number | boolean>,
 ): [string, string[], boolean] {
   let includeNpmProcessState = false;
-  if (file === Deno.execPath()) {
+  if (file === Deno.execPath() && !Deno.build.standalone) {
     // Ensure all args are strings (Node allows numbers in args array)
     args = args.map((arg) => String(arg));
 

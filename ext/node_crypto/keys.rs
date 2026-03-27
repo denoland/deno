@@ -411,7 +411,10 @@ impl PartialEq for KeyObjectHandle {
     match (self, other) {
       (Self::AsymmetricPrivate(a), Self::AsymmetricPrivate(b)) => a == b,
       (Self::AsymmetricPublic(a), Self::AsymmetricPublic(b)) => a == b,
-      (Self::Secret(a), Self::Secret(b)) => a == b,
+      (Self::Secret(a), Self::Secret(b)) => {
+        use subtle::ConstantTimeEq;
+        a.ct_eq(b).into()
+      }
       _ => false,
     }
   }
