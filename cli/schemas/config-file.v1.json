@@ -127,6 +127,20 @@
       "description": "Configuration for `deno compile`.",
       "additionalProperties": false,
       "properties": {
+        "include": {
+          "type": "array",
+          "description": "List of additional modules or files/directories to include in the compiled executable.",
+          "items": {
+            "type": "string"
+          }
+        },
+        "exclude": {
+          "type": "array",
+          "description": "List of files/directories to exclude from the compiled executable.",
+          "items": {
+            "type": "string"
+          }
+        },
         "permissions": {
           "$ref": "#/$defs/permissionNameOrSet"
         }
