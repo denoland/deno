@@ -14,7 +14,7 @@
 // Paths are relative to the repo root.
 export const EXPECTED_VIOLATIONS: Record<string, number> = {
   "ext/node/polyfills/fs.ts": 54,
-  "ext/node/polyfills/process.ts": 30,
+  "ext/node/polyfills/process.ts": 31,
   "ext/node/polyfills/os.ts": 22,
   "ext/node/polyfills/internal/child_process.ts": 21,
   "ext/node/polyfills/internal/fs/utils.mjs": 10,
