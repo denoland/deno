@@ -1828,62 +1828,6 @@
         "Invalid 'alg' field 'ED448': importKey(jwk (public) , {name: Ed448}, true, [verify])"
       ]
     },
-    "okp_importKey_failures_X25519.https.any.html": {
-      "expectedFailures": [
-        "Bad key length: importKey(raw, {name: X25519}, true, [])",
-        "Bad key length: importKey(raw, {name: X25519}, false, [])",
-        "Bad key length: importKey(jwk (public) , {name: X25519}, true, [])",
-        "Bad key length: importKey(jwk (public) , {name: X25519}, false, [])",
-        "Bad key length: importKey(jwk(private), {name: X25519}, true, [deriveKey])",
-        "Bad key length: importKey(jwk(private), {name: X25519}, false, [deriveKey])",
-        "Bad key length: importKey(jwk(private), {name: X25519}, true, [deriveBits, deriveKey])",
-        "Bad key length: importKey(jwk(private), {name: X25519}, false, [deriveBits, deriveKey])",
-        "Bad key length: importKey(jwk(private), {name: X25519}, true, [deriveBits])",
-        "Bad key length: importKey(jwk(private), {name: X25519}, false, [deriveBits])",
-        "Bad key length: importKey(jwk(private), {name: X25519}, true, [deriveKey, deriveBits, deriveKey, deriveBits])",
-        "Bad key length: importKey(jwk(private), {name: X25519}, false, [deriveKey, deriveBits, deriveKey, deriveBits])",
-        "Missing JWK 'x' parameter: importKey(jwk(private), {name: X25519}, true, [deriveKey])",
-        "Missing JWK 'x' parameter: importKey(jwk(private), {name: X25519}, false, [deriveKey])",
-        "Missing JWK 'x' parameter: importKey(jwk(private), {name: X25519}, true, [deriveBits, deriveKey])",
-        "Missing JWK 'x' parameter: importKey(jwk(private), {name: X25519}, false, [deriveBits, deriveKey])",
-        "Missing JWK 'x' parameter: importKey(jwk(private), {name: X25519}, true, [deriveBits])",
-        "Missing JWK 'x' parameter: importKey(jwk(private), {name: X25519}, false, [deriveBits])",
-        "Missing JWK 'x' parameter: importKey(jwk(private), {name: X25519}, true, [deriveKey, deriveBits, deriveKey, deriveBits])",
-        "Missing JWK 'x' parameter: importKey(jwk(private), {name: X25519}, false, [deriveKey, deriveBits, deriveKey, deriveBits])",
-        "Invalid key pair: importKey(jwk(private), {name: X25519}, true, [deriveKey])",
-        "Invalid key pair: importKey(jwk(private), {name: X25519}, true, [deriveBits, deriveKey])",
-        "Invalid key pair: importKey(jwk(private), {name: X25519}, true, [deriveBits])",
-        "Invalid key pair: importKey(jwk(private), {name: X25519}, true, [deriveKey, deriveBits, deriveKey, deriveBits])"
-      ]
-    },
-    "okp_importKey_failures_X25519.https.any.worker.html": {
-      "expectedFailures": [
-        "Bad key length: importKey(raw, {name: X25519}, true, [])",
-        "Bad key length: importKey(raw, {name: X25519}, false, [])",
-        "Bad key length: importKey(jwk (public) , {name: X25519}, true, [])",
-        "Bad key length: importKey(jwk (public) , {name: X25519}, false, [])",
-        "Bad key length: importKey(jwk(private), {name: X25519}, true, [deriveKey])",
-        "Bad key length: importKey(jwk(private), {name: X25519}, false, [deriveKey])",
-        "Bad key length: importKey(jwk(private), {name: X25519}, true, [deriveBits, deriveKey])",
-        "Bad key length: importKey(jwk(private), {name: X25519}, false, [deriveBits, deriveKey])",
-        "Bad key length: importKey(jwk(private), {name: X25519}, true, [deriveBits])",
-        "Bad key length: importKey(jwk(private), {name: X25519}, false, [deriveBits])",
-        "Bad key length: importKey(jwk(private), {name: X25519}, true, [deriveKey, deriveBits, deriveKey, deriveBits])",
-        "Bad key length: importKey(jwk(private), {name: X25519}, false, [deriveKey, deriveBits, deriveKey, deriveBits])",
-        "Missing JWK 'x' parameter: importKey(jwk(private), {name: X25519}, true, [deriveKey])",
-        "Missing JWK 'x' parameter: importKey(jwk(private), {name: X25519}, false, [deriveKey])",
-        "Missing JWK 'x' parameter: importKey(jwk(private), {name: X25519}, true, [deriveBits, deriveKey])",
-        "Missing JWK 'x' parameter: importKey(jwk(private), {name: X25519}, false, [deriveBits, deriveKey])",
-        "Missing JWK 'x' parameter: importKey(jwk(private), {name: X25519}, true, [deriveBits])",
-        "Missing JWK 'x' parameter: importKey(jwk(private), {name: X25519}, false, [deriveBits])",
-        "Missing JWK 'x' parameter: importKey(jwk(private), {name: X25519}, true, [deriveKey, deriveBits, deriveKey, deriveBits])",
-        "Missing JWK 'x' parameter: importKey(jwk(private), {name: X25519}, false, [deriveKey, deriveBits, deriveKey, deriveBits])",
-        "Invalid key pair: importKey(jwk(private), {name: X25519}, true, [deriveKey])",
-        "Invalid key pair: importKey(jwk(private), {name: X25519}, true, [deriveBits, deriveKey])",
-        "Invalid key pair: importKey(jwk(private), {name: X25519}, true, [deriveBits])",
-        "Invalid key pair: importKey(jwk(private), {name: X25519}, true, [deriveKey, deriveBits, deriveKey, deriveBits])"
-      ]
-    },
     "okp_importKey_failures_X448.https.any.html": {
       "expectedFailures": [
         "Empty usages: importKey(pkcs8, {name: X448}, true, [])",
