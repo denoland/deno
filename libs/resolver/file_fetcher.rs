@@ -532,6 +532,12 @@ impl<
         }
         LoaderCacheSetting::Only => Some(CacheSetting::Only),
       };
+      let maybe_checksum = match options.cache_setting {
+        LoaderCacheSetting::Reload => None,
+        LoaderCacheSetting::Use | LoaderCacheSetting::Only => {
+          options.maybe_checksum.as_ref()
+        }
+      };
       let result = strategy
         .handle_fetch_or_cache_no_follow(
           &specifier,
@@ -556,7 +562,7 @@ impl<
             maybe_auth: None,
             maybe_accept: None,
             maybe_cache_setting: maybe_cache_setting.as_ref(),
-            maybe_checksum: options.maybe_checksum.as_ref(),
+            maybe_checksum,
           },
         )
         .await;
