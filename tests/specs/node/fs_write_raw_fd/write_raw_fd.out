@@ -1,0 +1,2 @@
+PASS: fs.write() succeeded on raw fd
+[WILDCARD]

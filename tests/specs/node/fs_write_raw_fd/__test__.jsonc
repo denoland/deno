@@ -1,0 +1,15 @@
+{
+  "tempDir": true,
+  "tests": {
+    "write_raw_fd": {
+      "if": "unix",
+      "args": "run -A --unstable-ffi write_raw_fd.ts",
+      "output": "write_raw_fd.out"
+    },
+    "write_raw_fd_sync": {
+      "if": "unix",
+      "args": "run -A --unstable-ffi write_raw_fd_sync.ts",
+      "output": "write_raw_fd_sync.out"
+    }
+  }
+}

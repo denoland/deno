@@ -121,6 +121,8 @@ import {
   op_node_rmdir_sync,
   op_node_statfs,
   op_node_statfs_sync,
+  op_node_write_raw_fd,
+  op_node_write_raw_fd_sync,
 } from "ext:core/ops";
 import { FsFile } from "ext:deno_fs/30_fs.js";
 import {
@@ -161,6 +163,7 @@ const {
   PromisePrototypeThen,
   PromiseResolve,
   SafeMap,
+  SafeSet,
   StringPrototypeToString,
   SymbolAsyncIterator,
   SymbolFor,
@@ -176,6 +179,12 @@ const {
   kReadFileBufferLength,
   kReadFileUnknownBufferLength,
 } = fsUtilConstants;
+
+// Tracks file descriptors opened via Deno's Node compat layer (fs.open,
+// fs.openSync, fs.promises.open). Used by the write paths to decide whether
+// to go through Deno's resource table or write directly to a raw OS fd
+// (e.g. one opened by a native addon via forkpty / socketpair).
+const denoOpenFds = new SafeSet<number>();
 
 const defaultStatOptions = { __proto__: null, bigint: false };
 const defaultStatSyncOptions = {
@@ -1197,6 +1206,7 @@ function close(
     try {
       // TODO(@littledivy): Treat `fd` as real file descriptor. `rid` is an
       // implementation detail and may change.
+      denoOpenFds.delete(fd);
       core.close(fd);
     } catch (err) {
       error = ObjectPrototypeIsPrototypeOf(ErrorPrototype, err)
@@ -1211,6 +1221,7 @@ function closeSync(fd: number) {
   fd = getValidatedFd(fd);
   // TODO(@littledivy): Treat `fd` as real file descriptor. `rid` is an
   // implementation detail and may change.
+  denoOpenFds.delete(fd);
   core.close(fd);
 }
 
@@ -2038,7 +2049,10 @@ function open(
 
   PromisePrototypeThen(
     op_node_open(path, flags, mode),
-    (rid: number) => callback(null, rid),
+    (rid: number) => {
+      denoOpenFds.add(rid);
+      callback(null, rid);
+    },
     (err: Error) =>
       callback(denoErrorToNodeError(err, { syscall: "open", path })),
   );
@@ -2065,7 +2079,9 @@ function openSync(
   const mode = parseFileMode(maybeMode, "mode", 0o666);
 
   try {
-    return op_node_open_sync(path, flags, mode);
+    const rid = op_node_open_sync(path, flags, mode);
+    denoOpenFds.add(rid);
+    return rid;
   } catch (err) {
     throw denoErrorToNodeError(err as Error, { syscall: "open", path });
   }
@@ -2205,10 +2221,14 @@ function writeSync(
     let currentOffset = offset;
     const end = offset + length;
     while (currentOffset - offset < length) {
-      currentOffset += io.writeSync(
-        fd,
-        (buffer as Uint8Array).subarray(currentOffset, end),
-      );
+      const slice = (buffer as Uint8Array).subarray(currentOffset, end);
+      let written: number;
+      if (denoOpenFds.has(fd)) {
+        written = io.writeSync(fd, slice);
+      } else {
+        written = op_node_write_raw_fd_sync(fd, slice);
+      }
+      currentOffset += written;
     }
     return currentOffset - offset;
   };
@@ -2273,10 +2293,14 @@ function write(
     let currentOffset = offset;
     const end = offset + length;
     while (currentOffset - offset < length) {
-      currentOffset += await io.write(
-        fd,
-        (buffer as Uint8Array).subarray(currentOffset, end),
-      );
+      const slice = (buffer as Uint8Array).subarray(currentOffset, end);
+      let written: number;
+      if (denoOpenFds.has(fd)) {
+        written = await io.write(fd, slice);
+      } else {
+        written = await op_node_write_raw_fd(fd, slice);
+      }
+      currentOffset += written;
     }
     return currentOffset - offset;
   };
@@ -2410,7 +2434,14 @@ function writev(
     let currentOffset = 0;
     // deno-lint-ignore prefer-primordials
     while (currentOffset < buffer.byteLength) {
-      currentOffset += await io.write(fd, buffer.subarray(currentOffset));
+      const slice = buffer.subarray(currentOffset);
+      let written: number;
+      if (denoOpenFds.has(fd)) {
+        written = await io.write(fd, slice);
+      } else {
+        written = await op_node_write_raw_fd(fd, slice);
+      }
+      currentOffset += written;
     }
     return currentOffset - offset;
   };
@@ -2464,7 +2495,14 @@ function writevSync(
     let currentOffset = 0;
     // deno-lint-ignore prefer-primordials
     while (currentOffset < buffer.byteLength) {
-      currentOffset += io.writeSync(fd, buffer.subarray(currentOffset));
+      const slice = buffer.subarray(currentOffset);
+      let written: number;
+      if (denoOpenFds.has(fd)) {
+        written = io.writeSync(fd, slice);
+      } else {
+        written = op_node_write_raw_fd_sync(fd, slice);
+      }
+      currentOffset += written;
     }
     return currentOffset - offset;
   };

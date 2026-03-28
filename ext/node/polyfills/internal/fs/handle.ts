@@ -7,6 +7,7 @@ import { EventEmitter } from "node:events";
 import { Buffer } from "node:buffer";
 import {
   type BigIntStats,
+  closeSync,
   fchmod,
   fdatasync,
   fsync,
@@ -21,7 +22,7 @@ import {
 } from "node:fs";
 import { createInterface } from "node:readline";
 import type { Interface as ReadlineInterface } from "node:readline";
-import { core, primordials } from "ext:core/mod.js";
+import { primordials } from "ext:core/mod.js";
 import {
   BinaryOptionsArgument,
   FileOptionsArgument,
@@ -234,7 +235,7 @@ export class FileHandle extends EventEmitter {
   #close(): Promise<void> {
     return new Promise((resolve, reject) => {
       try {
-        core.close(this.fd);
+        closeSync(this.fd);
         this.#rid = -1;
         resolve();
       } catch (err) {

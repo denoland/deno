@@ -6,6 +6,7 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
 
+use deno_core::JsBuffer;
 use deno_core::OpState;
 use deno_core::ResourceId;
 use deno_core::op2;
@@ -705,6 +706,80 @@ pub fn op_node_file_from_fd(
   Err(FsError::Io(std::io::Error::new(
     std::io::ErrorKind::Unsupported,
     "op_node_file_from_fd is not supported on this platform",
+  )))
+}
+
+/// Write directly to a raw OS file descriptor.
+/// Used as a fallback when the fd was opened by a native addon
+/// and is not registered in Deno's resource table.
+#[cfg(unix)]
+#[op2]
+#[number]
+pub async fn op_node_write_raw_fd(
+  #[smi] fd: i32,
+  #[buffer] buf: JsBuffer,
+) -> Result<usize, FsError> {
+  use std::io::Write;
+  use std::os::unix::io::FromRawFd;
+  if fd < 0 {
+    return Err(FsError::Io(std::io::Error::new(
+      std::io::ErrorKind::InvalidInput,
+      "Invalid file descriptor",
+    )));
+  }
+  // SAFETY: caller owns the fd; mem::forget prevents close on drop
+  let mut file = unsafe { std::fs::File::from_raw_fd(fd) };
+  let n = file.write(&buf)?;
+  std::mem::forget(file);
+  Ok(n)
+}
+
+/// Sync variant for fs.writeSync()
+#[cfg(unix)]
+#[op2(fast)]
+#[number]
+pub fn op_node_write_raw_fd_sync(
+  #[smi] fd: i32,
+  #[buffer] buf: &[u8],
+) -> Result<usize, FsError> {
+  use std::io::Write;
+  use std::os::unix::io::FromRawFd;
+  if fd < 0 {
+    return Err(FsError::Io(std::io::Error::new(
+      std::io::ErrorKind::InvalidInput,
+      "Invalid file descriptor",
+    )));
+  }
+  // SAFETY: caller owns the fd; mem::forget prevents close on drop
+  let mut file = unsafe { std::fs::File::from_raw_fd(fd) };
+  let n = file.write(buf)?;
+  std::mem::forget(file);
+  Ok(n)
+}
+
+#[cfg(not(unix))]
+#[op2]
+#[number]
+pub async fn op_node_write_raw_fd(
+  #[smi] _fd: i32,
+  #[buffer] _buf: deno_core::JsBuffer,
+) -> Result<usize, FsError> {
+  Err(FsError::Io(std::io::Error::new(
+    std::io::ErrorKind::Unsupported,
+    "not supported on this platform",
+  )))
+}
+
+#[cfg(not(unix))]
+#[op2(fast)]
+#[number]
+pub fn op_node_write_raw_fd_sync(
+  #[smi] _fd: i32,
+  #[buffer] _buf: &[u8],
+) -> Result<usize, FsError> {
+  Err(FsError::Io(std::io::Error::new(
+    std::io::ErrorKind::Unsupported,
+    "not supported on this platform",
   )))
 }
 
