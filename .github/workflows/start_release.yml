@@ -34,7 +34,7 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Install deno
-        uses: denoland/setup-deno@v2
+        uses: denoland/setup-deno@667a34cdef165d8d2b2e98dde39547c9daac7282 # v2
         with:
           deno-version: v2.x
 
@@ -42,4 +42,5 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.DENOBOT_GIST_PAT }}
           GH_WORKFLOW_ACTOR: ${{ github.actor }}
-        run: ./tools/release/00_start_release.ts --${{github.event.inputs.releaseKind}}
+          INPUT_RELEASEKIND: ${{github.event.inputs.releaseKind}}
+        run: ./tools/release/00_start_release.ts --"${INPUT_RELEASEKIND}"
