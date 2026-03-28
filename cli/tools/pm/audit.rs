@@ -318,6 +318,49 @@ mod npm {
 
     let mut advisories = response.advisories.values().collect::<Vec<_>>();
 
+    // Filter out advisories where no installed version falls within
+    // the vulnerable range. This handles package.json overrides that
+    // force a patched version -- the npm audit API returns advisories
+    // based on the dependency tree as declared, but overrides may have
+    // resolved a non-vulnerable version.
+    {
+      // Collect all installed package versions from the snapshot.
+      let mut installed_versions: HashMap<String, Vec<deno_semver::Version>> =
+        HashMap::new();
+      for pkg in npm_resolution_snapshot.all_packages_for_every_system() {
+        installed_versions
+          .entry(pkg.id.nv.name.to_string())
+          .or_default()
+          .push(pkg.id.nv.version.clone());
+      }
+      advisories.retain(|adv| {
+        let Ok(vulnerable_range) =
+          deno_semver::VersionReq::parse_from_npm(&adv.vulnerable_versions)
+        else {
+          // Can't parse the range; keep the advisory to be safe
+          return true;
+        };
+        // Use the finding paths to identify the actual installed
+        // package name (the last segment of each path).
+        let finding_pkg_names: Vec<&str> = adv
+          .findings
+          .iter()
+          .flat_map(|f| f.paths.iter())
+          .filter_map(|p| p.rsplit('>').next().map(str::trim))
+          .collect();
+        // Check if any installed version of the affected packages
+        // falls within the vulnerable range.
+        for name in &finding_pkg_names {
+          if let Some(versions) = installed_versions.get(*name)
+            && versions.iter().any(|v| vulnerable_range.matches(v))
+          {
+            return true;
+          }
+        }
+        false
+      });
+    }
+
     // Filter out ignored CVEs
     if !audit_flags.ignore.is_empty() {
       advisories.retain(|adv| {
@@ -608,8 +651,6 @@ mod npm {
 }
 
 mod socket_dev {
-  #![allow(dead_code)]
-
   use super::*;
 
   pub async fn call_firewall_api(
@@ -892,6 +933,7 @@ mod socket_dev {
   pub struct FirewallScore {
     pub license: f64,
     pub maintenance: f64,
+    #[allow(dead_code, reason = "we don't use it yet")]
     pub overall: f64,
     pub quality: f64,
     pub supply_chain: f64,
@@ -902,14 +944,17 @@ mod socket_dev {
   #[serde(rename_all = "camelCase")]
   pub struct FirewallAlert {
     pub r#type: String,
+    #[allow(dead_code, reason = "we don't use it yet")]
     pub action: String,
     pub severity: String,
+    #[allow(dead_code, reason = "we don't use it yet")]
     pub category: String,
   }
 
   #[derive(Debug, Deserialize)]
   #[serde(rename_all = "camelCase")]
   pub struct FirewallResponse {
+    #[allow(dead_code, reason = "we don't use it yet")]
     pub id: String,
     pub name: String,
     pub version: String,

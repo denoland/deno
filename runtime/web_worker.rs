@@ -133,7 +133,6 @@ impl<'s> WorkerThreadType {
 }
 /// Events that are sent to host from child
 /// worker.
-#[allow(clippy::large_enum_variant)]
 pub enum WorkerControlEvent {
   TerminalError(CoreError, i32),
   Close(i32),
@@ -208,7 +207,7 @@ pub struct WebWorkerInternalHandle {
 
 impl WebWorkerInternalHandle {
   /// Post WorkerEvent to parent as a worker
-  #[allow(clippy::result_large_err)]
+  #[allow(clippy::result_large_err, reason = "TODO: investigate")]
   pub fn post_event(
     &self,
     event: WorkerControlEvent,
@@ -269,9 +268,7 @@ pub struct SendableWebWorkerHandle {
   port: MessagePort,
   receiver: mpsc::Receiver<WorkerControlEvent>,
   termination_signal: Arc<AtomicBool>,
-  has_terminated: Arc<AtomicBool>,
   terminate_waker: Arc<AtomicWaker>,
-  isolate_handle: v8::IsolateHandle,
 }
 
 impl From<SendableWebWorkerHandle> for WebWorkerHandle {
@@ -280,9 +277,7 @@ impl From<SendableWebWorkerHandle> for WebWorkerHandle {
       receiver: Rc::new(RefCell::new(handle.receiver)),
       port: Rc::new(handle.port),
       termination_signal: handle.termination_signal,
-      has_terminated: handle.has_terminated,
       terminate_waker: handle.terminate_waker,
-      isolate_handle: handle.isolate_handle,
     }
   }
 }
@@ -299,15 +294,16 @@ pub struct WebWorkerHandle {
   pub port: Rc<MessagePort>,
   receiver: Rc<RefCell<mpsc::Receiver<WorkerControlEvent>>>,
   termination_signal: Arc<AtomicBool>,
-  has_terminated: Arc<AtomicBool>,
   terminate_waker: Arc<AtomicWaker>,
-  isolate_handle: v8::IsolateHandle,
 }
 
 impl WebWorkerHandle {
   /// Get the WorkerEvent with lock
   /// Return error if more than one listener tries to get event
-  #[allow(clippy::await_holding_refcell_ref)] // TODO(ry) remove!
+  #[allow(
+    clippy::await_holding_refcell_ref,
+    reason = "TODO: investigate and fix"
+  )] // TODO(ry) remove!
   pub async fn get_control_event(&self) -> Option<WorkerControlEvent> {
     let mut receiver = self.receiver.borrow_mut();
     receiver.next().await
@@ -315,36 +311,16 @@ impl WebWorkerHandle {
 
   /// Terminate the worker
   /// This function will set the termination signal, close the message channel,
-  /// and schedule to terminate the isolate after two seconds.
+  /// and wake the worker's event loop so it can terminate.
   pub fn terminate(self) {
-    use std::thread::sleep;
-    use std::thread::spawn;
-    use std::time::Duration;
-
     let schedule_termination =
       !self.termination_signal.swap(true, Ordering::SeqCst);
 
     self.port.disentangle();
 
-    if schedule_termination && !self.has_terminated.load(Ordering::SeqCst) {
+    if schedule_termination {
       // Wake up the worker's event loop so it can terminate.
       self.terminate_waker.wake();
-
-      let has_terminated = self.has_terminated.clone();
-
-      // Schedule to terminate the isolate's execution.
-      spawn(move || {
-        sleep(Duration::from_secs(2));
-
-        // A worker's isolate can only be terminated once, so we need a guard
-        // here.
-        let already_terminated = has_terminated.swap(true, Ordering::SeqCst);
-
-        if !already_terminated {
-          // Stop javascript execution
-          self.isolate_handle.terminate_execution();
-        }
-      });
     }
   }
 }
@@ -363,9 +339,9 @@ fn create_handles(
     name,
     port: Rc::new(parent_port),
     termination_signal: termination_signal.clone(),
-    has_terminated: has_terminated.clone(),
+    has_terminated,
     terminate_waker: terminate_waker.clone(),
-    isolate_handle: isolate_handle.clone(),
+    isolate_handle,
     cancel: CancelHandle::new_rc(),
     sender: ctrl_tx,
     worker_type,
@@ -374,9 +350,7 @@ fn create_handles(
     receiver: ctrl_rx,
     port: worker_port,
     termination_signal,
-    has_terminated,
     terminate_waker,
-    isolate_handle,
   };
   (internal_handle, external_handle)
 }
@@ -520,7 +494,10 @@ impl WebWorker {
 
             Ok(CacheImpl::Lsc(x))
           };
-          #[allow(clippy::arc_with_non_send_sync)]
+          #[allow(
+            clippy::arc_with_non_send_sync,
+            reason = "fine because the Rc is in the return type"
+          )]
           return Some(CreateCache(Arc::new(create_cache_fn)));
         }
       }
@@ -693,24 +670,7 @@ impl WebWorker {
       state.put(js_runtime.inspector());
     }
 
-    // Register the uv_loop_t (created by deno_node extension state callback)
-    // with the JsRuntime so that its event loop phases are driven by
-    // poll_event_loop.
-    {
-      let op_state_rc = js_runtime.op_state();
-      let op_state = op_state_rc.borrow();
-      if let Some(uv_loop) =
-        op_state.try_borrow::<Box<deno_core::uv_compat::UvLoop>>()
-      {
-        let loop_ptr: *mut deno_core::uv_compat::UvLoop =
-          &**uv_loop as *const _ as *mut _;
-        drop(op_state);
-        // SAFETY: loop_ptr points to a valid initialized UvLoop stored in OpState
-        unsafe {
-          js_runtime.register_uv_loop(loop_ptr);
-        }
-      }
-    }
+    // The uv loop is auto-created and registered by JsRuntime::new_inner.
 
     if let Some(main_session_tx) = services.main_inspector_session_tx.get() {
       let (main_proxy, worker_proxy) =
@@ -896,6 +856,7 @@ impl WebWorker {
       filename,
       config.interval,
       config.md,
+      config.flamegraph,
     );
     cpu_profiler.start_profiling();
 
@@ -946,7 +907,6 @@ impl WebWorker {
   }
 
   /// See [JsRuntime::execute_script](deno_core::JsRuntime::execute_script)
-  #[allow(clippy::result_large_err)]
   pub fn execute_script(
     &mut self,
     name: &'static str,
@@ -1195,7 +1155,6 @@ pub async fn run_web_worker(
     let r = worker
       .run_event_loop(PollEventLoopOptions {
         wait_for_inspector: true,
-        ..Default::default()
       })
       .await;
     if let Some(coverage_collector) = maybe_coverage_collector.as_mut() {
@@ -1269,6 +1228,10 @@ pub async fn run_web_worker(
     let e = if internal_handle.worker_type == WorkerThreadType::Node {
       let msg = e.to_string();
       if msg.starts_with("Module not found") {
+        #[allow(
+          clippy::disallowed_methods,
+          reason = "don't need the error or Wasm support here"
+        )]
         let path = specifier.to_file_path().ok();
         let display = path
           .as_deref()

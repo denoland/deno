@@ -191,7 +191,7 @@ export const versions = {
   ares: "1.18.1",
   modules: "108",
   nghttp2: "1.47.0",
-  napi: "8",
+  napi: "9",
   llhttp: "6.0.10",
   openssl: "3.0.7+quic",
   cldr: "41.0",

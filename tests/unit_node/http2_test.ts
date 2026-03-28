@@ -7,7 +7,7 @@ import { Buffer } from "node:buffer";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import * as net from "node:net";
-import { assert, assertEquals } from "@std/assert";
+import { assert, assertEquals, assertRejects } from "@std/assert";
 import { curlRequest } from "../unit/test_util.ts";
 import { createRequire } from "node:module";
 const require = createRequire(import.meta.url);
@@ -75,10 +75,7 @@ for (const url of ["http://localhost:4246", "https://localhost:4247"]) {
   });
 }
 
-Deno.test(`[node/http2 client createConnection]`, {
-  // TODO(littledivy): custom createConnection sockets not yet supported
-  ignore: true,
-}, async () => {
+Deno.test(`[node/http2 client createConnection]`, async () => {
   const url = "http://127.0.0.1:4246";
   const createConnDeferred = Promise.withResolvers<void>();
   // Create a server to respond to the HTTP2 requests
@@ -123,10 +120,7 @@ Deno.test(`[node/http2 client createConnection]`, {
 });
 
 // https://github.com/denoland/deno/issues/29956
-Deno.test(`[node/http2 client body overflow]`, {
-  // TODO(littledivy): custom createConnection sockets not yet supported
-  ignore: true,
-}, async () => {
+Deno.test(`[node/http2 client body overflow]`, async () => {
   const url = "http://127.0.0.1:4246";
   const createConnDeferred = Promise.withResolvers<void>();
   // Create a server to respond to the HTTP2 requests
@@ -512,4 +506,18 @@ Deno.test("[node/http2] Server.address() includes family property", async () => 
 
     await promise;
   }
+});
+
+Deno.test("[node/http2 client] connect without net permission", {
+  permissions: { net: false },
+}, async () => {
+  await assertRejects(
+    () => {
+      return new Promise((_resolve, reject) => {
+        const client = http2.connect("http://127.0.0.1:4246");
+        client.on("error", reject);
+      });
+    },
+    Deno.errors.NotCapable,
+  );
 });

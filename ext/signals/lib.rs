@@ -193,7 +193,11 @@ pub fn register(
 
       #[cfg(unix)]
       {
-        handle.0.add_signal(signal).unwrap();
+        handle.0.add_signal(signal).map_err(|e| {
+          std::io::Error::other(format!(
+            "Failed to register signal {signal}: {e}"
+          ))
+        })?;
       }
       #[cfg(windows)]
       {
@@ -241,8 +245,33 @@ pub fn run_exit() {
   }
 }
 
+pub const SIGINT: i32 = 2;
+pub const SIGTERM: i32 = 15;
+
+/// Synthetically raise a signal, triggering all registered JS handlers.
+///
+/// This does NOT use OS-level signal delivery — it directly invokes the
+/// handler functions under a mutex, making it safe to call from any async
+/// or sync context on all platforms (including Windows).
+///
+/// Returns true if any handler prevented the default behavior.
+pub fn raise(signal: i32) -> bool {
+  handle_signal(signal)
+}
+
 pub fn is_forbidden(signo: i32) -> bool {
-  FORBIDDEN.contains(&signo)
+  if FORBIDDEN.contains(&signo) {
+    return true;
+  }
+  // On Windows, signal_hook's FORBIDDEN list doesn't include SIGKILL/SIGABRT
+  // (they're Unix-specific in the crate). Add them here since listening for
+  // uncatchable/fatal signals doesn't make sense on any platform.
+  #[cfg(windows)]
+  if signo == 9 || signo == 22 {
+    // SIGKILL (9) and SIGABRT (22, Windows CRT value)
+    return true;
+  }
+  false
 }
 
 pub struct SignalStream {

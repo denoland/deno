@@ -59,8 +59,11 @@ pub struct FailedTypeCheckingError {
   can_skip: bool,
 }
 
+#[derive(Debug, boxed_error::Boxed, deno_error::JsError)]
+pub struct CheckError(pub Box<CheckErrorKind>);
+
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
-pub enum CheckError {
+pub enum CheckErrorKind {
   #[class(inherit)]
   #[error(transparent)]
   FailedTypeChecking(#[from] FailedTypeCheckingError),
@@ -113,7 +116,7 @@ pub struct TypeChecker {
 }
 
 impl TypeChecker {
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "construction")]
   pub fn new(
     caches: Arc<Caches>,
     cjs_tracker: Arc<TypeCheckingCjsTracker>,
@@ -146,7 +149,6 @@ impl TypeChecker {
   ///
   /// It is expected that it is determined if a check and/or emit is validated
   /// before the function is called.
-  #[allow(clippy::result_large_err)]
   pub fn check(
     &self,
     graph: ModuleGraph,
@@ -181,7 +183,6 @@ impl TypeChecker {
   ///
   /// It is expected that it is determined if a check and/or emit is validated
   /// before the function is called.
-  #[allow(clippy::result_large_err)]
   pub fn check_diagnostics(
     &self,
     mut graph: ModuleGraph,
@@ -264,14 +265,13 @@ impl TypeChecker {
         current_dir: deno_path_util::url_from_directory_path(
           self.cli_options.initial_cwd(),
         )
-        .map_err(|e| CheckError::Other(JsErrorBox::from_err(e)))?,
+        .map_err(|e| CheckErrorKind::Other(JsErrorBox::from_err(e)))?,
       }),
     ))
   }
 
   /// Groups the roots based on the compiler options, which includes the
   /// resolved CompilerOptions and resolved compilerOptions.types
-  #[allow(clippy::result_large_err)]
   fn group_roots_by_compiler_options<'a>(
     &'a self,
     graph: &ModuleGraph,
@@ -368,7 +368,10 @@ impl Iterator for DiagnosticsByFolderIterator<'_> {
   }
 }
 
-#[allow(clippy::large_enum_variant)]
+#[allow(
+  clippy::large_enum_variant,
+  reason = "large variant is used more often"
+)]
 enum DiagnosticsByFolderIteratorInner<'a> {
   Empty(Arc<ModuleGraph>),
   Real(DiagnosticsByFolderRealIterator<'a>),
@@ -444,8 +447,6 @@ pub fn ambient_modules_to_regex_string(ambient_modules: &[String]) -> String {
 }
 
 impl DiagnosticsByFolderRealIterator<'_> {
-  #[allow(clippy::too_many_arguments)]
-  #[allow(clippy::result_large_err)]
   fn check_diagnostics_in_folder(
     &self,
     check_group: &CheckGroup,
@@ -659,7 +660,7 @@ struct GraphWalker<'a> {
 }
 
 impl<'a> GraphWalker<'a> {
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "construction")]
   pub fn new(
     graph: &'a ModuleGraph,
     sys: &'a CliSys,

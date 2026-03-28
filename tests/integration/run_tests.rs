@@ -1004,7 +1004,7 @@ console.log("executing javascript");
 
 #[cfg(windows)]
 // Clippy suggests to remove the `NoStd` prefix from all variants. I disagree.
-#[allow(clippy::enum_variant_names)]
+#[allow(clippy::enum_variant_names, reason = "NoStd prefix improves clarity")]
 enum WinProcConstraints {
   NoStdIn,
   NoStdOut,
@@ -2447,6 +2447,47 @@ fn fsfile_set_raw_should_not_panic_on_no_tty() {
   );
 }
 
+// Regression test for https://github.com/denoland/deno/issues/32803
+// After a Rust-side TTY sync write sets kLastWriteWasAsync=0, a JS Pipe
+// write must not cause ERR_MULTIPLE_CALLBACK. Needs a PTY so stdout is a
+// real TTY backed by the Rust LibUvStreamWrap.
+#[cfg(target_os = "macos")]
+#[test]
+fn pipe_write_no_double_callback_after_tty_write() {
+  let deno_exe = util::deno_exe_path();
+  let testdata = util::testdata_path();
+  let script = testdata.join("node/pipe_write_no_double_callback.mjs");
+  let output = Command::new("expect")
+    .arg("-c")
+    .arg(format!(
+      concat!(
+        "set timeout 30\n",
+        "spawn {} run --allow-all -q {}\n",
+        "expect eof\n",
+        "lassign [wait] pid spawnid os_error_flag value\n",
+        "exit $value\n",
+      ),
+      deno_exe.to_string().replace("{", "\\{").replace("}", "\\}"),
+      script.to_string().replace("{", "\\{").replace("}", "\\}"),
+    ))
+    .output()
+    .unwrap();
+  let combined = String::from_utf8_lossy(&output.stdout);
+  assert!(
+    !combined.contains("ERR_MULTIPLE_CALLBACK"),
+    "ERR_MULTIPLE_CALLBACK detected.\nstdout:\n{combined}"
+  );
+  assert!(
+    combined.contains("OK"),
+    "test did not print OK.\nstdout:\n{combined}"
+  );
+  assert!(
+    output.status.success(),
+    "test failed (exit={:?}).\nstdout:\n{combined}",
+    output.status.code()
+  );
+}
+
 #[test]
 fn timeout_clear() {
   // https://github.com/denoland/deno/issues/7599
@@ -3511,5 +3552,131 @@ fn process_stdout_destroy_undestroy_pty() {
     .with_pty(|mut console| {
       console.expect("before");
       console.expect("after");
+    });
+}
+
+// Regression test for https://github.com/denoland/deno/issues/32782
+// Verifies that consecutive readline prompts work (e.g. @inquirer/prompts).
+#[test]
+fn readline_multi_prompt_pty() {
+  TestContext::default()
+    .new_command()
+    .args_vec(["run", "run/readline_multi_prompt.ts"])
+    .with_pty(|mut console| {
+      console.expect("Q1?");
+      console.write_line("hello");
+      console.expect("A1: hello");
+      console.expect("Q2?");
+      console.write_line("world");
+      console.expect("A2: world");
+    });
+}
+
+// Regression test for https://github.com/denoland/deno/issues/32997
+// Verifies that toggling raw mode between consecutive prompts (like
+// vite create, @clack/prompts) properly restores console mode so
+// stdin continues to work for subsequent prompts.
+#[test]
+fn tty_raw_mode_toggle_pty() {
+  TestContext::default()
+    .new_command()
+    .args_vec(["run", "run/tty_raw_mode_toggle.ts"])
+    .with_pty(|mut console| {
+      console.expect("Step1?");
+      console.write_line("a");
+      console.expect("Got1: a");
+      console.expect("Step2?");
+      console.write_line("b");
+      console.expect("Got2: b");
+      console.expect("Step3?");
+      console.write_line("c");
+      console.expect("Got3: c");
+    });
+}
+
+// Regression test for https://github.com/denoland/deno/issues/32996
+// Verifies that Unicode characters are correctly written through TTY
+// output (WriteConsoleW), regardless of console code page.
+#[test]
+fn tty_unicode_output_pty() {
+  TestContext::default()
+    .new_command()
+    .args_vec(["run", "run/tty_unicode_output.ts"])
+    .with_pty(|mut console| {
+      console.expect("┌─────────────┐");
+      console.expect("│ Hello World │");
+      console.expect("└─────────────┘");
+      console.expect("café résumé naïve");
+      console.expect("OK");
+    });
+}
+
+// Tests that line-mode TTY reading works correctly with the threaded
+// ReadConsoleW approach (matching libuv's uv_tty_line_read_thread).
+// Exercises consecutive line-mode prompts without raw mode.
+#[test]
+fn tty_line_mode_read_pty() {
+  TestContext::default()
+    .new_command()
+    .args_vec(["run", "run/tty_line_mode_read.ts"])
+    .with_pty(|mut console| {
+      console.expect("Name?");
+      console.write_line("Alice");
+      console.expect("Hello, Alice");
+      console.expect("Color?");
+      console.write_line("blue");
+      console.expect("You like blue");
+    });
+}
+
+// Tests that arrow keys in raw mode are correctly mapped to VT100
+// escape sequences via ReadConsoleInputW + get_vt100_fn_key.
+#[test]
+fn tty_raw_mode_arrow_keys_pty() {
+  TestContext::default()
+    .new_command()
+    .args_vec(["run", "run/tty_raw_mode_arrow_keys.ts"])
+    .with_pty(|mut console| {
+      console.write_raw("\x1b[A"); // Up arrow
+      console.expect("UP");
+      console.write_raw("\x1b[B"); // Down arrow
+      console.expect("DOWN");
+      console.write_raw("\x1b[C"); // Right arrow
+      console.expect("RIGHT");
+      console.write_raw("\x1b[D"); // Left arrow
+      console.expect("LEFT");
+    });
+}
+
+// Tests that Ctrl+C (0x03) is delivered as data in raw mode.
+// Without proper INPUT_RECORD processing via ReadConsoleInputW,
+// the event loop would block and Ctrl+C data would never arrive.
+#[test]
+fn tty_ctrl_c_raw_mode_pty() {
+  TestContext::default()
+    .new_command()
+    .args_vec(["run", "run/tty_ctrl_c_raw_mode.ts"])
+    .with_pty(|mut console| {
+      console.expect("READY");
+      console.write_raw("\x03"); // Ctrl+C
+      console.expect("GOT_CTRL_C");
+    });
+}
+
+// Regression test for https://github.com/denoland/deno/issues/32782
+// Verifies that consecutive readline prompts work when output is a
+// PassThrough/MuteStream piped to process.stdout (like @inquirer/prompts).
+#[test]
+fn readline_muted_multi_prompt_pty() {
+  TestContext::default()
+    .new_command()
+    .args_vec(["run", "run/readline_muted_multi_prompt.ts"])
+    .with_pty(|mut console| {
+      console.expect("Q1?");
+      console.write_line("hello");
+      console.expect("A1: hello");
+      console.expect("Q2?");
+      console.write_line("world");
+      console.expect("A2: world");
     });
 }
