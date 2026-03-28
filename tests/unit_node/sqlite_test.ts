@@ -1286,11 +1286,11 @@ Deno.test({
     db.enableLoadExtension(true);
 
     // loadExtension should be re-enabled; verify it fails with a file loading
-    // error (containing the path), not the permission error
+    // error, not the permission error
     assertThrows(
       () => db.loadExtension("/path/to/nonexistent/extension"),
       Error,
-      "/path/to/nonexistent/extension",
+      "Failed to load SQLite extension",
     );
 
     db.close();
