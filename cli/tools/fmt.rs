@@ -868,18 +868,30 @@ pub fn format_file(
     }
     _ => {
       let config = get_resolved_typescript_config(fmt_options);
-      dprint_plugin_typescript::format_text(
-        dprint_plugin_typescript::FormatTextOptions {
-          path: file_path,
-          extension: Some(&ext),
-          text: file.text.to_string(),
-          config: &config,
-          external_formatter: Some(&create_external_formatter_for_typescript(
-            unstable_options,
-            fmt_options,
-          )),
-        },
-      )?
+      let text = file.text.to_string();
+      let external_formatter =
+        create_external_formatter_for_typescript(unstable_options, fmt_options);
+      let file_path_owned = file_path.to_path_buf();
+      match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        dprint_plugin_typescript::format_text(
+          dprint_plugin_typescript::FormatTextOptions {
+            path: &file_path_owned,
+            extension: Some(&ext),
+            text,
+            config: &config,
+            external_formatter: Some(&external_formatter),
+          },
+        )
+      })) {
+        Ok(result) => result?,
+        Err(_) => {
+          log::warn!(
+            "Formatter panicked for '{}', leaving unformatted",
+            file_path.display()
+          );
+          None
+        }
+      }
     }
   };
 
@@ -898,14 +910,22 @@ pub fn format_parsed_source(
   fmt_options: &FmtOptionsConfig,
   unstable_options: &UnstableFmtOptions,
 ) -> Result<Option<String>, AnyError> {
-  dprint_plugin_typescript::format_parsed_source(
-    parsed_source,
-    &get_resolved_typescript_config(fmt_options),
-    Some(&create_external_formatter_for_typescript(
-      unstable_options,
-      fmt_options,
-    )),
-  )
+  let config = get_resolved_typescript_config(fmt_options);
+  let external_formatter =
+    create_external_formatter_for_typescript(unstable_options, fmt_options);
+  match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+    dprint_plugin_typescript::format_parsed_source(
+      parsed_source,
+      &config,
+      Some(&external_formatter),
+    )
+  })) {
+    Ok(result) => result,
+    Err(_) => {
+      log::warn!("Formatter panicked, leaving unformatted");
+      Ok(None)
+    }
+  }
 }
 
 #[async_trait]
@@ -2018,5 +2038,31 @@ mod test {
     .unwrap()
     .unwrap();
     assert_eq!(file_text, "let a = 1;\n",);
+  }
+
+  #[test]
+  fn test_html_tagged_template_multiline_comment_does_not_panic() {
+    let input = r#"export default function render() {
+  return html`
+    <form>
+        <!--<label
+          for="email"
+        >Email</label>-->
+      <input />
+    </form>
+  `;
+}
+"#;
+    let result = format_file(
+      Path::new("test.ts"),
+      &FileContents {
+        had_bom: false,
+        text: input.into(),
+      },
+      &FmtOptionsConfig::default(),
+      &UnstableFmtOptions::default(),
+      None,
+    );
+    assert!(result.is_ok());
   }
 }
