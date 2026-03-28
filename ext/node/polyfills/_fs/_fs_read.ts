@@ -141,34 +141,34 @@ export function read(
     validatePosition(position, "position", length as number);
   }
 
-  try {
-    let nread: number;
-    if (typeof position === "number" && position >= 0) {
-      const currentPosition = op_node_fs_seek_sync(fd, 0, 1); // SeekMode.Current = 1
-      // We use sync calls below to avoid being affected by others during
-      // these calls.
-      op_node_fs_seek_sync(fd, position, 0); // SeekMode.Start = 0
-      nread = op_node_fs_read_sync(
-        fd,
-        arrayBufferViewToUint8Array(buffer).subarray(
-          offset,
-          offset + (length as number),
-        ),
-      );
-      op_node_fs_seek_sync(fd, currentPosition, 0); // SeekMode.Start = 0
-    } else {
-      nread = op_node_fs_read_sync(
-        fd,
-        arrayBufferViewToUint8Array(buffer).subarray(
-          offset,
-          offset + (length as number),
-        ),
-      );
+  process.nextTick(() => {
+    try {
+      let nread: number;
+      if (typeof position === "number" && position >= 0) {
+        const currentPosition = op_node_fs_seek_sync(fd, 0, 1); // SeekMode.Current = 1
+        op_node_fs_seek_sync(fd, position, 0); // SeekMode.Start = 0
+        nread = op_node_fs_read_sync(
+          fd,
+          arrayBufferViewToUint8Array(buffer).subarray(
+            offset,
+            offset + (length as number),
+          ),
+        );
+        op_node_fs_seek_sync(fd, currentPosition, 0); // SeekMode.Start = 0
+      } else {
+        nread = op_node_fs_read_sync(
+          fd,
+          arrayBufferViewToUint8Array(buffer).subarray(
+            offset,
+            offset + (length as number),
+          ),
+        );
+      }
+      callback!(null, nread ?? 0, buffer);
+    } catch (error) {
+      callback!(error as Error, null);
     }
-    callback!(null, nread ?? 0, buffer);
-  } catch (error) {
-    callback!(error as Error, null);
-  }
+  });
 }
 
 ObjectDefineProperty(read, customPromisifyArgs, {

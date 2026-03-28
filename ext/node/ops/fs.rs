@@ -56,8 +56,7 @@ fn raw_fd_for_resource(
   resource_id: ResourceId,
 ) -> Result<i32, FsError> {
   let handle_fd = state.resource_table.get_fd(resource_id).map_err(|_| {
-    FsError::Io(std::io::Error::new(
-      std::io::ErrorKind::Other,
+    FsError::Io(std::io::Error::other(
       "Failed to get OS file descriptor from resource",
     ))
   })?;
@@ -79,9 +78,14 @@ fn raw_fd_for_resource(
 }
 
 fn ebadf() -> FsError {
-  FsError::Io(std::io::Error::new(
-    std::io::ErrorKind::Other,
-    "bad file descriptor",
+  FsError::Io(std::io::Error::from_raw_os_error(
+    #[cfg(unix)]
+    libc::EBADF,
+    #[cfg(windows)]
+    {
+      // Windows CRT EBADF
+      9
+    },
   ))
 }
 
@@ -834,12 +838,7 @@ pub async fn op_node_rmdir(
 pub fn op_node_fs_close(state: &mut OpState, fd: i32) -> Result<(), FsError> {
   let rid = resource_for_fd(state, fd)?;
   state.borrow_mut::<NodeFsState>().open_fds.remove(&fd);
-  let resource = state.resource_table.take_any(rid).map_err(|_| {
-    FsError::Io(std::io::Error::new(
-      std::io::ErrorKind::Other,
-      "bad file descriptor",
-    ))
-  })?;
+  let resource = state.resource_table.take_any(rid).map_err(|_| ebadf())?;
   resource.close();
   Ok(())
 }

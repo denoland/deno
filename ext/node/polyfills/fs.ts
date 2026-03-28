@@ -650,7 +650,7 @@ function readFile(
   if (typeof pathOrRid === "string") {
     p = readFileAsync(pathOrRid, options);
   } else {
-    p = readFileFromFd(pathOrRid as number, options);
+    p = PromiseResolve(readFileFromFd(pathOrRid as number, options));
   }
 
   if (cb) {
