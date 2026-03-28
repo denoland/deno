@@ -249,10 +249,14 @@ pub fn import_map_lookup(
   for entry in import_map.entries_for_referrer(referrer) {
     if let Some(address) = entry.value {
       let address_str = address.as_str();
-      if referrer.as_str().starts_with(address_str) {
+      if referrer.as_str().starts_with(address_str)
+        && address_str.ends_with(&format!("/{}", entry.raw_key))
+      {
         // ignore when the referrer has a common base with the
-        // import map entry (ex. `./src/a.ts` importing `./src/b.ts`
-        // and there's a `"$src/": "./src/"` import map entry)
+        // import map entry and the key is a passthrough mapping
+        // (ex. `./src/a.ts` importing `./src/b.ts` and there's a
+        // `"src/": "./src/"` import map entry). For meaningful
+        // aliases like `"@app/": "./src/"`, do not skip.
         continue;
       }
       if address_str == specifier_str {

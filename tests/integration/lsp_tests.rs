@@ -10165,6 +10165,66 @@ fn lsp_completions_auto_import_and_quick_fix_with_import_map() {
   client.shutdown();
 }
 
+// Regression test for https://github.com/denoland/deno/issues/32288
+// and https://github.com/denoland/deno/issues/31590.
+// When an import map has a meaningful alias like "@app/": "./src/",
+// auto-imports should suggest the alias even when the referrer is
+// inside the mapped directory.
+#[test(timeout = 300)]
+fn lsp_auto_import_local_dir_import_map_alias() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write(
+    "deno.json",
+    json!({
+      "imports": {
+        "@app/": "./src/",
+      },
+    })
+    .to_string(),
+  );
+  temp_dir.create_dir_all("src/islands/components");
+  temp_dir.create_dir_all("src/routes");
+  temp_dir.write(
+    "src/islands/components/Button.tsx",
+    "export function Button() { return 'button'; }\n",
+  );
+  let file = temp_dir.source_file("src/routes/index.ts", "Button;\n");
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  let list = client.get_completion_list(
+    file.uri().as_str(),
+    (0, 6),
+    json!({ "triggerKind": 1 }),
+  );
+  let item = list
+    .items
+    .iter()
+    .find(|i| i.label == "Button")
+    .expect("should have a Button completion item");
+  let res = client.write_request("completionItem/resolve", json!(item));
+  assert_eq!(
+    res,
+    json!({
+      "label": "Button",
+      "labelDetails": { "description": "@app/islands/components/Button.tsx" },
+      "kind": 3,
+      "detail": "Add import from \"@app/islands/components/Button.tsx\"\n\nfunction Button(): string",
+      "sortText": "\u{ffff}16_0",
+      "additionalTextEdits": [
+        {
+          "range": {
+            "start": { "line": 0, "character": 0 },
+            "end": { "line": 0, "character": 0 },
+          },
+          "newText": "import { Button } from \"@app/islands/components/Button.tsx\";\n\n",
+        },
+      ],
+    }),
+  );
+  client.shutdown();
+}
+
 #[test(timeout = 300)]
 fn lsp_auto_import_import_map_prefer_relative() {
   let context = TestContextBuilder::new()
