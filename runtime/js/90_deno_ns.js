@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 import { core, primordials } from "ext:core/mod.js";
 import {
@@ -159,6 +159,9 @@ const denoNs = {
   uid: os.uid,
   Command: process.Command,
   ChildProcess: process.ChildProcess,
+  spawn: process.spawn,
+  spawnAndWait: process.spawnAndWait,
+  spawnAndWaitSync: process.spawnAndWaitSync,
   dlopen: ffi.dlopen,
   UnsafeCallback: ffi.UnsafeCallback,
   UnsafePointer: ffi.UnsafePointer,

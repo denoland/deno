@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::cmp::Ordering;
@@ -55,7 +55,15 @@ pub enum BrokerResponse {
 use self::broker::has_broker;
 use self::broker::maybe_check_with_broker;
 
-pub static AUDIT_FILE: OnceLock<Mutex<std::fs::File>> = OnceLock::new();
+pub type OtelAuditFn =
+  fn(permission: &str, value: &str, stack: Option<&[String]>);
+
+pub enum AuditSink {
+  File(Mutex<std::fs::File>),
+  Otel(OtelAuditFn),
+}
+
+pub static AUDIT_SINK: OnceLock<AuditSink> = OnceLock::new();
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 #[error("{}", custom_message.as_ref().cloned().unwrap_or_else(|| format!("Requires {access}, {}", format_permission_error(.name))))]
@@ -81,34 +89,55 @@ fn write_audit<T>(flag_name: &str, value: T)
 where
   T: Serialize,
 {
-  let Some(file) = AUDIT_FILE.get() else {
+  let Some(sink) = AUDIT_SINK.get() else {
     return;
   };
 
-  let mut file = file.lock();
-
-  let mut map = serde_json::Map::with_capacity(5);
-  let _ = map.insert("v".into(), serde_json::Value::Number(1.into()));
-  let _ = map.insert(
-    "datetime".into(),
-    serde_json::Value::String(
-      chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
-    ),
-  );
-  let _ = map.insert(
-    "permission".into(),
-    serde_json::to_value(flag_name).unwrap(),
-  );
-  let _ = map.insert("value".into(), serde_json::to_value(value).unwrap());
-
   let get_stack = MAYBE_CURRENT_STACKTRACE.lock();
-  if let Some(stack) = get_stack.as_ref().map(|s| s()) {
-    let _ = map.insert("stack".into(), serde_json::to_value(&stack).unwrap());
-  }
+  let stack = get_stack.as_ref().map(|s| s());
 
-  let _ = file.write_all(
-    format!("{}\n", serde_json::to_string(&map).unwrap()).as_bytes(),
-  );
+  match sink {
+    AuditSink::File(file) => {
+      let mut file = file.lock();
+
+      let mut map = serde_json::Map::with_capacity(6);
+      let _ = map.insert("v".into(), serde_json::Value::Number(1.into()));
+      let _ = map.insert(
+        "datetime".into(),
+        #[allow(
+          clippy::disallowed_methods,
+          reason = "TODO: support passing in a sys here"
+        )]
+        serde_json::Value::String(
+          chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
+        ),
+      );
+      let _ = map.insert(
+        "permission".into(),
+        serde_json::to_value(flag_name).unwrap(),
+      );
+      let _ = map.insert("value".into(), serde_json::to_value(&value).unwrap());
+
+      if let Some(ref stack) = stack {
+        let _ =
+          map.insert("stack".into(), serde_json::to_value(stack).unwrap());
+      }
+
+      let _ = file.write_all(
+        format!("{}\n", serde_json::to_string(&map).unwrap()).as_bytes(),
+      );
+    }
+    AuditSink::Otel(report_fn) => {
+      let value_str = serde_json::to_value(&value)
+        .map(|v| match v {
+          serde_json::Value::String(s) => s,
+          other => other.to_string(),
+        })
+        .unwrap_or_default();
+
+      report_fn(flag_name, &value_str, stack.as_deref());
+    }
+  }
 }
 
 /// Fast exit from permission check routines if this permission
@@ -392,7 +421,7 @@ impl AsRef<Path> for CheckedPathBuf {
 /// want to wastefully check for partial denials when, say, checking read
 /// access for a file.
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
-#[allow(clippy::enum_variant_names)]
+#[allow(clippy::enum_variant_names, reason = "more clear")]
 enum AllowPartial {
   TreatAsGranted,
   TreatAsDenied,
@@ -2585,7 +2614,7 @@ pub enum RunDescriptorArg {
 }
 
 pub enum AllowRunDescriptorParseResult {
-  /// An error occured getting the descriptor that should
+  /// An error occurred getting the descriptor that should
   /// be surfaced as a warning when launching deno, but should
   /// be ignored when creating a worker.
   Unresolved(Box<which::Error>),
@@ -4025,7 +4054,7 @@ impl PermissionsContainer {
       })
     } else {
       let path = self.descriptor_parser.parse_special_file_descriptor(path)?;
-      self.check_special_file(path, api_name)
+      self.check_special_file(path, access_kind, api_name)
     }
   }
 
@@ -4177,21 +4206,32 @@ impl PermissionsContainer {
   pub fn check_special_file<'a>(
     &self,
     path: SpecialFilePathQueryDescriptor<'a>,
+    access_kind: OpenAccessKind,
     _api_name: Option<&str>,
   ) -> Result<CheckedPath<'a>, PermissionCheckError> {
     let requested = path.requested;
     let canonicalized = path.canonicalized;
     let path = path.path;
 
-    // Safe files with no major additional side-effects. While there's a small risk of someone
-    // draining system entropy by just reading one of these files constantly, that's not really
-    // something we worry about as they already have --allow-read to /dev.
+    // Safe files with no major additional side-effects.
     if cfg!(unix)
       && (path == OsStr::new("/dev/random")
         || path == OsStr::new("/dev/urandom")
         || path == OsStr::new("/dev/zero")
         || path == OsStr::new("/dev/null"))
     {
+      return Ok(CheckedPath {
+        path: PathWithRequested {
+          path,
+          requested: requested.map(Cow::Owned),
+        },
+        canonicalized,
+      });
+    }
+
+    // We allow /dev/tty access specifically for checking isatty() or reading input,
+    // but we BLOCK write access to prevent permission prompt spoofing attacks.
+    if cfg!(unix) && path == OsStr::new("/dev/tty") && !access_kind.is_write() {
       return Ok(CheckedPath {
         path: PathWithRequested {
           path,
@@ -4257,6 +4297,9 @@ impl PermissionsContainer {
       {
         if path.ends_with("/environ") {
           self.check_env_all()?;
+        } else if path.starts_with("/proc/pressure/") {
+          // Allow /proc/pressure/* files with just --allow-read since they are
+          // read-only system monitoring files that only expose performance metrics
         } else {
           self.check_has_all_permissions(&path)?;
         }
@@ -5251,6 +5294,7 @@ mod tests {
   use fqdn::fqdn;
   use prompter::tests::*;
   use serde_json::json;
+  use sys_traits::EnvCurrentDir;
 
   use super::*;
   use crate::prompter::set_prompter;
@@ -6191,8 +6235,7 @@ mod tests {
         .is_err()
     );
 
-    #[allow(clippy::disallowed_methods)]
-    let cwd = std::env::current_dir().unwrap();
+    let cwd = sys_traits::impls::RealSys.env_current_dir().unwrap();
     prompt_value.set(true);
     assert!(
       perms
@@ -6357,8 +6400,7 @@ mod tests {
     );
 
     prompt_value.set(false);
-    #[allow(clippy::disallowed_methods)]
-    let cwd = std::env::current_dir().unwrap();
+    let cwd = sys_traits::impls::RealSys.env_current_dir().unwrap();
     assert!(
       perms
         .run

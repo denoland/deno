@@ -1,0 +1,5 @@
+{
+  "exports": {
+    "./readme": "./readme.md"
+  }
+}

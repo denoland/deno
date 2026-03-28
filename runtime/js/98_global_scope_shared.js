@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 import { core } from "ext:core/mod.js";
 
@@ -28,7 +28,10 @@ import * as fetch from "ext:deno_fetch/26_fetch.js";
 import * as eventSource from "ext:deno_fetch/27_eventsource.js";
 import * as messagePort from "ext:deno_web/13_message_port.js";
 import * as webidl from "ext:deno_webidl/00_webidl.js";
-import { DOMException } from "ext:deno_web/01_dom_exception.js";
+import {
+  DOMException,
+  QuotaExceededError,
+} from "ext:deno_web/01_dom_exception.js";
 import * as abortSignal from "ext:deno_web/03_abort_signal.js";
 import * as imageData from "ext:deno_web/16_image_data.js";
 import process from "node:process";
@@ -45,7 +48,7 @@ import { loadWebGPU } from "ext:deno_webgpu/00_init.js";
 import * as webgpuSurface from "ext:deno_webgpu/02_surface.js";
 import { unstableIds } from "ext:runtime/90_deno_ns.js";
 
-const loadImage = core.createLazyLoader("ext:deno_canvas/01_image.js");
+const loadImage = core.createLazyLoader("ext:deno_image/01_image.js");
 const loadWebTransport = core.createLazyLoader("ext:deno_web/webtransport.js");
 
 // https://developer.mozilla.org/en-US/docs/Web/API/WindowOrWorkerGlobalScope
@@ -66,6 +69,7 @@ const windowOrWorkerGlobalScope = {
   CustomEvent: core.propNonEnumerable(event.CustomEvent),
   DecompressionStream: core.propNonEnumerable(compression.DecompressionStream),
   DOMException: core.propNonEnumerable(DOMException),
+  QuotaExceededError: core.propNonEnumerable(QuotaExceededError),
   ErrorEvent: core.propNonEnumerable(event.ErrorEvent),
   Event: core.propNonEnumerable(event.Event),
   EventTarget: core.propNonEnumerable(event.EventTarget),
@@ -83,6 +87,10 @@ const windowOrWorkerGlobalScope = {
   PerformanceEntry: core.propNonEnumerable(performance.PerformanceEntry),
   PerformanceMark: core.propNonEnumerable(performance.PerformanceMark),
   PerformanceMeasure: core.propNonEnumerable(performance.PerformanceMeasure),
+  PerformanceObserver: core.propNonEnumerable(performance.PerformanceObserver),
+  PerformanceObserverEntryList: core.propNonEnumerable(
+    performance.PerformanceObserverEntryList,
+  ),
   PromiseRejectionEvent: core.propNonEnumerable(event.PromiseRejectionEvent),
   ProgressEvent: core.propNonEnumerable(event.ProgressEvent),
   ReadableStream: core.propNonEnumerable(streams.ReadableStream),
@@ -188,6 +196,14 @@ const windowOrWorkerGlobalScope = {
   ),
   GPUCommandEncoder: core.propNonEnumerableLazyLoaded(
     (webgpu) => webgpu.GPUCommandEncoder,
+    loadWebGPU,
+  ),
+  GPUCompilationInfo: core.propNonEnumerableLazyLoaded(
+    (webgpu) => webgpu.GPUCompilationInfo,
+    loadWebGPU,
+  ),
+  GPUCompilationMessage: core.propNonEnumerableLazyLoaded(
+    (webgpu) => webgpu.GPUCompilationMessage,
     loadWebGPU,
   ),
   GPUComputePassEncoder: core.propNonEnumerableLazyLoaded(

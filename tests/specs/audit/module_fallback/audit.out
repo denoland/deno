@@ -1,0 +1,11 @@
+╭ @denotest/with-vuln3 has security vulnerability
+│ Severity:   high
+│ Package:    @edenotest/with-vuln3
+│ Vulnerable: <1.1.0
+│ Patched:    >=1.1.0
+│ Path:       @denotest/with-vuln3
+│ Info:       https://example.com/vuln/303030
+╰ Actions:    install @denotest/with-vuln3@1.1.0
+
+Found 1 vulnerabilities
+Severity: 0 low, 0 moderate, 1 high, 0 critical

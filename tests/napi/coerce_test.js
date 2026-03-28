@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 import { assertEquals, loadTestLibrary } from "./common.js";
 
@@ -71,4 +71,15 @@ Deno.test("napi coerce object", function () {
     new String("Hello, Deno!"),
   );
   assertEquals(coerce.test_coerce_object({}), {});
+});
+
+// Regression test for https://github.com/denoland/deno/issues/31306
+// napi_coerce_to_object(null/undefined) should return an error status
+// without leaving a pending exception that would later be re-thrown
+// as a spurious "Cannot convert undefined or null to object" TypeError.
+Deno.test("napi coerce object null/undefined no pending exception", function () {
+  assertEquals(
+    coerce.test_coerce_object_null_no_pending_exception(null, undefined),
+    true,
+  );
 });

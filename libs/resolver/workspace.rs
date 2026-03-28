@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 // use super::UrlRc;
 
@@ -22,6 +22,7 @@ use deno_package_json::PackageJsonDepValueParseError;
 use deno_package_json::PackageJsonDepWorkspaceReq;
 use deno_package_json::PackageJsonDepsRc;
 use deno_package_json::PackageJsonRc;
+use deno_path_util::SpecifierError;
 use deno_path_util::url_from_directory_path;
 use deno_path_util::url_from_file_path;
 use deno_path_util::url_to_file_path;
@@ -39,7 +40,6 @@ use import_map::ImportMapDiagnostic;
 use import_map::ImportMapError;
 use import_map::ImportMapErrorKind;
 use import_map::ImportMapWithDiagnostics;
-use import_map::specifier::SpecifierError;
 use indexmap::IndexMap;
 use node_resolver::NodeResolutionKind;
 use parking_lot::RwLock;
@@ -56,7 +56,7 @@ use crate::deno_json::CompilerOptionsModuleResolution;
 use crate::deno_json::CompilerOptionsPaths;
 use crate::deno_json::CompilerOptionsResolverRc;
 
-#[allow(clippy::disallowed_types)]
+#[allow(clippy::disallowed_types, reason = "definition")]
 type UrlRc = deno_maybe_sync::MaybeArc<Url>;
 
 #[derive(Debug)]
@@ -545,6 +545,7 @@ impl<TSys: FsMetadata> SloppyImportsResolver<TSys> {
             | MediaType::Json
             | MediaType::Jsonc
             | MediaType::Json5
+            | MediaType::Markdown
             | MediaType::Wasm
             | MediaType::Css
             | MediaType::Html
@@ -686,7 +687,7 @@ pub fn sloppy_imports_resolve<TSys: FsMetadata>(
   .resolve(specifier, &Url::parse("unknown:").unwrap(), resolution_kind)
 }
 
-#[allow(clippy::disallowed_types)]
+#[allow(clippy::disallowed_types, reason = "definition")]
 type SloppyImportsResolverRc<T> =
   deno_maybe_sync::MaybeArc<SloppyImportsResolver<T>>;
 
@@ -829,7 +830,7 @@ impl fmt::Display for WorkspaceResolverDiagnostic<'_> {
   }
 }
 
-#[allow(clippy::disallowed_types)]
+#[allow(clippy::disallowed_types, reason = "definition")]
 type CompilerOptionsResolverCellRc =
   deno_maybe_sync::MaybeArc<RwLock<CompilerOptionsResolverRc>>;
 
@@ -984,7 +985,7 @@ impl<TSys: FsMetadata + FsRead> WorkspaceResolver<TSys> {
   /// Creates a new WorkspaceResolver from the specified import map and package.jsons.
   ///
   /// Generally, create this from a Workspace instead.
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "all arguments are needed")]
   pub fn new_raw(
     workspace_root: UrlRc,
     maybe_import_map: Option<ImportMap>,
@@ -1189,7 +1190,7 @@ impl<TSys: FsMetadata + FsRead> WorkspaceResolver<TSys> {
         .resolve(specifier, referrer)
         .map_err(MappedResolutionError::ImportMap)
     } else {
-      import_map::specifier::resolve_import(specifier, referrer)
+      deno_path_util::resolve_import(specifier, referrer)
         .map_err(MappedResolutionError::Specifier)
     };
     let resolve_error = match resolve_result {
@@ -1616,7 +1617,7 @@ impl BaseUrl<'_> {
   }
 }
 
-#[allow(clippy::disallowed_types)] // ok, because definition
+#[allow(clippy::disallowed_types, reason = "wraps Arc directly as the Rc type")]
 #[derive(Debug, Default, Clone)]
 pub struct WorkspaceNpmLinkPackagesRc(
   pub std::sync::Arc<HashMap<PackageName, Vec<NpmPackageVersionInfo>>>,
@@ -1739,6 +1740,7 @@ fn pkg_json_to_version_info(
           .collect()
       })
       .unwrap_or_default(),
+    has_install_script: None,
     // not worth increasing memory for showing a deprecated
     // message for linked packages
     deprecated: None,
@@ -1835,9 +1837,18 @@ mod test {
         }),
       )))
     }
+
+    fn resolve_types_package_folder(
+      &self,
+      _types_package_name: &str,
+      _maybe_package_version: Option<&Version>,
+      _maybe_referrer: Option<&node_resolver::UrlOrPathRef>,
+    ) -> Option<PathBuf> {
+      None
+    }
   }
 
-  #[allow(clippy::disallowed_types)]
+  #[allow(clippy::disallowed_types, reason = "ok in tests")]
   fn setup_node_resolver<TSys: NpmResolverSys>(
     sys: &TSys,
   ) -> crate::deno_json::TsConfigNodeResolver<TSys, TestNpmPackageFolderResolver>
@@ -3223,6 +3234,7 @@ mod test {
       NpmPackageVersionInfo {
         version: Version::parse_from_npm("1.0.0").unwrap(),
         dist: None,
+        has_install_script: None,
         bin: Some(deno_npm::registry::NpmPackageVersionBinEntry::String(
           "./bin.js".to_string()
         )),

@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use deno_core::error::AnyError;
 pub use repl::ReplCompletionItem;
@@ -36,7 +36,9 @@ mod semantic_tokens;
 mod testing;
 mod text;
 mod trace;
+mod ts_server;
 mod tsc;
+mod tsgo;
 mod urls;
 
 pub async fn start() -> Result<(), AnyError> {

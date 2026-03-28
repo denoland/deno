@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 //! It would be best to move these utilities out of this
 //! crate as this is not specific to resolution, but for
@@ -6,8 +6,8 @@
 use std::fmt::Write as _;
 
 use deno_terminal::colors;
-use dissimilar::Chunk;
-use dissimilar::diff as difference;
+use imara_diff::Diff;
+use imara_diff::InternedInput;
 
 /// Print diff of the same file_path, before and after formatting.
 ///
@@ -28,25 +28,25 @@ pub fn diff(orig_text: &str, edit_text: &str) -> String {
   DiffBuilder::build(&orig_text, &edit_text)
 }
 
-struct DiffBuilder {
+struct DiffBuilder<'a> {
+  input: InternedInput<&'a str>,
   output: String,
   line_number_width: usize,
   orig_line: usize,
   edit_line: usize,
-  orig: String,
-  edit: String,
-  has_changes: bool,
 }
 
-impl DiffBuilder {
-  pub fn build(orig_text: &str, edit_text: &str) -> String {
-    let mut diff_builder = DiffBuilder {
+impl<'a> DiffBuilder<'a> {
+  pub fn build(orig_text: &'a str, edit_text: &'a str) -> String {
+    let input = InternedInput::new(orig_text, edit_text);
+    let mut diff = Diff::compute(imara_diff::Algorithm::Histogram, &input);
+    diff.postprocess_lines(&input);
+
+    let diff_builder = DiffBuilder {
+      input,
       output: String::new(),
       orig_line: 1,
       edit_line: 1,
-      orig: String::new(),
-      edit: String::new(),
-      has_changes: false,
       line_number_width: {
         let line_count = std::cmp::max(
           orig_text.split('\n').count(),
@@ -55,106 +55,120 @@ impl DiffBuilder {
         line_count.to_string().chars().count()
       },
     };
-
-    let chunks = difference(orig_text, edit_text);
-    diff_builder.handle_chunks(chunks);
-    diff_builder.output
+    diff_builder.handle_diff(diff)
   }
 
-  fn handle_chunks<'a>(&'a mut self, chunks: Vec<Chunk<'a>>) {
-    for chunk in chunks {
-      match chunk {
-        Chunk::Delete(s) => {
-          let split = s.split('\n').enumerate();
-          for (i, s) in split {
-            if i > 0 {
-              self.orig.push('\n');
-            }
-            self.orig.push_str(&fmt_rem_text_highlight(s));
-          }
-          self.has_changes = true
-        }
-        Chunk::Insert(s) => {
-          let split = s.split('\n').enumerate();
-          for (i, s) in split {
-            if i > 0 {
-              self.edit.push('\n');
-            }
-            self.edit.push_str(&fmt_add_text_highlight(s));
-          }
-          self.has_changes = true
-        }
-        Chunk::Equal(s) => {
-          let split = s.split('\n').enumerate();
-          for (i, s) in split {
-            if i > 0 {
-              self.flush_changes();
-            }
-            self.orig.push_str(&fmt_rem_text(s));
-            self.edit.push_str(&fmt_add_text(s));
-          }
-        }
+  fn handle_diff(mut self, diff: Diff) -> String {
+    let mut prev_before_end: u32 = 0;
+    let mut is_first_hunk = true;
+
+    for hunk in diff.hunks() {
+      // Skip unchanged lines between hunks
+      let gap_len = (hunk.before.start - prev_before_end) as usize;
+      if gap_len > 0 && !is_first_hunk {
+        writeln!(
+          self.output,
+          "{:width$}{} {}",
+          "",
+          colors::gray(" |"),
+          colors::gray("..."),
+          width = self.line_number_width
+        )
+        .unwrap();
       }
+      self.orig_line += gap_len;
+      self.edit_line += gap_len;
+      is_first_hunk = false;
+
+      // Interleave deleted/inserted line pairs, then emit remaining
+      let del_count = hunk.before.len();
+      let ins_count = hunk.after.len();
+      let paired = std::cmp::min(del_count, ins_count);
+
+      for i in 0..paired {
+        let del_idx = hunk.before.start + i as u32;
+        let s = self.input.interner[self.input.before[del_idx as usize]];
+        self.write_rem_line(s);
+        let ins_idx = hunk.after.start + i as u32;
+        let s = self.input.interner[self.input.after[ins_idx as usize]];
+        self.write_add_line(s);
+      }
+      // Remaining unpaired deletes
+      for del_idx in (hunk.before.start + paired as u32)..hunk.before.end {
+        let s = self.input.interner[self.input.before[del_idx as usize]];
+        self.write_rem_line(s);
+      }
+      // Remaining unpaired inserts
+      for ins_idx in (hunk.after.start + paired as u32)..hunk.after.end {
+        let s = self.input.interner[self.input.after[ins_idx as usize]];
+        self.write_add_line(s);
+      }
+
+      prev_before_end = hunk.before.end;
     }
 
-    self.flush_changes();
+    self.output
   }
 
-  fn flush_changes(&mut self) {
-    if self.has_changes {
-      self.write_line_diff();
-
-      self.orig_line += self.orig.split('\n').count();
-      self.edit_line += self.edit.split('\n').count();
-      self.has_changes = false;
-    } else {
-      self.orig_line += 1;
-      self.edit_line += 1;
+  fn write_rem_line(&mut self, text: &str) {
+    let (text, has_newline) = match text.strip_suffix('\n') {
+      Some(t) => (t, true),
+      None => (text, false),
+    };
+    write!(
+      self.output,
+      "{:width$}{} ",
+      self.orig_line,
+      colors::gray(" |"),
+      width = self.line_number_width
+    )
+    .unwrap();
+    self.output.push_str(&fmt_rem());
+    self.output.push_str(&fmt_rem_text_highlight(text));
+    self.output.push('\n');
+    if !has_newline {
+      self.write_no_newline_marker();
     }
-
-    self.orig.clear();
-    self.edit.clear();
+    self.orig_line += 1;
   }
 
-  fn write_line_diff(&mut self) {
-    let split = self.orig.split('\n').enumerate();
-    for (i, s) in split {
-      write!(
-        self.output,
-        "{:width$}{} ",
-        self.orig_line + i,
-        colors::gray(" |"),
-        width = self.line_number_width
-      )
-      .unwrap();
-      self.output.push_str(&fmt_rem());
-      self.output.push_str(s);
-      self.output.push('\n');
+  fn write_add_line(&mut self, text: &str) {
+    let (text, has_newline) = match text.strip_suffix('\n') {
+      Some(t) => (t, true),
+      None => (text, false),
+    };
+    write!(
+      self.output,
+      "{:width$}{} ",
+      self.edit_line,
+      colors::gray(" |"),
+      width = self.line_number_width
+    )
+    .unwrap();
+    self.output.push_str(&fmt_add());
+    self.output.push_str(&fmt_add_text_highlight(text));
+    self.output.push('\n');
+    if !has_newline {
+      self.write_no_newline_marker();
     }
+    self.edit_line += 1;
+  }
 
-    let split = self.edit.split('\n').enumerate();
-    for (i, s) in split {
-      write!(
-        self.output,
-        "{:width$}{} ",
-        self.edit_line + i,
-        colors::gray(" |"),
-        width = self.line_number_width
-      )
-      .unwrap();
-      self.output.push_str(&fmt_add());
-      self.output.push_str(s);
-      self.output.push('\n');
-    }
+  fn write_no_newline_marker(&mut self) {
+    writeln!(
+      self.output,
+      "{:width$}{} {}",
+      "",
+      colors::gray(" |"),
+      colors::gray("\\ No newline at end of file"),
+      width = self.line_number_width
+    )
+    .unwrap();
   }
 }
 
 fn fmt_add() -> String {
   colors::green_bold("+").to_string()
-}
-
-fn fmt_add_text(x: &str) -> String {
-  colors::green(x).to_string()
 }
 
 fn fmt_add_text_highlight(x: &str) -> String {
@@ -163,10 +177,6 @@ fn fmt_add_text_highlight(x: &str) -> String {
 
 fn fmt_rem() -> String {
   colors::red_bold("-").to_string()
-}
-
-fn fmt_rem_text(x: &str) -> String {
-  colors::red(x).to_string()
 }
 
 fn fmt_rem_text_highlight(x: &str) -> String {
@@ -256,7 +266,9 @@ mod tests {
       "console.log(\"Hello World\");",
       concat!(
         "1 | -console.log('Hello World')\n",
+        "  | \\ No newline at end of file\n",
         "1 | +console.log(\"Hello World\");\n",
+        "  | \\ No newline at end of file\n",
       ),
     );
 
@@ -268,11 +280,13 @@ mod tests {
         "2 | -\n",
         "3 | -\n",
         "4 | -\n",
-        "5 | -console.log(\n",
-        "1 | +console.log(\n",
+        "  | ...\n",
         "6 | -'Hello World'\n",
         "2 | +\"Hello World\"\n",
-        "7 | -)\n3 | +);\n",
+        "7 | -)\n",
+        "  | \\ No newline at end of file\n",
+        "3 | +);\n",
+        "  | \\ No newline at end of file\n",
       ),
     );
   }
@@ -284,8 +298,8 @@ mod tests {
       "test\nsome line text test\n",
       concat!(
         "2 | -some line text test\n",
+        "  | \\ No newline at end of file\n",
         "2 | +some line text test\n",
-        "3 | +\n",
       ),
     );
   }
@@ -293,6 +307,55 @@ mod tests {
   #[test]
   fn test_newlines_differing() {
     run_test("test\n", "test\r\n", " | Text differed by line endings.\n");
+  }
+
+  #[test]
+  fn test_lockfile_diff() {
+    // Simulates the frozen lockfile diff scenario where adding a new
+    // dependency inserts lines while matching braces remain unchanged.
+    let before = r#"{
+  "version": "5",
+  "packages": {
+    "npm:@denotest/add@1": "1.0.0"
+  },
+  "npm": {
+    "@denotest/add@1.0.0": {
+      "integrity": "abc",
+      "tarball": "http://localhost/add/1.0.0.tgz"
+    }
+  }
+}"#;
+    let after = r#"{
+  "version": "5",
+  "packages": {
+    "npm:@denotest/add@1": "1.0.0",
+    "npm:@denotest/subtract@1": "1.0.0"
+  },
+  "npm": {
+    "@denotest/add@1.0.0": {
+      "integrity": "abc",
+      "tarball": "http://localhost/add/1.0.0.tgz"
+    },
+    "@denotest/subtract@1.0.0": {
+      "integrity": "def",
+      "tarball": "http://localhost/subtract/1.0.0.tgz"
+    }
+  }
+}"#;
+    run_test(
+      before,
+      after,
+      concat!(
+        " 4 | -    \"npm:@denotest/add@1\": \"1.0.0\"\n",
+        " 4 | +    \"npm:@denotest/add@1\": \"1.0.0\",\n",
+        " 5 | +    \"npm:@denotest/subtract@1\": \"1.0.0\"\n",
+        "   | ...\n",
+        "11 | +    },\n",
+        "12 | +    \"@denotest/subtract@1.0.0\": {\n",
+        "13 | +      \"integrity\": \"def\",\n",
+        "14 | +      \"tarball\": \"http://localhost/subtract/1.0.0.tgz\"\n",
+      ),
+    );
   }
 
   fn run_test(diff_text1: &str, diff_text2: &str, expected_output: &str) {

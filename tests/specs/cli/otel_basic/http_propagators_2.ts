@@ -1,4 +1,7 @@
 Deno.serve({
+  onListen() {
+    Deno.writeTextFileSync(Deno.args[0], "started");
+  },
   port: 8001,
 }, (req) => {
   console.log("server 2");

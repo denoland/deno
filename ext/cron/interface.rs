@@ -1,8 +1,16 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use async_trait::async_trait;
 
 use crate::CronError;
+
+pub type Traceparent = Option<String>;
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct CronNextResult {
+  pub active: bool,
+  pub traceparent: Traceparent,
+}
 
 pub trait CronHandler {
   type EH: CronHandle + 'static;
@@ -12,7 +20,8 @@ pub trait CronHandler {
 
 #[async_trait(?Send)]
 pub trait CronHandle {
-  async fn next(&self, prev_success: bool) -> Result<bool, CronError>;
+  async fn next(&self, prev_success: bool)
+  -> Result<CronNextResult, CronError>;
   fn close(&self);
 }
 

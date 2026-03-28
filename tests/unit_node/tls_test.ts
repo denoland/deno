@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 import {
   assert,
@@ -319,6 +319,48 @@ Deno.test("tlssocket._handle._parentWrap is set", () => {
   assertInstanceOf(parentWrap, stream.PassThrough);
 });
 
+Deno.test("net.Socket reinitialize preserves TLS upgrade state", () => {
+  const socket = new net.Socket();
+  const reinitializeHandle = Object.getOwnPropertySymbols(net.Socket.prototype)
+    .find((symbol) => symbol.description === "kReinitializeHandle");
+
+  assert(reinitializeHandle, "expected kReinitializeHandle symbol");
+  const reinitializeHandleSymbol = reinitializeHandle as symbol;
+
+  let closed = false;
+  const afterConnectTls = function () {};
+  const verifyError = () => null;
+  const parentWrap = new stream.PassThrough();
+
+  // deno-lint-ignore no-explicit-any
+  (socket as any)._handle = {
+    close() {
+      closed = true;
+    },
+    afterConnectTls,
+    verifyError,
+    _parentWrap: parentWrap,
+  };
+
+  const newHandle = {};
+  // deno-lint-ignore no-explicit-any
+  (socket as any)[reinitializeHandleSymbol](newHandle);
+
+  assert(closed);
+  // deno-lint-ignore no-explicit-any
+  assertEquals((newHandle as any).afterConnectTls, afterConnectTls);
+  // deno-lint-ignore no-explicit-any
+  assertEquals(typeof (newHandle as any).afterConnectTlsResolve, "function");
+  // deno-lint-ignore no-explicit-any
+  assert((newHandle as any).upgrading instanceof Promise);
+  // deno-lint-ignore no-explicit-any
+  assertEquals((newHandle as any).verifyError, verifyError);
+  // deno-lint-ignore no-explicit-any
+  assertEquals((newHandle as any)._parent, newHandle);
+  // deno-lint-ignore no-explicit-any
+  assertEquals((newHandle as any)._parentWrap, parentWrap);
+});
+
 Deno.test({
   name: "tls connect upgrade js socket wrapper",
   sanitizeOps: false,
@@ -440,4 +482,82 @@ Deno.test("mTLS client certificate authentication", async () => {
   const result = await promise;
   assertEquals(result, "mTLS success!");
   server.close();
+});
+
+Deno.test("tls.setDefaultCACertificates exists", () => {
+  // deno-lint-ignore no-explicit-any
+  assertEquals(typeof (tls as any).setDefaultCACertificates, "function");
+});
+
+Deno.test("tls.setDefaultCACertificates validates input - must be array", () => {
+  assertThrows(
+    () => {
+      // deno-lint-ignore no-explicit-any
+      (tls as any).setDefaultCACertificates("not an array");
+    },
+    TypeError,
+    "must be an array",
+  );
+});
+
+Deno.test("tls.setDefaultCACertificates validates input - array elements must be strings", () => {
+  assertThrows(
+    () => {
+      // deno-lint-ignore no-explicit-any
+      (tls as any).setDefaultCACertificates([123, 456]);
+    },
+    TypeError,
+    "must be a string",
+  );
+});
+
+Deno.test("tls.setDefaultCACertificates accepts valid certificate array", () => {
+  const testCert = `-----BEGIN CERTIFICATE-----
+MIIBkTCB+wIJAKHHCgVZU1FFMA0GCSqGSIb3DQEBCwUAMBExDzANBgNVBAMMBnRl
+c3RDQTAeFw0yMDAxMDEwMDAwMDBaFw0zMDAxMDEwMDAwMDBaMBExDzANBgNVBAMM
+BnRlc3RDQTCB
+-----END CERTIFICATE-----`;
+
+  // deno-lint-ignore no-explicit-any
+  (tls as any).setDefaultCACertificates([testCert]);
+});
+
+// https://github.com/denoland/deno/issues/30170
+Deno.test("tls.connect strips trailing dot from servername", async () => {
+  const listener = Deno.listenTls({
+    port: 0,
+    key,
+    cert,
+  });
+
+  const conn = tls.connect({
+    host: "localhost",
+    port: listener.addr.port,
+    // Use trailing dot - should be normalized to "localhost"
+    servername: "localhost.",
+    secureContext: {
+      ca: rootCaCert,
+      // deno-lint-ignore no-explicit-any
+    } as any,
+  });
+
+  const serverConn = await listener.accept();
+
+  const { promise: connected, resolve: resolveConnected } = Promise
+    .withResolvers<void>();
+  conn.on("secureConnect", () => {
+    assert(conn.authorized, "Connection should be authorized");
+    resolveConnected();
+  });
+
+  conn.on("error", (err: Error) => {
+    // Should not get a certificate error with trailing dot
+    throw err;
+  });
+
+  await connected;
+  conn.destroy();
+  serverConn.close();
+  listener.close();
+  await new Promise((resolve) => conn.on("close", resolve));
 });

@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
 
 // The following are all the process APIs that don't depend on the stream module
@@ -191,7 +191,7 @@ export const versions = {
   ares: "1.18.1",
   modules: "108",
   nghttp2: "1.47.0",
-  napi: "8",
+  napi: "9",
   llhttp: "6.0.10",
   openssl: "3.0.7+quic",
   cldr: "41.0",

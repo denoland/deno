@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::collections::BTreeSet;
 use std::fmt::Write as _;
@@ -75,19 +75,20 @@ fn extract_inner(
     Err(_) => ExportCollector::default(),
   };
 
-  let extracted_files = if file.media_type == MediaType::Unknown {
-    extract_files_from_fenced_blocks(
-      &file.specifier,
-      &file.source,
-      file.media_type,
-    )?
-  } else {
-    extract_files_from_source_comments(
-      &file.specifier,
-      file.source.clone(),
-      file.media_type,
-    )?
-  };
+  let extracted_files =
+    if matches!(file.media_type, MediaType::Unknown | MediaType::Markdown) {
+      extract_files_from_fenced_blocks(
+        &file.specifier,
+        &file.source,
+        file.media_type,
+      )?
+    } else {
+      extract_files_from_source_comments(
+        &file.specifier,
+        file.source.clone(),
+        file.media_type,
+      )?
+    };
 
   extracted_files
     .into_iter()

@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
@@ -35,13 +35,13 @@ use deno_core::serde_json::Value;
 use deno_core::url::Url;
 use deno_lib::args::has_flag_env_var;
 use deno_lib::util::hash::FastInsecureHasher;
-use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm_cache::NpmCacheSetting;
 use deno_npm_installer::LifecycleScriptsConfig;
 use deno_npm_installer::NpmInstallerFactory;
 use deno_npm_installer::NpmInstallerFactoryOptions;
 use deno_npm_installer::graph::NpmCachingStrategy;
 use deno_npm_installer::lifecycle_scripts::NullLifecycleScriptsExecutor;
+use deno_npmrc::ResolvedNpmRc;
 use deno_package_json::PackageJsonCache;
 use deno_package_json::PackageJsonCacheResult;
 use deno_path_util::url_to_file_path;
@@ -69,7 +69,9 @@ use crate::file_fetcher::CliFileFetcher;
 use crate::http_util::HttpClientProvider;
 use crate::lsp::logging::lsp_warn;
 use crate::npm::CliNpmCacheHttpClient;
+use crate::npm::NpmPackumentFormat;
 use crate::sys::CliSys;
+use crate::util::fs::canonicalize_path;
 use crate::util::fs::canonicalize_path_maybe_not_exists;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
@@ -579,6 +581,13 @@ pub struct WorkspaceSettings {
   #[serde(default = "default_document_preload_limit")]
   pub document_preload_limit: usize,
 
+  /// Disables the server-capability for pull diagnostics to force push-based
+  /// diagnostics. NOTE: This is read and stored from the initialization
+  /// options. This value may be updated on configuration change events but
+  /// the new value will be ignored.
+  #[serde(default)]
+  pub force_push_based_diagnostics: bool,
+
   #[serde(default)]
   pub suggest: DenoCompletionSettings,
 
@@ -626,6 +635,7 @@ impl Default for WorkspaceSettings {
       log_file: false,
       lint: true,
       document_preload_limit: default_document_preload_limit(),
+      force_push_based_diagnostics: false,
       suggest: Default::default(),
       testing: Default::default(),
       tls_certificate: None,
@@ -1041,6 +1051,7 @@ impl Config {
       | MediaType::Wasm
       | MediaType::Css
       | MediaType::Html
+      | MediaType::Markdown
       | MediaType::SourceMap
       | MediaType::Sql
       | MediaType::Unknown => None,
@@ -1071,7 +1082,7 @@ impl Config {
   }
 
   pub fn uri_enabled(&self, uri: &Uri) -> bool {
-    if uri.scheme().is_some_and(|s| s.eq_lowercase("deno")) {
+    if uri.scheme().as_str().eq_ignore_ascii_case("deno") {
       return true;
     }
     self.specifier_enabled(&uri_to_url(uri))
@@ -1171,7 +1182,7 @@ impl Config {
   pub fn diagnostic_refresh_capable(&self) -> bool {
     (|| {
       let workspace = self.client_capabilities.workspace.as_ref()?;
-      workspace.diagnostic.as_ref()?.refresh_support
+      workspace.diagnostics.as_ref()?.refresh_support
     })()
     .unwrap_or(false)
   }
@@ -1208,6 +1219,14 @@ impl Config {
     })()
     .unwrap_or(false)
   }
+
+  pub fn client_provided_organize_imports_capable(&self) -> bool {
+    (|| {
+      let experimental = self.client_capabilities.experimental.as_ref()?;
+      experimental.get("clientProvidedOrganizeImports")?.as_bool()
+    })()
+    .unwrap_or(false)
+  }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1240,7 +1259,7 @@ pub struct ConfigData {
 }
 
 impl ConfigData {
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "TODO: cleanup")]
   async fn load(
     specified_config: Option<&Path>,
     scope: &Arc<Url>,
@@ -1273,7 +1292,10 @@ impl ConfigData {
             deno_json_cache: Some(deno_json_cache),
             pkg_json_cache: Some(pkg_json_cache),
             workspace_cache: Some(workspace_cache),
-            discover_pkg_json: !has_flag_env_var("DENO_NO_PACKAGE_JSON"),
+            discover_pkg_json: !has_flag_env_var(
+              &CliSys::default(),
+              "DENO_NO_PACKAGE_JSON",
+            ),
             maybe_vendor_override: None,
           },
         )
@@ -1376,7 +1398,7 @@ impl ConfigData {
       Some(Arc::new(specifier))
     })();
 
-    if let Some(deno_json) = member_dir.maybe_deno_json() {
+    if let Some(deno_json) = member_dir.member_deno_json() {
       lsp_log!(
         "  Resolved Deno configuration file: \"{}\"",
         deno_json.specifier
@@ -1388,7 +1410,7 @@ impl ConfigData {
       );
     }
 
-    if let Some(pkg_json) = member_dir.maybe_pkg_json() {
+    if let Some(pkg_json) = member_dir.member_pkg_json() {
       lsp_log!("  Resolved package.json: \"{}\"", pkg_json.specifier());
 
       add_watched_file(
@@ -1452,7 +1474,6 @@ impl ConfigData {
         package_json_cache: None,
         package_json_dep_resolution: None,
         specified_import_map: None,
-        types_node_version_req: Some(crate::npm::get_types_node_version_req()),
         unstable_sloppy_imports: false,
         require_modules: vec![],
       },
@@ -1466,11 +1487,13 @@ impl ConfigData {
           // will only happen in the tests
           .unwrap_or_else(|| Arc::new(HttpClientProvider::new(None, None))),
         pb.clone(),
+        NpmPackumentFormat::Abbreviated,
       )),
       Arc::new(NullLifecycleScriptsExecutor),
       pb,
       None,
       NpmInstallerFactoryOptions {
+        clean_on_install: false,
         cache_setting: NpmCacheSetting::Use,
         caching_strategy: NpmCachingStrategy::Eager,
         lifecycle_scripts_config: LifecycleScriptsConfig::default(),
@@ -1572,17 +1595,17 @@ impl ConfigData {
         ConfigWatchedFileType::ImportMap,
       );
     }
+    let is_config_import_map = member_dir
+      .member_deno_json()
+      .map(|c| c.is_an_import_map() || c.json.import_map.is_some())
+      .or_else(|| {
+        member_dir
+          .workspace
+          .root_deno_json()
+          .map(|c| c.is_an_import_map() || c.json.import_map.is_some())
+      })
+      .unwrap_or(false);
     let mut import_map_from_settings = {
-      let is_config_import_map = member_dir
-        .maybe_deno_json()
-        .map(|c| c.is_an_import_map() || c.json.import_map.is_some())
-        .or_else(|| {
-          member_dir
-            .workspace
-            .root_deno_json()
-            .map(|c| c.is_an_import_map() || c.json.import_map.is_some())
-        })
-        .unwrap_or(false);
       if is_config_import_map {
         None
       } else {
@@ -1595,16 +1618,6 @@ impl ConfigData {
     };
 
     let specified_import_map = {
-      let is_config_import_map = member_dir
-        .maybe_deno_json()
-        .map(|c| c.is_an_import_map() || c.json.import_map.is_some())
-        .or_else(|| {
-          member_dir
-            .workspace
-            .root_deno_json()
-            .map(|c| c.is_an_import_map() || c.json.import_map.is_some())
-        })
-        .unwrap_or(false);
       if is_config_import_map {
         import_map_from_settings = None;
       }
@@ -1671,11 +1684,11 @@ impl ConfigData {
   pub fn maybe_deno_json(
     &self,
   ) -> Option<&Arc<deno_config::deno_json::ConfigFile>> {
-    self.member_dir.maybe_deno_json()
+    self.member_dir.member_or_root_deno_json()
   }
 
   pub fn maybe_pkg_json(&self) -> Option<&Arc<deno_package_json::PackageJson>> {
-    self.member_dir.maybe_pkg_json()
+    self.member_dir.member_or_root_pkg_json()
   }
 
   pub fn scope_contains_specifier(&self, specifier: &ModuleSpecifier) -> bool {
@@ -1838,7 +1851,7 @@ impl ConfigTree {
     let pkg_json_cache = PackageJsonMemCache::default();
     let workspace_cache = WorkspaceMemCache::default();
     let mut scopes = BTreeMap::new();
-    let fs_root_url = std::fs::canonicalize("/")
+    let fs_root_url = canonicalize_path(Path::new("/"))
       .ok()
       .and_then(|p| Url::from_directory_path(p).ok())
       .unwrap_or_else(|| Url::parse("file:///").unwrap());
@@ -2148,6 +2161,7 @@ mod tests {
         log_file: false,
         lint: true,
         document_preload_limit: 1_000,
+        force_push_based_diagnostics: false,
         suggest: DenoCompletionSettings {
           imports: ImportCompletionSettings {
             auto_discover: true,

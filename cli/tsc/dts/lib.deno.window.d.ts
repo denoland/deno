@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 /// <reference no-default-lib="true" />
 /// <reference lib="deno.ns" />
@@ -362,6 +362,7 @@ interface Navigator {
   readonly userAgent: string;
   readonly language: string;
   readonly languages: string[];
+  readonly platform: string;
 }
 
 /**

@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 import { op_node_fs_exists, op_node_fs_exists_sync } from "ext:core/ops";
 import { getValidatedPathToString } from "ext:deno_node/internal/fs/utils.mjs";

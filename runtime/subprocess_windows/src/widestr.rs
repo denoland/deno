@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::ffi::OsStr;
 use std::fmt;
@@ -63,7 +63,7 @@ impl WCString {
     self.buf.len() - 1
   }
 
-  #[allow(dead_code)]
+  #[allow(dead_code, reason = "not used, but useful")]
   pub fn as_wcstr(&self) -> &WCStr {
     WCStr::from_wchars(&self.buf)
   }

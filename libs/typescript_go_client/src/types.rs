@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::marker::PhantomData;
 
@@ -96,6 +96,13 @@ impl<T> From<String> for Handle<T> {
       _phantom: PhantomData,
     }
   }
+}
+
+#[derive(serde::Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateSnapshotResponse {
+  pub snapshot: Handle<()>,
+  pub projects: Vec<Project>,
 }
 
 #[derive(serde::Deserialize, Debug, Clone)]

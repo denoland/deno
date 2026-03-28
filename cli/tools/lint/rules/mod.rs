@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::collections::HashSet;
@@ -212,14 +212,14 @@ fn get_default_tags(
   tags.push("recommended".to_string());
   if let Some(member_dir) = maybe_workspace_dir {
     if member_dir
-      .maybe_deno_json()
+      .member_or_root_deno_json()
       .map(|c| c.is_package())
       .unwrap_or(false)
     {
       tags.push("jsr".to_string());
     }
-    if member_dir.maybe_deno_json().is_some()
-      || member_dir.maybe_pkg_json().is_some()
+    if member_dir.member_or_root_deno_json().is_some()
+      || member_dir.member_or_root_pkg_json().is_some()
     {
       tags.push("workspace".to_string());
     }

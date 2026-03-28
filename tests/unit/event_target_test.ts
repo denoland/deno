@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 import { assertEquals, assertThrows } from "./test_util.ts";
 
@@ -130,6 +130,31 @@ Deno.test(function removingNullEventListenerShouldSucceed() {
   assertEquals(document.removeEventListener("x", null, false), undefined);
   assertEquals(document.removeEventListener("x", null, true), undefined);
   assertEquals(document.removeEventListener("x", null), undefined);
+});
+
+Deno.test(function removeEventListenerWithNullOptions() {
+  const target = new EventTarget();
+  let callCount = 0;
+  const listener = () => {
+    ++callCount;
+  };
+
+  // null options should be treated as capture: false
+  target.addEventListener("test", listener);
+  // @ts-expect-error: testing runtime behavior with null (not in TS types but valid per DOM spec)
+  target.removeEventListener("test", listener, null);
+  target.dispatchEvent(new Event("test"));
+  assertEquals(callCount, 0);
+
+  // null options should not remove a capture listener
+  target.addEventListener("test", listener, true);
+  // @ts-expect-error: testing runtime behavior with null (not in TS types but valid per DOM spec)
+  target.removeEventListener("test", listener, null);
+  target.dispatchEvent(new Event("test"));
+  assertEquals(callCount, 1);
+
+  // cleanup
+  target.removeEventListener("test", listener, true);
 });
 
 Deno.test(function constructedEventTargetUseObjectPrototype() {

@@ -1,8 +1,11 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
+
+use std::io::IsTerminal;
 
 use super::common;
 use super::fmt::to_relative_path_or_remote_url;
 use super::*;
+use crate::util::console::filter_destructive_ansi;
 
 pub struct PrettyTestReporter {
   parallel: bool,
@@ -104,6 +107,14 @@ impl PrettyTestReporter {
     self.write_output_end();
     if self.in_new_line || self.scope_test_id != Some(description.id) {
       self.force_report_step_wait(description);
+    } else if std::io::stdout().is_terminal() {
+      write!(
+        &mut self.writer,
+        "\r{}{} ...",
+        "  ".repeat(description.level),
+        description.name
+      )
+      .ok();
     }
 
     if !self.parallel {
@@ -241,7 +252,8 @@ impl TestReporter for PrettyTestReporter {
 
     // output everything to stdout in order to prevent
     // stdout and stderr racing
-    std::io::stdout().write_all(output).ok();
+    let filtered = filter_destructive_ansi(output);
+    std::io::stdout().write_all(&filtered).ok();
   }
 
   fn report_result(
@@ -276,6 +288,26 @@ impl TestReporter for PrettyTestReporter {
     self.write_output_end();
     if self.in_new_line || self.scope_test_id != Some(description.id) {
       self.force_report_wait(description);
+    } else if std::io::stdout().is_terminal() {
+      // We believe the cursor is right after "test name ...", but external
+      // output (e.g. from native addons writing directly to fd 1) may have
+      // moved it. Use \r to return to column 0 and re-write the test name
+      // so the result line is always intact. For normal tests this harmlessly
+      // overwrites the same bytes. Only do this on a real terminal — on pipes
+      // \r is a literal byte that would produce doubled output.
+      write!(&mut self.writer, "\r").ok();
+      if self.parallel {
+        write!(
+          &mut self.writer,
+          "{}",
+          colors::gray(format!(
+            "{} => ",
+            to_relative_path_or_remote_url(&self.cwd, &description.origin)
+          ))
+        )
+        .ok();
+      }
+      write!(&mut self.writer, "{} ...", description.name).ok();
     }
 
     let status = match result {

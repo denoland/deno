@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::collections::HashMap;
 
@@ -70,7 +70,7 @@ impl ReplLanguageServer {
 
     let cwd_uri = get_cwd_uri()?;
 
-    #[allow(deprecated)]
+    #[allow(deprecated, reason = "some deprecated fields used")]
     language_server
       .initialize(InitializeParams {
         process_id: None,
@@ -292,6 +292,7 @@ fn lsp_range_to_std_range(
 }
 
 fn get_cwd_uri() -> Result<ModuleSpecifier, AnyError> {
+  #[allow(clippy::disallowed_methods, reason = "ok, used for initialization")]
   let cwd = std::env::current_dir()?;
   ModuleSpecifier::from_directory_path(&cwd)
     .map_err(|_| anyhow!("Could not get URI from {}", cwd.display()))
@@ -313,6 +314,7 @@ pub fn get_repl_workspace_settings() -> WorkspaceSettings {
     log_file: false,
     lint: false,
     document_preload_limit: 0, // don't pre-load any modules as it's expensive and not useful for the repl
+    force_push_based_diagnostics: false,
     tls_certificate: None,
     unsafely_ignore_certificate_errors: None,
     unstable: Default::default(),

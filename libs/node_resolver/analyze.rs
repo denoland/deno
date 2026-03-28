@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::collections::BTreeSet;
@@ -78,7 +78,7 @@ pub enum ResolvedCjsAnalysis<'a> {
 #[sys_traits::auto_impl]
 pub trait CjsModuleExportAnalyzerSys: NodeResolverSys {}
 
-#[allow(clippy::disallowed_types)]
+#[allow(clippy::disallowed_types, reason = "definition")]
 pub type CjsModuleExportAnalyzerRc<
   TCjsCodeAnalyzer,
   TInNpmPackageChecker,
@@ -195,7 +195,10 @@ impl<
     Ok(ResolvedCjsAnalysis::Cjs(all_exports))
   }
 
-  #[allow(clippy::needless_lifetimes)]
+  #[allow(
+    clippy::needless_lifetimes,
+    reason = "explicit lifetimes improve clarity"
+  )]
   async fn analyze_reexports<'a>(
     &'a self,
     entry_specifier: &url::Url,
@@ -519,7 +522,7 @@ pub struct CjsAnalysisCouldNotLoadError {
 #[sys_traits::auto_impl]
 pub trait NodeCodeTranslatorSys: CjsModuleExportAnalyzerSys {}
 
-#[allow(clippy::disallowed_types)]
+#[allow(clippy::disallowed_types, reason = "definition")]
 pub type NodeCodeTranslatorRc<
   TCjsCodeAnalyzer,
   TInNpmPackageChecker,

@@ -1,0 +1,54 @@
+{
+  "name": "@types/qs",
+  "dist-tags": {
+    "ts5.8": "6.14.0",
+    "ts5.7": "6.14.0",
+    "ts5.4": "6.14.0",
+    "ts5.5": "6.14.0",
+    "ts5.9": "6.14.0",
+    "ts5.6": "6.14.0",
+    "latest": "6.14.0",
+    "ts5.1": "6.14.0",
+    "ts5.2": "6.14.0",
+    "ts5.3": "6.14.0",
+    "ts6.0": "6.14.0"
+  },
+  "versions": {
+    "6.14.0": {
+      "name": "@types/qs",
+      "version": "6.14.0",
+      "license": "MIT",
+      "_id": "@types/qs@6.14.0",
+      "dist": {
+        "shasum": "d8b60cecf62f2db0fb68e5e006077b9178b85de5",
+        "tarball": "http://localhost:4260/@types/qs/qs-6.14.0.tgz",
+        "fileCount": 5,
+        "integrity": "sha512-eOunJqu0K1923aExK6y8p6fsihYEn/BYuQ4g0CxAAgFc4b/ZLN4CrsRZ55srTdqoiLzU2B2evC+apEIxprEzkQ==",
+        "unpackedSize": 7509
+      },
+      "main": "",
+      "types": "index.d.ts",
+      "scripts": {},
+      "repository": {
+        "url": "https://github.com/DefinitelyTyped/DefinitelyTyped.git",
+        "type": "git",
+        "directory": "types/qs"
+      },
+      "description": "TypeScript definitions for qs",
+      "directories": {},
+      "dependencies": {},
+      "_hasShrinkwrap": false,
+      "peerDependencies": {},
+      "typeScriptVersion": "5.1",
+      "typesPublisherContentHash": "7ce8128acabe5d960292bd50615bb46af79b7ae86cf61e48a5398fcc34410644"
+    }
+  },
+  "license": "MIT",
+  "homepage": "https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/qs",
+  "repository": {
+    "url": "https://github.com/DefinitelyTyped/DefinitelyTyped.git",
+    "type": "git",
+    "directory": "types/qs"
+  },
+  "description": "TypeScript definitions for qs"
+}

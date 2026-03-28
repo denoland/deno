@@ -1,6 +1,6 @@
 // Copyright the Browserify authors. MIT License.
 // Ported from https://github.com/browserify/path-browserify/
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 import type {
   FormatInputPathObject,
@@ -22,7 +22,7 @@ import {
   isWindowsDeviceRoot,
   normalizeString,
 } from "ext:deno_node/path/_util.ts";
-import { assert } from "ext:deno_node/_util/asserts.ts";
+import assert from "node:assert";
 import { core, primordials } from "ext:core/mod.js";
 import process from "node:process";
 import type * as fsGlob from "ext:deno_node/_fs/_fs_glob.ts";
@@ -523,6 +523,36 @@ export function join(...paths: string[]): string {
     if (slashCount >= 2) {
       joined = `\\${StringPrototypeSlice(joined, slashCount)}`;
     }
+  }
+
+  // If any path component is a Windows reserved device name (e.g. CON:,
+  // PRN:, NUL:), skip normalization to avoid resolving `..` through it.
+  // This matches Node.js behavior -- only replace `/` with `\`.
+  let hasReservedComponent = false;
+  {
+    let segStart = 0;
+    for (let i = 0; i <= joined.length; i++) {
+      if (
+        i === joined.length ||
+        isPathSeparator(StringPrototypeCharCodeAt(joined, i))
+      ) {
+        if (i > segStart) {
+          const seg = StringPrototypeSlice(joined, segStart, i);
+          const colonIdx = StringPrototypeIndexOf(seg, ":");
+          if (colonIdx !== -1 && isWindowsReservedName(seg, colonIdx)) {
+            hasReservedComponent = true;
+            break;
+          }
+        }
+        segStart = i + 1;
+      }
+    }
+  }
+
+  if (hasReservedComponent) {
+    // Only convert forward slashes to backslashes, skip normalize.
+    const parts = StringPrototypeSplit(joined, "/");
+    return ArrayPrototypeJoin(parts, "\\");
   }
 
   return normalize(joined);

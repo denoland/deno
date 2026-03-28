@@ -1,18 +1,18 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
 import {
-  BigIntStats,
   CFISBIS,
-  statCallback,
-  statCallbackBigInt,
-  statOptions,
-  Stats,
-} from "ext:deno_node/_fs/_fs_stat.ts";
+  type statCallback,
+  type statCallbackBigInt,
+  type statOptions,
+} from "ext:deno_node/internal/fs/stat_utils.ts";
+import { BigIntStats, Stats } from "ext:deno_node/internal/fs/utils.mjs";
 import { FsFile } from "ext:deno_fs/30_fs.js";
 import { denoErrorToNodeError } from "ext:deno_node/internal/errors.ts";
+import { getValidatedFd } from "ext:deno_node/internal/fs/utils.mjs";
 
 export function fstat(fd: number, callback: statCallback): void;
 export function fstat(
@@ -30,6 +30,7 @@ export function fstat(
   optionsOrCallback: statCallback | statCallbackBigInt | statOptions,
   maybeCallback?: statCallback | statCallbackBigInt,
 ) {
+  fd = getValidatedFd(fd);
   const callback =
     (typeof optionsOrCallback === "function"
       ? optionsOrCallback
@@ -61,6 +62,7 @@ export function fstatSync(
   fd: number,
   options?: statOptions,
 ): Stats | BigIntStats {
+  fd = getValidatedFd(fd);
   try {
     const origin = new FsFile(fd, Symbol.for("Deno.internal.FsFile"))
       .statSync();

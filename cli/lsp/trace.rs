@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::fmt;
 
@@ -10,13 +10,13 @@ use serde::Serialize;
 pub use stub_tracing::*;
 
 pub(crate) struct TracingGuard {
-  #[allow(dead_code)]
+  #[allow(dead_code, reason = "guard")]
   guard: (),
 
   // TODO(nathanwhit): use default guard here so we can change tracing after init
   // but needs wiring through the subscriber to the TSC thread, as it can't be a global default
   // #[allow(dead_code)] tracing::dispatcher::DefaultGuard,
-  #[allow(dead_code)]
+  #[allow(dead_code, reason = "see comment")]
   defused: bool,
 }
 

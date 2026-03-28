@@ -1,20 +1,26 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 
 use dashmap::DashMap;
+use deno_ast::SourceRangedForSpanned;
 use deno_config::glob::FilePatterns;
 use deno_config::workspace::WorkspaceDirLintConfig;
 use deno_core::error::AnyError;
+use deno_core::serde_json;
 use deno_core::url::Url;
 use deno_lint::linter::LintConfig;
 use deno_resolver::deno_json::CompilerOptionsKey;
 use deno_runtime::tokio_util::create_basic_runtime;
 use once_cell::sync::Lazy;
+use tower_lsp::lsp_types as lsp;
 
 use crate::args::LintFlags;
 use crate::args::LintOptions;
+use crate::lsp::analysis::DataQuickFix;
+use crate::lsp::analysis::prepend_whitespace;
 use crate::lsp::compiler_options::LspCompilerOptionsResolver;
 use crate::lsp::config::Config;
 use crate::lsp::documents::DocumentModule;
@@ -218,3 +224,197 @@ impl Drop for LoadPluginsThread {
 
 static LOAD_PLUGINS_THREAD: Lazy<LoadPluginsThread> =
   Lazy::new(LoadPluginsThread::create);
+
+pub fn get_deno_lint_code_actions(
+  uri: &lsp::Uri,
+  module: &DocumentModule,
+  diagnostic: &lsp::Diagnostic,
+) -> Result<Vec<lsp::CodeAction>, AnyError> {
+  let mut actions = Vec::new();
+  if let Some(data_quick_fixes) = diagnostic
+    .data
+    .as_ref()
+    .and_then(|d| serde_json::from_value::<Vec<DataQuickFix>>(d.clone()).ok())
+  {
+    for quick_fix in data_quick_fixes {
+      let mut changes = HashMap::new();
+      changes.insert(
+        uri.clone(),
+        quick_fix
+          .changes
+          .into_iter()
+          .map(|change| lsp::TextEdit {
+            new_text: change.new_text.clone(),
+            range: change.range,
+          })
+          .collect(),
+      );
+      let code_action = lsp::CodeAction {
+        title: quick_fix.description.to_string(),
+        kind: Some(lsp::CodeActionKind::QUICKFIX),
+        diagnostics: Some(vec![diagnostic.clone()]),
+        command: None,
+        is_preferred: None,
+        disabled: None,
+        data: None,
+        edit: Some(lsp::WorkspaceEdit {
+          changes: Some(changes),
+          change_annotations: None,
+          document_changes: None,
+        }),
+      };
+      actions.push(code_action);
+    }
+  }
+
+  // Add deno-lint-ignore actions
+
+  let code = diagnostic
+    .code
+    .as_ref()
+    .map(|v| match v {
+      lsp::NumberOrString::String(v) => v.to_owned(),
+      _ => "".to_string(),
+    })
+    .unwrap();
+  let text_info = module.text_info();
+
+  let line_content = text_info
+    .line_text(diagnostic.range.start.line as usize)
+    .to_string();
+
+  let mut changes = HashMap::new();
+  changes.insert(
+    uri.clone(),
+    vec![lsp::TextEdit {
+      new_text: prepend_whitespace(
+        format!("// deno-lint-ignore {code}\n"),
+        Some(line_content),
+      ),
+      range: lsp::Range {
+        start: lsp::Position {
+          line: diagnostic.range.start.line,
+          character: 0,
+        },
+        end: lsp::Position {
+          line: diagnostic.range.start.line,
+          character: 0,
+        },
+      },
+    }],
+  );
+  let ignore_error_action = lsp::CodeAction {
+    title: format!("Disable {code} for this line"),
+    kind: Some(lsp::CodeActionKind::QUICKFIX),
+    diagnostics: Some(vec![diagnostic.clone()]),
+    command: None,
+    is_preferred: None,
+    disabled: None,
+    data: None,
+    edit: Some(lsp::WorkspaceEdit {
+      changes: Some(changes),
+      change_annotations: None,
+      document_changes: None,
+    }),
+  };
+  actions.push(ignore_error_action);
+
+  let parsed_source = module
+    .open_data
+    .as_ref()
+    .and_then(|d| d.parsed_source.as_ref()?.as_ref().ok());
+  let next_leading_comment_range = {
+    let line = parsed_source
+      .and_then(|ps| {
+        let last_comment = ps.get_leading_comments()?.iter().last()?;
+        Some(module.text_info().line_index(last_comment.end()) as u32 + 1)
+      })
+      .unwrap_or(0);
+    let position = lsp::Position { line, character: 0 };
+    lsp::Range {
+      start: position,
+      end: position,
+    }
+  };
+
+  // Disable a lint error for the entire file.
+  let maybe_ignore_comment = parsed_source.and_then(|ps| {
+    // Note: we can use ps.get_leading_comments() but it doesn't
+    // work when shebang is present at the top of the file.
+    ps.comments().get_vec().iter().find_map(|c| {
+      let comment_text = c.text.trim();
+      comment_text.split_whitespace().next().and_then(|prefix| {
+        if prefix == "deno-lint-ignore-file" {
+          Some(c.clone())
+        } else {
+          None
+        }
+      })
+    })
+  });
+
+  let new_text;
+  let range;
+  // If ignore file comment already exists, append the lint code
+  // to the existing comment.
+  if let Some(ignore_comment) = maybe_ignore_comment {
+    new_text = format!(" {code}");
+    // Get the end position of the comment.
+    let index = text_info.line_and_column_index(ignore_comment.end());
+    let position = lsp::Position {
+      line: index.line_index as u32,
+      character: index.column_index as u32,
+    };
+    range = lsp::Range {
+      start: position,
+      end: position,
+    };
+  } else {
+    new_text = format!("// deno-lint-ignore-file {code}\n");
+    range = next_leading_comment_range;
+  }
+
+  let mut changes = HashMap::new();
+  changes.insert(uri.clone(), vec![lsp::TextEdit { new_text, range }]);
+  let ignore_file_action = lsp::CodeAction {
+    title: format!("Disable {code} for the entire file"),
+    kind: Some(lsp::CodeActionKind::QUICKFIX),
+    diagnostics: Some(vec![diagnostic.clone()]),
+    command: None,
+    is_preferred: None,
+    disabled: None,
+    data: None,
+    edit: Some(lsp::WorkspaceEdit {
+      changes: Some(changes),
+      change_annotations: None,
+      document_changes: None,
+    }),
+  };
+  actions.push(ignore_file_action);
+
+  let mut changes = HashMap::new();
+  changes.insert(
+    uri.clone(),
+    vec![lsp::TextEdit {
+      new_text: "// deno-lint-ignore-file\n".to_string(),
+      range: next_leading_comment_range,
+    }],
+  );
+  let ignore_file_action = lsp::CodeAction {
+    title: "Ignore lint errors for the entire file".to_string(),
+    kind: Some(lsp::CodeActionKind::QUICKFIX),
+    diagnostics: Some(vec![diagnostic.clone()]),
+    command: None,
+    is_preferred: None,
+    disabled: None,
+    data: None,
+    edit: Some(lsp::WorkspaceEdit {
+      changes: Some(changes),
+      change_annotations: None,
+      document_changes: None,
+    }),
+  };
+  actions.push(ignore_file_action);
+
+  Ok(actions)
+}

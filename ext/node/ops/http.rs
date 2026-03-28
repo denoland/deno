@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::cell::RefCell;
@@ -14,7 +14,6 @@ use bytes::Bytes;
 use deno_core::AsyncRefCell;
 use deno_core::AsyncResult;
 use deno_core::BufView;
-use deno_core::ByteString;
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
@@ -23,20 +22,24 @@ use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
+use deno_core::ToV8;
+use deno_core::convert::ByteString;
 use deno_core::error::ResourceError;
 use deno_core::futures::FutureExt;
 use deno_core::futures::Stream;
 use deno_core::futures::StreamExt;
 use deno_core::futures::channel::mpsc;
+use deno_core::futures::channel::oneshot;
 use deno_core::futures::stream::Peekable;
 use deno_core::op2;
-use deno_core::serde::Serialize;
 use deno_core::url::Url;
 use deno_error::JsError;
 use deno_error::JsErrorBox;
 use deno_fetch::FetchCancelHandle;
 use deno_fetch::FetchReturn;
 use deno_fetch::ResBody;
+use deno_net::io::TcpStreamResource;
+use deno_net::ops_tls::TlsStreamResource;
 use deno_net::raw::NetworkStream;
 use deno_net::raw::NetworkStreamAddress;
 use deno_net::raw::NetworkStreamReadHalf;
@@ -57,8 +60,7 @@ use hyper_util::rt::TokioIo;
 use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
 
-#[derive(Default, Serialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Default, ToV8)]
 pub struct NodeHttpResponse {
   pub status: u16,
   pub status_text: String,
@@ -72,8 +74,7 @@ pub struct NodeHttpResponse {
 type CancelableResponseResult =
   Result<Result<http::Response<Incoming>, hyper::Error>, Canceled>;
 
-#[derive(Serialize, Debug)]
-#[serde(rename_all = "camelCase")]
+#[derive(ToV8, Debug)]
 struct InformationalResponse {
   status: u16,
   status_text: String,
@@ -86,6 +87,7 @@ pub struct NodeHttpClientResponse {
   response: Pin<Box<dyn Future<Output = CancelableResponseResult>>>,
   url: String,
   informational_rx: RefCell<Option<mpsc::Receiver<InformationalResponse>>>,
+  socket_rx: RefCell<Option<oneshot::Receiver<NetworkStream>>>,
 }
 
 impl Debug for NodeHttpClientResponse {
@@ -152,20 +154,87 @@ pub enum ConnError {
   Hyper(#[from] hyper::Error),
 }
 
-#[op2(async, stack_trace)]
-#[serde]
+#[op2(stack_trace)]
 // This is triggering a known false positive for explicit drop(state) calls.
 // See https://rust-lang.github.io/rust-clippy/master/index.html#await_holding_refcell_ref
-#[allow(clippy::await_holding_refcell_ref)]
+#[allow(
+  clippy::await_holding_refcell_ref,
+  reason = "false positive, ref is explicitly dropped before await"
+)]
 pub async fn op_node_http_request_with_conn(
   state: Rc<RefCell<OpState>>,
-  #[serde] method: ByteString,
+  #[scoped] method: ByteString,
   #[string] url: String,
   #[string] request_path: Option<String>,
-  #[serde] headers: Vec<(ByteString, ByteString)>,
+  #[scoped] headers: Vec<(ByteString, ByteString)>,
   #[smi] body: Option<ResourceId>,
   #[smi] conn_rid: ResourceId,
 ) -> Result<FetchReturn, ConnError> {
+  // Check if this is an upgrade request (e.g., WebSocket)
+  let is_upgrade_request = headers.iter().any(|(name, value)| {
+    name.eq_ignore_ascii_case(b"connection")
+      && value
+        .to_ascii_lowercase()
+        .split(|&b| b == b',')
+        .any(|part| part.trim_ascii() == b"upgrade")
+  });
+
+  // Take the network stream resource for HTTP communication.
+  // On Windows, NamedPipe resources may have pending read operations
+  // (from readStart() in stream_wrap.ts) that hold extra Rc references,
+  // preventing Rc::try_unwrap(). We handle this by cancelling pending ops
+  // and yielding to let them complete before extracting the pipe.
+  #[cfg(windows)]
+  let stream = {
+    let is_pipe = state
+      .borrow()
+      .resource_table
+      .get::<deno_net::win_pipe::NamedPipe>(conn_rid)
+      .is_ok();
+    if is_pipe {
+      // Take the NamedPipe from the resource table
+      let pipe_rc = state
+        .borrow_mut()
+        .resource_table
+        .take::<deno_net::win_pipe::NamedPipe>(conn_rid)
+        .map_err(ConnError::Resource)?;
+
+      // Cancel pending read/write operations. This triggers the CancelHandle,
+      // causing in-flight ops to complete with a cancellation error and
+      // release their Rc references.
+      pipe_rc.cancel_pending_ops();
+
+      // Yield to the event loop so cancelled ops can be polled, see the
+      // cancellation, and drop their Rc references to the NamedPipe.
+      //
+      // Invariant: a single yield is sufficient because:
+      // 1. cancel_pending_ops() triggers the CancelHandle, which causes
+      //    all in-flight read/write futures to resolve on their next poll.
+      // 2. The `if (!this.#reading) return;` guard in stream_wrap.ts's
+      //    #read() (after its own PromiseResolve yield) ensures the JS
+      //    read loop bails out before starting a new op_read.
+      // 3. yield_now() gives the executor one turn to poll those cancelled
+      //    futures and drop their Rc references.
+      tokio::task::yield_now().await;
+
+      // Now we should be the sole Rc owner
+      let resource = Rc::try_unwrap(pipe_rc)
+        .map_err(|_| ConnError::Resource(ResourceError::BadResourceId))?;
+      let client = resource
+        .into_client()
+        .map_err(|_| ConnError::Resource(ResourceError::BadResourceId))?;
+      NetworkStream::WindowsPipe(deno_net::win_pipe::WindowsPipeStream::new(
+        client,
+      ))
+    } else {
+      take_network_stream_resource(
+        &mut state.borrow_mut().resource_table,
+        conn_rid,
+      )
+      .map_err(|_| ConnError::Resource(ResourceError::BadResourceId))?
+    }
+  };
+  #[cfg(not(windows))]
   let stream = take_network_stream_resource(
     &mut state.borrow_mut().resource_table,
     conn_rid,
@@ -173,7 +242,23 @@ pub async fn op_node_http_request_with_conn(
   .map_err(|_| ConnError::Resource(ResourceError::BadResourceId))?;
   let io = TokioIo::new(stream);
   let (mut sender, conn) = hyper::client::conn::http1::handshake(io).await?;
-  tokio::task::spawn(conn.with_upgrades());
+
+  // Create a channel to return the socket after the HTTP response is complete.
+  // This enables keepAlive connection reuse
+  // For upgrade requests, we use with_upgrades() which doesn't return the socket.
+  let (socket_tx, socket_rx) = oneshot::channel();
+  if is_upgrade_request {
+    tokio::task::spawn(async move {
+      let _ = conn.with_upgrades().await;
+      drop(socket_tx);
+    });
+  } else {
+    tokio::task::spawn(async move {
+      if let Ok(parts) = conn.without_shutdown().await {
+        let _ = socket_tx.send(parts.io.into_inner());
+      }
+    });
+  }
 
   // Create the request.
   let method = Method::from_bytes(&method)?;
@@ -291,6 +376,7 @@ pub async fn op_node_http_request_with_conn(
       response: Box::pin(fut),
       url: url.clone(),
       informational_rx: RefCell::new(Some(informational_rx)),
+      socket_rx: RefCell::new(Some(socket_rx)),
     });
 
   let cancel_handle_rid = state
@@ -304,8 +390,7 @@ pub async fn op_node_http_request_with_conn(
   })
 }
 
-#[op2(async)]
-#[serde]
+#[op2]
 pub async fn op_node_http_await_information(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
@@ -325,8 +410,7 @@ pub async fn op_node_http_await_information(
   rx.next().await
 }
 
-#[op2(async)]
-#[serde]
+#[op2]
 pub async fn op_node_http_await_response(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
@@ -341,6 +425,9 @@ pub async fn op_node_http_await_response(
       "NodeHttpClientResponse".to_string(),
     ))
   })?;
+
+  // Extract the socket receiver before awaiting the response.
+  let socket_rx = resource.socket_rx.borrow_mut().take();
 
   let res = resource.response.await??;
   let status = res.status();
@@ -357,10 +444,15 @@ pub async fn op_node_http_await_response(
 
   let res = http::Response::from_parts(parts, body);
 
-  let response_rid = state
-    .borrow_mut()
-    .resource_table
-    .add(NodeHttpResponseResource::new(res, content_length));
+  let response_rid =
+    state
+      .borrow_mut()
+      .resource_table
+      .add(NodeHttpResponseResource::new(
+        res,
+        content_length,
+        socket_rx,
+      ));
 
   Ok(NodeHttpResponse {
     status: status.as_u16(),
@@ -373,8 +465,76 @@ pub async fn op_node_http_await_response(
   })
 }
 
-#[op2(async)]
-#[serde]
+/// Returns the socket after the HTTP response body has been fully consumed.
+/// This enables keepAlive connection reuse for the Node.js HTTP Agent.
+/// Returns the new resource ID for the socket, or None if the connection
+/// cannot be reused (e.g., connection error or already retrieved).
+#[op2]
+#[smi]
+pub async fn op_node_http_response_reclaim_conn(
+  state: Rc<RefCell<OpState>>,
+  #[smi] response_rid: ResourceId,
+) -> Result<Option<ResourceId>, ConnError> {
+  let resource = state
+    .borrow()
+    .resource_table
+    .get::<NodeHttpResponseResource>(response_rid)
+    .map_err(ConnError::Resource)?;
+
+  // Take the socket receiver - only one caller can retrieve the socket.
+  let socket_rx = resource.socket_rx.borrow_mut().take();
+  drop(resource);
+
+  let Some(rx) = socket_rx else {
+    // Socket was already retrieved or never available.
+    return Ok(None);
+  };
+
+  // Wait for the socket to be returned from the connection task.
+  let stream = match rx.await {
+    Ok(stream) => stream,
+    Err(_) => {
+      // Sender was dropped - connection had an error.
+      return Ok(None);
+    }
+  };
+
+  // Create a new resource from the returned socket.
+  let rid = match stream {
+    NetworkStream::Tcp(tcp_stream) => state
+      .borrow_mut()
+      .resource_table
+      .add(TcpStreamResource::new(tcp_stream.into_split())),
+    NetworkStream::Tls(tls_stream) => state
+      .borrow_mut()
+      .resource_table
+      .add(TlsStreamResource::new_tcp(tls_stream.into_split())),
+    #[cfg(unix)]
+    NetworkStream::Unix(_) => {
+      // Unix sockets are not commonly used for HTTP keepAlive.
+      return Ok(None);
+    }
+    #[cfg(any(
+      target_os = "android",
+      target_os = "linux",
+      target_os = "macos"
+    ))]
+    NetworkStream::Vsock(_) => {
+      return Ok(None);
+    }
+    NetworkStream::Tunnel(_) => {
+      return Ok(None);
+    }
+    #[cfg(windows)]
+    NetworkStream::WindowsPipe(_) => {
+      return Ok(None);
+    }
+  };
+
+  Ok(Some(rid))
+}
+
+#[op2]
 pub async fn op_node_http_fetch_response_upgrade(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
@@ -496,16 +656,22 @@ pub struct NodeHttpResponseResource {
   pub response_reader: AsyncRefCell<NodeHttpFetchResponseReader>,
   pub cancel: CancelHandle,
   pub size: Option<u64>,
+  socket_rx: RefCell<Option<oneshot::Receiver<NetworkStream>>>,
 }
 
 impl NodeHttpResponseResource {
-  pub fn new(response: http::Response<ResBody>, size: Option<u64>) -> Self {
+  pub fn new(
+    response: http::Response<ResBody>,
+    size: Option<u64>,
+    socket_rx: Option<oneshot::Receiver<NetworkStream>>,
+  ) -> Self {
     Self {
       response_reader: AsyncRefCell::new(NodeHttpFetchResponseReader::Start(
         response,
       )),
       cancel: CancelHandle::default(),
       size,
+      socket_rx: RefCell::new(socket_rx),
     }
   }
 
@@ -586,7 +752,7 @@ impl Resource for NodeHttpResponseResource {
   }
 }
 
-#[allow(clippy::type_complexity)]
+#[allow(clippy::type_complexity, reason = "TODO: improve")]
 pub struct NodeHttpResourceToBodyAdapter(
   Rc<dyn Resource>,
   Option<Pin<Box<dyn Future<Output = Result<BufView, JsErrorBox>>>>>,

@@ -1,6 +1,7 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
+use std::cell::Cell;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::ffi::OsString;
@@ -25,7 +26,8 @@ use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
-use deno_core::ToJsBuffer;
+use deno_core::ToV8;
+use deno_core::convert::Uint8Array;
 use deno_core::op2;
 use deno_core::serde_json;
 use deno_error::JsErrorBox;
@@ -45,7 +47,6 @@ use deno_subprocess_windows::Command;
 #[cfg(windows)]
 use deno_subprocess_windows::Stdio as StdStdio;
 use serde::Deserialize;
-use serde::Serialize;
 #[cfg(unix)]
 use tokio::process::Child as AsyncChild;
 
@@ -71,7 +72,8 @@ impl Stdio {
       Stdio::Inherit => StdStdio::inherit(),
       Stdio::Piped => StdStdio::piped(),
       Stdio::Null => StdStdio::null(),
-      _ => unreachable!(),
+      // IPC uses a pipe internally
+      Stdio::IpcForInternalUse => StdStdio::piped(),
     }
   }
 }
@@ -135,7 +137,7 @@ impl StdioOrRid {
   }
 }
 
-#[allow(clippy::disallowed_types)]
+#[allow(clippy::disallowed_types, reason = "definition")]
 pub type NpmProcessStateProviderRc =
   deno_fs::sync::MaybeArc<dyn NpmProcessStateProvider>;
 
@@ -165,6 +167,8 @@ deno_core::extension!(
     op_spawn_wait,
     op_spawn_sync,
     op_spawn_kill,
+    op_spawn_child_ref,
+    op_spawn_child_unref,
     deprecated::op_run,
     deprecated::op_run_status,
     deprecated::op_kill,
@@ -176,13 +180,48 @@ deno_core::extension!(
   },
 );
 
-/// Second member stores the pid separately from the RefCell. It's needed for
-/// `op_spawn_kill`, where the RefCell is borrowed mutably by `op_spawn_wait`.
-struct ChildResource(RefCell<AsyncChild>, u32);
+/// Wraps an async child process handle.
+///
+/// `pid` is stored separately from the `RefCell` because it's needed for
+/// `op_spawn_kill`, where the `RefCell` is borrowed mutably by `op_spawn_wait`.
+///
+/// `kill_on_drop` controls whether the child process is killed when this
+/// resource is dropped (e.g. when the parent process exits). It defaults to
+/// `true` for non-detached processes. Calling `unref()` sets it to `false`,
+/// allowing the child to outlive the parent — matching Node.js semantics.
+struct ChildResource {
+  child: RefCell<AsyncChild>,
+  pid: u32,
+  kill_on_drop: Cell<bool>,
+}
 
 impl Resource for ChildResource {
   fn name(&self) -> Cow<'_, str> {
     "child".into()
+  }
+}
+
+impl Drop for ChildResource {
+  fn drop(&mut self) {
+    if self.kill_on_drop.get() {
+      #[cfg(unix)]
+      {
+        // Send SIGKILL to the child process. Best-effort; ignore errors
+        // (e.g. the process may have already exited).
+        // SAFETY: libc::kill is safe to call with any pid/signal combination;
+        // it simply returns an error for invalid inputs.
+        unsafe {
+          libc::kill(self.pid as i32, libc::SIGKILL);
+        }
+      }
+      #[cfg(windows)]
+      {
+        let _ = deno_subprocess_windows::process_kill(
+          self.pid as i32,
+          /* SIGTERM */ 15,
+        );
+      }
+    }
   }
 }
 
@@ -212,6 +251,8 @@ pub struct SpawnArgs {
   extra_stdio: Vec<Stdio>,
   detached: bool,
   needs_npm_process_state: bool,
+  #[cfg(unix)]
+  argv0: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -313,8 +354,7 @@ pub struct ChildStdio {
   stderr: StdioOrRid,
 }
 
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(ToV8)]
 pub struct ChildStatus {
   success: bool,
   code: i32,
@@ -354,12 +394,11 @@ impl TryFrom<ExitStatus> for ChildStatus {
   }
 }
 
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(ToV8)]
 pub struct SpawnOutput {
   status: ChildStatus,
-  stdout: Option<ToJsBuffer>,
-  stderr: Option<ToJsBuffer>,
+  stdout: Option<Uint8Array>,
+  stderr: Option<Uint8Array>,
 }
 
 type CreateCommand = (
@@ -450,7 +489,12 @@ fn create_command(
   }
 
   #[cfg(not(windows))]
-  command.args(args.args);
+  {
+    if let Some(ref argv0) = args.argv0 {
+      command.arg0(argv0);
+    }
+    command.args(args.args);
+  }
 
   command.current_dir(run_env.cwd);
   command.env_clear();
@@ -484,7 +528,10 @@ fn create_command(
 
   #[cfg(unix)]
   // TODO(bartlomieju):
-  #[allow(clippy::undocumented_unsafe_blocks)]
+  #[allow(
+    clippy::undocumented_unsafe_blocks,
+    reason = "TODO: add safety comment"
+  )]
   unsafe {
     let mut extra_pipe_rids = Vec::new();
     let mut fds_to_dup = Vec::new();
@@ -652,8 +699,7 @@ fn create_command(
   }
 }
 
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(ToV8)]
 struct Child {
   rid: ResourceId,
   pid: u32,
@@ -675,12 +721,11 @@ fn spawn_child(
   let mut command = command;
   #[cfg(not(windows))]
   let mut command = tokio::process::Command::from(command);
-  // TODO(@crowlkats): allow detaching processes.
-  //  currently deno will orphan a process when exiting with an error or Deno.exit()
-  // We want to kill child when it's closed
-  if !detached {
-    command.kill_on_drop(true);
-  }
+  // Note: we do NOT set `command.kill_on_drop(true)` here. Instead,
+  // `ChildResource` implements its own `Drop` that kills the child process
+  // by PID when `kill_on_drop` is true. This allows `unref()` to disable
+  // kill-on-drop, so the child can outlive the parent (matching Node.js
+  // semantics for `child_process.unref()`).
 
   let mut child = match command.spawn() {
     Ok(child) => child,
@@ -692,7 +737,7 @@ fn spawn_child(
       if let Some(cwd) = command.get_current_dir() {
         // launching a sub process always depends on the real
         // file system so using these methods directly is ok
-        #[allow(clippy::disallowed_methods)]
+        #[allow(clippy::disallowed_methods, reason = "requires real fs")]
         if !cwd.exists() {
           return Err(
             std::io::Error::new(
@@ -707,7 +752,7 @@ fn spawn_child(
           );
         }
 
-        #[allow(clippy::disallowed_methods)]
+        #[allow(clippy::disallowed_methods, reason = "requires real fs")]
         if !cwd.is_dir() {
           return Err(
             std::io::Error::new(
@@ -774,9 +819,11 @@ fn spawn_child(
     .transpose()?
     .map(|stderr| state.resource_table.add(ChildStderrResource::from(stderr)));
 
-  let child_rid = state
-    .resource_table
-    .add(ChildResource(RefCell::new(child), pid));
+  let child_rid = state.resource_table.add(ChildResource {
+    child: RefCell::new(child),
+    pid,
+    kill_on_drop: Cell::new(!detached),
+  });
 
   Ok(Child {
     rid: child_rid,
@@ -888,7 +935,10 @@ fn compute_run_env(
   arg_envs: &[(String, String)],
   arg_clear_env: bool,
 ) -> Result<RunEnv, ProcessError> {
-  #[allow(clippy::disallowed_methods)]
+  #[allow(
+    clippy::disallowed_methods,
+    reason = "ok for now because launching a sub process requires the real fs"
+  )]
   let cwd =
     std::env::current_dir().map_err(ProcessError::FailedResolvingCwd)?;
   let cwd = arg_cwd
@@ -1018,7 +1068,6 @@ fn get_requires_allow_all_env_vars(env: &RunEnv) -> Vec<&str> {
 }
 
 #[op2(stack_trace)]
-#[serde]
 fn op_spawn_child(
   state: &mut OpState,
   #[serde] args: SpawnArgs,
@@ -1034,9 +1083,11 @@ fn op_spawn_child(
   child
 }
 
-#[op2(async)]
-#[allow(clippy::await_holding_refcell_ref)]
-#[serde]
+#[op2]
+#[allow(
+  clippy::await_holding_refcell_ref,
+  reason = "ref is dropped before await points"
+)]
 async fn op_spawn_wait(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
@@ -1047,7 +1098,7 @@ async fn op_spawn_wait(
     .get::<ChildResource>(rid)
     .map_err(ProcessError::Resource)?;
   let result = resource
-    .0
+    .child
     .try_borrow_mut()
     .map_err(ProcessError::BorrowMut)?
     .wait()
@@ -1060,7 +1111,6 @@ async fn op_spawn_wait(
 }
 
 #[op2(stack_trace)]
-#[serde]
 fn op_spawn_sync(
   state: &mut OpState,
   #[serde] args: SpawnArgs,
@@ -1118,13 +1168,38 @@ fn op_spawn_kill(
   #[serde] signal: SignalArg,
 ) -> Result<(), ProcessError> {
   if let Ok(child_resource) = state.resource_table.get::<ChildResource>(rid) {
-    deprecated::kill(child_resource.1 as i32, &signal)?;
+    deprecated::kill(child_resource.pid as i32, &signal)?;
     return Ok(());
   }
   Err(ProcessError::ChildProcessAlreadyTerminated)
 }
 
+/// Disable kill-on-drop for a child process, allowing it to outlive the parent.
+/// Called from JS `ChildProcess.unref()`.
+#[op2(fast)]
+fn op_spawn_child_unref(
+  state: &mut OpState,
+  #[smi] rid: ResourceId,
+) -> Result<(), deno_core::error::ResourceError> {
+  let resource = state.resource_table.get::<ChildResource>(rid)?;
+  resource.kill_on_drop.set(false);
+  Ok(())
+}
+
+/// Re-enable kill-on-drop for a child process.
+/// Called from JS `ChildProcess.ref()`.
+#[op2(fast)]
+fn op_spawn_child_ref(
+  state: &mut OpState,
+  #[smi] rid: ResourceId,
+) -> Result<(), deno_core::error::ResourceError> {
+  let resource = state.resource_table.get::<ChildResource>(rid)?;
+  resource.kill_on_drop.set(true);
+  Ok(())
+}
+
 mod deprecated {
+  use deno_core::FromV8;
   #[cfg(windows)]
   use deno_subprocess_windows::Child;
   #[cfg(not(windows))]
@@ -1132,14 +1207,16 @@ mod deprecated {
 
   use super::*;
 
-  #[derive(Deserialize)]
-  #[serde(rename_all = "camelCase")]
+  #[derive(FromV8)]
   pub struct RunArgs {
     cmd: Vec<String>,
     cwd: Option<String>,
     env: Vec<(String, String)>,
+    #[from_v8(serde)]
     stdin: StdioOrRid,
+    #[from_v8(serde)]
     stdout: StdioOrRid,
+    #[from_v8(serde)]
     stderr: StdioOrRid,
   }
 
@@ -1159,8 +1236,7 @@ mod deprecated {
     }
   }
 
-  #[derive(Serialize)]
-  #[serde(rename_all = "camelCase")]
+  #[derive(ToV8)]
   // TODO(@AaronO): maybe find a more descriptive name or a convention for return structs
   pub struct RunInfo {
     rid: ResourceId,
@@ -1171,10 +1247,9 @@ mod deprecated {
   }
 
   #[op2(stack_trace)]
-  #[serde]
   pub fn op_run(
     state: &mut OpState,
-    #[serde] run_args: RunArgs,
+    #[scoped] run_args: RunArgs,
   ) -> Result<RunInfo, ProcessError> {
     let args = run_args.cmd;
     let cmd = args.first().ok_or(ProcessError::MissingCmd)?;
@@ -1203,7 +1278,10 @@ mod deprecated {
 
     #[cfg(unix)]
     // TODO(bartlomieju):
-    #[allow(clippy::undocumented_unsafe_blocks)]
+    #[allow(
+      clippy::undocumented_unsafe_blocks,
+      reason = "TODO: add safety comment"
+    )]
     unsafe {
       c.pre_exec(|| {
         libc::setgroups(0, std::ptr::null());
@@ -1285,16 +1363,14 @@ mod deprecated {
     })
   }
 
-  #[derive(Serialize)]
-  #[serde(rename_all = "camelCase")]
+  #[derive(ToV8)]
   pub struct ProcessStatus {
     got_signal: bool,
     exit_code: i32,
     exit_signal: i32,
   }
 
-  #[op2(async)]
-  #[serde]
+  #[op2]
   pub async fn op_run_status(
     state: Rc<RefCell<OpState>>,
     #[smi] rid: ResourceId,
@@ -1365,19 +1441,56 @@ mod deprecated {
     use winapi::um::processthreadsapi::TerminateProcess;
     use winapi::um::winnt::PROCESS_TERMINATE;
 
-    let signal_str = match signal {
-      SignalArg::Int(n) => n.to_string(),
-      SignalArg::String(s) => s.clone(),
+    let signo = match signal {
+      SignalArg::Int(n) => *n,
+      SignalArg::String(s) => deno_signals::signal_str_to_int(s)
+        .map_err(SignalError::InvalidSignalStr)?,
     };
 
-    if !matches!(signal_str.as_str(), "SIGKILL" | "SIGTERM") {
-      Err(
+    if signo == 0 {
+      // Signal 0 is a health check: verify the process is still alive.
+      // SAFETY: winapi call
+      let handle = unsafe {
+        OpenProcess(
+          winapi::um::winnt::PROCESS_QUERY_LIMITED_INFORMATION,
+          FALSE,
+          pid as DWORD,
+        )
+      };
+      if handle.is_null() {
+        return Err(Error::from(NotFound).into());
+      }
+      let mut status: DWORD = 0;
+      // SAFETY: winapi call
+      let alive = unsafe {
+        winapi::um::processthreadsapi::GetExitCodeProcess(handle, &mut status)
+          != FALSE
+          && status == 259 // STILL_ACTIVE
+      };
+      // SAFETY: winapi call
+      unsafe {
+        CloseHandle(handle);
+      }
+      if alive {
+        return Ok(());
+      } else {
+        return Err(Error::from(NotFound).into());
+      }
+    }
+
+    // On Windows, SIGINT/SIGTERM/SIGKILL/SIGQUIT/SIGABRT all result in
+    // process termination via TerminateProcess, matching libuv behavior.
+    // SIGABRT is 22 on Windows (CRT), unlike 6 on Unix.
+    if !matches!(signo, 2 | 3 | 9 | 15 | 22) {
+      return Err(
         SignalError::InvalidSignalStr(deno_signals::InvalidSignalStrError(
-          signal_str,
+          format!("{signo}"),
         ))
         .into(),
-      )
-    } else if pid <= 0 {
+      );
+    }
+
+    if pid <= 0 {
       Err(ProcessError::InvalidPid)
     } else {
       let handle =

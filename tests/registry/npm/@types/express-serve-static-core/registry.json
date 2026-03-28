@@ -1,0 +1,58 @@
+{
+  "name": "@types/express-serve-static-core",
+  "dist-tags": {
+    "ts5.5": "5.1.1",
+    "ts5.7": "5.1.1",
+    "ts5.6": "5.1.1",
+    "ts5.8": "5.1.1",
+    "ts5.2": "5.1.1",
+    "ts5.3": "5.1.1",
+    "ts6.0": "5.1.1",
+    "ts5.9": "5.1.1",
+    "ts5.4": "5.1.1",
+    "latest": "5.1.1"
+  },
+  "versions": {
+    "5.1.1": {
+      "name": "@types/express-serve-static-core",
+      "version": "5.1.1",
+      "license": "MIT",
+      "_id": "@types/express-serve-static-core@5.1.1",
+      "dist": {
+        "shasum": "1a77faffee9572d39124933259be2523837d7eaa",
+        "tarball": "http://localhost:4260/@types/express-serve-static-core/express-serve-static-core-5.1.1.tgz",
+        "fileCount": 5,
+        "integrity": "sha512-v4zIMr/cX7/d2BpAEX3KNKL/JrT1s43s96lLvvdTmza1oEvDudCqK9aF/djc/SWgy8Yh0h30TZx5VpzqFCxk5A==",
+        "unpackedSize": 45181
+      },
+      "main": "",
+      "types": "index.d.ts",
+      "scripts": {},
+      "repository": {
+        "url": "https://github.com/DefinitelyTyped/DefinitelyTyped.git",
+        "type": "git",
+        "directory": "types/express-serve-static-core"
+      },
+      "description": "TypeScript definitions for express-serve-static-core",
+      "directories": {},
+      "dependencies": {
+        "@types/qs": "*",
+        "@types/node": "*",
+        "@types/send": "*",
+        "@types/range-parser": "*"
+      },
+      "_hasShrinkwrap": false,
+      "peerDependencies": {},
+      "typeScriptVersion": "5.2",
+      "typesPublisherContentHash": "b337510882ad267c3072f527a983b751462ec3050b22918b97b8e5a2b6bf3656"
+    }
+  },
+  "license": "MIT",
+  "homepage": "https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/express-serve-static-core",
+  "repository": {
+    "url": "https://github.com/DefinitelyTyped/DefinitelyTyped.git",
+    "type": "git",
+    "directory": "types/express-serve-static-core"
+  },
+  "description": "TypeScript definitions for express-serve-static-core"
+}

@@ -1,3 +1,4 @@
+Check mod.js
 TS2769 [ERROR]: No overload matches this call.
   [WILDCARD]
 const _data = fs.readFileSync("./node_builtin.js", 123);

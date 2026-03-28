@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::cell::RefCell;
@@ -119,7 +119,10 @@ struct ForeignStatic {
 #[derive(Debug)]
 enum ForeignSymbol {
   ForeignFunction(ForeignFunction),
-  ForeignStatic(#[allow(dead_code)] ForeignStatic),
+  ForeignStatic(
+    #[allow(dead_code, reason = "variant data used by serde deserialization")]
+    ForeignStatic,
+  ),
 }
 
 impl<'de> Deserialize<'de> for ForeignSymbol {
@@ -249,10 +252,10 @@ pub fn op_ffi_load<'scope>(
 
 pub struct FunctionData {
   // Held in a box to keep memory while function is alive.
-  #[allow(unused)]
+  #[allow(unused, reason = "kept alive for the duration of the function")]
   pub symbol: Box<Symbol>,
   // Held in a box to keep inner data alive while function is alive.
-  #[allow(unused)]
+  #[allow(unused, reason = "kept alive for the duration of the function")]
   turbocall: Option<Turbocall>,
 }
 
@@ -340,7 +343,7 @@ fn sync_fn_impl<'s>(
 }
 
 // `path` is only used on Windows.
-#[allow(unused_variables)]
+#[allow(unused_variables, reason = "path is only used on Windows")]
 pub(crate) fn format_error(
   e: dlopen2::Error,
   path: &std::path::Path,

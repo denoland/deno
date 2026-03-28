@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::path::PathBuf;
@@ -169,15 +169,8 @@ fn is_word_boundary(c: char) -> bool {
 
 fn get_expr_from_line_at_pos(line: &str, cursor_pos: usize) -> &str {
   let start = line[..cursor_pos].rfind(is_word_boundary).unwrap_or(0);
-  let end = line[cursor_pos..]
-    .rfind(is_word_boundary)
-    .map(|i| cursor_pos + i)
-    .unwrap_or(cursor_pos);
-
-  let word = &line[start..end];
-  let word = word.strip_prefix(is_word_boundary).unwrap_or(word);
-
-  (word.strip_suffix(is_word_boundary).unwrap_or(word)) as _
+  let word = &line[start..cursor_pos];
+  word.strip_prefix(is_word_boundary).unwrap_or(word)
 }
 
 impl Completer for EditorHelper {
@@ -336,7 +329,12 @@ impl Highlighter for EditorHelper {
     }
   }
 
-  fn highlight_char(&self, line: &str, _: usize, _: bool) -> bool {
+  fn highlight_char(
+    &self,
+    line: &str,
+    _: usize,
+    _: rustyline::highlight::CmdKind,
+  ) -> bool {
     !line.is_empty()
   }
 

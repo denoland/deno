@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -25,6 +25,7 @@ import {
   kArrayBufferOffset,
   kBytesWritten,
   kLastWriteWasAsync,
+  kReadBytesOrError,
   LibuvStreamWrap,
   streamBaseState,
   WriteWrap,
@@ -40,8 +41,10 @@ import { Buffer } from "node:buffer";
 
 const {
   Array,
+  ArrayBufferPrototype,
   FunctionPrototypeBind,
   MapPrototypeGet,
+  ObjectPrototypeIsPrototypeOf,
   Symbol,
   TypedArrayPrototypeGetBuffer,
 } = primordials;
@@ -49,6 +52,7 @@ const {
 export const kMaybeDestroy = Symbol("kMaybeDestroy");
 export const kUpdateTimer = Symbol("kUpdateTimer");
 export const kAfterAsyncWrite = Symbol("kAfterAsyncWrite");
+export const kBoundSession = Symbol("kBoundSession");
 export const kHandle = Symbol("kHandle");
 export const kSession = Symbol("kSession");
 export const kBuffer = Symbol("kBuffer");
@@ -228,8 +232,13 @@ export function onStreamRead(
   // deno-lint-ignore no-explicit-any
   this: any,
   arrayBuffer: Uint8Array,
-  nread: number,
+  nread?: number,
 ) {
+  // When called from the native (Rust) read callback, nread is communicated
+  // via streamBaseState[kReadBytesOrError] rather than as a direct argument.
+  if (nread === undefined) {
+    nread = streamBaseState[kReadBytesOrError];
+  }
   // deno-lint-ignore no-this-alias
   const handle = this;
 
@@ -260,9 +269,13 @@ export function onStreamRead(
     } else {
       const offset = streamBaseState[kArrayBufferOffset];
       // Performance note: Pass ArrayBuffer to Buffer#from to avoid
-      // copy.
+      // copy. When called from native (Rust) code, arrayBuffer is
+      // already an ArrayBuffer; from JS it may be a Uint8Array.
+      const ab = ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, arrayBuffer)
+        ? arrayBuffer
+        : TypedArrayPrototypeGetBuffer(arrayBuffer);
       const buf = Buffer.from(
-        TypedArrayPrototypeGetBuffer(arrayBuffer),
+        ab,
         offset,
         nread,
       );

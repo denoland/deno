@@ -1,10 +1,11 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::mem::MaybeUninit;
 use std::ptr::addr_of_mut;
 
 use deno_core::parking_lot::Mutex;
 
+use crate::util::SendPtr;
 use crate::*;
 
 fn assert_ok(res: c_int) -> c_int {
@@ -22,7 +23,6 @@ use std::ffi::c_int;
 use js_native_api::napi_create_string_utf8;
 use node_api::napi_create_async_work;
 use node_api::napi_delete_async_work;
-use node_api::napi_queue_async_work;
 
 const UV_MUTEX_SIZE: usize = {
   #[cfg(unix)]
@@ -76,7 +76,7 @@ unsafe extern "C" fn uv_mutex_destroy(_lock: *mut uv_mutex_t) {
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
-#[allow(dead_code)]
+#[allow(dead_code, reason = "variants represent libuv enum values")]
 enum uv_handle_type {
   UV_UNKNOWN_HANDLE = 0,
   UV_ASYNC,
@@ -145,8 +145,8 @@ struct uv_async_t {
 
 type uv_loop_t = Env;
 type uv_async_cb = extern "C" fn(handle: *mut uv_async_t);
-#[unsafe(no_mangle)]
-unsafe extern "C" fn uv_async_init(
+#[unsafe(export_name = "uv_async_init")]
+unsafe extern "C" fn _napi_uv_async_init(
   r#loop: *mut uv_loop_t,
   // probably uninitialized
   r#async: *mut uv_async_t,
@@ -175,19 +175,39 @@ unsafe extern "C" fn uv_async_init(
       r#async.cast(),
       addr_of_mut!((*r#async).work),
     );
+
+    // In libuv, uv_async_init starts the handle and keeps the event loop
+    // alive until uv_close is called. Ref the event loop to match this.
+    let env = &mut *r#loop;
+    env.external_ops_tracker.ref_op();
+
     -res
   }
 }
 
 #[unsafe(no_mangle)]
 unsafe extern "C" fn uv_async_send(handle: *mut uv_async_t) -> c_int {
-  unsafe { -napi_queue_async_work((*handle).r#loop, (*handle).work) }
+  // Dispatch directly to the main thread. Unlike napi_queue_async_work (which
+  // runs `execute` on a worker thread), uv_async callbacks need V8 access so
+  // they must run on the main thread.
+  unsafe {
+    let env = &mut *(*handle).r#loop;
+    let handle = SendPtr(handle as *const uv_async_t);
+    env.async_work_sender.spawn(move |_| {
+      let handle = handle.take() as *mut uv_async_t;
+      ((*handle).async_cb)(handle);
+    });
+  }
+  0
 }
 
 type uv_close_cb = unsafe extern "C" fn(*mut uv_handle_t);
 
-#[unsafe(no_mangle)]
-unsafe extern "C" fn uv_close(handle: *mut uv_handle_t, close: uv_close_cb) {
+#[unsafe(export_name = "uv_close")]
+unsafe extern "C" fn _napi_uv_close(
+  handle: *mut uv_handle_t,
+  close: uv_close_cb,
+) {
   unsafe {
     if handle.is_null() {
       close(handle);
@@ -196,6 +216,9 @@ unsafe extern "C" fn uv_close(handle: *mut uv_handle_t, close: uv_close_cb) {
     if let uv_handle_type::UV_ASYNC = (*handle).r#type {
       let handle: *mut uv_async_t = handle.cast();
       napi_delete_async_work((*handle).r#loop, (*handle).work);
+      // Unref the event loop to match the ref in uv_async_init.
+      let env = &mut *(*handle).r#loop;
+      env.external_ops_tracker.unref_op();
     }
     close(handle);
   }

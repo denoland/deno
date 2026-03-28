@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::path::PathBuf;
 
@@ -11,7 +11,7 @@ pub struct ExternalImportMap {
   pub value: serde_json::Value,
 }
 
-#[allow(clippy::disallowed_types)]
+#[allow(clippy::disallowed_types, reason = "definition")]
 pub type WorkspaceExternalImportMapLoaderRc<TSys> =
   deno_maybe_sync::MaybeArc<WorkspaceExternalImportMapLoader<TSys>>;
 

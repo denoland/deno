@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
@@ -87,7 +87,7 @@ pub fn op_ppid() -> i64 {
   }
 }
 
-#[allow(clippy::match_single_binding)] // needed for temporary lifetime
+#[allow(clippy::match_single_binding, reason = "needed for temporary lifetime")]
 #[op2(fast)]
 fn op_internal_log(
   #[string] url: &str,

@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::io::Write;
 use std::sync::Arc;
@@ -10,7 +10,6 @@ use deno_core::futures::FutureExt;
 use deno_core::futures::StreamExt;
 use deno_core::serde_json;
 use deno_npm::resolution::NpmResolutionSnapshot;
-use deno_resolver::npmrc::npm_registry_url;
 use eszip::v2::Url;
 use http::header::HeaderName;
 use http::header::HeaderValue;
@@ -24,7 +23,6 @@ use crate::factory::CliFactory;
 use crate::http_util;
 use crate::http_util::HttpClient;
 use crate::http_util::HttpClientProvider;
-use crate::sys::CliSys;
 
 pub async fn audit(
   flags: Arc<Flags>,
@@ -36,8 +34,7 @@ pub async fn audit(
   let npm_resolver = npm_resolver.as_managed().unwrap();
   let snapshot = npm_resolver.resolution().snapshot();
 
-  let sys = CliSys::default();
-  let npm_url = npm_registry_url(&sys);
+  let npm_url = &factory.npmrc()?.default_config.registry_url;
   let http_provider = HttpClientProvider::new(None, None);
   let http_client = http_provider
     .get_or_create()
@@ -149,7 +146,7 @@ mod npm {
     npm_url: Url,
     body: serde_json::Value,
   ) -> Result<AuditResponse, AnyError> {
-    let url = npm_url.join("/-/npm/v1/security/audits").unwrap();
+    let url = npm_url.join("-/npm/v1/security/audits").unwrap();
     let future = client.post_json(url, &body)?.send().boxed_local();
     let response = future.await?;
     let json_str = http_util::body_to_string(response)
@@ -231,7 +228,7 @@ mod npm {
 
   pub async fn call_audits_api(
     audit_flags: AuditFlags,
-    npm_url: Url,
+    npm_url: &Url,
     workspace: &WorkspaceResolver<CliSys>,
     npm_resolution_snapshot: &NpmResolutionSnapshot,
     client: HttpClient,
@@ -319,13 +316,80 @@ mod npm {
     // Merge all responses into a single response
     let response = merge_responses(responses);
 
-    let vulns = response.metadata.vulnerabilities;
+    let mut advisories = response.advisories.values().collect::<Vec<_>>();
+
+    // Filter out advisories where no installed version falls within
+    // the vulnerable range. This handles package.json overrides that
+    // force a patched version -- the npm audit API returns advisories
+    // based on the dependency tree as declared, but overrides may have
+    // resolved a non-vulnerable version.
+    {
+      // Collect all installed package versions from the snapshot.
+      let mut installed_versions: HashMap<String, Vec<deno_semver::Version>> =
+        HashMap::new();
+      for pkg in npm_resolution_snapshot.all_packages_for_every_system() {
+        installed_versions
+          .entry(pkg.id.nv.name.to_string())
+          .or_default()
+          .push(pkg.id.nv.version.clone());
+      }
+      advisories.retain(|adv| {
+        let Ok(vulnerable_range) =
+          deno_semver::VersionReq::parse_from_npm(&adv.vulnerable_versions)
+        else {
+          // Can't parse the range; keep the advisory to be safe
+          return true;
+        };
+        // Use the finding paths to identify the actual installed
+        // package name (the last segment of each path).
+        let finding_pkg_names: Vec<&str> = adv
+          .findings
+          .iter()
+          .flat_map(|f| f.paths.iter())
+          .filter_map(|p| p.rsplit('>').next().map(str::trim))
+          .collect();
+        // Check if any installed version of the affected packages
+        // falls within the vulnerable range.
+        for name in &finding_pkg_names {
+          if let Some(versions) = installed_versions.get(*name)
+            && versions.iter().any(|v| vulnerable_range.matches(v))
+          {
+            return true;
+          }
+        }
+        false
+      });
+    }
+
+    // Filter out ignored CVEs
+    if !audit_flags.ignore.is_empty() {
+      advisories.retain(|adv| {
+        !adv.cves.iter().any(|cve| audit_flags.ignore.contains(cve))
+      });
+    }
+
+    // Compute vulnerability counts from remaining advisories
+    let mut vulns = AuditVulnerabilities {
+      low: 0,
+      moderate: 0,
+      high: 0,
+      critical: 0,
+    };
+    for adv in &advisories {
+      match AdvisorySeverity::parse(&adv.severity) {
+        Some(AdvisorySeverity::Low) => vulns.low += 1,
+        Some(AdvisorySeverity::Moderate) => vulns.moderate += 1,
+        Some(AdvisorySeverity::High) => vulns.high += 1,
+        Some(AdvisorySeverity::Critical) => vulns.critical += 1,
+        None => {}
+      }
+    }
+
     if vulns.total() == 0 {
       _ = writeln!(&mut std::io::stdout(), "No known vulnerabilities found",);
       return Ok(0);
     }
 
-    let mut advisories = response.advisories.values().collect::<Vec<_>>();
     advisories.sort_by_cached_key(|adv| {
       format!("{}@{}", adv.module_name, adv.vulnerable_versions)
     });
@@ -333,18 +397,24 @@ mod npm {
     let minimal_severity =
       AdvisorySeverity::parse(&audit_flags.severity).unwrap();
     print_report(
-      vulns,
+      &vulns,
       advisories,
       response.actions,
       minimal_severity,
       audit_flags.ignore_unfixable,
     );
 
-    Ok(1)
+    // Exit code 1 only if there are vulnerabilities at or above the specified level
+    let exit_code = if vulns.count_at_or_above(minimal_severity) > 0 {
+      1
+    } else {
+      0
+    };
+    Ok(exit_code)
   }
 
   fn print_report(
-    vulns: AuditVulnerabilities,
+    vulns: &AuditVulnerabilities,
     advisories: Vec<&AuditAdvisory>,
     actions: Vec<AuditAction>,
     minimal_severity: AdvisorySeverity,
@@ -398,7 +468,11 @@ mod npm {
       if let Some(finding) = adv.findings.first()
         && let Some(path) = finding.paths.first()
       {
-        _ = writeln!(stdout, "│ {}       {}", colors::gray("Path:"), path);
+        let path_fmt = path
+          .split(">")
+          .collect::<Vec<_>>()
+          .join(colors::gray(" > ").to_string().as_str());
+        _ = writeln!(stdout, "│ {}       {}", colors::gray("Path:"), path_fmt);
       }
       if actions.is_empty() {
         _ = writeln!(stdout, "╰ {}      {}", colors::gray("Info:"), adv.url);
@@ -450,8 +524,8 @@ mod npm {
   #[derive(Debug, Deserialize)]
   pub struct AuditActionResolve {
     pub id: i32,
+    pub path: Option<String>,
     // TODO(bartlomieju): currently not used, commented out so it's not flagged by clippy
-    // pub path: String,
     // pub dev: bool,
     // pub optional: bool,
     // pub bundled: bool,
@@ -463,7 +537,7 @@ mod npm {
     pub is_major: bool,
     pub action: String,
     pub resolves: Vec<AuditActionResolve>,
-    pub module: String,
+    pub module: Option<String>,
     pub target: Option<String>,
   }
 
@@ -479,8 +553,9 @@ mod npm {
     pub id: i32,
     pub title: String,
     pub findings: Vec<AdvisoryFinding>,
+    #[serde(default)]
+    pub cves: Vec<String>,
     // TODO(bartlomieju): currently not used, commented out so it's not flagged by clippy
-    // pub cves: Vec<String>,
     // pub cwe: Vec<String>,
     pub severity: String,
     pub url: String,
@@ -491,30 +566,41 @@ mod npm {
 
   impl AuditAdvisory {
     fn find_actions(&self, actions: &[AuditAction]) -> Vec<String> {
-      let mut acts = vec![];
+      let mut acts = Vec::new();
 
       for action in actions {
-        if action
-          .resolves
-          .iter()
-          .any(|action_resolve| action_resolve.id == self.id)
-        {
-          acts.push(format!(
-            "{} {}{}{}",
-            action.action,
-            action.module,
-            if let Some(target) = &action.target {
-              &format!("@{}", target)
-            } else {
-              ""
-            },
-            if action.is_major {
-              " (major upgrade)"
-            } else {
-              ""
-            }
-          ))
+        if !action.resolves.iter().any(|r| r.id == self.id) {
+          continue;
         }
+
+        let module = action
+          .module
+          .as_deref()
+          .map(str::to_owned)
+          .or_else(|| {
+            // Fallback to infer from dependency path
+            action.resolves.first().and_then(|r| {
+              r.path
+                .as_deref()
+                .and_then(|p| p.split('>').next_back())
+                .map(|s| s.trim().to_string())
+            })
+          })
+          .unwrap_or_else(|| "<unknown>".to_string());
+
+        let target = action
+          .target
+          .as_deref()
+          .map(|t| format!("@{}", t))
+          .unwrap_or_default();
+
+        let major = if action.is_major {
+          " (major upgrade)"
+        } else {
+          ""
+        };
+
+        acts.push(format!("{} {}{}{}", action.action, module, target, major));
       }
 
       acts
@@ -533,6 +619,15 @@ mod npm {
     fn total(&self) -> i32 {
       self.low + self.moderate + self.high + self.critical
     }
+
+    fn count_at_or_above(&self, min_severity: AdvisorySeverity) -> i32 {
+      match min_severity {
+        AdvisorySeverity::Low => self.total(),
+        AdvisorySeverity::Moderate => self.moderate + self.high + self.critical,
+        AdvisorySeverity::High => self.high + self.critical,
+        AdvisorySeverity::Critical => self.critical,
+      }
+    }
   }
 
   #[derive(Debug, Deserialize)]
@@ -548,6 +643,7 @@ mod npm {
 
   #[derive(Debug, Deserialize)]
   pub struct AuditResponse {
+    #[serde(default)]
     pub actions: Vec<AuditAction>,
     pub advisories: HashMap<i32, AuditAdvisory>,
     pub metadata: AuditMetadata,
@@ -555,8 +651,6 @@ mod npm {
 }
 
 mod socket_dev {
-  #![allow(dead_code)]
-
   use super::*;
 
   pub async fn call_firewall_api(
@@ -839,6 +933,7 @@ mod socket_dev {
   pub struct FirewallScore {
     pub license: f64,
     pub maintenance: f64,
+    #[allow(dead_code, reason = "we don't use it yet")]
     pub overall: f64,
     pub quality: f64,
     pub supply_chain: f64,
@@ -849,19 +944,49 @@ mod socket_dev {
   #[serde(rename_all = "camelCase")]
   pub struct FirewallAlert {
     pub r#type: String,
+    #[allow(dead_code, reason = "we don't use it yet")]
     pub action: String,
     pub severity: String,
+    #[allow(dead_code, reason = "we don't use it yet")]
     pub category: String,
   }
 
   #[derive(Debug, Deserialize)]
   #[serde(rename_all = "camelCase")]
   pub struct FirewallResponse {
+    #[allow(dead_code, reason = "we don't use it yet")]
     pub id: String,
     pub name: String,
     pub version: String,
     pub score: Option<FirewallScore>,
     #[serde(default)]
     pub alerts: Vec<FirewallAlert>,
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use deno_core::serde_json;
+
+  use super::npm::AuditResponse;
+
+  #[test]
+  fn test_audit_response_deserialize_without_actions() {
+    // Test that AuditResponse can be deserialized when the `actions` field is missing
+    // This can happen with some npm registry responses
+    let json = r#"{
+      "advisories": {},
+      "metadata": {
+        "vulnerabilities": {
+          "low": 0,
+          "moderate": 0,
+          "high": 0,
+          "critical": 0
+        }
+      }
+    }"#;
+    let response: AuditResponse = serde_json::from_str(json).unwrap();
+    assert!(response.actions.is_empty());
+    assert!(response.advisories.is_empty());
   }
 }

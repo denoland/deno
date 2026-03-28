@@ -1,5 +1,5 @@
 // deno-lint-ignore-file
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 import { primordials } from "ext:core/mod.js";
 import _mod1 from "ext:deno_node/internal/streams/legacy.js";
@@ -224,8 +224,8 @@ Duplex.fromWeb = function (pair, options) {
   );
 };
 
-Duplex.toWeb = function (duplex) {
-  return lazyWebStreams().newReadableWritablePairFromDuplex(duplex);
+Duplex.toWeb = function (duplex, options) {
+  return lazyWebStreams().newReadableWritablePairFromDuplex(duplex, options);
 };
 
 let duplexify;

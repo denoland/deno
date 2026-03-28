@@ -1,0 +1,3 @@
+eval -e: eval-test-1
+eval --eval: eval-test-2
+eval math: 3

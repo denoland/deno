@@ -1,12 +1,12 @@
 {
   "tests": {
     "js": {
-      "args": "check --quiet mod.js",
+      "args": "check mod.js",
       "output": "mod.js${out_suffix}",
       "exitCode": 1
     },
     "ts": {
-      "args": "check --quiet mod.ts",
+      "args": "check mod.ts",
       "output": "mod.ts${out_suffix}",
       "exitCode": 1
     }

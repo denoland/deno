@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -38,7 +38,7 @@ where
   }
 }
 
-#[allow(clippy::disallowed_types)]
+#[allow(clippy::disallowed_types, reason = "definition")]
 pub type PackageJsonCacheRc =
   deno_maybe_sync::MaybeArc<dyn NodePackageJsonCache>;
 
@@ -72,7 +72,7 @@ impl deno_package_json::PackageJsonCache for PackageJsonThreadLocalCache {
   }
 }
 
-#[allow(clippy::disallowed_types)]
+#[allow(clippy::disallowed_types, reason = "definition")]
 pub type PackageJsonResolverRc<TSys> =
   deno_maybe_sync::MaybeArc<PackageJsonResolver<TSys>>;
 

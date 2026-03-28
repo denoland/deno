@@ -12,8 +12,8 @@ Initialize @denotest/with-vuln1@1.0.0
 Installed 3 packages in [WILDLINE]
 Reused 0 packages from cache
 Downloaded 0 packages from JSR
-Downloaded 6 packages from npm
-++++++
+Downloaded 3 packages from npm
++++
 
 Dependencies:
 + npm:@denotest/using-vuln 1.0.0

@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::sync::Arc;
 
@@ -8,7 +8,6 @@ use deno_config::glob::PathOrPatternSet;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::RwLock;
 use deno_graph::ModuleGraph;
-use deno_runtime::colors;
 use deno_runtime::deno_permissions::PermissionsContainer;
 
 use crate::args::CliOptions;
@@ -96,27 +95,12 @@ impl MainModuleGraphContainer {
           ext_overwrite: options.ext_overwrite,
           allow_unknown_media_types: options.allow_unknown_media_types,
           skip_graph_roots_validation: false,
+          file_content_overrides: Default::default(),
         },
       )
       .await?;
     graph_permit.commit();
     Ok(())
-  }
-
-  /// Helper around prepare_module_load that loads and type checks
-  /// the provided files.
-  pub async fn load_and_type_check_files(
-    &self,
-    files: &[String],
-    options: CollectSpecifiersOptions,
-  ) -> Result<(), AnyError> {
-    let specifiers = self.collect_specifiers(files, options)?;
-
-    if specifiers.is_empty() {
-      log::warn!("{} No matching files found.", colors::yellow("Warning"));
-    }
-
-    self.check_specifiers(&specifiers, Default::default()).await
   }
 
   pub fn collect_specifiers(

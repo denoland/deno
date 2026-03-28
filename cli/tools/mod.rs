@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 pub mod bench;
 pub mod bundle;
@@ -22,3 +22,4 @@ pub mod serve;
 pub mod task;
 pub mod test;
 pub mod upgrade;
+pub mod x;

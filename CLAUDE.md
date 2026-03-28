@@ -2,6 +2,7 @@
 
 ## Table of Contents
 
+- [Git workflow](#git-workflow)
 - [High Level Overview](#high-level-overview)
 - [Quick Start](#quick-start)
 - [Commands](#commands)
@@ -11,6 +12,34 @@
 - [Codebase Navigation](#codebase-navigation)
 - [Troubleshooting](#troubleshooting)
 
+## Git workflow
+
+Deno uses a GH based standard git workflow. The main branch is `main`. All
+development happens in feature branches, which are then merged into `main` via
+pull requests.
+
+When the feature is finished and ready to for review, follow these steps:
+
+- Create a new git branch, if you haven't already, with a descriptive name
+  (e.g., `feature/new-cli-command` or `fix/bug-in-worker-threads`).
+- Commit your changes with clear and descriptive commit messages.
+- Push your branch to the remote repository.
+- Open a pull request (PR) against the `main` branch on GitHub.
+- Before committing, make sure `tools/format.js` is run to format your code
+- Before committing, if only non-Rust was changed, make sure to run
+  `tools/lint.js --js` and fix any lint errors before committing
+- If you changed Rust code, make sure to run `tools/lint.js` and fix any lint
+  errors before committing
+- In the PR description, provide a clear summary of the changes you made, why
+  they were necessary, and any relevant context or links to related issues.
+- When pushing updates to the PR, make sure to never force push. Create as many
+  commits as you need, all of them get squashed when the PR is merged, so there
+  is no need to rewrite history. This also allows reviewers to see the
+  incremental changes you made in response to feedback.
+- Keep your changes minimal, don't do drive-by changes in a PR. If you need to
+  make a change that is not directly related to the PR, create a separate PR for
+  it. This keeps the review process focused and efficient.
+
 ## High Level Overview
 
 The user visible interface and high level integration is in the `deno` crate
@@ -19,10 +48,10 @@ The user visible interface and high level integration is in the `deno` crate
 This includes flag parsing, subcommands, package management tooling, etc. Flag
 parsing is in `cli/args/flags.rs`. Tools are in `cli/tools/<tool>`.
 
-The `deno_runtime` crate (`./runtime`) assembles the javascript runtime,
-including all of the "extensions" (native functionality exposed to javascript).
-The extensions themselves are in the `ext/` directory, and provide system access
-to javascript – for instance filesystem operations and networking.
+The `deno_runtime` crate (`./runtime`) assembles the JavaScript runtime,
+including all "extensions" (native functionality exposed to JavaScript). The
+extensions themselves are in the `ext/` directory, and provide system access to
+JavaScript – for instance filesystem operations and networking.
 
 ### Key Directories
 
@@ -34,6 +63,10 @@ to javascript – for instance filesystem operations and networking.
 - `tests/testdata/` - Test fixtures and data files
 
 ## Quick Start
+
+Before building, install the required prerequisites (Rust, native compilers,
+cmake, protobuf, etc.) and clone with `--recurse-submodules` as described in
+[`.github/CONTRIBUTING.md`](.github/CONTRIBUTING.md#building-from-source).
 
 ### Building Deno
 
@@ -245,11 +278,7 @@ cargo outdated  # Requires cargo-outdated
 
 ### Debugging Rust Code
 
-Use your IDE's debugger (VS Code with rust-analyzer, IntelliJ IDEA, etc.):
-
-1. Set breakpoints in Rust code
-2. Run tests in debug mode through your IDE
-3. Or use `lldb` directly:
+Use `lldb` directly:
 
 ```bash
 lldb ./target/debug/deno
@@ -258,14 +287,7 @@ lldb ./target/debug/deno
 
 ### Debugging JavaScript Runtime Issues
 
-```bash
-# Enable V8 inspector
-./target/debug/deno run --inspect-brk script.ts
-
-# Then connect Chrome DevTools to chrome://inspect
-```
-
-Or use println debugging.
+Use println debugging.
 
 ### Verbose Logging
 
@@ -286,7 +308,7 @@ eprintln!("Debug: {:?}", some_variable);
 dbg!(some_variable);
 ```
 
-In the JavaScript runtime:
+In JavaScript/TypeScript code:
 
 ```javascript
 console.log("Debug:", value);
@@ -333,6 +355,10 @@ console.log("Debug:", value);
 - Try `cargo clean` then rebuild
 - Check if behind a proxy, configure cargo accordingly
 
+For other build failures (missing `cmake`, `stdarg.h`, etc.), see the full
+prerequisites in
+[`.github/CONTRIBUTING.md`](.github/CONTRIBUTING.md#building-from-source).
+
 ### Test Failures
 
 **Spec test failures**
@@ -374,7 +400,6 @@ console.log("Debug:", value);
 **Unexpected behavior**
 
 - Add debug prints liberally
-- Use the inspector for JS-side debugging
 - Check permission grants - many features require explicit permissions
 
 ### Getting Help

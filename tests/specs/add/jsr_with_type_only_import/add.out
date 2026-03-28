@@ -1,0 +1,5 @@
+Add jsr:@denotest/type-only-import@1.0.0
+[UNORDERED_START]
+Download http://127.0.0.1:4250/@denotest/type-only-import/1.0.0/mod.ts
+Download http://127.0.0.1:4250/@denotest/type-only-import/1.0.0/foo.ts
+[UNORDERED_END]

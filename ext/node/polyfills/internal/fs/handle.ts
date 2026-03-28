@@ -1,9 +1,15 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
+
+// TODO(petamoriken): enable prefer-primordials for node polyfills
+// deno-lint-ignore-file prefer-primordials
 
 import { EventEmitter } from "node:events";
 import { Buffer } from "node:buffer";
 import {
   type BigIntStats,
+  fchmod,
+  fdatasync,
+  fsync,
   Mode,
   promises,
   read as readAsync,
@@ -21,20 +27,58 @@ import {
   FileOptionsArgument,
   TextOptionsArgument,
 } from "ext:deno_node/_fs/_fs_common.ts";
-import { ftruncatePromise } from "ext:deno_node/_fs/_fs_ftruncate.ts";
-import { writevPromise, WriteVResult } from "ext:deno_node/_fs/_fs_writev.ts";
-import { fchmodPromise } from "ext:deno_node/_fs/_fs_fchmod.ts";
-import { fchownPromise } from "ext:deno_node/_fs/_fs_fchown.ts";
-import { fdatasyncPromise } from "ext:deno_node/_fs/_fs_fdatasync.ts";
+import { writev } from "node:fs";
+
+export interface WriteVResult {
+  bytesWritten: number;
+  buffers: ReadonlyArray<ArrayBufferView>;
+}
+
+function writevPromise(
+  fd: number,
+  buffers: ArrayBufferView[],
+  position?: number,
+): Promise<WriteVResult> {
+  return new Promise((resolve, reject) => {
+    writev(fd, buffers, position, (err, bytesWritten, buffers) => {
+      if (err) reject(err);
+      else resolve({ bytesWritten, buffers });
+    });
+  });
+}
+import { readvPromise, type ReadVResult } from "node:fs";
 import { fstatPromise } from "ext:deno_node/_fs/_fs_fstat.ts";
-import { fsyncPromise } from "ext:deno_node/_fs/_fs_fsync.ts";
-import { futimesPromise } from "ext:deno_node/_fs/_fs_futimes.ts";
+import {
+  fchown as fchownCb,
+  ftruncate as ftruncateCb,
+  futimes as futimesCb,
+} from "node:fs";
+import { kEmptyObject, promisify } from "ext:deno_node/internal/util.mjs";
+
 import {
   CreateReadStreamOptions,
   CreateWriteStreamOptions,
 } from "node:fs/promises";
 import assert from "node:assert";
-import { denoErrorToNodeError } from "ext:deno_node/internal/errors.ts";
+import {
+  denoErrorToNodeError,
+  ERR_INVALID_STATE,
+} from "ext:deno_node/internal/errors.ts";
+import { readableStreamCancel } from "ext:deno_web/06_streams.js";
+import {
+  validateBoolean,
+  validateObject,
+} from "ext:deno_node/internal/validators.mjs";
+import process from "node:process";
+
+const fchmodPromise = promisify(fchmod) as (
+  fd: number,
+  mode: string | number,
+) => Promise<void>;
+const fdatasyncPromise = promisify(fdatasync) as (
+  fd: number,
+) => Promise<void>;
+const fsyncPromise = promisify(fsync) as (fd: number) => Promise<void>;
 
 const {
   Error,
@@ -54,8 +98,13 @@ const kRefs = Symbol("kRefs");
 const kClosePromise = Symbol("kClosePromise");
 const kCloseResolve = Symbol("kCloseResolve");
 const kCloseReject = Symbol("kCloseReject");
-const kRef = Symbol("kRef");
-const kUnref = Symbol("kUnref");
+export const kRef = Symbol("kRef");
+export const kUnref = Symbol("kUnref");
+const kLocked = Symbol("kLocked");
+
+const ftruncatePromise = promisify(ftruncateCb);
+const fchownPromise = promisify(fchownCb);
+const futimesPromise = promisify(futimesCb);
 
 interface WriteResult {
   bytesWritten: number;
@@ -73,6 +122,7 @@ export class FileHandle extends EventEmitter {
   [kClosePromise]?: Promise<void> | null;
   [kCloseResolve]?: () => void;
   [kCloseReject]?: (err: Error) => void;
+  [kLocked]: boolean;
 
   constructor(rid: number) {
     super();
@@ -80,6 +130,7 @@ export class FileHandle extends EventEmitter {
 
     this[kRefs] = 1;
     this[kClosePromise] = null;
+    this[kLocked] = false;
   }
 
   get fd() {
@@ -154,6 +205,13 @@ export class FileHandle extends EventEmitter {
 
   writev(buffers: ArrayBufferView[], position?: number): Promise<WriteVResult> {
     return fsCall(writevPromise, "writev", this, buffers, position);
+  }
+
+  readv(
+    buffers: readonly ArrayBufferView[],
+    position?: number,
+  ): Promise<ReadVResult> {
+    return fsCall(readvPromise, "readv", this, buffers, position);
   }
 
   [kRef]() {
@@ -251,11 +309,11 @@ export class FileHandle extends EventEmitter {
   }
 
   createReadStream(options?: CreateReadStreamOptions): ReadStream {
-    return new ReadStream(undefined, { ...options, fd: this.fd });
+    return new ReadStream(undefined, { ...options, fd: this });
   }
 
   createWriteStream(options?: CreateWriteStreamOptions): WriteStream {
-    return new WriteStream(undefined, { ...options, fd: this.fd });
+    return new WriteStream(undefined, { ...options, fd: this });
   }
 
   readLines(options?: CreateReadStreamOptions): ReadlineInterface {
@@ -263,6 +321,73 @@ export class FileHandle extends EventEmitter {
       input: this.createReadStream({ ...options, autoClose: false }),
       crlfDelay: Infinity,
     });
+  }
+
+  readableWebStream(
+    options: { autoClose?: boolean; type?: string } = kEmptyObject,
+  ): ReadableStream<Uint8Array> {
+    if (this.fd === -1) {
+      throw new ERR_INVALID_STATE("The FileHandle is closed");
+    }
+    if (this[kClosePromise]) {
+      throw new ERR_INVALID_STATE("The FileHandle is closing");
+    }
+    if (this[kLocked]) {
+      throw new ERR_INVALID_STATE("The FileHandle is locked");
+    }
+    this[kLocked] = true;
+
+    validateObject(options, "options");
+    const autoClose = options?.autoClose ?? false;
+    const type = options?.type ?? "bytes";
+    validateBoolean(autoClose, "options.autoClose");
+
+    if (type !== "bytes") {
+      process.emitWarning(
+        'A non-"bytes" options.type has no effect. A byte-oriented steam is ' +
+          "always created.",
+        "ExperimentalWarning",
+      );
+    }
+
+    const ondone = async () => {
+      this[kUnref]();
+      if (autoClose) {
+        await this.close().catch(() => {});
+      }
+    };
+
+    const readable = new ReadableStream({
+      type: "bytes",
+      autoAllocateChunkSize: 16384,
+
+      pull: async (controller) => {
+        const view = controller.byobRequest!.view! as Uint8Array;
+        const { bytesRead } = await this.read(
+          view,
+          view.byteOffset,
+          view.byteLength,
+        );
+
+        if (bytesRead === 0) {
+          controller.close();
+          await ondone();
+        }
+
+        controller.byobRequest!.respond(bytesRead);
+      },
+
+      cancel: async () => {
+        await ondone();
+      },
+    });
+
+    this[kRef]();
+    this.once("close", () => {
+      readableStreamCancel(readable);
+    });
+
+    return readable;
   }
 
   [SymbolAsyncDispose]() {
@@ -310,12 +435,19 @@ function readPromise(
   position?: number | null,
 ): Promise<ReadResult> {
   if (ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, bufferOrOpt)) {
-    if (typeof length !== "number" && typeof position !== "number") {
+    if (
+      typeof offsetOrOpt !== "number" && typeof length !== "number" &&
+      typeof position !== "number"
+    ) {
+      // fileHandle.read(buffer) or fileHandle.read(buffer, options)
+      const opts = (offsetOrOpt ?? {}) as ReadAsyncOptions<
+        NodeJS.ArrayBufferView
+      >;
       return new Promise((resolve, reject) => {
         readAsync(
           rid,
           bufferOrOpt,
-          offsetOrOpt,
+          opts,
           (err: Error, bytesRead: number, buffer: Buffer) => {
             if (err) reject(err);
             else resolve({ buffer, bytesRead });

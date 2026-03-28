@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -22,7 +22,6 @@ use deno_ast::swc::ecma_visit::Visit;
 use deno_ast::swc::ecma_visit::VisitWith;
 use deno_ast::swc::ecma_visit::noop_visit_type;
 use deno_core::LocalInspectorSession;
-use deno_core::PollEventLoopOptions;
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
 use deno_core::error::CoreError;
@@ -41,7 +40,6 @@ use deno_graph::Position;
 use deno_graph::PositionRange;
 use deno_graph::analysis::SpecifierWithRange;
 use deno_lib::util::result::any_and_jserrorbox_downcast_ref;
-use deno_npm_installer::graph::NpmCachingStrategy;
 use deno_resolver::deno_json::CompilerOptionsResolver;
 use deno_runtime::worker::MainWorker;
 use deno_semver::npm::NpmPackageReqReference;
@@ -289,7 +287,7 @@ fn next_msg_id() -> i32 {
 }
 
 impl ReplSession {
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "construction")]
   pub async fn initialize(
     cli_options: &CliOptions,
     npm_installer: Option<Arc<CliNpmInstaller>>,
@@ -427,16 +425,7 @@ impl ReplSession {
     self
       .worker
       .js_runtime
-      .with_event_loop_future(
-        fut,
-        PollEventLoopOptions {
-          // NOTE(bartlomieju): this is an important bit; we don't want to pump V8
-          // message loop here, so that GC won't run. Otherwise, the resulting
-          // object might be GC'ed before we have a chance to inspect it.
-          pump_v8_message_loop: false,
-          ..Default::default()
-        },
-      )
+      .with_event_loop_future(fut, Default::default())
       .await
       .unwrap()
   }
@@ -890,19 +879,10 @@ impl ReplSession {
       .flat_map(|url| NpmPackageReqReference::from_specifier(url).ok())
       .map(|r| r.into_inner().req)
       .collect::<Vec<_>>();
-    let has_node_specifier =
-      resolved_imports.iter().any(|url| url.scheme() == "node");
-    if !npm_imports.is_empty() || has_node_specifier {
+    if !npm_imports.is_empty() {
       npm_installer
         .add_and_cache_package_reqs(&npm_imports)
         .await?;
-
-      // prevent messages in the repl about @types/node not being cached
-      if has_node_specifier {
-        npm_installer
-          .inject_synthetic_types_node_package(NpmCachingStrategy::Eager)
-          .await?;
-      }
     }
     Ok(())
   }

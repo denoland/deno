@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 // deno-lint-ignore-file prefer-primordials
 // translated primarily from: https://github.com/nodejs/node/blob/2acc8bc6a9a830b38d101ac70390b8c5c9a14bf3/lib/internal/fs/glob.js#L258
 // with glob() and globSync() from: https://github.com/nodejs/node/blob/2acc8bc6a9a830b38d101ac70390b8c5c9a14bf3/lib/fs.js#L3167
@@ -124,11 +124,18 @@ async function getDirent(path) {
  * @returns {DirentFromStats|null}
  */
 function getDirentSync(path) {
-  const stat = lstatSync(path, { throwIfNoEntry: false });
-  if (stat === undefined) {
-    return null;
+  try {
+    const stat = lstatSync(path, { throwIfNoEntry: false });
+    if (stat === undefined) {
+      return null;
+    }
+    return new DirentFromStats(basename(path), stat, dirname(path));
+  } catch (err) {
+    if (err.code === "ENOTDIR") {
+      return null;
+    }
+    throw err;
   }
-  return new DirentFromStats(basename(path), stat, dirname(path));
 }
 
 /**
@@ -205,7 +212,7 @@ class Cache {
     const promise = PromisePrototypeThen(
       readdir(path, { __proto__: null, withFileTypes: true }),
       null,
-      () => null,
+      () => [],
     );
     this.#readdirCache.set(path, promise);
     return promise;
@@ -306,9 +313,6 @@ class Pattern {
 class ResultSet extends SafeSet {
   #root = ".";
   #isExcluded = () => false;
-  constructor(i) {
-    super(i);
-  } // eslint-disable-line no-useless-constructor
 
   setup(root, isExcludedFn) {
     this.#root = root;
@@ -412,8 +416,8 @@ export class Glob {
 
     // If path is a directory, add trailing slash and test patterns again.
     if (
-      this.#isExcluded(`${fullpath}/`) &&
-      this.#cache.statSync(fullpath).isDirectory()
+      this.#cache.statSync(fullpath).isDirectory() &&
+      this.#isExcluded(`${fullpath}/`)
     ) {
       return;
     }
@@ -538,8 +542,22 @@ export class Glob {
         const fromSymlink = pattern.symlinks.has(index);
 
         if (current === lazyMinimatch().default.GLOBSTAR) {
+          const isDot = entry.name[0] === ".";
+
+          const nextMatches = pattern.test(nextIndex, entry.name);
+
+          let nextNonGlobIndex = nextIndex;
+          while (
+            pattern.at(nextNonGlobIndex) === lazyMinimatch().default.GLOBSTAR
+          ) {
+            nextNonGlobIndex++;
+          }
+
+          const matchesDot = isDot &&
+            pattern.test(nextNonGlobIndex, entry.name);
+
           if (
-            entry.name[0] === "." ||
+            (isDot && !matchesDot) ||
             (this.#exclude &&
               this.#exclude(this.#withFileTypes ? entry : entry.name))
           ) {
@@ -555,7 +573,6 @@ export class Glob {
 
           // Any pattern after ** is also a potential pattern
           // so we can already test it here
-          const nextMatches = pattern.test(nextIndex, entry.name);
           if (nextMatches && nextIndex === last && !isLast) {
             // If next pattern is the last one, add to results
             this.#results.add(entryPath);
@@ -781,8 +798,22 @@ export class Glob {
         const fromSymlink = pattern.symlinks.has(index);
 
         if (current === lazyMinimatch().default.GLOBSTAR) {
+          const isDot = entry.name[0] === ".";
+
+          const nextMatches = pattern.test(nextIndex, entry.name);
+
+          let nextNonGlobIndex = nextIndex;
+          while (
+            pattern.at(nextNonGlobIndex) === lazyMinimatch().default.GLOBSTAR
+          ) {
+            nextNonGlobIndex++;
+          }
+
+          const matchesDot = isDot &&
+            pattern.test(nextNonGlobIndex, entry.name);
+
           if (
-            entry.name[0] === "." ||
+            (isDot && !matchesDot) ||
             (this.#exclude &&
               this.#exclude(this.#withFileTypes ? entry : entry.name))
           ) {
@@ -793,22 +824,17 @@ export class Glob {
             subPatterns.add(index);
           } else if (!fromSymlink && index === last) {
             // If ** is last, add to results
-            if (!this.#results.has(entryPath)) {
-              if (this.#results.add(entryPath)) {
-                yield this.#withFileTypes ? entry : entryPath;
-              }
+            if (!this.#results.has(entryPath) && this.#results.add(entryPath)) {
+              yield this.#withFileTypes ? entry : entryPath;
             }
           }
 
           // Any pattern after ** is also a potential pattern
           // so we can already test it here
-          const nextMatches = pattern.test(nextIndex, entry.name);
           if (nextMatches && nextIndex === last && !isLast) {
             // If next pattern is the last one, add to results
-            if (!this.#results.has(entryPath)) {
-              if (this.#results.add(entryPath)) {
-                yield this.#withFileTypes ? entry : entryPath;
-              }
+            if (!this.#results.has(entryPath) && this.#results.add(entryPath)) {
+              yield this.#withFileTypes ? entry : entryPath;
             }
           } else if (nextMatches && entry.isDirectory()) {
             // Pattern matched, meaning two patterns forward

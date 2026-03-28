@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::cell::RefCell;
 use std::net::IpAddr;
@@ -60,7 +60,7 @@ impl DnsError {
 #[cfg(target_family = "windows")]
 static WINSOCKET_INIT: OnceLock<i32> = OnceLock::new();
 
-#[op2(async, stack_trace)]
+#[op2(stack_trace)]
 #[cppgc]
 pub async fn op_node_getaddrinfo(
   state: Rc<RefCell<OpState>>,
@@ -89,8 +89,7 @@ pub async fn op_node_getaddrinfo(
   })
 }
 
-#[op2(async, stack_trace)]
-#[serde]
+#[op2(stack_trace)]
 pub async fn op_node_getnameinfo(
   state: Rc<RefCell<OpState>>,
   #[string] ip: String,

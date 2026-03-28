@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use deno_ast::diagnostics::Diagnostic;
 use deno_core::error::AnyError;
@@ -255,7 +255,7 @@ impl LintReporter for JsonLintReporter {
     sort_diagnostics(&mut self.diagnostics);
     self.checked_files.sort();
     let json = serde_json::to_string_pretty(&self);
-    #[allow(clippy::print_stdout)]
+    #[allow(clippy::print_stdout, reason = "reporter")]
     {
       println!("{}", json.unwrap());
     }

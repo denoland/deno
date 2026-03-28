@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 // deno-lint-ignore-file no-explicit-any no-var
 
@@ -67,6 +67,31 @@ declare var DOMException: {
   readonly TIMEOUT_ERR: 23;
   readonly INVALID_NODE_TYPE_ERR: 24;
   readonly DATA_CLONE_ERR: 25;
+};
+
+/** @category Platform */
+interface QuotaExceededErrorOptions {
+  quota?: number;
+  requested?: number;
+}
+
+/**
+ * Represents an error when a quota has been exceeded.
+ *
+ * @category Platform
+ */
+interface QuotaExceededError extends DOMException {
+  readonly quota: number | null;
+  readonly requested: number | null;
+}
+
+/** @category Platform */
+declare var QuotaExceededError: {
+  readonly prototype: QuotaExceededError;
+  new (
+    message?: string,
+    options?: QuotaExceededErrorOptions,
+  ): QuotaExceededError;
 };
 
 /** @category Events */
@@ -1214,7 +1239,12 @@ declare var MessageEvent: {
 };
 
 /** @category Events */
-type Transferable = MessagePort | ArrayBuffer;
+type Transferable =
+  | MessagePort
+  | ArrayBuffer
+  | ReadableStream
+  | WritableStream
+  | TransformStream;
 
 /**
  * Options that control structured serialization operations such as
@@ -1395,7 +1425,7 @@ interface CompressionStream extends GenericTransformStream {
 }
 
 /** @category Streams */
-type CompressionFormat = "deflate" | "deflate-raw" | "gzip";
+type CompressionFormat = "deflate" | "deflate-raw" | "gzip" | "brotli";
 
 /**
  * An API for compressing a stream of data.

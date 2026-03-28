@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::future::poll_fn;
 use std::path::PathBuf;
@@ -60,6 +60,10 @@ impl SqliteBackedCache {
       rusqlite::Connection::open_in_memory()
         .unwrap_or_else(|_| panic!("failed to open in-memory cache db"))
     } else {
+      #[allow(
+        clippy::disallowed_methods,
+        reason = "cache storage manages its own directory"
+      )]
       std::fs::create_dir_all(&cache_storage_dir).map_err(|source| {
         CacheError::CacheStorageDirectory {
           dir: cache_storage_dir.clone(),
@@ -139,6 +143,10 @@ impl SqliteBackedCache {
         },
       )?;
       let responses_dir = get_responses_dir(cache_storage_dir, cache_id);
+      #[allow(
+        clippy::disallowed_methods,
+        reason = "cache storage manages its own directory"
+      )]
       std::fs::create_dir_all(responses_dir)?;
       Ok::<i64, CacheError>(cache_id)
     })
@@ -188,7 +196,15 @@ impl SqliteBackedCache {
         .optional()?;
       if let Some(cache_id) = maybe_cache_id {
         let cache_dir = cache_storage_dir.join(cache_id.to_string());
+        #[allow(
+          clippy::disallowed_methods,
+          reason = "cache storage manages its own directory"
+        )]
         if cache_dir.exists() {
+          #[allow(
+            clippy::disallowed_methods,
+            reason = "cache storage manages its own directory"
+          )]
           std::fs::remove_dir_all(cache_dir)?;
         }
       }

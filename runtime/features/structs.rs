@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 #[derive(Clone, Debug)]
 pub enum UnstableFeatureKind {
@@ -7,7 +7,7 @@ pub enum UnstableFeatureKind {
 }
 
 #[derive(Debug)]
-#[allow(dead_code)]
+#[allow(dead_code, reason = "it's used, but somehow warns")]
 pub struct UnstableFeatureDefinition {
   pub name: &'static str,
   pub flag_name: &'static str,

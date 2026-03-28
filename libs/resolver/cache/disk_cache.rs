@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::ffi::OsStr;
 use std::path::Component;
@@ -136,8 +136,7 @@ impl<TSys: DiskCacheSys> DiskCache<TSys> {
 
 #[cfg(test)]
 mod tests {
-  // ok, testing
-  #[allow(clippy::disallowed_types)]
+  #[allow(clippy::disallowed_types, reason = "ok in tests")]
   use sys_traits::impls::RealSys;
   use test_util::TempDir;
 

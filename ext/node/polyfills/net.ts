@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -72,7 +72,7 @@ import {
   writeGeneric,
   writevGeneric,
 } from "ext:deno_node/internal/stream_base_commons.ts";
-import { kTimeout } from "ext:deno_node/internal/timers.mjs";
+import { kDestroy, kTimeout } from "ext:deno_node/internal/timers.mjs";
 import { nextTick } from "ext:deno_node/_next_tick.ts";
 import {
   DTRACE_NET_SERVER_CONNECTION,
@@ -99,8 +99,11 @@ import {
   Pipe,
   PipeConnectWrap,
 } from "ext:deno_node/internal_binding/pipe_wrap.ts";
-import { ShutdownWrap } from "ext:deno_node/internal_binding/stream_wrap.ts";
-import { assert } from "ext:deno_node/_util/asserts.ts";
+import {
+  kUseNativeWrap,
+  ShutdownWrap,
+} from "ext:deno_node/internal_binding/stream_wrap.ts";
+import assert from "node:assert";
 import { isWindows } from "ext:deno_node/_util/os.ts";
 import { ADDRCONFIG, lookup as dnsLookup } from "node:dns";
 import {
@@ -136,7 +139,7 @@ const DEFAULT_IPV4_ADDR = "0.0.0.0";
 const DEFAULT_IPV6_ADDR = "::";
 
 let autoSelectFamilyDefault = true;
-let autoSelectFamilyAttemptTimeoutDefault = 250;
+let autoSelectFamilyAttemptTimeoutDefault = 500;
 
 type Handle = TCP | Pipe;
 
@@ -547,7 +550,7 @@ function _internalConnect(
   port: number,
   addressType: number,
   localAddress: string,
-  localPort: number,
+  localPort: number | undefined,
   flags: number,
 ) {
   assert(socket.connecting);
@@ -555,6 +558,7 @@ function _internalConnect(
   let err;
 
   if (localAddress || localPort) {
+    localPort = (localPort ?? 0) | 0;
     if (addressType === 4) {
       localAddress = localAddress || DEFAULT_IPV4_ADDR;
       err = (socket._handle as TCP).bind(localAddress, localPort);
@@ -589,10 +593,15 @@ function _internalConnect(
     req.localAddress = localAddress;
     req.localPort = localPort;
 
-    if (addressType === 4) {
-      err = (socket._handle as TCP).connect(req, address, port);
-    } else {
-      err = (socket._handle as TCP).connect6(req, address, port);
+    try {
+      if (addressType === 4) {
+        err = (socket._handle as TCP).connect(req, address, port);
+      } else {
+        err = (socket._handle as TCP).connect6(req, address, port);
+      }
+    } catch (e) {
+      socket.destroy(e);
+      return;
     }
   } else {
     const req = new PipeConnectWrap();
@@ -653,7 +662,8 @@ function _internalConnectMultiple(context, canceled?: boolean) {
     if (addressType === 4) {
       localAddress = DEFAULT_IPV4_ADDR;
       err = self._handle.bind(localAddress, localPort);
-    } else { // addressType === 6
+    } else {
+      // addressType === 6
       localAddress = DEFAULT_IPV6_ADDR;
       err = self._handle.bind6(localAddress, localPort, flags);
     }
@@ -837,10 +847,7 @@ function _initSocketHandle(socket: Socket) {
   }
 }
 
-function _lookupAndConnect(
-  self: Socket,
-  options: TcpSocketConnectOptions,
-) {
+function _lookupAndConnect(self: Socket, options: TcpSocketConnectOptions) {
   const { localAddress, localPort } = options;
   const host = options.host || "localhost";
   let { port, autoSelectFamilyAttemptTimeout, autoSelectFamily } = options;
@@ -930,7 +937,9 @@ function _lookupAndConnect(
   const lookup = options.lookup || dnsLookup;
 
   if (
-    dnsOpts.family !== 4 && dnsOpts.family !== 6 && !localAddress &&
+    dnsOpts.family !== 4 &&
+    dnsOpts.family !== 6 &&
+    !localAddress &&
     autoSelectFamily
   ) {
     debug("connect: autodetecting");
@@ -1231,6 +1240,8 @@ export function Socket(options) {
   this.autoSelectFamilyAttemptedAddresses = undefined;
   this.connecting = false;
 
+  this[kUseNativeWrap] = options[kUseNativeWrap] || false;
+
   const errorStack = new Error().stack;
   this._needsSockInitWorkaround = options.handle?.ipc !== true &&
     pkgsNeedsSockInitWorkaround.some((pkg) => errorStack?.includes(pkg));
@@ -1282,10 +1293,7 @@ Object.setPrototypeOf(Socket, Duplex);
 Socket.prototype.connect = function (...args) {
   let normalized;
 
-  if (
-    Array.isArray(args[0]) &&
-    args[0][normalizedArgsSymbol]
-  ) {
+  if (Array.isArray(args[0]) && args[0][normalizedArgsSymbol]) {
     normalized = args[0];
   } else {
     normalized = _normalizeArgs(args);
@@ -1294,10 +1302,7 @@ Socket.prototype.connect = function (...args) {
   const options = normalized[0];
   const cb = normalized[1];
 
-  if (
-    options.port === undefined &&
-    options.path == null
-  ) {
+  if (options.port === undefined && options.path == null) {
     throw new ERR_MISSING_ARGS(["options", "port", "path"]);
   }
 
@@ -1319,6 +1324,10 @@ Socket.prototype.connect = function (...args) {
     this._handle = pipe
       ? new Pipe(PipeConstants.SOCKET)
       : new TCP(TCPConstants.SOCKET);
+
+    if (this[kUseNativeWrap]) {
+      this._handle[kUseNativeWrap] = this[kUseNativeWrap];
+    }
 
     _initSocketHandle(this);
   }
@@ -1347,11 +1356,7 @@ Socket.prototype.connect = function (...args) {
 };
 
 Socket.prototype.pause = function () {
-  if (
-    !this.connecting &&
-    this._handle &&
-    this._handle.reading
-  ) {
+  if (!this.connecting && this._handle && this._handle.reading) {
     this._handle.reading = false;
 
     if (!this.destroyed) {
@@ -1367,11 +1372,7 @@ Socket.prototype.pause = function () {
 };
 
 Socket.prototype.resume = function () {
-  if (
-    !this.connecting &&
-    this._handle &&
-    !this._handle.reading
-  ) {
+  if (!this.connecting && this._handle && !this._handle.reading) {
     _tryReadStart(this);
   }
 
@@ -1531,9 +1532,7 @@ Object.defineProperty(Socket.prototype, "remoteAddress", {
 
 Object.defineProperty(Socket.prototype, "remoteFamily", {
   get: function () {
-    const { family } = this._getpeername();
-
-    return family ? `IPv${family}` : family;
+    return this._getpeername().family;
   },
 });
 
@@ -1665,7 +1664,9 @@ Socket.prototype._destroy = function (exception, cb) {
 
   // deno-lint-ignore no-this-alias
   for (let s = this; s != null; s = s._parent) {
-    clearTimeout(s[kTimeout]);
+    if (s[kTimeout]) {
+      s[kTimeout][kDestroy]();
+    }
   }
 
   debug("close");
@@ -1721,12 +1722,7 @@ Socket.prototype._getsockname = function () {
   return this._sockname;
 };
 
-Socket.prototype._writeGeneric = function (
-  writev,
-  data,
-  encoding,
-  cb,
-) {
+Socket.prototype._writeGeneric = function (writev, data, encoding, cb) {
   if (this.connecting) {
     this._pendingData = data;
     this._pendingEncoding = encoding;
@@ -1760,18 +1756,11 @@ Socket.prototype._writeGeneric = function (
   }
 };
 
-Socket.prototype._writev = function (
-  chunks,
-  cb,
-) {
+Socket.prototype._writev = function (chunks, cb) {
   this._writeGeneric(true, chunks, "", cb);
 };
 
-Socket.prototype._write = function (
-  data,
-  encoding,
-  cb,
-) {
+Socket.prototype._write = function (data, encoding, cb) {
   this._writeGeneric(false, data, encoding, cb);
 };
 
@@ -1810,7 +1799,15 @@ Socket.prototype[kReinitializeHandle] = function (handle) {
   this._handle?.close();
 
   // Make sure TLS wrap works after reinitialize.
-  handle.afterConnectTls = this._handle.afterConnectTls;
+  if (typeof this._handle?.afterConnectTls === "function") {
+    const { promise, resolve } = Promise.withResolvers();
+    handle.afterConnectTls = this._handle.afterConnectTls;
+    handle.afterConnectTlsResolve = resolve;
+    handle.upgrading = promise;
+    handle.verifyError = this._handle.verifyError;
+    handle._parent = handle;
+    handle._parentWrap = this._handle._parentWrap;
+  }
 
   this._handle = handle;
   this._handle[ownerSymbol] = this;
@@ -2136,7 +2133,7 @@ function _onconnection(this: any, err: number, clientHandle?: Handle) {
   }
 
   const socket = self._createSocket(clientHandle);
-  this._connections++;
+  self._connections++;
   self.emit("connection", socket);
 
   if (netServerSocketChannel.hasSubscribers) {

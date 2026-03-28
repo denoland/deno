@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 import { assert, assertEquals, assertRejects, assertThrows } from "@std/assert";
 import { assertCallbackErrorUncaught } from "../_test_utils.ts";
 import { pseudoRandomBytes, randomBytes } from "node:crypto";
@@ -84,6 +84,31 @@ Deno.test("[std/node/crypto] randomBytes callback isn't called twice if error is
     prelude: `import { randomBytes } from ${JSON.stringify(importUrl)}`,
     invocation: "randomBytes(0, ",
   });
+});
+
+// https://github.com/denoland/deno/issues/32047
+// randomBytes should return a buffer with its own ArrayBuffer, not a shared pool
+Deno.test("randomBytes buffer has correct byteLength and unique values", function () {
+  // Test that the underlying ArrayBuffer has the expected size
+  const buf8 = randomBytes(8);
+  assertEquals(
+    buf8.buffer.byteLength,
+    8,
+    "buffer.byteLength should match requested size",
+  );
+
+  // Test that multiple calls return buffers with different underlying data
+  // This was broken when using shared pool allocation
+  const val1 = new BigUint64Array(randomBytes(8).buffer)[0];
+  const val2 = new BigUint64Array(randomBytes(8).buffer)[0];
+  const val3 = new BigUint64Array(randomBytes(8).buffer)[0];
+
+  // While extremely unlikely to be identical by chance, this tests the fix
+  // for the bug where all values were the same due to shared pool
+  assert(
+    !(val1 === val2 && val2 === val3),
+    "random values should not all be identical (was caused by shared buffer pool)",
+  );
 });
 
 // https://github.com/denoland/deno/issues/21632

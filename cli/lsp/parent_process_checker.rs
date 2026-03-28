@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::time::Duration;
 
@@ -21,7 +21,7 @@ pub fn start(parent_process_id: u32) {
 #[cfg(unix)]
 fn is_process_active(process_id: u32) -> bool {
   // TODO(bartlomieju):
-  #[allow(clippy::undocumented_unsafe_blocks)]
+  // SAFETY: kill with signal 0 only checks process existence, no side effects
   unsafe {
     // signal of 0 checks for the existence of the process id
     libc::kill(process_id as i32, 0) == 0
@@ -55,15 +55,19 @@ fn is_process_active(process_id: u32) -> bool {
 #[cfg(test)]
 mod test {
   use std::process::Command;
-
-  use test_util::deno_exe_path;
+  use std::process::Stdio;
 
   use super::is_process_active;
 
   #[test]
   fn process_active() {
-    // launch a long running process
-    let mut child = Command::new(deno_exe_path()).arg("lsp").spawn().unwrap();
+    // launch a long running process that blocks on stdin
+    let mut child = Command::new(if cfg!(windows) { "cmd.exe" } else { "cat" })
+      .stdin(Stdio::piped())
+      .stdout(Stdio::null())
+      .stderr(Stdio::null())
+      .spawn()
+      .unwrap();
 
     let pid = child.id();
     assert!(is_process_active(pid));

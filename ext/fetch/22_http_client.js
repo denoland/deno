@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 // @ts-check
 /// <reference path="../webidl/internal.d.ts" />
@@ -64,7 +64,7 @@ function createHttpClient(options) {
         case "socks5": {
           const url = options.proxy.url;
           if (
-            !StringPrototypeStartsWith(url, "socks5:") ||
+            !StringPrototypeStartsWith(url, "socks5:") &&
             !StringPrototypeStartsWith(url, "socks5h:")
           ) {
             throw new TypeError(

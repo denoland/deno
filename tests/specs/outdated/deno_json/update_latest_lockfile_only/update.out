@@ -1,0 +1,13 @@
+[UNORDERED_START]
+Download http://127.0.0.1:4250/@denotest/add/1.0.0/mod.ts
+Download http://127.0.0.1:4250/@denotest/subtract/1.0.0/mod.ts
+Download http://127.0.0.1:4250/@denotest/multiple-exports/1.0.0_meta.json
+Download http://127.0.0.1:4250/@denotest/multiple-exports/1.0.0/data.json
+[UNORDERED_END]
+Updated 6 dependencies:
+ - jsr:@denotest/add                              ^0.2.0 -> ^1.0.0
+ - jsr:@denotest/multiple-exports                  0.2.0 ->  1.0.0
+ - jsr:@denotest/subtract                         ^0.2.0 -> ^1.0.0
+ - npm:@denotest/bin                               0.6.0 ->  1.0.0
+ - npm:@denotest/breaking-change-between-versions  1.0.0 ->  2.0.0
+ - npm:@denotest/has-patch-versions               ^0.1.0 -> ^0.2.0
