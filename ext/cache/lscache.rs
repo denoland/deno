@@ -43,7 +43,7 @@ impl LscBackend {
   }
 }
 
-#[allow(clippy::unused_async)]
+#[allow(clippy::unused_async, reason = "trait requires async interface")]
 impl LscBackend {
   /// Open a cache storage. Internally, this allocates an id and maps it
   /// to the provided cache name.

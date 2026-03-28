@@ -525,6 +525,36 @@ export function join(...paths: string[]): string {
     }
   }
 
+  // If any path component is a Windows reserved device name (e.g. CON:,
+  // PRN:, NUL:), skip normalization to avoid resolving `..` through it.
+  // This matches Node.js behavior -- only replace `/` with `\`.
+  let hasReservedComponent = false;
+  {
+    let segStart = 0;
+    for (let i = 0; i <= joined.length; i++) {
+      if (
+        i === joined.length ||
+        isPathSeparator(StringPrototypeCharCodeAt(joined, i))
+      ) {
+        if (i > segStart) {
+          const seg = StringPrototypeSlice(joined, segStart, i);
+          const colonIdx = StringPrototypeIndexOf(seg, ":");
+          if (colonIdx !== -1 && isWindowsReservedName(seg, colonIdx)) {
+            hasReservedComponent = true;
+            break;
+          }
+        }
+        segStart = i + 1;
+      }
+    }
+  }
+
+  if (hasReservedComponent) {
+    // Only convert forward slashes to backslashes, skip normalize.
+    const parts = StringPrototypeSplit(joined, "/");
+    return ArrayPrototypeJoin(parts, "\\");
+  }
+
   return normalize(joined);
 }
 

@@ -73,6 +73,7 @@ pub fn get_types_declaration_file_text() -> String {
     "deno.net",
     "deno.shared_globals",
     "deno.cache",
+    "esnext.temporal",
     "deno.window",
     "deno.unstable",
   ];
@@ -150,11 +151,17 @@ include!(concat!(env!("OUT_DIR"), "/node_types.rs"));
 
 #[derive(Clone)]
 pub enum StaticAssetSource {
-  #[cfg_attr(any(debug_assertions, feature = "hmr"), allow(dead_code))]
+  #[cfg_attr(
+    any(debug_assertions, feature = "hmr"),
+    allow(dead_code, reason = "not used for hmr")
+  )]
   Compressed(CompressedSource),
-  #[allow(dead_code)]
+  #[allow(dead_code, reason = "used for hmr")]
   Uncompressed(&'static str),
-  #[cfg_attr(not(feature = "hmr"), allow(dead_code))]
+  #[cfg_attr(
+    not(feature = "hmr"),
+    allow(dead_code, reason = "not used for hmr")
+  )]
   Owned(&'static str, std::sync::OnceLock<Arc<str>>),
 }
 
@@ -423,14 +430,6 @@ fn hash_url(specifier: &ModuleSpecifier, media_type: MediaType) -> String {
     hash,
     media_type.as_ts_extension()
   )
-}
-
-#[derive(Debug, Clone, Default, Eq, PartialEq)]
-#[allow(dead_code)]
-pub struct EmittedFile {
-  pub data: String,
-  pub maybe_specifiers: Option<Vec<ModuleSpecifier>>,
-  pub media_type: MediaType,
 }
 
 pub fn into_specifier_and_media_type(
@@ -738,7 +737,11 @@ fn resolve_graph_specifier_types(
           Ok(path_or_url) => Some(path_or_url.into_url()?),
           Err(err) => match err.code() {
             NodeJsErrorCode::ERR_MODULE_NOT_FOUND
-            | NodeJsErrorCode::ERR_TYPES_NOT_FOUND => None,
+            | NodeJsErrorCode::ERR_TYPES_NOT_FOUND
+            | NodeJsErrorCode::ERR_PACKAGE_PATH_NOT_EXPORTED
+            | NodeJsErrorCode::ERR_INVALID_PACKAGE_TARGET
+            | NodeJsErrorCode::ERR_UNSUPPORTED_DIR_IMPORT
+            | NodeJsErrorCode::ERR_PACKAGE_IMPORT_NOT_DEFINED => None,
             _ => return Err(ResolveError::PackageSubpathResolve(err)),
           },
         };
@@ -824,7 +827,11 @@ fn resolve_non_graph_specifier_types(
           Ok(url_or_path) => Some(url_or_path.into_url()?),
           Err(err) => match err.code() {
             NodeJsErrorCode::ERR_MODULE_NOT_FOUND
-            | NodeJsErrorCode::ERR_TYPES_NOT_FOUND => None,
+            | NodeJsErrorCode::ERR_TYPES_NOT_FOUND
+            | NodeJsErrorCode::ERR_PACKAGE_PATH_NOT_EXPORTED
+            | NodeJsErrorCode::ERR_INVALID_PACKAGE_TARGET
+            | NodeJsErrorCode::ERR_UNSUPPORTED_DIR_IMPORT
+            | NodeJsErrorCode::ERR_PACKAGE_IMPORT_NOT_DEFINED => None,
             _ => return Err(err.into()),
           },
         };
@@ -856,7 +863,10 @@ pub(crate) struct CompressedSource {
 }
 
 impl CompressedSource {
-  #[cfg_attr(any(debug_assertions, feature = "hmr"), allow(dead_code))]
+  #[cfg_attr(
+    any(debug_assertions, feature = "hmr"),
+    allow(dead_code, reason = "not used for hmr")
+  )]
   pub(crate) const fn new(bytes: &'static [u8]) -> Self {
     Self {
       bytes,
@@ -891,7 +901,6 @@ pub(crate) fn decompress_source(contents: &[u8]) -> Arc<str> {
 /// Execute a request on the supplied snapshot, returning a response which
 /// contains information, like any emitted files, diagnostics, statistics and
 /// optionally an updated TypeScript build info.
-#[allow(clippy::result_large_err)]
 pub fn exec(
   request: Request,
   code_cache: Option<Arc<dyn deno_runtime::code_cache::CodeCache>>,
@@ -1338,6 +1347,8 @@ pub static TYPES_NODE_IGNORABLE_NAMES: &[&str] = &[
   "PerformanceMeasure",
   "QueuingStrategy",
   "QueuingStrategySize",
+  "QuotaExceededError",
+  "QuotaExceededErrorOptions",
   "ReadableByteStreamController",
   "ReadableStream",
   "ReadableStreamBYOBReader",

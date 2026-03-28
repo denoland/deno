@@ -1157,7 +1157,7 @@ where
         options,
       );
     }
-    #[allow(unreachable_code)]
+    #[allow(unreachable_code, reason = "to avoid typing closure")]
     Ok::<_, HttpNextError>(())
   });
 
@@ -1713,8 +1713,20 @@ pub async fn op_raw_write_vectored(
 #[op2(fast)]
 pub fn op_http_metric_handle_otel_error(external: *const c_void) {
   let http =
-    // SAFETY: external is deleted before calling this op.
-    unsafe { take_external!(external, "op_http_metric_handle_otel_error") };
+    // SAFETY: op is called with external.
+    unsafe { clone_external!(external, "op_http_metric_handle_otel_error") };
 
   http.otel_info_set_error("user");
+}
+
+#[op2(fast)]
+pub fn op_http_copy_span_to_otel_info(
+  external: *const c_void,
+  #[cppgc] span: &deno_telemetry::OtelSpan,
+) {
+  let http =
+    // SAFETY: op is called with external.
+    unsafe { clone_external!(external, "op_http_copy_span_to_otel_info") };
+
+  http.copy_span_to_otel_info(span);
 }

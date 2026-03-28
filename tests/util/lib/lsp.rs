@@ -234,7 +234,7 @@ pub struct InitializeParamsBuilder {
 }
 
 impl InitializeParamsBuilder {
-  #[allow(clippy::new_without_default)]
+  #[allow(clippy::new_without_default, reason = "test code")]
   pub fn new(config: Value) -> Self {
     let mut config_as_options = json!({});
     if let Some(object) = config.as_object() {
@@ -410,14 +410,12 @@ impl InitializeParamsBuilder {
     }
   }
 
-  #[allow(deprecated)]
-  pub fn set_maybe_root_uri(&mut self, value: Option<Uri>) -> &mut Self {
-    self.params.root_uri = value;
-    self
-  }
-
   pub fn set_root_uri(&mut self, value: Uri) -> &mut Self {
-    self.set_maybe_root_uri(Some(value))
+    #[allow(deprecated, reason = "we want to test this deprecated field")]
+    {
+      self.params.root_uri = Some(value);
+    }
+    self
   }
 
   pub fn set_workspace_folders(
@@ -586,7 +584,7 @@ pub struct LspClientBuilder {
 }
 
 impl LspClientBuilder {
-  #[allow(clippy::new_without_default)]
+  #[allow(clippy::new_without_default, reason = "test code")]
   pub fn new() -> Self {
     Self::new_with_dir(TempDir::new())
   }

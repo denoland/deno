@@ -285,7 +285,7 @@ struct Handler {
 }
 
 impl Handler {
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "construction")]
   fn new(
     config_path: String,
     synthetic_config: String,
@@ -623,8 +623,11 @@ impl HandlerState {
   }
 }
 
+#[derive(Debug, boxed_error::Boxed, deno_error::JsError)]
+pub struct ExecError(pub Box<ExecErrorKind>);
+
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
-pub enum ExecError {
+pub enum ExecErrorKind {
   #[class(generic)]
   #[error(transparent)]
   SerdeJson(#[from] serde_json::Error),

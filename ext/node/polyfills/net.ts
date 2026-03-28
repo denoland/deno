@@ -72,7 +72,7 @@ import {
   writeGeneric,
   writevGeneric,
 } from "ext:deno_node/internal/stream_base_commons.ts";
-import { kTimeout } from "ext:deno_node/internal/timers.mjs";
+import { kDestroy, kTimeout } from "ext:deno_node/internal/timers.mjs";
 import { nextTick } from "ext:deno_node/_next_tick.ts";
 import {
   DTRACE_NET_SERVER_CONNECTION,
@@ -139,7 +139,7 @@ const DEFAULT_IPV4_ADDR = "0.0.0.0";
 const DEFAULT_IPV6_ADDR = "::";
 
 let autoSelectFamilyDefault = true;
-let autoSelectFamilyAttemptTimeoutDefault = 250;
+let autoSelectFamilyAttemptTimeoutDefault = 500;
 
 type Handle = TCP | Pipe;
 
@@ -593,10 +593,15 @@ function _internalConnect(
     req.localAddress = localAddress;
     req.localPort = localPort;
 
-    if (addressType === 4) {
-      err = (socket._handle as TCP).connect(req, address, port);
-    } else {
-      err = (socket._handle as TCP).connect6(req, address, port);
+    try {
+      if (addressType === 4) {
+        err = (socket._handle as TCP).connect(req, address, port);
+      } else {
+        err = (socket._handle as TCP).connect6(req, address, port);
+      }
+    } catch (e) {
+      socket.destroy(e);
+      return;
     }
   } else {
     const req = new PipeConnectWrap();
@@ -1659,7 +1664,9 @@ Socket.prototype._destroy = function (exception, cb) {
 
   // deno-lint-ignore no-this-alias
   for (let s = this; s != null; s = s._parent) {
-    clearTimeout(s[kTimeout]);
+    if (s[kTimeout]) {
+      s[kTimeout][kDestroy]();
+    }
   }
 
   debug("close");
@@ -1792,7 +1799,15 @@ Socket.prototype[kReinitializeHandle] = function (handle) {
   this._handle?.close();
 
   // Make sure TLS wrap works after reinitialize.
-  handle.afterConnectTls = this._handle.afterConnectTls;
+  if (typeof this._handle?.afterConnectTls === "function") {
+    const { promise, resolve } = Promise.withResolvers();
+    handle.afterConnectTls = this._handle.afterConnectTls;
+    handle.afterConnectTlsResolve = resolve;
+    handle.upgrading = promise;
+    handle.verifyError = this._handle.verifyError;
+    handle._parent = handle;
+    handle._parentWrap = this._handle._parentWrap;
+  }
 
   this._handle = handle;
   this._handle[ownerSymbol] = this;
