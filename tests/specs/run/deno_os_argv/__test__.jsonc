@@ -1,0 +1,20 @@
+{
+  "tests": {
+    "basic": {
+      "args": "run --quiet deno_os_argv.ts --user-arg1 --user-arg2",
+      "output": "deno_os_argv.out"
+    },
+    "flags_visible": {
+      "args": "run --allow-read --allow-net deno_os_argv_flags.ts",
+      "output": "deno_os_argv_flags.out"
+    },
+    "eval_mode": {
+      "args": "eval console.log(typeof(Deno.osArgv0)+','+Array.isArray(Deno.osArgv))",
+      "output": "deno_os_argv_eval.out"
+    },
+    "length_relationship": {
+      "args": "run --quiet deno_os_argv_length.ts arg1 arg2 arg3",
+      "output": "deno_os_argv_length.out"
+    }
+  }
+}

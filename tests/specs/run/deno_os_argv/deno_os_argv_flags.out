@@ -1,0 +1,3 @@
+has allow-read: true
+has allow-net: true
+args has no flags: true

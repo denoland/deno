@@ -10,6 +10,7 @@ import {
   op_bootstrap_args,
   op_bootstrap_is_from_unconfigured_runtime,
   op_bootstrap_no_color,
+  op_bootstrap_os_argv,
   op_bootstrap_pid,
   op_bootstrap_stderr_no_color,
   op_bootstrap_stdout_no_color,
@@ -36,6 +37,7 @@ const {
   ObjectAssign,
   ObjectDefineProperties,
   ObjectDefineProperty,
+  ObjectFreeze,
   ObjectHasOwn,
   ObjectKeys,
   ObjectPrototypeIsPrototypeOf,
@@ -300,7 +302,9 @@ function importScripts(...urls) {
 }
 
 const opArgs = memoizeLazy(() => op_bootstrap_args());
+const opOsArgv = memoizeLazy(() => ObjectFreeze(op_bootstrap_os_argv()));
 const opPid = memoizeLazy(() => op_bootstrap_pid());
+let bootstrapOsArgv0 = "";
 setNoColorFns(
   () => op_bootstrap_stdout_no_color(),
   () => op_bootstrap_stderr_no_color(),
@@ -588,6 +592,8 @@ ObjectDefineProperties(finalDenoNs, {
   ppid: core.propGetterOnly(() => op_ppid()),
   noColor: core.propGetterOnly(() => op_bootstrap_no_color()),
   args: core.propGetterOnly(opArgs),
+  osArgv: core.propGetterOnly(opOsArgv),
+  osArgv0: core.propGetterOnly(() => bootstrapOsArgv0),
   mainModule: core.propGetterOnly(() => op_main_module()),
   exitCode: {
     __proto__: null,
@@ -642,6 +648,7 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
       16: autoServe,
     } = runtimeOptions;
 
+    bootstrapOsArgv0 = argv0 ?? "";
     denoNs.build.standalone = standalone;
 
     let serveIsMain_ = serveIsMain;
@@ -845,6 +852,7 @@ function bootstrapWorkerRuntime(
       15: standalone,
     } = runtimeOptions;
 
+    bootstrapOsArgv0 = argv0 ?? "";
     denoNs.build.standalone = standalone;
 
     closeOnIdle = runtimeOptions[14];

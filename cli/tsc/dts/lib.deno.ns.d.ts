@@ -4728,6 +4728,50 @@ declare namespace Deno {
    */
   export const args: string[];
 
+  /** The full argument vector as passed by the operating system to the
+   * current process.
+   *
+   * Unlike {@linkcode Deno.args} which contains only the script arguments,
+   * this includes the runtime path, subcommand, flags, and script specifier
+   * that Deno normally consumes.
+   *
+   * ```sh
+   * $ deno run --allow-net main.ts --flag value
+   * ```
+   *
+   * ```ts
+   * console.log(Deno.osArgv);
+   * // ["deno", "run", "--allow-net", "main.ts", "--flag", "value"]
+   * console.log(Deno.args);
+   * // ["--flag", "value"]
+   * ```
+   *
+   * The returned array is frozen and cannot be modified.
+   *
+   * @category Runtime
+   */
+  export const osArgv: readonly string[];
+
+  /** The original `argv[0]` value as passed by the operating system, or the
+   * npm binary command name when running an npm package.
+   *
+   * This may differ from {@linkcode Deno.execPath} — for example, if Deno
+   * was invoked via `$PATH`, this could be just `"deno"` rather than the
+   * fully resolved path. For npm binaries, this is the package binary name.
+   *
+   * ```sh
+   * $ deno run main.ts
+   * ```
+   *
+   * ```ts
+   * console.log(Deno.osArgv0); // "deno"
+   * console.log(Deno.execPath()); // "/usr/bin/deno"
+   * ```
+   *
+   * @category Runtime
+   */
+  export const osArgv0: string;
+
   /** The URL of the entrypoint module entered from the command-line. It
    * requires read permission to the CWD.
    *

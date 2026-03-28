@@ -1,0 +1,8 @@
+is array: true
+frozen: true
+has runtime: true
+has subcommand: true
+has script: true
+has user args: true
+osArgv0 is string: true
+osArgv0 non-empty: true

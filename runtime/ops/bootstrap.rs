@@ -10,6 +10,7 @@ deno_core::extension!(
   deno_bootstrap,
   ops = [
     op_bootstrap_args,
+    op_bootstrap_os_argv,
     op_bootstrap_pid,
     op_bootstrap_numcpus,
     op_bootstrap_user_agent,
@@ -81,6 +82,11 @@ pub fn op_snapshot_options(state: &mut OpState) -> SnapshotOptions {
 #[op2]
 pub fn op_bootstrap_args(state: &mut OpState) -> Vec<String> {
   state.borrow::<BootstrapOptions>().args.clone()
+}
+
+#[op2]
+pub fn op_bootstrap_os_argv(_state: &mut OpState) -> Vec<String> {
+  std::env::args().collect()
 }
 
 #[op2(fast)]
