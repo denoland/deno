@@ -6,8 +6,10 @@
   "main": "./mod.js",
   "types": "./mod.d.ts",
   "exports": {
-    "types": "./mod.d.ts",
-    "import": "./mod.js",
-    "default": "./mod.js"
+    ".": {
+      "types": "./mod.d.ts",
+      "import": "./mod.js",
+      "default": "./mod.js"
+    }
   }
 }

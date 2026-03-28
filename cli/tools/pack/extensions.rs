@@ -8,6 +8,13 @@ use deno_ast::MediaType;
 /// `.ts` → `.js`, `.tsx` → `.js`, `.mts` → `.mjs`, `.cts` → `.cjs`
 pub fn ts_to_js_extension(path: &str) -> String {
   let path = path.trim_start_matches("./");
+  // Pass through declaration files unchanged
+  if path.ends_with(".d.ts")
+    || path.ends_with(".d.mts")
+    || path.ends_with(".d.cts")
+  {
+    return path.to_string();
+  }
   if let Some(stem) = path.strip_suffix(".tsx") {
     format!("{stem}.js")
   } else if let Some(stem) = path.strip_suffix(".ts") {
@@ -25,6 +32,13 @@ pub fn ts_to_js_extension(path: &str) -> String {
 /// `.ts` → `.d.ts`, `.tsx` → `.d.ts`, `.mts` → `.d.mts`, `.cts` → `.d.cts`
 pub fn ts_to_dts_extension(path: &str) -> String {
   let path = path.trim_start_matches("./");
+  // Already a declaration file - pass through
+  if path.ends_with(".d.ts")
+    || path.ends_with(".d.mts")
+    || path.ends_with(".d.cts")
+  {
+    return path.to_string();
+  }
   if let Some(stem) = path.strip_suffix(".tsx") {
     format!("{stem}.d.ts")
   } else if let Some(stem) = path.strip_suffix(".ts") {
@@ -93,6 +107,10 @@ mod tests {
     assert_eq!(ts_to_js_extension("mod.mts"), "mod.mjs");
     assert_eq!(ts_to_js_extension("mod.cts"), "mod.cjs");
     assert_eq!(ts_to_js_extension("mod.js"), "mod.js");
+    // Declaration files should pass through unchanged
+    assert_eq!(ts_to_js_extension("mod.d.ts"), "mod.d.ts");
+    assert_eq!(ts_to_js_extension("mod.d.mts"), "mod.d.mts");
+    assert_eq!(ts_to_js_extension("mod.d.cts"), "mod.d.cts");
   }
 
   #[test]
@@ -102,6 +120,10 @@ mod tests {
     assert_eq!(ts_to_dts_extension("mod.tsx"), "mod.d.ts");
     assert_eq!(ts_to_dts_extension("mod.mts"), "mod.d.mts");
     assert_eq!(ts_to_dts_extension("mod.js"), "mod.d.ts");
+    // Already declaration files should pass through
+    assert_eq!(ts_to_dts_extension("mod.d.ts"), "mod.d.ts");
+    assert_eq!(ts_to_dts_extension("mod.d.mts"), "mod.d.mts");
+    assert_eq!(ts_to_dts_extension("mod.d.cts"), "mod.d.cts");
   }
 
   #[test]

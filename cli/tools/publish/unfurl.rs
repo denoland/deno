@@ -1106,40 +1106,6 @@ impl Visit for SpecifierStartCollector {
   }
 }
 
-#[derive(Default)]
-struct ImportMetaResolveCollector {
-  specifiers: Vec<(SourceRange<SourcePos>, Atom)>,
-  diagnostic_ranges: Vec<SourceRange<SourcePos>>,
-}
-
-impl Visit for ImportMetaResolveCollector {
-  noop_visit_type!();
-
-  fn visit_call_expr(&mut self, node: &deno_ast::swc::ast::CallExpr) {
-    if node.args.len() == 1
-      && let Some(first_arg) = node.args.first()
-      && let Callee::Expr(callee) = &node.callee
-      && let Expr::Member(member) = &**callee
-      && let Expr::MetaProp(prop) = &*member.obj
-      && prop.kind == MetaPropKind::ImportMeta
-      && let MemberProp::Ident(ident) = &member.prop
-      && ident.sym == "resolve"
-      && first_arg.spread.is_none()
-    {
-      if let Expr::Lit(Lit::Str(arg)) = &*first_arg.expr {
-        let range = arg.range();
-        self.specifiers.push((
-          // remove quotes
-          SourceRange::new(range.start + 1, range.end - 1),
-          arg.value.to_atom_lossy().into_owned(),
-        ));
-      } else {
-        self.diagnostic_ranges.push(first_arg.expr.range());
-      }
-    }
-  }
-}
-
 #[allow(clippy::disallowed_methods, reason = "test code")]
 #[cfg(test)]
 mod tests {

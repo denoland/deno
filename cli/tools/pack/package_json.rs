@@ -100,13 +100,15 @@ fn convert_exports(
     return Ok(json!("./mod.js"));
   };
 
-  // Handle string export
+  // Handle string export - wrap in "." key for standard conditional exports
   if let Some(s) = exports.as_str() {
     let js_path = ts_to_js_extension(s);
     return Ok(json!({
-      "types": format!("./{}", ts_to_dts_extension(s)),
-      "import": format!("./{}", js_path),
-      "default": format!("./{}", js_path)
+      ".": {
+        "types": format!("./{}", ts_to_dts_extension(s)),
+        "import": format!("./{}", js_path),
+        "default": format!("./{}", js_path)
+      }
     }));
   }
 

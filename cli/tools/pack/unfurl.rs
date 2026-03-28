@@ -355,12 +355,13 @@ fn rewrite_specifier(specifier: &str) -> Option<String> {
     return None;
   }
 
-  // Handle file: URLs — rewrite extensions
+  // file: URLs should not appear in npm package output.
+  // We cannot reliably convert them to relative paths without the referrer.
   if specifier.starts_with("file:") {
-    let rewritten = rewrite_file_extension(specifier);
-    if rewritten != specifier {
-      return Some(rewritten);
-    }
+    log::warn!(
+      "file: URL found in specifier '{}' - this will not work in an npm package",
+      specifier
+    );
     return None;
   }
 
@@ -372,8 +373,11 @@ fn rewrite_specifier(specifier: &str) -> Option<String> {
 /// Delegates to `extensions::ts_to_js_extension` for the actual swap,
 /// preserving any directory prefix (e.g. `./`, `../`).
 fn rewrite_file_extension(path: &str) -> String {
-  // .d.ts files should not have extensions rewritten
-  if path.ends_with(".d.ts") {
+  // Declaration files should not have extensions rewritten
+  if path.ends_with(".d.ts")
+    || path.ends_with(".d.mts")
+    || path.ends_with(".d.cts")
+  {
     return path.to_string();
   }
   // Preserve the directory prefix, delegate extension swap
@@ -443,6 +447,8 @@ mod tests {
     );
     assert_eq!(rewrite_specifier("./mod.js"), None);
     assert_eq!(rewrite_specifier("./types.d.ts"), None);
+    assert_eq!(rewrite_specifier("./types.d.mts"), None);
+    assert_eq!(rewrite_specifier("./types.d.cts"), None);
   }
 
   #[test]

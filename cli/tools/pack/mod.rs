@@ -116,6 +116,12 @@ pub async fn pack(
 
     // Determine version
     let version = if let Some(ref v) = pack_flags.set_version {
+      if deno_semver::Version::parse_standard(v).is_err() {
+        bail!(
+          "Invalid semver version '{}'. Please provide a valid semver version (e.g., 1.0.0)",
+          v
+        );
+      }
       v.clone()
     } else {
       package
@@ -301,14 +307,17 @@ fn collect_readme_license_files(
     }
   }
 
-  // Look for LICENSE files (case-insensitive)
+  // Look for LICENSE files (common variants)
   for name in &[
     "LICENSE",
     "LICENSE.md",
+    "LICENSE.txt",
     "LICENCE",
     "LICENCE.md",
+    "LICENCE.txt",
     "license",
     "license.md",
+    "license.txt",
   ] {
     let path = package_dir.join(name);
     if path.exists() {
@@ -326,7 +335,7 @@ fn collect_readme_license_files(
 
 pub struct ProcessedFile {
   /// Original specifier
-  #[allow(dead_code)]
+  #[allow(dead_code, reason = "kept for debugging and future use")]
   pub specifier: ModuleSpecifier,
   /// Relative path in the package (e.g., "mod.ts" -> "mod.js")
   pub output_path: String,
@@ -442,6 +451,23 @@ impl Visit for DenoUsageVisitor {
       self
         .local_deno_bindings
         .insert(ident.id.to_id().0.to_string());
+    }
+    node.visit_children_with(self);
+  }
+
+  // Track import declarations that bind Deno (e.g., import { Deno } from "...")
+  fn visit_import_decl(&mut self, node: &swc_ast::ImportDecl) {
+    for specifier in &node.specifiers {
+      let local_ident = match specifier {
+        swc_ast::ImportSpecifier::Named(named) => &named.local,
+        swc_ast::ImportSpecifier::Default(default) => &default.local,
+        swc_ast::ImportSpecifier::Namespace(ns) => &ns.local,
+      };
+      if local_ident.sym.as_ref() == "Deno" {
+        self
+          .local_deno_bindings
+          .insert(local_ident.to_id().0.to_string());
+      }
     }
     node.visit_children_with(self);
   }
@@ -698,10 +724,10 @@ fn process_single_module(
       },
     )?;
     let text = transpiled.into_source().text;
-    let ext = if media_type == MediaType::Mts {
-      ".mjs"
-    } else {
-      ".js"
+    let ext = match media_type {
+      MediaType::Mts => ".mjs",
+      MediaType::Cts => ".cjs",
+      _ => ".js",
     };
     (text, ext)
   } else {
@@ -796,13 +822,20 @@ fn extract_dts(
         Ok(emitted) => return Some(emitted.text),
         Err(e) => {
           log::warn!("Failed to emit DTS: {}", e);
-          // Fall through to return fast check source
+          // Do not fall through to fast_check.source as it is simplified
+          // TypeScript, not valid .d.ts
+          return Some("export {};".to_string());
         }
       }
     }
 
-    // Fallback: Return the fast check source (simplified TS)
-    return Some(fast_check.source.as_ref().to_string());
+    // No DTS module available but we have fast check data.
+    // fast_check.source is simplified TS, not valid .d.ts, so emit a stub.
+    log::warn!(
+      "Could not generate .d.ts for '{}'. Fast check available but no DTS module. Emitting empty declaration stub.",
+      js_module.specifier
+    );
+    return Some("export {};".to_string());
   }
 
   // Fallback: generate a stub — warn the user
@@ -913,6 +946,17 @@ mod tests {
     let parsed = parse_source(code);
     let info = detect_deno_usage(&parsed);
     assert!(info.uses_import_meta_main);
+  }
+
+  #[test]
+  fn test_no_detect_import_binding() {
+    let code = r#"
+      import { Deno } from "some-module";
+      Deno.something();
+    "#;
+    let parsed = parse_source(code);
+    let info = detect_deno_usage(&parsed);
+    assert!(!info.uses_deno);
   }
 
   #[test]
