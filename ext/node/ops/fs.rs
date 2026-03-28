@@ -7,6 +7,7 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
 
+use deno_core::JsBuffer;
 use deno_core::OpState;
 use deno_core::ResourceId;
 use deno_core::op2;
@@ -92,7 +93,7 @@ fn ebadf() -> FsError {
 /// Look up the internal resource ID for a given OS file descriptor.
 /// Stdio fds (0, 1, 2) map to resource IDs 0, 1, 2.
 fn resource_for_fd(state: &OpState, fd: i32) -> Result<ResourceId, FsError> {
-  if fd >= 0 && fd <= 2 {
+  if (0..=2).contains(&fd) {
     return Ok(fd as ResourceId);
   }
   state
@@ -855,8 +856,22 @@ pub fn op_node_fs_read_sync(
   Ok(nread as u32)
 }
 
-// Note: async read is not provided here because buffer borrowing
-// requires 'static lifetime. The JS side uses the sync op.
+/// Async (deferred) read — performs the read synchronously but resolves the
+/// promise on the next event loop tick, matching Node's libuv-based behavior
+/// where the callback fires on the next event loop iteration.
+#[allow(clippy::unused_async, reason = "async required for deferred op scheduling")]
+#[op2(async(deferred))]
+#[smi]
+pub async fn op_node_fs_read_deferred(
+  state: Rc<RefCell<OpState>>,
+  fd: i32,
+  #[buffer] buf: JsBuffer,
+) -> Result<u32, FsError> {
+  let file = file_for_fd(&state.borrow(), fd)?;
+  let mut buf = buf;
+  let nread = file.read_sync(&mut buf)?;
+  Ok(nread as u32)
+}
 
 #[op2(fast)]
 #[smi]
@@ -870,8 +885,20 @@ pub fn op_node_fs_write_sync(
   Ok(nwritten as u32)
 }
 
-// Note: async write is not provided here because buffer borrowing
-// requires 'static lifetime. The JS side uses the sync op.
+/// Async (deferred) write — performs the write synchronously but resolves the
+/// promise on the next event loop tick, matching Node's libuv-based behavior.
+#[allow(clippy::unused_async, reason = "async required for deferred op scheduling")]
+#[op2(async(deferred))]
+#[smi]
+pub async fn op_node_fs_write_deferred(
+  state: Rc<RefCell<OpState>>,
+  fd: i32,
+  #[buffer] buf: JsBuffer,
+) -> Result<u32, FsError> {
+  let file = file_for_fd(&state.borrow(), fd)?;
+  let nwritten = file.write_sync(&buf)?;
+  Ok(nwritten as u32)
+}
 
 #[op2(fast)]
 #[number]

@@ -116,10 +116,12 @@ import {
   op_node_fs_ftruncate_sync,
   op_node_fs_futimes,
   op_node_fs_futimes_sync,
+  op_node_fs_read_deferred,
   op_node_fs_read_file_sync,
   op_node_fs_read_sync,
   op_node_fs_seek,
   op_node_fs_seek_sync,
+  op_node_fs_write_deferred,
   op_node_fs_write_sync,
   op_node_lchmod,
   op_node_lchmod_sync,
@@ -563,7 +565,7 @@ function readFileConcatBuffers(buffers: Uint8Array[]): Uint8Array {
   return contents;
 }
 
-function readFileFromFd(fd: number, options?: FileOptions) {
+async function readFileFromFd(fd: number, options?: FileOptions) {
   const signal = options?.signal;
   const encoding = options?.encoding;
   readFileCheckAborted(signal);
@@ -590,7 +592,9 @@ function readFileFromFd(fd: number, options?: FileOptions) {
 
   while (true) {
     readFileCheckAborted(signal);
-    const nread = op_node_fs_read_sync(fd, buffer);
+    // Use the deferred op so we yield to the event loop between reads,
+    // allowing abort signals scheduled via process.nextTick to fire.
+    const nread = await op_node_fs_read_deferred(fd, buffer);
     if (nread === 0) {
       break;
     }
@@ -650,7 +654,7 @@ function readFile(
   if (typeof pathOrRid === "string") {
     p = readFileAsync(pathOrRid, options);
   } else {
-    p = PromiseResolve(readFileFromFd(pathOrRid as number, options));
+    p = readFileFromFd(pathOrRid as number, options);
   }
 
   if (cb) {
@@ -2605,7 +2609,9 @@ function writeFile(
       const fd = await _writeFileGetRid(pathOrRid as string | number, flag);
       file = {
         write(p: NodeJS.TypedArray) {
-          return PromiseResolve(op_node_fs_write_sync(fd, p));
+          // Use the deferred op to yield to the event loop between writes,
+          // allowing abort signals scheduled via process.nextTick to fire.
+          return op_node_fs_write_deferred(fd, p);
         },
         writeSync(p: NodeJS.TypedArray) {
           return op_node_fs_write_sync(fd, p);
