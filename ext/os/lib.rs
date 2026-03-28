@@ -6,6 +6,7 @@ use std::env;
 use std::ffi::OsString;
 use std::ops::ControlFlow;
 use std::sync::Arc;
+use std::sync::atomic::AtomicBool;
 use std::sync::atomic::AtomicI32;
 use std::sync::atomic::Ordering;
 
@@ -39,6 +40,23 @@ impl ExitCode {
   pub fn set(&mut self, code: i32) {
     self.0.store(code, Ordering::Relaxed);
   }
+}
+
+/// Global flag: when true, `Deno.exit()` / `process.exit()` will NOT call
+/// `std::process::exit()`. Used by the file watcher to prevent SIGTERM
+/// handlers from killing the entire process during graceful restart.
+static EXIT_SUPPRESSED: AtomicBool = AtomicBool::new(false);
+
+pub fn suppress_exit() {
+  EXIT_SUPPRESSED.store(true, Ordering::Release);
+}
+
+pub fn unsuppress_exit() {
+  EXIT_SUPPRESSED.store(false, Ordering::Release);
+}
+
+fn is_exit_suppressed() -> bool {
+  EXIT_SUPPRESSED.load(Ordering::Acquire)
 }
 
 pub fn exit(code: i32) -> ! {
@@ -348,6 +366,11 @@ fn op_get_exit_code(state: &mut OpState) -> i32 {
 fn op_exit(state: &mut OpState) {
   if let Some(cbs) = state.try_borrow_mut::<OpExitCallbacks>() {
     cbs.run();
+  }
+  // In watch mode, during synthetic SIGTERM dispatch, suppress
+  // std::process::exit() so the watcher can restart the process.
+  if is_exit_suppressed() {
+    return;
   }
   if let Some(exit_code) = state.try_borrow::<ExitCode>() {
     exit(exit_code.get())
