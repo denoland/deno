@@ -1,0 +1,8 @@
+{
+  "tests": {
+    "main": {
+      "args": "run --quiet main.ts",
+      "output": "main.out"
+    }
+  }
+}
