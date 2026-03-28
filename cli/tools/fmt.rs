@@ -358,19 +358,13 @@ fn format_markdown(
             let mut codeblock_config =
               get_resolved_typescript_config(fmt_options);
             codeblock_config.line_width = line_width;
-            dprint_plugin_typescript::format_text(
-              dprint_plugin_typescript::FormatTextOptions {
-                path: &fake_filename,
-                extension: None,
-                text: text.to_string(),
-                config: &codeblock_config,
-                external_formatter: Some(
-                  &create_external_formatter_for_typescript(
-                    unstable_options,
-                    fmt_options,
-                  ),
-                ),
-              },
+            format_typescript_text(
+              &fake_filename,
+              None,
+              text.to_string(),
+              &codeblock_config,
+              unstable_options,
+              fmt_options,
             )
           }
         }
@@ -506,26 +500,17 @@ pub fn format_html(
           typescript_config_builder.file_indent_level(hints.indent_level);
           let mut typescript_config = typescript_config_builder.build();
           typescript_config.line_width = hints.print_width as u32;
-          dprint_plugin_typescript::format_text(
-            dprint_plugin_typescript::FormatTextOptions {
-              path: &path,
-              extension: None,
-              text: text.to_string(),
-              config: &typescript_config,
-              external_formatter: Some(
-                &create_external_formatter_for_typescript(
-                  unstable_options,
-                  fmt_options,
-                ),
-              ),
-            },
+          format_typescript_text(
+            &path,
+            None,
+            text.to_string(),
+            &typescript_config,
+            unstable_options,
+            fmt_options,
           )
-          .map(|formatted| {
-            if let Some(formatted) = formatted {
-              Cow::from(formatted)
-            } else {
-              Cow::from(text)
-            }
+          .map(|formatted| match formatted {
+            Some(formatted) => Cow::from(formatted),
+            None => Cow::from(text),
           })
         }
       }
@@ -582,10 +567,171 @@ pub fn format_html(
   })
 }
 
+type HtmlCommentPlaceholders = Arc<Mutex<Vec<(String, String)>>>;
+
+fn replace_multiline_html_comments(
+  text: &str,
+  placeholders: &HtmlCommentPlaceholders,
+) -> String {
+  let mut output = String::new();
+  let mut comments = Vec::new();
+  let mut rest = text;
+  let base_index = placeholders.lock().len();
+
+  while let Some(start) = rest.find("<!--") {
+    output.push_str(&rest[..start]);
+
+    let Some(end_rel) = rest[start + 4..].find("-->") else {
+      output.push_str(&rest[start..]);
+      return output;
+    };
+
+    let end = start + 4 + end_rel + 3;
+    let comment = &rest[start..end];
+
+    if comment.contains('\n') {
+      let placeholder = format!(
+        "<!--__DENO_FMT_HTML_COMMENT_{}__-->",
+        base_index + comments.len()
+      );
+      output.push_str(&placeholder);
+      comments.push((placeholder, comment.to_string()));
+    } else {
+      output.push_str(comment);
+    }
+
+    rest = &rest[end..];
+  }
+
+  output.push_str(rest);
+  placeholders.lock().extend(comments);
+  output
+}
+
+fn restore_multiline_html_comment(
+  text: String,
+  placeholder: &str,
+  comment: &str,
+) -> String {
+  let Some(index) = text.find(placeholder) else {
+    return text;
+  };
+
+  let line_start = text[..index].rfind('\n').map(|i| i + 1).unwrap_or(0);
+  let indent = text[line_start..index].to_string();
+  let mut comment_lines = comment.lines();
+  let Some(first_line) = comment_lines.next() else {
+    return text;
+  };
+
+  let remaining_lines: Vec<&str> = comment_lines.collect();
+  let min_indent = remaining_lines
+    .iter()
+    .filter_map(|line| {
+      let trimmed = line.trim_start();
+      if trimmed.is_empty() {
+        None
+      } else {
+        Some(line.len() - trimmed.len())
+      }
+    })
+    .min()
+    .unwrap_or(0);
+
+  let mut formatted_comment = String::new();
+  formatted_comment.push_str(first_line.trim_start());
+  for line in remaining_lines {
+    formatted_comment.push('\n');
+    formatted_comment.push_str(&indent);
+    let trimmed = line.trim_start();
+    if !trimmed.is_empty() {
+      let line_indent = line.len() - trimmed.len();
+      formatted_comment
+        .push_str(&" ".repeat(line_indent.saturating_sub(min_indent)));
+      formatted_comment.push_str(trimmed);
+    }
+  }
+
+  text.replacen(placeholder, &formatted_comment, 1)
+}
+
+fn restore_multiline_html_comments(
+  mut text: String,
+  placeholders: &[(String, String)],
+) -> String {
+  for (placeholder, comment) in placeholders {
+    text = restore_multiline_html_comment(text, placeholder, comment);
+  }
+  text
+}
+
+fn restore_typescript_format_result(
+  formatted: Option<String>,
+  html_comment_placeholders: &HtmlCommentPlaceholders,
+) -> Option<String> {
+  let placeholders = html_comment_placeholders.lock();
+  formatted.map(|formatted| {
+    restore_multiline_html_comments(formatted, placeholders.as_slice())
+  })
+}
+
+fn format_typescript_text(
+  path: &Path,
+  extension: Option<&str>,
+  text: String,
+  config: &dprint_plugin_typescript::configuration::Configuration,
+  unstable_options: &UnstableFmtOptions,
+  fmt_options: &FmtOptionsConfig,
+) -> Result<Option<String>, AnyError> {
+  let html_comment_placeholders = Arc::new(Mutex::new(Vec::new()));
+  let external_formatter = create_external_formatter_for_typescript(
+    unstable_options,
+    fmt_options,
+    html_comment_placeholders.clone(),
+  );
+  let formatted = dprint_plugin_typescript::format_text(
+    dprint_plugin_typescript::FormatTextOptions {
+      path,
+      extension,
+      text,
+      config,
+      external_formatter: Some(&external_formatter),
+    },
+  )?;
+  Ok(restore_typescript_format_result(
+    formatted,
+    &html_comment_placeholders,
+  ))
+}
+
+fn format_parsed_source_with_external_formatter(
+  parsed_source: &ParsedSource,
+  config: &dprint_plugin_typescript::configuration::Configuration,
+  unstable_options: &UnstableFmtOptions,
+  fmt_options: &FmtOptionsConfig,
+) -> Result<Option<String>, AnyError> {
+  let html_comment_placeholders = Arc::new(Mutex::new(Vec::new()));
+  let external_formatter = create_external_formatter_for_typescript(
+    unstable_options,
+    fmt_options,
+    html_comment_placeholders.clone(),
+  );
+  let formatted = dprint_plugin_typescript::format_parsed_source(
+    parsed_source,
+    config,
+    Some(&external_formatter),
+  )?;
+  Ok(restore_typescript_format_result(
+    formatted,
+    &html_comment_placeholders,
+  ))
+}
+
 /// A function for formatting embedded code blocks in JavaScript and TypeScript.
 fn create_external_formatter_for_typescript(
   unstable_options: &UnstableFmtOptions,
   fmt_options: &FmtOptionsConfig,
+  html_comment_placeholders: HtmlCommentPlaceholders,
 ) -> impl Fn(
   &str,
   String,
@@ -596,9 +742,13 @@ fn create_external_formatter_for_typescript(
   let markup_lang_opts = embedded_markup_language_options(fmt_options);
   move |lang, text, config| match lang {
     "css" => format_embedded_css(&text, config),
-    "html" | "xml" | "svg" => {
-      format_embedded_html(lang, &text, config, &markup_lang_opts)
-    }
+    "html" | "xml" | "svg" => format_embedded_html(
+      lang,
+      &text,
+      config,
+      &markup_lang_opts,
+      &html_comment_placeholders,
+    ),
     "sql" => {
       if unstable_sql {
         format_embedded_sql(&text, config)
@@ -722,6 +872,7 @@ fn format_embedded_html(
   text: &str,
   config: &dprint_plugin_typescript::configuration::Configuration,
   lang_opts: &markup_fmt::config::LanguageOptions,
+  html_comment_placeholders: &HtmlCommentPlaceholders,
 ) -> deno_core::anyhow::Result<Option<String>> {
   use markup_fmt::config;
 
@@ -747,7 +898,8 @@ fn format_embedded_html(
     },
     language: lang_opts.clone(),
   };
-  let text = markup_fmt::format_text(text, language, &options, |code, _| {
+  let text = replace_multiline_html_comments(text, html_comment_placeholders);
+  let text = markup_fmt::format_text(&text, language, &options, |code, _| {
     Ok::<_, std::convert::Infallible>(code.into())
   })?;
   Ok(Some(text.to_string()))
@@ -868,17 +1020,13 @@ pub fn format_file(
     }
     _ => {
       let config = get_resolved_typescript_config(fmt_options);
-      dprint_plugin_typescript::format_text(
-        dprint_plugin_typescript::FormatTextOptions {
-          path: file_path,
-          extension: Some(&ext),
-          text: file.text.to_string(),
-          config: &config,
-          external_formatter: Some(&create_external_formatter_for_typescript(
-            unstable_options,
-            fmt_options,
-          )),
-        },
+      format_typescript_text(
+        file_path,
+        Some(&ext),
+        file.text.to_string(),
+        &config,
+        unstable_options,
+        fmt_options,
       )?
     }
   };
@@ -898,13 +1046,11 @@ pub fn format_parsed_source(
   fmt_options: &FmtOptionsConfig,
   unstable_options: &UnstableFmtOptions,
 ) -> Result<Option<String>, AnyError> {
-  dprint_plugin_typescript::format_parsed_source(
+  format_parsed_source_with_external_formatter(
     parsed_source,
     &get_resolved_typescript_config(fmt_options),
-    Some(&create_external_formatter_for_typescript(
-      unstable_options,
-      fmt_options,
-    )),
+    unstable_options,
+    fmt_options,
   )
 }
 
@@ -2018,5 +2164,47 @@ mod test {
     .unwrap()
     .unwrap();
     assert_eq!(file_text, "let a = 1;\n",);
+  }
+
+  #[test]
+  fn test_html_tagged_template_multiline_comment_does_not_panic() {
+    let file_text = format_file(
+      Path::new("panic_render_html.ts"),
+      &FileContents {
+        had_bom: false,
+        text: r#"export default function panicRenderHTML() {
+  return html`
+    <form>
+        <!--<label
+          for="email"
+        >Email</label>-->
+      <input />
+    </form>
+  `;
+}
+"#
+        .into(),
+      },
+      &FmtOptionsConfig::default(),
+      &UnstableFmtOptions::default(),
+      None,
+    )
+    .unwrap()
+    .unwrap();
+
+    assert_eq!(
+      file_text,
+      r#"export default function panicRenderHTML() {
+  return html`
+    <form>
+      <!--<label
+        for="email"
+      >Email</label>-->
+      <input />
+    </form>
+  `;
+}
+"#,
+    );
   }
 }
