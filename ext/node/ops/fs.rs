@@ -2,6 +2,7 @@
 
 use std::borrow::Cow;
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
@@ -26,6 +27,86 @@ use serde::Serialize;
 use tokio::task::JoinError;
 
 use crate::ops::constant::UV_FS_COPYFILE_EXCL;
+
+/// State tracking file descriptors opened through node:fs.
+/// Maps real OS file descriptors to Deno ResourceIds.
+pub struct NodeFsState {
+  pub open_fds: HashMap<i32, ResourceId>,
+}
+
+impl NodeFsState {
+  pub fn new() -> Self {
+    Self {
+      open_fds: HashMap::new(),
+    }
+  }
+}
+
+impl Default for NodeFsState {
+  fn default() -> Self {
+    Self::new()
+  }
+}
+
+/// Extract the real OS file descriptor from a newly-created resource.
+/// On Unix, this is the raw fd (already an i32).
+/// On Windows, this converts the HANDLE to a CRT file descriptor.
+fn raw_fd_for_resource(
+  state: &OpState,
+  resource_id: ResourceId,
+) -> Result<i32, FsError> {
+  let handle_fd = state.resource_table.get_fd(resource_id).map_err(|_| {
+    FsError::Io(std::io::Error::new(
+      std::io::ErrorKind::Other,
+      "Failed to get OS file descriptor from resource",
+    ))
+  })?;
+
+  #[cfg(unix)]
+  {
+    Ok(handle_fd)
+  }
+
+  #[cfg(windows)]
+  {
+    let crt_fd = unsafe { libc::open_osfhandle(handle_fd as isize, 0) };
+    if crt_fd == -1 {
+      Err(FsError::Io(std::io::Error::last_os_error()))
+    } else {
+      Ok(crt_fd)
+    }
+  }
+}
+
+fn ebadf() -> FsError {
+  FsError::Io(std::io::Error::new(
+    std::io::ErrorKind::Other,
+    "bad file descriptor",
+  ))
+}
+
+/// Look up the internal resource ID for a given OS file descriptor.
+/// Stdio fds (0, 1, 2) map to resource IDs 0, 1, 2.
+fn resource_for_fd(state: &OpState, fd: i32) -> Result<ResourceId, FsError> {
+  if fd >= 0 && fd <= 2 {
+    return Ok(fd as ResourceId);
+  }
+  state
+    .borrow::<NodeFsState>()
+    .open_fds
+    .get(&fd)
+    .copied()
+    .ok_or_else(ebadf)
+}
+
+/// Get the File trait object for an OS file descriptor.
+fn file_for_fd(
+  state: &OpState,
+  fd: i32,
+) -> Result<Rc<dyn deno_io::fs::File>, FsError> {
+  let resource_id = resource_for_fd(state, fd)?;
+  FileResource::get_file(state, resource_id).map_err(|_| ebadf())
+}
 
 /// When `sync_fs` is enabled, `FileSystemRc` is `Arc` (Send) and we can
 /// offload work to a blocking thread. Otherwise, run inline.
@@ -237,7 +318,7 @@ pub fn op_node_open_sync(
   #[string] path: &str,
   #[smi] flags: i32,
   #[smi] mode: u32,
-) -> Result<ResourceId, FsError> {
+) -> Result<i32, FsError> {
   let path = Path::new(path);
   let options = get_open_options(flags, Some(mode));
 
@@ -251,7 +332,9 @@ pub fn op_node_open_sync(
   let rid = state
     .resource_table
     .add(FileResource::new(file, "fsFile".to_string()));
-  Ok(rid)
+  let fd = raw_fd_for_resource(state, rid)?;
+  state.borrow_mut::<NodeFsState>().open_fds.insert(fd, rid);
+  Ok(fd)
 }
 
 #[op2(stack_trace)]
@@ -261,7 +344,7 @@ pub async fn op_node_open(
   #[string] path: String,
   #[smi] flags: i32,
   #[smi] mode: u32,
-) -> Result<ResourceId, FsError> {
+) -> Result<i32, FsError> {
   let path = PathBuf::from(path);
   let options = get_open_options(flags, Some(mode));
 
@@ -278,11 +361,13 @@ pub async fn op_node_open(
   };
   let file = fs.open_async(path.as_owned(), options).await?;
 
+  let mut state = state.borrow_mut();
   let rid = state
-    .borrow_mut()
     .resource_table
     .add(FileResource::new(file, "fsFile".to_string()));
-  Ok(rid)
+  let fd = raw_fd_for_resource(&state, rid)?;
+  state.borrow_mut::<NodeFsState>().open_fds.insert(fd, rid);
+  Ok(fd)
 }
 #[derive(Debug, Serialize)]
 pub struct StatFs {
@@ -739,6 +824,338 @@ pub async fn op_node_rmdir(
   };
   fs.rmdir_async(path.into_owned()).await?;
   Ok(())
+}
+
+// ============================================================
+// fd-based ops for node:fs (accept real OS fd, not RID)
+// ============================================================
+
+#[op2(fast)]
+pub fn op_node_fs_close(state: &mut OpState, fd: i32) -> Result<(), FsError> {
+  let rid = resource_for_fd(state, fd)?;
+  state.borrow_mut::<NodeFsState>().open_fds.remove(&fd);
+  let resource = state.resource_table.take_any(rid).map_err(|_| {
+    FsError::Io(std::io::Error::new(
+      std::io::ErrorKind::Other,
+      "bad file descriptor",
+    ))
+  })?;
+  resource.close();
+  Ok(())
+}
+
+#[op2(fast)]
+#[smi]
+pub fn op_node_fs_read_sync(
+  state: &mut OpState,
+  fd: i32,
+  #[buffer] buf: &mut [u8],
+) -> Result<u32, FsError> {
+  let file = file_for_fd(state, fd)?;
+  let nread = file.read_sync(buf)?;
+  Ok(nread as u32)
+}
+
+// Note: async read is not provided here because buffer borrowing
+// requires 'static lifetime. The JS side uses the sync op.
+
+#[op2(fast)]
+#[smi]
+pub fn op_node_fs_write_sync(
+  state: &mut OpState,
+  fd: i32,
+  #[buffer] buf: &[u8],
+) -> Result<u32, FsError> {
+  let file = file_for_fd(state, fd)?;
+  let nwritten = file.write_sync(buf)?;
+  Ok(nwritten as u32)
+}
+
+// Note: async write is not provided here because buffer borrowing
+// requires 'static lifetime. The JS side uses the sync op.
+
+#[op2(fast)]
+#[number]
+pub fn op_node_fs_seek_sync(
+  state: &mut OpState,
+  fd: i32,
+  #[number] offset: i64,
+  #[smi] whence: i32,
+) -> Result<u64, FsError> {
+  let file = file_for_fd(state, fd)?;
+  let seek_from = match whence {
+    0 => std::io::SeekFrom::Start(offset as u64),
+    1 => std::io::SeekFrom::Current(offset),
+    2 => std::io::SeekFrom::End(offset),
+    _ => {
+      return Err(FsError::Io(std::io::Error::new(
+        std::io::ErrorKind::InvalidInput,
+        "invalid whence",
+      )));
+    }
+  };
+  let pos = file.seek_sync(seek_from)?;
+  Ok(pos)
+}
+
+#[op2]
+#[number]
+pub async fn op_node_fs_seek(
+  state: Rc<RefCell<OpState>>,
+  fd: i32,
+  #[number] offset: i64,
+  #[smi] whence: i32,
+) -> Result<u64, FsError> {
+  let file = file_for_fd(&state.borrow(), fd)?;
+  let seek_from = match whence {
+    0 => std::io::SeekFrom::Start(offset as u64),
+    1 => std::io::SeekFrom::Current(offset),
+    2 => std::io::SeekFrom::End(offset),
+    _ => {
+      return Err(FsError::Io(std::io::Error::new(
+        std::io::ErrorKind::InvalidInput,
+        "invalid whence",
+      )));
+    }
+  };
+  let pos = file.seek_async(seek_from).await?;
+  Ok(pos)
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NodeFsStat {
+  pub is_file: bool,
+  pub is_directory: bool,
+  pub is_symlink: bool,
+  pub size: u64,
+  pub mtime_ms: Option<u64>,
+  pub atime_ms: Option<u64>,
+  pub birthtime_ms: Option<u64>,
+  pub ctime_ms: Option<u64>,
+  pub dev: u64,
+  pub ino: Option<u64>,
+  pub mode: u32,
+  pub nlink: Option<u64>,
+  pub uid: u32,
+  pub gid: u32,
+  pub rdev: u64,
+  pub blksize: u64,
+  pub blocks: Option<u64>,
+  pub is_block_device: bool,
+  pub is_char_device: bool,
+  pub is_fifo: bool,
+  pub is_socket: bool,
+}
+
+impl From<deno_io::fs::FsStat> for NodeFsStat {
+  fn from(stat: deno_io::fs::FsStat) -> Self {
+    NodeFsStat {
+      is_file: stat.is_file,
+      is_directory: stat.is_directory,
+      is_symlink: stat.is_symlink,
+      size: stat.size,
+      mtime_ms: stat.mtime,
+      atime_ms: stat.atime,
+      birthtime_ms: stat.birthtime,
+      ctime_ms: stat.ctime,
+      dev: stat.dev,
+      ino: stat.ino,
+      mode: stat.mode,
+      nlink: stat.nlink,
+      uid: stat.uid,
+      gid: stat.gid,
+      rdev: stat.rdev,
+      blksize: stat.blksize,
+      blocks: stat.blocks,
+      is_block_device: stat.is_block_device,
+      is_char_device: stat.is_char_device,
+      is_fifo: stat.is_fifo,
+      is_socket: stat.is_socket,
+    }
+  }
+}
+
+#[op2]
+#[serde]
+pub fn op_node_fs_fstat_sync(
+  state: &mut OpState,
+  fd: i32,
+) -> Result<NodeFsStat, FsError> {
+  let file = file_for_fd(state, fd)?;
+  let stat = file.stat_sync()?;
+  Ok(NodeFsStat::from(stat))
+}
+
+#[op2]
+#[serde]
+pub async fn op_node_fs_fstat(
+  state: Rc<RefCell<OpState>>,
+  fd: i32,
+) -> Result<NodeFsStat, FsError> {
+  let file = file_for_fd(&state.borrow(), fd)?;
+  let stat = file.stat_async().await?;
+  Ok(NodeFsStat::from(stat))
+}
+
+#[op2(fast)]
+pub fn op_node_fs_ftruncate_sync(
+  state: &mut OpState,
+  fd: i32,
+  #[number] len: u64,
+) -> Result<(), FsError> {
+  let file = file_for_fd(state, fd)?;
+  file.truncate_sync(len)?;
+  Ok(())
+}
+
+#[op2]
+pub async fn op_node_fs_ftruncate(
+  state: Rc<RefCell<OpState>>,
+  fd: i32,
+  #[number] len: u64,
+) -> Result<(), FsError> {
+  let file = file_for_fd(&state.borrow(), fd)?;
+  file.truncate_async(len).await?;
+  Ok(())
+}
+
+#[op2(fast)]
+pub fn op_node_fs_fsync_sync(
+  state: &mut OpState,
+  fd: i32,
+) -> Result<(), FsError> {
+  let file = file_for_fd(state, fd)?;
+  file.sync_sync()?;
+  Ok(())
+}
+
+#[op2]
+pub async fn op_node_fs_fsync(
+  state: Rc<RefCell<OpState>>,
+  fd: i32,
+) -> Result<(), FsError> {
+  let file = file_for_fd(&state.borrow(), fd)?;
+  file.sync_async().await?;
+  Ok(())
+}
+
+#[op2(fast)]
+pub fn op_node_fs_fdatasync_sync(
+  state: &mut OpState,
+  fd: i32,
+) -> Result<(), FsError> {
+  let file = file_for_fd(state, fd)?;
+  file.datasync_sync()?;
+  Ok(())
+}
+
+#[op2]
+pub async fn op_node_fs_fdatasync(
+  state: Rc<RefCell<OpState>>,
+  fd: i32,
+) -> Result<(), FsError> {
+  let file = file_for_fd(&state.borrow(), fd)?;
+  file.datasync_async().await?;
+  Ok(())
+}
+
+#[op2(fast)]
+pub fn op_node_fs_futimes_sync(
+  state: &mut OpState,
+  fd: i32,
+  #[number] atime_secs: i64,
+  #[smi] atime_nanos: u32,
+  #[number] mtime_secs: i64,
+  #[smi] mtime_nanos: u32,
+) -> Result<(), FsError> {
+  let file = file_for_fd(state, fd)?;
+  file.utime_sync(atime_secs, atime_nanos, mtime_secs, mtime_nanos)?;
+  Ok(())
+}
+
+#[op2]
+pub async fn op_node_fs_futimes(
+  state: Rc<RefCell<OpState>>,
+  fd: i32,
+  #[number] atime_secs: i64,
+  #[smi] atime_nanos: u32,
+  #[number] mtime_secs: i64,
+  #[smi] mtime_nanos: u32,
+) -> Result<(), FsError> {
+  let file = file_for_fd(&state.borrow(), fd)?;
+  file
+    .utime_async(atime_secs, atime_nanos, mtime_secs, mtime_nanos)
+    .await?;
+  Ok(())
+}
+
+#[op2(fast)]
+pub fn op_node_fs_fchmod_sync(
+  state: &mut OpState,
+  fd: i32,
+  #[smi] mode: u32,
+) -> Result<(), FsError> {
+  let file = file_for_fd(state, fd)?;
+  file.chmod_sync(mode)?;
+  Ok(())
+}
+
+#[op2]
+pub async fn op_node_fs_fchmod(
+  state: Rc<RefCell<OpState>>,
+  fd: i32,
+  #[smi] mode: u32,
+) -> Result<(), FsError> {
+  let file = file_for_fd(&state.borrow(), fd)?;
+  file.chmod_async(mode).await?;
+  Ok(())
+}
+
+#[op2(fast)]
+pub fn op_node_fs_fchown_sync(
+  state: &mut OpState,
+  fd: i32,
+  #[smi] uid: u32,
+  #[smi] gid: u32,
+) -> Result<(), FsError> {
+  let file = file_for_fd(state, fd)?;
+  file.chown_sync(Some(uid), Some(gid))?;
+  Ok(())
+}
+
+#[op2]
+pub async fn op_node_fs_fchown(
+  state: Rc<RefCell<OpState>>,
+  fd: i32,
+  #[smi] uid: u32,
+  #[smi] gid: u32,
+) -> Result<(), FsError> {
+  let file = file_for_fd(&state.borrow(), fd)?;
+  file.chown_async(Some(uid), Some(gid)).await?;
+  Ok(())
+}
+
+#[op2]
+#[buffer]
+pub fn op_node_fs_read_file_sync(
+  state: &mut OpState,
+  fd: i32,
+) -> Result<Vec<u8>, FsError> {
+  let file = file_for_fd(state, fd)?;
+  let buf = file.read_all_sync()?;
+  Ok(buf.to_vec())
+}
+
+#[op2]
+#[buffer]
+pub async fn op_node_fs_read_file(
+  state: Rc<RefCell<OpState>>,
+  fd: i32,
+) -> Result<Vec<u8>, FsError> {
+  let file = file_for_fd(&state.borrow(), fd)?;
+  let buf = file.read_all_async().await?;
+  Ok(buf.to_vec())
 }
 
 const CP_IS_DEST_EXISTS_FLAG: u64 = 1u64 << 32;
