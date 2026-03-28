@@ -4532,7 +4532,8 @@ Note: --declaration always writes .d.ts files to disk (next to the source or in 
           .help("Output file path (for single file transpilation)")
           .num_args(1)
           .value_parser(value_parser!(String))
-          .value_hint(ValueHint::FilePath),
+          .value_hint(ValueHint::FilePath)
+          .conflicts_with("outdir"),
       )
       .arg(
         Arg::new("outdir")

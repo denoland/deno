@@ -568,6 +568,7 @@ impl DiagnosticsByFolderRealIterator<'_> {
         root_names,
         check_mode: self.options.type_check_mode,
         initial_cwd: self.initial_cwd.clone(),
+        capture_emitted_files: false,
       },
       code_cache,
       self.tsgo_path.as_deref(),

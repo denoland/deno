@@ -62,9 +62,25 @@
       "output": "error: Cannot use --output with multiple input files. Use --outdir instead.\n",
       "exitCode": 1
     },
+    "error_output_and_outdir": {
+      "args": "transpile main.ts -o out.js --outdir dist",
+      "output": "[WILDCARD]the argument '--output <output>' cannot be used with '--outdir <outdir>'\n[WILDCARD]",
+      "exitCode": 1
+    },
+    "error_declaration_no_output": {
+      "args": "transpile main.ts --declaration",
+      "output": "error: Cannot use --declaration without --output or --outdir. Declaration files must be written to disk.\n",
+      "exitCode": 1
+    },
+    "error_separate_sourcemap_stdout": {
+      "args": "transpile main.ts --source-map separate",
+      "output": "error: Cannot use --source-map separate when outputting to stdout. Use --output or --outdir, or use --source-map inline instead.\n",
+      "exitCode": 1
+    },
     "skip_js_file": {
       "args": "transpile plain.js",
-      "output": "Warning Skipping [WILDCARD]plain.js (not a TypeScript/JSX/TSX file)\n"
+      "output": "Warning Skipping [WILDCARD]plain.js (not a TypeScript/JSX/TSX file)\nerror: No emittable files found. Only TypeScript/JSX/TSX files can be transpiled.\n",
+      "exitCode": 1
     },
     "tsx_file": {
       "args": "transpile component.tsx",

@@ -45,6 +45,27 @@ pub async fn transpile(
     );
   }
 
+  if transpile_flags.declaration
+    && transpile_flags.output.is_none()
+    && transpile_flags.output_dir.is_none()
+  {
+    anyhow::bail!(
+      "Cannot use --declaration without --output or --outdir. Declaration files must be written to disk."
+    );
+  }
+
+  let is_stdout_mode = files.len() == 1
+    && transpile_flags.output.is_none()
+    && transpile_flags.output_dir.is_none();
+
+  if is_stdout_mode
+    && matches!(transpile_flags.source_map, SourceMapMode::Separate)
+  {
+    anyhow::bail!(
+      "Cannot use --source-map separate when outputting to stdout. Use --output or --outdir, or use --source-map inline instead."
+    );
+  }
+
   let factory = CliFactory::from_flags(flags.clone());
   let cli_options = factory.cli_options()?;
   let cwd = cli_options.initial_cwd();
@@ -78,6 +99,12 @@ pub async fn transpile(
       })?;
 
     file_entries.push((file_path, specifier, media_type));
+  }
+
+  if file_entries.is_empty() {
+    anyhow::bail!(
+      "No emittable files found. Only TypeScript/JSX/TSX files can be transpiled."
+    );
   }
 
   // Transpile each file (TS -> JS)
@@ -119,24 +146,16 @@ pub async fn transpile(
     let source_map_text = &emitted.source_map;
 
     // Determine output path
-    if files.len() == 1
-      && transpile_flags.output.is_none()
-      && transpile_flags.output_dir.is_none()
-    {
+    if is_stdout_mode {
       // Single file, no output specified: print to stdout
       display::write_to_stdout_ignore_sigpipe(js_text.as_bytes())?;
-      if let Some(sm) = source_map_text
-        && matches!(transpile_flags.source_map, SourceMapMode::Separate)
-      {
-        log::warn!("// source map:");
-        display::write_to_stdout_ignore_sigpipe(sm.as_bytes())?;
-      }
     } else {
       let output_path = compute_output_path(
         file_path,
         cwd,
         transpile_flags.output.as_deref(),
         transpile_flags.output_dir.as_deref(),
+        *media_type,
       )?;
 
       // Ensure parent directory exists
@@ -255,18 +274,14 @@ async fn emit_declarations(
       root_names,
       check_mode: TypeCheckMode::All,
       initial_cwd: cwd.to_path_buf(),
+      capture_emitted_files: true,
     },
     None,
     None,
   )?;
 
-  // Report diagnostics if any
   if response.diagnostics.has_diagnostic() {
-    log::warn!(
-      "{} Type checking produced diagnostics:\n{}",
-      colors::yellow("Warning"),
-      response.diagnostics
-    );
+    anyhow::bail!("Type checking failed:\n{}", response.diagnostics);
   }
 
   // Write emitted .d.ts files
@@ -316,11 +331,23 @@ fn resolve_dts_output_path(
 
   if let Some(outdir) = output_dir {
     let outdir = cwd.join(outdir);
-    // Preserve relative directory structure under outdir
-    let relative = path.strip_prefix(cwd).unwrap_or(&path);
+    let relative = path.strip_prefix(cwd).map_err(|_| {
+      anyhow::anyhow!(
+        "Declaration file {} is not under the current directory",
+        path.display()
+      )
+    })?;
     Ok(outdir.join(relative))
   } else {
     Ok(path)
+  }
+}
+
+fn js_extension_for_media_type(media_type: MediaType) -> &'static str {
+  match media_type {
+    MediaType::Mts => "mjs",
+    MediaType::Cts => "cjs",
+    _ => "js",
   }
 }
 
@@ -329,19 +356,26 @@ fn compute_output_path(
   cwd: &Path,
   output: Option<&str>,
   output_dir: Option<&str>,
+  media_type: MediaType,
 ) -> Result<PathBuf, AnyError> {
   if let Some(output) = output {
     // Explicit output file
     return Ok(cwd.join(output));
   }
 
-  // Change extension to .js
-  let js_filename = input_path.with_extension("js");
+  let ext = js_extension_for_media_type(media_type);
+  let js_filename = input_path.with_extension(ext);
 
   if let Some(outdir) = output_dir {
     let outdir = cwd.join(outdir);
-    // Preserve relative directory structure under outdir
-    let relative = js_filename.strip_prefix(cwd).unwrap_or(&js_filename);
+    let relative = js_filename
+      .strip_prefix(cwd)
+      .map_err(|_| {
+        anyhow::anyhow!(
+          "Input file {} is not under the current directory. Use --output instead.",
+          input_path.display()
+        )
+      })?;
     Ok(outdir.join(relative))
   } else {
     // Write alongside source file
