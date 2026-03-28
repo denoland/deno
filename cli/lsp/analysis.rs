@@ -245,19 +245,50 @@ pub fn import_map_lookup(
   specifier: &Url,
   referrer: &Url,
 ) -> Option<String> {
+  import_map_lookup_inner(
+    import_map,
+    specifier,
+    referrer,
+    ReferrerInAddressSkip::SkipAll,
+  )
+}
+
+#[derive(Clone, Copy)]
+enum ReferrerInAddressSkip {
+  /// Skip all entries where the referrer is inside the mapped directory.
+  /// Used for diagnostics where suggesting an alias over a relative path
+  /// within the same mapped directory is not helpful.
+  SkipAll,
+  /// Only skip entries where the import map key is a passthrough mapping
+  /// (key matches the last path segment of the address, e.g.
+  /// `"src/": "./src/"`). For meaningful aliases like `"@app/": "./src/"`,
+  /// the entry is kept so the alias is suggested in auto-imports.
+  SkipPassthrough,
+}
+
+fn import_map_lookup_inner(
+  import_map: &ImportMap,
+  specifier: &Url,
+  referrer: &Url,
+  skip_mode: ReferrerInAddressSkip,
+) -> Option<String> {
   let specifier_str = specifier.as_str();
   for entry in import_map.entries_for_referrer(referrer) {
     if let Some(address) = entry.value {
       let address_str = address.as_str();
-      if referrer.as_str().starts_with(address_str)
-        && address_str.ends_with(&format!("/{}", entry.raw_key))
-      {
-        // ignore when the referrer has a common base with the
-        // import map entry and the key is a passthrough mapping
-        // (ex. `./src/a.ts` importing `./src/b.ts` and there's a
-        // `"src/": "./src/"` import map entry). For meaningful
-        // aliases like `"@app/": "./src/"`, do not skip.
-        continue;
+      if referrer.as_str().starts_with(address_str) {
+        match skip_mode {
+          ReferrerInAddressSkip::SkipAll => continue,
+          ReferrerInAddressSkip::SkipPassthrough => {
+            // Only skip if the key is a passthrough mapping, i.e. the
+            // address path ends with the key (e.g. ".../src/" ends with
+            // "/src/" for key "src/"). Aliases like "@app/" won't match.
+            let needle = format!("/{}", entry.raw_key);
+            if address_str.ends_with(&needle) {
+              continue;
+            }
+          }
+        }
       }
       if address_str == specifier_str {
         return Some(entry.raw_key.to_string());
@@ -478,9 +509,17 @@ impl<'a> TsResponseImportMapper<'a> {
       return Some(bare_package_specifier);
     }
 
-    // check if the import map has this specifier
+    // check if the import map has this specifier, only skipping passthrough
+    // entries (e.g. "src/": "./src/") where a relative path is cleaner.
+    // Meaningful aliases like "@app/": "./src/" are kept so they are
+    // suggested in auto-imports.
     if let Some(import_map) = self.maybe_import_map
-      && let Some(result) = import_map_lookup(import_map, specifier, referrer)
+      && let Some(result) = import_map_lookup_inner(
+        import_map,
+        specifier,
+        referrer,
+        ReferrerInAddressSkip::SkipPassthrough,
+      )
     {
       return Some(result);
     }
