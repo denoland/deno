@@ -17488,6 +17488,32 @@ fn lsp_tsconfig_node_modules_dts_diagnostics(use_tsgo: bool) {
 }
 
 #[test(timeout = 300, fork_with_suffix = "_tsgo")]
+fn lsp_requestinit_matches_check(use_tsgo: bool) {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write("deno.json", json!({}).to_string());
+  temp_dir.write(
+    "tsconfig.json",
+    json!({
+      "include": ["scoped-by-tsconfig.ts"],
+    })
+    .to_string(),
+  );
+  let file = temp_dir.source_file(
+    "main.ts",
+    concat!(
+      "const init: Parameters<typeof fetch>[1] = {};\n",
+      "const _request = new Request(\"https://deno.com\", init);\n",
+    ),
+  );
+  let mut client = context.new_lsp_command().set_use_tsgo(use_tsgo).build();
+  client.initialize_default();
+  let diagnostics = client.did_open_file(&file);
+  assert_eq!(diagnostics.all(), vec![]);
+  client.shutdown();
+}
+
+#[test(timeout = 300, fork_with_suffix = "_tsgo")]
 fn lsp_tsconfig_root_dirs(use_tsgo: bool) {
   let context = TestContextBuilder::new()
     .use_http_server()
