@@ -1241,7 +1241,6 @@ Deno.test("[node/sqlite] enableLoadExtension throws when allowExtension is not s
   using db = new DatabaseSync(":memory:");
 
   assertThrows(
-    // @ts-expect-error enableLoadExtension is not in @types/node yet
     () => db.enableLoadExtension(true),
     Error,
     "Cannot enable extension loading because it was disabled at database creation.",
@@ -1251,7 +1250,6 @@ Deno.test("[node/sqlite] enableLoadExtension throws when allowExtension is not s
 Deno.test("[node/sqlite] enableLoadExtension(false) succeeds without allowExtension", () => {
   using db = new DatabaseSync(":memory:");
 
-  // @ts-expect-error enableLoadExtension is not in @types/node yet
   db.enableLoadExtension(false);
 });
 
@@ -1264,7 +1262,6 @@ Deno.test({
       allowExtension: true,
     });
 
-    // @ts-expect-error enableLoadExtension is not in @types/node yet
     db.enableLoadExtension(false);
 
     assertThrows(
@@ -1285,9 +1282,7 @@ Deno.test({
       allowExtension: true,
     });
 
-    // @ts-expect-error enableLoadExtension is not in @types/node yet
     db.enableLoadExtension(false);
-    // @ts-expect-error enableLoadExtension is not in @types/node yet
     db.enableLoadExtension(true);
 
     // loadExtension should be re-enabled; verify it fails with a file loading
@@ -1307,7 +1302,6 @@ Deno.test("[node/sqlite] enableLoadExtension throws on closed database", () => {
   db.close();
 
   assertThrows(
-    // @ts-expect-error enableLoadExtension is not in @types/node yet
     () => db.enableLoadExtension(true),
     Error,
     "database is not open",

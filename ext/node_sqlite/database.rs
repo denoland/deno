@@ -1373,10 +1373,7 @@ impl DatabaseSync {
 
   #[fast]
   #[undefined]
-  fn enable_load_extension(
-    &self,
-    allow: bool,
-  ) -> Result<(), SqliteError> {
+  fn enable_load_extension(&self, allow: bool) -> Result<(), SqliteError> {
     let db = self.conn.borrow();
     let db = db.as_ref().ok_or(SqliteError::AlreadyClosed)?;
 
