@@ -24,7 +24,6 @@ use super::UV_EPIPE;
 use super::UV_HANDLE_ACTIVE;
 use super::UV_HANDLE_REF;
 use super::get_inner;
-#[cfg(unix)]
 use super::io_error_to_uv;
 use super::tcp::ShutdownPending;
 use super::tcp::WritePending;
@@ -1728,6 +1727,14 @@ pub(crate) unsafe fn read_start_tty(
     return UV_EINVAL;
   }
   unsafe {
+    // Match libuv: reject closing handles.
+    if (*tty).flags & super::UV_HANDLE_CLOSING != 0 {
+      return UV_EINVAL;
+    }
+    // Match libuv: return UV_EALREADY if already reading.
+    if (*tty).internal_reading {
+      return super::UV_EALREADY;
+    }
     (*tty).internal_alloc_cb = alloc_cb;
     (*tty).internal_read_cb = read_cb;
     (*tty).internal_reading = true;
@@ -1989,8 +1996,17 @@ pub(crate) unsafe fn shutdown_tty(
   cb: Option<uv_shutdown_cb>,
 ) -> c_int {
   unsafe {
+    // Match libuv: reject shutdown on closing streams.
+    if (*stream).flags & super::UV_HANDLE_CLOSING != 0 {
+      return super::UV_ENOTCONN;
+    }
     let tty = stream as *mut uv_tty_t;
     (*req).handle = stream;
+
+    // Match libuv: reject if already shutting down.
+    if (*tty).internal_shutdown.is_some() {
+      return super::UV_EALREADY;
+    }
 
     (*tty).internal_shutdown = Some(ShutdownPending { req, cb });
 
@@ -2189,10 +2205,12 @@ pub(crate) unsafe fn poll_tty_handle(
                       guard.clear_ready();
                       break;
                     }
-                    Err(_) => {
+                    Err(ref e) => {
+                      // Match libuv: report real error codes, not UV_EOF.
+                      let status = io_error_to_uv(e);
                       read_cb(
                         tty_ptr as *mut uv_stream_t,
-                        UV_EOF as isize,
+                        status as isize,
                         &buf,
                       );
                       (*tty_ptr).internal_reading = false;
@@ -2267,10 +2285,12 @@ pub(crate) unsafe fn poll_tty_handle(
                     {
                       read_cb(tty_ptr as *mut uv_stream_t, 0, &buf);
                     }
-                    Err(_) => {
+                    Err(ref e) => {
+                      // Match libuv: report real error codes, not UV_EOF.
+                      let status = io_error_to_uv(e);
                       read_cb(
                         tty_ptr as *mut uv_stream_t,
-                        UV_EOF as isize,
+                        status as isize,
                         &buf,
                       );
                       (*tty_ptr).internal_reading = false;
@@ -2353,7 +2373,6 @@ pub(crate) unsafe fn poll_tty_handle(
                   }
                 }
               }
-
               // 2. Spawn a worker thread if no read is in flight.
               if (*tty_ptr).internal_reading
                 && !(*tty_ptr).internal_line_read_pending

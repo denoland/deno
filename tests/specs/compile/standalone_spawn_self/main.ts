@@ -18,12 +18,29 @@ if (process.env.SPAWNED_CHILD === "1") {
     console.log("FAIL: unexpected Deno flags in argv: " + denoFlags.join(", "));
     process.exit(1);
   }
-  console.log("ok");
+
+  // Verify the exec path doesn't leak into user args.
+  // When a Node.js app relaunches with:
+  //   spawn(process.execPath, [process.argv[1], ...userArgs])
+  // the standalone binary should strip the duplicate exec path from argv
+  // so it doesn't appear as a user argument.
+  const execPath = process.execPath;
+  const leakedPaths = appArgs.filter((a) => a === execPath);
+  if (leakedPaths.length > 0) {
+    console.log(
+      "FAIL: execPath leaked into user args: " + JSON.stringify(appArgs),
+    );
+    process.exit(1);
+  }
+
+  console.log("child_args: " + JSON.stringify(appArgs));
 } else {
-  // Parent process: re-spawn self with the script path
-  // (mimics the pattern used by Node CLIs that relaunch themselves)
+  // Parent process: re-spawn self with the script path and user args
+  // (mimics the pattern used by Node CLIs that relaunch themselves,
+  // e.g. @google/gemini-cli's relaunch.js)
   const script = process.argv[1];
-  const child = spawn(process.execPath, [script], {
+  const userArgs = process.argv.slice(2);
+  const child = spawn(process.execPath, [script, ...userArgs], {
     stdio: ["pipe", "pipe", "pipe"],
     env: { ...process.env, SPAWNED_CHILD: "1" },
   });

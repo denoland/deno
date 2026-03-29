@@ -7,8 +7,6 @@ use std::collections::HashMap;
 use std::ffi::OsString;
 use std::io::Write;
 #[cfg(unix)]
-use std::os::fd::FromRawFd;
-#[cfg(unix)]
 use std::os::unix::prelude::ExitStatusExt;
 #[cfg(unix)]
 use std::os::unix::process::CommandExt;
@@ -81,14 +79,12 @@ impl Stdio {
 }
 
 #[derive(Copy, Clone, Eq, PartialEq)]
-pub enum StdioOrFdOrRid {
+pub enum StdioOrRid {
   Stdio(Stdio),
-  /// A raw file descriptor (e.g. from Node's `fs.openSync`).
-  Fd(i32),
   Rid(ResourceId),
 }
 
-impl<'de> Deserialize<'de> for StdioOrFdOrRid {
+impl<'de> Deserialize<'de> for StdioOrRid {
   fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
   where
     D: serde::Deserializer<'de>,
@@ -97,69 +93,38 @@ impl<'de> Deserialize<'de> for StdioOrFdOrRid {
     let value = Value::deserialize(deserializer)?;
     match value {
       Value::String(val) => match val.as_str() {
-        "inherit" => Ok(StdioOrFdOrRid::Stdio(Stdio::Inherit)),
-        "piped" => Ok(StdioOrFdOrRid::Stdio(Stdio::Piped)),
-        "null" => Ok(StdioOrFdOrRid::Stdio(Stdio::Null)),
+        "inherit" => Ok(StdioOrRid::Stdio(Stdio::Inherit)),
+        "piped" => Ok(StdioOrRid::Stdio(Stdio::Piped)),
+        "null" => Ok(StdioOrRid::Stdio(Stdio::Null)),
         "ipc_for_internal_use" => {
-          Ok(StdioOrFdOrRid::Stdio(Stdio::IpcForInternalUse))
+          Ok(StdioOrRid::Stdio(Stdio::IpcForInternalUse))
         }
         val => Err(serde::de::Error::unknown_variant(
           val,
           &["inherit", "piped", "null"],
         )),
       },
-      Value::Number(val) => match val.as_i64() {
-        Some(val) if val >= 0 && val <= i32::MAX as i64 => {
-          Ok(StdioOrFdOrRid::Fd(val as i32))
+      Value::Number(val) => match val.as_u64() {
+        Some(val) if val <= ResourceId::MAX as u64 => {
+          Ok(StdioOrRid::Rid(val as ResourceId))
         }
-        _ => Err(serde::de::Error::custom("Expected a non-negative integer")),
+        _ => Err(serde::de::Error::custom("Expected a positive integer")),
       },
       _ => Err(serde::de::Error::custom(
-        r#"Expected a file descriptor, "inherit", "piped", or "null""#,
+        r#"Expected a resource id, "inherit", "piped", or "null""#,
       )),
     }
   }
 }
 
-impl StdioOrFdOrRid {
+impl StdioOrRid {
   pub fn as_stdio(
     &self,
     state: &mut OpState,
   ) -> Result<StdStdio, ProcessError> {
     match &self {
-      StdioOrFdOrRid::Stdio(val) => Ok(val.as_stdio()),
-      StdioOrFdOrRid::Fd(fd) => {
-        // Convert a raw FD to a Stdio by dup'ing it into a std::fs::File.
-        #[cfg(unix)]
-        {
-          // SAFETY: libc::dup is safe to call with any fd; returns -1 on error.
-          let duped = unsafe { libc::dup(*fd) };
-          if duped < 0 {
-            return Err(ProcessError::Io(std::io::Error::last_os_error()));
-          }
-          // SAFETY: duped is a valid fd we own (just created by dup).
-          Ok(unsafe { std::fs::File::from_raw_fd(duped) }.into())
-        }
-        #[cfg(windows)]
-        {
-          // SAFETY: get_osfhandle converts a CRT fd to a Windows HANDLE; returns -1 on error.
-          let handle = unsafe { libc::get_osfhandle(*fd) };
-          if handle == -1 {
-            return Err(ProcessError::Io(std::io::Error::last_os_error()));
-          }
-          // SAFETY: handle is a valid Windows HANDLE (verified non-negative above).
-          // BorrowedHandle does not take ownership.
-          let borrowed = unsafe {
-            std::os::windows::io::BorrowedHandle::borrow_raw(
-              handle as *mut std::ffi::c_void,
-            )
-          };
-          let owned =
-            borrowed.try_clone_to_owned().map_err(ProcessError::Io)?;
-          Ok(std::fs::File::from(owned).into())
-        }
-      }
-      StdioOrFdOrRid::Rid(rid) => {
+      StdioOrRid::Stdio(val) => Ok(val.as_stdio()),
+      StdioOrRid::Rid(rid) => {
         Ok(FileResource::with_file(state, *rid, |file| {
           file.as_stdio().map_err(deno_error::JsErrorBox::from_err)
         })?)
@@ -168,7 +133,7 @@ impl StdioOrFdOrRid {
   }
 
   pub fn is_ipc(&self) -> bool {
-    matches!(self, StdioOrFdOrRid::Stdio(Stdio::IpcForInternalUse))
+    matches!(self, StdioOrRid::Stdio(Stdio::IpcForInternalUse))
   }
 }
 
@@ -283,7 +248,7 @@ pub struct SpawnArgs {
 
   input: Option<JsBuffer>,
 
-  extra_stdio: Vec<StdioOrFdOrRid>,
+  extra_stdio: Vec<Stdio>,
   detached: bool,
   needs_npm_process_state: bool,
   #[cfg(unix)]
@@ -384,9 +349,9 @@ pub enum ProcessError {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ChildStdio {
-  stdin: StdioOrFdOrRid,
-  stdout: StdioOrFdOrRid,
-  stderr: StdioOrFdOrRid,
+  stdin: StdioOrRid,
+  stdout: StdioOrRid,
+  stderr: StdioOrRid,
 }
 
 #[derive(ToV8)]
@@ -553,15 +518,11 @@ fn create_command(
   }
 
   command.stdout(match args.stdio.stdout {
-    StdioOrFdOrRid::Stdio(Stdio::Inherit) => {
-      StdioOrFdOrRid::Rid(1).as_stdio(state)?
-    }
+    StdioOrRid::Stdio(Stdio::Inherit) => StdioOrRid::Rid(1).as_stdio(state)?,
     value => value.as_stdio(state)?,
   });
   command.stderr(match args.stdio.stderr {
-    StdioOrFdOrRid::Stdio(Stdio::Inherit) => {
-      StdioOrFdOrRid::Rid(2).as_stdio(state)?
-    }
+    StdioOrRid::Stdio(Stdio::Inherit) => StdioOrRid::Rid(2).as_stdio(state)?,
     value => value.as_stdio(state)?,
   });
 
@@ -617,36 +578,26 @@ fn create_command(
       // index 0 in `extra_stdio` actually refers to fd 3
       // because we handle stdin,stdout,stderr specially
       let fd = (i + 3) as i32;
-      match stdio {
-        StdioOrFdOrRid::Stdio(Stdio::Piped) => {
-          let (fd1, fd2) = deno_io::bi_pipe_pair_raw()?;
-          fds_to_dup.push((fd2, fd));
-          fds_to_close.push(fd2);
-          let rid = state.resource_table.add(
-            match deno_io::BiPipeResource::from_raw_handle(fd1) {
-              Ok(v) => v,
-              Err(e) => {
-                log::warn!(
-                  "Failed to open bidirectional pipe for fd {fd}: {e}"
-                );
-                extra_pipe_rids.push(None);
-                continue;
-              }
-            },
-          );
-          extra_pipe_rids.push(Some(rid));
-        }
-        StdioOrFdOrRid::Fd(raw_fd) => {
-          // Raw file descriptor (from fs.openSync etc.)
-          // dup2 it to the target fd in the child process.
-          // The caller retains ownership of raw_fd so we don't
-          // add it to fds_to_close.
-          fds_to_dup.push((raw_fd, fd));
-          extra_pipe_rids.push(None);
-        }
-        _ => {
-          extra_pipe_rids.push(None);
-        }
+      // TODO(nathanwhit): handle inherited, but this relies on the parent process having
+      // fds open already. since we don't generally support dealing with raw fds,
+      // we can't properly support this
+      if matches!(stdio, Stdio::Piped) {
+        let (fd1, fd2) = deno_io::bi_pipe_pair_raw()?;
+        fds_to_dup.push((fd2, fd));
+        fds_to_close.push(fd2);
+        let rid = state.resource_table.add(
+          match deno_io::BiPipeResource::from_raw_handle(fd1) {
+            Ok(v) => v,
+            Err(e) => {
+              log::warn!("Failed to open bidirectional pipe for fd {fd}: {e}");
+              extra_pipe_rids.push(None);
+              continue;
+            }
+          },
+        );
+        extra_pipe_rids.push(Some(rid));
+      } else {
+        extra_pipe_rids.push(None);
       }
     }
 
@@ -719,41 +670,28 @@ fn create_command(
       // index 0 in `extra_stdio` actually refers to fd 3
       // because we handle stdin,stdout,stderr specially
       let fd = (i + 3) as i32;
-      match stdio {
-        StdioOrFdOrRid::Stdio(Stdio::Piped) => {
-          let (fd1, fd2) = deno_io::bi_pipe_pair_raw()?;
-          handles_to_close.push(fd2);
-          let rid = state.resource_table.add(
-            match deno_io::BiPipeResource::from_raw_handle(fd1) {
-              Ok(v) => v,
-              Err(e) => {
-                log::warn!(
-                  "Failed to open bidirectional pipe for fd {fd}: {e}"
-                );
-                extra_pipe_rids.push(None);
-                continue;
-              }
-            },
-          );
-          command.extra_handle(Some(fd2));
-          extra_pipe_rids.push(Some(rid));
-        }
-        StdioOrFdOrRid::Fd(raw_fd) => {
-          // SAFETY: get_osfhandle converts a CRT fd to a Windows HANDLE; returns -1 on error.
-          let handle = unsafe { libc::get_osfhandle(raw_fd) };
-          if handle != -1 {
-            command.extra_handle(Some(handle as _));
-          } else {
-            command.extra_handle(None);
-          }
-          extra_pipe_rids.push(None);
-        }
-        _ => {
-          // No handle -- push an empty slot so subsequent handles
-          // get the right fd indices.
-          command.extra_handle(None);
-          extra_pipe_rids.push(None);
-        }
+      // TODO(nathanwhit): handle inherited, but this relies on the parent process having
+      // fds open already. since we don't generally support dealing with raw fds,
+      // we can't properly support this
+      if matches!(stdio, Stdio::Piped) {
+        let (fd1, fd2) = deno_io::bi_pipe_pair_raw()?;
+        handles_to_close.push(fd2);
+        let rid = state.resource_table.add(
+          match deno_io::BiPipeResource::from_raw_handle(fd1) {
+            Ok(v) => v,
+            Err(e) => {
+              log::warn!("Failed to open bidirectional pipe for fd {fd}: {e}");
+              extra_pipe_rids.push(None);
+              continue;
+            }
+          },
+        );
+        command.extra_handle(Some(fd2));
+        extra_pipe_rids.push(Some(rid));
+      } else {
+        // no handle, push an empty handle so we need get the right fds for following handles
+        command.extra_handle(None);
+        extra_pipe_rids.push(None);
       }
     }
 
@@ -1177,8 +1115,8 @@ fn op_spawn_sync(
   state: &mut OpState,
   #[serde] args: SpawnArgs,
 ) -> Result<SpawnOutput, ProcessError> {
-  let stdout = matches!(args.stdio.stdout, StdioOrFdOrRid::Stdio(Stdio::Piped));
-  let stderr = matches!(args.stdio.stderr, StdioOrFdOrRid::Stdio(Stdio::Piped));
+  let stdout = matches!(args.stdio.stdout, StdioOrRid::Stdio(Stdio::Piped));
+  let stderr = matches!(args.stdio.stderr, StdioOrRid::Stdio(Stdio::Piped));
   let input = args.input.clone();
   let (mut command, _, _, _) =
     create_command(state, args, "Deno.Command().outputSync()")?;
@@ -1275,11 +1213,11 @@ mod deprecated {
     cwd: Option<String>,
     env: Vec<(String, String)>,
     #[from_v8(serde)]
-    stdin: StdioOrFdOrRid,
+    stdin: StdioOrRid,
     #[from_v8(serde)]
-    stdout: StdioOrFdOrRid,
+    stdout: StdioOrRid,
     #[from_v8(serde)]
-    stderr: StdioOrFdOrRid,
+    stderr: StdioOrRid,
   }
 
   struct ChildResource {
@@ -1355,14 +1293,14 @@ mod deprecated {
     c.stdin(run_args.stdin.as_stdio(state)?);
     c.stdout(
       match run_args.stdout {
-        StdioOrFdOrRid::Stdio(Stdio::Inherit) => StdioOrFdOrRid::Rid(1),
+        StdioOrRid::Stdio(Stdio::Inherit) => StdioOrRid::Rid(1),
         value => value,
       }
       .as_stdio(state)?,
     );
     c.stderr(
       match run_args.stderr {
-        StdioOrFdOrRid::Stdio(Stdio::Inherit) => StdioOrFdOrRid::Rid(2),
+        StdioOrRid::Stdio(Stdio::Inherit) => StdioOrRid::Rid(2),
         value => value,
       }
       .as_stdio(state)?,
