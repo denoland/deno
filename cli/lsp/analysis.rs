@@ -281,10 +281,15 @@ fn import_map_lookup_inner(
           ReferrerInAddressSkip::SkipAll => continue,
           ReferrerInAddressSkip::SkipPassthrough => {
             // Only skip if the key is a passthrough mapping, i.e. the
-            // address path ends with the key (e.g. ".../src/" ends with
-            // "/src/" for key "src/"). Aliases like "@app/" won't match.
-            let needle = format!("/{}", entry.raw_key);
-            if address_str.ends_with(&needle) {
+            // address path ends with the key preceded by '/'
+            // (e.g. ".../src/" ends with "/src/" for key "src/").
+            // Aliases like "@app/" won't match.
+            if address_str
+              .as_bytes()
+              .get(address_str.len().wrapping_sub(entry.raw_key.len() + 1))
+              == Some(&b'/')
+              && address_str.ends_with(entry.raw_key)
+            {
               continue;
             }
           }
