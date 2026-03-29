@@ -526,6 +526,8 @@ Deno.test("[node/http2 client] response and end events fire (issue #32937)", {
   ignore: Deno.build.os === "windows",
 }, async () => {
   const { promise, resolve, reject } = Promise.withResolvers<void>();
+  const closeServer = () =>
+    new Promise<void>((resolve) => server.close(() => resolve()));
 
   const server = http2.createServer((_req, res) => {
     res.writeHead(200);
@@ -539,12 +541,14 @@ Deno.test("[node/http2 client] response and end events fire (issue #32937)", {
   const port = await listening.promise;
 
   const session = http2.connect(`http://localhost:${port}`);
-  session.on("error", reject);
 
   const req = session.request({ ":path": "/" });
   req.end();
 
   let responseReceived = false;
+  const timeout = setTimeout(() => {
+    reject(new Error("Timed out: end event never fired"));
+  }, 5000);
 
   req.on("response", (headers) => {
     responseReceived = true;
@@ -553,17 +557,22 @@ Deno.test("[node/http2 client] response and end events fire (issue #32937)", {
 
   req.on("data", () => {});
 
-  req.on("end", () => {
+  req.on("end", async () => {
+    clearTimeout(timeout);
     assert(responseReceived, "response event must fire before end");
+    req.close();
     session.close();
-    server.close();
+    await closeServer();
     resolve();
   });
+  req.on("error", (err) => {
+    clearTimeout(timeout);
+    reject(err);
+  });
+  session.on("error", (err) => {
+    clearTimeout(timeout);
+    reject(err);
+  });
 
-  const timeout = setTimeout(
-    () => reject(new Error("Timed out: end event never fired")),
-    5000,
-  );
-
-  await promise.finally(() => clearTimeout(timeout));
+  await promise;
 });
