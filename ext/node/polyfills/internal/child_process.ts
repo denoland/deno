@@ -1728,6 +1728,8 @@ export function spawnSync(
       stderr = stderr && stderr.toString(encoding);
     }
 
+    // deno-lint-ignore no-explicit-any
+    result.pid = (output as any)._pid;
     result.status = status;
     result.signal = output.signal;
     result.stdout = stdout;

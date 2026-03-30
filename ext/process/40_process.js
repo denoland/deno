@@ -17,6 +17,7 @@ const {
   ArrayPrototypeMap,
   ArrayPrototypeSlice,
   TypeError,
+  ObjectDefineProperty,
   ObjectEntries,
   SafeArrayIterator,
   String,
@@ -499,7 +500,7 @@ function spawnSyncInner(command, {
     input,
     argv0,
   });
-  return {
+  const output = {
     success: result.status.success,
     code: result.status.code,
     signal: result.status.signal,
@@ -516,6 +517,13 @@ function spawnSyncInner(command, {
       return result.stderr;
     },
   };
+  // Internal field used by node:child_process, hidden from Deno public API.
+  ObjectDefineProperty(output, "_pid", {
+    __proto__: null,
+    value: result.pid,
+    enumerable: false,
+  });
+  return output;
 }
 
 class Command {
