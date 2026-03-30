@@ -414,12 +414,14 @@ Deno.test({
 
     const getZeroKey = (cipher: string) => {
       if (cipher === "des-ede3-cbc") return zeros(24);
+      if (cipher === "chacha20-poly1305") return zeros(32);
       return zeros(+cipher.match(/\d+/)![0] / 8);
     };
     const getZeroIv = (cipher: string) => {
       if (cipher.includes("gcm") || cipher.includes("ecb")) {
         return zeros(12);
       }
+      if (cipher === "chacha20-poly1305") return zeros(12);
       if (cipher.includes("des")) return zeros(8);
       return zeros(16);
     };
