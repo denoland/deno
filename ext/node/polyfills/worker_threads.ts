@@ -876,28 +876,29 @@ internals.__initWorkerThreads = (
     // parentPort.on('message') AND self.onmessage get double delivery.
     let messageListenerCount = 0;
 
-    // Store the user's onmessage handler but only dispatch to it when
-    // there are no Node-style message listeners.
-    let storedOnmessage: ((ev: Event) => void) | null = null;
-    ObjectDefineProperty(globalThis, "onmessage", {
-      __proto__: null,
-      get() {
-        return storedOnmessage;
-      },
-      set(handler) {
-        storedOnmessage = handler;
-      },
-      configurable: true,
-      enumerable: true,
-    });
-    // Dispatch to the stored onmessage handler only when there are no
-    // Node-style message listeners (to prevent double delivery).
-    nativeAddEventListener("message", (ev: Event) => {
-      if (messageListenerCount > 0) return;
-      if (typeof storedOnmessage === "function") {
-        storedOnmessage(ev);
-      }
-    });
+    // Only intercept globalThis.onmessage for Node worker threads
+    // (not plain Deno web workers) to prevent double message delivery
+    // when both parentPort.on('message') and self.onmessage are set.
+    if (maybeWorkerMetadata) {
+      let storedOnmessage: ((ev: Event) => void) | null = null;
+      ObjectDefineProperty(globalThis, "onmessage", {
+        __proto__: null,
+        get() {
+          return storedOnmessage;
+        },
+        set(handler) {
+          storedOnmessage = handler;
+        },
+        configurable: true,
+        enumerable: true,
+      });
+      nativeAddEventListener("message", (ev: Event) => {
+        if (messageListenerCount > 0) return;
+        if (typeof storedOnmessage === "function") {
+          storedOnmessage(ev);
+        }
+      });
+    }
 
     threadId = workerId;
     let isWorkerThread = false;
