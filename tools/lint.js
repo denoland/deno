@@ -17,7 +17,6 @@ import {
 } from "./util.js";
 import { assertEquals } from "@std/assert";
 import { checkCopyright } from "./copyright_checker.js";
-import * as ciFile from "../.github/workflows/ci.generate.ts";
 
 const promises = [];
 
@@ -37,7 +36,7 @@ if (rs) {
 if (js) {
   promises.push(dlint());
   promises.push(dlintPreferPrimordials());
-  promises.push(ensureCiYmlUpToDate());
+  promises.push(ensureWorkflowYmlsUpToDate());
   promises.push(ensureNoUnusedOutFiles());
   promises.push(ensureNoNewTopLevelEntries());
 
@@ -261,14 +260,38 @@ async function clippy() {
   }
 }
 
-async function ensureCiYmlUpToDate() {
-  const expectedCiFileText = ciFile.generate();
-  const actualCiFileText = await Deno.readTextFile(ciFile.CI_YML_URL);
-  if (expectedCiFileText !== actualCiFileText) {
-    throw new Error(
-      "./.github/workflows/ci.yml is out of date. Run: ./.github/workflows/ci.generate.ts",
-    );
-  }
+async function ensureWorkflowYmlsUpToDate() {
+  const generators = [
+    ".github/workflows/ci.generate.ts",
+    ".github/workflows/pr.generate.ts",
+    ".github/workflows/cargo_publish.generate.ts",
+    ".github/workflows/ecosystem_compat_test.generate.ts",
+    ".github/workflows/node_compat_test.generate.ts",
+    ".github/workflows/npm_publish.generate.ts",
+    ".github/workflows/post_publish.generate.ts",
+    ".github/workflows/promote_to_release.generate.ts",
+    ".github/workflows/start_release.generate.ts",
+    ".github/workflows/version_bump.generate.ts",
+  ];
+
+  const pending = generators.map(async (gen) => {
+    const cmd = new Deno.Command("deno", {
+      cwd: ROOT_PATH,
+      args: ["run", "--allow-read=.", gen, "--lint"],
+      stderr: "piped",
+      stdout: "piped",
+    });
+    const { code, stderr } = await cmd.output();
+    if (code !== 0) {
+      const ymlFile = gen.replace(".generate.ts", ".yml");
+      const decoder = new TextDecoder();
+      throw new Error(
+        `${ymlFile} is out of date. Run: ${gen}\n${decoder.decode(stderr)}`,
+      );
+    }
+  });
+
+  await Promise.all(pending);
 }
 
 /**

@@ -13,7 +13,7 @@ import {
   job,
   literal,
   step,
-} from "jsr:@david/gagen@0.2.18";
+} from "jsr:@david/gagen@0.3.0";
 
 // Bump this number when you want to purge the cache.
 // Note: the tools/release/01_bump_crate_versions.ts script will update this version
