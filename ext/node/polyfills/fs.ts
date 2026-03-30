@@ -390,7 +390,7 @@ function readv(
     let bufIdx = 0;
     let buf = buffers[bufIdx];
     while (bufIdx < buffers.length) {
-      const nread = op_node_fs_read_sync(fd, buf);
+      const nread = op_node_fs_read_sync(fd, buf, -1);
       if (nread === null) {
         break;
       }
@@ -446,7 +446,7 @@ function readvSync(
   let bufIdx = 0;
   let buf = buffers[bufIdx];
   while (bufIdx < buffers.length) {
-    const nread = op_node_fs_read_sync(fd, buf);
+    const nread = op_node_fs_read_sync(fd, buf, -1);
     if (nread === null) {
       break;
     }
@@ -594,7 +594,7 @@ async function readFileFromFd(fd: number, options?: FileOptions) {
     readFileCheckAborted(signal);
     // Use the deferred op so we yield to the event loop between reads,
     // allowing abort signals scheduled via process.nextTick to fire.
-    const nread = await op_node_fs_read_deferred(fd, buffer);
+    const nread = await op_node_fs_read_deferred(fd, buffer, -1);
     if (nread === 0) {
       break;
     }

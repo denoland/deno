@@ -937,19 +937,42 @@ pub fn op_node_fs_close(state: &mut OpState, fd: i32) -> Result<(), FsError> {
   Ok(())
 }
 
+/// Positioned read helper: if position >= 0, seeks to that position before
+/// reading and restores the original position afterwards (matching Node's
+/// pread-like semantics). If position < 0, reads from the current position.
+fn read_with_position(
+  file: Rc<dyn deno_io::fs::File>,
+  buf: &mut [u8],
+  position: i64,
+) -> Result<u32, FsError> {
+  if position >= 0 {
+    let current = file.clone().seek_sync(std::io::SeekFrom::Current(0))?;
+    file
+      .clone()
+      .seek_sync(std::io::SeekFrom::Start(position as u64))?;
+    let result = file.clone().read_sync(buf);
+    // Always restore position, even on read failure
+    let _ = file.seek_sync(std::io::SeekFrom::Start(current));
+    Ok(result? as u32)
+  } else {
+    let nread = file.read_sync(buf)?;
+    Ok(nread as u32)
+  }
+}
+
 #[op2(fast)]
 #[smi]
 pub fn op_node_fs_read_sync(
   state: &mut OpState,
   fd: i32,
   #[buffer] buf: &mut [u8],
+  #[number] position: i64,
 ) -> Result<u32, FsError> {
   let file = file_for_fd(state, fd)?;
-  let nread = file.read_sync(buf)?;
-  Ok(nread as u32)
+  read_with_position(file, buf, position)
 }
 
-/// Async (deferred) read — performs the read synchronously but resolves the
+/// Async (deferred) read -- performs the read synchronously but resolves the
 /// promise on the next event loop tick, matching Node's libuv-based behavior
 /// where the callback fires on the next event loop iteration.
 #[allow(
@@ -962,11 +985,11 @@ pub async fn op_node_fs_read_deferred(
   state: Rc<RefCell<OpState>>,
   fd: i32,
   #[buffer] buf: JsBuffer,
+  #[number] position: i64,
 ) -> Result<u32, FsError> {
   let file = file_for_fd(&state.borrow(), fd)?;
   let mut buf = buf;
-  let nread = file.read_sync(&mut buf)?;
-  Ok(nread as u32)
+  read_with_position(file, &mut buf, position)
 }
 
 #[op2(fast)]

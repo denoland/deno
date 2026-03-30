@@ -18,11 +18,7 @@ import {
   validateObject,
 } from "ext:deno_node/internal/validators.mjs";
 import { isArrayBufferView } from "ext:deno_node/internal/util/types.ts";
-import {
-  op_node_fs_read_deferred,
-  op_node_fs_read_sync,
-  op_node_fs_seek_sync,
-} from "ext:core/ops";
+import { op_node_fs_read_deferred, op_node_fs_read_sync } from "ext:core/ops";
 import { primordials } from "ext:core/mod.js";
 import {
   customPromisifyArgs,
@@ -145,44 +141,23 @@ export function read(
     validatePosition(position, "position", length as number);
   }
 
-  // Use the deferred async op which resolves on the next event loop tick,
-  // matching Node's libuv behavior. The read itself is synchronous (captures
-  // the fd immediately), but the promise resolves on the next tick.
-  if (typeof position === "number" && position >= 0) {
-    const currentPosition = op_node_fs_seek_sync(fd, 0, 1); // SeekMode.Current = 1
-    op_node_fs_seek_sync(fd, position, 0); // SeekMode.Start = 0
-    op_node_fs_read_deferred(
-      fd,
-      arrayBufferViewToUint8Array(buffer).subarray(
-        offset,
-        offset + (length as number),
-      ),
-    ).then(
-      (nread: number) => {
-        op_node_fs_seek_sync(fd, currentPosition, 0); // SeekMode.Start = 0
-        callback!(null, nread ?? 0, buffer);
-      },
-      (error: Error) => {
-        op_node_fs_seek_sync(fd, currentPosition, 0); // SeekMode.Start = 0
-        callback!(error, null);
-      },
-    );
-  } else {
-    op_node_fs_read_deferred(
-      fd,
-      arrayBufferViewToUint8Array(buffer).subarray(
-        offset,
-        offset + (length as number),
-      ),
-    ).then(
-      (nread: number) => {
-        callback!(null, nread ?? 0, buffer);
-      },
-      (error: Error) => {
-        callback!(error, null);
-      },
-    );
-  }
+  // The op handles position seeking internally (saves/restores file offset
+  // for positioned reads). position=-1 means read from current position.
+  op_node_fs_read_deferred(
+    fd,
+    arrayBufferViewToUint8Array(buffer).subarray(
+      offset,
+      offset + (length as number),
+    ),
+    position as number,
+  ).then(
+    (nread: number) => {
+      callback!(null, nread ?? 0, buffer);
+    },
+    (error: Error) => {
+      callback!(error, null);
+    },
+  );
 }
 
 ObjectDefineProperty(read, customPromisifyArgs, {
@@ -255,22 +230,13 @@ export function readSync(
     validatePosition(position, "position", length);
   }
 
-  let currentPosition = 0;
-  if (typeof position === "number" && position >= 0) {
-    currentPosition = op_node_fs_seek_sync(fd, 0, 1); // SeekMode.Current = 1
-    op_node_fs_seek_sync(fd, position, 0); // SeekMode.Start = 0
-  }
+  // The op handles position seeking internally (saves/restores file offset
+  // for positioned reads). position=-1 means read from current position.
+  const numberOfBytesRead = op_node_fs_read_sync(
+    fd,
+    arrayBufferViewToUint8Array(buffer).subarray(offset, offset + length!),
+    (position ?? -1) as number,
+  );
 
-  try {
-    const numberOfBytesRead = op_node_fs_read_sync(
-      fd,
-      arrayBufferViewToUint8Array(buffer).subarray(offset, offset + length!),
-    );
-
-    return numberOfBytesRead ?? 0;
-  } finally {
-    if (typeof position === "number" && position >= 0) {
-      op_node_fs_seek_sync(fd, currentPosition, 0); // SeekMode.Start = 0
-    }
-  }
+  return numberOfBytesRead ?? 0;
 }
