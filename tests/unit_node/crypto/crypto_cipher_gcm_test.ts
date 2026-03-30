@@ -231,22 +231,20 @@ Deno.test({
 
 Deno.test({
   name: "aes gcm setAuthTag validates tag length",
-  sanitizeResources: false,
   fn() {
     const invalidLengths = [0, 1, 2, 3, 5, 6, 7, 9, 10, 11, 17];
     for (const length of invalidLengths) {
+      const d = crypto.createDecipheriv(
+        "aes-128-gcm",
+        Buffer.alloc(16),
+        Buffer.alloc(12),
+      );
       assertThrows(
-        () => {
-          const d = crypto.createDecipheriv(
-            "aes-128-gcm",
-            Buffer.alloc(16),
-            Buffer.alloc(12),
-          );
-          d.setAuthTag(Buffer.alloc(length));
-        },
+        () => d.setAuthTag(Buffer.alloc(length)),
         TypeError,
         "Invalid authentication tag length",
       );
+      d.destroy();
     }
 
     // Valid lengths should not throw
@@ -257,13 +255,13 @@ Deno.test({
         Buffer.alloc(12),
       );
       d.setAuthTag(Buffer.alloc(length));
+      d.destroy();
     }
   },
 });
 
 Deno.test({
   name: "aes gcm setAuthTag cannot be called twice",
-  sanitizeResources: false,
   fn() {
     const d = crypto.createDecipheriv(
       "aes-128-gcm",
@@ -276,6 +274,7 @@ Deno.test({
       Error,
       "Invalid state",
     );
+    d.destroy();
   },
 });
 
@@ -298,7 +297,6 @@ Deno.test({
 
 Deno.test({
   name: "aes gcm getAuthTag before final throws state error",
-  sanitizeResources: false,
   fn() {
     const cipher = crypto.createCipheriv(
       "aes-128-gcm",
@@ -311,5 +309,6 @@ Deno.test({
       Error,
       "Invalid state",
     );
+    cipher.destroy();
   },
 });
