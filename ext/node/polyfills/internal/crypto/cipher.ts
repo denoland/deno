@@ -609,11 +609,13 @@ function _lazyInitDecipherDecoder(self: any, encoding: string) {
   }
 
   const normalizedEncoding = normalizeEncoding(encoding);
-  if (normalizedEncoding === undefined) {
-    throw new ERR_UNKNOWN_ENCODING(encoding);
-  }
-  if (!self._decoder || self._decoder.encoding !== normalizedEncoding) {
-    self._decoder = new StringDecoder(normalizedEncoding);
+  self._decoder ||= new StringDecoder(normalizedEncoding);
+
+  if (self._decoder.encoding !== normalizedEncoding) {
+    if (normalizedEncoding === undefined) {
+      throw new ERR_UNKNOWN_ENCODING(encoding);
+    }
+    assert(false, "Cannot change encoding");
   }
 }
 
