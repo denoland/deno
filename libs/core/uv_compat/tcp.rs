@@ -713,7 +713,13 @@ unsafe fn set_so_linger_reset(tcp: *mut uv_tcp_t) -> c_int {
       std::mem::size_of::<Linger>() as c_int,
     );
     if ret != 0 {
-      return UV_EINVAL;
+      let err = std::io::Error::last_os_error();
+      // WSAEINVAL = 10022
+      if err.raw_os_error() == Some(10022) {
+        // Socket may already be shut down (matches libuv behavior).
+        return 0;
+      }
+      return io_error_to_uv(&err);
     }
     0
   }

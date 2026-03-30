@@ -1605,10 +1605,14 @@ impl TLSWrap {
     scope: &mut v8::PinScope,
     op_state: &mut OpState,
   ) -> i32 {
-    let server_name = match rustls::pki_types::ServerName::try_from(server_name)
-    {
-      Ok(name) => name,
-      Err(_) => return -1,
+    // Empty string means no SNI (caller passes "" when servername is not set).
+    let server_name = if server_name.is_empty() {
+      None
+    } else {
+      match rustls::pki_types::ServerName::try_from(server_name) {
+        Ok(name) => Some(name),
+        Err(_) => return -1,
+      }
     };
 
     let inner = unsafe { &mut *self.inner.as_mut_ptr() };
@@ -1619,7 +1623,7 @@ impl TLSWrap {
         None => return -1,
       };
     inner.pending_client_config = Some(Arc::new(client_config));
-    inner.pending_server_name = Some(server_name);
+    inner.pending_server_name = server_name;
     0
   }
 
@@ -1723,14 +1727,22 @@ impl TLSWrap {
     // was not called or failed).
     match inner.kind {
       Kind::Client => {
-        let (Some(config), Some(server_name)) = (
-          inner.pending_client_config.take(),
-          inner.pending_server_name.take(),
-        ) else {
+        let Some(config) = inner.pending_client_config.take() else {
           inner.error = Some("TLS config not initialized".to_string());
           return -1;
         };
-        match rustls::ClientConnection::new(config, server_name) {
+        let server_name = inner.pending_server_name.take();
+        let conn_result = match server_name {
+          Some(name) => rustls::ClientConnection::new(config, name),
+          None => {
+            // No SNI — use an IP address which suppresses the SNI extension.
+            let no_sni = rustls::pki_types::ServerName::IpAddress(
+              rustls::pki_types::IpAddr::from(std::net::Ipv4Addr::UNSPECIFIED),
+            );
+            rustls::ClientConnection::new(config, no_sni)
+          }
+        };
+        match conn_result {
           Ok(conn) => {
             inner.tls_conn = Some(TlsConnection::Client(conn));
           }

@@ -35,7 +35,7 @@ export function wrap(
   // setALPNProtocols can modify the config first.
   const initResult = isServer
     ? res.initServerTls(context)
-    : res.initClientTls(servername || "localhost", context);
+    : res.initClientTls(servername || "", context);
   if (initResult !== 0) {
     const err = new Error("unsupported protocol");
     // rustls cannot negotiate TLSv1.0/TLSv1.1, so surface the closest

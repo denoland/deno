@@ -1547,6 +1547,27 @@ impl Session {
     unsafe { &mut *(user_data as *mut Session) }
   }
 
+  /// Send a single data chunk to JS via the onsenddata callback.
+  fn send_chunk_to_js(
+    &self,
+    cb_global: &v8::Global<v8::Function>,
+    data: &[u8],
+  ) {
+    // SAFETY: isolate pointer is valid for the session's lifetime
+    let mut isolate =
+      unsafe { v8::Isolate::from_raw_isolate_ptr(self.isolate) };
+    v8::scope!(let scope, &mut isolate);
+    let context = v8::Local::new(scope, self.context.clone());
+    let scope = &mut v8::ContextScope::new(scope, context);
+    let this_local = v8::Local::new(scope, &self.this);
+    let cb = v8::Local::new(scope, cb_global);
+    let store = v8::ArrayBuffer::new_backing_store_from_vec(data.to_vec());
+    let ab = v8::ArrayBuffer::with_backing_store(scope, &store.into());
+    let uint8_array =
+      v8::Uint8Array::new(scope, ab, 0, ab.byte_length()).unwrap();
+    cb.call(scope, this_local.into(), &[uint8_array.into()]);
+  }
+
   pub fn send_pending_data(&mut self) {
     // Prevent recursive calls. JS callbacks from nghttp2_session_mem_recv
     // can call back into send_pending_data via scheduleSendPending. Nested
@@ -1574,10 +1595,24 @@ impl Session {
 
     self.is_sending = true;
 
-    // Collect data from nghttp2
-    // When using the JS fallback path (no native stream), we accumulate
-    // all data and send it to JS in one callback.
-    let mut js_write_buf: Vec<u8> = Vec::new();
+    // For the JS fallback path, resolve the onsenddata callback once up front
+    // so we can send each chunk incrementally instead of accumulating in memory.
+    let js_send_cb = if !has_native_stream {
+      // SAFETY: isolate pointer is valid for the session's lifetime
+      let mut isolate =
+        unsafe { v8::Isolate::from_raw_isolate_ptr(self.isolate) };
+      v8::scope!(let scope, &mut isolate);
+      let context = v8::Local::new(scope, self.context.clone());
+      let scope = &mut v8::ContextScope::new(scope, context);
+      let this_local = v8::Local::new(scope, &self.this);
+      let key = v8::String::new(scope, "onsenddata").unwrap();
+      this_local
+        .get(scope, key.into())
+        .and_then(|v| v8::Local::<v8::Function>::try_from(v).ok())
+        .map(|cb| v8::Global::new(scope, cb))
+    } else {
+      None
+    };
 
     loop {
       let mut src = std::ptr::null();
@@ -1614,8 +1649,8 @@ impl Session {
               let _ = Box::from_raw(write_ptr);
             }
           }
-        } else {
-          js_write_buf.extend_from_slice(data);
+        } else if let Some(ref cb_global) = js_send_cb {
+          self.send_chunk_to_js(cb_global, data);
         }
       } else {
         break;
@@ -1651,37 +1686,15 @@ impl Session {
             }
           }
         }
-      } else {
+      } else if let Some(ref cb_global) = js_send_cb {
         for buffer in &self.outgoing_buffers {
-          js_write_buf.extend_from_slice(buffer.data.as_ref());
+          self.send_chunk_to_js(cb_global, buffer.data.as_ref());
         }
       }
       self.clear_outgoing();
     }
 
     self.is_sending = false;
-
-    // If using JS fallback path, call onsenddata callback with accumulated data
-    if !has_native_stream && !js_write_buf.is_empty() {
-      // SAFETY: isolate pointer is valid for the session's lifetime
-      let mut isolate =
-        unsafe { v8::Isolate::from_raw_isolate_ptr(self.isolate) };
-      v8::scope!(let scope, &mut isolate);
-      let context = v8::Local::new(scope, self.context.clone());
-      let scope = &mut v8::ContextScope::new(scope, context);
-      let this_local = v8::Local::new(scope, &self.this);
-      let key = v8::String::new(scope, "onsenddata").unwrap();
-      if let Some(Ok(cb)) = this_local
-        .get(scope, key.into())
-        .map(v8::Local::<v8::Function>::try_from)
-      {
-        let store = v8::ArrayBuffer::new_backing_store_from_vec(js_write_buf);
-        let ab = v8::ArrayBuffer::with_backing_store(scope, &store.into());
-        let uint8_array =
-          v8::Uint8Array::new(scope, ab, 0, ab.byte_length()).unwrap();
-        cb.call(scope, this_local.into(), &[uint8_array.into()]);
-      }
-    }
 
     self.maybe_notify_graceful_close_complete();
 
