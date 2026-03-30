@@ -859,7 +859,10 @@ pub fn op_node_fs_read_sync(
 /// Async (deferred) read — performs the read synchronously but resolves the
 /// promise on the next event loop tick, matching Node's libuv-based behavior
 /// where the callback fires on the next event loop iteration.
-#[allow(clippy::unused_async, reason = "async required for deferred op scheduling")]
+#[allow(
+  clippy::unused_async,
+  reason = "async required for deferred op scheduling"
+)]
 #[op2(async(deferred))]
 #[smi]
 pub async fn op_node_fs_read_deferred(
@@ -887,7 +890,10 @@ pub fn op_node_fs_write_sync(
 
 /// Async (deferred) write — performs the write synchronously but resolves the
 /// promise on the next event loop tick, matching Node's libuv-based behavior.
-#[allow(clippy::unused_async, reason = "async required for deferred op scheduling")]
+#[allow(
+  clippy::unused_async,
+  reason = "async required for deferred op scheduling"
+)]
 #[op2(async(deferred))]
 #[smi]
 pub async fn op_node_fs_write_deferred(
