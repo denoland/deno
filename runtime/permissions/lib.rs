@@ -1311,6 +1311,17 @@ impl PartialEq<PathDescriptor> for PathQueryDescriptor<'_> {
   }
 }
 
+/// On Windows, lowercase the path so that permission checks are
+/// case-insensitive, matching NTFS behavior.
+#[inline]
+fn normalize_path_case(path: Cow<'_, Path>) -> Cow<'_, Path> {
+  if cfg!(windows) {
+    Cow::Owned(PathBuf::from(path.to_string_lossy().to_ascii_lowercase()))
+  } else {
+    path
+  }
+}
+
 impl<'a> PathQueryDescriptor<'a> {
   pub fn new(
     sys: &impl sys_traits::EnvCurrentDir,
@@ -1328,13 +1339,15 @@ impl<'a> PathQueryDescriptor<'a> {
       // paths. We pass these through.
       (path, None)
     } else if path.is_absolute() {
-      (normalize_path(path), None)
+      (normalize_path_case(normalize_path(path)), None)
     } else {
       let cwd = sys
         .env_current_dir()
         .map_err(PathResolveError::CwdResolve)?;
       (
-        normalize_path(Cow::Owned(cwd.join(path.as_ref()))),
+        normalize_path_case(normalize_path(Cow::Owned(
+          cwd.join(path.as_ref()),
+        ))),
         Some(path.to_string_lossy().into_owned()),
       )
     };
@@ -1355,7 +1368,7 @@ impl<'a> PathQueryDescriptor<'a> {
       // paths. We pass these through.
       path
     } else {
-      normalize_path(path)
+      normalize_path_case(normalize_path(path))
     };
     Self {
       path,
@@ -1512,10 +1525,12 @@ impl PathDescriptor {
       // paths. We pass these through.
       (path, None)
     } else if path.is_absolute() {
-      (normalize_path(path), None)
+      (normalize_path_case(normalize_path(path)), None)
     } else {
       (
-        normalize_path(Cow::Owned(cwd.join(path.as_ref()))),
+        normalize_path_case(normalize_path(Cow::Owned(
+          cwd.join(path.as_ref()),
+        ))),
         Some(path.to_string_lossy().into_owned()),
       )
     };
@@ -9189,6 +9204,67 @@ mod tests {
         Ordering::Equal => Ordering::Equal,
       },
       "failed second to first"
+    );
+  }
+
+  #[test]
+  #[cfg(windows)]
+  fn check_path_case_insensitive() {
+    set_prompter(Box::new(TestPrompter));
+    let parser = TestPermissionDescriptorParser;
+    let perms = Permissions::from_options(
+      &parser,
+      &PermissionsOptions {
+        allow_read: Some(svec!["C:\\Users\\Admin"]),
+        deny_read: Some(svec!["C:\\Users\\Admin\\Secret"]),
+        ..Default::default()
+      },
+    )
+    .unwrap();
+    let mut perms = PermissionsContainer::new(Arc::new(parser), perms);
+
+    // Matching case should be allowed
+    assert!(
+      perms
+        .check_open(
+          Cow::Borrowed(Path::new("C:\\Users\\Admin\\file.txt")),
+          OpenAccessKind::Read,
+          Some("api"),
+        )
+        .is_ok()
+    );
+
+    // Different case should also be allowed
+    assert!(
+      perms
+        .check_open(
+          Cow::Borrowed(Path::new("c:\\users\\admin\\file.txt")),
+          OpenAccessKind::Read,
+          Some("api"),
+        )
+        .is_ok()
+    );
+
+    // Deny with matching case should block
+    assert!(
+      perms
+        .check_open(
+          Cow::Borrowed(Path::new("C:\\Users\\Admin\\Secret\\data.txt")),
+          OpenAccessKind::Read,
+          Some("api"),
+        )
+        .is_err()
+    );
+
+    // Deny with different case should also block
+    assert!(
+      perms
+        .check_open(
+          Cow::Borrowed(Path::new("c:\\users\\admin\\secret\\data.txt")),
+          OpenAccessKind::Read,
+          Some("api"),
+        )
+        .is_err()
     );
   }
 }
