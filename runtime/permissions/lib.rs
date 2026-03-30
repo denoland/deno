@@ -1292,6 +1292,9 @@ impl<
 #[derive(Clone, Debug)]
 pub struct PathQueryDescriptor<'a> {
   path: Cow<'a, Path>,
+  /// Lowercased on Windows for case-insensitive comparison; same as `path` on
+  /// other platforms. Used by PartialEq, starts_with, etc.
+  cmp_path: PathBuf,
   /// Custom requested display name when differs from resolved.
   requested: Option<String>,
   is_windows_device_path: bool,
@@ -1299,7 +1302,7 @@ pub struct PathQueryDescriptor<'a> {
 
 impl PartialEq for PathQueryDescriptor<'_> {
   fn eq(&self, other: &Self) -> bool {
-    self.path == other.path
+    self.cmp_path == other.cmp_path
   }
 }
 
@@ -1307,18 +1310,18 @@ impl Eq for PathQueryDescriptor<'_> {}
 
 impl PartialEq<PathDescriptor> for PathQueryDescriptor<'_> {
   fn eq(&self, other: &PathDescriptor) -> bool {
-    self.path == other.path
+    self.cmp_path == other.cmp_path
   }
 }
 
-/// On Windows, lowercase the path so that permission checks are
-/// case-insensitive, matching NTFS behavior.
+/// On Windows, returns a lowercased copy of the path for case-insensitive
+/// comparison, matching NTFS behavior. On other platforms, returns a clone.
 #[inline]
-fn normalize_path_case(path: Cow<'_, Path>) -> Cow<'_, Path> {
+fn comparison_path(path: &Path) -> PathBuf {
   if cfg!(windows) {
-    Cow::Owned(PathBuf::from(path.to_string_lossy().to_ascii_lowercase()))
+    PathBuf::from(path.to_string_lossy().to_ascii_lowercase())
   } else {
-    path
+    path.to_path_buf()
   }
 }
 
@@ -1339,20 +1342,20 @@ impl<'a> PathQueryDescriptor<'a> {
       // paths. We pass these through.
       (path, None)
     } else if path.is_absolute() {
-      (normalize_path_case(normalize_path(path)), None)
+      (normalize_path(path), None)
     } else {
       let cwd = sys
         .env_current_dir()
         .map_err(PathResolveError::CwdResolve)?;
       (
-        normalize_path_case(normalize_path(Cow::Owned(
-          cwd.join(path.as_ref()),
-        ))),
+        normalize_path(Cow::Owned(cwd.join(path.as_ref()))),
         Some(path.to_string_lossy().into_owned()),
       )
     };
+    let cmp_path = comparison_path(&path);
     Ok(Self {
       path,
+      cmp_path,
       requested,
       is_windows_device_path,
     })
@@ -1368,10 +1371,12 @@ impl<'a> PathQueryDescriptor<'a> {
       // paths. We pass these through.
       path
     } else {
-      normalize_path_case(normalize_path(path))
+      normalize_path(path)
     };
+    let cmp_path = comparison_path(&path);
     Self {
       path,
+      cmp_path,
       requested: None,
       is_windows_device_path,
     }
@@ -1385,7 +1390,7 @@ impl<'a> PathQueryDescriptor<'a> {
   }
 
   pub fn starts_with(&self, base: &PathDescriptor) -> bool {
-    self.path.starts_with(&base.path)
+    self.cmp_path.starts_with(&base.cmp_path)
   }
 
   pub fn display_name(&self) -> Cow<'_, str> {
@@ -1398,6 +1403,7 @@ impl<'a> PathQueryDescriptor<'a> {
   pub fn as_descriptor(&self) -> PathDescriptor {
     PathDescriptor {
       path: self.path.to_path_buf(),
+      cmp_path: self.cmp_path.clone(),
       requested: self.requested.clone(),
       is_windows_device_path: self.is_windows_device_path,
     }
@@ -1406,6 +1412,7 @@ impl<'a> PathQueryDescriptor<'a> {
   pub fn into_descriptor(self) -> PathDescriptor {
     PathDescriptor {
       path: self.path.into_owned(),
+      cmp_path: self.cmp_path,
       requested: self.requested,
       is_windows_device_path: self.is_windows_device_path,
     }
@@ -1488,6 +1495,9 @@ impl QueryDescriptor for ReadQueryDescriptor<'_> {
 #[derive(Clone, Debug)]
 pub struct PathDescriptor {
   path: PathBuf,
+  /// Lowercased on Windows for case-insensitive comparison; same as `path` on
+  /// other platforms. Used by PartialEq, Hash, starts_with, cmp_*.
+  cmp_path: PathBuf,
   /// Custom requested display name when differs from resolved.
   requested: Option<String>,
   is_windows_device_path: bool,
@@ -1495,7 +1505,7 @@ pub struct PathDescriptor {
 
 impl PartialEq for PathDescriptor {
   fn eq(&self, other: &Self) -> bool {
-    self.path == other.path
+    self.cmp_path == other.cmp_path
   }
 }
 
@@ -1503,7 +1513,7 @@ impl Eq for PathDescriptor {}
 
 impl Hash for PathDescriptor {
   fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-    self.path.hash(state);
+    self.cmp_path.hash(state);
   }
 }
 
@@ -1525,17 +1535,17 @@ impl PathDescriptor {
       // paths. We pass these through.
       (path, None)
     } else if path.is_absolute() {
-      (normalize_path_case(normalize_path(path)), None)
+      (normalize_path(path), None)
     } else {
       (
-        normalize_path_case(normalize_path(Cow::Owned(
-          cwd.join(path.as_ref()),
-        ))),
+        normalize_path(Cow::Owned(cwd.join(path.as_ref()))),
         Some(path.to_string_lossy().into_owned()),
       )
     };
+    let cmp_path = comparison_path(&path);
     Self {
       path: path.into_owned(),
+      cmp_path,
       requested: display,
       is_windows_device_path,
     }
@@ -1546,7 +1556,7 @@ impl PathDescriptor {
   }
 
   pub fn starts_with(&self, base: &PathQueryDescriptor) -> bool {
-    self.path.starts_with(&base.path)
+    self.cmp_path.starts_with(&base.cmp_path)
   }
 
   pub fn display_name(&self) -> Cow<'_, str> {
@@ -1559,6 +1569,7 @@ impl PathDescriptor {
   pub fn as_query_descriptor(&self) -> PathQueryDescriptor<'static> {
     PathQueryDescriptor {
       path: Cow::Owned(self.path.clone()),
+      cmp_path: self.cmp_path.clone(),
       requested: self.requested.clone(),
       is_windows_device_path: self.is_windows_device_path,
     }
@@ -1581,21 +1592,21 @@ impl PathDescriptor {
   }
 
   fn cmp_allow_allow(&self, other: &PathDescriptor) -> Ordering {
-    if self.path == other.path {
+    if self.cmp_path == other.cmp_path {
       Ordering::Equal
-    } else if other.path.starts_with(&self.path) {
+    } else if other.cmp_path.starts_with(&self.cmp_path) {
       Ordering::Greater
-    } else if self.path.starts_with(&other.path) {
+    } else if self.cmp_path.starts_with(&other.cmp_path) {
       Ordering::Less
     } else {
-      self.path.cmp(&other.path)
+      self.cmp_path.cmp(&other.cmp_path)
     }
   }
 
   fn cmp_allow_deny(&self, other: &PathDescriptor) -> Ordering {
-    if other.path.starts_with(&self.path) {
+    if other.cmp_path.starts_with(&self.cmp_path) {
       Ordering::Greater
-    } else if self.path.starts_with(&other.path) {
+    } else if self.cmp_path.starts_with(&other.cmp_path) {
       Ordering::Less
     } else {
       Ordering::Greater
@@ -2504,11 +2515,15 @@ impl<'a> RunQueryDescriptor<'a> {
         .map_err(PathResolveError::CwdResolve)?;
       match which::which_in(sys.clone(), requested, sys.env_var_os("PATH"), cwd)
       {
-        Ok(resolved) => Ok(RunQueryDescriptor::Path(PathQueryDescriptor {
-          path: Cow::Owned(resolved),
-          requested: Some(requested.to_string()),
-          is_windows_device_path: false,
-        })),
+        Ok(resolved) => {
+          let cmp_path = comparison_path(&resolved);
+          Ok(RunQueryDescriptor::Path(PathQueryDescriptor {
+            path: Cow::Owned(resolved),
+            cmp_path,
+            requested: Some(requested.to_string()),
+            is_windows_device_path: false,
+          }))
+        }
         Err(_) => Ok(RunQueryDescriptor::Name(requested.to_string())),
       }
     }
@@ -2784,6 +2799,7 @@ impl<'a> SpecialFilePathQueryDescriptor<'a> {
     let PathQueryDescriptor {
       is_windows_device_path,
       path,
+      cmp_path: _,
       requested,
     } = path;
     // On Linux, /proc may contain magic links that we don't want to resolve
@@ -5329,8 +5345,10 @@ mod tests {
       } else {
         PathBuf::from("/").join(path)
       };
+      let cmp_path = comparison_path(&path);
       PathDescriptor {
         path,
+        cmp_path,
         requested: None,
         is_windows_device_path: false,
       }
