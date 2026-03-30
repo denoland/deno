@@ -2,49 +2,6 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 import { conditions, createWorkflow, step } from "jsr:@david/gagen@0.3.0";
 
-const clone = step({
-  name: "Clone repository",
-  uses: "actions/checkout@v6",
-});
-
-const setupDeno = step.dependsOn(clone)({
-  uses: "denoland/setup-deno@v2",
-  with: { "deno-version": "v2.x" },
-});
-
-const authGcp = step.dependsOn(setupDeno)({
-  name: "Authenticate with Google Cloud",
-  uses: "google-github-actions/auth@v3",
-  with: {
-    project_id: "denoland",
-    credentials_json: "${{ secrets.GCP_SA_KEY }}",
-    export_environment_variables: true,
-    create_credentials_file: true,
-  },
-});
-
-const setupGcloud = step.dependsOn(authGcp)({
-  name: "Setup gcloud",
-  uses: "google-github-actions/setup-gcloud@v3",
-  with: {
-    project_id: "denoland",
-  },
-});
-
-const uploadVersion = step.dependsOn(setupGcloud)({
-  name: "Upload version file to dl.deno.land",
-  env: {
-    AWS_ACCESS_KEY_ID: "${{ vars.S3_ACCESS_KEY_ID }}",
-    AWS_SECRET_ACCESS_KEY: "${{ secrets.S3_SECRET_ACCESS_KEY }}",
-    AWS_ENDPOINT_URL_S3: "${{ vars.S3_ENDPOINT }}",
-    AWS_DEFAULT_REGION: "${{vars.S3_REGION }}",
-  },
-  run: [
-    "echo ${GITHUB_REF#refs/*/} > release-latest.txt",
-    '(deno run --allow-net tools/release/version_greater_latest.ts ${GITHUB_REF#refs/*/} || exit 0) && gsutil -h "Cache-Control: no-cache" cp release-latest.txt gs://dl.deno.land/release-latest.txt && aws s3 cp release-latest.txt s3://dl-deno-land/release-latest.txt',
-  ],
-});
-
 const workflow = createWorkflow({
   name: "post_publish",
   on: {
@@ -52,15 +9,50 @@ const workflow = createWorkflow({
       types: ["published"],
     },
   },
-  jobs: [
-    {
-      id: "update-dl-version",
-      name: "update dl.deno.land version",
-      runsOn: "ubuntu-latest",
-      if: conditions.isRepository("denoland/deno"),
-      steps: [uploadVersion],
-    },
-  ],
+  jobs: [{
+    id: "update-dl-version",
+    name: "update dl.deno.land version",
+    runsOn: "ubuntu-latest",
+    if: conditions.isRepository("denoland/deno"),
+    steps: [
+      step({
+        name: "Clone repository",
+        uses: "actions/checkout@v6",
+      }),
+      step({
+        uses: "denoland/setup-deno@v2",
+        with: { "deno-version": "v2.x" },
+      }),
+      step({
+        name: "Authenticate with Google Cloud",
+        uses: "google-github-actions/auth@v3",
+        with: {
+          project_id: "denoland",
+          credentials_json: "${{ secrets.GCP_SA_KEY }}",
+          export_environment_variables: true,
+          create_credentials_file: true,
+        },
+      }),
+      step({
+        name: "Setup gcloud",
+        uses: "google-github-actions/setup-gcloud@v3",
+        with: { project_id: "denoland" },
+      }),
+      step({
+        name: "Upload version file to dl.deno.land",
+        env: {
+          AWS_ACCESS_KEY_ID: "${{ vars.S3_ACCESS_KEY_ID }}",
+          AWS_SECRET_ACCESS_KEY: "${{ secrets.S3_SECRET_ACCESS_KEY }}",
+          AWS_ENDPOINT_URL_S3: "${{ vars.S3_ENDPOINT }}",
+          AWS_DEFAULT_REGION: "${{vars.S3_REGION }}",
+        },
+        run: [
+          "echo ${GITHUB_REF#refs/*/} > release-latest.txt",
+          '(deno run --allow-net tools/release/version_greater_latest.ts ${GITHUB_REF#refs/*/} || exit 0) && gsutil -h "Cache-Control: no-cache" cp release-latest.txt gs://dl.deno.land/release-latest.txt && aws s3 cp release-latest.txt s3://dl-deno-land/release-latest.txt',
+        ],
+      }),
+    ],
+  }],
 });
 
 const header =

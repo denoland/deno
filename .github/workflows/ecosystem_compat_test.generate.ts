@@ -16,109 +16,58 @@ const matrix = defineMatrix({
   ],
 });
 
-const checkout = step({
-  name: "Checkout",
-  uses: "actions/checkout@v6",
-  with: { submodules: true },
-});
-
-const setupDeno = step.dependsOn(checkout)({
-  name: "Setup Deno",
-  uses: "denoland/setup-deno@v2",
-  with: { "deno-version": "canary" },
-});
-
-const installPython = step.dependsOn(setupDeno)({
-  name: "Install Python",
-  uses: "actions/setup-python@v6",
-  with: { "python-version": 3.11 },
-});
-
-const authGcloud = step.dependsOn(installPython)({
-  name: "Authenticate with Google Cloud",
-  uses: "google-github-actions/auth@v3",
-  with: {
-    project_id: "denoland",
-    credentials_json: "${{ secrets.GCP_SA_KEY }}",
-    export_environment_variables: true,
-    create_credentials_file: true,
-  },
-});
-
-const setupGcloud = step.dependsOn(authGcloud)({
-  name: "Setup gcloud",
-  uses: "google-github-actions/setup-gcloud@v3",
-  with: { project_id: "denoland" },
-});
-
-const runTests = step.dependsOn(setupGcloud)({
-  name: "Run tests",
-  run: "deno -A tools/ecosystem_compat_tests.ts",
-});
-
-const uploadReport = step.dependsOn(runTests)({
-  name: "Upload the report to dl.deno.land",
-  env: {
-    AWS_ACCESS_KEY_ID: "${{ vars.S3_ACCESS_KEY_ID }}",
-    AWS_SECRET_ACCESS_KEY: "${{ secrets.S3_SECRET_ACCESS_KEY }}",
-    AWS_ENDPOINT_URL_S3: "${{ vars.S3_ENDPOINT }}",
-    AWS_DEFAULT_REGION: "${{vars.S3_REGION }}",
-  },
-  run: [
-    'gsutil -h "Cache-Control: public, max-age=3600" cp tools/ecosystem_report.json gs://dl.deno.land/ecosystem-compat-test/$(date +%F)/report-${{matrix.os}}.json',
-    "aws s3 cp tools/ecosystem_report.json s3://dl-deno-land/ecosystem-compat-test/$(date +%F)/report-${{matrix.os}}.json",
-  ],
-});
-
 const testJob = job("test", {
   runsOn: matrix.runner,
-  strategy: {
-    matrix,
-  },
-  steps: [uploadReport],
-});
-
-const summaryCheckout = step({
-  name: "Checkout",
-  uses: "actions/checkout@v6",
-  with: { submodules: true },
-});
-
-const summarySetupDeno = step.dependsOn(summaryCheckout)({
-  name: "Setup Deno",
-  uses: "denoland/setup-deno@v2",
-});
-
-const summaryInstallPython = step.dependsOn(summarySetupDeno)({
-  name: "Install Python",
-  uses: "actions/setup-python@v6",
-  with: { "python-version": 3.11 },
-});
-
-const summaryAuthGcloud = step.dependsOn(summaryInstallPython)({
-  name: "Authenticate with Google Cloud",
-  uses: "google-github-actions/auth@v3",
-  with: {
-    project_id: "denoland",
-    credentials_json: "${{ secrets.GCP_SA_KEY }}",
-    export_environment_variables: true,
-    create_credentials_file: true,
-  },
-});
-
-const summarySetupGcloud = step.dependsOn(summaryAuthGcloud)({
-  name: "Setup gcloud",
-  uses: "google-github-actions/setup-gcloud@v3",
-  with: { project_id: "denoland" },
-});
-
-const postSlack = step.dependsOn(summarySetupGcloud)({
-  name: "Post message to slack channel",
-  run: "deno -A tools/ecosystem_compat_slack.ts",
-  env: {
-    SLACK_TOKEN: "${{ secrets.NODE_COMPAT_SLACK_TOKEN }}",
-    SLACK_CHANNEL: "${{ secrets.NODE_COMPAT_SLACK_CHANNEL }}",
-  },
+  strategy: { matrix },
+  steps: [
+    step({
+      name: "Checkout",
+      uses: "actions/checkout@v6",
+      with: { submodules: true },
+    }),
+    step({
+      name: "Setup Deno",
+      uses: "denoland/setup-deno@v2",
+      with: { "deno-version": "canary" },
+    }),
+    step({
+      name: "Install Python",
+      uses: "actions/setup-python@v6",
+      with: { "python-version": 3.11 },
+    }),
+    step({
+      name: "Authenticate with Google Cloud",
+      uses: "google-github-actions/auth@v3",
+      with: {
+        project_id: "denoland",
+        credentials_json: "${{ secrets.GCP_SA_KEY }}",
+        export_environment_variables: true,
+        create_credentials_file: true,
+      },
+    }),
+    step({
+      name: "Setup gcloud",
+      uses: "google-github-actions/setup-gcloud@v3",
+      with: { project_id: "denoland" },
+    }),
+    step({
+      name: "Run tests",
+      run: "deno -A tools/ecosystem_compat_tests.ts",
+    }),
+    step({
+      name: "Upload the report to dl.deno.land",
+      env: {
+        AWS_ACCESS_KEY_ID: "${{ vars.S3_ACCESS_KEY_ID }}",
+        AWS_SECRET_ACCESS_KEY: "${{ secrets.S3_SECRET_ACCESS_KEY }}",
+        AWS_ENDPOINT_URL_S3: "${{ vars.S3_ENDPOINT }}",
+        AWS_DEFAULT_REGION: "${{vars.S3_REGION }}",
+      },
+      run: [
+        'gsutil -h "Cache-Control: public, max-age=3600" cp tools/ecosystem_report.json gs://dl.deno.land/ecosystem-compat-test/$(date +%F)/report-${{matrix.os}}.json',
+        "aws s3 cp tools/ecosystem_report.json s3://dl-deno-land/ecosystem-compat-test/$(date +%F)/report-${{matrix.os}}.json",
+      ],
+    }),
+  ],
 });
 
 const workflow = createWorkflow({
@@ -134,7 +83,45 @@ const workflow = createWorkflow({
       runsOn: "ubuntu-latest",
       needs: [testJob],
       if: conditions.status.always(),
-      steps: [postSlack],
+      steps: [
+        step({
+          name: "Checkout",
+          uses: "actions/checkout@v6",
+          with: { submodules: true },
+        }),
+        step({
+          name: "Setup Deno",
+          uses: "denoland/setup-deno@v2",
+        }),
+        step({
+          name: "Install Python",
+          uses: "actions/setup-python@v6",
+          with: { "python-version": 3.11 },
+        }),
+        step({
+          name: "Authenticate with Google Cloud",
+          uses: "google-github-actions/auth@v3",
+          with: {
+            project_id: "denoland",
+            credentials_json: "${{ secrets.GCP_SA_KEY }}",
+            export_environment_variables: true,
+            create_credentials_file: true,
+          },
+        }),
+        step({
+          name: "Setup gcloud",
+          uses: "google-github-actions/setup-gcloud@v3",
+          with: { project_id: "denoland" },
+        }),
+        step({
+          name: "Post message to slack channel",
+          run: "deno -A tools/ecosystem_compat_slack.ts",
+          env: {
+            SLACK_TOKEN: "${{ secrets.NODE_COMPAT_SLACK_TOKEN }}",
+            SLACK_CHANNEL: "${{ secrets.NODE_COMPAT_SLACK_CHANNEL }}",
+          },
+        }),
+      ],
     },
   ],
 });

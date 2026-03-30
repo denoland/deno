@@ -2,55 +2,6 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 import { createWorkflow, step } from "jsr:@david/gagen@0.3.0";
 
-const configureGit = step({
-  name: "Configure git",
-  run: [
-    "git config --global core.symlinks true",
-    "git config --global fetch.parallel 32",
-  ],
-});
-
-const clone = step.dependsOn(configureGit)({
-  name: "Clone repository",
-  uses: "actions/checkout@v6",
-  with: {
-    "fetch-depth": 0,
-    token: "${{ secrets.DENOBOT_PAT }}",
-    submodules: "recursive",
-  },
-});
-
-const rustToolchain = step.dependsOn(clone)({
-  uses: "dsherret/rust-toolchain-file@v1",
-});
-
-const installDeno = step.dependsOn(rustToolchain)({
-  name: "Install deno",
-  uses: "denoland/setup-deno@v2",
-  with: { "deno-version": "v2.x" },
-});
-
-const publish = step.dependsOn(installDeno)({
-  name: "Publish",
-  env: {
-    CARGO_REGISTRY_TOKEN: "${{ secrets.CARGO_REGISTRY_TOKEN }}",
-  },
-  run: "./tools/release/03_publish_crates.ts",
-});
-
-const createReleaseTag = step.dependsOn(publish)({
-  name: "Create release tag and check forward commit to main",
-  env: {
-    GITHUB_TOKEN: "${{ secrets.DENOBOT_PAT }}",
-    GH_WORKFLOW_ACTOR: "${{ github.actor }}",
-  },
-  run: [
-    'git config user.email "${{ github.actor }}@users.noreply.github.com"',
-    'git config user.name "${{ github.actor }}"',
-    "./tools/release/04_post_publish.ts",
-  ],
-});
-
 const workflow = createWorkflow({
   name: "cargo_publish",
   on: {
@@ -60,20 +11,60 @@ const workflow = createWorkflow({
     group: "${{ github.workflow }}",
     cancelInProgress: true,
   },
-  jobs: [
-    {
-      id: "build",
-      name: "cargo publish",
-      runsOn: "ubuntu-24.04-xl",
-      timeoutMinutes: 90,
-      env: {
-        CARGO_TERM_COLOR: "always",
-        RUST_BACKTRACE: "full",
-        RUSTC_FORCE_INCREMENTAL: 1,
-      },
-      steps: [createReleaseTag],
+  jobs: [{
+    id: "build",
+    name: "cargo publish",
+    runsOn: "ubuntu-24.04-xl",
+    timeoutMinutes: 90,
+    env: {
+      CARGO_TERM_COLOR: "always",
+      RUST_BACKTRACE: "full",
+      RUSTC_FORCE_INCREMENTAL: 1,
     },
-  ],
+    steps: [
+      step({
+        name: "Configure git",
+        run: [
+          "git config --global core.symlinks true",
+          "git config --global fetch.parallel 32",
+        ],
+      }),
+      step({
+        name: "Clone repository",
+        uses: "actions/checkout@v6",
+        with: {
+          "fetch-depth": 0,
+          token: "${{ secrets.DENOBOT_PAT }}",
+          submodules: "recursive",
+        },
+      }),
+      step({ uses: "dsherret/rust-toolchain-file@v1" }),
+      step({
+        name: "Install deno",
+        uses: "denoland/setup-deno@v2",
+        with: { "deno-version": "v2.x" },
+      }),
+      step({
+        name: "Publish",
+        env: {
+          CARGO_REGISTRY_TOKEN: "${{ secrets.CARGO_REGISTRY_TOKEN }}",
+        },
+        run: "./tools/release/03_publish_crates.ts",
+      }),
+      step({
+        name: "Create release tag and check forward commit to main",
+        env: {
+          GITHUB_TOKEN: "${{ secrets.DENOBOT_PAT }}",
+          GH_WORKFLOW_ACTOR: "${{ github.actor }}",
+        },
+        run: [
+          'git config user.email "${{ github.actor }}@users.noreply.github.com"',
+          'git config user.name "${{ github.actor }}"',
+          "./tools/release/04_post_publish.ts",
+        ],
+      }),
+    ],
+  }],
 });
 
 const header =

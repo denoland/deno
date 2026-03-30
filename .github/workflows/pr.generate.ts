@@ -2,21 +2,6 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 import { createWorkflow, step } from "jsr:@david/gagen@0.3.0";
 
-const installDeno = step({
-  name: "Install Deno",
-  uses: "denoland/setup-deno@v2",
-  with: { "deno-version": "canary" },
-});
-
-const lint = step.dependsOn(installDeno)({
-  name: "Lint",
-  env: {
-    PR_TITLE: "${{ github.event.pull_request.title }}",
-  },
-  run:
-    'deno run https://raw.githubusercontent.com/denoland/deno/refs/heads/main/tools/verify_pr_title.js "$PR_TITLE"',
-});
-
 const workflow = createWorkflow({
   name: "pr",
   on: {
@@ -24,14 +9,24 @@ const workflow = createWorkflow({
       types: ["opened", "edited", "synchronize"],
     },
   },
-  jobs: [
-    {
-      id: "main",
-      name: "lint title",
-      runsOn: "ubuntu-latest",
-      steps: [lint],
-    },
-  ],
+  jobs: [{
+    id: "main",
+    name: "lint title",
+    runsOn: "ubuntu-latest",
+    steps: [
+      step({
+        name: "Install Deno",
+        uses: "denoland/setup-deno@v2",
+        with: { "deno-version": "canary" },
+      }),
+      step({
+        name: "Lint",
+        env: { PR_TITLE: "${{ github.event.pull_request.title }}" },
+        run:
+          'deno run https://raw.githubusercontent.com/denoland/deno/refs/heads/main/tools/verify_pr_title.js "$PR_TITLE"',
+      }),
+    ],
+  }],
 });
 
 const header = [

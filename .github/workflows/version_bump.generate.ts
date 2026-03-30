@@ -2,54 +2,6 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 import { createWorkflow, step } from "jsr:@david/gagen@0.3.0";
 
-const configureGit = step({
-  name: "Configure git",
-  run: [
-    "git config --global core.symlinks true",
-    "git config --global fetch.parallel 32",
-  ],
-});
-
-const clone = step.dependsOn(configureGit)({
-  name: "Clone repository",
-  uses: "actions/checkout@v6",
-  with: {
-    token: "${{ secrets.DENOBOT_PAT }}",
-    submodules: "recursive",
-  },
-});
-
-const rustToolchain = step.dependsOn(clone)({
-  uses: "dsherret/rust-toolchain-file@v1",
-});
-
-const installDeno = step.dependsOn(rustToolchain)({
-  name: "Install deno",
-  uses: "denoland/setup-deno@v2",
-  with: { "deno-version": "v2.x" },
-});
-
-const runVersionBump = step.dependsOn(installDeno)({
-  name: "Run version bump",
-  run: [
-    "git remote add upstream https://github.com/denoland/deno",
-    "./tools/release/01_bump_crate_versions.ts --${{github.event.inputs.releaseKind}}",
-  ],
-});
-
-const createPr = step.dependsOn(runVersionBump)({
-  name: "Create PR",
-  env: {
-    GITHUB_TOKEN: "${{ secrets.DENOBOT_PAT }}",
-    GH_WORKFLOW_ACTOR: "${{ github.actor }}",
-  },
-  run: [
-    'git config user.email "${{ github.actor }}@users.noreply.github.com"',
-    'git config user.name "${{ github.actor }}"',
-    "./tools/release/02_create_pr.ts",
-  ],
-});
-
 const workflow = createWorkflow({
   name: "version_bump",
   on: {
@@ -65,20 +17,59 @@ const workflow = createWorkflow({
       },
     },
   },
-  jobs: [
-    {
-      id: "build",
-      name: "version bump",
-      runsOn: "ubuntu-24.04",
-      timeoutMinutes: 90,
-      env: {
-        CARGO_TERM_COLOR: "always",
-        RUST_BACKTRACE: "full",
-        RUSTC_FORCE_INCREMENTAL: 1,
-      },
-      steps: [createPr],
+  jobs: [{
+    id: "build",
+    name: "version bump",
+    runsOn: "ubuntu-24.04",
+    timeoutMinutes: 90,
+    env: {
+      CARGO_TERM_COLOR: "always",
+      RUST_BACKTRACE: "full",
+      RUSTC_FORCE_INCREMENTAL: 1,
     },
-  ],
+    steps: [
+      step({
+        name: "Configure git",
+        run: [
+          "git config --global core.symlinks true",
+          "git config --global fetch.parallel 32",
+        ],
+      }),
+      step({
+        name: "Clone repository",
+        uses: "actions/checkout@v6",
+        with: {
+          token: "${{ secrets.DENOBOT_PAT }}",
+          submodules: "recursive",
+        },
+      }),
+      step({ uses: "dsherret/rust-toolchain-file@v1" }),
+      step({
+        name: "Install deno",
+        uses: "denoland/setup-deno@v2",
+        with: { "deno-version": "v2.x" },
+      }),
+      step({
+        name: "Run version bump",
+        run: [
+          "git remote add upstream https://github.com/denoland/deno",
+          "./tools/release/01_bump_crate_versions.ts --${{github.event.inputs.releaseKind}}",
+        ],
+      }),
+      step({
+        name: "Create PR",
+        env: {
+          GITHUB_TOKEN: "${{ secrets.DENOBOT_PAT }}",
+          GH_WORKFLOW_ACTOR: "${{ github.actor }}",
+        },
+        run: [
+          'git config user.email "${{ github.actor }}@users.noreply.github.com"',
+          'git config user.name "${{ github.actor }}"',
+          "./tools/release/02_create_pr.ts",
+        ],
+      }),
+    ],
+  }],
 });
 
 const header =

@@ -2,35 +2,6 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 import { createWorkflow, step } from "jsr:@david/gagen@0.3.0";
 
-const configureGit = step({
-  name: "Configure git",
-  run: [
-    "git config --global core.symlinks true",
-    "git config --global fetch.parallel 32",
-  ],
-});
-
-const clone = step.dependsOn(configureGit)({
-  name: "Clone repository",
-  uses: "actions/checkout@v6",
-});
-
-const installDeno = step.dependsOn(clone)({
-  name: "Install deno",
-  uses: "denoland/setup-deno@v2",
-  with: { "deno-version": "v2.x" },
-});
-
-const createGistUrl = step.dependsOn(installDeno)({
-  name: "Create Gist URL",
-  env: {
-    GITHUB_TOKEN: "${{ secrets.DENOBOT_GIST_PAT }}",
-    GH_WORKFLOW_ACTOR: "${{ github.actor }}",
-  },
-  run:
-    "./tools/release/00_start_release.ts --${{github.event.inputs.releaseKind}}",
-});
-
 const workflow = createWorkflow({
   name: "start_release",
   on: {
@@ -46,20 +17,44 @@ const workflow = createWorkflow({
       },
     },
   },
-  jobs: [
-    {
-      id: "build",
-      name: "start release",
-      runsOn: "ubuntu-24.04",
-      timeoutMinutes: 30,
-      env: {
-        CARGO_TERM_COLOR: "always",
-        RUST_BACKTRACE: "full",
-        RUSTC_FORCE_INCREMENTAL: 1,
-      },
-      steps: [createGistUrl],
+  jobs: [{
+    id: "build",
+    name: "start release",
+    runsOn: "ubuntu-24.04",
+    timeoutMinutes: 30,
+    env: {
+      CARGO_TERM_COLOR: "always",
+      RUST_BACKTRACE: "full",
+      RUSTC_FORCE_INCREMENTAL: 1,
     },
-  ],
+    steps: [
+      step({
+        name: "Configure git",
+        run: [
+          "git config --global core.symlinks true",
+          "git config --global fetch.parallel 32",
+        ],
+      }),
+      step({
+        name: "Clone repository",
+        uses: "actions/checkout@v6",
+      }),
+      step({
+        name: "Install deno",
+        uses: "denoland/setup-deno@v2",
+        with: { "deno-version": "v2.x" },
+      }),
+      step({
+        name: "Create Gist URL",
+        env: {
+          GITHUB_TOKEN: "${{ secrets.DENOBOT_GIST_PAT }}",
+          GH_WORKFLOW_ACTOR: "${{ github.actor }}",
+        },
+        run:
+          "./tools/release/00_start_release.ts --${{github.event.inputs.releaseKind}}",
+      }),
+    ],
+  }],
 });
 
 const header =
