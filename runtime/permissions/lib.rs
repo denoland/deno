@@ -9241,7 +9241,7 @@ mod tests {
       },
     )
     .unwrap();
-    let mut perms = PermissionsContainer::new(Arc::new(parser), perms);
+    let perms = PermissionsContainer::new(Arc::new(parser), perms);
 
     // Matching case should be allowed
     assert!(
