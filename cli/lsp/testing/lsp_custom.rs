@@ -186,3 +186,29 @@ impl lsp::notification::Notification for TestRunProgressNotification {
 
   const METHOD: &'static str = "deno/testRunProgress";
 }
+
+pub const COVERAGE_NOTIFICATION: &str = "deno/testCoverage";
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FileCoverage {
+  pub uri: lsp::Uri,
+  pub covered_lines: Vec<u32>,
+  pub uncovered_lines: Vec<u32>,
+  pub coverage_percent: f64,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CoverageNotificationParams {
+  pub id: u32,
+  pub files: Vec<FileCoverage>,
+}
+
+pub enum CoverageNotification {}
+
+impl lsp::notification::Notification for CoverageNotification {
+  type Params = CoverageNotificationParams;
+
+  const METHOD: &'static str = COVERAGE_NOTIFICATION;
+}
