@@ -59,6 +59,7 @@ const {
   EvalError,
   FunctionPrototypeCall,
   NumberIsFinite,
+  ReflectApply,
   NumberIsNaN,
   ObjectHasOwn,
   ObjectKeys,
@@ -1139,6 +1140,8 @@ function webMessagePortToNodeMessagePort(port: MessagePort) {
       if (name == "message" || name == "messageerror") {
         patchMessagePortIfFound(ev.data);
         listener(ev.data);
+      } else if (ArrayIsArray(ev.detail)) {
+        ReflectApply(listener, undefined, ev.detail);
       } else {
         listener(ev.detail ?? ev.data ?? ev);
       }
@@ -1177,7 +1180,7 @@ function webMessagePortToNodeMessagePort(port: MessagePort) {
     return this;
   };
   port.emit = function (name: string, ...args: unknown[]) {
-    const ev = new CustomEvent(name, { detail: args[0] });
+    const ev = new CustomEvent(name, { detail: args });
     return port.dispatchEvent(ev);
   };
   port[nodeWorkerThreadCloseCb] = () => {

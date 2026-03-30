@@ -605,6 +605,22 @@ Deno.test({
 });
 
 Deno.test({
+  name: "[node/worker_threads] MessagePort.emit passes all args to listeners",
+  fn() {
+    const { port1, port2 } = new workerThreads.MessageChannel();
+    const received: unknown[][] = [];
+    port1.on("custom", (...args: unknown[]) => {
+      received.push(args);
+    });
+    port1.emit("custom", 1, 2, 3);
+    port1.emit("custom", "a");
+    assertEquals(received, [[1, 2, 3], ["a"]]);
+    port1.close();
+    port2.close();
+  },
+});
+
+Deno.test({
   name: "[node/worker_threads] Emits online event",
   async fn() {
     const worker = new workerThreads.Worker(
