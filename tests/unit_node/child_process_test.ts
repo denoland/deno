@@ -1358,14 +1358,3 @@ Deno.test(function spawnSyncShellMetacharactersEscaped() {
   assertEquals(ret.status, 0);
   assertEquals(ret.stdout.trim(), "a&b|c<d>e");
 });
-
-Deno.test(function spawnSyncShellPercentLiteral() {
-  // % characters should not trigger environment variable expansion
-  const ret = spawnSync(
-    Deno.execPath(),
-    ["eval", "console.log(Deno.args[0])", "--", "%PATH%"],
-    { shell: true, encoding: "utf-8" },
-  );
-  assertEquals(ret.status, 0);
-  assertEquals(ret.stdout.trim(), "%PATH%");
-});

@@ -1279,14 +1279,14 @@ function escapeShellArg(arg: string): string {
       return '""';
     }
     // If no special characters, return as-is
-    // Must include cmd.exe metacharacters: &|<>^%!()
-    if (!/[\s"\\&|<>^%!()]/.test(arg)) {
+    // Must include cmd.exe metacharacters: &|<>^!()
+    // Note: % is not included because cmd.exe expands %VAR% even inside
+    // double quotes and there is no reliable escape for it outside batch files.
+    if (!/[\s"\\&|<>^!()]/.test(arg)) {
       return arg;
     }
-    // Escape % by doubling it (cmd.exe expands %VAR% even inside double quotes)
-    let escaped = arg.replace(/%/g, "%%");
     // Escape backslashes before quotes, then escape quotes
-    escaped = escaped.replace(/(\\*)"/g, '$1$1\\"');
+    let escaped = arg.replace(/(\\*)"/g, '$1$1\\"');
     // Escape trailing backslashes
     escaped = escaped.replace(/(\\+)$/, "$1$1");
     return `"${escaped}"`;
