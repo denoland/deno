@@ -2293,7 +2293,7 @@ function write(
     let currentOffset = offset;
     const end = offset + length;
     while (currentOffset - offset < length) {
-      currentOffset += await op_node_fs_write_sync(
+      currentOffset += await op_node_fs_write_deferred(
         fd,
         (buffer as Uint8Array).subarray(currentOffset, end),
       );
@@ -2430,7 +2430,7 @@ function writev(
     let currentOffset = 0;
     // deno-lint-ignore prefer-primordials
     while (currentOffset < buffer.byteLength) {
-      currentOffset += op_node_fs_write_sync(
+      currentOffset += await op_node_fs_write_deferred(
         fd,
         buffer.subarray(currentOffset),
       );

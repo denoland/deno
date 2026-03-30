@@ -69,6 +69,9 @@ fn raw_fd_for_resource(
 
   #[cfg(windows)]
   {
+    // SAFETY: `handle_fd` is a valid OS handle obtained from the resource
+    // table. `open_osfhandle` associates a CRT file descriptor with it so
+    // that node:fs callers receive a POSIX-style fd.
     let crt_fd = unsafe { libc::open_osfhandle(handle_fd as isize, 0) };
     if crt_fd == -1 {
       Err(FsError::Io(std::io::Error::last_os_error()))
@@ -84,8 +87,8 @@ fn ebadf() -> FsError {
     libc::EBADF,
     #[cfg(windows)]
     {
-      // Windows CRT EBADF
-      9
+      // Win32 ERROR_INVALID_HANDLE, which maps to Node's EBADF
+      6
     },
   ))
 }
@@ -841,6 +844,21 @@ pub fn op_node_fs_close(state: &mut OpState, fd: i32) -> Result<(), FsError> {
   state.borrow_mut::<NodeFsState>().open_fds.remove(&fd);
   let resource = state.resource_table.take_any(rid).map_err(|_| ebadf())?;
   resource.close();
+
+  // On Windows, `raw_fd_for_resource` creates a CRT file descriptor via
+  // `open_osfhandle`. The resource close above closes the underlying OS
+  // handle, but we must also close the CRT fd to free that slot.
+  #[cfg(windows)]
+  {
+    // SAFETY: `fd` is a valid CRT file descriptor created by
+    // `open_osfhandle` in `raw_fd_for_resource`. The underlying OS handle
+    // has already been closed by `resource.close()` above; `libc::close`
+    // frees the CRT fd slot.
+    unsafe {
+      libc::close(fd);
+    }
+  }
+
   Ok(())
 }
 
