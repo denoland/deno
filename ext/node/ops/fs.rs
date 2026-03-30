@@ -803,7 +803,6 @@ pub fn op_node_register_fd(
   let std_file = {
     use std::os::windows::io::FromRawHandle;
 
-    use windows_sys::Win32::Foundation::CloseHandle;
     use windows_sys::Win32::Foundation::DUPLICATE_SAME_ACCESS;
     use windows_sys::Win32::Foundation::DuplicateHandle;
     use windows_sys::Win32::System::Threading::GetCurrentProcess;
@@ -811,6 +810,7 @@ pub fn op_node_register_fd(
     // On Windows, `fd` is a CRT file descriptor. Get the underlying OS
     // HANDLE, duplicate it so the StdFile owns an independent copy (the
     // CRT fd keeps the original), then wrap the duplicate.
+    // SAFETY: `fd` is a valid CRT file descriptor passed by the caller.
     let handle = unsafe { libc::get_osfhandle(fd) };
     if handle == -1 {
       return Err(ebadf());
