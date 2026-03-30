@@ -1988,10 +1988,14 @@ fn napi_throw(env: *mut Env, error: napi_value) -> napi_status {
     return napi_pending_exception;
   }
 
+  // Store in last_exception only. Do NOT call throw_exception() here.
+  // The NAPI callback wrapper (call_fn) checks last_exception after
+  // the callback returns and throws via V8 then. Throwing here would
+  // make it impossible to clear with napi_get_and_clear_last_exception
+  // since V8 would still have a pending exception.
   let error = {
     let error = error.unwrap();
     v8::callback_scope!(unsafe scope, env.context());
-    scope.throw_exception(error);
     v8::Global::new(scope, error)
   };
   env.last_exception = Some(error);
@@ -3006,31 +3010,55 @@ fn napi_close_handle_scope(
 #[napi_sym]
 fn napi_open_escapable_handle_scope(
   env: *mut Env,
-  _result: *mut napi_escapable_handle_scope,
+  result: *mut napi_escapable_handle_scope,
 ) -> napi_status {
   let env = check_env!(env);
+  check_arg!(env, result);
+
+  // Allocate a bool to track whether escape has been called.
+  // The pointer is cast to napi_escapable_handle_scope (opaque).
+  let escaped_flag = Box::into_raw(Box::new(false));
+  unsafe {
+    *result = escaped_flag as napi_escapable_handle_scope;
+  }
+
   napi_clear_last_error(env)
 }
 
 #[napi_sym]
 fn napi_close_escapable_handle_scope(
   env: *mut Env,
-  _scope: napi_escapable_handle_scope,
+  scope: napi_escapable_handle_scope,
 ) -> napi_status {
   let env = check_env!(env);
+
+  if !scope.is_null() {
+    // Reclaim the bool we allocated in open.
+    unsafe {
+      let _ = Box::from_raw(scope as *mut bool);
+    }
+  }
+
   napi_clear_last_error(env)
 }
 
 #[napi_sym]
 fn napi_escape_handle<'s>(
   env: *mut Env,
-  _scope: napi_escapable_handle_scope,
+  scope: napi_escapable_handle_scope,
   escapee: napi_value<'s>,
   result: *mut napi_value<'s>,
 ) -> napi_status {
   let env = check_env!(env);
+  check_arg!(env, scope);
+  check_arg!(env, result);
 
+  let escaped_flag = scope as *mut bool;
   unsafe {
+    if *escaped_flag {
+      return napi_set_last_error(env, napi_escape_called_twice);
+    }
+    *escaped_flag = true;
     *result = escapee;
   }
 

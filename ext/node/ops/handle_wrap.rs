@@ -317,6 +317,18 @@ impl HandleWrap {
       }
     };
 
+    // For new-style handles (uv_compat), call uv_compat::uv_close to
+    // properly shut down the libuv handle (e.g. close FDs for TTY).
+    // Without this, the libuv handle cleanup never runs and resources
+    // like PTY master file descriptors are leaked.
+    if let Some(Handle::New(handle)) = &self.handle {
+      // SAFETY: handle is a valid uv_handle_t pointer set during
+      // construction and remains live while HandleWrap is alive.
+      unsafe {
+        uv_compat::uv_close(handle.cast_mut(), None);
+      }
+    }
+
     uv_close(scope, op_state, this, on_close);
     self.state.set(State::Closing);
 

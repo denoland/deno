@@ -23,6 +23,7 @@ use thiserror::Error;
 use super::NpmPackageVersionNotFound;
 use super::UnmetPeerDepDiagnostic;
 use super::common::NpmVersionResolver;
+use super::common::package_info_or_link_fallback;
 use super::graph::Graph;
 use super::graph::GraphDependencyResolver;
 use super::graph::NpmResolutionError;
@@ -314,6 +315,7 @@ impl NpmResolutionSnapshot {
     // convert the snapshot to a traversable graph
     let mut graph = Graph::from_snapshot(self);
 
+    let link_packages = &*options.version_resolver.link_packages;
     let reqs_with_in_graph = options
       .package_reqs
       .iter()
@@ -323,7 +325,9 @@ impl NpmResolutionSnapshot {
         let maybe_info = if let Some(nv) = maybe_nv {
           InfoOrNv::Nv(nv)
         } else {
-          InfoOrNv::InfoResult(api.package_info(&req.name).await)
+          InfoOrNv::InfoResult(
+            package_info_or_link_fallback(api, &req.name, link_packages).await,
+          )
         };
         (req, maybe_info)
       })
