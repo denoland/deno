@@ -207,3 +207,106 @@ Deno.test({
     );
   },
 });
+
+Deno.test({
+  name: "aes gcm rejects empty IV",
+  fn() {
+    for (const algo of ["aes-128-gcm", "aes-256-gcm"] as const) {
+      const keyLen = algo === "aes-128-gcm" ? 16 : 32;
+      assertThrows(
+        () =>
+          crypto.createCipheriv(algo, Buffer.alloc(keyLen), Buffer.alloc(0)),
+        TypeError,
+        "Invalid initialization vector",
+      );
+      assertThrows(
+        () =>
+          crypto.createDecipheriv(algo, Buffer.alloc(keyLen), Buffer.alloc(0)),
+        TypeError,
+        "Invalid initialization vector",
+      );
+    }
+  },
+});
+
+Deno.test({
+  name: "aes gcm setAuthTag validates tag length",
+  fn() {
+    const invalidLengths = [0, 1, 2, 3, 5, 6, 7, 9, 10, 11, 17];
+    for (const length of invalidLengths) {
+      assertThrows(
+        () => {
+          const d = crypto.createDecipheriv(
+            "aes-128-gcm",
+            Buffer.alloc(16),
+            Buffer.alloc(12),
+          );
+          d.setAuthTag(Buffer.alloc(length));
+        },
+        TypeError,
+        "Invalid authentication tag length",
+      );
+    }
+
+    // Valid lengths should not throw
+    for (const length of [4, 8, 12, 13, 14, 15, 16]) {
+      const d = crypto.createDecipheriv(
+        "aes-128-gcm",
+        Buffer.alloc(16),
+        Buffer.alloc(12),
+      );
+      d.setAuthTag(Buffer.alloc(length));
+    }
+  },
+});
+
+Deno.test({
+  name: "aes gcm setAuthTag cannot be called twice",
+  fn() {
+    const d = crypto.createDecipheriv(
+      "aes-128-gcm",
+      Buffer.alloc(16),
+      Buffer.alloc(12),
+    );
+    d.setAuthTag(Buffer.alloc(16));
+    assertThrows(
+      () => d.setAuthTag(Buffer.alloc(16)),
+      Error,
+      "Invalid state",
+    );
+  },
+});
+
+Deno.test({
+  name: "aes gcm setAAD cannot be called after final",
+  fn() {
+    const cipher = crypto.createCipheriv(
+      "aes-128-gcm",
+      Buffer.alloc(16),
+      Buffer.alloc(12),
+    );
+    cipher.final();
+    assertThrows(
+      () => cipher.setAAD(Buffer.from("aad")),
+      Error,
+      "Invalid state",
+    );
+  },
+});
+
+Deno.test({
+  name: "aes gcm getAuthTag before final throws state error",
+  fn() {
+    const cipher = crypto.createCipheriv(
+      "aes-128-gcm",
+      Buffer.alloc(16),
+      Buffer.alloc(12),
+    );
+    cipher.update("data", "utf8");
+    assertThrows(
+      () => cipher.getAuthTag(),
+      Error,
+      "Invalid state",
+    );
+  },
+});
