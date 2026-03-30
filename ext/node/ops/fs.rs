@@ -30,9 +30,10 @@ use tokio::task::JoinError;
 use crate::ops::constant::UV_FS_COPYFILE_EXCL;
 
 /// State tracking file descriptors opened through node:fs.
-/// Maps real OS file descriptors to Deno ResourceIds.
+/// Maps real OS file descriptors to the underlying File trait object,
+/// bypassing the resource table entirely.
 pub struct NodeFsState {
-  pub open_fds: HashMap<i32, ResourceId>,
+  pub open_fds: HashMap<i32, Rc<dyn deno_io::fs::File>>,
 }
 
 impl NodeFsState {
@@ -49,16 +50,15 @@ impl Default for NodeFsState {
   }
 }
 
-/// Extract the real OS file descriptor from a newly-created resource.
+/// Extract the real OS file descriptor from a File trait object.
 /// On Unix, this is the raw fd (already an i32).
-/// On Windows, this converts the HANDLE to a CRT file descriptor.
-fn raw_fd_for_resource(
-  state: &OpState,
-  resource_id: ResourceId,
-) -> Result<i32, FsError> {
-  let handle_fd = state.resource_table.get_fd(resource_id).map_err(|_| {
+/// On Windows, this duplicates the OS HANDLE and converts it to a CRT
+/// file descriptor. The duplicate ensures the CRT fd and the File trait
+/// object own independent handles, avoiding double-close on cleanup.
+fn raw_fd_for_file(file: Rc<dyn deno_io::fs::File>) -> Result<i32, FsError> {
+  let handle_fd = file.backing_fd().ok_or_else(|| {
     FsError::Io(std::io::Error::other(
-      "Failed to get OS file descriptor from resource",
+      "Failed to get OS file descriptor from file",
     ))
   })?;
 
@@ -69,15 +69,42 @@ fn raw_fd_for_resource(
 
   #[cfg(windows)]
   {
-    // SAFETY: `handle_fd` is a valid OS handle obtained from the resource
-    // table. `open_osfhandle` associates a CRT file descriptor with it so
-    // that node:fs callers receive a POSIX-style fd.
-    let crt_fd = unsafe { libc::open_osfhandle(handle_fd as isize, 0) };
-    if crt_fd == -1 {
-      Err(FsError::Io(std::io::Error::last_os_error()))
-    } else {
-      Ok(crt_fd)
+    use windows_sys::Win32::Foundation::CloseHandle;
+    use windows_sys::Win32::Foundation::DUPLICATE_SAME_ACCESS;
+    use windows_sys::Win32::Foundation::DuplicateHandle;
+    use windows_sys::Win32::System::Threading::GetCurrentProcess;
+
+    // Duplicate the OS handle so the CRT fd owns an independent copy.
+    // This prevents double-close: dropping the Rc<dyn File> closes the
+    // original handle, and libc::close(crt_fd) closes the duplicate.
+    let mut dup_handle = std::ptr::null_mut();
+    // SAFETY: `handle_fd` is a valid OS handle from the file. We duplicate
+    // it into the current process with the same access rights.
+    let ok = unsafe {
+      DuplicateHandle(
+        GetCurrentProcess(),
+        handle_fd as _,
+        GetCurrentProcess(),
+        &mut dup_handle,
+        0,
+        0,
+        DUPLICATE_SAME_ACCESS,
+      )
+    };
+    if ok == 0 {
+      return Err(FsError::Io(std::io::Error::last_os_error()));
     }
+
+    // SAFETY: `dup_handle` is a valid duplicated OS handle.
+    // `open_osfhandle` associates a CRT file descriptor with it so
+    // that node:fs callers receive a POSIX-style fd.
+    let crt_fd = unsafe { libc::open_osfhandle(dup_handle as isize, 0) };
+    if crt_fd == -1 {
+      // SAFETY: Clean up the duplicated handle on failure.
+      unsafe { CloseHandle(dup_handle) };
+      return Err(FsError::Io(std::io::Error::last_os_error()));
+    }
+    Ok(crt_fd)
   }
 }
 
@@ -93,27 +120,24 @@ fn ebadf() -> FsError {
   ))
 }
 
-/// Look up the internal resource ID for a given OS file descriptor.
-/// Stdio fds (0, 1, 2) map to resource IDs 0, 1, 2.
-fn resource_for_fd(state: &OpState, fd: i32) -> Result<ResourceId, FsError> {
+/// Get the File trait object for an OS file descriptor.
+/// Stdio fds (0, 1, 2) are looked up from the resource table (they are
+/// pre-registered at RIDs 0, 1, 2). All other fds are looked up directly
+/// from NodeFsState, bypassing the resource table.
+fn file_for_fd(
+  state: &OpState,
+  fd: i32,
+) -> Result<Rc<dyn deno_io::fs::File>, FsError> {
   if (0..=2).contains(&fd) {
-    return Ok(fd as ResourceId);
+    return FileResource::get_file(state, fd as deno_core::ResourceId)
+      .map_err(|_| ebadf());
   }
   state
     .borrow::<NodeFsState>()
     .open_fds
     .get(&fd)
-    .copied()
+    .cloned()
     .ok_or_else(ebadf)
-}
-
-/// Get the File trait object for an OS file descriptor.
-fn file_for_fd(
-  state: &OpState,
-  fd: i32,
-) -> Result<Rc<dyn deno_io::fs::File>, FsError> {
-  let resource_id = resource_for_fd(state, fd)?;
-  FileResource::get_file(state, resource_id).map_err(|_| ebadf())
 }
 
 /// When `sync_fs` is enabled, `FileSystemRc` is `Arc` (Send) and we can
@@ -337,11 +361,8 @@ pub fn op_node_open_sync(
     Some("node:fs.openSync"),
   )?;
   let file = fs.open_sync(&path, options)?;
-  let rid = state
-    .resource_table
-    .add(FileResource::new(file, "fsFile".to_string()));
-  let fd = raw_fd_for_resource(state, rid)?;
-  state.borrow_mut::<NodeFsState>().open_fds.insert(fd, rid);
+  let fd = raw_fd_for_file(file.clone())?;
+  state.borrow_mut::<NodeFsState>().open_fds.insert(fd, file);
   Ok(fd)
 }
 
@@ -368,13 +389,10 @@ pub async fn op_node_open(
     )
   };
   let file = fs.open_async(path.as_owned(), options).await?;
+  let fd = raw_fd_for_file(file.clone())?;
 
   let mut state = state.borrow_mut();
-  let rid = state
-    .resource_table
-    .add(FileResource::new(file, "fsFile".to_string()));
-  let fd = raw_fd_for_resource(&state, rid)?;
-  state.borrow_mut::<NodeFsState>().open_fds.insert(fd, rid);
+  state.borrow_mut::<NodeFsState>().open_fds.insert(fd, file);
   Ok(fd)
 }
 #[derive(Debug, Serialize)]
@@ -840,20 +858,23 @@ pub async fn op_node_rmdir(
 
 #[op2(fast)]
 pub fn op_node_fs_close(state: &mut OpState, fd: i32) -> Result<(), FsError> {
-  let rid = resource_for_fd(state, fd)?;
-  state.borrow_mut::<NodeFsState>().open_fds.remove(&fd);
-  let resource = state.resource_table.take_any(rid).map_err(|_| ebadf())?;
-  resource.close();
+  let file = state
+    .borrow_mut::<NodeFsState>()
+    .open_fds
+    .remove(&fd)
+    .ok_or_else(ebadf)?;
+  // Dropping the Rc<dyn File> will close the underlying OS file descriptor
+  // when the reference count reaches zero (via std::fs::File Drop).
+  drop(file);
 
-  // On Windows, `raw_fd_for_resource` creates a CRT file descriptor via
-  // `open_osfhandle`. The resource close above closes the underlying OS
-  // handle, but we must also close the CRT fd to free that slot.
+  // On Windows, `raw_fd_for_file` creates a CRT file descriptor via
+  // `open_osfhandle` on a duplicated OS handle. The File Drop above closes
+  // the original handle; `libc::close` closes the duplicate and frees the
+  // CRT fd slot.
   #[cfg(windows)]
   {
     // SAFETY: `fd` is a valid CRT file descriptor created by
-    // `open_osfhandle` in `raw_fd_for_resource`. The underlying OS handle
-    // has already been closed by `resource.close()` above; `libc::close`
-    // frees the CRT fd slot.
+    // `open_osfhandle` in `raw_fd_for_file`.
     unsafe {
       libc::close(fd);
     }

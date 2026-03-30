@@ -163,6 +163,7 @@ export function read(
         callback!(null, nread ?? 0, buffer);
       },
       (error: Error) => {
+        op_node_fs_seek_sync(fd, currentPosition, 0); // SeekMode.Start = 0
         callback!(error, null);
       },
     );
@@ -260,14 +261,16 @@ export function readSync(
     op_node_fs_seek_sync(fd, position, 0); // SeekMode.Start = 0
   }
 
-  const numberOfBytesRead = op_node_fs_read_sync(
-    fd,
-    arrayBufferViewToUint8Array(buffer).subarray(offset, offset + length!),
-  );
+  try {
+    const numberOfBytesRead = op_node_fs_read_sync(
+      fd,
+      arrayBufferViewToUint8Array(buffer).subarray(offset, offset + length!),
+    );
 
-  if (typeof position === "number" && position >= 0) {
-    op_node_fs_seek_sync(fd, currentPosition, 0); // SeekMode.Start = 0
+    return numberOfBytesRead ?? 0;
+  } finally {
+    if (typeof position === "number" && position >= 0) {
+      op_node_fs_seek_sync(fd, currentPosition, 0); // SeekMode.Start = 0
+    }
   }
-
-  return numberOfBytesRead ?? 0;
 }

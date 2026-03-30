@@ -14,29 +14,8 @@ import { denoErrorToNodeError } from "ext:deno_node/internal/errors.ts";
 import { getValidatedFd } from "ext:deno_node/internal/fs/utils.mjs";
 import { op_node_fs_fstat, op_node_fs_fstat_sync } from "ext:core/ops";
 
-function nodeFsStatToFileInfo(stat: {
-  isFile: boolean;
-  isDirectory: boolean;
-  isSymlink: boolean;
-  size: number;
-  mtimeMs: number | null;
-  atimeMs: number | null;
-  birthtimeMs: number | null;
-  ctimeMs: number | null;
-  dev: number;
-  ino: number | null;
-  mode: number;
-  nlink: number | null;
-  uid: number;
-  gid: number;
-  rdev: number;
-  blksize: number;
-  blocks: number | null;
-  isBlockDevice: boolean;
-  isCharDevice: boolean;
-  isFifo: boolean;
-  isSocket: boolean;
-}) {
+// deno-lint-ignore no-explicit-any
+function nodeFsStatToFileInfo(stat: any) {
   return {
     isFile: stat.isFile,
     isDirectory: stat.isDirectory,
@@ -92,9 +71,9 @@ export function fstat(
   if (!callback) throw new Error("No callback function supplied");
 
   op_node_fs_fstat(fd).then(
-    (stat: ReturnType<typeof op_node_fs_fstat_sync>) =>
+    (stat) =>
       callback(null, CFISBIS(nodeFsStatToFileInfo(stat), options.bigint)),
-    (err: Error) => callback(denoErrorToNodeError(err, { syscall: "fstat" })),
+    (err) => callback(denoErrorToNodeError(err, { syscall: "fstat" })),
   );
 }
 
