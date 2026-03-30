@@ -973,7 +973,7 @@ pub struct DocumentModule {
 }
 
 impl DocumentModule {
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "construction")]
   pub fn new(
     document: &Document,
     specifier: Arc<Url>,
@@ -1353,9 +1353,10 @@ impl DocumentModules {
       (key, value)
     } else {
       self.compiler_options_resolver.entry_for_specifier(
-        if scheme != "file" && scope.is_some() {
-          #[allow(clippy::unnecessary_unwrap)]
-          scope.unwrap()
+        if scheme != "file"
+          && let Some(scope) = scope
+        {
+          scope
         } else {
           &specifier
         },
@@ -2304,7 +2305,6 @@ fn parse_and_analyze_module(
   )
 }
 
-#[allow(clippy::result_large_err)]
 fn parse_source(
   specifier: ModuleSpecifier,
   text: Arc<str>,

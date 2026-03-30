@@ -7917,10 +7917,8 @@ fn lsp_quote_style_from_workspace_settings() {
   client.shutdown();
 }
 
-// TODO(nayeemrmn): Enable for tsgo when the upstream commit lands in our fork:
-// https://github.com/microsoft/typescript-go/commit/ffa96d57ad5af333fe66f7cb1b7a4f3041000d8e
-#[test(timeout = 300)]
-fn lsp_code_actions_organize_imports() {
+#[test(timeout = 300, fork_with_suffix = "_tsgo")]
+fn lsp_code_actions_organize_imports(use_tsgo: bool) {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
   let file = temp_dir.source_file(
@@ -7933,8 +7931,7 @@ import unused from "./c.ts";
 console.log(b, a, c, d, y, z);
 "#,
   );
-  let uri = file.uri();
-  let mut client = context.new_lsp_command().build();
+  let mut client = context.new_lsp_command().set_use_tsgo(use_tsgo).build();
   client.initialize_default();
   client.did_open_file(&file);
 
@@ -7942,7 +7939,7 @@ console.log(b, a, c, d, y, z);
   let res = client.write_request(
     "textDocument/codeAction",
     json!({
-      "textDocument": { "uri": uri },
+      "textDocument": { "uri": file.uri() },
       "range": {
         "start": { "line": 0, "character": 0 },
         "end": { "line": 0, "character": 0 }
@@ -7956,61 +7953,52 @@ console.log(b, a, c, d, y, z);
 
   let expected = json!([
     {
-      "title": "Organize imports",
+      "title": "Organize Imports",
       "kind": "source.organizeImports",
       "edit": {
-        "documentChanges": [
-          {
-            "textDocument": {
-              "uri": uri,
-              "version": 1
+        "changes": {
+          file.uri().as_str(): [
+            {
+              "range": {
+                "start": { "line": 0, "character": 0 },
+                "end": { "line": 1, "character": 0 },
+              },
+              // All organized imports in the first replacement:
+              // files sorted alphabetically, imports within files sorted alphabetically
+              "newText": concat!(
+                "import { d } from \"./a.ts\";\n",
+                "import { a, b, c } from \"./b.ts\";\n",
+                "import { y, z } from \"./z.ts\";\n",
+              ),
             },
-            "edits": [
-              {
-                "range": {
-                  "start": { "line": 0, "character": 0 },
-                  "end": { "line": 1, "character": 0 }
-                },
-                // All organized imports in the first replacement:
-                // files sorted alphabetically, imports within files sorted alphabetically
-                "newText": concat!(
-                  "import { d } from \"./a.ts\";\n",
-                  "import { a, b, c } from \"./b.ts\";\n",
-                  "import { y, z } from \"./z.ts\";\n",
-                )
+            {
+              "range": {
+                "start": { "line": 1, "character": 0 },
+                "end": { "line": 2, "character": 0 },
               },
-              {
-                "range": {
-                  "start": { "line": 1, "character": 0 },
-                  "end": { "line": 2, "character": 0 }
-                },
-                // Second line removed (replaced by organized imports above)
-                "newText": ""
+              // Second line removed (replaced by organized imports above)
+              "newText": "",
+            },
+            {
+              "range": {
+                "start": { "line": 2, "character": 0 },
+                "end": { "line": 3, "character": 0 },
               },
-              {
-                "range": {
-                  "start": { "line": 2, "character": 0 },
-                  "end": { "line": 3, "character": 0 }
-                },
-                // Third line removed (replaced by organized imports above)
-                "newText": ""
+              // Third line removed (replaced by organized imports above)
+              "newText": "",
+            },
+            {
+              "range": {
+                "start": { "line": 3, "character": 0 },
+                "end": { "line": 4, "character": 0 },
               },
-              {
-                "range": {
-                  "start": { "line": 3, "character": 0 },
-                  "end": { "line": 4, "character": 0 }
-                },
-                // Unused import from "./c.ts" is removed
-                "newText": ""
-              }
-            ]
-          }
-        ]
+              // Unused import from "./c.ts" is removed
+              "newText": "",
+            },
+          ],
+        },
       },
-      "data": {
-        "uri": uri
-      }
-    }
+    },
   ]);
 
   assert_eq!(res, expected);
@@ -8078,110 +8066,8 @@ console.log(a, b, c);
   client.shutdown();
 }
 
-// TODO(nayeemrmn): Enable for tsgo when the upstream commit lands in our fork:
-// https://github.com/microsoft/typescript-go/commit/ffa96d57ad5af333fe66f7cb1b7a4f3041000d8e
-#[test(timeout = 300)]
-fn lsp_code_actions_organize_imports_with_diagnostics() {
-  let context = TestContextBuilder::new().use_temp_cwd().build();
-  let temp_dir = context.temp_dir();
-  // File with unordered imports and a type error
-  let file = temp_dir.source_file(
-    "file.ts",
-    r#"import { b } from "./b.ts";
-import { a } from "./a.ts";
-import unused from "./c.ts";
-
-// Type error: using undeclared variable
-console.log(undeclaredVariable);
-"#,
-  );
-  let uri = file.uri();
-  let mut client = context.new_lsp_command().build();
-  client.initialize_default();
-  client.did_open_file(&file);
-
-  // Request "Organize Imports" action with diagnostics indicating an error
-  let res = client.write_request(
-    "textDocument/codeAction",
-    json!({
-      "textDocument": { "uri": uri },
-      "range": {
-        "start": { "line": 0, "character": 0 },
-        "end": { "line": 0, "character": 0 }
-      },
-      "context": {
-        "diagnostics": [
-          {
-            "range": {
-              "start": { "line": 5, "character": 12 },
-              "end": { "line": 5, "character": 29 }
-            },
-            "severity": 1,
-            "message": "Cannot find name 'undeclaredVariable'.",
-            "source": "deno-ts"
-          }
-        ],
-        "only": ["source.organizeImports"]
-      }
-    }),
-  );
-
-  let expected = json!([
-    {
-      "title": "Organize imports",
-      "kind": "source.organizeImports",
-      "edit": {
-        "documentChanges": [
-          {
-            "textDocument": {
-              "uri": uri,
-              "version": 1
-            },
-            "edits": [
-              {
-                "range": {
-                  "start": { "line": 0, "character": 0 },
-                  "end": { "line": 1, "character": 0 }
-                },
-                // Imports sorted alphabetically, but unused imports NOT removed due to error
-                "newText": concat!(
-                  "import { a } from \"./a.ts\";\n",
-                  "import { b } from \"./b.ts\";\n",
-                  "import unused from \"./c.ts\";\n",
-                )
-              },
-              {
-                "range": {
-                  "start": { "line": 1, "character": 0 },
-                  "end": { "line": 2, "character": 0 }
-                },
-                "newText": ""
-              },
-              {
-                "range": {
-                  "start": { "line": 2, "character": 0 },
-                  "end": { "line": 3, "character": 0 }
-                },
-                "newText": ""
-              }
-            ]
-          }
-        ]
-      },
-      "data": {
-        "uri": uri
-      }
-    }
-  ]);
-
-  assert_eq!(res, expected);
-  client.shutdown();
-}
-
-// TODO(nayeemrmn): Enable for tsgo when the upstream commit lands in our fork:
-// https://github.com/microsoft/typescript-go/commit/ffa96d57ad5af333fe66f7cb1b7a4f3041000d8e
-#[test(timeout = 300)]
-fn lsp_code_actions_organize_imports_in_a_workspace() {
+#[test(timeout = 300, fork_with_suffix = "_tsgo")]
+fn lsp_code_actions_organize_imports_in_a_workspace(use_tsgo: bool) {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
   temp_dir.write(
@@ -8222,8 +8108,7 @@ console.log(other, submodule);
     .to_string(),
   );
   temp_dir.source_file("other/other.ts", r#"export const other = 0;"#);
-  let uri = file.uri();
-  let mut client = context.new_lsp_command().build();
+  let mut client = context.new_lsp_command().set_use_tsgo(use_tsgo).build();
   client.initialize_default();
   client.did_open_file(&file);
 
@@ -8231,7 +8116,7 @@ console.log(other, submodule);
   let res = client.write_request(
     "textDocument/codeAction",
     json!({
-      "textDocument": { "uri": uri },
+      "textDocument": { "uri": file.uri() },
       "range": {
         "start": { "line": 0, "character": 0 },
         "end": { "line": 0, "character": 0 }
@@ -8245,42 +8130,33 @@ console.log(other, submodule);
 
   let expected = json!([
     {
-      "title": "Organize imports",
+      "title": "Organize Imports",
       "kind": "source.organizeImports",
       "edit": {
-        "documentChanges": [
-          {
-            "textDocument": {
-              "uri": uri,
-              "version": 1
-            },
+        "changes": {
+          file.uri().as_str(): [
             // Relative imports come after scoped imports.
-            "edits": [
-              {
-                "range": {
-                  "start": { "line": 0, "character": 0 },
-                  "end": { "line": 1, "character": 0 }
-                },
-                "newText": concat!(
-                  "import { other } from \"@scope/other\";\n",
-                  "import { submodule } from \"./submodule.ts\";\n",
-                )
+            {
+              "range": {
+                "start": { "line": 0, "character": 0 },
+                "end": { "line": 1, "character": 0 },
               },
-              {
-                "range": {
-                  "start": { "line": 1, "character": 0 },
-                  "end": { "line": 2, "character": 0 }
-                },
-                "newText": ""
-              }
-            ]
-          }
-        ]
+              "newText": concat!(
+                "import { other } from \"@scope/other\";\n",
+                "import { submodule } from \"./submodule.ts\";\n",
+              ),
+            },
+            {
+              "range": {
+                "start": { "line": 1, "character": 0 },
+                "end": { "line": 2, "character": 0 },
+              },
+              "newText": "",
+            },
+          ],
+        },
       },
-      "data": {
-        "uri": uri
-      }
-    }
+    },
   ]);
 
   assert_eq!(res, expected);
@@ -10285,6 +10161,66 @@ fn lsp_completions_auto_import_and_quick_fix_with_import_map() {
         }
       ]
     })
+  );
+  client.shutdown();
+}
+
+// Regression test for https://github.com/denoland/deno/issues/32288
+// and https://github.com/denoland/deno/issues/31590.
+// When an import map has a meaningful alias like "@app/": "./src/",
+// auto-imports should suggest the alias even when the referrer is
+// inside the mapped directory.
+#[test(timeout = 300)]
+fn lsp_auto_import_local_dir_import_map_alias() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write(
+    "deno.json",
+    json!({
+      "imports": {
+        "@app/": "./src/",
+      },
+    })
+    .to_string(),
+  );
+  temp_dir.create_dir_all("src/islands/components");
+  temp_dir.create_dir_all("src/routes");
+  temp_dir.write(
+    "src/islands/components/Button.tsx",
+    "export function Button() { return 'button'; }\n",
+  );
+  let file = temp_dir.source_file("src/routes/index.ts", "Button;\n");
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  let list = client.get_completion_list(
+    file.uri().as_str(),
+    (0, 6),
+    json!({ "triggerKind": 1 }),
+  );
+  let item = list
+    .items
+    .iter()
+    .find(|i| i.label == "Button")
+    .expect("should have a Button completion item");
+  let res = client.write_request("completionItem/resolve", json!(item));
+  assert_eq!(
+    res,
+    json!({
+      "label": "Button",
+      "labelDetails": { "description": "@app/islands/components/Button.tsx" },
+      "kind": 3,
+      "detail": "Add import from \"@app/islands/components/Button.tsx\"\n\nfunction Button(): string",
+      "sortText": "\u{ffff}16_0",
+      "additionalTextEdits": [
+        {
+          "range": {
+            "start": { "line": 0, "character": 0 },
+            "end": { "line": 0, "character": 0 },
+          },
+          "newText": "import { Button } from \"@app/islands/components/Button.tsx\";\n\n",
+        },
+      ],
+    }),
   );
   client.shutdown();
 }
@@ -12450,28 +12386,10 @@ fn lsp_format_mbc(use_tsgo: bool) {
     res,
     json!([{
       "range": {
-        "start": { "line": 0, "character": 12 },
-        "end": { "line": 0, "character": 13 }
+        "start": { "line": 0, "character": 0 },
+        "end": { "line": 2, "character": 0 }
       },
-      "newText": "\""
-    }, {
-      "range": {
-        "start": { "line": 0, "character": 21 },
-        "end": { "line": 0, "character": 22 }
-      },
-      "newText": "\";"
-    }, {
-      "range": {
-        "start": { "line": 1, "character": 12 },
-        "end": { "line": 1, "character": 13 }
-      },
-      "newText": "\""
-    }, {
-      "range": {
-        "start": { "line": 1, "character": 23 },
-        "end": { "line": 1, "character": 25 }
-      },
-      "newText": "\");"
+      "newText": "const bar = \"👍🇺🇸😃\";\nconsole.log(\"hello deno\");\n"
     }])
   );
   client.shutdown();
@@ -12612,9 +12530,9 @@ fn lsp_format_untitled(use_tsgo: bool) {
       {
         "range": {
           "start": { "line": 0, "character": 0 },
-          "end": { "line": 0, "character": 2 },
+          "end": { "line": 1, "character": 0 },
         },
-        "newText": "",
+        "newText": "console.log();\n",
       },
     ])
   );
@@ -12648,22 +12566,10 @@ fn lsp_format_json(use_tsgo: bool) {
     json!([
       {
         "range": {
-          "start": { "line": 0, "character": 1 },
-          "end": { "line": 0, "character": 1 }
-        },
-        "newText": " "
-      }, {
-        "range": {
-          "start": { "line": 0, "character": 7 },
-          "end": { "line": 0, "character": 7 }
-        },
-        "newText": " "
-      }, {
-        "range": {
-          "start": { "line": 0, "character": 14 },
+          "start": { "line": 0, "character": 0 },
           "end": { "line": 0, "character": 15 }
         },
-        "newText": " }\n"
+        "newText": "{ \"key\": \"value\" }\n"
       }
     ])
   );
@@ -12701,9 +12607,9 @@ fn lsp_format_vscode_userdata(use_tsgo: bool) {
       {
         "range": {
           "start": { "line": 0, "character": 0 },
-          "end": { "line": 0, "character": 2 },
+          "end": { "line": 1, "character": 0 },
         },
-        "newText": "",
+        "newText": "// foo\n",
       },
     ]),
   );
@@ -12738,9 +12644,9 @@ fn lsp_format_editor_options(use_tsgo: bool) {
       {
         "range": {
           "start": { "line": 1, "character": 0 },
-          "end": { "line": 1, "character": 0 },
+          "end": { "line": 2, "character": 0 },
         },
-        "newText": "  ",
+        "newText": "    console.log();\n",
       },
     ])
   );
@@ -12762,9 +12668,9 @@ fn lsp_format_editor_options(use_tsgo: bool) {
       {
         "range": {
           "start": { "line": 1, "character": 0 },
-          "end": { "line": 1, "character": 2 },
+          "end": { "line": 2, "character": 0 },
         },
-        "newText": "\t",
+        "newText": "\tconsole.log();\n",
       },
     ])
   );
@@ -12869,16 +12775,10 @@ fn lsp_format_markdown(use_tsgo: bool) {
     json!([
       {
         "range": {
-          "start": { "line": 0, "character": 1 },
-          "end": { "line": 0, "character": 3 }
-        },
-        "newText": ""
-      }, {
-        "range": {
-          "start": { "line": 0, "character": 15 },
+          "start": { "line": 0, "character": 0 },
           "end": { "line": 0, "character": 15 }
         },
-        "newText": "\n"
+        "newText": "# Hello World\n"
       }
     ])
   );
@@ -12908,16 +12808,9 @@ fn lsp_format_html(use_tsgo: bool) {
       {
         "range": {
           "start": { "line": 0, "character": 0 },
-          "end": { "line": 0, "character": 2 },
-        },
-        "newText": "",
-      },
-      {
-        "range": {
-          "start": { "line": 0, "character": 15 },
           "end": { "line": 0, "character": 15 },
         },
-        "newText": "\n",
+        "newText": "<html></html>\n",
       },
     ]),
   );
@@ -12935,7 +12828,9 @@ fn lsp_format_css(use_tsgo: bool) {
   );
   let sass_file = source_file(
     temp_dir.path().join("file.sass"),
-    "  $font-stack: Helvetica, sans-serif\n\nbody\n  font: 100% $font-stack\n",
+    // Note: avoid $var references in property values in Sass indented syntax
+    // due to upstream raffia regression: https://github.com/g-plane/raffia/issues/13
+    "  $color: red\n\nbody\n  color: blue\n  margin: 0\n",
   );
   let less_file = source_file(
     temp_dir.path().join("file.less"),
@@ -12959,9 +12854,9 @@ fn lsp_format_css(use_tsgo: bool) {
       {
         "range": {
           "start": { "line": 0, "character": 0 },
-          "end": { "line": 0, "character": 2 },
+          "end": { "line": 1, "character": 0 },
         },
-        "newText": "",
+        "newText": "foo {}\n",
       },
     ]),
   );
@@ -12981,9 +12876,9 @@ fn lsp_format_css(use_tsgo: bool) {
       {
         "range": {
           "start": { "line": 0, "character": 0 },
-          "end": { "line": 0, "character": 2 },
+          "end": { "line": 1, "character": 0 },
         },
-        "newText": "",
+        "newText": "$font-stack: Helvetica, sans-serif;\n",
       },
     ]),
   );
@@ -13003,9 +12898,9 @@ fn lsp_format_css(use_tsgo: bool) {
       {
         "range": {
           "start": { "line": 0, "character": 0 },
-          "end": { "line": 0, "character": 2 },
+          "end": { "line": 1, "character": 0 },
         },
-        "newText": "",
+        "newText": "$color: red\n",
       },
     ]),
   );
@@ -13025,9 +12920,9 @@ fn lsp_format_css(use_tsgo: bool) {
       {
         "range": {
           "start": { "line": 0, "character": 0 },
-          "end": { "line": 0, "character": 2 },
+          "end": { "line": 1, "character": 0 },
         },
-        "newText": "",
+        "newText": "@width: 10px;\n",
       },
     ]),
   );
@@ -13057,16 +12952,9 @@ fn lsp_format_yaml(use_tsgo: bool) {
       {
         "range": {
           "start": { "line": 0, "character": 0 },
-          "end": { "line": 0, "character": 2 },
-        },
-        "newText": "",
-      },
-      {
-        "range": {
-          "start": { "line": 0, "character": 8 },
           "end": { "line": 0, "character": 8 },
         },
-        "newText": "\n",
+        "newText": "foo: 1\n",
       },
     ]),
   );
@@ -13106,16 +12994,9 @@ fn lsp_format_sql(use_tsgo: bool) {
       {
         "range": {
           "start": { "line": 0, "character": 0 },
-          "end": { "line": 0, "character": 2 },
-        },
-        "newText": "",
-      },
-      {
-        "range": {
-          "start": { "line": 0, "character": 52 },
           "end": { "line": 0, "character": 52 },
         },
-        "newText": "\n",
+        "newText": "CREATE TABLE item (id int NOT NULL IDENTITY(1, 1))\n",
       },
     ]),
   );
@@ -13171,9 +13052,9 @@ fn lsp_format_component(use_tsgo: bool) {
       {
         "range": {
           "start": { "line": 0, "character": 0 },
-          "end": { "line": 0, "character": 2 },
+          "end": { "line": 1, "character": 0 },
         },
-        "newText": "",
+        "newText": "<script module>\n",
       },
     ]),
   );
@@ -13193,9 +13074,9 @@ fn lsp_format_component(use_tsgo: bool) {
       {
         "range": {
           "start": { "line": 0, "character": 0 },
-          "end": { "line": 0, "character": 2 },
+          "end": { "line": 1, "character": 0 },
         },
-        "newText": "",
+        "newText": "<script setup>\n",
       },
     ]),
   );
@@ -13215,9 +13096,9 @@ fn lsp_format_component(use_tsgo: bool) {
       {
         "range": {
           "start": { "line": 0, "character": 0 },
-          "end": { "line": 0, "character": 2 },
+          "end": { "line": 1, "character": 0 },
         },
-        "newText": "",
+        "newText": "---\n",
       },
     ]),
   );
@@ -13237,9 +13118,9 @@ fn lsp_format_component(use_tsgo: bool) {
       {
         "range": {
           "start": { "line": 0, "character": 0 },
-          "end": { "line": 0, "character": 2 },
+          "end": { "line": 1, "character": 0 },
         },
-        "newText": "",
+        "newText": "{{ layout \"foo.vto\" }}\n",
       },
     ]),
   );
@@ -13259,9 +13140,9 @@ fn lsp_format_component(use_tsgo: bool) {
       {
         "range": {
           "start": { "line": 0, "character": 0 },
-          "end": { "line": 0, "character": 2 },
+          "end": { "line": 1, "character": 0 },
         },
-        "newText": "",
+        "newText": "{% block header %}\n",
       },
     ]),
   );
@@ -13325,51 +13206,9 @@ fn lsp_format_with_config(use_tsgo: bool) {
     json!([{
         "range": {
           "start": { "line": 1, "character": 0 },
-          "end": { "line": 1, "character": 0 }
-        },
-        "newText": "\t"
-      }, {
-        "range": {
-          "start": { "line": 1, "character": 23 },
-          "end": { "line": 1, "character": 24 }
-        },
-        "newText": "\n\t\t'"
-      }, {
-        "range": {
-          "start": { "line": 1, "character": 73 },
-          "end": { "line": 1, "character": 74 }
-        },
-        "newText": "',\n\t"
-      }, {
-        "range": {
-          "start": { "line": 2, "character": 0 },
-          "end": { "line": 2, "character": 0 }
-        },
-        "newText": "\t"
-      }, {
-        "range": {
-          "start": { "line": 3, "character": 0 },
-          "end": { "line": 3, "character": 0 }
-        },
-        "newText": "\t"
-      }, {
-        "range": {
-          "start": { "line": 3, "character": 12 },
-          "end": { "line": 3, "character": 13 }
-        },
-        "newText": "'"
-      }, {
-        "range": {
-          "start": { "line": 3, "character": 22 },
-          "end": { "line": 3, "character": 24 }
-        },
-        "newText": "');"
-      }, {
-        "range": {
-          "start": { "line": 4, "character": 1 },
           "end": { "line": 4, "character": 1 }
         },
-        "newText": "\n"
+        "newText": "\tconst response = fetch(\n\t\t'http://localhost:4545/some/non/existent/path.json',\n\t);\n\tconsole.log(response.text());\n\tconsole.log('finished!');\n}\n"
       }]
     )
   );
@@ -16818,10 +16657,10 @@ fn lsp_deno_json_workspace_fmt_config(use_tsgo: bool) {
     res,
     json!([{
       "range": {
-        "start": { "line": 0, "character": 15 },
-        "end": { "line": 0, "character": 16 },
+        "start": { "line": 0, "character": 0 },
+        "end": { "line": 1, "character": 0 },
       },
-      "newText": "",
+      "newText": "console.log(\"\")\n",
     }])
   );
   client.did_open(json!({
@@ -16848,10 +16687,10 @@ fn lsp_deno_json_workspace_fmt_config(use_tsgo: bool) {
     res,
     json!([{
       "range": {
-        "start": { "line": 0, "character": 12 },
-        "end": { "line": 0, "character": 16 },
+        "start": { "line": 0, "character": 0 },
+        "end": { "line": 1, "character": 0 },
       },
-      "newText": "'')",
+      "newText": "console.log('')\n",
     }])
   );
   // `project2/file.ts` should use the fmt settings from `deno.json`, since it
@@ -16880,10 +16719,10 @@ fn lsp_deno_json_workspace_fmt_config(use_tsgo: bool) {
     res,
     json!([{
       "range": {
-        "start": { "line": 0, "character": 15 },
-        "end": { "line": 0, "character": 16 },
+        "start": { "line": 0, "character": 0 },
+        "end": { "line": 1, "character": 0 },
       },
-      "newText": "",
+      "newText": "console.log(\"\")\n",
     }])
   );
   client.shutdown();

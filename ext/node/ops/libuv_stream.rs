@@ -9,6 +9,7 @@ use std::ptr;
 use deno_core::GarbageCollected;
 use deno_core::JsBuffer;
 use deno_core::OpState;
+use deno_core::ResourceId;
 use deno_core::op2;
 use deno_core::uv_compat;
 use deno_core::uv_compat::UvBuf;
@@ -20,6 +21,8 @@ use deno_core::uv_compat::UvStream;
 use deno_core::uv_compat::UvTcp;
 use deno_core::uv_compat::UvWrite;
 use deno_core::v8;
+use deno_net::io::TcpStreamResource;
+use deno_permissions::PermissionsContainer;
 use socket2::SockAddr as Socket2SockAddr;
 
 use super::handle_wrap::AsyncId;
@@ -46,7 +49,7 @@ struct WriteReq {
 
 pub struct TCP {
   handle: RefCell<*mut UvTcp>,
-  #[allow(dead_code)]
+  #[allow(dead_code, reason = "stored for future use")]
   socket_type: Cell<SocketType>,
   provider: i32,
   async_id: i64,
@@ -372,62 +375,100 @@ impl TCP {
   }
 
   #[fast]
-  fn bind(&self, #[string] address: &str, #[smi] port: i32) -> i32 {
-    let addr_str = format!("{}:{}", address, port);
-    let socket_addr = match addr_str.to_socket_addrs() {
-      Ok(mut addrs) => match addrs.next() {
-        Some(addr) => addr,
-        None => return -1,
-      },
-      Err(_) => return -1,
-    };
-
-    // SAFETY: tcp handle is valid; socket2 SockAddr is properly initialized
-    unsafe {
-      let tcp = self.raw();
-      if tcp.is_null() {
-        return -1;
-      }
-      let sock_addr = Socket2SockAddr::from(socket_addr);
-      uv_compat::uv_tcp_bind(
-        tcp,
-        sock_addr.as_ptr() as *const _,
-        #[allow(clippy::unnecessary_cast)]
-        {
-          sock_addr.len() as u32
-        },
-        0,
-      )
+  fn open_from_rid(&self, state: &mut OpState, #[smi] rid: ResourceId) -> i32 {
+    let tcp = self.raw();
+    if tcp.is_null() {
+      return -1;
+    }
+    let fd = state
+      .resource_table
+      .get::<TcpStreamResource>(rid)
+      .ok()
+      .and_then(|r| r.dup_raw_fd());
+    match fd {
+      // SAFETY: tcp is a valid initialized handle (null-checked above),
+      // fd is a valid dup'd descriptor. uv_tcp_open takes ownership of
+      // fd in all cases (closes on failure via std_stream drop).
+      Some(fd) => unsafe { uv_compat::uv_tcp_open(tcp, fd) },
+      None => -1,
     }
   }
 
-  #[fast]
-  fn bind6(&self, #[string] address: &str, #[smi] port: i32) -> i32 {
+  #[nofast]
+  fn bind(
+    &self,
+    state: &mut OpState,
+    #[string] address: &str,
+    #[smi] port: i32,
+  ) -> Result<i32, deno_permissions::PermissionCheckError> {
+    state
+      .borrow_mut::<PermissionsContainer>()
+      .check_net(&(address, Some(port as u16)), "node:net.listen()")?;
+
     let addr_str = format!("{}:{}", address, port);
     let socket_addr = match addr_str.to_socket_addrs() {
       Ok(mut addrs) => match addrs.next() {
         Some(addr) => addr,
-        None => return -1,
+        None => return Ok(-1),
       },
-      Err(_) => return -1,
+      Err(_) => return Ok(-1),
     };
 
     // SAFETY: tcp handle is valid; socket2 SockAddr is properly initialized
     unsafe {
       let tcp = self.raw();
       if tcp.is_null() {
-        return -1;
+        return Ok(-1);
       }
       let sock_addr = Socket2SockAddr::from(socket_addr);
-      uv_compat::uv_tcp_bind(
+      Ok(uv_compat::uv_tcp_bind(
         tcp,
         sock_addr.as_ptr() as *const _,
-        #[allow(clippy::unnecessary_cast)]
+        #[allow(clippy::unnecessary_cast, reason = "depends on platform")]
         {
           sock_addr.len() as u32
         },
         0,
-      )
+      ))
+    }
+  }
+
+  #[nofast]
+  fn bind6(
+    &self,
+    state: &mut OpState,
+    #[string] address: &str,
+    #[smi] port: i32,
+  ) -> Result<i32, deno_permissions::PermissionCheckError> {
+    state
+      .borrow_mut::<PermissionsContainer>()
+      .check_net(&(address, Some(port as u16)), "node:net.listen()")?;
+
+    let addr_str = format!("{}:{}", address, port);
+    let socket_addr = match addr_str.to_socket_addrs() {
+      Ok(mut addrs) => match addrs.next() {
+        Some(addr) => addr,
+        None => return Ok(-1),
+      },
+      Err(_) => return Ok(-1),
+    };
+
+    // SAFETY: tcp handle is valid; socket2 SockAddr is properly initialized
+    unsafe {
+      let tcp = self.raw();
+      if tcp.is_null() {
+        return Ok(-1);
+      }
+      let sock_addr = Socket2SockAddr::from(socket_addr);
+      Ok(uv_compat::uv_tcp_bind(
+        tcp,
+        sock_addr.as_ptr() as *const _,
+        #[allow(clippy::unnecessary_cast, reason = "on some platforms")]
+        {
+          sock_addr.len() as u32
+        },
+        0,
+      ))
     }
   }
 
@@ -546,22 +587,31 @@ impl TCP {
     }
   }
 
-  #[fast]
-  fn connect(&self, #[string] address: &str, #[smi] port: i32) -> i32 {
+  #[nofast]
+  fn connect(
+    &self,
+    state: &mut OpState,
+    #[string] address: &str,
+    #[smi] port: i32,
+  ) -> Result<i32, deno_permissions::PermissionCheckError> {
+    state
+      .borrow_mut::<PermissionsContainer>()
+      .check_net(&(address, Some(port as u16)), "node:net.connect()")?;
+
     let addr_str = format!("{}:{}", address, port);
     let socket_addr = match addr_str.to_socket_addrs() {
       Ok(mut addrs) => match addrs.next() {
         Some(addr) => addr,
-        None => return -1,
+        None => return Ok(-1),
       },
-      Err(_) => return -1,
+      Err(_) => return Ok(-1),
     };
 
     // SAFETY: tcp handle is valid; ConnectReq freed in connect_cb
     unsafe {
       let tcp = self.raw();
       if tcp.is_null() {
-        return -1;
+        return Ok(-1);
       }
       let sock_addr = Socket2SockAddr::from(socket_addr);
       let mut connect_req = Box::new(ConnectReq {
@@ -579,7 +629,7 @@ impl TCP {
         // Failed, reclaim the ConnectReq
         let _ = Box::from_raw(req_ptr as *mut ConnectReq);
       }
-      ret
+      Ok(ret)
     }
   }
 

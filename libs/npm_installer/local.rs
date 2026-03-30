@@ -152,7 +152,7 @@ impl<
   TSys: LocalNpmInstallSys,
 > LocalNpmPackageInstaller<THttpClient, TReporter, TSys>
 {
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "construction")]
   pub fn new(
     lifecycle_scripts_executor: Arc<dyn LifecycleScriptsExecutor>,
     npm_cache: Arc<NpmCache<TSys>>,
@@ -717,8 +717,7 @@ impl<
           )?;
         } else {
           // symlink the package into `node_modules/<alias>`
-          if setup_cache
-            .insert_root_symlink(&remote_pkg.id.nv.name, &target_folder_name)
+          if setup_cache.insert_root_symlink(remote_alias, &target_folder_name)
           {
             symlink_package_dir(
               sys.as_ref(),
@@ -869,27 +868,25 @@ impl<
         let mut output = String::new();
         let _ = writeln!(
           &mut output,
-          "{} The following packages are deprecated:",
-          colors::yellow("Warning")
+          "{} {}",
+          colors::yellow("╭"),
+          colors::yellow_bold("Warning")
         );
-        let len = packages_with_deprecation_warnings.len();
-        for (idx, (package_nv, msg)) in
-          packages_with_deprecation_warnings.iter().enumerate()
-        {
-          if idx != len - 1 {
-            let _ = writeln!(
-              &mut output,
-              "┠─ {}",
-              colors::gray(format!("npm:{:?} ({})", package_nv, msg))
-            );
-          } else {
-            let _ = write!(
-              &mut output,
-              "┖─ {}",
-              colors::gray(format!("npm:{:?} ({})", package_nv, msg))
-            );
-          }
+        let _ = writeln!(&mut output, "{}", colors::yellow("│"));
+        let _ = writeln!(
+          &mut output,
+          "{}  The following packages are deprecated:",
+          colors::yellow("│"),
+        );
+        for (package_nv, msg) in packages_with_deprecation_warnings.iter() {
+          let _ = writeln!(
+            &mut output,
+            "{}  {}",
+            colors::yellow("│"),
+            colors::gray(format!("npm:{:?} ({})", package_nv, msg))
+          );
         }
+        let _ = write!(&mut output, "{}", colors::yellow("╰─"));
         if let Some(install_reporter) = &self.install_reporter {
           install_reporter.deprecated_message(output);
         } else {

@@ -6,10 +6,10 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use deno_error::JsErrorBox;
-use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm::registry::NpmPackageInfo;
 use deno_npm::registry::NpmRegistryApi;
 use deno_npm::registry::NpmRegistryPackageInfoLoadError;
+use deno_npmrc::ResolvedNpmRc;
 use deno_unsync::sync::AtomicFlag;
 use futures::FutureExt;
 use futures::future::LocalBoxFuture;

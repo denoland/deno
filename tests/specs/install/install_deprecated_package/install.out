@@ -11,5 +11,8 @@ Downloaded 1 package from npm
 Dependencies:
 + npm:@denotest/deprecated-package 1.0.0
 
-Warning The following packages are deprecated:
-┖─ npm:@denotest/deprecated-package@1.0.0 (Deprecated version)
+╭ Warning
+│
+│  The following packages are deprecated:
+│  npm:@denotest/deprecated-package@1.0.0 (Deprecated version)
+╰─

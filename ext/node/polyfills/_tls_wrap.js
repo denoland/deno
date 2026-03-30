@@ -198,7 +198,7 @@ export class TLSSocket extends net.Socket {
       const { promise, resolve } = Promise.withResolvers();
 
       // Set `afterConnectTls` hook. This is called in the `afterConnect` method of net.Socket
-      handle.afterConnectTls = async () => {
+      handle.afterConnectTls = async function () {
         options.hostname ??= undefined; // coerce to undefined if null, startTls expects hostname to be undefined
         if (tlssock._needsSockInitWorkaround) {
           tlssock.emit("secure");
@@ -209,7 +209,7 @@ export class TLSSocket extends net.Socket {
         try {
           const conn = await startTls(
             wrap,
-            handle,
+            this,
             options,
           );
           try {
@@ -225,13 +225,15 @@ export class TLSSocket extends net.Socket {
           }
 
           // Assign the TLS connection to the handle and resume reading.
-          handle[kStreamBaseField] = conn;
-          handle.upgrading = false;
-          if (!handle.pauseOnCreate) {
-            handle.readStart();
+          this[kStreamBaseField] = conn;
+          tlssock._tlsUpgraded = true;
+          this.upgrading = false;
+          if (!this.pauseOnCreate) {
+            this.readStart();
           }
 
-          resolve();
+          this.afterConnectTlsResolve?.();
+          delete this.afterConnectTlsResolve;
 
           tlssock.emit("secure");
           tlssock.removeListener("end", onConnectEnd);
@@ -240,6 +242,7 @@ export class TLSSocket extends net.Socket {
         }
       };
 
+      handle.afterConnectTlsResolve = resolve;
       handle.upgrading = promise;
       handle.verifyError = function () {
         return null; // Never fails, rejectUnauthorized is always true in Deno.

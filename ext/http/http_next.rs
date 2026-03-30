@@ -151,6 +151,24 @@ macro_rules! clone_external {
   }};
 }
 
+/// Try to clone Rc<HttpRecord> from raw external pointer.
+/// Returns None if the pointer has already been consumed by take_external.
+macro_rules! try_clone_external {
+  ($external:expr) => {{
+    let ptr = $external;
+    if ptr.is_null()
+      || ptr.align_offset(std::mem::align_of::<usize>()) != 0
+      || std::ptr::read::<usize>(ptr as _)
+        != <RcHttpRecord as deno_core::Externalizable>::external_marker()
+    {
+      None
+    } else {
+      let ptr = ExternalPointer::<RcHttpRecord>::from_raw(ptr);
+      Some(ptr.unsafely_deref().0.clone())
+    }
+  }};
+}
+
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum HttpNextError {
   #[class(inherit)]
@@ -216,6 +234,48 @@ pub fn op_http_upgrade_raw(
   );
 
   Ok(state.resource_table.add(UpgradeStream::new(read, write)))
+}
+
+/// Upgrade a CONNECT request by sending a 200 response, awaiting the
+/// upgrade, and returning the stream resource with head bytes captured.
+#[op2]
+#[smi]
+pub async fn op_http_upgrade_raw_connect(
+  state: Rc<RefCell<OpState>>,
+  external: *const c_void,
+) -> Result<ResourceId, HttpNextError> {
+  let (http, upgrade) = {
+    // SAFETY: external is deleted before calling this op.
+    let http =
+      unsafe { take_external!(external, "op_http_upgrade_raw_connect") };
+    let upgrade = http.upgrade()?;
+    (http, upgrade)
+  };
+
+  // Send a 200 response to complete the CONNECT handshake.
+  http.response_parts().status = StatusCode::OK;
+  http.complete();
+
+  let upgraded = upgrade.await?;
+  let (stream, head_bytes) = extract_network_stream(upgraded);
+  let (read_half, write_half) = stream.into_split();
+
+  let resource =
+    UpgradeStream::new_connected(read_half, write_half, head_bytes);
+  Ok(state.borrow_mut().resource_table.add(resource))
+}
+
+/// Return the head bytes captured during a CONNECT upgrade.
+/// The bytes are returned exactly once; subsequent calls return empty.
+#[op2]
+#[buffer]
+pub fn op_http_upgrade_raw_get_head(
+  state: &mut OpState,
+  #[smi] rid: ResourceId,
+) -> Result<Vec<u8>, HttpNextError> {
+  let resource = state.resource_table.get::<UpgradeStream>(rid)?;
+  let bytes = resource.head_bytes.borrow_mut().take();
+  Ok(bytes.map(|b| b.to_vec()).unwrap_or_default())
 }
 
 #[op2]
@@ -1115,7 +1175,7 @@ where
         options,
       );
     }
-    #[allow(unreachable_code)]
+    #[allow(unreachable_code, reason = "to avoid typing closure")]
     Ok::<_, HttpNextError>(())
   });
 
@@ -1367,6 +1427,10 @@ enum UpgradeStreamWriteState {
     OnUpgrade,
     AsyncMut<Option<(NetworkStreamReadHalf, Bytes)>>,
   ),
+  /// Used after a CONNECT upgrade where the 200 response was already sent
+  /// by hyper. Consumes and discards the HTTP response the application
+  /// writes (since it's redundant), then switches to Network mode.
+  ConsumeResponse(BytesMut, NetworkStreamWriteHalf),
   Network(NetworkStreamWriteHalf),
   /// The upgrade was rejected with a non-101 status code.
   /// The response has been sent and the stream is now closed for writing.
@@ -1378,6 +1442,9 @@ struct UpgradeStream {
   read: Rc<AsyncRefCell<Option<(NetworkStreamReadHalf, Bytes)>>>,
   write: AsyncRefCell<UpgradeStreamWriteState>,
   cancel_handle: CancelHandle,
+  /// Head bytes extracted during a CONNECT upgrade, available via
+  /// `op_http_upgrade_raw_get_head`.
+  head_bytes: RefCell<Option<Bytes>>,
   /// Set to true when the upgrade was rejected with a non-101 status.
   /// When rejected, reads return EOF and writes are silently ignored.
   rejected: std::cell::Cell<bool>,
@@ -1392,6 +1459,25 @@ impl UpgradeStream {
       read,
       write: AsyncRefCell::new(write),
       cancel_handle: CancelHandle::new(),
+      head_bytes: RefCell::new(None),
+      rejected: std::cell::Cell::new(false),
+    }
+  }
+
+  pub fn new_connected(
+    read_half: NetworkStreamReadHalf,
+    write_half: NetworkStreamWriteHalf,
+    head_bytes: Bytes,
+  ) -> Self {
+    let read = Rc::new(AsyncRefCell::new(Some((read_half, Bytes::new()))));
+    Self {
+      read,
+      write: AsyncRefCell::new(UpgradeStreamWriteState::ConsumeResponse(
+        BytesMut::with_capacity(128),
+        write_half,
+      )),
+      cancel_handle: CancelHandle::new(),
+      head_bytes: RefCell::new(Some(head_bytes)),
       rejected: std::cell::Cell::new(false),
     }
   }
@@ -1459,14 +1545,16 @@ impl UpgradeStream {
               Ok(buf.len())
             }
             Ok(httparse::Status::Complete(n)) => {
-              let status_code = response.code.unwrap_or(200);
+              let status_code = response.code.unwrap_or(0);
 
-              if status_code == StatusCode::SWITCHING_PROTOCOLS.as_u16() {
-                // Upgrade accepted - proceed with upgrade
-                http.otel_info_set_status(
-                  StatusCode::SWITCHING_PROTOCOLS.as_u16(),
-                );
-                http.response_parts().status = StatusCode::SWITCHING_PROTOCOLS;
+              // Accept 101 (WebSocket upgrade) and 200 (CONNECT tunnel)
+              if status_code == StatusCode::SWITCHING_PROTOCOLS.as_u16()
+                || status_code == StatusCode::OK.as_u16()
+              {
+                let status = StatusCode::from_u16(status_code)
+                  .unwrap_or(StatusCode::SWITCHING_PROTOCOLS);
+                http.otel_info_set_status(status.as_u16());
+                http.response_parts().status = status;
 
                 for header in response.headers {
                   http.response_parts().headers.append(
@@ -1526,6 +1614,44 @@ impl UpgradeStream {
             Err(e) => Err(std::io::Error::other(e)),
           }
         }
+        UpgradeStreamWriteState::ConsumeResponse(mut bytes, mut stream) => {
+          bytes.extend_from_slice(buf);
+
+          let mut headers = [httparse::EMPTY_HEADER; 16];
+          let mut response = httparse::Response::new(&mut headers);
+          match response.parse(&bytes) {
+            Ok(httparse::Status::Partial) => {
+              *wr = UpgradeStreamWriteState::ConsumeResponse(bytes, stream);
+              Ok(buf.len())
+            }
+            Ok(httparse::Status::Complete(n)) => {
+              // Response consumed. Forward any trailing bytes after
+              // the response headers to the network.
+              let trailing = &bytes[n..];
+              if !trailing.is_empty() {
+                let mut written = 0;
+                while written < trailing.len() {
+                  written +=
+                    Pin::new(&mut stream).write(&trailing[written..]).await?;
+                }
+              }
+              let consumed_from_buf = n - (bytes.len() - buf.len());
+              *wr = UpgradeStreamWriteState::Network(stream);
+              Ok(consumed_from_buf)
+            }
+            Err(_) => {
+              // Not an HTTP response — treat as raw data.
+              // Write everything accumulated so far to the network.
+              let all = bytes.freeze();
+              let mut written = 0;
+              while written < all.len() {
+                written += Pin::new(&mut stream).write(&all[written..]).await?;
+              }
+              *wr = UpgradeStreamWriteState::Network(stream);
+              Ok(buf.len())
+            }
+          }
+        }
         UpgradeStreamWriteState::Network(mut stream) => {
           let r = Pin::new(&mut stream).write(buf).await;
           *wr = UpgradeStreamWriteState::Network(stream);
@@ -1554,6 +1680,9 @@ impl UpgradeStream {
       }
       UpgradeStreamWriteState::Parsing(..) => {
         drop(wr);
+        self.write(if buf1.is_empty() { buf2 } else { buf1 }).await
+      }
+      UpgradeStreamWriteState::ConsumeResponse(..) => {
         self.write(if buf1.is_empty() { buf2 } else { buf1 }).await
       }
       UpgradeStreamWriteState::Network(stream) => {
@@ -1601,9 +1730,27 @@ pub async fn op_raw_write_vectored(
 
 #[op2(fast)]
 pub fn op_http_metric_handle_otel_error(external: *const c_void) {
-  let http =
-    // SAFETY: external is deleted before calling this op.
-    unsafe { take_external!(external, "op_http_metric_handle_otel_error") };
+  // SAFETY: The external may have already been consumed by a take_external!
+  // call. Gracefully skip if the pointer is no longer valid.
+  let Some(http) = (unsafe { try_clone_external!(external) }) else {
+    return;
+  };
 
   http.otel_info_set_error("user");
+}
+
+#[op2(fast)]
+pub fn op_http_copy_span_to_otel_info(
+  external: *const c_void,
+  #[cppgc] span: &deno_telemetry::OtelSpan,
+) {
+  // SAFETY: The external may have already been consumed by a take_external!
+  // call (e.g. op_http_set_promise_complete). On some platforms (Windows),
+  // the freed memory may be reused, causing the marker check to fail.
+  // We gracefully skip the copy in that case rather than panicking.
+  let Some(http) = (unsafe { try_clone_external!(external) }) else {
+    return;
+  };
+
+  http.copy_span_to_otel_info(span);
 }

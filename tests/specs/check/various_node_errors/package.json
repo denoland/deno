@@ -1,0 +1,9 @@
+{
+  "dependencies": {
+    "package": "*",
+    "package3": "*"
+  },
+  "imports": {
+    "#non-existent": "./non-existent.ts"
+  }
+}
