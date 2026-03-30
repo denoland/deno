@@ -251,6 +251,9 @@ impl Cipher {
         if key.len() != aes::Aes128::key_size() {
           return Err(CipherError::InvalidKeyLength);
         }
+        if iv.is_empty() {
+          return Err(CipherError::InvalidInitializationVector);
+        }
 
         if let Some(tag_len) = auth_tag_length
           && !is_valid_gcm_tag_length(tag_len)
@@ -266,6 +269,9 @@ impl Cipher {
       "aes-256-gcm" => {
         if key.len() != aes::Aes256::key_size() {
           return Err(CipherError::InvalidKeyLength);
+        }
+        if iv.is_empty() {
+          return Err(CipherError::InvalidInitializationVector);
         }
 
         if let Some(tag_len) = auth_tag_length
@@ -553,7 +559,7 @@ pub enum DecipherError {
   #[error("bad decrypt")]
   CannotUnpadInputData,
   #[class(type)]
-  #[error("Failed to authenticate data")]
+  #[error("Unsupported state or unable to authenticate data")]
   DataAuthenticationFailed,
   #[class(type)]
   #[error("Unknown cipher {0}")]
@@ -644,6 +650,9 @@ impl Decipher {
         if key.len() != aes::Aes128::key_size() {
           return Err(DecipherError::InvalidKeyLength);
         }
+        if iv.is_empty() {
+          return Err(DecipherError::InvalidInitializationVector);
+        }
 
         if let Some(tag_len) = auth_tag_length
           && !is_valid_gcm_tag_length(tag_len)
@@ -659,6 +668,9 @@ impl Decipher {
       "aes-256-gcm" => {
         if key.len() != aes::Aes256::key_size() {
           return Err(DecipherError::InvalidKeyLength);
+        }
+        if iv.is_empty() {
+          return Err(DecipherError::InvalidInitializationVector);
         }
 
         if let Some(tag_len) = auth_tag_length
@@ -729,6 +741,11 @@ impl Decipher {
       Decipher::Aes128Gcm(_, Some(tag_len))
       | Decipher::Aes256Gcm(_, Some(tag_len)) => {
         if *tag_len != length {
+          return Err(DecipherError::InvalidAuthTag(length));
+        }
+      }
+      Decipher::Aes128Gcm(_, None) | Decipher::Aes256Gcm(_, None) => {
+        if !is_valid_gcm_tag_length(length) {
           return Err(DecipherError::InvalidAuthTag(length));
         }
       }

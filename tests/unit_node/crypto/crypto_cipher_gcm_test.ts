@@ -141,7 +141,7 @@ Deno.test({
     assertThrows(
       () => decipher.final(),
       TypeError,
-      "Failed to authenticate data",
+      "Unsupported state or unable to authenticate data",
     );
   },
 });
