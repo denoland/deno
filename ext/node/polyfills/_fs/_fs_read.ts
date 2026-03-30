@@ -143,13 +143,14 @@ export function read(
 
   // The op handles position seeking internally (saves/restores file offset
   // for positioned reads). position=-1 means read from current position.
+  const readPos = position != null && position >= 0 ? Number(position) : -1;
   op_node_fs_read_deferred(
     fd,
     arrayBufferViewToUint8Array(buffer).subarray(
       offset,
       offset + (length as number),
     ),
-    position as number,
+    readPos,
   ).then(
     (nread: number) => {
       callback!(null, nread ?? 0, buffer);
@@ -232,10 +233,11 @@ export function readSync(
 
   // The op handles position seeking internally (saves/restores file offset
   // for positioned reads). position=-1 means read from current position.
+  const pos = position != null ? Number(position) : -1;
   const numberOfBytesRead = op_node_fs_read_sync(
     fd,
     arrayBufferViewToUint8Array(buffer).subarray(offset, offset + length!),
-    (position ?? -1) as number,
+    pos,
   );
 
   return numberOfBytesRead ?? 0;
