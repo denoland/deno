@@ -72,7 +72,8 @@ impl Stdio {
       Stdio::Inherit => StdStdio::inherit(),
       Stdio::Piped => StdStdio::piped(),
       Stdio::Null => StdStdio::null(),
-      _ => unreachable!(),
+      // IPC uses a pipe internally
+      Stdio::IpcForInternalUse => StdStdio::piped(),
     }
   }
 }
@@ -250,6 +251,8 @@ pub struct SpawnArgs {
   extra_stdio: Vec<Stdio>,
   detached: bool,
   needs_npm_process_state: bool,
+  #[cfg(unix)]
+  argv0: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -486,7 +489,12 @@ fn create_command(
   }
 
   #[cfg(not(windows))]
-  command.args(args.args);
+  {
+    if let Some(ref argv0) = args.argv0 {
+      command.arg0(argv0);
+    }
+    command.args(args.args);
+  }
 
   command.current_dir(run_env.cwd);
   command.env_clear();
