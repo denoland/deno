@@ -1312,9 +1312,25 @@ pub unsafe fn uv_tty_init(
         }
       }
 
+      // For stdio fds (0, 1, 2), if the reopen above didn't happen,
+      // dup the fd so that setting O_NONBLOCK below doesn't affect the
+      // original fd. Without this, other users of fd 1 (e.g. op_print /
+      // console.log) can get WouldBlock errors when the pipe buffer is
+      // near capacity.
+      if !reopened && fd <= 2 {
+        let dup_fd = libc::fcntl(fd, libc::F_DUPFD_CLOEXEC, 3);
+        if dup_fd >= 0 {
+          actual_fd = dup_fd;
+          reopened = true;
+        }
+      }
+
       // Set non-blocking.
       let cur_flags = libc::fcntl(actual_fd, libc::F_GETFL);
       if cur_flags == -1 {
+        if reopened {
+          libc::close(actual_fd);
+        }
         return -std::io::Error::last_os_error()
           .raw_os_error()
           .unwrap_or(libc::EINVAL);
@@ -1324,6 +1340,7 @@ pub unsafe fn uv_tty_init(
           == -1
       {
         if reopened {
+          libc::close(actual_fd);
           libc::fcntl(fd, libc::F_SETFL, saved_flags);
         }
         return -std::io::Error::last_os_error()

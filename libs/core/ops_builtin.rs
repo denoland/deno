@@ -220,13 +220,27 @@ pub fn op_print(
   #[string] msg: &str,
   is_err: bool,
 ) -> Result<(), std::io::Error> {
-  if is_err {
-    stderr().write_all(msg.as_bytes())?;
-    stderr().flush().unwrap();
+  let mut out: Box<dyn Write> = if is_err {
+    Box::new(stderr())
   } else {
-    stdout().write_all(msg.as_bytes())?;
-    stdout().flush().unwrap();
+    Box::new(stdout())
+  };
+  // Use a manual write loop instead of write_all because the fd may be in
+  // non-blocking mode (e.g. when a TTY stream sets O_NONBLOCK). write_all
+  // does not retry on WouldBlock, only on Interrupted.
+  let mut buf = msg.as_bytes();
+  while !buf.is_empty() {
+    match out.write(buf) {
+      Ok(n) => buf = &buf[n..],
+      Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+        std::thread::yield_now();
+        continue;
+      }
+      Err(e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
+      Err(e) => return Err(e),
+    }
   }
+  out.flush().unwrap();
   Ok(())
 }
 
