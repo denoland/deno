@@ -775,102 +775,48 @@ fn temp_path_append_suffix(prefix: &str) -> String {
   format!("{}{}", prefix, suffix)
 }
 
-/// Register a raw file descriptor in NodeFsState so it can be used with
-/// fd-based node:fs ops. This takes ownership of the fd -- the File trait
-/// object will close the underlying OS resource when dropped.
-///
-/// Used for wrapping PTYs, pipes, and other non-socket file descriptors.
+/// Create a file resource from a raw file descriptor.
+/// This is used for wrapping PTYs and other non-socket file descriptors
+/// that can't be wrapped as Unix streams.
+#[cfg(unix)]
 #[op2(fast)]
-pub fn op_node_register_fd(
+#[smi]
+pub fn op_node_file_from_fd(
   state: &mut OpState,
   fd: i32,
-) -> Result<(), FsError> {
+) -> Result<ResourceId, FsError> {
   use std::fs::File as StdFile;
+  use std::os::unix::io::FromRawFd;
 
   if fd < 0 {
-    return Err(ebadf());
+    return Err(FsError::Io(std::io::Error::new(
+      std::io::ErrorKind::InvalidInput,
+      "Invalid file descriptor",
+    )));
   }
 
-  #[cfg(unix)]
-  let std_file = {
-    use std::os::unix::io::FromRawFd;
-    // SAFETY: The caller is responsible for passing a valid fd that they own.
-    // The fd will be owned by the created File from this point on.
-    unsafe { StdFile::from_raw_fd(fd) }
-  };
+  // SAFETY: The caller is responsible for passing a valid fd that they own.
+  // The fd will be owned by the created File from this point on.
+  let std_file = unsafe { StdFile::from_raw_fd(fd) };
 
-  #[cfg(windows)]
-  let std_file = {
-    use std::os::windows::io::FromRawHandle;
-
-    use windows_sys::Win32::Foundation::DUPLICATE_SAME_ACCESS;
-    use windows_sys::Win32::Foundation::DuplicateHandle;
-    use windows_sys::Win32::System::Threading::GetCurrentProcess;
-
-    // On Windows, `fd` is a CRT file descriptor. Get the underlying OS
-    // HANDLE, duplicate it so the StdFile owns an independent copy (the
-    // CRT fd keeps the original), then wrap the duplicate.
-    // SAFETY: `fd` is a valid CRT file descriptor passed by the caller.
-    let handle = unsafe { libc::get_osfhandle(fd) };
-    if handle == -1 {
-      return Err(ebadf());
-    }
-    let mut dup_handle = std::ptr::null_mut();
-    // SAFETY: `handle` is a valid OS handle from the CRT fd.
-    let ok = unsafe {
-      DuplicateHandle(
-        GetCurrentProcess(),
-        handle as _,
-        GetCurrentProcess(),
-        &mut dup_handle,
-        0,
-        0,
-        DUPLICATE_SAME_ACCESS,
-      )
-    };
-    if ok == 0 {
-      return Err(FsError::Io(std::io::Error::last_os_error()));
-    }
-    // SAFETY: `dup_handle` is a valid duplicated OS handle.
-    unsafe { StdFile::from_raw_handle(dup_handle) }
-  };
-
-  let file: Rc<dyn deno_io::fs::File> =
-    Rc::new(deno_io::StdFileResourceInner::file(std_file, None));
-  state.borrow_mut::<NodeFsState>().open_fds.insert(fd, file);
-  Ok(())
+  let file = Rc::new(deno_io::StdFileResourceInner::file(std_file, None));
+  let rid = state
+    .resource_table
+    .add(FileResource::new(file, "pipe".to_string()));
+  Ok(rid)
 }
 
-/// Truly async read for fd-based I/O (runs on blocking thread).
-/// Unlike op_node_fs_read_deferred (sync + deferred promise), this does not
-/// block the event loop. Used by pipe/PTY stream wrappers.
-#[op2]
+#[cfg(not(unix))]
+#[op2(fast)]
 #[smi]
-pub async fn op_node_fs_read_async(
-  state: Rc<RefCell<OpState>>,
-  fd: i32,
-  #[buffer] buf: JsBuffer,
-) -> Result<u32, FsError> {
-  let file = file_for_fd(&state.borrow(), fd)?;
-  let view = deno_core::BufMutView::from(buf);
-  let (nread, _) = file.read_byob(view).await?;
-  Ok(nread as u32)
-}
-
-/// Truly async write for fd-based I/O (runs on blocking thread).
-/// Unlike op_node_fs_write_deferred (sync + deferred promise), this does not
-/// block the event loop. Used by pipe/PTY stream wrappers.
-#[op2]
-#[smi]
-pub async fn op_node_fs_write_async(
-  state: Rc<RefCell<OpState>>,
-  fd: i32,
-  #[buffer] buf: JsBuffer,
-) -> Result<u32, FsError> {
-  let file = file_for_fd(&state.borrow(), fd)?;
-  let view = deno_core::BufView::from(buf);
-  let resp = file.write(view).await?;
-  Ok(resp.nwritten() as u32)
+pub fn op_node_file_from_fd(
+  _state: &mut OpState,
+  _fd: i32,
+) -> Result<ResourceId, FsError> {
+  Err(FsError::Io(std::io::Error::new(
+    std::io::ErrorKind::Unsupported,
+    "op_node_file_from_fd is not supported on this platform",
+  )))
 }
 
 #[op2(fast, stack_trace)]
@@ -992,19 +938,55 @@ pub async fn op_node_fs_read_deferred(
   read_with_position(file, &mut buf, position)
 }
 
+/// Positioned write helper: if position >= 0, seeks to that position before
+/// writing and restores the original position afterwards (matching Node's
+/// pwrite-like semantics). If position < 0, writes at the current position.
+/// Handles partial writes internally by looping until all bytes are written.
+fn write_with_position(
+  file: Rc<dyn deno_io::fs::File>,
+  buf: &[u8],
+  position: i64,
+) -> Result<u32, FsError> {
+  if position >= 0 {
+    let current = file.clone().seek_sync(std::io::SeekFrom::Current(0))?;
+    file
+      .clone()
+      .seek_sync(std::io::SeekFrom::Start(position as u64))?;
+    let result = write_all(file.clone(), buf);
+    // Always restore position, even on write failure
+    let _ = file.seek_sync(std::io::SeekFrom::Start(current));
+    result
+  } else {
+    write_all(file, buf)
+  }
+}
+
+/// Write all bytes, looping on partial writes.
+fn write_all(
+  file: Rc<dyn deno_io::fs::File>,
+  buf: &[u8],
+) -> Result<u32, FsError> {
+  let mut total = 0usize;
+  while total < buf.len() {
+    let nwritten = file.clone().write_sync(&buf[total..])?;
+    total += nwritten;
+  }
+  Ok(total as u32)
+}
+
 #[op2(fast)]
 #[smi]
 pub fn op_node_fs_write_sync(
   state: &mut OpState,
   fd: i32,
   #[buffer] buf: &[u8],
+  #[number] position: i64,
 ) -> Result<u32, FsError> {
   let file = file_for_fd(state, fd)?;
-  let nwritten = file.write_sync(buf)?;
-  Ok(nwritten as u32)
+  write_with_position(file, buf, position)
 }
 
-/// Async (deferred) write — performs the write synchronously but resolves the
+/// Async (deferred) write -- performs the write synchronously but resolves the
 /// promise on the next event loop tick, matching Node's libuv-based behavior.
 #[allow(
   clippy::unused_async,
@@ -1016,10 +998,10 @@ pub async fn op_node_fs_write_deferred(
   state: Rc<RefCell<OpState>>,
   fd: i32,
   #[buffer] buf: JsBuffer,
+  #[number] position: i64,
 ) -> Result<u32, FsError> {
   let file = file_for_fd(&state.borrow(), fd)?;
-  let nwritten = file.write_sync(&buf)?;
-  Ok(nwritten as u32)
+  write_with_position(file, &buf, position)
 }
 
 #[op2(fast)]

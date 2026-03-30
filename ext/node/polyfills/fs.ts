@@ -2219,18 +2219,12 @@ function writeSync(
     position: number | null | undefined,
   ) => {
     buffer = arrayBufferViewToUint8Array(buffer);
-    if (typeof position === "number" && position >= 0) {
-      op_node_fs_seek_sync(fd, position, 0);
-    }
-    let currentOffset = offset;
-    const end = offset + length;
-    while (currentOffset - offset < length) {
-      currentOffset += op_node_fs_write_sync(
-        fd,
-        (buffer as Uint8Array).subarray(currentOffset, end),
-      );
-    }
-    return currentOffset - offset;
+    const pos = typeof position === "number" && position >= 0 ? position : -1;
+    return op_node_fs_write_sync(
+      fd,
+      (buffer as Uint8Array).subarray(offset, offset + length),
+      pos,
+    );
   };
 
   let offset = offsetOrOptions;
@@ -2287,18 +2281,12 @@ function write(
     position: number | null | undefined,
   ) => {
     buffer = arrayBufferViewToUint8Array(buffer);
-    if (typeof position === "number" && position >= 0) {
-      await op_node_fs_seek(fd, position, 0);
-    }
-    let currentOffset = offset;
-    const end = offset + length;
-    while (currentOffset - offset < length) {
-      currentOffset += await op_node_fs_write_deferred(
-        fd,
-        (buffer as Uint8Array).subarray(currentOffset, end),
-      );
-    }
-    return currentOffset - offset;
+    const pos = typeof position === "number" && position >= 0 ? position : -1;
+    return await op_node_fs_write_deferred(
+      fd,
+      (buffer as Uint8Array).subarray(offset, offset + length),
+      pos,
+    );
   };
 
   let offset = offsetOrOptions;
@@ -2412,7 +2400,6 @@ function writev(
 ): void {
   const innerWritev = async (fd, buffers, position) => {
     const chunks: Buffer[] = [];
-    const offset = 0;
     for (let i = 0; i < buffers.length; i++) {
       if (Buffer.isBuffer(buffers[i])) {
         // deno-lint-ignore prefer-primordials
@@ -2422,20 +2409,10 @@ function writev(
         chunks.push(Buffer.from(buffers[i]));
       }
     }
-    if (typeof position === "number") {
-      await op_node_fs_seek(fd, position, 0);
-    }
+    const pos = typeof position === "number" ? position : -1;
     // deno-lint-ignore prefer-primordials
     const buffer = Buffer.concat(chunks);
-    let currentOffset = 0;
-    // deno-lint-ignore prefer-primordials
-    while (currentOffset < buffer.byteLength) {
-      currentOffset += await op_node_fs_write_deferred(
-        fd,
-        buffer.subarray(currentOffset),
-      );
-    }
-    return currentOffset - offset;
+    return await op_node_fs_write_deferred(fd, buffer, pos);
   };
 
   fd = getValidatedFd(fd);
@@ -2469,7 +2446,6 @@ function writevSync(
 ): number {
   const innerWritev = (fd, buffers, position) => {
     const chunks: Buffer[] = [];
-    const offset = 0;
     for (let i = 0; i < buffers.length; i++) {
       if (Buffer.isBuffer(buffers[i])) {
         // deno-lint-ignore prefer-primordials
@@ -2479,20 +2455,10 @@ function writevSync(
         chunks.push(Buffer.from(buffers[i]));
       }
     }
-    if (typeof position === "number") {
-      op_node_fs_seek_sync(fd, position, 0);
-    }
+    const pos = typeof position === "number" ? position : -1;
     // deno-lint-ignore prefer-primordials
     const buffer = Buffer.concat(chunks);
-    let currentOffset = 0;
-    // deno-lint-ignore prefer-primordials
-    while (currentOffset < buffer.byteLength) {
-      currentOffset += op_node_fs_write_sync(
-        fd,
-        buffer.subarray(currentOffset),
-      );
-    }
-    return currentOffset - offset;
+    return op_node_fs_write_sync(fd, buffer, pos);
   };
 
   fd = getValidatedFd(fd);
@@ -2611,10 +2577,10 @@ function writeFile(
         write(p: NodeJS.TypedArray) {
           // Use the deferred op to yield to the event loop between writes,
           // allowing abort signals scheduled via process.nextTick to fire.
-          return op_node_fs_write_deferred(fd, p);
+          return op_node_fs_write_deferred(fd, p, -1);
         },
         writeSync(p: NodeJS.TypedArray) {
-          return op_node_fs_write_sync(fd, p);
+          return op_node_fs_write_sync(fd, p, -1);
         },
         close() {
           op_node_fs_close(fd);
@@ -2675,10 +2641,10 @@ function writeFileSync(
     const fd = _writeFileGetRidSync(pathOrRid, flag);
     file = {
       write(p: NodeJS.TypedArray) {
-        return PromiseResolve(op_node_fs_write_sync(fd, p));
+        return PromiseResolve(op_node_fs_write_sync(fd, p, -1));
       },
       writeSync(p: NodeJS.TypedArray) {
-        return op_node_fs_write_sync(fd, p);
+        return op_node_fs_write_sync(fd, p, -1);
       },
       close() {
         op_node_fs_close(fd);

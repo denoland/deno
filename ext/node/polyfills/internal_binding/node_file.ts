@@ -84,7 +84,7 @@ export function writeBuffer(
   const subarray = TypedArrayPrototypeSubarray(buffer, offset, offset + length);
 
   try {
-    return op_node_fs_write_sync(fd, subarray);
+    return op_node_fs_write_sync(fd, subarray, -1);
   } catch (e) {
     ctx.errno = extractOsErrorNumberFromErrorMessage(e);
     return 0;
