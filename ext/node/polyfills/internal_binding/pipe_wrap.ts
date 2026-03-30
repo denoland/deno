@@ -27,7 +27,10 @@
 import { core, primordials } from "ext:core/mod.js";
 import {
   op_net_unix_stream_from_fd,
-  op_node_file_from_fd,
+  op_node_fs_close,
+  op_node_fs_read_async,
+  op_node_fs_write_async,
+  op_node_register_fd,
   op_pipe_connect,
   op_pipe_open,
   op_pipe_windows_wait,
@@ -35,8 +38,6 @@ import {
 import { PipeConn, UnixConn } from "ext:deno_net/01_net.js";
 import { setTimeout } from "ext:deno_web/02_timers.js";
 
-const { internalRidSymbol } = core;
-import { notImplemented } from "ext:deno_node/_utils.ts";
 import { ConnectionWrap } from "ext:deno_node/internal_binding/connection_wrap.ts";
 import {
   AsyncWrap,
@@ -59,7 +60,6 @@ const {
   ErrorPrototype,
   FunctionPrototypeCall,
   MapPrototypeGet,
-  ObjectDefineProperty,
   ObjectPrototypeIsPrototypeOf,
   PromisePrototypeThen,
   ReflectHas,
@@ -75,26 +75,22 @@ export enum socketType {
 
 /**
  * A wrapper for file-based streams (PTYs, pipes, etc.) that provides
- * the interface expected by LibuvStreamWrap.
+ * the interface expected by LibuvStreamWrap. Uses fd-based ops directly,
+ * bypassing the resource table.
  */
 class FileStreamConn {
-  #rid: number;
+  #fd: number;
   #closed = false;
 
-  constructor(rid: number) {
-    this.#rid = rid;
-    ObjectDefineProperty(this, internalRidSymbol, {
-      __proto__: null,
-      enumerable: false,
-      value: rid,
-    });
+  constructor(fd: number) {
+    this.#fd = fd;
   }
 
   async read(buf: Uint8Array): Promise<number | null> {
     // Loop to handle EAGAIN/EWOULDBLOCK for non-blocking fds (PTYs, pipes)
     while (!this.#closed) {
       try {
-        const nread = await core.read(this.#rid, buf);
+        const nread = await op_node_fs_read_async(this.#fd, buf);
         return nread === 0 ? null : nread;
       } catch (e) {
         // Handle EAGAIN/EWOULDBLOCK by waiting and retrying
@@ -114,12 +110,18 @@ class FileStreamConn {
   }
 
   async write(data: Uint8Array): Promise<number> {
-    return await core.write(this.#rid, data);
+    return await op_node_fs_write_async(this.#fd, data);
   }
 
   close(): void {
-    this.#closed = true;
-    core.tryClose(this.#rid);
+    if (!this.#closed) {
+      this.#closed = true;
+      try {
+        op_node_fs_close(this.#fd);
+      } catch {
+        // Ignore errors on close (fd may already be closed)
+      }
+    }
   }
 }
 
@@ -182,37 +184,37 @@ export class Pipe extends ConnectionWrap {
   }
 
   open(fd: number): number {
-    if (isWindows) {
-      // Windows named pipes don't support opening from fd
-      notImplemented("Pipe.prototype.open on Windows");
-    }
-    try {
-      // First, try to open as a Unix socket (for actual Unix domain sockets)
-      const rid = op_net_unix_stream_from_fd(fd);
-      this[kStreamBaseField] = new UnixConn(rid, null, null);
-      return 0;
-    } catch (e) {
-      // If the fd is not a socket (e.g., PTY, pipe), fall back to file-based I/O
-      if (
-        ObjectPrototypeIsPrototypeOf(ErrorPrototype, e) &&
-        (StringPrototypeIncludes((e as Error).message, "not a socket") ||
-          StringPrototypeIncludes((e as Error).message, "ENOTSOCK"))
-      ) {
-        try {
-          const rid = op_node_file_from_fd(fd);
-          this[kStreamBaseField] = new FileStreamConn(rid);
-          return 0;
-        } catch (e2) {
+    if (!isWindows) {
+      try {
+        // On Unix, first try to open as a Unix socket
+        const rid = op_net_unix_stream_from_fd(fd);
+        this[kStreamBaseField] = new UnixConn(rid, null, null);
+        return 0;
+      } catch (e) {
+        // If the fd is not a socket (e.g., PTY, pipe), fall back to
+        // file-based I/O below
+        if (
+          !(ObjectPrototypeIsPrototypeOf(ErrorPrototype, e) &&
+            (StringPrototypeIncludes((e as Error).message, "not a socket") ||
+              StringPrototypeIncludes((e as Error).message, "ENOTSOCK")))
+        ) {
           if (
-            ObjectPrototypeIsPrototypeOf(ErrorPrototype, e2) &&
-            ReflectHas(e2 as Error, "code")
+            ObjectPrototypeIsPrototypeOf(ErrorPrototype, e) &&
+            ReflectHas(e as Error, "code")
           ) {
-            return codeMap.get((e2 as { code: string }).code) ??
+            return codeMap.get((e as { code: string }).code) ??
               codeMap.get("UNKNOWN")!;
           }
           return codeMap.get("UNKNOWN")!;
         }
       }
+    }
+    // File-based I/O fallback (works on all platforms)
+    try {
+      op_node_register_fd(fd);
+      this[kStreamBaseField] = new FileStreamConn(fd);
+      return 0;
+    } catch (e) {
       if (
         ObjectPrototypeIsPrototypeOf(ErrorPrototype, e) &&
         ReflectHas(e as Error, "code")
