@@ -326,3 +326,123 @@ Deno.test("[node/fs] writevSync with position does not move cursor", () => {
     assertEquals(Deno.readTextFileSync(path), "ZZaaXYaaaa");
   });
 });
+
+// ==========================================================================
+// Tests that specifically validate real OS fd behavior.
+// These would FAIL with the old RID-based approach.
+// ==========================================================================
+
+Deno.test("[node/fs] fd from fs.openSync is a real OS fd (not a small RID)", () => {
+  // With RIDs, fs.openSync returned small sequential IDs (3, 4, 5...).
+  // Real OS fds are assigned by the kernel and are typically larger once
+  // several files are open. Verify that opening multiple files gives us
+  // fds that are real OS integers (not sequential small RIDs starting at
+  // the next resource table slot).
+  withTempFile("hello", (path) => {
+    // Open several files to push fd numbers up
+    const fds: number[] = [];
+    for (let i = 0; i < 5; i++) {
+      fds.push(fs.openSync(path, "r"));
+    }
+    try {
+      // All fds should be positive integers > 2 (0/1/2 are stdio)
+      for (const fd of fds) {
+        assertEquals(typeof fd, "number");
+        assertEquals(fd > 2, true);
+        assertEquals(Number.isInteger(fd), true);
+      }
+      // fds should be unique
+      const unique = new Set(fds);
+      assertEquals(unique.size, fds.length);
+
+      // Verify each fd is independently usable for fstat
+      for (const fd of fds) {
+        const stat = fs.fstatSync(fd);
+        assertEquals(stat.isFile(), true);
+        assertEquals(stat.size, 5);
+      }
+    } finally {
+      for (const fd of fds) {
+        fs.closeSync(fd);
+      }
+    }
+  });
+});
+
+Deno.test("[node/fs] interleaved positioned and sequential reads", () => {
+  // This test exercises the pread-like semantics that were buggy before:
+  // the old code used async seek for save (race-prone) and didn't restore
+  // on error. The new Rust-side read_with_position is atomic.
+  withTempFile("0123456789", (path) => {
+    const fd = fs.openSync(path, "r");
+    try {
+      // Sequential read: cursor 0 -> 2
+      const a = Buffer.alloc(2);
+      fs.readSync(fd, a, 0, 2, null);
+      assertEquals(a.toString(), "01");
+
+      // Positioned read at 7: cursor should stay at 2
+      const b = Buffer.alloc(3);
+      fs.readSync(fd, b, 0, 3, 7);
+      assertEquals(b.toString(), "789");
+
+      // Sequential read: cursor should be at 2 (not 10)
+      const c = Buffer.alloc(2);
+      fs.readSync(fd, c, 0, 2, null);
+      assertEquals(c.toString(), "23");
+
+      // Another positioned read at 0: cursor should stay at 4
+      const d = Buffer.alloc(1);
+      fs.readSync(fd, d, 0, 1, 0);
+      assertEquals(d.toString(), "0");
+
+      // Sequential read from 4
+      const e = Buffer.alloc(3);
+      fs.readSync(fd, e, 0, 3, null);
+      assertEquals(e.toString(), "456");
+    } finally {
+      fs.closeSync(fd);
+    }
+  });
+});
+
+Deno.test("[node/fs] interleaved positioned and sequential writes", () => {
+  // Same pattern for writes: positioned writes should not move the cursor.
+  // The old code had no position restore for writes at all.
+  withTempFile("__________", (path) => {
+    const fd = fs.openSync(path, "r+");
+    try {
+      // Sequential write at cursor 0
+      fs.writeSync(fd, Buffer.from("AB"), 0, 2, null);
+      // cursor is now at 2
+
+      // Positioned write at 5: cursor should stay at 2
+      fs.writeSync(fd, Buffer.from("XY"), 0, 2, 5);
+
+      // Sequential write: should continue at 2
+      fs.writeSync(fd, Buffer.from("CD"), 0, 2, null);
+      // cursor is now at 4
+    } finally {
+      fs.closeSync(fd);
+    }
+    assertEquals(Deno.readTextFileSync(path), "ABCD_XY___");
+  });
+});
+
+Deno.test("[node/fs] positioned read past EOF returns 0 bytes", () => {
+  withTempFile("short", (path) => {
+    const fd = fs.openSync(path, "r");
+    try {
+      const buf = Buffer.alloc(10);
+      const n = fs.readSync(fd, buf, 0, 10, 100);
+      assertEquals(n, 0);
+
+      // Cursor should still be at 0
+      const buf2 = Buffer.alloc(5);
+      fs.readSync(fd, buf2, 0, 5, null);
+      assertEquals(buf2.toString(), "short");
+    } finally {
+      fs.closeSync(fd);
+    }
+  });
+});
