@@ -1141,8 +1141,10 @@ function webMessagePortToNodeMessagePort(port: MessagePort) {
         patchMessagePortIfFound(ev.data);
         listener(ev.data);
       } else if (ArrayIsArray(ev.detail)) {
+        // Multi-arg emit: detail is the args array
         ReflectApply(listener, undefined, ev.detail);
       } else {
+        // Single-arg emit: detail is the value itself
         listener(ev.detail ?? ev.data ?? ev);
       }
     };
@@ -1180,7 +1182,8 @@ function webMessagePortToNodeMessagePort(port: MessagePort) {
     return this;
   };
   port.emit = function (name: string, ...args: unknown[]) {
-    const ev = new CustomEvent(name, { detail: args });
+    const detail = args.length <= 1 ? args[0] : args;
+    const ev = new CustomEvent(name, { detail });
     return port.dispatchEvent(ev);
   };
   port[nodeWorkerThreadCloseCb] = () => {
