@@ -167,8 +167,7 @@ const uploadMonthSummary = step.dependsOn(gzipMonthSummary)({
 
 const postSlack = step.dependsOn(uploadMonthSummary)({
   name: "Post message to slack channel",
-  run:
-    "deno -A --config tests/config/deno.json tests/node_compat/slack.ts",
+  run: "deno -A --config tests/config/deno.json tests/node_compat/slack.ts",
   env: {
     SLACK_TOKEN: "${{ secrets.NODE_COMPAT_SLACK_TOKEN }}",
     SLACK_CHANNEL: "${{ secrets.NODE_COMPAT_SLACK_CHANNEL }}",

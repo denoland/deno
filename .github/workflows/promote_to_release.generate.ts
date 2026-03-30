@@ -1,11 +1,6 @@
 #!/usr/bin/env -S deno run --check --allow-write=. --allow-read=. --lock=./tools/deno.lock.json
 // Copyright 2018-2026 the Deno authors. MIT license.
-import {
-  conditions,
-  createWorkflow,
-  job,
-  step,
-} from "jsr:@david/gagen@0.3.0";
+import { conditions, createWorkflow, job, step } from "jsr:@david/gagen@0.3.0";
 
 const isDenoland = conditions.isRepository("denoland/deno");
 
@@ -101,8 +96,7 @@ const winUploadArchives = step.dependsOn(winCreateArchives)({
   uses: "actions/upload-artifact@v6",
   with: {
     name: "windows-binaries",
-    path:
-      "deno-x86_64-pc-windows-msvc.zip\ndenort-x86_64-pc-windows-msvc.zip",
+    path: "deno-x86_64-pc-windows-msvc.zip\ndenort-x86_64-pc-windows-msvc.zip",
   },
 });
 

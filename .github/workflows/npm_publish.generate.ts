@@ -93,7 +93,7 @@ const writeVerdaccioConfig = step.dependsOn(extractDist)({
   name: "Write Verdaccio config",
   run: [
     'mkdir -p "${{ runner.temp }}/verdaccio/storage"',
-    'cat > "${{ runner.temp }}/verdaccio/config.yaml" << \'HEREDOC\'',
+    "cat > \"${{ runner.temp }}/verdaccio/config.yaml\" << 'HEREDOC'",
     "storage: ./storage",
     "uplinks: {}",
     "packages:",
@@ -407,7 +407,8 @@ const publishExtractDist = step.dependsOn(publishDownloadArtifact)({
 
 const publishToNpm = step.dependsOn(publishExtractDist)({
   name: "Publish to npm",
-  run: "./tools/release/npm/build.ts ${{ inputs.version || '' }} --publish-only",
+  run:
+    "./tools/release/npm/build.ts ${{ inputs.version || '' }} --publish-only",
 });
 
 const workflow = createWorkflow({
