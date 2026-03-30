@@ -377,6 +377,27 @@ Deno.test(function consoleTestStringifyCircular() {
   assertEquals(stripAnsiCode(Deno.inspect(nestedObj)), nestedObjExpected);
 });
 
+Deno.test(function consoleTestStringifyToStringTagGetterThrows() {
+  // Symbol.toStringTag getter that throws should not crash console.log
+  // https://github.com/denoland/deno/issues/32894
+  class Circular {
+    self: Circular;
+    constructor() {
+      this.self = this;
+    }
+    get [Symbol.toStringTag]() {
+      // This throws due to circular reference
+      JSON.stringify(this);
+      return "Circular";
+    }
+  }
+  const obj = new Circular();
+  // Should not throw, should handle the error gracefully
+  const result = stringify(obj);
+  assertStringIncludes(result, "Circular");
+  assertStringIncludes(result, "[Circular");
+});
+
 Deno.test(function consoleTestStringifyMultipleCircular() {
   const y = { a: { b: {} }, foo: { bar: {} } };
   y.a.b = y.a;
@@ -1212,6 +1233,26 @@ Deno.test(function consoleTestWithObjectFormatSpecifier() {
     stringify("%o", { a: { b: { c: { d: new Set([1]) } } } }),
     "{\n  a: {\n    b: { c: { d: Set(1) { 1 } } }\n  }\n}",
   );
+});
+
+Deno.test(function consoleTestWithJsonFormatSpecifier() {
+  assertEquals(stringify("%j"), "%j");
+  assertEquals(stringify("%j", { foo: "bar" }), `{"foo":"bar"}`);
+  assertEquals(stringify("%j", 42), "42");
+  assertEquals(stringify("%j", "foo"), `"foo"`);
+  assertEquals(stringify("%j", null), "null");
+  assertEquals(stringify("%j", [1, 2, 3]), "[1,2,3]");
+  assertEquals(
+    stringify("%j %s", { foo: "bar" }, "Hello"),
+    `{"foo":"bar"} Hello`,
+  );
+  assertEquals(stringify("%j %j", { a: 1 }, { b: 2 }), `{"a":1} {"b":2}`);
+  // Circular reference
+  const circular: Record<string, unknown> = {};
+  circular.self = circular;
+  assertEquals(stringify("%j", circular), "[Circular]");
+  // Non-circular errors (e.g., BigInt) should be re-thrown
+  assertThrows(() => stringify("%j", BigInt(1)));
 });
 
 Deno.test(function consoleTestWithStyleSpecifier() {

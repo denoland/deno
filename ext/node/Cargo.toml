@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_node"
-version = "0.175.0"
+version = "0.180.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -72,6 +72,6 @@ errno = "0.3.10"
 nix = { workspace = true, features = ["user"] }
 
 [target.'cfg(windows)'.dependencies]
-windows-sys = { workspace = true, features = ["Win32_Networking_WinSock"] }
+windows-sys = { workspace = true, features = ["Win32_Networking_WinSock", "Win32_NetworkManagement_IpHelper"] }
 winapi = { workspace = true, features = ["consoleapi"] }
 deno_subprocess_windows.workspace = true

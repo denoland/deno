@@ -243,7 +243,7 @@ macro_rules! to_v8_retval {
 macro_rules! to_v8_fallible {
   (( $( $ty:ty ),+ ) : |$value:ident, $scope:ident| $block:expr_2021) => {
     $(
-      #[allow(clippy::needless_borrow)]
+      #[allow(clippy::needless_borrow, reason = "borrow may be needed depending on macro instantiation type")]
       impl <'a> RustToV8Fallible<'a> for $ty {
         #[inline(always)]
         fn to_v8_fallible<'i>(self, scope: &mut v8::PinScope<'a, 'i>) -> serde_v8::Result<v8::Local<'a, v8::Value>> {

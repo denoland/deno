@@ -5,7 +5,7 @@
 
 // NOTE(bartlomieju): unfortunately it appears that clippy is broken
 // and can't allow a single line ignore for `await_holding_lock`.
-#![allow(clippy::await_holding_lock)]
+#![allow(clippy::await_holding_lock, reason = "clippy bug")]
 
 use std::collections::HashMap;
 use std::rc::Rc;

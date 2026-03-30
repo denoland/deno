@@ -1263,6 +1263,24 @@ Deno.test({
   },
 });
 
+// Regression test for https://github.com/denoland/deno/issues/25776
+Deno.test(async function killSignalZero() {
+  const child = CP.spawn(Deno.execPath(), [
+    "eval",
+    "setTimeout(() => {}, 60_000)",
+  ]);
+  try {
+    // Signal 0 checks if the process exists without sending a signal
+    const alive = child.kill(0);
+    assertEquals(alive, true);
+    // The child should not be marked as killed
+    assertEquals(child.killed, false);
+  } finally {
+    child.kill();
+    await new Promise((resolve) => child.on("close", resolve));
+  }
+});
+
 Deno.test(async function experimentalFlag() {
   const code = ``;
   const file = await Deno.makeTempFile();
@@ -1325,4 +1343,18 @@ Deno.test(async function stdoutWriteMultipleChunksNotTruncated() {
   } finally {
     await Deno.remove(script);
   }
+});
+
+Deno.test(function spawnSyncShellMetacharactersEscaped() {
+  // Shell metacharacters in args should be escaped, not interpreted.
+  // On Unix, & would launch a background process; on Windows, it
+  // would chain a second command. Either way echo should print
+  // the literal string.
+  const ret = spawnSync(
+    Deno.execPath(),
+    ["eval", "console.log(Deno.args[0])", "--", "a&b|c<d>e"],
+    { shell: true, encoding: "utf-8" },
+  );
+  assertEquals(ret.status, 0);
+  assertEquals(ret.stdout.trim(), "a&b|c<d>e");
 });

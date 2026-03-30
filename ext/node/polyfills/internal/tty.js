@@ -7,11 +7,11 @@
 import { primordials } from "ext:core/mod.js";
 const {
   ArrayPrototypeSome,
-  Error,
+  FunctionPrototypeCall,
   ObjectEntries,
   ObjectPrototypeHasOwnProperty,
   ObjectPrototypeIsPrototypeOf,
-  ObjectValues,
+  ObjectSetPrototypeOf,
   RegExpPrototypeExec,
   SafeMap,
   SafeMapIterator,
@@ -23,22 +23,22 @@ const {
   SetPrototypeGetSize,
   StringPrototypeSplit,
   StringPrototypeToLowerCase,
-  TypedArrayPrototypeSlice,
-  Uint8ArrayPrototype,
 } = primordials;
 
-import { ERR_INVALID_FD } from "ext:deno_node/internal/errors.ts";
+import {
+  ERR_INVALID_FD,
+  ERR_TTY_INIT_FAILED,
+  errnoException,
+} from "ext:deno_node/internal/errors.ts";
 import { validateInteger } from "ext:deno_node/internal/validators.mjs";
-import { TTY } from "ext:deno_node/internal_binding/tty_wrap.ts";
+import { op_tty_check_fd_permission, TTY } from "ext:core/ops";
 import { Socket } from "node:net";
-import * as io from "ext:deno_io/12_io.js";
 import {
   clearLine,
   clearScreenDown,
   cursorTo,
   moveCursor,
 } from "ext:deno_node/internal/readline/callbacks.mjs";
-import { Buffer } from "node:buffer";
 import { release } from "node:os";
 
 // Color depth constants
@@ -289,170 +289,150 @@ function removeSigwinchListener(stream) {
   }
 }
 
-export class WriteStream extends Socket {
-  constructor(fd) {
-    if (fd >> 0 !== fd || fd < 0) {
-      throw new ERR_INVALID_FD(fd);
-    }
-
-    // We only support `stdin`, `stdout` and `stderr`.
-    if (fd > 2) throw new Error("Only fd 0, 1 and 2 are supported.");
-
-    const tty = new TTY(
-      fd === 0 ? io.stdin : fd === 1 ? io.stdout : io.stderr,
-    );
-
-    super({
-      readableHighWaterMark: 0,
-      handle: tty,
-      manualStart: true,
-    });
-
-    const { columns, rows } = Deno.consoleSize();
-    this.columns = columns;
-    this.rows = rows;
-    this.isTTY = true;
-
-    // For stdout/stderr, use synchronous writes to avoid races with
-    // console.log which writes synchronously via Deno.core.print().
-    // Without this, async writes through the Socket/TTY handle can complete
-    // after a subsequent synchronous console.log, causing output corruption
-    // (e.g. listr2 ANSI redraws overwriting later output).
-    if (fd === 1 || fd === 2) {
-      const writer = fd === 1 ? io.stdout : io.stderr;
-      this._write = function (data, enc, cb) {
-        try {
-          let buf = ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, data)
-            ? data
-            : Buffer.from(data, enc);
-          // deno-lint-ignore prefer-primordials
-          while (buf.byteLength > 0) {
-            const nwritten = writer.writeSync(buf);
-            // deno-lint-ignore prefer-primordials
-            if (nwritten >= buf.byteLength) break;
-            buf = TypedArrayPrototypeSlice(buf, nwritten);
-          }
-        } catch (e) {
-          cb(e);
-          return;
-        }
-        cb();
-      };
-
-      // Prevent actually closing stdout/stderr. Libraries like mute-stream
-      // (used by @inquirer/prompts) call destroy()/end() on the stream,
-      // which would close the underlying resource and break subsequent
-      // console.log calls (BadResource error). Match Node.js behavior
-      // where stdio streams are indestructible.
-      //
-      // Override _destroy to prevent Socket._destroy from calling
-      // this._handle.close(), which would close the Deno resource.
-      this._destroy = function (err, cb) {
-        cb(err);
-        this._undestroy();
-      };
-
-      // Also prevent the handle's _onClose from closing the underlying
-      // io.stdout/io.stderr resource. This handles the end() path:
-      // end() -> _final -> shutdown -> _onClose -> io.stdout.close().
-      // Without this, the Deno resource (rid 1/2) is removed from the
-      // resource table and op_print (used by console.log) fails.
-      this._handle._onClose = function () {
-        return 0;
-      };
-    }
+// WriteStream needs to be callable without `new` to match Node.js behavior.
+function WriteStream(fd) {
+  if (!ObjectPrototypeIsPrototypeOf(WriteStream.prototype, this)) {
+    return new WriteStream(fd);
   }
 
-  on(event, listener) {
-    super.on(event, listener);
-    if (event === "resize" && this.listenerCount("resize") === 1) {
-      addSigwinchListener(this);
-    }
-    return this;
+  if (fd >> 0 !== fd || fd < 0) {
+    throw new ERR_INVALID_FD(fd);
   }
 
-  addListener(event, listener) {
-    return this.on(event, listener);
+  // Non-stdio fds require --allow-all
+  op_tty_check_fd_permission(fd);
+
+  const ctx = {};
+  const tty = new TTY(fd, ctx);
+  if (ctx.code !== undefined) {
+    throw new ERR_TTY_INIT_FAILED(ctx);
   }
 
-  removeListener(event, listener) {
-    super.removeListener(event, listener);
-    if (event === "resize" && this.listenerCount("resize") === 0) {
-      removeSigwinchListener(this);
-    }
-    return this;
-  }
+  FunctionPrototypeCall(Socket, this, {
+    readableHighWaterMark: 0,
+    handle: tty,
+    manualStart: true,
+  });
 
-  off(event, listener) {
-    return this.removeListener(event, listener);
-  }
+  // Prevents interleaved or dropped stdout/stderr output for terminals.
+  // As noted in the following reference, local TTYs tend to be quite fast and
+  // this behavior has become expected due historical functionality on OS X,
+  // even though it was originally intended to change in v1.0.2 (Libuv 1.2.1).
+  // Ref: https://github.com/nodejs/node/pull/1771#issuecomment-119351671
+  this._handle.setBlocking(true);
 
-  removeAllListeners(event) {
-    super.removeAllListeners(event);
-    if (!event || event === "resize") {
-      removeSigwinchListener(this);
-    }
-    return this;
-  }
-
-  _refreshSize() {
-    const oldCols = this.columns;
-    const oldRows = this.rows;
-    const { columns, rows } = Deno.consoleSize();
-    if (oldCols !== columns || oldRows !== rows) {
-      this.columns = columns;
-      this.rows = rows;
-      this.emit("resize");
-    }
-  }
-
-  cursorTo(x, y, callback) {
-    return cursorTo(this, x, y, callback);
-  }
-
-  moveCursor(dx, dy, callback) {
-    return moveCursor(this, dx, dy, callback);
-  }
-
-  clearLine(dir, callback) {
-    return clearLine(this, dir, callback);
-  }
-
-  clearScreenDown(callback) {
-    return clearScreenDown(this, callback);
-  }
-
-  getWindowSize() {
-    return ObjectValues(Deno.consoleSize());
-  }
-
-  /**
-   * @param {number | Record<string, string>} [count]
-   * @param {Record<string, string>} [env]
-   * @returns {boolean}
-   */
-  hasColors(count, env) {
-    if (
-      env === undefined &&
-      (count === undefined || typeof count === "object" && count !== null)
-    ) {
-      env = count;
-      count = 16;
-    } else {
-      validateInteger(count, "count", 2);
-    }
-
-    const depth = this.getColorDepth(env);
-    return count <= 2 ** depth;
-  }
-
-  /**
-   * @param {Record<string, string>} [env]
-   * @returns {1 | 4 | 8 | 24}
-   */
-  getColorDepth(env) {
-    return getColorDepth(env);
+  const winSize = [0, 0];
+  const err = tty.getWindowSize(winSize);
+  if (!err) {
+    this.columns = winSize[0];
+    this.rows = winSize[1];
   }
 }
 
+ObjectSetPrototypeOf(WriteStream.prototype, Socket.prototype);
+ObjectSetPrototypeOf(WriteStream, Socket);
+
+WriteStream.prototype.isTTY = true;
+
+WriteStream.prototype.on = function on(event, listener) {
+  FunctionPrototypeCall(Socket.prototype.on, this, event, listener);
+  if (event === "resize" && this.listenerCount("resize") === 1) {
+    addSigwinchListener(this);
+  }
+  return this;
+};
+
+WriteStream.prototype.addListener = function addListener(event, listener) {
+  return this.on(event, listener);
+};
+
+WriteStream.prototype.removeListener = function removeListener(
+  event,
+  listener,
+) {
+  FunctionPrototypeCall(Socket.prototype.removeListener, this, event, listener);
+  if (event === "resize" && this.listenerCount("resize") === 0) {
+    removeSigwinchListener(this);
+  }
+  return this;
+};
+
+WriteStream.prototype.off = function off(event, listener) {
+  return this.removeListener(event, listener);
+};
+
+WriteStream.prototype.removeAllListeners = function removeAllListeners(event) {
+  FunctionPrototypeCall(Socket.prototype.removeAllListeners, this, event);
+  if (!event || event === "resize") {
+    removeSigwinchListener(this);
+  }
+  return this;
+};
+
+WriteStream.prototype._refreshSize = function _refreshSize() {
+  const oldCols = this.columns;
+  const oldRows = this.rows;
+  const winSize = [0, 0];
+  const err = this._handle.getWindowSize(winSize);
+  if (err) {
+    this.emit("error", errnoException(err, "getWindowSize"));
+    return;
+  }
+  const { 0: newCols, 1: newRows } = winSize;
+  if (oldCols !== newCols || oldRows !== newRows) {
+    this.columns = newCols;
+    this.rows = newRows;
+    this.emit("resize");
+  }
+};
+
+WriteStream.prototype.cursorTo = function cursorTo_(x, y, callback) {
+  return cursorTo(this, x, y, callback);
+};
+
+WriteStream.prototype.moveCursor = function moveCursor_(dx, dy, callback) {
+  return moveCursor(this, dx, dy, callback);
+};
+
+WriteStream.prototype.clearLine = function clearLine_(dir, callback) {
+  return clearLine(this, dir, callback);
+};
+
+WriteStream.prototype.clearScreenDown = function clearScreenDown_(callback) {
+  return clearScreenDown(this, callback);
+};
+
+WriteStream.prototype.getWindowSize = function getWindowSize() {
+  return [this.columns, this.rows];
+};
+
+/**
+ * @param {number | Record<string, string>} [count]
+ * @param {Record<string, string>} [env]
+ * @returns {boolean}
+ */
+WriteStream.prototype.hasColors = function hasColors(count, env) {
+  if (
+    env === undefined &&
+    (count === undefined || typeof count === "object" && count !== null)
+  ) {
+    env = count;
+    count = 16;
+  } else {
+    validateInteger(count, "count", 2);
+  }
+
+  const depth = this.getColorDepth(env);
+  return count <= 2 ** depth;
+};
+
+/**
+ * @param {Record<string, string>} [env]
+ * @returns {1 | 4 | 8 | 24}
+ */
+WriteStream.prototype.getColorDepth = function getColorDepth_(env) {
+  return getColorDepth(env);
+};
+
+export { WriteStream };
 export default WriteStream;

@@ -1,0 +1,12 @@
+{
+  "tests": {
+    "domain_preserved_in_timers": {
+      "args": "run --allow-all main.mjs",
+      "output": "main.out"
+    },
+    "webext_domain_retry_pattern": {
+      "args": "run --allow-net webext_pattern.mjs",
+      "output": "webext_pattern.out"
+    }
+  }
+}

@@ -16,6 +16,191 @@ use nix::unistd::User;
 
 use crate::ExtNodeSys;
 
+// --- process.title support ---
+//
+// The argv buffer overwrite technique used here is the standard approach for
+// setting the process title visible in `ps`. This is the same technique used by
+// Node.js (via libuv's uv_setup_args/uv_set_process_title), nginx, PostgreSQL,
+// and many other programs. The OS allocates argv as a contiguous buffer; we
+// save its bounds at startup, then overwrite it with the new title.
+//
+// A mutex guards the write path so concurrent calls from workers don't race
+// on the shared argv buffer (matching libuv which also uses a mutex).
+//
+// References:
+// - libuv: https://github.com/libuv/libuv/blob/v1.x/src/unix/proctitle.c
+// - Node.js: uses uv_setup_args() in node_main.cc, uv_set_process_title() in node.cc
+
+#[cfg(unix)]
+struct ArgvInfo {
+  /// Pointer to argv[0] — the start of the contiguous buffer.
+  buf_ptr: *mut u8,
+  /// Total size of the contiguous argv buffer (argv[0] through end of argv[argc-1]).
+  buf_size: usize,
+}
+
+// SAFETY: The raw pointer in ArgvInfo points to the process argv buffer which
+// is valid for the entire process lifetime and is only accessed under ARGV_MUTEX.
+#[cfg(unix)]
+unsafe impl Send for ArgvInfo {}
+// SAFETY: The raw pointer in ArgvInfo points to the process argv buffer which
+// is valid for the entire process lifetime and is only accessed under ARGV_MUTEX.
+#[cfg(unix)]
+unsafe impl Sync for ArgvInfo {}
+
+/// Saved argv buffer bounds. Initialized once at startup (via .init_array on
+/// Linux, or lazily via _NSGetArgv on macOS). Using OnceLock ensures the bounds
+/// are captured before any title-set zeroes the buffer.
+#[cfg(unix)]
+static ARGV_INFO: std::sync::OnceLock<ArgvInfo> = std::sync::OnceLock::new();
+
+/// Mutex guarding argv buffer writes so concurrent workers don't race.
+#[cfg(unix)]
+static ARGV_MUTEX: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+#[cfg(unix)]
+fn overwrite_argv_buffer(title: &str) {
+  let Some(info) = ARGV_INFO.get() else {
+    return;
+  };
+  if info.buf_ptr.is_null() || info.buf_size == 0 {
+    return;
+  }
+  let _guard = ARGV_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+  // SAFETY: buf_ptr and buf_size were captured once from the OS-provided argv
+  // buffer and remain valid for the process lifetime. The mutex ensures
+  // exclusive access.
+  unsafe {
+    let buf = std::slice::from_raw_parts_mut(info.buf_ptr, info.buf_size);
+    let title_bytes = title.as_bytes();
+    let copy_len = title_bytes.len().min(info.buf_size - 1);
+    buf[..copy_len].copy_from_slice(&title_bytes[..copy_len]);
+    buf[copy_len..].fill(0);
+  }
+}
+
+/// Compute the contiguous argv buffer bounds from argv[0]..argv[argc-1].
+///
+/// # Safety
+/// `argv` must be a valid pointer to `argc` C string pointers.
+#[cfg(unix)]
+unsafe fn compute_argv_info(
+  argc: usize,
+  argv: *mut *mut libc::c_char,
+) -> ArgvInfo {
+  // SAFETY: argv is valid and has argc entries (guaranteed by caller).
+  unsafe {
+    let start = *argv as *mut _;
+    let last_arg = *argv.add(argc - 1);
+    let last_arg_len = libc::strlen(last_arg);
+    let end = last_arg.add(last_arg_len + 1) as *const u8;
+    let buf_size = end.offset_from(start) as usize;
+    ArgvInfo {
+      buf_ptr: start,
+      buf_size,
+    }
+  }
+}
+
+#[cfg(target_os = "linux")]
+#[used]
+#[unsafe(link_section = ".init_array")]
+static ARGV_INIT_FN: unsafe extern "C" fn(
+  libc::c_int,
+  *mut *mut libc::c_char,
+  *mut *mut libc::c_char,
+) = {
+  unsafe extern "C" fn init(
+    argc: libc::c_int,
+    argv: *mut *mut libc::c_char,
+    _envp: *mut *mut libc::c_char,
+  ) {
+    if argv.is_null() || argc <= 0 {
+      return;
+    }
+    // SAFETY: argc and argv are provided by the OS at process init and are valid.
+    let info = unsafe { compute_argv_info(argc as usize, argv) };
+    let _ = ARGV_INFO.set(info);
+  }
+  init
+};
+
+#[cfg(target_os = "macos")]
+fn init_macos_argv_info() {
+  ARGV_INFO.get_or_init(|| {
+    // SAFETY: _NSGetArgc/_NSGetArgv are stable macOS APIs that return
+    // pointers to the process's argc/argv, valid for the process lifetime.
+    unsafe {
+      unsafe extern "C" {
+        fn _NSGetArgc() -> *mut libc::c_int;
+        fn _NSGetArgv() -> *mut *mut *mut libc::c_char;
+      }
+
+      let argc = *_NSGetArgc() as usize;
+      let argv = *_NSGetArgv();
+      if argv.is_null() || argc == 0 {
+        return ArgvInfo {
+          buf_ptr: std::ptr::null_mut(),
+          buf_size: 0,
+        };
+      }
+      compute_argv_info(argc, argv)
+    }
+  });
+}
+
+#[cfg(target_os = "macos")]
+fn set_process_title(title: &str) {
+  init_macos_argv_info();
+  overwrite_argv_buffer(title);
+
+  // Also set the pthread name (visible in Activity Monitor / debugger, 63 char limit)
+  let truncated = &title.as_bytes()[..title.len().min(63)];
+  if let Ok(c_title) = std::ffi::CString::new(truncated) {
+    // SAFETY: c_title is a valid null-terminated C string.
+    unsafe {
+      libc::pthread_setname_np(c_title.as_ptr());
+    }
+  }
+}
+
+#[cfg(target_os = "linux")]
+fn set_process_title(title: &str) {
+  overwrite_argv_buffer(title);
+
+  // Also set the kernel thread name via prctl (15 char limit, visible in /proc/self/comm)
+  let truncated = &title.as_bytes()[..title.len().min(15)];
+  if let Ok(c_title) = std::ffi::CString::new(truncated) {
+    // SAFETY: c_title is a valid null-terminated C string.
+    unsafe {
+      libc::prctl(libc::PR_SET_NAME, c_title.as_ptr() as libc::c_ulong);
+    }
+  }
+}
+
+#[cfg(target_os = "windows")]
+fn set_process_title(title: &str) {
+  let wide: Vec<u16> = title.encode_utf16().chain(std::iter::once(0)).collect();
+  // SAFETY: FFI call, wide is null-terminated
+  unsafe {
+    winapi::um::wincon::SetConsoleTitleW(wide.as_ptr());
+  }
+}
+
+#[cfg(not(any(
+  target_os = "macos",
+  target_os = "linux",
+  target_os = "windows"
+)))]
+fn set_process_title(_title: &str) {
+  // No-op on unsupported platforms
+}
+
+#[op2(fast)]
+pub fn op_node_process_set_title(#[string] title: &str) {
+  set_process_title(title);
+}
+
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum ProcessError {
   #[class(inherit)]

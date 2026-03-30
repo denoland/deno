@@ -23,6 +23,7 @@ use thiserror::Error;
 use super::NpmPackageVersionNotFound;
 use super::UnmetPeerDepDiagnostic;
 use super::common::NpmVersionResolver;
+use super::common::package_info_or_link_fallback;
 use super::graph::Graph;
 use super::graph::GraphDependencyResolver;
 use super::graph::NpmResolutionError;
@@ -314,6 +315,7 @@ impl NpmResolutionSnapshot {
     // convert the snapshot to a traversable graph
     let mut graph = Graph::from_snapshot(self);
 
+    let link_packages = &*options.version_resolver.link_packages;
     let reqs_with_in_graph = options
       .package_reqs
       .iter()
@@ -323,7 +325,9 @@ impl NpmResolutionSnapshot {
         let maybe_info = if let Some(nv) = maybe_nv {
           InfoOrNv::Nv(nv)
         } else {
-          InfoOrNv::InfoResult(api.package_info(&req.name).await)
+          InfoOrNv::InfoResult(
+            package_info_or_link_fallback(api, &req.name, link_packages).await,
+          )
         };
         (req, maybe_info)
       })
@@ -667,7 +671,7 @@ impl NpmResolutionSnapshot {
         Box::new(PackageNotFoundFromReferrerError::Referrer(referrer.clone()))
       })?;
 
-    let name = name_without_path(name);
+    let name = crate::package_name_without_subpath(name);
     if let Some(id) = referrer_package.dependencies.get(name) {
       return Ok(self.packages.get(id).unwrap());
     }
@@ -863,21 +867,6 @@ impl SnapshotPackageCopyIndexResolver {
   }
 }
 
-fn name_without_path(name: &str) -> &str {
-  let mut search_start_index = 0;
-  if name.starts_with('@')
-    && let Some(slash_index) = name.find('/')
-  {
-    search_start_index = slash_index + 1;
-  }
-  if let Some(slash_index) = &name[search_start_index..].find('/') {
-    // get the name up until the path slash
-    &name[0..search_start_index + slash_index]
-  } else {
-    name
-  }
-}
-
 #[derive(Debug, Error, Clone, JsError)]
 pub enum SnapshotFromLockfileError {
   #[error("Could not find '{}' specified in the lockfile.", .source.0)]
@@ -967,7 +956,7 @@ pub enum IncompleteSnapshotFromLockfileError {
 }
 
 /// Constructs [`ValidSerializedNpmResolutionSnapshot`] from the given [`Lockfile`].
-#[allow(clippy::needless_lifetimes)] // clippy bug
+#[allow(clippy::needless_lifetimes, reason = "clippy bug")]
 pub fn snapshot_from_lockfile(
   params: SnapshotFromLockfileParams<'_>,
 ) -> Result<ValidSerializedNpmResolutionSnapshot, SnapshotFromLockfileError> {
@@ -1069,14 +1058,6 @@ mod tests {
 
   use super::*;
   use crate::registry::TestNpmRegistryApi;
-
-  #[test]
-  fn test_name_without_path() {
-    assert_eq!(name_without_path("foo"), "foo");
-    assert_eq!(name_without_path("@foo/bar"), "@foo/bar");
-    assert_eq!(name_without_path("@foo/bar/baz"), "@foo/bar");
-    assert_eq!(name_without_path("@hello"), "@hello");
-  }
 
   #[test]
   fn test_copy_index_resolver() {

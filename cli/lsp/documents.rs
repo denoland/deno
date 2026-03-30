@@ -973,7 +973,7 @@ pub struct DocumentModule {
 }
 
 impl DocumentModule {
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "construction")]
   pub fn new(
     document: &Document,
     specifier: Arc<Url>,
@@ -1159,7 +1159,7 @@ pub struct DocumentModules {
   dep_info_by_scope: once_cell::sync::OnceCell<Arc<DepInfoByScope>>,
   modules_unscoped: Arc<WeakDocumentModuleMap>,
   modules_by_scope: Arc<BTreeMap<Arc<Url>, Arc<WeakDocumentModuleMap>>>,
-  assigned_scopes: Arc<DashMap<Arc<Uri>, ScopeInfo>>,
+  assigned_scopes: Arc<RwLock<HashMap<Arc<Uri>, ScopeInfo>>>,
 }
 
 impl DocumentModules {
@@ -1294,6 +1294,15 @@ impl DocumentModules {
     self.documents.remove_server_doc(&module.uri);
   }
 
+  pub fn assign_scopes(
+    &self,
+    entries: impl IntoIterator<
+      Item = (Arc<Uri>, (Option<Arc<Url>>, CompilerOptionsKey)),
+    >,
+  ) {
+    self.assigned_scopes.write().extend(entries);
+  }
+
   fn infer_specifier(&self, document: &Document) -> Option<Arc<Url>> {
     if let Some(document) = document.server() {
       match &document.kind {
@@ -1344,9 +1353,10 @@ impl DocumentModules {
       (key, value)
     } else {
       self.compiler_options_resolver.entry_for_specifier(
-        if scheme != "file" && scope.is_some() {
-          #[allow(clippy::unnecessary_unwrap)]
-          scope.unwrap()
+        if scheme != "file"
+          && let Some(scope) = scope
+        {
+          scope
         } else {
           &specifier
         },
@@ -1400,7 +1410,7 @@ impl DocumentModules {
       compiler_options_key,
     );
     if let Some(module) = &module {
-      self.assigned_scopes.insert(
+      self.assigned_scopes.write().insert(
         document.uri().clone(),
         (module.scope.clone(), module.compiler_options_key.clone()),
       );
@@ -1458,9 +1468,9 @@ impl DocumentModules {
     if let Some(scope) = self.primary_scope(document.uri()) {
       return self.module(document, scope.map(|s| s.as_ref()));
     }
-    if let Some((scope, compiler_options_key)) =
-      self.assigned_scopes.get(document.uri()).map(|e| e.clone())
-    {
+    let assigned_scope =
+      self.assigned_scopes.read().get(document.uri()).cloned();
+    if let Some((scope, compiler_options_key)) = assigned_scope {
       return self.module_inner(
         document,
         None,
@@ -2295,7 +2305,6 @@ fn parse_and_analyze_module(
   )
 }
 
-#[allow(clippy::result_large_err)]
 fn parse_source(
   specifier: ModuleSpecifier,
   text: Arc<str>,

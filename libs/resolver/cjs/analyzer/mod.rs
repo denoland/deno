@@ -43,7 +43,7 @@ pub enum DenoCjsAnalysis {
 #[derive(Debug, Copy, Clone)]
 pub struct NodeAnalysisCacheSourceHash(pub u64);
 
-#[allow(clippy::disallowed_types)]
+#[allow(clippy::disallowed_types, reason = "definition")]
 pub type NodeAnalysisCacheRc = deno_maybe_sync::MaybeArc<dyn NodeAnalysisCache>;
 
 pub trait NodeAnalysisCache: MaybeSend + MaybeSync {
@@ -98,11 +98,14 @@ pub trait ModuleForExportAnalysis {
   fn analyze_es_runtime_exports(&self) -> ModuleExportsAndReExports;
 }
 
-#[allow(clippy::disallowed_types)]
+#[allow(clippy::disallowed_types, reason = "definition")]
 pub type ModuleExportAnalyzerRc =
   deno_maybe_sync::MaybeArc<dyn ModuleExportAnalyzer>;
 
-#[allow(clippy::disallowed_types)]
+#[allow(
+  clippy::disallowed_types,
+  reason = "source text is always stored as Arc<str>"
+)]
 type ArcStr = std::sync::Arc<str>;
 
 pub trait ModuleExportAnalyzer: MaybeSend + MaybeSync {
@@ -128,7 +131,7 @@ impl ModuleExportAnalyzer for NotImplementedModuleExportAnalyzer {
   }
 }
 
-#[allow(clippy::disallowed_types)]
+#[allow(clippy::disallowed_types, reason = "definition")]
 pub type DenoCjsCodeAnalyzerRc<TSys> =
   deno_maybe_sync::MaybeArc<DenoCjsCodeAnalyzer<TSys>>;
 

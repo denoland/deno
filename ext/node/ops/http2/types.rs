@@ -32,7 +32,7 @@ pub enum SettingsIndex {
 
 #[repr(usize)]
 #[derive(Debug, Clone, Copy)]
-#[allow(dead_code)]
+#[allow(dead_code, reason = "variants used for repr(usize) mapping")]
 pub enum SessionStateIndex {
   EffectiveLocalWindowSize = 0,
   EffectiveRecvDataLength = 1,
@@ -48,7 +48,7 @@ pub enum SessionStateIndex {
 
 #[repr(usize)]
 #[derive(Debug, Clone, Copy)]
-#[allow(dead_code)]
+#[allow(dead_code, reason = "variants used for repr(usize) mapping")]
 pub enum StreamStateIndex {
   State = 0,
   Weight = 1,
@@ -61,7 +61,7 @@ pub enum StreamStateIndex {
 
 #[repr(usize)]
 #[derive(Debug, Clone, Copy)]
-#[allow(dead_code)]
+#[allow(dead_code, reason = "variants used for repr(usize) mapping")]
 pub enum OptionsIndex {
   MaxDeflateDynamicTableSize = 0,
   MaxReservedRemoteStreams = 1,
@@ -152,6 +152,10 @@ pub struct Http2Constants {
   http2_header_transfer_encoding: &'static str,
   http2_header_keep_alive: &'static str,
   http2_header_proxy_connection: &'static str,
+  http2_header_accept: &'static str,
+  http2_header_accept_encoding: &'static str,
+  http2_header_accept_language: &'static str,
+  http2_header_accept_ranges: &'static str,
 
   http2_method_connect: &'static str,
   http2_method_delete: &'static str,
@@ -235,7 +239,7 @@ pub struct Http2Constants {
 
 #[op2]
 #[serde]
-#[allow(clippy::unnecessary_cast)]
+#[allow(clippy::unnecessary_cast, reason = "platform specific")]
 pub fn op_http2_constants() -> Http2Constants {
   Http2Constants {
     nghttp2_hcat_request: ffi::NGHTTP2_HCAT_REQUEST as u32,
@@ -302,6 +306,10 @@ pub fn op_http2_constants() -> Http2Constants {
     http2_header_transfer_encoding: "transfer-encoding",
     http2_header_keep_alive: "keep-alive",
     http2_header_proxy_connection: "proxy-connection",
+    http2_header_accept: "accept",
+    http2_header_accept_encoding: "accept-encoding",
+    http2_header_accept_language: "accept-language",
+    http2_header_accept_ranges: "accept-ranges",
 
     http2_method_connect: "CONNECT",
     http2_method_delete: "DELETE",

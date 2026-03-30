@@ -1,7 +1,5 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-use std::ffi::OsStr;
-use std::ffi::OsString;
 use std::path::Path;
 
 use deno_core::OpState;
@@ -19,57 +17,14 @@ use crate::NodeResolverRc;
 
 #[repr(u32)]
 enum HandleType {
-  #[allow(dead_code)]
+  #[allow(dead_code, reason = "variant kept for repr(u32) mapping")]
   Tcp = 0,
   Tty,
-  #[allow(dead_code)]
+  #[allow(dead_code, reason = "variant kept for repr(u32) mapping")]
   Udp,
   File,
   Pipe,
   Unknown,
-}
-
-/// Check if a raw file descriptor is a TTY.
-/// This is used by Node.js `tty.isatty(fd)`.
-#[op2(fast)]
-pub fn op_node_is_tty(fd: i32) -> bool {
-  if fd < 0 {
-    return false;
-  }
-  is_tty(fd)
-}
-
-#[cfg(unix)]
-fn is_tty(fd: i32) -> bool {
-  // SAFETY: We're checking if the fd is a terminal.
-  // The fd may or may not be valid, but libc::isatty handles that safely.
-  unsafe { libc::isatty(fd) == 1 }
-}
-
-#[cfg(windows)]
-fn is_tty(fd: i32) -> bool {
-  use winapi::um::consoleapi::GetConsoleMode;
-  use winapi::um::processenv::GetStdHandle;
-  use winapi::um::winbase::STD_ERROR_HANDLE;
-  use winapi::um::winbase::STD_INPUT_HANDLE;
-  use winapi::um::winbase::STD_OUTPUT_HANDLE;
-
-  // SAFETY: GetStdHandle returns a borrowed handle to stdin/stdout/stderr.
-  // For fd > 2, we try to use it as a raw handle directly.
-  let handle = match fd {
-    // SAFETY: These are valid standard handles.
-    0 => unsafe { GetStdHandle(STD_INPUT_HANDLE) },
-    // SAFETY: These are valid standard handles.
-    1 => unsafe { GetStdHandle(STD_OUTPUT_HANDLE) },
-    // SAFETY: These are valid standard handles.
-    2 => unsafe { GetStdHandle(STD_ERROR_HANDLE) },
-    _ => fd as winapi::um::winnt::HANDLE,
-  };
-
-  let mut mode = 0;
-  // SAFETY: handle is either a valid standard handle or a raw fd cast to HANDLE.
-  // GetConsoleMode will return 0 if the handle is invalid or not a console.
-  unsafe { GetConsoleMode(handle, &mut mode) != 0 }
 }
 
 #[op2(fast)]
@@ -166,7 +121,9 @@ pub fn op_node_call_is_from_dependency<
     let Some(script) = frame.get_script_name(scope) else {
       continue;
     };
-    let name = script.to_rust_string_lossy(scope);
+    let mut name_buf: [std::mem::MaybeUninit<u8>; 1024] =
+      [std::mem::MaybeUninit::uninit(); 1024];
+    let name = script.to_rust_cow_lossy(scope, &mut name_buf);
 
     if name.starts_with("node:") || name.starts_with("ext:") {
       continue;
@@ -282,22 +239,10 @@ pub fn op_node_parse_env<'a>(
   #[string] content: &str,
 ) -> v8::Local<'a, v8::Object> {
   let env_obj = v8::Object::new(scope);
-  parse_env_content_hook(&NullEnvVarsSys, content, |key, value| {
+  parse_env_content_hook(content, &mut |key, value| {
     let key = v8::String::new(scope, key).unwrap();
     let value = v8::String::new(scope, value).unwrap();
     env_obj.set(scope, key.into(), value.into());
   });
   env_obj
-}
-
-// Avoid reading env vars here for variable substitution
-// in order to have the same behaviour as node and also
-// to not cause a security issue where people can read
-// env vars by using this API.
-pub struct NullEnvVarsSys;
-
-impl sys_traits::BaseEnvVar for NullEnvVarsSys {
-  fn base_env_var_os(&self, _key: &OsStr) -> Option<OsString> {
-    None
-  }
 }

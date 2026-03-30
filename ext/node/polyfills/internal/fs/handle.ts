@@ -46,7 +46,7 @@ function writevPromise(
     });
   });
 }
-import { readvPromise, ReadVResult } from "ext:deno_node/_fs/_fs_readv.ts";
+import { readvPromise, type ReadVResult } from "node:fs";
 import { fstatPromise } from "ext:deno_node/_fs/_fs_fstat.ts";
 import {
   fchown as fchownCb,
@@ -98,8 +98,8 @@ const kRefs = Symbol("kRefs");
 const kClosePromise = Symbol("kClosePromise");
 const kCloseResolve = Symbol("kCloseResolve");
 const kCloseReject = Symbol("kCloseReject");
-const kRef = Symbol("kRef");
-const kUnref = Symbol("kUnref");
+export const kRef = Symbol("kRef");
+export const kUnref = Symbol("kUnref");
 const kLocked = Symbol("kLocked");
 
 const ftruncatePromise = promisify(ftruncateCb);
@@ -309,11 +309,11 @@ export class FileHandle extends EventEmitter {
   }
 
   createReadStream(options?: CreateReadStreamOptions): ReadStream {
-    return new ReadStream(undefined, { ...options, fd: this.fd });
+    return new ReadStream(undefined, { ...options, fd: this });
   }
 
   createWriteStream(options?: CreateWriteStreamOptions): WriteStream {
-    return new WriteStream(undefined, { ...options, fd: this.fd });
+    return new WriteStream(undefined, { ...options, fd: this });
   }
 
   readLines(options?: CreateReadStreamOptions): ReadlineInterface {
@@ -435,12 +435,19 @@ function readPromise(
   position?: number | null,
 ): Promise<ReadResult> {
   if (ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, bufferOrOpt)) {
-    if (typeof length !== "number" && typeof position !== "number") {
+    if (
+      typeof offsetOrOpt !== "number" && typeof length !== "number" &&
+      typeof position !== "number"
+    ) {
+      // fileHandle.read(buffer) or fileHandle.read(buffer, options)
+      const opts = (offsetOrOpt ?? {}) as ReadAsyncOptions<
+        NodeJS.ArrayBufferView
+      >;
       return new Promise((resolve, reject) => {
         readAsync(
           rid,
           bufferOrOpt,
-          offsetOrOpt,
+          opts,
           (err: Error, bytesRead: number, buffer: Buffer) => {
             if (err) reject(err);
             else resolve({ buffer, bytesRead });
