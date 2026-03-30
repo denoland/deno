@@ -53,6 +53,7 @@ import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
 
 const {
+  ArrayFrom,
   ArrayIsArray,
   Error,
   EvalError,
@@ -64,6 +65,8 @@ const {
   ObjectPrototypeIsPrototypeOf,
   PromiseReject,
   PromiseResolve,
+  queueMicrotask,
+  ReflectHas,
   SafeMap,
   SafeRegExp,
   SafeSet,
@@ -1192,9 +1195,9 @@ function webMessagePortToNodeMessagePort(port: MessagePort) {
       // If it's an object with a 'transfer' key, validate the transfer value
       if (
         typeof transferList === "object" && !ArrayIsArray(transferList) &&
-        !(Symbol.iterator in transferList)
+        !ReflectHas(transferList, SymbolIterator)
       ) {
-        if ("transfer" in transferList) {
+        if (ReflectHas(transferList, "transfer")) {
           const transfer = transferList.transfer;
           if (transfer === undefined) {
             // { transfer: undefined } is ok, treat as no transfer
@@ -1202,7 +1205,7 @@ function webMessagePortToNodeMessagePort(port: MessagePort) {
           }
           if (
             transfer === null || typeof transfer !== "object" ||
-            !(Symbol.iterator in transfer)
+            !ReflectHas(transfer, SymbolIterator)
           ) {
             const err = new TypeError(
               "Optional options.transfer argument must be an iterable",
@@ -1211,7 +1214,7 @@ function webMessagePortToNodeMessagePort(port: MessagePort) {
             throw err;
           }
           try {
-            transferList = [...transfer];
+            transferList = ArrayFrom(transfer);
           } catch {
             const err = new TypeError(
               "Optional options.transfer argument must be an iterable",
@@ -1225,7 +1228,7 @@ function webMessagePortToNodeMessagePort(port: MessagePort) {
         }
       } else if (
         typeof transferList !== "object" ||
-        !(Symbol.iterator in Object(transferList))
+        !ReflectHas(transferList, SymbolIterator)
       ) {
         // Not iterable (number, boolean, symbol, string)
         const err = new TypeError(

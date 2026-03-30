@@ -534,7 +534,10 @@ function structuredClone(value, options) {
     "Argument 2",
   );
 
-  if (typeof value === "object" && value !== null && !isArrayBuffer(value) && value[core.uncloneableBrand]) {
+  if (
+    typeof value === "object" && value !== null && !isArrayBuffer(value) &&
+    value[core.uncloneableBrand]
+  ) {
     throw new DOMException(
       "Cannot clone object marked as uncloneable",
       "DataCloneError",
