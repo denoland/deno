@@ -557,10 +557,21 @@ impl<
           resolution_kind,
         ) {
           Ok(res) => Ok(Some(res)),
-          // If the npm package isn't found (or resolution fails for any
-          // reason), fall back to the built-in. In practice the only
-          // failure case here is "package not found in node_modules".
-          Err(_) => Ok(Some(NodeResolution::BuiltIn(builtin_name))),
+          Err(err) => {
+            let err_kind = err.into_kind();
+            match err_kind {
+              // If the npm package can't be found in node_modules, fall
+              // back to the built-in. Other errors (e.g. broken exports
+              // map) should propagate so the user gets a useful diagnostic.
+              NodeResolveErrorKind::PackageResolve(_) => {
+                Ok(Some(NodeResolution::BuiltIn(builtin_name)))
+              }
+              _ => Err(
+                ResolveIfForNpmPackageErrorKind::NodeResolve(err_kind.into())
+                  .into_box(),
+              ),
+            }
+          }
         }
       }
       Ok(res) => Ok(Some(res)),
