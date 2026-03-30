@@ -234,19 +234,22 @@ Deno.test({
   fn() {
     const invalidLengths = [0, 1, 2, 3, 5, 6, 7, 9, 10, 11, 17];
     for (const length of invalidLengths) {
+      const d = crypto.createDecipheriv(
+        "aes-128-gcm",
+        Buffer.alloc(16),
+        Buffer.alloc(12),
+      );
       assertThrows(
-        () => {
-          // Create and immediately set tag — throws and the context is
-          // released when createDecipheriv's Transform is GC'd.
-          crypto.createDecipheriv(
-            "aes-128-gcm",
-            Buffer.alloc(16),
-            Buffer.alloc(12),
-          ).setAuthTag(Buffer.alloc(length));
-        },
+        () => d.setAuthTag(Buffer.alloc(length)),
         TypeError,
         "Invalid authentication tag length",
       );
+      // Finalize to release the underlying resource.
+      try {
+        d.final();
+      } catch {
+        // final() throws because no valid auth tag was set — that's expected.
+      }
     }
 
     // Valid lengths should not throw — use a full encrypt/decrypt cycle
