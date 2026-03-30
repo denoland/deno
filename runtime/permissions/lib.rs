@@ -5429,8 +5429,10 @@ mod tests {
       &self,
       path: Cow<'a, Path>,
     ) -> Result<PathQueryDescriptor<'a>, PathResolveError> {
+      let cmp_path = comparison_path(&path);
       Ok(PathQueryDescriptor {
         path,
+        cmp_path,
         requested: None,
         is_windows_device_path: false,
       })
