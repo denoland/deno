@@ -976,7 +976,7 @@
     "parallel/test-fs-read-stream-patch-open.js": {},
     "parallel/test-fs-read-stream-pos.js": {
       "ignore": true,
-      "comment": "times out due to timing sensitivity with fd-based read stream"
+      "reason": "times out due to timing sensitivity with fd-based read stream"
     },
     "parallel/test-fs-read-stream-resume.js": {},
     "parallel/test-fs-read-stream-throw-type-error.js": {},
