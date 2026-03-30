@@ -390,6 +390,28 @@ export function measureMemory(_options) {
   notImplemented("measureMemory");
 }
 
+// vm.Module, SourceTextModule, and SyntheticModule are not implemented.
+// These require the --experimental-vm-modules flag in Node.js.
+// See https://github.com/denoland/deno/issues/29917 for tracking.
+
+export class Module {
+  constructor() {
+    notImplemented("Module");
+  }
+}
+
+export class SourceTextModule {
+  constructor() {
+    notImplemented("SourceTextModule");
+  }
+}
+
+export class SyntheticModule {
+  constructor() {
+    notImplemented("SyntheticModule");
+  }
+}
+
 const USE_MAIN_CONTEXT_DEFAULT_LOADER = Symbol(
   "USE_MAIN_CONTEXT_DEFAULT_LOADER",
 );
@@ -406,6 +428,9 @@ ObjectFreeze(constants);
 export default {
   Script,
   constants,
+  Module,
+  SourceTextModule,
+  SyntheticModule,
   createContext,
   createScript,
   runInContext,
