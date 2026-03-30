@@ -231,6 +231,7 @@ Deno.test({
 
 Deno.test({
   name: "aes gcm setAuthTag validates tag length",
+  sanitizeResources: false,
   fn() {
     const invalidLengths = [0, 1, 2, 3, 5, 6, 7, 9, 10, 11, 17];
     for (const length of invalidLengths) {
@@ -262,6 +263,7 @@ Deno.test({
 
 Deno.test({
   name: "aes gcm setAuthTag cannot be called twice",
+  sanitizeResources: false,
   fn() {
     const d = crypto.createDecipheriv(
       "aes-128-gcm",
@@ -296,6 +298,7 @@ Deno.test({
 
 Deno.test({
   name: "aes gcm getAuthTag before final throws state error",
+  sanitizeResources: false,
   fn() {
     const cipher = crypto.createCipheriv(
       "aes-128-gcm",
