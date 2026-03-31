@@ -911,14 +911,10 @@ pub fn op_node_fs_read_sync(
   read_with_position(file, buf, position)
 }
 
-/// Async (deferred) read -- performs the read synchronously but resolves the
-/// promise on the next event loop tick, matching Node's libuv-based behavior
-/// where the callback fires on the next event loop iteration.
-#[allow(
-  clippy::unused_async,
-  reason = "async required for deferred op scheduling"
-)]
-#[op2(async(deferred))]
+/// Async read for node:fs. For positioned reads, uses pread then yields.
+/// For non-positioned reads, uses truly async read_byob (blocking thread).
+/// Both paths yield to the event loop so timers/intervals can fire.
+#[op2]
 #[smi]
 pub async fn op_node_fs_read_deferred(
   state: Rc<RefCell<OpState>>,
@@ -927,8 +923,17 @@ pub async fn op_node_fs_read_deferred(
   #[number] position: i64,
 ) -> Result<u32, FsError> {
   let file = file_for_fd(&state.borrow(), fd)?;
-  let mut buf = buf;
-  read_with_position(file, &mut buf, position)
+  if position >= 0 {
+    let mut buf = buf;
+    let nread = file.read_at_sync(&mut buf, position as u64)?;
+    // Yield to the event loop so timers/intervals can fire between reads.
+    tokio::task::yield_now().await;
+    Ok(nread as u32)
+  } else {
+    let view = deno_core::BufMutView::from(buf);
+    let (nread, _) = file.read_byob(view).await?;
+    Ok(nread as u32)
+  }
 }
 
 /// Positioned write: if position >= 0, uses pwrite to write without moving
@@ -970,8 +975,8 @@ pub fn op_node_fs_write_sync(
   write_with_position(file, buf, position)
 }
 
-/// Async (deferred) write -- performs the write synchronously but resolves the
-/// promise on the next event loop tick, matching Node's libuv-based behavior.
+/// Async write for node:fs. Performs the write synchronously but resolves
+/// the promise on the next event loop tick.
 #[allow(
   clippy::unused_async,
   reason = "async required for deferred op scheduling"

@@ -144,8 +144,8 @@ export function read(
     validatePosition(position, "position", length as number);
   }
 
-  // The op handles position seeking internally (saves/restores file offset
-  // for positioned reads). position=-1 means read from current position.
+  // The op handles position seeking internally (pread for positioned reads).
+  // position=-1 means read from current position.
   const readPos = position != null && position >= 0 ? Number(position) : -1;
   op_node_fs_read_deferred(
     fd,
