@@ -322,8 +322,8 @@ impl<'a> FromV8<'a> for DatabaseSyncOptions {
     if let Some(limits_value) = obj.get(scope, limits_string.into())
       && !limits_value.is_undefined()
     {
-      let limits_obj =
-        v8::Local::<v8::Object>::try_from(limits_value).map_err(|_| {
+      let limits_obj = v8::Local::<v8::Object>::try_from(limits_value)
+        .map_err(|_| {
           Error::InvalidArgType(
             "The \"options.limits\" argument must be an object.",
           )
@@ -338,15 +338,16 @@ impl<'a> FromV8<'a> for DatabaseSyncOptions {
         if let Some(val) = limits_obj.get(scope, key.into())
           && !val.is_undefined()
         {
-          let int_val = v8::Local::<v8::Int32>::try_from(val).map_err(|_| {
-            Error::InvalidArgType(Box::leak(
-              format!(
-                "The \"options.limits.{}\" argument must be an integer.",
-                limit_info.js_name
-              )
-              .into_boxed_str(),
-            ))
-          })?;
+          let int_val =
+            v8::Local::<v8::Int32>::try_from(val).map_err(|_| {
+              Error::InvalidArgType(Box::leak(
+                format!(
+                  "The \"options.limits.{}\" argument must be an integer.",
+                  limit_info.js_name
+                )
+                .into_boxed_str(),
+              ))
+            })?;
 
           let limit_val = int_val.value();
           if limit_val < 0 {

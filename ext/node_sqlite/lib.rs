@@ -18,7 +18,13 @@ pub use statement::StatementSync;
 deno_core::extension!(
   deno_node_sqlite,
   ops = [op_node_database_backup,],
-  objects = [DatabaseSync, DatabaseSyncLimits, Session, SQLTagStore, StatementSync,],
+  objects = [
+    DatabaseSync,
+    DatabaseSyncLimits,
+    Session,
+    SQLTagStore,
+    StatementSync,
+  ],
 );
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
