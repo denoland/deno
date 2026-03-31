@@ -1287,6 +1287,18 @@ const buildJobs = buildItems.map((rawBuildItem) => {
             run:
               "target/release/deno run -A --config tests/config/deno.json ext/websocket/autobahn/fuzzingclient.js",
           },
+          {
+            name: "Open issue for newly passing WPT tests",
+            continueOnError: true,
+            if: isMainBranch.and(isDenoland),
+            env: {
+              GITHUB_TOKEN: "${{ secrets.DENOBOT_PAT }}",
+            },
+            run: [
+              "deno run --allow-read --allow-env --allow-net \\",
+              "    ./tools/wpt_passing_test_checker.ts wpt_newly_passing.json",
+            ],
+          },
           step.dependsOn(setupGcloudStep)({
             name: "Upload wpt results to dl.deno.land",
             continueOnError: true,
