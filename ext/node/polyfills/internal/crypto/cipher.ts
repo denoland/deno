@@ -368,22 +368,25 @@ Cipheriv.prototype.setAAD = function (
   }
   let plaintextLength = -1;
   if (this._isCCM) {
-    if (!options || typeof options.plaintextLength !== "number") {
+    const ptl = options?.plaintextLength;
+    if (ptl === undefined || ptl === null) {
+      throw new TypeError(
+        "options.plaintextLength required for CCM mode with AAD",
+      );
+    }
+    if (
+      typeof ptl !== "number" || !Number.isInteger(ptl) || ptl < 0
+    ) {
       throw new ERR_INVALID_ARG_VALUE(
         "options.plaintextLength",
-        options?.plaintextLength,
-        "is required for CCM mode",
+        ptl,
       );
     }
     const maxSize = ccmMaxMessageSize(this._ccmIvLength);
-    if (options.plaintextLength > maxSize) {
-      throw new ERR_INVALID_ARG_VALUE(
-        "options.plaintextLength",
-        options.plaintextLength,
-        `must be <= ${maxSize}`,
-      );
+    if (ptl > maxSize) {
+      throw new Error("Invalid message length");
     }
-    plaintextLength = options.plaintextLength;
+    plaintextLength = ptl;
     this._ccmHasSetAAD = true;
   }
   op_node_cipheriv_set_aad(this._context, buffer, plaintextLength);
@@ -415,11 +418,7 @@ Cipheriv.prototype.update = function (
   if (this._isCCM) {
     const maxSize = ccmMaxMessageSize(this._ccmIvLength);
     if (this._ccmDataLength + buf.length > maxSize) {
-      throw new ERR_INVALID_ARG_VALUE(
-        "data",
-        buf.length,
-        `exceeds maximum message size for ${this._cipher}`,
-      );
+      throw new Error("Invalid message length");
     }
     this._ccmDataLength += buf.length;
     op_node_cipheriv_encrypt(this._context, buf, new Uint8Array(0));
@@ -618,7 +617,7 @@ Decipheriv.prototype.final = function (
     if (!this._authTag) {
       throw new CipherError(
         "ERR_OSSL_TAG_NOT_SET",
-        "tag not set",
+        "Unsupported state or unable to authenticate data",
       );
     }
     _lazyInitDecipherDecoder(this, encoding);
@@ -692,22 +691,25 @@ Decipheriv.prototype.setAAD = function (
   }
   let plaintextLength = -1;
   if (this._isCCM) {
-    if (!options || typeof options.plaintextLength !== "number") {
+    const ptl = options?.plaintextLength;
+    if (ptl === undefined || ptl === null) {
+      throw new TypeError(
+        "options.plaintextLength required for CCM mode with AAD",
+      );
+    }
+    if (
+      typeof ptl !== "number" || !Number.isInteger(ptl) || ptl < 0
+    ) {
       throw new ERR_INVALID_ARG_VALUE(
         "options.plaintextLength",
-        options?.plaintextLength,
-        "is required for CCM mode",
+        ptl,
       );
     }
     const maxSize = ccmMaxMessageSize(this._ccmIvLength);
-    if (options.plaintextLength > maxSize) {
-      throw new ERR_INVALID_ARG_VALUE(
-        "options.plaintextLength",
-        options.plaintextLength,
-        `must be <= ${maxSize}`,
-      );
+    if (ptl > maxSize) {
+      throw new Error("Invalid message length");
     }
-    plaintextLength = options.plaintextLength;
+    plaintextLength = ptl;
     this._ccmHasSetAAD = true;
   }
   op_node_decipheriv_set_aad(this._context, buffer, plaintextLength);
@@ -752,11 +754,7 @@ Decipheriv.prototype.update = function (
   if (this._isCCM) {
     const maxSize = ccmMaxMessageSize(this._ccmIvLength);
     if (this._ccmDataLength + buf.length > maxSize) {
-      throw new ERR_INVALID_ARG_VALUE(
-        "data",
-        buf.length,
-        `exceeds maximum message size for ${this._cipher}`,
-      );
+      throw new Error("Invalid message length");
     }
     this._ccmDataLength += buf.length;
     op_node_decipheriv_decrypt(this._context, buf, new Uint8Array(0));
