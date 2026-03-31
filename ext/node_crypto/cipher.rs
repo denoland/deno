@@ -25,7 +25,8 @@ type Aes256Gcm = aead_gcm_stream::AesGcm<aes::Aes256>;
 struct ChaCha20Poly1305Cipher {
   chacha: chacha20::ChaCha20,
   poly: poly1305::Poly1305,
-  aad_len: u64,
+  aad_buf: Vec<u8>,
+  aad_flushed: bool,
   ct_len: u64,
   auth_tag_length: usize,
 }
@@ -52,18 +53,29 @@ impl ChaCha20Poly1305Cipher {
     ChaCha20Poly1305Cipher {
       chacha,
       poly,
-      aad_len: 0,
+      aad_buf: Vec::new(),
+      aad_flushed: false,
       ct_len: 0,
       auth_tag_length,
     }
   }
 
   fn set_aad(&mut self, aad: &[u8]) {
-    self.aad_len = aad.len() as u64;
-    self.poly.update_padded(aad);
+    self.aad_buf.extend_from_slice(aad);
+  }
+
+  /// Flush buffered AAD to Poly1305 (padded once). Called lazily on first
+  /// encrypt/decrypt/compute_tag so that multiple setAAD() calls are
+  /// concatenated before padding.
+  fn flush_aad(&mut self) {
+    if !self.aad_flushed {
+      self.aad_flushed = true;
+      self.poly.update_padded(&self.aad_buf);
+    }
   }
 
   fn encrypt(&mut self, input: &[u8], output: &mut [u8]) {
+    self.flush_aad();
     output[..input.len()].copy_from_slice(input);
     // Keystream exhaustion only after ~256 GB; practically unreachable.
     self.chacha.try_apply_keystream(output).unwrap();
@@ -72,6 +84,7 @@ impl ChaCha20Poly1305Cipher {
   }
 
   fn decrypt(&mut self, input: &[u8], output: &mut [u8]) {
+    self.flush_aad();
     // For decrypt: feed ciphertext to poly BEFORE decrypting
     self.ct_len += input.len() as u64;
     self.poly.update_padded(input);
@@ -80,11 +93,13 @@ impl ChaCha20Poly1305Cipher {
     self.chacha.try_apply_keystream(output).unwrap();
   }
 
-  fn compute_tag(self) -> Vec<u8> {
+  fn compute_tag(mut self) -> Vec<u8> {
+    self.flush_aad();
+    let aad_len = self.aad_buf.len() as u64;
     let mut poly = self.poly;
     // Feed aad_len and ct_len as le64 in one 16-byte block
     let mut len_block = [0u8; 16];
-    len_block[..8].copy_from_slice(&self.aad_len.to_le_bytes());
+    len_block[..8].copy_from_slice(&aad_len.to_le_bytes());
     len_block[8..].copy_from_slice(&self.ct_len.to_le_bytes());
     poly.update(&[poly1305::Block::clone_from_slice(&len_block)]);
     let tag_output = poly.finalize();
