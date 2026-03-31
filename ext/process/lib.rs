@@ -18,11 +18,11 @@ use std::process::ExitStatus;
 #[cfg(unix)]
 use std::process::Stdio as StdStdio;
 use std::rc::Rc;
-use std::sync::atomic::AtomicBool;
-use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::sync::Condvar;
 use std::sync::Mutex;
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering;
 
 use deno_core::AsyncMutFuture;
 use deno_core::AsyncRefCell;
@@ -77,7 +77,8 @@ impl Stdio {
       Stdio::Inherit => StdStdio::inherit(),
       Stdio::Piped => StdStdio::piped(),
       Stdio::Null => StdStdio::null(),
-      _ => unreachable!(),
+      // IPC uses a pipe internally
+      Stdio::IpcForInternalUse => StdStdio::piped(),
     }
   }
 }
@@ -255,6 +256,8 @@ pub struct SpawnArgs {
   extra_stdio: Vec<Stdio>,
   detached: bool,
   needs_npm_process_state: bool,
+  #[cfg(unix)]
+  argv0: Option<String>,
 
   #[serde(default)]
   timeout: Option<u64>,
@@ -498,7 +501,12 @@ fn create_command(
   }
 
   #[cfg(not(windows))]
-  command.args(args.args);
+  {
+    if let Some(ref argv0) = args.argv0 {
+      command.arg0(argv0);
+    }
+    command.args(args.args);
+  }
 
   command.current_dir(run_env.cwd);
   command.env_clear();
@@ -1131,7 +1139,10 @@ fn op_spawn_sync(
     command: command.get_program().to_string_lossy().into_owned(),
     error: Box::new(e.into()),
   })?;
+  #[cfg(unix)]
   let pid = child.id();
+  #[cfg(windows)]
+  let pid = child.id().expect("Process ID should be set.");
   if let Some(input) = input {
     let mut stdin = child.stdin.take().ok_or_else(|| {
       ProcessError::Io(std::io::Error::other("stdin is not available"))

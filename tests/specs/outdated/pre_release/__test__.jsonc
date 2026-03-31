@@ -11,7 +11,7 @@
     },
     {
       "args": "outdated --compatible",
-      "output": "outdated.out"
+      "output": "outdated_compatible.out"
     },
     {
       "args": "outdated --update --latest",

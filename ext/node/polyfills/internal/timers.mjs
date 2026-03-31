@@ -26,6 +26,9 @@ const {
   SymbolToPrimitive,
 } = primordials;
 import {
+  emitAfter,
+  emitBefore,
+  emitDestroy,
   emitInit,
   executionAsyncId,
   newAsyncId as nextAsyncId,
@@ -74,25 +77,47 @@ export function Timeout(callback, after, args, isRepeat, isRefed) {
   this._isRepeat = isRepeat;
   this._destroyed = false;
   this[kRefed] = isRefed;
+
+  const asyncId = nextAsyncId();
+  const triggerAsyncId = executionAsyncId();
+  this._asyncId = asyncId;
+  this._triggerAsyncId = triggerAsyncId;
+  this._asyncDestroyed = false;
+
   this[kTimerId] = this[createTimer]();
+
+  emitInit(asyncId, "Timeout", triggerAsyncId, this);
 }
 
 Timeout.prototype[createTimer] = function () {
   const self = this;
   const callback = this._onTimeout;
   const asyncContext = getAsyncContext();
+  const asyncId = this._asyncId;
+  const triggerAsyncId = this._triggerAsyncId;
   const cb = function () {
     const oldContext = getAsyncContext();
     try {
       setAsyncContext(asyncContext);
+      emitBefore(asyncId, triggerAsyncId, self);
       if (!self._isRepeat) {
         MapPrototypeDelete(activeTimers, self[kTimerId]);
       }
       const args = self._timerArgs;
+      let ret;
       if (args !== undefined && args.length > 0) {
-        return ReflectApply(callback, self, args);
+        ret = ReflectApply(callback, self, args);
+      } else {
+        ret = FunctionPrototypeCall(callback, self);
       }
-      return FunctionPrototypeCall(callback, self);
+      // Only emit after/destroy on success. On error, the domain's
+      // uncaught exception handler manages the stack cleanup.
+      emitAfter(asyncId);
+      if (!self._isRepeat && !self._asyncDestroyed) {
+        self._asyncDestroyed = true;
+        emitDestroy(asyncId);
+      }
+      return ret;
     } finally {
       setAsyncContext(oldContext);
     }
@@ -121,6 +146,10 @@ Timeout.prototype[kDestroy] = function () {
     this._destroyed = true;
     cancelTimer_(this._timer);
     MapPrototypeDelete(activeTimers, this[kTimerId]);
+    if (this._asyncId !== undefined && !this._asyncDestroyed) {
+      this._asyncDestroyed = true;
+      emitDestroy(this._asyncId);
+    }
   }
 };
 

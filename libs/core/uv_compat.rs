@@ -65,6 +65,7 @@ uv_errno!(UV_EPIPE, libc::EPIPE, -4047);
 uv_errno!(UV_EBUSY, libc::EBUSY, -4082);
 uv_errno!(UV_ENOBUFS, libc::ENOBUFS, -4060);
 uv_errno!(UV_ENOTSUP, libc::ENOTSUP, -4049);
+uv_errno!(UV_EALREADY, libc::EALREADY, -4084);
 pub const UV_EOF: i32 = -4095;
 
 /// Map a `std::io::Error` to the closest libuv error code.
@@ -172,10 +173,14 @@ pub(crate) struct UvLoopInner {
   waker: RefCell<Option<Waker>>,
   closing_handles: RefCell<VecDeque<(*mut uv_handle_t, Option<uv_close_cb>)>>,
   time_origin: Instant,
+  /// Cached loop time in milliseconds. Updated once per tick via
+  /// `update_time()`, matching libuv's `uv_update_time` semantics.
+  cached_time_ms: Cell<u64>,
 }
 
 impl UvLoopInner {
   fn new() -> Self {
+    let origin = Instant::now();
     Self {
       timers: RefCell::new(BTreeSet::new()),
       next_timer_id: Cell::new(1),
@@ -187,7 +192,8 @@ impl UvLoopInner {
       tty_handles: RefCell::new(Vec::with_capacity(4)),
       waker: RefCell::new(None),
       closing_handles: RefCell::new(VecDeque::with_capacity(16)),
-      time_origin: Instant::now(),
+      time_origin: origin,
+      cached_time_ms: Cell::new(0),
     }
   }
 
@@ -199,6 +205,16 @@ impl UvLoopInner {
     }
   }
 
+  /// Wake the event loop so it re-polls on the next tick. Used on
+  /// Windows to ensure pending TTY write callbacks are processed
+  /// promptly when there is no async I/O notification mechanism.
+  #[cfg(windows)]
+  pub(crate) fn wake(&self) {
+    if let Some(waker) = self.waker.borrow().as_ref() {
+      waker.wake_by_ref();
+    }
+  }
+
   #[inline]
   fn alloc_timer_id(&self) -> u64 {
     let id = self.next_timer_id.get();
@@ -206,9 +222,19 @@ impl UvLoopInner {
     id
   }
 
+  /// Return the cached loop time. Matches libuv's `uv_now()` which
+  /// returns the time cached at the start of the current tick.
   #[inline]
   fn now_ms(&self) -> u64 {
-    Instant::now().duration_since(self.time_origin).as_millis() as u64
+    self.cached_time_ms.get()
+  }
+
+  /// Re-read the wall clock and update the cached time.
+  /// Matches libuv's `uv_update_time()`.
+  #[inline]
+  pub(crate) fn update_time(&self) {
+    let ms = Instant::now().duration_since(self.time_origin).as_millis() as u64;
+    self.cached_time_ms.set(ms);
   }
 
   pub(crate) fn has_alive_handles(&self) -> bool {
@@ -447,7 +473,8 @@ impl UvLoopInner {
         }
 
         // SAFETY: tcp_ptr is valid; checked above.
-        any_work |= unsafe { tcp::poll_tcp_handle(tcp_ptr, &mut cx) };
+        let work = unsafe { tcp::poll_tcp_handle(tcp_ptr, &mut cx) };
+        any_work |= work;
       } // end per-tcp-handle loop
 
       let mut j = 0;
@@ -547,11 +574,24 @@ impl UvLoopInner {
       tty.internal_reading = false;
       tty.internal_alloc_cb = None;
       tty.internal_read_cb = None;
-      tty.internal_write_queue.clear();
-      tty.internal_shutdown = None;
+
+      // Cancel in-flight write requests with UV_ECANCELED, matching libuv.
+      while let Some(pw) = tty.internal_write_queue.pop_front() {
+        if let Some(cb) = pw.cb {
+          cb(pw.req, UV_ECANCELED);
+        }
+      }
+
+      // Cancel pending shutdown with UV_ECANCELED.
+      if let Some(pending) = tty.internal_shutdown.take()
+        && let Some(cb) = pending.cb
+      {
+        cb(pending.req, UV_ECANCELED);
+      }
 
       // Drop the reactor (AsyncFd or select fallback) to deregister
       // from the reactor, then close the fd.
+      // Match libuv: do NOT close stdio fds (0, 1, 2).
       #[cfg(unix)]
       {
         // If using the select fallback, shut down the background thread.
@@ -562,18 +602,19 @@ impl UvLoopInner {
           tty::shutdown_select_fallback(s);
         }
         tty.internal_reactor = None;
-        if tty.internal_fd >= 0 {
+        if tty.internal_fd > 2 {
           libc::close(tty.internal_fd);
           tty.internal_fd = -1;
         }
       }
 
-      // Close the handle on Windows.
+      // Tear down Windows async read machinery, then close the handle.
       #[cfg(windows)]
       {
+        tty::close_tty_read(handle);
         if !tty.internal_handle.is_null() {
           if tty.internal_handle_owned {
-            // We duplicated this handle in init — close it directly.
+            // We duplicated this handle in init -- close it directly.
             tty::win_console::CloseHandle(tty.internal_handle);
           } else if tty.internal_fd >= 0 {
             // Non-duplicated: close through the CRT to free the fd slot.
@@ -600,12 +641,41 @@ impl UvLoopInner {
       tcp.internal_alloc_cb = None;
       tcp.internal_read_cb = None;
       tcp.internal_connection_cb = None;
-      tcp.internal_connect = None;
-      tcp.internal_write_queue.clear();
-      tcp.internal_stream = None;
+
+      // Cancel in-flight connect request with UV_ECANCELED, matching libuv.
+      if let Some(pending) = tcp.internal_connect.take()
+        && let Some(cb) = pending.cb
+      {
+        cb(pending.req, UV_ECANCELED);
+      }
+
+      // Cancel in-flight write requests with UV_ECANCELED, matching libuv's
+      // uv__stream_flush_write_queue() called from uv__stream_destroy().
+      while let Some(pw) = tcp.internal_write_queue.pop_front() {
+        if let Some(cb) = pw.cb {
+          cb(pw.req, UV_ECANCELED);
+        }
+      }
+      if let Some(stream) = tcp.internal_stream.take() {
+        // Match libuv: just close the fd. The OS delivers FIN/RST to the
+        // peer naturally; the peer's read loop detects EOF via recv()
+        // returning 0.  libuv does NOT manually signal EOF to peer handles.
+        if let Ok(std_stream) = stream.into_std() {
+          let _ = std_stream.shutdown(std::net::Shutdown::Both);
+        }
+      }
+      tcp.internal_socket = None;
+      tcp.internal_delayed_error = 0;
       tcp.internal_listener = None;
       tcp.internal_backlog.clear();
-      tcp.internal_shutdown = None;
+
+      // Cancel pending shutdown with UV_ECANCELED.
+      if let Some(pending) = tcp.internal_shutdown.take()
+        && let Some(cb) = pending.cb
+      {
+        cb(pending.req, UV_ECANCELED);
+      }
+
       tcp.flags &= !UV_HANDLE_ACTIVE;
     }
   }
@@ -753,6 +823,11 @@ pub unsafe extern "C" fn uv_loop_close(loop_: *mut uv_loop_t) -> c_int {
   unsafe {
     let internal = (*loop_).internal;
     if !internal.is_null() {
+      let inner = &*(internal as *const UvLoopInner);
+      // Match libuv: return UV_EBUSY if handles or requests are still alive.
+      if inner.has_alive_handles() {
+        return UV_EBUSY;
+      }
       drop(Box::from_raw(internal as *mut UvLoopInner));
       (*loop_).internal = std::ptr::null_mut();
     }
@@ -772,7 +847,11 @@ pub unsafe extern "C" fn uv_now(loop_: *mut uv_loop_t) -> u64 {
 /// ### Safety
 /// `_loop_` must be a valid pointer to a `uv_loop_t` initialized by `uv_loop_init`.
 #[cfg_attr(feature = "uv_compat_export", unsafe(no_mangle))]
-pub unsafe extern "C" fn uv_update_time(_loop_: *mut uv_loop_t) {}
+pub unsafe extern "C" fn uv_update_time(loop_: *mut uv_loop_t) {
+  // SAFETY: Caller guarantees loop_ was initialized by uv_loop_init.
+  let inner = unsafe { get_inner(loop_) };
+  inner.update_time();
+}
 
 /// ### Safety
 /// `loop_` must be initialized by `uv_loop_init`. `handle` must be a valid, writable pointer.
@@ -1088,6 +1167,97 @@ pub unsafe extern "C" fn uv_check_stop(handle: *mut uv_check_t) -> c_int {
   0
 }
 
+/// Manages the two libuv handles that implement setImmediate, matching
+/// Node.js's architecture:
+///
+/// - **check handle** (`uv_check_t`): always started, always unref'd.
+///   Participates in `run_check()` every iteration but never keeps the
+///   event loop alive. The actual JS callback draining happens in Rust
+///   after `run_check()`, gated on the immediate count.
+///
+/// - **idle handle** (`uv_idle_t`): started/stopped to control event loop
+///   liveness. Started when refed immediates exist (keeps the loop alive),
+///   stopped when none remain (allows exit). This matches Node.js's
+///   `immediate_idle_handle_` + `ToggleImmediateRef()`.
+pub(crate) struct ImmediateCheckHandle {
+  check_handle: *mut uv_check_t,
+  idle_handle: *mut uv_idle_t,
+}
+
+/// No-op callback for the check handle — the actual draining is done by
+/// checking immediate_info counts after `run_check()` in the event loop.
+unsafe extern "C" fn immediate_check_noop_cb(_: *mut uv_check_t) {}
+
+/// No-op callback for the idle handle — its only purpose is to keep
+/// the event loop alive when refed immediates exist.
+unsafe extern "C" fn immediate_idle_noop_cb(_: *mut uv_idle_t) {}
+
+impl ImmediateCheckHandle {
+  /// Create and initialize both handles on the given loop.
+  ///
+  /// The check handle is immediately started and unref'd (always runs,
+  /// never keeps the loop alive). The idle handle starts stopped.
+  ///
+  /// # Safety
+  /// `loop_ptr` must be a valid, initialized `uv_loop_t`.
+  /// The returned handles borrow from the loop and must not outlive it.
+  pub unsafe fn new(loop_ptr: *mut uv_loop_t) -> Self {
+    // Check handle: always started, always unref'd
+    let check_handle = Box::into_raw(Box::new(unsafe {
+      std::mem::MaybeUninit::<uv_check_t>::zeroed().assume_init()
+    }));
+    unsafe {
+      uv_check_init(loop_ptr, check_handle);
+      uv_unref(check_handle as *mut uv_handle_t);
+      uv_check_start(check_handle, immediate_check_noop_cb);
+    }
+
+    // Idle handle: controls event loop liveness for refed immediates
+    let idle_handle = Box::into_raw(Box::new(unsafe {
+      std::mem::MaybeUninit::<uv_idle_t>::zeroed().assume_init()
+    }));
+    unsafe {
+      uv_idle_init(loop_ptr, idle_handle);
+      // Starts stopped — only started when refed immediates exist
+    }
+
+    Self {
+      check_handle,
+      idle_handle,
+    }
+  }
+
+  /// Start the idle handle (keeps event loop alive for refed immediates).
+  pub fn make_ref(&self) {
+    // SAFETY: idle_handle is valid — set in new().
+    unsafe {
+      uv_idle_start(self.idle_handle, immediate_idle_noop_cb);
+    }
+  }
+
+  /// Stop the idle handle (allows event loop to exit).
+  pub fn make_unref(&self) {
+    // SAFETY: idle_handle is valid — set in new().
+    unsafe {
+      uv_idle_stop(self.idle_handle);
+    }
+  }
+
+  /// Stop both handles and free their heap allocations.
+  ///
+  /// # Safety
+  /// Must be called before the owning uv loop is closed/dropped.
+  /// Must not be called more than once.
+  pub unsafe fn close(self) {
+    unsafe {
+      uv_check_stop(self.check_handle);
+      drop(Box::from_raw(self.check_handle));
+      uv_idle_stop(self.idle_handle);
+      drop(Box::from_raw(self.idle_handle));
+    }
+  }
+}
+
 /// ### Safety
 /// `handle` must be a valid pointer to any uv handle type (timer, idle, tcp, etc.) initialized
 /// by the corresponding `uv_*_init` function. Must not be called twice on the same handle.
@@ -1191,5 +1361,24 @@ pub unsafe extern "C" fn uv_is_closing(handle: *const uv_handle_t) -> c_int {
     } else {
       0
     }
+  }
+}
+
+/// Counter for libuv-style async IDs (used by Node.js async_hooks).
+/// Starts at 1 because that's the ID of the bootstrap execution context.
+pub struct AsyncId(i64);
+
+impl Default for AsyncId {
+  fn default() -> Self {
+    Self(1)
+  }
+}
+
+impl AsyncId {
+  /// Increment the internal id counter and return the value.
+  #[allow(clippy::should_implement_trait, reason = "this is more clear")]
+  pub fn next(&mut self) -> i64 {
+    self.0 += 1;
+    self.0
   }
 }

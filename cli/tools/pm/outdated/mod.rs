@@ -333,7 +333,8 @@ fn choose_new_version_req(
     )
     .unwrap();
     if preferred.version <= resolved.version
-      && candidate_version_req == dep.req.version_req
+      && (candidate_version_req == dep.req.version_req
+        || preferred.version < resolved.version)
     {
       return ChosenVersionReq::None {
         latest_available: !update_to_latest

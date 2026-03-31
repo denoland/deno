@@ -44,6 +44,7 @@ import {
   lstatSync,
   mkdtempSync,
   openAsBlob,
+  opendirSync,
   openSync,
   promises,
   promises as fsPromises,
@@ -1738,3 +1739,57 @@ Deno.test({
     );
   },
 });
+
+Deno.test({
+  name:
+    "[node/fs/promises FileHandle.readLines] close after readLines should not throw",
+  async fn() {
+    const tempFile = Deno.makeTempFileSync();
+    Deno.writeTextFileSync(tempFile, "line one\nline two\nline three\n");
+    try {
+      const fd = await open(tempFile, "r");
+      fd.readLines();
+      await fd.close();
+    } finally {
+      Deno.removeSync(tempFile);
+    }
+  },
+});
+
+Deno.test({
+  name:
+    "[node/fs/promises FileHandle.readLines] should iterate lines correctly",
+  async fn() {
+    const tempFile = Deno.makeTempFileSync();
+    Deno.writeTextFileSync(tempFile, "line one\nline two\nline three\n");
+    try {
+      const fd = await open(tempFile, "r");
+      const lines: string[] = [];
+      for await (const line of fd.readLines()) {
+        lines.push(line);
+      }
+      assertEquals(lines, ["line one", "line two", "line three"]);
+      await fd.close();
+    } finally {
+      Deno.removeSync(tempFile);
+    }
+  },
+});
+
+Deno.test(
+  "[node/fs Dir] Dir is disposable via Symbol.dispose",
+  { permissions: { read: true } },
+  () => {
+    using dir = opendirSync(".");
+    void dir;
+  },
+);
+
+Deno.test(
+  "[node/fs Dir] Dir is async-disposable via Symbol.asyncDispose",
+  { permissions: { read: true } },
+  async () => {
+    await using dir = await fsPromises.opendir(".");
+    void dir;
+  },
+);

@@ -1,0 +1,26 @@
+{
+  "tempDir": true,
+  "steps": [
+    {
+      // Install exact version to pin the lockfile to beta.13
+      "args": "install npm:@denotest/pre-release-stable-latest@1.0.0-beta.13",
+      "output": "[WILDCARD]"
+    },
+    {
+      // Change the import to use a caret range for the outdated check
+      "args": "run -A update_deno_json.ts",
+      "output": ""
+    },
+    {
+      // When the `latest` dist-tag points to a stable version (0.45.1)
+      // that doesn't satisfy ^1.0.0-beta.13, `deno outdated` should
+      // use the `latest` dist-tag (matching npm/pnpm/bun) instead of
+      // computing a max across all versions, which would incorrectly
+      // pick 1.0.0-beta.9-c26fd2f over 1.0.0-beta.18.
+      // Since 0.45.1 < 1.0.0-beta.13 (current), no package is outdated.
+      // Ref: https://github.com/denoland/deno/issues/29647
+      "args": "outdated",
+      "output": "outdated.out"
+    }
+  ]
+}

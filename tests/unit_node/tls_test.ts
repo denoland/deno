@@ -319,6 +319,48 @@ Deno.test("tlssocket._handle._parentWrap is set", () => {
   assertInstanceOf(parentWrap, stream.PassThrough);
 });
 
+Deno.test("net.Socket reinitialize preserves TLS upgrade state", () => {
+  const socket = new net.Socket();
+  const reinitializeHandle = Object.getOwnPropertySymbols(net.Socket.prototype)
+    .find((symbol) => symbol.description === "kReinitializeHandle");
+
+  assert(reinitializeHandle, "expected kReinitializeHandle symbol");
+  const reinitializeHandleSymbol = reinitializeHandle as symbol;
+
+  let closed = false;
+  const afterConnectTls = function () {};
+  const verifyError = () => null;
+  const parentWrap = new stream.PassThrough();
+
+  // deno-lint-ignore no-explicit-any
+  (socket as any)._handle = {
+    close() {
+      closed = true;
+    },
+    afterConnectTls,
+    verifyError,
+    _parentWrap: parentWrap,
+  };
+
+  const newHandle = {};
+  // deno-lint-ignore no-explicit-any
+  (socket as any)[reinitializeHandleSymbol](newHandle);
+
+  assert(closed);
+  // deno-lint-ignore no-explicit-any
+  assertEquals((newHandle as any).afterConnectTls, afterConnectTls);
+  // deno-lint-ignore no-explicit-any
+  assertEquals(typeof (newHandle as any).afterConnectTlsResolve, "function");
+  // deno-lint-ignore no-explicit-any
+  assert((newHandle as any).upgrading instanceof Promise);
+  // deno-lint-ignore no-explicit-any
+  assertEquals((newHandle as any).verifyError, verifyError);
+  // deno-lint-ignore no-explicit-any
+  assertEquals((newHandle as any)._parent, newHandle);
+  // deno-lint-ignore no-explicit-any
+  assertEquals((newHandle as any)._parentWrap, parentWrap);
+});
+
 Deno.test({
   name: "tls connect upgrade js socket wrapper",
   sanitizeOps: false,

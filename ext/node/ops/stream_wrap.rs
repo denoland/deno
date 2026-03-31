@@ -379,7 +379,7 @@ fn free_uv_buf(buf: *const uv_buf_t) {
   unsafe {
     if !(*buf).base.is_null() && (*buf).len > 0 {
       let layout = std::alloc::Layout::from_size_align((*buf).len, 1).unwrap();
-      std::alloc::dealloc((*buf).base as *mut u8, layout);
+      std::alloc::dealloc((*buf).base as *mut _, layout);
     }
   }
 }

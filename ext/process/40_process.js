@@ -17,6 +17,7 @@ const {
   ArrayPrototypeMap,
   ArrayPrototypeSlice,
   TypeError,
+  ObjectDefineProperty,
   ObjectEntries,
   SafeArrayIterator,
   String,
@@ -170,6 +171,7 @@ export const kExtraStdio = Symbol("extraStdio");
 export const kIpc = Symbol("ipc");
 export const kNeedsNpmProcessState = Symbol("needsNpmProcessState");
 export const kSerialization = Symbol("serialization");
+const kArgv0 = Symbol("argv0");
 
 const illegalConstructorKey = Symbol("illegalConstructorKey");
 
@@ -190,12 +192,14 @@ function spawnChildInner(command, apiName, {
   [kExtraStdio]: extraStdio = [],
   [kIpc]: ipc = -1,
   [kNeedsNpmProcessState]: needsNpmProcessState = false,
+  [kArgv0]: argv0 = undefined,
 } = { __proto__: null }) {
   const child = op_spawn_child({
     cmd: pathFromURL(command),
     args: ArrayPrototypeMap(args, String),
     cwd: pathFromURL(cwd),
     clearEnv,
+    argv0,
     env: ObjectEntries(env),
     uid,
     gid,
@@ -475,6 +479,7 @@ function spawnSyncInner(command, {
   windowsRawArguments = false,
   [kInputOption]: input,
   [kNeedsNpmProcessState]: needsNpmProcessState = false,
+  [kArgv0]: argv0 = undefined,
   [kTimeoutOption]: timeout,
   [kKillSignalOption]: killSignal,
 } = { __proto__: null }) {
@@ -499,6 +504,7 @@ function spawnSyncInner(command, {
     detached: false,
     needsNpmProcessState,
     input,
+    argv0,
   };
   if (timeout != null && timeout > 0) {
     spawnArgs.timeout = timeout;
@@ -527,12 +533,12 @@ function spawnSyncInner(command, {
     },
   };
   // Internal fields used by node:child_process, hidden from Deno public API.
-  Object.defineProperty(output, "_pid", {
+  ObjectDefineProperty(output, "_pid", {
     __proto__: null,
     value: result.pid,
     enumerable: false,
   });
-  Object.defineProperty(output, "_killedByTimeout", {
+  ObjectDefineProperty(output, "_killedByTimeout", {
     __proto__: null,
     value: result.killedByTimeout,
     enumerable: false,
@@ -622,6 +628,7 @@ function spawnAndWaitSync(command, argsOrOptions, maybeOptions) {
 export {
   ChildProcess,
   Command,
+  kArgv0,
   kill,
   kInputOption,
   kKillSignalOption,
