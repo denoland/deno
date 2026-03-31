@@ -211,15 +211,22 @@ export function Cipheriv(
 
   this._isCCM = /^aes-(128|192|256)-ccm$/.test(cipher);
 
-  // CCM and OCB modes require authTagLength, but we must check IV
-  // validity first so that bad IVs produce the right error.
+  // CCM and OCB modes require authTagLength, but bad IVs must produce
+  // the right error first (matching Node.js error priority).
   const isCcmOrOcb = /^aes-(128|192|256)-(ccm|ocb)$/.test(cipher);
-  if (isCcmOrOcb && authTagLength < 0) {
-    throw new ERR_INVALID_ARG_VALUE(
-      "options.authTagLength",
-      authTagLength,
-      `is required for ${cipher}`,
-    );
+  if (isCcmOrOcb) {
+    // Validate IV before checking authTagLength
+    const ivLen = iv == null ? 0 : toU8(iv).length;
+    if (ivLen < 7 || ivLen > 13) {
+      throw new TypeError("Invalid initialization vector");
+    }
+    if (authTagLength < 0) {
+      throw new ERR_INVALID_ARG_VALUE(
+        "options.authTagLength",
+        authTagLength,
+        `is required for ${cipher}`,
+      );
+    }
   }
 
   Transform.call(this, {
@@ -547,12 +554,18 @@ export function Decipheriv(
   this._isCCM = /^aes-(128|192|256)-ccm$/.test(cipher);
 
   const isCcmOrOcb = /^aes-(128|192|256)-(ccm|ocb)$/.test(cipher);
-  if (isCcmOrOcb && authTagLength < 0) {
-    throw new ERR_INVALID_ARG_VALUE(
-      "options.authTagLength",
-      authTagLength,
-      `is required for ${cipher}`,
-    );
+  if (isCcmOrOcb) {
+    const ivLen = iv == null ? 0 : toU8(iv).length;
+    if (ivLen < 7 || ivLen > 13) {
+      throw new TypeError("Invalid initialization vector");
+    }
+    if (authTagLength < 0) {
+      throw new ERR_INVALID_ARG_VALUE(
+        "options.authTagLength",
+        authTagLength,
+        `is required for ${cipher}`,
+      );
+    }
   }
 
   Transform.call(this, {

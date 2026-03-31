@@ -439,6 +439,7 @@ Deno.test({
         opts,
       );
       if (cipher.includes("ccm")) {
+        // deno-lint-ignore no-explicit-any
         (c as any).setAAD(Buffer.alloc(0), { plaintextLength: 0 });
       }
       c.final();
