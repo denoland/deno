@@ -52,5 +52,5 @@ jobs:
           ./tools/release/02_create_pr.ts
 
 # gagen:pin actions/checkout@v6 = de0fac2e4500dabe0009e67214ff5f5447ce83dd
-# gagen:pin dsherret/rust-toolchain-file@v1 = 3551321aa44dd44a0393eb3b6bdfbc5d25ecf621
 # gagen:pin denoland/setup-deno@v2 = 667a34cdef165d8d2b2e98dde39547c9daac7282
+# gagen:pin dsherret/rust-toolchain-file@v1 = 3551321aa44dd44a0393eb3b6bdfbc5d25ecf621

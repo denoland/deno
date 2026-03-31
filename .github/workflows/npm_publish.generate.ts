@@ -5,7 +5,7 @@ import {
   defineMatrix,
   job,
   step,
-} from "jsr:@david/gagen@0.3.0";
+} from "jsr:@david/gagen@0.3.1";
 
 // === build job ===
 

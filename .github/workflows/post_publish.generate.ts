@@ -1,6 +1,6 @@
 #!/usr/bin/env -S deno run --check --allow-write=. --allow-read=. --lock=./tools/deno.lock.json
 // Copyright 2018-2026 the Deno authors. MIT license.
-import { conditions, createWorkflow, step } from "jsr:@david/gagen@0.3.0";
+import { conditions, createWorkflow, step } from "jsr:@david/gagen@0.3.1";
 
 const workflow = createWorkflow({
   name: "post_publish",

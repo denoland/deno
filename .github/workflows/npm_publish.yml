@@ -291,7 +291,7 @@ jobs:
         run: './tools/release/npm/build.ts ${{ inputs.version || '''' }} --publish-only'
 
 # gagen:pin actions/checkout@v6 = de0fac2e4500dabe0009e67214ff5f5447ce83dd
-# gagen:pin denoland/setup-deno@v2 = 667a34cdef165d8d2b2e98dde39547c9daac7282
-# gagen:pin actions/upload-artifact@v6 = b7c566a772e6b6bfb58ed0dc250532a479d7789f
-# gagen:pin actions/setup-node@v6 = 53b83947a5a98c8d113130e565377fae1a50d02f
 # gagen:pin actions/download-artifact@v6 = 018cc2cf5baa6db3ef3c5f8a56943fffe632ef53
+# gagen:pin actions/setup-node@v6 = 53b83947a5a98c8d113130e565377fae1a50d02f
+# gagen:pin actions/upload-artifact@v6 = b7c566a772e6b6bfb58ed0dc250532a479d7789f
+# gagen:pin denoland/setup-deno@v2 = 667a34cdef165d8d2b2e98dde39547c9daac7282

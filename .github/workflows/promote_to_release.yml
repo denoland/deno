@@ -147,11 +147,11 @@ jobs:
           aws s3 sync ./ s3://dl-deno-land/release/$(cat release-${{github.event.inputs.releaseKind}}-latest.txt)/ --exclude "*" --include "*.zip"
           aws s3 cp release-${{github.event.inputs.releaseKind}}-latest.txt s3://dl-deno-land/release-${{github.event.inputs.releaseKind}}-latest.txt
 
-# gagen:pin actions/checkout@v6 = de0fac2e4500dabe0009e67214ff5f5447ce83dd
-# gagen:pin denoland/setup-deno@v2 = 667a34cdef165d8d2b2e98dde39547c9daac7282
-# gagen:pin azure/login@v1 = cb79c773a3cfa27f31f25eb3f677781210c9ce3d
 # gagen:pin Azure/artifact-signing-action@v0 = 1d365fec12862c4aa68fcac418143d73f0cea293
+# gagen:pin actions/checkout@v6 = de0fac2e4500dabe0009e67214ff5f5447ce83dd
+# gagen:pin actions/download-artifact@v7 = 37930b1c2abaa49bbe596cd826c3c89aef350131
 # gagen:pin actions/upload-artifact@v6 = b7c566a772e6b6bfb58ed0dc250532a479d7789f
+# gagen:pin azure/login@v1 = cb79c773a3cfa27f31f25eb3f677781210c9ce3d
+# gagen:pin denoland/setup-deno@v2 = 667a34cdef165d8d2b2e98dde39547c9daac7282
 # gagen:pin google-github-actions/auth@v3 = 7c6bc770dae815cd3e89ee6cdf493a5fab2cc093
 # gagen:pin google-github-actions/setup-gcloud@v3 = aa5489c8933f4cc7a4f7d45035b3b1440c9c10db
-# gagen:pin actions/download-artifact@v7 = 37930b1c2abaa49bbe596cd826c3c89aef350131
