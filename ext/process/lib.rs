@@ -262,7 +262,10 @@ pub struct SpawnArgs {
   #[serde(default)]
   timeout: Option<u64>,
   #[serde(default)]
-  #[cfg_attr(windows, allow(dead_code, reason = "deserialized from JS but only used on Unix"))]
+  #[cfg_attr(
+    windows,
+    allow(dead_code, reason = "deserialized from JS but only used on Unix")
+  )]
   kill_signal: Option<String>,
 }
 
