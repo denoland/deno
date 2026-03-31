@@ -121,23 +121,23 @@ fn ebadf() -> FsError {
 }
 
 /// Get the File trait object for an OS file descriptor.
-/// Stdio fds (0, 1, 2) are looked up from the resource table (they are
-/// pre-registered at RIDs 0, 1, 2). All other fds are looked up directly
-/// from NodeFsState, bypassing the resource table.
+/// Checks NodeFsState first (covers files opened via node:fs, including
+/// cases where the OS reuses fd 0/1/2 after stdio is closed). Falls back
+/// to the resource table for stdio fds that were never reopened.
 fn file_for_fd(
   state: &OpState,
   fd: i32,
 ) -> Result<Rc<dyn deno_io::fs::File>, FsError> {
+  if let Some(file) = state.borrow::<NodeFsState>().open_fds.get(&fd) {
+    return Ok(file.clone());
+  }
+  // Stdio fds (0, 1, 2) are pre-registered in the resource table at
+  // RIDs 0, 1, 2. Only fall back here if the fd wasn't opened via node:fs.
   if (0..=2).contains(&fd) {
     return FileResource::get_file(state, fd as ResourceId)
       .map_err(|_| ebadf());
   }
-  state
-    .borrow::<NodeFsState>()
-    .open_fds
-    .get(&fd)
-    .cloned()
-    .ok_or_else(ebadf)
+  Err(ebadf())
 }
 
 /// When `sync_fs` is enabled, `FileSystemRc` is `Arc` (Send) and we can
