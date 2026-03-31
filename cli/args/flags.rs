@@ -4498,6 +4498,8 @@ pub static UPGRADE_USAGE: &str = cstr!(
 
 <g>Channel</>
   <bold>deno upgrade</> <p(245)>stable</>
+  <bold>deno upgrade</> <p(245)>alpha</>
+  <bold>deno upgrade</> <p(245)>beta</>
   <bold>deno upgrade</> <p(245)>rc</>
   <bold>deno upgrade</> <p(245)>canary</>"
 );
@@ -4572,7 +4574,7 @@ update to a different location, use the <c>--output</> flag:
       )
       .arg(
         Arg::new("version-or-hash-or-channel")
-          .help(cstr!("Version <p(245)>(v1.46.0)</>, channel <p(245)>(rc, canary)</> or commit hash <p(245)>(9bc2dd29ad6ba334fd57a20114e367d3c04763d4)</>"))
+          .help(cstr!("Version <p(245)>(v1.46.0)</>, channel <p(245)>(alpha, beta, rc, canary)</> or commit hash <p(245)>(9bc2dd29ad6ba334fd57a20114e367d3c04763d4)</>"))
           .value_name("VERSION")
           .action(ArgAction::Append)
           .trailing_var_arg(true),

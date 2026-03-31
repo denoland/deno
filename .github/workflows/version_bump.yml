@@ -12,6 +12,8 @@ on:
           - minor
           - major
           - rc
+          - alpha
+          - beta
         required: true
 
 jobs:

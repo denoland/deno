@@ -39,7 +39,7 @@ pub static DENO_VERSION_INFO: std::sync::LazyLock<DenoVersionInfo> =
         } else if IS_RC {
           ReleaseChannel::Rc
         } else {
-          ReleaseChannel::Stable
+          release_channel_from_version_string(DENO_VERSION)
         }
       });
 
@@ -49,7 +49,7 @@ pub static DENO_VERSION_INFO: std::sync::LazyLock<DenoVersionInfo> =
     } else if IS_RC {
       ReleaseChannel::Rc
     } else {
-      ReleaseChannel::Stable
+      release_channel_from_version_string(DENO_VERSION)
     };
 
     DenoVersionInfo {
@@ -106,5 +106,15 @@ impl DenoVersionInfo {
     } else {
       DENO_VERSION
     }
+  }
+}
+
+fn release_channel_from_version_string(version: &str) -> ReleaseChannel {
+  let v = deno_semver::Version::parse_standard(version).ok();
+  match v.and_then(|v| v.pre.first().map(|s| s.as_str().to_string())) {
+    Some(ref s) if s == "alpha" => ReleaseChannel::Alpha,
+    Some(ref s) if s == "beta" => ReleaseChannel::Beta,
+    Some(ref s) if s == "rc" => ReleaseChannel::Rc,
+    _ => ReleaseChannel::Stable,
   }
 }
