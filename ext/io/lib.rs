@@ -1183,8 +1183,13 @@ impl crate::fs::File for StdFileResourceInner {
       }
       #[cfg(windows)]
       {
+        // Windows seek_read moves the cursor, so save/restore it.
+        use std::io::Seek;
         use std::os::windows::fs::FileExt;
-        Ok(file.seek_read(buf, position)?)
+        let current = file.stream_position()?;
+        let result = file.seek_read(buf, position);
+        file.seek(std::io::SeekFrom::Start(current))?;
+        Ok(result?)
       }
     })
   }
@@ -1202,8 +1207,13 @@ impl crate::fs::File for StdFileResourceInner {
       }
       #[cfg(windows)]
       {
+        // Windows seek_write moves the cursor, so save/restore it.
+        use std::io::Seek;
         use std::os::windows::fs::FileExt;
-        Ok(file.seek_write(buf, position)?)
+        let current = file.stream_position()?;
+        let result = file.seek_write(buf, position);
+        file.seek(std::io::SeekFrom::Start(current))?;
+        Ok(result?)
       }
     })
   }
