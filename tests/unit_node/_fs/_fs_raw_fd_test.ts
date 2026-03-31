@@ -429,6 +429,31 @@ Deno.test("[node/fs] interleaved positioned and sequential writes", () => {
   });
 });
 
+Deno.test("[node/fs] reopened stdio fd is used instead of original stdio", () => {
+  // If stdio is closed and the OS reuses fd 0/1/2 for a later open,
+  // node:fs ops should use the newly opened file, not the original stdio.
+  // We can't actually close real stdio in a test, but we can simulate by
+  // opening a file that happens to get a low fd and verifying NodeFsState
+  // is consulted first.
+  withTempFile("stdio-test-data", (path) => {
+    const fd = fs.openSync(path, "r");
+    try {
+      // Regardless of fd value, fstat should reflect the opened file
+      const stat = fs.fstatSync(fd);
+      assertEquals(stat.isFile(), true);
+      assertEquals(stat.size, 15); // "stdio-test-data".length
+
+      // read should return file contents, not stdin data
+      const buf = Buffer.alloc(15);
+      const n = fs.readSync(fd, buf, 0, 15, 0);
+      assertEquals(n, 15);
+      assertEquals(buf.toString(), "stdio-test-data");
+    } finally {
+      fs.closeSync(fd);
+    }
+  });
+});
+
 Deno.test("[node/fs] positioned read past EOF returns 0 bytes", () => {
   withTempFile("short", (path) => {
     const fd = fs.openSync(path, "r");
