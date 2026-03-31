@@ -262,6 +262,7 @@ pub struct SpawnArgs {
   #[serde(default)]
   timeout: Option<u64>,
   #[serde(default)]
+  #[cfg_attr(windows, allow(dead_code))]
   kill_signal: Option<String>,
 }
 
