@@ -1095,7 +1095,7 @@ impl Decipher {
         if auth_tag.is_empty() {
           return Err(DecipherError::DataAuthenticationFailed);
         }
-        if expected_tag == auth_tag {
+        if expected_tag.ct_eq(auth_tag).into() {
           Ok(())
         } else {
           Err(DecipherError::DataAuthenticationFailed)
