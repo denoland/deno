@@ -911,9 +911,8 @@ pub fn op_node_fs_read_sync(
   read_with_position(file, buf, position)
 }
 
-/// Async read for node:fs. For positioned reads, uses pread then yields.
-/// For non-positioned reads, uses truly async read_byob (blocking thread).
-/// Both paths yield to the event loop so timers/intervals can fire.
+/// Async read for node:fs. Both positioned and non-positioned reads run
+/// on a blocking thread so the event loop stays responsive.
 #[op2]
 #[smi]
 pub async fn op_node_fs_read_deferred(
@@ -924,10 +923,8 @@ pub async fn op_node_fs_read_deferred(
 ) -> Result<u32, FsError> {
   let file = file_for_fd(&state.borrow(), fd)?;
   if position >= 0 {
-    let mut buf = buf;
-    let nread = file.read_at_sync(&mut buf, position as u64)?;
-    // Yield to the event loop so timers/intervals can fire between reads.
-    tokio::task::yield_now().await;
+    let view = deno_core::BufMutView::from(buf);
+    let (nread, _) = file.read_at_async(view, position as u64).await?;
     Ok(nread as u32)
   } else {
     let view = deno_core::BufMutView::from(buf);

@@ -310,6 +310,12 @@ pub trait File {
     buf: &mut [u8],
     position: u64,
   ) -> FsResult<usize>;
+  /// Async pread -- runs on a blocking thread.
+  async fn read_at_async(
+    self: Rc<Self>,
+    buf: BufMutView,
+    position: u64,
+  ) -> FsResult<(usize, BufMutView)>;
   /// Write at a position without moving the file cursor (pwrite).
   fn write_at_sync(
     self: Rc<Self>,

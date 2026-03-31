@@ -1194,6 +1194,32 @@ impl crate::fs::File for StdFileResourceInner {
     })
   }
 
+  async fn read_at_async(
+    self: Rc<Self>,
+    mut buf: BufMutView,
+    position: u64,
+  ) -> FsResult<(usize, BufMutView)> {
+    self
+      .with_inner_blocking_task(move |file| {
+        #[cfg(unix)]
+        {
+          use std::os::unix::fs::FileExt;
+          let nread = file.read_at(&mut buf, position)?;
+          Ok((nread, buf))
+        }
+        #[cfg(windows)]
+        {
+          use std::io::Seek;
+          use std::os::windows::fs::FileExt;
+          let current = file.stream_position()?;
+          let result = file.seek_read(&mut buf, position);
+          file.seek(std::io::SeekFrom::Start(current))?;
+          Ok((result?, buf))
+        }
+      })
+      .await
+  }
+
   fn write_at_sync(
     self: Rc<Self>,
     buf: &[u8],
