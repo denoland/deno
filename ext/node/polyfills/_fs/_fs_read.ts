@@ -4,7 +4,10 @@
 // deno-lint-ignore-file prefer-primordials
 
 import { Buffer } from "node:buffer";
-import { ERR_INVALID_ARG_VALUE } from "ext:deno_node/internal/errors.ts";
+import {
+  denoErrorToNodeError,
+  ERR_INVALID_ARG_VALUE,
+} from "ext:deno_node/internal/errors.ts";
 import {
   arrayBufferViewToUint8Array,
   getValidatedFd,
@@ -156,7 +159,7 @@ export function read(
       callback!(null, nread ?? 0, buffer);
     },
     (error: Error) => {
-      callback!(error, null);
+      callback!(denoErrorToNodeError(error, { syscall: "read" }), null);
     },
   );
 }
@@ -234,11 +237,15 @@ export function readSync(
   // The op handles position seeking internally (saves/restores file offset
   // for positioned reads). position=-1 means read from current position.
   const pos = position != null ? Number(position) : -1;
-  const numberOfBytesRead = op_node_fs_read_sync(
-    fd,
-    arrayBufferViewToUint8Array(buffer).subarray(offset, offset + length!),
-    pos,
-  );
+  try {
+    const numberOfBytesRead = op_node_fs_read_sync(
+      fd,
+      arrayBufferViewToUint8Array(buffer).subarray(offset, offset + length!),
+      pos,
+    );
 
-  return numberOfBytesRead ?? 0;
+    return numberOfBytesRead ?? 0;
+  } catch (err) {
+    throw denoErrorToNodeError(err, { syscall: "read" });
+  }
 }
