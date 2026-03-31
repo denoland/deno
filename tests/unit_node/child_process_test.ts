@@ -1358,3 +1358,10 @@ Deno.test(function spawnSyncShellMetacharactersEscaped() {
   assertEquals(ret.status, 0);
   assertEquals(ret.stdout.trim(), "a&b|c<d>e");
 });
+
+Deno.test(function spawnSyncReturnsPid() {
+  const ret = spawnSync(Deno.execPath(), ["eval", "console.log('hi')"]);
+  assertEquals(ret.status, 0);
+  assertEquals(typeof ret.pid, "number");
+  assert(ret.pid > 0);
+});

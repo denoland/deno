@@ -754,9 +754,13 @@ impl BenchConfig {
 }
 
 /// `compile` config representation for serde
+///
+/// fields `include` and `exclude` are expanded from [SerializedFilesConfig].
 #[derive(Clone, Debug, Default, Deserialize, PartialEq)]
 #[serde(default, deny_unknown_fields)]
 struct SerializedCompileConfig {
+  pub include: Vec<String>,
+  pub exclude: Vec<String>,
   pub permissions: Option<PermissionNameOrObject>,
 }
 
@@ -766,7 +770,19 @@ impl SerializedCompileConfig {
     config_file_specifier: &Url,
     permissions: &PermissionsConfig,
   ) -> Result<CompileConfig, IntoResolvedError> {
+    let config_dir = url_parent(config_file_specifier);
+    let config_dir_path = url_to_file_path(&config_dir)?;
     Ok(CompileConfig {
+      include: self
+        .include
+        .into_iter()
+        .map(|p| config_dir_path.join(&p).to_string_lossy().to_string())
+        .collect(),
+      exclude: self
+        .exclude
+        .into_iter()
+        .map(|p| config_dir_path.join(&p).to_string_lossy().to_string())
+        .collect(),
       permissions: match self.permissions {
         Some(PermissionNameOrObject::Name(name)) => {
           Some(Box::new(permissions.get(&name)?.clone()))
@@ -785,6 +801,8 @@ impl SerializedCompileConfig {
 
 #[derive(Clone, Default, Debug, PartialEq)]
 pub struct CompileConfig {
+  pub include: Vec<String>,
+  pub exclude: Vec<String>,
   pub permissions: Option<Box<PermissionsObjectWithBase>>,
 }
 
@@ -1830,7 +1848,7 @@ impl ConfigFile {
             source: error,
           })
       }
-      None => Ok(CompileConfig { permissions: None }),
+      None => Ok(CompileConfig::default()),
     }
   }
 

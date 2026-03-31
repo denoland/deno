@@ -13,6 +13,7 @@ const {
 import {
   op_node_create_private_key,
   op_node_create_public_key,
+  op_node_derive_public_key_from_private_key,
   op_node_get_asymmetric_key_type,
   op_node_sign,
   op_node_sign_ed25519,
@@ -99,6 +100,13 @@ function getIntOption(name, options) {
     throw new ERR_INVALID_ARG_VALUE(`options.${name}`, value);
   }
   return undefined;
+}
+
+// Private key types that need to be converted to public keys for verification
+const PRIVATE_KEY_TYPES = ["pkcs8", "sec1"];
+
+function isPrivateKeyType(type: string | undefined): boolean {
+  return type !== undefined && PRIVATE_KEY_TYPES.includes(type);
 }
 
 export type KeyLike = string | Buffer | KeyObject;
@@ -221,6 +229,14 @@ export class VerifyImpl extends Writable {
     let handle;
     if ("handle" in res) {
       handle = res.handle;
+    } else if (isPrivateKeyType(res.type)) {
+      const privateHandle = op_node_create_private_key(
+        res.data,
+        res.format,
+        res.type ?? "",
+        res.passphrase,
+      );
+      handle = op_node_derive_public_key_from_private_key(privateHandle);
     } else {
       handle = op_node_create_public_key(
         res.data,
@@ -265,48 +281,56 @@ export function signOneShot(
     throw new ERR_CRYPTO_SIGN_KEY_REQUIRED();
   }
 
-  const res = prepareAsymmetricKey(key, kConsumePrivate);
-  let handle;
-  if ("handle" in res) {
-    handle = res.handle;
-  } else {
-    handle = op_node_create_private_key(
-      res.data,
-      res.format,
-      res.type ?? "",
-      res.passphrase,
-    );
-  }
-
-  let result: Buffer;
-  const keyType = op_node_get_asymmetric_key_type(handle);
-  if (keyType === "ed25519") {
-    if (algorithm != null && algorithm !== "sha512") {
-      throw new TypeError("Only 'sha512' is supported for Ed25519 keys");
+  try {
+    const res = prepareAsymmetricKey(key, kConsumePrivate);
+    let handle;
+    if ("handle" in res) {
+      handle = res.handle;
+    } else {
+      handle = op_node_create_private_key(
+        res.data,
+        res.format,
+        res.type ?? "",
+        res.passphrase,
+      );
     }
-    result = new FastBuffer(64);
-    op_node_sign_ed25519(handle, data, result);
-  } else if (keyType === "ed448") {
-    result = new FastBuffer(114);
-    op_node_sign_ed448(handle, data, result);
-  } else if (algorithm == null) {
-    throw new TypeError(
-      "Algorithm must be specified when using non-Ed25519 keys",
-    );
-  } else {
-    // Preserve padding/saltLength options from the original key
-    const privateKeyObject = new PrivateKeyObject(handle);
-    const signKey = typeof key === "object" && !(key instanceof KeyObject)
-      ? { ...key, key: privateKeyObject }
-      : privateKeyObject;
-    result = Sign(algorithm!).update(data)
-      .sign(signKey);
-  }
 
-  if (callback) {
-    setTimeout(() => callback(null, result));
-  } else {
-    return result;
+    let result: Buffer;
+    const keyType = op_node_get_asymmetric_key_type(handle);
+    if (keyType === "ed25519") {
+      if (algorithm != null && algorithm !== "sha512") {
+        throw new TypeError("Only 'sha512' is supported for Ed25519 keys");
+      }
+      result = new FastBuffer(64);
+      op_node_sign_ed25519(handle, data, result);
+    } else if (keyType === "ed448") {
+      result = new FastBuffer(114);
+      op_node_sign_ed448(handle, data, result);
+    } else if (algorithm == null) {
+      throw new TypeError(
+        "Algorithm must be specified when using non-Ed25519 keys",
+      );
+    } else {
+      // Preserve padding/saltLength options from the original key
+      const privateKeyObject = new PrivateKeyObject(handle);
+      const signKey = typeof key === "object" && !(key instanceof KeyObject)
+        ? { ...key, key: privateKeyObject }
+        : privateKeyObject;
+      result = Sign(algorithm!).update(data)
+        .sign(signKey);
+    }
+
+    if (callback) {
+      setTimeout(() => callback(null, result));
+    } else {
+      return result;
+    }
+  } catch (err) {
+    if (callback) {
+      setTimeout(() => callback(err, Buffer.alloc(0)));
+    } else {
+      throw err;
+    }
   }
 }
 
@@ -329,46 +353,66 @@ export function verifyOneShot(
     throw new ERR_CRYPTO_SIGN_KEY_REQUIRED();
   }
 
-  const res = prepareAsymmetricKey(key, kConsumePublic);
-  let handle;
-  if ("handle" in res) {
-    handle = res.handle;
-  } else {
-    handle = op_node_create_public_key(
-      res.data,
-      res.format,
-      res.type ?? "",
-      res.passphrase,
-    );
-  }
-
-  let result: boolean;
-  const keyType = op_node_get_asymmetric_key_type(handle);
-  if (keyType === "ed25519") {
-    if (algorithm != null && algorithm !== "sha512") {
-      throw new TypeError("Only 'sha512' is supported for Ed25519 keys");
+  try {
+    const res = prepareAsymmetricKey(key, kConsumePublic);
+    let handle;
+    if ("handle" in res) {
+      handle = res.handle;
+    } else if (isPrivateKeyType(res.type)) {
+      const privateHandle = op_node_create_private_key(
+        res.data,
+        res.format,
+        res.type ?? "",
+        res.passphrase,
+      );
+      handle = op_node_derive_public_key_from_private_key(privateHandle);
+    } else {
+      handle = op_node_create_public_key(
+        res.data,
+        res.format,
+        res.type ?? "",
+        res.passphrase,
+      );
     }
-    result = op_node_verify_ed25519(handle, data, signature);
-  } else if (keyType === "ed448") {
-    result = op_node_verify_ed448(handle, data, signature);
-  } else if (algorithm == null) {
-    throw new TypeError(
-      "Algorithm must be specified when using non-Ed25519 keys",
-    );
-  } else {
-    // Preserve padding/saltLength options from the original key
-    const publicKeyObject = new PublicKeyObject(handle);
-    const verifyKey = typeof key === "object" && !(key instanceof KeyObject)
-      ? { ...key, key: publicKeyObject }
-      : publicKeyObject;
-    result = Verify(algorithm!).update(data)
-      .verify(verifyKey, signature);
-  }
 
-  if (callback) {
-    setTimeout(() => callback(null, result));
-  } else {
-    return result;
+    let result: boolean;
+    const keyType = op_node_get_asymmetric_key_type(handle);
+    if (keyType === "ed25519") {
+      if (algorithm != null && algorithm !== "sha512") {
+        throw new TypeError("Only 'sha512' is supported for Ed25519 keys");
+      }
+      result = op_node_verify_ed25519(handle, data, signature);
+    } else if (keyType === "ed448") {
+      result = op_node_verify_ed448(handle, data, signature);
+    } else if (keyType === "x25519" || keyType === "x448" || keyType === "dh") {
+      throw new TypeError(
+        "operation not supported for this keytype",
+      );
+    } else if (algorithm == null) {
+      throw new TypeError(
+        "no default digest",
+      );
+    } else {
+      // Preserve padding/saltLength options from the original key
+      const publicKeyObject = new PublicKeyObject(handle);
+      const verifyKey = typeof key === "object" && !(key instanceof KeyObject)
+        ? { ...key, key: publicKeyObject }
+        : publicKeyObject;
+      result = Verify(algorithm!).update(data)
+        .verify(verifyKey, signature);
+    }
+
+    if (callback) {
+      setTimeout(() => callback(null, result));
+    } else {
+      return result;
+    }
+  } catch (err) {
+    if (callback) {
+      setTimeout(() => callback(err, false));
+    } else {
+      throw err;
+    }
   }
 }
 
