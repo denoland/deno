@@ -17,8 +17,12 @@ if (prereleaseKind) {
   const tag = prereleaseKind.slice(2); // "rc", "alpha", or "beta"
   let cliVersion = semver.parse(cliCrate.version)!;
 
-  if (cliVersion.prerelease?.[0] != tag) {
+  if (!cliVersion.prerelease?.length) {
+    // Transitioning from stable (e.g. 2.7.0 -> 2.8.0-alpha.0)
     cliVersion = semver.increment(cliVersion, "minor");
+  } else if (cliVersion.prerelease[0] != tag) {
+    // Transitioning between prerelease kinds (e.g. 3.0.0-alpha.12 -> 3.0.0-beta.0)
+    cliVersion = { ...cliVersion, prerelease: undefined };
   }
   cliVersion = increment(cliVersion, "prerelease", { prerelease: tag });
 
