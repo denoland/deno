@@ -98,6 +98,7 @@ impl ReadCallbackRegistry {
     slot.state.as_ref().map(ReadCallbackState::snapshot)
   }
 
+  #[allow(dead_code, reason = "used by upcoming TLSWrap")]
   pub fn update_interceptor(
     &mut self,
     key: ReadCallbackKey,
