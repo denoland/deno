@@ -509,9 +509,7 @@ function spawnSyncInner(command, {
   if (timeout != null && timeout > 0) {
     spawnArgs.timeout = timeout;
     if (killSignal != null) {
-      spawnArgs.killSignal = typeof killSignal === "number"
-        ? String(killSignal)
-        : killSignal;
+      spawnArgs.killSignal = killSignal;
     }
   }
   const result = op_spawn_sync(spawnArgs);

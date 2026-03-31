@@ -1576,6 +1576,20 @@ function restorePrototype(obj: any) {
   }
 }
 
+/** Convert a killSignal (string name or number) to its string name. */
+function _resolveKillSignalName(
+  killSignal: string | number | undefined,
+): string {
+  if (typeof killSignal === "string") return killSignal;
+  if (typeof killSignal === "number") {
+    for (const [name, num] of Object.entries(os.signals)) {
+      if (num === killSignal) return name;
+    }
+    return String(killSignal);
+  }
+  return "SIGTERM";
+}
+
 function _createSpawnError(
   status: string,
   command: string,
@@ -1746,7 +1760,9 @@ export function spawnSync(
     // On Windows there are no real Unix signals, but Node still reports the
     // configured killSignal so callers can detect the timeout.
     result.status = killedByTimeout ? null : status;
-    result.signal = killedByTimeout ? (killSignal || "SIGTERM") : output.signal;
+    result.signal = killedByTimeout
+      ? _resolveKillSignalName(killSignal)
+      : output.signal;
     result.stdout = stdout;
     result.stderr = stderr;
     result.output = [output.signal, stdout, stderr];
