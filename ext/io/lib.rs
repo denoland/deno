@@ -1170,6 +1170,44 @@ impl crate::fs::File for StdFileResourceInner {
     }
   }
 
+  fn read_at_sync(
+    self: Rc<Self>,
+    buf: &mut [u8],
+    position: u64,
+  ) -> FsResult<usize> {
+    self.with_sync(|file| {
+      #[cfg(unix)]
+      {
+        use std::os::unix::fs::FileExt;
+        Ok(file.read_at(buf, position)?)
+      }
+      #[cfg(windows)]
+      {
+        use std::os::windows::fs::FileExt;
+        Ok(file.seek_read(buf, position)?)
+      }
+    })
+  }
+
+  fn write_at_sync(
+    self: Rc<Self>,
+    buf: &[u8],
+    position: u64,
+  ) -> FsResult<usize> {
+    self.with_sync(|file| {
+      #[cfg(unix)]
+      {
+        use std::os::unix::fs::FileExt;
+        Ok(file.write_at(buf, position)?)
+      }
+      #[cfg(windows)]
+      {
+        use std::os::windows::fs::FileExt;
+        Ok(file.seek_write(buf, position)?)
+      }
+    })
+  }
+
   fn backing_fd(self: Rc<Self>) -> Option<ResourceHandleFd> {
     Some(self.handle)
   }

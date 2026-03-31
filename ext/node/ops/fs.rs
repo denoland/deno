@@ -883,54 +883,20 @@ pub fn op_node_fs_close(state: &mut OpState, fd: i32) -> Result<(), FsError> {
   Ok(())
 }
 
-/// Positioned read helper: if position >= 0, seeks to that position before
-/// reading and restores the original position afterwards (matching Node's
-/// pread-like semantics). If position < 0, reads from the current position.
+/// Positioned read: if position >= 0, uses pread to read without moving the
+/// file cursor. If position < 0, reads from the current position.
 fn read_with_position(
   file: Rc<dyn deno_io::fs::File>,
   buf: &mut [u8],
   position: i64,
 ) -> Result<u32, FsError> {
   if position >= 0 {
-    let current = file.clone().seek_sync(std::io::SeekFrom::Current(0))?;
-    match file
-      .clone()
-      .seek_sync(std::io::SeekFrom::Start(position as u64))
-    {
-      Ok(_) => {}
-      Err(e) => {
-        // Map EINVAL from lseek to EFBIG to match pread behavior.
-        // Some Linux filesystems return EINVAL for offsets beyond
-        // their supported range, but Node.js (using pread) returns
-        // EFBIG in this case.
-        let _ = file.seek_sync(std::io::SeekFrom::Start(current));
-        return Err(seek_einval_to_efbig(e));
-      }
-    }
-    let result = file.clone().read_sync(buf);
-    // Always restore position, even on read failure
-    let _ = file.seek_sync(std::io::SeekFrom::Start(current));
-    Ok(result? as u32)
+    let nread = file.read_at_sync(buf, position as u64)?;
+    Ok(nread as u32)
   } else {
     let nread = file.read_sync(buf)?;
     Ok(nread as u32)
   }
-}
-
-/// Convert EINVAL from lseek to EFBIG to match Node's pread/pwrite behavior.
-#[cfg(unix)]
-fn seek_einval_to_efbig(err: deno_io::fs::FsError) -> FsError {
-  if let deno_io::fs::FsError::Io(ref io_err) = err
-    && io_err.raw_os_error() == Some(libc::EINVAL)
-  {
-    return FsError::Io(std::io::Error::from_raw_os_error(libc::EFBIG));
-  }
-  FsError::Fs(err)
-}
-
-#[cfg(not(unix))]
-fn seek_einval_to_efbig(err: deno_io::fs::FsError) -> FsError {
-  FsError::Fs(err)
 }
 
 #[op2(fast)]
@@ -965,9 +931,8 @@ pub async fn op_node_fs_read_deferred(
   read_with_position(file, &mut buf, position)
 }
 
-/// Positioned write helper: if position >= 0, seeks to that position before
-/// writing and restores the original position afterwards (matching Node's
-/// pwrite-like semantics). If position < 0, writes at the current position.
+/// Positioned write: if position >= 0, uses pwrite to write without moving
+/// the file cursor. If position < 0, writes at the current position.
 /// Handles partial writes internally by looping until all bytes are written.
 fn write_with_position(
   file: Rc<dyn deno_io::fs::File>,
@@ -975,30 +940,22 @@ fn write_with_position(
   position: i64,
 ) -> Result<u32, FsError> {
   if position >= 0 {
-    let current = file.clone().seek_sync(std::io::SeekFrom::Current(0))?;
-    file
-      .clone()
-      .seek_sync(std::io::SeekFrom::Start(position as u64))?;
-    let result = write_all(file.clone(), buf);
-    // Always restore position, even on write failure
-    let _ = file.seek_sync(std::io::SeekFrom::Start(current));
-    result
+    let mut total = 0usize;
+    while total < buf.len() {
+      let nwritten = file
+        .clone()
+        .write_at_sync(&buf[total..], position as u64 + total as u64)?;
+      total += nwritten;
+    }
+    Ok(total as u32)
   } else {
-    write_all(file, buf)
+    let mut total = 0usize;
+    while total < buf.len() {
+      let nwritten = file.clone().write_sync(&buf[total..])?;
+      total += nwritten;
+    }
+    Ok(total as u32)
   }
-}
-
-/// Write all bytes, looping on partial writes.
-fn write_all(
-  file: Rc<dyn deno_io::fs::File>,
-  buf: &[u8],
-) -> Result<u32, FsError> {
-  let mut total = 0usize;
-  while total < buf.len() {
-    let nwritten = file.clone().write_sync(&buf[total..])?;
-    total += nwritten;
-  }
-  Ok(total as u32)
 }
 
 #[op2(fast)]
