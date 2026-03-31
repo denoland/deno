@@ -31,3 +31,13 @@ Deno.test("napi property key utf8", function () {
 Deno.test("napi property key utf16", function () {
   assertEquals(strings.test_property_key_utf16(), 42);
 });
+
+Deno.test("napi string latin1 roundtrip", function () {
+  assertEquals(strings.test_latin1_roundtrip("hello"), "hello");
+  assertEquals(strings.test_latin1_roundtrip(""), "");
+});
+
+Deno.test("napi string utf16 roundtrip", function () {
+  assertEquals(strings.test_utf16_roundtrip("hello"), "hello");
+  assertEquals(strings.test_utf16_roundtrip(""), "");
+});

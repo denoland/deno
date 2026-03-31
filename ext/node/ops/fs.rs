@@ -1561,7 +1561,17 @@ async fn check_parent_paths_impl(
 
     let current_str = current.to_string_lossy();
     let checked_path =
-      check_cp_path(state, &current_str, OpenAccessKind::Read)?;
+      match check_cp_path(state, &current_str, OpenAccessKind::Read) {
+        Ok(p) => p,
+        // When read permission is ignored, the check returns NotFound.
+        // Treat it like a non-existent directory: stop walking.
+        Err(FsError::Permission(e))
+          if e.kind() == std::io::ErrorKind::NotFound =>
+        {
+          return Ok(());
+        }
+        Err(e) => return Err(e),
+      };
     let stat_result = fs.stat_async(checked_path).await;
     match stat_result {
       Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
@@ -1644,7 +1654,17 @@ fn check_parent_paths_impl_sync(
 
     let current_str = current.to_string_lossy();
     let checked_path =
-      check_cp_path(state, &current_str, OpenAccessKind::Read)?;
+      match check_cp_path(state, &current_str, OpenAccessKind::Read) {
+        Ok(p) => p,
+        // When read permission is ignored, the check returns NotFound.
+        // Treat it like a non-existent directory: stop walking.
+        Err(FsError::Permission(e))
+          if e.kind() == std::io::ErrorKind::NotFound =>
+        {
+          return Ok(());
+        }
+        Err(e) => return Err(e),
+      };
     match fs.stat_sync(&checked_path.as_checked_path()) {
       Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
       Err(e) => {

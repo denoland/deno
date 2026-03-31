@@ -295,6 +295,9 @@ Cipheriv.prototype.setAAD = function (
     plaintextLength: number;
   },
 ) {
+  if (this._finalized) {
+    throw new ERR_CRYPTO_INVALID_STATE("setAAD");
+  }
   op_node_cipheriv_set_aad(this._context, buffer);
   return this;
 };
@@ -531,6 +534,9 @@ Decipheriv.prototype.setAAD = function (
     plaintextLength: number;
   },
 ) {
+  if (this._finalized) {
+    throw new ERR_CRYPTO_INVALID_STATE("setAAD");
+  }
   op_node_decipheriv_set_aad(this._context, buffer);
   return this;
 };
@@ -539,6 +545,9 @@ Decipheriv.prototype.setAuthTag = function (
   buffer: BinaryLike,
   _encoding?: string,
 ) {
+  if (this._authTag) {
+    throw new ERR_CRYPTO_INVALID_STATE("setAuthTag");
+  }
   op_node_decipheriv_auth_tag(this._context, buffer.byteLength);
   this._authTag = buffer;
   return this;
