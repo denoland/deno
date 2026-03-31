@@ -221,11 +221,7 @@ export function Cipheriv(
       throw new TypeError("Invalid initialization vector");
     }
     if (authTagLength < 0) {
-      throw new ERR_INVALID_ARG_VALUE(
-        "options.authTagLength",
-        authTagLength,
-        `is required for ${cipher}`,
-      );
+      throw new TypeError(`authTagLength required for ${cipher}`);
     }
   }
 
@@ -560,11 +556,7 @@ export function Decipheriv(
       throw new TypeError("Invalid initialization vector");
     }
     if (authTagLength < 0) {
-      throw new ERR_INVALID_ARG_VALUE(
-        "options.authTagLength",
-        authTagLength,
-        `is required for ${cipher}`,
-      );
+      throw new TypeError(`authTagLength required for ${cipher}`);
     }
   }
 
