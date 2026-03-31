@@ -1439,8 +1439,7 @@ mod test {
       )
     );
 
-    upgrade_flags.version_or_hash_or_channel =
-      Some("2.8.0-beta.1".to_string());
+    upgrade_flags.version_or_hash_or_channel = Some("2.8.0-beta.1".to_string());
     let req_ver =
       RequestedVersion::from_upgrade_flags(upgrade_flags.clone()).unwrap();
     assert_eq!(
@@ -2056,11 +2055,8 @@ mod test {
       },
     );
     assert_eq!(
-      normalize_version_from_server(
-        ReleaseChannel::Beta,
-        "v2.8.0-beta.1\n\n"
-      )
-      .unwrap(),
+      normalize_version_from_server(ReleaseChannel::Beta, "v2.8.0-beta.1\n\n")
+        .unwrap(),
       AvailableVersion {
         version_or_hash: "2.8.0-beta.1".to_string(),
         release_channel: ReleaseChannel::Beta,
