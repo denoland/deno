@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_node_crypto"
-version = "0.12.0"
+version = "0.13.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -19,6 +19,7 @@ aws-lc-rs.workspace = true
 base64.workspace = true
 blake2.workspace = true
 cbc.workspace = true
+chacha20.workspace = true
 const-oid.workspace = true
 ctr.workspace = true
 data-encoding.workspace = true
@@ -49,6 +50,7 @@ p384.workspace = true
 p521.workspace = true
 pbkdf2.workspace = true
 pkcs8 = { workspace = true, features = ["std", "pkcs5", "encryption"] }
+poly1305.workspace = true
 rand.workspace = true
 ripemd = { workspace = true, features = ["oid"] }
 rsa.workspace = true

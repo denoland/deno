@@ -47,8 +47,10 @@ const workflow = createWorkflow({
           AWS_DEFAULT_REGION: "${{vars.S3_REGION }}",
         },
         run: [
-          "echo ${GITHUB_REF#refs/*/} > release-latest.txt",
-          '(deno run --allow-net tools/release/version_greater_latest.ts ${GITHUB_REF#refs/*/} || exit 0) && gsutil -h "Cache-Control: no-cache" cp release-latest.txt gs://dl.deno.land/release-latest.txt && aws s3 cp release-latest.txt s3://dl-deno-land/release-latest.txt',
+          'VERSION=${GITHUB_REF#refs/*/}',
+          'LATEST_FILE=$(deno run --allow-net --allow-write tools/release/upload_version_file.ts "$VERSION" || exit 0)',
+          '[ -z "$LATEST_FILE" ] && exit 0',
+          'aws s3 cp "$LATEST_FILE" "s3://dl-deno-land/$LATEST_FILE"',
         ],
       }),
     ],
