@@ -883,6 +883,18 @@ pub fn op_node_fs_close(state: &mut OpState, fd: i32) -> Result<(), FsError> {
   Ok(())
 }
 
+/// Convert an FsError into a NodeFsError with the given syscall name,
+/// preserving the OS errno so the JS side can map it to the correct code.
+fn node_fs_error(err: deno_io::fs::FsError, syscall: &str) -> FsError {
+  map_fs_error_to_node_fs_error(
+    err,
+    NodeFsErrorContext {
+      syscall: Some(syscall.to_string()),
+      ..Default::default()
+    },
+  )
+}
+
 /// Positioned read helper: if position >= 0, seeks to that position before
 /// reading and restores the original position afterwards (matching Node's
 /// pread-like semantics). If position < 0, reads from the current position.
@@ -892,16 +904,20 @@ fn read_with_position(
   position: i64,
 ) -> Result<u32, FsError> {
   if position >= 0 {
-    let current = file.clone().seek_sync(std::io::SeekFrom::Current(0))?;
+    let current = file
+      .clone()
+      .seek_sync(std::io::SeekFrom::Current(0))
+      .map_err(|e| node_fs_error(e, "read"))?;
     file
       .clone()
-      .seek_sync(std::io::SeekFrom::Start(position as u64))?;
+      .seek_sync(std::io::SeekFrom::Start(position as u64))
+      .map_err(|e| node_fs_error(e, "read"))?;
     let result = file.clone().read_sync(buf);
     // Always restore position, even on read failure
     let _ = file.seek_sync(std::io::SeekFrom::Start(current));
-    Ok(result? as u32)
+    Ok(result.map_err(|e| node_fs_error(e, "read"))? as u32)
   } else {
-    let nread = file.read_sync(buf)?;
+    let nread = file.read_sync(buf).map_err(|e| node_fs_error(e, "read"))?;
     Ok(nread as u32)
   }
 }
@@ -948,10 +964,14 @@ fn write_with_position(
   position: i64,
 ) -> Result<u32, FsError> {
   if position >= 0 {
-    let current = file.clone().seek_sync(std::io::SeekFrom::Current(0))?;
+    let current = file
+      .clone()
+      .seek_sync(std::io::SeekFrom::Current(0))
+      .map_err(|e| node_fs_error(e, "write"))?;
     file
       .clone()
-      .seek_sync(std::io::SeekFrom::Start(position as u64))?;
+      .seek_sync(std::io::SeekFrom::Start(position as u64))
+      .map_err(|e| node_fs_error(e, "write"))?;
     let result = write_all(file.clone(), buf);
     // Always restore position, even on write failure
     let _ = file.seek_sync(std::io::SeekFrom::Start(current));
@@ -968,7 +988,10 @@ fn write_all(
 ) -> Result<u32, FsError> {
   let mut total = 0usize;
   while total < buf.len() {
-    let nwritten = file.clone().write_sync(&buf[total..])?;
+    let nwritten = file
+      .clone()
+      .write_sync(&buf[total..])
+      .map_err(|e| node_fs_error(e, "write"))?;
     total += nwritten;
   }
   Ok(total as u32)
