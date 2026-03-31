@@ -1746,9 +1746,7 @@ export function spawnSync(
     // On Windows there are no real Unix signals, but Node still reports the
     // configured killSignal so callers can detect the timeout.
     result.status = killedByTimeout ? null : status;
-    result.signal = killedByTimeout
-      ? (killSignal || "SIGTERM")
-      : output.signal;
+    result.signal = killedByTimeout ? (killSignal || "SIGTERM") : output.signal;
     result.stdout = stdout;
     result.stderr = stderr;
     result.output = [output.signal, stdout, stderr];
