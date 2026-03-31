@@ -1,7 +1,0 @@
-{
-  // Regression test for https://github.com/denoland/deno/issues/32935
-  // fs.watch should not miss change events for writes that happen
-  // immediately after watcher setup.
-  "args": "run --allow-read --allow-write --allow-env main.mjs",
-  "output": "main.out"
-}
