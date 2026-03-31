@@ -62,9 +62,11 @@ const FastBuffer = Buffer[SymbolSpecies];
 
 class CipherError extends Error {
   code: string;
+  reason: string;
   constructor(code: string, message: string) {
     super(message);
     this.code = code;
+    this.reason = message;
   }
 }
 
@@ -785,13 +787,12 @@ function _lazyInitDecipherDecoder(self: any, encoding: string) {
   }
 
   const normalizedEncoding = normalizeEncoding(encoding);
-  self._decoder ||= new StringDecoder(normalizedEncoding);
+  if (normalizedEncoding === undefined) {
+    throw new ERR_UNKNOWN_ENCODING(encoding);
+  }
 
-  if (self._decoder.encoding !== normalizedEncoding) {
-    if (normalizedEncoding === undefined) {
-      throw new ERR_UNKNOWN_ENCODING(encoding);
-    }
-    assert(false, "Cannot change encoding");
+  if (!self._decoder || self._decoder.encoding !== normalizedEncoding) {
+    self._decoder = new StringDecoder(normalizedEncoding);
   }
 }
 

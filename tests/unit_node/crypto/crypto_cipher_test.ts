@@ -532,21 +532,21 @@ Deno.test({
 Deno.test({
   name: "Decipheriv - change encoding after first update",
   fn() {
-    const decipher = crypto.createDecipheriv(
-      "aes-256-cbc",
-      new Uint8Array(32),
-      new Uint8Array(16),
-    );
-    decipher.update(new Uint32Array(), undefined, "hex");
-    assertThrows(
-      () => {
-        decipher.final("utf-8");
-      },
-      AssertionError,
-      "Cannot change encoding",
-    );
+    // Node.js allows changing encoding between update() and final().
+    // final() should use the new encoding without throwing.
+    const key = new Uint8Array(32);
+    const iv = new Uint8Array(16);
+    const cipher = crypto.createCipheriv("aes-256-cbc", key, iv);
+    const encrypted = Buffer.concat([
+      cipher.update(Buffer.from("hello")),
+      cipher.final(),
+    ]);
 
-    decipher.final();
+    const decipher = crypto.createDecipheriv("aes-256-cbc", key, iv);
+    decipher.update(encrypted, undefined, "hex");
+    // Changing encoding to utf-8 in final() should work
+    const result = decipher.final("utf-8");
+    assertEquals(typeof result, "string");
   },
 });
 
