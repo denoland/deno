@@ -15,7 +15,7 @@ land until the release is finished.**
 - [ ] Write a message in company's `#cli` channel:
 
 ```
-:lock: 
+:lock:
 
 @here
 
@@ -84,7 +84,7 @@ Release checklist: <LINK TO THIS FORKED GIST GOES HERE>
   - [ ] There are 28 assets on the v$VERSION
         [GitHub release draft](https://github.com/denoland/deno/releases/).
   - [ ] There are 30 zip files for this version on
-        [dl.deno.land](https://console.cloud.google.com/storage/browser/dl.deno.land/release/v$VERSION).
+        [dl.deno.land](https://dash.cloudflare.com/895762025d37fc687ecd72d7cc80204a/r2/default/buckets/dl-deno-land?prefix=release%2Fv$VERSION).
 
 - [ ] Publish the release on Github
 
@@ -136,8 +136,8 @@ Release checklist: <LINK TO THIS FORKED GIST GOES HERE>
       change.
   - Create `banner.txt` file with the content you want to print - _it must be
     plaintext_.
-  - Run
-    `gsutil -h "Cache-Control: public, max-age=3600" cp banner.txt gs://dl.deno.land/release/v$VERSION/banner.txt`
+  - Upload the file in
+    https://dash.cloudflare.com/895762025d37fc687ecd72d7cc80204a/r2/default/buckets/dl-deno-land?prefix=release%2Fv$VERSION/banner.txt.
 
 ## All done!
 
@@ -146,7 +146,7 @@ Release checklist: <LINK TO THIS FORKED GIST GOES HERE>
 ```
 :unlock:
 
-@here 
+@here
 
 `denoland/deno` is now unlocked.
 
