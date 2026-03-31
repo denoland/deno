@@ -100,10 +100,6 @@ const LIMIT_MAPPING: [LimitInfo; NUM_LIMITS] = [
   },
 ];
 
-fn get_limit_info_from_name(name: &str) -> Option<&'static LimitInfo> {
-  LIMIT_MAPPING.iter().find(|info| info.js_name == name)
-}
-
 struct DatabaseSyncOptions {
   open: bool,
   enable_foreign_key_constraints: bool,
@@ -1715,6 +1711,15 @@ impl DatabaseSync {
     Ok(res == 0)
   }
 
+  #[getter]
+  #[cppgc]
+  fn limits(&self) -> Result<DatabaseSyncLimits, SqliteError> {
+    if self.conn.borrow().is_none() {
+      return Err(SqliteError::AlreadyClosed);
+    }
+    Ok(DatabaseSyncLimits::create(Rc::clone(&self.conn)))
+  }
+
   #[fast]
   #[validate(is_open)]
   fn aggregate<'a>(
@@ -2595,4 +2600,271 @@ fn throw_range_error(scope: &mut v8::PinScope<'_, '_>, message: &str) {
     .unwrap();
 
   scope.throw_exception(error);
+}
+
+fn throw_type_error_with_code(
+  scope: &mut v8::PinScope<'_, '_>,
+  message: &str,
+  code: &str,
+) {
+  let msg = v8::String::new(scope, message).unwrap();
+  let error = v8::Exception::type_error(scope, msg);
+
+  v8_static_strings!(CODE = "code");
+  let code_key = CODE.v8_string(scope).unwrap();
+  let code_value = v8::String::new(scope, code).unwrap();
+  let error_obj: v8::Local<v8::Object> = error.try_into().unwrap();
+  error_obj
+    .set(scope, code_key.into(), code_value.into())
+    .unwrap();
+
+  scope.throw_exception(error);
+}
+
+/// Object representing SQLite database limits.
+/// This is returned by DatabaseSync.limits getter.
+pub struct DatabaseSyncLimits {
+  conn: Rc<RefCell<Option<rusqlite::Connection>>>,
+}
+
+// SAFETY: we're sure this can be GCed
+unsafe impl GarbageCollected for DatabaseSyncLimits {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"DatabaseSyncLimits"
+  }
+}
+
+impl DatabaseSyncLimits {
+  fn create(conn: Rc<RefCell<Option<rusqlite::Connection>>>) -> Self {
+    Self { conn }
+  }
+
+  fn get_limit(&self, limit: Limit) -> Result<i32, SqliteError> {
+    let conn = self.conn.borrow();
+    let conn = conn.as_ref().ok_or(SqliteError::AlreadyClosed)?;
+    conn.limit(limit).map_err(SqliteError::from)
+  }
+
+  fn set_limit_value(
+    &self,
+    scope: &mut v8::PinScope<'_, '_>,
+    limit: Limit,
+    value: v8::Local<v8::Value>,
+  ) -> Result<(), SqliteError> {
+    let conn = self.conn.borrow();
+    let conn = conn.as_ref().ok_or(SqliteError::AlreadyClosed)?;
+
+    if !value.is_number() {
+      throw_type_error_with_code(
+        scope,
+        "Limit value must be a non-negative integer or Infinity.",
+        "ERR_INVALID_ARG_TYPE",
+      );
+      return Ok(());
+    }
+
+    let num_value = value.number_value(scope).unwrap_or(f64::NAN);
+
+    let new_value = if num_value.is_infinite() && num_value > 0.0 {
+      i32::MAX
+    } else if !value.is_int32() {
+      throw_type_error_with_code(
+        scope,
+        "Limit value must be a non-negative integer or Infinity.",
+        "ERR_INVALID_ARG_TYPE",
+      );
+      return Ok(());
+    } else {
+      let int_val = value.int32_value(scope).unwrap_or(-1);
+      if int_val < 0 {
+        throw_range_error(scope, "Limit value must be non-negative.");
+        return Ok(());
+      }
+      int_val
+    };
+
+    conn.set_limit(limit, new_value)?;
+    Ok(())
+  }
+}
+
+#[op2]
+impl DatabaseSyncLimits {
+  #[constructor]
+  #[cppgc]
+  fn new(_: bool) -> Result<DatabaseSyncLimits, SqliteError> {
+    Err(SqliteError::InvalidConstructor)
+  }
+
+  #[getter]
+  fn length(&self) -> Result<i32, SqliteError> {
+    self.get_limit(Limit::SQLITE_LIMIT_LENGTH)
+  }
+
+  #[setter]
+  fn length(
+    &self,
+    scope: &mut v8::PinScope<'_, '_>,
+    value: v8::Local<v8::Value>,
+  ) -> Result<(), SqliteError> {
+    self.set_limit_value(scope, Limit::SQLITE_LIMIT_LENGTH, value)
+  }
+
+  #[getter]
+  #[rename("sqlLength")]
+  fn sql_length(&self) -> Result<i32, SqliteError> {
+    self.get_limit(Limit::SQLITE_LIMIT_SQL_LENGTH)
+  }
+
+  #[rename("sqlLength")]
+  #[setter]
+  fn sql_length(
+    &self,
+    scope: &mut v8::PinScope<'_, '_>,
+    value: v8::Local<v8::Value>,
+  ) -> Result<(), SqliteError> {
+    self.set_limit_value(scope, Limit::SQLITE_LIMIT_SQL_LENGTH, value)
+  }
+
+  #[getter]
+  fn column(&self) -> Result<i32, SqliteError> {
+    self.get_limit(Limit::SQLITE_LIMIT_COLUMN)
+  }
+
+  #[setter]
+  fn column(
+    &self,
+    scope: &mut v8::PinScope<'_, '_>,
+    value: v8::Local<v8::Value>,
+  ) -> Result<(), SqliteError> {
+    self.set_limit_value(scope, Limit::SQLITE_LIMIT_COLUMN, value)
+  }
+
+  #[getter]
+  #[rename("exprDepth")]
+  fn expr_depth(&self) -> Result<i32, SqliteError> {
+    self.get_limit(Limit::SQLITE_LIMIT_EXPR_DEPTH)
+  }
+
+  #[rename("exprDepth")]
+  #[setter]
+  fn expr_depth(
+    &self,
+    scope: &mut v8::PinScope<'_, '_>,
+    value: v8::Local<v8::Value>,
+  ) -> Result<(), SqliteError> {
+    self.set_limit_value(scope, Limit::SQLITE_LIMIT_EXPR_DEPTH, value)
+  }
+
+  #[getter]
+  #[rename("compoundSelect")]
+  fn compound_select(&self) -> Result<i32, SqliteError> {
+    self.get_limit(Limit::SQLITE_LIMIT_COMPOUND_SELECT)
+  }
+
+  #[rename("compoundSelect")]
+  #[setter]
+  fn compound_select(
+    &self,
+    scope: &mut v8::PinScope<'_, '_>,
+    value: v8::Local<v8::Value>,
+  ) -> Result<(), SqliteError> {
+    self.set_limit_value(scope, Limit::SQLITE_LIMIT_COMPOUND_SELECT, value)
+  }
+
+  #[getter]
+  #[rename("vdbeOp")]
+  fn vdbe_op(&self) -> Result<i32, SqliteError> {
+    self.get_limit(Limit::SQLITE_LIMIT_VDBE_OP)
+  }
+
+  #[rename("vdbeOp")]
+  #[setter]
+  fn vdbe_op(
+    &self,
+    scope: &mut v8::PinScope<'_, '_>,
+    value: v8::Local<v8::Value>,
+  ) -> Result<(), SqliteError> {
+    self.set_limit_value(scope, Limit::SQLITE_LIMIT_VDBE_OP, value)
+  }
+
+  #[getter]
+  #[rename("functionArg")]
+  fn function_arg(&self) -> Result<i32, SqliteError> {
+    self.get_limit(Limit::SQLITE_LIMIT_FUNCTION_ARG)
+  }
+
+  #[rename("functionArg")]
+  #[setter]
+  fn function_arg(
+    &self,
+    scope: &mut v8::PinScope<'_, '_>,
+    value: v8::Local<v8::Value>,
+  ) -> Result<(), SqliteError> {
+    self.set_limit_value(scope, Limit::SQLITE_LIMIT_FUNCTION_ARG, value)
+  }
+
+  #[getter]
+  fn attach(&self) -> Result<i32, SqliteError> {
+    self.get_limit(Limit::SQLITE_LIMIT_ATTACHED)
+  }
+
+  #[setter]
+  fn attach(
+    &self,
+    scope: &mut v8::PinScope<'_, '_>,
+    value: v8::Local<v8::Value>,
+  ) -> Result<(), SqliteError> {
+    self.set_limit_value(scope, Limit::SQLITE_LIMIT_ATTACHED, value)
+  }
+
+  #[getter]
+  #[rename("likePatternLength")]
+  fn like_pattern_length(&self) -> Result<i32, SqliteError> {
+    self.get_limit(Limit::SQLITE_LIMIT_LIKE_PATTERN_LENGTH)
+  }
+
+  #[rename("likePatternLength")]
+  #[setter]
+  fn like_pattern_length(
+    &self,
+    scope: &mut v8::PinScope<'_, '_>,
+    value: v8::Local<v8::Value>,
+  ) -> Result<(), SqliteError> {
+    self.set_limit_value(scope, Limit::SQLITE_LIMIT_LIKE_PATTERN_LENGTH, value)
+  }
+
+  #[getter]
+  #[rename("variableNumber")]
+  fn variable_number(&self) -> Result<i32, SqliteError> {
+    self.get_limit(Limit::SQLITE_LIMIT_VARIABLE_NUMBER)
+  }
+
+  #[rename("variableNumber")]
+  #[setter]
+  fn variable_number(
+    &self,
+    scope: &mut v8::PinScope<'_, '_>,
+    value: v8::Local<v8::Value>,
+  ) -> Result<(), SqliteError> {
+    self.set_limit_value(scope, Limit::SQLITE_LIMIT_VARIABLE_NUMBER, value)
+  }
+
+  #[getter]
+  #[rename("triggerDepth")]
+  fn trigger_depth(&self) -> Result<i32, SqliteError> {
+    self.get_limit(Limit::SQLITE_LIMIT_TRIGGER_DEPTH)
+  }
+
+  #[rename("triggerDepth")]
+  #[setter]
+  fn trigger_depth(
+    &self,
+    scope: &mut v8::PinScope<'_, '_>,
+    value: v8::Local<v8::Value>,
+  ) -> Result<(), SqliteError> {
+    self.set_limit_value(scope, Limit::SQLITE_LIMIT_TRIGGER_DEPTH, value)
+  }
 }
