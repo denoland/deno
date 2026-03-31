@@ -1730,7 +1730,8 @@ export function spawnSync(
     }
 
     // deno-lint-ignore no-explicit-any
-    if ((output as any)._killedByTimeout) {
+    const killedByTimeout = (output as any)._killedByTimeout;
+    if (killedByTimeout) {
       result.error = _createSpawnError("ETIMEDOUT", command, args, true);
     }
 
@@ -1741,8 +1742,13 @@ export function spawnSync(
 
     // deno-lint-ignore no-explicit-any
     result.pid = (output as any)._pid;
-    result.status = status;
-    result.signal = output.signal;
+    // When killed by timeout, report the killSignal (matching Node.js behavior).
+    // On Windows there are no real Unix signals, but Node still reports the
+    // configured killSignal so callers can detect the timeout.
+    result.status = killedByTimeout ? null : status;
+    result.signal = killedByTimeout
+      ? (killSignal || "SIGTERM")
+      : output.signal;
     result.stdout = stdout;
     result.stderr = stderr;
     result.output = [output.signal, stdout, stderr];
