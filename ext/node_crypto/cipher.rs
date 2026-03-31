@@ -549,9 +549,7 @@ impl CipherError {
       Self::InvalidKeyLength => deno_error::PropertyValue::String(
         "ERR_CRYPTO_INVALID_KEY_LENGTH".into(),
       ),
-      _ => {
-        deno_error::PropertyValue::String("ERR_CRYPTO_CIPHER".into())
-      }
+      _ => deno_error::PropertyValue::String("ERR_CRYPTO_CIPHER".into()),
     }
   }
 }
