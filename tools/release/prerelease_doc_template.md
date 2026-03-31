@@ -1,5 +1,33 @@
 - [ ] Fork this gist and follow the instructions there.
 
+## Pre-flight
+
+**During this process $BRANCH_NAME branch should be frozen and no commits should
+land until the release is finished.**
+
+- [ ] Ensure forks and local clones of:
+  - [`denoland/deno`](https://github.com/denoland/deno/),
+  - [`denoland/dotcom`](https://github.com/denoland/dotcom/),
+  - [`denoland/deno_docker`](https://github.com/denoland/deno_docker/),
+  - [`denoland/deno-docs`](https://github.com/denoland/deno-docs)
+- [ ] Check https://deno.land/benchmarks?-100 and ensure there's no recent
+      regressions.
+- [ ] Write a message in company's `#cli` channel:
+
+```
+:lock: 
+
+@here
+
+Deno v$VERSION is now getting released.
+
+`denoland/deno` is now locked.
+
+*DO NOT LAND ANY PRs*
+
+Release checklist: <LINK TO THIS FORKED GIST GOES HERE>
+```
+
 ## Updating `deno`
 
 ### Phase 1: Bumping versions
@@ -50,7 +78,7 @@
   - [ ] There are 30 zip files for this version on
         [dl.deno.land](https://console.cloud.google.com/storage/browser/dl.deno.land/release/v$VERSION).
 
-- [ ] Publish the release on Github
+- [ ] Publish the release on Github **as a pre-release**.
 
 ## Updating `deno_docker`
 
@@ -59,3 +87,19 @@
 - [ ] This will open a PR. Review and merge it.
 - [ ] Create a `$VERSION` tag (_without_ `v` prefix).
 - [ ] This will trigger a publish CI run. Verify that it completes successfully.
+
+## All done!
+
+- [ ] Write a message in company's #cli channel:
+
+```
+:unlock:
+
+@here 
+
+`denoland/deno` is now unlocked.
+
+*You can land PRs now*
+
+Deno v$VERSION has been released.
+```
