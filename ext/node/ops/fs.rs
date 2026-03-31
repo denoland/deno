@@ -918,13 +918,18 @@ fn read_with_position(
 }
 
 /// Convert EINVAL from lseek to EFBIG to match Node's pread/pwrite behavior.
+#[cfg(unix)]
 fn seek_einval_to_efbig(err: deno_io::fs::FsError) -> FsError {
   if let deno_io::fs::FsError::Io(ref io_err) = err {
-    #[cfg(unix)]
     if io_err.raw_os_error() == Some(libc::EINVAL) {
       return FsError::Io(std::io::Error::from_raw_os_error(libc::EFBIG));
     }
   }
+  FsError::Fs(err)
+}
+
+#[cfg(not(unix))]
+fn seek_einval_to_efbig(err: deno_io::fs::FsError) -> FsError {
   FsError::Fs(err)
 }
 
