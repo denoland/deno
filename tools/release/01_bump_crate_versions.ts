@@ -10,32 +10,11 @@ const denoRtCrate = workspace.getDenoRtCrate();
 const denoLibCrate = workspace.getDenoLibCrate();
 const originalCliVersion = cliCrate.version;
 
-if (Deno.args.some((a) => a === "--rc")) {
-  let cliVersion = semver.parse(cliCrate.version)!;
-
-  if (cliVersion.prerelease?.[0] != "rc") {
-    cliVersion = semver.increment(cliVersion, "minor");
-  }
-  cliVersion = increment(cliVersion, "prerelease", { prerelease: "rc" });
-
-  const version = cliVersion.toString();
-
-  await cliCrate.setVersion(version);
-  await denoRtCrate.setVersion(version);
-  denoLibCrate.folderPath.join("version.txt").writeTextSync(version);
-  // Force lockfile update
-  await workspace.getCliCrate().cargoUpdate("--workspace");
-
-  await assertDenoBinaryVersion(version);
-
-  Deno.exit(0);
-}
-
-const prereleaseKind = (["--alpha", "--beta"] as const).find((a) =>
+const prereleaseKind = (["--rc", "--alpha", "--beta"] as const).find((a) =>
   Deno.args.includes(a)
 );
 if (prereleaseKind) {
-  const tag = prereleaseKind.slice(2); // "alpha" or "beta"
+  const tag = prereleaseKind.slice(2); // "rc", "alpha", or "beta"
   let cliVersion = semver.parse(cliCrate.version)!;
 
   if (cliVersion.prerelease?.[0] != tag) {
@@ -53,35 +32,33 @@ if (prereleaseKind) {
 
   await assertDenoBinaryVersion(version);
 
-  // Fall through to cache and release notes update (unlike RC)
+  Deno.exit(0);
 }
 
 await bumpCiCacheVersion();
 
-if (!prereleaseKind) {
-  // increment the cli version
-  if (Deno.args.some((a) => a === "--patch")) {
-    await cliCrate.increment("patch");
-  } else if (Deno.args.some((a) => a === "--minor")) {
-    await cliCrate.increment("minor");
-  } else if (Deno.args.some((a) => a === "--major")) {
-    await cliCrate.increment("major");
-  } else {
-    await cliCrate.promptAndIncrement();
-  }
-
-  await denoRtCrate.setVersion(cliCrate.version);
-  denoLibCrate.folderPath.join("version.txt").writeTextSync(cliCrate.version);
-
-  // increment the dependency crate versions
-  for (const crate of workspace.getCliDependencyCrates()) {
-    await crate.increment("minor");
-  }
-
-  // update the lock file
-  await workspace.getCliCrate().cargoUpdate("--workspace");
-  await assertDenoBinaryVersion(cliCrate.version);
+// increment the cli version
+if (Deno.args.some((a) => a === "--patch")) {
+  await cliCrate.increment("patch");
+} else if (Deno.args.some((a) => a === "--minor")) {
+  await cliCrate.increment("minor");
+} else if (Deno.args.some((a) => a === "--major")) {
+  await cliCrate.increment("major");
+} else {
+  await cliCrate.promptAndIncrement();
 }
+
+await denoRtCrate.setVersion(cliCrate.version);
+denoLibCrate.folderPath.join("version.txt").writeTextSync(cliCrate.version);
+
+// increment the dependency crate versions
+for (const crate of workspace.getCliDependencyCrates()) {
+  await crate.increment("minor");
+}
+
+// update the lock file
+await workspace.getCliCrate().cargoUpdate("--workspace");
+await assertDenoBinaryVersion(cliCrate.version);
 
 // try to update the Releases.md markdown text
 try {
