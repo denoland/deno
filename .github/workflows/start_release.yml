@@ -11,6 +11,9 @@ on:
           - patch
           - minor
           - major
+          - alpha
+          - beta
+          - rc
         required: true
 
 jobs:
