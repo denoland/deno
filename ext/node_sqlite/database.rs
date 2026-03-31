@@ -44,6 +44,66 @@ const SQLITE_DBCONFIG_ENABLE_LOAD_EXTENSION: i32 = 1005;
 const SQLITE_DBCONFIG_ENABLE_ATTACH_WRITE: i32 = 1021;
 const MAX_SAFE_JS_INTEGER: i64 = 9_007_199_254_740_991;
 
+const NUM_LIMITS: usize = 11;
+
+struct LimitInfo {
+  js_name: &'static str,
+  limit: Limit,
+}
+
+/// Static mapping of JavaScript property names to SQLite limits.
+/// Order matches SQLite limit constant values (0-10).
+const LIMIT_MAPPING: [LimitInfo; NUM_LIMITS] = [
+  LimitInfo {
+    js_name: "length",
+    limit: Limit::SQLITE_LIMIT_LENGTH,
+  },
+  LimitInfo {
+    js_name: "sqlLength",
+    limit: Limit::SQLITE_LIMIT_SQL_LENGTH,
+  },
+  LimitInfo {
+    js_name: "column",
+    limit: Limit::SQLITE_LIMIT_COLUMN,
+  },
+  LimitInfo {
+    js_name: "exprDepth",
+    limit: Limit::SQLITE_LIMIT_EXPR_DEPTH,
+  },
+  LimitInfo {
+    js_name: "compoundSelect",
+    limit: Limit::SQLITE_LIMIT_COMPOUND_SELECT,
+  },
+  LimitInfo {
+    js_name: "vdbeOp",
+    limit: Limit::SQLITE_LIMIT_VDBE_OP,
+  },
+  LimitInfo {
+    js_name: "functionArg",
+    limit: Limit::SQLITE_LIMIT_FUNCTION_ARG,
+  },
+  LimitInfo {
+    js_name: "attach",
+    limit: Limit::SQLITE_LIMIT_ATTACHED,
+  },
+  LimitInfo {
+    js_name: "likePatternLength",
+    limit: Limit::SQLITE_LIMIT_LIKE_PATTERN_LENGTH,
+  },
+  LimitInfo {
+    js_name: "variableNumber",
+    limit: Limit::SQLITE_LIMIT_VARIABLE_NUMBER,
+  },
+  LimitInfo {
+    js_name: "triggerDepth",
+    limit: Limit::SQLITE_LIMIT_TRIGGER_DEPTH,
+  },
+];
+
+fn get_limit_info_from_name(name: &str) -> Option<&'static LimitInfo> {
+  LIMIT_MAPPING.iter().find(|info| info.js_name == name)
+}
+
 struct DatabaseSyncOptions {
   open: bool,
   enable_foreign_key_constraints: bool,
@@ -56,6 +116,7 @@ struct DatabaseSyncOptions {
   allow_unknown_named_params: bool,
   is_defensive_mode: bool,
   timeout: u64,
+  initial_limits: [Option<i32>; NUM_LIMITS],
 }
 
 impl<'a> FromV8<'a> for DatabaseSyncOptions {
@@ -91,6 +152,7 @@ impl<'a> FromV8<'a> for DatabaseSyncOptions {
       ALLOW_BARE_NAMED_PARAMS = "allowBareNamedParameters",
       ALLOW_UNKNOWN_NAMED_PARAMS = "allowUnknownNamedParameters",
       DEFENSIVE_STRING = "defensive",
+      LIMITS_STRING = "limits",
     }
 
     let open_string = OPEN_STRING.v8_string(scope).unwrap();
@@ -260,6 +322,52 @@ impl<'a> FromV8<'a> for DatabaseSyncOptions {
           .is_true();
     }
 
+    let limits_string = LIMITS_STRING.v8_string(scope).unwrap();
+    if let Some(limits_value) = obj.get(scope, limits_string.into())
+      && !limits_value.is_undefined()
+    {
+      let limits_obj =
+        v8::Local::<v8::Object>::try_from(limits_value).map_err(|_| {
+          Error::InvalidArgType(
+            "The \"options.limits\" argument must be an object.",
+          )
+        })?;
+
+      for (idx, limit_info) in LIMIT_MAPPING.iter().enumerate() {
+        let key =
+          v8::String::new(scope, limit_info.js_name).ok_or_else(|| {
+            Error::InvalidArgType("Failed to create limit key string.")
+          })?;
+
+        if let Some(val) = limits_obj.get(scope, key.into())
+          && !val.is_undefined()
+        {
+          let int_val = v8::Local::<v8::Int32>::try_from(val).map_err(|_| {
+            Error::InvalidArgType(Box::leak(
+              format!(
+                "The \"options.limits.{}\" argument must be an integer.",
+                limit_info.js_name
+              )
+              .into_boxed_str(),
+            ))
+          })?;
+
+          let limit_val = int_val.value();
+          if limit_val < 0 {
+            return Err(Error::InvalidArgValue(Box::leak(
+              format!(
+                "The \"options.limits.{}\" argument must be non-negative.",
+                limit_info.js_name
+              )
+              .into_boxed_str(),
+            )));
+          }
+
+          options.initial_limits[idx] = Some(limit_val);
+        }
+      }
+    }
+
     Ok(options)
   }
 }
@@ -278,6 +386,7 @@ impl Default for DatabaseSyncOptions {
       allow_unknown_named_params: false,
       is_defensive_mode: true,
       timeout: 0,
+      initial_limits: [None; NUM_LIMITS],
     }
   }
 }
@@ -552,6 +661,19 @@ fn set_db_config(
   }
 }
 
+/// Apply initial limits to a connection based on options
+fn apply_initial_limits(
+  conn: &rusqlite::Connection,
+  options: &DatabaseSyncOptions,
+) -> Result<(), SqliteError> {
+  for (idx, limit_info) in LIMIT_MAPPING.iter().enumerate() {
+    if let Some(value) = options.initial_limits[idx] {
+      conn.set_limit(limit_info.limit, value)?;
+    }
+  }
+  Ok(())
+}
+
 fn open_db(
   state: &mut OpState,
   location: &str,
@@ -588,6 +710,8 @@ fn open_db(
       SQLITE_DBCONFIG_DEFENSIVE,
       options.is_defensive_mode,
     ));
+
+    apply_initial_limits(&conn, options)?;
 
     return Ok(conn);
   }
@@ -633,6 +757,8 @@ fn open_db(
       options.is_defensive_mode,
     ));
 
+    apply_initial_limits(&conn, options)?;
+
     return Ok(conn);
   }
 
@@ -658,6 +784,8 @@ fn open_db(
     SQLITE_DBCONFIG_DEFENSIVE,
     options.is_defensive_mode,
   ));
+
+  apply_initial_limits(&conn, options)?;
 
   Ok(conn)
 }
