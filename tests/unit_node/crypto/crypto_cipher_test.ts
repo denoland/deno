@@ -422,13 +422,26 @@ Deno.test({
         return zeros(12);
       }
       if (cipher === "chacha20-poly1305") return zeros(12);
+      if (cipher.includes("ccm")) return zeros(12);
       if (cipher.includes("des")) return zeros(8);
       return zeros(16);
     };
 
     for (const cipher of crypto.getCiphers()) {
-      crypto.createCipheriv(cipher, getZeroKey(cipher), getZeroIv(cipher))
-        .final();
+      // deno-lint-ignore no-explicit-any
+      const opts: any = cipher.includes("ccm")
+        ? { authTagLength: 16 }
+        : undefined;
+      const c = crypto.createCipheriv(
+        cipher,
+        getZeroKey(cipher),
+        getZeroIv(cipher),
+        opts,
+      );
+      if (cipher.includes("ccm")) {
+        (c as any).setAAD(Buffer.alloc(0), { plaintextLength: 0 });
+      }
+      c.final();
     }
   },
 });

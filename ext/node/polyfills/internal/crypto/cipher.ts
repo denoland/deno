@@ -280,6 +280,12 @@ Cipheriv.prototype.final = function (
 
   // CCM mode: all data is buffered and processed in final()
   if (this._isCCM) {
+    if (!this._ccmHasSetAAD && this._ccmDataLength === 0) {
+      throw new CipherError(
+        "ERR_OSSL_TAG_NOT_SET",
+        "tag not set",
+      );
+    }
     _lazyInitCipherDecoder(this, encoding);
     const buf = new FastBuffer(this._ccmDataLength || 0);
     const maybeTag = op_node_cipheriv_final(
