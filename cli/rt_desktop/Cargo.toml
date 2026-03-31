@@ -31,6 +31,7 @@ libsui.workspace = true
 wef = { path = "../../../wef/capi" }
 
 log = { workspace = true, features = ["serde"] }
+raw-window-handle.workspace = true
 rustls.workspace = true
 serde_json.workspace = true
 tokio.workspace = true

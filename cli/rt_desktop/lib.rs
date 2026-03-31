@@ -298,16 +298,119 @@ impl denort::desktop::DesktopApi for WefDesktopApi {
     wef::quit();
   }
 
-  fn set_application_menu(&self, template_json: &str) {
-    let json: serde_json::Value = match serde_json::from_str(template_json) {
-      Ok(v) => v,
-      Err(e) => {
-        log::error!("Invalid menu template JSON: {}", e);
-        return;
+  fn set_application_menu(
+    &self,
+    window_id: u32,
+    menu: Vec<denort::desktop::MenuItem>,
+  ) {
+    let menu = menu
+      .into_iter()
+      .map(desktop_menu_item_to_wef_menu_item)
+      .collect::<Vec<_>>();
+    let tx = self.event_tx.clone();
+    wef::Window::from_id(window_id).set_menu(&menu, move |id: &str| {
+      let _ =
+        tx.send(deno_runtime::ops::desktop::DesktopEvent::AppMenuClick {
+          window_id,
+          id: id.to_string(),
+        });
+    });
+  }
+
+  fn show_context_menu(
+    &self,
+    window_id: u32,
+    x: i32,
+    y: i32,
+    menu: Vec<denort::desktop::MenuItem>,
+  ) {
+    let menu = menu
+      .into_iter()
+      .map(desktop_menu_item_to_wef_menu_item)
+      .collect::<Vec<_>>();
+    let tx = self.event_tx.clone();
+    wef::Window::from_id(window_id).show_context_menu(
+      x,
+      y,
+      &menu,
+      move |id: &str| {
+        let _ = tx.send(
+          deno_runtime::ops::desktop::DesktopEvent::ContextMenuClick {
+            window_id,
+            id: id.to_string(),
+          },
+        );
+      },
+    );
+  }
+
+  fn get_raw_window_handle(
+    &self,
+    window_id: u32,
+  ) -> (
+    raw_window_handle::RawWindowHandle,
+    raw_window_handle::RawDisplayHandle,
+  ) {
+    let window = wef::Window::from_id(window_id);
+    let handle_type = window.get_window_handle_type();
+    let raw_win = window.get_window_handle();
+    let raw_display = window.get_display_handle();
+
+    match handle_type {
+      wef::WEF_WINDOW_HANDLE_APPKIT => {
+        use raw_window_handle::*;
+        let win = RawWindowHandle::AppKit(
+          AppKitWindowHandle::new(
+            std::ptr::NonNull::new(raw_win).expect("null window handle"),
+          ),
+        );
+        let display =
+          RawDisplayHandle::AppKit(AppKitDisplayHandle::new());
+        (win, display)
       }
-    };
-    let wef_value = json_to_wef_value(&json);
-    wef::set_application_menu_raw(wef_value);
+      wef::WEF_WINDOW_HANDLE_WIN32 => {
+        use raw_window_handle::*;
+        let mut handle = Win32WindowHandle::new(
+          std::num::NonZeroIsize::new(raw_win as isize)
+            .expect("null window handle"),
+        );
+        handle.hinstance = std::num::NonZeroIsize::new(raw_display as isize).map(|v| v.into());
+        let win = RawWindowHandle::Win32(handle);
+        let display = RawDisplayHandle::Windows(
+          WindowsDisplayHandle::new(),
+        );
+        (win, display)
+      }
+      wef::WEF_WINDOW_HANDLE_X11 => {
+        use raw_window_handle::*;
+        let win = RawWindowHandle::Xlib(
+          XlibWindowHandle::new(raw_win as _),
+        );
+        let display = RawDisplayHandle::Xlib(
+          XlibDisplayHandle::new(
+            std::ptr::NonNull::new(raw_display),
+            0,
+          ),
+        );
+        (win, display)
+      }
+      wef::WEF_WINDOW_HANDLE_WAYLAND => {
+        use raw_window_handle::*;
+        let win = RawWindowHandle::Wayland(
+          WaylandWindowHandle::new(
+            std::ptr::NonNull::new(raw_win).expect("null window handle"),
+          ),
+        );
+        let display = RawDisplayHandle::Wayland(
+          WaylandDisplayHandle::new(
+            std::ptr::NonNull::new(raw_display)
+              .expect("null display handle"),
+          ),
+        );
+        (win, display)
+      }
+      _ => panic!("unknown window handle type: {handle_type}"),
+    }
   }
 
   fn alert(&self, title: &str, message: &str) {
@@ -331,6 +434,35 @@ impl denort::desktop::DesktopApi for WefDesktopApi {
     callback: Box<dyn FnOnce(Option<String>) + Send + 'static>,
   ) {
     wef::prompt(title, message, default_value, callback);
+  }
+}
+
+fn desktop_menu_item_to_wef_menu_item(
+  item: denort::desktop::MenuItem,
+) -> wef::MenuItem {
+  match item {
+    denort::desktop::MenuItem::Item {
+      label,
+      id,
+      accelerator,
+      enabled,
+    } => wef::MenuItem::Item {
+      label,
+      id,
+      accelerator,
+      enabled,
+    },
+    denort::desktop::MenuItem::Submenu { label, items } => {
+      wef::MenuItem::Submenu {
+        label,
+        items: items
+          .into_iter()
+          .map(desktop_menu_item_to_wef_menu_item)
+          .collect(),
+      }
+    }
+    denort::desktop::MenuItem::Separator => wef::MenuItem::Separator,
+    denort::desktop::MenuItem::Role { role } => wef::MenuItem::Role { role },
   }
 }
 
@@ -951,7 +1083,6 @@ async fn run_desktop(update_rolled_back: bool) -> Result<(), AnyError> {
       let window_id = api.create_window(800, 600);
       initial_window_id.store(window_id, Ordering::Release);
 
-      let menu_tx = event_tx.0.clone();
       denort::desktop::init_desktop_state(
         state,
         Box::new(api),
@@ -963,13 +1094,6 @@ async fn run_desktop(update_rolled_back: bool) -> Result<(), AnyError> {
       state.put(denort::desktop::InitialWindowId(std::sync::Mutex::new(
         Some(window_id),
       )));
-
-      wef::set_menu_click_handler(move |id| {
-        let _ =
-          menu_tx.send(deno_runtime::ops::desktop::DesktopEvent::MenuClick {
-            id: id.to_string(),
-          });
-      });
     })),
     override_main_module: None,
     auto_update_version,

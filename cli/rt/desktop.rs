@@ -12,6 +12,7 @@ use deno_core::OpState;
 // Re-export from runtime so denort_desktop can use them.
 pub use deno_runtime::ops::desktop::AutoUpdateState;
 pub use deno_runtime::ops::desktop::DesktopApi;
+pub use deno_runtime::ops::desktop::MenuItem;
 
 /// JS code that exposes desktop APIs via `Deno.BrowserWindow` and `Deno.desktop`.
 pub const DESKTOP_JS: &str = r#"
@@ -194,6 +195,8 @@ pub const DESKTOP_JS: &str = r#"
   internals.defineEventHandler(BrowserWindowPrototype, "resize");
   internals.defineEventHandler(BrowserWindowPrototype, "move");
   internals.defineEventHandler(BrowserWindowPrototype, "close");
+  internals.defineEventHandler(BrowserWindowPrototype, "menuclick");
+  internals.defineEventHandler(BrowserWindowPrototype, "contextmenuclick");
 
   // Per-window bind callback registry: windowId -> Map<name, fn>
   const windowBindCallbacks = new Map();
@@ -253,9 +256,18 @@ pub const DESKTOP_JS: &str = r#"
       const ev = await p;
       if (ev == null) break;
       switch (ev.kind) {
-        case "menuClick":
-          dispatchEvent(new CustomEvent("menuclick", { detail: { id: ev.id } }));
+        case "appMenuClick": {
+          const target = windows.get(ev.windowId);
+          if (!target) break;
+          target.dispatchEvent(new CustomEvent("menuclick", { detail: { id: ev.id } }));
           break;
+        }
+        case "contextMenuClick": {
+          const target = windows.get(ev.windowId);
+          if (!target) break;
+          target.dispatchEvent(new CustomEvent("contextmenuclick", { detail: { id: ev.id } }));
+          break;
+        }
         case "keyboardEvent": {
           const target = windows.get(ev.windowId);
           if (!target) break;
@@ -540,17 +552,13 @@ pub fn desktop_error_reporting_js(
 }})();
 "#,
     url = match url {
-      Some(u) => format!(
-        "\"{}\"",
-        u.replace('\\', "\\\\").replace('"', "\\\"")
-      ),
+      Some(u) =>
+        format!("\"{}\"", u.replace('\\', "\\\\").replace('"', "\\\"")),
       None => "null".to_string(),
     },
     version = match version {
-      Some(v) => format!(
-        "\"{}\"",
-        v.replace('\\', "\\\\").replace('"', "\\\"")
-      ),
+      Some(v) =>
+        format!("\"{}\"", v.replace('\\', "\\\\").replace('"', "\\\"")),
       None => "null".to_string(),
     },
   )

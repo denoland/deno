@@ -59,7 +59,9 @@ pub async fn compile(
   if compile_flags.eszip {
     compile_eszip(flags, compile_flags).boxed_local().await?;
   } else {
-    compile_binary(flags, compile_flags, false).boxed_local().await?;
+    compile_binary(flags, compile_flags, false)
+      .boxed_local()
+      .await?;
   }
 
   Ok(())

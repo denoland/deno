@@ -7,6 +7,7 @@
 //! builds), the ops silently no-op.
 
 use std::borrow::Cow;
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::atomic::AtomicU32;
@@ -14,6 +15,7 @@ use std::sync::atomic::Ordering;
 
 use deno_core::FromV8;
 use deno_core::OpState;
+use deno_core::cppgc::SameObject;
 use deno_core::op2;
 use deno_core::serde_json;
 use deno_core::v8;
@@ -22,7 +24,14 @@ use deno_core::v8;
 #[derive(Debug, serde::Serialize)]
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub enum DesktopEvent {
-  MenuClick {
+  #[serde(rename_all = "camelCase")]
+  AppMenuClick {
+    window_id: u32,
+    id: String,
+  },
+  #[serde(rename_all = "camelCase")]
+  ContextMenuClick {
+    window_id: u32,
     id: String,
   },
   #[serde(rename_all = "camelCase")]
@@ -203,7 +212,23 @@ pub trait DesktopApi: Send + Sync + 'static {
 
   fn navigate(&self, window_id: u32, url: &str);
   fn quit(&self);
-  fn set_application_menu(&self, template_json: &str);
+  fn set_application_menu(&self, window_id: u32, menu: Vec<MenuItem>);
+  fn show_context_menu(
+    &self,
+    window_id: u32,
+    x: i32,
+    y: i32,
+    menu: Vec<MenuItem>,
+  );
+
+  /// Returns the raw window and display handles for the given window.
+  fn get_raw_window_handle(
+    &self,
+    window_id: u32,
+  ) -> (
+    raw_window_handle::RawWindowHandle,
+    raw_window_handle::RawDisplayHandle,
+  );
 
   fn alert(&self, title: &str, message: &str);
   fn confirm(
@@ -229,6 +254,7 @@ pub struct InitialWindowId(pub std::sync::Mutex<Option<u32>>);
 struct BrowserWindow {
   api: Arc<dyn DesktopApi>,
   window_id: u32,
+  surface: SameObject<deno_webgpu::byow::UnsafeWindowSurface>,
 }
 
 // SAFETY: we're sure this can be GCed
@@ -295,7 +321,11 @@ impl BrowserWindow {
       }
     }
 
-    let window = BrowserWindow { api, window_id };
+    let window = BrowserWindow {
+      api,
+      window_id,
+      surface: SameObject::new(),
+    };
     let window = deno_core::cppgc::make_cppgc_object(scope, window);
     let event_target_setup = state.borrow::<EventTargetSetup>();
     let webidl_brand = v8::Local::new(scope, event_target_setup.brand.clone());
@@ -418,10 +448,60 @@ impl BrowserWindow {
     */
   }
 
-  #[fast]
-  fn set_application_menu(&self, #[string] template_json: &str) {
-    // TODO
-    self.api.set_application_menu(template_json);
+  fn set_application_menu(&self, #[serde] menu: Vec<MenuItem>) {
+    self.api.set_application_menu(self.window_id, menu);
+  }
+
+  fn show_context_menu(
+    &self,
+    #[smi] x: i32,
+    #[smi] y: i32,
+    #[serde] menu: Vec<MenuItem>,
+  ) {
+    self
+      .api
+      .show_context_menu(self.window_id, x, y, menu);
+  }
+
+  fn get_surface(
+    &self,
+    state: &OpState,
+    scope: &mut v8::PinScope<'_, '_>,
+  ) -> Result<v8::Global<v8::Object>, deno_error::JsErrorBox> {
+    let instance = state
+      .try_borrow::<deno_webgpu::Instance>()
+      .ok_or_else(|| {
+        deno_error::JsErrorBox::type_error(
+          "Cannot create surface outside of WebGPU context. Did you forget to call `navigator.gpu.requestAdapter()`?",
+        )
+      })?
+      .clone();
+
+    let api = self.api.clone();
+    let window_id = self.window_id;
+
+    Ok(self.surface.get(scope, move |_| {
+      let (win_handle, display_handle) =
+        api.get_raw_window_handle(window_id);
+
+      // SAFETY: The raw handles are valid for the lifetime of the window,
+      // which is guaranteed by the BrowserWindow preventing the window from
+      // being destroyed while this surface exists.
+      let surface_id = unsafe {
+        instance
+          .instance_create_surface(display_handle, win_handle, None)
+          .expect("failed to create surface")
+      };
+
+      let (width, height) = api.get_window_size(window_id);
+
+      deno_webgpu::byow::UnsafeWindowSurface {
+        id: surface_id,
+        width: RefCell::new(width as u32),
+        height: RefCell::new(height as u32),
+        context: SameObject::new(),
+      }
+    }))
   }
 }
 
@@ -434,6 +514,25 @@ struct BrowserWindowOptions {
   y: Option<i32>,
   resizable: Option<bool>,
   always_on_top: Option<bool>,
+}
+
+#[derive(Clone, Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum MenuItem {
+  Item {
+    label: String,
+    id: Option<String>,
+    accelerator: Option<String>,
+    enabled: bool,
+  },
+  Submenu {
+    label: String,
+    items: Vec<MenuItem>,
+  },
+  Separator,
+  Role {
+    role: String,
+  },
 }
 
 /// State for the auto-update system, placed into OpState at init.
@@ -607,14 +706,11 @@ fn op_desktop_send_error_report(
           .create(true)
           .append(true)
           .open(path)
-          .and_then(|mut f| {
-            std::io::Write::write_all(&mut f, line.as_bytes())
-          });
+          .and_then(|mut f| std::io::Write::write_all(&mut f, line.as_bytes()));
       }
     }
     "http" | "https" => {
-      let Ok(client) =
-        deno_fetch::get_or_create_client_from_state(state)
+      let Ok(client) = deno_fetch::get_or_create_client_from_state(state)
       else {
         return;
       };
@@ -651,9 +747,13 @@ fn op_desktop_send_error_report(
 fn op_desktop_confirm(state: &mut OpState, #[string] message: &str) -> bool {
   if let Some(api) = state.try_borrow::<Arc<dyn DesktopApi>>() {
     let (tx, rx) = std::sync::mpsc::channel();
-    api.confirm("", message, Box::new(move |result| {
-      let _ = tx.send(result);
-    }));
+    api.confirm(
+      "",
+      message,
+      Box::new(move |result| {
+        let _ = tx.send(result);
+      }),
+    );
     rx.recv().unwrap_or(false)
   } else {
     false

@@ -89,6 +89,7 @@ log.workspace = true
 notify.workspace = true
 once_cell.workspace = true
 qbsdiff.workspace = true
+raw-window-handle.workspace = true
 regex.workspace = true
 rustyline = { workspace = true, features = ["custom-bindings"] }
 same-file.workspace = true

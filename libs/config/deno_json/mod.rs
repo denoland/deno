@@ -837,9 +837,9 @@ impl SerializedDesktopConfig {
       release: self.release.map(|r| DesktopReleaseConfig {
         base_url: r.base_url,
       }),
-      error_reporting: self.error_reporting.map(|e| {
-        DesktopErrorReportingConfig { url: e.url }
-      }),
+      error_reporting: self
+        .error_reporting
+        .map(|e| DesktopErrorReportingConfig { url: e.url }),
     }
   }
 }

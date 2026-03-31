@@ -21,7 +21,7 @@ mod adapter;
 mod bind_group;
 mod bind_group_layout;
 pub mod buffer;
-mod byow;
+pub mod byow;
 mod command_buffer;
 mod command_encoder;
 mod compute_pass;
@@ -36,7 +36,7 @@ mod render_pass;
 mod render_pipeline;
 mod sampler;
 mod shader;
-mod surface;
+pub mod surface;
 pub mod texture;
 mod webidl;
 

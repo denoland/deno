@@ -168,12 +168,9 @@ async fn compile_desktop(
   temp_flags.subcommand = DenoSubcommand::Compile(compile_flags.clone());
   temp_flags.internal.is_desktop = true;
 
-  let output_path = super::compile::compile_binary(
-    Arc::new(temp_flags),
-    compile_flags,
-    true,
-  )
-  .await?;
+  let output_path =
+    super::compile::compile_binary(Arc::new(temp_flags), compile_flags, true)
+      .await?;
 
   if desktop_flags.hmr {
     let cwd = cli_options.initial_cwd();
