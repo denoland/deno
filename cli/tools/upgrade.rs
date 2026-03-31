@@ -1417,6 +1417,40 @@ mod test {
       RequestedVersion::from_upgrade_flags(upgrade_flags.clone()).unwrap();
     assert_eq!(req_ver, RequestedVersion::Latest(ReleaseChannel::Rc,));
 
+    upgrade_flags.version_or_hash_or_channel = Some("alpha".to_string());
+    let req_ver =
+      RequestedVersion::from_upgrade_flags(upgrade_flags.clone()).unwrap();
+    assert_eq!(req_ver, RequestedVersion::Latest(ReleaseChannel::Alpha));
+
+    upgrade_flags.version_or_hash_or_channel = Some("beta".to_string());
+    let req_ver =
+      RequestedVersion::from_upgrade_flags(upgrade_flags.clone()).unwrap();
+    assert_eq!(req_ver, RequestedVersion::Latest(ReleaseChannel::Beta));
+
+    upgrade_flags.version_or_hash_or_channel =
+      Some("2.8.0-alpha.0".to_string());
+    let req_ver =
+      RequestedVersion::from_upgrade_flags(upgrade_flags.clone()).unwrap();
+    assert_eq!(
+      req_ver,
+      RequestedVersion::SpecificVersion(
+        ReleaseChannel::Alpha,
+        "2.8.0-alpha.0".to_string()
+      )
+    );
+
+    upgrade_flags.version_or_hash_or_channel =
+      Some("2.8.0-beta.1".to_string());
+    let req_ver =
+      RequestedVersion::from_upgrade_flags(upgrade_flags.clone()).unwrap();
+    assert_eq!(
+      req_ver,
+      RequestedVersion::SpecificVersion(
+        ReleaseChannel::Beta,
+        "2.8.0-beta.1".to_string()
+      )
+    );
+
     upgrade_flags.version_or_hash_or_channel =
       Some("5c69b4861b52ab406e73b9cd85c254f0505cb20f".to_string());
     let req_ver =
@@ -1521,6 +1555,16 @@ mod test {
     assert_eq!(
       file.serialize(),
       "2020-01-01T00:00:00+00:00!2020-01-01T00:00:00+00:00!1.2.3!1.2.2!lts"
+    );
+    file.current_release_channel = ReleaseChannel::Alpha;
+    assert_eq!(
+      file.serialize(),
+      "2020-01-01T00:00:00+00:00!2020-01-01T00:00:00+00:00!1.2.3!1.2.2!alpha"
+    );
+    file.current_release_channel = ReleaseChannel::Beta;
+    assert_eq!(
+      file.serialize(),
+      "2020-01-01T00:00:00+00:00!2020-01-01T00:00:00+00:00!1.2.3!1.2.2!beta"
     );
   }
 
@@ -1713,6 +1757,34 @@ mod test {
       checker.should_prompt(),
       Some((ReleaseChannel::Rc, "1.46.0-rc.1".to_string()))
     );
+
+    // now switch to Alpha release
+    env.set_release_channel(ReleaseChannel::Alpha);
+    env.set_current_version("2.8.0-alpha.0");
+    env.set_latest_version("2.8.0-alpha.1", ReleaseChannel::Alpha);
+    fetch_and_store_latest_version(&env, &env).await;
+    env.add_hours(UPGRADE_CHECK_INTERVAL + 1);
+
+    let checker = UpdateChecker::new(env.clone(), env.clone());
+    assert!(checker.should_check_for_new_version());
+    assert_eq!(
+      checker.should_prompt(),
+      Some((ReleaseChannel::Alpha, "2.8.0-alpha.1".to_string()))
+    );
+
+    // now switch to Beta release
+    env.set_release_channel(ReleaseChannel::Beta);
+    env.set_current_version("2.8.0-beta.0");
+    env.set_latest_version("2.8.0-beta.1", ReleaseChannel::Beta);
+    fetch_and_store_latest_version(&env, &env).await;
+    env.add_hours(UPGRADE_CHECK_INTERVAL + 1);
+
+    let checker = UpdateChecker::new(env.clone(), env.clone());
+    assert!(checker.should_check_for_new_version());
+    assert_eq!(
+      checker.should_prompt(),
+      Some((ReleaseChannel::Beta, "2.8.0-beta.1".to_string()))
+    );
   }
 
   #[tokio::test]
@@ -1896,6 +1968,38 @@ mod test {
       ),
       "https://dl.deno.land/release-lts-latest.txt?lsp"
     );
+    assert_eq!(
+      get_latest_version_url(
+        ReleaseChannel::Alpha,
+        "aarch64-apple-darwin",
+        UpgradeCheckKind::Execution
+      ),
+      "https://dl.deno.land/release-alpha-latest.txt"
+    );
+    assert_eq!(
+      get_latest_version_url(
+        ReleaseChannel::Alpha,
+        "x86_64-pc-windows-msvc",
+        UpgradeCheckKind::Lsp
+      ),
+      "https://dl.deno.land/release-alpha-latest.txt?lsp"
+    );
+    assert_eq!(
+      get_latest_version_url(
+        ReleaseChannel::Beta,
+        "aarch64-apple-darwin",
+        UpgradeCheckKind::Execution
+      ),
+      "https://dl.deno.land/release-beta-latest.txt"
+    );
+    assert_eq!(
+      get_latest_version_url(
+        ReleaseChannel::Beta,
+        "x86_64-pc-windows-msvc",
+        UpgradeCheckKind::Lsp
+      ),
+      "https://dl.deno.land/release-beta-latest.txt?lsp"
+    );
   }
 
   #[test]
@@ -1938,6 +2042,28 @@ mod test {
       AvailableVersion {
         version_or_hash: "1.46.0-rc.0".to_string(),
         release_channel: ReleaseChannel::Rc,
+      },
+    );
+    assert_eq!(
+      normalize_version_from_server(
+        ReleaseChannel::Alpha,
+        "v2.8.0-alpha.0\n\n"
+      )
+      .unwrap(),
+      AvailableVersion {
+        version_or_hash: "2.8.0-alpha.0".to_string(),
+        release_channel: ReleaseChannel::Alpha,
+      },
+    );
+    assert_eq!(
+      normalize_version_from_server(
+        ReleaseChannel::Beta,
+        "v2.8.0-beta.1\n\n"
+      )
+      .unwrap(),
+      AvailableVersion {
+        version_or_hash: "2.8.0-beta.1".to_string(),
+        release_channel: ReleaseChannel::Beta,
       },
     );
   }
@@ -2011,7 +2137,7 @@ mod test {
         .unwrap();
       assert_eq!(maybe_info, None);
     }
-    // canary different
+    // rc different
     {
       env.set_latest_version("1.2.3-rc.0", ReleaseChannel::Rc);
       env.set_latest_version("1.2.3-rc.1", ReleaseChannel::Rc);
@@ -2022,6 +2148,54 @@ mod test {
         maybe_info,
         Some(LspVersionUpgradeInfo {
           latest_version: "1.2.3-rc.1".to_string(),
+          is_canary: false,
+        })
+      );
+    }
+    // alpha equal
+    {
+      env.set_release_channel(ReleaseChannel::Alpha);
+      env.set_current_version("2.8.0-alpha.0");
+      env.set_latest_version("2.8.0-alpha.0", ReleaseChannel::Alpha);
+      let maybe_info = check_for_upgrades_for_lsp_with_provider(&env)
+        .await
+        .unwrap();
+      assert_eq!(maybe_info, None);
+    }
+    // alpha newer available
+    {
+      env.set_latest_version("2.8.0-alpha.1", ReleaseChannel::Alpha);
+      let maybe_info = check_for_upgrades_for_lsp_with_provider(&env)
+        .await
+        .unwrap();
+      assert_eq!(
+        maybe_info,
+        Some(LspVersionUpgradeInfo {
+          latest_version: "2.8.0-alpha.1".to_string(),
+          is_canary: false,
+        })
+      );
+    }
+    // beta equal
+    {
+      env.set_release_channel(ReleaseChannel::Beta);
+      env.set_current_version("2.8.0-beta.0");
+      env.set_latest_version("2.8.0-beta.0", ReleaseChannel::Beta);
+      let maybe_info = check_for_upgrades_for_lsp_with_provider(&env)
+        .await
+        .unwrap();
+      assert_eq!(maybe_info, None);
+    }
+    // beta newer available
+    {
+      env.set_latest_version("2.8.0-beta.1", ReleaseChannel::Beta);
+      let maybe_info = check_for_upgrades_for_lsp_with_provider(&env)
+        .await
+        .unwrap();
+      assert_eq!(
+        maybe_info,
+        Some(LspVersionUpgradeInfo {
+          latest_version: "2.8.0-beta.1".to_string(),
           is_canary: false,
         })
       );
@@ -2082,6 +2256,20 @@ mod test {
     assert_eq!(
       path,
       dl_dir.join(format!("canary/abc123def456/{}", *ARCHIVE_NAME))
+    );
+
+    let path =
+      get_binary_cache_path(dl_dir, "2.8.0-alpha.0", ReleaseChannel::Alpha);
+    assert_eq!(
+      path,
+      dl_dir.join(format!("release/v2.8.0-alpha.0/{}", *ARCHIVE_NAME))
+    );
+
+    let path =
+      get_binary_cache_path(dl_dir, "2.8.0-beta.1", ReleaseChannel::Beta);
+    assert_eq!(
+      path,
+      dl_dir.join(format!("release/v2.8.0-beta.1/{}", *ARCHIVE_NAME))
     );
   }
 
