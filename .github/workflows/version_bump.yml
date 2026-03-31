@@ -16,6 +16,8 @@ on:
           - beta
         required: true
 
+permissions: {}
+
 jobs:
   build:
     name: version bump

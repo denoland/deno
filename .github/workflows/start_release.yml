@@ -16,6 +16,9 @@ on:
           - rc
         required: true
 
+permissions:
+  contents: read
+
 jobs:
   build:
     name: start release

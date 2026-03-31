@@ -2,6 +2,8 @@ name: cargo_publish
 
 on: workflow_dispatch
 
+permissions: {}
+
 # Ensures only one publish is running at a time
 concurrency:
   group: ${{ github.workflow }}
