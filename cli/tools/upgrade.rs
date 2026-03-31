@@ -394,6 +394,24 @@ pub fn check_for_upgrades(
           colors::italic_gray("Run `deno upgrade lts` to install it.")
         );
       }
+      ReleaseChannel::Alpha => {
+        log::info!(
+          "{} {} → {} {}",
+          colors::green("A new alpha release of Deno is available:"),
+          colors::cyan(version::DENO_VERSION_INFO.deno),
+          colors::cyan(&upgrade_version),
+          colors::italic_gray("Run `deno upgrade alpha` to install it.")
+        );
+      }
+      ReleaseChannel::Beta => {
+        log::info!(
+          "{} {} → {} {}",
+          colors::green("A new beta release of Deno is available:"),
+          colors::cyan(version::DENO_VERSION_INFO.deno),
+          colors::cyan(&upgrade_version),
+          colors::italic_gray("Run `deno upgrade beta` to install it.")
+        );
+      }
     }
 
     update_checker.store_prompted();
@@ -431,7 +449,11 @@ async fn check_for_upgrades_for_lsp_with_provider(
   }
 
   match release_channel {
-    ReleaseChannel::Stable | ReleaseChannel::Rc | ReleaseChannel::Lts => {
+    ReleaseChannel::Stable
+    | ReleaseChannel::Rc
+    | ReleaseChannel::Lts
+    | ReleaseChannel::Alpha
+    | ReleaseChannel::Beta => {
       if let Ok(current) = Version::parse_standard(&current_version)
         && let Ok(latest) =
           Version::parse_standard(&latest_version.version_or_hash)
@@ -793,7 +815,11 @@ impl RequestedVersion {
         );
       };
 
-      if semver.pre.contains(&SmallStackString::from_static("rc")) {
+      if semver.pre.contains(&SmallStackString::from_static("alpha")) {
+        (ReleaseChannel::Alpha, passed_version)
+      } else if semver.pre.contains(&SmallStackString::from_static("beta")) {
+        (ReleaseChannel::Beta, passed_version)
+      } else if semver.pre.contains(&SmallStackString::from_static("rc")) {
         (ReleaseChannel::Rc, passed_version)
       } else {
         (ReleaseChannel::Stable, passed_version)
@@ -818,7 +844,11 @@ fn select_specific_version_for_upgrade(
   force: bool,
 ) -> Result<Option<AvailableVersion>, AnyError> {
   let current_is_passed = match release_channel {
-    ReleaseChannel::Stable | ReleaseChannel::Rc | ReleaseChannel::Lts => {
+    ReleaseChannel::Stable
+    | ReleaseChannel::Rc
+    | ReleaseChannel::Lts
+    | ReleaseChannel::Alpha
+    | ReleaseChannel::Beta => {
       version::DENO_VERSION_INFO.release_channel == release_channel
         && version::DENO_VERSION_INFO.deno == version
     }
@@ -873,9 +903,11 @@ async fn find_latest_version_to_upgrade(
 
   let current_version = match release_channel {
     ReleaseChannel::Canary => version::DENO_VERSION_INFO.git_hash,
-    ReleaseChannel::Stable | ReleaseChannel::Lts | ReleaseChannel::Rc => {
-      version::DENO_VERSION_INFO.deno
-    }
+    ReleaseChannel::Stable
+    | ReleaseChannel::Lts
+    | ReleaseChannel::Rc
+    | ReleaseChannel::Alpha
+    | ReleaseChannel::Beta => version::DENO_VERSION_INFO.deno,
   };
   let should_upgrade = force
     || current_version != latest_version_found.version_or_hash
@@ -933,7 +965,11 @@ fn normalize_version_from_server(
 ) -> Result<AvailableVersion, AnyError> {
   let text = text.trim();
   match release_channel {
-    ReleaseChannel::Stable | ReleaseChannel::Rc | ReleaseChannel::Lts => {
+    ReleaseChannel::Stable
+    | ReleaseChannel::Rc
+    | ReleaseChannel::Lts
+    | ReleaseChannel::Alpha
+    | ReleaseChannel::Beta => {
       let v = text.trim_start_matches('v').to_string();
       Ok(AvailableVersion {
         version_or_hash: v.to_string(),
@@ -959,6 +995,8 @@ fn get_latest_version_url(
     }
     ReleaseChannel::Rc => Cow::Borrowed("release-rc-latest.txt"),
     ReleaseChannel::Lts => Cow::Borrowed("release-lts-latest.txt"),
+    ReleaseChannel::Alpha => Cow::Borrowed("release-alpha-latest.txt"),
+    ReleaseChannel::Beta => Cow::Borrowed("release-beta-latest.txt"),
   };
   let query_param = match check_kind {
     UpgradeCheckKind::Execution => "",
@@ -981,7 +1019,7 @@ fn get_download_url(
   release_channel: ReleaseChannel,
 ) -> Result<Url, AnyError> {
   let download_url = match release_channel {
-    ReleaseChannel::Stable => {
+    ReleaseChannel::Stable | ReleaseChannel::Alpha | ReleaseChannel::Beta => {
       let release_url = if std::env::var_os("DENO_TESTING_UPGRADE").is_some() {
         "http://localhost:4545/deno-upgrade"
       } else {
@@ -1035,7 +1073,11 @@ fn get_banner_url(
     ReleaseChannel::Stable => {
       format!("{}/v{}/banner.txt", DL_RELEASE_URL, version)
     }
-    ReleaseChannel::Rc | ReleaseChannel::Lts | ReleaseChannel::Canary => {
+    ReleaseChannel::Rc
+    | ReleaseChannel::Lts
+    | ReleaseChannel::Canary
+    | ReleaseChannel::Alpha
+    | ReleaseChannel::Beta => {
       return None;
     }
   };
