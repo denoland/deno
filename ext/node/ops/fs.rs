@@ -893,9 +893,20 @@ fn read_with_position(
 ) -> Result<u32, FsError> {
   if position >= 0 {
     let current = file.clone().seek_sync(std::io::SeekFrom::Current(0))?;
-    file
+    match file
       .clone()
-      .seek_sync(std::io::SeekFrom::Start(position as u64))?;
+      .seek_sync(std::io::SeekFrom::Start(position as u64))
+    {
+      Ok(_) => {}
+      Err(e) => {
+        // Map EINVAL from lseek to EFBIG to match pread behavior.
+        // Some Linux filesystems return EINVAL for offsets beyond
+        // their supported range, but Node.js (using pread) returns
+        // EFBIG in this case.
+        let _ = file.seek_sync(std::io::SeekFrom::Start(current));
+        return Err(seek_einval_to_efbig(e));
+      }
+    }
     let result = file.clone().read_sync(buf);
     // Always restore position, even on read failure
     let _ = file.seek_sync(std::io::SeekFrom::Start(current));
@@ -904,6 +915,17 @@ fn read_with_position(
     let nread = file.read_sync(buf)?;
     Ok(nread as u32)
   }
+}
+
+/// Convert EINVAL from lseek to EFBIG to match Node's pread/pwrite behavior.
+fn seek_einval_to_efbig(err: deno_io::fs::FsError) -> FsError {
+  if let deno_io::fs::FsError::Io(ref io_err) = err {
+    #[cfg(unix)]
+    if io_err.raw_os_error() == Some(libc::EINVAL) {
+      return FsError::Io(std::io::Error::from_raw_os_error(libc::EFBIG));
+    }
+  }
+  FsError::Fs(err)
 }
 
 #[op2(fast)]
