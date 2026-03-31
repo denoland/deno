@@ -253,9 +253,34 @@ impl PackagesContent {
   }
 }
 
+/// Deserialize a map of package.json dependencies, skipping invalid entries
+/// like empty package names (e.g., `{"": "."}` from recursive npm installs)
+fn deserialize_package_json_deps<'de, D>(
+  deserializer: D,
+) -> Result<HashSet<JsrDepPackageReq>, D::Error>
+where
+  D: serde::Deserializer<'de>,
+{
+  use serde::Deserialize;
+
+  let map = HashMap::<String, String>::deserialize(deserializer)?;
+  let mut deps = HashSet::new();
+  for (name, version) in map {
+    // Skip empty package names (can happen from recursive npm installs)
+    if name.is_empty() {
+      continue;
+    }
+    let req_str = format!("{name}@{version}");
+    if let Ok(req) = JsrDepPackageReq::from_str_loose(&req_str) {
+      deps.insert(req);
+    }
+  }
+  Ok(deps)
+}
+
 #[derive(Debug, Default, Clone, Deserialize)]
 pub(crate) struct LockfilePackageJsonContent {
-  #[serde(default)]
+  #[serde(default, deserialize_with = "deserialize_package_json_deps")]
   pub dependencies: HashSet<JsrDepPackageReq>,
   /// npm overrides (only present in root package.json section)
   #[serde(default)]
