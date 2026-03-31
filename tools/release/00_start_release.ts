@@ -61,9 +61,7 @@ function getNextVersion(originalVersion: semver.SemVer) {
 }
 
 function isPrerelease() {
-  return Deno.args.some((a) =>
-    ["--alpha", "--beta", "--rc"].includes(a)
-  );
+  return Deno.args.some((a) => ["--alpha", "--beta", "--rc"].includes(a));
 }
 
 function buildDenoReleaseInstructionsDoc() {
