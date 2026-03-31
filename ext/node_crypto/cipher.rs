@@ -518,6 +518,7 @@ impl Resource for DecipherContext {
 }
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
+#[property("code" = self.code())]
 pub enum CipherError {
   #[class(type)]
   #[error("IV length must be 12 bytes")]
@@ -537,6 +538,22 @@ pub enum CipherError {
   #[class(type)]
   #[error("Invalid authentication tag length: {0}")]
   InvalidAuthTag(usize),
+}
+
+impl CipherError {
+  fn code(&self) -> deno_error::PropertyValue {
+    match self {
+      Self::InvalidAuthTag(_) => {
+        deno_error::PropertyValue::String("ERR_CRYPTO_INVALID_AUTH_TAG".into())
+      }
+      Self::InvalidKeyLength => deno_error::PropertyValue::String(
+        "ERR_CRYPTO_INVALID_KEY_LENGTH".into(),
+      ),
+      _ => {
+        deno_error::PropertyValue::String("ERR_CRYPTO_CIPHER".into())
+      }
+    }
+  }
 }
 
 fn is_valid_chacha20_poly1305_tag_length(tag_len: usize) -> bool {
