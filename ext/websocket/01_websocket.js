@@ -694,6 +694,7 @@ class WebSocket extends EventTarget {
               undefined,
               false,
               true,
+              true,
             );
           } else {
             if (this[_idleTimeoutTimeout]) {
@@ -704,6 +705,7 @@ class WebSocket extends EventTarget {
         (this[_idleTimeoutDuration] / 2) * 1000,
         undefined,
         false,
+        true,
         true,
       );
     }

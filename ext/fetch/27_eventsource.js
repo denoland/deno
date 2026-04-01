@@ -344,6 +344,7 @@ class EventSource extends EventTarget {
       undefined,
       false,
       true,
+      true,
     );
   }
 

@@ -155,6 +155,7 @@ function windowClose() {
           undefined,
           false,
           true,
+          true,
         ),
     );
   }
