@@ -33,7 +33,7 @@ Release checklist: <LINK TO THIS FORKED GIST GOES HERE>
 ### Phase 1: Bumping versions
 
 - [ ] Go to the "version_bump" workflow in the CLI repo's actions:
-      https://github.com/denoland/deno/actions/workflows/version_bump.yml
+      https://github.com/denoland/deno/actions/workflows/version_bump.generated.yml
   1. Click on the "Run workflow" button.
   1. In the drop down, select the `main` branch.
   1. For the kind of release, select either `patch` or `minor`.
@@ -57,7 +57,7 @@ Release checklist: <LINK TO THIS FORKED GIST GOES HERE>
 ### Phase 2: Publish
 
 - [ ] Go to the "cargo_publish" workflow in the CLI repo's actions:
-      https://github.com/denoland/deno/actions/workflows/cargo_publish.yml
+      https://github.com/denoland/deno/actions/workflows/cargo_publish.generated.yml
   1. Run it on the same branch that you used before and wait for it to complete.
 
   <details>
@@ -91,21 +91,21 @@ Release checklist: <LINK TO THIS FORKED GIST GOES HERE>
 ## Update https://deno.com
 
 - [ ] Run
-      https://github.com/denoland/dotcom/actions/workflows/update_version.yml to
-      automatically open a PR.
+      https://github.com/denoland/dotcom/actions/workflows/update_version.generated.yml
+      to automatically open a PR.
   - [ ] Merge the PR.
 
 ## Update https://docs.deno.com
 
 - [ ] Run
-      https://github.com/denoland/deno-docs/actions/workflows/update_versions.yml
+      https://github.com/denoland/deno-docs/actions/workflows/update_versions.generated.yml
       to automatically open a PR.
   - [ ] Merge the PR.
 
 ## Updating `deno_docker`
 
 - [ ] Run the version bump workflow:
-      https://github.com/denoland/deno_docker/actions/workflows/version_bump.yml
+      https://github.com/denoland/deno_docker/actions/workflows/version_bump.generated.yml
 - [ ] This will open a PR. Review and merge it.
 - [ ] Create a `$VERSION` tag (_without_ `v` prefix).
 - [ ] This will trigger a publish CI run. Verify that it completes sucessfully.
@@ -113,10 +113,10 @@ Release checklist: <LINK TO THIS FORKED GIST GOES HERE>
 ## Updating `deno_pypi`
 
 - [ ] Run the version bump workflow:
-      https://github.com/denoland/deno_pypi/actions/workflows/version-bump.yml
+      https://github.com/denoland/deno_pypi/actions/workflows/version-bump.generated.yml
 - [ ] This will open a PR. Review and merge it.
 - [ ] Run the release workflow:
-      https://github.com/denoland/deno_pypi/actions/workflows/release.yml
+      https://github.com/denoland/deno_pypi/actions/workflows/release.generated.yml
 - [ ] This will trigger a publish CI run. Verify that it completes sucessfully
       and new version is available at https://pypi.org/project/deno/.
 
