@@ -6,7 +6,7 @@ import { core, internals } from "ext:core/mod.js";
 const requireImpl = internals.requireImpl;
 
 import { op_stream_base_register_state } from "ext:core/ops";
-import { nodeGlobals } from "ext:deno_node/00_globals.js";
+export const nodeGlobals = { __proto__: null };
 import {
   kStreamBaseField,
   streamBaseState,

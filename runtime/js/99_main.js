@@ -93,7 +93,7 @@ import {
 } from "ext:runtime/98_global_scope_worker.js";
 import { SymbolMetadata } from "ext:deno_web/00_infra.js";
 import { bootstrap as bootstrapOtel } from "ext:deno_telemetry/telemetry.ts";
-import { nodeGlobals } from "ext:deno_node/00_globals.js";
+import { nodeGlobals } from "ext:deno_node/02_init.js";
 
 // deno-lint-ignore prefer-primordials
 if (Symbol.metadata) {
