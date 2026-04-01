@@ -2718,8 +2718,8 @@ impl DatabaseSyncLimits {
     self.get_limit(Limit::SQLITE_LIMIT_SQL_LENGTH)
   }
 
-  #[setter]
   #[rename("sqlLength")]
+  #[setter]
   fn sql_length(
     &self,
     scope: &mut v8::PinScope<'_, '_>,
@@ -2748,8 +2748,8 @@ impl DatabaseSyncLimits {
     self.get_limit(Limit::SQLITE_LIMIT_EXPR_DEPTH)
   }
 
-  #[setter]
   #[rename("exprDepth")]
+  #[setter]
   fn expr_depth(
     &self,
     scope: &mut v8::PinScope<'_, '_>,
@@ -2764,8 +2764,8 @@ impl DatabaseSyncLimits {
     self.get_limit(Limit::SQLITE_LIMIT_COMPOUND_SELECT)
   }
 
-  #[setter]
   #[rename("compoundSelect")]
+  #[setter]
   fn compound_select(
     &self,
     scope: &mut v8::PinScope<'_, '_>,
@@ -2780,8 +2780,8 @@ impl DatabaseSyncLimits {
     self.get_limit(Limit::SQLITE_LIMIT_VDBE_OP)
   }
 
-  #[setter]
   #[rename("vdbeOp")]
+  #[setter]
   fn vdbe_op(
     &self,
     scope: &mut v8::PinScope<'_, '_>,
@@ -2796,8 +2796,8 @@ impl DatabaseSyncLimits {
     self.get_limit(Limit::SQLITE_LIMIT_FUNCTION_ARG)
   }
 
-  #[setter]
   #[rename("functionArg")]
+  #[setter]
   fn function_arg(
     &self,
     scope: &mut v8::PinScope<'_, '_>,
@@ -2826,8 +2826,8 @@ impl DatabaseSyncLimits {
     self.get_limit(Limit::SQLITE_LIMIT_LIKE_PATTERN_LENGTH)
   }
 
-  #[setter]
   #[rename("likePatternLength")]
+  #[setter]
   fn like_pattern_length(
     &self,
     scope: &mut v8::PinScope<'_, '_>,
@@ -2842,8 +2842,8 @@ impl DatabaseSyncLimits {
     self.get_limit(Limit::SQLITE_LIMIT_VARIABLE_NUMBER)
   }
 
-  #[setter]
   #[rename("variableNumber")]
+  #[setter]
   fn variable_number(
     &self,
     scope: &mut v8::PinScope<'_, '_>,
@@ -2858,8 +2858,8 @@ impl DatabaseSyncLimits {
     self.get_limit(Limit::SQLITE_LIMIT_TRIGGER_DEPTH)
   }
 
-  #[setter]
   #[rename("triggerDepth")]
+  #[setter]
   fn trigger_depth(
     &self,
     scope: &mut v8::PinScope<'_, '_>,
