@@ -244,6 +244,35 @@ impl denort::desktop::DesktopApi for WefDesktopApi {
     wef::Window::from_id(window_id).focus();
   }
 
+  fn open_devtools(&self, window_id: u32) {
+    wef::Window::from_id(window_id).open_devtools();
+  }
+
+  fn execute_js(
+    &self,
+    window_id: u32,
+    script: &str,
+    callback: Box<
+      dyn FnOnce(
+        Result<deno_runtime::ops::desktop::DesktopValue, String>,
+      ) + Send
+        + 'static,
+    >,
+  ) {
+    wef::Window::from_id(window_id).execute_js(
+      script,
+      Some(move |result: Result<wef::Value, wef::Value>| {
+        callback(match result {
+          Ok(val) => Ok(wef_value_to_desktop_value(val)),
+          Err(err) => Err(match err {
+            wef::Value::String(s) => s,
+            _ => "execute_js failed".to_string(),
+          }),
+        });
+      }),
+    );
+  }
+
   fn bind(&self, window_id: u32, name: &str) {
     let tx = self.event_tx.clone();
     let responses = self.pending_responses.clone();
@@ -730,6 +759,8 @@ wef::main!(|| {
     .install_default()
     .unwrap();
 
+  wef::set_js_namespace("bindings");
+
   let rt = tokio::runtime::Builder::new_current_thread()
     .enable_all()
     .build()
@@ -904,6 +935,31 @@ fn extract_fork_script_path(
     return deno_core::url::Url::from_file_path(path).ok();
   }
   None
+}
+
+/// Convert a wef::Value to a DesktopValue for direct V8 conversion.
+fn wef_value_to_desktop_value(
+  v: wef::Value,
+) -> deno_runtime::ops::desktop::DesktopValue {
+  use deno_runtime::ops::desktop::DesktopValue;
+  match v {
+    wef::Value::Null => DesktopValue::Null,
+    wef::Value::Bool(b) => DesktopValue::Bool(b),
+    wef::Value::Int(i) => DesktopValue::Int(i),
+    wef::Value::Double(d) => DesktopValue::Double(d),
+    wef::Value::String(s) => DesktopValue::String(s),
+    wef::Value::List(l) => {
+      DesktopValue::List(l.into_iter().map(wef_value_to_desktop_value).collect())
+    }
+    wef::Value::Dict(d) => {
+      DesktopValue::Dict(
+        d.into_iter()
+          .map(|(k, v)| (k, wef_value_to_desktop_value(v)))
+          .collect(),
+      )
+    }
+    wef::Value::Binary(b) => DesktopValue::Binary(b),
+  }
 }
 
 /// Convert a wef::Value to a serde_json::Value for channel transport.
@@ -1113,7 +1169,7 @@ async fn run_desktop(update_rolled_back: bool) -> Result<(), AnyError> {
   // Wait for the server to be ready, then navigate the initial window.
   // Do a full HTTP request instead of just a TCP connect — frameworks
   // like Vite accept connections before they're ready to serve.
-  let navigate_fut = async {
+  let navigate_fut = async move {
     use tokio::io::AsyncReadExt;
     use tokio::io::AsyncWriteExt;
     for i in 0..60 {
@@ -1152,6 +1208,8 @@ async fn run_desktop(update_rolled_back: bool) -> Result<(), AnyError> {
     wef::Window::from_id(id).navigate(&url);
   };
 
+  tokio::spawn(navigate_fut);
+
   tokio::select! {
     result = run_fut => {
       match result {
@@ -1164,7 +1222,6 @@ async fn run_desktop(update_rolled_back: bool) -> Result<(), AnyError> {
         }
       }
     }
-    _ = navigate_fut => {}
     _ = wef_fut => {
       eprintln!("[desktop] WEF event loop ended (window closed)");
     }

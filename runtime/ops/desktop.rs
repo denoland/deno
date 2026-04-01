@@ -15,10 +15,68 @@ use std::sync::atomic::Ordering;
 
 use deno_core::FromV8;
 use deno_core::OpState;
+use deno_core::ToV8;
 use deno_core::cppgc::SameObject;
 use deno_core::op2;
 use deno_core::serde_json;
 use deno_core::v8;
+
+/// Thread-safe intermediate value type for crossing the WEF ↔ Deno boundary.
+/// Converts directly to V8 values without going through serde.
+pub enum DesktopValue {
+  Null,
+  Bool(bool),
+  Int(i32),
+  Double(f64),
+  String(String),
+  List(Vec<DesktopValue>),
+  Dict(Vec<(String, DesktopValue)>),
+  Binary(Vec<u8>),
+}
+
+impl<'a> ToV8<'a> for DesktopValue {
+  type Error = std::convert::Infallible;
+
+  fn to_v8(
+    self,
+    scope: &mut v8::PinScope<'a, '_>,
+  ) -> Result<v8::Local<'a, v8::Value>, Self::Error> {
+    Ok(match self {
+      DesktopValue::Null => v8::null(scope).into(),
+      DesktopValue::Bool(b) => v8::Boolean::new(scope, b).into(),
+      DesktopValue::Int(i) => v8::Integer::new(scope, i).into(),
+      DesktopValue::Double(d) => v8::Number::new(scope, d).into(),
+      DesktopValue::String(s) => {
+        v8::String::new(scope, &s).unwrap().into()
+      }
+      DesktopValue::List(l) => {
+        let arr = v8::Array::new(scope, l.len() as i32);
+        for (i, v) in l.into_iter().enumerate() {
+          let val = v.to_v8(scope)?;
+          arr.set_index(scope, i as u32, val);
+        }
+        arr.into()
+      }
+      DesktopValue::Dict(d) => {
+        let obj = v8::Object::new(scope);
+        for (k, v) in d {
+          let key: v8::Local<v8::Value> =
+            v8::String::new(scope, &k).unwrap().into();
+          let val = v.to_v8(scope)?;
+          obj.set(scope, key, val);
+        }
+        obj.into()
+      }
+      DesktopValue::Binary(b) => {
+        let len = b.len();
+        let store = v8::ArrayBuffer::new_backing_store_from_vec(b);
+        let ab =
+          v8::ArrayBuffer::with_backing_store(scope, &store.into());
+        v8::Uint8Array::new(scope, ab, 0, len).unwrap().into()
+      }
+    })
+  }
+}
 
 /// A single event type that flows from the WEF backend to the Deno runtime.
 #[derive(Debug, serde::Serialize)]
@@ -230,6 +288,17 @@ pub trait DesktopApi: Send + Sync + 'static {
     raw_window_handle::RawDisplayHandle,
   );
 
+  fn open_devtools(&self, window_id: u32);
+
+  fn execute_js(
+    &self,
+    window_id: u32,
+    script: &str,
+    callback: Box<
+      dyn FnOnce(Result<DesktopValue, String>) + Send + 'static,
+    >,
+  );
+
   fn alert(&self, title: &str, message: &str);
   fn confirm(
     &self,
@@ -434,18 +503,32 @@ impl BrowserWindow {
   }
 
   #[fast]
+  fn open_devtools(&self) {
+    self.api.open_devtools(self.window_id);
+  }
+
+  #[fast]
   fn reload(&self) {
     todo!("implement")
   }
 
-  #[fast]
-  fn execute_js(&self, #[string] _script: &str) {
-    todo!(
-      "implement execute_js — async + v8 scope borrowing needs a different approach"
-    )
-    /*
-       self.api.execute_js(scope, script).await
-    */
+  async fn execute_js(
+    &self,
+    #[string] script: String,
+  ) -> Result<DesktopValue, deno_error::JsErrorBox> {
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    self.api.execute_js(
+      self.window_id,
+      &script,
+      Box::new(move |result| {
+        let _ = tx.send(result);
+      }),
+    );
+    rx.await
+      .map_err(|_| {
+        deno_error::JsErrorBox::generic("execute_js callback dropped")
+      })?
+      .map_err(|e| deno_error::JsErrorBox::generic(e))
   }
 
   fn set_application_menu(&self, #[serde] menu: Vec<MenuItem>) {
@@ -463,7 +546,7 @@ impl BrowserWindow {
       .show_context_menu(self.window_id, x, y, menu);
   }
 
-  fn get_surface(
+  fn get_native_window(
     &self,
     state: &OpState,
     scope: &mut v8::PinScope<'_, '_>,

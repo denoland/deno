@@ -203,7 +203,7 @@ pub const DESKTOP_JS: &str = r#"
 
   const nativeBind = BrowserWindowPrototype.bind;
   BrowserWindowPrototype.bind = function(name, fn) {
-    const windowId = this.getWindowId();
+    const windowId = this.windowId;
     if (!windowBindCallbacks.has(windowId)) {
       windowBindCallbacks.set(windowId, new Map());
     }
@@ -213,7 +213,7 @@ pub const DESKTOP_JS: &str = r#"
 
   const nativeUnbind = BrowserWindowPrototype.unbind;
   BrowserWindowPrototype.unbind = function(name) {
-    const windowId = this.getWindowId();
+    const windowId = this.windowId;
     const callbacks = windowBindCallbacks.get(windowId);
     if (callbacks) callbacks.delete(name);
     nativeUnbind.call(this, name);

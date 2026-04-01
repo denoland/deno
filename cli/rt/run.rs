@@ -1210,6 +1210,7 @@ pub async fn run_with_options(
     no_legacy_abort: false,
     startup_snapshot: deno_snapshots::CLI_SNAPSHOT,
     enable_raw_imports: metadata.unstable_config.raw_imports,
+    close_on_idle: !options.auto_serve,
     maybe_initial_cwd: None,
   };
   let worker_factory = LibMainWorkerFactory::new(
