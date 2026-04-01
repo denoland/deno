@@ -6,7 +6,6 @@ import { core, internals } from "ext:core/mod.js";
 const requireImpl = internals.requireImpl;
 
 import { op_stream_base_register_state } from "ext:core/ops";
-export const nodeGlobals = { __proto__: null };
 import {
   kStreamBaseField,
   streamBaseState,
@@ -149,13 +148,6 @@ internals.node = {
   loadCjsModule,
   closeIdleConnections,
 };
-
-const nativeModuleExports = requireImpl.nativeModuleExports;
-nodeGlobals.Buffer = nativeModuleExports["buffer"].Buffer;
-nodeGlobals.clearImmediate = nativeModuleExports["timers"].clearImmediate;
-nodeGlobals.global = globalThis;
-nodeGlobals.process = nativeModuleExports["process"];
-nodeGlobals.setImmediate = nativeModuleExports["timers"].setImmediate;
 
 nativeModuleExports["internal/console/constructor"].bindStreamsLazy(
   nativeModuleExports["console"],
