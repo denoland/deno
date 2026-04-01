@@ -750,7 +750,7 @@ const buildJobs = buildItems.map((rawBuildItem) => {
               'aws s3 sync ./target/release/ s3://dl-deno-land/canary/$(git rev-parse HEAD)/ --exclude "*" --include "*.symcache"',
               "echo ${{ github.sha }} > canary-latest.txt",
               'aws s3 cp canary-latest.txt s3://dl-deno-land/canary-$(rustc -vV | sed -n "s|host: ||p")-latest.txt',
-              "rm canary-latest.txt gha-creds-*.json",
+              "rm canary-latest.txt",
             ],
           }),
         );
