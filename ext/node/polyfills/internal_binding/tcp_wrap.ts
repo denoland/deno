@@ -61,10 +61,8 @@ import { nextTick } from "ext:deno_node/_next_tick.ts";
 import { Buffer } from "node:buffer";
 
 /** The type of TCP socket. */
-enum socketType {
-  SOCKET,
-  SERVER,
-}
+const socketType = { SOCKET: 0, SERVER: 1 } as const;
+type socketType = typeof socketType[keyof typeof socketType];
 
 interface AddressInfo {
   address: string;
@@ -90,11 +88,8 @@ export class TCPConnectWrap extends AsyncWrap {
   }
 }
 
-export enum constants {
-  SOCKET = socketType.SOCKET,
-  SERVER = socketType.SERVER,
-  UV_TCP_IPV6ONLY,
-}
+export const constants = { SOCKET: socketType.SOCKET, SERVER: socketType.SERVER, UV_TCP_IPV6ONLY: 2 } as const;
+export type constants = typeof constants[keyof typeof constants];
 
 export class TCP extends ConnectionWrap {
   [ownerSymbol]: unknown = null;
