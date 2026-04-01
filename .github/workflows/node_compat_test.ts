@@ -82,8 +82,10 @@ const uploadReport = step.dependsOn(gzipReport)({
     AWS_ENDPOINT_URL_S3: "${{ vars.S3_ENDPOINT }}",
     AWS_DEFAULT_REGION: "${{vars.S3_REGION }}",
   },
-  run:
+  run: [
+    'gsutil -h "Cache-Control: public, max-age=3600" cp tests/node_compat/report.json.gz gs://dl.deno.land/node-compat-test/$(date +%F)/report-${{matrix.os}}.json.gz',
     "aws s3 cp tests/node_compat/report.json.gz s3://dl-deno-land/node-compat-test/$(date +%F)/report-${{matrix.os}}.json.gz",
+  ],
 });
 
 const testJob = job("test", {
@@ -157,8 +159,10 @@ const uploadMonthSummary = step.dependsOn(gzipMonthSummary)({
     AWS_ENDPOINT_URL_S3: "${{ vars.S3_ENDPOINT }}",
     AWS_DEFAULT_REGION: "${{vars.S3_REGION }}",
   },
-  run:
+  run: [
+    'gsutil -h "Cache-Control: public, max-age=3600" cp tests/node_compat/summary.json.gz gs://dl.deno.land/node-compat-test/summary-$(date +%Y-%m).json.gz',
     "aws s3 cp tests/node_compat/summary.json.gz s3://dl-deno-land/node-compat-test/summary-$(date +%Y-%m).json.gz",
+  ],
 });
 
 const postSlack = step.dependsOn(uploadMonthSummary)({

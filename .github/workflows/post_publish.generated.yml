@@ -37,6 +37,7 @@ jobs:
           VERSION=${GITHUB_REF#refs/*/}
           LATEST_FILE=$(deno run --allow-net --allow-write tools/release/upload_version_file.ts "$VERSION" || exit 0)
           [ -z "$LATEST_FILE" ] && exit 0
+          gsutil -h "Cache-Control: no-cache" cp "$LATEST_FILE" "gs://dl.deno.land/$LATEST_FILE"
           aws s3 cp "$LATEST_FILE" "s3://dl-deno-land/$LATEST_FILE"
 
 # gagen:pin actions/checkout@v6 = de0fac2e4500dabe0009e67214ff5f5447ce83dd

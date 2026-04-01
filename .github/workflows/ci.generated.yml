@@ -295,6 +295,10 @@ jobs:
         with:
           cache-path: ./target
       - uses: dsherret/rust-toolchain-file@3551321aa44dd44a0393eb3b6bdfbc5d25ecf621
+      - name: Build debug
+        env:
+          CARGO_PROFILE_DEV_DEBUG: 0
+        run: cargo build --locked --bin deno --bin denort --bin test_server --features=panic-trace
       - name: Log versions
         run: |-
           echo '*** Python'
@@ -309,10 +313,6 @@ jobs:
           command -v node && node --version || echo 'No node found or bad executable'
           echo '*** Installed packages'
           command -v dpkg && dpkg -l || echo 'No dpkg found or bad executable'
-      - name: Build debug
-        env:
-          CARGO_PROFILE_DEV_DEBUG: 0
-        run: cargo build --locked --bin deno --bin denort --bin test_server --features=panic-trace
       - name: Check deno binary
         env:
           NO_COLOR: 1
@@ -619,21 +619,6 @@ jobs:
           cache-path: ./target
       - uses: dsherret/rust-toolchain-file@3551321aa44dd44a0393eb3b6bdfbc5d25ecf621
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
-      - name: Log versions
-        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
-        run: |-
-          echo '*** Python'
-          command -v python && python --version || echo 'No python found or bad executable'
-          echo '*** Rust'
-          command -v rustc && rustc --version || echo 'No rustc found or bad executable'
-          echo '*** Cargo'
-          command -v cargo && cargo --version || echo 'No cargo found or bad executable'
-          echo '*** Deno'
-          command -v deno && deno --version || echo 'No deno found or bad executable'
-          echo '*** Node'
-          command -v node && node --version || echo 'No node found or bad executable'
-          echo '*** Installed packages'
-          command -v dpkg && dpkg -l || echo 'No dpkg found or bad executable'
       - name: Configure canary build
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && !startsWith(github.ref, ''refs/tags/'')'
         run: echo "DENO_CANARY=true" >> $GITHUB_ENV
@@ -672,6 +657,34 @@ jobs:
           strip -x -S ./denort
           zip -r denort-x86_64-apple-darwin.zip denort
           shasum -a 256 denort-x86_64-apple-darwin.zip > denort-x86_64-apple-darwin.zip.sha256sum
+      - name: Authenticate with Google Cloud
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/''))'
+        with:
+          project_id: denoland
+          credentials_json: '${{ secrets.GCP_SA_KEY }}'
+          export_environment_variables: true
+          create_credentials_file: true
+      - name: Setup gcloud (unix)
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/''))'
+        with:
+          project_id: denoland
+      - name: Log versions
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        run: |-
+          echo '*** Python'
+          command -v python && python --version || echo 'No python found or bad executable'
+          echo '*** Rust'
+          command -v rustc && rustc --version || echo 'No rustc found or bad executable'
+          echo '*** Cargo'
+          command -v cargo && cargo --version || echo 'No cargo found or bad executable'
+          echo '*** Deno'
+          command -v deno && deno --version || echo 'No deno found or bad executable'
+          echo '*** Node'
+          command -v node && node --version || echo 'No node found or bad executable'
+          echo '*** Installed packages'
+          command -v dpkg && dpkg -l || echo 'No dpkg found or bad executable'
       - name: Upload canary to dl.deno.land
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && github.ref == ''refs/heads/main'''
         env:
@@ -680,10 +693,14 @@ jobs:
           AWS_ENDPOINT_URL_S3: '${{ vars.S3_ENDPOINT }}'
           AWS_DEFAULT_REGION: '${{ vars.S3_REGION }}'
         run: |-
+          gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.zip gs://dl.deno.land/canary/$(git rev-parse HEAD)/
+          gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.sha256sum gs://dl.deno.land/canary/$(git rev-parse HEAD)/
+          gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.symcache gs://dl.deno.land/canary/$(git rev-parse HEAD)/
           aws s3 sync ./target/release/ s3://dl-deno-land/canary/$(git rev-parse HEAD)/ --exclude "*" --include "*.zip"
           aws s3 sync ./target/release/ s3://dl-deno-land/canary/$(git rev-parse HEAD)/ --exclude "*" --include "*.sha256sum"
           aws s3 sync ./target/release/ s3://dl-deno-land/canary/$(git rev-parse HEAD)/ --exclude "*" --include "*.symcache"
           echo ${{ github.sha }} > canary-latest.txt
+          gsutil -h "Cache-Control: no-cache" cp canary-latest.txt gs://dl.deno.land/canary-$(rustc -vV | sed -n "s|host: ||p")-latest.txt
           aws s3 cp canary-latest.txt s3://dl-deno-land/canary-$(rustc -vV | sed -n "s|host: ||p")-latest.txt
           rm canary-latest.txt gha-creds-*.json
       - name: Build product size info
@@ -726,6 +743,9 @@ jobs:
           AWS_ENDPOINT_URL_S3: '${{ vars.S3_ENDPOINT }}'
           AWS_DEFAULT_REGION: '${{ vars.S3_REGION }}'
         run: |-
+          gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.zip gs://dl.deno.land/release/${GITHUB_REF#refs/*/}/
+          gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.sha256sum gs://dl.deno.land/release/${GITHUB_REF#refs/*/}/
+          gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.symcache gs://dl.deno.land/release/${GITHUB_REF#refs/*/}/
           aws s3 sync ./target/release/ s3://dl-deno-land/release/${GITHUB_REF#refs/*/}/ --exclude "*" --include "*.zip"
           aws s3 sync ./target/release/ s3://dl-deno-land/release/${GITHUB_REF#refs/*/}/ --exclude "*" --include "*.sha256sum"
           aws s3 sync ./target/release/ s3://dl-deno-land/release/${GITHUB_REF#refs/*/}/ --exclude "*" --include "*.symcache"
@@ -1002,6 +1022,10 @@ jobs:
         with:
           cache-path: ./target
       - uses: dsherret/rust-toolchain-file@3551321aa44dd44a0393eb3b6bdfbc5d25ecf621
+      - name: Build debug
+        env:
+          CARGO_PROFILE_DEV_DEBUG: 0
+        run: cargo build --locked --bin deno --bin denort --bin test_server --features=panic-trace
       - name: Log versions
         run: |-
           echo '*** Python'
@@ -1016,10 +1040,6 @@ jobs:
           command -v node && node --version || echo 'No node found or bad executable'
           echo '*** Installed packages'
           command -v dpkg && dpkg -l || echo 'No dpkg found or bad executable'
-      - name: Build debug
-        env:
-          CARGO_PROFILE_DEV_DEBUG: 0
-        run: cargo build --locked --bin deno --bin denort --bin test_server --features=panic-trace
       - name: Check deno binary
         env:
           NO_COLOR: 1
@@ -1463,21 +1483,6 @@ jobs:
           cache-path: ./target
       - uses: dsherret/rust-toolchain-file@3551321aa44dd44a0393eb3b6bdfbc5d25ecf621
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
-      - name: Log versions
-        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
-        run: |-
-          echo '*** Python'
-          command -v python && python --version || echo 'No python found or bad executable'
-          echo '*** Rust'
-          command -v rustc && rustc --version || echo 'No rustc found or bad executable'
-          echo '*** Cargo'
-          command -v cargo && cargo --version || echo 'No cargo found or bad executable'
-          echo '*** Deno'
-          command -v deno && deno --version || echo 'No deno found or bad executable'
-          echo '*** Node'
-          command -v node && node --version || echo 'No node found or bad executable'
-          echo '*** Installed packages'
-          command -v dpkg && dpkg -l || echo 'No dpkg found or bad executable'
       - name: Configure canary build
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && !startsWith(github.ref, ''refs/tags/'')'
         run: echo "DENO_CANARY=true" >> $GITHUB_ENV
@@ -1516,6 +1521,34 @@ jobs:
           strip -x -S ./denort
           zip -r denort-aarch64-apple-darwin.zip denort
           shasum -a 256 denort-aarch64-apple-darwin.zip > denort-aarch64-apple-darwin.zip.sha256sum
+      - name: Authenticate with Google Cloud
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/''))'
+        with:
+          project_id: denoland
+          credentials_json: '${{ secrets.GCP_SA_KEY }}'
+          export_environment_variables: true
+          create_credentials_file: true
+      - name: Setup gcloud (unix)
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/''))'
+        with:
+          project_id: denoland
+      - name: Log versions
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        run: |-
+          echo '*** Python'
+          command -v python && python --version || echo 'No python found or bad executable'
+          echo '*** Rust'
+          command -v rustc && rustc --version || echo 'No rustc found or bad executable'
+          echo '*** Cargo'
+          command -v cargo && cargo --version || echo 'No cargo found or bad executable'
+          echo '*** Deno'
+          command -v deno && deno --version || echo 'No deno found or bad executable'
+          echo '*** Node'
+          command -v node && node --version || echo 'No node found or bad executable'
+          echo '*** Installed packages'
+          command -v dpkg && dpkg -l || echo 'No dpkg found or bad executable'
       - name: Upload canary to dl.deno.land
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && github.ref == ''refs/heads/main'''
         env:
@@ -1524,10 +1557,14 @@ jobs:
           AWS_ENDPOINT_URL_S3: '${{ vars.S3_ENDPOINT }}'
           AWS_DEFAULT_REGION: '${{ vars.S3_REGION }}'
         run: |-
+          gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.zip gs://dl.deno.land/canary/$(git rev-parse HEAD)/
+          gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.sha256sum gs://dl.deno.land/canary/$(git rev-parse HEAD)/
+          gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.symcache gs://dl.deno.land/canary/$(git rev-parse HEAD)/
           aws s3 sync ./target/release/ s3://dl-deno-land/canary/$(git rev-parse HEAD)/ --exclude "*" --include "*.zip"
           aws s3 sync ./target/release/ s3://dl-deno-land/canary/$(git rev-parse HEAD)/ --exclude "*" --include "*.sha256sum"
           aws s3 sync ./target/release/ s3://dl-deno-land/canary/$(git rev-parse HEAD)/ --exclude "*" --include "*.symcache"
           echo ${{ github.sha }} > canary-latest.txt
+          gsutil -h "Cache-Control: no-cache" cp canary-latest.txt gs://dl.deno.land/canary-$(rustc -vV | sed -n "s|host: ||p")-latest.txt
           aws s3 cp canary-latest.txt s3://dl-deno-land/canary-$(rustc -vV | sed -n "s|host: ||p")-latest.txt
           rm canary-latest.txt gha-creds-*.json
       - name: Build product size info
@@ -1570,6 +1607,9 @@ jobs:
           AWS_ENDPOINT_URL_S3: '${{ vars.S3_ENDPOINT }}'
           AWS_DEFAULT_REGION: '${{ vars.S3_REGION }}'
         run: |-
+          gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.zip gs://dl.deno.land/release/${GITHUB_REF#refs/*/}/
+          gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.sha256sum gs://dl.deno.land/release/${GITHUB_REF#refs/*/}/
+          gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.symcache gs://dl.deno.land/release/${GITHUB_REF#refs/*/}/
           aws s3 sync ./target/release/ s3://dl-deno-land/release/${GITHUB_REF#refs/*/}/ --exclude "*" --include "*.zip"
           aws s3 sync ./target/release/ s3://dl-deno-land/release/${GITHUB_REF#refs/*/}/ --exclude "*" --include "*.sha256sum"
           aws s3 sync ./target/release/ s3://dl-deno-land/release/${GITHUB_REF#refs/*/}/ --exclude "*" --include "*.symcache"
@@ -1843,6 +1883,10 @@ jobs:
         with:
           cache-path: ./target
       - uses: dsherret/rust-toolchain-file@3551321aa44dd44a0393eb3b6bdfbc5d25ecf621
+      - name: Build debug
+        env:
+          CARGO_PROFILE_DEV_DEBUG: 0
+        run: cargo build --locked --bin deno --bin denort --bin test_server --features=panic-trace
       - name: Log versions
         run: |-
           echo '*** Python'
@@ -1857,10 +1901,6 @@ jobs:
           command -v node && node --version || echo 'No node found or bad executable'
           echo '*** Installed packages'
           command -v dpkg && dpkg -l || echo 'No dpkg found or bad executable'
-      - name: Build debug
-        env:
-          CARGO_PROFILE_DEV_DEBUG: 0
-        run: cargo build --locked --bin deno --bin denort --bin test_server --features=panic-trace
       - name: Check deno binary
         env:
           NO_COLOR: 1
@@ -2237,21 +2277,6 @@ jobs:
           cache-path: ./target
       - uses: dsherret/rust-toolchain-file@3551321aa44dd44a0393eb3b6bdfbc5d25ecf621
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
-      - name: Log versions
-        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
-        run: |-
-          echo '*** Python'
-          command -v python && python --version || echo 'No python found or bad executable'
-          echo '*** Rust'
-          command -v rustc && rustc --version || echo 'No rustc found or bad executable'
-          echo '*** Cargo'
-          command -v cargo && cargo --version || echo 'No cargo found or bad executable'
-          echo '*** Deno'
-          command -v deno && deno --version || echo 'No deno found or bad executable'
-          echo '*** Node'
-          command -v node && node --version || echo 'No node found or bad executable'
-          echo '*** Installed packages'
-          command -v dpkg && dpkg -l || echo 'No dpkg found or bad executable'
       - name: Configure canary build
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && !startsWith(github.ref, ''refs/tags/'')'
         run: echo "DENO_CANARY=true" >> $GITHUB_ENV
@@ -2312,6 +2337,49 @@ jobs:
           Compress-Archive -CompressionLevel Optimal -Force -Path target/release/denort.exe -DestinationPath target/release/denort-x86_64-pc-windows-msvc.zip
           Get-FileHash target/release/denort-x86_64-pc-windows-msvc.zip -Algorithm SHA256 | Format-List > target/release/denort-x86_64-pc-windows-msvc.zip.sha256sum
           target/release/deno.exe -A tools/release/create_symcache.ts target/release/deno-x86_64-pc-windows-msvc.symcache
+      - name: Authenticate with Google Cloud
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/''))'
+        with:
+          project_id: denoland
+          credentials_json: '${{ secrets.GCP_SA_KEY }}'
+          export_environment_variables: true
+          create_credentials_file: true
+      - name: Install Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/''))'
+        with:
+          python-version: 3.11
+      - name: Remove unused versions of Python
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/''))'
+        shell: pwsh
+        run: |-
+          $env:PATH -split ";" |
+            Where-Object { Test-Path "$_\python.exe" } |
+            Select-Object -Skip 1 |
+            ForEach-Object { Move-Item "$_" "$_.disabled" }
+      - name: Log versions
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        run: |-
+          echo '*** Python'
+          command -v python && python --version || echo 'No python found or bad executable'
+          echo '*** Rust'
+          command -v rustc && rustc --version || echo 'No rustc found or bad executable'
+          echo '*** Cargo'
+          command -v cargo && cargo --version || echo 'No cargo found or bad executable'
+          echo '*** Deno'
+          command -v deno && deno --version || echo 'No deno found or bad executable'
+          echo '*** Node'
+          command -v node && node --version || echo 'No node found or bad executable'
+          echo '*** Installed packages'
+          command -v dpkg && dpkg -l || echo 'No dpkg found or bad executable'
+      - name: Setup gcloud (windows)
+        uses: google-github-actions/setup-gcloud@e427ad8a34f8676edf47cf7d7925499adf3eb74f
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/''))'
+        env:
+          CLOUDSDK_PYTHON: '${{env.pythonLocation}}\python.exe'
+        with:
+          project_id: denoland
       - name: Upload canary to dl.deno.land
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && github.ref == ''refs/heads/main'''
         env:
@@ -2320,10 +2388,14 @@ jobs:
           AWS_ENDPOINT_URL_S3: '${{ vars.S3_ENDPOINT }}'
           AWS_DEFAULT_REGION: '${{ vars.S3_REGION }}'
         run: |-
+          gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.zip gs://dl.deno.land/canary/$(git rev-parse HEAD)/
+          gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.sha256sum gs://dl.deno.land/canary/$(git rev-parse HEAD)/
+          gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.symcache gs://dl.deno.land/canary/$(git rev-parse HEAD)/
           aws s3 sync ./target/release/ s3://dl-deno-land/canary/$(git rev-parse HEAD)/ --exclude "*" --include "*.zip"
           aws s3 sync ./target/release/ s3://dl-deno-land/canary/$(git rev-parse HEAD)/ --exclude "*" --include "*.sha256sum"
           aws s3 sync ./target/release/ s3://dl-deno-land/canary/$(git rev-parse HEAD)/ --exclude "*" --include "*.symcache"
           echo ${{ github.sha }} > canary-latest.txt
+          gsutil -h "Cache-Control: no-cache" cp canary-latest.txt gs://dl.deno.land/canary-$(rustc -vV | sed -n "s|host: ||p")-latest.txt
           aws s3 cp canary-latest.txt s3://dl-deno-land/canary-$(rustc -vV | sed -n "s|host: ||p")-latest.txt
           rm canary-latest.txt gha-creds-*.json
       - name: Build product size info
@@ -2367,6 +2439,9 @@ jobs:
           AWS_DEFAULT_REGION: '${{ vars.S3_REGION }}'
           CLOUDSDK_PYTHON: '${{env.pythonLocation}}\python.exe'
         run: |-
+          gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.zip gs://dl.deno.land/release/${GITHUB_REF#refs/*/}/
+          gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.sha256sum gs://dl.deno.land/release/${GITHUB_REF#refs/*/}/
+          gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.symcache gs://dl.deno.land/release/${GITHUB_REF#refs/*/}/
           aws s3 sync ./target/release/ s3://dl-deno-land/release/${GITHUB_REF#refs/*/}/ --exclude "*" --include "*.zip"
           aws s3 sync ./target/release/ s3://dl-deno-land/release/${GITHUB_REF#refs/*/}/ --exclude "*" --include "*.sha256sum"
           aws s3 sync ./target/release/ s3://dl-deno-land/release/${GITHUB_REF#refs/*/}/ --exclude "*" --include "*.symcache"
@@ -2617,6 +2692,10 @@ jobs:
         with:
           cache-path: ./target
       - uses: dsherret/rust-toolchain-file@3551321aa44dd44a0393eb3b6bdfbc5d25ecf621
+      - name: Build debug
+        env:
+          CARGO_PROFILE_DEV_DEBUG: 0
+        run: cargo build --locked --bin deno --bin denort --bin test_server --features=panic-trace
       - name: Log versions
         run: |-
           echo '*** Python'
@@ -2631,10 +2710,6 @@ jobs:
           command -v node && node --version || echo 'No node found or bad executable'
           echo '*** Installed packages'
           command -v dpkg && dpkg -l || echo 'No dpkg found or bad executable'
-      - name: Build debug
-        env:
-          CARGO_PROFILE_DEV_DEBUG: 0
-        run: cargo build --locked --bin deno --bin denort --bin test_server --features=panic-trace
       - name: Check deno binary
         env:
           NO_COLOR: 1
@@ -2916,21 +2991,6 @@ jobs:
           cache-path: ./target
       - uses: dsherret/rust-toolchain-file@3551321aa44dd44a0393eb3b6bdfbc5d25ecf621
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
-      - name: Log versions
-        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
-        run: |-
-          echo '*** Python'
-          command -v python && python --version || echo 'No python found or bad executable'
-          echo '*** Rust'
-          command -v rustc && rustc --version || echo 'No rustc found or bad executable'
-          echo '*** Cargo'
-          command -v cargo && cargo --version || echo 'No cargo found or bad executable'
-          echo '*** Deno'
-          command -v deno && deno --version || echo 'No deno found or bad executable'
-          echo '*** Node'
-          command -v node && node --version || echo 'No node found or bad executable'
-          echo '*** Installed packages'
-          command -v dpkg && dpkg -l || echo 'No dpkg found or bad executable'
       - name: Configure canary build
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && !startsWith(github.ref, ''refs/tags/'')'
         run: echo "DENO_CANARY=true" >> $GITHUB_ENV
@@ -2991,6 +3051,49 @@ jobs:
           Compress-Archive -CompressionLevel Optimal -Force -Path target/release/denort.exe -DestinationPath target/release/denort-aarch64-pc-windows-msvc.zip
           Get-FileHash target/release/denort-aarch64-pc-windows-msvc.zip -Algorithm SHA256 | Format-List > target/release/denort-aarch64-pc-windows-msvc.zip.sha256sum
           target/release/deno.exe -A tools/release/create_symcache.ts target/release/deno-aarch64-pc-windows-msvc.symcache
+      - name: Authenticate with Google Cloud
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/''))'
+        with:
+          project_id: denoland
+          credentials_json: '${{ secrets.GCP_SA_KEY }}'
+          export_environment_variables: true
+          create_credentials_file: true
+      - name: Install Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/''))'
+        with:
+          python-version: 3.11
+      - name: Remove unused versions of Python
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/''))'
+        shell: pwsh
+        run: |-
+          $env:PATH -split ";" |
+            Where-Object { Test-Path "$_\python.exe" } |
+            Select-Object -Skip 1 |
+            ForEach-Object { Move-Item "$_" "$_.disabled" }
+      - name: Log versions
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        run: |-
+          echo '*** Python'
+          command -v python && python --version || echo 'No python found or bad executable'
+          echo '*** Rust'
+          command -v rustc && rustc --version || echo 'No rustc found or bad executable'
+          echo '*** Cargo'
+          command -v cargo && cargo --version || echo 'No cargo found or bad executable'
+          echo '*** Deno'
+          command -v deno && deno --version || echo 'No deno found or bad executable'
+          echo '*** Node'
+          command -v node && node --version || echo 'No node found or bad executable'
+          echo '*** Installed packages'
+          command -v dpkg && dpkg -l || echo 'No dpkg found or bad executable'
+      - name: Setup gcloud (windows)
+        uses: google-github-actions/setup-gcloud@e427ad8a34f8676edf47cf7d7925499adf3eb74f
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/''))'
+        env:
+          CLOUDSDK_PYTHON: '${{env.pythonLocation}}\python.exe'
+        with:
+          project_id: denoland
       - name: Upload canary to dl.deno.land
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && github.ref == ''refs/heads/main'''
         env:
@@ -2999,10 +3102,14 @@ jobs:
           AWS_ENDPOINT_URL_S3: '${{ vars.S3_ENDPOINT }}'
           AWS_DEFAULT_REGION: '${{ vars.S3_REGION }}'
         run: |-
+          gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.zip gs://dl.deno.land/canary/$(git rev-parse HEAD)/
+          gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.sha256sum gs://dl.deno.land/canary/$(git rev-parse HEAD)/
+          gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.symcache gs://dl.deno.land/canary/$(git rev-parse HEAD)/
           aws s3 sync ./target/release/ s3://dl-deno-land/canary/$(git rev-parse HEAD)/ --exclude "*" --include "*.zip"
           aws s3 sync ./target/release/ s3://dl-deno-land/canary/$(git rev-parse HEAD)/ --exclude "*" --include "*.sha256sum"
           aws s3 sync ./target/release/ s3://dl-deno-land/canary/$(git rev-parse HEAD)/ --exclude "*" --include "*.symcache"
           echo ${{ github.sha }} > canary-latest.txt
+          gsutil -h "Cache-Control: no-cache" cp canary-latest.txt gs://dl.deno.land/canary-$(rustc -vV | sed -n "s|host: ||p")-latest.txt
           aws s3 cp canary-latest.txt s3://dl-deno-land/canary-$(rustc -vV | sed -n "s|host: ||p")-latest.txt
           rm canary-latest.txt gha-creds-*.json
       - name: Build product size info
@@ -3046,6 +3153,9 @@ jobs:
           AWS_DEFAULT_REGION: '${{ vars.S3_REGION }}'
           CLOUDSDK_PYTHON: '${{env.pythonLocation}}\python.exe'
         run: |-
+          gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.zip gs://dl.deno.land/release/${GITHUB_REF#refs/*/}/
+          gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.sha256sum gs://dl.deno.land/release/${GITHUB_REF#refs/*/}/
+          gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.symcache gs://dl.deno.land/release/${GITHUB_REF#refs/*/}/
           aws s3 sync ./target/release/ s3://dl-deno-land/release/${GITHUB_REF#refs/*/}/ --exclude "*" --include "*.zip"
           aws s3 sync ./target/release/ s3://dl-deno-land/release/${GITHUB_REF#refs/*/}/ --exclude "*" --include "*.sha256sum"
           aws s3 sync ./target/release/ s3://dl-deno-land/release/${GITHUB_REF#refs/*/}/ --exclude "*" --include "*.symcache"
@@ -3302,20 +3412,6 @@ jobs:
         with:
           cache-path: ./target
       - uses: dsherret/rust-toolchain-file@3551321aa44dd44a0393eb3b6bdfbc5d25ecf621
-      - name: Log versions
-        run: |-
-          echo '*** Python'
-          command -v python && python --version || echo 'No python found or bad executable'
-          echo '*** Rust'
-          command -v rustc && rustc --version || echo 'No rustc found or bad executable'
-          echo '*** Cargo'
-          command -v cargo && cargo --version || echo 'No cargo found or bad executable'
-          echo '*** Deno'
-          command -v deno && deno --version || echo 'No deno found or bad executable'
-          echo '*** Node'
-          command -v node && node --version || echo 'No node found or bad executable'
-          echo '*** Installed packages'
-          command -v dpkg && dpkg -l || echo 'No dpkg found or bad executable'
       - name: Set up incremental LTO and sysroot build
         run: |-
           # Setting up sysroot
@@ -3423,6 +3519,33 @@ jobs:
           zip -r denort-x86_64-unknown-linux-gnu.zip denort
           shasum -a 256 denort-x86_64-unknown-linux-gnu.zip > denort-x86_64-unknown-linux-gnu.zip.sha256sum
           ./deno types > lib.deno.d.ts
+      - name: Authenticate with Google Cloud
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093
+        if: 'github.repository == ''denoland/deno'' && (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/''))'
+        with:
+          project_id: denoland
+          credentials_json: '${{ secrets.GCP_SA_KEY }}'
+          export_environment_variables: true
+          create_credentials_file: true
+      - name: Setup gcloud (unix)
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db
+        if: 'github.repository == ''denoland/deno'' && (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/''))'
+        with:
+          project_id: denoland
+      - name: Log versions
+        run: |-
+          echo '*** Python'
+          command -v python && python --version || echo 'No python found or bad executable'
+          echo '*** Rust'
+          command -v rustc && rustc --version || echo 'No rustc found or bad executable'
+          echo '*** Cargo'
+          command -v cargo && cargo --version || echo 'No cargo found or bad executable'
+          echo '*** Deno'
+          command -v deno && deno --version || echo 'No deno found or bad executable'
+          echo '*** Node'
+          command -v node && node --version || echo 'No node found or bad executable'
+          echo '*** Installed packages'
+          command -v dpkg && dpkg -l || echo 'No dpkg found or bad executable'
       - name: Upload canary to dl.deno.land
         if: github.repository == 'denoland/deno' && github.ref == 'refs/heads/main'
         env:
@@ -3431,10 +3554,14 @@ jobs:
           AWS_ENDPOINT_URL_S3: '${{ vars.S3_ENDPOINT }}'
           AWS_DEFAULT_REGION: '${{ vars.S3_REGION }}'
         run: |-
+          gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.zip gs://dl.deno.land/canary/$(git rev-parse HEAD)/
+          gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.sha256sum gs://dl.deno.land/canary/$(git rev-parse HEAD)/
+          gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.symcache gs://dl.deno.land/canary/$(git rev-parse HEAD)/
           aws s3 sync ./target/release/ s3://dl-deno-land/canary/$(git rev-parse HEAD)/ --exclude "*" --include "*.zip"
           aws s3 sync ./target/release/ s3://dl-deno-land/canary/$(git rev-parse HEAD)/ --exclude "*" --include "*.sha256sum"
           aws s3 sync ./target/release/ s3://dl-deno-land/canary/$(git rev-parse HEAD)/ --exclude "*" --include "*.symcache"
           echo ${{ github.sha }} > canary-latest.txt
+          gsutil -h "Cache-Control: no-cache" cp canary-latest.txt gs://dl.deno.land/canary-$(rustc -vV | sed -n "s|host: ||p")-latest.txt
           aws s3 cp canary-latest.txt s3://dl-deno-land/canary-$(rustc -vV | sed -n "s|host: ||p")-latest.txt
           rm canary-latest.txt gha-creds-*.json
       - name: Build product size info
@@ -3475,6 +3602,9 @@ jobs:
           AWS_ENDPOINT_URL_S3: '${{ vars.S3_ENDPOINT }}'
           AWS_DEFAULT_REGION: '${{ vars.S3_REGION }}'
         run: |-
+          gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.zip gs://dl.deno.land/release/${GITHUB_REF#refs/*/}/
+          gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.sha256sum gs://dl.deno.land/release/${GITHUB_REF#refs/*/}/
+          gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.symcache gs://dl.deno.land/release/${GITHUB_REF#refs/*/}/
           aws s3 sync ./target/release/ s3://dl-deno-land/release/${GITHUB_REF#refs/*/}/ --exclude "*" --include "*.zip"
           aws s3 sync ./target/release/ s3://dl-deno-land/release/${GITHUB_REF#refs/*/}/ --exclude "*" --include "*.sha256sum"
           aws s3 sync ./target/release/ s3://dl-deno-land/release/${GITHUB_REF#refs/*/}/ --exclude "*" --include "*.symcache"
@@ -3878,6 +4008,19 @@ jobs:
       - name: Autobahn testsuite
         if: '!startsWith(github.ref, ''refs/tags/'')'
         run: target/release/deno run -A --config tests/config/deno.json ext/websocket/autobahn/fuzzingclient.js
+      - name: Authenticate with Google Cloud
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093
+        if: '!startsWith(github.ref, ''refs/tags/'') && github.repository == ''denoland/deno'' && github.ref == ''refs/heads/main'''
+        with:
+          project_id: denoland
+          credentials_json: '${{ secrets.GCP_SA_KEY }}'
+          export_environment_variables: true
+          create_credentials_file: true
+      - name: Setup gcloud (unix)
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db
+        if: '!startsWith(github.ref, ''refs/tags/'') && github.repository == ''denoland/deno'' && github.ref == ''refs/heads/main'''
+        with:
+          project_id: denoland
       - name: Upload wpt results to dl.deno.land
         if: '!startsWith(github.ref, ''refs/tags/'') && github.repository == ''denoland/deno'' && github.ref == ''refs/heads/main'''
         env:
@@ -3888,9 +4031,12 @@ jobs:
         continue-on-error: true
         run: |-
           gzip ./wptreport.json
+          gsutil -h "Cache-Control: public, max-age=3600" cp ./wpt.json gs://dl.deno.land/wpt/$(git rev-parse HEAD).json
+          gsutil -h "Cache-Control: public, max-age=3600" cp ./wptreport.json.gz gs://dl.deno.land/wpt/$(git rev-parse HEAD)-wptreport.json.gz
           aws s3 cp ./wpt.json s3://dl-deno-land/wpt/$(git rev-parse HEAD).json
           aws s3 cp ./wptreport.json.gz s3://dl-deno-land/wpt/$(git rev-parse HEAD)-wptreport.json.gz
           echo $(git rev-parse HEAD) > wpt-latest.txt
+          gsutil -h "Cache-Control: no-cache" cp wpt-latest.txt gs://dl.deno.land/wpt-latest.txt
           aws s3 cp wpt-latest.txt s3://dl-deno-land/wpt-latest.txt
       - name: Upload wpt results to wpt.fyi
         if: '!startsWith(github.ref, ''refs/tags/'') && github.repository == ''denoland/deno'' && github.ref == ''refs/heads/main'''
@@ -3968,20 +4114,6 @@ jobs:
         with:
           cache-path: ./target
       - uses: dsherret/rust-toolchain-file@3551321aa44dd44a0393eb3b6bdfbc5d25ecf621
-      - name: Log versions
-        run: |-
-          echo '*** Python'
-          command -v python && python --version || echo 'No python found or bad executable'
-          echo '*** Rust'
-          command -v rustc && rustc --version || echo 'No rustc found or bad executable'
-          echo '*** Cargo'
-          command -v cargo && cargo --version || echo 'No cargo found or bad executable'
-          echo '*** Deno'
-          command -v deno && deno --version || echo 'No deno found or bad executable'
-          echo '*** Node'
-          command -v node && node --version || echo 'No node found or bad executable'
-          echo '*** Installed packages'
-          command -v dpkg && dpkg -l || echo 'No dpkg found or bad executable'
       - name: Set up incremental LTO and sysroot build
         run: |-
           # Setting up sysroot
@@ -4066,6 +4198,20 @@ jobs:
         env:
           CARGO_PROFILE_DEV_DEBUG: 0
         run: cargo build --locked --bin deno --bin denort --bin test_server --features=panic-trace
+      - name: Log versions
+        run: |-
+          echo '*** Python'
+          command -v python && python --version || echo 'No python found or bad executable'
+          echo '*** Rust'
+          command -v rustc && rustc --version || echo 'No rustc found or bad executable'
+          echo '*** Cargo'
+          command -v cargo && cargo --version || echo 'No cargo found or bad executable'
+          echo '*** Deno'
+          command -v deno && deno --version || echo 'No deno found or bad executable'
+          echo '*** Node'
+          command -v node && node --version || echo 'No node found or bad executable'
+          echo '*** Installed packages'
+          command -v dpkg && dpkg -l || echo 'No dpkg found or bad executable'
       - name: Check deno binary
         env:
           NO_COLOR: 1
@@ -4526,6 +4672,10 @@ jobs:
         with:
           cache-path: ./target
       - uses: dsherret/rust-toolchain-file@3551321aa44dd44a0393eb3b6bdfbc5d25ecf621
+      - name: Build debug
+        env:
+          CARGO_PROFILE_DEV_DEBUG: 0
+        run: cargo build --locked --bin deno --bin denort --bin test_server --features=panic-trace
       - name: Log versions
         run: |-
           echo '*** Python'
@@ -4540,10 +4690,6 @@ jobs:
           command -v node && node --version || echo 'No node found or bad executable'
           echo '*** Installed packages'
           command -v dpkg && dpkg -l || echo 'No dpkg found or bad executable'
-      - name: Build debug
-        env:
-          CARGO_PROFILE_DEV_DEBUG: 0
-        run: cargo build --locked --bin deno --bin denort --bin test_server --features=panic-trace
       - name: Check deno binary
         env:
           NO_COLOR: 1
@@ -4938,21 +5084,6 @@ jobs:
           cache-path: ./target
       - uses: dsherret/rust-toolchain-file@3551321aa44dd44a0393eb3b6bdfbc5d25ecf621
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
-      - name: Log versions
-        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
-        run: |-
-          echo '*** Python'
-          command -v python && python --version || echo 'No python found or bad executable'
-          echo '*** Rust'
-          command -v rustc && rustc --version || echo 'No rustc found or bad executable'
-          echo '*** Cargo'
-          command -v cargo && cargo --version || echo 'No cargo found or bad executable'
-          echo '*** Deno'
-          command -v deno && deno --version || echo 'No deno found or bad executable'
-          echo '*** Node'
-          command -v node && node --version || echo 'No node found or bad executable'
-          echo '*** Installed packages'
-          command -v dpkg && dpkg -l || echo 'No dpkg found or bad executable'
       - name: Set up incremental LTO and sysroot build
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: |-
@@ -5063,6 +5194,34 @@ jobs:
           zip -r denort-aarch64-unknown-linux-gnu.zip denort
           shasum -a 256 denort-aarch64-unknown-linux-gnu.zip > denort-aarch64-unknown-linux-gnu.zip.sha256sum
           ./deno types > lib.deno.d.ts
+      - name: Authenticate with Google Cloud
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/''))'
+        with:
+          project_id: denoland
+          credentials_json: '${{ secrets.GCP_SA_KEY }}'
+          export_environment_variables: true
+          create_credentials_file: true
+      - name: Setup gcloud (unix)
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/''))'
+        with:
+          project_id: denoland
+      - name: Log versions
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        run: |-
+          echo '*** Python'
+          command -v python && python --version || echo 'No python found or bad executable'
+          echo '*** Rust'
+          command -v rustc && rustc --version || echo 'No rustc found or bad executable'
+          echo '*** Cargo'
+          command -v cargo && cargo --version || echo 'No cargo found or bad executable'
+          echo '*** Deno'
+          command -v deno && deno --version || echo 'No deno found or bad executable'
+          echo '*** Node'
+          command -v node && node --version || echo 'No node found or bad executable'
+          echo '*** Installed packages'
+          command -v dpkg && dpkg -l || echo 'No dpkg found or bad executable'
       - name: Upload canary to dl.deno.land
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && github.ref == ''refs/heads/main'''
         env:
@@ -5071,10 +5230,14 @@ jobs:
           AWS_ENDPOINT_URL_S3: '${{ vars.S3_ENDPOINT }}'
           AWS_DEFAULT_REGION: '${{ vars.S3_REGION }}'
         run: |-
+          gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.zip gs://dl.deno.land/canary/$(git rev-parse HEAD)/
+          gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.sha256sum gs://dl.deno.land/canary/$(git rev-parse HEAD)/
+          gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.symcache gs://dl.deno.land/canary/$(git rev-parse HEAD)/
           aws s3 sync ./target/release/ s3://dl-deno-land/canary/$(git rev-parse HEAD)/ --exclude "*" --include "*.zip"
           aws s3 sync ./target/release/ s3://dl-deno-land/canary/$(git rev-parse HEAD)/ --exclude "*" --include "*.sha256sum"
           aws s3 sync ./target/release/ s3://dl-deno-land/canary/$(git rev-parse HEAD)/ --exclude "*" --include "*.symcache"
           echo ${{ github.sha }} > canary-latest.txt
+          gsutil -h "Cache-Control: no-cache" cp canary-latest.txt gs://dl.deno.land/canary-$(rustc -vV | sed -n "s|host: ||p")-latest.txt
           aws s3 cp canary-latest.txt s3://dl-deno-land/canary-$(rustc -vV | sed -n "s|host: ||p")-latest.txt
           rm canary-latest.txt gha-creds-*.json
       - name: Build product size info
@@ -5120,6 +5283,9 @@ jobs:
           AWS_ENDPOINT_URL_S3: '${{ vars.S3_ENDPOINT }}'
           AWS_DEFAULT_REGION: '${{ vars.S3_REGION }}'
         run: |-
+          gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.zip gs://dl.deno.land/release/${GITHUB_REF#refs/*/}/
+          gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.sha256sum gs://dl.deno.land/release/${GITHUB_REF#refs/*/}/
+          gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.symcache gs://dl.deno.land/release/${GITHUB_REF#refs/*/}/
           aws s3 sync ./target/release/ s3://dl-deno-land/release/${GITHUB_REF#refs/*/}/ --exclude "*" --include "*.zip"
           aws s3 sync ./target/release/ s3://dl-deno-land/release/${GITHUB_REF#refs/*/}/ --exclude "*" --include "*.sha256sum"
           aws s3 sync ./target/release/ s3://dl-deno-land/release/${GITHUB_REF#refs/*/}/ --exclude "*" --include "*.symcache"
@@ -5805,6 +5971,17 @@ jobs:
     if: github.repository == 'denoland/deno' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     steps:
+      - name: Authenticate with Google Cloud
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093
+        with:
+          project_id: denoland
+          credentials_json: '${{ secrets.GCP_SA_KEY }}'
+          export_environment_variables: true
+          create_credentials_file: true
+      - name: Setup gcloud (unix)
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db
+        with:
+          project_id: denoland
       - name: Upload canary version file to dl.deno.land
         env:
           AWS_ACCESS_KEY_ID: '${{ vars.S3_ACCESS_KEY_ID }}'
@@ -5813,6 +5990,7 @@ jobs:
           AWS_DEFAULT_REGION: '${{ vars.S3_REGION }}'
         run: |-
           echo ${{ github.sha }} > canary-latest.txt
+          gsutil -h "Cache-Control: no-cache" cp canary-latest.txt gs://dl.deno.land/canary-latest.txt
           aws s3 cp canary-latest.txt s3://dl-deno-land/canary-latest.txt
 
 # gagen:pin Azure/artifact-signing-action@v0 = 1d365fec12862c4aa68fcac418143d73f0cea293
@@ -5829,4 +6007,7 @@ jobs:
 # gagen:pin denoland/setup-deno@v2 = 667a34cdef165d8d2b2e98dde39547c9daac7282
 # gagen:pin dsherret/rust-toolchain-file@v1 = 3551321aa44dd44a0393eb3b6bdfbc5d25ecf621
 # gagen:pin dtolnay/rust-toolchain@master = 3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9
+# gagen:pin google-github-actions/auth@v3 = 7c6bc770dae815cd3e89ee6cdf493a5fab2cc093
+# gagen:pin google-github-actions/setup-gcloud@v2 = e427ad8a34f8676edf47cf7d7925499adf3eb74f
+# gagen:pin google-github-actions/setup-gcloud@v3 = aa5489c8933f4cc7a4f7d45035b3b1440c9c10db
 # gagen:pin softprops/action-gh-release@v2 = 153bb8e04406b158c6c84fc1615b65b24149a1fe

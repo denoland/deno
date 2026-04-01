@@ -62,8 +62,10 @@ const testJob = job("test", {
         AWS_ENDPOINT_URL_S3: "${{ vars.S3_ENDPOINT }}",
         AWS_DEFAULT_REGION: "${{vars.S3_REGION }}",
       },
-      run:
+      run: [
+        'gsutil -h "Cache-Control: public, max-age=3600" cp tools/ecosystem_report.json gs://dl.deno.land/ecosystem-compat-test/$(date +%F)/report-${{matrix.os}}.json',
         "aws s3 cp tools/ecosystem_report.json s3://dl-deno-land/ecosystem-compat-test/$(date +%F)/report-${{matrix.os}}.json",
+      ],
     }),
   ],
 });
