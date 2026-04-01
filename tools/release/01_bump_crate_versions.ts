@@ -136,7 +136,7 @@ async function getGitLog() {
 
 async function bumpCiCacheVersion() {
   const generateScript = workspace.repo.folderPath.join(
-    ".github/workflows/ci.generate.ts",
+    ".github/workflows/ci.ts",
   );
   const fileText = generateScript.readTextSync();
   const cacheVersionRegex = /const cacheVersion = ([0-9]+);/;
