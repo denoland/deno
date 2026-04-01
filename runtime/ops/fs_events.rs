@@ -182,7 +182,22 @@ fn start_watcher(
             })
           }) {
             let _ = sender.try_send(Ok(event.clone()));
-          } else if event.paths.iter().any(is_file_removed) {
+          } else if event.paths.iter().any(|event_path| {
+            // For removed files, we can't use canonicalize or is_same_file
+            // since the file no longer exists. Instead, check that the
+            // removed file's parent is within a watched path before
+            // forwarding the event, to avoid sending spurious remove
+            // events for unrelated temporary files (e.g. during atomic
+            // saves by editors like Vim).
+            is_file_removed(event_path)
+              && paths.iter().any(|path| {
+                same_file::is_same_file(event_path, path).unwrap_or(false)
+                  || starts_with_canonicalized(event_path, path)
+                  || event_path
+                    .parent()
+                    .is_some_and(|p| starts_with_canonicalized(p, path))
+              })
+          }) {
             let remove_event = FsEvent {
               kind: "remove",
               paths: event.paths.clone(),
