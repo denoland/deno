@@ -48,7 +48,7 @@ const NUM_LIMITS: usize = 11;
 
 /// Static mapping of JavaScript property names to SQLite limits.
 /// Order matches SQLite limit constant values (0-10).
-const LIMIT_MAPPING: [(&'static str, Limit); NUM_LIMITS] = [
+const LIMIT_MAPPING: [(&str, Limit); NUM_LIMITS] = [
   ("length", Limit::SQLITE_LIMIT_LENGTH),
   ("sqlLength", Limit::SQLITE_LIMIT_SQL_LENGTH),
   ("column", Limit::SQLITE_LIMIT_COLUMN),
