@@ -591,7 +591,9 @@ class WebSocket extends EventTarget {
           const reason = code == 1005 ? "" : op_ws_get_error(rid);
           const prevState = this[_readyState];
           this[_readyState] = CLOSED;
-          core.cancelTimer(this[_idleTimeoutTimeout]);
+          if (this[_idleTimeoutTimeout]) {
+            core.cancelTimer(this[_idleTimeoutTimeout]);
+          }
 
           if (prevState === OPEN) {
             try {
@@ -652,7 +654,9 @@ class WebSocket extends EventTarget {
 
   [_serverHandleIdleTimeout]() {
     if (this[_idleTimeoutDuration]) {
-      core.cancelTimer(this[_idleTimeoutTimeout]);
+      if (this[_idleTimeoutTimeout]) {
+        core.cancelTimer(this[_idleTimeoutTimeout]);
+      }
       this[_idleTimeoutTimeout] = core.createTimer(
         async () => {
           if (this[_readyState] === OPEN) {
@@ -681,7 +685,9 @@ class WebSocket extends EventTarget {
                   this.dispatchEvent(event);
                   core.tryClose(this[_rid]);
                 } else {
-                  core.cancelTimer(this[_idleTimeoutTimeout]);
+                  if (this[_idleTimeoutTimeout]) {
+                    core.cancelTimer(this[_idleTimeoutTimeout]);
+                  }
                 }
               },
               (this[_idleTimeoutDuration] / 2) * 1000,
@@ -690,7 +696,9 @@ class WebSocket extends EventTarget {
               true,
             );
           } else {
-            core.cancelTimer(this[_idleTimeoutTimeout]);
+            if (this[_idleTimeoutTimeout]) {
+              core.cancelTimer(this[_idleTimeoutTimeout]);
+            }
           }
         },
         (this[_idleTimeoutDuration] / 2) * 1000,

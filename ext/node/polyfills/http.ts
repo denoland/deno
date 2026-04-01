@@ -16,7 +16,7 @@ import {
 } from "ext:core/ops";
 
 import { TextEncoder } from "ext:deno_web/08_text_encoding.js";
-import { clearTimeout, setTimeout } from "node:timers";
+import { setTimeout } from "node:timers";
 import { updateSpanFromError } from "ext:deno_telemetry/util.ts";
 import {
   _normalizeArgs,
@@ -647,7 +647,6 @@ class ClientRequest extends OutgoingMessage {
         }
         if (this._timeout) {
           this._timeout.removeEventListener("abort", this._timeoutCb);
-          clearTimeout(this._timeout[timerId]);
         }
         const incoming = new IncomingMessageForClient(this.socket);
         incoming.req = this;

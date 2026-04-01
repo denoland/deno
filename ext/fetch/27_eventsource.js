@@ -179,7 +179,7 @@ class EventSource extends EventTarget {
     webidl.assertBranded(this, EventSourcePrototype);
     this.#abortController.abort();
     this.#readyState = CLOSED;
-    core.cancelTimer(this.#reconnectionTimerId);
+    if (this.#reconnectionTimerId) core.cancelTimer(this.#reconnectionTimerId);
   }
 
   async #loop() {
