@@ -272,6 +272,7 @@ pub struct SpawnArgs {
 
 #[derive(Clone, Deserialize)]
 #[serde(untagged)]
+#[cfg_attr(windows, allow(dead_code))]
 enum KillSignal {
   String(String),
   Number(i32),
