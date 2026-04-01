@@ -263,14 +263,18 @@ pub struct SpawnArgs {
   timeout: Option<u64>,
   #[cfg(unix)]
   #[serde(default)]
+  #[cfg_attr(
+    windows,
+    allow(dead_code, reason = "deserialized from JS but only used on Unix")
+  )]
   kill_signal: Option<KillSignal>,
 }
 
 #[derive(Clone, Deserialize)]
 #[serde(untagged)]
 enum KillSignal {
-  Number(i32),
   String(String),
+  Number(i32),
 }
 
 #[derive(Deserialize)]
@@ -1224,6 +1228,12 @@ fn op_spawn_sync(
         return;
       }
       killed.store(true, Ordering::SeqCst);
+      // NOTE: There is a minor race window where the child exits and its
+      // PID gets recycled before we send the kill signal. The condvar
+      // cancel above prevents this in practice (the main thread cancels
+      // the timer immediately after wait() returns), but if the OS
+      // recycles the PID in that narrow window we could signal the wrong
+      // process. This matches libuv's behavior.
       #[cfg(unix)]
       // SAFETY: child_id is a valid PID from the spawned child process.
       // We use negative PID to kill the entire process group (created via
@@ -1277,11 +1287,38 @@ fn op_spawn_sync(
 
   let timed_out = killed_by_timeout.load(Ordering::SeqCst);
 
-  // Collect stdout/stderr. On Unix, the process group kill ensures all
-  // children are dead and pipes reach EOF, so join() completes promptly.
-  // On Windows, TerminateProcess closes the child's pipe ends too.
-  let collect_pipe =
-    |handle: Option<std::thread::JoinHandle<Vec<u8>>>| handle?.join().ok();
+  // Collect stdout/stderr from background reader threads.
+  // On Unix, the process group kill ensures all children are dead and
+  // pipes reach EOF, so join() completes immediately.
+  // On Windows, TerminateProcess closes the child's pipe ends, so
+  // join() also completes promptly for the direct child. In the rare
+  // case of orphaned grandchildren holding pipes, we use a short
+  // join timeout to avoid blocking indefinitely.
+  let collect_pipe = |handle: Option<std::thread::JoinHandle<Vec<u8>>>| {
+    let h = handle?;
+    #[cfg(unix)]
+    {
+      h.join().ok()
+    }
+    #[cfg(windows)]
+    {
+      if timed_out {
+        // Brief timeout to avoid blocking on orphaned grandchildren.
+        let start = std::time::Instant::now();
+        loop {
+          if h.is_finished() {
+            return h.join().ok();
+          }
+          if start.elapsed() > std::time::Duration::from_millis(200) {
+            return None;
+          }
+          std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+      } else {
+        h.join().ok()
+      }
+    }
+  };
   let stdout_bytes = collect_pipe(stdout_handle).unwrap_or_default();
   let stderr_bytes = collect_pipe(stderr_handle).unwrap_or_default();
 
