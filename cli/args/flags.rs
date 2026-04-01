@@ -345,12 +345,16 @@ pub enum InstallFlagsLocal {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct InstallTopLevelFlags {
   pub lockfile_only: bool,
+  pub production: bool,
+  pub skip_types: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct InstallEntrypointsFlags {
   pub entrypoints: Vec<String>,
   pub lockfile_only: bool,
+  pub production: bool,
+  pub skip_types: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -3586,6 +3590,23 @@ These must be added to the path manually if required."), UnstableArgsConfig::Res
             .conflicts_with("global"),
         )
         .arg(lockfile_only_arg().conflicts_with("global"))
+        .arg(
+          Arg::new("prod")
+            .long("prod")
+            .alias("production")
+            .help("Only install production dependencies (excludes devDependencies)")
+            .action(ArgAction::SetTrue)
+            .conflicts_with("global")
+            .conflicts_with("dev"),
+        )
+        .arg(
+          Arg::new("skip-types")
+            .long("skip-types")
+            .help(cstr!("Exclude @types/* packages from installation.
+<y>Be careful, as it uses a name-based heuristic and may skip packages that ship runtime code.</>"))
+            .action(ArgAction::SetTrue)
+            .requires("prod"),
+        )
     })
 }
 
@@ -6753,12 +6774,16 @@ fn install_parse(
     return Ok(());
   }
   let lockfile_only = matches.get_flag("lockfile-only");
+  let production = matches.get_flag("prod");
+  let skip_types = matches.get_flag("skip-types");
   if matches.get_flag("entrypoint") {
     let entrypoints = matches.remove_many::<String>("cmd").unwrap_or_default();
     flags.subcommand = DenoSubcommand::Install(InstallFlags::Local(
       InstallFlagsLocal::Entrypoints(InstallEntrypointsFlags {
         entrypoints: entrypoints.collect(),
         lockfile_only,
+        production,
+        skip_types,
       }),
     ));
   } else if let Some(add_files) = matches
@@ -6777,7 +6802,11 @@ fn install_parse(
     ))
   } else {
     flags.subcommand = DenoSubcommand::Install(InstallFlags::Local(
-      InstallFlagsLocal::TopLevel(InstallTopLevelFlags { lockfile_only }),
+      InstallFlagsLocal::TopLevel(InstallTopLevelFlags {
+        lockfile_only,
+        production,
+        skip_types,
+      }),
     ));
   }
   Ok(())
@@ -14289,6 +14318,92 @@ mod tests {
         "Note: Permission flags can only be used in a global setting"
       )
     );
+  }
+
+  #[test]
+  fn install_production() {
+    let r = flags_from_vec(svec!["deno", "install", "--prod"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Install(InstallFlags::Local(
+          InstallFlagsLocal::TopLevel(InstallTopLevelFlags {
+            lockfile_only: false,
+            production: true,
+            skip_types: false,
+          })
+        )),
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn install_production_with_entrypoint() {
+    let r = flags_from_vec(svec![
+      "deno",
+      "install",
+      "--prod",
+      "--entrypoint",
+      "main.ts"
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Install(InstallFlags::Local(
+          InstallFlagsLocal::Entrypoints(InstallEntrypointsFlags {
+            entrypoints: svec!["main.ts"],
+            lockfile_only: false,
+            production: true,
+            skip_types: false,
+          })
+        )),
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn install_production_with_skip_types() {
+    let r = flags_from_vec(svec!["deno", "install", "--prod", "--skip-types"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Install(InstallFlags::Local(
+          InstallFlagsLocal::TopLevel(InstallTopLevelFlags {
+            lockfile_only: false,
+            production: true,
+            skip_types: true,
+          })
+        )),
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn install_skip_types_requires_prod() {
+    let r = flags_from_vec(svec!["deno", "install", "--skip-types"]);
+    assert!(r.is_err());
+  }
+
+  #[test]
+  fn install_production_conflicts_with_global() {
+    let r = flags_from_vec(svec![
+      "deno",
+      "install",
+      "--prod",
+      "--global",
+      "jsr:@std/http/file-server"
+    ]);
+    assert!(r.is_err());
+  }
+
+  #[test]
+  fn install_production_conflicts_with_dev() {
+    let r =
+      flags_from_vec(svec!["deno", "install", "--prod", "--dev", "npm:chalk"]);
+    assert!(r.is_err());
   }
 
   #[test]
