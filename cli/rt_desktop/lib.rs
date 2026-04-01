@@ -254,11 +254,11 @@ impl denort::desktop::DesktopApi for WefDesktopApi {
     script: &str,
     callback: Box<
       dyn FnOnce(
-        Result<
-          deno_runtime::ops::desktop::DesktopValue,
-          deno_runtime::ops::desktop::DesktopValue,
-        >,
-      ) + Send
+          Result<
+            deno_runtime::ops::desktop::DesktopValue,
+            deno_runtime::ops::desktop::DesktopValue,
+          >,
+        ) + Send
         + 'static,
     >,
   ) {
@@ -338,11 +338,10 @@ impl denort::desktop::DesktopApi for WefDesktopApi {
       .collect::<Vec<_>>();
     let tx = self.event_tx.clone();
     wef::Window::from_id(window_id).set_menu(&menu, move |id: &str| {
-      let _ =
-        tx.send(deno_runtime::ops::desktop::DesktopEvent::AppMenuClick {
-          window_id,
-          id: id.to_string(),
-        });
+      let _ = tx.send(deno_runtime::ops::desktop::DesktopEvent::AppMenuClick {
+        window_id,
+        id: id.to_string(),
+      });
     });
   }
 
@@ -363,12 +362,11 @@ impl denort::desktop::DesktopApi for WefDesktopApi {
       y,
       &menu,
       move |id: &str| {
-        let _ = tx.send(
-          deno_runtime::ops::desktop::DesktopEvent::ContextMenuClick {
+        let _ =
+          tx.send(deno_runtime::ops::desktop::DesktopEvent::ContextMenuClick {
             window_id,
             id: id.to_string(),
-          },
-        );
+          });
       },
     );
   }
@@ -388,13 +386,10 @@ impl denort::desktop::DesktopApi for WefDesktopApi {
     match handle_type {
       wef::WEF_WINDOW_HANDLE_APPKIT => {
         use raw_window_handle::*;
-        let win = RawWindowHandle::AppKit(
-          AppKitWindowHandle::new(
-            std::ptr::NonNull::new(raw_win).expect("null window handle"),
-          ),
-        );
-        let display =
-          RawDisplayHandle::AppKit(AppKitDisplayHandle::new());
+        let win = RawWindowHandle::AppKit(AppKitWindowHandle::new(
+          std::ptr::NonNull::new(raw_win).expect("null window handle"),
+        ));
+        let display = RawDisplayHandle::AppKit(AppKitDisplayHandle::new());
         (win, display)
       }
       wef::WEF_WINDOW_HANDLE_WIN32 => {
@@ -403,39 +398,29 @@ impl denort::desktop::DesktopApi for WefDesktopApi {
           std::num::NonZeroIsize::new(raw_win as isize)
             .expect("null window handle"),
         );
-        handle.hinstance = std::num::NonZeroIsize::new(raw_display as isize).map(|v| v.into());
+        handle.hinstance =
+          std::num::NonZeroIsize::new(raw_display as isize).map(|v| v.into());
         let win = RawWindowHandle::Win32(handle);
-        let display = RawDisplayHandle::Windows(
-          WindowsDisplayHandle::new(),
-        );
+        let display = RawDisplayHandle::Windows(WindowsDisplayHandle::new());
         (win, display)
       }
       wef::WEF_WINDOW_HANDLE_X11 => {
         use raw_window_handle::*;
-        let win = RawWindowHandle::Xlib(
-          XlibWindowHandle::new(raw_win as _),
-        );
-        let display = RawDisplayHandle::Xlib(
-          XlibDisplayHandle::new(
-            std::ptr::NonNull::new(raw_display),
-            0,
-          ),
-        );
+        let win = RawWindowHandle::Xlib(XlibWindowHandle::new(raw_win as _));
+        let display = RawDisplayHandle::Xlib(XlibDisplayHandle::new(
+          std::ptr::NonNull::new(raw_display),
+          0,
+        ));
         (win, display)
       }
       wef::WEF_WINDOW_HANDLE_WAYLAND => {
         use raw_window_handle::*;
-        let win = RawWindowHandle::Wayland(
-          WaylandWindowHandle::new(
-            std::ptr::NonNull::new(raw_win).expect("null window handle"),
-          ),
-        );
-        let display = RawDisplayHandle::Wayland(
-          WaylandDisplayHandle::new(
-            std::ptr::NonNull::new(raw_display)
-              .expect("null display handle"),
-          ),
-        );
+        let win = RawWindowHandle::Wayland(WaylandWindowHandle::new(
+          std::ptr::NonNull::new(raw_win).expect("null window handle"),
+        ));
+        let display = RawDisplayHandle::Wayland(WaylandDisplayHandle::new(
+          std::ptr::NonNull::new(raw_display).expect("null display handle"),
+        ));
         (win, display)
       }
       _ => panic!("unknown window handle type: {handle_type}"),
@@ -761,20 +746,19 @@ wef::main!(|| {
       use deno_runtime::ops::desktop::send_error_report;
 
       if let Some((url, app_version)) = error_report_config() {
-        let message =
-          if let Some(s) = panic_info.payload().downcast_ref::<&str>() {
-            (*s).to_string()
-          } else if let Some(s) =
-            panic_info.payload().downcast_ref::<String>()
-          {
-            s.clone()
-          } else {
-            "Deno runtime panicked".to_string()
-          };
+        let message = if let Some(s) =
+          panic_info.payload().downcast_ref::<&str>()
+        {
+          (*s).to_string()
+        } else if let Some(s) = panic_info.payload().downcast_ref::<String>() {
+          s.clone()
+        } else {
+          "Deno runtime panicked".to_string()
+        };
 
-        let location = panic_info.location().map(|l| {
-          format!("at {}:{}:{}", l.file(), l.line(), l.column())
-        });
+        let location = panic_info
+          .location()
+          .map(|l| format!("at {}:{}:{}", l.file(), l.line(), l.column()));
 
         let body = deno_core::serde_json::json!({
           "version": 1,
@@ -787,15 +771,13 @@ wef::main!(|| {
         send_error_report(url, &body.to_string());
       }
 
-      eprintln!("\n============================================================");
+      eprintln!(
+        "\n============================================================"
+      );
       eprintln!("Deno has panicked. This is a bug in Deno. Please report this");
       eprintln!("at https://github.com/denoland/deno/issues/new.");
       eprintln!();
-      eprintln!(
-        "Platform: {} {}",
-        env::consts::OS,
-        env::consts::ARCH
-      );
+      eprintln!("Platform: {} {}", env::consts::OS, env::consts::ARCH);
       eprintln!();
 
       orig_hook(panic_info);
@@ -1000,16 +982,14 @@ fn wef_value_to_desktop_value(
     wef::Value::Int(i) => DesktopValue::Int(i),
     wef::Value::Double(d) => DesktopValue::Double(d),
     wef::Value::String(s) => DesktopValue::String(s),
-    wef::Value::List(l) => {
-      DesktopValue::List(l.into_iter().map(wef_value_to_desktop_value).collect())
-    }
-    wef::Value::Dict(d) => {
-      DesktopValue::Dict(
-        d.into_iter()
-          .map(|(k, v)| (k, wef_value_to_desktop_value(v)))
-          .collect(),
-      )
-    }
+    wef::Value::List(l) => DesktopValue::List(
+      l.into_iter().map(wef_value_to_desktop_value).collect(),
+    ),
+    wef::Value::Dict(d) => DesktopValue::Dict(
+      d.into_iter()
+        .map(|(k, v)| (k, wef_value_to_desktop_value(v)))
+        .collect(),
+    ),
     wef::Value::Binary(b) => DesktopValue::Binary(b),
   }
 }

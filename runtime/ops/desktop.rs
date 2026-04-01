@@ -47,9 +47,7 @@ impl<'a> ToV8<'a> for DesktopValue {
       DesktopValue::Bool(b) => v8::Boolean::new(scope, b).into(),
       DesktopValue::Int(i) => v8::Integer::new(scope, i).into(),
       DesktopValue::Double(d) => v8::Number::new(scope, d).into(),
-      DesktopValue::String(s) => {
-        v8::String::new(scope, &s).unwrap().into()
-      }
+      DesktopValue::String(s) => v8::String::new(scope, &s).unwrap().into(),
       DesktopValue::List(l) => {
         let arr = v8::Array::new(scope, l.len() as i32);
         for (i, v) in l.into_iter().enumerate() {
@@ -71,8 +69,7 @@ impl<'a> ToV8<'a> for DesktopValue {
       DesktopValue::Binary(b) => {
         let len = b.len();
         let store = v8::ArrayBuffer::new_backing_store_from_vec(b);
-        let ab =
-          v8::ArrayBuffer::with_backing_store(scope, &store.into());
+        let ab = v8::ArrayBuffer::with_backing_store(scope, &store.into());
         v8::Uint8Array::new(scope, ab, 0, len).unwrap().into()
       }
     })
@@ -113,15 +110,9 @@ impl<'a> ToV8<'a> for ExecuteJsResult {
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub enum DesktopEvent {
   #[serde(rename_all = "camelCase")]
-  AppMenuClick {
-    window_id: u32,
-    id: String,
-  },
+  AppMenuClick { window_id: u32, id: String },
   #[serde(rename_all = "camelCase")]
-  ContextMenuClick {
-    window_id: u32,
-    id: String,
-  },
+  ContextMenuClick { window_id: u32, id: String },
   #[serde(rename_all = "camelCase")]
   KeyboardEvent {
     window_id: u32,
@@ -189,10 +180,7 @@ pub enum DesktopEvent {
     meta: bool,
   },
   #[serde(rename_all = "camelCase")]
-  FocusChanged {
-    window_id: u32,
-    focused: bool,
-  },
+  FocusChanged { window_id: u32, focused: bool },
   #[serde(rename_all = "camelCase")]
   WindowResize {
     window_id: u32,
@@ -200,15 +188,9 @@ pub enum DesktopEvent {
     height: i32,
   },
   #[serde(rename_all = "camelCase")]
-  WindowMove {
-    window_id: u32,
-    x: i32,
-    y: i32,
-  },
+  WindowMove { window_id: u32, x: i32, y: i32 },
   #[serde(rename_all = "camelCase")]
-  CloseRequested {
-    window_id: u32,
-  },
+  CloseRequested { window_id: u32 },
   #[serde(rename_all = "camelCase")]
   RuntimeError {
     message: String,
@@ -570,9 +552,7 @@ impl BrowserWindow {
     #[smi] y: i32,
     #[serde] menu: Vec<MenuItem>,
   ) {
-    self
-      .api
-      .show_context_menu(self.window_id, x, y, menu);
+    self.api.show_context_menu(self.window_id, x, y, menu);
   }
 
   fn get_native_window(
@@ -593,8 +573,7 @@ impl BrowserWindow {
     let window_id = self.window_id;
 
     Ok(self.surface.get(scope, move |_| {
-      let (win_handle, display_handle) =
-        api.get_raw_window_handle(window_id);
+      let (win_handle, display_handle) = api.get_raw_window_handle(window_id);
 
       // SAFETY: The raw handles are valid for the lifetime of the window,
       // which is guaranteed by the BrowserWindow preventing the window from
@@ -797,10 +776,7 @@ static ERROR_REPORT_CONFIG: OnceLock<ErrorReportConfig> = OnceLock::new();
 
 /// Store the error reporting URL and app version so the panic hook can
 /// send reports without access to OpState.
-pub fn set_error_report_config(
-  url: String,
-  app_version: Option<String>,
-) {
+pub fn set_error_report_config(url: String, app_version: Option<String>) {
   let _ = ERROR_REPORT_CONFIG.set(ErrorReportConfig { url, app_version });
 }
 
@@ -851,10 +827,9 @@ pub fn send_error_report(url: &str, body: &str) {
           return;
         };
         runtime.block_on(async move {
-          let Ok(client) = deno_fetch::create_http_client(
-            "deno-desktop",
-            Default::default(),
-          ) else {
+          let Ok(client) =
+            deno_fetch::create_http_client("deno-desktop", Default::default())
+          else {
             return;
           };
           let Ok(uri) = url_str.parse::<http::Uri>() else {
@@ -888,9 +863,7 @@ fn op_desktop_send_error_report(
   // For HTTP(S) URLs, prefer the client from OpState (has user's TLS config).
   if let Ok(ref parsed) = parsed {
     if matches!(parsed.scheme(), "http" | "https") {
-      if let Ok(client) =
-        deno_fetch::get_or_create_client_from_state(state)
-      {
+      if let Ok(client) = deno_fetch::get_or_create_client_from_state(state) {
         let url_str = parsed.to_string();
         let body = body.to_string();
         let _ = std::thread::spawn(move || {
