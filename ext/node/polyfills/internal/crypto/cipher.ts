@@ -415,12 +415,18 @@ Cipheriv.prototype.update = function (
   _lazyInitCipherDecoder(this, outputEncoding);
 
   // CCM: buffer data and return empty; actual encryption in final()
+  // Node requires exactly one update() call for CCM mode.
   if (this._isCCM) {
+    if (this._ccmDataLength > 0) {
+      throw new Error(
+        "message cannot be fragmented across multiple calls to update",
+      );
+    }
     const maxSize = ccmMaxMessageSize(this._ccmIvLength);
-    if (this._ccmDataLength + buf.length > maxSize) {
+    if (buf.length > maxSize) {
       throw new Error("Invalid message length");
     }
-    this._ccmDataLength += buf.length;
+    this._ccmDataLength = buf.length;
     op_node_cipheriv_encrypt(this._context, buf, new Uint8Array(0));
     const empty = Buffer.alloc(0);
     return outputEncoding !== "buffer" ? "" : empty;
@@ -751,12 +757,18 @@ Decipheriv.prototype.update = function (
   _lazyInitDecipherDecoder(this, outputEncoding);
 
   // CCM: buffer ciphertext and return empty; actual decryption in final()
+  // Node requires exactly one update() call for CCM mode.
   if (this._isCCM) {
+    if (this._ccmDataLength > 0) {
+      throw new Error(
+        "message cannot be fragmented across multiple calls to update",
+      );
+    }
     const maxSize = ccmMaxMessageSize(this._ccmIvLength);
-    if (this._ccmDataLength + buf.length > maxSize) {
+    if (buf.length > maxSize) {
       throw new Error("Invalid message length");
     }
-    this._ccmDataLength += buf.length;
+    this._ccmDataLength = buf.length;
     op_node_decipheriv_decrypt(this._context, buf, new Uint8Array(0));
     const empty = Buffer.alloc(0);
     return outputEncoding !== "buffer" ? "" : empty;
