@@ -24,6 +24,7 @@ pub enum TestingNotification {
   Module(testing_lsp_custom::TestModuleNotificationParams),
   DeleteModule(testing_lsp_custom::TestModuleDeleteNotificationParams),
   Progress(testing_lsp_custom::TestRunProgressParams),
+  Coverage(testing_lsp_custom::CoverageNotificationParams),
 }
 
 #[derive(Clone)]
@@ -274,6 +275,14 @@ impl ClientTrait for TowerClient {
         self
           .0
           .send_notification::<testing_lsp_custom::TestRunProgressNotification>(
+            params,
+          )
+          .await
+      }
+      TestingNotification::Coverage(params) => {
+        self
+          .0
+          .send_notification::<testing_lsp_custom::CoverageNotification>(
             params,
           )
           .await

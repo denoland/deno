@@ -3,6 +3,9 @@
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::collections::HashSet;
+use std::fs;
+use std::path::Path;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 use std::time::Instant;
@@ -15,6 +18,7 @@ use deno_core::futures::StreamExt;
 use deno_core::futures::future;
 use deno_core::futures::stream;
 use deno_core::parking_lot::RwLock;
+use deno_core::serde_json;
 use deno_core::unsync::spawn;
 use deno_core::unsync::spawn_blocking;
 use deno_runtime::deno_permissions::Permissions;
@@ -27,6 +31,7 @@ use tower_lsp::lsp_types as lsp;
 use super::definitions::TestDefinition;
 use super::definitions::TestModule;
 use super::lsp_custom;
+use super::lsp_custom::FileCoverage;
 use super::server::TestServerTests;
 use crate::args::DenoSubcommand;
 use crate::args::flags_from_vec;
@@ -43,6 +48,7 @@ use crate::tools::test;
 use crate::tools::test::FailFastTracker;
 use crate::tools::test::TestFailure;
 use crate::tools::test::TestFailureFormatOptions;
+use crate::cdp;
 use crate::tools::test::create_test_event_channel;
 
 /// Logic to convert a test request into a set of test modules to be tested and
@@ -468,6 +474,29 @@ impl TestRun {
 
     result??;
 
+    if let Some(coverage_dir) = self.coverage_dir() {
+      match collect_coverage_from_dir(&coverage_dir) {
+        Ok(files) => {
+          if !files.is_empty() {
+            client.send_test_notification(
+              TestingNotification::Coverage(
+                lsp_custom::CoverageNotificationParams {
+                  id: self.id,
+                  files,
+                },
+              ),
+            );
+          }
+        }
+        Err(err) => {
+          lsp_log!("Failed to collect LSP coverage data: {}", err);
+        }
+      }
+      if let Err(err) = fs::remove_dir_all(&coverage_dir) {
+        lsp_log!("Failed to clean up LSP coverage directory: {}", err);
+      }
+    }
+
     Ok(())
   }
 
@@ -507,7 +536,20 @@ impl TestRun {
     {
       args.push(Cow::Borrowed("--inspect"));
     }
+    if self.kind == lsp_custom::TestRunKind::Coverage {
+      if let Some(dir) = self.coverage_dir() {
+        args.push(Cow::Owned(format!("--coverage={}", dir.display())));
+      }
+    }
     args
+  }
+
+  fn coverage_dir(&self) -> Option<PathBuf> {
+    if self.kind == lsp_custom::TestRunKind::Coverage {
+      Some(std::env::temp_dir().join(format!("deno_lsp_coverage_{}", self.id)))
+    } else {
+      None
+    }
   }
 }
 
@@ -826,6 +868,9 @@ impl LspTestReporter {
 
 #[cfg(test)]
 mod tests {
+  use std::fs::File;
+  use std::io::Write;
+
   use deno_core::serde_json::json;
 
   use super::*;
@@ -926,4 +971,325 @@ mod tests {
       ]
     );
   }
+
+  #[test]
+  fn test_compute_line_char_offsets() {
+    let offsets = compute_line_char_offsets("abc\ndef\nghi");
+    assert_eq!(offsets, vec![0, 4, 8]);
+  }
+
+  #[test]
+  fn test_compute_line_char_offsets_empty() {
+    let offsets = compute_line_char_offsets("");
+    assert_eq!(offsets, vec![0]);
+  }
+
+  #[test]
+  fn test_get_line_text() {
+    let source = "hello\nworld";
+    assert_eq!(get_line_text(source, 0, 5), "hello");
+    assert_eq!(get_line_text(source, 6, 11), "world");
+  }
+
+  #[test]
+  fn test_collect_coverage_from_dir() {
+    let dir = std::env::temp_dir().join("deno_lsp_coverage_test");
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).unwrap();
+
+    // Write a test source file
+    let src_dir = dir.join("src");
+    fs::create_dir_all(&src_dir).unwrap();
+    let src_file = src_dir.join("test.ts");
+    fs::write(
+      &src_file,
+      "function add(a, b) {\n  return a + b;\n}\nfunction unused() {\n  return 0;\n}\n",
+    )
+    .unwrap();
+
+    let src_url = format!("file://{}", src_file.display());
+
+    // Write a V8 ScriptCoverage JSON
+    let coverage = serde_json::json!({
+      "scriptId": "1",
+      "url": src_url,
+      "functions": [
+        {
+          "functionName": "add",
+          "ranges": [
+            { "startOffset": 0, "endOffset": 42, "count": 1 }
+          ],
+          "isBlockCoverage": true
+        },
+        {
+          "functionName": "unused",
+          "ranges": [
+            { "startOffset": 43, "endOffset": 73, "count": 0 }
+          ],
+          "isBlockCoverage": true
+        }
+      ]
+    });
+
+    let cov_path = dir.join("coverage_1.json");
+    let mut file = File::create(&cov_path).unwrap();
+    file
+      .write_all(serde_json::to_string(&coverage).unwrap().as_bytes())
+      .unwrap();
+
+    let result = collect_coverage_from_dir(&dir).unwrap();
+    assert_eq!(result.len(), 1);
+
+    let file_cov = &result[0];
+    // Lines 1-3 are in the "add" function (count=1) — covered
+    // Lines 4-6 are in "unused" function (count=0) — uncovered
+    assert!(!file_cov.covered_lines.is_empty());
+    assert!(!file_cov.uncovered_lines.is_empty());
+    assert!(file_cov.coverage_percent > 0.0);
+    assert!(file_cov.coverage_percent < 100.0);
+
+    // Cleanup
+    let _ = fs::remove_dir_all(&dir);
+  }
+
+  #[test]
+  fn test_collect_coverage_skips_internal() {
+    let dir = std::env::temp_dir().join("deno_lsp_coverage_test_internal");
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).unwrap();
+
+    // Write coverage for an internal script
+    let coverage = serde_json::json!({
+      "scriptId": "1",
+      "url": "ext:core/01_core.js",
+      "functions": [{
+        "functionName": "",
+        "ranges": [{ "startOffset": 0, "endOffset": 100, "count": 1 }],
+        "isBlockCoverage": true
+      }]
+    });
+
+    let cov_path = dir.join("coverage_1.json");
+    let mut file = File::create(&cov_path).unwrap();
+    file
+      .write_all(serde_json::to_string(&coverage).unwrap().as_bytes())
+      .unwrap();
+
+    let result = collect_coverage_from_dir(&dir).unwrap();
+    assert!(result.is_empty());
+
+    let _ = fs::remove_dir_all(&dir);
+  }
+
+  #[test]
+  fn test_collect_coverage_empty_dir() {
+    let dir = std::env::temp_dir().join("deno_lsp_coverage_test_empty");
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).unwrap();
+
+    let result = collect_coverage_from_dir(&dir).unwrap();
+    assert!(result.is_empty());
+
+    let _ = fs::remove_dir_all(&dir);
+  }
+
+  #[test]
+  fn test_collect_coverage_nonexistent_dir() {
+    let dir =
+      std::env::temp_dir().join("deno_lsp_coverage_test_nonexistent");
+    let _ = fs::remove_dir_all(&dir);
+    let result = collect_coverage_from_dir(&dir).unwrap();
+    assert!(result.is_empty());
+  }
+}
+
+
+/// Reads V8 ScriptCoverage JSON files from a directory and produces
+/// per-file line-level coverage data suitable for editor display.
+fn collect_coverage_from_dir(
+  dir: &Path,
+) -> Result<Vec<FileCoverage>, deno_core::error::AnyError> {
+  let entries = match fs::read_dir(dir) {
+    Ok(e) => e,
+    Err(_) => return Ok(Vec::new()),
+  };
+
+  // Parse all coverage JSON files into typed ScriptCoverage structs.
+  let mut coverages_by_url: HashMap<String, Vec<cdp::ScriptCoverage>> =
+    HashMap::new();
+  for entry in entries.flatten() {
+    let path = entry.path();
+    if path.extension().and_then(|s| s.to_str()) != Some("json") {
+      continue;
+    }
+    let json_text = match fs::read_to_string(&path) {
+      Ok(t) => t,
+      Err(_) => continue,
+    };
+    let script_cov: cdp::ScriptCoverage = match serde_json::from_str(&json_text)
+    {
+      Ok(v) => v,
+      Err(_) => continue,
+    };
+
+    // Skip internal/synthetic scripts.
+    if script_cov.url.starts_with("ext:")
+      || script_cov.url.starts_with("data:")
+      || script_cov.url.starts_with("blob:")
+      || script_cov.url.ends_with("__anonymous__")
+      || script_cov.url.ends_with("$deno$test.mjs")
+      || script_cov.url.contains("/$deno$stdin.")
+    {
+      continue;
+    }
+
+    coverages_by_url
+      .entry(script_cov.url.clone())
+      .or_default()
+      .push(script_cov);
+  }
+
+  let mut files = Vec::new();
+
+  for (url, script_coverages) in &coverages_by_url {
+    // Read the source file to determine line boundaries.
+    let file_path = url.trim_start_matches("file://");
+    let source = match fs::read_to_string(file_path) {
+      Ok(s) => s,
+      Err(_) => continue,
+    };
+
+    let line_offsets = compute_line_char_offsets(&source);
+    let total_lines = line_offsets.len();
+
+    // Compute line-level hit counts using the innermost-range algorithm,
+    // consistent with `deno coverage`.
+    let mut line_counts: Vec<i64> = vec![0; total_lines];
+
+    for script_cov in script_coverages {
+      for line_index in 0..total_lines {
+        let line_start = line_offsets[line_index];
+        let line_end = if line_index + 1 < total_lines {
+          line_offsets[line_index + 1]
+        } else {
+          source.chars().count()
+        };
+
+        // Skip empty/whitespace-only lines.
+        let line_text = get_line_text(&source, line_start, line_end);
+        if line_text.trim().is_empty() {
+          line_counts[line_index] = -1; // sentinel: not a code line
+          continue;
+        }
+
+        // Find the innermost (smallest) range fully covering this line.
+        let mut best_count: Option<i64> = None;
+        let mut best_size = usize::MAX;
+        for function in &script_cov.functions {
+          for range in &function.ranges {
+            if range.start_char_offset <= line_start
+              && range.end_char_offset >= line_end
+            {
+              let size = range.end_char_offset - range.start_char_offset;
+              if size < best_size {
+                best_size = size;
+                best_count = Some(range.count);
+              }
+            }
+          }
+        }
+
+        if let Some(count) = best_count {
+          // Take the max across multiple coverage files for the same script.
+          if line_counts[line_index] < 0 {
+            line_counts[line_index] = count;
+          } else {
+            line_counts[line_index] =
+              std::cmp::max(line_counts[line_index], count);
+          }
+        }
+
+        // Zero-count ranges that reach a line edge should zero out the line.
+        for function in &script_cov.functions {
+          for range in &function.ranges {
+            if range.count > 0 {
+              continue;
+            }
+            let overlaps = range.start_char_offset < line_end
+              && range.end_char_offset > line_start;
+            let reaches_edge = range.start_char_offset <= line_start
+              || range.end_char_offset >= line_end;
+            if overlaps && reaches_edge {
+              line_counts[line_index] = 0;
+            }
+          }
+        }
+      }
+    }
+
+    let mut covered_lines = Vec::new();
+    let mut uncovered_lines = Vec::new();
+
+    for (i, &count) in line_counts.iter().enumerate() {
+      if count < 0 {
+        continue; // not a code line
+      }
+      let line_number = (i + 1) as u32; // 1-indexed
+      if count > 0 {
+        covered_lines.push(line_number);
+      } else {
+        uncovered_lines.push(line_number);
+      }
+    }
+
+    let total_code_lines = covered_lines.len() + uncovered_lines.len();
+    let coverage_percent = if total_code_lines > 0 {
+      (covered_lines.len() as f64 / total_code_lines as f64) * 100.0
+    } else {
+      100.0
+    };
+
+    let uri = match uri_parse_unencoded(url) {
+      Ok(u) => u,
+      Err(_) => continue,
+    };
+
+    files.push(FileCoverage {
+      uri,
+      covered_lines,
+      uncovered_lines,
+      coverage_percent,
+    });
+  }
+
+  // Sort by URI for deterministic output.
+  files.sort_by(|a, b| a.uri.as_str().cmp(b.uri.as_str()));
+
+  Ok(files)
+}
+
+/// Returns the character offset of the start of each line (0-indexed lines).
+fn compute_line_char_offsets(source: &str) -> Vec<usize> {
+  let mut offsets = vec![0usize];
+  for (i, c) in source.chars().enumerate() {
+    if c == '\n' {
+      offsets.push(i + 1);
+    }
+  }
+  offsets
+}
+
+/// Extracts the text of a line given character offsets.
+fn get_line_text(source: &str, start_char: usize, end_char: usize) -> &str {
+  let start_byte = source
+    .char_indices()
+    .nth(start_char)
+    .map(|(i, _)| i)
+    .unwrap_or(source.len());
+  let end_byte = source
+    .char_indices()
+    .nth(end_char)
+    .map(|(i, _)| i)
+    .unwrap_or(source.len());
+  &source[start_byte..end_byte]
 }
