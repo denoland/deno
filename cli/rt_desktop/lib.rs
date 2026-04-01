@@ -254,7 +254,10 @@ impl denort::desktop::DesktopApi for WefDesktopApi {
     script: &str,
     callback: Box<
       dyn FnOnce(
-        Result<deno_runtime::ops::desktop::DesktopValue, String>,
+        Result<
+          deno_runtime::ops::desktop::DesktopValue,
+          deno_runtime::ops::desktop::DesktopValue,
+        >,
       ) + Send
         + 'static,
     >,
@@ -264,10 +267,7 @@ impl denort::desktop::DesktopApi for WefDesktopApi {
       Some(move |result: Result<wef::Value, wef::Value>| {
         callback(match result {
           Ok(val) => Ok(wef_value_to_desktop_value(val)),
-          Err(err) => Err(match err {
-            wef::Value::String(s) => s,
-            _ => "execute_js failed".to_string(),
-          }),
+          Err(err) => Err(wef_value_to_desktop_value(err)),
         });
       }),
     );

@@ -78,6 +78,35 @@ impl<'a> ToV8<'a> for DesktopValue {
   }
 }
 
+/// Wraps a `Result<DesktopValue, DesktopValue>` from `execute_js`.
+/// Converts to `{ ok: true, value }` or `{ ok: false, value }`.
+pub struct ExecuteJsResult(pub Result<DesktopValue, DesktopValue>);
+
+impl<'a> ToV8<'a> for ExecuteJsResult {
+  type Error = std::convert::Infallible;
+
+  fn to_v8(
+    self,
+    scope: &mut v8::PinScope<'a, '_>,
+  ) -> Result<v8::Local<'a, v8::Value>, Self::Error> {
+    let obj = v8::Object::new(scope);
+
+    let ok_key: v8::Local<v8::Value> =
+      v8::String::new(scope, "ok").unwrap().into();
+    let value_key: v8::Local<v8::Value> =
+      v8::String::new(scope, "value").unwrap().into();
+
+    let (ok, val) = match self.0 {
+      Ok(v) => (true, v.to_v8(scope)?),
+      Err(v) => (false, v.to_v8(scope)?),
+    };
+
+    obj.set(scope, ok_key, v8::Boolean::new(scope, ok).into());
+    obj.set(scope, value_key, val);
+    Ok(obj.into())
+  }
+}
+
 /// A single event type that flows from the WEF backend to the Deno runtime.
 #[derive(Debug, serde::Serialize)]
 #[serde(tag = "kind", rename_all = "camelCase")]
@@ -295,7 +324,7 @@ pub trait DesktopApi: Send + Sync + 'static {
     window_id: u32,
     script: &str,
     callback: Box<
-      dyn FnOnce(Result<DesktopValue, String>) + Send + 'static,
+      dyn FnOnce(Result<DesktopValue, DesktopValue>) + Send + 'static,
     >,
   );
 
@@ -515,7 +544,7 @@ impl BrowserWindow {
   async fn execute_js(
     &self,
     #[string] script: String,
-  ) -> Result<DesktopValue, deno_error::JsErrorBox> {
+  ) -> Result<ExecuteJsResult, deno_error::JsErrorBox> {
     let (tx, rx) = tokio::sync::oneshot::channel();
     self.api.execute_js(
       self.window_id,
@@ -524,11 +553,10 @@ impl BrowserWindow {
         let _ = tx.send(result);
       }),
     );
-    rx.await
-      .map_err(|_| {
-        deno_error::JsErrorBox::generic("execute_js callback dropped")
-      })?
-      .map_err(|e| deno_error::JsErrorBox::generic(e))
+    let result = rx.await.map_err(|_| {
+      deno_error::JsErrorBox::generic("execute_js callback dropped")
+    })?;
+    Ok(ExecuteJsResult(result))
   }
 
   fn set_application_menu(&self, #[serde] menu: Vec<MenuItem>) {
