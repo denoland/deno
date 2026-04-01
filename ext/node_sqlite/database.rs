@@ -330,10 +330,9 @@ impl<'a> FromV8<'a> for DatabaseSyncOptions {
         })?;
 
       for (idx, limit_info) in LIMIT_MAPPING.iter().enumerate() {
-        let key =
-          v8::String::new(scope, limit_info.js_name).ok_or_else(|| {
-            Error::InvalidArgType("Failed to create limit key string.")
-          })?;
+        let key = v8::String::new(scope, limit_info.js_name).ok_or({
+          Error::InvalidArgType("Failed to create limit key string.")
+        })?;
 
         if let Some(val) = limits_obj.get(scope, key.into())
           && !val.is_undefined()
@@ -2719,8 +2718,8 @@ impl DatabaseSyncLimits {
     self.get_limit(Limit::SQLITE_LIMIT_SQL_LENGTH)
   }
 
-  #[rename("sqlLength")]
   #[setter]
+  #[rename("sqlLength")]
   fn sql_length(
     &self,
     scope: &mut v8::PinScope<'_, '_>,
@@ -2749,8 +2748,8 @@ impl DatabaseSyncLimits {
     self.get_limit(Limit::SQLITE_LIMIT_EXPR_DEPTH)
   }
 
-  #[rename("exprDepth")]
   #[setter]
+  #[rename("exprDepth")]
   fn expr_depth(
     &self,
     scope: &mut v8::PinScope<'_, '_>,
@@ -2765,8 +2764,8 @@ impl DatabaseSyncLimits {
     self.get_limit(Limit::SQLITE_LIMIT_COMPOUND_SELECT)
   }
 
-  #[rename("compoundSelect")]
   #[setter]
+  #[rename("compoundSelect")]
   fn compound_select(
     &self,
     scope: &mut v8::PinScope<'_, '_>,
@@ -2781,8 +2780,8 @@ impl DatabaseSyncLimits {
     self.get_limit(Limit::SQLITE_LIMIT_VDBE_OP)
   }
 
-  #[rename("vdbeOp")]
   #[setter]
+  #[rename("vdbeOp")]
   fn vdbe_op(
     &self,
     scope: &mut v8::PinScope<'_, '_>,
@@ -2797,8 +2796,8 @@ impl DatabaseSyncLimits {
     self.get_limit(Limit::SQLITE_LIMIT_FUNCTION_ARG)
   }
 
-  #[rename("functionArg")]
   #[setter]
+  #[rename("functionArg")]
   fn function_arg(
     &self,
     scope: &mut v8::PinScope<'_, '_>,
@@ -2827,8 +2826,8 @@ impl DatabaseSyncLimits {
     self.get_limit(Limit::SQLITE_LIMIT_LIKE_PATTERN_LENGTH)
   }
 
-  #[rename("likePatternLength")]
   #[setter]
+  #[rename("likePatternLength")]
   fn like_pattern_length(
     &self,
     scope: &mut v8::PinScope<'_, '_>,
@@ -2843,8 +2842,8 @@ impl DatabaseSyncLimits {
     self.get_limit(Limit::SQLITE_LIMIT_VARIABLE_NUMBER)
   }
 
-  #[rename("variableNumber")]
   #[setter]
+  #[rename("variableNumber")]
   fn variable_number(
     &self,
     scope: &mut v8::PinScope<'_, '_>,
@@ -2859,8 +2858,8 @@ impl DatabaseSyncLimits {
     self.get_limit(Limit::SQLITE_LIMIT_TRIGGER_DEPTH)
   }
 
-  #[rename("triggerDepth")]
   #[setter]
+  #[rename("triggerDepth")]
   fn trigger_depth(
     &self,
     scope: &mut v8::PinScope<'_, '_>,
