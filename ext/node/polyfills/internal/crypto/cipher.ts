@@ -221,7 +221,7 @@ export function Cipheriv(
   this._needsBlockCache =
     !(cipher == "aes-128-gcm" || cipher == "aes-256-gcm" ||
       cipher == "aes-128-ctr" || cipher == "aes-192-ctr" ||
-      cipher == "aes-256-ctr");
+      cipher == "aes-256-ctr" || cipher == "chacha20-poly1305");
   this._authTag = undefined;
   this._autoPadding = true;
   this._finalized = false;
@@ -295,6 +295,9 @@ Cipheriv.prototype.setAAD = function (
     plaintextLength: number;
   },
 ) {
+  if (this._finalized) {
+    throw new ERR_CRYPTO_INVALID_STATE("setAAD");
+  }
   op_node_cipheriv_set_aad(this._context, buffer);
   return this;
 };
@@ -464,7 +467,7 @@ export function Decipheriv(
   this._needsBlockCache =
     !(cipher == "aes-128-gcm" || cipher == "aes-256-gcm" ||
       cipher == "aes-128-ctr" || cipher == "aes-192-ctr" ||
-      cipher == "aes-256-ctr");
+      cipher == "aes-256-ctr" || cipher == "chacha20-poly1305");
   this._authTag = undefined;
   this._finalized = false;
   this._decoder = undefined;
@@ -531,6 +534,9 @@ Decipheriv.prototype.setAAD = function (
     plaintextLength: number;
   },
 ) {
+  if (this._finalized) {
+    throw new ERR_CRYPTO_INVALID_STATE("setAAD");
+  }
   op_node_decipheriv_set_aad(this._context, buffer);
   return this;
 };
@@ -539,6 +545,9 @@ Decipheriv.prototype.setAuthTag = function (
   buffer: BinaryLike,
   _encoding?: string,
 ) {
+  if (this._authTag) {
+    throw new ERR_CRYPTO_INVALID_STATE("setAuthTag");
+  }
   op_node_decipheriv_auth_tag(this._context, buffer.byteLength);
   this._authTag = buffer;
   return this;

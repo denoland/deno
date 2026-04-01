@@ -15,6 +15,7 @@ use deno_core::parking_lot::Mutex;
 
 static LSP_DEBUG_FLAG: AtomicBool = AtomicBool::new(false);
 static LSP_LOG_LEVEL: AtomicUsize = AtomicUsize::new(log::Level::Info as usize);
+#[allow(dead_code, reason = "part of LSP logging infrastructure")]
 static LSP_WARN_LEVEL: AtomicUsize =
   AtomicUsize::new(log::Level::Warn as usize);
 static LOG_FILE: LogFile = LogFile {
@@ -92,6 +93,7 @@ pub fn lsp_debug_enabled() -> bool {
 }
 
 /// Change the lsp to log at the provided level.
+#[allow(dead_code, reason = "part of LSP logging infrastructure")]
 pub fn set_lsp_log_level(level: log::Level) {
   LSP_LOG_LEVEL.store(level as usize, Ordering::SeqCst)
 }
@@ -103,6 +105,7 @@ pub fn lsp_log_level() -> log::Level {
 }
 
 /// Change the lsp to warn at the provided level.
+#[allow(dead_code, reason = "part of LSP logging infrastructure")]
 pub fn set_lsp_warn_level(level: log::Level) {
   LSP_WARN_LEVEL.store(level as usize, Ordering::SeqCst)
 }

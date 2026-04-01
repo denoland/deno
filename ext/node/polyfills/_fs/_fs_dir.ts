@@ -15,6 +15,8 @@ const {
   Uint8ArrayPrototype,
   PromisePrototypeThen,
   SymbolAsyncIterator,
+  SymbolAsyncDispose,
+  SymbolDispose,
   ArrayIteratorPrototypeNext,
   AsyncGeneratorPrototypeNext,
   SymbolIterator,
@@ -108,6 +110,14 @@ export default class Dir {
    */
   closeSync() {
     //No op
+  }
+
+  [SymbolDispose]() {
+    this.closeSync();
+  }
+
+  [SymbolAsyncDispose](): Promise<void> {
+    return this.close();
   }
 
   async *[SymbolAsyncIterator](): AsyncIterableIterator<Dirent> {

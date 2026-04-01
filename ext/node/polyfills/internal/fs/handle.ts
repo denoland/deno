@@ -318,7 +318,7 @@ export class FileHandle extends EventEmitter {
 
   readLines(options?: CreateReadStreamOptions): ReadlineInterface {
     return createInterface({
-      input: this.createReadStream({ ...options, autoClose: false }),
+      input: this.createReadStream(options),
       crlfDelay: Infinity,
     });
   }

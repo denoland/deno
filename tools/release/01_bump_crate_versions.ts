@@ -10,13 +10,21 @@ const denoRtCrate = workspace.getDenoRtCrate();
 const denoLibCrate = workspace.getDenoLibCrate();
 const originalCliVersion = cliCrate.version;
 
-if (Deno.args.some((a) => a === "--rc")) {
+const prereleaseKind = (["--rc", "--alpha", "--beta"] as const).find((a) =>
+  Deno.args.includes(a)
+);
+if (prereleaseKind) {
+  const tag = prereleaseKind.slice(2); // "rc", "alpha", or "beta"
   let cliVersion = semver.parse(cliCrate.version)!;
 
-  if (cliVersion.prerelease?.[0] != "rc") {
+  if (!cliVersion.prerelease?.length) {
+    // Transitioning from stable (e.g. 2.7.0 -> 2.8.0-alpha.0)
     cliVersion = semver.increment(cliVersion, "minor");
+  } else if (cliVersion.prerelease[0] != tag) {
+    // Transitioning between prerelease kinds (e.g. 3.0.0-alpha.12 -> 3.0.0-beta.0)
+    cliVersion = { ...cliVersion, prerelease: undefined };
   }
-  cliVersion = increment(cliVersion, "prerelease", { prerelease: "rc" });
+  cliVersion = increment(cliVersion, "prerelease", { prerelease: tag });
 
   const version = cliVersion.toString();
 
@@ -128,7 +136,7 @@ async function getGitLog() {
 
 async function bumpCiCacheVersion() {
   const generateScript = workspace.repo.folderPath.join(
-    ".github/workflows/ci.generate.ts",
+    ".github/workflows/ci.ts",
   );
   const fileText = generateScript.readTextSync();
   const cacheVersionRegex = /const cacheVersion = ([0-9]+);/;

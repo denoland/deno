@@ -263,7 +263,14 @@ pub struct SpawnArgs {
   timeout: Option<u64>,
   #[cfg(unix)]
   #[serde(default)]
-  kill_signal: Option<String>,
+  kill_signal: Option<KillSignal>,
+}
+
+#[derive(Clone, Deserialize)]
+#[serde(untagged)]
+enum KillSignal {
+  Number(i32),
+  String(String),
 }
 
 #[derive(Deserialize)]
@@ -1133,7 +1140,7 @@ fn op_spawn_sync(
   let input = args.input.clone();
   let timeout = args.timeout;
   #[cfg(unix)]
-  let kill_signal_str = args.kill_signal.clone();
+  let kill_signal = args.kill_signal.clone();
   let (mut command, _, _, _) =
     create_command(state, args, "Deno.Command().outputSync()")?;
 
@@ -1198,12 +1205,12 @@ fn op_spawn_sync(
     let killed = killed_by_timeout.clone();
     let cancel2 = cancel.clone();
     #[cfg(unix)]
-    let signal = {
-      let kill_signal = kill_signal_str.as_deref().unwrap_or("SIGTERM");
-      deno_signals::signal_str_to_int(kill_signal)
-        .ok()
-        .or_else(|| kill_signal.parse::<i32>().ok())
-        .unwrap_or(libc::SIGTERM)
+    let signal: i32 = match &kill_signal {
+      Some(KillSignal::Number(n)) => *n,
+      Some(KillSignal::String(s)) => {
+        deno_signals::signal_str_to_int(s).unwrap_or(libc::SIGTERM)
+      }
+      None => libc::SIGTERM,
     };
     std::thread::spawn(move || {
       let (lock, cvar) = &*cancel2;
@@ -1221,6 +1228,10 @@ fn op_spawn_sync(
       // SAFETY: child_id is a valid PID from the spawned child process.
       // We use negative PID to kill the entire process group (created via
       // process_group(0) above), ensuring shell children are also killed.
+      // NOTE: There is a minor theoretical race window where the child
+      // could exit and its PID get recycled between wait() returning and
+      // the condvar cancel reaching this thread. In practice the condvar
+      // cancellation is near-instant so this window is negligible.
       unsafe {
         libc::kill(-(child_id as i32), signal);
       }
@@ -1267,30 +1278,10 @@ fn op_spawn_sync(
   let timed_out = killed_by_timeout.load(Ordering::SeqCst);
 
   // Collect stdout/stderr. On Unix, the process group kill ensures all
-  // children are dead and pipes reach EOF. On Windows (or when not timed
-  // out), pipe readers complete when the child exits normally. If timed
-  // out on Windows, grandchildren may still hold pipes open, so we use a
-  // short join timeout to avoid blocking indefinitely.
-  let collect_pipe = |handle: Option<std::thread::JoinHandle<Vec<u8>>>| {
-    let h = handle?;
-    if timed_out {
-      // Give pipe readers a brief window to flush, then give up.
-      // On Unix this completes immediately (process group killed).
-      // On Windows this avoids blocking on orphaned grandchildren.
-      let start = std::time::Instant::now();
-      loop {
-        if h.is_finished() {
-          return h.join().ok();
-        }
-        if start.elapsed() > std::time::Duration::from_millis(200) {
-          return None;
-        }
-        std::thread::sleep(std::time::Duration::from_millis(10));
-      }
-    } else {
-      h.join().ok()
-    }
-  };
+  // children are dead and pipes reach EOF, so join() completes promptly.
+  // On Windows, TerminateProcess closes the child's pipe ends too.
+  let collect_pipe =
+    |handle: Option<std::thread::JoinHandle<Vec<u8>>>| handle?.join().ok();
   let stdout_bytes = collect_pipe(stdout_handle).unwrap_or_default();
   let stderr_bytes = collect_pipe(stderr_handle).unwrap_or_default();
 

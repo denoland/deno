@@ -160,24 +160,7 @@ impl From<ProviderType> for i32 {
   }
 }
 
-pub struct AsyncId(i64);
-
-impl Default for AsyncId {
-  // `kAsyncIdCounter` should start at `1` because that'll be the id the execution
-  // context during bootstrap.
-  fn default() -> Self {
-    Self(1)
-  }
-}
-
-impl AsyncId {
-  // Increment the internal id counter and return the value.
-  #[allow(clippy::should_implement_trait, reason = "this is more clear")]
-  pub fn next(&mut self) -> i64 {
-    self.0 += 1;
-    self.0
-  }
-}
+pub use deno_core::uv_compat::AsyncId;
 
 fn next_async_id(state: &mut OpState) -> i64 {
   state.borrow_mut::<AsyncId>().next()
@@ -333,6 +316,18 @@ impl HandleWrap {
         cb.open(scope).call(scope, recv.into(), &[]);
       }
     };
+
+    // For new-style handles (uv_compat), call uv_compat::uv_close to
+    // properly shut down the libuv handle (e.g. close FDs for TTY).
+    // Without this, the libuv handle cleanup never runs and resources
+    // like PTY master file descriptors are leaked.
+    if let Some(Handle::New(handle)) = &self.handle {
+      // SAFETY: handle is a valid uv_handle_t pointer set during
+      // construction and remains live while HandleWrap is alive.
+      unsafe {
+        uv_compat::uv_close(handle.cast_mut(), None);
+      }
+    }
 
     uv_close(scope, op_state, this, on_close);
     self.state.set(State::Closing);
