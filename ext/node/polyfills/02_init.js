@@ -149,6 +149,7 @@ internals.node = {
   closeIdleConnections,
 };
 
+const nativeModuleExports = requireImpl.nativeModuleExports;
 nativeModuleExports["internal/console/constructor"].bindStreamsLazy(
   nativeModuleExports["console"],
   nativeModuleExports["process"],
