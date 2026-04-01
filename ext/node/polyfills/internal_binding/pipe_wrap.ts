@@ -33,7 +33,7 @@ import {
   op_pipe_windows_wait,
 } from "ext:core/ops";
 import { PipeConn, UnixConn } from "ext:deno_net/01_net.js";
-import { setTimeout } from "ext:deno_web/02_timers.js";
+import { setTimeout } from "node:timers";
 
 const { internalRidSymbol } = core;
 import { notImplemented } from "ext:deno_node/_utils.ts";

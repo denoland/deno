@@ -16,7 +16,7 @@ import {
 } from "ext:core/ops";
 
 import { TextEncoder } from "ext:deno_web/08_text_encoding.js";
-import { setTimeout } from "ext:deno_web/02_timers.js";
+import { clearTimeout, setTimeout } from "node:timers";
 import { updateSpanFromError } from "ext:deno_telemetry/util.ts";
 import {
   _normalizeArgs,
@@ -87,8 +87,6 @@ import {
   restoreSnapshot,
   TRACING_ENABLED,
 } from "ext:deno_telemetry/telemetry.ts";
-import { timerId } from "ext:deno_web/03_abort_signal.js";
-import { clearTimeout as webClearTimeout } from "ext:deno_web/02_timers.js";
 import { resourceForReadableStream } from "ext:deno_web/06_streams.js";
 import { kReinitializeHandle } from "ext:deno_node/internal/net.ts";
 import {
@@ -649,7 +647,7 @@ class ClientRequest extends OutgoingMessage {
         }
         if (this._timeout) {
           this._timeout.removeEventListener("abort", this._timeoutCb);
-          webClearTimeout(this._timeout[timerId]);
+          clearTimeout(this._timeout[timerId]);
         }
         const incoming = new IncomingMessageForClient(this.socket);
         incoming.req = this;
