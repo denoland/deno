@@ -537,6 +537,9 @@ impl CliOptions {
       DenoSubcommand::Add(_) => GraphKind::All,
       DenoSubcommand::Cache(_) => GraphKind::All,
       DenoSubcommand::Check(_) => GraphKind::TypesOnly,
+      DenoSubcommand::Install(InstallFlags::Local(
+        InstallFlagsLocal::Entrypoints(flags),
+      )) if flags.production => GraphKind::CodeOnly,
       DenoSubcommand::Install(InstallFlags::Local(_)) => GraphKind::All,
       _ => self.type_check_mode().as_graph_kind(),
     }
