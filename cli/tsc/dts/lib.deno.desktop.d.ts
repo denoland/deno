@@ -8,6 +8,91 @@
 /// <reference lib="deno.cache" />
 /// <reference lib="es2022.intl" />
 
+declare interface UIEventInit extends EventInit {
+  detail?: number;
+  view?: null;
+}
+
+declare class UIEvent extends Event {
+  constructor(type: string, init?: UIEventInit);
+  readonly detail: number;
+  readonly view: null;
+}
+
+declare interface FocusEventInit extends UIEventInit {
+  relatedTarget?: EventTarget | null;
+}
+
+declare class FocusEvent extends UIEvent {
+  constructor(type: string, init?: FocusEventInit);
+  readonly relatedTarget: EventTarget | null;
+}
+
+declare interface KeyboardEventInit extends UIEventInit {
+  key?: string;
+  code?: string;
+  location?: number;
+  ctrlKey?: boolean;
+  shiftKey?: boolean;
+  altKey?: boolean;
+  metaKey?: boolean;
+  repeat?: boolean;
+  isComposing?: boolean;
+}
+
+declare class KeyboardEvent extends UIEvent {
+  constructor(type: string, init?: KeyboardEventInit);
+  readonly key: string;
+  readonly code: string;
+  readonly location: number;
+  readonly ctrlKey: boolean;
+  readonly shiftKey: boolean;
+  readonly altKey: boolean;
+  readonly metaKey: boolean;
+  readonly repeat: boolean;
+  readonly isComposing: boolean;
+  getModifierState(key: string): boolean;
+}
+
+declare interface MouseEventInit extends UIEventInit {
+  button?: number;
+  clientX?: number;
+  clientY?: number;
+  ctrlKey?: boolean;
+  shiftKey?: boolean;
+  altKey?: boolean;
+  metaKey?: boolean;
+}
+
+declare class MouseEvent extends UIEvent {
+  constructor(type: string, init?: MouseEventInit);
+  readonly button: number;
+  readonly clientX: number;
+  readonly clientY: number;
+  readonly screenX: number;
+  readonly screenY: number;
+  readonly ctrlKey: boolean;
+  readonly shiftKey: boolean;
+  readonly altKey: boolean;
+  readonly metaKey: boolean;
+  getModifierState(key: string): boolean;
+}
+
+declare interface WheelEventInit extends MouseEventInit {
+  deltaX?: number;
+  deltaY?: number;
+  deltaZ?: number;
+  deltaMode?: number;
+}
+
+declare class WheelEvent extends MouseEvent {
+  constructor(type: string, init?: WheelEventInit);
+  readonly deltaX: number;
+  readonly deltaY: number;
+  readonly deltaZ: number;
+  readonly deltaMode: number;
+}
+
 declare namespace Deno {
   export {}; // stop default export type behavior
 
@@ -54,6 +139,28 @@ declare namespace Deno {
     ) => Promise<BrowserWindowValue>;
   };
 
+  export type MenuItem =
+    | {
+      item: {
+        label: string;
+        id?: string;
+        accelerator?: string;
+        enabled: boolean;
+      };
+    }
+    | {
+      submenu: {
+        label: string;
+        items: MenuItem[];
+      };
+    }
+    | "separator"
+    | {
+      role: {
+        role: string;
+      };
+    };
+
   interface BrowserWindowResizeDetail {
     width: number;
     height: number;
@@ -62,6 +169,10 @@ declare namespace Deno {
   interface BrowserWindowMoveDetail {
     x: number;
     y: number;
+  }
+
+  interface MenuClickDetail {
+    id: string;
   }
 
   interface BrowserWindowEventMap {
@@ -82,6 +193,8 @@ declare namespace Deno {
     resize: CustomEvent<BrowserWindowResizeDetail>;
     move: CustomEvent<BrowserWindowMoveDetail>;
     close: Event;
+    menuclick: CustomEvent<MenuClickDetail>;
+    contextmenuclick: CustomEvent<MenuClickDetail>;
   }
 
   type BrowserWindowEventHandlers = {
@@ -93,13 +206,20 @@ declare namespace Deno {
   export interface BrowserWindow<T extends ValidBindings<T> = WindowBindings>
     extends BrowserWindowEventHandlers {}
 
+  export interface UnsafeWindowSurface {
+    getContext(): GPUCanvasContext;
+    present(): void;
+  }
+
   export class BrowserWindow<
     T extends ValidBindings<T> = WindowBindings,
   > extends EventTarget {
     constructor(options?: BrowserWindowOptions);
 
-    bind<N extends keyof T>(name: N, fn: T[N]): void;
-    unbind<N extends keyof T>(name: N): void;
+    readonly windowId: number;
+
+    bind<N extends keyof T>(name: N, fn: T[N]);
+    unbind<N extends keyof T>(name: N);
     /** @throws {BrowserWindowValue} */
     executeJs(script: string): Promise<BrowserWindowValue>;
 
@@ -118,14 +238,20 @@ declare namespace Deno {
     setAlwaysOnTop(alwaysOnTop: boolean);
 
     isClosed(): boolean;
-    close(): void;
+    close();
 
     isVisible(): boolean;
-    show(): void;
-    hide(): void;
-    focus(): void;
-    navigate(url: string): void;
-    reload(): void;
+    show();
+    hide();
+    focus();
+    navigate(url: string);
+    openDevtools();
+    reload();
+
+    setApplicationMenu(menu: MenuItem[]);
+    showContextMenu(x: number, y: number, menu: MenuItem[]);
+
+    getNativeWindow(): UnsafeWindowSurface;
 
     addEventListener<K extends keyof BrowserWindowEventMap>(
       type: K,

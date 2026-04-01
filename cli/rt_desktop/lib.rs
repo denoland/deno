@@ -751,6 +751,58 @@ wef::main!(|| {
     return;
   }
 
+  // Set up panic hook for desktop error reporting.  The error reporting
+  // URL is only known after binary metadata is parsed (in run_desktop),
+  // so the hook reads from a global that gets set later.
+  {
+    let orig_hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |panic_info| {
+      use deno_runtime::ops::desktop::error_report_config;
+      use deno_runtime::ops::desktop::send_error_report;
+
+      if let Some((url, app_version)) = error_report_config() {
+        let message =
+          if let Some(s) = panic_info.payload().downcast_ref::<&str>() {
+            (*s).to_string()
+          } else if let Some(s) =
+            panic_info.payload().downcast_ref::<String>()
+          {
+            s.clone()
+          } else {
+            "Deno runtime panicked".to_string()
+          };
+
+        let location = panic_info.location().map(|l| {
+          format!("at {}:{}:{}", l.file(), l.line(), l.column())
+        });
+
+        let body = deno_core::serde_json::json!({
+          "version": 1,
+          "message": message,
+          "stack": location,
+          "appVersion": app_version,
+          "platform": env::consts::OS,
+          "arch": env::consts::ARCH,
+        });
+        send_error_report(url, &body.to_string());
+      }
+
+      eprintln!("\n============================================================");
+      eprintln!("Deno has panicked. This is a bug in Deno. Please report this");
+      eprintln!("at https://github.com/denoland/deno/issues/new.");
+      eprintln!();
+      eprintln!(
+        "Platform: {} {}",
+        env::consts::OS,
+        env::consts::ARCH
+      );
+      eprintln!();
+
+      orig_hook(panic_info);
+      deno_runtime::exit(1);
+    }));
+  }
+
   denort::init_logging(None, None);
 
   deno_runtime::deno_permissions::mark_standalone();
@@ -1029,6 +1081,14 @@ async fn run_desktop(update_rolled_back: bool) -> Result<(), AnyError> {
     Cow::Owned(args),
     find_section_in_dylib,
   )?;
+
+  // Make the error reporting URL available to the panic hook.
+  if let Some(ref url) = data.metadata.error_reporting_url {
+    deno_runtime::ops::desktop::set_error_report_config(
+      url.clone(),
+      data.metadata.app_version.clone(),
+    );
+  }
 
   deno_runtime::deno_telemetry::init(
     otel_runtime_config(),

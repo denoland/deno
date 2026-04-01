@@ -10,6 +10,7 @@ use std::borrow::Cow;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::sync::OnceLock;
 use std::sync::atomic::AtomicU32;
 use std::sync::atomic::Ordering;
 
@@ -787,23 +788,41 @@ fn op_desktop_alert(
   }
 }
 
-#[op2(fast)]
-fn op_desktop_send_error_report(
-  state: &mut OpState,
-  #[string] url: &str,
-  #[string] body: &str,
-) {
-  let url = url.to_string();
-  let body = body.to_string();
+struct ErrorReportConfig {
+  url: String,
+  app_version: Option<String>,
+}
 
-  let Ok(parsed) = deno_core::url::Url::parse(&url) else {
+static ERROR_REPORT_CONFIG: OnceLock<ErrorReportConfig> = OnceLock::new();
+
+/// Store the error reporting URL and app version so the panic hook can
+/// send reports without access to OpState.
+pub fn set_error_report_config(
+  url: String,
+  app_version: Option<String>,
+) {
+  let _ = ERROR_REPORT_CONFIG.set(ErrorReportConfig { url, app_version });
+}
+
+/// Returns the error reporting URL and app version, if configured.
+pub fn error_report_config() -> Option<(&'static str, Option<&'static str>)> {
+  ERROR_REPORT_CONFIG
+    .get()
+    .map(|c| (c.url.as_str(), c.app_version.as_deref()))
+}
+
+/// Send a JSON error report to the given URL.  Handles `file://`,
+/// `http://`, and `https://` URLs.  Best-effort — never panics.
+/// Safe to call from a panic hook (creates its own tokio runtime for HTTP).
+pub fn send_error_report(url: &str, body: &str) {
+  let Ok(parsed) = deno_core::url::Url::parse(url) else {
     // Not a valid URL — treat as a file path.
-    let mut line = body;
+    let mut line = body.to_string();
     line.push('\n');
     let _ = std::fs::OpenOptions::new()
       .create(true)
       .append(true)
-      .open(&url)
+      .open(url)
       .and_then(|mut f| std::io::Write::write_all(&mut f, line.as_bytes()));
     return;
   };
@@ -811,7 +830,7 @@ fn op_desktop_send_error_report(
   match parsed.scheme() {
     "file" => {
       if let Ok(path) = parsed.to_file_path() {
-        let mut line = body;
+        let mut line = body.to_string();
         line.push('\n');
         let _ = std::fs::OpenOptions::new()
           .create(true)
@@ -821,10 +840,8 @@ fn op_desktop_send_error_report(
       }
     }
     "http" | "https" => {
-      let Ok(client) = deno_fetch::get_or_create_client_from_state(state)
-      else {
-        return;
-      };
+      let url_str = parsed.to_string();
+      let body = body.to_string();
       let _ = std::thread::spawn(move || {
         let Ok(runtime) = tokio::runtime::Builder::new_current_thread()
           .enable_io()
@@ -834,7 +851,13 @@ fn op_desktop_send_error_report(
           return;
         };
         runtime.block_on(async move {
-          let Ok(uri) = parsed.as_str().parse::<http::Uri>() else {
+          let Ok(client) = deno_fetch::create_http_client(
+            "deno-desktop",
+            Default::default(),
+          ) else {
+            return;
+          };
+          let Ok(uri) = url_str.parse::<http::Uri>() else {
             return;
           };
           let mut req =
@@ -852,6 +875,55 @@ fn op_desktop_send_error_report(
     }
     _ => {}
   }
+}
+
+#[op2(fast)]
+fn op_desktop_send_error_report(
+  state: &mut OpState,
+  #[string] url: &str,
+  #[string] body: &str,
+) {
+  let parsed = deno_core::url::Url::parse(url);
+
+  // For HTTP(S) URLs, prefer the client from OpState (has user's TLS config).
+  if let Ok(ref parsed) = parsed {
+    if matches!(parsed.scheme(), "http" | "https") {
+      if let Ok(client) =
+        deno_fetch::get_or_create_client_from_state(state)
+      {
+        let url_str = parsed.to_string();
+        let body = body.to_string();
+        let _ = std::thread::spawn(move || {
+          let Ok(runtime) = tokio::runtime::Builder::new_current_thread()
+            .enable_io()
+            .enable_time()
+            .build()
+          else {
+            return;
+          };
+          runtime.block_on(async move {
+            let Ok(uri) = url_str.parse::<http::Uri>() else {
+              return;
+            };
+            let mut req =
+              http::Request::new(deno_fetch::ReqBody::full(body.into()));
+            *req.method_mut() = http::Method::POST;
+            *req.uri_mut() = uri;
+            req.headers_mut().insert(
+              http::header::CONTENT_TYPE,
+              http::HeaderValue::from_static("application/json"),
+            );
+            let _ = client.send(req).await;
+          });
+        })
+        .join();
+        return;
+      }
+    }
+  }
+
+  // Fall back to the standalone sender for file URLs and non-HTTP.
+  send_error_report(url, body);
 }
 
 #[op2(fast)]
