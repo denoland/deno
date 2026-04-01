@@ -82,7 +82,10 @@
     "parallel/test-assert-calltracker-getCalls.js": {},
     "parallel/test-assert-calltracker-report.js": {},
     "parallel/test-assert-calltracker-verify.js": {},
-    "parallel/test-assert-checktag.js": {},
+    "parallel/test-assert-checktag.js": {
+      "ignore": true,
+      "reason": "globalThis is now deeply equal to a plain object copy because Node.js timers are used as default globals, eliminating the proxy-based timer function difference that previously made them unequal"
+    },
     "parallel/test-assert-class-destructuring.js": {},
     "parallel/test-assert-class.js": {},
     "parallel/test-assert-deep-with-error.js": {},
