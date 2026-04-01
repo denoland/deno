@@ -211,8 +211,16 @@ Deno.test(
   },
 );
 
+// On macOS, FSEvents does not reliably emit remove events for individually
+// watched files. The previous implementation masked this by forwarding
+// unrelated events for any non-existent file to all watchers (the bug
+// behind #27558). Skip on macOS until the notify crate or our watcher
+// can detect removals of individually watched files on this platform.
 Deno.test(
-  { permissions: { read: true, write: true } },
+  {
+    permissions: { read: true, write: true },
+    ignore: Deno.build.os === "darwin",
+  },
   async function watchFsRemove() {
     const testFile = await makeTempFile();
     using watcher = Deno.watchFs(testFile);
