@@ -17,7 +17,6 @@ use super::config::WorkspaceSettings;
 use super::lsp_custom;
 use super::testing::lsp_custom as testing_lsp_custom;
 use crate::lsp::logging::lsp_warn;
-use crate::lsp::repl::get_repl_workspace_settings;
 
 #[derive(Debug)]
 pub enum TestingNotification {
@@ -38,10 +37,6 @@ impl std::fmt::Debug for Client {
 impl Client {
   pub fn from_tower(client: tower_lsp::Client) -> Self {
     Self(Arc::new(TowerClient(client)))
-  }
-
-  pub fn new_for_repl() -> Self {
-    Self(Arc::new(ReplClient))
   }
 
   /// Gets additional methods that should only be called outside
@@ -388,73 +383,5 @@ impl ClientTrait for TowerClient {
       .register_capability(registrations)
       .await
       .map_err(|err| anyhow!("{}", err))
-  }
-}
-
-#[derive(Clone)]
-struct ReplClient;
-
-#[async_trait]
-impl ClientTrait for ReplClient {
-  async fn publish_diagnostics(
-    &self,
-    _uri: lsp::Uri,
-    _diagnostics: Vec<lsp::Diagnostic>,
-    _version: Option<i32>,
-  ) {
-  }
-
-  async fn send_registry_state_notification(
-    &self,
-    _params: lsp_custom::RegistryStateNotificationParams,
-  ) {
-  }
-
-  async fn send_diagnostic_batch_start_notification(&self) {}
-
-  async fn send_diagnostic_batch_end_notification(&self) {}
-  async fn send_test_notification(&self, _params: TestingNotification) {}
-
-  async fn send_did_refresh_deno_configuration_tree_notification(
-    &self,
-    _params: lsp_custom::DidRefreshDenoConfigurationTreeNotificationParams,
-  ) {
-  }
-
-  async fn send_did_change_deno_configuration_notification(
-    &self,
-    _params: lsp_custom::DidChangeDenoConfigurationNotificationParams,
-  ) {
-  }
-
-  async fn send_did_upgrade_check_notification(
-    &self,
-    _params: lsp_custom::DidUpgradeCheckNotificationParams,
-  ) {
-  }
-
-  async fn refresh_diagnostics(&self) -> Result<(), AnyError> {
-    Ok(())
-  }
-
-  async fn workspace_configuration(
-    &self,
-    scopes: Vec<Option<lsp::Uri>>,
-  ) -> Result<Vec<WorkspaceSettings>, AnyError> {
-    Ok(vec![get_repl_workspace_settings(); scopes.len()])
-  }
-
-  async fn show_message(
-    &self,
-    _message_type: lsp::MessageType,
-    _message: String,
-  ) {
-  }
-
-  async fn register_capability(
-    &self,
-    _registrations: Vec<lsp::Registration>,
-  ) -> Result<(), AnyError> {
-    Ok(())
   }
 }
