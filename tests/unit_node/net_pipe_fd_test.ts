@@ -1,28 +1,17 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 //
-// Tests for Pipe.open(fd) via unix socket I/O.
-// Verifies that FdStreamBase correctly handles read/write on raw fds.
+// Tests for Pipe/TCP stream I/O through net.createServer/connect.
+// Uses TCP (not unix sockets) so the tests work on all platforms.
 
 import { assertEquals } from "@std/assert";
 import { Buffer } from "node:buffer";
 import * as net from "node:net";
-import * as path from "node:path";
-import * as os from "node:os";
-import * as fs from "node:fs";
-
-function tmpSockPath(): string {
-  return path.join(
-    os.tmpdir(),
-    `deno_pipe_fd_test_${Deno.pid}_${Math.random().toString(36).slice(2)}.sock`,
-  );
-}
 
 Deno.test({
-  name: "unix socket server and client communicate through pipe",
+  name: "net server and client communicate through pipe",
   sanitizeResources: false,
   sanitizeOps: false,
 }, async () => {
-  const sockPath = tmpSockPath();
   const { promise, resolve } = Promise.withResolvers<string>();
 
   const server = net.createServer((conn) => {
@@ -34,29 +23,23 @@ Deno.test({
     });
   });
 
-  await new Promise<void>((r) => server.listen(sockPath, r));
+  await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+  const { port } = server.address() as net.AddressInfo;
 
-  const client = net.connect(sockPath, () => {
+  const client = net.connect(port, "127.0.0.1", () => {
     client.write("hello from pipe fd test");
     client.end();
   });
 
   const result = await promise;
   assertEquals(result, "hello from pipe fd test");
-
-  try {
-    fs.unlinkSync(sockPath);
-  } catch {
-    // ignore
-  }
 });
 
 Deno.test({
-  name: "unix socket bidirectional communication",
+  name: "net bidirectional communication",
   sanitizeResources: false,
   sanitizeOps: false,
 }, async () => {
-  const sockPath = tmpSockPath();
   const { promise, resolve } = Promise.withResolvers<string>();
 
   const server = net.createServer((conn) => {
@@ -64,9 +47,10 @@ Deno.test({
     conn.end();
   });
 
-  await new Promise<void>((r) => server.listen(sockPath, r));
+  await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+  const { port } = server.address() as net.AddressInfo;
 
-  const client = net.connect(sockPath, () => {
+  const client = net.connect(port, "127.0.0.1", () => {
     let data = "";
     client.on("data", (chunk: Buffer) => data += chunk.toString());
     client.on("end", () => {
@@ -77,10 +61,4 @@ Deno.test({
 
   const result = await promise;
   assertEquals(result, "pong");
-
-  try {
-    fs.unlinkSync(sockPath);
-  } catch {
-    // ignore
-  }
 });
