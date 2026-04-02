@@ -206,11 +206,6 @@ declare namespace Deno {
   export interface BrowserWindow<T extends ValidBindings<T> = WindowBindings>
     extends BrowserWindowEventHandlers {}
 
-  export interface UnsafeWindowSurface {
-    getContext(): GPUCanvasContext;
-    present(): void;
-  }
-
   export class BrowserWindow<
     T extends ValidBindings<T> = WindowBindings,
   > extends EventTarget {
@@ -251,7 +246,7 @@ declare namespace Deno {
     setApplicationMenu(menu: MenuItem[]);
     showContextMenu(x: number, y: number, menu: MenuItem[]);
 
-    getNativeWindow(): UnsafeWindowSurface;
+    getNativeWindow(): Deno.UnsafeWindowSurface;
 
     addEventListener<K extends keyof BrowserWindowEventMap>(
       type: K,

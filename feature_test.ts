@@ -148,13 +148,13 @@ function runAutoTests() {
     record("focus", false, String(e));
   }
 
-  /*// openDevtools
+  // openDevtools
   try {
     win.openDevtools();
     record("openDevtools", true, "no crash");
   } catch (e) {
     record("openDevtools", false, String(e));
-  }*/
+  }
 }
 
 runAutoTests();
@@ -252,6 +252,13 @@ const contextMenuItems: Deno.MenuItem[] = [
 win.bind("triggerContextMenu", async (x: any, y: any) => {
   win.showContextMenu(x as number, y as number, contextMenuItems);
   return null;
+});
+
+// Handle right-click from Deno side (WEF may not forward contextmenu to webview)
+win.addEventListener("mousedown", (e) => {
+  if (e.button === 2) {
+    win.showContextMenu(e.clientX, e.clientY, contextMenuItems);
+  }
 });
 
 win.bind("showAlert", async (msg: unknown) => {
