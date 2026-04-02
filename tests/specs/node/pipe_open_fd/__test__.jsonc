@@ -1,12 +1,14 @@
 {
+  "tempDir": true,
   "tests": {
-    "child_stdout_pipe": {
-      "args": "run -A child_stdout_pipe.ts",
-      "output": "child_stdout_pipe.out"
+    "invalid_fd": {
+      "args": "run -A invalid_fd.ts",
+      "output": "invalid_fd.out"
     },
-    "child_stdin_pipe": {
-      "args": "run -A child_stdin_pipe.ts",
-      "output": "child_stdin_pipe.out"
+    "open_fd": {
+      "if": "unix",
+      "args": "run -A --unstable-ffi open_fd.ts",
+      "output": "open_fd.out"
     }
   }
 }
