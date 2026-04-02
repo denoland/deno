@@ -6,14 +6,12 @@
       "output": "invalid_fd.out"
     },
     "open_fd": {
-      "if": "unix",
-      "args": "run -A --unstable-ffi open_fd.ts",
+      "args": "run -A open_fd.ts",
       "output": "open_fd.out"
     },
-    "open_fd_windows": {
-      "if": "windows",
-      "args": "run -A --unstable-ffi open_fd_windows.ts",
-      "output": "open_fd_windows.out"
+    "duplicate_fd": {
+      "args": "run -A duplicate_fd.ts",
+      "output": "duplicate_fd.out"
     }
   }
 }

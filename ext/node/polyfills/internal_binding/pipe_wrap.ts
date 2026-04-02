@@ -26,6 +26,7 @@
 
 import { core, primordials } from "ext:core/mod.js";
 import {
+  op_node_create_pipe,
   op_node_fs_close,
   op_node_fs_read_deferred,
   op_node_fs_write_deferred,
@@ -637,4 +638,9 @@ export enum constants {
   IPC = socketType.IPC,
   UV_READABLE = 1,
   UV_WRITABLE = 2,
+}
+
+/** Create an anonymous pipe pair. Returns [readFd, writeFd]. */
+export function createPipe(): [number, number] {
+  return op_node_create_pipe();
 }

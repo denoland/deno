@@ -120,6 +120,18 @@ fn ebadf() -> FsError {
   ))
 }
 
+fn eexist() -> FsError {
+  FsError::Io(std::io::Error::from_raw_os_error(
+    #[cfg(unix)]
+    libc::EEXIST,
+    #[cfg(windows)]
+    {
+      // Win32 ERROR_ALREADY_EXISTS, which maps to Node's EEXIST
+      183
+    },
+  ))
+}
+
 /// Get the File trait object for an OS file descriptor.
 /// Checks NodeFsState first (covers files opened via node:fs, including
 /// cases where the OS reuses fd 0/1/2 after stdio is closed). Falls back
@@ -872,6 +884,13 @@ pub fn op_node_register_fd(
     return Err(ebadf());
   }
 
+  // Reject if the fd is already tracked (e.g. from fs.openSync()).
+  // Silently replacing via HashMap::insert would drop the previous File,
+  // closing the underlying fd on Unix and leaking CRT bookkeeping on Windows.
+  if state.borrow::<NodeFsState>().open_fds.contains_key(&fd) {
+    return Err(eexist());
+  }
+
   // SAFETY: The caller is responsible for passing a valid fd that they own.
   // The fd will be owned by the File from this point on.
   let std_file = unsafe { StdFile::from_raw_fd(fd) };
@@ -896,6 +915,11 @@ pub fn op_node_register_fd(
 
   if fd < 0 {
     return Err(ebadf());
+  }
+
+  // Reject if the fd is already tracked (e.g. from fs.openSync()).
+  if state.borrow::<NodeFsState>().open_fds.contains_key(&fd) {
+    return Err(eexist());
   }
 
   // Convert the CRT fd to an OS HANDLE
@@ -930,6 +954,72 @@ pub fn op_node_register_fd(
     Rc::new(deno_io::StdFileResourceInner::file(std_file, None));
   state.borrow_mut::<NodeFsState>().open_fds.insert(fd, file);
   Ok(())
+}
+
+/// Create an anonymous pipe pair and return (read_fd, write_fd).
+/// The returned fds are NOT registered in NodeFsState; the caller
+/// is responsible for registering or closing them.
+#[cfg(unix)]
+#[op2]
+#[serde]
+pub fn op_node_create_pipe() -> Result<(i32, i32), FsError> {
+  let mut fds = [0i32; 2];
+  // SAFETY: pipe() writes two valid fds into the array on success.
+  let ret = unsafe { libc::pipe(fds.as_mut_ptr()) };
+  if ret != 0 {
+    return Err(FsError::Io(std::io::Error::last_os_error()));
+  }
+  Ok((fds[0], fds[1]))
+}
+
+#[cfg(windows)]
+#[op2]
+#[serde]
+pub fn op_node_create_pipe() -> Result<(i32, i32), FsError> {
+  use windows_sys::Win32::Foundation::CloseHandle;
+  use windows_sys::Win32::System::Pipes::CreatePipe;
+
+  let mut read_handle = std::ptr::null_mut();
+  let mut write_handle = std::ptr::null_mut();
+
+  // SAFETY: CreatePipe writes valid handles on success.
+  let ok = unsafe {
+    CreatePipe(&mut read_handle, &mut write_handle, std::ptr::null(), 0)
+  };
+  if ok == 0 {
+    return Err(FsError::Io(std::io::Error::last_os_error()));
+  }
+
+  // Convert OS handles to CRT file descriptors.
+  // SAFETY: The handles are valid pipe handles from CreatePipe.
+  // _O_RDONLY = 0, _O_APPEND = 0x2000 (arbitrary non-zero for write mode)
+  let read_fd = unsafe { libc::open_osfhandle(read_handle as isize, 0) };
+  let write_fd = unsafe { libc::open_osfhandle(write_handle as isize, 0) };
+
+  if read_fd == -1 || write_fd == -1 {
+    // Clean up on failure
+    if read_fd != -1 {
+      unsafe {
+        libc::close(read_fd);
+      }
+    } else {
+      unsafe {
+        CloseHandle(read_handle);
+      }
+    }
+    if write_fd != -1 {
+      unsafe {
+        libc::close(write_fd);
+      }
+    } else {
+      unsafe {
+        CloseHandle(write_handle);
+      }
+    }
+    return Err(ebadf());
+  }
+
+  Ok((read_fd, write_fd))
 }
 
 // ============================================================
