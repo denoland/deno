@@ -1,4 +1,0 @@
-Created socketpair: fd [WILDCARD]
-Pipe.open([WILDCARD]) returned: 0
-PASS: Pipe.open() succeeded with valid fd
-[WILDCARD]
