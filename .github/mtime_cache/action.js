@@ -105,7 +105,6 @@ async function saveCache(cacheFile, cacheData) {
 
 async function checkClean() {
   let output = run(
-    "git",
     [
       "status",
       "--porcelain=v1",
@@ -128,7 +127,6 @@ async function checkClean() {
 
 async function* ls(dir = "") {
   let output = run(
-    "git",
     ["-C", dir || ".", "ls-files", "--stage", "--eol", "--full-name", "-z"],
     { stdio: ["ignore", "pipe", "inherit"] },
   );
@@ -160,15 +158,15 @@ async function* ls(dir = "") {
   }
 }
 
-async function* run(cmd, args, options) {
-  const child = spawn(cmd, args, options);
+async function* run(args, options) {
+  const child = spawn("git", args, options);
 
   const promise = new Promise((resolve, reject) => {
     child.on("close", (code, signal) => {
       if (code === 0 && signal === null) {
         resolve();
       } else {
-        const command = [cmd, ...args].join(" ");
+        const command = ["git", ...args].join(" ");
         const how = signal === null ? `exit code ${code}` : `signal ${signal}`;
         const error = new Error(`Command '${command}' failed: ${how}`);
         reject(error);
