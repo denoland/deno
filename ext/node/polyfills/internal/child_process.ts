@@ -429,7 +429,11 @@ export class ChildProcess extends EventEmitter {
       }).spawn();
       this.pid = this.#process.pid;
 
-      // Get stdio rids to create Socket instances
+      // TODO(bartlomieju): replace internals.getStdioRids with raw OS file
+      // descriptors returned from op_spawn_child, then use Pipe.open(fd) +
+      // net.Socket({ handle: pipe }) instead of the StreamResource(rid) path.
+      // This would align child process stdio with the fd-based I/O used
+      // elsewhere and remove the resource ID indirection.
       const stdioRids = internals.getStdioRids(this.#process);
 
       if (stdin === "pipe") {
@@ -741,12 +745,6 @@ export class ChildProcess extends EventEmitter {
   }
 }
 
-const supportedNodeStdioTypes: NodeStdio[] = [
-  "pipe",
-  "ignore",
-  "inherit",
-  "ipc",
-];
 function toDenoStdio(
   pipe: NodeStdio | number | Stream | null | undefined,
 ): DenoStdio {
@@ -754,17 +752,11 @@ function toDenoStdio(
     return "inherit";
   }
   if (typeof pipe === "number") {
-    /* Assume it's a rid returned by fs APIs */
     return pipe;
-  }
-
-  if (
-    !supportedNodeStdioTypes.includes(pipe as NodeStdio)
-  ) {
-    notImplemented(`toDenoStdio pipe=${typeof pipe} (${pipe})`);
   }
   switch (pipe) {
     case "pipe":
+    case "overlapped":
     case undefined:
     case null:
       return "piped";
@@ -775,7 +767,7 @@ function toDenoStdio(
     case "ipc":
       return "ipc_for_internal_use";
     default:
-      notImplemented(`toDenoStdio pipe=${typeof pipe} (${pipe})`);
+      throw new ERR_INVALID_ARG_VALUE("stdio", pipe);
   }
 }
 
