@@ -77,8 +77,8 @@ pub fn main() {
   let future = async move {
     match standalone {
       Ok(data) => {
-        let sys = if data.metadata.self_extracting.is_some() {
-          binary::extract_vfs_to_disk(&data.vfs, &data.root_path)?;
+        let sys = if let Some(hash) = &data.metadata.self_extracting {
+          binary::extract_vfs_to_disk(&data.vfs, hash, &data.root_path)?;
           DenoRtSys::new_self_extracting(data.vfs.clone())
         } else {
           DenoRtSys::new(data.vfs.clone())

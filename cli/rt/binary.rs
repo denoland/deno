@@ -150,13 +150,20 @@ pub fn extract_standalone(
 /// extracted, which should match the VFS root_path.
 pub fn extract_vfs_to_disk(
   vfs: &FileBackedVfs,
+  hash: &str,
   extraction_dir: &Path,
 ) -> Result<(), AnyError> {
-  // check if already extracted
+  // check if already extracted and matches expected hash
   let done_marker = extraction_dir.join(".done");
-  if done_marker.exists() {
-    log::debug!("Already extracted to {}", extraction_dir.display());
-    return Ok(());
+  if let Ok(contents) = std::fs::read_to_string(&done_marker) {
+    if contents.trim() == hash {
+      log::debug!("Already extracted to {}", extraction_dir.display());
+      return Ok(());
+    }
+    log::debug!(
+      "Extraction marker hash mismatch, re-extracting to {}",
+      extraction_dir.display()
+    );
   }
 
   log::debug!("Extracting to {}", extraction_dir.display());
@@ -176,8 +183,8 @@ pub fn extract_vfs_to_disk(
   )
   .context("Failed to extract embedded files to disk")?;
 
-  // write the done marker
-  std::fs::File::create(&done_marker)
+  // write the done marker with the hash for integrity verification
+  std::fs::write(&done_marker, hash)
     .context("Failed to write extraction done marker")?;
 
   log::debug!("Extracted in {}ms", start.elapsed().as_millis());
