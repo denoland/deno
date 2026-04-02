@@ -2,12 +2,12 @@
   "tests": {
     "js": {
       "args": "check mod.js",
-      "output": "mod.js${out_suffix}",
+      "output": "mod.js.out",
       "exitCode": 1
     },
     "ts": {
       "args": "check mod.ts",
-      "output": "mod.ts${out_suffix}",
+      "output": "mod.ts.out",
       "exitCode": 1
     }
   }
