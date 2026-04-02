@@ -33,11 +33,11 @@ use deno_core::convert::Uint8Array;
 use deno_core::op2;
 use deno_core::serde_json;
 use deno_error::JsErrorBox;
+use deno_io::ChildProcessStdio;
 use deno_io::ChildStderrResource;
 use deno_io::ChildStdinResource;
 use deno_io::ChildStdoutResource;
 use deno_io::IntoRawIoHandle;
-use deno_io::fs::FileResource;
 use deno_os::SignalError;
 use deno_permissions::PathQueryDescriptor;
 use deno_permissions::PermissionsContainer;
@@ -547,17 +547,15 @@ fn create_command(
 
   command.stdout(match args.stdio.stdout {
     StdioOrFd::Stdio(Stdio::Inherit) => {
-      FileResource::with_file(state, 1, |file| {
-        file.as_stdio().map_err(deno_error::JsErrorBox::from_err)
-      })?
+      let cs = state.borrow::<ChildProcessStdio>();
+      StdStdio::from(cs.stdout.try_clone().map_err(ProcessError::Io)?)
     }
     value => value.as_stdio()?,
   });
   command.stderr(match args.stdio.stderr {
     StdioOrFd::Stdio(Stdio::Inherit) => {
-      FileResource::with_file(state, 2, |file| {
-        file.as_stdio().map_err(deno_error::JsErrorBox::from_err)
-      })?
+      let cs = state.borrow::<ChildProcessStdio>();
+      StdStdio::from(cs.stderr.try_clone().map_err(ProcessError::Io)?)
     }
     value => value.as_stdio()?,
   });
@@ -1352,17 +1350,15 @@ mod deprecated {
     c.stdin(run_args.stdin.as_stdio()?);
     c.stdout(match run_args.stdout {
       StdioOrFd::Stdio(Stdio::Inherit) => {
-        FileResource::with_file(state, 1, |file| {
-          file.as_stdio().map_err(deno_error::JsErrorBox::from_err)
-        })?
+        let cs = state.borrow::<ChildProcessStdio>();
+        StdStdio::from(cs.stdout.try_clone().map_err(ProcessError::Io)?)
       }
       value => value.as_stdio()?,
     });
     c.stderr(match run_args.stderr {
       StdioOrFd::Stdio(Stdio::Inherit) => {
-        FileResource::with_file(state, 2, |file| {
-          file.as_stdio().map_err(deno_error::JsErrorBox::from_err)
-        })?
+        let cs = state.borrow::<ChildProcessStdio>();
+        StdStdio::from(cs.stderr.try_clone().map_err(ProcessError::Io)?)
       }
       value => value.as_stdio()?,
     });
