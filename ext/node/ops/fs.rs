@@ -1002,17 +1002,25 @@ pub fn op_node_create_pipe() -> Result<(i32, i32), FsError> {
     // and close the raw OS handle for whichever failed.
     if read_fd != -1 {
       // SAFETY: read_fd is a valid CRT fd from open_osfhandle.
-      unsafe { libc::close(read_fd); }
+      unsafe {
+        libc::close(read_fd);
+      }
     } else {
       // SAFETY: read_handle is still a valid OS handle (open_osfhandle failed).
-      unsafe { CloseHandle(read_handle); }
+      unsafe {
+        CloseHandle(read_handle);
+      }
     }
     if write_fd != -1 {
       // SAFETY: write_fd is a valid CRT fd from open_osfhandle.
-      unsafe { libc::close(write_fd); }
+      unsafe {
+        libc::close(write_fd);
+      }
     } else {
       // SAFETY: write_handle is still a valid OS handle (open_osfhandle failed).
-      unsafe { CloseHandle(write_handle); }
+      unsafe {
+        CloseHandle(write_handle);
+      }
     }
     return Err(ebadf());
   }
