@@ -35,7 +35,6 @@ mod text;
 mod trace;
 mod ts_server;
 mod tsc;
-mod tsgo;
 mod urls;
 
 pub async fn start() -> Result<(), AnyError> {
