@@ -891,9 +891,17 @@ pub fn op_node_register_fd(
     return Err(eexist());
   }
 
-  // SAFETY: The caller is responsible for passing a valid fd that they own.
-  // The fd will be owned by the File from this point on.
-  let std_file = unsafe { StdFile::from_raw_fd(fd) };
+  // Duplicate the fd so we own an independent copy (matches the Windows
+  // path which duplicates the OS handle). This avoids double-close when
+  // the same fd is also tracked elsewhere (e.g. stdio fds in the resource
+  // table).
+  // SAFETY: dup returns a new valid fd on success, -1 on failure.
+  let new_fd = unsafe { libc::dup(fd) };
+  if new_fd == -1 {
+    return Err(FsError::Io(std::io::Error::last_os_error()));
+  }
+  // SAFETY: new_fd is a valid, freshly duplicated file descriptor.
+  let std_file = unsafe { StdFile::from_raw_fd(new_fd) };
   let file: Rc<dyn deno_io::fs::File> =
     Rc::new(deno_io::StdFileResourceInner::file(std_file, None));
   state.borrow_mut::<NodeFsState>().open_fds.insert(fd, file);

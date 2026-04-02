@@ -1,294 +1,175 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
 
+// Mirrors Node.js lib/internal/bootstrap/switches/is_main_thread.js
+// for process.stdin, process.stdout, process.stderr creation.
+//
+// Streams are created lazily (on first access) to avoid circular
+// dependencies between process, node:net, and node:fs during bootstrap.
+
 import { primordials } from "ext:core/mod.js";
-const {
-  Uint8ArrayPrototype,
-  Error,
-  ObjectDefineProperties,
-  ObjectDefineProperty,
-  TypedArrayPrototypeSlice,
-  PromisePrototypeThen,
-  ObjectValues,
-  ObjectPrototypeIsPrototypeOf,
-} = primordials;
+const { ObjectDefineProperty } = primordials;
 
-import { Buffer } from "node:buffer";
-import {
-  clearLine,
-  clearScreenDown,
-  cursorTo,
-  moveCursor,
-} from "ext:deno_node/internal/readline/callbacks.mjs";
 import { nextTick } from "ext:deno_node/_next_tick.ts";
-import { Duplex, Readable, Writable } from "node:stream";
-import * as io from "ext:deno_io/12_io.js";
+import { Readable, Writable } from "node:stream";
 import { guessHandleType } from "ext:deno_node/internal_binding/util.ts";
-import { codeMap } from "ext:deno_node/internal_binding/uv.ts";
-import { op_bootstrap_color_depth } from "ext:core/ops";
-import { validateInteger } from "ext:deno_node/internal/validators.mjs";
+import { op_node_fs_write_sync, op_node_register_fd } from "ext:core/ops";
 
-// https://github.com/nodejs/node/blob/00738314828074243c9a52a228ab4c68b04259ef/lib/internal/bootstrap/switches/is_main_thread.js#L41
-export function createWritableStdioStream(writer, name, warmup = false) {
-  const stream = new Writable({
-    emitClose: false,
-    write(buf, enc, cb) {
-      if (!writer) {
-        this.destroy(
-          new Error(`Deno.${name} is not available in this environment`),
-        );
-        return;
-      }
-      // TODO(fraidev): This try/catch is a workaround. When process.stdout
-      // is a pipe (not a TTY), Node.js backs it with a real fd-based net.Socket
-      // so BrokenPipe flows naturally through stream_wrap.ts as EPIPE. Deno
-      // always uses createWritableStdioStream(io.stdout) regardless of pipe/TTY,
-      // so BrokenPipe throws synchronously here instead. Once net.Socket supports
-      // being created from a raw fd (new Socket({ fd: 1 })), process.stdout/stderr
-      // should be switched to net.Socket for non-TTY cases and this can be removed.
-      try {
-        let data = ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, buf)
-          ? buf
-          : Buffer.from(buf, enc);
-        // Handle partial writes - writeSync may not write all bytes at once
-        // (e.g., when stdout is a pipe and the pipe buffer is near capacity).
-        // deno-lint-ignore prefer-primordials
-        while (data.byteLength > 0) {
-          const nwritten = writer.writeSync(data);
-          // deno-lint-ignore prefer-primordials
-          if (nwritten >= data.byteLength) break;
-          data = TypedArrayPrototypeSlice(data, nwritten);
-        }
-      } catch (e) {
-        if (
-          ObjectPrototypeIsPrototypeOf(Deno.errors.BrokenPipe.prototype, e)
-        ) {
-          const err = new Error("write EPIPE");
-          err.code = "EPIPE";
-          err.errno = codeMap.get("EPIPE");
-          err.syscall = "write";
-          cb(err);
-          return;
-        }
-        throw e;
-      }
-      cb();
-    },
-    destroy(err, cb) {
-      cb(err);
-      this._undestroy();
-
-      // We need to emit 'close' anyway so that the closing
-      // of the stream is observable.
-      if (!this._writableState.emitClose) {
-        nextTick(() => this.emit("close"));
-      }
-    },
-  });
-  let fd = -1;
-
-  // deno-lint-ignore prefer-primordials
-  if (writer instanceof io.Stdout) {
-    fd = io.STDOUT_RID;
-    // deno-lint-ignore prefer-primordials
-  } else if (writer instanceof io.Stderr) {
-    fd = io.STDERR_RID;
-  }
-  stream.fd = fd;
-  stream.destroySoon = stream.destroy;
-  stream._isStdio = true;
-
-  // We cannot call `writer?.isTerminal()` eagerly here
-  let getIsTTY = () => writer?.isTerminal();
-  const getColumns = () =>
-    stream._columns ||
-    (writer?.isTerminal() ? Deno.consoleSize?.().columns : undefined);
-
-  ObjectDefineProperties(stream, {
-    columns: {
-      __proto__: null,
-      enumerable: true,
-      configurable: true,
-      get: () => getColumns(),
-      set: (value) => {
-        stream._columns = value;
-      },
-    },
-    rows: {
-      __proto__: null,
-      enumerable: true,
-      configurable: true,
-      get: () => writer?.isTerminal() ? Deno.consoleSize?.().rows : undefined,
-    },
-    isTTY: {
-      __proto__: null,
-      enumerable: true,
-      configurable: true,
-      // Allow users to overwrite it
-      get: () => getIsTTY(),
-      set: (value) => {
-        getIsTTY = () => value;
-      },
-    },
-    getWindowSize: {
-      __proto__: null,
-      enumerable: true,
-      configurable: true,
-      value: () =>
-        writer?.isTerminal() ? ObjectValues(Deno.consoleSize?.()) : undefined,
-    },
-    getColorDepth: {
-      __proto__: null,
-      enumerable: true,
-      configurable: true,
-      writable: true,
-      value: () => op_bootstrap_color_depth(),
-    },
-    hasColors: {
-      __proto__: null,
-      enumerable: true,
-      configurable: true,
-      writable: true,
-      value: (count, env) => {
-        if (
-          env === undefined &&
-          (count === undefined || typeof count === "object" && count !== null)
-        ) {
-          env = count;
-          count = 16;
-        } else {
-          validateInteger(count, "count", 2);
-        }
-
-        const depth = op_bootstrap_color_depth();
-        return count <= 2 ** depth;
-      },
-    },
-  });
-
-  // If we're warming up, add TTY-like methods so snapshot-time code works.
-  // The warmup stream is replaced at boot time with a proper tty.WriteStream
-  // (for TTY) or a fresh Writable (for non-TTY).
-  if (warmup || writer?.isTerminal()) {
-    stream.cursorTo = function (x, y, callback) {
-      return cursorTo(this, x, y, callback);
-    };
-
-    stream.moveCursor = function (dx, dy, callback) {
-      return moveCursor(this, dx, dy, callback);
-    };
-
-    stream.clearLine = function (dir, callback) {
-      return clearLine(this, dir, callback);
-    };
-
-    stream.clearScreenDown = function (callback) {
-      return clearScreenDown(this, callback);
-    };
-  }
-
-  return stream;
-}
-
-function _guessStdinType(fd) {
-  if (typeof fd !== "number" || fd < 0) return "UNKNOWN";
-  return guessHandleType(fd);
-}
-
-const _read = function (size) {
-  io.stdin?.[io.REF]();
-  const p = Buffer.alloc(size || 16 * 1024);
-  PromisePrototypeThen(io.stdin?.read(p), (length) => {
-    // deno-lint-ignore prefer-primordials
-    this.push(length === null ? null : TypedArrayPrototypeSlice(p, 0, length));
-  }, (error) => {
-    this.destroy(error);
-  });
-};
-
+// tty.ReadStream / tty.WriteStream constructors, injected via
+// setReadStream / setWriteStream to avoid circular deps with tty.js.
 let readStream;
 export function setReadStream(s) {
   readStream = s;
 }
 
-/** https://nodejs.org/api/process.html#process_process_stdin */
-// https://github.com/nodejs/node/blob/v18.12.1/lib/internal/bootstrap/switches/is_main_thread.js#L189
-/** Create process.stdin */
-export const initStdin = (warmup = false) => {
-  const fd = io.stdin ? io.STDIN_RID : undefined;
-  let stdin;
-  // Warmup assumes a TTY for all stdio
-  const stdinType = warmup ? "TTY" : _guessStdinType(fd);
+let writeStream;
+export function setWriteStream(s) {
+  writeStream = s;
+}
 
-  switch (stdinType) {
-    case "FILE": {
-      // Since `fs.ReadStream` cannot be imported before process initialization,
-      // use `Readable` instead.
-      // https://github.com/nodejs/node/blob/v18.12.1/lib/internal/bootstrap/switches/is_main_thread.js#L200
-      // https://github.com/nodejs/node/blob/v18.12.1/lib/internal/fs/streams.js#L148
-      stdin = new Readable({
-        highWaterMark: 64 * 1024,
-        autoDestroy: false,
-        read: _read,
-      });
+// Matches Node.js dummyDestroy: prevents the fd from actually being closed.
+function dummyDestroy(err, cb) {
+  cb(err);
+  this._undestroy();
+  if (!this._writableState.emitClose) {
+    nextTick(() => this.emit("close"));
+  }
+}
+
+// Synchronous write stream backed by raw fd ops.
+// Used for FILE-type stdout/stderr and as fallback for PIPE/TCP
+// when the module system isn't ready yet.
+function _createSyncWriteStream(fd) {
+  return new Writable({
+    autoDestroy: true,
+    emitClose: false,
+    write(chunk, _encoding, cb) {
+      try {
+        op_node_fs_write_sync(fd, chunk, -1);
+      } catch (e) {
+        cb(e);
+        return;
+      }
+      cb();
+    },
+  });
+}
+
+// https://github.com/nodejs/node/blob/main/lib/internal/bootstrap/switches/is_main_thread.js
+function createWritableStdioStream(fd) {
+  let stream;
+  const type = guessHandleType(fd);
+
+  switch (type) {
+    case "TTY":
+      stream = new writeStream(fd);
+      stream._type = "tty";
+      break;
+    case "FILE":
+      // Register the fd so fd-based ops work. On Unix this dups the fd
+      // internally to avoid double-ownership with the resource table.
+      op_node_register_fd(fd);
+      stream = _createSyncWriteStream(fd);
+      stream._type = "fs";
+      break;
+    case "PIPE":
+    case "TCP": {
+      // Use net.Socket when require() is available (normal runtime).
+      // Fall back to sync fd writes during early bootstrap when the
+      // module system isn't ready yet.
+      if (typeof globalThis.require === "function") {
+        // deno-lint-ignore prefer-primordials
+        const { Socket } = require("net");
+        // deno-lint-ignore prefer-primordials
+        stream = new Socket({
+          fd,
+          readable: false,
+          writable: true,
+        });
+      } else {
+        op_node_register_fd(fd);
+        stream = _createSyncWriteStream(fd);
+      }
+      stream._type = "pipe";
       break;
     }
-    case "TTY": {
-      // FIXME: We should be able to create stdin handle during warmup and re-use it but
-      // cppgc object wraps crash in snapshot mode.
-      //
-      // To reproduce crash, change the condition to `if (!warmup)` below:
-      if (warmup) {
-        return null;
-      }
+    default:
+      // For non-console Windows apps or unknown handle types.
+      stream = new Writable({
+        write(_buf, _enc, cb) {
+          cb();
+        },
+      });
+  }
+
+  stream.fd = fd;
+  stream._isStdio = true;
+  stream.destroySoon = stream.destroy;
+  stream._destroy = dummyDestroy;
+
+  return stream;
+}
+
+// https://github.com/nodejs/node/blob/main/lib/internal/bootstrap/switches/is_main_thread.js
+function createStdin() {
+  const fd = 0;
+  let stdin;
+  const type = guessHandleType(fd);
+
+  switch (type) {
+    case "TTY":
       stdin = new readStream(fd);
+      break;
+    case "FILE": {
+      if (typeof globalThis.require === "function") {
+        // deno-lint-ignore prefer-primordials
+        const { ReadStream } = require("fs");
+        // deno-lint-ignore prefer-primordials
+        stdin = new ReadStream(null, { fd, autoClose: false });
+      } else {
+        // Fallback when require isn't ready: basic fd-backed Readable.
+        op_node_register_fd(fd);
+        stdin = new Readable({
+          highWaterMark: 64 * 1024,
+          autoDestroy: false,
+          read(size) {
+            const { op_node_fs_read_deferred } = Deno[Deno.internal].core.ops;
+            const buf = new Uint8Array(size || 16 * 1024);
+            op_node_fs_read_deferred(fd, buf, -1).then((n) => {
+              this.push(n === 0 ? null : buf.subarray(0, n));
+            }, (err) => this.destroy(err));
+          },
+        });
+      }
       break;
     }
     case "PIPE":
     case "TCP": {
-      // For PIPE and TCP, `new Duplex()` should be replaced `new net.Socket()` if possible.
-      // There are two problems that need to be resolved.
-      // 1. Using them here introduces a circular dependency.
-      // 2. Creating a net.Socket() from a fd is not currently supported.
-      // https://github.com/nodejs/node/blob/v18.12.1/lib/internal/bootstrap/switches/is_main_thread.js#L206
-      // https://github.com/nodejs/node/blob/v18.12.1/lib/net.js#L329
-      stdin = new Duplex({
-        readable: stdinType === "TTY" ? undefined : true,
-        writable: stdinType === "TTY" ? undefined : false,
-        readableHighWaterMark: stdinType === "TTY" ? 0 : undefined,
-        allowHalfOpen: false,
-        emitClose: false,
-        autoDestroy: true,
-        decodeStrings: false,
-        read: _read,
-      });
-
-      if (stdinType !== "TTY") {
-        // Make sure the stdin can't be `.end()`-ed
+      if (typeof globalThis.require === "function") {
+        // deno-lint-ignore prefer-primordials
+        const { Socket } = require("net");
+        // deno-lint-ignore prefer-primordials
+        stdin = new Socket({
+          fd,
+          readable: true,
+          writable: false,
+          manualStart: true,
+        });
+        // Make sure the stdin can't be .end()-ed
         stdin._writableState.ended = true;
+      } else {
+        // Fallback: basic Readable with fd-based I/O
+        op_node_register_fd(fd);
+        stdin = new Readable({
+          read(size) {
+            const { op_node_fs_read_deferred } = Deno[Deno.internal].core.ops;
+            const buf = new Uint8Array(size || 16 * 1024);
+            op_node_fs_read_deferred(fd, buf, -1).then((n) => {
+              this.push(n === 0 ? null : buf.subarray(0, n));
+            }, (err) => this.destroy(err));
+          },
+        });
       }
-
-      // Provide a minimal _handle so code that checks process.stdin._handle
-      // (e.g. test-stdout-close-unref.js) works. We intentionally omit
-      // readStart/readStop/reading so the onpause handler takes the simple
-      // io.stdin UNREF path - adding those methods causes _readableState.reading
-      // to be reset, which triggers duplicate _read() calls and orphaned
-      // reffed promises that prevent process exit.
-      stdin._handle = {
-        close(cb) {
-          io.stdin?.close();
-          if (typeof cb === "function") cb();
-        },
-        ref() {
-          io.stdin?.[io.REF]();
-        },
-        unref() {
-          io.stdin?.[io.UNREF]();
-        },
-        getAsyncId() {
-          return -1;
-        },
-      };
       break;
     }
     default: {
@@ -300,11 +181,10 @@ export const initStdin = (warmup = false) => {
     }
   }
 
-  stdin.on("close", () => io.stdin?.close());
-  stdin.fd = io.stdin ? io.STDIN_RID : -1;
+  stdin.fd = fd;
 
-  // `stdin` starts out life in a paused state. Explicitly to readStop() it to put it in the
-  // not-reading state.
+  // stdin starts out life in a paused state. Explicitly readStop() it
+  // to put it in the not-reading state.
   if (stdin._handle?.readStop) {
     stdin._handle.reading = false;
     stdin._readableState.reading = false;
@@ -312,12 +192,9 @@ export const initStdin = (warmup = false) => {
   }
 
   function onpause() {
-    if (!stdin._handle || !stdin._handle.readStop) {
-      // This allows the process to exit when stdin is paused.
-      io.stdin?.[io.UNREF]();
+    if (!stdin._handle) {
       return;
     }
-
     if (stdin._handle.reading && !stdin.readableFlowing) {
       stdin._readableState.reading = false;
       stdin._handle.reading = false;
@@ -325,41 +202,85 @@ export const initStdin = (warmup = false) => {
     }
   }
 
-  // If the user calls stdin.pause(), then we need to stop reading
-  // once the stream implementation does so (one nextTick later),
-  // so that the process can close down.
   stdin.on("pause", () => nextTick(onpause));
 
-  // Allow users to overwrite isTTY for test isolation and terminal mocking.
-  // This mirrors the stdout/stderr behavior added in #26130.
-  let getStdinIsTTY = () => io.stdin?.isTerminal();
-  ObjectDefineProperty(stdin, "isTTY", {
-    __proto__: null,
-    enumerable: true,
-    configurable: true,
-    get() {
-      return getStdinIsTTY();
-    },
-    set(value) {
-      getStdinIsTTY = () => value;
+  return stdin;
+}
+
+// Warmup-safe writable for snapshot: uses core.writeSync directly
+// (works during snapshot since resources 0/1/2 exist at that point).
+function createWarmupWritable(fd) {
+  const stream = new Writable({
+    emitClose: false,
+    write(buf, _enc, cb) {
+      try {
+        Deno[Deno.internal].core.writeSync(fd, buf);
+      } catch {
+        // ignore errors during warmup
+      }
+      cb();
     },
   });
-  stdin._isRawMode = false;
-  stdin.setRawMode = (enable) => {
-    if (io.stdin?.isTerminal()) {
-      io.stdin.setRaw(enable);
-    }
-    stdin._isRawMode = enable;
-    return stdin;
-  };
-  ObjectDefineProperty(stdin, "isRaw", {
+  stream.fd = fd;
+  stream._isStdio = true;
+  stream.destroySoon = stream.destroy;
+  stream._destroy = dummyDestroy;
+  return stream;
+}
+
+/**
+ * Define lazy stdio getters on the process object, matching Node.js's
+ * is_main_thread.js defineStream pattern. Streams are created on first
+ * access, by which time all modules (net, fs, tty) are fully loaded.
+ */
+export function setupStdio(process, warmup = false) {
+  if (warmup) {
+    // During snapshot, create simple warmup streams immediately.
+    // They'll be replaced at boot time via setupStdio(process).
+    process.stdin = null; // TTY handle can't be created in snapshot
+    process.stdout = createWarmupWritable(1);
+    process.stderr = createWarmupWritable(2);
+    return;
+  }
+
+  let stdin, stdout, stderr;
+
+  ObjectDefineProperty(process, "stdout", {
     __proto__: null,
-    enumerable: true,
     configurable: true,
+    enumerable: true,
     get() {
-      return stdin._isRawMode;
+      if (!stdout) stdout = createWritableStdioStream(1);
+      return stdout;
+    },
+    set(val) {
+      stdout = val;
     },
   });
 
-  return stdin;
-};
+  ObjectDefineProperty(process, "stderr", {
+    __proto__: null,
+    configurable: true,
+    enumerable: true,
+    get() {
+      if (!stderr) stderr = createWritableStdioStream(2);
+      return stderr;
+    },
+    set(val) {
+      stderr = val;
+    },
+  });
+
+  ObjectDefineProperty(process, "stdin", {
+    __proto__: null,
+    configurable: true,
+    enumerable: true,
+    get() {
+      if (!stdin) stdin = createStdin();
+      return stdin;
+    },
+    set(val) {
+      stdin = val;
+    },
+  });
+}
