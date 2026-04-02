@@ -991,30 +991,28 @@ pub fn op_node_create_pipe() -> Result<(i32, i32), FsError> {
   }
 
   // Convert OS handles to CRT file descriptors.
-  // SAFETY: The handles are valid pipe handles from CreatePipe.
-  // _O_RDONLY = 0, _O_APPEND = 0x2000 (arbitrary non-zero for write mode)
+  // SAFETY: read_handle and write_handle are valid pipe handles from
+  // CreatePipe. open_osfhandle takes ownership of the handle on success.
   let read_fd = unsafe { libc::open_osfhandle(read_handle as isize, 0) };
+  // SAFETY: Same as above for the write handle.
   let write_fd = unsafe { libc::open_osfhandle(write_handle as isize, 0) };
 
   if read_fd == -1 || write_fd == -1 {
-    // Clean up on failure
+    // Clean up on failure: close whichever succeeded as a CRT fd,
+    // and close the raw OS handle for whichever failed.
     if read_fd != -1 {
-      unsafe {
-        libc::close(read_fd);
-      }
+      // SAFETY: read_fd is a valid CRT fd from open_osfhandle.
+      unsafe { libc::close(read_fd); }
     } else {
-      unsafe {
-        CloseHandle(read_handle);
-      }
+      // SAFETY: read_handle is still a valid OS handle (open_osfhandle failed).
+      unsafe { CloseHandle(read_handle); }
     }
     if write_fd != -1 {
-      unsafe {
-        libc::close(write_fd);
-      }
+      // SAFETY: write_fd is a valid CRT fd from open_osfhandle.
+      unsafe { libc::close(write_fd); }
     } else {
-      unsafe {
-        CloseHandle(write_handle);
-      }
+      // SAFETY: write_handle is still a valid OS handle (open_osfhandle failed).
+      unsafe { CloseHandle(write_handle); }
     }
     return Err(ebadf());
   }
