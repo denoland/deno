@@ -159,6 +159,33 @@ pub fn get_root_cert_store(
     }
   }
 
+  if let Ok(extra_ca_certs_path) = sys.env_var("NODE_EXTRA_CA_CERTS")
+    && !extra_ca_certs_path.is_empty()
+  {
+    let path = if let Some(root) = &maybe_root_path {
+      root.join(&extra_ca_certs_path)
+    } else {
+      PathBuf::from(&extra_ca_certs_path)
+    };
+    match std::fs::File::open(&path).and_then(|f| {
+      let mut reader = BufReader::new(f);
+      rustls_pemfile::certs(&mut reader).collect::<Result<Vec<_>, _>>()
+    }) {
+      Ok(certs) => {
+        root_cert_store.add_parsable_certificates(certs);
+      }
+      Err(e) => {
+        log::warn!(
+          "{}",
+          colors::yellow(&format!(
+            "Warning: Ignoring extra certs from \"{}\", load failed: {}",
+            extra_ca_certs_path, e
+          ))
+        );
+      }
+    }
+  }
+
   Ok(root_cert_store)
 }
 
