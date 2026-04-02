@@ -23,7 +23,6 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-import { notImplemented } from "ext:deno_node/_utils.ts";
 import { BlockList, SocketAddress } from "ext:deno_node/internal/blocklist.mjs";
 
 import { EventEmitter } from "node:events";
@@ -1253,7 +1252,34 @@ export function Socket(options) {
     this._handle = options.handle;
     this[asyncIdSymbol] = _getNewAsyncId(this._handle);
   } else if (options.fd !== undefined) {
-    notImplemented("net.Socket.prototype.constructor with fd option");
+    const { fd } = options;
+
+    // createHandle will throw ERR_INVALID_FD_TYPE if `fd` is not
+    // a valid `PIPE` or `TCP` descriptor
+    this._handle = _createHandle(fd, false);
+
+    const err = this._handle.open(fd);
+
+    // While difficult to fabricate, in some architectures
+    // `open` may return an error code for valid file descriptors
+    // which cannot be opened.
+    if (err) {
+      throw errnoException(err, "open");
+    }
+
+    this[asyncIdSymbol] = _getNewAsyncId(this._handle);
+
+    if (
+      (fd === 1 || fd === 2) &&
+      this._handle instanceof Pipe &&
+      isWindows
+    ) {
+      // Make stdout and stderr blocking on Windows
+      const blockErr = this._handle.setBlocking(true);
+      if (blockErr) {
+        throw errnoException(blockErr, "setBlocking");
+      }
+    }
   }
 
   const onread = options.onread;

@@ -1,0 +1,8 @@
+{
+  "tests": {
+    "net_socket_fd_pipe": {
+      "args": "run -A main.ts",
+      "output": "main.out"
+    }
+  }
+}

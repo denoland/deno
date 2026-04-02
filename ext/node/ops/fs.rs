@@ -1032,6 +1032,41 @@ pub fn op_node_create_pipe() -> Result<(i32, i32), FsError> {
 // fd-based ops for node:fs (accept real OS fd, not RID)
 // ============================================================
 
+/// Set blocking or non-blocking mode on an OS file descriptor.
+/// Matches libuv's `uv_stream_set_blocking`.
+#[cfg(unix)]
+#[op2(fast)]
+#[smi]
+pub fn op_node_fd_set_blocking(fd: i32, blocking: bool) -> i32 {
+  // SAFETY: fcntl with F_GETFL/F_SETFL is safe on valid fds.
+  // Returns -1 on invalid fd, which we map to UV_EBADF.
+  unsafe {
+    let flags = libc::fcntl(fd, libc::F_GETFL);
+    if flags == -1 {
+      return -libc::EBADF;
+    }
+    let flags = if blocking {
+      flags & !libc::O_NONBLOCK
+    } else {
+      flags | libc::O_NONBLOCK
+    };
+    if libc::fcntl(fd, libc::F_SETFL, flags) == -1 {
+      return -libc::EBADF;
+    }
+    0
+  }
+}
+
+#[cfg(windows)]
+#[op2(fast)]
+#[smi]
+pub fn op_node_fd_set_blocking(_fd: i32, _blocking: bool) -> i32 {
+  // On Windows, named pipes and console handles don't support
+  // toggling blocking mode via a simple flag. The Windows-specific
+  // behavior is handled at the I/O level instead.
+  0
+}
+
 #[op2(fast)]
 pub fn op_node_fs_close(state: &mut OpState, fd: i32) -> Result<(), FsError> {
   let file = state
