@@ -388,6 +388,30 @@ impl TCPWrap {
     err
   }
 
+  /// Open the TCP handle from an existing Deno resource ID.
+  /// Used by HTTP/2 to transfer a Deno TcpConn resource into the
+  /// native libuv TCP handle.
+  #[fast]
+  pub fn open_from_rid(
+    &self,
+    op_state: &mut OpState,
+    #[smi] rid: deno_core::ResourceId,
+  ) -> i32 {
+    let Some(handle) = self.handle() else {
+      return -1;
+    };
+    let fd = op_state
+      .resource_table
+      .get::<deno_net::io::TcpStreamResource>(rid)
+      .ok()
+      .and_then(|r| r.dup_raw_fd());
+    match fd {
+      // SAFETY: handle is valid (checked above), fd is a valid dup'd descriptor.
+      Some(fd) => unsafe { uv_tcp_open(handle.as_mut_ptr(), fd) },
+      None => -1,
+    }
+  }
+
   pub fn bind(
     &self,
     #[string] address: &str,
