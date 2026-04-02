@@ -1,0 +1,3 @@
+open result: 0
+read: data from file
+eof

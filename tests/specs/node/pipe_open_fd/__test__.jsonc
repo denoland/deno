@@ -1,15 +1,12 @@
 {
-  "tempDir": true,
   "tests": {
-    "invalid_fd": {
-      "if": "unix",
-      "args": "run -A invalid_fd.ts",
-      "output": "invalid_fd.out"
+    "pipe_open_write": {
+      "args": "run -A main_write.ts",
+      "output": "main_write.out"
     },
-    "open_fd": {
-      "if": "unix",
-      "args": "run -A --unstable-ffi open_fd.ts",
-      "output": "open_fd.out"
+    "pipe_open_read": {
+      "args": "run -A main_read.ts",
+      "output": "main_read.out"
     }
   }
 }

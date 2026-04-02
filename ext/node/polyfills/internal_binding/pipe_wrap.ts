@@ -81,6 +81,7 @@ export enum socketType {
 class FdStreamBase {
   #fd: number;
   #closed = false;
+  #pendingRead: Promise<number> | null = null;
 
   constructor(fd: number) {
     this.#fd = fd;
@@ -94,8 +95,14 @@ class FdStreamBase {
   async read(buf: Uint8Array): Promise<number | null> {
     if (this.#closed) return null;
     // position = -1 means non-positioned (sequential) read
-    const nread = await op_node_fs_read_deferred(this.#fd, buf, -1);
-    return nread === 0 ? null : nread;
+    const promise = op_node_fs_read_deferred(this.#fd, buf, -1);
+    this.#pendingRead = promise;
+    try {
+      const nread = await promise;
+      return nread === 0 ? null : nread;
+    } finally {
+      this.#pendingRead = null;
+    }
   }
 
   async write(data: Uint8Array): Promise<number> {
@@ -110,8 +117,17 @@ class FdStreamBase {
     }
   }
 
-  ref(): void {}
-  unref(): void {}
+  ref(): void {
+    if (this.#pendingRead) {
+      core.refOpPromise(this.#pendingRead);
+    }
+  }
+
+  unref(): void {
+    if (this.#pendingRead) {
+      core.unrefOpPromise(this.#pendingRead);
+    }
+  }
 }
 
 export class Pipe extends ConnectionWrap {

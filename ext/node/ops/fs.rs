@@ -890,7 +890,6 @@ pub fn op_node_register_fd(
   use std::fs::File as StdFile;
   use std::os::windows::io::FromRawHandle;
 
-  use windows_sys::Win32::Foundation::CloseHandle;
   use windows_sys::Win32::Foundation::DUPLICATE_SAME_ACCESS;
   use windows_sys::Win32::Foundation::DuplicateHandle;
   use windows_sys::Win32::System::Threading::GetCurrentProcess;
@@ -901,20 +900,19 @@ pub fn op_node_register_fd(
 
   // Convert the CRT fd to an OS HANDLE
   // SAFETY: libc::get_osfhandle returns the OS handle for a CRT fd.
-  let os_handle = unsafe { libc::get_osfhandle(fd) }
-    as windows_sys::Win32::Foundation::HANDLE;
-  if os_handle == windows_sys::Win32::Foundation::INVALID_HANDLE_VALUE {
+  let os_handle = unsafe { libc::get_osfhandle(fd) };
+  if os_handle == -1 {
     return Err(ebadf());
   }
 
   // Duplicate the handle so we own an independent copy (avoids double-close)
-  let mut dup_handle = 0isize;
+  let mut dup_handle = std::ptr::null_mut();
   // SAFETY: DuplicateHandle with DUPLICATE_SAME_ACCESS creates a copy
   // of the handle with the same access rights.
   let ok = unsafe {
     DuplicateHandle(
       GetCurrentProcess(),
-      os_handle,
+      os_handle as _,
       GetCurrentProcess(),
       &mut dup_handle,
       0,
@@ -923,11 +921,11 @@ pub fn op_node_register_fd(
     )
   };
   if ok == 0 {
-    return Err(ebadf());
+    return Err(FsError::Io(std::io::Error::last_os_error()));
   }
 
   // SAFETY: dup_handle is a valid duplicated OS handle.
-  let std_file = unsafe { StdFile::from_raw_handle(dup_handle as *mut _) };
+  let std_file = unsafe { StdFile::from_raw_handle(dup_handle) };
   let file: Rc<dyn deno_io::fs::File> =
     Rc::new(deno_io::StdFileResourceInner::file(std_file, None));
   state.borrow_mut::<NodeFsState>().open_fds.insert(fd, file);
