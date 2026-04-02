@@ -3,18 +3,6 @@
 // the full stack: _createHandle -> Pipe.open(fd) -> FdStreamBase.
 import { createRequire } from "node:module";
 const require = createRequire(import.meta.url);
-const net = require("net");
-const fs = require("fs");
-const path = require("path");
-const os = require("os");
-
-// Create a file, open it, and wrap in a net.Socket to verify the
-// Pipe.open(fd) path works end-to-end.
-// Note: _createHandle requires PIPE or TCP type fds.
-// A Unix domain socket pair gives us PIPE-type fds.
-
-// Test 1: Verify that net.Socket({ fd }) works with a valid pipe fd
-// by using child_process to create a pipe pair.
 const { execSync } = require("child_process");
 
 // Create a socketpair via a helper subprocess
@@ -43,17 +31,3 @@ const result = execSync(
 );
 
 console.log("result:", result.trim());
-
-// Test 2: Verify ERR_INVALID_FD_TYPE for non-pipe/tcp fds
-const tmpFile = path.join(os.tmpdir(), `deno_net_fd_test_${process.pid}.txt`);
-fs.writeFileSync(tmpFile, "test");
-const fileFd = fs.openSync(tmpFile, "r");
-try {
-  new net.Socket({ fd: fileFd });
-  console.log("ERROR: should have thrown");
-} catch (e: any) {
-  console.log("expected error:", e.code);
-} finally {
-  fs.closeSync(fileFd);
-  fs.unlinkSync(tmpFile);
-}

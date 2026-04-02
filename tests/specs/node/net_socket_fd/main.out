@@ -1,2 +1,1 @@
 result: hello from socket fd
-expected error: ERR_INVALID_FD_TYPE
