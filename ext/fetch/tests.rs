@@ -148,6 +148,7 @@ async fn run_test_client_with_resolver(
       http2: true,
       local_address: None,
       client_builder_hook: None,
+      http2_max_header_list_size: None,
     },
   )
   .unwrap();

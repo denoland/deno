@@ -339,6 +339,7 @@ pub fn create_client_from_options(
       http2: true,
       local_address: None,
       client_builder_hook: options.client_builder_hook,
+      http2_max_header_list_size: None,
     },
   )
 }
@@ -837,6 +838,7 @@ pub struct CreateHttpClientArgs {
   #[from_v8(default)]
   allow_host: bool,
   local_address: Option<String>,
+  http2_max_header_list_size: Option<u32>,
 }
 
 #[op2(stack_trace)]
@@ -915,6 +917,7 @@ pub fn op_fetch_custom_client(
       http2: args.http2,
       local_address: args.local_address,
       client_builder_hook: options.client_builder_hook,
+      http2_max_header_list_size: args.http2_max_header_list_size,
     },
   )?;
 
@@ -938,6 +941,7 @@ pub struct CreateHttpClientOptions {
   pub http2: bool,
   pub local_address: Option<String>,
   pub client_builder_hook: Option<fn(HyperClientBuilder) -> HyperClientBuilder>,
+  pub http2_max_header_list_size: Option<u32>,
 }
 
 impl Default for CreateHttpClientOptions {
@@ -955,6 +959,7 @@ impl Default for CreateHttpClientOptions {
       http2: true,
       local_address: None,
       client_builder_hook: None,
+      http2_max_header_list_size: None,
     }
   }
 }
@@ -1102,6 +1107,10 @@ pub fn create_http_client(
     builder.pool_idle_timeout(
       pool_idle_timeout.map(std::time::Duration::from_millis),
     );
+  }
+
+  if let Some(http2_max_header_list_size) = options.http2_max_header_list_size {
+    builder.http2_max_header_list_size(http2_max_header_list_size);
   }
 
   match (options.http1, options.http2) {
