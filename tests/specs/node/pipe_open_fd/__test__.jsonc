@@ -1,0 +1,12 @@
+{
+  "tests": {
+    "child_stdout_pipe": {
+      "args": "run -A child_stdout_pipe.ts",
+      "output": "child_stdout_pipe.out"
+    },
+    "child_stdin_pipe": {
+      "args": "run -A child_stdin_pipe.ts",
+      "output": "child_stdin_pipe.out"
+    }
+  }
+}

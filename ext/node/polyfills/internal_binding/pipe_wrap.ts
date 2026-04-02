@@ -82,6 +82,7 @@ class FdStreamBase {
   #fd: number;
   #closed = false;
   #pendingRead: Promise<number> | null = null;
+  #isRefed = true;
 
   constructor(fd: number) {
     this.#fd = fd;
@@ -97,6 +98,9 @@ class FdStreamBase {
     // position = -1 means non-positioned (sequential) read
     const promise = op_node_fs_read_deferred(this.#fd, buf, -1);
     this.#pendingRead = promise;
+    if (!this.#isRefed) {
+      core.unrefOpPromise(promise);
+    }
     try {
       const nread = await promise;
       return nread === 0 ? null : nread;
@@ -118,12 +122,14 @@ class FdStreamBase {
   }
 
   ref(): void {
+    this.#isRefed = true;
     if (this.#pendingRead) {
       core.refOpPromise(this.#pendingRead);
     }
   }
 
   unref(): void {
+    this.#isRefed = false;
     if (this.#pendingRead) {
       core.unrefOpPromise(this.#pendingRead);
     }
