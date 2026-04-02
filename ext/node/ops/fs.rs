@@ -852,6 +852,88 @@ pub async fn op_node_rmdir(
   Ok(())
 }
 
+/// Register an existing OS file descriptor in NodeFsState so it can be
+/// used with the fd-based read/write/close ops. This is used by
+/// Pipe.open(fd) to wrap pipes, PTYs, FIFOs, etc. for stream I/O.
+///
+/// On Unix, takes ownership of the fd via from_raw_fd.
+/// On Windows, duplicates the OS handle to get an independent copy,
+/// then wraps it as a CRT fd (same pattern as raw_fd_for_file).
+#[cfg(unix)]
+#[op2(fast)]
+pub fn op_node_register_fd(
+  state: &mut OpState,
+  fd: i32,
+) -> Result<(), FsError> {
+  use std::fs::File as StdFile;
+  use std::os::unix::io::FromRawFd;
+
+  if fd < 0 {
+    return Err(ebadf());
+  }
+
+  // SAFETY: The caller is responsible for passing a valid fd that they own.
+  // The fd will be owned by the File from this point on.
+  let std_file = unsafe { StdFile::from_raw_fd(fd) };
+  let file: Rc<dyn deno_io::fs::File> =
+    Rc::new(deno_io::StdFileResourceInner::file(std_file, None));
+  state.borrow_mut::<NodeFsState>().open_fds.insert(fd, file);
+  Ok(())
+}
+
+#[cfg(windows)]
+#[op2(fast)]
+pub fn op_node_register_fd(
+  state: &mut OpState,
+  fd: i32,
+) -> Result<(), FsError> {
+  use std::fs::File as StdFile;
+  use std::os::windows::io::FromRawHandle;
+
+  use windows_sys::Win32::Foundation::CloseHandle;
+  use windows_sys::Win32::Foundation::DUPLICATE_SAME_ACCESS;
+  use windows_sys::Win32::Foundation::DuplicateHandle;
+  use windows_sys::Win32::System::Threading::GetCurrentProcess;
+
+  if fd < 0 {
+    return Err(ebadf());
+  }
+
+  // Convert the CRT fd to an OS HANDLE
+  // SAFETY: libc::get_osfhandle returns the OS handle for a CRT fd.
+  let os_handle = unsafe { libc::get_osfhandle(fd) }
+    as windows_sys::Win32::Foundation::HANDLE;
+  if os_handle == windows_sys::Win32::Foundation::INVALID_HANDLE_VALUE {
+    return Err(ebadf());
+  }
+
+  // Duplicate the handle so we own an independent copy (avoids double-close)
+  let mut dup_handle = 0isize;
+  // SAFETY: DuplicateHandle with DUPLICATE_SAME_ACCESS creates a copy
+  // of the handle with the same access rights.
+  let ok = unsafe {
+    DuplicateHandle(
+      GetCurrentProcess(),
+      os_handle,
+      GetCurrentProcess(),
+      &mut dup_handle,
+      0,
+      0,
+      DUPLICATE_SAME_ACCESS,
+    )
+  };
+  if ok == 0 {
+    return Err(ebadf());
+  }
+
+  // SAFETY: dup_handle is a valid duplicated OS handle.
+  let std_file = unsafe { StdFile::from_raw_handle(dup_handle as *mut _) };
+  let file: Rc<dyn deno_io::fs::File> =
+    Rc::new(deno_io::StdFileResourceInner::file(std_file, None));
+  state.borrow_mut::<NodeFsState>().open_fds.insert(fd, file);
+  Ok(())
+}
+
 // ============================================================
 // fd-based ops for node:fs (accept real OS fd, not RID)
 // ============================================================
