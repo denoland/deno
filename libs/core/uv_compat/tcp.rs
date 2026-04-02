@@ -43,6 +43,8 @@ use crate::uv_compat::UV_HANDLE_REF;
 use crate::uv_compat::get_inner;
 use crate::uv_compat::uv_alloc_cb;
 use crate::uv_compat::uv_buf_t;
+use crate::uv_compat::uv_close;
+use crate::uv_compat::uv_close_cb;
 use crate::uv_compat::uv_connect_cb;
 use crate::uv_compat::uv_connect_t;
 use crate::uv_compat::uv_connection_cb;
@@ -592,6 +594,129 @@ pub unsafe extern "C" fn uv_tcp_simultaneous_accepts(
   _enable: c_int,
 ) -> c_int {
   0 // no-op
+}
+
+/// Close a TCP handle with a TCP RST (reset) instead of a graceful FIN.
+///
+/// Sets `SO_LINGER` with a zero timeout on the underlying socket so the OS
+/// sends RST on close, then delegates to `uv_close`.
+///
+/// Returns `UV_EINVAL` if the stream is shutting down.
+///
+/// ### Safety
+/// `tcp` must be a valid pointer to a `uv_tcp_t` initialized by `uv_tcp_init`.
+pub unsafe fn uv_tcp_close_reset(
+  tcp: *mut uv_tcp_t,
+  close_cb: Option<uv_close_cb>,
+) -> c_int {
+  // SAFETY: Caller guarantees tcp is valid and initialized.
+  unsafe {
+    // Disallow if the stream is shutting down (matches libuv behavior).
+    if (*tcp).internal_shutdown.is_some() {
+      return UV_EINVAL;
+    }
+
+    // Set SO_LINGER { on=1, linger=0 } so the kernel sends RST on close.
+    let set_linger_result = set_so_linger_reset(tcp);
+    if set_linger_result != 0 {
+      return set_linger_result;
+    }
+
+    uv_close(tcp as *mut uv_handle_t, close_cb);
+    0
+  }
+}
+
+/// Set SO_LINGER to { on=1, linger=0 } on the underlying socket so close
+/// sends RST instead of FIN.
+///
+/// # Safety
+/// `tcp` must be a valid, initialized `uv_tcp_t` pointer.
+#[cfg(unix)]
+unsafe fn set_so_linger_reset(tcp: *mut uv_tcp_t) -> c_int {
+  use std::os::unix::io::AsRawFd;
+  unsafe {
+    let fd = if let Some(ref stream) = (*tcp).internal_stream {
+      stream.as_raw_fd()
+    } else if let Some(ref listener) = (*tcp).internal_listener {
+      listener.as_raw_fd()
+    } else if let Some(fd) = (*tcp).internal_fd {
+      fd
+    } else {
+      return UV_EINVAL;
+    };
+
+    let linger = libc::linger {
+      l_onoff: 1,
+      l_linger: 0,
+    };
+    let ret = libc::setsockopt(
+      fd,
+      libc::SOL_SOCKET,
+      libc::SO_LINGER,
+      &linger as *const libc::linger as *const c_void,
+      std::mem::size_of::<libc::linger>() as libc::socklen_t,
+    );
+    if ret != 0 {
+      let err = std::io::Error::last_os_error();
+      if err.raw_os_error() == Some(libc::EINVAL) {
+        // Socket may already be shut down (matches libuv behavior).
+        return 0;
+      }
+      return io_error_to_uv(&err);
+    }
+    0
+  }
+}
+
+#[cfg(windows)]
+unsafe fn set_so_linger_reset(tcp: *mut uv_tcp_t) -> c_int {
+  use std::os::windows::io::AsRawSocket;
+
+  unsafe extern "system" {
+    fn setsockopt(
+      s: usize,
+      level: c_int,
+      optname: c_int,
+      optval: *const c_void,
+      optlen: c_int,
+    ) -> c_int;
+  }
+  const SOL_SOCKET: c_int = 0xffff;
+  const SO_LINGER: c_int = 0x0080;
+
+  unsafe {
+    let socket = if let Some(ref stream) = (*tcp).internal_stream {
+      stream.as_raw_socket() as usize
+    } else if let Some(ref listener) = (*tcp).internal_listener {
+      listener.as_raw_socket() as usize
+    } else if let Some(sock) = (*tcp).internal_fd {
+      sock as usize
+    } else {
+      return UV_EINVAL;
+    };
+
+    #[repr(C)]
+    struct Linger {
+      l_onoff: u16,
+      l_linger: u16,
+    }
+    let linger = Linger {
+      l_onoff: 1,
+      l_linger: 0,
+    };
+    let ret = setsockopt(
+      socket,
+      SOL_SOCKET,
+      SO_LINGER,
+      &linger as *const Linger as *const c_void,
+      std::mem::size_of::<Linger>() as c_int,
+    );
+    if ret != 0 {
+      return UV_EINVAL;
+    }
+    0
+  }
 }
 
 /// ### Safety

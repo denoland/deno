@@ -326,7 +326,6 @@ impl HandleWrap {
     self.state.get() != State::Closed
   }
 
-  #[allow(dead_code, reason = "used by upcoming TCPWrap/TLSWrap")]
   pub(crate) fn set_state_closing(&self) {
     self.state.set(State::Closing);
   }

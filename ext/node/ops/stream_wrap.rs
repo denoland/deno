@@ -201,12 +201,10 @@ impl LibUvStreamWrap {
     self.stream as *mut uv_stream_t
   }
 
-  #[allow(dead_code, reason = "used by upcoming TCPWrap/TLSWrap")]
   pub(crate) fn set_fd(&self, fd: i32) {
     self.fd.set(fd);
   }
 
-  #[allow(dead_code, reason = "used by upcoming TCPWrap/TLSWrap")]
   pub(crate) fn handle_wrap(&self) -> &HandleWrap {
     &self.base
   }
@@ -225,7 +223,6 @@ impl LibUvStreamWrap {
     unsafe { (*self.handle_data.js_handle.get()).to_global(scope) }
   }
 
-  #[allow(dead_code, reason = "used by upcoming TCPWrap/TLSWrap")]
   pub(crate) fn set_js_handle(
     &self,
     handle: v8::Global<v8::Object>,
