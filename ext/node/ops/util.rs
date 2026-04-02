@@ -3,8 +3,6 @@
 use std::path::Path;
 
 use deno_core::OpState;
-use deno_core::ResourceHandle;
-use deno_core::ResourceHandleFd;
 use deno_core::op2;
 use deno_core::v8;
 use deno_dotenv::parse_env_content_hook;
@@ -28,31 +26,17 @@ enum HandleType {
 }
 
 #[op2(fast)]
-pub fn op_node_guess_handle_type(state: &mut OpState, rid: u32) -> u32 {
-  // First try the resource table (covers stdio 0/1/2 and other Deno resources).
-  if let Ok(handle) = state.resource_table.get_handle(rid) {
-    let handle_type = match handle {
-      ResourceHandle::Fd(handle) => guess_handle_type(handle),
-      _ => HandleType::Unknown,
-    };
-    if !matches!(handle_type, HandleType::Unknown) {
-      return handle_type as u32;
-    }
-  }
-
-  // Fall back to treating the value as a raw OS file descriptor.
-  // This handles fds inherited from a parent process (e.g. extra stdio
-  // pipes from child_process.fork) that aren't in the resource table.
-  guess_handle_type_from_fd(rid as i32) as u32
+pub fn op_node_guess_handle_type(_state: &mut OpState, fd: u32) -> u32 {
+  guess_handle_type(fd as i32) as u32
 }
 
 #[cfg(unix)]
-fn guess_handle_type_from_fd(fd: i32) -> HandleType {
+fn guess_handle_type(fd: i32) -> HandleType {
   use deno_core::uv_compat;
   match uv_compat::uv_guess_handle(fd) {
     uv_compat::uv_handle_type::UV_TCP => HandleType::Tcp,
     uv_compat::uv_handle_type::UV_TTY => HandleType::Tty,
-    uv_compat::uv_handle_type::UV_UDP => HandleType::Unknown, // no UDP handle type
+    uv_compat::uv_handle_type::UV_UDP => HandleType::Unknown,
     uv_compat::uv_handle_type::UV_FILE => HandleType::File,
     uv_compat::uv_handle_type::UV_NAMED_PIPE => HandleType::Pipe,
     _ => HandleType::Unknown,
@@ -60,7 +44,13 @@ fn guess_handle_type_from_fd(fd: i32) -> HandleType {
 }
 
 #[cfg(windows)]
-fn guess_handle_type_from_fd(fd: i32) -> HandleType {
+fn guess_handle_type(fd: i32) -> HandleType {
+  use winapi::um::consoleapi::GetConsoleMode;
+  use winapi::um::fileapi::GetFileType;
+  use winapi::um::winbase::FILE_TYPE_CHAR;
+  use winapi::um::winbase::FILE_TYPE_DISK;
+  use winapi::um::winbase::FILE_TYPE_PIPE;
+
   if fd < 0 {
     return HandleType::Unknown;
   }
@@ -70,24 +60,13 @@ fn guess_handle_type_from_fd(fd: i32) -> HandleType {
   if handle == -1 {
     return HandleType::Unknown;
   }
-  guess_handle_type(handle as _)
-}
-
-#[cfg(windows)]
-fn guess_handle_type(handle: ResourceHandleFd) -> HandleType {
-  use winapi::um::consoleapi::GetConsoleMode;
-  use winapi::um::fileapi::GetFileType;
-  use winapi::um::winbase::FILE_TYPE_CHAR;
-  use winapi::um::winbase::FILE_TYPE_DISK;
-  use winapi::um::winbase::FILE_TYPE_PIPE;
-
-  // SAFETY: Call to win32 fileapi. `handle` is a valid fd.
+  let handle = handle as winapi::shared::ntdef::HANDLE;
+  // SAFETY: handle is a valid OS handle from get_osfhandle.
   match unsafe { GetFileType(handle) } {
     FILE_TYPE_DISK => HandleType::File,
     FILE_TYPE_CHAR => {
       let mut mode = 0;
-      // SAFETY: Call to win32 consoleapi. `handle` is a valid fd.
-      //         `mode` is a valid pointer.
+      // SAFETY: handle is valid, mode is a valid pointer.
       if unsafe { GetConsoleMode(handle, &mut mode) } == 1 {
         HandleType::Tty
       } else {
@@ -95,29 +74,6 @@ fn guess_handle_type(handle: ResourceHandleFd) -> HandleType {
       }
     }
     FILE_TYPE_PIPE => HandleType::Pipe,
-    _ => HandleType::Unknown,
-  }
-}
-
-#[cfg(unix)]
-fn guess_handle_type(handle: ResourceHandleFd) -> HandleType {
-  use std::io::IsTerminal;
-  // SAFETY: The resource remains open for the duration of borrow_raw.
-  if unsafe { std::os::fd::BorrowedFd::borrow_raw(handle).is_terminal() } {
-    return HandleType::Tty;
-  }
-
-  // SAFETY: It is safe to zero-initialize a `libc::stat` struct.
-  let mut s = unsafe { std::mem::zeroed() };
-  // SAFETY: Call to libc
-  if unsafe { libc::fstat(handle, &mut s) } == 1 {
-    return HandleType::Unknown;
-  }
-
-  match s.st_mode & 61440 {
-    libc::S_IFREG | libc::S_IFCHR => HandleType::File,
-    libc::S_IFIFO => HandleType::Pipe,
-    libc::S_IFSOCK => HandleType::Tcp,
     _ => HandleType::Unknown,
   }
 }
