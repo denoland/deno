@@ -67,9 +67,6 @@ impl LineIndex {
     self.inner.text_content_length_utf16()
   }
 
-  pub fn line_starts(&self) -> &[TextSize] {
-    self.inner.line_starts()
-  }
 }
 
 /// Compare two strings and return a vector of text edit records which are
