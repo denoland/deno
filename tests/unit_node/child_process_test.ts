@@ -1365,3 +1365,26 @@ Deno.test(function spawnSyncReturnsPid() {
   assertEquals(typeof ret.pid, "number");
   assert(ret.pid > 0);
 });
+
+Deno.test(async function spawnWithNumericFdInStdioArray() {
+  const fs = await import("node:fs");
+  const tmpFile = Deno.makeTempFileSync();
+  try {
+    const fd = fs.openSync(tmpFile, "w");
+    const child = spawn(Deno.execPath(), [
+      "eval",
+      "/* child just exits successfully */",
+    ], {
+      stdio: ["ignore", "pipe", "pipe", fd],
+    });
+    const { promise, resolve } = Promise.withResolvers<void>();
+    child.on("close", (code: number) => {
+      assertEquals(code, 0);
+      resolve();
+    });
+    await promise;
+    fs.closeSync(fd);
+  } finally {
+    Deno.removeSync(tmpFile);
+  }
+});
