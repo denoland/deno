@@ -29,17 +29,48 @@ enum HandleType {
 
 #[op2(fast)]
 pub fn op_node_guess_handle_type(state: &mut OpState, rid: u32) -> u32 {
-  let handle = match state.resource_table.get_handle(rid) {
-    Ok(handle) => handle,
-    _ => return HandleType::Unknown as u32,
-  };
+  // First try the resource table (covers stdio 0/1/2 and other Deno resources).
+  if let Ok(handle) = state.resource_table.get_handle(rid) {
+    let handle_type = match handle {
+      ResourceHandle::Fd(handle) => guess_handle_type(handle),
+      _ => HandleType::Unknown,
+    };
+    if !matches!(handle_type, HandleType::Unknown) {
+      return handle_type as u32;
+    }
+  }
 
-  let handle_type = match handle {
-    ResourceHandle::Fd(handle) => guess_handle_type(handle),
+  // Fall back to treating the value as a raw OS file descriptor.
+  // This handles fds inherited from a parent process (e.g. extra stdio
+  // pipes from child_process.fork) that aren't in the resource table.
+  guess_handle_type_from_fd(rid as i32) as u32
+}
+
+#[cfg(unix)]
+fn guess_handle_type_from_fd(fd: i32) -> HandleType {
+  use deno_core::uv_compat;
+  match uv_compat::uv_guess_handle(fd) {
+    uv_compat::uv_handle_type::UV_TCP => HandleType::Tcp,
+    uv_compat::uv_handle_type::UV_TTY => HandleType::Tty,
+    uv_compat::uv_handle_type::UV_UDP => HandleType::Unknown, // no UDP handle type
+    uv_compat::uv_handle_type::UV_FILE => HandleType::File,
+    uv_compat::uv_handle_type::UV_NAMED_PIPE => HandleType::Pipe,
     _ => HandleType::Unknown,
-  };
+  }
+}
 
-  handle_type as u32
+#[cfg(windows)]
+fn guess_handle_type_from_fd(fd: i32) -> HandleType {
+  if fd < 0 {
+    return HandleType::Unknown;
+  }
+  // SAFETY: get_osfhandle converts a CRT fd to an OS handle.
+  // Returns -1 (INVALID_HANDLE_VALUE) for invalid fds.
+  let handle = unsafe { libc::get_osfhandle(fd) };
+  if handle == -1 {
+    return HandleType::Unknown;
+  }
+  guess_handle_type(handle as _)
 }
 
 #[cfg(windows)]

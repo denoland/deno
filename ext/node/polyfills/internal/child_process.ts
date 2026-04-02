@@ -392,7 +392,13 @@ export class ChildProcess extends EventEmitter {
     const extraStdioNormalized: DenoStdio[] = [];
     for (let i = 0; i < extraStdio.length; i++) {
       const fd = i + extraStdioOffset;
-      if (fd === ipc) extraStdioNormalized.push("null");
+      if (fd === ipc) {
+        // IPC fd is handled separately in Rust via the kIpc option.
+        // Push a placeholder so the array indices stay aligned with
+        // fd numbers, but don't double-push.
+        extraStdioNormalized.push("null");
+        continue;
+      }
       extraStdioNormalized.push(toDenoStdio(extraStdio[i]));
     }
 
