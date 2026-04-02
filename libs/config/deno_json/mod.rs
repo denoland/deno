@@ -770,12 +770,25 @@ pub struct CompileConfig {
   pub permissions: Option<Box<PermissionsObjectWithBase>>,
 }
 
+#[derive(Clone, Debug, Deserialize, PartialEq)]
+struct SerializedDesktopIconEntry {
+  pub path: String,
+  pub size: u32,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq)]
+#[serde(untagged)]
+enum SerializedDesktopIconValue {
+  Single(String),
+  Set(Vec<SerializedDesktopIconEntry>),
+}
+
 #[derive(Clone, Debug, Default, Deserialize, PartialEq)]
 #[serde(default, deny_unknown_fields)]
 struct SerializedDesktopIconsConfig {
-  pub macos: Option<String>,
-  pub windows: Option<String>,
-  pub linux: Option<String>,
+  pub macos: Option<SerializedDesktopIconValue>,
+  pub windows: Option<SerializedDesktopIconValue>,
+  pub linux: Option<SerializedDesktopIconValue>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, PartialEq)]
@@ -822,10 +835,32 @@ impl SerializedDesktopConfig {
     DesktopConfig {
       app: self.app.map(|a| DesktopAppConfig {
         name: a.name,
-        icons: a.icons.map(|i| DesktopIconsConfig {
-          macos: i.macos,
-          windows: i.windows,
-          linux: i.linux,
+        icons: a.icons.map(|i| {
+          fn resolve_icon_value(
+            v: SerializedDesktopIconValue,
+          ) -> DesktopIconValue {
+            match v {
+              SerializedDesktopIconValue::Single(s) => {
+                DesktopIconValue::Single(s)
+              }
+              SerializedDesktopIconValue::Set(entries) => {
+                DesktopIconValue::Set(
+                  entries
+                    .into_iter()
+                    .map(|e| DesktopIconEntry {
+                      path: e.path,
+                      size: e.size,
+                    })
+                    .collect(),
+                )
+              }
+            }
+          }
+          DesktopIconsConfig {
+            macos: i.macos.map(resolve_icon_value),
+            windows: i.windows.map(resolve_icon_value),
+            linux: i.linux.map(resolve_icon_value),
+          }
         }),
       }),
       backend: self.backend,
@@ -844,11 +879,25 @@ impl SerializedDesktopConfig {
   }
 }
 
+#[derive(Clone, Debug, PartialEq)]
+pub struct DesktopIconEntry {
+  pub path: String,
+  pub size: u32,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum DesktopIconValue {
+  /// A single icon file (`.icns`, `.ico`, or `.png`).
+  Single(String),
+  /// Multiple PNGs at specific sizes.
+  Set(Vec<DesktopIconEntry>),
+}
+
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct DesktopIconsConfig {
-  pub macos: Option<String>,
-  pub windows: Option<String>,
-  pub linux: Option<String>,
+  pub macos: Option<DesktopIconValue>,
+  pub windows: Option<DesktopIconValue>,
+  pub linux: Option<DesktopIconValue>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]

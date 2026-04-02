@@ -44,13 +44,26 @@ pub async fn desktop(
     if let Some(icons) = app_config.icons
       && desktop_flags.icon.is_none()
     {
-      desktop_flags.icon = if cfg!(target_os = "macos") {
+      use deno_config::deno_json::DesktopIconValue;
+      let platform_icon = if cfg!(target_os = "macos") {
         icons.macos
       } else if cfg!(target_os = "windows") {
         icons.windows
       } else {
         icons.linux
       };
+      desktop_flags.icon = platform_icon.map(|v| match v {
+        DesktopIconValue::Single(s) => crate::args::IconConfig::Single(s),
+        DesktopIconValue::Set(entries) => crate::args::IconConfig::Set(
+          entries
+            .into_iter()
+            .map(|e| crate::args::IconSetEntry {
+              path: e.path,
+              size: e.size,
+            })
+            .collect(),
+        ),
+      });
     }
 
     if let Some(name) = app_config.name
@@ -157,7 +170,10 @@ async fn compile_desktop(
     args: desktop_flags.args.clone(),
     target: desktop_flags.target.clone(),
     no_terminal: false,
-    icon: desktop_flags.icon.clone(),
+    icon: match &desktop_flags.icon {
+      Some(crate::args::IconConfig::Single(s)) => Some(s.clone()),
+      _ => None,
+    },
     include: desktop_flags.include.clone(),
     exclude: desktop_flags.exclude.clone(),
     eszip: false,
@@ -596,25 +612,41 @@ fn package_macos_app_bundle(
 
   // Handle icon.
   if let Some(ref icon) = desktop_flags.icon {
-    let icon_path = cli_options.initial_cwd().join(icon);
-    if icon_path.exists() {
-      let dest = resources_dir.join("AppIcon.icns");
-      match icon_path.extension().and_then(|e| e.to_str()) {
-        Some("icns") => {
-          std::fs::copy(&icon_path, &dest)?;
-        }
-        Some("png") => {
-          crate::tools::compile::convert_png_to_icns(&icon_path, &dest)?;
-        }
-        _ => {
+    let dest = resources_dir.join("AppIcon.icns");
+    match icon {
+      crate::args::IconConfig::Single(path) => {
+        let icon_path = cli_options.initial_cwd().join(path);
+        if icon_path.exists() {
+          match icon_path.extension().and_then(|e| e.to_str()) {
+            Some("icns") => {
+              std::fs::copy(&icon_path, &dest)?;
+            }
+            Some("png") => {
+              crate::tools::compile::convert_png_to_icns(
+                &icon_path, &dest,
+              )?;
+            }
+            _ => {
+              log::warn!(
+                "Icon '{}' is not .icns or .png, skipping",
+                icon_path.display()
+              );
+            }
+          }
+        } else {
           log::warn!(
-            "Icon '{}' is not .icns or .png, skipping",
+            "Icon '{}' not found, skipping",
             icon_path.display()
           );
         }
       }
-    } else {
-      log::warn!("Icon '{}' not found, skipping", icon_path.display());
+      crate::args::IconConfig::Set(entries) => {
+        convert_icon_set_to_icns(
+          cli_options.initial_cwd(),
+          entries,
+          &dest,
+        )?;
+      }
     }
   }
 
@@ -699,4 +731,142 @@ fn find_wef_backend(backend: &str) -> Result<PathBuf, AnyError> {
     backend,
     WEF_BACKEND_ENV
   )
+}
+
+/// Build a macOS `.icns` from an icon set (multiple PNGs at specified sizes).
+///
+/// Maps each provided size to the correct `.iconset` filename. The standard
+/// macOS iconset uses 1x and 2x variants:
+///   16px  → icon_16x16.png
+///   32px  → icon_16x16@2x.png AND icon_32x32.png
+///   64px  → icon_32x32@2x.png
+///   128px → icon_128x128.png
+///   256px → icon_128x128@2x.png AND icon_256x256.png
+///   512px → icon_256x256@2x.png AND icon_512x512.png
+///   1024px→ icon_512x512@2x.png
+fn convert_icon_set_to_icns(
+  cwd: &Path,
+  entries: &[crate::args::IconSetEntry],
+  icns_path: &Path,
+) -> Result<(), deno_core::error::AnyError> {
+  let iconset_dir = icns_path.with_extension("iconset");
+  std::fs::create_dir_all(&iconset_dir)?;
+
+  for entry in entries {
+    let src = cwd.join(&entry.path);
+    if !src.exists() {
+      log::warn!("Icon '{}' not found, skipping", src.display());
+      continue;
+    }
+
+    let names = iconset_names_for_size(entry.size);
+    for name in names {
+      std::fs::copy(&src, iconset_dir.join(name))?;
+    }
+  }
+
+  let status = std::process::Command::new("iconutil")
+    .args([
+      "-c",
+      "icns",
+      &iconset_dir.display().to_string(),
+      "-o",
+      &icns_path.display().to_string(),
+    ])
+    .stdout(std::process::Stdio::null())
+    .stderr(std::process::Stdio::null())
+    .status()?;
+
+  let _ = std::fs::remove_dir_all(&iconset_dir);
+
+  if !status.success() {
+    deno_core::anyhow::bail!(
+      "iconutil failed to create .icns from icon set"
+    );
+  }
+
+  Ok(())
+}
+
+/// Returns the `.iconset` filenames a given pixel size maps to.
+fn iconset_names_for_size(size: u32) -> Vec<&'static str> {
+  match size {
+    16 => vec!["icon_16x16.png"],
+    32 => vec!["icon_16x16@2x.png", "icon_32x32.png"],
+    64 => vec!["icon_32x32@2x.png"],
+    128 => vec!["icon_128x128.png"],
+    256 => vec!["icon_128x128@2x.png", "icon_256x256.png"],
+    512 => vec!["icon_256x256@2x.png", "icon_512x512.png"],
+    1024 => vec!["icon_512x512@2x.png"],
+    _ => {
+      log::warn!(
+        "Icon size {}px doesn't map to a standard macOS iconset slot, skipping",
+        size
+      );
+      vec![]
+    }
+  }
+}
+
+/// Build a Windows `.ico` from an icon set (multiple PNGs at specified sizes).
+///
+/// The ICO format stores PNG images directly (Vista+ supports PNG-compressed
+/// entries). We write the ICO header, one directory entry per image, then the
+/// raw PNG data for each.
+pub fn convert_icon_set_to_ico(
+  cwd: &Path,
+  entries: &[crate::args::IconSetEntry],
+  ico_path: &Path,
+) -> Result<(), deno_core::error::AnyError> {
+  use std::io::Write;
+
+  let mut images: Vec<(u32, Vec<u8>)> = Vec::new();
+  for entry in entries {
+    let src = cwd.join(&entry.path);
+    if !src.exists() {
+      log::warn!("Icon '{}' not found, skipping", src.display());
+      continue;
+    }
+    let data = std::fs::read(&src)?;
+    images.push((entry.size, data));
+  }
+
+  if images.is_empty() {
+    deno_core::anyhow::bail!("No valid icon images found for .ico");
+  }
+
+  let count = images.len() as u16;
+  // ICO header: 6 bytes
+  // Each directory entry: 16 bytes
+  let header_size = 6 + (count as u32) * 16;
+
+  let mut buf = Vec::new();
+  // ICO header
+  buf.write_all(&0u16.to_le_bytes())?; // reserved
+  buf.write_all(&1u16.to_le_bytes())?; // type: 1 = ICO
+  buf.write_all(&count.to_le_bytes())?; // image count
+
+  // Directory entries
+  let mut data_offset = header_size;
+  for (size, data) in &images {
+    // Width/height: 0 means 256 in ICO format
+    let dim = if *size >= 256 { 0u8 } else { *size as u8 };
+    buf.push(dim); // width
+    buf.push(dim); // height
+    buf.push(0); // color palette count
+    buf.push(0); // reserved
+    buf.write_all(&1u16.to_le_bytes())?; // color planes
+    buf.write_all(&32u16.to_le_bytes())?; // bits per pixel
+    buf.write_all(&(data.len() as u32).to_le_bytes())?; // image data size
+    buf.write_all(&data_offset.to_le_bytes())?; // offset to image data
+    data_offset += data.len() as u32;
+  }
+
+  // Image data
+  for (_, data) in &images {
+    buf.write_all(data)?;
+  }
+
+  std::fs::write(ico_path, &buf)?;
+  Ok(())
 }

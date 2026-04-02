@@ -251,158 +251,165 @@ pub const DESKTOP_JS: &str = r#"
   // Single polling loop for all native desktop events.
   (async () => {
     while (true) {
-      const p = op_desktop_recv_event();
-      unrefOpPromise(p);
-      const ev = await p;
-      if (ev == null) break;
-      switch (ev.kind) {
-        case "appMenuClick": {
-          const target = windows.get(ev.windowId);
-          if (!target) break;
-          target.dispatchEvent(new CustomEvent("menuclick", { detail: { id: ev.id } }));
-          break;
-        }
-        case "contextMenuClick": {
-          const target = windows.get(ev.windowId);
-          if (!target) break;
-          target.dispatchEvent(new CustomEvent("contextmenuclick", { detail: { id: ev.id } }));
-          break;
-        }
-        case "keyboardEvent": {
-          const target = windows.get(ev.windowId);
-          if (!target) break;
-          target.dispatchEvent(new KeyboardEvent(ev.type, {
-            key: ev.key,
-            code: ev.code,
-            shiftKey: ev.shift,
-            ctrlKey: ev.control,
-            altKey: ev.alt,
-            metaKey: ev.meta,
-            repeat: ev.repeat,
-          }));
-          break;
-        }
-        case "bindCall": {
-          const callbacks = windowBindCallbacks.get(ev.windowId);
-          const fn_ = callbacks?.get(ev.name);
-          if (!fn_) {
-            op_desktop_reject_bind_call(ev.callId, "No callback bound for: " + ev.name);
+      try {
+        const p = op_desktop_recv_event();
+        unrefOpPromise(p);
+        const ev = await p;
+        if (ev == null) break;
+        switch (ev.kind) {
+          case "appMenuClick": {
+            const target = windows.get(ev.windowId);
+            if (!target) break;
+            target.dispatchEvent(new CustomEvent("menuclick", { detail: { id: ev.id } }));
             break;
           }
-          try {
-            const args = Array.isArray(ev.args) ? ev.args : [];
-            const result = await fn_(...args);
-            op_desktop_resolve_bind_call(ev.callId, result ?? null);
-          } catch (e) {
-            op_desktop_reject_bind_call(ev.callId, String(e));
+          case "contextMenuClick": {
+            const target = windows.get(ev.windowId);
+            if (!target) break;
+            target.dispatchEvent(new CustomEvent("contextmenuclick", { detail: { id: ev.id } }));
+            break;
           }
-          break;
-        }
-        case "mouseClick": {
-          const target = windows.get(ev.windowId);
-          if (!target) break;
-          const init = {
-            button: ev.button,
-            clientX: ev.clientX,
-            clientY: ev.clientY,
-            ctrlKey: ev.control,
-            shiftKey: ev.shift,
-            altKey: ev.alt,
-            metaKey: ev.meta,
-            detail: ev.clickCount,
-          };
-          if (ev.state === "pressed") {
-            target.dispatchEvent(new MouseEvent("mousedown", init));
-          } else {
-            target.dispatchEvent(new MouseEvent("mouseup", init));
-            if (ev.button === 0) {
-              target.dispatchEvent(new MouseEvent("click", init));
-              if (ev.clickCount >= 2) {
-                target.dispatchEvent(new MouseEvent("dblclick", init));
+          case "keyboardEvent": {
+            const target = windows.get(ev.windowId);
+            if (!target) break;
+            target.dispatchEvent(new KeyboardEvent(ev.type, {
+              key: ev.key,
+              code: ev.code,
+              shiftKey: ev.shift,
+              ctrlKey: ev.control,
+              altKey: ev.alt,
+              metaKey: ev.meta,
+              repeat: ev.repeat,
+            }));
+            break;
+          }
+          case "bindCall": {
+            const callbacks = windowBindCallbacks.get(ev.windowId);
+            const fn_ = callbacks?.get(ev.name);
+            if (!fn_) {
+              op_desktop_reject_bind_call(ev.callId, "No callback bound for: " + ev.name);
+              break;
+            }
+            // Run async so it doesn't block the event loop
+            (async () => {
+              try {
+                const args = Array.isArray(ev.args) ? ev.args : [];
+                const result = await fn_(...args);
+                op_desktop_resolve_bind_call(ev.callId, result ?? null);
+              } catch (e) {
+                op_desktop_reject_bind_call(ev.callId, String(e));
+              }
+            })();
+            break;
+          }
+          case "mouseClick": {
+            const target = windows.get(ev.windowId);
+            if (!target) break;
+            const init = {
+              button: ev.button,
+              clientX: ev.clientX,
+              clientY: ev.clientY,
+              ctrlKey: ev.control,
+              shiftKey: ev.shift,
+              altKey: ev.alt,
+              metaKey: ev.meta,
+              detail: ev.clickCount,
+            };
+            if (ev.state === "pressed") {
+              target.dispatchEvent(new MouseEvent("mousedown", init));
+            } else {
+              target.dispatchEvent(new MouseEvent("mouseup", init));
+              if (ev.button === 0) {
+                target.dispatchEvent(new MouseEvent("click", init));
+                if (ev.clickCount >= 2) {
+                  target.dispatchEvent(new MouseEvent("dblclick", init));
+                }
               }
             }
+            break;
           }
-          break;
+          case "mouseMove": {
+            const target = windows.get(ev.windowId);
+            if (!target) break;
+            target.dispatchEvent(new MouseEvent("mousemove", {
+              clientX: ev.clientX,
+              clientY: ev.clientY,
+              ctrlKey: ev.control,
+              shiftKey: ev.shift,
+              altKey: ev.alt,
+              metaKey: ev.meta,
+            }));
+            break;
+          }
+          case "wheel": {
+            const target = windows.get(ev.windowId);
+            if (!target) break;
+            target.dispatchEvent(new WheelEvent("wheel", {
+              deltaX: ev.deltaX,
+              deltaY: ev.deltaY,
+              deltaMode: ev.deltaMode,
+              clientX: ev.clientX,
+              clientY: ev.clientY,
+              ctrlKey: ev.control,
+              shiftKey: ev.shift,
+              altKey: ev.alt,
+              metaKey: ev.meta,
+            }));
+            break;
+          }
+          case "cursorEnterLeave": {
+            const target = windows.get(ev.windowId);
+            if (!target) break;
+            const init = {
+              clientX: ev.clientX,
+              clientY: ev.clientY,
+              ctrlKey: ev.control,
+              shiftKey: ev.shift,
+              altKey: ev.alt,
+              metaKey: ev.meta,
+            };
+            target.dispatchEvent(new MouseEvent(
+              ev.entered ? "mouseenter" : "mouseleave", init));
+            break;
+          }
+          case "focusChanged": {
+            const target = windows.get(ev.windowId);
+            if (!target) break;
+            target.dispatchEvent(new FocusEvent(ev.focused ? "focus" : "blur"));
+            break;
+          }
+          case "windowResize": {
+            const target = windows.get(ev.windowId);
+            if (!target) break;
+            target.dispatchEvent(new CustomEvent("resize", {
+              detail: { width: ev.width, height: ev.height },
+            }));
+            break;
+          }
+          case "windowMove": {
+            const target = windows.get(ev.windowId);
+            if (!target) break;
+            target.dispatchEvent(new CustomEvent("move", {
+              detail: { x: ev.x, y: ev.y },
+            }));
+            break;
+          }
+          case "closeRequested": {
+            const target = windows.get(ev.windowId);
+            if (!target) break;
+            target.dispatchEvent(new Event("close"));
+            break;
+          }
+          case "runtimeError": {
+            dispatchEvent(new ErrorEvent("error", {
+              message: ev.message,
+              error: new Error(ev.message),
+            }));
+            break;
+          }
         }
-        case "mouseMove": {
-          const target = windows.get(ev.windowId);
-          if (!target) break;
-          target.dispatchEvent(new MouseEvent("mousemove", {
-            clientX: ev.clientX,
-            clientY: ev.clientY,
-            ctrlKey: ev.control,
-            shiftKey: ev.shift,
-            altKey: ev.alt,
-            metaKey: ev.meta,
-          }));
-          break;
-        }
-        case "wheel": {
-          const target = windows.get(ev.windowId);
-          if (!target) break;
-          target.dispatchEvent(new WheelEvent("wheel", {
-            deltaX: ev.deltaX,
-            deltaY: ev.deltaY,
-            deltaMode: ev.deltaMode,
-            clientX: ev.clientX,
-            clientY: ev.clientY,
-            ctrlKey: ev.control,
-            shiftKey: ev.shift,
-            altKey: ev.alt,
-            metaKey: ev.meta,
-          }));
-          break;
-        }
-        case "cursorEnterLeave": {
-          const target = windows.get(ev.windowId);
-          if (!target) break;
-          const init = {
-            clientX: ev.clientX,
-            clientY: ev.clientY,
-            ctrlKey: ev.control,
-            shiftKey: ev.shift,
-            altKey: ev.alt,
-            metaKey: ev.meta,
-          };
-          target.dispatchEvent(new MouseEvent(
-            ev.entered ? "mouseenter" : "mouseleave", init));
-          break;
-        }
-        case "focusChanged": {
-          const target = windows.get(ev.windowId);
-          if (!target) break;
-          target.dispatchEvent(new FocusEvent(ev.focused ? "focus" : "blur"));
-          break;
-        }
-        case "windowResize": {
-          const target = windows.get(ev.windowId);
-          if (!target) break;
-          target.dispatchEvent(new CustomEvent("resize", {
-            detail: { width: ev.width, height: ev.height },
-          }));
-          break;
-        }
-        case "windowMove": {
-          const target = windows.get(ev.windowId);
-          if (!target) break;
-          target.dispatchEvent(new CustomEvent("move", {
-            detail: { x: ev.x, y: ev.y },
-          }));
-          break;
-        }
-        case "closeRequested": {
-          const target = windows.get(ev.windowId);
-          if (!target) break;
-          target.dispatchEvent(new Event("close"));
-          break;
-        }
-        case "runtimeError": {
-          dispatchEvent(new ErrorEvent("error", {
-            message: ev.message,
-            error: new Error(ev.message),
-          }));
-          break;
-        }
+      } catch (e) {
+        console.error("Desktop event loop error:", e?.stack ?? e);
       }
     }
   })();

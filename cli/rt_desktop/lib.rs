@@ -1169,7 +1169,6 @@ async fn run_desktop(update_rolled_back: bool) -> Result<(), AnyError> {
       let (event_tx, event_rx) =
         denort::desktop::create_desktop_event_channel();
       let pending_responses = denort::desktop::PendingBindResponses::new();
-
       let api = WefDesktopApi {
         event_tx: event_tx.0.clone(),
         pending_responses: pending_responses.clone(),

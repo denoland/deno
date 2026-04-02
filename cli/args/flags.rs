@@ -177,13 +177,27 @@ pub struct CompileFlags {
   pub self_extracting: bool,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct IconSetEntry {
+  pub path: String,
+  pub size: u32,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum IconConfig {
+  /// A single icon file (`.icns`, `.ico`, or `.png`).
+  Single(String),
+  /// Multiple PNGs at specific pixel sizes.
+  Set(Vec<IconSetEntry>),
+}
+
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct DesktopFlags {
   pub source_file: String,
   pub output: Option<String>,
   pub args: Vec<String>,
   pub target: Option<String>,
-  pub icon: Option<String>,
+  pub icon: Option<IconConfig>,
   pub include: Vec<String>,
   pub exclude: Vec<String>,
   pub hmr: bool,
@@ -6358,7 +6372,7 @@ fn desktop_parse(
     output,
     args,
     target,
-    icon,
+    icon: icon.map(IconConfig::Single),
     include,
     exclude,
     hmr,

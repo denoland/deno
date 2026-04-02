@@ -199,7 +199,7 @@ pub enum DesktopEvent {
 }
 
 pub struct DesktopEventReceiver(
-  pub tokio::sync::mpsc::UnboundedReceiver<DesktopEvent>,
+  pub Arc<tokio::sync::Mutex<tokio::sync::mpsc::UnboundedReceiver<DesktopEvent>>>,
 );
 pub struct DesktopEventSender(
   pub tokio::sync::mpsc::UnboundedSender<DesktopEvent>,
@@ -208,7 +208,7 @@ pub struct DesktopEventSender(
 pub fn create_desktop_event_channel()
 -> (DesktopEventSender, DesktopEventReceiver) {
   let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
-  (DesktopEventSender(tx), DesktopEventReceiver(rx))
+  (DesktopEventSender(tx), DesktopEventReceiver(Arc::new(tokio::sync::Mutex::new(rx))))
 }
 
 /// A pending call from the webview to a bound Deno function.
@@ -460,13 +460,13 @@ impl BrowserWindow {
   }
 
   #[fast]
-  fn is_resizeable(&self) -> bool {
+  fn is_resizable(&self) -> bool {
     self.api.is_resizable(self.window_id)
   }
 
   #[fast]
-  fn set_resizeable(&self, resizeable: bool) {
-    self.api.set_resizable(self.window_id, resizeable);
+  fn set_resizable(&self, resizable: bool) {
+    self.api.set_resizable(self.window_id, resizable);
   }
 
   #[fast]
@@ -692,13 +692,11 @@ async fn op_desktop_recv_event(
   state: std::rc::Rc<std::cell::RefCell<OpState>>,
 ) -> Option<DesktopEvent> {
   let rx = {
-    let mut s = state.borrow_mut();
-    s.try_take::<DesktopEventReceiver>()
+    let s = state.borrow();
+    s.try_borrow::<DesktopEventReceiver>().map(|r| r.0.clone())
   };
-  if let Some(mut rx) = rx {
-    let result = rx.0.recv().await;
-    state.borrow_mut().put(rx);
-    result
+  if let Some(rx) = rx {
+    rx.lock().await.recv().await
   } else {
     std::future::pending().await
   }
