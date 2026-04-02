@@ -82,7 +82,10 @@
     "parallel/test-assert-calltracker-getCalls.js": {},
     "parallel/test-assert-calltracker-report.js": {},
     "parallel/test-assert-calltracker-verify.js": {},
-    "parallel/test-assert-checktag.js": {},
+    "parallel/test-assert-checktag.js": {
+      "ignore": true,
+      "reason": "globalThis is now deeply equal to a plain object copy because Node.js timers are used as default globals, eliminating the proxy-based timer function difference that previously made them unequal"
+    },
     "parallel/test-assert-class-destructuring.js": {},
     "parallel/test-assert-class.js": {},
     "parallel/test-assert-deep-with-error.js": {},
@@ -370,6 +373,7 @@
     "parallel/test-console-sync-write-error.js": {},
     "parallel/test-console-table.js": {},
     "parallel/test-console-with-frozen-intrinsics.js": {},
+    "parallel/test-crypto-async-sign-verify.js": {},
     "parallel/test-crypto-classes.js": {},
     "parallel/test-crypto-certificate.js": {},
     "parallel/test-crypto-cipheriv-decipheriv.js": {
@@ -1043,6 +1047,8 @@
     "parallel/test-fs-util-validateoffsetlength.js": {},
     "parallel/test-fs-utimes-y2K38.js": {},
     "parallel/test-fs-utimes.js": {},
+    "parallel/test-fs-watch.js": {},
+    "parallel/test-fs-watchfile.js": {},
     "parallel/test-fs-whatwg-url.js": {},
     "parallel/test-fs-write-buffer-large.js": {},
     "parallel/test-fs-write-buffer.js": {},

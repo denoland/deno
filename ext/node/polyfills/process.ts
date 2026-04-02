@@ -1331,7 +1331,7 @@ internals.__bootstrapNodeProcess = function (
 ) {
   if (!warmup) {
     argv0 = argv0Val || "";
-    argv[0] = argv0;
+    argv[0] = Deno.execPath();
     argv[1] = Deno.build.standalone
       ? Deno.execPath()
       : Deno.mainModule?.startsWith("file:")

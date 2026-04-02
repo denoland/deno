@@ -1344,3 +1344,24 @@ Deno.test(async function stdoutWriteMultipleChunksNotTruncated() {
     await Deno.remove(script);
   }
 });
+
+Deno.test(function spawnSyncShellMetacharactersEscaped() {
+  // Shell metacharacters in args should be escaped, not interpreted.
+  // On Unix, & would launch a background process; on Windows, it
+  // would chain a second command. Either way echo should print
+  // the literal string.
+  const ret = spawnSync(
+    Deno.execPath(),
+    ["eval", "console.log(Deno.args[0])", "--", "a&b|c<d>e"],
+    { shell: true, encoding: "utf-8" },
+  );
+  assertEquals(ret.status, 0);
+  assertEquals(ret.stdout.trim(), "a&b|c<d>e");
+});
+
+Deno.test(function spawnSyncReturnsPid() {
+  const ret = spawnSync(Deno.execPath(), ["eval", "console.log('hi')"]);
+  assertEquals(ret.status, 0);
+  assertEquals(typeof ret.pid, "number");
+  assert(ret.pid > 0);
+});

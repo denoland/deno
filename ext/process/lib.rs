@@ -396,6 +396,7 @@ impl TryFrom<ExitStatus> for ChildStatus {
 
 #[derive(ToV8)]
 pub struct SpawnOutput {
+  pid: u32,
   status: ChildStatus,
   stdout: Option<Uint8Array>,
   stderr: Option<Uint8Array>,
@@ -1125,6 +1126,10 @@ fn op_spawn_sync(
     command: command.get_program().to_string_lossy().into_owned(),
     error: Box::new(e.into()),
   })?;
+  #[cfg(unix)]
+  let pid = child.id();
+  #[cfg(windows)]
+  let pid = child.id().expect("Process ID should be set.");
   if let Some(input) = input {
     let mut stdin = child.stdin.take().ok_or_else(|| {
       ProcessError::Io(std::io::Error::other("stdin is not available"))
@@ -1140,6 +1145,7 @@ fn op_spawn_sync(
         error: Box::new(e.into()),
       })?;
   Ok(SpawnOutput {
+    pid,
     status: output.status.try_into()?,
     stdout: if stdout {
       Some(output.stdout.into())

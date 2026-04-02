@@ -141,7 +141,7 @@ Deno.test({
     assertThrows(
       () => decipher.final(),
       TypeError,
-      "Failed to authenticate data",
+      "Unsupported state or unable to authenticate data",
     );
   },
 });
@@ -205,5 +205,124 @@ Deno.test({
       Error,
       "Invalid key length",
     );
+  },
+});
+
+Deno.test({
+  name: "aes gcm rejects empty IV",
+  fn() {
+    for (const algo of ["aes-128-gcm", "aes-256-gcm"] as const) {
+      const keyLen = algo === "aes-128-gcm" ? 16 : 32;
+      assertThrows(
+        () =>
+          crypto.createCipheriv(algo, Buffer.alloc(keyLen), Buffer.alloc(0)),
+        TypeError,
+        "Invalid initialization vector",
+      );
+      assertThrows(
+        () =>
+          crypto.createDecipheriv(algo, Buffer.alloc(keyLen), Buffer.alloc(0)),
+        TypeError,
+        "Invalid initialization vector",
+      );
+    }
+  },
+});
+
+Deno.test({
+  name: "aes gcm setAuthTag validates tag length",
+  fn() {
+    const invalidLengths = [0, 1, 2, 3, 5, 6, 7, 9, 10, 11, 17];
+    for (const length of invalidLengths) {
+      const d = crypto.createDecipheriv(
+        "aes-128-gcm",
+        Buffer.alloc(16),
+        Buffer.alloc(12),
+      );
+      assertThrows(
+        () => d.setAuthTag(Buffer.alloc(length)),
+        TypeError,
+        "Invalid authentication tag length",
+      );
+      // Finalize to release the underlying resource.
+      try {
+        d.final();
+      } catch {
+        // final() throws because no valid auth tag was set — that's expected.
+      }
+    }
+
+    // Valid lengths should not throw — use a full encrypt/decrypt cycle
+    // to avoid leaking resources.
+    for (const length of [4, 8, 12, 13, 14, 15, 16]) {
+      const key = Buffer.alloc(16);
+      const iv = Buffer.alloc(12);
+      const cipher = crypto.createCipheriv("aes-128-gcm", key, iv, {
+        authTagLength: length,
+      });
+      cipher.final();
+      const tag = cipher.getAuthTag();
+
+      const d = crypto.createDecipheriv("aes-128-gcm", key, iv, {
+        authTagLength: length,
+      });
+      d.setAuthTag(tag);
+      d.final();
+    }
+  },
+});
+
+Deno.test({
+  name: "aes gcm setAuthTag cannot be called twice",
+  fn() {
+    const key = Buffer.alloc(16);
+    const iv = Buffer.alloc(12);
+    const cipher = crypto.createCipheriv("aes-128-gcm", key, iv);
+    cipher.final();
+    const tag = cipher.getAuthTag();
+
+    const d = crypto.createDecipheriv("aes-128-gcm", key, iv);
+    d.setAuthTag(tag);
+    assertThrows(
+      () => d.setAuthTag(tag),
+      Error,
+      "Invalid state",
+    );
+    d.final();
+  },
+});
+
+Deno.test({
+  name: "aes gcm setAAD cannot be called after final",
+  fn() {
+    const cipher = crypto.createCipheriv(
+      "aes-128-gcm",
+      Buffer.alloc(16),
+      Buffer.alloc(12),
+    );
+    cipher.final();
+    assertThrows(
+      () => cipher.setAAD(Buffer.from("aad")),
+      Error,
+      "Invalid state",
+    );
+  },
+});
+
+Deno.test({
+  name: "aes gcm getAuthTag before final throws state error",
+  fn() {
+    const cipher = crypto.createCipheriv(
+      "aes-128-gcm",
+      Buffer.alloc(16),
+      Buffer.alloc(12),
+    );
+    cipher.update("data", "utf8");
+    assertThrows(
+      () => cipher.getAuthTag(),
+      Error,
+      "Invalid state",
+    );
+    cipher.final();
   },
 });

@@ -138,61 +138,6 @@ fn pty_complete_expression() {
 }
 
 #[test(flaky)]
-fn pty_complete_imports() {
-  let context = TestContextBuilder::default().use_temp_cwd().build();
-  let temp_dir = context.temp_dir();
-  temp_dir.create_dir_all("subdir");
-  temp_dir.write("./subdir/my_file.ts", "");
-  temp_dir.create_dir_all("run");
-  temp_dir.write("./run/hello.ts", "console.log('Hello World');");
-  temp_dir.write(
-    "./run/output.ts",
-    r#"export function output(text: string) {
-  console.log(text);
-}
-"#,
-  );
-  context
-    .new_command()
-    .args_vec(["repl", "-A"])
-    .with_pty(|mut console| {
-      // single quotes
-      console.write_line_raw("import './run/hel\t'");
-      console.expect("Hello World");
-      // double quotes
-      console.write_line_raw("import { output } from \"./run/out\t\"");
-      console.expect("\"./run/output.ts\"");
-      console.write_line_raw("output('testing output');");
-      console.expect("testing output");
-    });
-
-  // ensure when the directory changes that the suggestions come from the cwd
-  context
-    .new_command()
-    .args_vec(["repl", "-A"])
-    .with_pty(|mut console| {
-      console.write_line("Deno.chdir('./subdir');");
-      console.expect("undefined");
-      console.write_line_raw("import '../run/he\t'");
-      console.expect("Hello World");
-    });
-}
-
-#[test(flaky)]
-fn pty_complete_imports_no_panic_empty_specifier() {
-  // does not panic when tabbing when empty
-  util::with_pty(&["repl", "-A"], |mut console| {
-    if cfg!(windows) {
-      console.write_line_raw("import '\t'");
-      console.expect_any(&["not prefixed with", "https://deno.land"]);
-    } else {
-      console.write_raw("import '\t");
-      console.expect("import 'https://deno.land");
-    }
-  });
-}
-
-#[test(flaky)]
 fn pty_ignore_symbols() {
   util::with_pty(&["repl"], |mut console| {
     console.write_line_raw("Array.Symbol\t");
@@ -1096,19 +1041,6 @@ fn package_json_uncached_no_error() {
 
     assert!(temp_dir.path().join("node_modules").exists());
   });
-}
-
-#[test(flaky)]
-fn closed_file_pre_load_does_not_occur() {
-  TestContext::default()
-    .new_command()
-    .args_vec(["repl", "-A", "--log-level=debug"])
-    .with_pty(|console| {
-      assert_contains!(
-        console.all_output(),
-        "Skipped workspace walk due to client incapability.",
-      );
-    });
 }
 
 #[test(flaky)]

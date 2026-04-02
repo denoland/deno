@@ -628,7 +628,11 @@ pub fn init_global_template<'a>(
 
 // Using thread_local! to get around compiler bug.
 //
-// See NOTE in ext/node/global.rs#L12
+// NOTE(bartlomieju): somehow calling `.map_fn_to()` multiple times on a
+// function returns two different pointers. That shouldn't be the case as
+// `.map_fn_to()` creates a thin wrapper that is a pure function.
+// @piscisaureus suggests it might be a bug in Rust compiler; so for now we
+// just create and store these mapped functions per-thread.
 thread_local! {
   pub static QUERY_MAP_FN: v8::NamedPropertyQueryCallback = property_query.map_fn_to();
   pub static GETTER_MAP_FN: v8::NamedPropertyGetterCallback = property_getter.map_fn_to();

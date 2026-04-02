@@ -158,7 +158,7 @@ fn napi_fatal_error(
         std::ffi::CStr::from_ptr(location).to_str().unwrap()
       } else {
         let slice = std::slice::from_raw_parts(
-          location as *const u8,
+          location as *const _,
           location_len as usize,
         );
         std::str::from_utf8(slice).unwrap()
@@ -170,7 +170,7 @@ fn napi_fatal_error(
     unsafe { std::ffi::CStr::from_ptr(message).to_str().unwrap() }
   } else {
     let slice = unsafe {
-      std::slice::from_raw_parts(message as *const u8, message_len as usize)
+      std::slice::from_raw_parts(message as *const _, message_len as usize)
     };
     std::str::from_utf8(slice).unwrap()
   };

@@ -1279,7 +1279,10 @@ function escapeShellArg(arg: string): string {
       return '""';
     }
     // If no special characters, return as-is
-    if (!/[\s"\\]/.test(arg)) {
+    // Must include cmd.exe metacharacters: &|<>^!()
+    // Note: % is not included because cmd.exe expands %VAR% even inside
+    // double quotes and there is no reliable escape for it outside batch files.
+    if (!/[\s"\\&|<>^!()]/.test(arg)) {
       return arg;
     }
     // Escape backslashes before quotes, then escape quotes
@@ -1725,6 +1728,8 @@ export function spawnSync(
       stderr = stderr && stderr.toString(encoding);
     }
 
+    // deno-lint-ignore no-explicit-any
+    result.pid = (output as any)._pid;
     result.status = status;
     result.signal = output.signal;
     result.stdout = stdout;

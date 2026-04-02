@@ -759,28 +759,17 @@ impl DepManager {
                   return Some(latest_tag.clone());
                 }
 
-                let lower_bound = &semver_compatible.as_ref()?.version;
-                let latest_matches_newest_dep_date =
-                  version_resolver.matches_newest_dependency_date(latest_tag);
-                if latest_matches_newest_dep_date && latest_tag >= lower_bound {
+                // Use the `latest` dist-tag directly, matching npm/pnpm/bun
+                // behavior. Computing the max across all versions is incorrect
+                // when packages publish pre-release versions with commit hashes
+                // (e.g., 1.0.0-beta.9-commit.d91dfb5) because semver considers
+                // alphanumeric pre-release identifiers higher than numeric ones,
+                // so beta.9-commit.hash > beta.32.
+                // Ref: https://github.com/denoland/deno/issues/29647
+                if version_resolver.matches_newest_dependency_date(latest_tag) {
                   Some(latest_tag.clone())
                 } else {
-                  latest_version(
-                    if latest_matches_newest_dep_date {
-                      Some(latest_tag)
-                    } else {
-                      None
-                    },
-                    version_resolver.applicable_version_infos().filter_map(
-                      |version_info| {
-                        if version_info.deprecated.is_none() {
-                          Some(&version_info.version)
-                        } else {
-                          None
-                        }
-                      },
-                    ),
-                  )
+                  None
                 }
               })
               .map(|version| PackageNv {
@@ -812,19 +801,26 @@ impl DepManager {
                   .jsr_fetch_resolver
                   .version_resolver_for_package(&semver_req.name, &info);
                 let lower_bound = &semver_compatible.as_ref()?.version;
-                latest_version(
-                  Some(lower_bound),
-                  info.versions.iter().filter_map(|(version, version_info)| {
-                    if !version_info.yanked
-                      && version_resolver
-                        .matches_newest_dependency_date(version_info)
-                    {
-                      Some(version)
-                    } else {
-                      None
+                {
+                  let mut best: Option<&Version> = Some(lower_bound);
+                  for version in info.versions.iter().filter_map(
+                    |(version, version_info)| {
+                      if !version_info.yanked
+                        && version_resolver
+                          .matches_newest_dependency_date(version_info)
+                      {
+                        Some(version)
+                      } else {
+                        None
+                      }
+                    },
+                  ) {
+                    if best.is_none_or(|b| version > b) {
+                      best = Some(version);
                     }
-                  }),
-                )
+                  }
+                  best.cloned()
+                }
               })
               .map(|version| PackageNv {
                 name: semver_req.name.clone(),
@@ -1029,19 +1025,4 @@ fn parse_req_reference(
     DepKind::Npm => NpmPackageReqReference::from_str(input)?.into_inner(),
     DepKind::Jsr => JsrPackageReqReference::from_str(input)?.into_inner(),
   })
-}
-
-fn latest_version<'a>(
-  start: Option<&Version>,
-  versions: impl IntoIterator<Item = &'a Version>,
-) -> Option<Version> {
-  let mut best = start;
-  for version in versions {
-    match best {
-      Some(best_version) if version > best_version => best = Some(version),
-      None => best = Some(version),
-      _ => {}
-    }
-  }
-  best.cloned()
 }
