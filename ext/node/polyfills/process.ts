@@ -95,6 +95,7 @@ export { stderr, stdin, stdout };
 import { getBinding } from "ext:deno_node/internal_binding/mod.ts";
 import * as constants from "ext:deno_node/internal_binding/constants.ts";
 import * as uv from "ext:deno_node/internal_binding/uv.ts";
+import { guessHandleType } from "ext:deno_node/internal_binding/util.ts";
 import type { BindingName } from "ext:deno_node/internal_binding/mod.ts";
 import { buildAllowedFlags } from "ext:deno_node/internal/process/per_thread.mjs";
 import type fsUtils from "ext:deno_node/internal/fs/utils.mjs";
@@ -1348,8 +1349,12 @@ internals.__bootstrapNodeProcess = function (
 
     enableNextTick();
 
-    // Replace warmup stdout/stderr with proper streams
-    if (io.stdout.isTerminal()) {
+    // Replace warmup stdout/stderr with proper streams.
+    // Use guessHandleType (uv_guess_handle) instead of isTerminal (isatty)
+    // to match Node.js. On Windows Git Bash, isatty() returns true for
+    // MSYS2 pipes but uv_tty_init fails with EBADF. guessHandleType
+    // correctly identifies these as PIPE, avoiding the TTY init crash.
+    if (guessHandleType(1) === "TTY") {
       /** https://nodejs.org/api/process.html#process_process_stdout */
       stdout = process.stdout = new TTYWriteStream(1);
       // For supporting legacy API we put the FD here.
@@ -1378,7 +1383,7 @@ internals.__bootstrapNodeProcess = function (
       );
     }
 
-    if (io.stderr.isTerminal()) {
+    if (guessHandleType(2) === "TTY") {
       /** https://nodejs.org/api/process.html#process_process_stderr */
       stderr = process.stderr = new TTYWriteStream(2);
       // For supporting legacy API we put the FD here.
