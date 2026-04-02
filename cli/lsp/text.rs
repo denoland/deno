@@ -66,7 +66,6 @@ impl LineIndex {
   pub fn text_content_length_utf16(&self) -> TextSize {
     self.inner.text_content_length_utf16()
   }
-
 }
 
 /// Compare two strings and return a vector of text edit records which are
