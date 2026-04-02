@@ -153,10 +153,6 @@ pub async fn run_all_servers() {
   let node_js_mirror_server_fut =
     nodejs_org_mirror::nodejs_org_mirror(NODEJS_ORG_MIRROR_SERVER_PORT);
 
-  if let Err(e) = ensure_tsgo_prebuilt().await {
-    eprintln!("failed to ensure tsgo prebuilt: {e}");
-  }
-
   let mut futures = vec![
     redirect_server_fut.boxed_local(),
     ws_server_fut.boxed_local(),
@@ -1474,37 +1470,4 @@ pub fn custom_headers(
   }
 
   response
-}
-
-pub async fn ensure_tsgo_prebuilt() -> Result<(), anyhow::Error> {
-  let tsgo_path = crate::consts::tsgo_prebuilt_path();
-  if tsgo_path.exists() {
-    return Ok(());
-  }
-
-  let archive_name = format!(
-    "typescript-go-{}-{}.zip",
-    crate::consts::tsgo::VERSION,
-    crate::consts::TSGO_PLATFORM
-  );
-
-  let url =
-    format!("{}/{archive_name}", crate::consts::tsgo::DOWNLOAD_BASE_URL);
-
-  let response = reqwest::get(url).await?;
-  let bytes = response.bytes().await?;
-
-  let mut archive = zip::ZipArchive::new(std::io::Cursor::new(bytes))?;
-  if !tsgo_path.parent().exists() {
-    tsgo_path.parent().create_dir_all();
-  }
-  archive.extract(tsgo_path.parent().as_path())?;
-
-  if cfg!(windows) {
-    tsgo_path.parent().join("tsgo.exe").rename(tsgo_path);
-  } else {
-    tsgo_path.parent().join("tsgo").rename(tsgo_path);
-  }
-
-  Ok(())
 }
