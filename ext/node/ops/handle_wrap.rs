@@ -16,6 +16,69 @@ use deno_core::uv_compat::uv_handle_t;
 use deno_core::v8;
 
 // ---------------------------------------------------------------------------
+// OwnedPtr — a raw-pointer wrapper that owns heap memory without Box's
+// uniqueness/noalias guarantees.  Needed when the pointee is accessed
+// through raw pointers during reentrant JS calls.
+// ---------------------------------------------------------------------------
+
+pub struct OwnedPtr<T>(*mut T);
+
+impl<T> OwnedPtr<T> {
+  pub fn from_box(b: Box<T>) -> Self {
+    Self(Box::into_raw(b))
+  }
+
+  pub fn as_mut_ptr(&self) -> *mut T {
+    self.0
+  }
+
+  pub fn as_ptr(&self) -> *const T {
+    self.0
+  }
+
+  /// # Safety
+  /// Caller must ensure no mutable references exist to the pointee,
+  /// and the pointer is valid.
+  pub unsafe fn as_ref(&self) -> &T {
+    // SAFETY: upheld by the caller per the method contract above.
+    unsafe { &*self.0 }
+  }
+
+  #[allow(
+    clippy::mut_from_ref,
+    reason = "OwnedPtr represents uniquely owned heap memory whose address must remain stable across reentrant FFI callbacks."
+  )]
+  /// # Safety
+  /// Caller must ensure no other references (shared or mutable) exist
+  /// to the pointee, and the pointer is valid.
+  pub unsafe fn as_mut(&self) -> &mut T {
+    // SAFETY: upheld by the caller per the method contract above.
+    unsafe { &mut *self.0 }
+  }
+
+  /// # Safety
+  /// Caller must ensure T and U have identical memory layout.
+  pub unsafe fn cast<U>(self) -> OwnedPtr<U> {
+    const {
+      assert!(size_of::<T>() == size_of::<U>());
+      assert!(align_of::<T>() == align_of::<U>());
+    }
+    let ptr = self.0.cast();
+    std::mem::forget(self);
+    OwnedPtr(ptr)
+  }
+}
+
+impl<T> Drop for OwnedPtr<T> {
+  fn drop(&mut self) {
+    // SAFETY: self.0 was created from Box::into_raw and has not been freed.
+    unsafe {
+      let _ = Box::from_raw(self.0);
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
 // GlobalHandle — mirrors Node's BaseObject::persistent_handle_ weak/strong
 // switching.
 //
@@ -259,15 +322,109 @@ impl HandleWrap {
     }
   }
 
-  fn is_alive(&self) -> bool {
+  pub(crate) fn is_alive(&self) -> bool {
     self.state.get() != State::Closed
+  }
+
+  #[allow(dead_code, reason = "used by upcoming TCPWrap/TLSWrap")]
+  pub(crate) fn set_state_closing(&self) {
+    self.state.set(State::Closing);
+  }
+
+  /// Run the JS-side close callback without closing the native handle.
+  /// Used by `reset` which has already closed the native handle via
+  /// `uv_tcp_close_reset`.
+  pub(crate) fn run_close_callback(
+    &self,
+    op_state: Rc<RefCell<OpState>>,
+    this: v8::Global<v8::Object>,
+    scope: &mut v8::PinScope<'_, '_>,
+    cb: Option<v8::Global<v8::Function>>,
+  ) {
+    let state = self.state.clone();
+    let on_close = move |scope: &mut v8::PinScope<'_, '_>| {
+      assert!(state.get() == State::Closing);
+      state.set(State::Closed);
+
+      if let Some(cb) = cb {
+        let recv = v8::undefined(scope);
+        cb.open(scope).call(scope, recv.into(), &[]);
+      }
+    };
+
+    uv_close(scope, op_state, this, on_close);
+  }
+
+  pub(crate) fn close_handle(
+    &self,
+    op_state: Rc<RefCell<OpState>>,
+    this: v8::Global<v8::Object>,
+    scope: &mut v8::PinScope<'_, '_>,
+    cb: Option<v8::Global<v8::Function>>,
+  ) -> Result<(), ResourceError> {
+    if self.state.get() != State::Initialized {
+      return Ok(());
+    }
+
+    // Close the native libuv handle if we have one, so it gets removed
+    // from the event loop and stops keeping the process alive.
+    if let Some(Handle::New(handle)) = self.handle {
+      // SAFETY: handle was initialized by the corresponding uv_*_init and
+      // is still valid (state == Initialized).
+      unsafe {
+        uv_compat::uv_close(handle.cast_mut(), None);
+      }
+    }
+
+    self.state.set(State::Closing);
+    self.run_close_callback(op_state, this, scope, cb);
+
+    Ok(())
+  }
+
+  pub(crate) fn has_ref_handle(&self, state: &mut OpState) -> bool {
+    if let Some(handle) = &self.handle {
+      return match handle {
+        Handle::Old(resource_id) => state.has_ref(*resource_id),
+        // SAFETY: handle is a valid uv_handle_t pointer set during construction and remains live while HandleWrap is alive.
+        Handle::New(handle) => unsafe { uv_compat::uv_has_ref(*handle) != 0 },
+      };
+    }
+
+    true
+  }
+
+  pub(crate) fn ref_handle(&self, state: &mut OpState) {
+    if self.is_alive()
+      && let Some(handle) = &self.handle
+    {
+      match handle {
+        Handle::Old(resource_id) => state.uv_ref(*resource_id),
+        // SAFETY: handle is a valid uv_handle_t pointer set during construction and remains live while HandleWrap is alive.
+        Handle::New(handle) => unsafe { uv_compat::uv_ref(handle.cast_mut()) },
+      }
+    }
+  }
+
+  pub(crate) fn unref_handle(&self, state: &mut OpState) {
+    if self.is_alive()
+      && let Some(handle) = &self.handle
+    {
+      match handle {
+        Handle::Old(resource_id) => state.uv_unref(*resource_id),
+        // SAFETY: handle is a valid uv_handle_t pointer set during construction and remains live while HandleWrap is alive.
+        Handle::New(handle) => unsafe {
+          uv_compat::uv_unref(handle.cast_mut())
+        },
+      }
+    }
   }
 }
 
 static ON_CLOSE_STR: deno_core::FastStaticString =
   deno_core::ascii_str!("_onClose");
 
-#[op2(inherit = AsyncWrap, base)]
+#[op2(base, inherit = AsyncWrap)]
 impl HandleWrap {
   #[constructor]
   #[cppgc]
@@ -293,46 +450,7 @@ impl HandleWrap {
     scope: &mut v8::PinScope<'_, '_>,
     #[scoped] cb: Option<v8::Global<v8::Function>>,
   ) -> Result<(), ResourceError> {
-    if self.state.get() != State::Initialized {
-      return Ok(());
-    }
-
-    let state = self.state.clone();
-    // This effectively mimicks Node's OnClose callback.
-    //
-    // https://github.com/nodejs/node/blob/038d82980ab26cd79abe4409adc2fecad94d7c93/src/handle_wrap.cc#L135-L157
-    let on_close = move |scope: &mut v8::PinScope<'_, '_>| {
-      assert!(state.get() == State::Closing);
-      state.set(State::Closed);
-
-      // Workaround for https://github.com/denoland/deno/pull/24656
-      //
-      // We need to delay 'cb' at least 2 ticks to avoid "close" event happening before "error"
-      // event in net.Socket.
-      //
-      // This is a temporary solution. We should support async close like `uv_close`.
-      if let Some(cb) = cb {
-        let recv = v8::undefined(scope);
-        cb.open(scope).call(scope, recv.into(), &[]);
-      }
-    };
-
-    // For new-style handles (uv_compat), call uv_compat::uv_close to
-    // properly shut down the libuv handle (e.g. close FDs for TTY).
-    // Without this, the libuv handle cleanup never runs and resources
-    // like PTY master file descriptors are leaked.
-    if let Some(Handle::New(handle)) = &self.handle {
-      // SAFETY: handle is a valid uv_handle_t pointer set during
-      // construction and remains live while HandleWrap is alive.
-      unsafe {
-        uv_compat::uv_close(handle.cast_mut(), None);
-      }
-    }
-
-    uv_close(scope, op_state, this, on_close);
-    self.state.set(State::Closing);
-
-    Ok(())
+    self.close_handle(op_state, this, scope, cb)
   }
 
   // Ported from Node.js
@@ -340,15 +458,7 @@ impl HandleWrap {
   // https://github.com/nodejs/node/blob/038d82980ab26cd79abe4409adc2fecad94d7c93/src/handle_wrap.cc#L58-L62
   #[fast]
   fn has_ref(&self, state: &mut OpState) -> bool {
-    if let Some(handle) = &self.handle {
-      return match handle {
-        Handle::Old(resource_id) => state.has_ref(*resource_id),
-        // SAFETY: handle is a valid uv_handle_t pointer set during construction and remains live while HandleWrap is alive.
-        Handle::New(handle) => unsafe { uv_compat::uv_has_ref(*handle) != 0 },
-      };
-    }
-
-    true
+    self.has_ref_handle(state)
   }
 
   // Ported from Node.js
@@ -357,15 +467,7 @@ impl HandleWrap {
   #[fast]
   #[rename("ref")]
   fn ref_method(&self, state: &mut OpState) {
-    if self.is_alive()
-      && let Some(handle) = &self.handle
-    {
-      match handle {
-        Handle::Old(resource_id) => state.uv_ref(*resource_id),
-        // SAFETY: handle is a valid uv_handle_t pointer set during construction and remains live while HandleWrap is alive.
-        Handle::New(handle) => unsafe { uv_compat::uv_ref(handle.cast_mut()) },
-      }
-    }
+    self.ref_handle(state)
   }
 
   // Ported from Node.js
@@ -373,17 +475,7 @@ impl HandleWrap {
   // https://github.com/nodejs/node/blob/038d82980ab26cd79abe4409adc2fecad94d7c93/src/handle_wrap.cc#L49-L55
   #[fast]
   fn unref(&self, state: &mut OpState) {
-    if self.is_alive()
-      && let Some(handle) = &self.handle
-    {
-      match handle {
-        Handle::Old(resource_id) => state.uv_unref(*resource_id),
-        // SAFETY: handle is a valid uv_handle_t pointer set during construction and remains live while HandleWrap is alive.
-        Handle::New(handle) => unsafe {
-          uv_compat::uv_unref(handle.cast_mut())
-        },
-      }
-    }
+    self.unref_handle(state)
   }
 }
 

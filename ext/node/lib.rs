@@ -29,7 +29,6 @@ use node_resolver::errors::PackageJsonLoadError;
 
 extern crate libz_sys as zlib;
 
-mod global;
 pub mod ops;
 
 use deno_dotenv::parse_env_content_hook;
@@ -43,10 +42,6 @@ pub use ops::vm::ContextInitMode;
 pub use ops::vm::VM_CONTEXT_INDEX;
 pub use ops::vm::create_v8_context;
 pub use ops::vm::init_global_template;
-
-pub use crate::global::GlobalsStorage;
-use crate::global::global_object_middleware;
-use crate::global::global_template_middleware;
 
 pub fn is_builtin_node_module(module_name: &str) -> bool {
   DenoIsBuiltInNodeModuleChecker.is_builtin_node_module(module_name)
@@ -210,6 +205,29 @@ deno_core::extension!(deno_node,
     ops::fs::op_node_statfs_sync,
     ops::fs::op_node_statfs,
     ops::fs::op_node_file_from_fd,
+    ops::fs::op_node_fs_close,
+    ops::fs::op_node_fs_read_sync,
+    ops::fs::op_node_fs_read_deferred,
+    ops::fs::op_node_fs_write_sync,
+    ops::fs::op_node_fs_write_deferred,
+    ops::fs::op_node_fs_seek_sync,
+    ops::fs::op_node_fs_seek,
+    ops::fs::op_node_fs_fstat_sync,
+    ops::fs::op_node_fs_fstat,
+    ops::fs::op_node_fs_ftruncate_sync,
+    ops::fs::op_node_fs_ftruncate,
+    ops::fs::op_node_fs_fsync_sync,
+    ops::fs::op_node_fs_fsync,
+    ops::fs::op_node_fs_fdatasync_sync,
+    ops::fs::op_node_fs_fdatasync,
+    ops::fs::op_node_fs_futimes_sync,
+    ops::fs::op_node_fs_futimes,
+    ops::fs::op_node_fs_fchmod_sync,
+    ops::fs::op_node_fs_fchmod,
+    ops::fs::op_node_fs_fchown_sync,
+    ops::fs::op_node_fs_fchown,
+    ops::fs::op_node_fs_read_file_sync,
+    ops::fs::op_node_fs_read_file,
     ops::fs::op_node_cp_check_paths_recursive,
     ops::fs::op_node_cp_on_file,
     ops::fs::op_node_cp_on_link,
@@ -374,7 +392,6 @@ deno_core::extension!(deno_node,
   esm_entry_point = "ext:deno_node/02_init.js",
   esm = [
     dir "polyfills",
-    "00_globals.js",
     "02_init.js",
     "_events.mjs",
     "internal/fs/promises.ts",
@@ -607,6 +624,7 @@ deno_core::extension!(deno_node,
   },
   state = |state, options| {
     state.put(options.fs.clone());
+    state.put(ops::fs::NodeFsState::new());
 
     if let Some(init) = &options.maybe_init {
       state.put(init.sys.clone());
@@ -616,8 +634,6 @@ deno_core::extension!(deno_node,
     }
 
   },
-  global_template_middleware = global_template_middleware,
-  global_object_middleware = global_object_middleware,
   customizer = |ext: &mut deno_core::Extension| {
     let external_references = [
       vm::QUERY_MAP_FN.with(|query| {
@@ -692,41 +708,6 @@ deno_core::extension!(deno_node,
         }
       }),
 
-      global::GETTER_MAP_FN.with(|getter| {
-        ExternalReference {
-          named_getter: *getter,
-        }
-      }),
-      global::SETTER_MAP_FN.with(|setter| {
-        ExternalReference {
-          named_setter: *setter,
-        }
-      }),
-      global::QUERY_MAP_FN.with(|query| {
-        ExternalReference {
-          named_query: *query,
-        }
-      }),
-      global::DELETER_MAP_FN.with(|deleter| {
-        ExternalReference {
-          named_deleter: *deleter,
-        }
-      }),
-      global::ENUMERATOR_MAP_FN.with(|enumerator| {
-        ExternalReference {
-          enumerator: *enumerator,
-        }
-      }),
-      global::DEFINER_MAP_FN.with(|definer| {
-        ExternalReference {
-          named_definer: *definer,
-        }
-      }),
-      global::DESCRIPTOR_MAP_FN.with(|descriptor| {
-        ExternalReference {
-          named_getter: *descriptor,
-        }
-      }),
     ];
 
     ext.external_references.to_mut().extend(external_references);

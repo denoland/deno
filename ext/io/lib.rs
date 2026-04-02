@@ -1170,6 +1170,80 @@ impl crate::fs::File for StdFileResourceInner {
     }
   }
 
+  fn read_at_sync(
+    self: Rc<Self>,
+    buf: &mut [u8],
+    position: u64,
+  ) -> FsResult<usize> {
+    self.with_sync(|file| {
+      #[cfg(unix)]
+      {
+        use std::os::unix::fs::FileExt;
+        Ok(file.read_at(buf, position)?)
+      }
+      #[cfg(windows)]
+      {
+        // Windows seek_read moves the cursor, so save/restore it.
+        use std::io::Seek;
+        use std::os::windows::fs::FileExt;
+        let current = file.stream_position()?;
+        let result = file.seek_read(buf, position);
+        file.seek(std::io::SeekFrom::Start(current))?;
+        Ok(result?)
+      }
+    })
+  }
+
+  async fn read_at_async(
+    self: Rc<Self>,
+    mut buf: BufMutView,
+    position: u64,
+  ) -> FsResult<(usize, BufMutView)> {
+    self
+      .with_inner_blocking_task(move |file| {
+        #[cfg(unix)]
+        {
+          use std::os::unix::fs::FileExt;
+          let nread = file.read_at(&mut buf, position)?;
+          Ok((nread, buf))
+        }
+        #[cfg(windows)]
+        {
+          use std::io::Seek;
+          use std::os::windows::fs::FileExt;
+          let current = file.stream_position()?;
+          let result = file.seek_read(&mut buf, position);
+          file.seek(std::io::SeekFrom::Start(current))?;
+          Ok((result?, buf))
+        }
+      })
+      .await
+  }
+
+  fn write_at_sync(
+    self: Rc<Self>,
+    buf: &[u8],
+    position: u64,
+  ) -> FsResult<usize> {
+    self.with_sync(|file| {
+      #[cfg(unix)]
+      {
+        use std::os::unix::fs::FileExt;
+        Ok(file.write_at(buf, position)?)
+      }
+      #[cfg(windows)]
+      {
+        // Windows seek_write moves the cursor, so save/restore it.
+        use std::io::Seek;
+        use std::os::windows::fs::FileExt;
+        let current = file.stream_position()?;
+        let result = file.seek_write(buf, position);
+        file.seek(std::io::SeekFrom::Start(current))?;
+        Ok(result?)
+      }
+    })
+  }
+
   fn backing_fd(self: Rc<Self>) -> Option<ResourceHandleFd> {
     Some(self.handle)
   }
