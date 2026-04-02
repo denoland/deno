@@ -9,6 +9,11 @@
       "if": "unix",
       "args": "run -A --unstable-ffi open_fd.ts",
       "output": "open_fd.out"
+    },
+    "open_fd_windows": {
+      "if": "windows",
+      "args": "run -A --unstable-ffi open_fd_windows.ts",
+      "output": "open_fd_windows.out"
     }
   }
 }
