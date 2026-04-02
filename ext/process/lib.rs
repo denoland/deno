@@ -37,6 +37,7 @@ use deno_io::ChildStderrResource;
 use deno_io::ChildStdinResource;
 use deno_io::ChildStdoutResource;
 use deno_io::IntoRawIoHandle;
+use deno_io::fs::FileResource;
 use deno_os::SignalError;
 use deno_permissions::PathQueryDescriptor;
 use deno_permissions::PermissionsContainer;
@@ -545,11 +546,19 @@ fn create_command(
   }
 
   command.stdout(match args.stdio.stdout {
-    StdioOrFd::Stdio(Stdio::Inherit) => StdioOrFd::Fd(1).as_stdio()?,
+    StdioOrFd::Stdio(Stdio::Inherit) => {
+      FileResource::with_file(state, 1, |file| {
+        file.as_stdio().map_err(deno_error::JsErrorBox::from_err)
+      })?
+    }
     value => value.as_stdio()?,
   });
   command.stderr(match args.stdio.stderr {
-    StdioOrFd::Stdio(Stdio::Inherit) => StdioOrFd::Fd(2).as_stdio()?,
+    StdioOrFd::Stdio(Stdio::Inherit) => {
+      FileResource::with_file(state, 2, |file| {
+        file.as_stdio().map_err(deno_error::JsErrorBox::from_err)
+      })?
+    }
     value => value.as_stdio()?,
   });
 
@@ -726,11 +735,10 @@ fn create_command(
         StdioOrFd::Fd(fd) => {
           // SAFETY: fd is a valid CRT file descriptor passed from the JS stdio array
           let handle = unsafe { libc::get_osfhandle(fd as _) };
-          if handle != -1 {
-            command.extra_handle(Some(handle as _));
-          } else {
-            command.extra_handle(None);
+          if handle == -1 {
+            return Err(ProcessError::Io(std::io::Error::last_os_error()));
           }
+          command.extra_handle(Some(handle as _));
           extra_pipe_rids.push(None);
         }
         _ => {
@@ -1342,20 +1350,22 @@ mod deprecated {
 
     // TODO: make this work with other resources, eg. sockets
     c.stdin(run_args.stdin.as_stdio()?);
-    c.stdout(
-      match run_args.stdout {
-        StdioOrFd::Stdio(Stdio::Inherit) => StdioOrFd::Fd(1),
-        value => value,
+    c.stdout(match run_args.stdout {
+      StdioOrFd::Stdio(Stdio::Inherit) => {
+        FileResource::with_file(state, 1, |file| {
+          file.as_stdio().map_err(deno_error::JsErrorBox::from_err)
+        })?
       }
-      .as_stdio()?,
-    );
-    c.stderr(
-      match run_args.stderr {
-        StdioOrFd::Stdio(Stdio::Inherit) => StdioOrFd::Fd(2),
-        value => value,
+      value => value.as_stdio()?,
+    });
+    c.stderr(match run_args.stderr {
+      StdioOrFd::Stdio(Stdio::Inherit) => {
+        FileResource::with_file(state, 2, |file| {
+          file.as_stdio().map_err(deno_error::JsErrorBox::from_err)
+        })?
       }
-      .as_stdio()?,
-    );
+      value => value.as_stdio()?,
+    });
 
     // We want to kill child when it's closed
     c.kill_on_drop(true);
