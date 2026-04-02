@@ -362,7 +362,12 @@ impl TCPWrap {
     // so Drop::detach_stream() is a no-op (HTTP/2 has already
     // overwritten stream.data with its own session pointer).
     unsafe {
-      let _ = (*self.handle.get()).take();
+      // Take the OwnedPtr out and forget it (leak the memory).
+      // The HTTP/2 session now owns the uv_tcp_t — we must NOT
+      // drop the OwnedPtr which would free the memory.
+      if let Some(owned) = (*self.handle.get()).take() {
+        std::mem::forget(owned);
+      }
     }
     // Null the base stream pointer so Drop::detach_stream() is a no-op.
     // HTTP/2's consume_stream has already overwritten stream.data with
