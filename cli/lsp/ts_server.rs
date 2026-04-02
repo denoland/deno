@@ -146,7 +146,7 @@ impl TsServer {
   pub async fn provide_references(
     &self,
     document: &Document,
-    module: &DocumentModule,
+    _module: &DocumentModule,
     position: lsp::Position,
     context: lsp::ReferenceContext,
     snapshot: &Arc<StateSnapshot>,
@@ -685,7 +685,7 @@ impl TsServer {
   pub async fn provide_implementations(
     &self,
     document: &Document,
-    module: &DocumentModule,
+    _module: &DocumentModule,
     position: lsp::Position,
     snapshot: &Arc<StateSnapshot>,
     token: &CancellationToken,
@@ -776,7 +776,7 @@ impl TsServer {
   pub async fn provide_call_hierarchy_incoming_calls(
     &self,
     document: &Document,
-    module: &DocumentModule,
+    _module: &DocumentModule,
     item: &lsp::CallHierarchyItem,
     snapshot: &Arc<StateSnapshot>,
     token: &CancellationToken,
@@ -902,7 +902,7 @@ impl TsServer {
   pub async fn provide_rename(
     &self,
     document: &Document,
-    module: &DocumentModule,
+    _module: &DocumentModule,
     position: lsp::Position,
     new_name: &str,
     language_server: &language_server::Inner,
@@ -1002,18 +1002,16 @@ impl TsServer {
   ) -> Result<Option<lsp::SemanticTokensResult>, AnyError> {
     let semantic_tokens = module
       .semantic_tokens_full
-      .get_or_try_init(async || {
-        match self {
-          Self::Js(ts_server) => ts_server
-            .get_encoded_semantic_classifications(
-              snapshot,
-              module,
-              0..module.line_index.text_content_length_utf16().into(),
-              token,
-            )
-            .await?
-            .to_semantic_tokens(&module.line_index, token),
-        }
+      .get_or_try_init(async || match self {
+        Self::Js(ts_server) => ts_server
+          .get_encoded_semantic_classifications(
+            snapshot,
+            module,
+            0..module.line_index.text_content_length_utf16().into(),
+            token,
+          )
+          .await?
+          .to_semantic_tokens(&module.line_index, token),
       })
       .await?
       .clone();

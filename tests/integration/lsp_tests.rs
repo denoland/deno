@@ -1684,7 +1684,7 @@ fn lsp_hover_asset() {
       // TODO(nayeemrmn): The position returned by tsgo is wrong. Seems to be
       // reading `declare var Date` instead of `interface Date` in a different
       // lib asset.
-      "range": if use_tsgo {
+      "range": if false {
         json!({
           "start": { "line": 111, "character": 12, },
           "end": { "line": 111, "character": 16, }
@@ -3128,7 +3128,7 @@ fn lsp_hover_jsdoc_symbol_link() {
     json!({
       "contents": {
         "kind": "markdown",
-        "value": if use_tsgo {
+        "value": if false {
           json!("```tsx\nfunction a(): void\n```\nJSDoc [hello](file:///a/b.ts#1,17-1,22) and [`b`](file:///a/file.ts#5,7-5,8)")
         } else {
           json!("```tsx\nfunction a(): void\n```\nJSDoc [hello](file:///a/b.ts#1,1-1,27) and [`b`](file:///a/file.ts#5,7-5,14)")
@@ -3219,7 +3219,7 @@ fn lsp_goto_type_definition() {
   );
   assert_eq!(
     res,
-    if use_tsgo {
+    if false {
       json!([{
         "originSelectionRange": {
           "start": { "line": 12, "character": 0 },
@@ -3545,7 +3545,7 @@ fn lsp_document_symbol() {
   );
   assert_eq!(
     res,
-    if use_tsgo {
+    if false {
       json!([
         {
           "name": "IFoo",
@@ -3944,7 +3944,7 @@ fn lsp_folding_range() {
   );
   assert_eq!(
     res,
-    if use_tsgo {
+    if false {
       json!([{
         "startLine": 0,
         "startCharacter": 0,
@@ -4101,7 +4101,7 @@ fn lsp_selection_range() {
             "end": { "line": 4, "character": 5 }
           },
           "parent": {
-            "range": if use_tsgo {
+            "range": if false {
               json!({
                 "start": { "line": 2, "character": 4 },
                 "end": { "line": 5, "character": 17 },
@@ -4122,7 +4122,7 @@ fn lsp_selection_range() {
                   "start": { "line": 1, "character": 2 },
                   "end": { "line": 6, "character": 3 }
                 },
-                "parent": if use_tsgo {
+                "parent": if false {
                   json!({
                     "range": {
                       "start": { "line": 0, "character": 0 },
@@ -5176,7 +5176,7 @@ fn lsp_find_references() {
 
   assert_eq!(
     res,
-    if use_tsgo {
+    if false {
       json!([
         {
           "uri": "file:///a/mod.test.ts",
@@ -6906,7 +6906,7 @@ fn lsp_cache_then_definition() {
   );
   assert_eq!(
     res,
-    if use_tsgo {
+    if false {
       json!([{
         "originSelectionRange": {
           "start": { "line": 0, "character": 7 },
@@ -8039,7 +8039,7 @@ console.log(a, b, c);
   assert_eq!(
     res,
     // TODO(nayeemrmn): tsgo creates a redundant edit in this case. Report.
-    if use_tsgo {
+    if false {
       json!([
         {
           "title": "Organize Imports",
@@ -8164,9 +8164,7 @@ console.log(other, submodule);
 }
 
 #[test(timeout = 300)]
-fn lsp_code_actions_organize_imports_client_provided_capability(
-  ,
-) {
+fn lsp_code_actions_organize_imports_client_provided_capability() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
   let file = temp_dir.source_file(
@@ -8428,7 +8426,7 @@ fn lsp_completions() {
     json!({
       "label": "build",
       "kind": 6,
-      "detail": if use_tsgo {
+      "detail": if false {
         "const Deno.build: { target: string; arch: \"aarch64\" | \"x86_64\"; os: \"aix\" | \"android\" | \"darwin\" | \"freebsd\" | \"illumos\" | \"linux\" | \"netbsd\" | \"solaris\" | \"windows\"; standalone: boolean; vendor: string; env?: string | undefined; }"
       } else {
         "const Deno.build: {\n    target: string;\n    arch: \"x86_64\" | \"aarch64\";\n    os: \"darwin\" | \"linux\" | \"android\" | \"windows\" | \"freebsd\" | \"netbsd\" | \"aix\" | \"solaris\" | \"illumos\";\n    standalone: boolean;\n    vendor: string;\n    env?: string;\n}"
@@ -8499,7 +8497,7 @@ fn lsp_completions_optional() {
     json!({
       "label": "b?",
       "kind": 5,
-      "detail": if use_tsgo {
+      "detail": if false {
         "(property) A.b: string | undefined"
       } else {
         "(property) A.b?: string | undefined"
@@ -11564,7 +11562,7 @@ fn lsp_lockfile_redirect_resolution() {
   );
   assert_eq!(
     res,
-    if use_tsgo {
+    if false {
       json!([{
         "originSelectionRange": {
           "start": { "line": 0, "character": 7 },
@@ -12119,7 +12117,7 @@ fn lsp_jupyter_completions() {
     json!({
       "label": "readTextFile",
       "kind": 3,
-      "detail": if use_tsgo {
+      "detail": if false {
         "function Deno.readTextFile(path: string | URL, options?: Deno.ReadFileOptions | undefined): Promise<string>"
       } else {
         "function Deno.readTextFile(path: string | URL, options?: Deno.ReadFileOptions): Promise<string>"
@@ -12272,7 +12270,7 @@ fn lsp_non_normalized_uri_diagnostics_and_completions() {
       // Accordingly, the colon returned here is decoded.
       // Spec-compliant language clients must deal with that. See:
       // https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#uri
-      "data": if use_tsgo {
+      "data": if false {
         json!({
           "tsGo": {
             "uri": "file:///foo:bar/file.ts",
@@ -13434,7 +13432,7 @@ fn lsp_completions_private_class_fields() {
   let res = client.write_request("completionItem/resolve", json!(item));
   assert_eq!(
     res,
-    if use_tsgo {
+    if false {
       json!({
         "label": "#prop",
         "kind": 5,
@@ -13478,7 +13476,7 @@ fn lsp_completions_private_class_fields() {
   let res = client.write_request("completionItem/resolve", json!(item));
   assert_eq!(
     res,
-    if use_tsgo {
+    if false {
       json!({
         "label": "#prop",
         "kind": 5,
@@ -13576,7 +13574,7 @@ fn lsp_workspace_symbol() {
     }),
     json!({
       "name": "fieldA",
-      "kind": if use_tsgo { 7 } else { 8 },
+      "kind": if false { 7 } else { 8 },
       "location": {
         "uri": "file:///a/file.ts",
         "range": {
@@ -13588,7 +13586,7 @@ fn lsp_workspace_symbol() {
     }),
     json!({
       "name": "fieldB",
-      "kind": if use_tsgo { 7 } else { 8 },
+      "kind": if false { 7 } else { 8 },
       "location": {
         "uri": "file:///a/file.ts",
         "range": {
@@ -13600,7 +13598,7 @@ fn lsp_workspace_symbol() {
     }),
     json!({
       "name": "fieldC",
-      "kind": if use_tsgo { 7 } else { 8 },
+      "kind": if false { 7 } else { 8 },
       "location": {
         "uri": "file:///a/file_01.ts",
         "range": {
@@ -13612,7 +13610,7 @@ fn lsp_workspace_symbol() {
     }),
     json!({
       "name": "fieldD",
-      "kind": if use_tsgo { 7 } else { 8 },
+      "kind": if false { 7 } else { 8 },
       "location": {
         "uri": "file:///a/file_01.ts",
         "range": {
@@ -13624,7 +13622,7 @@ fn lsp_workspace_symbol() {
     }),
     json!({
       "name": "strictFieldWhitespaceValidation",
-      "kind": if use_tsgo { 7 } else { 8 },
+      "kind": if false { 7 } else { 8 },
       "location": {
         "uri": "deno:/asset/node/http2.d.cts",
         "range": {
@@ -13635,7 +13633,7 @@ fn lsp_workspace_symbol() {
       "containerName": "SessionOptions",
     }),
   ];
-  if use_tsgo {
+  if false {
     expected.insert(
       2,
       json!({
@@ -15100,7 +15098,7 @@ fn lsp_closed_file_find_references() {
 
   assert_eq!(
     res,
-    if use_tsgo {
+    if false {
       json!([
         {
           "uri": url_to_uri(&temp_dir.url().join("mod.test.ts").unwrap()).unwrap(),
@@ -15859,7 +15857,7 @@ fn lsp_deno_json_scopes_vendor_dir() {
   );
   assert_eq!(
     res,
-    if use_tsgo {
+    if false {
       json!([{
         "originSelectionRange": {
           "start": { "line": 0, "character": 7 },
@@ -15910,7 +15908,7 @@ fn lsp_deno_json_scopes_vendor_dir() {
   );
   assert_eq!(
     res,
-    if use_tsgo {
+    if false {
       json!([{
         "originSelectionRange": {
           "start": { "line": 0, "character": 7 },
@@ -15962,7 +15960,7 @@ fn lsp_deno_json_scopes_vendor_dir() {
   );
   assert_eq!(
     res,
-    if use_tsgo {
+    if false {
       json!([{
         "originSelectionRange": {
           "start": { "line": 0, "character": 7 },
@@ -16465,7 +16463,7 @@ fn lsp_deno_json_scopes_call_hierarchy() {
           "uri": file3.uri(),
           "range": {
             "start": { "line": 1, "character": 6 },
-            "end": if use_tsgo {
+            "end": if false {
               json!({ "line": 4, "character": 0 })
             } else {
               json!({ "line": 3, "character": 4 })
@@ -17018,7 +17016,7 @@ fn lsp_workspace_lockfile() {
   );
   assert_eq!(
     res,
-    if use_tsgo {
+    if false {
       json!([{
         "originSelectionRange": {
           "start": { "line": 0, "character": 7 },
@@ -17091,7 +17089,7 @@ fn lsp_deno_json_workspace_vendor_dir() {
   );
   assert_eq!(
     res,
-    if use_tsgo {
+    if false {
       json!([{
         "originSelectionRange": {
           "start": { "line": 0, "character": 7 },
@@ -17167,7 +17165,7 @@ fn lsp_deno_json_workspace_node_modules_dir() {
     Url::from_directory_path(temp_dir.path().canonicalize()).unwrap();
   assert_eq!(
     res,
-    if use_tsgo {
+    if false {
       json!([{
         "originSelectionRange": {
           "start": { "line": 0, "character": 7 },
@@ -17717,7 +17715,7 @@ fn lsp_npm_workspace() {
   // The temp dir is symlinked on the CI
   assert_eq!(
     res,
-    if use_tsgo {
+    if false {
       json!([{
         "originSelectionRange": {
           "start": { "line": 0, "character": 9 },
@@ -18173,7 +18171,7 @@ fn lsp_sloppy_imports_prefers_dts() {
   );
   assert_eq!(
     response,
-    if use_tsgo {
+    if false {
       json!([
         {
           "uri": file.uri(),
@@ -18482,11 +18480,7 @@ fn lsp_uses_lockfile_for_npm_initialization() {
   // remove one of the npm packages and let the other one be found via the lockfile
   temp_dir.write("main.ts", "import 'npm:@denotest/esm-basic';");
   assert!(temp_dir.path().join("deno.lock").exists());
-  let mut client = context
-    .new_lsp_command()
-    .log_debug()
-    
-    .build();
+  let mut client = context.new_lsp_command().log_debug().build();
   client.initialize_default();
   let mut skipping_count = 0;
   client.wait_until_stderr_line(|line| {
@@ -18816,7 +18810,6 @@ fn lsp_jsdoc_named_example() {
   let mut client = context
     .new_lsp_command()
     .set_root_dir(temp_dir.clone())
-    
     .build();
   client.initialize_default();
 
@@ -19566,7 +19559,7 @@ fn lsp_import_raw_imports_goto_definition() {
   );
   assert_eq!(
     res,
-    if use_tsgo {
+    if false {
       json!([{
         "originSelectionRange": {
           "start": { "line": 2, "character": 18 },

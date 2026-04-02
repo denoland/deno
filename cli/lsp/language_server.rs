@@ -704,7 +704,8 @@ impl Inner {
             .into()
           })
         });
-    if let TsServer::Js(ts_server) = self.ts_server.as_ref() {
+    {
+      let TsServer::Js(ts_server) = self.ts_server.as_ref();
       ts_server
         .set_tracing_enabled(tracing.as_ref().is_some_and(|t| t.enabled()));
     }
@@ -949,7 +950,8 @@ impl Inner {
       diagnostics_server.start();
       self.diagnostics_server = Some(diagnostics_server);
     }
-    if let TsServer::Js(ts_server) = self.ts_server.as_ref() {
+    {
+      let TsServer::Js(ts_server) = self.ts_server.as_ref();
       ts_server
         .set_inspector_server_addr(self.config.internal_inspect().to_address());
     }
@@ -2185,13 +2187,7 @@ impl Inner {
     let mark = self
       .performance
       .mark_with_args("lsp.code_action_resolve", &params);
-    let TsServer::Js(ts_server) = self.ts_server.as_ref() else {
-      lsp_warn!(
-        "Assertion failure: Received a codeAction/resolve request without the JS-based TS server: {:#?}",
-        params
-      );
-      return Ok(params);
-    };
+    let TsServer::Js(ts_server) = self.ts_server.as_ref();
     let (Some(kind), Some(data)) = (params.kind.clone(), params.data.clone())
     else {
       return Ok(params);

@@ -1471,4 +1471,3 @@ pub fn custom_headers(
 
   response
 }
-
