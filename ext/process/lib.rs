@@ -139,11 +139,12 @@ impl StdioOrFd {
         }
         #[cfg(windows)]
         {
-          // Convert CRT file descriptor to OS handle, clone it, and wrap in Stdio
+          // SAFETY: *fd is a valid CRT file descriptor obtained from fs.openSync
           let handle = unsafe { libc::get_osfhandle(*fd as _) };
           if handle == -1 {
             return Err(ProcessError::Io(std::io::Error::last_os_error()));
           }
+          // SAFETY: handle is a valid OS handle returned by get_osfhandle (checked above)
           let borrowed = unsafe {
             std::os::windows::io::BorrowedHandle::borrow_raw(
               handle as std::os::windows::io::RawHandle,
@@ -723,7 +724,7 @@ fn create_command(
           extra_pipe_rids.push(Some(rid));
         }
         StdioOrFd::Fd(fd) => {
-          // Convert CRT fd to OS handle and pass to child
+          // SAFETY: fd is a valid CRT file descriptor passed from the JS stdio array
           let handle = unsafe { libc::get_osfhandle(fd as _) };
           if handle != -1 {
             command.extra_handle(Some(handle as _));

@@ -1366,25 +1366,31 @@ Deno.test(function spawnSyncReturnsPid() {
   assert(ret.pid > 0);
 });
 
-Deno.test(async function spawnWithNumericFdInStdioArray() {
-  const fs = await import("node:fs");
-  const tmpFile = Deno.makeTempFileSync();
-  try {
-    const fd = fs.openSync(tmpFile, "w");
-    const child = spawn(Deno.execPath(), [
-      "eval",
-      "/* child just exits successfully */",
-    ], {
-      stdio: ["ignore", "pipe", "pipe", fd],
-    });
-    const { promise, resolve } = Promise.withResolvers<void>();
-    child.on("close", (code: number) => {
+Deno.test({
+  name: "spawnWithNumericFdInStdioArray",
+  ignore: Deno.build.os === "windows",
+  async fn() {
+    const fs = await import("node:fs");
+    const tmpFile = Deno.makeTempFileSync();
+    try {
+      const fd = fs.openSync(tmpFile, "w");
+      const child = spawn("/bin/sh", [
+        "-c",
+        "echo hello from child >&3",
+      ], {
+        stdio: ["ignore", "pipe", "pipe", fd],
+      });
+      const { promise, resolve } = Promise.withResolvers<number>();
+      child.on("close", (code: number) => {
+        resolve(code);
+      });
+      const code = await promise;
+      fs.closeSync(fd);
       assertEquals(code, 0);
-      resolve();
-    });
-    await promise;
-    fs.closeSync(fd);
-  } finally {
-    Deno.removeSync(tmpFile);
-  }
+      const content = Deno.readTextFileSync(tmpFile);
+      assertEquals(content, "hello from child\n");
+    } finally {
+      Deno.removeSync(tmpFile);
+    }
+  },
 });
