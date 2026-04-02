@@ -546,7 +546,10 @@ Deno.test(function urlWindowsFilePathDifferentDrives() {
 });
 
 Deno.test(function urlWindowsFilePathLowercaseDrive() {
-  assertEquals(new URL("c:\\folder\\file.txt").href, "file:///c:/folder/file.txt");
+  assertEquals(
+    new URL("c:\\folder\\file.txt").href,
+    "file:///c:/folder/file.txt",
+  );
 });
 
 Deno.test(function urlWindowsFilePathMixedSeparators() {
