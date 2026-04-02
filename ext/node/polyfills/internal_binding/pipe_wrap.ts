@@ -67,11 +67,8 @@ const {
   queueMicrotask,
 } = primordials;
 
-export enum socketType {
-  SOCKET,
-  SERVER,
-  IPC,
-}
+export const socketType = { SOCKET: 0, SERVER: 1, IPC: 2 } as const;
+export type socketType = typeof socketType[keyof typeof socketType];
 
 /**
  * A wrapper for file-based streams (PTYs, pipes, etc.) that provides
@@ -641,10 +638,5 @@ export class PipeConnectWrap extends AsyncWrap {
   }
 }
 
-export enum constants {
-  SOCKET = socketType.SOCKET,
-  SERVER = socketType.SERVER,
-  IPC = socketType.IPC,
-  UV_READABLE = 1,
-  UV_WRITABLE = 2,
-}
+export const constants = { SOCKET: socketType.SOCKET, SERVER: socketType.SERVER, IPC: socketType.IPC, UV_READABLE: 1, UV_WRITABLE: 2 } as const;
+export type constants = typeof constants[keyof typeof constants];

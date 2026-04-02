@@ -305,15 +305,8 @@ function flush(this: StringDecoder) {
   return ret;
 }
 
-enum Encoding {
-  Utf8,
-  Base64,
-  Base64Url,
-  Utf16,
-  Ascii,
-  Latin1,
-  Hex,
-}
+const Encoding = { Utf8: 0, Base64: 1, Base64Url: 2, Utf16: 3, Ascii: 4, Latin1: 5, Hex: 6 } as const;
+type Encoding = typeof Encoding[keyof typeof Encoding];
 
 const kBufferedBytes = Symbol("bufferedBytes");
 const kMissingBytes = Symbol("missingBytes");

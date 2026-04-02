@@ -42,6 +42,25 @@ pub fn maybe_transpile_source(
     ),
   }
 
+  // Extensions that use `import type` correctly can use oxc_blank_space
+  // for type stripping — it preserves line/column positions perfectly
+  // so no source map is needed.
+  if can_use_blank_space(&name) {
+    let source_text: &str = &source;
+    return match oxc_blank_space::blank_space(source_text) {
+      Ok(output) => Ok((output.into(), None)),
+      Err(errors) => {
+        let messages: Vec<String> =
+          errors.iter().map(|e| e.to_string()).collect();
+        Err(JsErrorBox::generic(format!(
+          "Failed to strip types from {}: {}",
+          name,
+          messages.join("; ")
+        )))
+      }
+    };
+  }
+
   let parsed = deno_ast::parse_module(ParseParams {
     specifier: deno_core::url::Url::parse(&name).unwrap(),
     text: source.into(),
@@ -75,4 +94,10 @@ pub fn maybe_transpile_source(
     .map(|sm| sm.into_bytes().into());
   let source_text = transpiled_source.text;
   Ok((source_text.into(), maybe_source_map))
+}
+
+/// Extensions that properly use `import type` for type-only imports
+/// and don't use enums or other non-erasable syntax.
+fn can_use_blank_space(name: &str) -> bool {
+  name.starts_with("ext:deno_telemetry/")
 }

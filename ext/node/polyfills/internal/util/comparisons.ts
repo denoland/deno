@@ -98,12 +98,8 @@ type Memo = {
   deep: boolean;
 };
 
-enum valueType {
-  noIterator,
-  isArray,
-  isSet,
-  isMap,
-}
+const valueType = { noIterator: 0, isArray: 1, isSet: 2, isMap: 3 } as const;
+type valueType = typeof valueType[keyof typeof valueType];
 
 const wellKnownConstructors = new SafeSet()
   .add(Array)

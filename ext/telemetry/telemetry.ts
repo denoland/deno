@@ -82,13 +82,8 @@ let ISOLATE_METRICS = false;
 
 // Note: These start at 0 in the JS library,
 // but start at 1 when serialized with JSON.
-enum SpanKind {
-  INTERNAL = 0,
-  SERVER = 1,
-  CLIENT = 2,
-  PRODUCER = 3,
-  CONSUMER = 4,
-}
+const SpanKind = { INTERNAL: 0, SERVER: 1, CLIENT: 2, PRODUCER: 3, CONSUMER: 4 } as const;
+type SpanKind = typeof SpanKind[keyof typeof SpanKind];
 
 interface TraceState {
   set(key: string, value: string): TraceState;
@@ -105,11 +100,8 @@ interface SpanContext {
   traceState?: TraceState;
 }
 
-enum SpanStatusCode {
-  UNSET = 0,
-  OK = 1,
-  ERROR = 2,
-}
+const SpanStatusCode = { UNSET: 0, OK: 1, ERROR: 2 } as const;
+type SpanStatusCode = typeof SpanStatusCode[keyof typeof SpanStatusCode];
 
 interface SpanStatus {
   code: SpanStatusCode;
@@ -257,11 +249,8 @@ interface OtelSpan {
   end(endTime: number): void;
 }
 
-enum SpanAttributesLocation {
-  SELF = 0,
-  LAST_EVENT = 1,
-  LAST_LINK = 2,
-}
+const SpanAttributesLocation = { SELF: 0, LAST_EVENT: 1, LAST_LINK: 2 } as const;
+type SpanAttributesLocation = typeof SpanAttributesLocation[keyof typeof SpanAttributesLocation];
 
 function spanAddAttributes(
   span: OtelSpan,
@@ -675,10 +664,8 @@ interface MetricOptions {
   advice?: MetricAdvice;
 }
 
-enum ValueType {
-  INT = 0,
-  DOUBLE = 1,
-}
+const ValueType = { INT: 0, DOUBLE: 1 } as const;
+type ValueType = typeof ValueType[keyof typeof ValueType];
 
 interface MetricAdvice {
   /**

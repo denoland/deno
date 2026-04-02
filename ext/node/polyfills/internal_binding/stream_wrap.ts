@@ -77,13 +77,8 @@ export interface Ref {
 
 export interface StreamBase extends Reader, Writer, Closer, Ref {}
 
-const enum StreamBaseStateFields {
-  kReadBytesOrError,
-  kArrayBufferOffset,
-  kBytesWritten,
-  kLastWriteWasAsync,
-  kNumStreamBaseStateFields,
-}
+const StreamBaseStateFields = { kReadBytesOrError: 0, kArrayBufferOffset: 1, kBytesWritten: 2, kLastWriteWasAsync: 3, kNumStreamBaseStateFields: 4 } as const;
+type StreamBaseStateFields = typeof StreamBaseStateFields[keyof typeof StreamBaseStateFields];
 
 export const kReadBytesOrError = StreamBaseStateFields.kReadBytesOrError;
 export const kArrayBufferOffset = StreamBaseStateFields.kArrayBufferOffset;

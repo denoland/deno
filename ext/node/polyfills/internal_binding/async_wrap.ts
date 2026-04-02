@@ -39,21 +39,8 @@ export function registerDestroyHook(
   // TODO(kt3k): implement actual procedures
 }
 
-export enum constants {
-  kInit,
-  kBefore,
-  kAfter,
-  kDestroy,
-  kPromiseResolve,
-  kTotals,
-  kCheck,
-  kExecutionAsyncId,
-  kTriggerAsyncId,
-  kAsyncIdCounter,
-  kDefaultTriggerAsyncId,
-  kUsesExecutionAsyncResource,
-  kStackLength,
-}
+export const constants = { kInit: 0, kBefore: 1, kAfter: 2, kDestroy: 3, kPromiseResolve: 4, kTotals: 5, kCheck: 6, kExecutionAsyncId: 7, kTriggerAsyncId: 8, kAsyncIdCounter: 9, kDefaultTriggerAsyncId: 10, kUsesExecutionAsyncResource: 11, kStackLength: 12 } as const;
+export type constants = typeof constants[keyof typeof constants];
 
 const asyncHookFields = new Uint32Array(Object.keys(constants).length);
 
@@ -64,12 +51,8 @@ export function newAsyncId() {
   return op_node_new_async_id();
 }
 
-export enum UidFields {
-  kExecutionAsyncId,
-  kTriggerAsyncId,
-  kDefaultTriggerAsyncId,
-  kUidFieldsCount,
-}
+export const UidFields = { kExecutionAsyncId: 0, kTriggerAsyncId: 1, kDefaultTriggerAsyncId: 2, kUidFieldsCount: 3 } as const;
+export type UidFields = typeof UidFields[keyof typeof UidFields];
 
 const asyncIdFields = new Float64Array(Object.keys(UidFields).length);
 
@@ -81,50 +64,7 @@ asyncIdFields[UidFields.kDefaultTriggerAsyncId] = -1;
 
 export { asyncIdFields };
 
-export enum providerType {
-  NONE,
-  DIRHANDLE,
-  DNSCHANNEL,
-  ELDHISTOGRAM,
-  FILEHANDLE,
-  FILEHANDLECLOSEREQ,
-  FIXEDSIZEBLOBCOPY,
-  FSEVENTWRAP,
-  FSREQCALLBACK,
-  FSREQPROMISE,
-  GETADDRINFOREQWRAP,
-  GETNAMEINFOREQWRAP,
-  HEAPSNAPSHOT,
-  HTTP2SESSION,
-  HTTP2STREAM,
-  HTTP2PING,
-  HTTP2SETTINGS,
-  HTTPINCOMINGMESSAGE,
-  HTTPCLIENTREQUEST,
-  JSSTREAM,
-  JSUDPWRAP,
-  MESSAGEPORT,
-  PIPECONNECTWRAP,
-  PIPESERVERWRAP,
-  PIPEWRAP,
-  PROCESSWRAP,
-  PROMISE,
-  QUERYWRAP,
-  SHUTDOWNWRAP,
-  SIGNALWRAP,
-  STATWATCHER,
-  STREAMPIPE,
-  TCPCONNECTWRAP,
-  TCPSERVERWRAP,
-  TCPWRAP,
-  TTYWRAP,
-  UDPSENDWRAP,
-  UDPWRAP,
-  SIGINTWATCHDOG,
-  WORKER,
-  WORKERHEAPSNAPSHOT,
-  WRITEWRAP,
-  ZLIB,
-}
+export const providerType = { NONE: 0, DIRHANDLE: 1, DNSCHANNEL: 2, ELDHISTOGRAM: 3, FILEHANDLE: 4, FILEHANDLECLOSEREQ: 5, FIXEDSIZEBLOBCOPY: 6, FSEVENTWRAP: 7, FSREQCALLBACK: 8, FSREQPROMISE: 9, GETADDRINFOREQWRAP: 10, GETNAMEINFOREQWRAP: 11, HEAPSNAPSHOT: 12, HTTP2SESSION: 13, HTTP2STREAM: 14, HTTP2PING: 15, HTTP2SETTINGS: 16, HTTPINCOMINGMESSAGE: 17, HTTPCLIENTREQUEST: 18, JSSTREAM: 19, JSUDPWRAP: 20, MESSAGEPORT: 21, PIPECONNECTWRAP: 22, PIPESERVERWRAP: 23, PIPEWRAP: 24, PROCESSWRAP: 25, PROMISE: 26, QUERYWRAP: 27, SHUTDOWNWRAP: 28, SIGNALWRAP: 29, STATWATCHER: 30, STREAMPIPE: 31, TCPCONNECTWRAP: 32, TCPSERVERWRAP: 33, TCPWRAP: 34, TTYWRAP: 35, UDPSENDWRAP: 36, UDPWRAP: 37, SIGINTWATCHDOG: 38, WORKER: 39, WORKERHEAPSNAPSHOT: 40, WRITEWRAP: 41, ZLIB: 42 } as const;
+export type providerType = typeof providerType[keyof typeof providerType];
 
 export { AsyncWrap };

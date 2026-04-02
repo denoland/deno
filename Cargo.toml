@@ -57,6 +57,7 @@ members = [
   "libs/package_json",
   "libs/resolver",
   "libs/serde_v8",
+  "libs/oxc_blank_space",
   "libs/typescript_go_client",
   "runtime",
   "runtime/features",
@@ -87,6 +88,7 @@ repository = "https://github.com/denoland/deno"
 
 [workspace.dependencies]
 deno_ast = { version = "=0.53.1", features = ["transpiling"] }
+oxc_blank_space = { path = "libs/oxc_blank_space" }
 deno_core_icudata = "0.77.0"
 deno_doc = "=0.197.0"
 deno_error = "=0.7.1"
