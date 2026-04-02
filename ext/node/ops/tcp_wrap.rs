@@ -1,5 +1,6 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
+use std::cell::UnsafeCell;
 use std::ffi::c_void;
 use std::net::ToSocketAddrs;
 
@@ -42,7 +43,10 @@ const UV_TCP_IPV6ONLY: u32 = 1;
 #[repr(C)]
 pub struct TCPWrap {
   pub(crate) base: LibUvStreamWrap,
-  pub(crate) handle: Option<OwnedPtr<uv_tcp_t>>,
+  // UnsafeCell because `detach()` needs to take the handle via `&self`
+  // (CppGC objects are always accessed through shared references).
+  // SAFETY: single-threaded access only.
+  pub(crate) handle: UnsafeCell<Option<OwnedPtr<uv_tcp_t>>>,
 }
 
 // SAFETY: TCPWrap correctly traces its CppGc member (base) in the trace method.
@@ -65,6 +69,13 @@ impl Drop for TCPWrap {
 }
 
 impl TCPWrap {
+  /// Access the handle through the UnsafeCell.
+  /// SAFETY: single-threaded access only (CppGC guarantee).
+  fn handle(&self) -> Option<&OwnedPtr<uv_tcp_t>> {
+    // SAFETY: single-threaded access only (CppGC guarantee).
+    unsafe { (*self.handle.get()).as_ref() }
+  }
+
   pub fn new(fd: i32, socket_type: i32, op_state: &mut OpState) -> (Self, i32) {
     let loop_ = &**op_state.borrow::<Box<uv_loop_t>>() as *const uv_loop_t
       as *mut uv_loop_t;
@@ -98,7 +109,7 @@ impl TCPWrap {
       (
         Self {
           base,
-          handle: Some(tcp),
+          handle: UnsafeCell::new(Some(tcp)),
         },
         0,
       )
@@ -116,7 +127,7 @@ impl TCPWrap {
             fd,
             std::ptr::null(),
           ),
-          handle: None,
+          handle: UnsafeCell::new(None),
         },
         err,
       )
@@ -340,9 +351,28 @@ impl TCPWrap {
     tcp
   }
 
+  /// Detach the native handle so that this TCPWrap no longer owns it.
+  /// Called by HTTP/2 after `consumeStream` transfers ownership of the
+  /// underlying uv_tcp_t to the HTTP/2 session.
+  #[fast]
+  pub fn detach(&self) {
+    // SAFETY: single-threaded access (CppGC guarantee).
+    // Take the OwnedPtr out so Drop doesn't free memory that
+    // the HTTP/2 session now owns. Also null the base stream pointer
+    // so Drop::detach_stream() is a no-op (HTTP/2 has already
+    // overwritten stream.data with its own session pointer).
+    unsafe {
+      let _ = (*self.handle.get()).take();
+    }
+    // Null the base stream pointer so Drop::detach_stream() is a no-op.
+    // HTTP/2's consume_stream has already overwritten stream.data with
+    // its session pointer, so we must not touch it.
+    self.base.forget_stream();
+  }
+
   #[fast]
   pub fn open(&self, #[smi] fd: i32) -> i32 {
-    let Some(ref handle) = self.handle else {
+    let Some(handle) = self.handle() else {
       return UV_EBADF;
     };
     // SAFETY: handle is valid, initialized by uv_tcp_init in constructor.
@@ -359,7 +389,7 @@ impl TCPWrap {
     #[smi] port: i32,
     #[smi] flags: Option<u32>,
   ) -> i32 {
-    let Some(ref handle) = self.handle else {
+    let Some(handle) = self.handle() else {
       return UV_EBADF;
     };
 
@@ -400,7 +430,7 @@ impl TCPWrap {
     #[smi] port: i32,
     #[smi] flags: Option<u32>,
   ) -> i32 {
-    let Some(ref handle) = self.handle else {
+    let Some(handle) = self.handle() else {
       return UV_EBADF;
     };
 
@@ -435,7 +465,7 @@ impl TCPWrap {
 
   #[fast]
   pub fn listen(&self, #[smi] backlog: i32) -> i32 {
-    let Some(ref handle) = self.handle else {
+    let Some(handle) = self.handle() else {
       return UV_EBADF;
     };
 
@@ -451,7 +481,7 @@ impl TCPWrap {
 
   #[fast]
   pub fn connect(&self, #[string] address: &str, #[smi] port: i32) -> i32 {
-    let Some(ref handle) = self.handle else {
+    let Some(handle) = self.handle() else {
       return UV_EBADF;
     };
 
@@ -488,7 +518,7 @@ impl TCPWrap {
 
   #[fast]
   pub fn connect6(&self, #[string] address: &str, #[smi] port: i32) -> i32 {
-    let Some(ref handle) = self.handle else {
+    let Some(handle) = self.handle() else {
       return UV_EBADF;
     };
 
@@ -529,7 +559,7 @@ impl TCPWrap {
     out: v8::Local<v8::Object>,
     scope: &mut v8::PinScope,
   ) -> i32 {
-    let Some(ref handle) = self.handle else {
+    let Some(handle) = self.handle() else {
       return UV_EBADF;
     };
 
@@ -559,7 +589,7 @@ impl TCPWrap {
     out: v8::Local<v8::Object>,
     scope: &mut v8::PinScope,
   ) -> i32 {
-    let Some(ref handle) = self.handle else {
+    let Some(handle) = self.handle() else {
       return UV_EBADF;
     };
 
@@ -586,7 +616,7 @@ impl TCPWrap {
   #[fast]
   #[rename("setNoDelay")]
   pub fn set_no_delay(&self, enable: bool) -> i32 {
-    let Some(ref handle) = self.handle else {
+    let Some(handle) = self.handle() else {
       return UV_EBADF;
     };
     // SAFETY: handle is a valid, initialized uv_tcp_t.
@@ -596,7 +626,7 @@ impl TCPWrap {
   #[fast]
   #[rename("setKeepAlive")]
   pub fn set_keep_alive(&self, enable: bool, #[smi] delay: u32) -> i32 {
-    let Some(ref handle) = self.handle else {
+    let Some(handle) = self.handle() else {
       return UV_EBADF;
     };
     // SAFETY: handle is a valid, initialized uv_tcp_t.
@@ -605,10 +635,10 @@ impl TCPWrap {
 
   #[fast]
   pub fn accept(&self, #[cppgc] client: &TCPWrap) -> i32 {
-    let Some(ref server_handle) = self.handle else {
+    let Some(server_handle) = self.handle() else {
       return UV_EBADF;
     };
-    let Some(ref client_handle) = client.handle else {
+    let Some(client_handle) = client.handle() else {
       return UV_EBADF;
     };
 
@@ -633,7 +663,7 @@ impl TCPWrap {
       return 0;
     }
 
-    let Some(ref handle) = self.handle else {
+    let Some(handle) = self.handle() else {
       return UV_EBADF;
     };
 

@@ -417,6 +417,20 @@ unsafe impl GarbageCollected for LibUvStreamWrap {
 
 impl LibUvStreamWrap {
   /// Detach the stream handle data so it won't be accessed after GC.
+  /// Null the stream pointer without touching `stream.data`.
+  /// Used by `TCPWrap::detach()` after HTTP/2 `consumeStream` has
+  /// already overwritten `stream.data` with its own session pointer.
+  pub(crate) fn forget_stream(&self) {
+    // SAFETY: single-threaded access (CppGC guarantee). We use
+    // UnsafeCell-style write through a raw pointer because the stream
+    // field is not behind a Cell (it's a raw pointer used in FFI).
+    unsafe {
+      let stream_field =
+        std::ptr::addr_of!(self.stream) as *mut *const uv_stream_t;
+      *stream_field = std::ptr::null();
+    }
+  }
+
   /// Must be called before the uv handle memory is freed.
   /// Only call this on handles that OWN the uv stream (e.g. TCPWrap),
   /// not on wrappers that borrow it (e.g. TLSWrap).
