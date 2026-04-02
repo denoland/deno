@@ -112,7 +112,6 @@ pub struct TypeChecker {
   sys: CliSys,
   compiler_options_resolver: Arc<CompilerOptionsResolver>,
   code_cache: Option<Arc<crate::cache::CodeCache>>,
-  tsgo_path: Option<PathBuf>,
 }
 
 impl TypeChecker {
@@ -128,7 +127,6 @@ impl TypeChecker {
     sys: CliSys,
     compiler_options_resolver: Arc<CompilerOptionsResolver>,
     code_cache: Option<Arc<crate::cache::CodeCache>>,
-    tsgo_path: Option<PathBuf>,
   ) -> Self {
     Self {
       caches,
@@ -141,7 +139,6 @@ impl TypeChecker {
       sys,
       compiler_options_resolver,
       code_cache,
-      tsgo_path,
     }
   }
 
@@ -259,7 +256,6 @@ impl TypeChecker {
         options,
         seen_diagnotics: Default::default(),
         code_cache: self.code_cache.clone(),
-        tsgo_path: self.tsgo_path.clone(),
         initial_cwd: self.cli_options.initial_cwd().to_path_buf(),
         current_dir: deno_path_util::url_from_directory_path(
           self.cli_options.initial_cwd(),
@@ -393,7 +389,6 @@ struct DiagnosticsByFolderRealIterator<'a> {
   seen_diagnotics: HashSet<String>,
   options: CheckOptions,
   code_cache: Option<Arc<crate::cache::CodeCache>>,
-  tsgo_path: Option<PathBuf>,
   initial_cwd: PathBuf,
   current_dir: Url,
 }
@@ -561,7 +556,6 @@ impl DiagnosticsByFolderRealIterator<'_> {
         initial_cwd: self.initial_cwd.clone(),
       },
       code_cache,
-      self.tsgo_path.as_deref(),
     )?;
 
     let ambient_modules = response.ambient_modules;

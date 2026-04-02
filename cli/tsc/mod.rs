@@ -1,6 +1,5 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 //
-pub mod go;
 mod js;
 
 use std::collections::HashMap;
@@ -54,7 +53,6 @@ pub use self::diagnostics::Diagnostic;
 pub use self::diagnostics::DiagnosticCategory;
 pub use self::diagnostics::Diagnostics;
 pub use self::diagnostics::Position;
-pub use self::go::ensure_tsgo;
 pub use self::js::TscConstants;
 
 pub fn get_types_declaration_file_text() -> String {
@@ -849,9 +847,6 @@ pub enum ExecError {
   #[error(transparent)]
   Js(Box<deno_core::error::JsError>),
 
-  #[class(inherit)]
-  #[error(transparent)]
-  Go(#[from] go::ExecError),
 }
 
 #[derive(Clone)]
@@ -902,7 +897,6 @@ pub(crate) fn decompress_source(contents: &[u8]) -> Arc<str> {
 pub fn exec(
   request: Request,
   code_cache: Option<Arc<dyn deno_runtime::code_cache::CodeCache>>,
-  maybe_tsgo_path: Option<&Path>,
 ) -> Result<Response, ExecError> {
   // tsc cannot handle root specifiers that don't have one of the "acceptable"
   // extensions.  Therefore, we have to check the root modules against their
@@ -944,23 +938,13 @@ pub fn exec(
     })
     .collect();
 
-  if let Some(tsgo_path) = maybe_tsgo_path {
-    go::exec_request(
-      request,
-      root_names,
-      root_map,
-      remapped_specifiers,
-      tsgo_path,
-    )
-  } else {
-    js::exec_request(
-      request,
-      root_names,
-      root_map,
-      remapped_specifiers,
-      code_cache,
-    )
-  }
+  js::exec_request(
+    request,
+    root_names,
+    root_map,
+    remapped_specifiers,
+    code_cache,
+  )
 }
 
 pub fn resolve_specifier_for_tsc(
