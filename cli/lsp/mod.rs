@@ -35,9 +35,17 @@ mod text;
 mod trace;
 mod ts_server;
 mod tsc;
+mod tsgo_native;
 mod urls;
 
 pub async fn start() -> Result<(), AnyError> {
+  // When DENO_UNSTABLE_TSGO is set, use the native tsgo LSP proxy.
+  // This spawns `tsgo --lsp` from the @typescript/native-preview npm
+  // package and proxies LSP messages bidirectionally.
+  if std::env::var("DENO_UNSTABLE_TSGO").is_ok() {
+    return tsgo_native::start_proxy().await;
+  }
+
   let stdin = tokio::io::stdin();
   let stdout = tokio::io::stdout();
 
