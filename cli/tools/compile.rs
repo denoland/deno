@@ -42,14 +42,9 @@ pub async fn compile(
   // Framework detection: when the source is a directory, detect the
   // framework and generate an entrypoint automatically.
   let source_dir = if compile_flags.source_file == "." {
-    Some(
-      flags
-        .initial_cwd
-        .clone()
-        .unwrap_or_else(|| {
-          crate::util::env::resolve_cwd(None).unwrap().to_path_buf()
-        }),
-    )
+    Some(flags.initial_cwd.clone().unwrap_or_else(|| {
+      crate::util::env::resolve_cwd(None).unwrap().to_path_buf()
+    }))
   } else {
     let path = PathBuf::from(&compile_flags.source_file);
     let path = if path.is_absolute() {
@@ -131,8 +126,7 @@ pub async fn compile(
 
   // Keep flags.subcommand in sync so resolve_main_module sees the
   // rewritten source_file instead of the original directory path.
-  flags.subcommand =
-    DenoSubcommand::Compile(compile_flags.clone());
+  flags.subcommand = DenoSubcommand::Compile(compile_flags.clone());
 
   // Clean up temp entrypoint on exit.
   struct CleanupGuard(Option<PathBuf>);

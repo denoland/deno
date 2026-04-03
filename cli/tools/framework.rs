@@ -148,8 +148,7 @@ fn detect_astro(_dir: &Path) -> FrameworkDetection {
 fn detect_fresh(dir: &Path) -> FrameworkDetection {
   // Fresh 2.x uses _fresh/server.js, older uses main.ts
   let is_fresh2 = dir.join("_fresh/server.js").exists()
-    || dir.join("fresh.gen.ts").exists()
-      && dir.join("deno.json").exists();
+    || dir.join("fresh.gen.ts").exists() && dir.join("deno.json").exists();
   if is_fresh2 {
     FrameworkDetection {
       name: "Fresh",
@@ -245,7 +244,6 @@ fn detect_vite_ssr(dir: &Path) -> Option<FrameworkDetection> {
   })
 }
 
-
 // --- Helpers ---
 
 /// Check if a config file exists with any common extension.
@@ -317,8 +315,9 @@ fn read_deno_json_imports(dir: &Path) -> Option<Vec<String>> {
 
 #[cfg(test)]
 mod tests {
-  use super::*;
   use std::fs;
+
+  use super::*;
 
   fn setup_dir() -> tempfile::TempDir {
     tempfile::tempdir().unwrap()
