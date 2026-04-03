@@ -178,9 +178,12 @@ export class TCP extends ConnectionWrap {
    * @param fd The file descriptor to open.
    * @return An error status code.
    */
-  open(_fd: number): number {
-    // REF: https://github.com/denoland/deno/issues/6529
-    notImplemented("TCP.prototype.open");
+  open(fd: number): number {
+    const err = this.#native.open(fd);
+    if (err === 0) {
+      this[kUseNativeWrap] = true;
+    }
+    return err;
   }
 
   /**
