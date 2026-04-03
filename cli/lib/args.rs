@@ -2,6 +2,7 @@
 
 use std::io::BufReader;
 use std::io::Cursor;
+use std::path::Path;
 use std::path::PathBuf;
 
 use base64::prelude::BASE64_STANDARD;
@@ -72,6 +73,14 @@ pub enum RootCertStoreLoadError {
   CaFileOpenError(String),
   #[error("Failed to load platform certificates: {0}")]
   FailedNativeCerts(String),
+}
+
+fn load_pem_certs(
+  path: &Path,
+) -> Result<Vec<rustls::pki_types::CertificateDer<'static>>, std::io::Error> {
+  let file: std::fs::File = std::fs::File::open(path)?;
+  let mut reader: BufReader<std::fs::File> = BufReader::new(file);
+  rustls_pemfile::certs(&mut reader).collect()
 }
 
 /// Create and populate a root cert store based on the passed options and
@@ -162,27 +171,20 @@ pub fn get_root_cert_store(
   if let Ok(extra_ca_certs_path) = sys.env_var("NODE_EXTRA_CA_CERTS")
     && !extra_ca_certs_path.is_empty()
   {
-    let path = if let Some(root) = &maybe_root_path {
-      root.join(&extra_ca_certs_path)
-    } else {
-      PathBuf::from(&extra_ca_certs_path)
-    };
-    match std::fs::File::open(&path).and_then(|f| {
-      let mut reader = BufReader::new(f);
-      rustls_pemfile::certs(&mut reader).collect::<Result<Vec<_>, _>>()
-    }) {
+    let path: PathBuf = maybe_root_path.as_ref().map_or_else(
+      || PathBuf::from(&extra_ca_certs_path),
+      |root| root.join(&extra_ca_certs_path),
+    );
+    match load_pem_certs(&path) {
       Ok(certs) => {
         root_cert_store.add_parsable_certificates(certs);
       }
-      Err(e) => {
-        log::warn!(
-          "{}",
-          colors::yellow(&format!(
-            "Warning: Ignoring extra certs from \"{}\", load failed: {}",
-            extra_ca_certs_path, e
-          ))
-        );
-      }
+      Err(e) => log::warn!(
+        "{}",
+        colors::yellow(&format!(
+          "Warning: Ignoring extra certs from \"{extra_ca_certs_path}\", load failed: {e}"
+        ))
+      ),
     }
   }
 
