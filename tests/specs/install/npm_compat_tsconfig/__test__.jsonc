@@ -1,0 +1,13 @@
+{
+  "tempDir": true,
+  "steps": [
+    {
+      "args": "install",
+      "output": "[WILDCARD]Generated[WILDCARD]tsconfig.deno.json\n[WILDCARD]tsconfig.json[WILDCARD]"
+    },
+    {
+      "args": "run --allow-read verify.ts",
+      "output": "verify.out"
+    }
+  ]
+}
