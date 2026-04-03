@@ -6019,7 +6019,9 @@ fn add_parse_inner(
   } else if matches.get_flag("jsr") {
     Some(DefaultRegistry::Jsr)
   } else {
-    None
+    // Default to npm when no --npm or --jsr flag is provided.
+    // This allows `deno add express` to work without requiring `npm:` prefix.
+    Some(DefaultRegistry::Npm)
   };
   AddFlags {
     packages,
@@ -13969,7 +13971,7 @@ mod tests {
           mk_flags(AddFlags {
             packages: svec!["@david/which"],
             dev: false, // default is false
-            default_registry: None,
+            default_registry: Some(DefaultRegistry::Npm),
             lockfile_only: false,
             save_exact: false,
           })
@@ -13987,7 +13989,7 @@ mod tests {
         let mut expected_flags = mk_flags(AddFlags {
           packages: svec!["@david/which", "@luca/hello"],
           dev: false,
-          default_registry: None,
+          default_registry: Some(DefaultRegistry::Npm),
           lockfile_only: true,
           save_exact: false,
         });
@@ -14001,7 +14003,7 @@ mod tests {
           mk_flags(AddFlags {
             packages: svec!["npm:chalk"],
             dev: true,
-            default_registry: None,
+            default_registry: Some(DefaultRegistry::Npm),
             lockfile_only: false,
             save_exact: false,
           }),
