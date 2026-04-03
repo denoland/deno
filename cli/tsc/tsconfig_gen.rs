@@ -122,10 +122,24 @@ fn build_tsconfig(
     merge_deno_options(&mut compiler_options, user_opts);
   }
 
-  // Generate "paths" for npm: and jsr: specifiers
+  // Generate "paths" for npm: and jsr: specifiers, then merge any
+  // user-defined paths from deno.json compilerOptions on top.
   let mut specifier_paths = generate_npm_paths(project_root, deno_imports);
   let jsr_paths = generate_jsr_paths(project_root, deno_imports);
   specifier_paths.extend(jsr_paths);
+
+  // Merge user-defined paths (from deno.json compilerOptions.paths) — these
+  // take priority over generated specifier mappings so that explicit user
+  // aliases win.
+  if let Some(user_paths) = deno_compiler_options
+    .and_then(|co| co.get("paths"))
+    .and_then(|p| p.as_object())
+  {
+    for (key, value) in user_paths {
+      specifier_paths.insert(key.clone(), value.clone());
+    }
+  }
+
   if !specifier_paths.is_empty() {
     compiler_options.insert("paths".to_string(), json!(specifier_paths));
   }
@@ -511,8 +525,6 @@ fn merge_deno_options(base: &mut Map<String, Value>, user_opts: &Value) {
     "noUncheckedIndexedAccess",
     "noUnusedLocals",
     "noUnusedParameters",
-    "paths",
-    "baseUrl",
     "rootDirs",
     "skipLibCheck",
     "strict",
