@@ -171,8 +171,7 @@ fn file_for_fd(
 }
 
 /// Register a raw OS file descriptor into NodeFsState.
-/// Platform-specific: on Unix takes ownership via from_raw_fd,
-/// on Windows duplicates the handle.
+/// Duplicates the fd so the original owner can close theirs independently.
 #[cfg(unix)]
 fn register_raw_fd(state: &mut OpState, fd: i32) -> Result<(), FsError> {
   use std::fs::File as StdFile;
@@ -181,9 +180,15 @@ fn register_raw_fd(state: &mut OpState, fd: i32) -> Result<(), FsError> {
   if fd < 0 {
     return Err(ebadf());
   }
-  // SAFETY: The caller has permission and the fd is valid.
-  // Ownership transfers to the File.
-  let std_file = unsafe { StdFile::from_raw_fd(fd) };
+  // Duplicate the fd so we don't take ownership of the caller's fd.
+  // This prevents double-close when the original owner also closes it.
+  // SAFETY: fd is non-negative (checked above) and valid per caller contract.
+  let dup_fd = unsafe { libc::dup(fd) };
+  if dup_fd < 0 {
+    return Err(ebadf());
+  }
+  // SAFETY: dup_fd is a valid fd returned by dup() above.
+  let std_file = unsafe { StdFile::from_raw_fd(dup_fd) };
   let file: Rc<dyn deno_io::fs::File> =
     Rc::new(deno_io::StdFileResourceInner::file(std_file, None));
   state.borrow_mut::<NodeFsState>().open_fds.insert(fd, file);
@@ -229,6 +234,7 @@ fn register_raw_fd(state: &mut OpState, fd: i32) -> Result<(), FsError> {
     return Err(ebadf());
   }
 
+  // SAFETY: dup_handle is a valid duplicated OS handle (DuplicateHandle succeeded above).
   let std_file = unsafe { StdFile::from_raw_handle(dup_handle) };
   let file: Rc<dyn deno_io::fs::File> =
     Rc::new(deno_io::StdFileResourceInner::file(std_file, None));
@@ -1037,6 +1043,7 @@ pub fn op_node_register_fd(
   }
 
   // SAFETY: dup_handle is a valid duplicated OS handle.
+  // SAFETY: dup_handle is a valid duplicated OS handle (DuplicateHandle succeeded above).
   let std_file = unsafe { StdFile::from_raw_handle(dup_handle) };
   let file: Rc<dyn deno_io::fs::File> =
     Rc::new(deno_io::StdFileResourceInner::file(std_file, None));

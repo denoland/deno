@@ -7144,7 +7144,7 @@ mod tests {
       .unwrap(),
       ChildPermissionsArg {
         env: ChildUnaryPermissionArg::Granted,
-        fd: ChildUnaryPermissionArg::Granted,
+        fd: ChildUnaryPermissionArg::NotGranted,
         net: ChildUnaryPermissionArg::Granted,
         ffi: ChildUnaryPermissionArg::Granted,
         import: ChildUnaryPermissionArg::Granted,
