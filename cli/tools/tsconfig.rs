@@ -40,8 +40,7 @@ pub fn generate(project_root: &Path) -> Result<(), AnyError> {
     deno_json.as_ref().and_then(|j| j.get("compilerOptions"));
   let deno_imports = deno_json.as_ref().and_then(|j| j.get("imports"));
 
-  // Install npm: and jsr: packages to node_modules/ so stock tsc can find them
-  install_npm_packages(project_root, deno_imports)?;
+  // Install jsr: packages to node_modules/@jsr/ via npm compatibility layer
   install_jsr_packages(project_root, deno_imports)?;
 
   // Generate deno.tsconfig.json using tsconfig_gen
@@ -144,71 +143,9 @@ fn rewrite_paths_for_project_root(tsconfig: &mut Value, _project_root: &Path) {
   tsconfig.as_object_mut().map(|m| m.remove("extends"));
 }
 
-/// Install npm: packages from deno.json imports to node_modules/.
-fn install_npm_packages(
-  project_root: &Path,
-  deno_imports: Option<&Value>,
-) -> Result<(), AnyError> {
-  let imports = match deno_imports.and_then(|v| v.as_object()) {
-    Some(imports) => imports,
-    None => return Ok(()),
-  };
-
-  let mut to_install: Vec<String> = Vec::new();
-  for (_alias, target) in imports {
-    let target_str = match target.as_str() {
-      Some(s) if s.starts_with("npm:") => s,
-      _ => continue,
-    };
-
-    let Some(pkg_name) =
-      crate::tsc::tsconfig_gen::parse_npm_specifier(target_str)
-    else {
-      continue;
-    };
-
-    // Check if already installed
-    let pkg_dir = project_root.join("node_modules").join(&pkg_name);
-    if pkg_dir.exists() {
-      continue;
-    }
-
-    // Use the full specifier (with version) for install
-    let install_name = target_str.strip_prefix("npm:").unwrap_or(target_str);
-    to_install.push(install_name.to_string());
-  }
-
-  if to_install.is_empty() {
-    return Ok(());
-  }
-
-  log::info!(
-    "{} npm packages: {}",
-    colors::green("Installing"),
-    to_install.join(", ")
-  );
-
-  let status = std::process::Command::new("npm")
-    .arg("install")
-    .arg("--no-save")
-    .args(&to_install)
-    .current_dir(project_root)
-    .status()
-    .map_err(|e| anyhow!("Failed to run npm install: {e}"))?;
-
-  if !status.success() {
-    return Err(anyhow!(
-      "npm install failed for packages: {}",
-      to_install.join(", ")
-    ));
-  }
-
-  Ok(())
-}
-
-/// Install jsr: packages to node_modules/@jsr/ using the npm compatibility
-/// layer at npm.jsr.io. This makes jsr packages available for stock tsc
-/// resolution via tsconfig "paths".
+/// Install jsr: packages to node_modules/@jsr/ by downloading from the npm
+/// compatibility layer at npm.jsr.io. Uses curl + tar directly — no npm
+/// dependency required.
 fn install_jsr_packages(
   project_root: &Path,
   deno_imports: Option<&Value>,
@@ -218,8 +155,6 @@ fn install_jsr_packages(
     None => return Ok(()),
   };
 
-  // Collect jsr: specifiers that need installing
-  let mut to_install: Vec<String> = Vec::new();
   for (_alias, target) in imports {
     let target_str = match target.as_str() {
       Some(s) if s.starts_with("jsr:") => s,
@@ -232,42 +167,103 @@ fn install_jsr_packages(
       continue;
     };
 
-    // Convert jsr scope/name to npm compat format: @jsr/scope__name
-    let npm_name = format!("@jsr/{}__{}", scope.trim_start_matches('@'), name);
-
-    // Check if already installed
-    let pkg_dir = project_root.join("node_modules").join(&npm_name);
+    let npm_name = format!("{}__{}", scope.trim_start_matches('@'), name);
+    let pkg_dir = project_root
+      .join("node_modules")
+      .join("@jsr")
+      .join(&npm_name);
     if pkg_dir.exists() {
       continue;
     }
 
-    to_install.push(npm_name);
-  }
+    // Resolve the latest matching version from npm.jsr.io
+    let registry_name = format!("@jsr/{npm_name}");
+    let metadata_url =
+      format!("https://npm.jsr.io/{}", registry_name.replace('/', "%2f"));
 
-  if to_install.is_empty() {
-    return Ok(());
-  }
+    log::info!(
+      "{} {} from npm.jsr.io",
+      colors::green("Installing"),
+      registry_name,
+    );
 
-  log::info!(
-    "{} jsr packages via npm.jsr.io: {}",
-    colors::green("Installing"),
-    to_install.join(", ")
-  );
+    // Fetch package metadata to get tarball URL
+    let metadata_output = std::process::Command::new("curl")
+      .args(["-fsSL", &metadata_url])
+      .output()
+      .map_err(|e| anyhow!("Failed to fetch jsr package metadata: {e}"))?;
 
-  let status = std::process::Command::new("npm")
-    .arg("install")
-    .arg("--no-save")
-    .arg("--registry=https://npm.jsr.io")
-    .args(&to_install)
-    .current_dir(project_root)
-    .status()
-    .map_err(|e| anyhow!("Failed to run npm install: {e}"))?;
+    if !metadata_output.status.success() {
+      log::warn!(
+        "Failed to fetch metadata for {}: {}",
+        registry_name,
+        String::from_utf8_lossy(&metadata_output.stderr)
+      );
+      continue;
+    }
 
-  if !status.success() {
-    return Err(anyhow!(
-      "npm install failed for jsr packages: {}",
-      to_install.join(", ")
-    ));
+    let metadata: Value = serde_json::from_slice(&metadata_output.stdout)
+      .map_err(|e| {
+        anyhow!("Failed to parse metadata for {registry_name}: {e}")
+      })?;
+
+    // Get the latest version's tarball URL
+    let latest_version = metadata
+      .get("dist-tags")
+      .and_then(|dt| dt.get("latest"))
+      .and_then(|v| v.as_str())
+      .ok_or_else(|| anyhow!("No latest version for {registry_name}"))?;
+
+    let tarball_url = metadata
+      .get("versions")
+      .and_then(|vs| vs.get(latest_version))
+      .and_then(|v| v.get("dist"))
+      .and_then(|d| d.get("tarball"))
+      .and_then(|t| t.as_str())
+      .ok_or_else(|| {
+        anyhow!("No tarball URL for {registry_name}@{latest_version}")
+      })?;
+
+    // Download and extract
+    let temp_dir = tempfile::tempdir()?;
+    let tgz_path = temp_dir.path().join("package.tgz");
+
+    let dl_status = std::process::Command::new("curl")
+      .args(["-fsSL", "-o", &tgz_path.to_string_lossy(), tarball_url])
+      .status()
+      .map_err(|e| anyhow!("Failed to download {registry_name}: {e}"))?;
+
+    if !dl_status.success() {
+      log::warn!("Failed to download {}", registry_name);
+      continue;
+    }
+
+    // Extract to node_modules/@jsr/<name>
+    std::fs::create_dir_all(&pkg_dir)?;
+
+    let extract_status = std::process::Command::new("tar")
+      .args([
+        "xzf",
+        &tgz_path.to_string_lossy(),
+        "-C",
+        &pkg_dir.to_string_lossy(),
+        "--strip-components=1",
+      ])
+      .status()
+      .map_err(|e| anyhow!("Failed to extract {registry_name}: {e}"))?;
+
+    if !extract_status.success() {
+      log::warn!("Failed to extract {}", registry_name);
+      let _ = std::fs::remove_dir_all(&pkg_dir);
+      continue;
+    }
+
+    log::info!(
+      "{} {}@{}",
+      colors::green("Installed"),
+      registry_name,
+      latest_version,
+    );
   }
 
   Ok(())
