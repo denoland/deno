@@ -262,31 +262,50 @@ deno_core::extension!(deno_io,
       ));
       assert_eq!(rid, 0, "stdin must have ResourceId 0");
 
-      let rid = t.add(FileResource::new(
-        Rc::new(match stdio.stdout.pipe {
-          StdioPipeInner::Inherit => StdFileResourceInner::new(
+      let (stdout_inner, child_stdout) = match stdio.stdout.pipe {
+        StdioPipeInner::Inherit => (
+          StdFileResourceInner::new(
             StdFileResourceKind::Stdout,
             STDOUT_HANDLE.try_clone().unwrap(),
             None,
           ),
-          StdioPipeInner::File(pipe) => StdFileResourceInner::file(pipe, None),
-        }),
+          STDOUT_HANDLE.try_clone().unwrap(),
+        ),
+        StdioPipeInner::File(pipe) => {
+          let child_handle = pipe.try_clone().unwrap();
+          (StdFileResourceInner::file(pipe, None), child_handle)
+        }
+      };
+      let rid = t.add(FileResource::new(
+        Rc::new(stdout_inner),
         "stdout".to_string(),
       ));
       assert_eq!(rid, 1, "stdout must have ResourceId 1");
 
-      let rid = t.add(FileResource::new(
-        Rc::new(match stdio.stderr.pipe {
-          StdioPipeInner::Inherit => StdFileResourceInner::new(
+      let (stderr_inner, child_stderr) = match stdio.stderr.pipe {
+        StdioPipeInner::Inherit => (
+          StdFileResourceInner::new(
             StdFileResourceKind::Stderr,
             STDERR_HANDLE.try_clone().unwrap(),
             None,
           ),
-          StdioPipeInner::File(pipe) => StdFileResourceInner::file(pipe, None),
-        }),
+          STDERR_HANDLE.try_clone().unwrap(),
+        ),
+        StdioPipeInner::File(pipe) => {
+          let child_handle = pipe.try_clone().unwrap();
+          (StdFileResourceInner::file(pipe, None), child_handle)
+        }
+      };
+      let rid = t.add(FileResource::new(
+        Rc::new(stderr_inner),
         "stderr".to_string(),
       ));
       assert_eq!(rid, 2, "stderr must have ResourceId 2");
+
+      state.put(ChildProcessStdio {
+        stdout: child_stdout,
+        stderr: child_stderr,
+      });
     }
   },
 );
@@ -337,6 +356,18 @@ pub struct Stdio {
   pub stdin: StdioPipe,
   pub stdout: StdioPipe,
   pub stderr: StdioPipe,
+}
+
+/// Holds the effective stdout/stderr handles for child process inheritance.
+///
+/// When the runtime redirects stdout/stderr (e.g. during `deno test` for
+/// output capture), child processes spawned with `stdio: "inherit"` need
+/// to inherit the redirected handles, not the original OS stdout/stderr.
+/// This struct is stored in `OpState` during IO extension init and read
+/// by the process extension when spawning children.
+pub struct ChildProcessStdio {
+  pub stdout: StdFile,
+  pub stderr: StdFile,
 }
 
 #[derive(Debug)]
@@ -1168,6 +1199,80 @@ impl crate::fs::File for StdFileResourceInner {
       }),
       _ => Ok(StdStdio::inherit()),
     }
+  }
+
+  fn read_at_sync(
+    self: Rc<Self>,
+    buf: &mut [u8],
+    position: u64,
+  ) -> FsResult<usize> {
+    self.with_sync(|file| {
+      #[cfg(unix)]
+      {
+        use std::os::unix::fs::FileExt;
+        Ok(file.read_at(buf, position)?)
+      }
+      #[cfg(windows)]
+      {
+        // Windows seek_read moves the cursor, so save/restore it.
+        use std::io::Seek;
+        use std::os::windows::fs::FileExt;
+        let current = file.stream_position()?;
+        let result = file.seek_read(buf, position);
+        file.seek(std::io::SeekFrom::Start(current))?;
+        Ok(result?)
+      }
+    })
+  }
+
+  async fn read_at_async(
+    self: Rc<Self>,
+    mut buf: BufMutView,
+    position: u64,
+  ) -> FsResult<(usize, BufMutView)> {
+    self
+      .with_inner_blocking_task(move |file| {
+        #[cfg(unix)]
+        {
+          use std::os::unix::fs::FileExt;
+          let nread = file.read_at(&mut buf, position)?;
+          Ok((nread, buf))
+        }
+        #[cfg(windows)]
+        {
+          use std::io::Seek;
+          use std::os::windows::fs::FileExt;
+          let current = file.stream_position()?;
+          let result = file.seek_read(&mut buf, position);
+          file.seek(std::io::SeekFrom::Start(current))?;
+          Ok((result?, buf))
+        }
+      })
+      .await
+  }
+
+  fn write_at_sync(
+    self: Rc<Self>,
+    buf: &[u8],
+    position: u64,
+  ) -> FsResult<usize> {
+    self.with_sync(|file| {
+      #[cfg(unix)]
+      {
+        use std::os::unix::fs::FileExt;
+        Ok(file.write_at(buf, position)?)
+      }
+      #[cfg(windows)]
+      {
+        // Windows seek_write moves the cursor, so save/restore it.
+        use std::io::Seek;
+        use std::os::windows::fs::FileExt;
+        let current = file.stream_position()?;
+        let result = file.seek_write(buf, position);
+        file.seek(std::io::SeekFrom::Start(current))?;
+        Ok(result?)
+      }
+    })
   }
 
   fn backing_fd(self: Rc<Self>) -> Option<ResourceHandleFd> {

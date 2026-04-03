@@ -55,7 +55,6 @@ use crate::args::CliOptions;
 use crate::cdp;
 use crate::cdp::RemoteObjectId;
 use crate::colors;
-use crate::lsp::ReplLanguageServer;
 use crate::npm::CliNpmInstaller;
 use crate::resolver::CliResolver;
 use crate::tools::test::TestEventReceiver;
@@ -169,7 +168,6 @@ pub fn result_to_evaluation_output(
 
 #[derive(Debug)]
 pub struct TsEvaluateResponse {
-  pub ts_code: String,
   pub value: cdp::EvaluateResponse,
 }
 
@@ -183,7 +181,6 @@ pub struct ReplSession {
   state: ReplSessionState,
   pub worker: MainWorker,
   pub context_id: u64,
-  pub language_server: ReplLanguageServer,
   pub notifications: Arc<Mutex<UnboundedReceiver<Value>>>,
   referrer: ModuleSpecifier,
   main_module: ModuleSpecifier,
@@ -297,8 +294,6 @@ impl ReplSession {
     main_module: ModuleSpecifier,
     test_event_receiver: TestEventReceiver,
   ) -> Result<Self, AnyError> {
-    let language_server = ReplLanguageServer::new_initialized().await?;
-
     let (notification_tx, mut notification_rx) = unbounded();
     let repl_session_state = ReplSessionState::new(notification_tx);
     let state = repl_session_state.clone();
@@ -359,7 +354,6 @@ impl ReplSession {
       session,
       state,
       context_id,
-      language_server,
       referrer,
       notifications: Arc::new(Mutex::new(notification_rx)),
       test_reporter_factory: Box::new(move || {
@@ -479,11 +473,6 @@ impl ReplSession {
               exception_details.text, description
             ))
           } else {
-            session
-              .language_server
-              .commit_text(&evaluate_response.ts_code)
-              .await;
-
             session.set_last_eval_result(&result).await?;
             let value = session.get_eval_value(&result).await?;
             EvaluationOutput::Value(value)
@@ -782,10 +771,7 @@ impl ReplSession {
       .evaluate_expression(&format!("'use strict'; void 0;{transpiled_src}"))
       .await?;
 
-    Ok(TsEvaluateResponse {
-      ts_code: expression.to_string(),
-      value,
-    })
+    Ok(TsEvaluateResponse { value })
   }
 
   fn analyze_and_handle_jsx(&mut self, parsed_source: &ParsedSource) {

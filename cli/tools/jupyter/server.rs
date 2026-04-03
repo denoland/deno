@@ -301,103 +301,65 @@ impl JupyterServer {
         let user_code = req.code;
         let cursor_pos = req.cursor_pos;
 
-        let lsp_completions = self
-          .repl_session_proxy
-          .lsp_completions(user_code.clone(), cursor_pos)
-          .await;
+        let expr = get_expr_from_line_at_pos(&user_code, cursor_pos);
+        // check if the expression is in the form `obj.prop`
+        let (completions, cursor_start) = if let Some(index) = expr.rfind('.') {
+          let sub_expr = &expr[..index];
+          let prop_name = &expr[index + 1..];
+          let candidates = get_expression_property_names(
+            &mut self.repl_session_proxy,
+            sub_expr,
+          )
+          .await
+          .into_iter()
+          .filter(|n| !n.starts_with("Symbol(") && n.starts_with(prop_name))
+          .collect();
 
-        if !lsp_completions.is_empty() {
-          let matches: Vec<String> = lsp_completions
-            .iter()
-            .map(|item| item.new_text.clone())
-            .collect();
-
-          let cursor_start = lsp_completions
-            .first()
-            .map(|item| item.range.start)
-            .unwrap_or(cursor_pos);
-
-          let cursor_end = lsp_completions
-            .last()
-            .map(|item| item.range.end)
-            .unwrap_or(cursor_pos);
-
-          connection
-            .send(
-              messaging::CompleteReply {
-                matches,
-                cursor_start,
-                cursor_end,
-                metadata: Default::default(),
-                status: ReplyStatus::Ok,
-                error: None,
-              }
-              .as_child_of(parent),
-            )
-            .await?;
-        } else {
-          let expr = get_expr_from_line_at_pos(&user_code, cursor_pos);
-          // check if the expression is in the form `obj.prop`
-          let (completions, cursor_start) = if let Some(index) = expr.rfind('.')
-          {
-            let sub_expr = &expr[..index];
-            let prop_name = &expr[index + 1..];
-            let candidates = get_expression_property_names(
-              &mut self.repl_session_proxy,
-              sub_expr,
-            )
-            .await
-            .into_iter()
-            .filter(|n| !n.starts_with("Symbol(") && n.starts_with(prop_name))
-            .collect();
-
-            if prop_name.len() > cursor_pos {
-              // TODO(bartlomieju): most likely not correct, but better than panicking because of sub with overflow
-              (candidates, cursor_pos)
-            } else {
-              (candidates, cursor_pos - prop_name.len())
-            }
+          if prop_name.len() > cursor_pos {
+            // TODO(bartlomieju): most likely not correct, but better than panicking because of sub with overflow
+            (candidates, cursor_pos)
           } else {
-            // combine results of declarations and globalThis properties
-            let mut candidates = get_expression_property_names(
-              &mut self.repl_session_proxy,
-              "globalThis",
-            )
-            .await
-            .into_iter()
-            .chain(
-              get_global_lexical_scope_names(&mut self.repl_session_proxy)
-                .await,
-            )
-            .filter(|n| n.starts_with(expr))
-            .collect::<Vec<_>>();
+            (candidates, cursor_pos - prop_name.len())
+          }
+        } else {
+          // combine results of declarations and globalThis properties
+          let mut candidates = get_expression_property_names(
+            &mut self.repl_session_proxy,
+            "globalThis",
+          )
+          .await
+          .into_iter()
+          .chain(
+            get_global_lexical_scope_names(&mut self.repl_session_proxy).await,
+          )
+          .filter(|n| n.starts_with(expr))
+          .collect::<Vec<_>>();
 
-            // sort and remove duplicates
-            candidates.sort();
-            candidates.dedup(); // make sure to sort first
+          // sort and remove duplicates
+          candidates.sort();
+          candidates.dedup(); // make sure to sort first
 
-            if expr.len() > cursor_pos {
-              // TODO(bartlomieju): most likely not correct, but better than panicking because of sub with overflow
-              (candidates, cursor_pos)
-            } else {
-              (candidates, cursor_pos - expr.len())
+          if expr.len() > cursor_pos {
+            // TODO(bartlomieju): most likely not correct, but better than panicking because of sub with overflow
+            (candidates, cursor_pos)
+          } else {
+            (candidates, cursor_pos - expr.len())
+          }
+        };
+
+        connection
+          .send(
+            messaging::CompleteReply {
+              matches: completions,
+              cursor_start,
+              cursor_end: cursor_pos,
+              metadata: Default::default(),
+              status: ReplyStatus::Ok,
+              error: None,
             }
-          };
-
-          connection
-            .send(
-              messaging::CompleteReply {
-                matches: completions,
-                cursor_start,
-                cursor_end: cursor_pos,
-                metadata: Default::default(),
-                status: ReplyStatus::Ok,
-                error: None,
-              }
-              .as_child_of(parent),
-            )
-            .await?;
-        }
+            .as_child_of(parent),
+          )
+          .await?;
       }
 
       JupyterMessageContent::InspectRequest(_req) => {
