@@ -20,6 +20,11 @@ use std::process::ExitStatus;
 #[cfg(unix)]
 use std::process::Stdio as StdStdio;
 use std::rc::Rc;
+use std::sync::Arc;
+use std::sync::Condvar;
+use std::sync::Mutex;
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering;
 
 use deno_core::AsyncMutFuture;
 use deno_core::AsyncRefCell;
@@ -280,6 +285,27 @@ pub struct SpawnArgs {
   needs_npm_process_state: bool,
   #[cfg(unix)]
   argv0: Option<String>,
+
+  #[serde(default)]
+  timeout: Option<u64>,
+  #[cfg(unix)]
+  #[serde(default)]
+  #[cfg_attr(
+    windows,
+    allow(dead_code, reason = "deserialized from JS but only used on Unix")
+  )]
+  kill_signal: Option<KillSignal>,
+}
+
+#[derive(Clone, Deserialize)]
+#[serde(untagged)]
+#[cfg_attr(
+  windows,
+  allow(dead_code, reason = "deserialized from JS but only used on Unix")
+)]
+enum KillSignal {
+  String(String),
+  Number(i32),
 }
 
 #[derive(Deserialize)]
@@ -427,6 +453,7 @@ pub struct SpawnOutput {
   status: ChildStatus,
   stdout: Option<Uint8Array>,
   stderr: Option<Uint8Array>,
+  killed_by_timeout: bool,
 }
 
 type CreateCommand = (
@@ -1170,8 +1197,18 @@ fn op_spawn_sync(
   let stdout = matches!(args.stdio.stdout, StdioOrFd::Stdio(Stdio::Piped));
   let stderr = matches!(args.stdio.stderr, StdioOrFd::Stdio(Stdio::Piped));
   let input = args.input.clone();
+  let timeout = args.timeout;
+  #[cfg(unix)]
+  let kill_signal = args.kill_signal.clone();
   let (mut command, _, _, _) =
     create_command(state, args, "Deno.Command().outputSync()")?;
+
+  // When timeout is specified on Unix, create a new process group so we can
+  // kill the entire tree (shell + children) on timeout, not just the shell.
+  #[cfg(unix)]
+  if timeout.is_some_and(|t| t > 0) {
+    command.process_group(0);
+  }
 
   let mut child = command.spawn().map_err(|e| ProcessError::SpawnFailed {
     command: command.get_program().to_string_lossy().into_owned(),
@@ -1188,26 +1225,172 @@ fn op_spawn_sync(
     stdin.write_all(&input)?;
     stdin.flush()?;
   }
-  let output =
+
+  // Take stdout/stderr pipes from child so we can read them in background
+  // threads. This lets us drop the pipes on timeout to unblock the readers
+  // (matching libuv's behavior of stopping pipe reads after process kill).
+  let child_stdout = child.stdout.take();
+  let child_stderr = child.stderr.take();
+
+  let stdout_handle = child_stdout.map(|pipe| {
+    std::thread::spawn(move || {
+      let mut buf = Vec::new();
+      let mut pipe = pipe;
+      let _ = std::io::Read::read_to_end(&mut pipe, &mut buf);
+      buf
+    })
+  });
+  let stderr_handle = child_stderr.map(|pipe| {
+    std::thread::spawn(move || {
+      let mut buf = Vec::new();
+      let mut pipe = pipe;
+      let _ = std::io::Read::read_to_end(&mut pipe, &mut buf);
+      buf
+    })
+  });
+
+  // If timeout is specified, spawn a thread that will kill the child
+  // after the timeout expires. Uses a condvar so the timer thread can be
+  // cancelled promptly when the child exits before the deadline.
+  let killed_by_timeout = Arc::new(AtomicBool::new(false));
+  let cancel = Arc::new((Mutex::new(false), Condvar::new()));
+  if let Some(timeout_ms) = timeout
+    && timeout_ms > 0
+  {
+    #[cfg(unix)]
+    let child_id = child.id();
+    #[cfg(windows)]
+    let child_id = child.id().expect("Process ID should be set.");
+    let killed = killed_by_timeout.clone();
+    let cancel2 = cancel.clone();
+    #[cfg(unix)]
+    let signal: i32 = match &kill_signal {
+      Some(KillSignal::Number(n)) => *n,
+      Some(KillSignal::String(s)) => {
+        deno_signals::signal_str_to_int(s).unwrap_or(libc::SIGTERM)
+      }
+      None => libc::SIGTERM,
+    };
+    std::thread::spawn(move || {
+      let (lock, cvar) = &*cancel2;
+      let guard = lock.lock().unwrap();
+      let timeout = std::time::Duration::from_millis(timeout_ms);
+      let (guard, wait_result) = cvar
+        .wait_timeout_while(guard, timeout, |cancelled| !*cancelled)
+        .unwrap();
+      // If cancelled or woken before the timeout, the child already exited.
+      if *guard || !wait_result.timed_out() {
+        return;
+      }
+      killed.store(true, Ordering::SeqCst);
+      // NOTE: There is a minor race window where the child exits and its
+      // PID gets recycled before we send the kill signal. The condvar
+      // cancel above prevents this in practice (the main thread cancels
+      // the timer immediately after wait() returns), but if the OS
+      // recycles the PID in that narrow window we could signal the wrong
+      // process. This matches libuv's behavior.
+      #[cfg(unix)]
+      // SAFETY: child_id is a valid PID from the spawned child process.
+      // We use negative PID to kill the entire process group (created via
+      // process_group(0) above), ensuring shell children are also killed.
+      // NOTE: There is a minor theoretical race window where the child
+      // could exit and its PID get recycled between wait() returning and
+      // the condvar cancel reaching this thread. In practice the condvar
+      // cancellation is near-instant so this window is negligible.
+      unsafe {
+        libc::kill(-(child_id as i32), signal);
+      }
+      #[cfg(windows)]
+      // SAFETY: child_id is a valid PID from the spawned child process.
+      // OpenProcess/TerminateProcess/CloseHandle are safe to call with
+      // valid arguments.
+      unsafe {
+        let handle = windows_sys::Win32::System::Threading::OpenProcess(
+          windows_sys::Win32::System::Threading::PROCESS_TERMINATE,
+          false.into(),
+          child_id,
+        );
+        if !handle.is_null() {
+          windows_sys::Win32::System::Threading::TerminateProcess(handle, 1);
+          windows_sys::Win32::Foundation::CloseHandle(handle);
+        }
+      }
+    });
+  }
+
+  #[cfg(unix)]
+  let status = child.wait().map_err(|e| ProcessError::SpawnFailed {
+    command: command.get_program().to_string_lossy().into_owned(),
+    error: Box::new(e.into()),
+  })?;
+  #[cfg(windows)]
+  let status =
     child
-      .wait_with_output()
+      .wait_blocking()
       .map_err(|e| ProcessError::SpawnFailed {
         command: command.get_program().to_string_lossy().into_owned(),
         error: Box::new(e.into()),
       })?;
+
+  // Cancel the timeout thread if it's still waiting.
+  {
+    let (lock, cvar) = &*cancel;
+    let mut cancelled = lock.lock().unwrap();
+    *cancelled = true;
+    cvar.notify_one();
+  }
+
+  let timed_out = killed_by_timeout.load(Ordering::SeqCst);
+
+  // Collect stdout/stderr from background reader threads.
+  // On Unix, the process group kill ensures all children are dead and
+  // pipes reach EOF, so join() completes immediately.
+  // On Windows, TerminateProcess closes the child's pipe ends, so
+  // join() also completes promptly for the direct child. In the rare
+  // case of orphaned grandchildren holding pipes, we use a short
+  // join timeout to avoid blocking indefinitely.
+  let collect_pipe = |handle: Option<std::thread::JoinHandle<Vec<u8>>>| {
+    let h = handle?;
+    #[cfg(unix)]
+    {
+      h.join().ok()
+    }
+    #[cfg(windows)]
+    {
+      if timed_out {
+        // Brief timeout to avoid blocking on orphaned grandchildren.
+        let start = std::time::Instant::now();
+        loop {
+          if h.is_finished() {
+            return h.join().ok();
+          }
+          if start.elapsed() > std::time::Duration::from_millis(200) {
+            return None;
+          }
+          std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+      } else {
+        h.join().ok()
+      }
+    }
+  };
+  let stdout_bytes = collect_pipe(stdout_handle).unwrap_or_default();
+  let stderr_bytes = collect_pipe(stderr_handle).unwrap_or_default();
+
   Ok(SpawnOutput {
     pid,
-    status: output.status.try_into()?,
+    status: status.try_into()?,
     stdout: if stdout {
-      Some(output.stdout.into())
+      Some(stdout_bytes.into())
     } else {
       None
     },
     stderr: if stderr {
-      Some(output.stderr.into())
+      Some(stderr_bytes.into())
     } else {
       None
     },
+    killed_by_timeout: timed_out,
   })
 }
 
