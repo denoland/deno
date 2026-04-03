@@ -18,7 +18,6 @@ use deno_core::serde_json::Value;
 use deno_core::serde_json::json;
 use deno_semver::Version;
 use deno_semver::VersionReq;
-use deno_terminal::colors;
 
 /// Installed JSR package info for reporting.
 pub struct InstalledJsrPackage {
@@ -102,9 +101,8 @@ fn generate_deno_tsconfig(
   )
   .map_err(|e| anyhow!("Failed to generate tsconfig: {e}"))?;
 
-  log::info!(
-    "{} {}",
-    colors::green("Generated"),
+  log::debug!(
+    "Generated {}",
     generated.tsconfig_path.display()
   );
 
@@ -137,9 +135,8 @@ fn update_user_tsconfig(project_root: &Path) -> Result<(), AnyError> {
       let updated =
         serde_json::to_string_pretty(&tsconfig).expect("failed to serialize");
       std::fs::write(&tsconfig_path, updated)?;
-      log::info!(
-        "{} {} (added extends)",
-        colors::green("Updated"),
+      log::debug!(
+        "Updated {} (added extends)",
         tsconfig_path.display()
       );
     }
@@ -148,7 +145,7 @@ fn update_user_tsconfig(project_root: &Path) -> Result<(), AnyError> {
     let content =
       serde_json::to_string_pretty(&tsconfig).expect("failed to serialize");
     std::fs::write(&tsconfig_path, content)?;
-    log::info!("{} {}", colors::green("Created"), tsconfig_path.display());
+    log::debug!("Created {}", tsconfig_path.display());
   }
 
   Ok(())
