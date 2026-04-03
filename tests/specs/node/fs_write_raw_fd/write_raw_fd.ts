@@ -26,7 +26,7 @@ const message = "hello from fs.write\n";
 const buf = Buffer.from(message);
 
 // Write using fs.write() — this fd is not in Deno's resource table so it
-// will trigger the BadResource fallback to op_node_write_raw_fd.
+// will be auto-registered by file_for_fd() (gated by --allow-fd).
 await new Promise<void>((resolve, reject) => {
   fs.write(writeFd, buf, 0, buf.length, null, (err, nwritten) => {
     if (err) {

@@ -115,6 +115,13 @@ impl<TSys: RuntimePermissionDescriptorParserSys + std::fmt::Debug>
     }
   }
 
+  fn parse_fd_descriptor(
+    &self,
+    text: &str,
+  ) -> Result<crate::FdDescriptor, crate::FdDescriptorParseError> {
+    crate::FdDescriptor::parse(text.to_string())
+  }
+
   fn parse_allow_run_descriptor(
     &self,
     text: &str,

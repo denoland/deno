@@ -26,7 +26,7 @@ const message = "hello from fs.writeSync\n";
 const buf = Buffer.from(message);
 
 // Write using fs.writeSync() — this fd is not in Deno's resource table so it
-// will trigger the BadResource fallback to op_node_write_raw_fd_sync.
+// will be auto-registered by file_for_fd() (gated by --allow-fd).
 const nwritten = fs.writeSync(writeFd, buf, 0, buf.length, null);
 if (nwritten !== buf.length) {
   console.log(`FAIL: expected ${buf.length} bytes written, got ${nwritten}`);
