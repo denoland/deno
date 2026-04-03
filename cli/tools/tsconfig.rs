@@ -7,6 +7,8 @@ use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_core::serde_json::Value;
 use deno_core::serde_json::json;
+use deno_semver::Version;
+use deno_semver::VersionReq;
 use deno_terminal::colors;
 
 /// Generate `deno.tsconfig.json` and update `tsconfig.json` to extend it.
@@ -72,10 +74,12 @@ pub fn generate(project_root: &Path) -> Result<(), AnyError> {
   // Create or update tsconfig.json to extend deno.tsconfig.json
   update_user_tsconfig(project_root)?;
 
-  // Clean up .deno/ temp directory
-  let deno_dir = project_root.join(".deno");
-  if deno_dir.exists() {
-    let _ = std::fs::remove_dir_all(&deno_dir);
+  // Clean up the generated .deno/tsconfig.json (we've moved it to
+  // deno.tsconfig.json), but keep .deno/types/ so the Deno type
+  // definitions file referenced by the tsconfig remains available.
+  let deno_tsconfig = project_root.join(".deno").join("tsconfig.json");
+  if deno_tsconfig.exists() {
+    let _ = std::fs::remove_file(&deno_tsconfig);
   }
 
   Ok(())
@@ -161,7 +165,7 @@ fn install_jsr_packages(
       _ => continue,
     };
 
-    let Some((scope, name)) =
+    let Some((scope, name, req_version)) =
       crate::tsc::tsconfig_gen::parse_jsr_specifier(target_str)
     else {
       continue;
@@ -176,7 +180,7 @@ fn install_jsr_packages(
       continue;
     }
 
-    // Resolve the latest matching version from npm.jsr.io
+    // Resolve the matching version from npm.jsr.io
     let registry_name = format!("@jsr/{npm_name}");
     let metadata_url =
       format!("https://npm.jsr.io/{}", registry_name.replace('/', "%2f"));
@@ -207,21 +211,19 @@ fn install_jsr_packages(
         anyhow!("Failed to parse metadata for {registry_name}: {e}")
       })?;
 
-    // Get the latest version's tarball URL
-    let latest_version = metadata
-      .get("dist-tags")
-      .and_then(|dt| dt.get("latest"))
-      .and_then(|v| v.as_str())
-      .ok_or_else(|| anyhow!("No latest version for {registry_name}"))?;
+    // Resolve version: use the requested version/range from the specifier,
+    // falling back to dist-tags.latest only when no version was specified.
+    let resolved_version =
+      resolve_jsr_version(&metadata, req_version.as_deref(), &registry_name)?;
 
     let tarball_url = metadata
       .get("versions")
-      .and_then(|vs| vs.get(latest_version))
+      .and_then(|vs| vs.get(&resolved_version))
       .and_then(|v| v.get("dist"))
       .and_then(|d| d.get("tarball"))
       .and_then(|t| t.as_str())
       .ok_or_else(|| {
-        anyhow!("No tarball URL for {registry_name}@{latest_version}")
+        anyhow!("No tarball URL for {registry_name}@{resolved_version}")
       })?;
 
     // Download and extract
@@ -262,11 +264,73 @@ fn install_jsr_packages(
       "{} {}@{}",
       colors::green("Installed"),
       registry_name,
-      latest_version,
+      resolved_version,
     );
   }
 
   Ok(())
+}
+
+/// Resolve a JSR package version from npm.jsr.io registry metadata.
+///
+/// If `req_version` is provided (e.g. "1", "1.2", "^1.0.0"), finds the highest
+/// published version that satisfies the requirement. If `None`, uses the
+/// `dist-tags.latest` version.
+fn resolve_jsr_version(
+  metadata: &Value,
+  req_version: Option<&str>,
+  registry_name: &str,
+) -> Result<String, AnyError> {
+  match req_version {
+    None => {
+      // No version specified — use dist-tags.latest
+      metadata
+        .get("dist-tags")
+        .and_then(|dt| dt.get("latest"))
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string())
+        .ok_or_else(|| anyhow!("No latest version for {registry_name}"))
+    }
+    Some(req_str) => {
+      // Try to parse as an exact version first
+      if let Ok(exact) = Version::parse_standard(req_str) {
+        // Verify it exists in the registry
+        if metadata
+          .get("versions")
+          .and_then(|vs| vs.get(exact.to_string()))
+          .is_some()
+        {
+          return Ok(exact.to_string());
+        }
+      }
+
+      // Parse as a version range and find the best matching version
+      let version_req = VersionReq::parse_from_npm(req_str).map_err(|e| {
+        anyhow!(
+          "Failed to parse version requirement '{req_str}' for {registry_name}: {e}"
+        )
+      })?;
+
+      let versions = metadata
+        .get("versions")
+        .and_then(|v| v.as_object())
+        .ok_or_else(|| anyhow!("No versions found for {registry_name}"))?;
+
+      let mut best: Option<Version> = None;
+      for key in versions.keys() {
+        if let Ok(v) = Version::parse_standard(key)
+          && version_req.matches(&v)
+          && best.as_ref().is_none_or(|b| v > *b)
+        {
+          best = Some(v);
+        }
+      }
+
+      best.map(|v| v.to_string()).ok_or_else(|| {
+        anyhow!("No version of {registry_name} matches requirement '{req_str}'")
+      })
+    }
+  }
 }
 
 /// Create or update tsconfig.json to extend deno.tsconfig.json.
@@ -287,9 +351,21 @@ fn update_user_tsconfig(project_root: &Path) -> Result<(), AnyError> {
 
     if let Some(obj) = tsconfig.as_object_mut() {
       let current_extends = obj.get("extends");
-      if current_extends.is_some_and(|v| {
-        v == "deno.tsconfig.json" || v == "./deno.tsconfig.json"
-      }) {
+
+      // Check if already configured to extend deno.tsconfig.json
+      let already_extends = current_extends.is_some_and(|v| match v {
+        Value::String(s) => {
+          s == "deno.tsconfig.json" || s == "./deno.tsconfig.json"
+        }
+        Value::Array(arr) => arr.iter().any(|item| {
+          item.as_str().is_some_and(|s| {
+            s == "deno.tsconfig.json" || s == "./deno.tsconfig.json"
+          })
+        }),
+        _ => false,
+      });
+
+      if already_extends {
         log::info!(
           "{} {} (already extends deno.tsconfig.json)",
           colors::green("Unchanged"),
@@ -298,7 +374,23 @@ fn update_user_tsconfig(project_root: &Path) -> Result<(), AnyError> {
         return Ok(());
       }
 
-      obj.insert("extends".to_string(), json!("./deno.tsconfig.json"));
+      // Preserve existing extends chain by composing into an array
+      match current_extends.cloned() {
+        Some(existing) if !existing.is_null() => {
+          // Compose: put deno.tsconfig.json first, then existing extends
+          let mut chain = vec![json!("./deno.tsconfig.json")];
+          match existing {
+            Value::Array(arr) => chain.extend(arr),
+            Value::String(_) => chain.push(existing),
+            _ => {}
+          }
+          obj.insert("extends".to_string(), json!(chain));
+        }
+        _ => {
+          obj.insert("extends".to_string(), json!("./deno.tsconfig.json"));
+        }
+      }
+
       let updated =
         serde_json::to_string_pretty(&tsconfig).expect("failed to serialize");
       std::fs::write(&tsconfig_path, updated)?;

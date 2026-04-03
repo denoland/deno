@@ -314,7 +314,7 @@ fn generate_jsr_paths(
         None => continue,
       };
 
-      if let Some((scope, name)) = parse_jsr_specifier(target_str) {
+      if let Some((scope, name, _version)) = parse_jsr_specifier(target_str) {
         // JSR npm compat uses @jsr/<scope>__<name>
         let jsr_npm_name =
           format!("{}__{}", scope.trim_start_matches('@'), name);
@@ -422,8 +422,11 @@ fn resolve_jsr_types_entry(pkg_dir: &Path) -> Option<String> {
 }
 
 /// Parse a jsr specifier like "jsr:@std/assert@1" or "jsr:@scope/name@1.2.3"
-/// and return (scope, name) without version. E.g. ("@std", "assert").
-pub fn parse_jsr_specifier(specifier: &str) -> Option<(String, String)> {
+/// and return (scope, name, version). E.g. ("@std", "assert", Some("1")).
+/// The version is `None` if no `@version` suffix is present.
+pub fn parse_jsr_specifier(
+  specifier: &str,
+) -> Option<(String, String, Option<String>)> {
   let rest = specifier.strip_prefix("jsr:")?;
   // JSR specifiers are always scoped: @scope/name@version
   if !rest.starts_with('@') {
@@ -432,12 +435,15 @@ pub fn parse_jsr_specifier(specifier: &str) -> Option<(String, String)> {
   let slash_pos = rest.find('/')?;
   let scope = &rest[..slash_pos];
   let after_slash = &rest[slash_pos + 1..];
-  let name = if let Some(at_pos) = after_slash.find('@') {
-    &after_slash[..at_pos]
+  let (name, version) = if let Some(at_pos) = after_slash.find('@') {
+    (
+      &after_slash[..at_pos],
+      Some(after_slash[at_pos + 1..].to_string()),
+    )
   } else {
-    after_slash
+    (after_slash, None)
   };
-  Some((scope.to_string(), name.to_string()))
+  Some((scope.to_string(), name.to_string(), version))
 }
 
 /// Base compiler options for stock tsc that approximate Deno's defaults.
