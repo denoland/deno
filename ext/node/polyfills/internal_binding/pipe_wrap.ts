@@ -26,6 +26,7 @@
 
 import { core, primordials } from "ext:core/mod.js";
 import {
+  NativePipe as NativePipeHandle,
   op_node_create_pipe,
   op_node_fd_set_blocking,
   op_node_fs_close,
@@ -46,10 +47,17 @@ import {
   AsyncWrap,
   providerType,
 } from "ext:deno_node/internal_binding/async_wrap.ts";
-import { LibuvStreamWrap } from "ext:deno_node/internal_binding/stream_wrap.ts";
+import {
+  kArrayBufferOffset,
+  kBytesWritten,
+  kReadBytesOrError,
+  kStreamBaseField,
+  LibuvStreamWrap,
+  streamBaseState,
+  WriteWrap,
+} from "ext:deno_node/internal_binding/stream_wrap.ts";
 import { codeMap } from "ext:deno_node/internal_binding/uv.ts";
 import { delay } from "ext:deno_node/_util/async.ts";
-import { kStreamBaseField } from "ext:deno_node/internal_binding/stream_wrap.ts";
 import {
   ceilPowOf2,
   INITIAL_ACCEPT_BACKOFF_DELAY,
@@ -179,6 +187,11 @@ export class Pipe extends ConnectionWrap {
   #acceptBackoffDelay?: number;
   #serverPipeRid?: number;
 
+  // Native pipe handle for fd-based I/O (via uv_pipe_open).
+  // When set, readStart/readStop/writeBuffer/close delegate to native.
+  // deno-lint-ignore no-explicit-any
+  #native: any = null;
+
   constructor(type: number, conn?: Deno.UnixConn | StreamBase) {
     let provider: providerType;
     let ipc: boolean;
@@ -221,23 +234,45 @@ export class Pipe extends ConnectionWrap {
   }
 
   open(fd: number): number {
-    try {
-      // Register the fd in NodeFsState and use fd-based I/O.
-      // This handles pipes, PTYs, FIFOs, sockets on both Unix and Windows,
-      // matching libuv's uv_pipe_open() which accepts any stream-like fd.
-      op_node_register_fd(fd);
-      this[kStreamBaseField] = new FdStreamBase(fd);
-      return 0;
-    } catch (e) {
-      if (
-        ObjectPrototypeIsPrototypeOf(ErrorPrototype, e) &&
-        ReflectHas(e as Error, "code")
-      ) {
-        return MapPrototypeGet(codeMap, (e as { code: string }).code) ??
-          MapPrototypeGet(codeMap, "UNKNOWN")!;
-      }
-      return MapPrototypeGet(codeMap, "UNKNOWN")!;
+    // Use the native uv_pipe_t handle for fd-based I/O.
+    // This integrates with the event loop directly, providing proper
+    // cancellation on close and ref/unref semantics.
+    this.#native = new NativePipeHandle(
+      this.ipc ? socketType.IPC : socketType.SOCKET,
+    );
+    const err = this.#native.open(fd);
+    if (err !== 0) {
+      this.#native = null;
+      return err;
     }
+    return 0;
+  }
+
+  override readStart(): number {
+    if (this.#native) {
+      // Copy the onread callback to the native handle so the Rust
+      // LibUvStreamWrap.readStart can find it on the JS object.
+      this.#native.onread = this.onread;
+      return this.#native.readStart();
+    }
+    return super.readStart();
+  }
+
+  override readStop(): number {
+    if (this.#native) {
+      return this.#native.readStop();
+    }
+    return super.readStop();
+  }
+
+  override writeBuffer(
+    req: WriteWrap<LibuvStreamWrap>,
+    data: Uint8Array,
+  ): number {
+    if (this.#native) {
+      return this.#native.writeBuffer(req, data);
+    }
+    return super.writeBuffer(req, data);
   }
 
   setBlocking(enable: boolean): number {
@@ -443,6 +478,10 @@ export class Pipe extends ConnectionWrap {
   }
 
   override ref() {
+    if (this.#native) {
+      this.#native.ref();
+      return;
+    }
     if (this.#listener) {
       this.#listener.ref();
     }
@@ -453,6 +492,10 @@ export class Pipe extends ConnectionWrap {
   }
 
   override unref() {
+    if (this.#native) {
+      this.#native.unref();
+      return;
+    }
     if (this.#listener) {
       this.#listener.unref();
     }

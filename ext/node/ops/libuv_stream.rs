@@ -763,3 +763,91 @@ fn sockaddr_from_socket2(
     })
   }
 }
+
+// ---------------------------------------------------------------------------
+// NativePipe -- native pipe handle backed by uv_pipe_t
+//
+// Inherits readStart/readStop/writeBuffer/shutdown/close/ref/unref from
+// LibUvStreamWrap, just like TTY. Only adds open(fd).
+// ---------------------------------------------------------------------------
+
+use crate::ops::handle_wrap::AsyncWrap;
+use crate::ops::handle_wrap::Handle;
+use crate::ops::handle_wrap::HandleWrap;
+use crate::ops::handle_wrap::OwnedPtr;
+use crate::ops::handle_wrap::ProviderType;
+use crate::ops::stream_wrap::LibUvStreamWrap;
+
+type UvPipe = deno_core::uv_compat::uv_pipe_t;
+
+#[derive(deno_core::CppgcInherits)]
+#[cppgc_inherits_from(LibUvStreamWrap)]
+#[repr(C)]
+pub struct NativePipe {
+  base: LibUvStreamWrap,
+  handle: Option<OwnedPtr<UvPipe>>,
+}
+
+unsafe impl GarbageCollected for NativePipe {
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"NativePipe"
+  }
+
+  fn trace(&self, visitor: &mut v8::cppgc::Visitor) {
+    self.base.trace(visitor);
+  }
+}
+
+impl Drop for NativePipe {
+  fn drop(&mut self) {
+    self.base.detach_stream();
+  }
+}
+
+#[op2(inherit = LibUvStreamWrap)]
+impl NativePipe {
+  #[constructor]
+  #[cppgc]
+  fn new(state: &mut OpState, #[smi] pipe_type: i32) -> NativePipe {
+    let ipc = pipe_type == 2;
+    let loop_ =
+      &**state.borrow::<Box<UvLoop>>() as *const UvLoop as *mut UvLoop;
+
+    let pipe_handle =
+      OwnedPtr::from_box(Box::new(deno_core::uv_compat::new_pipe(ipc)));
+
+    // SAFETY: loop_ is valid, pipe_handle points to owned memory.
+    unsafe {
+      deno_core::uv_compat::uv_pipe_init(
+        loop_,
+        pipe_handle.as_mut_ptr(),
+        if ipc { 1 } else { 0 },
+      );
+    }
+
+    let base = LibUvStreamWrap::new(
+      HandleWrap::create(
+        AsyncWrap::create(state, ProviderType::PipeWrap as i32),
+        Some(Handle::New(pipe_handle.as_ptr().cast())),
+      ),
+      -1,
+      pipe_handle.as_ptr() as *const _,
+    );
+
+    NativePipe {
+      base,
+      handle: Some(pipe_handle),
+    }
+  }
+
+  /// Open an existing fd as this pipe handle.
+  #[fast]
+  fn open(&self, #[smi] fd: i32) -> i32 {
+    match &self.handle {
+      Some(h) => unsafe {
+        deno_core::uv_compat::uv_pipe_open(h.as_mut_ptr(), fd)
+      },
+      None => deno_core::uv_compat::UV_EBADF,
+    }
+  }
+}

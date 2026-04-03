@@ -10,6 +10,8 @@
 use std::collections::VecDeque;
 use std::ffi::c_int;
 use std::ffi::c_void;
+#[cfg(unix)]
+use std::os::unix::io::RawFd;
 use std::task::Context;
 use std::task::Poll;
 
@@ -21,14 +23,11 @@ use super::stream::uv_alloc_cb;
 use super::stream::uv_buf_t;
 use super::stream::uv_read_cb;
 use super::stream::uv_stream_t;
-use super::uv_handle_t;
 use super::tcp::WritePending;
 use super::tcp::io_error_to_uv;
+use super::uv_handle_t;
 use super::uv_handle_type;
 use super::uv_loop_t;
-
-#[cfg(unix)]
-use std::os::unix::io::RawFd;
 
 /// Pipe handle, analogous to libuv's `uv_pipe_t`.
 ///
@@ -43,8 +42,7 @@ pub struct uv_pipe_t {
   #[cfg(unix)]
   pub(crate) internal_fd: Option<RawFd>,
   #[cfg(unix)]
-  pub(crate) internal_async_fd:
-    Option<tokio::io::unix::AsyncFd<RawFdWrapper>>,
+  pub(crate) internal_async_fd: Option<tokio::io::unix::AsyncFd<RawFdWrapper>>,
 
   pub(crate) internal_alloc_cb: Option<uv_alloc_cb>,
   pub(crate) internal_read_cb: Option<uv_read_cb>,
@@ -115,8 +113,7 @@ pub unsafe fn uv_pipe_open(pipe: *mut uv_pipe_t, fd: c_int) -> c_int {
   if flags == -1 {
     return UV_EBADF;
   }
-  if unsafe { libc::fcntl(fd, libc::F_SETFL, flags | libc::O_NONBLOCK) } == -1
-  {
+  if unsafe { libc::fcntl(fd, libc::F_SETFL, flags | libc::O_NONBLOCK) } == -1 {
     return UV_EBADF;
   }
 
@@ -218,7 +215,11 @@ pub(crate) unsafe fn poll_pipe_handle(
       }
       let fd = (*pipe_ptr).internal_fd.unwrap();
       let remaining = &pw.data[pw.offset..];
-      match libc::write(fd, remaining.as_ptr() as *const c_void, remaining.len()) {
+      match libc::write(
+        fd,
+        remaining.as_ptr() as *const c_void,
+        remaining.len(),
+      ) {
         n if n >= 0 => {
           any_work = true;
           let pw = (*pipe_ptr).internal_write_queue.pop_front().unwrap();
@@ -278,8 +279,7 @@ pub(crate) unsafe fn poll_pipe_handle(
             break;
           }
 
-          let nread =
-            libc::read(fd, buf.base as *mut c_void, buf.len);
+          let nread = libc::read(fd, buf.base as *mut c_void, buf.len);
 
           if nread > 0 {
             any_work = true;

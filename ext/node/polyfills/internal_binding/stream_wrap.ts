@@ -334,7 +334,6 @@ export class LibuvStreamWrap extends HandleWrap {
 
   override _onClose(): number {
     let status = 0;
-    const wasReading = this.#reading;
     this.#reading = false;
 
     // Cancel any pending read operation.
@@ -347,19 +346,6 @@ export class LibuvStreamWrap extends HandleWrap {
       this[kStreamBaseField]?.close();
     } catch {
       status = MapPrototypeGet(codeMap, "ENOTCONN")!;
-    }
-
-    // If a read was in progress when the handle was closed, emit an
-    // error on the owner stream. This matches Node.js where uv_close
-    // cancels pending reads with UV_ECANCELED. We must do this
-    // synchronously because the process may exit before any deferred
-    // microtask runs.
-    if (wasReading && this[ownerSymbol]) {
-      // deno-lint-ignore prefer-primordials
-      const err = new Error("read ECANCELED");
-      err.code = "ECANCELED";
-      err.syscall = "read";
-      this[ownerSymbol].destroy(err);
     }
 
     return status;
