@@ -455,8 +455,11 @@ export class TCP extends ConnectionWrap {
    * @param initialDelay
    * @return An error status code.
    */
-  setKeepAlive(_enable: boolean, _initialDelay: number): number {
-    // TODO(bnoordhuis) https://github.com/denoland/deno/pull/13103
+  setKeepAlive(enable: boolean, initialDelay: number): number {
+    if (this[kUseNativeWrap]) {
+      return this.#native.setKeepAlive(enable, initialDelay);
+    }
+
     return 0;
   }
 

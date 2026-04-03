@@ -24,6 +24,7 @@ use deno_core::uv_compat::uv_tcp_nodelay;
 use deno_core::uv_compat::uv_tcp_open;
 use deno_core::uv_compat::uv_tcp_t;
 use deno_core::v8;
+use deno_permissions::PermissionsContainer;
 
 use crate::ops::handle_wrap::AsyncWrap;
 use crate::ops::handle_wrap::Handle;
@@ -414,21 +415,27 @@ impl TCPWrap {
 
   pub fn bind(
     &self,
+    op_state: std::rc::Rc<std::cell::RefCell<OpState>>,
     #[string] address: &str,
     #[smi] port: i32,
     #[smi] flags: Option<u32>,
-  ) -> i32 {
+  ) -> Result<i32, deno_permissions::PermissionCheckError> {
+    op_state
+      .borrow_mut()
+      .borrow_mut::<PermissionsContainer>()
+      .check_net(&(address, Some(port as u16)), "node:net.listen()")?;
+
     let Some(handle) = self.handle() else {
-      return UV_EBADF;
+      return Ok(UV_EBADF);
     };
 
     let addr_str = format!("{}:{}", address, port);
     let socket_addr = match addr_str.to_socket_addrs() {
       Ok(mut addrs) => match addrs.next() {
         Some(addr) => addr,
-        None => return UV_EINVAL,
+        None => return Ok(UV_EINVAL),
       },
-      Err(_) => return UV_EINVAL,
+      Err(_) => return Ok(UV_EINVAL),
     };
 
     let flags = flags.unwrap_or(0);
@@ -436,7 +443,7 @@ impl TCPWrap {
     let flags = flags & !UV_TCP_IPV6ONLY;
 
     // SAFETY: handle is a valid uv_tcp_t; sock_addr is valid for the duration of the call.
-    unsafe {
+    Ok(unsafe {
       let sock_addr = socket2::SockAddr::from(socket_addr);
       uv_tcp_bind(
         handle.as_mut_ptr(),
@@ -450,32 +457,38 @@ impl TCPWrap {
         },
         flags,
       )
-    }
+    })
   }
 
   pub fn bind6(
     &self,
+    op_state: std::rc::Rc<std::cell::RefCell<OpState>>,
     #[string] address: &str,
     #[smi] port: i32,
     #[smi] flags: Option<u32>,
-  ) -> i32 {
+  ) -> Result<i32, deno_permissions::PermissionCheckError> {
+    op_state
+      .borrow_mut()
+      .borrow_mut::<PermissionsContainer>()
+      .check_net(&(address, Some(port as u16)), "node:net.listen()")?;
+
     let Some(handle) = self.handle() else {
-      return UV_EBADF;
+      return Ok(UV_EBADF);
     };
 
     let addr_str = format!("[{}]:{}", address, port);
     let socket_addr = match addr_str.to_socket_addrs() {
       Ok(mut addrs) => match addrs.next() {
         Some(addr) => addr,
-        None => return UV_EINVAL,
+        None => return Ok(UV_EINVAL),
       },
-      Err(_) => return UV_EINVAL,
+      Err(_) => return Ok(UV_EINVAL),
     };
 
     let flags = flags.unwrap_or(0);
 
     // SAFETY: handle is a valid uv_tcp_t; sock_addr is valid for the duration of the call.
-    unsafe {
+    Ok(unsafe {
       let sock_addr = socket2::SockAddr::from(socket_addr);
       uv_tcp_bind(
         handle.as_mut_ptr(),
@@ -489,7 +502,7 @@ impl TCPWrap {
         },
         flags,
       )
-    }
+    })
   }
 
   #[fast]
@@ -509,23 +522,33 @@ impl TCPWrap {
   }
 
   #[fast]
-  pub fn connect(&self, #[string] address: &str, #[smi] port: i32) -> i32 {
+  pub fn connect(
+    &self,
+    op_state: std::rc::Rc<std::cell::RefCell<OpState>>,
+    #[string] address: &str,
+    #[smi] port: i32,
+  ) -> Result<i32, deno_permissions::PermissionCheckError> {
+    op_state
+      .borrow_mut()
+      .borrow_mut::<PermissionsContainer>()
+      .check_net(&(address, Some(port as u16)), "node:net.connect()")?;
+
     let Some(handle) = self.handle() else {
-      return UV_EBADF;
+      return Ok(UV_EBADF);
     };
 
     let addr_str = format!("{}:{}", address, port);
     let socket_addr = match addr_str.to_socket_addrs() {
       Ok(mut addrs) => match addrs.next() {
         Some(addr) => addr,
-        None => return UV_EINVAL,
+        None => return Ok(UV_EINVAL),
       },
-      Err(_) => return UV_EINVAL,
+      Err(_) => return Ok(UV_EINVAL),
     };
 
     // SAFETY: handle is valid; ConnectReq is heap-allocated and freed in after_connect callback.
     // mem::zeroed is safe for uv_connect_t (plain C struct). On error, req is reclaimed immediately.
-    unsafe {
+    Ok(unsafe {
       let sock_addr = socket2::SockAddr::from(socket_addr);
       let mut connect_req = Box::new(ConnectReq {
         uv_req: std::mem::zeroed(),
@@ -542,27 +565,37 @@ impl TCPWrap {
         let _ = Box::from_raw(req_ptr as *mut ConnectReq);
       }
       ret
-    }
+    })
   }
 
   #[fast]
-  pub fn connect6(&self, #[string] address: &str, #[smi] port: i32) -> i32 {
+  pub fn connect6(
+    &self,
+    op_state: std::rc::Rc<std::cell::RefCell<OpState>>,
+    #[string] address: &str,
+    #[smi] port: i32,
+  ) -> Result<i32, deno_permissions::PermissionCheckError> {
+    op_state
+      .borrow_mut()
+      .borrow_mut::<PermissionsContainer>()
+      .check_net(&(address, Some(port as u16)), "node:net.connect()")?;
+
     let Some(handle) = self.handle() else {
-      return UV_EBADF;
+      return Ok(UV_EBADF);
     };
 
     let addr_str = format!("[{}]:{}", address, port);
     let socket_addr = match addr_str.to_socket_addrs() {
       Ok(mut addrs) => match addrs.next() {
         Some(addr) => addr,
-        None => return UV_EINVAL,
+        None => return Ok(UV_EINVAL),
       },
-      Err(_) => return UV_EINVAL,
+      Err(_) => return Ok(UV_EINVAL),
     };
 
     // SAFETY: handle is valid; ConnectReq is heap-allocated and freed in after_connect callback.
     // mem::zeroed is safe for uv_connect_t (plain C struct). On error, req is reclaimed immediately.
-    unsafe {
+    Ok(unsafe {
       let sock_addr = socket2::SockAddr::from(socket_addr);
       let mut connect_req = Box::new(ConnectReq {
         uv_req: std::mem::zeroed(),
@@ -579,7 +612,7 @@ impl TCPWrap {
         let _ = Box::from_raw(req_ptr as *mut ConnectReq);
       }
       ret
-    }
+    })
   }
 
   #[fast]

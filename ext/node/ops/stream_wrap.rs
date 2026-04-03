@@ -163,7 +163,7 @@ impl ShutdownWrap {
 pub struct LibUvStreamWrap {
   base: HandleWrap,
   fd: Cell<i32>,
-  stream: *const uv_stream_t,
+  stream: UnsafeCell<*const uv_stream_t>,
   bytes_read: Rc<Cell<u64>>,
   bytes_written: Rc<Cell<u64>>,
   /// Stable per-handle data referenced from `uv_stream_t.data` for the
@@ -180,7 +180,7 @@ impl LibUvStreamWrap {
     Self {
       base,
       fd: Cell::new(fd),
-      stream,
+      stream: UnsafeCell::new(stream),
       bytes_read: bytes_read.clone(),
       bytes_written: Rc::new(Cell::new(0)),
       handle_data: Box::new(StreamHandleData {
@@ -198,7 +198,8 @@ impl LibUvStreamWrap {
 
   #[inline]
   pub fn stream_ptr(&self) -> *mut uv_stream_t {
-    self.stream as *mut uv_stream_t
+    // SAFETY: single-threaded access (CppGC guarantee).
+    unsafe { *self.stream.get() as *mut uv_stream_t }
   }
 
   pub(crate) fn set_fd(&self, fd: i32) {
@@ -421,13 +422,9 @@ impl LibUvStreamWrap {
   /// Used by `TCPWrap::detach()` after HTTP/2 `consumeStream` has
   /// already overwritten `stream.data` with its own session pointer.
   pub(crate) fn forget_stream(&self) {
-    // SAFETY: single-threaded access (CppGC guarantee). We use
-    // UnsafeCell-style write through a raw pointer because the stream
-    // field is not behind a Cell (it's a raw pointer used in FFI).
+    // SAFETY: single-threaded access (CppGC guarantee).
     unsafe {
-      let stream_field =
-        std::ptr::addr_of!(self.stream) as *mut *const uv_stream_t;
-      *stream_field = std::ptr::null();
+      *self.stream.get() = std::ptr::null();
     }
   }
 
@@ -435,13 +432,14 @@ impl LibUvStreamWrap {
   /// Only call this on handles that OWN the uv stream (e.g. TCPWrap),
   /// not on wrappers that borrow it (e.g. TLSWrap).
   pub(crate) fn detach_stream(&mut self) {
-    if !self.stream.is_null() {
+    let stream = *self.stream.get_mut();
+    if !stream.is_null() {
       // SAFETY: stream pointer is non-null (checked above) and valid for the
       // lifetime of the owning handle; we null it to prevent dangling access.
       unsafe {
-        (*(self.stream as *mut uv_stream_t)).data = std::ptr::null_mut();
+        (*(stream as *mut uv_stream_t)).data = std::ptr::null_mut();
       }
-      self.stream = std::ptr::null();
+      *self.stream.get_mut() = std::ptr::null();
     }
   }
 }
