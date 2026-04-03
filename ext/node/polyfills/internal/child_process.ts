@@ -748,7 +748,7 @@ function toDenoStdio(
     return "inherit";
   }
   if (typeof pipe === "number") {
-    /* Assume it's a rid returned by fs APIs */
+    /* Real OS file descriptor, e.g. from fs.openSync() */
     return pipe;
   }
 
