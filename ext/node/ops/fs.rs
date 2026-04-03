@@ -892,7 +892,8 @@ pub fn op_node_register_fd(
   }
 
   // SAFETY: The caller is responsible for passing a valid fd that they own.
-  // The fd will be owned by the File from this point on.
+  // Ownership transfers to the File -- matching libuv's uv_pipe_open()
+  // which takes ownership of the fd (closing the handle closes the fd).
   let std_file = unsafe { StdFile::from_raw_fd(fd) };
   let file: Rc<dyn deno_io::fs::File> =
     Rc::new(deno_io::StdFileResourceInner::file(std_file, None));
@@ -922,14 +923,17 @@ pub fn op_node_register_fd(
     return Err(eexist());
   }
 
-  // Convert the CRT fd to an OS HANDLE
+  // Convert the CRT fd to an OS HANDLE.
   // SAFETY: libc::get_osfhandle returns the OS handle for a CRT fd.
   let os_handle = unsafe { libc::get_osfhandle(fd) };
   if os_handle == -1 {
     return Err(ebadf());
   }
 
-  // Duplicate the handle so we own an independent copy (avoids double-close)
+  // Duplicate the OS handle so the File owns an independent copy.
+  // When the pipe is closed, op_node_fs_close drops the File (closing
+  // the dup) AND calls libc::close(fd) (closing the CRT fd + original
+  // handle). This matches libuv's uv_pipe_open ownership semantics.
   let mut dup_handle = std::ptr::null_mut();
   // SAFETY: DuplicateHandle with DUPLICATE_SAME_ACCESS creates a copy
   // of the handle with the same access rights.
@@ -1031,6 +1035,41 @@ pub fn op_node_create_pipe() -> Result<(i32, i32), FsError> {
 // ============================================================
 // fd-based ops for node:fs (accept real OS fd, not RID)
 // ============================================================
+
+/// Set blocking or non-blocking mode on an OS file descriptor.
+/// Matches libuv's `uv_stream_set_blocking`.
+#[cfg(unix)]
+#[op2(fast)]
+#[smi]
+pub fn op_node_fd_set_blocking(fd: i32, blocking: bool) -> i32 {
+  // SAFETY: fcntl with F_GETFL/F_SETFL is safe on valid fds.
+  // Returns -1 on invalid fd, which we map to UV_EBADF.
+  unsafe {
+    let flags = libc::fcntl(fd, libc::F_GETFL);
+    if flags == -1 {
+      return -libc::EBADF;
+    }
+    let flags = if blocking {
+      flags & !libc::O_NONBLOCK
+    } else {
+      flags | libc::O_NONBLOCK
+    };
+    if libc::fcntl(fd, libc::F_SETFL, flags) == -1 {
+      return -libc::EBADF;
+    }
+    0
+  }
+}
+
+#[cfg(windows)]
+#[op2(fast)]
+#[smi]
+pub fn op_node_fd_set_blocking(_fd: i32, _blocking: bool) -> i32 {
+  // On Windows, named pipes and console handles don't support
+  // toggling blocking mode via a simple flag. The Windows-specific
+  // behavior is handled at the I/O level instead.
+  0
+}
 
 #[op2(fast)]
 pub fn op_node_fs_close(state: &mut OpState, fd: i32) -> Result<(), FsError> {
