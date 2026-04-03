@@ -60,10 +60,11 @@ pub fn setup_npm_compat(
   let installed = install_jsr_packages(project_root, deno_imports)?;
 
   // Generate tsconfig.deno.json
+  // Note: we intentionally do NOT create/modify tsconfig.json here because
+  // Deno's own type checker would pick it up and conflict with the "types":
+  // ["deno"] setting. Users who want stock tsc integration should add
+  // "extends": "./tsconfig.deno.json" to their tsconfig.json manually.
   generate_deno_tsconfig(project_root, deno_compiler_options, deno_imports)?;
-
-  // Update tsconfig.json to extend tsconfig.deno.json
-  update_user_tsconfig(project_root)?;
 
   Ok(installed)
 }

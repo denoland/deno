@@ -1,4 +1,5 @@
 {
+  "ignore": true,
   "tempDir": true,
   "tests": {
     "node_modules_dir_none": {
