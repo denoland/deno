@@ -13,6 +13,11 @@
       "if": "unix",
       "args": "run -A fd_not_stolen.ts",
       "output": "fd_not_stolen.out"
+    },
+    "tcp_open": {
+      "if": "unix",
+      "args": "run -A --unstable-ffi tcp_open.ts",
+      "output": "tcp_open.out"
     }
   }
 }
