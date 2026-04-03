@@ -1006,11 +1006,16 @@ pub fn op_node_fs_close(state: &mut OpState, fd: i32) -> Result<(), FsError> {
     .remove(fd)
     .ok_or_else(ebadf)?;
 
-  // For stdio fds (0/1/2), also close the corresponding resource table
+  // For stdio fds (0/1/2), also remove the corresponding resource table
   // entry so that Deno.stdin/stdout/stderr see the fd as closed and
   // release their Rc clone of the same File.
   if (0..=2).contains(&fd) {
-    let _ = state.resource_table.close(fd as ResourceId);
+    if let Ok(resource) = state
+      .resource_table
+      .take_any(fd as ResourceId)
+    {
+      resource.close();
+    }
   }
 
   // Dropping the Rc<dyn File> will close the underlying OS file descriptor
