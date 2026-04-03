@@ -231,6 +231,7 @@
     "parallel/test-child-process-fork-detached.js": {},
     "parallel/test-child-process-fork-no-shell.js": {},
     "parallel/test-child-process-fork-stdio-string-variant.js": {},
+    "parallel/test-child-process-fork-stdio.js": {},
     "parallel/test-child-process-fork-ref.js": {},
     "parallel/test-child-process-fork-ref2.js": {},
     "parallel/test-child-process-fork-timeout-kill-signal.js": {},
