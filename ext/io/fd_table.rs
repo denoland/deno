@@ -3,7 +3,16 @@
 use std::collections::HashMap;
 use std::rc::Rc;
 
+use deno_core::CancelHandle;
+
 use crate::fs::File;
+
+/// An entry in the FdTable: the File plus a CancelHandle that is
+/// triggered when the fd is closed, cancelling any in-flight async ops.
+pub struct FdEntry {
+  pub file: Rc<dyn File>,
+  pub cancel_handle: Rc<CancelHandle>,
+}
 
 /// Central table that owns file descriptor -> File mappings.
 ///
@@ -11,8 +20,11 @@ use crate::fs::File;
 /// Node's fd-based ops (`op_node_fs_read_sync`, `op_node_fs_write_sync`,
 /// etc.) reference the same `Rc<dyn File>` entries. This ensures that
 /// closing an fd from either side is visible to the other.
+///
+/// Each entry also has a `CancelHandle` that is cancelled when the fd
+/// is closed, allowing in-flight async reads/writes to be cancelled.
 pub struct FdTable {
-  entries: HashMap<i32, Rc<dyn File>>,
+  entries: HashMap<i32, FdEntry>,
 }
 
 impl FdTable {
@@ -28,18 +40,32 @@ impl FdTable {
     if self.entries.contains_key(&fd) {
       return false;
     }
-    self.entries.insert(fd, file);
+    self.entries.insert(
+      fd,
+      FdEntry {
+        file,
+        cancel_handle: Rc::new(CancelHandle::new()),
+      },
+    );
     true
   }
 
   /// Get the File for an fd.
   pub fn get(&self, fd: i32) -> Option<&Rc<dyn File>> {
-    self.entries.get(&fd)
+    self.entries.get(&fd).map(|e| &e.file)
   }
 
-  /// Remove and return the File for an fd.
+  /// Get the CancelHandle for an fd.
+  pub fn get_cancel_handle(&self, fd: i32) -> Option<Rc<CancelHandle>> {
+    self.entries.get(&fd).map(|e| e.cancel_handle.clone())
+  }
+
+  /// Remove an fd entry. Cancels the handle (aborting in-flight ops)
+  /// and returns the File.
   pub fn remove(&mut self, fd: i32) -> Option<Rc<dyn File>> {
-    self.entries.remove(&fd)
+    let entry = self.entries.remove(&fd)?;
+    entry.cancel_handle.cancel();
+    Some(entry.file)
   }
 
   /// Check if an fd is registered.

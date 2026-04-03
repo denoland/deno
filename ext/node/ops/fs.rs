@@ -2,7 +2,6 @@
 
 use std::borrow::Cow;
 use std::cell::RefCell;
-use std::collections::HashMap;
 use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
@@ -28,27 +27,6 @@ use serde::Serialize;
 use tokio::task::JoinError;
 
 use crate::ops::constant::UV_FS_COPYFILE_EXCL;
-
-/// State tracking file descriptors opened through node:fs.
-/// Maps real OS file descriptors to the underlying File trait object,
-/// bypassing the resource table entirely.
-pub struct NodeFsState {
-  pub open_fds: HashMap<i32, Rc<dyn deno_io::fs::File>>,
-}
-
-impl NodeFsState {
-  pub fn new() -> Self {
-    Self {
-      open_fds: HashMap::new(),
-    }
-  }
-}
-
-impl Default for NodeFsState {
-  fn default() -> Self {
-    Self::new()
-  }
-}
 
 /// Extract the real OS file descriptor from a File trait object.
 /// On Unix, this is the raw fd (already an i32).
@@ -132,20 +110,16 @@ fn eexist() -> FsError {
   ))
 }
 
-/// Get the File trait object for an OS file descriptor.
-/// Checks NodeFsState first (covers files opened via node:fs), then
-/// FdTable (covers stdio fds 0/1/2 and fds registered via Pipe.open).
+/// Get the File trait object for an OS file descriptor from FdTable.
 fn file_for_fd(
   state: &OpState,
   fd: i32,
 ) -> Result<Rc<dyn deno_io::fs::File>, FsError> {
-  if let Some(file) = state.borrow::<NodeFsState>().open_fds.get(&fd) {
-    return Ok(file.clone());
-  }
-  if let Some(file) = state.borrow::<deno_io::FdTable>().get(fd) {
-    return Ok(file.clone());
-  }
-  Err(ebadf())
+  state
+    .borrow::<deno_io::FdTable>()
+    .get(fd)
+    .cloned()
+    .ok_or_else(ebadf)
 }
 
 /// When `sync_fs` is enabled, `FileSystemRc` is `Arc` (Send) and we can
@@ -370,7 +344,7 @@ pub fn op_node_open_sync(
   )?;
   let file = fs.open_sync(&path, options)?;
   let fd = raw_fd_for_file(file.clone())?;
-  state.borrow_mut::<NodeFsState>().open_fds.insert(fd, file);
+  state.borrow_mut::<deno_io::FdTable>().register(fd, file);
   Ok(fd)
 }
 
@@ -400,7 +374,7 @@ pub async fn op_node_open(
   let fd = raw_fd_for_file(file.clone())?;
 
   let mut state = state.borrow_mut();
-  state.borrow_mut::<NodeFsState>().open_fds.insert(fd, file);
+  state.borrow_mut::<deno_io::FdTable>().register(fd, file);
   Ok(fd)
 }
 #[derive(Debug, Serialize)]
@@ -783,50 +757,6 @@ fn temp_path_append_suffix(prefix: &str) -> String {
   format!("{}{}", prefix, suffix)
 }
 
-/// Create a file resource from a raw file descriptor.
-/// This is used for wrapping PTYs and other non-socket file descriptors
-/// that can't be wrapped as Unix streams.
-#[cfg(unix)]
-#[op2(fast)]
-#[smi]
-pub fn op_node_file_from_fd(
-  state: &mut OpState,
-  fd: i32,
-) -> Result<ResourceId, FsError> {
-  use std::fs::File as StdFile;
-  use std::os::unix::io::FromRawFd;
-
-  if fd < 0 {
-    return Err(FsError::Io(std::io::Error::new(
-      std::io::ErrorKind::InvalidInput,
-      "Invalid file descriptor",
-    )));
-  }
-
-  // SAFETY: The caller is responsible for passing a valid fd that they own.
-  // The fd will be owned by the created File from this point on.
-  let std_file = unsafe { StdFile::from_raw_fd(fd) };
-
-  let file = Rc::new(deno_io::StdFileResourceInner::file(std_file, None));
-  let rid = state
-    .resource_table
-    .add(FileResource::new(file, "pipe".to_string()));
-  Ok(rid)
-}
-
-#[cfg(not(unix))]
-#[op2(fast)]
-#[smi]
-pub fn op_node_file_from_fd(
-  _state: &mut OpState,
-  _fd: i32,
-) -> Result<ResourceId, FsError> {
-  Err(FsError::Io(std::io::Error::new(
-    std::io::ErrorKind::Unsupported,
-    "op_node_file_from_fd is not supported on this platform",
-  )))
-}
-
 #[op2(fast, stack_trace)]
 pub fn op_node_rmdir_sync(
   state: &mut OpState,
@@ -881,14 +811,9 @@ pub fn op_node_register_fd(
   }
 
   // If the fd is already in the FdTable (e.g. stdio fds 0/1/2 registered
-  // at startup), this is a no-op -- both Deno and Node share the same entry.
+  // at startup, or files opened via node:fs), this is a no-op.
   if state.borrow::<deno_io::FdTable>().contains(fd) {
     return Ok(());
-  }
-
-  // Reject if the fd is already tracked via node:fs (e.g. from fs.openSync()).
-  if state.borrow::<NodeFsState>().open_fds.contains_key(&fd) {
-    return Err(eexist());
   }
 
   // SAFETY: The caller is responsible for passing a valid fd that they own.
@@ -897,7 +822,7 @@ pub fn op_node_register_fd(
   let std_file = unsafe { StdFile::from_raw_fd(fd) };
   let file: Rc<dyn deno_io::fs::File> =
     Rc::new(deno_io::StdFileResourceInner::file(std_file, None));
-  state.borrow_mut::<NodeFsState>().open_fds.insert(fd, file);
+  state.borrow_mut::<deno_io::FdTable>().register(fd, file);
   Ok(())
 }
 
@@ -919,14 +844,9 @@ pub fn op_node_register_fd(
   }
 
   // If the fd is already in the FdTable (e.g. stdio fds 0/1/2 registered
-  // at startup), this is a no-op -- both Deno and Node share the same entry.
+  // at startup, or files opened via node:fs), this is a no-op.
   if state.borrow::<deno_io::FdTable>().contains(fd) {
     return Ok(());
-  }
-
-  // Reject if the fd is already tracked via node:fs (e.g. from fs.openSync()).
-  if state.borrow::<NodeFsState>().open_fds.contains_key(&fd) {
-    return Err(eexist());
   }
 
   // Convert the CRT fd to an OS HANDLE.
@@ -962,12 +882,12 @@ pub fn op_node_register_fd(
   let std_file = unsafe { StdFile::from_raw_handle(dup_handle) };
   let file: Rc<dyn deno_io::fs::File> =
     Rc::new(deno_io::StdFileResourceInner::file(std_file, None));
-  state.borrow_mut::<NodeFsState>().open_fds.insert(fd, file);
+  state.borrow_mut::<deno_io::FdTable>().register(fd, file);
   Ok(())
 }
 
 /// Create an anonymous pipe pair and return (read_fd, write_fd).
-/// The returned fds are NOT registered in NodeFsState; the caller
+/// The returned fds are NOT registered in FdTable; the caller
 /// is responsible for registering or closing them.
 #[cfg(unix)]
 #[op2]
@@ -1079,11 +999,20 @@ pub fn op_node_fd_set_blocking(_fd: i32, _blocking: bool) -> i32 {
 
 #[op2(fast)]
 pub fn op_node_fs_close(state: &mut OpState, fd: i32) -> Result<(), FsError> {
+  // FdTable.remove() drops the Rc<dyn File> and cancels the cancel handle,
+  // which will abort any in-flight async reads on this fd.
   let file = state
-    .borrow_mut::<NodeFsState>()
-    .open_fds
-    .remove(&fd)
+    .borrow_mut::<deno_io::FdTable>()
+    .remove(fd)
     .ok_or_else(ebadf)?;
+
+  // For stdio fds (0/1/2), also close the corresponding resource table
+  // entry so that Deno.stdin/stdout/stderr see the fd as closed and
+  // release their Rc clone of the same File.
+  if (0..=2).contains(&fd) {
+    let _ = state.resource_table.close(fd as ResourceId);
+  }
+
   // Dropping the Rc<dyn File> will close the underlying OS file descriptor
   // when the reference count reaches zero (via std::fs::File Drop).
   drop(file);
@@ -1134,6 +1063,8 @@ pub fn op_node_fs_read_sync(
 
 /// Async read for node:fs. Both positioned and non-positioned reads run
 /// on a blocking thread so the event loop stays responsive.
+/// The read is wrapped with the fd's CancelHandle so that closing the fd
+/// (via op_node_fs_close) cancels in-flight reads.
 #[op2]
 #[smi]
 pub async fn op_node_fs_read_deferred(
@@ -1142,15 +1073,31 @@ pub async fn op_node_fs_read_deferred(
   #[buffer] buf: JsBuffer,
   #[number] position: i64,
 ) -> Result<u32, FsError> {
-  let file = file_for_fd(&state.borrow(), fd)?;
-  if position >= 0 {
+  use deno_core::CancelFuture;
+
+  let (file, cancel_handle) = {
+    let state = state.borrow();
+    let fd_table = state.borrow::<deno_io::FdTable>();
+    let file = fd_table.get(fd).cloned().ok_or_else(ebadf)?;
+    let cancel_handle = fd_table.get_cancel_handle(fd).ok_or_else(ebadf)?;
+    (file, cancel_handle)
+  };
+
+  let result = if position >= 0 {
     let view = deno_core::BufMutView::from(buf);
-    let (nread, _) = file.read_at_async(view, position as u64).await?;
-    Ok(nread as u32)
+    file
+      .read_at_async(view, position as u64)
+      .or_cancel(cancel_handle)
+      .await
   } else {
     let view = deno_core::BufMutView::from(buf);
-    let (nread, _) = file.read_byob(view).await?;
-    Ok(nread as u32)
+    file.read_byob(view).or_cancel(cancel_handle).await
+  };
+
+  match result {
+    Ok(Ok((nread, _))) => Ok(nread as u32),
+    Ok(Err(e)) => Err(e.into()),
+    Err(_canceled) => Err(ebadf()),
   }
 }
 

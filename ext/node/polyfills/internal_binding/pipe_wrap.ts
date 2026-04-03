@@ -37,8 +37,11 @@ import {
   op_pipe_connect,
   op_pipe_open,
   op_pipe_windows_wait,
+  op_read_create_cancel_handle,
+  op_read_with_cancel_handle,
 } from "ext:core/ops";
 import { PipeConn } from "ext:deno_net/01_net.js";
+import { _readWithCancelHandle } from "ext:deno_io/12_io.js";
 
 const { internalRidSymbol } = core;
 import { ConnectionWrap } from "ext:deno_node/internal_binding/connection_wrap.ts";
@@ -116,6 +119,29 @@ class FdStreamBase {
     } finally {
       this.#pendingRead = null;
     }
+  }
+
+  // Cancellable read for use by LibuvStreamWrap. Uses the resource-based
+  // cancel handle ops which properly interrupt blocking reads.
+  // For stdio fds (0-2), the resource table RID matches the fd number.
+  [_readWithCancelHandle](buf: Uint8Array) {
+    const handle = op_read_create_cancel_handle();
+    if (this.#closed || buf.length === 0) {
+      return { cancelHandle: handle, nread: 0 };
+    }
+    // Use the fd as the RID - for stdio fds (0-2) this matches the
+    // resource table. For non-stdio fds registered via Pipe.open(),
+    // op_node_register_fd ensures the fd is in the FdTable.
+    const promise = op_read_with_cancel_handle(this.#fd, handle, buf);
+    this.#pendingRead = promise;
+    if (!this.#isRefed) {
+      core.unrefOpPromise(promise);
+    }
+    return {
+      cancelHandle: handle,
+      // deno-lint-ignore prefer-primordials
+      nread: promise.then((nread: number) => nread === 0 ? null : nread),
+    };
   }
 
   async write(data: Uint8Array): Promise<number> {

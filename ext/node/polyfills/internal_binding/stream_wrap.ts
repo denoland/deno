@@ -336,6 +336,12 @@ export class LibuvStreamWrap extends HandleWrap {
     let status = 0;
     this.#reading = false;
 
+    // Cancel any pending read operation.
+    if (this.cancelHandle) {
+      core.close(this.cancelHandle);
+      this.cancelHandle = undefined;
+    }
+
     try {
       this[kStreamBaseField]?.close();
     } catch {
