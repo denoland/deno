@@ -60,11 +60,12 @@ pub fn setup_npm_compat(
   let installed = install_jsr_packages(project_root, deno_imports)?;
 
   // Generate tsconfig.deno.json
-  // Note: we intentionally do NOT create/modify tsconfig.json here because
-  // Deno's own type checker would pick it up and conflict with the "types":
-  // ["deno"] setting. Users who want stock tsc integration should add
-  // "extends": "./tsconfig.deno.json" to their tsconfig.json manually.
   generate_deno_tsconfig(project_root, deno_compiler_options, deno_imports)?;
+
+  // If user already has a tsconfig.json, update it to extend tsconfig.deno.json.
+  // We don't create a new tsconfig.json — only update existing ones — to avoid
+  // interfering with Deno's own type checker in projects that don't use one.
+  update_user_tsconfig(project_root)?;
 
   Ok(installed)
 }
@@ -135,12 +136,6 @@ fn update_user_tsconfig(project_root: &Path) -> Result<(), AnyError> {
       std::fs::write(&tsconfig_path, updated)?;
       log::debug!("Updated {} (added extends)", tsconfig_path.display());
     }
-  } else {
-    let tsconfig = json!({ "extends": "./tsconfig.deno.json" });
-    let content =
-      serde_json::to_string_pretty(&tsconfig).expect("failed to serialize");
-    std::fs::write(&tsconfig_path, content)?;
-    log::debug!("Created {}", tsconfig_path.display());
   }
 
   Ok(())
