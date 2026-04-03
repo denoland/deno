@@ -36,8 +36,18 @@ Deno.test("[node/tty isatty] returns false for irrelevant values", () => {
 });
 
 Deno.test("[node/tty WriteStream.isTTY] returns true when fd is a tty", () => {
-  assert(Deno.stdin.isTerminal() === process.stdin.isTTY);
-  assert(Deno.stdout.isTerminal() === process.stdout.isTTY);
+  // In Node.js, isTTY is true on tty.WriteStream/ReadStream, undefined otherwise.
+  // When running in a non-TTY (piped) environment, both should be falsy.
+  if (Deno.stdin.isTerminal()) {
+    assert(process.stdin.isTTY === true);
+  } else {
+    assert(!process.stdin.isTTY);
+  }
+  if (Deno.stdout.isTerminal()) {
+    assert(process.stdout.isTTY === true);
+  } else {
+    assert(!process.stdout.isTTY);
+  }
 });
 
 Deno.test("[node/tty WriteStream.hasColors] returns true when colors are supported", () => {
