@@ -1042,7 +1042,10 @@ mod test {
         jsr_pkg_req("my-alias", "foo"),
       ),
       // Unprefixed without alias defaults to npm
-      (("chalk", Some(Prefix::Npm)), npm_pkg_req("chalk", "chalk@*")),
+      (
+        ("chalk", Some(Prefix::Npm)),
+        npm_pkg_req("chalk", "chalk@*"),
+      ),
       (
         ("@scope/pkg", Some(Prefix::Npm)),
         npm_pkg_req("@scope/pkg", "@scope/pkg@*"),
