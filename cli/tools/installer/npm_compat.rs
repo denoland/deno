@@ -102,10 +102,7 @@ fn generate_deno_tsconfig(
   )
   .map_err(|e| anyhow!("Failed to generate tsconfig: {e}"))?;
 
-  log::debug!(
-    "Generated {}",
-    generated.tsconfig_path.display()
-  );
+  log::debug!("Generated {}", generated.tsconfig_path.display());
 
   Ok(())
 }
@@ -136,10 +133,7 @@ fn update_user_tsconfig(project_root: &Path) -> Result<(), AnyError> {
       let updated =
         serde_json::to_string_pretty(&tsconfig).expect("failed to serialize");
       std::fs::write(&tsconfig_path, updated)?;
-      log::debug!(
-        "Updated {} (added extends)",
-        tsconfig_path.display()
-      );
+      log::debug!("Updated {} (added extends)", tsconfig_path.display());
     }
   } else {
     let tsconfig = json!({ "extends": "./tsconfig.deno.json" });
