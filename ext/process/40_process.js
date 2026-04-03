@@ -46,6 +46,8 @@ import {
 
 // The key for private `input` option for `Deno.Command`
 const kInputOption = Symbol("kInputOption");
+// Internal symbol used by node:child_process to disable descendant killing.
+const kNoKillDescendants = Symbol("kNoKillDescendants");
 
 function opKill(pid, signo, apiName) {
   op_kill(pid, signo, apiName);
@@ -391,12 +393,13 @@ class ChildProcess {
     if (this.#waitComplete) {
       throw new TypeError("Child process has already terminated");
     }
-    op_spawn_kill(this.#rid, signo);
+    const killDescendants = this[kNoKillDescendants] !== true;
+    op_spawn_kill(this.#rid, signo, killDescendants);
   }
 
   async [SymbolAsyncDispose]() {
     try {
-      op_spawn_kill(this.#rid, "SIGTERM");
+      op_spawn_kill(this.#rid, "SIGTERM", true);
     } catch {
       // ignore errors from killing the process (such as ESRCH or BadResource)
     }
@@ -611,6 +614,7 @@ export {
   kArgv0,
   kill,
   kInputOption,
+  kNoKillDescendants,
   Process,
   run,
   spawn,

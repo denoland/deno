@@ -78,6 +78,7 @@ import {
   kIpc,
   kNeedsNpmProcessState,
   kSerialization,
+  kNoKillDescendants,
 } from "ext:deno_process/40_process.js";
 
 export function mapValues<T, O>(
@@ -421,6 +422,10 @@ export class ChildProcess extends EventEmitter {
           includeNpmProcessState,
         [kArgv0]: argv0 !== cmd ? argv0 : undefined,
       }).spawn();
+      // Disable descendant killing to match Node.js behavior:
+      // Node.js does NOT kill descendant processes when killing a child.
+      // deno-lint-ignore no-explicit-any
+      (this.#process as any)[kNoKillDescendants] = true;
       this.pid = this.#process.pid;
 
       // Get stdio rids to create Socket instances

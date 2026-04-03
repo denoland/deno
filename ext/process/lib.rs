@@ -1218,14 +1218,153 @@ enum SignalArg {
   Int(i32),
 }
 
+/// Walk the process tree to find all descendant PIDs of `root_pid`.
+/// Returns a flat list in BFS order (parents before children).
+#[cfg(target_os = "linux")]
+fn find_descendant_pids(root_pid: i32) -> Vec<i32> {
+  let mut result = Vec::new();
+  let mut queue = std::collections::VecDeque::new();
+  queue.push_back(root_pid);
+
+  // Build a map of ppid -> [child_pids] once, then walk it.
+  let children_map = build_ppid_map();
+
+  while let Some(pid) = queue.pop_front() {
+    if let Some(children) = children_map.get(&pid) {
+      for &child in children {
+        result.push(child);
+        queue.push_back(child);
+      }
+    }
+  }
+  result
+}
+
+/// Build a map from parent PID to list of child PIDs by walking /proc.
+#[cfg(target_os = "linux")]
+fn build_ppid_map() -> HashMap<i32, Vec<i32>> {
+  use sys_traits::FsDirEntry;
+  use sys_traits::FsRead;
+  use sys_traits::FsReadDir;
+  let sys = sys_traits::impls::RealSys;
+  let mut map: HashMap<i32, Vec<i32>> = HashMap::new();
+  let Ok(entries) = sys.fs_read_dir("/proc") else {
+    return map;
+  };
+  for entry in entries.flatten() {
+    let name = entry.file_name();
+    let Some(name) = name.to_str() else { continue };
+    let Ok(pid) = name.parse::<i32>() else {
+      continue;
+    };
+    let Ok(status) = sys.fs_read_to_string(format!("/proc/{pid}/status"))
+    else {
+      continue;
+    };
+    for line in status.lines() {
+      if let Some(ppid_str) = line.strip_prefix("PPid:\t") {
+        if let Ok(ppid) = ppid_str.trim().parse::<i32>() {
+          map.entry(ppid).or_default().push(pid);
+        }
+        break;
+      }
+    }
+  }
+  map
+}
+
+/// Walk the process tree to find all descendant PIDs using
+/// `proc_listchildpids`.
+#[cfg(target_os = "macos")]
+fn find_descendant_pids(root_pid: i32) -> Vec<i32> {
+  let mut result = Vec::new();
+  let mut queue = std::collections::VecDeque::new();
+  queue.push_back(root_pid);
+
+  while let Some(pid) = queue.pop_front() {
+    let children = list_child_pids(pid);
+    for child in children {
+      result.push(child);
+      queue.push_back(child);
+    }
+  }
+  result
+}
+
+#[cfg(target_os = "macos")]
+fn list_child_pids(pid: i32) -> Vec<i32> {
+  let mut capacity: usize = 256;
+
+  loop {
+    let mut buf: Vec<libc::pid_t> = vec![0; capacity];
+
+    // SAFETY: buf is a valid buffer of pid_t values with length `capacity`.
+    let count = unsafe {
+      libc::proc_listchildpids(
+        pid,
+        buf.as_mut_ptr().cast(),
+        (buf.len() * std::mem::size_of::<libc::pid_t>()) as libc::c_int,
+      )
+    };
+    if count <= 0 {
+      return Vec::new();
+    }
+
+    let count = count as usize;
+
+    // If the buffer was completely filled, there may be more children.
+    // Grow and retry.
+    if count == capacity {
+      capacity = capacity.saturating_mul(2);
+      continue;
+    }
+
+    buf.truncate(count);
+    return buf;
+  }
+}
+
+/// Stub for Unix platforms where descendant discovery is not implemented.
+/// Returns an empty vec so the kill path gracefully does nothing extra.
+#[cfg(all(unix, not(target_os = "linux"), not(target_os = "macos")))]
+fn find_descendant_pids(_root_pid: i32) -> Vec<i32> {
+  Vec::new()
+}
+
 #[op2(stack_trace)]
 fn op_spawn_kill(
   state: &mut OpState,
   #[smi] rid: ResourceId,
   #[serde] signal: SignalArg,
+  kill_descendants: bool,
 ) -> Result<(), ProcessError> {
+  #[cfg(not(unix))]
+  let _ = kill_descendants;
   if let Ok(child_resource) = state.resource_table.get::<ChildResource>(rid) {
-    deprecated::kill(child_resource.pid as i32, &signal)?;
+    let pid = child_resource.pid as i32;
+    // For SIGKILL, also kill descendant processes first so they don't become
+    // orphans. SIGKILL is uncatchable, so the target process has no chance to
+    // forward it to its children. For other signals (SIGTERM, etc.), the target
+    // process can catch and propagate them, so we only send to the target.
+    // This is best-effort; ignore errors from descendants that may have
+    // already exited.
+    //
+    // This is only done when kill_descendants is true (Deno.Command API).
+    // node:child_process does NOT kill descendants, matching Node.js behavior.
+    #[cfg(unix)]
+    if kill_descendants {
+      let is_sigkill = match &signal {
+        SignalArg::String(s) => s == "SIGKILL",
+        SignalArg::Int(n) => *n == libc::SIGKILL,
+      };
+      if is_sigkill {
+        let descendants = find_descendant_pids(pid);
+        for &desc in descendants.iter().rev() {
+          let _ = deprecated::kill(desc, &signal);
+        }
+      }
+    }
+    deprecated::kill(pid, &signal)?;
     return Ok(());
   }
   Err(ProcessError::ChildProcessAlreadyTerminated)
