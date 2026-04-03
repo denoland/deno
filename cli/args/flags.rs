@@ -649,6 +649,7 @@ pub enum DenoSubcommand {
   Task(TaskFlags),
   Test(TestFlags),
   Outdated(OutdatedFlags),
+  Tsconfig,
   Types,
   Upgrade(UpgradeFlags),
   Vendor,
@@ -1906,6 +1907,7 @@ pub fn flags_from_vec_with_initial_cwd(
         "serve" => serve_parse(&mut flags, &mut m, app)?,
         "task" => task_parse(&mut flags, &mut m, app)?,
         "test" => test_parse(&mut flags, &mut m)?,
+        "tsconfig" => tsconfig_parse(&mut flags, &mut m),
         "types" => types_parse(&mut flags, &mut m),
         "uninstall" => uninstall_parse(&mut flags, &mut m),
         "update" => outdated_parse(&mut flags, &mut m, true)?,
@@ -2176,6 +2178,7 @@ pub fn clap_root() -> Command {
         .subcommand(repl_subcommand())
         .subcommand(task_subcommand())
         .subcommand(test_subcommand())
+        .subcommand(tsconfig_subcommand())
         .subcommand(types_subcommand())
         .subcommand(update_subcommand())
         .subcommand(upgrade_subcommand())
@@ -4508,6 +4511,23 @@ fn parallel_arg(descr: &str) -> Arg {
     .long("parallel")
     .help(format!("Run {descr} in parallel. Parallelism defaults to the number of available CPUs or the value of the DENO_JOBS environment variable"))
     .action(ArgAction::SetTrue)
+}
+
+fn tsconfig_subcommand() -> Command {
+  command(
+    "tsconfig",
+    cstr!(
+      "Generate a tsconfig for use with stock TypeScript tooling.
+
+  <p(245)>deno tsconfig</>
+
+Generates <bold>deno.tsconfig.json</> with Deno type definitions and
+specifier path mappings, and creates or updates <bold>tsconfig.json</>
+to extend it. This enables stock tsc, tsserver, and VS Code to work
+with Deno projects."
+    ),
+    UnstableArgsConfig::None,
+  )
 }
 
 fn types_subcommand() -> Command {
@@ -7427,6 +7447,10 @@ fn test_parse(
     hide_stacktraces,
   });
   Ok(())
+}
+
+fn tsconfig_parse(flags: &mut Flags, _matches: &mut ArgMatches) {
+  flags.subcommand = DenoSubcommand::Tsconfig;
 }
 
 fn types_parse(flags: &mut Flags, _matches: &mut ArgMatches) {

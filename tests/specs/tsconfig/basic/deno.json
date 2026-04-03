@@ -1,0 +1,9 @@
+{
+  "compilerOptions": {
+    "strict": true,
+    "jsx": "react-jsx"
+  },
+  "imports": {
+    "chalk": "npm:chalk@5"
+  }
+}
