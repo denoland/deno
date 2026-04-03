@@ -13,11 +13,7 @@ const { ObjectDefineProperty } = primordials;
 import { nextTick } from "ext:deno_node/_next_tick.ts";
 import { Readable, Writable } from "node:stream";
 import { guessHandleType } from "ext:deno_node/internal_binding/util.ts";
-import {
-  op_node_fs_read_deferred,
-  op_node_fs_write_sync,
-  op_node_register_fd,
-} from "ext:core/ops";
+import { op_node_fs_write_sync, op_node_register_fd } from "ext:core/ops";
 
 // Lazy loaders to break circular deps (process -> streams -> net/fs/tty).
 const lazyNet = core.createLazyLoader("node:net");
@@ -62,28 +58,18 @@ function createWritableStdioStream(fd) {
       stream._type = "tty";
       break;
     case "FILE":
-      // Only register non-stdio fds; Deno already owns fds 0-2 through
-      // the resource table, and registering them would conflict.
-      if (fd > 2) op_node_register_fd(fd);
+      op_node_register_fd(fd);
       stream = _createSyncWriteStream(fd);
       stream._type = "fs";
       break;
     case "PIPE":
     case "TCP": {
-      // For stdio fds 0-2, Deno owns the underlying OS handle through its
-      // resource table. Creating net.Socket({ fd }) would call Pipe.open(fd)
-      // which takes ownership and conflicts with Deno's handle.
-      // Use sync fd writes instead, matching the FILE path.
-      if (fd <= 2) {
-        stream = _createSyncWriteStream(fd);
-      } else {
-        const { Socket } = lazyNet();
-        stream = new Socket({
-          fd,
-          readable: false,
-          writable: true,
-        });
-      }
+      const { Socket } = lazyNet();
+      stream = new Socket({
+        fd,
+        readable: false,
+        writable: true,
+      });
       stream._type = "pipe";
       break;
     }
@@ -99,11 +85,12 @@ function createWritableStdioStream(fd) {
   stream.fd = fd;
   stream._isStdio = true;
   stream.destroySoon = stream.destroy;
-  stream._destroy = dummyDestroy;
 
-  // Stdio sockets must not prevent the process from exiting.
-  if (stream._handle && stream._handle.unref) {
-    stream._handle.unref();
+  // Only apply dummyDestroy to non-TTY streams (matching Node.js).
+  // TTY streams (tty.WriteStream) are net.Sockets and keep their
+  // native _destroy which properly cleans up the TTY handle.
+  if (stream._type !== "tty") {
+    stream._destroy = dummyDestroy;
   }
 
   return stream;
@@ -126,31 +113,15 @@ function createStdin() {
     }
     case "PIPE":
     case "TCP": {
-      // For stdin (fd 0), Deno owns the handle - use fd-based read ops
-      // instead of net.Socket which would take ownership via Pipe.open().
-      if (fd === 0) {
-        stdin = new Readable({
-          read(size) {
-            // deno-lint-ignore prefer-primordials
-            const buf = new Uint8Array(size || 16 * 1024);
-            // deno-lint-ignore prefer-primordials
-            op_node_fs_read_deferred(fd, buf, -1).then((n) => {
-              // deno-lint-ignore prefer-primordials
-              this.push(n === 0 ? null : buf.subarray(0, n));
-            }, (err) => this.destroy(err));
-          },
-        });
-      } else {
-        const { Socket } = lazyNet();
-        stdin = new Socket({
-          fd,
-          readable: true,
-          writable: false,
-          manualStart: true,
-        });
-        // Make sure the stdin can't be .end()-ed
-        stdin._writableState.ended = true;
-      }
+      const { Socket } = lazyNet();
+      stdin = new Socket({
+        fd,
+        readable: true,
+        writable: false,
+        manualStart: true,
+      });
+      // Make sure the stdin can't be .end()-ed
+      stdin._writableState.ended = true;
       break;
     }
     default: {

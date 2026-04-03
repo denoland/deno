@@ -133,9 +133,8 @@ fn eexist() -> FsError {
 }
 
 /// Get the File trait object for an OS file descriptor.
-/// Checks NodeFsState first (covers files opened via node:fs, including
-/// cases where the OS reuses fd 0/1/2 after stdio is closed). Falls back
-/// to the resource table for stdio fds that were never reopened.
+/// Checks NodeFsState first (covers files opened via node:fs), then
+/// FdTable (covers stdio fds 0/1/2 and fds registered via Pipe.open).
 fn file_for_fd(
   state: &OpState,
   fd: i32,
@@ -143,11 +142,8 @@ fn file_for_fd(
   if let Some(file) = state.borrow::<NodeFsState>().open_fds.get(&fd) {
     return Ok(file.clone());
   }
-  // Stdio fds (0, 1, 2) are pre-registered in the resource table at
-  // RIDs 0, 1, 2. Only fall back here if the fd wasn't opened via node:fs.
-  if (0..=2).contains(&fd) {
-    return FileResource::get_file(state, fd as ResourceId)
-      .map_err(|_| ebadf());
+  if let Some(file) = state.borrow::<deno_io::FdTable>().get(fd) {
+    return Ok(file.clone());
   }
   Err(ebadf())
 }
@@ -884,9 +880,13 @@ pub fn op_node_register_fd(
     return Err(ebadf());
   }
 
-  // Reject if the fd is already tracked (e.g. from fs.openSync()).
-  // Silently replacing via HashMap::insert would drop the previous File,
-  // closing the underlying fd on Unix and leaking CRT bookkeeping on Windows.
+  // If the fd is already in the FdTable (e.g. stdio fds 0/1/2 registered
+  // at startup), this is a no-op -- both Deno and Node share the same entry.
+  if state.borrow::<deno_io::FdTable>().contains(fd) {
+    return Ok(());
+  }
+
+  // Reject if the fd is already tracked via node:fs (e.g. from fs.openSync()).
   if state.borrow::<NodeFsState>().open_fds.contains_key(&fd) {
     return Err(eexist());
   }
@@ -918,7 +918,13 @@ pub fn op_node_register_fd(
     return Err(ebadf());
   }
 
-  // Reject if the fd is already tracked (e.g. from fs.openSync()).
+  // If the fd is already in the FdTable (e.g. stdio fds 0/1/2 registered
+  // at startup), this is a no-op -- both Deno and Node share the same entry.
+  if state.borrow::<deno_io::FdTable>().contains(fd) {
+    return Ok(());
+  }
+
+  // Reject if the fd is already tracked via node:fs (e.g. from fs.openSync()).
   if state.borrow::<NodeFsState>().open_fds.contains_key(&fd) {
     return Err(eexist());
   }
