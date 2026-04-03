@@ -15,10 +15,12 @@ use std::os::unix::io::RawFd;
 #[cfg(unix)]
 use std::task::Context;
 
+#[cfg(unix)]
 use super::UV_EBADF;
 #[cfg(unix)]
 use super::UV_EOF;
 use super::UV_HANDLE_ACTIVE;
+#[cfg(unix)]
 use super::UV_HANDLE_CLOSING;
 use super::stream::uv_alloc_cb;
 #[cfg(unix)]
@@ -159,6 +161,7 @@ pub(crate) unsafe fn close_pipe(pipe: *mut uv_pipe_t) {
   }
 }
 
+#[cfg(unix)]
 pub(crate) unsafe fn read_start_pipe(
   pipe: *mut uv_pipe_t,
   alloc_cb: Option<uv_alloc_cb>,
@@ -185,6 +188,7 @@ pub(crate) unsafe fn read_start_pipe(
   0
 }
 
+#[cfg(unix)]
 pub(crate) unsafe fn read_stop_pipe(pipe: *mut uv_pipe_t) -> c_int {
   unsafe {
     (*pipe).internal_reading = false;

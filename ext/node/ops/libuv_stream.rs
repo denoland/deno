@@ -788,6 +788,7 @@ pub struct NativePipe {
   handle: Option<OwnedPtr<UvPipe>>,
 }
 
+// SAFETY: NativePipe is a cppgc-managed object; the GC correctly traces it via the base field.
 unsafe impl GarbageCollected for NativePipe {
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"NativePipe"
@@ -844,6 +845,7 @@ impl NativePipe {
   #[fast]
   fn open(&self, #[smi] fd: i32) -> i32 {
     match &self.handle {
+      // SAFETY: h is a valid OwnedPtr to an initialized uv_pipe_t.
       Some(h) => unsafe {
         deno_core::uv_compat::uv_pipe_open(h.as_mut_ptr(), fd)
       },

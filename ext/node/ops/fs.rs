@@ -16,7 +16,6 @@ use deno_core::v8;
 use deno_fs::FileSystemRc;
 use deno_fs::FsFileType;
 use deno_fs::OpenOptions;
-use deno_io::fs::FileResource;
 use deno_io::fs::FsResult;
 use deno_permissions::CheckedPath;
 use deno_permissions::CheckedPathBuf;
@@ -94,18 +93,6 @@ fn ebadf() -> FsError {
     {
       // Win32 ERROR_INVALID_HANDLE, which maps to Node's EBADF
       6
-    },
-  ))
-}
-
-fn eexist() -> FsError {
-  FsError::Io(std::io::Error::from_raw_os_error(
-    #[cfg(unix)]
-    libc::EEXIST,
-    #[cfg(windows)]
-    {
-      // Win32 ERROR_ALREADY_EXISTS, which maps to Node's EEXIST
-      183
     },
   ))
 }
@@ -1009,10 +996,10 @@ pub fn op_node_fs_close(state: &mut OpState, fd: i32) -> Result<(), FsError> {
   // For stdio fds (0/1/2), also remove the corresponding resource table
   // entry so that Deno.stdin/stdout/stderr see the fd as closed and
   // release their Rc clone of the same File.
-  if (0..=2).contains(&fd) {
-    if let Ok(resource) = state.resource_table.take_any(fd as ResourceId) {
-      resource.close();
-    }
+  if (0..=2).contains(&fd)
+    && let Ok(resource) = state.resource_table.take_any(fd as ResourceId)
+  {
+    resource.close();
   }
 
   // Dropping the Rc<dyn File> will close the underlying OS file descriptor
@@ -1142,9 +1129,7 @@ pub async fn op_node_fs_read_deferred(
 
   deno_core::unsync::spawn_blocking(move || raw_fd_read(fd, &mut buf, position))
     .await
-    .map_err(|e| {
-      FsError::Io(std::io::Error::new(std::io::ErrorKind::Other, e))
-    })?
+    .map_err(|e| FsError::Io(std::io::Error::other(e)))?
 }
 
 /// Positioned write: if position >= 0, uses pwrite to write without moving
