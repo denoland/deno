@@ -185,10 +185,15 @@ fn install_jsr_packages(
     }
 
     let registry_name = format!("@jsr/{npm_name}");
-    let metadata_url =
-      format!("https://npm.jsr.io/{}", registry_name.replace('/', "%2f"));
+    let npm_jsr_registry = std::env::var("DENO_NPM_JSR_REGISTRY")
+      .unwrap_or_else(|_| "https://npm.jsr.io".to_string());
+    let metadata_url = format!(
+      "{}/{}",
+      npm_jsr_registry.trim_end_matches('/'),
+      registry_name.replace('/', "%2f")
+    );
 
-    log::debug!("Installing {} from npm.jsr.io", registry_name);
+    log::debug!("Installing {} from {}", registry_name, npm_jsr_registry);
 
     let metadata_output = std::process::Command::new("curl")
       .args(["-fsSL", &metadata_url])
@@ -196,7 +201,7 @@ fn install_jsr_packages(
       .map_err(|e| anyhow!("Failed to fetch jsr package metadata: {e}"))?;
 
     if !metadata_output.status.success() {
-      log::warn!("Failed to fetch metadata for {}", registry_name,);
+      log::debug!("Failed to fetch metadata for {}", registry_name,);
       continue;
     }
 
@@ -227,7 +232,7 @@ fn install_jsr_packages(
       .map_err(|e| anyhow!("Failed to download {registry_name}: {e}"))?;
 
     if !dl_status.success() {
-      log::warn!("Failed to download {}", registry_name);
+      log::debug!("Failed to download {}", registry_name);
       continue;
     }
 
@@ -245,7 +250,7 @@ fn install_jsr_packages(
       .map_err(|e| anyhow!("Failed to extract {registry_name}: {e}"))?;
 
     if !extract_status.success() {
-      log::warn!("Failed to extract {}", registry_name);
+      log::debug!("Failed to extract {}", registry_name);
       let _ = std::fs::remove_dir_all(&pkg_dir);
       continue;
     }
