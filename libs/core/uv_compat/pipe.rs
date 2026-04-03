@@ -12,19 +12,24 @@ use std::ffi::c_int;
 use std::ffi::c_void;
 #[cfg(unix)]
 use std::os::unix::io::RawFd;
+#[cfg(unix)]
 use std::task::Context;
-use std::task::Poll;
 
 use super::UV_EBADF;
+#[cfg(unix)]
 use super::UV_EOF;
 use super::UV_HANDLE_ACTIVE;
 use super::UV_HANDLE_CLOSING;
 use super::stream::uv_alloc_cb;
+#[cfg(unix)]
 use super::stream::uv_buf_t;
 use super::stream::uv_read_cb;
+#[cfg(unix)]
 use super::stream::uv_stream_t;
 use super::tcp::WritePending;
+#[cfg(unix)]
 use super::tcp::io_error_to_uv;
+#[cfg(unix)]
 use super::uv_handle_t;
 use super::uv_handle_type;
 use super::uv_loop_t;
@@ -76,7 +81,7 @@ pub fn new_pipe(ipc: bool) -> uv_pipe_t {
     internal_read_cb: None,
     internal_reading: false,
     internal_write_queue: VecDeque::new(),
-    ipc: false,
+    ipc,
   }
 }
 
@@ -141,13 +146,15 @@ pub(crate) unsafe fn close_pipe(pipe: *mut uv_pipe_t) {
     (*pipe).internal_alloc_cb = None;
     (*pipe).internal_read_cb = None;
 
-    // Drop AsyncFd first (deregisters from epoll/kqueue).
-    (*pipe).internal_async_fd = None;
-
-    // Close the OS fd.
     #[cfg(unix)]
-    if let Some(fd) = (*pipe).internal_fd.take() {
-      libc::close(fd);
+    {
+      // Drop AsyncFd first (deregisters from epoll/kqueue).
+      (*pipe).internal_async_fd = None;
+
+      // Close the OS fd.
+      if let Some(fd) = (*pipe).internal_fd.take() {
+        libc::close(fd);
+      }
     }
   }
 }

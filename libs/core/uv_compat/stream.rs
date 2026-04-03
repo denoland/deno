@@ -111,6 +111,7 @@ pub unsafe fn uv_read_start(
         read_cb,
       );
     }
+    #[cfg(unix)]
     if (*stream).r#type == uv_handle_type::UV_NAMED_PIPE {
       return super::pipe::read_start_pipe(
         stream as *mut super::pipe::uv_pipe_t,
@@ -155,6 +156,7 @@ pub unsafe fn uv_read_stop(stream: *mut uv_stream_t) -> c_int {
     if (*stream).r#type == uv_handle_type::UV_TTY {
       return super::tty::read_stop_tty(stream as *mut uv_tty_t);
     }
+    #[cfg(unix)]
     if (*stream).r#type == uv_handle_type::UV_NAMED_PIPE {
       return super::pipe::read_stop_pipe(
         stream as *mut super::pipe::uv_pipe_t,
@@ -283,6 +285,7 @@ pub unsafe fn uv_write(
     if (*handle).r#type == uv_handle_type::UV_TTY {
       return super::tty::write_tty(req, handle, bufs, nbufs, cb);
     }
+    #[cfg(unix)]
     if (*handle).r#type == uv_handle_type::UV_NAMED_PIPE {
       return write_pipe(
         req,
