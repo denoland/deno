@@ -31,8 +31,11 @@ use deno_terminal::colors;
 use denort::desktop::DesktopApi;
 use denort::run::RunOptions;
 
-/// Port used for the embedded HTTP server.
-const DESKTOP_SERVE_PORT: u16 = 41520;
+/// Allocate a random available port by binding to port 0.
+fn allocate_random_port() -> std::io::Result<u16> {
+  let listener = std::net::TcpListener::bind("127.0.0.1:0")?;
+  Ok(listener.local_addr()?.port())
+}
 
 /// WEF-backed implementation of [`denort::desktop::DesktopApi`].
 struct WefDesktopApi {
@@ -1080,13 +1083,15 @@ async fn run_desktop(update_rolled_back: bool) -> Result<(), AnyError> {
   );
   denort::load_env_vars(&data.metadata.env_vars_from_env_file);
 
+  let desktop_serve_port = allocate_random_port()?;
+
   // Set DENO_SERVE_ADDRESS so Deno.serve() and Node http servers
   // automatically bind to the desktop port.
   #[allow(clippy::undocumented_unsafe_blocks)]
   unsafe {
     std::env::set_var(
       "DENO_SERVE_ADDRESS",
-      format!("tcp:127.0.0.1:{}", DESKTOP_SERVE_PORT),
+      format!("tcp:127.0.0.1:{}", desktop_serve_port),
     );
   }
 
@@ -1157,7 +1162,7 @@ async fn run_desktop(update_rolled_back: bool) -> Result<(), AnyError> {
 
   let run_opts = RunOptions {
     auto_serve: true,
-    serve_port: Some(DESKTOP_SERVE_PORT),
+    serve_port: Some(desktop_serve_port),
     serve_host: Some("127.0.0.1".to_string()),
     hmr_watch_dir: if is_framework_dev {
       None
@@ -1199,7 +1204,7 @@ async fn run_desktop(update_rolled_back: bool) -> Result<(), AnyError> {
   // Run the Deno runtime and WEF event loop concurrently.
   // We spawn the runtime first, wait for the server to be ready,
   // then navigate the webview.
-  let url = format!("http://127.0.0.1:{}", DESKTOP_SERVE_PORT);
+  let url = format!("http://127.0.0.1:{}", desktop_serve_port);
   eprintln!("[desktop] starting runtime and wef event loop");
   let run_fut =
     denort::run::run_with_options(Arc::new(sys.clone()), sys, data, run_opts);
@@ -1213,11 +1218,11 @@ async fn run_desktop(update_rolled_back: bool) -> Result<(), AnyError> {
     use tokio::io::AsyncWriteExt;
     for i in 0..60 {
       if let Ok(mut stream) =
-        tokio::net::TcpStream::connect(("127.0.0.1", DESKTOP_SERVE_PORT)).await
+        tokio::net::TcpStream::connect(("127.0.0.1", desktop_serve_port)).await
       {
         let req = format!(
           "GET / HTTP/1.1\r\nHost: 127.0.0.1:{}\r\nConnection: close\r\n\r\n",
-          DESKTOP_SERVE_PORT
+          desktop_serve_port
         );
         if stream.write_all(req.as_bytes()).await.is_ok() {
           let mut buf = vec![0u8; 256];
