@@ -76,8 +76,10 @@ import {
   kExtraStdio,
   kInputOption,
   kIpc,
+  kKillSignalOption,
   kNeedsNpmProcessState,
   kSerialization,
+  kTimeoutOption,
 } from "ext:deno_process/40_process.js";
 
 export function mapValues<T, O>(
@@ -392,7 +394,13 @@ export class ChildProcess extends EventEmitter {
     const extraStdioNormalized: DenoStdio[] = [];
     for (let i = 0; i < extraStdio.length; i++) {
       const fd = i + extraStdioOffset;
-      if (fd === ipc) extraStdioNormalized.push("null");
+      if (fd === ipc) {
+        // IPC fd is handled separately in Rust via the kIpc option.
+        // Push a placeholder so the array indices stay aligned with
+        // fd numbers, but don't double-push.
+        extraStdioNormalized.push("null");
+        continue;
+      }
       extraStdioNormalized.push(toDenoStdio(extraStdio[i]));
     }
 
@@ -423,7 +431,11 @@ export class ChildProcess extends EventEmitter {
       }).spawn();
       this.pid = this.#process.pid;
 
-      // Get stdio rids to create Socket instances
+      // TODO(bartlomieju): replace internals.getStdioRids with raw OS file
+      // descriptors returned from op_spawn_child, then use Pipe.open(fd) +
+      // net.Socket({ handle: pipe }) instead of the StreamResource(rid) path.
+      // This would align child process stdio with the fd-based I/O used
+      // elsewhere and remove the resource ID indirection.
       const stdioRids = internals.getStdioRids(this.#process);
 
       if (stdin === "pipe") {
@@ -735,12 +747,6 @@ export class ChildProcess extends EventEmitter {
   }
 }
 
-const supportedNodeStdioTypes: NodeStdio[] = [
-  "pipe",
-  "ignore",
-  "inherit",
-  "ipc",
-];
 function toDenoStdio(
   pipe: NodeStdio | number | Stream | null | undefined,
 ): DenoStdio {
@@ -748,17 +754,11 @@ function toDenoStdio(
     return "inherit";
   }
   if (typeof pipe === "number") {
-    /* Assume it's a rid returned by fs APIs */
     return pipe;
-  }
-
-  if (
-    !supportedNodeStdioTypes.includes(pipe as NodeStdio)
-  ) {
-    notImplemented(`toDenoStdio pipe=${typeof pipe} (${pipe})`);
   }
   switch (pipe) {
     case "pipe":
+    case "overlapped":
     case undefined:
     case null:
       return "piped";
@@ -769,7 +769,7 @@ function toDenoStdio(
     case "ipc":
       return "ipc_for_internal_use";
     default:
-      notImplemented(`toDenoStdio pipe=${typeof pipe} (${pipe})`);
+      throw new ERR_INVALID_ARG_VALUE("stdio", pipe);
   }
 }
 
@@ -1574,6 +1574,20 @@ function restorePrototype(obj: any) {
   }
 }
 
+/** Convert a killSignal (string name or number) to its string name. */
+function _resolveKillSignalName(
+  killSignal: string | number | undefined,
+): string {
+  if (typeof killSignal === "string") return killSignal;
+  if (typeof killSignal === "number") {
+    for (const [name, num] of Object.entries(os.signals)) {
+      if (num === killSignal) return name;
+    }
+    return String(killSignal);
+  }
+  return "SIGTERM";
+}
+
 function _createSpawnError(
   status: string,
   command: string,
@@ -1673,6 +1687,8 @@ export function spawnSync(
     uid,
     gid,
     maxBuffer,
+    timeout,
+    killSignal,
     windowsVerbatimArguments = false,
   } = options;
   const [
@@ -1710,6 +1726,8 @@ export function spawnSync(
       // deno-lint-ignore no-explicit-any
       [kNeedsNpmProcessState]: (options as any)[kNeedsNpmProcessState] ||
         includeNpmProcessState,
+      [kTimeoutOption]: timeout,
+      [kKillSignalOption]: killSignal,
     }).outputSync();
 
     const status = output.signal ? null : output.code;
@@ -1723,6 +1741,12 @@ export function spawnSync(
       result.error = _createSpawnError("ENOBUFS", command, args, true);
     }
 
+    // deno-lint-ignore no-explicit-any
+    const killedByTimeout = (output as any)._killedByTimeout;
+    if (killedByTimeout) {
+      result.error = _createSpawnError("ETIMEDOUT", command, args, true);
+    }
+
     if (encoding && encoding !== "buffer") {
       stdout = stdout && stdout.toString(encoding);
       stderr = stderr && stderr.toString(encoding);
@@ -1730,8 +1754,13 @@ export function spawnSync(
 
     // deno-lint-ignore no-explicit-any
     result.pid = (output as any)._pid;
-    result.status = status;
-    result.signal = output.signal;
+    // When killed by timeout, report the killSignal (matching Node.js behavior).
+    // On Windows there are no real Unix signals, but Node still reports the
+    // configured killSignal so callers can detect the timeout.
+    result.status = killedByTimeout ? null : status;
+    result.signal = killedByTimeout
+      ? _resolveKillSignalName(killSignal)
+      : output.signal;
     result.stdout = stdout;
     result.stderr = stderr;
     result.output = [output.signal, stdout, stderr];
