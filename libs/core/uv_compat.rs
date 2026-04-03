@@ -2,6 +2,7 @@
 
 // Drop-in replacement for libuv integrated with deno_core's event loop.
 
+mod pipe;
 mod stream;
 mod tcp;
 mod tty;
@@ -20,6 +21,7 @@ use std::task::Context;
 use std::task::Waker;
 use std::time::Instant;
 
+pub use pipe::*;
 pub use stream::*;
 pub use tcp::*;
 pub use tty::*;
@@ -169,6 +171,7 @@ pub(crate) struct UvLoopInner {
   prepare_handles: RefCell<Vec<*mut uv_prepare_t>>,
   check_handles: RefCell<Vec<*mut uv_check_t>>,
   tcp_handles: RefCell<Vec<*mut uv_tcp_t>>,
+  pipe_handles: RefCell<Vec<*mut uv_pipe_t>>,
   tty_handles: RefCell<Vec<*mut uv_tty_t>>,
   waker: RefCell<Option<Waker>>,
   closing_handles: RefCell<VecDeque<(*mut uv_handle_t, Option<uv_close_cb>)>>,
@@ -189,6 +192,7 @@ impl UvLoopInner {
       prepare_handles: RefCell::new(Vec::with_capacity(8)),
       check_handles: RefCell::new(Vec::with_capacity(8)),
       tcp_handles: RefCell::new(Vec::with_capacity(8)),
+      pipe_handles: RefCell::new(Vec::with_capacity(4)),
       tty_handles: RefCell::new(Vec::with_capacity(4)),
       waker: RefCell::new(None),
       closing_handles: RefCell::new(VecDeque::with_capacity(16)),
@@ -477,6 +481,29 @@ impl UvLoopInner {
         any_work |= work;
       } // end per-tcp-handle loop
 
+      #[cfg(unix)]
+      {
+        let mut pi = 0;
+        loop {
+          let pipe_ptr = {
+            let handles = self.pipe_handles.borrow();
+            if pi >= handles.len() {
+              break;
+            }
+            handles[pi]
+          };
+          pi += 1;
+          // SAFETY: pipe_ptr comes from pipe_handles; caller guarantees validity.
+          if unsafe { (*pipe_ptr).flags } & UV_HANDLE_ACTIVE == 0 {
+            continue;
+          }
+
+          // SAFETY: pipe_ptr is valid; checked above.
+          let work = unsafe { pipe::poll_pipe_handle(pipe_ptr, &mut cx) };
+          any_work |= work;
+        }
+      } // end per-pipe-handle loop
+
       let mut j = 0;
       loop {
         let tty_ptr = {
@@ -677,6 +704,25 @@ impl UvLoopInner {
       }
 
       tcp.flags &= !UV_HANDLE_ACTIVE;
+    }
+  }
+
+  fn stop_pipe(&self, handle: *mut uv_pipe_t) {
+    self
+      .pipe_handles
+      .borrow_mut()
+      .retain(|&h| !std::ptr::eq(h, handle));
+    // SAFETY: Caller guarantees handle is valid and initialized.
+    unsafe {
+      // Cancel in-flight write requests with UV_ECANCELED.
+      while let Some(pw) = (*handle).internal_write_queue.pop_front() {
+        if let Some(cb) = pw.cb {
+          cb(pw.req, UV_ECANCELED);
+        }
+      }
+      // Close the pipe fd and deregister from epoll/kqueue.
+      pipe::close_pipe(handle);
+      (*handle).flags &= !UV_HANDLE_ACTIVE;
     }
   }
 }
@@ -1292,6 +1338,9 @@ pub unsafe extern "C" fn uv_close(
       }
       uv_handle_type::UV_TTY => {
         inner.stop_tty(handle as *mut uv_tty_t);
+      }
+      uv_handle_type::UV_NAMED_PIPE => {
+        inner.stop_pipe(handle as *mut uv_pipe_t);
       }
       _ => {}
     }
