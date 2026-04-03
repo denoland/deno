@@ -263,8 +263,8 @@ function testInner(
   const defaults = {
     ignore: false,
     only: false,
-    sanitizeOps: true,
-    sanitizeResources: true,
+    sanitizeOps: Deno[Deno.internal].testSanitizeOps ?? false,
+    sanitizeResources: Deno[Deno.internal].testSanitizeResources ?? false,
     sanitizeExit: true,
     permissions: null,
   };
