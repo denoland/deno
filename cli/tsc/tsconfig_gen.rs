@@ -410,7 +410,7 @@ fn resolve_jsr_types_entry(pkg_dir: &Path) -> Option<String> {
 
 /// Parse a jsr specifier like "jsr:@std/assert@1" or "jsr:@scope/name@1.2.3"
 /// and return (scope, name) without version. E.g. ("@std", "assert").
-fn parse_jsr_specifier(specifier: &str) -> Option<(String, String)> {
+pub fn parse_jsr_specifier(specifier: &str) -> Option<(String, String)> {
   let rest = specifier.strip_prefix("jsr:")?;
   // JSR specifiers are always scoped: @scope/name@version
   if !rest.starts_with('@') {

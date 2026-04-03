@@ -1,0 +1,3 @@
+{
+  "extends": "./deno.tsconfig.json"
+}

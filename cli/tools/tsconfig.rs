@@ -40,6 +40,9 @@ pub fn generate(project_root: &Path) -> Result<(), AnyError> {
     deno_json.as_ref().and_then(|j| j.get("compilerOptions"));
   let deno_imports = deno_json.as_ref().and_then(|j| j.get("imports"));
 
+  // Install jsr: packages to node_modules/@jsr/ via npm compatibility layer
+  install_jsr_packages(project_root, deno_imports)?;
+
   // Generate deno.tsconfig.json using tsconfig_gen
   let generated = crate::tsc::tsconfig_gen::generate_tsconfig(
     project_root,
@@ -138,6 +141,73 @@ fn rewrite_paths_for_project_root(tsconfig: &mut Value, _project_root: &Path) {
 
   // Remove "extends" if present (it was for .deno/ context)
   tsconfig.as_object_mut().map(|m| m.remove("extends"));
+}
+
+/// Install jsr: packages to node_modules/@jsr/ using the npm compatibility
+/// layer at npm.jsr.io. This makes jsr packages available for stock tsc
+/// resolution via tsconfig "paths".
+fn install_jsr_packages(
+  project_root: &Path,
+  deno_imports: Option<&Value>,
+) -> Result<(), AnyError> {
+  let imports = match deno_imports.and_then(|v| v.as_object()) {
+    Some(imports) => imports,
+    None => return Ok(()),
+  };
+
+  // Collect jsr: specifiers that need installing
+  let mut to_install: Vec<String> = Vec::new();
+  for (_alias, target) in imports {
+    let target_str = match target.as_str() {
+      Some(s) if s.starts_with("jsr:") => s,
+      _ => continue,
+    };
+
+    let Some((scope, name)) =
+      crate::tsc::tsconfig_gen::parse_jsr_specifier(target_str)
+    else {
+      continue;
+    };
+
+    // Convert jsr scope/name to npm compat format: @jsr/scope__name
+    let npm_name = format!("@jsr/{}__{}", scope.trim_start_matches('@'), name);
+
+    // Check if already installed
+    let pkg_dir = project_root.join("node_modules").join(&npm_name);
+    if pkg_dir.exists() {
+      continue;
+    }
+
+    to_install.push(npm_name);
+  }
+
+  if to_install.is_empty() {
+    return Ok(());
+  }
+
+  log::info!(
+    "{} jsr packages via npm.jsr.io: {}",
+    colors::green("Installing"),
+    to_install.join(", ")
+  );
+
+  let status = std::process::Command::new("npm")
+    .arg("install")
+    .arg("--save-dev")
+    .arg("--registry=https://npm.jsr.io")
+    .args(&to_install)
+    .current_dir(project_root)
+    .status()
+    .map_err(|e| anyhow!("Failed to run npm install: {e}"))?;
+
+  if !status.success() {
+    return Err(anyhow!(
+      "npm install failed for jsr packages: {}",
+      to_install.join(", ")
+    ));
+  }
+
+  Ok(())
 }
 
 /// Create or update tsconfig.json to extend deno.tsconfig.json.
