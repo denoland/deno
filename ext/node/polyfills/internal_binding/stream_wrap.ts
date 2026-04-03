@@ -418,7 +418,7 @@ export class LibuvStreamWrap extends HandleWrap {
         // UV_ECANCELED. If just readStop'd, silently return null.
         if (!this.#reading) {
           // deno-lint-ignore prefer-primordials
-      const err = new Error("read ECANCELED");
+          const err = new Error("read ECANCELED");
           err.code = "ECANCELED";
           err.syscall = "read";
           this[ownerSymbol]?.emit("error", err);
