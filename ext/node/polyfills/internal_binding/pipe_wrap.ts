@@ -27,9 +27,12 @@
 import { core, primordials } from "ext:core/mod.js";
 import {
   op_node_create_pipe,
+  op_node_fd_set_blocking,
   op_node_fs_close,
   op_node_fs_read_deferred,
+  op_node_fs_read_sync,
   op_node_fs_write_deferred,
+  op_node_fs_write_sync,
   op_node_register_fd,
   op_pipe_connect,
   op_pipe_open,
@@ -82,6 +85,7 @@ export enum socketType {
 class FdStreamBase {
   #fd: number;
   #closed = false;
+  #blocking = false;
   #pendingRead: Promise<number> | null = null;
   #isRefed = true;
 
@@ -96,6 +100,10 @@ class FdStreamBase {
 
   async read(buf: Uint8Array): Promise<number | null> {
     if (this.#closed) return null;
+    if (this.#blocking) {
+      const nread = op_node_fs_read_sync(this.#fd, buf, -1);
+      return nread === 0 ? null : nread;
+    }
     // position = -1 means non-positioned (sequential) read
     const promise = op_node_fs_read_deferred(this.#fd, buf, -1);
     this.#pendingRead = promise;
@@ -111,6 +119,9 @@ class FdStreamBase {
   }
 
   async write(data: Uint8Array): Promise<number> {
+    if (this.#blocking) {
+      return op_node_fs_write_sync(this.#fd, data, -1);
+    }
     // position = -1 means non-positioned (sequential) write
     return await op_node_fs_write_deferred(this.#fd, data, -1);
   }
@@ -134,6 +145,18 @@ class FdStreamBase {
     if (this.#pendingRead) {
       core.unrefOpPromise(this.#pendingRead);
     }
+  }
+
+  setBlocking(enable: boolean): number {
+    // On Unix, toggle O_NONBLOCK on the fd.
+    // On Windows, the op is a no-op but we track the flag so
+    // read/write use sync ops instead (matching Node.js behavior
+    // of making stdout/stderr blocking on Windows pipes).
+    const err = op_node_fd_set_blocking(this.#fd, enable);
+    if (err === 0) {
+      this.#blocking = enable;
+    }
+    return err;
   }
 }
 
@@ -213,6 +236,14 @@ export class Pipe extends ConnectionWrap {
       }
       return MapPrototypeGet(codeMap, "UNKNOWN")!;
     }
+  }
+
+  setBlocking(enable: boolean): number {
+    const stream = this[kStreamBaseField];
+    if (stream && ReflectHas(stream, "setBlocking")) {
+      return (stream as FdStreamBase).setBlocking(enable);
+    }
+    return 0;
   }
 
   /**

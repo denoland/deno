@@ -1,5 +1,0 @@
-{
-  "args": "lint main.ts",
-  "output": "lint.out",
-  "exitCode": 1
-}
