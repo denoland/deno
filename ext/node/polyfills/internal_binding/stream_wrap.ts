@@ -397,7 +397,20 @@ export class LibuvStreamWrap extends HandleWrap {
         return this.#read();
       }
 
-      if (e.message === "cancelled") return null;
+      if (e.message === "cancelled") {
+        // If the stream was closed (_onClose sets #reading to false),
+        // propagate the error to the owner so it emits an 'error' event.
+        // This matches Node.js where uv_close cancels pending reads with
+        // UV_ECANCELED. If just readStop'd, silently return null.
+        if (!this.#reading) {
+          const err = new Error("read ECANCELED");
+          err.code = "ECANCELED";
+          err.syscall = "read";
+          this[ownerSymbol]?.emit("error", err);
+          return;
+        }
+        return null;
+      }
 
       if (
         ObjectPrototypeIsPrototypeOf(Deno.errors.Interrupted.prototype, e) ||
