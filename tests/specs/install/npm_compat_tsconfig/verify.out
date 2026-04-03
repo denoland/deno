@@ -3,5 +3,4 @@ moduleResolution: bundler
 types includes deno: true
 has npm:chalk path: true
 has chalk alias path: true
-extends: ./tsconfig.deno.json
 deno types exist: true

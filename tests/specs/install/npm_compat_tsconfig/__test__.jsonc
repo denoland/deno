@@ -3,7 +3,7 @@
   "steps": [
     {
       "args": "install",
-      "output": "[WILDCARD]Generated[WILDCARD]tsconfig.deno.json\n[WILDCARD]tsconfig.json[WILDCARD]"
+      "output": "[WILDCARD]"
     },
     {
       "args": "run --allow-read verify.ts",

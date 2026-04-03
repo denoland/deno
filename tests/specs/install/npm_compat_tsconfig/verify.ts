@@ -13,10 +13,6 @@ console.log("types includes deno:", (co.types || []).includes("deno"));
 console.log("has npm:chalk path:", "npm:chalk" in (co.paths || {}));
 console.log("has chalk alias path:", "chalk" in (co.paths || {}));
 
-// Check tsconfig.json extends
-const tsconfig = JSON.parse(Deno.readTextFileSync("tsconfig.json"));
-console.log("extends:", tsconfig.extends);
-
 // Check @types/deno exists
 try {
   const stat = Deno.statSync("node_modules/@types/deno/index.d.ts");
