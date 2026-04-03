@@ -1029,8 +1029,8 @@ Deno.test({
     // Wait a bit to ensure that streaming is completely finished.
     await delay(10);
 
-    // This checks if the rid 1 is still valid.
-    assert(typeof process.stdout.isTTY === "boolean");
+    // Verify stdout is still usable after the source stream ended.
+    assert(process.stdout.writable);
   },
 });
 
