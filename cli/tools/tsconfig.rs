@@ -40,7 +40,8 @@ pub fn generate(project_root: &Path) -> Result<(), AnyError> {
     deno_json.as_ref().and_then(|j| j.get("compilerOptions"));
   let deno_imports = deno_json.as_ref().and_then(|j| j.get("imports"));
 
-  // Install jsr: packages to node_modules/@jsr/ via npm compatibility layer
+  // Install npm: and jsr: packages to node_modules/ so stock tsc can find them
+  install_npm_packages(project_root, deno_imports)?;
   install_jsr_packages(project_root, deno_imports)?;
 
   // Generate deno.tsconfig.json using tsconfig_gen
@@ -143,6 +144,68 @@ fn rewrite_paths_for_project_root(tsconfig: &mut Value, _project_root: &Path) {
   tsconfig.as_object_mut().map(|m| m.remove("extends"));
 }
 
+/// Install npm: packages from deno.json imports to node_modules/.
+fn install_npm_packages(
+  project_root: &Path,
+  deno_imports: Option<&Value>,
+) -> Result<(), AnyError> {
+  let imports = match deno_imports.and_then(|v| v.as_object()) {
+    Some(imports) => imports,
+    None => return Ok(()),
+  };
+
+  let mut to_install: Vec<String> = Vec::new();
+  for (_alias, target) in imports {
+    let target_str = match target.as_str() {
+      Some(s) if s.starts_with("npm:") => s,
+      _ => continue,
+    };
+
+    let Some(pkg_name) =
+      crate::tsc::tsconfig_gen::parse_npm_specifier(target_str)
+    else {
+      continue;
+    };
+
+    // Check if already installed
+    let pkg_dir = project_root.join("node_modules").join(&pkg_name);
+    if pkg_dir.exists() {
+      continue;
+    }
+
+    // Use the full specifier (with version) for install
+    let install_name = target_str.strip_prefix("npm:").unwrap_or(target_str);
+    to_install.push(install_name.to_string());
+  }
+
+  if to_install.is_empty() {
+    return Ok(());
+  }
+
+  log::info!(
+    "{} npm packages: {}",
+    colors::green("Installing"),
+    to_install.join(", ")
+  );
+
+  let status = std::process::Command::new("npm")
+    .arg("install")
+    .arg("--no-save")
+    .args(&to_install)
+    .current_dir(project_root)
+    .status()
+    .map_err(|e| anyhow!("Failed to run npm install: {e}"))?;
+
+  if !status.success() {
+    return Err(anyhow!(
+      "npm install failed for packages: {}",
+      to_install.join(", ")
+    ));
+  }
+
+  Ok(())
+}
+
 /// Install jsr: packages to node_modules/@jsr/ using the npm compatibility
 /// layer at npm.jsr.io. This makes jsr packages available for stock tsc
 /// resolution via tsconfig "paths".
@@ -193,7 +256,7 @@ fn install_jsr_packages(
 
   let status = std::process::Command::new("npm")
     .arg("install")
-    .arg("--save-dev")
+    .arg("--no-save")
     .arg("--registry=https://npm.jsr.io")
     .args(&to_install)
     .current_dir(project_root)

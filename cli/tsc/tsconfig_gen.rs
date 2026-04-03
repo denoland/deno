@@ -273,7 +273,7 @@ fn generate_npm_paths(
 
 /// Parse an npm specifier like "npm:express@4" or "npm:@scope/pkg@1.2.3"
 /// and return the package name (without version).
-fn parse_npm_specifier(specifier: &str) -> Option<String> {
+pub fn parse_npm_specifier(specifier: &str) -> Option<String> {
   let rest = specifier.strip_prefix("npm:")?;
   // Handle scoped packages: @scope/pkg@version
   if let Some(without_at) = rest.strip_prefix('@') {
