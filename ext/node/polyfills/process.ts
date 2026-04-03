@@ -69,8 +69,7 @@ export {
   version,
   versions,
 };
-import { setupStdio, setWriteStream } from "ext:deno_node/_process/streams.mjs";
-import { WriteStream as TTYWriteStream } from "ext:deno_node/internal/tty.js";
+import { setupStdio } from "ext:deno_node/_process/streams.mjs";
 import { enableNextTick } from "ext:deno_node/_next_tick.ts";
 import { isAndroid, isWindows } from "ext:deno_node/_util/os.ts";
 import * as denoOs from "ext:deno_os/30_os.js";
@@ -1344,9 +1343,6 @@ internals.__bootstrapNodeProcess = function (
 
     enableNextTick();
 
-    // Inject tty.WriteStream constructor (avoids circular dep).
-    setWriteStream(TTYWriteStream);
-
     // Define lazy getters for stdin/stdout/stderr. Streams are created
     // on first access, by which time require("net")/require("fs") work.
     // This matches Node.js's defineStream pattern in is_main_thread.js.
@@ -1412,7 +1408,6 @@ internals.__bootstrapNodeProcess = function (
   } else {
     // Warmup (snapshot): create simple warmup streams.
     // They'll be replaced at boot time with lazy getters via setupStdio().
-    setWriteStream(TTYWriteStream);
     setupStdio(process, true);
   }
 };

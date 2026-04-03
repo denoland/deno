@@ -7,7 +7,7 @@
 // Streams are created lazily (on first access) to avoid circular
 // dependencies between process, node:net, and node:fs during bootstrap.
 
-import { primordials } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 const { ObjectDefineProperty } = primordials;
 
 import { nextTick } from "ext:deno_node/_next_tick.ts";
@@ -15,17 +15,10 @@ import { Readable, Writable } from "node:stream";
 import { guessHandleType } from "ext:deno_node/internal_binding/util.ts";
 import { op_node_fs_write_sync, op_node_register_fd } from "ext:core/ops";
 
-// tty.ReadStream / tty.WriteStream constructors, injected via
-// setReadStream / setWriteStream to avoid circular deps with tty.js.
-let readStream;
-export function setReadStream(s) {
-  readStream = s;
-}
-
-let writeStream;
-export function setWriteStream(s) {
-  writeStream = s;
-}
+// Lazy loaders to break circular deps (process -> streams -> net/fs/tty).
+const lazyNet = core.createLazyLoader("node:net");
+const lazyFs = core.createLazyLoader("node:fs");
+const lazyTty = core.createLazyLoader("node:tty");
 
 // Matches Node.js dummyDestroy: prevents the fd from actually being closed.
 function dummyDestroy(err, cb) {
@@ -62,7 +55,7 @@ function createWritableStdioStream(fd) {
 
   switch (type) {
     case "TTY":
-      stream = new writeStream(fd);
+      stream = new (lazyTty().WriteStream)(fd);
       stream._type = "tty";
       break;
     case "FILE":
@@ -74,22 +67,12 @@ function createWritableStdioStream(fd) {
       break;
     case "PIPE":
     case "TCP": {
-      // Use net.Socket when require() is available (normal runtime).
-      // Fall back to sync fd writes during early bootstrap when the
-      // module system isn't ready yet.
-      if (typeof globalThis.require === "function") {
-        // deno-lint-ignore prefer-primordials
-        const { Socket } = require("net");
-        // deno-lint-ignore prefer-primordials
-        stream = new Socket({
-          fd,
-          readable: false,
-          writable: true,
-        });
-      } else {
-        op_node_register_fd(fd);
-        stream = _createSyncWriteStream(fd);
-      }
+      const { Socket } = lazyNet();
+      stream = new Socket({
+        fd,
+        readable: false,
+        writable: true,
+      });
       stream._type = "pipe";
       break;
     }
@@ -107,6 +90,11 @@ function createWritableStdioStream(fd) {
   stream.destroySoon = stream.destroy;
   stream._destroy = dummyDestroy;
 
+  // Stdio sockets must not prevent the process from exiting.
+  if (stream._handle && stream._handle.unref) {
+    stream._handle.unref();
+  }
+
   return stream;
 }
 
@@ -118,58 +106,24 @@ function createStdin() {
 
   switch (type) {
     case "TTY":
-      stdin = new readStream(fd);
+      stdin = new (lazyTty().ReadStream)(fd);
       break;
     case "FILE": {
-      if (typeof globalThis.require === "function") {
-        // deno-lint-ignore prefer-primordials
-        const { ReadStream } = require("fs");
-        // deno-lint-ignore prefer-primordials
-        stdin = new ReadStream(null, { fd, autoClose: false });
-      } else {
-        // Fallback when require isn't ready: basic fd-backed Readable.
-        op_node_register_fd(fd);
-        stdin = new Readable({
-          highWaterMark: 64 * 1024,
-          autoDestroy: false,
-          read(size) {
-            const { op_node_fs_read_deferred } = Deno[Deno.internal].core.ops;
-            const buf = new Uint8Array(size || 16 * 1024);
-            op_node_fs_read_deferred(fd, buf, -1).then((n) => {
-              this.push(n === 0 ? null : buf.subarray(0, n));
-            }, (err) => this.destroy(err));
-          },
-        });
-      }
+      const { ReadStream } = lazyFs();
+      stdin = new ReadStream(null, { fd, autoClose: false });
       break;
     }
     case "PIPE":
     case "TCP": {
-      if (typeof globalThis.require === "function") {
-        // deno-lint-ignore prefer-primordials
-        const { Socket } = require("net");
-        // deno-lint-ignore prefer-primordials
-        stdin = new Socket({
-          fd,
-          readable: true,
-          writable: false,
-          manualStart: true,
-        });
-        // Make sure the stdin can't be .end()-ed
-        stdin._writableState.ended = true;
-      } else {
-        // Fallback: basic Readable with fd-based I/O
-        op_node_register_fd(fd);
-        stdin = new Readable({
-          read(size) {
-            const { op_node_fs_read_deferred } = Deno[Deno.internal].core.ops;
-            const buf = new Uint8Array(size || 16 * 1024);
-            op_node_fs_read_deferred(fd, buf, -1).then((n) => {
-              this.push(n === 0 ? null : buf.subarray(0, n));
-            }, (err) => this.destroy(err));
-          },
-        });
-      }
+      const { Socket } = lazyNet();
+      stdin = new Socket({
+        fd,
+        readable: true,
+        writable: false,
+        manualStart: true,
+      });
+      // Make sure the stdin can't be .end()-ed
+      stdin._writableState.ended = true;
       break;
     }
     default: {
@@ -189,6 +143,11 @@ function createStdin() {
     stdin._handle.reading = false;
     stdin._readableState.reading = false;
     stdin._handle.readStop();
+  }
+
+  // Stdin must not prevent the process from exiting when idle.
+  if (stdin._handle?.unref) {
+    stdin._handle.unref();
   }
 
   function onpause() {
