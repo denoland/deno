@@ -178,11 +178,7 @@ fn install_jsr_packages(
     let metadata_url =
       format!("https://npm.jsr.io/{}", registry_name.replace('/', "%2f"));
 
-    log::info!(
-      "{} {} from npm.jsr.io",
-      colors::green("Installing"),
-      registry_name,
-    );
+    log::debug!("Installing {} from npm.jsr.io", registry_name);
 
     let metadata_output = std::process::Command::new("curl")
       .args(["-fsSL", &metadata_url])
@@ -244,12 +240,7 @@ fn install_jsr_packages(
       continue;
     }
 
-    log::info!(
-      "{} {}@{}",
-      colors::green("Installed"),
-      registry_name,
-      resolved_version,
-    );
+    log::debug!("Installed {}@{}", registry_name, resolved_version);
   }
 
   Ok(())
