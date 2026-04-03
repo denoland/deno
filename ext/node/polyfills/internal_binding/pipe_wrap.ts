@@ -26,30 +26,26 @@
 
 import { core, primordials } from "ext:core/mod.js";
 import {
+  NativePipe as NativePipeHandle,
   op_node_create_pipe,
-  op_node_fd_set_blocking,
-  op_node_fs_close,
-  op_node_fs_read_deferred,
-  op_node_fs_read_sync,
-  op_node_fs_write_deferred,
-  op_node_fs_write_sync,
-  op_node_register_fd,
   op_pipe_connect,
   op_pipe_open,
   op_pipe_windows_wait,
 } from "ext:core/ops";
 import { PipeConn } from "ext:deno_net/01_net.js";
 
-const { internalRidSymbol } = core;
 import { ConnectionWrap } from "ext:deno_node/internal_binding/connection_wrap.ts";
 import {
   AsyncWrap,
   providerType,
 } from "ext:deno_node/internal_binding/async_wrap.ts";
-import { LibuvStreamWrap } from "ext:deno_node/internal_binding/stream_wrap.ts";
+import {
+  kStreamBaseField,
+  LibuvStreamWrap,
+  WriteWrap,
+} from "ext:deno_node/internal_binding/stream_wrap.ts";
 import { codeMap } from "ext:deno_node/internal_binding/uv.ts";
 import { delay } from "ext:deno_node/_util/async.ts";
-import { kStreamBaseField } from "ext:deno_node/internal_binding/stream_wrap.ts";
 import {
   ceilPowOf2,
   INITIAL_ACCEPT_BACKOFF_DELAY,
@@ -60,10 +56,8 @@ import { fs } from "ext:deno_node/internal_binding/constants.ts";
 
 const {
   Error,
-  ErrorPrototype,
   FunctionPrototypeCall,
   MapPrototypeGet,
-  ObjectDefineProperty,
   ObjectPrototypeIsPrototypeOf,
   PromisePrototypeThen,
   ReflectHas,
@@ -75,89 +69,6 @@ export enum socketType {
   SOCKET,
   SERVER,
   IPC,
-}
-
-/**
- * StreamBase implementation backed by a raw OS file descriptor.
- * Uses the NodeFsState fd-based ops for I/O, matching how Node.js
- * uses libuv streams on raw fds via uv_pipe_open().
- */
-class FdStreamBase {
-  #fd: number;
-  #closed = false;
-  #blocking = false;
-  #pendingRead: Promise<number> | null = null;
-  #isRefed = true;
-
-  constructor(fd: number) {
-    this.#fd = fd;
-    ObjectDefineProperty(this, internalRidSymbol, {
-      __proto__: null,
-      enumerable: false,
-      value: fd,
-    });
-  }
-
-  async read(buf: Uint8Array): Promise<number | null> {
-    if (this.#closed) return null;
-    if (this.#blocking) {
-      const nread = op_node_fs_read_sync(this.#fd, buf, -1);
-      return nread === 0 ? null : nread;
-    }
-    // position = -1 means non-positioned (sequential) read
-    const promise = op_node_fs_read_deferred(this.#fd, buf, -1);
-    this.#pendingRead = promise;
-    if (!this.#isRefed) {
-      core.unrefOpPromise(promise);
-    }
-    try {
-      const nread = await promise;
-      return nread === 0 ? null : nread;
-    } finally {
-      this.#pendingRead = null;
-    }
-  }
-
-  async write(data: Uint8Array): Promise<number> {
-    if (this.#blocking) {
-      return op_node_fs_write_sync(this.#fd, data, -1);
-    }
-    // position = -1 means non-positioned (sequential) write
-    return await op_node_fs_write_deferred(this.#fd, data, -1);
-  }
-
-  close(): void {
-    if (!this.#closed) {
-      this.#closed = true;
-      op_node_fs_close(this.#fd);
-    }
-  }
-
-  ref(): void {
-    this.#isRefed = true;
-    if (this.#pendingRead) {
-      core.refOpPromise(this.#pendingRead);
-    }
-  }
-
-  unref(): void {
-    this.#isRefed = false;
-    if (this.#pendingRead) {
-      core.unrefOpPromise(this.#pendingRead);
-    }
-  }
-
-  setBlocking(enable: boolean): number {
-    // On Unix, toggle O_NONBLOCK on the fd.
-    // On Windows, the op is a no-op but we track the flag so
-    // read/write use sync ops instead (matching Node.js behavior
-    // of making stdout/stderr blocking on Windows pipes).
-    const err = op_node_fd_set_blocking(this.#fd, enable);
-    if (err === 0) {
-      this.#blocking = enable;
-    }
-    return err;
-  }
 }
 
 export class Pipe extends ConnectionWrap {
@@ -176,6 +87,11 @@ export class Pipe extends ConnectionWrap {
   #closed = false;
   #acceptBackoffDelay?: number;
   #serverPipeRid?: number;
+
+  // Native pipe handle for fd-based I/O (via uv_pipe_open).
+  // When set, readStart/readStop/writeBuffer/close delegate to native.
+  // deno-lint-ignore no-explicit-any
+  #native: any = null;
 
   constructor(type: number, conn?: Deno.UnixConn | StreamBase) {
     let provider: providerType;
@@ -219,29 +135,50 @@ export class Pipe extends ConnectionWrap {
   }
 
   open(fd: number): number {
-    try {
-      // Register the fd in NodeFsState and use fd-based I/O.
-      // This handles pipes, PTYs, FIFOs, sockets on both Unix and Windows,
-      // matching libuv's uv_pipe_open() which accepts any stream-like fd.
-      op_node_register_fd(fd);
-      this[kStreamBaseField] = new FdStreamBase(fd);
-      return 0;
-    } catch (e) {
-      if (
-        ObjectPrototypeIsPrototypeOf(ErrorPrototype, e) &&
-        ReflectHas(e as Error, "code")
-      ) {
-        return MapPrototypeGet(codeMap, (e as { code: string }).code) ??
-          MapPrototypeGet(codeMap, "UNKNOWN")!;
-      }
-      return MapPrototypeGet(codeMap, "UNKNOWN")!;
+    // Use the native uv_pipe_t handle for fd-based I/O.
+    // This integrates with the event loop directly, providing proper
+    // cancellation on close and ref/unref semantics.
+    this.#native = new NativePipeHandle(
+      this.ipc ? socketType.IPC : socketType.SOCKET,
+    );
+    const err = this.#native.open(fd);
+    if (err !== 0) {
+      this.#native = null;
+      return err;
     }
+    return 0;
+  }
+
+  override readStart(): number {
+    if (this.#native) {
+      // Copy the onread callback to the native handle so the Rust
+      // LibUvStreamWrap.readStart can find it on the JS object.
+      this.#native.onread = this.onread;
+      return this.#native.readStart();
+    }
+    return super.readStart();
+  }
+
+  override readStop(): number {
+    if (this.#native) {
+      return this.#native.readStop();
+    }
+    return super.readStop();
+  }
+
+  override writeBuffer(
+    req: WriteWrap<LibuvStreamWrap>,
+    data: Uint8Array,
+  ): number {
+    if (this.#native) {
+      return this.#native.writeBuffer(req, data);
+    }
+    return super.writeBuffer(req, data);
   }
 
   setBlocking(enable: boolean): number {
-    const stream = this[kStreamBaseField];
-    if (stream && ReflectHas(stream, "setBlocking")) {
-      return (stream as FdStreamBase).setBlocking(enable);
+    if (this.#native) {
+      return this.#native.setBlocking(enable ? 1 : 0);
     }
     return 0;
   }
@@ -441,6 +378,10 @@ export class Pipe extends ConnectionWrap {
   }
 
   override ref() {
+    if (this.#native) {
+      this.#native.ref();
+      return;
+    }
     if (this.#listener) {
       this.#listener.ref();
     }
@@ -451,6 +392,10 @@ export class Pipe extends ConnectionWrap {
   }
 
   override unref() {
+    if (this.#native) {
+      this.#native.unref();
+      return;
+    }
     if (this.#listener) {
       this.#listener.unref();
     }

@@ -61,6 +61,7 @@ use winapi::um::processenv::GetStdHandle;
 #[cfg(windows)]
 use winapi::um::winbase;
 
+mod fd_table;
 pub mod fs;
 mod pipe;
 #[cfg(windows)]
@@ -74,6 +75,7 @@ pub use bi_pipe::BiPipeResource;
 pub use bi_pipe::BiPipeWrite;
 pub use bi_pipe::RawBiPipeHandle;
 pub use bi_pipe::bi_pipe_pair_raw;
+pub use fd_table::FdTable;
 pub use pipe::AsyncPipeRead;
 pub use pipe::AsyncPipeWrite;
 pub use pipe::PipeRead;
@@ -237,6 +239,8 @@ deno_core::extension!(deno_io,
     _ => op,
   },
   state = |state, options| {
+    let mut fd_table = FdTable::new();
+
     if let Some(stdio) = options.stdio {
       #[cfg(windows)]
       let stdin_state = {
@@ -249,57 +253,52 @@ deno_core::extension!(deno_io,
 
       let t = &mut state.resource_table;
 
-      let rid = t.add(fs::FileResource::new(
-        Rc::new(match stdio.stdin.pipe {
-          StdioPipeInner::Inherit => StdFileResourceInner::new(
-            StdFileResourceKind::Stdin(stdin_state),
-            STDIN_HANDLE.try_clone().unwrap(),
-            None,
-          ),
-          StdioPipeInner::File(pipe) => StdFileResourceInner::file(pipe, None),
-        }),
-        "stdin".to_string(),
-      ));
+      let stdin_file: Rc<dyn fs::File> = Rc::new(match stdio.stdin.pipe {
+        StdioPipeInner::Inherit => StdFileResourceInner::new(
+          StdFileResourceKind::Stdin(stdin_state),
+          STDIN_HANDLE.try_clone().unwrap(),
+          None,
+        ),
+        StdioPipeInner::File(pipe) => StdFileResourceInner::file(pipe, None),
+      });
+      fd_table.register(0, stdin_file.clone());
+      let rid = t.add(fs::FileResource::new(stdin_file, "stdin".to_string()));
       assert_eq!(rid, 0, "stdin must have ResourceId 0");
 
-      let (stdout_inner, child_stdout) = match stdio.stdout.pipe {
+      let (stdout_file, child_stdout): (Rc<dyn fs::File>, StdFile) = match stdio.stdout.pipe {
         StdioPipeInner::Inherit => (
-          StdFileResourceInner::new(
+          Rc::new(StdFileResourceInner::new(
             StdFileResourceKind::Stdout,
             STDOUT_HANDLE.try_clone().unwrap(),
             None,
-          ),
+          )),
           STDOUT_HANDLE.try_clone().unwrap(),
         ),
         StdioPipeInner::File(pipe) => {
           let child_handle = pipe.try_clone().unwrap();
-          (StdFileResourceInner::file(pipe, None), child_handle)
+          (Rc::new(StdFileResourceInner::file(pipe, None)), child_handle)
         }
       };
-      let rid = t.add(FileResource::new(
-        Rc::new(stdout_inner),
-        "stdout".to_string(),
-      ));
+      fd_table.register(1, stdout_file.clone());
+      let rid = t.add(FileResource::new(stdout_file, "stdout".to_string()));
       assert_eq!(rid, 1, "stdout must have ResourceId 1");
 
-      let (stderr_inner, child_stderr) = match stdio.stderr.pipe {
+      let (stderr_file, child_stderr): (Rc<dyn fs::File>, StdFile) = match stdio.stderr.pipe {
         StdioPipeInner::Inherit => (
-          StdFileResourceInner::new(
+          Rc::new(StdFileResourceInner::new(
             StdFileResourceKind::Stderr,
             STDERR_HANDLE.try_clone().unwrap(),
             None,
-          ),
+          )),
           STDERR_HANDLE.try_clone().unwrap(),
         ),
         StdioPipeInner::File(pipe) => {
           let child_handle = pipe.try_clone().unwrap();
-          (StdFileResourceInner::file(pipe, None), child_handle)
+          (Rc::new(StdFileResourceInner::file(pipe, None)), child_handle)
         }
       };
-      let rid = t.add(FileResource::new(
-        Rc::new(stderr_inner),
-        "stderr".to_string(),
-      ));
+      fd_table.register(2, stderr_file.clone());
+      let rid = t.add(FileResource::new(stderr_file, "stderr".to_string()));
       assert_eq!(rid, 2, "stderr must have ResourceId 2");
 
       state.put(ChildProcessStdio {
@@ -307,6 +306,8 @@ deno_core::extension!(deno_io,
         stderr: child_stderr,
       });
     }
+
+    state.put(fd_table);
   },
 );
 

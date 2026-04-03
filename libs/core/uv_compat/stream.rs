@@ -111,6 +111,13 @@ pub unsafe fn uv_read_start(
         read_cb,
       );
     }
+    if (*stream).r#type == uv_handle_type::UV_NAMED_PIPE {
+      return super::pipe::read_start_pipe(
+        stream as *mut super::pipe::uv_pipe_t,
+        alloc_cb,
+        read_cb,
+      );
+    }
     // Match libuv: reject null callbacks.
     if alloc_cb.is_none() || read_cb.is_none() {
       return UV_EINVAL;
@@ -147,6 +154,11 @@ pub unsafe fn uv_read_stop(stream: *mut uv_stream_t) -> c_int {
   unsafe {
     if (*stream).r#type == uv_handle_type::UV_TTY {
       return super::tty::read_stop_tty(stream as *mut uv_tty_t);
+    }
+    if (*stream).r#type == uv_handle_type::UV_NAMED_PIPE {
+      return super::pipe::read_stop_pipe(
+        stream as *mut super::pipe::uv_pipe_t,
+      );
     }
     // SAFETY: Caller guarantees stream is a valid, initialized uv_tcp_t.
     let tcp = stream as *mut uv_tcp_t;
@@ -270,6 +282,15 @@ pub unsafe fn uv_write(
   unsafe {
     if (*handle).r#type == uv_handle_type::UV_TTY {
       return super::tty::write_tty(req, handle, bufs, nbufs, cb);
+    }
+    if (*handle).r#type == uv_handle_type::UV_NAMED_PIPE {
+      return write_pipe(
+        req,
+        handle as *mut super::pipe::uv_pipe_t,
+        bufs,
+        nbufs,
+        cb,
+      );
     }
     let tcp = handle as *mut uv_tcp_t;
     (*req).handle = handle;
@@ -450,4 +471,58 @@ pub fn new_shutdown() -> UvShutdown {
     data: std::ptr::null_mut(),
     handle: std::ptr::null_mut(),
   }
+}
+
+/// Write to a pipe handle. Tries synchronous write first, queues remainder.
+#[cfg(unix)]
+unsafe fn write_pipe(
+  req: *mut uv_write_t,
+  pipe: *mut super::pipe::uv_pipe_t,
+  bufs: *const uv_buf_t,
+  nbufs: u32,
+  cb: Option<uv_write_cb>,
+) -> c_int {
+  use super::tcp::WritePending;
+  unsafe {
+    (*req).handle = pipe as *mut uv_stream_t;
+
+    let fd = match (*pipe).internal_fd {
+      Some(fd) => fd,
+      None => return UV_EBADF,
+    };
+
+    let write_data = collect_bufs(bufs, nbufs);
+
+    // Try synchronous write when queue is empty.
+    let mut offset = 0;
+    if (*pipe).internal_write_queue.is_empty() {
+      while offset < write_data.len() {
+        let n = libc::write(
+          fd,
+          write_data[offset..].as_ptr() as *const std::ffi::c_void,
+          write_data.len() - offset,
+        );
+        if n >= 0 {
+          offset += n as usize;
+        } else {
+          break;
+        }
+      }
+    }
+
+    let status = if offset >= write_data.len() {
+      Some(0) // fully written
+    } else {
+      None // needs async completion
+    };
+
+    (*pipe).internal_write_queue.push_back(WritePending {
+      req,
+      data: write_data,
+      offset,
+      cb,
+      status,
+    });
+  }
+  0
 }
