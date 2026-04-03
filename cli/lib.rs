@@ -448,6 +448,10 @@ async fn run_subcommand(
         }
       })
     }
+    DenoSubcommand::Tsconfig => spawn_subcommand(async move {
+      let cwd = util::env::resolve_cwd(flags.initial_cwd.as_deref())?;
+      tools::tsconfig::generate(&cwd)
+    }),
     DenoSubcommand::Types => spawn_subcommand(async move {
       let types = tsc::get_types_declaration_file_text();
       display::write_to_stdout_ignore_sigpipe(types.as_bytes())
