@@ -891,17 +891,10 @@ pub fn op_node_register_fd(
     return Err(eexist());
   }
 
-  // Duplicate the fd so we own an independent copy (matches the Windows
-  // path which duplicates the OS handle). This avoids double-close when
-  // the same fd is also tracked elsewhere (e.g. stdio fds in the resource
-  // table).
-  // SAFETY: dup returns a new valid fd on success, -1 on failure.
-  let new_fd = unsafe { libc::dup(fd) };
-  if new_fd == -1 {
-    return Err(FsError::Io(std::io::Error::last_os_error()));
-  }
-  // SAFETY: new_fd is a valid, freshly duplicated file descriptor.
-  let std_file = unsafe { StdFile::from_raw_fd(new_fd) };
+  // SAFETY: The caller is responsible for passing a valid fd that they own.
+  // Ownership transfers to the File -- matching libuv's uv_pipe_open()
+  // which takes ownership of the fd (closing the handle closes the fd).
+  let std_file = unsafe { StdFile::from_raw_fd(fd) };
   let file: Rc<dyn deno_io::fs::File> =
     Rc::new(deno_io::StdFileResourceInner::file(std_file, None));
   state.borrow_mut::<NodeFsState>().open_fds.insert(fd, file);
@@ -930,14 +923,17 @@ pub fn op_node_register_fd(
     return Err(eexist());
   }
 
-  // Convert the CRT fd to an OS HANDLE
+  // Convert the CRT fd to an OS HANDLE.
   // SAFETY: libc::get_osfhandle returns the OS handle for a CRT fd.
   let os_handle = unsafe { libc::get_osfhandle(fd) };
   if os_handle == -1 {
     return Err(ebadf());
   }
 
-  // Duplicate the handle so we own an independent copy (avoids double-close)
+  // Duplicate the OS handle so the File owns an independent copy.
+  // When the pipe is closed, op_node_fs_close drops the File (closing
+  // the dup) AND calls libc::close(fd) (closing the CRT fd + original
+  // handle). This matches libuv's uv_pipe_open ownership semantics.
   let mut dup_handle = std::ptr::null_mut();
   // SAFETY: DuplicateHandle with DUPLICATE_SAME_ACCESS creates a copy
   // of the handle with the same access rights.
