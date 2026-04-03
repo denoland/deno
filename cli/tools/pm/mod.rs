@@ -480,6 +480,9 @@ pub async fn add(
 
     match req {
       Ok(add_req) => package_reqs.push(add_req),
+      // Currently unreachable: default_registry is always Some (defaults to Npm),
+      // so parse() always resolves a prefix. Kept as a safety fallback in case
+      // the API is called with None from elsewhere.
       Err(package_req) => {
         if jsr_resolver
           .req_to_nv(&package_req)
@@ -846,7 +849,6 @@ impl AddRmPackageReq {
     }
 
     let (maybe_prefix, entry_text) = parse_prefix(entry_text);
-    let maybe_prefix = maybe_prefix.or(default_prefix);
     let (prefix, maybe_alias, entry_text) = match maybe_prefix {
       Some(prefix) => (prefix, None, entry_text),
       None => match parse_alias(entry_text) {
@@ -863,7 +865,10 @@ impl AddRmPackageReq {
             entry_text,
           )
         }
-        None => return Ok(Err(PackageReq::from_str(entry_text)?)),
+        None => match default_prefix {
+          Some(prefix) => (prefix, None, entry_text),
+          None => return Ok(Err(PackageReq::from_str(entry_text)?)),
+        },
       },
     };
 
