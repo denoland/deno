@@ -195,7 +195,7 @@ fn generate_npm_paths(
 
   // 1. From deno.json "imports" — map both the alias and the npm: specifier
   if let Some(imports) = deno_imports.and_then(|v| v.as_object()) {
-    for (_alias, target) in imports {
+    for (alias, target) in imports {
       let target_str = match target.as_str() {
         Some(s) => s,
         None => continue,
@@ -206,7 +206,7 @@ fn generate_npm_paths(
         let nm_path = format!("../node_modules/{pkg_name}");
 
         // Map the npm: specifier itself
-        // e.g. "npm:express" → ["./node_modules/express"]
+        // e.g. "npm:express" → ["../node_modules/express"]
         let npm_key = format!("npm:{pkg_name}");
         paths
           .entry(npm_key.clone())
@@ -215,10 +215,14 @@ fn generate_npm_paths(
           .entry(format!("{npm_key}/*"))
           .or_insert_with(|| json!([format!("{nm_path}/*")]));
 
-        // Also map the bare alias if it differs from the package name
-        // e.g. if alias is "express" and target is "npm:express@4",
-        // the bare import already works via node_modules resolution,
-        // so we only need the npm: prefix mapping
+        // Also map the bare alias from deno.json imports
+        // e.g. "chalk" → ["../node_modules/chalk"] (for `import x from "chalk"`)
+        paths
+          .entry(alias.clone())
+          .or_insert_with(|| json!([&nm_path]));
+        paths
+          .entry(format!("{alias}/*"))
+          .or_insert_with(|| json!([format!("{nm_path}/*")]));
       }
     }
   }
@@ -302,9 +306,9 @@ fn generate_jsr_paths(
   let mut paths = Map::new();
   let node_modules = project_root.join("node_modules");
 
-  // 1. From deno.json "imports" — map jsr: specifiers
+  // 1. From deno.json "imports" — map jsr: specifiers and bare aliases
   if let Some(imports) = deno_imports.and_then(|v| v.as_object()) {
-    for (_alias, target) in imports {
+    for (alias, target) in imports {
       let target_str = match target.as_str() {
         Some(s) => s,
         None => continue,
@@ -334,6 +338,15 @@ fn generate_jsr_paths(
           .or_insert_with(|| json!([&types_entry]));
         paths
           .entry(format!("{jsr_key}/*"))
+          .or_insert_with(|| json!([format!("{nm_path}/*")]));
+
+        // Also map the bare alias from deno.json imports
+        // e.g. "@std/assert" → types entry (for `import x from "@std/assert"`)
+        paths
+          .entry(alias.clone())
+          .or_insert_with(|| json!([&types_entry]));
+        paths
+          .entry(format!("{alias}/*"))
           .or_insert_with(|| json!([format!("{nm_path}/*")]));
       }
     }
