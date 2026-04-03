@@ -20,13 +20,24 @@ use deno_semver::Version;
 use deno_semver::VersionReq;
 use deno_terminal::colors;
 
+/// Installed JSR package info for reporting.
+pub struct InstalledJsrPackage {
+  /// e.g. "@jsr/std__assert"
+  pub name: String,
+  /// e.g. "1.0.19"
+  pub version: String,
+}
+
 /// Run post-install setup: install jsr packages and generate tsconfig.
 ///
 /// Called after `deno install` completes npm resolution and node_modules setup.
-pub fn setup_npm_compat(project_root: &Path) -> Result<(), AnyError> {
+/// Returns the list of newly installed JSR packages for reporting.
+pub fn setup_npm_compat(
+  project_root: &Path,
+) -> Result<Vec<InstalledJsrPackage>, AnyError> {
   let deno_json = read_deno_json(project_root)?;
   let Some(deno_json) = deno_json else {
-    return Ok(());
+    return Ok(vec![]);
   };
 
   let deno_imports = deno_json.get("imports");
@@ -43,11 +54,11 @@ pub fn setup_npm_compat(project_root: &Path) -> Result<(), AnyError> {
     });
 
   if !has_special_specifiers {
-    return Ok(());
+    return Ok(vec![]);
   }
 
   // Install jsr: packages to node_modules/@jsr/
-  install_jsr_packages(project_root, deno_imports)?;
+  let installed = install_jsr_packages(project_root, deno_imports)?;
 
   // Generate tsconfig.deno.json
   generate_deno_tsconfig(project_root, deno_compiler_options, deno_imports)?;
@@ -55,7 +66,7 @@ pub fn setup_npm_compat(project_root: &Path) -> Result<(), AnyError> {
   // Update tsconfig.json to extend tsconfig.deno.json
   update_user_tsconfig(project_root)?;
 
-  Ok(())
+  Ok(installed)
 }
 
 fn read_deno_json(project_root: &Path) -> Result<Option<Value>, AnyError> {
@@ -147,10 +158,11 @@ fn update_user_tsconfig(project_root: &Path) -> Result<(), AnyError> {
 fn install_jsr_packages(
   project_root: &Path,
   deno_imports: Option<&Value>,
-) -> Result<(), AnyError> {
+) -> Result<Vec<InstalledJsrPackage>, AnyError> {
+  let mut installed = Vec::new();
   let imports = match deno_imports.and_then(|v| v.as_object()) {
     Some(imports) => imports,
-    None => return Ok(()),
+    None => return Ok(installed),
   };
 
   for (_alias, target) in imports {
@@ -240,10 +252,13 @@ fn install_jsr_packages(
       continue;
     }
 
-    log::debug!("Installed {}@{}", registry_name, resolved_version);
+    installed.push(InstalledJsrPackage {
+      name: registry_name,
+      version: resolved_version,
+    });
   }
 
-  Ok(())
+  Ok(installed)
 }
 
 fn resolve_jsr_version(
