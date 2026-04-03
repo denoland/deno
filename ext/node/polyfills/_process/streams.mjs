@@ -82,16 +82,9 @@ function createWritableStdioStream(fd) {
       });
   }
 
+  // For supporting legacy API we put the FD here.
   stream.fd = fd;
   stream._isStdio = true;
-  stream.destroySoon = stream.destroy;
-
-  // Only apply dummyDestroy to non-TTY streams (matching Node.js).
-  // TTY streams (tty.WriteStream) are net.Sockets and keep their
-  // native _destroy which properly cleans up the TTY handle.
-  if (stream._type !== "tty") {
-    stream._destroy = dummyDestroy;
-  }
 
   return stream;
 }
@@ -202,12 +195,18 @@ export function setupStdio(process, warmup = false) {
 
   let stdin, stdout, stderr;
 
+  // Matches Node.js getStdout() in is_main_thread.js
   ObjectDefineProperty(process, "stdout", {
     __proto__: null,
     configurable: true,
     enumerable: true,
     get() {
-      if (!stdout) stdout = createWritableStdioStream(1);
+      if (!stdout) {
+        stdout = createWritableStdioStream(1);
+        stdout.destroySoon = stdout.destroy;
+        // Override _destroy so that the fd is never actually closed.
+        stdout._destroy = dummyDestroy;
+      }
       return stdout;
     },
     set(val) {
@@ -215,12 +214,17 @@ export function setupStdio(process, warmup = false) {
     },
   });
 
+  // Matches Node.js getStderr() in is_main_thread.js
   ObjectDefineProperty(process, "stderr", {
     __proto__: null,
     configurable: true,
     enumerable: true,
     get() {
-      if (!stderr) stderr = createWritableStdioStream(2);
+      if (!stderr) {
+        stderr = createWritableStdioStream(2);
+        stderr.destroySoon = stderr.destroy;
+        stderr._destroy = dummyDestroy;
+      }
       return stderr;
     },
     set(val) {
