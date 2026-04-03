@@ -435,8 +435,11 @@ fn base_compiler_options() -> Map<String, Value> {
     "allowImportingTsExtensions": true,
 
     // Standard libs (Deno-specific libs like deno.window are replaced by
-    // the injected Deno types file)
+    // the @types/deno package in node_modules)
     "lib": ["esnext"],
+
+    // Explicitly include @types/deno for Deno namespace, console, etc.
+    "types": ["deno"],
 
     // Skip checking node_modules types for speed
     "skipLibCheck": true,
