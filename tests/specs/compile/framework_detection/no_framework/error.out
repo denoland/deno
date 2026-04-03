@@ -1,0 +1,3 @@
+error: Could not detect a supported framework in '[WILDCARD]'.
+Supported frameworks: Next.js, Astro, Fresh, Remix, SvelteKit, Nuxt, SolidStart, TanStack Start, Vite SSR
+Provide an explicit entrypoint instead of a directory.

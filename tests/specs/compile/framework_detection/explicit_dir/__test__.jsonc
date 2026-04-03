@@ -1,0 +1,26 @@
+{
+  "tempDir": true,
+  "tests": {
+    "explicit_dir": {
+      "steps": [{
+        "if": "unix",
+        "args": "compile -A --output main ./myapp",
+        "output": "compile.out"
+      }, {
+        "if": "unix",
+        "commandName": "./main",
+        "args": [],
+        "output": "main.out"
+      }, {
+        "if": "windows",
+        "args": "compile -A --output main.exe ./myapp",
+        "output": "compile.out"
+      }, {
+        "if": "windows",
+        "commandName": "./main.exe",
+        "args": [],
+        "output": "main.out"
+      }]
+    }
+  }
+}
