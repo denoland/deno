@@ -4,7 +4,7 @@
 //!
 //! After `deno install` sets up node_modules/, this module:
 //! 1. Installs jsr: packages to node_modules/@jsr/ via npm.jsr.io
-//! 2. Generates deno.tsconfig.json with paths mappings for import aliases
+//! 2. Generates tsconfig.deno.json with paths mappings for import aliases
 //!
 //! This enables stock TypeScript tooling (tsc, tsserver, VS Code) to work
 //! with Deno projects that use jsr: and npm: specifiers.
@@ -49,10 +49,10 @@ pub fn setup_npm_compat(project_root: &Path) -> Result<(), AnyError> {
   // Install jsr: packages to node_modules/@jsr/
   install_jsr_packages(project_root, deno_imports)?;
 
-  // Generate deno.tsconfig.json
+  // Generate tsconfig.deno.json
   generate_deno_tsconfig(project_root, deno_compiler_options, deno_imports)?;
 
-  // Update tsconfig.json to extend deno.tsconfig.json
+  // Update tsconfig.json to extend tsconfig.deno.json
   update_user_tsconfig(project_root)?;
 
   Ok(())
@@ -77,7 +77,7 @@ fn read_deno_json(project_root: &Path) -> Result<Option<Value>, AnyError> {
   }
 }
 
-/// Generate deno.tsconfig.json at the project root with paths mappings.
+/// Generate tsconfig.deno.json at the project root with paths mappings.
 fn generate_deno_tsconfig(
   project_root: &Path,
   deno_compiler_options: Option<&Value>,
@@ -91,81 +91,13 @@ fn generate_deno_tsconfig(
   )
   .map_err(|e| anyhow!("Failed to generate tsconfig: {e}"))?;
 
-  // Rewrite from .deno/-relative to project-root-relative
-  let generated_content = std::fs::read_to_string(&generated.tsconfig_path)?;
-  let mut tsconfig: Value = serde_json::from_str(&generated_content)?;
-  rewrite_paths_for_project_root(&mut tsconfig);
-
-  let deno_tsconfig_path = project_root.join("deno.tsconfig.json");
-  let content =
-    serde_json::to_string_pretty(&tsconfig).expect("failed to serialize");
-  std::fs::write(&deno_tsconfig_path, &content)?;
-
   log::info!(
     "{} {}",
     colors::green("Generated"),
-    deno_tsconfig_path.display()
+    generated.tsconfig_path.display()
   );
 
-  // Clean up the intermediate .deno/tsconfig.json but keep .deno/types/
-  let deno_tsconfig = project_root.join(".deno").join("tsconfig.json");
-  if deno_tsconfig.exists() {
-    let _ = std::fs::remove_file(&deno_tsconfig);
-  }
-
   Ok(())
-}
-
-fn rewrite_paths_for_project_root(tsconfig: &mut Value) {
-  if let Some(files) = tsconfig.get_mut("files").and_then(|f| f.as_array_mut())
-  {
-    for file in files.iter_mut() {
-      if let Some(s) = file.as_str() {
-        *file = json!(format!(".deno/{s}"));
-      }
-    }
-  }
-
-  if let Some(include) =
-    tsconfig.get_mut("include").and_then(|i| i.as_array_mut())
-  {
-    for item in include.iter_mut() {
-      if let Some(s) = item.as_str() {
-        let fixed = s.strip_prefix("../").unwrap_or(s);
-        *item = json!(format!("./{fixed}"));
-      }
-    }
-  }
-
-  if let Some(exclude) =
-    tsconfig.get_mut("exclude").and_then(|e| e.as_array_mut())
-  {
-    for item in exclude.iter_mut() {
-      if let Some(s) = item.as_str() {
-        let fixed = s.strip_prefix("../").unwrap_or(s);
-        *item = json!(format!("./{fixed}"));
-      }
-    }
-  }
-
-  if let Some(paths) = tsconfig
-    .get_mut("compilerOptions")
-    .and_then(|co| co.get_mut("paths"))
-    .and_then(|p| p.as_object_mut())
-  {
-    for targets in paths.values_mut() {
-      if let Some(arr) = targets.as_array_mut() {
-        for target in arr.iter_mut() {
-          if let Some(s) = target.as_str() {
-            let fixed = s.strip_prefix("../").unwrap_or(s);
-            *target = json!(format!("./{fixed}"));
-          }
-        }
-      }
-    }
-  }
-
-  tsconfig.as_object_mut().map(|m| m.remove("extends"));
 }
 
 fn update_user_tsconfig(project_root: &Path) -> Result<(), AnyError> {
@@ -185,12 +117,12 @@ fn update_user_tsconfig(project_root: &Path) -> Result<(), AnyError> {
     if let Some(obj) = tsconfig.as_object_mut() {
       let current_extends = obj.get("extends");
       if current_extends.is_some_and(|v| {
-        v == "deno.tsconfig.json" || v == "./deno.tsconfig.json"
+        v == "tsconfig.deno.json" || v == "./tsconfig.deno.json"
       }) {
         return Ok(());
       }
 
-      obj.insert("extends".to_string(), json!("./deno.tsconfig.json"));
+      obj.insert("extends".to_string(), json!("./tsconfig.deno.json"));
       let updated =
         serde_json::to_string_pretty(&tsconfig).expect("failed to serialize");
       std::fs::write(&tsconfig_path, updated)?;
@@ -201,7 +133,7 @@ fn update_user_tsconfig(project_root: &Path) -> Result<(), AnyError> {
       );
     }
   } else {
-    let tsconfig = json!({ "extends": "./deno.tsconfig.json" });
+    let tsconfig = json!({ "extends": "./tsconfig.deno.json" });
     let content =
       serde_json::to_string_pretty(&tsconfig).expect("failed to serialize");
     std::fs::write(&tsconfig_path, content)?;
