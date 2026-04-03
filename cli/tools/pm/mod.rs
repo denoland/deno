@@ -1032,6 +1032,21 @@ mod test {
       (("jsr:foo", Some(Prefix::Jsr)), jsr_pkg_req("foo", "foo")),
       (("npm:foo", Some(Prefix::Jsr)), npm_pkg_req("foo", "foo@*")),
       (("jsr:foo", Some(Prefix::Npm)), jsr_pkg_req("foo", "foo")),
+      // Alias with explicit prefix still works when default is set
+      (
+        ("my-alias@npm:foo", Some(Prefix::Npm)),
+        npm_pkg_req("my-alias", "foo@*"),
+      ),
+      (
+        ("my-alias@jsr:foo", Some(Prefix::Npm)),
+        jsr_pkg_req("my-alias", "foo"),
+      ),
+      // Unprefixed without alias defaults to npm
+      (("chalk", Some(Prefix::Npm)), npm_pkg_req("chalk", "chalk@*")),
+      (
+        ("@scope/pkg", Some(Prefix::Npm)),
+        npm_pkg_req("@scope/pkg", "@scope/pkg@*"),
+      ),
     ];
 
     for ((input, maybe_prefix), expected) in cases {
