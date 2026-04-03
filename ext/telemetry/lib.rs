@@ -754,8 +754,7 @@ mod hyper_client {
     }
   }
 
-  const DEFAULT_OTEL_EXPORTER_OTLP_TIMEOUT: Duration =
-    Duration::from_secs(10);
+  const DEFAULT_OTEL_EXPORTER_OTLP_TIMEOUT: Duration = Duration::from_secs(10);
 
   fn parse_otlp_timeout() -> Duration {
     match std::env::var("OTEL_EXPORTER_OTLP_TIMEOUT") {
@@ -864,10 +863,7 @@ mod hyper_client {
       .map_err(|_| {
         std::io::Error::new(
           std::io::ErrorKind::TimedOut,
-          format!(
-            "OTEL export timed out after {}ms",
-            self.timeout.as_millis()
-          ),
+          format!("OTEL export timed out after {}ms", self.timeout.as_millis()),
         )
       })??;
       Ok(response.error_for_status()?)
