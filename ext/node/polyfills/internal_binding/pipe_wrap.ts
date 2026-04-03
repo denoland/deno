@@ -28,32 +28,20 @@ import { core, primordials } from "ext:core/mod.js";
 import {
   NativePipe as NativePipeHandle,
   op_node_create_pipe,
-  op_node_fd_set_blocking,
-  op_node_fs_close,
-  op_node_fs_read_deferred,
-  op_node_fs_read_sync,
-  op_node_fs_write_deferred,
-  op_node_fs_write_sync,
-  op_node_register_fd,
   op_pipe_connect,
   op_pipe_open,
   op_pipe_windows_wait,
 } from "ext:core/ops";
 import { PipeConn } from "ext:deno_net/01_net.js";
 
-const { internalRidSymbol } = core;
 import { ConnectionWrap } from "ext:deno_node/internal_binding/connection_wrap.ts";
 import {
   AsyncWrap,
   providerType,
 } from "ext:deno_node/internal_binding/async_wrap.ts";
 import {
-  kArrayBufferOffset,
-  kBytesWritten,
-  kReadBytesOrError,
   kStreamBaseField,
   LibuvStreamWrap,
-  streamBaseState,
   WriteWrap,
 } from "ext:deno_node/internal_binding/stream_wrap.ts";
 import { codeMap } from "ext:deno_node/internal_binding/uv.ts";
@@ -68,10 +56,8 @@ import { fs } from "ext:deno_node/internal_binding/constants.ts";
 
 const {
   Error,
-  ErrorPrototype,
   FunctionPrototypeCall,
   MapPrototypeGet,
-  ObjectDefineProperty,
   ObjectPrototypeIsPrototypeOf,
   PromisePrototypeThen,
   ReflectHas,
@@ -83,91 +69,6 @@ export enum socketType {
   SOCKET,
   SERVER,
   IPC,
-}
-
-/**
- * StreamBase implementation backed by a raw OS file descriptor.
- * Uses the NodeFsState fd-based ops for I/O, matching how Node.js
- * uses libuv streams on raw fds via uv_pipe_open().
- */
-class FdStreamBase {
-  #fd: number;
-  #closed = false;
-  #blocking = false;
-  #pendingRead: Promise<number> | null = null;
-  #isRefed = true;
-
-  constructor(fd: number) {
-    this.#fd = fd;
-    ObjectDefineProperty(this, internalRidSymbol, {
-      __proto__: null,
-      enumerable: false,
-      value: fd,
-    });
-  }
-
-  async read(buf: Uint8Array): Promise<number | null> {
-    if (this.#closed) {
-      throw new Error("read ECANCELED");
-    }
-    if (this.#blocking) {
-      const nread = op_node_fs_read_sync(this.#fd, buf, -1);
-      return nread === 0 ? null : nread;
-    }
-    // position = -1 means non-positioned (sequential) read
-    const promise = op_node_fs_read_deferred(this.#fd, buf, -1);
-    this.#pendingRead = promise;
-    if (!this.#isRefed) {
-      core.unrefOpPromise(promise);
-    }
-    try {
-      const nread = await promise;
-      return nread === 0 ? null : nread;
-    } finally {
-      this.#pendingRead = null;
-    }
-  }
-
-  async write(data: Uint8Array): Promise<number> {
-    if (this.#blocking) {
-      return op_node_fs_write_sync(this.#fd, data, -1);
-    }
-    // position = -1 means non-positioned (sequential) write
-    return await op_node_fs_write_deferred(this.#fd, data, -1);
-  }
-
-  close(): void {
-    if (!this.#closed) {
-      this.#closed = true;
-      op_node_fs_close(this.#fd);
-    }
-  }
-
-  ref(): void {
-    this.#isRefed = true;
-    if (this.#pendingRead) {
-      core.refOpPromise(this.#pendingRead);
-    }
-  }
-
-  unref(): void {
-    this.#isRefed = false;
-    if (this.#pendingRead) {
-      core.unrefOpPromise(this.#pendingRead);
-    }
-  }
-
-  setBlocking(enable: boolean): number {
-    // On Unix, toggle O_NONBLOCK on the fd.
-    // On Windows, the op is a no-op but we track the flag so
-    // read/write use sync ops instead (matching Node.js behavior
-    // of making stdout/stderr blocking on Windows pipes).
-    const err = op_node_fd_set_blocking(this.#fd, enable);
-    if (err === 0) {
-      this.#blocking = enable;
-    }
-    return err;
-  }
 }
 
 export class Pipe extends ConnectionWrap {
@@ -276,9 +177,8 @@ export class Pipe extends ConnectionWrap {
   }
 
   setBlocking(enable: boolean): number {
-    const stream = this[kStreamBaseField];
-    if (stream && ReflectHas(stream, "setBlocking")) {
-      return (stream as FdStreamBase).setBlocking(enable);
+    if (this.#native) {
+      return this.#native.setBlocking(enable ? 1 : 0);
     }
     return 0;
   }
