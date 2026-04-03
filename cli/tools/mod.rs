@@ -21,6 +21,5 @@ pub mod run;
 pub mod serve;
 pub mod task;
 pub mod test;
-pub mod tsconfig;
 pub mod upgrade;
 pub mod x;
