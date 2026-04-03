@@ -1,7 +1,6 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 //
 mod js;
-pub mod tsconfig_gen;
 
 use std::collections::HashMap;
 use std::collections::HashSet;

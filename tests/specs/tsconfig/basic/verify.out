@@ -1,6 +1,0 @@
-strict: true
-module: esnext
-moduleResolution: bundler
-has npm:chalk path: true
-has deno types: true
-extends: ./deno.tsconfig.json
