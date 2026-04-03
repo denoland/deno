@@ -533,9 +533,9 @@ impl From<NumericValue> for MathValue {
 impl TryFrom<MathValue> for NumericValue {
   type Error = CSSValueCustomError;
 
-  fn try_from(accumulator: MathValue) -> Result<Self, Self::Error> {
-    let value = accumulator.value;
-    match accumulator.dimension {
+  fn try_from(math: MathValue) -> Result<Self, Self::Error> {
+    let value = math.value;
+    match math.dimension {
       Dimension {
         percent: 0,
         length: 0,
@@ -935,7 +935,7 @@ impl NumericAccumulator {
   fn expect_numeric(self) -> Result<NumericValue, CSSValueCustomError> {
     match self {
       NumericAccumulator::Numeric(numeric) => Ok(numeric),
-      NumericAccumulator::Math(math) => NumericValue::try_from(math),
+      NumericAccumulator::Math(math) => math.try_into(),
     }
   }
 
@@ -1046,6 +1046,9 @@ impl NumericValue {
         }
         Ok(NumericValue::Number(*value as f64).into())
       }
+      Token::Percentage { unit_value, .. } => {
+        Ok(NumericValue::Percent(*unit_value as f64).into())
+      }
       Token::Dimension { value, unit, .. } => {
         let value = *value as f64;
         match_ignore_ascii_case! { &unit,
@@ -1086,9 +1089,6 @@ impl NumericValue {
             Err(input.new_unexpected_token_error(token))
           }
         }
-      }
-      Token::Percentage { unit_value, .. } => {
-        Ok(NumericValue::Percent(*unit_value as f64).into())
       }
       Token::Function(name) => {
         state.function_depth += 1;
