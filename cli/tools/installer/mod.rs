@@ -24,6 +24,7 @@ use crate::util::display;
 mod bin_name_resolver;
 mod global;
 mod local;
+mod npm_compat;
 
 pub use global::uninstall;
 use local::CategorizedInstalledDeps;

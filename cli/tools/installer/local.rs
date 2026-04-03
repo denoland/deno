@@ -176,6 +176,14 @@ async fn install_top_level(
     npm_resolver,
   );
 
+  // Post-install: set up jsr packages in node_modules and generate tsconfig
+  // mappings for stock TypeScript compatibility.
+  let cli_options = factory.cli_options()?;
+  if let Err(e) = super::npm_compat::setup_npm_compat(cli_options.initial_cwd())
+  {
+    log::warn!("Failed to set up TypeScript compatibility: {e}");
+  }
+
   Ok(())
 }
 

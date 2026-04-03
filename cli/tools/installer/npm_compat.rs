@@ -1,0 +1,371 @@
+// Copyright 2018-2026 the Deno authors. MIT license.
+
+//! Post-install setup for stock TypeScript compatibility.
+//!
+//! After `deno install` sets up node_modules/, this module:
+//! 1. Installs jsr: packages to node_modules/@jsr/ via npm.jsr.io
+//! 2. Generates deno.tsconfig.json with paths mappings for import aliases
+//!
+//! This enables stock TypeScript tooling (tsc, tsserver, VS Code) to work
+//! with Deno projects that use jsr: and npm: specifiers.
+
+use std::path::Path;
+
+use deno_core::anyhow::anyhow;
+use deno_core::error::AnyError;
+use deno_core::serde_json;
+use deno_core::serde_json::Value;
+use deno_core::serde_json::json;
+use deno_semver::Version;
+use deno_semver::VersionReq;
+use deno_terminal::colors;
+
+/// Run post-install setup: install jsr packages and generate tsconfig.
+///
+/// Called after `deno install` completes npm resolution and node_modules setup.
+pub fn setup_npm_compat(project_root: &Path) -> Result<(), AnyError> {
+  let deno_json = read_deno_json(project_root)?;
+  let Some(deno_json) = deno_json else {
+    return Ok(());
+  };
+
+  let deno_imports = deno_json.get("imports");
+  let deno_compiler_options = deno_json.get("compilerOptions");
+
+  // Check if there are any jsr: or npm: specifiers — if not, skip
+  let has_special_specifiers = deno_imports
+    .and_then(|v| v.as_object())
+    .is_some_and(|imports| {
+      imports.values().any(|v| {
+        v.as_str()
+          .is_some_and(|s| s.starts_with("jsr:") || s.starts_with("npm:"))
+      })
+    });
+
+  if !has_special_specifiers {
+    return Ok(());
+  }
+
+  // Install jsr: packages to node_modules/@jsr/
+  install_jsr_packages(project_root, deno_imports)?;
+
+  // Generate deno.tsconfig.json
+  generate_deno_tsconfig(project_root, deno_compiler_options, deno_imports)?;
+
+  // Update tsconfig.json to extend deno.tsconfig.json
+  update_user_tsconfig(project_root)?;
+
+  Ok(())
+}
+
+fn read_deno_json(project_root: &Path) -> Result<Option<Value>, AnyError> {
+  let deno_json_path = project_root.join("deno.json");
+  let deno_jsonc_path = project_root.join("deno.jsonc");
+
+  if deno_json_path.exists() {
+    let content = std::fs::read_to_string(&deno_json_path)?;
+    Ok(Some(serde_json::from_str(&content)?))
+  } else if deno_jsonc_path.exists() {
+    let content = std::fs::read_to_string(&deno_jsonc_path)?;
+    let parsed: Option<Value> = jsonc_parser::parse_to_serde_value(
+      &content,
+      &jsonc_parser::ParseOptions::default(),
+    )?;
+    Ok(Some(parsed.unwrap_or(json!({}))))
+  } else {
+    Ok(None)
+  }
+}
+
+/// Generate deno.tsconfig.json at the project root with paths mappings.
+fn generate_deno_tsconfig(
+  project_root: &Path,
+  deno_compiler_options: Option<&Value>,
+  deno_imports: Option<&Value>,
+) -> Result<(), AnyError> {
+  let generated = crate::tsc::tsconfig_gen::generate_tsconfig(
+    project_root,
+    deno_compiler_options,
+    deno_imports,
+    &[],
+  )
+  .map_err(|e| anyhow!("Failed to generate tsconfig: {e}"))?;
+
+  // Rewrite from .deno/-relative to project-root-relative
+  let generated_content = std::fs::read_to_string(&generated.tsconfig_path)?;
+  let mut tsconfig: Value = serde_json::from_str(&generated_content)?;
+  rewrite_paths_for_project_root(&mut tsconfig);
+
+  let deno_tsconfig_path = project_root.join("deno.tsconfig.json");
+  let content =
+    serde_json::to_string_pretty(&tsconfig).expect("failed to serialize");
+  std::fs::write(&deno_tsconfig_path, &content)?;
+
+  log::info!(
+    "{} {}",
+    colors::green("Generated"),
+    deno_tsconfig_path.display()
+  );
+
+  // Clean up the intermediate .deno/tsconfig.json but keep .deno/types/
+  let deno_tsconfig = project_root.join(".deno").join("tsconfig.json");
+  if deno_tsconfig.exists() {
+    let _ = std::fs::remove_file(&deno_tsconfig);
+  }
+
+  Ok(())
+}
+
+fn rewrite_paths_for_project_root(tsconfig: &mut Value) {
+  if let Some(files) = tsconfig.get_mut("files").and_then(|f| f.as_array_mut())
+  {
+    for file in files.iter_mut() {
+      if let Some(s) = file.as_str() {
+        *file = json!(format!(".deno/{s}"));
+      }
+    }
+  }
+
+  if let Some(include) =
+    tsconfig.get_mut("include").and_then(|i| i.as_array_mut())
+  {
+    for item in include.iter_mut() {
+      if let Some(s) = item.as_str() {
+        let fixed = s.strip_prefix("../").unwrap_or(s);
+        *item = json!(format!("./{fixed}"));
+      }
+    }
+  }
+
+  if let Some(exclude) =
+    tsconfig.get_mut("exclude").and_then(|e| e.as_array_mut())
+  {
+    for item in exclude.iter_mut() {
+      if let Some(s) = item.as_str() {
+        let fixed = s.strip_prefix("../").unwrap_or(s);
+        *item = json!(format!("./{fixed}"));
+      }
+    }
+  }
+
+  if let Some(paths) = tsconfig
+    .get_mut("compilerOptions")
+    .and_then(|co| co.get_mut("paths"))
+    .and_then(|p| p.as_object_mut())
+  {
+    for targets in paths.values_mut() {
+      if let Some(arr) = targets.as_array_mut() {
+        for target in arr.iter_mut() {
+          if let Some(s) = target.as_str() {
+            let fixed = s.strip_prefix("../").unwrap_or(s);
+            *target = json!(format!("./{fixed}"));
+          }
+        }
+      }
+    }
+  }
+
+  tsconfig.as_object_mut().map(|m| m.remove("extends"));
+}
+
+fn update_user_tsconfig(project_root: &Path) -> Result<(), AnyError> {
+  let tsconfig_path = project_root.join("tsconfig.json");
+
+  if tsconfig_path.exists() {
+    let content = std::fs::read_to_string(&tsconfig_path)?;
+    let mut tsconfig: Value = serde_json::from_str(&content).or_else(|_| {
+      jsonc_parser::parse_to_serde_value(
+        &content,
+        &jsonc_parser::ParseOptions::default(),
+      )
+      .map(|v: Option<Value>| v.unwrap_or(json!({})))
+      .map_err(|e| anyhow!("Failed to parse tsconfig.json: {e}"))
+    })?;
+
+    if let Some(obj) = tsconfig.as_object_mut() {
+      let current_extends = obj.get("extends");
+      if current_extends.is_some_and(|v| {
+        v == "deno.tsconfig.json" || v == "./deno.tsconfig.json"
+      }) {
+        return Ok(());
+      }
+
+      obj.insert("extends".to_string(), json!("./deno.tsconfig.json"));
+      let updated =
+        serde_json::to_string_pretty(&tsconfig).expect("failed to serialize");
+      std::fs::write(&tsconfig_path, updated)?;
+      log::info!(
+        "{} {} (added extends)",
+        colors::green("Updated"),
+        tsconfig_path.display()
+      );
+    }
+  } else {
+    let tsconfig = json!({ "extends": "./deno.tsconfig.json" });
+    let content =
+      serde_json::to_string_pretty(&tsconfig).expect("failed to serialize");
+    std::fs::write(&tsconfig_path, content)?;
+    log::info!("{} {}", colors::green("Created"), tsconfig_path.display());
+  }
+
+  Ok(())
+}
+
+/// Install jsr: packages to node_modules/@jsr/ by downloading from npm.jsr.io.
+fn install_jsr_packages(
+  project_root: &Path,
+  deno_imports: Option<&Value>,
+) -> Result<(), AnyError> {
+  let imports = match deno_imports.and_then(|v| v.as_object()) {
+    Some(imports) => imports,
+    None => return Ok(()),
+  };
+
+  for (_alias, target) in imports {
+    let target_str = match target.as_str() {
+      Some(s) if s.starts_with("jsr:") => s,
+      _ => continue,
+    };
+
+    let Some((scope, name, req_version)) =
+      crate::tsc::tsconfig_gen::parse_jsr_specifier(target_str)
+    else {
+      continue;
+    };
+
+    let npm_name = format!("{}__{}", scope.trim_start_matches('@'), name);
+    let pkg_dir = project_root
+      .join("node_modules")
+      .join("@jsr")
+      .join(&npm_name);
+    if pkg_dir.exists() {
+      continue;
+    }
+
+    let registry_name = format!("@jsr/{npm_name}");
+    let metadata_url =
+      format!("https://npm.jsr.io/{}", registry_name.replace('/', "%2f"));
+
+    log::info!(
+      "{} {} from npm.jsr.io",
+      colors::green("Installing"),
+      registry_name,
+    );
+
+    let metadata_output = std::process::Command::new("curl")
+      .args(["-fsSL", &metadata_url])
+      .output()
+      .map_err(|e| anyhow!("Failed to fetch jsr package metadata: {e}"))?;
+
+    if !metadata_output.status.success() {
+      log::warn!("Failed to fetch metadata for {}", registry_name,);
+      continue;
+    }
+
+    let metadata: Value = serde_json::from_slice(&metadata_output.stdout)
+      .map_err(|e| {
+        anyhow!("Failed to parse metadata for {registry_name}: {e}")
+      })?;
+
+    let resolved_version =
+      resolve_jsr_version(&metadata, req_version.as_deref(), &registry_name)?;
+
+    let tarball_url = metadata
+      .get("versions")
+      .and_then(|vs| vs.get(&resolved_version))
+      .and_then(|v| v.get("dist"))
+      .and_then(|d| d.get("tarball"))
+      .and_then(|t| t.as_str())
+      .ok_or_else(|| {
+        anyhow!("No tarball URL for {registry_name}@{resolved_version}")
+      })?;
+
+    let temp_dir = tempfile::tempdir()?;
+    let tgz_path = temp_dir.path().join("package.tgz");
+
+    let dl_status = std::process::Command::new("curl")
+      .args(["-fsSL", "-o", &tgz_path.to_string_lossy(), tarball_url])
+      .status()
+      .map_err(|e| anyhow!("Failed to download {registry_name}: {e}"))?;
+
+    if !dl_status.success() {
+      log::warn!("Failed to download {}", registry_name);
+      continue;
+    }
+
+    std::fs::create_dir_all(&pkg_dir)?;
+
+    let extract_status = std::process::Command::new("tar")
+      .args([
+        "xzf",
+        &tgz_path.to_string_lossy(),
+        "-C",
+        &pkg_dir.to_string_lossy(),
+        "--strip-components=1",
+      ])
+      .status()
+      .map_err(|e| anyhow!("Failed to extract {registry_name}: {e}"))?;
+
+    if !extract_status.success() {
+      log::warn!("Failed to extract {}", registry_name);
+      let _ = std::fs::remove_dir_all(&pkg_dir);
+      continue;
+    }
+
+    log::info!(
+      "{} {}@{}",
+      colors::green("Installed"),
+      registry_name,
+      resolved_version,
+    );
+  }
+
+  Ok(())
+}
+
+fn resolve_jsr_version(
+  metadata: &Value,
+  req_version: Option<&str>,
+  registry_name: &str,
+) -> Result<String, AnyError> {
+  match req_version {
+    None => metadata
+      .get("dist-tags")
+      .and_then(|dt| dt.get("latest"))
+      .and_then(|v| v.as_str())
+      .map(|s| s.to_string())
+      .ok_or_else(|| anyhow!("No latest version for {registry_name}")),
+    Some(req_str) => {
+      if let Ok(exact) = Version::parse_standard(req_str)
+        && metadata
+          .get("versions")
+          .and_then(|vs| vs.get(exact.to_string()))
+          .is_some()
+      {
+        return Ok(exact.to_string());
+      }
+
+      let version_req = VersionReq::parse_from_npm(req_str)
+        .map_err(|e| anyhow!("Invalid version req '{req_str}': {e}"))?;
+
+      let versions = metadata
+        .get("versions")
+        .and_then(|vs| vs.as_object())
+        .ok_or_else(|| anyhow!("No versions for {registry_name}"))?;
+
+      let mut best: Option<Version> = None;
+      for key in versions.keys() {
+        if let Ok(v) = Version::parse_standard(key)
+          && version_req.matches(&v)
+          && best.as_ref().is_none_or(|b| v > *b)
+        {
+          best = Some(v);
+        }
+      }
+
+      best.map(|v| v.to_string()).ok_or_else(|| {
+        anyhow!("No version matching '{req_str}' for {registry_name}")
+      })
+    }
+  }
+}
