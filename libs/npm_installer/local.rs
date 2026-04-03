@@ -717,8 +717,7 @@ impl<
           )?;
         } else {
           // symlink the package into `node_modules/<alias>`
-          if setup_cache
-            .insert_root_symlink(&remote_pkg.id.nv.name, &target_folder_name)
+          if setup_cache.insert_root_symlink(remote_alias, &target_folder_name)
           {
             symlink_package_dir(
               sys.as_ref(),

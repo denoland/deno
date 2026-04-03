@@ -79,9 +79,23 @@ async fn compile_binary(
     cli_options.initial_cwd(),
   )
   .await?;
+  let compile_config = cli_options.start_dir.to_compile_config()?;
+  let mut effective_include = compile_config.include.clone();
+  for inc in &compile_flags.include {
+    if !effective_include.contains(inc) {
+      effective_include.push(inc.clone());
+    }
+  }
+  let mut effective_exclude = compile_config.exclude.clone();
+  for exc in &compile_flags.exclude {
+    if !effective_exclude.contains(exc) {
+      effective_exclude.push(exc.clone());
+    }
+  }
   let (module_roots, include_paths) = get_module_roots_and_include_paths(
     entrypoint,
-    &compile_flags,
+    &effective_include,
+    &effective_exclude,
     cli_options,
   )?;
 
@@ -155,8 +169,7 @@ async fn compile_binary(
       graph: &graph,
       entrypoint,
       include_paths: &include_paths,
-      exclude_paths: compile_flags
-        .exclude
+      exclude_paths: effective_exclude
         .iter()
         .map(|p| cli_options.initial_cwd().join(p))
         .chain(std::iter::once(
@@ -227,9 +240,23 @@ async fn compile_eszip(
 
   let maybe_import_map_specifier =
     cli_options.resolve_specified_import_map_specifier()?;
+  let compile_config = cli_options.start_dir.to_compile_config()?;
+  let mut effective_include = compile_config.include.clone();
+  for inc in &compile_flags.include {
+    if !effective_include.contains(inc) {
+      effective_include.push(inc.clone());
+    }
+  }
+  let mut effective_exclude = compile_config.exclude.clone();
+  for exc in &compile_flags.exclude {
+    if !effective_exclude.contains(exc) {
+      effective_exclude.push(exc.clone());
+    }
+  }
   let (module_roots, _include_paths) = get_module_roots_and_include_paths(
     entrypoint,
-    &compile_flags,
+    &effective_include,
+    &effective_exclude,
     cli_options,
   )?;
 
@@ -375,7 +402,8 @@ fn validate_output_path(output_path: &Path) -> Result<(), AnyError> {
 
 fn get_module_roots_and_include_paths(
   entrypoint: &ModuleSpecifier,
-  compile_flags: &CompileFlags,
+  include: &[String],
+  exclude: &[String],
   cli_options: &Arc<CliOptions>,
 ) -> Result<(Vec<ModuleSpecifier>, Vec<ModuleSpecifier>), AnyError> {
   let initial_cwd = cli_options.initial_cwd();
@@ -449,13 +477,12 @@ fn get_module_roots_and_include_paths(
   let mut searched_paths = HashSet::new();
   let mut module_roots = Vec::new();
   let mut include_paths = Vec::new();
-  let exclude_set = compile_flags
-    .exclude
+  let exclude_set = exclude
     .iter()
     .map(|path| initial_cwd.join(path))
     .collect::<HashSet<_>>();
   module_roots.push(entrypoint.clone());
-  for side_module in &compile_flags.include {
+  for side_module in include {
     let url = resolve_url_or_path(side_module, initial_cwd)?;
     if is_module_graph_module(&url) {
       module_roots.push(url.clone());

@@ -1,8 +1,6 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 use deno_core::error::AnyError;
-pub use repl::ReplCompletionItem;
-pub use repl::ReplLanguageServer;
 use tower_lsp::LspService;
 use tower_lsp::Server;
 
@@ -29,7 +27,6 @@ mod path_to_regex;
 mod performance;
 mod refactor;
 mod registries;
-mod repl;
 mod resolver;
 mod search;
 mod semantic_tokens;
@@ -38,7 +35,6 @@ mod text;
 mod trace;
 mod ts_server;
 mod tsc;
-mod tsgo;
 mod urls;
 
 pub async fn start() -> Result<(), AnyError> {

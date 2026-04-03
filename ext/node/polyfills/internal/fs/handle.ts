@@ -7,7 +7,6 @@ import { EventEmitter } from "node:events";
 import { Buffer } from "node:buffer";
 import {
   type BigIntStats,
-  closeSync,
   fchmod,
   fdatasync,
   fsync,
@@ -23,6 +22,7 @@ import {
 import { createInterface } from "node:readline";
 import type { Interface as ReadlineInterface } from "node:readline";
 import { primordials } from "ext:core/mod.js";
+import { op_node_fs_close } from "ext:core/ops";
 import {
   BinaryOptionsArgument,
   FileOptionsArgument,
@@ -235,7 +235,7 @@ export class FileHandle extends EventEmitter {
   #close(): Promise<void> {
     return new Promise((resolve, reject) => {
       try {
-        closeSync(this.fd);
+        op_node_fs_close(this.fd);
         this.#rid = -1;
         resolve();
       } catch (err) {
@@ -319,7 +319,7 @@ export class FileHandle extends EventEmitter {
 
   readLines(options?: CreateReadStreamOptions): ReadlineInterface {
     return createInterface({
-      input: this.createReadStream({ ...options, autoClose: false }),
+      input: this.createReadStream(options),
       crlfDelay: Infinity,
     });
   }

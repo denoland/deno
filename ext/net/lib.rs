@@ -102,8 +102,6 @@ deno_core::extension!(deno_net,
     ops_unix::op_node_unstable_net_listen_unixpacket,
     ops_unix::op_net_recv_unixpacket,
     ops_unix::op_net_send_unixpacket,
-    ops_unix::op_net_unix_stream_from_fd,
-
     ops_win_pipe::op_pipe_open,
     ops_win_pipe::op_pipe_connect,
     ops_win_pipe::op_pipe_windows_wait,
@@ -188,7 +186,6 @@ mod ops_unix {
   stub_op!(op_node_unstable_net_listen_unixpacket);
   stub_op!(op_net_recv_unixpacket);
   stub_op!(op_net_send_unixpacket);
-  stub_op!(op_net_unix_stream_from_fd);
 }
 
 /// Stub ops for non-windows platforms.

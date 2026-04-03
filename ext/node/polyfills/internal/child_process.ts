@@ -392,7 +392,13 @@ export class ChildProcess extends EventEmitter {
     const extraStdioNormalized: DenoStdio[] = [];
     for (let i = 0; i < extraStdio.length; i++) {
       const fd = i + extraStdioOffset;
-      if (fd === ipc) extraStdioNormalized.push("null");
+      if (fd === ipc) {
+        // IPC fd is handled separately in Rust via the kIpc option.
+        // Push a placeholder so the array indices stay aligned with
+        // fd numbers, but don't double-push.
+        extraStdioNormalized.push("null");
+        continue;
+      }
       extraStdioNormalized.push(toDenoStdio(extraStdio[i]));
     }
 
@@ -423,7 +429,11 @@ export class ChildProcess extends EventEmitter {
       }).spawn();
       this.pid = this.#process.pid;
 
-      // Get stdio rids to create Socket instances
+      // TODO(bartlomieju): replace internals.getStdioRids with raw OS file
+      // descriptors returned from op_spawn_child, then use Pipe.open(fd) +
+      // net.Socket({ handle: pipe }) instead of the StreamResource(rid) path.
+      // This would align child process stdio with the fd-based I/O used
+      // elsewhere and remove the resource ID indirection.
       const stdioRids = internals.getStdioRids(this.#process);
 
       if (stdin === "pipe") {
@@ -735,12 +745,6 @@ export class ChildProcess extends EventEmitter {
   }
 }
 
-const supportedNodeStdioTypes: NodeStdio[] = [
-  "pipe",
-  "ignore",
-  "inherit",
-  "ipc",
-];
 function toDenoStdio(
   pipe: NodeStdio | number | Stream | null | undefined,
 ): DenoStdio {
@@ -748,17 +752,11 @@ function toDenoStdio(
     return "inherit";
   }
   if (typeof pipe === "number") {
-    /* Assume it's a rid returned by fs APIs */
     return pipe;
-  }
-
-  if (
-    !supportedNodeStdioTypes.includes(pipe as NodeStdio)
-  ) {
-    notImplemented(`toDenoStdio pipe=${typeof pipe} (${pipe})`);
   }
   switch (pipe) {
     case "pipe":
+    case "overlapped":
     case undefined:
     case null:
       return "piped";
@@ -769,7 +767,7 @@ function toDenoStdio(
     case "ipc":
       return "ipc_for_internal_use";
     default:
-      notImplemented(`toDenoStdio pipe=${typeof pipe} (${pipe})`);
+      throw new ERR_INVALID_ARG_VALUE("stdio", pipe);
   }
 }
 
@@ -1279,7 +1277,10 @@ function escapeShellArg(arg: string): string {
       return '""';
     }
     // If no special characters, return as-is
-    if (!/[\s"\\]/.test(arg)) {
+    // Must include cmd.exe metacharacters: &|<>^!()
+    // Note: % is not included because cmd.exe expands %VAR% even inside
+    // double quotes and there is no reliable escape for it outside batch files.
+    if (!/[\s"\\&|<>^!()]/.test(arg)) {
       return arg;
     }
     // Escape backslashes before quotes, then escape quotes
@@ -1725,6 +1726,8 @@ export function spawnSync(
       stderr = stderr && stderr.toString(encoding);
     }
 
+    // deno-lint-ignore no-explicit-any
+    result.pid = (output as any)._pid;
     result.status = status;
     result.signal = output.signal;
     result.stdout = stdout;
