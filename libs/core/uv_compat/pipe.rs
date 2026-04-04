@@ -140,6 +140,8 @@ pub unsafe fn uv_pipe_init(
   unsafe {
     *pipe = new_pipe(ipc != 0);
     (*pipe).loop_ = loop_;
+    // Match libuv: handles start ref'd so they keep the event loop alive.
+    (*pipe).flags = super::UV_HANDLE_REF;
   }
   0
 }

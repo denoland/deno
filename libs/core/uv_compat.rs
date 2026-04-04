@@ -296,6 +296,15 @@ impl UvLoopInner {
         return true;
       }
     }
+    for handle_ptr in self.pipe_handles.borrow().iter() {
+      // SAFETY: Handle pointers in pipe_handles are kept valid by the C caller until uv_close.
+      let handle = unsafe { &**handle_ptr };
+      if handle.flags & UV_HANDLE_ACTIVE != 0
+        && handle.flags & UV_HANDLE_REF != 0
+      {
+        return true;
+      }
+    }
     if !self.closing_handles.borrow().is_empty() {
       return true;
     }
