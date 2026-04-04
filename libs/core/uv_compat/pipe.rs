@@ -215,15 +215,12 @@ pub unsafe fn uv_pipe_open(pipe: *mut uv_pipe_t, fd: c_int) -> c_int {
     return UV_EBADF;
   }
 
-  // Wrap in AsyncFd for event loop integration.
-  let async_fd = match tokio::io::unix::AsyncFd::new(RawFdWrapper(fd)) {
-    Ok(afd) => afd,
-    Err(_) => return UV_EBADF,
-  };
-
+  // Just store the fd. Don't create AsyncFd here - it would register
+  // with the reactor immediately, which can cause spurious read errors
+  // on bound-but-not-connected sockets. The AsyncFd is created lazily
+  // in read_start_pipe when actually needed for poll_read_ready.
   unsafe {
     (*pipe).internal_fd = Some(fd);
-    (*pipe).internal_async_fd = Some(async_fd);
     (*pipe).flags |= UV_HANDLE_ACTIVE;
   }
   0
@@ -667,6 +664,18 @@ pub(crate) unsafe fn read_start_pipe(
     (*pipe).internal_read_cb = read_cb;
     (*pipe).internal_reading = true;
     (*pipe).flags |= UV_HANDLE_ACTIVE;
+
+    // Lazily create AsyncFd for the fd-based read path (uv_pipe_open).
+    // Not needed if internal_stream is set (connect/accept path).
+    if (*pipe).internal_async_fd.is_none()
+      && (*pipe).internal_stream.is_none()
+      && (*pipe).internal_fd.is_some()
+    {
+      let fd = (*pipe).internal_fd.unwrap();
+      if let Ok(afd) = tokio::io::unix::AsyncFd::new(RawFdWrapper(fd)) {
+        (*pipe).internal_async_fd = Some(afd);
+      }
+    }
 
     let inner = super::get_inner((*pipe).loop_);
     let mut handles = inner.pipe_handles.borrow_mut();
