@@ -164,7 +164,16 @@ export class Pipe extends ConnectionWrap {
     data: Uint8Array,
   ): number {
     if (this.#native) {
-      return this.#native.writeBuffer(req, data);
+      const ret = this.#native.writeBuffer(data);
+      // Fire completion callback asynchronously, matching Node.js behavior.
+      queueMicrotask(() => {
+        try {
+          req.oncomplete(ret === 0 ? 0 : MapPrototypeGet(codeMap, "UNKNOWN")!);
+        } catch {
+          // swallow callback errors.
+        }
+      });
+      return 0;
     }
     return super.writeBuffer(req, data);
   }

@@ -491,7 +491,21 @@ unsafe fn write_pipe(
     let mut offset = 0;
     #[cfg(unix)]
     if (*pipe).internal_write_queue.is_empty() {
-      if let Some(fd) = (*pipe).internal_fd {
+      // Use try_write on UnixStream if available, fall back to libc::write.
+      if let Some(ref stream) = (*pipe).internal_stream {
+        while offset < write_data.len() {
+          match stream.try_write(&write_data[offset..]) {
+            Ok(n) => {
+              eprintln!("[write_pipe] try_write on stream: {} bytes", n);
+              offset += n;
+            }
+            Err(ref e) => {
+              eprintln!("[write_pipe] try_write error: {}", e);
+              break;
+            }
+          }
+        }
+      } else if let Some(fd) = (*pipe).internal_fd {
         while offset < write_data.len() {
           let n = libc::write(
             fd,

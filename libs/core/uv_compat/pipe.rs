@@ -800,7 +800,7 @@ pub(crate) unsafe fn poll_pipe_handle(
           } else {
             break;
           };
-          eprintln!("[poll_pipe] read_result: {:?}", read_result.as_ref().map(|n| *n).map_err(|e| e.kind()));
+          eprintln!("[poll_pipe] read_result: {:?} fd={:?} stream={}", read_result.as_ref().map(|n| *n).map_err(|e| e.kind()), (*pipe_ptr).internal_fd, (*pipe_ptr).internal_stream.is_some());
           match read_result {
             Ok(0) => {
               // EOF
