@@ -204,7 +204,6 @@ deno_core::extension!(deno_node,
     ops::fs::op_node_rmdir,
     ops::fs::op_node_statfs_sync,
     ops::fs::op_node_statfs,
-    ops::fs::op_node_file_from_fd,
     ops::fs::op_node_register_fd,
     ops::fs::op_node_create_pipe,
     ops::fs::op_node_fd_set_blocking,
@@ -627,7 +626,6 @@ deno_core::extension!(deno_node,
   },
   state = |state, options| {
     state.put(options.fs.clone());
-    state.put(ops::fs::NodeFsState::new());
 
     if let Some(init) = &options.maybe_init {
       state.put(init.sys.clone());
