@@ -880,6 +880,23 @@ impl NativePipe {
     self.provider
   }
 
+  #[getter]
+  fn fd(&self) -> i32 {
+    let pipe = self.raw();
+    if pipe.is_null() {
+      return -1;
+    }
+    #[cfg(unix)]
+    {
+      // SAFETY: pipe is valid.
+      unsafe { &*pipe }.fd().unwrap_or(-1)
+    }
+    #[cfg(windows)]
+    {
+      -1
+    }
+  }
+
   #[nofast]
   fn set_owner(&self, #[this] this: v8::Global<v8::Object>) {
     self.set_js_object(this);

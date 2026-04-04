@@ -30,6 +30,7 @@ import {
   op_node_create_pipe,
 } from "ext:core/ops";
 
+import { Buffer } from "node:buffer";
 import { ConnectionWrap } from "ext:deno_node/internal_binding/connection_wrap.ts";
 import {
   AsyncWrap,
@@ -100,6 +101,10 @@ export class Pipe extends ConnectionWrap {
     this.ipc = ipc;
   }
 
+  get fd(): number {
+    return this.#native?.fd ?? -1;
+  }
+
   open(fd: number): number {
     this.#ensureNative();
     // NativePipe.open checks FdTable for duplicates and registers
@@ -168,6 +173,37 @@ export class Pipe extends ConnectionWrap {
       return 0;
     }
     return super.writeBuffer(req, data);
+  }
+
+  override writev(
+    req: WriteWrap<LibuvStreamWrap>,
+    chunks: Buffer[] | (string | Buffer)[],
+    allBuffers: boolean,
+  ): number {
+    if (this.#native) {
+      // Concat all chunks into a single buffer and use writeBuffer.
+      const count = allBuffers ? chunks.length : chunks.length >> 1;
+      // deno-lint-ignore prefer-primordials
+      const buffers: Buffer[] = new Array(count);
+      if (!allBuffers) {
+        for (let i = 0; i < count; i++) {
+          const chunk = chunks[i * 2];
+          if (Buffer.isBuffer(chunk)) {
+            buffers[i] = chunk;
+          } else {
+            const encoding: string = chunks[i * 2 + 1] as string;
+            buffers[i] = Buffer.from(chunk as string, encoding);
+          }
+        }
+      } else {
+        for (let i = 0; i < count; i++) {
+          buffers[i] = chunks[i] as Buffer;
+        }
+      }
+      // deno-lint-ignore prefer-primordials
+      return this.writeBuffer(req, Buffer.concat(buffers));
+    }
+    return super.writev(req, chunks, allBuffers);
   }
 
   setBlocking(enable: boolean): number {

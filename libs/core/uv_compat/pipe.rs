@@ -261,6 +261,34 @@ pub unsafe fn uv_pipe_open(pipe: *mut uv_pipe_t, fd: c_int) -> c_int {
 pub unsafe fn uv_pipe_bind(pipe: *mut uv_pipe_t, path: &str) -> c_int {
   unsafe {
     (*pipe).internal_bind_path = Some(path.to_string());
+
+    // On Unix, create and bind the socket now (matching libuv).
+    // The fd is available immediately for the `fd` property.
+    #[cfg(unix)]
+    {
+      // Remove existing socket file if present.
+      #[allow(
+        clippy::disallowed_methods,
+        reason = "uv_compat is not compiled to WASM"
+      )]
+      let _ = std::fs::remove_file(path);
+
+      let std_listener = match std::os::unix::net::UnixListener::bind(path) {
+        Ok(l) => l,
+        Err(e) => return io_error_to_uv(&e),
+      };
+      // Set non-blocking for tokio compatibility.
+      std_listener.set_nonblocking(true).ok();
+      use std::os::unix::io::AsRawFd;
+      (*pipe).internal_fd = Some(std_listener.as_raw_fd());
+      // Store as tokio listener.
+      match tokio::net::UnixListener::from_std(std_listener) {
+        Ok(l) => {
+          (*pipe).internal_listener = Some(l);
+        }
+        Err(e) => return io_error_to_uv(&e),
+      }
+    }
   }
   0
 }
@@ -276,25 +304,11 @@ pub unsafe fn uv_pipe_listen(
   cb: Option<super::stream::uv_connection_cb>,
 ) -> c_int {
   unsafe {
-    let path = match &(*pipe).internal_bind_path {
-      Some(p) => p.clone(),
-      None => return super::UV_EINVAL,
-    };
+    // The listener was already created in uv_pipe_bind.
+    if (*pipe).internal_listener.is_none() {
+      return super::UV_EINVAL;
+    }
 
-    // Remove existing socket file if present (matching libuv behavior).
-    // uv_compat is not compiled to WASM, so std::fs is fine here.
-    #[allow(
-      clippy::disallowed_methods,
-      reason = "uv_compat is not compiled to WASM"
-    )]
-    let _ = std::fs::remove_file(&path);
-
-    let listener = match tokio::net::UnixListener::bind(&path) {
-      Ok(l) => l,
-      Err(e) => return io_error_to_uv(&e),
-    };
-
-    (*pipe).internal_listener = Some(listener);
     (*pipe).internal_connection_cb = cb;
     (*pipe).flags |= UV_HANDLE_ACTIVE;
 
