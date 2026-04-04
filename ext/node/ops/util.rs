@@ -40,6 +40,9 @@ unsafe fn safe_get_osfhandle(fd: i32) -> isize {
   ) {
   }
 
+  // SAFETY: We temporarily swap the CRT invalid-parameter handler to a
+  // no-op, call _get_osfhandle, then restore the original handler. All
+  // three FFI calls are safe given valid function pointers.
   unsafe {
     let prev = _set_thread_local_invalid_parameter_handler(Some(noop_handler));
     let handle = libc::get_osfhandle(fd);
@@ -91,6 +94,8 @@ fn guess_handle_type(fd: i32) -> HandleType {
   }
   // Use safe_get_osfhandle to avoid aborting on invalid fds in debug
   // CRT builds (the default invalid-parameter handler calls abort()).
+  // SAFETY: safe_get_osfhandle installs a noop CRT invalid-parameter
+  // handler before calling _get_osfhandle, so this cannot abort.
   let handle = unsafe { safe_get_osfhandle(fd) };
   if handle == -1 {
     return HandleType::Unknown;

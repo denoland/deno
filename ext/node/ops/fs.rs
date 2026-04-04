@@ -54,6 +54,9 @@ unsafe fn safe_get_osfhandle(fd: i32) -> isize {
   ) {
   }
 
+  // SAFETY: We temporarily swap the CRT invalid-parameter handler to a
+  // no-op, call _get_osfhandle, then restore the original handler. All
+  // three FFI calls are safe given valid function pointers.
   unsafe {
     let prev = _set_thread_local_invalid_parameter_handler(Some(noop_handler));
     let handle = libc::get_osfhandle(fd);
