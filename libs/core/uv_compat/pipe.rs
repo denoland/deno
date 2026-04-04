@@ -451,6 +451,39 @@ pub unsafe fn uv_pipe_connect(
           if err.raw_os_error() != Some(libc::EINPROGRESS) {
             return Err(err);
           }
+
+          // Wait for connect to complete by polling for write readiness.
+          let async_fd =
+            tokio::io::unix::AsyncFd::new(RawFdWrapper(fd)).map_err(|e| {
+              std::io::Error::new(std::io::ErrorKind::Other, e)
+            })?;
+          let _guard = async_fd.writable().await.map_err(|e| {
+            std::io::Error::new(std::io::ErrorKind::Other, e)
+          })?;
+
+          // Check SO_ERROR to see if connect succeeded.
+          let mut err_val: libc::c_int = 0;
+          let mut err_len: libc::socklen_t =
+            std::mem::size_of::<libc::c_int>() as libc::socklen_t;
+          let gso_ret = libc::getsockopt(
+            fd,
+            libc::SOL_SOCKET,
+            libc::SO_ERROR,
+            &mut err_val as *mut _ as *mut c_void,
+            &mut err_len,
+          );
+          if gso_ret != 0 {
+            return Err(std::io::Error::last_os_error());
+          }
+          if err_val != 0 {
+            return Err(std::io::Error::from_raw_os_error(err_val));
+          }
+
+          // Drop AsyncFd before creating UnixStream to avoid
+          // double reactor registration. RawFdWrapper does not
+          // close the fd on drop, so this is safe.
+          drop(_guard);
+          drop(async_fd);
         }
 
         // Wrap the connected fd as a tokio UnixStream.
@@ -464,6 +497,12 @@ pub unsafe fn uv_pipe_connect(
   });
 
   unsafe {
+    // Drop any AsyncFd created by a prior read_start_pipe call.
+    // The connect future will create a UnixStream that registers
+    // the same fd with the reactor; having both would corrupt
+    // readiness tracking.
+    (*pipe).internal_async_fd = None;
+
     (*pipe).internal_connect = Some(PipeConnectPending { req, cb, future });
     (*pipe).flags |= UV_HANDLE_ACTIVE;
 
@@ -667,8 +706,12 @@ pub(crate) unsafe fn read_start_pipe(
 
     // Lazily create AsyncFd for the fd-based read path (uv_pipe_open).
     // Not needed if internal_stream is set (connect/accept path).
+    // Also skip if a connect is pending -- the connect will provide its
+    // own UnixStream, and double-registering the fd with tokio's reactor
+    // causes readiness tracking corruption.
     if (*pipe).internal_async_fd.is_none()
       && (*pipe).internal_stream.is_none()
+      && (*pipe).internal_connect.is_none()
       && (*pipe).internal_fd.is_some()
     {
       let fd = (*pipe).internal_fd.unwrap();

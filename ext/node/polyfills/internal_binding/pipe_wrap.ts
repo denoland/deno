@@ -40,6 +40,7 @@ import {
   kArrayBufferOffset,
   kReadBytesOrError,
   LibuvStreamWrap,
+  ShutdownWrap,
   streamBaseState,
   WriteWrap,
 } from "ext:deno_node/internal_binding/stream_wrap.ts";
@@ -66,6 +67,7 @@ export class Pipe extends ConnectionWrap {
 
   // deno-lint-ignore no-explicit-any
   #native: any;
+  #closed = false;
 
   constructor(type: number) {
     let provider: providerType;
@@ -109,6 +111,9 @@ export class Pipe extends ConnectionWrap {
   }
 
   override readStart(): number {
+    if (this.#closed) {
+      return 0;
+    }
     this.reading = true;
     // deno-lint-ignore no-this-alias
     const self = this;
@@ -178,6 +183,18 @@ export class Pipe extends ConnectionWrap {
     }
     // deno-lint-ignore prefer-primordials
     return this.writeBuffer(req, Buffer.concat(buffers));
+  }
+
+  override shutdown(req: ShutdownWrap<LibuvStreamWrap>): number {
+    const ret = this.#native.shutdown();
+    queueMicrotask(() => {
+      try {
+        req.oncomplete(ret);
+      } catch {
+        // swallow callback errors.
+      }
+    });
+    return 0;
   }
 
   setBlocking(enable: boolean): number {
@@ -266,6 +283,7 @@ export class Pipe extends ConnectionWrap {
 
   override _onClose(): number {
     this.reading = false;
+    this.#closed = true;
     this.#native.close();
     return FunctionPrototypeCall(LibuvStreamWrap.prototype._onClose, this);
   }
