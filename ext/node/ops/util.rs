@@ -13,6 +13,41 @@ use node_resolver::NpmPackageFolderResolver;
 use crate::ExtNodeSys;
 use crate::NodeResolverRc;
 
+/// Call `libc::get_osfhandle` without crashing on invalid fds.
+///
+/// On Windows debug builds, the CRT's `_get_osfhandle` invokes the
+/// invalid-parameter handler for out-of-range fds, which by default
+/// aborts the process. We temporarily install a no-op handler so the
+/// call safely returns `INVALID_HANDLE_VALUE` (-1) instead.
+#[cfg(windows)]
+unsafe fn safe_get_osfhandle(fd: i32) -> isize {
+  type InvalidParameterHandler = Option<
+    unsafe extern "C" fn(*const u16, *const u16, *const u16, u32, usize),
+  >;
+
+  unsafe extern "C" {
+    fn _set_thread_local_invalid_parameter_handler(
+      handler: InvalidParameterHandler,
+    ) -> InvalidParameterHandler;
+  }
+
+  unsafe extern "C" fn noop_handler(
+    _: *const u16,
+    _: *const u16,
+    _: *const u16,
+    _: u32,
+    _: usize,
+  ) {
+  }
+
+  unsafe {
+    let prev = _set_thread_local_invalid_parameter_handler(Some(noop_handler));
+    let handle = libc::get_osfhandle(fd);
+    _set_thread_local_invalid_parameter_handler(prev);
+    handle
+  }
+}
+
 #[repr(u32)]
 enum HandleType {
   #[allow(dead_code, reason = "variant kept for repr(u32) mapping")]
@@ -54,9 +89,9 @@ fn guess_handle_type(fd: i32) -> HandleType {
   if fd < 0 {
     return HandleType::Unknown;
   }
-  // SAFETY: get_osfhandle converts a CRT fd to an OS handle.
-  // Returns -1 (INVALID_HANDLE_VALUE) for invalid fds.
-  let handle = unsafe { libc::get_osfhandle(fd) };
+  // Use safe_get_osfhandle to avoid aborting on invalid fds in debug
+  // CRT builds (the default invalid-parameter handler calls abort()).
+  let handle = unsafe { safe_get_osfhandle(fd) };
   if handle == -1 {
     return HandleType::Unknown;
   }

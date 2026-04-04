@@ -29,6 +29,41 @@ use tokio::task::JoinError;
 
 use crate::ops::constant::UV_FS_COPYFILE_EXCL;
 
+/// Call `libc::get_osfhandle` without crashing on invalid fds.
+///
+/// On Windows debug builds, the CRT's `_get_osfhandle` invokes the
+/// invalid-parameter handler for out-of-range fds, which by default
+/// aborts the process. We temporarily install a no-op handler so the
+/// call safely returns `INVALID_HANDLE_VALUE` (-1) instead.
+#[cfg(windows)]
+unsafe fn safe_get_osfhandle(fd: i32) -> isize {
+  type InvalidParameterHandler = Option<
+    unsafe extern "C" fn(*const u16, *const u16, *const u16, u32, usize),
+  >;
+
+  unsafe extern "C" {
+    fn _set_thread_local_invalid_parameter_handler(
+      handler: InvalidParameterHandler,
+    ) -> InvalidParameterHandler;
+  }
+
+  unsafe extern "C" fn noop_handler(
+    _: *const u16,
+    _: *const u16,
+    _: *const u16,
+    _: u32,
+    _: usize,
+  ) {
+  }
+
+  unsafe {
+    let prev = _set_thread_local_invalid_parameter_handler(Some(noop_handler));
+    let handle = libc::get_osfhandle(fd);
+    _set_thread_local_invalid_parameter_handler(prev);
+    handle
+  }
+}
+
 /// State tracking file descriptors opened through node:fs.
 /// Maps real OS file descriptors to the underlying File trait object,
 /// bypassing the resource table entirely.
@@ -210,8 +245,9 @@ fn register_raw_fd(state: &mut OpState, fd: i32) -> Result<(), FsError> {
 
   // Convert CRT fd → OS HANDLE, then duplicate so we don't steal
   // ownership of the original.
-  // SAFETY: libc::get_osfhandle returns a valid handle or INVALID_HANDLE_VALUE.
-  let os_handle = unsafe { libc::get_osfhandle(fd) };
+  // SAFETY: safe_get_osfhandle wraps get_osfhandle with a noop invalid
+  // parameter handler to avoid aborting on invalid fds in debug CRT builds.
+  let os_handle = unsafe { safe_get_osfhandle(fd) };
   if os_handle == -1 {
     return Err(ebadf());
   }
@@ -1014,8 +1050,9 @@ pub fn op_node_register_fd(
   }
 
   // Convert the CRT fd to an OS HANDLE.
-  // SAFETY: libc::get_osfhandle returns the OS handle for a CRT fd.
-  let os_handle = unsafe { libc::get_osfhandle(fd) };
+  // SAFETY: safe_get_osfhandle wraps get_osfhandle with a noop invalid
+  // parameter handler to avoid aborting on invalid fds in debug CRT builds.
+  let os_handle = unsafe { safe_get_osfhandle(fd) };
   if os_handle == -1 {
     return Err(ebadf());
   }
