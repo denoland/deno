@@ -1,0 +1,9 @@
+{
+  "tests": {
+    "main_path_traversal": {
+      "args": "run main.cjs",
+      "output": "main.out",
+      "exitCode": 1
+    }
+  }
+}

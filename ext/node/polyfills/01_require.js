@@ -359,6 +359,18 @@ function tryPackage(requestPath, exts, isMain, originalPath) {
   }
 
   const filename = pathResolve(requestPath, pkg);
+  // Ensure the resolved main path doesn't escape the package directory
+  // via path traversal (e.g. "main": "../../secret.json")
+  if (!StringPrototypeStartsWith(filename, requestPath)) {
+    const err = new Error(
+      `Cannot find module '${filename}'. ` +
+        'Please verify that the package.json has a valid "main" entry',
+    );
+    err.code = "MODULE_NOT_FOUND";
+    err.path = pathResolve(requestPath, "package.json");
+    err.requestPath = originalPath;
+    throw err;
+  }
   let actual = tryFile(filename, isMain) ||
     tryExtensions(filename, exts, isMain) ||
     tryExtensions(
