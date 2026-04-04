@@ -27,6 +27,41 @@ use tokio::task::JoinError;
 
 use crate::ops::constant::UV_FS_COPYFILE_EXCL;
 
+/// Call `libc::get_osfhandle` without crashing on invalid fds.
+///
+/// On Windows debug builds, the CRT's `_get_osfhandle` invokes the
+/// invalid-parameter handler for out-of-range fds, which by default
+/// aborts the process. We temporarily install a no-op handler so the
+/// call safely returns `INVALID_HANDLE_VALUE` (-1) instead.
+#[cfg(windows)]
+unsafe fn safe_get_osfhandle(fd: i32) -> isize {
+  type InvalidParameterHandler = Option<
+    unsafe extern "C" fn(*const u16, *const u16, *const u16, u32, usize),
+  >;
+
+  unsafe extern "C" {
+    fn _set_thread_local_invalid_parameter_handler(
+      handler: InvalidParameterHandler,
+    ) -> InvalidParameterHandler;
+  }
+
+  unsafe extern "C" fn noop_handler(
+    _: *const u16,
+    _: *const u16,
+    _: *const u16,
+    _: u32,
+    _: usize,
+  ) {
+  }
+
+  unsafe {
+    let prev = _set_thread_local_invalid_parameter_handler(Some(noop_handler));
+    let handle = libc::get_osfhandle(fd);
+    _set_thread_local_invalid_parameter_handler(prev);
+    handle
+  }
+}
+
 /// Extract the real OS file descriptor from a File trait object.
 /// On Unix, this is the raw fd (already an i32).
 /// On Windows, this duplicates the OS HANDLE and converts it to a CRT
@@ -110,15 +145,101 @@ fn eexist() -> FsError {
 }
 
 /// Get the File trait object for an OS file descriptor from FdTable.
+///
+/// For fds not yet known to Deno (e.g. created by native addons or inherited
+/// from a parent process), this will auto-register the fd if the caller has
+/// `--allow-fd=<fd>` permission.
 fn file_for_fd(
   state: &mut OpState,
   fd: i32,
 ) -> Result<Rc<dyn deno_io::fs::File>, FsError> {
+  if let Some(file) = state.borrow::<deno_io::FdTable>().get(fd) {
+    return Ok(file.clone());
+  }
+
+  // Unknown fd -- check permission and auto-register.
+  state
+    .borrow_mut::<PermissionsContainer>()
+    .check_fd(fd, "node:fs")
+    .map_err(|_| ebadf())?;
+
+  register_raw_fd(state, fd)?;
+
   state
     .borrow::<deno_io::FdTable>()
     .get(fd)
     .cloned()
     .ok_or_else(ebadf)
+}
+
+/// Register a raw OS file descriptor into FdTable.
+/// Duplicates the fd so the original owner can close theirs independently.
+#[cfg(unix)]
+fn register_raw_fd(state: &mut OpState, fd: i32) -> Result<(), FsError> {
+  use std::fs::File as StdFile;
+  use std::os::unix::io::FromRawFd;
+
+  if fd < 0 {
+    return Err(ebadf());
+  }
+  let dup_fd = unsafe { libc::dup(fd) };
+  if dup_fd < 0 {
+    return Err(ebadf());
+  }
+  // SAFETY: dup_fd is a valid fd returned by dup() above.
+  let std_file = unsafe { StdFile::from_raw_fd(dup_fd) };
+  let file: Rc<dyn deno_io::fs::File> =
+    Rc::new(deno_io::StdFileResourceInner::file(std_file, None));
+  state.borrow_mut::<deno_io::FdTable>().register(fd, file);
+  Ok(())
+}
+
+/// Register a raw OS file descriptor into FdTable.
+/// Duplicates the OS handle so the original owner can close theirs independently.
+#[cfg(windows)]
+fn register_raw_fd(state: &mut OpState, fd: i32) -> Result<(), FsError> {
+  use std::fs::File as StdFile;
+  use std::os::windows::io::FromRawHandle;
+
+  use windows_sys::Win32::Foundation::DUPLICATE_SAME_ACCESS;
+  use windows_sys::Win32::Foundation::DuplicateHandle;
+  use windows_sys::Win32::System::Threading::GetCurrentProcess;
+
+  if fd < 0 {
+    return Err(ebadf());
+  }
+
+  // SAFETY: safe_get_osfhandle wraps get_osfhandle with a noop invalid
+  // parameter handler to avoid aborting on invalid fds in debug CRT builds.
+  let os_handle = unsafe { safe_get_osfhandle(fd) };
+  if os_handle == -1 {
+    return Err(ebadf());
+  }
+
+  let mut dup_handle = std::ptr::null_mut();
+  // SAFETY: DuplicateHandle with DUPLICATE_SAME_ACCESS is safe when the
+  // source handle is valid (checked above).
+  let ok = unsafe {
+    DuplicateHandle(
+      GetCurrentProcess(),
+      os_handle as *mut _,
+      GetCurrentProcess(),
+      &mut dup_handle,
+      0,
+      0,
+      DUPLICATE_SAME_ACCESS,
+    )
+  };
+  if ok == 0 {
+    return Err(ebadf());
+  }
+
+  // SAFETY: dup_handle is a valid duplicated OS handle.
+  let std_file = unsafe { StdFile::from_raw_handle(dup_handle) };
+  let file: Rc<dyn deno_io::fs::File> =
+    Rc::new(deno_io::StdFileResourceInner::file(std_file, None));
+  state.borrow_mut::<deno_io::FdTable>().register(fd, file);
+  Ok(())
 }
 
 /// When `sync_fs` is enabled, `FileSystemRc` is `Arc` (Send) and we can
