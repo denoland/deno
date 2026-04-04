@@ -282,6 +282,11 @@ pub unsafe fn uv_pipe_listen(
     };
 
     // Remove existing socket file if present (matching libuv behavior).
+    // uv_compat is not compiled to WASM, so std::fs is fine here.
+    #[allow(
+      clippy::disallowed_methods,
+      reason = "uv_compat is not compiled to WASM"
+    )]
     let _ = std::fs::remove_file(&path);
 
     let listener = match tokio::net::UnixListener::bind(&path) {
@@ -323,10 +328,10 @@ pub unsafe fn uv_pipe_accept(
       // chain, so pipe_handles might already be borrowed. Use try_borrow_mut.
       (*client).loop_ = (*server).loop_;
       let inner = super::get_inner((*client).loop_);
-      if let Ok(mut handles) = inner.pipe_handles.try_borrow_mut() {
-        if !handles.iter().any(|&h| std::ptr::eq(h, client)) {
-          handles.push(client);
-        }
+      if let Ok(mut handles) = inner.pipe_handles.try_borrow_mut()
+        && !handles.iter().any(|&h| std::ptr::eq(h, client))
+      {
+        handles.push(client);
       }
       0
     } else {
@@ -422,10 +427,10 @@ pub unsafe fn uv_pipe_accept(
       // Add client to pipe_handles for polling.
       (*client).loop_ = (*server).loop_;
       let inner = super::get_inner((*client).loop_);
-      if let Ok(mut handles) = inner.pipe_handles.try_borrow_mut() {
-        if !handles.iter().any(|&h| std::ptr::eq(h, client)) {
-          handles.push(client);
-        }
+      if let Ok(mut handles) = inner.pipe_handles.try_borrow_mut()
+        && !handles.iter().any(|&h| std::ptr::eq(h, client))
+      {
+        handles.push(client);
       }
 
       // Create a new server instance for the next connection.

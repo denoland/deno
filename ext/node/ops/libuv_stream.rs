@@ -788,6 +788,7 @@ pub struct NativePipe {
   async_id: i64,
   handle_data: RefCell<Option<Box<StreamHandleData>>>,
   closed: Cell<bool>,
+  #[allow(dead_code, reason = "will be exposed via getter like TCP")]
   bytes_read: Cell<u64>,
   bytes_written: Cell<u64>,
 }
