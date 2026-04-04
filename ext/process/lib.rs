@@ -459,7 +459,7 @@ pub struct SpawnOutput {
 type CreateCommand = (
   Command,
   Option<ResourceId>,
-  Vec<Option<ResourceId>>,
+  Vec<Option<i64>>,
   Vec<deno_io::RawBiPipeHandle>,
 );
 
@@ -594,7 +594,7 @@ fn create_command(
     reason = "TODO: add safety comment"
   )]
   unsafe {
-    let mut extra_pipe_rids = Vec::new();
+    let mut extra_pipe_fds = Vec::new();
     let mut fds_to_dup = Vec::new();
     let mut fds_to_close = Vec::new();
     let mut ipc_rid = None;
@@ -644,27 +644,15 @@ fn create_command(
           let (fd1, fd2) = deno_io::bi_pipe_pair_raw()?;
           fds_to_dup.push((fd2, target_fd));
           fds_to_close.push(fd2);
-          let rid = state.resource_table.add(
-            match deno_io::BiPipeResource::from_raw_handle(fd1) {
-              Ok(v) => v,
-              Err(e) => {
-                log::warn!(
-                  "Failed to open bidirectional pipe for fd {target_fd}: {e}"
-                );
-                extra_pipe_rids.push(None);
-                continue;
-              }
-            },
-          );
-          extra_pipe_rids.push(Some(rid));
+          extra_pipe_fds.push(Some(fd1 as i64));
         }
         StdioOrFd::Fd(fd) => {
           // Dup the caller's fd onto the target fd slot in the child
           fds_to_dup.push((fd, target_fd));
-          extra_pipe_rids.push(None);
+          extra_pipe_fds.push(None);
         }
         _ => {
-          extra_pipe_rids.push(None);
+          extra_pipe_fds.push(None);
         }
       }
     }
@@ -686,12 +674,13 @@ fn create_command(
       });
     }
 
-    Ok((command, ipc_rid, extra_pipe_rids, fds_to_close))
+    Ok((command, ipc_rid, extra_pipe_fds, fds_to_close))
   }
 
   #[cfg(windows)]
   {
-    let mut extra_pipe_rids = Vec::with_capacity(args.extra_stdio.len());
+    let mut extra_pipe_fds: Vec<Option<i64>> =
+      Vec::with_capacity(args.extra_stdio.len());
 
     let mut ipc_rid = None;
     let mut handles_to_close = Vec::with_capacity(1);
@@ -742,20 +731,17 @@ fn create_command(
         StdioOrFd::Stdio(Stdio::Piped) => {
           let (fd1, fd2) = deno_io::bi_pipe_pair_raw()?;
           handles_to_close.push(fd2);
-          let rid = state.resource_table.add(
-            match deno_io::BiPipeResource::from_raw_handle(fd1) {
-              Ok(v) => v,
-              Err(e) => {
-                log::warn!(
-                  "Failed to open bidirectional pipe for fd {target_fd}: {e}"
-                );
-                extra_pipe_rids.push(None);
-                continue;
-              }
-            },
-          );
+          // Convert the OS handle to a CRT file descriptor so the JS
+          // side can use Pipe.open(fd) with op_node_register_fd.
+          // SAFETY: fd1 is a valid OS handle from bi_pipe_pair_raw.
+          let crt_fd = unsafe { libc::open_osfhandle(fd1 as isize, 0) };
+          if crt_fd == -1 {
+            log::warn!("Failed to convert handle to fd for fd {target_fd}");
+            extra_pipe_fds.push(None);
+            continue;
+          }
           command.extra_handle(Some(fd2));
-          extra_pipe_rids.push(Some(rid));
+          extra_pipe_fds.push(Some(crt_fd as i64));
         }
         StdioOrFd::Fd(fd) => {
           // SAFETY: fd is a valid CRT file descriptor passed from the JS stdio array
@@ -764,17 +750,17 @@ fn create_command(
             return Err(ProcessError::Io(std::io::Error::last_os_error()));
           }
           command.extra_handle(Some(handle as _));
-          extra_pipe_rids.push(None);
+          extra_pipe_fds.push(None);
         }
         _ => {
           // no handle, push an empty handle so we get the right fds for following handles
           command.extra_handle(None);
-          extra_pipe_rids.push(None);
+          extra_pipe_fds.push(None);
         }
       }
     }
 
-    Ok((command, ipc_rid, extra_pipe_rids, handles_to_close))
+    Ok((command, ipc_rid, extra_pipe_fds, handles_to_close))
   }
 }
 
@@ -786,14 +772,14 @@ struct Child {
   stdout_rid: Option<ResourceId>,
   stderr_rid: Option<ResourceId>,
   ipc_pipe_rid: Option<ResourceId>,
-  extra_pipe_rids: Vec<Option<ResourceId>>,
+  extra_pipe_fds: Vec<Option<i64>>,
 }
 
 fn spawn_child(
   state: &mut OpState,
   command: Command,
   ipc_pipe_rid: Option<ResourceId>,
-  extra_pipe_rids: Vec<Option<ResourceId>>,
+  extra_pipe_fds: Vec<Option<i64>>,
   detached: bool,
 ) -> Result<Child, ProcessError> {
   #[cfg(windows)]
@@ -911,7 +897,7 @@ fn spawn_child(
     stdout_rid,
     stderr_rid,
     ipc_pipe_rid,
-    extra_pipe_rids,
+    extra_pipe_fds,
   })
 }
 
@@ -1153,9 +1139,9 @@ fn op_spawn_child(
   #[string] api_name: String,
 ) -> Result<Child, ProcessError> {
   let detached = args.detached;
-  let (command, pipe_rid, extra_pipe_rids, handles_to_close) =
+  let (command, pipe_rid, extra_pipe_fds, handles_to_close) =
     create_command(state, args, &api_name)?;
-  let child = spawn_child(state, command, pipe_rid, extra_pipe_rids, detached);
+  let child = spawn_child(state, command, pipe_rid, extra_pipe_fds, detached);
   for handle in handles_to_close {
     deno_io::close_raw_handle(handle);
   }

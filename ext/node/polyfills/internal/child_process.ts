@@ -434,8 +434,7 @@ export class ChildProcess extends EventEmitter {
       // TODO(bartlomieju): replace internals.getStdioRids with raw OS file
       // descriptors returned from op_spawn_child, then use Pipe.open(fd) +
       // net.Socket({ handle: pipe }) instead of the StreamResource(rid) path.
-      // This would align child process stdio with the fd-based I/O used
-      // elsewhere and remove the resource ID indirection.
+      // (Extra stdio pipes already use the fd-based path below.)
       const stdioRids = internals.getStdioRids(this.#process);
 
       if (stdin === "pipe") {
@@ -518,18 +517,17 @@ export class ChildProcess extends EventEmitter {
         this.stdio[ipc] = null;
       }
 
-      const pipeRids = internals.getExtraPipeRids(this.#process);
-      for (let i = 0; i < pipeRids.length; i++) {
-        const rid: number | null = pipeRids[i];
+      const pipeFds = internals.getExtraPipeFds(this.#process);
+      for (let i = 0; i < pipeFds.length; i++) {
+        const pipeFd: number | null = pipeFds[i];
         const fd = i + extraStdioOffset;
-        if (rid) {
+        if (pipeFd !== null && pipeFd !== undefined) {
           this[kClosesNeeded]++;
+          const pipe = new Pipe(socketType.IPC);
+          pipe.open(pipeFd);
           this.stdio[fd] = new Socket(
             {
-              handle: new Pipe(
-                socketType.IPC,
-                new StreamResource(rid),
-              ),
+              handle: pipe,
               // deno-lint-ignore no-explicit-any
             } as any,
           );
