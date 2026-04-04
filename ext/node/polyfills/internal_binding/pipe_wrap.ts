@@ -38,6 +38,7 @@ import {
 } from "ext:deno_node/internal_binding/async_wrap.ts";
 import {
   kArrayBufferOffset,
+  kLastWriteWasAsync,
   kReadBytesOrError,
   LibuvStreamWrap,
   ShutdownWrap,
@@ -148,6 +149,7 @@ export class Pipe extends ConnectionWrap {
     data: Uint8Array,
   ): number {
     const ret = this.#native.writeBuffer(data);
+    streamBaseState[kLastWriteWasAsync] = 1;
     queueMicrotask(() => {
       try {
         req.oncomplete(ret === 0 ? 0 : MapPrototypeGet(codeMap, "UNKNOWN")!);
