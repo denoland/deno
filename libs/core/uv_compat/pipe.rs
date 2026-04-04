@@ -49,6 +49,17 @@ pub struct uv_pipe_t {
   #[cfg(windows)]
   pub(crate) internal_pending_read:
     Option<tokio::task::JoinHandle<std::io::Result<(Vec<u8>, usize)>>>,
+  /// Windows named pipe server (waiting for or connected to a client).
+  #[cfg(windows)]
+  pub(crate) internal_win_server:
+    Option<tokio::net::windows::named_pipe::NamedPipeServer>,
+  /// Windows named pipe client (connected to a server).
+  #[cfg(windows)]
+  pub(crate) internal_win_client:
+    Option<tokio::net::windows::named_pipe::NamedPipeClient>,
+  /// Pending server connect (waiting for client to connect).
+  #[cfg(windows)]
+  pub(crate) internal_win_server_connecting: bool,
 
   // Connected stream (from connect or accept)
   #[cfg(unix)]
@@ -62,7 +73,7 @@ pub struct uv_pipe_t {
   // Pending connect
   pub(crate) internal_connect: Option<PipeConnectPending>,
 
-  // Connection backlog (accepted streams waiting for uv_accept)
+  // Connection backlog
   #[cfg(unix)]
   pub(crate) internal_backlog: VecDeque<tokio::net::UnixStream>,
   pub(crate) internal_connection_cb: Option<super::stream::uv_connection_cb>,
@@ -93,6 +104,11 @@ impl uv_pipe_t {
   pub fn fd(&self) -> Option<RawFd> {
     self.internal_fd
   }
+
+  /// Get the bind path if one was set.
+  pub fn bind_path(&self) -> Option<&str> {
+    self.internal_bind_path.as_deref()
+  }
 }
 
 /// Wrapper to implement `AsRawFd` for `AsyncFd`.
@@ -120,6 +136,12 @@ pub fn new_pipe(ipc: bool) -> uv_pipe_t {
     internal_handle: None,
     #[cfg(windows)]
     internal_pending_read: None,
+    #[cfg(windows)]
+    internal_win_server: None,
+    #[cfg(windows)]
+    internal_win_client: None,
+    #[cfg(windows)]
+    internal_win_server_connecting: false,
     #[cfg(unix)]
     internal_stream: None,
     #[cfg(unix)]
@@ -326,6 +348,126 @@ pub unsafe fn uv_pipe_connect(
   0
 }
 
+/// Start listening for connections on a Windows named pipe.
+///
+/// # Safety
+/// `pipe` must be a valid pointer to an initialized, bound `uv_pipe_t`.
+#[cfg(windows)]
+pub unsafe fn uv_pipe_listen(
+  pipe: *mut uv_pipe_t,
+  _backlog: c_int,
+  cb: Option<super::stream::uv_connection_cb>,
+) -> c_int {
+  unsafe {
+    let path = match &(*pipe).internal_bind_path {
+      Some(p) => p.clone(),
+      None => return super::UV_EINVAL,
+    };
+
+    let mut opts = tokio::net::windows::named_pipe::ServerOptions::new();
+    opts.first_pipe_instance(true);
+    let server = match opts.create(&path) {
+      Ok(s) => s,
+      Err(e) => return io_error_to_uv(&e),
+    };
+
+    (*pipe).internal_win_server = Some(server);
+    (*pipe).internal_win_server_connecting = true;
+    (*pipe).internal_connection_cb = cb;
+    (*pipe).flags |= UV_HANDLE_ACTIVE;
+
+    let inner = super::get_inner((*pipe).loop_);
+    let mut handles = inner.pipe_handles.borrow_mut();
+    if !handles.iter().any(|&h| std::ptr::eq(h, pipe)) {
+      handles.push(pipe);
+    }
+  }
+  0
+}
+
+/// Accept a pending connection on Windows. Moves the connected server
+/// to the client handle, creates a new server for the next connection.
+///
+/// # Safety
+/// `server` and `client` must be valid pointers to initialized `uv_pipe_t`.
+#[cfg(windows)]
+pub unsafe fn uv_pipe_accept(
+  server: *mut uv_pipe_t,
+  client: *mut uv_pipe_t,
+) -> c_int {
+  unsafe {
+    // Move the connected server pipe to the client handle.
+    if let Some(connected_server) = (*server).internal_win_server.take() {
+      (*client).internal_win_server = Some(connected_server);
+      (*client).flags |= UV_HANDLE_ACTIVE;
+
+      // Add client to pipe_handles for polling.
+      (*client).loop_ = (*server).loop_;
+      let inner = super::get_inner((*client).loop_);
+      if let Ok(mut handles) = inner.pipe_handles.try_borrow_mut() {
+        if !handles.iter().any(|&h| std::ptr::eq(h, client)) {
+          handles.push(client);
+        }
+      }
+
+      // Create a new server instance for the next connection.
+      if let Some(ref path) = (*server).internal_bind_path {
+        let mut opts = tokio::net::windows::named_pipe::ServerOptions::new();
+        opts.first_pipe_instance(false);
+        if let Ok(new_server) = opts.create(path.as_str()) {
+          (*server).internal_win_server = Some(new_server);
+          (*server).internal_win_server_connecting = true;
+        }
+      }
+      0
+    } else {
+      super::UV_EAGAIN
+    }
+  }
+}
+
+/// Connect to a Windows named pipe server.
+///
+/// # Safety
+/// `pipe` must be a valid pointer to an initialized `uv_pipe_t`.
+/// `req` must be a valid pointer to a `uv_connect_t`.
+#[cfg(windows)]
+pub unsafe fn uv_pipe_connect(
+  req: *mut super::stream::uv_connect_t,
+  pipe: *mut uv_pipe_t,
+  path: &str,
+  cb: Option<super::stream::uv_connect_cb>,
+) -> c_int {
+  unsafe {
+    let opts = tokio::net::windows::named_pipe::ClientOptions::new();
+    match opts.open(path) {
+      Ok(client) => {
+        (*pipe).internal_win_client = Some(client);
+        (*pipe).flags |= UV_HANDLE_ACTIVE;
+
+        // Named pipe client connect is synchronous on Windows.
+        // Fire the callback immediately via microtask.
+        if !req.is_null() {
+          (*req).handle = pipe as *mut super::stream::uv_stream_t;
+        }
+        if let Some(cb) = cb {
+          // Defer callback to next event loop tick.
+          (*pipe).internal_connect =
+            Some(PipeConnectPending { req, cb: Some(cb) });
+        }
+
+        let inner = super::get_inner((*pipe).loop_);
+        let mut handles = inner.pipe_handles.borrow_mut();
+        if !handles.iter().any(|&h| std::ptr::eq(h, pipe)) {
+          handles.push(pipe);
+        }
+        0
+      }
+      Err(e) => io_error_to_uv(&e),
+    }
+  }
+}
+
 /// Close the pipe handle: close the fd and clean up.
 ///
 /// # Safety
@@ -366,6 +508,10 @@ pub(crate) unsafe fn close_pipe(pipe: *mut uv_pipe_t) {
       if let Some(handle) = (*pipe).internal_handle.take() {
         windows_sys::Win32::Foundation::CloseHandle(handle as _);
       }
+      // Drop named pipe server/client (closes handles).
+      (*pipe).internal_win_server = None;
+      (*pipe).internal_win_client = None;
+      (*pipe).internal_win_server_connecting = false;
     }
   }
 }
@@ -476,7 +622,7 @@ unsafe fn maybe_spawn_win_read(pipe_ptr: *mut uv_pipe_t) {
   }
 }
 
-/// Poll a Windows pipe handle. Checks if a spawned blocking read completed.
+/// Poll a Windows pipe handle for connects, accepts, reads, and writes.
 #[cfg(windows)]
 pub(crate) unsafe fn poll_pipe_handle(
   pipe_ptr: *mut uv_pipe_t,
@@ -486,7 +632,38 @@ pub(crate) unsafe fn poll_pipe_handle(
   let mut any_work = false;
 
   unsafe {
-    // Poll writes (sync on Windows).
+    // 1. Poll deferred connect callback (from uv_pipe_connect on Windows).
+    if let Some(pending) = (*pipe_ptr).internal_connect.take() {
+      if let Some(cb) = pending.cb {
+        cb(pending.req, 0);
+      }
+      any_work = true;
+    }
+
+    // 2. Poll server waiting for client connection.
+    if (*pipe_ptr).internal_win_server_connecting {
+      if let Some(ref server) = (*pipe_ptr).internal_win_server {
+        match server.poll_connect(cx) {
+          Poll::Ready(Ok(())) => {
+            (*pipe_ptr).internal_win_server_connecting = false;
+            if let Some(cb) = (*pipe_ptr).internal_connection_cb {
+              cb(pipe_ptr as *mut uv_stream_t, 0);
+            }
+            any_work = true;
+          }
+          Poll::Ready(Err(ref e)) => {
+            (*pipe_ptr).internal_win_server_connecting = false;
+            if let Some(cb) = (*pipe_ptr).internal_connection_cb {
+              cb(pipe_ptr as *mut uv_stream_t, io_error_to_uv(e));
+            }
+            any_work = true;
+          }
+          Poll::Pending => {}
+        }
+      }
+    }
+
+    // 3. Poll writes.
     while let Some(pw) = (*pipe_ptr).internal_write_queue.front() {
       if let Some(status) = pw.status {
         any_work = true;
@@ -496,23 +673,31 @@ pub(crate) unsafe fn poll_pipe_handle(
         }
         continue;
       }
-      let handle = match (*pipe_ptr).internal_handle {
-        Some(h) => h,
-        None => break,
-      };
+      // Try writing to whichever pipe type we have.
       let remaining = &pw.data[pw.offset..];
-      // Sync write using WriteFile.
       use std::io::Write;
-      let mut file = std::fs::File::from_raw_handle(handle);
-      let result = file.write(remaining);
-      let _ = std::os::windows::io::IntoRawHandle::into_raw_handle(file);
-      match result {
+      let write_result = if let Some(ref handle) = (*pipe_ptr).internal_handle {
+        let mut file = std::fs::File::from_raw_handle(*handle);
+        let r = file.write(remaining);
+        let _ = std::os::windows::io::IntoRawHandle::into_raw_handle(file);
+        r
+      } else if let Some(ref server) = (*pipe_ptr).internal_win_server {
+        server.try_write(remaining)
+      } else if let Some(ref client) = (*pipe_ptr).internal_win_client {
+        client.try_write(remaining)
+      } else {
+        break;
+      };
+      match write_result {
         Ok(_n) => {
           any_work = true;
           let pw = (*pipe_ptr).internal_write_queue.pop_front().unwrap();
           if let Some(cb) = pw.cb {
             cb(pw.req, 0);
           }
+        }
+        Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+          break;
         }
         Err(ref e) => {
           let pw = (*pipe_ptr).internal_write_queue.pop_front().unwrap();
@@ -523,61 +708,115 @@ pub(crate) unsafe fn poll_pipe_handle(
       }
     }
 
-    // Poll reads.
+    // 4. Poll reads.
     if (*pipe_ptr).internal_reading {
-      // Spawn a blocking read if none is pending.
-      maybe_spawn_win_read(pipe_ptr);
-
-      // Check if the pending read completed.
-      if let Some(ref mut join) = (*pipe_ptr).internal_pending_read {
-        if let Poll::Ready(result) = std::pin::Pin::new(join).poll(cx) {
-          (*pipe_ptr).internal_pending_read = None;
-          let alloc_cb = (*pipe_ptr).internal_alloc_cb;
-          let read_cb = (*pipe_ptr).internal_read_cb;
-
-          if let (Some(alloc_cb), Some(read_cb)) = (alloc_cb, read_cb) {
-            let mut buf = uv_buf_t {
-              base: std::ptr::null_mut(),
-              len: 0,
-            };
-            alloc_cb(pipe_ptr as *mut uv_handle_t, 65536, &mut buf);
-
-            match result {
-              Ok(Ok((data, n))) if n > 0 => {
-                any_work = true;
-                if !buf.base.is_null() && buf.len > 0 {
-                  let copy_len = n.min(buf.len);
-                  std::ptr::copy_nonoverlapping(
-                    data.as_ptr(),
-                    buf.base as *mut u8,
-                    copy_len,
-                  );
+      // For raw handle (uv_pipe_open path), use blocking read thread.
+      if (*pipe_ptr).internal_handle.is_some() {
+        maybe_spawn_win_read(pipe_ptr);
+        if let Some(ref mut join) = (*pipe_ptr).internal_pending_read {
+          if let Poll::Ready(result) = std::pin::Pin::new(join).poll(cx) {
+            (*pipe_ptr).internal_pending_read = None;
+            let alloc_cb = (*pipe_ptr).internal_alloc_cb;
+            let read_cb = (*pipe_ptr).internal_read_cb;
+            if let (Some(alloc_cb), Some(read_cb)) = (alloc_cb, read_cb) {
+              let mut buf = uv_buf_t {
+                base: std::ptr::null_mut(),
+                len: 0,
+              };
+              alloc_cb(pipe_ptr as *mut uv_handle_t, 65536, &mut buf);
+              match result {
+                Ok(Ok((data, n))) if n > 0 => {
+                  any_work = true;
+                  if !buf.base.is_null() && buf.len > 0 {
+                    let copy_len = n.min(buf.len);
+                    std::ptr::copy_nonoverlapping(
+                      data.as_ptr(),
+                      buf.base as *mut u8,
+                      copy_len,
+                    );
+                    read_cb(
+                      pipe_ptr as *mut uv_stream_t,
+                      copy_len as isize,
+                      &buf,
+                    );
+                  }
+                  if (*pipe_ptr).internal_reading {
+                    maybe_spawn_win_read(pipe_ptr);
+                  }
+                }
+                Ok(Ok((_, 0))) => {
+                  read_cb(pipe_ptr as *mut uv_stream_t, UV_EOF as isize, &buf);
+                  (*pipe_ptr).internal_reading = false;
+                }
+                Ok(Err(ref e)) => {
                   read_cb(
                     pipe_ptr as *mut uv_stream_t,
-                    copy_len as isize,
+                    io_error_to_uv(e) as isize,
                     &buf,
                   );
+                  (*pipe_ptr).internal_reading = false;
                 }
-                // Spawn next read if still reading.
-                if (*pipe_ptr).internal_reading {
-                  maybe_spawn_win_read(pipe_ptr);
+                Err(_) => {
+                  read_cb(
+                    pipe_ptr as *mut uv_stream_t,
+                    super::UV_ECANCELED as isize,
+                    &buf,
+                  );
+                  (*pipe_ptr).internal_reading = false;
                 }
               }
-              Ok(Ok((_, 0))) => {
-                // EOF
+            }
+          }
+        }
+      }
+
+      // For named pipe server/client, use try_read.
+      let has_named_pipe = (*pipe_ptr).internal_win_server.is_some()
+        || (*pipe_ptr).internal_win_client.is_some();
+      if has_named_pipe {
+        // Register read interest.
+        if let Some(ref server) = (*pipe_ptr).internal_win_server {
+          let _ = server.poll_read_ready(cx);
+        }
+        if let Some(ref client) = (*pipe_ptr).internal_win_client {
+          let _ = client.poll_read_ready(cx);
+        }
+
+        let alloc_cb = (*pipe_ptr).internal_alloc_cb;
+        let read_cb = (*pipe_ptr).internal_read_cb;
+        if let (Some(alloc_cb), Some(read_cb)) = (alloc_cb, read_cb) {
+          let mut buf = uv_buf_t {
+            base: std::ptr::null_mut(),
+            len: 0,
+          };
+          alloc_cb(pipe_ptr as *mut uv_handle_t, 65536, &mut buf);
+          if !buf.base.is_null() && buf.len > 0 {
+            let slice =
+              std::slice::from_raw_parts_mut(buf.base.cast::<u8>(), buf.len);
+            let read_result =
+              if let Some(ref server) = (*pipe_ptr).internal_win_server {
+                server.try_read(slice)
+              } else if let Some(ref client) = (*pipe_ptr).internal_win_client {
+                client.try_read(slice)
+              } else {
+                Err(std::io::Error::from(std::io::ErrorKind::BrokenPipe))
+              };
+            match read_result {
+              Ok(0) => {
                 read_cb(pipe_ptr as *mut uv_stream_t, UV_EOF as isize, &buf);
                 (*pipe_ptr).internal_reading = false;
               }
-              Ok(Err(ref e)) => {
-                let status = io_error_to_uv(e);
-                read_cb(pipe_ptr as *mut uv_stream_t, status as isize, &buf);
-                (*pipe_ptr).internal_reading = false;
+              Ok(n) => {
+                any_work = true;
+                read_cb(pipe_ptr as *mut uv_stream_t, n as isize, &buf);
               }
-              Err(_join_err) => {
-                // Thread panicked or was cancelled.
+              Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                read_cb(pipe_ptr as *mut uv_stream_t, 0, &buf);
+              }
+              Err(ref e) => {
                 read_cb(
                   pipe_ptr as *mut uv_stream_t,
-                  super::UV_ECANCELED as isize,
+                  io_error_to_uv(e) as isize,
                   &buf,
                 );
                 (*pipe_ptr).internal_reading = false;
@@ -586,6 +825,19 @@ pub(crate) unsafe fn poll_pipe_handle(
           }
         }
       }
+    }
+
+    // 5. Process deferred shutdown.
+    if (*pipe_ptr).internal_write_queue.is_empty()
+      && (*pipe_ptr).internal_shutdown.is_some()
+    {
+      let pending = (*pipe_ptr).internal_shutdown.take().unwrap();
+      // Named pipe shutdown: just drop the write side.
+      // The reader will see EOF.
+      if let Some(cb) = pending.cb {
+        cb(pending.req, 0);
+      }
+      any_work = true;
     }
   }
 

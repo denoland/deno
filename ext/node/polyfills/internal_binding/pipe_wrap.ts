@@ -24,15 +24,11 @@
 // - https://github.com/nodejs/node/blob/master/src/pipe_wrap.cc
 // - https://github.com/nodejs/node/blob/master/src/pipe_wrap.h
 
-import { core, primordials } from "ext:core/mod.js";
+import { primordials } from "ext:core/mod.js";
 import {
   NativePipe as NativePipeHandle,
   op_node_create_pipe,
-  op_pipe_connect,
-  op_pipe_open,
-  op_pipe_windows_wait,
 } from "ext:core/ops";
-import { PipeConn } from "ext:deno_net/01_net.js";
 
 import { ConnectionWrap } from "ext:deno_node/internal_binding/connection_wrap.ts";
 import {
@@ -42,28 +38,19 @@ import {
 import {
   kArrayBufferOffset,
   kReadBytesOrError,
-  kStreamBaseField,
   LibuvStreamWrap,
   streamBaseState,
   WriteWrap,
 } from "ext:deno_node/internal_binding/stream_wrap.ts";
 import { codeMap } from "ext:deno_node/internal_binding/uv.ts";
-import { delay } from "ext:deno_node/_util/async.ts";
-import {
-  ceilPowOf2,
-  INITIAL_ACCEPT_BACKOFF_DELAY,
-  MAX_ACCEPT_BACKOFF_DELAY,
-} from "ext:deno_node/internal_binding/_listen.ts";
-import { isWindows } from "ext:deno_node/_util/os.ts";
+import { ceilPowOf2 } from "ext:deno_node/internal_binding/_listen.ts";
 import { fs } from "ext:deno_node/internal_binding/constants.ts";
 
 const {
   Error,
   FunctionPrototypeCall,
   MapPrototypeGet,
-  ObjectPrototypeIsPrototypeOf,
   ReflectHas,
-  StringPrototypeIncludes,
   queueMicrotask,
 } = primordials;
 
@@ -77,12 +64,9 @@ export class Pipe extends ConnectionWrap {
   override reading = false;
   ipc: boolean;
 
-  #pendingInstances = 4; // Windows only
+  #pendingInstances = 4;
   #address?: string;
   #closed = false;
-  #acceptBackoffDelay?: number;
-  #serverPipeRid?: number; // Windows only
-  #connections = 0; // Windows only
 
   // Native pipe handle for fd-based I/O (via uv_pipe_open).
   // When set, readStart/readStop/writeBuffer/close delegate to native.
@@ -209,18 +193,11 @@ export class Pipe extends ConnectionWrap {
 
   bind(name: string) {
     this.#address = name;
-    if (!isWindows) {
-      this.#ensureNative();
-      return this.#native.pipeBindToPath(name);
-    }
-    return 0;
+    this.#ensureNative();
+    return this.#native.pipeBindToPath(name);
   }
 
   connect(req: PipeConnectWrap, address: string) {
-    if (isWindows) {
-      this.#connectWindows(req, address, 0);
-      return 0;
-    }
     this.#ensureNative();
     this.#address = address;
     // Set the connect callback on the native handle so connect_cb can find it.
@@ -237,9 +214,6 @@ export class Pipe extends ConnectionWrap {
   }
 
   listen(backlog: number): number {
-    if (isWindows) {
-      return this.#listenWindows();
-    }
     this.#ensureNative();
     // Set the connection callback on the native handle so
     // server_connection_cb can find it.
@@ -287,84 +261,6 @@ export class Pipe extends ConnectionWrap {
     }
   }
 
-  /** Windows: connect with retry for ERROR_PIPE_BUSY. */
-  #connectWindows(
-    req: PipeConnectWrap,
-    address: string,
-    attempt: number,
-  ) {
-    try {
-      const rid = op_pipe_connect(
-        address,
-        true,
-        true,
-        "net.createConnection()",
-      );
-      this[kStreamBaseField] = new PipeConn(rid);
-      this.#address = req.address = address;
-      queueMicrotask(() => {
-        try {
-          this.afterConnect(req, 0);
-        } catch {
-          // swallow callback errors.
-        }
-      });
-    } catch (e: unknown) {
-      const err = e as { code?: string; message?: string };
-      const msg = err.message ?? "";
-      if (err.code === "EBUSY" && attempt < 300) {
-        setTimeout(() => {
-          this.#connectWindows(req, address, attempt + 1);
-        }, 100);
-        return;
-      }
-      let code;
-      if (err.code !== undefined) {
-        code = MapPrototypeGet(codeMap, err.code) ??
-          MapPrototypeGet(codeMap, "UNKNOWN")!;
-      } else if (StringPrototypeIncludes(msg, "ENOTSOCK")) {
-        code = MapPrototypeGet(codeMap, "ENOTSOCK")!;
-      } else if (
-        StringPrototypeIncludes(msg, "ENOENT") ||
-        StringPrototypeIncludes(msg, "NotFound")
-      ) {
-        code = MapPrototypeGet(codeMap, "ENOENT")!;
-      } else {
-        code = MapPrototypeGet(codeMap, "UNKNOWN")!;
-      }
-      queueMicrotask(() => {
-        try {
-          this.afterConnect(req, code);
-        } catch {
-          // swallow callback errors.
-        }
-      });
-    }
-  }
-
-  /** Windows: listen using Deno pipe ops. */
-  #listenWindows(): number {
-    try {
-      const rid = op_pipe_open(
-        this.#address!,
-        this.#pendingInstances,
-        false,
-        true,
-        true,
-        "net.Server.listen()",
-      );
-      this.#serverPipeRid = rid;
-      this.#acceptWindows();
-      return 0;
-    } catch (e) {
-      if (ObjectPrototypeIsPrototypeOf(Deno.errors.NotCapable.prototype, e)) {
-        throw e;
-      }
-      return MapPrototypeGet(codeMap, e.code ?? "UNKNOWN") ??
-        MapPrototypeGet(codeMap, "UNKNOWN")!;
-    }
-  }
-
   override ref() {
     if (this.#native) {
       this.#native.ref();
@@ -384,6 +280,9 @@ export class Pipe extends ConnectionWrap {
    */
   setPendingInstances(instances: number) {
     this.#pendingInstances = instances;
+    if (this.#native) {
+      this.#native.setPendingInstances(instances);
+    }
   }
 
   /**
@@ -404,7 +303,6 @@ export class Pipe extends ConnectionWrap {
     }
 
     let desiredMode = 0;
-
     if (mode & constants.UV_READABLE) {
       desiredMode |= fs.S_IRUSR | fs.S_IRGRP | fs.S_IROTH;
     }
@@ -412,83 +310,10 @@ export class Pipe extends ConnectionWrap {
       desiredMode |= fs.S_IWUSR | fs.S_IWGRP | fs.S_IWOTH;
     }
 
-    // TODO(cmorten): this will incorrectly throw on Windows
-    // REF: https://github.com/denoland/deno/issues/4357
-    try {
-      Deno.chmodSync(this.#address!, desiredMode);
-    } catch {
-      // TODO(cmorten): map errors to appropriate error codes.
-      return MapPrototypeGet(codeMap, "UNKNOWN")!;
+    if (this.#native) {
+      return this.#native.fchmod(desiredMode);
     }
-
     return 0;
-  }
-
-  /** Calculate and apply backoff delay following an unsuccessful accept. */
-  async #acceptBackoff(): Promise<void> {
-    // Backoff after transient errors to allow time for the system to
-    // recover, and avoid blocking up the event loop with a continuously
-    // running loop.
-    if (!this.#acceptBackoffDelay) {
-      this.#acceptBackoffDelay = INITIAL_ACCEPT_BACKOFF_DELAY;
-    } else {
-      this.#acceptBackoffDelay *= 2;
-    }
-
-    if (this.#acceptBackoffDelay >= MAX_ACCEPT_BACKOFF_DELAY) {
-      this.#acceptBackoffDelay = MAX_ACCEPT_BACKOFF_DELAY;
-    }
-
-    await delay(this.#acceptBackoffDelay);
-  }
-
-  /** Accept new connections on Windows named pipes. */
-  async #acceptWindows(): Promise<void> {
-    while (!this.#closed) {
-      try {
-        // Wait for a client to connect
-        await op_pipe_windows_wait(this.#serverPipeRid!);
-
-        // Connection established, wrap it
-        const connectionHandle = new Pipe(socketType.SOCKET);
-        connectionHandle[kStreamBaseField] = new PipeConn(this.#serverPipeRid!);
-
-        this.#connections++;
-
-        try {
-          this.onconnection!(0, connectionHandle);
-        } catch {
-          // swallow callback errors.
-        }
-
-        // Reset the backoff delay upon successful accept.
-        this.#acceptBackoffDelay = undefined;
-
-        // Create a new server pipe for the next connection
-        const newRid = op_pipe_open(
-          this.#address!,
-          this.#pendingInstances,
-          false,
-          true,
-          true,
-          "net.Server.listen()",
-        );
-
-        this.#serverPipeRid = newRid;
-      } catch {
-        if (this.#closed) {
-          return;
-        }
-
-        try {
-          this.onconnection!(MapPrototypeGet(codeMap, "UNKNOWN")!, undefined);
-        } catch {
-          // swallow callback errors.
-        }
-
-        await delay(this.#acceptBackoffDelay || INITIAL_ACCEPT_BACKOFF_DELAY);
-      }
-    }
   }
 
   /** Handle server closure. */
@@ -496,16 +321,7 @@ export class Pipe extends ConnectionWrap {
     this.#closed = true;
     this.reading = false;
     this.#address = undefined;
-    this.#acceptBackoffDelay = undefined;
 
-    // Windows: close server pipe resource
-    if (this.#serverPipeRid !== undefined) {
-      core.tryClose(this.#serverPipeRid);
-      this.#serverPipeRid = undefined;
-    }
-
-    // Native handle close is handled by LibUvStreamWrap._onClose
-    // which calls uv_close -> close_pipe.
     if (this.#native) {
       this.#native.close();
       this.#native = null;

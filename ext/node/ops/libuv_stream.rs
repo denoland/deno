@@ -923,7 +923,6 @@ impl NativePipe {
     }
   }
 
-  #[cfg(unix)]
   #[fast]
   fn listen(&self, #[smi] backlog: i32) -> i32 {
     // SAFETY: handle is valid
@@ -936,14 +935,12 @@ impl NativePipe {
     }
   }
 
-  #[cfg(unix)]
   #[fast]
   fn accept(&self, #[cppgc] client: &NativePipe) -> i32 {
     // SAFETY: both handles are valid
     unsafe { uv_compat::uv_pipe_accept(self.raw(), client.raw()) }
   }
 
-  #[cfg(unix)]
   #[nofast]
   fn connect(&self, #[string] path: &str) -> i32 {
     // SAFETY: handle is valid; ConnectReq freed in connect_cb
@@ -965,6 +962,47 @@ impl NativePipe {
         let _ = Box::from_raw(req);
       }
       ret
+    }
+  }
+
+  /// Set the number of pending pipe instances (Windows named pipes only).
+  /// On Unix this is a no-op.
+  #[fast]
+  #[rename("setPendingInstances")]
+  fn set_pending_instances(&self, #[smi] _instances: i32) {
+    // On Windows, this would configure ServerOptions::max_instances.
+    // On Unix, named pipes don't have this concept.
+  }
+
+  /// Change permissions on the bound pipe path.
+  #[fast]
+  fn fchmod(&self, #[smi] mode: i32) -> i32 {
+    #[cfg(unix)]
+    {
+      let pipe = self.raw();
+      if pipe.is_null() {
+        return uv_compat::UV_EBADF;
+      }
+      // SAFETY: pipe is valid.
+      if let Some(path) = unsafe { &*pipe }.bind_path() {
+        let c_path = match std::ffi::CString::new(path) {
+          Ok(p) => p,
+          Err(_) => return uv_compat::UV_EINVAL,
+        };
+        // SAFETY: c_path is a valid null-terminated C string.
+        if unsafe { libc::chmod(c_path.as_ptr(), mode as libc::mode_t) } != 0 {
+          return -1;
+        }
+        0
+      } else {
+        uv_compat::UV_EBADF
+      }
+    }
+    #[cfg(windows)]
+    {
+      let _ = mode;
+      // Windows named pipes don't support chmod.
+      0
     }
   }
 
