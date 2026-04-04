@@ -59,13 +59,10 @@ pub fn setup_npm_compat(
   // Install jsr: packages to node_modules/@jsr/
   let installed = install_jsr_packages(project_root, deno_imports)?;
 
-  // Generate tsconfig.deno.json
+  // Generate tsconfig.deno.json (but not tsconfig.json — creating one
+  // interferes with Deno's own type checker which picks up the "types":
+  // ["deno"] setting via extends)
   generate_deno_tsconfig(project_root, deno_compiler_options, deno_imports)?;
-
-  // If user already has a tsconfig.json, update it to extend tsconfig.deno.json.
-  // We don't create a new tsconfig.json — only update existing ones — to avoid
-  // interfering with Deno's own type checker in projects that don't use one.
-  update_user_tsconfig(project_root)?;
 
   Ok(installed)
 }
@@ -104,45 +101,6 @@ fn generate_deno_tsconfig(
   .map_err(|e| anyhow!("Failed to generate tsconfig: {e}"))?;
 
   log::debug!("Generated {}", generated.tsconfig_path.display());
-
-  Ok(())
-}
-
-fn update_user_tsconfig(project_root: &Path) -> Result<(), AnyError> {
-  let tsconfig_path = project_root.join("tsconfig.json");
-
-  if tsconfig_path.exists() {
-    let content = std::fs::read_to_string(&tsconfig_path)?;
-    let mut tsconfig: Value = serde_json::from_str(&content).or_else(|_| {
-      jsonc_parser::parse_to_serde_value(
-        &content,
-        &jsonc_parser::ParseOptions::default(),
-      )
-      .map(|v: Option<Value>| v.unwrap_or(json!({})))
-      .map_err(|e| anyhow!("Failed to parse tsconfig.json: {e}"))
-    })?;
-
-    if let Some(obj) = tsconfig.as_object_mut() {
-      let current_extends = obj.get("extends");
-      if current_extends.is_some_and(|v| {
-        v == "tsconfig.deno.json" || v == "./tsconfig.deno.json"
-      }) {
-        return Ok(());
-      }
-
-      obj.insert("extends".to_string(), json!("./tsconfig.deno.json"));
-      let updated =
-        serde_json::to_string_pretty(&tsconfig).expect("failed to serialize");
-      std::fs::write(&tsconfig_path, updated)?;
-      log::debug!("Updated {} (added extends)", tsconfig_path.display());
-    }
-  } else {
-    let tsconfig = json!({ "extends": "./tsconfig.deno.json" });
-    let content =
-      serde_json::to_string_pretty(&tsconfig).expect("failed to serialize");
-    std::fs::write(&tsconfig_path, content)?;
-    log::debug!("Created {}", tsconfig_path.display());
-  }
 
   Ok(())
 }

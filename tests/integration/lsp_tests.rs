@@ -18967,7 +18967,6 @@ fn compiler_options_types() {
   }
 }
 
-#[ignore]
 #[test(timeout = 300)]
 fn type_reference_import_meta() {
   let context = TestContextBuilder::for_npm().use_temp_cwd().build();
@@ -19089,7 +19088,6 @@ fn ambient_module_errors_suppressed() {
   );
 }
 
-#[ignore]
 #[test(timeout = 300)]
 fn definitely_typed_fallback() {
   let context = TestContextBuilder::for_npm().use_temp_cwd().build();
