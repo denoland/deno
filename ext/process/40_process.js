@@ -300,6 +300,7 @@ export function nodeSpawnChild(command, {
     extraPipeFds: child.extraPipeFds,
     get status() {
       const promise = op_spawn_wait(child.rid);
+      this.waitPromise = promise;
       ObjectDefineProperty(this, "status", {
         __proto__: null,
         value: promise,
@@ -310,9 +311,11 @@ export function nodeSpawnChild(command, {
       op_spawn_kill(child.rid, signal);
     },
     ref() {
+      if (this.waitPromise) core.refOpPromise(this.waitPromise);
       op_spawn_child_ref(child.rid);
     },
     unref() {
+      if (this.waitPromise) core.unrefOpPromise(this.waitPromise);
       op_spawn_child_unref(child.rid);
     },
   };
