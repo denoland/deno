@@ -876,7 +876,8 @@ impl NativePipe {
         deno_core::uv_compat::uv_pipe_listen(
           h.as_mut_ptr(),
           backlog,
-          Some(server_connection_cb),
+          None, // No C callback; JS callbacks fire from poll_pipe_handle
+                // through the onconnection property on the JS object.
         )
       },
       None => deno_core::uv_compat::UV_EBADF,
@@ -906,23 +907,17 @@ impl NativePipe {
     match &self.handle {
       // SAFETY: h is a valid OwnedPtr to an initialized uv_pipe_t.
       Some(h) => {
-        let req = Box::into_raw(Box::new(uv_compat::new_connect()));
-        // SAFETY: req is a valid allocated uv_connect_t.
-        let ret = unsafe {
+        // No C callback or req; JS callback fires from poll_pipe_handle
+        // through the onconnect property on the JS object.
+        // SAFETY: null req and no callback.
+        unsafe {
           deno_core::uv_compat::uv_pipe_connect(
-            req,
+            std::ptr::null_mut(),
             h.as_mut_ptr(),
             path,
-            Some(connect_cb),
+            None,
           )
-        };
-        if ret != 0 {
-          // SAFETY: req was just allocated and not consumed.
-          unsafe {
-            let _ = Box::from_raw(req);
-          }
         }
-        ret
       }
       None => deno_core::uv_compat::UV_EBADF,
     }

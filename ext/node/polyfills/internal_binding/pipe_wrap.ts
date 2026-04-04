@@ -192,8 +192,16 @@ export class Pipe extends ConnectionWrap {
     }
     this.#ensureNative();
     this.#address = address;
-    // The native connect callback (connect_cb) fires afterConnect
-    // through the handle's JS object onconnect property.
+    // Set the connect callback on the native handle so connect_cb can find it.
+    // deno-lint-ignore no-this-alias
+    const self = this;
+    this.#native.onconnect = function (status: number) {
+      try {
+        self.afterConnect(req, status);
+      } catch {
+        // swallow callback errors.
+      }
+    };
     return this.#native.connect(address);
   }
 
@@ -202,9 +210,37 @@ export class Pipe extends ConnectionWrap {
       return this.#listenWindows();
     }
     this.#ensureNative();
-    // Native listen sets up the UnixListener and polls for connections.
-    // The connection callback (server_connection_cb) fires onconnection
-    // through the handle's JS object.
+    // Set the connection callback on the native handle so
+    // server_connection_cb can find it.
+    // deno-lint-ignore no-this-alias
+    const self = this;
+    this.#native.onconnection = function (status: number) {
+      if (status === 0) {
+        // Accept the connection into a new NativePipe.
+        const clientHandle = new Pipe(socketType.SOCKET);
+        clientHandle.#ensureNative();
+        const acceptErr = self.#native.accept(clientHandle.#native);
+        if (acceptErr !== 0) {
+          try {
+            self.onconnection!(acceptErr, undefined);
+          } catch {
+            // swallow callback errors.
+          }
+          return;
+        }
+        try {
+          self.onconnection!(0, clientHandle);
+        } catch {
+          // swallow callback errors.
+        }
+      } else {
+        try {
+          self.onconnection!(status, undefined);
+        } catch {
+          // swallow callback errors.
+        }
+      }
+    };
     return this.#native.listen(ceilPowOf2(backlog + 1));
   }
 
@@ -214,6 +250,7 @@ export class Pipe extends ConnectionWrap {
       this.#native = new NativePipeHandle(
         this.ipc ? socketType.IPC : socketType.SOCKET,
       );
+      this.#native.setOwner();
     }
   }
 
