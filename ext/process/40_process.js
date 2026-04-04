@@ -18,7 +18,6 @@ const {
   ArrayPrototypeMap,
   ArrayPrototypeSlice,
   TypeError,
-  ObjectDefineProperty,
   ObjectEntries,
   SafeArrayIterator,
   String,
@@ -289,6 +288,13 @@ export function nodeSpawnChild(command, {
     needsNpmProcessState,
   }, "node:child_process");
 
+  const waitPromise = op_spawn_wait(child.rid);
+  let waitComplete = false;
+  const status = PromisePrototypeThen(waitPromise, (res) => {
+    waitComplete = true;
+    return res;
+  });
+
   return {
     __proto__: null,
     rid: child.rid,
@@ -298,25 +304,21 @@ export function nodeSpawnChild(command, {
     stderrFd: child.stderrFd,
     ipcPipeRid: child.ipcPipeRid,
     extraPipeRids: child.extraPipeRids,
-    get status() {
-      const promise = op_spawn_wait(child.rid);
-      this.waitPromise = promise;
-      ObjectDefineProperty(this, "status", {
-        __proto__: null,
-        value: promise,
-      });
-      return promise;
-    },
+    status,
     kill(signal) {
       op_spawn_kill(child.rid, signal);
     },
     ref() {
-      if (this.waitPromise) core.refOpPromise(this.waitPromise);
-      op_spawn_child_ref(child.rid);
+      core.refOpPromise(waitPromise);
+      if (!waitComplete) {
+        op_spawn_child_ref(child.rid);
+      }
     },
     unref() {
-      if (this.waitPromise) core.unrefOpPromise(this.waitPromise);
-      op_spawn_child_unref(child.rid);
+      core.unrefOpPromise(waitPromise);
+      if (!waitComplete) {
+        op_spawn_child_unref(child.rid);
+      }
     },
   };
 }
