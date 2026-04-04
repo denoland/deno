@@ -969,9 +969,14 @@ impl NativePipe {
   /// On Unix this is a no-op.
   #[fast]
   #[rename("setPendingInstances")]
-  fn set_pending_instances(&self, #[smi] _instances: i32) {
-    // On Windows, this would configure ServerOptions::max_instances.
-    // On Unix, named pipes don't have this concept.
+  fn set_pending_instances(&self, #[smi] instances: i32) {
+    let pipe = self.raw();
+    if !pipe.is_null() {
+      // SAFETY: pipe handle is valid.
+      unsafe {
+        deno_core::uv_compat::uv_pipe_set_pending_instances(pipe, instances);
+      }
+    }
   }
 
   /// Change permissions on the bound pipe path.

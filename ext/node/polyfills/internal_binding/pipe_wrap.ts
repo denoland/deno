@@ -50,7 +50,6 @@ const {
   Error,
   FunctionPrototypeCall,
   MapPrototypeGet,
-  ReflectHas,
   queueMicrotask,
 } = primordials;
 
@@ -63,10 +62,6 @@ export enum socketType {
 export class Pipe extends ConnectionWrap {
   override reading = false;
   ipc: boolean;
-
-  #pendingInstances = 4;
-  #address?: string;
-  #closed = false;
 
   // Native pipe handle for fd-based I/O (via uv_pipe_open).
   // When set, readStart/readStop/writeBuffer/close delegate to native.
@@ -102,16 +97,7 @@ export class Pipe extends ConnectionWrap {
     }
 
     super(provider, conn);
-
     this.ipc = ipc;
-
-    if (
-      conn && provider === providerType.PIPEWRAP &&
-      ReflectHas(conn, "localAddr")
-    ) {
-      const localAddr = conn.localAddr;
-      this.#address = localAddr.path;
-    }
   }
 
   open(fd: number): number {
@@ -192,14 +178,12 @@ export class Pipe extends ConnectionWrap {
   }
 
   bind(name: string) {
-    this.#address = name;
     this.#ensureNative();
     return this.#native.pipeBindToPath(name);
   }
 
   connect(req: PipeConnectWrap, address: string) {
     this.#ensureNative();
-    this.#address = address;
     // Set the connect callback on the native handle so connect_cb can find it.
     // deno-lint-ignore no-this-alias
     const self = this;
@@ -279,10 +263,8 @@ export class Pipe extends ConnectionWrap {
    * @param instances Number of pending pipe instances.
    */
   setPendingInstances(instances: number) {
-    this.#pendingInstances = instances;
-    if (this.#native) {
-      this.#native.setPendingInstances(instances);
-    }
+    this.#ensureNative();
+    this.#native.setPendingInstances(instances);
   }
 
   /**
@@ -318,9 +300,7 @@ export class Pipe extends ConnectionWrap {
 
   /** Handle server closure. */
   override _onClose(): number {
-    this.#closed = true;
     this.reading = false;
-    this.#address = undefined;
 
     if (this.#native) {
       this.#native.close();

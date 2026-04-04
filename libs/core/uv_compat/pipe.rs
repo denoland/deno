@@ -83,6 +83,7 @@ pub struct uv_pipe_t {
   pub(crate) internal_reading: bool,
   pub(crate) internal_write_queue: VecDeque<WritePending>,
   pub(crate) internal_shutdown: Option<super::tcp::ShutdownPending>,
+  pub(crate) pending_instances: i32,
   pub(crate) ipc: bool,
 }
 
@@ -108,6 +109,20 @@ impl uv_pipe_t {
   /// Get the bind path if one was set.
   pub fn bind_path(&self) -> Option<&str> {
     self.internal_bind_path.as_deref()
+  }
+}
+
+/// Set the number of pending pipe instances for Windows named pipes.
+/// On Unix this is a no-op.
+///
+/// # Safety
+/// `pipe` must be a valid pointer to an initialized `uv_pipe_t`.
+pub unsafe fn uv_pipe_set_pending_instances(
+  pipe: *mut uv_pipe_t,
+  instances: i32,
+) {
+  unsafe {
+    (*pipe).pending_instances = instances;
   }
 }
 
@@ -156,6 +171,7 @@ pub fn new_pipe(ipc: bool) -> uv_pipe_t {
     internal_reading: false,
     internal_write_queue: VecDeque::new(),
     internal_shutdown: None,
+    pending_instances: 4, // libuv default
     ipc,
   }
 }
@@ -365,7 +381,9 @@ pub unsafe fn uv_pipe_listen(
     };
 
     let mut opts = tokio::net::windows::named_pipe::ServerOptions::new();
-    opts.first_pipe_instance(true);
+    opts
+      .first_pipe_instance(true)
+      .max_instances((*pipe).pending_instances as u32);
     let server = match opts.create(&path) {
       Ok(s) => s,
       Err(e) => return io_error_to_uv(&e),
