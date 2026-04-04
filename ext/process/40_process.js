@@ -318,6 +318,62 @@ export function nodeSpawnChild(command, {
   };
 }
 
+// Node compat sync spawn: calls op_spawn_sync and returns pid/killedByTimeout
+// as normal fields instead of hidden properties on a Deno.CommandOutput.
+export function nodeSpawnSyncChild({
+  args,
+  cwd,
+  clearEnv,
+  argv0,
+  env,
+  uid,
+  gid,
+  stdin,
+  stdout,
+  stderr,
+  windowsRawArguments,
+  needsNpmProcessState,
+  input,
+  timeout,
+  killSignal,
+}) {
+  const spawnArgs = {
+    cmd: pathFromURL(args[0]),
+    args: ArrayPrototypeMap(ArrayPrototypeSlice(args, 1), String),
+    cwd: pathFromURL(cwd),
+    clearEnv,
+    env: ObjectEntries(env),
+    uid,
+    gid,
+    stdin,
+    stdout,
+    stderr,
+    windowsRawArguments,
+    extraStdio: [],
+    detached: false,
+    needsNpmProcessState,
+    input,
+    argv0,
+  };
+  if (timeout != null && timeout > 0) {
+    spawnArgs.timeout = timeout;
+    if (killSignal != null) {
+      spawnArgs.killSignal = killSignal;
+    }
+  }
+  const result = op_spawn_sync(spawnArgs);
+  return {
+    __proto__: null,
+    success: result.status.success,
+    code: result.status.code,
+    signal: result.status.signal,
+    stdout: result.stdout,
+    stderr: result.stderr,
+    pid: result.pid,
+    killedByTimeout: result.killedByTimeout,
+  };
+}
+
 class ChildProcess {
   #rid;
   #waitPromise;
@@ -596,17 +652,6 @@ function spawnSyncInner(command, {
       return result.stderr;
     },
   };
-  // Internal fields used by node:child_process, hidden from Deno public API.
-  ObjectDefineProperty(output, "_pid", {
-    __proto__: null,
-    value: result.pid,
-    enumerable: false,
-  });
-  ObjectDefineProperty(output, "_killedByTimeout", {
-    __proto__: null,
-    value: result.killedByTimeout,
-    enumerable: false,
-  });
   return output;
 }
 

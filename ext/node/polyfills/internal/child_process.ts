@@ -71,12 +71,9 @@ import { Pipe, socketType } from "ext:deno_node/internal_binding/pipe_wrap.ts";
 import { Server as NetServer, Socket } from "node:net";
 import { Socket as DgramSocket } from "node:dgram";
 import {
-  kArgv0,
-  kInputOption,
-  kKillSignalOption,
   kNeedsNpmProcessState,
-  kTimeoutOption,
   nodeSpawnChild,
+  nodeSpawnSyncChild,
 } from "ext:deno_process/40_process.js";
 
 export function mapValues<T, O>(
@@ -1557,19 +1554,6 @@ export interface SpawnSyncResult {
   error?: Error;
 }
 
-function parseSpawnSyncOutputStreams(
-  output: Deno.CommandOutput,
-  name: "stdout" | "stderr",
-): string | Buffer | null {
-  // new Deno.Command().outputSync() returns getters for stdout and stderr that throw when set
-  // to 'inherit'.
-  try {
-    return Buffer.from(output[name]) as string | Buffer;
-  } catch {
-    return null;
-  }
-}
-
 function normalizeInput(input: unknown) {
   if (input == null) {
     return null;
@@ -1626,28 +1610,31 @@ export function spawnSync(
 
   const result: SpawnSyncResult = {};
   try {
-    const output = new Deno.Command(command, {
-      args,
+    const output = nodeSpawnSyncChild({
+      args: [command, ...args],
       cwd,
       env: mapValues(env, (value) => value.toString()),
-      [kArgv0]: argv0 !== command ? argv0 : undefined,
+      argv0: argv0 !== command ? argv0 : undefined,
       stdout: toDenoStdio(stdout_),
       stderr: toDenoStdio(stderr_),
       stdin: stdin_ == "inherit" ? "inherit" : "null",
       uid,
       gid,
+      clearEnv: false,
       windowsRawArguments: windowsVerbatimArguments,
-      [kInputOption]: input_,
       // deno-lint-ignore no-explicit-any
-      [kNeedsNpmProcessState]: (options as any)[kNeedsNpmProcessState] ||
+      needsNpmProcessState: (options as any)[kNeedsNpmProcessState] ||
         includeNpmProcessState,
-      [kTimeoutOption]: timeout,
-      [kKillSignalOption]: killSignal,
-    }).outputSync();
+      input: input_,
+      timeout,
+      killSignal,
+    });
 
     const status = output.signal ? null : output.code;
-    let stdout = parseSpawnSyncOutputStreams(output, "stdout");
-    let stderr = parseSpawnSyncOutputStreams(output, "stderr");
+    // deno-lint-ignore no-explicit-any
+    let stdout: any = output.stdout ? Buffer.from(output.stdout) : null;
+    // deno-lint-ignore no-explicit-any
+    let stderr: any = output.stderr ? Buffer.from(output.stderr) : null;
 
     if (
       (stdout && stdout.length > maxBuffer!) ||
@@ -1656,9 +1643,7 @@ export function spawnSync(
       result.error = _createSpawnError("ENOBUFS", command, args, true);
     }
 
-    // deno-lint-ignore no-explicit-any
-    const killedByTimeout = (output as any)._killedByTimeout;
-    if (killedByTimeout) {
+    if (output.killedByTimeout) {
       result.error = _createSpawnError("ETIMEDOUT", command, args, true);
     }
 
@@ -1667,13 +1652,12 @@ export function spawnSync(
       stderr = stderr && stderr.toString(encoding);
     }
 
-    // deno-lint-ignore no-explicit-any
-    result.pid = (output as any)._pid;
+    result.pid = output.pid;
     // When killed by timeout, report the killSignal (matching Node.js behavior).
     // On Windows there are no real Unix signals, but Node still reports the
     // configured killSignal so callers can detect the timeout.
-    result.status = killedByTimeout ? null : status;
-    result.signal = killedByTimeout
+    result.status = output.killedByTimeout ? null : status;
+    result.signal = output.killedByTimeout
       ? _resolveKillSignalName(killSignal)
       : output.signal;
     result.stdout = stdout;
