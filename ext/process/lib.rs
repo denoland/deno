@@ -724,10 +724,7 @@ fn create_command(
       ipc_rid = Some(pipe_rid);
     }
 
-    for (i, stdio) in args.extra_stdio.into_iter().enumerate() {
-      // index 0 in `extra_stdio` actually refers to fd 3
-      // because we handle stdin,stdout,stderr specially
-      let target_fd = (i + 3) as i32;
+    for (_i, stdio) in args.extra_stdio.into_iter().enumerate() {
       match stdio {
         StdioOrFd::Stdio(Stdio::Piped) => {
           let (fd1, fd2) = deno_io::bi_pipe_pair_raw()?;
