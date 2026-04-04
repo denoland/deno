@@ -28,10 +28,10 @@ import { core, primordials } from "ext:core/mod.js";
 import {
   op_node_create_pipe,
   op_node_fd_set_blocking,
+  op_node_fd_write_deferred,
   op_node_fs_close,
   op_node_fs_read_deferred,
   op_node_fs_read_sync,
-  op_node_fs_write_deferred,
   op_node_fs_write_sync,
   op_node_register_fd,
   op_pipe_connect,
@@ -122,8 +122,7 @@ class FdStreamBase {
     if (this.#blocking) {
       return op_node_fs_write_sync(this.#fd, data, -1);
     }
-    // position = -1 means non-positioned (sequential) write
-    return await op_node_fs_write_deferred(this.#fd, data, -1);
+    return await op_node_fd_write_deferred(this.#fd, data);
   }
 
   close(): void {
