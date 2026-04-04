@@ -382,7 +382,7 @@ export class TCP extends ConnectionWrap {
 
   override ref() {
     if (this[kUseNativeWrap] && this.#native) {
-      // TODO(@littledivy): implement uv_ref on native handle
+      this.#native.ref();
       return;
     }
 
@@ -393,7 +393,6 @@ export class TCP extends ConnectionWrap {
 
   override unref() {
     if (this[kUseNativeWrap] && this.#native) {
-      // TODO(@littledivy): implement uv_unref on native handle
       this.#native.unref();
       return;
     }
