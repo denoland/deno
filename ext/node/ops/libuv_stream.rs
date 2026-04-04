@@ -137,18 +137,15 @@ unsafe extern "C" fn stream_read_cb(
   nread: isize,
   _buf: *const UvBuf,
 ) {
-  eprintln!("[stream_read_cb] nread={}", nread);
   // SAFETY: pointers are valid per libuv read callback contract
   unsafe {
     let data = (*stream).data as *mut StreamHandleData;
     if data.is_null() {
-      eprintln!("[stream_read_cb] data is null!");
       return;
     }
     let js_obj = match (*data).js_object {
       Some(ref obj) => obj,
       None => {
-        eprintln!("[stream_read_cb] js_object is None!");
         return;
       }
     };
@@ -165,10 +162,6 @@ unsafe extern "C" fn stream_read_cb(
     let key = v8::String::new(scope, "onread").unwrap();
     let onread = this.get(scope, key.into());
 
-    eprintln!(
-      "[stream_read_cb] onread is function: {}",
-      onread.map(|v| v.is_function()).unwrap_or(false)
-    );
     if let Some(Ok(func)) = onread.map(v8::Local::<v8::Function>::try_from) {
       let nread_val = v8::Integer::new(scope, nread as i32);
 
@@ -892,15 +885,29 @@ impl NativePipe {
   }
 
   #[fast]
-  fn open(&self, #[smi] fd: i32) -> i32 {
+  fn open(&self, state: &mut OpState, #[smi] fd: i32) -> i32 {
+    // Check FdTable for duplicate fds. Stdio fds (0-2) are pre-registered
+    // as TableOwned; for those, Pipe.open is allowed (no-op check).
+    // Non-stdio fds already in FdTable are rejected (EEXIST).
+    {
+      let fd_table = state.borrow::<deno_io::FdTable>();
+      if fd_table.contains(fd) && !(0..=2).contains(&fd) {
+        return -libc::EEXIST;
+      }
+    }
     // SAFETY: handle is valid
-    unsafe {
+    let ret = unsafe {
       let pipe = self.raw();
       if pipe.is_null() {
         return uv_compat::UV_EBADF;
       }
       uv_compat::uv_pipe_open(pipe, fd)
+    };
+    if ret == 0 {
+      // Register as UvOwned - the native handle owns the fd.
+      state.borrow_mut::<deno_io::FdTable>().register_uv_owned(fd);
     }
+    ret
   }
 
   #[fast]
@@ -1038,11 +1045,22 @@ impl NativePipe {
   }
 
   #[fast]
-  fn close(&self) {
+  fn close(&self, state: &mut OpState) {
     if self.closed.get() {
       return;
     }
     self.closed.set(true);
+    // Remove the UvOwned entry from FdTable.
+    #[cfg(unix)]
+    {
+      let pipe = self.raw();
+      if !pipe.is_null() {
+        // SAFETY: pipe is valid, fd() is a safe public accessor.
+        if let Some(fd) = unsafe { &*pipe }.fd() {
+          state.borrow_mut::<deno_io::FdTable>().remove(fd);
+        }
+      }
+    }
     // SAFETY: handle is valid; freed in pipe_close_cb
     unsafe {
       let pipe = self.raw();

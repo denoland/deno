@@ -513,11 +513,9 @@ unsafe fn write_pipe(
         while offset < write_data.len() {
           match stream.try_write(&write_data[offset..]) {
             Ok(n) => {
-              eprintln!("[write_pipe] try_write on stream: {} bytes", n);
               offset += n;
             }
-            Err(ref e) => {
-              eprintln!("[write_pipe] try_write error: {}", e);
+            Err(ref _e) => {
               break;
             }
           }

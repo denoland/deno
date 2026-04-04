@@ -87,6 +87,14 @@ pub(crate) struct PipeConnectPending {
   >,
 }
 
+impl uv_pipe_t {
+  /// Get the raw fd if one has been opened on this pipe.
+  #[cfg(unix)]
+  pub fn fd(&self) -> Option<RawFd> {
+    self.internal_fd
+  }
+}
+
 /// Wrapper to implement `AsRawFd` for `AsyncFd`.
 #[cfg(unix)]
 pub struct RawFdWrapper(pub RawFd);
@@ -238,7 +246,6 @@ pub unsafe fn uv_pipe_listen(
     // Remove existing socket file if present (matching libuv behavior).
     let _ = std::fs::remove_file(&path);
 
-    eprintln!("[uv_pipe_listen] binding to path={}", path);
     let listener = match tokio::net::UnixListener::bind(&path) {
       Ok(l) => l,
       Err(e) => return io_error_to_uv(&e),
@@ -266,12 +273,10 @@ pub unsafe fn uv_pipe_accept(
   server: *mut uv_pipe_t,
   client: *mut uv_pipe_t,
 ) -> c_int {
-  eprintln!("[uv_pipe_accept] called");
   unsafe {
     if let Some(stream) = (*server).internal_backlog.pop_front() {
       use std::os::unix::io::AsRawFd;
       let fd = stream.as_raw_fd();
-      eprintln!("[uv_pipe_accept] got stream, fd={}", fd);
       (*client).internal_fd = Some(fd);
       (*client).internal_stream = Some(stream);
       (*client).flags |= UV_HANDLE_ACTIVE;
@@ -284,10 +289,6 @@ pub unsafe fn uv_pipe_accept(
         if !handles.iter().any(|&h| std::ptr::eq(h, client)) {
           handles.push(client);
         }
-      } else {
-        eprintln!(
-          "[uv_pipe_accept] WARNING: pipe_handles already borrowed, deferring registration"
-        );
       }
       0
     } else {
@@ -309,13 +310,8 @@ pub unsafe fn uv_pipe_connect(
   cb: Option<super::stream::uv_connect_cb>,
 ) -> c_int {
   let path = path.to_string();
-  eprintln!("[uv_pipe_connect] path={}", path);
-  let future = Box::pin(async move {
-    eprintln!("[uv_pipe_connect] future polled for path={}", path);
-    let r = tokio::net::UnixStream::connect(&path).await;
-    eprintln!("[uv_pipe_connect] connect result: {:?}", r.is_ok());
-    r
-  });
+  let future =
+    Box::pin(async move { tokio::net::UnixStream::connect(&path).await });
 
   unsafe {
     (*pipe).internal_connect = Some(PipeConnectPending { req, cb, future });
@@ -335,9 +331,6 @@ pub unsafe fn uv_pipe_connect(
 /// # Safety
 /// `pipe` must be a valid pointer to an initialized `uv_pipe_t`.
 pub(crate) unsafe fn close_pipe(pipe: *mut uv_pipe_t) {
-  eprintln!("[close_pipe] called, wq={}", unsafe {
-    (*pipe).internal_write_queue.len()
-  });
   unsafe {
     (*pipe).internal_reading = false;
     (*pipe).internal_alloc_cb = None;
@@ -613,38 +606,11 @@ pub(crate) unsafe fn poll_pipe_handle(
   let mut any_work = false;
 
   unsafe {
-    let total_pipes = super::get_inner((*pipe_ptr).loop_)
-      .pipe_handles
-      .borrow()
-      .len();
-    let has_connect = (*pipe_ptr).internal_connect.is_some();
-    let has_listener = (*pipe_ptr).internal_listener.is_some();
-    let has_backlog = !(*pipe_ptr).internal_backlog.is_empty();
-    let reading = (*pipe_ptr).internal_reading;
-    let has_stream = (*pipe_ptr).internal_stream.is_some();
-    let wq_len = (*pipe_ptr).internal_write_queue.len();
-    if has_connect || has_listener || reading || wq_len > 0 || has_stream {
-      eprintln!(
-        "[poll_pipe] total={} fd={:?} connect={} listener={} reading={} stream={} wq={} active={}",
-        total_pipes,
-        (*pipe_ptr).internal_fd,
-        has_connect,
-        has_listener,
-        reading,
-        has_stream,
-        wq_len,
-        (*pipe_ptr).flags & super::UV_HANDLE_ACTIVE != 0,
-      );
-    }
-
     // 1. Poll pending connect.
     let connect_result =
       if let Some(ref mut pending) = (*pipe_ptr).internal_connect {
         match pending.future.as_mut().poll(cx) {
-          Poll::Ready(result) => {
-            eprintln!("[poll_pipe] connect ready: {:?}", result.is_ok());
-            Some((pending.req, pending.cb, result))
-          }
+          Poll::Ready(result) => Some((pending.req, pending.cb, result)),
           Poll::Pending => None,
         }
       } else {
@@ -678,18 +644,14 @@ pub(crate) unsafe fn poll_pipe_handle(
       while let Poll::Ready(result) = listener.poll_accept(cx) {
         match result {
           Ok((stream, _)) => {
-            eprintln!("[poll_pipe] accepted connection!");
             (*pipe_ptr).internal_backlog.push_back(stream);
             any_work = true;
           }
-          Err(e) => {
-            eprintln!("[poll_pipe] accept error: {}", e);
+          Err(_e) => {
             break;
           }
         }
       }
-    } else if (*pipe_ptr).internal_listener.is_some() && !has_cb {
-      eprintln!("[poll_pipe] listener exists but no connection_cb!");
     }
     while !(*pipe_ptr).internal_backlog.is_empty() {
       if let Some(cb) = (*pipe_ptr).internal_connection_cb {
@@ -730,8 +692,7 @@ pub(crate) unsafe fn poll_pipe_handle(
         break;
       };
       match write_result {
-        Ok(n) => {
-          eprintln!("[poll_pipe] write success: {} bytes", n);
+        Ok(_n) => {
           any_work = true;
           let pw = (*pipe_ptr).internal_write_queue.pop_front().unwrap();
           if let Some(cb) = pw.cb {
@@ -813,12 +774,6 @@ pub(crate) unsafe fn poll_pipe_handle(
             } else {
               break;
             };
-          eprintln!(
-            "[poll_pipe] read_result: {:?} fd={:?} stream={}",
-            read_result.as_ref().map(|n| *n).map_err(|e| e.kind()),
-            (*pipe_ptr).internal_fd,
-            (*pipe_ptr).internal_stream.is_some()
-          );
           match read_result {
             Ok(0) => {
               // EOF

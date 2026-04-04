@@ -131,12 +131,9 @@ export class Pipe extends ConnectionWrap {
   }
 
   open(fd: number): number {
-    // Use the native uv_pipe_t handle for fd-based I/O.
-    // This integrates with the event loop directly, providing proper
-    // cancellation on close and ref/unref semantics.
-    this.#native = new NativePipeHandle(
-      this.ipc ? socketType.IPC : socketType.SOCKET,
-    );
+    this.#ensureNative();
+    // NativePipe.open checks FdTable for duplicates and registers
+    // as UvOwned (the native handle owns the fd, not FdTable).
     const err = this.#native.open(fd);
     if (err !== 0) {
       this.#native = null;
@@ -163,6 +160,7 @@ export class Pipe extends ConnectionWrap {
         }
         streamBaseState[kArrayBufferOffset] = 0;
         try {
+          // deno-lint-ignore prefer-primordials
           self.onread!(buf ?? new Uint8Array(0), nread);
         } catch {
           // swallow callback errors.
