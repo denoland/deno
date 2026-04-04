@@ -852,4 +852,78 @@ impl NativePipe {
       None => deno_core::uv_compat::UV_EBADF,
     }
   }
+
+  /// Bind to a Unix domain socket path.
+  #[fast]
+  fn bind(&self, #[string] path: &str) -> i32 {
+    match &self.handle {
+      // SAFETY: h is a valid OwnedPtr to an initialized uv_pipe_t.
+      Some(h) => unsafe {
+        deno_core::uv_compat::uv_pipe_bind(h.as_mut_ptr(), path)
+      },
+      None => deno_core::uv_compat::UV_EBADF,
+    }
+  }
+
+  /// Start listening for connections.
+  #[cfg(unix)]
+  #[fast]
+  fn listen(&self, #[smi] backlog: i32) -> i32 {
+    match &self.handle {
+      // SAFETY: h is a valid OwnedPtr to an initialized uv_pipe_t.
+      Some(h) => unsafe {
+        deno_core::uv_compat::uv_pipe_listen(
+          h.as_mut_ptr(),
+          backlog,
+          Some(server_connection_cb),
+        )
+      },
+      None => deno_core::uv_compat::UV_EBADF,
+    }
+  }
+
+  /// Accept a connection into a new NativePipe handle.
+  #[cfg(unix)]
+  #[fast]
+  fn accept(&self, #[cppgc] client: &NativePipe) -> i32 {
+    match (&self.handle, &client.handle) {
+      // SAFETY: both handles are valid OwnedPtrs to initialized uv_pipe_t.
+      (Some(server), Some(client_h)) => unsafe {
+        deno_core::uv_compat::uv_pipe_accept(
+          server.as_mut_ptr(),
+          client_h.as_mut_ptr(),
+        )
+      },
+      _ => deno_core::uv_compat::UV_EBADF,
+    }
+  }
+
+  /// Connect to a Unix domain socket path.
+  #[cfg(unix)]
+  #[nofast]
+  fn connect(&self, #[string] path: &str) -> i32 {
+    match &self.handle {
+      // SAFETY: h is a valid OwnedPtr to an initialized uv_pipe_t.
+      Some(h) => {
+        let req = Box::into_raw(Box::new(uv_compat::new_connect()));
+        // SAFETY: req is a valid allocated uv_connect_t.
+        let ret = unsafe {
+          deno_core::uv_compat::uv_pipe_connect(
+            req,
+            h.as_mut_ptr(),
+            path,
+            Some(connect_cb),
+          )
+        };
+        if ret != 0 {
+          // SAFETY: req was just allocated and not consumed.
+          unsafe {
+            let _ = Box::from_raw(req);
+          }
+        }
+        ret
+      }
+      None => deno_core::uv_compat::UV_EBADF,
+    }
+  }
 }

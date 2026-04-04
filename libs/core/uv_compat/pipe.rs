@@ -50,11 +50,40 @@ pub struct uv_pipe_t {
   pub(crate) internal_pending_read:
     Option<tokio::task::JoinHandle<std::io::Result<(Vec<u8>, usize)>>>,
 
+  // Connected stream (from connect or accept)
+  #[cfg(unix)]
+  pub(crate) internal_stream: Option<tokio::net::UnixStream>,
+
+  // Server listener
+  #[cfg(unix)]
+  pub(crate) internal_listener: Option<tokio::net::UnixListener>,
+  pub(crate) internal_bind_path: Option<String>,
+
+  // Pending connect
+  pub(crate) internal_connect: Option<PipeConnectPending>,
+
+  // Connection backlog (accepted streams waiting for uv_accept)
+  #[cfg(unix)]
+  pub(crate) internal_backlog: VecDeque<tokio::net::UnixStream>,
+  pub(crate) internal_connection_cb: Option<super::stream::uv_connection_cb>,
+
   pub(crate) internal_alloc_cb: Option<uv_alloc_cb>,
   pub(crate) internal_read_cb: Option<uv_read_cb>,
   pub(crate) internal_reading: bool,
   pub(crate) internal_write_queue: VecDeque<WritePending>,
   pub(crate) ipc: bool,
+}
+
+/// In-flight pipe connect operation.
+pub(crate) struct PipeConnectPending {
+  pub req: *mut super::stream::uv_connect_t,
+  pub cb: Option<super::stream::uv_connect_cb>,
+  #[cfg(unix)]
+  pub future: std::pin::Pin<
+    Box<
+      dyn std::future::Future<Output = std::io::Result<tokio::net::UnixStream>>,
+    >,
+  >,
 }
 
 /// Wrapper to implement `AsRawFd` for `AsyncFd`.
@@ -82,6 +111,15 @@ pub fn new_pipe(ipc: bool) -> uv_pipe_t {
     internal_handle: None,
     #[cfg(windows)]
     internal_pending_read: None,
+    #[cfg(unix)]
+    internal_stream: None,
+    #[cfg(unix)]
+    internal_listener: None,
+    internal_bind_path: None,
+    internal_connect: None,
+    #[cfg(unix)]
+    internal_backlog: VecDeque::new(),
+    internal_connection_cb: None,
     internal_alloc_cb: None,
     internal_read_cb: None,
     internal_reading: false,
@@ -166,6 +204,106 @@ pub unsafe fn uv_pipe_open(pipe: *mut uv_pipe_t, fd: c_int) -> c_int {
   0
 }
 
+/// Bind to a Unix domain socket path.
+///
+/// # Safety
+/// `pipe` must be a valid pointer to an initialized `uv_pipe_t`.
+pub unsafe fn uv_pipe_bind(pipe: *mut uv_pipe_t, path: &str) -> c_int {
+  unsafe {
+    (*pipe).internal_bind_path = Some(path.to_string());
+  }
+  0
+}
+
+/// Start listening for connections on a bound pipe.
+///
+/// # Safety
+/// `pipe` must be a valid pointer to an initialized, bound `uv_pipe_t`.
+#[cfg(unix)]
+pub unsafe fn uv_pipe_listen(
+  pipe: *mut uv_pipe_t,
+  _backlog: c_int,
+  cb: Option<super::stream::uv_connection_cb>,
+) -> c_int {
+  unsafe {
+    let path = match &(*pipe).internal_bind_path {
+      Some(p) => p.clone(),
+      None => return super::UV_EINVAL,
+    };
+
+    // Remove existing socket file if present (matching libuv behavior).
+    let _ = std::fs::remove_file(&path);
+
+    let listener = match tokio::net::UnixListener::bind(&path) {
+      Ok(l) => l,
+      Err(e) => return io_error_to_uv(&e),
+    };
+
+    (*pipe).internal_listener = Some(listener);
+    (*pipe).internal_connection_cb = cb;
+    (*pipe).flags |= UV_HANDLE_ACTIVE;
+
+    let inner = super::get_inner((*pipe).loop_);
+    let mut handles = inner.pipe_handles.borrow_mut();
+    if !handles.iter().any(|&h| std::ptr::eq(h, pipe)) {
+      handles.push(pipe);
+    }
+  }
+  0
+}
+
+/// Accept a pending connection from the backlog into a client pipe handle.
+///
+/// # Safety
+/// `server` and `client` must be valid pointers to initialized `uv_pipe_t`.
+#[cfg(unix)]
+pub unsafe fn uv_pipe_accept(
+  server: *mut uv_pipe_t,
+  client: *mut uv_pipe_t,
+) -> c_int {
+  unsafe {
+    if let Some(stream) = (*server).internal_backlog.pop_front() {
+      use std::os::unix::io::AsRawFd;
+      let fd = stream.as_raw_fd();
+      (*client).internal_fd = Some(fd);
+      (*client).internal_stream = Some(stream);
+      (*client).flags |= UV_HANDLE_ACTIVE;
+      0
+    } else {
+      super::UV_EAGAIN
+    }
+  }
+}
+
+/// Start an async connect to a Unix domain socket path.
+///
+/// # Safety
+/// `pipe` must be a valid pointer to an initialized `uv_pipe_t`.
+/// `req` must be a valid pointer to a `uv_connect_t`.
+#[cfg(unix)]
+pub unsafe fn uv_pipe_connect(
+  req: *mut super::stream::uv_connect_t,
+  pipe: *mut uv_pipe_t,
+  path: &str,
+  cb: Option<super::stream::uv_connect_cb>,
+) -> c_int {
+  let path = path.to_string();
+  let future =
+    Box::pin(async move { tokio::net::UnixStream::connect(&path).await });
+
+  unsafe {
+    (*pipe).internal_connect = Some(PipeConnectPending { req, cb, future });
+    (*pipe).flags |= UV_HANDLE_ACTIVE;
+
+    let inner = super::get_inner((*pipe).loop_);
+    let mut handles = inner.pipe_handles.borrow_mut();
+    if !handles.iter().any(|&h| std::ptr::eq(h, pipe)) {
+      handles.push(pipe);
+    }
+  }
+  0
+}
+
 /// Close the pipe handle: close the fd and clean up.
 ///
 /// # Safety
@@ -175,13 +313,24 @@ pub(crate) unsafe fn close_pipe(pipe: *mut uv_pipe_t) {
     (*pipe).internal_reading = false;
     (*pipe).internal_alloc_cb = None;
     (*pipe).internal_read_cb = None;
+    (*pipe).internal_connection_cb = None;
+    (*pipe).internal_connect = None;
+    (*pipe).internal_bind_path = None;
+
+    // Cancel pending writes.
+    while let Some(pw) = (*pipe).internal_write_queue.pop_front() {
+      if let Some(cb) = pw.cb {
+        cb(pw.req, super::UV_ECANCELED);
+      }
+    }
 
     #[cfg(unix)]
     {
-      // Drop AsyncFd first (deregisters from epoll/kqueue).
       (*pipe).internal_async_fd = None;
+      (*pipe).internal_stream = None;
+      (*pipe).internal_listener = None;
+      (*pipe).internal_backlog.clear();
 
-      // Close the OS fd.
       if let Some(fd) = (*pipe).internal_fd.take() {
         libc::close(fd);
       }
@@ -189,11 +338,9 @@ pub(crate) unsafe fn close_pipe(pipe: *mut uv_pipe_t) {
 
     #[cfg(windows)]
     {
-      // Abort any pending blocking read.
       if let Some(handle) = (*pipe).internal_pending_read.take() {
         handle.abort();
       }
-      // Close the OS handle.
       if let Some(handle) = (*pipe).internal_handle.take() {
         windows_sys::Win32::Foundation::CloseHandle(handle as _);
       }
@@ -433,10 +580,63 @@ pub(crate) unsafe fn poll_pipe_handle(
   pipe_ptr: *mut uv_pipe_t,
   cx: &mut Context<'_>,
 ) -> bool {
+  use std::task::Poll;
   let mut any_work = false;
 
   unsafe {
-    // Poll writes first.
+    // 1. Poll pending connect.
+    let connect_result =
+      if let Some(ref mut pending) = (*pipe_ptr).internal_connect {
+        match pending.future.as_mut().poll(cx) {
+          Poll::Ready(result) => Some((pending.req, pending.cb, result)),
+          Poll::Pending => None,
+        }
+      } else {
+        None
+      };
+    if let Some((req, cb, result)) = connect_result {
+      let status = match result {
+        Ok(stream) => {
+          use std::os::unix::io::AsRawFd;
+          (*pipe_ptr).internal_fd = Some(stream.as_raw_fd());
+          (*pipe_ptr).internal_stream = Some(stream);
+          0
+        }
+        Err(ref e) => io_error_to_uv(e),
+      };
+      (*pipe_ptr).internal_connect = None;
+      (*req).handle = pipe_ptr as *mut uv_stream_t;
+      if let Some(cb) = cb {
+        cb(req, status);
+      }
+      any_work = true;
+    }
+
+    // 2. Poll listener for new connections.
+    if (*pipe_ptr).internal_listener.is_some()
+      && (*pipe_ptr).internal_connection_cb.is_some()
+      && (*pipe_ptr).internal_backlog.is_empty()
+    {
+      let listener = (*pipe_ptr).internal_listener.as_ref().unwrap();
+      while let Poll::Ready(Ok((stream, _))) = listener.poll_accept(cx) {
+        (*pipe_ptr).internal_backlog.push_back(stream);
+        any_work = true;
+      }
+    }
+    while !(*pipe_ptr).internal_backlog.is_empty() {
+      if let Some(cb) = (*pipe_ptr).internal_connection_cb {
+        let backlog_len = (*pipe_ptr).internal_backlog.len();
+        cb(pipe_ptr as *mut uv_stream_t, 0);
+        // If callback didn't accept (backlog didn't shrink), stop.
+        if (*pipe_ptr).internal_backlog.len() >= backlog_len {
+          break;
+        }
+      } else {
+        break;
+      }
+    }
+
+    // 3. Poll writes.
     while let Some(pw) = (*pipe_ptr).internal_write_queue.front() {
       // If already completed synchronously, just fire the callback.
       if let Some(status) = pw.status {
@@ -482,8 +682,13 @@ pub(crate) unsafe fn poll_pipe_handle(
       }
     }
 
-    // Poll reads.
-    if (*pipe_ptr).internal_reading && (*pipe_ptr).internal_async_fd.is_some() {
+    // 4. Poll reads.
+    // Reads can come from either internal_async_fd (uv_pipe_open) or
+    // internal_stream (uv_pipe_connect / uv_pipe_accept).
+    let can_read = (*pipe_ptr).internal_reading
+      && ((*pipe_ptr).internal_async_fd.is_some()
+        || (*pipe_ptr).internal_stream.is_some());
+    if can_read {
       let alloc_cb = (*pipe_ptr).internal_alloc_cb;
       let read_cb = (*pipe_ptr).internal_read_cb;
 
@@ -492,14 +697,15 @@ pub(crate) unsafe fn poll_pipe_handle(
         if let Some(ref afd) = (*pipe_ptr).internal_async_fd {
           let _ = afd.poll_read_ready(cx);
         }
+        if let Some(ref stream) = (*pipe_ptr).internal_stream {
+          let _ = stream.poll_read_ready(cx);
+        }
 
         let mut count = 32;
         let fd = (*pipe_ptr).internal_fd.unwrap();
 
         loop {
-          if !(*pipe_ptr).internal_reading
-            || (*pipe_ptr).internal_async_fd.is_none()
-          {
+          if !(*pipe_ptr).internal_reading {
             break;
           }
           let mut buf = uv_buf_t {
