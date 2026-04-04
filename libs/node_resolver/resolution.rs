@@ -2049,9 +2049,7 @@ impl<
         vec![".js", "/index.js"]
       };
       for ending in endings {
-        let guess = package_path
-          .join(format!("{main}{ending}"))
-          .clean();
+        let guess = package_path.join(format!("{main}{ending}")).clean();
         if guess.starts_with(package_path)
           && self.sys.is_file(Cow::Borrowed(&guess))
         {
