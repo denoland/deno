@@ -953,7 +953,7 @@ macro_rules! child_stdio_to_fd {
         .take()
         .map(|h| {
           use std::os::windows::io::IntoRawHandle;
-          let raw_handle = h.into_std().into_raw_handle();
+          let raw_handle = h.into_raw_handle();
           // SAFETY: raw_handle is a valid OS handle from the child process.
           let crt_fd = unsafe { libc::open_osfhandle(raw_handle as isize, 0) };
           if crt_fd == -1 {
