@@ -1010,6 +1010,9 @@ pub(crate) unsafe fn poll_pipe_handle(
       let status = match result {
         Ok(stream) => {
           use std::os::unix::io::AsRawFd;
+          // Drop the AsyncFd from uv_pipe_open (if any) since the
+          // connected stream now owns the fd.
+          (*pipe_ptr).internal_async_fd = None;
           (*pipe_ptr).internal_fd = Some(stream.as_raw_fd());
           (*pipe_ptr).internal_stream = Some(stream);
           0
