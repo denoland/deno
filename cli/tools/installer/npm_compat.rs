@@ -136,6 +136,12 @@ fn update_user_tsconfig(project_root: &Path) -> Result<(), AnyError> {
       std::fs::write(&tsconfig_path, updated)?;
       log::debug!("Updated {} (added extends)", tsconfig_path.display());
     }
+  } else {
+    let tsconfig = json!({ "extends": "./tsconfig.deno.json" });
+    let content =
+      serde_json::to_string_pretty(&tsconfig).expect("failed to serialize");
+    std::fs::write(&tsconfig_path, content)?;
+    log::debug!("Created {}", tsconfig_path.display());
   }
 
   Ok(())
