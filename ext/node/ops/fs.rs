@@ -1155,6 +1155,25 @@ pub async fn op_node_fs_write_deferred(
   write_with_position(file, &buf, position)
 }
 
+/// Async partial write for fd-based streams (pipes, sockets).
+/// Unlike op_node_fs_write_deferred which loops until all bytes are written,
+/// this performs a single write dispatched to a background thread and returns
+/// the number of bytes actually written. This is critical for pipes where the
+/// OS buffer may fill up — the caller must loop and yield between writes so
+/// the event loop can process reads on the other end.
+#[op2(async(lazy))]
+#[smi]
+pub async fn op_node_fd_write_deferred(
+  state: Rc<RefCell<OpState>>,
+  fd: i32,
+  #[buffer] buf: JsBuffer,
+) -> Result<u32, FsError> {
+  let file = file_for_fd(&state.borrow(), fd)?;
+  let view = deno_core::BufView::from(buf);
+  let outcome = file.write(view).await?;
+  Ok(outcome.nwritten() as u32)
+}
+
 #[op2(fast)]
 #[number]
 pub fn op_node_fs_seek_sync(

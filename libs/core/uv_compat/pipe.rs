@@ -455,10 +455,10 @@ pub unsafe fn uv_pipe_connect(
           // Wait for connect to complete by polling for write readiness.
           let async_fd =
             tokio::io::unix::AsyncFd::new(RawFdWrapper(fd)).map_err(|e| {
-              std::io::Error::new(std::io::ErrorKind::Other, e)
+              std::io::Error::other(e)
             })?;
           let _guard = async_fd.writable().await.map_err(|e| {
-            std::io::Error::new(std::io::ErrorKind::Other, e)
+            std::io::Error::other(e)
           })?;
 
           // Check SO_ERROR to see if connect succeeded.
@@ -534,7 +534,7 @@ pub unsafe fn uv_pipe_listen(
     let mut opts = tokio::net::windows::named_pipe::ServerOptions::new();
     opts
       .first_pipe_instance(true)
-      .max_instances((*pipe).pending_instances as u32);
+      .max_instances((*pipe).pending_instances as usize);
     let server = match opts.create(&path) {
       Ok(s) => s,
       Err(e) => return io_error_to_uv(&e),
@@ -788,7 +788,7 @@ unsafe fn maybe_spawn_win_read(pipe_ptr: *mut uv_pipe_t) {
       None => return,
     };
 
-    let join = deno_core::unsync::spawn_blocking(move || {
+    let join = tokio::task::spawn_blocking(move || {
       use std::io::Read;
       use std::os::windows::io::FromRawHandle;
       // SAFETY: handle is a valid OS handle stored by uv_pipe_open.
@@ -915,7 +915,11 @@ pub(crate) unsafe fn poll_pipe_handle(
               };
               alloc_cb(pipe_ptr as *mut uv_handle_t, 65536, &mut buf);
               match result {
-                Ok(Ok((data, n))) if n > 0 => {
+                Ok(Ok((_, 0))) => {
+                  read_cb(pipe_ptr as *mut uv_stream_t, UV_EOF as isize, &buf);
+                  (*pipe_ptr).internal_reading = false;
+                }
+                Ok(Ok((data, n))) => {
                   any_work = true;
                   if !buf.base.is_null() && buf.len > 0 {
                     let copy_len = n.min(buf.len);
@@ -933,10 +937,6 @@ pub(crate) unsafe fn poll_pipe_handle(
                   if (*pipe_ptr).internal_reading {
                     maybe_spawn_win_read(pipe_ptr);
                   }
-                }
-                Ok(Ok((_, 0))) => {
-                  read_cb(pipe_ptr as *mut uv_stream_t, UV_EOF as isize, &buf);
-                  (*pipe_ptr).internal_reading = false;
                 }
                 Ok(Err(ref e)) => {
                   read_cb(

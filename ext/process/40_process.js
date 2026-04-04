@@ -18,7 +18,6 @@ const {
   ArrayPrototypeMap,
   ArrayPrototypeSlice,
   TypeError,
-  ObjectDefineProperty,
   ObjectEntries,
   SafeArrayIterator,
   String,
@@ -252,22 +251,22 @@ internals.kExtraStdio = kExtraStdio;
 // instead of a full Deno.ChildProcess with web streams.
 // The caller (child_process.ts) is responsible for providing all fields.
 export function nodeSpawnChild(command, {
-  args,
+  args = [],
   cwd,
-  clearEnv,
+  clearEnv = false,
   argv0,
-  env,
+  env = { __proto__: null },
   uid,
   gid,
-  stdin,
-  stdout,
-  stderr,
-  windowsRawArguments,
-  ipc,
-  serialization,
-  extraStdio,
-  detached,
-  needsNpmProcessState,
+  stdin = "null",
+  stdout = "piped",
+  stderr = "piped",
+  windowsRawArguments = false,
+  ipc = -1,
+  serialization = "json",
+  extraStdio = [],
+  detached = false,
+  needsNpmProcessState = false,
 }) {
   const child = op_node_spawn_child({
     cmd: pathFromURL(command),
@@ -289,6 +288,13 @@ export function nodeSpawnChild(command, {
     needsNpmProcessState,
   }, "node:child_process");
 
+  const waitPromise = op_spawn_wait(child.rid);
+  let waitComplete = false;
+  const status = PromisePrototypeThen(waitPromise, (res) => {
+    waitComplete = true;
+    return res;
+  });
+
   return {
     __proto__: null,
     rid: child.rid,
@@ -297,23 +303,22 @@ export function nodeSpawnChild(command, {
     stdoutFd: child.stdoutFd,
     stderrFd: child.stderrFd,
     ipcPipeRid: child.ipcPipeRid,
-    extraPipeFds: child.extraPipeFds,
-    get status() {
-      const promise = op_spawn_wait(child.rid);
-      ObjectDefineProperty(this, "status", {
-        __proto__: null,
-        value: promise,
-      });
-      return promise;
-    },
+    extraPipeRids: child.extraPipeRids,
+    status,
     kill(signal) {
       op_spawn_kill(child.rid, signal);
     },
     ref() {
-      op_spawn_child_ref(child.rid);
+      core.refOpPromise(waitPromise);
+      if (!waitComplete) {
+        op_spawn_child_ref(child.rid);
+      }
     },
     unref() {
-      op_spawn_child_unref(child.rid);
+      core.unrefOpPromise(waitPromise);
+      if (!waitComplete) {
+        op_spawn_child_unref(child.rid);
+      }
     },
   };
 }
