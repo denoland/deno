@@ -250,6 +250,8 @@ export class Pipe extends ConnectionWrap {
       this.#native = new NativePipeHandle(
         this.ipc ? socketType.IPC : socketType.SOCKET,
       );
+      // Store the JS object reference so C callbacks can find
+      // onconnect/onconnection/onread on it.
       this.#native.setOwner();
     }
   }
