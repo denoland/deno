@@ -1202,7 +1202,21 @@ pub async fn op_node_fs_write_deferred(
   #[number] position: i64,
 ) -> Result<u32, FsError> {
   let file = file_for_fd(&state.borrow(), fd)?;
-  write_with_position(file, &buf, position)
+  if position >= 0 {
+    // Positioned writes (pwrite): write all bytes. Files don't have
+    // backpressure so this won't deadlock.
+    write_with_position(file, &buf, position)
+  } else {
+    // Sequential writes: use async partial write so the event loop stays
+    // responsive. This is critical for pipes (e.g. child process stdin)
+    // where the OS buffer may fill up and the write must yield to let the
+    // reader drain the other end.
+    let view = deno_core::BufView::from(buf);
+    match file.write(view).await? {
+      deno_core::WriteOutcome::Partial { nwritten, .. } => Ok(nwritten as u32),
+      deno_core::WriteOutcome::Full { .. } => Ok(0),
+    }
+  }
 }
 
 #[op2(fast)]
