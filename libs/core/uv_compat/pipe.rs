@@ -262,7 +262,8 @@ pub unsafe fn uv_pipe_bind(pipe: *mut uv_pipe_t, path: &str) -> c_int {
   unsafe {
     (*pipe).internal_bind_path = Some(path.to_string());
 
-    // On Unix, create and bind the socket now (matching libuv).
+    // On Unix, create a socket and bind it now (matching libuv).
+    // The socket is NOT listening yet - that happens in uv_pipe_listen.
     // The fd is available immediately for the `fd` property.
     #[cfg(unix)]
     {
@@ -273,21 +274,46 @@ pub unsafe fn uv_pipe_bind(pipe: *mut uv_pipe_t, path: &str) -> c_int {
       )]
       let _ = std::fs::remove_file(path);
 
-      let std_listener = match std::os::unix::net::UnixListener::bind(path) {
-        Ok(l) => l,
-        Err(e) => return io_error_to_uv(&e),
-      };
-      // Set non-blocking for tokio compatibility.
-      std_listener.set_nonblocking(true).ok();
-      use std::os::unix::io::AsRawFd;
-      (*pipe).internal_fd = Some(std_listener.as_raw_fd());
-      // Store as tokio listener.
-      match tokio::net::UnixListener::from_std(std_listener) {
-        Ok(l) => {
-          (*pipe).internal_listener = Some(l);
-        }
-        Err(e) => return io_error_to_uv(&e),
+      // Create a Unix domain stream socket.
+      let fd = libc::socket(libc::AF_UNIX, libc::SOCK_STREAM, 0);
+      if fd < 0 {
+        return io_error_to_uv(&std::io::Error::last_os_error());
       }
+
+      // Bind it to the path.
+      let c_path = match std::ffi::CString::new(path) {
+        Ok(p) => p,
+        Err(_) => {
+          libc::close(fd);
+          return super::UV_EINVAL;
+        }
+      };
+      let mut addr: libc::sockaddr_un = std::mem::zeroed();
+      addr.sun_family = libc::AF_UNIX as libc::sa_family_t;
+      let path_bytes = c_path.as_bytes_with_nul();
+      if path_bytes.len() > addr.sun_path.len() {
+        libc::close(fd);
+        return super::UV_EINVAL;
+      }
+      std::ptr::copy_nonoverlapping(
+        path_bytes.as_ptr(),
+        addr.sun_path.as_mut_ptr() as *mut u8,
+        path_bytes.len(),
+      );
+      let addr_len =
+        std::mem::size_of::<libc::sa_family_t>() + path_bytes.len();
+      if libc::bind(
+        fd,
+        &addr as *const _ as *const libc::sockaddr,
+        addr_len as libc::socklen_t,
+      ) != 0
+      {
+        let err = std::io::Error::last_os_error();
+        libc::close(fd);
+        return io_error_to_uv(&err);
+      }
+
+      (*pipe).internal_fd = Some(fd);
     }
   }
   0
@@ -304,11 +330,32 @@ pub unsafe fn uv_pipe_listen(
   cb: Option<super::stream::uv_connection_cb>,
 ) -> c_int {
   unsafe {
-    // The listener was already created in uv_pipe_bind.
-    if (*pipe).internal_listener.is_none() {
-      return super::UV_EINVAL;
+    // Use the pre-bound fd from uv_pipe_bind.
+    let fd = match (*pipe).internal_fd {
+      Some(fd) => fd,
+      None => return super::UV_EINVAL,
+    };
+
+    // Start listening on the raw socket.
+    let backlog = if _backlog > 0 { _backlog } else { 128 };
+    if libc::listen(fd, backlog) != 0 {
+      return io_error_to_uv(&std::io::Error::last_os_error());
     }
 
+    // Set non-blocking for tokio.
+    let flags = libc::fcntl(fd, libc::F_GETFL);
+    if flags != -1 {
+      libc::fcntl(fd, libc::F_SETFL, flags | libc::O_NONBLOCK);
+    }
+
+    // Wrap as tokio UnixListener using from_std.
+    use std::os::unix::io::FromRawFd;
+    let std_listener = std::os::unix::net::UnixListener::from_raw_fd(fd);
+    let listener = match tokio::net::UnixListener::from_std(std_listener) {
+      Ok(l) => l,
+      Err(e) => return io_error_to_uv(&e),
+    };
+    (*pipe).internal_listener = Some(listener);
     (*pipe).internal_connection_cb = cb;
     (*pipe).flags |= UV_HANDLE_ACTIVE;
 
@@ -367,8 +414,57 @@ pub unsafe fn uv_pipe_connect(
   cb: Option<super::stream::uv_connect_cb>,
 ) -> c_int {
   let path = path.to_string();
-  let future =
-    Box::pin(async move { tokio::net::UnixStream::connect(&path).await });
+
+  // If the pipe has a pre-bound fd (from uv_pipe_bind), use it
+  // for the connect. Otherwise create a fresh connection.
+  let bound_fd = unsafe { (*pipe).internal_fd };
+  let future = Box::pin(async move {
+    if let Some(fd) = bound_fd {
+      // Non-blocking connect on the pre-bound socket.
+      // SAFETY: fd is a valid socket from uv_pipe_bind.
+      unsafe {
+        let c_path = std::ffi::CString::new(path.as_str()).map_err(|_| {
+          std::io::Error::new(std::io::ErrorKind::InvalidInput, "invalid path")
+        })?;
+        let mut addr: libc::sockaddr_un = std::mem::zeroed();
+        addr.sun_family = libc::AF_UNIX as libc::sa_family_t;
+        let path_bytes = c_path.as_bytes_with_nul();
+        std::ptr::copy_nonoverlapping(
+          path_bytes.as_ptr(),
+          addr.sun_path.as_mut_ptr() as *mut u8,
+          path_bytes.len(),
+        );
+        let addr_len =
+          std::mem::size_of::<libc::sa_family_t>() + path_bytes.len();
+
+        // Set non-blocking before connect.
+        let flags = libc::fcntl(fd, libc::F_GETFL);
+        if flags != -1 {
+          libc::fcntl(fd, libc::F_SETFL, flags | libc::O_NONBLOCK);
+        }
+
+        let ret = libc::connect(
+          fd,
+          &addr as *const _ as *const libc::sockaddr,
+          addr_len as libc::socklen_t,
+        );
+        if ret != 0 {
+          let err = std::io::Error::last_os_error();
+          // EINPROGRESS is expected for non-blocking connect.
+          if err.raw_os_error() != Some(libc::EINPROGRESS) {
+            return Err(err);
+          }
+        }
+
+        // Wrap the connected fd as a tokio UnixStream.
+        use std::os::unix::io::FromRawFd;
+        let std_stream = std::os::unix::net::UnixStream::from_raw_fd(fd);
+        tokio::net::UnixStream::from_std(std_stream)
+      }
+    } else {
+      tokio::net::UnixStream::connect(&path).await
+    }
+  });
 
   unsafe {
     (*pipe).internal_connect = Some(PipeConnectPending { req, cb, future });
