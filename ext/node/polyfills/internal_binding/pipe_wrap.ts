@@ -28,10 +28,6 @@ import { core, primordials } from "ext:core/mod.js";
 import {
   NativePipe as NativePipeHandle,
   op_node_create_pipe,
-  op_node_fs_close,
-  op_node_fs_read_deferred,
-  op_node_fs_write_deferred,
-  op_node_register_fd,
   op_pipe_connect,
   op_pipe_open,
   op_pipe_windows_wait,
@@ -73,39 +69,6 @@ export enum socketType {
   SOCKET,
   SERVER,
   IPC,
-}
-
-/**
- * Minimal fd-backed stream for Windows pipe fallback.
- * Used until native Windows pipe support is implemented in uv_compat.
- */
-class WindowsFdStream {
-  #fd: number;
-  #closed = false;
-
-  constructor(fd: number) {
-    this.#fd = fd;
-  }
-
-  async read(buf: Uint8Array): Promise<number | null> {
-    if (this.#closed) return null;
-    const nread = await op_node_fs_read_deferred(this.#fd, buf, -1);
-    return nread === 0 ? null : nread;
-  }
-
-  async write(data: Uint8Array): Promise<number> {
-    return await op_node_fs_write_deferred(this.#fd, data, -1);
-  }
-
-  close(): void {
-    if (!this.#closed) {
-      this.#closed = true;
-      op_node_fs_close(this.#fd);
-    }
-  }
-
-  ref(): void {}
-  unref(): void {}
 }
 
 export class Pipe extends ConnectionWrap {
@@ -172,30 +135,18 @@ export class Pipe extends ConnectionWrap {
   }
 
   open(fd: number): number {
-    if (!isWindows) {
-      // Use the native uv_pipe_t handle for fd-based I/O.
-      // This integrates with the event loop directly, providing proper
-      // cancellation on close and ref/unref semantics.
-      this.#native = new NativePipeHandle(
-        this.ipc ? socketType.IPC : socketType.SOCKET,
-      );
-      const err = this.#native.open(fd);
-      if (err !== 0) {
-        this.#native = null;
-        return err;
-      }
-      return 0;
+    // Use the native uv_pipe_t handle for fd-based I/O.
+    // This integrates with the event loop directly, providing proper
+    // cancellation on close and ref/unref semantics.
+    this.#native = new NativePipeHandle(
+      this.ipc ? socketType.IPC : socketType.SOCKET,
+    );
+    const err = this.#native.open(fd);
+    if (err !== 0) {
+      this.#native = null;
+      return err;
     }
-
-    // Windows: register fd in FdTable and use kStreamBaseField-based I/O.
-    // Windows native pipe support not yet implemented in uv_compat.
-    try {
-      op_node_register_fd(fd);
-      this[kStreamBaseField] = new WindowsFdStream(fd);
-      return 0;
-    } catch {
-      return MapPrototypeGet(codeMap, "UNKNOWN")!;
-    }
+    return 0;
   }
 
   override readStart(): number {

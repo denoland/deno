@@ -12,27 +12,18 @@ use std::ffi::c_int;
 use std::ffi::c_void;
 #[cfg(unix)]
 use std::os::unix::io::RawFd;
-#[cfg(unix)]
 use std::task::Context;
 
-#[cfg(unix)]
 use super::UV_EBADF;
-#[cfg(unix)]
 use super::UV_EOF;
-#[cfg(unix)]
 use super::UV_HANDLE_ACTIVE;
-#[cfg(unix)]
 use super::UV_HANDLE_CLOSING;
 use super::stream::uv_alloc_cb;
-#[cfg(unix)]
 use super::stream::uv_buf_t;
 use super::stream::uv_read_cb;
-#[cfg(unix)]
 use super::stream::uv_stream_t;
 use super::tcp::WritePending;
-#[cfg(unix)]
 use super::tcp::io_error_to_uv;
-#[cfg(unix)]
 use super::uv_handle_t;
 use super::uv_handle_type;
 use super::uv_loop_t;
@@ -51,6 +42,13 @@ pub struct uv_pipe_t {
   pub(crate) internal_fd: Option<RawFd>,
   #[cfg(unix)]
   pub(crate) internal_async_fd: Option<tokio::io::unix::AsyncFd<RawFdWrapper>>,
+
+  #[cfg(windows)]
+  pub(crate) internal_handle: Option<std::os::windows::io::RawHandle>,
+  /// Pending blocking read result from a spawned thread.
+  #[cfg(windows)]
+  pub(crate) internal_pending_read:
+    Option<tokio::task::JoinHandle<std::io::Result<(Vec<u8>, usize)>>>,
 
   pub(crate) internal_alloc_cb: Option<uv_alloc_cb>,
   pub(crate) internal_read_cb: Option<uv_read_cb>,
@@ -80,6 +78,10 @@ pub fn new_pipe(ipc: bool) -> uv_pipe_t {
     internal_fd: None,
     #[cfg(unix)]
     internal_async_fd: None,
+    #[cfg(windows)]
+    internal_handle: None,
+    #[cfg(windows)]
+    internal_pending_read: None,
     internal_alloc_cb: None,
     internal_read_cb: None,
     internal_reading: false,
@@ -139,6 +141,31 @@ pub unsafe fn uv_pipe_open(pipe: *mut uv_pipe_t, fd: c_int) -> c_int {
   0
 }
 
+/// Open an existing fd as a pipe handle (Windows).
+///
+/// # Safety
+/// `pipe` must be a valid pointer to an initialized `uv_pipe_t`.
+/// `fd` must be a valid CRT file descriptor.
+#[cfg(windows)]
+pub unsafe fn uv_pipe_open(pipe: *mut uv_pipe_t, fd: c_int) -> c_int {
+  if fd < 0 {
+    return UV_EBADF;
+  }
+
+  // Convert CRT fd to OS HANDLE.
+  // SAFETY: libc::get_osfhandle returns the OS handle for a CRT fd.
+  let handle = unsafe { libc::get_osfhandle(fd) };
+  if handle == -1 {
+    return UV_EBADF;
+  }
+
+  unsafe {
+    (*pipe).internal_handle = Some(handle as std::os::windows::io::RawHandle);
+    (*pipe).flags |= UV_HANDLE_ACTIVE;
+  }
+  0
+}
+
 /// Close the pipe handle: close the fd and clean up.
 ///
 /// # Safety
@@ -157,6 +184,18 @@ pub(crate) unsafe fn close_pipe(pipe: *mut uv_pipe_t) {
       // Close the OS fd.
       if let Some(fd) = (*pipe).internal_fd.take() {
         libc::close(fd);
+      }
+    }
+
+    #[cfg(windows)]
+    {
+      // Abort any pending blocking read.
+      if let Some(handle) = (*pipe).internal_pending_read.take() {
+        handle.abort();
+      }
+      // Close the OS handle.
+      if let Some(handle) = (*pipe).internal_handle.take() {
+        windows_sys::Win32::Foundation::CloseHandle(handle as _);
       }
     }
   }
@@ -193,9 +232,195 @@ pub(crate) unsafe fn read_start_pipe(
 pub(crate) unsafe fn read_stop_pipe(pipe: *mut uv_pipe_t) -> c_int {
   unsafe {
     (*pipe).internal_reading = false;
-    // Don't clear ACTIVE -- the handle is still open, just not reading.
   }
   0
+}
+
+#[cfg(windows)]
+pub(crate) unsafe fn read_start_pipe(
+  pipe: *mut uv_pipe_t,
+  alloc_cb: Option<uv_alloc_cb>,
+  read_cb: Option<uv_read_cb>,
+) -> c_int {
+  unsafe {
+    if alloc_cb.is_none() || read_cb.is_none() {
+      return super::UV_EINVAL;
+    }
+    if (*pipe).flags & UV_HANDLE_CLOSING != 0 {
+      return super::UV_EINVAL;
+    }
+    (*pipe).internal_alloc_cb = alloc_cb;
+    (*pipe).internal_read_cb = read_cb;
+    (*pipe).internal_reading = true;
+    (*pipe).flags |= UV_HANDLE_ACTIVE;
+
+    let inner = super::get_inner((*pipe).loop_);
+    let mut handles = inner.pipe_handles.borrow_mut();
+    if !handles.iter().any(|&h| std::ptr::eq(h, pipe)) {
+      handles.push(pipe);
+    }
+  }
+  0
+}
+
+#[cfg(windows)]
+pub(crate) unsafe fn read_stop_pipe(pipe: *mut uv_pipe_t) -> c_int {
+  unsafe {
+    (*pipe).internal_reading = false;
+    // Abort pending read if any.
+    if let Some(handle) = (*pipe).internal_pending_read.take() {
+      handle.abort();
+    }
+  }
+  0
+}
+
+/// Windows: spawn a blocking read on a thread if one isn't already pending.
+#[cfg(windows)]
+unsafe fn maybe_spawn_win_read(pipe_ptr: *mut uv_pipe_t) {
+  unsafe {
+    if (*pipe_ptr).internal_pending_read.is_some() {
+      return; // already reading
+    }
+    let handle = match (*pipe_ptr).internal_handle {
+      Some(h) => h as usize, // usize is Send
+      None => return,
+    };
+
+    let join = deno_core::unsync::spawn_blocking(move || {
+      use std::io::Read;
+      // SAFETY: handle is a valid OS handle stored by uv_pipe_open.
+      // We reconstruct a File temporarily, read from it, then leak it
+      // back to avoid double-close.
+      let mut file = unsafe {
+        std::fs::File::from_raw_handle(
+          handle as std::os::windows::io::RawHandle,
+        )
+      };
+      let mut buf = vec![0u8; 65536];
+      let result = file.read(&mut buf);
+      // Don't drop the File -- the handle is owned by uv_pipe_t.
+      let _ = std::os::windows::io::IntoRawHandle::into_raw_handle(file);
+      result.map(|n| (buf, n))
+    });
+    (*pipe_ptr).internal_pending_read = Some(join);
+  }
+}
+
+/// Poll a Windows pipe handle. Checks if a spawned blocking read completed.
+#[cfg(windows)]
+pub(crate) unsafe fn poll_pipe_handle(
+  pipe_ptr: *mut uv_pipe_t,
+  cx: &mut Context<'_>,
+) -> bool {
+  use std::task::Poll;
+  let mut any_work = false;
+
+  unsafe {
+    // Poll writes (sync on Windows).
+    while let Some(pw) = (*pipe_ptr).internal_write_queue.front() {
+      if let Some(status) = pw.status {
+        any_work = true;
+        let pw = (*pipe_ptr).internal_write_queue.pop_front().unwrap();
+        if let Some(cb) = pw.cb {
+          cb(pw.req, status);
+        }
+        continue;
+      }
+      let handle = match (*pipe_ptr).internal_handle {
+        Some(h) => h,
+        None => break,
+      };
+      let remaining = &pw.data[pw.offset..];
+      // Sync write using WriteFile.
+      use std::io::Write;
+      let mut file = std::fs::File::from_raw_handle(handle);
+      let result = file.write(remaining);
+      let _ = std::os::windows::io::IntoRawHandle::into_raw_handle(file);
+      match result {
+        Ok(_n) => {
+          any_work = true;
+          let pw = (*pipe_ptr).internal_write_queue.pop_front().unwrap();
+          if let Some(cb) = pw.cb {
+            cb(pw.req, 0);
+          }
+        }
+        Err(ref e) => {
+          let pw = (*pipe_ptr).internal_write_queue.pop_front().unwrap();
+          if let Some(cb) = pw.cb {
+            cb(pw.req, io_error_to_uv(e));
+          }
+        }
+      }
+    }
+
+    // Poll reads.
+    if (*pipe_ptr).internal_reading {
+      // Spawn a blocking read if none is pending.
+      maybe_spawn_win_read(pipe_ptr);
+
+      // Check if the pending read completed.
+      if let Some(ref mut join) = (*pipe_ptr).internal_pending_read {
+        if let Poll::Ready(result) = std::pin::Pin::new(join).poll(cx) {
+          (*pipe_ptr).internal_pending_read = None;
+          let alloc_cb = (*pipe_ptr).internal_alloc_cb;
+          let read_cb = (*pipe_ptr).internal_read_cb;
+
+          if let (Some(alloc_cb), Some(read_cb)) = (alloc_cb, read_cb) {
+            let mut buf = uv_buf_t {
+              base: std::ptr::null_mut(),
+              len: 0,
+            };
+            alloc_cb(pipe_ptr as *mut uv_handle_t, 65536, &mut buf);
+
+            match result {
+              Ok(Ok((data, n))) if n > 0 => {
+                any_work = true;
+                if !buf.base.is_null() && buf.len > 0 {
+                  let copy_len = n.min(buf.len);
+                  std::ptr::copy_nonoverlapping(
+                    data.as_ptr(),
+                    buf.base as *mut u8,
+                    copy_len,
+                  );
+                  read_cb(
+                    pipe_ptr as *mut uv_stream_t,
+                    copy_len as isize,
+                    &buf,
+                  );
+                }
+                // Spawn next read if still reading.
+                if (*pipe_ptr).internal_reading {
+                  maybe_spawn_win_read(pipe_ptr);
+                }
+              }
+              Ok(Ok((_, 0))) => {
+                // EOF
+                read_cb(pipe_ptr as *mut uv_stream_t, UV_EOF as isize, &buf);
+                (*pipe_ptr).internal_reading = false;
+              }
+              Ok(Err(ref e)) => {
+                let status = io_error_to_uv(e);
+                read_cb(pipe_ptr as *mut uv_stream_t, status as isize, &buf);
+                (*pipe_ptr).internal_reading = false;
+              }
+              Err(_join_err) => {
+                // Thread panicked or was cancelled.
+                read_cb(
+                  pipe_ptr as *mut uv_stream_t,
+                  super::UV_ECANCELED as isize,
+                  &buf,
+                );
+                (*pipe_ptr).internal_reading = false;
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  any_work
 }
 
 /// Poll a pipe handle for read readiness and perform reads.

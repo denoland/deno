@@ -111,7 +111,6 @@ pub unsafe fn uv_read_start(
         read_cb,
       );
     }
-    #[cfg(unix)]
     if (*stream).r#type == uv_handle_type::UV_NAMED_PIPE {
       return super::pipe::read_start_pipe(
         stream as *mut super::pipe::uv_pipe_t,
@@ -156,7 +155,6 @@ pub unsafe fn uv_read_stop(stream: *mut uv_stream_t) -> c_int {
     if (*stream).r#type == uv_handle_type::UV_TTY {
       return super::tty::read_stop_tty(stream as *mut uv_tty_t);
     }
-    #[cfg(unix)]
     if (*stream).r#type == uv_handle_type::UV_NAMED_PIPE {
       return super::pipe::read_stop_pipe(
         stream as *mut super::pipe::uv_pipe_t,
@@ -285,7 +283,6 @@ pub unsafe fn uv_write(
     if (*handle).r#type == uv_handle_type::UV_TTY {
       return super::tty::write_tty(req, handle, bufs, nbufs, cb);
     }
-    #[cfg(unix)]
     if (*handle).r#type == uv_handle_type::UV_NAMED_PIPE {
       return write_pipe(
         req,
@@ -477,7 +474,6 @@ pub fn new_shutdown() -> UvShutdown {
 }
 
 /// Write to a pipe handle. Tries synchronous write first, queues remainder.
-#[cfg(unix)]
 unsafe fn write_pipe(
   req: *mut uv_write_t,
   pipe: *mut super::pipe::uv_pipe_t,
@@ -489,27 +485,39 @@ unsafe fn write_pipe(
   unsafe {
     (*req).handle = pipe as *mut uv_stream_t;
 
-    let fd = match (*pipe).internal_fd {
-      Some(fd) => fd,
-      None => return UV_EBADF,
-    };
-
     let write_data = collect_bufs(bufs, nbufs);
 
     // Try synchronous write when queue is empty.
     let mut offset = 0;
+    #[cfg(unix)]
     if (*pipe).internal_write_queue.is_empty() {
-      while offset < write_data.len() {
-        let n = libc::write(
-          fd,
-          write_data[offset..].as_ptr() as *const std::ffi::c_void,
-          write_data.len() - offset,
-        );
-        if n >= 0 {
-          offset += n as usize;
-        } else {
-          break;
+      if let Some(fd) = (*pipe).internal_fd {
+        while offset < write_data.len() {
+          let n = libc::write(
+            fd,
+            write_data[offset..].as_ptr() as *const std::ffi::c_void,
+            write_data.len() - offset,
+          );
+          if n >= 0 {
+            offset += n as usize;
+          } else {
+            break;
+          }
         }
+      }
+    }
+    #[cfg(windows)]
+    if (*pipe).internal_write_queue.is_empty() {
+      if let Some(handle) = (*pipe).internal_handle {
+        use std::io::Write;
+        let mut file = std::fs::File::from_raw_handle(handle);
+        while offset < write_data.len() {
+          match file.write(&write_data[offset..]) {
+            Ok(n) => offset += n,
+            Err(_) => break,
+          }
+        }
+        let _ = std::os::windows::io::IntoRawHandle::into_raw_handle(file);
       }
     }
 

@@ -481,7 +481,6 @@ impl UvLoopInner {
         any_work |= work;
       } // end per-tcp-handle loop
 
-      #[cfg(unix)]
       {
         let mut pi = 0;
         loop {
