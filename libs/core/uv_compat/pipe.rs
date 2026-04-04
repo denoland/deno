@@ -19,6 +19,7 @@ use std::task::Context;
 use super::UV_EBADF;
 #[cfg(unix)]
 use super::UV_EOF;
+#[cfg(unix)]
 use super::UV_HANDLE_ACTIVE;
 #[cfg(unix)]
 use super::UV_HANDLE_CLOSING;

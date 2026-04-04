@@ -1055,6 +1055,8 @@ fn raw_fd_read(fd: i32, buf: &mut [u8], position: i64) -> Result<u32, FsError> {
   // but Windows handle semantics differ from Unix.
   // TODO: use ReadFile with the OS handle directly for true cancel support.
   use std::io::Read;
+  use std::os::windows::io::FromRawHandle;
+  use std::os::windows::io::IntoRawHandle;
 
   let os_handle = unsafe { libc::get_osfhandle(fd) };
   if os_handle == -1 {

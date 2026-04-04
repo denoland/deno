@@ -844,12 +844,21 @@ impl NativePipe {
   /// Open an existing fd as this pipe handle.
   #[fast]
   fn open(&self, #[smi] fd: i32) -> i32 {
-    match &self.handle {
-      // SAFETY: h is a valid OwnedPtr to an initialized uv_pipe_t.
-      Some(h) => unsafe {
-        deno_core::uv_compat::uv_pipe_open(h.as_mut_ptr(), fd)
-      },
-      None => deno_core::uv_compat::UV_EBADF,
+    #[cfg(unix)]
+    {
+      match &self.handle {
+        // SAFETY: h is a valid OwnedPtr to an initialized uv_pipe_t.
+        Some(h) => unsafe {
+          deno_core::uv_compat::uv_pipe_open(h.as_mut_ptr(), fd)
+        },
+        None => deno_core::uv_compat::UV_EBADF,
+      }
+    }
+    #[cfg(windows)]
+    {
+      let _ = fd;
+      // TODO: implement uv_pipe_open for Windows
+      deno_core::uv_compat::UV_EBADF
     }
   }
 }
