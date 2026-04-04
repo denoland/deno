@@ -27,6 +27,7 @@
 import { core, primordials } from "ext:core/mod.js";
 import {
   op_node_create_pipe,
+  op_node_fd_read_with_cancel,
   op_node_fd_set_blocking,
   op_node_fd_write_deferred,
   op_node_fs_close,
@@ -37,8 +38,10 @@ import {
   op_pipe_connect,
   op_pipe_open,
   op_pipe_windows_wait,
+  op_read_create_cancel_handle,
 } from "ext:core/ops";
 import { PipeConn } from "ext:deno_net/01_net.js";
+import { _readWithCancelHandle } from "ext:deno_io/12_io.js";
 
 const { internalRidSymbol } = core;
 import { ConnectionWrap } from "ext:deno_node/internal_binding/connection_wrap.ts";
@@ -116,6 +119,27 @@ class FdStreamBase {
     } finally {
       this.#pendingRead = null;
     }
+  }
+
+  [_readWithCancelHandle](buf: Uint8Array) {
+    if (this.#closed) return { cancelHandle: undefined, nread: null };
+    const cancelHandle = op_read_create_cancel_handle();
+    const promise = op_node_fd_read_with_cancel(
+      this.#fd,
+      cancelHandle,
+      buf,
+    );
+    this.#pendingRead = promise;
+    if (!this.#isRefed) {
+      core.unrefOpPromise(promise);
+    }
+    return {
+      cancelHandle,
+      nread: PromisePrototypeThen(promise, (nread: number) => {
+        this.#pendingRead = null;
+        return nread === 0 ? null : nread;
+      }),
+    };
   }
 
   async write(data: Uint8Array): Promise<number> {

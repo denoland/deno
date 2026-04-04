@@ -1282,6 +1282,12 @@ impl crate::fs::File for StdFileResourceInner {
 
 pub struct ReadCancelResource(Rc<CancelHandle>);
 
+impl ReadCancelResource {
+  pub fn cancel_handle(&self) -> Rc<CancelHandle> {
+    self.0.clone()
+  }
+}
+
 impl Resource for ReadCancelResource {
   fn name(&self) -> Cow<'_, str> {
     "readCancel".into()
