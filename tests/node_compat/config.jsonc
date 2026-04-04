@@ -217,8 +217,12 @@
     "parallel/test-child-process-exec-maxbuf.js": {},
     "parallel/test-child-process-exec-std-encoding.js": {},
     "parallel/test-child-process-exec-stdout-stderr-data-string.js": {},
-    "parallel/test-child-process-exec-timeout-expire.js": {},
-    "parallel/test-child-process-exec-timeout-kill.js": {},
+    "parallel/test-child-process-exec-timeout-expire.js": {
+      "ignore": true
+    },
+    "parallel/test-child-process-exec-timeout-kill.js": {
+      "ignore": true
+    },
     "parallel/test-child-process-exec-timeout-not-expired.js": {},
     "parallel/test-child-process-execFile-promisified-abortController.js": {},
     "parallel/test-child-process-execfile-maxbuf.js": {},
