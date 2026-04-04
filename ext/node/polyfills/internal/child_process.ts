@@ -76,8 +76,10 @@ import {
   kExtraStdio,
   kInputOption,
   kIpc,
+  kKillSignalOption,
   kNeedsNpmProcessState,
   kSerialization,
+  kTimeoutOption,
 } from "ext:deno_process/40_process.js";
 
 export function mapValues<T, O>(
@@ -1572,6 +1574,20 @@ function restorePrototype(obj: any) {
   }
 }
 
+/** Convert a killSignal (string name or number) to its string name. */
+function _resolveKillSignalName(
+  killSignal: string | number | undefined,
+): string {
+  if (typeof killSignal === "string") return killSignal;
+  if (typeof killSignal === "number") {
+    for (const [name, num] of Object.entries(os.signals)) {
+      if (num === killSignal) return name;
+    }
+    return String(killSignal);
+  }
+  return "SIGTERM";
+}
+
 function _createSpawnError(
   status: string,
   command: string,
@@ -1671,6 +1687,8 @@ export function spawnSync(
     uid,
     gid,
     maxBuffer,
+    timeout,
+    killSignal,
     windowsVerbatimArguments = false,
   } = options;
   const [
@@ -1708,6 +1726,8 @@ export function spawnSync(
       // deno-lint-ignore no-explicit-any
       [kNeedsNpmProcessState]: (options as any)[kNeedsNpmProcessState] ||
         includeNpmProcessState,
+      [kTimeoutOption]: timeout,
+      [kKillSignalOption]: killSignal,
     }).outputSync();
 
     const status = output.signal ? null : output.code;
@@ -1721,6 +1741,12 @@ export function spawnSync(
       result.error = _createSpawnError("ENOBUFS", command, args, true);
     }
 
+    // deno-lint-ignore no-explicit-any
+    const killedByTimeout = (output as any)._killedByTimeout;
+    if (killedByTimeout) {
+      result.error = _createSpawnError("ETIMEDOUT", command, args, true);
+    }
+
     if (encoding && encoding !== "buffer") {
       stdout = stdout && stdout.toString(encoding);
       stderr = stderr && stderr.toString(encoding);
@@ -1728,8 +1754,13 @@ export function spawnSync(
 
     // deno-lint-ignore no-explicit-any
     result.pid = (output as any)._pid;
-    result.status = status;
-    result.signal = output.signal;
+    // When killed by timeout, report the killSignal (matching Node.js behavior).
+    // On Windows there are no real Unix signals, but Node still reports the
+    // configured killSignal so callers can detect the timeout.
+    result.status = killedByTimeout ? null : status;
+    result.signal = killedByTimeout
+      ? _resolveKillSignalName(killSignal)
+      : output.signal;
     result.stdout = stdout;
     result.stderr = stderr;
     result.output = [output.signal, stdout, stderr];
