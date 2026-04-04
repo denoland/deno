@@ -732,17 +732,8 @@ fn create_command(
         StdioOrFd::Stdio(Stdio::Piped) => {
           let (fd1, fd2) = deno_io::bi_pipe_pair_raw()?;
           handles_to_close.push(fd2);
-          // Convert the OS handle to a CRT file descriptor so the JS
-          // side can use Pipe.open(fd) with op_node_register_fd.
-          // SAFETY: fd1 is a valid OS handle from bi_pipe_pair_raw.
-          let crt_fd = unsafe { libc::open_osfhandle(fd1 as isize, 0) };
-          if crt_fd == -1 {
-            log::warn!("Failed to convert handle to fd for fd {target_fd}");
-            extra_pipe_fds.push(None);
-            continue;
-          }
           command.extra_handle(Some(fd2));
-          extra_pipe_fds.push(Some(crt_fd as i64));
+          extra_pipe_fds.push(Some(fd1 as i64));
         }
         StdioOrFd::Fd(fd) => {
           // SAFETY: fd is a valid CRT file descriptor passed from the JS stdio array
@@ -773,7 +764,7 @@ struct Child {
   stdout_rid: Option<ResourceId>,
   stderr_rid: Option<ResourceId>,
   ipc_pipe_rid: Option<ResourceId>,
-  extra_pipe_fds: Vec<Option<i64>>,
+  extra_pipe_rids: Vec<Option<ResourceId>>,
 }
 
 #[derive(ToV8)]
@@ -904,6 +895,22 @@ fn spawn_child(
     .transpose()?
     .map(|stderr| state.resource_table.add(ChildStderrResource::from(stderr)));
 
+  // Convert extra pipe fds to resource IDs for the Deno API.
+  let extra_pipe_rids = extra_pipe_fds
+    .into_iter()
+    .map(|maybe_fd| {
+      maybe_fd
+        .map(|fd| {
+          let resource = deno_io::BiPipeResource::from_raw_handle(
+            fd as deno_io::RawBiPipeHandle,
+          )?;
+          Ok(state.resource_table.add(resource))
+        })
+        .transpose()
+    })
+    .collect::<Result<Vec<_>, std::io::Error>>()
+    .map_err(ProcessError::Io)?;
+
   let child_rid = state.resource_table.add(ChildResource {
     child: RefCell::new(child),
     pid,
@@ -917,7 +924,7 @@ fn spawn_child(
     stdout_rid,
     stderr_rid,
     ipc_pipe_rid,
-    extra_pipe_fds,
+    extra_pipe_rids,
   })
 }
 
@@ -959,6 +966,35 @@ macro_rules! child_stdio_to_fd {
   }};
 }
 
+/// Convert raw OS handles to CRT file descriptors (no-op on Unix).
+#[cfg(unix)]
+fn raw_handles_to_fds(
+  handles: Vec<Option<i64>>,
+) -> Result<Vec<Option<i64>>, ProcessError> {
+  Ok(handles)
+}
+
+#[cfg(windows)]
+fn raw_handles_to_fds(
+  handles: Vec<Option<i64>>,
+) -> Result<Vec<Option<i64>>, ProcessError> {
+  handles
+    .into_iter()
+    .map(|maybe_handle| {
+      maybe_handle
+        .map(|handle| {
+          // SAFETY: handle is a valid OS handle from bi_pipe_pair_raw.
+          let crt_fd = unsafe { libc::open_osfhandle(handle as isize, 0) };
+          if crt_fd == -1 {
+            return Err(ProcessError::Io(std::io::Error::last_os_error()));
+          }
+          Ok(crt_fd as i64)
+        })
+        .transpose()
+    })
+    .collect()
+}
+
 /// Spawn for Node compat: returns raw OS file descriptors for stdio
 /// instead of resource IDs, so the Node polyfill can use Pipe.open(fd).
 fn spawn_child_node(
@@ -973,6 +1009,9 @@ fn spawn_child_node(
   let stdin_fd = child_stdio_to_fd!(child, stdin);
   let stdout_fd = child_stdio_to_fd!(child, stdout);
   let stderr_fd = child_stdio_to_fd!(child, stderr);
+
+  // On Windows, convert OS handles to CRT file descriptors for Pipe.open(fd).
+  let extra_pipe_fds = raw_handles_to_fds(extra_pipe_fds)?;
 
   let child_rid = state.resource_table.add(ChildResource {
     child: RefCell::new(child),

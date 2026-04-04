@@ -239,13 +239,13 @@ function collectOutput(readableStream) {
 }
 
 const _ipcPipeRid = Symbol("[[ipcPipeRid]]");
-const _extraPipeFds = Symbol("[[_extraPipeFds]]");
+const _extraPipeRids = Symbol("[[_extraPipeRids]]");
 const _stdinRid = Symbol("[[stdinRid]]");
 const _stdoutRid = Symbol("[[stdoutRid]]");
 const _stderrRid = Symbol("[[stderrRid]]");
 
 internals.getIpcPipeRid = (process) => process[_ipcPipeRid];
-internals.getExtraPipeFds = (process) => process[_extraPipeFds];
+internals.getExtraPipeRids = (process) => process[_extraPipeRids];
 internals.kExtraStdio = kExtraStdio;
 
 // Node compat spawn: returns a lightweight object with raw fds for stdio
@@ -324,7 +324,7 @@ class ChildProcess {
   #waitComplete = false;
 
   [_ipcPipeRid];
-  [_extraPipeFds];
+  [_extraPipeRids];
   [_stdinRid];
   [_stdoutRid];
   [_stderrRid];
@@ -366,7 +366,7 @@ class ChildProcess {
     stdoutRid,
     stderrRid,
     ipcPipeRid, // internal
-    extraPipeFds,
+    extraPipeRids,
   } = null) {
     if (key !== illegalConstructorKey) {
       throw new TypeError("Illegal constructor");
@@ -375,7 +375,7 @@ class ChildProcess {
     this.#rid = rid;
     this.#pid = pid;
     this[_ipcPipeRid] = ipcPipeRid;
-    this[_extraPipeFds] = extraPipeFds;
+    this[_extraPipeRids] = extraPipeRids;
     this[_stdinRid] = stdinRid;
     this[_stdoutRid] = stdoutRid;
     this[_stderrRid] = stderrRid;

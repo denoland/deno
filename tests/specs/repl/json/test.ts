@@ -1,8 +1,9 @@
-import { Socket } from "node:net";
-
 const {
   kExtraStdio,
-  getExtraPipeFds,
+  getExtraPipeRids,
+  writableStreamForRid,
+  readableStreamForRid,
+  core: { close },
 } = Deno[Deno.internal];
 
 const command = new Deno.Command(Deno.execPath(), {
@@ -18,74 +19,89 @@ const command = new Deno.Command(Deno.execPath(), {
 
 await using child = command.spawn();
 
-const pipeFd = getExtraPipeFds(child)[0];
-const socket = new Socket({ fd: pipeFd });
+const pipeRid = getExtraPipeRids(child)[0];
+const writable = writableStreamForRid(pipeRid);
+const readable = readableStreamForRid(pipeRid);
 
-function writeMessage(socket: Socket, msg: object): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const buf = new TextEncoder().encode(JSON.stringify(msg));
-    const header = new Uint8Array(4);
-    new DataView(header.buffer).setUint32(0, buf.length, true);
-    socket.write(header, (err) => {
-      if (err) return reject(err);
-      socket.write(buf, (err) => {
-        if (err) return reject(err);
-        resolve();
-      });
-    });
-  });
+{
+  const writer = writable.getWriter();
+  const buf = new TextEncoder().encode(
+    JSON.stringify({
+      type: "Run",
+      code: "let a = 1;",
+      output: false,
+    }),
+  );
+  const u32 = new Uint8Array(4);
+  new DataView(u32.buffer).setUint32(0, buf.length, true);
+  await writer.write(u32);
+  await writer.write(buf);
+  writer.releaseLock();
 }
 
-function readMessage(socket: Socket): Promise<unknown> {
-  return new Promise((resolve, reject) => {
-    let headerBuf = Buffer.alloc(0);
-    let bodyBuf = Buffer.alloc(0);
-    let bodyLen: number | null = null;
-
-    const onData = (chunk: Buffer) => {
-      let data = chunk;
-      // Read 4-byte length header
-      if (bodyLen === null) {
-        headerBuf = Buffer.concat([headerBuf, data]);
-        if (headerBuf.length < 4) return;
-        bodyLen = headerBuf.readUInt32LE(0);
-        data = headerBuf.subarray(4);
-      }
-      // Accumulate body
-      bodyBuf = Buffer.concat([bodyBuf, data]);
-      if (bodyBuf.length >= bodyLen) {
-        socket.removeListener("data", onData);
-        socket.removeListener("error", onError);
-        resolve(JSON.parse(bodyBuf.subarray(0, bodyLen).toString()));
-      }
-    };
-    const onError = (err: Error) => {
-      socket.removeListener("data", onData);
-      reject(err);
-    };
-    socket.on("data", onData);
-    socket.on("error", onError);
-  });
+{
+  const reader = readable.getReader({ mode: "byob" });
+  const { value: u32 } = await reader.read(new Uint8Array(4), { min: 4 });
+  const { value } = await reader.read(
+    new Uint8Array(new DataView(u32.buffer).getUint32(0, true)),
+  );
+  console.log(JSON.parse(new TextDecoder().decode(value)));
+  reader.releaseLock();
 }
 
-await writeMessage(socket, { type: "Run", code: "let a = 1;", output: false });
-console.log(await readMessage(socket));
+{
+  const writer = writable.getWriter();
+  const buf = new TextEncoder().encode(
+    JSON.stringify({
+      type: "Run",
+      code: "console.log('hello'); a + 1",
+      output: true,
+    }),
+  );
+  const u32 = new Uint8Array(4);
+  new DataView(u32.buffer).setUint32(0, buf.length, true);
+  await writer.write(u32);
+  await writer.write(buf);
+  writer.releaseLock();
+}
 
-await writeMessage(socket, {
-  type: "Run",
-  code: "console.log('hello'); a + 1",
-  output: true,
-});
-console.log(await readMessage(socket));
+{
+  const reader = readable.getReader({ mode: "byob" });
+  const { value: u32 } = await reader.read(new Uint8Array(4), { min: 4 });
+  const { value } = await reader.read(
+    new Uint8Array(new DataView(u32.buffer).getUint32(0, true)),
+  );
+  console.log(JSON.parse(new TextDecoder().decode(value)));
+  reader.releaseLock();
+}
 
-await writeMessage(socket, {
-  type: "Run",
-  code: "throw new Error('hi')",
-  output: true,
-});
-console.log(await readMessage(socket));
+{
+  const writer = writable.getWriter();
+  const buf = new TextEncoder().encode(
+    JSON.stringify({
+      type: "Run",
+      code: "throw new Error('hi')",
+      output: true,
+    }),
+  );
+  const u32 = new Uint8Array(4);
+  new DataView(u32.buffer).setUint32(0, buf.length, true);
+  await writer.write(u32);
+  await writer.write(buf);
+  writer.releaseLock();
+}
+
+{
+  const reader = readable.getReader({ mode: "byob" });
+  const { value: u32 } = await reader.read(new Uint8Array(4), { min: 4 });
+  const { value } = await reader.read(
+    new Uint8Array(new DataView(u32.buffer).getUint32(0, true)),
+  );
+  console.log(JSON.parse(new TextDecoder().decode(value)));
+  reader.releaseLock();
+}
 
 // Test EOF (ctrl+d): closing the underlying socket should cause a clean exit
-socket.destroy();
+close(pipeRid);
 const status = await child.status;
 console.log(status.code);
