@@ -67,6 +67,7 @@ import { kEmptyObject } from "ext:deno_node/internal/util.mjs";
 import { getValidatedPath } from "ext:deno_node/internal/fs/utils.mjs";
 import process from "node:process";
 import { StringPrototypeSlice } from "ext:deno_node/internal/primordials.mjs";
+import { StreamBase } from "ext:deno_node/internal_binding/stream_wrap.ts";
 import { Pipe, socketType } from "ext:deno_node/internal_binding/pipe_wrap.ts";
 import { Server as NetServer, Socket } from "node:net";
 import { Socket as DgramSocket } from "node:dgram";
@@ -152,6 +153,44 @@ function flushStdio(subprocess: ChildProcess) {
       continue;
     }
     stream.resume();
+  }
+}
+
+// Wraps a resource ID in a StreamBase so it can be used with Pipe/Socket.
+// Used for extra stdio pipes which need BiPipeResource's split read/write
+// halves (StdFileResourceInner serializes reads and writes, causing deadlocks
+// on bidirectional pipes).
+class StreamResource implements StreamBase {
+  #rid: number;
+  #pendingRead: Promise<number> | null = null;
+  #isRefed = true;
+  constructor(rid: number) {
+    this.#rid = rid;
+  }
+  close(): void {
+    core.close(this.#rid);
+  }
+  async read(p: Uint8Array): Promise<number | null> {
+    const promise = core.read(this.#rid, p);
+    this.#pendingRead = promise;
+    if (!this.#isRefed) core.unrefOpPromise(promise);
+    try {
+      const nread = await promise;
+      return nread > 0 ? nread : null;
+    } finally {
+      this.#pendingRead = null;
+    }
+  }
+  async write(p: Uint8Array): Promise<number> {
+    return await core.write(this.#rid, p);
+  }
+  ref(): void {
+    this.#isRefed = true;
+    if (this.#pendingRead) core.refOpPromise(this.#pendingRead);
+  }
+  unref(): void {
+    this.#isRefed = false;
+    if (this.#pendingRead) core.unrefOpPromise(this.#pendingRead);
   }
 }
 
@@ -431,17 +470,18 @@ export class ChildProcess extends EventEmitter {
         this.stdio[ipc] = null;
       }
 
-      const pipeFds = this.#process.extraPipeFds;
-      for (let i = 0; i < pipeFds.length; i++) {
-        const pipeFd: number | null = pipeFds[i];
+      const pipeRids = this.#process.extraPipeRids;
+      for (let i = 0; i < pipeRids.length; i++) {
+        const rid: number | null = pipeRids[i];
         const fd = i + extraStdioOffset;
-        if (pipeFd !== null && pipeFd !== undefined) {
+        if (rid !== null && rid !== undefined) {
           this[kClosesNeeded]++;
-          const pipe = new Pipe(socketType.IPC);
-          pipe.open(pipeFd);
           this.stdio[fd] = new Socket(
             {
-              handle: pipe,
+              handle: new Pipe(
+                socketType.IPC,
+                new StreamResource(rid),
+              ),
               // deno-lint-ignore no-explicit-any
             } as any,
           );

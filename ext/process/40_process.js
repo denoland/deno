@@ -297,7 +297,7 @@ export function nodeSpawnChild(command, {
     stdoutFd: child.stdoutFd,
     stderrFd: child.stderrFd,
     ipcPipeRid: child.ipcPipeRid,
-    extraPipeFds: child.extraPipeFds,
+    extraPipeRids: child.extraPipeRids,
     get status() {
       const promise = op_spawn_wait(child.rid);
       this.waitPromise = promise;

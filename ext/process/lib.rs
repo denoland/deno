@@ -785,7 +785,7 @@ struct NodeChild {
   stdout_fd: Option<i64>,
   stderr_fd: Option<i64>,
   ipc_pipe_rid: Option<ResourceId>,
-  extra_pipe_fds: Vec<Option<i64>>,
+  extra_pipe_rids: Vec<Option<ResourceId>>,
 }
 
 /// Spawn a child process, returning the raw child and its PID.
@@ -976,35 +976,6 @@ macro_rules! child_stdio_to_fd {
   }};
 }
 
-/// Convert raw OS handles to CRT file descriptors (no-op on Unix).
-#[cfg(unix)]
-fn raw_handles_to_fds(
-  handles: Vec<Option<i64>>,
-) -> Result<Vec<Option<i64>>, ProcessError> {
-  Ok(handles)
-}
-
-#[cfg(windows)]
-fn raw_handles_to_fds(
-  handles: Vec<Option<i64>>,
-) -> Result<Vec<Option<i64>>, ProcessError> {
-  handles
-    .into_iter()
-    .map(|maybe_handle| {
-      maybe_handle
-        .map(|handle| {
-          // SAFETY: handle is a valid OS handle from bi_pipe_pair_raw.
-          let crt_fd = unsafe { libc::open_osfhandle(handle as isize, 0) };
-          if crt_fd == -1 {
-            return Err(ProcessError::Io(std::io::Error::last_os_error()));
-          }
-          Ok(crt_fd as i64)
-        })
-        .transpose()
-    })
-    .collect()
-}
-
 /// Spawn for Node compat: returns raw OS file descriptors for stdio
 /// instead of resource IDs, so the Node polyfill can use Pipe.open(fd).
 fn spawn_child_node(
@@ -1020,8 +991,23 @@ fn spawn_child_node(
   let stdout_fd = child_stdio_to_fd!(child, stdout);
   let stderr_fd = child_stdio_to_fd!(child, stderr);
 
-  // On Windows, convert OS handles to CRT file descriptors for Pipe.open(fd).
-  let extra_pipe_fds = raw_handles_to_fds(extra_pipe_fds)?;
+  // Extra pipes need BiPipeResource (not raw fds) because they are
+  // bidirectional and StdFileResourceInner serializes reads and writes
+  // through a single queue, causing deadlocks when both are active.
+  let extra_pipe_rids = extra_pipe_fds
+    .into_iter()
+    .map(|maybe_fd| {
+      maybe_fd
+        .map(|fd| {
+          let resource = deno_io::BiPipeResource::from_raw_handle(
+            fd as deno_io::RawBiPipeHandle,
+          )?;
+          Ok(state.resource_table.add(resource))
+        })
+        .transpose()
+    })
+    .collect::<Result<Vec<_>, std::io::Error>>()
+    .map_err(ProcessError::Io)?;
 
   let child_rid = state.resource_table.add(ChildResource {
     child: RefCell::new(child),
@@ -1036,7 +1022,7 @@ fn spawn_child_node(
     stdout_fd,
     stderr_fd,
     ipc_pipe_rid,
-    extra_pipe_fds,
+    extra_pipe_rids,
   })
 }
 

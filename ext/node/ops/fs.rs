@@ -1220,10 +1220,8 @@ pub async fn op_node_fd_write_deferred(
 ) -> Result<u32, FsError> {
   let file = file_for_fd(&state.borrow(), fd)?;
   let view = deno_core::BufView::from(buf);
-  match file.write(view).await? {
-    deno_core::WriteOutcome::Partial { nwritten, .. } => Ok(nwritten as u32),
-    deno_core::WriteOutcome::Full { .. } => Ok(0),
-  }
+  let outcome = file.write(view).await?;
+  Ok(outcome.nwritten() as u32)
 }
 
 #[op2(fast)]
