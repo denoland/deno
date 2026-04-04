@@ -26,17 +26,21 @@
 
 import { core, primordials } from "ext:core/mod.js";
 import {
-  op_net_unix_stream_from_fd,
-  op_node_file_from_fd,
+  op_node_create_pipe,
+  op_node_fd_set_blocking,
+  op_node_fs_close,
+  op_node_fs_read_deferred,
+  op_node_fs_read_sync,
+  op_node_fs_write_deferred,
+  op_node_fs_write_sync,
+  op_node_register_fd,
   op_pipe_connect,
   op_pipe_open,
   op_pipe_windows_wait,
 } from "ext:core/ops";
-import { PipeConn, UnixConn } from "ext:deno_net/01_net.js";
-import { setTimeout } from "ext:deno_web/02_timers.js";
+import { PipeConn } from "ext:deno_net/01_net.js";
 
 const { internalRidSymbol } = core;
-import { notImplemented } from "ext:deno_node/_utils.ts";
 import { ConnectionWrap } from "ext:deno_node/internal_binding/connection_wrap.ts";
 import {
   AsyncWrap,
@@ -74,52 +78,85 @@ export enum socketType {
 }
 
 /**
- * A wrapper for file-based streams (PTYs, pipes, etc.) that provides
- * the interface expected by LibuvStreamWrap.
+ * StreamBase implementation backed by a raw OS file descriptor.
+ * Uses the NodeFsState fd-based ops for I/O, matching how Node.js
+ * uses libuv streams on raw fds via uv_pipe_open().
  */
-class FileStreamConn {
-  #rid: number;
+class FdStreamBase {
+  #fd: number;
   #closed = false;
+  #blocking = false;
+  #pendingRead: Promise<number> | null = null;
+  #isRefed = true;
 
-  constructor(rid: number) {
-    this.#rid = rid;
+  constructor(fd: number) {
+    this.#fd = fd;
     ObjectDefineProperty(this, internalRidSymbol, {
       __proto__: null,
       enumerable: false,
-      value: rid,
+      value: fd,
     });
   }
 
   async read(buf: Uint8Array): Promise<number | null> {
-    // Loop to handle EAGAIN/EWOULDBLOCK for non-blocking fds (PTYs, pipes)
-    while (!this.#closed) {
-      try {
-        const nread = await core.read(this.#rid, buf);
-        return nread === 0 ? null : nread;
-      } catch (e) {
-        // Handle EAGAIN/EWOULDBLOCK by waiting and retrying
-        if (
-          ObjectPrototypeIsPrototypeOf(ErrorPrototype, e) &&
-          ((e as Error).name === "WouldBlock" ||
-            (e as { code?: string }).code === "EAGAIN")
-        ) {
-          // Wait a bit before retrying to avoid busy-looping
-          await delay(10);
-          continue;
-        }
-        throw e;
-      }
+    if (this.#closed) return null;
+    if (this.#blocking) {
+      const nread = op_node_fs_read_sync(this.#fd, buf, -1);
+      return nread === 0 ? null : nread;
     }
-    return null;
+    // position = -1 means non-positioned (sequential) read
+    const promise = op_node_fs_read_deferred(this.#fd, buf, -1);
+    this.#pendingRead = promise;
+    if (!this.#isRefed) {
+      core.unrefOpPromise(promise);
+    }
+    try {
+      const nread = await promise;
+      return nread === 0 ? null : nread;
+    } finally {
+      this.#pendingRead = null;
+    }
   }
 
   async write(data: Uint8Array): Promise<number> {
-    return await core.write(this.#rid, data);
+    if (this.#blocking) {
+      return op_node_fs_write_sync(this.#fd, data, -1);
+    }
+    // position = -1 means non-positioned (sequential) write
+    return await op_node_fs_write_deferred(this.#fd, data, -1);
   }
 
   close(): void {
-    this.#closed = true;
-    core.tryClose(this.#rid);
+    if (!this.#closed) {
+      this.#closed = true;
+      op_node_fs_close(this.#fd);
+    }
+  }
+
+  ref(): void {
+    this.#isRefed = true;
+    if (this.#pendingRead) {
+      core.refOpPromise(this.#pendingRead);
+    }
+  }
+
+  unref(): void {
+    this.#isRefed = false;
+    if (this.#pendingRead) {
+      core.unrefOpPromise(this.#pendingRead);
+    }
+  }
+
+  setBlocking(enable: boolean): number {
+    // On Unix, toggle O_NONBLOCK on the fd.
+    // On Windows, the op is a no-op but we track the flag so
+    // read/write use sync ops instead (matching Node.js behavior
+    // of making stdout/stderr blocking on Windows pipes).
+    const err = op_node_fd_set_blocking(this.#fd, enable);
+    if (err === 0) {
+      this.#blocking = enable;
+    }
+    return err;
   }
 }
 
@@ -182,46 +219,31 @@ export class Pipe extends ConnectionWrap {
   }
 
   open(fd: number): number {
-    if (isWindows) {
-      // Windows named pipes don't support opening from fd
-      notImplemented("Pipe.prototype.open on Windows");
-    }
     try {
-      // First, try to open as a Unix socket (for actual Unix domain sockets)
-      const rid = op_net_unix_stream_from_fd(fd);
-      this[kStreamBaseField] = new UnixConn(rid, null, null);
+      // Register the fd in NodeFsState and use fd-based I/O.
+      // This handles pipes, PTYs, FIFOs, sockets on both Unix and Windows,
+      // matching libuv's uv_pipe_open() which accepts any stream-like fd.
+      op_node_register_fd(fd);
+      this[kStreamBaseField] = new FdStreamBase(fd);
       return 0;
     } catch (e) {
-      // If the fd is not a socket (e.g., PTY, pipe), fall back to file-based I/O
-      if (
-        ObjectPrototypeIsPrototypeOf(ErrorPrototype, e) &&
-        (StringPrototypeIncludes((e as Error).message, "not a socket") ||
-          StringPrototypeIncludes((e as Error).message, "ENOTSOCK"))
-      ) {
-        try {
-          const rid = op_node_file_from_fd(fd);
-          this[kStreamBaseField] = new FileStreamConn(rid);
-          return 0;
-        } catch (e2) {
-          if (
-            ObjectPrototypeIsPrototypeOf(ErrorPrototype, e2) &&
-            ReflectHas(e2 as Error, "code")
-          ) {
-            return codeMap.get((e2 as { code: string }).code) ??
-              codeMap.get("UNKNOWN")!;
-          }
-          return codeMap.get("UNKNOWN")!;
-        }
-      }
       if (
         ObjectPrototypeIsPrototypeOf(ErrorPrototype, e) &&
         ReflectHas(e as Error, "code")
       ) {
-        return codeMap.get((e as { code: string }).code) ??
-          codeMap.get("UNKNOWN")!;
+        return MapPrototypeGet(codeMap, (e as { code: string }).code) ??
+          MapPrototypeGet(codeMap, "UNKNOWN")!;
       }
-      return codeMap.get("UNKNOWN")!;
+      return MapPrototypeGet(codeMap, "UNKNOWN")!;
     }
+  }
+
+  setBlocking(enable: boolean): number {
+    const stream = this[kStreamBaseField];
+    if (stream && ReflectHas(stream, "setBlocking")) {
+      return (stream as FdStreamBase).setBlocking(enable);
+    }
+    return 0;
   }
 
   /**
@@ -647,4 +669,9 @@ export enum constants {
   IPC = socketType.IPC,
   UV_READABLE = 1,
   UV_WRITABLE = 2,
+}
+
+/** Create an anonymous pipe pair. Returns [readFd, writeFd]. */
+export function createPipe(): [number, number] {
+  return op_node_create_pipe();
 }

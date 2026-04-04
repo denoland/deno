@@ -46,6 +46,10 @@ import {
 
 // The key for private `input` option for `Deno.Command`
 const kInputOption = Symbol("kInputOption");
+// The key for private `timeout` option for `Deno.Command`
+const kTimeoutOption = Symbol("kTimeoutOption");
+// The key for private `killSignal` option for `Deno.Command`
+const kKillSignalOption = Symbol("kKillSignalOption");
 
 function opKill(pid, signo, apiName) {
   op_kill(pid, signo, apiName);
@@ -475,6 +479,8 @@ function spawnSyncInner(command, {
   windowsRawArguments = false,
   [kInputOption]: input,
   [kNeedsNpmProcessState]: needsNpmProcessState = false,
+  [kTimeoutOption]: timeout,
+  [kKillSignalOption]: killSignal,
   [kArgv0]: argv0 = undefined,
 } = { __proto__: null }) {
   if (stdin === "piped") {
@@ -482,7 +488,7 @@ function spawnSyncInner(command, {
       "Piped stdin is not supported for this function, use 'Deno.Command().spawn()' instead",
     );
   }
-  const result = op_spawn_sync({
+  const spawnArgs = {
     cmd: pathFromURL(command),
     args: ArrayPrototypeMap(args, String),
     cwd: pathFromURL(cwd),
@@ -499,7 +505,14 @@ function spawnSyncInner(command, {
     needsNpmProcessState,
     input,
     argv0,
-  });
+  };
+  if (timeout != null && timeout > 0) {
+    spawnArgs.timeout = timeout;
+    if (killSignal != null) {
+      spawnArgs.killSignal = killSignal;
+    }
+  }
+  const result = op_spawn_sync(spawnArgs);
   const output = {
     success: result.status.success,
     code: result.status.code,
@@ -517,10 +530,15 @@ function spawnSyncInner(command, {
       return result.stderr;
     },
   };
-  // Internal field used by node:child_process, hidden from Deno public API.
+  // Internal fields used by node:child_process, hidden from Deno public API.
   ObjectDefineProperty(output, "_pid", {
     __proto__: null,
     value: result.pid,
+    enumerable: false,
+  });
+  ObjectDefineProperty(output, "_killedByTimeout", {
+    __proto__: null,
+    value: result.killedByTimeout,
     enumerable: false,
   });
   return output;
@@ -611,6 +629,8 @@ export {
   kArgv0,
   kill,
   kInputOption,
+  kKillSignalOption,
+  kTimeoutOption,
   Process,
   run,
   spawn,
