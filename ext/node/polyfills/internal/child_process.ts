@@ -6,7 +6,7 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-import { core, internals } from "ext:core/mod.js";
+import { core } from "ext:core/mod.js";
 import {
   op_node_in_npm_package,
   op_node_ipc_buffer_constructor,
@@ -76,6 +76,7 @@ import {
   kKillSignalOption,
   kNeedsNpmProcessState,
   kTimeoutOption,
+  nodeSpawnChild,
 } from "ext:deno_process/40_process.js";
 
 export function mapValues<T, O>(
@@ -356,7 +357,7 @@ export class ChildProcess extends EventEmitter {
     }
 
     try {
-      this.#process = internals.nodeSpawnChild(cmd, {
+      this.#process = nodeSpawnChild(cmd, {
         args: cmdArgs,
         clearEnv: true,
         cwd,

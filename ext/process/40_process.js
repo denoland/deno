@@ -251,7 +251,7 @@ internals.kExtraStdio = kExtraStdio;
 // Node compat spawn: returns a lightweight object with raw fds for stdio
 // instead of a full Deno.ChildProcess with web streams.
 // The caller (child_process.ts) is responsible for providing all fields.
-internals.nodeSpawnChild = function nodeSpawnChild(command, {
+export function nodeSpawnChild(command, {
   args,
   cwd,
   clearEnv,
@@ -316,7 +316,7 @@ internals.nodeSpawnChild = function nodeSpawnChild(command, {
       op_spawn_child_unref(child.rid);
     },
   };
-};
+}
 
 class ChildProcess {
   #rid;
