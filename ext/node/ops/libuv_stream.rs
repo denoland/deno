@@ -855,7 +855,8 @@ impl NativePipe {
 
   /// Bind to a Unix domain socket path.
   #[fast]
-  fn bind(&self, #[string] path: &str) -> i32 {
+  #[rename("pipeBindToPath")]
+  fn pipe_bind_to_path(&self, #[string] path: &str) -> i32 {
     match &self.handle {
       // SAFETY: h is a valid OwnedPtr to an initialized uv_pipe_t.
       Some(h) => unsafe {
