@@ -724,10 +724,23 @@ fn create_command(
       ipc_rid = Some(pipe_rid);
     }
 
-    for (_i, stdio) in args.extra_stdio.into_iter().enumerate() {
+    for (i, stdio) in args.extra_stdio.into_iter().enumerate() {
+      // index 0 in `extra_stdio` actually refers to fd 3
+      // because we handle stdin,stdout,stderr specially
+      let target_fd = (i + 3) as i32;
       match stdio {
         StdioOrFd::Stdio(Stdio::Piped) => {
-          let (fd1, fd2) = deno_io::bi_pipe_pair_raw()?;
+          let (fd1, fd2) = match deno_io::bi_pipe_pair_raw() {
+            Ok(fds) => fds,
+            Err(e) => {
+              log::warn!(
+                "Failed to create bidirectional pipe for fd {target_fd}: {e}"
+              );
+              command.extra_handle(None);
+              extra_pipe_fds.push(None);
+              continue;
+            }
+          };
           handles_to_close.push(fd2);
           command.extra_handle(Some(fd2));
           extra_pipe_fds.push(Some(fd1 as i64));
