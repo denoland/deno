@@ -71,6 +71,7 @@ pub struct uv_pipe_t {
   pub(crate) internal_read_cb: Option<uv_read_cb>,
   pub(crate) internal_reading: bool,
   pub(crate) internal_write_queue: VecDeque<WritePending>,
+  pub(crate) internal_shutdown: Option<super::tcp::ShutdownPending>,
   pub(crate) ipc: bool,
 }
 
@@ -124,6 +125,7 @@ pub fn new_pipe(ipc: bool) -> uv_pipe_t {
     internal_read_cb: None,
     internal_reading: false,
     internal_write_queue: VecDeque::new(),
+    internal_shutdown: None,
     ipc,
   }
 }
@@ -283,7 +285,9 @@ pub unsafe fn uv_pipe_accept(
           handles.push(client);
         }
       } else {
-        eprintln!("[uv_pipe_accept] WARNING: pipe_handles already borrowed, deferring registration");
+        eprintln!(
+          "[uv_pipe_accept] WARNING: pipe_handles already borrowed, deferring registration"
+        );
       }
       0
     } else {
@@ -306,13 +310,12 @@ pub unsafe fn uv_pipe_connect(
 ) -> c_int {
   let path = path.to_string();
   eprintln!("[uv_pipe_connect] path={}", path);
-  let future =
-    Box::pin(async move {
-      eprintln!("[uv_pipe_connect] future polled for path={}", path);
-      let r = tokio::net::UnixStream::connect(&path).await;
-      eprintln!("[uv_pipe_connect] connect result: {:?}", r.is_ok());
-      r
-    });
+  let future = Box::pin(async move {
+    eprintln!("[uv_pipe_connect] future polled for path={}", path);
+    let r = tokio::net::UnixStream::connect(&path).await;
+    eprintln!("[uv_pipe_connect] connect result: {:?}", r.is_ok());
+    r
+  });
 
   unsafe {
     (*pipe).internal_connect = Some(PipeConnectPending { req, cb, future });
@@ -332,6 +335,9 @@ pub unsafe fn uv_pipe_connect(
 /// # Safety
 /// `pipe` must be a valid pointer to an initialized `uv_pipe_t`.
 pub(crate) unsafe fn close_pipe(pipe: *mut uv_pipe_t) {
+  eprintln!("[close_pipe] called, wq={}", unsafe {
+    (*pipe).internal_write_queue.len()
+  });
   unsafe {
     (*pipe).internal_reading = false;
     (*pipe).internal_alloc_cb = None;
@@ -607,7 +613,10 @@ pub(crate) unsafe fn poll_pipe_handle(
   let mut any_work = false;
 
   unsafe {
-    let total_pipes = super::get_inner((*pipe_ptr).loop_).pipe_handles.borrow().len();
+    let total_pipes = super::get_inner((*pipe_ptr).loop_)
+      .pipe_handles
+      .borrow()
+      .len();
     let has_connect = (*pipe_ptr).internal_connect.is_some();
     let has_listener = (*pipe_ptr).internal_listener.is_some();
     let has_backlog = !(*pipe_ptr).internal_backlog.is_empty();
@@ -616,8 +625,14 @@ pub(crate) unsafe fn poll_pipe_handle(
     let wq_len = (*pipe_ptr).internal_write_queue.len();
     if has_connect || has_listener || reading || wq_len > 0 || has_stream {
       eprintln!(
-        "[poll_pipe] total={} connect={} listener={} reading={} stream={} wq={} active={}",
-        total_pipes, has_connect, has_listener, reading, has_stream, wq_len,
+        "[poll_pipe] total={} fd={:?} connect={} listener={} reading={} stream={} wq={} active={}",
+        total_pipes,
+        (*pipe_ptr).internal_fd,
+        has_connect,
+        has_listener,
+        reading,
+        has_stream,
+        wq_len,
         (*pipe_ptr).flags & super::UV_HANDLE_ACTIVE != 0,
       );
     }
@@ -701,23 +716,22 @@ pub(crate) unsafe fn poll_pipe_handle(
         continue;
       }
       let remaining = &pw.data[pw.offset..];
-      // Use try_write on UnixStream if available, fall back to libc::write.
-      let write_result = if let Some(ref stream) =
-        (*pipe_ptr).internal_stream
-      {
-        stream.try_write(remaining)
-      } else if let Some(fd) = (*pipe_ptr).internal_fd {
-        let n = libc::write(
-          fd,
-          remaining.as_ptr() as *const c_void,
-          remaining.len(),
-        );
-        if n >= 0 { Ok(n as usize) } else { Err(std::io::Error::last_os_error()) }
+      // Use libc::write directly. This bypasses tokio's readiness
+      // tracking but works reliably for all fd types.
+      let write_result = if let Some(fd) = (*pipe_ptr).internal_fd {
+        let n =
+          libc::write(fd, remaining.as_ptr() as *const c_void, remaining.len());
+        if n >= 0 {
+          Ok(n as usize)
+        } else {
+          Err(std::io::Error::last_os_error())
+        }
       } else {
         break;
       };
       match write_result {
-        Ok(_n) => {
+        Ok(n) => {
+          eprintln!("[poll_pipe] write success: {} bytes", n);
           any_work = true;
           let pw = (*pipe_ptr).internal_write_queue.pop_front().unwrap();
           if let Some(cb) = pw.cb {
@@ -786,21 +800,25 @@ pub(crate) unsafe fn poll_pipe_handle(
             std::slice::from_raw_parts_mut(buf.base.cast::<u8>(), buf.len);
           // Use try_read on UnixStream if available (connect/accept path),
           // fall back to libc::read for opened fds (uv_pipe_open path).
-          let read_result = if let Some(ref stream) =
-            (*pipe_ptr).internal_stream
-          {
-            stream.try_read(slice)
-          } else if let Some(fd) = (*pipe_ptr).internal_fd {
-            let n = libc::read(fd, buf.base as *mut c_void, buf.len);
-            if n >= 0 {
-              Ok(n as usize)
+          let read_result =
+            if let Some(ref stream) = (*pipe_ptr).internal_stream {
+              stream.try_read(slice)
+            } else if let Some(fd) = (*pipe_ptr).internal_fd {
+              let n = libc::read(fd, buf.base as *mut c_void, buf.len);
+              if n >= 0 {
+                Ok(n as usize)
+              } else {
+                Err(std::io::Error::last_os_error())
+              }
             } else {
-              Err(std::io::Error::last_os_error())
-            }
-          } else {
-            break;
-          };
-          eprintln!("[poll_pipe] read_result: {:?} fd={:?} stream={}", read_result.as_ref().map(|n| *n).map_err(|e| e.kind()), (*pipe_ptr).internal_fd, (*pipe_ptr).internal_stream.is_some());
+              break;
+            };
+          eprintln!(
+            "[poll_pipe] read_result: {:?} fd={:?} stream={}",
+            read_result.as_ref().map(|n| *n).map_err(|e| e.kind()),
+            (*pipe_ptr).internal_fd,
+            (*pipe_ptr).internal_stream.is_some()
+          );
           match read_result {
             Ok(0) => {
               // EOF
@@ -831,6 +849,22 @@ pub(crate) unsafe fn poll_pipe_handle(
           }
         }
       }
+    }
+
+    // 5. Process deferred shutdown (after write queue drains).
+    if (*pipe_ptr).internal_write_queue.is_empty()
+      && (*pipe_ptr).internal_shutdown.is_some()
+    {
+      let pending = (*pipe_ptr).internal_shutdown.take().unwrap();
+      if let Some(ref stream) = (*pipe_ptr).internal_stream {
+        use std::os::unix::io::AsRawFd;
+        // SAFETY: stream is a valid UnixStream with a valid fd.
+        libc::shutdown(stream.as_raw_fd(), libc::SHUT_WR);
+      }
+      if let Some(cb) = pending.cb {
+        cb(pending.req, 0);
+      }
+      any_work = true;
     }
   }
 

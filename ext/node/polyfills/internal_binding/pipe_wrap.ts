@@ -40,8 +40,11 @@ import {
   providerType,
 } from "ext:deno_node/internal_binding/async_wrap.ts";
 import {
+  kArrayBufferOffset,
+  kReadBytesOrError,
   kStreamBaseField,
   LibuvStreamWrap,
+  streamBaseState,
   WriteWrap,
 } from "ext:deno_node/internal_binding/stream_wrap.ts";
 import { codeMap } from "ext:deno_node/internal_binding/uv.ts";
@@ -144,9 +147,30 @@ export class Pipe extends ConnectionWrap {
 
   override readStart(): number {
     if (this.#native) {
-      // Copy the onread callback to the native handle so the Rust
-      // LibUvStreamWrap.readStart can find it on the JS object.
-      this.#native.onread = this.onread;
+      this.reading = true;
+      // deno-lint-ignore no-this-alias
+      const self = this;
+      // stream_read_cb fires onread(nread, buf) on the NativePipe JS object.
+      // We wrap it to: update streamBaseState, swap arg order, and route
+      // through the Pipe wrapper's onread (matching TCP's pattern).
+      this.#native.onread = function (
+        nread: number,
+        buf: Uint8Array | undefined,
+      ) {
+        streamBaseState[kReadBytesOrError] = nread;
+        if (nread > 0) {
+          self.bytesRead += nread;
+        }
+        streamBaseState[kArrayBufferOffset] = 0;
+        try {
+          self.onread!(buf ?? new Uint8Array(0), nread);
+        } catch {
+          // swallow callback errors.
+        }
+        if (nread < 0) {
+          self.reading = false;
+        }
+      };
       return this.#native.readStart();
     }
     return super.readStart();

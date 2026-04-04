@@ -137,15 +137,20 @@ unsafe extern "C" fn stream_read_cb(
   nread: isize,
   _buf: *const UvBuf,
 ) {
+  eprintln!("[stream_read_cb] nread={}", nread);
   // SAFETY: pointers are valid per libuv read callback contract
   unsafe {
     let data = (*stream).data as *mut StreamHandleData;
     if data.is_null() {
+      eprintln!("[stream_read_cb] data is null!");
       return;
     }
     let js_obj = match (*data).js_object {
       Some(ref obj) => obj,
-      None => return,
+      None => {
+        eprintln!("[stream_read_cb] js_object is None!");
+        return;
+      }
     };
 
     let context = match context_from_loop((*stream).loop_) {
@@ -160,6 +165,10 @@ unsafe extern "C" fn stream_read_cb(
     let key = v8::String::new(scope, "onread").unwrap();
     let onread = this.get(scope, key.into());
 
+    eprintln!(
+      "[stream_read_cb] onread is function: {}",
+      onread.map(|v| v.is_function()).unwrap_or(false)
+    );
     if let Some(Ok(func)) = onread.map(v8::Local::<v8::Function>::try_from) {
       let nread_val = v8::Integer::new(scope, nread as i32);
 

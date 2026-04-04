@@ -378,8 +378,25 @@ pub unsafe fn uv_shutdown(
     if (*stream).flags & UV_HANDLE_CLOSING != 0 {
       return UV_ENOTCONN;
     }
-    let tcp = stream as *mut uv_tcp_t;
     (*req).handle = stream;
+
+    if (*stream).r#type == uv_handle_type::UV_NAMED_PIPE {
+      let pipe = stream as *mut super::pipe::uv_pipe_t;
+      #[cfg(unix)]
+      if (*pipe).internal_stream.is_none() {
+        return UV_ENOTCONN;
+      }
+      (*pipe).internal_shutdown = Some(super::tcp::ShutdownPending { req, cb });
+      let inner = get_inner((*pipe).loop_);
+      let mut handles = inner.pipe_handles.borrow_mut();
+      if !handles.iter().any(|&h| std::ptr::eq(h, pipe)) {
+        handles.push(pipe);
+      }
+      (*pipe).flags |= UV_HANDLE_ACTIVE;
+      return 0;
+    }
+
+    let tcp = stream as *mut uv_tcp_t;
 
     if (*tcp).internal_stream.is_none() {
       return UV_ENOTCONN;
