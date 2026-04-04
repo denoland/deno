@@ -97,6 +97,18 @@ fn ebadf() -> FsError {
   ))
 }
 
+fn eexist() -> FsError {
+  FsError::Io(std::io::Error::from_raw_os_error(
+    #[cfg(unix)]
+    libc::EEXIST,
+    #[cfg(windows)]
+    {
+      // Win32 ERROR_ALREADY_EXISTS
+      183
+    },
+  ))
+}
+
 /// Get the File trait object for an OS file descriptor from FdTable.
 fn file_for_fd(
   state: &OpState,
@@ -797,10 +809,16 @@ pub fn op_node_register_fd(
     return Err(ebadf());
   }
 
-  // If the fd is already in the FdTable (e.g. stdio fds 0/1/2 registered
-  // at startup, or files opened via node:fs), this is a no-op.
-  if state.borrow::<deno_io::FdTable>().contains(fd) {
+  // Stdio fds (0/1/2) are pre-registered in FdTable at startup.
+  // For these, Pipe.open(fd) is a no-op since both Deno and Node
+  // share the same entry.
+  if (0..=2).contains(&fd) && state.borrow::<deno_io::FdTable>().contains(fd) {
     return Ok(());
+  }
+
+  // Reject if the fd is already tracked (e.g. from fs.openSync()).
+  if state.borrow::<deno_io::FdTable>().contains(fd) {
+    return Err(eexist());
   }
 
   // SAFETY: The caller is responsible for passing a valid fd that they own.
@@ -830,10 +848,14 @@ pub fn op_node_register_fd(
     return Err(ebadf());
   }
 
-  // If the fd is already in the FdTable (e.g. stdio fds 0/1/2 registered
-  // at startup, or files opened via node:fs), this is a no-op.
-  if state.borrow::<deno_io::FdTable>().contains(fd) {
+  // Stdio fds (0/1/2) are pre-registered in FdTable at startup.
+  if (0..=2).contains(&fd) && state.borrow::<deno_io::FdTable>().contains(fd) {
     return Ok(());
+  }
+
+  // Reject if the fd is already tracked (e.g. from fs.openSync()).
+  if state.borrow::<deno_io::FdTable>().contains(fd) {
+    return Err(eexist());
   }
 
   // Convert the CRT fd to an OS HANDLE.
@@ -1024,62 +1046,6 @@ pub fn op_node_fs_close(state: &mut OpState, fd: i32) -> Result<(), FsError> {
 
 /// Read from a raw OS fd using libc. No dup, no clone -- the read uses the
 /// fd number directly, so closing the fd from another thread interrupts the
-/// read immediately (returns EBADF), matching libuv's behavior.
-#[cfg(unix)]
-fn raw_fd_read(fd: i32, buf: &mut [u8], position: i64) -> Result<u32, FsError> {
-  let nread = if position >= 0 {
-    // SAFETY: fd is a valid OS fd managed by FdTable, buf is a valid slice.
-    unsafe {
-      libc::pread(
-        fd,
-        buf.as_mut_ptr() as *mut libc::c_void,
-        buf.len(),
-        position as libc::off_t,
-      )
-    }
-  } else {
-    // SAFETY: fd is a valid OS fd managed by FdTable, buf is a valid slice.
-    unsafe { libc::read(fd, buf.as_mut_ptr() as *mut libc::c_void, buf.len()) }
-  };
-  if nread < 0 {
-    Err(FsError::Io(std::io::Error::last_os_error()))
-  } else {
-    Ok(nread as u32)
-  }
-}
-
-#[cfg(windows)]
-fn raw_fd_read(fd: i32, buf: &mut [u8], position: i64) -> Result<u32, FsError> {
-  // On Windows, use the File trait object since raw fd I/O is more complex.
-  // This path still goes through StdFileResourceInner which may clone,
-  // but Windows handle semantics differ from Unix.
-  // TODO: use ReadFile with the OS handle directly for true cancel support.
-  use std::io::Read;
-  use std::os::windows::io::FromRawHandle;
-  use std::os::windows::io::IntoRawHandle;
-
-  let os_handle = unsafe { libc::get_osfhandle(fd) };
-  if os_handle == -1 {
-    return Err(ebadf());
-  }
-  // SAFETY: os_handle is valid, we reconstruct a File temporarily for the read.
-  // We use from_raw_handle + into_raw_handle to avoid closing the handle.
-  let mut file = unsafe {
-    std::fs::File::from_raw_handle(os_handle as std::os::windows::io::RawHandle)
-  };
-  let result = if position >= 0 {
-    use std::io::Seek;
-    file
-      .seek(std::io::SeekFrom::Start(position as u64))
-      .and_then(|_| file.read(buf))
-  } else {
-    file.read(buf)
-  };
-  // Don't close the handle - FdTable owns it.
-  let _ = file.into_raw_handle();
-  result.map(|n| n as u32).map_err(FsError::Io)
-}
-
 /// Positioned read: if position >= 0, uses pread to read without moving the
 /// file cursor. If position < 0, reads from the current position.
 fn read_with_position(
@@ -1110,28 +1076,26 @@ pub fn op_node_fs_read_sync(
 
 /// Async read for node:fs. Runs a blocking read on a spawned thread using
 /// the raw OS fd directly (no dup/clone). When the fd is closed via
-/// op_node_fs_close, the OS fd becomes invalid and the blocking read()
-/// returns immediately with EBADF -- providing natural cancellation
-/// without needing CancelHandles, matching libuv's behavior.
+/// Async read for node:fs. Uses the File trait from FdTable for proper
+/// I/O through the file handle.
 #[op2]
 #[smi]
 pub async fn op_node_fs_read_deferred(
   state: Rc<RefCell<OpState>>,
   fd: i32,
-  #[buffer] mut buf: JsBuffer,
+  #[buffer] buf: JsBuffer,
   #[number] position: i64,
 ) -> Result<u32, FsError> {
-  // Verify the fd is valid before spawning.
-  {
-    let state = state.borrow();
-    if !state.borrow::<deno_io::FdTable>().contains(fd) {
-      return Err(ebadf());
-    }
+  let file = file_for_fd(&state.borrow(), fd)?;
+  if position >= 0 {
+    let view = deno_core::BufMutView::from(buf);
+    let (nread, _) = file.read_at_async(view, position as u64).await?;
+    Ok(nread as u32)
+  } else {
+    let view = deno_core::BufMutView::from(buf);
+    let (nread, _) = file.read_byob(view).await?;
+    Ok(nread as u32)
   }
-
-  deno_core::unsync::spawn_blocking(move || raw_fd_read(fd, &mut buf, position))
-    .await
-    .map_err(|e| FsError::Io(std::io::Error::other(e)))?
 }
 
 /// Positioned write: if position >= 0, uses pwrite to write without moving
