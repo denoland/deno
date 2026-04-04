@@ -146,9 +146,13 @@ fn detect_astro(_dir: &Path) -> FrameworkDetection {
 }
 
 fn detect_fresh(dir: &Path) -> FrameworkDetection {
-  // Fresh 2.x uses _fresh/server.js, older uses main.ts
+  // Fresh 2.x uses _fresh/server.js (build output) or imports @fresh/core
+  // in deno.json. We intentionally do NOT use `fresh.gen.ts + deno.json`
+  // as a heuristic because Fresh 1 projects also have both of those files.
   let is_fresh2 = dir.join("_fresh/server.js").exists()
-    || dir.join("fresh.gen.ts").exists() && dir.join("deno.json").exists();
+    || read_deno_json_imports(dir)
+      .map(|imports| imports.iter().any(|i| i.starts_with("@fresh/core")))
+      .unwrap_or(false);
   if is_fresh2 {
     FrameworkDetection {
       name: "Fresh",
@@ -303,12 +307,18 @@ fn detect_package_version(dir: &Path, package: &str) -> Option<u32> {
     .ok()
 }
 
-/// Read the `imports` keys from deno.json.
+/// Read the `imports` keys from deno.json / deno.jsonc.
+///
+/// Uses JSONC-aware parsing so that commented deno.jsonc files are
+/// handled correctly instead of silently failing detection.
 fn read_deno_json_imports(dir: &Path) -> Option<Vec<String>> {
   let content = std::fs::read_to_string(dir.join("deno.json"))
     .or_else(|_| std::fs::read_to_string(dir.join("deno.jsonc")))
     .ok()?;
-  let config: serde_json::Value = serde_json::from_str(&content).ok()?;
+  let config: serde_json::Value =
+    jsonc_parser::parse_to_serde_value(&content, &Default::default())
+      .ok()
+      .flatten()?;
   let imports = config.get("imports")?.as_object()?;
   Some(imports.keys().cloned().collect())
 }
@@ -429,6 +439,40 @@ mod tests {
     let det = detect_framework(dir.path()).unwrap().unwrap();
     assert_eq!(det.name, "Fresh");
     assert!(det.build_command.is_none());
+  }
+
+  #[test]
+  fn fresh1_with_deno_json_stays_fresh1() {
+    // Regression: fresh.gen.ts + deno.json (without @fresh/core import)
+    // should be treated as Fresh 1, not Fresh 2.
+    let dir = setup_dir();
+    fs::write(dir.path().join("fresh.gen.ts"), "").unwrap();
+    fs::write(
+      dir.path().join("deno.json"),
+      r#"{"tasks":{"start":"deno run -A main.ts"}}"#,
+    )
+    .unwrap();
+    let det = detect_framework(dir.path()).unwrap().unwrap();
+    assert_eq!(det.name, "Fresh");
+    // Fresh 1.x uses main.ts, not _fresh/server.js
+    assert!(det.entrypoint_code.contains("main.ts"));
+    assert!(det.build_command.is_none());
+  }
+
+  #[test]
+  fn fresh2_detected_via_fresh_core_import() {
+    let dir = setup_dir();
+    fs::write(dir.path().join("fresh.gen.ts"), "").unwrap();
+    fs::write(
+      dir.path().join("deno.json"),
+      r#"{"imports":{"@fresh/core":"jsr:@fresh/core@^2"}}"#,
+    )
+    .unwrap();
+    let det = detect_framework(dir.path()).unwrap().unwrap();
+    assert_eq!(det.name, "Fresh");
+    // Should be Fresh 2 because @fresh/core is in imports
+    assert!(det.entrypoint_code.contains("_fresh/server.js"));
+    assert!(det.build_command.is_some());
   }
 
   #[test]
@@ -624,6 +668,19 @@ mod tests {
     fs::write(
       dir.path().join("deno.jsonc"),
       r#"{"imports":{"fresh":"jsr:@fresh/core"}}"#,
+    )
+    .unwrap();
+    let det = detect_framework(dir.path()).unwrap().unwrap();
+    assert_eq!(det.name, "Fresh");
+  }
+
+  #[test]
+  fn detects_fresh_from_commented_deno_jsonc() {
+    // Regression: deno.jsonc with comments should still be parsed correctly.
+    let dir = setup_dir();
+    fs::write(
+      dir.path().join("deno.jsonc"),
+      "{\n  // This is a comment\n  \"imports\": {\n    \"fresh\": \"jsr:@fresh/core\"\n  }\n}\n",
     )
     .unwrap();
     let det = detect_framework(dir.path()).unwrap().unwrap();

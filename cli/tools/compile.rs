@@ -96,8 +96,12 @@ pub async fn compile(
         );
         flags.type_check_mode = TypeCheckMode::None;
       }
-      // Write a temporary entrypoint file.
-      let entrypoint_path = dir.join(".deno_compile_entry.ts");
+      // Write a temporary entrypoint file with a random suffix so we
+      // never overwrite an existing project file.
+      let entrypoint_path = dir.join(format!(
+        ".deno_compile_entry_{:08x}.ts",
+        rand::thread_rng().r#gen::<u32>()
+      ));
       std::fs::write(&entrypoint_path, detection.entrypoint_code)?;
       compile_flags.source_file = entrypoint_path.display().to_string();
       if compile_flags.output.is_none()
@@ -105,10 +109,13 @@ pub async fn compile(
       {
         compile_flags.output = Some(dir_name.to_string_lossy().into_owned());
       }
-      // Add framework build output to includes.
+      // Add framework build output to includes, resolved relative to the
+      // detected app directory so `deno compile ./myapp` picks up
+      // `./myapp/.next` rather than `./.next`.
       for inc in detection.include_paths {
-        if !compile_flags.include.contains(&inc) {
-          compile_flags.include.push(inc);
+        let resolved = dir.join(&inc).display().to_string();
+        if !compile_flags.include.contains(&resolved) {
+          compile_flags.include.push(resolved);
         }
       }
       Some(entrypoint_path)
