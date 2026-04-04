@@ -57,7 +57,7 @@ pub struct uv_pipe_t {
   #[cfg(windows)]
   pub(crate) internal_win_client:
     Option<tokio::net::windows::named_pipe::NamedPipeClient>,
-  /// Pending server connect (waiting for client to connect).
+  /// Whether the server is waiting for a client connection.
   #[cfg(windows)]
   pub(crate) internal_win_server_connecting: bool,
 
@@ -529,6 +529,7 @@ pub(crate) unsafe fn close_pipe(pipe: *mut uv_pipe_t) {
         handle.abort();
       }
       if let Some(handle) = (*pipe).internal_handle.take() {
+        // SAFETY: handle is a valid OS handle from get_osfhandle.
         windows_sys::Win32::Foundation::CloseHandle(handle as _);
       }
       // Drop named pipe server/client (closes handles).
@@ -627,6 +628,7 @@ unsafe fn maybe_spawn_win_read(pipe_ptr: *mut uv_pipe_t) {
 
     let join = deno_core::unsync::spawn_blocking(move || {
       use std::io::Read;
+      use std::os::windows::io::FromRawHandle;
       // SAFETY: handle is a valid OS handle stored by uv_pipe_open.
       // We reconstruct a File temporarily, read from it, then leak it
       // back to avoid double-close.
@@ -664,10 +666,12 @@ pub(crate) unsafe fn poll_pipe_handle(
     }
 
     // 2. Poll server waiting for client connection.
+    // On Windows, NamedPipeServer::connect() is async. We poll for
+    // write readiness which indicates a client has connected.
     if (*pipe_ptr).internal_win_server_connecting {
       if let Some(ref server) = (*pipe_ptr).internal_win_server {
-        match server.poll_connect(cx) {
-          Poll::Ready(Ok(())) => {
+        match server.poll_write_ready(cx) {
+          Poll::Ready(Ok(_)) => {
             (*pipe_ptr).internal_win_server_connecting = false;
             if let Some(cb) = (*pipe_ptr).internal_connection_cb {
               cb(pipe_ptr as *mut uv_stream_t, 0);
@@ -699,6 +703,7 @@ pub(crate) unsafe fn poll_pipe_handle(
       // Try writing to whichever pipe type we have.
       let remaining = &pw.data[pw.offset..];
       use std::io::Write;
+      use std::os::windows::io::FromRawHandle;
       let write_result = if let Some(ref handle) = (*pipe_ptr).internal_handle {
         let mut file = std::fs::File::from_raw_handle(*handle);
         let r = file.write(remaining);

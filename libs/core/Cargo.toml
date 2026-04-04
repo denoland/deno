@@ -60,6 +60,9 @@ url.workspace = true
 v8.workspace = true
 wasm_dep_analyzer = "0.4.0"
 
+[target.'cfg(windows)'.dependencies]
+windows-sys.workspace = true
+
 [dev-dependencies]
 bencher.workspace = true
 criterion.workspace = true

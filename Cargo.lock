@@ -2175,6 +2175,7 @@ dependencies = [
  "url",
  "v8",
  "wasm_dep_analyzer",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]

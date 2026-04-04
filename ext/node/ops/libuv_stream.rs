@@ -924,16 +924,32 @@ impl NativePipe {
     }
   }
 
-  #[fast]
-  fn listen(&self, #[smi] backlog: i32) -> i32 {
+  #[nofast]
+  fn listen(
+    &self,
+    state: &mut OpState,
+    #[smi] backlog: i32,
+  ) -> Result<i32, deno_permissions::PermissionCheckError> {
+    // Permission check: verify the bind path is allowed.
+    let pipe = self.raw();
+    if !pipe.is_null() {
+      // SAFETY: pipe is valid.
+      if let Some(path) = unsafe { &*pipe }.bind_path() {
+        state.borrow_mut::<PermissionsContainer>().check_open(
+          std::borrow::Cow::Borrowed(std::path::Path::new(path)),
+          deno_permissions::OpenAccessKind::ReadWriteNoFollow,
+          Some("node:net.Server.listen()"),
+        )?;
+      }
+    }
     // SAFETY: handle is valid
-    unsafe {
+    Ok(unsafe {
       let stream = self.stream();
       if stream.is_null() {
-        return -1;
+        return Ok(-1);
       }
       uv_compat::uv_pipe_listen(self.raw(), backlog, Some(server_connection_cb))
-    }
+    })
   }
 
   #[fast]
@@ -943,12 +959,22 @@ impl NativePipe {
   }
 
   #[nofast]
-  fn connect(&self, #[string] path: &str) -> i32 {
+  fn connect(
+    &self,
+    state: &mut OpState,
+    #[string] path: &str,
+  ) -> Result<i32, deno_permissions::PermissionCheckError> {
+    // Permission check: verify the connect path is allowed.
+    state.borrow_mut::<PermissionsContainer>().check_open(
+      std::borrow::Cow::Borrowed(std::path::Path::new(path)),
+      deno_permissions::OpenAccessKind::ReadWriteNoFollow,
+      Some("node:net.createConnection()"),
+    )?;
     // SAFETY: handle is valid; ConnectReq freed in connect_cb
-    unsafe {
+    Ok(unsafe {
       let pipe = self.raw();
       if pipe.is_null() {
-        return uv_compat::UV_EBADF;
+        return Ok(uv_compat::UV_EBADF);
       }
       let req = Box::into_raw(Box::new(ConnectReq {
         uv_req: uv_compat::new_connect(),
@@ -963,7 +989,7 @@ impl NativePipe {
         let _ = Box::from_raw(req);
       }
       ret
-    }
+    })
   }
 
   /// Set the number of pending pipe instances (Windows named pipes only).
