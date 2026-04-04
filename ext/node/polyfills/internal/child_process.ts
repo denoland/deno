@@ -67,18 +67,14 @@ import { kEmptyObject } from "ext:deno_node/internal/util.mjs";
 import { getValidatedPath } from "ext:deno_node/internal/fs/utils.mjs";
 import process from "node:process";
 import { StringPrototypeSlice } from "ext:deno_node/internal/primordials.mjs";
-import { StreamBase } from "ext:deno_node/internal_binding/stream_wrap.ts";
 import { Pipe, socketType } from "ext:deno_node/internal_binding/pipe_wrap.ts";
 import { Server as NetServer, Socket } from "node:net";
 import { Socket as DgramSocket } from "node:dgram";
 import {
   kArgv0,
-  kExtraStdio,
   kInputOption,
-  kIpc,
   kKillSignalOption,
   kNeedsNpmProcessState,
-  kSerialization,
   kTimeoutOption,
 } from "ext:deno_process/40_process.js";
 
@@ -161,57 +157,6 @@ function flushStdio(subprocess: ChildProcess) {
   }
 }
 
-// Wraps a resource in a class that implements
-// StreamBase, so it can be used with node streams
-class StreamResource implements StreamBase {
-  #rid: number;
-  #isUnref = false;
-  #pendingPromises: Set<Promise<number>> = new Set();
-  constructor(rid: number) {
-    this.#rid = rid;
-  }
-  close(): void {
-    core.close(this.#rid);
-  }
-  async read(p: Uint8Array): Promise<number | null> {
-    const readPromise = core.read(this.#rid, p);
-    this.#pendingPromises.add(readPromise);
-    if (this.#isUnref) {
-      core.unrefOpPromise(readPromise);
-    }
-    try {
-      const nread = await readPromise;
-      return nread > 0 ? nread : null;
-    } finally {
-      this.#pendingPromises.delete(readPromise);
-    }
-  }
-  ref(): void {
-    this.#isUnref = false;
-    for (const promise of this.#pendingPromises) {
-      core.refOpPromise(promise);
-    }
-  }
-  unref(): void {
-    this.#isUnref = true;
-    for (const promise of this.#pendingPromises) {
-      core.unrefOpPromise(promise);
-    }
-  }
-  async write(p: Uint8Array): Promise<number> {
-    const writePromise = core.write(this.#rid, p);
-    this.#pendingPromises.add(writePromise);
-    if (this.#isUnref) {
-      core.unrefOpPromise(writePromise);
-    }
-    try {
-      return await writePromise;
-    } finally {
-      this.#pendingPromises.delete(writePromise);
-    }
-  }
-}
-
 export class ChildProcess extends EventEmitter {
   /**
    * The exit code of the child process. This property will be `null` until the child process exits.
@@ -269,7 +214,8 @@ export class ChildProcess extends EventEmitter {
 
   disconnect?: () => void;
 
-  #process!: Deno.ChildProcess;
+  // deno-lint-ignore no-explicit-any
+  #process!: any;
   #spawned = Promise.withResolvers<void>();
   [kClosesNeeded] = 1;
   [kClosesReceived] = 0;
@@ -410,7 +356,7 @@ export class ChildProcess extends EventEmitter {
     }
 
     try {
-      this.#process = new Deno.Command(cmd, {
+      this.#process = internals.nodeSpawnChild(cmd, {
         args: cmdArgs,
         clearEnv: true,
         cwd,
@@ -422,37 +368,23 @@ export class ChildProcess extends EventEmitter {
         uid,
         gid,
         detached,
-        [kSerialization]: serialization,
-        [kIpc]: ipc, // internal
-        [kExtraStdio]: extraStdioNormalized,
-        [kNeedsNpmProcessState]: options[kNeedsNpmProcessState] ||
+        serialization,
+        ipc,
+        extraStdio: extraStdioNormalized,
+        needsNpmProcessState: options[kNeedsNpmProcessState] ||
           includeNpmProcessState,
-        [kArgv0]: argv0 !== cmd ? argv0 : undefined,
-      }).spawn();
+        argv0: argv0 !== cmd ? argv0 : undefined,
+      });
       this.pid = this.#process.pid;
 
-      // TODO(bartlomieju): replace internals.getStdioRids with raw OS file
-      // descriptors returned from op_spawn_child, then use Pipe.open(fd) +
-      // net.Socket({ handle: pipe }) instead of the StreamResource(rid) path.
-      // (Extra stdio pipes already use the fd-based path below.)
-      const stdioRids = internals.getStdioRids(this.#process);
-
-      if (stdin === "pipe") {
-        assert(this.#process.stdin);
-        if (stdioRids.stdinRid !== null) {
-          // Create Socket instance for stdin (like Node.js does)
-          this.stdin = new Socket({
-            handle: new Pipe(
-              socketType.SOCKET,
-              new StreamResource(stdioRids.stdinRid),
-            ),
-            writable: true,
-            readable: false,
-          });
-        } else {
-          // Fallback to web stream conversion
-          this.stdin = Writable.fromWeb(this.#process.stdin);
-        }
+      if (stdin === "pipe" && this.#process.stdinFd != null) {
+        const pipe = new Pipe(socketType.SOCKET);
+        pipe.open(this.#process.stdinFd);
+        this.stdin = new Socket({
+          handle: pipe,
+          writable: true,
+          readable: false,
+        });
       }
 
       if (stdin instanceof Stream) {
@@ -465,45 +397,29 @@ export class ChildProcess extends EventEmitter {
         this.stderr = stderr;
       }
 
-      if (stdout === "pipe") {
-        assert(this.#process.stdout);
+      if (stdout === "pipe" && this.#process.stdoutFd != null) {
         this[kClosesNeeded]++;
-        if (stdioRids.stdoutRid !== null) {
-          // Create Socket instance for stdout (like Node.js does)
-          this.stdout = new Socket({
-            handle: new Pipe(
-              socketType.SOCKET,
-              new StreamResource(stdioRids.stdoutRid),
-            ),
-            writable: false,
-            readable: true,
-          });
-        } else {
-          // Fallback to web stream conversion
-          this.stdout = Readable.fromWeb(this.#process.stdout);
-        }
+        const pipe = new Pipe(socketType.SOCKET);
+        pipe.open(this.#process.stdoutFd);
+        this.stdout = new Socket({
+          handle: pipe,
+          writable: false,
+          readable: true,
+        });
         this.stdout.on("close", () => {
           maybeClose(this);
         });
       }
 
-      if (stderr === "pipe") {
-        assert(this.#process.stderr);
+      if (stderr === "pipe" && this.#process.stderrFd != null) {
         this[kClosesNeeded]++;
-        if (stdioRids.stderrRid !== null) {
-          // Create Socket instance for stderr (like Node.js does)
-          this.stderr = new Socket({
-            handle: new Pipe(
-              socketType.SOCKET,
-              new StreamResource(stdioRids.stderrRid),
-            ),
-            writable: false,
-            readable: true,
-          });
-        } else {
-          // Fallback to web stream conversion
-          this.stderr = Readable.fromWeb(this.#process.stderr);
-        }
+        const pipe = new Pipe(socketType.SOCKET);
+        pipe.open(this.#process.stderrFd);
+        this.stderr = new Socket({
+          handle: pipe,
+          writable: false,
+          readable: true,
+        });
         this.stderr.on("close", () => {
           maybeClose(this);
         });
@@ -517,7 +433,7 @@ export class ChildProcess extends EventEmitter {
         this.stdio[ipc] = null;
       }
 
-      const pipeFds = internals.getExtraPipeFds(this.#process);
+      const pipeFds = this.#process.extraPipeFds;
       for (let i = 0; i < pipeFds.length; i++) {
         const pipeFd: number | null = pipeFds[i];
         const fd = i + extraStdioOffset;
@@ -570,7 +486,7 @@ export class ChildProcess extends EventEmitter {
         }
       }
 
-      const pipeRid = internals.getIpcPipeRid(this.#process);
+      const pipeRid = this.#process.ipcPipeRid;
       if (typeof pipeRid == "number") {
         setupChannel(this, pipeRid, serialization);
         this[kClosesNeeded]++;

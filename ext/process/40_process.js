@@ -3,6 +3,7 @@
 import { core, internals, primordials } from "ext:core/mod.js";
 import {
   op_kill,
+  op_node_spawn_child,
   op_run,
   op_run_status,
   op_spawn_child,
@@ -245,12 +246,77 @@ const _stderrRid = Symbol("[[stderrRid]]");
 
 internals.getIpcPipeRid = (process) => process[_ipcPipeRid];
 internals.getExtraPipeFds = (process) => process[_extraPipeFds];
-internals.getStdioRids = (process) => ({
-  stdinRid: process[_stdinRid],
-  stdoutRid: process[_stdoutRid],
-  stderrRid: process[_stderrRid],
-});
 internals.kExtraStdio = kExtraStdio;
+
+// Node compat spawn: returns a lightweight object with raw fds for stdio
+// instead of a full Deno.ChildProcess with web streams.
+// The caller (child_process.ts) is responsible for providing all fields.
+internals.nodeSpawnChild = function nodeSpawnChild(command, {
+  args,
+  cwd,
+  clearEnv,
+  argv0,
+  env,
+  uid,
+  gid,
+  stdin,
+  stdout,
+  stderr,
+  windowsRawArguments,
+  ipc,
+  serialization,
+  extraStdio,
+  detached,
+  needsNpmProcessState,
+}) {
+  const child = op_node_spawn_child({
+    cmd: pathFromURL(command),
+    args: ArrayPrototypeMap(args, String),
+    cwd: pathFromURL(cwd),
+    clearEnv,
+    argv0,
+    env: ObjectEntries(env),
+    uid,
+    gid,
+    stdin,
+    stdout,
+    stderr,
+    windowsRawArguments,
+    ipc,
+    serialization,
+    extraStdio,
+    detached,
+    needsNpmProcessState,
+  }, "node:child_process");
+
+  return {
+    __proto__: null,
+    rid: child.rid,
+    pid: child.pid,
+    stdinFd: child.stdinFd,
+    stdoutFd: child.stdoutFd,
+    stderrFd: child.stderrFd,
+    ipcPipeRid: child.ipcPipeRid,
+    extraPipeFds: child.extraPipeFds,
+    get status() {
+      const promise = op_spawn_wait(child.rid);
+      ObjectDefineProperty(this, "status", {
+        __proto__: null,
+        value: promise,
+      });
+      return promise;
+    },
+    kill(signal) {
+      op_spawn_kill(child.rid, signal);
+    },
+    ref() {
+      op_spawn_child_ref(child.rid);
+    },
+    unref() {
+      op_spawn_child_unref(child.rid);
+    },
+  };
+};
 
 class ChildProcess {
   #rid;
