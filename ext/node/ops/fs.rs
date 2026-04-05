@@ -1098,6 +1098,40 @@ pub async fn op_node_fs_read_deferred(
   }
 }
 
+/// Cancellable fd-based async read. Like op_node_fs_read_deferred but accepts
+/// a cancel handle rid so the read can be aborted when the stream is destroyed
+/// (e.g. when a child process is killed and its stdout pipe is closed).
+#[op2(async(lazy))]
+#[smi]
+pub async fn op_node_fd_read_with_cancel(
+  state: Rc<RefCell<OpState>>,
+  fd: i32,
+  #[smi] cancel_rid: ResourceId,
+  #[buffer] buf: JsBuffer,
+) -> Result<u32, deno_error::JsErrorBox> {
+  use deno_core::CancelFuture;
+
+  let (file, cancel_handle) = {
+    let state = state.borrow();
+    let file =
+      file_for_fd(&state, fd).map_err(deno_error::JsErrorBox::from_err)?;
+    let cancel = state
+      .resource_table
+      .get::<deno_io::ReadCancelResource>(cancel_rid)
+      .map_err(deno_error::JsErrorBox::from_err)?
+      .cancel_handle();
+    (file, cancel)
+  };
+  let view = deno_core::BufMutView::from(buf);
+  let read_fut = file.read_byob(view);
+  let (nread, _) = read_fut
+    .or_cancel(cancel_handle)
+    .await
+    .map_err(|_| deno_error::JsErrorBox::generic("cancelled"))?
+    .map_err(deno_error::JsErrorBox::from_err)?;
+  Ok(nread as u32)
+}
+
 /// Positioned write: if position >= 0, uses pwrite to write without moving
 /// the file cursor. If position < 0, writes at the current position.
 /// Handles partial writes internally by looping until all bytes are written.
@@ -1153,6 +1187,25 @@ pub async fn op_node_fs_write_deferred(
 ) -> Result<u32, FsError> {
   let file = file_for_fd(&state.borrow(), fd)?;
   write_with_position(file, &buf, position)
+}
+
+/// Async partial write for fd-based streams (pipes, sockets).
+/// Unlike op_node_fs_write_deferred which loops until all bytes are written,
+/// this performs a single write dispatched to a background thread and returns
+/// the number of bytes actually written. This is critical for pipes where the
+/// OS buffer may fill up — the caller must loop and yield between writes so
+/// the event loop can process reads on the other end.
+#[op2(async(lazy))]
+#[smi]
+pub async fn op_node_fd_write_deferred(
+  state: Rc<RefCell<OpState>>,
+  fd: i32,
+  #[buffer] buf: JsBuffer,
+) -> Result<u32, FsError> {
+  let file = file_for_fd(&state.borrow(), fd)?;
+  let view = deno_core::BufView::from(buf);
+  let outcome = file.write(view).await?;
+  Ok(outcome.nwritten() as u32)
 }
 
 #[op2(fast)]
