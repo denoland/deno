@@ -454,11 +454,9 @@ pub unsafe fn uv_pipe_connect(
 
           // Wait for connect to complete by polling for write readiness.
           let async_fd = tokio::io::unix::AsyncFd::new(RawFdWrapper(fd))
-            .map_err(|e| std::io::Error::other(e))?;
-          let _guard = async_fd
-            .writable()
-            .await
-            .map_err(|e| std::io::Error::other(e))?;
+            .map_err(std::io::Error::other)?;
+          let _guard =
+            async_fd.writable().await.map_err(std::io::Error::other)?;
 
           // Check SO_ERROR to see if connect succeeded.
           let mut err_val: libc::c_int = 0;
