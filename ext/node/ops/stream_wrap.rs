@@ -293,11 +293,10 @@ impl LibUvStreamWrap {
     // `StreamHandleData` allocation while the native stream is alive.
     let handle_data = unsafe { handle_data_ptr.as_ref() };
     handle_data.desired_read_interceptor.set(interceptor);
-    if let Some(key) = handle_data.active_read.get() {
-      let _ = handle_data
-        .read_callbacks
-        .borrow_mut()
-        .update_interceptor(key, interceptor);
+    if let Some(key) = handle_data.active_read.get()
+      && let Ok(mut callbacks) = handle_data.read_callbacks.try_borrow_mut()
+    {
+      let _ = callbacks.update_interceptor(key, interceptor);
     }
   }
 
@@ -315,18 +314,22 @@ impl LibUvStreamWrap {
       return 0;
     }
 
-    let key =
-      handle_data
-        .read_callbacks
-        .borrow_mut()
-        .insert(ReadCallbackState {
-          isolate: v8::UnsafeRawIsolatePtr::null(),
-          onread: None,
-          stream_base_state: None,
-          handle: None,
-          bytes_read: handle_data.bytes_read.clone(),
-          read_interceptor: handle_data.desired_read_interceptor.get(),
-        });
+    // Use try_borrow_mut to handle re-entrant calls gracefully.
+    // This can happen when uv_read_start fires on_uv_read synchronously
+    // (data already buffered), whose interceptor calls cycle() which
+    // may call back into read_start.
+    let Ok(mut callbacks) = handle_data.read_callbacks.try_borrow_mut() else {
+      return 0;
+    };
+    let key = callbacks.insert(ReadCallbackState {
+      isolate: v8::UnsafeRawIsolatePtr::null(),
+      onread: None,
+      stream_base_state: None,
+      handle: None,
+      bytes_read: handle_data.bytes_read.clone(),
+      read_interceptor: handle_data.desired_read_interceptor.get(),
+    });
+    drop(callbacks);
     handle_data.active_read.set(Some(key));
 
     // SAFETY: `stream` is a valid libuv stream owned by this wrapper.
@@ -343,7 +346,11 @@ impl LibUvStreamWrap {
     // `StreamHandleData` allocation while the native stream is alive.
     let handle_data = unsafe { handle_data_ptr.as_ref() };
     if let Some(key) = handle_data.active_read.take() {
-      let _ = handle_data.read_callbacks.borrow_mut().remove(key);
+      // Use try_borrow_mut to handle re-entrant calls from interceptor
+      // callbacks that may fire during on_uv_read processing.
+      if let Ok(mut callbacks) = handle_data.read_callbacks.try_borrow_mut() {
+        let _ = callbacks.remove(key);
+      }
     }
     // SAFETY: `stream` is a valid libuv stream owned by this wrapper.
     unsafe { uv_compat::uv_read_stop(stream) }
