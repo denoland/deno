@@ -666,8 +666,12 @@ fn create_command(
         }
         for &(src, dst) in &fds_to_dup {
           if src >= 0 && dst >= 0 {
-            let _fd = libc::dup2(src, dst);
-            libc::close(src);
+            if src != dst {
+              libc::dup2(src, dst);
+              libc::close(src);
+            }
+            // Clear CLOEXEC so the fd survives exec.
+            libc::fcntl(dst, libc::F_SETFD, 0);
           }
         }
         libc::setgroups(0, std::ptr::null());
