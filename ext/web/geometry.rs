@@ -33,6 +33,8 @@ use crate::css_value::CSSValueError;
 use crate::css_value::ParserInput;
 use crate::css_value::Transform;
 use crate::css_value::TransformListParser;
+use crate::f64::maximum;
+use crate::f64::minimum;
 
 macro_rules! define_obj {
   ($scope:ident => { $( $modifier:ident $key:literal: $value:expr ),*, }) => {
@@ -2607,44 +2609,6 @@ impl DOMMatrix {
   ) -> v8::Global<v8::Object> {
     self.base.invert_self_inner();
     this
-  }
-}
-
-// TODO(petamoriken) Use f64::maximum instead https://github.com/rust-lang/rust/issues/91079
-#[inline]
-fn maximum(a: f64, b: f64) -> f64 {
-  if a > b {
-    a
-  } else if b > a {
-    b
-  } else if a == b {
-    if a.is_sign_positive() && b.is_sign_negative() {
-      a
-    } else {
-      b
-    }
-  } else {
-    // At least one input is NaN. Use `+` to perform NaN propagation and quieting.
-    a + b
-  }
-}
-
-// TODO(petamoriken) Use f64::minimum instead https://github.com/rust-lang/rust/issues/91079
-#[inline]
-fn minimum(a: f64, b: f64) -> f64 {
-  if a < b {
-    a
-  } else if b < a {
-    b
-  } else if a == b {
-    if a.is_sign_negative() && b.is_sign_positive() {
-      a
-    } else {
-      b
-    }
-  } else {
-    // At least one input is NaN. Use `+` to perform NaN propagation and quieting.
-    a + b
   }
 }
 

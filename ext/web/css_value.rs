@@ -9,6 +9,9 @@ pub use cssparser::ParserInput;
 use cssparser::Token;
 use cssparser::match_ignore_ascii_case;
 
+use crate::f64::maximum;
+use crate::f64::minimum;
+
 pub type CSSValueError<'i> = ParseError<'i, CSSValueCustomError>;
 
 macro_rules! try_extract {
@@ -2139,44 +2142,6 @@ impl NumericValue {
     }
 
     Ok(lhs)
-  }
-}
-
-// TODO(petamoriken) Use f64::maximum instead https://github.com/rust-lang/rust/issues/91079
-#[inline]
-fn maximum(a: f64, b: f64) -> f64 {
-  if a > b {
-    a
-  } else if b > a {
-    b
-  } else if a == b {
-    if a.is_sign_positive() && b.is_sign_negative() {
-      a
-    } else {
-      b
-    }
-  } else {
-    // At least one input is NaN. Use `+` to perform NaN propagation and quieting.
-    a + b
-  }
-}
-
-// TODO(petamoriken) Use f64::minimum instead https://github.com/rust-lang/rust/issues/91079
-#[inline]
-fn minimum(a: f64, b: f64) -> f64 {
-  if a < b {
-    a
-  } else if b < a {
-    b
-  } else if a == b {
-    if a.is_sign_negative() && b.is_sign_positive() {
-      a
-    } else {
-      b
-    }
-  } else {
-    // At least one input is NaN. Use `+` to perform NaN propagation and quieting.
-    a + b
   }
 }
 
