@@ -97,18 +97,6 @@ fn ebadf() -> FsError {
   ))
 }
 
-fn eexist() -> FsError {
-  FsError::Io(std::io::Error::from_raw_os_error(
-    #[cfg(unix)]
-    libc::EEXIST,
-    #[cfg(windows)]
-    {
-      // Win32 ERROR_ALREADY_EXISTS
-      183
-    },
-  ))
-}
-
 /// Get the File trait object for an OS file descriptor from FdTable.
 fn file_for_fd(
   state: &OpState,

@@ -383,7 +383,7 @@ pub unsafe fn uv_shutdown(
     if (*stream).r#type == uv_handle_type::UV_NAMED_PIPE {
       let pipe = stream as *mut super::pipe::uv_pipe_t;
       #[cfg(unix)]
-      if (*pipe).internal_stream.is_none() {
+      if (*pipe).internal_stream.is_none() && (*pipe).internal_fd.is_none() {
         return UV_ENOTCONN;
       }
       (*pipe).internal_shutdown = Some(super::tcp::ShutdownPending { req, cb });
@@ -564,6 +564,32 @@ unsafe fn write_pipe(
       cb,
       status,
     });
+
+    // Ensure AsyncFd exists for write readiness tracking before
+    // the poll loop runs. Creating it eagerly here avoids races
+    // with edge-triggered readiness (kqueue/epoll).
+    #[cfg(unix)]
+    if (*pipe).internal_async_fd.is_none()
+      && (*pipe).internal_stream.is_none()
+      && (*pipe).internal_connect.is_none()
+      && (*pipe).internal_fd.is_some()
+    {
+      let fd = (*pipe).internal_fd.unwrap();
+      if let Ok(afd) =
+        tokio::io::unix::AsyncFd::new(super::pipe::RawFdWrapper(fd))
+      {
+        (*pipe).internal_async_fd = Some(afd);
+      }
+    }
+
+    // Ensure the pipe is registered for polling so async writes complete.
+    let inner = get_inner((*pipe).loop_);
+    if let Ok(mut handles) = inner.pipe_handles.try_borrow_mut()
+      && !handles.iter().any(|&h| std::ptr::eq(h, pipe))
+    {
+      handles.push(pipe);
+    }
+    (*pipe).flags |= UV_HANDLE_ACTIVE;
   }
   0
 }

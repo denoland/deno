@@ -188,14 +188,30 @@ export class Pipe extends ConnectionWrap {
   }
 
   override shutdown(req: ShutdownWrap<LibuvStreamWrap>): number {
-    const ret = this.#native.shutdown();
-    queueMicrotask(() => {
+    // deno-lint-ignore no-this-alias
+    const self = this;
+    this.#native.onshutdown = function (status: number) {
+      self.#native.onshutdown = undefined;
       try {
-        req.oncomplete(ret);
+        req.oncomplete(status);
       } catch {
         // swallow callback errors.
       }
-    });
+    };
+    const ret = this.#native.shutdown();
+    if (ret !== 0) {
+      // Native shutdown failed (e.g. ENOTCONN), fire oncomplete via microtask.
+      this.#native.onshutdown = undefined;
+      queueMicrotask(() => {
+        try {
+          req.oncomplete(
+            MapPrototypeGet(codeMap, "UNKNOWN") ?? -4094,
+          );
+        } catch {
+          // swallow callback errors.
+        }
+      });
+    }
     return 0;
   }
 

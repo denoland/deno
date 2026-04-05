@@ -271,10 +271,42 @@ unsafe extern "C" fn connect_cb(req: *mut UvConnect, status: i32) {
   }
 }
 
-unsafe extern "C" fn shutdown_cb(req: *mut UvShutdown, _status: i32) {
-  // SAFETY: pointer was allocated by Box::into_raw in shutdown
+unsafe extern "C" fn shutdown_cb(req: *mut UvShutdown, status: i32) {
+  // SAFETY: pointers are valid per libuv shutdown callback contract.
+  // Signal JS via the `onshutdown` property so the stream layer
+  // waits for writes to drain before closing the handle.
   unsafe {
+    let stream = (*req).handle;
     let _ = Box::from_raw(req);
+
+    if stream.is_null() {
+      return;
+    }
+    let data = (*(stream as *mut UvHandle)).data as *mut StreamHandleData;
+    if data.is_null() {
+      return;
+    }
+    let js_obj = match (*data).js_object {
+      Some(ref obj) => obj,
+      None => return,
+    };
+
+    let context = match context_from_loop((*stream).loop_) {
+      Some(c) => c,
+      None => return,
+    };
+    v8::callback_scope!(unsafe let scope, context);
+    v8::tc_scope!(let scope, scope);
+
+    let this: v8::Local<v8::Object> = v8::Local::new(scope, js_obj);
+    let key = v8::String::new(scope, "onshutdown").unwrap();
+    let onshutdown = this.get(scope, key.into());
+
+    if let Some(Ok(func)) = onshutdown.map(v8::Local::<v8::Function>::try_from)
+    {
+      let status_val = v8::Integer::new(scope, status);
+      func.call(scope, this.into(), &[status_val.into()]);
+    }
   }
 }
 

@@ -1120,9 +1120,54 @@ pub(crate) unsafe fn poll_pipe_handle(
         continue;
       }
       let remaining = &pw.data[pw.offset..];
-      // Use libc::write directly. This bypasses tokio's readiness
-      // tracking but works reliably for all fd types.
-      let write_result = if let Some(fd) = (*pipe_ptr).internal_fd {
+      // Prefer AsyncFd for proper readiness tracking, then UnixStream,
+      // then fall back to raw libc::write.
+      let write_result = if let Some(ref afd) = (*pipe_ptr).internal_async_fd {
+        match afd.poll_write_ready(cx) {
+          Poll::Ready(Ok(mut guard)) => {
+            let fd = afd.get_ref().0;
+            let n = libc::write(
+              fd,
+              remaining.as_ptr() as *const c_void,
+              remaining.len(),
+            );
+            if n >= 0 {
+              guard.retain_ready();
+              Ok(n as usize)
+            } else {
+              let err = std::io::Error::last_os_error();
+              if err.kind() == std::io::ErrorKind::WouldBlock {
+                guard.clear_ready();
+              }
+              Err(err)
+            }
+          }
+          Poll::Ready(Err(e)) => Err(e),
+          Poll::Pending => {
+            // AsyncFd not ready, but pipe buffer may have space.
+            // Try a non-blocking write to check.
+            let fd = afd.get_ref().0;
+            let n = libc::write(
+              fd,
+              remaining.as_ptr() as *const c_void,
+              remaining.len(),
+            );
+            if n > 0 {
+              Ok(n as usize)
+            } else if n == 0 {
+              break;
+            } else {
+              let err = std::io::Error::last_os_error();
+              if err.kind() == std::io::ErrorKind::WouldBlock {
+                break;
+              }
+              Err(err)
+            }
+          }
+        }
+      } else if let Some(ref stream) = (*pipe_ptr).internal_stream {
+        stream.try_write(remaining)
+      } else if let Some(fd) = (*pipe_ptr).internal_fd {
         let n =
           libc::write(fd, remaining.as_ptr() as *const c_void, remaining.len());
         if n >= 0 {
@@ -1134,16 +1179,30 @@ pub(crate) unsafe fn poll_pipe_handle(
         break;
       };
       match write_result {
-        Ok(_n) => {
+        Ok(n) => {
           any_work = true;
-          let pw = (*pipe_ptr).internal_write_queue.pop_front().unwrap();
-          if let Some(cb) = pw.cb {
-            cb(pw.req, 0);
+          let pw = (*pipe_ptr).internal_write_queue.front_mut().unwrap();
+          pw.offset += n;
+          if pw.offset >= pw.data.len() {
+            let pw = (*pipe_ptr).internal_write_queue.pop_front().unwrap();
+            if let Some(cb) = pw.cb {
+              cb(pw.req, 0);
+            }
           }
         }
         Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
-          // Register interest for write readiness.
-          if let Some(ref afd) = (*pipe_ptr).internal_async_fd {
+          // Lazily create AsyncFd for write readiness tracking.
+          if (*pipe_ptr).internal_async_fd.is_none()
+            && let Some(fd) = (*pipe_ptr).internal_fd
+            && let Ok(afd) = tokio::io::unix::AsyncFd::new(RawFdWrapper(fd))
+          {
+            (*pipe_ptr).internal_async_fd = Some(afd);
+            let _ = (*pipe_ptr)
+              .internal_async_fd
+              .as_ref()
+              .unwrap()
+              .poll_write_ready(cx);
+          } else if let Some(ref afd) = (*pipe_ptr).internal_async_fd {
             let _ = afd.poll_write_ready(cx);
           }
           if let Some(ref stream) = (*pipe_ptr).internal_stream {
@@ -1171,14 +1230,6 @@ pub(crate) unsafe fn poll_pipe_handle(
       let read_cb = (*pipe_ptr).internal_read_cb;
 
       if let (Some(alloc_cb), Some(read_cb)) = (alloc_cb, read_cb) {
-        // Register read interest.
-        if let Some(ref afd) = (*pipe_ptr).internal_async_fd {
-          let _ = afd.poll_read_ready(cx);
-        }
-        if let Some(ref stream) = (*pipe_ptr).internal_stream {
-          let _ = stream.poll_read_ready(cx);
-        }
-
         let mut count = 32;
 
         loop {
@@ -1201,21 +1252,60 @@ pub(crate) unsafe fn poll_pipe_handle(
 
           let slice =
             std::slice::from_raw_parts_mut(buf.base.cast::<u8>(), buf.len);
-          // Use try_read on UnixStream if available (connect/accept path),
-          // fall back to libc::read for opened fds (uv_pipe_open path).
-          let read_result =
-            if let Some(ref stream) = (*pipe_ptr).internal_stream {
-              stream.try_read(slice)
-            } else if let Some(fd) = (*pipe_ptr).internal_fd {
-              let n = libc::read(fd, buf.base as *mut c_void, buf.len);
-              if n >= 0 {
-                Ok(n as usize)
-              } else {
-                Err(std::io::Error::last_os_error())
+          // Use AsyncFd for proper readiness tracking with the reactor.
+          // On Pending, try a raw read anyway for the first iteration
+          // (data may already be buffered from before AsyncFd creation).
+          let read_result = if let Some(ref afd) = (*pipe_ptr).internal_async_fd
+          {
+            match afd.poll_read_ready(cx) {
+              Poll::Ready(Ok(mut guard)) => {
+                let fd = afd.get_ref().0;
+                let n = libc::read(fd, buf.base as *mut c_void, buf.len);
+                if n >= 0 {
+                  guard.retain_ready();
+                  Ok(n as usize)
+                } else {
+                  let err = std::io::Error::last_os_error();
+                  if err.kind() == std::io::ErrorKind::WouldBlock {
+                    guard.clear_ready();
+                  }
+                  Err(err)
+                }
               }
+              Poll::Ready(Err(e)) => Err(e),
+              Poll::Pending => {
+                // AsyncFd says not ready, but data may already be in
+                // the pipe buffer (edge was consumed before registration).
+                // Try a non-blocking read to check.
+                let fd = afd.get_ref().0;
+                let n = libc::read(fd, buf.base as *mut c_void, buf.len);
+                if n > 0 {
+                  Ok(n as usize)
+                } else if n == 0 {
+                  Ok(0) // EOF
+                } else {
+                  let err = std::io::Error::last_os_error();
+                  if err.kind() == std::io::ErrorKind::WouldBlock {
+                    // Truly no data - free buf and wait for wakeup.
+                    read_cb(pipe_ptr as *mut uv_stream_t, 0, &buf);
+                    break;
+                  }
+                  Err(err)
+                }
+              }
+            }
+          } else if let Some(ref stream) = (*pipe_ptr).internal_stream {
+            stream.try_read(slice)
+          } else if let Some(fd) = (*pipe_ptr).internal_fd {
+            let n = libc::read(fd, buf.base as *mut c_void, buf.len);
+            if n >= 0 {
+              Ok(n as usize)
             } else {
-              break;
-            };
+              Err(std::io::Error::last_os_error())
+            }
+          } else {
+            break;
+          };
           match read_result {
             Ok(0) => {
               // EOF
@@ -1233,7 +1323,12 @@ pub(crate) unsafe fn poll_pipe_handle(
               }
             }
             Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
-              // Not ready yet; callback with nread=0 so alloc buf is freed.
+              // Register for read readiness via AsyncFd so the event loop
+              // wakes us when data arrives.
+              if let Some(ref afd) = (*pipe_ptr).internal_async_fd {
+                let _ = afd.poll_read_ready(cx);
+              }
+              // Callback with nread=0 so alloc buf is freed.
               read_cb(pipe_ptr as *mut uv_stream_t, 0, &buf);
               break;
             }
