@@ -2,7 +2,6 @@
 
 use std::borrow::Cow;
 use std::cell::RefCell;
-use std::collections::HashMap;
 use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
@@ -17,7 +16,6 @@ use deno_core::v8;
 use deno_fs::FileSystemRc;
 use deno_fs::FsFileType;
 use deno_fs::OpenOptions;
-use deno_io::fs::FileResource;
 use deno_io::fs::FsResult;
 use deno_permissions::CheckedPath;
 use deno_permissions::CheckedPathBuf;
@@ -28,27 +26,6 @@ use serde::Serialize;
 use tokio::task::JoinError;
 
 use crate::ops::constant::UV_FS_COPYFILE_EXCL;
-
-/// State tracking file descriptors opened through node:fs.
-/// Maps real OS file descriptors to the underlying File trait object,
-/// bypassing the resource table entirely.
-pub struct NodeFsState {
-  pub open_fds: HashMap<i32, Rc<dyn deno_io::fs::File>>,
-}
-
-impl NodeFsState {
-  pub fn new() -> Self {
-    Self {
-      open_fds: HashMap::new(),
-    }
-  }
-}
-
-impl Default for NodeFsState {
-  fn default() -> Self {
-    Self::new()
-  }
-}
 
 /// Extract the real OS file descriptor from a File trait object.
 /// On Unix, this is the raw fd (already an i32).
@@ -126,30 +103,22 @@ fn eexist() -> FsError {
     libc::EEXIST,
     #[cfg(windows)]
     {
-      // Win32 ERROR_ALREADY_EXISTS, which maps to Node's EEXIST
+      // Win32 ERROR_ALREADY_EXISTS
       183
     },
   ))
 }
 
-/// Get the File trait object for an OS file descriptor.
-/// Checks NodeFsState first (covers files opened via node:fs, including
-/// cases where the OS reuses fd 0/1/2 after stdio is closed). Falls back
-/// to the resource table for stdio fds that were never reopened.
+/// Get the File trait object for an OS file descriptor from FdTable.
 fn file_for_fd(
   state: &OpState,
   fd: i32,
 ) -> Result<Rc<dyn deno_io::fs::File>, FsError> {
-  if let Some(file) = state.borrow::<NodeFsState>().open_fds.get(&fd) {
-    return Ok(file.clone());
-  }
-  // Stdio fds (0, 1, 2) are pre-registered in the resource table at
-  // RIDs 0, 1, 2. Only fall back here if the fd wasn't opened via node:fs.
-  if (0..=2).contains(&fd) {
-    return FileResource::get_file(state, fd as ResourceId)
-      .map_err(|_| ebadf());
-  }
-  Err(ebadf())
+  state
+    .borrow::<deno_io::FdTable>()
+    .get(fd)
+    .cloned()
+    .ok_or_else(ebadf)
 }
 
 /// When `sync_fs` is enabled, `FileSystemRc` is `Arc` (Send) and we can
@@ -374,7 +343,7 @@ pub fn op_node_open_sync(
   )?;
   let file = fs.open_sync(&path, options)?;
   let fd = raw_fd_for_file(file.clone())?;
-  state.borrow_mut::<NodeFsState>().open_fds.insert(fd, file);
+  state.borrow_mut::<deno_io::FdTable>().register(fd, file);
   Ok(fd)
 }
 
@@ -404,7 +373,7 @@ pub async fn op_node_open(
   let fd = raw_fd_for_file(file.clone())?;
 
   let mut state = state.borrow_mut();
-  state.borrow_mut::<NodeFsState>().open_fds.insert(fd, file);
+  state.borrow_mut::<deno_io::FdTable>().register(fd, file);
   Ok(fd)
 }
 #[derive(Debug, Serialize)]
@@ -787,50 +756,6 @@ fn temp_path_append_suffix(prefix: &str) -> String {
   format!("{}{}", prefix, suffix)
 }
 
-/// Create a file resource from a raw file descriptor.
-/// This is used for wrapping PTYs and other non-socket file descriptors
-/// that can't be wrapped as Unix streams.
-#[cfg(unix)]
-#[op2(fast)]
-#[smi]
-pub fn op_node_file_from_fd(
-  state: &mut OpState,
-  fd: i32,
-) -> Result<ResourceId, FsError> {
-  use std::fs::File as StdFile;
-  use std::os::unix::io::FromRawFd;
-
-  if fd < 0 {
-    return Err(FsError::Io(std::io::Error::new(
-      std::io::ErrorKind::InvalidInput,
-      "Invalid file descriptor",
-    )));
-  }
-
-  // SAFETY: The caller is responsible for passing a valid fd that they own.
-  // The fd will be owned by the created File from this point on.
-  let std_file = unsafe { StdFile::from_raw_fd(fd) };
-
-  let file = Rc::new(deno_io::StdFileResourceInner::file(std_file, None));
-  let rid = state
-    .resource_table
-    .add(FileResource::new(file, "pipe".to_string()));
-  Ok(rid)
-}
-
-#[cfg(not(unix))]
-#[op2(fast)]
-#[smi]
-pub fn op_node_file_from_fd(
-  _state: &mut OpState,
-  _fd: i32,
-) -> Result<ResourceId, FsError> {
-  Err(FsError::Io(std::io::Error::new(
-    std::io::ErrorKind::Unsupported,
-    "op_node_file_from_fd is not supported on this platform",
-  )))
-}
-
 #[op2(fast, stack_trace)]
 pub fn op_node_rmdir_sync(
   state: &mut OpState,
@@ -884,10 +809,15 @@ pub fn op_node_register_fd(
     return Err(ebadf());
   }
 
+  // Stdio fds (0/1/2) are pre-registered in FdTable at startup.
+  // For these, Pipe.open(fd) is a no-op since both Deno and Node
+  // share the same entry.
+  if (0..=2).contains(&fd) && state.borrow::<deno_io::FdTable>().contains(fd) {
+    return Ok(());
+  }
+
   // Reject if the fd is already tracked (e.g. from fs.openSync()).
-  // Silently replacing via HashMap::insert would drop the previous File,
-  // closing the underlying fd on Unix and leaking CRT bookkeeping on Windows.
-  if state.borrow::<NodeFsState>().open_fds.contains_key(&fd) {
+  if state.borrow::<deno_io::FdTable>().contains(fd) {
     return Err(eexist());
   }
 
@@ -897,7 +827,7 @@ pub fn op_node_register_fd(
   let std_file = unsafe { StdFile::from_raw_fd(fd) };
   let file: Rc<dyn deno_io::fs::File> =
     Rc::new(deno_io::StdFileResourceInner::file(std_file, None));
-  state.borrow_mut::<NodeFsState>().open_fds.insert(fd, file);
+  state.borrow_mut::<deno_io::FdTable>().register(fd, file);
   Ok(())
 }
 
@@ -918,8 +848,13 @@ pub fn op_node_register_fd(
     return Err(ebadf());
   }
 
+  // Stdio fds (0/1/2) are pre-registered in FdTable at startup.
+  if (0..=2).contains(&fd) && state.borrow::<deno_io::FdTable>().contains(fd) {
+    return Ok(());
+  }
+
   // Reject if the fd is already tracked (e.g. from fs.openSync()).
-  if state.borrow::<NodeFsState>().open_fds.contains_key(&fd) {
+  if state.borrow::<deno_io::FdTable>().contains(fd) {
     return Err(eexist());
   }
 
@@ -956,12 +891,12 @@ pub fn op_node_register_fd(
   let std_file = unsafe { StdFile::from_raw_handle(dup_handle) };
   let file: Rc<dyn deno_io::fs::File> =
     Rc::new(deno_io::StdFileResourceInner::file(std_file, None));
-  state.borrow_mut::<NodeFsState>().open_fds.insert(fd, file);
+  state.borrow_mut::<deno_io::FdTable>().register(fd, file);
   Ok(())
 }
 
 /// Create an anonymous pipe pair and return (read_fd, write_fd).
-/// The returned fds are NOT registered in NodeFsState; the caller
+/// The returned fds are NOT registered in FdTable; the caller
 /// is responsible for registering or closing them.
 #[cfg(unix)]
 #[op2]
@@ -1073,11 +1008,22 @@ pub fn op_node_fd_set_blocking(_fd: i32, _blocking: bool) -> i32 {
 
 #[op2(fast)]
 pub fn op_node_fs_close(state: &mut OpState, fd: i32) -> Result<(), FsError> {
+  // FdTable.remove() drops the Rc<dyn File> and cancels the cancel handle,
+  // which will abort any in-flight async reads on this fd.
   let file = state
-    .borrow_mut::<NodeFsState>()
-    .open_fds
-    .remove(&fd)
+    .borrow_mut::<deno_io::FdTable>()
+    .remove(fd)
     .ok_or_else(ebadf)?;
+
+  // For stdio fds (0/1/2), also remove the corresponding resource table
+  // entry so that Deno.stdin/stdout/stderr see the fd as closed and
+  // release their Rc clone of the same File.
+  if (0..=2).contains(&fd)
+    && let Ok(resource) = state.resource_table.take_any(fd as ResourceId)
+  {
+    resource.close();
+  }
+
   // Dropping the Rc<dyn File> will close the underlying OS file descriptor
   // when the reference count reaches zero (via std::fs::File Drop).
   drop(file);
@@ -1098,6 +1044,8 @@ pub fn op_node_fs_close(state: &mut OpState, fd: i32) -> Result<(), FsError> {
   Ok(())
 }
 
+/// Read from a raw OS fd using libc. No dup, no clone -- the read uses the
+/// fd number directly, so closing the fd from another thread interrupts the
 /// Positioned read: if position >= 0, uses pread to read without moving the
 /// file cursor. If position < 0, reads from the current position.
 fn read_with_position(
@@ -1126,8 +1074,10 @@ pub fn op_node_fs_read_sync(
   read_with_position(file, buf, position)
 }
 
-/// Async read for node:fs. Both positioned and non-positioned reads run
-/// on a blocking thread so the event loop stays responsive.
+/// Async read for node:fs. Runs a blocking read on a spawned thread using
+/// the raw OS fd directly (no dup/clone). When the fd is closed via
+/// Async read for node:fs. Uses the File trait from FdTable for proper
+/// I/O through the file handle.
 #[op2]
 #[smi]
 pub async fn op_node_fs_read_deferred(
@@ -1146,6 +1096,40 @@ pub async fn op_node_fs_read_deferred(
     let (nread, _) = file.read_byob(view).await?;
     Ok(nread as u32)
   }
+}
+
+/// Cancellable fd-based async read. Like op_node_fs_read_deferred but accepts
+/// a cancel handle rid so the read can be aborted when the stream is destroyed
+/// (e.g. when a child process is killed and its stdout pipe is closed).
+#[op2(async(lazy))]
+#[smi]
+pub async fn op_node_fd_read_with_cancel(
+  state: Rc<RefCell<OpState>>,
+  fd: i32,
+  #[smi] cancel_rid: ResourceId,
+  #[buffer] buf: JsBuffer,
+) -> Result<u32, deno_error::JsErrorBox> {
+  use deno_core::CancelFuture;
+
+  let (file, cancel_handle) = {
+    let state = state.borrow();
+    let file =
+      file_for_fd(&state, fd).map_err(deno_error::JsErrorBox::from_err)?;
+    let cancel = state
+      .resource_table
+      .get::<deno_io::ReadCancelResource>(cancel_rid)
+      .map_err(deno_error::JsErrorBox::from_err)?
+      .cancel_handle();
+    (file, cancel)
+  };
+  let view = deno_core::BufMutView::from(buf);
+  let read_fut = file.read_byob(view);
+  let (nread, _) = read_fut
+    .or_cancel(cancel_handle)
+    .await
+    .map_err(|_| deno_error::JsErrorBox::generic("cancelled"))?
+    .map_err(deno_error::JsErrorBox::from_err)?;
+  Ok(nread as u32)
 }
 
 /// Positioned write: if position >= 0, uses pwrite to write without moving
@@ -1203,6 +1187,25 @@ pub async fn op_node_fs_write_deferred(
 ) -> Result<u32, FsError> {
   let file = file_for_fd(&state.borrow(), fd)?;
   write_with_position(file, &buf, position)
+}
+
+/// Async partial write for fd-based streams (pipes, sockets).
+/// Unlike op_node_fs_write_deferred which loops until all bytes are written,
+/// this performs a single write dispatched to a background thread and returns
+/// the number of bytes actually written. This is critical for pipes where the
+/// OS buffer may fill up — the caller must loop and yield between writes so
+/// the event loop can process reads on the other end.
+#[op2(async(lazy))]
+#[smi]
+pub async fn op_node_fd_write_deferred(
+  state: Rc<RefCell<OpState>>,
+  fd: i32,
+  #[buffer] buf: JsBuffer,
+) -> Result<u32, FsError> {
+  let file = file_for_fd(&state.borrow(), fd)?;
+  let view = deno_core::BufView::from(buf);
+  let outcome = file.write(view).await?;
+  Ok(outcome.nwritten() as u32)
 }
 
 #[op2(fast)]
