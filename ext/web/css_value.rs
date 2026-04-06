@@ -15,16 +15,82 @@ use crate::f64::minimum;
 pub type CSSValueError<'i> = ParseError<'i, CSSValueCustomError>;
 
 macro_rules! try_extract {
-  ($expr:expr, $method:ident($($arg:expr),*), $arguments:expr) => {
+  ($expr:expr, $method:ident($($arg:expr),*), $input:expr) => {
     match $expr.$method($($arg),*) {
       Ok(v) => v,
-      Err(e) => return Err($arguments.new_custom_error(e)),
+      Err(e) => return Err($input.new_custom_error(e)),
     }
   };
-  ($expr:expr, $method:ident($($arg:expr),*), $map:ident(), $arguments:expr) => {
+  ($expr:expr, $method:ident($($arg:expr),*), $map:ident(), $input:expr) => {
     match $expr.$method($($arg),*) {
       Ok(v) => v.$map(),
-      Err(e) => return Err($arguments.new_custom_error(e)),
+      Err(e) => return Err($input.new_custom_error(e)),
+    }
+  };
+}
+
+macro_rules! extract_as_raw {
+  ($expr:expr) => {
+    match &$expr {
+      NumericValue::Zero => unreachable!(),
+      NumericValue::Number(number) => *number,
+      NumericValue::Percent(percent) => *percent,
+      NumericValue::Length(length) => length.to_pixels(),
+      NumericValue::Angle(angle) => angle.to_degrees(),
+      NumericValue::Time(time) => time.to_seconds(),
+      NumericValue::Frequency(frequency) => frequency.to_hertz(),
+      NumericValue::Resolution(resolution) => resolution.to_dot_per_pixels(),
+      NumericValue::Flex(flex) => *flex,
+    }
+  };
+}
+
+macro_rules! try_extract_as_raw {
+  ($expr:expr, $type_ref:expr, $input:expr) => {
+    match &$type_ref {
+      NumericValue::Zero => unreachable!(),
+      NumericValue::Number(_) => try_extract!($expr, expect_number(), $input),
+      NumericValue::Percent(_) => try_extract!($expr, expect_percent(), $input),
+      NumericValue::Length(_) => {
+        try_extract!($expr, expect_length(false), to_pixels(), $input)
+      }
+      NumericValue::Angle(_) => {
+        try_extract!($expr, expect_angle(false), to_degrees(), $input)
+      }
+      NumericValue::Time(_) => {
+        try_extract!($expr, expect_time(), to_seconds(), $input)
+      }
+      NumericValue::Frequency(_) => {
+        try_extract!($expr, expect_frequency(), to_hertz(), $input)
+      }
+      NumericValue::Resolution(_) => {
+        try_extract!($expr, expect_resolution(), to_dot_per_pixels(), $input)
+      }
+      NumericValue::Flex(_) => try_extract!($expr, expect_flex(), $input),
+    }
+  };
+}
+
+macro_rules! from_raw {
+  ($value:expr, $type_ref:expr) => {
+    match &$type_ref {
+      NumericValue::Zero => unreachable!(),
+      NumericValue::Number(_) => NumericValue::Number($value),
+      NumericValue::Percent(_) => NumericValue::Percent($value),
+      NumericValue::Length(_) => {
+        NumericValue::Length(Length::from_pixels($value))
+      }
+      NumericValue::Angle(_) => {
+        NumericValue::Angle(Angle::from_degrees($value))
+      }
+      NumericValue::Time(_) => NumericValue::Time(Time::from_seconds($value)),
+      NumericValue::Frequency(_) => {
+        NumericValue::Frequency(Frequency::from_hertz($value))
+      }
+      NumericValue::Resolution(_) => {
+        NumericValue::Resolution(Resolution::from_dot_per_pixels($value))
+      }
+      NumericValue::Flex(_) => NumericValue::Flex($value),
     }
   };
 }
@@ -1099,190 +1165,38 @@ impl NumericValue {
           // https://www.w3.org/TR/css-values-4/#calc-func
           "calc" => {
             input.parse_nested_block(|arguments| {
-              let value = Self::parse_additive_expression(arguments, state)?;
+              let acc = Self::parse_additive_expression(arguments, state)?;
               arguments.expect_exhausted()?;
-              Ok(value)
+              Ok(acc)
             })
           },
           // https://www.w3.org/TR/css-values-4/#comp-func
           "min" => {
             input.parse_nested_block(|arguments| {
-              let value = Self::parse_additive_expression(arguments, state)?;
-              let numeric = try_extract!(value, expect_numeric(), arguments);
-              let result: NumericAccumulator = match numeric {
-                NumericValue::Zero => unreachable!(),
-                NumericValue::Number(number) => {
-                  let mut current = number;
-                  while !arguments.is_exhausted() {
-                    arguments.expect_comma()?;
-                    let value = Self::parse_additive_expression(arguments, state)?;
-                    let value = try_extract!(value, expect_number(), arguments);
-                    current = minimum(current, value);
-                  }
-                  NumericValue::Number(current).into()
-                },
-                NumericValue::Percent(percent) => {
-                  let mut current = percent;
-                  while !arguments.is_exhausted() {
-                    arguments.expect_comma()?;
-                    let value = Self::parse_additive_expression(arguments, state)?;
-                    let value = try_extract!(value, expect_percent(), arguments);
-                    current = minimum(current, value);
-                  }
-                  NumericValue::Percent(current).into()
-                }
-                NumericValue::Length(length) => {
-                  let mut current = length.to_pixels();
-                  while !arguments.is_exhausted() {
-                    arguments.expect_comma()?;
-                    let value = Self::parse_additive_expression(arguments, state)?;
-                    let value = try_extract!(value, expect_length(false), to_pixels(), arguments);
-                    current = minimum(current, value);
-                  }
-                  NumericValue::Length(Length::from_pixels(current)).into()
-                },
-                NumericValue::Angle(angle) => {
-                  let mut current = angle.to_degrees();
-                  while !arguments.is_exhausted() {
-                    arguments.expect_comma()?;
-                    let value = Self::parse_additive_expression(arguments, state)?;
-                    let value = try_extract!(value, expect_angle(false), to_degrees(), arguments);
-                    current = minimum(current, value);
-                  }
-                  NumericValue::Angle(Angle::from_degrees(current)).into()
-                },
-                NumericValue::Time(time) => {
-                  let mut current = time.to_seconds();
-                  while !arguments.is_exhausted() {
-                    arguments.expect_comma()?;
-                    let value = Self::parse_additive_expression(arguments, state)?;
-                    let value = try_extract!(value, expect_time(), to_seconds(), arguments);
-                    current = minimum(current, value);
-                  }
-                  NumericValue::Time(Time::from_seconds(current)).into()
-                },
-                NumericValue::Frequency(frequency) => {
-                  let mut current = frequency.to_hertz();
-                  while !arguments.is_exhausted() {
-                    arguments.expect_comma()?;
-                    let value = Self::parse_additive_expression(arguments, state)?;
-                    let value = try_extract!(value, expect_frequency(), to_hertz(), arguments);
-                    current = minimum(current, value);
-                  }
-                  NumericValue::Frequency(Frequency::from_hertz(current)).into()
-                },
-                NumericValue::Resolution(resolution) => {
-                  let mut current = resolution.to_dot_per_pixels();
-                  while !arguments.is_exhausted() {
-                    arguments.expect_comma()?;
-                    let value = Self::parse_additive_expression(arguments, state)?;
-                    let value = try_extract!(value, expect_resolution(), to_dot_per_pixels(), arguments);
-                    current = minimum(current, value);
-                  }
-                  NumericValue::Resolution(Resolution::from_dot_per_pixels(current)).into()
-                },
-                NumericValue::Flex(flex) => {
-                  let mut current = flex;
-                  while !arguments.is_exhausted() {
-                    arguments.expect_comma()?;
-                    let value = Self::parse_additive_expression(arguments, state)?;
-                    let value = try_extract!(value, expect_flex(), arguments);
-                    current = minimum(current, value);
-                  }
-                  NumericValue::Flex(current).into()
-                },
-              };
-              Ok(result)
+              let acc = Self::parse_additive_expression(arguments, state)?;
+              let numeric = try_extract!(acc, expect_numeric(), arguments);
+              let mut current = extract_as_raw!(numeric);
+              while !arguments.is_exhausted() {
+                arguments.expect_comma()?;
+                let acc = Self::parse_additive_expression(arguments, state)?;
+                let value = try_extract_as_raw!(acc, numeric, arguments);
+                current = minimum(current, value);
+              }
+              Ok(from_raw!(current, numeric).into())
             })
           },
           "max" => {
             input.parse_nested_block(|arguments| {
-              let value = Self::parse_additive_expression(arguments, state)?;
-              let numeric = try_extract!(value, expect_numeric(), arguments);
-              let result: NumericAccumulator = match numeric {
-                NumericValue::Zero => unreachable!(),
-                NumericValue::Number(number) => {
-                  let mut current = number;
-                  while !arguments.is_exhausted() {
-                    arguments.expect_comma()?;
-                    let value = Self::parse_additive_expression(arguments, state)?;
-                    let value = try_extract!(value, expect_number(), arguments);
-                    current = maximum(current, value);
-                  }
-                  NumericValue::Number(current).into()
-                },
-                NumericValue::Percent(percent) => {
-                  let mut current = percent;
-                  while !arguments.is_exhausted() {
-                    arguments.expect_comma()?;
-                    let value = Self::parse_additive_expression(arguments, state)?;
-                    let value = try_extract!(value, expect_percent(), arguments);
-                    current = maximum(current, value);
-                  }
-                  NumericValue::Percent(current).into()
-                },
-                NumericValue::Length(length) => {
-                  let mut current = length.to_pixels();
-                  while !arguments.is_exhausted() {
-                    arguments.expect_comma()?;
-                    let value = Self::parse_additive_expression(arguments, state)?;
-                    let value = try_extract!(value, expect_length(false), to_pixels(), arguments);
-                    current = maximum(current, value);
-                  }
-                  NumericValue::Length(Length::from_pixels(current)).into()
-                },
-                NumericValue::Angle(angle) => {
-                  let mut current = angle.to_degrees();
-                  while !arguments.is_exhausted() {
-                    arguments.expect_comma()?;
-                    let value = Self::parse_additive_expression(arguments, state)?;
-                    let value = try_extract!(value, expect_angle(false), to_degrees(), arguments);
-                    current = maximum(current, value);
-                  }
-                  NumericValue::Angle(Angle::from_degrees(current)).into()
-                },
-                NumericValue::Time(time) => {
-                  let mut current = time.to_seconds();
-                  while !arguments.is_exhausted() {
-                    arguments.expect_comma()?;
-                    let value = Self::parse_additive_expression(arguments, state)?;
-                    let value = try_extract!(value, expect_time(), to_seconds(), arguments);
-                    current = maximum(current, value);
-                  }
-                  NumericValue::Time(Time::from_seconds(current)).into()
-                },
-                NumericValue::Frequency(frequency) => {
-                  let mut current = frequency.to_hertz();
-                  while !arguments.is_exhausted() {
-                    arguments.expect_comma()?;
-                    let value = Self::parse_additive_expression(arguments, state)?;
-                    let value = try_extract!(value, expect_frequency(), to_hertz(), arguments);
-                    current = maximum(current, value);
-                  }
-                  NumericValue::Frequency(Frequency::from_hertz(current)).into()
-                },
-                NumericValue::Resolution(resolution) => {
-                  let mut current = resolution.to_dot_per_pixels();
-                  while !arguments.is_exhausted() {
-                    arguments.expect_comma()?;
-                    let value = Self::parse_additive_expression(arguments, state)?;
-                    let value = try_extract!(value, expect_resolution(), to_dot_per_pixels(), arguments);
-                    current = maximum(current, value);
-                  }
-                  NumericValue::Resolution(Resolution::from_dot_per_pixels(current)).into()
-                },
-                NumericValue::Flex(flex) => {
-                  let mut current = flex;
-                  while !arguments.is_exhausted() {
-                    arguments.expect_comma()?;
-                    let value = Self::parse_additive_expression(arguments, state)?;
-                    let value = try_extract!(value, expect_flex(), arguments);
-                    current = maximum(current, value);
-                  }
-                  NumericValue::Flex(current).into()
-                },
-              };
-              Ok(result)
+              let acc = Self::parse_additive_expression(arguments, state)?;
+              let numeric = try_extract!(acc, expect_numeric(), arguments);
+              let mut current = extract_as_raw!(numeric);
+              while !arguments.is_exhausted() {
+                arguments.expect_comma()?;
+                let acc = Self::parse_additive_expression(arguments, state)?;
+                let value = try_extract_as_raw!(acc, numeric, arguments);
+                current = maximum(current, value);
+              }
+              Ok(from_raw!(current, numeric).into())
             })
           },
           "clamp" => {
@@ -1293,14 +1207,14 @@ impl NumericValue {
                   None
                 } else {
                   arguments.reset(&start);
-                  let value = Self::parse_additive_expression(arguments, state)?;
-                  let numeric = try_extract!(value, expect_numeric(), arguments);
+                  let acc = Self::parse_additive_expression(arguments, state)?;
+                  let numeric = try_extract!(acc, expect_numeric(), arguments);
                   Some(numeric)
                 }
               };
               arguments.expect_comma()?;
-              let value = Self::parse_additive_expression(arguments, state)?;
-              let value = try_extract!(value, expect_numeric(), arguments);
+              let acc = Self::parse_additive_expression(arguments, state)?;
+              let numeric = try_extract!(acc, expect_numeric(), arguments);
               arguments.expect_comma()?;
               let max: Option<NumericValue> = {
                 let start = arguments.state();
@@ -1308,105 +1222,24 @@ impl NumericValue {
                   None
                 } else {
                   arguments.reset(&start);
-                  let value = Self::parse_additive_expression(arguments, state)?;
-                  let numeric = try_extract!(value, expect_numeric(), arguments);
+                  let acc = Self::parse_additive_expression(arguments, state)?;
+                  let numeric = try_extract!(acc, expect_numeric(), arguments);
                   Some(numeric)
                 }
               };
               arguments.expect_exhausted()?;
 
-              let result: NumericAccumulator = match value {
-                NumericValue::Zero => unreachable!(),
-                NumericValue::Number(value) => {
-                  let min = match min {
-                    Some(numeric) => try_extract!(numeric, expect_number(), arguments),
-                    None => f64::NEG_INFINITY,
-                  };
-                  let max = match max {
-                    Some(numeric) => try_extract!(numeric, expect_number(), arguments),
-                    None => f64::INFINITY,
-                  };
-                  NumericValue::Number(maximum(min, minimum(value, max))).into()
-                },
-                NumericValue::Percent(value) => {
-                  let min = match min {
-                    Some(numeric) => try_extract!(numeric, expect_percent(), arguments),
-                    None => f64::NEG_INFINITY,
-                  };
-                  let max = match max {
-                    Some(numeric) => try_extract!(numeric, expect_percent(), arguments),
-                    None => f64::INFINITY,
-                  };
-                  NumericValue::Percent(maximum(min, minimum(value, max))).into()
-                },
-                NumericValue::Length(value) => {
-                  let min = match min {
-                    Some(numeric) => try_extract!(numeric, expect_length(false), to_pixels(), arguments),
-                    None => f64::NEG_INFINITY,
-                  };
-                  let max = match max {
-                    Some(numeric) => try_extract!(numeric, expect_length(false), to_pixels(), arguments),
-                    None => f64::INFINITY,
-                  };
-                  NumericValue::Length(Length::from_pixels(maximum(min, minimum(value.to_pixels(), max)))).into()
-                },
-                NumericValue::Angle(value) => {
-                  let min = match min {
-                    Some(numeric) => try_extract!(numeric, expect_angle(false), to_degrees(), arguments),
-                    None => f64::NEG_INFINITY,
-                  };
-                  let max = match max {
-                    Some(numeric) => try_extract!(numeric, expect_angle(false), to_degrees(), arguments),
-                    None => f64::INFINITY,
-                  };
-                  NumericValue::Angle(Angle::from_degrees(maximum(min, minimum(value.to_degrees(), max)))).into()
-                },
-                NumericValue::Time(value) => {
-                  let min = match min {
-                    Some(numeric) => try_extract!(numeric, expect_time(), to_seconds(), arguments),
-                    None => f64::NEG_INFINITY,
-                  };
-                  let max = match max {
-                    Some(numeric) => try_extract!(numeric, expect_time(), to_seconds(), arguments),
-                    None => f64::INFINITY,
-                  };
-                  NumericValue::Time(Time::from_seconds(maximum(min, minimum(value.to_seconds(), max)))).into()
-                },
-                NumericValue::Frequency(value) => {
-                  let min = match min {
-                    Some(numeric) => try_extract!(numeric, expect_frequency(), to_hertz(), arguments),
-                    None => f64::NEG_INFINITY,
-                  };
-                  let max = match max {
-                    Some(numeric) => try_extract!(numeric, expect_frequency(), to_hertz(), arguments),
-                    None => f64::INFINITY,
-                  };
-                  NumericValue::Frequency(Frequency::from_hertz(maximum(min, minimum(value.to_hertz(), max)))).into()
-                },
-                NumericValue::Resolution(value) => {
-                  let min = match min {
-                    Some(numeric) => try_extract!(numeric, expect_resolution(), to_dot_per_pixels(), arguments),
-                    None => f64::NEG_INFINITY,
-                  };
-                  let max = match max {
-                    Some(numeric) => try_extract!(numeric, expect_resolution(), to_dot_per_pixels(), arguments),
-                    None => f64::INFINITY,
-                  };
-                  NumericValue::Resolution(Resolution::from_dot_per_pixels(maximum(min, minimum(value.to_dot_per_pixels(), max)))).into()
-                },
-                NumericValue::Flex(value) => {
-                  let min = match min {
-                    Some(numeric) => try_extract!(numeric, expect_flex(), arguments),
-                    None => f64::NEG_INFINITY,
-                  };
-                  let max = match max {
-                    Some(numeric) => try_extract!(numeric, expect_flex(), arguments),
-                    None => f64::INFINITY,
-                  };
-                  NumericValue::Flex(maximum(min, minimum(value, max))).into()
-                },
+              let min = match min {
+                Some(value) => try_extract_as_raw!(value, numeric, arguments),
+                None => f64::NEG_INFINITY,
               };
-              Ok(result)
+              let max = match max {
+                Some(value) => try_extract_as_raw!(value, numeric, arguments),
+                None => f64::INFINITY,
+              };
+              let value = extract_as_raw!(numeric);
+              let result = maximum(min, minimum(value, max));
+              Ok(from_raw!(result, numeric).into())
             })
           },
           // https://www.w3.org/TR/css-values-4/#round-func
@@ -1467,188 +1300,51 @@ impl NumericValue {
                   }
                 }
               };
-              let value = Self::parse_additive_expression(arguments, state)?;
-              let value = try_extract!(value, expect_numeric(), arguments);
+              let acc = Self::parse_additive_expression(arguments, state)?;
+              let numeric = try_extract!(acc, expect_numeric(), arguments);
               let interval = if !arguments.is_exhausted() {
                 arguments.expect_comma()?;
-                let interval = Self::parse_additive_expression(arguments, state)?;
-                let interval = match value {
-                  NumericValue::Zero => unreachable!(),
-                  NumericValue::Number(_) => try_extract!(interval, expect_number(), arguments),
-                  NumericValue::Percent(_) => try_extract!(interval, expect_percent(), arguments),
-                  NumericValue::Length(_) => try_extract!(interval, expect_length(false), to_pixels(), arguments),
-                  NumericValue::Angle(_) => try_extract!(interval, expect_angle(false), to_degrees(), arguments),
-                  NumericValue::Time(_) => try_extract!(interval, expect_time(), to_seconds(), arguments),
-                  NumericValue::Frequency(_) => try_extract!(interval, expect_frequency(), to_hertz(), arguments),
-                  NumericValue::Resolution(_) => try_extract!(interval, expect_resolution(), to_dot_per_pixels(), arguments),
-                  NumericValue::Flex(_) => try_extract!(interval, expect_flex(), arguments),
-                };
+                let acc = Self::parse_additive_expression(arguments, state)?;
+                let interval = try_extract_as_raw!(acc, numeric, arguments);
                 arguments.expect_exhausted()?;
                 interval
               } else { 1.0 };
-              let result: NumericAccumulator = match value {
-                NumericValue::Zero => unreachable!(),
-                NumericValue::Number(value) => {
-                  NumericValue::Number(round(&strategy, value, interval)).into()
-                },
-                NumericValue::Percent(value) => {
-                  NumericValue::Percent(round(&strategy, value, interval)).into()
-                },
-                NumericValue::Length(value) => {
-                  NumericValue::Length(Length::from_pixels(round(&strategy, value.to_pixels(), interval))).into()
-                },
-                NumericValue::Angle(value) => {
-                  NumericValue::Angle(Angle::from_degrees(round(&strategy, value.to_degrees(), interval))).into()
-                },
-                NumericValue::Time(value) => {
-                  NumericValue::Time(Time::from_seconds(round(&strategy, value.to_seconds(), interval))).into()
-                },
-                NumericValue::Frequency(value) => {
-                  NumericValue::Frequency(Frequency::from_hertz(round(&strategy, value.to_hertz(), interval))).into()
-                },
-                NumericValue::Resolution(value) => {
-                  NumericValue::Resolution(Resolution::from_dot_per_pixels(round(&strategy, value.to_dot_per_pixels(), interval))).into()
-                },
-                NumericValue::Flex(value) => {
-                  NumericValue::Flex(round(&strategy, value, interval)).into()
-                },
-              };
-              Ok(result)
+              let value = extract_as_raw!(numeric);
+              let result = round(&strategy, value, interval);
+              Ok(from_raw!(result, numeric).into())
             })
           },
           "mod" => {
             input.parse_nested_block(|arguments| {
-              let dividend = Self::parse_additive_expression(arguments, state)?;
-              let dividend = try_extract!(dividend, expect_numeric(), arguments);
+              let acc = Self::parse_additive_expression(arguments, state)?;
+              let numeric = try_extract!(acc, expect_numeric(), arguments);
+              let dividend = extract_as_raw!(numeric);
               arguments.expect_comma()?;
-              let result: NumericAccumulator = match dividend {
-                NumericValue::Zero => unreachable!(),
-                NumericValue::Number(dividend) => {
-                  let divisor = Self::parse_additive_expression(arguments, state)?;
-                  let divisor = try_extract!(divisor, expect_number(), arguments);
-                  arguments.expect_exhausted()?;
-                  NumericValue::Number(dividend.rem_euclid(divisor)).into()
-                }
-                NumericValue::Percent(dividend) => {
-                  let divisor = Self::parse_additive_expression(arguments, state)?;
-                  let divisor = try_extract!(divisor, expect_percent(), arguments);
-                  arguments.expect_exhausted()?;
-                  NumericValue::Percent(dividend.rem_euclid(divisor)).into()
-                }
-                NumericValue::Length(dividend) => {
-                  let dividend = dividend.to_pixels();
-                  let divisor = Self::parse_additive_expression(arguments, state)?;
-                  let divisor = try_extract!(divisor, expect_length(false), to_pixels(), arguments);
-                  arguments.expect_exhausted()?;
-                  NumericValue::Length(Length::from_pixels(dividend.rem_euclid(divisor))).into()
-                }
-                NumericValue::Angle(dividend) => {
-                  let dividend = dividend.to_degrees();
-                  let divisor = Self::parse_additive_expression(arguments, state)?;
-                  let divisor = try_extract!(divisor, expect_angle(false), to_degrees(), arguments);
-                  arguments.expect_exhausted()?;
-                  NumericValue::Angle(Angle::from_degrees(dividend.rem_euclid(divisor))).into()
-                }
-                NumericValue::Time(dividend) => {
-                  let dividend = dividend.to_seconds();
-                  let divisor = Self::parse_additive_expression(arguments, state)?;
-                  let divisor = try_extract!(divisor, expect_time(), to_seconds(), arguments);
-                  arguments.expect_exhausted()?;
-                  NumericValue::Time(Time::from_seconds(dividend.rem_euclid(divisor))).into()
-                }
-                NumericValue::Frequency(dividend) => {
-                  let dividend = dividend.to_hertz();
-                  let divisor = Self::parse_additive_expression(arguments, state)?;
-                  let divisor = try_extract!(divisor, expect_frequency(), to_hertz(), arguments);
-                  arguments.expect_exhausted()?;
-                  NumericValue::Frequency(Frequency::from_hertz(dividend.rem_euclid(divisor))).into()
-                }
-                NumericValue::Resolution(dividend) => {
-                  let dividend = dividend.to_dot_per_pixels();
-                  let divisor = Self::parse_additive_expression(arguments, state)?;
-                  let divisor = try_extract!(divisor, expect_resolution(), to_dot_per_pixels(), arguments);
-                  arguments.expect_exhausted()?;
-                  NumericValue::Resolution(Resolution::from_dot_per_pixels(dividend.rem_euclid(divisor))).into()
-                }
-                NumericValue::Flex(dividend) => {
-                  let divisor = Self::parse_additive_expression(arguments, state)?;
-                  let divisor = try_extract!(divisor, expect_flex(), arguments);
-                  arguments.expect_exhausted()?;
-                  NumericValue::Flex(dividend.rem_euclid(divisor)).into()
-                }
-              };
-              Ok(result)
+              let acc = Self::parse_additive_expression(arguments, state)?;
+              let divisor = try_extract_as_raw!(acc, numeric, arguments);
+              arguments.expect_exhausted()?;
+              let result = dividend.rem_euclid(divisor);
+              Ok(from_raw!(result, numeric).into())
             })
           },
           "rem" => {
             input.parse_nested_block(|arguments| {
-              let dividend = Self::parse_additive_expression(arguments, state)?;
-              let dividend = try_extract!(dividend, expect_numeric(), arguments);
+              let acc = Self::parse_additive_expression(arguments, state)?;
+              let numeric = try_extract!(acc, expect_numeric(), arguments);
+              let dividend = extract_as_raw!(numeric);
               arguments.expect_comma()?;
-              let result: NumericAccumulator = match dividend {
-                NumericValue::Zero => unreachable!(),
-                NumericValue::Number(dividend) => {
-                  let divisor = Self::parse_additive_expression(arguments, state)?;
-                  let divisor = try_extract!(divisor, expect_number(), arguments);
-                  arguments.expect_exhausted()?;
-                  NumericValue::Number(dividend % divisor).into()
-                }
-                NumericValue::Percent(dividend) => {
-                  let divisor = Self::parse_additive_expression(arguments, state)?;
-                  let divisor = try_extract!(divisor, expect_percent(), arguments);
-                  arguments.expect_exhausted()?;
-                  NumericValue::Percent(dividend % divisor).into()
-                }
-                NumericValue::Length(dividend) => {
-                  let dividend = dividend.to_pixels();
-                  let divisor = Self::parse_additive_expression(arguments, state)?;
-                  let divisor = try_extract!(divisor, expect_length(false), to_pixels(), arguments);
-                  arguments.expect_exhausted()?;
-                  NumericValue::Length(Length::from_pixels(dividend % divisor)).into()
-                }
-                NumericValue::Angle(dividend) => {
-                  let dividend = dividend.to_degrees();
-                  let divisor = Self::parse_additive_expression(arguments, state)?;
-                  let divisor = try_extract!(divisor, expect_angle(false), to_degrees(), arguments);
-                  arguments.expect_exhausted()?;
-                  NumericValue::Angle(Angle::from_degrees(dividend % divisor)).into()
-                }
-                NumericValue::Time(dividend) => {
-                  let dividend = dividend.to_seconds();
-                  let divisor = Self::parse_additive_expression(arguments, state)?;
-                  let divisor = try_extract!(divisor, expect_time(), to_seconds(), arguments);
-                  arguments.expect_exhausted()?;
-                  NumericValue::Time(Time::from_seconds(dividend % divisor)).into()
-                }
-                NumericValue::Frequency(dividend) => {
-                  let dividend = dividend.to_hertz();
-                  let divisor = Self::parse_additive_expression(arguments, state)?;
-                  let divisor = try_extract!(divisor, expect_frequency(), to_hertz(), arguments);
-                  arguments.expect_exhausted()?;
-                  NumericValue::Frequency(Frequency::from_hertz(dividend % divisor)).into()
-                }
-                NumericValue::Resolution(dividend) => {
-                  let dividend = dividend.to_dot_per_pixels();
-                  let divisor = Self::parse_additive_expression(arguments, state)?;
-                  let divisor = try_extract!(divisor, expect_resolution(), to_dot_per_pixels(), arguments);
-                  arguments.expect_exhausted()?;
-                  NumericValue::Resolution(Resolution::from_dot_per_pixels(dividend % divisor)).into()
-                }
-                NumericValue::Flex(dividend) => {
-                  let divisor = Self::parse_additive_expression(arguments, state)?;
-                  let divisor = try_extract!(divisor, expect_flex(), arguments);
-                  arguments.expect_exhausted()?;
-                  NumericValue::Flex(dividend % divisor).into()
-                }
-              };
-              Ok(result)
+              let acc = Self::parse_additive_expression(arguments, state)?;
+              let divisor = try_extract_as_raw!(acc, numeric, arguments);
+              arguments.expect_exhausted()?;
+              let result = dividend % divisor;
+              Ok(from_raw!(result, numeric).into())
             })
           },
           // https://www.w3.org/TR/css-values-4/#trig-funcs
           "sin" => {
             input.parse_nested_block(|arguments| {
-              let value = Self::parse_additive_expression(arguments, state)?;
-              let numeric = try_extract!(value, expect_numeric(), arguments);
+              let acc = Self::parse_additive_expression(arguments, state)?;
+              let numeric = try_extract!(acc, expect_numeric(), arguments);
               arguments.expect_exhausted()?;
               let result: NumericAccumulator = match numeric {
                 NumericValue::Zero => unreachable!(),
@@ -1665,8 +1361,8 @@ impl NumericValue {
           },
           "cos" => {
             input.parse_nested_block(|arguments| {
-              let value = Self::parse_additive_expression(arguments, state)?;
-              let numeric = try_extract!(value, expect_numeric(), arguments);
+              let acc = Self::parse_additive_expression(arguments, state)?;
+              let numeric = try_extract!(acc, expect_numeric(), arguments);
               arguments.expect_exhausted()?;
               let result: NumericAccumulator = match numeric {
                 NumericValue::Zero => unreachable!(),
@@ -1683,8 +1379,8 @@ impl NumericValue {
           },
           "tan" => {
             input.parse_nested_block(|arguments| {
-              let value = Self::parse_additive_expression(arguments, state)?;
-              let numeric = try_extract!(value, expect_numeric(), arguments);
+              let acc = Self::parse_additive_expression(arguments, state)?;
+              let numeric = try_extract!(acc, expect_numeric(), arguments);
               arguments.expect_exhausted()?;
               let result: NumericAccumulator = match numeric {
                 NumericValue::Zero => unreachable!(),
@@ -1701,8 +1397,8 @@ impl NumericValue {
           },
           "asin" => {
             input.parse_nested_block(|arguments| {
-              let value = Self::parse_additive_expression(arguments, state)?;
-              let number = try_extract!(value, expect_number(), arguments);
+              let acc = Self::parse_additive_expression(arguments, state)?;
+              let number = try_extract!(acc, expect_number(), arguments);
               arguments.expect_exhausted()?;
               let result: NumericAccumulator = NumericValue::Angle(Angle::from_radians(number.asin())).into();
               Ok(result)
@@ -1710,8 +1406,8 @@ impl NumericValue {
           },
           "acos" => {
             input.parse_nested_block(|arguments| {
-              let value = Self::parse_additive_expression(arguments, state)?;
-              let number = try_extract!(value, expect_number(), arguments);
+              let acc = Self::parse_additive_expression(arguments, state)?;
+              let number = try_extract!(acc, expect_number(), arguments);
               arguments.expect_exhausted()?;
               let result: NumericAccumulator = NumericValue::Angle(Angle::from_radians(number.acos())).into();
               Ok(result)
@@ -1719,8 +1415,8 @@ impl NumericValue {
           },
           "atan" => {
             input.parse_nested_block(|arguments| {
-              let value = Self::parse_additive_expression(arguments, state)?;
-              let number = try_extract!(value, expect_number(), arguments);
+              let acc = Self::parse_additive_expression(arguments, state)?;
+              let number = try_extract!(acc, expect_number(), arguments);
               arguments.expect_exhausted()?;
               let result: NumericAccumulator = NumericValue::Angle(Angle::from_radians(number.atan())).into();
               Ok(result)
@@ -1728,11 +1424,11 @@ impl NumericValue {
           },
           "atan2" => {
             input.parse_nested_block(|arguments| {
-              let y = Self::parse_additive_expression(arguments, state)?;
-              let y = try_extract!(y, expect_numeric(), arguments);
+              let acc = Self::parse_additive_expression(arguments, state)?;
+              let y = try_extract!(acc, expect_numeric(), arguments);
               arguments.expect_comma()?;
-              let x = Self::parse_additive_expression(arguments, state)?;
-              let x = try_extract!(x, expect_numeric(), arguments);
+              let acc = Self::parse_additive_expression(arguments, state)?;
+              let x = try_extract!(acc, expect_numeric(), arguments);
               arguments.expect_exhausted()?;
               let result: NumericAccumulator = match (y, x) {
                 (NumericValue::Number(y), NumericValue::Number(x)) => {
@@ -1767,11 +1463,11 @@ impl NumericValue {
           // https://www.w3.org/TR/css-values-4/#exponent-funcs
           "pow" => {
             input.parse_nested_block(|arguments| {
-              let base = Self::parse_additive_expression(arguments, state)?;
-              let base = try_extract!(base, expect_number(), arguments);
+              let acc = Self::parse_additive_expression(arguments, state)?;
+              let base = try_extract!(acc, expect_number(), arguments);
               arguments.expect_comma()?;
-              let exponent = Self::parse_additive_expression(arguments, state)?;
-              let exponent = try_extract!(exponent, expect_number(), arguments);
+              let acc = Self::parse_additive_expression(arguments, state)?;
+              let exponent = try_extract!(acc, expect_number(), arguments);
               arguments.expect_exhausted()?;
               let result = NumericValue::Number(base.powf(exponent)).into();
               Ok(result)
@@ -1779,8 +1475,8 @@ impl NumericValue {
           },
           "sqrt" => {
             input.parse_nested_block(|arguments| {
-              let value = Self::parse_additive_expression(arguments, state)?;
-              let value = try_extract!(value, expect_number(), arguments);
+              let acc = Self::parse_additive_expression(arguments, state)?;
+              let value = try_extract!(acc, expect_number(), arguments);
               arguments.expect_exhausted()?;
               let result = NumericValue::Number(value.sqrt()).into();
               Ok(result)
@@ -1815,102 +1511,28 @@ impl NumericValue {
             }
 
             input.parse_nested_block(|arguments| {
-              let first = Self::parse_additive_expression(arguments, state)?;
-              let first = try_extract!(first, expect_numeric(), arguments);
-              let result: NumericAccumulator = match first {
-                NumericValue::Zero => unreachable!(),
-                NumericValue::Number(first) => {
-                  let mut args = vec![first];
-                  while !arguments.is_exhausted() {
-                    arguments.expect_comma()?;
-                    let value = Self::parse_additive_expression(arguments, state)?;
-                    let value = try_extract!(value, expect_number(), arguments);
-                    args.push(value);
-                  }
-                  NumericValue::Number(hypot(&args)).into()
-                }
-                NumericValue::Percent(first) => {
-                  let mut args = vec![first];
-                  while !arguments.is_exhausted() {
-                    arguments.expect_comma()?;
-                    let value = Self::parse_additive_expression(arguments, state)?;
-                    let value = try_extract!(value, expect_percent(), arguments);
-                    args.push(value);
-                  }
-                  NumericValue::Number(hypot(&args)).into()
-                }
-                NumericValue::Length(first) => {
-                  let mut args = vec![first.to_pixels()];
-                  while !arguments.is_exhausted() {
-                    arguments.expect_comma()?;
-                    let value = Self::parse_additive_expression(arguments, state)?;
-                    let value = try_extract!(value, expect_length(false), to_pixels(), arguments);
-                    args.push(value);
-                  }
-                  NumericValue::Length(Length::from_pixels(hypot(&args))).into()
-                }
-                NumericValue::Angle(first) => {
-                  let mut args = vec![first.to_degrees()];
-                  while !arguments.is_exhausted() {
-                    arguments.expect_comma()?;
-                    let value = Self::parse_additive_expression(arguments, state)?;
-                    let value = try_extract!(value, expect_angle(false), to_degrees(), arguments);
-                    args.push(value);
-                  }
-                  NumericValue::Angle(Angle::from_degrees(hypot(&args))).into()
-                }
-                NumericValue::Time(first) => {
-                  let mut args = vec![first.to_seconds()];
-                  while !arguments.is_exhausted() {
-                    arguments.expect_comma()?;
-                    let value = Self::parse_additive_expression(arguments, state)?;
-                    let value = try_extract!(value, expect_time(), to_seconds(), arguments);
-                    args.push(value);
-                  }
-                  NumericValue::Time(Time::from_seconds(hypot(&args))).into()
-                }
-                NumericValue::Frequency(first) => {
-                  let mut args = vec![first.to_hertz()];
-                  while !arguments.is_exhausted() {
-                    arguments.expect_comma()?;
-                    let value = Self::parse_additive_expression(arguments, state)?;
-                    let value = try_extract!(value, expect_frequency(), to_hertz(), arguments);
-                    args.push(value);
-                  }
-                  NumericValue::Frequency(Frequency::from_hertz(hypot(&args))).into()
-                }
-                NumericValue::Resolution(first) => {
-                  let mut args = vec![first.to_dot_per_pixels()];
-                  while !arguments.is_exhausted() {
-                    arguments.expect_comma()?;
-                    let value = Self::parse_additive_expression(arguments, state)?;
-                    let value = try_extract!(value, expect_resolution(), to_dot_per_pixels(), arguments);
-                    args.push(value);
-                  }
-                  NumericValue::Resolution(Resolution::from_dot_per_pixels(hypot(&args))).into()
-                }
-                NumericValue::Flex(first) => {
-                  let mut args = vec![first];
-                  while !arguments.is_exhausted() {
-                    arguments.expect_comma()?;
-                    let value = Self::parse_additive_expression(arguments, state)?;
-                    let value = try_extract!(value, expect_flex(), arguments);
-                    args.push(value);
-                  }
-                  NumericValue::Flex(hypot(&args)).into()
-                }
-              };
-              Ok(result)
+              let acc = Self::parse_additive_expression(arguments, state)?;
+              let numeric = try_extract!(acc, expect_numeric(), arguments);
+              let value = extract_as_raw!(numeric);
+              let mut args = vec![value];
+              while !arguments.is_exhausted() {
+                arguments.expect_comma()?;
+                let acc = Self::parse_additive_expression(arguments, state)?;
+                let value = try_extract_as_raw!(acc, numeric, arguments);
+                args.push(value);
+              }
+              let result = hypot(&args);
+              Ok(from_raw!(result, numeric).into())
             })
           },
           "log" => {
             input.parse_nested_block(|arguments| {
-              let value = Self::parse_additive_expression(arguments, state)?;
-              let value = try_extract!(value, expect_number(), arguments);
+              let acc = Self::parse_additive_expression(arguments, state)?;
+              let value = try_extract!(acc, expect_number(), arguments);
               let result: NumericAccumulator = if !arguments.is_exhausted() {
                 arguments.expect_comma()?;
-                let base = Self::parse_additive_expression(arguments, state)?;
-                let base = try_extract!(base, expect_number(), arguments);
+                let acc = Self::parse_additive_expression(arguments, state)?;
+                let base = try_extract!(acc, expect_number(), arguments);
                 arguments.expect_exhausted()?;
                 NumericValue::Number(value.log(base)).into()
               } else {
@@ -1921,8 +1543,8 @@ impl NumericValue {
           },
           "exp" => {
             input.parse_nested_block(|arguments| {
-              let value = Self::parse_additive_expression(arguments, state)?;
-              let number = try_extract!(value, expect_number(), arguments);
+              let acc = Self::parse_additive_expression(arguments, state)?;
+              let number = try_extract!(acc, expect_number(), arguments);
               arguments.expect_exhausted()?;
               let result: NumericAccumulator = NumericValue::Number(number.exp()).into();
               Ok(result)
@@ -1931,10 +1553,10 @@ impl NumericValue {
           // https://www.w3.org/TR/css-values-4/#sign-funcs
           "abs" => {
             input.parse_nested_block(|arguments| {
-              let value = Self::parse_additive_expression(arguments, state)?;
-              let value = try_extract!(value, expect_numeric(), arguments);
+              let acc = Self::parse_additive_expression(arguments, state)?;
+              let numeric = try_extract!(acc, expect_numeric(), arguments);
               arguments.expect_exhausted()?;
-              let result: NumericAccumulator = match value {
+              let result: NumericAccumulator = match numeric {
                 NumericValue::Zero => unreachable!(),
                 NumericValue::Number(number) => {
                   NumericValue::Number(number.abs()).into()
@@ -1986,37 +1608,21 @@ impl NumericValue {
             }
 
             input.parse_nested_block(|arguments| {
-              let value = Self::parse_additive_expression(arguments, state)?;
-              let value = try_extract!(value, expect_numeric(), arguments);
+              let acc = Self::parse_additive_expression(arguments, state)?;
+              let numeric = try_extract!(acc, expect_numeric(), arguments);
               arguments.expect_exhausted()?;
-              let result: NumericAccumulator = match value {
+              let value = match numeric {
                 NumericValue::Zero => unreachable!(),
-                NumericValue::Number(number) => {
-                  NumericValue::Number(sign(number)).into()
-                }
-                NumericValue::Percent(percent) => {
-                  NumericValue::Number(sign(percent)).into()
-                }
-                NumericValue::Length(length) => {
-                  NumericValue::Number(sign(length.value)).into()
-                }
-                NumericValue::Angle(angle) => {
-                  NumericValue::Number(sign(angle.value)).into()
-                }
-                NumericValue::Time(time) => {
-                  NumericValue::Number(sign(time.value)).into()
-                }
-                NumericValue::Frequency(frequency) => {
-                  NumericValue::Number(sign(frequency.value)).into()
-                }
-                NumericValue::Resolution(resolution) => {
-                  NumericValue::Number(sign(resolution.value)).into()
-                }
-                NumericValue::Flex(flex) => {
-                  NumericValue::Number(sign(flex)).into()
-                }
+                NumericValue::Number(number) => number,
+                NumericValue::Percent(percent) => percent,
+                NumericValue::Length(length) => length.value,
+                NumericValue::Angle(angle) => angle.value,
+                NumericValue::Time(time) => time.value,
+                NumericValue::Frequency(frequency) => frequency.value,
+                NumericValue::Resolution(resolution) => resolution.value,
+                NumericValue::Flex(flex) => flex,
               };
-              Ok(result)
+              Ok(NumericValue::Number(sign(value)).into())
             })
           },
           _ => {
@@ -2033,9 +1639,9 @@ impl NumericValue {
           return Err(input.new_unexpected_token_error(token));
         }
         input.parse_nested_block(|arguments| {
-          let value = Self::parse_additive_expression(arguments, state)?;
+          let acc = Self::parse_additive_expression(arguments, state)?;
           arguments.expect_exhausted()?;
-          Ok(value)
+          Ok(acc)
         })
       }
       Token::Ident(ident) => {
