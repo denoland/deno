@@ -424,6 +424,17 @@ impl ReplSession {
   ) -> Value {
     let msg_id = next_msg_id();
     self.session.post_message(msg_id, method, params);
+
+    // Under Explicit microtask policy, V8's REPL-mode evaluation creates
+    // a promise whose resolution callback is a queued microtask. Without
+    // this checkpoint, GC can collect the weakly-held promise before the
+    // microtask drains, causing a "Promise was collected" CDP error.
+    self
+      .worker
+      .js_runtime
+      .v8_isolate()
+      .perform_microtask_checkpoint();
+
     let fut = self
       .state
       .wait_for_response(msg_id)
