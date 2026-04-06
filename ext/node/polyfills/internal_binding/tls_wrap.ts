@@ -94,7 +94,11 @@ export function wrap(
         // Feed encrypted data from TCP to rustls
         res.receive(buf.subarray(0, nread));
       } else if (nread < 0) {
-        // EOF or error - signal to TLS layer
+        // EOF or error - stop native TCP reads and unref the handle.
+        // Without this, the libuv handle keeps a ref on the event loop
+        // and prevents process exit after the TLS connection ends.
+        nativeHandle.readStop();
+        nativeHandle.unref();
         res.emitEof();
       }
     };

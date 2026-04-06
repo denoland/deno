@@ -2117,7 +2117,10 @@ impl TLSWrap {
   #[nofast]
   #[reentrant]
   fn destroy_ssl(&self) {
-    self.destroy_inner();
+    // Use teardown() (no JS callbacks) instead of destroy_inner()
+    // to avoid re-entering JS during close, which can cause the
+    // event loop to exit prematurely.
+    self.teardown();
   }
 
   /// Get the negotiated ALPN protocol.

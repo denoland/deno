@@ -233,6 +233,7 @@ function TLSSocket(socket, opts) {
   net.Socket.call(this, {
     handle: this._wrapHandle(wrap, handle),
     allowHalfOpen: socket ? socket.allowHalfOpen : tlsOptions.allowHalfOpen,
+    autoDestroy: true,
     pauseOnCreate: tlsOptions.pauseOnConnect,
     manualStart: true,
     highWaterMark: tlsOptions.highWaterMark,
@@ -283,46 +284,22 @@ for (const proxiedMethod of proxiedMethods) {
 }
 
 tls_wrap.TLSWrap.prototype.close = function close(cb) {
-  // Stop reading on the native handle to prevent further data delivery.
-  if (this._nativeTcpHandle) {
-    this._nativeTcpHandle.readStop();
-  }
-
-  let ssl;
-  if (this._owner) {
-    ssl = this._owner.ssl;
-    this._owner.ssl = null;
-  }
-
-  const done = () => {
-    if (ssl) {
-      ssl.destroySsl();
-    }
-    if (cb) cb();
-  };
-
   if (this._parentWrap) {
     if (this._parentWrap._handle === null) {
-      done();
+      if (cb) cb();
       return;
     }
 
     if (this._parentWrap._handle === this._parent) {
-      this._parentWrap.once("close", done);
+      this._parentWrap.once("close", () => {
+        if (cb) cb();
+      });
       this._parentWrap.destroy();
       return;
     }
   }
 
-  // Close the native TCP handle to remove it from the event loop.
-  // The JS TCP class may not have close(), so try the native handle.
-  if (this._nativeTcpHandle) {
-    this._nativeTcpHandle.close(done);
-  } else if (typeof this._parent.close === "function") {
-    this._parent.close(done);
-  } else {
-    done();
-  }
+  if (cb) cb();
 };
 
 TLSSocket.prototype._wrapHandle = function (wrap, handle) {
@@ -421,17 +398,6 @@ function defineHandleReading(socket, handle) {
     },
   });
 }
-
-TLSSocket.prototype._destroy = function _destroy(err, cb) {
-  // Close the native TCP handle to remove it from the event loop.
-  // Without this, the libuv handle keeps a ref and prevents process exit.
-  if (this._handle?._nativeTcpHandle) {
-    this._handle._nativeTcpHandle.readStop();
-    this._handle._nativeTcpHandle.close();
-  }
-  // Call parent _destroy
-  net.Socket.prototype._destroy.call(this, err, cb);
-};
 
 TLSSocket.prototype._destroySsl = function _destroySsl() {
   if (!this.ssl) return;
