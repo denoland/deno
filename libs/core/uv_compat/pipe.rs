@@ -1322,10 +1322,12 @@ pub(crate) unsafe fn poll_pipe_handle(
               }
             }
             Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
-              // Register for read readiness via AsyncFd so the event loop
-              // wakes us when data arrives.
+              // Register for read readiness so the event loop wakes us.
               if let Some(ref afd) = (*pipe_ptr).internal_async_fd {
                 let _ = afd.poll_read_ready(cx);
+              }
+              if let Some(ref stream) = (*pipe_ptr).internal_stream {
+                let _ = stream.poll_read_ready(cx);
               }
               // Callback with nread=0 so alloc buf is freed.
               read_cb(pipe_ptr as *mut uv_stream_t, 0, &buf);
@@ -1351,6 +1353,11 @@ pub(crate) unsafe fn poll_pipe_handle(
         use std::os::unix::io::AsRawFd;
         // SAFETY: stream is a valid UnixStream with a valid fd.
         libc::shutdown(stream.as_raw_fd(), libc::SHUT_WR);
+      } else if let Some(fd) = (*pipe_ptr).internal_fd {
+        // For fd-based pipes (uv_pipe_open), try shutdown. This works
+        // for socketpair fds (used by extra stdio pipes) but is a no-op
+        // error for regular pipes (stdin/stdout). Ignore the error.
+        libc::shutdown(fd, libc::SHUT_WR);
       }
       if let Some(cb) = pending.cb {
         cb(pending.req, 0);
