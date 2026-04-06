@@ -260,20 +260,29 @@ impl ReplSessionState {
   }
 
   async fn wait_for_response(&self, msg_id: i32) -> serde_json::Value {
-    if let Some(message_state) = self.0.lock().messages.remove(&msg_id) {
-      let InspectorMessageState::Ready(mut value) = message_state else {
-        unreachable!();
-      };
-      return value["result"].take();
-    }
+    let mut value = {
+      let mut state = self.0.lock();
+      if let Some(message_state) = state.messages.remove(&msg_id) {
+        let InspectorMessageState::Ready(value) = message_state else {
+          unreachable!();
+        };
+        value
+      } else {
+        let (tx, rx) = oneshot::channel();
+        state
+          .messages
+          .insert(msg_id, InspectorMessageState::WaitingFor(tx));
+        drop(state);
+        rx.await.unwrap()
+      }
+    };
 
-    let (tx, rx) = oneshot::channel();
-    self
-      .0
-      .lock()
-      .messages
-      .insert(msg_id, InspectorMessageState::WaitingFor(tx));
-    let mut value = rx.await.unwrap();
+    if let Some(error) = value.get("error") {
+      eprintln!(
+        "CDP protocol error: {}",
+        serde_json::to_string(error).unwrap_or_default()
+      );
+    }
     value["result"].take()
   }
 }
