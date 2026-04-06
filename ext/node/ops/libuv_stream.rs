@@ -348,11 +348,14 @@ impl TCP {
 
   #[fast]
   fn open(&self, #[smi] fd: i32) -> i32 {
-    // SAFETY: tcp handle is valid; fd is checked before use
+    if fd < 0 {
+      return uv_compat::UV_EBADF;
+    }
+    // SAFETY: tcp handle is valid; fd is validated above
     unsafe {
       let tcp = self.raw();
       if tcp.is_null() {
-        return -1;
+        return uv_compat::UV_EBADF;
       }
       // Set non-blocking mode on the socket
       #[cfg(unix)]
@@ -369,7 +372,6 @@ impl TCP {
         let mut nonblocking: u32 = 1;
         ioctlsocket(fd as usize, FIONBIO, &mut nonblocking);
       }
-      // For C libuv, use uv_tcp_open to assign an existing fd
       uv_compat::uv_tcp_open(tcp, fd)
     }
   }
@@ -721,6 +723,18 @@ impl TCP {
     }
     // Drop the owned StreamHandleData (single owner).
     self.handle_data.replace(None);
+  }
+
+  #[fast]
+  #[rename("ref")]
+  fn ref_handle(&self) {
+    let tcp = self.raw();
+    // SAFETY: tcp handle pointer is valid and initialized
+    unsafe {
+      if !tcp.is_null() {
+        uv_compat::uv_ref(tcp.cast());
+      }
+    }
   }
 
   #[fast]

@@ -322,18 +322,6 @@ export function onStreamRead(
       stream.on("end", stream[kMaybeDestroy]);
     }
 
-    if (handle.readStop) {
-      const err = handle.readStop();
-
-      if (err) {
-        // CallJSOnreadMethod expects the return value to be a buffer.
-        // Ref: https://github.com/nodejs/node/pull/34375
-        stream.destroy(errnoException(err, "read"));
-
-        return;
-      }
-    }
-
     // Push a null to signal the end of data.
     // Do it before `maybeDestroy` for correct order of events:
     // `end` -> `close`
