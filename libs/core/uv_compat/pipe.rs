@@ -47,6 +47,7 @@ pub struct uv_pipe_t {
   pub(crate) internal_handle: Option<std::os::windows::io::RawHandle>,
   /// Pending blocking read result from a spawned thread.
   #[cfg(windows)]
+  #[allow(clippy::type_complexity)]
   pub(crate) internal_pending_read:
     Option<tokio::task::JoinHandle<std::io::Result<(Vec<u8>, usize)>>>,
   /// Windows named pipe server (waiting for or connected to a client).
@@ -791,11 +792,9 @@ unsafe fn maybe_spawn_win_read(pipe_ptr: *mut uv_pipe_t) {
       // SAFETY: handle is a valid OS handle stored by uv_pipe_open.
       // We reconstruct a File temporarily, read from it, then leak it
       // back to avoid double-close.
-      let mut file = unsafe {
-        std::fs::File::from_raw_handle(
-          handle as std::os::windows::io::RawHandle,
-        )
-      };
+      let mut file = std::fs::File::from_raw_handle(
+        handle as std::os::windows::io::RawHandle,
+      );
       let mut buf = vec![0u8; 65536];
       let result = file.read(&mut buf);
       // Don't drop the File -- the handle is owned by uv_pipe_t.
@@ -827,25 +826,25 @@ pub(crate) unsafe fn poll_pipe_handle(
     // 2. Poll server waiting for client connection.
     // On Windows, NamedPipeServer::connect() is async. We poll for
     // write readiness which indicates a client has connected.
-    if (*pipe_ptr).internal_win_server_connecting {
-      if let Some(ref server) = (*pipe_ptr).internal_win_server {
-        match server.poll_write_ready(cx) {
-          Poll::Ready(Ok(_)) => {
-            (*pipe_ptr).internal_win_server_connecting = false;
-            if let Some(cb) = (*pipe_ptr).internal_connection_cb {
-              cb(pipe_ptr as *mut uv_stream_t, 0);
-            }
-            any_work = true;
+    if (*pipe_ptr).internal_win_server_connecting
+      && let Some(ref server) = (*pipe_ptr).internal_win_server
+    {
+      match server.poll_write_ready(cx) {
+        Poll::Ready(Ok(_)) => {
+          (*pipe_ptr).internal_win_server_connecting = false;
+          if let Some(cb) = (*pipe_ptr).internal_connection_cb {
+            cb(pipe_ptr as *mut uv_stream_t, 0);
           }
-          Poll::Ready(Err(ref e)) => {
-            (*pipe_ptr).internal_win_server_connecting = false;
-            if let Some(cb) = (*pipe_ptr).internal_connection_cb {
-              cb(pipe_ptr as *mut uv_stream_t, io_error_to_uv(e));
-            }
-            any_work = true;
-          }
-          Poll::Pending => {}
+          any_work = true;
         }
+        Poll::Ready(Err(ref e)) => {
+          (*pipe_ptr).internal_win_server_connecting = false;
+          if let Some(cb) = (*pipe_ptr).internal_connection_cb {
+            cb(pipe_ptr as *mut uv_stream_t, io_error_to_uv(e));
+          }
+          any_work = true;
+        }
+        Poll::Pending => {}
       }
     }
 
@@ -900,57 +899,57 @@ pub(crate) unsafe fn poll_pipe_handle(
       // For raw handle (uv_pipe_open path), use blocking read thread.
       if (*pipe_ptr).internal_handle.is_some() {
         maybe_spawn_win_read(pipe_ptr);
-        if let Some(ref mut join) = (*pipe_ptr).internal_pending_read {
-          if let Poll::Ready(result) = std::pin::Pin::new(join).poll(cx) {
-            (*pipe_ptr).internal_pending_read = None;
-            let alloc_cb = (*pipe_ptr).internal_alloc_cb;
-            let read_cb = (*pipe_ptr).internal_read_cb;
-            if let (Some(alloc_cb), Some(read_cb)) = (alloc_cb, read_cb) {
-              let mut buf = uv_buf_t {
-                base: std::ptr::null_mut(),
-                len: 0,
-              };
-              alloc_cb(pipe_ptr as *mut uv_handle_t, 65536, &mut buf);
-              match result {
-                Ok(Ok((_, 0))) => {
-                  read_cb(pipe_ptr as *mut uv_stream_t, UV_EOF as isize, &buf);
-                  (*pipe_ptr).internal_reading = false;
-                }
-                Ok(Ok((data, n))) => {
-                  any_work = true;
-                  if !buf.base.is_null() && buf.len > 0 {
-                    let copy_len = n.min(buf.len);
-                    std::ptr::copy_nonoverlapping(
-                      data.as_ptr(),
-                      buf.base as *mut u8,
-                      copy_len,
-                    );
-                    read_cb(
-                      pipe_ptr as *mut uv_stream_t,
-                      copy_len as isize,
-                      &buf,
-                    );
-                  }
-                  if (*pipe_ptr).internal_reading {
-                    maybe_spawn_win_read(pipe_ptr);
-                  }
-                }
-                Ok(Err(ref e)) => {
+        if let Some(ref mut join) = (*pipe_ptr).internal_pending_read
+          && let Poll::Ready(result) = std::pin::Pin::new(join).poll(cx)
+        {
+          (*pipe_ptr).internal_pending_read = None;
+          let alloc_cb = (*pipe_ptr).internal_alloc_cb;
+          let read_cb = (*pipe_ptr).internal_read_cb;
+          if let (Some(alloc_cb), Some(read_cb)) = (alloc_cb, read_cb) {
+            let mut buf = uv_buf_t {
+              base: std::ptr::null_mut(),
+              len: 0,
+            };
+            alloc_cb(pipe_ptr as *mut uv_handle_t, 65536, &mut buf);
+            match result {
+              Ok(Ok((_, 0))) => {
+                read_cb(pipe_ptr as *mut uv_stream_t, UV_EOF as isize, &buf);
+                (*pipe_ptr).internal_reading = false;
+              }
+              Ok(Ok((data, n))) => {
+                any_work = true;
+                if !buf.base.is_null() && buf.len > 0 {
+                  let copy_len = n.min(buf.len);
+                  std::ptr::copy_nonoverlapping(
+                    data.as_ptr(),
+                    buf.base as *mut u8,
+                    copy_len,
+                  );
                   read_cb(
                     pipe_ptr as *mut uv_stream_t,
-                    io_error_to_uv(e) as isize,
+                    copy_len as isize,
                     &buf,
                   );
-                  (*pipe_ptr).internal_reading = false;
                 }
-                Err(_) => {
-                  read_cb(
-                    pipe_ptr as *mut uv_stream_t,
-                    super::UV_ECANCELED as isize,
-                    &buf,
-                  );
-                  (*pipe_ptr).internal_reading = false;
+                if (*pipe_ptr).internal_reading {
+                  maybe_spawn_win_read(pipe_ptr);
                 }
+              }
+              Ok(Err(ref e)) => {
+                read_cb(
+                  pipe_ptr as *mut uv_stream_t,
+                  io_error_to_uv(e) as isize,
+                  &buf,
+                );
+                (*pipe_ptr).internal_reading = false;
+              }
+              Err(_) => {
+                read_cb(
+                  pipe_ptr as *mut uv_stream_t,
+                  super::UV_ECANCELED as isize,
+                  &buf,
+                );
+                (*pipe_ptr).internal_reading = false;
               }
             }
           }

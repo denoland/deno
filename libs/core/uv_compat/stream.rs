@@ -536,19 +536,19 @@ unsafe fn write_pipe(
       }
     }
     #[cfg(windows)]
-    if (*pipe).internal_write_queue.is_empty() {
-      if let Some(handle) = (*pipe).internal_handle {
-        use std::io::Write;
-        use std::os::windows::io::FromRawHandle;
-        let mut file = std::fs::File::from_raw_handle(handle);
-        while offset < write_data.len() {
-          match file.write(&write_data[offset..]) {
-            Ok(n) => offset += n,
-            Err(_) => break,
-          }
+    if (*pipe).internal_write_queue.is_empty()
+      && let Some(handle) = (*pipe).internal_handle
+    {
+      use std::io::Write;
+      use std::os::windows::io::FromRawHandle;
+      let mut file = std::fs::File::from_raw_handle(handle);
+      while offset < write_data.len() {
+        match file.write(&write_data[offset..]) {
+          Ok(n) => offset += n,
+          Err(_) => break,
         }
-        let _ = std::os::windows::io::IntoRawHandle::into_raw_handle(file);
       }
+      let _ = std::os::windows::io::IntoRawHandle::into_raw_handle(file);
     }
 
     let status = if offset >= write_data.len() {
