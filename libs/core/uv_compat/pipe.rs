@@ -47,7 +47,10 @@ pub struct uv_pipe_t {
   pub(crate) internal_handle: Option<std::os::windows::io::RawHandle>,
   /// Pending blocking read result from a spawned thread.
   #[cfg(windows)]
-  #[allow(clippy::type_complexity)]
+  #[allow(
+    clippy::type_complexity,
+    reason = "JoinHandle<Result<(Vec,usize)>> is inherently complex"
+  )]
   pub(crate) internal_pending_read:
     Option<tokio::task::JoinHandle<std::io::Result<(Vec<u8>, usize)>>>,
   /// Windows named pipe server (waiting for or connected to a client).
@@ -216,12 +219,14 @@ pub unsafe fn uv_pipe_open(pipe: *mut uv_pipe_t, fd: c_int) -> c_int {
     return UV_EBADF;
   }
 
-  // Just store the fd. Don't create AsyncFd here - it would register
-  // with the reactor immediately, which can cause spurious read errors
-  // on bound-but-not-connected sockets. The AsyncFd is created lazily
-  // in read_start_pipe when actually needed for poll_read_ready.
   unsafe {
     (*pipe).internal_fd = Some(fd);
+    // Create AsyncFd eagerly so the reactor tracks this fd from the
+    // start. This avoids edge-triggered readiness races where creating
+    // AsyncFd lazily can miss events that fired before registration.
+    if let Ok(afd) = tokio::io::unix::AsyncFd::new(RawFdWrapper(fd)) {
+      (*pipe).internal_async_fd = Some(afd);
+    }
     (*pipe).flags |= UV_HANDLE_ACTIVE;
   }
   0
@@ -875,11 +880,15 @@ pub(crate) unsafe fn poll_pipe_handle(
         break;
       };
       match write_result {
-        Ok(_n) => {
+        Ok(n) => {
           any_work = true;
-          let pw = (*pipe_ptr).internal_write_queue.pop_front().unwrap();
-          if let Some(cb) = pw.cb {
-            cb(pw.req, 0);
+          let pw = (*pipe_ptr).internal_write_queue.front_mut().unwrap();
+          pw.offset += n;
+          if pw.offset >= pw.data.len() {
+            let pw = (*pipe_ptr).internal_write_queue.pop_front().unwrap();
+            if let Some(cb) = pw.cb {
+              cb(pw.req, 0);
+            }
           }
         }
         Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {

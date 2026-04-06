@@ -565,9 +565,9 @@ unsafe fn write_pipe(
       status,
     });
 
-    // Ensure AsyncFd exists for write readiness tracking before
-    // the poll loop runs. Creating it eagerly here avoids races
-    // with edge-triggered readiness (kqueue/epoll).
+    // Ensure AsyncFd exists for write readiness tracking. This is
+    // normally created eagerly in uv_pipe_open, but serves as a
+    // safety net for pipes that skipped that path.
     #[cfg(unix)]
     if (*pipe).internal_async_fd.is_none()
       && (*pipe).internal_stream.is_none()
