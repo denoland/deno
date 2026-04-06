@@ -1192,6 +1192,7 @@ impl NativePipe {
         }
       }
     }
+    let _ = &state; // suppress unused warning on Windows
     // SAFETY: handle is valid; freed in pipe_close_cb
     unsafe {
       let pipe = self.raw();

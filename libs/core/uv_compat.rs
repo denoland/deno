@@ -68,6 +68,7 @@ uv_errno!(UV_EBUSY, libc::EBUSY, -4082);
 uv_errno!(UV_ENOBUFS, libc::ENOBUFS, -4060);
 uv_errno!(UV_ENOTSUP, libc::ENOTSUP, -4049);
 uv_errno!(UV_EALREADY, libc::EALREADY, -4084);
+uv_errno!(UV_ENOENT, libc::ENOENT, -4058);
 pub const UV_EOF: i32 = -4095;
 
 /// Map a `std::io::Error` to the closest libuv error code.
@@ -78,6 +79,7 @@ pub(crate) fn io_error_to_uv(err: &std::io::Error) -> c_int {
     ErrorKind::AddrNotAvailable => UV_EINVAL,
     ErrorKind::ConnectionRefused => UV_ECONNREFUSED,
     ErrorKind::NotConnected => UV_ENOTCONN,
+    ErrorKind::NotFound => UV_ENOENT,
     ErrorKind::BrokenPipe => UV_EPIPE,
     ErrorKind::InvalidInput => UV_EINVAL,
     ErrorKind::WouldBlock => UV_EAGAIN,
