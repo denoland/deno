@@ -279,14 +279,16 @@ impl ReplSessionState {
     Self::extract_result(value)
   }
 
+  #[allow(clippy::print_stderr, reason = "diagnostic for flaky CDP responses")]
   fn extract_result(mut value: serde_json::Value) -> serde_json::Value {
-    if let Some(error) = value.get("error") {
-      log::error!(
-        "CDP protocol error: {}",
-        serde_json::to_string(error).unwrap_or_default()
+    let result = value["result"].take();
+    if result.is_null() {
+      eprintln!(
+        "CDP response has null result. Full response: {}",
+        serde_json::to_string(&value).unwrap_or_default()
       );
     }
-    value["result"].take()
+    result
   }
 }
 
