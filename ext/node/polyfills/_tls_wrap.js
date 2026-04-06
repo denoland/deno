@@ -54,8 +54,6 @@ const kIsVerified = Symbol("verified");
 const kPendingSession = Symbol("pendingSession");
 const kRes = Symbol("res");
 const kErrorEmitted = Symbol("error-emitted");
-let syntheticSessionCounter = 0;
-
 const noop = () => {};
 
 let debug = debuglog("tls", (fn) => {
@@ -123,44 +121,6 @@ function buildPeerLegacyCertificate(handle) {
   }
 
   return translatePeerCertificate(cert) || {};
-}
-
-function createSyntheticSessionToken(prefix) {
-  syntheticSessionCounter++;
-  return Buffer.from(`${prefix}:${syntheticSessionCounter}`);
-}
-
-function scheduleSyntheticSessionEvents(socket) {
-  if (
-    socket._tlsOptions?.isServer ||
-    socket._syntheticSessionScheduled ||
-    socket._sessionReused
-  ) {
-    return;
-  }
-
-  socket._syntheticSessionScheduled = true;
-  const protocol = socket.getProtocol();
-  if (protocol === "TLSv1.3") {
-    nextTick(() => {
-      const first = createSyntheticSessionToken("tls13-session");
-      socket._session = first;
-      socket.emit("session", first);
-      nextTick(() => {
-        const second = createSyntheticSessionToken("tls13-session");
-        socket._session = second;
-        socket.emit("session", second);
-      });
-    });
-    return;
-  }
-
-  const session = socket._session ??
-    createSyntheticSessionToken("tls12-session");
-  socket._session = session;
-  nextTick(() => {
-    socket.emit("session", session);
-  });
 }
 
 // ---------------------------------------------------------------------------
@@ -243,7 +203,6 @@ function TLSSocket(socket, opts) {
   this[kPendingSession] = null;
   this._session = null;
   this._sessionReused = false;
-  this._syntheticSessionScheduled = false;
 
   let wrap;
   let handle;
@@ -613,6 +572,12 @@ TLSSocket.prototype._start = function () {
   if (!this._handle) return;
 
   this._handle.start();
+
+  // Start reading on the underlying native TCP handle so that encrypted
+  // data flows to the TLSWrap via the JS onread interceptor.
+  if (this._handle._nativeTcpHandle) {
+    this._handle._nativeTcpHandle.readStart();
+  }
 };
 
 TLSSocket.prototype.setServername = function (name) {
@@ -943,16 +908,8 @@ function onConnectSecure() {
     debug("client emit secureConnect. authorized:", this.authorized);
   }
 
-  if (!this._session) {
-    this._session = createSyntheticSessionToken(
-      this.getProtocol() === "TLSv1.3" ? "tls13-early" : "tls-session",
-    );
-  }
-
   this.secureConnecting = false;
   this.emit("secureConnect");
-
-  scheduleSyntheticSessionEvents(this);
 
   this[kIsVerified] = true;
   const session = this[kPendingSession];

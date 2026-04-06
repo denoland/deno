@@ -74,11 +74,33 @@ export function wrap(
       res.emitEof();
     };
   } else {
-    // Native stream (TCP handle) -attach directly.
+    // Native stream (TCP handle).
+    // attach() stores the stream pointer for encrypted writes.
     const attachResult = res.attach(nativeHandle);
     if (attachResult !== 0) {
       throw new Error(`TLS wrap attach failed: ${attachResult}`);
     }
+
+    // Read interception at the JS layer: intercept the NativeTCP's onread
+    // callback to forward encrypted data from the TCP stream to the TLSWrap
+    // via receive(). This avoids conflicting with libuv_stream::TCP's own
+    // stream.data layout (which is incompatible with stream_wrap's
+    // StreamHandleData needed by the Rust-level read interceptor).
+    nativeHandle.onread = function (
+      nread: number,
+      buf: Uint8Array | undefined,
+    ) {
+      if (nread > 0 && buf) {
+        // Feed encrypted data from TCP to rustls
+        res.receive(buf.subarray(0, nread));
+      } else if (nread < 0) {
+        // EOF or error - signal to TLS layer
+        res.emitEof();
+      }
+    };
+
+    // Store the native handle so readStart/readStop can delegate to it.
+    res._nativeTcpHandle = nativeHandle;
   }
 
   // Store the JS handle reference so Rust can call JS callbacks (onhandshakedone, etc.)

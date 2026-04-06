@@ -678,6 +678,10 @@ impl UnderlyingStream {
     }
   }
 
+  #[allow(
+    dead_code,
+    reason = "may be used when libuv_stream::TCP is replaced by LibUvStreamWrap-based TCPWrap"
+  )]
   fn set_read_interceptor(&self, interceptor: Option<ReadInterceptor>) {
     if let UnderlyingStream::Uv { stream } = self {
       LibUvStreamWrap::set_read_interceptor_for_stream(*stream, interceptor);
@@ -1446,7 +1450,11 @@ impl Drop for TLSWrap {
   fn drop(&mut self) {
     // Finalizer-safe teardown: no JS callbacks.
     // For explicit destruction with JS callbacks, use destroy_inner().
-    self.teardown();
+    // Catch panics to avoid aborting during cleanup (e.g. if V8 globals
+    // are dropped after the isolate is torn down).
+    let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+      self.teardown();
+    }));
   }
 }
 
@@ -1463,7 +1471,6 @@ impl TLSWrap {
     // the TLSWrapInner pointer after it is freed.
     inner.alive.set(false);
 
-    inner.underlying.set_read_interceptor(None);
     inner.tls_conn = None;
     inner.js_handle = None;
     inner.onread = None;
@@ -1665,7 +1672,12 @@ impl TLSWrap {
     0
   }
 
-  /// Attach to an underlying stream and set up read interception.
+  /// Attach to an underlying stream for encrypted writes.
+  ///
+  /// Read interception is handled at the JS layer: the JS binding sets
+  /// `nativeHandle.onread` to forward encrypted data to `TLSWrap.receive()`.
+  /// This avoids conflicting with `libuv_stream::TCP`'s own `stream.data`
+  /// layout which is incompatible with `stream_wrap::StreamHandleData`.
   #[nofast]
   fn attach(
     &self,
@@ -1680,12 +1692,7 @@ impl TLSWrap {
     }
 
     let inner = unsafe { &mut *self.inner.as_mut_ptr() };
-    let inner_ptr = inner as *mut TLSWrapInner as *mut std::ffi::c_void;
     inner.underlying = UnderlyingStream::Uv { stream };
-    inner.underlying.set_read_interceptor(Some(ReadInterceptor {
-      ptr: inner_ptr,
-      callback: tls_read_interceptor_cb,
-    }));
     inner.isolate = Some(unsafe { scope.as_raw_isolate_ptr() });
 
     // Get stream_base_state from OpState
@@ -1830,18 +1837,14 @@ impl TLSWrap {
 
     inner.onread = Some(v8::Global::new(scope, onread));
 
-    // Start reading from underlying stream if not already
+    // For the Uv case, read interception is done at the JS layer via
+    // nativeHandle.onread -> TLSWrap.receive(). The JS layer calls
+    // nativeHandle.readStart() separately. We just need to cycle if
+    // there's already buffered data.
     let should_cycle;
     if inner.underlying.is_attached() && inner.started {
       should_cycle = !inner.enc_in.is_empty() || inner.has_buffered_cleartext;
-      if let UnderlyingStream::Uv { stream } = &inner.underlying {
-        let _ = op_state;
-        let start_result =
-          LibUvStreamWrap::read_start_intercepted_for_stream(*stream);
-        if start_result != 0 {
-          return start_result;
-        }
-      } else {
+      if !matches!(inner.underlying, UnderlyingStream::Uv { .. }) {
         inner.underlying.read_start();
       }
     } else {
