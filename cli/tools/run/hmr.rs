@@ -299,25 +299,28 @@ impl HmrRunner {
   }
 
   async fn wait_for_response(&self, msg_id: i32) -> serde_json::Value {
-    let mut value = {
+    let rx = {
       let mut state = self.state.0.lock();
       if let Some(message_state) = state.messages.remove(&msg_id) {
         let InspectorMessageState::Ready(value) = message_state else {
           unreachable!();
         };
-        value
-      } else {
-        let (tx, rx) = oneshot::channel();
-        state
-          .messages
-          .insert(msg_id, InspectorMessageState::WaitingFor(tx));
-        drop(state);
-        rx.await.unwrap()
+        return Self::extract_result(value);
       }
+      let (tx, rx) = oneshot::channel();
+      state
+        .messages
+        .insert(msg_id, InspectorMessageState::WaitingFor(tx));
+      rx
     };
 
+    let value = rx.await.unwrap();
+    Self::extract_result(value)
+  }
+
+  fn extract_result(mut value: serde_json::Value) -> serde_json::Value {
     if let Some(error) = value.get("error") {
-      eprintln!(
+      log::error!(
         "CDP protocol error: {}",
         serde_json::to_string(error).unwrap_or_default()
       );
