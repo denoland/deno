@@ -237,7 +237,13 @@ unsafe fn extract_emit_ctx(ptr: *mut TLSWrapInner) -> Option<EmitCtx> {
   unsafe {
     let isolate_ptr = (*ptr).isolate?;
     let js_handle = (*ptr).js_handle.clone()?;
-    let loop_ptr = (*ptr).underlying.loop_ptr();
+    // Use cached_loop_ptr for Uv streams to avoid dereferencing
+    // a potentially dangling stream pointer.
+    let loop_ptr = if (*ptr).cached_loop_ptr.is_null() {
+      (*ptr).underlying.loop_ptr()
+    } else {
+      (*ptr).cached_loop_ptr
+    };
     Some(EmitCtx {
       isolate_ptr,
       js_handle,
@@ -587,14 +593,10 @@ impl UnderlyingStream {
 
   fn loop_ptr(&self) -> *mut uv_compat::uv_loop_t {
     match self {
-      UnderlyingStream::Uv { stream } => {
-        if stream.is_null() {
-          std::ptr::null_mut()
-        } else {
-          // SAFETY: stream is non-null and valid
-          unsafe { (**stream).loop_ }
-        }
-      }
+      // For Uv streams, the loop pointer is cached in TLSWrapInner
+      // to avoid dereferencing the stream pointer (which may be dangling).
+      // This method returns null; callers should use TLSWrapInner.cached_loop_ptr.
+      UnderlyingStream::Uv { .. } => std::ptr::null_mut(),
       UnderlyingStream::Js { loop_ptr, .. } => *loop_ptr,
       UnderlyingStream::None => std::ptr::null_mut(),
     }
@@ -784,6 +786,10 @@ struct TLSWrapInner {
   pending_client_config: Option<Arc<rustls::ClientConfig>>,
   pending_server_name: Option<rustls::pki_types::ServerName<'static>>,
   pending_server_config: Option<Arc<rustls::ServerConfig>>,
+
+  /// Cached uv_loop pointer, set during attach(). Avoids dereferencing
+  /// the stream pointer (which may become dangling) to get the loop.
+  cached_loop_ptr: *mut uv_compat::uv_loop_t,
 }
 
 /// Convert a rustls error to a (message, code) pair that matches Node's
@@ -885,6 +891,7 @@ impl TLSWrapInner {
       pending_client_config: None,
       pending_server_name: None,
       pending_server_config: None,
+      cached_loop_ptr: std::ptr::null_mut(),
     }
   }
 
@@ -1306,6 +1313,15 @@ impl TLSWrapInner {
 /// Called when encrypted data arrives from the underlying stream.
 /// The underlying LibUvStreamWrap owns the native read lifecycle and forwards
 /// raw read events here when TLS is registered as its read interceptor.
+///
+/// Currently unused because libuv_stream::TCP's stream.data layout is
+/// incompatible with stream_wrap::StreamHandleData. Read interception is
+/// done at the JS layer instead. This will be used once libuv_stream::TCP
+/// is replaced by a LibUvStreamWrap-based TCPWrap.
+#[allow(
+  dead_code,
+  reason = "will be used when TCPWrap replaces libuv_stream::TCP"
+)]
 unsafe fn tls_read_interceptor_cb(
   tls_wrap: *mut std::ffi::c_void,
   _stream: *mut uv_stream_t,
@@ -1370,6 +1386,7 @@ unsafe fn tls_read_interceptor_cb(
   }
 }
 
+#[allow(dead_code, reason = "used by tls_read_interceptor_cb")]
 fn free_uv_buf(buf: *const uv_buf_t) {
   // SAFETY: buf was allocated by stream_wrap::on_uv_alloc with matching layout
   unsafe {
@@ -1694,6 +1711,10 @@ impl TLSWrap {
     let inner = unsafe { &mut *self.inner.as_mut_ptr() };
     inner.underlying = UnderlyingStream::Uv { stream };
     inner.isolate = Some(unsafe { scope.as_raw_isolate_ptr() });
+    // Cache the loop pointer now while the stream is still valid.
+    // This avoids dereferencing the stream pointer later when it may
+    // have been freed (e.g. after the TCP handle is closed/GC'd).
+    inner.cached_loop_ptr = unsafe { (*stream).loop_ };
 
     // Get stream_base_state from OpState
     let state_global = &op_state.borrow::<StreamBaseState>().array;
@@ -1820,7 +1841,7 @@ impl TLSWrap {
     &self,
     #[this] this: v8::Global<v8::Object>,
     scope: &mut v8::PinScope,
-    op_state: &mut OpState,
+    _op_state: &mut OpState,
   ) -> i32 {
     let inner = unsafe { &mut *self.inner.as_mut_ptr() };
 
