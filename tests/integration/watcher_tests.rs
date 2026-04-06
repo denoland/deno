@@ -1119,8 +1119,8 @@ async fn test_watch_external_watch_files() {
     .spawn()
     .unwrap();
   let (_stdout_lines, mut stderr_lines) = child_lines(&mut child);
-  wait_contains("Test finished", &mut stderr_lines).await;
   wait_for_watcher("external_file.txt", &mut stderr_lines).await;
+  wait_contains("Test finished", &mut stderr_lines).await;
 
   // Change content of the external file — should trigger a re-run
   external_file.write("Hello world2");
