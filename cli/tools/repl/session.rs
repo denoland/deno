@@ -903,7 +903,7 @@ impl ReplSession {
           return_by_value: None,
           generate_preview: None,
           user_gesture: None,
-          await_promise: None,
+          await_promise: Some(true),
           throw_on_side_effect: None,
           timeout: None,
           disable_breaks: None,
