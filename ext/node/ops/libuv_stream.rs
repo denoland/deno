@@ -726,6 +726,18 @@ impl TCP {
   }
 
   #[fast]
+  #[rename("ref")]
+  fn ref_handle(&self) {
+    let tcp = self.raw();
+    // SAFETY: tcp handle pointer is valid and initialized
+    unsafe {
+      if !tcp.is_null() {
+        uv_compat::uv_ref(tcp.cast());
+      }
+    }
+  }
+
+  #[fast]
   fn unref(&self) {
     let tcp = self.raw();
     // SAFETY: tcp handle pointer is valid and initialized
