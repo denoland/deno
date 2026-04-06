@@ -1573,6 +1573,10 @@ impl TLSWrap {
   /// matching Node's TLSWrap::Destroy().
   ///
   /// Must NOT be called from Drop — use teardown() instead.
+  #[allow(
+    dead_code,
+    reason = "available for explicit destruction with JS write-completion callbacks"
+  )]
   fn destroy_inner(&self) {
     let inner = unsafe { self.inner.as_mut() };
 
@@ -2117,10 +2121,7 @@ impl TLSWrap {
   #[nofast]
   #[reentrant]
   fn destroy_ssl(&self) {
-    // Use teardown() (no JS callbacks) instead of destroy_inner()
-    // to avoid re-entering JS during close, which can cause the
-    // event loop to exit prematurely.
-    self.teardown();
+    self.destroy_inner();
   }
 
   /// Get the negotiated ALPN protocol.

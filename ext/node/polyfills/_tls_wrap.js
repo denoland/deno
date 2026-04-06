@@ -284,22 +284,33 @@ for (const proxiedMethod of proxiedMethods) {
 }
 
 tls_wrap.TLSWrap.prototype.close = function close(cb) {
+  let ssl;
+  if (this._owner) {
+    ssl = this._owner.ssl;
+    this._owner.ssl = null;
+  }
+
+  const done = () => {
+    if (ssl) {
+      ssl.destroySsl();
+    }
+    if (cb) cb();
+  };
+
   if (this._parentWrap) {
     if (this._parentWrap._handle === null) {
-      if (cb) cb();
+      done();
       return;
     }
 
     if (this._parentWrap._handle === this._parent) {
-      this._parentWrap.once("close", () => {
-        if (cb) cb();
-      });
+      this._parentWrap.once("close", done);
       this._parentWrap.destroy();
       return;
     }
   }
 
-  if (cb) cb();
+  done();
 };
 
 TLSSocket.prototype._wrapHandle = function (wrap, handle) {
