@@ -655,7 +655,7 @@ pub unsafe fn uv_pipe_connect(
         // (matching libuv behavior). ClientOptions::open returns NotFound
         // for non-pipe paths even if the file exists.
         if e.kind() == std::io::ErrorKind::NotFound
-          && std::path::Path::new(path).exists()
+          && std::fs::metadata(path).is_ok()
         {
           return super::UV_ENOTSOCK;
         }
