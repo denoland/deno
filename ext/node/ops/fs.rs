@@ -97,18 +97,6 @@ fn ebadf() -> FsError {
   ))
 }
 
-fn eexist() -> FsError {
-  FsError::Io(std::io::Error::from_raw_os_error(
-    #[cfg(unix)]
-    libc::EEXIST,
-    #[cfg(windows)]
-    {
-      // Win32 ERROR_ALREADY_EXISTS
-      183
-    },
-  ))
-}
-
 /// Get the File trait object for an OS file descriptor from FdTable.
 fn file_for_fd(
   state: &OpState,
@@ -789,112 +777,6 @@ pub async fn op_node_rmdir(
   Ok(())
 }
 
-/// Register an existing OS file descriptor in NodeFsState so it can be
-/// used with the fd-based read/write/close ops. This is used by
-/// Pipe.open(fd) to wrap pipes, PTYs, FIFOs, etc. for stream I/O.
-///
-/// On Unix, takes ownership of the fd via from_raw_fd.
-/// On Windows, duplicates the OS handle to get an independent copy,
-/// then wraps it as a CRT fd (same pattern as raw_fd_for_file).
-#[cfg(unix)]
-#[op2(fast)]
-pub fn op_node_register_fd(
-  state: &mut OpState,
-  fd: i32,
-) -> Result<(), FsError> {
-  use std::fs::File as StdFile;
-  use std::os::unix::io::FromRawFd;
-
-  if fd < 0 {
-    return Err(ebadf());
-  }
-
-  // Stdio fds (0/1/2) are pre-registered in FdTable at startup.
-  // For these, Pipe.open(fd) is a no-op since both Deno and Node
-  // share the same entry.
-  if (0..=2).contains(&fd) && state.borrow::<deno_io::FdTable>().contains(fd) {
-    return Ok(());
-  }
-
-  // Reject if the fd is already tracked (e.g. from fs.openSync()).
-  if state.borrow::<deno_io::FdTable>().contains(fd) {
-    return Err(eexist());
-  }
-
-  // SAFETY: The caller is responsible for passing a valid fd that they own.
-  // Ownership transfers to the File -- matching libuv's uv_pipe_open()
-  // which takes ownership of the fd (closing the handle closes the fd).
-  let std_file = unsafe { StdFile::from_raw_fd(fd) };
-  let file: Rc<dyn deno_io::fs::File> =
-    Rc::new(deno_io::StdFileResourceInner::file(std_file, None));
-  state.borrow_mut::<deno_io::FdTable>().register(fd, file);
-  Ok(())
-}
-
-#[cfg(windows)]
-#[op2(fast)]
-pub fn op_node_register_fd(
-  state: &mut OpState,
-  fd: i32,
-) -> Result<(), FsError> {
-  use std::fs::File as StdFile;
-  use std::os::windows::io::FromRawHandle;
-
-  use windows_sys::Win32::Foundation::DUPLICATE_SAME_ACCESS;
-  use windows_sys::Win32::Foundation::DuplicateHandle;
-  use windows_sys::Win32::System::Threading::GetCurrentProcess;
-
-  if fd < 0 {
-    return Err(ebadf());
-  }
-
-  // Stdio fds (0/1/2) are pre-registered in FdTable at startup.
-  if (0..=2).contains(&fd) && state.borrow::<deno_io::FdTable>().contains(fd) {
-    return Ok(());
-  }
-
-  // Reject if the fd is already tracked (e.g. from fs.openSync()).
-  if state.borrow::<deno_io::FdTable>().contains(fd) {
-    return Err(eexist());
-  }
-
-  // Convert the CRT fd to an OS HANDLE.
-  // SAFETY: libc::get_osfhandle returns the OS handle for a CRT fd.
-  let os_handle = unsafe { libc::get_osfhandle(fd) };
-  if os_handle == -1 {
-    return Err(ebadf());
-  }
-
-  // Duplicate the OS handle so the File owns an independent copy.
-  // When the pipe is closed, op_node_fs_close drops the File (closing
-  // the dup) AND calls libc::close(fd) (closing the CRT fd + original
-  // handle). This matches libuv's uv_pipe_open ownership semantics.
-  let mut dup_handle = std::ptr::null_mut();
-  // SAFETY: DuplicateHandle with DUPLICATE_SAME_ACCESS creates a copy
-  // of the handle with the same access rights.
-  let ok = unsafe {
-    DuplicateHandle(
-      GetCurrentProcess(),
-      os_handle as _,
-      GetCurrentProcess(),
-      &mut dup_handle,
-      0,
-      0,
-      DUPLICATE_SAME_ACCESS,
-    )
-  };
-  if ok == 0 {
-    return Err(FsError::Io(std::io::Error::last_os_error()));
-  }
-
-  // SAFETY: dup_handle is a valid duplicated OS handle.
-  let std_file = unsafe { StdFile::from_raw_handle(dup_handle) };
-  let file: Rc<dyn deno_io::fs::File> =
-    Rc::new(deno_io::StdFileResourceInner::file(std_file, None));
-  state.borrow_mut::<deno_io::FdTable>().register(fd, file);
-  Ok(())
-}
-
 /// Create an anonymous pipe pair and return (read_fd, write_fd).
 /// The returned fds are NOT registered in FdTable; the caller
 /// is responsible for registering or closing them.
@@ -1098,40 +980,6 @@ pub async fn op_node_fs_read_deferred(
   }
 }
 
-/// Cancellable fd-based async read. Like op_node_fs_read_deferred but accepts
-/// a cancel handle rid so the read can be aborted when the stream is destroyed
-/// (e.g. when a child process is killed and its stdout pipe is closed).
-#[op2(async(lazy))]
-#[smi]
-pub async fn op_node_fd_read_with_cancel(
-  state: Rc<RefCell<OpState>>,
-  fd: i32,
-  #[smi] cancel_rid: ResourceId,
-  #[buffer] buf: JsBuffer,
-) -> Result<u32, deno_error::JsErrorBox> {
-  use deno_core::CancelFuture;
-
-  let (file, cancel_handle) = {
-    let state = state.borrow();
-    let file =
-      file_for_fd(&state, fd).map_err(deno_error::JsErrorBox::from_err)?;
-    let cancel = state
-      .resource_table
-      .get::<deno_io::ReadCancelResource>(cancel_rid)
-      .map_err(deno_error::JsErrorBox::from_err)?
-      .cancel_handle();
-    (file, cancel)
-  };
-  let view = deno_core::BufMutView::from(buf);
-  let read_fut = file.read_byob(view);
-  let (nread, _) = read_fut
-    .or_cancel(cancel_handle)
-    .await
-    .map_err(|_| deno_error::JsErrorBox::generic("cancelled"))?
-    .map_err(deno_error::JsErrorBox::from_err)?;
-  Ok(nread as u32)
-}
-
 /// Positioned write: if position >= 0, uses pwrite to write without moving
 /// the file cursor. If position < 0, writes at the current position.
 /// Handles partial writes internally by looping until all bytes are written.
@@ -1187,25 +1035,6 @@ pub async fn op_node_fs_write_deferred(
 ) -> Result<u32, FsError> {
   let file = file_for_fd(&state.borrow(), fd)?;
   write_with_position(file, &buf, position)
-}
-
-/// Async partial write for fd-based streams (pipes, sockets).
-/// Unlike op_node_fs_write_deferred which loops until all bytes are written,
-/// this performs a single write dispatched to a background thread and returns
-/// the number of bytes actually written. This is critical for pipes where the
-/// OS buffer may fill up — the caller must loop and yield between writes so
-/// the event loop can process reads on the other end.
-#[op2(async(lazy))]
-#[smi]
-pub async fn op_node_fd_write_deferred(
-  state: Rc<RefCell<OpState>>,
-  fd: i32,
-  #[buffer] buf: JsBuffer,
-) -> Result<u32, FsError> {
-  let file = file_for_fd(&state.borrow(), fd)?;
-  let view = deno_core::BufView::from(buf);
-  let outcome = file.write(view).await?;
-  Ok(outcome.nwritten() as u32)
 }
 
 #[op2(fast)]
