@@ -614,6 +614,20 @@ pub unsafe fn uv_pipe_connect(
     let opts = tokio::net::windows::named_pipe::ClientOptions::new();
     match opts.open(path) {
       Ok(client) => {
+        // Verify the opened handle is actually a named pipe, not a
+        // regular file. GetFileType returns FILE_TYPE_PIPE (3) for
+        // named pipes. If it's something else, return ENOTSOCK.
+        {
+          use std::os::windows::io::AsRawHandle;
+          let handle = client.as_raw_handle();
+          let file_type =
+            windows_sys::Win32::Storage::FileSystem::GetFileType(handle as _);
+          if file_type != windows_sys::Win32::Storage::FileSystem::FILE_TYPE_PIPE
+          {
+            drop(client);
+            return super::UV_ENOTSOCK;
+          }
+        }
         (*pipe).internal_win_client = Some(client);
         (*pipe).flags |= UV_HANDLE_ACTIVE;
 
