@@ -2865,16 +2865,15 @@ fn build_client_config(
   // Use custom CA certs from setDefaultCACertificates() only when the
   // SecureContext doesn't provide its own CA. This matches Node.js
   // behavior where explicit `ca` in options takes precedence.
-  if ca_certs.is_empty() {
-    if let Some(node_tls_state) = op_state.try_borrow::<NodeTlsState>()
-      && let Some(custom_ca_certs) = &node_tls_state.custom_ca_certs
-    {
-      root_cert_store = Some(rustls::RootCertStore::empty());
-      ca_certs = custom_ca_certs
-        .iter()
-        .map(|cert| cert.clone().into_bytes())
-        .collect();
-    }
+  if ca_certs.is_empty()
+    && let Some(node_tls_state) = op_state.try_borrow::<NodeTlsState>()
+    && let Some(custom_ca_certs) = &node_tls_state.custom_ca_certs
+  {
+    root_cert_store = Some(rustls::RootCertStore::empty());
+    ca_certs = custom_ca_certs
+      .iter()
+      .map(|cert| cert.clone().into_bytes())
+      .collect();
   }
 
   // Build client key/cert if provided
