@@ -2862,14 +2862,19 @@ fn build_client_config(
     .ok()
     .flatten();
 
-  if let Some(node_tls_state) = op_state.try_borrow::<NodeTlsState>()
-    && let Some(custom_ca_certs) = &node_tls_state.custom_ca_certs
-  {
-    root_cert_store = Some(rustls::RootCertStore::empty());
-    ca_certs = custom_ca_certs
-      .iter()
-      .map(|cert| cert.clone().into_bytes())
-      .collect();
+  // Use custom CA certs from setDefaultCACertificates() only when the
+  // SecureContext doesn't provide its own CA. This matches Node.js
+  // behavior where explicit `ca` in options takes precedence.
+  if ca_certs.is_empty() {
+    if let Some(node_tls_state) = op_state.try_borrow::<NodeTlsState>()
+      && let Some(custom_ca_certs) = &node_tls_state.custom_ca_certs
+    {
+      root_cert_store = Some(rustls::RootCertStore::empty());
+      ca_certs = custom_ca_certs
+        .iter()
+        .map(|cert| cert.clone().into_bytes())
+        .collect();
+    }
   }
 
   // Build client key/cert if provided
@@ -2909,11 +2914,15 @@ fn build_client_config(
       match parsed {
         Ok(cert) => {
           root_cert_ders.push(cert.as_ref().to_vec());
-          if root_cert_store.add(cert).is_err() {
-            return None;
-          }
+          // Skip invalid certs rather than failing the entire config.
+          // This matches Node.js behavior where invalid CA certs are
+          // silently ignored.
+          let _ = root_cert_store.add(cert);
         }
-        Err(_) => return None,
+        Err(_) => {
+          // Skip unparseable PEM entries (e.g. truncated test certs
+          // from setDefaultCACertificates).
+        }
       }
     }
   }
