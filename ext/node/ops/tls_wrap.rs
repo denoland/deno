@@ -39,7 +39,6 @@ use deno_core::ToJsBuffer;
 use deno_core::op2;
 use deno_core::uv_compat;
 use deno_core::uv_compat::UV_EBADF;
-use deno_core::uv_compat::UV_ECANCELED;
 use deno_core::uv_compat::UV_EOF;
 use deno_core::uv_compat::uv_buf_t;
 use deno_core::uv_compat::uv_stream_t;
@@ -771,7 +770,7 @@ struct TLSWrapInner {
   bytes_written: u64,
 
   /// Shared flag checked by `enc_write_cb` to detect teardown.
-  /// Set to `false` in `destroy_inner` before the TLSWrapInner memory
+  /// Set to `false` in `teardown` before the TLSWrapInner memory
   /// is freed, so in-flight write callbacks can avoid a dangling deref.
   alive: Rc<Cell<bool>>,
 
@@ -1472,13 +1471,7 @@ unsafe impl GarbageCollected for TLSWrap {
 
 impl Drop for TLSWrap {
   fn drop(&mut self) {
-    // Finalizer-safe teardown: no JS callbacks.
-    // For explicit destruction with JS callbacks, use destroy_inner().
-    // Catch panics to avoid aborting during cleanup (e.g. if V8 globals
-    // are dropped after the isolate is torn down).
-    let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-      self.teardown();
-    }));
+    self.teardown();
   }
 }
 
@@ -1584,36 +1577,6 @@ impl TLSWrap {
     );
 
     0
-  }
-
-  /// Explicit destruction with JS callbacks. Called from destroy_ssl().
-  /// Fires pending write callback with UV_ECANCELED before tearing down,
-  /// matching Node's TLSWrap::Destroy().
-  ///
-  /// Must NOT be called from Drop — use teardown() instead.
-  #[allow(
-    dead_code,
-    reason = "available for explicit destruction with JS write-completion callbacks"
-  )]
-  fn destroy_inner(&self) {
-    let inner = unsafe { self.inner.as_mut() };
-
-    if inner.tls_conn.is_none() {
-      return;
-    }
-    inner.write_callback_scheduled = true;
-
-    // invoke_queued may re-enter JS — use raw pointer to avoid holding
-    // a reference across the JS call.
-    let inner_ptr = inner as *mut TLSWrapInner;
-    unsafe {
-      if let Some((write_obj, ctx)) = prepare_invoke_queued(inner_ptr) {
-        do_invoke_queued(&ctx, write_obj, UV_ECANCELED);
-      }
-    }
-
-    // Shared finalizer-safe cleanup (no JS callbacks).
-    self.teardown();
   }
 }
 
@@ -2127,13 +2090,11 @@ impl TLSWrap {
     0
   }
 
-  /// Destroy the SSL connection.
-  /// Matching Node's TLSWrap::Destroy(), this fires any pending write
-  /// callback with UV_ECANCELED before tearing down.
+  /// Destroy the SSL connection. Tears down the TLS state without
+  /// re-entering JS (no write-completion callbacks).
   #[nofast]
-  #[reentrant]
   fn destroy_ssl(&self) {
-    self.destroy_inner();
+    self.teardown();
   }
 
   /// Get the negotiated ALPN protocol.
