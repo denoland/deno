@@ -358,11 +358,17 @@ TLSSocket.prototype._wrapHandle = function (wrap, handle) {
   // Get the native TCP handle for attachment
   const nativeHandle = handle._nativeHandle ?? handle;
 
+  // Strip trailing dot from servername for SNI and certificate matching.
+  let servername = options.servername;
+  if (servername && servername.endsWith(".")) {
+    servername = servername.slice(0, -1);
+  }
+
   const res = tls_wrap.wrap(
     nativeHandle,
     secureContext,
     !!options.isServer,
-    options.servername,
+    servername,
   );
 
   res._parent = handle; // C++ "wrap" object: TCPWrap, etc.
