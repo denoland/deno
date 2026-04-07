@@ -20,7 +20,10 @@ pub enum NpmProcessStateKind {
 }
 
 #[sys_traits::auto_impl]
-pub trait NpmProcessStateFromEnvVarSys: sys_traits::FsOpen {}
+pub trait NpmProcessStateFromEnvVarSys:
+  sys_traits::FsOpen + sys_traits::EnvVar + sys_traits::EnvRemoveVar
+{
+}
 
 /// The serialized npm process state which can be written to a file and then
 /// the FD or path can be passed to a spawned deno process via the

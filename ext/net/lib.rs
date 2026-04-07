@@ -13,7 +13,7 @@ pub mod resolve_addr;
 pub mod tcp;
 pub mod tunnel;
 #[cfg(windows)]
-mod win_pipe;
+pub mod win_pipe;
 
 use std::sync::Arc;
 
@@ -74,6 +74,7 @@ deno_core::extension!(deno_net,
     ops::op_net_set_broadcast_udp,
     ops::op_net_validate_multicast,
     ops::op_dns_resolve,
+    ops::op_net_get_system_dns_servers,
     ops::op_set_nodelay,
     ops::op_set_keepalive,
     ops::op_net_listen_vsock,
@@ -101,8 +102,6 @@ deno_core::extension!(deno_net,
     ops_unix::op_node_unstable_net_listen_unixpacket,
     ops_unix::op_net_recv_unixpacket,
     ops_unix::op_net_send_unixpacket,
-    ops_unix::op_net_unix_stream_from_fd,
-
     ops_win_pipe::op_pipe_open,
     ops_win_pipe::op_pipe_connect,
     ops_win_pipe::op_pipe_windows_wait,
@@ -187,7 +186,6 @@ mod ops_unix {
   stub_op!(op_node_unstable_net_listen_unixpacket);
   stub_op!(op_net_recv_unixpacket);
   stub_op!(op_net_send_unixpacket);
-  stub_op!(op_net_unix_stream_from_fd);
 }
 
 /// Stub ops for non-windows platforms.

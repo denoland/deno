@@ -240,7 +240,7 @@ impl TlsKeyResolver {
 }
 
 pub struct TlsKeyLookup {
-  #[allow(clippy::type_complexity)]
+  #[allow(clippy::type_complexity, reason = "complex type is necessary here")]
   resolution_rx: RefCell<
     mpsc::UnboundedReceiver<(
       String,
@@ -286,6 +286,8 @@ impl TlsKeyLookup {
 
 #[cfg(test)]
 pub mod tests {
+  #![allow(clippy::disallowed_methods, reason = "tests")]
+
   use deno_core::unsync::spawn;
 
   use super::*;

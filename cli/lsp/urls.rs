@@ -21,10 +21,10 @@ pub fn uri_parse_unencoded(s: &str) -> Result<Uri, AnyError> {
 
 pub fn normalize_uri(uri: &Uri) -> Uri {
   if !uri.scheme().as_str().eq_ignore_ascii_case("file") {
-    return uri.normalize().into();
+    return normalize_non_file_uri(uri);
   }
   let Some(path) = uri.to_file_path() else {
-    return uri.normalize().into();
+    return normalize_non_file_uri(uri);
   };
   let normalized_path = normalize_path(path);
   let mut encoded_path =
@@ -49,7 +49,7 @@ pub fn normalize_uri(uri: &Uri) -> Uri {
           }
           Prefix::Verbatim(_) | Prefix::DeviceNS(_) => {
             // Not a local path, abort.
-            return uri.normalize().into();
+            return normalize_non_file_uri(uri);
           }
         }
       }
@@ -75,6 +75,26 @@ pub fn normalize_uri(uri: &Uri) -> Uri {
     .build()
     .expect("component constraints should be met by the above")
     .normalize()
+    .into()
+}
+
+// TODO(nayeemrmn): Remove whe `Uri::normalize()` is fixed:
+// https://github.com/yescallop/fluent-uri-rs/issues/45
+pub fn normalize_non_file_uri(uri: &Uri) -> Uri {
+  let mut encoded_path =
+    fluent_uri::pct_enc::EString::<fluent_uri::pct_enc::encoder::Path>::new();
+  encoded_path.encode_str::<fluent_uri::pct_enc::encoder::Path>(
+    &percent_encoding::percent_decode_str(uri.path().as_str())
+      .decode_utf8_lossy(),
+  );
+  fluent_uri::Uri::builder()
+    .scheme(uri.scheme())
+    .optional(fluent_uri::build::Builder::authority, uri.authority())
+    .path(encoded_path.as_ref())
+    .optional(fluent_uri::build::Builder::query, uri.query())
+    .optional(fluent_uri::build::Builder::fragment, uri.fragment())
+    .build()
+    .expect("component constraints should be met by the above")
     .into()
 }
 
@@ -144,7 +164,15 @@ pub fn uri_to_url(uri: &Uri) -> Url {
     }
     Url::parse(&s).ok().map(normalize_url)
   })()
-  .unwrap_or_else(|| normalize_url(Url::parse(uri.as_str()).unwrap()))
+  .unwrap_or_else(|| {
+    normalize_url(
+      Url::parse(uri.as_str())
+        .inspect_err(|err| {
+          lsp_warn!("Couldn't parse uri \"{}\" as url: {err}", uri.as_str());
+        })
+        .unwrap(),
+    )
+  })
 }
 
 pub fn uri_to_file_path(uri: &Uri) -> Result<PathBuf, UrlToFilePathError> {
@@ -214,4 +242,46 @@ pub fn normalize_path<P: AsRef<Path>>(path: P) -> PathBuf {
   }
 
   inner(path.as_ref())
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn test_normalize_non_file_uri_no_double_encode_fragment() {
+    // Notebook cell URIs have percent-encoded fragments (base64 padding).
+    let uri: Uri =
+      "vscode-notebook-cell:/Users/test/scratch.ipynb#W1sZmlsZQ%3D%3D"
+        .parse()
+        .unwrap();
+    let normalized = normalize_non_file_uri(&uri);
+    assert_eq!(
+      normalized.as_str(),
+      "vscode-notebook-cell:/Users/test/scratch.ipynb#W1sZmlsZQ%3D%3D"
+    );
+    // Ensure idempotency.
+    let normalized2 = normalize_non_file_uri(&normalized);
+    assert_eq!(normalized.as_str(), normalized2.as_str());
+  }
+
+  #[test]
+  fn test_normalize_uri_notebook_cell_idempotent() {
+    let uri: Uri =
+      "vscode-notebook-cell:/Users/test/scratch.ipynb#W0sZmlsZQ%3D%3D.ts"
+        .parse()
+        .unwrap();
+    let n1 = normalize_uri(&uri);
+    let n2 = normalize_uri(&n1);
+    assert_eq!(n1.as_str(), n2.as_str());
+  }
+
+  #[test]
+  fn test_normalize_non_file_uri_no_double_encode_query() {
+    let uri: Uri = "custom-scheme:/path?key=val%20ue".parse().unwrap();
+    let normalized = normalize_non_file_uri(&uri);
+    assert_eq!(normalized.as_str(), "custom-scheme:/path?key=val%20ue");
+    let normalized2 = normalize_non_file_uri(&normalized);
+    assert_eq!(normalized.as_str(), normalized2.as_str());
+  }
 }

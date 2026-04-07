@@ -70,7 +70,12 @@ import {
 } from "ext:deno_node/internal/errors.ts";
 import { getTimerDuration } from "ext:deno_node/internal/timers.mjs";
 import { getIPFamily } from "ext:deno_node/internal/net.ts";
-import { serveHttpOnListener, upgradeHttpRaw } from "ext:deno_http/00_serve.ts";
+import {
+  serveHttpOnListener,
+  upgradeHttpRaw,
+  upgradeHttpRawConnect,
+} from "ext:deno_http/00_serve.ts";
+import { op_http_serve_address_override } from "ext:core/ops";
 import { listen as listenDeno } from "ext:deno_net/01_net.js";
 import { headersEntries } from "ext:deno_fetch/20_headers.js";
 import { Response } from "ext:deno_fetch/23_response.js";
@@ -85,6 +90,7 @@ import {
 import { timerId } from "ext:deno_web/03_abort_signal.js";
 import { clearTimeout as webClearTimeout } from "ext:deno_web/02_timers.js";
 import { resourceForReadableStream } from "ext:deno_web/06_streams.js";
+import { kReinitializeHandle } from "ext:deno_node/internal/net.ts";
 import {
   kDestroyed,
   kEnded,
@@ -97,6 +103,9 @@ import { TlsConn } from "ext:deno_net/02_tls.js";
 import { STATUS_CODES } from "node:_http_server";
 import { methods as METHODS } from "node:_http_common";
 import { deprecate } from "node:util";
+
+// Flag to track if DENO_SERVE_ADDRESS override has been consumed for Node http servers.
+let nodeHttpAddressOverrideConsumed = false;
 
 const { internalRidSymbol } = core;
 const {
@@ -463,7 +472,9 @@ class ClientRequest extends OutgoingMessage {
             // we apply sock-init-workaround
             // This covers npm:ws and npm:mqtt
             // https://github.com/denoland/deno/issues/27694
-            newSocket._needsSockInitWorkaround = true;
+            if (newSocket.encrypted !== true) {
+              newSocket._needsSockInitWorkaround = true;
+            }
             oncreate(null, newSocket);
           }
         } catch (err) {
@@ -541,7 +552,9 @@ class ClientRequest extends OutgoingMessage {
         }
         // For reused TLS sockets, the connection is already encrypted.
         // Skip TLS upgrade if the socket is already encrypted (reusedSocket).
-        const needsTlsUpgrade = this._encrypted && !this.socket.encrypted;
+        // Use _tlsUpgraded flag instead of socket.encrypted, since TLSSocket.encrypted
+        // is always true per Node.js semantics.
+        const needsTlsUpgrade = this._encrypted && !this.socket._tlsUpgraded;
         if (needsTlsUpgrade) {
           const hasCaCerts = !!this.agent?.options?.ca;
           const caCerts = hasCaCerts
@@ -562,8 +575,8 @@ class ClientRequest extends OutgoingMessage {
           // Simulates "secure" event on TLSSocket
           // This makes yarn v1's https client working
           this.socket.authorized = true;
-          // Mark the socket as encrypted for keepAlive reuse detection
-          this.socket.encrypted = true;
+          // Mark the socket as having completed TLS upgrade for keepAlive reuse detection
+          this.socket._tlsUpgraded = true;
         }
 
         // Stop reading and save handle for keepAlive restoration.
@@ -696,9 +709,41 @@ class ClientRequest extends OutgoingMessage {
               port: info[3],
             },
           );
-          const socket = new Socket({
-            handle: new TCP(constants.SOCKET, conn),
-          });
+          const upgradeHandle = new TCP(constants.SOCKET, conn);
+          let socket = this.socket;
+          // Only reuse the existing socket when it was provided via
+          // createConnection (encrypted TLS socket). For plain HTTP
+          // upgrades, create a fresh Socket to avoid dangling state.
+          if (
+            socket?.encrypted === true &&
+            socket?.[kReinitializeHandle]
+          ) {
+            if (this._socketErrorListener) {
+              socket.removeListener("error", this._socketErrorListener);
+              this._socketErrorListener = null;
+            }
+            socket.emit("agentRemove");
+            const tlsWrapState = socket.encrypted === true &&
+                socket._tlsUpgraded &&
+                socket._handle
+              ? {
+                verifyError: socket._handle.verifyError,
+                parentWrap: socket._handle._parentWrap,
+              }
+              : null;
+            if (tlsWrapState) {
+              delete socket._handle.afterConnectTls;
+            }
+            socket[kReinitializeHandle](upgradeHandle);
+            if (tlsWrapState) {
+              upgradeHandle.verifyError = tlsWrapState.verifyError;
+              upgradeHandle._parent = upgradeHandle;
+              upgradeHandle._parentWrap = tlsWrapState.parentWrap;
+              socket._tlsUpgraded = true;
+            }
+          } else {
+            socket = new Socket({ handle: upgradeHandle });
+          }
 
           this.upgradeOrConnect = true;
 
@@ -857,7 +902,9 @@ class ClientRequest extends OutgoingMessage {
         };
         this._socketErrorListener = socketErrorListener;
         socket.once("error", socketErrorListener);
-        if (socket.readyState === "opening") {
+        if (socket.encrypted === true && socket.secureConnecting) {
+          socket.once("secureConnect", onConnect);
+        } else if (socket.readyState === "opening") {
           socket.on("connect", onConnect);
         } else {
           onConnect();
@@ -1295,13 +1342,24 @@ export class IncomingMessageForClient extends NodeReadable {
         req._socketErrorListener = null;
       }
 
-      socket.emit("free");
-
-      // Clear references so old request/response don't destroy the pooled socket.
+      // Mirror Node's emitFreeNT ordering: emit request "close"
+      // before socket "free" so userland cleanup (e.g. node-fetch
+      // removing per-request socket listeners) runs before the
+      // agent reuses the socket.
       if (req) {
+        req.destroyed = true;
+        req._closed = true;
+        req.emit("close");
         req.socket = null;
       }
+
+      // Clear response's socket reference so that when push(null)
+      // triggers the response "close" listener, it won't emit
+      // "close" on the pooled socket. This must be after req.emit("close")
+      // so cleanup handlers can still access the socket via res.socket.
       this.socket = null;
+
+      socket.emit("free");
     } catch (_e) {
       // Socket reuse is best-effort.
     }
@@ -2237,6 +2295,21 @@ export class ServerImpl extends EventEmitter {
       hostname = "127.0.0.1";
     }
 
+    // Check DENO_SERVE_ADDRESS override (used by desktop runtime, Deno Deploy, etc.)
+    if (!nodeHttpAddressOverrideConsumed) {
+      const {
+        0: overrideKind,
+        1: overrideHost,
+        2: overridePort,
+      } = op_http_serve_address_override();
+      if (overrideKind === 1) {
+        // TCP override
+        nodeHttpAddressOverrideConsumed = true;
+        hostname = overrideHost;
+        port = overridePort;
+      }
+    }
+
     // Bind the port synchronously so that address() returns the actual
     // port immediately after listen(), matching Node.js behavior.
     try {
@@ -2274,15 +2347,46 @@ export class ServerImpl extends EventEmitter {
       });
 
       const req = new IncomingMessageForServer(socket);
+      req.method = request.method;
+
+      if (request.method === "CONNECT") {
+        // For CONNECT, the URL should be in authority form (host:port).
+        // Deno's server adds an "http://" prefix, so strip it.
+        req.url = request.url.replace(/^https?:\/\//, "");
+        req[kRawHeaders] = request.headers;
+
+        if (this.listenerCount("connect") > 0) {
+          return (async () => {
+            const { conn, response, head } = await upgradeHttpRawConnect(
+              request,
+            );
+            const socket = new Socket({
+              handle: new TCP(constants.SERVER, conn),
+            });
+            req.socket = socket;
+            this.emit("connect", req, socket, Buffer.from(head));
+            return response;
+          })();
+        } else {
+          return new Response(null, { status: 405 });
+        }
+      }
+
       // Slice off the origin so that we only have pathname + search
       req.url = request.url?.slice(request.url.indexOf("/", 8));
-      req.method = request.method;
       req.upgrade =
         request.headers.get("connection")?.toLowerCase().includes("upgrade") &&
         request.headers.get("upgrade");
       req[kRawHeaders] = request.headers;
 
-      if (req.upgrade && this.listenerCount("upgrade") > 0) {
+      // Don't fire the "upgrade" event for h2c (HTTP/2 cleartext) upgrades.
+      // These are protocol-level upgrades that aren't meant for user-space
+      // handlers (like WebSocket). Treating them as regular requests lets
+      // the server respond normally with HTTP/1.1.
+      if (
+        req.upgrade && req.upgrade.toLowerCase() !== "h2c" &&
+        this.listenerCount("upgrade") > 0
+      ) {
         const { conn, response } = upgradeHttpRaw(request);
         const socket = new Socket({
           handle: new TCP(constants.SERVER, conn),

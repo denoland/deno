@@ -139,7 +139,7 @@ pub struct FsDirEntry {
   pub is_symlink: bool,
 }
 
-#[allow(clippy::disallowed_types)]
+#[allow(clippy::disallowed_types, reason = "definition")]
 pub type FileSystemRc = deno_maybe_sync::MaybeArc<dyn FileSystem>;
 
 #[async_trait::async_trait(?Send)]

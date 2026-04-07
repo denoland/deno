@@ -145,66 +145,83 @@ export namespace core {
     cb: (source: any, rid: number) => void,
   ): void;
 
+  /** Tick object enqueued via queueNextTick. */
+  interface TickObject {
+    callback: (...args: any[]) => void;
+    args: any[] | undefined;
+    snapshot: any;
+    [key: string]: any;
+  }
+
   /**
-   * Set a callback that will be called after resolving ops and before resolving
-   * macrotasks.
+   * Enqueue a tick object to the nextTick queue.
+   * The object must have { callback, args, snapshot } and may contain
+   * additional fields (e.g. asyncId for Node async hooks).
    */
-  function setNextTickCallback(
-    cb: () => void,
+  function queueNextTick(tickObject: TickObject): void;
+
+  /** Drain the nextTick queue, running all enqueued tick callbacks. */
+  function processTicksAndRejections(): void;
+
+  /** Run microtasks, then drain nextTick queue if ticks are scheduled. */
+  function runNextTicks(): void;
+
+  /**
+   * Register async hook emit functions called directly in the drain loop.
+   * Defaults to no-ops; ext/node/ sets the real implementations at bootstrap.
+   */
+  function setAsyncHooksEmit(
+    emitBefore: (
+      asyncId: number,
+      triggerAsyncId: number,
+      resource: any,
+    ) => void,
+    emitAfter: (asyncId: number) => void,
+    emitDestroy: (asyncId: number) => void,
   ): void;
 
   /** Check if there's a scheduled "next tick". */
-  function hasNextTickScheduled(): boolean;
+  function hasTickScheduled(): boolean;
 
   /** Set a value telling the runtime if there are "next ticks" scheduled */
-  function setHasNextTickScheduled(value: boolean): void;
+  function setHasTickScheduled(value: boolean): void;
 
-  /** Enqueue an immediate callback. Immediate callbacks always execute in
-   * the next timer phase.
-   */
-  function setImmediateCallback(
-    cb: () => void,
-  ): void;
+  /** Immediate handle object used with the immediate queue. */
+  interface ImmediateHandle {
+    _idleNext: ImmediateHandle | null;
+    _idlePrev: ImmediateHandle | null;
+    _onImmediate: ((...args: any[]) => any) | null;
+    _argv: any[];
+    _destroyed: boolean;
+    _refed: boolean | null;
+    asyncId: number;
+    triggerAsyncId: number;
+    ref(): ImmediateHandle;
+    unref(): ImmediateHandle;
+  }
 
-  /** Enqueue a user timer at the given depth, optionally repeating. User
-   * timers may generate call traces for sanitization, and may be clamped
-   * depending on the depth of nesting. */
-  function queueUserTimer(
-    depth: number,
-    repeat: boolean,
-    delay: number,
-    callback: () => void,
-  ): number;
+  /** Enqueue an immediate handle to the immediate queue. */
+  function queueImmediate(immediate: ImmediateHandle): void;
 
-  /** Enqueue a system timer at the given depth, optionally repeating. System
-   * timers do not generate call traces, and are never clamped at any nesting
-   * depth. System timers are also associated with an op to provide contextual
-   * information. */
-  function queueSystemTimer(
-    associatedOp: Function | undefined,
-    repeat: boolean,
-    delay: number,
-    callback: () => void,
-  ): number;
+  /** Cancel a queued immediate. */
+  function clearImmediate(immediate: ImmediateHandle): void;
 
-  /** Cancel a timer with a given ID. */
-  function cancelTimer(id: number): void;
+  /** Drain the immediate queue, running all enqueued immediate callbacks. */
+  function runImmediates(): void;
 
-  /** Ref a timer with a given ID, blocking the runtime from exiting if the timer is still running. */
-  function refTimer(id: number): void;
+  /** The immediate queue (ImmediateList linked list). */
+  const immediateQueue: {
+    head: ImmediateHandle | null;
+    tail: ImmediateHandle | null;
+    append(item: ImmediateHandle): void;
+    remove(item: ImmediateHandle): void;
+  };
 
-  /** Unref a timer with a given ID, allowing the runtime to exit if the timer is still running. */
-  function unrefTimer(id: number): void;
+  /** Symbol key used for the refed state on Immediate/Timeout objects. */
+  const kRefed: unique symbol;
 
   /** Gets the current timer depth. */
   function getTimerDepth(): number;
-
-  /**
-   * Set a callback that will be called after resolving ops and "next ticks".
-   */
-  function setMacrotaskCallback(
-    cb: () => boolean,
-  ): void;
 
   /**
    * Sets the unhandled promise rejection handler. The handler returns 'true' if the

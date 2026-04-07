@@ -304,7 +304,7 @@ async fn clean_except(
   }
 
   if dry_run {
-    #[allow(clippy::print_stderr)]
+    #[allow(clippy::print_stderr, reason = "actually want to output")]
     {
       eprintln!("would remove:");
     }
@@ -468,7 +468,7 @@ fn walk_removing(
     }
     if entry.file_type().is_dir() {
       if dry_run {
-        #[allow(clippy::print_stderr)]
+        #[allow(clippy::print_stderr, reason = "actually want to output")]
         {
           eprintln!(" {}", entry.path().display());
         }
@@ -477,7 +477,7 @@ fn walk_removing(
       }
       walker.skip_current_dir();
     } else if dry_run {
-      #[allow(clippy::print_stderr)]
+      #[allow(clippy::print_stderr, reason = "actually want to output")]
       {
         eprintln!(" {}", entry.path().display());
       }
@@ -546,7 +546,7 @@ fn clean_node_modules(
     if keep_ids.contains(file_name.as_ref()) || file_name == "node_modules" {
       continue;
     } else if dry_run {
-      #[allow(clippy::print_stderr)]
+      #[allow(clippy::print_stderr, reason = "actually want to output")]
       {
         eprintln!(" {}", entry.path().display());
       }
@@ -557,7 +557,7 @@ fn clean_node_modules(
 
   let mut remove_symlink = |path: &Path| -> std::io::Result<()> {
     if dry_run {
-      #[allow(clippy::print_stderr)]
+      #[allow(clippy::print_stderr, reason = "actually want to output")]
       {
         eprintln!(" {}", path.display());
       }

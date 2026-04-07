@@ -3,7 +3,7 @@
   let b: number;
 </script>
 
-<div class:active style="width: 1px; height: 1px">{a + b}</div>
+<div class:active style="width: {a + b}PX; height: 1px">{a + b}</div>
 
 <style>
   .active {}

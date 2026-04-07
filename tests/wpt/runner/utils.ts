@@ -118,6 +118,7 @@ export const EXPECTATIONS_DIR = join(
 export interface TestExpectation {
   ignore?: boolean;
   expectedFailures?: string[];
+  flaky?: boolean;
 }
 
 export interface Expectation {

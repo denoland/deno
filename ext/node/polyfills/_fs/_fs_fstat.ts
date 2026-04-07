@@ -4,15 +4,42 @@
 // deno-lint-ignore-file prefer-primordials
 
 import {
-  BigIntStats,
   CFISBIS,
-  statCallback,
-  statCallbackBigInt,
-  statOptions,
-  Stats,
-} from "ext:deno_node/_fs/_fs_stat.ts";
-import { FsFile } from "ext:deno_fs/30_fs.js";
+  type statCallback,
+  type statCallbackBigInt,
+  type statOptions,
+} from "ext:deno_node/internal/fs/stat_utils.ts";
+import { BigIntStats, Stats } from "ext:deno_node/internal/fs/utils.mjs";
 import { denoErrorToNodeError } from "ext:deno_node/internal/errors.ts";
+import { getValidatedFd } from "ext:deno_node/internal/fs/utils.mjs";
+import { op_node_fs_fstat, op_node_fs_fstat_sync } from "ext:core/ops";
+
+// deno-lint-ignore no-explicit-any
+function nodeFsStatToFileInfo(stat: any) {
+  return {
+    isFile: stat.isFile,
+    isDirectory: stat.isDirectory,
+    isSymlink: stat.isSymlink,
+    size: stat.size,
+    mtime: stat.mtimeMs != null ? new Date(stat.mtimeMs) : null,
+    atime: stat.atimeMs != null ? new Date(stat.atimeMs) : null,
+    birthtime: stat.birthtimeMs != null ? new Date(stat.birthtimeMs) : null,
+    ctime: stat.ctimeMs != null ? new Date(stat.ctimeMs) : null,
+    dev: stat.dev,
+    ino: stat.ino ?? 0,
+    mode: stat.mode,
+    nlink: stat.nlink ?? 0,
+    uid: stat.uid,
+    gid: stat.gid,
+    rdev: stat.rdev,
+    blksize: stat.blksize,
+    blocks: stat.blocks ?? 0,
+    isBlockDevice: stat.isBlockDevice,
+    isCharDevice: stat.isCharDevice,
+    isFifo: stat.isFifo,
+    isSocket: stat.isSocket,
+  };
+}
 
 export function fstat(fd: number, callback: statCallback): void;
 export function fstat(
@@ -30,6 +57,7 @@ export function fstat(
   optionsOrCallback: statCallback | statCallbackBigInt | statOptions,
   maybeCallback?: statCallback | statCallbackBigInt,
 ) {
+  fd = getValidatedFd(fd);
   const callback =
     (typeof optionsOrCallback === "function"
       ? optionsOrCallback
@@ -42,8 +70,9 @@ export function fstat(
 
   if (!callback) throw new Error("No callback function supplied");
 
-  new FsFile(fd, Symbol.for("Deno.internal.FsFile")).stat().then(
-    (stat) => callback(null, CFISBIS(stat, options.bigint)),
+  op_node_fs_fstat(fd).then(
+    (stat) =>
+      callback(null, CFISBIS(nodeFsStatToFileInfo(stat), options.bigint)),
     (err) => callback(denoErrorToNodeError(err, { syscall: "fstat" })),
   );
 }
@@ -61,10 +90,10 @@ export function fstatSync(
   fd: number,
   options?: statOptions,
 ): Stats | BigIntStats {
+  fd = getValidatedFd(fd);
   try {
-    const origin = new FsFile(fd, Symbol.for("Deno.internal.FsFile"))
-      .statSync();
-    return CFISBIS(origin, options?.bigint || false);
+    const stat = op_node_fs_fstat_sync(fd);
+    return CFISBIS(nodeFsStatToFileInfo(stat), options?.bigint || false);
   } catch (err) {
     throw denoErrorToNodeError(err, { syscall: "fstat" });
   }

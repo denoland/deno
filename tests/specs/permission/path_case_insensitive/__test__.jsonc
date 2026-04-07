@@ -1,0 +1,5 @@
+{
+  "if": "windows",
+  "args": "run -A main.ts",
+  "output": "[WILDCARD]BLOCKED:NotCapable\n"
+}

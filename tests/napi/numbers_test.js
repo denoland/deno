@@ -16,3 +16,15 @@ Deno.test("napi int64", function () {
     Number.MAX_SAFE_INTEGER,
   );
 });
+
+Deno.test("napi double", function () {
+  assertEquals(numbers.test_double(3.14), 3.14);
+  assertEquals(numbers.test_double(-0.5), -0.5);
+  assertEquals(numbers.test_double(0), 0);
+});
+
+Deno.test("napi uint32", function () {
+  assertEquals(numbers.test_uint32(42), 42);
+  assertEquals(numbers.test_uint32(0), 0);
+  assertEquals(numbers.test_uint32(0xFFFFFFFF), 0xFFFFFFFF);
+});

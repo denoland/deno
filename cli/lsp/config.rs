@@ -35,13 +35,13 @@ use deno_core::serde_json::Value;
 use deno_core::url::Url;
 use deno_lib::args::has_flag_env_var;
 use deno_lib::util::hash::FastInsecureHasher;
-use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm_cache::NpmCacheSetting;
 use deno_npm_installer::LifecycleScriptsConfig;
 use deno_npm_installer::NpmInstallerFactory;
 use deno_npm_installer::NpmInstallerFactoryOptions;
 use deno_npm_installer::graph::NpmCachingStrategy;
 use deno_npm_installer::lifecycle_scripts::NullLifecycleScriptsExecutor;
+use deno_npmrc::ResolvedNpmRc;
 use deno_package_json::PackageJsonCache;
 use deno_package_json::PackageJsonCacheResult;
 use deno_path_util::url_to_file_path;
@@ -1259,7 +1259,7 @@ pub struct ConfigData {
 }
 
 impl ConfigData {
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "TODO: cleanup")]
   async fn load(
     specified_config: Option<&Path>,
     scope: &Arc<Url>,
@@ -1292,7 +1292,10 @@ impl ConfigData {
             deno_json_cache: Some(deno_json_cache),
             pkg_json_cache: Some(pkg_json_cache),
             workspace_cache: Some(workspace_cache),
-            discover_pkg_json: !has_flag_env_var("DENO_NO_PACKAGE_JSON"),
+            discover_pkg_json: !has_flag_env_var(
+              &CliSys::default(),
+              "DENO_NO_PACKAGE_JSON",
+            ),
             maybe_vendor_override: None,
           },
         )
@@ -1494,6 +1497,8 @@ impl ConfigData {
         cache_setting: NpmCacheSetting::Use,
         caching_strategy: NpmCachingStrategy::Eager,
         lifecycle_scripts_config: LifecycleScriptsConfig::default(),
+        production: false,
+        skip_types: false,
         resolve_npm_resolution_snapshot: Box::new(|| Ok(None)),
       },
     );

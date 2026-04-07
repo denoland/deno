@@ -801,8 +801,8 @@
       "clearinterval-from-callback.any.worker.html": true,
       "cleartimeout-clearinterval.any.html": true,
       "cleartimeout-clearinterval.any.worker.html": true,
-      "evil-spec-example.any.html": true,
-      "evil-spec-example.any.worker.html": true,
+      "evil-spec-example.any.html": false,
+      "evil-spec-example.any.worker.html": false,
       "missing-timeout-setinterval.any.html": true,
       "missing-timeout-setinterval.any.worker.html": true,
       "negative-setinterval.any.html": true,
@@ -900,7 +900,7 @@
           "requires-failure.https.any.html": false,
           "requires-success.any.worker.html": true,
           "atomics-wait-async.https.any.html": false,
-          "atomics-wait-async.https.any.worker.html": false
+          "atomics-wait-async.https.any.worker.html": true
         },
         "addEventListener.html": false,
         "body-onerror-compile-error-data-url.html": false,
@@ -1154,9 +1154,7 @@
           "ImageData object can be cloned",
           "ImageData expandos are not cloned",
           "Document objects cannot be cloned",
-          "URIError objects from other realms are treated as URIError",
-          "DOMException objects can be cloned",
-          "DOMException objects created by the UA can be cloned"
+          "URIError objects from other realms are treated as URIError"
         ]
       }
     },

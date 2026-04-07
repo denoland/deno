@@ -105,7 +105,7 @@ fn parse_url(
   }
 }
 
-#[allow(dead_code)]
+#[allow(dead_code, reason = "used in JS")]
 #[derive(Eq, PartialEq, Debug)]
 #[repr(u8)]
 pub enum UrlSetter {

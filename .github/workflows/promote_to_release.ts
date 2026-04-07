@@ -1,0 +1,226 @@
+#!/usr/bin/env -S deno run --check --allow-write=. --allow-read=. --lock=./tools/deno.lock.json
+// Copyright 2018-2026 the Deno authors. MIT license.
+import { conditions, createWorkflow, job, step } from "jsr:@david/gagen@0.3.1";
+
+const isDenoland = conditions.isRepository("denoland/deno");
+
+const windowsJob = job("promote-to-release-windows", {
+  name: "Promote Windows to Release",
+  runsOn: "windows-2022",
+  if: isDenoland,
+  permissions: {
+    contents: "write",
+    "id-token": "write",
+  },
+  environment: { name: "build" },
+  steps: [
+    step({
+      name: "Clone repository",
+      uses: "actions/checkout@v6",
+      with: {
+        token: "${{ secrets.DENOBOT_PAT }}",
+        submodules: false,
+      },
+    }),
+    step({
+      name: "Install deno",
+      uses: "denoland/setup-deno@v2",
+      with: { "deno-version": "v2.x" },
+    }),
+    step({
+      name: "Download Windows binaries",
+      run: [
+        '$CANARY_URL="https://dl.deno.land/canary/${{github.event.inputs.commitHash}}"',
+        'Invoke-WebRequest -Uri "$CANARY_URL/deno-x86_64-pc-windows-msvc.zip" -OutFile "deno-windows.zip"',
+        'Invoke-WebRequest -Uri "$CANARY_URL/denort-x86_64-pc-windows-msvc.zip" -OutFile "denort-windows.zip"',
+        'Expand-Archive -Path "deno-windows.zip" -DestinationPath "."',
+        'Expand-Archive -Path "denort-windows.zip" -DestinationPath "."',
+      ],
+    }),
+    step({
+      name: "Run patchver for Windows",
+      run:
+        "deno run -A ./tools/release/promote_to_release_windows.ts ${{github.event.inputs.releaseKind}}",
+    }),
+    step({
+      name: "Authenticate with Azure",
+      uses: "azure/login@v1",
+      with: {
+        "client-id": "${{ secrets.AZURE_CLIENT_ID }}",
+        "tenant-id": "${{ secrets.AZURE_TENANT_ID }}",
+        "subscription-id": "${{ secrets.AZURE_SUBSCRIPTION_ID }}",
+        "enable-AzPSSession": true,
+      },
+    }),
+    step({
+      name: "Code sign deno.exe",
+      uses: "Azure/artifact-signing-action@v0",
+      with: {
+        "cache-dependencies": false,
+        trace: true,
+        endpoint: "https://eus.codesigning.azure.net/",
+        "trusted-signing-account-name": "deno-cli-code-signing",
+        "certificate-profile-name": "deno-cli-code-signing-cert",
+        "files-folder": ".",
+        "files-folder-filter": "deno.exe",
+        "file-digest": "SHA256",
+        "timestamp-rfc3161": "http://timestamp.acs.microsoft.com",
+        "timestamp-digest": "SHA256",
+        "exclude-environment-credential": true,
+        "exclude-workload-identity-credential": true,
+        "exclude-managed-identity-credential": true,
+        "exclude-shared-token-cache-credential": true,
+        "exclude-visual-studio-credential": true,
+        "exclude-visual-studio-code-credential": true,
+        "exclude-azure-cli-credential": false,
+      },
+    }),
+    step({
+      name: "Verify signature",
+      shell: "pwsh",
+      run: [
+        '$SignTool = Get-ChildItem -Path "C:\\Program Files*\\Windows Kits\\*\\bin\\*\\x64\\signtool.exe" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1',
+        "$SignToolPath = $SignTool.FullName",
+        '& $SignToolPath verify /pa /v "deno.exe"',
+      ],
+    }),
+    step({
+      name: "Create archives",
+      run: [
+        'Compress-Archive -Path "deno.exe" -DestinationPath "deno-x86_64-pc-windows-msvc.zip" -Force',
+        'Compress-Archive -Path "denort.exe" -DestinationPath "denort-x86_64-pc-windows-msvc.zip" -Force',
+      ],
+    }),
+    step({
+      name: "Upload Windows archives",
+      uses: "actions/upload-artifact@v6",
+      with: {
+        name: "windows-binaries",
+        path:
+          "deno-x86_64-pc-windows-msvc.zip\ndenort-x86_64-pc-windows-msvc.zip",
+      },
+    }),
+  ],
+});
+
+const workflow = createWorkflow({
+  name: "promote_to_release",
+  on: {
+    workflow_dispatch: {
+      inputs: {
+        releaseKind: {
+          description: "Kind of release",
+          type: "choice",
+          options: ["rc", "lts"],
+          required: true,
+        },
+        commitHash: {
+          description: "Commit to promote to release",
+          required: true,
+        },
+      },
+    },
+  },
+  jobs: [
+    windowsJob,
+    {
+      id: "promote-to-release",
+      name: "Promote to Release",
+      runsOn: "macOS-latest",
+      if: isDenoland,
+      needs: [windowsJob],
+      steps: [
+        step({
+          name: "Clone repository",
+          uses: "actions/checkout@v6",
+          with: {
+            token: "${{ secrets.DENOBOT_PAT }}",
+            submodules: "recursive",
+          },
+        }),
+        step({
+          name: "Authenticate with Google Cloud",
+          uses: "google-github-actions/auth@v3",
+          with: {
+            project_id: "denoland",
+            credentials_json: "${{ secrets.GCP_SA_KEY }}",
+            export_environment_variables: true,
+            create_credentials_file: true,
+          },
+        }),
+        step({
+          name: "Setup gcloud",
+          uses: "google-github-actions/setup-gcloud@v3",
+          with: { project_id: "denoland" },
+        }),
+        step({
+          name: "Install deno",
+          uses: "denoland/setup-deno@v2",
+          with: { "deno-version": "v2.x" },
+        }),
+        step({
+          name: "Install rust-codesign",
+          run: [
+            "./tools/install_prebuilt.js rcodesign",
+            "echo $GITHUB_WORKSPACE/third_party/prebuilt/mac >> $GITHUB_PATH",
+          ],
+        }),
+        step({
+          name: "Promote to Release (non-Windows)",
+          env: {
+            APPLE_CODESIGN_KEY: "${{ secrets.APPLE_CODESIGN_KEY }}",
+            APPLE_CODESIGN_PASSWORD: "${{ secrets.APPLE_CODESIGN_PASSWORD }}",
+          },
+          run:
+            "deno run -A ./tools/release/promote_to_release.ts ${{github.event.inputs.releaseKind}} ${{github.event.inputs.commitHash}}",
+        }),
+        step({
+          name: "Download Windows binaries",
+          uses: "actions/download-artifact@v7",
+          with: {
+            name: "windows-binaries",
+            path: ".",
+          },
+        }),
+        step({
+          name: "Create version file",
+          run: [
+            "# Unzip a binary to get the version",
+            "unzip -o deno-x86_64-apple-darwin.zip",
+            "DENO_VERSION=$(./deno -V | cut -d ' ' -f 2 | cut -d '+' -f 1)",
+            'echo "v${DENO_VERSION}" > release-${{github.event.inputs.releaseKind}}-latest.txt',
+            "rm -f ./deno",
+          ],
+        }),
+        step({
+          name: "Upload archives to dl.deno.land",
+          env: {
+            AWS_ACCESS_KEY_ID: "${{ vars.S3_ACCESS_KEY_ID }}",
+            AWS_SECRET_ACCESS_KEY: "${{ secrets.S3_SECRET_ACCESS_KEY }}",
+            AWS_ENDPOINT_URL_S3: "${{ vars.S3_ENDPOINT }}",
+            AWS_DEFAULT_REGION: "${{vars.S3_REGION }}",
+          },
+          run: [
+            'aws s3 sync ./ s3://dl-deno-land/release/$(cat release-${{github.event.inputs.releaseKind}}-latest.txt)/ --exclude "*" --include "*.zip"',
+            "aws s3 cp release-${{github.event.inputs.releaseKind}}-latest.txt s3://dl-deno-land/release-${{github.event.inputs.releaseKind}}-latest.txt",
+          ],
+        }),
+      ],
+    },
+  ],
+});
+
+const header = "# GENERATED BY ./promote_to_release.ts -- DO NOT DIRECTLY EDIT";
+
+export function generate() {
+  return workflow.toYamlString({ header });
+}
+
+export const PROMOTE_TO_RELEASE_YML_URL = new URL(
+  "./promote_to_release.generated.yml",
+  import.meta.url,
+);
+
+if (import.meta.main) {
+  workflow.writeOrLint({ filePath: PROMOTE_TO_RELEASE_YML_URL, header });
+}

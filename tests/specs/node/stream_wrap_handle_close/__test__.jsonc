@@ -1,0 +1,8 @@
+{
+  "tests": {
+    "stream_wrap_handle_close": {
+      "args": "run --allow-net main.ts",
+      "output": "main.out"
+    }
+  }
+}

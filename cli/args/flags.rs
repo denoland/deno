@@ -291,7 +291,16 @@ pub struct DocFlags {
   pub filter: Option<String>,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, Default)]
+pub struct CpuProfFlags {
+  pub dir: Option<String>,
+  pub name: Option<String>,
+  pub interval: Option<u32>,
+  pub md: bool,
+  pub flamegraph: bool,
+}
+
+#[derive(Clone, Default, Debug, Eq, PartialEq)]
 pub struct EvalFlags {
   pub print: bool,
   pub code: String,
@@ -364,12 +373,16 @@ pub enum InstallFlagsLocal {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct InstallTopLevelFlags {
   pub lockfile_only: bool,
+  pub production: bool,
+  pub skip_types: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct InstallEntrypointsFlags {
   pub entrypoints: Vec<String>,
   pub lockfile_only: bool,
+  pub production: bool,
+  pub skip_types: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -574,6 +587,8 @@ pub struct TestFlags {
   pub filter: Option<String>,
   pub shuffle: Option<u64>,
   pub trace_leaks: bool,
+  pub sanitize_ops: bool,
+  pub sanitize_resources: bool,
   pub watch: Option<WatchFlagsWithPaths>,
   pub reporter: TestReporterConfig,
   pub junit_path: Option<String>,
@@ -909,7 +924,6 @@ pub struct Flags {
   pub config_flag: ConfigFlag,
   pub node_modules_dir: Option<NodeModulesDirMode>,
   pub vendor: Option<bool>,
-  pub enable_op_summary_metrics: bool,
   pub enable_testing_features: bool,
   pub ext: Option<String>,
   /// Flags that aren't exposed in the CLI, but are used internally.
@@ -943,6 +957,7 @@ pub struct Flags {
   pub preload: Vec<String>,
   pub require: Vec<String>,
   pub tunnel: bool,
+  pub cpu_prof: Option<CpuProfFlags>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Default, Serialize, Deserialize)]
@@ -1934,7 +1949,7 @@ pub fn flags_from_vec_with_initial_cwd(
         "types" => types_parse(&mut flags, &mut m),
         "uninstall" => uninstall_parse(&mut flags, &mut m),
         "update" => outdated_parse(&mut flags, &mut m, true)?,
-        "upgrade" => upgrade_parse(&mut flags, &mut m),
+        "upgrade" => upgrade_parse(&mut flags, &mut m)?,
         "vendor" => vendor_parse(&mut flags, &mut m),
         "publish" => publish_parse(&mut flags, &mut m)?,
         "x" => x_parse(&mut flags, &mut m)?,
@@ -3281,25 +3296,27 @@ This command has implicit access to all permissions.
     UnstableArgsConfig::ResolutionAndRuntime,
   )
   .defer(|cmd| {
-    runtime_args(cmd, false, true, true)
-      .arg(check_arg(false))
-      .arg(executable_ext_arg())
-      .arg(
-        Arg::new("print")
-          .long("print")
-          .short('p')
-          .help("print result to stdout")
-          .action(ArgAction::SetTrue),
-      )
-      .arg(
-        Arg::new("code_arg")
-          .num_args(1..)
-          .action(ArgAction::Append)
-          .help("Code to evaluate")
-          .value_name("CODE_ARG")
-          .required_unless_present("help"),
-      )
-      .arg(env_file_arg())
+    cpu_prof_args(
+      runtime_args(cmd, false, true, true)
+        .arg(check_arg(false))
+        .arg(executable_ext_arg())
+        .arg(
+          Arg::new("print")
+            .long("print")
+            .short('p')
+            .help("print result to stdout")
+            .action(ArgAction::SetTrue),
+        )
+        .arg(
+          Arg::new("code_arg")
+            .num_args(1..)
+            .action(ArgAction::Append)
+            .help("Code to evaluate")
+            .value_name("CODE_ARG")
+            .required_unless_present("help"),
+        )
+        .arg(env_file_arg()),
+    )
   })
 }
 
@@ -3743,6 +3760,23 @@ These must be added to the path manually if required."), UnstableArgsConfig::Res
             .conflicts_with("global"),
         )
         .arg(lockfile_only_arg().conflicts_with("global"))
+        .arg(
+          Arg::new("prod")
+            .long("prod")
+            .alias("production")
+            .help("Only install production dependencies (excludes devDependencies)")
+            .action(ArgAction::SetTrue)
+            .conflicts_with("global")
+            .conflicts_with("dev"),
+        )
+        .arg(
+          Arg::new("skip-types")
+            .long("skip-types")
+            .help(cstr!("Exclude @types/* packages from installation.
+<y>Be careful, as it uses a name-based heuristic and may skip packages that ship runtime code.</>"))
+            .action(ArgAction::SetTrue)
+            .requires("prod"),
+        )
     })
 }
 
@@ -4196,22 +4230,24 @@ TypeScript is supported, however it is not type-checked, only transpiled."
 }
 
 fn run_args(command: Command, top_level: bool) -> Command {
-  runtime_args(command, true, true, true)
-    .arg(check_arg(false))
-    .arg(watch_arg(true))
-    .arg(hmr_arg(true))
-    .arg(watch_exclude_arg())
-    .arg(no_clear_screen_arg())
-    .arg(executable_ext_arg())
-    .arg(if top_level {
-      script_arg().trailing_var_arg(true).hide(true)
-    } else {
-      script_arg().trailing_var_arg(true)
-    })
-    .arg(env_file_arg())
-    .arg(no_code_cache_arg())
-    .arg(coverage_arg())
-    .arg(tunnel_arg())
+  cpu_prof_args(
+    runtime_args(command, true, true, true)
+      .arg(check_arg(false))
+      .arg(watch_arg(true))
+      .arg(hmr_arg(true))
+      .arg(watch_exclude_arg())
+      .arg(no_clear_screen_arg())
+      .arg(executable_ext_arg())
+      .arg(if top_level {
+        script_arg().trailing_var_arg(true).hide(true)
+      } else {
+        script_arg().trailing_var_arg(true)
+      })
+      .arg(env_file_arg())
+      .arg(no_code_cache_arg())
+      .arg(coverage_arg()),
+  )
+  .arg(tunnel_arg())
 }
 
 #[cfg(test)]
@@ -4309,7 +4345,8 @@ fn serve_host_validator(host: &str) -> Result<String, String> {
 }
 
 fn serve_subcommand() -> Command {
-  runtime_args(command("serve", cstr!("Run a server defined in a main module
+  cpu_prof_args(
+    runtime_args(command("serve", cstr!("Run a server defined in a main module
 
 The serve command uses the default exports of the main module to determine which servers to start.
 
@@ -4352,8 +4389,9 @@ Start a server defined in server.ts, watching for changes and running on port 50
         .trailing_var_arg(true),
     )
     .arg(env_file_arg())
-    .arg(no_code_cache_arg())
-    .arg(tunnel_arg())
+    .arg(no_code_cache_arg()),
+  )
+  .arg(tunnel_arg())
 }
 
 fn task_subcommand() -> Command {
@@ -4512,6 +4550,20 @@ or <c>**/__tests__/**</>:
           .help_heading(TEST_HEADING),
       )
       .arg(
+        Arg::new("sanitize-ops")
+          .long("sanitize-ops")
+          .help("Enable the ops sanitizer, which ensures that all async ops started in a test are completed before the test ends")
+          .action(ArgAction::SetTrue)
+          .help_heading(TEST_HEADING),
+      )
+      .arg(
+        Arg::new("sanitize-resources")
+          .long("sanitize-resources")
+          .help("Enable the resources sanitizer, which ensures that all resources opened in a test are closed before the test ends")
+          .action(ArgAction::SetTrue)
+          .help_heading(TEST_HEADING),
+      )
+      .arg(
         Arg::new("doc")
           .long("doc")
           .help("Evaluate code blocks in JSDoc and Markdown")
@@ -4651,6 +4703,8 @@ pub static UPGRADE_USAGE: &str = cstr!(
 
 <g>Channel</>
   <bold>deno upgrade</> <p(245)>stable</>
+  <bold>deno upgrade</> <p(245)>alpha</>
+  <bold>deno upgrade</> <p(245)>beta</>
   <bold>deno upgrade</> <p(245)>rc</>
   <bold>deno upgrade</> <p(245)>canary</>"
 );
@@ -4725,7 +4779,7 @@ update to a different location, use the <c>--output</> flag:
       )
       .arg(
         Arg::new("version-or-hash-or-channel")
-          .help(cstr!("Version <p(245)>(v1.46.0)</>, channel <p(245)>(rc, canary)</> or commit hash <p(245)>(9bc2dd29ad6ba334fd57a20114e367d3c04763d4)</>"))
+          .help(cstr!("Version <p(245)>(v1.46.0)</>, channel <p(245)>(alpha, beta, rc, canary)</> or commit hash <p(245)>(9bc2dd29ad6ba334fd57a20114e367d3c04763d4)</>"))
           .value_name("VERSION")
           .action(ArgAction::Append)
           .trailing_var_arg(true),
@@ -4913,8 +4967,9 @@ fn permission_args(app: Command, requires: Option<&'static str>) -> Command {
                                              <p(245)>--ignore-read  |  --ignore-read="/etc,/var/log.txt"</>
       <g>DENO_TRACE_PERMISSIONS</>                Environmental variable to enable stack traces in permission prompts.
                                              <p(245)>DENO_TRACE_PERMISSIONS=1 deno run main.ts</>
-      <g>DENO_AUDIT_PERMISSIONS</>               Environmental variable to generate a JSONL file with all permissions accesses.
-                                             <p(245)>DENO_TRACE_PERMISSIONS=./audit.jsonl deno run main.ts</>
+      <g>DENO_AUDIT_PERMISSIONS</>               Environmental variable to audit all permissions accesses. Set to a file path for JSONL output, or "otel" to emit as OpenTelemetry log events via the configured OTel exporter.
+                                             <p(245)>DENO_AUDIT_PERMISSIONS=./audit.jsonl deno run main.ts</>
+                                             <p(245)>DENO_AUDIT_PERMISSIONS=otel deno run main.ts</>
 "#))
     .arg(
       {
@@ -5694,6 +5749,88 @@ fn coverage_arg() -> Arg {
     .value_hint(ValueHint::AnyPath)
 }
 
+fn cpu_prof_args(cmd: Command) -> Command {
+  cmd
+    .arg(cpu_prof_arg())
+    .arg(cpu_prof_dir_arg())
+    .arg(cpu_prof_name_arg())
+    .arg(cpu_prof_interval_arg())
+    .arg(cpu_prof_md_arg())
+    .arg(cpu_prof_flamegraph_arg())
+}
+
+fn cpu_prof_parse(matches: &mut ArgMatches) -> Option<CpuProfFlags> {
+  let enabled = matches.get_flag("cpu-prof");
+  let dir = matches.remove_one::<String>("cpu-prof-dir");
+  let name = matches.remove_one::<String>("cpu-prof-name");
+  let interval = matches.remove_one::<u32>("cpu-prof-interval");
+  let md = matches.get_flag("cpu-prof-md");
+  let flamegraph = matches.get_flag("cpu-prof-flamegraph");
+  if enabled
+    || dir.is_some()
+    || name.is_some()
+    || interval.is_some()
+    || md
+    || flamegraph
+  {
+    Some(CpuProfFlags {
+      dir,
+      name,
+      interval,
+      md,
+      flamegraph,
+    })
+  } else {
+    None
+  }
+}
+
+fn cpu_prof_arg() -> Arg {
+  Arg::new("cpu-prof")
+    .long("cpu-prof")
+    .help("Start the V8 CPU profiler on startup and write the profile to disk on exit. Profiles are written to the current directory by default")
+    .action(ArgAction::SetTrue)
+}
+
+fn cpu_prof_dir_arg() -> Arg {
+  Arg::new("cpu-prof-dir")
+    .long("cpu-prof-dir")
+    .value_name("DIR")
+    .help("Directory where the V8 CPU profiles will be written. Implicitly enables --cpu-prof")
+    .value_hint(ValueHint::DirPath)
+    .value_parser(value_parser!(String))
+}
+
+fn cpu_prof_name_arg() -> Arg {
+  Arg::new("cpu-prof-name")
+    .long("cpu-prof-name")
+    .value_name("NAME")
+    .help("Filename for the CPU profile (defaults to CPU.<timestamp>.<pid>.cpuprofile)")
+    .value_parser(value_parser!(String))
+}
+
+fn cpu_prof_interval_arg() -> Arg {
+  Arg::new("cpu-prof-interval")
+    .long("cpu-prof-interval")
+    .value_name("MICROSECONDS")
+    .help("Sampling interval in microseconds for CPU profiling (default: 1000)")
+    .value_parser(value_parser!(u32))
+}
+
+fn cpu_prof_md_arg() -> Arg {
+  Arg::new("cpu-prof-md")
+    .long("cpu-prof-md")
+    .help("Generate a human-readable markdown report alongside the CPU profile")
+    .action(ArgAction::SetTrue)
+}
+
+fn cpu_prof_flamegraph_arg() -> Arg {
+  Arg::new("cpu-prof-flamegraph")
+    .long("cpu-prof-flamegraph")
+    .help("Generate an SVG flamegraph alongside the CPU profile")
+    .action(ArgAction::SetTrue)
+}
+
 fn permit_no_files_arg() -> Arg {
   Arg::new("permit-no-files")
     .long("permit-no-files")
@@ -6087,7 +6224,9 @@ fn add_parse_inner(
   } else if matches.get_flag("jsr") {
     Some(DefaultRegistry::Jsr)
   } else {
-    None
+    // Default to npm when no --npm or --jsr flag is provided.
+    // This allows `deno add express` to work without requiring `npm:` prefix.
+    Some(DefaultRegistry::Npm)
   };
   AddFlags {
     packages,
@@ -6134,6 +6273,7 @@ fn outdated_parse(
     recursive,
     kind,
   });
+  lock_args_parse(flags, matches);
   min_dep_age_arg_parse(flags, matches);
   Ok(())
 }
@@ -6591,6 +6731,7 @@ fn eval_parse(
   flags.allow_all();
 
   ext_arg_parse(flags, matches);
+  flags.cpu_prof = cpu_prof_parse(matches);
 
   let print = matches.get_flag("print");
   let mut code_args = matches.remove_many::<String>("code_arg").unwrap();
@@ -6796,7 +6937,7 @@ fn info_parse(
   import_map_arg_parse(flags, matches);
   location_arg_parse(flags, matches);
   ca_file_arg_parse(flags, matches);
-  unsafely_ignore_certificate_errors_parse(flags, matches);
+  unsafely_ignore_certificate_errors_parse(flags, matches)?;
   node_modules_and_vendor_dir_arg_parse(flags, matches);
   lock_args_parse(flags, matches);
   no_remote_arg_parse(flags, matches);
@@ -6871,12 +7012,16 @@ fn install_parse(
     return Ok(());
   }
   let lockfile_only = matches.get_flag("lockfile-only");
+  let production = matches.get_flag("prod");
+  let skip_types = matches.get_flag("skip-types");
   if matches.get_flag("entrypoint") {
     let entrypoints = matches.remove_many::<String>("cmd").unwrap_or_default();
     flags.subcommand = DenoSubcommand::Install(InstallFlags::Local(
       InstallFlagsLocal::Entrypoints(InstallEntrypointsFlags {
         entrypoints: entrypoints.collect(),
         lockfile_only,
+        production,
+        skip_types,
       }),
     ));
   } else if let Some(add_files) = matches
@@ -6895,7 +7040,11 @@ fn install_parse(
     ))
   } else {
     flags.subcommand = DenoSubcommand::Install(InstallFlags::Local(
-      InstallFlagsLocal::TopLevel(InstallTopLevelFlags { lockfile_only }),
+      InstallFlagsLocal::TopLevel(InstallTopLevelFlags {
+        lockfile_only,
+        production,
+        skip_types,
+      }),
     ));
   }
   Ok(())
@@ -7149,6 +7298,7 @@ fn run_parse(
   flags.tunnel = matches.get_flag("tunnel");
   flags.code_cache_enabled = !matches.get_flag("no-code-cache");
   let coverage_dir = matches.remove_one::<String>("coverage");
+  flags.cpu_prof = cpu_prof_parse(matches);
 
   match matches.remove_many::<String>("script_arg") {
     Some(mut script_arg) => {
@@ -7215,6 +7365,7 @@ fn serve_parse(
   flags.argv.extend(script_arg);
 
   ext_arg_parse(flags, matches);
+  flags.cpu_prof = cpu_prof_parse(matches);
 
   flags.subcommand = DenoSubcommand::Serve(ServeFlags {
     script,
@@ -7419,6 +7570,8 @@ fn test_parse(
 
   let no_run = matches.get_flag("no-run");
   let trace_leaks = matches.get_flag("trace-leaks");
+  let sanitize_ops = matches.get_flag("sanitize-ops");
+  let sanitize_resources = matches.get_flag("sanitize-resources");
   let doc = matches.get_flag("doc");
   let filter = matches.remove_one::<String>("filter");
   let clean = matches.get_flag("clean");
@@ -7486,6 +7639,8 @@ fn test_parse(
     permit_no_files: permit_no_files_parse(matches),
     parallel: matches.get_flag("parallel"),
     trace_leaks,
+    sanitize_ops,
+    sanitize_resources,
     watch: watch_arg_parse_with_paths(matches)?,
     reporter,
     junit_path,
@@ -7498,9 +7653,12 @@ fn types_parse(flags: &mut Flags, _matches: &mut ArgMatches) {
   flags.subcommand = DenoSubcommand::Types;
 }
 
-fn upgrade_parse(flags: &mut Flags, matches: &mut ArgMatches) {
+fn upgrade_parse(
+  flags: &mut Flags,
+  matches: &mut ArgMatches,
+) -> clap::error::Result<()> {
   ca_file_arg_parse(flags, matches);
-  unsafely_ignore_certificate_errors_parse(flags, matches);
+  unsafely_ignore_certificate_errors_parse(flags, matches)?;
 
   let dry_run = matches.get_flag("dry-run");
   let force = matches.get_flag("force");
@@ -7521,6 +7679,7 @@ fn upgrade_parse(flags: &mut Flags, matches: &mut ArgMatches) {
     version_or_hash_or_channel,
     checksum,
   });
+  Ok(())
 }
 
 fn vendor_parse(flags: &mut Flags, _matches: &mut ArgMatches) {
@@ -7572,7 +7731,7 @@ fn compile_args_without_check_parse(
   reload_arg_parse(flags, matches)?;
   lock_args_parse(flags, matches);
   ca_file_arg_parse(flags, matches);
-  unsafely_ignore_certificate_errors_parse(flags, matches);
+  unsafely_ignore_certificate_errors_parse(flags, matches)?;
   min_dep_age_arg_parse(flags, matches);
   Ok(())
 }
@@ -7763,7 +7922,7 @@ fn permission_args_parse(
 
   if matches.get_flag("allow-hrtime") || matches.get_flag("deny-hrtime") {
     // use eprintln instead of log::warn because logging hasn't been initialized yet
-    #[allow(clippy::print_stderr)]
+    #[allow(clippy::print_stderr, reason = "can't use log crate yet")]
     {
       eprintln!(
         "{} `allow-hrtime` and `deny-hrtime` have been removed in Deno 2, as high resolution time is now always allowed",
@@ -7803,13 +7962,14 @@ fn allow_and_deny_import_parse(
 fn unsafely_ignore_certificate_errors_parse(
   flags: &mut Flags,
   matches: &mut ArgMatches,
-) {
+) -> clap::error::Result<()> {
   if let Some(ic_wl) =
     matches.remove_many::<String>("unsafely-ignore-certificate-errors")
   {
-    let ic_allowlist = flags_net::parse(ic_wl.collect()).unwrap();
+    let ic_allowlist = flags_net::parse(ic_wl.collect())?;
     flags.unsafely_ignore_certificate_errors = Some(ic_allowlist);
   }
+  Ok(())
 }
 
 fn runtime_args_parse(
@@ -11668,6 +11828,8 @@ mod tests {
           shuffle: None,
           parallel: false,
           trace_leaks: true,
+          sanitize_ops: false,
+          sanitize_resources: false,
           coverage_dir: Some("cov".to_string()),
           coverage_raw_data_only: false,
           clean: true,
@@ -11775,6 +11937,8 @@ mod tests {
           },
           parallel: false,
           trace_leaks: false,
+          sanitize_ops: false,
+          sanitize_resources: false,
           coverage_dir: None,
           coverage_raw_data_only: false,
           clean: false,
@@ -11819,6 +11983,8 @@ mod tests {
           },
           parallel: false,
           trace_leaks: false,
+          sanitize_ops: false,
+          sanitize_resources: false,
           coverage_dir: None,
           coverage_raw_data_only: false,
           clean: false,
@@ -11957,6 +12123,8 @@ mod tests {
           },
           parallel: false,
           trace_leaks: false,
+          sanitize_ops: false,
+          sanitize_resources: false,
           coverage_dir: None,
           coverage_raw_data_only: false,
           clean: false,
@@ -11994,6 +12162,8 @@ mod tests {
           },
           parallel: false,
           trace_leaks: false,
+          sanitize_ops: false,
+          sanitize_resources: false,
           coverage_dir: None,
           coverage_raw_data_only: false,
           clean: false,
@@ -12030,6 +12200,8 @@ mod tests {
           },
           parallel: false,
           trace_leaks: false,
+          sanitize_ops: false,
+          sanitize_resources: false,
           coverage_dir: None,
           coverage_raw_data_only: false,
           clean: false,
@@ -12068,6 +12240,8 @@ mod tests {
           },
           parallel: false,
           trace_leaks: false,
+          sanitize_ops: false,
+          sanitize_resources: false,
           coverage_dir: None,
           coverage_raw_data_only: false,
           clean: false,
@@ -14080,7 +14254,7 @@ mod tests {
           mk_flags(AddFlags {
             packages: svec!["@david/which"],
             dev: false, // default is false
-            default_registry: None,
+            default_registry: Some(DefaultRegistry::Npm),
             lockfile_only: false,
             save_exact: false,
           })
@@ -14098,7 +14272,7 @@ mod tests {
         let mut expected_flags = mk_flags(AddFlags {
           packages: svec!["@david/which", "@luca/hello"],
           dev: false,
-          default_registry: None,
+          default_registry: Some(DefaultRegistry::Npm),
           lockfile_only: true,
           save_exact: false,
         });
@@ -14112,7 +14286,7 @@ mod tests {
           mk_flags(AddFlags {
             packages: svec!["npm:chalk"],
             dev: true,
-            default_registry: None,
+            default_registry: Some(DefaultRegistry::Npm),
             lockfile_only: false,
             save_exact: false,
           }),
@@ -14400,6 +14574,92 @@ mod tests {
         "Note: Permission flags can only be used in a global setting"
       )
     );
+  }
+
+  #[test]
+  fn install_production() {
+    let r = flags_from_vec(svec!["deno", "install", "--prod"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Install(InstallFlags::Local(
+          InstallFlagsLocal::TopLevel(InstallTopLevelFlags {
+            lockfile_only: false,
+            production: true,
+            skip_types: false,
+          })
+        )),
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn install_production_with_entrypoint() {
+    let r = flags_from_vec(svec![
+      "deno",
+      "install",
+      "--prod",
+      "--entrypoint",
+      "main.ts"
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Install(InstallFlags::Local(
+          InstallFlagsLocal::Entrypoints(InstallEntrypointsFlags {
+            entrypoints: svec!["main.ts"],
+            lockfile_only: false,
+            production: true,
+            skip_types: false,
+          })
+        )),
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn install_production_with_skip_types() {
+    let r = flags_from_vec(svec!["deno", "install", "--prod", "--skip-types"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Install(InstallFlags::Local(
+          InstallFlagsLocal::TopLevel(InstallTopLevelFlags {
+            lockfile_only: false,
+            production: true,
+            skip_types: true,
+          })
+        )),
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn install_skip_types_requires_prod() {
+    let r = flags_from_vec(svec!["deno", "install", "--skip-types"]);
+    assert!(r.is_err());
+  }
+
+  #[test]
+  fn install_production_conflicts_with_global() {
+    let r = flags_from_vec(svec![
+      "deno",
+      "install",
+      "--prod",
+      "--global",
+      "jsr:@std/http/file-server"
+    ]);
+    assert!(r.is_err());
+  }
+
+  #[test]
+  fn install_production_conflicts_with_dev() {
+    let r =
+      flags_from_vec(svec!["deno", "install", "--prod", "--dev", "npm:chalk"]);
+    assert!(r.is_err());
   }
 
   #[test]
@@ -14788,6 +15048,22 @@ Usage: deno repl [OPTIONS] [-- [ARGS]...]\n"
   }
 
   #[test]
+  fn update_subcommand_frozen_flag() {
+    let r = flags_from_vec(svec!["deno", "update", "--frozen=false"]).unwrap();
+    assert_eq!(r.frozen_lockfile, Some(false));
+
+    let r = flags_from_vec(svec!["deno", "update", "--frozen"]).unwrap();
+    assert_eq!(r.frozen_lockfile, Some(true));
+  }
+
+  #[test]
+  fn outdated_subcommand_frozen_flag() {
+    let r =
+      flags_from_vec(svec!["deno", "outdated", "--frozen=false"]).unwrap();
+    assert_eq!(r.frozen_lockfile, Some(false));
+  }
+
+  #[test]
   fn approve_scripts_subcommand() {
     let cases = [
       (
@@ -14907,7 +15183,7 @@ Usage: deno repl [OPTIONS] [-- [ARGS]...]\n"
       args.extend(input);
       let r = flags_from_vec(args.clone())
         .inspect_err(|e| {
-          #[allow(clippy::print_stderr)]
+          #[allow(clippy::print_stderr, reason = "actually want to output")]
           {
             eprintln!("error: {:?} on input: {:?}", e, args);
           }
