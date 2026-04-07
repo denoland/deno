@@ -54,6 +54,7 @@ serde_v8.workspace = true
 smallvec.workspace = true
 sourcemap.workspace = true
 static_assertions.workspace = true
+sys_traits.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
 url.workspace = true

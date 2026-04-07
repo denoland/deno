@@ -14,6 +14,11 @@ use std::ffi::c_void;
 use std::os::unix::io::RawFd;
 use std::task::Context;
 
+#[cfg(windows)]
+use sys_traits::BaseFsMetadata;
+#[cfg(windows)]
+use sys_traits::impls::RealSys;
+
 use super::UV_EBADF;
 use super::UV_EOF;
 use super::UV_HANDLE_ACTIVE;
@@ -655,7 +660,7 @@ pub unsafe fn uv_pipe_connect(
         // (matching libuv behavior). ClientOptions::open returns NotFound
         // for non-pipe paths even if the file exists.
         if e.kind() == std::io::ErrorKind::NotFound
-          && std::fs::metadata(path).is_ok()
+          && RealSys.base_fs_exists_no_err(std::path::Path::new(path))
         {
           return super::UV_ENOTSOCK;
         }
