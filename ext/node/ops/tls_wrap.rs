@@ -1107,7 +1107,7 @@ impl TLSWrapInner {
       return EncOutAction::None;
     }
 
-    if self.established && self.current_write_obj.is_some() {
+    if self.current_write_obj.is_some() {
       self.write_callback_scheduled = true;
     }
 
@@ -1506,6 +1506,29 @@ impl TLSWrap {
     let inner = unsafe { self.inner.as_mut() };
 
     if inner.tls_conn.is_none() {
+      if !inner.started {
+        // TLS connection not yet established (start() hasn't been called).
+        // Buffer the data so it's sent after the handshake completes.
+        inner.current_write_obj = Some(v8::Global::new(scope, req_wrap_obj));
+        inner.current_write_bytes = byte_length;
+        inner.write_callback_scheduled = true;
+        let existing = inner.pending_cleartext.get_or_insert_with(Vec::new);
+        existing.extend_from_slice(data);
+
+        let state_global = &op_state.borrow::<StreamBaseState>().array;
+        let state_array = v8::Local::new(scope, state_global);
+        state_array.set_index(
+          scope,
+          StreamBaseStateFields::BytesWritten as u32,
+          v8::Number::new(scope, byte_length as f64).into(),
+        );
+        state_array.set_index(
+          scope,
+          StreamBaseStateFields::LastWriteWasAsync as u32,
+          v8::Integer::new(scope, 1).into(),
+        );
+        return 0;
+      }
       inner.error = Some("Write after DestroySSL".to_string());
       return -1;
     }
@@ -1822,17 +1845,12 @@ impl TLSWrap {
     // listeners first.
     inner.underlying.read_start();
 
-    // For client mode, initiate handshake by cycling.
-    if inner.kind == Kind::Client {
-      let result = inner.clear_out_process();
-      let enc_action = inner.enc_out_collect();
-      let inner_ptr = inner as *mut TLSWrapInner;
-      // SAFETY: inner_ptr valid; callbacks are reference-free
-      unsafe {
-        TLSWrapInner::dispatch_clear_out_callbacks(inner_ptr, &result);
-        TLSWrapInner::do_enc_out_action(inner_ptr, enc_action);
-      }
-    }
+    // Drive the state machine. For client mode this initiates the
+    // handshake (ClientHello). It also drains any pending_cleartext
+    // that was buffered before start() was called.
+    let inner_ptr = inner as *mut TLSWrapInner;
+    // SAFETY: inner_ptr points to heap-allocated TLSWrapInner via OwnedPtr
+    unsafe { TLSWrapInner::cycle(inner_ptr) };
 
     0
   }

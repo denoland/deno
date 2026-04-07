@@ -34,6 +34,7 @@ import {
   kStreamBaseField,
   kUseNativeWrap,
 } from "ext:deno_node/internal_binding/stream_wrap.ts";
+import { kMaybeDestroy } from "ext:deno_node/internal/stream_base_commons.ts";
 import {
   constants as PipeConstants,
   Pipe,
@@ -248,6 +249,20 @@ function TLSSocket(socket, opts) {
 
   this._init(socket, wrap);
 
+  // Implement kMaybeDestroy so that onStreamRead (stream_base_commons.ts)
+  // can auto-destroy the socket when EOF is received. Without this, the
+  // native TCP handle keeps a ref on the event loop forever.
+  this[kMaybeDestroy] = () => {
+    if (!this.destroyed) {
+      const rDone = this._readableState?.ended || this.readableEnded;
+      const wDone = this._writableState?.finished || this.writableFinished;
+      if (rDone && wDone) {
+        this.destroy();
+      }
+    }
+  };
+  this.on("finish", this[kMaybeDestroy]);
+
   // Read on next tick so the caller has a chance to setup listeners
   nextTick(initRead, this, socket);
 }
@@ -290,16 +305,24 @@ tls_wrap.TLSWrap.prototype.close = function close(cb) {
     this._owner.ssl = null;
   }
 
+  // deno-lint-ignore no-this-alias
+  const self = this;
   const done = () => {
     if (ssl) {
       ssl.destroySsl();
+    }
+    // Close the native TCP handle to remove it from the event loop.
+    if (self._nativeTcpHandle) {
+      self._nativeTcpHandle.readStop();
+      self._nativeTcpHandle.close();
+      self._nativeTcpHandle = null;
     }
     if (cb) cb();
   };
 
   if (this._parentWrap) {
     if (this._parentWrap._handle === null) {
-      done();
+      queueMicrotask(done);
       return;
     }
 
@@ -310,7 +333,8 @@ tls_wrap.TLSWrap.prototype.close = function close(cb) {
     }
   }
 
-  done();
+  // Defer so callers can register "close" listeners after destroy().
+  queueMicrotask(done);
 };
 
 TLSSocket.prototype._wrapHandle = function (wrap, handle) {
@@ -346,6 +370,7 @@ TLSSocket.prototype._wrapHandle = function (wrap, handle) {
   res._secureContext = context;
   res.reading = handle.reading;
   res._owner = this;
+  res[ownerSymbol] = this; // For onWriteComplete to find the socket
   this[kRes] = res;
 
   // Set ownerSymbol on the parent handle so that connect callbacks
