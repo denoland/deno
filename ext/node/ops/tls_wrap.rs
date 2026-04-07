@@ -614,6 +614,10 @@ impl UnderlyingStream {
     }
   }
 
+  #[allow(
+    dead_code,
+    reason = "will be used when libuv_stream::TCP is replaced"
+  )]
   fn read_stop(&self) {
     match self {
       UnderlyingStream::Uv { .. } => {
@@ -939,11 +943,16 @@ impl TLSWrapInner {
       return;
     }
 
-    // Write as much as possible, saving only the unwritten remainder.
+    // Feed cleartext to rustls in limited chunks. Writing everything
+    // at once would produce a huge encrypted buffer that saturates
+    // the TCP send buffer, causing deadlocks with echo patterns.
+    // This matches Node.js where SSL_write processes incrementally.
+    const MAX_CLEAR_IN: usize = 48 * 1024;
+    let feed_end = data.len().min(MAX_CLEAR_IN);
     let mut offset = 0;
     let mut write_error = false;
-    while offset < data.len() {
-      match conn.writer().write(&data[offset..]) {
+    while offset < feed_end {
+      match conn.writer().write(&data[offset..feed_end]) {
         Ok(0) => break,
         Ok(n) => offset += n,
         Err(e) => {
@@ -1420,12 +1429,10 @@ unsafe extern "C" fn enc_write_cb(req: *mut uv_write_t, status: i32) {
       (*ptr).enc_writes_in_flight =
         (*ptr).enc_writes_in_flight.saturating_sub(1);
       if (*ptr).enc_writes_in_flight == 0 && status >= 0 {
-        // Encrypted write completed successfully — try to push more
-        // pending cleartext through rustls now that buffer space is freed.
-        if (*ptr).pending_cleartext.is_some() {
-          (*ptr).clear_in();
-        }
-        // Flush any new encrypted output (from clear_in or leftover).
+        // Don't drain more cleartext here — that's done by cycle()
+        // which is triggered by incoming reads. This prevents TCP
+        // send buffer deadlocks: we let the event loop process reads
+        // (echo data from the peer) between encryption rounds.
         let enc_action = (*ptr).enc_out_collect();
         TLSWrapInner::do_enc_out_action(ptr, enc_action);
       } else if (*ptr).enc_writes_in_flight == 0
@@ -1551,24 +1558,12 @@ impl TLSWrap {
     inner.current_write_obj = Some(v8::Global::new(scope, req_wrap_obj));
     inner.current_write_bytes = byte_length;
 
-    // Write as much cleartext into rustls as its buffer allows.
-    // Any remainder goes into pending_cleartext and will be drained
-    // as enc_write_cb fires and frees rustls buffer space.
-    let conn = inner.tls_conn.as_mut().unwrap();
-    let mut offset = 0;
-    while offset < data.len() {
-      match conn.writer().write(&data[offset..]) {
-        Ok(0) => break,
-        Ok(n) => offset += n,
-        Err(_) => break,
-      }
-    }
-    if offset < data.len() {
-      inner.pending_cleartext = Some(data[offset..].to_vec());
-    }
-
-    // Flush encrypted output to underlying stream
+    // Store all cleartext as pending, then drain a limited amount.
+    // clear_in() feeds up to 48KB to rustls per call, preventing
+    // the TCP send buffer from being overwhelmed.
+    inner.pending_cleartext = Some(data.to_vec());
     inner.in_dowrite = true;
+    inner.clear_in();
     let enc_action = inner.enc_out_collect();
     inner.in_dowrite = false;
     let inner_ptr = inner as *mut TLSWrapInner;
@@ -1903,15 +1898,14 @@ impl TLSWrap {
     0
   }
 
-  /// ReadStop
+  /// ReadStop — for Uv streams, don't stop the native TCP reads.
+  /// The NativeTCP should continue reading encrypted data; we just
+  /// stop delivering decrypted plaintext to JS by clearing onread.
+  /// This avoids the stream.data incompatibility with libuv_stream::TCP.
   #[fast]
-  fn read_stop(&self, scope: &mut v8::PinScope) -> i32 {
-    let inner = unsafe { &*self.inner.as_mut_ptr() };
-    if let UnderlyingStream::Uv { stream } = &inner.underlying {
-      let _ = scope;
-      return LibUvStreamWrap::read_stop_for_stream(*stream);
-    }
-    inner.underlying.read_stop();
+  fn read_stop(&self, _scope: &mut v8::PinScope) -> i32 {
+    let inner = unsafe { &mut *self.inner.as_mut_ptr() };
+    inner.onread = None;
     0
   }
 

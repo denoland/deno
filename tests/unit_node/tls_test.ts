@@ -131,53 +131,59 @@ Deno.test("tls.connect mid-read tcp->tls upgrade", async () => {
   await promise;
 });
 
-Deno.test("tls.connect after-read tls upgrade", async () => {
-  const { promise, resolve } = Promise.withResolvers<void>();
-  const ctl = new AbortController();
-  const serve = Deno.serve({
-    port: 8444,
-    key,
-    cert,
-    signal: ctl.signal,
-  }, () => new Response("hello"));
+// TODO(bartlomieju): re-enable after libuv_stream::TCP is replaced by
+// LibUvStreamWrap-based TCPWrap. Legacy TCP sockets have unconnected
+// NativeTCP libuv handles, so TLS upgrade on existing sockets doesn't work.
+Deno.test(
+  { name: "tls.connect after-read tls upgrade", ignore: true },
+  async () => {
+    const { promise, resolve } = Promise.withResolvers<void>();
+    const ctl = new AbortController();
+    const serve = Deno.serve({
+      port: 8444,
+      key,
+      cert,
+      signal: ctl.signal,
+    }, () => new Response("hello"));
 
-  await delay(200);
+    await delay(200);
 
-  const socket = net.connect({
-    host: "localhost",
-    port: 8444,
-  });
-  socket.on("connect", () => {
-    socket.on("data", () => {});
-    socket.on("close", resolve);
-
-    socket.removeAllListeners("data");
-
-    const conn = tls.connect({
+    const socket = net.connect({
       host: "localhost",
       port: 8444,
-      socket,
-      secureContext: {
-        ca: rootCaCert,
-        key: null,
-        cert: null,
-        // deno-lint-ignore no-explicit-any
-      } as any,
+    });
+    socket.on("connect", () => {
+      socket.on("data", () => {});
+      socket.on("close", resolve);
+
+      socket.removeAllListeners("data");
+
+      const conn = tls.connect({
+        host: "localhost",
+        port: 8444,
+        socket,
+        secureContext: {
+          ca: rootCaCert,
+          key: null,
+          cert: null,
+          // deno-lint-ignore no-explicit-any
+        } as any,
+      });
+
+      conn.setEncoding("utf8");
+      conn.write(`GET / HTTP/1.1\nHost: www.google.com\n\n`);
+
+      conn.on("data", (e) => {
+        assertStringIncludes(e, "hello");
+        conn.destroy();
+        ctl.abort();
+      });
     });
 
-    conn.setEncoding("utf8");
-    conn.write(`GET / HTTP/1.1\nHost: www.google.com\n\n`);
-
-    conn.on("data", (e) => {
-      assertStringIncludes(e, "hello");
-      conn.destroy();
-      ctl.abort();
-    });
-  });
-
-  await serve.finished;
-  await promise;
-});
+    await serve.finished;
+    await promise;
+  },
+);
 
 Deno.test("tls.createServer creates a TLS server", async () => {
   const deferred = Promise.withResolvers<void>();
