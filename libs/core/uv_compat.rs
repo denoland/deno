@@ -1325,7 +1325,7 @@ pub unsafe extern "C" fn uv_close(
   // SAFETY: Caller guarantees handle is valid and initialized.
   unsafe {
     (*handle).flags |= UV_HANDLE_CLOSING;
-    (*handle).flags &= !UV_HANDLE_ACTIVE;
+    (*handle).flags &= !(UV_HANDLE_ACTIVE | UV_HANDLE_REF);
 
     let loop_ = (*handle).loop_;
     let inner = get_inner(loop_);

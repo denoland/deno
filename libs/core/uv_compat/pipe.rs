@@ -611,7 +611,6 @@ pub unsafe fn uv_pipe_connect(
   cb: Option<super::stream::uv_connect_cb>,
 ) -> c_int {
   unsafe {
-    eprintln!("[pipe_connect] path={:?}", path);
     let opts = tokio::net::windows::named_pipe::ClientOptions::new();
     match opts.open(path) {
       Ok(client) => {
@@ -636,10 +635,7 @@ pub unsafe fn uv_pipe_connect(
         }
         0
       }
-      Err(e) => {
-        eprintln!("[pipe_connect] error: {:?} kind={:?} raw_os={:?}", e, e.kind(), e.raw_os_error());
-        io_error_to_uv(&e)
-      }
+      Err(e) => io_error_to_uv(&e),
     }
   }
 }
