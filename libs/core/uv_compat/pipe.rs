@@ -622,7 +622,8 @@ pub unsafe fn uv_pipe_connect(
           let handle = client.as_raw_handle();
           let file_type =
             windows_sys::Win32::Storage::FileSystem::GetFileType(handle as _);
-          if file_type != windows_sys::Win32::Storage::FileSystem::FILE_TYPE_PIPE
+          if file_type
+            != windows_sys::Win32::Storage::FileSystem::FILE_TYPE_PIPE
           {
             drop(client);
             return super::UV_ENOTSOCK;
