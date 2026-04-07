@@ -69,6 +69,7 @@ uv_errno!(UV_ENOBUFS, libc::ENOBUFS, -4060);
 uv_errno!(UV_ENOTSUP, libc::ENOTSUP, -4049);
 uv_errno!(UV_EALREADY, libc::EALREADY, -4084);
 uv_errno!(UV_ENOENT, libc::ENOENT, -4058);
+uv_errno!(UV_ENOTSOCK, libc::ENOTSOCK, -4050);
 pub const UV_EOF: i32 = -4095;
 
 /// Map a `std::io::Error` to the closest libuv error code.

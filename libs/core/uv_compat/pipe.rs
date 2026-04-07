@@ -635,7 +635,17 @@ pub unsafe fn uv_pipe_connect(
         }
         0
       }
-      Err(e) => io_error_to_uv(&e),
+      Err(e) => {
+        // If the path exists but isn't a named pipe, return ENOTSOCK
+        // (matching libuv behavior). ClientOptions::open returns NotFound
+        // for non-pipe paths even if the file exists.
+        if e.kind() == std::io::ErrorKind::NotFound
+          && std::path::Path::new(path).exists()
+        {
+          return super::UV_ENOTSOCK;
+        }
+        io_error_to_uv(&e)
+      }
     }
   }
 }
