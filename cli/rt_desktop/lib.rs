@@ -1073,7 +1073,18 @@ async fn run_desktop(update_rolled_back: bool) -> Result<(), AnyError> {
     );
   }
 
+  let sys = if data.metadata.self_extracting.is_some() {
+    denort::binary::extract_vfs_to_disk(&data.vfs, &data.root_path)?;
+    // Set CWD to extraction directory so frameworks like Next.js
+    // can find their build output (e.g. .next/) relative to CWD.
+    std::env::set_current_dir(&data.root_path)?;
+    denort::file_system::DenoRtSys::new_self_extracting(data.vfs.clone())
+  } else {
+    denort::file_system::DenoRtSys::new(data.vfs.clone())
+  };
+
   deno_runtime::deno_telemetry::init(
+    &sys,
     otel_runtime_config(),
     data.metadata.otel_config.clone(),
   )?;
@@ -1094,16 +1105,6 @@ async fn run_desktop(update_rolled_back: bool) -> Result<(), AnyError> {
       format!("tcp:127.0.0.1:{}", desktop_serve_port),
     );
   }
-
-  let sys = if data.metadata.self_extracting.is_some() {
-    denort::binary::extract_vfs_to_disk(&data.vfs, &data.root_path)?;
-    // Set CWD to extraction directory so frameworks like Next.js
-    // can find their build output (e.g. .next/) relative to CWD.
-    std::env::set_current_dir(&data.root_path)?;
-    denort::file_system::DenoRtSys::new_self_extracting(data.vfs.clone())
-  } else {
-    denort::file_system::DenoRtSys::new(data.vfs.clone())
-  };
 
   // Enable HMR if DENO_DESKTOP_HMR is set to a directory path
   // (set by `deno compile --desktop --hmr`).
