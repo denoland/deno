@@ -510,6 +510,7 @@ mod hyper_client {
   use std::fmt::Debug;
   use std::pin::Pin;
   use std::task::Poll;
+  use std::time::Duration;
 
   use deno_net::tunnel::TunnelConnection;
   use deno_net::tunnel::TunnelStream;
@@ -753,9 +754,22 @@ mod hyper_client {
     }
   }
 
+  const DEFAULT_OTEL_EXPORTER_OTLP_TIMEOUT: Duration = Duration::from_secs(10);
+
+  fn parse_otlp_timeout() -> Duration {
+    match std::env::var("OTEL_EXPORTER_OTLP_TIMEOUT") {
+      Ok(val) => match val.parse::<u64>() {
+        Ok(millis) => Duration::from_millis(millis),
+        Err(_) => DEFAULT_OTEL_EXPORTER_OTLP_TIMEOUT,
+      },
+      Err(_) => DEFAULT_OTEL_EXPORTER_OTLP_TIMEOUT,
+    }
+  }
+
   #[derive(Debug, Clone)]
   pub struct HyperClient {
     inner: Client<Connector, Full<Bytes>>,
+    timeout: Duration,
   }
 
   impl HyperClient {
@@ -826,6 +840,7 @@ mod hyper_client {
 
       Ok(Self {
         inner: Client::builder(OtelSharedRuntime).build(connector),
+        timeout: parse_otlp_timeout(),
       })
     }
   }
@@ -838,10 +853,19 @@ mod hyper_client {
     ) -> Result<Response<Bytes>, HttpError> {
       let (parts, body) = request.into_parts();
       let request = Request::from_parts(parts, Full::from(body));
-      let response = self.inner.request(request).await?;
-      let (parts, body) = response.into_parts();
-      let body = body.collect().await?.to_bytes();
-      let response = Response::from_parts(parts, body);
+      let response = tokio::time::timeout(self.timeout, async {
+        let response = self.inner.request(request).await?;
+        let (parts, body) = response.into_parts();
+        let body = body.collect().await?.to_bytes();
+        Ok::<_, HttpError>(Response::from_parts(parts, body))
+      })
+      .await
+      .map_err(|_| {
+        std::io::Error::new(
+          std::io::ErrorKind::TimedOut,
+          format!("OTEL export timed out after {}ms", self.timeout.as_millis()),
+        )
+      })??;
       Ok(response.error_for_status()?)
     }
   }

@@ -303,7 +303,7 @@ export function nodeSpawnChild(command, {
     stdoutFd: child.stdoutFd,
     stderrFd: child.stderrFd,
     ipcPipeRid: child.ipcPipeRid,
-    extraPipeRids: child.extraPipeRids,
+    extraPipeFds: child.extraPipeFds,
     status,
     kill(signal) {
       op_spawn_kill(child.rid, signal);
