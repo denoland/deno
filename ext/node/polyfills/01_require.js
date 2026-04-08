@@ -1147,14 +1147,26 @@ Module._extensions[".cjs"] = loadCjs;
 Module._extensions[".mjs"] = loadESMFromCJS;
 Module._extensions[".wasm"] = loadESMFromCJS;
 
+// Use fs.readFileSync so that monkey-patches (e.g. @volar/typescript's
+// runTsc which intercepts reads of tsc.js) are respected. Fall back to
+// the internal op for virtual files like $deno$eval.cjs that don't
+// exist on disk.
+function readFileForRequire(filename) {
+  try {
+    return fs.readFileSync(filename, "utf-8");
+  } catch {
+    return op_require_read_file(filename);
+  }
+}
+
 function loadMaybeCjs(module, filename) {
-  const content = op_require_read_file(filename);
+  const content = readFileForRequire(filename);
   const format = op_require_is_maybe_cjs(filename) ? undefined : "module";
   module._compile(content, filename, format);
 }
 
 function loadCjs(module, filename) {
-  const content = op_require_read_file(filename);
+  const content = readFileForRequire(filename);
   module._compile(content, filename, "commonjs");
 }
 
@@ -1179,7 +1191,7 @@ function stripBOM(content) {
 
 // Native extension for .json
 Module._extensions[".json"] = function (module, filename) {
-  const content = op_require_read_file(filename);
+  const content = readFileForRequire(filename);
 
   try {
     module.exports = JSONParse(stripBOM(content));
