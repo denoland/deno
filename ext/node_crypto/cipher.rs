@@ -43,13 +43,15 @@ impl ChaCha20Poly1305Cipher {
     iv: &[u8],
     auth_tag_length: usize,
     encrypting: bool,
-  ) -> Self {
+  ) -> Result<Self, &'static str> {
     // SAFETY: We allocate a new EVP_CIPHER_CTX and initialize it with
     // validated key/iv. The ctx is exclusively owned by this struct and
     // freed in Drop.
     unsafe {
       let ctx = aws_lc_sys::EVP_CIPHER_CTX_new();
-      assert!(!ctx.is_null());
+      if ctx.is_null() {
+        return Err("Failed to allocate cipher context");
+      }
 
       let cipher = aws_lc_sys::EVP_chacha20_poly1305();
       let enc = if encrypting { 1 } else { 0 };
@@ -61,14 +63,17 @@ impl ChaCha20Poly1305Cipher {
         iv.as_ptr(),
         enc,
       );
-      assert_eq!(ret, 1);
+      if ret != 1 {
+        aws_lc_sys::EVP_CIPHER_CTX_free(ctx);
+        return Err("Failed to initialize cipher");
+      }
 
-      ChaCha20Poly1305Cipher {
+      Ok(ChaCha20Poly1305Cipher {
         ctx,
         aad_buf: Vec::new(),
         aad_flushed: false,
         auth_tag_length,
-      }
+      })
     }
   }
 
@@ -84,14 +89,20 @@ impl ChaCha20Poly1305Cipher {
       if !self.aad_buf.is_empty() {
         // SAFETY: ctx is valid, aad_buf is a valid slice. Passing NULL
         // output tells EVP this is AAD, not plaintext/ciphertext.
+        // Length is validated to fit in i32 before casting.
         unsafe {
+          let aad_len: i32 = self
+            .aad_buf
+            .len()
+            .try_into()
+            .expect("AAD length exceeds i32::MAX");
           let mut outl: i32 = 0;
           let ret = aws_lc_sys::EVP_CipherUpdate(
             self.ctx,
             std::ptr::null_mut(),
             &mut outl,
             self.aad_buf.as_ptr(),
-            self.aad_buf.len() as i32,
+            aad_len,
           );
           assert_eq!(ret, 1);
         }
@@ -100,44 +111,58 @@ impl ChaCha20Poly1305Cipher {
   }
 
   fn encrypt(&mut self, input: &[u8], output: &mut [u8]) {
+    debug_assert!(output.len() >= input.len());
     self.flush_aad();
     // SAFETY: ctx is valid and initialized for encryption. output is
     // caller-provided with at least input.len() bytes. EVP_CipherUpdate
     // writes at most input.len() bytes for a stream cipher.
+    // Length is validated to fit in i32 before casting.
     unsafe {
+      let input_len: i32 = input
+        .len()
+        .try_into()
+        .expect("input length exceeds i32::MAX");
       let mut outl: i32 = 0;
       let ret = aws_lc_sys::EVP_CipherUpdate(
         self.ctx,
         output.as_mut_ptr(),
         &mut outl,
         input.as_ptr(),
-        input.len() as i32,
+        input_len,
       );
       assert_eq!(ret, 1);
     }
   }
 
   fn decrypt(&mut self, input: &[u8], output: &mut [u8]) {
+    debug_assert!(output.len() >= input.len());
     self.flush_aad();
     // SAFETY: ctx is valid and initialized for decryption. output is
     // caller-provided with at least input.len() bytes.
+    // Length is validated to fit in i32 before casting.
     unsafe {
+      let input_len: i32 = input
+        .len()
+        .try_into()
+        .expect("input length exceeds i32::MAX");
       let mut outl: i32 = 0;
       let ret = aws_lc_sys::EVP_CipherUpdate(
         self.ctx,
         output.as_mut_ptr(),
         &mut outl,
         input.as_ptr(),
-        input.len() as i32,
+        input_len,
       );
       assert_eq!(ret, 1);
     }
   }
 
-  fn compute_tag(self) -> Vec<u8> {
+  fn compute_tag(mut self) -> Vec<u8> {
+    self.flush_aad();
     // SAFETY: ctx is valid. CipherFinal_ex finalizes the AEAD operation,
     // then CTRL_AEAD_GET_TAG retrieves the computed authentication tag.
-    // The tag buffer is freshly allocated with the correct length.
+    // The tag buffer is freshly allocated with the correct length
+    // (validated to 1..=16 at construction).
     unsafe {
       let mut outl: i32 = 0;
       let ret = aws_lc_sys::EVP_CipherFinal_ex(
@@ -160,7 +185,8 @@ impl ChaCha20Poly1305Cipher {
     }
   }
 
-  fn verify_tag(self, auth_tag: &[u8]) -> bool {
+  fn verify_tag(mut self, auth_tag: &[u8]) -> bool {
+    self.flush_aad();
     // SAFETY: ctx is valid and initialized for decryption. We set the
     // expected tag via CTRL_AEAD_SET_TAG, then CipherFinal_ex performs
     // constant-time tag comparison internally, returning 0 on mismatch.
@@ -523,9 +549,10 @@ impl Cipher {
         if !is_valid_chacha20_poly1305_tag_length(tag_len) {
           return Err(CipherError::InvalidAuthTag(tag_len));
         }
-        ChaCha20Poly1305(Box::new(ChaCha20Poly1305Cipher::new(
-          key, iv, tag_len, true,
-        )))
+        ChaCha20Poly1305(Box::new(
+          ChaCha20Poly1305Cipher::new(key, iv, tag_len, true)
+            .map_err(|_| CipherError::InvalidKeyLength)?,
+        ))
       }
       _ => return Err(CipherError::UnknownCipher(algorithm_name.to_string())),
     })
@@ -952,7 +979,10 @@ impl Decipher {
           return Err(DecipherError::InvalidAuthTag(tag_len));
         }
         ChaCha20Poly1305(
-          Box::new(ChaCha20Poly1305Cipher::new(key, iv, tag_len, false)),
+          Box::new(
+            ChaCha20Poly1305Cipher::new(key, iv, tag_len, false)
+              .map_err(|_| DecipherError::InvalidKeyLength)?,
+          ),
           auth_tag_length,
         )
       }
