@@ -357,8 +357,7 @@ declare var caches: CacheStorage;
  * @category Platform
  */
 interface Navigator {
-  /** Provides access to the WebGPU API. Fully typed when `lib.dom` is included. */
-  readonly gpu: any;
+  readonly gpu: GPU;
   readonly hardwareConcurrency: number;
   readonly userAgent: string;
   readonly language: string;

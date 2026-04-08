@@ -117,8 +117,8 @@ declare var WorkerGlobalScope: {
  * @category Platform
  */
 declare interface WorkerNavigator {
-  /** Provides access to the WebGPU API. Fully typed when `lib.dom` is included. */
-  readonly gpu: any;
+  /** Provides access to the WebGPU API. */
+  readonly gpu: GPU;
 
   /** Returns the number of logical processors available to run threads on the user's computer. */
   readonly hardwareConcurrency: number;

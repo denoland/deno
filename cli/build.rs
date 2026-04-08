@@ -8,6 +8,7 @@ use deno_runtime::*;
 
 fn compress_decls(out_dir: &Path) {
   let decls = [
+    "lib.deno_webgpu.d.ts",
     "lib.deno.ns.d.ts",
     "lib.deno.unstable.d.ts",
     "lib.deno.window.d.ts",
