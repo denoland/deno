@@ -1331,8 +1331,10 @@ internals.__bootstrapNodeProcess = function (
 ) {
   if (!warmup) {
     argv0 = argv0Val || "";
-    argv[0] = argv0;
-    argv[1] = Deno.mainModule?.startsWith("file:")
+    argv[0] = Deno.execPath();
+    argv[1] = Deno.build.standalone
+      ? Deno.execPath()
+      : Deno.mainModule?.startsWith("file:")
       ? pathFromURL(new URL(Deno.mainModule))
       : join(Deno.cwd(), "$deno$node.mjs");
     // Manually concatenate these arrays to avoid triggering the getter

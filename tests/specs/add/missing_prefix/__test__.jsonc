@@ -1,15 +1,33 @@
 {
   "tempDir": true,
-  "steps": [
-    {
-      "args": "add ajv",
-      "output": "error: ajv is missing a prefix. Did you mean `deno add npm:ajv`?\n",
-      "exitCode": 1
+  "tests": {
+    // Unprefixed packages default to npm, so `deno add ajv` should work
+    "npm_default": {
+      "steps": [
+        {
+          "args": "add ajv",
+          "output": "Add npm:ajv@8.11.0\n[WILDCARD]\n"
+        }
+      ]
     },
-    {
-      "args": "add @std/testing",
-      "output": "error: @std/testing is missing a prefix. Did you mean `deno add jsr:@std/testing`?\n",
-      "exitCode": 1
+    // Packages that only exist on jsr should suggest using jsr: prefix
+    "jsr_needs_prefix": {
+      "steps": [
+        {
+          "args": "add @denotest/echo",
+          "output": "error: npm:@denotest/echo was not found, but a matching jsr package exists. Did you mean `deno add jsr:@denotest/echo`?\n",
+          "exitCode": 1
+        }
+      ]
+    },
+    // Using --jsr flag should still work for jsr packages
+    "jsr_flag_override": {
+      "steps": [
+        {
+          "args": "add --jsr @denotest/add",
+          "output": "Add jsr:@denotest/add@1.0.0\n[WILDCARD]\n"
+        }
+      ]
     }
-  ]
+  }
 }

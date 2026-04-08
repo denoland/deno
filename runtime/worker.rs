@@ -131,9 +131,8 @@ pub fn make_wait_for_inspector_disconnect_callback() -> Box<dyn Fn()> {
     if !has_notified_of_inspector_disconnect
       .swap(true, std::sync::atomic::Ordering::SeqCst)
     {
-      log::info!(
-        "Program finished. Waiting for inspector to disconnect to exit the process..."
-      );
+      // Match Node.js message format that debugger clients rely on
+      log::info!("Waiting for the debugger to disconnect...");
     }
   })
 }
@@ -605,23 +604,7 @@ impl MainWorker {
     }
 
     // Register the uv_loop_t (created by deno_node extension state callback)
-    // with the JsRuntime so that its event loop phases are driven by
-    // poll_event_loop.
-    {
-      let op_state_rc = js_runtime.op_state();
-      let op_state = op_state_rc.borrow();
-      if let Some(uv_loop) =
-        op_state.try_borrow::<Box<deno_core::uv_compat::UvLoop>>()
-      {
-        let loop_ptr: *mut deno_core::uv_compat::UvLoop =
-          &**uv_loop as *const _ as *mut _;
-        drop(op_state);
-        // SAFETY: loop_ptr points to a valid initialized UvLoop stored in OpState
-        unsafe {
-          js_runtime.register_uv_loop(loop_ptr);
-        }
-      }
-    }
+    // The uv loop is auto-created and registered by JsRuntime::new_inner.
 
     if let Some(server) = get_inspector_server() {
       let inspector_url = server.register_inspector(

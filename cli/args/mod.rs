@@ -204,6 +204,8 @@ pub struct WorkspaceTestOptions {
   pub shuffle: Option<u64>,
   pub concurrent_jobs: NonZeroUsize,
   pub trace_leaks: bool,
+  pub sanitize_ops: bool,
+  pub sanitize_resources: bool,
   pub reporter: TestReporterConfig,
   pub junit_path: Option<String>,
   pub hide_stacktraces: bool,
@@ -220,6 +222,13 @@ impl WorkspaceTestOptions {
       no_run: test_flags.no_run,
       shuffle: test_flags.shuffle,
       trace_leaks: test_flags.trace_leaks,
+      sanitize_ops: test_flags.sanitize_ops
+        || std::env::var("DENO_TEST_SANITIZE_OPS").ok().as_deref() == Some("1"),
+      sanitize_resources: test_flags.sanitize_resources
+        || std::env::var("DENO_TEST_SANITIZE_RESOURCES")
+          .ok()
+          .as_deref()
+          == Some("1"),
       reporter: test_flags.reporter,
       junit_path: test_flags.junit_path.clone(),
       hide_stacktraces: test_flags.hide_stacktraces,
@@ -537,6 +546,9 @@ impl CliOptions {
       DenoSubcommand::Add(_) => GraphKind::All,
       DenoSubcommand::Cache(_) => GraphKind::All,
       DenoSubcommand::Check(_) => GraphKind::TypesOnly,
+      DenoSubcommand::Install(InstallFlags::Local(
+        InstallFlagsLocal::Entrypoints(flags),
+      )) if flags.production => GraphKind::CodeOnly,
       DenoSubcommand::Install(InstallFlags::Local(_)) => GraphKind::All,
       _ => self.type_check_mode().as_graph_kind(),
     }

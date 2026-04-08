@@ -670,24 +670,7 @@ impl WebWorker {
       state.put(js_runtime.inspector());
     }
 
-    // Register the uv_loop_t (created by deno_node extension state callback)
-    // with the JsRuntime so that its event loop phases are driven by
-    // poll_event_loop.
-    {
-      let op_state_rc = js_runtime.op_state();
-      let op_state = op_state_rc.borrow();
-      if let Some(uv_loop) =
-        op_state.try_borrow::<Box<deno_core::uv_compat::UvLoop>>()
-      {
-        let loop_ptr: *mut deno_core::uv_compat::UvLoop =
-          &**uv_loop as *const _ as *mut _;
-        drop(op_state);
-        // SAFETY: loop_ptr points to a valid initialized UvLoop stored in OpState
-        unsafe {
-          js_runtime.register_uv_loop(loop_ptr);
-        }
-      }
-    }
+    // The uv loop is auto-created and registered by JsRuntime::new_inner.
 
     if let Some(main_session_tx) = services.main_inspector_session_tx.get() {
       let (main_proxy, worker_proxy) =

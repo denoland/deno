@@ -1,0 +1,14 @@
+{
+  "tests": {
+    "url_value_shows_error": {
+      "args": "eval --unsafely-ignore-certificate-errors=https://example.com/ console.log('hi')",
+      "output": "error: invalid value 'https://example.com/': URLs are not supported, only domains and ips\n",
+      "exitCode": 1
+    },
+    "valid_domain_works": {
+      "args": "eval --unsafely-ignore-certificate-errors=example.com console.log('hi')",
+      "output": "[WILDCARD]hi\n",
+      "exitCode": 0
+    }
+  }
+}

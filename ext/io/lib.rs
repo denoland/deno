@@ -61,6 +61,7 @@ use winapi::um::processenv::GetStdHandle;
 #[cfg(windows)]
 use winapi::um::winbase;
 
+mod fd_table;
 pub mod fs;
 mod pipe;
 #[cfg(windows)]
@@ -74,6 +75,7 @@ pub use bi_pipe::BiPipeResource;
 pub use bi_pipe::BiPipeWrite;
 pub use bi_pipe::RawBiPipeHandle;
 pub use bi_pipe::bi_pipe_pair_raw;
+pub use fd_table::FdTable;
 pub use pipe::AsyncPipeRead;
 pub use pipe::AsyncPipeWrite;
 pub use pipe::PipeRead;
@@ -237,6 +239,8 @@ deno_core::extension!(deno_io,
     _ => op,
   },
   state = |state, options| {
+    let mut fd_table = FdTable::new();
+
     if let Some(stdio) = options.stdio {
       #[cfg(windows)]
       let stdin_state = {
@@ -249,45 +253,61 @@ deno_core::extension!(deno_io,
 
       let t = &mut state.resource_table;
 
-      let rid = t.add(fs::FileResource::new(
-        Rc::new(match stdio.stdin.pipe {
-          StdioPipeInner::Inherit => StdFileResourceInner::new(
-            StdFileResourceKind::Stdin(stdin_state),
-            STDIN_HANDLE.try_clone().unwrap(),
-            None,
-          ),
-          StdioPipeInner::File(pipe) => StdFileResourceInner::file(pipe, None),
-        }),
-        "stdin".to_string(),
-      ));
+      let stdin_file: Rc<dyn fs::File> = Rc::new(match stdio.stdin.pipe {
+        StdioPipeInner::Inherit => StdFileResourceInner::new(
+          StdFileResourceKind::Stdin(stdin_state),
+          STDIN_HANDLE.try_clone().unwrap(),
+          None,
+        ),
+        StdioPipeInner::File(pipe) => StdFileResourceInner::file(pipe, None),
+      });
+      fd_table.register(0, stdin_file.clone());
+      let rid = t.add(fs::FileResource::new(stdin_file, "stdin".to_string()));
       assert_eq!(rid, 0, "stdin must have ResourceId 0");
 
-      let rid = t.add(FileResource::new(
-        Rc::new(match stdio.stdout.pipe {
-          StdioPipeInner::Inherit => StdFileResourceInner::new(
+      let (stdout_file, child_stdout): (Rc<dyn fs::File>, StdFile) = match stdio.stdout.pipe {
+        StdioPipeInner::Inherit => (
+          Rc::new(StdFileResourceInner::new(
             StdFileResourceKind::Stdout,
             STDOUT_HANDLE.try_clone().unwrap(),
             None,
-          ),
-          StdioPipeInner::File(pipe) => StdFileResourceInner::file(pipe, None),
-        }),
-        "stdout".to_string(),
-      ));
+          )),
+          STDOUT_HANDLE.try_clone().unwrap(),
+        ),
+        StdioPipeInner::File(pipe) => {
+          let child_handle = pipe.try_clone().unwrap();
+          (Rc::new(StdFileResourceInner::file(pipe, None)), child_handle)
+        }
+      };
+      fd_table.register(1, stdout_file.clone());
+      let rid = t.add(FileResource::new(stdout_file, "stdout".to_string()));
       assert_eq!(rid, 1, "stdout must have ResourceId 1");
 
-      let rid = t.add(FileResource::new(
-        Rc::new(match stdio.stderr.pipe {
-          StdioPipeInner::Inherit => StdFileResourceInner::new(
+      let (stderr_file, child_stderr): (Rc<dyn fs::File>, StdFile) = match stdio.stderr.pipe {
+        StdioPipeInner::Inherit => (
+          Rc::new(StdFileResourceInner::new(
             StdFileResourceKind::Stderr,
             STDERR_HANDLE.try_clone().unwrap(),
             None,
-          ),
-          StdioPipeInner::File(pipe) => StdFileResourceInner::file(pipe, None),
-        }),
-        "stderr".to_string(),
-      ));
+          )),
+          STDERR_HANDLE.try_clone().unwrap(),
+        ),
+        StdioPipeInner::File(pipe) => {
+          let child_handle = pipe.try_clone().unwrap();
+          (Rc::new(StdFileResourceInner::file(pipe, None)), child_handle)
+        }
+      };
+      fd_table.register(2, stderr_file.clone());
+      let rid = t.add(FileResource::new(stderr_file, "stderr".to_string()));
       assert_eq!(rid, 2, "stderr must have ResourceId 2");
+
+      state.put(ChildProcessStdio {
+        stdout: child_stdout,
+        stderr: child_stderr,
+      });
     }
+
+    state.put(fd_table);
   },
 );
 
@@ -337,6 +357,18 @@ pub struct Stdio {
   pub stdin: StdioPipe,
   pub stdout: StdioPipe,
   pub stderr: StdioPipe,
+}
+
+/// Holds the effective stdout/stderr handles for child process inheritance.
+///
+/// When the runtime redirects stdout/stderr (e.g. during `deno test` for
+/// output capture), child processes spawned with `stdio: "inherit"` need
+/// to inherit the redirected handles, not the original OS stdout/stderr.
+/// This struct is stored in `OpState` during IO extension init and read
+/// by the process extension when spawning children.
+pub struct ChildProcessStdio {
+  pub stdout: StdFile,
+  pub stderr: StdFile,
 }
 
 #[derive(Debug)]
@@ -1170,12 +1202,92 @@ impl crate::fs::File for StdFileResourceInner {
     }
   }
 
+  fn read_at_sync(
+    self: Rc<Self>,
+    buf: &mut [u8],
+    position: u64,
+  ) -> FsResult<usize> {
+    self.with_sync(|file| {
+      #[cfg(unix)]
+      {
+        use std::os::unix::fs::FileExt;
+        Ok(file.read_at(buf, position)?)
+      }
+      #[cfg(windows)]
+      {
+        // Windows seek_read moves the cursor, so save/restore it.
+        use std::io::Seek;
+        use std::os::windows::fs::FileExt;
+        let current = file.stream_position()?;
+        let result = file.seek_read(buf, position);
+        file.seek(std::io::SeekFrom::Start(current))?;
+        Ok(result?)
+      }
+    })
+  }
+
+  async fn read_at_async(
+    self: Rc<Self>,
+    mut buf: BufMutView,
+    position: u64,
+  ) -> FsResult<(usize, BufMutView)> {
+    self
+      .with_inner_blocking_task(move |file| {
+        #[cfg(unix)]
+        {
+          use std::os::unix::fs::FileExt;
+          let nread = file.read_at(&mut buf, position)?;
+          Ok((nread, buf))
+        }
+        #[cfg(windows)]
+        {
+          use std::io::Seek;
+          use std::os::windows::fs::FileExt;
+          let current = file.stream_position()?;
+          let result = file.seek_read(&mut buf, position);
+          file.seek(std::io::SeekFrom::Start(current))?;
+          Ok((result?, buf))
+        }
+      })
+      .await
+  }
+
+  fn write_at_sync(
+    self: Rc<Self>,
+    buf: &[u8],
+    position: u64,
+  ) -> FsResult<usize> {
+    self.with_sync(|file| {
+      #[cfg(unix)]
+      {
+        use std::os::unix::fs::FileExt;
+        Ok(file.write_at(buf, position)?)
+      }
+      #[cfg(windows)]
+      {
+        // Windows seek_write moves the cursor, so save/restore it.
+        use std::io::Seek;
+        use std::os::windows::fs::FileExt;
+        let current = file.stream_position()?;
+        let result = file.seek_write(buf, position);
+        file.seek(std::io::SeekFrom::Start(current))?;
+        Ok(result?)
+      }
+    })
+  }
+
   fn backing_fd(self: Rc<Self>) -> Option<ResourceHandleFd> {
     Some(self.handle)
   }
 }
 
 pub struct ReadCancelResource(Rc<CancelHandle>);
+
+impl ReadCancelResource {
+  pub fn cancel_handle(&self) -> Rc<CancelHandle> {
+    self.0.clone()
+  }
+}
 
 impl Resource for ReadCancelResource {
   fn name(&self) -> Cow<'_, str> {

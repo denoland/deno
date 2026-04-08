@@ -359,6 +359,22 @@ function tryPackage(requestPath, exts, isMain, originalPath) {
   }
 
   const filename = pathResolve(requestPath, pkg);
+  // Ensure the resolved main path doesn't escape the package directory
+  // via path traversal (e.g. "main": "../../secret.json")
+  if (
+    !StringPrototypeStartsWith(filename, requestPath + "/") &&
+    !StringPrototypeStartsWith(filename, requestPath + "\\") &&
+    filename !== requestPath
+  ) {
+    const err = new Error(
+      `Cannot find module '${filename}'. ` +
+        'Please verify that the package.json has a valid "main" entry',
+    );
+    err.code = "MODULE_NOT_FOUND";
+    err.path = pathResolve(requestPath, "package.json");
+    err.requestPath = originalPath;
+    throw err;
+  }
   let actual = tryFile(filename, isMain) ||
     tryExtensions(filename, exts, isMain) ||
     tryExtensions(
@@ -962,14 +978,9 @@ Module.prototype.require = function (id) {
   }
 };
 
-// The module wrapper looks slightly different to Node. Instead of using one
-// wrapper function, we use two. The first one exists to performance optimize
-// access to magic node globals, like `Buffer`. The second one is the actual
-// wrapper function we run the users code in. The only observable difference is
-// that in Deno `arguments.callee` is not null.
 const wrapper = [
-  `(function (exports, require, module, __filename, __dirname) { var { Buffer, clearImmediate, clearInterval, clearTimeout, global, process, setImmediate, setInterval, setTimeout } = Deno[Deno.internal].nodeGlobals; (() => {`,
-  "\n})(); })",
+  "(function (exports, require, module, __filename, __dirname) { ",
+  "\n});",
 ];
 
 export let wrap = function (script) {

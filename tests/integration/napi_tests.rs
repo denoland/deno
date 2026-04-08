@@ -135,3 +135,68 @@ fn napi_wrap_leak_pointers_finalizer_on_shutdown() {
     stdout
   );
 }
+
+/// Test napi_fatal_error: calling it should abort the process and log the
+/// error message to stderr.
+#[test_util::test]
+fn napi_fatal_error() {
+  napi_build();
+
+  let output = deno_cmd()
+    .current_dir(napi_tests_path())
+    .arg("run")
+    .arg("--allow-read")
+    .arg("--allow-env")
+    .arg("--allow-ffi")
+    .arg("--config")
+    .arg(deno_config_path())
+    .arg("--no-lock")
+    .arg("fatal_error.js")
+    .envs(env_vars_for_npm_tests())
+    .output()
+    .unwrap();
+  let stderr = std::str::from_utf8(&output.stderr).unwrap();
+
+  // Process should have been killed (abort signal)
+  assert!(
+    !output.status.success(),
+    "Expected process to abort, but it exited successfully"
+  );
+  assert!(
+    stderr.contains("NODE API FATAL ERROR"),
+    "Expected fatal error message in stderr, got: {}",
+    stderr
+  );
+}
+
+/// Test napi_fatal_exception: calling it should trigger the uncaught
+/// exception handler and exit with a non-zero code.
+#[test_util::test]
+fn napi_fatal_exception() {
+  napi_build();
+
+  let output = deno_cmd()
+    .current_dir(napi_tests_path())
+    .arg("run")
+    .arg("--allow-read")
+    .arg("--allow-env")
+    .arg("--allow-ffi")
+    .arg("--config")
+    .arg(deno_config_path())
+    .arg("--no-lock")
+    .arg("fatal_exception.js")
+    .envs(env_vars_for_npm_tests())
+    .output()
+    .unwrap();
+  let stderr = std::str::from_utf8(&output.stderr).unwrap();
+
+  assert!(
+    !output.status.success(),
+    "Expected process to exit with error, but it succeeded"
+  );
+  assert!(
+    stderr.contains("fatal exception test"),
+    "Expected error message in stderr, got: {}",
+    stderr
+  );
+}

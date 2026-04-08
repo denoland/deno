@@ -1385,3 +1385,17 @@ pub fn op_get_extras_binding_object<'s, 'i>(
   let context = scope.get_current_context();
   context.get_extras_binding_object(scope).into()
 }
+
+/// Toggle whether refed immediates keep the event loop alive.
+/// `true` starts the idle handle (loop stays alive), `false` stops it.
+#[op2(fast)]
+pub fn op_immediate_check(scope: &mut v8::PinScope, make_ref: bool) {
+  let context_state = JsRealm::state_from_scope(scope);
+  if let Some(handle) = context_state.immediate_check_handle.borrow().as_ref() {
+    if make_ref {
+      handle.make_ref();
+    } else {
+      handle.make_unref();
+    }
+  }
+}

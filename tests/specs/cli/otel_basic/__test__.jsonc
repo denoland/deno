@@ -123,6 +123,10 @@
     "log_exception": {
       "args": "run -A main.ts log_exception.ts",
       "output": "log_exception.out"
+    },
+    "http_serve_error_with_otel": {
+      "args": "run -A main.ts http_serve_error_with_otel.ts",
+      "output": "http_serve_error_with_otel.out"
     }
   }
 }
