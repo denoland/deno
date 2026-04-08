@@ -141,7 +141,7 @@ Deno.test(function performanceMeasure() {
   const mark1 = performance.mark(markName1);
   // Measure against the inaccurate-but-known-good wall clock
   const now = new Date().valueOf();
-  return new Promise((resolve, reject) => {
+  return new Promise<void>((resolve, reject) => {
     setTimeout(() => {
       try {
         const later = new Date().valueOf();
@@ -190,7 +190,7 @@ Deno.test(function performanceMeasureUseMostRecentMark() {
   const markName1 = "mark1";
   const measureName1 = "measure1";
   const mark1 = performance.mark(markName1);
-  return new Promise((resolve, reject) => {
+  return new Promise<void>((resolve, reject) => {
     setTimeout(() => {
       try {
         const laterMark1 = performance.mark(markName1);
