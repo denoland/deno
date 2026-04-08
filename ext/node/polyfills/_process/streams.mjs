@@ -13,7 +13,7 @@ const { ObjectDefineProperty } = primordials;
 import { nextTick } from "ext:deno_node/_next_tick.ts";
 import { Readable, Writable } from "node:stream";
 import { guessHandleType } from "ext:deno_node/internal_binding/util.ts";
-import { op_node_fs_write_sync } from "ext:core/ops";
+import SyncWriteStream from "ext:deno_node/internal/fs/sync_write_stream.js";
 
 // Lazy loaders to break circular deps (process -> streams -> net/fs/tty).
 const lazyNet = core.createLazyLoader("node:net");
@@ -29,24 +29,6 @@ function dummyDestroy(err, cb) {
   }
 }
 
-// Synchronous write stream backed by raw fd ops.
-// Used for FILE-type stdout/stderr.
-function _createSyncWriteStream(fd) {
-  return new Writable({
-    autoDestroy: true,
-    emitClose: false,
-    write(chunk, _encoding, cb) {
-      try {
-        op_node_fs_write_sync(fd, chunk, -1);
-      } catch (e) {
-        cb(e);
-        return;
-      }
-      cb();
-    },
-  });
-}
-
 // https://github.com/nodejs/node/blob/main/lib/internal/bootstrap/switches/is_main_thread.js
 function createWritableStdioStream(fd) {
   let stream;
@@ -57,10 +39,11 @@ function createWritableStdioStream(fd) {
       stream = new (lazyTty().WriteStream)(fd);
       stream._type = "tty";
       break;
-    case "FILE":
-      stream = _createSyncWriteStream(fd);
+    case "FILE": {
+      stream = new SyncWriteStream(fd, { autoClose: false });
       stream._type = "fs";
       break;
+    }
     case "PIPE":
     case "TCP": {
       const { Socket } = lazyNet();
@@ -70,11 +53,6 @@ function createWritableStdioStream(fd) {
         writable: true,
       });
       stream._type = "pipe";
-      // Stdio sockets must not prevent the process from exiting when idle.
-      // Node.js unref's stdio handles so the event loop can drain naturally.
-      if (stream._handle?.unref) {
-        stream._handle.unref();
-      }
       break;
     }
     default:

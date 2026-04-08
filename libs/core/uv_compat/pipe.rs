@@ -232,7 +232,11 @@ pub unsafe fn uv_pipe_open(pipe: *mut uv_pipe_t, fd: c_int) -> c_int {
     if let Ok(afd) = tokio::io::unix::AsyncFd::new(RawFdWrapper(fd)) {
       (*pipe).internal_async_fd = Some(afd);
     }
-    (*pipe).flags |= UV_HANDLE_ACTIVE;
+    // Note: do NOT set UV_HANDLE_ACTIVE here. In libuv, uv_pipe_open
+    // only associates the fd with the handle; the handle becomes active
+    // only when uv_read_start or uv_write is called. Setting ACTIVE here
+    // would prevent the event loop from exiting when the pipe is idle
+    // (e.g. process.stdout as a pipe with no pending I/O).
   }
   0
 }
@@ -257,7 +261,7 @@ pub unsafe fn uv_pipe_open(pipe: *mut uv_pipe_t, fd: c_int) -> c_int {
 
   unsafe {
     (*pipe).internal_handle = Some(handle as std::os::windows::io::RawHandle);
-    (*pipe).flags |= UV_HANDLE_ACTIVE;
+    // Note: do NOT set UV_HANDLE_ACTIVE here. See Unix uv_pipe_open.
   }
   0
 }
@@ -1064,6 +1068,18 @@ pub(crate) unsafe fn poll_pipe_handle(
       }
       any_work = true;
     }
+
+    // 6. Deactivate handle when idle so the event loop can exit.
+    let has_pending_work = !(*pipe_ptr).internal_write_queue.is_empty()
+      || (*pipe_ptr).internal_reading
+      || (*pipe_ptr).internal_connect.is_some()
+      || (*pipe_ptr).internal_win_server_connecting
+      || ((*pipe_ptr).internal_listener.is_some()
+        && (*pipe_ptr).internal_connection_cb.is_some())
+      || (*pipe_ptr).internal_shutdown.is_some();
+    if !has_pending_work {
+      (*pipe_ptr).flags &= !UV_HANDLE_ACTIVE;
+    }
   }
 
   any_work
@@ -1402,6 +1418,21 @@ pub(crate) unsafe fn poll_pipe_handle(
         cb(pending.req, 0);
       }
       any_work = true;
+    }
+
+    // 6. Deactivate handle when idle so the event loop can exit.
+    // In libuv, a pipe handle is only "active" when it has pending
+    // reads, writes, connects, or is listening. Without this, an
+    // opened-but-idle pipe (e.g. process.stdout) would keep the
+    // event loop alive forever.
+    let has_pending_work = !(*pipe_ptr).internal_write_queue.is_empty()
+      || (*pipe_ptr).internal_reading
+      || (*pipe_ptr).internal_connect.is_some()
+      || ((*pipe_ptr).internal_listener.is_some()
+        && (*pipe_ptr).internal_connection_cb.is_some())
+      || (*pipe_ptr).internal_shutdown.is_some();
+    if !has_pending_work {
+      (*pipe_ptr).flags &= !UV_HANDLE_ACTIVE;
     }
   }
 
