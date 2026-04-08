@@ -177,6 +177,7 @@ HTTPParser.prototype.execute = function (
 
   // Wrap the kOnBody callback to convert Uint8Array to Buffer.
   // Node.js passes Buffer objects to body callbacks.
+  // deno-lint-ignore no-this-alias
   const self = this;
   const origOnBody = this[kOnBody];
   if (origOnBody) {

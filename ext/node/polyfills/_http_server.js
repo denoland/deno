@@ -22,7 +22,7 @@
 
 // Ported from Node.js lib/_http_server.js
 
-// deno-lint-ignore-file prefer-primordials no-explicit-any
+// deno-lint-ignore-file prefer-primordials
 
 import { primordials } from "ext:core/mod.js";
 const {
@@ -50,10 +50,8 @@ import {
   kUniqueHeaders,
   OutgoingMessage,
   parseUniqueHeadersOption,
-  validateHeaderName,
-  validateHeaderValue,
 } from "node:_http_outgoing";
-import { kNeedDrain, kOutHeaders } from "ext:deno_node/internal/http.ts";
+import { kOutHeaders } from "ext:deno_node/internal/http.ts";
 import { IncomingMessage } from "node:_http_incoming";
 import {
   connResetException,
@@ -62,16 +60,10 @@ import {
   ERR_INVALID_ARG_TYPE,
 } from "ext:deno_node/internal/errors.ts";
 import { kEmptyObject } from "ext:deno_node/internal/util.mjs";
-import {
-  validateBoolean,
-  validateInteger,
-  validateObject,
-} from "ext:deno_node/internal/validators.mjs";
+import { validateObject } from "ext:deno_node/internal/validators.mjs";
 import { nextTick } from "ext:deno_node/_next_tick.ts";
 
 const kServerResponse = Symbol("ServerResponse");
-const kOnExecute = HTTPParser.kOnExecute | 0;
-const kOnTimeout = HTTPParser.kOnTimeout | 0;
 const kLenientAll = HTTPParser.kLenientAll | 0;
 const kLenientNone = HTTPParser.kLenientNone | 0;
 

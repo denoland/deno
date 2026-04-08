@@ -23,7 +23,7 @@
 // Ported from Node.js lib/_http_common.js
 
 // TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials
+// deno-lint-ignore-file prefer-primordials no-explicit-any no-this-alias
 
 import { primordials } from "ext:core/mod.js";
 const {
@@ -160,6 +160,7 @@ function parserOnHeadersComplete(
   return parser.onIncoming(incoming, shouldKeepAlive);
 }
 
+// deno-lint-ignore no-node-globals
 function parserOnBody(this: any, b: Buffer) {
   const stream = this.incoming;
 
@@ -268,6 +269,7 @@ function cleanParser(parser: any) {
   parser.joinDuplicateHeaders = null;
 }
 
+// deno-lint-ignore no-node-globals
 function prepareError(err: any, parser: any, rawPacket?: Buffer) {
   err.rawPacket = rawPacket || parser.getCurrentBuffer();
   if (typeof err.reason === "string") {

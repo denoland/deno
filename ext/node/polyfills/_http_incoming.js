@@ -22,7 +22,7 @@
 
 // Ported from Node.js lib/_http_incoming.js
 
-// deno-lint-ignore-file prefer-primordials no-explicit-any
+// deno-lint-ignore-file prefer-primordials
 
 import { primordials } from "ext:core/mod.js";
 const {

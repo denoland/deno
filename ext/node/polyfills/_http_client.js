@@ -22,7 +22,7 @@
 
 // Ported from Node.js lib/_http_client.js
 
-// deno-lint-ignore-file prefer-primordials no-explicit-any
+// deno-lint-ignore-file prefer-primordials no-this-alias no-inner-declarations
 
 import { primordials } from "ext:core/mod.js";
 const {
@@ -56,7 +56,7 @@ import {
   OutgoingMessage,
   parseUniqueHeadersOption,
 } from "node:_http_outgoing";
-import { Agent, globalAgent } from "node:_http_agent";
+import { globalAgent } from "node:_http_agent";
 import { Buffer } from "node:buffer";
 import { urlToHttpOptions } from "ext:deno_node/internal/url.ts";
 import { kOutHeaders } from "ext:deno_node/internal/http.ts";

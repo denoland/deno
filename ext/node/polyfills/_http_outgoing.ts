@@ -45,7 +45,6 @@ import {
 } from "ext:deno_node/internal/errors.ts";
 import { validateString } from "ext:deno_node/internal/validators.mjs";
 import { isUint8Array } from "ext:deno_node/internal/util/types.ts";
-// import { kStreamBaseField } from "ext:deno_node/internal_binding/stream_wrap.ts";
 
 import { debuglog } from "ext:deno_node/internal/util/debuglog.ts";
 let debug = debuglog("http", (fn) => {
@@ -465,6 +464,7 @@ Object.defineProperties(
       } else if (!this._headerSent || this.writableLength || chunk) {
         this._send("", "latin1", onFinish);
       } else {
+        // deno-lint-ignore no-explicit-any
         (globalThis as any).process?.nextTick?.(onFinish) ??
           setTimeout(onFinish, 0);
       }
@@ -639,15 +639,6 @@ Object.defineProperties(
       return this.outputData.length < (this.writableHighWaterMark || 16384);
     },
 
-    // deno-lint-ignore no-explicit-any
-    _flushOutput(conn: any) {
-      // Flush all buffered output data to the socket
-      while (this.outputData.length > 0) {
-        const { data, encoding, callback } = this.outputData.shift();
-        conn.write(data, encoding, callback);
-      }
-    },
-
     _renderHeaders() {
       if (this._header) {
         throw new ERR_HTTP_HEADERS_SENT("render");
@@ -795,7 +786,9 @@ Object.defineProperties(
       // Ignore lint to keep the code as similar to Nodejs as possible
       // deno-lint-ignore no-this-alias
       const self = this;
+      const originalField = field;
       if (field.length < 4 || field.length > 17) {
+        state.header += originalField + ": " + value + "\r\n";
         return;
       }
       field = field.toLowerCase();
@@ -830,6 +823,8 @@ Object.defineProperties(
           self._defaultKeepAlive = false;
           break;
       }
+
+      state.header += originalField + ": " + value + "\r\n";
     },
 
     // deno-lint-ignore no-explicit-any

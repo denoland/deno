@@ -2129,8 +2129,8 @@ Deno.test("[node/http] rawHeaders are in flattened format", async () => {
   await new Promise((resolve) => server.close(resolve));
 });
 
-// TODO(bartlomieju): re-enable once NativePipe registers a Deno resource for
-// HTTP use cases (op_node_http_request_with_conn requires a rid).
+// TODO(@bartlomieju): re-enable once server-side HTTP also uses llhttp
+// (currently the Deno.serve-based server path still needs RID access)
 Deno.test("[node/http] client http over unix socket works", {
   ignore: true,
 }, async () => {
