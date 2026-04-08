@@ -11,6 +11,7 @@ import {
   HTTPParser,
   methods,
 } from "ext:deno_node/internal_binding/http_parser.ts";
+import { IncomingMessage, readStart, readStop } from "node:_http_incoming";
 
 export const CRLF = "\r\n";
 export const kIncomingMessage = Symbol("IncomingMessage");
@@ -48,7 +49,7 @@ export {
   checkIsHttpToken as _checkIsHttpToken,
 };
 
-export { HTTPParser };
+export { HTTPParser, IncomingMessage, readStart, readStop };
 
 export default {
   _checkInvalidHeaderChar: checkInvalidHeaderChar,
@@ -56,7 +57,10 @@ export default {
   chunkExpression,
   CRLF,
   continueExpression,
+  HTTPParser,
+  IncomingMessage,
   kIncomingMessage,
   methods,
-  HTTPParser,
+  readStart,
+  readStop,
 };
