@@ -102,6 +102,22 @@ pub struct uv_loop_t {
   stop_flag: Cell<bool>,
 }
 
+impl Drop for uv_loop_t {
+  fn drop(&mut self) {
+    if !self.internal.is_null() {
+      // SAFETY: `internal` was allocated by `uv_loop_init` as
+      // `Box::into_raw(Box::new(UvLoopInner::new()))`. We must free it
+      // unconditionally during drop — unlike `uv_loop_close` which
+      // returns UV_EBUSY when handles are still alive, there is no way
+      // to signal failure from Drop.
+      unsafe {
+        drop(Box::from_raw(self.internal as *mut UvLoopInner));
+      }
+      self.internal = std::ptr::null_mut();
+    }
+  }
+}
+
 #[repr(C)]
 pub struct uv_handle_t {
   pub r#type: uv_handle_type,
