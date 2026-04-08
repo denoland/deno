@@ -1686,13 +1686,13 @@ fn lsp_hover_asset() {
       // lib asset.
       "range": if false {
         json!({
-          "start": { "line": 111, "character": 12, },
-          "end": { "line": 111, "character": 16, }
+          "start": { "line": 109, "character": 12, },
+          "end": { "line": 109, "character": 16, }
         })
       } else {
         json!({
-          "start": { "line": 111, "character": 10, },
-          "end": { "line": 111, "character": 14, }
+          "start": { "line": 109, "character": 10, },
+          "end": { "line": 109, "character": 14, }
         })
       },
     }),
@@ -1850,8 +1850,8 @@ fn lsp_inlay_hints() {
             "location": {
               "uri": "deno:/asset/lib.es5.d.ts",
               "range": {
-                "start": { "line": 41, "character": 26 },
-                "end": { "line": 41, "character": 32 },
+                "start": { "line": 40, "character": 26 },
+                "end": { "line": 40, "character": 32 },
               },
             },
           },
@@ -1867,8 +1867,8 @@ fn lsp_inlay_hints() {
             "location": {
               "uri": "deno:/asset/lib.es5.d.ts",
               "range": {
-                "start": { "line": 41, "character": 42 },
-                "end": { "line": 41, "character": 47 },
+                "start": { "line": 40, "character": 42 },
+                "end": { "line": 40, "character": 47 },
               },
             },
           },
@@ -1894,8 +1894,8 @@ fn lsp_inlay_hints() {
             "location": {
               "uri": "deno:/asset/lib.es5.d.ts",
               "range": {
-                "start": { "line": 1469, "character": 11 },
-                "end": { "line": 1469, "character": 21 },
+                "start": { "line": 1468, "character": 11 },
+                "end": { "line": 1468, "character": 21 },
               },
             },
           },

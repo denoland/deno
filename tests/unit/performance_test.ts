@@ -252,7 +252,7 @@ Deno.test(function performanceMeasureIllegalConstructor() {
 Deno.test(function performanceIsEventTarget() {
   assert(performance instanceof EventTarget);
 
-  return new Promise((resolve) => {
+  return new Promise<void>((resolve) => {
     const handler = () => {
       resolve();
     };
