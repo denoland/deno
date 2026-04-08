@@ -321,6 +321,12 @@ Cipheriv.prototype.update = function (
   if (typeof data === "string") {
     buf = Buffer.from(data, inputEncoding);
   }
+
+  // Match Node.js/OpenSSL behavior: reject inputs >= INT_MAX bytes
+  if (buf.length >= 2 ** 31 - 1) {
+    throw new Error("Trying to add data in unsupported state");
+  }
+
   _lazyInitCipherDecoder(this, outputEncoding);
 
   let output: Buffer;
@@ -573,6 +579,12 @@ Decipheriv.prototype.update = function (
   if (typeof data === "string") {
     buf = Buffer.from(data, inputEncoding);
   }
+
+  // Match Node.js/OpenSSL behavior: reject inputs >= INT_MAX bytes
+  if (buf.length >= 2 ** 31 - 1) {
+    throw new Error("Trying to add data in unsupported state");
+  }
+
   _lazyInitDecipherDecoder(this, outputEncoding);
 
   let output;
