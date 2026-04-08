@@ -10,7 +10,8 @@
   non_camel_case_types,
   non_upper_case_globals,
   dead_code,
-  clippy::upper_case_acronyms
+  clippy::upper_case_acronyms,
+  reason = "FFI bindings match C naming conventions"
 )]
 pub mod sys;
 

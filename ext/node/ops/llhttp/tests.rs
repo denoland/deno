@@ -1,4 +1,8 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
+#![allow(
+  clippy::undocumented_unsafe_blocks,
+  reason = "test helpers using uniform FFI callback pattern"
+)]
 
 use std::ffi::CStr;
 use std::os::raw::c_char;

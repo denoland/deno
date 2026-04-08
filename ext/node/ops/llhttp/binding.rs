@@ -5,9 +5,16 @@
 // llhttp_t.data points to a stack-allocated ExecuteContext which holds
 // raw pointers to the Inner state and v8 PinScope, both of which are
 // valid for the duration of the execute() call.
-#![allow(clippy::undocumented_unsafe_blocks)]
-
-//! CppGC-based HTTPParser binding for `internalBinding('http_parser')`.
+// CppGC-based HTTPParser binding for `internalBinding('http_parser')`.
+//
+// FFI callbacks use a uniform unsafe pattern: during execute(),
+// llhttp_t.data points to a stack-allocated ExecuteContext holding
+// raw pointers to Inner state and PinScope, both valid for the
+// duration of the execute() call.
+#![allow(
+  clippy::undocumented_unsafe_blocks,
+  reason = "uniform FFI callback pattern, see module comment above"
+)]
 //!
 //! This exposes llhttp to JavaScript matching Node.js's native
 //! `HTTPParser` class. JS callbacks are stored as indexed properties
@@ -113,7 +120,7 @@ impl HTTPParser {
   /// Get mutable access to inner state.
   /// SAFETY: only one caller at a time (single-threaded JS).
   #[inline]
-  #[allow(clippy::mut_from_ref)]
+  #[allow(clippy::mut_from_ref, reason = "interior mutability via UnsafeCell, single-threaded JS access")]
   fn inner(&self) -> &mut Inner {
     unsafe { &mut *self.inner.get() }
   }
