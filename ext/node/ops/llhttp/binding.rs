@@ -120,7 +120,10 @@ impl HTTPParser {
   /// Get mutable access to inner state.
   /// SAFETY: only one caller at a time (single-threaded JS).
   #[inline]
-  #[allow(clippy::mut_from_ref, reason = "interior mutability via UnsafeCell, single-threaded JS access")]
+  #[allow(
+    clippy::mut_from_ref,
+    reason = "interior mutability via UnsafeCell, single-threaded JS access"
+  )]
   fn inner(&self) -> &mut Inner {
     unsafe { &mut *self.inner.get() }
   }
