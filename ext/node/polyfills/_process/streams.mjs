@@ -70,6 +70,11 @@ function createWritableStdioStream(fd) {
         writable: true,
       });
       stream._type = "pipe";
+      // Stdio sockets must not prevent the process from exiting when idle.
+      // Node.js unref's stdio handles so the event loop can drain naturally.
+      if (stream._handle?.unref) {
+        stream._handle.unref();
+      }
       break;
     }
     default:
