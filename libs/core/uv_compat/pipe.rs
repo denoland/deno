@@ -1074,7 +1074,7 @@ pub(crate) unsafe fn poll_pipe_handle(
       || (*pipe_ptr).internal_reading
       || (*pipe_ptr).internal_connect.is_some()
       || (*pipe_ptr).internal_win_server_connecting
-      || ((*pipe_ptr).internal_listener.is_some()
+      || ((*pipe_ptr).internal_win_server.is_some()
         && (*pipe_ptr).internal_connection_cb.is_some())
       || (*pipe_ptr).internal_shutdown.is_some();
     if !has_pending_work {
