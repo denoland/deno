@@ -1275,6 +1275,10 @@ pub static IGNORED_DIAGNOSTIC_CODES: LazyLock<HashSet<u64>> =
       // Microsoft/TypeScript#26825 but that doesn't seem to be working here,
       // so we will ignore complaints about this compiler setting.
       5070,
+      // TS6200: Definitions of the following identifiers conflict with those in another file.
+      // Deno provides its own web API types (WebAssembly, BufferSource, etc.) that intentionally
+      // overlap with lib.dom.d.ts. This is expected when both are loaded together.
+      6200,
       // TS7016: Could not find a declaration file for module '...'. '...'
       // implicitly has an 'any' type.  This is due to `allowJs` being off by
       // default but importing of a JavaScript module.
