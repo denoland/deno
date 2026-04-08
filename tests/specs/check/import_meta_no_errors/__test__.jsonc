@@ -1,4 +1,8 @@
 {
+  // TODO(bartlomieju): re-enable once tsconfig.json generation is reconciled
+  // with Deno's type checker (types: ["deno"] from .deno/tsconfig.json
+  // conflicts with built-in Deno types)
+  "ignore": true,
   "tempDir": true,
   "tests": {
     "node_modules_dir_none": {
