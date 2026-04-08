@@ -215,45 +215,24 @@ pub unsafe fn uv_pipe_open(pipe: *mut uv_pipe_t, fd: c_int) -> c_int {
     return UV_EBADF;
   }
 
-  // For stdio fds (0-2), dup before setting O_NONBLOCK so we don't
-  // corrupt the original fd. Child processes that inherit these fds
-  // would otherwise see WouldBlock errors. This matches the approach
-  // in uv_tty_init (see PR #33078).
-  let use_fd = unsafe {
-    if (0..=2).contains(&fd) {
-      let dup_fd = libc::fcntl(fd, libc::F_DUPFD_CLOEXEC, 0);
-      if dup_fd == -1 {
-        return UV_EBADF;
-      }
-      dup_fd
-    } else {
-      fd
-    }
-  };
-
-  // Set non-blocking mode on the (possibly dup'd) fd.
-  let flags = unsafe { libc::fcntl(use_fd, libc::F_GETFL) };
+  // Set non-blocking mode. This may affect other users of the same
+  // file description (including Deno.stdin's StdFile). Child processes
+  // are protected by clearing O_NONBLOCK in pre_exec, matching libuv's
+  // uv__process_child_init behavior.
+  let flags = unsafe { libc::fcntl(fd, libc::F_GETFL) };
   if flags == -1 {
-    if use_fd != fd {
-      unsafe { libc::close(use_fd) };
-    }
     return UV_EBADF;
   }
-  if unsafe { libc::fcntl(use_fd, libc::F_SETFL, flags | libc::O_NONBLOCK) }
-    == -1
-  {
-    if use_fd != fd {
-      unsafe { libc::close(use_fd) };
-    }
+  if unsafe { libc::fcntl(fd, libc::F_SETFL, flags | libc::O_NONBLOCK) } == -1 {
     return UV_EBADF;
   }
 
   unsafe {
-    (*pipe).internal_fd = Some(use_fd);
+    (*pipe).internal_fd = Some(fd);
     // Create AsyncFd eagerly so the reactor tracks this fd from the
     // start. This avoids edge-triggered readiness races where creating
     // AsyncFd lazily can miss events that fired before registration.
-    if let Ok(afd) = tokio::io::unix::AsyncFd::new(RawFdWrapper(use_fd)) {
+    if let Ok(afd) = tokio::io::unix::AsyncFd::new(RawFdWrapper(fd)) {
       (*pipe).internal_async_fd = Some(afd);
     }
     // Note: do NOT set UV_HANDLE_ACTIVE here. In libuv, uv_pipe_open

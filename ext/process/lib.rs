@@ -659,25 +659,33 @@ fn create_command(
     }
 
     let detached = args.detached;
-    if detached || !fds_to_dup.is_empty() || args.gid.is_some() {
-      command.pre_exec(move || {
-        if detached {
-          libc::setsid();
-        }
-        for &(src, dst) in &fds_to_dup {
-          if src >= 0 && dst >= 0 {
-            if src != dst {
-              libc::dup2(src, dst);
-              libc::close(src);
-            }
-            // Clear CLOEXEC so the fd survives exec.
-            libc::fcntl(dst, libc::F_SETFD, 0);
+    command.pre_exec(move || {
+      if detached {
+        libc::setsid();
+      }
+      for &(src, dst) in &fds_to_dup {
+        if src >= 0 && dst >= 0 {
+          if src != dst {
+            libc::dup2(src, dst);
+            libc::close(src);
           }
+          // Clear CLOEXEC so the fd survives exec.
+          libc::fcntl(dst, libc::F_SETFD, 0);
         }
-        libc::setgroups(0, std::ptr::null());
-        Ok(())
-      });
-    }
+      }
+      // Restore blocking mode on stdio fds before exec, matching
+      // libuv's uv__process_child_init. The parent may have set
+      // O_NONBLOCK for async I/O (via uv_pipe_open / uv_tty_init),
+      // but child processes expect blocking stdio.
+      for fd in 0..=2 {
+        let flags = libc::fcntl(fd, libc::F_GETFL);
+        if flags != -1 && (flags & libc::O_NONBLOCK) != 0 {
+          libc::fcntl(fd, libc::F_SETFL, flags & !libc::O_NONBLOCK);
+        }
+      }
+      libc::setgroups(0, std::ptr::null());
+      Ok(())
+    });
 
     Ok((command, ipc_rid, extra_pipe_fds, fds_to_close))
   }
@@ -1640,6 +1648,16 @@ mod deprecated {
     )]
     unsafe {
       c.pre_exec(|| {
+        // Restore blocking mode on stdio fds before exec, matching
+        // libuv's uv__process_child_init. The parent may have set
+        // O_NONBLOCK for async I/O (via uv_pipe_open / uv_tty_init),
+        // but child processes expect blocking stdio.
+        for fd in 0..=2 {
+          let flags = libc::fcntl(fd, libc::F_GETFL);
+          if flags != -1 && (flags & libc::O_NONBLOCK) != 0 {
+            libc::fcntl(fd, libc::F_SETFL, flags & !libc::O_NONBLOCK);
+          }
+        }
         libc::setgroups(0, std::ptr::null());
         Ok(())
       });

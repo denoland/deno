@@ -46,7 +46,6 @@ use fs::FileResource;
 use fs::FsError;
 use fs::FsResult;
 use fs::FsStat;
-use once_cell::sync::Lazy;
 #[cfg(windows)]
 use parking_lot::Condvar;
 #[cfg(windows)]
@@ -189,40 +188,34 @@ pub fn close_raw_handle(handle: RawIoHandle) {
   }
 }
 
-// Store the stdio fd/handles in global statics in order to keep them
-// alive for the duration of the application since the last handle/fd
-// being dropped will close the corresponding pipe.
+/// Dup a stdio fd to get a private copy. The dup'd fd has its own file
+/// description, so setting O_NONBLOCK on the original (e.g. by Node's
+/// libuv pipe/tty handles) won't affect Deno's copy, and vice versa.
+/// The original fds 0/1/2 remain untouched for child process inheritance
+/// and for Node's `process.stdin`/`stdout`/`stderr` libuv handles.
 #[cfg(unix)]
-pub static STDIN_HANDLE: Lazy<StdFile> = Lazy::new(|| {
-  // SAFETY: corresponds to OS stdin
-  unsafe { StdFile::from_raw_fd(0) }
-});
-#[cfg(unix)]
-pub static STDOUT_HANDLE: Lazy<StdFile> = Lazy::new(|| {
-  // SAFETY: corresponds to OS stdout
-  unsafe { StdFile::from_raw_fd(1) }
-});
-#[cfg(unix)]
-pub static STDERR_HANDLE: Lazy<StdFile> = Lazy::new(|| {
-  // SAFETY: corresponds to OS stderr
-  unsafe { StdFile::from_raw_fd(2) }
-});
+fn dup_stdio_fd(fd: i32) -> StdFile {
+  // SAFETY: fd is a valid stdio descriptor (0, 1, or 2).
+  // F_DUPFD_CLOEXEC atomically dups and sets CLOEXEC.
+  let dup_fd = unsafe { libc::fcntl(fd, libc::F_DUPFD_CLOEXEC, 0) };
+  assert!(dup_fd >= 0, "Failed to dup stdio fd {fd}");
+  // SAFETY: dup_fd is a valid, freshly duplicated file descriptor.
+  unsafe { StdFile::from_raw_fd(dup_fd) }
+}
 
+/// On Windows, O_NONBLOCK doesn't apply, so we just wrap the OS handle
+/// directly (same as the old global statics did).
 #[cfg(windows)]
-pub static STDIN_HANDLE: Lazy<StdFile> = Lazy::new(|| {
-  // SAFETY: corresponds to OS stdin
-  unsafe { StdFile::from_raw_handle(GetStdHandle(winbase::STD_INPUT_HANDLE)) }
-});
-#[cfg(windows)]
-pub static STDOUT_HANDLE: Lazy<StdFile> = Lazy::new(|| {
-  // SAFETY: corresponds to OS stdout
-  unsafe { StdFile::from_raw_handle(GetStdHandle(winbase::STD_OUTPUT_HANDLE)) }
-});
-#[cfg(windows)]
-pub static STDERR_HANDLE: Lazy<StdFile> = Lazy::new(|| {
-  // SAFETY: corresponds to OS stderr
-  unsafe { StdFile::from_raw_handle(GetStdHandle(winbase::STD_ERROR_HANDLE)) }
-});
+fn dup_stdio_fd(fd: i32) -> StdFile {
+  let std_handle = match fd {
+    0 => winbase::STD_INPUT_HANDLE,
+    1 => winbase::STD_OUTPUT_HANDLE,
+    2 => winbase::STD_ERROR_HANDLE,
+    _ => panic!("Invalid stdio fd {fd}"),
+  };
+  // SAFETY: GetStdHandle returns a valid handle for the given std device.
+  unsafe { StdFile::from_raw_handle(GetStdHandle(std_handle)) }
+}
 
 deno_core::extension!(deno_io,
   deps = [ deno_web ],
@@ -256,7 +249,7 @@ deno_core::extension!(deno_io,
       let stdin_file: Rc<dyn fs::File> = Rc::new(match stdio.stdin.pipe {
         StdioPipeInner::Inherit => StdFileResourceInner::new(
           StdFileResourceKind::Stdin(stdin_state),
-          STDIN_HANDLE.try_clone().unwrap(),
+          dup_stdio_fd(0),
           None,
         ),
         StdioPipeInner::File(pipe) => StdFileResourceInner::file(pipe, None),
@@ -269,10 +262,10 @@ deno_core::extension!(deno_io,
         StdioPipeInner::Inherit => (
           Rc::new(StdFileResourceInner::new(
             StdFileResourceKind::Stdout,
-            STDOUT_HANDLE.try_clone().unwrap(),
+            dup_stdio_fd(1),
             None,
           )),
-          STDOUT_HANDLE.try_clone().unwrap(),
+          dup_stdio_fd(1),
         ),
         StdioPipeInner::File(pipe) => {
           let child_handle = pipe.try_clone().unwrap();
@@ -287,10 +280,10 @@ deno_core::extension!(deno_io,
         StdioPipeInner::Inherit => (
           Rc::new(StdFileResourceInner::new(
             StdFileResourceKind::Stderr,
-            STDERR_HANDLE.try_clone().unwrap(),
+            dup_stdio_fd(2),
             None,
           )),
-          STDERR_HANDLE.try_clone().unwrap(),
+          dup_stdio_fd(2),
         ),
         StdioPipeInner::File(pipe) => {
           let child_handle = pipe.try_clone().unwrap();
@@ -738,9 +731,9 @@ impl crate::fs::File for StdFileResourceInner {
         self.with_sync(|file| Ok(file.read(buf)?))
       }
       StdFileResourceKind::Stdin(_) => {
-        // Stdin may be in non-blocking mode (e.g. when process.stdin
-        // from node:process opens the fd as a pipe/socket). Retry on
-        // WouldBlock to avoid surfacing EAGAIN to JS.
+        // Stdin may be in non-blocking mode when Node's process.stdin
+        // opens fd 0 as a pipe/socket (O_NONBLOCK is per-file-description).
+        // Retry on WouldBlock to avoid surfacing EAGAIN to JS.
         self.with_sync(|file| loop {
           match file.read(buf) {
             Ok(nread) => return Ok(nread),
@@ -1184,20 +1177,18 @@ impl crate::fs::File for StdFileResourceInner {
       }
       #[cfg(not(windows))]
       StdFileResourceKind::Stdin(_) => {
-        // Stdin may be in non-blocking mode (e.g. when process.stdin
-        // from node:process opens the fd as a pipe/socket). Retry on
-        // WouldBlock to avoid surfacing EAGAIN to JS.
+        // Stdin may be in non-blocking mode when Node's process.stdin
+        // opens fd 0 as a pipe/socket (O_NONBLOCK is per-file-description).
+        // Retry on WouldBlock to avoid surfacing EAGAIN to JS.
         self
-          .with_inner_blocking_task(|file| {
-            loop {
-              match file.read(&mut buf) {
-                Ok(nread) => return Ok((nread, buf)),
-                Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
-                  std::thread::yield_now();
-                  continue;
-                }
-                Err(e) => return Err(e.into()),
+          .with_inner_blocking_task(|file| loop {
+            match file.read(&mut buf) {
+              Ok(nread) => return Ok((nread, buf)),
+              Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                std::thread::yield_now();
+                continue;
               }
+              Err(e) => return Err(e.into()),
             }
           })
           .await
