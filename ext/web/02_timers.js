@@ -114,10 +114,7 @@ function clearInterval(id = 0) {
  * Mark a timer as not blocking event loop exit.
  */
 function unrefTimer(id) {
-  const { getActiveTimer, kTimerId } = loadNodeTimers();
-  if (typeof id !== "number") {
-    id = id[kTimerId];
-  }
+  const { getActiveTimer } = loadNodeTimers();
   const timer = getActiveTimer(id);
   if (timer) {
     timer.unref();
@@ -128,10 +125,7 @@ function unrefTimer(id) {
  * Mark a timer as blocking event loop exit.
  */
 function refTimer(id) {
-  const { getActiveTimer, kTimerId } = loadNodeTimers();
-  if (typeof id !== "number") {
-    id = id[kTimerId];
-  }
+  const { getActiveTimer } = loadNodeTimers();
   const timer = getActiveTimer(id);
   if (timer) {
     timer.ref();

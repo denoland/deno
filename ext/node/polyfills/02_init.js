@@ -153,9 +153,13 @@ internals.node = {
 const nativeModuleExports = requireImpl.nativeModuleExports;
 nodeGlobals.Buffer = nativeModuleExports["buffer"].Buffer;
 nodeGlobals.clearImmediate = nativeModuleExports["timers"].clearImmediate;
+nodeGlobals.clearInterval = nativeModuleExports["timers"].clearInterval;
+nodeGlobals.clearTimeout = nativeModuleExports["timers"].clearTimeout;
 nodeGlobals.global = globalThis;
 nodeGlobals.process = nativeModuleExports["process"];
 nodeGlobals.setImmediate = nativeModuleExports["timers"].setImmediate;
+nodeGlobals.setInterval = nativeModuleExports["timers"].setInterval;
+nodeGlobals.setTimeout = nativeModuleExports["timers"].setTimeout;
 
 nativeModuleExports["internal/console/constructor"].bindStreamsLazy(
   nativeModuleExports["console"],
