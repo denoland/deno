@@ -21,18 +21,19 @@ use super::get_types_declaration_file_text;
 /// Result of generating a tsconfig for stock TypeScript.
 #[derive(Debug)]
 pub struct GeneratedTsConfig {
-  /// Path to the generated tsconfig.deno.json.
+  /// Path to the generated `.deno/tsconfig.json`.
   pub tsconfig_path: PathBuf,
 }
 
-/// Generate `tsconfig.deno.json` and Deno type definitions for use with
+/// Generate `.deno/tsconfig.json` and Deno type definitions for use with
 /// stock TypeScript tooling.
 ///
 /// Writes Deno types to `node_modules/@types/deno/index.d.ts` so that
 /// tsc picks them up automatically via standard `@types` resolution.
 ///
-/// Generates `tsconfig.deno.json` at the project root with compiler
-/// options, paths mappings for npm:/jsr: specifiers, and import aliases.
+/// Generates `.deno/tsconfig.json` with compiler options and paths mappings
+/// for npm:/jsr: specifiers. Also ensures a root `tsconfig.json` exists
+/// that extends it.
 pub fn generate_tsconfig(
   project_root: &Path,
   deno_compiler_options: Option<&Value>,
@@ -59,12 +60,60 @@ pub fn generate_tsconfig(
   let tsconfig =
     build_tsconfig(project_root, deno_compiler_options, deno_imports, files);
 
-  let tsconfig_path = project_root.join("tsconfig.deno.json");
+  // Write to .deno/tsconfig.json
+  let deno_dir = project_root.join(".deno");
+  std::fs::create_dir_all(&deno_dir)?;
+  let tsconfig_path = deno_dir.join("tsconfig.json");
   let content = serde_json::to_string_pretty(&tsconfig)
     .expect("failed to serialize tsconfig");
   std::fs::write(&tsconfig_path, &content)?;
 
+  // Ensure root tsconfig.json exists and extends .deno/tsconfig.json
+  ensure_root_tsconfig(project_root)?;
+
   Ok(GeneratedTsConfig { tsconfig_path })
+}
+
+/// Ensure a root `tsconfig.json` exists that extends `.deno/tsconfig.json`.
+///
+/// If no `tsconfig.json` exists, creates one with just `{ "extends": "./.deno/tsconfig.json" }`.
+/// If one already exists, adds/updates the `"extends"` field to point to `.deno/tsconfig.json`.
+fn ensure_root_tsconfig(project_root: &Path) -> Result<(), std::io::Error> {
+  let root_tsconfig_path = project_root.join("tsconfig.json");
+
+  if root_tsconfig_path.exists() {
+    // Read existing tsconfig.json and add/update extends
+    let content = std::fs::read_to_string(&root_tsconfig_path)?;
+    let mut tsconfig: Value = serde_json::from_str(&content)
+      .unwrap_or_else(|_| json!({}));
+
+    if let Some(obj) = tsconfig.as_object_mut() {
+      let extends_path = "./.deno/tsconfig.json";
+      match obj.get("extends") {
+        Some(Value::String(s)) if s == extends_path => {
+          // Already correct, nothing to do
+          return Ok(());
+        }
+        _ => {
+          obj.insert("extends".to_string(), json!(extends_path));
+        }
+      }
+    }
+
+    let content = serde_json::to_string_pretty(&tsconfig)
+      .expect("failed to serialize tsconfig");
+    std::fs::write(&root_tsconfig_path, &content)?;
+  } else {
+    // Create a minimal tsconfig.json
+    let tsconfig = json!({
+      "extends": "./.deno/tsconfig.json"
+    });
+    let content = serde_json::to_string_pretty(&tsconfig)
+      .expect("failed to serialize tsconfig");
+    std::fs::write(&root_tsconfig_path, &content)?;
+  }
+
+  Ok(())
 }
 
 /// Write the Deno type declarations to a `.d.ts` file.
@@ -93,8 +142,8 @@ fn write_deno_types(path: &Path) -> Result<(), std::io::Error> {
 
 /// Build the tsconfig JSON object.
 ///
-/// The generated tsconfig lives at the project root (tsconfig.deno.json),
-/// so all paths are relative to the project root.
+/// The generated tsconfig lives at `.deno/tsconfig.json`, so all paths
+/// are relative to that directory (e.g. `../node_modules/...`).
 fn build_tsconfig(
   project_root: &Path,
   deno_compiler_options: Option<&Value>,
@@ -109,7 +158,7 @@ fn build_tsconfig(
     merge_deno_options(&mut compiler_options, user_opts);
   }
 
-  // Generate "paths" for npm: and jsr: specifiers and import aliases
+  // Generate "paths" for npm: and jsr: specifiers only
   let mut specifier_paths = generate_npm_paths(project_root, deno_imports);
   let jsr_paths = generate_jsr_paths(project_root, deno_imports);
   specifier_paths.extend(jsr_paths);
@@ -133,8 +182,8 @@ fn build_tsconfig(
     // No specific files — check entire project
     json!({
       "compilerOptions": compiler_options,
-      "include": ["./**/*"],
-      "exclude": ["./**/node_modules"],
+      "include": ["../**/*"],
+      "exclude": ["../**/node_modules"],
     })
   } else {
     // Specific files requested — only check those
@@ -150,89 +199,34 @@ fn build_tsconfig(
 /// Generate tsconfig "paths" entries for npm: specifiers.
 ///
 /// Scans `deno.json` `"imports"` for entries like:
-///   `"express": "npm:express@4"` → `{ "npm:express": ["./node_modules/express"] }`
+///   `"express": "npm:express@4"` -> `{ "npm:express": ["../node_modules/express"] }`
 ///
-/// Also scans `node_modules/` directly for any installed packages and maps
-/// `npm:<pkg>` to the local path.
+/// Only generates `npm:<pkg>` keys -- bare aliases are resolved by
+/// TypeScript via `node_modules` with `moduleResolution: "bundler"`.
 fn generate_npm_paths(
-  project_root: &Path,
+  _project_root: &Path,
   deno_imports: Option<&Value>,
 ) -> Map<String, Value> {
   let mut paths = Map::new();
-  let node_modules = project_root.join("node_modules");
 
-  // 1. From deno.json "imports" — map both the alias and the npm: specifier
   if let Some(imports) = deno_imports.and_then(|v| v.as_object()) {
-    for (alias, target) in imports {
+    for (_alias, target) in imports {
       let target_str = match target.as_str() {
         Some(s) => s,
         None => continue,
       };
 
       if let Some(pkg_name) = parse_npm_specifier(target_str) {
-        // Paths are relative to tsconfig location (.deno/)
-        let nm_path = format!("./node_modules/{pkg_name}");
+        // Paths are relative to .deno/ directory
+        let nm_path = format!("../node_modules/{pkg_name}");
 
-        // Map the npm: specifier itself
-        // e.g. "npm:express" → ["./node_modules/express"]
+        // Map the npm: specifier
+        // e.g. "npm:express" -> ["../node_modules/express"]
         let npm_key = format!("npm:{pkg_name}");
         paths
-          .entry(npm_key.clone())
+          .entry(npm_key)
           .or_insert_with(|| json!([&nm_path]));
-        paths
-          .entry(format!("{npm_key}/*"))
-          .or_insert_with(|| json!([format!("{nm_path}/*")]));
-
-        // Also map the bare alias from deno.json imports
-        // e.g. "chalk" → ["./node_modules/chalk"] (for `import x from "chalk"`)
-        paths
-          .entry(alias.clone())
-          .or_insert_with(|| json!([&nm_path]));
-        paths
-          .entry(format!("{alias}/*"))
-          .or_insert_with(|| json!([format!("{nm_path}/*")]));
       }
-    }
-  }
-
-  // 2. Scan node_modules for any @scope/pkg or pkg directories and add
-  //    npm:<pkg> mappings for them (catches packages not in deno.json imports)
-  if node_modules.is_dir()
-    && let Ok(entries) = std::fs::read_dir(&node_modules)
-  {
-    for entry in entries.flatten() {
-      let name = entry.file_name();
-      let name_str = name.to_string_lossy();
-
-      if name_str.starts_with('.') || name_str.starts_with('@') {
-        // Handle scoped packages
-        if name_str.starts_with('@')
-          && let Ok(scope_entries) = std::fs::read_dir(entry.path())
-        {
-          for scope_entry in scope_entries.flatten() {
-            let pkg = scope_entry.file_name();
-            let scoped_name = format!("{}/{}", name_str, pkg.to_string_lossy());
-            let nm_path = format!("./node_modules/{scoped_name}");
-            let npm_key = format!("npm:{scoped_name}");
-            paths
-              .entry(npm_key.clone())
-              .or_insert_with(|| json!([&nm_path]));
-            paths
-              .entry(format!("{npm_key}/*"))
-              .or_insert_with(|| json!([format!("{nm_path}/*")]));
-          }
-        }
-        continue;
-      }
-
-      let nm_path = format!("./node_modules/{name_str}");
-      let npm_key = format!("npm:{name_str}");
-      paths
-        .entry(npm_key.clone())
-        .or_insert_with(|| json!([&nm_path]));
-      paths
-        .entry(format!("{npm_key}/*"))
-        .or_insert_with(|| json!([format!("{nm_path}/*")]));
     }
   }
 
@@ -267,16 +261,16 @@ pub fn parse_npm_specifier(specifier: &str) -> Option<String> {
 ///
 /// JSR packages are available via npm compatibility at `npm.jsr.io` and install
 /// to `node_modules/@jsr/<scope>__<name>`. Maps `jsr:@scope/name` to that path.
+///
+/// Only generates `jsr:<scope>/<name>` keys.
 fn generate_jsr_paths(
   project_root: &Path,
   deno_imports: Option<&Value>,
 ) -> Map<String, Value> {
   let mut paths = Map::new();
-  let node_modules = project_root.join("node_modules");
 
-  // 1. From deno.json "imports" — map jsr: specifiers and bare aliases
   if let Some(imports) = deno_imports.and_then(|v| v.as_object()) {
-    for (alias, target) in imports {
+    for (_alias, target) in imports {
       let target_str = match target.as_str() {
         Some(s) => s,
         None => continue,
@@ -286,7 +280,7 @@ fn generate_jsr_paths(
         // JSR npm compat uses @jsr/<scope>__<name>
         let jsr_npm_name =
           format!("{}__{}", scope.trim_start_matches('@'), name);
-        let nm_path = format!("./node_modules/@jsr/{jsr_npm_name}");
+        let nm_path = format!("../node_modules/@jsr/{jsr_npm_name}");
 
         // Check if the package actually exists in node_modules
         let abs_path =
@@ -302,49 +296,8 @@ fn generate_jsr_paths(
         // Map the jsr: specifier
         let jsr_key = format!("jsr:{scope}/{name}");
         paths
-          .entry(jsr_key.clone())
+          .entry(jsr_key)
           .or_insert_with(|| json!([&types_entry]));
-        paths
-          .entry(format!("{jsr_key}/*"))
-          .or_insert_with(|| json!([format!("{nm_path}/*")]));
-
-        // Also map the bare alias from deno.json imports
-        // e.g. "@std/assert" → types entry (for `import x from "@std/assert"`)
-        paths
-          .entry(alias.clone())
-          .or_insert_with(|| json!([&types_entry]));
-        paths
-          .entry(format!("{alias}/*"))
-          .or_insert_with(|| json!([format!("{nm_path}/*")]));
-      }
-    }
-  }
-
-  // 2. Scan node_modules/@jsr/ for any installed jsr packages
-  let jsr_dir = node_modules.join("@jsr");
-  if jsr_dir.is_dir()
-    && let Ok(entries) = std::fs::read_dir(&jsr_dir)
-  {
-    for entry in entries.flatten() {
-      let name = entry.file_name();
-      let name_str = name.to_string_lossy();
-      if name_str.starts_with('.') {
-        continue;
-      }
-
-      // Parse @jsr/scope__name back to jsr:@scope/name
-      if let Some((scope, pkg)) = name_str.split_once("__") {
-        let nm_path = format!("./node_modules/@jsr/{name_str}");
-        let abs_pkg_path = node_modules.join("@jsr").join(name_str.as_ref());
-        let types_entry = resolve_jsr_types_entry(&abs_pkg_path)
-          .unwrap_or_else(|| nm_path.clone());
-        let jsr_key = format!("jsr:@{scope}/{pkg}");
-        paths
-          .entry(jsr_key.clone())
-          .or_insert_with(|| json!([&types_entry]));
-        paths
-          .entry(format!("{jsr_key}/*"))
-          .or_insert_with(|| json!([format!("{nm_path}/*")]));
       }
     }
   }
@@ -354,8 +307,8 @@ fn generate_jsr_paths(
 
 /// Resolve the types entry point from a JSR package's package.json.
 ///
-/// Reads the `"exports"` field and looks for `"."` → `"types"` condition.
-/// Returns a path relative to `.deno/` (e.g., `./node_modules/@jsr/std__assert/_dist/mod.d.ts`).
+/// Reads the `"exports"` field and looks for `"."` -> `"types"` condition.
+/// Returns a path relative to `.deno/` (e.g., `../node_modules/@jsr/std__assert/_dist/mod.d.ts`).
 fn resolve_jsr_types_entry(pkg_dir: &Path) -> Option<String> {
   let pkg_json_path = pkg_dir.join("package.json");
   let content = std::fs::read_to_string(&pkg_json_path).ok()?;
@@ -383,9 +336,9 @@ fn resolve_jsr_types_entry(pkg_dir: &Path) -> Option<String> {
   let types_path = types_path.strip_prefix("./").unwrap_or(types_path);
 
   if parent_name == "@jsr" {
-    Some(format!("./node_modules/@jsr/{pkg_name}/{types_path}"))
+    Some(format!("../node_modules/@jsr/{pkg_name}/{types_path}"))
   } else {
-    Some(format!("./node_modules/{pkg_name}/{types_path}"))
+    Some(format!("../node_modules/{pkg_name}/{types_path}"))
   }
 }
 

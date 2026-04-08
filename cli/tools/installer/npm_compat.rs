@@ -4,7 +4,7 @@
 //!
 //! After `deno install` sets up node_modules/, this module:
 //! 1. Installs jsr: packages to node_modules/@jsr/ via npm.jsr.io
-//! 2. Generates tsconfig.deno.json with paths mappings for import aliases
+//! 2. Generates .deno/tsconfig.json with paths mappings for npm:/jsr: specifiers
 //!
 //! This enables stock TypeScript tooling (tsc, tsserver, VS Code) to work
 //! with Deno projects that use jsr: and npm: specifiers.
@@ -59,9 +59,7 @@ pub fn setup_npm_compat(
   // Install jsr: packages to node_modules/@jsr/
   let installed = install_jsr_packages(project_root, deno_imports)?;
 
-  // Generate tsconfig.deno.json (but not tsconfig.json — creating one
-  // interferes with Deno's own type checker which picks up the "types":
-  // ["deno"] setting via extends)
+  // Generate .deno/tsconfig.json and ensure root tsconfig.json extends it
   generate_deno_tsconfig(project_root, deno_compiler_options, deno_imports)?;
 
   Ok(installed)

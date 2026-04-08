@@ -1,6 +1,6 @@
-// Verify that deno install generates tsconfig.deno.json correctly
+// Verify that deno install generates .deno/tsconfig.json correctly
 const tsconfigDeno = JSON.parse(
-  Deno.readTextFileSync("tsconfig.deno.json"),
+  Deno.readTextFileSync(".deno/tsconfig.json"),
 );
 const co = tsconfigDeno.compilerOptions;
 
@@ -11,7 +11,12 @@ console.log("types includes deno:", (co.types || []).includes("deno"));
 
 // Check npm: paths mapping
 console.log("has npm:chalk path:", "npm:chalk" in (co.paths || {}));
-console.log("has chalk alias path:", "chalk" in (co.paths || {}));
+
+// Check root tsconfig.json extends .deno/tsconfig.json
+const rootTsconfig = JSON.parse(
+  Deno.readTextFileSync("tsconfig.json"),
+);
+console.log("root extends deno:", rootTsconfig.extends === "./.deno/tsconfig.json");
 
 // Check @types/deno exists
 try {
