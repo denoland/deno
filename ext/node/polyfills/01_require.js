@@ -363,6 +363,7 @@ function tryPackage(requestPath, exts, isMain, originalPath) {
   // via path traversal (e.g. "main": "../../secret.json")
   if (
     !StringPrototypeStartsWith(filename, requestPath + "/") &&
+    !StringPrototypeStartsWith(filename, requestPath + "\\") &&
     filename !== requestPath
   ) {
     const err = new Error(
