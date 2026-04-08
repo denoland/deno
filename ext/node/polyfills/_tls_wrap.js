@@ -30,10 +30,7 @@ import {
   constants as TCPConstants,
   TCP,
 } from "ext:deno_node/internal_binding/tcp_wrap.ts";
-import {
-  kStreamBaseField,
-  kUseNativeWrap,
-} from "ext:deno_node/internal_binding/stream_wrap.ts";
+import { kUseNativeWrap } from "ext:deno_node/internal_binding/stream_wrap.ts";
 import { kMaybeDestroy } from "ext:deno_node/internal/stream_base_commons.ts";
 import {
   constants as PipeConstants,
@@ -378,19 +375,6 @@ TLSSocket.prototype._wrapHandle = function (wrap, handle) {
 
   // Proxy the reading property
   defineHandleReading(this, handle);
-
-  // Proxy kStreamBaseField from the parent TCP handle so that the HTTP
-  // module can get the underlying connection RID for
-  // op_node_http_request_with_conn. The HTTP module reads
-  // handle[kStreamBaseField][internalRidSymbol] to get the TCP RID.
-  Object.defineProperty(res, kStreamBaseField, {
-    __proto__: null,
-    get: () => handle[kStreamBaseField],
-    set: (v) => {
-      handle[kStreamBaseField] = v;
-    },
-    configurable: true,
-  });
 
   if (wrap) {
     wrap.on("close", () => this.destroy());
