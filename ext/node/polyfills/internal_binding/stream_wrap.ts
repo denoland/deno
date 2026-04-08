@@ -53,7 +53,6 @@ import {
   providerType,
 } from "ext:deno_node/internal_binding/async_wrap.ts";
 import { codeMap } from "ext:deno_node/internal_binding/uv.ts";
-import { _readWithCancelHandle } from "ext:deno_io/12_io.js";
 import { NodeTypeError } from "ext:deno_node/internal/errors.ts";
 
 export const kUseNativeWrap = Symbol("useNativeWrap");
@@ -385,17 +384,7 @@ export class LibuvStreamWrap extends HandleWrap {
 
     const ridBefore = this[kStreamBaseField]![internalRidSymbol];
     try {
-      if (this[kStreamBaseField]![_readWithCancelHandle]) {
-        const { cancelHandle, nread: p } = this[kStreamBaseField]!
-          [_readWithCancelHandle](buf);
-        if (cancelHandle) {
-          this.cancelHandle = cancelHandle;
-        }
-
-        nread = await p;
-      } else {
-        nread = await this[kStreamBaseField]!.read(buf);
-      }
+      nread = await this[kStreamBaseField]!.read(buf);
     } catch (e) {
       // Try to read again if the underlying stream resource
       // changed. This can happen during TLS upgrades (eg. STARTTLS)
