@@ -624,6 +624,7 @@ deno_core::extension!(deno_node,
   ],
   lazy_loaded_esm = [
     dir "polyfills",
+    "node:_http_client" = "_http_client.js",
     "deps/minimatch.js",
   ],
   options = {
