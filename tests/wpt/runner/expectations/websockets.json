@@ -485,7 +485,11 @@
       "constructor.any.html?wss": false,
       "constructor.any.worker.html?wpt_flags=h2": false,
       "constructor.any.worker.html?wss": false,
-      "close.any.html?default": false,
+      "close.any.html?default": {
+        "expectedFailures": [
+          "incomplete closing handshake should be considered unclean close"
+        ]
+      },
       "close.any.worker.html?default": {
         "expectedFailures": [
           "incomplete closing handshake should be considered unclean close"
