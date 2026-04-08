@@ -116,7 +116,7 @@ import type { DuplexOptions } from "ext:deno_node/_stream.d.ts";
 import type { BufferEncoding } from "ext:deno_node/_global.d.ts";
 import type { Abortable } from "ext:deno_node/_events.d.ts";
 import { channel } from "node:diagnostics_channel";
-import { primordials } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 
 const {
   ArrayPrototypeIncludes,
@@ -2696,15 +2696,19 @@ Server.prototype._emitCloseIfDrained = function () {
     return;
   }
 
-  // We use setTimeout instead of nextTick here to avoid EADDRINUSE error
-  // when the same port listened immediately after the 'close' event.
+  // We use a deferred timer instead of nextTick here to avoid EADDRINUSE
+  // error when the same port listened immediately after the 'close' event.
   // ref: https://github.com/denoland/deno_std/issues/2788
-  defaultTriggerAsyncIdScope(
-    this[asyncIdSymbol],
-    setTimeout,
-    _emitCloseNT,
+  // Use core.createTimer to avoid ops sanitizer tracking this internal timer.
+  const self = this;
+  core.createTimer(
+    () => {
+      _emitCloseNT(self);
+    },
     0,
-    this,
+    undefined,
+    false,
+    false,
   );
 };
 
