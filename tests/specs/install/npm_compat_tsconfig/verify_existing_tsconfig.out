@@ -1,0 +1,3 @@
+root extends deno: true
+preserves strict: true
+deno tsconfig exists: true

@@ -84,8 +84,8 @@ fn ensure_root_tsconfig(project_root: &Path) -> Result<(), std::io::Error> {
   if root_tsconfig_path.exists() {
     // Read existing tsconfig.json and add/update extends
     let content = std::fs::read_to_string(&root_tsconfig_path)?;
-    let mut tsconfig: Value = serde_json::from_str(&content)
-      .unwrap_or_else(|_| json!({}));
+    let mut tsconfig: Value =
+      serde_json::from_str(&content).unwrap_or_else(|_| json!({}));
 
     if let Some(obj) = tsconfig.as_object_mut() {
       let extends_path = "./.deno/tsconfig.json";
@@ -223,9 +223,7 @@ fn generate_npm_paths(
         // Map the npm: specifier
         // e.g. "npm:express" -> ["../node_modules/express"]
         let npm_key = format!("npm:{pkg_name}");
-        paths
-          .entry(npm_key)
-          .or_insert_with(|| json!([&nm_path]));
+        paths.entry(npm_key).or_insert_with(|| json!([&nm_path]));
       }
     }
   }
@@ -520,5 +518,280 @@ mod tests {
     assert!(lib.contains(&json!("esnext")));
     assert!(lib.contains(&json!("dom")));
     assert!(!lib.iter().any(|v| v.as_str() == Some("deno.window")));
+  }
+
+  #[test]
+  fn test_merge_deno_options_ignores_unknown() {
+    let mut base = base_compiler_options();
+    let user = json!({
+      "strict": false,
+      "unknownOption": true,
+      "target": "es2020",
+    });
+    merge_deno_options(&mut base, &user);
+    assert_eq!(base.get("strict").unwrap(), &json!(false));
+    // unknownOption and target should not pass through
+    assert!(base.get("unknownOption").is_none());
+    // target stays at the base value
+    assert_eq!(base.get("target").unwrap(), &json!("esnext"));
+  }
+
+  #[test]
+  fn test_parse_npm_specifier_unscoped() {
+    assert_eq!(
+      parse_npm_specifier("npm:chalk@5"),
+      Some("chalk".to_string())
+    );
+    assert_eq!(
+      parse_npm_specifier("npm:express"),
+      Some("express".to_string())
+    );
+    assert_eq!(
+      parse_npm_specifier("npm:foo@1.2.3"),
+      Some("foo".to_string())
+    );
+  }
+
+  #[test]
+  fn test_parse_npm_specifier_scoped() {
+    assert_eq!(
+      parse_npm_specifier("npm:@types/node@20"),
+      Some("@types/node".to_string())
+    );
+    assert_eq!(
+      parse_npm_specifier("npm:@scope/pkg@1.2.3"),
+      Some("@scope/pkg".to_string())
+    );
+    assert_eq!(
+      parse_npm_specifier("npm:@scope/pkg"),
+      Some("@scope/pkg".to_string())
+    );
+  }
+
+  #[test]
+  fn test_parse_npm_specifier_not_npm() {
+    assert_eq!(parse_npm_specifier("jsr:@std/assert@1"), None);
+    assert_eq!(parse_npm_specifier("chalk@5"), None);
+    assert_eq!(parse_npm_specifier("https://example.com"), None);
+  }
+
+  #[test]
+  fn test_parse_jsr_specifier() {
+    assert_eq!(
+      parse_jsr_specifier("jsr:@std/assert@1"),
+      Some((
+        "@std".to_string(),
+        "assert".to_string(),
+        Some("1".to_string())
+      ))
+    );
+    assert_eq!(
+      parse_jsr_specifier("jsr:@std/path"),
+      Some(("@std".to_string(), "path".to_string(), None))
+    );
+    assert_eq!(
+      parse_jsr_specifier("jsr:@scope/name@1.2.3"),
+      Some((
+        "@scope".to_string(),
+        "name".to_string(),
+        Some("1.2.3".to_string())
+      ))
+    );
+  }
+
+  #[test]
+  fn test_parse_jsr_specifier_not_jsr() {
+    assert_eq!(parse_jsr_specifier("npm:chalk@5"), None);
+    // jsr requires scoped packages
+    assert_eq!(parse_jsr_specifier("jsr:assert@1"), None);
+  }
+
+  #[test]
+  fn test_generate_npm_paths_only_npm_keys() {
+    let imports = json!({
+      "chalk": "npm:chalk@5",
+      "express": "npm:express@4",
+      "@mylib/foo": "npm:@mylib/foo@1",
+    });
+    let paths = generate_npm_paths(Path::new("/tmp/project"), Some(&imports));
+
+    // Should have npm: prefixed keys only
+    assert!(paths.contains_key("npm:chalk"));
+    assert!(paths.contains_key("npm:express"));
+    assert!(paths.contains_key("npm:@mylib/foo"));
+
+    // Should NOT have bare alias keys
+    assert!(!paths.contains_key("chalk"));
+    assert!(!paths.contains_key("express"));
+    assert!(!paths.contains_key("@mylib/foo"));
+
+    // Should NOT have /* glob keys
+    assert!(!paths.contains_key("npm:chalk/*"));
+    assert!(!paths.contains_key("chalk/*"));
+
+    // Paths should be relative to .deno/
+    assert_eq!(
+      paths.get("npm:chalk").unwrap(),
+      &json!(["../node_modules/chalk"])
+    );
+    assert_eq!(
+      paths.get("npm:@mylib/foo").unwrap(),
+      &json!(["../node_modules/@mylib/foo"])
+    );
+  }
+
+  #[test]
+  fn test_generate_npm_paths_skips_jsr() {
+    let imports = json!({
+      "@std/assert": "jsr:@std/assert@1",
+      "chalk": "npm:chalk@5",
+    });
+    let paths = generate_npm_paths(Path::new("/tmp/project"), Some(&imports));
+
+    assert!(paths.contains_key("npm:chalk"));
+    // jsr specifiers should not appear in npm paths
+    assert!(!paths.contains_key("jsr:@std/assert"));
+    assert!(!paths.contains_key("@std/assert"));
+    assert_eq!(paths.len(), 1);
+  }
+
+  #[test]
+  fn test_generate_npm_paths_empty_imports() {
+    let paths = generate_npm_paths(Path::new("/tmp/project"), None);
+    assert!(paths.is_empty());
+
+    let imports = json!({});
+    let paths = generate_npm_paths(Path::new("/tmp/project"), Some(&imports));
+    assert!(paths.is_empty());
+  }
+
+  #[test]
+  fn test_build_tsconfig_includes_relative_to_deno_dir() {
+    let project_root = Path::new("/tmp/project");
+    let tsconfig = build_tsconfig(project_root, None, None, &[]);
+
+    let include = tsconfig.get("include").unwrap().as_array().unwrap();
+    assert_eq!(include, &vec![json!("../**/*")]);
+
+    let exclude = tsconfig.get("exclude").unwrap().as_array().unwrap();
+    assert_eq!(exclude, &vec![json!("../**/node_modules")]);
+  }
+
+  #[test]
+  fn test_build_tsconfig_with_files() {
+    let project_root = Path::new("/tmp/project");
+    let files = vec!["main.ts".to_string(), "lib.ts".to_string()];
+    let tsconfig = build_tsconfig(project_root, None, None, &files);
+
+    // Should use "files" instead of "include"/"exclude"
+    assert!(tsconfig.get("include").is_none());
+    assert!(tsconfig.get("exclude").is_none());
+    let files_arr = tsconfig.get("files").unwrap().as_array().unwrap();
+    assert_eq!(files_arr, &vec![json!("main.ts"), json!("lib.ts")]);
+  }
+
+  #[test]
+  fn test_build_tsconfig_user_paths_override() {
+    let project_root = Path::new("/tmp/project");
+    let imports = json!({
+      "chalk": "npm:chalk@5",
+    });
+    let compiler_options = json!({
+      "paths": {
+        "npm:chalk": ["./my-custom-chalk"],
+        "~/*": ["./src/*"],
+      },
+    });
+    let tsconfig = build_tsconfig(
+      project_root,
+      Some(&compiler_options),
+      Some(&imports),
+      &[],
+    );
+
+    let paths = tsconfig
+      .get("compilerOptions")
+      .unwrap()
+      .get("paths")
+      .unwrap()
+      .as_object()
+      .unwrap();
+
+    // User's custom path should override generated one
+    assert_eq!(
+      paths.get("npm:chalk").unwrap(),
+      &json!(["./my-custom-chalk"])
+    );
+    // User's custom path alias should be present
+    assert_eq!(paths.get("~/*").unwrap(), &json!(["./src/*"]));
+  }
+
+  #[test]
+  fn test_ensure_root_tsconfig_creates_new() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+
+    ensure_root_tsconfig(root).unwrap();
+
+    let content = std::fs::read_to_string(root.join("tsconfig.json")).unwrap();
+    let tsconfig: Value = serde_json::from_str(&content).unwrap();
+    assert_eq!(
+      tsconfig.get("extends").unwrap(),
+      &json!("./.deno/tsconfig.json")
+    );
+  }
+
+  #[test]
+  fn test_ensure_root_tsconfig_updates_existing() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+
+    // Create an existing tsconfig.json with some settings
+    std::fs::write(
+      root.join("tsconfig.json"),
+      r#"{ "compilerOptions": { "strict": true } }"#,
+    )
+    .unwrap();
+
+    ensure_root_tsconfig(root).unwrap();
+
+    let content = std::fs::read_to_string(root.join("tsconfig.json")).unwrap();
+    let tsconfig: Value = serde_json::from_str(&content).unwrap();
+    // Should add extends
+    assert_eq!(
+      tsconfig.get("extends").unwrap(),
+      &json!("./.deno/tsconfig.json")
+    );
+    // Should preserve existing options
+    assert_eq!(
+      tsconfig
+        .get("compilerOptions")
+        .unwrap()
+        .get("strict")
+        .unwrap(),
+      &json!(true)
+    );
+  }
+
+  #[test]
+  fn test_ensure_root_tsconfig_idempotent() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+
+    // Create tsconfig with correct extends already set
+    std::fs::write(
+      root.join("tsconfig.json"),
+      r#"{ "extends": "./.deno/tsconfig.json", "compilerOptions": {} }"#,
+    )
+    .unwrap();
+
+    ensure_root_tsconfig(root).unwrap();
+
+    let content = std::fs::read_to_string(root.join("tsconfig.json")).unwrap();
+    let tsconfig: Value = serde_json::from_str(&content).unwrap();
+    assert_eq!(
+      tsconfig.get("extends").unwrap(),
+      &json!("./.deno/tsconfig.json")
+    );
   }
 }

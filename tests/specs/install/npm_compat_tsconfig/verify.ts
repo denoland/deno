@@ -16,7 +16,10 @@ console.log("has npm:chalk path:", "npm:chalk" in (co.paths || {}));
 const rootTsconfig = JSON.parse(
   Deno.readTextFileSync("tsconfig.json"),
 );
-console.log("root extends deno:", rootTsconfig.extends === "./.deno/tsconfig.json");
+console.log(
+  "root extends deno:",
+  rootTsconfig.extends === "./.deno/tsconfig.json",
+);
 
 // Check @types/deno exists
 try {
