@@ -9891,14 +9891,16 @@ mod tests {
         .is_ok()
     );
 
-    // Bare domain DOES match wildcard (*.example.com matches example.com
-    // because FQDN is_subdomain_of is inclusive)
+    // Bare domain DOES match wildcard: *.example.com matches example.com
+    // because the fqdn crate's is_subdomain_of is inclusive (a domain is a
+    // subdomain of itself). This is intentional and consistent with the
+    // existing test_check_net_with_values test for *.discord.gg.
     assert!(perms.check_net(&("example.com", None), "api").is_ok());
 
     // Subdomain of denied wildcard should be denied
     assert!(perms.check_net(&("sub.evil.com", None), "api").is_err());
 
-    // Bare domain also matches wildcard deny
+    // Bare domain also matches wildcard deny (same inclusive semantics)
     assert!(perms.check_net(&("evil.com", None), "api").is_err());
 
     // Unrelated domain should prompt (denied since no-prompt by default
