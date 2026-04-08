@@ -101,7 +101,11 @@ import {
 } from "ext:deno_node/internal/streams/utils.js";
 import { TcpConn, UpgradedConn } from "ext:deno_net/01_net.js";
 import { TlsConn } from "ext:deno_net/02_tls.js";
-import { STATUS_CODES } from "node:_http_server";
+import {
+  Server as ServerImpl,
+  ServerResponse,
+  STATUS_CODES,
+} from "node:_http_server";
 import { methods as METHODS } from "node:_http_common";
 import { deprecate } from "node:util";
 
