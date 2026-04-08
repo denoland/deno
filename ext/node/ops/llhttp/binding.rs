@@ -213,23 +213,24 @@ struct ExecuteContext {
   inner: *mut Inner,
   /// Type-erased PinScope pointer. Only valid during execute().
   scope_ptr: *mut (),
-  this: v8::Local<'static, v8::Object>,
+  /// The JS wrapper object with callback properties.
+  callbacks: v8::Local<'static, v8::Object>,
 }
 
 impl ExecuteContext {
-  /// Get scope and this as a tuple to avoid borrow conflicts.
+  /// Get scope and callbacks as a tuple to avoid borrow conflicts.
   ///
   /// # Safety: only valid during execute()
-  unsafe fn scope_and_this(
+  unsafe fn scope_and_callbacks(
     &mut self,
   ) -> (
     &mut v8::PinScope<'static, 'static>,
     v8::Local<'static, v8::Object>,
   ) {
-    let this = self.this;
+    let callbacks = self.callbacks;
     let scope =
       unsafe { &mut *(self.scope_ptr as *mut v8::PinScope<'static, 'static>) };
-    (scope, this)
+    (scope, callbacks)
   }
 }
 
@@ -251,11 +252,11 @@ unsafe extern "C" fn on_message_begin(parser: *mut sys::llhttp_t) -> c_int {
   inner.in_header_value = false;
   inner.header_nread = 0;
 
-  let (scope, this) = unsafe { ctx.scope_and_this() };
-  let cb = this.get_index(scope, K_ON_MESSAGE_BEGIN);
+  let (scope, cb_obj) = unsafe { ctx.scope_and_callbacks() };
+  let cb = cb_obj.get_index(scope, K_ON_MESSAGE_BEGIN);
   if let Some(cb) = cb
     && let Ok(func) = v8::Local::<v8::Function>::try_from(cb)
-    && func.call(scope, this.into(), &[]).is_none()
+    && func.call(scope, cb_obj.into(), &[]).is_none()
   {
     inner.got_exception = true;
     return -1;
@@ -331,7 +332,7 @@ unsafe extern "C" fn on_header_value_complete(
   inner.in_header_value = false;
 
   if inner.header_fields.len() >= MAX_HEADER_PAIRS {
-    let (scope, this) = unsafe { ctx.scope_and_this() };
+    let (scope, cb_obj) = unsafe { ctx.scope_and_callbacks() };
     let headers = Inner::create_headers_array(
       scope,
       &inner.header_fields,
@@ -344,10 +345,10 @@ unsafe extern "C" fn on_header_value_complete(
     )
     .unwrap_or_else(|| v8::String::empty(scope));
 
-    if let Some(cb) = this.get_index(scope, K_ON_HEADERS)
+    if let Some(cb) = cb_obj.get_index(scope, K_ON_HEADERS)
       && let Ok(func) = v8::Local::<v8::Function>::try_from(cb)
     {
-      let _ = func.call(scope, this.into(), &[headers.into(), url.into()]);
+      let _ = func.call(scope, cb_obj.into(), &[headers.into(), url.into()]);
     }
     inner.header_fields.clear();
     inner.header_values.clear();
@@ -359,9 +360,9 @@ unsafe extern "C" fn on_header_value_complete(
 unsafe extern "C" fn on_headers_complete(parser: *mut sys::llhttp_t) -> c_int {
   let ctx = unsafe { get_ctx(parser) };
   let inner = unsafe { &mut *ctx.inner };
-  let (scope, this) = unsafe { ctx.scope_and_this() };
+  let (scope, cb_obj) = unsafe { ctx.scope_and_callbacks() };
 
-  let Some(cb) = this.get_index(scope, K_ON_HEADERS_COMPLETE) else {
+  let Some(cb) = cb_obj.get_index(scope, K_ON_HEADERS_COMPLETE) else {
     return 0;
   };
   let Ok(func) = v8::Local::<v8::Function>::try_from(cb) else {
@@ -413,7 +414,7 @@ unsafe extern "C" fn on_headers_complete(parser: *mut sys::llhttp_t) -> c_int {
     should_keep_alive.into(),
   ];
 
-  let result = func.call(scope, this.into(), &args);
+  let result = func.call(scope, cb_obj.into(), &args);
   inner.header_fields.clear();
   inner.header_values.clear();
   inner.url.clear();
@@ -434,9 +435,9 @@ unsafe extern "C" fn on_body(
   length: usize,
 ) -> c_int {
   let ctx = unsafe { get_ctx(parser) };
-  let (scope, this) = unsafe { ctx.scope_and_this() };
+  let (scope, cb_obj) = unsafe { ctx.scope_and_callbacks() };
 
-  let Some(cb) = this.get_index(scope, K_ON_BODY) else {
+  let Some(cb) = cb_obj.get_index(scope, K_ON_BODY) else {
     return 0;
   };
   let Ok(func) = v8::Local::<v8::Function>::try_from(cb) else {
@@ -451,7 +452,7 @@ unsafe extern "C" fn on_body(
   let ab = v8::ArrayBuffer::with_backing_store(scope, &store);
   let buffer = v8::Uint8Array::new(scope, ab, 0, length).unwrap();
 
-  let result = func.call(scope, this.into(), &[buffer.into()]);
+  let result = func.call(scope, cb_obj.into(), &[buffer.into()]);
   if result.is_none() {
     let inner = unsafe { &mut *ctx.inner };
     inner.got_exception = true;
@@ -469,11 +470,11 @@ unsafe extern "C" fn on_body(
 unsafe extern "C" fn on_message_complete(parser: *mut sys::llhttp_t) -> c_int {
   let ctx = unsafe { get_ctx(parser) };
   let inner = unsafe { &mut *ctx.inner };
-  let (scope, this) = unsafe { ctx.scope_and_this() };
+  let (scope, cb_obj) = unsafe { ctx.scope_and_callbacks() };
 
-  if let Some(cb) = this.get_index(scope, K_ON_MESSAGE_COMPLETE)
+  if let Some(cb) = cb_obj.get_index(scope, K_ON_MESSAGE_COMPLETE)
     && let Ok(func) = v8::Local::<v8::Function>::try_from(cb)
-    && func.call(scope, this.into(), &[]).is_none()
+    && func.call(scope, cb_obj.into(), &[]).is_none()
   {
     inner.got_exception = true;
     return -1;
@@ -509,12 +510,13 @@ impl HTTPParser {
   }
 
   /// Execute the parser on a buffer. Returns bytes parsed or -1 on error.
+  /// `callbacks` is the JS wrapper object with indexed callback properties.
   #[nofast]
   #[reentrant]
   fn execute(
     &self,
     scope: &mut v8::PinScope,
-    this: v8::Local<v8::Object>,
+    callbacks: v8::Local<v8::Object>,
     #[buffer] data: &[u8],
   ) -> i32 {
     let inner = self.inner();
@@ -527,13 +529,13 @@ impl HTTPParser {
     inner.got_exception = false;
 
     let scope_ptr = scope as *mut v8::PinScope as *mut ();
-    let this_static: v8::Local<'static, v8::Object> =
-      unsafe { std::mem::transmute(this) };
+    let callbacks_static: v8::Local<'static, v8::Object> =
+      unsafe { std::mem::transmute(callbacks) };
 
     let mut ctx = ExecuteContext {
       inner: inner as *mut Inner,
       scope_ptr,
-      this: this_static,
+      callbacks: callbacks_static,
     };
 
     inner.parser.data =
