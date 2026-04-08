@@ -734,8 +734,23 @@ impl crate::fs::File for StdFileResourceInner {
 
   fn read_sync(self: Rc<Self>, buf: &mut [u8]) -> FsResult<usize> {
     match self.kind {
-      StdFileResourceKind::File | StdFileResourceKind::Stdin(_) => {
+      StdFileResourceKind::File => {
         self.with_sync(|file| Ok(file.read(buf)?))
+      }
+      StdFileResourceKind::Stdin(_) => {
+        // Stdin may be in non-blocking mode (e.g. when process.stdin
+        // from node:process opens the fd as a pipe/socket). Retry on
+        // WouldBlock to avoid surfacing EAGAIN to JS.
+        self.with_sync(|file| loop {
+          match file.read(buf) {
+            Ok(nread) => return Ok(nread),
+            Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+              std::thread::yield_now();
+              continue;
+            }
+            Err(e) => return Err(e.into()),
+          }
+        })
       }
       StdFileResourceKind::Stdout | StdFileResourceKind::Stderr => {
         Err(FsError::NotSupported)
@@ -1166,6 +1181,26 @@ impl crate::fs::File for StdFileResourceInner {
       #[cfg(windows)]
       StdFileResourceKind::Stdin(state) => {
         self.handle_stdin_read(state.clone(), buf).await
+      }
+      #[cfg(not(windows))]
+      StdFileResourceKind::Stdin(_) => {
+        // Stdin may be in non-blocking mode (e.g. when process.stdin
+        // from node:process opens the fd as a pipe/socket). Retry on
+        // WouldBlock to avoid surfacing EAGAIN to JS.
+        self
+          .with_inner_blocking_task(|file| {
+            loop {
+              match file.read(&mut buf) {
+                Ok(nread) => return Ok((nread, buf)),
+                Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                  std::thread::yield_now();
+                  continue;
+                }
+                Err(e) => return Err(e.into()),
+              }
+            }
+          })
+          .await
       }
       _ => {
         self

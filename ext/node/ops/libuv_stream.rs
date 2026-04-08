@@ -391,12 +391,37 @@ impl TCP {
       if tcp.is_null() {
         return uv_compat::UV_EBADF;
       }
-      // Set non-blocking mode on the socket
+
+      // For stdio fds (0-2), dup before setting non-blocking so we
+      // don't corrupt the original fd for child processes.
+      #[cfg(unix)]
+      let use_fd = if (0..=2).contains(&fd) {
+        let dup_fd = libc::fcntl(fd, libc::F_DUPFD_CLOEXEC, 0);
+        if dup_fd == -1 {
+          return uv_compat::UV_EBADF;
+        }
+        dup_fd
+      } else {
+        fd
+      };
+      #[cfg(windows)]
+      let use_fd = fd;
+
+      // Set non-blocking mode on the (possibly dup'd) fd
       #[cfg(unix)]
       {
-        let flags = libc::fcntl(fd, libc::F_GETFL);
-        if flags != -1 {
-          libc::fcntl(fd, libc::F_SETFL, flags | libc::O_NONBLOCK);
+        let flags = libc::fcntl(use_fd, libc::F_GETFL);
+        if flags == -1 {
+          if use_fd != fd {
+            libc::close(use_fd);
+          }
+          return uv_compat::UV_EBADF;
+        }
+        if libc::fcntl(use_fd, libc::F_SETFL, flags | libc::O_NONBLOCK) == -1 {
+          if use_fd != fd {
+            libc::close(use_fd);
+          }
+          return uv_compat::UV_EBADF;
         }
       }
       #[cfg(windows)]
@@ -404,9 +429,9 @@ impl TCP {
         use windows_sys::Win32::Networking::WinSock::FIONBIO;
         use windows_sys::Win32::Networking::WinSock::ioctlsocket;
         let mut nonblocking: u32 = 1;
-        ioctlsocket(fd as usize, FIONBIO, &mut nonblocking);
+        ioctlsocket(use_fd as usize, FIONBIO, &mut nonblocking);
       }
-      uv_compat::uv_tcp_open(tcp, fd)
+      uv_compat::uv_tcp_open(tcp, use_fd)
     }
   }
 
