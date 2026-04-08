@@ -23,6 +23,7 @@
 // deno-lint-ignore-file no-explicit-any prefer-primordials
 
 import { HTTPParser as NativeHTTPParser } from "ext:core/ops";
+import { Buffer } from "node:buffer";
 
 // Method names indexed by llhttp method enum values.
 // Order must match llhttp_method_t in llhttp.h.
@@ -174,12 +175,29 @@ HTTPParser.prototype.execute = function (
     data = buffer;
   }
 
-  // Pass `this` (the JS wrapper) as the callbacks object. The native
-  // execute() reads indexed properties (kOnHeaders etc.) from it.
-  return this._native.execute(
+  // Wrap the kOnBody callback to convert Uint8Array to Buffer.
+  // Node.js passes Buffer objects to body callbacks.
+  const origOnBody = this[kOnBody];
+  if (origOnBody) {
+    this[kOnBody] = function (buf: Uint8Array) {
+      return origOnBody(
+        Buffer.from(buf.buffer, buf.byteOffset, buf.byteLength),
+      );
+    };
+  }
+
+  // Pass `this` (the JS wrapper) directly so callbacks set during
+  // parsing (e.g. trailer headers set in kOnHeadersComplete) are
+  // visible to subsequent callbacks.
+  const result = this._native.execute(
     this,
     new Uint8Array(data.buffer, data.byteOffset, data.byteLength),
   );
+
+  // Restore original callback
+  this[kOnBody] = origOnBody;
+
+  return result;
 };
 
 HTTPParser.prototype.finish = function (this: any) {

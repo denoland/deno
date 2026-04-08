@@ -383,19 +383,40 @@ unsafe extern "C" fn on_headers_complete(parser: *mut sys::llhttp_t) -> c_int {
   } else {
     v8::undefined(scope).into()
   };
-  let method =
-    v8::Integer::new_from_unsigned(scope, unsafe { (*parser).method } as u32);
-  let url =
+  let is_request = unsafe { (*parser).type_ } == sys::HTTP_REQUEST as u8;
+  let undef = v8::undefined(scope);
+
+  // For requests: method and url are set, statusCode/statusMessage are undefined
+  // For responses: statusCode/statusMessage are set, method/url are undefined
+  let method: v8::Local<v8::Value> = if is_request {
+    v8::Integer::new_from_unsigned(scope, unsafe { (*parser).method } as u32)
+      .into()
+  } else {
+    undef.into()
+  };
+  let url: v8::Local<v8::Value> = if is_request {
     v8::String::new_from_one_byte(scope, &inner.url, v8::NewStringType::Normal)
-      .unwrap_or_else(|| v8::String::empty(scope));
-  let status_code =
-    v8::Integer::new(scope, unsafe { (*parser).status_code } as i32);
-  let status_message = v8::String::new_from_one_byte(
-    scope,
-    &inner.status_message,
-    v8::NewStringType::Normal,
-  )
-  .unwrap_or_else(|| v8::String::empty(scope));
+      .unwrap_or_else(|| v8::String::empty(scope))
+      .into()
+  } else {
+    undef.into()
+  };
+  let status_code: v8::Local<v8::Value> = if !is_request {
+    v8::Integer::new(scope, unsafe { (*parser).status_code } as i32).into()
+  } else {
+    undef.into()
+  };
+  let status_message: v8::Local<v8::Value> = if !is_request {
+    v8::String::new_from_one_byte(
+      scope,
+      &inner.status_message,
+      v8::NewStringType::Normal,
+    )
+    .unwrap_or_else(|| v8::String::empty(scope))
+    .into()
+  } else {
+    undef.into()
+  };
   let upgrade = v8::Boolean::new(scope, unsafe { (*parser).upgrade } != 0);
   let should_keep_alive = v8::Boolean::new(
     scope,
@@ -406,10 +427,10 @@ unsafe extern "C" fn on_headers_complete(parser: *mut sys::llhttp_t) -> c_int {
     version_major.into(),
     version_minor.into(),
     headers,
-    method.into(),
-    url.into(),
-    status_code.into(),
-    status_message.into(),
+    method,
+    url,
+    status_code,
+    status_message,
     upgrade.into(),
     should_keep_alive.into(),
   ];
@@ -471,6 +492,30 @@ unsafe extern "C" fn on_message_complete(parser: *mut sys::llhttp_t) -> c_int {
   let ctx = unsafe { get_ctx(parser) };
   let inner = unsafe { &mut *ctx.inner };
   let (scope, cb_obj) = unsafe { ctx.scope_and_callbacks() };
+
+  // Flush any remaining headers (e.g. trailing headers after chunked body)
+  if !inner.header_fields.is_empty() {
+    let headers = Inner::create_headers_array(
+      scope,
+      &inner.header_fields,
+      &inner.header_values,
+    );
+    let url = v8::String::new_from_one_byte(
+      scope,
+      &inner.url,
+      v8::NewStringType::Normal,
+    )
+    .unwrap_or_else(|| v8::String::empty(scope));
+
+    if let Some(cb) = cb_obj.get_index(scope, K_ON_HEADERS)
+      && let Ok(func) = v8::Local::<v8::Function>::try_from(cb)
+    {
+      let _ = func.call(scope, cb_obj.into(), &[headers.into(), url.into()]);
+    }
+    inner.header_fields.clear();
+    inner.header_values.clear();
+    inner.url.clear();
+  }
 
   if let Some(cb) = cb_obj.get_index(scope, K_ON_MESSAGE_COMPLETE)
     && let Ok(func) = v8::Local::<v8::Function>::try_from(cb)
