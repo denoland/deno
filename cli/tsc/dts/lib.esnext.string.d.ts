@@ -16,20 +16,14 @@ and limitations under the License.
 
 /// <reference no-default-lib="true"/>
 
-interface PromiseWithResolvers<T> {
-    promise: Promise<T>;
-    resolve: (value: T | PromiseLike<T>) => void;
-    reject: (reason?: any) => void;
-}
-
-interface PromiseConstructor {
+interface String {
     /**
-     * Creates a new Promise and returns it in an object, along with its resolve and reject functions.
-     * @returns An object with the properties `promise`, `resolve`, and `reject`.
-     *
-     * ```ts
-     * const { promise, resolve, reject } = Promise.withResolvers<T>();
-     * ```
+     * Returns true if all leading surrogates and trailing surrogates appear paired and in order.
      */
-    withResolvers<T>(): PromiseWithResolvers<T>;
+    isWellFormed(): boolean;
+
+    /**
+     * Returns a string where all lone or out-of-order surrogates have been replaced by the Unicode replacement character (U+FFFD).
+     */
+    toWellFormed(): string;
 }

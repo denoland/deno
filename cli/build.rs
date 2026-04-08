@@ -8,7 +8,6 @@ use deno_runtime::*;
 
 fn compress_decls(out_dir: &Path) {
   let decls = [
-    "lib.deno_webgpu.d.ts",
     "lib.deno.ns.d.ts",
     "lib.deno.unstable.d.ts",
     "lib.deno.window.d.ts",
@@ -92,6 +91,7 @@ fn compress_decls(out_dir: &Path) {
     "lib.es2022.intl.d.ts",
     "lib.es2022.object.d.ts",
     "lib.es2022.regexp.d.ts",
+    "lib.es2022.sharedmemory.d.ts",
     "lib.es2022.string.d.ts",
     "lib.es2023.array.d.ts",
     "lib.es2023.collection.d.ts",
@@ -124,12 +124,13 @@ fn compress_decls(out_dir: &Path) {
     "lib.esnext.decorators.d.ts",
     "lib.esnext.disposable.d.ts",
     "lib.esnext.error.d.ts",
-    "lib.esnext.float16.d.ts",
     "lib.esnext.full.d.ts",
     "lib.esnext.intl.d.ts",
-    "lib.esnext.iterator.d.ts",
+    "lib.esnext.object.d.ts",
     "lib.esnext.promise.d.ts",
+    "lib.esnext.regexp.d.ts",
     "lib.esnext.sharedmemory.d.ts",
+    "lib.esnext.string.d.ts",
     "lib.esnext.temporal.d.ts",
     "lib.esnext.typedarrays.d.ts",
     "lib.node.d.ts",

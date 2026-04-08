@@ -16,20 +16,10 @@ and limitations under the License.
 
 /// <reference no-default-lib="true"/>
 
-interface PromiseWithResolvers<T> {
-    promise: Promise<T>;
-    resolve: (value: T | PromiseLike<T>) => void;
-    reject: (reason?: any) => void;
-}
-
-interface PromiseConstructor {
+interface RegExp {
     /**
-     * Creates a new Promise and returns it in an object, along with its resolve and reject functions.
-     * @returns An object with the properties `promise`, `resolve`, and `reject`.
-     *
-     * ```ts
-     * const { promise, resolve, reject } = Promise.withResolvers<T>();
-     * ```
+     * Returns a Boolean value indicating the state of the unicodeSets flag (v) used with a regular expression.
+     * Default is false. Read-only.
      */
-    withResolvers<T>(): PromiseWithResolvers<T>;
+    readonly unicodeSets: boolean;
 }

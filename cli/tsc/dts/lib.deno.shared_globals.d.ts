@@ -8,7 +8,6 @@
 /// <reference lib="deno.console" />
 /// <reference lib="deno.url" />
 /// <reference lib="deno.web" />
-/// <reference lib="deno.webgpu" />
 /// <reference lib="deno.canvas" />
 /// <reference lib="deno.fetch" />
 /// <reference lib="deno.websocket" />
