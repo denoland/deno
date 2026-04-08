@@ -22,6 +22,7 @@ pub mod shell;
 pub mod stream_wrap;
 pub(crate) mod stream_wrap_state;
 pub mod tls;
+pub mod tls_wrap;
 pub mod tty_wrap;
 pub mod udp;
 pub mod util;

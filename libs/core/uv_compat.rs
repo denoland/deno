@@ -68,6 +68,8 @@ uv_errno!(UV_EBUSY, libc::EBUSY, -4082);
 uv_errno!(UV_ENOBUFS, libc::ENOBUFS, -4060);
 uv_errno!(UV_ENOTSUP, libc::ENOTSUP, -4049);
 uv_errno!(UV_EALREADY, libc::EALREADY, -4084);
+uv_errno!(UV_ENOENT, libc::ENOENT, -4058);
+uv_errno!(UV_ENOTSOCK, libc::ENOTSOCK, -4050);
 pub const UV_EOF: i32 = -4095;
 
 /// Map a `std::io::Error` to the closest libuv error code.
@@ -78,6 +80,7 @@ pub(crate) fn io_error_to_uv(err: &std::io::Error) -> c_int {
     ErrorKind::AddrNotAvailable => UV_EINVAL,
     ErrorKind::ConnectionRefused => UV_ECONNREFUSED,
     ErrorKind::NotConnected => UV_ENOTCONN,
+    ErrorKind::NotFound => UV_ENOENT,
     ErrorKind::BrokenPipe => UV_EPIPE,
     ErrorKind::InvalidInput => UV_EINVAL,
     ErrorKind::WouldBlock => UV_EAGAIN,
@@ -296,6 +299,15 @@ impl UvLoopInner {
         return true;
       }
     }
+    for handle_ptr in self.pipe_handles.borrow().iter() {
+      // SAFETY: Handle pointers in pipe_handles are kept valid by the C caller until uv_close.
+      let handle = unsafe { &**handle_ptr };
+      if handle.flags & UV_HANDLE_ACTIVE != 0
+        && handle.flags & UV_HANDLE_REF != 0
+      {
+        return true;
+      }
+    }
     if !self.closing_handles.borrow().is_empty() {
       return true;
     }
@@ -481,7 +493,6 @@ impl UvLoopInner {
         any_work |= work;
       } // end per-tcp-handle loop
 
-      #[cfg(unix)]
       {
         let mut pi = 0;
         loop {
@@ -1315,7 +1326,7 @@ pub unsafe extern "C" fn uv_close(
   // SAFETY: Caller guarantees handle is valid and initialized.
   unsafe {
     (*handle).flags |= UV_HANDLE_CLOSING;
-    (*handle).flags &= !UV_HANDLE_ACTIVE;
+    (*handle).flags &= !(UV_HANDLE_ACTIVE | UV_HANDLE_REF);
 
     let loop_ = (*handle).loop_;
     let inner = get_inner(loop_);

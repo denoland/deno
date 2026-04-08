@@ -378,8 +378,25 @@ pub unsafe fn uv_shutdown(
     if (*stream).flags & UV_HANDLE_CLOSING != 0 {
       return UV_ENOTCONN;
     }
-    let tcp = stream as *mut uv_tcp_t;
     (*req).handle = stream;
+
+    if (*stream).r#type == uv_handle_type::UV_NAMED_PIPE {
+      let pipe = stream as *mut super::pipe::uv_pipe_t;
+      #[cfg(unix)]
+      if (*pipe).internal_stream.is_none() && (*pipe).internal_fd.is_none() {
+        return UV_ENOTCONN;
+      }
+      (*pipe).internal_shutdown = Some(super::tcp::ShutdownPending { req, cb });
+      let inner = get_inner((*pipe).loop_);
+      let mut handles = inner.pipe_handles.borrow_mut();
+      if !handles.iter().any(|&h| std::ptr::eq(h, pipe)) {
+        handles.push(pipe);
+      }
+      (*pipe).flags |= UV_HANDLE_ACTIVE;
+      return 0;
+    }
+
+    let tcp = stream as *mut uv_tcp_t;
 
     if (*tcp).internal_stream.is_none() {
       return UV_ENOTCONN;
@@ -474,7 +491,6 @@ pub fn new_shutdown() -> UvShutdown {
 }
 
 /// Write to a pipe handle. Tries synchronous write first, queues remainder.
-#[cfg(unix)]
 unsafe fn write_pipe(
   req: *mut uv_write_t,
   pipe: *mut super::pipe::uv_pipe_t,
@@ -486,28 +502,53 @@ unsafe fn write_pipe(
   unsafe {
     (*req).handle = pipe as *mut uv_stream_t;
 
-    let fd = match (*pipe).internal_fd {
-      Some(fd) => fd,
-      None => return UV_EBADF,
-    };
-
     let write_data = collect_bufs(bufs, nbufs);
 
     // Try synchronous write when queue is empty.
     let mut offset = 0;
+    #[cfg(unix)]
     if (*pipe).internal_write_queue.is_empty() {
-      while offset < write_data.len() {
-        let n = libc::write(
-          fd,
-          write_data[offset..].as_ptr() as *const std::ffi::c_void,
-          write_data.len() - offset,
-        );
-        if n >= 0 {
-          offset += n as usize;
-        } else {
-          break;
+      // Use try_write on UnixStream if available, fall back to libc::write.
+      if let Some(ref stream) = (*pipe).internal_stream {
+        while offset < write_data.len() {
+          match stream.try_write(&write_data[offset..]) {
+            Ok(n) => {
+              offset += n;
+            }
+            Err(ref _e) => {
+              break;
+            }
+          }
+        }
+      } else if let Some(fd) = (*pipe).internal_fd {
+        while offset < write_data.len() {
+          let n = libc::write(
+            fd,
+            write_data[offset..].as_ptr() as *const std::ffi::c_void,
+            write_data.len() - offset,
+          );
+          if n >= 0 {
+            offset += n as usize;
+          } else {
+            break;
+          }
         }
       }
+    }
+    #[cfg(windows)]
+    if (*pipe).internal_write_queue.is_empty()
+      && let Some(handle) = (*pipe).internal_handle
+    {
+      use std::io::Write;
+      use std::os::windows::io::FromRawHandle;
+      let mut file = std::fs::File::from_raw_handle(handle);
+      while offset < write_data.len() {
+        match file.write(&write_data[offset..]) {
+          Ok(n) => offset += n,
+          Err(_) => break,
+        }
+      }
+      let _ = std::os::windows::io::IntoRawHandle::into_raw_handle(file);
     }
 
     let status = if offset >= write_data.len() {
@@ -523,6 +564,32 @@ unsafe fn write_pipe(
       cb,
       status,
     });
+
+    // Ensure AsyncFd exists for write readiness tracking. This is
+    // normally created eagerly in uv_pipe_open, but serves as a
+    // safety net for pipes that skipped that path.
+    #[cfg(unix)]
+    if (*pipe).internal_async_fd.is_none()
+      && (*pipe).internal_stream.is_none()
+      && (*pipe).internal_connect.is_none()
+      && (*pipe).internal_fd.is_some()
+    {
+      let fd = (*pipe).internal_fd.unwrap();
+      if let Ok(afd) =
+        tokio::io::unix::AsyncFd::new(super::pipe::RawFdWrapper(fd))
+      {
+        (*pipe).internal_async_fd = Some(afd);
+      }
+    }
+
+    // Ensure the pipe is registered for polling so async writes complete.
+    let inner = get_inner((*pipe).loop_);
+    if let Ok(mut handles) = inner.pipe_handles.try_borrow_mut()
+      && !handles.iter().any(|&h| std::ptr::eq(h, pipe))
+    {
+      handles.push(pipe);
+    }
+    (*pipe).flags |= UV_HANDLE_ACTIVE;
   }
   0
 }

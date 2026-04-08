@@ -2168,6 +2168,7 @@ dependencies = [
  "smallvec",
  "sourcemap",
  "static_assertions",
+ "sys_traits",
  "thiserror 2.0.12",
  "tokio",
  "twox-hash 2.1.0",
@@ -2175,6 +2176,7 @@ dependencies = [
  "url",
  "v8",
  "wasm_dep_analyzer",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]

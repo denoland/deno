@@ -173,6 +173,12 @@ export class LibuvStreamWrap extends HandleWrap {
     return 0;
   }
 
+  // TODO(user): This should dispatch to uv_shutdown on the native handle
+  // (like Node's C++ StreamBase::Shutdown does), instead of calling _onClose
+  // which fully closes the handle. Currently TCP and Pipe override this to
+  // call their native shutdown. Once all stream types have native handles,
+  // this base implementation should be replaced with a generic uv_shutdown
+  // dispatch.
   /**
    * Shutdown the stream.
    * @param req A shutdown request wrapper.
@@ -336,7 +342,7 @@ export class LibuvStreamWrap extends HandleWrap {
     let status = 0;
     this.#reading = false;
 
-    // Cancel any pending read operation.
+    // Cancel any pending read before closing the stream.
     if (this.cancelHandle) {
       core.close(this.cancelHandle);
       this.cancelHandle = undefined;
@@ -397,21 +403,7 @@ export class LibuvStreamWrap extends HandleWrap {
         return this.#read();
       }
 
-      if (e.message === "cancelled") {
-        // If the stream was closed (_onClose sets #reading to false),
-        // propagate the error to the owner so it emits an 'error' event.
-        // This matches Node.js where uv_close cancels pending reads with
-        // UV_ECANCELED. If just readStop'd, silently return null.
-        if (!this.#reading) {
-          // deno-lint-ignore prefer-primordials
-          const err = new Error("read ECANCELED");
-          err.code = "ECANCELED";
-          err.syscall = "read";
-          this[ownerSymbol]?.emit("error", err);
-          return;
-        }
-        return null;
-      }
+      if (e.message === "cancelled") return null;
 
       if (
         ObjectPrototypeIsPrototypeOf(Deno.errors.Interrupted.prototype, e) ||
