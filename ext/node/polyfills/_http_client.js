@@ -56,7 +56,7 @@ import {
   OutgoingMessage,
   parseUniqueHeadersOption,
 } from "node:_http_outgoing";
-import { Agent } from "node:_http_agent";
+import { Agent, globalAgent } from "node:_http_agent";
 import { Buffer } from "node:buffer";
 import { urlToHttpOptions } from "ext:deno_node/internal/url.ts";
 import { kOutHeaders } from "ext:deno_node/internal/http.ts";
@@ -125,7 +125,7 @@ function ClientRequest(input, options, cb) {
   }
 
   let agent = options.agent;
-  const defaultAgent = options._defaultAgent || Agent.globalAgent;
+  const defaultAgent = options._defaultAgent || globalAgent;
   if (agent === false) {
     agent = new defaultAgent.constructor();
   } else if (agent === null || agent === undefined) {

@@ -177,10 +177,12 @@ HTTPParser.prototype.execute = function (
 
   // Wrap the kOnBody callback to convert Uint8Array to Buffer.
   // Node.js passes Buffer objects to body callbacks.
+  const self = this;
   const origOnBody = this[kOnBody];
   if (origOnBody) {
     this[kOnBody] = function (buf: Uint8Array) {
-      return origOnBody(
+      return origOnBody.call(
+        self,
         Buffer.from(buf.buffer, buf.byteOffset, buf.byteLength),
       );
     };
