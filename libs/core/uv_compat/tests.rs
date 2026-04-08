@@ -2,6 +2,7 @@
 
 use std::cell::Cell;
 use std::cell::RefCell;
+use std::ffi::c_char;
 use std::ffi::c_void;
 use std::future::poll_fn;
 use std::rc::Rc;
@@ -1791,7 +1792,7 @@ async fn tcp_close_cancels_pending_writes() {
     unsafe {
       (*write_req.as_mut_ptr()).data = write_status_ptr as *mut c_void;
       let buf = uv_buf_t {
-        base: msg.as_ptr() as *mut i8,
+        base: msg.as_ptr() as *mut c_char,
         len: msg.len(),
       };
       assert_ok(uv_write(

@@ -1,6 +1,5 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 //
-pub mod go;
 mod js;
 
 use std::collections::HashMap;
@@ -42,7 +41,6 @@ use crate::args::CompilerOptions;
 use crate::args::TypeCheckMode;
 use crate::cache::ModuleInfoCache;
 use crate::node::CliNodeResolver;
-use crate::node::CliPackageJsonResolver;
 use crate::npm::CliNpmResolver;
 use crate::resolver::CliCjsTracker;
 use crate::sys::CliSys;
@@ -54,7 +52,6 @@ pub use self::diagnostics::Diagnostic;
 pub use self::diagnostics::DiagnosticCategory;
 pub use self::diagnostics::Diagnostics;
 pub use self::diagnostics::Position;
-pub use self::go::ensure_tsgo;
 pub use self::js::TscConstants;
 
 pub fn get_types_declaration_file_text() -> String {
@@ -509,7 +506,6 @@ pub struct RequestNpmState {
   pub cjs_tracker: Arc<TypeCheckingCjsTracker>,
   pub node_resolver: Arc<CliNodeResolver>,
   pub npm_resolver: CliNpmResolver,
-  pub package_json_resolver: Arc<CliPackageJsonResolver>,
 }
 
 /// A structure representing a request to be sent to the tsc runtime.
@@ -848,10 +844,6 @@ pub enum ExecError {
   #[class(inherit)]
   #[error(transparent)]
   Js(Box<deno_core::error::JsError>),
-
-  #[class(inherit)]
-  #[error(transparent)]
-  Go(#[from] go::ExecError),
 }
 
 #[derive(Clone)]
@@ -902,7 +894,6 @@ pub(crate) fn decompress_source(contents: &[u8]) -> Arc<str> {
 pub fn exec(
   request: Request,
   code_cache: Option<Arc<dyn deno_runtime::code_cache::CodeCache>>,
-  maybe_tsgo_path: Option<&Path>,
 ) -> Result<Response, ExecError> {
   // tsc cannot handle root specifiers that don't have one of the "acceptable"
   // extensions.  Therefore, we have to check the root modules against their
@@ -944,23 +935,13 @@ pub fn exec(
     })
     .collect();
 
-  if let Some(tsgo_path) = maybe_tsgo_path {
-    go::exec_request(
-      request,
-      root_names,
-      root_map,
-      remapped_specifiers,
-      tsgo_path,
-    )
-  } else {
-    js::exec_request(
-      request,
-      root_names,
-      root_map,
-      remapped_specifiers,
-      code_cache,
-    )
-  }
+  js::exec_request(
+    request,
+    root_names,
+    root_map,
+    remapped_specifiers,
+    code_cache,
+  )
 }
 
 pub fn resolve_specifier_for_tsc(

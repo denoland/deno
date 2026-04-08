@@ -2003,7 +2003,20 @@ impl<
     };
 
     if let Some(main) = maybe_main.as_deref() {
-      let guess = package_json.path.parent().unwrap().join(main).clean();
+      let package_path = package_json.path.parent().unwrap();
+      let guess = package_path.join(main).clean();
+      // Ensure the resolved main path doesn't escape the package
+      // directory via path traversal (e.g. "main": "../../../secret.json")
+      if !guess.starts_with(package_path) {
+        return Err(
+          ModuleNotFoundError {
+            specifier: UrlOrPath::Path(guess),
+            maybe_referrer: maybe_referrer.map(|r| r.display()),
+            suggested_ext: None,
+          }
+          .into(),
+        );
+      }
       if self.sys.is_file(Cow::Borrowed(&guess)) {
         return Ok(self.maybe_resolve_types(
           LocalUrlOrPath::Path(LocalPath {
@@ -2036,13 +2049,10 @@ impl<
         vec![".js", "/index.js"]
       };
       for ending in endings {
-        let guess = package_json
-          .path
-          .parent()
-          .unwrap()
-          .join(format!("{main}{ending}"))
-          .clean();
-        if self.sys.is_file(Cow::Borrowed(&guess)) {
+        let guess = package_path.join(format!("{main}{ending}")).clean();
+        if guess.starts_with(package_path)
+          && self.sys.is_file(Cow::Borrowed(&guess))
+        {
           // TODO(bartlomieju): emitLegacyIndexDeprecation()
           return Ok(MaybeTypesResolvedUrl(LocalUrlOrPath::Path(LocalPath {
             path: guess,

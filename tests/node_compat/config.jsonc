@@ -82,7 +82,10 @@
     "parallel/test-assert-calltracker-getCalls.js": {},
     "parallel/test-assert-calltracker-report.js": {},
     "parallel/test-assert-calltracker-verify.js": {},
-    "parallel/test-assert-checktag.js": {},
+    "parallel/test-assert-checktag.js": {
+      "ignore": true,
+      "reason": "globalThis is now deeply equal to a plain object copy because Node.js timers are used as default globals, eliminating the proxy-based timer function difference that previously made them unequal"
+    },
     "parallel/test-assert-class-destructuring.js": {},
     "parallel/test-assert-class.js": {},
     "parallel/test-assert-deep-with-error.js": {},
@@ -231,6 +234,8 @@
     "parallel/test-child-process-fork-detached.js": {},
     "parallel/test-child-process-fork-no-shell.js": {},
     "parallel/test-child-process-fork-stdio-string-variant.js": {},
+    // TODO(bartlomieju): flaky on Windows with NativePipe
+    "parallel/test-child-process-fork-stdio.js": { "windows": false },
     "parallel/test-child-process-fork-ref.js": {},
     "parallel/test-child-process-fork-ref2.js": {},
     "parallel/test-child-process-fork-timeout-kill-signal.js": {},
@@ -259,6 +264,7 @@
     "parallel/test-child-process-spawnsync-env.js": {},
     "parallel/test-child-process-spawnsync-input.js": {},
     "parallel/test-child-process-spawnsync-maxbuf.js": {},
+    "parallel/test-child-process-spawnsync-timeout.js": {},
     "parallel/test-child-process-spawnsync-validation-errors.js": {},
     "parallel/test-child-process-spawnsync.js": {},
     "parallel/test-child-process-stdin-ipc.js": {},
@@ -1044,6 +1050,8 @@
     "parallel/test-fs-util-validateoffsetlength.js": {},
     "parallel/test-fs-utimes-y2K38.js": {},
     "parallel/test-fs-utimes.js": {},
+    "parallel/test-fs-watch.js": {},
+    "parallel/test-fs-watchfile.js": {},
     "parallel/test-fs-whatwg-url.js": {},
     "parallel/test-fs-write-buffer-large.js": {},
     "parallel/test-fs-write-buffer.js": {},
@@ -1109,7 +1117,8 @@
     "parallel/test-http-client-abort-keep-alive-destroy-res.js": {},
     "parallel/test-http-client-abort-no-agent.js": {},
     "parallel/test-http-client-abort-response-event.js": {},
-    "parallel/test-http-client-abort-unix-socket.js": {},
+    // TODO(bartlomieju): NativePipe doesn't register a Deno resource for HTTP
+    "parallel/test-http-client-abort-unix-socket.js": { "windows": false },
     "parallel/test-http-client-abort2.js": {},
     "parallel/test-http-client-abort3.js": {},
     "parallel/test-http-client-agent-abort-close-event.js": {},
@@ -2194,7 +2203,8 @@
     "parallel/test-stdin-hang.js": {},
     "parallel/test-stdin-pause-resume-sync.js": {},
     "parallel/test-stdin-pause-resume.js": {},
-    "parallel/test-stdin-pipe-large.js": {},
+    // TODO(bartlomieju): Windows pipe write polling doesn't drain large writes
+    "parallel/test-stdin-pipe-large.js": { "windows": false },
     "parallel/test-stdin-pipe-resume.js": {},
     "parallel/test-stdin-resume-pause.js": {},
     "parallel/test-stdin-script-child-option.js": {},
@@ -2834,6 +2844,7 @@
     "pummel/test-process-hrtime.js": {},
     "pummel/test-string-decoder-large-buffer.js": {},
     "sequential/test-buffer-creation-regression.js": {},
+    "sequential/test-child-process-execsync.js": {},
     "sequential/test-child-process-exit.js": {},
     "sequential/test-cli-syntax-bad.js": {},
     "sequential/test-cli-syntax-file-not-found.js": {

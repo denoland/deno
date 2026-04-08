@@ -33,7 +33,7 @@ Release checklist: <LINK TO THIS FORKED GIST GOES HERE>
 ### Phase 1: Bumping versions
 
 - [ ] Go to the "version_bump" workflow in the CLI repo's actions:
-      https://github.com/denoland/deno/actions/workflows/version_bump.yml
+      https://github.com/denoland/deno/actions/workflows/version_bump.generated.yml
   1. Click on the "Run workflow" button.
   1. In the drop down, select the `main` branch.
   1. For the kind of release, select `alpha`, `beta`, or `rc`.
@@ -56,7 +56,7 @@ Release checklist: <LINK TO THIS FORKED GIST GOES HERE>
 ### Phase 2: Create tag
 
 - [ ] Go to the "create_prerelease_tag" workflow in the CLI repo's actions:
-      https://github.com/denoland/deno/actions/workflows/create_prerelease_tag.yml
+      https://github.com/denoland/deno/actions/workflows/create_prerelease_tag.generated.yml
   1. Run it on the same branch that you used before and wait for it to complete.
 
   <details>
@@ -83,7 +83,7 @@ Release checklist: <LINK TO THIS FORKED GIST GOES HERE>
 ## Updating `deno_docker`
 
 - [ ] Run the version bump workflow:
-      https://github.com/denoland/deno_docker/actions/workflows/version_bump.yml
+      https://github.com/denoland/deno_docker/actions/workflows/version_bump.generated.yml
 - [ ] This will open a PR. Review and merge it.
 - [ ] Create a `$VERSION` tag (_without_ `v` prefix).
 - [ ] This will trigger a publish CI run. Verify that it completes successfully.

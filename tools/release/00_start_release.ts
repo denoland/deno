@@ -3,7 +3,7 @@
 
 // deno-lint-ignore-file no-console
 
-import { $, createOctoKit, increment, semver } from "./deps.ts";
+import { $, createOctoKit, semver } from "./deps.ts";
 
 const currentDirPath = $.path(import.meta.dirname!);
 
@@ -48,7 +48,7 @@ function getNextVersion(originalVersion: semver.SemVer) {
     } else if (v.prerelease[0] != tag) {
       v = { ...v, prerelease: undefined };
     }
-    return increment(v, "prerelease", { prerelease: tag });
+    return semver.increment(v, "prerelease", { prerelease: tag });
   } else if (Deno.args.some((a) => a === "--patch")) {
     return semver.increment(originalVersion, "patch");
   } else if (Deno.args.some((a) => a === "--minor")) {

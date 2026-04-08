@@ -590,6 +590,8 @@ pub struct TestSpecifierOptions {
   pub shuffle: Option<u64>,
   pub filter: TestFilter,
   pub trace_leaks: bool,
+  pub sanitize_ops: bool,
+  pub sanitize_resources: bool,
 }
 
 impl TestSummary {
@@ -702,6 +704,22 @@ async fn configure_main_worker(
       .execute_script_static(
         located_script_name!(),
         "Deno[Deno.internal].core.setLeakTracingEnabled(true);",
+      )
+      .map_err(|e| CoreErrorKind::Js(e).into_box())?;
+  }
+  if options.sanitize_ops {
+    worker
+      .execute_script_static(
+        located_script_name!(),
+        "Deno[Deno.internal].testSanitizeOps = true;",
+      )
+      .map_err(|e| CoreErrorKind::Js(e).into_box())?;
+  }
+  if options.sanitize_resources {
+    worker
+      .execute_script_static(
+        located_script_name!(),
+        "Deno[Deno.internal].testSanitizeResources = true;",
       )
       .map_err(|e| CoreErrorKind::Js(e).into_box())?;
   }
@@ -1683,6 +1701,8 @@ pub async fn run_tests(
         filter: TestFilter::from_flag(&workspace_test_options.filter),
         shuffle: workspace_test_options.shuffle,
         trace_leaks: workspace_test_options.trace_leaks,
+        sanitize_ops: workspace_test_options.sanitize_ops,
+        sanitize_resources: workspace_test_options.sanitize_resources,
       },
     },
   )
@@ -1908,6 +1928,8 @@ pub async fn run_tests_with_watch(
               filter: TestFilter::from_flag(&workspace_test_options.filter),
               shuffle: workspace_test_options.shuffle,
               trace_leaks: workspace_test_options.trace_leaks,
+              sanitize_ops: workspace_test_options.sanitize_ops,
+              sanitize_resources: workspace_test_options.sanitize_resources,
             },
           },
         )
