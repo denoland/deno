@@ -361,7 +361,10 @@ function tryPackage(requestPath, exts, isMain, originalPath) {
   const filename = pathResolve(requestPath, pkg);
   // Ensure the resolved main path doesn't escape the package directory
   // via path traversal (e.g. "main": "../../secret.json")
-  if (!StringPrototypeStartsWith(filename, requestPath)) {
+  if (
+    !StringPrototypeStartsWith(filename, requestPath + "/") &&
+    filename !== requestPath
+  ) {
     const err = new Error(
       `Cannot find module '${filename}'. ` +
         'Please verify that the package.json has a valid "main" entry',

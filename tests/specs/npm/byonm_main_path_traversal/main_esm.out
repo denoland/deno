@@ -1,0 +1,2 @@
+error: [ERR_MODULE_NOT_FOUND] Cannot find module '[WILDCARD]secret.json' imported from '[WILDCARD]main.mjs'
+    at file:///[WILDCARD]/main.mjs:1:[WILDCARD]
