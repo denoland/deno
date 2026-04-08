@@ -67,6 +67,7 @@ members = [
   "tests/ffi",
   "tests/integration",
   "tests/napi",
+  "tests/napi_2",
   "tests/node_compat",
   "tests/specs",
   "tests/unit",

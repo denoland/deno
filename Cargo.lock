@@ -10350,6 +10350,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "test_napi_2"
+version = "0.1.0"
+dependencies = [
+ "napi_sys",
+]
+
+[[package]]
 name = "test_server"
 version = "0.1.0"
 dependencies = [
