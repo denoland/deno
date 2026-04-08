@@ -39,6 +39,7 @@ import {
 import {
   kArrayBufferOffset,
   kBytesWritten,
+  kLastWriteWasAsync,
   kReadBytesOrError,
   LibuvStreamWrap,
   ShutdownWrap,
@@ -290,6 +291,7 @@ export class TCP extends ConnectionWrap {
   ): number {
     const ret = this.#native.writeBuffer(data);
     streamBaseState[kBytesWritten] = data.byteLength;
+    streamBaseState[kLastWriteWasAsync] = 1;
     this.bytesWritten += data.byteLength;
 
     // Simulate async completion like Node.js
