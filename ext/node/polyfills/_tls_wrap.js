@@ -48,8 +48,7 @@ import {
 } from "ext:deno_node/internal/validators.mjs";
 import { isArrayBufferView } from "ext:deno_node/internal/util/types.ts";
 import { op_tls_canonicalize_ipv4_address } from "ext:core/ops";
-// deno-lint-ignore camelcase
-import tls_wrap from "ext:deno_node/internal_binding/tls_wrap.ts";
+import tlsWrap from "ext:deno_node/internal_binding/tls_wrap.ts";
 import { ownerSymbol } from "ext:deno_node/internal_binding/symbols.ts";
 import { X509Certificate } from "ext:deno_node/internal/crypto/x509.ts";
 
@@ -269,36 +268,7 @@ function TLSSocket(socket, opts) {
 Object.setPrototypeOf(TLSSocket.prototype, net.Socket.prototype);
 Object.setPrototypeOf(TLSSocket, net.Socket);
 
-// Proxy HandleWrap and TCPWrap methods through to _parent
-const proxiedMethods = [
-  "ref",
-  "unref",
-  "open",
-  "bind",
-  "listen",
-  "connect",
-  "bind6",
-  "connect6",
-  "getsockname",
-  "getpeername",
-  "setNoDelay",
-  "setKeepAlive",
-  "setSimultaneousAccepts",
-  "setBlocking",
-];
-
-function makeMethodProxy(name) {
-  return function methodProxy(...args) {
-    if (this._parent[name]) {
-      return this._parent[name](...args);
-    }
-  };
-}
-for (const proxiedMethod of proxiedMethods) {
-  tls_wrap.TLSWrap.prototype[proxiedMethod] = makeMethodProxy(proxiedMethod);
-}
-
-tls_wrap.TLSWrap.prototype.close = function close(cb) {
+tlsWrap.TLSWrap.prototype.close = function close(cb) {
   let ssl;
   if (this._owner) {
     ssl = this._owner.ssl;
@@ -364,7 +334,7 @@ TLSSocket.prototype._wrapHandle = function (wrap, handle) {
     servername = servername.slice(0, -1);
   }
 
-  const res = tls_wrap.wrap(
+  const res = tlsWrap.wrap(
     nativeHandle,
     secureContext,
     !!options.isServer,
@@ -1083,7 +1053,9 @@ function splitEscapedAltNames(altNames) {
       currentToken += altNames.substring(offset, nextQuote);
       const match = jsonStringPattern.exec(altNames.substring(nextQuote));
       if (!match) {
-        throw new Error("Invalid alt name format");
+        const err = new Error("Invalid alt name format");
+        err.code = "ERR_TLS_CERT_ALTNAME_FORMAT";
+        throw err;
       }
       currentToken += JSON.parse(match[0]);
       offset = nextQuote + match[0].length;

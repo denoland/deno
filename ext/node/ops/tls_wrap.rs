@@ -594,8 +594,11 @@ impl UnderlyingStream {
     match self {
       // For Uv streams, the loop pointer is cached in TLSWrapInner
       // to avoid dereferencing the stream pointer (which may be dangling).
-      // This method returns null; callers should use TLSWrapInner.cached_loop_ptr.
-      UnderlyingStream::Uv { .. } => std::ptr::null_mut(),
+      // Callers must use TLSWrapInner.cached_loop_ptr instead.
+      UnderlyingStream::Uv { .. } => {
+        debug_assert!(false, "use TLSWrapInner.cached_loop_ptr for Uv streams");
+        std::ptr::null_mut()
+      }
       UnderlyingStream::Js { loop_ptr, .. } => *loop_ptr,
       UnderlyingStream::None => std::ptr::null_mut(),
     }
@@ -1865,6 +1868,12 @@ impl TLSWrap {
   /// The NativeTCP should continue reading encrypted data; we just
   /// stop delivering decrypted plaintext to JS by clearing onread.
   /// This avoids the stream.data incompatibility with libuv_stream::TCP.
+  ///
+  /// Known limitation: the TCP socket keeps receiving and buffering
+  /// encrypted data in the kernel even after read_stop(). For long-lived
+  /// connections with flow control this could accumulate data. This will
+  /// be properly fixed when libuv_stream::TCP is replaced by a
+  /// LibUvStreamWrap-based TCPWrap that has compatible stream.data.
   #[fast]
   fn read_stop(&self, _scope: &mut v8::PinScope) -> i32 {
     let inner = unsafe { &mut *self.inner.as_mut_ptr() };
@@ -2874,14 +2883,12 @@ fn build_client_config(
       match parsed {
         Ok(cert) => {
           root_cert_ders.push(cert.as_ref().to_vec());
-          // Skip invalid certs rather than failing the entire config.
-          // This matches Node.js behavior where invalid CA certs are
-          // silently ignored.
-          let _ = root_cert_store.add(cert);
+          if let Err(e) = root_cert_store.add(cert) {
+            log::warn!("TLSWrap: ignoring invalid CA certificate: {e}");
+          }
         }
-        Err(_) => {
-          // Skip unparseable PEM entries (e.g. truncated test certs
-          // from setDefaultCACertificates).
+        Err(e) => {
+          log::warn!("TLSWrap: failed to parse CA PEM entry: {e}");
         }
       }
     }

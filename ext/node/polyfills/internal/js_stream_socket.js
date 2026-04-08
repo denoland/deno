@@ -155,7 +155,10 @@ class JSStreamSocket extends Socket {
   finishShutdown(_handle, _errCode) {
     if (this[kCurrentShutdownRequest] === null) return;
     this[kCurrentShutdownRequest] = null;
-    // Shutdown completion is handled by TLSWrap internally
+    // TODO(@bartlomieju): In Node.js this calls handle.finishShutdown(errCode)
+    // to invoke the C++ write completion callback. For now TLSWrap handles
+    // shutdown completion internally. If JS-stream writes hang, this may
+    // need to notify TLSWrap explicitly.
   }
 
   doWrite(req, bufs) {
@@ -197,6 +200,10 @@ class JSStreamSocket extends Socket {
     return 0;
   }
 
+  // TODO(@bartlomieju): In Node.js this calls handle.finishWrite(errCode)
+  // to notify C++ of write completion. Currently we just track request state.
+  // The tls_jsstreamsocket_close test covers the close path, but complex
+  // write patterns over JSStreamSocket may need explicit TLSWrap notification.
   finishWrite(_handle, _errCode) {
     if (this[kCurrentWriteRequest] === null) return;
     this[kCurrentWriteRequest] = null;

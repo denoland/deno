@@ -159,6 +159,8 @@ export function translatePeerCertificate(c: any) {
 
   if (c.issuerCertificate != null) {
     if (c.issuerCertificate === c) {
+      // Self-signed root CA: issuer is itself. Intentional self-assignment
+      // to preserve the circular reference (matches Node.js behavior).
       c.issuerCertificate = c;
     } else {
       c.issuerCertificate = translatePeerCertificate(c.issuerCertificate);
