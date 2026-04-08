@@ -27,8 +27,7 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-import { op_net_connect_tcp, TCP as NativeTCP } from "ext:core/ops";
-import { TcpConn } from "ext:deno_net/01_net.js";
+import { TCP as NativeTCP } from "ext:core/ops";
 import { primordials } from "ext:core/mod.js";
 const { Error } = primordials;
 import { notImplemented } from "ext:deno_node/_utils.ts";
@@ -41,7 +40,6 @@ import {
   kArrayBufferOffset,
   kBytesWritten,
   kReadBytesOrError,
-  kStreamBaseField,
   kUseNativeWrap,
   LibuvStreamWrap,
   ShutdownWrap,
@@ -381,24 +379,14 @@ export class TCP extends ConnectionWrap {
   }
 
   override ref() {
-    if (this[kUseNativeWrap] && this.#native) {
+    if (this.#native) {
       this.#native.ref();
-      return;
-    }
-
-    if (this[kStreamBaseField]) {
-      this[kStreamBaseField].ref();
     }
   }
 
   override unref() {
-    if (this[kUseNativeWrap] && this.#native) {
+    if (this.#native) {
       this.#native.unref();
-      return;
-    }
-
-    if (this[kStreamBaseField]) {
-      this[kStreamBaseField].unref();
     }
   }
 
@@ -469,12 +457,8 @@ export class TCP extends ConnectionWrap {
    * @return An error status code.
    */
   setNoDelay(noDelay: boolean): number {
-    if (this[kUseNativeWrap]) {
+    if (this.#native) {
       return this.#native.setNoDelay(noDelay);
-    }
-
-    if (this[kStreamBaseField] && "setNoDelay" in this[kStreamBaseField]) {
-      this[kStreamBaseField].setNoDelay(noDelay);
     }
     return 0;
   }
@@ -565,42 +549,9 @@ export class TCP extends ConnectionWrap {
     this.#remotePort = port;
     this.#remoteFamily = getIPFamily(address);
 
-    if (this[kUseNativeWrap]) {
-      this.#nativeConnect(req, address, port);
-      return 0;
-    } else {
-      this.#remoteAddress = address;
-      this.#remotePort = port;
-      this.#remoteFamily = getIPFamily(address);
-
-      op_net_connect_tcp(
-        { hostname: address ?? "127.0.0.1", port },
-        this.#netPermToken,
-      ).then(
-        ({ 0: rid, 1: localAddr, 2: remoteAddr }) => {
-          // Incorrect / backwards, but correcting the local address and port with
-          // what was actually used given we can't actually specify these in Deno.
-          this.#address = req.localAddress = localAddr.hostname;
-          this.#port = req.localPort = localAddr.port;
-          this[kStreamBaseField] = new TcpConn(rid, remoteAddr, localAddr);
-
-          try {
-            this.afterConnect(req, 0);
-          } catch {
-            // swallow callback errors.
-          }
-        },
-        () => {
-          try {
-            // TODO(cmorten): correct mapping of connection error to status code.
-            this.afterConnect(req, codeMap.get("ECONNREFUSED")!);
-          } catch {
-            // swallow callback errors.
-          }
-        },
-      );
-      return 0;
-    }
+    // Always use native libuv handle for connect.
+    this.#nativeConnect(req, address, port);
+    return 0;
   }
 
   /** Handle server closure. */
