@@ -16,5 +16,7 @@ pub mod sys;
 
 pub use sys::*;
 
+pub mod binding;
+
 #[cfg(test)]
 mod tests;

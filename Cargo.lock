@@ -2751,6 +2751,7 @@ dependencies = [
  "boxed_error",
  "brotli",
  "bytes",
+ "cc",
  "data-encoding",
  "deno_ast",
  "deno_core",
