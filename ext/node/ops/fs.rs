@@ -135,6 +135,18 @@ fn ebadf() -> FsError {
   ))
 }
 
+fn eexist() -> FsError {
+  FsError::Io(std::io::Error::from_raw_os_error(
+    #[cfg(unix)]
+    libc::EEXIST,
+    #[cfg(windows)]
+    {
+      // Win32 ERROR_ALREADY_EXISTS
+      183
+    },
+  ))
+}
+
 /// Get the File trait object for an OS file descriptor from FdTable.
 ///
 /// For fds not yet known to Deno (e.g. created by native addons or inherited
@@ -173,6 +185,7 @@ fn register_raw_fd(state: &mut OpState, fd: i32) -> Result<(), FsError> {
   if fd < 0 {
     return Err(ebadf());
   }
+  // SAFETY: libc::dup is safe to call with any integer; it returns -1 on invalid fds.
   let dup_fd = unsafe { libc::dup(fd) };
   if dup_fd < 0 {
     return Err(ebadf());
