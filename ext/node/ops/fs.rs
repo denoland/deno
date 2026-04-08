@@ -135,18 +135,6 @@ fn ebadf() -> FsError {
   ))
 }
 
-fn eexist() -> FsError {
-  FsError::Io(std::io::Error::from_raw_os_error(
-    #[cfg(unix)]
-    libc::EEXIST,
-    #[cfg(windows)]
-    {
-      // Win32 ERROR_ALREADY_EXISTS
-      183
-    },
-  ))
-}
-
 /// Get the File trait object for an OS file descriptor from FdTable.
 ///
 /// For fds not yet known to Deno (e.g. created by native addons or inherited
@@ -1012,7 +1000,6 @@ pub fn op_node_register_fd(
     return Err(FsError::Io(std::io::Error::last_os_error()));
   }
 
-  // SAFETY: dup_handle is a valid duplicated OS handle.
   // SAFETY: dup_handle is a valid duplicated OS handle (DuplicateHandle succeeded above).
   let std_file = unsafe { StdFile::from_raw_handle(dup_handle) };
   let file: Rc<dyn deno_io::fs::File> =
