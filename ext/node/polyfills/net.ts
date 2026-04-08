@@ -98,10 +98,7 @@ import {
   Pipe,
   PipeConnectWrap,
 } from "ext:deno_node/internal_binding/pipe_wrap.ts";
-import {
-  kUseNativeWrap,
-  ShutdownWrap,
-} from "ext:deno_node/internal_binding/stream_wrap.ts";
+import { ShutdownWrap } from "ext:deno_node/internal_binding/stream_wrap.ts";
 import assert from "node:assert";
 import { isWindows } from "ext:deno_node/_util/os.ts";
 import { ADDRCONFIG, lookup as dnsLookup } from "node:dns";
@@ -1238,8 +1235,6 @@ export function Socket(options) {
   this.autoSelectFamilyAttemptedAddresses = undefined;
   this.connecting = false;
 
-  this[kUseNativeWrap] = options[kUseNativeWrap] || false;
-
   const errorStack = new Error().stack;
   this._needsSockInitWorkaround = options.handle?.ipc !== true &&
     pkgsNeedsSockInitWorkaround.some((pkg) => errorStack?.includes(pkg));
@@ -1349,10 +1344,6 @@ Socket.prototype.connect = function (...args) {
     this._handle = pipe
       ? new Pipe(PipeConstants.SOCKET)
       : new TCP(TCPConstants.SOCKET);
-
-    if (this[kUseNativeWrap]) {
-      this._handle[kUseNativeWrap] = this[kUseNativeWrap];
-    }
 
     _initSocketHandle(this);
   }

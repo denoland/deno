@@ -30,7 +30,6 @@ import {
   constants as TCPConstants,
   TCP,
 } from "ext:deno_node/internal_binding/tcp_wrap.ts";
-import { kUseNativeWrap } from "ext:deno_node/internal_binding/stream_wrap.ts";
 import { kMaybeDestroy } from "ext:deno_node/internal/stream_base_commons.ts";
 import {
   constants as PipeConstants,
@@ -310,7 +309,6 @@ TLSSocket.prototype._wrapHandle = function (wrap, handle) {
     handle = options.pipe
       ? new Pipe(PipeConstants.SOCKET)
       : new TCP(TCPConstants.SOCKET);
-    handle[kUseNativeWrap] = true;
   }
 
   // Wrap socket's handle with TLSWrap
