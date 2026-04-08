@@ -21,6 +21,11 @@ type Tag = Option<Vec<u8>>;
 type Aes128Gcm = aead_gcm_stream::AesGcm<aes::Aes128>;
 type Aes256Gcm = aead_gcm_stream::AesGcm<aes::Aes256>;
 
+enum CipherInitError {
+  ContextAllocation,
+  InitFailed,
+}
+
 /// ChaCha20-Poly1305 cipher backed by aws-lc-sys (BoringSSL).
 ///
 /// Uses the streaming EVP_CIPHER API for hardware-accelerated performance
@@ -43,14 +48,14 @@ impl ChaCha20Poly1305Cipher {
     iv: &[u8],
     auth_tag_length: usize,
     encrypting: bool,
-  ) -> Result<Self, &'static str> {
+  ) -> Result<Self, CipherInitError> {
     // SAFETY: We allocate a new EVP_CIPHER_CTX and initialize it with
     // validated key/iv. The ctx is exclusively owned by this struct and
     // freed in Drop.
     unsafe {
       let ctx = aws_lc_sys::EVP_CIPHER_CTX_new();
       if ctx.is_null() {
-        return Err("Failed to allocate cipher context");
+        return Err(CipherInitError::ContextAllocation);
       }
 
       let cipher = aws_lc_sys::EVP_chacha20_poly1305();
@@ -65,7 +70,7 @@ impl ChaCha20Poly1305Cipher {
       );
       if ret != 1 {
         aws_lc_sys::EVP_CIPHER_CTX_free(ctx);
-        return Err("Failed to initialize cipher");
+        return Err(CipherInitError::InitFailed);
       }
 
       Ok(ChaCha20Poly1305Cipher {
@@ -104,7 +109,7 @@ impl ChaCha20Poly1305Cipher {
             self.aad_buf.as_ptr(),
             aad_len,
           );
-          assert_eq!(ret, 1);
+          assert_eq!(ret, 1, "EVP_CipherUpdate for AAD failed");
         }
       }
     }
@@ -130,7 +135,7 @@ impl ChaCha20Poly1305Cipher {
         input.as_ptr(),
         input_len,
       );
-      assert_eq!(ret, 1);
+      assert_eq!(ret, 1, "EVP_CipherUpdate for encryption failed");
     }
   }
 
@@ -153,7 +158,7 @@ impl ChaCha20Poly1305Cipher {
         input.as_ptr(),
         input_len,
       );
-      assert_eq!(ret, 1);
+      assert_eq!(ret, 1, "EVP_CipherUpdate for decryption failed");
     }
   }
 
@@ -170,7 +175,7 @@ impl ChaCha20Poly1305Cipher {
         std::ptr::null_mut(),
         &mut outl,
       );
-      assert_eq!(ret, 1);
+      assert_eq!(ret, 1, "EVP_CipherFinal_ex failed");
 
       let mut tag = vec![0u8; self.auth_tag_length];
       let ret = aws_lc_sys::EVP_CIPHER_CTX_ctrl(
@@ -179,7 +184,7 @@ impl ChaCha20Poly1305Cipher {
         self.auth_tag_length as i32,
         tag.as_mut_ptr() as *mut std::ffi::c_void,
       );
-      assert_eq!(ret, 1);
+      assert_eq!(ret, 1, "EVP_CTRL_AEAD_GET_TAG failed");
 
       tag
     }
@@ -550,8 +555,14 @@ impl Cipher {
           return Err(CipherError::InvalidAuthTag(tag_len));
         }
         ChaCha20Poly1305(Box::new(
-          ChaCha20Poly1305Cipher::new(key, iv, tag_len, true)
-            .map_err(|_| CipherError::InvalidKeyLength)?,
+          ChaCha20Poly1305Cipher::new(key, iv, tag_len, true).map_err(|e| {
+            match e {
+              CipherInitError::ContextAllocation => {
+                panic!("Failed to allocate EVP_CIPHER_CTX")
+              }
+              CipherInitError::InitFailed => CipherError::InvalidKeyLength,
+            }
+          })?,
         ))
       }
       _ => return Err(CipherError::UnknownCipher(algorithm_name.to_string())),
@@ -980,8 +991,14 @@ impl Decipher {
         }
         ChaCha20Poly1305(
           Box::new(
-            ChaCha20Poly1305Cipher::new(key, iv, tag_len, false)
-              .map_err(|_| DecipherError::InvalidKeyLength)?,
+            ChaCha20Poly1305Cipher::new(key, iv, tag_len, false).map_err(
+              |e| match e {
+                CipherInitError::ContextAllocation => {
+                  panic!("Failed to allocate EVP_CIPHER_CTX")
+                }
+                CipherInitError::InitFailed => DecipherError::InvalidKeyLength,
+              },
+            )?,
           ),
           auth_tag_length,
         )
