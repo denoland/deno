@@ -13,7 +13,7 @@ const { ObjectDefineProperty } = primordials;
 import { nextTick } from "ext:deno_node/_next_tick.ts";
 import { Readable, Writable } from "node:stream";
 import { guessHandleType } from "ext:deno_node/internal_binding/util.ts";
-import { op_node_fs_write_sync, op_node_register_fd } from "ext:core/ops";
+import { op_node_fs_write_sync } from "ext:core/ops";
 
 // Lazy loaders to break circular deps (process -> streams -> net/fs/tty).
 const lazyNet = core.createLazyLoader("node:net");
@@ -58,7 +58,6 @@ function createWritableStdioStream(fd) {
       stream._type = "tty";
       break;
     case "FILE":
-      op_node_register_fd(fd);
       stream = _createSyncWriteStream(fd);
       stream._type = "fs";
       break;
