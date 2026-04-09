@@ -792,6 +792,7 @@ function tickOnSocket(req, socket) {
     req.maxHeaderSize || 0,
     lenient ? kLenientAll : kLenientNone,
   );
+  req.socket = socket;
   parser.socket = socket;
   parser.outgoing = req;
   req.parser = parser;
