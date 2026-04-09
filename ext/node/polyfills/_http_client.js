@@ -709,6 +709,13 @@ function responseKeepAlive(req) {
   socket.removeListener("data", socketOnData);
   socket.removeListener("end", socketOnEnd);
 
+  // Free the parser so the socket can be cleanly reused
+  const parser = socket.parser;
+  if (parser) {
+    parser.finish();
+    freeParser(parser, req, socket);
+  }
+
   nextTick(emitFreeNT, req);
 
   req.destroyed = true;
