@@ -6,6 +6,63 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 2.7.12 / 2026.04.09
+
+- Revert "feat(add/install): default to npm registry for unprefixed packages
+  (#33156) (#33214)
+- Revert "feat(install): added --prod to skip dev deps and @types (#32863)
+  (#33212)
+- Revert "feat(unstable): add deno tsconfig subcommand (#33160)" (#33162)
+- Revert "feat: disable "no-process-global", "no-node-globals" lint rules by
+  default (#33147) (#33213)
+- Revert "feat: disable ops and resources sanitizers by default in deno test
+  (#33158) (#33215)
+- Revert "feat: use Node.js timers by default (#33118)" (#33211)
+- feat(add/install): default to npm registry for unprefixed packages (#33156)
+- feat(ext/node): add fs.SyncWriteStream (#33226)
+- feat(ext/node): add llhttp-based HTTPParser with native cppgc binding (#33202)
+- feat(ext/node): add native TLSWrap cppgc object (Rust core) (#33183)
+- feat(install): added --prod to skip dev deps and @types (#32863)
+- feat(unstable): add `deno tsconfig` subcommand (#33160)
+- feat: disable "no-process-global", "no-node-globals" lint rules by default
+  (#33147)
+- feat: disable ops and resources sanitizers by default in deno test (#33158)
+- feat: native uv_pipe_t implementation with NativePipe and FdTable (#33165)
+- feat: use Node.js timers by default (#33118)
+- fix(core): fix uv_pipe_open handle lifecycle to match libuv (#33225)
+- fix(core): free UvLoopInner on uv_loop_t drop to prevent worker memory leak
+  (#33200)
+- fix(core): handle WouldBlock in op_print for non-blocking stdio (#33221)
+- fix(core): use c_char instead of i8 in uv_buf_t base cast (#33179)
+- fix(ext/napi): use per-isolate Private key for napi_wrap/napi_unwrap (#33204)
+- fix(ext/node): add dns.getDefaultResultOrder() API (#33197)
+- fix(ext/node): create net.Socket from file descriptors (#33150)
+- fix(ext/node): implement TCP.open(fd) (#33155)
+- fix(ext/node): implement timeout, killSignal, and pid for child_process
+  spawnSync (#32810)
+- fix(ext/node): implement uv_ref for native TCP handles (#33174)
+- fix(ext/node): remove dead legacy TCP server accept path (#33172)
+- fix(ext/node): return real OS file descriptors from node:fs APIs (#33039)
+- fix(ext/node): rewrite Pipe.open(fd) to use raw fd ops (#33136)
+- fix(ext/node): support numeric FDs in child_process stdio array (#33140)
+- fix(ext/node): throw on cipher update with input >= 2^31-1 bytes (#33201)
+- fix(ext/webgpu): accept `ArrayBuffer` in `GPUQueue.writeBuffer()` as data
+  source (#33152)
+- fix(io): remove global stdio statics, handle non-blocking stdin (#33219)
+- fix(node): validate resolved main path stays within package directory (#33170)
+- fix(otel): add timeout to OTEL HTTP exporter to prevent hangs (#33159)
+- fix(permissions): check deny rules against resolved IPs to prevent numeric
+  hostname bypass (#33203)
+- fix(permissions): normalize IPv4-mapped IPv6 addresses in net permission
+  checks (#33223)
+- fix(repl): surface CDP protocol errors and fix race in wait_for_response
+  (#33190)
+- fix(runtime): cache canonicalized watch paths, fix spurious events (#33123)
+- fix(schema): fix the `publish: false` of deno.json schema (#33196)
+- fix: linked packages with peer deps failing to cache from lockfile (#33143)
+- fix: update release template workflow URLs to .generated.yml (#33116)
+- perf(ext/node): use aws-lc-sys EVP API for chacha20-poly1305 (#33110)
+
 ### 2.7.11 / 2026.04.01
 
 - feat: add alpha and beta release channel support (#33098)
