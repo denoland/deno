@@ -232,6 +232,7 @@ Deno.test("tls.createServer creates a TLS server", async () => {
     server.close();
   });
   await deferred.promise;
+  await new Promise<void>((resolve) => server.on("close", resolve));
 });
 
 Deno.test("TLSSocket can construct without options", () => {
