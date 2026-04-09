@@ -2899,3 +2899,93 @@ async fn tcp_batch_accept() {
   })
   .await;
 }
+
+// ========== Pipe handle lifecycle ==========
+
+// UV_HANDLE_ACTIVE flag value (matches uv_compat.rs private const)
+#[cfg(unix)]
+const UV_HANDLE_ACTIVE: u32 = 1 << 0;
+
+#[cfg(unix)]
+#[tokio::test(flavor = "current_thread")]
+async fn pipe_open_not_active_until_read_start() {
+  run_test(async |runtime, uv_loop| {
+    // Create an OS pipe pair.
+    let mut pipe_fds = [0i32; 2];
+    assert_eq!(unsafe { libc::pipe(pipe_fds.as_mut_ptr()) }, 0);
+    let write_fd = pipe_fds[1];
+    let _write_guard = FdGuard(write_fd);
+
+    // Init and open a uv_pipe_t on the read end.
+    let mut pipe = new_pipe(false);
+    unsafe {
+      assert_ok(pipe::uv_pipe_init(uv_loop, &mut pipe, 0));
+      assert_ok(pipe::uv_pipe_open(&mut pipe, pipe_fds[0]));
+    }
+
+    // After uv_pipe_open, the handle should NOT be active.
+    // This allows the event loop to exit when the pipe is idle.
+    assert_eq!(
+      pipe.flags & UV_HANDLE_ACTIVE,
+      0,
+      "pipe should not be active after uv_pipe_open"
+    );
+
+    // Start reading -- now the handle should become active.
+    unsafe extern "C" fn alloc_cb(
+      _handle: *mut uv_handle_t,
+      suggested_size: usize,
+      buf: *mut uv_buf_t,
+    ) {
+      // SAFETY: malloc + writing to out-param buf.
+      unsafe {
+        let ptr = libc::malloc(suggested_size) as *mut c_char;
+        (*buf).base = ptr;
+        (*buf).len = suggested_size;
+      }
+    }
+    unsafe extern "C" fn read_cb(
+      _stream: *mut uv_stream_t,
+      _nread: isize,
+      buf: *const uv_buf_t,
+    ) {
+      // SAFETY: freeing the buffer allocated by alloc_cb.
+      unsafe {
+        if !(*buf).base.is_null() {
+          libc::free((*buf).base as *mut c_void);
+        }
+      }
+    }
+    unsafe {
+      assert_ok(pipe::read_start_pipe(
+        &mut pipe,
+        Some(alloc_cb),
+        Some(read_cb),
+      ));
+    }
+    assert_ne!(
+      pipe.flags & UV_HANDLE_ACTIVE,
+      0,
+      "pipe should be active after read_start"
+    );
+
+    // Stop reading and tick the loop so poll_pipe_handle deactivates it.
+    unsafe {
+      pipe::read_stop_pipe(&mut pipe);
+    }
+    tick(runtime).await;
+
+    assert_eq!(
+      pipe.flags & UV_HANDLE_ACTIVE,
+      0,
+      "pipe should not be active after read_stop + tick"
+    );
+
+    // Cleanup: close the pipe handle.
+    unsafe {
+      uv_close(&mut pipe as *mut uv_pipe_t as *mut uv_handle_t, None);
+    }
+    tick(runtime).await;
+  })
+  .await;
+}
