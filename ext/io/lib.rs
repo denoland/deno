@@ -26,10 +26,8 @@ use deno_core::AsyncRefCell;
 use deno_core::AsyncResult;
 use deno_core::BufMutView;
 use deno_core::BufView;
-use deno_core::CancelFuture;
 use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
-use deno_core::JsBuffer;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
@@ -46,7 +44,6 @@ use fs::FileResource;
 use fs::FsError;
 use fs::FsResult;
 use fs::FsStat;
-use once_cell::sync::Lazy;
 #[cfg(windows)]
 use parking_lot::Condvar;
 #[cfg(windows)]
@@ -189,47 +186,30 @@ pub fn close_raw_handle(handle: RawIoHandle) {
   }
 }
 
-// Store the stdio fd/handles in global statics in order to keep them
-// alive for the duration of the application since the last handle/fd
-// being dropped will close the corresponding pipe.
+/// Wrap a stdio fd as a StdFile without global statics.
+///
+/// Uses the raw fd directly. The StdFileResourceInner Drop impl leaks
+/// stdio fds (via into_raw_fd) to prevent closing fds 0/1/2 at shutdown.
 #[cfg(unix)]
-pub static STDIN_HANDLE: Lazy<StdFile> = Lazy::new(|| {
-  // SAFETY: corresponds to OS stdin
-  unsafe { StdFile::from_raw_fd(0) }
-});
-#[cfg(unix)]
-pub static STDOUT_HANDLE: Lazy<StdFile> = Lazy::new(|| {
-  // SAFETY: corresponds to OS stdout
-  unsafe { StdFile::from_raw_fd(1) }
-});
-#[cfg(unix)]
-pub static STDERR_HANDLE: Lazy<StdFile> = Lazy::new(|| {
-  // SAFETY: corresponds to OS stderr
-  unsafe { StdFile::from_raw_fd(2) }
-});
+fn stdio_fd(fd: i32) -> StdFile {
+  // SAFETY: fd is a valid stdio descriptor (0, 1, or 2).
+  unsafe { StdFile::from_raw_fd(fd) }
+}
 
 #[cfg(windows)]
-pub static STDIN_HANDLE: Lazy<StdFile> = Lazy::new(|| {
-  // SAFETY: corresponds to OS stdin
-  unsafe { StdFile::from_raw_handle(GetStdHandle(winbase::STD_INPUT_HANDLE)) }
-});
-#[cfg(windows)]
-pub static STDOUT_HANDLE: Lazy<StdFile> = Lazy::new(|| {
-  // SAFETY: corresponds to OS stdout
-  unsafe { StdFile::from_raw_handle(GetStdHandle(winbase::STD_OUTPUT_HANDLE)) }
-});
-#[cfg(windows)]
-pub static STDERR_HANDLE: Lazy<StdFile> = Lazy::new(|| {
-  // SAFETY: corresponds to OS stderr
-  unsafe { StdFile::from_raw_handle(GetStdHandle(winbase::STD_ERROR_HANDLE)) }
-});
+fn stdio_fd(fd: i32) -> StdFile {
+  let std_handle = match fd {
+    0 => winbase::STD_INPUT_HANDLE,
+    1 => winbase::STD_OUTPUT_HANDLE,
+    2 => winbase::STD_ERROR_HANDLE,
+    _ => panic!("Invalid stdio fd {fd}"),
+  };
+  // SAFETY: GetStdHandle returns a valid handle for the given std device.
+  unsafe { StdFile::from_raw_handle(GetStdHandle(std_handle)) }
+}
 
 deno_core::extension!(deno_io,
   deps = [ deno_web ],
-  ops = [
-    op_read_with_cancel_handle,
-    op_read_create_cancel_handle,
-  ],
   esm = [ "12_io.js" ],
   options = {
     stdio: Option<Stdio>,
@@ -256,7 +236,7 @@ deno_core::extension!(deno_io,
       let stdin_file: Rc<dyn fs::File> = Rc::new(match stdio.stdin.pipe {
         StdioPipeInner::Inherit => StdFileResourceInner::new(
           StdFileResourceKind::Stdin(stdin_state),
-          STDIN_HANDLE.try_clone().unwrap(),
+          stdio_fd(0),
           None,
         ),
         StdioPipeInner::File(pipe) => StdFileResourceInner::file(pipe, None),
@@ -266,14 +246,20 @@ deno_core::extension!(deno_io,
       assert_eq!(rid, 0, "stdin must have ResourceId 0");
 
       let (stdout_file, child_stdout): (Rc<dyn fs::File>, StdFile) = match stdio.stdout.pipe {
-        StdioPipeInner::Inherit => (
-          Rc::new(StdFileResourceInner::new(
-            StdFileResourceKind::Stdout,
-            STDOUT_HANDLE.try_clone().unwrap(),
-            None,
-          )),
-          STDOUT_HANDLE.try_clone().unwrap(),
-        ),
+        StdioPipeInner::Inherit => {
+          let file = stdio_fd(1);
+          // dup for ChildProcessStdio -- it drops normally and must
+          // not close the real fd 1.
+          let child_handle = file.try_clone().unwrap();
+          (
+            Rc::new(StdFileResourceInner::new(
+              StdFileResourceKind::Stdout,
+              file,
+              None,
+            )),
+            child_handle,
+          )
+        }
         StdioPipeInner::File(pipe) => {
           let child_handle = pipe.try_clone().unwrap();
           (Rc::new(StdFileResourceInner::file(pipe, None)), child_handle)
@@ -284,14 +270,18 @@ deno_core::extension!(deno_io,
       assert_eq!(rid, 1, "stdout must have ResourceId 1");
 
       let (stderr_file, child_stderr): (Rc<dyn fs::File>, StdFile) = match stdio.stderr.pipe {
-        StdioPipeInner::Inherit => (
-          Rc::new(StdFileResourceInner::new(
-            StdFileResourceKind::Stderr,
-            STDERR_HANDLE.try_clone().unwrap(),
-            None,
-          )),
-          STDERR_HANDLE.try_clone().unwrap(),
-        ),
+        StdioPipeInner::Inherit => {
+          let file = stdio_fd(2);
+          let child_handle = file.try_clone().unwrap();
+          (
+            Rc::new(StdFileResourceInner::new(
+              StdFileResourceKind::Stderr,
+              file,
+              None,
+            )),
+            child_handle,
+          )
+        }
         StdioPipeInner::File(pipe) => {
           let child_handle = pipe.try_clone().unwrap();
           (Rc::new(StdFileResourceInner::file(pipe, None)), child_handle)
@@ -531,6 +521,35 @@ pub struct StdFileResourceInner {
   maybe_path: Option<PathBuf>,
 }
 
+impl Drop for StdFileResourceInner {
+  fn drop(&mut self) {
+    // For stdio resources, leak the fd to prevent closing fds 0/1/2.
+    // These fds must stay open for the lifetime of the process -- without
+    // global statics holding them, we rely on this leak to keep them alive.
+    match self.kind {
+      StdFileResourceKind::Stdin(_)
+      | StdFileResourceKind::Stdout
+      | StdFileResourceKind::Stderr => {
+        if let Some(file) = self.cell.borrow_mut().take() {
+          #[cfg(unix)]
+          {
+            use std::os::unix::io::IntoRawFd;
+            let _ = file.into_raw_fd();
+          }
+          #[cfg(windows)]
+          {
+            use std::os::windows::io::IntoRawHandle;
+            let _ = file.into_raw_handle();
+          }
+        }
+      }
+      StdFileResourceKind::File => {
+        // Regular files close normally via Drop
+      }
+    }
+  }
+}
+
 impl StdFileResourceInner {
   pub fn file(fs_file: StdFile, maybe_path: Option<PathBuf>) -> Self {
     StdFileResourceInner::new(StdFileResourceKind::File, fs_file, maybe_path)
@@ -734,8 +753,24 @@ impl crate::fs::File for StdFileResourceInner {
 
   fn read_sync(self: Rc<Self>, buf: &mut [u8]) -> FsResult<usize> {
     match self.kind {
-      StdFileResourceKind::File | StdFileResourceKind::Stdin(_) => {
-        self.with_sync(|file| Ok(file.read(buf)?))
+      StdFileResourceKind::File => self.with_sync(|file| Ok(file.read(buf)?)),
+      StdFileResourceKind::Stdin(_) => {
+        // Stdin may be set to non-blocking mode by Node's process.stdin
+        // (via uv_pipe_open/uv_tty_init which set O_NONBLOCK on the fd).
+        // Since O_NONBLOCK is per-file-description, it affects all users
+        // of fd 0. Retry on WouldBlock to avoid surfacing EAGAIN to JS.
+        self.with_sync(|file| {
+          loop {
+            match file.read(buf) {
+              Ok(nread) => return Ok(nread),
+              Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                std::thread::yield_now();
+                continue;
+              }
+              Err(e) => return Err(e.into()),
+            }
+          }
+        })
       }
       StdFileResourceKind::Stdout | StdFileResourceKind::Stderr => {
         Err(FsError::NotSupported)
@@ -1167,6 +1202,25 @@ impl crate::fs::File for StdFileResourceInner {
       StdFileResourceKind::Stdin(state) => {
         self.handle_stdin_read(state.clone(), buf).await
       }
+      #[cfg(not(windows))]
+      StdFileResourceKind::Stdin(_) => {
+        // Stdin may be set to non-blocking mode by Node's process.stdin.
+        // Retry on WouldBlock (see read_sync comment for details).
+        self
+          .with_inner_blocking_task(|file| {
+            loop {
+              match file.read(&mut buf) {
+                Ok(nread) => return Ok((nread, buf)),
+                Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                  std::thread::yield_now();
+                  continue;
+                }
+                Err(e) => return Err(e.into()),
+              }
+            }
+          })
+          .await
+      }
       _ => {
         self
           .with_inner_blocking_task(|file| {
@@ -1279,65 +1333,6 @@ impl crate::fs::File for StdFileResourceInner {
   fn backing_fd(self: Rc<Self>) -> Option<ResourceHandleFd> {
     Some(self.handle)
   }
-}
-
-pub struct ReadCancelResource(Rc<CancelHandle>);
-
-impl ReadCancelResource {
-  pub fn cancel_handle(&self) -> Rc<CancelHandle> {
-    self.0.clone()
-  }
-}
-
-impl Resource for ReadCancelResource {
-  fn name(&self) -> Cow<'_, str> {
-    "readCancel".into()
-  }
-
-  fn close(self: Rc<Self>) {
-    self.0.cancel();
-  }
-}
-
-#[op2(fast)]
-#[smi]
-pub fn op_read_create_cancel_handle(state: &mut OpState) -> u32 {
-  state
-    .resource_table
-    .add(ReadCancelResource(CancelHandle::new_rc()))
-}
-
-#[op2]
-pub async fn op_read_with_cancel_handle(
-  state: Rc<RefCell<OpState>>,
-  #[smi] rid: u32,
-  #[smi] cancel_handle: u32,
-  #[buffer] buf: JsBuffer,
-) -> Result<u32, JsErrorBox> {
-  let (fut, cancel_rc) = {
-    let state = state.borrow();
-    let cancel_handle = state
-      .resource_table
-      .get::<ReadCancelResource>(cancel_handle)
-      .unwrap()
-      .0
-      .clone();
-
-    (
-      FileResource::with_file(&state, rid, |file| {
-        let view = BufMutView::from(buf);
-        Ok(file.read_byob(view))
-      }),
-      cancel_handle,
-    )
-  };
-
-  fut?
-    .or_cancel(cancel_rc)
-    .await
-    .map_err(|_| JsErrorBox::generic("cancelled"))?
-    .map(|(n, _)| n as u32)
-    .map_err(JsErrorBox::from_err)
 }
 
 // override op_print to use the stdout and stderr in the resource table

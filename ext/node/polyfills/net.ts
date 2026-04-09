@@ -113,7 +113,7 @@ import type { DuplexOptions } from "ext:deno_node/_stream.d.ts";
 import type { BufferEncoding } from "ext:deno_node/_global.d.ts";
 import type { Abortable } from "ext:deno_node/_events.d.ts";
 import { channel } from "node:diagnostics_channel";
-import { primordials } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 
 const {
   ArrayPrototypeIncludes,
@@ -2686,15 +2686,21 @@ Server.prototype._emitCloseIfDrained = function () {
     return;
   }
 
-  // We use setTimeout instead of nextTick here to avoid EADDRINUSE error
-  // when the same port listened immediately after the 'close' event.
+  // We use a deferred timer instead of nextTick here to avoid EADDRINUSE
+  // error when the same port listened immediately after the 'close' event.
   // ref: https://github.com/denoland/deno_std/issues/2788
-  defaultTriggerAsyncIdScope(
-    this[asyncIdSymbol],
-    setTimeout,
-    _emitCloseNT,
+  // deno-lint-ignore no-this-alias
+  const self = this;
+  // Use core.createTimer directly to avoid creating a Node Timeout object.
+  // Must be ref'd (last param true) so the event loop waits for the close event.
+  core.createTimer(
+    () => {
+      _emitCloseNT(self);
+    },
     0,
-    this,
+    undefined,
+    false,
+    true,
   );
 };
 
