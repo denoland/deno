@@ -5741,6 +5741,48 @@ mod tests {
   }
 
   #[test]
+  fn test_check_net_deny_resolved_ip_subnet() {
+    // Regression test: subnet-based deny rules (e.g. --deny-net=127.0.0.0/8)
+    // must also block resolved IPs that fall within the subnet, preventing
+    // bypasses via numeric hostname aliases (e.g. 2130706433 → 127.0.0.1).
+    set_prompter(Box::new(TestPrompter));
+    let parser = TestPermissionDescriptorParser;
+    let mut perms = Permissions::from_options(
+      &parser,
+      &PermissionsOptions {
+        allow_net: Some(svec![]),
+        deny_net: Some(svec!["127.0.0.0/8"]),
+        ..Default::default()
+      },
+    )
+    .unwrap();
+
+    // 127.0.0.1 falls within the 127.0.0.0/8 subnet — should be denied.
+    let denied_ip = std::net::IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1));
+    let desc = NetDescriptor(Host::Ip(denied_ip), Some(8000));
+    assert!(
+      perms.net.check_resolved_ip_deny(&desc, None).is_err(),
+      "resolved 127.0.0.1 should be denied by 127.0.0.0/8 subnet rule"
+    );
+
+    // 127.1.2.3 also falls within 127.0.0.0/8 — should be denied.
+    let denied_ip2 = std::net::IpAddr::V4(Ipv4Addr::new(127, 1, 2, 3));
+    let desc = NetDescriptor(Host::Ip(denied_ip2), Some(9000));
+    assert!(
+      perms.net.check_resolved_ip_deny(&desc, None).is_err(),
+      "resolved 127.1.2.3 should be denied by 127.0.0.0/8 subnet rule"
+    );
+
+    // 192.168.1.1 is outside the subnet — should not be denied.
+    let allowed_ip = std::net::IpAddr::V4(Ipv4Addr::new(192, 168, 1, 1));
+    let desc = NetDescriptor(Host::Ip(allowed_ip), Some(8000));
+    assert!(
+      perms.net.check_resolved_ip_deny(&desc, None).is_ok(),
+      "resolved 192.168.1.1 should not be denied by 127.0.0.0/8 subnet rule"
+    );
+  }
+
+  #[test]
   fn test_check_net_url() {
     let parser = TestPermissionDescriptorParser;
     let perms = Permissions::from_options(
