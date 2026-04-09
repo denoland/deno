@@ -2903,6 +2903,7 @@ async fn tcp_batch_accept() {
 // ========== Pipe handle lifecycle ==========
 
 // UV_HANDLE_ACTIVE flag value (matches uv_compat.rs private const)
+#[cfg(unix)]
 const UV_HANDLE_ACTIVE: u32 = 1 << 0;
 
 #[cfg(unix)]
