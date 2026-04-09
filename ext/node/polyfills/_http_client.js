@@ -76,10 +76,19 @@ import { getTimerDuration } from "ext:deno_node/internal/timers.mjs";
 import { addAbortSignal, finished } from "node:stream";
 import { nextTick } from "ext:deno_node/_next_tick.ts";
 import { kNeedDrain } from "ext:deno_node/internal/http.ts";
+import { updateSpanFromError } from "ext:deno_telemetry/util.ts";
+import {
+  builtinTracer,
+  ContextManager,
+  PROPAGATORS,
+  SPAN_KEY,
+  TRACING_ENABLED,
+} from "ext:deno_telemetry/telemetry.ts";
 
 const INVALID_PATH_REGEX = /[^\u0021-\u00ff]/;
 const kError = Symbol("kError");
 const kPath = Symbol("kPath");
+const kOtelSpan = Symbol("kOtelSpan");
 
 const kLenientAll = HTTPParser.kLenientAll | 0;
 const kLenientNone = HTTPParser.kLenientNone | 0;
@@ -376,6 +385,41 @@ ClientRequest.prototype._implicitHeader = function _implicitHeader() {
   if (this._header) {
     throw new ERR_HTTP_HEADERS_SENT("render");
   }
+
+  // Start OTel client span and inject propagation headers before serialization
+  if (TRACING_ENABLED && !this[kOtelSpan]) {
+    const span = builtinTracer().startSpan(this.method, { kind: 2 }); // Kind 2 = Client
+    this[kOtelSpan] = span;
+
+    // Build a context with this span for propagation injection,
+    // without entering it into the async context
+    const spanContext = ContextManager.active().setValue(SPAN_KEY, span);
+    for (const propagator of PROPAGATORS) {
+      propagator.inject(spanContext, this, {
+        set(carrier, key, value) {
+          carrier.setHeader(key, value);
+        },
+      });
+    }
+
+    // Set request attributes
+    const protocol = this.protocol || "http:";
+    const host = this.getHeader("host") || this.host || "localhost";
+    const path = this.path || "/";
+    const fullUrl = `${protocol}//${host}${path}`;
+    try {
+      const parsedUrl = new URL(fullUrl);
+      span.setAttribute("http.request.method", this.method);
+      span.setAttribute("url.full", parsedUrl.href);
+      span.setAttribute("url.scheme", parsedUrl.protocol.slice(0, -1));
+      span.setAttribute("url.path", parsedUrl.pathname);
+      span.setAttribute("url.query", parsedUrl.search.slice(1));
+    } catch {
+      span.setAttribute("http.request.method", this.method);
+      span.setAttribute("url.full", fullUrl);
+    }
+  }
+
   this._storeHeader(
     this.method + " " + this.path + " HTTP/1.1\r\n",
     this[kOutHeaders],
@@ -426,6 +470,16 @@ function socketCloseListener() {
   const parser = socket.parser;
   const res = req.res;
 
+  // End OTel span on socket close
+  const span = req[kOtelSpan];
+  if (span) {
+    if (!res || !res.complete) {
+      updateSpanFromError(span, connResetException("socket hang up"));
+    }
+    span.end();
+    req[kOtelSpan] = null;
+  }
+
   req.destroyed = true;
   if (res) {
     if (!res.complete) {
@@ -460,6 +514,13 @@ function socketErrorListener(err) {
   const req = socket._httpMessage;
 
   if (req) {
+    // End OTel span on error
+    const span = req[kOtelSpan];
+    if (span) {
+      updateSpanFromError(span, err);
+      span.end();
+      req[kOtelSpan] = null;
+    }
     socket._hadError = true;
     emitErrorEvent(req, err);
   }
@@ -606,6 +667,16 @@ function parserOnIncomingClient(res, shouldKeepAlive) {
   req.res = res;
   res.req = req;
 
+  // Set OTel response attributes
+  const span = req[kOtelSpan];
+  if (span) {
+    span.setAttribute("http.response.status_code", res.statusCode);
+    if (res.statusCode >= 400) {
+      span.setAttribute("error.type", String(res.statusCode));
+      span.setStatus({ code: 2 });
+    }
+  }
+
   // Add our listener first, so that we guarantee socket cleanup
   res.on("end", responseOnEnd);
   req.on("finish", requestOnFinish);
@@ -653,6 +724,13 @@ function responseOnEnd() {
   if (socket) {
     if (req.timeoutCb) socket.removeListener("timeout", emitRequestTimeout);
     socket.removeListener("timeout", responseOnTimeout);
+  }
+
+  // End OTel client span
+  const span = req[kOtelSpan];
+  if (span) {
+    span.end();
+    req[kOtelSpan] = null;
   }
 
   req._ended = true;

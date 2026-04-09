@@ -62,8 +62,64 @@ import {
 import { kEmptyObject } from "ext:deno_node/internal/util.mjs";
 import { validateObject } from "ext:deno_node/internal/validators.mjs";
 import { nextTick } from "ext:deno_node/_next_tick.ts";
+import {
+  builtinTracer,
+  ContextManager,
+  METRICS_ENABLED,
+  PROPAGATORS,
+  telemetry,
+  TRACING_ENABLED,
+} from "ext:deno_telemetry/telemetry.ts";
 
 const kServerResponse = Symbol("ServerResponse");
+const kOtelSpan = Symbol("kOtelSpan");
+const kOtelStartTime = Symbol("kOtelStartTime");
+const kOtelReqBodySize = Symbol("kOtelReqBodySize");
+
+// OTel server metrics - lazy initialized
+let otelMetrics = null;
+
+function getOtelMetrics() {
+  if (otelMetrics) return otelMetrics;
+  const meter = telemetry.meterProvider.getMeter("deno.http.server");
+  otelMetrics = {
+    activeRequests: meter.createUpDownCounter("http.server.active_requests", {
+      description: "Number of active HTTP server requests.",
+      unit: "{request}",
+    }),
+    requestDuration: meter.createHistogram("http.server.request.duration", {
+      description: "Duration of HTTP server requests.",
+      unit: "s",
+      advice: {
+        explicitBucketBoundaries: [
+          0.005,
+          0.01,
+          0.025,
+          0.05,
+          0.075,
+          0.1,
+          0.25,
+          0.5,
+          0.75,
+          1,
+          2.5,
+          5,
+          7.5,
+          10,
+        ],
+      },
+    }),
+    requestBodySize: meter.createHistogram("http.server.request.body.size", {
+      description: "Size of HTTP server request bodies.",
+      unit: "By",
+    }),
+    responseBodySize: meter.createHistogram("http.server.response.body.size", {
+      description: "Size of HTTP server response bodies.",
+      unit: "By",
+    }),
+  };
+  return otelMetrics;
+}
 const kLenientAll = HTTPParser.kLenientAll | 0;
 const kLenientNone = HTTPParser.kLenientNone | 0;
 
@@ -393,7 +449,8 @@ function onParserExecuteCommon(server, socket, parser, state, ret, d) {
     const bytesParsed = ret;
     const req = parser.incoming;
 
-    if (server.listenerCount("upgrade") === 0) {
+    const eventName = req.method === "CONNECT" ? "connect" : "upgrade";
+    if (server.listenerCount(eventName) === 0) {
       socket.destroy();
       return;
     }
@@ -401,7 +458,6 @@ function onParserExecuteCommon(server, socket, parser, state, ret, d) {
     parser.finish();
     freeParser(parser, req, socket);
 
-    const eventName = req.method === "CONNECT" ? "connect" : "upgrade";
     const bodyHead = d.slice(bytesParsed);
 
     socket.readableFlowing = null;
@@ -474,6 +530,45 @@ function parserOnIncoming(server, socket, state, req, keepAlive) {
   res.shouldKeepAlive = keepAlive;
   res[kUniqueHeaders] = server[kUniqueHeaders];
 
+  // Start OTel server span and metrics
+  if (TRACING_ENABLED) {
+    // Extract trace context from incoming request headers
+    let context = ContextManager.active();
+    if (PROPAGATORS.length > 0) {
+      for (const propagator of PROPAGATORS) {
+        context = propagator.extract(context, req.headers, {
+          get(carrier, key) {
+            return carrier[key];
+          },
+          keys(carrier) {
+            return Object.keys(carrier);
+          },
+        });
+      }
+    }
+    // Create server span within extracted context, without modifying async context
+    const span = builtinTracer().startSpan(req.method, { kind: 1 }, context); // SpanKind.SERVER = 1
+    const url = req.url || "/";
+    const host = req.headers?.host || "localhost";
+    const scheme = socket.encrypted ? "https" : "http";
+    span.setAttribute("http.request.method", req.method);
+    span.setAttribute("url.full", `${scheme}://${host}${url}`);
+    span.setAttribute("url.scheme", scheme);
+    span.setAttribute("url.path", url.split("?")[0]);
+    span.setAttribute("url.query", url.includes("?") ? url.split("?")[1] : "");
+    res[kOtelSpan] = span;
+  }
+  if (METRICS_ENABLED) {
+    res[kOtelStartTime] = performance.now();
+    res[kOtelReqBodySize] = 0;
+    const metrics = getOtelMetrics();
+    const scheme = socket.encrypted ? "https" : "http";
+    metrics.activeRequests.add(1, {
+      "http.request.method": req.method,
+      "url.scheme": scheme,
+    });
+  }
+
   if (socket._httpMessage) {
     state.outgoing.push(res);
   } else {
@@ -544,6 +639,40 @@ function parserOnIncoming(server, socket, state, req, keepAlive) {
 
 function resOnFinish(req, res, socket, state, server) {
   assert(state.incoming.length === 0 || state.incoming[0] === req);
+
+  // End OTel server span
+  const span = res[kOtelSpan];
+  if (span) {
+    span.setAttribute("http.response.status_code", String(res.statusCode));
+    if (res.statusCode >= 500) {
+      span.setAttribute("error.type", String(res.statusCode));
+      span.setStatus({ code: 2 });
+    }
+    span.end();
+    res[kOtelSpan] = null;
+  }
+
+  // Record OTel server metrics
+  if (res[kOtelStartTime] !== undefined) {
+    const durationS = (performance.now() - res[kOtelStartTime]) / 1000;
+    const scheme = socket.encrypted ? "https" : "http";
+    const metricAttrs = {
+      "http.request.method": req.method,
+      "http.response.status_code": res.statusCode,
+      "network.protocol.version":
+        `${req.httpVersionMajor}.${req.httpVersionMinor}`,
+      "url.scheme": scheme,
+    };
+    const metrics = getOtelMetrics();
+    metrics.activeRequests.add(-1, {
+      "http.request.method": req.method,
+      "url.scheme": scheme,
+    });
+    metrics.requestDuration.record(durationS, metricAttrs);
+    metrics.requestBodySize.record(res[kOtelReqBodySize] || 0, metricAttrs);
+    metrics.responseBodySize.record(0, metricAttrs);
+    res[kOtelStartTime] = undefined;
+  }
 
   state.incoming.shift();
 
