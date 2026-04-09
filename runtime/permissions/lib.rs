@@ -7034,9 +7034,7 @@ mod tests {
     // Direct IPv4 is denied
     assert!(perms.check_net(&("127.0.0.1", None), "api").is_err());
     // IPv4-mapped IPv6 form must also be denied
-    assert!(
-      perms.check_net(&("::ffff:127.0.0.1", None), "api").is_err()
-    );
+    assert!(perms.check_net(&("::ffff:127.0.0.1", None), "api").is_err());
     // Regular IPv6 loopback is a different address, should be allowed
     assert!(perms.check_net(&("::1", None), "api").is_ok());
     // Other IPv4 addresses should be allowed
@@ -7055,9 +7053,7 @@ mod tests {
     let mut perms = PermissionsContainer::new(Arc::new(parser), perms);
 
     assert!(perms.check_net(&("10.0.0.1", None), "api").is_ok());
-    assert!(
-      perms.check_net(&("::ffff:10.0.0.1", None), "api").is_ok()
-    );
+    assert!(perms.check_net(&("::ffff:10.0.0.1", None), "api").is_ok());
   }
 
   #[test]
