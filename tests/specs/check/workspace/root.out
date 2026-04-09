@@ -15,6 +15,6 @@ console.log(Math.pow(""));
     An argument for 'y' was not provided.
         pow(x: number, y: number): number;
                        ~~~~~~~~~
-        at asset:///lib.es5.d.ts:744:20
+        at asset:///lib.es5.d.ts:742:20
 
 error: Type checking failed.
