@@ -142,6 +142,9 @@ fn main() {
   }
 
   if category.is_empty() {
+    if cli_filter.is_some() {
+      panic!("No tests matched the specified filter");
+    }
     return;
   }
 
