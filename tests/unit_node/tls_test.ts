@@ -130,11 +130,8 @@ Deno.test("tls.connect mid-read tcp->tls upgrade", async () => {
   await promise;
 });
 
-// TODO(bartlomieju): re-enable after libuv_stream::TCP is replaced by
-// LibUvStreamWrap-based TCPWrap. Legacy TCP sockets have unconnected
-// NativeTCP libuv handles, so TLS upgrade on existing sockets doesn't work.
 Deno.test(
-  { name: "tls.connect after-read tls upgrade", ignore: true },
+  { name: "tls.connect after-read tls upgrade" },
   async () => {
     const { promise, resolve } = Promise.withResolvers<void>();
     const ctl = new AbortController();
@@ -298,8 +295,7 @@ Deno.test("TLSSocket.alpnProtocol is set for client", async () => {
   await new Promise((resolve) => outgoing.on("close", resolve));
 });
 
-// TODO(bartlomieju): re-enable after TCPWrap rewrite (legacy TCP has unconnected native handle)
-Deno.test({ name: "tls connect upgrade tcp", ignore: true }, async () => {
+Deno.test({ name: "tls connect upgrade tcp" }, async () => {
   const { promise, resolve } = Promise.withResolvers<void>();
 
   const socket = new net.Socket();
@@ -369,10 +365,8 @@ Deno.test("net.Socket reinitialize preserves TLS upgrade state", () => {
   assertEquals((newHandle as any)._parentWrap, parentWrap);
 });
 
-// TODO(bartlomieju): re-enable after TCPWrap rewrite (legacy TCP has unconnected native handle)
 Deno.test({
   name: "tls connect upgrade js socket wrapper",
-  ignore: true,
   sanitizeOps: false,
   sanitizeResources: false,
 }, async () => {

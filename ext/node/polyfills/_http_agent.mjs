@@ -475,6 +475,13 @@ Agent.prototype.keepSocketAlive = function keepSocketAlive(socket) {
   socket.setKeepAlive(true, this.keepAliveMsecs);
   socket.unref();
 
+  // Stop reading on the native handle so the TCP handle becomes inactive
+  // and doesn't keep the event loop alive while the socket is parked idle.
+  // Reading is restarted by tickOnSocket when the socket is reused.
+  if (socket._handle) {
+    socket._handle.readStop();
+  }
+
   const agentTimeout = this.options.timeout || 0;
   if (socket.timeout !== agentTimeout) {
     socket.setTimeout(agentTimeout);

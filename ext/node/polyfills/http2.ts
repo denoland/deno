@@ -57,10 +57,6 @@ import { Duplex } from "node:stream";
 import tls from "node:tls";
 import { deprecate } from "node:util";
 import dc from "node:diagnostics_channel";
-import {
-  kStreamBaseField,
-  kUseNativeWrap,
-} from "ext:deno_node/internal_binding/stream_wrap.ts";
 import { utcDate } from "ext:deno_node/internal/http.ts";
 import { ShutdownWrap } from "ext:deno_node/internal_binding/stream_wrap.ts";
 import { EventEmitter } from "node:events";
@@ -2658,16 +2654,8 @@ function setupHandle(socket, type, options) {
 
   // Get the native TCP handle from the socket wrapper
   const tcpHandle = socket._handle;
+  // TODO(bartlomieju): this appears to be dead code - it's always filled
   const nativeHandle = tcpHandle?._nativeHandle;
-
-  if (nativeHandle && !tcpHandle[kUseNativeWrap]) {
-    const streamBase = tcpHandle[kStreamBaseField];
-    const rid = streamBase?.rid ?? streamBase?.[internalRidSymbol];
-    if (typeof rid !== "number" || nativeHandle.openFromRid(rid) < 0) {
-      socket.destroy(new Error("Failed to open TCP handle from resource"));
-      return;
-    }
-  }
 
   if (nativeHandle) {
     // Cache socket address info before detaching the native handle,
@@ -4010,8 +3998,6 @@ function connect(authority, options, listener) {
   } else if (authority.host) {
     host = authority.host;
   }
-
-  options[kUseNativeWrap] = true;
 
   let socket;
   if (typeof options.createConnection === "function") {

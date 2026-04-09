@@ -39,9 +39,8 @@ import {
 import {
   kArrayBufferOffset,
   kBytesWritten,
+  kLastWriteWasAsync,
   kReadBytesOrError,
-  kStreamBaseField,
-  kUseNativeWrap,
   LibuvStreamWrap,
   ShutdownWrap,
   streamBaseState,
@@ -111,8 +110,6 @@ export class TCP extends ConnectionWrap {
   // deno-lint-ignore no-explicit-any -- Native libuv TCP handle
   #native: any;
 
-  [kUseNativeWrap]: boolean = false;
-
   /**
    * Creates a new TCP class instance.
    * @param type The socket type.
@@ -171,11 +168,7 @@ export class TCP extends ConnectionWrap {
    * @return An error status code.
    */
   open(fd: number): number {
-    const err = this.#native.open(fd);
-    if (err === 0) {
-      this[kUseNativeWrap] = true;
-    }
-    return err;
+    return this.#native.open(fd);
   }
 
   /**
@@ -187,7 +180,6 @@ export class TCP extends ConnectionWrap {
   bind(address: string, port: number): number {
     this.#address = address;
     this.#port = port;
-    this[kUseNativeWrap] = true;
     return this.#native.bind(address, port);
   }
 
@@ -200,7 +192,6 @@ export class TCP extends ConnectionWrap {
   bind6(address: string, port: number, _flags: number): number {
     this.#address = address;
     this.#port = port;
-    this[kUseNativeWrap] = true;
     return this.#native.bind6(address, port);
   }
 
@@ -248,7 +239,6 @@ export class TCP extends ConnectionWrap {
 
       self.#connections++;
       const clientHandle = new TCP(socketType.SOCKET);
-      clientHandle[kUseNativeWrap] = true;
       self.#native.accept(clientHandle.#native);
       clientHandle.#native.setOwner();
 
@@ -263,10 +253,6 @@ export class TCP extends ConnectionWrap {
   }
 
   override readStart(): number {
-    if (!this[kUseNativeWrap] || !this.#native) {
-      return super.readStart();
-    }
-
     this.reading = true;
     // deno-lint-ignore no-this-alias
     const self = this;
@@ -295,10 +281,6 @@ export class TCP extends ConnectionWrap {
   }
 
   override readStop(): number {
-    if (!this[kUseNativeWrap] || !this.#native) {
-      return super.readStop();
-    }
-
     this.reading = false;
     return this.#native.readStop();
   }
@@ -307,12 +289,9 @@ export class TCP extends ConnectionWrap {
     req: WriteWrap<LibuvStreamWrap>,
     data: Uint8Array,
   ): number {
-    if (!this[kUseNativeWrap] || !this.#native) {
-      return super.writeBuffer(req, data);
-    }
-
     const ret = this.#native.writeBuffer(data);
     streamBaseState[kBytesWritten] = data.byteLength;
+    streamBaseState[kLastWriteWasAsync] = 1;
     this.bytesWritten += data.byteLength;
 
     // Simulate async completion like Node.js
@@ -332,11 +311,6 @@ export class TCP extends ConnectionWrap {
     chunks: Buffer[] | (string | Buffer)[],
     allBuffers: boolean,
   ): number {
-    if (!this[kUseNativeWrap]) {
-      return super.writev(req, chunks, allBuffers);
-    }
-
-    // For native path, concat all chunks and write as single buffer
     const count = allBuffers ? chunks.length : chunks.length >> 1;
     const buffers: Buffer[] = new Array(count);
 
@@ -360,12 +334,7 @@ export class TCP extends ConnectionWrap {
   }
 
   override shutdown(req: ShutdownWrap<LibuvStreamWrap>): number {
-    if (!this[kUseNativeWrap]) {
-      return super.shutdown(req);
-    }
-
-    // Call uv_shutdown to send FIN to the remote side.
-    const ret = this.#native!.shutdown();
+    const ret = this.#native.shutdown();
     // Signal async completion like Node.js - the FIN is queued
     // in libuv and will be sent asynchronously.
     queueMicrotask(() => {
@@ -380,25 +349,11 @@ export class TCP extends ConnectionWrap {
   }
 
   override ref() {
-    if (this[kUseNativeWrap] && this.#native) {
-      this.#native.ref();
-      return;
-    }
-
-    if (this[kStreamBaseField]) {
-      this[kStreamBaseField].ref();
-    }
+    this.#native.ref();
   }
 
   override unref() {
-    if (this[kUseNativeWrap] && this.#native) {
-      this.#native.unref();
-      return;
-    }
-
-    if (this[kStreamBaseField]) {
-      this[kStreamBaseField].unref();
-    }
+    this.#native.unref();
   }
 
   /**
@@ -407,29 +362,14 @@ export class TCP extends ConnectionWrap {
    * @return An error status code.
    */
   getsockname(sockname: Record<string, never> | AddressInfo): number {
-    if (this[kUseNativeWrap] && this.#native) {
-      const info = this.#native.getsockname();
-      if (info) {
-        sockname.address = info.address;
-        sockname.port = info.port;
-        sockname.family = info.family;
-        return 0;
-      }
-      return codeMap.get("EADDRNOTAVAIL")!;
+    const info = this.#native.getsockname();
+    if (info) {
+      sockname.address = info.address;
+      sockname.port = info.port;
+      sockname.family = info.family;
+      return 0;
     }
-
-    if (
-      typeof this.#address === "undefined" ||
-      typeof this.#port === "undefined"
-    ) {
-      return codeMap.get("EADDRNOTAVAIL")!;
-    }
-
-    sockname.address = this.#address;
-    sockname.port = this.#port;
-    sockname.family = getIPFamily(this.#address);
-
-    return 0;
+    return codeMap.get("EADDRNOTAVAIL")!;
   }
 
   /**
@@ -438,29 +378,14 @@ export class TCP extends ConnectionWrap {
    * @return An error status code.
    */
   getpeername(peername: Record<string, never> | AddressInfo): number {
-    if (this[kUseNativeWrap] && this.#native) {
-      const info = this.#native.getpeername();
-      if (info) {
-        peername.address = info.address;
-        peername.port = info.port;
-        peername.family = info.family;
-        return 0;
-      }
-      return codeMap.get("EADDRNOTAVAIL")!;
+    const info = this.#native.getpeername();
+    if (info) {
+      peername.address = info.address;
+      peername.port = info.port;
+      peername.family = info.family;
+      return 0;
     }
-
-    if (
-      typeof this.#remoteAddress === "undefined" ||
-      typeof this.#remotePort === "undefined"
-    ) {
-      return codeMap.get("EADDRNOTAVAIL")!;
-    }
-
-    peername.address = this.#remoteAddress;
-    peername.port = this.#remotePort;
-    peername.family = this.#remoteFamily;
-
-    return 0;
+    return codeMap.get("EADDRNOTAVAIL")!;
   }
 
   /**
@@ -468,14 +393,7 @@ export class TCP extends ConnectionWrap {
    * @return An error status code.
    */
   setNoDelay(noDelay: boolean): number {
-    if (this[kUseNativeWrap]) {
-      return this.#native.setNoDelay(noDelay);
-    }
-
-    if (this[kStreamBaseField] && "setNoDelay" in this[kStreamBaseField]) {
-      this[kStreamBaseField].setNoDelay(noDelay);
-    }
-    return 0;
+    return this.#native.setNoDelay(noDelay);
   }
 
   /**
@@ -508,8 +426,6 @@ export class TCP extends ConnectionWrap {
     const self = this;
     this.#native.onconnect = function (status: number) {
       if (status === 0) {
-        self[kUseNativeWrap] = true;
-
         // Populate local address from the native handle
         const sockname = self.#native.getsockname();
         if (sockname) {
@@ -564,6 +480,7 @@ export class TCP extends ConnectionWrap {
     this.#remotePort = port;
     this.#remoteFamily = getIPFamily(address);
 
+    // Always use native libuv handle for connect.
     this.#nativeConnect(req, address, port);
     return 0;
   }
