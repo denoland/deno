@@ -716,7 +716,7 @@ Object.defineProperties(
         this.shouldKeepAlive = false;
       } else if (!state.connection) {
         const shouldSendKeepAlive = this.shouldKeepAlive &&
-            (state.contLen || this.useChunkedEncodingByDefault || this.agent);
+          (state.contLen || this.useChunkedEncodingByDefault || this.agent);
         if (shouldSendKeepAlive && this.maxRequestsOnConnectionReached) {
           state.header += "Connection: close\r\n";
         } else if (shouldSendKeepAlive) {
