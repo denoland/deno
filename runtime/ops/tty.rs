@@ -378,6 +378,7 @@ pub fn console_size_of_stderr() -> Result<ConsoleSize, std::io::Error> {
   {
     use winapi::um::processenv::GetStdHandle;
     use winapi::um::winbase;
+    // SAFETY: GetStdHandle with STD_ERROR_HANDLE always returns a valid handle.
     let handle = unsafe { GetStdHandle(winbase::STD_ERROR_HANDLE) };
     console_size_from_fd(handle)
   }
