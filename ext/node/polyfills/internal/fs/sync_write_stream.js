@@ -3,6 +3,11 @@
 
 // Mirrors Node.js lib/internal/fs/sync_write_stream.js
 //
+// SyncWriteStream is used for process.stdout/stderr when they are
+// backed by regular files (e.g. output redirected to a file). It
+// performs synchronous writes via fs.writeSync, matching Node.js
+// behavior for FILE-type stdio descriptors.
+//
 // This module is lazy-initialized because it depends on node:stream and
 // node:fs which are not available during V8 snapshot creation.
 

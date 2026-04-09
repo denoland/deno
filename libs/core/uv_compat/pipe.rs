@@ -1073,6 +1073,10 @@ pub(crate) unsafe fn poll_pipe_handle(
     }
 
     // 6. Deactivate handle when idle so the event loop can exit.
+    // In libuv, a pipe handle is only "active" when it has pending
+    // reads, writes, connects, or is listening. Without this, an
+    // opened-but-idle pipe (e.g. process.stdout) would keep the
+    // event loop alive forever.
     let has_pending_work = !(*pipe_ptr).internal_write_queue.is_empty()
       || (*pipe_ptr).internal_reading
       || (*pipe_ptr).internal_connect.is_some()
