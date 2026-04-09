@@ -1251,38 +1251,13 @@ impl NumericValue {
           "atan2" => {
             input.parse_nested_block(|arguments| {
               let acc = Self::parse_additive_expression(arguments, state)?;
-              let y = try_extract!(acc, expect_numeric(), arguments);
+              let numeric = try_extract!(acc, expect_numeric(), arguments);
+              let y = extract_as_raw!(numeric);
               arguments.expect_comma()?;
               let acc = Self::parse_additive_expression(arguments, state)?;
-              let x = try_extract!(acc, expect_numeric(), arguments);
+              let x = try_extract_as_raw!(acc, numeric, arguments);
               arguments.expect_exhausted()?;
-              let result: NumericAccumulator = match (y, x) {
-                (NumericValue::Number(y), NumericValue::Number(x)) => {
-                  NumericValue::Angle(Angle::from_radians(y.atan2(x))).into()
-                }
-                (NumericValue::Percent(y), NumericValue::Percent(x)) => {
-                  NumericValue::Angle(Angle::from_radians(y.atan2(x))).into()
-                }
-                (NumericValue::Length(y), NumericValue::Length(x)) => {
-                  NumericValue::Angle(Angle::from_radians(y.to_pixels().atan2(x.to_pixels()))).into()
-                }
-                (NumericValue::Angle(y), NumericValue::Angle(x)) => {
-                  NumericValue::Angle(Angle::from_radians(y.to_degrees().atan2(x.to_degrees()))).into()
-                }
-                (NumericValue::Time(y), NumericValue::Time(x)) => {
-                  NumericValue::Angle(Angle::from_radians(y.to_seconds().atan2(x.to_seconds()))).into()
-                }
-                (NumericValue::Frequency(y), NumericValue::Frequency(x)) => {
-                  NumericValue::Angle(Angle::from_radians(y.to_hertz().atan2(x.to_hertz()))).into()
-                }
-                (NumericValue::Resolution(y), NumericValue::Resolution(x)) => {
-                  NumericValue::Angle(Angle::from_radians(y.to_dot_per_pixels().atan2(x.to_dot_per_pixels()))).into()
-                }
-                (NumericValue::Flex(y), NumericValue::Flex(x)) => {
-                  NumericValue::Angle(Angle::from_radians(y.atan2(x))).into()
-                }
-                _ => return Err(arguments.new_custom_error(CSSValueCustomError::UnexpectedNumericType)),
-              };
+              let result = NumericValue::Angle(Angle::from_radians(y.atan2(x))).into();
               Ok(result)
             })
           },
@@ -1382,6 +1357,7 @@ impl NumericValue {
               let acc = Self::parse_additive_expression(arguments, state)?;
               let numeric = try_extract!(acc, expect_numeric(), arguments);
               arguments.expect_exhausted()?;
+              // NOTE: extract_as_raw! is not used because unit conversion is exceptionally not performed.
               let result: NumericAccumulator = match numeric {
                 NumericValue::Zero => unreachable!(),
                 NumericValue::Number(number) => {
@@ -1437,6 +1413,7 @@ impl NumericValue {
               let acc = Self::parse_additive_expression(arguments, state)?;
               let numeric = try_extract!(acc, expect_numeric(), arguments);
               arguments.expect_exhausted()?;
+              // NOTE: extract_as_raw! is not used because unit conversion is exceptionally not performed.
               let value = match numeric {
                 NumericValue::Zero => unreachable!(),
                 NumericValue::Number(number) => number,
