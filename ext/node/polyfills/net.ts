@@ -2699,9 +2699,10 @@ Server.prototype._emitCloseIfDrained = function () {
   // We use a deferred timer instead of nextTick here to avoid EADDRINUSE
   // error when the same port listened immediately after the 'close' event.
   // ref: https://github.com/denoland/deno_std/issues/2788
-  // Use core.createTimer to avoid ops sanitizer tracking this internal timer.
   // deno-lint-ignore no-this-alias
   const self = this;
+  // Use core.createTimer directly to avoid creating a Node Timeout object.
+  // Must be ref'd (last param true) so the event loop waits for the close event.
   core.createTimer(
     () => {
       _emitCloseNT(self);
@@ -2709,7 +2710,7 @@ Server.prototype._emitCloseIfDrained = function () {
     0,
     undefined,
     false,
-    false,
+    true,
   );
 };
 
