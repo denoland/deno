@@ -2037,7 +2037,7 @@ impl NetDescriptor {
 
     if let Ok(socket) = hostname.parse::<SocketAddr>() {
       return Ok(NetDescriptor(
-        Host::Ip(socket.ip()),
+        Host::Ip(normalize_ip(socket.ip())),
         Some(socket.port().into()),
       ));
     }
@@ -7054,6 +7054,37 @@ mod tests {
 
     assert!(perms.check_net(&("10.0.0.1", None), "api").is_ok());
     assert!(perms.check_net(&("::ffff:10.0.0.1", None), "api").is_ok());
+
+    // Port-qualified: deny 127.0.0.1:8080, verify IPv4-mapped form
+    // with port is also denied (exercises the SocketAddr parse path)
+    let parser = TestPermissionDescriptorParser;
+    let perms = Permissions::from_options(
+      &parser,
+      &PermissionsOptions {
+        allow_net: Some(vec![]),
+        deny_net: Some(svec!["127.0.0.1:8080"]),
+        ..Default::default()
+      },
+    )
+    .unwrap();
+    let mut perms = PermissionsContainer::new(Arc::new(parser), perms);
+
+    assert!(
+      perms
+        .check_net(&("127.0.0.1", Some(8080)), "api")
+        .is_err()
+    );
+    assert!(
+      perms
+        .check_net(&("::ffff:127.0.0.1", Some(8080)), "api")
+        .is_err()
+    );
+    // Different port should be allowed
+    assert!(
+      perms
+        .check_net(&("::ffff:127.0.0.1", Some(9090)), "api")
+        .is_ok()
+    );
   }
 
   #[test]
