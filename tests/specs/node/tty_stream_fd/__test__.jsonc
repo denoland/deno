@@ -1,0 +1,8 @@
+{
+  "tests": {
+    "tty_stream_fd": {
+      "args": "run main.mjs",
+      "output": "main.out"
+    }
+  }
+}

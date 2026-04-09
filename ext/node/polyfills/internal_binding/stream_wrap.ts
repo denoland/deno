@@ -53,7 +53,6 @@ import {
   providerType,
 } from "ext:deno_node/internal_binding/async_wrap.ts";
 import { codeMap } from "ext:deno_node/internal_binding/uv.ts";
-import { _readWithCancelHandle } from "ext:deno_io/12_io.js";
 import { NodeTypeError } from "ext:deno_node/internal/errors.ts";
 
 export const kUseNativeWrap = Symbol("useNativeWrap");
@@ -173,6 +172,12 @@ export class LibuvStreamWrap extends HandleWrap {
     return 0;
   }
 
+  // TODO(user): This should dispatch to uv_shutdown on the native handle
+  // (like Node's C++ StreamBase::Shutdown does), instead of calling _onClose
+  // which fully closes the handle. Currently TCP and Pipe override this to
+  // call their native shutdown. Once all stream types have native handles,
+  // this base implementation should be replaced with a generic uv_shutdown
+  // dispatch.
   /**
    * Shutdown the stream.
    * @param req A shutdown request wrapper.
@@ -213,6 +218,13 @@ export class LibuvStreamWrap extends HandleWrap {
       );
     }
 
+    // Mark as async so afterWriteDispatched does not fire the callback
+    // synchronously. The Rust write_buffer path sets this on the shared
+    // streamBaseState array (0 for sync, 1 for async), but the JS #write
+    // path is always async. Without this, a preceding Rust sync write
+    // leaves kLastWriteWasAsync=0, causing a double callback.
+    streamBaseState[kLastWriteWasAsync] = 1;
+
     this.#write(req, data);
 
     return 0;
@@ -243,6 +255,7 @@ export class LibuvStreamWrap extends HandleWrap {
       if (typeof chunks[0] === "string") chunks[0] = Buffer.from(chunks[0]);
       if (typeof chunks[1] === "string") chunks[1] = Buffer.from(chunks[1]);
 
+      streamBaseState[kLastWriteWasAsync] = 1;
       PromisePrototypeThen(
         op_raw_write_vectored(rid, chunks[0], chunks[1]),
         (nwritten) => {
@@ -328,6 +341,12 @@ export class LibuvStreamWrap extends HandleWrap {
     let status = 0;
     this.#reading = false;
 
+    // Cancel any pending read before closing the stream.
+    if (this.cancelHandle) {
+      core.close(this.cancelHandle);
+      this.cancelHandle = undefined;
+    }
+
     try {
       this[kStreamBaseField]?.close();
     } catch {
@@ -365,17 +384,7 @@ export class LibuvStreamWrap extends HandleWrap {
 
     const ridBefore = this[kStreamBaseField]![internalRidSymbol];
     try {
-      if (this[kStreamBaseField]![_readWithCancelHandle]) {
-        const { cancelHandle, nread: p } = this[kStreamBaseField]!
-          [_readWithCancelHandle](buf);
-        if (cancelHandle) {
-          this.cancelHandle = cancelHandle;
-        }
-
-        nread = await p;
-      } else {
-        nread = await this[kStreamBaseField]!.read(buf);
-      }
+      nread = await this[kStreamBaseField]!.read(buf);
     } catch (e) {
       // Try to read again if the underlying stream resource
       // changed. This can happen during TLS upgrades (eg. STARTTLS)
@@ -471,10 +480,15 @@ export class LibuvStreamWrap extends HandleWrap {
         status = MapPrototypeGet(codeMap, "UNKNOWN")!;
       }
 
-      try {
-        req.oncomplete(status);
-      } catch {
-        // swallow callback errors.
+      // Only fire oncomplete if afterWriteDispatched didn't already
+      // handle completion synchronously (req.async is set by
+      // afterWriteDispatched based on streamBaseState[kLastWriteWasAsync]).
+      if (req.async) {
+        try {
+          req.oncomplete(status);
+        } catch {
+          // swallow callback errors.
+        }
       }
 
       return;
@@ -483,10 +497,14 @@ export class LibuvStreamWrap extends HandleWrap {
     streamBaseState[kBytesWritten] = byteLength;
     this.bytesWritten += byteLength;
 
-    try {
-      req.oncomplete(0);
-    } catch {
-      // swallow callback errors.
+    // Only fire oncomplete if afterWriteDispatched didn't already
+    // handle completion synchronously.
+    if (req.async) {
+      try {
+        req.oncomplete(0);
+      } catch {
+        // swallow callback errors.
+      }
     }
 
     return;

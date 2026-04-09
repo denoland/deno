@@ -714,7 +714,11 @@ function formatRaw(ctx, value, recurseTimes, typedArray, proxyDetails) {
 
   let tag;
   if (!proxyDetails) {
-    tag = value[SymbolToStringTag];
+    try {
+      tag = value[SymbolToStringTag];
+    } catch {
+      // Symbol.toStringTag getter may throw (e.g. circular JSON.stringify)
+    }
   }
   // Only list the tag in case it's non-enumerable / not an own property.
   // Otherwise we'd print this twice.
@@ -2696,8 +2700,9 @@ function formatSetIterInner(
 // Matches all ansi escape code sequences in a string
 const ansiPattern = "[\\u001B\\u009B][[\\]()#;?]*" +
   "(?:(?:(?:(?:;[-a-zA-Z\\d\\/#&.:=?%@~_]+)*" +
-  "|[a-zA-Z\\d]+(?:;[-a-zA-Z\\d\\/#&.:=?%@~_]*)*)?\\u0007)" +
-  "|(?:(?:\\d{1,4}(?:;\\d{0,4})*)?[\\dA-PR-TZcf-ntqry=><~]))";
+  "|[a-zA-Z\\d]+(?:;[-a-zA-Z\\d\\/#&.:=?%@~_]*)*)" +
+  "?(?:\\u0007|\\u001B\\u005C|\\u009C))" +
+  "|(?:(?:\\d{1,4}(?:;\\d{0,4})*)?[\\dA-PR-TZcf-nq-uy=><~]))";
 const ansi = new SafeRegExp(ansiPattern, "g");
 
 /**

@@ -203,6 +203,7 @@
     "parallel/test-child-process-cwd.js": {},
     "parallel/test-child-process-default-options.js": {},
     "parallel/test-child-process-detached.js": {},
+    "parallel/test-child-process-destroy.js": {},
     "parallel/test-child-process-disconnect.js": {},
     "parallel/test-child-process-double-pipe.js": {},
     "parallel/test-child-process-env.js": {},
@@ -222,6 +223,7 @@
     "parallel/test-child-process-execsync-maxbuf.js": {},
     "parallel/test-child-process-exit-code.js": {},
     "parallel/test-child-process-flush-stdio.js": {},
+    "parallel/test-child-process-internal.js": {},
     "parallel/test-child-process-fork.js": {},
     "parallel/test-child-process-fork-abort-signal.js": {},
     "parallel/test-child-process-fork-and-spawn.js": {},
@@ -229,9 +231,11 @@
     "parallel/test-child-process-fork-detached.js": {},
     "parallel/test-child-process-fork-no-shell.js": {},
     "parallel/test-child-process-fork-stdio-string-variant.js": {},
+    // TODO(bartlomieju): flaky on Windows with NativePipe
+    "parallel/test-child-process-fork-stdio.js": { "windows": false },
     "parallel/test-child-process-fork-ref.js": {},
     "parallel/test-child-process-fork-ref2.js": {},
-    // "parallel/test-child-process-fork-timeout-kill-signal.js": {}, // https://github.com/denoland/deno/issues/32706
+    "parallel/test-child-process-fork-timeout-kill-signal.js": {},
     "parallel/test-child-process-fork-url.mjs": {},
     "parallel/test-child-process-fork3.js": {},
     "parallel/test-child-process-ipc.js": {},
@@ -244,15 +248,20 @@
     "parallel/test-child-process-send-type-error.js": {},
     "parallel/test-child-process-set-blocking.js": {},
     "parallel/test-child-process-silent.js": {},
+    "parallel/test-child-process-spawn-argv0.js": {
+      "windows": false
+    },
     "parallel/test-child-process-spawn-controller.js": {},
     "parallel/test-child-process-spawn-error.js": {},
     "parallel/test-child-process-spawn-event.js": {},
-    // "parallel/test-child-process-spawn-timeout-kill-signal.js": {}, // https://github.com/denoland/deno/issues/32706
+    "parallel/test-child-process-spawn-shell.js": {},
+    "parallel/test-child-process-spawn-timeout-kill-signal.js": {},
     "parallel/test-child-process-spawn-typeerror.js": {},
     "parallel/test-child-process-spawnsync-args.js": {},
     "parallel/test-child-process-spawnsync-env.js": {},
     "parallel/test-child-process-spawnsync-input.js": {},
     "parallel/test-child-process-spawnsync-maxbuf.js": {},
+    "parallel/test-child-process-spawnsync-timeout.js": {},
     "parallel/test-child-process-spawnsync-validation-errors.js": {},
     "parallel/test-child-process-spawnsync.js": {},
     "parallel/test-child-process-stdin-ipc.js": {},
@@ -260,8 +269,11 @@
     "parallel/test-child-process-stdio-big-write-end.js": {},
     "parallel/test-child-process-stdio-inherit.js": {},
     "parallel/test-child-process-stdio-overlapped.js": {},
+    "parallel/test-child-process-stdio.js": {},
     "parallel/test-child-process-stdout-flush-exit.js": {},
+    "parallel/test-child-process-stdout-ipc.js": {},
     "parallel/test-child-process-stdout-flush.js": {},
+    "parallel/test-child-process-uid-gid.js": {},
     "parallel/test-child-process-validate-stdio.js": {},
     "parallel/test-cli-bad-options.js": {
       "ignore": true,
@@ -361,6 +373,7 @@
     "parallel/test-console-sync-write-error.js": {},
     "parallel/test-console-table.js": {},
     "parallel/test-console-with-frozen-intrinsics.js": {},
+    "parallel/test-crypto-async-sign-verify.js": {},
     "parallel/test-crypto-classes.js": {},
     "parallel/test-crypto-certificate.js": {},
     "parallel/test-crypto-cipheriv-decipheriv.js": {
@@ -464,40 +477,120 @@
     "parallel/test-crypto-verify-failure.js": {},
     "parallel/test-crypto-webcrypto-aes-decrypt-tag-too-small.js": {},
     "parallel/test-datetime-change-notify.js": {},
-    // "parallel/test-debugger-address.mjs": {},
-    // "parallel/test-debugger-auto-resume.mjs": {},
+    "parallel/test-debugger-address.mjs": {
+      "ignore": true,
+      "reason": "Tests 'node inspect' CLI subcommand which Deno does not implement"
+    },
+    "parallel/test-debugger-auto-resume.mjs": {
+      "ignore": true,
+      "reason": "Tests 'node inspect' CLI subcommand which Deno does not implement"
+    },
     "parallel/test-debugger-backtrace.js": {},
-    // "parallel/test-debugger-break.js": {},
-    // "parallel/test-debugger-breakpoint-exists.js": {},
-    // "parallel/test-debugger-clear-breakpoints.js": {},
-    // "parallel/test-debugger-exceptions.js": {},
-    // "parallel/test-debugger-exec-scope.mjs": {},
+    "parallel/test-debugger-break.js": {
+      "ignore": true,
+      "reason": "Tests 'node inspect' CLI subcommand which Deno does not implement"
+    },
+    "parallel/test-debugger-breakpoint-exists.js": {
+      "ignore": true,
+      "reason": "Tests 'node inspect' CLI subcommand which Deno does not implement"
+    },
+    "parallel/test-debugger-clear-breakpoints.js": {
+      "ignore": true,
+      "reason": "Tests 'node inspect' CLI subcommand which Deno does not implement"
+    },
+    "parallel/test-debugger-exceptions.js": {
+      "ignore": true,
+      "reason": "Tests 'node inspect' CLI subcommand which Deno does not implement"
+    },
+    "parallel/test-debugger-exec-scope.mjs": {
+      "ignore": true,
+      "reason": "Tests 'node inspect' CLI subcommand which Deno does not implement"
+    },
     "parallel/test-debugger-exec.js": {},
-    // "parallel/test-debugger-extract-function-name.mjs": {},
-    // "parallel/test-debugger-heap-profiler.js": {},
-    // "parallel/test-debugger-help.mjs": {},
+    "parallel/test-debugger-extract-function-name.mjs": {
+      "ignore": true,
+      "reason": "Tests 'node inspect' CLI subcommand which Deno does not implement"
+    },
+    "parallel/test-debugger-heap-profiler.js": {
+      "ignore": true,
+      "reason": "Tests 'node inspect' CLI subcommand which Deno does not implement"
+    },
+    "parallel/test-debugger-help.mjs": {
+      "ignore": true,
+      "reason": "Tests 'node inspect' CLI subcommand which Deno does not implement"
+    },
     "parallel/test-debugger-invalid-json.mjs": {},
-    // "parallel/test-debugger-list.js": {},
+    "parallel/test-debugger-list.js": {
+      "ignore": true,
+      "reason": "Tests 'node inspect' CLI subcommand which Deno does not implement"
+    },
     "parallel/test-debugger-low-level.js": {},
-    // "parallel/test-debugger-object-type-remote-object.js": {},
-    // TODO(bartlomieju): this test was disabled during work on `node:inspector`, it never worked
-    // "parallel/test-debugger-pid.js": {},
-    // "parallel/test-debugger-preserve-breaks.js": {}, // https://github.com/denoland/deno/issues/32706
-    // "parallel/test-debugger-profile-command.js": {},
-    // "parallel/test-debugger-profile.js": {},
-    // "parallel/test-debugger-random-port-with-inspect-port.js": {},
-    // "parallel/test-debugger-random-port.js": {},
+    "parallel/test-debugger-object-type-remote-object.js": {
+      "ignore": true,
+      "reason": "Tests 'node inspect' CLI subcommand which Deno does not implement"
+    },
+    "parallel/test-debugger-pid.js": {
+      "ignore": true,
+      "reason": "Tests 'node inspect' CLI subcommand which Deno does not implement"
+    },
+    "parallel/test-debugger-preserve-breaks.js": {
+      "ignore": true,
+      "reason": "Tests 'node inspect' CLI subcommand which Deno does not implement"
+    },
+    "parallel/test-debugger-profile-command.js": {
+      "ignore": true,
+      "reason": "Tests 'node inspect' CLI subcommand which Deno does not implement"
+    },
+    "parallel/test-debugger-profile.js": {
+      "ignore": true,
+      "reason": "Tests 'node inspect' CLI subcommand which Deno does not implement"
+    },
+    "parallel/test-debugger-random-port-with-inspect-port.js": {
+      "ignore": true,
+      "reason": "Tests 'node inspect' CLI subcommand which Deno does not implement"
+    },
+    "parallel/test-debugger-random-port.js": {
+      "ignore": true,
+      "reason": "Tests 'node inspect' CLI subcommand which Deno does not implement"
+    },
     "parallel/test-debugger-repeat-last.js": {},
     "parallel/test-debugger-restart-message.js": {},
-    // "parallel/test-debugger-run-after-quit-restart.js": {},
-    // "parallel/test-debugger-sb-before-load.js": {},
-    // "parallel/test-debugger-scripts.js": {},
-    // "parallel/test-debugger-set-context-line-number.mjs": {},
-    // "parallel/test-debugger-unavailable-port.js": {},
-    // "parallel/test-debugger-use-strict.js": {},
-    // "parallel/test-debugger-watch-validation.js": {},
-    // "parallel/test-debugger-watchers.mjs": {},
-    // "parallel/test-debugger-websocket-secret-mismatch.js": {},
+    "parallel/test-debugger-run-after-quit-restart.js": {
+      "ignore": true,
+      "reason": "Tests 'node inspect' CLI subcommand which Deno does not implement"
+    },
+    "parallel/test-debugger-sb-before-load.js": {
+      "ignore": true,
+      "reason": "Tests 'node inspect' CLI subcommand which Deno does not implement"
+    },
+    "parallel/test-debugger-scripts.js": {
+      "ignore": true,
+      "reason": "Tests 'node inspect' CLI subcommand which Deno does not implement"
+    },
+    "parallel/test-debugger-set-context-line-number.mjs": {
+      "ignore": true,
+      "reason": "Tests 'node inspect' CLI subcommand which Deno does not implement"
+    },
+    "parallel/test-debugger-unavailable-port.js": {
+      "ignore": true,
+      "reason": "Tests 'node inspect' CLI subcommand which Deno does not implement"
+    },
+    "parallel/test-debugger-use-strict.js": {
+      "ignore": true,
+      "reason": "Tests 'node inspect' CLI subcommand which Deno does not implement"
+    },
+    "parallel/test-debugger-watch-validation.js": {
+      "ignore": true,
+      "reason": "Tests 'node inspect' CLI subcommand which Deno does not implement"
+    },
+    "parallel/test-debugger-watchers.mjs": {
+      "ignore": true,
+      "reason": "Tests 'node inspect' CLI subcommand which Deno does not implement"
+    },
+    "parallel/test-debugger-websocket-secret-mismatch.js": {
+      "ignore": true,
+      "reason": "Tests 'node inspect' CLI subcommand which Deno does not implement"
+    },
     "parallel/test-delayed-require.js": {},
     "parallel/test-destroy-socket-in-lookup.js": {},
     "parallel/test-dgram-abort-closed.js": {},
@@ -588,9 +681,16 @@
     // TODO(bartlomieju): this test was disabled during work on `node:inspector`, it never worked
     // "parallel/test-disable-sigusr1.js": {},
     "parallel/test-dns-default-order-ipv4.js": {},
+    "parallel/test-dns-default-order-ipv6.js": {},
+    "parallel/test-dns-default-order-verbatim.js": {},
     "parallel/test-dns-get-server.js": {},
+    // TODO: test-dns-lookup.js and test-dns-lookup-promises.js fail due to
+    // spurious punycode DEP0040 warning and getaddrinfo error mismatch
+    // "parallel/test-dns-lookup.js": {},
+    // "parallel/test-dns-lookup-promises.js": {},
     "parallel/test-dns-lookupService.js": {},
     "parallel/test-dns-lookupService-promises.js": {},
+    "parallel/test-dns-memory-error.js": {},
     "parallel/test-dns-multi-channel.js": {},
     "parallel/test-dns-promises-exists.js": {},
     "parallel/test-dns-resolvens-typeerror.js": {},
@@ -602,9 +702,18 @@
     // "parallel/test-domain-dep0097.js": {},
     "parallel/test-domain-ee-error-listener.js": {},
     "parallel/test-domain-ee.js": {},
+    "parallel/test-domain-enter-exit.js": {},
+    "parallel/test-domain-error-types.js": {},
+    "parallel/test-domain-http-server.js": {},
+    "parallel/test-domain-intercept.js": {},
+    "parallel/test-domain-multiple-errors.js": {},
     "parallel/test-domain-nested-throw.js": {},
     "parallel/test-domain-nested.js": {},
+    "parallel/test-domain-nexttick.js": {},
     "parallel/test-domain-stack.js": {},
+    "parallel/test-domain-timer.js": {},
+    "parallel/test-domain-timers-uncaught-exception.js": {},
+    "parallel/test-domain-timers.js": {},
     "parallel/test-domain-top-level-error-handler-clears-stack.js": {},
     "parallel/test-domexception-cause.js": {},
     "parallel/test-dotenv-node-options.js": {
@@ -703,8 +812,16 @@
     "parallel/test-fs-buffertype-writesync.js": {},
     "parallel/test-fs-chmod-mask.js": {},
     "parallel/test-fs-chmod.js": {},
+    "parallel/test-fs-chown-negative-one.js": {
+      "windows": false,
+      "reason": "Unix-specific test (chown/symlink/mode)"
+    },
     "parallel/test-fs-chown-type-check.js": {},
+    "parallel/test-fs-close-errors.js": {},
     "parallel/test-fs-close.js": {},
+    "parallel/test-fs-constants.js": {},
+    "parallel/test-fs-copyfile-respect-permissions.js": {},
+    "parallel/test-fs-copyfile.js": {},
     "parallel/test-fs-cp-async-async-filter-function.mjs": {},
     "parallel/test-fs-cp-async-copy-non-directory-symlink.mjs": {},
     "parallel/test-fs-cp-async-dereference-force-false-silent-fail.mjs": {},
@@ -783,38 +900,77 @@
     "parallel/test-fs-empty-readStream.js": {},
     "parallel/test-fs-exists.js": {},
     "parallel/test-fs-existssync-false.js": {},
+    "parallel/test-fs-fchmod.js": {},
+    "parallel/test-fs-fchown-negative-one.js": {
+      "windows": false,
+      "reason": "Unix-specific test (chown/symlink/mode)"
+    },
     "parallel/test-fs-fchown.js": {},
     "parallel/test-fs-filehandle-use-after-close.js": {},
+    "parallel/test-fs-fmap.js": {},
     "parallel/test-fs-fsync.js": {},
-    // "parallel/test-fs-glob.mjs": {}, // https://github.com/denoland/deno/issues/32706
+    "parallel/test-fs-glob.mjs": {},
     "parallel/test-fs-internal-assertencoding.js": {},
+    "parallel/test-fs-lchmod.js": {},
+    "parallel/test-fs-lchown-negative-one.js": {
+      "windows": false,
+      "reason": "Unix-specific test (chown/symlink/mode)"
+    },
+    "parallel/test-fs-lchown.js": {},
     "parallel/test-fs-link.js": {
       "flaky": true
     },
     "parallel/test-fs-long-path.js": {},
     "parallel/test-fs-make-callback.js": {},
     "parallel/test-fs-makeStatsCallback.js": {},
+    "parallel/test-fs-mkdir-recursive-eaccess.js": {
+      "windows": false,
+      "reason": "Unix-specific test (chown/symlink/mode)"
+    },
+    "parallel/test-fs-mkdir-rmdir.js": {},
     "parallel/test-fs-mkdir.js": {},
     "parallel/test-fs-mkdtemp-prefix-check.js": {},
     "parallel/test-fs-mkdtemp.js": {},
+    "parallel/test-fs-non-number-arguments-throw.js": {},
     "parallel/test-fs-open-flags.js": {},
+    "parallel/test-fs-open-mode-mask.js": {
+      "windows": false,
+      "reason": "Unix-specific test (chown/symlink/mode)"
+    },
     "parallel/test-fs-open-no-close.js": {},
     "parallel/test-fs-open-numeric-flags.js": {},
     "parallel/test-fs-open.js": {},
+    "parallel/test-fs-operations-with-surrogate-pairs.js": {},
+    "parallel/test-fs-options-immutable.js": {},
     "parallel/test-fs-promises-exists.js": {},
     "parallel/test-fs-promises-file-handle-append-file.js": {},
+    "parallel/test-fs-promises-file-handle-chmod.js": {},
+    "parallel/test-fs-promises-file-handle-readFile.js": {},
     "parallel/test-fs-promises-file-handle-readLines.mjs": {},
+    "parallel/test-fs-promises-file-handle-stat.js": {},
+    "parallel/test-fs-promises-file-handle-stream.js": {},
+    "parallel/test-fs-promises-file-handle-sync.js": {},
+    "parallel/test-fs-promises-file-handle-truncate.js": {},
+    "parallel/test-fs-promises-file-handle-write.js": {},
     "parallel/test-fs-promises-file-handle-writeFile.js": {},
     "parallel/test-fs-promises-readfile-empty.js": {},
+    "parallel/test-fs-promises-readfile-with-fd.js": {},
+    "parallel/test-fs-promises-statfs-validate-path.js": {},
+    "parallel/test-fs-promises-watch-iterator.js": {},
+    "parallel/test-fs-promises-write-optional-params.js": {},
     "parallel/test-fs-promises-writefile-typedarray.js": {},
+    "parallel/test-fs-promises-writefile-with-fd.js": {},
+    "parallel/test-fs-promises-writefile.js": {},
     "parallel/test-fs-promisified.js": {},
     "parallel/test-fs-read-empty-buffer.js": {},
     "parallel/test-fs-read-file-assert-encoding.js": {},
     "parallel/test-fs-read-file-sync-hostname.js": {},
+    "parallel/test-fs-read-file-sync.js": {},
     "parallel/test-fs-read-offset-null.js": {},
     "parallel/test-fs-read-optional-params.js": {},
     "parallel/test-fs-read-promises-optional-params.js": {},
     "parallel/test-fs-read-stream-autoClose.js": {},
+    "parallel/test-fs-read-stream-concurrent-reads.js": {},
     "parallel/test-fs-read-stream-double-close.js": {},
     "parallel/test-fs-read-stream-encoding.js": {},
     "parallel/test-fs-read-stream-fd-leak.js": {},
@@ -822,42 +978,81 @@
     "parallel/test-fs-read-stream-file-handle.js": {},
     "parallel/test-fs-read-stream-inherit.js": {},
     "parallel/test-fs-read-stream-patch-open.js": {},
+    "parallel/test-fs-read-stream-pos.js": {},
     "parallel/test-fs-read-stream-resume.js": {},
     "parallel/test-fs-read-stream-throw-type-error.js": {},
     "parallel/test-fs-read-stream.js": {},
     "parallel/test-fs-read-type.js": {},
     "parallel/test-fs-read-zero-length.js": {},
+    "parallel/test-fs-read.js": {},
     "parallel/test-fs-readdir-pipe.js": {},
+    "parallel/test-fs-readdir-recursive.js": {},
     "parallel/test-fs-readdir-stack-overflow.js": {},
+    "parallel/test-fs-readdir-types-symlinks.js": {},
     "parallel/test-fs-readdir.js": {},
     "parallel/test-fs-readfile-empty.js": {},
+    "parallel/test-fs-readfile-error.js": {},
+    "parallel/test-fs-readfile-fd.js": {},
+    "parallel/test-fs-readfile-flags.js": {},
+    "parallel/test-fs-readfile-pipe-large.js": {},
+    "parallel/test-fs-readfile-pipe.js": {},
     "parallel/test-fs-readfile-unlink.js": {},
     "parallel/test-fs-readfile-zero-byte-liar.js": {},
     "parallel/test-fs-readfilesync-enoent.js": {},
+    "parallel/test-fs-readfilesync-pipe-large.js": {},
     "parallel/test-fs-readlink-type-check.js": {},
     "parallel/test-fs-readSync-optional-params.js": {},
     "parallel/test-fs-readv-promises.js": {},
     "parallel/test-fs-readv-promisify.js": {},
+    "parallel/test-fs-readv-sync.js": {},
+    "parallel/test-fs-readv.js": {},
     "parallel/test-fs-ready-event-stream.js": {},
     "parallel/test-fs-realpath-buffer-encoding.js": {},
+    "parallel/test-fs-realpath-native.js": {},
+    "parallel/test-fs-realpath-pipe.js": {},
     "parallel/test-fs-rename-type-check.js": {},
     "parallel/test-fs-rm.js": {
+      "parallel/test-fs-rmSync-special-char.js": {},
+      "parallel/test-fs-rmdir-throws-not-found.js": {},
+      "parallel/test-fs-rmdir-throws-on-file.js": {},
       "darwin": false,
       "windows": false
     },
     "parallel/test-fs-rmdir-type-check.js": {},
+    "parallel/test-fs-sir-writes-alot.js": {},
     "parallel/test-fs-stat-bigint.js": {},
     "parallel/test-fs-statfs.js": {},
+    "parallel/test-fs-stream-construct-compat-error-read.js": {},
+    "parallel/test-fs-stream-construct-compat-error-write.js": {},
+    "parallel/test-fs-stream-construct-compat-graceful-fs.js": {},
+    "parallel/test-fs-stream-construct-compat-old-node.js": {},
+    "parallel/test-fs-stream-destroy-emit-error.js": {},
+    "parallel/test-fs-stream-double-close.js": {},
     "parallel/test-fs-stream-fs-options.js": {},
     "parallel/test-fs-stream-options.js": {},
     "parallel/test-fs-symlink-buffer-path.js": {},
     "parallel/test-fs-symlink-dir-junction.js": {},
     "parallel/test-fs-symlink-dir-junction-relative.js": {},
     "parallel/test-fs-symlink-dir.js": {},
+    "parallel/test-fs-symlink-longpath.js": {
+      "windows": false,
+      "reason": "Unix-specific test (chown/symlink/mode)"
+    },
     "parallel/test-fs-symlink.js": {},
+    "parallel/test-fs-timestamp-parsing-error.js": {},
+    "parallel/test-fs-truncate-clear-file-zero.js": {},
+    "parallel/test-fs-truncate-sync.js": {},
     "parallel/test-fs-unlink-type-check.js": {},
     "parallel/test-fs-utils-get-dirents.js": {},
     "parallel/test-fs-util-validateoffsetlength.js": {},
+    "parallel/test-fs-utimes-y2K38.js": {},
+    "parallel/test-fs-utimes.js": {},
+    "parallel/test-fs-watch.js": {},
+    "parallel/test-fs-watchfile.js": {},
+    "parallel/test-fs-whatwg-url.js": {},
+    "parallel/test-fs-write-buffer-large.js": {},
+    "parallel/test-fs-write-buffer.js": {},
+    "parallel/test-fs-write-file-invalid-path.js": {},
     "parallel/test-fs-write-file-typedarrays.js": {},
     "parallel/test-fs-write-file.js": {
       "flaky": true
@@ -868,7 +1063,10 @@
     "parallel/test-fs-write-stream-encoding.js": {},
     "parallel/test-fs-write-stream-file-handle.js": {},
     "parallel/test-fs-write-stream-file-handle-2.js": {},
+    "parallel/test-fs-write-stream-patch-open.js": {},
+    "parallel/test-fs-write-stream-throw-type-error.js": {},
     "parallel/test-fs-write-sync-optional-params.js": {},
+    "parallel/test-fs-write-sync.js": {},
     "parallel/test-fs-writev.js": {},
     "parallel/test-fs-writev-promises.js": {},
     "parallel/test-fs-writev-sync.js": {},
@@ -916,7 +1114,8 @@
     "parallel/test-http-client-abort-keep-alive-destroy-res.js": {},
     "parallel/test-http-client-abort-no-agent.js": {},
     "parallel/test-http-client-abort-response-event.js": {},
-    "parallel/test-http-client-abort-unix-socket.js": {},
+    // TODO(bartlomieju): NativePipe doesn't register a Deno resource for HTTP
+    "parallel/test-http-client-abort-unix-socket.js": { "windows": false },
     "parallel/test-http-client-abort2.js": {},
     "parallel/test-http-client-abort3.js": {},
     "parallel/test-http-client-agent-abort-close-event.js": {},
@@ -1214,9 +1413,8 @@
     // "parallel/test-inspector-network-arbitrary-data.js": {},
     // "parallel/test-inspector-emit-protocol-event.js": {},
 
-    // TODO(bartlomieju): depends on `NodeRuntime` CDP domain
-    // "parallel/test-inspector-esm.js": {},
-    // "parallel/test-inspector-console.js": {},
+    "parallel/test-inspector-esm.js": {},
+    "parallel/test-inspector-console.js": {},
     // "parallel/test-inspector-async-stack-traces-promise-then.js": {},
     // "parallel/test-inspector-exception.js": {},
     // "parallel/test-inspector-async-hook-setup-at-inspect-brk.js": {},
@@ -1378,6 +1576,8 @@
     "parallel/test-microtask-queue-integration.js": {},
     "parallel/test-microtask-queue-run-immediate.js": {},
     "parallel/test-microtask-queue-run.js": {},
+    "parallel/test-mime-api.js": {},
+    "parallel/test-mime-whatwg.js": {},
     "parallel/test-module-cache.js": {
       "flaky": true
     },
@@ -1393,7 +1593,7 @@
     "parallel/test-module-wrapper.js": {},
     "parallel/test-net-access-byteswritten.js": {},
     "parallel/test-net-after-close.js": {},
-    // "parallel/test-net-autoselectfamily-attempt-timeout-default-value.js": {}, // https://github.com/denoland/deno/issues/32706
+    "parallel/test-net-autoselectfamily-attempt-timeout-default-value.js": {},
     "parallel/test-net-autoselectfamily-ipv4first.js": {},
     "parallel/test-net-better-error-messages-listen.js": {},
     "parallel/test-net-better-error-messages-port-hostname.js": {},
@@ -1476,6 +1676,34 @@
     "parallel/test-next-tick-when-exiting.js": {},
     "parallel/test-next-tick.js": {},
     "parallel/test-no-node-snapshot.js": {},
+    "parallel/test-node-output-console.mjs": {
+      "ignore": true,
+      "reason": "Snapshot output tests depend on exact Node.js CLI output formatting and process.config.variables"
+    },
+    "parallel/test-node-output-errors.mjs": {
+      "ignore": true,
+      "reason": "Snapshot output tests depend on exact Node.js CLI output formatting and process.config.variables"
+    },
+    "parallel/test-node-output-eval.mjs": {
+      "ignore": true,
+      "reason": "Snapshot output tests depend on exact Node.js CLI output formatting and process.config.variables"
+    },
+    "parallel/test-node-output-sourcemaps.mjs": {
+      "ignore": true,
+      "reason": "Snapshot output tests depend on exact Node.js CLI output formatting and process.config.variables"
+    },
+    "parallel/test-node-output-v8-warning.mjs": {
+      "ignore": true,
+      "reason": "Snapshot output tests depend on exact Node.js CLI output formatting and process.config.variables"
+    },
+    "parallel/test-node-output-vm.mjs": {
+      "ignore": true,
+      "reason": "Snapshot output tests depend on exact Node.js CLI output formatting and process.config.variables"
+    },
+    "parallel/test-node-run.js": {
+      "ignore": true,
+      "reason": "Tests node --run CLI subcommand which is not implemented in Deno"
+    },
     "parallel/test-nodeeventtarget.js": {},
     "parallel/test-os-checked-function.js": {
       "darwin": false,
@@ -1483,6 +1711,7 @@
       "windows": false,
       "reason": "Node.js specific behavior to check the return value of the C++ bindings"
     },
+    "parallel/test-os-constants-signals.js": {},
     "parallel/test-os-eol.js": {},
     "parallel/test-os-homedir-no-envvar.js": {},
     "parallel/test-os-process-priority.js": {},
@@ -1496,6 +1725,7 @@
     "parallel/test-path-extname.js": {},
     "parallel/test-path-glob.js": {},
     "parallel/test-path-isabsolute.js": {},
+    "parallel/test-path-join.js": {},
     "parallel/test-path-makelong.js": {},
     "parallel/test-path-normalize.js": {},
     "parallel/test-path-parse-format.js": {},
@@ -1514,122 +1744,183 @@
     "parallel/test-performance-measure-detail.js": {},
     "parallel/test-permission-allow-addons-cli.js": {
       "ignore": true,
-      "reason": "Node.js permission model (--experimental-permission) is not implemented in Deno"
+      "reason": "Deno has its own permission system; Node.js --experimental-permission is not applicable"
     },
     "parallel/test-permission-allow-child-process-cli.js": {
       "ignore": true,
-      "reason": "Node.js permission model (--experimental-permission) is not implemented in Deno"
+      "reason": "Deno has its own permission system; Node.js --experimental-permission is not applicable"
     },
     "parallel/test-permission-allow-inspector.js": {
       "ignore": true,
-      "reason": "Node.js permission model (--experimental-permission) is not implemented in Deno"
+      "reason": "Deno has its own permission system; Node.js --experimental-permission is not applicable"
     },
     "parallel/test-permission-allow-wasi-cli.js": {
       "ignore": true,
-      "reason": "Node.js permission model (--experimental-permission) is not implemented in Deno"
+      "reason": "Deno has its own permission system; Node.js --experimental-permission is not applicable"
     },
     "parallel/test-permission-allow-worker-cli.js": {
       "ignore": true,
-      "reason": "Node.js permission model (--experimental-permission) is not implemented in Deno"
+      "reason": "Deno has its own permission system; Node.js --experimental-permission is not applicable"
     },
     "parallel/test-permission-child-process-cli.js": {
       "ignore": true,
-      "reason": "Node.js permission model (--experimental-permission) is not implemented in Deno"
+      "reason": "Deno has its own permission system; Node.js --experimental-permission is not applicable"
     },
     "parallel/test-permission-child-process-inherit-flags.js": {
       "ignore": true,
-      "reason": "Node.js permission model (--experimental-permission) is not implemented in Deno"
+      "reason": "Deno has its own permission system; Node.js --experimental-permission is not applicable"
+    },
+    "parallel/test-permission-config-file.mjs": {
+      "ignore": true,
+      "reason": "Deno has its own permission system; Node.js --experimental-permission is not applicable"
+    },
+    "parallel/test-permission-diagnostics-channel.js": {
+      "ignore": true,
+      "reason": "Deno has its own permission system; Node.js --experimental-permission is not applicable"
     },
     "parallel/test-permission-fs-absolute-path.js": {
       "ignore": true,
-      "reason": "Node.js permission model (--experimental-permission) is not implemented in Deno"
+      "reason": "Deno has its own permission system; Node.js --experimental-permission is not applicable"
     },
     "parallel/test-permission-fs-internal-module-stat.js": {
       "ignore": true,
-      "reason": "Node.js permission model (--experimental-permission) is not implemented in Deno"
+      "reason": "Deno has its own permission system; Node.js --experimental-permission is not applicable"
     },
     "parallel/test-permission-fs-read-entrypoint.js": {
       "ignore": true,
-      "reason": "Node.js permission model (--experimental-permission) is not implemented in Deno"
+      "reason": "Deno has its own permission system; Node.js --experimental-permission is not applicable"
     },
     "parallel/test-permission-fs-read.js": {
       "ignore": true,
-      "reason": "Node.js permission model (--experimental-permission) is not implemented in Deno"
+      "reason": "Deno has its own permission system; Node.js --experimental-permission is not applicable"
     },
     "parallel/test-permission-fs-relative-path.js": {
       "ignore": true,
-      "reason": "Node.js permission model (--experimental-permission) is not implemented in Deno"
+      "reason": "Deno has its own permission system; Node.js --experimental-permission is not applicable"
     },
     "parallel/test-permission-fs-repeat-path.js": {
       "ignore": true,
-      "reason": "Node.js permission model (--experimental-permission) is not implemented in Deno"
+      "reason": "Deno has its own permission system; Node.js --experimental-permission is not applicable"
     },
     "parallel/test-permission-fs-require.js": {
       "ignore": true,
-      "reason": "Node.js permission model (--experimental-permission) is not implemented in Deno"
+      "reason": "Deno has its own permission system; Node.js --experimental-permission is not applicable"
     },
     "parallel/test-permission-fs-supported.js": {
       "ignore": true,
-      "reason": "Node.js permission model (--experimental-permission) is not implemented in Deno"
+      "reason": "Deno has its own permission system; Node.js --experimental-permission is not applicable"
     },
     "parallel/test-permission-fs-symlink-relative.js": {
       "ignore": true,
-      "reason": "Node.js permission model (--experimental-permission) is not implemented in Deno"
+      "reason": "Deno has its own permission system; Node.js --experimental-permission is not applicable"
     },
     "parallel/test-permission-fs-symlink-target-write.js": {
       "ignore": true,
-      "reason": "Node.js permission model (--experimental-permission) is not implemented in Deno"
+      "reason": "Deno has its own permission system; Node.js --experimental-permission is not applicable"
     },
     "parallel/test-permission-fs-symlink.js": {
       "ignore": true,
-      "reason": "Node.js permission model (--experimental-permission) is not implemented in Deno"
+      "reason": "Deno has its own permission system; Node.js --experimental-permission is not applicable"
     },
     "parallel/test-permission-fs-traversal-path.js": {
       "ignore": true,
-      "reason": "Node.js permission model (--experimental-permission) is not implemented in Deno"
+      "reason": "Deno has its own permission system; Node.js --experimental-permission is not applicable"
     },
     "parallel/test-permission-fs-wildcard.js": {
       "ignore": true,
-      "reason": "Node.js permission model (--experimental-permission) is not implemented in Deno"
+      "reason": "Deno has its own permission system; Node.js --experimental-permission is not applicable"
+    },
+    "parallel/test-permission-fs-windows-path.js": {
+      "ignore": true,
+      "reason": "Deno has its own permission system; Node.js --experimental-permission is not applicable"
     },
     "parallel/test-permission-fs-write-report.js": {
       "ignore": true,
-      "reason": "Node.js permission model (--experimental-permission) is not implemented in Deno"
+      "reason": "Deno has its own permission system; Node.js --experimental-permission is not applicable"
     },
     "parallel/test-permission-fs-write-v8.js": {
       "ignore": true,
-      "reason": "Node.js permission model (--experimental-permission) is not implemented in Deno"
+      "reason": "Deno has its own permission system; Node.js --experimental-permission is not applicable"
     },
     "parallel/test-permission-fs-write.js": {
       "ignore": true,
-      "reason": "Node.js permission model (--experimental-permission) is not implemented in Deno"
+      "reason": "Deno has its own permission system; Node.js --experimental-permission is not applicable"
     },
     "parallel/test-permission-has.js": {
       "ignore": true,
-      "reason": "Node.js permission model (--experimental-permission) is not implemented in Deno"
+      "reason": "Deno has its own permission system; Node.js --experimental-permission is not applicable"
     },
-    // "parallel/test-permission-inspector-brk.js": {},
-    // "parallel/test-permission-inspector.js": {},
-    "parallel/test-permission-no-addons.js": {},
+    "parallel/test-permission-inspector-brk.js": {
+      "ignore": true,
+      "reason": "Deno has its own permission system; Node.js --experimental-permission is not applicable"
+    },
+    "parallel/test-permission-inspector.js": {
+      "ignore": true,
+      "reason": "Deno has its own permission system; Node.js --experimental-permission is not applicable"
+    },
+    "parallel/test-permission-net-allowed.js": {
+      "ignore": true,
+      "reason": "Deno has its own permission system; Node.js --experimental-permission is not applicable"
+    },
+    "parallel/test-permission-net-dns.js": {
+      "ignore": true,
+      "reason": "Deno has its own permission system; Node.js --experimental-permission is not applicable"
+    },
+    "parallel/test-permission-net-fetch.js": {
+      "ignore": true,
+      "reason": "Deno has its own permission system; Node.js --experimental-permission is not applicable"
+    },
+    "parallel/test-permission-net-http.js": {
+      "ignore": true,
+      "reason": "Deno has its own permission system; Node.js --experimental-permission is not applicable"
+    },
+    "parallel/test-permission-net-https.js": {
+      "ignore": true,
+      "reason": "Deno has its own permission system; Node.js --experimental-permission is not applicable"
+    },
+    "parallel/test-permission-net-tcp.js": {
+      "ignore": true,
+      "reason": "Deno has its own permission system; Node.js --experimental-permission is not applicable"
+    },
+    "parallel/test-permission-net-udp.js": {
+      "ignore": true,
+      "reason": "Deno has its own permission system; Node.js --experimental-permission is not applicable"
+    },
+    "parallel/test-permission-net-uds.js": {
+      "ignore": true,
+      "reason": "Deno has its own permission system; Node.js --experimental-permission is not applicable"
+    },
+    "parallel/test-permission-net-warning.js": {
+      "ignore": true,
+      "reason": "Deno has its own permission system; Node.js --experimental-permission is not applicable"
+    },
+    "parallel/test-permission-net-websocket.js": {
+      "ignore": true,
+      "reason": "Deno has its own permission system; Node.js --experimental-permission is not applicable"
+    },
+    "parallel/test-permission-no-addons.js": {
+      "ignore": true,
+      "reason": "Deno has its own permission system; Node.js --experimental-permission is not applicable"
+    },
     "parallel/test-permission-processbinding.js": {
       "ignore": true,
-      "reason": "Node.js permission model (--experimental-permission) is not implemented in Deno"
+      "reason": "Deno has its own permission system; Node.js --experimental-permission is not applicable"
     },
     "parallel/test-permission-sqlite-load-extension.js": {
       "ignore": true,
-      "reason": "Node.js permission model (--experimental-permission) is not implemented in Deno"
+      "reason": "Deno has its own permission system; Node.js --experimental-permission is not applicable"
     },
     "parallel/test-permission-warning-flags.js": {
       "ignore": true,
-      "reason": "Node.js permission model (--experimental-permission) is not implemented in Deno"
+      "reason": "Deno has its own permission system; Node.js --experimental-permission is not applicable"
     },
     "parallel/test-permission-wasi.js": {
       "ignore": true,
-      "reason": "Node.js permission model (--experimental-permission) is not implemented in Deno"
+      "reason": "Deno has its own permission system; Node.js --experimental-permission is not applicable"
     },
     "parallel/test-permission-worker-threads-cli.js": {
       "ignore": true,
-      "reason": "Node.js permission model (--experimental-permission) is not implemented in Deno"
+      "reason": "Deno has its own permission system; Node.js --experimental-permission is not applicable"
     },
     "parallel/test-pipe-head.js": {},
     "parallel/test-pipe-return-val.js": {},
@@ -1669,20 +1960,32 @@
     "parallel/test-process-env-sideeffects.js": {},
     "parallel/test-process-env-tz.js": {},
     "parallel/test-process-env-windows-error-reset.js": {},
+    "parallel/test-process-exception-capture-errors.js": {},
+    "parallel/test-process-exception-capture-should-abort-on-uncaught-setflagsfromstring.js": {},
+    "parallel/test-process-exception-capture-should-abort-on-uncaught.js": {},
+    "parallel/test-process-exception-capture.js": {},
+    "parallel/test-process-exit-code-validation.js": {},
     "parallel/test-process-exit-from-before-exit.js": {},
     "parallel/test-process-exit-handler.js": {},
     "parallel/test-process-exit-recursive.js": {},
     "parallel/test-process-exit.js": {},
-    // "parallel/test-process-features.js": {}, // https://github.com/denoland/deno/issues/32706
+    "parallel/test-process-features.js": {},
     "parallel/test-process-getgroups.js": {},
     "parallel/test-process-hrtime-bigint.js": {},
+    "parallel/test-process-hrtime.js": {},
     "parallel/test-process-kill-null.js": {},
     "parallel/test-process-kill-pid.js": {},
     "parallel/test-process-next-tick.js": {},
     "parallel/test-process-no-deprecation.js": {},
     "parallel/test-process-ppid.js": {},
     "parallel/test-process-really-exit.js": {},
+    "parallel/test-process-title-cli.js": {},
     "parallel/test-process-release.js": {},
+    "parallel/test-process-threadCpuUsage-main-thread.js": {},
+    "parallel/test-process-threadCpuUsage-worker-threads.js": {
+      "windows": false,
+      "reason": "flaky on Windows CI"
+    },
     "parallel/test-process-umask-mask.js": {},
     "parallel/test-process-umask.js": {},
     "parallel/test-process-uptime.js": {},
@@ -1706,12 +2009,14 @@
     "parallel/test-readable-from.js": {},
     "parallel/test-readable-large-hwm.js": {},
     "parallel/test-readable-single-end.js": {},
+    "parallel/test-readline-async-iterators-backpressure.js": {},
     "parallel/test-readline-carriage-return-between-chunks.js": {},
     "parallel/test-readline-csi.js": {},
     "parallel/test-readline-emit-keypress-events.js": {},
     "parallel/test-readline-interface-escapecodetimeout.js": {},
     "parallel/test-readline-interface-no-trailing-newline.js": {},
     "parallel/test-readline-interface-recursive-writes.js": {},
+    "parallel/test-readline-interface.js": {},
     "parallel/test-readline-line-separators.js": {},
     "parallel/test-readline-position.js": {},
     "parallel/test-readline-reopen.js": {},
@@ -1799,6 +2104,7 @@
     "parallel/test-runner-subtest-after-hook.js": {},
     // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
     // "parallel/test-set-process-debug-port.js": {},
+    "parallel/test-setproctitle.js": {},
     "parallel/test-signal-handler-remove-on-exit.js": {},
     "parallel/test-signal-handler.js": {},
     "parallel/test-snapshot-api.js": {
@@ -1900,17 +2206,17 @@
     // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
     // "parallel/test-source-map-enable.js": {},
     "parallel/test-sqlite-authz.js": {},
-    // "parallel/test-sqlite-config.js": {}, // https://github.com/denoland/deno/issues/32706
+    "parallel/test-sqlite-config.js": {},
     "parallel/test-sqlite-custom-functions.js": {},
     "parallel/test-sqlite-data-types.js": {},
     "parallel/test-sqlite-database-sync-dispose.js": {},
     "parallel/test-sqlite-database-sync.js": {},
-    // "parallel/test-sqlite-named-parameters.js": {}, // https://github.com/denoland/deno/issues/32706
+    "parallel/test-sqlite-named-parameters.js": {},
     "parallel/test-sqlite-session.js": {
       "flaky": true
     },
     "parallel/test-sqlite-statement-sync-columns.js": {},
-    // "parallel/test-sqlite-statement-sync.js": {}, // https://github.com/denoland/deno/issues/32706
+    "parallel/test-sqlite-statement-sync.js": {},
     "parallel/test-sqlite-timeout.js": {},
     "parallel/test-sqlite-transactions.js": {},
     "parallel/test-sqlite-typed-array-and-data-view.js": {},
@@ -1920,7 +2226,8 @@
     "parallel/test-stdin-hang.js": {},
     "parallel/test-stdin-pause-resume-sync.js": {},
     "parallel/test-stdin-pause-resume.js": {},
-    "parallel/test-stdin-pipe-large.js": {},
+    // TODO(bartlomieju): Windows pipe write polling doesn't drain large writes
+    "parallel/test-stdin-pipe-large.js": { "windows": false },
     "parallel/test-stdin-pipe-resume.js": {},
     "parallel/test-stdin-resume-pause.js": {},
     "parallel/test-stdin-script-child-option.js": {},
@@ -1963,7 +2270,7 @@
     "parallel/test-stream-duplex-readable-end.js": {},
     "parallel/test-stream-duplex-readable-writable.js": {},
     "parallel/test-stream-duplex-writable-finished.js": {},
-    // "parallel/test-stream-duplex.js": {}, // https://github.com/denoland/deno/issues/32706
+    "parallel/test-stream-duplex.js": {},
     "parallel/test-stream-duplexpair.js": {},
     "parallel/test-stream-end-of-streams.js": {},
     "parallel/test-stream-end-paused.js": {},
@@ -2149,6 +2456,7 @@
     "parallel/test-timers-immediate-unref.js": {},
     "parallel/test-timers-immediate.js": {},
     "parallel/test-timers-immediate-queue.js": {},
+    "parallel/test-timers-invalid-clear.js": {},
     "parallel/test-timers-interval-throw.js": {},
     "parallel/test-timers-non-integer-delay.js": {},
     "parallel/test-timers-not-emit-duration-zero.js": {},
@@ -2159,6 +2467,7 @@
     "parallel/test-timers-same-timeout-wrong-list-deleted.js": {},
     "parallel/test-timers-setimmediate-infinite-loop.js": {},
     "parallel/test-timers-socket-timeout-removes-other-socket-unref-timer.js": {},
+    "parallel/test-timers-throw-when-cb-not-function.js": {},
     "parallel/test-timers-timeout-with-non-integer.js": {},
     "parallel/test-timers-to-primitive.js": {},
     "parallel/test-timers-uncaught-exception.js": {},
@@ -2226,12 +2535,14 @@
     "parallel/test-url-relative.js": {},
     "parallel/test-url-urltooptions.js": {},
     "parallel/test-utf8-scripts.js": {},
+    "parallel/test-util-convert-signal-to-exit-code.mjs": {},
     "parallel/test-util-deprecate-invalid-code.js": {},
     "parallel/test-util-inherits.js": {},
     "parallel/test-util-inspect-getters-accessing-this.js": {},
     "parallel/test-util-isDeepStrictEqual.js": {},
-    // "parallel/test-util-parse-env.js": {}, // https://github.com/denoland/deno/issues/32706
+    "parallel/test-util-parse-env.js": {},
     "parallel/test-util-primordial-monkeypatching.js": {},
+    "parallel/test-util-stripvtcontrolcharacters.js": {},
     "parallel/test-util-text-decoder.js": {},
     "parallel/test-util-types-exists.js": {},
     "parallel/test-util.js": {},
@@ -2240,7 +2551,7 @@
     "parallel/test-v8-flag-pool-size-0.js": {},
     "parallel/test-v8-getheapsnapshot-twice.js": {},
     "parallel/test-v8-global-setter.js": {},
-    // "parallel/test-v8-stats.js": {}, // https://github.com/denoland/deno/issues/32706
+    "parallel/test-v8-stats.js": {},
     "parallel/test-vm-access-process-env.js": {},
     "parallel/test-vm-api-handles-getter-errors.js": {},
     "parallel/test-vm-attributes-property-not-on-sandbox.js": {},
@@ -2262,6 +2573,7 @@
     "parallel/test-vm-global-assignment.js": {},
     "parallel/test-vm-global-configurable-properties.js": {},
     "parallel/test-vm-global-define-property.js": {},
+    "parallel/test-vm-global-get-own.js": {},
     "parallel/test-vm-global-identity.js": {},
     "parallel/test-vm-global-setter.js": {},
     "parallel/test-vm-harmony-symbols.js": {},
@@ -2273,6 +2585,9 @@
     "parallel/test-vm-new-script-this-context.js": {},
     "parallel/test-vm-not-strict.js": {},
     "parallel/test-vm-options-validation.js": {},
+    "parallel/test-vm-ownkeys.js": {},
+    "parallel/test-vm-ownpropertynames.js": {},
+    "parallel/test-vm-ownpropertysymbols.js": {},
     "parallel/test-vm-parse-abort-on-uncaught-exception.js": {},
     "parallel/test-vm-preserves-property.js": {},
     "parallel/test-vm-property-not-on-sandbox.js": {},
@@ -2328,7 +2643,7 @@
     "parallel/test-worker-cleanexit-with-js.js": {},
     "parallel/test-worker-cleanexit-with-moduleload.js": {},
     "parallel/test-worker-console-listeners.js": {},
-    // "parallel/test-worker-cpu-usage.js": {}, // https://github.com/denoland/deno/issues/32706
+    "parallel/test-worker-cpu-usage.js": {},
     // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
     // "parallel/test-worker-debug.js": {},
     "parallel/test-worker-dns-terminate.js": {},
@@ -2397,6 +2712,7 @@
     "parallel/test-worker-unref-from-message-during-exit.js": {},
     "parallel/test-worker-unsupported-eval-on-url.mjs": {},
     "parallel/test-worker-unsupported-path.js": {},
+    "parallel/test-worker-unsupported-things.js": {},
     "parallel/test-worker-thread-name.js": {},
     "parallel/test-worker-voluntarily-exit-followed-by-addition.js": {},
     "parallel/test-worker-voluntarily-exit-followed-by-throw.js": {},
@@ -2548,8 +2864,10 @@
       "reason": "Node.js snapshot/heap profiling features (--build-snapshot, --heap-prof, --heapsnapshot-near-heap-limit) are not implemented in Deno"
     },
     // "pummel/test-heapdump-inspector.js": {},
+    "pummel/test-process-hrtime.js": {},
     "pummel/test-string-decoder-large-buffer.js": {},
     "sequential/test-buffer-creation-regression.js": {},
+    "sequential/test-child-process-execsync.js": {},
     "sequential/test-child-process-exit.js": {},
     "sequential/test-cli-syntax-bad.js": {},
     "sequential/test-cli-syntax-file-not-found.js": {
@@ -2589,11 +2907,26 @@
     // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
     // "sequential/test-cpu-prof-worker-argv.js": {},
     "sequential/test-debug-prompt.js": {},
-    // "sequential/test-debugger-custom-port.js": {},
-    // "sequential/test-debugger-debug-brk.js": {},
-    // "sequential/test-debugger-invalid-args.js": {},
-    // "sequential/test-debugger-launch.mjs": {},
-    // "sequential/test-debugger-pid.js": {},
+    "sequential/test-debugger-custom-port.js": {
+      "ignore": true,
+      "reason": "Tests 'node inspect' CLI subcommand which Deno does not implement"
+    },
+    "sequential/test-debugger-debug-brk.js": {
+      "ignore": true,
+      "reason": "Tests 'node inspect' CLI subcommand which Deno does not implement"
+    },
+    "sequential/test-debugger-invalid-args.js": {
+      "ignore": true,
+      "reason": "Tests 'node inspect' CLI subcommand which Deno does not implement"
+    },
+    "sequential/test-debugger-launch.mjs": {
+      "ignore": true,
+      "reason": "Tests 'node inspect' CLI subcommand which Deno does not implement"
+    },
+    "sequential/test-debugger-pid.js": {
+      "ignore": true,
+      "reason": "Tests 'node inspect' CLI subcommand which Deno does not implement"
+    },
     // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
     // "sequential/test-diagnostic-dir-cpu-prof.js": {},
     // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
@@ -2623,6 +2956,7 @@
     "sequential/test-net-GH-5504.js": {},
     "sequential/test-net-response-size.js": {},
     "sequential/test-net-server-bind.js": {},
+    "sequential/test-process-title.js": {},
     "sequential/test-require-cache-without-stat.js": {},
     "sequential/test-resolution-inspect-brk.js": {},
     // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before

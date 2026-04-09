@@ -107,6 +107,7 @@ deno_core::extension!(
     op_host_recv_ctrl,
     op_host_recv_message,
     op_host_get_worker_cpu_usage,
+    op_current_thread_cpu_usage,
   ],
   options = {
     create_web_worker_cb: Arc<CreateWebWorkerCb>,
@@ -475,6 +476,14 @@ fn op_host_get_worker_cpu_usage(
   }
   out[0] = 0.0;
   out[1] = 0.0;
+}
+
+#[op2(fast)]
+fn op_current_thread_cpu_usage(#[buffer] out: &mut [f64]) {
+  let handle = capture_current_thread_handle();
+  let (user, system) = get_thread_cpu_usage_by_handle(handle);
+  out[0] = user;
+  out[1] = system;
 }
 
 #[cfg(target_os = "macos")]

@@ -1061,6 +1061,72 @@ fn node_api_create_object_with_properties<'s>(
 }
 
 #[napi_sym]
+fn node_api_create_object_with_named_properties<'s>(
+  env_ptr: *mut Env,
+  result: *mut napi_value<'s>,
+  property_count: usize,
+  property_names: *const *const c_char,
+  property_values: *const napi_value<'s>,
+) -> napi_status {
+  let env = check_env!(env_ptr);
+  check_arg!(env, result);
+
+  if property_count > 0 {
+    check_arg!(env, property_names);
+    check_arg!(env, property_values);
+  }
+
+  unsafe {
+    v8::callback_scope!(unsafe scope, env.context());
+
+    let names = if property_count == 0 {
+      &[]
+    } else {
+      std::slice::from_raw_parts(property_names, property_count)
+    };
+
+    let values = if property_count == 0 {
+      &[]
+    } else {
+      std::slice::from_raw_parts(property_values, property_count)
+    };
+
+    let mut v8_names = Vec::with_capacity(property_count);
+    let mut v8_values = Vec::with_capacity(property_count);
+
+    for i in 0..property_count {
+      let c_str = names[i];
+      if c_str.is_null() {
+        return napi_invalid_arg;
+      }
+      let name_str = std::ffi::CStr::from_ptr(c_str);
+      let Some(v8_name) = v8::String::new_from_utf8(
+        scope,
+        name_str.to_bytes(),
+        v8::NewStringType::Internalized,
+      ) else {
+        return napi_set_last_error(env_ptr, napi_generic_failure);
+      };
+      v8_names.push(v8_name.into());
+
+      if let Some(value) = *values[i] {
+        v8_values.push(value);
+      } else {
+        return napi_invalid_arg;
+      }
+    }
+
+    let prototype = v8::null(scope).into();
+    *result = v8::Object::with_prototype_and_properties(
+      scope, prototype, &v8_names, &v8_values,
+    )
+    .into();
+  }
+
+  return napi_clear_last_error(env_ptr);
+}
+
+#[napi_sym]
 fn napi_create_array(
   env_ptr: *mut Env,
   result: *mut napi_value,
@@ -1922,10 +1988,14 @@ fn napi_throw(env: *mut Env, error: napi_value) -> napi_status {
     return napi_pending_exception;
   }
 
+  // Store in last_exception only. Do NOT call throw_exception() here.
+  // The NAPI callback wrapper (call_fn) checks last_exception after
+  // the callback returns and throws via V8 then. Throwing here would
+  // make it impossible to clear with napi_get_and_clear_last_exception
+  // since V8 would still have a pending exception.
   let error = {
     let error = error.unwrap();
     v8::callback_scope!(unsafe scope, env.context());
-    scope.throw_exception(error);
     v8::Global::new(scope, error)
   };
   env.last_exception = Some(error);
@@ -2940,31 +3010,55 @@ fn napi_close_handle_scope(
 #[napi_sym]
 fn napi_open_escapable_handle_scope(
   env: *mut Env,
-  _result: *mut napi_escapable_handle_scope,
+  result: *mut napi_escapable_handle_scope,
 ) -> napi_status {
   let env = check_env!(env);
+  check_arg!(env, result);
+
+  // Allocate a bool to track whether escape has been called.
+  // The pointer is cast to napi_escapable_handle_scope (opaque).
+  let escaped_flag = Box::into_raw(Box::new(false));
+  unsafe {
+    *result = escaped_flag as napi_escapable_handle_scope;
+  }
+
   napi_clear_last_error(env)
 }
 
 #[napi_sym]
 fn napi_close_escapable_handle_scope(
   env: *mut Env,
-  _scope: napi_escapable_handle_scope,
+  scope: napi_escapable_handle_scope,
 ) -> napi_status {
   let env = check_env!(env);
+
+  if !scope.is_null() {
+    // Reclaim the bool we allocated in open.
+    unsafe {
+      let _ = Box::from_raw(scope as *mut bool);
+    }
+  }
+
   napi_clear_last_error(env)
 }
 
 #[napi_sym]
 fn napi_escape_handle<'s>(
   env: *mut Env,
-  _scope: napi_escapable_handle_scope,
+  scope: napi_escapable_handle_scope,
   escapee: napi_value<'s>,
   result: *mut napi_value<'s>,
 ) -> napi_status {
   let env = check_env!(env);
+  check_arg!(env, scope);
+  check_arg!(env, result);
 
+  let escaped_flag = scope as *mut bool;
   unsafe {
+    if *escaped_flag {
+      return napi_set_last_error(env, napi_escape_called_twice);
+    }
+    *escaped_flag = true;
     *result = escapee;
   }
 

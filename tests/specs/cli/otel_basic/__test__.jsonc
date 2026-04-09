@@ -101,6 +101,13 @@
       "args": "run -A main.ts http_server_status.ts",
       "output": "http_server_status.out"
     },
+    "http_route": {
+      "envs": {
+        "OTEL_METRIC_EXPORT_INTERVAL": "1000"
+      },
+      "args": "run -A main.ts http_route.ts",
+      "output": "http_route.out"
+    },
     "array_attributes": {
       "args": "run -A main.ts array_attributes.ts",
       "output": "array_attributes.out"
@@ -116,6 +123,10 @@
     "log_exception": {
       "args": "run -A main.ts log_exception.ts",
       "output": "log_exception.out"
+    },
+    "http_serve_error_with_otel": {
+      "args": "run -A main.ts http_serve_error_with_otel.ts",
+      "output": "http_serve_error_with_otel.out"
     }
   }
 }

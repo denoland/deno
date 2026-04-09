@@ -22,7 +22,6 @@ use deno_ast::swc::ecma_visit::Visit;
 use deno_ast::swc::ecma_visit::VisitWith;
 use deno_ast::swc::ecma_visit::noop_visit_type;
 use deno_core::LocalInspectorSession;
-use deno_core::PollEventLoopOptions;
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
 use deno_core::error::CoreError;
@@ -56,7 +55,6 @@ use crate::args::CliOptions;
 use crate::cdp;
 use crate::cdp::RemoteObjectId;
 use crate::colors;
-use crate::lsp::ReplLanguageServer;
 use crate::npm::CliNpmInstaller;
 use crate::resolver::CliResolver;
 use crate::tools::test::TestEventReceiver;
@@ -170,7 +168,6 @@ pub fn result_to_evaluation_output(
 
 #[derive(Debug)]
 pub struct TsEvaluateResponse {
-  pub ts_code: String,
   pub value: cdp::EvaluateResponse,
 }
 
@@ -184,7 +181,6 @@ pub struct ReplSession {
   state: ReplSessionState,
   pub worker: MainWorker,
   pub context_id: u64,
-  pub language_server: ReplLanguageServer,
   pub notifications: Arc<Mutex<UnboundedReceiver<Value>>>,
   referrer: ModuleSpecifier,
   main_module: ModuleSpecifier,
@@ -264,21 +260,35 @@ impl ReplSessionState {
   }
 
   async fn wait_for_response(&self, msg_id: i32) -> serde_json::Value {
-    if let Some(message_state) = self.0.lock().messages.remove(&msg_id) {
-      let InspectorMessageState::Ready(mut value) = message_state else {
-        unreachable!();
-      };
-      return value["result"].take();
-    }
+    let rx = {
+      let mut state = self.0.lock();
+      if let Some(message_state) = state.messages.remove(&msg_id) {
+        let InspectorMessageState::Ready(value) = message_state else {
+          unreachable!();
+        };
+        return Self::extract_result(value);
+      }
+      let (tx, rx) = oneshot::channel();
+      state
+        .messages
+        .insert(msg_id, InspectorMessageState::WaitingFor(tx));
+      rx
+    };
 
-    let (tx, rx) = oneshot::channel();
-    self
-      .0
-      .lock()
-      .messages
-      .insert(msg_id, InspectorMessageState::WaitingFor(tx));
-    let mut value = rx.await.unwrap();
-    value["result"].take()
+    let value = rx.await.unwrap();
+    Self::extract_result(value)
+  }
+
+  #[allow(clippy::print_stderr, reason = "diagnostic for flaky CDP responses")]
+  fn extract_result(mut value: serde_json::Value) -> serde_json::Value {
+    let result = value["result"].take();
+    if result.is_null() {
+      eprintln!(
+        "CDP response has null result. Full response: {}",
+        serde_json::to_string(&value).unwrap_or_default()
+      );
+    }
+    result
   }
 }
 
@@ -298,8 +308,6 @@ impl ReplSession {
     main_module: ModuleSpecifier,
     test_event_receiver: TestEventReceiver,
   ) -> Result<Self, AnyError> {
-    let language_server = ReplLanguageServer::new_initialized().await?;
-
     let (notification_tx, mut notification_rx) = unbounded();
     let repl_session_state = ReplSessionState::new(notification_tx);
     let state = repl_session_state.clone();
@@ -360,7 +368,6 @@ impl ReplSession {
       session,
       state,
       context_id,
-      language_server,
       referrer,
       notifications: Arc::new(Mutex::new(notification_rx)),
       test_reporter_factory: Box::new(move || {
@@ -417,6 +424,17 @@ impl ReplSession {
   ) -> Value {
     let msg_id = next_msg_id();
     self.session.post_message(msg_id, method, params);
+
+    // Under Explicit microtask policy, V8's REPL-mode evaluation creates
+    // a promise whose resolution callback is a queued microtask. Without
+    // this checkpoint, GC can collect the weakly-held promise before the
+    // microtask drains, causing a "Promise was collected" CDP error.
+    self
+      .worker
+      .js_runtime
+      .v8_isolate()
+      .perform_microtask_checkpoint();
+
     let fut = self
       .state
       .wait_for_response(msg_id)
@@ -426,16 +444,7 @@ impl ReplSession {
     self
       .worker
       .js_runtime
-      .with_event_loop_future(
-        fut,
-        PollEventLoopOptions {
-          // NOTE(bartlomieju): this is an important bit; we don't want to pump V8
-          // message loop here, so that GC won't run. Otherwise, the resulting
-          // object might be GC'ed before we have a chance to inspect it.
-          pump_v8_message_loop: false,
-          ..Default::default()
-        },
-      )
+      .with_event_loop_future(fut, Default::default())
       .await
       .unwrap()
   }
@@ -489,11 +498,6 @@ impl ReplSession {
               exception_details.text, description
             ))
           } else {
-            session
-              .language_server
-              .commit_text(&evaluate_response.ts_code)
-              .await;
-
             session.set_last_eval_result(&result).await?;
             let value = session.get_eval_value(&result).await?;
             EvaluationOutput::Value(value)
@@ -792,10 +796,7 @@ impl ReplSession {
       .evaluate_expression(&format!("'use strict'; void 0;{transpiled_src}"))
       .await?;
 
-    Ok(TsEvaluateResponse {
-      ts_code: expression.to_string(),
-      value,
-    })
+    Ok(TsEvaluateResponse { value })
   }
 
   fn analyze_and_handle_jsx(&mut self, parsed_source: &ParsedSource) {
@@ -913,7 +914,7 @@ impl ReplSession {
           return_by_value: None,
           generate_preview: None,
           user_gesture: None,
-          await_promise: None,
+          await_promise: Some(true),
           throw_on_side_effect: None,
           timeout: None,
           disable_breaks: None,

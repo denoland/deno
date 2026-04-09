@@ -660,7 +660,7 @@ mod tests {
       check_mode: TypeCheckMode::All,
       initial_cwd: resolve_cwd(None).unwrap().into_owned(),
     };
-    crate::tsc::exec(request, code_cache, None)
+    crate::tsc::exec(request, code_cache)
   }
 
   #[tokio::test]

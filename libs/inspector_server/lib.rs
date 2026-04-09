@@ -671,21 +671,28 @@ async fn pump_websocket_messages(
             let msg = Frame::text(msg.content.into_bytes().into());
             let _ = websocket.write_frame(msg).await;
         }
-        Ok(msg) = websocket.read_frame() => {
-            match msg.opcode {
-                OpCode::Text => {
-                    if let Ok(s) = String::from_utf8(msg.payload.to_vec()) {
-                      let _ = inbound_tx.unbounded_send(s);
+        result = websocket.read_frame() => {
+            match result {
+                Ok(msg) => match msg.opcode {
+                    OpCode::Text => {
+                        if let Ok(s) = String::from_utf8(msg.payload.to_vec()) {
+                          let _ = inbound_tx.unbounded_send(s);
+                        }
                     }
-                }
-                OpCode::Close => {
-                    // Users don't care if there was an error coming from debugger,
-                    // just about the fact that debugger did disconnect.
-                    log::info!("Debugger session ended");
+                    OpCode::Close => {
+                        // Users don't care if there was an error coming from debugger,
+                        // just about the fact that debugger did disconnect.
+                        log::info!("Debugger session ended");
+                        break 'pump;
+                    }
+                    _ => {
+                        // Ignore other messages.
+                    }
+                },
+                Err(_) => {
+                    // WebSocket read error (remote disconnected without close frame).
+                    log::info!("Debugger session ended (connection lost)");
                     break 'pump;
-                }
-                _ => {
-                    // Ignore other messages.
                 }
             }
         }

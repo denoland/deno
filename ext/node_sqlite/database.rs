@@ -276,7 +276,7 @@ impl Default for DatabaseSyncOptions {
       return_arrays: false,
       allow_bare_named_params: true,
       allow_unknown_named_params: false,
-      is_defensive_mode: false,
+      is_defensive_mode: true,
       timeout: 0,
     }
   }
@@ -834,9 +834,11 @@ impl DatabaseSync {
   #[cppgc]
   fn prepare(
     &self,
+    scope: &mut v8::PinScope<'_, '_>,
     #[validate(validators::sql_str)]
     #[string]
     sql: &str,
+    #[varargs] args: Option<&v8::FunctionCallbackArguments>,
   ) -> Result<StatementSync, SqliteError> {
     let db = self.conn.borrow();
     let db = db.as_ref().ok_or(SqliteError::InUse)?;
@@ -860,6 +862,69 @@ impl DatabaseSync {
     };
     check_error_code(r, raw_handle)?;
 
+    let mut allow_unknown_named_params =
+      self.options.allow_unknown_named_params;
+    let mut use_big_ints = self.options.use_big_int_arguments;
+    let mut return_arrays = self.options.return_arrays;
+    let mut allow_bare_named_params = self.options.allow_bare_named_params;
+
+    // Parse options object (second argument)
+    if let Some(args) = args {
+      // args[0] is already consumed as `sql`, so options is args[1]
+      if args.length() > 1 {
+        let options = args.get(1);
+        if !options.is_undefined() && !options.is_null() {
+          let options =
+            v8::Local::<v8::Object>::try_from(options).map_err(|_| {
+              SqliteError::Validation(validators::Error::InvalidArgType(
+                "The \"options\" argument must be an object.",
+              ))
+            })?;
+
+          v8_static_strings! {
+            ALLOW_UNKNOWN = "allowUnknownNamedParameters",
+            READ_BIG_INTS = "readBigInts",
+            RETURN_ARRAYS = "returnArrays",
+            ALLOW_BARE = "allowBareNamedParameters",
+          }
+
+          macro_rules! parse_bool_opt {
+            ($key:expr, $name:expr, $target:ident) => {
+              let key = $key.v8_string(scope).unwrap().into();
+              if let Some(val) = options.get(scope, key) {
+                if !val.is_undefined() {
+                  $target = v8::Local::<v8::Boolean>::try_from(val)
+                    .map_err(|_| {
+                      SqliteError::Validation(
+                        validators::Error::InvalidArgType(concat!(
+                          "The \"",
+                          $name,
+                          "\" argument must be a boolean."
+                        )),
+                      )
+                    })?
+                    .is_true();
+                }
+              }
+            };
+          }
+
+          parse_bool_opt!(
+            ALLOW_UNKNOWN,
+            "options.allowUnknownNamedParameters",
+            allow_unknown_named_params
+          );
+          parse_bool_opt!(READ_BIG_INTS, "options.readBigInts", use_big_ints);
+          parse_bool_opt!(RETURN_ARRAYS, "options.returnArrays", return_arrays);
+          parse_bool_opt!(
+            ALLOW_BARE,
+            "options.allowBareNamedParameters",
+            allow_bare_named_params
+          );
+        }
+      }
+    }
+
     let stmt_cell = Rc::new(Cell::new(Some(raw_stmt)));
     self.statements.borrow_mut().push(stmt_cell.clone());
 
@@ -868,13 +933,13 @@ impl DatabaseSync {
       db: self.conn.clone(),
       statements: Rc::clone(&self.statements),
       ignore_next_sqlite_error: Rc::clone(&self.ignore_next_sqlite_error),
-      return_arrays: Cell::new(self.options.return_arrays),
-      use_big_ints: Cell::new(self.options.use_big_int_arguments),
-      allow_bare_named_params: Cell::new(self.options.allow_bare_named_params),
-      allow_unknown_named_params: Cell::new(
-        self.options.allow_unknown_named_params,
-      ),
+      return_arrays: Cell::new(return_arrays),
+      use_big_ints: Cell::new(use_big_ints),
+      allow_bare_named_params: Cell::new(allow_bare_named_params),
+      allow_unknown_named_params: Cell::new(allow_unknown_named_params),
       is_iter_finished: Cell::new(false),
+      iter_generation: Cell::new(0),
+      iter_contexts: RefCell::new(Vec::new()),
     })
   }
 

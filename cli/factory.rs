@@ -26,13 +26,13 @@ use deno_lib::npm::create_npm_process_state_provider;
 use deno_lib::worker::LibMainWorkerFactory;
 use deno_lib::worker::LibMainWorkerOptions;
 use deno_lib::worker::LibWorkerFactoryRoots;
-use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm::resolution::NpmVersionResolver;
 use deno_npm_cache::NpmCacheSetting;
 use deno_npm_installer::NpmInstallerFactoryOptions;
 use deno_npm_installer::lifecycle_scripts::LifecycleScriptsExecutor;
 use deno_npm_installer::lifecycle_scripts::NullLifecycleScriptsExecutor;
 use deno_npm_installer::process_state::NpmProcessStateKind;
+use deno_npmrc::ResolvedNpmRc;
 use deno_resolver::cache::ParsedSourceCache;
 use deno_resolver::cjs::IsCjsResolutionMode;
 use deno_resolver::deno_json::CompilerOptionsOverrides;
@@ -526,20 +526,6 @@ impl CliFactory {
     self.resolver_factory()?.in_npm_package_checker()
   }
 
-  pub async fn tsgo_path(&self) -> Result<Option<&PathBuf>, AnyError> {
-    if self.cli_options()?.unstable_tsgo() {
-      Ok(Some(
-        crate::tsc::ensure_tsgo(
-          self.deno_dir()?,
-          self.http_client_provider().clone(),
-        )
-        .await?,
-      ))
-    } else {
-      Ok(None)
-    }
-  }
-
   pub fn jsr_version_resolver(
     &self,
   ) -> Result<&Arc<JsrVersionResolver>, AnyError> {
@@ -847,7 +833,6 @@ impl CliFactory {
             } else {
               None
             },
-            self.tsgo_path().await?.cloned(),
           )))
         }
         .boxed_local(),

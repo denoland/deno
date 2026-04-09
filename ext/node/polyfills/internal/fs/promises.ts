@@ -83,10 +83,10 @@ const lchmodPromise: (
   mode: number,
 ) => Promise<void> = !isMacOS
   ? () => PromiseReject(new ERR_METHOD_NOT_IMPLEMENTED("lchmod()"))
-  : (path: string | Buffer | URL, mode: number) => {
+  : async (path: string | Buffer | URL, mode: number) => {
     path = getValidatedPathToString(path);
     mode = parseFileMode(mode, "mode");
-    return op_node_lchmod(path, mode);
+    return await op_node_lchmod(path, mode);
   };
 
 const lchownPromise = promisify(lchown) as (

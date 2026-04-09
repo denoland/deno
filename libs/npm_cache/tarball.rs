@@ -4,8 +4,8 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use deno_error::JsErrorBox;
-use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm::registry::NpmPackageVersionDistInfo;
+use deno_npmrc::ResolvedNpmRc;
 use deno_semver::package::PackageNv;
 use futures::FutureExt;
 use futures::future::LocalBoxFuture;

@@ -261,11 +261,8 @@ fn parse_cli_args() -> CliArgs {
 fn load_config() -> NodeCompatConfig {
   let config_path = tests_path().join("node_compat").join("config.jsonc");
   let config_content = std::fs::read_to_string(&config_path).unwrap();
-  let value =
-    jsonc_parser::parse_to_serde_value(&config_content, &Default::default())
-      .unwrap()
-      .unwrap();
-  serde_json::from_value(value).unwrap()
+  jsonc_parser::parse_to_serde_value(&config_content, &Default::default())
+    .unwrap()
 }
 
 // Directories that don't contain runnable tests
@@ -492,8 +489,14 @@ fn parse_flags(source: &str) -> (Vec<String>, Vec<String>) {
           "--pending-deprecation" => {
             node_options.push("--pending-deprecation".to_string());
           }
+          f if f.starts_with("--dns-result-order=") => {
+            node_options.push(f.to_string());
+          }
           "--allow-natives-syntax" => {
             v8_flags.push("--allow-natives-syntax".to_string());
+          }
+          f if f.starts_with("--title=") => {
+            node_options.push(f.to_string());
           }
           _ => {}
         }

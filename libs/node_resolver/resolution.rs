@@ -448,6 +448,40 @@ impl<
     Ok(resolve_response)
   }
 
+  /// Resolve a bare package specifier, skipping the built-in module check
+  /// and URL scheme handling. Only suitable for bare specifiers like
+  /// "events" or "assert" — not for URLs or relative paths.
+  ///
+  /// Used when a specifier resolved as a built-in but may be shadowed
+  /// by an npm package with the same name.
+  pub fn resolve_package(
+    &self,
+    specifier: &str,
+    referrer: &Url,
+    resolution_mode: ResolutionMode,
+    resolution_kind: NodeResolutionKind,
+  ) -> Result<NodeResolution, NodeResolveError> {
+    let conditions = self.condition_resolver.resolve(resolution_mode);
+    let referrer = UrlOrPathRef::from_url(referrer);
+    let (url, resolved_kind) = self.module_resolve(
+      specifier,
+      &referrer,
+      resolution_mode,
+      conditions,
+      resolution_kind,
+    )?;
+
+    let url_or_path = self.finalize_resolution(
+      url,
+      resolved_kind,
+      resolution_mode,
+      conditions,
+      resolution_kind,
+      Some(&referrer),
+    )?;
+    Ok(NodeResolution::Module(url_or_path))
+  }
+
   fn module_resolve(
     &self,
     specifier: &str,
@@ -1969,7 +2003,20 @@ impl<
     };
 
     if let Some(main) = maybe_main.as_deref() {
-      let guess = package_json.path.parent().unwrap().join(main).clean();
+      let package_path = package_json.path.parent().unwrap();
+      let guess = package_path.join(main).clean();
+      // Ensure the resolved main path doesn't escape the package
+      // directory via path traversal (e.g. "main": "../../../secret.json")
+      if !guess.starts_with(package_path) {
+        return Err(
+          ModuleNotFoundError {
+            specifier: UrlOrPath::Path(guess),
+            maybe_referrer: maybe_referrer.map(|r| r.display()),
+            suggested_ext: None,
+          }
+          .into(),
+        );
+      }
       if self.sys.is_file(Cow::Borrowed(&guess)) {
         return Ok(self.maybe_resolve_types(
           LocalUrlOrPath::Path(LocalPath {
@@ -2002,13 +2049,10 @@ impl<
         vec![".js", "/index.js"]
       };
       for ending in endings {
-        let guess = package_json
-          .path
-          .parent()
-          .unwrap()
-          .join(format!("{main}{ending}"))
-          .clean();
-        if self.sys.is_file(Cow::Borrowed(&guess)) {
+        let guess = package_path.join(format!("{main}{ending}")).clean();
+        if guess.starts_with(package_path)
+          && self.sys.is_file(Cow::Borrowed(&guess))
+        {
           // TODO(bartlomieju): emitLegacyIndexDeprecation()
           return Ok(MaybeTypesResolvedUrl(LocalUrlOrPath::Path(LocalPath {
             path: guess,

@@ -52,19 +52,15 @@ for (const url of ["http://localhost:4246", "https://localhost:4247"]) {
     req.on("data", (chunk) => {
       receivedData += chunk;
     });
-    req.end();
 
     const { promise, resolve } = Promise.withResolvers<void>();
-    setTimeout(() => {
-      try {
-        client.close();
-      } catch (_) {
-        // pass
-      }
+    req.on("end", () => {
       resolve();
-    }, 2000);
+    });
+    req.end();
 
     await promise;
+    client.close();
     assertEquals(receivedHeaders?.[":status"], 200);
     assertEquals(receivedData, "hello world\n");
 
@@ -75,10 +71,7 @@ for (const url of ["http://localhost:4246", "https://localhost:4247"]) {
   });
 }
 
-Deno.test(`[node/http2 client createConnection]`, {
-  // TODO(littledivy): custom createConnection sockets not yet supported
-  ignore: true,
-}, async () => {
+Deno.test(`[node/http2 client createConnection]`, async () => {
   const url = "http://127.0.0.1:4246";
   const createConnDeferred = Promise.withResolvers<void>();
   // Create a server to respond to the HTTP2 requests
@@ -105,28 +98,21 @@ Deno.test(`[node/http2 client createConnection]`, {
   req.on("data", (chunk) => {
     receivedData += chunk;
   });
-  req.end();
 
   const endPromise = Promise.withResolvers<void>();
-  setTimeout(() => {
-    try {
-      client.close();
-    } catch (_) {
-      // pass
-    }
+  req.on("end", () => {
     endPromise.resolve();
-  }, 2000);
+  });
+  req.end();
 
   await createConnDeferred.promise;
   await endPromise.promise;
+  client.close();
   assertEquals(receivedData, "hello world\n");
 });
 
 // https://github.com/denoland/deno/issues/29956
-Deno.test(`[node/http2 client body overflow]`, {
-  // TODO(littledivy): custom createConnection sockets not yet supported
-  ignore: true,
-}, async () => {
+Deno.test(`[node/http2 client body overflow]`, async () => {
   const url = "http://127.0.0.1:4246";
   const createConnDeferred = Promise.withResolvers<void>();
   // Create a server to respond to the HTTP2 requests
@@ -162,20 +148,15 @@ Deno.test(`[node/http2 client body overflow]`, {
     receivedTrailers = trailers;
   });
 
-  req.end();
-
   const endPromise = Promise.withResolvers<void>();
-  setTimeout(() => {
-    try {
-      client.close();
-    } catch (_) {
-      // pass
-    }
+  req.on("end", () => {
     endPromise.resolve();
-  }, 2000);
+  });
+  req.end();
 
   await createConnDeferred.promise;
   await endPromise.promise;
+  client.close();
   assertEquals(receivedData, "hello world\n");
 
   assertEquals(receivedTrailers?.["req_body_len"], "5");

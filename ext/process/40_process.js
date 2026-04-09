@@ -3,6 +3,7 @@
 import { core, internals, primordials } from "ext:core/mod.js";
 import {
   op_kill,
+  op_node_spawn_child,
   op_run,
   op_run_status,
   op_spawn_child,
@@ -45,6 +46,10 @@ import {
 
 // The key for private `input` option for `Deno.Command`
 const kInputOption = Symbol("kInputOption");
+// The key for private `timeout` option for `Deno.Command`
+const kTimeoutOption = Symbol("kTimeoutOption");
+// The key for private `killSignal` option for `Deno.Command`
+const kKillSignalOption = Symbol("kKillSignalOption");
 
 function opKill(pid, signo, apiName) {
   op_kill(pid, signo, apiName);
@@ -166,6 +171,7 @@ export const kExtraStdio = Symbol("extraStdio");
 export const kIpc = Symbol("ipc");
 export const kNeedsNpmProcessState = Symbol("needsNpmProcessState");
 export const kSerialization = Symbol("serialization");
+const kArgv0 = Symbol("argv0");
 
 const illegalConstructorKey = Symbol("illegalConstructorKey");
 
@@ -186,12 +192,14 @@ function spawnChildInner(command, apiName, {
   [kExtraStdio]: extraStdio = [],
   [kIpc]: ipc = -1,
   [kNeedsNpmProcessState]: needsNpmProcessState = false,
+  [kArgv0]: argv0 = undefined,
 } = { __proto__: null }) {
   const child = op_spawn_child({
     cmd: pathFromURL(command),
     args: ArrayPrototypeMap(args, String),
     cwd: pathFromURL(cwd),
     clearEnv,
+    argv0,
     env: ObjectEntries(env),
     uid,
     gid,
@@ -237,12 +245,139 @@ const _stderrRid = Symbol("[[stderrRid]]");
 
 internals.getIpcPipeRid = (process) => process[_ipcPipeRid];
 internals.getExtraPipeRids = (process) => process[_extraPipeRids];
-internals.getStdioRids = (process) => ({
-  stdinRid: process[_stdinRid],
-  stdoutRid: process[_stdoutRid],
-  stderrRid: process[_stderrRid],
-});
 internals.kExtraStdio = kExtraStdio;
+
+// Node compat spawn: returns a lightweight object with raw fds for stdio
+// instead of a full Deno.ChildProcess with web streams.
+// The caller (child_process.ts) is responsible for providing all fields.
+export function nodeSpawnChild(command, {
+  args = [],
+  cwd,
+  clearEnv = false,
+  argv0,
+  env = { __proto__: null },
+  uid,
+  gid,
+  stdin = "null",
+  stdout = "piped",
+  stderr = "piped",
+  windowsRawArguments = false,
+  ipc = -1,
+  serialization = "json",
+  extraStdio = [],
+  detached = false,
+  needsNpmProcessState = false,
+}) {
+  const child = op_node_spawn_child({
+    cmd: pathFromURL(command),
+    args: ArrayPrototypeMap(args, String),
+    cwd: pathFromURL(cwd),
+    clearEnv,
+    argv0,
+    env: ObjectEntries(env),
+    uid,
+    gid,
+    stdin,
+    stdout,
+    stderr,
+    windowsRawArguments,
+    ipc,
+    serialization,
+    extraStdio,
+    detached,
+    needsNpmProcessState,
+  }, "node:child_process");
+
+  const waitPromise = op_spawn_wait(child.rid);
+  let waitComplete = false;
+  const status = PromisePrototypeThen(waitPromise, (res) => {
+    waitComplete = true;
+    return res;
+  });
+
+  return {
+    __proto__: null,
+    rid: child.rid,
+    pid: child.pid,
+    stdinFd: child.stdinFd,
+    stdoutFd: child.stdoutFd,
+    stderrFd: child.stderrFd,
+    ipcPipeRid: child.ipcPipeRid,
+    extraPipeFds: child.extraPipeFds,
+    status,
+    kill(signal) {
+      op_spawn_kill(child.rid, signal);
+    },
+    ref() {
+      core.refOpPromise(waitPromise);
+      if (!waitComplete) {
+        op_spawn_child_ref(child.rid);
+      }
+    },
+    unref() {
+      core.unrefOpPromise(waitPromise);
+      if (!waitComplete) {
+        op_spawn_child_unref(child.rid);
+      }
+    },
+  };
+}
+
+// Node compat sync spawn: calls op_spawn_sync and returns pid/killedByTimeout
+// as normal fields instead of hidden properties on a Deno.CommandOutput.
+export function nodeSpawnSyncChild({
+  args,
+  cwd,
+  clearEnv,
+  argv0,
+  env,
+  uid,
+  gid,
+  stdin,
+  stdout,
+  stderr,
+  windowsRawArguments,
+  needsNpmProcessState,
+  input,
+  timeout,
+  killSignal,
+}) {
+  const spawnArgs = {
+    cmd: pathFromURL(args[0]),
+    args: ArrayPrototypeMap(ArrayPrototypeSlice(args, 1), String),
+    cwd: pathFromURL(cwd),
+    clearEnv,
+    env: ObjectEntries(env),
+    uid,
+    gid,
+    stdin,
+    stdout,
+    stderr,
+    windowsRawArguments,
+    extraStdio: [],
+    detached: false,
+    needsNpmProcessState,
+    input,
+    argv0,
+  };
+  if (timeout != null && timeout > 0) {
+    spawnArgs.timeout = timeout;
+    if (killSignal != null) {
+      spawnArgs.killSignal = killSignal;
+    }
+  }
+  const result = op_spawn_sync(spawnArgs);
+  return {
+    __proto__: null,
+    success: result.status.success,
+    code: result.status.code,
+    signal: result.status.signal,
+    stdout: result.stdout,
+    stderr: result.stderr,
+    pid: result.pid,
+    killedByTimeout: result.killedByTimeout,
+  };
+}
 
 class ChildProcess {
   #rid;
@@ -471,13 +606,16 @@ function spawnSyncInner(command, {
   windowsRawArguments = false,
   [kInputOption]: input,
   [kNeedsNpmProcessState]: needsNpmProcessState = false,
+  [kTimeoutOption]: timeout,
+  [kKillSignalOption]: killSignal,
+  [kArgv0]: argv0 = undefined,
 } = { __proto__: null }) {
   if (stdin === "piped") {
     throw new TypeError(
       "Piped stdin is not supported for this function, use 'Deno.Command().spawn()' instead",
     );
   }
-  const result = op_spawn_sync({
+  const spawnArgs = {
     cmd: pathFromURL(command),
     args: ArrayPrototypeMap(args, String),
     cwd: pathFromURL(cwd),
@@ -493,8 +631,16 @@ function spawnSyncInner(command, {
     detached: false,
     needsNpmProcessState,
     input,
-  });
-  return {
+    argv0,
+  };
+  if (timeout != null && timeout > 0) {
+    spawnArgs.timeout = timeout;
+    if (killSignal != null) {
+      spawnArgs.killSignal = killSignal;
+    }
+  }
+  const result = op_spawn_sync(spawnArgs);
+  const output = {
     success: result.status.success,
     code: result.status.code,
     signal: result.status.signal,
@@ -511,6 +657,7 @@ function spawnSyncInner(command, {
       return result.stderr;
     },
   };
+  return output;
 }
 
 class Command {
@@ -595,8 +742,11 @@ function spawnAndWaitSync(command, argsOrOptions, maybeOptions) {
 export {
   ChildProcess,
   Command,
+  kArgv0,
   kill,
   kInputOption,
+  kKillSignalOption,
+  kTimeoutOption,
   Process,
   run,
   spawn,

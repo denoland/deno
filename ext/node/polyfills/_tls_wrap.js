@@ -1,9 +1,12 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
+//
+// Ported from Node.js lib/internal/tls/wrap.js
 
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
+import { core } from "ext:core/mod.js";
 import {
   ArrayIsArray,
   ObjectAssign,
@@ -11,46 +14,52 @@ import {
 } from "ext:deno_node/internal/primordials.mjs";
 import assert from "ext:deno_node/internal/assert.mjs";
 import * as net from "node:net";
-import { createSecureContext } from "node:_tls_common";
-import { kStreamBaseField } from "ext:deno_node/internal_binding/stream_wrap.ts";
+import {
+  createSecureContext,
+  translatePeerCertificate,
+} from "node:_tls_common";
+import { JSStreamSocket } from "ext:deno_node/internal/js_stream_socket.js";
+import { convertALPNProtocols } from "ext:deno_node/internal/tls_common.js";
+import { Buffer } from "node:buffer";
 import {
   connResetException,
   ERR_TLS_CERT_ALTNAME_INVALID,
+  ERR_TLS_REQUIRED_SERVER_NAME,
 } from "ext:deno_node/internal/errors.ts";
-import { emitWarning } from "node:process";
 import { debuglog } from "ext:deno_node/internal/util/debuglog.ts";
 import {
   constants as TCPConstants,
   TCP,
 } from "ext:deno_node/internal_binding/tcp_wrap.ts";
 import {
+  kStreamBaseField,
+  kUseNativeWrap,
+} from "ext:deno_node/internal_binding/stream_wrap.ts";
+import { kMaybeDestroy } from "ext:deno_node/internal/stream_base_commons.ts";
+import {
   constants as PipeConstants,
   Pipe,
 } from "ext:deno_node/internal_binding/pipe_wrap.ts";
-import { EventEmitter } from "node:events";
 import { kEmptyObject } from "ext:deno_node/internal/util.mjs";
 import { nextTick } from "ext:deno_node/_next_tick.ts";
-import { kHandle } from "ext:deno_node/internal/stream_base_commons.ts";
 import {
-  isAnyArrayBuffer,
-  isArrayBufferView,
-} from "ext:deno_node/internal/util/types.ts";
-import { startTlsInternal } from "ext:deno_net/02_tls.js";
-import { core, internals } from "ext:core/mod.js";
-import {
-  op_node_tls_handshake,
-  op_node_tls_start,
-  op_tls_canonicalize_ipv4_address,
-  op_tls_key_null,
-  op_tls_key_static,
-} from "ext:core/ops";
+  validateFunction,
+  validateNumber,
+  validateObject,
+} from "ext:deno_node/internal/validators.mjs";
+import { isArrayBufferView } from "ext:deno_node/internal/util/types.ts";
+import { op_tls_canonicalize_ipv4_address } from "ext:core/ops";
+import tlsWrap from "ext:deno_node/internal_binding/tls_wrap.ts";
+import { ownerSymbol } from "ext:deno_node/internal_binding/symbols.ts";
+import { X509Certificate } from "ext:deno_node/internal/crypto/x509.ts";
 
 const kConnectOptions = Symbol("connect-options");
+const kHandshakeTimer = Symbol("handshake-timer");
 const kIsVerified = Symbol("verified");
 const kPendingSession = Symbol("pendingSession");
 const kRes = Symbol("res");
-
-const tlsStreamRids = new Uint32Array(2);
+const kErrorEmitted = Symbol("error-emitted");
+const noop = () => {};
 
 let debug = debuglog("tls", (fn) => {
   debug = fn;
@@ -60,8 +69,827 @@ function canonicalizeIP(ip) {
   return op_tls_canonicalize_ipv4_address(ip);
 }
 
+function toBufferLike(value) {
+  if (!value) {
+    return undefined;
+  }
+  if (typeof value === "string") {
+    return Buffer.from(value);
+  }
+  if (isArrayBufferView(value)) {
+    return Buffer.from(value.buffer, value.byteOffset, value.byteLength);
+  }
+  return undefined;
+}
+
+function getContextCertValue(socket) {
+  const context = socket._tlsOptions?.secureContext?.context ??
+    socket._tlsOptions?.secureContext;
+  let cert = context?.cert ?? socket._tlsOptions?.cert;
+  if (ArrayIsArray(cert)) {
+    cert = cert[0];
+  }
+  return toBufferLike(cert);
+}
+
+function setIssuerCertificate(cert, issuer) {
+  if (issuer) {
+    Object.defineProperty(cert, "issuerCertificate", {
+      __proto__: null,
+      configurable: true,
+      enumerable: true,
+      value: issuer,
+      writable: false,
+    });
+  }
+  return cert;
+}
+
+function getPeerCertificateChain(handle) {
+  return handle?.getPeerCertificateChain?.()?.certificates ?? null;
+}
+
+function buildPeerLegacyCertificate(handle) {
+  const cert = handle?.getPeerCertificate?.(true);
+  if (!cert) {
+    return {};
+  }
+
+  const chain = getPeerCertificateChain(handle);
+  if (chain?.length > 1) {
+    let current = cert;
+    for (let i = 1; i < chain.length; i++) {
+      const issuer = new X509Certificate(chain[i]).toLegacyObject();
+      current.issuerCertificate = issuer;
+      current = issuer;
+    }
+  }
+
+  return translatePeerCertificate(cert) || {};
+}
+
+// ---------------------------------------------------------------------------
+// TLSWrap callbacks - called on the native TLSWrap handle (this === handle)
+// ---------------------------------------------------------------------------
+
+function onhandshakedone() {
+  debug("client onhandshakedone");
+  const owner = this._owner;
+  if (owner) owner._finishInit();
+}
+
+function onerror(err) {
+  const owner = this._owner;
+  if (!owner) return;
+
+  debug(
+    "%s onerror %s had? %j",
+    owner._tlsOptions?.isServer ? "server" : "client",
+    err,
+    owner._hadError,
+  );
+
+  if (owner._hadError) return;
+  owner._hadError = true;
+
+  if (!owner._secureEstablished) {
+    owner._closeAfterHandlingError = true;
+    owner.destroy(err);
+  } else {
+    owner._emitTLSError(err);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// initRead - start data flowing from the TLSWrap handle
+// ---------------------------------------------------------------------------
+function initRead(tlsSocket, socket) {
+  debug(
+    "%s initRead",
+    tlsSocket._tlsOptions?.isServer ? "server" : "client",
+    "handle?",
+    !!tlsSocket._handle,
+    "buffered?",
+    !!socket && socket.readableLength,
+  );
+  if (!tlsSocket._handle) return;
+
+  // If the underlying socket already has buffered data, feed it to TLSWrap
+  if (socket?.readableLength) {
+    let buf;
+    while ((buf = socket.read()) !== null) {
+      tlsSocket._handle.receive(buf);
+    }
+  }
+
+  tlsSocket.read(0);
+}
+
+// ---------------------------------------------------------------------------
+// TLSSocket - the main class
+// ---------------------------------------------------------------------------
+
+function TLSSocket(socket, opts) {
+  const tlsOptions = { ...opts };
+
+  this._tlsOptions = tlsOptions;
+  this._secureEstablished = false;
+  this._securePending = false;
+  this._newSessionPending = false;
+  this._controlReleased = false;
+  this.secureConnecting = true;
+  this._SNICallback = null;
+  this.servername = null;
+  this.alpnProtocol = null;
+  this.authorized = false;
+  this.authorizationError = null;
+  this[kRes] = null;
+  this[kIsVerified] = false;
+  this[kPendingSession] = null;
+  this._session = null;
+  this._sessionReused = false;
+
+  let wrap;
+  let handle;
+
+  if (socket) {
+    if (socket instanceof net.Socket && socket._handle) {
+      wrap = socket;
+    } else {
+      wrap = new JSStreamSocket(socket);
+    }
+    handle = wrap._handle;
+  } else {
+    wrap = null;
+  }
+
+  // Just a documented property to make secure sockets
+  // distinguishable from regular ones.
+  this.encrypted = true;
+
+  // Validate SNICallback early (before _wrapHandle eagerly inits TLS)
+  if (tlsOptions.isServer && tlsOptions.SNICallback) {
+    validateFunction(tlsOptions.SNICallback, "options.SNICallback");
+  }
+
+  net.Socket.call(this, {
+    handle: this._wrapHandle(wrap, handle),
+    allowHalfOpen: socket ? socket.allowHalfOpen : tlsOptions.allowHalfOpen,
+    autoDestroy: true,
+    pauseOnCreate: tlsOptions.pauseOnConnect,
+    manualStart: true,
+    highWaterMark: tlsOptions.highWaterMark,
+    onread: !socket ? tlsOptions.onread : null,
+    signal: tlsOptions.signal,
+  });
+
+  // Proxy for API compatibility
+  this.ssl = this._handle;
+
+  this.on("error", this._tlsError);
+
+  this._init(socket, wrap);
+
+  // Implement kMaybeDestroy so that onStreamRead (stream_base_commons.ts)
+  // can auto-destroy the socket when EOF is received. Without this, the
+  // native TCP handle keeps a ref on the event loop forever.
+  this[kMaybeDestroy] = () => {
+    if (!this.destroyed) {
+      const rDone = this._readableState?.ended || this.readableEnded;
+      const wDone = this._writableState?.finished || this.writableFinished;
+      if (rDone && wDone) {
+        this.destroy();
+      }
+    }
+  };
+  this.on("finish", this[kMaybeDestroy]);
+
+  // Read on next tick so the caller has a chance to setup listeners
+  nextTick(initRead, this, socket);
+}
+Object.setPrototypeOf(TLSSocket.prototype, net.Socket.prototype);
+Object.setPrototypeOf(TLSSocket, net.Socket);
+
+tlsWrap.TLSWrap.prototype.close = function close(cb) {
+  let ssl;
+  if (this._owner) {
+    ssl = this._owner.ssl;
+    this._owner.ssl = null;
+  }
+
+  // deno-lint-ignore no-this-alias
+  const self = this;
+  const done = () => {
+    if (ssl) {
+      ssl.destroySsl();
+    }
+    // Close the native TCP handle to remove it from the event loop.
+    if (self._nativeTcpHandle) {
+      self._nativeTcpHandle.readStop();
+      self._nativeTcpHandle.close();
+      self._nativeTcpHandle = null;
+    }
+    if (cb) cb();
+  };
+
+  if (this._parentWrap) {
+    if (this._parentWrap._handle === null) {
+      queueMicrotask(done);
+      return;
+    }
+
+    if (this._parentWrap._handle === this._parent) {
+      this._parentWrap.once("close", done);
+      this._parentWrap.destroy();
+      return;
+    }
+  }
+
+  // Defer so callers can register "close" listeners after destroy().
+  queueMicrotask(done);
+};
+
+TLSSocket.prototype._wrapHandle = function (wrap, handle) {
+  const options = this._tlsOptions;
+  if (!handle) {
+    handle = options.pipe
+      ? new Pipe(PipeConstants.SOCKET)
+      : new TCP(TCPConstants.SOCKET);
+    handle[kUseNativeWrap] = true;
+  }
+
+  // Wrap socket's handle with TLSWrap
+  const context = options.secureContext ||
+    options.credentials ||
+    createSecureContext(options);
+  const secureContext = {
+    ...(context?.context ?? context),
+    rejectUnauthorized: options.rejectUnauthorized !== false,
+  };
+
+  // Get the native TCP handle for attachment
+  const nativeHandle = handle._nativeHandle ?? handle;
+
+  // Strip trailing dot from servername for SNI and certificate matching.
+  let servername = options.servername;
+  if (servername && servername.endsWith(".")) {
+    servername = servername.slice(0, -1);
+  }
+
+  const res = tlsWrap.wrap(
+    nativeHandle,
+    secureContext,
+    !!options.isServer,
+    servername,
+  );
+
+  res._parent = handle; // C++ "wrap" object: TCPWrap, etc.
+  res._parentWrap = wrap; // JS object: net.Socket, etc.
+  res._secureContext = context;
+  res.reading = handle.reading;
+  res._owner = this;
+  res[ownerSymbol] = this; // For onWriteComplete to find the socket
+  this[kRes] = res;
+
+  // Set ownerSymbol on the parent handle so that connect callbacks
+  // (which receive the TCP handle, not the TLSWrap) can find the socket.
+  handle[ownerSymbol] = this;
+
+  // Proxy methods from the parent TCP handle that callers expect on _handle.
+  // In Node, TLSWrap is a StreamBase that delegates these to the underlying
+  // stream. We proxy them explicitly here.
+  const proxyMethods = [
+    "setNetPermToken",
+    "getsockname",
+    "getpeername",
+    "connect",
+    "connect6",
+    "bind",
+    "bind6",
+    "listen",
+    "ref",
+    "unref",
+    "setNoDelay",
+    "setKeepAlive",
+  ];
+  for (const method of proxyMethods) {
+    if (typeof handle[method] === "function") {
+      res[method] = handle[method].bind(handle);
+    }
+  }
+
+  // Proxy the reading property
+  defineHandleReading(this, handle);
+
+  // Proxy kStreamBaseField from the parent TCP handle so that the HTTP
+  // module can get the underlying connection RID for
+  // op_node_http_request_with_conn. The HTTP module reads
+  // handle[kStreamBaseField][internalRidSymbol] to get the TCP RID.
+  Object.defineProperty(res, kStreamBaseField, {
+    __proto__: null,
+    get: () => handle[kStreamBaseField],
+    set: (v) => {
+      handle[kStreamBaseField] = v;
+    },
+    configurable: true,
+  });
+
+  if (wrap) {
+    wrap.on("close", () => this.destroy());
+  }
+
+  return res;
+};
+
+function defineHandleReading(socket, handle) {
+  Object.defineProperty(handle, "reading", {
+    __proto__: null,
+    get: () => {
+      return socket[kRes].reading;
+    },
+    set: (value) => {
+      socket[kRes].reading = value;
+    },
+  });
+}
+
+TLSSocket.prototype._destroySsl = function _destroySsl() {
+  if (!this.ssl) return;
+  this.ssl.destroySsl();
+  this.ssl = null;
+  this[kPendingSession] = null;
+  this[kIsVerified] = false;
+};
+
+TLSSocket.prototype.disableRenegotiation = function disableRenegotiation() {
+  // Renegotiation not supported by rustls - this is a no-op
+};
+
+// Constructor guts - sets up callbacks on the TLSWrap handle
+TLSSocket.prototype._init = function (socket, wrap) {
+  const options = this._tlsOptions;
+  const ssl = this._handle;
+  this.server = options.server;
+
+  debug(
+    "%s _init",
+    options.isServer ? "server" : "client",
+    "handle?",
+    !!ssl,
+  );
+
+  const requestCert = !!options.requestCert || !options.isServer;
+  const rejectUnauthorized = !!options.rejectUnauthorized;
+
+  this._requestCert = requestCert;
+  this._rejectUnauthorized = rejectUnauthorized;
+  if (requestCert || rejectUnauthorized) {
+    ssl.setVerifyMode(requestCert, rejectUnauthorized);
+  }
+
+  if (options.isServer) {
+    ssl.onhandshakestart = noop;
+    ssl.onhandshakedone = function () {
+      debug("server onhandshakedone");
+      const owner = this._owner;
+      if (!owner) return;
+      if (owner._newSessionPending) {
+        owner._securePending = true;
+        return;
+      }
+      owner._finishInit();
+    };
+  } else {
+    ssl.onhandshakestart = noop;
+    ssl.onhandshakedone = onhandshakedone;
+
+    if (options.session) {
+      ssl.setSession(options.session);
+    }
+  }
+
+  if (options.ALPNProtocols) {
+    ssl.setAlpnProtocols(options.ALPNProtocols);
+  }
+
+  ssl.onerror = onerror;
+
+  // Set SNICallback (already validated in constructor)
+  if (options.isServer && options.SNICallback) {
+    this._SNICallback = options.SNICallback;
+  }
+
+  if (options.handshakeTimeout > 0) {
+    this[kHandshakeTimer] = core.createTimer(
+      () => {
+        core.cancelTimer(this[kHandshakeTimer]);
+        this[kHandshakeTimer] = null;
+        this._handleTimeout();
+      },
+      options.handshakeTimeout,
+      undefined,
+      false,
+      false,
+    );
+  }
+
+  if (socket instanceof net.Socket) {
+    this._parent = socket;
+
+    this.connecting = socket.connecting || !socket._handle;
+    socket.once("connect", () => {
+      this.connecting = false;
+      // If the original socket created its own TCP handle during
+      // connect() (because it had no handle when we wrapped it),
+      // re-attach the TLS wrap to the socket's actual TCP handle.
+      if (ssl && socket._handle) {
+        const nativeHandle = socket._handle._nativeHandle ?? socket._handle;
+        ssl.attach(nativeHandle);
+      }
+      this.emit("connect");
+    });
+  }
+
+  if (wrap) {
+    wrap.on("error", (err) => this._emitTLSError(err));
+  } else {
+    assert(!socket);
+    this.connecting = true;
+  }
+};
+
+TLSSocket.prototype.renegotiate = function (_options, callback) {
+  // Renegotiation not supported by rustls
+  if (callback) {
+    nextTick(callback, new Error("Renegotiation not supported"));
+  }
+  return false;
+};
+
+TLSSocket.prototype.setMaxSendFragment = function setMaxSendFragment(_size) {
+  // Not applicable to rustls
+  return true;
+};
+
+TLSSocket.prototype._handleTimeout = function () {
+  this._emitTLSError(new Error("TLS handshake timeout"));
+};
+
+TLSSocket.prototype._emitTLSError = function (err) {
+  const e = this._tlsError(err);
+  if (e) this.emit("error", e);
+};
+
+TLSSocket.prototype._tlsError = function (err) {
+  this.emit("_tlsError", err);
+  if (this._controlReleased) return err;
+  return null;
+};
+
+TLSSocket.prototype._releaseControl = function () {
+  if (this._controlReleased) return false;
+  this._controlReleased = true;
+  this.removeListener("error", this._tlsError);
+  return true;
+};
+
+TLSSocket.prototype._finishInit = function () {
+  if (!this._handle) return;
+
+  try {
+    const alpnOut = {};
+    this._handle.getAlpnNegotiatedProtocol(alpnOut);
+    this.alpnProtocol = alpnOut.alpnProtocol || false;
+    if (this.servername === null) {
+      this.servername = this._handle.getServername?.() ?? null;
+    }
+  } catch (_e) {
+    // getAlpnNegotiatedProtocol/getServername may not be available
+  }
+
+  debug(
+    "%s _finishInit",
+    this._tlsOptions?.isServer ? "server" : "client",
+    "handle?",
+    !!this._handle,
+    "alpn",
+    this.alpnProtocol,
+    "servername",
+    this.servername,
+  );
+
+  this._secureEstablished = true;
+  this._tlsUpgraded = true;
+  if (this[kHandshakeTimer]) {
+    core.cancelTimer(this[kHandshakeTimer]);
+    this[kHandshakeTimer] = null;
+  }
+  this.emit("secure");
+};
+
+TLSSocket.prototype._start = function () {
+  debug(
+    "%s _start",
+    this._tlsOptions?.isServer ? "server" : "client",
+    "handle?",
+    !!this._handle,
+    "connecting?",
+    this.connecting,
+  );
+  if (this.connecting) {
+    this.once("connect", this._start);
+    return;
+  }
+
+  if (!this._handle) return;
+
+  this._handle.start();
+
+  // Start reading on the underlying native TCP handle so that encrypted
+  // data flows to the TLSWrap via the JS onread interceptor.
+  if (this._handle._nativeTcpHandle) {
+    this._handle._nativeTcpHandle.readStart();
+  }
+};
+
+TLSSocket.prototype.setServername = function (name) {
+  if (typeof name !== "string") {
+    throw new TypeError("Server name must be a string");
+  }
+  if (this._tlsOptions?.isServer) {
+    throw new Error("Cannot set servername on a server socket");
+  }
+  this._handle?.setServername(name);
+};
+
+TLSSocket.prototype.setSession = function (_session) {
+  if (typeof _session === "string") {
+    _session = Buffer.from(_session, "latin1");
+  }
+  this._session = _session ? Buffer.from(_session) : null;
+  // Note: rustls does not support session resumption via setSession.
+  // Do not set _sessionReused = true here; the session buffer is stored
+  // but not actually sent to the native TLS layer for 0-RTT reuse.
+  // Reporting true would mislead connection pooling logic.
+};
+
+TLSSocket.prototype.getPeerCertificate = function (detailed) {
+  if (!this._handle) {
+    return null;
+  }
+  if (!detailed) {
+    const cert = this._handle.getPeerCertificate(false);
+    return translatePeerCertificate(cert) || {};
+  }
+  return buildPeerLegacyCertificate(this._handle);
+};
+
+TLSSocket.prototype.getCertificate = function () {
+  const cert = getContextCertValue(this);
+  if (!cert) {
+    return this._handle ? {} : null;
+  }
+  return translatePeerCertificate(new X509Certificate(cert).toLegacyObject()) ||
+    {};
+};
+
+TLSSocket.prototype.getEphemeralKeyInfo = function () {
+  return {};
+};
+
+TLSSocket.prototype.isSessionReused = function () {
+  if (this._handle?.isSessionReused) {
+    return this._handle.isSessionReused();
+  }
+  return this._sessionReused;
+};
+
+// Proxy TLSSocket handle methods
+function makeSocketMethodProxy(name) {
+  return function socketMethodProxy(...args) {
+    if (this._handle) {
+      return this._handle[name]?.(...args);
+    }
+    return null;
+  };
+}
+
+TLSSocket.prototype.getCipher = function getCipher() {
+  if (!this._handle) {
+    return null;
+  }
+  const out = {};
+  return this._handle.getCipher(out) === 0 ? out : null;
+};
+
+TLSSocket.prototype.getProtocol = function getProtocol() {
+  if (!this._handle) {
+    return null;
+  }
+  const out = {};
+  return this._handle.getProtocol(out) === 0 ? out.protocol : null;
+};
+
+TLSSocket.prototype.getFinished = function getFinished() {
+  const data = this._handle?.getFinished();
+  return data
+    ? Buffer.from(data.buffer, data.byteOffset, data.byteLength)
+    : undefined;
+};
+
+TLSSocket.prototype.getPeerFinished = function getPeerFinished() {
+  const data = this._handle?.getPeerFinished();
+  return data
+    ? Buffer.from(data.buffer, data.byteOffset, data.byteLength)
+    : undefined;
+};
+
+TLSSocket.prototype.getSession = function getSession() {
+  return this._session ?? null;
+};
+
+TLSSocket.prototype.getPeerX509Certificate = function getPeerX509Certificate() {
+  const chain = getPeerCertificateChain(this._handle);
+  if (!chain?.length) {
+    return undefined;
+  }
+  const cert = new X509Certificate(chain[0]);
+  const issuer = chain[1] ? new X509Certificate(chain[1]) : undefined;
+  return setIssuerCertificate(cert, issuer);
+};
+
+TLSSocket.prototype.getX509Certificate = function getX509Certificate() {
+  const cert = getContextCertValue(this);
+  return cert ? new X509Certificate(cert) : undefined;
+};
+
+["enableTrace"]
+  .forEach((method) => {
+    TLSSocket.prototype[method] = makeSocketMethodProxy(method);
+  });
+
+// ---------------------------------------------------------------------------
+// Server
+// ---------------------------------------------------------------------------
+
+function makeVerifyError(code) {
+  if (!code) return null;
+  const err = new Error(code);
+  err.code = code;
+  return err;
+}
+
+function onServerSocketSecure() {
+  if (this._requestCert) {
+    const verifyError = makeVerifyError(this._handle.verifyError());
+    if (verifyError) {
+      this.authorizationError = verifyError.code;
+
+      if (this._rejectUnauthorized) {
+        this.destroy();
+        return;
+      }
+    } else {
+      this.authorized = true;
+    }
+  } else {
+    this.authorized = true;
+  }
+
+  if (!this.destroyed && this._releaseControl()) {
+    debug("server emit secureConnection");
+    this.secureConnecting = false;
+    this._tlsOptions.server.emit("secureConnection", this);
+  }
+}
+
+function onSocketTLSError(err) {
+  if (!this._controlReleased && !this[kErrorEmitted]) {
+    this[kErrorEmitted] = true;
+    debug("server emit tlsClientError:", err);
+    this._tlsOptions.server.emit("tlsClientError", err, this);
+  }
+}
+
+function onSocketClose(err) {
+  if (err) return;
+  if (!this._controlReleased && !this[kErrorEmitted]) {
+    this[kErrorEmitted] = true;
+    const connReset = connResetException("socket hang up");
+    this._tlsOptions.server.emit("tlsClientError", connReset, this);
+  }
+}
+
+function tlsConnectionListener(rawSocket) {
+  debug("net.Server.on(connection): new TLSSocket");
+  const socket = new TLSSocket(rawSocket, {
+    secureContext: this._sharedCreds,
+    isServer: true,
+    server: this,
+    requestCert: this.requestCert,
+    rejectUnauthorized: this.rejectUnauthorized,
+    ALPNProtocols: this.ALPNProtocols,
+    SNICallback: this._SNICallback,
+    pauseOnConnect: this.pauseOnConnect,
+  });
+
+  // Start the TLS handshake for server-side sockets
+  socket._start();
+
+  socket.on("secure", onServerSocketSecure);
+
+  socket[kErrorEmitted] = false;
+  socket.on("close", onSocketClose);
+  socket.on("_tlsError", onSocketTLSError);
+  socket.on("error", onSocketTLSError);
+}
+
+function Server(options, listener) {
+  if (!(this instanceof Server)) {
+    return new Server(options, listener);
+  }
+
+  if (typeof options === "function") {
+    listener = options;
+    options = kEmptyObject;
+  } else if (options == null || typeof options === "object") {
+    options ??= kEmptyObject;
+  } else {
+    throw new TypeError("options must be an object");
+  }
+
+  this._contexts = [];
+  this.requestCert = options.requestCert === true;
+  this.rejectUnauthorized = options.rejectUnauthorized !== false;
+
+  if (options.ALPNProtocols) {
+    convertALPNProtocols(options.ALPNProtocols, this);
+  }
+
+  this.setSecureContext(options);
+  this._handshakeTimeout = options.handshakeTimeout || (120 * 1000);
+  validateNumber(this._handshakeTimeout, "options.handshakeTimeout");
+
+  this._SNICallback = options.SNICallback;
+
+  if (this._SNICallback) {
+    validateFunction(this._SNICallback, "options.SNICallback");
+  }
+
+  // Constructor call
+  net.Server.call(this, options, tlsConnectionListener);
+
+  if (listener) {
+    this.on("secureConnection", listener);
+  }
+}
+
+Object.setPrototypeOf(Server.prototype, net.Server.prototype);
+Object.setPrototypeOf(Server, net.Server);
+
+Server.prototype.setSecureContext = function (options) {
+  validateObject(options, "options");
+
+  this._sharedCreds = createSecureContext({
+    allowPartialTrustChain: options.allowPartialTrustChain,
+    ca: options.ca,
+    cert: options.cert,
+    ciphers: options.ciphers,
+    clientCertEngine: options.clientCertEngine,
+    crl: options.crl,
+    dhparam: options.dhparam,
+    ecdhCurve: options.ecdhCurve,
+    honorCipherOrder: options.honorCipherOrder !== undefined
+      ? !!options.honorCipherOrder
+      : true,
+    key: options.key,
+    maxVersion: options.maxVersion,
+    minVersion: options.minVersion,
+    passphrase: options.passphrase,
+    pfx: options.pfx,
+    privateKeyEngine: options.privateKeyEngine,
+    privateKeyIdentifier: options.privateKeyIdentifier,
+    secureOptions: options.secureOptions,
+    secureProtocol: options.secureProtocol,
+    sessionIdContext: options.sessionIdContext,
+    sessionTimeout: options.sessionTimeout,
+    sigalgs: options.sigalgs,
+    ticketKeys: options.ticketKeys,
+  });
+};
+
+Server.prototype.addContext = function (servername, context) {
+  if (!servername) {
+    throw new ERR_TLS_REQUIRED_SERVER_NAME();
+  }
+  this._contexts.push([servername, context]);
+};
+
+// ---------------------------------------------------------------------------
+// connect
+// ---------------------------------------------------------------------------
+
 function onConnectEnd() {
-  // NOTE: This logic is shared with _http_client.js
   if (!this._hadError) {
     const options = this[kConnectOptions];
     this._hadError = true;
@@ -78,313 +906,51 @@ function onConnectEnd() {
   }
 }
 
-export class TLSSocket extends net.Socket {
-  _start() {
-    this[kHandle].afterConnectTls();
-  }
+function onConnectSecure() {
+  const options = this[kConnectOptions];
 
-  constructor(socket, opts = kEmptyObject) {
-    const tlsOptions = { ...opts };
+  let verifyError = makeVerifyError(this._handle.verifyError());
 
-    let hostname = opts.servername ?? opts.host ?? socket?._host ??
+  // Verify that server's identity matches its certificate's names
+  if (!verifyError && !this.isSessionReused()) {
+    const hostname = options.servername ||
+      options.host ||
+      options.socket?._host ||
       "localhost";
-    // Strip trailing dot from hostname for SNI and certificate verification,
-    // matching Node.js behavior. DNS FQDN trailing dots are valid but must
-    // be normalized for TLS server name matching.
-    if (hostname && hostname.endsWith(".")) {
-      hostname = hostname.slice(0, -1);
-    }
-    tlsOptions.hostname = hostname;
+    const cert = this.getPeerCertificate(true);
+    verifyError = options.checkServerIdentity(hostname, cert);
+  }
 
-    const cert = tlsOptions?.secureContext?.cert;
-    const key = tlsOptions?.secureContext?.key;
-    const hasTlsKey = key != undefined &&
-      cert != undefined;
-    const keyPair = hasTlsKey
-      ? op_tls_key_static(cert, key)
-      : op_tls_key_null();
-    let caCerts = tlsOptions?.secureContext?.ca;
-    if (typeof caCerts === "string") {
-      caCerts = [caCerts];
-    } else if (isArrayBufferView(caCerts) || isAnyArrayBuffer(caCerts)) {
-      caCerts = [new TextDecoder().decode(caCerts)];
-    } else if (Array.isArray(caCerts)) {
-      caCerts = caCerts.map((cert) => {
-        if (typeof cert === "string") {
-          return cert;
-        } else if (isArrayBufferView(cert) || isAnyArrayBuffer(cert)) {
-          return new TextDecoder().decode(cert);
-        }
-        return cert;
-      });
-    }
-
-    tlsOptions.keyPair = keyPair;
-    tlsOptions.caCerts = caCerts;
-    tlsOptions.alpnProtocols = opts.ALPNProtocols;
-    tlsOptions.rejectUnauthorized = opts.rejectUnauthorized !== false;
-
-    try {
-      if (
-        opts.checkServerIdentity &&
-        typeof opts.checkServerIdentity == "function" &&
-        opts.checkServerIdentity() == undefined
-      ) {
-        // If checkServerIdentity is no-op, we disable hostname verification.
-        tlsOptions.unsafelyDisableHostnameVerification = true;
-      }
-    } catch { /* pass */ }
-
-    super({
-      handle: _wrapHandle(tlsOptions, socket),
-      ...opts,
-      manualStart: true, // This prevents premature reading from TLS handle
-    });
-    if (socket) {
-      this.on("close", () => this._parent?.emit("close"));
-      this._parent = socket;
-    }
-    this._tlsOptions = tlsOptions;
-    this._secureEstablished = false;
-    this._securePending = false;
-    this._newSessionPending = false;
-    this._controlReleased = false;
-    this.secureConnecting = true;
-    this._SNICallback = null;
-    this.servername = null;
-    this.alpnProtocol = null;
-    this.alpnProtocols = tlsOptions.ALPNProtocols;
-    // Just a documented property to make secure sockets
-    // distinguishable from regular ones.
-    this.encrypted = true;
+  if (verifyError) {
     this.authorized = false;
-    this.authorizationError = null;
-    this[kRes] = null;
-    this[kIsVerified] = false;
-    this[kPendingSession] = null;
+    this.authorizationError = verifyError.code || verifyError.message;
 
-    this.ssl = new class {
-      verifyError() {
-        return null; // Never fails, rejectUnauthorized is always true in Deno.
-      }
-    }();
-
-    // deno-lint-ignore no-this-alias
-    const tlssock = this;
-
-    /** Wraps the given socket and adds the tls capability to the underlying
-     * handle */
-    function _wrapHandle(tlsOptions, socket) {
-      let handle;
-      let wrap;
-
-      if (socket) {
-        if (socket instanceof net.Socket && socket._handle) {
-          wrap = socket;
-        } else {
-          wrap = new JSStreamSocket(socket);
-        }
-
-        handle = wrap._handle;
-      }
-
-      const options = tlsOptions;
-      if (!handle) {
-        handle = options.pipe
-          ? new Pipe(PipeConstants.SOCKET)
-          : new TCP(TCPConstants.SOCKET);
-      }
-
-      const { promise, resolve } = Promise.withResolvers();
-
-      // Set `afterConnectTls` hook. This is called in the `afterConnect` method of net.Socket
-      handle.afterConnectTls = async () => {
-        options.hostname ??= undefined; // coerce to undefined if null, startTls expects hostname to be undefined
-        if (tlssock._needsSockInitWorkaround) {
-          tlssock.emit("secure");
-          tlssock.removeListener("end", onConnectEnd);
-          return;
-        }
-
-        try {
-          const conn = await startTls(
-            wrap,
-            handle,
-            options,
-          );
-          try {
-            const hs = await conn.handshake();
-            if (hs?.alpnProtocol) {
-              tlssock.alpnProtocol = hs.alpnProtocol;
-            } else {
-              tlssock.alpnProtocol = false;
-            }
-          } catch {
-            // Don't interrupt "secure" event to let the first read/write
-            // operation emit the error.
-          }
-
-          // Assign the TLS connection to the handle and resume reading.
-          handle[kStreamBaseField] = conn;
-          handle.upgrading = false;
-          if (!handle.pauseOnCreate) {
-            handle.readStart();
-          }
-
-          resolve();
-
-          tlssock.emit("secure");
-          tlssock.removeListener("end", onConnectEnd);
-        } catch {
-          // TODO(kt3k): Handle this
-        }
-      };
-
-      handle.upgrading = promise;
-      handle.verifyError = function () {
-        return null; // Never fails, rejectUnauthorized is always true in Deno.
-      };
-      // Pretends `handle` is `tls_wrap.wrap(handle, ...)` to make some npm modules happy
-      // An example usage of `_parentWrap` in npm module:
-      // https://github.com/szmarczak/http2-wrapper/blob/51eeaf59ff9344fb192b092241bfda8506983620/source/utils/js-stream-socket.js#L6
-      handle._parent = handle;
-      handle._parentWrap = socket;
-
-      return handle;
+    if (options.rejectUnauthorized !== false) {
+      this.destroy(verifyError);
+      return;
     }
-  }
-
-  _tlsError(err) {
-    this.emit("_tlsError", err);
-    if (this._controlReleased) {
-      return err;
-    }
-    return null;
-  }
-
-  _releaseControl() {
-    if (this._controlReleased) {
-      return false;
-    }
-    this._controlReleased = true;
-    this.removeListener("error", this._tlsError);
-    return true;
-  }
-
-  getEphemeralKeyInfo() {
-    return {};
-  }
-
-  isSessionReused() {
-    return false;
-  }
-
-  setSession(_session) {
-    // TODO(kt3k): implement this
-  }
-
-  setServername(_servername) {
-    // TODO(kt3k): implement this
-  }
-
-  setMaxSendFragment(_maxSendFragment) {
-    // TODO(littledivy): implement this
-  }
-
-  getPeerCertificate(detailed = false) {
-    const conn = this[kHandle]?.[kStreamBaseField];
-    if (conn) return conn[internals.getPeerCertificate](detailed);
-  }
-
-  getCipher() {
-    return "";
-  }
-}
-
-class JSStreamSocket {
-  #rid;
-  #channelRid;
-  #closed = false;
-
-  constructor(stream) {
-    this.stream = stream;
-  }
-
-  init(options) {
-    op_node_tls_start(options, tlsStreamRids);
-    this.#rid = tlsStreamRids[0];
-    this.#channelRid = tlsStreamRids[1];
-    const channelRid = this.#channelRid;
-
-    this.stream.on("data", (data) => {
-      core.write(channelRid, data);
-    });
-
-    const buf = new Uint8Array(1024 * 16);
-    (async () => {
-      while (true) {
-        try {
-          const readPromise = core.read(channelRid, buf);
-          core.unrefOpPromise(readPromise);
-          const nread = await readPromise;
-          this.stream.write(buf.slice(0, nread));
-        } catch {
-          break;
-        }
-      }
-    })();
-
-    this.stream.on("close", () => {
-      this.close();
-    });
-  }
-
-  // Called by stream_wrap's _onClose() via kStreamBaseField.close(),
-  // or by event listeners when the transport/DuplexPair is destroyed.
-  close() {
-    if (this.#closed) return;
-    this.#closed = true;
-    if (this.#rid !== undefined) {
-      try {
-        core.close(this.#rid);
-      } catch {
-        // already closed
-      }
-      this.#rid = undefined;
-    }
-    if (this.#channelRid !== undefined) {
-      try {
-        core.close(this.#channelRid);
-      } catch {
-        // already closed
-      }
-      this.#channelRid = undefined;
-    }
-  }
-
-  handshake() {
-    return op_node_tls_handshake(this.#rid);
-  }
-
-  read(buf) {
-    const promise = core.read(this.#rid, buf);
-    core.unrefOpPromise(promise);
-    return promise;
-  }
-
-  write(data) {
-    return core.write(this.#rid, data);
-  }
-}
-
-function startTls(wrap, handle, options) {
-  if (wrap instanceof JSStreamSocket) {
-    options.caCerts ??= [];
-    wrap.init(options);
-    return wrap;
+    debug(
+      "client emit secureConnect. rejectUnauthorized: %s, " +
+        "authorizationError: %s",
+      options.rejectUnauthorized,
+      this.authorizationError,
+    );
   } else {
-    return startTlsInternal(handle[kStreamBaseField], options);
+    this.authorized = true;
+    debug("client emit secureConnect. authorized:", this.authorized);
   }
+
+  this.secureConnecting = false;
+  this.emit("secureConnect");
+
+  this[kIsVerified] = true;
+  const session = this[kPendingSession];
+  this[kPendingSession] = null;
+  if (session) {
+    this.emit("session", session);
+  }
+
+  this.removeListener("end", onConnectEnd);
 }
 
 function normalizeConnectArgs(listArgs) {
@@ -392,11 +958,6 @@ function normalizeConnectArgs(listArgs) {
   const options = args[0];
   const cb = args[1];
 
-  // If args[0] was options, then normalize dealt with it.
-  // If args[0] is port, or args[0], args[1] is host, port, we need to
-  // find the options and merge them in, normalize's options has only
-  // the host/port/path args that it knows about, not the tls options.
-  // This means that options.host overrides a host arg.
   if (listArgs[1] !== null && typeof listArgs[1] === "object") {
     ObjectAssign(options, listArgs[1]);
   } else if (listArgs[2] !== null && typeof listArgs[2] === "object") {
@@ -406,111 +967,7 @@ function normalizeConnectArgs(listArgs) {
   return cb ? [options, cb] : [options];
 }
 
-let ipServernameWarned = false;
-
-export function Server(options, listener) {
-  return new ServerImpl(options, listener);
-}
-
-export class ServerImpl extends EventEmitter {
-  listener;
-  #closed = false;
-  #unrefed = false;
-  constructor(options, listener) {
-    super();
-    this.options = options;
-    if (listener) {
-      this.on("secureConnection", listener);
-    }
-  }
-
-  unref() {
-    this.#unrefed = true;
-    if (this.listener) {
-      this.listener.unref();
-    }
-  }
-
-  ref() {
-    this.#unrefed = false;
-    if (this.listener) {
-      this.listener.ref();
-    }
-  }
-
-  listen(port, callback) {
-    const key = this.options.key?.toString();
-    const cert = this.options.cert?.toString();
-    // TODO(kt3k): The default host should be "localhost"
-    const hostname = this.options.host ?? "0.0.0.0";
-
-    this.listener = Deno.listenTls({ port, hostname, cert, key });
-
-    callback?.call(this);
-    this.#listen(this.listener);
-    return this;
-  }
-
-  async #listen(listener) {
-    if (this.#unrefed) {
-      listener.unref();
-      return;
-    }
-
-    while (!this.#closed) {
-      try {
-        // Creates TCP handle and socket directly from Deno.TlsConn.
-        // This works as TLS socket. We don't use TLSSocket class for doing
-        // this because Deno.startTls only supports client side tcp connection.
-        // TODO(@satyarohith): set TLSSocket.alpnProtocol when we use TLSSocket class.
-        const handle = new TCP(TCPConstants.SOCKET, await listener.accept());
-        const socket = new net.Socket({ handle });
-        this.emit("secureConnection", socket);
-      } catch (e) {
-        if (e instanceof Deno.errors.BadResource) {
-          this.#closed = true;
-        }
-        // swallow
-      }
-    }
-  }
-
-  close(cb) {
-    if (this.listener) {
-      this.listener.close();
-    }
-    cb?.();
-    nextTick(() => {
-      this.emit("close");
-    });
-    return this;
-  }
-
-  address() {
-    const addr = this.listener.addr;
-    return {
-      port: addr.port,
-      address: addr.hostname,
-    };
-  }
-}
-
-Server.prototype = ServerImpl.prototype;
-
-export function createServer(options, listener) {
-  return new ServerImpl(options, listener);
-}
-
-function onConnectSecure() {
-  this.authorized = true;
-  this.secureConnecting = false;
-  debug("client emit secureConnect. authorized:", this.authorized);
-  this.emit("secureConnect");
-
-  this.removeListener("end", onConnectEnd);
-}
-
-export function connect(...args) {
+function connect(...args) {
   args = normalizeConnectArgs(args);
   let options = args[0];
   const cb = args[1];
@@ -528,16 +985,8 @@ export function connect(...args) {
     options.singleUse = true;
   }
 
-  assert(typeof options.checkServerIdentity === "function");
-  assert(
-    typeof options.minDHSize === "number",
-    "options.minDHSize is not a number: " + options.minDHSize,
-  );
-  assert(
-    options.minDHSize > 0,
-    "options.minDHSize is not a positive number: " +
-      options.minDHSize,
-  );
+  validateFunction(options.checkServerIdentity, "options.checkServerIdentity");
+  validateNumber(options.minDHSize, "options.minDHSize", 1);
 
   const context = options.secureContext || createSecureContext(options);
 
@@ -550,20 +999,11 @@ export function connect(...args) {
     rejectUnauthorized: options.rejectUnauthorized !== false,
     session: options.session,
     ALPNProtocols: options.ALPNProtocols,
-    requestOCSP: options.requestOCSP,
-    enableTrace: options.enableTrace,
-    pskCallback: options.pskCallback,
     highWaterMark: options.highWaterMark,
     onread: options.onread,
     signal: options.signal,
-    ...options, // Caveat emptor: Node does not do this.
   });
 
-  // rejectUnauthorized property can be explicitly defined as `undefined`
-  // causing the assignment to default value (`true`) fail. Before assigning
-  // it to the tlssock connection options, explicitly check if it is false
-  // and update rejectUnauthorized property. The property gets used by TLSSocket
-  // connection handler to allow or reject connection if unauthorized
   options.rejectUnauthorized = options.rejectUnauthorized !== false;
 
   tlssock[kConnectOptions] = options;
@@ -573,12 +1013,9 @@ export function connect(...args) {
   }
 
   if (!options.socket) {
-    // If user provided the socket, it's their responsibility to manage its
-    // connectivity. If we created one internally, we connect it.
     if (options.timeout) {
       tlssock.setTimeout(options.timeout);
     }
-
     tlssock.connect(options, tlssock._start);
   }
 
@@ -589,15 +1026,6 @@ export function connect(...args) {
   }
 
   if (options.servername) {
-    if (!ipServernameWarned && net.isIP(options.servername)) {
-      emitWarning(
-        "Setting the TLS ServerName to an IP address is not permitted by " +
-          "RFC 6066. This will be ignored in a future version.",
-        "DeprecationWarning",
-        "DEP0123",
-      );
-      ipServernameWarned = true;
-    }
     tlssock.setServername(options.servername);
   }
 
@@ -615,9 +1043,14 @@ function getAllowUnauthorized() {
   return false;
 }
 
-// This pattern is used to determine the length of escaped sequences within
-// the subject alt names string. It allows any valid JSON string literal.
-// This MUST match the JSON specification (ECMA-404 / RFC8259) exactly.
+function createServer(options, listener) {
+  return new Server(options, listener);
+}
+
+// ---------------------------------------------------------------------------
+// checkServerIdentity - certificate hostname verification
+// ---------------------------------------------------------------------------
+
 const jsonStringPattern =
   // deno-lint-ignore no-control-regex
   /^"(?:[^"\\\u0000-\u001f]|\\(?:["\\/bfnrt]|u[0-9a-fA-F]{4}))*"/;
@@ -630,16 +1063,16 @@ function splitEscapedAltNames(altNames) {
     const nextSep = altNames.indexOf(",", offset);
     const nextQuote = altNames.indexOf('"', offset);
     if (nextQuote !== -1 && (nextSep === -1 || nextQuote < nextSep)) {
-      // There is a quote character and there is no separator before the quote.
       currentToken += altNames.substring(offset, nextQuote);
       const match = jsonStringPattern.exec(altNames.substring(nextQuote));
       if (!match) {
-        throw new ERR_TLS_CERT_ALTNAME_FORMAT();
+        const err = new Error("Invalid alt name format");
+        err.code = "ERR_TLS_CERT_ALTNAME_FORMAT";
+        throw err;
       }
       currentToken += JSON.parse(match[0]);
       offset = nextQuote + match[0].length;
     } else if (nextSep !== -1) {
-      // There is a separator and no quote before it.
       currentToken += altNames.substring(offset, nextSep);
       result.push(currentToken);
       currentToken = "";
@@ -657,8 +1090,6 @@ function unfqdn(host) {
   return StringPrototypeReplace(host, /[.]$/, "");
 }
 
-// String#toLowerCase() is locale-sensitive so we use
-// a conservative version that only lowercases A-Z.
 function toLowerCase(c) {
   return String.fromCharCode(32 + c.charCodeAt(0));
 }
@@ -668,45 +1099,24 @@ function splitHost(host) {
 }
 
 function check(hostParts, pattern, wildcards) {
-  // Empty strings, null, undefined, etc. never match.
-  if (!pattern) {
-    return false;
-  }
+  if (!pattern) return false;
 
   const patternParts = splitHost(pattern);
 
-  if (hostParts.length !== patternParts.length) {
-    return false;
-  }
+  if (hostParts.length !== patternParts.length) return false;
+  if (patternParts.includes("")) return false;
 
-  // Pattern has empty components, e.g. "bad..example.com".
-  if (patternParts.includes("")) {
-    return false;
-  }
-
-  // RFC 6125 allows IDNA U-labels (Unicode) in names but we have no
-  // good way to detect their encoding or normalize them so we simply
-  // reject them.  Control characters and blanks are rejected as well
-  // because nothing good can come from accepting them.
   const isBad = (s) => /[^\u0021-\u007F]/u.test(s);
-  if (patternParts.some(isBad)) {
-    return false;
-  }
+  if (patternParts.some(isBad)) return false;
 
-  // Check host parts from right to left first.
   for (let i = hostParts.length - 1; i > 0; i -= 1) {
-    if (hostParts[i] !== patternParts[i]) {
-      return false;
-    }
+    if (hostParts[i] !== patternParts[i]) return false;
   }
 
   const hostSubdomain = hostParts[0];
   const patternSubdomain = patternParts[0];
   const patternSubdomainParts = patternSubdomain.split("*", 3);
 
-  // Short-circuit when the subdomain does not contain a wildcard.
-  // RFC 6125 does not allow wildcard substitution for components
-  // containing IDNA A-labels (Punycode) so match those verbatim.
   if (
     patternSubdomainParts.length === 1 ||
     patternSubdomain.includes("xn--")
@@ -714,38 +1124,19 @@ function check(hostParts, pattern, wildcards) {
     return hostSubdomain === patternSubdomain;
   }
 
-  if (!wildcards) {
-    return false;
-  }
-
-  // More than one wildcard is always wrong.
-  if (patternSubdomainParts.length > 2) {
-    return false;
-  }
-
-  // *.tld wildcards are not allowed.
-  if (patternParts.length <= 2) {
-    return false;
-  }
+  if (!wildcards) return false;
+  if (patternSubdomainParts.length > 2) return false;
+  if (patternParts.length <= 2) return false;
 
   const { 0: prefix, 1: suffix } = patternSubdomainParts;
-
-  if (prefix.length + suffix.length > hostSubdomain.length) {
-    return false;
-  }
-
-  if (!hostSubdomain.startsWith(prefix)) {
-    return false;
-  }
-
-  if (!hostSubdomain.endsWith(suffix)) {
-    return false;
-  }
+  if (prefix.length + suffix.length > hostSubdomain.length) return false;
+  if (!hostSubdomain.startsWith(prefix)) return false;
+  if (!hostSubdomain.endsWith(suffix)) return false;
 
   return true;
 }
 
-export function checkServerIdentity(hostname, cert) {
+function checkServerIdentity(hostname, cert) {
   const subject = cert.subject;
   const altNames = cert.subjectaltname;
   const dnsNames = [];
@@ -769,7 +1160,7 @@ export function checkServerIdentity(hostname, cert) {
   let valid = false;
   let reason = "Unknown reason";
 
-  hostname = unfqdn(hostname); // Remove trailing dot for error messages.
+  hostname = unfqdn(hostname);
 
   if (net.isIP(hostname)) {
     valid = ips.includes(canonicalizeIP(hostname));
@@ -787,7 +1178,6 @@ export function checkServerIdentity(hostname, cert) {
           `Host: ${hostname}. is not in the cert's altnames: ${altNames}`;
       }
     } else {
-      // Match against Common Name only if no supported identifiers exist.
       const cn = subject.CN;
 
       if (ArrayIsArray(cn)) {
@@ -810,8 +1200,8 @@ export function checkServerIdentity(hostname, cert) {
 }
 
 // Order matters. Mirrors ALL_CIPHER_SUITES from rustls/src/suites.rs but
-// using openssl cipher names instead. Mutable in Node but not (yet) in Deno.
-export const DEFAULT_CIPHERS = [
+// using openssl cipher names instead.
+const DEFAULT_CIPHERS = [
   // TLSv1.3 suites
   "AES256-GCM-SHA384",
   "AES128-GCM-SHA256",
@@ -824,6 +1214,16 @@ export const DEFAULT_CIPHERS = [
   "ECDHE-RSA-AES128-GCM-SHA256",
   "ECDHE-RSA-CHACHA20-POLY1305",
 ].join(":");
+
+export {
+  checkServerIdentity,
+  connect,
+  createServer,
+  DEFAULT_CIPHERS,
+  Server,
+  TLSSocket,
+  unfqdn,
+};
 
 export default {
   TLSSocket,

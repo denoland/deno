@@ -23,7 +23,6 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-import { notImplemented } from "ext:deno_node/_utils.ts";
 import { BlockList, SocketAddress } from "ext:deno_node/internal/blocklist.mjs";
 
 import { EventEmitter } from "node:events";
@@ -72,7 +71,7 @@ import {
   writeGeneric,
   writevGeneric,
 } from "ext:deno_node/internal/stream_base_commons.ts";
-import { kTimeout } from "ext:deno_node/internal/timers.mjs";
+import { kDestroy, kTimeout } from "ext:deno_node/internal/timers.mjs";
 import { nextTick } from "ext:deno_node/_next_tick.ts";
 import {
   DTRACE_NET_SERVER_CONNECTION,
@@ -117,7 +116,7 @@ import type { DuplexOptions } from "ext:deno_node/_stream.d.ts";
 import type { BufferEncoding } from "ext:deno_node/_global.d.ts";
 import type { Abortable } from "ext:deno_node/_events.d.ts";
 import { channel } from "node:diagnostics_channel";
-import { primordials } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 
 const {
   ArrayPrototypeIncludes,
@@ -139,7 +138,7 @@ const DEFAULT_IPV4_ADDR = "0.0.0.0";
 const DEFAULT_IPV6_ADDR = "::";
 
 let autoSelectFamilyDefault = true;
-let autoSelectFamilyAttemptTimeoutDefault = 250;
+let autoSelectFamilyAttemptTimeoutDefault = 500;
 
 type Handle = TCP | Pipe;
 
@@ -1253,7 +1252,34 @@ export function Socket(options) {
     this._handle = options.handle;
     this[asyncIdSymbol] = _getNewAsyncId(this._handle);
   } else if (options.fd !== undefined) {
-    notImplemented("net.Socket.prototype.constructor with fd option");
+    const { fd } = options;
+
+    // createHandle will throw ERR_INVALID_FD_TYPE if `fd` is not
+    // a valid `PIPE` or `TCP` descriptor
+    this._handle = _createHandle(fd, false);
+
+    const err = this._handle.open(fd);
+
+    // While difficult to fabricate, in some architectures
+    // `open` may return an error code for valid file descriptors
+    // which cannot be opened.
+    if (err) {
+      throw errnoException(err, "open");
+    }
+
+    this[asyncIdSymbol] = _getNewAsyncId(this._handle);
+
+    if (
+      (fd === 1 || fd === 2) &&
+      this._handle instanceof Pipe &&
+      isWindows
+    ) {
+      // Make stdout and stderr blocking on Windows
+      const blockErr = this._handle.setBlocking(true);
+      if (blockErr) {
+        throw errnoException(blockErr, "setBlocking");
+      }
+    }
   }
 
   const onread = options.onread;
@@ -1664,7 +1690,9 @@ Socket.prototype._destroy = function (exception, cb) {
 
   // deno-lint-ignore no-this-alias
   for (let s = this; s != null; s = s._parent) {
-    clearTimeout(s[kTimeout]);
+    if (s[kTimeout]) {
+      s[kTimeout][kDestroy]();
+    }
   }
 
   debug("close");
@@ -1797,7 +1825,15 @@ Socket.prototype[kReinitializeHandle] = function (handle) {
   this._handle?.close();
 
   // Make sure TLS wrap works after reinitialize.
-  handle.afterConnectTls = this._handle.afterConnectTls;
+  if (typeof this._handle?.afterConnectTls === "function") {
+    const { promise, resolve } = Promise.withResolvers();
+    handle.afterConnectTls = this._handle.afterConnectTls;
+    handle.afterConnectTlsResolve = resolve;
+    handle.upgrading = promise;
+    handle.verifyError = this._handle.verifyError;
+    handle._parent = handle;
+    handle._parentWrap = this._handle._parentWrap;
+  }
 
   this._handle = handle;
   this._handle[ownerSymbol] = this;
@@ -2660,15 +2696,21 @@ Server.prototype._emitCloseIfDrained = function () {
     return;
   }
 
-  // We use setTimeout instead of nextTick here to avoid EADDRINUSE error
-  // when the same port listened immediately after the 'close' event.
+  // We use a deferred timer instead of nextTick here to avoid EADDRINUSE
+  // error when the same port listened immediately after the 'close' event.
   // ref: https://github.com/denoland/deno_std/issues/2788
-  defaultTriggerAsyncIdScope(
-    this[asyncIdSymbol],
-    setTimeout,
-    _emitCloseNT,
+  // deno-lint-ignore no-this-alias
+  const self = this;
+  // Use core.createTimer directly to avoid creating a Node Timeout object.
+  // Must be ref'd (last param true) so the event loop waits for the close event.
+  core.createTimer(
+    () => {
+      _emitCloseNT(self);
+    },
     0,
-    this,
+    undefined,
+    false,
+    true,
   );
 };
 

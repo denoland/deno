@@ -578,11 +578,7 @@ impl Inner {
       }),
     );
     let config = Config::default();
-    let ts_server = Arc::new(TsServer::new(
-      performance.clone(),
-      cache.deno_dir(),
-      &http_client_provider,
-    ));
+    let ts_server = Arc::new(TsServer::new(performance.clone()));
     let initial_cwd = resolve_cwd(None).unwrap().into_owned();
 
     Self {
@@ -708,7 +704,8 @@ impl Inner {
             .into()
           })
         });
-    if let TsServer::Js(ts_server) = self.ts_server.as_ref() {
+    {
+      let TsServer::Js(ts_server) = self.ts_server.as_ref();
       ts_server
         .set_tracing_enabled(tracing.as_ref().is_some_and(|t| t.enabled()));
     }
@@ -953,7 +950,8 @@ impl Inner {
       diagnostics_server.start();
       self.diagnostics_server = Some(diagnostics_server);
     }
-    if let TsServer::Js(ts_server) = self.ts_server.as_ref() {
+    {
+      let TsServer::Js(ts_server) = self.ts_server.as_ref();
       ts_server
         .set_inspector_server_addr(self.config.internal_inspect().to_address());
     }
@@ -1651,14 +1649,8 @@ impl Inner {
         ProjectScopesChange::None,
       );
 
-      match self.ts_server.as_ref() {
-        TsServer::Js(ts_server) => {
-          ts_server.cleanup_semantic_cache(self.snapshot()).await;
-        }
-        TsServer::Go(_) => {
-          // TODO(nayeemrmn): Determine if anything needs to be done here.
-        }
-      }
+      let TsServer::Js(ts_server) = self.ts_server.as_ref();
+      ts_server.cleanup_semantic_cache(self.snapshot()).await;
       self.send_diagnostics_update();
       if !self.is_using_push_based_diagnostics()
         && self.config.diagnostic_refresh_capable()
@@ -2195,13 +2187,7 @@ impl Inner {
     let mark = self
       .performance
       .mark_with_args("lsp.code_action_resolve", &params);
-    let TsServer::Js(ts_server) = self.ts_server.as_ref() else {
-      lsp_warn!(
-        "Assertion failure: Received a codeAction/resolve request without the JS-based TS server: {:#?}",
-        params
-      );
-      return Ok(params);
-    };
+    let TsServer::Js(ts_server) = self.ts_server.as_ref();
     let (Some(kind), Some(data)) = (params.kind.clone(), params.data.clone())
     else {
       return Ok(params);
@@ -2378,9 +2364,9 @@ impl Inner {
       &self.document_modules,
       module.scope.clone(),
       &self.resolver,
-      match self.ts_server.as_ref() {
-        TsServer::Js(ts_server) => ts_server.specifier_map.clone(),
-        TsServer::Go(_) => Default::default(),
+      {
+        let TsServer::Js(ts_server) = self.ts_server.as_ref();
+        ts_server.specifier_map.clone()
       },
     )
   }
@@ -2757,7 +2743,6 @@ impl Inner {
         });
       }
       CompletionItemData::TsJs(data) => &data.uri,
-      CompletionItemData::TsGo(data) => &data.uri,
     };
     let Some(document) = self.get_document(
       uri,
@@ -4139,14 +4124,8 @@ impl Inner {
     self.resolver.did_cache();
     self.refresh_dep_info();
     self.project_changed(vec![], ProjectScopesChange::Config);
-    match self.ts_server.as_ref() {
-      TsServer::Js(ts_server) => {
-        ts_server.cleanup_semantic_cache(self.snapshot()).await;
-      }
-      TsServer::Go(_) => {
-        // TODO(nayeemrmn): Determine if anything needs to be done here.
-      }
-    }
+    let TsServer::Js(ts_server) = self.ts_server.as_ref();
+    ts_server.cleanup_semantic_cache(self.snapshot()).await;
     self.send_diagnostics_update();
     if !self.is_using_push_based_diagnostics()
       && self.config.diagnostic_refresh_capable()

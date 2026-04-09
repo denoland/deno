@@ -279,6 +279,29 @@ Deno.test({
 });
 
 Deno.test({
+  name: "[node/buffer] Buffer.allocUnsafe does not truncate lengths > 2^32",
+  ignore: true, // requires >4GB of memory
+  fn() {
+    const size = 2 ** 32 + 5;
+    const buf = Buffer.allocUnsafe(size);
+    assertEquals(buf.length, size);
+  },
+});
+
+Deno.test({
+  name: "[node/buffer] Buffer concat does not truncate buffers larger than 4GB",
+  ignore: true, // requires >4GB of memory
+  fn() {
+    const size = 2 ** 32 + 5;
+    const largeBuffer = Buffer.alloc(size);
+    largeBuffer.fill(111);
+    const result = Buffer.concat([largeBuffer]);
+    assertEquals(result.length, size);
+    assertEquals(Array.from(result.subarray(0, 5)), [111, 111, 111, 111, 111]);
+  },
+});
+
+Deno.test({
   name: "[node/buffer] Buffer 8 bit unsigned integers",
   fn() {
     const buffer = Buffer.from([0xff, 0x2a, 0x2a, 0x2a]);

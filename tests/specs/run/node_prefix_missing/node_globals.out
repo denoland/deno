@@ -15,6 +15,9 @@ Timeout {
   _timerArgs: [],
   _isRepeat: false,
   _destroyed: false,
+  _asyncId: [WILDLINE],
+  _triggerAsyncId: [WILDLINE],
+  _asyncDestroyed: false,
   Symbol(refed): true,
   Symbol(timerId): [WILDLINE]
 }

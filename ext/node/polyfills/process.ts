@@ -8,12 +8,15 @@ import { core, internals, primordials } from "ext:core/mod.js";
 import { initializeDebugEnv } from "ext:deno_node/internal/util/debuglog.ts";
 import { format } from "ext:deno_node/internal/util/inspect.mjs";
 import {
+  op_current_thread_cpu_usage,
   op_fs_umask,
   op_getegid,
   op_geteuid,
+  op_getgroups,
   op_node_load_env_file,
   op_node_process_constrained_memory,
   op_node_process_kill,
+  op_node_process_set_title,
   op_node_process_setegid,
   op_node_process_seteuid,
   op_node_process_setgid,
@@ -37,6 +40,7 @@ import {
   ERR_INVALID_ARG_TYPE,
   ERR_INVALID_ARG_VALUE_RANGE,
   ERR_OUT_OF_RANGE,
+  ERR_UNCAUGHT_EXCEPTION_CAPTURE_ALREADY_SET,
   ERR_UNKNOWN_SIGNAL,
   ERR_WORKER_UNSUPPORTED_OPERATION,
   errnoException,
@@ -101,6 +105,7 @@ const lazyLoadFsUtils = core.createLazyLoader<typeof fsUtils>(
 );
 
 const {
+  ArrayIsArray,
   NumberMAX_SAFE_INTEGER,
   ObjectDefineProperty,
   ObjectPrototypeIsPrototypeOf,
@@ -116,10 +121,8 @@ export const execArgv: string[] = [];
 
 /** https://nodejs.org/api/process.html#process_process_exit_code */
 export const exit = (code?: number | string) => {
-  if (code || code === 0) {
+  if (code !== undefined) {
     process.exitCode = code;
-  } else if (Number.isNaN(code)) {
-    process.exitCode = 1;
   }
 
   ProcessExitCode = denoOs.getExitCode();
@@ -229,6 +232,46 @@ export function cpuUsage(previousValue?: CpuUsage): CpuUsage {
   return cpuValues;
 }
 
+const threadCpuValues = new Float64Array(2);
+
+export function threadCpuUsage(
+  previousValue?: CpuUsage,
+): CpuUsage {
+  if (previousValue) {
+    if (!previousCpuUsageValueIsValid(previousValue.user)) {
+      validateObject(previousValue, "prevValue");
+
+      validateNumber(previousValue.user, "prevValue.user");
+      throw new ERR_INVALID_ARG_VALUE_RANGE(
+        "prevValue.user",
+        previousValue.user,
+      );
+    }
+
+    if (!previousCpuUsageValueIsValid(previousValue.system)) {
+      validateNumber(previousValue.system, "prevValue.system");
+      throw new ERR_INVALID_ARG_VALUE_RANGE(
+        "prevValue.system",
+        previousValue.system,
+      );
+    }
+  }
+
+  op_current_thread_cpu_usage(threadCpuValues);
+
+  if (previousValue) {
+    return {
+      user: threadCpuValues[0] - previousValue.user,
+      system: threadCpuValues[1] - previousValue.system,
+    };
+  }
+
+  return {
+    user: threadCpuValues[0],
+    system: threadCpuValues[1],
+  };
+}
+
 function createWarningObject(
   warning: string,
   type: string,
@@ -332,8 +375,20 @@ export function hrtime(time?: [number, number]): [number, number] {
   if (!time) {
     return [sec, nano];
   }
+  if (!ArrayIsArray(time)) {
+    throw new ERR_INVALID_ARG_TYPE("time", "Array", time);
+  }
+  if (time.length !== 2) {
+    throw new ERR_OUT_OF_RANGE("time", 2, time.length);
+  }
   const [prevSec, prevNano] = time;
-  return [sec - prevSec, nano - prevNano];
+  let diffSec = sec - prevSec;
+  let diffNano = nano - prevNano;
+  if (diffNano < 0) {
+    diffSec -= 1;
+    diffNano += 1_000_000_000;
+  }
+  return [diffSec, diffNano];
 }
 
 hrtime.bigint = function (): bigint {
@@ -466,8 +521,7 @@ function uncaughtExceptionHandler(err: any, origin: string) {
   // module are reported as 'unhandledRejection'. Deno does not have a true
   // CommonJS implementation, so all exceptions thrown from the top level are
   // reported as 'uncaughtException'.
-  process.emit("uncaughtExceptionMonitor", err, origin);
-  process.emit("uncaughtException", err, origin);
+  process._fatalException(err, origin === "unhandledRejection");
 }
 
 export let execPath: string = "";
@@ -483,6 +537,10 @@ function Process(this: any) {
   EventEmitter.call(this);
 }
 Process.prototype = Object.create(EventEmitter.prototype);
+// V8 uses the constructor's name for error messages like
+// "Cannot delete property 'exitCode' of #<process>"
+const _process = function process() {};
+Process.prototype.constructor = _process;
 
 // Look up the actual registered listener for a signal event. When `once()` is
 // used, EventEmitter wraps the listener in a function with a `.listener`
@@ -696,14 +754,17 @@ Object.defineProperty(process, "report", {
   },
 });
 
+let processTitle: string | undefined;
 Object.defineProperty(process, "title", {
   get() {
-    return "deno";
+    if (processTitle == null) {
+      return String(execPath);
+    }
+    return processTitle;
   },
-  set(_value) {
-    // NOTE(bartlomieju): this is a noop. Node.js doesn't guarantee that the
-    // process name will be properly set and visible from other tools anyway.
-    // Might revisit in the future.
+  set(value) {
+    processTitle = `${value}`;
+    op_node_process_set_title(processTitle);
   },
 });
 
@@ -745,6 +806,7 @@ Object.defineProperty(process, "config", {
 });
 
 process.cpuUsage = cpuUsage;
+process.threadCpuUsage = threadCpuUsage;
 
 /** https://nodejs.org/api/process.html#process_process_cwd */
 process.cwd = cwd;
@@ -786,10 +848,39 @@ process.reallyExit = (code: number) => {
 
 process._exiting = _exiting;
 
+// Exception capture callback (used by node:domain)
+// deno-lint-ignore no-explicit-any
+let _uncaughtExceptionCaptureFn: ((err: any) => void) | null = null;
+
+// deno-lint-ignore no-explicit-any
+process.setUncaughtExceptionCaptureCallback = function (fn: any) {
+  if (fn === null) {
+    _uncaughtExceptionCaptureFn = null;
+    synchronizeListeners();
+    return;
+  }
+  if (typeof fn !== "function") {
+    throw new ERR_INVALID_ARG_TYPE("fn", ["function", "null"], fn);
+  }
+  if (_uncaughtExceptionCaptureFn !== null) {
+    throw new ERR_UNCAUGHT_EXCEPTION_CAPTURE_ALREADY_SET();
+  }
+  _uncaughtExceptionCaptureFn = fn;
+  synchronizeListeners();
+};
+
+process.hasUncaughtExceptionCaptureCallback = function () {
+  return _uncaughtExceptionCaptureFn !== null;
+};
+
 // deno-lint-ignore no-explicit-any
 process._fatalException = function (err: any, fromPromise?: boolean) {
   const origin = fromPromise ? "unhandledRejection" : "uncaughtException";
   process.emit("uncaughtExceptionMonitor", err, origin);
+  if (_uncaughtExceptionCaptureFn !== null) {
+    _uncaughtExceptionCaptureFn(err);
+    return true;
+  }
   if (process.listenerCount("uncaughtException") > 0) {
     process.emit("uncaughtException", err, origin);
     return true;
@@ -807,15 +898,20 @@ Object.defineProperty(process, "exitCode", {
     if (code == null) {
       parsedCode = 0;
     } else if (typeof code === "number") {
+      if (!Number.isInteger(code)) {
+        throw new ERR_OUT_OF_RANGE("code", "an integer", code);
+      }
       parsedCode = code;
     } else if (typeof code === "string") {
+      if (
+        code === "" || !Number.isFinite(Number(code)) ||
+        !Number.isInteger(Number(code))
+      ) {
+        throw new ERR_INVALID_ARG_TYPE("code", "integer", code);
+      }
       parsedCode = Number(code);
     } else {
-      throw new ERR_INVALID_ARG_TYPE("code", "number", code);
-    }
-
-    if (!Number.isInteger(parsedCode)) {
-      throw new ERR_OUT_OF_RANGE("code", "an integer", parsedCode);
+      throw new ERR_INVALID_ARG_TYPE("code", "integer", code);
     }
 
     denoOs.setExitCode(parsedCode);
@@ -932,6 +1028,9 @@ process.getgid = getgid;
 process.getuid = getuid;
 
 /** This method is removed on Windows */
+process.getgroups = () => op_getgroups();
+
+/** This method is removed on Windows */
 process.getegid = getegid;
 
 /** This method is removed on Windows */
@@ -1016,6 +1115,7 @@ const features = {
   // Deno uses aws-lc, which is BoringSSL-based.
   // deno-lint-ignore camelcase
   openssl_is_boringssl: true,
+  quic: false,
   // deno-lint-ignore camelcase
   cached_builtins: true,
   // deno-lint-ignore camelcase
@@ -1046,6 +1146,7 @@ if (isWindows) {
   delete process.getuid;
   delete process.getegid;
   delete process.geteuid;
+  delete process.getgroups;
 }
 
 Object.defineProperty(process, Symbol.toStringTag, {
@@ -1153,7 +1254,9 @@ function synchronizeListeners() {
   // Install special "unhandledrejection" handler, that will be called
   // last.
   if (
-    unhandledRejectionListenerCount > 0 || uncaughtExceptionListenerCount > 0
+    unhandledRejectionListenerCount > 0 ||
+    uncaughtExceptionListenerCount > 0 ||
+    _uncaughtExceptionCaptureFn !== null
   ) {
     internals.nodeProcessUnhandledRejectionCallback = (event) => {
       if (process.listenerCount("unhandledRejection") === 0) {
@@ -1205,7 +1308,9 @@ function synchronizeListeners() {
     internals.nodeProcessRejectionHandledCallback = undefined;
   }
 
-  if (uncaughtExceptionListenerCount > 0) {
+  if (
+    uncaughtExceptionListenerCount > 0 || _uncaughtExceptionCaptureFn !== null
+  ) {
     globalThis.addEventListener("error", processOnError);
   } else {
     globalThis.removeEventListener("error", processOnError);
@@ -1222,11 +1327,14 @@ internals.__bootstrapNodeProcess = function (
   denoVersions: Record<string, string>,
   nodeDebug: string,
   warmup = false,
+  runningOnMainThread = true,
 ) {
   if (!warmup) {
     argv0 = argv0Val || "";
-    argv[0] = argv0;
-    argv[1] = Deno.mainModule?.startsWith("file:")
+    argv[0] = Deno.execPath();
+    argv[1] = Deno.build.standalone
+      ? Deno.execPath()
+      : Deno.mainModule?.startsWith("file:")
       ? pathFromURL(new URL(Deno.mainModule))
       : join(Deno.cwd(), "$deno$node.mjs");
     // Manually concatenate these arrays to avoid triggering the getter
@@ -1244,6 +1352,9 @@ internals.__bootstrapNodeProcess = function (
     if (io.stdout.isTerminal()) {
       /** https://nodejs.org/api/process.html#process_process_stdout */
       stdout = process.stdout = new TTYWriteStream(1);
+      // For supporting legacy API we put the FD here.
+      // Ref: https://github.com/nodejs/node/blob/main/lib/internal/bootstrap/switches/is_main_thread.js
+      stdout.fd = 1;
       // Match Node.js: stdio streams are indestructible.
       // Libraries like mute-stream (@inquirer/prompts) call destroy()/end()
       // on process.stdout between prompts. Without this, the underlying TTY
@@ -1270,6 +1381,8 @@ internals.__bootstrapNodeProcess = function (
     if (io.stderr.isTerminal()) {
       /** https://nodejs.org/api/process.html#process_process_stderr */
       stderr = process.stderr = new TTYWriteStream(2);
+      // For supporting legacy API we put the FD here.
+      stderr.fd = 2;
       stderr._isStdio = true;
       stderr.destroySoon = stderr.destroy;
       stderr._destroy = function (err, cb) {
@@ -1293,6 +1406,11 @@ internals.__bootstrapNodeProcess = function (
     execPath = Deno.execPath();
     initializeDebugEnv(nodeDebug);
 
+    const title = getOptionValue("--title");
+    if (title) {
+      process.title = title;
+    }
+
     if (getOptionValue("--warnings")) {
       process.on("warning", onWarning);
     }
@@ -1301,6 +1419,46 @@ internals.__bootstrapNodeProcess = function (
     const newStdin = initStdin();
     if (newStdin) {
       stdin = process.stdin = newStdin;
+    }
+
+    // In worker threads, replace certain process functions with stubs
+    // that throw ERR_WORKER_UNSUPPORTED_OPERATION and have .disabled = true.
+    // Ref: https://github.com/nodejs/node/blob/main/lib/internal/bootstrap/switches/is_not_main_thread.js
+    if (!runningOnMainThread) {
+      const disabledFns = [
+        "abort",
+        "chdir",
+        "send",
+        "disconnect",
+        "setuid",
+        "seteuid",
+        "setgid",
+        "setegid",
+        "setgroups",
+        "initgroups",
+      ];
+      for (const fn of disabledFns) {
+        const stub = function () {
+          throw new ERR_WORKER_UNSUPPORTED_OPERATION(
+            `process.${fn}()`,
+          );
+        };
+        stub.disabled = true;
+        process[fn] = stub;
+      }
+
+      Object.defineProperty(process, "channel", {
+        get() {
+          throw new ERR_WORKER_UNSUPPORTED_OPERATION("process.channel");
+        },
+        configurable: true,
+      });
+      Object.defineProperty(process, "connected", {
+        get() {
+          throw new ERR_WORKER_UNSUPPORTED_OPERATION("process.connected");
+        },
+        configurable: true,
+      });
     }
 
     delete internals.__bootstrapNodeProcess;

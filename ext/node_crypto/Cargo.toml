@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_node_crypto"
-version = "0.8.0"
+version = "0.14.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -16,6 +16,7 @@ path = "lib.rs"
 aead-gcm-stream.workspace = true
 aes.workspace = true
 aws-lc-rs.workspace = true
+aws-lc-sys.workspace = true
 base64.workspace = true
 blake2.workspace = true
 cbc.workspace = true
@@ -61,6 +62,7 @@ sha3 = { workspace = true, features = ["oid"] }
 signature.workspace = true
 sm3.workspace = true
 spki.workspace = true
+subtle.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
 x25519-dalek = { workspace = true, features = ["static_secrets"] }

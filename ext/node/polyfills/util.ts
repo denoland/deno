@@ -14,6 +14,7 @@ const {
   DatePrototypeGetSeconds,
   ErrorCaptureStackTrace,
   NumberPrototypeToString,
+  ObjectCreate,
   ObjectDefineProperty,
   ObjectKeys,
   ObjectSetPrototypeOf,
@@ -49,9 +50,12 @@ import {
   validateString,
 } from "ext:deno_node/internal/validators.mjs";
 import { parseArgs } from "ext:deno_node/internal/util/parse_args/parse_args.js";
+import { MIMEParams, MIMEType } from "ext:deno_node/internal/mime.ts";
 import * as abortSignal from "ext:deno_web/03_abort_signal.js";
 import { ERR_INVALID_ARG_TYPE } from "ext:deno_node/internal/errors.ts";
 import binding from "ext:deno_node/internal_binding/util.ts";
+import { validateOneOf } from "ext:deno_node/internal/validators.mjs";
+import { os as osConstants } from "ext:deno_node/internal_binding/constants.ts";
 
 let process: NodeJS.Process;
 const lazyLoadProcess = core.createLazyLoader<NodeJS.Process>(
@@ -65,6 +69,8 @@ export {
   format,
   formatWithOptions,
   inspect,
+  MIMEParams,
+  MIMEType,
   parseArgs,
   promisify,
   stripVTControlCharacters,
@@ -318,7 +324,21 @@ export function parseEnv(
   input: string,
 ): Record<string, string> {
   validateString(input, "content");
-  return binding.parseEnv(input);
+  const parsed = binding.parseEnv(input);
+  const result = ObjectCreate(null);
+  const keys = ObjectKeys(parsed);
+  for (let i = 0; i < keys.length; i++) {
+    result[keys[i]] = parsed[keys[i]];
+  }
+  return result;
+}
+
+export function convertProcessSignalToExitCode(
+  signalCode: string,
+): number {
+  const { signals } = osConstants;
+  validateOneOf(signalCode, "signalCode", ObjectKeys(signals));
+  return 128 + signals[signalCode];
 }
 
 export { getSystemErrorMessage, getSystemErrorName, isDeepStrictEqual };
@@ -328,6 +348,7 @@ export default {
   formatWithOptions,
   inspect,
   _extend,
+  convertProcessSignalToExitCode,
   getCallSites,
   getSystemErrorName,
   getSystemErrorMessage,
@@ -335,6 +356,8 @@ export default {
   deprecate,
   callbackify,
   parseArgs,
+  MIMEParams,
+  MIMEType,
   promisify,
   inherits,
   types,
