@@ -71,6 +71,9 @@ zstd.workspace = true
 errno = "0.3.10"
 nix = { workspace = true, features = ["user"] }
 
+[build-dependencies]
+cc = "1"
+
 [target.'cfg(windows)'.dependencies]
 windows-sys = { workspace = true, features = ["Win32_Networking_WinSock", "Win32_NetworkManagement_IpHelper"] }
 winapi = { workspace = true, features = ["consoleapi"] }
