@@ -196,6 +196,7 @@ deno_core::extension!(
   deno_process,
   ops = [
     op_spawn_child,
+    op_node_spawn_child,
     op_spawn_wait,
     op_spawn_sync,
     op_spawn_kill,
@@ -459,7 +460,7 @@ pub struct SpawnOutput {
 type CreateCommand = (
   Command,
   Option<ResourceId>,
-  Vec<Option<ResourceId>>,
+  Vec<Option<i64>>,
   Vec<deno_io::RawBiPipeHandle>,
 );
 
@@ -594,7 +595,7 @@ fn create_command(
     reason = "TODO: add safety comment"
   )]
   unsafe {
-    let mut extra_pipe_rids = Vec::new();
+    let mut extra_pipe_fds = Vec::new();
     let mut fds_to_dup = Vec::new();
     let mut fds_to_close = Vec::new();
     let mut ipc_rid = None;
@@ -644,27 +645,15 @@ fn create_command(
           let (fd1, fd2) = deno_io::bi_pipe_pair_raw()?;
           fds_to_dup.push((fd2, target_fd));
           fds_to_close.push(fd2);
-          let rid = state.resource_table.add(
-            match deno_io::BiPipeResource::from_raw_handle(fd1) {
-              Ok(v) => v,
-              Err(e) => {
-                log::warn!(
-                  "Failed to open bidirectional pipe for fd {target_fd}: {e}"
-                );
-                extra_pipe_rids.push(None);
-                continue;
-              }
-            },
-          );
-          extra_pipe_rids.push(Some(rid));
+          extra_pipe_fds.push(Some(fd1 as i64));
         }
         StdioOrFd::Fd(fd) => {
           // Dup the caller's fd onto the target fd slot in the child
           fds_to_dup.push((fd, target_fd));
-          extra_pipe_rids.push(None);
+          extra_pipe_fds.push(None);
         }
         _ => {
-          extra_pipe_rids.push(None);
+          extra_pipe_fds.push(None);
         }
       }
     }
@@ -677,8 +666,12 @@ fn create_command(
         }
         for &(src, dst) in &fds_to_dup {
           if src >= 0 && dst >= 0 {
-            let _fd = libc::dup2(src, dst);
-            libc::close(src);
+            if src != dst {
+              libc::dup2(src, dst);
+              libc::close(src);
+            }
+            // Clear CLOEXEC so the fd survives exec.
+            libc::fcntl(dst, libc::F_SETFD, 0);
           }
         }
         libc::setgroups(0, std::ptr::null());
@@ -686,12 +679,13 @@ fn create_command(
       });
     }
 
-    Ok((command, ipc_rid, extra_pipe_rids, fds_to_close))
+    Ok((command, ipc_rid, extra_pipe_fds, fds_to_close))
   }
 
   #[cfg(windows)]
   {
-    let mut extra_pipe_rids = Vec::with_capacity(args.extra_stdio.len());
+    let mut extra_pipe_fds: Vec<Option<i64>> =
+      Vec::with_capacity(args.extra_stdio.len());
 
     let mut ipc_rid = None;
     let mut handles_to_close = Vec::with_capacity(1);
@@ -740,22 +734,20 @@ fn create_command(
       let target_fd = (i + 3) as i32;
       match stdio {
         StdioOrFd::Stdio(Stdio::Piped) => {
-          let (fd1, fd2) = deno_io::bi_pipe_pair_raw()?;
+          let (fd1, fd2) = match deno_io::bi_pipe_pair_raw() {
+            Ok(fds) => fds,
+            Err(e) => {
+              log::warn!(
+                "Failed to create bidirectional pipe for fd {target_fd}: {e}"
+              );
+              command.extra_handle(None);
+              extra_pipe_fds.push(None);
+              continue;
+            }
+          };
           handles_to_close.push(fd2);
-          let rid = state.resource_table.add(
-            match deno_io::BiPipeResource::from_raw_handle(fd1) {
-              Ok(v) => v,
-              Err(e) => {
-                log::warn!(
-                  "Failed to open bidirectional pipe for fd {target_fd}: {e}"
-                );
-                extra_pipe_rids.push(None);
-                continue;
-              }
-            },
-          );
           command.extra_handle(Some(fd2));
-          extra_pipe_rids.push(Some(rid));
+          extra_pipe_fds.push(Some(fd1 as i64));
         }
         StdioOrFd::Fd(fd) => {
           // SAFETY: fd is a valid CRT file descriptor passed from the JS stdio array
@@ -764,17 +756,17 @@ fn create_command(
             return Err(ProcessError::Io(std::io::Error::last_os_error()));
           }
           command.extra_handle(Some(handle as _));
-          extra_pipe_rids.push(None);
+          extra_pipe_fds.push(None);
         }
         _ => {
           // no handle, push an empty handle so we get the right fds for following handles
           command.extra_handle(None);
-          extra_pipe_rids.push(None);
+          extra_pipe_fds.push(None);
         }
       }
     }
 
-    Ok((command, ipc_rid, extra_pipe_rids, handles_to_close))
+    Ok((command, ipc_rid, extra_pipe_fds, handles_to_close))
   }
 }
 
@@ -789,13 +781,20 @@ struct Child {
   extra_pipe_rids: Vec<Option<ResourceId>>,
 }
 
-fn spawn_child(
-  state: &mut OpState,
-  command: Command,
+#[derive(ToV8)]
+struct NodeChild {
+  rid: ResourceId,
+  pid: u32,
+  stdin_fd: Option<i64>,
+  stdout_fd: Option<i64>,
+  stderr_fd: Option<i64>,
   ipc_pipe_rid: Option<ResourceId>,
-  extra_pipe_rids: Vec<Option<ResourceId>>,
-  detached: bool,
-) -> Result<Child, ProcessError> {
+  extra_pipe_fds: Vec<Option<i64>>,
+}
+
+/// Spawn a child process, returning the raw child and its PID.
+/// Shared by both the Deno API and Node compat spawn paths.
+fn spawn_command(command: Command) -> Result<(AsyncChild, u32), ProcessError> {
   #[cfg(windows)]
   let mut command = command;
   #[cfg(not(windows))]
@@ -806,7 +805,7 @@ fn spawn_child(
   // kill-on-drop, so the child can outlive the parent (matching Node.js
   // semantics for `child_process.unref()`).
 
-  let mut child = match command.spawn() {
+  let child = match command.spawn() {
     Ok(child) => child,
     Err(err) => {
       #[cfg(not(windows))]
@@ -855,6 +854,18 @@ fn spawn_child(
   };
 
   let pid = child.id().expect("Process ID should be set.");
+  Ok((child, pid))
+}
+
+/// Spawn for the Deno API: wraps child stdio in resource table entries.
+fn spawn_child(
+  state: &mut OpState,
+  command: Command,
+  ipc_pipe_rid: Option<ResourceId>,
+  extra_pipe_fds: Vec<Option<i64>>,
+  detached: bool,
+) -> Result<Child, ProcessError> {
+  let (mut child, pid) = spawn_command(command)?;
 
   #[cfg(not(windows))]
   let stdin_rid = child
@@ -898,6 +909,22 @@ fn spawn_child(
     .transpose()?
     .map(|stderr| state.resource_table.add(ChildStderrResource::from(stderr)));
 
+  // Convert extra pipe fds to resource IDs for the Deno API.
+  let extra_pipe_rids = extra_pipe_fds
+    .into_iter()
+    .map(|maybe_fd| {
+      maybe_fd
+        .map(|fd| {
+          let resource = deno_io::BiPipeResource::from_raw_handle(
+            fd as deno_io::RawBiPipeHandle,
+          )?;
+          Ok(state.resource_table.add(resource))
+        })
+        .transpose()
+    })
+    .collect::<Result<Vec<_>, std::io::Error>>()
+    .map_err(ProcessError::Io)?;
+
   let child_rid = state.resource_table.add(ChildResource {
     child: RefCell::new(child),
     pid,
@@ -912,6 +939,76 @@ fn spawn_child(
     stderr_rid,
     ipc_pipe_rid,
     extra_pipe_rids,
+  })
+}
+
+/// Extract a raw OS file descriptor from a tokio child stdio handle.
+/// On Unix, uses `into_owned_fd()`. On Windows, uses `into_owned_handle()`
+/// + `open_osfhandle` to produce a CRT fd.
+macro_rules! child_stdio_to_fd {
+  ($child:expr, $field:ident) => {{
+    #[cfg(not(windows))]
+    {
+      $child
+        .$field
+        .take()
+        .map(|h| {
+          use std::os::unix::io::IntoRawFd;
+          h.into_owned_fd()
+            .map(|fd| fd.into_raw_fd() as i64)
+            .map_err(ProcessError::Io)
+        })
+        .transpose()?
+    }
+    #[cfg(windows)]
+    {
+      $child
+        .$field
+        .take()
+        .map(|h| {
+          use std::os::windows::io::IntoRawHandle;
+          let raw_handle = h.into_raw_handle();
+          // SAFETY: raw_handle is a valid OS handle from the child process.
+          let crt_fd = unsafe { libc::open_osfhandle(raw_handle as isize, 0) };
+          if crt_fd == -1 {
+            return Err(ProcessError::Io(std::io::Error::last_os_error()));
+          }
+          Ok(crt_fd as i64)
+        })
+        .transpose()?
+    }
+  }};
+}
+
+/// Spawn for Node compat: returns raw OS file descriptors for stdio
+/// instead of resource IDs, so the Node polyfill can use Pipe.open(fd).
+fn spawn_child_node(
+  state: &mut OpState,
+  command: Command,
+  ipc_pipe_rid: Option<ResourceId>,
+  extra_pipe_fds: Vec<Option<i64>>,
+  detached: bool,
+) -> Result<NodeChild, ProcessError> {
+  let (mut child, pid) = spawn_command(command)?;
+
+  let stdin_fd = child_stdio_to_fd!(child, stdin);
+  let stdout_fd = child_stdio_to_fd!(child, stdout);
+  let stderr_fd = child_stdio_to_fd!(child, stderr);
+
+  let child_rid = state.resource_table.add(ChildResource {
+    child: RefCell::new(child),
+    pid,
+    kill_on_drop: Cell::new(!detached),
+  });
+
+  Ok(NodeChild {
+    rid: child_rid,
+    pid,
+    stdin_fd,
+    stdout_fd,
+    stderr_fd,
+    ipc_pipe_rid,
+    extra_pipe_fds,
   })
 }
 
@@ -1153,9 +1250,28 @@ fn op_spawn_child(
   #[string] api_name: String,
 ) -> Result<Child, ProcessError> {
   let detached = args.detached;
-  let (command, pipe_rid, extra_pipe_rids, handles_to_close) =
+  let (command, pipe_rid, extra_pipe_fds, handles_to_close) =
     create_command(state, args, &api_name)?;
-  let child = spawn_child(state, command, pipe_rid, extra_pipe_rids, detached);
+  let child = spawn_child(state, command, pipe_rid, extra_pipe_fds, detached);
+  for handle in handles_to_close {
+    deno_io::close_raw_handle(handle);
+  }
+  child
+}
+
+/// Node compat version of op_spawn_child: returns raw OS file descriptors
+/// for stdio instead of resource IDs.
+#[op2(stack_trace)]
+fn op_node_spawn_child(
+  state: &mut OpState,
+  #[serde] args: SpawnArgs,
+  #[string] api_name: String,
+) -> Result<NodeChild, ProcessError> {
+  let detached = args.detached;
+  let (command, pipe_rid, extra_pipe_fds, handles_to_close) =
+    create_command(state, args, &api_name)?;
+  let child =
+    spawn_child_node(state, command, pipe_rid, extra_pipe_fds, detached);
   for handle in handles_to_close {
     deno_io::close_raw_handle(handle);
   }

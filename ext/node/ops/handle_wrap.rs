@@ -207,6 +207,7 @@ pub enum ProviderType {
   TcpConnectWrap,
   TcpServerWrap,
   TcpWrap,
+  TlsWrap,
   TtyWrap,
   UdpSendWrap,
   UdpWrap,

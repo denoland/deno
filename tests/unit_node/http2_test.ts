@@ -52,19 +52,15 @@ for (const url of ["http://localhost:4246", "https://localhost:4247"]) {
     req.on("data", (chunk) => {
       receivedData += chunk;
     });
-    req.end();
 
     const { promise, resolve } = Promise.withResolvers<void>();
-    setTimeout(() => {
-      try {
-        client.close();
-      } catch (_) {
-        // pass
-      }
+    req.on("end", () => {
       resolve();
-    }, 2000);
+    });
+    req.end();
 
     await promise;
+    client.close();
     assertEquals(receivedHeaders?.[":status"], 200);
     assertEquals(receivedData, "hello world\n");
 
@@ -102,20 +98,16 @@ Deno.test(`[node/http2 client createConnection]`, async () => {
   req.on("data", (chunk) => {
     receivedData += chunk;
   });
-  req.end();
 
   const endPromise = Promise.withResolvers<void>();
-  setTimeout(() => {
-    try {
-      client.close();
-    } catch (_) {
-      // pass
-    }
+  req.on("end", () => {
     endPromise.resolve();
-  }, 2000);
+  });
+  req.end();
 
   await createConnDeferred.promise;
   await endPromise.promise;
+  client.close();
   assertEquals(receivedData, "hello world\n");
 });
 
@@ -156,20 +148,15 @@ Deno.test(`[node/http2 client body overflow]`, async () => {
     receivedTrailers = trailers;
   });
 
-  req.end();
-
   const endPromise = Promise.withResolvers<void>();
-  setTimeout(() => {
-    try {
-      client.close();
-    } catch (_) {
-      // pass
-    }
+  req.on("end", () => {
     endPromise.resolve();
-  }, 2000);
+  });
+  req.end();
 
   await createConnDeferred.promise;
   await endPromise.promise;
+  client.close();
   assertEquals(receivedData, "hello world\n");
 
   assertEquals(receivedTrailers?.["req_body_len"], "5");

@@ -260,21 +260,35 @@ impl ReplSessionState {
   }
 
   async fn wait_for_response(&self, msg_id: i32) -> serde_json::Value {
-    if let Some(message_state) = self.0.lock().messages.remove(&msg_id) {
-      let InspectorMessageState::Ready(mut value) = message_state else {
-        unreachable!();
-      };
-      return value["result"].take();
-    }
+    let rx = {
+      let mut state = self.0.lock();
+      if let Some(message_state) = state.messages.remove(&msg_id) {
+        let InspectorMessageState::Ready(value) = message_state else {
+          unreachable!();
+        };
+        return Self::extract_result(value);
+      }
+      let (tx, rx) = oneshot::channel();
+      state
+        .messages
+        .insert(msg_id, InspectorMessageState::WaitingFor(tx));
+      rx
+    };
 
-    let (tx, rx) = oneshot::channel();
-    self
-      .0
-      .lock()
-      .messages
-      .insert(msg_id, InspectorMessageState::WaitingFor(tx));
-    let mut value = rx.await.unwrap();
-    value["result"].take()
+    let value = rx.await.unwrap();
+    Self::extract_result(value)
+  }
+
+  #[allow(clippy::print_stderr, reason = "diagnostic for flaky CDP responses")]
+  fn extract_result(mut value: serde_json::Value) -> serde_json::Value {
+    let result = value["result"].take();
+    if result.is_null() {
+      eprintln!(
+        "CDP response has null result. Full response: {}",
+        serde_json::to_string(&value).unwrap_or_default()
+      );
+    }
+    result
   }
 }
 
@@ -410,6 +424,17 @@ impl ReplSession {
   ) -> Value {
     let msg_id = next_msg_id();
     self.session.post_message(msg_id, method, params);
+
+    // Under Explicit microtask policy, V8's REPL-mode evaluation creates
+    // a promise whose resolution callback is a queued microtask. Without
+    // this checkpoint, GC can collect the weakly-held promise before the
+    // microtask drains, causing a "Promise was collected" CDP error.
+    self
+      .worker
+      .js_runtime
+      .v8_isolate()
+      .perform_microtask_checkpoint();
+
     let fut = self
       .state
       .wait_for_response(msg_id)
@@ -889,7 +914,7 @@ impl ReplSession {
           return_by_value: None,
           generate_preview: None,
           user_gesture: None,
-          await_promise: None,
+          await_promise: Some(true),
           throw_on_side_effect: None,
           timeout: None,
           disable_breaks: None,
