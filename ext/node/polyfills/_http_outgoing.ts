@@ -711,31 +711,29 @@ Object.defineProperties(
         this.shouldKeepAlive = false;
       }
 
-      // TODO(osddeitf): this depends on agent and underlying socket
-      // keep-alive logic
-      // if (this._removedConnection) {
-      //   this._last = true;
-      //   this.shouldKeepAlive = false;
-      // } else if (!state.connection) {
-      //   const shouldSendKeepAlive = this.shouldKeepAlive &&
-      //       (state.contLen || this.useChunkedEncodingByDefault || this.agent);
-      //   if (shouldSendKeepAlive && this.maxRequestsOnConnectionReached) {
-      //     this.setHeader('Connection', 'close');
-      //   } else if (shouldSendKeepAlive) {
-      //     this.setHeader('Connection', 'keep-alive');
-      //     if (this._keepAliveTimeout && this._defaultKeepAlive) {
-      //       const timeoutSeconds = Math.floor(this._keepAliveTimeout / 1000);
-      //       let max = '';
-      //       if (~~this._maxRequestsPerSocket > 0) {
-      //         max = `, max=${this._maxRequestsPerSocket}`;
-      //       }
-      //       this.setHeader('Keep-Alive', `timeout=${timeoutSeconds}${max}`);
-      //     }
-      //   } else {
-      //     this._last = true;
-      //     this.setHeader('Connection', 'close');
-      //   }
-      // }
+      if (this._removedConnection) {
+        this._last = true;
+        this.shouldKeepAlive = false;
+      } else if (!state.connection) {
+        const shouldSendKeepAlive = this.shouldKeepAlive &&
+            (state.contLen || this.useChunkedEncodingByDefault || this.agent);
+        if (shouldSendKeepAlive && this.maxRequestsOnConnectionReached) {
+          state.header += "Connection: close\r\n";
+        } else if (shouldSendKeepAlive) {
+          state.header += "Connection: keep-alive\r\n";
+          if (this._keepAliveTimeout && this._defaultKeepAlive) {
+            const timeoutSeconds = Math.floor(this._keepAliveTimeout / 1000);
+            let max = "";
+            if (~~this._maxRequestsPerSocket > 0) {
+              max = `, max=${this._maxRequestsPerSocket}`;
+            }
+            state.header += `Keep-Alive: timeout=${timeoutSeconds}${max}\r\n`;
+          }
+        } else {
+          this._last = true;
+          state.header += "Connection: close\r\n";
+        }
+      }
 
       if (!state.contLen && !state.te) {
         if (!this._hasBody) {
