@@ -92,7 +92,7 @@ deno_core::extension!(deno_web,
     op_now,
     op_time_origin,
     op_defer,
-    geometry::op_geometry_get_enable_window_features,
+    geometry::op_geometry_get_enable_css_parser_features,
     geometry::op_geometry_matrix_set_matrix_value,
     geometry::op_geometry_matrix_to_string,
     stream_resource::op_readable_stream_resource_allocate,
@@ -157,7 +157,7 @@ deno_core::extension!(deno_web,
   options = {
     blob_store: Arc<BlobStore>,
     maybe_location: Option<Url>,
-    enable_window_features: bool,
+    enable_css_parser_features: bool,
     bc: InMemoryBroadcastChannel,
   },
   state = |state, options| {
@@ -166,7 +166,7 @@ deno_core::extension!(deno_web,
       state.put(Location(location));
     }
     state.put(StartTime::default());
-    state.put(geometry::State::new(options.enable_window_features));
+    state.put(geometry::State::new(options.enable_css_parser_features));
     state.put(options.bc);
   }
 );

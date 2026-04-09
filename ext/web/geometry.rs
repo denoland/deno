@@ -60,20 +60,20 @@ macro_rules! define_obj {
 }
 
 pub(crate) struct State {
-  enable_window_features: bool,
+  enable_css_parser_features: bool,
 }
 
 impl State {
-  pub(crate) fn new(enable_window_features: bool) -> Self {
+  pub(crate) fn new(enable_css_parser_features: bool) -> Self {
     Self {
-      enable_window_features,
+      enable_css_parser_features,
     }
   }
 }
 
 #[op2(fast)]
-pub fn op_geometry_get_enable_window_features(state: &OpState) -> bool {
-  state.borrow::<State>().enable_window_features
+pub fn op_geometry_get_enable_css_parser_features(state: &OpState) -> bool {
+  state.borrow::<State>().enable_css_parser_features
 }
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
@@ -955,7 +955,7 @@ impl DOMMatrixReadOnly {
 
     // DOMString
     if let Some(value) = value.to_string(scope) {
-      if !state.borrow().borrow::<State>().enable_window_features {
+      if !state.borrow().borrow::<State>().enable_css_parser_features {
         return Err(GeometryError::DisallowWindowFeatures);
       }
 

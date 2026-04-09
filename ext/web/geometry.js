@@ -9,7 +9,7 @@ import {
   DOMQuad,
   DOMRect,
   DOMRectReadOnly,
-  op_geometry_get_enable_window_features,
+  op_geometry_get_enable_css_parser_features,
   op_geometry_matrix_set_matrix_value,
   op_geometry_matrix_to_string,
 } from "ext:core/ops";
@@ -148,7 +148,7 @@ ObjectDefineProperty(
   },
 );
 
-if (op_geometry_get_enable_window_features()) {
+if (op_geometry_get_enable_css_parser_features()) {
   // https://drafts.csswg.org/geometry/#dommatrixreadonly-stringification-behavior
   ObjectDefineProperty(DOMMatrixReadOnlyPrototype, "toString", {
     __proto__: null,
