@@ -164,8 +164,63 @@ Deno.test(
   },
 );
 
+// Regression test for https://github.com/denoland/deno/issues/27558
+// Removing a file outside the watched directory should not produce events.
 Deno.test(
   { permissions: { read: true, write: true } },
+  async function watchFsNoSpuriousEventsFromSiblingDir() {
+    const parentDir = await makeTempDir();
+    const watchedDir = parentDir + "/watched";
+    const otherDir = parentDir + "/other";
+    Deno.mkdirSync(watchedDir);
+    Deno.mkdirSync(otherDir);
+    await delay(100);
+
+    using watcher = Deno.watchFs(watchedDir);
+
+    // Create and immediately remove a file in the sibling directory.
+    // Before the fix, this would send a spurious "remove" event to
+    // watchers on watchedDir because the is_file_removed fallback had
+    // no path filtering.
+    const otherFile = otherDir + "/temp.txt";
+    Deno.writeFileSync(otherFile, new Uint8Array([1, 2, 3]));
+    Deno.removeSync(otherFile);
+
+    // Now create a real file in the watched directory so we have
+    // something to observe.
+    await delay(100);
+    const realFile = watchedDir + "/real.txt";
+    Deno.writeFileSync(realFile, new Uint8Array([1, 2, 3]));
+
+    // Collect events -- the first meaningful event should be for real.txt,
+    // not a spurious remove for temp.txt.
+    for await (const event of watcher) {
+      // We should never see events for files in otherDir
+      for (const path of event.paths) {
+        assert(
+          !path.includes("other"),
+          `Received spurious event for file outside watched dir: ${path}`,
+        );
+      }
+      // Once we see the expected create, we're done
+      if (event.kind === "create" || event.kind === "modify") {
+        assert(event.paths[0].includes("real.txt"));
+        break;
+      }
+    }
+  },
+);
+
+// On macOS, FSEvents does not reliably emit remove events for individually
+// watched files. The previous implementation masked this by forwarding
+// unrelated events for any non-existent file to all watchers (the bug
+// behind #27558). Skip on macOS until the notify crate or our watcher
+// can detect removals of individually watched files on this platform.
+Deno.test(
+  {
+    permissions: { read: true, write: true },
+    ignore: Deno.build.os === "darwin",
+  },
   async function watchFsRemove() {
     const testFile = await makeTempFile();
     using watcher = Deno.watchFs(testFile);

@@ -1,9 +1,0 @@
-{
-  "dependencies": {
-    "@denotest/esm-basic": "*",
-    "@types/denotest__index-export-no-types": "*"
-  },
-  "devDependencies": {
-    "@denotest/bin": "*"
-  }
-}
