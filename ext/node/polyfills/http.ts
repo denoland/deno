@@ -163,6 +163,8 @@ const kBindToAbortSignal = Symbol("kBindToAbortSignal");
 class FakeSocket extends EventEmitter {
   /** Stores the underlying request for lazily binding to abort signal */
   #request: Request | undefined;
+  bytesRead = 0;
+  bytesWritten = 0;
   constructor(
     opts: {
       encrypted?: boolean | undefined;
@@ -2134,7 +2136,14 @@ export class IncomingMessageForServer extends NodeReadable {
 
         try {
           const { value } = await reader!.read();
-          this.push(value !== undefined ? Buffer.from(value) : null);
+          if (value !== undefined) {
+            if (socket instanceof FakeSocket) {
+              socket.bytesRead += value.byteLength;
+            }
+            this.push(Buffer.from(value));
+          } else {
+            this.push(null);
+          }
         } catch (err) {
           this.destroy(err as Error);
         }
@@ -2378,6 +2387,22 @@ export class ServerImpl extends EventEmitter {
         request.headers.get("connection")?.toLowerCase().includes("upgrade") &&
         request.headers.get("upgrade");
       req[kRawHeaders] = request.headers;
+
+      // Estimate the bytes received for the HTTP request head (request line +
+      // headers). Body bytes are tracked separately as they are consumed from
+      // the reader in IncomingMessageForServer.
+      if (socket instanceof FakeSocket) {
+        // "METHOD /path HTTP/1.1\r\n"
+        let headBytes = request.method.length + 1 +
+          (req.url?.length || 1) + 11;
+        for (const [key, value] of request.headers) {
+          // "Key: Value\r\n"
+          headBytes += key.length + 2 + value.length + 2;
+        }
+        // "\r\n" (end of headers)
+        headBytes += 2;
+        socket.bytesRead = headBytes;
+      }
 
       // Don't fire the "upgrade" event for h2c (HTTP/2 cleartext) upgrades.
       // These are protocol-level upgrades that aren't meant for user-space
