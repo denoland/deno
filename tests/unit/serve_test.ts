@@ -3467,7 +3467,7 @@ Deno.test(
     const { resolve } = Promise.withResolvers<void>();
 
     let reqCount = -1;
-    let timerId: ReturnType<typeof setInterval> | undefined;
+    let timerId: number | undefined;
     await using server = Deno.serve({
       handler: (_req) => {
         reqCount++;
@@ -3481,7 +3481,7 @@ Deno.test(
               }, 1000);
             },
             cancel() {
-              if (timerId !== undefined) {
+              if (typeof timerId === "number") {
                 clearInterval(timerId);
               }
             },
