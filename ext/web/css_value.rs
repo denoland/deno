@@ -567,7 +567,7 @@ impl TryFrom<MathValue> for NumericValue {
 macro_rules! impl_math_value_is {
   ($($fn_name:ident: $dim_const:ident),* $(,)?) => {
     $(
-  #[inline]
+      #[inline]
       fn $fn_name(&self) -> bool {
         self.dimension == Dimension::$dim_const
       }
