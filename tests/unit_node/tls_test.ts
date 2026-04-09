@@ -232,6 +232,7 @@ Deno.test("tls.createServer creates a TLS server", async () => {
     server.close();
   });
   await deferred.promise;
+  await new Promise<void>((resolve) => server.on("close", resolve));
 });
 
 Deno.test("TLSSocket can construct without options", () => {
@@ -481,6 +482,7 @@ Deno.test("mTLS client certificate authentication", async () => {
     });
 
     client.on("end", () => {
+      client.destroy();
       resolve(data);
     });
 
@@ -492,6 +494,7 @@ Deno.test("mTLS client certificate authentication", async () => {
   const result = await promise;
   assertEquals(result, "mTLS success!");
   server.close();
+  await new Promise<void>((resolve) => server.on("close", resolve));
 });
 
 Deno.test("tls.setDefaultCACertificates exists", () => {

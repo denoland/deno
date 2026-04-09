@@ -1,5 +1,5 @@
 {
-  "args": "test --sanitize-ops --quiet main.js",
+  "args": "test --quiet main.js",
   "output": "main.out",
   "exitCode": 1
 }

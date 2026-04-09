@@ -6,6 +6,7 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
+import { core } from "ext:core/mod.js";
 import {
   ArrayIsArray,
   ObjectAssign,
@@ -53,6 +54,7 @@ import { ownerSymbol } from "ext:deno_node/internal_binding/symbols.ts";
 import { X509Certificate } from "ext:deno_node/internal/crypto/x509.ts";
 
 const kConnectOptions = Symbol("connect-options");
+const kHandshakeTimer = Symbol("handshake-timer");
 const kIsVerified = Symbol("verified");
 const kPendingSession = Symbol("pendingSession");
 const kRes = Symbol("res");
@@ -478,7 +480,17 @@ TLSSocket.prototype._init = function (socket, wrap) {
   }
 
   if (options.handshakeTimeout > 0) {
-    this.setTimeout(options.handshakeTimeout, this._handleTimeout);
+    this[kHandshakeTimer] = core.createTimer(
+      () => {
+        core.cancelTimer(this[kHandshakeTimer]);
+        this[kHandshakeTimer] = null;
+        this._handleTimeout();
+      },
+      options.handshakeTimeout,
+      undefined,
+      false,
+      false,
+    );
   }
 
   if (socket instanceof net.Socket) {
@@ -568,8 +580,9 @@ TLSSocket.prototype._finishInit = function () {
 
   this._secureEstablished = true;
   this._tlsUpgraded = true;
-  if (this._tlsOptions.handshakeTimeout > 0) {
-    this.setTimeout(0, this._handleTimeout);
+  if (this[kHandshakeTimer]) {
+    core.cancelTimer(this[kHandshakeTimer]);
+    this[kHandshakeTimer] = null;
   }
   this.emit("secure");
 };
