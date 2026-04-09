@@ -8,27 +8,10 @@ https://github.com/denoland/deno_install
 
 ### 2.7.12 / 2026.04.09
 
-- Revert "feat(add/install): default to npm registry for unprefixed packages
-  (#33156) (#33214)
-- Revert "feat(install): added --prod to skip dev deps and @types (#32863)
-  (#33212)
-- Revert "feat(unstable): add deno tsconfig subcommand (#33160)" (#33162)
-- Revert "feat: disable "no-process-global", "no-node-globals" lint rules by
-  default (#33147) (#33213)
-- Revert "feat: disable ops and resources sanitizers by default in deno test
-  (#33158) (#33215)
-- Revert "feat: use Node.js timers by default (#33118)" (#33211)
-- feat(add/install): default to npm registry for unprefixed packages (#33156)
 - feat(ext/node): add fs.SyncWriteStream (#33226)
 - feat(ext/node): add llhttp-based HTTPParser with native cppgc binding (#33202)
 - feat(ext/node): add native TLSWrap cppgc object (Rust core) (#33183)
-- feat(install): added --prod to skip dev deps and @types (#32863)
-- feat(unstable): add `deno tsconfig` subcommand (#33160)
-- feat: disable "no-process-global", "no-node-globals" lint rules by default
-  (#33147)
-- feat: disable ops and resources sanitizers by default in deno test (#33158)
 - feat: native uv_pipe_t implementation with NativePipe and FdTable (#33165)
-- feat: use Node.js timers by default (#33118)
 - fix(core): fix uv_pipe_open handle lifecycle to match libuv (#33225)
 - fix(core): free UvLoopInner on uv_loop_t drop to prevent worker memory leak
   (#33200)
