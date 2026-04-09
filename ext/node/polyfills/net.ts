@@ -2700,6 +2700,7 @@ Server.prototype._emitCloseIfDrained = function () {
   // error when the same port listened immediately after the 'close' event.
   // ref: https://github.com/denoland/deno_std/issues/2788
   // Use core.createTimer to avoid ops sanitizer tracking this internal timer.
+  // deno-lint-ignore no-this-alias
   const self = this;
   core.createTimer(
     () => {
