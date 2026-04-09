@@ -753,21 +753,21 @@ impl crate::fs::File for StdFileResourceInner {
 
   fn read_sync(self: Rc<Self>, buf: &mut [u8]) -> FsResult<usize> {
     match self.kind {
-      StdFileResourceKind::File => {
-        self.with_sync(|file| Ok(file.read(buf)?))
-      }
+      StdFileResourceKind::File => self.with_sync(|file| Ok(file.read(buf)?)),
       StdFileResourceKind::Stdin(_) => {
         // Stdin may be in non-blocking mode when Node's process.stdin
         // opens fd 0 as a pipe/socket (O_NONBLOCK is per-file-description).
         // Retry on WouldBlock to avoid surfacing EAGAIN to JS.
-        self.with_sync(|file| loop {
-          match file.read(buf) {
-            Ok(nread) => return Ok(nread),
-            Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
-              std::thread::yield_now();
-              continue;
+        self.with_sync(|file| {
+          loop {
+            match file.read(buf) {
+              Ok(nread) => return Ok(nread),
+              Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                std::thread::yield_now();
+                continue;
+              }
+              Err(e) => return Err(e.into()),
             }
-            Err(e) => return Err(e.into()),
           }
         })
       }
@@ -1207,14 +1207,16 @@ impl crate::fs::File for StdFileResourceInner {
         // opens fd 0 as a pipe/socket (O_NONBLOCK is per-file-description).
         // Retry on WouldBlock to avoid surfacing EAGAIN to JS.
         self
-          .with_inner_blocking_task(|file| loop {
-            match file.read(&mut buf) {
-              Ok(nread) => return Ok((nread, buf)),
-              Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
-                std::thread::yield_now();
-                continue;
+          .with_inner_blocking_task(|file| {
+            loop {
+              match file.read(&mut buf) {
+                Ok(nread) => return Ok((nread, buf)),
+                Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                  std::thread::yield_now();
+                  continue;
+                }
+                Err(e) => return Err(e.into()),
               }
-              Err(e) => return Err(e.into()),
             }
           })
           .await
