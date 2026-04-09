@@ -326,6 +326,12 @@ pub struct NapiState {
   /// Matches Node.js `finalizing_reflist` / `reflist` behavior.
   pub ref_tracker: Rc<RefCell<Vec<PendingNapiFinalizer>>>,
   pub env_shared_ptrs: Vec<*mut EnvShared>,
+  /// Per-isolate V8 Private key for napi_wrap/napi_unwrap.
+  /// Node.js stores this per-isolate so that objects wrapped by one addon
+  /// can be unwrapped by another. Lazily initialized on first addon load.
+  pub napi_wrap: Option<v8::Global<v8::Private>>,
+  /// Per-isolate V8 Private key for type tags.
+  pub type_tag: Option<v8::Global<v8::Private>>,
 }
 
 // SAFETY: finalizer pointers in env_shared_ptrs are only accessed during Drop
@@ -595,6 +601,8 @@ deno_core::extension!(deno_napi,
       env_cleanup_hooks: Rc::new(RefCell::new(vec![])),
       ref_tracker: Rc::new(RefCell::new(vec![])),
       env_shared_ptrs: vec![],
+      napi_wrap: None,
+      type_tag: None,
     });
     if let Some(loader) = options.deno_rt_native_addon_loader {
       state.put(loader);
@@ -647,13 +655,33 @@ fn op_napi_open<'scope>(
     )
   };
 
-  let napi_wrap_name = v8::String::new(scope, "napi_wrap").unwrap();
-  let napi_wrap = v8::Private::new(scope, Some(napi_wrap_name));
-  let napi_wrap = v8::Global::new(scope, napi_wrap);
-
-  let type_tag_name = v8::String::new(scope, "type_tag").unwrap();
-  let type_tag = v8::Private::new(scope, Some(type_tag_name));
-  let type_tag = v8::Global::new(scope, type_tag);
+  // Use per-isolate Private keys (like Node.js) so that objects wrapped by one
+  // addon can be unwrapped by another. Lazily create on first addon load.
+  let (napi_wrap, type_tag) = {
+    let mut op_state_mut = op_state.borrow_mut();
+    let napi_state = op_state_mut.borrow_mut::<NapiState>();
+    let napi_wrap = match &napi_state.napi_wrap {
+      Some(existing) => existing.clone(),
+      None => {
+        let name = v8::String::new(scope, "napi_wrap").unwrap();
+        let key = v8::Private::new(scope, Some(name));
+        let global = v8::Global::new(scope, key);
+        napi_state.napi_wrap = Some(global.clone());
+        global
+      }
+    };
+    let type_tag = match &napi_state.type_tag {
+      Some(existing) => existing.clone(),
+      None => {
+        let name = v8::String::new(scope, "type_tag").unwrap();
+        let key = v8::Private::new(scope, Some(name));
+        let global = v8::Global::new(scope, key);
+        napi_state.type_tag = Some(global.clone());
+        global
+      }
+    };
+    (napi_wrap, type_tag)
+  };
 
   #[allow(
     clippy::disallowed_methods,
