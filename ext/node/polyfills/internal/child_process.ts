@@ -385,13 +385,21 @@ export class ChildProcess extends EventEmitter {
         });
       }
 
-      if (stdin instanceof Stream) {
+      // When a parent stream (e.g. process.stdin) is passed as stdio,
+      // the child inherits the fd directly. Do NOT assign the parent
+      // stream to this.stdin/stdout/stderr -- doing so causes
+      // waitForChildStreamsToClose to call resume()/destroy() on the
+      // parent's stream, which triggers read EBADF on write-only pipes
+      // or premature stream closure. Only assign if the stream doesn't
+      // have a numeric fd (i.e. it's a user-created stream, not a
+      // process stdio stream being passed through).
+      if (stdin instanceof Stream && stdin.fd == null) {
         this.stdin = stdin;
       }
-      if (stdout instanceof Stream) {
+      if (stdout instanceof Stream && stdout.fd == null) {
         this.stdout = stdout;
       }
-      if (stderr instanceof Stream) {
+      if (stderr instanceof Stream && stderr.fd == null) {
         this.stderr = stderr;
       }
 

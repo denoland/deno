@@ -231,8 +231,11 @@ deno_core::extension!(deno_io,
       #[cfg(unix)]
       let stdin_state = ();
 
-      let t = &mut state.resource_table;
-
+      // Register stdio only in the FD table (for node compat ops like
+      // guessHandleType). NOT in the resource table -- Node's TTY/pipe
+      // handles are the sole async owners. Deno.stdin/stdout/stderr
+      // delegate to them via __setNodeStreams(). op_print uses the FD
+      // table directly for stdout/stderr writes.
       let stdin_file: Rc<dyn fs::File> = Rc::new(match stdio.stdin.pipe {
         StdioPipeInner::Inherit => StdFileResourceInner::new(
           StdFileResourceKind::Stdin(stdin_state),
@@ -241,15 +244,11 @@ deno_core::extension!(deno_io,
         ),
         StdioPipeInner::File(pipe) => StdFileResourceInner::file(pipe, None),
       });
-      fd_table.register(0, stdin_file.clone());
-      let rid = t.add(fs::FileResource::new(stdin_file, "stdin".to_string()));
-      assert_eq!(rid, 0, "stdin must have ResourceId 0");
+      fd_table.register(0, stdin_file);
 
       let (stdout_file, child_stdout): (Rc<dyn fs::File>, StdFile) = match stdio.stdout.pipe {
         StdioPipeInner::Inherit => {
           let file = stdio_fd(1);
-          // dup for ChildProcessStdio -- it drops normally and must
-          // not close the real fd 1.
           let child_handle = file.try_clone().unwrap();
           (
             Rc::new(StdFileResourceInner::new(
@@ -265,9 +264,7 @@ deno_core::extension!(deno_io,
           (Rc::new(StdFileResourceInner::file(pipe, None)), child_handle)
         }
       };
-      fd_table.register(1, stdout_file.clone());
-      let rid = t.add(FileResource::new(stdout_file, "stdout".to_string()));
-      assert_eq!(rid, 1, "stdout must have ResourceId 1");
+      fd_table.register(1, stdout_file);
 
       let (stderr_file, child_stderr): (Rc<dyn fs::File>, StdFile) = match stdio.stderr.pipe {
         StdioPipeInner::Inherit => {
@@ -287,9 +284,7 @@ deno_core::extension!(deno_io,
           (Rc::new(StdFileResourceInner::file(pipe, None)), child_handle)
         }
       };
-      fd_table.register(2, stderr_file.clone());
-      let rid = t.add(FileResource::new(stderr_file, "stderr".to_string()));
-      assert_eq!(rid, 2, "stderr must have ResourceId 2");
+      fd_table.register(2, stderr_file);
 
       state.put(ChildProcessStdio {
         stdout: child_stdout,
@@ -1335,21 +1330,44 @@ impl crate::fs::File for StdFileResourceInner {
   }
 }
 
-// override op_print to use the stdout and stderr in the resource table
+// Write to stdout/stderr via the FD table (not the resource table).
+// Stdio fds are only registered in the FD table; Node's TTY handles
+// own the async side. This just does synchronous writes.
 #[op2(fast)]
 pub fn op_print(
   state: &mut OpState,
   #[string] msg: &str,
   is_err: bool,
 ) -> Result<(), JsErrorBox> {
-  let rid = if is_err { 2 } else { 1 };
-  FileResource::with_file(state, rid, move |file| {
-    match file.write_all_sync(msg.as_bytes()) {
-      Err(FsError::Io(io)) if io.kind() == ErrorKind::BrokenPipe => Ok(()),
-      other => other,
+  let fd = if is_err { 2 } else { 1 };
+  let fd_table = state.borrow::<FdTable>();
+  if let Some(file) = fd_table.get(fd) {
+    let file = Rc::clone(file);
+    let mut data = msg.as_bytes();
+    while !data.is_empty() {
+      match file.clone().write_sync(data) {
+        Ok(0) => break,
+        Ok(n) => data = &data[n..],
+        Err(FsError::Io(ref e)) if e.kind() == ErrorKind::BrokenPipe => {
+          return Ok(())
+        }
+        Err(e) => return Err(JsErrorBox::from_err(e)),
+      }
     }
-    .map_err(JsErrorBox::from_err)
-  })
+    Ok(())
+  } else {
+    // Fallback: write directly to the fd.
+    use std::io::Write;
+    let result = if is_err {
+      std::io::stderr().write_all(msg.as_bytes())
+    } else {
+      std::io::stdout().write_all(msg.as_bytes())
+    };
+    match result {
+      Err(e) if e.kind() == ErrorKind::BrokenPipe => Ok(()),
+      other => other.map_err(|e| JsErrorBox::from_err(FsError::Io(e))),
+    }
+  }
 }
 
 #[cfg(windows)]

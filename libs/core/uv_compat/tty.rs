@@ -1286,31 +1286,14 @@ pub unsafe fn uv_tty_init(
       };
       let mode = saved_flags & libc::O_ACCMODE;
 
-      // Reopen the file descriptor when it refers to a tty slave.
-      // This gives us our own struct file in the kernel so that
-      // setting O_NONBLOCK doesn't affect other processes sharing
-      // the fd (e.g. `node | cat`).
-      //
-      // Reopening a pty master won't work: on *BSD it opens in
-      // slave mode, on Linux it allocates a new master/slave pair.
-      // So we only reopen slave devices.
-      // Unlike libuv which dup2's the reopened fd over the original,
-      // we keep the original fd untouched and use the new fd directly.
-      // This prevents setting O_NONBLOCK on stdin/stdout/stderr from
-      // affecting other users of those fds (e.g. rustyline in the REPL).
+      // Use the fd directly without reopening. Libuv reopens slave
+      // TTY fds and dup2's back to isolate O_NONBLOCK from other
+      // processes sharing the struct file. We skip this for now --
+      // the fd is already open and registered in the FdTable.
+      // TODO: implement reopen+dup2 for O_NONBLOCK isolation in
+      // pipelines (e.g. `deno | cat`).
       actual_fd = fd;
-      let mut reopened = false;
-      if handle_type == uv_handle_type::UV_TTY && tty_is_slave(fd) {
-        let mut path = [0u8; 256];
-        if libc::ttyname_r(fd, path.as_mut_ptr().cast(), path.len()) == 0 {
-          let new_fd =
-            open_cloexec(path.as_ptr().cast(), mode | libc::O_NOCTTY);
-          if new_fd >= 0 {
-            actual_fd = new_fd;
-            reopened = true;
-          }
-        }
-      }
+      let reopened = false;
 
       // Set non-blocking.
       let cur_flags = libc::fcntl(actual_fd, libc::F_GETFL);

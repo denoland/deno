@@ -73,6 +73,7 @@ import { setupStdio } from "ext:deno_node/_process/streams.mjs";
 import { enableNextTick } from "ext:deno_node/_next_tick.ts";
 import { isAndroid, isWindows } from "ext:deno_node/_util/os.ts";
 import * as denoOs from "ext:deno_os/30_os.js";
+import * as io from "ext:deno_io/12_io.js";
 
 export let argv0 = "";
 
@@ -1347,6 +1348,11 @@ internals.__bootstrapNodeProcess = function (
     // on first access, by which time require("net")/require("fs") work.
     // This matches Node.js's defineStream pattern in is_main_thread.js.
     setupStdio(process);
+
+    // Wire Deno.stdin/stdout/stderr to delegate to process.stdin/stdout/stderr.
+    // This ensures both APIs use the same underlying TTY/pipe handles,
+    // avoiding conflicts when both Deno and Node APIs are used.
+    io.__setNodeStreams(process.stdin, process.stdout, process.stderr);
 
     arch = arch_();
     platform = isWindows ? "win32" : Deno.build.os;

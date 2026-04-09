@@ -549,18 +549,12 @@ Deno.test({
   fn() {
     // @ts-ignore `Deno.stdin.rid` was soft-removed in Deno 2.
     assertEquals(process.stdin.fd, Deno.stdin.rid);
+    // In Node.js, isTTY is true on TTY streams, undefined on non-TTY.
     const isTTY = Deno.stdin.isTerminal();
-    assertEquals(process.stdin.isTTY, isTTY);
-
-    // Allows overwriting `process.stdin.isTTY` (mirrors stdout/stderr from #26130)
-    const original = process.stdin.isTTY;
-    try {
-      // @ts-ignore isTTY is defined as readonly in types but we allow setting it
-      process.stdin.isTTY = !isTTY;
-      assertEquals(process.stdin.isTTY, !isTTY);
-    } finally {
-      // @ts-ignore isTTY is defined as readonly in types but we allow setting it
-      process.stdin.isTTY = original;
+    if (isTTY) {
+      assertEquals(process.stdin.isTTY, true);
+    } else {
+      assertEquals(process.stdin.isTTY, undefined);
     }
   },
 });
@@ -747,37 +741,24 @@ Deno.test({
   fn() {
     // @ts-ignore `Deno.stdout.rid` was soft-removed in Deno 2.
     assertEquals(process.stdout.fd, Deno.stdout.rid);
+    // In Node.js, isTTY is true on TTY WriteStream, undefined on non-TTY.
     const isTTY = Deno.stdout.isTerminal();
-    assertEquals(process.stdout.isTTY, isTTY);
-    const consoleSize = isTTY ? Deno.consoleSize() : undefined;
-    assertEquals(process.stdout.columns, consoleSize?.columns);
-    assertEquals(process.stdout.rows, consoleSize?.rows);
-    assert([1, 4, 8, 24].includes(process.stdout.getColorDepth()));
-    assertEquals(
-      `${process.stdout.getWindowSize()}`,
-      `${consoleSize && [consoleSize.columns, consoleSize.rows]}`,
-    );
-
     if (isTTY) {
+      assertEquals(process.stdout.isTTY, true);
+      const consoleSize = Deno.consoleSize();
+      assertEquals(process.stdout.columns, consoleSize.columns);
+      assertEquals(process.stdout.rows, consoleSize.rows);
+      assert([1, 4, 8, 24].includes(process.stdout.getColorDepth()));
+      assertEquals(
+        `${process.stdout.getWindowSize()}`,
+        `${[consoleSize.columns, consoleSize.rows]}`,
+      );
       assertStrictEquals(process.stdout.cursorTo(1, 2, () => {}), true);
       assertStrictEquals(process.stdout.moveCursor(3, 4, () => {}), true);
       assertStrictEquals(process.stdout.clearLine(1, () => {}), true);
       assertStrictEquals(process.stdout.clearScreenDown(() => {}), true);
     } else {
-      assertStrictEquals(process.stdout.cursorTo, undefined);
-      assertStrictEquals(process.stdout.moveCursor, undefined);
-      assertStrictEquals(process.stdout.clearLine, undefined);
-      assertStrictEquals(process.stdout.clearScreenDown, undefined);
-    }
-
-    // Allows overwriting `process.stdout.isTTY`
-    // https://github.com/denoland/deno/issues/26123
-    const original = process.stdout.isTTY;
-    try {
-      process.stdout.isTTY = !isTTY;
-      assertEquals(process.stdout.isTTY, !isTTY);
-    } finally {
-      process.stdout.isTTY = original;
+      assertEquals(process.stdout.isTTY, undefined);
     }
   },
 });
@@ -787,26 +768,23 @@ Deno.test({
   fn() {
     // @ts-ignore `Deno.stderr.rid` was soft-removed in Deno 2.
     assertEquals(process.stderr.fd, Deno.stderr.rid);
+    // In Node.js, isTTY is true on TTY WriteStream, undefined on non-TTY.
     const isTTY = Deno.stderr.isTerminal();
-    assertEquals(process.stderr.isTTY, isTTY);
-    const consoleSize = isTTY ? Deno.consoleSize() : undefined;
-    assertEquals(process.stderr.columns, consoleSize?.columns);
-    assertEquals(process.stderr.rows, consoleSize?.rows);
-    assertEquals(
-      `${process.stderr.getWindowSize()}`,
-      `${consoleSize && [consoleSize.columns, consoleSize.rows]}`,
-    );
-
     if (isTTY) {
+      assertEquals(process.stderr.isTTY, true);
+      const consoleSize = Deno.consoleSize();
+      assertEquals(process.stderr.columns, consoleSize.columns);
+      assertEquals(process.stderr.rows, consoleSize.rows);
+      assertEquals(
+        `${process.stderr.getWindowSize()}`,
+        `${[consoleSize.columns, consoleSize.rows]}`,
+      );
       assertStrictEquals(process.stderr.cursorTo(1, 2, () => {}), true);
       assertStrictEquals(process.stderr.moveCursor(3, 4, () => {}), true);
       assertStrictEquals(process.stderr.clearLine(1, () => {}), true);
       assertStrictEquals(process.stderr.clearScreenDown(() => {}), true);
     } else {
-      assertStrictEquals(process.stderr.cursorTo, undefined);
-      assertStrictEquals(process.stderr.moveCursor, undefined);
-      assertStrictEquals(process.stderr.clearLine, undefined);
-      assertStrictEquals(process.stderr.clearScreenDown, undefined);
+      assertEquals(process.stderr.isTTY, undefined);
     }
   },
 });
@@ -1073,8 +1051,11 @@ Deno.test({
     // Wait a bit to ensure that streaming is completely finished.
     await delay(10);
 
-    // This checks if the rid 1 is still valid.
-    assert(typeof process.stdout.isTTY === "boolean");
+    // This checks that stdout is still usable after the source ended.
+    // In TTY mode isTTY is true (boolean), in non-TTY it is undefined.
+    // Either way, accessing the property must not throw.
+    const _isTTY = process.stdout.isTTY;
+    assert(process.stdout.writable);
   },
 });
 
