@@ -10095,4 +10095,607 @@ mod tests {
     assert!(perms.net.is_allow_all());
     assert_eq!(perms.net.query(None), PermissionState::Granted);
   }
+
+  mod proptests {
+    use std::cmp::Ordering;
+    use std::net::Ipv4Addr;
+
+    use proptest::prelude::*;
+
+    use super::*;
+
+    // -- Strategies --
+
+    fn arb_host() -> impl Strategy<Value = Host> {
+      prop_oneof![
+        any::<[u8; 4]>().prop_map(|b| Host::Ip(IpAddr::V4(Ipv4Addr::new(
+          b[0], b[1], b[2], b[3]
+        )))),
+        "[a-z]{1,5}(\\.[a-z]{1,5}){1,3}".prop_filter_map("valid fqdn", |s| {
+          use std::str::FromStr;
+          fqdn::FQDN::from_str(&s).ok().map(Host::Fqdn)
+        }),
+      ]
+    }
+
+    fn arb_port() -> impl Strategy<Value = Option<u32>> {
+      prop_oneof![Just(None), (1u32..=65535).prop_map(Some),]
+    }
+
+    fn arb_net_descriptor() -> impl Strategy<Value = NetDescriptor> {
+      (arb_host(), arb_port()).prop_map(|(h, p)| NetDescriptor(h, p))
+    }
+
+    fn arb_env_descriptor() -> impl Strategy<Value = EnvDescriptor> {
+      prop_oneof![
+        "[A-Z_]{1,10}"
+          .prop_map(|s| EnvDescriptor::Name(EnvVarName::new(Cow::Owned(s)))),
+        "[A-Z_]{1,10}".prop_map(|s| EnvDescriptor::PrefixPattern(
+          EnvVarName::new(Cow::Owned(s))
+        )),
+      ]
+    }
+
+    fn arb_unary_perm_desc_net()
+    -> impl Strategy<Value = UnaryPermissionDesc<NetDescriptor>> {
+      (arb_net_descriptor(), 0..4u8).prop_map(|(desc, kind)| match kind {
+        0 => UnaryPermissionDesc::Granted(desc),
+        1 => UnaryPermissionDesc::FlagDenied(desc),
+        2 => UnaryPermissionDesc::FlagIgnored(desc),
+        _ => UnaryPermissionDesc::PromptDenied(desc),
+      })
+    }
+
+    fn arb_unary_perm_desc_env()
+    -> impl Strategy<Value = UnaryPermissionDesc<EnvDescriptor>> {
+      (arb_env_descriptor(), 0..4u8).prop_map(|(desc, kind)| match kind {
+        0 => UnaryPermissionDesc::Granted(desc),
+        1 => UnaryPermissionDesc::FlagDenied(desc.clone()),
+        2 => UnaryPermissionDesc::FlagIgnored(desc.clone()),
+        _ => UnaryPermissionDesc::PromptDenied(desc.clone()),
+      })
+    }
+
+    // -- 1. Descriptor ordering invariants --
+
+    // Transitivity: if a <= b and b <= c then a <= c
+    proptest! {
+      #[test]
+      fn net_descriptor_ord_transitivity(
+        a in arb_unary_perm_desc_net(),
+        b in arb_unary_perm_desc_net(),
+        c in arb_unary_perm_desc_net(),
+      ) {
+        let ab = a.cmp(&b);
+        let bc = b.cmp(&c);
+        let ac = a.cmp(&c);
+        if ab != Ordering::Greater && bc != Ordering::Greater {
+          prop_assert_ne!(ac, Ordering::Greater,
+            "transitivity violated: a={:?}, b={:?}, c={:?}", a, b, c);
+        }
+        if ab != Ordering::Less && bc != Ordering::Less {
+          prop_assert_ne!(ac, Ordering::Less,
+            "transitivity violated: a={:?}, b={:?}, c={:?}", a, b, c);
+        }
+      }
+
+      #[test]
+      fn env_descriptor_ord_transitivity(
+        a in arb_unary_perm_desc_env(),
+        b in arb_unary_perm_desc_env(),
+        c in arb_unary_perm_desc_env(),
+      ) {
+        let ab = a.cmp(&b);
+        let bc = b.cmp(&c);
+        let ac = a.cmp(&c);
+        if ab != Ordering::Greater && bc != Ordering::Greater {
+          prop_assert_ne!(ac, Ordering::Greater,
+            "transitivity violated: a={:?}, b={:?}, c={:?}", a, b, c);
+        }
+        if ab != Ordering::Less && bc != Ordering::Less {
+          prop_assert_ne!(ac, Ordering::Less,
+            "transitivity violated: a={:?}, b={:?}, c={:?}", a, b, c);
+        }
+      }
+
+      // Antisymmetry: if a <= b and b <= a then a == b
+      #[test]
+      fn net_descriptor_ord_antisymmetry(
+        a in arb_unary_perm_desc_net(),
+        b in arb_unary_perm_desc_net(),
+      ) {
+        let ab = a.cmp(&b);
+        let ba = b.cmp(&a);
+        match (ab, ba) {
+          (Ordering::Less, Ordering::Less) => {
+            prop_assert!(false, "antisymmetry violated: a < b and b < a, a={:?}, b={:?}", a, b);
+          }
+          (Ordering::Greater, Ordering::Greater) => {
+            prop_assert!(false, "antisymmetry violated: a > b and b > a, a={:?}, b={:?}", a, b);
+          }
+          (Ordering::Equal, other) => {
+            prop_assert_eq!(other, Ordering::Equal,
+              "antisymmetry violated: a == b but b != a, a={:?}, b={:?}", a, b);
+          }
+          (_, Ordering::Equal) => {
+            prop_assert_eq!(ab, Ordering::Equal,
+              "antisymmetry violated: b == a but a != b, a={:?}, b={:?}", a, b);
+          }
+          _ => {} // Less/Greater is fine
+        }
+      }
+
+      // Reflexivity: a == a
+      #[test]
+      fn net_descriptor_ord_reflexivity(
+        a in arb_unary_perm_desc_net(),
+      ) {
+        prop_assert_eq!(a.cmp(&a), Ordering::Equal,
+          "reflexivity violated: a={:?}", a);
+      }
+
+      // Binary search correctness: after inserting into descriptors,
+      // the vec remains sorted
+      #[test]
+      fn net_descriptors_remain_sorted_after_inserts(
+        descs in prop::collection::vec(arb_unary_perm_desc_net(), 1..20),
+      ) {
+        let mut descriptors = UnaryPermissionDescriptors::<NetDescriptor>::default();
+        for d in &descs {
+          descriptors.insert(d.clone());
+        }
+        let inner = &descriptors.inner;
+        for i in 1..inner.len() {
+          prop_assert!(inner[i - 1] <= inner[i],
+            "not sorted at index {}: {:?} > {:?}", i, inner[i-1], inner[i]);
+        }
+      }
+
+      #[test]
+      fn env_descriptors_remain_sorted_after_inserts(
+        descs in prop::collection::vec(arb_unary_perm_desc_env(), 1..20),
+      ) {
+        let mut descriptors = UnaryPermissionDescriptors::<EnvDescriptor>::default();
+        for d in &descs {
+          descriptors.insert(d.clone());
+        }
+        let inner = &descriptors.inner;
+        for i in 1..inner.len() {
+          prop_assert!(inner[i - 1] <= inner[i],
+            "not sorted at index {}: {:?} > {:?}", i, inner[i-1], inner[i]);
+        }
+      }
+    }
+
+    // -- 2. Allow/deny resolution consistency --
+    // query_desc() should never return Granted when a matching FlagDenied
+    // descriptor exists in the list.
+
+    proptest! {
+      #[test]
+      fn net_query_never_granted_when_flag_denied(
+        allow_descs in prop::collection::vec(arb_net_descriptor(), 0..5),
+        deny_descs in prop::collection::vec(arb_net_descriptor(), 1..5),
+        query in arb_net_descriptor(),
+      ) {
+        set_prompter(Box::new(TestPrompter));
+
+        let mut perm = UnaryPermission::<NetDescriptor>::default();
+        for d in &allow_descs {
+          perm.descriptors.insert(UnaryPermissionDesc::Granted(d.clone()));
+        }
+        for d in &deny_descs {
+          perm.descriptors.insert(UnaryPermissionDesc::FlagDenied(d.clone()));
+        }
+
+        // If the query matches any deny descriptor, the result must not be Granted
+        let matches_any_deny = deny_descs.iter().any(|d| query.matches_deny(d));
+        if matches_any_deny {
+          let state = perm.query_desc(
+            Some(&query),
+            AllowPartial::TreatAsPartialGranted,
+          );
+          prop_assert_ne!(state, PermissionState::Granted,
+            "query returned Granted despite matching FlagDenied: query={:?}, deny={:?}", query, deny_descs);
+          prop_assert_ne!(state, PermissionState::GrantedPartial,
+            "query returned GrantedPartial despite matching FlagDenied: query={:?}, deny={:?}", query, deny_descs);
+        }
+      }
+    }
+
+    // -- 3. Path containment symmetry --
+    // For paths: matches_allow(allow) && stronger_than_deny(deny_at_same_path)
+    // should be consistent with containment direction.
+
+    proptest! {
+      #[test]
+      fn path_containment_properties(
+        base_segments in prop::collection::vec("[a-z]{1,5}", 1..5),
+        extra_segments in prop::collection::vec("[a-z]{1,5}", 0..3),
+      ) {
+        let parser = TestPermissionDescriptorParser;
+
+        let base_path = format!("/{}", base_segments.join("/"));
+        let child_path = if extra_segments.is_empty() {
+          base_path.clone()
+        } else {
+          format!("{}/{}", base_path, extra_segments.join("/"))
+        };
+
+        let base_desc = parser.parse_read_descriptor(&base_path).unwrap();
+        let child_allow_desc = parser.parse_read_descriptor(&child_path).unwrap();
+
+        let child_query = parser.parse_path_query(
+          Cow::Owned(PathBuf::from(&child_path)),
+        ).unwrap().into_read();
+        let base_query = parser.parse_path_query(
+          Cow::Owned(PathBuf::from(&base_path)),
+        ).unwrap().into_read();
+
+        // A child path should match_allow on a base (parent) allow descriptor
+        prop_assert!(child_query.matches_allow(&base_desc),
+          "child {} should match_allow base {}", child_path, base_path);
+
+        // A base path should be stronger_than_deny of a child deny
+        prop_assert!(base_query.stronger_than_deny(&child_allow_desc),
+          "base {} should be stronger_than_deny of child {}", base_path, child_path);
+
+        // If child matches allow on base, then child matches deny on base too
+        // (because matches_deny delegates to same containment check for paths)
+        prop_assert!(child_query.matches_deny(&base_desc),
+          "matches_deny should agree with matches_allow for paths");
+
+        // overlaps_deny is same as stronger_than_deny for paths
+        prop_assert_eq!(
+          base_query.overlaps_deny(&child_allow_desc),
+          base_query.stronger_than_deny(&child_allow_desc),
+          "overlaps_deny should agree with stronger_than_deny for paths"
+        );
+      }
+    }
+
+    // -- 4. Child permission escalation --
+    // Child processes should never obtain permissions that the parent's
+    // check() method would deny.
+
+    proptest! {
+      #[test]
+      fn child_net_permissions_cannot_escalate(
+        parent_allow in prop::collection::vec(arb_net_descriptor(), 0..5),
+        parent_deny in prop::collection::vec(arb_net_descriptor(), 0..3),
+        child_request in prop::collection::vec(arb_net_descriptor(), 0..5),
+        query in arb_net_descriptor(),
+      ) {
+        set_prompter(Box::new(TestPrompter));
+        let prompt_value = PERMISSION_PROMPT_STUB_VALUE_SETTER.lock();
+        prompt_value.set(false);
+
+        // Build parent permissions
+        let mut parent = UnaryPermission::<NetDescriptor>::default();
+        for d in &parent_allow {
+          parent.descriptors.insert(UnaryPermissionDesc::Granted(d.clone()));
+        }
+        for d in &parent_deny {
+          parent.descriptors.insert(UnaryPermissionDesc::FlagDenied(d.clone()));
+        }
+
+        // Try to create child permissions with the requested list
+        let child_strs: Vec<String> = child_request.iter().map(|d| d.to_string()).collect();
+        let child_result = parent.create_child_permissions(
+          ChildUnaryPermissionArg::GrantedList(child_strs),
+          |s| NetDescriptor::parse_for_list(s).map(Some),
+        );
+
+        if let Ok(child) = child_result {
+          // For any query: if parent would deny, child must also deny
+          let parent_state = parent.query_desc(
+            Some(&query),
+            AllowPartial::TreatAsDenied,
+          );
+          let child_state = child.query_desc(
+            Some(&query),
+            AllowPartial::TreatAsDenied,
+          );
+
+          if parent_state == PermissionState::Denied {
+            prop_assert_ne!(child_state, PermissionState::Granted,
+              "child escalated! query={:?}, parent_state={:?}, child_state={:?}",
+              query, parent_state, child_state);
+          }
+        }
+        // If child creation failed (Escalation), that's the correct behavior
+      }
+
+      #[test]
+      fn child_inherit_preserves_denials(
+        parent_allow in prop::collection::vec(arb_net_descriptor(), 0..3),
+        parent_deny in prop::collection::vec(arb_net_descriptor(), 1..3),
+        query in arb_net_descriptor(),
+      ) {
+        set_prompter(Box::new(TestPrompter));
+
+        let mut parent = UnaryPermission::<NetDescriptor>::default();
+        for d in &parent_allow {
+          parent.descriptors.insert(UnaryPermissionDesc::Granted(d.clone()));
+        }
+        for d in &parent_deny {
+          parent.descriptors.insert(UnaryPermissionDesc::FlagDenied(d.clone()));
+        }
+
+        let child = parent.create_child_permissions(
+          ChildUnaryPermissionArg::Inherit,
+          |s: &str| NetDescriptor::parse_for_list(s).map(Some),
+        ).unwrap();
+
+        // Inherited child should have identical query results
+        let parent_state = parent.query_desc(Some(&query), AllowPartial::TreatAsDenied);
+        let child_state = child.query_desc(Some(&query), AllowPartial::TreatAsDenied);
+        prop_assert_eq!(parent_state, child_state,
+          "inherited child diverged from parent: query={:?}", query);
+      }
+    }
+
+    // -- 5. Net descriptor round-trip --
+    // Parsing display_name() back through parse should yield an equivalent
+    // descriptor.
+
+    proptest! {
+      #[test]
+      fn net_descriptor_display_roundtrip(
+        desc in arb_net_descriptor(),
+      ) {
+        let display = desc.display_name().to_string();
+        // parse_for_list supports wildcards (superset of parse_for_query)
+        if let Ok(parsed) = NetDescriptor::parse_for_list(&display) {
+          prop_assert_eq!(&parsed, &desc,
+            "round-trip failed: display={:?}, original={:?}, parsed={:?}",
+            display, desc, parsed);
+        }
+        // If parsing fails, skip (some edge cases with subnet display may differ)
+      }
+
+      // Also test with port
+      #[test]
+      fn net_descriptor_display_roundtrip_with_port(
+        host in arb_host(),
+        port in 1u32..=65535,
+      ) {
+        let desc = NetDescriptor(host, Some(port));
+        let display = desc.display_name().to_string();
+        if let Ok(parsed) = NetDescriptor::parse_for_list(&display) {
+          prop_assert_eq!(&parsed, &desc,
+            "round-trip with port failed: display={:?}", display);
+        }
+      }
+    }
+
+    // -- 6. Global flag_denied overrides granted descriptors --
+
+    proptest! {
+      #[test]
+      fn global_deny_overrides_all_grants_net(
+        allow_descs in prop::collection::vec(arb_net_descriptor(), 1..5),
+        query in arb_net_descriptor(),
+      ) {
+        set_prompter(Box::new(TestPrompter));
+
+        let mut perm = UnaryPermission::<NetDescriptor> {
+          flag_denied_global: true,
+          ..Default::default()
+        };
+        for d in &allow_descs {
+          perm.descriptors.insert(UnaryPermissionDesc::Granted(d.clone()));
+        }
+
+        let state = perm.query_desc(Some(&query), AllowPartial::TreatAsDenied);
+        prop_assert_eq!(state, PermissionState::Denied,
+          "flag_denied_global should deny everything: query={:?}", query);
+
+        // Also check global query (None)
+        let state_global = perm.query_desc(None, AllowPartial::TreatAsDenied);
+        prop_assert_eq!(state_global, PermissionState::Denied,
+          "flag_denied_global should deny global query too");
+      }
+
+      #[test]
+      fn global_deny_overrides_granted_global_net(
+        query in arb_net_descriptor(),
+      ) {
+        set_prompter(Box::new(TestPrompter));
+
+        let perm = UnaryPermission::<NetDescriptor> {
+          granted_global: true,
+          flag_denied_global: true,
+          ..Default::default()
+        };
+
+        let state = perm.query_desc(Some(&query), AllowPartial::TreatAsDenied);
+        prop_assert_eq!(state, PermissionState::Denied,
+          "flag_denied_global should override granted_global: query={:?}", query);
+      }
+    }
+
+    // -- 7. Revoke consistency --
+    // After revoke_desc(), query_desc() should never return Granted for
+    // the revoked descriptor.
+
+    proptest! {
+      #[test]
+      fn revoke_prevents_granted_net(
+        allow_descs in prop::collection::vec(arb_net_descriptor(), 1..5),
+        revoke_idx in 0usize..5,
+      ) {
+        set_prompter(Box::new(TestPrompter));
+
+        let mut perm = UnaryPermission::<NetDescriptor>::default();
+        for d in &allow_descs {
+          perm.descriptors.insert(UnaryPermissionDesc::Granted(d.clone()));
+        }
+
+        let idx = revoke_idx % allow_descs.len();
+        let to_revoke = &allow_descs[idx];
+
+        perm.revoke_desc(Some(to_revoke));
+
+        // After revoking, the descriptor should not be Granted
+        let state = perm.query_desc(
+          Some(to_revoke),
+          AllowPartial::TreatAsDenied,
+        );
+        prop_assert_ne!(state, PermissionState::Granted,
+          "revoked descriptor still Granted: {:?}", to_revoke);
+      }
+
+      #[test]
+      fn revoke_global_clears_all_grants_net(
+        allow_descs in prop::collection::vec(arb_net_descriptor(), 1..5),
+        query in arb_net_descriptor(),
+      ) {
+        set_prompter(Box::new(TestPrompter));
+
+        let mut perm = UnaryPermission::<NetDescriptor> {
+          granted_global: true,
+          ..Default::default()
+        };
+        for d in &allow_descs {
+          perm.descriptors.insert(UnaryPermissionDesc::Granted(d.clone()));
+        }
+
+        // Revoke global
+        perm.revoke_desc(None);
+
+        prop_assert!(!perm.granted_global,
+          "granted_global should be false after global revoke");
+
+        // No descriptor should be Granted anymore (should be Prompt)
+        let state = perm.query_desc(Some(&query), AllowPartial::TreatAsDenied);
+        prop_assert_ne!(state, PermissionState::Granted,
+          "query still Granted after global revoke: {:?}", query);
+      }
+    }
+
+    // -- 8. Idempotent insert --
+    // Inserting the same descriptor twice should not change the vec length.
+
+    proptest! {
+      #[test]
+      fn idempotent_insert_net(
+        desc in arb_unary_perm_desc_net(),
+      ) {
+        let mut descriptors = UnaryPermissionDescriptors::<NetDescriptor>::default();
+        descriptors.insert(desc.clone());
+        let len_after_first = descriptors.inner.len();
+
+        descriptors.insert(desc.clone());
+        let len_after_second = descriptors.inner.len();
+
+        prop_assert_eq!(len_after_first, len_after_second,
+          "duplicate insert changed vec length: desc={:?}", desc);
+      }
+
+      #[test]
+      fn idempotent_insert_env(
+        desc in arb_unary_perm_desc_env(),
+      ) {
+        let mut descriptors = UnaryPermissionDescriptors::<EnvDescriptor>::default();
+        descriptors.insert(desc.clone());
+        let len_after_first = descriptors.inner.len();
+
+        descriptors.insert(desc.clone());
+        let len_after_second = descriptors.inner.len();
+
+        prop_assert_eq!(len_after_first, len_after_second,
+          "duplicate insert changed vec length: desc={:?}", desc);
+      }
+    }
+
+    // -- 9. Net matches_allow reflexivity --
+    // Any NetDescriptor should matches_allow itself.
+
+    proptest! {
+      #[test]
+      fn net_matches_allow_reflexive(
+        desc in arb_net_descriptor(),
+      ) {
+        prop_assert!(desc.matches_allow(&desc),
+          "descriptor should match its own allow: {:?}", desc);
+      }
+
+      #[test]
+      fn net_matches_deny_reflexive(
+        desc in arb_net_descriptor(),
+      ) {
+        prop_assert!(desc.matches_deny(&desc),
+          "descriptor should match its own deny: {:?}", desc);
+      }
+
+      #[test]
+      fn net_stronger_than_deny_reflexive(
+        desc in arb_net_descriptor(),
+      ) {
+        prop_assert!(desc.stronger_than_deny(&desc),
+          "descriptor should be stronger_than_deny of itself: {:?}", desc);
+      }
+    }
+
+    // -- 10. Child NotGranted has no grants --
+    // A child created with NotGranted should never return Granted.
+
+    proptest! {
+      #[test]
+      fn child_not_granted_denies_everything_net(
+        parent_allow in prop::collection::vec(arb_net_descriptor(), 1..5),
+        query in arb_net_descriptor(),
+      ) {
+        set_prompter(Box::new(TestPrompter));
+        let prompt_value = PERMISSION_PROMPT_STUB_VALUE_SETTER.lock();
+        prompt_value.set(false);
+
+        let mut parent = UnaryPermission::<NetDescriptor>::default();
+        for d in &parent_allow {
+          parent.descriptors.insert(UnaryPermissionDesc::Granted(d.clone()));
+        }
+
+        let child = parent.create_child_permissions(
+          ChildUnaryPermissionArg::NotGranted,
+          |s: &str| NetDescriptor::parse_for_list(s).map(Some),
+        ).unwrap();
+
+        let state = child.query_desc(Some(&query), AllowPartial::TreatAsDenied);
+        prop_assert_ne!(state, PermissionState::Granted,
+          "NotGranted child returned Granted: query={:?}", query);
+        prop_assert_ne!(state, PermissionState::GrantedPartial,
+          "NotGranted child returned GrantedPartial: query={:?}", query);
+      }
+
+      #[test]
+      fn child_not_granted_global_not_granted_net(
+        parent_allow in prop::collection::vec(arb_net_descriptor(), 0..3),
+      ) {
+        set_prompter(Box::new(TestPrompter));
+        let prompt_value = PERMISSION_PROMPT_STUB_VALUE_SETTER.lock();
+        prompt_value.set(false);
+
+        let mut parent = UnaryPermission::<NetDescriptor> {
+          granted_global: true,
+          ..Default::default()
+        };
+        for d in &parent_allow {
+          parent.descriptors.insert(UnaryPermissionDesc::Granted(d.clone()));
+        }
+
+        let child = parent.create_child_permissions(
+          ChildUnaryPermissionArg::NotGranted,
+          |s: &str| NetDescriptor::parse_for_list(s).map(Some),
+        ).unwrap();
+
+        prop_assert!(!child.granted_global,
+          "NotGranted child should not have granted_global");
+
+        let state = child.query_desc(None, AllowPartial::TreatAsDenied);
+        prop_assert_ne!(state, PermissionState::Granted,
+          "NotGranted child global query returned Granted");
+      }
+    }
+  }
 }
