@@ -42,4 +42,5 @@ windows-sys = { workspace = true, features = ["Win32_Storage_FileSystem"] }
 nix = { workspace = true, features = ["fs"] }
 
 [dev-dependencies]
+proptest = { workspace = true }
 sys_traits = { workspace = true, features = ["libc", "real", "winapi"] }
