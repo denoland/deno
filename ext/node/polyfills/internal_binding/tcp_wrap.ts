@@ -27,7 +27,8 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-import { TCP as NativeTCP } from "ext:core/ops";
+import { op_net_connect_tcp, TCP as NativeTCP } from "ext:core/ops";
+import { TcpConn } from "ext:deno_net/01_net.js";
 import { primordials } from "ext:core/mod.js";
 const { Error } = primordials;
 import { notImplemented } from "ext:deno_node/_utils.ts";
@@ -39,8 +40,9 @@ import {
 import {
   kArrayBufferOffset,
   kBytesWritten,
-  kLastWriteWasAsync,
   kReadBytesOrError,
+  kStreamBaseField,
+  kUseNativeWrap,
   LibuvStreamWrap,
   ShutdownWrap,
   streamBaseState,
@@ -110,6 +112,8 @@ export class TCP extends ConnectionWrap {
   // deno-lint-ignore no-explicit-any -- Native libuv TCP handle
   #native: any;
 
+  [kUseNativeWrap]: boolean = false;
+
   /**
    * Creates a new TCP class instance.
    * @param type The socket type.
@@ -168,7 +172,11 @@ export class TCP extends ConnectionWrap {
    * @return An error status code.
    */
   open(fd: number): number {
-    return this.#native.open(fd);
+    const err = this.#native.open(fd);
+    if (err === 0) {
+      this[kUseNativeWrap] = true;
+    }
+    return err;
   }
 
   /**
@@ -180,6 +188,7 @@ export class TCP extends ConnectionWrap {
   bind(address: string, port: number): number {
     this.#address = address;
     this.#port = port;
+    this[kUseNativeWrap] = true;
     return this.#native.bind(address, port);
   }
 
@@ -192,6 +201,7 @@ export class TCP extends ConnectionWrap {
   bind6(address: string, port: number, _flags: number): number {
     this.#address = address;
     this.#port = port;
+    this[kUseNativeWrap] = true;
     return this.#native.bind6(address, port);
   }
 
@@ -239,6 +249,7 @@ export class TCP extends ConnectionWrap {
 
       self.#connections++;
       const clientHandle = new TCP(socketType.SOCKET);
+      clientHandle[kUseNativeWrap] = true;
       self.#native.accept(clientHandle.#native);
       clientHandle.#native.setOwner();
 
@@ -253,6 +264,10 @@ export class TCP extends ConnectionWrap {
   }
 
   override readStart(): number {
+    if (!this[kUseNativeWrap] || !this.#native) {
+      return super.readStart();
+    }
+
     this.reading = true;
     // deno-lint-ignore no-this-alias
     const self = this;
@@ -281,6 +296,10 @@ export class TCP extends ConnectionWrap {
   }
 
   override readStop(): number {
+    if (!this[kUseNativeWrap] || !this.#native) {
+      return super.readStop();
+    }
+
     this.reading = false;
     return this.#native.readStop();
   }
@@ -289,9 +308,12 @@ export class TCP extends ConnectionWrap {
     req: WriteWrap<LibuvStreamWrap>,
     data: Uint8Array,
   ): number {
+    if (!this[kUseNativeWrap] || !this.#native) {
+      return super.writeBuffer(req, data);
+    }
+
     const ret = this.#native.writeBuffer(data);
     streamBaseState[kBytesWritten] = data.byteLength;
-    streamBaseState[kLastWriteWasAsync] = 1;
     this.bytesWritten += data.byteLength;
 
     // Simulate async completion like Node.js
@@ -311,6 +333,11 @@ export class TCP extends ConnectionWrap {
     chunks: Buffer[] | (string | Buffer)[],
     allBuffers: boolean,
   ): number {
+    if (!this[kUseNativeWrap]) {
+      return super.writev(req, chunks, allBuffers);
+    }
+
+    // For native path, concat all chunks and write as single buffer
     const count = allBuffers ? chunks.length : chunks.length >> 1;
     const buffers: Buffer[] = new Array(count);
 
@@ -334,7 +361,12 @@ export class TCP extends ConnectionWrap {
   }
 
   override shutdown(req: ShutdownWrap<LibuvStreamWrap>): number {
-    const ret = this.#native.shutdown();
+    if (!this[kUseNativeWrap]) {
+      return super.shutdown(req);
+    }
+
+    // Call uv_shutdown to send FIN to the remote side.
+    const ret = this.#native!.shutdown();
     // Signal async completion like Node.js - the FIN is queued
     // in libuv and will be sent asynchronously.
     queueMicrotask(() => {
@@ -349,11 +381,25 @@ export class TCP extends ConnectionWrap {
   }
 
   override ref() {
-    this.#native.ref();
+    if (this[kUseNativeWrap] && this.#native) {
+      this.#native.ref();
+      return;
+    }
+
+    if (this[kStreamBaseField]) {
+      this[kStreamBaseField].ref();
+    }
   }
 
   override unref() {
-    this.#native.unref();
+    if (this[kUseNativeWrap] && this.#native) {
+      this.#native.unref();
+      return;
+    }
+
+    if (this[kStreamBaseField]) {
+      this[kStreamBaseField].unref();
+    }
   }
 
   /**
@@ -362,14 +408,29 @@ export class TCP extends ConnectionWrap {
    * @return An error status code.
    */
   getsockname(sockname: Record<string, never> | AddressInfo): number {
-    const info = this.#native.getsockname();
-    if (info) {
-      sockname.address = info.address;
-      sockname.port = info.port;
-      sockname.family = info.family;
-      return 0;
+    if (this[kUseNativeWrap] && this.#native) {
+      const info = this.#native.getsockname();
+      if (info) {
+        sockname.address = info.address;
+        sockname.port = info.port;
+        sockname.family = info.family;
+        return 0;
+      }
+      return codeMap.get("EADDRNOTAVAIL")!;
     }
-    return codeMap.get("EADDRNOTAVAIL")!;
+
+    if (
+      typeof this.#address === "undefined" ||
+      typeof this.#port === "undefined"
+    ) {
+      return codeMap.get("EADDRNOTAVAIL")!;
+    }
+
+    sockname.address = this.#address;
+    sockname.port = this.#port;
+    sockname.family = getIPFamily(this.#address);
+
+    return 0;
   }
 
   /**
@@ -378,14 +439,29 @@ export class TCP extends ConnectionWrap {
    * @return An error status code.
    */
   getpeername(peername: Record<string, never> | AddressInfo): number {
-    const info = this.#native.getpeername();
-    if (info) {
-      peername.address = info.address;
-      peername.port = info.port;
-      peername.family = info.family;
-      return 0;
+    if (this[kUseNativeWrap] && this.#native) {
+      const info = this.#native.getpeername();
+      if (info) {
+        peername.address = info.address;
+        peername.port = info.port;
+        peername.family = info.family;
+        return 0;
+      }
+      return codeMap.get("EADDRNOTAVAIL")!;
     }
-    return codeMap.get("EADDRNOTAVAIL")!;
+
+    if (
+      typeof this.#remoteAddress === "undefined" ||
+      typeof this.#remotePort === "undefined"
+    ) {
+      return codeMap.get("EADDRNOTAVAIL")!;
+    }
+
+    peername.address = this.#remoteAddress;
+    peername.port = this.#remotePort;
+    peername.family = this.#remoteFamily;
+
+    return 0;
   }
 
   /**
@@ -393,7 +469,14 @@ export class TCP extends ConnectionWrap {
    * @return An error status code.
    */
   setNoDelay(noDelay: boolean): number {
-    return this.#native.setNoDelay(noDelay);
+    if (this[kUseNativeWrap]) {
+      return this.#native.setNoDelay(noDelay);
+    }
+
+    if (this[kStreamBaseField] && "setNoDelay" in this[kStreamBaseField]) {
+      this[kStreamBaseField].setNoDelay(noDelay);
+    }
+    return 0;
   }
 
   /**
@@ -426,6 +509,8 @@ export class TCP extends ConnectionWrap {
     const self = this;
     this.#native.onconnect = function (status: number) {
       if (status === 0) {
+        self[kUseNativeWrap] = true;
+
         // Populate local address from the native handle
         const sockname = self.#native.getsockname();
         if (sockname) {
@@ -480,9 +565,42 @@ export class TCP extends ConnectionWrap {
     this.#remotePort = port;
     this.#remoteFamily = getIPFamily(address);
 
-    // Always use native libuv handle for connect.
-    this.#nativeConnect(req, address, port);
-    return 0;
+    if (this[kUseNativeWrap]) {
+      this.#nativeConnect(req, address, port);
+      return 0;
+    } else {
+      this.#remoteAddress = address;
+      this.#remotePort = port;
+      this.#remoteFamily = getIPFamily(address);
+
+      op_net_connect_tcp(
+        { hostname: address ?? "127.0.0.1", port },
+        this.#netPermToken,
+      ).then(
+        ({ 0: rid, 1: localAddr, 2: remoteAddr }) => {
+          // Incorrect / backwards, but correcting the local address and port with
+          // what was actually used given we can't actually specify these in Deno.
+          this.#address = req.localAddress = localAddr.hostname;
+          this.#port = req.localPort = localAddr.port;
+          this[kStreamBaseField] = new TcpConn(rid, remoteAddr, localAddr);
+
+          try {
+            this.afterConnect(req, 0);
+          } catch {
+            // swallow callback errors.
+          }
+        },
+        () => {
+          try {
+            // TODO(cmorten): correct mapping of connection error to status code.
+            this.afterConnect(req, codeMap.get("ECONNREFUSED")!);
+          } catch {
+            // swallow callback errors.
+          }
+        },
+      );
+      return 0;
+    }
   }
 
   /** Handle server closure. */

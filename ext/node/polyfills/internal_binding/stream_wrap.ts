@@ -27,39 +27,90 @@
 // - https://github.com/nodejs/node/blob/master/src/stream_wrap.h
 // - https://github.com/nodejs/node/blob/master/src/stream_wrap.cc
 
-import { primordials } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
+const { internalRidSymbol } = core;
 const {
+  Array,
+  MapPrototypeGet,
   ObjectPrototypeIsPrototypeOf,
+  PromiseResolve,
+  PromisePrototypeThen,
+  Symbol,
+  TypedArrayPrototypeSlice,
   Int32Array,
+  Uint8Array,
   Uint8ArrayPrototype,
 } = primordials;
+import { op_can_write_vectored, op_raw_write_vectored } from "ext:core/ops";
 
 import { TextEncoder } from "ext:deno_web/08_text_encoding.js";
 import { Buffer } from "node:buffer";
 import { notImplemented } from "ext:deno_node/_utils.ts";
 import { HandleWrap } from "ext:deno_node/internal_binding/handle_wrap.ts";
+import { ownerSymbol } from "ext:deno_node/internal/async_hooks.ts";
 import {
   AsyncWrap,
   providerType,
 } from "ext:deno_node/internal_binding/async_wrap.ts";
+import { codeMap } from "ext:deno_node/internal_binding/uv.ts";
 import { NodeTypeError } from "ext:deno_node/internal/errors.ts";
 
-import { op_stream_base_register_state } from "ext:core/ops";
+export const kUseNativeWrap = Symbol("useNativeWrap");
 
-/** The stream base state array shared with Rust via op_stream_base_register_state. */
+export interface Reader {
+  read(p: Uint8Array): Promise<number | null>;
+}
+
+export interface Writer {
+  write(p: Uint8Array): Promise<number>;
+}
+
+export interface Closer {
+  close(): void;
+}
+
+export interface Ref {
+  ref(): void;
+  unref(): void;
+}
+
+export interface StreamBase extends Reader, Writer, Closer, Ref {}
+
+const enum StreamBaseStateFields {
+  kReadBytesOrError,
+  kArrayBufferOffset,
+  kBytesWritten,
+  kLastWriteWasAsync,
+  kNumStreamBaseStateFields,
+}
+
+export const kReadBytesOrError = StreamBaseStateFields.kReadBytesOrError;
+export const kArrayBufferOffset = StreamBaseStateFields.kArrayBufferOffset;
+export const kBytesWritten = StreamBaseStateFields.kBytesWritten;
+export const kLastWriteWasAsync = StreamBaseStateFields.kLastWriteWasAsync;
+export const kNumStreamBaseStateFields =
+  StreamBaseStateFields.kNumStreamBaseStateFields;
+
 export const streamBaseState = new Int32Array(5);
 
-export const kReadBytesOrError = 0;
-export const kArrayBufferOffset = 1;
-export const kBytesWritten = 2;
-export const kLastWriteWasAsync = 3;
-export const kNumStreamBaseStateFields = 4;
+// This is Deno, it always will be async.
+streamBaseState[kLastWriteWasAsync] = 1;
 
-op_stream_base_register_state(streamBaseState);
+export class WriteWrap<H extends HandleWrap> extends AsyncWrap {
+  handle!: H;
+  oncomplete!: (status: number) => void;
+  async!: boolean;
+  bytes!: number;
+  buffer!: unknown;
+  callback!: unknown;
+  _chunks!: unknown[];
 
-export class ShutdownWrap<
-  H extends HandleWrap = HandleWrap,
-> extends AsyncWrap {
+  constructor() {
+    super(providerType.WRITEWRAP);
+  }
+}
+
+export class ShutdownWrap<H extends HandleWrap> extends AsyncWrap {
   handle!: H;
   oncomplete!: (status: number) => void;
   callback!: () => void;
@@ -69,48 +120,66 @@ export class ShutdownWrap<
   }
 }
 
+export const kStreamBaseField = Symbol("kStreamBaseField");
+
+const SUGGESTED_SIZE = 64 * 1024;
+
 export class LibuvStreamWrap extends HandleWrap {
+  [kStreamBaseField]?: Reader & Writer & Closer & Ref;
+
   reading!: boolean;
+  #reading = false;
   destroyed = false;
   writeQueueSize = 0;
   bytesRead = 0;
   bytesWritten = 0;
+  #buf = new Uint8Array(SUGGESTED_SIZE);
 
-  onread!:
-    | ((_arrayBuffer: Uint8Array, _nread: number) => Uint8Array | undefined)
-    | undefined;
-
-  cancelHandle?: number;
-  upgrading?: Promise<void>;
+  onread!: (_arrayBuffer: Uint8Array, _nread: number) => Uint8Array | undefined;
 
   constructor(
     provider: providerType,
-    _rid?: number,
+    stream?: Reader & Writer & Closer & Ref,
   ) {
-    super(provider, _rid);
+    super(provider, stream?.[internalRidSymbol]);
+    this.#attachToObject(stream);
   }
 
   /**
    * Start the reading of the stream.
-   * Subclasses (TCP, Pipe) override this to use native handles.
    * @return An error status code.
    */
   readStart(): number {
-    notImplemented("LibuvStreamWrap.prototype.readStart");
+    if (!this.#reading) {
+      this.#reading = true;
+      this.#read();
+    }
+
+    return 0;
   }
 
   /**
    * Stop the reading of the stream.
-   * Subclasses (TCP, Pipe) override this to use native handles.
    * @return An error status code.
    */
   readStop(): number {
-    notImplemented("LibuvStreamWrap.prototype.readStop");
+    this.#reading = false;
+    if (this.cancelHandle) {
+      core.close(this.cancelHandle);
+      this.cancelHandle = undefined;
+    }
+
+    return 0;
   }
 
+  // TODO(user): This should dispatch to uv_shutdown on the native handle
+  // (like Node's C++ StreamBase::Shutdown does), instead of calling _onClose
+  // which fully closes the handle. Currently TCP and Pipe override this to
+  // call their native shutdown. Once all stream types have native handles,
+  // this base implementation should be replaced with a generic uv_shutdown
+  // dispatch.
   /**
    * Shutdown the stream.
-   * Subclasses (TCP, Pipe) override this to use native handles.
    * @param req A shutdown request wrapper.
    * @return An error status code.
    */
@@ -131,20 +200,17 @@ export class LibuvStreamWrap extends HandleWrap {
    * @return An error status code.
    */
   useUserBuffer(_userBuf: unknown): number {
+    // TODO(cmorten)
     notImplemented("LibuvStreamWrap.prototype.useUserBuffer");
   }
 
   /**
    * Write a buffer to the stream.
-   * Subclasses (TCP, Pipe) override this to use native handles.
    * @param req A write request wrapper.
    * @param data The Uint8Array buffer to write to the stream.
    * @return An error status code.
    */
-  writeBuffer(
-    _req: WriteWrap<LibuvStreamWrap>,
-    data: Uint8Array,
-  ): number {
+  writeBuffer(req: WriteWrap<LibuvStreamWrap>, data: Uint8Array): number {
     if (!ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, data)) {
       throw new NodeTypeError(
         "ERR_INVALID_ARG_TYPE",
@@ -152,23 +218,86 @@ export class LibuvStreamWrap extends HandleWrap {
       );
     }
 
-    notImplemented("LibuvStreamWrap.prototype.writeBuffer");
+    // Mark as async so afterWriteDispatched does not fire the callback
+    // synchronously. The Rust write_buffer path sets this on the shared
+    // streamBaseState array (0 for sync, 1 for async), but the JS #write
+    // path is always async. Without this, a preceding Rust sync write
+    // leaves kLastWriteWasAsync=0, causing a double callback.
+    streamBaseState[kLastWriteWasAsync] = 1;
+
+    this.#write(req, data);
+
+    return 0;
   }
 
   /**
    * Write multiple chunks at once.
-   * Subclasses (TCP, Pipe) override this to use native handles.
    * @param req A write request wrapper.
    * @param chunks
    * @param allBuffers
    * @return An error status code.
    */
   writev(
-    _req: WriteWrap<LibuvStreamWrap>,
-    _chunks: Buffer[] | (string | Buffer)[],
-    _allBuffers: boolean,
+    req: WriteWrap<LibuvStreamWrap>,
+    chunks: Buffer[] | (string | Buffer)[],
+    allBuffers: boolean,
   ): number {
-    notImplemented("LibuvStreamWrap.prototype.writev");
+    const supportsWritev = this.provider === providerType.TCPSERVERWRAP;
+    const rid = this[kStreamBaseField]![internalRidSymbol];
+    // Fast case optimization: two chunks, and all buffers.
+    if (
+      chunks.length === 2 &&
+      allBuffers &&
+      supportsWritev &&
+      op_can_write_vectored(rid)
+    ) {
+      // String chunks.
+      if (typeof chunks[0] === "string") chunks[0] = Buffer.from(chunks[0]);
+      if (typeof chunks[1] === "string") chunks[1] = Buffer.from(chunks[1]);
+
+      streamBaseState[kLastWriteWasAsync] = 1;
+      PromisePrototypeThen(
+        op_raw_write_vectored(rid, chunks[0], chunks[1]),
+        (nwritten) => {
+          try {
+            req.oncomplete(0);
+          } catch {
+            // swallow callback errors.
+          }
+
+          streamBaseState[kBytesWritten] = nwritten;
+          this.bytesWritten += nwritten;
+        },
+      );
+
+      return 0;
+    }
+
+    const count = allBuffers ? chunks.length : chunks.length >> 1;
+    const buffers: Buffer[] = new Array(count);
+
+    if (!allBuffers) {
+      for (let i = 0; i < count; i++) {
+        const chunk = chunks[i * 2];
+
+        if (Buffer.isBuffer(chunk)) {
+          buffers[i] = chunk;
+        }
+
+        // String chunk
+        const encoding: string = chunks[i * 2 + 1] as string;
+        buffers[i] = Buffer.from(chunk as string, encoding);
+      }
+    } else {
+      for (let i = 0; i < count; i++) {
+        buffers[i] = chunks[i] as Buffer;
+      }
+    }
+
+    // Ignoring primordial lint here since the static method `concat` is invoked
+    // via the Node.js `Buffer` class instead of a JS builtin.
+    // deno-lint-ignore prefer-primordials
+    return this.writeBuffer(req, Buffer.concat(buffers));
   }
 
   /**
@@ -177,6 +306,7 @@ export class LibuvStreamWrap extends HandleWrap {
    */
   writeAsciiString(req: WriteWrap<LibuvStreamWrap>, data: string): number {
     const buffer = new TextEncoder().encode(data);
+
     return this.writeBuffer(req, buffer);
   }
 
@@ -186,6 +316,7 @@ export class LibuvStreamWrap extends HandleWrap {
    */
   writeUtf8String(req: WriteWrap<LibuvStreamWrap>, data: string): number {
     const buffer = new TextEncoder().encode(data);
+
     return this.writeBuffer(req, buffer);
   }
 
@@ -207,56 +338,175 @@ export class LibuvStreamWrap extends HandleWrap {
   }
 
   override _onClose(): number {
-    return 0;
+    let status = 0;
+    this.#reading = false;
+
+    // Cancel any pending read before closing the stream.
+    if (this.cancelHandle) {
+      core.close(this.cancelHandle);
+      this.cancelHandle = undefined;
+    }
+
+    try {
+      this[kStreamBaseField]?.close();
+    } catch {
+      status = MapPrototypeGet(codeMap, "ENOTCONN")!;
+    }
+
+    return status;
   }
-}
 
-export class WriteWrap<
-  H extends LibuvStreamWrap = LibuvStreamWrap,
-> extends AsyncWrap {
-  handle!: H;
-  oncomplete!: (status: number) => void;
-  async!: boolean;
-  bytes!: number;
-  buffer!: unknown;
-  callback!: unknown;
-  _chunks!: unknown;
-
-  constructor() {
-    super(providerType.WRITEWRAP);
+  /**
+   * Attaches the class to the underlying stream.
+   * @param stream The stream to attach to.
+   */
+  #attachToObject(stream?: Reader & Writer & Closer & Ref) {
+    this[kStreamBaseField] = stream;
   }
-}
 
-export function afterWriteDispatched(
-  req: WriteWrap<LibuvStreamWrap>,
-  _handle: LibuvStreamWrap,
-  // deno-lint-ignore no-explicit-any
-  cb: any,
-) {
-  req.async = streamBaseState[kLastWriteWasAsync] !== 0;
-  if (!req.async) {
-    cb(req);
+  /** Internal method for reading from the attached stream. */
+  async #read() {
+    // Queue the read operation and allow TLS upgrades to complete.
+    //
+    // This is done to ensure that the resource is not locked up by
+    // op_read.
+    await PromiseResolve();
+
+    let buf = this.#buf;
+
+    let nread: number | null;
+
+    if (this.upgrading) {
+      // Starting an upgrade, stop reading. Upgrading will resume reading.
+      this.readStop();
+      return;
+    }
+
+    const ridBefore = this[kStreamBaseField]![internalRidSymbol];
+    try {
+      nread = await this[kStreamBaseField]!.read(buf);
+    } catch (e) {
+      // Try to read again if the underlying stream resource
+      // changed. This can happen during TLS upgrades (eg. STARTTLS)
+      if (ridBefore != this[kStreamBaseField]![internalRidSymbol]) {
+        return this.#read();
+      }
+
+      if (e.message === "cancelled") return null;
+
+      if (
+        ObjectPrototypeIsPrototypeOf(Deno.errors.Interrupted.prototype, e) ||
+        ObjectPrototypeIsPrototypeOf(Deno.errors.BadResource.prototype, e) ||
+        ObjectPrototypeIsPrototypeOf(Deno.errors.UnexpectedEof.prototype, e)
+      ) {
+        nread = MapPrototypeGet(codeMap, "EOF")!;
+      } else if (
+        ObjectPrototypeIsPrototypeOf(
+          Deno.errors.ConnectionReset.prototype,
+          e,
+        ) ||
+        ObjectPrototypeIsPrototypeOf(Deno.errors.ConnectionAborted.prototype, e)
+      ) {
+        nread = MapPrototypeGet(codeMap, "ECONNRESET")!;
+      } else {
+        this[ownerSymbol].destroy(e);
+        return;
+      }
+    }
+
+    nread ??= MapPrototypeGet(codeMap, "EOF")!;
+
+    streamBaseState[kReadBytesOrError] = nread;
+
+    if (nread > 0) {
+      this.bytesRead += nread;
+    }
+
+    buf = TypedArrayPrototypeSlice(buf, 0, nread);
+
+    streamBaseState[kArrayBufferOffset] = 0;
+
+    try {
+      this.onread!(buf, nread);
+    } catch {
+      // swallow callback errors.
+    }
+
+    if (nread >= 0 && this.#reading) {
+      this.#read();
+    }
   }
-}
 
-export function writevGeneric(
-  // deno-lint-ignore no-explicit-any
-  _owner: any,
-  // deno-lint-ignore no-explicit-any
-  _data: any,
-  // deno-lint-ignore no-explicit-any
-  _cb: any,
-) {
-  notImplemented("writevGeneric");
-}
+  /**
+   * Internal method for writing to the attached stream.
+   * @param req A write request wrapper.
+   * @param data The Uint8Array buffer to write to the stream.
+   */
+  async #write(req: WriteWrap<LibuvStreamWrap>, data: Uint8Array) {
+    const { byteLength } = data;
 
-export function writeGeneric(
-  // deno-lint-ignore no-explicit-any
-  _owner: any,
-  // deno-lint-ignore no-explicit-any
-  _data: any,
-  // deno-lint-ignore no-explicit-any
-  _cb: any,
-) {
-  notImplemented("writeGeneric");
+    const ridBefore = this[kStreamBaseField]![internalRidSymbol];
+
+    if (this.upgrading) {
+      // There is an upgrade in progress, queue the write request.
+      await this.upgrading;
+    }
+
+    let nwritten = 0;
+    try {
+      // TODO(crowlKats): duplicate from runtime/js/13_buffer.js
+      while (nwritten < data.length) {
+        nwritten += await this[kStreamBaseField]!.write(
+          data.subarray(nwritten),
+        );
+      }
+    } catch (e) {
+      // Try to read again if the underlying stream resource
+      // changed. This can happen during TLS upgrades (eg. STARTTLS)
+      if (ridBefore != this[kStreamBaseField]![internalRidSymbol]) {
+        return this.#write(req, data.subarray(nwritten));
+      }
+
+      let status: number;
+      if (
+        ObjectPrototypeIsPrototypeOf(Deno.errors.BrokenPipe.prototype, e)
+      ) {
+        status = MapPrototypeGet(codeMap, "EPIPE")!;
+      } else if (
+        ObjectPrototypeIsPrototypeOf(Deno.errors.BadResource.prototype, e)
+      ) {
+        status = MapPrototypeGet(codeMap, "EBADF")!;
+      } else {
+        status = MapPrototypeGet(codeMap, "UNKNOWN")!;
+      }
+
+      // Only fire oncomplete if afterWriteDispatched didn't already
+      // handle completion synchronously (req.async is set by
+      // afterWriteDispatched based on streamBaseState[kLastWriteWasAsync]).
+      if (req.async) {
+        try {
+          req.oncomplete(status);
+        } catch {
+          // swallow callback errors.
+        }
+      }
+
+      return;
+    }
+
+    streamBaseState[kBytesWritten] = byteLength;
+    this.bytesWritten += byteLength;
+
+    // Only fire oncomplete if afterWriteDispatched didn't already
+    // handle completion synchronously.
+    if (req.async) {
+      try {
+        req.oncomplete(0);
+      } catch {
+        // swallow callback errors.
+      }
+    }
+
+    return;
+  }
 }

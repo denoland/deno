@@ -20,7 +20,7 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-// Ported from Node.js lib/_http_common.js
+// Matches Node.js lib/_http_common.js
 
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials no-explicit-any no-this-alias
@@ -30,7 +30,6 @@ const {
   MathMin,
   Symbol,
 } = primordials;
-
 import {
   allMethods,
   HTTPParser,
@@ -295,9 +294,6 @@ export {
   isLenient,
   kIncomingMessage,
   kOnBody,
-  kOnHeaders,
-  kOnHeadersComplete,
-  kOnMessageComplete,
   kSkipPendingData,
   methods,
   parsers,

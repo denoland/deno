@@ -45,6 +45,7 @@ import {
 } from "ext:deno_node/internal/errors.ts";
 import { validateString } from "ext:deno_node/internal/validators.mjs";
 import { isUint8Array } from "ext:deno_node/internal/util/types.ts";
+// import { kStreamBaseField } from "ext:deno_node/internal_binding/stream_wrap.ts";
 
 import { debuglog } from "ext:deno_node/internal/util/debuglog.ts";
 let debug = debuglog("http", (fn) => {
@@ -388,22 +389,6 @@ Object.defineProperties(
         msg._implicitHeader();
       }
 
-      if (msg.chunkedEncoding) {
-        // Chunked encoding: wrap data in chunk frame
-        // Format: hex-length\r\ndata\r\n
-        len ??= typeof chunk === "string"
-          ? Buffer.byteLength(chunk, encoding)
-          : chunk.byteLength;
-        if (len > 0) {
-          msg._send(len.toString(16) + "\r\n", "latin1", null);
-          msg._send(chunk, encoding, null);
-          return msg._send("\r\n", "latin1", callback);
-        }
-        // Zero-length chunks are skipped (not the terminating chunk)
-        if (typeof callback === "function") callback();
-        return true;
-      }
-
       return msg._send(chunk, encoding, callback);
     },
 
@@ -413,63 +398,9 @@ Object.defineProperties(
       notImplemented("OutgoingMessage.addTrailers");
     },
 
-    // Matches Node.js OutgoingMessage.end()
     // deno-lint-ignore no-explicit-any
-    end(chunk: any, encoding: any, callback: any) {
-      if (typeof chunk === "function") {
-        callback = chunk;
-        chunk = null;
-        encoding = null;
-      } else if (typeof encoding === "function") {
-        callback = encoding;
-        encoding = null;
-      }
-
-      if (chunk) {
-        if (this.finished) {
-          if (typeof callback === "function") callback();
-          return this;
-        }
-        this.write(chunk, encoding);
-      } else if (this.finished) {
-        if (typeof callback === "function") {
-          if (!this.writableFinished) {
-            this.once("finish", callback);
-          } else {
-            callback();
-          }
-        }
-        return this;
-      } else if (!this._header) {
-        this._contentLength = 0;
-        this._implicitHeader();
-      }
-
-      if (typeof callback === "function") {
-        this.once("finish", callback);
-      }
-
-      const onFinish = () => {
-        this.finished = true;
-        this.emit("prefinish");
-        this.emit("finish");
-      };
-
-      if (this._hasBody && this.chunkedEncoding) {
-        this._send(
-          "0\r\n" + (this._trailer || "") + "\r\n",
-          "latin1",
-          onFinish,
-        );
-      } else if (!this._headerSent || this.writableLength || chunk) {
-        this._send("", "latin1", onFinish);
-      } else {
-        // deno-lint-ignore no-explicit-any
-        (globalThis as any).process?.nextTick?.(onFinish) ??
-          setTimeout(onFinish, 0);
-      }
-
-      return this;
+    end(_chunk: any, _encoding: any, _callback: any) {
+      notImplemented("OutgoingMessage.end");
     },
 
     flushHeaders() {
@@ -569,27 +500,23 @@ Object.defineProperties(
       }
     },
 
-    // Matches Node.js OutgoingMessage._send()
     // deno-lint-ignore no-explicit-any
     _send(data: any, encoding?: string | null, callback?: () => void) {
-      // Prepend the header on first write
-      if (!this._headerSent && this._header !== null) {
-        if (
-          typeof data === "string" &&
-          (encoding === "utf8" || encoding === "latin1" || !encoding)
-        ) {
-          data = this._header + data;
-        } else {
-          const header = this._header;
-          this.outputData.unshift({
-            data: header,
-            encoding: "latin1",
-            callback: null,
-          });
+      // if socket is ready, write the data after headers are written.
+      // if socket is not ready, buffer data in outputbuffer.
+      if (
+        this.socket && !this.socket.connecting && this.outputData.length === 0
+      ) {
+        if (!this._headerSent) {
+          this._writeHeader();
+          this._headerSent = true;
         }
-        this._headerSent = true;
+
+        return this._writeRaw(data, encoding, callback);
+      } else {
+        this.outputData.push({ data, encoding, callback });
       }
-      return this._writeRaw(data, encoding, callback);
+      return false;
     },
 
     _writeHeader() {
@@ -598,45 +525,69 @@ Object.defineProperties(
 
     _flushBuffer() {
       const outputLength = this.outputData.length;
-      if (outputLength <= 0 || !this.socket) {
+      if (outputLength <= 0 || !this.socket || !this._bodyWriter) {
         return undefined;
       }
 
-      const conn = this.socket;
-      if (conn && conn.writable) {
-        this._flushOutput(conn);
+      const { data, encoding, callback } = this.outputData.shift();
+      this._flushingBuffer = true;
+      let ret;
+      try {
+        ret = this._writeRaw(data, encoding, callback);
+      } finally {
+        this._flushingBuffer = false;
       }
+      if (this.outputData.length > 0) {
+        this.once("drain", this._flushBuffer);
+      }
+
+      return ret;
     },
 
-    // Matches Node.js OutgoingMessage._writeRaw()
-    // Writes directly to the socket connection.
     _writeRaw(
       // deno-lint-ignore no-explicit-any
       data: any,
       encoding?: string | null,
       callback?: () => void,
     ) {
-      const conn = this.socket;
-      if (conn?.destroyed) {
-        return false;
+      if (typeof data === "string") {
+        data = Buffer.from(data, encoding);
       }
-
-      if (typeof encoding === "function") {
-        callback = encoding;
-        encoding = null;
+      if (data instanceof Buffer) {
+        data = new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
       }
-
-      if (conn && conn._httpMessage === this && conn.writable) {
-        // Flush pending output data first
-        if (this.outputData.length) {
-          this._flushOutput(conn);
+      if (data.byteLength > 0) {
+        // Save body data for potential retry on stale keepAlive connections.
+        // Streaming writes (e.g. pipeline) bypass outputData and go directly
+        // to _bodyWriter, so _outputDataForRetry can't capture them.
+        // Skip when _flushingBuffer is true to avoid double-counting data
+        // already captured in _outputDataForRetry.
+        if (this.reusedSocket && !this._flushingBuffer) {
+          if (!this._bodyDataForRetry) {
+            this._bodyDataForRetry = [];
+          }
+          this._bodyDataForRetry.push({
+            data: new Uint8Array(data),
+            encoding: null,
+            callback: null,
+          });
         }
-        // Write directly to socket
-        return conn.write(data, encoding, callback);
+        this._bodyWriter.ready.then(() => {
+          if (this._bodyWriter.desiredSize > 0) {
+            this._bodyWriter.write(data).then(() => {
+              callback?.();
+              this.emit("drain");
+            }).catch((e) => {
+              this._requestSendError = e;
+            });
+          }
+        });
+      } else {
+        // For empty writes, call callback and emit drain to maintain flow control
+        callback?.();
+        this.emit("drain");
       }
-      // Buffer if socket not ready
-      this.outputData.push({ data, encoding, callback });
-      return this.outputData.length < (this.writableHighWaterMark || 16384);
+      return false;
     },
 
     _renderHeaders() {
@@ -685,7 +636,7 @@ Object.defineProperties(
 
       // Date header
       if (this.sendDate && !state.date) {
-        state.header += "Date: " + utcDate() + "\r\n";
+        this.setHeader("Date", utcDate());
       }
 
       // Force the connection to close when the response is a 204 No Content or
@@ -727,7 +678,8 @@ Object.defineProperties(
             if (~~this._maxRequestsPerSocket > 0) {
               max = `, max=${this._maxRequestsPerSocket}`;
             }
-            state.header += `Keep-Alive: timeout=${timeoutSeconds}${max}\r\n`;
+            state.header +=
+              `Keep-Alive: timeout=${timeoutSeconds}${max}\r\n`;
           }
         } else {
           this._last = true;
@@ -746,9 +698,9 @@ Object.defineProperties(
           !this._removedContLen &&
           typeof this._contentLength === "number"
         ) {
-          state.header += "Content-Length: " + this._contentLength + "\r\n";
+          this.setHeader("Content-Length", this._contentLength);
         } else if (!this._removedTE) {
-          state.header += "Transfer-Encoding: chunked\r\n";
+          this.setHeader("Transfer-Encoding", "chunked");
           this.chunkedEncoding = true;
         } else {
           // We should only be able to get here if both Content-Length and
@@ -784,9 +736,7 @@ Object.defineProperties(
       // Ignore lint to keep the code as similar to Nodejs as possible
       // deno-lint-ignore no-this-alias
       const self = this;
-      const originalField = field;
       if (field.length < 4 || field.length > 17) {
-        state.header += originalField + ": " + value + "\r\n";
         return;
       }
       field = field.toLowerCase();
@@ -821,8 +771,6 @@ Object.defineProperties(
           self._defaultKeepAlive = false;
           break;
       }
-
-      state.header += originalField + ": " + value + "\r\n";
     },
 
     // deno-lint-ignore no-explicit-any
