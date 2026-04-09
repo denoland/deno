@@ -477,6 +477,12 @@ impl DiagnosticsByFolderRealIterator<'_> {
       graph_walker.add_root(root);
     }
 
+    // Add JSX runtime types to the roots so that TS can resolve
+    // the jsx-runtime module during type checking. Without this,
+    // TS 6.0+ emits TS2875 because it validates that the JSX
+    // runtime module actually exports the JSX namespace.
+    self.add_jsx_runtime_types(&mut graph_walker, check_group);
+
     let TscRoots {
       roots: root_names,
       missing_diagnostics,
@@ -613,6 +619,58 @@ impl DiagnosticsByFolderRealIterator<'_> {
       type_check_mode == TypeCheckMode::All && d.include_when_remote()
     } else {
       true
+    }
+  }
+
+  fn add_jsx_runtime_types(
+    &self,
+    graph_walker: &mut GraphWalker,
+    check_group: &CheckGroup,
+  ) {
+    // Check each root to see if it has a jsxImportSource config.
+    // If so, resolve the jsx-runtime types and add to roots.
+    let mut seen_jsx_sources = HashSet::new();
+    for root in &check_group.roots {
+      let Some(jsx_config) =
+        self.jsx_import_source_config_resolver.for_specifier(root)
+      else {
+        continue;
+      };
+      let Some(specifier) = jsx_config.specifier() else {
+        continue;
+      };
+      if !seen_jsx_sources.insert(specifier.to_string()) {
+        continue;
+      }
+      // Construct the jsx-runtime specifier (e.g., "npm:react/jsx-runtime")
+      let jsx_runtime_specifier = format!("{specifier}/jsx-runtime");
+      let Ok(npm_ref) = deno_semver::npm::NpmPackageReqReference::from_str(
+        &jsx_runtime_specifier,
+      ) else {
+        continue;
+      };
+      // Try to resolve the package folder and then the subpath
+      let Ok(pkg_folder) = self
+        .npm_resolver
+        .resolve_pkg_folder_from_deno_module_req(npm_ref.req(), root)
+      else {
+        continue;
+      };
+      let Ok(resolved) =
+        self.node_resolver.resolve_package_subpath_from_deno_module(
+          &pkg_folder,
+          npm_ref.sub_path(),
+          Some(root),
+          node_resolver::ResolutionMode::Import,
+          node_resolver::NodeResolutionKind::Types,
+        )
+      else {
+        continue;
+      };
+      if let Ok(url) = resolved.into_url() {
+        let mt = MediaType::from_specifier(&url);
+        graph_walker.roots.push((url, mt));
+      }
     }
   }
 
