@@ -7069,11 +7069,7 @@ mod tests {
     .unwrap();
     let mut perms = PermissionsContainer::new(Arc::new(parser), perms);
 
-    assert!(
-      perms
-        .check_net(&("127.0.0.1", Some(8080)), "api")
-        .is_err()
-    );
+    assert!(perms.check_net(&("127.0.0.1", Some(8080)), "api").is_err());
     assert!(
       perms
         .check_net(&("::ffff:127.0.0.1", Some(8080)), "api")
