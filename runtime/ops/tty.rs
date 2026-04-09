@@ -372,12 +372,13 @@ pub fn console_size(
 }
 
 /// Get the console size from stderr (fd 2) directly, without needing
-/// a `StdFile` handle.
+/// a StdFile handle.
 pub fn console_size_of_stderr() -> Result<ConsoleSize, std::io::Error> {
   #[cfg(windows)]
   {
     use winapi::um::processenv::GetStdHandle;
     use winapi::um::winbase;
+    // SAFETY: GetStdHandle with STD_ERROR_HANDLE always returns a valid handle.
     let handle = unsafe { GetStdHandle(winbase::STD_ERROR_HANDLE) };
     console_size_from_fd(handle)
   }

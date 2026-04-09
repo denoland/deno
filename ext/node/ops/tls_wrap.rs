@@ -39,7 +39,6 @@ use deno_core::ToJsBuffer;
 use deno_core::op2;
 use deno_core::uv_compat;
 use deno_core::uv_compat::UV_EBADF;
-use deno_core::uv_compat::UV_ECANCELED;
 use deno_core::uv_compat::UV_EOF;
 use deno_core::uv_compat::uv_buf_t;
 use deno_core::uv_compat::uv_stream_t;
@@ -237,7 +236,13 @@ unsafe fn extract_emit_ctx(ptr: *mut TLSWrapInner) -> Option<EmitCtx> {
   unsafe {
     let isolate_ptr = (*ptr).isolate?;
     let js_handle = (*ptr).js_handle.clone()?;
-    let loop_ptr = (*ptr).underlying.loop_ptr();
+    // Use cached_loop_ptr for Uv streams to avoid dereferencing
+    // a potentially dangling stream pointer.
+    let loop_ptr = if (*ptr).cached_loop_ptr.is_null() {
+      (*ptr).underlying.loop_ptr()
+    } else {
+      (*ptr).cached_loop_ptr
+    };
     Some(EmitCtx {
       isolate_ptr,
       js_handle,
@@ -587,13 +592,12 @@ impl UnderlyingStream {
 
   fn loop_ptr(&self) -> *mut uv_compat::uv_loop_t {
     match self {
-      UnderlyingStream::Uv { stream } => {
-        if stream.is_null() {
-          std::ptr::null_mut()
-        } else {
-          // SAFETY: stream is non-null and valid
-          unsafe { (**stream).loop_ }
-        }
+      // For Uv streams, the loop pointer is cached in TLSWrapInner
+      // to avoid dereferencing the stream pointer (which may be dangling).
+      // Callers must use TLSWrapInner.cached_loop_ptr instead.
+      UnderlyingStream::Uv { .. } => {
+        debug_assert!(false, "use TLSWrapInner.cached_loop_ptr for Uv streams");
+        std::ptr::null_mut()
       }
       UnderlyingStream::Js { loop_ptr, .. } => *loop_ptr,
       UnderlyingStream::None => std::ptr::null_mut(),
@@ -612,6 +616,10 @@ impl UnderlyingStream {
     }
   }
 
+  #[allow(
+    dead_code,
+    reason = "will be used when libuv_stream::TCP is replaced"
+  )]
   fn read_stop(&self) {
     match self {
       UnderlyingStream::Uv { .. } => {
@@ -678,6 +686,10 @@ impl UnderlyingStream {
     }
   }
 
+  #[allow(
+    dead_code,
+    reason = "may be used when libuv_stream::TCP is replaced by LibUvStreamWrap-based TCPWrap"
+  )]
   fn set_read_interceptor(&self, interceptor: Option<ReadInterceptor>) {
     if let UnderlyingStream::Uv { stream } = self {
       LibUvStreamWrap::set_read_interceptor_for_stream(*stream, interceptor);
@@ -761,7 +773,7 @@ struct TLSWrapInner {
   bytes_written: u64,
 
   /// Shared flag checked by `enc_write_cb` to detect teardown.
-  /// Set to `false` in `destroy_inner` before the TLSWrapInner memory
+  /// Set to `false` in `teardown` before the TLSWrapInner memory
   /// is freed, so in-flight write callbacks can avoid a dangling deref.
   alive: Rc<Cell<bool>>,
 
@@ -780,6 +792,10 @@ struct TLSWrapInner {
   pending_client_config: Option<Arc<rustls::ClientConfig>>,
   pending_server_name: Option<rustls::pki_types::ServerName<'static>>,
   pending_server_config: Option<Arc<rustls::ServerConfig>>,
+
+  /// Cached uv_loop pointer, set during attach(). Avoids dereferencing
+  /// the stream pointer (which may become dangling) to get the loop.
+  cached_loop_ptr: *mut uv_compat::uv_loop_t,
 }
 
 /// Convert a rustls error to a (message, code) pair that matches Node's
@@ -881,6 +897,7 @@ impl TLSWrapInner {
       pending_client_config: None,
       pending_server_name: None,
       pending_server_config: None,
+      cached_loop_ptr: std::ptr::null_mut(),
     }
   }
 
@@ -928,11 +945,16 @@ impl TLSWrapInner {
       return;
     }
 
-    // Write as much as possible, saving only the unwritten remainder.
+    // Feed cleartext to rustls in limited chunks. Writing everything
+    // at once would produce a huge encrypted buffer that saturates
+    // the TCP send buffer, causing deadlocks with echo patterns.
+    // This matches Node.js where SSL_write processes incrementally.
+    const MAX_CLEAR_IN: usize = 48 * 1024;
+    let feed_end = data.len().min(MAX_CLEAR_IN);
     let mut offset = 0;
     let mut write_error = false;
-    while offset < data.len() {
-      match conn.writer().write(&data[offset..]) {
+    while offset < feed_end {
+      match conn.writer().write(&data[offset..feed_end]) {
         Ok(0) => break,
         Ok(n) => offset += n,
         Err(e) => {
@@ -1096,7 +1118,7 @@ impl TLSWrapInner {
       return EncOutAction::None;
     }
 
-    if self.established && self.current_write_obj.is_some() {
+    if self.current_write_obj.is_some() {
       self.write_callback_scheduled = true;
     }
 
@@ -1302,6 +1324,15 @@ impl TLSWrapInner {
 /// Called when encrypted data arrives from the underlying stream.
 /// The underlying LibUvStreamWrap owns the native read lifecycle and forwards
 /// raw read events here when TLS is registered as its read interceptor.
+///
+/// Currently unused because libuv_stream::TCP's stream.data layout is
+/// incompatible with stream_wrap::StreamHandleData. Read interception is
+/// done at the JS layer instead. This will be used once libuv_stream::TCP
+/// is replaced by a LibUvStreamWrap-based TCPWrap.
+#[allow(
+  dead_code,
+  reason = "will be used when TCPWrap replaces libuv_stream::TCP"
+)]
 unsafe fn tls_read_interceptor_cb(
   tls_wrap: *mut std::ffi::c_void,
   _stream: *mut uv_stream_t,
@@ -1366,6 +1397,7 @@ unsafe fn tls_read_interceptor_cb(
   }
 }
 
+#[allow(dead_code, reason = "used by tls_read_interceptor_cb")]
 fn free_uv_buf(buf: *const uv_buf_t) {
   // SAFETY: buf was allocated by stream_wrap::on_uv_alloc with matching layout
   unsafe {
@@ -1399,12 +1431,10 @@ unsafe extern "C" fn enc_write_cb(req: *mut uv_write_t, status: i32) {
       (*ptr).enc_writes_in_flight =
         (*ptr).enc_writes_in_flight.saturating_sub(1);
       if (*ptr).enc_writes_in_flight == 0 && status >= 0 {
-        // Encrypted write completed successfully — try to push more
-        // pending cleartext through rustls now that buffer space is freed.
-        if (*ptr).pending_cleartext.is_some() {
-          (*ptr).clear_in();
-        }
-        // Flush any new encrypted output (from clear_in or leftover).
+        // Don't drain more cleartext here — that's done by cycle()
+        // which is triggered by incoming reads. This prevents TCP
+        // send buffer deadlocks: we let the event loop process reads
+        // (echo data from the peer) between encryption rounds.
         let enc_action = (*ptr).enc_out_collect();
         TLSWrapInner::do_enc_out_action(ptr, enc_action);
       } else if (*ptr).enc_writes_in_flight == 0
@@ -1444,8 +1474,6 @@ unsafe impl GarbageCollected for TLSWrap {
 
 impl Drop for TLSWrap {
   fn drop(&mut self) {
-    // Finalizer-safe teardown: no JS callbacks.
-    // For explicit destruction with JS callbacks, use destroy_inner().
     self.teardown();
   }
 }
@@ -1463,7 +1491,6 @@ impl TLSWrap {
     // the TLSWrapInner pointer after it is freed.
     inner.alive.set(false);
 
-    inner.underlying.set_read_interceptor(None);
     inner.tls_conn = None;
     inner.js_handle = None;
     inner.onread = None;
@@ -1482,6 +1509,29 @@ impl TLSWrap {
     let inner = unsafe { self.inner.as_mut() };
 
     if inner.tls_conn.is_none() {
+      if !inner.started {
+        // TLS connection not yet established (start() hasn't been called).
+        // Buffer the data so it's sent after the handshake completes.
+        inner.current_write_obj = Some(v8::Global::new(scope, req_wrap_obj));
+        inner.current_write_bytes = byte_length;
+        inner.write_callback_scheduled = true;
+        let existing = inner.pending_cleartext.get_or_insert_with(Vec::new);
+        existing.extend_from_slice(data);
+
+        let state_global = &op_state.borrow::<StreamBaseState>().array;
+        let state_array = v8::Local::new(scope, state_global);
+        state_array.set_index(
+          scope,
+          StreamBaseStateFields::BytesWritten as u32,
+          v8::Number::new(scope, byte_length as f64).into(),
+        );
+        state_array.set_index(
+          scope,
+          StreamBaseStateFields::LastWriteWasAsync as u32,
+          v8::Integer::new(scope, 1).into(),
+        );
+        return 0;
+      }
       inner.error = Some("Write after DestroySSL".to_string());
       return -1;
     }
@@ -1504,24 +1554,12 @@ impl TLSWrap {
     inner.current_write_obj = Some(v8::Global::new(scope, req_wrap_obj));
     inner.current_write_bytes = byte_length;
 
-    // Write as much cleartext into rustls as its buffer allows.
-    // Any remainder goes into pending_cleartext and will be drained
-    // as enc_write_cb fires and frees rustls buffer space.
-    let conn = inner.tls_conn.as_mut().unwrap();
-    let mut offset = 0;
-    while offset < data.len() {
-      match conn.writer().write(&data[offset..]) {
-        Ok(0) => break,
-        Ok(n) => offset += n,
-        Err(_) => break,
-      }
-    }
-    if offset < data.len() {
-      inner.pending_cleartext = Some(data[offset..].to_vec());
-    }
-
-    // Flush encrypted output to underlying stream
+    // Store all cleartext as pending, then drain a limited amount.
+    // clear_in() feeds up to 48KB to rustls per call, preventing
+    // the TCP send buffer from being overwhelmed.
+    inner.pending_cleartext = Some(data.to_vec());
     inner.in_dowrite = true;
+    inner.clear_in();
     let enc_action = inner.enc_out_collect();
     inner.in_dowrite = false;
     let inner_ptr = inner as *mut TLSWrapInner;
@@ -1542,32 +1580,6 @@ impl TLSWrap {
     );
 
     0
-  }
-
-  /// Explicit destruction with JS callbacks. Called from destroy_ssl().
-  /// Fires pending write callback with UV_ECANCELED before tearing down,
-  /// matching Node's TLSWrap::Destroy().
-  ///
-  /// Must NOT be called from Drop — use teardown() instead.
-  fn destroy_inner(&self) {
-    let inner = unsafe { self.inner.as_mut() };
-
-    if inner.tls_conn.is_none() {
-      return;
-    }
-    inner.write_callback_scheduled = true;
-
-    // invoke_queued may re-enter JS — use raw pointer to avoid holding
-    // a reference across the JS call.
-    let inner_ptr = inner as *mut TLSWrapInner;
-    unsafe {
-      if let Some((write_obj, ctx)) = prepare_invoke_queued(inner_ptr) {
-        do_invoke_queued(&ctx, write_obj, UV_ECANCELED);
-      }
-    }
-
-    // Shared finalizer-safe cleanup (no JS callbacks).
-    self.teardown();
   }
 }
 
@@ -1665,7 +1677,12 @@ impl TLSWrap {
     0
   }
 
-  /// Attach to an underlying stream and set up read interception.
+  /// Attach to an underlying stream for encrypted writes.
+  ///
+  /// Read interception is handled at the JS layer: the JS binding sets
+  /// `nativeHandle.onread` to forward encrypted data to `TLSWrap.receive()`.
+  /// This avoids conflicting with `libuv_stream::TCP`'s own `stream.data`
+  /// layout which is incompatible with `stream_wrap::StreamHandleData`.
   #[nofast]
   fn attach(
     &self,
@@ -1680,13 +1697,12 @@ impl TLSWrap {
     }
 
     let inner = unsafe { &mut *self.inner.as_mut_ptr() };
-    let inner_ptr = inner as *mut TLSWrapInner as *mut std::ffi::c_void;
     inner.underlying = UnderlyingStream::Uv { stream };
-    inner.underlying.set_read_interceptor(Some(ReadInterceptor {
-      ptr: inner_ptr,
-      callback: tls_read_interceptor_cb,
-    }));
     inner.isolate = Some(unsafe { scope.as_raw_isolate_ptr() });
+    // Cache the loop pointer now while the stream is still valid.
+    // This avoids dereferencing the stream pointer later when it may
+    // have been freed (e.g. after the TCP handle is closed/GC'd).
+    inner.cached_loop_ptr = unsafe { (*stream).loop_ };
 
     // Get stream_base_state from OpState
     let state_global = &op_state.borrow::<StreamBaseState>().array;
@@ -1790,17 +1806,12 @@ impl TLSWrap {
     // listeners first.
     inner.underlying.read_start();
 
-    // For client mode, initiate handshake by cycling.
-    if inner.kind == Kind::Client {
-      let result = inner.clear_out_process();
-      let enc_action = inner.enc_out_collect();
-      let inner_ptr = inner as *mut TLSWrapInner;
-      // SAFETY: inner_ptr valid; callbacks are reference-free
-      unsafe {
-        TLSWrapInner::dispatch_clear_out_callbacks(inner_ptr, &result);
-        TLSWrapInner::do_enc_out_action(inner_ptr, enc_action);
-      }
-    }
+    // Drive the state machine. For client mode this initiates the
+    // handshake (ClientHello). It also drains any pending_cleartext
+    // that was buffered before start() was called.
+    let inner_ptr = inner as *mut TLSWrapInner;
+    // SAFETY: inner_ptr points to heap-allocated TLSWrapInner via OwnedPtr
+    unsafe { TLSWrapInner::cycle(inner_ptr) };
 
     0
   }
@@ -1813,7 +1824,7 @@ impl TLSWrap {
     &self,
     #[this] this: v8::Global<v8::Object>,
     scope: &mut v8::PinScope,
-    op_state: &mut OpState,
+    _op_state: &mut OpState,
   ) -> i32 {
     let inner = unsafe { &mut *self.inner.as_mut_ptr() };
 
@@ -1830,18 +1841,14 @@ impl TLSWrap {
 
     inner.onread = Some(v8::Global::new(scope, onread));
 
-    // Start reading from underlying stream if not already
+    // For the Uv case, read interception is done at the JS layer via
+    // nativeHandle.onread -> TLSWrap.receive(). The JS layer calls
+    // nativeHandle.readStart() separately. We just need to cycle if
+    // there's already buffered data.
     let should_cycle;
     if inner.underlying.is_attached() && inner.started {
       should_cycle = !inner.enc_in.is_empty() || inner.has_buffered_cleartext;
-      if let UnderlyingStream::Uv { stream } = &inner.underlying {
-        let _ = op_state;
-        let start_result =
-          LibUvStreamWrap::read_start_intercepted_for_stream(*stream);
-        if start_result != 0 {
-          return start_result;
-        }
-      } else {
+      if !matches!(inner.underlying, UnderlyingStream::Uv { .. }) {
         inner.underlying.read_start();
       }
     } else {
@@ -1857,15 +1864,20 @@ impl TLSWrap {
     0
   }
 
-  /// ReadStop
+  /// ReadStop — for Uv streams, don't stop the native TCP reads.
+  /// The NativeTCP should continue reading encrypted data; we just
+  /// stop delivering decrypted plaintext to JS by clearing onread.
+  /// This avoids the stream.data incompatibility with libuv_stream::TCP.
+  ///
+  /// Known limitation: the TCP socket keeps receiving and buffering
+  /// encrypted data in the kernel even after read_stop(). For long-lived
+  /// connections with flow control this could accumulate data. This will
+  /// be properly fixed when libuv_stream::TCP is replaced by a
+  /// LibUvStreamWrap-based TCPWrap that has compatible stream.data.
   #[fast]
-  fn read_stop(&self, scope: &mut v8::PinScope) -> i32 {
-    let inner = unsafe { &*self.inner.as_mut_ptr() };
-    if let UnderlyingStream::Uv { stream } = &inner.underlying {
-      let _ = scope;
-      return LibUvStreamWrap::read_stop_for_stream(*stream);
-    }
-    inner.underlying.read_stop();
+  fn read_stop(&self, _scope: &mut v8::PinScope) -> i32 {
+    let inner = unsafe { &mut *self.inner.as_mut_ptr() };
+    inner.onread = None;
     0
   }
 
@@ -2087,13 +2099,11 @@ impl TLSWrap {
     0
   }
 
-  /// Destroy the SSL connection.
-  /// Matching Node's TLSWrap::Destroy(), this fires any pending write
-  /// callback with UV_ECANCELED before tearing down.
+  /// Destroy the SSL connection. Tears down the TLS state without
+  /// re-entering JS (no write-completion callbacks).
   #[nofast]
-  #[reentrant]
   fn destroy_ssl(&self) {
-    self.destroy_inner();
+    self.teardown();
   }
 
   /// Get the negotiated ALPN protocol.
@@ -2822,7 +2832,11 @@ fn build_client_config(
     .ok()
     .flatten();
 
-  if let Some(node_tls_state) = op_state.try_borrow::<NodeTlsState>()
+  // Use custom CA certs from setDefaultCACertificates() only when the
+  // SecureContext doesn't provide its own CA. This matches Node.js
+  // behavior where explicit `ca` in options takes precedence.
+  if ca_certs.is_empty()
+    && let Some(node_tls_state) = op_state.try_borrow::<NodeTlsState>()
     && let Some(custom_ca_certs) = &node_tls_state.custom_ca_certs
   {
     root_cert_store = Some(rustls::RootCertStore::empty());
@@ -2869,11 +2883,13 @@ fn build_client_config(
       match parsed {
         Ok(cert) => {
           root_cert_ders.push(cert.as_ref().to_vec());
-          if root_cert_store.add(cert).is_err() {
-            return None;
+          if let Err(e) = root_cert_store.add(cert) {
+            log::warn!("TLSWrap: ignoring invalid CA certificate: {e}");
           }
         }
-        Err(_) => return None,
+        Err(e) => {
+          log::warn!("TLSWrap: failed to parse CA PEM entry: {e}");
+        }
       }
     }
   }

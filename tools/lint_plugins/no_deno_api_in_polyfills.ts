@@ -39,7 +39,7 @@ export const EXPECTED_VIOLATIONS: Record<string, number> = {
   "ext/node/polyfills/internal/console/constructor.mjs": 2,
   "ext/node/polyfills/internal_binding/cares_wrap.ts": 2,
   "ext/node/polyfills/https.ts": 2,
-  "ext/node/polyfills/_tls_wrap.js": 2,
+  "ext/node/polyfills/_tls_wrap.js": 0,
   "ext/node/polyfills/_fs/_fs_dir.ts": 2,
   "ext/node/polyfills/worker_threads.ts": 1,
   "ext/node/polyfills/net.ts": 1,

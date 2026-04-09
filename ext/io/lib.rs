@@ -186,19 +186,10 @@ pub fn close_raw_handle(handle: RawIoHandle) {
   }
 }
 
-/// Wrap a stdio fd as a StdFile. Uses the fd directly (no dup) so that
-/// Deno.stdin/stdout/stderr and Node's process.stdin/stdout/stderr
-/// share the same underlying fd. O_NONBLOCK set by Node's libuv handles
-/// is handled by WouldBlock retry in read paths, and cleared in child
-/// pre_exec (matching libuv's uv__process_child_init).
+/// Wrap a stdio fd as a StdFile without global statics.
 ///
-/// The returned StdFile must NOT be dropped normally -- dropping would
-/// close the stdio fd, breaking the process. Callers must ensure
-/// the fd stays open (e.g. via `std::mem::forget` or keeping it alive
-/// in a long-lived Rc). The `StdFileResourceInner` achieves this by
-/// holding the StdFile in a RefCell that is never fully dropped
-/// (the Rc lives in the resource table until shutdown, and `close()`
-/// on stdio resources is a no-op via `tryClose`).
+/// Uses the raw fd directly. The StdFileResourceInner Drop impl leaks
+/// stdio fds (via into_raw_fd) to prevent closing fds 0/1/2 at shutdown.
 #[cfg(unix)]
 fn stdio_fd(fd: i32) -> StdFile {
   // SAFETY: fd is a valid stdio descriptor (0, 1, or 2).
@@ -255,14 +246,20 @@ deno_core::extension!(deno_io,
       assert_eq!(rid, 0, "stdin must have ResourceId 0");
 
       let (stdout_file, child_stdout): (Rc<dyn fs::File>, StdFile) = match stdio.stdout.pipe {
-        StdioPipeInner::Inherit => (
-          Rc::new(StdFileResourceInner::new(
-            StdFileResourceKind::Stdout,
-            stdio_fd(1),
-            None,
-          )),
-          stdio_fd(1),
-        ),
+        StdioPipeInner::Inherit => {
+          let file = stdio_fd(1);
+          // dup for ChildProcessStdio -- it drops normally and must
+          // not close the real fd 1.
+          let child_handle = file.try_clone().unwrap();
+          (
+            Rc::new(StdFileResourceInner::new(
+              StdFileResourceKind::Stdout,
+              file,
+              None,
+            )),
+            child_handle,
+          )
+        }
         StdioPipeInner::File(pipe) => {
           let child_handle = pipe.try_clone().unwrap();
           (Rc::new(StdFileResourceInner::file(pipe, None)), child_handle)
@@ -273,14 +270,18 @@ deno_core::extension!(deno_io,
       assert_eq!(rid, 1, "stdout must have ResourceId 1");
 
       let (stderr_file, child_stderr): (Rc<dyn fs::File>, StdFile) = match stdio.stderr.pipe {
-        StdioPipeInner::Inherit => (
-          Rc::new(StdFileResourceInner::new(
-            StdFileResourceKind::Stderr,
-            stdio_fd(2),
-            None,
-          )),
-          stdio_fd(2),
-        ),
+        StdioPipeInner::Inherit => {
+          let file = stdio_fd(2);
+          let child_handle = file.try_clone().unwrap();
+          (
+            Rc::new(StdFileResourceInner::new(
+              StdFileResourceKind::Stderr,
+              file,
+              None,
+            )),
+            child_handle,
+          )
+        }
         StdioPipeInner::File(pipe) => {
           let child_handle = pipe.try_clone().unwrap();
           (Rc::new(StdFileResourceInner::file(pipe, None)), child_handle)
@@ -523,7 +524,8 @@ pub struct StdFileResourceInner {
 impl Drop for StdFileResourceInner {
   fn drop(&mut self) {
     // For stdio resources, leak the fd to prevent closing fds 0/1/2.
-    // These fds must stay open for the lifetime of the process.
+    // These fds must stay open for the lifetime of the process -- without
+    // global statics holding them, we rely on this leak to keep them alive.
     match self.kind {
       StdFileResourceKind::Stdin(_)
       | StdFileResourceKind::Stdout
@@ -532,12 +534,12 @@ impl Drop for StdFileResourceInner {
           #[cfg(unix)]
           {
             use std::os::unix::io::IntoRawFd;
-            let _ = file.into_raw_fd(); // leak the fd
+            let _ = file.into_raw_fd();
           }
           #[cfg(windows)]
           {
             use std::os::windows::io::IntoRawHandle;
-            file.into_raw_handle(); // leak the handle
+            let _ = file.into_raw_handle();
           }
         }
       }
@@ -753,9 +755,10 @@ impl crate::fs::File for StdFileResourceInner {
     match self.kind {
       StdFileResourceKind::File => self.with_sync(|file| Ok(file.read(buf)?)),
       StdFileResourceKind::Stdin(_) => {
-        // Stdin may be in non-blocking mode when Node's process.stdin
-        // opens fd 0 as a pipe/socket (O_NONBLOCK is per-file-description).
-        // Retry on WouldBlock to avoid surfacing EAGAIN to JS.
+        // Stdin may be set to non-blocking mode by Node's process.stdin
+        // (via uv_pipe_open/uv_tty_init which set O_NONBLOCK on the fd).
+        // Since O_NONBLOCK is per-file-description, it affects all users
+        // of fd 0. Retry on WouldBlock to avoid surfacing EAGAIN to JS.
         self.with_sync(|file| {
           loop {
             match file.read(buf) {
@@ -1201,9 +1204,8 @@ impl crate::fs::File for StdFileResourceInner {
       }
       #[cfg(not(windows))]
       StdFileResourceKind::Stdin(_) => {
-        // Stdin may be in non-blocking mode when Node's process.stdin
-        // opens fd 0 as a pipe/socket (O_NONBLOCK is per-file-description).
-        // Retry on WouldBlock to avoid surfacing EAGAIN to JS.
+        // Stdin may be set to non-blocking mode by Node's process.stdin.
+        // Retry on WouldBlock (see read_sync comment for details).
         self
           .with_inner_blocking_task(|file| {
             loop {

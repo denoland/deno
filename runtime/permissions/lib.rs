@@ -3163,6 +3163,46 @@ impl UnaryPermission<NetDescriptor> {
     );
     self.check_desc(None, false, None)
   }
+
+  /// Check if a resolved IP address is explicitly denied.
+  ///
+  /// This is used after DNS resolution to ensure that deny rules written as
+  /// IP literals (e.g. `--deny-net=127.0.0.1`) also block connections made
+  /// via hostname aliases that resolve to the denied IP (e.g. numeric forms
+  /// like `2130706433` which the OS resolver maps to `127.0.0.1`).
+  ///
+  /// Only checks deny rules — the allow check has already been performed
+  /// against the original hostname.
+  pub fn check_resolved_ip_deny(
+    &mut self,
+    desc: &NetDescriptor,
+    api_name: Option<&str>,
+  ) -> Result<(), PermissionDeniedError> {
+    let info = format_display_name(desc.display_name()).into_owned();
+    let denied = || {
+      PermissionState::permission_denied_error(
+        NetDescriptor::flag_name(),
+        Some(info.as_str()),
+        PermissionState::Denied,
+      )
+    };
+    if self.flag_denied_global {
+      return Err(denied());
+    }
+    for item in self.descriptors.iter() {
+      match item {
+        UnaryPermissionDesc::FlagDenied(v)
+        | UnaryPermissionDesc::FlagIgnored(v) => {
+          if desc.matches_deny(v) {
+            return Err(denied());
+          }
+        }
+        _ => {}
+      }
+    }
+    let _ = api_name;
+    Ok(())
+  }
 }
 
 impl UnaryPermission<ImportDescriptor> {
@@ -4424,6 +4464,22 @@ impl PermissionsContainer {
     Ok(())
   }
 
+  /// After resolving a hostname to an IP address, check that the resolved
+  /// IP is not in the deny list. This prevents bypassing IP-literal deny
+  /// rules via numeric hostname aliases or attacker-controlled DNS.
+  #[inline(always)]
+  pub fn check_net_resolved(
+    &mut self,
+    resolved_ip: &std::net::IpAddr,
+    port: u16,
+    api_name: &str,
+  ) -> Result<(), PermissionCheckError> {
+    let mut inner = self.inner.lock();
+    let desc = NetDescriptor(Host::Ip(*resolved_ip), Some(port.into()));
+    inner.net.check_resolved_ip_deny(&desc, Some(api_name))?;
+    Ok(())
+  }
+
   #[inline(always)]
   pub fn check_net_vsock(
     &mut self,
@@ -5682,6 +5738,83 @@ mod tests {
         "expected {host_str}:{port} to fail"
       );
     }
+  }
+
+  #[test]
+  fn test_check_net_deny_resolved_ip() {
+    // Regression test: deny rules written as IP literals must also block
+    // connections after DNS resolution, preventing bypasses via numeric
+    // hostname aliases (e.g. 2130706433 → 127.0.0.1).
+    set_prompter(Box::new(TestPrompter));
+    let parser = TestPermissionDescriptorParser;
+    let mut perms = Permissions::from_options(
+      &parser,
+      &PermissionsOptions {
+        allow_net: Some(svec![]),
+        deny_net: Some(svec!["127.0.0.1"]),
+        ..Default::default()
+      },
+    )
+    .unwrap();
+
+    // The resolved IP 127.0.0.1 should be denied regardless of original
+    // hostname.
+    let denied_ip = std::net::IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1));
+    let desc = NetDescriptor(Host::Ip(denied_ip), Some(12345));
+    assert!(
+      perms.net.check_resolved_ip_deny(&desc, None).is_err(),
+      "resolved 127.0.0.1 should be denied"
+    );
+
+    // A different IP should not be denied.
+    let allowed_ip = std::net::IpAddr::V4(Ipv4Addr::new(192, 168, 1, 1));
+    let desc = NetDescriptor(Host::Ip(allowed_ip), Some(12345));
+    assert!(
+      perms.net.check_resolved_ip_deny(&desc, None).is_ok(),
+      "resolved 192.168.1.1 should not be denied"
+    );
+  }
+
+  #[test]
+  fn test_check_net_deny_resolved_ip_subnet() {
+    // Regression test: subnet-based deny rules (e.g. --deny-net=127.0.0.0/8)
+    // must also block resolved IPs that fall within the subnet, preventing
+    // bypasses via numeric hostname aliases (e.g. 2130706433 → 127.0.0.1).
+    set_prompter(Box::new(TestPrompter));
+    let parser = TestPermissionDescriptorParser;
+    let mut perms = Permissions::from_options(
+      &parser,
+      &PermissionsOptions {
+        allow_net: Some(svec![]),
+        deny_net: Some(svec!["127.0.0.0/8"]),
+        ..Default::default()
+      },
+    )
+    .unwrap();
+
+    // 127.0.0.1 falls within the 127.0.0.0/8 subnet — should be denied.
+    let denied_ip = std::net::IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1));
+    let desc = NetDescriptor(Host::Ip(denied_ip), Some(8000));
+    assert!(
+      perms.net.check_resolved_ip_deny(&desc, None).is_err(),
+      "resolved 127.0.0.1 should be denied by 127.0.0.0/8 subnet rule"
+    );
+
+    // 127.1.2.3 also falls within 127.0.0.0/8 — should be denied.
+    let denied_ip2 = std::net::IpAddr::V4(Ipv4Addr::new(127, 1, 2, 3));
+    let desc = NetDescriptor(Host::Ip(denied_ip2), Some(9000));
+    assert!(
+      perms.net.check_resolved_ip_deny(&desc, None).is_err(),
+      "resolved 127.1.2.3 should be denied by 127.0.0.0/8 subnet rule"
+    );
+
+    // 192.168.1.1 is outside the subnet — should not be denied.
+    let allowed_ip = std::net::IpAddr::V4(Ipv4Addr::new(192, 168, 1, 1));
+    let desc = NetDescriptor(Host::Ip(allowed_ip), Some(8000));
+    assert!(
+      perms.net.check_resolved_ip_deny(&desc, None).is_ok(),
+      "resolved 192.168.1.1 should not be denied by 127.0.0.0/8 subnet rule"
+    );
   }
 
   #[test]
@@ -9286,5 +9419,680 @@ mod tests {
         )
         .is_err()
     );
+  }
+
+  #[test]
+  fn test_is_allow_all_edge_cases() {
+    let parser = TestPermissionDescriptorParser;
+
+    // granted_global alone => is_allow_all true
+    let perms = Permissions::from_options(
+      &parser,
+      &PermissionsOptions {
+        allow_read: Some(vec![]),
+        ..Default::default()
+      },
+    )
+    .unwrap();
+    assert!(perms.read.is_allow_all());
+
+    // granted_global + flag_ignored_global => is_allow_all false
+    let perms = Permissions::from_options(
+      &parser,
+      &PermissionsOptions {
+        allow_read: Some(vec![]),
+        ignore_read: Some(vec![]),
+        ..Default::default()
+      },
+    )
+    .unwrap();
+    assert!(!perms.read.is_allow_all());
+
+    // granted_global + flag_denied_global => is_allow_all false
+    let perms = Permissions::from_options(
+      &parser,
+      &PermissionsOptions {
+        allow_read: Some(vec![]),
+        deny_read: Some(vec![]),
+        ..Default::default()
+      },
+    )
+    .unwrap();
+    assert!(!perms.read.is_allow_all());
+
+    // granted_global + specific deny descriptor => is_allow_all false
+    let perms = Permissions::from_options(
+      &parser,
+      &PermissionsOptions {
+        allow_read: Some(vec![]),
+        deny_read: Some(svec!["/secret"]),
+        ..Default::default()
+      },
+    )
+    .unwrap();
+    assert!(!perms.read.is_allow_all());
+
+    // granted_global + specific ignore descriptor => is_allow_all false
+    let perms = Permissions::from_options(
+      &parser,
+      &PermissionsOptions {
+        allow_read: Some(vec![]),
+        ignore_read: Some(svec!["/secret"]),
+        ..Default::default()
+      },
+    )
+    .unwrap();
+    assert!(!perms.read.is_allow_all());
+
+    // specific allow only (not global) => is_allow_all false
+    let perms = Permissions::from_options(
+      &parser,
+      &PermissionsOptions {
+        allow_read: Some(svec!["/foo"]),
+        ..Default::default()
+      },
+    )
+    .unwrap();
+    assert!(!perms.read.is_allow_all());
+
+    // no permissions at all => is_allow_all false
+    let perms = Permissions::from_options(
+      &parser,
+      &PermissionsOptions {
+        ..Default::default()
+      },
+    )
+    .unwrap();
+    assert!(!perms.read.is_allow_all());
+  }
+
+  #[test]
+  fn test_revoke_and_requery_state_transitions() {
+    set_prompter(Box::new(TestPrompter));
+    let parser = TestPermissionDescriptorParser;
+    let read_query = |path: &str| {
+      parser
+        .parse_path_query(Cow::Owned(PathBuf::from(path)))
+        .unwrap()
+        .into_read()
+    };
+
+    // Revoke specific path, then query child path
+    let mut perms = Permissions::from_options(
+      &parser,
+      &PermissionsOptions {
+        allow_read: Some(svec!["/foo"]),
+        ..Default::default()
+      },
+    )
+    .unwrap();
+    assert_eq!(
+      perms.read.query(Some(&read_query("/foo/bar"))),
+      PermissionState::Granted
+    );
+    perms.read.revoke(Some(&read_query("/foo")));
+    // After revoking /foo, child path /foo/bar should also be prompt
+    assert_eq!(
+      perms.read.query(Some(&read_query("/foo/bar"))),
+      PermissionState::Prompt
+    );
+
+    // Revoke after prompt-granted
+    let mut perms = Permissions::none_with_prompt();
+    let prompt_value = PERMISSION_PROMPT_STUB_VALUE_SETTER.lock();
+    prompt_value.set(true);
+    assert_eq!(
+      perms.read.request(Some(&read_query("/foo"))),
+      PermissionState::Granted
+    );
+    assert_eq!(
+      perms.read.query(Some(&read_query("/foo"))),
+      PermissionState::Granted
+    );
+    perms.read.revoke(Some(&read_query("/foo")));
+    assert_eq!(
+      perms.read.query(Some(&read_query("/foo"))),
+      PermissionState::Prompt
+    );
+
+    // Revoke global, then check specific descriptor still denied
+    let mut perms = Permissions::from_options(
+      &parser,
+      &PermissionsOptions {
+        allow_read: Some(vec![]),
+        deny_read: Some(svec!["/secret"]),
+        ..Default::default()
+      },
+    )
+    .unwrap();
+    assert_eq!(
+      perms.read.query(Some(&read_query("/foo"))),
+      PermissionState::Granted
+    );
+    perms.read.revoke(None);
+    // /secret should still be denied (flag deny persists after revoke)
+    assert_eq!(
+      perms.read.query(Some(&read_query("/secret"))),
+      PermissionState::Denied
+    );
+    // Other paths should be prompt after global revoke
+    assert_eq!(
+      perms.read.query(Some(&read_query("/foo"))),
+      PermissionState::Prompt
+    );
+  }
+
+  #[test]
+  fn test_prompt_denied_accumulation_and_stronger_than() {
+    set_prompter(Box::new(TestPrompter));
+    let parser = TestPermissionDescriptorParser;
+    let read_query = |path: &str| {
+      parser
+        .parse_path_query(Cow::Owned(PathBuf::from(path)))
+        .unwrap()
+        .into_read()
+    };
+
+    let mut perms = Permissions::none_with_prompt();
+    let prompt_value = PERMISSION_PROMPT_STUB_VALUE_SETTER.lock();
+
+    // Deny /foo at prompt, then check /foo/bar
+    // Unlike flag denials, prompt denials use stronger_than_deny which only
+    // blocks when the query path encompasses the denied path (parent of
+    // denied), not child paths.
+    prompt_value.set(false);
+    assert_eq!(
+      perms.read.request(Some(&read_query("/foo"))),
+      PermissionState::Denied
+    );
+    // /foo/bar is a child of prompt-denied /foo, but prompt denials don't
+    // propagate to children -- only flag denials do
+    assert_eq!(
+      perms.read.query(Some(&read_query("/foo/bar"))),
+      PermissionState::Prompt
+    );
+    // /foo itself should still be denied
+    assert_eq!(
+      perms.read.query(Some(&read_query("/foo"))),
+      PermissionState::Denied
+    );
+
+    // Deny /bar/baz at prompt, then check /bar (parent) -- parent
+    // encompasses the denied child, so stronger_than_deny returns true
+    prompt_value.set(false);
+    assert_eq!(
+      perms.read.request(Some(&read_query("/bar/baz"))),
+      PermissionState::Denied
+    );
+    // Parent path /bar is "stronger than" prompt-deny of /bar/baz, so it
+    // is also denied
+    assert_eq!(
+      perms.read.query(Some(&read_query("/bar"))),
+      PermissionState::Denied
+    );
+
+    // Multiple prompt denials accumulate
+    prompt_value.set(false);
+    assert_eq!(
+      perms.read.request(Some(&read_query("/x"))),
+      PermissionState::Denied
+    );
+    prompt_value.set(false);
+    assert_eq!(
+      perms.read.request(Some(&read_query("/y"))),
+      PermissionState::Denied
+    );
+    // Both should remain denied
+    assert_eq!(
+      perms.read.query(Some(&read_query("/x"))),
+      PermissionState::Denied
+    );
+    assert_eq!(
+      perms.read.query(Some(&read_query("/y"))),
+      PermissionState::Denied
+    );
+    // Unrelated path still promptable
+    assert_eq!(
+      perms.read.query(Some(&read_query("/z"))),
+      PermissionState::Prompt
+    );
+  }
+
+  #[test]
+  fn test_allow_deny_ignore_three_way_interaction() {
+    set_prompter(Box::new(TestPrompter));
+    let parser = TestPermissionDescriptorParser;
+    let read_query = |path: &str| {
+      parser
+        .parse_path_query(Cow::Owned(PathBuf::from(path)))
+        .unwrap()
+        .into_read()
+    };
+
+    let perms = Permissions::from_options(
+      &parser,
+      &PermissionsOptions {
+        allow_read: Some(svec!["/home"]),
+        deny_read: Some(svec!["/home/secret"]),
+        ignore_read: Some(svec!["/home/.cache"]),
+        ..Default::default()
+      },
+    )
+    .unwrap();
+
+    // Regular file under /home => allowed
+    assert_eq!(
+      perms.read.query(Some(&read_query("/home/file.txt"))),
+      PermissionState::Granted
+    );
+    // File under /home/secret => denied
+    assert_eq!(
+      perms.read.query(Some(&read_query("/home/secret/key"))),
+      PermissionState::Denied
+    );
+    // File under /home/.cache => ignored (stealth deny)
+    assert_eq!(
+      perms.read.query(Some(&read_query("/home/.cache/data"))),
+      PermissionState::Ignored
+    );
+    // /home itself => GrantedPartial (has deny and ignore holes)
+    assert_eq!(
+      perms.read.query(Some(&read_query("/home"))),
+      PermissionState::GrantedPartial
+    );
+    // Outside /home => prompt
+    assert_eq!(
+      perms.read.query(Some(&read_query("/etc/passwd"))),
+      PermissionState::Prompt
+    );
+  }
+
+  #[test]
+  fn test_check_all_api_with_specific_allows_only() {
+    set_prompter(Box::new(TestPrompter));
+    let parser = TestPermissionDescriptorParser;
+
+    // Specific allows only (not global) => check_all should fail
+    // (no prompt available)
+    let mut perms = Permissions::from_options(
+      &parser,
+      &PermissionsOptions {
+        allow_read: Some(svec!["/foo"]),
+        prompt: false,
+        ..Default::default()
+      },
+    )
+    .unwrap();
+    assert!(perms.read.check_all(None).is_err());
+
+    // Global allow => check_all should succeed
+    let mut perms = Permissions::from_options(
+      &parser,
+      &PermissionsOptions {
+        allow_read: Some(vec![]),
+        ..Default::default()
+      },
+    )
+    .unwrap();
+    assert!(perms.read.check_all(None).is_ok());
+
+    // Global allow + specific deny => check_all still succeeds because
+    // check_desc uses AllowPartial::TreatAsGranted for non-partial checks
+    let mut perms = Permissions::from_options(
+      &parser,
+      &PermissionsOptions {
+        allow_read: Some(vec![]),
+        deny_read: Some(svec!["/secret"]),
+        ..Default::default()
+      },
+    )
+    .unwrap();
+    assert!(perms.read.check_all(None).is_ok());
+
+    // Global allow + global deny => check_all should fail
+    let mut perms = Permissions::from_options(
+      &parser,
+      &PermissionsOptions {
+        allow_read: Some(vec![]),
+        deny_read: Some(vec![]),
+        ..Default::default()
+      },
+    )
+    .unwrap();
+    assert!(perms.read.check_all(None).is_err());
+
+    // Prompt-granted paths only => check_all should fail (not global,
+    // no prompt)
+    let mut perms = Permissions::none_with_prompt();
+    let prompt_value = PERMISSION_PROMPT_STUB_VALUE_SETTER.lock();
+    prompt_value.set(true);
+    let read_query = parser
+      .parse_path_query(Cow::Owned(PathBuf::from("/foo")))
+      .unwrap()
+      .into_read();
+    assert!(perms.read.check(&read_query, None).is_ok());
+    // Even though /foo was granted via prompt, check_all queries global
+    // state. With prompt enabled it will try to prompt for global, and
+    // the prompter returns true, so it grants global
+    prompt_value.set(false);
+    // Now prompter will deny the global prompt
+    assert!(perms.read.check_all(None).is_err());
+  }
+
+  #[test]
+  fn test_import_permission_check_and_deny() {
+    set_prompter(Box::new(TestPrompter));
+    let parser = TestPermissionDescriptorParser;
+
+    // Import with allow and deny
+    let mut perms = Permissions::from_options(
+      &parser,
+      &PermissionsOptions {
+        allow_import: Some(svec!["deno.land:443", "jsr.io:443"]),
+        deny_import: Some(svec!["evil.com:443"]),
+        ..Default::default()
+      },
+    )
+    .unwrap();
+
+    // Allowed host
+    assert!(
+      perms
+        .import
+        .check(
+          &ImportDescriptor(NetDescriptor(
+            Host::must_parse("deno.land"),
+            Some(443)
+          )),
+          None,
+        )
+        .is_ok()
+    );
+
+    // Denied host
+    assert!(
+      perms
+        .import
+        .check(
+          &ImportDescriptor(NetDescriptor(
+            Host::must_parse("evil.com"),
+            Some(443)
+          )),
+          None,
+        )
+        .is_err()
+    );
+
+    // Not in allow list => denied (no prompt)
+    assert!(
+      perms
+        .import
+        .check(
+          &ImportDescriptor(NetDescriptor(
+            Host::must_parse("unknown.com"),
+            Some(443)
+          )),
+          None,
+        )
+        .is_err()
+    );
+
+    // Global import allow with deny override
+    let mut perms = Permissions::from_options(
+      &parser,
+      &PermissionsOptions {
+        allow_import: Some(vec![]),
+        deny_import: Some(svec!["evil.com:443"]),
+        ..Default::default()
+      },
+    )
+    .unwrap();
+
+    // Allowed (global grant)
+    assert!(
+      perms
+        .import
+        .check(
+          &ImportDescriptor(NetDescriptor(
+            Host::must_parse("deno.land"),
+            Some(443)
+          )),
+          None,
+        )
+        .is_ok()
+    );
+
+    // Denied (explicit deny overrides global allow)
+    assert!(
+      perms
+        .import
+        .check(
+          &ImportDescriptor(NetDescriptor(
+            Host::must_parse("evil.com"),
+            Some(443)
+          )),
+          None,
+        )
+        .is_err()
+    );
+
+    // check_all with global allow + specific deny succeeds because
+    // check_desc uses AllowPartial::TreatAsGranted
+    assert!(perms.import.check_all().is_ok());
+
+    // check_all with global allow + global deny fails
+    let mut perms = Permissions::from_options(
+      &parser,
+      &PermissionsOptions {
+        allow_import: Some(vec![]),
+        deny_import: Some(vec![]),
+        ..Default::default()
+      },
+    )
+    .unwrap();
+    assert!(perms.import.check_all().is_err());
+  }
+
+  #[test]
+  fn test_check_open_read_write() {
+    set_prompter(Box::new(TestPrompter));
+    let parser = TestPermissionDescriptorParser;
+
+    // ReadWrite requires both read AND write
+    let perms = Permissions::from_options(
+      &parser,
+      &PermissionsOptions {
+        allow_read: Some(svec!["/data"]),
+        allow_write: Some(svec!["/data"]),
+        ..Default::default()
+      },
+    )
+    .unwrap();
+    let perms = PermissionsContainer::new(Arc::new(parser), perms);
+
+    // ReadWrite on allowed path => ok
+    assert!(
+      perms
+        .check_open(
+          Cow::Borrowed(Path::new("/data/file.txt")),
+          OpenAccessKind::ReadWrite,
+          Some("api"),
+        )
+        .is_ok()
+    );
+
+    // ReadWrite on path with only read => err
+    let parser = TestPermissionDescriptorParser;
+    let perms = Permissions::from_options(
+      &parser,
+      &PermissionsOptions {
+        allow_read: Some(svec!["/readonly"]),
+        ..Default::default()
+      },
+    )
+    .unwrap();
+    let perms = PermissionsContainer::new(Arc::new(parser), perms);
+    assert!(
+      perms
+        .check_open(
+          Cow::Borrowed(Path::new("/readonly/file.txt")),
+          OpenAccessKind::ReadWrite,
+          Some("api"),
+        )
+        .is_err()
+    );
+
+    // ReadWrite on path with only write => err
+    let parser = TestPermissionDescriptorParser;
+    let perms = Permissions::from_options(
+      &parser,
+      &PermissionsOptions {
+        allow_write: Some(svec!["/writeonly"]),
+        ..Default::default()
+      },
+    )
+    .unwrap();
+    let perms = PermissionsContainer::new(Arc::new(parser), perms);
+    assert!(
+      perms
+        .check_open(
+          Cow::Borrowed(Path::new("/writeonly/file.txt")),
+          OpenAccessKind::ReadWrite,
+          Some("api"),
+        )
+        .is_err()
+    );
+  }
+
+  #[test]
+  fn test_allow_run_auto_deny_write() {
+    let parser = TestPermissionDescriptorParser;
+    let perms = Permissions::from_options(
+      &parser,
+      &PermissionsOptions {
+        allow_run: Some(svec!["/usr/bin/node"]),
+        allow_write: Some(vec![]),
+        ..Default::default()
+      },
+    )
+    .unwrap();
+    let perms = PermissionsContainer::new(Arc::new(parser), perms);
+
+    // Writing to allowed run path should be denied
+    assert!(
+      perms
+        .check_open(
+          Cow::Borrowed(Path::new("/usr/bin/node")),
+          OpenAccessKind::Write,
+          Some("api"),
+        )
+        .is_err()
+    );
+
+    // Writing to other paths should be allowed (global write is granted)
+    assert!(
+      perms
+        .check_open(
+          Cow::Borrowed(Path::new("/tmp/file.txt")),
+          OpenAccessKind::Write,
+          Some("api"),
+        )
+        .is_ok()
+    );
+  }
+
+  #[test]
+  fn test_net_fqdn_with_subdomain_wildcard() {
+    set_prompter(Box::new(TestPrompter));
+    let parser = TestPermissionDescriptorParser;
+    let perms = Permissions::from_options(
+      &parser,
+      &PermissionsOptions {
+        allow_net: Some(svec!["*.example.com"]),
+        deny_net: Some(svec!["*.evil.com"]),
+        ..Default::default()
+      },
+    )
+    .unwrap();
+    let mut perms = PermissionsContainer::new(Arc::new(parser), perms);
+
+    // Subdomain should match wildcard allow
+    assert!(perms.check_net(&("sub.example.com", None), "api").is_ok());
+    assert!(
+      perms
+        .check_net(&("deep.sub.example.com", None), "api")
+        .is_ok()
+    );
+
+    // Bare domain DOES match wildcard: *.example.com matches example.com
+    // because the fqdn crate's is_subdomain_of is inclusive (a domain is a
+    // subdomain of itself). This is intentional and consistent with the
+    // existing test_check_net_with_values test for *.discord.gg.
+    assert!(perms.check_net(&("example.com", None), "api").is_ok());
+
+    // Subdomain of denied wildcard should be denied
+    assert!(perms.check_net(&("sub.evil.com", None), "api").is_err());
+
+    // Bare domain also matches wildcard deny (same inclusive semantics)
+    assert!(perms.check_net(&("evil.com", None), "api").is_err());
+
+    // Unrelated domain should prompt (denied since no-prompt by default
+    // in test)
+    assert!(perms.check_net(&("other.com", None), "api").is_err());
+  }
+
+  #[test]
+  fn test_empty_descriptor_edge_cases() {
+    let parser = TestPermissionDescriptorParser;
+
+    // Some(vec![]) means "grant all" (global grant)
+    let perms = Permissions::from_options(
+      &parser,
+      &PermissionsOptions {
+        allow_read: Some(vec![]),
+        ..Default::default()
+      },
+    )
+    .unwrap();
+    assert!(perms.read.is_allow_all());
+
+    // None means "no grant" (prompt mode)
+    let perms = Permissions::from_options(
+      &parser,
+      &PermissionsOptions {
+        ..Default::default()
+      },
+    )
+    .unwrap();
+    assert!(!perms.read.is_allow_all());
+    let read_query = parser
+      .parse_path_query(Cow::Owned(PathBuf::from("/foo")))
+      .unwrap()
+      .into_read();
+    assert_eq!(perms.read.query(Some(&read_query)), PermissionState::Prompt);
+
+    // Some(vec![]) for env means "grant all env"
+    let perms = Permissions::from_options(
+      &parser,
+      &PermissionsOptions {
+        allow_env: Some(vec![]),
+        ..Default::default()
+      },
+    )
+    .unwrap();
+    assert!(perms.env.is_allow_all());
+    assert_eq!(perms.env.query(None), PermissionState::Granted);
+
+    // Some(vec![]) for net means "grant all net"
+    let perms = Permissions::from_options(
+      &parser,
+      &PermissionsOptions {
+        allow_net: Some(vec![]),
+        ..Default::default()
+      },
+    )
+    .unwrap();
+    assert!(perms.net.is_allow_all());
+    assert_eq!(perms.net.query(None), PermissionState::Granted);
   }
 }
