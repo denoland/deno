@@ -380,7 +380,7 @@
             "asDouble": 0
           }
         ],
-        "aggregationTemporality": 1,
+        "aggregationTemporality": 2,
         "isMonotonic": false
       }
     },
@@ -463,7 +463,7 @@
             "max": 0
           }
         ],
-        "aggregationTemporality": 1
+        "aggregationTemporality": 2
       }
     },
     {
@@ -543,7 +543,7 @@
             "max": [WILDCARD]
           }
         ],
-        "aggregationTemporality": 1
+        "aggregationTemporality": 2
       }
     },
     {
@@ -625,7 +625,7 @@
             "max": 0
           }
         ],
-        "aggregationTemporality": 1
+        "aggregationTemporality": 2
       }
     }
   ]
