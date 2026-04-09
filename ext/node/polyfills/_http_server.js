@@ -278,31 +278,26 @@ ServerResponse.prototype.writeHead = function writeHead(
   }
   this.statusCode = statusCode;
 
-  let headers;
-  if (this[kOutHeaders]) {
-    if (ArrayIsArray(obj)) {
-      if (obj.length % 2 !== 0) {
-        throw new ERR_INVALID_ARG_TYPE(
-          "headers",
-          "Array with even length",
-          obj,
-        );
-      }
-      for (let n = 0; n < obj.length; n += 2) {
-        const k = obj[n + 0];
-        if (k) this.setHeader(k, obj[n + 1]);
-      }
-    } else if (obj) {
-      const keys = ObjectKeys(obj);
-      for (let i = 0; i < keys.length; i++) {
-        const k = keys[i];
-        if (k) this.setHeader(k, obj[k]);
-      }
+  if (ArrayIsArray(obj)) {
+    if (obj.length % 2 !== 0) {
+      throw new ERR_INVALID_ARG_TYPE(
+        "headers",
+        "Array with even length",
+        obj,
+      );
     }
-    headers = this[kOutHeaders];
-  } else {
-    headers = obj;
+    for (let n = 0; n < obj.length; n += 2) {
+      const k = obj[n + 0];
+      if (k) this.setHeader(k, obj[n + 1]);
+    }
+  } else if (obj) {
+    const keys = ObjectKeys(obj);
+    for (let i = 0; i < keys.length; i++) {
+      const k = keys[i];
+      if (k) this.setHeader(k, obj[k]);
+    }
   }
+  const headers = this[kOutHeaders];
 
   const statusLine = "HTTP/1.1 " + statusCode + " " + this.statusMessage +
     "\r\n";
