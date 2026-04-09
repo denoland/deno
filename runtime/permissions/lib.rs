@@ -9963,6 +9963,7 @@ mod tests {
     assert_eq!(perms.net.query(None), PermissionState::Granted);
   }
 
+  #[allow(clippy::field_reassign_with_default)]
   mod proptests {
     use std::cmp::Ordering;
     use std::net::Ipv4Addr;
