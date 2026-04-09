@@ -14,87 +14,6 @@ use crate::f64::minimum;
 
 pub type CSSValueError<'i> = ParseError<'i, CSSValueCustomError>;
 
-macro_rules! try_extract {
-  ($expr:expr, $method:ident($($arg:expr),*), $input:expr) => {
-    match $expr.$method($($arg),*) {
-      Ok(v) => v,
-      Err(e) => return Err($input.new_custom_error(e)),
-    }
-  };
-  ($expr:expr, $method:ident($($arg:expr),*), $map:ident(), $input:expr) => {
-    match $expr.$method($($arg),*) {
-      Ok(v) => v.$map(),
-      Err(e) => return Err($input.new_custom_error(e)),
-    }
-  };
-}
-
-macro_rules! extract_as_raw {
-  ($expr:expr) => {
-    match &$expr {
-      NumericValue::Zero => unreachable!(),
-      NumericValue::Number(number) => *number,
-      NumericValue::Percent(percent) => *percent,
-      NumericValue::Length(length) => length.to_pixels(),
-      NumericValue::Angle(angle) => angle.to_degrees(),
-      NumericValue::Time(time) => time.to_seconds(),
-      NumericValue::Frequency(frequency) => frequency.to_hertz(),
-      NumericValue::Resolution(resolution) => resolution.to_dot_per_pixels(),
-      NumericValue::Flex(flex) => *flex,
-    }
-  };
-}
-
-macro_rules! try_extract_as_raw {
-  ($expr:expr, $type_ref:expr, $input:expr) => {
-    match &$type_ref {
-      NumericValue::Zero => unreachable!(),
-      NumericValue::Number(_) => try_extract!($expr, expect_number(), $input),
-      NumericValue::Percent(_) => try_extract!($expr, expect_percent(), $input),
-      NumericValue::Length(_) => {
-        try_extract!($expr, expect_length(false), to_pixels(), $input)
-      }
-      NumericValue::Angle(_) => {
-        try_extract!($expr, expect_angle(false), to_degrees(), $input)
-      }
-      NumericValue::Time(_) => {
-        try_extract!($expr, expect_time(), to_seconds(), $input)
-      }
-      NumericValue::Frequency(_) => {
-        try_extract!($expr, expect_frequency(), to_hertz(), $input)
-      }
-      NumericValue::Resolution(_) => {
-        try_extract!($expr, expect_resolution(), to_dot_per_pixels(), $input)
-      }
-      NumericValue::Flex(_) => try_extract!($expr, expect_flex(), $input),
-    }
-  };
-}
-
-macro_rules! from_raw {
-  ($value:expr, $type_ref:expr) => {
-    match &$type_ref {
-      NumericValue::Zero => unreachable!(),
-      NumericValue::Number(_) => NumericValue::Number($value),
-      NumericValue::Percent(_) => NumericValue::Percent($value),
-      NumericValue::Length(_) => {
-        NumericValue::Length(Length::from_pixels($value))
-      }
-      NumericValue::Angle(_) => {
-        NumericValue::Angle(Angle::from_degrees($value))
-      }
-      NumericValue::Time(_) => NumericValue::Time(Time::from_seconds($value)),
-      NumericValue::Frequency(_) => {
-        NumericValue::Frequency(Frequency::from_hertz($value))
-      }
-      NumericValue::Resolution(_) => {
-        NumericValue::Resolution(Resolution::from_dot_per_pixels($value))
-      }
-      NumericValue::Flex(_) => NumericValue::Flex($value),
-    }
-  };
-}
-
 #[derive(Debug, thiserror::Error)]
 #[cfg_attr(test, derive(PartialEq))]
 pub enum CSSValueCustomError {
@@ -473,7 +392,7 @@ impl NumericValue {
 }
 
 // https://drafts.css-houdini.org/css-typed-om-1/#numeric-typing
-#[derive(Debug, Default, PartialEq)]
+#[derive(Debug, PartialEq)]
 struct Dimension {
   percent: i8,
   length: i8,
@@ -482,6 +401,46 @@ struct Dimension {
   frequency: i8,
   resolution: i8,
   flex: i8,
+}
+
+impl Dimension {
+  const NUMBER: Self = Self {
+    percent: 0,
+    length: 0,
+    angle: 0,
+    time: 0,
+    frequency: 0,
+    resolution: 0,
+    flex: 0,
+  };
+  const PERCENT: Self = Self {
+    percent: 1,
+    ..Self::NUMBER
+  };
+  const LENGTH: Self = Self {
+    length: 1,
+    ..Self::NUMBER
+  };
+  const ANGLE: Self = Self {
+    angle: 1,
+    ..Self::NUMBER
+  };
+  const TIME: Self = Self {
+    time: 1,
+    ..Self::NUMBER
+  };
+  const FREQUENCY: Self = Self {
+    frequency: 1,
+    ..Self::NUMBER
+  };
+  const RESOLUTION: Self = Self {
+    resolution: 1,
+    ..Self::NUMBER
+  };
+  const FLEX: Self = Self {
+    flex: 1,
+    ..Self::NUMBER
+  };
 }
 
 impl ops::AddAssign<&Dimension> for Dimension {
@@ -525,75 +484,54 @@ impl From<NumericValue> for MathValue {
     match value {
       NumericValue::Zero => MathValue {
         value: 0.0,
-        dimension: Default::default(),
+        dimension: Dimension::NUMBER,
       },
       NumericValue::Number(value) => MathValue {
         value,
-        dimension: Default::default(),
+        dimension: Dimension::NUMBER,
       },
       NumericValue::Percent(value) => MathValue {
         value,
-        dimension: Dimension {
-          percent: 1,
-          ..Default::default()
-        },
+        dimension: Dimension::PERCENT,
       },
       NumericValue::Length(length) => {
         let value = length.to_pixels();
         MathValue {
           value,
-          dimension: Dimension {
-            length: 1,
-            ..Default::default()
-          },
+          dimension: Dimension::LENGTH,
         }
       }
       NumericValue::Angle(angle) => {
         let value = angle.to_degrees();
         MathValue {
           value,
-          dimension: Dimension {
-            angle: 1,
-            ..Default::default()
-          },
+          dimension: Dimension::ANGLE,
         }
       }
       NumericValue::Time(time) => {
         let value = time.to_seconds();
         MathValue {
           value,
-          dimension: Dimension {
-            time: 1,
-            ..Default::default()
-          },
+          dimension: Dimension::TIME,
         }
       }
       NumericValue::Frequency(frequency) => {
         let value = frequency.to_hertz();
         MathValue {
           value,
-          dimension: Dimension {
-            frequency: 1,
-            ..Default::default()
-          },
+          dimension: Dimension::FREQUENCY,
         }
       }
       NumericValue::Resolution(resolution) => {
         let value = resolution.to_dot_per_pixels();
         MathValue {
           value,
-          dimension: Dimension {
-            resolution: 1,
-            ..Default::default()
-          },
+          dimension: Dimension::RESOLUTION,
         }
       }
       NumericValue::Flex(value) => MathValue {
         value,
-        dimension: Dimension {
-          flex: 1,
-          ..Default::default()
-        },
+        dimension: Dimension::FLEX,
       },
     }
   }
@@ -604,119 +542,81 @@ impl TryFrom<MathValue> for NumericValue {
 
   fn try_from(math: MathValue) -> Result<Self, Self::Error> {
     let value = math.value;
-    match math.dimension {
-      Dimension {
-        percent: 0,
-        length: 0,
-        angle: 0,
-        time: 0,
-        frequency: 0,
-        resolution: 0,
-        flex: 0,
-      } => Ok(NumericValue::Number(value)),
-      Dimension {
-        percent: 1,
-        length: 0,
-        angle: 0,
-        time: 0,
-        frequency: 0,
-        resolution: 0,
-        flex: 0,
-      } => Ok(NumericValue::Percent(value)),
-      Dimension {
-        percent: 0,
-        length: 1,
-        angle: 0,
-        time: 0,
-        frequency: 0,
-        resolution: 0,
-        flex: 0,
-      } => Ok(Length::from_pixels(value).into()),
-      Dimension {
-        percent: 0,
-        length: 0,
-        angle: 1,
-        time: 0,
-        frequency: 0,
-        resolution: 0,
-        flex: 0,
-      } => Ok(Angle::from_degrees(value).into()),
-      Dimension {
-        percent: 0,
-        length: 0,
-        angle: 0,
-        time: 1,
-        frequency: 0,
-        resolution: 0,
-        flex: 0,
-      } => Ok(Time::from_seconds(value).into()),
-      Dimension {
-        percent: 0,
-        length: 0,
-        angle: 0,
-        time: 0,
-        frequency: 1,
-        resolution: 0,
-        flex: 0,
-      } => Ok(Frequency::from_hertz(value).into()),
-      Dimension {
-        percent: 0,
-        length: 0,
-        angle: 0,
-        time: 0,
-        frequency: 0,
-        resolution: 1,
-        flex: 0,
-      } => Ok(Resolution::from_dot_per_pixels(value).into()),
-      Dimension {
-        percent: 0,
-        length: 0,
-        angle: 0,
-        time: 0,
-        frequency: 0,
-        resolution: 0,
-        flex: 1,
-      } => Ok(NumericValue::Flex(value)),
-      _ => Err(CSSValueCustomError::InvalidDimension),
+    if math.is_number() {
+      Ok(NumericValue::Number(value))
+    } else if math.is_percent() {
+      Ok(NumericValue::Percent(value))
+    } else if math.is_length() {
+      Ok(Length::from_pixels(value).into())
+    } else if math.is_angle() {
+      Ok(Angle::from_degrees(value).into())
+    } else if math.is_time() {
+      Ok(Time::from_seconds(value).into())
+    } else if math.is_frequency() {
+      Ok(Frequency::from_hertz(value).into())
+    } else if math.is_resolution() {
+      Ok(Resolution::from_dot_per_pixels(value).into())
+    } else if math.is_flex() {
+      Ok(NumericValue::Flex(value))
+    } else {
+      Err(CSSValueCustomError::InvalidDimension)
     }
   }
 }
 
+macro_rules! impl_math_value_is {
+  ($($fn_name:ident: $dim_const:ident),* $(,)?) => {
+    $(
+  #[inline]
+      fn $fn_name(&self) -> bool {
+        self.dimension == Dimension::$dim_const
+      }
+    )*
+  };
+}
+
 impl MathValue {
+  impl_math_value_is! {
+    is_number: NUMBER,
+    is_percent: PERCENT,
+    is_length: LENGTH,
+    is_angle: ANGLE,
+    is_time: TIME,
+    is_frequency: FREQUENCY,
+    is_resolution: RESOLUTION,
+    is_flex: FLEX,
+  }
+
+  fn dimension_mismatch_error(&self, other: &MathValue) -> CSSValueCustomError {
+    if self.is_percent() || other.is_percent() {
+      if self.is_length() || other.is_length() {
+        return CSSValueCustomError::ContainPercentAndDimensionCalculations(
+          "<length-percentage>",
+        );
+      } else if self.is_angle() || other.is_angle() {
+        return CSSValueCustomError::ContainPercentAndDimensionCalculations(
+          "<angle-percentage>",
+        );
+      } else if self.is_time() || other.is_time() {
+        return CSSValueCustomError::ContainPercentAndDimensionCalculations(
+          "<time-percentage>",
+        );
+      } else if self.is_frequency() || other.is_frequency() {
+        return CSSValueCustomError::ContainPercentAndDimensionCalculations(
+          "<frequency-percentage>",
+        );
+      }
+    }
+    CSSValueCustomError::NumericTypeMismatch
+  }
+
   #[inline]
   fn try_add_assign(
     &mut self,
     other: &MathValue,
   ) -> Result<(), CSSValueCustomError> {
     if self.dimension != other.dimension {
-      if self.is_percent() || other.is_percent() {
-        if self.is_length() || other.is_length() {
-          return Err(
-            CSSValueCustomError::ContainPercentAndDimensionCalculations(
-              "<length-percentage>",
-            ),
-          );
-        } else if self.is_angle() || other.is_angle() {
-          return Err(
-            CSSValueCustomError::ContainPercentAndDimensionCalculations(
-              "<angle-percentage>",
-            ),
-          );
-        } else if self.is_time() || other.is_time() {
-          return Err(
-            CSSValueCustomError::ContainPercentAndDimensionCalculations(
-              "<time-percentage>",
-            ),
-          );
-        } else if self.is_frequency() || other.is_frequency() {
-          return Err(
-            CSSValueCustomError::ContainPercentAndDimensionCalculations(
-              "<frequency-percentage>",
-            ),
-          );
-        }
-      }
-      return Err(CSSValueCustomError::NumericTypeMismatch);
+      return Err(self.dimension_mismatch_error(other));
     }
     self.value += other.value;
     Ok(())
@@ -728,165 +628,10 @@ impl MathValue {
     other: &MathValue,
   ) -> Result<(), CSSValueCustomError> {
     if self.dimension != other.dimension {
-      if self.is_percent() || other.is_percent() {
-        if self.is_length() || other.is_length() {
-          return Err(
-            CSSValueCustomError::ContainPercentAndDimensionCalculations(
-              "<length-percentage>",
-            ),
-          );
-        } else if self.is_angle() || other.is_angle() {
-          return Err(
-            CSSValueCustomError::ContainPercentAndDimensionCalculations(
-              "<angle-percentage>",
-            ),
-          );
-        } else if self.is_time() || other.is_time() {
-          return Err(
-            CSSValueCustomError::ContainPercentAndDimensionCalculations(
-              "<time-percentage>",
-            ),
-          );
-        } else if self.is_frequency() || other.is_frequency() {
-          return Err(
-            CSSValueCustomError::ContainPercentAndDimensionCalculations(
-              "<frequency-percentage>",
-            ),
-          );
-        }
-      }
-      return Err(CSSValueCustomError::NumericTypeMismatch);
+      return Err(self.dimension_mismatch_error(other));
     }
     self.value -= other.value;
     Ok(())
-  }
-
-  #[inline]
-  fn is_number(&self) -> bool {
-    matches!(
-      self.dimension,
-      Dimension {
-        percent: 0,
-        length: 0,
-        angle: 0,
-        time: 0,
-        frequency: 0,
-        resolution: 0,
-        flex: 0,
-      }
-    )
-  }
-
-  #[inline]
-  fn is_percent(&self) -> bool {
-    matches!(
-      self.dimension,
-      Dimension {
-        percent: 1,
-        length: 0,
-        angle: 0,
-        time: 0,
-        frequency: 0,
-        resolution: 0,
-        flex: 0,
-      }
-    )
-  }
-
-  #[inline]
-  fn is_length(&self) -> bool {
-    matches!(
-      self.dimension,
-      Dimension {
-        percent: 0,
-        length: 1,
-        angle: 0,
-        time: 0,
-        frequency: 0,
-        resolution: 0,
-        flex: 0,
-      }
-    )
-  }
-
-  #[inline]
-  fn is_angle(&self) -> bool {
-    matches!(
-      self.dimension,
-      Dimension {
-        percent: 0,
-        length: 0,
-        angle: 1,
-        time: 0,
-        frequency: 0,
-        resolution: 0,
-        flex: 0,
-      }
-    )
-  }
-
-  #[inline]
-  fn is_time(&self) -> bool {
-    matches!(
-      self.dimension,
-      Dimension {
-        percent: 0,
-        length: 0,
-        angle: 0,
-        time: 1,
-        frequency: 0,
-        resolution: 0,
-        flex: 0,
-      }
-    )
-  }
-
-  #[inline]
-  fn is_frequency(&self) -> bool {
-    matches!(
-      self.dimension,
-      Dimension {
-        percent: 0,
-        length: 0,
-        angle: 0,
-        time: 0,
-        frequency: 1,
-        resolution: 0,
-        flex: 0,
-      }
-    )
-  }
-
-  #[inline]
-  fn is_resolution(&self) -> bool {
-    matches!(
-      self.dimension,
-      Dimension {
-        percent: 0,
-        length: 0,
-        angle: 0,
-        time: 0,
-        frequency: 0,
-        resolution: 1,
-        flex: 0,
-      }
-    )
-  }
-
-  #[inline]
-  fn is_flex(&self) -> bool {
-    matches!(
-      self.dimension,
-      Dimension {
-        percent: 0,
-        length: 0,
-        angle: 0,
-        time: 0,
-        frequency: 0,
-        resolution: 0,
-        flex: 1,
-      }
-    )
   }
 
   #[inline]
@@ -1088,6 +833,87 @@ impl ParseState {
   fn new() -> Self {
     Self { function_depth: 0 }
   }
+}
+
+macro_rules! try_extract {
+  ($expr:expr, $method:ident($($arg:expr),*), $input:expr) => {
+    match $expr.$method($($arg),*) {
+      Ok(v) => v,
+      Err(e) => return Err($input.new_custom_error(e)),
+    }
+  };
+  ($expr:expr, $method:ident($($arg:expr),*), $map:ident(), $input:expr) => {
+    match $expr.$method($($arg),*) {
+      Ok(v) => v.$map(),
+      Err(e) => return Err($input.new_custom_error(e)),
+    }
+  };
+}
+
+macro_rules! extract_as_raw {
+  ($expr:expr) => {
+    match &$expr {
+      NumericValue::Zero => unreachable!(),
+      NumericValue::Number(number) => *number,
+      NumericValue::Percent(percent) => *percent,
+      NumericValue::Length(length) => length.to_pixels(),
+      NumericValue::Angle(angle) => angle.to_degrees(),
+      NumericValue::Time(time) => time.to_seconds(),
+      NumericValue::Frequency(frequency) => frequency.to_hertz(),
+      NumericValue::Resolution(resolution) => resolution.to_dot_per_pixels(),
+      NumericValue::Flex(flex) => *flex,
+    }
+  };
+}
+
+macro_rules! try_extract_as_raw {
+  ($expr:expr, $type_ref:expr, $input:expr) => {
+    match &$type_ref {
+      NumericValue::Zero => unreachable!(),
+      NumericValue::Number(_) => try_extract!($expr, expect_number(), $input),
+      NumericValue::Percent(_) => try_extract!($expr, expect_percent(), $input),
+      NumericValue::Length(_) => {
+        try_extract!($expr, expect_length(false), to_pixels(), $input)
+      }
+      NumericValue::Angle(_) => {
+        try_extract!($expr, expect_angle(false), to_degrees(), $input)
+      }
+      NumericValue::Time(_) => {
+        try_extract!($expr, expect_time(), to_seconds(), $input)
+      }
+      NumericValue::Frequency(_) => {
+        try_extract!($expr, expect_frequency(), to_hertz(), $input)
+      }
+      NumericValue::Resolution(_) => {
+        try_extract!($expr, expect_resolution(), to_dot_per_pixels(), $input)
+      }
+      NumericValue::Flex(_) => try_extract!($expr, expect_flex(), $input),
+    }
+  };
+}
+
+macro_rules! from_raw {
+  ($value:expr, $type_ref:expr) => {
+    match &$type_ref {
+      NumericValue::Zero => unreachable!(),
+      NumericValue::Number(_) => NumericValue::Number($value),
+      NumericValue::Percent(_) => NumericValue::Percent($value),
+      NumericValue::Length(_) => {
+        NumericValue::Length(Length::from_pixels($value))
+      }
+      NumericValue::Angle(_) => {
+        NumericValue::Angle(Angle::from_degrees($value))
+      }
+      NumericValue::Time(_) => NumericValue::Time(Time::from_seconds($value)),
+      NumericValue::Frequency(_) => {
+        NumericValue::Frequency(Frequency::from_hertz($value))
+      }
+      NumericValue::Resolution(_) => {
+        NumericValue::Resolution(Resolution::from_dot_per_pixels($value))
+      }
+      NumericValue::Flex(_) => NumericValue::Flex($value),
+    }
+  };
 }
 
 impl NumericValue {

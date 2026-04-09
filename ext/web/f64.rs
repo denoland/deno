@@ -1,3 +1,5 @@
+// Copyright 2018-2026 the Deno authors. MIT license.
+
 // TODO(petamoriken) Use f64::maximum instead https://github.com/rust-lang/rust/issues/91079
 #[inline]
 pub(crate) fn maximum(a: f64, b: f64) -> f64 {
