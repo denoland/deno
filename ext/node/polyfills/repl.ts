@@ -199,17 +199,19 @@ function defineDefaultCommands(repl: REPLServer) {
     },
   });
 
-  if (repl.terminal) {
-    repl.defineCommand("editor", {
-      help: "Enter editor mode",
-      action: function (this: REPLServer) {
-        _turnOnEditorMode(this);
-        this.output.write(
-          "// Entering editor mode (Ctrl+D to finish, Ctrl+C to cancel)\n",
-        );
-      },
-    });
-  }
+  repl.defineCommand("editor", {
+    help: "Enter editor mode",
+    action: function (this: REPLServer) {
+      if (!this.terminal) {
+        this.displayPrompt();
+        return;
+      }
+      _turnOnEditorMode(this);
+      this.output.write(
+        "// Entering editor mode (Ctrl+D to finish, Ctrl+C to cancel)\n",
+      );
+    },
+  });
 }
 
 function _memory(this: REPLServer, cmd: string) {
