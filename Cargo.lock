@@ -949,17 +949,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "613afe47fcd5fac7ccf1db93babcb082c5994d996f20b8b159f2ad1658eb5724"
 
 [[package]]
-name = "chacha20"
-version = "0.9.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c3613f74bd2eac03dad61bd53dbe620703d4371614fe0bc3b9f04dd36fe4e818"
-dependencies = [
- "cfg-if",
- "cipher",
- "cpufeatures 0.2.12",
-]
-
-[[package]]
 name = "chrono"
 version = "0.4.42"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2810,10 +2799,10 @@ dependencies = [
  "aead-gcm-stream",
  "aes",
  "aws-lc-rs",
+ "aws-lc-sys 0.39.0",
  "base64 0.22.1",
  "blake2",
  "cbc",
- "chacha20",
  "const-oid 0.9.6",
  "ctr",
  "data-encoding",
@@ -2844,7 +2833,6 @@ dependencies = [
  "p521",
  "pbkdf2",
  "pkcs8 0.10.2",
- "poly1305",
  "rand 0.8.5",
  "ripemd",
  "rsa",
@@ -7919,17 +7907,6 @@ dependencies = [
  "fdeflate",
  "flate2",
  "miniz_oxide 0.7.2",
-]
-
-[[package]]
-name = "poly1305"
-version = "0.8.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8159bd90725d2df49889a078b54f4f79e87f1f8a8444194cdca81d38f5393abf"
-dependencies = [
- "cpufeatures 0.2.12",
- "opaque-debug",
- "universal-hash",
 ]
 
 [[package]]
