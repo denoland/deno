@@ -9963,7 +9963,6 @@ mod tests {
     assert_eq!(perms.net.query(None), PermissionState::Granted);
   }
 
-  #[allow(clippy::field_reassign_with_default)]
   mod proptests {
     use std::cmp::Ordering;
     use std::net::Ipv4Addr;
@@ -10347,8 +10346,10 @@ mod tests {
       ) {
         set_prompter(Box::new(TestPrompter));
 
-        let mut perm = UnaryPermission::<NetDescriptor>::default();
-        perm.flag_denied_global = true;
+        let mut perm = UnaryPermission::<NetDescriptor> {
+          flag_denied_global: true,
+          ..Default::default()
+        };
         for d in &allow_descs {
           perm.descriptors.insert(UnaryPermissionDesc::Granted(d.clone()));
         }
@@ -10369,9 +10370,11 @@ mod tests {
       ) {
         set_prompter(Box::new(TestPrompter));
 
-        let mut perm = UnaryPermission::<NetDescriptor>::default();
-        perm.granted_global = true;
-        perm.flag_denied_global = true;
+        let perm = UnaryPermission::<NetDescriptor> {
+          granted_global: true,
+          flag_denied_global: true,
+          ..Default::default()
+        };
 
         let state = perm.query_desc(Some(&query), AllowPartial::TreatAsDenied);
         prop_assert_eq!(state, PermissionState::Denied,
@@ -10417,8 +10420,10 @@ mod tests {
       ) {
         set_prompter(Box::new(TestPrompter));
 
-        let mut perm = UnaryPermission::<NetDescriptor>::default();
-        perm.granted_global = true;
+        let mut perm = UnaryPermission::<NetDescriptor> {
+          granted_global: true,
+          ..Default::default()
+        };
         for d in &allow_descs {
           perm.descriptors.insert(UnaryPermissionDesc::Granted(d.clone()));
         }
@@ -10538,8 +10543,10 @@ mod tests {
         let prompt_value = PERMISSION_PROMPT_STUB_VALUE_SETTER.lock();
         prompt_value.set(false);
 
-        let mut parent = UnaryPermission::<NetDescriptor>::default();
-        parent.granted_global = true;
+        let mut parent = UnaryPermission::<NetDescriptor> {
+          granted_global: true,
+          ..Default::default()
+        };
         for d in &parent_allow {
           parent.descriptors.insert(UnaryPermissionDesc::Granted(d.clone()));
         }
