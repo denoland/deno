@@ -10335,5 +10335,226 @@ mod tests {
         }
       }
     }
+
+    // -- 6. Global flag_denied overrides granted descriptors --
+
+    proptest! {
+      #[test]
+      fn global_deny_overrides_all_grants_net(
+        allow_descs in prop::collection::vec(arb_net_descriptor(), 1..5),
+        query in arb_net_descriptor(),
+      ) {
+        set_prompter(Box::new(TestPrompter));
+
+        let mut perm = UnaryPermission::<NetDescriptor>::default();
+        perm.flag_denied_global = true;
+        for d in &allow_descs {
+          perm.descriptors.insert(UnaryPermissionDesc::Granted(d.clone()));
+        }
+
+        let state = perm.query_desc(Some(&query), AllowPartial::TreatAsDenied);
+        prop_assert_eq!(state, PermissionState::Denied,
+          "flag_denied_global should deny everything: query={:?}", query);
+
+        // Also check global query (None)
+        let state_global = perm.query_desc(None, AllowPartial::TreatAsDenied);
+        prop_assert_eq!(state_global, PermissionState::Denied,
+          "flag_denied_global should deny global query too");
+      }
+
+      #[test]
+      fn global_deny_overrides_granted_global_net(
+        query in arb_net_descriptor(),
+      ) {
+        set_prompter(Box::new(TestPrompter));
+
+        let mut perm = UnaryPermission::<NetDescriptor>::default();
+        perm.granted_global = true;
+        perm.flag_denied_global = true;
+
+        let state = perm.query_desc(Some(&query), AllowPartial::TreatAsDenied);
+        prop_assert_eq!(state, PermissionState::Denied,
+          "flag_denied_global should override granted_global: query={:?}", query);
+      }
+    }
+
+    // -- 7. Revoke consistency --
+    // After revoke_desc(), query_desc() should never return Granted for
+    // the revoked descriptor.
+
+    proptest! {
+      #[test]
+      fn revoke_prevents_granted_net(
+        allow_descs in prop::collection::vec(arb_net_descriptor(), 1..5),
+        revoke_idx in 0usize..5,
+      ) {
+        set_prompter(Box::new(TestPrompter));
+
+        let mut perm = UnaryPermission::<NetDescriptor>::default();
+        for d in &allow_descs {
+          perm.descriptors.insert(UnaryPermissionDesc::Granted(d.clone()));
+        }
+
+        let idx = revoke_idx % allow_descs.len();
+        let to_revoke = &allow_descs[idx];
+
+        perm.revoke_desc(Some(to_revoke));
+
+        // After revoking, the descriptor should not be Granted
+        let state = perm.query_desc(
+          Some(to_revoke),
+          AllowPartial::TreatAsDenied,
+        );
+        prop_assert_ne!(state, PermissionState::Granted,
+          "revoked descriptor still Granted: {:?}", to_revoke);
+      }
+
+      #[test]
+      fn revoke_global_clears_all_grants_net(
+        allow_descs in prop::collection::vec(arb_net_descriptor(), 1..5),
+        query in arb_net_descriptor(),
+      ) {
+        set_prompter(Box::new(TestPrompter));
+
+        let mut perm = UnaryPermission::<NetDescriptor>::default();
+        perm.granted_global = true;
+        for d in &allow_descs {
+          perm.descriptors.insert(UnaryPermissionDesc::Granted(d.clone()));
+        }
+
+        // Revoke global
+        perm.revoke_desc(None);
+
+        prop_assert!(!perm.granted_global,
+          "granted_global should be false after global revoke");
+
+        // No descriptor should be Granted anymore (should be Prompt)
+        let state = perm.query_desc(Some(&query), AllowPartial::TreatAsDenied);
+        prop_assert_ne!(state, PermissionState::Granted,
+          "query still Granted after global revoke: {:?}", query);
+      }
+    }
+
+    // -- 8. Idempotent insert --
+    // Inserting the same descriptor twice should not change the vec length.
+
+    proptest! {
+      #[test]
+      fn idempotent_insert_net(
+        desc in arb_unary_perm_desc_net(),
+      ) {
+        let mut descriptors = UnaryPermissionDescriptors::<NetDescriptor>::default();
+        descriptors.insert(desc.clone());
+        let len_after_first = descriptors.inner.len();
+
+        descriptors.insert(desc.clone());
+        let len_after_second = descriptors.inner.len();
+
+        prop_assert_eq!(len_after_first, len_after_second,
+          "duplicate insert changed vec length: desc={:?}", desc);
+      }
+
+      #[test]
+      fn idempotent_insert_env(
+        desc in arb_unary_perm_desc_env(),
+      ) {
+        let mut descriptors = UnaryPermissionDescriptors::<EnvDescriptor>::default();
+        descriptors.insert(desc.clone());
+        let len_after_first = descriptors.inner.len();
+
+        descriptors.insert(desc.clone());
+        let len_after_second = descriptors.inner.len();
+
+        prop_assert_eq!(len_after_first, len_after_second,
+          "duplicate insert changed vec length: desc={:?}", desc);
+      }
+    }
+
+    // -- 9. Net matches_allow reflexivity --
+    // Any NetDescriptor should matches_allow itself.
+
+    proptest! {
+      #[test]
+      fn net_matches_allow_reflexive(
+        desc in arb_net_descriptor(),
+      ) {
+        prop_assert!(desc.matches_allow(&desc),
+          "descriptor should match its own allow: {:?}", desc);
+      }
+
+      #[test]
+      fn net_matches_deny_reflexive(
+        desc in arb_net_descriptor(),
+      ) {
+        prop_assert!(desc.matches_deny(&desc),
+          "descriptor should match its own deny: {:?}", desc);
+      }
+
+      #[test]
+      fn net_stronger_than_deny_reflexive(
+        desc in arb_net_descriptor(),
+      ) {
+        prop_assert!(desc.stronger_than_deny(&desc),
+          "descriptor should be stronger_than_deny of itself: {:?}", desc);
+      }
+    }
+
+    // -- 10. Child NotGranted has no grants --
+    // A child created with NotGranted should never return Granted.
+
+    proptest! {
+      #[test]
+      fn child_not_granted_denies_everything_net(
+        parent_allow in prop::collection::vec(arb_net_descriptor(), 1..5),
+        query in arb_net_descriptor(),
+      ) {
+        set_prompter(Box::new(TestPrompter));
+        let prompt_value = PERMISSION_PROMPT_STUB_VALUE_SETTER.lock();
+        prompt_value.set(false);
+
+        let mut parent = UnaryPermission::<NetDescriptor>::default();
+        for d in &parent_allow {
+          parent.descriptors.insert(UnaryPermissionDesc::Granted(d.clone()));
+        }
+
+        let child = parent.create_child_permissions(
+          ChildUnaryPermissionArg::NotGranted,
+          |s: &str| NetDescriptor::parse_for_list(s).map(Some),
+        ).unwrap();
+
+        let state = child.query_desc(Some(&query), AllowPartial::TreatAsDenied);
+        prop_assert_ne!(state, PermissionState::Granted,
+          "NotGranted child returned Granted: query={:?}", query);
+        prop_assert_ne!(state, PermissionState::GrantedPartial,
+          "NotGranted child returned GrantedPartial: query={:?}", query);
+      }
+
+      #[test]
+      fn child_not_granted_global_not_granted_net(
+        parent_allow in prop::collection::vec(arb_net_descriptor(), 0..3),
+      ) {
+        set_prompter(Box::new(TestPrompter));
+        let prompt_value = PERMISSION_PROMPT_STUB_VALUE_SETTER.lock();
+        prompt_value.set(false);
+
+        let mut parent = UnaryPermission::<NetDescriptor>::default();
+        parent.granted_global = true;
+        for d in &parent_allow {
+          parent.descriptors.insert(UnaryPermissionDesc::Granted(d.clone()));
+        }
+
+        let child = parent.create_child_permissions(
+          ChildUnaryPermissionArg::NotGranted,
+          |s: &str| NetDescriptor::parse_for_list(s).map(Some),
+        ).unwrap();
+
+        prop_assert!(!child.granted_global,
+          "NotGranted child should not have granted_global");
+
+        let state = child.query_desc(None, AllowPartial::TreatAsDenied);
+        prop_assert_ne!(state, PermissionState::Granted,
+          "NotGranted child global query returned Granted");
+      }
+    }
   }
 }
