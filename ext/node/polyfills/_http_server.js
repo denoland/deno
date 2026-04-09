@@ -72,6 +72,7 @@ import {
 } from "ext:deno_telemetry/telemetry.ts";
 
 const kServerResponse = Symbol("ServerResponse");
+const kConnectionsKey = Symbol("http.server.connections");
 const kOtelSpan = Symbol("kOtelSpan");
 const kOtelStartTime = Symbol("kOtelStartTime");
 const kOtelReqBodySize = Symbol("kOtelReqBodySize");
@@ -324,6 +325,11 @@ function connectionListener(socket) {
 
 function connectionListenerInternal(server, socket) {
   socket.server = server;
+
+  // Track connections for closeIdleConnections/closeAllConnections
+  if (!server[kConnectionsKey]) server[kConnectionsKey] = new Set();
+  server[kConnectionsKey].add(socket);
+  socket.on("close", () => server[kConnectionsKey]?.delete(socket));
 
   if (server.timeout && typeof socket.setTimeout === "function") {
     socket.setTimeout(server.timeout);
@@ -767,7 +773,29 @@ Server.prototype.setTimeout = function setTimeout(msecs, callback) {
 };
 
 Server.prototype.close = function close(cb) {
+  this.closeIdleConnections();
   return net.Server.prototype.close.call(this, cb);
+};
+
+Server.prototype.closeAllConnections = function closeAllConnections() {
+  const connections = this[kConnectionsKey];
+  if (connections) {
+    for (const socket of connections) {
+      socket.destroy();
+    }
+  }
+};
+
+Server.prototype.closeIdleConnections = function closeIdleConnections() {
+  const connections = this[kConnectionsKey];
+  if (connections) {
+    for (const socket of connections) {
+      // A socket is idle if it has no active HTTP response being written
+      if (!socket._httpMessage) {
+        socket.destroy();
+      }
+    }
+  }
 };
 
 export { Server, ServerResponse, STATUS_CODES };
