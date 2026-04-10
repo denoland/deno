@@ -111,20 +111,17 @@ export class TCP extends ConnectionWrap {
   /**
    * Creates a new TCP class instance.
    * @param type The socket type.
-   * @param conn Optional connection object to wrap.
    */
-  constructor(type: number, conn?: Deno.Conn) {
+  constructor(type: number) {
     let provider: providerType;
 
     switch (type) {
       case socketType.SOCKET: {
         provider = providerType.TCPWRAP;
-
         break;
       }
       case socketType.SERVER: {
         provider = providerType.TCPSERVERWRAP;
-
         break;
       }
       default: {
@@ -132,24 +129,11 @@ export class TCP extends ConnectionWrap {
       }
     }
 
-    super(provider, conn);
+    super(provider);
 
     // Create native libuv TCP handle
     this.#native = new NativeTCP(type);
     this.#native.setOwner();
-
-    // TODO(cmorten): the handling of new connections and construction feels
-    // a little off. Suspect duplicating in some fashion.
-    if (conn && provider === providerType.TCPWRAP) {
-      const localAddr = conn.localAddr as Deno.NetAddr;
-      this.#address = localAddr.hostname;
-      this.#port = localAddr.port;
-
-      const remoteAddr = conn.remoteAddr as Deno.NetAddr;
-      this.#remoteAddress = remoteAddr.hostname;
-      this.#remotePort = remoteAddr.port;
-      this.#remoteFamily = getIPFamily(remoteAddr.hostname);
-    }
   }
 
   get fd() {
