@@ -38,6 +38,37 @@ const kMultilinePrompt = "... ";
 const writer = (obj: unknown) => inspect(obj, writer.options);
 writer.options = { ...inspect.defaultOptions, showProxy: true };
 
+// ANSI cursor control helpers for preview
+function _cursorTo(stream: any, x: number) {
+  stream.write(`\x1b[${x + 1}G`);
+}
+
+function _moveCursor(stream: any, dx: number, dy: number) {
+  let data = "";
+  if (dx < 0) data += `\x1b[${-dx}D`;
+  else if (dx > 0) data += `\x1b[${dx}C`;
+  if (dy < 0) data += `\x1b[${-dy}A`;
+  else if (dy > 0) data += `\x1b[${dy}B`;
+  if (data) stream.write(data);
+}
+
+function _clearLine(stream: any, dir?: number) {
+  if (dir !== undefined && dir < 0) stream.write("\x1b[1K");
+  else if (dir !== undefined && dir > 0) stream.write("\x1b[0K");
+  else stream.write("\x1b[2K");
+}
+
+function _getPropertyNames(obj: any): string[] {
+  if (!obj) return [];
+  try {
+    return Object.getOwnPropertyNames(obj).filter((name: string) => {
+      return /^[a-zA-Z_$][\w$]*$/.test(name);
+    });
+  } catch {
+    return [];
+  }
+}
+
 export class Recoverable extends SyntaxError {
   err: Error;
   constructor(err: Error) {
@@ -302,6 +333,7 @@ export class REPLServer extends (Interface as any) {
       options.terminal = !!(options.output as { isTTY?: boolean })?.isTTY;
     }
     options.terminal = !!options.terminal;
+    const usePreview = !!options.terminal && options.preview !== false;
 
     if (options.terminal && options.useColors === undefined) {
       // Check if the output stream supports colors
@@ -483,8 +515,419 @@ export class REPLServer extends (Interface as any) {
 
     function completer(text: string, cb: any) {
       const callback = self.editorMode ? self.completeOnEditorMode(cb) : cb;
-      // Return empty completions by default
-      callback(null, [[], text]);
+      _doComplete(text, callback);
+    }
+
+    function _doComplete(
+      line: string,
+      callback: (err: Error | null, result: [string[], string]) => void,
+    ) {
+      const completionGroups: string[][] = [];
+      let completeOn = "";
+      let filter = "";
+
+      // Handle REPL commands (.break, .clear, etc.)
+      const cmdMatch = /^\s*\.(\w*)$/.exec(line);
+      if (cmdMatch) {
+        completionGroups.push(
+          Object.keys(self.commands).map((cmd) => `.${cmd}`),
+        );
+        completeOn = `.${cmdMatch[1]}`;
+        if (cmdMatch[1].length) {
+          filter = completeOn;
+        }
+        completionGroupsLoaded();
+        return;
+      }
+
+      // Match identifier chains: foo, foo.bar, foo.bar.baz, etc.
+      const exprMatch =
+        /(?:^|[\s;({\[,!~+\-*/&|^%<>?:=])((?:[a-zA-Z_$][\w$]*\??\.)*(?:[a-zA-Z_$][\w$]*)?)\.?$/
+          .exec(line);
+
+      let expr = "";
+
+      if (exprMatch) {
+        const matchStr = exprMatch[1];
+        completeOn = matchStr;
+
+        if (matchStr.endsWith(".")) {
+          expr = matchStr.slice(0, -1);
+          filter = "";
+        } else if (matchStr.includes(".")) {
+          const bits = matchStr.split(".");
+          filter = bits.pop()!;
+          expr = bits.join(".");
+        } else {
+          filter = matchStr;
+        }
+      } else if (line.length === 0) {
+        completeOn = "";
+        filter = "";
+      } else {
+        callback(null, [[], line]);
+        return;
+      }
+
+      if (expr) {
+        // Member expression completion
+        let chaining = ".";
+        let evalExpr = expr;
+        if (expr.endsWith("?")) {
+          evalExpr = expr.slice(0, -1);
+          chaining = "?.";
+        }
+
+        const wrappedExpr = `try { ${evalExpr} } catch {}`;
+        self.eval(
+          wrappedExpr,
+          self.context,
+          "repl",
+          (_e: any, obj: any) => {
+            if (obj != null) {
+              const memberGroups: string[][] = [];
+              try {
+                let p;
+                if (
+                  (typeof obj === "object" && obj !== null) ||
+                  typeof obj === "function"
+                ) {
+                  memberGroups.push(_getPropertyNames(obj));
+                  p = Object.getPrototypeOf(obj);
+                } else {
+                  p = obj.constructor ? obj.constructor.prototype : null;
+                }
+                let sentinel = 5;
+                while (p !== null && sentinel-- > 0) {
+                  memberGroups.push(_getPropertyNames(p));
+                  p = Object.getPrototypeOf(p);
+                }
+              } catch {
+                // Proxy without getOwnPropertyNames
+              }
+
+              if (memberGroups.length) {
+                const prefix = expr + chaining;
+                for (const group of memberGroups) {
+                  completionGroups.push(
+                    group.map((m: string) => `${prefix}${m}`),
+                  );
+                }
+                if (filter) {
+                  filter = `${prefix}${filter}`;
+                }
+              }
+            }
+            completionGroupsLoaded();
+          },
+        );
+      } else {
+        // Global completion - walk context prototype chain
+        if (self.context) {
+          try {
+            let obj = self.context;
+            let sentinel = 5;
+            while (obj !== null && sentinel-- > 0) {
+              try {
+                completionGroups.push(_getPropertyNames(obj));
+              } catch {
+                // ignore
+              }
+              obj = Object.getPrototypeOf(obj);
+            }
+          } catch {
+            // ignore
+          }
+        }
+
+        // JS keywords
+        if (filter !== "") {
+          completionGroups.push([
+            "async",
+            "await",
+            "break",
+            "case",
+            "catch",
+            "const",
+            "continue",
+            "debugger",
+            "default",
+            "delete",
+            "do",
+            "else",
+            "export",
+            "false",
+            "finally",
+            "for",
+            "function",
+            "if",
+            "import",
+            "in",
+            "instanceof",
+            "let",
+            "new",
+            "null",
+            "return",
+            "switch",
+            "this",
+            "throw",
+            "true",
+            "try",
+            "typeof",
+            "undefined",
+            "var",
+            "void",
+            "while",
+            "with",
+            "yield",
+          ]);
+        }
+
+        completionGroupsLoaded();
+      }
+
+      function completionGroupsLoaded() {
+        // Filter by prefix
+        if (completionGroups.length && filter) {
+          const lowerFilter = filter.toLowerCase();
+          const filtered: string[][] = [];
+          for (const group of completionGroups) {
+            const fg = group.filter((str) =>
+              str.toLowerCase().startsWith(lowerFilter)
+            );
+            if (fg.length) filtered.push(fg);
+          }
+          completionGroups.length = 0;
+          completionGroups.push(...filtered);
+        }
+
+        // Deduplicate and collect
+        const completions: string[] = [];
+        const seen = new Set<string>();
+        seen.add("");
+
+        for (const group of completionGroups) {
+          group.sort((a, b) => (b > a ? 1 : -1));
+          const prevSize = seen.size;
+          for (const item of group) {
+            if (!seen.has(item)) {
+              completions.unshift(item);
+              seen.add(item);
+            }
+          }
+          if (seen.size !== prevSize) {
+            completions.unshift("");
+          }
+        }
+
+        if (completions.length > 0 && completions[0] === "") {
+          completions.shift();
+        }
+
+        callback(null, [completions, completeOn]);
+      }
+    }
+
+    // Preview state
+    let inputPreview: string | null = null;
+    let completionPreview: string | null = null;
+    let previewCompletionCounter = 0;
+    let escaped: string | null = null;
+
+    function _getDisplayPosHelper(str: string) {
+      if (typeof self._getDisplayPos === "function") {
+        return self._getDisplayPos(str);
+      }
+      return { rows: 0, cols: str.length };
+    }
+
+    function getPreviewPos() {
+      const displayPos = _getDisplayPosHelper(
+        `${self.getPrompt()}${self.line}`,
+      );
+      const cursorPos = self.line.length !== self.cursor
+        ? (typeof self.getCursorPos === "function"
+          ? self.getCursorPos()
+          : { rows: 0, cols: self.getPrompt().length + self.cursor })
+        : displayPos;
+      return { displayPos, cursorPos };
+    }
+
+    function isCursorAtInputEnd() {
+      return self.cursor === self.line.length;
+    }
+
+    function showCompletionPreview(line: string) {
+      previewCompletionCounter++;
+      const count = previewCompletionCounter;
+
+      self.completer(line, (err: any, data: any) => {
+        if (count !== previewCompletionCounter) return;
+        if (err) return;
+
+        const [rawCompletions, completeOn] = data;
+        if (!rawCompletions || rawCompletions.length === 0) return;
+
+        const completions = rawCompletions.filter(Boolean);
+        if (completions.length === 0) return;
+
+        const prefix = commonPrefix(completions);
+        if (prefix.length <= completeOn.length) return;
+
+        const suffix = prefix.slice(completeOn.length);
+        completionPreview = suffix;
+
+        const result = self.useColors
+          ? `\x1b[90m${suffix}\x1b[39m`
+          : ` // ${suffix}`;
+
+        const { cursorPos, displayPos } = getPreviewPos();
+        if (self.line.length !== self.cursor) {
+          _cursorTo(self.output, displayPos.cols);
+          _moveCursor(self.output, 0, displayPos.rows - cursorPos.rows);
+        }
+        self.output.write(result);
+        _cursorTo(self.output, cursorPos.cols);
+        const totalLine = `${self.getPrompt()}${self.line}${suffix}`;
+        const newPos = _getDisplayPosHelper(totalLine);
+        const rows = newPos.rows - cursorPos.rows -
+          (newPos.cols === 0 ? 1 : 0);
+        if (rows > 0) _moveCursor(self.output, 0, -rows);
+      });
+    }
+
+    function showPreview(showCompletion = true) {
+      if (!usePreview) return;
+      if (inputPreview !== null || !self.isCompletionEnabled) return;
+
+      const line = self.line.trim();
+      if (line === "") return;
+
+      // Show completion preview (inline dim suffix)
+      if (showCompletion) {
+        showCompletionPreview(self.line);
+      }
+
+      // Don't show eval preview in multiline mode
+      if (self[kBufferedCommandSymbol]) return;
+
+      // Evaluate for input preview
+      let previewLine = line;
+      if (
+        completionPreview !== null && isCursorAtInputEnd() &&
+        escaped !== self.line
+      ) {
+        previewLine += completionPreview;
+      }
+
+      self.eval(
+        previewLine + "\n",
+        self.context,
+        "repl",
+        (err: any, result: any) => {
+          if (err) return;
+          if (result === undefined && self.ignoreUndefined) return;
+
+          let inspected = inspect(result, {
+            colors: false,
+            showProxy: true,
+            breakLength: Infinity,
+            compact: true,
+            maxArrayLength: 10,
+            depth: 1,
+          });
+          if (inspected === line) return;
+
+          // Truncate at newline
+          const nlIdx = inspected.search(/[\r\n\v]/);
+          if (nlIdx !== -1) inspected = inspected.slice(0, nlIdx);
+
+          // Limit length
+          const maxCols = Math.min(
+            (self as any).columns || 80,
+            250,
+          );
+          if (inspected.length > maxCols) {
+            inspected = inspected.slice(0, maxCols - 4) + "...";
+          }
+
+          inputPreview = inspected;
+
+          const preview = self.useColors
+            ? `\x1b[90m${inspected}\x1b[39m`
+            : `// ${inspected}`;
+
+          const { cursorPos, displayPos } = getPreviewPos();
+          const rows = displayPos.rows - cursorPos.rows;
+          if (rows > 0) _moveCursor(self.output, 0, rows);
+          self.output.write(`\n${preview}`);
+          _cursorTo(self.output, cursorPos.cols);
+          _moveCursor(self.output, 0, -rows - 1);
+        },
+      );
+    }
+
+    function clearPreview(key: any) {
+      if (!usePreview) return;
+
+      // Clear input preview
+      if (inputPreview !== null) {
+        const { displayPos, cursorPos } = getPreviewPos();
+        const rows = displayPos.rows - cursorPos.rows + 1;
+        _moveCursor(self.output, 0, rows);
+        _clearLine(self.output);
+        _moveCursor(self.output, 0, -rows);
+        inputPreview = null;
+      }
+
+      // Clear completion preview
+      if (completionPreview !== null) {
+        const move = self.line.length !== self.cursor;
+        let pos: any;
+        let rows = 0;
+        if (move) {
+          pos = getPreviewPos();
+          _cursorTo(self.output, pos.displayPos.cols);
+          rows = pos.displayPos.rows - pos.cursorPos.rows;
+          _moveCursor(self.output, 0, rows);
+        }
+        const totalLine = `${self.getPrompt()}${self.line}${completionPreview}`;
+        const newPos = _getDisplayPosHelper(totalLine);
+        if (
+          newPos.rows === 0 ||
+          (move && pos.displayPos.rows === newPos.rows)
+        ) {
+          _clearLine(self.output, 1);
+        } else {
+          self.output.write("\x1b[0J");
+        }
+        if (move) {
+          _cursorTo(self.output, pos.cursorPos.cols);
+          _moveCursor(self.output, 0, -rows);
+        }
+
+        // Auto-accept completion on Enter
+        if (key && !key.ctrl && !key.shift) {
+          if (key.name === "escape") {
+            if (escaped === null && key.meta) {
+              escaped = self.line;
+            }
+          } else if (
+            (key.name === "return" || key.name === "enter") &&
+            !key.meta &&
+            escaped !== self.line &&
+            isCursorAtInputEnd()
+          ) {
+            self._insertString(completionPreview);
+          }
+        }
+
+        completionPreview = null;
+      }
+
+      if (escaped !== self.line) {
+        escaped = null;
+      }
     }
 
     self.resetContext();
@@ -689,7 +1132,10 @@ export class REPLServer extends (Interface as any) {
         ) {
           self.clearLine();
         }
+        clearPreview(key);
         ttyWrite(d, key);
+        const showCompletion = key.name !== "escape";
+        showPreview(showCompletion);
         return;
       }
 
