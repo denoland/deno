@@ -15,7 +15,6 @@ use deno_core::error::AnyError;
 use deno_core::url::Url;
 use deno_resolver::file_fetcher::PermissionedFileFetcherOptions;
 use deno_resolver::loader::MemoryFiles;
-use deno_runtime::deno_web::BlobStore;
 use deno_runtime::deno_web::BlobStoreTrait;
 use http::HeaderMap;
 use http::StatusCode;
@@ -253,6 +252,7 @@ mod tests {
   use deno_resolver::file_fetcher::FetchPermissionsOptionRef;
   use deno_resolver::loader::MemoryFilesRc;
   use deno_runtime::deno_web::Blob;
+  use deno_runtime::deno_web::BlobStore;
   use deno_runtime::deno_web::InMemoryBlobPart;
   use test_util::TempDir;
 
