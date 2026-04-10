@@ -271,7 +271,7 @@ impl LibUvStreamWrap {
     self.handle_data.active_read.set(Some(key));
   }
 
-  fn stable_handle_data(
+  pub(crate) fn stable_handle_data(
     stream: *mut uv_stream_t,
   ) -> Option<NonNull<StreamHandleData>> {
     if stream.is_null() {
@@ -644,7 +644,7 @@ fn free_uv_buf(buf: *const uv_buf_t) {
 /// # Safety
 /// `loop_ptr` must be a valid, initialized `uv_loop_t` whose `data` field
 /// contains the raw `Global<Context>` installed by `register_uv_loop`.
-unsafe fn clone_context_from_uv_loop(
+pub(crate) unsafe fn clone_context_from_uv_loop(
   isolate: &mut v8::Isolate,
   loop_ptr: *mut uv_compat::uv_loop_t,
 ) -> v8::Global<v8::Context> {
