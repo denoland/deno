@@ -30,7 +30,6 @@
 import { primordials } from "ext:core/mod.js";
 const {
   Int32Array,
-  Symbol,
 } = primordials;
 
 import { Buffer } from "node:buffer";
@@ -57,7 +56,6 @@ export const kNumStreamBaseStateFields =
   StreamBaseStateFields.kNumStreamBaseStateFields;
 
 export const streamBaseState = new Int32Array(5);
-
 
 export class WriteWrap<H extends HandleWrap> extends AsyncWrap {
   handle!: H;

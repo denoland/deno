@@ -29,8 +29,8 @@ use crate::ops::handle_wrap::Handle;
 use crate::ops::handle_wrap::HandleWrap;
 use crate::ops::handle_wrap::OwnedPtr;
 use crate::ops::handle_wrap::ProviderType;
-use crate::ops::stream_wrap::clone_context_from_uv_loop;
 use crate::ops::stream_wrap::LibUvStreamWrap;
+use crate::ops::stream_wrap::clone_context_from_uv_loop;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[repr(i32)]
@@ -159,8 +159,8 @@ impl Drop for TCPWrap {
 
 impl TCPWrap {
   fn new(socket_type: SocketType, op_state: &mut OpState) -> Self {
-    let loop_ = &**op_state.borrow::<Box<UvLoop>>() as *const UvLoop
-      as *mut UvLoop;
+    let loop_ =
+      &**op_state.borrow::<Box<UvLoop>>() as *const UvLoop as *mut UvLoop;
 
     let tcp = OwnedPtr::from_box(Box::<UvTcp>::new_uninit());
 

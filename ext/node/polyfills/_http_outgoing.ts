@@ -178,7 +178,6 @@ Object.defineProperties(
       }
 
       if (!this.socket) {
-  
         this.once("socket", function socketSetTimeoutOnConnect(socket: any) {
           socket.setTimeout(msecs);
         });
@@ -200,7 +199,6 @@ Object.defineProperties(
       if (this.socket) {
         this.socket.destroy(error);
       } else {
-  
         this.once("socket", function socketDestroyOnConnect(socket: any) {
           socket.destroy(error);
         });
@@ -337,7 +335,6 @@ Object.defineProperties(
       // Retain for(;;) loop for performance reasons
       // Refs: https://github.com/nodejs/node/pull/30958
       for (let i = 0, l = values.length; i < l; i++) {
-  
         headers[i] = (values as any)[i][0];
       }
 
@@ -415,12 +412,10 @@ Object.defineProperties(
       return ret;
     },
 
-
     addTrailers(_headers: any) {
       // TODO(crowlKats): finish it
       notImplemented("OutgoingMessage.addTrailers");
     },
-
 
     end(chunk: any, encoding: any, callback: any) {
       if (typeof chunk === "function") {
@@ -600,7 +595,6 @@ Object.defineProperties(
       }
     },
 
-
     _send(data: any, encoding?: string | null, callback?: () => void) {
       // This is a shameful hack to get the headers and first body chunk onto
       // the same packet. Future versions of Node are going to take care of
@@ -652,7 +646,6 @@ Object.defineProperties(
     },
 
     _writeRaw(
-
       data: any,
       encoding?: string | null,
       callback?: () => void,
@@ -826,10 +819,8 @@ Object.defineProperties(
     },
 
     _matchHeader(
-
       state: any,
       field: string,
-
       value: any,
     ) {
       // Ignore lint to keep the code as similar to Nodejs as possible
@@ -872,7 +863,6 @@ Object.defineProperties(
       }
     },
 
-
     [EE.captureRejectionSymbol](err: any, _event: any) {
       this.destroy(err);
     },
@@ -881,7 +871,6 @@ Object.defineProperties(
 
 Object.defineProperty(OutgoingMessage.prototype, "_headers", {
   get: deprecate(
-
     function (this: any) {
       return this.getHeaders();
     },
@@ -889,7 +878,6 @@ Object.defineProperty(OutgoingMessage.prototype, "_headers", {
     "DEP0066",
   ),
   set: deprecate(
-
     function (this: any, val: any) {
       if (val == null) {
         this[kOutHeaders] = null;
@@ -911,7 +899,6 @@ Object.defineProperty(OutgoingMessage.prototype, "_headers", {
 
 Object.defineProperty(OutgoingMessage.prototype, "_headerNames", {
   get: deprecate(
-
     function (this: any) {
       const headers = this[kOutHeaders];
       if (headers !== null) {
@@ -932,7 +919,6 @@ Object.defineProperty(OutgoingMessage.prototype, "_headerNames", {
     "DEP0066",
   ),
   set: deprecate(
-
     function (this: any, val: any) {
       if (typeof val === "object" && val !== null) {
         const headers = this[kOutHeaders];
@@ -1010,7 +996,6 @@ function _onError(msg: any, err: any, callback: any) {
   const triggerAsyncId = msg.socket ? msg.socket[async_id_symbol] : undefined;
   defaultTriggerAsyncIdScope(
     triggerAsyncId,
-
     (globalThis as any).process.nextTick,
     emitErrorNt,
     msg,

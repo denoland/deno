@@ -146,13 +146,15 @@ export class Pipe extends ConnectionWrap {
   }
 
   override writeBuffer(
-    req: WriteWrap<LibuvStreamWrap>,
+    _req: WriteWrap<LibuvStreamWrap>,
     data: Uint8Array,
   ): number {
     this.#native.writeBuffer(data);
-    streamBaseState[kBytesWritten] = data.byteLength;
+    // deno-lint-ignore prefer-primordials
+    const len = data.byteLength;
+    streamBaseState[kBytesWritten] = len;
     streamBaseState[kLastWriteWasAsync] = 0;
-    this.bytesWritten += data.byteLength;
+    this.bytesWritten += len;
     return 0;
   }
 

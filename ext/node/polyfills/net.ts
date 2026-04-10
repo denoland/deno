@@ -99,9 +99,7 @@ import {
   Pipe,
   PipeConnectWrap,
 } from "ext:deno_node/internal_binding/pipe_wrap.ts";
-import {
-  ShutdownWrap,
-} from "ext:deno_node/internal_binding/stream_wrap.ts";
+import { ShutdownWrap } from "ext:deno_node/internal_binding/stream_wrap.ts";
 import assert from "node:assert";
 import { isWindows } from "ext:deno_node/_util/os.ts";
 import { ADDRCONFIG, lookup as dnsLookup } from "node:dns";
@@ -1347,8 +1345,6 @@ Socket.prototype.connect = function (...args) {
     this._handle = pipe
       ? new Pipe(PipeConstants.SOCKET)
       : new TCP(TCPConstants.SOCKET);
-
-
 
     _initSocketHandle(this);
   }
