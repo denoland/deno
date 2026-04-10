@@ -449,19 +449,19 @@ export class REPLServer extends (Interface as any) {
       let wrappedCmd = false;
       const input = code;
 
-      if (isObjectLiteral(code)) {
-        try {
-          // Try to parse as-is first
-          new vm.Script(code);
-        } catch {
-          // If it fails, try wrapping in parens
-          code = `(${code.trim()})\n`;
-          wrappedCmd = true;
-        }
-      }
-
       // Empty input
       if (code === "\n") return cb(null);
+
+      // If it looks like an object literal (starts with { and no trailing ;),
+      // try wrapping in parens first to treat as expression.
+      // This matches Node.js behavior: wrap first, fallback to unwrapped.
+      if (
+        isObjectLiteral(code) &&
+        !/;\s*$/.test(code.trim())
+      ) {
+        code = `(${code.trim()})\n`;
+        wrappedCmd = true;
+      }
 
       if (err === null) {
         let wrappedErr: Error | undefined;
@@ -483,16 +483,28 @@ export class REPLServer extends (Interface as any) {
             }
           } catch (e) {
             if (wrappedCmd) {
+              // Wrapped version failed, try original
               wrappedCmd = false;
               code = input;
               wrappedErr = e as Error;
               continue;
             }
-            const error = wrappedErr || e;
-            if (isRecoverableError(error as Error, code)) {
-              err = new Recoverable(error as Error);
+            // Use the unwrapped error unless it's a SyntaxError and the
+            // wrapped version also had a SyntaxError (in which case we
+            // prefer the unwrapped SyntaxError for better messaging).
+            const error = e as Error;
+            if (isRecoverableError(error, code)) {
+              err = new Recoverable(error);
             } else {
-              err = error as Error;
+              // Attach source context for SyntaxErrors so _handleError
+              // can display source lines like Node.js does.
+              if (
+                error != null && typeof error === "object" &&
+                error.name === "SyntaxError"
+              ) {
+                (error as any)._replSourceCode = input.replace(/\n$/, "");
+              }
+              err = error;
             }
           }
           break;
@@ -820,51 +832,72 @@ export class REPLServer extends (Interface as any) {
         previewLine += completionPreview;
       }
 
-      self.eval(
-        previewLine + "\n",
-        self.context,
-        "repl",
-        (err: any, result: any) => {
-          if (err) return;
-          if (result === undefined && self.ignoreUndefined) return;
-
-          let inspected = inspect(result, {
-            colors: false,
-            showProxy: true,
-            breakLength: Infinity,
-            compact: true,
-            maxArrayLength: 10,
-            depth: 1,
+      // Use vm.Script with a timeout for preview evaluation to avoid
+      // hanging on infinite loops (e.g. `while(true){}`).
+      let result;
+      try {
+        let previewCode = previewLine + "\n";
+        // Apply object literal wrapping for preview too
+        if (
+          isObjectLiteral(previewCode) &&
+          !/;\s*$/.test(previewCode.trim())
+        ) {
+          previewCode = `(${previewCode.trim()})\n`;
+        }
+        const script = new vm.Script(previewCode, { filename: "repl" });
+        if (self.useGlobal) {
+          result = script.runInThisContext({
+            displayErrors: false,
+            timeout: 500,
           });
-          if (inspected === line) return;
+        } else {
+          result = script.runInContext(self.context, {
+            displayErrors: false,
+            timeout: 500,
+          });
+        }
+      } catch {
+        // Timeout, syntax error, or runtime error - no preview
+        return;
+      }
 
-          // Truncate at newline
-          const nlIdx = inspected.search(/[\r\n\v]/);
-          if (nlIdx !== -1) inspected = inspected.slice(0, nlIdx);
+      if (result === undefined && self.ignoreUndefined) return;
 
-          // Limit length
-          const maxCols = Math.min(
-            (self as any).columns || 80,
-            250,
-          );
-          if (inspected.length > maxCols) {
-            inspected = inspected.slice(0, maxCols - 4) + "...";
-          }
+      let inspected = inspect(result, {
+        colors: false,
+        showProxy: true,
+        breakLength: Infinity,
+        compact: true,
+        maxArrayLength: 10,
+        depth: 1,
+      });
+      if (inspected === line) return;
 
-          inputPreview = inspected;
+      // Truncate at newline
+      const nlIdx = inspected.search(/[\r\n\v]/);
+      if (nlIdx !== -1) inspected = inspected.slice(0, nlIdx);
 
-          const preview = self.useColors
-            ? `\x1b[90m${inspected}\x1b[39m`
-            : `// ${inspected}`;
-
-          const { cursorPos, displayPos } = getPreviewPos();
-          const rows = displayPos.rows - cursorPos.rows;
-          if (rows > 0) _moveCursor(self.output, 0, rows);
-          self.output.write(`\n${preview}`);
-          _cursorTo(self.output, cursorPos.cols);
-          _moveCursor(self.output, 0, -rows - 1);
-        },
+      // Limit length
+      const maxCols = Math.min(
+        (self as any).columns || 80,
+        250,
       );
+      if (inspected.length > maxCols) {
+        inspected = inspected.slice(0, maxCols - 4) + "...";
+      }
+
+      inputPreview = inspected;
+
+      const preview = self.useColors
+        ? `\x1b[90m${inspected}\x1b[39m`
+        : `// ${inspected}`;
+
+      const { cursorPos, displayPos } = getPreviewPos();
+      const rows = displayPos.rows - cursorPos.rows;
+      if (rows > 0) _moveCursor(self.output, 0, rows);
+      self.output.write(`\n${preview}`);
+      _cursorTo(self.output, cursorPos.cols);
+      _moveCursor(self.output, 0, -rows - 1);
     }
 
     function clearPreview(key: any) {
@@ -1045,7 +1078,7 @@ export class REPLServer extends (Interface as any) {
         _memory.call(self, cmd);
 
         if (
-          e &&
+          e !== null && e !== undefined &&
           !self[kBufferedCommandSymbol] &&
           cmd.trim().startsWith("npm ") &&
           !(e instanceof Recoverable)
@@ -1067,7 +1100,7 @@ export class REPLServer extends (Interface as any) {
           return;
         }
 
-        if (e) {
+        if (e !== null && e !== undefined) {
           self._handleError((e as Recoverable).err || e);
         }
 
@@ -1077,7 +1110,7 @@ export class REPLServer extends (Interface as any) {
 
         // If we got any output - print it (if no error)
         if (
-          !e &&
+          (e === null || e === undefined) &&
           arguments.length === 2 &&
           (!self.ignoreUndefined || ret !== undefined)
         ) {
@@ -1197,7 +1230,26 @@ export class REPLServer extends (Interface as any) {
           // Remove stack trace
           errStack = e.stack
             .replace(/^\s+at\s.*\n?/gm, "")
-            .replace(/^REPL\d+:\d+\r?\n/, "");
+            .replace(/^REPL\d+:\d+\r?\n/, "")
+            .replace(/^repl:\d+\r?\n/, "");
+
+          // Deno's V8 doesn't include source context in SyntaxError stacks
+          // like Node.js does. Add it if we have the source code attached.
+          if ((e as any)._replSourceCode) {
+            const srcLine = (e as any)._replSourceCode;
+            // Try to determine caret position from the error message.
+            // Node.js uses V8's Message.GetStartColumn() which we don't have.
+            let col = 0;
+            const tokenMatch = e.message.match(
+              /Unexpected token '(.+?)'/,
+            );
+            if (tokenMatch) {
+              const idx = srcLine.indexOf(tokenMatch[1]);
+              if (idx !== -1) col = idx;
+            }
+            const caret = " ".repeat(col) + "^";
+            errStack = `${srcLine}\n${caret}\n\n${errStack}`;
+          }
         } else {
           // For non-syntax errors, strip ALL stack frames.
           // Node uses overrideStackTrace to filter internal frames;
