@@ -272,7 +272,7 @@ mod tests {
   fn setup_with_blob_store(
     cache_setting: CacheSetting,
     maybe_temp_dir: Option<TempDir>,
-  ) -> (CliFileFetcher, TempDir, Arc<BlobStore>) {
+  ) -> (CliFileFetcher, TempDir, Arc<dyn BlobStoreTrait>) {
     let (file_fetcher, temp_dir, blob_store, _) =
       setup_with_blob_store_and_cache(cache_setting, maybe_temp_dir);
     (file_fetcher, temp_dir, blob_store)
@@ -284,13 +284,13 @@ mod tests {
   ) -> (
     CliFileFetcher,
     TempDir,
-    Arc<BlobStore>,
+    Arc<dyn BlobStoreTrait>,
     Arc<GlobalHttpCache>,
   ) {
     let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
     let temp_dir = maybe_temp_dir.unwrap_or_default();
     let location = temp_dir.path().join("remote").to_path_buf();
-    let blob_store: Arc<BlobStore> = Default::default();
+    let blob_store: Arc<dyn BlobStoreTrait> = Arc::new(BlobStore::default());
     let cache = Arc::new(GlobalHttpCache::new(CliSys::default(), location));
     let file_fetcher = create_cli_file_fetcher(
       blob_store.clone(),

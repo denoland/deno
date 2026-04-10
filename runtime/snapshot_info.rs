@@ -5,10 +5,10 @@ use std::sync::Arc;
 use deno_core::Extension;
 use deno_resolver::npm::DenoInNpmPackageChecker;
 use deno_resolver::npm::NpmResolver;
+use deno_web::BlobStore;
 
 use crate::ops;
 use crate::shared::runtime;
-use deno_web::BlobStore;
 
 pub fn get_extensions_in_snapshot() -> Vec<Extension> {
   // NOTE(bartlomieju): ordering is important here, keep it in sync with

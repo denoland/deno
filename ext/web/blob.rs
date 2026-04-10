@@ -42,16 +42,9 @@ pub type PartMap = HashMap<Uuid, Arc<dyn BlobPart + Send + Sync>>;
 pub trait BlobStoreTrait: Debug + Send + Sync {
   fn insert_part(&self, part: Arc<dyn BlobPart + Send + Sync>) -> Uuid;
   fn get_part(&self, id: &Uuid) -> Option<Arc<dyn BlobPart + Send + Sync>>;
-  fn remove_part(
-    &self,
-    id: &Uuid,
-  ) -> Option<Arc<dyn BlobPart + Send + Sync>>;
+  fn remove_part(&self, id: &Uuid) -> Option<Arc<dyn BlobPart + Send + Sync>>;
   fn get_object_url(&self, url: Url) -> Option<Arc<Blob>>;
-  fn insert_object_url(
-    &self,
-    blob: Blob,
-    maybe_location: Option<Url>,
-  ) -> Url;
+  fn insert_object_url(&self, blob: Blob, maybe_location: Option<Url>) -> Url;
   fn remove_object_url(&self, url: &Url);
   fn clear(&self);
 }
@@ -76,10 +69,7 @@ impl BlobStoreTrait for BlobStore {
     part.cloned()
   }
 
-  fn remove_part(
-    &self,
-    id: &Uuid,
-  ) -> Option<Arc<dyn BlobPart + Send + Sync>> {
+  fn remove_part(&self, id: &Uuid) -> Option<Arc<dyn BlobPart + Send + Sync>> {
     let mut parts = self.parts.lock();
     parts.remove(id)
   }
@@ -90,11 +80,7 @@ impl BlobStoreTrait for BlobStore {
     blob_store.get(&url).cloned()
   }
 
-  fn insert_object_url(
-    &self,
-    blob: Blob,
-    maybe_location: Option<Url>,
-  ) -> Url {
+  fn insert_object_url(&self, blob: Blob, maybe_location: Option<Url>) -> Url {
     let origin = if let Some(location) = maybe_location {
       location.origin().ascii_serialization()
     } else {
