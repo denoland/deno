@@ -1350,6 +1350,12 @@ internals.__bootstrapNodeProcess = function (
 
     enableNextTick();
 
+    // Set up IPC channel BEFORE stdio creation, matching Node.js ordering.
+    // This ensures process.channel.fd is available so stdio stream creation
+    // can skip fds reserved for IPC.
+    // Ref: https://github.com/nodejs/node/commit/8c0c456c73
+    internals.__setupChildProcessIpcChannel();
+
     // Create stdio streams matching Node.js pattern exactly.
     // Ref: https://github.com/nodejs/node/blob/main/lib/internal/bootstrap/switches/is_main_thread.js
     stdout = process.stdout = createWritableStdioStream(1);

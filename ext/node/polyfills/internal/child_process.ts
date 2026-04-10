@@ -1688,10 +1688,19 @@ class Control extends EventEmitter {
   #connected = true;
   [kPendingMessages] = [];
   #serialization: "json" | "advanced";
-  constructor(channel: number, serialization: "json" | "advanced") {
+  // The original file descriptor used for this IPC channel.
+  // Matches Node.js process.channel.fd used by stdio creation to avoid
+  // opening the same fd twice.
+  fd: number;
+  constructor(
+    channel: number,
+    serialization: "json" | "advanced",
+    fd: number,
+  ) {
     super();
     this.#channel = channel;
     this.#serialization = serialization;
+    this.fd = fd;
   }
 
   #ref() {
@@ -1761,8 +1770,9 @@ export function setupChannel(
   target: any,
   ipc: number,
   serialization: "json" | "advanced",
+  rawFd = -1,
 ) {
-  const control = new Control(ipc, serialization);
+  const control = new Control(ipc, serialization, rawFd);
   target.channel = control;
 
   if (!hasSetBufferConstructor) {

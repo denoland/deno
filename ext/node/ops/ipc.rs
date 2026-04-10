@@ -174,10 +174,11 @@ mod impl_ {
   }
 
   // Open IPC pipe from bootstrap options.
+  // Returns (resource_id, serialization_type, original_fd).
   #[op2]
   pub fn op_node_child_ipc_pipe(
     state: &mut OpState,
-  ) -> Result<Option<(ResourceId, u8)>, io::Error> {
+  ) -> Result<Option<(ResourceId, u8, i32)>, io::Error> {
     let (fd, serialization) = match state.try_borrow_mut::<crate::ChildPipeFd>()
     {
       Some(ChildPipeFd(fd, serialization)) => (*fd, *serialization),
@@ -185,10 +186,13 @@ mod impl_ {
     };
     log::debug!("op_node_child_ipc_pipe: {:?}, {:?}", fd, serialization);
     let ref_tracker = IpcRefTracker::new(state.external_ops_tracker.clone());
+    let raw_fd = fd as i32;
     match serialization {
       ChildIpcSerialization::Json => {
         match IpcJsonStreamResource::new(fd, ref_tracker) {
-          Ok(resource) => Ok(Some((state.resource_table.add(resource), 0))),
+          Ok(resource) => {
+            Ok(Some((state.resource_table.add(resource), 0, raw_fd)))
+          }
           Err(err) => {
             log::error!(
               "Failed to open IPC channel from NODE_CHANNEL_FD ({fd}): {err}"
@@ -199,7 +203,9 @@ mod impl_ {
       }
       ChildIpcSerialization::Advanced => {
         match IpcAdvancedStreamResource::new(fd, ref_tracker) {
-          Ok(resource) => Ok(Some((state.resource_table.add(resource), 1))),
+          Ok(resource) => {
+            Ok(Some((state.resource_table.add(resource), 1, raw_fd)))
+          }
           Err(err) => {
             log::error!(
               "Failed to open IPC channel from NODE_CHANNEL_FD ({fd}): {err}"

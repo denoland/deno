@@ -4,7 +4,6 @@
 import { assert } from "@std/assert";
 import { isatty } from "node:tty";
 import tty from "node:tty";
-import process from "node:process";
 import fs from "node:fs";
 
 Deno.test("[node/tty isatty] returns true when fd is a tty, false otherwise", () => {

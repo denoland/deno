@@ -68,12 +68,25 @@ export function createWritableStdioStream(fd) {
     case "PIPE":
     case "TCP": {
       const net = lazyNet();
-      stream = new net.Socket({
-        fd,
-        readable: false,
-        writable: true,
-        manualStart: true,
-      });
+      // If this fd is used by the IPC channel, reuse the channel handle
+      // instead of opening the fd again (which would fail with EEXIST).
+      // Ref: https://github.com/nodejs/node/commit/0187e3bef8
+      const proc = globalThis.process;
+      if (proc?.channel && proc.channel.fd === fd) {
+        stream = new net.Socket({
+          handle: proc.channel,
+          readable: false,
+          writable: true,
+          manualStart: true,
+        });
+      } else {
+        stream = new net.Socket({
+          fd,
+          readable: false,
+          writable: true,
+          manualStart: true,
+        });
+      }
       stream._type = "pipe";
       break;
     }
@@ -129,12 +142,25 @@ export function createStdin(fd) {
     case "PIPE":
     case "TCP": {
       const net = lazyNet();
-      stdin = new net.Socket({
-        fd,
-        readable: true,
-        writable: false,
-        manualStart: true,
-      });
+      // If this fd is used by the IPC channel, reuse the channel handle
+      // instead of opening the fd again (which would fail with EEXIST).
+      // Ref: https://github.com/nodejs/node/commit/0187e3bef8
+      const proc = globalThis.process;
+      if (proc?.channel && proc.channel.fd === fd) {
+        stdin = new net.Socket({
+          handle: proc.channel,
+          readable: true,
+          writable: false,
+          manualStart: true,
+        });
+      } else {
+        stdin = new net.Socket({
+          fd,
+          readable: true,
+          writable: false,
+          manualStart: true,
+        });
+      }
       // Make sure the stdin can't be `.end()`-ed
       stdin._writableState.ended = true;
       break;
