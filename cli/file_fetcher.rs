@@ -518,7 +518,7 @@ mod tests {
     // invocation and indicates to "cache bust".
     let location = temp_dir.path().join("remote").to_path_buf();
     let file_fetcher = create_cli_file_fetcher(
-      Default::default(),
+      Arc::new(BlobStore::default()) as Arc<dyn BlobStoreTrait>,
       Arc::new(GlobalHttpCache::new(CliSys::default(), location)).into(),
       Arc::new(HttpClientProvider::new(None, None)),
       MemoryFilesRc::default(),
@@ -552,7 +552,7 @@ mod tests {
       Arc::new(GlobalHttpCache::new(CliSys::default(), location.clone()));
     let file_modified_01 = {
       let file_fetcher = create_cli_file_fetcher(
-        Default::default(),
+        Arc::new(BlobStore::default()) as Arc<dyn BlobStoreTrait>,
         http_cache.clone().into(),
         Arc::new(HttpClientProvider::new(None, None)),
         MemoryFilesRc::default(),
@@ -577,7 +577,7 @@ mod tests {
 
     let file_modified_02 = {
       let file_fetcher = create_cli_file_fetcher(
-        Default::default(),
+        Arc::new(BlobStore::default()) as Arc<dyn BlobStoreTrait>,
         Arc::new(GlobalHttpCache::new(CliSys::default(), location)).into(),
         Arc::new(HttpClientProvider::new(None, None)),
         MemoryFilesRc::default(),
@@ -713,7 +713,7 @@ mod tests {
 
     let metadata_file_modified_01 = {
       let file_fetcher = create_cli_file_fetcher(
-        Default::default(),
+        Arc::new(BlobStore::default()) as Arc<dyn BlobStoreTrait>,
         http_cache.clone().into(),
         Arc::new(HttpClientProvider::new(None, None)),
         MemoryFilesRc::default(),
@@ -739,7 +739,7 @@ mod tests {
 
     let metadata_file_modified_02 = {
       let file_fetcher = create_cli_file_fetcher(
-        Default::default(),
+        Arc::new(BlobStore::default()) as Arc<dyn BlobStoreTrait>,
         http_cache.clone().into(),
         Arc::new(HttpClientProvider::new(None, None)),
         MemoryFilesRc::default(),
@@ -849,7 +849,7 @@ mod tests {
     let temp_dir = TempDir::new();
     let location = temp_dir.path().join("remote").to_path_buf();
     let file_fetcher = create_cli_file_fetcher(
-      Default::default(),
+      Arc::new(BlobStore::default()) as Arc<dyn BlobStoreTrait>,
       Arc::new(GlobalHttpCache::new(CliSys::default(), location)).into(),
       Arc::new(HttpClientProvider::new(None, None)),
       MemoryFilesRc::default(),
@@ -897,7 +897,7 @@ mod tests {
     let temp_dir = TempDir::new();
     let location = temp_dir.path().join("remote").to_path_buf();
     let file_fetcher_01 = create_cli_file_fetcher(
-      Default::default(),
+      Arc::new(BlobStore::default()) as Arc<dyn BlobStoreTrait>,
       Arc::new(GlobalHttpCache::new(CliSys::default(), location.clone()))
         .into(),
       Arc::new(HttpClientProvider::new(None, None)),
@@ -911,7 +911,7 @@ mod tests {
       },
     );
     let file_fetcher_02 = create_cli_file_fetcher(
-      Default::default(),
+      Arc::new(BlobStore::default()) as Arc<dyn BlobStoreTrait>,
       Arc::new(GlobalHttpCache::new(CliSys::default(), location)).into(),
       Arc::new(HttpClientProvider::new(None, None)),
       MemoryFilesRc::default(),
