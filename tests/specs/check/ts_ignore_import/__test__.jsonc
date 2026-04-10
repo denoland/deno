@@ -39,6 +39,11 @@
       "args": "check unsuppressed.ts",
       "output": "unsuppressed.out",
       "exitCode": 1
+    },
+    "blank_line_gap_unsuppressed": {
+      "args": "check blank_line_gap.ts",
+      "output": "blank_line_gap_unsuppressed.out",
+      "exitCode": 1
     }
   }
 }

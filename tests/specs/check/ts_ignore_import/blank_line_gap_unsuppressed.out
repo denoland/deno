@@ -1,0 +1,4 @@
+Check [WILDCARD]blank_line_gap.ts
+TS2307 [ERROR]: Cannot find module '[WILDCARD]does-not-exist[WILDCARD]'.
+[WILDCARD]
+error: Type checking failed.
