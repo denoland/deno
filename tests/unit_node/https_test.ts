@@ -98,6 +98,7 @@ Deno.test({
       server.shutdown();
       console.log("server shutdown");
     });
+    req.end();
 
     console.log("before finished");
     await server.finished;
