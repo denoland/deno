@@ -55,7 +55,7 @@ import {
 import { codeMap } from "ext:deno_node/internal_binding/uv.ts";
 import { NodeTypeError } from "ext:deno_node/internal/errors.ts";
 
-export const kUseNativeWrap = Symbol("useNativeWrap");
+
 
 export interface Reader {
   read(p: Uint8Array): Promise<number | null>;
@@ -282,11 +282,11 @@ export class LibuvStreamWrap extends HandleWrap {
 
         if (Buffer.isBuffer(chunk)) {
           buffers[i] = chunk;
+        } else {
+          // String chunk
+          const encoding: string = chunks[i * 2 + 1] as string;
+          buffers[i] = Buffer.from(chunk as string, encoding);
         }
-
-        // String chunk
-        const encoding: string = chunks[i * 2 + 1] as string;
-        buffers[i] = Buffer.from(chunk as string, encoding);
       }
     } else {
       for (let i = 0; i < count; i++) {

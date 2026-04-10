@@ -38,6 +38,7 @@ import {
 } from "ext:deno_node/internal_binding/async_wrap.ts";
 import {
   kArrayBufferOffset,
+  kBytesWritten,
   kLastWriteWasAsync,
   kReadBytesOrError,
   LibuvStreamWrap,
@@ -148,15 +149,10 @@ export class Pipe extends ConnectionWrap {
     req: WriteWrap<LibuvStreamWrap>,
     data: Uint8Array,
   ): number {
-    const ret = this.#native.writeBuffer(data);
-    streamBaseState[kLastWriteWasAsync] = 1;
-    queueMicrotask(() => {
-      try {
-        req.oncomplete(ret === 0 ? 0 : MapPrototypeGet(codeMap, "UNKNOWN")!);
-      } catch {
-        // swallow callback errors.
-      }
-    });
+    this.#native.writeBuffer(data);
+    streamBaseState[kBytesWritten] = data.byteLength;
+    streamBaseState[kLastWriteWasAsync] = 0;
+    this.bytesWritten += data.byteLength;
     return 0;
   }
 

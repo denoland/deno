@@ -99,7 +99,6 @@ import {
   PipeConnectWrap,
 } from "ext:deno_node/internal_binding/pipe_wrap.ts";
 import {
-  kUseNativeWrap,
   ShutdownWrap,
 } from "ext:deno_node/internal_binding/stream_wrap.ts";
 import assert from "node:assert";
@@ -1239,8 +1238,6 @@ export function Socket(options) {
   this.autoSelectFamilyAttemptedAddresses = undefined;
   this.connecting = false;
 
-  this[kUseNativeWrap] = options[kUseNativeWrap] || false;
-
   const errorStack = new Error().stack;
   this._needsSockInitWorkaround = options.handle?.ipc !== true &&
     pkgsNeedsSockInitWorkaround.some((pkg) => errorStack?.includes(pkg));
@@ -1351,9 +1348,7 @@ Socket.prototype.connect = function (...args) {
       ? new Pipe(PipeConstants.SOCKET)
       : new TCP(TCPConstants.SOCKET);
 
-    if (this[kUseNativeWrap]) {
-      this._handle[kUseNativeWrap] = this[kUseNativeWrap];
-    }
+
 
     _initSocketHandle(this);
   }

@@ -443,6 +443,10 @@ Object.defineProperties(
           return this;
         }
 
+        if (this.socket) {
+          this.socket.cork();
+        }
+
         this.write_(chunk, encoding, null, true);
       } else if (this.finished) {
         if (typeof callback === "function") {
@@ -454,6 +458,10 @@ Object.defineProperties(
         }
         return this;
       } else if (!this._header) {
+        if (this.socket) {
+          this.socket.cork();
+        }
+
         this._contentLength = 0;
         this._implicitHeader();
       }
@@ -471,6 +479,14 @@ Object.defineProperties(
       } else {
         (globalThis as any).process.nextTick(finish);
       }
+
+      if (this.socket) {
+        // Fully uncork connection on end().
+        this.socket._writableState.corked = 1;
+        this.socket.uncork();
+      }
+      this[kCorked] = 1;
+      this.uncork();
 
       this.finished = true;
 
@@ -565,6 +581,7 @@ Object.defineProperties(
       for (let i = 0; i < outputLength; i++) {
         const { data, encoding, callback } = outputData[i];
         ret = socket.write(data, encoding, callback);
+        outputData[i].data = null;
       }
       socket.uncork();
 
@@ -663,7 +680,7 @@ Object.defineProperties(
       this.outputData.push({ data, encoding, callback });
       this.outputSize += data.length;
       this._onPendingData(data.length);
-      return this.outputData.length < 2;
+      return this.outputSize < HIGH_WATER_MARK;
     },
 
     _renderHeaders() {
@@ -842,7 +859,7 @@ Object.defineProperties(
           break;
         case "content-length":
           state.contLen = true;
-          self._contentLength = value;
+          self._contentLength = +value;
           self._removedContLen = false;
           break;
         case "date":
