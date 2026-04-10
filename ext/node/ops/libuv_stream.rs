@@ -217,9 +217,35 @@ unsafe extern "C" fn server_connection_cb(server: *mut UvStream, status: i32) {
   }
 }
 
-unsafe extern "C" fn write_cb(req: *mut UvWrite, _status: i32) {
-  // SAFETY: pointer was allocated by Box::into_raw in write_buffer
+unsafe extern "C" fn write_cb(req: *mut UvWrite, status: i32) {
+  // SAFETY: pointers are valid per libuv write callback contract
   unsafe {
+    // Notify JS of write completion (especially errors like EPIPE).
+    let stream = (*req).handle;
+    if !stream.is_null() {
+      let data = (*stream).data as *mut StreamHandleData;
+      if !data.is_null() {
+        if let Some(ref js_obj) = (*data).js_object {
+          if let Some(context) = context_from_loop((*stream).loop_) {
+            v8::callback_scope!(unsafe let scope, context);
+            v8::tc_scope!(let scope, scope);
+
+            let this: v8::Local<v8::Object> =
+              v8::Local::new(scope, js_obj);
+            let key = v8::String::new(scope, "onwrite").unwrap();
+            let onwrite = this.get(scope, key.into());
+
+            if let Some(Ok(func)) =
+              onwrite.map(v8::Local::<v8::Function>::try_from)
+            {
+              let status_val = v8::Integer::new(scope, status);
+              func.call(scope, this.into(), &[status_val.into()]);
+            }
+          }
+        }
+      }
+    }
+
     // req is the first field of WriteReq (#[repr(C)]),
     // so the pointer is the same as the WriteReq pointer.
     let _ = Box::from_raw(req as *mut WriteReq);
