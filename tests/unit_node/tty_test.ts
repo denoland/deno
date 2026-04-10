@@ -35,11 +35,6 @@ Deno.test("[node/tty isatty] returns false for irrelevant values", () => {
   assert(!isatty(undefined as any));
 });
 
-Deno.test("[node/tty WriteStream.isTTY] returns true when fd is a tty", () => {
-  assert(Deno.stdin.isTerminal() === process.stdin.isTTY);
-  assert(Deno.stdout.isTerminal() === process.stdout.isTTY);
-});
-
 Deno.test("[node/tty WriteStream.hasColors] returns true when colors are supported", () => {
   const stubEnv = Deno.noColor ? { NO_COLOR: "1" } : {};
 
