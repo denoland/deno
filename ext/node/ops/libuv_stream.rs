@@ -973,6 +973,17 @@ impl NativePipe {
   }
 
   #[fast]
+  #[rename("setBlocking")]
+  fn set_blocking(&self, enable: bool) -> i32 {
+    let stream = self.stream();
+    if stream.is_null() {
+      return uv_compat::UV_EBADF;
+    }
+    // SAFETY: stream is a valid non-null uv_stream_t (checked above).
+    unsafe { uv_compat::uv_stream_set_blocking(stream, enable as i32) }
+  }
+
+  #[fast]
   #[rename("pipeBindToPath")]
   fn pipe_bind_to_path(&self, #[string] path: &str) -> i32 {
     // SAFETY: handle is valid
