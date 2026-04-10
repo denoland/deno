@@ -40,7 +40,6 @@ use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_runtime::deno_process::NpmProcessStateProviderRc;
 use deno_runtime::deno_telemetry::OtelConfig;
 use deno_runtime::deno_tls::RootCertStoreProvider;
-use deno_runtime::deno_web::BlobStore;
 use deno_runtime::deno_web::BlobStoreTrait;
 use deno_runtime::deno_web::InMemoryBroadcastChannel;
 use deno_runtime::fmt_errors::format_js_error;

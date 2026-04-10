@@ -50,7 +50,6 @@ use deno_process::NpmProcessStateProviderRc;
 use deno_terminal::colors;
 use deno_tls::RootCertStoreProvider;
 use deno_tls::TlsKeys;
-use deno_web::BlobStore;
 use deno_web::BlobStoreTrait;
 use deno_web::InMemoryBroadcastChannel;
 use deno_web::JsMessageData;

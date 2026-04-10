@@ -427,7 +427,10 @@ impl CliFactory {
   }
 
   pub fn blob_store(&self) -> &Arc<dyn BlobStoreTrait> {
-    self.services.blob_store.get_or_init(|| Arc::new(BlobStore::default()))
+    self
+      .services
+      .blob_store
+      .get_or_init(|| Arc::new(BlobStore::default()) as Arc<dyn BlobStoreTrait>)
   }
 
   pub fn bin_name_resolver(&self) -> Result<BinNameResolver<'_>, AnyError> {
