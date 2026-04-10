@@ -8,6 +8,7 @@ use deno_resolver::npm::NpmResolver;
 
 use crate::ops;
 use crate::shared::runtime;
+use deno_web::BlobStore;
 
 pub fn get_extensions_in_snapshot() -> Vec<Extension> {
   // NOTE(bartlomieju): ordering is important here, keep it in sync with
@@ -18,7 +19,7 @@ pub fn get_extensions_in_snapshot() -> Vec<Extension> {
     deno_telemetry::deno_telemetry::init(),
     deno_webidl::deno_webidl::init(),
     deno_web::deno_web::init(
-      Default::default(),
+      Arc::new(BlobStore::default()) as Arc<dyn deno_web::BlobStoreTrait>,
       Default::default(),
       deno_web::InMemoryBroadcastChannel::default(),
     ),

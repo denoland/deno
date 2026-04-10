@@ -16,6 +16,7 @@ use deno_core::url::Url;
 use deno_resolver::file_fetcher::PermissionedFileFetcherOptions;
 use deno_resolver::loader::MemoryFiles;
 use deno_runtime::deno_web::BlobStore;
+use deno_runtime::deno_web::BlobStoreTrait;
 use http::HeaderMap;
 use http::StatusCode;
 
@@ -81,7 +82,7 @@ pub struct CreateCliFileFetcherOptions {
 
 #[allow(clippy::too_many_arguments, reason = "construction")]
 pub fn create_cli_file_fetcher(
-  blob_store: Arc<BlobStore>,
+  blob_store: Arc<dyn BlobStoreTrait>,
   http_cache: GlobalOrLocalHttpCache<CliSys>,
   http_client_provider: Arc<HttpClientProvider>,
   memory_files: Arc<MemoryFiles>,
@@ -106,7 +107,7 @@ pub fn create_cli_file_fetcher(
 }
 
 #[derive(Debug)]
-pub struct BlobStoreAdapter(Arc<BlobStore>);
+pub struct BlobStoreAdapter(Arc<dyn BlobStoreTrait>);
 
 #[async_trait::async_trait(?Send)]
 impl deno_cache_dir::file_fetcher::BlobStore for BlobStoreAdapter {
