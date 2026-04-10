@@ -57,9 +57,6 @@ import { Duplex } from "node:stream";
 import tls from "node:tls";
 import { deprecate } from "node:util";
 import dc from "node:diagnostics_channel";
-import {
-  kStreamBaseField,
-} from "ext:deno_node/internal_binding/stream_wrap.ts";
 import { utcDate } from "ext:deno_node/internal/http.ts";
 import { ShutdownWrap } from "ext:deno_node/internal_binding/stream_wrap.ts";
 import { EventEmitter } from "node:events";

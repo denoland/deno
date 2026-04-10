@@ -379,7 +379,6 @@ function _afterConnect(
     socket.emit("ready");
 
     // Deno specific: run tls handshake if it's from a tls socket
-    // This swaps the handle[kStreamBaseField] from TcpConn to TlsConn
     if (typeof handle.afterConnectTls === "function") {
       handle.afterConnectTls();
     }

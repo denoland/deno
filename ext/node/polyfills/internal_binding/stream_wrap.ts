@@ -58,8 +58,6 @@ export const kNumStreamBaseStateFields =
 
 export const streamBaseState = new Int32Array(5);
 
-// Used by _tls_wrap.js and http2.ts to access the underlying Deno resource.
-export const kStreamBaseField = Symbol("kStreamBaseField");
 
 export class WriteWrap<H extends HandleWrap> extends AsyncWrap {
   handle!: H;
@@ -93,8 +91,6 @@ export class ShutdownWrap<H extends HandleWrap> extends AsyncWrap {
  * contract and shared state.
  */
 export class LibuvStreamWrap extends HandleWrap {
-  [kStreamBaseField]?: unknown;
-
   reading!: boolean;
   destroyed = false;
   writeQueueSize = 0;

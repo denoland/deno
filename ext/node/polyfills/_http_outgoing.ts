@@ -45,7 +45,6 @@ import {
 } from "ext:deno_node/internal/errors.ts";
 import { validateString } from "ext:deno_node/internal/validators.mjs";
 import { isUint8Array } from "ext:deno_node/internal/util/types.ts";
-// import { kStreamBaseField } from "ext:deno_node/internal_binding/stream_wrap.ts";
 
 import { debuglog } from "ext:deno_node/internal/util/debuglog.ts";
 let debug = debuglog("http", (fn) => {
