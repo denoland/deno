@@ -589,8 +589,13 @@ TLSSocket.prototype._start = function () {
 
   // Start reading on the underlying native TCP handle so that encrypted
   // data flows to the TLSWrap via the JS onread interceptor.
-  if (this._handle._nativeTcpHandle) {
-    this._handle._nativeTcpHandle.readStart();
+  const tcpHandle = this._handle._nativeTcpHandle;
+  if (tcpHandle) {
+    // readStart caches the onread callback on first call. If it was already
+    // called (e.g. by net.Socket.resume), we need to stop and restart to
+    // pick up the new interceptor callback.
+    tcpHandle.readStop();
+    tcpHandle.readStart();
   }
 };
 

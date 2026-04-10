@@ -90,11 +90,14 @@ export function wrap(
     // via receive().
     // Note: LibUvStreamWrap's read callback uses (buf) signature with nread
     // in streamBaseState, matching onStreamRead in stream_base_commons.ts.
-    nativeHandle.onread = function (buf: Uint8Array | undefined) {
+    nativeHandle.onread = function (buf: ArrayBuffer | Uint8Array | undefined) {
       const nread = streamBaseState[kReadBytesOrError];
       if (nread > 0 && buf) {
-        // Feed encrypted data from TCP to rustls
-        res.receive(buf.subarray(0, nread));
+        // LibUvStreamWrap passes an ArrayBuffer; convert to Uint8Array for receive()
+        const data = buf instanceof ArrayBuffer
+          ? new Uint8Array(buf, 0, nread)
+          : buf.subarray(0, nread);
+        res.receive(data);
       } else if (nread < 0) {
         // EOF or error - stop native TCP reads and unref the handle.
         // Without this, the libuv handle keeps a ref on the event loop
