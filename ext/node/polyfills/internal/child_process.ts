@@ -630,15 +630,21 @@ export class ChildProcess extends EventEmitter {
       this.stdin.destroy();
       promises.push(waitForStreamToClose(this.stdin));
     }
-    // Only readable streams need to be closed
+    // Only readable streams need to be closed.
+    // Don't touch parent process stdout/stderr if passed through - calling
+    // resume() on a write-only Socket (e.g. piped stdout) triggers readStart
+    // on the handle which fails with EBADF.
     if (
-      this.stdout && !this.stdout.destroyed && this.stdout instanceof Readable
+      this.stdout && !this.stdout.destroyed &&
+      this.stdout !== process.stdout &&
+      this.stdout instanceof Readable
     ) {
       promises.push(waitForReadableToClose(this.stdout));
     }
-    // Only readable streams need to be closed
     if (
-      this.stderr && !this.stderr.destroyed && this.stderr instanceof Readable
+      this.stderr && !this.stderr.destroyed &&
+      this.stderr !== process.stderr &&
+      this.stderr instanceof Readable
     ) {
       promises.push(waitForReadableToClose(this.stderr));
     }

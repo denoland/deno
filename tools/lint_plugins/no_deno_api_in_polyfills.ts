@@ -27,7 +27,7 @@ export const EXPECTED_VIOLATIONS: Record<string, number> = {
   "ext/node/polyfills/internal/readline/promises.mjs": 4,
   "ext/node/polyfills/internal/readline/callbacks.mjs": 4,
   "ext/node/polyfills/internal_binding/udp_wrap.ts": 4,
-  "ext/node/polyfills/_process/streams.mjs": 4,
+  "ext/node/polyfills/_process/streams.mjs": 3,
   "ext/node/polyfills/internal/readline/interface.mjs": 3,
   "ext/node/polyfills/internal/errors.ts": 3,
   "ext/node/polyfills/internal/buffer.mjs": 3,

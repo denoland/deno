@@ -13,7 +13,10 @@ import {
 } from "ext:deno_node/internal/errors.ts";
 import { op_tty_check_fd_permission, TTY } from "ext:core/ops";
 import { Socket } from "node:net";
-import { setReadStream } from "ext:deno_node/_process/streams.mjs";
+import {
+  setReadStream,
+  setWriteStream,
+} from "ext:deno_node/_process/streams.mjs";
 import { WriteStream } from "ext:deno_node/internal/tty.js";
 
 // Returns true when the given numeric fd is associated with a TTY and false otherwise.
@@ -68,6 +71,7 @@ ReadStream.prototype.setRawMode = function setRawMode(flag) {
 export { ReadStream };
 
 setReadStream(ReadStream);
+setWriteStream(WriteStream);
 
 export { isatty, WriteStream };
 export default { isatty, WriteStream, ReadStream };
