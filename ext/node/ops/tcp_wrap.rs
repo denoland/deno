@@ -443,12 +443,19 @@ impl TCPWrap {
     }
   }
 
-  #[serde]
-  fn getpeername(&self) -> Option<SockAddrInfo> {
+  /// Populates the output object with remote address info. Returns 0 on
+  /// success, negative error code on failure. Matches Node.js API:
+  /// `handle.getpeername(out)` where out gets {address, port, family}.
+  #[nofast]
+  fn getpeername(
+    &self,
+    out: v8::Local<v8::Object>,
+    scope: &mut v8::PinScope,
+  ) -> i32 {
     unsafe {
       let tcp = self.tcp_ptr();
       if tcp.is_null() {
-        return None;
+        return uv_compat::UV_EBADF;
       }
       let mut storage = std::mem::MaybeUninit::<socket2::SockAddr>::uninit();
       let mut len = std::mem::size_of::<socket2::SockAddr>() as i32;
@@ -458,18 +465,26 @@ impl TCPWrap {
         &mut len,
       );
       if ret != 0 {
-        return None;
+        return ret;
       }
-      sockaddr_from_socket2(&storage.assume_init())
+      populate_sockaddr_object(scope, out, &storage.assume_init());
+      0
     }
   }
 
-  #[serde]
-  fn getsockname(&self) -> Option<SockAddrInfo> {
+  /// Populates the output object with local address info. Returns 0 on
+  /// success, negative error code on failure. Matches Node.js API:
+  /// `handle.getsockname(out)` where out gets {address, port, family}.
+  #[nofast]
+  fn getsockname(
+    &self,
+    out: v8::Local<v8::Object>,
+    scope: &mut v8::PinScope,
+  ) -> i32 {
     unsafe {
       let tcp = self.tcp_ptr();
       if tcp.is_null() {
-        return None;
+        return uv_compat::UV_EBADF;
       }
       let mut storage = std::mem::MaybeUninit::<socket2::SockAddr>::uninit();
       let mut len = std::mem::size_of::<socket2::SockAddr>() as i32;
@@ -479,36 +494,39 @@ impl TCPWrap {
         &mut len,
       );
       if ret != 0 {
-        return None;
+        return ret;
       }
-      sockaddr_from_socket2(&storage.assume_init())
+      populate_sockaddr_object(scope, out, &storage.assume_init());
+      0
     }
   }
 }
 
 // -- helpers --
 
-#[derive(serde::Serialize)]
-struct SockAddrInfo {
-  address: String,
-  port: u16,
-  family: String,
-}
-
-fn sockaddr_from_socket2(
+/// Populate a JS object with {address, port, family} from a socket2::SockAddr.
+fn populate_sockaddr_object(
+  scope: &mut v8::PinScope,
+  obj: v8::Local<v8::Object>,
   sock_addr: &socket2::SockAddr,
-) -> Option<SockAddrInfo> {
-  if let Some(addr) = sock_addr.as_socket_ipv4() {
-    Some(SockAddrInfo {
-      address: addr.ip().to_string(),
-      port: addr.port(),
-      family: "IPv4".to_string(),
-    })
+) {
+  let (address, port, family) = if let Some(addr) = sock_addr.as_socket_ipv4() {
+    (addr.ip().to_string(), addr.port(), "IPv4")
+  } else if let Some(addr) = sock_addr.as_socket_ipv6() {
+    (addr.ip().to_string(), addr.port(), "IPv6")
   } else {
-    sock_addr.as_socket_ipv6().map(|addr| SockAddrInfo {
-      address: addr.ip().to_string(),
-      port: addr.port(),
-      family: "IPv6".to_string(),
-    })
-  }
+    return;
+  };
+
+  let addr_key = v8::String::new(scope, "address").unwrap();
+  let addr_val = v8::String::new(scope, &address).unwrap();
+  obj.set(scope, addr_key.into(), addr_val.into());
+
+  let port_key = v8::String::new(scope, "port").unwrap();
+  let port_val = v8::Integer::new(scope, port as i32);
+  obj.set(scope, port_key.into(), port_val.into());
+
+  let family_key = v8::String::new(scope, "family").unwrap();
+  let family_val = v8::String::new(scope, family).unwrap();
+  obj.set(scope, family_key.into(), family_val.into());
 }
