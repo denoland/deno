@@ -1360,10 +1360,7 @@ internals.__bootstrapNodeProcess = function (
     // Ref: https://github.com/nodejs/node/blob/main/lib/internal/bootstrap/switches/is_main_thread.js
     stdout = process.stdout = createWritableStdioStream(1);
     stderr = process.stderr = createWritableStdioStream(2);
-    const newStdin = createStdin(0);
-    if (newStdin) {
-      stdin = process.stdin = newStdin;
-    }
+    stdin = process.stdin = createStdin(0);
 
     // Wire Deno.stdin/stdout/stderr to delegate to the Node.js streams.
     io.__setNodeStreams(process.stdout, process.stderr, process.stdin);
