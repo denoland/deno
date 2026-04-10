@@ -33,6 +33,7 @@ pub use stream_resource::StreamResourceError;
 pub use crate::blob::Blob;
 pub use crate::blob::BlobPart;
 pub use crate::blob::BlobStore;
+pub use crate::blob::BlobStoreTrait;
 pub use crate::blob::InMemoryBlobPart;
 use crate::blob::op_blob_create_object_url;
 use crate::blob::op_blob_create_part;
@@ -137,7 +138,7 @@ deno_core::extension!(deno_web,
   ],
   lazy_loaded_esm = [ "webtransport.js" ],
   options = {
-    blob_store: Arc<BlobStore>,
+    blob_store: Arc<dyn BlobStoreTrait>,
     maybe_location: Option<Url>,
     bc: InMemoryBroadcastChannel,
   },
