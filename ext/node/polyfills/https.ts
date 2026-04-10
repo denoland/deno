@@ -5,6 +5,7 @@
 // deno-lint-ignore-file prefer-primordials
 
 import { notImplemented } from "ext:deno_node/_utils.ts";
+import tls from "node:tls";
 import { urlToHttpOptions } from "ext:deno_node/internal/url.ts";
 import {
   ClientRequest,
@@ -107,6 +108,15 @@ export class Agent extends HttpAgent {
       map: {},
       list: [],
     };
+  }
+
+  createConnection(options, callback) {
+    // deno-lint-ignore no-explicit-any
+    const socket = tls.connect(options as any);
+    if (callback) {
+      socket.once("secureConnect", callback);
+    }
+    return socket;
   }
 }
 
