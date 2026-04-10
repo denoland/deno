@@ -2652,28 +2652,9 @@ function setupHandle(socket, type, options) {
   const handle = new InternalHttp2Session(type);
   handle[kOwner] = this;
 
-  // Get the native TCP handle from the socket wrapper
-  const tcpHandle = socket._handle;
-  const nativeHandle = tcpHandle?._nativeHandle;
-
-  if (nativeHandle) {
-    // Cache socket address info before detaching the native handle,
-    // since getpeername/getsockname won't work after detach.
-    socket._getpeername();
-    socket._getsockname();
-    // Stop any existing reads on the handle
-    tcpHandle.readStop();
-    // Consume the stream directly via libuv
-    handle.consumeStream(nativeHandle);
-    // Transfer ownership of the libuv handle to the H2 session.
-    // The TCP cppgc object must NOT call uv_close on the handle anymore.
-    nativeHandle.detach();
-    // Mark the handle as reading so the socket doesn't try to call
-    // readStart() again (which would fail with EALREADY since the
-    // H2 session already started reading via consume_stream).
-    tcpHandle.reading = true;
-    debug("i/o stream consumed (native)");
-  } else {
+  // TODO: optimize by making consumeStream accept TCPWrap directly
+  // to avoid the JS-layer data pump.
+  {
     // Fallback: pump data from socket to session via JS events
     socket.on("data", (buf) => {
       if (!this.destroyed) {

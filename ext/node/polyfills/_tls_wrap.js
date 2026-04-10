@@ -323,7 +323,7 @@ TLSSocket.prototype._wrapHandle = function (wrap, handle) {
   };
 
   // Get the native TCP handle for attachment
-  const nativeHandle = handle._nativeHandle ?? handle;
+  const nativeHandle = handle;
 
   // Strip trailing dot from servername for SNI and certificate matching.
   let servername = options.servername;
@@ -485,7 +485,7 @@ TLSSocket.prototype._init = function (socket, wrap) {
       // connect() (because it had no handle when we wrapped it),
       // re-attach the TLS wrap to the socket's actual TCP handle.
       if (ssl && socket._handle) {
-        const nativeHandle = socket._handle._nativeHandle ?? socket._handle;
+        const nativeHandle = socket._handle;
         ssl.attach(nativeHandle);
       }
       this.emit("connect");

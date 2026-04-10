@@ -1686,11 +1686,11 @@ impl TLSWrap {
   #[nofast]
   fn attach(
     &self,
-    #[cppgc] tcp: &crate::ops::libuv_stream::TCP,
+    #[cppgc] tcp: &crate::ops::tcp_wrap::TCPWrap,
     scope: &mut v8::PinScope,
     op_state: &mut OpState,
   ) -> i32 {
-    let stream = tcp.stream();
+    let stream = tcp.stream_ptr();
 
     if stream.is_null() {
       return UV_EBADF;

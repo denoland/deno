@@ -73,21 +73,34 @@ Deno.test({
   name:
     "request.socket.authorized is true when successfully requested to https server",
   async fn() {
+    const { promise, resolve } = Promise.withResolvers<void>();
+    let serverPort: number;
     const server = Deno.serve({
       port: 0,
       cert: Deno.readTextFileSync("tests/testdata/tls/localhost.crt"),
       key: Deno.readTextFileSync("tests/testdata/tls/localhost.key"),
       onListen({ port }) {
-        const req = https.request(`https://localhost:${port}`, (res) => {
-          // deno-lint-ignore no-explicit-any
-          assert((req.socket as any).authorized);
-          res.destroy();
-          server.shutdown();
-        });
+        serverPort = port;
+        resolve();
       },
     }, () => {
       return new Response("hi");
     });
+
+    await promise;
+    console.log("before request");
+    const req = https.request(`https://localhost:${serverPort!}`, (res) => {
+      console.log("request callback");
+      // deno-lint-ignore no-explicit-any
+      assert((req.socket as any).authorized);
+      res.destroy();
+      console.log("res destroyed");
+      server.shutdown();
+      console.log("server shutdown");
+    });
+
+    console.log("before finished");
     await server.finished;
+    console.log("after finished");
   },
 });

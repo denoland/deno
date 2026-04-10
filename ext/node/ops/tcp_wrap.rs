@@ -255,6 +255,12 @@ impl TCPWrap {
       None => std::ptr::null_mut(),
     }
   }
+
+  /// Get the underlying uv_stream_t pointer. Used by TLSWrap to attach
+  /// to the TCP stream for encrypted I/O.
+  pub fn stream_ptr(&self) -> *mut UvStream {
+    self.base.stream_ptr()
+  }
 }
 
 // -- ops --
