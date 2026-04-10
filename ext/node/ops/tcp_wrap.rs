@@ -91,27 +91,39 @@ pub(crate) unsafe extern "C" fn server_connection_cb(
   });
 }
 
-// Wraps a UvConnect request so it stays alive until the callback fires.
+// Wraps a UvConnect request together with the JS req object (TCPConnectWrap)
+// so both stay alive until the callback fires.
 #[repr(C)]
-struct ConnectReq {
+struct ConnectReqData {
   uv_req: UvConnect,
+  js_req: v8::Global<v8::Object>,
 }
 
-/// Connect callback for `uv_tcp_connect`. Fires `this.onconnect(status)` on
-/// the handle's JS object.
+/// Connect callback for `uv_tcp_connect`. Fires `req.oncomplete(status,
+/// handle, req, readable, writable)` matching Node.js ConnectionWrap::AfterConnect.
 unsafe extern "C" fn connect_cb(req: *mut UvConnect, status: i32) {
   unsafe {
     let stream = (*req).handle as *mut UvStream;
-    let _ = Box::from_raw(req as *mut ConnectReq);
+    let req_data = Box::from_raw(req as *mut ConnectReqData);
+    let js_req_global = req_data.js_req;
 
     with_js_handle!(stream, |scope, this| {
-      let key = v8::String::new(scope, "onconnect").unwrap();
-      if let Some(onconnect) = this.get(scope, key.into())
-        && let Ok(func) = v8::Local::<v8::Function>::try_from(onconnect)
+      let js_req = v8::Local::new(scope, &js_req_global);
+      let oncomplete_key = v8::String::new(scope, "oncomplete").unwrap();
+      if let Some(oncomplete) = js_req.get(scope, oncomplete_key.into())
+        && let Ok(func) = v8::Local::<v8::Function>::try_from(oncomplete)
       {
         let status_val: v8::Local<v8::Value> =
           v8::Integer::new(scope, status).into();
-        func.call(scope, this.into(), &[status_val]);
+        let readable: v8::Local<v8::Value> =
+          v8::Boolean::new(scope, status == 0).into();
+        let writable: v8::Local<v8::Value> =
+          v8::Boolean::new(scope, status == 0).into();
+        func.call(
+          scope,
+          js_req.into(),
+          &[status_val, this.into(), js_req.into(), readable, writable],
+        );
       }
     });
   }
@@ -231,13 +243,18 @@ impl TCPWrap {
   fn new_tcp(
     #[smi] socket_type: i32,
     op_state: &mut OpState,
+    #[this] this: v8::Global<v8::Object>,
+    scope: &mut v8::PinScope,
   ) -> TCPWrap {
     let st = if socket_type == 1 {
       SocketType::Server
     } else {
       SocketType::Socket
     };
-    TCPWrap::new(st, op_state)
+    let tcp = TCPWrap::new(st, op_state);
+    // Store the JS handle so callbacks (connect, read, etc.) can find it.
+    tcp.base.set_js_handle(this, scope);
+    tcp
   }
 
   #[fast]
@@ -399,12 +416,16 @@ impl TCPWrap {
     }
   }
 
+  /// Connect to an address. Takes (req, address, port) where req is a
+  /// TCPConnectWrap with oncomplete callback, matching Node.js API.
   #[nofast]
   fn connect(
     &self,
     state: &mut OpState,
+    js_req: v8::Local<v8::Object>,
     #[string] address: &str,
     #[smi] port: i32,
+    scope: &mut v8::PinScope,
   ) -> Result<i32, deno_permissions::PermissionCheckError> {
     state
       .borrow_mut::<PermissionsContainer>()
@@ -425,8 +446,10 @@ impl TCPWrap {
         return Ok(-1);
       }
       let sock_addr = Socket2SockAddr::from(socket_addr);
-      let mut connect_req = Box::new(ConnectReq {
+      let js_req_global = v8::Global::new(scope, js_req);
+      let mut connect_req = Box::new(ConnectReqData {
         uv_req: uv_compat::new_connect(),
+        js_req: js_req_global,
       });
       let req_ptr = &mut connect_req.uv_req as *mut UvConnect;
       let _ = Box::into_raw(connect_req);
@@ -437,7 +460,56 @@ impl TCPWrap {
         Some(connect_cb),
       );
       if ret != 0 {
-        let _ = Box::from_raw(req_ptr as *mut ConnectReq);
+        let _ = Box::from_raw(req_ptr as *mut ConnectReqData);
+      }
+      Ok(ret)
+    }
+  }
+
+  /// Connect to an IPv6 address. uv_tcp_connect handles both v4 and v6.
+  #[nofast]
+  fn connect6(
+    &self,
+    state: &mut OpState,
+    js_req: v8::Local<v8::Object>,
+    #[string] address: &str,
+    #[smi] port: i32,
+    scope: &mut v8::PinScope,
+  ) -> Result<i32, deno_permissions::PermissionCheckError> {
+    state
+      .borrow_mut::<PermissionsContainer>()
+      .check_net(&(address, Some(port as u16)), "node:net.connect()")?;
+
+    let addr_str = format!("{}:{}", address, port);
+    let socket_addr = match addr_str.to_socket_addrs() {
+      Ok(mut addrs) => match addrs.next() {
+        Some(addr) => addr,
+        None => return Ok(-1),
+      },
+      Err(_) => return Ok(-1),
+    };
+
+    unsafe {
+      let tcp = self.tcp_ptr();
+      if tcp.is_null() {
+        return Ok(-1);
+      }
+      let sock_addr = Socket2SockAddr::from(socket_addr);
+      let js_req_global = v8::Global::new(scope, js_req);
+      let mut connect_req = Box::new(ConnectReqData {
+        uv_req: uv_compat::new_connect(),
+        js_req: js_req_global,
+      });
+      let req_ptr = &mut connect_req.uv_req as *mut UvConnect;
+      let _ = Box::into_raw(connect_req);
+      let ret = uv_compat::uv_tcp_connect(
+        req_ptr,
+        tcp,
+        sock_addr.as_ptr() as *const _,
+        Some(connect_cb),
+      );
+      if ret != 0 {
+        let _ = Box::from_raw(req_ptr as *mut ConnectReqData);
       }
       Ok(ret)
     }

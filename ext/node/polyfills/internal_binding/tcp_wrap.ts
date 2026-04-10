@@ -25,9 +25,11 @@
 // - https://github.com/nodejs/node/blob/master/src/tcp_wrap.h
 
 // TCPWrap is a Rust CppGC object that inherits from LibUvStreamWrap.
-// It is used directly as socket._handle (like TTY), with no JS wrapper class.
 // Read/write/shutdown ops come from the LibUvStreamWrap base class.
 // TCP-specific ops (bind, listen, connect, accept, etc.) are on TCPWrap itself.
+//
+// This module adds thin JS wrappers for listen (to create client handles on
+// accept) and for re-exporting types.
 
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
@@ -39,7 +41,7 @@ import {
 } from "ext:deno_node/internal_binding/async_wrap.ts";
 
 /** The type of TCP socket. */
-enum socketType {
+export enum socketType {
   SOCKET,
   SERVER,
 }
@@ -68,11 +70,47 @@ export enum constants {
   UV_TCP_IPV6ONLY,
 }
 
-// Re-export the Rust TCPWrap as TCP for compatibility with existing consumers.
+/**
+ * Wrap the native TCPWrap.listen() to handle connection acceptance.
+ * The Rust server_connection_cb fires onconnection(status), and this
+ * wrapper creates client handles and calls uv_accept before forwarding
+ * to the user's onconnection(status, clientHandle).
+ *
+ * TODO: Move this logic into Rust by making the connection callback
+ * allocate a CppGC TCPWrap directly, removing the need for this JS shim.
+ */
+export function setupListenWrap(serverHandle: InstanceType<typeof TCPWrap>) {
+  const userOnConnection = serverHandle.onconnection;
+  serverHandle.onconnection = function (status: number) {
+    if (status !== 0) {
+      if (userOnConnection) {
+        userOnConnection.call(serverHandle, status, undefined);
+      }
+      return;
+    }
+
+    // Create a new client handle and accept the connection
+    const clientHandle = new TCPWrap(socketType.SOCKET);
+    const acceptErr = serverHandle.accept(clientHandle);
+    if (acceptErr !== 0) {
+      if (userOnConnection) {
+        userOnConnection.call(serverHandle, acceptErr, undefined);
+      }
+      return;
+    }
+
+    if (userOnConnection) {
+      userOnConnection.call(serverHandle, 0, clientHandle);
+    }
+  };
+}
+
+// Re-export the Rust TCPWrap as TCP.
 export { TCPWrap as TCP };
 
 export default {
   TCPConnectWrap,
   constants,
   TCP: TCPWrap,
+  setupListenWrap,
 };
