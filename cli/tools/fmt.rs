@@ -872,7 +872,7 @@ pub fn format_file(
       let external_formatter =
         create_external_formatter_for_typescript(unstable_options, fmt_options);
       let file_path_owned = file_path.to_path_buf();
-      match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+      match crate::catch_unwind_with_hook(std::panic::AssertUnwindSafe(|| {
         dprint_plugin_typescript::format_text(
           dprint_plugin_typescript::FormatTextOptions {
             path: &file_path_owned,
@@ -913,7 +913,7 @@ pub fn format_parsed_source(
   let config = get_resolved_typescript_config(fmt_options);
   let external_formatter =
     create_external_formatter_for_typescript(unstable_options, fmt_options);
-  match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+  match crate::catch_unwind_with_hook(std::panic::AssertUnwindSafe(|| {
     dprint_plugin_typescript::format_parsed_source(
       parsed_source,
       &config,
@@ -2042,6 +2042,7 @@ mod test {
 
   #[test]
   fn test_html_tagged_template_multiline_comment_does_not_panic() {
+    // Regression test for https://github.com/denoland/deno/issues/32954
     let input = r#"export default function render() {
   return html`
     <form>
@@ -2053,6 +2054,81 @@ mod test {
   `;
 }
 "#;
+    let result = format_file(
+      Path::new("test.ts"),
+      &FileContents {
+        had_bom: false,
+        text: input.into(),
+      },
+      &FmtOptionsConfig::default(),
+      &UnstableFmtOptions::default(),
+      None,
+    );
+    assert!(result.is_ok());
+  }
+
+  #[test]
+  fn test_html_tagged_template_complex_does_not_panic() {
+    // Regression test for https://github.com/denoland/deno/issues/31820
+    let input = r#"export class Hello extends LitElement {
+  override render() {
+    return html`
+        ${Object.values(this.materials).map(m => html`<md-option value=${m.id}><div slot="headline">${m.name}</div></md-option>`)}
+    `;
+  }
+}
+"#;
+    let result = format_file(
+      Path::new("test.ts"),
+      &FileContents {
+        had_bom: false,
+        text: input.into(),
+      },
+      &FmtOptionsConfig::default(),
+      &UnstableFmtOptions::default(),
+      None,
+    );
+    assert!(result.is_ok());
+  }
+
+  #[test]
+  fn test_fmt_malformed_for_loop_does_not_panic() {
+    // Regression test for https://github.com/denoland/deno/issues/31740
+    let input = "for(let i=0;i<1,i++) {}\n";
+    let result = format_file(
+      Path::new("test.ts"),
+      &FileContents {
+        had_bom: false,
+        text: input.into(),
+      },
+      &FmtOptionsConfig::default(),
+      &UnstableFmtOptions::default(),
+      None,
+    );
+    assert!(result.is_ok());
+  }
+
+  #[test]
+  fn test_fmt_as_number_comparison_does_not_panic() {
+    // Regression test for https://github.com/denoland/deno/issues/31988
+    let input = "0 as number <= 1;\n";
+    let result = format_file(
+      Path::new("test.ts"),
+      &FileContents {
+        had_bom: false,
+        text: input.into(),
+      },
+      &FmtOptionsConfig::default(),
+      &UnstableFmtOptions::default(),
+      None,
+    );
+    assert!(result.is_ok());
+  }
+
+  #[test]
+  fn test_fmt_incomplete_namespace_does_not_panic() {
+    // Regression test for https://github.com/denoland/deno/issues/29614
+    let input = "export namespace MediaFile {\n";
     let result = format_file(
       Path::new("test.ts"),
       &FileContents {
