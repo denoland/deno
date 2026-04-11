@@ -804,9 +804,19 @@ Server.prototype.closeIdleConnections = function closeIdleConnections() {
   }
 };
 
-export { Server, ServerResponse, STATUS_CODES };
+export {
+  connectionListener as _connectionListener,
+  kIncomingMessage,
+  kServerResponse,
+  Server,
+  ServerResponse,
+  STATUS_CODES,
+};
 
 export default {
+  _connectionListener: connectionListener,
+  kIncomingMessage,
+  kServerResponse,
   Server,
   ServerResponse,
   STATUS_CODES,

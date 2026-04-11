@@ -4,64 +4,83 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-import { notImplemented } from "ext:deno_node/_utils.ts";
 import tls from "node:tls";
 import { urlToHttpOptions } from "ext:deno_node/internal/url.ts";
 import {
+  _connectionListener,
   ClientRequest,
   IncomingMessageForClient as IncomingMessage,
   type RequestOptions,
+  ServerResponse,
 } from "node:http";
+import { kIncomingMessage, kServerResponse } from "node:_http_server";
+import { IncomingMessage as NodeIncomingMessage } from "node:_http_incoming";
+import { kUniqueHeaders } from "node:_http_outgoing";
 import { Agent as HttpAgent } from "node:_http_agent";
 import { createHttpClient } from "ext:deno_fetch/22_http_client.js";
 import { type ServerHandler, ServerImpl as HttpServer } from "node:http";
 import { validateObject } from "ext:deno_node/internal/validators.mjs";
 import { kEmptyObject } from "ext:deno_node/internal/util.mjs";
-import { Buffer } from "node:buffer";
-import { listenTls } from "ext:deno_net/02_tls.js";
 
-export class Server extends HttpServer {
-  constructor(opts, requestListener?: ServerHandler) {
-    if (typeof opts === "function") {
-      requestListener = opts;
-      opts = kEmptyObject;
-    } else if (opts == null) {
-      opts = kEmptyObject;
-    } else {
-      validateObject(opts, "options");
-    }
-
-    if (opts.cert && Array.isArray(opts.cert)) {
-      notImplemented("https.Server.opts.cert array type");
-    }
-
-    if (opts.key && Array.isArray(opts.key)) {
-      notImplemented("https.Server.opts.key array type");
-    }
-
-    super(opts, requestListener);
+// https.Server extends tls.Server (which extends net.Server).
+// Each accepted TCP connection is wrapped with TLS by tls.Server's
+// connectionListener, then the HTTP _connectionListener handles the
+// HTTP protocol on the decrypted stream. Matches Node.js architecture.
+export function Server(
+  this: any,
+  opts: any,
+  requestListener?: ServerHandler,
+) {
+  if (!(this instanceof Server)) {
+    return new (Server as any)(opts, requestListener);
   }
 
-  _listen(hostname: string, port: number): Deno.Listener {
-    const cert = this._opts.cert instanceof Buffer
-      ? this._opts.cert.toString()
-      : this._opts.cert;
-    const key = this._opts.key instanceof Buffer
-      ? this._opts.key.toString()
-      : this._opts.key;
-    return listenTls({
-      hostname,
-      port,
-      cert,
-      key,
-      alpnProtocols: ["h2", "http/1.1"],
-    });
+  if (typeof opts === "function") {
+    requestListener = opts;
+    opts = kEmptyObject;
+  } else if (opts == null) {
+    opts = kEmptyObject;
+  } else {
+    validateObject(opts, "options");
   }
 
-  _encrypted = true;
+  // Set HTTP server properties needed by _connectionListener
+  this[kServerResponse] = ServerResponse;
+  this[kIncomingMessage] = opts.IncomingMessage || NodeIncomingMessage;
+  this[kUniqueHeaders] = null;
+  this.httpAllowHalfOpen = false;
+  this.timeout = 0;
+  this.maxHeadersCount = null;
+  this.maxRequestsPerSocket = 0;
+  this.keepAliveTimeout = 5000;
+  this.requireHostHeader = true;
+  this.insecureHTTPParser = undefined;
+  this.maxHeaderSize = undefined;
+
+  tls.Server.call(this, {
+    noDelay: true,
+    ALPNProtocols: ["http/1.1"],
+    ...opts,
+  }, _connectionListener);
+
+  if (requestListener) {
+    this.addListener("request", requestListener);
+  }
 }
-export function createServer(opts, requestListener?: ServerHandler) {
-  return new Server(opts, requestListener);
+Object.setPrototypeOf(Server.prototype, tls.Server.prototype);
+Object.setPrototypeOf(Server, tls.Server);
+
+Server.prototype.close = HttpServer.prototype.close;
+Server.prototype.closeAllConnections = HttpServer.prototype.closeAllConnections;
+Server.prototype.closeIdleConnections =
+  HttpServer.prototype.closeIdleConnections;
+Server.prototype.setTimeout = HttpServer.prototype.setTimeout;
+
+export function createServer(
+  opts: any,
+  requestListener?: ServerHandler,
+) {
+  return new (Server as any)(opts, requestListener);
 }
 
 interface HttpsRequestOptions extends RequestOptions {

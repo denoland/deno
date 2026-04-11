@@ -10,6 +10,7 @@ import { ClientRequest } from "node:_http_client";
 import { Agent, globalAgent } from "node:_http_agent";
 import { IncomingMessage } from "node:_http_incoming";
 import {
+  _connectionListener,
   Server as ServerImpl,
   ServerResponse,
   STATUS_CODES,
@@ -90,6 +91,7 @@ export function get(...args: any[]) {
 export const maxHeaderSize = 16_384;
 
 export {
+  _connectionListener,
   Agent,
   ClientRequest,
   globalAgent,
@@ -104,6 +106,7 @@ export {
   validateHeaderValue,
 };
 export default {
+  _connectionListener,
   Agent,
   globalAgent,
   ClientRequest,
