@@ -789,14 +789,14 @@ impl crate::fs::File for StdFileResourceInner {
       StdFileResourceKind::Stdout => {
         // bypass the file and use std::io::stdout()
         let mut stdout = std::io::stdout().lock();
-        stdout.write_all(buf)?;
+        write_all_retrying(&mut stdout, buf)?;
         stdout.flush()?;
         Ok(())
       }
       StdFileResourceKind::Stderr => {
         // bypass the file and use std::io::stderr()
         let mut stderr = std::io::stderr().lock();
-        stderr.write_all(buf)?;
+        write_all_retrying(&mut stderr, buf)?;
         stderr.flush()?;
         Ok(())
       }
@@ -1333,6 +1333,28 @@ impl crate::fs::File for StdFileResourceInner {
   fn backing_fd(self: Rc<Self>) -> Option<ResourceHandleFd> {
     Some(self.handle)
   }
+}
+
+/// Like `write_all` but retries on `WouldBlock` instead of failing.
+/// Needed because Node's process.stdout/stderr may set O_NONBLOCK on
+/// stdio fds via uv_pipe_open/uv_tty_init, and Rust's `write_all`
+/// does not retry on WouldBlock.
+fn write_all_retrying(
+  writer: &mut impl std::io::Write,
+  mut buf: &[u8],
+) -> std::io::Result<()> {
+  while !buf.is_empty() {
+    match writer.write(buf) {
+      Ok(n) => buf = &buf[n..],
+      Err(e) if e.kind() == ErrorKind::WouldBlock => {
+        std::thread::yield_now();
+        continue;
+      }
+      Err(e) if e.kind() == ErrorKind::Interrupted => continue,
+      Err(e) => return Err(e),
+    }
+  }
+  Ok(())
 }
 
 // override op_print to use the stdout and stderr in the resource table

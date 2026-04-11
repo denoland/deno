@@ -230,8 +230,7 @@ unsafe extern "C" fn write_cb(req: *mut UvWrite, status: i32) {
             v8::callback_scope!(unsafe let scope, context);
             v8::tc_scope!(let scope, scope);
 
-            let this: v8::Local<v8::Object> =
-              v8::Local::new(scope, js_obj);
+            let this: v8::Local<v8::Object> = v8::Local::new(scope, js_obj);
             let key = v8::String::new(scope, "onwrite").unwrap();
             let onwrite = this.get(scope, key.into());
 

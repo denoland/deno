@@ -224,7 +224,7 @@ export class Pipe extends ConnectionWrap {
   }
 
   setBlocking(enable: boolean): number {
-    return this.#native.setBlocking(enable ? 1 : 0);
+    return this.#native.setBlocking(enable);
   }
 
   bind(name: string) {

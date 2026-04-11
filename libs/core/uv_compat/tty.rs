@@ -1312,6 +1312,7 @@ pub unsafe fn uv_tty_init(
         }
       }
 
+
       // Set non-blocking.
       let cur_flags = libc::fcntl(actual_fd, libc::F_GETFL);
       if cur_flags == -1 {
