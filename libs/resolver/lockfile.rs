@@ -392,6 +392,7 @@ impl<TSys: LockfileSys> LockfileLock<TSys> {
             deps
               .map(|i| {
                 i.iter()
+                  .filter(|(k, _)| !k.is_empty())
                   .filter_map(|(k, v)| PackageJsonDepValue::parse(k, v).ok())
                   .filter_map(|dep| match dep {
                     PackageJsonDepValue::Req(req) => {

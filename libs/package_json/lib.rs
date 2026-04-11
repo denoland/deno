@@ -560,6 +560,11 @@ impl PackageJson {
       };
       let mut result = IndexMap::with_capacity(deps.len());
       for (key, value) in deps {
+        // Skip empty dependency names — they are not valid npm package
+        // identifiers and would corrupt the lockfile on serialization.
+        if key.is_empty() {
+          continue;
+        }
         result
           .entry(StackString::from(key.as_str()))
           .or_insert_with(|| PackageJsonDepValue::parse(key, value));
