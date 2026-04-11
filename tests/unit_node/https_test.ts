@@ -88,20 +88,14 @@ Deno.test({
     });
 
     await promise;
-    console.log("before request");
     const req = https.request(`https://localhost:${serverPort!}`, (res) => {
-      console.log("request callback");
       // deno-lint-ignore no-explicit-any
       assert((req.socket as any).authorized);
       res.destroy();
-      console.log("res destroyed");
       server.shutdown();
-      console.log("server shutdown");
     });
     req.end();
 
-    console.log("before finished");
     await server.finished;
-    console.log("after finished");
   },
 });

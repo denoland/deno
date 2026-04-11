@@ -696,7 +696,7 @@ Object.defineProperties(
       return headers;
     },
 
-    _storeHeader(firstLine: string, _headers: never) {
+    _storeHeader(firstLine: string, headers: any) {
       // firstLine in the case of request is: 'GET /index.html HTTP/1.1\r\n'
       // in the case of response it is: 'HTTP/1.1 200 OK\r\n'
       const state = {
@@ -709,21 +709,34 @@ Object.defineProperties(
         header: firstLine,
       };
 
-      const headers = this[kOutHeaders];
       if (headers) {
-        // headers is null-prototype object, so ignore the guard lint
-        // deno-lint-ignore guard-for-in
-        for (const key in headers) {
-          const entry = headers[key];
-          const value = entry[1];
-          if (Array.isArray(value)) {
-            for (let j = 0; j < value.length; j++) {
-              state.header += entry[0] + ": " + value[j] + "\r\n";
+        if (headers === this[kOutHeaders]) {
+          // kOutHeaders format: { lowercase: [OriginalName, value] }
+          // deno-lint-ignore guard-for-in
+          for (const key in headers) {
+            const entry = headers[key];
+            this._storeHeaderEntry(state, entry[0], entry[1]);
+          }
+        } else if (Array.isArray(headers)) {
+          if (headers.length && Array.isArray(headers[0])) {
+            // Array of arrays: [[name, value], ...]
+            for (let i = 0; i < headers.length; i++) {
+              const entry = headers[i];
+              this._storeHeaderEntry(state, entry[0], entry[1]);
             }
           } else {
-            state.header += entry[0] + ": " + value + "\r\n";
+            // Flat array: [name, value, name, value, ...]
+            for (let n = 0; n < headers.length; n += 2) {
+              this._storeHeaderEntry(state, headers[n], headers[n + 1]);
+            }
           }
-          this._matchHeader(state, entry[0], value);
+        } else {
+          // Plain object: { name: value }
+          const keys = Object.keys(headers);
+          for (let i = 0; i < keys.length; i++) {
+            const k = keys[i];
+            this._storeHeaderEntry(state, k, headers[k]);
+          }
         }
       }
 
@@ -816,6 +829,17 @@ Object.defineProperties(
       // Wait until the first body chunk, or close(), is sent to flush,
       // UNLESS we're sending Expect: 100-continue.
       if (state.expect) this._send("");
+    },
+
+    _storeHeaderEntry(state: any, field: string, value: any) {
+      if (Array.isArray(value)) {
+        for (let j = 0; j < value.length; j++) {
+          state.header += field + ": " + value[j] + "\r\n";
+        }
+      } else {
+        state.header += field + ": " + value + "\r\n";
+      }
+      this._matchHeader(state, field, value);
     },
 
     _matchHeader(

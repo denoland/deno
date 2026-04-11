@@ -278,26 +278,37 @@ ServerResponse.prototype.writeHead = function writeHead(
   }
   this.statusCode = statusCode;
 
-  if (ArrayIsArray(obj)) {
-    if (obj.length % 2 !== 0) {
-      throw new ERR_INVALID_ARG_TYPE(
-        "headers",
-        "Array with even length",
-        obj,
-      );
+  let headers;
+  if (this[kOutHeaders]) {
+    // Slow-case: progressive API and header fields are passed.
+    if (ArrayIsArray(obj)) {
+      if (obj.length % 2 !== 0) {
+        throw new ERR_INVALID_ARG_TYPE(
+          "headers",
+          "Array with even length",
+          obj,
+        );
+      }
+      for (let n = 0; n < obj.length; n += 2) {
+        const k = obj[n + 0];
+        if (k) this.removeHeader(k);
+      }
+      for (let n = 0; n < obj.length; n += 2) {
+        const k = obj[n + 0];
+        if (k) this.appendHeader(k, obj[n + 1]);
+      }
+    } else if (obj) {
+      const keys = ObjectKeys(obj);
+      for (let i = 0; i < keys.length; i++) {
+        const k = keys[i];
+        if (k) this.setHeader(k, obj[k]);
+      }
     }
-    for (let n = 0; n < obj.length; n += 2) {
-      const k = obj[n + 0];
-      if (k) this.setHeader(k, obj[n + 1]);
-    }
-  } else if (obj) {
-    const keys = ObjectKeys(obj);
-    for (let i = 0; i < keys.length; i++) {
-      const k = keys[i];
-      if (k) this.setHeader(k, obj[k]);
-    }
+    headers = this[kOutHeaders];
+  } else {
+    // Only writeHead() called - pass raw headers to _storeHeader
+    headers = obj;
   }
-  const headers = this[kOutHeaders];
 
   const statusLine = "HTTP/1.1 " + statusCode + " " + this.statusMessage +
     "\r\n";
