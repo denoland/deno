@@ -2180,9 +2180,15 @@ impl WorkspaceDirectory {
     };
     let root_config = match &self.deno_json.root {
       Some(root) => root.to_compile_config(permissions)?,
-      None => Default::default(),
+      None => return Ok(member_config),
     };
+    let mut include = root_config.include;
+    include.extend(member_config.include);
+    let mut exclude = root_config.exclude;
+    exclude.extend(member_config.exclude);
     Ok(CompileConfig {
+      include,
+      exclude,
       permissions: match (root_config.permissions, member_config.permissions) {
         (_, Some(m)) => Some(m),
         (Some(r), _) => Some(r),

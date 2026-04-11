@@ -6,6 +6,81 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 2.7.12 / 2026.04.09
+
+- feat(ext/node): add fs.SyncWriteStream (#33226)
+- feat(ext/node): add llhttp-based HTTPParser with native cppgc binding (#33202)
+- feat(ext/node): add native TLSWrap cppgc object (Rust core) (#33183)
+- feat: native uv_pipe_t implementation with NativePipe and FdTable (#33165)
+- fix(core): fix uv_pipe_open handle lifecycle to match libuv (#33225)
+- fix(core): free UvLoopInner on uv_loop_t drop to prevent worker memory leak
+  (#33200)
+- fix(core): handle WouldBlock in op_print for non-blocking stdio (#33221)
+- fix(core): use c_char instead of i8 in uv_buf_t base cast (#33179)
+- fix(ext/napi): use per-isolate Private key for napi_wrap/napi_unwrap (#33204)
+- fix(ext/node): add dns.getDefaultResultOrder() API (#33197)
+- fix(ext/node): create net.Socket from file descriptors (#33150)
+- fix(ext/node): implement TCP.open(fd) (#33155)
+- fix(ext/node): implement timeout, killSignal, and pid for child_process
+  spawnSync (#32810)
+- fix(ext/node): implement uv_ref for native TCP handles (#33174)
+- fix(ext/node): remove dead legacy TCP server accept path (#33172)
+- fix(ext/node): return real OS file descriptors from node:fs APIs (#33039)
+- fix(ext/node): rewrite Pipe.open(fd) to use raw fd ops (#33136)
+- fix(ext/node): support numeric FDs in child_process stdio array (#33140)
+- fix(ext/node): throw on cipher update with input >= 2^31-1 bytes (#33201)
+- fix(ext/webgpu): accept `ArrayBuffer` in `GPUQueue.writeBuffer()` as data
+  source (#33152)
+- fix(io): remove global stdio statics, handle non-blocking stdin (#33219)
+- fix(node): validate resolved main path stays within package directory (#33170)
+- fix(otel): add timeout to OTEL HTTP exporter to prevent hangs (#33159)
+- fix(permissions): check deny rules against resolved IPs to prevent numeric
+  hostname bypass (#33203)
+- fix(permissions): normalize IPv4-mapped IPv6 addresses in net permission
+  checks (#33223)
+- fix(repl): surface CDP protocol errors and fix race in wait_for_response
+  (#33190)
+- fix(runtime): cache canonicalized watch paths, fix spurious events (#33123)
+- fix(schema): fix the `publish: false` of deno.json schema (#33196)
+- fix: linked packages with peer deps failing to cache from lockfile (#33143)
+- fix: update release template workflow URLs to .generated.yml (#33116)
+- perf(ext/node): use aws-lc-sys EVP API for chacha20-poly1305 (#33110)
+
+### 2.7.11 / 2026.04.01
+
+- feat: add alpha and beta release channel support (#33098)
+- fix(ext/node): fire fs.watch events for immediate writes (#32935) (#32989)
+- fix(watch): reduce graceful shutdown timeout from 5s to 500ms (#33099)
+
+### 2.7.10 / 2026.03.31
+
+- feat: add include and exclude fields to compile config (#33024)
+- fix(ext/http): gracefully handle consumed external in OTel ops (#33027)
+- fix(ext/node): `process.argv[0]` is equivalent to execPath (#28915)
+- fix(ext/node): add chacha20-poly1305 cipher support (#33084)
+- fix(ext/node): drain pending messages before emitting worker exit event
+  (#32623)
+- fix(ext/node): escape shell metacharacters in child_process args on Windows
+  (#33071)
+- fix(ext/node): fix BadResource error in FileHandle.readLines() (#32685)
+- fix(ext/node): improve GCM cipher compat with Node.js (#33079)
+- fix(ext/node): improve sign/verify crypto compat with Node.js (#33083)
+- fix(ext/node): return pid from spawnSync (#33081)
+- fix(ext/web): fix infinite loop in WebTransport datagram overflow handling
+  (#33075)
+- fix(install): all package.json aliases should be added to node_modules
+  (#33068)
+- fix(lsp): don't double-encode query/fragment in notebook cell URIs (#33070)
+- fix(lsp): suggest import map aliases in auto-imports for local directories
+  (#33048)
+- fix(npm): resolve linked packages not published to npm registry (#33021)
+- fix(outdated): use dist-tags.latest for Latest column, matching npm/pnpm/bun
+  (#32939)
+- fix(resolver): resolve npm packages that shadow Node built-in names in BYONM
+  mode (#32865)
+- fix(serde_v8): use actual bytes written in to_utf8_slow (#33074)
+- fix: use case-insensitive path matching for permissions on Windows (#33073)
+
 ### 2.7.9 / 2026.03.27
 
 - fix(cli): show clean error instead of panic for invalid

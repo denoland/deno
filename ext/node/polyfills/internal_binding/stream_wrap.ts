@@ -53,7 +53,6 @@ import {
   providerType,
 } from "ext:deno_node/internal_binding/async_wrap.ts";
 import { codeMap } from "ext:deno_node/internal_binding/uv.ts";
-import { _readWithCancelHandle } from "ext:deno_io/12_io.js";
 import { NodeTypeError } from "ext:deno_node/internal/errors.ts";
 
 export const kUseNativeWrap = Symbol("useNativeWrap");
@@ -173,6 +172,12 @@ export class LibuvStreamWrap extends HandleWrap {
     return 0;
   }
 
+  // TODO(user): This should dispatch to uv_shutdown on the native handle
+  // (like Node's C++ StreamBase::Shutdown does), instead of calling _onClose
+  // which fully closes the handle. Currently TCP and Pipe override this to
+  // call their native shutdown. Once all stream types have native handles,
+  // this base implementation should be replaced with a generic uv_shutdown
+  // dispatch.
   /**
    * Shutdown the stream.
    * @param req A shutdown request wrapper.
@@ -336,6 +341,12 @@ export class LibuvStreamWrap extends HandleWrap {
     let status = 0;
     this.#reading = false;
 
+    // Cancel any pending read before closing the stream.
+    if (this.cancelHandle) {
+      core.close(this.cancelHandle);
+      this.cancelHandle = undefined;
+    }
+
     try {
       this[kStreamBaseField]?.close();
     } catch {
@@ -373,17 +384,7 @@ export class LibuvStreamWrap extends HandleWrap {
 
     const ridBefore = this[kStreamBaseField]![internalRidSymbol];
     try {
-      if (this[kStreamBaseField]![_readWithCancelHandle]) {
-        const { cancelHandle, nread: p } = this[kStreamBaseField]!
-          [_readWithCancelHandle](buf);
-        if (cancelHandle) {
-          this.cancelHandle = cancelHandle;
-        }
-
-        nread = await p;
-      } else {
-        nread = await this[kStreamBaseField]!.read(buf);
-      }
+      nread = await this[kStreamBaseField]!.read(buf);
     } catch (e) {
       // Try to read again if the underlying stream resource
       // changed. This can happen during TLS upgrades (eg. STARTTLS)
@@ -479,10 +480,15 @@ export class LibuvStreamWrap extends HandleWrap {
         status = MapPrototypeGet(codeMap, "UNKNOWN")!;
       }
 
-      try {
-        req.oncomplete(status);
-      } catch {
-        // swallow callback errors.
+      // Only fire oncomplete if afterWriteDispatched didn't already
+      // handle completion synchronously (req.async is set by
+      // afterWriteDispatched based on streamBaseState[kLastWriteWasAsync]).
+      if (req.async) {
+        try {
+          req.oncomplete(status);
+        } catch {
+          // swallow callback errors.
+        }
       }
 
       return;
@@ -491,10 +497,14 @@ export class LibuvStreamWrap extends HandleWrap {
     streamBaseState[kBytesWritten] = byteLength;
     this.bytesWritten += byteLength;
 
-    try {
-      req.oncomplete(0);
-    } catch {
-      // swallow callback errors.
+    // Only fire oncomplete if afterWriteDispatched didn't already
+    // handle completion synchronously.
+    if (req.async) {
+      try {
+        req.oncomplete(0);
+      } catch {
+        // swallow callback errors.
+      }
     }
 
     return;

@@ -221,7 +221,7 @@ export function Cipheriv(
   this._needsBlockCache =
     !(cipher == "aes-128-gcm" || cipher == "aes-256-gcm" ||
       cipher == "aes-128-ctr" || cipher == "aes-192-ctr" ||
-      cipher == "aes-256-ctr");
+      cipher == "aes-256-ctr" || cipher == "chacha20-poly1305");
   this._authTag = undefined;
   this._autoPadding = true;
   this._finalized = false;
@@ -295,6 +295,9 @@ Cipheriv.prototype.setAAD = function (
     plaintextLength: number;
   },
 ) {
+  if (this._finalized) {
+    throw new ERR_CRYPTO_INVALID_STATE("setAAD");
+  }
   op_node_cipheriv_set_aad(this._context, buffer);
   return this;
 };
@@ -318,6 +321,12 @@ Cipheriv.prototype.update = function (
   if (typeof data === "string") {
     buf = Buffer.from(data, inputEncoding);
   }
+
+  // Match Node.js/OpenSSL behavior: reject inputs >= INT_MAX bytes
+  if (buf.length >= 2 ** 31 - 1) {
+    throw new Error("Trying to add data in unsupported state");
+  }
+
   _lazyInitCipherDecoder(this, outputEncoding);
 
   let output: Buffer;
@@ -464,7 +473,7 @@ export function Decipheriv(
   this._needsBlockCache =
     !(cipher == "aes-128-gcm" || cipher == "aes-256-gcm" ||
       cipher == "aes-128-ctr" || cipher == "aes-192-ctr" ||
-      cipher == "aes-256-ctr");
+      cipher == "aes-256-ctr" || cipher == "chacha20-poly1305");
   this._authTag = undefined;
   this._finalized = false;
   this._decoder = undefined;
@@ -531,6 +540,9 @@ Decipheriv.prototype.setAAD = function (
     plaintextLength: number;
   },
 ) {
+  if (this._finalized) {
+    throw new ERR_CRYPTO_INVALID_STATE("setAAD");
+  }
   op_node_decipheriv_set_aad(this._context, buffer);
   return this;
 };
@@ -539,6 +551,9 @@ Decipheriv.prototype.setAuthTag = function (
   buffer: BinaryLike,
   _encoding?: string,
 ) {
+  if (this._authTag) {
+    throw new ERR_CRYPTO_INVALID_STATE("setAuthTag");
+  }
   op_node_decipheriv_auth_tag(this._context, buffer.byteLength);
   this._authTag = buffer;
   return this;
@@ -564,6 +579,12 @@ Decipheriv.prototype.update = function (
   if (typeof data === "string") {
     buf = Buffer.from(data, inputEncoding);
   }
+
+  // Match Node.js/OpenSSL behavior: reject inputs >= INT_MAX bytes
+  if (buf.length >= 2 ** 31 - 1) {
+    throw new Error("Trying to add data in unsupported state");
+  }
+
   _lazyInitDecipherDecoder(this, outputEncoding);
 
   let output;

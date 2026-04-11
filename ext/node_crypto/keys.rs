@@ -872,6 +872,22 @@ impl KeyObjectHandle {
               SecretDocument::from_sec1_der(doc.as_bytes())
                 .map_err(|_| AsymmetricPrivateKeyError::InvalidSec1PrivateKey)?
             }
+            "DSA PRIVATE KEY" => {
+              // Traditional DSA private key format:
+              // DSAPrivateKey ::= SEQUENCE {
+              //   version  INTEGER,
+              //   p        INTEGER,
+              //   q        INTEGER,
+              //   g        INTEGER,
+              //   pub_key  INTEGER,
+              //   priv_key INTEGER
+              // }
+              let private_key =
+                parse_traditional_dsa_private_key(doc.as_bytes())?;
+              return Ok(KeyObjectHandle::AsymmetricPrivate(
+                AsymmetricPrivateKey::Dsa(private_key),
+              ));
+            }
             _ => {
               return Err(AsymmetricPrivateKeyError::UnsupportedPemLabel(
                 label.to_string(),
@@ -1327,7 +1343,8 @@ impl KeyObjectHandle {
           EncryptedPrivateKeyInfo::PEM_LABEL
           | PrivateKeyInfo::PEM_LABEL
           | sec1::EcPrivateKey::PEM_LABEL
-          | rsa::pkcs1::RsaPrivateKey::PEM_LABEL => {
+          | rsa::pkcs1::RsaPrivateKey::PEM_LABEL
+          | "DSA PRIVATE KEY" => {
             let handle = KeyObjectHandle::new_asymmetric_private_key_from_js(
               key, format, typ, passphrase,
             )?;
@@ -1514,6 +1531,60 @@ pub enum RsaPssParamsParseError {
   UnsupportedPssMaskGenAlgorithm,
   #[error("malformed or missing pss mask gen algorithm parameters")]
   MalformedOrMissingPssMaskGenAlgorithm,
+}
+
+/// Parse a traditional DSA private key (PEM label "DSA PRIVATE KEY").
+///
+/// The traditional format is:
+/// ```asn1
+/// DSAPrivateKey ::= SEQUENCE {
+///   version  INTEGER,
+///   p        INTEGER,
+///   q        INTEGER,
+///   g        INTEGER,
+///   pub_key  INTEGER,
+///   priv_key INTEGER
+/// }
+/// ```
+fn parse_traditional_dsa_private_key(
+  der: &[u8],
+) -> Result<dsa::SigningKey, AsymmetricPrivateKeyError> {
+  use spki::der::Decode;
+  use spki::der::Reader as _;
+  use spki::der::SliceReader;
+
+  let err = || AsymmetricPrivateKeyError::InvalidDsaPrivateKey;
+
+  let mut reader = SliceReader::new(der).map_err(|_| err())?;
+  reader
+    .sequence(|seq_reader| {
+      // version
+      let _version = asn1::UintRef::decode(seq_reader)?;
+      // p
+      let p_ref = asn1::UintRef::decode(seq_reader)?;
+      // q
+      let q_ref = asn1::UintRef::decode(seq_reader)?;
+      // g
+      let g_ref = asn1::UintRef::decode(seq_reader)?;
+      // y (public key)
+      let y_ref = asn1::UintRef::decode(seq_reader)?;
+      // x (private key)
+      let x_ref = asn1::UintRef::decode(seq_reader)?;
+
+      let p = num_bigint_dig::BigUint::from_bytes_be(p_ref.as_bytes());
+      let q = num_bigint_dig::BigUint::from_bytes_be(q_ref.as_bytes());
+      let g = num_bigint_dig::BigUint::from_bytes_be(g_ref.as_bytes());
+      let y = num_bigint_dig::BigUint::from_bytes_be(y_ref.as_bytes());
+      let x = num_bigint_dig::BigUint::from_bytes_be(x_ref.as_bytes());
+
+      let components = dsa::Components::from_components(p, q, g)
+        .map_err(|_| spki::der::Tag::Sequence.value_error())?;
+      let verifying_key = dsa::VerifyingKey::from_components(components, y)
+        .map_err(|_| spki::der::Tag::Sequence.value_error())?;
+      dsa::SigningKey::from_components(verifying_key, x)
+        .map_err(|_| spki::der::Tag::Sequence.value_error())
+    })
+    .map_err(|_| err())
 }
 
 fn parse_rsa_pss_params(

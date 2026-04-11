@@ -665,7 +665,7 @@ pub fn op_node_sign(
   #[cppgc] handle: &KeyObjectHandle,
   #[buffer] digest: &[u8],
   #[string] digest_type: &str,
-  #[smi] pss_salt_length: Option<u32>,
+  #[smi] pss_salt_length: Option<i32>,
   #[smi] padding: Option<u32>,
   #[smi] dsa_signature_encoding: u32,
 ) -> Result<Box<[u8]>, sign::KeyObjectHandlePrehashedSignAndVerifyError> {
@@ -684,7 +684,7 @@ pub fn op_node_verify(
   #[buffer] digest: &[u8],
   #[string] digest_type: &str,
   #[buffer] signature: &[u8],
-  #[smi] pss_salt_length: Option<u32>,
+  #[smi] pss_salt_length: Option<i32>,
   #[smi] padding: Option<u32>,
   #[smi] dsa_signature_encoding: u32,
 ) -> Result<bool, sign::KeyObjectHandlePrehashedSignAndVerifyError> {

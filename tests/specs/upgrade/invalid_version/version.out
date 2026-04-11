@@ -13,5 +13,7 @@ Specific version
 
 Channel
   deno upgrade stable
+  deno upgrade alpha
+  deno upgrade beta
   deno upgrade rc
   deno upgrade canary

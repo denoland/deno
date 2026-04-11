@@ -208,6 +208,7 @@ class NodeWorker extends EventEmitter {
   #refed = true;
   #messagePromise = undefined;
   #controlPromise = undefined;
+  #messageLoopPromise = undefined;
   #workerOnline = false;
   #exited = false;
   // "RUNNING" | "CLOSED" | "TERMINATED"
@@ -497,7 +498,7 @@ class NodeWorker extends EventEmitter {
     }
 
     this.#pollControl();
-    this.#pollMessages();
+    this.#messageLoopPromise = this.#pollMessages();
     process.nextTick(() => process.emit("worker", this));
   }
 
@@ -573,6 +574,9 @@ class NodeWorker extends EventEmitter {
             err.stack = undefined;
             this.emit("error", err);
           }
+          // Drain pending messages before emitting exit so that
+          // all 'message' events fire before 'exit' (Node.js behavior).
+          await this.#messageLoopPromise;
           this.resourceLimits = {};
           if (!this.#exited) {
             this.#exited = true;
@@ -588,6 +592,9 @@ class NodeWorker extends EventEmitter {
           debugWT(`Host got "close" message from worker: ${this.#name}`);
           this.#status = "CLOSED";
           this.#closeStdio();
+          // Drain pending messages before emitting exit so that
+          // all 'message' events fire before 'exit' (Node.js behavior).
+          await this.#messageLoopPromise;
           this.resourceLimits = {};
           if (!this.#exited) {
             this.#exited = true;

@@ -526,20 +526,6 @@ impl CliFactory {
     self.resolver_factory()?.in_npm_package_checker()
   }
 
-  pub async fn tsgo_path(&self) -> Result<Option<&PathBuf>, AnyError> {
-    if self.cli_options()?.unstable_tsgo() {
-      Ok(Some(
-        crate::tsc::ensure_tsgo(
-          self.deno_dir()?,
-          self.http_client_provider().clone(),
-        )
-        .await?,
-      ))
-    } else {
-      Ok(None)
-    }
-  }
-
   pub fn jsr_version_resolver(
     &self,
   ) -> Result<&Arc<JsrVersionResolver>, AnyError> {
@@ -847,7 +833,6 @@ impl CliFactory {
             } else {
               None
             },
-            self.tsgo_path().await?.cloned(),
           )))
         }
         .boxed_local(),

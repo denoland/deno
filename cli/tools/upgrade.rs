@@ -394,6 +394,24 @@ pub fn check_for_upgrades(
           colors::italic_gray("Run `deno upgrade lts` to install it.")
         );
       }
+      ReleaseChannel::Alpha => {
+        log::info!(
+          "{} {} → {} {}",
+          colors::green("A new alpha release of Deno is available:"),
+          colors::cyan(version::DENO_VERSION_INFO.deno),
+          colors::cyan(&upgrade_version),
+          colors::italic_gray("Run `deno upgrade alpha` to install it.")
+        );
+      }
+      ReleaseChannel::Beta => {
+        log::info!(
+          "{} {} → {} {}",
+          colors::green("A new beta release of Deno is available:"),
+          colors::cyan(version::DENO_VERSION_INFO.deno),
+          colors::cyan(&upgrade_version),
+          colors::italic_gray("Run `deno upgrade beta` to install it.")
+        );
+      }
     }
 
     update_checker.store_prompted();
@@ -431,7 +449,11 @@ async fn check_for_upgrades_for_lsp_with_provider(
   }
 
   match release_channel {
-    ReleaseChannel::Stable | ReleaseChannel::Rc | ReleaseChannel::Lts => {
+    ReleaseChannel::Stable
+    | ReleaseChannel::Rc
+    | ReleaseChannel::Lts
+    | ReleaseChannel::Alpha
+    | ReleaseChannel::Beta => {
       if let Ok(current) = Version::parse_standard(&current_version)
         && let Ok(latest) =
           Version::parse_standard(&latest_version.version_or_hash)
@@ -793,7 +815,11 @@ impl RequestedVersion {
         );
       };
 
-      if semver.pre.contains(&SmallStackString::from_static("rc")) {
+      if semver.pre.contains(&SmallStackString::from_static("alpha")) {
+        (ReleaseChannel::Alpha, passed_version)
+      } else if semver.pre.contains(&SmallStackString::from_static("beta")) {
+        (ReleaseChannel::Beta, passed_version)
+      } else if semver.pre.contains(&SmallStackString::from_static("rc")) {
         (ReleaseChannel::Rc, passed_version)
       } else {
         (ReleaseChannel::Stable, passed_version)
@@ -818,7 +844,11 @@ fn select_specific_version_for_upgrade(
   force: bool,
 ) -> Result<Option<AvailableVersion>, AnyError> {
   let current_is_passed = match release_channel {
-    ReleaseChannel::Stable | ReleaseChannel::Rc | ReleaseChannel::Lts => {
+    ReleaseChannel::Stable
+    | ReleaseChannel::Rc
+    | ReleaseChannel::Lts
+    | ReleaseChannel::Alpha
+    | ReleaseChannel::Beta => {
       version::DENO_VERSION_INFO.release_channel == release_channel
         && version::DENO_VERSION_INFO.deno == version
     }
@@ -873,9 +903,11 @@ async fn find_latest_version_to_upgrade(
 
   let current_version = match release_channel {
     ReleaseChannel::Canary => version::DENO_VERSION_INFO.git_hash,
-    ReleaseChannel::Stable | ReleaseChannel::Lts | ReleaseChannel::Rc => {
-      version::DENO_VERSION_INFO.deno
-    }
+    ReleaseChannel::Stable
+    | ReleaseChannel::Lts
+    | ReleaseChannel::Rc
+    | ReleaseChannel::Alpha
+    | ReleaseChannel::Beta => version::DENO_VERSION_INFO.deno,
   };
   let should_upgrade = force
     || current_version != latest_version_found.version_or_hash
@@ -933,7 +965,11 @@ fn normalize_version_from_server(
 ) -> Result<AvailableVersion, AnyError> {
   let text = text.trim();
   match release_channel {
-    ReleaseChannel::Stable | ReleaseChannel::Rc | ReleaseChannel::Lts => {
+    ReleaseChannel::Stable
+    | ReleaseChannel::Rc
+    | ReleaseChannel::Lts
+    | ReleaseChannel::Alpha
+    | ReleaseChannel::Beta => {
       let v = text.trim_start_matches('v').to_string();
       Ok(AvailableVersion {
         version_or_hash: v.to_string(),
@@ -959,6 +995,8 @@ fn get_latest_version_url(
     }
     ReleaseChannel::Rc => Cow::Borrowed("release-rc-latest.txt"),
     ReleaseChannel::Lts => Cow::Borrowed("release-lts-latest.txt"),
+    ReleaseChannel::Alpha => Cow::Borrowed("release-alpha-latest.txt"),
+    ReleaseChannel::Beta => Cow::Borrowed("release-beta-latest.txt"),
   };
   let query_param = match check_kind {
     UpgradeCheckKind::Execution => "",
@@ -981,7 +1019,7 @@ fn get_download_url(
   release_channel: ReleaseChannel,
 ) -> Result<Url, AnyError> {
   let download_url = match release_channel {
-    ReleaseChannel::Stable => {
+    ReleaseChannel::Stable | ReleaseChannel::Alpha | ReleaseChannel::Beta => {
       let release_url = if std::env::var_os("DENO_TESTING_UPGRADE").is_some() {
         "http://localhost:4545/deno-upgrade"
       } else {
@@ -1035,7 +1073,11 @@ fn get_banner_url(
     ReleaseChannel::Stable => {
       format!("{}/v{}/banner.txt", DL_RELEASE_URL, version)
     }
-    ReleaseChannel::Rc | ReleaseChannel::Lts | ReleaseChannel::Canary => {
+    ReleaseChannel::Rc
+    | ReleaseChannel::Lts
+    | ReleaseChannel::Canary
+    | ReleaseChannel::Alpha
+    | ReleaseChannel::Beta => {
       return None;
     }
   };
@@ -1375,6 +1417,39 @@ mod test {
       RequestedVersion::from_upgrade_flags(upgrade_flags.clone()).unwrap();
     assert_eq!(req_ver, RequestedVersion::Latest(ReleaseChannel::Rc,));
 
+    upgrade_flags.version_or_hash_or_channel = Some("alpha".to_string());
+    let req_ver =
+      RequestedVersion::from_upgrade_flags(upgrade_flags.clone()).unwrap();
+    assert_eq!(req_ver, RequestedVersion::Latest(ReleaseChannel::Alpha));
+
+    upgrade_flags.version_or_hash_or_channel = Some("beta".to_string());
+    let req_ver =
+      RequestedVersion::from_upgrade_flags(upgrade_flags.clone()).unwrap();
+    assert_eq!(req_ver, RequestedVersion::Latest(ReleaseChannel::Beta));
+
+    upgrade_flags.version_or_hash_or_channel =
+      Some("2.8.0-alpha.0".to_string());
+    let req_ver =
+      RequestedVersion::from_upgrade_flags(upgrade_flags.clone()).unwrap();
+    assert_eq!(
+      req_ver,
+      RequestedVersion::SpecificVersion(
+        ReleaseChannel::Alpha,
+        "2.8.0-alpha.0".to_string()
+      )
+    );
+
+    upgrade_flags.version_or_hash_or_channel = Some("2.8.0-beta.1".to_string());
+    let req_ver =
+      RequestedVersion::from_upgrade_flags(upgrade_flags.clone()).unwrap();
+    assert_eq!(
+      req_ver,
+      RequestedVersion::SpecificVersion(
+        ReleaseChannel::Beta,
+        "2.8.0-beta.1".to_string()
+      )
+    );
+
     upgrade_flags.version_or_hash_or_channel =
       Some("5c69b4861b52ab406e73b9cd85c254f0505cb20f".to_string());
     let req_ver =
@@ -1479,6 +1554,16 @@ mod test {
     assert_eq!(
       file.serialize(),
       "2020-01-01T00:00:00+00:00!2020-01-01T00:00:00+00:00!1.2.3!1.2.2!lts"
+    );
+    file.current_release_channel = ReleaseChannel::Alpha;
+    assert_eq!(
+      file.serialize(),
+      "2020-01-01T00:00:00+00:00!2020-01-01T00:00:00+00:00!1.2.3!1.2.2!alpha"
+    );
+    file.current_release_channel = ReleaseChannel::Beta;
+    assert_eq!(
+      file.serialize(),
+      "2020-01-01T00:00:00+00:00!2020-01-01T00:00:00+00:00!1.2.3!1.2.2!beta"
     );
   }
 
@@ -1671,6 +1756,34 @@ mod test {
       checker.should_prompt(),
       Some((ReleaseChannel::Rc, "1.46.0-rc.1".to_string()))
     );
+
+    // now switch to Alpha release
+    env.set_release_channel(ReleaseChannel::Alpha);
+    env.set_current_version("2.8.0-alpha.0");
+    env.set_latest_version("2.8.0-alpha.1", ReleaseChannel::Alpha);
+    fetch_and_store_latest_version(&env, &env).await;
+    env.add_hours(UPGRADE_CHECK_INTERVAL + 1);
+
+    let checker = UpdateChecker::new(env.clone(), env.clone());
+    assert!(checker.should_check_for_new_version());
+    assert_eq!(
+      checker.should_prompt(),
+      Some((ReleaseChannel::Alpha, "2.8.0-alpha.1".to_string()))
+    );
+
+    // now switch to Beta release
+    env.set_release_channel(ReleaseChannel::Beta);
+    env.set_current_version("2.8.0-beta.0");
+    env.set_latest_version("2.8.0-beta.1", ReleaseChannel::Beta);
+    fetch_and_store_latest_version(&env, &env).await;
+    env.add_hours(UPGRADE_CHECK_INTERVAL + 1);
+
+    let checker = UpdateChecker::new(env.clone(), env.clone());
+    assert!(checker.should_check_for_new_version());
+    assert_eq!(
+      checker.should_prompt(),
+      Some((ReleaseChannel::Beta, "2.8.0-beta.1".to_string()))
+    );
   }
 
   #[tokio::test]
@@ -1854,6 +1967,38 @@ mod test {
       ),
       "https://dl.deno.land/release-lts-latest.txt?lsp"
     );
+    assert_eq!(
+      get_latest_version_url(
+        ReleaseChannel::Alpha,
+        "aarch64-apple-darwin",
+        UpgradeCheckKind::Execution
+      ),
+      "https://dl.deno.land/release-alpha-latest.txt"
+    );
+    assert_eq!(
+      get_latest_version_url(
+        ReleaseChannel::Alpha,
+        "x86_64-pc-windows-msvc",
+        UpgradeCheckKind::Lsp
+      ),
+      "https://dl.deno.land/release-alpha-latest.txt?lsp"
+    );
+    assert_eq!(
+      get_latest_version_url(
+        ReleaseChannel::Beta,
+        "aarch64-apple-darwin",
+        UpgradeCheckKind::Execution
+      ),
+      "https://dl.deno.land/release-beta-latest.txt"
+    );
+    assert_eq!(
+      get_latest_version_url(
+        ReleaseChannel::Beta,
+        "x86_64-pc-windows-msvc",
+        UpgradeCheckKind::Lsp
+      ),
+      "https://dl.deno.land/release-beta-latest.txt?lsp"
+    );
   }
 
   #[test]
@@ -1896,6 +2041,25 @@ mod test {
       AvailableVersion {
         version_or_hash: "1.46.0-rc.0".to_string(),
         release_channel: ReleaseChannel::Rc,
+      },
+    );
+    assert_eq!(
+      normalize_version_from_server(
+        ReleaseChannel::Alpha,
+        "v2.8.0-alpha.0\n\n"
+      )
+      .unwrap(),
+      AvailableVersion {
+        version_or_hash: "2.8.0-alpha.0".to_string(),
+        release_channel: ReleaseChannel::Alpha,
+      },
+    );
+    assert_eq!(
+      normalize_version_from_server(ReleaseChannel::Beta, "v2.8.0-beta.1\n\n")
+        .unwrap(),
+      AvailableVersion {
+        version_or_hash: "2.8.0-beta.1".to_string(),
+        release_channel: ReleaseChannel::Beta,
       },
     );
   }
@@ -1969,7 +2133,7 @@ mod test {
         .unwrap();
       assert_eq!(maybe_info, None);
     }
-    // canary different
+    // rc different
     {
       env.set_latest_version("1.2.3-rc.0", ReleaseChannel::Rc);
       env.set_latest_version("1.2.3-rc.1", ReleaseChannel::Rc);
@@ -1980,6 +2144,54 @@ mod test {
         maybe_info,
         Some(LspVersionUpgradeInfo {
           latest_version: "1.2.3-rc.1".to_string(),
+          is_canary: false,
+        })
+      );
+    }
+    // alpha equal
+    {
+      env.set_release_channel(ReleaseChannel::Alpha);
+      env.set_current_version("2.8.0-alpha.0");
+      env.set_latest_version("2.8.0-alpha.0", ReleaseChannel::Alpha);
+      let maybe_info = check_for_upgrades_for_lsp_with_provider(&env)
+        .await
+        .unwrap();
+      assert_eq!(maybe_info, None);
+    }
+    // alpha newer available
+    {
+      env.set_latest_version("2.8.0-alpha.1", ReleaseChannel::Alpha);
+      let maybe_info = check_for_upgrades_for_lsp_with_provider(&env)
+        .await
+        .unwrap();
+      assert_eq!(
+        maybe_info,
+        Some(LspVersionUpgradeInfo {
+          latest_version: "2.8.0-alpha.1".to_string(),
+          is_canary: false,
+        })
+      );
+    }
+    // beta equal
+    {
+      env.set_release_channel(ReleaseChannel::Beta);
+      env.set_current_version("2.8.0-beta.0");
+      env.set_latest_version("2.8.0-beta.0", ReleaseChannel::Beta);
+      let maybe_info = check_for_upgrades_for_lsp_with_provider(&env)
+        .await
+        .unwrap();
+      assert_eq!(maybe_info, None);
+    }
+    // beta newer available
+    {
+      env.set_latest_version("2.8.0-beta.1", ReleaseChannel::Beta);
+      let maybe_info = check_for_upgrades_for_lsp_with_provider(&env)
+        .await
+        .unwrap();
+      assert_eq!(
+        maybe_info,
+        Some(LspVersionUpgradeInfo {
+          latest_version: "2.8.0-beta.1".to_string(),
           is_canary: false,
         })
       );
@@ -2040,6 +2252,20 @@ mod test {
     assert_eq!(
       path,
       dl_dir.join(format!("canary/abc123def456/{}", *ARCHIVE_NAME))
+    );
+
+    let path =
+      get_binary_cache_path(dl_dir, "2.8.0-alpha.0", ReleaseChannel::Alpha);
+    assert_eq!(
+      path,
+      dl_dir.join(format!("release/v2.8.0-alpha.0/{}", *ARCHIVE_NAME))
+    );
+
+    let path =
+      get_binary_cache_path(dl_dir, "2.8.0-beta.1", ReleaseChannel::Beta);
+    assert_eq!(
+      path,
+      dl_dir.join(format!("release/v2.8.0-beta.1/{}", *ARCHIVE_NAME))
     );
   }
 

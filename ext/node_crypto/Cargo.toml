@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_node_crypto"
-version = "0.12.0"
+version = "0.15.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -16,6 +16,7 @@ path = "lib.rs"
 aead-gcm-stream.workspace = true
 aes.workspace = true
 aws-lc-rs.workspace = true
+aws-lc-sys.workspace = true
 base64.workspace = true
 blake2.workspace = true
 cbc.workspace = true
