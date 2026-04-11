@@ -2871,7 +2871,7 @@ fn build_client_config(
   };
 
   let mut root_cert_store =
-    root_cert_store.unwrap_or_else(rustls::RootCertStore::empty);
+    root_cert_store.unwrap_or_else(deno_tls::create_default_root_cert_store);
 
   // Collect raw DER bytes of root certs so NodeServerCertVerifier can
   // check CaUsedAsEndEntity certs against the trust store.

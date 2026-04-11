@@ -325,8 +325,8 @@ TLSSocket.prototype._wrapHandle = function (wrap, handle) {
   // Get the native TCP handle for attachment
   const nativeHandle = handle;
 
-  // Strip trailing dot from servername for SNI and certificate matching.
-  let servername = options.servername;
+  // Derive servername for SNI. Default to host, or the wrapped socket's host.
+  let servername = options.servername ?? options.host ?? wrap?._host;
   if (servername && servername.endsWith(".")) {
     servername = servername.slice(0, -1);
   }
@@ -977,6 +977,11 @@ function connect(...args) {
 
   const context = options.secureContext || createSecureContext(options);
 
+  // Default servername to host for SNI (matches Node.js behavior)
+  if (!options.servername && options.host && !net.isIP(options.host)) {
+    options.servername = options.host;
+  }
+
   const tlssock = new TLSSocket(options.socket, {
     allowHalfOpen: options.allowHalfOpen,
     pipe: !!options.path,
@@ -987,6 +992,7 @@ function connect(...args) {
     session: options.session,
     ALPNProtocols: options.ALPNProtocols,
     highWaterMark: options.highWaterMark,
+    servername: options.servername,
     onread: options.onread,
     signal: options.signal,
   });
