@@ -24,6 +24,12 @@ import { gzip } from "node:zlib";
 import { Buffer } from "node:buffer";
 import { execCode } from "../unit/test_util.ts";
 
+// Destroy idle keep-alive sockets before each test so that sequential
+// tests reusing the same port (e.g. 4505) don't fail with EADDRINUSE.
+Deno.test.beforeEach(() => {
+  http.globalAgent.destroy();
+});
+
 Deno.test("[node/http listen]", async () => {
   {
     const server = http.createServer();
