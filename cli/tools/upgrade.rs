@@ -1574,6 +1574,47 @@ mod test {
   use super::*;
 
   #[test]
+  fn test_get_pr_artifact_name() {
+    let name = get_pr_artifact_name().unwrap();
+    // Should match the pattern "release-{os}-{arch}-deno"
+    assert!(
+      name.starts_with("release-"),
+      "artifact name should start with 'release-': {name}"
+    );
+    assert!(
+      name.ends_with("-deno"),
+      "artifact name should end with '-deno': {name}"
+    );
+    // Should contain a valid os
+    assert!(
+      name.contains("linux")
+        || name.contains("macos")
+        || name.contains("windows"),
+      "artifact name should contain os: {name}"
+    );
+    // Should contain a valid arch
+    assert!(
+      name.contains("x86_64") || name.contains("aarch64"),
+      "artifact name should contain arch: {name}"
+    );
+  }
+
+  #[test]
+  fn test_get_pr_debug_artifact_name() {
+    let release_name = get_pr_artifact_name().unwrap();
+    let debug_name = get_pr_debug_artifact_name().unwrap();
+    assert!(
+      debug_name.starts_with("debug-"),
+      "debug artifact name should start with 'debug-': {debug_name}"
+    );
+    // The rest should match
+    assert_eq!(
+      release_name.strip_prefix("release-"),
+      debug_name.strip_prefix("debug-"),
+    );
+  }
+
+  #[test]
   fn test_requested_version() {
     let mut upgrade_flags = UpgradeFlags {
       dry_run: false,
