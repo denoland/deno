@@ -1,9 +1,8 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 
-import { setUnrefTimeout } from "node:timers";
 import { notImplemented } from "ext:deno_node/_utils.ts";
-import { primordials } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 const {
   Date,
   DatePrototypeToUTCString,
@@ -21,7 +20,17 @@ export function utcDate() {
 function cache() {
   const d = new Date();
   utcCache = DatePrototypeToUTCString(d);
-  setUnrefTimeout(resetCache, 1000 - DatePrototypeGetMilliseconds(d));
+  // Use core.createTimer as a system timer so it doesn't participate
+  // in Deno's test sanitizer checks.
+  // args: callback, after, args, isRepeat, isRefed, isSystem
+  core.createTimer(
+    resetCache,
+    1000 - DatePrototypeGetMilliseconds(d),
+    undefined,
+    false,
+    false,
+    true,
+  );
 }
 
 function resetCache() {
