@@ -519,7 +519,6 @@ Deno.test("[node/http] send request with non-chunked body", async () => {
   let requestBody = "";
 
   const hostname = "localhost";
-  const port = 4505;
 
   const handler = async (req: Request) => {
     requestHeaders = req.headers;
@@ -527,13 +526,16 @@ Deno.test("[node/http] send request with non-chunked body", async () => {
     return new Response("ok");
   };
   const abortController = new AbortController();
+  const { promise: portPromise, resolve: portResolve } =
+    Promise.withResolvers<number>();
   const servePromise = Deno.serve({
     hostname,
-    port,
+    port: 0,
     signal: abortController.signal,
-    onListen: undefined,
+    onListen: ({ port }) => portResolve(port),
   }, handler).finished;
 
+  const port = await portPromise;
   const opts: RequestOptions = {
     host: hostname,
     port,
@@ -581,7 +583,6 @@ Deno.test("[node/http] send request with chunked body", async () => {
   let requestBody = "";
 
   const hostname = "localhost";
-  const port = 4505;
 
   const handler = async (req: Request) => {
     requestHeaders = req.headers;
@@ -589,13 +590,16 @@ Deno.test("[node/http] send request with chunked body", async () => {
     return new Response("ok");
   };
   const abortController = new AbortController();
+  const { promise: portPromise, resolve: portResolve } =
+    Promise.withResolvers<number>();
   const servePromise = Deno.serve({
     hostname,
-    port,
+    port: 0,
     signal: abortController.signal,
-    onListen: undefined,
+    onListen: ({ port }) => portResolve(port),
   }, handler).finished;
 
+  const port = await portPromise;
   const opts: RequestOptions = {
     host: hostname,
     port,
@@ -633,7 +637,6 @@ Deno.test("[node/http] send request with chunked body as default", async () => {
   let requestBody = "";
 
   const hostname = "localhost";
-  const port = 4505;
 
   const handler = async (req: Request) => {
     requestHeaders = req.headers;
@@ -641,13 +644,16 @@ Deno.test("[node/http] send request with chunked body as default", async () => {
     return new Response("ok");
   };
   const abortController = new AbortController();
+  const { promise: portPromise, resolve: portResolve } =
+    Promise.withResolvers<number>();
   const servePromise = Deno.serve({
     hostname,
-    port,
+    port: 0,
     signal: abortController.signal,
-    onListen: undefined,
+    onListen: ({ port }) => portResolve(port),
   }, handler).finished;
 
+  const port = await portPromise;
   const opts: RequestOptions = {
     host: hostname,
     port,
