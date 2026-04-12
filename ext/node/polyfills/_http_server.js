@@ -73,6 +73,7 @@ import {
   validateObject,
 } from "ext:deno_node/internal/validators.mjs";
 import { nextTick } from "ext:deno_node/_next_tick.ts";
+import { clearInterval, setInterval } from "node:timers";
 import {
   builtinTracer,
   ContextManager,
@@ -84,6 +85,9 @@ import {
 
 const kServerResponse = Symbol("ServerResponse");
 const kConnectionsKey = Symbol("http.server.connections");
+const kConnectionsCheckingInterval = Symbol(
+  "http.server.connectionsCheckingInterval",
+);
 const kOtelSpan = Symbol("kOtelSpan");
 const kOtelStartTime = Symbol("kOtelStartTime");
 const kOtelReqBodySize = Symbol("kOtelReqBodySize");
@@ -134,6 +138,69 @@ function getOtelMetrics() {
 }
 const kLenientAll = HTTPParser.kLenientAll | 0;
 const kLenientNone = HTTPParser.kLenientNone | 0;
+const kOnExecute = HTTPParser.kOnExecute | 0;
+const kOnTimeout = HTTPParser.kOnTimeout | 0;
+
+// JS-based ConnectionsList matching Node's native ConnectionsList.
+// Tracks active connections and their request start times for
+// headersTimeout / requestTimeout enforcement.
+class ConnectionsList {
+  constructor() {
+    this._all = new Set();
+    this._active = new Map(); // socket -> { headersCompleted, startTime }
+  }
+
+  push(socket) {
+    this._all.add(socket);
+  }
+
+  pop(socket) {
+    this._all.delete(socket);
+    this._active.delete(socket);
+  }
+
+  pushActive(socket) {
+    this._active.set(socket, {
+      headersCompleted: false,
+      startTime: performance.now(),
+    });
+  }
+
+  popActive(socket) {
+    this._active.delete(socket);
+  }
+
+  markHeadersCompleted(socket) {
+    const entry = this._active.get(socket);
+    if (entry) {
+      entry.headersCompleted = true;
+    }
+  }
+
+  expired(headersTimeout, requestTimeout) {
+    const now = performance.now();
+    const result = [];
+
+    for (const [socket, entry] of this._active) {
+      const elapsed = now - entry.startTime;
+      if (!entry.headersCompleted && headersTimeout > 0) {
+        if (elapsed >= headersTimeout) {
+          result.push({ socket });
+          continue;
+        }
+      }
+      if (requestTimeout > 0 && elapsed >= requestTimeout) {
+        result.push({ socket });
+      }
+    }
+
+    return result;
+  }
+}
+
+function onRequestTimeout(socket) {
+  socketOnError.call(socket, new Error("ERR_HTTP_REQUEST_TIMEOUT"));
+}
 
 const STATUS_CODES = {
   100: "Continue",
@@ -388,10 +455,11 @@ function connectionListener(socket) {
 function connectionListenerInternal(server, socket) {
   socket.server = server;
 
-  // Track connections for closeIdleConnections/closeAllConnections
-  if (!server[kConnectionsKey]) server[kConnectionsKey] = new Set();
-  server[kConnectionsKey].add(socket);
-  socket.on("close", () => server[kConnectionsKey]?.delete(socket));
+  // Track connections via ConnectionsList for timeout enforcement
+  if (!server[kConnectionsKey]) server[kConnectionsKey] = new ConnectionsList();
+  const connections = server[kConnectionsKey];
+  connections.push(socket);
+  socket.on("close", () => connections.pop(socket));
 
   if (server.timeout && typeof socket.setTimeout === "function") {
     socket.setTimeout(server.timeout);
@@ -444,7 +512,32 @@ function connectionListenerInternal(server, socket) {
     state,
   );
 
+  // Mark this connection as active for timeout tracking
+  connections.pushActive(socket);
+
+  // Try to consume the socket handle for direct parser reads
+  if (
+    socket._handle?.isStreamBase &&
+    !socket._handle._consumed
+  ) {
+    parser._consumed = true;
+    socket._handle._consumed = true;
+    parser.consume(socket._handle);
+  }
+  parser[kOnExecute] = onParserExecute.bind(
+    undefined,
+    server,
+    socket,
+    parser,
+    state,
+  );
+
   socket._paused = false;
+}
+
+function onParserExecute(server, socket, parser, state, ret) {
+  socket._unrefTimer?.();
+  onParserExecuteCommon(server, socket, parser, state, ret, undefined);
 }
 
 function socketOnTimeout() {
@@ -854,12 +947,48 @@ function Server(options, requestListener) {
   this.httpAllowHalfOpen = false;
 
   this.on("connection", connectionListener);
+  this.on("listening", setupConnectionsTracking);
 
   this.timeout = 0;
   this.maxHeadersCount = null;
   this.maxRequestsPerSocket = 0;
 
   this[kUniqueHeaders] = parseUniqueHeadersOption(options.uniqueHeaders);
+}
+
+function setupConnectionsTracking() {
+  this[kConnectionsKey] ||= new ConnectionsList();
+
+  if (this[kConnectionsCheckingInterval]) {
+    clearInterval(this[kConnectionsCheckingInterval]);
+  }
+  this[kConnectionsCheckingInterval] = setInterval(
+    checkConnections.bind(this),
+    this.connectionsCheckingInterval || 30_000,
+  ).unref();
+}
+
+function checkConnections() {
+  if (this.headersTimeout === 0 && this.requestTimeout === 0) {
+    return;
+  }
+
+  const expired = this[kConnectionsKey].expired(
+    this.headersTimeout,
+    this.requestTimeout,
+  );
+
+  for (let i = 0; i < expired.length; i++) {
+    const socket = expired[i].socket;
+    if (socket) {
+      onRequestTimeout(socket);
+    }
+  }
+}
+
+function httpServerPreClose(server) {
+  server.closeIdleConnections();
+  clearInterval(server[kConnectionsCheckingInterval]);
 }
 
 function storeHTTPOptions(options) {
@@ -953,14 +1082,14 @@ Server.prototype.setTimeout = function setTimeout(msecs, callback) {
 };
 
 Server.prototype.close = function close(cb) {
-  this.closeIdleConnections();
+  httpServerPreClose(this);
   return net.Server.prototype.close.call(this, cb);
 };
 
 Server.prototype.closeAllConnections = function closeAllConnections() {
   const connections = this[kConnectionsKey];
   if (connections) {
-    for (const socket of connections) {
+    for (const socket of connections._all) {
       socket.destroy();
     }
   }
@@ -969,7 +1098,7 @@ Server.prototype.closeAllConnections = function closeAllConnections() {
 Server.prototype.closeIdleConnections = function closeIdleConnections() {
   const connections = this[kConnectionsKey];
   if (connections) {
-    for (const socket of connections) {
+    for (const socket of connections._all) {
       // A socket is idle if it has no active HTTP response being written
       if (!socket._httpMessage) {
         socket.destroy();
