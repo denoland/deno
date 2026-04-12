@@ -572,6 +572,7 @@ pub struct UpgradeFlags {
   pub version_or_hash_or_channel: Option<String>,
   pub checksum: Option<String>,
   pub pr: Option<u64>,
+  pub branch: Option<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -7404,21 +7405,23 @@ fn upgrade_parse(
     .map(|v| v.collect())
     .unwrap_or_default();
 
-  let (version_or_hash_or_channel, pr) =
-    if positional_args.first().map(|s| s.as_str()) == Some("pr") {
-      let pr_number = positional_args
-        .get(1)
-        .and_then(|s| s.strip_prefix('#').unwrap_or(s).parse::<u64>().ok());
-      if pr_number.is_none() {
-        return Err(clap::Error::raw(
-          clap::error::ErrorKind::InvalidValue,
-          "Missing or invalid PR number. Usage: deno upgrade pr <number>\n",
-        ));
-      }
-      (None, pr_number)
-    } else {
-      (positional_args.into_iter().next(), None)
-    };
+  let first_arg = positional_args.first().map(|s| s.as_str());
+  let (version_or_hash_or_channel, pr, branch) = if first_arg == Some("pr") {
+    let pr_number = positional_args
+      .get(1)
+      .and_then(|s| s.strip_prefix('#').unwrap_or(s).parse::<u64>().ok());
+    if pr_number.is_none() {
+      return Err(clap::Error::raw(
+        clap::error::ErrorKind::InvalidValue,
+        "Missing or invalid PR number. Usage: deno upgrade pr <number>\n",
+      ));
+    }
+    (None, pr_number, None)
+  } else if first_arg == Some("compass") {
+    (None, None, Some("compass".to_string()))
+  } else {
+    (positional_args.into_iter().next(), None, None)
+  };
 
   let checksum = matches.remove_one::<String>("checksum");
   flags.subcommand = DenoSubcommand::Upgrade(UpgradeFlags {
@@ -7431,6 +7434,7 @@ fn upgrade_parse(
     version_or_hash_or_channel,
     checksum,
     pr,
+    branch,
   });
   Ok(())
 }
@@ -8134,6 +8138,7 @@ mod tests {
           version_or_hash_or_channel: None,
           checksum: None,
           pr: None,
+          branch: None,
         }),
         ..Flags::default()
       }
@@ -8156,6 +8161,7 @@ mod tests {
           version_or_hash_or_channel: None,
           checksum: None,
           pr: None,
+          branch: None,
         }),
         ..Flags::default()
       }
@@ -12227,6 +12233,7 @@ mod tests {
           version_or_hash_or_channel: None,
           checksum: None,
           pr: None,
+          branch: None,
         }),
         ca_data: Some(CaData::File("example.crt".to_owned())),
         ..Flags::default()
@@ -12250,6 +12257,7 @@ mod tests {
           version_or_hash_or_channel: None,
           checksum: None,
           pr: None,
+          branch: None,
         }),
         ..Flags::default()
       }
@@ -12278,6 +12286,7 @@ mod tests {
           version_or_hash_or_channel: None,
           checksum: None,
           pr: Some(12345),
+          branch: None,
         }),
         ..Flags::default()
       }
@@ -12300,6 +12309,7 @@ mod tests {
           version_or_hash_or_channel: None,
           checksum: None,
           pr: Some(6789),
+          branch: None,
         }),
         ..Flags::default()
       }
@@ -12323,6 +12333,7 @@ mod tests {
           version_or_hash_or_channel: None,
           checksum: None,
           pr: Some(33250),
+          branch: None,
         }),
         ..Flags::default()
       }

@@ -811,12 +811,165 @@ async fn upgrade_from_pr(
   Ok(())
 }
 
+async fn upgrade_from_branch(
+  branch: &str,
+  upgrade_flags: &UpgradeFlags,
+) -> Result<(), AnyError> {
+  let gh_version = Command::new("gh").arg("--version").output();
+  if gh_version.is_err() {
+    bail!(
+      "The `gh` CLI is required for installing from a branch.\n\
+       Install it from https://cli.github.com/ and run `gh auth login`."
+    );
+  }
+
+  log::info!(
+    "{}",
+    colors::gray(format!("Finding CI artifacts for branch '{branch}'..."))
+  );
+
+  let artifact_name = get_pr_artifact_name()?;
+  let debug_artifact_name = get_pr_debug_artifact_name()?;
+
+  let runs_output = Command::new("gh")
+    .args([
+      "run", "list",
+      "--repo", "denoland/deno",
+      "--branch", branch,
+      "--workflow", "ci",
+      "--limit", "5",
+      "--json", "databaseId",
+      "-q", ".[].databaseId",
+    ])
+    .output()
+    .context("failed to query CI runs")?;
+
+  if !runs_output.status.success() {
+    let stderr = String::from_utf8_lossy(&runs_output.stderr);
+    bail!("Failed to find CI runs for branch '{branch}': {stderr}");
+  }
+
+  let run_ids: Vec<String> = String::from_utf8_lossy(&runs_output.stdout)
+    .trim()
+    .lines()
+    .filter(|l| !l.is_empty())
+    .map(|s| s.to_string())
+    .collect();
+
+  if run_ids.is_empty() {
+    bail!(
+      "No CI runs found for branch '{branch}'. \
+       CI may not have run yet."
+    );
+  }
+
+  let temp_dir =
+    tempfile::TempDir::new().context("failed to create temporary directory")?;
+  let download_dir = temp_dir.path();
+
+  let mut downloaded = false;
+  for run_id in &run_ids {
+    for name in [&artifact_name, &debug_artifact_name] {
+      log::info!(
+        "{}",
+        colors::gray(format!(
+          "Trying run {run_id}, artifact \"{name}\"..."
+        ))
+      );
+
+      let dl_result = Command::new("gh")
+        .args([
+          "run", "download",
+          run_id,
+          "--repo", "denoland/deno",
+          "--name", name,
+          "--dir", &download_dir.to_string_lossy(),
+        ])
+        .output()
+        .context("failed to run `gh run download`")?;
+
+      if dl_result.status.success() {
+        log::info!(
+          "Downloaded artifact \"{}\" from run {}",
+          colors::green(name),
+          run_id
+        );
+        downloaded = true;
+        break;
+      }
+    }
+    if downloaded {
+      break;
+    }
+  }
+
+  if !downloaded {
+    bail!(
+      "Could not find a \"{artifact_name}\" artifact for branch '{branch}'.\n\
+       Artifacts may have expired or CI may not have completed."
+    );
+  }
+
+  let exe_name = if cfg!(windows) { "deno.exe" } else { "deno" };
+  let new_exe_path = download_dir.join(exe_name);
+
+  if !new_exe_path.exists() {
+    bail!(
+      "Downloaded artifact does not contain '{exe_name}'."
+    );
+  }
+
+  #[cfg(unix)]
+  {
+    use std::os::unix::fs::PermissionsExt;
+    fs::set_permissions(&new_exe_path, std::fs::Permissions::from_mode(0o755))?;
+  }
+
+  check_exe(&new_exe_path)?;
+
+  if upgrade_flags.dry_run {
+    log::info!("Upgraded successfully (dry run)");
+    drop(temp_dir);
+    return Ok(());
+  }
+
+  let current_exe_path = std::env::current_exe()
+    .context("failed to get the path of the current executable")?;
+  let output_exe_path = if let Some(output) = &upgrade_flags.output {
+    Cow::Owned(PathBuf::from(output))
+  } else {
+    Cow::Borrowed(&current_exe_path)
+  };
+
+  #[cfg(windows)]
+  kill_running_deno_lsp_processes();
+
+  let output_result = if *output_exe_path == current_exe_path {
+    replace_exe(&new_exe_path, &output_exe_path)
+  } else {
+    fs::rename(&new_exe_path, &*output_exe_path)
+      .or_else(|_| fs::copy(&new_exe_path, &*output_exe_path).map(|_| ()))
+  };
+  check_windows_access_denied_error(output_result, &output_exe_path)?;
+
+  log::info!(
+    "\nUpgraded successfully from branch '{}'\n",
+    colors::green(branch),
+  );
+
+  drop(temp_dir);
+  Ok(())
+}
+
 pub async fn upgrade(
   flags: Arc<Flags>,
   upgrade_flags: UpgradeFlags,
 ) -> Result<(), AnyError> {
   if let Some(pr_number) = upgrade_flags.pr {
     return upgrade_from_pr(pr_number, &upgrade_flags).await;
+  }
+  if let Some(ref branch) = upgrade_flags.branch {
+    return upgrade_from_branch(branch, &upgrade_flags).await;
   }
 
   let factory = CliFactory::from_flags(flags);
@@ -1626,6 +1779,7 @@ mod test {
       version_or_hash_or_channel: None,
       checksum: None,
       pr: None,
+      branch: None,
     };
 
     let req_ver =
