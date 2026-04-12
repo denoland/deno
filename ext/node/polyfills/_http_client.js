@@ -755,13 +755,6 @@ function responseKeepAlive(req) {
   socket.removeListener("data", socketOnData);
   socket.removeListener("end", socketOnEnd);
 
-  // Free the parser so the socket can be cleanly reused
-  const parser = socket.parser;
-  if (parser) {
-    parser.finish();
-    freeParser(parser, req, socket);
-  }
-
   // There are cases where _handle === null. Avoid those. Passing undefined to
   // nextTick() will call getDefaultTriggerAsyncId() to retrieve the id.
   const asyncId = socket._handle ? socket._handle.getAsyncId() : undefined;
