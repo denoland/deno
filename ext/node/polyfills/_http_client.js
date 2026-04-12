@@ -75,7 +75,19 @@ import {
 import { getTimerDuration } from "ext:deno_node/internal/timers.mjs";
 import { addAbortSignal, finished } from "node:stream";
 import { nextTick } from "ext:deno_node/_next_tick.ts";
+import {
+  defaultTriggerAsyncIdScope,
+  symbols,
+} from "ext:deno_node/internal/async_hooks.ts";
+// deno-lint-ignore camelcase
+const { async_id_symbol } = symbols;
 import { kNeedDrain } from "ext:deno_node/internal/http.ts";
+import { channel } from "node:diagnostics_channel";
+
+const onClientRequestCreatedChannel = channel("http.client.request.created");
+const onClientRequestStartChannel = channel("http.client.request.start");
+const onClientRequestErrorChannel = channel("http.client.request.error");
+const onClientResponseFinishChannel = channel("http.client.response.finish");
 import { updateSpanFromError } from "ext:deno_telemetry/util.ts";
 import {
   builtinTracer,
@@ -112,6 +124,12 @@ function validateHost(host, name) {
 }
 
 function emitErrorEvent(request, error) {
+  if (onClientRequestErrorChannel.hasSubscribers) {
+    onClientRequestErrorChannel.publish({
+      request,
+      error,
+    });
+  }
   request.emit("error", error);
 }
 
@@ -368,6 +386,11 @@ function ClientRequest(input, options, cb) {
       this.onSocket(net.createConnection(opts));
     }
   }
+  if (onClientRequestCreatedChannel.hasSubscribers) {
+    onClientRequestCreatedChannel.publish({
+      request: this,
+    });
+  }
 }
 ObjectSetPrototypeOf(ClientRequest.prototype, OutgoingMessage.prototype);
 ObjectSetPrototypeOf(ClientRequest, OutgoingMessage);
@@ -387,6 +410,15 @@ ObjectDefineProperty(ClientRequest.prototype, "path", {
   configurable: true,
   enumerable: true,
 });
+
+ClientRequest.prototype._finish = function _finish() {
+  OutgoingMessage.prototype._finish.call(this);
+  if (onClientRequestStartChannel.hasSubscribers) {
+    onClientRequestStartChannel.publish({
+      request: this,
+    });
+  }
+};
 
 ClientRequest.prototype._implicitHeader = function _implicitHeader() {
   if (this._header) {
@@ -674,6 +706,13 @@ function parserOnIncomingClient(res, shouldKeepAlive) {
   req.res = res;
   res.req = req;
 
+  if (onClientResponseFinishChannel.hasSubscribers) {
+    onClientResponseFinishChannel.publish({
+      request: req,
+      response: res,
+    });
+  }
+
   // Set OTel response attributes
   const span = req[kOtelSpan];
   if (span) {
@@ -723,7 +762,10 @@ function responseKeepAlive(req) {
     freeParser(parser, req, socket);
   }
 
-  nextTick(emitFreeNT, req);
+  // There are cases where _handle === null. Avoid those. Passing undefined to
+  // nextTick() will call getDefaultTriggerAsyncId() to retrieve the id.
+  const asyncId = socket._handle ? socket._handle.getAsyncId() : undefined;
+  defaultTriggerAsyncIdScope(asyncId, nextTick, emitFreeNT, req);
 
   req.destroyed = true;
   if (req.res) {
