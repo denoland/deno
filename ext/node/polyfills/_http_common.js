@@ -20,16 +20,20 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-// Matches Node.js lib/_http_common.js
-
-// TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials no-explicit-any no-this-alias
-
 import { primordials } from "ext:core/mod.js";
 const {
+  ArrayPrototypePop,
+  ArrayPrototypePush,
+  ArrayPrototypeSlice,
   MathMin,
+  SafeArrayIterator,
+  RegExpPrototypeTest,
+  SafeRegExp,
+  StringPrototypeCharCodeAt,
   Symbol,
+  Uint8Array,
 } = primordials;
+import { setImmediate } from "node:timers";
 import {
   allMethods,
   HTTPParser,
@@ -51,12 +55,7 @@ const MAX_HEADER_PAIRS = 2000;
 
 // Simple FreeList implementation (matches Node.js internal/freelist)
 class FreeList {
-  name: string;
-  max: number;
-  ctor: () => any;
-  list: any[];
-
-  constructor(name: string, max: number, ctor: () => any) {
+  constructor(name, max, ctor) {
     this.name = name;
     this.max = max;
     this.ctor = ctor;
@@ -64,12 +63,14 @@ class FreeList {
   }
 
   alloc() {
-    return this.list.length > 0 ? this.list.pop() : this.ctor();
+    return this.list.length > 0
+      ? ArrayPrototypePop(this.list)
+      : this.ctor();
   }
 
-  free(obj: any) {
+  free(obj) {
     if (this.list.length < this.max) {
-      this.list.push(obj);
+      ArrayPrototypePush(this.list, obj);
       return true;
     }
     return false;
@@ -81,13 +82,16 @@ class FreeList {
 // across multiple TCP packets or too large to be
 // processed in a single run. This method is also
 // called to process trailing HTTP headers.
-function parserOnHeaders(this: any, headers: string[], url: string) {
+function parserOnHeaders(headers, url) {
   // Once we exceeded headers limit - stop collecting them
   const capacity = this.maxHeaderPairs - this._headers.length;
   if (this.maxHeaderPairs <= 0 || capacity >= headers.length) {
-    this._headers.push(...headers);
+    ArrayPrototypePush(this._headers, ...new SafeArrayIterator(headers));
   } else if (capacity > 0) {
-    this._headers.push(...headers.slice(0, capacity));
+    ArrayPrototypePush(
+      this._headers,
+      ...new SafeArrayIterator(ArrayPrototypeSlice(headers, 0, capacity)),
+    );
   }
   this._url += url;
 }
@@ -99,17 +103,17 @@ const HTTP_VERSION_1_1 = "1.1";
 // `url` is not set for response parsers but that's not applicable here since
 // all our parsers are request parsers.
 function parserOnHeadersComplete(
-  this: any,
-  versionMajor: number,
-  versionMinor: number,
-  headers: string[] | undefined,
-  method: number | undefined,
-  url: string | undefined,
-  statusCode: number | undefined,
-  statusMessage: string | undefined,
-  upgrade: boolean,
-  shouldKeepAlive: boolean,
+  versionMajor,
+  versionMinor,
+  headers,
+  method,
+  url,
+  statusCode,
+  statusMessage,
+  upgrade,
+  shouldKeepAlive,
 ) {
+  // deno-lint-ignore no-this-alias
   const parser = this;
   const { socket } = parser;
 
@@ -138,7 +142,7 @@ function parserOnHeadersComplete(
   incoming.url = url;
   incoming.upgrade = upgrade;
 
-  let n = headers!.length;
+  let n = headers.length;
 
   // If parser.maxHeaderPairs <= 0 assume that there's no limit.
   if (parser.maxHeaderPairs > 0) {
@@ -159,8 +163,7 @@ function parserOnHeadersComplete(
   return parser.onIncoming(incoming, shouldKeepAlive);
 }
 
-// deno-lint-ignore no-node-globals
-function parserOnBody(this: any, b: Buffer) {
+function parserOnBody(b) {
   const stream = this.incoming;
 
   // If the stream has already been removed, then drop it.
@@ -170,6 +173,7 @@ function parserOnBody(this: any, b: Buffer) {
 
   // Pretend this was the result of a stream._read call.
   if (!stream._dumped) {
+    // deno-lint-ignore prefer-primordials
     const ret = stream.push(b);
     if (!ret) {
       readStop(this.socket);
@@ -177,7 +181,8 @@ function parserOnBody(this: any, b: Buffer) {
   }
 }
 
-function parserOnMessageComplete(this: any) {
+function parserOnMessageComplete() {
+  // deno-lint-ignore no-this-alias
   const parser = this;
   const stream = parser.incoming;
 
@@ -192,6 +197,7 @@ function parserOnMessageComplete(this: any) {
     }
 
     // For emit end event
+    // deno-lint-ignore prefer-primordials
     stream.push(null);
   }
 
@@ -200,7 +206,7 @@ function parserOnMessageComplete(this: any) {
 }
 
 const parsers = new FreeList("parsers", 1000, function parsersCb() {
-  const parser = new (HTTPParser as any)();
+  const parser = new HTTPParser();
 
   cleanParser(parser);
 
@@ -212,13 +218,13 @@ const parsers = new FreeList("parsers", 1000, function parsersCb() {
   return parser;
 });
 
-function closeParserInstance(parser: any) {
+function closeParserInstance(parser) {
   parser.close();
 }
 
 // Free the parser and also break any links that it
 // might have to any other things.
-function freeParser(parser: any, req: any, socket: any) {
+function freeParser(parser, req, socket) {
   if (parser) {
     if (parser._consumed) {
       parser.unconsume();
@@ -226,9 +232,7 @@ function freeParser(parser: any, req: any, socket: any) {
     parser.remove();
     cleanParser(parser);
     if (parsers.free(parser) === false) {
-      // Make sure the parser's stack has unwound before deleting the
-      // corresponding C++ object through .close().
-      setTimeout(closeParserInstance, 0, parser);
+      setImmediate(closeParserInstance, parser);
     } else {
       parser.free();
     }
@@ -241,19 +245,49 @@ function freeParser(parser: any, req: any, socket: any) {
   }
 }
 
-const tokenRegExp = /^[\^_`a-zA-Z\-0-9!#$%&'*+.|~]+$/;
+const tokenRegExp = new SafeRegExp("^[\\^_`a-zA-Z\\-0-9!#$%&'*+.|~]+$");
+// deno-fmt-ignore
+const validTokenChars = new Uint8Array([
+  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+  0, 1, 0, 1, 1, 1, 1, 1, 0, 0, 1, 1, 0, 1, 1, 0,
+  1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0,
+  0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+  1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 1, 1,
+  1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+  1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 0, 1, 0,
+  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+]);
 
-function checkIsHttpToken(val: string) {
-  return tokenRegExp.test(val);
+function checkIsHttpToken(val) {
+  if (val.length >= 10) {
+    return RegExpPrototypeTest(tokenRegExp, val);
+  }
+
+  if (val.length === 0) return false;
+
+  for (let i = 0; i < val.length; i++) {
+    if (!validTokenChars[StringPrototypeCharCodeAt(val, i)]) {
+      return false;
+    }
+  }
+  return true;
 }
 
-const headerCharRegex = /[^\t\x20-\x7e\x80-\xff]/;
+const headerCharRegex = new SafeRegExp("[^\\t\\x20-\\x7e\\x80-\\xff]");
 
-function checkInvalidHeaderChar(val: string) {
-  return headerCharRegex.test(val);
+function checkInvalidHeaderChar(val) {
+  return RegExpPrototypeTest(headerCharRegex, val);
 }
 
-function cleanParser(parser: any) {
+function cleanParser(parser) {
   parser._headers = [];
   parser._url = "";
   parser.socket = null;
@@ -268,8 +302,7 @@ function cleanParser(parser: any) {
   parser.joinDuplicateHeaders = null;
 }
 
-// deno-lint-ignore no-node-globals
-function prepareError(err: any, parser: any, rawPacket?: Buffer) {
+function prepareError(err, parser, rawPacket) {
   err.rawPacket = rawPacket || parser.getCurrentBuffer();
   if (typeof err.reason === "string") {
     err.message = `Parse Error: ${err.reason}`;
@@ -282,8 +315,11 @@ function isLenient() {
 }
 
 export const CRLF = "\r\n";
-export const chunkExpression = /(?:^|\W)chunked(?:$|\W)/i;
-export const continueExpression = /(?:^|\W)100-continue(?:$|\W)/i;
+export const chunkExpression = new SafeRegExp("(?:^|\\W)chunked(?:$|\\W)", "i");
+export const continueExpression = new SafeRegExp(
+  "(?:^|\\W)100-continue(?:$|\\W)",
+  "i",
+);
 
 export {
   checkInvalidHeaderChar as _checkInvalidHeaderChar,
