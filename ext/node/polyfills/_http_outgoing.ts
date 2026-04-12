@@ -32,15 +32,13 @@ import {
   ERR_HTTP_INVALID_HEADER_VALUE,
   ERR_HTTP_TRAILER_INVALID,
   ERR_INVALID_ARG_TYPE,
-  // ERR_INVALID_ARG_VALUE,
   ERR_INVALID_CHAR,
   ERR_INVALID_HTTP_TOKEN,
   ERR_METHOD_NOT_IMPLEMENTED,
-  // ERR_STREAM_ALREADY_FINISHED,
   ERR_STREAM_CANNOT_PIPE,
-  // ERR_STREAM_DESTROYED,
+  ERR_STREAM_DESTROYED,
   ERR_STREAM_NULL_VALUES,
-  // ERR_STREAM_WRITE_AFTER_END,
+  ERR_STREAM_WRITE_AFTER_END,
   hideStackFrames,
 } from "ext:deno_node/internal/errors.ts";
 import { validateString } from "ext:deno_node/internal/validators.mjs";
@@ -56,10 +54,19 @@ const HIGH_WATER_MARK = getDefaultHighWaterMark();
 export const kUniqueHeaders = Symbol("kUniqueHeaders");
 export const kHighWaterMark = Symbol("kHighWaterMark");
 const kCorked = Symbol("corked");
+const kSocket = Symbol("kSocket");
+const kChunkedBuffer = Symbol("kChunkedBuffer");
+const kChunkedLength = Symbol("kChunkedLength");
+const kBytesWritten = Symbol("kBytesWritten");
+const kRejectNonStandardBodyWrites = Symbol("kRejectNonStandardBodyWrites");
 
 const nop = () => {};
 
 const RE_CONN_CLOSE = /(?:^|\W)close(?:$|\W)/i;
+
+function isCookieField(s: string) {
+  return s.length === 6 && s.toLowerCase() === "cookie";
+}
 
 export function OutgoingMessage() {
   Stream.call(this);
@@ -98,13 +105,18 @@ export function OutgoingMessage() {
   this[kCorked] = 0;
   this._closed = false;
 
-  this.socket = null;
+  this[kSocket] = null;
   this._header = null;
   this[kOutHeaders] = null;
 
   this._keepAliveTimeout = 0;
 
   this._onPendingData = nop;
+
+  this.strictContentLength = false;
+  this[kBytesWritten] = 0;
+  this[kChunkedBuffer] = [];
+  this[kChunkedLength] = 0;
 
   this._bodyWriter = null;
 }
@@ -119,7 +131,7 @@ Object.defineProperties(
       return (
         this.finished &&
         this.outputSize === 0 &&
-        (!this.socket || this.socket.writableLength === 0)
+        (!this[kSocket] || this[kSocket].writableLength === 0)
       );
     },
 
@@ -128,20 +140,23 @@ Object.defineProperties(
     },
 
     get writableLength() {
-      return this.outputSize + (this.socket ? this.socket.writableLength : 0);
+      return this.outputSize + this[kChunkedLength] +
+        (this[kSocket] ? this[kSocket].writableLength : 0);
     },
 
     get writableHighWaterMark() {
-      return this.socket ? this.socket.writableHighWaterMark : HIGH_WATER_MARK;
+      return this[kSocket]
+        ? this[kSocket].writableHighWaterMark
+        : this[kHighWaterMark] || HIGH_WATER_MARK;
     },
 
     get writableCorked() {
-      const corked = this.socket ? this.socket.writableCorked : 0;
+      const corked = this[kSocket] ? this[kSocket].writableCorked : 0;
       return corked + this[kCorked];
     },
 
     get connection() {
-      return this.socket;
+      return this[kSocket];
     },
 
     set connection(val) {
@@ -363,57 +378,7 @@ Object.defineProperties(
       callback: () => void,
       fromEnd: boolean,
     ): boolean {
-      // Ignore lint to keep the code as similar to Nodejs as possible
-      // deno-lint-ignore no-this-alias
-      const msg = this;
-
-      if (chunk === null) {
-        throw new ERR_STREAM_NULL_VALUES();
-      } else if (typeof chunk !== "string" && !isUint8Array(chunk)) {
-        throw new ERR_INVALID_ARG_TYPE(
-          "chunk",
-          ["string", "Buffer", "Uint8Array"],
-          chunk,
-        );
-      }
-
-      let len: number | undefined;
-
-      if (!msg._header) {
-        if (fromEnd) {
-          len ??= typeof chunk === "string"
-            ? Buffer.byteLength(chunk, encoding)
-            : chunk.byteLength;
-          msg._contentLength = len;
-        }
-        msg._implicitHeader();
-      }
-
-      if (!msg._hasBody) {
-        debug(
-          "This type of response MUST NOT have a body. " +
-            "Ignoring write() calls.",
-        );
-        if (typeof callback === "function") {
-          (globalThis as any).process.nextTick(callback);
-        }
-        return true;
-      }
-
-      let ret;
-      if (msg.chunkedEncoding && chunk.length !== 0) {
-        len ??= typeof chunk === "string"
-          ? Buffer.byteLength(chunk, encoding)
-          : chunk.byteLength;
-        msg._send(len.toString(16), "latin1", null);
-        msg._send("\r\n", null, null);
-        msg._send(chunk, encoding, null);
-        ret = msg._send("\r\n", null, callback);
-      } else {
-        ret = msg._send(chunk, encoding, callback);
-      }
-
-      return ret;
+      return write_(this, chunk, encoding, callback, fromEnd);
     },
 
     addTrailers(headers: any) {
@@ -856,7 +821,7 @@ Object.defineProperties(
     _storeHeaderEntry(state: any, field: string, value: any) {
       if (Array.isArray(value)) {
         // RFC 6265: join multiple Cookie values with '; '
-        if (field.toLowerCase() === "cookie") {
+        if (isCookieField(field)) {
           state.header += field + ": " + value.join("; ") + "\r\n";
         } else {
           for (let j = 0; j < value.length; j++) {
@@ -917,8 +882,61 @@ Object.defineProperties(
     [EE.captureRejectionSymbol](err: any, _event: any) {
       this.destroy(err);
     },
+
+    setHeaders(headers: any) {
+      if (this._header) {
+        throw new ERR_HTTP_HEADERS_SENT("set");
+      }
+
+      if (
+        !headers ||
+        Array.isArray(headers) ||
+        typeof headers.keys !== "function" ||
+        typeof headers.get !== "function"
+      ) {
+        throw new ERR_INVALID_ARG_TYPE(
+          "headers",
+          ["Headers", "Map"],
+          headers,
+        );
+      }
+
+      let cookies = null;
+      for (const [key, value] of headers) {
+        if (key === "set-cookie") {
+          if (Array.isArray(value)) {
+            cookies ??= [];
+            cookies.push(...value);
+          } else {
+            cookies ??= [];
+            cookies.push(value);
+          }
+          continue;
+        }
+        this.setHeader(key, value);
+      }
+      if (cookies != null) {
+        this.setHeader("set-cookie", cookies);
+      }
+
+      return this;
+    },
   }),
 );
+
+Object.defineProperty(OutgoingMessage.prototype, "socket", {
+  __proto__: null,
+  get: function (this: any) {
+    return this[kSocket];
+  },
+  set: function (this: any, val: any) {
+    for (let n = 0; n < this[kCorked]; n++) {
+      val?.cork();
+      this[kSocket]?.uncork();
+    }
+    this[kSocket] = val;
+  },
+});
 
 Object.defineProperty(OutgoingMessage.prototype, "_headers", {
   get: deprecate(
@@ -1034,9 +1052,110 @@ Object.defineProperty(OutgoingMessage.prototype, "headersSent", {
   },
 });
 
-// TODO(bartlomieju): use it
 // deno-lint-ignore camelcase
-const _crlf_buf = Buffer.from("\r\n");
+const crlf_buf = Buffer.from("\r\n");
+
+function checkStrictContentLength(msg: any) {
+  return (
+    msg.strictContentLength &&
+    msg._contentLength != null &&
+    msg._hasBody &&
+    !msg._removedContLen &&
+    !msg.chunkedEncoding &&
+    !msg.hasHeader("transfer-encoding")
+  );
+}
+
+function write_(
+  msg: any,
+  chunk: any,
+  encoding: string | null,
+  callback: any,
+  fromEnd: boolean,
+): boolean {
+  if (typeof callback !== "function") {
+    callback = nop;
+  }
+
+  if (chunk === null) {
+    throw new ERR_STREAM_NULL_VALUES();
+  } else if (typeof chunk !== "string" && !isUint8Array(chunk)) {
+    throw new ERR_INVALID_ARG_TYPE(
+      "chunk",
+      ["string", "Buffer", "Uint8Array"],
+      chunk,
+    );
+  }
+
+  let err;
+  if (msg.finished) {
+    err = new ERR_STREAM_WRITE_AFTER_END();
+  } else if (msg.destroyed) {
+    err = new ERR_STREAM_DESTROYED("write");
+  }
+
+  if (err) {
+    if (!msg.destroyed) {
+      _onError(msg, err, callback);
+    } else {
+      (globalThis as any).process.nextTick(callback, err);
+    }
+    return false;
+  }
+
+  let len;
+
+  if (msg.strictContentLength) {
+    len ??= typeof chunk === "string"
+      ? Buffer.byteLength(chunk, encoding)
+      : chunk.byteLength;
+    msg[kBytesWritten] += len;
+  }
+
+  if (!msg._header) {
+    if (fromEnd) {
+      len ??= typeof chunk === "string"
+        ? Buffer.byteLength(chunk, encoding)
+        : chunk.byteLength;
+      msg._contentLength = len;
+    }
+    msg._implicitHeader();
+  }
+
+  if (!msg._hasBody) {
+    debug(
+      "This type of response MUST NOT have a body. " +
+        "Ignoring write() calls.",
+    );
+    (globalThis as any).process.nextTick(callback);
+    return true;
+  }
+
+  // Auto-corking
+  if (!fromEnd && msg.socket && !msg.socket.writableCorked) {
+    msg.socket.cork();
+    (globalThis as any).process.nextTick(connectionCorkNT, msg.socket);
+  }
+
+  let ret;
+  if (msg.chunkedEncoding && chunk.length !== 0) {
+    len ??= typeof chunk === "string"
+      ? Buffer.byteLength(chunk, encoding)
+      : chunk.byteLength;
+    msg._send(len.toString(16), "latin1", null);
+    msg._send(crlf_buf, null, null);
+    msg._send(chunk, encoding, null);
+    ret = msg._send(crlf_buf, null, callback);
+  } else {
+    ret = msg._send(chunk, encoding, callback);
+  }
+
+  return ret;
+}
+
+function connectionCorkNT(conn: any) {
+  conn.uncork();
+}
 
 function onFinish(outmsg: any) {
   if (outmsg?.socket?._hadError) return;
@@ -1060,28 +1179,6 @@ function emitErrorNt(msg: any, err: any, callback: any) {
   if (typeof msg.emit === "function" && !msg._closed) {
     msg.emit("error", err);
   }
-}
-
-// TODO(bartlomieju): use it
-function _write_(
-  _msg: any,
-  _chunk: any,
-  _encoding: string | null,
-  _callback: any,
-  _fromEnd: any,
-) {
-  // TODO(crowlKats): finish
-}
-
-// TODO(bartlomieju): use it
-function _connectionCorkNT(conn: any) {
-  conn.uncork();
-}
-
-// TODO(bartlomieju): use it
-function _onFinish(outmsg: any) {
-  if (outmsg && outmsg.socket && outmsg.socket._hadError) return;
-  outmsg.emit("finish");
 }
 
 export default {
