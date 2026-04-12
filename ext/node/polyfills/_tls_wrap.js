@@ -315,7 +315,6 @@ TLSSocket.prototype._wrapHandle = function (wrap, handle) {
     handle = options.pipe
       ? new Pipe(PipeConstants.SOCKET)
       : new TCP(TCPConstants.SOCKET);
-    handle[kUseNativeWrap] = true;
   }
 
   // Wrap socket's handle with TLSWrap
