@@ -15,7 +15,8 @@ import {
   ServerResponse,
   STATUS_CODES,
 } from "node:_http_server";
-import { methods as METHODS } from "node:_http_common";
+import { methods } from "node:_http_common";
+const METHODS = methods.slice().sort();
 
 export interface RequestOptions {
   agent?: Agent;
