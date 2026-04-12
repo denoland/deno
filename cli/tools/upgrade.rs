@@ -603,7 +603,7 @@ fn get_pr_debug_artifact_name() -> Result<String, AnyError> {
   Ok(release_name.replacen("release-", "debug-", 1))
 }
 
-async fn upgrade_from_pr(
+fn upgrade_from_pr(
   pr_number: u64,
   upgrade_flags: &UpgradeFlags,
 ) -> Result<(), AnyError> {
@@ -811,7 +811,7 @@ async fn upgrade_from_pr(
   Ok(())
 }
 
-async fn upgrade_from_branch(
+fn upgrade_from_branch(
   branch: &str,
   upgrade_flags: &UpgradeFlags,
 ) -> Result<(), AnyError> {
@@ -973,10 +973,10 @@ pub async fn upgrade(
   upgrade_flags: UpgradeFlags,
 ) -> Result<(), AnyError> {
   if let Some(pr_number) = upgrade_flags.pr {
-    return upgrade_from_pr(pr_number, &upgrade_flags).await;
+    return upgrade_from_pr(pr_number, &upgrade_flags);
   }
   if let Some(ref branch) = upgrade_flags.branch {
-    return upgrade_from_branch(branch, &upgrade_flags).await;
+    return upgrade_from_branch(branch, &upgrade_flags);
   }
 
   let factory = CliFactory::from_flags(flags);
