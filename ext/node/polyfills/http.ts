@@ -110,7 +110,6 @@ export {
   ServerImpl,
   ServerImpl as Server,
   ServerResponse,
-  setMaxIdleHTTPParsers,
   STATUS_CODES,
   validateHeaderName,
   validateHeaderValue,
