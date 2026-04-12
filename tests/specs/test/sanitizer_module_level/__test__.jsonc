@@ -1,0 +1,33 @@
+{
+  "tempDir": true,
+  "tests": {
+    // Deno.test.sanitizer() enables ops sanitizer - timer leak should fail
+    "module_level_ops": {
+      "args": "test module_ops.ts",
+      "exitCode": 1,
+      "output": "module_ops.out"
+    },
+    // Deno.test.sanitizer() enables resources sanitizer - resource leak should fail
+    "module_level_resources": {
+      "args": "test --allow-read module_resources.ts",
+      "exitCode": 1,
+      "output": "module_resources.out"
+    },
+    // Per-test sanitizeOps: false overrides module-level sanitizer
+    "per_test_overrides_module": {
+      "args": "test per_test_override.ts",
+      "output": "per_test_override.out"
+    },
+    // Module-level sanitizer overrides CLI/config (sanitizer off in config, on in module)
+    "module_overrides_config": {
+      "args": "test module_overrides_config.ts",
+      "exitCode": 1,
+      "output": "module_overrides_config.out"
+    },
+    // Module-level sanitizer can disable what CLI enables
+    "module_disables_cli": {
+      "args": "test --sanitize-ops module_disables_cli.ts",
+      "output": "module_disables_cli.out"
+    }
+  }
+}
