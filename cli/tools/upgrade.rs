@@ -833,13 +833,20 @@ async fn upgrade_from_branch(
 
   let runs_output = Command::new("gh")
     .args([
-      "run", "list",
-      "--repo", "denoland/deno",
-      "--branch", branch,
-      "--workflow", "ci",
-      "--limit", "5",
-      "--json", "databaseId",
-      "-q", ".[].databaseId",
+      "run",
+      "list",
+      "--repo",
+      "denoland/deno",
+      "--branch",
+      branch,
+      "--workflow",
+      "ci",
+      "--limit",
+      "5",
+      "--json",
+      "databaseId",
+      "-q",
+      ".[].databaseId",
     ])
     .output()
     .context("failed to query CI runs")?;
@@ -872,18 +879,20 @@ async fn upgrade_from_branch(
     for name in [&artifact_name, &debug_artifact_name] {
       log::info!(
         "{}",
-        colors::gray(format!(
-          "Trying run {run_id}, artifact \"{name}\"..."
-        ))
+        colors::gray(format!("Trying run {run_id}, artifact \"{name}\"..."))
       );
 
       let dl_result = Command::new("gh")
         .args([
-          "run", "download",
+          "run",
+          "download",
           run_id,
-          "--repo", "denoland/deno",
-          "--name", name,
-          "--dir", &download_dir.to_string_lossy(),
+          "--repo",
+          "denoland/deno",
+          "--name",
+          name,
+          "--dir",
+          &download_dir.to_string_lossy(),
         ])
         .output()
         .context("failed to run `gh run download`")?;
@@ -914,9 +923,7 @@ async fn upgrade_from_branch(
   let new_exe_path = download_dir.join(exe_name);
 
   if !new_exe_path.exists() {
-    bail!(
-      "Downloaded artifact does not contain '{exe_name}'."
-    );
+    bail!("Downloaded artifact does not contain '{exe_name}'.");
   }
 
   #[cfg(unix)]
