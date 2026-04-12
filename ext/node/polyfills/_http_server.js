@@ -1109,18 +1109,24 @@ Server.prototype.closeIdleConnections = function closeIdleConnections() {
 
 export {
   connectionListener as _connectionListener,
+  httpServerPreClose,
   kIncomingMessage,
   kServerResponse,
   Server,
   ServerResponse,
+  setupConnectionsTracking,
   STATUS_CODES,
+  storeHTTPOptions,
 };
 
 export default {
   _connectionListener: connectionListener,
+  httpServerPreClose,
   kIncomingMessage,
   kServerResponse,
   Server,
   ServerResponse,
+  setupConnectionsTracking,
   STATUS_CODES,
+  storeHTTPOptions,
 };

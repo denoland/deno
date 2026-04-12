@@ -13,9 +13,12 @@ import {
   type RequestOptions,
   ServerResponse,
 } from "node:http";
-import { kIncomingMessage, kServerResponse } from "node:_http_server";
-import { IncomingMessage as NodeIncomingMessage } from "node:_http_incoming";
-import { kUniqueHeaders } from "node:_http_outgoing";
+import {
+  httpServerPreClose,
+  kServerResponse,
+  setupConnectionsTracking,
+  storeHTTPOptions,
+} from "node:_http_server";
 import { Agent as HttpAgent } from "node:_http_agent";
 import { createHttpClient } from "ext:deno_fetch/22_http_client.js";
 import { type ServerHandler, ServerImpl as HttpServer } from "node:http";
@@ -35,6 +38,7 @@ export function Server(
     return new (Server as any)(opts, requestListener);
   }
 
+  let ALPNProtocols: string[] | undefined = ["http/1.1"];
   if (typeof opts === "function") {
     requestListener = opts;
     opts = kEmptyObject;
@@ -42,39 +46,49 @@ export function Server(
     opts = kEmptyObject;
   } else {
     validateObject(opts, "options");
+    // Only set default ALPNProtocols if the caller has not set either
+    if (opts.ALPNProtocols || opts.ALPNCallback) {
+      ALPNProtocols = undefined;
+    }
   }
 
-  // Set HTTP server properties needed by _connectionListener
-  this[kServerResponse] = ServerResponse;
-  this[kIncomingMessage] = opts.IncomingMessage || NodeIncomingMessage;
-  this[kUniqueHeaders] = null;
-  this.httpAllowHalfOpen = false;
-  this.timeout = 0;
-  this.maxHeadersCount = null;
-  this.maxRequestsPerSocket = 0;
-  this.keepAliveTimeout = 5000;
-  this.requireHostHeader = true;
-  this.insecureHTTPParser = undefined;
-  this.maxHeaderSize = undefined;
+  storeHTTPOptions.call(this, opts);
 
   tls.Server.call(this, {
     noDelay: true,
-    ALPNProtocols: ["http/1.1"],
+    ALPNProtocols,
     ...opts,
   }, _connectionListener);
+
+  this.httpAllowHalfOpen = false;
 
   if (requestListener) {
     this.addListener("request", requestListener);
   }
+
+  this.addListener("tlsClientError", function (this: any, err: any, conn: any) {
+    if (!this.emit("clientError", err, conn)) {
+      conn.destroy(err);
+    }
+  });
+
+  this.timeout = 0;
+  this.maxHeadersCount = null;
+  this.on("listening", setupConnectionsTracking);
 }
 Object.setPrototypeOf(Server.prototype, tls.Server.prototype);
 Object.setPrototypeOf(Server, tls.Server);
 
-Server.prototype.close = HttpServer.prototype.close;
 Server.prototype.closeAllConnections = HttpServer.prototype.closeAllConnections;
 Server.prototype.closeIdleConnections =
   HttpServer.prototype.closeIdleConnections;
 Server.prototype.setTimeout = HttpServer.prototype.setTimeout;
+
+Server.prototype.close = function close(this: any) {
+  httpServerPreClose(this);
+  tls.Server.prototype.close.apply(this, arguments);
+  return this;
+};
 
 export function createServer(
   opts: any,
