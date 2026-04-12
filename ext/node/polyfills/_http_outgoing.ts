@@ -350,7 +350,11 @@ Object.defineProperties(
         callback = encoding;
         encoding = null;
       }
-      return this.write_(chunk, encoding, callback, false);
+      const ret = this.write_(chunk, encoding, callback, false);
+      if (!ret) {
+        this[kNeedDrain] = true;
+      }
+      return ret;
     },
 
     write_(
@@ -412,9 +416,28 @@ Object.defineProperties(
       return ret;
     },
 
-    addTrailers(_headers: any) {
-      // TODO(crowlKats): finish it
-      notImplemented("OutgoingMessage.addTrailers");
+    addTrailers(headers: any) {
+      this._trailer = "";
+      const keys = Object.keys(headers);
+      const isArray = Array.isArray(headers);
+      let field, value;
+      for (let i = 0, l = keys.length; i < l; i++) {
+        if (isArray) {
+          field = headers[keys[i]][0];
+          value = headers[keys[i]][1];
+        } else {
+          field = keys[i];
+          value = headers[field];
+        }
+        if (typeof field !== "string" || !field || !checkIsHttpToken(field)) {
+          throw new ERR_INVALID_HTTP_TOKEN("Trailer name", field);
+        }
+        if (checkInvalidHeaderChar(value)) {
+          debug('Trailer "%s" contains invalid characters', field);
+          throw new ERR_INVALID_CHAR("trailer content", field);
+        }
+        this._trailer += field + ": " + value + "\r\n";
+      }
     },
 
     end(chunk: any, encoding: any, callback: any) {
@@ -769,8 +792,7 @@ Object.defineProperties(
       }
 
       if (this._removedConnection) {
-        this._last = true;
-        this.shouldKeepAlive = false;
+        this._last = !this.shouldKeepAlive;
       } else if (!state.connection) {
         const shouldSendKeepAlive = this.shouldKeepAlive &&
           (state.contLen || this.useChunkedEncodingByDefault || this.agent);
@@ -833,8 +855,13 @@ Object.defineProperties(
 
     _storeHeaderEntry(state: any, field: string, value: any) {
       if (Array.isArray(value)) {
-        for (let j = 0; j < value.length; j++) {
-          state.header += field + ": " + value[j] + "\r\n";
+        // RFC 6265: join multiple Cookie values with '; '
+        if (field.toLowerCase() === "cookie") {
+          state.header += field + ": " + value.join("; ") + "\r\n";
+        } else {
+          for (let j = 0; j < value.length; j++) {
+            state.header += field + ": " + value[j] + "\r\n";
+          }
         }
       } else {
         state.header += field + ": " + value + "\r\n";
@@ -993,7 +1020,7 @@ export function parseUniqueHeadersOption(headers) {
   const unique = new Set();
   const l = headers.length;
   for (let i = 0; i < l; i++) {
-    unique.add(headers[i].toLowerCasee());
+    unique.add(headers[i].toLowerCase());
   }
 
   return unique;
