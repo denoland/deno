@@ -28,6 +28,7 @@ import { primordials } from "ext:core/mod.js";
 const {
   ArrayIsArray,
   Error,
+  MathMin,
   NumberIsFinite,
   ObjectKeys,
   ObjectSetPrototypeOf,
@@ -37,6 +38,7 @@ const {
 import net from "node:net";
 import { ok as assert } from "node:assert";
 import {
+  _checkInvalidHeaderChar as checkInvalidHeaderChar,
   chunkExpression,
   continueExpression,
   freeParser,
@@ -50,6 +52,8 @@ import {
   kUniqueHeaders,
   OutgoingMessage,
   parseUniqueHeadersOption,
+  validateHeaderName,
+  validateHeaderValue,
 } from "node:_http_outgoing";
 import { kNeedDrain, kOutHeaders } from "ext:deno_node/internal/http.ts";
 import { IncomingMessage } from "node:_http_incoming";
@@ -58,9 +62,16 @@ import {
   ERR_HTTP_HEADERS_SENT,
   ERR_HTTP_SOCKET_ASSIGNED,
   ERR_INVALID_ARG_TYPE,
+  ERR_INVALID_CHAR,
+  ERR_OUT_OF_RANGE,
 } from "ext:deno_node/internal/errors.ts";
 import { kEmptyObject } from "ext:deno_node/internal/util.mjs";
-import { validateObject } from "ext:deno_node/internal/validators.mjs";
+import {
+  validateBoolean,
+  validateInteger,
+  validateLinkHeaderValue,
+  validateObject,
+} from "ext:deno_node/internal/validators.mjs";
 import { nextTick } from "ext:deno_node/_next_tick.ts";
 import {
   builtinTracer,
@@ -246,6 +257,46 @@ ServerResponse.prototype.writeContinue = function writeContinue(cb) {
 
 ServerResponse.prototype.writeProcessing = function writeProcessing(cb) {
   this._writeRaw("HTTP/1.1 102 Processing\r\n\r\n", "ascii", cb);
+};
+
+ServerResponse.prototype.writeEarlyHints = function writeEarlyHints(
+  hints,
+  cb,
+) {
+  let head = "HTTP/1.1 103 Early Hints\r\n";
+
+  validateObject(hints, "hints");
+
+  if (hints.link === null || hints.link === undefined) {
+    return;
+  }
+
+  const link = validateLinkHeaderValue(hints.link);
+
+  if (link.length === 0) {
+    return;
+  }
+
+  if (checkInvalidHeaderChar(link)) {
+    throw new ERR_INVALID_CHAR("header content", "Link");
+  }
+
+  head += "Link: " + link + "\r\n";
+
+  const keys = ObjectKeys(hints);
+  for (let i = 0; i < keys.length; i++) {
+    const key = keys[i];
+    if (key !== "link") {
+      validateHeaderName(key);
+      const value = hints[key];
+      validateHeaderValue(key, value);
+      head += key + ": " + value + "\r\n";
+    }
+  }
+
+  head += "\r\n";
+
+  this._writeRaw(head, "ascii", cb);
 };
 
 ServerResponse.prototype._implicitHeader = function _implicitHeader() {
@@ -504,20 +555,43 @@ function socketOnDrain(socket, state) {
   }
 }
 
+const badRequestResponse =
+  "HTTP/1.1 400 Bad Request\r\nConnection: close\r\n\r\n";
+const requestHeaderFieldsTooLargeResponse =
+  "HTTP/1.1 431 Request Header Fields Too Large\r\nConnection: close\r\n\r\n";
+
 function socketOnError(e) {
+  // Ignore further errors
+  this.removeListener("error", socketOnError);
+  this.on("error", noop);
+
   if (this.parser) {
     this.parser.finish();
     freeParser(this.parser, undefined, this);
   }
 
-  // Emit clientError on the server, allowing user to send error responses
-  const server = this.server;
-  if (server && server.listenerCount("clientError") > 0) {
-    server.emit("clientError", e, this);
-  } else {
+  if (!this.server.emit("clientError", e, this)) {
+    // No clientError listener - send an appropriate error response
+    if (
+      this.writable &&
+      (!this._httpMessage || !this._httpMessage._headerSent)
+    ) {
+      let response;
+      switch (e.code) {
+        case "HPE_HEADER_OVERFLOW":
+          response = requestHeaderFieldsTooLargeResponse;
+          break;
+        default:
+          response = badRequestResponse;
+          break;
+      }
+      this.write(response);
+    }
     this.destroy(e);
   }
 }
+
+function noop() {}
 
 function updateOutgoingData(socket, state, delta) {
   state.outgoingData += delta;
@@ -739,9 +813,16 @@ function resOnFinish(req, res, socket, state, server) {
 }
 
 function clearIncoming(req) {
-  req._consuming = true;
-  req.socket = null;
-  req.emit("close");
+  req ||= this;
+  const parser = req.socket?.parser;
+  // Reset the .incoming property so that the request object can be gc'ed.
+  if (parser && parser.incoming === req) {
+    if (req.readableEnded) {
+      parser.incoming = null;
+    } else {
+      req.on("end", clearIncoming);
+    }
+  }
 }
 
 function Server(options, requestListener) {
@@ -755,6 +836,8 @@ function Server(options, requestListener) {
   } else {
     validateObject(options, "options");
   }
+
+  storeHTTPOptions.call(this, options);
 
   net.Server.call(this, {
     allowHalfOpen: true,
@@ -775,15 +858,88 @@ function Server(options, requestListener) {
   this.timeout = 0;
   this.maxHeadersCount = null;
   this.maxRequestsPerSocket = 0;
-  this.keepAliveTimeout = 5000;
-  this.requireHostHeader = true;
-  this.insecureHTTPParser = undefined;
-  this.maxHeaderSize = undefined;
-  this.rejectNonStandardBodyWrites = false;
 
-  this[kServerResponse] = ServerResponse;
   this[kUniqueHeaders] = parseUniqueHeadersOption(options.uniqueHeaders);
+}
+
+function storeHTTPOptions(options) {
   this[kIncomingMessage] = options.IncomingMessage || IncomingMessage;
+  this[kServerResponse] = options.ServerResponse || ServerResponse;
+
+  const maxHeaderSize = options.maxHeaderSize;
+  if (maxHeaderSize !== undefined) {
+    validateInteger(maxHeaderSize, "maxHeaderSize", 0);
+  }
+  this.maxHeaderSize = maxHeaderSize;
+
+  const insecureHTTPParser = options.insecureHTTPParser;
+  if (insecureHTTPParser !== undefined) {
+    validateBoolean(insecureHTTPParser, "options.insecureHTTPParser");
+  }
+  this.insecureHTTPParser = insecureHTTPParser;
+
+  const requestTimeout = options.requestTimeout;
+  if (requestTimeout !== undefined) {
+    validateInteger(requestTimeout, "requestTimeout", 0);
+    this.requestTimeout = requestTimeout;
+  } else {
+    this.requestTimeout = 300_000; // 5 minutes
+  }
+
+  const headersTimeout = options.headersTimeout;
+  if (headersTimeout !== undefined) {
+    validateInteger(headersTimeout, "headersTimeout", 0);
+    this.headersTimeout = headersTimeout;
+  } else {
+    this.headersTimeout = MathMin(60_000, this.requestTimeout);
+  }
+
+  if (
+    this.requestTimeout > 0 && this.headersTimeout > 0 &&
+    this.headersTimeout > this.requestTimeout
+  ) {
+    throw new ERR_OUT_OF_RANGE(
+      "headersTimeout",
+      "<= requestTimeout",
+      headersTimeout,
+    );
+  }
+
+  const keepAliveTimeout = options.keepAliveTimeout;
+  if (keepAliveTimeout !== undefined) {
+    validateInteger(keepAliveTimeout, "keepAliveTimeout", 0);
+    this.keepAliveTimeout = keepAliveTimeout;
+  } else {
+    this.keepAliveTimeout = 5_000;
+  }
+
+  const requireHostHeader = options.requireHostHeader;
+  if (requireHostHeader !== undefined) {
+    validateBoolean(requireHostHeader, "options.requireHostHeader");
+    this.requireHostHeader = requireHostHeader;
+  } else {
+    this.requireHostHeader = true;
+  }
+
+  const joinDuplicateHeaders = options.joinDuplicateHeaders;
+  if (joinDuplicateHeaders !== undefined) {
+    validateBoolean(
+      joinDuplicateHeaders,
+      "options.joinDuplicateHeaders",
+    );
+  }
+  this.joinDuplicateHeaders = joinDuplicateHeaders;
+
+  const rejectNonStandardBodyWrites = options.rejectNonStandardBodyWrites;
+  if (rejectNonStandardBodyWrites !== undefined) {
+    validateBoolean(
+      rejectNonStandardBodyWrites,
+      "options.rejectNonStandardBodyWrites",
+    );
+    this.rejectNonStandardBodyWrites = rejectNonStandardBodyWrites;
+  } else {
+    this.rejectNonStandardBodyWrites = false;
+  }
 }
 ObjectSetPrototypeOf(Server.prototype, net.Server.prototype);
 ObjectSetPrototypeOf(Server, net.Server);
