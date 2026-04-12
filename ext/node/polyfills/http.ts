@@ -15,7 +15,8 @@ import {
   ServerResponse,
   STATUS_CODES,
 } from "node:_http_server";
-import { methods } from "node:_http_common";
+import { methods, parsers } from "node:_http_common";
+import { validateInteger } from "ext:deno_node/internal/validators.mjs";
 const METHODS = methods.slice().sort();
 
 export interface RequestOptions {
@@ -89,7 +90,14 @@ export function get(...args: any[]) {
   return req;
 }
 
+// Default max header size matches Node.js default (16 KiB).
+// Node reads this from --max-http-header-size; we hardcode it.
 export const maxHeaderSize = 16_384;
+
+export function setMaxIdleHTTPParsers(max: number) {
+  validateInteger(max, "max", 1);
+  parsers.max = max;
+}
 
 export {
   _connectionListener,
@@ -102,6 +110,7 @@ export {
   ServerImpl,
   ServerImpl as Server,
   ServerResponse,
+  setMaxIdleHTTPParsers,
   STATUS_CODES,
   validateHeaderName,
   validateHeaderValue,
@@ -122,5 +131,6 @@ export default {
   get,
   validateHeaderName,
   validateHeaderValue,
+  setMaxIdleHTTPParsers,
   maxHeaderSize,
 };
