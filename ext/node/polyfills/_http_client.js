@@ -93,6 +93,13 @@ const kOtelSpan = Symbol("kOtelSpan");
 const kLenientAll = HTTPParser.kLenientAll | 0;
 const kLenientNone = HTTPParser.kLenientNone | 0;
 
+class HTTPClientAsyncResource {
+  constructor(type, req) {
+    this.type = type;
+    this.req = req;
+  }
+}
+
 function validateHost(host, name) {
   if (host !== null && host !== undefined && typeof host !== "string") {
     throw new ERR_INVALID_ARG_TYPE(
@@ -788,11 +795,10 @@ function tickOnSocket(req, socket) {
     : req.insecureHTTPParser;
   parser.initialize(
     HTTPParser.RESPONSE,
-    {},
+    new HTTPClientAsyncResource("HTTPINCOMINGMESSAGE", req),
     req.maxHeaderSize || 0,
     lenient ? kLenientAll : kLenientNone,
   );
-  req.socket = socket;
   parser.socket = socket;
   parser.outgoing = req;
   req.parser = parser;
