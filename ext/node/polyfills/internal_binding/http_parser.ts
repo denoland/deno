@@ -231,13 +231,14 @@ HTTPParser.prototype.getCurrentBuffer = function (this: any) {
   return this._native.getCurrentBuffer();
 };
 
-// consume/unconsume - server optimization (not yet implemented)
-HTTPParser.prototype.consume = function (_handle: any) {
-  // TODO(@bartlomieju): implement StreamListener-based consume for server optimization
+// consume/unconsume - server optimization: data flows directly from the
+// TCP handle to the parser, bypassing the JS readable stream layer.
+HTTPParser.prototype.consume = function (this: any, handle: any) {
+  this._native.consume(this, handle);
 };
 
-HTTPParser.prototype.unconsume = function () {
-  // TODO(@bartlomieju): implement unconsume
+HTTPParser.prototype.unconsume = function (this: any) {
+  this._native.unconsume();
 };
 
 // Static constants
