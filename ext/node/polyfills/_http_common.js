@@ -63,9 +63,7 @@ class FreeList {
   }
 
   alloc() {
-    return this.list.length > 0
-      ? ArrayPrototypePop(this.list)
-      : this.ctor();
+    return this.list.length > 0 ? ArrayPrototypePop(this.list) : this.ctor();
   }
 
   free(obj) {

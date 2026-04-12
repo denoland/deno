@@ -59,10 +59,14 @@ export function Agent(options) {
 
   EventEmitter.call(this);
 
-  this.defaultPort = 80;
-  this.protocol = "http:";
-
   this.options = { __proto__: null, ...options };
+
+  this.defaultPort = this.options.defaultPort || 80;
+  this.protocol = this.options.protocol || "http:";
+
+  if (this.options.noDelay === undefined) {
+    this.options.noDelay = true;
+  }
 
   // Don't confuse net and make it think that we're connecting to a pipe
   this.options.path = null;
@@ -77,17 +81,17 @@ export function Agent(options) {
   this.maxTotalSockets = this.options.maxTotalSockets;
   this.totalSocketCount = 0;
 
+  this.agentKeepAliveTimeoutBuffer =
+    typeof this.options.agentKeepAliveTimeoutBuffer === "number" &&
+      this.options.agentKeepAliveTimeoutBuffer >= 0 &&
+      Number.isFinite(this.options.agentKeepAliveTimeoutBuffer)
+      ? this.options.agentKeepAliveTimeoutBuffer
+      : 1000;
+
   validateOneOf(this.scheduling, "scheduling", ["fifo", "lifo"]);
 
   if (this.maxTotalSockets !== undefined) {
-    validateNumber(this.maxTotalSockets, "maxTotalSockets");
-    if (this.maxTotalSockets <= 0 || Number.isNaN(this.maxTotalSockets)) {
-      throw new ERR_OUT_OF_RANGE(
-        "maxTotalSockets",
-        "> 0",
-        this.maxTotalSockets,
-      );
-    }
+    validateNumber(this.maxTotalSockets, "maxTotalSockets", 1);
   } else {
     this.maxTotalSockets = Infinity;
   }
@@ -176,7 +180,7 @@ function maybeEnableKeylog(eventName) {
       agent.emit("keylog", keylog, this);
     };
     // Existing sockets will start listening on keylog now.
-    const sockets = ObjectValues(this.sockets);
+    const sockets = Object.values(this.sockets);
     for (let i = 0; i < sockets.length; i++) {
       sockets[i].on("keylog", this[kOnKeylog]);
     }
@@ -267,8 +271,7 @@ Agent.prototype.addRequest = function addRequest(
     setRequestSocket(this, req, socket);
     this.sockets[name].push(socket);
   } else if (
-    // TODO(littledivy): enable maxSockets again when we use removeSocket properly
-    this.maxSockets != 0 &&
+    sockLen < this.maxSockets &&
     this.totalSocketCount < this.maxTotalSockets
   ) {
     debug("call onSocket", sockLen, freeLen);
@@ -306,6 +309,12 @@ Agent.prototype.createSocket = function createSocket(req, options, cb) {
     options.servername = calculateServerName(options, req);
   }
 
+  // Make sure per-request timeout is respected.
+  const timeout = req.timeout || this.options.timeout || undefined;
+  if (timeout) {
+    options.timeout = timeout;
+  }
+
   const name = this.getName(options);
   options._agentKey = name;
 
@@ -325,6 +334,12 @@ Agent.prototype.createSocket = function createSocket(req, options, cb) {
     installListeners(this, s, options);
     cb(null, s);
   });
+
+  // When keepAlive is true, pass the related options to createConnection
+  if (this.keepAlive) {
+    options.keepAlive = this.keepAlive;
+    options.keepAliveInitialDelay = this.keepAliveMsecs;
+  }
 
   const newSocket = this.createConnection(options, oncreate);
   if (newSocket) {
@@ -475,12 +490,37 @@ Agent.prototype.keepSocketAlive = function keepSocketAlive(socket) {
   socket.setKeepAlive(true, this.keepAliveMsecs);
   socket.unref();
 
-  const agentTimeout = this.options.timeout || 0;
+  let agentTimeout = this.options.timeout || 0;
+  let canKeepSocketAlive = true;
+
+  if (socket._httpMessage?.res) {
+    const keepAliveHint = socket._httpMessage.res.headers["keep-alive"];
+
+    if (keepAliveHint) {
+      const hint = /^timeout=(\d+)/.exec(keepAliveHint)?.[1];
+
+      if (hint) {
+        // Let the timer expire before the announced timeout to reduce
+        // the likelihood of ECONNRESET errors
+        let serverHintTimeout = (Number.parseInt(hint) * 1000) -
+          this.agentKeepAliveTimeoutBuffer;
+        serverHintTimeout = serverHintTimeout > 0 ? serverHintTimeout : 0;
+        if (serverHintTimeout === 0) {
+          // Cannot safely reuse the socket because the server timeout is
+          // too short
+          canKeepSocketAlive = false;
+        } else if (serverHintTimeout < agentTimeout) {
+          agentTimeout = serverHintTimeout;
+        }
+      }
+    }
+  }
+
   if (socket.timeout !== agentTimeout) {
     socket.setTimeout(agentTimeout);
   }
 
-  return true;
+  return canKeepSocketAlive;
 };
 
 Agent.prototype.reuseSocket = function reuseSocket(socket, req) {
