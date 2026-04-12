@@ -9,19 +9,15 @@ import { urlToHttpOptions } from "ext:deno_node/internal/url.ts";
 import {
   _connectionListener,
   ClientRequest,
-  IncomingMessageForClient as IncomingMessage,
-  type RequestOptions,
-  ServerResponse,
+  type ServerHandler,
+  ServerImpl as HttpServer,
 } from "node:http";
 import {
   httpServerPreClose,
-  kServerResponse,
   setupConnectionsTracking,
   storeHTTPOptions,
 } from "node:_http_server";
 import { Agent as HttpAgent } from "node:_http_agent";
-import { createHttpClient } from "ext:deno_fetch/22_http_client.js";
-import { type ServerHandler, ServerImpl as HttpServer } from "node:http";
 import { validateObject } from "ext:deno_node/internal/validators.mjs";
 import { kEmptyObject } from "ext:deno_node/internal/util.mjs";
 
@@ -103,29 +99,7 @@ export function createServer(
   return new (Server as any)(opts, requestListener);
 }
 
-interface HttpsRequestOptions extends RequestOptions {
-  _: unknown;
-}
-
-// Store additional root CAs.
-// undefined means NODE_EXTRA_CA_CERTS is not checked yet.
-// null means there's no additional root CAs.
-let caCerts: string[] | undefined | null;
-
-/** Makes a request to an https server. */
-export function get(
-  url: string | URL,
-  cb?: (res: IncomingMessage) => void,
-): HttpsClientRequest;
-export function get(
-  opts: HttpsRequestOptions,
-  cb?: (res: IncomingMessage) => void,
-): HttpsClientRequest;
-export function get(
-  url: string | URL,
-  opts: HttpsRequestOptions,
-  cb?: (res: IncomingMessage) => void,
-): HttpsClientRequest;
+/** Makes a GET request to an https server. */
 // deno-lint-ignore no-explicit-any
 export function get(...args: any[]) {
   const req = request(args[0], args[1], args[2]);
@@ -311,53 +285,11 @@ export const globalAgent = new Agent({
   timeout: 5000,
 });
 
-/** HttpsClientRequest class loosely follows http.ClientRequest class API. */
-class HttpsClientRequest extends ClientRequest {
-  override _encrypted = true;
-  override defaultProtocol = "https:";
-  override _getClient(): Deno.HttpClient | undefined {
-    if (caCerts === null) {
-      return undefined;
-    }
-    if (caCerts !== undefined) {
-      return createHttpClient({ caCerts, http2: false });
-    }
-    // const status = await Deno.permissions.query({
-    //   name: "env",
-    //   variable: "NODE_EXTRA_CA_CERTS",
-    // });
-    // if (status.state !== "granted") {
-    //   caCerts = null;
-    //   return undefined;
-    // }
-    const certFilename = Deno.env.get("NODE_EXTRA_CA_CERTS");
-    if (!certFilename) {
-      caCerts = null;
-      return undefined;
-    }
-    const caCert = Deno.readTextFileSync(certFilename);
-    caCerts = [caCert];
-    return createHttpClient({ caCerts, http2: false });
-  }
-}
-
 /** Makes a request to an https server. */
-export function request(
-  url: string | URL,
-  cb?: (res: IncomingMessage) => void,
-): HttpsClientRequest;
-export function request(
-  opts: HttpsRequestOptions,
-  cb?: (res: IncomingMessage) => void,
-): HttpsClientRequest;
-export function request(
-  url: string | URL,
-  opts: HttpsRequestOptions,
-  cb?: (res: IncomingMessage) => void,
-): HttpsClientRequest;
 // deno-lint-ignore no-explicit-any
 export function request(...args: any[]) {
-  let options = {};
+  // deno-lint-ignore no-explicit-any
+  let options: any = {};
 
   if (typeof args[0] === "string") {
     const urlStr = args.shift();
@@ -371,31 +303,11 @@ export function request(...args: any[]) {
   }
 
   options._defaultAgent = globalAgent;
-  if (options.agent === undefined) {
-    if (options.key !== undefined) {
-      options._defaultAgent.options.key = options.key;
-    }
-    if (options.cert !== undefined) {
-      options._defaultAgent.options.cert = options.cert;
-    }
-    if (options.ca !== undefined) {
-      options._defaultAgent.options.ca = options.ca;
-    }
-  } else {
-    if (options.key !== undefined) {
-      options.agent.options.key = options.key;
-    }
-    if (options.cert !== undefined) {
-      options.agent.options.cert = options.cert;
-    }
-    if (options.ca !== undefined) {
-      options.agent.options.ca = options.ca;
-    }
-  }
   args.unshift(options);
 
-  return new HttpsClientRequest(args[0], args[1]);
+  return new ClientRequest(args[0], args[1], args[2]);
 }
+
 export default {
   Agent,
   Server,
