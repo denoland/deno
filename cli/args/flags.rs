@@ -571,6 +571,7 @@ pub struct UpgradeFlags {
   pub output: Option<String>,
   pub version_or_hash_or_channel: Option<String>,
   pub checksum: Option<String>,
+  pub pr: Option<u64>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -4501,7 +4502,10 @@ pub static UPGRADE_USAGE: &str = cstr!(
   <bold>deno upgrade</> <p(245)>alpha</>
   <bold>deno upgrade</> <p(245)>beta</>
   <bold>deno upgrade</> <p(245)>rc</>
-  <bold>deno upgrade</> <p(245)>canary</>"
+  <bold>deno upgrade</> <p(245)>canary</>
+
+<g>From a pull request</> <p(245)>(requires gh CLI)</>
+  <bold>deno upgrade</> <p(245)>pr 12345</>"
 );
 
 fn upgrade_subcommand() -> Command {
@@ -4574,7 +4578,7 @@ update to a different location, use the <c>--output</> flag:
       )
       .arg(
         Arg::new("version-or-hash-or-channel")
-          .help(cstr!("Version <p(245)>(v1.46.0)</>, channel <p(245)>(alpha, beta, rc, canary)</> or commit hash <p(245)>(9bc2dd29ad6ba334fd57a20114e367d3c04763d4)</>"))
+          .help(cstr!("Version <p(245)>(v1.46.0)</>, channel <p(245)>(alpha, beta, rc, canary)</>, commit hash <p(245)>(9bc2dd29ad6ba334fd57a20114e367d3c04763d4)</>, or <p(245)>pr 12345</> to install from a PR"))
           .value_name("VERSION")
           .action(ArgAction::Append)
           .trailing_var_arg(true),
@@ -7395,8 +7399,27 @@ fn upgrade_parse(
   let release_candidate = matches.get_flag("release-candidate");
   let version = matches.remove_one::<String>("version");
   let output = matches.remove_one::<String>("output");
-  let version_or_hash_or_channel =
-    matches.remove_one::<String>("version-or-hash-or-channel");
+  let positional_args: Vec<String> = matches
+    .remove_many::<String>("version-or-hash-or-channel")
+    .map(|v| v.collect())
+    .unwrap_or_default();
+
+  let (version_or_hash_or_channel, pr) =
+    if positional_args.first().map(|s| s.as_str()) == Some("pr") {
+      let pr_number = positional_args
+        .get(1)
+        .and_then(|s| s.strip_prefix('#').unwrap_or(s).parse::<u64>().ok());
+      if pr_number.is_none() {
+        return Err(clap::Error::raw(
+          clap::error::ErrorKind::InvalidValue,
+          "Missing or invalid PR number. Usage: deno upgrade pr <number>\n",
+        ));
+      }
+      (None, pr_number)
+    } else {
+      (positional_args.into_iter().next(), None)
+    };
+
   let checksum = matches.remove_one::<String>("checksum");
   flags.subcommand = DenoSubcommand::Upgrade(UpgradeFlags {
     dry_run,
@@ -7407,6 +7430,7 @@ fn upgrade_parse(
     output,
     version_or_hash_or_channel,
     checksum,
+    pr,
   });
   Ok(())
 }
@@ -8109,6 +8133,7 @@ mod tests {
           output: None,
           version_or_hash_or_channel: None,
           checksum: None,
+          pr: None,
         }),
         ..Flags::default()
       }
@@ -8130,6 +8155,7 @@ mod tests {
           output: Some(String::from("example.txt")),
           version_or_hash_or_channel: None,
           checksum: None,
+          pr: None,
         }),
         ..Flags::default()
       }
@@ -12200,6 +12226,7 @@ mod tests {
           output: None,
           version_or_hash_or_channel: None,
           checksum: None,
+          pr: None,
         }),
         ca_data: Some(CaData::File("example.crt".to_owned())),
         ..Flags::default()
@@ -12222,6 +12249,7 @@ mod tests {
           output: None,
           version_or_hash_or_channel: None,
           checksum: None,
+          pr: None,
         }),
         ..Flags::default()
       }

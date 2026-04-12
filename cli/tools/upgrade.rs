@@ -573,10 +573,252 @@ fn store_cached_binary(
   }
 }
 
+/// Get the artifact name for the current platform.
+/// CI artifacts are named like `{profile}-{os}-{arch}-deno`.
+fn get_pr_artifact_name() -> Result<String, AnyError> {
+  let target = env!("TARGET");
+
+  let (os, arch) = if target.contains("linux") && target.contains("x86_64") {
+    ("linux", "x86_64")
+  } else if target.contains("linux") && target.contains("aarch64") {
+    ("linux", "aarch64")
+  } else if target.contains("apple") && target.contains("x86_64") {
+    ("macos", "x86_64")
+  } else if target.contains("apple") && target.contains("aarch64") {
+    ("macos", "aarch64")
+  } else if target.contains("windows") && target.contains("x86_64") {
+    ("windows", "x86_64")
+  } else if target.contains("windows") && target.contains("aarch64") {
+    ("windows", "aarch64")
+  } else {
+    bail!("Unsupported platform for PR builds: {}", target)
+  };
+
+  // Prefer release builds, fall back to debug
+  Ok(format!("release-{os}-{arch}-deno"))
+}
+
+fn get_pr_debug_artifact_name() -> Result<String, AnyError> {
+  let release_name = get_pr_artifact_name()?;
+  Ok(release_name.replacen("release-", "debug-", 1))
+}
+
+async fn upgrade_from_pr(
+  pr_number: u64,
+  upgrade_flags: &UpgradeFlags,
+) -> Result<(), AnyError> {
+  // Check that `gh` CLI is available
+  let gh_version = Command::new("gh").arg("--version").output();
+  if gh_version.is_err() {
+    bail!(
+      "The `gh` CLI is required for installing from a PR.\n\
+       Install it from https://cli.github.com/ and run `gh auth login`."
+    );
+  }
+
+  log::info!("{}", colors::gray(format!("Looking up PR #{pr_number}...")));
+
+  // Verify the PR exists and get its title/state/branch
+  let pr_info = Command::new("gh")
+    .args([
+      "pr",
+      "view",
+      &pr_number.to_string(),
+      "--repo",
+      "denoland/deno",
+      "--json",
+      "title,state,headRefName",
+      "-q",
+      r#"[.title, .state, .headRefName] | @tsv"#,
+    ])
+    .output()
+    .context("failed to run `gh pr view`")?;
+
+  if !pr_info.status.success() {
+    let stderr = String::from_utf8_lossy(&pr_info.stderr);
+    bail!("Failed to find PR #{pr_number}: {stderr}");
+  }
+
+  let pr_info_str = String::from_utf8_lossy(&pr_info.stdout);
+  let pr_fields: Vec<&str> = pr_info_str.trim().splitn(3, '\t').collect();
+  let pr_title = pr_fields.first().unwrap_or(&"unknown");
+  let pr_state = pr_fields.get(1).unwrap_or(&"unknown");
+  let pr_branch = pr_fields.get(2).unwrap_or(&"");
+
+  log::info!(
+    "PR #{}: {} ({})",
+    pr_number,
+    colors::bold(pr_title),
+    pr_state
+  );
+
+  let artifact_name = get_pr_artifact_name()?;
+  let debug_artifact_name = get_pr_debug_artifact_name()?;
+
+  // Find CI runs for this PR by branch name
+  log::info!("{}", colors::gray("Finding CI artifacts..."));
+
+  let mut all_run_ids = Vec::new();
+
+  if !pr_branch.is_empty() {
+    let branch_runs = Command::new("gh")
+      .args([
+        "run",
+        "list",
+        "--repo",
+        "denoland/deno",
+        "--branch",
+        pr_branch,
+        "--workflow",
+        "ci",
+        "--limit",
+        "5",
+        "--json",
+        "databaseId",
+        "-q",
+        ".[].databaseId",
+      ])
+      .output()
+      .context("failed to query CI runs by branch")?;
+
+    if branch_runs.status.success() {
+      let ids = String::from_utf8_lossy(&branch_runs.stdout);
+      for id in ids.trim().lines() {
+        if !id.is_empty() {
+          all_run_ids.push(id.to_string());
+        }
+      }
+    }
+  }
+
+  if all_run_ids.is_empty() {
+    bail!(
+      "No CI runs found for PR #{pr_number}. \
+       The PR may not have been pushed yet, or CI hasn't started."
+    );
+  }
+
+  // Try each run to find one with our artifact
+  let temp_dir =
+    tempfile::TempDir::new().context("failed to create temporary directory")?;
+  let download_dir = temp_dir.path();
+
+  let mut downloaded = false;
+  for run_id in &all_run_ids {
+    // Try release build first, then debug
+    for name in [&artifact_name, &debug_artifact_name] {
+      log::info!(
+        "{}",
+        colors::gray(format!("Trying run {run_id}, artifact \"{name}\"..."))
+      );
+
+      let dl_result = Command::new("gh")
+        .args([
+          "run",
+          "download",
+          run_id,
+          "--repo",
+          "denoland/deno",
+          "--name",
+          name,
+          "--dir",
+          &download_dir.to_string_lossy(),
+        ])
+        .output()
+        .context("failed to run `gh run download`")?;
+
+      if dl_result.status.success() {
+        log::info!(
+          "Downloaded artifact \"{}\" from run {}",
+          colors::green(name),
+          run_id
+        );
+        downloaded = true;
+        break;
+      }
+    }
+    if downloaded {
+      break;
+    }
+  }
+
+  if !downloaded {
+    bail!(
+      "Could not find a \"{}\" artifact for PR #{pr_number}.\n\
+       Available artifacts may have expired or CI may not have completed.\n\
+       Only release builds on linux-x86_64 and debug builds are typically available for PRs.",
+      artifact_name
+    );
+  }
+
+  // Find the downloaded binary
+  let exe_name = if cfg!(windows) { "deno.exe" } else { "deno" };
+  let new_exe_path = download_dir.join(exe_name);
+
+  if !new_exe_path.exists() {
+    bail!(
+      "Downloaded artifact does not contain '{}'. Contents: {:?}",
+      exe_name,
+      fs::read_dir(download_dir)?
+        .filter_map(|e| e.ok())
+        .map(|e| e.file_name().to_string_lossy().to_string())
+        .collect::<Vec<_>>()
+    );
+  }
+
+  // Set executable permissions
+  #[cfg(unix)]
+  {
+    use std::os::unix::fs::PermissionsExt;
+    fs::set_permissions(&new_exe_path, std::fs::Permissions::from_mode(0o755))?;
+  }
+
+  // Verify the binary works
+  check_exe(&new_exe_path)?;
+
+  if upgrade_flags.dry_run {
+    log::info!("Upgraded successfully (dry run)");
+    drop(temp_dir);
+    return Ok(());
+  }
+
+  let current_exe_path = std::env::current_exe()
+    .context("failed to get the path of the current executable")?;
+  let output_exe_path = if let Some(output) = &upgrade_flags.output {
+    Cow::Owned(PathBuf::from(output))
+  } else {
+    Cow::Borrowed(&current_exe_path)
+  };
+
+  #[cfg(windows)]
+  kill_running_deno_lsp_processes();
+
+  let output_result = if *output_exe_path == current_exe_path {
+    replace_exe(&new_exe_path, &output_exe_path)
+  } else {
+    fs::rename(&new_exe_path, &*output_exe_path)
+      .or_else(|_| fs::copy(&new_exe_path, &*output_exe_path).map(|_| ()))
+  };
+  check_windows_access_denied_error(output_result, &output_exe_path)?;
+
+  log::info!(
+    "\nUpgraded successfully from PR #{} {}\n",
+    colors::green(&pr_number.to_string()),
+    colors::gray(&format!("({})", pr_title))
+  );
+
+  drop(temp_dir);
+  Ok(())
+}
+
 pub async fn upgrade(
   flags: Arc<Flags>,
   upgrade_flags: UpgradeFlags,
 ) -> Result<(), AnyError> {
+  if let Some(pr_number) = upgrade_flags.pr {
+    return upgrade_from_pr(pr_number, &upgrade_flags).await;
+  }
+
   let factory = CliFactory::from_flags(flags);
   let cli_options = factory.cli_options()?;
   let http_client_provider = factory.http_client_provider();
@@ -1342,6 +1584,7 @@ mod test {
       output: None,
       version_or_hash_or_channel: None,
       checksum: None,
+      pr: None,
     };
 
     let req_ver =
