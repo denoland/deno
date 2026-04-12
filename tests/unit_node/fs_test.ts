@@ -102,6 +102,51 @@ Deno.test(
 );
 
 Deno.test(
+  "[node/fs writeFileSync] overwrite existing file with default 'w' flag",
+  () => {
+    const filename = mkdtempSync(join(tmpdir(), "foo-")) + "/test.txt";
+
+    // Create a file with initial content
+    writeFileSync(filename, "initial content");
+    assertEquals(readFileSync(filename, "utf8"), "initial content");
+
+    // Overwrite the same file — should NOT throw EEXIST
+    writeFileSync(filename, "new content");
+    assertEquals(readFileSync(filename, "utf8"), "new content");
+  },
+);
+
+Deno.test(
+  "[node/fs writeFileSync] 'wx' flag fails with EEXIST on existing file",
+  () => {
+    const filename = mkdtempSync(join(tmpdir(), "foo-")) + "/test.txt";
+
+    // Create a file first
+    writeFileSync(filename, "original");
+
+    // Writing with 'wx' should fail since file exists
+    assertThrows(
+      () => writeFileSync(filename, "overwrite", { flag: "wx" }),
+      Error,
+    );
+
+    // Original content should be preserved (no truncation/corruption)
+    assertEquals(readFileSync(filename, "utf8"), "original");
+  },
+);
+
+Deno.test(
+  "[node/fs writeFileSync] 'wx' flag succeeds for new file",
+  () => {
+    const filename = mkdtempSync(join(tmpdir(), "foo-")) + "/new.txt";
+
+    // 'wx' on a new file should succeed
+    writeFileSync(filename, "exclusive write", { flag: "wx" });
+    assertEquals(readFileSync(filename, "utf8"), "exclusive write");
+  },
+);
+
+Deno.test(
   "[node/fs existsSync] path",
   { permissions: { read: true } },
   () => {
