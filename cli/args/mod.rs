@@ -212,7 +212,16 @@ pub struct WorkspaceTestOptions {
 }
 
 impl WorkspaceTestOptions {
-  pub fn resolve(test_flags: &TestFlags) -> Self {
+  pub fn resolve(
+    test_flags: &TestFlags,
+    test_config: Option<&TestConfig>,
+  ) -> Self {
+    // Precedence (highest wins): CLI flag > env var > deno.json config
+    let config_sanitize_ops =
+      test_config.and_then(|c| c.sanitize_ops).unwrap_or(false);
+    let config_sanitize_resources = test_config
+      .and_then(|c| c.sanitize_resources)
+      .unwrap_or(false);
     Self {
       permit_no_files: test_flags.permit_no_files,
       concurrent_jobs: parallelism_count(test_flags.parallel),
@@ -223,12 +232,14 @@ impl WorkspaceTestOptions {
       shuffle: test_flags.shuffle,
       trace_leaks: test_flags.trace_leaks,
       sanitize_ops: test_flags.sanitize_ops
-        || std::env::var("DENO_TEST_SANITIZE_OPS").ok().as_deref() == Some("1"),
+        || std::env::var("DENO_TEST_SANITIZE_OPS").ok().as_deref() == Some("1")
+        || config_sanitize_ops,
       sanitize_resources: test_flags.sanitize_resources
         || std::env::var("DENO_TEST_SANITIZE_RESOURCES")
           .ok()
           .as_deref()
-          == Some("1"),
+          == Some("1")
+        || config_sanitize_resources,
       reporter: test_flags.reporter,
       junit_path: test_flags.junit_path.clone(),
       hide_stacktraces: test_flags.hide_stacktraces,
@@ -239,13 +250,16 @@ impl WorkspaceTestOptions {
 #[derive(Debug, Clone)]
 pub struct TestOptions {
   pub files: FilePatterns,
+  pub sanitize_ops: Option<bool>,
+  pub sanitize_resources: Option<bool>,
 }
 
 impl TestOptions {
   pub fn resolve(test_config: TestConfig, _test_flags: &TestFlags) -> Self {
-    // this is the same, but keeping the same pattern as everywhere else for the future
     Self {
       files: test_config.files,
+      sanitize_ops: test_config.sanitize_ops,
+      sanitize_resources: test_config.sanitize_resources,
     }
   }
 }
@@ -924,7 +938,14 @@ impl CliOptions {
     &self,
     test_flags: &TestFlags,
   ) -> WorkspaceTestOptions {
-    WorkspaceTestOptions::resolve(test_flags)
+    // Get sanitizer config from deno.json if available
+    let test_config = self
+      .start_dir
+      .to_test_config(FilePatterns::new_with_base(
+        self.initial_cwd().to_path_buf(),
+      ))
+      .ok();
+    WorkspaceTestOptions::resolve(test_flags, test_config.as_ref())
   }
 
   pub fn resolve_test_options_for_members(

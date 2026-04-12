@@ -927,6 +927,14 @@
         },
         "permissions": {
           "$ref": "#/$defs/permissionNameOrSet"
+        },
+        "sanitizeOps": {
+          "type": "boolean",
+          "description": "Enable the ops sanitizer for all tests. Ensures that all async ops started in a test are completed before the test ends. Can be overridden per-test or per-module."
+        },
+        "sanitizeResources": {
+          "type": "boolean",
+          "description": "Enable the resources sanitizer for all tests. Ensures that all resources opened in a test are closed before the test ends. Can be overridden per-test or per-module."
         }
       }
     },

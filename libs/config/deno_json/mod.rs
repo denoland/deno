@@ -609,6 +609,10 @@ struct SerializedTestConfig {
   #[serde(rename = "files")]
   pub deprecated_files: serde_json::Value,
   pub permissions: Option<PermissionNameOrObject>,
+  #[serde(rename = "sanitizeOps")]
+  pub sanitize_ops: Option<bool>,
+  #[serde(rename = "sanitizeResources")]
+  pub sanitize_resources: Option<bool>,
 }
 
 impl SerializedTestConfig {
@@ -638,6 +642,8 @@ impl SerializedTestConfig {
         }
         None => None,
       },
+      sanitize_ops: self.sanitize_ops,
+      sanitize_resources: self.sanitize_resources,
     })
   }
 }
@@ -646,6 +652,8 @@ impl SerializedTestConfig {
 pub struct TestConfig {
   pub files: FilePatterns,
   pub permissions: Option<Box<PermissionsObjectWithBase>>,
+  pub sanitize_ops: Option<bool>,
+  pub sanitize_resources: Option<bool>,
 }
 
 impl TestConfig {
@@ -653,6 +661,8 @@ impl TestConfig {
     Self {
       files: FilePatterns::new_with_base(base),
       permissions: None,
+      sanitize_ops: None,
+      sanitize_resources: None,
     }
   }
 }
@@ -1935,6 +1945,8 @@ impl ConfigFile {
       None => Ok(TestConfig {
         files: self.to_exclude_files_config()?,
         permissions: None,
+        sanitize_ops: None,
+        sanitize_resources: None,
       }),
     }
   }

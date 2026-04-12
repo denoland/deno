@@ -2345,6 +2345,8 @@ impl WorkspaceDirectory {
           url_to_file_path(&self.dir_url).unwrap(),
         ),
         permissions: None,
+        sanitize_ops: None,
+        sanitize_resources: None,
       },
     };
     let root_config = match &self.deno_json.root {
@@ -2359,6 +2361,10 @@ impl WorkspaceDirectory {
         (Some(r), _) => Some(r),
         (None, None) => None,
       },
+      sanitize_ops: member_config.sanitize_ops.or(root_config.sanitize_ops),
+      sanitize_resources: member_config
+        .sanitize_resources
+        .or(root_config.sanitize_resources),
     })
   }
 
