@@ -51,7 +51,7 @@ import {
   OutgoingMessage,
   parseUniqueHeadersOption,
 } from "node:_http_outgoing";
-import { kOutHeaders } from "ext:deno_node/internal/http.ts";
+import { kNeedDrain, kOutHeaders } from "ext:deno_node/internal/http.ts";
 import { IncomingMessage } from "node:_http_incoming";
 import {
   connResetException,
@@ -278,6 +278,11 @@ ServerResponse.prototype.writeHead = function writeHead(
   }
   this.statusCode = statusCode;
 
+  // Enforce no body for 204 and 304 responses
+  if (statusCode === 204 || statusCode === 304) {
+    this._hasBody = false;
+  }
+
   let headers;
   if (this[kOutHeaders]) {
     // Slow-case: progressive API and header fields are passed.
@@ -419,7 +424,7 @@ function socketOnEnd(server, socket, parser, state) {
 
   if (ret instanceof Error) {
     prepareError(ret, parser);
-    socket.destroy(ret);
+    socketOnError.call(socket, ret);
     return;
   }
 
@@ -491,6 +496,12 @@ function socketOnDrain(socket, state) {
       socket.resume();
     }
   }
+
+  const msg = socket._httpMessage;
+  if (msg && !msg.finished && msg[kNeedDrain]) {
+    msg[kNeedDrain] = false;
+    msg.emit("drain");
+  }
 }
 
 function socketOnError(e) {
@@ -498,7 +509,14 @@ function socketOnError(e) {
     this.parser.finish();
     freeParser(this.parser, undefined, this);
   }
-  this.destroy(e);
+
+  // Emit clientError on the server, allowing user to send error responses
+  const server = this.server;
+  if (server && server.listenerCount("clientError") > 0) {
+    server.emit("clientError", e, this);
+  } else {
+    this.destroy(e);
+  }
 }
 
 function updateOutgoingData(socket, state, delta) {
