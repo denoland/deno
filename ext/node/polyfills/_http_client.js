@@ -75,12 +75,7 @@ import {
 import { getTimerDuration } from "ext:deno_node/internal/timers.mjs";
 import { addAbortSignal, finished } from "node:stream";
 import { nextTick } from "ext:deno_node/_next_tick.ts";
-import {
-  defaultTriggerAsyncIdScope,
-  symbols,
-} from "ext:deno_node/internal/async_hooks.ts";
-// deno-lint-ignore camelcase
-const { async_id_symbol } = symbols;
+import { defaultTriggerAsyncIdScope } from "ext:deno_node/internal/async_hooks.ts";
 import { kNeedDrain } from "ext:deno_node/internal/http.ts";
 import { channel } from "node:diagnostics_channel";
 

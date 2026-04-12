@@ -15,7 +15,6 @@ import {
   kOutHeaders,
   utcDate,
 } from "ext:deno_node/internal/http.ts";
-import { notImplemented } from "ext:deno_node/_utils.ts";
 import { Buffer } from "node:buffer";
 import {
   _checkInvalidHeaderChar as checkInvalidHeaderChar,
@@ -58,7 +57,7 @@ const kSocket = Symbol("kSocket");
 const kChunkedBuffer = Symbol("kChunkedBuffer");
 const kChunkedLength = Symbol("kChunkedLength");
 const kBytesWritten = Symbol("kBytesWritten");
-const kRejectNonStandardBodyWrites = Symbol("kRejectNonStandardBodyWrites");
+const _kRejectNonStandardBodyWrites = Symbol("kRejectNonStandardBodyWrites");
 
 const nop = () => {};
 
@@ -1055,7 +1054,7 @@ Object.defineProperty(OutgoingMessage.prototype, "headersSent", {
 // deno-lint-ignore camelcase
 const crlf_buf = Buffer.from("\r\n");
 
-function checkStrictContentLength(msg: any) {
+function _checkStrictContentLength(msg: any) {
   return (
     msg.strictContentLength &&
     msg._contentLength != null &&

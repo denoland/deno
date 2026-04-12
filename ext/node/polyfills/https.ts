@@ -2,7 +2,7 @@
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 
 // TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials
+// deno-lint-ignore-file prefer-primordials no-explicit-any
 
 import tls from "node:tls";
 import { urlToHttpOptions } from "ext:deno_node/internal/url.ts";
@@ -100,7 +100,6 @@ export function createServer(
 }
 
 /** Makes a GET request to an https server. */
-// deno-lint-ignore no-explicit-any
 export function get(...args: any[]) {
   const req = request(args[0], args[1], args[2]);
   req.end();
@@ -257,7 +256,6 @@ export class Agent extends HttpAgent {
       }
     }
 
-    // deno-lint-ignore no-explicit-any
     const socket = tls.connect(options as any);
 
     // Cache session on new session event
@@ -286,9 +284,7 @@ export const globalAgent = new Agent({
 });
 
 /** Makes a request to an https server. */
-// deno-lint-ignore no-explicit-any
 export function request(...args: any[]) {
-  // deno-lint-ignore no-explicit-any
   let options: any = {};
 
   if (typeof args[0] === "string") {

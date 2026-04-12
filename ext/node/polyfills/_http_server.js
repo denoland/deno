@@ -139,7 +139,7 @@ function getOtelMetrics() {
 const kLenientAll = HTTPParser.kLenientAll | 0;
 const kLenientNone = HTTPParser.kLenientNone | 0;
 const kOnExecute = HTTPParser.kOnExecute | 0;
-const kOnTimeout = HTTPParser.kOnTimeout | 0;
+const _kOnTimeout = HTTPParser.kOnTimeout | 0;
 
 // JS-based ConnectionsList matching Node's native ConnectionsList.
 // Tracks active connections and their request start times for
