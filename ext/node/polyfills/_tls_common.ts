@@ -152,7 +152,46 @@ export function createSecureContext(options: any = {}) {
   return new SecureContext(options);
 }
 
+export function translatePeerCertificate(c: any) {
+  if (!c) {
+    return null;
+  }
+
+  if (c.issuerCertificate != null) {
+    if (c.issuerCertificate === c) {
+      // Self-signed root CA: issuer is itself. Intentional self-assignment
+      // to preserve the circular reference (matches Node.js behavior).
+      c.issuerCertificate = c;
+    } else {
+      c.issuerCertificate = translatePeerCertificate(c.issuerCertificate);
+    }
+  }
+
+  if (typeof c.infoAccess === "string") {
+    const info = c.infoAccess;
+    c.infoAccess = { __proto__: null };
+
+    info.replace(
+      /([^\n:]*):([^\n]*)(?:\n|$)/g,
+      (_all: string, key: string, value: string) => {
+        const normalized = value.charCodeAt(0) === 0x22
+          ? JSON.parse(value)
+          : value;
+        if (key in c.infoAccess) {
+          c.infoAccess[key].push(normalized);
+        } else {
+          c.infoAccess[key] = [normalized];
+        }
+        return "";
+      },
+    );
+  }
+
+  return c;
+}
+
 export default {
   SecureContext,
   createSecureContext,
+  translatePeerCertificate,
 };
