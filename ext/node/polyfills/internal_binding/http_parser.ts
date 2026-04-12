@@ -200,6 +200,13 @@ HTTPParser.prototype.execute = function (
   // Restore original callback
   this[kOnBody] = origOnBody;
 
+  // Re-throw any JS exception that was captured during parsing.
+  // The #[op2(reentrant)] framework swallows pending v8 exceptions,
+  // so we capture them in a TryCatch in the Rust callbacks.
+  // getLastException() re-throws via scope.throw_exception() which
+  // the op2 framework catches and converts to a JS throw.
+  this._native.getLastException();
+
   return result;
 };
 

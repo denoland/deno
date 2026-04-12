@@ -526,8 +526,9 @@ Deno.test("[node/http] send request with non-chunked body", async () => {
     return new Response("ok");
   };
   const abortController = new AbortController();
-  const { promise: portPromise, resolve: portResolve } =
-    Promise.withResolvers<number>();
+  const { promise: portPromise, resolve: portResolve } = Promise.withResolvers<
+    number
+  >();
   const servePromise = Deno.serve({
     hostname,
     port: 0,
@@ -578,59 +579,74 @@ Deno.test("[node/http] send request with non-chunked body", async () => {
   }
 });
 
-Deno.test("[node/http] send request with chunked body", async () => {
-  let requestHeaders: Headers;
-  let requestBody = "";
+Deno.test(
+  "[node/http] send request with chunked body",
+  { only: true },
+  async () => {
+    let requestHeaders: Headers;
+    let requestBody = "";
 
-  const hostname = "localhost";
+    const hostname = "localhost";
 
-  const handler = async (req: Request) => {
-    requestHeaders = req.headers;
-    requestBody = await req.text();
-    return new Response("ok");
-  };
-  const abortController = new AbortController();
-  const { promise: portPromise, resolve: portResolve } =
-    Promise.withResolvers<number>();
-  const servePromise = Deno.serve({
-    hostname,
-    port: 0,
-    signal: abortController.signal,
-    onListen: ({ port }) => portResolve(port),
-  }, handler).finished;
+    const handler = async (req: Request) => {
+      requestHeaders = req.headers;
+      requestBody = await req.text();
+      return new Response("ok");
+    };
+    const abortController = new AbortController();
+    const { promise: portPromise, resolve: portResolve } = Promise
+      .withResolvers<
+        number
+      >();
+    console.log("Starting server...");
+    const servePromise = Deno.serve({
+      hostname,
+      port: 0,
+      signal: abortController.signal,
+      onListen: ({ port }) => portResolve(port),
+    }, handler).finished;
 
-  const port = await portPromise;
-  const opts: RequestOptions = {
-    host: hostname,
-    port,
-    method: "POST",
-    headers: {
-      "Content-Type": "text/plain; charset=utf-8",
-      "Content-Length": "11",
-      "Transfer-Encoding": "chunked",
-    },
-  };
-  const req = http.request(opts, (res) => {
-    res.on("data", () => {});
-    res.on("end", () => {
-      abortController.abort();
+    const port = await portPromise;
+    console.log(`Server is listening on port ${port}...`);
+    const opts: RequestOptions = {
+      host: hostname,
+      port,
+      method: "POST",
+      headers: {
+        "Content-Type": "text/plain; charset=utf-8",
+        "Content-Length": "11",
+        "Transfer-Encoding": "chunked",
+      },
+    };
+    console.log("Sending request...");
+    const req = http.request(opts, (res) => {
+      console.log("Received response...");
+      res.on("data", () => {
+        console.log("receiving response data...");
+      });
+      res.on("end", () => {
+        console.log("ending response...");
+        abortController.abort();
+      });
+      assertEquals(res.statusCode, 200);
+      assertEquals(requestHeaders.has("content-length"), false);
+      assertEquals(requestHeaders.get("transfer-encoding"), "chunked");
+      assertEquals(requestBody, "hello world");
     });
-    assertEquals(res.statusCode, 200);
-    assertEquals(requestHeaders.has("content-length"), false);
-    assertEquals(requestHeaders.get("transfer-encoding"), "chunked");
-    assertEquals(requestBody, "hello world");
-  });
-  req.write("hello ");
-  req.write("world");
-  req.end();
+    console.log("Request is writable:", req.writable);
+    req.write("hello ");
+    req.write("world");
+    req.end();
+    console.log("Request ended.");
 
-  await servePromise;
-
-  if (Deno.build.os === "windows") {
-    // FIXME(kt3k): This is necessary for preventing op leak on windows
-    await new Promise((resolve) => setTimeout(resolve, 4000));
-  }
-});
+    await servePromise;
+    console.log("Server finished.");
+    if (Deno.build.os === "windows") {
+      // FIXME(kt3k): This is necessary for preventing op leak on windows
+      await new Promise((resolve) => setTimeout(resolve, 4000));
+    }
+  },
+);
 
 Deno.test("[node/http] send request with chunked body as default", async () => {
   let requestHeaders: Headers;
@@ -644,8 +660,9 @@ Deno.test("[node/http] send request with chunked body as default", async () => {
     return new Response("ok");
   };
   const abortController = new AbortController();
-  const { promise: portPromise, resolve: portResolve } =
-    Promise.withResolvers<number>();
+  const { promise: portPromise, resolve: portResolve } = Promise.withResolvers<
+    number
+  >();
   const servePromise = Deno.serve({
     hostname,
     port: 0,

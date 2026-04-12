@@ -74,6 +74,9 @@ struct Inner {
   header_nread: u32,
   initialized: bool,
 
+  /// Captured JS exception from a callback, to be retrieved and re-thrown by JS.
+  last_exception: Option<v8::Global<v8::Value>>,
+
   /// The stream being consumed (for parser.consume optimization).
   /// When set, the parser reads directly from the stream handle
   /// via a ReadInterceptor, bypassing the JS readable stream.
@@ -128,6 +131,7 @@ impl HTTPParser {
         max_header_size: 0,
         header_nread: 0,
         initialized: false,
+        last_exception: None,
         consumed_stream: None,
         consume_callbacks: None,
         consume_isolate: v8::UnsafeRawIsolatePtr::null(),
@@ -284,10 +288,18 @@ unsafe extern "C" fn on_message_begin(parser: *mut sys::llhttp_t) -> c_int {
   let cb = cb_obj.get_index(scope, K_ON_MESSAGE_BEGIN);
   if let Some(cb) = cb
     && let Ok(func) = v8::Local::<v8::Function>::try_from(cb)
-    && func.call(scope, cb_obj.into(), &[]).is_none()
   {
-    inner.got_exception = true;
-    return -1;
+    v8::tc_scope!(tc, scope);
+    if func.call(tc, cb_obj.into(), &[]).is_none() {
+      if tc.has_caught() {
+        if let Some(exc) = tc.exception() {
+          inner.last_exception = Some(v8::Global::new(tc, exc));
+        }
+        tc.reset();
+      }
+      inner.got_exception = true;
+      return -1;
+    }
   }
   0
 }
@@ -387,7 +399,8 @@ unsafe extern "C" fn on_header_value_complete(
 
 unsafe extern "C" fn on_headers_complete(parser: *mut sys::llhttp_t) -> c_int {
   let ctx = unsafe { get_ctx(parser) };
-  let inner = unsafe { &mut *ctx.inner };
+  let inner_ptr = ctx.inner;
+  let inner = unsafe { &mut *inner_ptr };
   let (scope, cb_obj) = unsafe { ctx.scope_and_callbacks() };
 
   let Some(cb) = cb_obj.get_index(scope, K_ON_HEADERS_COMPLETE) else {
@@ -463,7 +476,9 @@ unsafe extern "C" fn on_headers_complete(parser: *mut sys::llhttp_t) -> c_int {
     should_keep_alive.into(),
   ];
 
-  let result = func.call(scope, cb_obj.into(), &args);
+  v8::tc_scope!(tc, scope);
+  let result = func.call(tc, cb_obj.into(), &args);
+  let inner = unsafe { &mut *inner_ptr };
   inner.header_fields.clear();
   inner.header_values.clear();
   inner.url.clear();
@@ -471,10 +486,16 @@ unsafe extern "C" fn on_headers_complete(parser: *mut sys::llhttp_t) -> c_int {
 
   match result {
     None => {
+      if tc.has_caught() {
+        if let Some(exc) = tc.exception() {
+          inner.last_exception = Some(v8::Global::new(tc, exc));
+        }
+        tc.reset();
+      }
       inner.got_exception = true;
       -1
     }
-    Some(val) => val.int32_value(scope).unwrap_or(0),
+    Some(val) => val.int32_value(tc).unwrap_or(0),
   }
 }
 
@@ -484,6 +505,7 @@ unsafe extern "C" fn on_body(
   length: usize,
 ) -> c_int {
   let ctx = unsafe { get_ctx(parser) };
+  let inner_ptr = ctx.inner;
   let (scope, cb_obj) = unsafe { ctx.scope_and_callbacks() };
 
   let Some(cb) = cb_obj.get_index(scope, K_ON_BODY) else {
@@ -501,9 +523,16 @@ unsafe extern "C" fn on_body(
   let ab = v8::ArrayBuffer::with_backing_store(scope, &store);
   let buffer = v8::Uint8Array::new(scope, ab, 0, length).unwrap();
 
-  let result = func.call(scope, cb_obj.into(), &[buffer.into()]);
+  v8::tc_scope!(tc, scope);
+  let result = func.call(tc, cb_obj.into(), &[buffer.into()]);
   if result.is_none() {
-    let inner = unsafe { &mut *ctx.inner };
+    let inner = unsafe { &mut *inner_ptr };
+    if tc.has_caught() {
+      if let Some(exc) = tc.exception() {
+        inner.last_exception = Some(v8::Global::new(tc, exc));
+      }
+      tc.reset();
+    }
     inner.got_exception = true;
     unsafe {
       sys::llhttp_set_error_reason(
@@ -547,10 +576,18 @@ unsafe extern "C" fn on_message_complete(parser: *mut sys::llhttp_t) -> c_int {
 
   if let Some(cb) = cb_obj.get_index(scope, K_ON_MESSAGE_COMPLETE)
     && let Ok(func) = v8::Local::<v8::Function>::try_from(cb)
-    && func.call(scope, cb_obj.into(), &[]).is_none()
   {
-    inner.got_exception = true;
-    return -1;
+    v8::tc_scope!(tc, scope);
+    if func.call(tc, cb_obj.into(), &[]).is_none() {
+      if tc.has_caught() {
+        if let Some(exc) = tc.exception() {
+          inner.last_exception = Some(v8::Global::new(tc, exc));
+        }
+        tc.reset();
+      }
+      inner.got_exception = true;
+      return -1;
+    }
   }
   0
 }
@@ -828,6 +865,19 @@ impl HTTPParser {
       )
     };
     data.to_vec().into_boxed_slice()
+  }
+
+  /// Retrieve and clear the last captured JS exception from a parser callback.
+  /// Returns true if an exception was captured and re-thrown.
+  #[nofast]
+  fn get_last_exception(&self, scope: &mut v8::PinScope) -> bool {
+    let inner = self.inner();
+    if let Some(exc) = inner.last_exception.take() {
+      let exc = v8::Local::new(scope, exc);
+      scope.throw_exception(exc);
+      return true;
+    }
+    false
   }
 
   /// Consume a stream handle: register a ReadInterceptor so data
