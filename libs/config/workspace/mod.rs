@@ -3804,6 +3804,8 @@ pub mod test {
           exclude: Default::default(),
         },
         permissions: None,
+        sanitize_ops: None,
+        sanitize_resources: None,
       }
     );
 
@@ -3827,6 +3829,8 @@ pub mod test {
           )])),
         },
         permissions: None,
+        sanitize_ops: None,
+        sanitize_resources: None,
       }
     );
   }
@@ -3949,6 +3953,8 @@ pub mod test {
         TestConfig {
           files: expected_files.clone(),
           permissions: None,
+          sanitize_ops: None,
+          sanitize_resources: None,
         }
       );
       assert_eq!(

@@ -250,16 +250,14 @@ impl WorkspaceTestOptions {
 #[derive(Debug, Clone)]
 pub struct TestOptions {
   pub files: FilePatterns,
-  pub sanitize_ops: Option<bool>,
-  pub sanitize_resources: Option<bool>,
 }
 
 impl TestOptions {
   pub fn resolve(test_config: TestConfig, _test_flags: &TestFlags) -> Self {
+    // Sanitizer options from the config are consumed in
+    // WorkspaceTestOptions::resolve via CliOptions::resolve_workspace_test_options
     Self {
       files: test_config.files,
-      sanitize_ops: test_config.sanitize_ops,
-      sanitize_resources: test_config.sanitize_resources,
     }
   }
 }
