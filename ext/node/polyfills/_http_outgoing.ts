@@ -234,7 +234,7 @@ Object.defineProperties(
       }
 
       name = name.toString();
-      headers[name.toLowerCase()] = [name, String(value)];
+      headers[name.toLowerCase()] = [name, value];
       return this;
     },
 

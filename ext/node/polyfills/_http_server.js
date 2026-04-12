@@ -24,7 +24,7 @@
 
 // deno-lint-ignore-file prefer-primordials
 
-import { primordials } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 const {
   ArrayIsArray,
   Error,
@@ -73,7 +73,6 @@ import {
   validateObject,
 } from "ext:deno_node/internal/validators.mjs";
 import { nextTick } from "ext:deno_node/_next_tick.ts";
-import { clearInterval, setInterval } from "node:timers";
 import {
   builtinTracer,
   ContextManager,
@@ -960,12 +959,21 @@ function setupConnectionsTracking() {
   this[kConnectionsKey] ||= new ConnectionsList();
 
   if (this[kConnectionsCheckingInterval]) {
-    clearInterval(this[kConnectionsCheckingInterval]);
+    core.cancelTimer(this[kConnectionsCheckingInterval]);
   }
-  this[kConnectionsCheckingInterval] = setInterval(
+
+  // Use core.createTimer as a system timer to avoid participating in
+  // Deno's test sanitizer checks.
+  const interval = this.connectionsCheckingInterval || 30_000;
+  // args: callback, after, args, isRepeat, isRefed, isSystem
+  this[kConnectionsCheckingInterval] = core.createTimer(
     checkConnections.bind(this),
-    this.connectionsCheckingInterval || 30_000,
-  ).unref();
+    interval,
+    undefined, // args
+    true, // isRepeat
+    false, // isRefed (unref'd)
+    true, // isSystem
+  );
 }
 
 function checkConnections() {
@@ -988,7 +996,10 @@ function checkConnections() {
 
 function httpServerPreClose(server) {
   server.closeIdleConnections();
-  clearInterval(server[kConnectionsCheckingInterval]);
+  if (server[kConnectionsCheckingInterval]) {
+    core.cancelTimer(server[kConnectionsCheckingInterval]);
+    server[kConnectionsCheckingInterval] = null;
+  }
 }
 
 function storeHTTPOptions(options) {
