@@ -33,8 +33,8 @@ use deno_core::uv_compat::uv_stream_t;
 use deno_core::v8;
 
 use super::sys;
-use crate::ops::stream_wrap::clone_context_from_uv_loop;
 use crate::ops::stream_wrap::LibUvStreamWrap;
+use crate::ops::stream_wrap::clone_context_from_uv_loop;
 use crate::ops::stream_wrap_state::ReadInterceptor;
 
 // JS callback indices — must match the constants in http_parser.ts
@@ -578,11 +578,9 @@ unsafe fn consume_read_callback(
   let callbacks_global = callbacks_global.clone();
 
   // Get isolate and create scope
-  let mut isolate =
-    unsafe { v8::Isolate::from_raw_isolate_ptr(isolate_ptr) };
+  let mut isolate = unsafe { v8::Isolate::from_raw_isolate_ptr(isolate_ptr) };
   let loop_ptr = unsafe { (*stream).loop_ };
-  let context =
-    unsafe { clone_context_from_uv_loop(&mut isolate, loop_ptr) };
+  let context = unsafe { clone_context_from_uv_loop(&mut isolate, loop_ptr) };
   v8::scope!(let handle_scope, &mut isolate);
   let context = v8::Local::new(handle_scope, context);
   let scope = &mut v8::ContextScope::new(handle_scope, context);
@@ -621,8 +619,7 @@ unsafe fn consume_read_callback(
     callbacks: callbacks_static,
   };
 
-  inner.parser.data =
-    &mut ctx as *mut ExecuteContext as *mut std::ffi::c_void;
+  inner.parser.data = &mut ctx as *mut ExecuteContext as *mut std::ffi::c_void;
 
   let err = unsafe {
     sys::llhttp_execute(
@@ -640,9 +637,8 @@ unsafe fn consume_read_callback(
   if err != sys::HPE_OK {
     let error_pos = unsafe { sys::llhttp_get_error_pos(&inner.parser) };
     if !error_pos.is_null() {
-      nread_result = unsafe {
-        error_pos.offset_from(data.as_ptr() as *const c_char) as i32
-      };
+      nread_result =
+        unsafe { error_pos.offset_from(data.as_ptr() as *const c_char) as i32 };
     }
     if err == sys::HPE_PAUSED_UPGRADE {
       unsafe {
@@ -850,9 +846,9 @@ impl HTTPParser {
 
     // Try to get the LibUvStreamWrap from the handle
     let handle_value: v8::Local<v8::Value> = handle.into();
-    let Some(stream_wrap) =
-      deno_core::cppgc::try_unwrap_cppgc_object::<LibUvStreamWrap>(scope, handle_value)
-    else {
+    let Some(stream_wrap) = deno_core::cppgc::try_unwrap_cppgc_object::<
+      LibUvStreamWrap,
+    >(scope, handle_value) else {
       return;
     };
 
@@ -862,8 +858,7 @@ impl HTTPParser {
     }
 
     // Store the callbacks and isolate for use in the interceptor
-    inner.consume_callbacks =
-      Some(v8::Global::new(scope, callbacks));
+    inner.consume_callbacks = Some(v8::Global::new(scope, callbacks));
     inner.consume_isolate = unsafe { scope.as_raw_isolate_ptr() };
     inner.consumed_stream = Some(stream);
 
@@ -872,10 +867,7 @@ impl HTTPParser {
       ptr: inner as *mut Inner as *mut c_void,
       callback: consume_read_callback,
     };
-    LibUvStreamWrap::set_read_interceptor_for_stream(
-      stream,
-      Some(interceptor),
-    );
+    LibUvStreamWrap::set_read_interceptor_for_stream(stream, Some(interceptor));
   }
 
   /// Unconsume: remove the ReadInterceptor so data goes back
