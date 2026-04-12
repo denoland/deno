@@ -90,6 +90,12 @@ Server.prototype.close = function close(this: any) {
   return this;
 };
 
+Server.prototype[Symbol.asyncDispose] = async function (this: any) {
+  await new Promise<void>((resolve, reject) => {
+    this.close((err: any) => (err ? reject(err) : resolve()));
+  });
+};
+
 export function createServer(
   opts: any,
   requestListener?: ServerHandler,
