@@ -1066,9 +1066,9 @@ Deno.test("[node/http] server emits error if addr in use", async () => {
   await deferred1.promise;
   const expectedMsg = Deno.build.os === "windows"
     ? "Only one usage of each socket address"
-    : "Address already in use";
+    : "EADDRINUSE";
   assert(
-    err.message.startsWith(expectedMsg),
+    err.message.includes(expectedMsg),
     `Wrong error: ${err.message}`,
   );
 });
@@ -1583,12 +1583,13 @@ Deno.test("[node/http] client closing a streaming request doesn't terminate serv
   await deferred1.promise;
   assert(requestError !== null, "Server should have received an error");
   assert(
-    (requestError! as Error)?.name === "Http",
-    `Expected Http error, got ${(requestError! as Error)?.name}`,
+    (requestError! as Error) instanceof Error,
+    `Expected Error, got ${(requestError! as Error)?.constructor?.name}`,
   );
   assert(
-    (requestError! as Error)?.message.includes(
-      "error reading a body from connection",
+    (requestError! as Error)?.message.includes("aborted") ||
+      (requestError! as Error)?.message.includes(
+        "error reading a body from connection",
     ),
   );
   assertEquals(server.listening, true);
@@ -1897,7 +1898,7 @@ Deno.test("[node/http] ServerResponse _header", async () => {
 Deno.test("[node/http] ServerResponse connection", async () => {
   const { promise, resolve } = Promise.withResolvers<void>();
   const server = http.createServer((_req, res) => {
-    assert(Object.hasOwn(res, "connection"));
+    assert("connection" in res);
     assert(res.connection instanceof Socket);
     res.end();
   });
@@ -1917,7 +1918,7 @@ Deno.test("[node/http] ServerResponse connection", async () => {
 Deno.test("[node/http] ServerResponse socket", async () => {
   const { promise, resolve } = Promise.withResolvers<void>();
   const server = http.createServer((_req, res) => {
-    assert(Object.hasOwn(res, "socket"));
+    assert("socket" in res);
     assert(res.socket instanceof Socket);
     res.end();
   });

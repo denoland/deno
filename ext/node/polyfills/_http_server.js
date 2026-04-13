@@ -898,8 +898,21 @@ function resOnFinish(req, res, socket, state, server) {
           ? server.keepAliveTimeout
           : 0;
 
-      if (keepAliveTimeout && typeof socket.setTimeout === "function") {
-        socket.setTimeout(keepAliveTimeout + 1000);
+      if (keepAliveTimeout) {
+        // Use core.createTimer as a system timer to avoid participating
+        // in Deno's test sanitizer checks.
+        const timerId = core.createTimer(
+          () => {
+            // Socket timed out waiting for another request
+            socket.destroy();
+          },
+          keepAliveTimeout + 1000,
+          undefined, // args
+          false, // isRepeat
+          false, // isRefed
+          true, // isSystem
+        );
+        socket.once("close", () => core.cancelTimer(timerId));
         state.keepAliveTimeoutSet = true;
       }
     }
