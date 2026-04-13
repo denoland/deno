@@ -231,15 +231,12 @@ impl<
             .resolve(
               &reexport,
               &referrer,
-              // Use "import" conditions to prefer the ESM build of dual-build
-              // packages during static export analysis. This ensures that
-              // packages like preact (which define explicit `export { Fragment }`
-              // in their ESM build but use getter-based exports in CJS) have
-              // all their named exports properly detected.
+              // FIXME(bartlomieju): check if these conditions are okay, probably
+              // should be `deno-require`, because `deno` is already used in `esm_resolver.rs`
               &[
                 Cow::Borrowed("deno"),
                 Cow::Borrowed("node"),
-                Cow::Borrowed("import"),
+                Cow::Borrowed("require"),
                 Cow::Borrowed("default"),
               ],
               NodeResolutionKind::Execution,
@@ -394,7 +391,7 @@ impl<
               &package_subpath,
               exports,
               Some(&referrer),
-              ResolutionMode::Import,
+              ResolutionMode::Require,
               conditions,
               resolution_kind,
             )
