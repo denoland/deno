@@ -231,12 +231,15 @@ impl<
             .resolve(
               &reexport,
               &referrer,
-              // FIXME(bartlomieju): check if these conditions are okay, probably
-              // should be `deno-require`, because `deno` is already used in `esm_resolver.rs`
+              // Use "import" conditions to prefer the ESM build of dual-build
+              // packages during static export analysis. This ensures that
+              // packages like preact (which define explicit `export { Fragment }`
+              // in their ESM build but use getter-based exports in CJS) have
+              // all their named exports properly detected.
               &[
                 Cow::Borrowed("deno"),
                 Cow::Borrowed("node"),
-                Cow::Borrowed("require"),
+                Cow::Borrowed("import"),
                 Cow::Borrowed("default"),
               ],
               NodeResolutionKind::Execution,
@@ -391,7 +394,7 @@ impl<
               &package_subpath,
               exports,
               Some(&referrer),
-              ResolutionMode::Require,
+              ResolutionMode::Import,
               conditions,
               resolution_kind,
             )
@@ -425,7 +428,9 @@ impl<
       } else if let Some(main) =
         self.node_resolver.legacy_fallback_resolve(&package_json)
       {
-        return Ok(Some(UrlOrPath::Path(module_dir.join(main).clean())));
+        return self
+          .file_extension_probe(module_dir.join(main), referrer_path)
+          .map(|p| Some(UrlOrPath::Path(p)));
       } else {
         return Ok(Some(UrlOrPath::Path(module_dir.join("index.js").clean())));
       }
