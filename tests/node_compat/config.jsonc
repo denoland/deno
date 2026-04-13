@@ -1114,8 +1114,7 @@
     "parallel/test-http-client-abort-keep-alive-destroy-res.js": {},
     "parallel/test-http-client-abort-no-agent.js": {},
     "parallel/test-http-client-abort-response-event.js": {},
-    // TODO(bartlomieju): NativePipe doesn't register a Deno resource for HTTP
-    "parallel/test-http-client-abort-unix-socket.js": { "windows": false },
+    "parallel/test-http-client-abort-unix-socket.js": {},
     "parallel/test-http-client-abort2.js": {},
     "parallel/test-http-client-abort3.js": {},
     "parallel/test-http-client-agent-abort-close-event.js": {},
