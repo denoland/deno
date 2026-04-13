@@ -2459,36 +2459,40 @@ Deno.test("[node/http] upgrade request can be rejected with non-101 status", asy
 });
 
 // Regression test for https://github.com/denoland/deno/issues/32857
-// h2c upgrade requests should not fire the "upgrade" event and should
-// be handled as normal HTTP/1.1 requests.
+// h2c upgrade requests with an upgrade listener should trigger the
+// upgrade event (matching Node.js behavior) and not hang.
 Deno.test(
   "[node/http] h2c upgrade does not hang when upgrade listener exists",
   { permissions: { net: true } },
   async () => {
     const { promise, resolve } = Promise.withResolvers<void>();
+    let upgradeHandlerCalled = false;
     const server = http.createServer((_req, res) => {
       res.writeHead(200, { "Content-Type": "text/plain" });
       res.end("ok");
     });
     server.on("upgrade", (_req, socket) => {
-      // This listener exists (e.g. for WebSocket) but should NOT be
-      // triggered for h2c upgrades.
+      // Node.js fires the upgrade event for h2c requests when a
+      // listener exists (via shouldUpgradeCallback).
+      upgradeHandlerCalled = true;
       socket.end();
     });
 
-    server.listen(0, "127.0.0.1", async () => {
+    server.listen(0, "127.0.0.1", () => {
       const addr = server.address() as { port: number };
-      // Send a request with Upgrade: h2c header, simulating what browsers do
-      const res = await fetch(`http://127.0.0.1:${addr.port}/`, {
-        headers: {
-          "Connection": "Upgrade, HTTP2-Settings",
-          "Upgrade": "h2c",
+      // Use raw socket to send h2c upgrade request
+      const client = net.createConnection(
+        { host: "127.0.0.1", port: addr.port },
+        () => {
+          client.write(
+            "GET / HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: Upgrade, HTTP2-Settings\r\nUpgrade: h2c\r\n\r\n",
+          );
         },
+      );
+      client.on("close", () => {
+        assert(upgradeHandlerCalled, "upgrade handler should have been called");
+        server.close(() => resolve());
       });
-      assertEquals(res.status, 200);
-      assertEquals(await res.text(), "ok");
-
-      server.close(() => resolve());
     });
 
     await promise;
