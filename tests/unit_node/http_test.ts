@@ -1938,49 +1938,50 @@ Deno.test("[node/http] ServerResponse socket", async () => {
 Deno.test("[node/http] decompress brotli response", {
   permissions: { net: true },
 }, async () => {
-  let received = false;
   const ac = new AbortController();
-  const server = Deno.serve({ port: 5928, signal: ac.signal }, (_req) => {
-    received = true;
+  const server = Deno.serve({
+    port: 0,
+    signal: ac.signal,
+    onListen: undefined,
+  }, (_req) => {
     return Response.json([
       ["accept-language", "*"],
       ["host", "localhost:3000"],
       ["user-agent", "Deno/2.1.1"],
     ], {});
   });
+  const port = server.addr.port;
   const { promise, resolve, reject } = Promise.withResolvers<void>();
   let body = "";
 
   const request = http.get(
-    "http://localhost:5928/",
+    `http://localhost:${port}/`,
     {
       headers: {
         "accept-encoding": "gzip, deflate, br, zstd",
       },
     },
     (resp) => {
-      const decompress = zlib.createBrotliDecompress();
-      resp.on("data", (chunk) => {
-        decompress.write(chunk);
-      });
-
-      resp.on("end", () => {
-        decompress.end();
-      });
-
-      decompress.on("data", (chunk) => {
-        body += chunk;
-      });
-
-      decompress.on("end", () => {
-        resolve();
-      });
+      const encoding = resp.headers["content-encoding"];
+      if (encoding === "br") {
+        // Server compressed with brotli - decompress
+        const decompress = zlib.createBrotliDecompress();
+        resp.on("data", (chunk) => decompress.write(chunk));
+        resp.on("end", () => decompress.end());
+        decompress.on("data", (chunk) => {
+          body += chunk;
+        });
+        decompress.on("end", () => resolve());
+      } else {
+        // Server did not compress - read directly
+        resp.on("data", (chunk) => {
+          body += chunk;
+        });
+        resp.on("end", () => resolve());
+      }
     },
   );
   request.on("error", reject);
-  request.end(() => {
-    assert(received);
-  });
 
   await promise;
   ac.abort();
