@@ -1368,8 +1368,11 @@ Deno.test("[node/http] ServerResponse assignSocket and detachSocket", () => {
   res.assignSocket(socket);
 
   res.write("Hello World!", "utf8");
-  assertEquals(writtenData, Buffer.from("Hello World!"));
-  assertEquals(writtenEncoding, "buffer");
+  // The first write includes HTTP headers concatenated with the body.
+  // Both Node.js and Deno concatenate header + data as a string.
+  assert(typeof writtenData === "string");
+  assert((writtenData as string).includes("Hello World!"));
+  assertEquals(writtenEncoding, "utf8");
 
   writtenData = undefined;
   writtenEncoding = undefined;

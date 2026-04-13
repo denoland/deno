@@ -887,14 +887,21 @@ function resOnFinish(req, res, socket, state, server) {
       socket.end();
     }
   } else if (state.outgoing.length === 0) {
-    const keepAliveTimeout =
-      NumberIsFinite(server.keepAliveTimeout) && server.keepAliveTimeout >= 0
-        ? server.keepAliveTimeout
-        : 0;
+    // If the server is closing, destroy the socket instead of
+    // setting a keep-alive timeout (prevents timer leaks).
+    if (!server.listening) {
+      socket.destroy();
+    } else {
+      const keepAliveTimeout =
+        NumberIsFinite(server.keepAliveTimeout) &&
+          server.keepAliveTimeout >= 0
+          ? server.keepAliveTimeout
+          : 0;
 
-    if (keepAliveTimeout && typeof socket.setTimeout === "function") {
-      socket.setTimeout(keepAliveTimeout + 1000);
-      state.keepAliveTimeoutSet = true;
+      if (keepAliveTimeout && typeof socket.setTimeout === "function") {
+        socket.setTimeout(keepAliveTimeout + 1000);
+        state.keepAliveTimeoutSet = true;
+      }
     }
   } else {
     const m = state.outgoing.shift();
