@@ -472,6 +472,7 @@ TLSSocket.prototype._init = function (socket, wrap) {
       undefined,
       false,
       false,
+      true, // isSystem: avoid test sanitizer detection
     );
   }
 

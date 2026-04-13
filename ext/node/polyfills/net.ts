@@ -2714,6 +2714,7 @@ Server.prototype._emitCloseIfDrained = function () {
     undefined,
     false,
     true,
+    true, // isSystem: avoid test sanitizer detection
   );
 };
 
