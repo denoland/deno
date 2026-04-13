@@ -623,13 +623,20 @@ unsafe fn consume_read_callback(
   let scope = &mut v8::ContextScope::new(handle_scope, context);
 
   if nread <= 0 {
-    // EOF or error - invoke kOnExecute callback with the nread value
+    // EOF or error - invoke kOnExecute callback with the nread value.
+    // Use TryCatch to absorb exceptions from socket lifecycle errors
+    // (hang up, reset, etc.) which are expected during connection close.
     let cb_obj = v8::Local::new(scope, &callbacks_global);
     if let Some(cb) = cb_obj.get_index(scope, K_ON_EXECUTE)
       && let Ok(func) = v8::Local::<v8::Function>::try_from(cb)
     {
-      let nread_val = v8::Integer::new(scope, nread as i32);
-      let _ = func.call(scope, cb_obj.into(), &[nread_val.into()]);
+      v8::tc_scope!(tc, scope);
+      let nread_val = v8::Integer::new(tc, nread as i32);
+      let _ = func.call(tc, cb_obj.into(), &[nread_val.into()]);
+      // Absorb any exception - EOF errors are normal lifecycle events
+      if tc.has_caught() {
+        tc.reset();
+      }
     }
     return;
   }

@@ -578,20 +578,10 @@ unsafe extern "C" fn on_uv_read(
       let onread = v8::Local::new(scope, &onread_global);
       let recv = v8::Local::new(scope, &handle_global);
       let undef = v8::undefined(scope);
-      let caught_exception = {
-        v8::tc_scope!(tc, scope);
-        let result = onread.call(tc, recv.into(), &[undef.into()]);
-        if result.is_none() && tc.has_caught() {
-          let exc = tc.exception();
-          tc.reset();
-          exc
-        } else {
-          None
-        }
-      };
-      if let Some(exception) = caught_exception {
-        call_fatal_exception(scope, exception);
-      }
+      // EOF/error path: don't report exceptions as fatal.
+      // Socket errors (hang up, reset, etc.) are expected lifecycle
+      // events that should be handled by the socket's error handler.
+      onread.call(scope, recv.into(), &[undef.into()]);
     }
     return;
   }
