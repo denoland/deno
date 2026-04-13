@@ -590,6 +590,7 @@ async function readFileFromFd(fd: number, options?: FileOptions) {
 
   const buffer = new Uint8Array(length);
   const buffers: Uint8Array[] = [];
+  let totalRead = 0;
 
   while (true) {
     readFileCheckAborted(signal);
@@ -598,6 +599,10 @@ async function readFileFromFd(fd: number, options?: FileOptions) {
     const nread = await op_node_fs_read_deferred(fd, buffer, -1);
     if (nread === 0) {
       break;
+    }
+    totalRead += nread;
+    if (totalRead > kIoMaxLength) {
+      throw new ERR_FS_FILE_TOO_LARGE(totalRead);
     }
     ArrayPrototypePush(buffers, TypedArrayPrototypeSubarray(buffer, 0, nread));
   }
