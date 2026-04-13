@@ -1407,6 +1407,9 @@ pub struct Session {
   /// double-free a stream (with no_closed_streams=1). Instead, we
   /// defer and flush them after send_pending_data completes.
   pub pending_rst_streams: Vec<(i32, u32)>,
+  /// Original stream.data pointer saved before consume_stream overwrites it.
+  /// Restored when the session releases the stream.
+  pub orig_stream_data: *mut std::ffi::c_void,
 }
 
 impl Session {
@@ -1558,7 +1561,9 @@ impl Session {
     }
     let stream = match self.stream {
       Some(stream) => stream,
-      None => return,
+      None => {
+        return;
+      }
     };
 
     // Safety check: ensure the stream handle is still a valid TCP handle
@@ -1675,6 +1680,12 @@ impl Session {
     if self.pending_destroy {
       self.pending_destroy = false;
       if let Some(stream) = self.stream.take() {
+        // Restore original stream.data that was saved in consume_stream
+        // SAFETY: stream is a valid libuv handle
+        unsafe {
+          (*stream).data = self.orig_stream_data;
+        }
+        self.orig_stream_data = std::ptr::null_mut();
         // SAFETY: stream is a valid libuv handle
         unsafe {
           deno_core::uv_compat::uv_read_stop(stream);
@@ -1782,6 +1793,7 @@ impl Http2Session {
       is_sending: false,
       pending_destroy: false,
       pending_rst_streams: Vec::new(),
+      orig_stream_data: std::ptr::null_mut(),
     }));
 
     // SAFETY: inner is valid (just allocated); callbacks and options are valid
@@ -1891,10 +1903,19 @@ impl Http2Session {
   }
 
   #[fast]
-  fn consume_stream(&self, #[cppgc] tcp: &crate::ops::libuv_stream::TCP) {
+  fn consume_stream(
+    &self,
+    #[cppgc] tcp: &crate::ops::tcp_wrap::TCPWrap,
+  ) {
     // SAFETY: self.inner was allocated by Box::into_raw and is valid
     let session = unsafe { &mut *self.inner };
-    let stream = tcp.stream();
+    let stream = tcp.stream_ptr();
+
+    // Save the original stream.data (LibUvStreamWrap's StreamHandleData)
+    // before overwriting it with our session pointer.
+    // SAFETY: stream is a valid libuv stream handle from TCPWrap
+    let orig_data = unsafe { (*stream).data };
+    session.orig_stream_data = orig_data;
 
     // Stop the existing read on the TCP handle
     // SAFETY: stream is a valid libuv stream handle from TCP object
@@ -1937,6 +1958,30 @@ impl Http2Session {
     // SAFETY: self.inner was allocated by Box::into_raw and is valid
     let session = unsafe { &mut *self.inner };
     session.send_pending_data();
+  }
+
+  /// Get all pending outgoing h2 frames as a single buffer.
+  /// Used by the JS write path when consume_stream is not active.
+  #[buffer]
+  fn get_outgoing_data(&self) -> Box<[u8]> {
+    // SAFETY: self.inner was allocated by Box::into_raw and is valid
+    let session = unsafe { &mut *self.inner };
+    let mut output = Vec::new();
+    loop {
+      let mut src = std::ptr::null();
+      let src_len =
+        // SAFETY: session.session is a valid nghttp2 session pointer
+        unsafe { ffi::nghttp2_session_mem_send(session.session, &mut src) };
+      if src_len > 0 {
+        // SAFETY: src and src_len are valid per nghttp2_session_mem_send
+        let data =
+          unsafe { std::slice::from_raw_parts(src, src_len as usize) };
+        output.extend_from_slice(data);
+      } else {
+        break;
+      }
+    }
+    output.into_boxed_slice()
   }
 
   #[fast]

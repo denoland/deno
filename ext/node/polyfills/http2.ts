@@ -2659,18 +2659,46 @@ function setupHandle(socket, type, options) {
   const handle = new InternalHttp2Session(type);
   handle[kOwner] = this;
 
-  // TODO: optimize by making consumeStream accept TCPWrap directly
-  // to avoid the JS-layer data pump.
-  {
-    // Fallback: pump data from socket to session via JS events
-    socket.on("data", (buf) => {
-      if (!this.destroyed) {
+  // Pump data from socket to session via JS events.
+  // After receiving data, flush outgoing h2 frames back to the socket.
+  socket.on("data", (buf) => {
+    if (!this.destroyed) {
+      handle.receive(buf);
+      // After receiving, nghttp2 may have generated response frames
+      // (SETTINGS_ACK, WINDOW_UPDATE, etc.). Flush them to the socket.
+      const pending = handle.getOutgoingData();
+      if (pending && pending.byteLength > 0) {
+        socket.write(pending);
+      }
+    }
+  });
+  socket.resume();
+  debug("i/o stream consumed (socket data events)");
+
+  // Override sendPending to write via JS socket instead of native uv_write.
+  // This is needed because consume_stream is not used - self.stream is None
+  // in the Rust session, so send_pending_data is a no-op.
+  const origSendPending = FunctionPrototypeBind(handle.sendPending, handle);
+  handle.sendPending = () => {
+    const pending = handle.getOutgoingData();
+    if (pending && pending.byteLength > 0) {
+      socket.write(pending);
+    }
+  };
+
+  // Process data on the next tick - a remoteSettings handler may be attached.
+  // Also drain any already-buffered data from the socket.
+  // https://github.com/nodejs/node/issues/35981
+  // https://github.com/nodejs/node/issues/35475
+  process.nextTick(() => {
+    if (socket.readableLength) {
+      let buf;
+      while ((buf = socket.read()) !== null) {
+        debug(`${buf.length} bytes already in buffer`);
         handle.receive(buf);
       }
-    });
-    socket.resume();
-    debug("i/o stream consumed (socket data events)");
-  }
+    }
+  });
 
   handle.ongracefulclosecomplete = FunctionPrototypeBind(
     this[kMaybeDestroy],
