@@ -597,7 +597,6 @@ Deno.test(
       .withResolvers<
         number
       >();
-    console.log("Starting server...");
     const servePromise = Deno.serve({
       hostname,
       port: 0,
@@ -606,25 +605,18 @@ Deno.test(
     }, handler).finished;
 
     const port = await portPromise;
-    console.log(`Server is listening on port ${port}...`);
     const opts: RequestOptions = {
       host: hostname,
       port,
       method: "POST",
       headers: {
         "Content-Type": "text/plain; charset=utf-8",
-        "Content-Length": "11",
         "Transfer-Encoding": "chunked",
       },
     };
-    console.log("Sending request...");
     const req = http.request(opts, (res) => {
-      console.log("Received response...");
-      res.on("data", () => {
-        console.log("receiving response data...");
-      });
+      res.on("data", () => {});
       res.on("end", () => {
-        console.log("ending response...");
         abortController.abort();
       });
       assertEquals(res.statusCode, 200);
