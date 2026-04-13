@@ -627,9 +627,9 @@ fn upgrade_from_pr(
       "--repo",
       "denoland/deno",
       "--json",
-      "title,state,headRefName",
+      "title,state,headRefName,headRefOid",
       "-q",
-      r#"[.title, .state, .headRefName] | @tsv"#,
+      r#"[.title, .state, .headRefName, .headRefOid] | @tsv"#,
     ])
     .output()
     .context("failed to run `gh pr view`")?;
@@ -640,10 +640,11 @@ fn upgrade_from_pr(
   }
 
   let pr_info_str = String::from_utf8_lossy(&pr_info.stdout);
-  let pr_fields: Vec<&str> = pr_info_str.trim().splitn(3, '\t').collect();
+  let pr_fields: Vec<&str> = pr_info_str.trim().splitn(4, '\t').collect();
   let pr_title = pr_fields.first().unwrap_or(&"unknown");
   let pr_state = pr_fields.get(1).unwrap_or(&"unknown");
   let pr_branch = pr_fields.get(2).unwrap_or(&"");
+  let pr_head_sha = pr_fields.get(3).unwrap_or(&"");
 
   log::info!(
     "PR #{}: {} ({})",
@@ -661,6 +662,15 @@ fn upgrade_from_pr(
   let mut all_run_ids = Vec::new();
 
   if !pr_branch.is_empty() {
+    // Filter by headSha to ensure we only get runs for the PR's current commit
+    let jq_filter = if pr_head_sha.is_empty() {
+      ".[].databaseId".to_string()
+    } else {
+      format!(
+        r#"[.[] | select(.headSha == "{}")] | .[].databaseId"#,
+        pr_head_sha
+      )
+    };
     let branch_runs = Command::new("gh")
       .args([
         "run",
@@ -674,9 +684,9 @@ fn upgrade_from_pr(
         "--limit",
         "5",
         "--json",
-        "databaseId",
+        "databaseId,headSha",
         "-q",
-        ".[].databaseId",
+        &jq_filter,
       ])
       .output()
       .context("failed to query CI runs by branch")?;
@@ -694,7 +704,8 @@ fn upgrade_from_pr(
   if all_run_ids.is_empty() {
     bail!(
       "No CI runs found for PR #{pr_number}. \
-       The PR may not have been pushed yet, or CI hasn't started."
+       The PR may not have been pushed yet, CI hasn't started, \
+       or CI hasn't run on the latest commit yet."
     );
   }
 
