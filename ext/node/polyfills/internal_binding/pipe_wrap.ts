@@ -65,6 +65,7 @@ export enum socketType {
 
 export class Pipe extends ConnectionWrap {
   override reading = false;
+  readonly isStreamBase = true;
   ipc: boolean;
 
   // deno-lint-ignore no-explicit-any

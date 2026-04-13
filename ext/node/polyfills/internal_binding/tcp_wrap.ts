@@ -40,6 +40,10 @@ import {
   providerType,
 } from "ext:deno_node/internal_binding/async_wrap.ts";
 
+// Mark TCPWrap as a StreamBase handle, matching Node's StreamBase::AddMethods.
+// This allows parser.consume(socket._handle) to detect it as consumable.
+TCPWrap.prototype.isStreamBase = true;
+
 /** The type of TCP socket. */
 export enum socketType {
   SOCKET,
