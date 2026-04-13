@@ -581,7 +581,6 @@ Deno.test("[node/http] send request with non-chunked body", async () => {
 
 Deno.test(
   "[node/http] send request with chunked body",
-  { only: true },
   async () => {
     let requestHeaders: Headers;
     let requestBody = "";
