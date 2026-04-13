@@ -1693,13 +1693,19 @@ Socket.prototype._destroy = function (exception, cb) {
     this[kBytesRead] = this._handle.bytesRead;
     this[kBytesWritten] = this._handle.bytesWritten;
 
+    // deno-lint-ignore no-this-alias
+    const self = this;
     this._handle.close(() => {
-      this._handle.onread = _noop;
-      this._handle = null;
-      this._sockname = undefined;
+      self._handle.onread = _noop;
+      self._handle = null;
+      self._sockname = undefined;
 
-      debug("emit close");
-      this.emit("close", isException);
+      // Use nextTick to emit 'close' after 'error', matching Node.js
+      // event ordering where destroy(err) emits error then close.
+      nextTick(() => {
+        debug("emit close");
+        self.emit("close", isException);
+      });
     });
     cb(exception);
   } else {
