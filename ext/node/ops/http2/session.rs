@@ -1963,6 +1963,7 @@ impl Http2Session {
   /// Get all pending outgoing h2 frames as a single buffer.
   /// Used by the JS write path when consume_stream is not active.
   #[buffer]
+  #[reentrant]
   fn get_outgoing_data(&self) -> Box<[u8]> {
     // SAFETY: self.inner was allocated by Box::into_raw and is valid
     let session = unsafe { &mut *self.inner };

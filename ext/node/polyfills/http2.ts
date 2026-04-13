@@ -1376,34 +1376,22 @@ class Http2Stream extends Duplex {
     handle[kOwner] = this;
     this[kHandle] = handle;
 
-    // Add missing StreamBase write methods and wrap existing ones.
-    // Deno sets streamBaseState[kLastWriteWasAsync] = 1 globally, which
-    // means afterWriteDispatched won't call req.callback synchronously.
-    // HTTP2 stream writes are synchronous (they buffer data), so we need
-    // to call req.oncomplete(0) to signal write completion.
+    // Wrap the native write methods to flush pending h2 frames after
+    // each write. The native writeBuffer/writeUtf8String are synchronous
+    // (they buffer data in nghttp2's pending_data), so kLastWriteWasAsync
+    // stays 0 and afterWriteDispatched calls req.callback synchronously.
     const nativeWriteUtf8String = FunctionPrototypeBind(
       handle.writeUtf8String,
       handle,
     );
     const nativeWriteBuffer = FunctionPrototypeBind(handle.writeBuffer, handle);
-    function completeWrite(req, err) {
-      if (err === 0 && typeof req.oncomplete === "function") {
-        // Mark as async so afterWriteDispatched does not also call
-        // the callback synchronously (which would be a double-call).
-        streamBaseState[kLastWriteWasAsync] = 1;
-        process.nextTick(() => {
-          FunctionPrototypeCall(req.oncomplete, req, 0);
-        });
-      }
-      return err;
-    }
     handle.writeUtf8String = function (req, data) {
-      const err = completeWrite(req, nativeWriteUtf8String(req, data));
+      const err = nativeWriteUtf8String(req, data);
       scheduleSendPending(session);
       return err;
     };
     handle.writeBuffer = function (req, data) {
-      const err = completeWrite(req, nativeWriteBuffer(req, data));
+      const err = nativeWriteBuffer(req, data);
       scheduleSendPending(session);
       return err;
     };
