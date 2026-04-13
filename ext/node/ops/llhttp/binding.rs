@@ -528,7 +528,7 @@ unsafe extern "C" fn on_body(
     if tc.has_caught() {
       if let Some(exc) = tc.exception() {
         let key = v8::String::new(tc, "__lastException").unwrap();
-          cb_obj.set(tc, key.into(), exc);
+        cb_obj.set(tc, key.into(), exc);
       }
       tc.reset();
     }
@@ -919,4 +919,3 @@ impl HTTPParser {
     inner.consume_isolate = v8::UnsafeRawIsolatePtr::null();
   }
 }
-
