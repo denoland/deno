@@ -578,7 +578,20 @@ unsafe extern "C" fn on_uv_read(
       let onread = v8::Local::new(scope, &onread_global);
       let recv = v8::Local::new(scope, &handle_global);
       let undef = v8::undefined(scope);
-      onread.call(scope, recv.into(), &[undef.into()]);
+      let caught_exception = {
+        v8::tc_scope!(tc, scope);
+        let result = onread.call(tc, recv.into(), &[undef.into()]);
+        if result.is_none() && tc.has_caught() {
+          let exc = tc.exception();
+          tc.reset();
+          exc
+        } else {
+          None
+        }
+      };
+      if let Some(exception) = caught_exception {
+        call_fatal_exception(scope, exception);
+      }
     }
     return;
   }
@@ -624,7 +637,40 @@ unsafe extern "C" fn on_uv_read(
   // Matches Node's convention: nread is in streamBaseState[kReadBytesOrError].
   let onread = v8::Local::new(scope, &onread_global);
   let recv = v8::Local::new(scope, &handle_global);
-  onread.call(scope, recv.into(), &[ab.into()]);
+  let caught_exception = {
+    v8::tc_scope!(tc, scope);
+    let result = onread.call(tc, recv.into(), &[ab.into()]);
+    if result.is_none() && tc.has_caught() {
+      let exc = tc.exception();
+      tc.reset();
+      exc
+    } else {
+      None
+    }
+  };
+  if let Some(exception) = caught_exception {
+    call_fatal_exception(scope, exception);
+  }
+}
+
+/// Handle uncaught exceptions from stream onread callbacks.
+/// Uses globalThis.reportError() to report the exception as uncaught,
+/// matching Node's MakeCallback behavior where unhandled exceptions
+/// from native callbacks terminate the process.
+fn call_fatal_exception(
+  scope: &mut v8::ContextScope<v8::HandleScope>,
+  exception: v8::Local<v8::Value>,
+) {
+  let global = scope.get_current_context().global(scope);
+  let key = v8::String::new(scope, "reportError").unwrap();
+  if let Some(report_fn_val) = global.get(scope, key.into()) {
+    if let Ok(report_fn) =
+      v8::Local::<v8::Function>::try_from(report_fn_val)
+    {
+      let undef = v8::undefined(scope);
+      report_fn.call(scope, undef.into(), &[exception]);
+    }
+  }
 }
 
 /// Free a buffer allocated by on_uv_alloc.
