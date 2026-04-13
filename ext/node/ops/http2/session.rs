@@ -1924,6 +1924,7 @@ impl Http2Session {
   }
 
   #[fast]
+  #[reentrant]
   fn receive(&self, #[buffer] data: &[u8]) {
     // SAFETY: self.inner was allocated by Box::into_raw and is valid
     let session = unsafe { &mut *self.inner };
