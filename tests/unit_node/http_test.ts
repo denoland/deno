@@ -2158,18 +2158,13 @@ Deno.test("[node/http] rawHeaders are in flattened format", async () => {
 
 // TODO(@bartlomieju): re-enable once server-side HTTP also uses llhttp
 // (currently the Deno.serve-based server path still needs RID access)
-Deno.test("[node/http] client http over unix socket works", {
-  ignore: true,
-}, async () => {
+Deno.test("[node/http] client http over unix socket works", async () => {
   const { promise, resolve } = Promise.withResolvers<void>();
   const socketPath = Deno.makeTempDirSync() + "/server.sock";
-  const server = Deno.serve({
-    transport: "unix",
-    path: socketPath,
-    onListen,
-  }, (_req) => new Response("ok"));
-
-  function onListen() {
+  const server = http.createServer((_req, res) => {
+    res.end("ok");
+  });
+  server.listen(socketPath, () => {
     const options = {
       socketPath,
       path: "/",
@@ -2178,12 +2173,10 @@ Deno.test("[node/http] client http over unix socket works", {
     http.request(options, async (res) => {
       assertEquals(res.statusCode, 200);
       assertEquals(await text(res), "ok");
-      resolve();
-      server.shutdown();
+      server.close(() => resolve());
     }).end();
-  }
+  });
   await promise;
-  await server.finished;
 });
 
 Deno.test({
