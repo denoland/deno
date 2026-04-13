@@ -4,7 +4,6 @@ import process from "node:process";
 import { setImmediate } from "node:timers";
 import { assert, assertEquals } from "@std/assert";
 
-
 Deno.test(async function foo() {
   const asyncLocalStorage = new AsyncLocalStorage();
 

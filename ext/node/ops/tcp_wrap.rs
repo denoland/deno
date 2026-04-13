@@ -464,10 +464,7 @@ impl TCPWrap {
   /// When set, connect() checks permissions against this hostname
   /// instead of the resolved IP, matching Node.js netPermToken behavior.
   #[nofast]
-  fn set_net_perm_token(
-    &self,
-    #[cppgc] token: &deno_net::ops::NetPermToken,
-  ) {
+  fn set_net_perm_token(&self, #[cppgc] token: &deno_net::ops::NetPermToken) {
     *self.net_perm_hostname.borrow_mut() = Some(token.hostname.clone());
   }
 
@@ -489,12 +486,10 @@ impl TCPWrap {
       .borrow()
       .clone()
       .unwrap_or_else(|| address.to_string());
-    state
-      .borrow_mut::<PermissionsContainer>()
-      .check_net(
-        &(check_host.as_str(), Some(port as u16)),
-        "node:net.connect()",
-      )?;
+    state.borrow_mut::<PermissionsContainer>().check_net(
+      &(check_host.as_str(), Some(port as u16)),
+      "node:net.connect()",
+    )?;
 
     let addr_str = format!("{}:{}", address, port);
     let socket_addr = match addr_str.to_socket_addrs() {
@@ -552,12 +547,10 @@ impl TCPWrap {
       .borrow()
       .clone()
       .unwrap_or_else(|| address.to_string());
-    state
-      .borrow_mut::<PermissionsContainer>()
-      .check_net(
-        &(check_host.as_str(), Some(port as u16)),
-        "node:net.connect()",
-      )?;
+    state.borrow_mut::<PermissionsContainer>().check_net(
+      &(check_host.as_str(), Some(port as u16)),
+      "node:net.connect()",
+    )?;
 
     let addr_str = format!("{}:{}", address, port);
     let socket_addr = match addr_str.to_socket_addrs() {

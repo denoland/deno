@@ -1903,10 +1903,7 @@ impl Http2Session {
   }
 
   #[fast]
-  fn consume_stream(
-    &self,
-    #[cppgc] tcp: &crate::ops::tcp_wrap::TCPWrap,
-  ) {
+  fn consume_stream(&self, #[cppgc] tcp: &crate::ops::tcp_wrap::TCPWrap) {
     // SAFETY: self.inner was allocated by Box::into_raw and is valid
     let session = unsafe { &mut *self.inner };
     let stream = tcp.stream_ptr();
@@ -1975,8 +1972,7 @@ impl Http2Session {
         unsafe { ffi::nghttp2_session_mem_send(session.session, &mut src) };
       if src_len > 0 {
         // SAFETY: src and src_len are valid per nghttp2_session_mem_send
-        let data =
-          unsafe { std::slice::from_raw_parts(src, src_len as usize) };
+        let data = unsafe { std::slice::from_raw_parts(src, src_len as usize) };
         output.extend_from_slice(data);
       } else {
         break;

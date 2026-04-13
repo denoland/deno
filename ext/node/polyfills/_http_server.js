@@ -892,11 +892,10 @@ function resOnFinish(req, res, socket, state, server) {
     if (!server.listening) {
       socket.destroy();
     } else {
-      const keepAliveTimeout =
-        NumberIsFinite(server.keepAliveTimeout) &&
+      const keepAliveTimeout = NumberIsFinite(server.keepAliveTimeout) &&
           server.keepAliveTimeout >= 0
-          ? server.keepAliveTimeout
-          : 0;
+        ? server.keepAliveTimeout
+        : 0;
 
       if (keepAliveTimeout) {
         // Use core.createTimer as a system timer to avoid participating

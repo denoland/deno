@@ -1590,7 +1590,7 @@ Deno.test("[node/http] client closing a streaming request doesn't terminate serv
     (requestError! as Error)?.message.includes("aborted") ||
       (requestError! as Error)?.message.includes(
         "error reading a body from connection",
-    ),
+      ),
   );
   assertEquals(server.listening, true);
   server.close();
