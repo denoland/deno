@@ -1007,15 +1007,20 @@ Deno.test(
   async () => {
     let received = false;
     const ac = new AbortController();
-    const server = Deno.serve({ port: 5928, signal: ac.signal }, (_req) => {
+    const server = Deno.serve({
+      port: 0,
+      signal: ac.signal,
+      onListen: undefined,
+    }, (_req) => {
       received = true;
       return new Response("hello");
     });
+    const port = server.addr.port;
     const { promise, resolve, reject } = Promise.withResolvers<void>();
     let body = "";
 
     const request = http.request(
-      "http://localhost:5928/",
+      `http://localhost:${port}/`,
       (resp) => {
         resp.on("data", (chunk) => {
           body += chunk;
@@ -1026,12 +1031,15 @@ Deno.test(
         });
       },
     );
+    let endCallbackCalled = false;
     request.on("error", reject);
     request.end(() => {
-      assert(received);
+      endCallbackCalled = true;
     });
 
     await promise;
+    assert(endCallbackCalled);
+    assert(received);
     ac.abort();
     await server.finished;
 
