@@ -1178,12 +1178,6 @@ function _emitCloseNT(s: Socket | Server) {
 }
 
 // The packages that need socket initialization workaround
-const pkgsNeedsSockInitWorkaround = [
-  "@npmcli/agent",
-  "npm-check-updates",
-  "playwright-core",
-  "twitter-api-v2",
-];
 
 /**
  * This class is an abstraction of a TCP socket or a streaming `IPC` endpoint
@@ -1238,16 +1232,8 @@ export function Socket(options) {
   this._pendingEncoding = "";
   this._host = null;
   this._parent = null;
-  this._needsSockInitWorkaround = false;
   this.autoSelectFamilyAttemptedAddresses = undefined;
   this.connecting = false;
-
-  const errorStack = new Error().stack;
-  this._needsSockInitWorkaround = options.handle?.ipc !== true &&
-    pkgsNeedsSockInitWorkaround.some((pkg) => errorStack?.includes(pkg));
-  if (this._needsSockInitWorkaround) {
-    this.pause();
-  }
 
   if (options.handle) {
     this._handle = options.handle;
