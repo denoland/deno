@@ -6,6 +6,7 @@
 // only implements TCP-specific ops (bind, listen, connect, accept, etc.).
 
 use std::cell::Cell;
+use std::cell::RefCell;
 use std::net::ToSocketAddrs;
 
 use deno_core::CppgcInherits;
@@ -160,6 +161,9 @@ pub struct TCPWrap {
   base: LibUvStreamWrap,
   handle: Option<OwnedPtr<UvTcp>>,
   socket_type: Cell<SocketType>,
+  /// Permission token from DNS lookup. When set, connect() checks
+  /// permissions against the original hostname instead of the resolved IP.
+  net_perm_hostname: RefCell<Option<String>>,
 }
 
 // SAFETY: TCPWrap is a cppgc-managed object; the GC traces it via the base field.
@@ -217,6 +221,7 @@ impl TCPWrap {
         base,
         handle: Some(tcp),
         socket_type: Cell::new(socket_type),
+        net_perm_hostname: RefCell::new(None),
       }
     } else {
       // Error path - create with null handle
@@ -245,6 +250,7 @@ impl TCPWrap {
         ),
         handle: None,
         socket_type: Cell::new(socket_type),
+        net_perm_hostname: RefCell::new(None),
       }
     }
   }
@@ -454,6 +460,17 @@ impl TCPWrap {
     unsafe { uv_compat::uv_tcp_nodelay(tcp, enable as i32) }
   }
 
+  /// Store the original hostname from DNS lookup for permission checks.
+  /// When set, connect() checks permissions against this hostname
+  /// instead of the resolved IP, matching Node.js netPermToken behavior.
+  #[nofast]
+  fn set_net_perm_token(
+    &self,
+    #[cppgc] token: &deno_net::ops::NetPermToken,
+  ) {
+    *self.net_perm_hostname.borrow_mut() = Some(token.hostname.clone());
+  }
+
   /// Connect to an address. Takes (req, address, port) where req is a
   /// TCPConnectWrap with oncomplete callback, matching Node.js API.
   #[nofast]
@@ -465,9 +482,19 @@ impl TCPWrap {
     #[smi] port: i32,
     scope: &mut v8::PinScope,
   ) -> Result<i32, deno_permissions::PermissionCheckError> {
+    // If a hostname was stored from DNS lookup, check permissions against
+    // the original hostname instead of the resolved IP address.
+    let check_host = self
+      .net_perm_hostname
+      .borrow()
+      .clone()
+      .unwrap_or_else(|| address.to_string());
     state
       .borrow_mut::<PermissionsContainer>()
-      .check_net(&(address, Some(port as u16)), "node:net.connect()")?;
+      .check_net(
+        &(check_host.as_str(), Some(port as u16)),
+        "node:net.connect()",
+      )?;
 
     let addr_str = format!("{}:{}", address, port);
     let socket_addr = match addr_str.to_socket_addrs() {
@@ -520,9 +547,17 @@ impl TCPWrap {
     #[smi] port: i32,
     scope: &mut v8::PinScope,
   ) -> Result<i32, deno_permissions::PermissionCheckError> {
+    let check_host = self
+      .net_perm_hostname
+      .borrow()
+      .clone()
+      .unwrap_or_else(|| address.to_string());
     state
       .borrow_mut::<PermissionsContainer>()
-      .check_net(&(address, Some(port as u16)), "node:net.connect()")?;
+      .check_net(
+        &(check_host.as_str(), Some(port as u16)),
+        "node:net.connect()",
+      )?;
 
     let addr_str = format!("{}:{}", address, port);
     let socket_addr = match addr_str.to_socket_addrs() {

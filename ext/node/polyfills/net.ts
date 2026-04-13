@@ -969,7 +969,11 @@ function _lookupAndConnect(self: Socket, options: TcpSocketConnectOptions) {
         addressType: number,
         netPermToken,
       ) {
-        self._handle?.setNetPermToken?.(netPermToken);
+        // Store the permission token from DNS lookup so connect() checks
+        // permissions against the original hostname instead of the resolved IP.
+        if (netPermToken && self._handle?.setNetPermToken) {
+          self._handle.setNetPermToken(netPermToken);
+        }
         self.emit("lookup", err, ip, addressType, host);
 
         // It's possible we were destroyed while looking this up.
@@ -1034,7 +1038,9 @@ function _lookupAndConnectMultiple(
 ) {
   defaultTriggerAsyncIdScope(self[asyncIdSymbol], function emitLookup() {
     lookup(host, dnsopts, function emitLookup(err, addresses, _, netPermToken) {
-      self._handle?.setNetPermToken?.(netPermToken);
+      if (netPermToken && self._handle?.setNetPermToken) {
+        self._handle.setNetPermToken(netPermToken);
+      }
       // It's possible we were destroyed while looking this up.
       // XXX it would be great if we could cancel the promise returned by
       // the look up.
