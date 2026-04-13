@@ -202,10 +202,13 @@ HTTPParser.prototype.execute = function (
 
   // Re-throw any JS exception that was captured during parsing.
   // The #[op2(reentrant)] framework swallows pending v8 exceptions,
-  // so we capture them in a TryCatch in the Rust callbacks.
-  // getLastException() re-throws via scope.throw_exception() which
-  // the op2 framework catches and converts to a JS throw.
-  this._native.getLastException();
+  // so we capture them in a TryCatch in the Rust callbacks and
+  // store them on the JS parser object as __lastException.
+  if (this.__lastException !== undefined) {
+    const err = this.__lastException;
+    this.__lastException = undefined;
+    throw err;
+  }
 
   return result;
 };
