@@ -902,10 +902,10 @@ export function execFileSync(
 function setupChildProcessIpcChannel() {
   const maybePipe = op_node_child_ipc_pipe();
   if (!maybePipe) return;
-  const [fd, serialization] = maybePipe;
+  const [rid, serialization, rawFd] = maybePipe;
   const serializationMode = serialization === 0 ? "json" : "advanced";
-  if (typeof fd != "number" || fd < 0) return;
-  const control = setupChannel(process, fd, serializationMode);
+  if (typeof rid != "number" || rid < 0) return;
+  const control = setupChannel(process, rid, serializationMode, rawFd);
   process.on("newListener", (name: string) => {
     if (name === "message" || name === "disconnect") {
       control.refCounted();

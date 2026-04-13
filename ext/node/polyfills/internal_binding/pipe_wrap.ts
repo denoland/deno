@@ -149,14 +149,22 @@ export class Pipe extends ConnectionWrap {
     data: Uint8Array,
   ): number {
     const ret = this.#native.writeBuffer(data);
+    if (ret !== 0) {
+      // uv_write failed to queue; report synchronously.
+      streamBaseState[kLastWriteWasAsync] = 0;
+      return ret;
+    }
     streamBaseState[kLastWriteWasAsync] = 1;
-    queueMicrotask(() => {
+    // The actual write result (including EPIPE) arrives asynchronously
+    // via the native onwrite callback.
+    this.#native.onwrite = (status: number) => {
+      this.#native.onwrite = undefined;
       try {
-        req.oncomplete(ret === 0 ? 0 : MapPrototypeGet(codeMap, "UNKNOWN")!);
+        req.oncomplete(status);
       } catch {
         // swallow callback errors.
       }
-    });
+    };
     return 0;
   }
 
@@ -216,7 +224,7 @@ export class Pipe extends ConnectionWrap {
   }
 
   setBlocking(enable: boolean): number {
-    return this.#native.setBlocking(enable ? 1 : 0);
+    return this.#native.setBlocking(enable);
   }
 
   bind(name: string) {

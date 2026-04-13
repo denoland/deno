@@ -186,13 +186,20 @@ pub unsafe fn uv_stream_set_blocking(
   blocking: c_int,
 ) -> c_int {
   unsafe {
-    let fd = if (*stream).r#type == uv_handle_type::UV_TTY {
-      (*(stream as *mut uv_tty_t)).internal_fd
-    } else {
-      // TCP and other stream types
-      match (*(stream as *mut uv_tcp_t)).internal_fd {
-        Some(fd) => fd,
-        None => return super::UV_EBADF,
+    let fd = match (*stream).r#type {
+      uv_handle_type::UV_TTY => (*(stream as *mut uv_tty_t)).internal_fd,
+      uv_handle_type::UV_NAMED_PIPE => {
+        match (*(stream as *mut super::pipe::uv_pipe_t)).internal_fd {
+          Some(fd) => fd,
+          None => return super::UV_EBADF,
+        }
+      }
+      _ => {
+        // TCP and other stream types
+        match (*(stream as *mut uv_tcp_t)).internal_fd {
+          Some(fd) => fd,
+          None => return super::UV_EBADF,
+        }
       }
     };
 

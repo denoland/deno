@@ -111,6 +111,18 @@ const STDERR_RID = 2;
 const REF = Symbol("REF");
 const UNREF = Symbol("UNREF");
 
+// Node.js process streams, set by __setNodeStreams() during Node bootstrap.
+// When set, Deno.stdin/stdout/stderr delegate to these for shared behavior.
+let _nodeStdout = null;
+let _nodeStderr = null;
+let _nodeStdin = null;
+
+function __setNodeStreams(nodeStdout, nodeStderr, nodeStdin) {
+  _nodeStdout = nodeStdout;
+  _nodeStderr = nodeStderr;
+  _nodeStdin = nodeStdin;
+}
+
 class Stdin {
   #rid = STDIN_RID;
   #ref = true;
@@ -248,6 +260,7 @@ const stdout = new Stdout();
 const stderr = new Stderr();
 
 export {
+  __setNodeStreams,
   read,
   readAll,
   readAllSync,

@@ -1271,10 +1271,10 @@ export function Socket(options) {
 
     if (
       (fd === 1 || fd === 2) &&
-      this._handle instanceof Pipe &&
-      isWindows
+      this._handle instanceof Pipe
     ) {
-      // Make stdout and stderr blocking on Windows
+      // Make stdout and stderr blocking to prevent interleaved or
+      // dropped output. Matches Node.js behavior on all platforms.
       const blockErr = this._handle.setBlocking(true);
       if (blockErr) {
         throw errnoException(blockErr, "setBlocking");

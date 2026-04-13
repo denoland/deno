@@ -70,10 +70,12 @@ export {
   versions,
 };
 import {
+  createStdin,
+  createWarmupStderr,
+  createWarmupStdin,
+  createWarmupStdout,
   createWritableStdioStream,
-  initStdin,
 } from "ext:deno_node/_process/streams.mjs";
-import { WriteStream as TTYWriteStream } from "ext:deno_node/internal/tty.js";
 import { enableNextTick } from "ext:deno_node/_next_tick.ts";
 import { isAndroid, isWindows } from "ext:deno_node/_util/os.ts";
 import * as io from "ext:deno_io/12_io.js";
@@ -1348,56 +1350,20 @@ internals.__bootstrapNodeProcess = function (
 
     enableNextTick();
 
-    // Replace warmup stdout/stderr with proper streams
-    if (io.stdout.isTerminal()) {
-      /** https://nodejs.org/api/process.html#process_process_stdout */
-      stdout = process.stdout = new TTYWriteStream(1);
-      // For supporting legacy API we put the FD here.
-      // Ref: https://github.com/nodejs/node/blob/main/lib/internal/bootstrap/switches/is_main_thread.js
-      stdout.fd = 1;
-      // Match Node.js: stdio streams are indestructible.
-      // Libraries like mute-stream (@inquirer/prompts) call destroy()/end()
-      // on process.stdout between prompts. Without this, the underlying TTY
-      // handle is closed, breaking subsequent I/O.
-      // _isStdio also prevents Stream.pipe() from calling end() on stdout
-      // when a piped source stream ends.
-      // Ref: https://github.com/nodejs/node/blob/main/lib/internal/bootstrap/switches/is_main_thread.js
-      stdout._isStdio = true;
-      stdout.destroySoon = stdout.destroy;
-      stdout._destroy = function (err, cb) {
-        cb(err);
-        this._undestroy();
-        if (!this._writableState.emitClose) {
-          nextTick(() => this.emit("close"));
-        }
-      };
-    } else {
-      stdout = process.stdout = createWritableStdioStream(
-        io.stdout,
-        "stdout",
-      );
-    }
+    // Set up IPC channel BEFORE stdio creation, matching Node.js ordering.
+    // This ensures process.channel.fd is available so stdio stream creation
+    // can skip fds reserved for IPC.
+    // Ref: https://github.com/nodejs/node/commit/8c0c456c73
+    internals.__setupChildProcessIpcChannel();
 
-    if (io.stderr.isTerminal()) {
-      /** https://nodejs.org/api/process.html#process_process_stderr */
-      stderr = process.stderr = new TTYWriteStream(2);
-      // For supporting legacy API we put the FD here.
-      stderr.fd = 2;
-      stderr._isStdio = true;
-      stderr.destroySoon = stderr.destroy;
-      stderr._destroy = function (err, cb) {
-        cb(err);
-        this._undestroy();
-        if (!this._writableState.emitClose) {
-          nextTick(() => this.emit("close"));
-        }
-      };
-    } else {
-      stderr = process.stderr = createWritableStdioStream(
-        io.stderr,
-        "stderr",
-      );
-    }
+    // Create stdio streams matching Node.js pattern exactly.
+    // Ref: https://github.com/nodejs/node/blob/main/lib/internal/bootstrap/switches/is_main_thread.js
+    stdout = process.stdout = createWritableStdioStream(1);
+    stderr = process.stderr = createWritableStdioStream(2);
+    stdin = process.stdin = createStdin(0);
+
+    // Wire Deno.stdin/stdout/stderr to delegate to the Node.js streams.
+    io.__setNodeStreams(process.stdout, process.stderr, process.stdin);
 
     arch = arch_();
     platform = isWindows ? "win32" : Deno.build.os;
@@ -1413,12 +1379,6 @@ internals.__bootstrapNodeProcess = function (
 
     if (getOptionValue("--warnings")) {
       process.on("warning", onWarning);
-    }
-
-    // Replace stdin if it is not a terminal
-    const newStdin = initStdin();
-    if (newStdin) {
-      stdin = process.stdin = newStdin;
     }
 
     // In worker threads, replace certain process functions with stubs
@@ -1464,21 +1424,9 @@ internals.__bootstrapNodeProcess = function (
     delete internals.__bootstrapNodeProcess;
   } else {
     // Warmup, assuming stdin/stdout/stderr are all terminals
-    stdin = process.stdin = initStdin(true);
-
-    /** https://nodejs.org/api/process.html#process_process_stdout */
-    stdout = process.stdout = createWritableStdioStream(
-      io.stdout,
-      "stdout",
-      true,
-    );
-
-    /** https://nodejs.org/api/process.html#process_process_stderr */
-    stderr = process.stderr = createWritableStdioStream(
-      io.stderr,
-      "stderr",
-      true,
-    );
+    stdin = process.stdin = createWarmupStdin();
+    stdout = process.stdout = createWarmupStdout();
+    stderr = process.stderr = createWarmupStderr();
   }
 };
 

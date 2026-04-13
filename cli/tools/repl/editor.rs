@@ -462,6 +462,20 @@ impl ReplEditor {
   }
 
   pub fn readline(&self) -> Result<String, ReadlineError> {
+    // Restore blocking mode on stdin before reading. Node's process.stdin
+    // bootstrap may have set O_NONBLOCK on fd 0 via uv_pipe_open/uv_tty_init,
+    // and since O_NONBLOCK is per-file-description (not per-fd), it affects
+    // all users of the fd including rustyline's synchronous reads.
+    #[cfg(unix)]
+    {
+      // SAFETY: fcntl with F_GETFL/F_SETFL is safe on valid fds.
+      unsafe {
+        let flags = libc::fcntl(0, libc::F_GETFL);
+        if flags != -1 && (flags & libc::O_NONBLOCK != 0) {
+          libc::fcntl(0, libc::F_SETFL, flags & !libc::O_NONBLOCK);
+        }
+      }
+    }
     self.inner.lock().readline("> ")
   }
 

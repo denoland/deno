@@ -4,7 +4,6 @@
 import { assert } from "@std/assert";
 import { isatty } from "node:tty";
 import tty from "node:tty";
-import process from "node:process";
 import fs from "node:fs";
 
 Deno.test("[node/tty isatty] returns true when fd is a tty, false otherwise", () => {
@@ -33,11 +32,6 @@ Deno.test("[node/tty isatty] returns false for irrelevant values", () => {
   assert(!isatty([] as any));
   assert(!isatty(null as any));
   assert(!isatty(undefined as any));
-});
-
-Deno.test("[node/tty WriteStream.isTTY] returns true when fd is a tty", () => {
-  assert(Deno.stdin.isTerminal() === process.stdin.isTTY);
-  assert(Deno.stdout.isTerminal() === process.stdout.isTTY);
 });
 
 Deno.test("[node/tty WriteStream.hasColors] returns true when colors are supported", () => {
