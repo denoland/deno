@@ -58,7 +58,11 @@ import tls from "node:tls";
 import { deprecate } from "node:util";
 import dc from "node:diagnostics_channel";
 import { utcDate } from "ext:deno_node/internal/http.ts";
-import { ShutdownWrap } from "ext:deno_node/internal_binding/stream_wrap.ts";
+import {
+  kLastWriteWasAsync,
+  ShutdownWrap,
+  streamBaseState,
+} from "ext:deno_node/internal_binding/stream_wrap.ts";
 import { EventEmitter } from "node:events";
 import {
   defaultTriggerAsyncIdScope,
@@ -1384,6 +1388,9 @@ class Http2Stream extends Duplex {
     const nativeWriteBuffer = FunctionPrototypeBind(handle.writeBuffer, handle);
     function completeWrite(req, err) {
       if (err === 0 && typeof req.oncomplete === "function") {
+        // Mark as async so afterWriteDispatched does not also call
+        // the callback synchronously (which would be a double-call).
+        streamBaseState[kLastWriteWasAsync] = 1;
         process.nextTick(() => {
           FunctionPrototypeCall(req.oncomplete, req, 0);
         });
