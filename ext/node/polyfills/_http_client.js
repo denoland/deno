@@ -501,6 +501,13 @@ function socketCloseListener() {
   const socket = this;
   const req = socket._httpMessage;
 
+  // Guard against close firing on a socket whose request was already
+  // handled by responseKeepAlive. This can happen when the agent
+  // destroys kept-alive sockets during process shutdown.
+  if (!req || req.destroyed) {
+    return;
+  }
+
   const parser = socket.parser;
   const res = req.res;
 

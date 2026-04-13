@@ -1706,8 +1706,10 @@ Socket.prototype._destroy = function (exception, cb) {
       self._handle = null;
       self._sockname = undefined;
 
-      // Use nextTick to emit 'close' after 'error', matching Node.js
-      // event ordering where destroy(err) emits error then close.
+      // Defer close emission via nextTick so it fires after error.
+      // handle.close() callback runs via V8TaskSpawner which has higher
+      // priority than nextTick. By deferring close to nextTick here,
+      // error (also queued via nextTick from cb) fires first.
       nextTick(() => {
         debug("emit close");
         self.emit("close", isException);
