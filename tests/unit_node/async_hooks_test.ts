@@ -4,6 +4,7 @@ import process from "node:process";
 import { setImmediate } from "node:timers";
 import { assert, assertEquals } from "@std/assert";
 
+
 Deno.test(async function foo() {
   const asyncLocalStorage = new AsyncLocalStorage();
 
@@ -201,7 +202,10 @@ Deno.test(async function asyncLocalStoragePreservedInStreamFinished() {
     const port = typeof addr === "string" ? addr : addr.port;
     http.get(`http://127.0.0.1:${port}`, (res) => {
       res.resume();
-      res.on("end", () => server.close());
+      res.on("end", () => {
+        server.close();
+        http.globalAgent.destroy();
+      });
     });
   });
 
