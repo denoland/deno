@@ -71,6 +71,34 @@ class CacheStorage {
     return await op_cache_storage_keys();
   }
 
+  async match(request, options) {
+    webidl.assertBranded(this, CacheStoragePrototype);
+    const prefix = "Failed to execute 'match' on 'CacheStorage'";
+    webidl.requiredArguments(arguments.length, 1, prefix);
+    request = webidl.converters["RequestInfo_DOMString"](
+      request,
+      prefix,
+      "Argument 1",
+    );
+    const cacheName = options?.cacheName;
+    if (cacheName !== undefined) {
+      if (!(await op_cache_storage_has(cacheName))) {
+        return undefined;
+      }
+      const cache = await this.open(cacheName);
+      return await cache.match(request, options);
+    }
+    const names = await op_cache_storage_keys();
+    for (let i = 0; i < names.length; ++i) {
+      const cache = await this.open(names[i]);
+      const response = await cache.match(request, options);
+      if (response !== undefined) {
+        return response;
+      }
+    }
+    return undefined;
+  }
+
   [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
     return `${this.constructor.name} ${inspect({}, inspectOptions)}`;
   }

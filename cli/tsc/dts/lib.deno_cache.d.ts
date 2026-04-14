@@ -18,6 +18,17 @@ interface CacheStorage {
   delete(cacheName: string): Promise<boolean>;
   /** Return an array of all cache names tracked by the cache storage. */
   keys(): Promise<string[]>;
+  /**
+   * Check if a given `Request` or URL string is a key for a stored `Response`.
+   * Returns the matching `Response`, or `undefined` if no match is found.
+   *
+   * If `options.cacheName` is provided, only the cache with that name is
+   * searched. Otherwise, all caches are searched in creation order.
+   */
+  match(
+    request: RequestInfo | URL,
+    options?: MultiCacheQueryOptions,
+  ): Promise<Response | undefined>;
 }
 
 /** @category Cache */
@@ -71,4 +82,9 @@ interface CacheQueryOptions {
   ignoreMethod?: boolean;
   ignoreSearch?: boolean;
   ignoreVary?: boolean;
+}
+
+/** @category Cache */
+interface MultiCacheQueryOptions extends CacheQueryOptions {
+  cacheName?: string;
 }

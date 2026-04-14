@@ -127,6 +127,75 @@ Deno.test(async function cacheApi() {
   assertFalse(await caches.has(cacheName));
 });
 
+Deno.test(async function cacheStorageMatch() {
+  const names = ["match-a", "match-b", "match-c"];
+  for (const name of names) {
+    await caches.delete(name);
+  }
+
+  const cacheA = await caches.open("match-a");
+  const cacheB = await caches.open("match-b");
+  const cacheC = await caches.open("match-c");
+
+  await cacheA.put(
+    "https://example.com/only-a",
+    new Response("from a"),
+  );
+  await cacheB.put(
+    "https://example.com/shared",
+    new Response("from b"),
+  );
+  await cacheC.put(
+    "https://example.com/shared",
+    new Response("from c"),
+  );
+  await cacheC.put(
+    "https://example.com/only-c",
+    new Response("from c only"),
+  );
+
+  // Matches across all caches.
+  const resA = await caches.match("https://example.com/only-a");
+  assertEquals(await resA?.text(), "from a");
+
+  const resC = await caches.match("https://example.com/only-c");
+  assertEquals(await resC?.text(), "from c only");
+
+  // When multiple caches match, the earlier cache (in creation order) wins.
+  const resShared = await caches.match("https://example.com/shared");
+  assertEquals(await resShared?.text(), "from b");
+
+  // Returns undefined when nothing matches.
+  const resMissing = await caches.match("https://example.com/missing");
+  assertEquals(resMissing, undefined);
+
+  // Accepts URL and Request as key.
+  const resUrl = await caches.match(new URL("https://example.com/only-a"));
+  assertEquals(await resUrl?.text(), "from a");
+
+  const resReq = await caches.match(
+    new Request("https://example.com/only-a"),
+  );
+  assertEquals(await resReq?.text(), "from a");
+
+  // cacheName restricts the search to that cache.
+  const resScoped = await caches.match("https://example.com/shared", {
+    cacheName: "match-c",
+  });
+  assertEquals(await resScoped?.text(), "from c");
+
+  // cacheName that doesn't exist yields undefined, even if another cache
+  // would have matched.
+  const resUnknownCache = await caches.match("https://example.com/shared", {
+    cacheName: "match-nonexistent",
+  });
+  assertEquals(resUnknownCache, undefined);
+
+  for (const name of names) {
+    assert(await caches.delete(name));
+  }
+});
+
 Deno.test(function cacheIllegalConstructor() {
   assertThrows(() => new Cache(), TypeError, "Illegal constructor");
   // @ts-expect-error illegal constructor
