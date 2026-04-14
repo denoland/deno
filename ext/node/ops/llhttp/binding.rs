@@ -476,13 +476,10 @@ unsafe extern "C" fn on_headers_complete(parser: *mut sys::llhttp_t) -> c_int {
   } else {
     undef.into()
   };
-  let url: v8::Local<v8::Value> = if is_request {
-    v8::String::new_from_one_byte(scope, &inner.url, v8::NewStringType::Normal)
-      .unwrap_or_else(|| v8::String::empty(scope))
-      .into()
-  } else {
-    undef.into()
-  };
+  // URL was also flushed via kOnHeaders above (just like headers),
+  // so always pass undefined.  parserOnHeadersComplete will read
+  // from parser._url.
+  let url: v8::Local<v8::Value> = undef.into();
   let status_code: v8::Local<v8::Value> = if !is_request {
     v8::Integer::new(scope, unsafe { (*parser).status_code } as i32).into()
   } else {
