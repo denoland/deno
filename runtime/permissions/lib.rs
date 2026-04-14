@@ -1730,6 +1730,19 @@ pub enum SubdomainWildcards {
   Disabled,
 }
 
+/// Normalize IPv4-mapped IPv6 addresses (e.g. `::ffff:127.0.0.1`) to
+/// their IPv4 equivalent so that permission checks treat them identically
+/// to the bare IPv4 form.
+fn normalize_ip(ip: IpAddr) -> IpAddr {
+  match ip {
+    IpAddr::V6(v6) => match v6.to_ipv4_mapped() {
+      Some(v4) => IpAddr::V4(v4),
+      None => IpAddr::V6(v6),
+    },
+    ip => ip,
+  }
+}
+
 #[derive(Clone, Eq, PartialEq, Hash, Debug, PartialOrd, Ord)]
 pub enum Host {
   Fqdn(FQDN),
@@ -1785,7 +1798,7 @@ impl Host {
       let ip = strip_ipv6_zone_index(ip_str)
         .parse::<Ipv6Addr>()
         .map_err(|_| HostParseError::InvalidIpv6(s.to_string()))?;
-      return Ok(Host::Ip(IpAddr::V6(ip)));
+      return Ok(Host::Ip(normalize_ip(IpAddr::V6(ip))));
     }
     let (without_trailing_dot, has_trailing_dot) =
       s.strip_suffix('.').map_or((s, false), |s| (s, true));
@@ -1799,7 +1812,7 @@ impl Host {
           without_trailing_dot.to_string(),
         ));
       }
-      Ok(Host::Ip(ip))
+      Ok(Host::Ip(normalize_ip(ip)))
     } else if let Ok(ip_subnet) = s.parse::<IpNetwork>() {
       Ok(Host::IpSubnet(ip_subnet))
     } else {
@@ -2024,7 +2037,7 @@ impl NetDescriptor {
 
     if let Ok(socket) = hostname.parse::<SocketAddr>() {
       return Ok(NetDescriptor(
-        Host::Ip(socket.ip()),
+        Host::Ip(normalize_ip(socket.ip())),
         Some(socket.port().into()),
       ));
     }
@@ -2056,7 +2069,7 @@ impl NetDescriptor {
           ));
         };
         return Ok(NetDescriptor(
-          Host::Ip(IpAddr::V6(ip)),
+          Host::Ip(normalize_ip(IpAddr::V6(ip))),
           port.map(Into::into),
         ));
       } else {
@@ -7002,6 +7015,75 @@ mod tests {
   }
 
   #[test]
+  fn test_net_ipv4_mapped_ipv6() {
+    set_prompter(Box::new(TestPrompter));
+    let parser = TestPermissionDescriptorParser;
+
+    // Deny an IPv4 address, verify IPv4-mapped IPv6 form is also denied
+    let perms = Permissions::from_options(
+      &parser,
+      &PermissionsOptions {
+        allow_net: Some(vec![]),
+        deny_net: Some(svec!["127.0.0.1"]),
+        ..Default::default()
+      },
+    )
+    .unwrap();
+    let mut perms = PermissionsContainer::new(Arc::new(parser), perms);
+
+    // Direct IPv4 is denied
+    assert!(perms.check_net(&("127.0.0.1", None), "api").is_err());
+    // IPv4-mapped IPv6 form must also be denied
+    assert!(perms.check_net(&("::ffff:127.0.0.1", None), "api").is_err());
+    // Regular IPv6 loopback is a different address, should be allowed
+    assert!(perms.check_net(&("::1", None), "api").is_ok());
+    // Other IPv4 addresses should be allowed
+    assert!(perms.check_net(&("192.168.1.1", None), "api").is_ok());
+
+    // Allow an IPv4-mapped IPv6, verify it's accessible via IPv4 too
+    let parser = TestPermissionDescriptorParser;
+    let perms = Permissions::from_options(
+      &parser,
+      &PermissionsOptions {
+        allow_net: Some(svec!["[::ffff:10.0.0.1]"]),
+        ..Default::default()
+      },
+    )
+    .unwrap();
+    let mut perms = PermissionsContainer::new(Arc::new(parser), perms);
+
+    assert!(perms.check_net(&("10.0.0.1", None), "api").is_ok());
+    assert!(perms.check_net(&("::ffff:10.0.0.1", None), "api").is_ok());
+
+    // Port-qualified: deny 127.0.0.1:8080, verify IPv4-mapped form
+    // with port is also denied (exercises the SocketAddr parse path)
+    let parser = TestPermissionDescriptorParser;
+    let perms = Permissions::from_options(
+      &parser,
+      &PermissionsOptions {
+        allow_net: Some(vec![]),
+        deny_net: Some(svec!["127.0.0.1:8080"]),
+        ..Default::default()
+      },
+    )
+    .unwrap();
+    let mut perms = PermissionsContainer::new(Arc::new(parser), perms);
+
+    assert!(perms.check_net(&("127.0.0.1", Some(8080)), "api").is_err());
+    assert!(
+      perms
+        .check_net(&("::ffff:127.0.0.1", Some(8080)), "api")
+        .is_err()
+    );
+    // Different port should be allowed
+    assert!(
+      perms
+        .check_net(&("::ffff:127.0.0.1", Some(9090)), "api")
+        .is_ok()
+    );
+  }
+
+  #[test]
   fn test_deserialize_child_permissions_arg() {
     set_prompter(Box::new(TestPrompter));
     assert_eq!(
@@ -7338,11 +7420,14 @@ mod tests {
       ("deno.land.", Some(Host::Fqdn(fqdn!("deno.land")))),
       (".deno.land", None),
       ("*.deno.land", None),
+      // IPv4-mapped IPv6 addresses are normalized to IPv4
       (
         "::ffff:1.1.1.1",
-        Some(Host::Ip(IpAddr::V6(Ipv6Addr::new(
-          0, 0, 0, 0, 0, 0xffff, 0x0101, 0x0101,
-        )))),
+        Some(Host::Ip(IpAddr::V4(Ipv4Addr::new(1, 1, 1, 1)))),
+      ),
+      (
+        "[::ffff:127.0.0.1]",
+        Some(Host::Ip(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)))),
       ),
       // IPv6 addresses with zone indices
       (
@@ -7410,11 +7495,14 @@ mod tests {
       ("1::1.", None),
       ("deno.land.", Some(Host::Fqdn(fqdn!("deno.land")))),
       (".deno.land", None),
+      // IPv4-mapped IPv6 addresses are normalized to IPv4
       (
         "::ffff:1.1.1.1",
-        Some(Host::Ip(IpAddr::V6(Ipv6Addr::new(
-          0, 0, 0, 0, 0, 0xffff, 0x0101, 0x0101,
-        )))),
+        Some(Host::Ip(IpAddr::V4(Ipv4Addr::new(1, 1, 1, 1)))),
+      ),
+      (
+        "[::ffff:127.0.0.1]",
+        Some(Host::Ip(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)))),
       ),
       // IPv6 addresses with zone indices
       (
