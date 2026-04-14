@@ -425,6 +425,7 @@ function submitGoaway(code, lastStreamID, opaqueData) {
   debugSessionObj(this, "submitting goaway");
   this[kUpdateTimer]();
   this[kHandle].goaway(code, lastStreamID, opaqueData);
+  scheduleSendPending(this);
 }
 
 // Also keep track of listeners for the Http2Stream instances, as some events
