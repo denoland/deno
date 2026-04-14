@@ -417,6 +417,16 @@ pub unsafe fn uv_shutdown(
       handles.push(tcp);
     }
     (*tcp).flags |= UV_HANDLE_ACTIVE;
+    drop(handles);
+
+    // Wake the event loop so run_io processes the deferred shutdown.
+    // Without this, shutdowns scheduled from nextTick/microtask
+    // callbacks (e.g. endWritableNT for allowHalfOpen=false sockets)
+    // would stall because the Tokio reactor has no pending future to
+    // wake it.
+    if let Some(waker) = inner.waker.borrow().as_ref() {
+      waker.wake_by_ref();
+    }
   }
   0
 }
