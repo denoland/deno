@@ -1655,10 +1655,7 @@
     "parallel/test-net-connect-options-fd.js": {},
     "parallel/test-net-connect-options-ipv6.js": {},
     "parallel/test-net-connect-options-port.js": {},
-    "parallel/test-net-connect-paused-connection.js": {
-      "ignore": true,
-      "reason": "Handle ref/unref semantics — paused unreferenced socket still keeps event loop alive"
-    },
+    "parallel/test-net-connect-paused-connection.js": {},
     "parallel/test-net-dns-custom-lookup.js": {},
     "parallel/test-net-dns-error.js": {},
     "parallel/test-net-dns-lookup-skip.js": {},
@@ -2417,10 +2414,7 @@
     "parallel/test-stream-set-default-hwm.js": {},
     "parallel/test-stream-some-find-every.mjs": {},
     "parallel/test-stream-toArray.js": {},
-    "parallel/test-stream-toWeb-allows-server-response.js": {
-      "ignore": true,
-      "reason": "OutgoingMessage extends Stream instead of Writable — _writableState is undefined for Writable.toWeb()"
-    },
+    "parallel/test-stream-toWeb-allows-server-response.js": {},
     "parallel/test-stream-transform-callback-twice.js": {},
     "parallel/test-stream-transform-constructor-set-methods.js": {},
     "parallel/test-stream-transform-destroy.js": {},
@@ -2569,7 +2563,7 @@
     "parallel/test-tls-transport-destroy-after-own-gc.js": {},
     "parallel/test-tls-zero-clear-in.js": {
       "ignore": true,
-      "reason": "rustls treats 0-byte TLS write as protocol error (DecodeError) instead of no-op"
+      "reason": "rustls rejects close_notify sent before TLS handshake completes (conn.end('') before connect callback)"
     },
     "parallel/test-trace-events-api.js": {},
     "parallel/test-trace-events-async-hooks-dynamic.js": {},

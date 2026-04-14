@@ -729,7 +729,9 @@ function parserOnIncoming(server, socket, state, req, keepAlive) {
     }
   }
 
-  const res = new server[kServerResponse](req);
+  const res = new server[kServerResponse](req, {
+    rejectNonStandardBodyWrites: server.rejectNonStandardBodyWrites,
+  });
   res._keepAliveTimeout = server.keepAliveTimeout;
   res._maxRequestsPerSocket = server.maxRequestsPerSocket;
   res._onPendingData = updateOutgoingData.bind(undefined, socket, state);

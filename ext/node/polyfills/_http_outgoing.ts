@@ -57,7 +57,9 @@ const kSocket = Symbol("kSocket");
 const kChunkedBuffer = Symbol("kChunkedBuffer");
 const kChunkedLength = Symbol("kChunkedLength");
 const kBytesWritten = Symbol("kBytesWritten");
-const _kRejectNonStandardBodyWrites = Symbol("kRejectNonStandardBodyWrites");
+export const kRejectNonStandardBodyWrites = Symbol(
+  "kRejectNonStandardBodyWrites",
+);
 
 const nop = () => {};
 
@@ -67,8 +69,12 @@ function isCookieField(s: string) {
   return s.length === 6 && s.toLowerCase() === "cookie";
 }
 
-export function OutgoingMessage() {
+export function OutgoingMessage(options?: any) {
   Stream.call(this);
+
+  this[kHighWaterMark] = options?.highWaterMark ?? getDefaultHighWaterMark();
+  this[kRejectNonStandardBodyWrites] = options?.rejectNonStandardBodyWrites ??
+    false;
 
   // Queue that holds all currently pending data, until the response will be
   // assigned to the socket (until it will its turn in the HTTP pipeline).
@@ -1183,6 +1189,7 @@ function emitErrorNt(msg: any, err: any, callback: any) {
 export default {
   kUniqueHeaders,
   kHighWaterMark,
+  kRejectNonStandardBodyWrites,
   validateHeaderName,
   validateHeaderValue,
   parseUniqueHeadersOption,

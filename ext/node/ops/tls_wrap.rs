@@ -1539,14 +1539,10 @@ impl TLSWrap {
     inner.bytes_written += byte_length as u64;
 
     if byte_length == 0 {
-      let result = inner.clear_out_process();
-      let enc_action = inner.enc_out_collect();
-      let inner_ptr = inner as *mut TLSWrapInner;
-      // SAFETY: inner_ptr is valid; callbacks are reference-free
-      unsafe {
-        TLSWrapInner::dispatch_clear_out_callbacks(inner_ptr, &result);
-        TLSWrapInner::do_enc_out_action(inner_ptr, enc_action);
-      }
+      // Zero-byte writes are no-ops — don't interact with the TLS
+      // state machine.  Processing enc_in/enc_out here can corrupt
+      // the record stream (Node.js / OpenSSL treats a 0-byte
+      // SSL_write the same way).
       return 0;
     }
 
