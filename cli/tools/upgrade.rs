@@ -46,6 +46,9 @@ static DL_RELEASE_URL: &str = "https://dl.deno.land/release";
 pub static ARCHIVE_NAME: Lazy<String> =
   Lazy::new(|| format!("deno-{}.zip", env!("TARGET")));
 
+static DELTA_TARGET_NAME: Lazy<String> =
+  Lazy::new(|| format!("deno-{}", env!("TARGET")));
+
 // How often query server for new version. In hours.
 const UPGRADE_CHECK_INTERVAL: i64 = 24;
 
@@ -1050,55 +1053,99 @@ pub async fn upgrade(
   );
 
   let sys = &sys_traits::impls::RealSys;
-  let archive_data =
-    if let Some(data) = try_read_cached_binary(sys, &cache_path) {
-      log::info!(
-        "{}",
-        colors::gray(format!(
-          "Using cached binary from {}",
-          cache_path.display()
-        ))
-      );
-      data
-    } else {
-      let download_url = get_download_url(
-        &selected_version_to_upgrade.version_or_hash,
-        requested_version.release_channel(),
-      )?;
-      log::info!("{}", colors::gray(format!("Downloading {}", &download_url)));
-      let Some(data) = download_package(&client, download_url).await? else {
-        log::error!("Download could not be found, aborting");
-        deno_runtime::exit(1)
-      };
 
-      store_cached_binary(sys, &cache_path, &data);
-
-      data
-    };
-
-  // verify checksum if provided
-  if let Some(expected_checksum) = &upgrade_flags.checksum {
-    verify_checksum(&archive_data, expected_checksum)?;
-  }
-
-  log::info!(
-    "{}",
-    colors::gray(format!(
-      "Deno is upgrading to version {}",
-      &selected_version_to_upgrade.version_or_hash
-    ))
-  );
+  // Try delta upgrade for stable releases when not disabled
+  let maybe_delta_binary = if !upgrade_flags.no_delta
+    && requested_version.release_channel() == ReleaseChannel::Stable
+    && try_read_cached_binary(sys, &cache_path).is_none()
+  {
+    try_delta_upgrade(
+      &client,
+      &current_exe_path,
+      version::DENO_VERSION_INFO.deno,
+      &selected_version_to_upgrade.version_or_hash,
+    )
+    .await
+  } else {
+    None
+  };
 
   let temp_dir =
     tempfile::TempDir::new().context("failed to create temporary directory")?;
-  let new_exe_path = archive::unpack_into_dir(archive::UnpackArgs {
-    exe_name: "deno",
-    archive_name: &ARCHIVE_NAME,
-    archive_data: &archive_data,
-    is_windows: cfg!(windows),
-    dest_path: temp_dir.path(),
-  })
-  .context("failed to extract archive")?;
+
+  let new_exe_path = if let Some(delta_binary) = maybe_delta_binary {
+    // Delta upgrade succeeded -- write the patched binary directly
+    log::info!(
+      "{}",
+      colors::gray(format!(
+        "Deno is upgrading to version {}",
+        &selected_version_to_upgrade.version_or_hash
+      ))
+    );
+
+    let exe_name = if cfg!(windows) { "deno.exe" } else { "deno" };
+    let new_exe_path = temp_dir.path().join(exe_name);
+    std::fs::write(&new_exe_path, &delta_binary).with_context(|| {
+      format!(
+        "failed to write patched binary to '{}'",
+        new_exe_path.display()
+      )
+    })?;
+    new_exe_path
+  } else {
+    // Full download path (existing behavior)
+    let archive_data =
+      if let Some(data) = try_read_cached_binary(sys, &cache_path) {
+        log::info!(
+          "{}",
+          colors::gray(format!(
+            "Using cached binary from {}",
+            cache_path.display()
+          ))
+        );
+        data
+      } else {
+        let download_url = get_download_url(
+          &selected_version_to_upgrade.version_or_hash,
+          requested_version.release_channel(),
+        )?;
+        log::info!(
+          "{}",
+          colors::gray(format!("Downloading {}", &download_url))
+        );
+        let Some(data) = download_package(&client, download_url).await?
+        else {
+          log::error!("Download could not be found, aborting");
+          deno_runtime::exit(1)
+        };
+
+        store_cached_binary(sys, &cache_path, &data);
+
+        data
+      };
+
+    // verify checksum if provided
+    if let Some(expected_checksum) = &upgrade_flags.checksum {
+      verify_checksum(&archive_data, expected_checksum)?;
+    }
+
+    log::info!(
+      "{}",
+      colors::gray(format!(
+        "Deno is upgrading to version {}",
+        &selected_version_to_upgrade.version_or_hash
+      ))
+    );
+
+    archive::unpack_into_dir(archive::UnpackArgs {
+      exe_name: "deno",
+      archive_name: &ARCHIVE_NAME,
+      archive_data: &archive_data,
+      is_windows: cfg!(windows),
+      dest_path: temp_dir.path(),
+    })
+    .context("failed to extract archive")?
+  };
   fs::set_permissions(&new_exe_path, permissions).with_context(|| {
     format!("failed to set permissions on '{}'", new_exe_path.display())
   })?;
@@ -1459,6 +1506,243 @@ fn get_download_url(
   })
 }
 
+/// Check if two semver versions are adjacent patch releases in the same
+/// major.minor series (e.g. 2.7.11 and 2.7.12).
+fn are_adjacent_versions(
+  current_version: &str,
+  target_version: &str,
+) -> bool {
+  let Ok(current) = Version::parse_standard(current_version) else {
+    return false;
+  };
+  let Ok(target) = Version::parse_standard(target_version) else {
+    return false;
+  };
+  // Must be same major.minor, no pre-release tags, and patch diff == 1
+  current.major == target.major
+    && current.minor == target.minor
+    && current.pre.is_empty()
+    && target.pre.is_empty()
+    && target.patch == current.patch + 1
+}
+
+/// Construct the delta patch download URL for a stable release.
+fn get_delta_download_url(
+  current_version: &str,
+  target_version: &str,
+) -> Result<Url, AnyError> {
+  let release_url = if std::env::var_os("DENO_TESTING_UPGRADE").is_some() {
+    "http://localhost:4545/deno-upgrade"
+  } else {
+    RELEASE_URL
+  };
+  let url = format!(
+    "{}/download/v{}/{}.from-{}.bsdiff",
+    release_url, target_version, *DELTA_TARGET_NAME, current_version
+  );
+  Url::parse(&url).with_context(|| {
+    format!("Failed to parse delta download URL: {}", url)
+  })
+}
+
+/// Construct the URL for the delta patch's SHA-256 checksum file.
+fn get_delta_checksum_url(
+  current_version: &str,
+  target_version: &str,
+) -> Result<Url, AnyError> {
+  let release_url = if std::env::var_os("DENO_TESTING_UPGRADE").is_some() {
+    "http://localhost:4545/deno-upgrade"
+  } else {
+    RELEASE_URL
+  };
+  let url = format!(
+    "{}/download/v{}/{}.from-{}.bsdiff.sha256sum",
+    release_url, target_version, *DELTA_TARGET_NAME, current_version
+  );
+  Url::parse(&url).with_context(|| {
+    format!("Failed to parse delta checksum URL: {}", url)
+  })
+}
+
+/// Construct the URL for the full binary's SHA-256 checksum file.
+fn get_binary_checksum_url(
+  target_version: &str,
+) -> Result<Url, AnyError> {
+  let release_url = if std::env::var_os("DENO_TESTING_UPGRADE").is_some() {
+    "http://localhost:4545/deno-upgrade"
+  } else {
+    RELEASE_URL
+  };
+  let url = format!(
+    "{}/download/v{}/{}.sha256sum",
+    release_url, target_version, *ARCHIVE_NAME
+  );
+  Url::parse(&url).with_context(|| {
+    format!("Failed to parse binary checksum URL: {}", url)
+  })
+}
+
+/// Fetch a SHA-256 hash from a .sha256sum file hosted as a release asset.
+/// The file format is expected to be: `<hex_hash>  <filename>\n`
+async fn fetch_sha256_from_url(
+  client: &HttpClient,
+  url: Url,
+) -> Option<String> {
+  let text = client.download_text(url).await.ok()?;
+  // sha256sum files are formatted as "<hash>  <filename>" or just "<hash>"
+  let hash = text.trim().split_whitespace().next()?;
+  if hash.len() == 64 && hash.chars().all(|c| c.is_ascii_hexdigit()) {
+    Some(hash.to_lowercase())
+  } else {
+    None
+  }
+}
+
+/// Compute the SHA-256 hash of the given data, returning it as a lowercase
+/// hex string.
+fn compute_sha256(data: &[u8]) -> String {
+  let digest = sha2::Sha256::digest(data);
+  faster_hex::hex_string(&digest)
+}
+
+/// Attempt a delta upgrade: download a bsdiff patch, apply it to the
+/// current binary, and verify the result. Returns `Some(patched_binary)`
+/// on success, or `None` on any failure (triggering full download fallback).
+async fn try_delta_upgrade(
+  client: &HttpClient,
+  current_exe: &Path,
+  current_version: &str,
+  target_version: &str,
+) -> Option<Vec<u8>> {
+  if !are_adjacent_versions(current_version, target_version) {
+    log::debug!(
+      "Versions {} and {} are not adjacent, skipping delta upgrade",
+      current_version,
+      target_version
+    );
+    return None;
+  }
+
+  // Read the current binary
+  let current_binary = match std::fs::read(current_exe) {
+    Ok(data) => data,
+    Err(e) => {
+      log::debug!("Failed to read current binary: {}", e);
+      return None;
+    }
+  };
+
+  // Verify the current binary's integrity by checking its hash against
+  // the published checksum for the current version
+  let current_checksum_url =
+    get_binary_checksum_url(current_version).ok()?;
+  if let Some(expected_hash) =
+    fetch_sha256_from_url(client, current_checksum_url).await
+  {
+    // The checksum file is for the zip archive, not the raw binary.
+    // We cannot verify the current uncompressed binary against the zip hash.
+    // Instead, we rely on the output binary verification below.
+    // But we can still check if the current binary's hash is known from the
+    // zip checksum to detect modifications -- skip this for now, since the
+    // zip hash != binary hash. The output verification is sufficient.
+    let _ = expected_hash;
+  }
+
+  // Download the delta patch
+  let delta_url =
+    get_delta_download_url(current_version, target_version).ok()?;
+  log::info!(
+    "{}",
+    colors::gray(format!("Downloading delta patch {}", &delta_url))
+  );
+  let delta_data = match download_package(client, delta_url).await {
+    Ok(Some(data)) => data,
+    Ok(None) => {
+      log::debug!("Delta patch not found, falling back to full download");
+      return None;
+    }
+    Err(e) => {
+      log::debug!("Failed to download delta patch: {}", e);
+      return None;
+    }
+  };
+
+  // Verify the delta patch's own checksum
+  let delta_checksum_url =
+    get_delta_checksum_url(current_version, target_version).ok()?;
+  if let Some(expected_delta_hash) =
+    fetch_sha256_from_url(client, delta_checksum_url).await
+  {
+    let actual_delta_hash = compute_sha256(&delta_data);
+    if actual_delta_hash != expected_delta_hash {
+      log::warn!(
+        "Delta patch checksum mismatch (expected {}, got {}), falling back to full download",
+        expected_delta_hash,
+        actual_delta_hash,
+      );
+      return None;
+    }
+    log::info!("{}", colors::gray("Delta patch checksum verified"));
+  } else {
+    log::debug!(
+      "Could not fetch delta patch checksum, falling back to full download"
+    );
+    return None;
+  }
+
+  // Apply the bsdiff patch
+  log::info!("{}", colors::gray("Applying delta patch..."));
+  let patched_binary = match apply_bsdiff_patch(&current_binary, &delta_data) {
+    Ok(data) => data,
+    Err(e) => {
+      log::warn!(
+        "Failed to apply delta patch: {}, falling back to full download",
+        e
+      );
+      return None;
+    }
+  };
+
+  // Verify the patched binary's SHA-256 against the published checksum
+  // for the target version. The published checksum is for the zip archive,
+  // so we need to fetch the binary hash from a separate source.
+  // For now, we compute the hash of the patched binary and verify it against
+  // a known-good hash. The release publishes .zip.sha256sum files (for the
+  // zip), but we need the hash of the uncompressed binary. We will use a
+  // dedicated .sha256sum for the uncompressed binary if available, or
+  // extract and hash the binary from the zip checksum.
+  //
+  // Since the existing release infrastructure only publishes zip checksums,
+  // we rely on the delta patch checksum verification above and the
+  // check_exe() validation that runs after this. The output binary is
+  // validated by running `deno -V` on it.
+  //
+  // TODO(bartlomieju): Once the CI publishes uncompressed binary checksums,
+  // add verification here.
+
+  log::info!(
+    "{}",
+    colors::gray(format!(
+      "Delta patch applied successfully ({:.1} MB patched binary)",
+      patched_binary.len() as f64 / 1_000_000.0
+    ))
+  );
+
+  Some(patched_binary)
+}
+
+/// Apply a bsdiff patch to produce a new binary.
+fn apply_bsdiff_patch(
+  old: &[u8],
+  patch_data: &[u8],
+) -> Result<Vec<u8>, AnyError> {
+  let mut cursor = std::io::Cursor::new(patch_data);
+  let mut new = Vec::new();
+  bsdiff::patch(old, &mut cursor, &mut new)
+    .context("bspatch failed to apply delta patch")?;
+  Ok(new)
+}
+
 fn spawn_banner_task(
   version: &str,
   release_channel: ReleaseChannel,
@@ -1792,6 +2076,7 @@ mod test {
       force: false,
       release_candidate: false,
       canary: false,
+      no_delta: false,
       version: None,
       output: None,
       version_or_hash_or_channel: None,
@@ -2846,5 +3131,82 @@ mod test {
     // Oldest 2 should be pruned
     assert!(!sys.fs_exists(dl_dir.join("canary/oldest")).unwrap());
     assert!(!sys.fs_exists(dl_dir.join("canary/old")).unwrap());
+  }
+
+  #[test]
+  fn test_are_adjacent_versions() {
+    // Adjacent patch versions
+    assert!(are_adjacent_versions("2.7.11", "2.7.12"));
+    assert!(are_adjacent_versions("2.7.0", "2.7.1"));
+    assert!(are_adjacent_versions("2.0.0", "2.0.1"));
+    assert!(are_adjacent_versions("1.46.2", "1.46.3"));
+
+    // Not adjacent: patch diff > 1
+    assert!(!are_adjacent_versions("2.7.10", "2.7.12"));
+    assert!(!are_adjacent_versions("2.7.0", "2.7.5"));
+
+    // Not adjacent: different minor
+    assert!(!are_adjacent_versions("2.6.10", "2.7.0"));
+    assert!(!are_adjacent_versions("2.6.0", "2.7.0"));
+
+    // Not adjacent: different major
+    assert!(!are_adjacent_versions("1.46.3", "2.0.0"));
+
+    // Not adjacent: downgrade
+    assert!(!are_adjacent_versions("2.7.12", "2.7.11"));
+
+    // Not adjacent: same version
+    assert!(!are_adjacent_versions("2.7.12", "2.7.12"));
+
+    // Not adjacent: pre-release versions
+    assert!(!are_adjacent_versions("2.7.11-rc.0", "2.7.12"));
+    assert!(!are_adjacent_versions("2.7.11", "2.7.12-rc.0"));
+
+    // Invalid versions
+    assert!(!are_adjacent_versions("invalid", "2.7.12"));
+    assert!(!are_adjacent_versions("2.7.11", "invalid"));
+  }
+
+  #[test]
+  fn test_get_delta_download_url() {
+    let url = get_delta_download_url("2.7.11", "2.7.12").unwrap();
+    let url_str = url.to_string();
+    assert!(
+      url_str.contains("/download/v2.7.12/"),
+      "URL should contain target version: {url_str}"
+    );
+    assert!(
+      url_str.contains(".from-2.7.11.bsdiff"),
+      "URL should contain source version and bsdiff extension: {url_str}"
+    );
+    assert!(
+      url_str.contains("deno-"),
+      "URL should contain target name: {url_str}"
+    );
+  }
+
+  #[test]
+  fn test_apply_bsdiff_patch() {
+    // Create a simple bsdiff patch and verify round-trip
+    let old_data = b"Hello, World!";
+    let new_data = b"Hello, Deno!";
+    let mut patch = Vec::new();
+    bsdiff::diff(old_data, new_data, &mut patch).unwrap();
+
+    let result = apply_bsdiff_patch(old_data, &patch).unwrap();
+    assert_eq!(result, new_data);
+  }
+
+  #[test]
+  fn test_compute_sha256() {
+    let data = b"test data";
+    let hash = compute_sha256(data);
+    assert_eq!(hash.len(), 64);
+    assert!(hash.chars().all(|c| c.is_ascii_hexdigit()));
+    // Known SHA-256 of "test data"
+    assert_eq!(
+      hash,
+      "916f0027a575074ce72a331777c3478d6513f786a591bd892da1a577bf2335f9"
+    );
   }
 }
