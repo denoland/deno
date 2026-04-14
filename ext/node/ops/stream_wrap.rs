@@ -1156,13 +1156,16 @@ impl LibUvStreamWrap {
         };
         if let Ok(buf) = TryInto::<v8::Local<v8::Uint8Array>>::try_into(chunk) {
           let byte_len = buf.byte_length();
-          let byte_off = buf.byte_offset();
-          let ab = buf.buffer(scope).unwrap();
-          let ptr = ab.data().unwrap().as_ptr() as *const u8;
-          // SAFETY: ptr points to the backing store of the ArrayBuffer; byte_off + byte_len is within bounds as guaranteed by the Uint8Array view.
-          let slice =
-            unsafe { std::slice::from_raw_parts(ptr.add(byte_off), byte_len) };
-          data.extend_from_slice(slice);
+          if byte_len > 0 {
+            let byte_off = buf.byte_offset();
+            let ab = buf.buffer(scope).unwrap();
+            let ptr = ab.data().unwrap().as_ptr() as *const u8;
+            // SAFETY: ptr points to the backing store of the ArrayBuffer; byte_off + byte_len is within bounds as guaranteed by the Uint8Array view.
+            let slice = unsafe {
+              std::slice::from_raw_parts(ptr.add(byte_off), byte_len)
+            };
+            data.extend_from_slice(slice);
+          }
         }
       }
     } else {
@@ -1174,13 +1177,16 @@ impl LibUvStreamWrap {
         };
         if let Ok(buf) = TryInto::<v8::Local<v8::Uint8Array>>::try_into(chunk) {
           let byte_len = buf.byte_length();
-          let byte_off = buf.byte_offset();
-          let ab = buf.buffer(scope).unwrap();
-          let ptr = ab.data().unwrap().as_ptr() as *const u8;
-          // SAFETY: ptr points to the backing store of the ArrayBuffer; byte_off + byte_len is within bounds as guaranteed by the Uint8Array view.
-          let slice =
-            unsafe { std::slice::from_raw_parts(ptr.add(byte_off), byte_len) };
-          data.extend_from_slice(slice);
+          if byte_len > 0 {
+            let byte_off = buf.byte_offset();
+            let ab = buf.buffer(scope).unwrap();
+            let ptr = ab.data().unwrap().as_ptr() as *const u8;
+            // SAFETY: ptr points to the backing store of the ArrayBuffer; byte_off + byte_len is within bounds as guaranteed by the Uint8Array view.
+            let slice = unsafe {
+              std::slice::from_raw_parts(ptr.add(byte_off), byte_len)
+            };
+            data.extend_from_slice(slice);
+          }
         } else if let Ok(s) = TryInto::<v8::Local<v8::String>>::try_into(chunk)
         {
           let encoding = chunks
