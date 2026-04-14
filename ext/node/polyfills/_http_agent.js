@@ -260,6 +260,13 @@ Agent.prototype.addRequest = function addRequest(
     }
   }
 
+  // Reject sockets that are no longer writable (remote end already closed
+  // the connection while the socket was idle in the pool).
+  if (socket && (socket.destroyed || !socket.writable)) {
+    socket.destroy();
+    socket = null;
+  }
+
   const freeLen = freeSockets ? freeSockets.length : 0;
   const sockLen = freeLen + this.sockets[name].length;
 

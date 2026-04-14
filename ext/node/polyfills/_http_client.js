@@ -96,6 +96,8 @@ const INVALID_PATH_REGEX = /[^\u0021-\u00ff]/;
 const kError = Symbol("kError");
 const kPath = Symbol("kPath");
 const kOtelSpan = Symbol("kOtelSpan");
+const kRetryData = Symbol("kRetryData");
+const kRetryOptions = Symbol("kRetryOptions");
 
 const kLenientAll = HTTPParser.kLenientAll | 0;
 const kLenientNone = HTTPParser.kLenientNone | 0;
@@ -345,6 +347,9 @@ function ClientRequest(input, options, cb) {
 
   this[kUniqueHeaders] = parseUniqueHeadersOption(options.uniqueHeaders);
 
+  // Save options for potential stale keepalive retry
+  this[kRetryOptions] = optsWithoutSignal;
+
   // initiate connection
   if (this.agent) {
     this.agent.addRequest(this, optsWithoutSignal);
@@ -497,6 +502,70 @@ function ondrain() {
   }
 }
 
+// Transparently retry a request on a new connection when the reused
+// keepalive socket turns out to be stale (server closed it while idle).
+function maybeRetryRequest(req, socket) {
+  if (!req.reusedSocket || req.res || !req.agent || req._retrying) {
+    return false;
+  }
+
+  req._retrying = true;
+  const agent = req.agent;
+
+  // Clean up parser on the old socket
+  const parser = socket.parser;
+  if (parser) {
+    parser.finish();
+    freeParser(parser, req, socket);
+  }
+
+  // Remove listeners installed by tickOnSocket
+  socket.removeListener("close", socketCloseListener);
+  socket.removeListener("error", socketErrorListener);
+  socket.removeListener("data", socketOnData);
+  socket.removeListener("end", socketOnEnd);
+  socket.removeListener("drain", ondrain);
+  if (req.timeoutCb) {
+    socket.removeListener("timeout", req.timeoutCb);
+  }
+  socket.removeListener("timeout", responseOnTimeout);
+
+  // Remove the stale socket from the agent's active sockets so that
+  // addRequest sees room under maxSockets to create a new connection.
+  // The installListeners onClose handler will still fire after destroy()
+  // and handle totalSocketCount bookkeeping.
+  const retryOpts = req[kRetryOptions];
+  const name = agent.getName(retryOpts);
+  const sockets = agent.sockets[name];
+  if (sockets) {
+    const idx = sockets.indexOf(socket);
+    if (idx !== -1) sockets.splice(idx, 1);
+    if (!sockets.length) delete agent.sockets[name];
+  }
+
+  socket.destroy();
+
+  // Reset request state for retry.
+  // Keep finished as-is: if end() was called, _flush() on the new socket
+  // needs to call _finish() to emit 'finish' (which pipeline awaits).
+  req.socket = null;
+  req.parser = null;
+  req._header = null;
+  req._headerSent = false;
+  req.destroyed = false;
+  req._closed = false;
+
+  // Restore output data saved before the first flush attempt
+  if (req[kRetryData]) {
+    req.outputData = req[kRetryData];
+    req[kRetryData] = null;
+  }
+
+  // Re-queue through agent to get a fresh socket
+  agent.addRequest(req, retryOpts);
+  return true;
+}
+
 function socketCloseListener() {
   const socket = this;
   const req = socket._httpMessage;
@@ -513,6 +582,9 @@ function socketCloseListener() {
 
   const parser = socket.parser;
   const res = req.res;
+
+  // Retry on stale keepalive socket before any error/cleanup handling
+  if (!res && maybeRetryRequest(req, socket)) return;
 
   // End OTel span on socket close
   const span = req[kOtelSpan];
@@ -558,6 +630,9 @@ function socketErrorListener(err) {
   const req = socket._httpMessage;
 
   if (req) {
+    // Retry on stale keepalive socket before emitting error
+    if (maybeRetryRequest(req, socket)) return;
+
     // End OTel span on error
     const span = req[kOtelSpan];
     if (span) {
@@ -584,6 +659,9 @@ function socketOnEnd() {
   const socket = this;
   const req = this._httpMessage;
   const parser = this.parser;
+
+  // Retry on stale keepalive socket (server sent FIN while idle)
+  if (!req.res && maybeRetryRequest(req, socket)) return;
 
   if (!req.res && !req.socket._hadError) {
     req.socket._hadError = true;
@@ -928,6 +1006,15 @@ function onSocketNT(req, socket, err) {
     _destroy(req, err || req[kError]);
   } else {
     tickOnSocket(req, socket);
+    // Save output data before flushing so it can be replayed on retry
+    // if this reused keepalive socket turns out to be stale.
+    if (req.reusedSocket && req.outputData.length > 0) {
+      req[kRetryData] = req.outputData.map((item) => ({
+        data: item.data,
+        encoding: item.encoding,
+        callback: item.callback,
+      }));
+    }
     req._flush();
   }
 }
