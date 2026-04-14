@@ -330,6 +330,14 @@ pub unsafe fn uv_write(
       cb,
       status: None,
     });
+
+    // Ensure the handle is active so poll_tcp_handle drains the queue.
+    (*tcp).flags |= UV_HANDLE_ACTIVE;
+    let inner = get_inner((*tcp).loop_);
+    let mut handles = inner.tcp_handles.borrow_mut();
+    if !handles.iter().any(|&h| std::ptr::eq(h, tcp)) {
+      handles.push(tcp);
+    }
     0
   }
 }
