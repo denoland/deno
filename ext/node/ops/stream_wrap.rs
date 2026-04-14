@@ -653,11 +653,11 @@ fn call_fatal_exception(
 ) {
   let global = scope.get_current_context().global(scope);
   let key = v8::String::new(scope, "reportError").unwrap();
-  if let Some(report_fn_val) = global.get(scope, key.into()) {
-    if let Ok(report_fn) = v8::Local::<v8::Function>::try_from(report_fn_val) {
-      let undef = v8::undefined(scope);
-      report_fn.call(scope, undef.into(), &[exception]);
-    }
+  if let Some(report_fn_val) = global.get(scope, key.into())
+    && let Ok(report_fn) = v8::Local::<v8::Function>::try_from(report_fn_val)
+  {
+    let undef = v8::undefined(scope);
+    report_fn.call(scope, undef.into(), &[exception]);
   }
 }
 

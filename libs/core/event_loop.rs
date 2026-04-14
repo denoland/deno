@@ -12,7 +12,7 @@
 use std::collections::VecDeque;
 
 /// Close callback for resource cleanup.
-pub(crate) struct CloseCallback {
+pub struct CloseCallback {
   pub callback: Box<dyn FnOnce()>,
 }
 
@@ -44,10 +44,7 @@ impl EventLoopPhases {
   }
 
   /// Drain all V8 close callbacks (called with a scope from jsruntime).
-  pub(crate) fn drain_v8_close_callbacks(
-    &mut self,
-  ) -> Vec<V8CloseCallback> {
+  pub(crate) fn drain_v8_close_callbacks(&mut self) -> Vec<V8CloseCallback> {
     self.v8_close_callbacks.drain(..).collect()
   }
 }
-

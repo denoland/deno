@@ -482,7 +482,7 @@ impl HandleWrap {
 
 fn uv_close<F>(
   scope: &mut v8::PinScope<'_, '_>,
-  op_state: Rc<RefCell<OpState>>,
+  _op_state: Rc<RefCell<OpState>>,
   this: v8::Global<v8::Object>,
   on_close: F,
 ) where
@@ -500,6 +500,9 @@ fn uv_close<F>(
   }
 
   let context = scope.get_current_context();
+  // SAFETY: The context embedder data slot contains a valid Rc<ContextState>
+  // pointer set during context initialization. We clone the Rc and forget
+  // the reconstructed one to avoid dropping the original reference.
   let context_state = unsafe {
     let ptr = context.get_aligned_pointer_from_embedder_data(
       deno_core::CONTEXT_STATE_SLOT_INDEX,

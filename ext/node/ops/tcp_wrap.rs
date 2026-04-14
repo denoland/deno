@@ -47,12 +47,12 @@ enum SocketType {
 /// # Safety
 /// The caller must ensure `$stream` is a valid `uv_stream_t` pointer whose
 /// `data` field points to a live `StreamHandleData` allocation.
+/// Obtain a V8 scope and the JS handle object for a libuv stream, then
+/// execute `$body`. Always expands inside `unsafe extern "C"` callbacks.
 macro_rules! with_js_handle {
   ($stream:expr, |$scope:ident, $this:ident| $body:block) => {{
     let Some(handle_data_ptr) =
-      // SAFETY: caller guarantees $stream is a valid uv_stream_t with
-      // data pointing to a live StreamHandleData.
-      (unsafe { LibUvStreamWrap::stable_handle_data($stream) })
+      LibUvStreamWrap::stable_handle_data($stream)
     else {
       return;
     };
@@ -94,6 +94,11 @@ macro_rules! with_js_handle {
 /// # Safety
 /// Must only be called by libuv as a `uv_connection_cb`. `server` must be a
 /// valid `uv_stream_t` whose `data` points to a live `StreamHandleData`.
+#[allow(
+  unused_unsafe,
+  clippy::undocumented_unsafe_blocks,
+  reason = "macro expands unsafe blocks inside unsafe fn"
+)]
 pub(crate) unsafe extern "C" fn server_connection_cb(
   server: *mut UvStream,
   status: i32,
@@ -124,6 +129,11 @@ struct ConnectReqData {
 /// # Safety
 /// Must only be called by libuv as a `uv_connect_cb`. `req` must point to a
 /// `ConnectReqData` allocated via `Box::into_raw`.
+#[allow(
+  unused_unsafe,
+  clippy::undocumented_unsafe_blocks,
+  reason = "macro expands unsafe blocks inside unsafe fn"
+)]
 unsafe extern "C" fn connect_cb(req: *mut UvConnect, status: i32) {
   // SAFETY: req points to a ConnectReqData allocated via Box::into_raw
   // in the connect() op. We reclaim ownership here.

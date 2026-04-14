@@ -2378,14 +2378,18 @@ impl JsRuntime {
         .event_loop_phases
         .borrow_mut()
         .drain_v8_close_callbacks();
-      if !v8_cbs.is_empty() {
-      }
       for cb in v8_cbs {
         (cb.callback)(scope);
       }
     }
     // libuv close callbacks may call into JS; flush microtasks if present.
-    if has_uv || !context_state.event_loop_phases.borrow().v8_close_callbacks.is_empty() {
+    if has_uv
+      || !context_state
+        .event_loop_phases
+        .borrow()
+        .v8_close_callbacks
+        .is_empty()
+    {
       scope.perform_microtask_checkpoint();
     }
 
