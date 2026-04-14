@@ -7,7 +7,6 @@ use std::pin::Pin;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use async_trait::async_trait;
 use bytes::Bytes;
 use deno_core::AsyncRefCell;
 use deno_core::AsyncResult;
@@ -159,63 +158,34 @@ pub struct CacheDeleteRequest {
   pub request_url: String,
 }
 
-#[async_trait(?Send)]
-pub trait Cache: Clone + 'static {
-  type CacheMatchResourceType: Resource;
-
-  async fn storage_open(&self, cache_name: String) -> Result<i64, CacheError>;
-  async fn storage_has(&self, cache_name: String) -> Result<bool, CacheError>;
-  async fn storage_delete(
-    &self,
-    cache_name: String,
-  ) -> Result<bool, CacheError>;
-  async fn storage_keys(&self) -> Result<Vec<String>, CacheError>;
-
-  /// Put a resource into the cache.
-  async fn put(
-    &self,
-    request_response: CachePutRequest,
-    resource: Option<Rc<dyn Resource>>,
-  ) -> Result<(), CacheError>;
-
-  async fn r#match(
-    &self,
-    request: CacheMatchRequest,
-  ) -> Result<
-    Option<(CacheMatchResponseMeta, Option<Self::CacheMatchResourceType>)>,
-    CacheError,
-  >;
-  async fn delete(
-    &self,
-    request: CacheDeleteRequest,
-  ) -> Result<bool, CacheError>;
-}
-
 #[derive(Clone)]
 pub enum CacheImpl {
   Sqlite(SqliteBackedCache),
   Lsc(LscBackend),
 }
 
-#[async_trait(?Send)]
-impl Cache for CacheImpl {
-  type CacheMatchResourceType = CacheResponseResource;
-
-  async fn storage_open(&self, cache_name: String) -> Result<i64, CacheError> {
+impl CacheImpl {
+  pub async fn storage_open(
+    &self,
+    cache_name: String,
+  ) -> Result<i64, CacheError> {
     match self {
       Self::Sqlite(cache) => cache.storage_open(cache_name).await,
       Self::Lsc(cache) => cache.storage_open(cache_name).await,
     }
   }
 
-  async fn storage_has(&self, cache_name: String) -> Result<bool, CacheError> {
+  pub async fn storage_has(
+    &self,
+    cache_name: String,
+  ) -> Result<bool, CacheError> {
     match self {
       Self::Sqlite(cache) => cache.storage_has(cache_name).await,
       Self::Lsc(cache) => cache.storage_has(cache_name).await,
     }
   }
 
-  async fn storage_delete(
+  pub async fn storage_delete(
     &self,
     cache_name: String,
   ) -> Result<bool, CacheError> {
@@ -225,14 +195,14 @@ impl Cache for CacheImpl {
     }
   }
 
-  async fn storage_keys(&self) -> Result<Vec<String>, CacheError> {
+  pub async fn storage_keys(&self) -> Result<Vec<String>, CacheError> {
     match self {
       Self::Sqlite(cache) => cache.storage_keys().await,
       Self::Lsc(cache) => cache.storage_keys().await,
     }
   }
 
-  async fn put(
+  pub async fn put(
     &self,
     request_response: CachePutRequest,
     resource: Option<Rc<dyn Resource>>,
@@ -243,11 +213,11 @@ impl Cache for CacheImpl {
     }
   }
 
-  async fn r#match(
+  pub async fn r#match(
     &self,
     request: CacheMatchRequest,
   ) -> Result<
-    Option<(CacheMatchResponseMeta, Option<Self::CacheMatchResourceType>)>,
+    Option<(CacheMatchResponseMeta, Option<CacheResponseResource>)>,
     CacheError,
   > {
     match self {
@@ -256,7 +226,7 @@ impl Cache for CacheImpl {
     }
   }
 
-  async fn delete(
+  pub async fn delete(
     &self,
     request: CacheDeleteRequest,
   ) -> Result<bool, CacheError> {
