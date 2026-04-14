@@ -1,4 +1,3 @@
 Created pipe: read fd [WILDCARD], write fd [WILDCARD]
 Pipe.open([WILDCARD]) returned: 0
 PASS: Pipe.open() succeeded with valid fd
-[WILDCARD]
