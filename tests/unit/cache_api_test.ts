@@ -15,6 +15,37 @@ Deno.test(async function cacheStorage() {
   assertFalse(await caches.has(cacheName));
 });
 
+Deno.test(async function cacheStorageKeys() {
+  const names = ["keys-a", "keys-b", "keys-c"];
+  for (const name of names) {
+    await caches.delete(name);
+  }
+
+  const before = await caches.keys();
+  assert(Array.isArray(before));
+  for (const name of names) {
+    assertFalse(before.includes(name));
+  }
+
+  for (const name of names) {
+    await caches.open(name);
+  }
+
+  const after = await caches.keys();
+  for (const name of names) {
+    assert(after.includes(name), `expected keys() to contain ${name}`);
+  }
+
+  assert(await caches.delete("keys-b"));
+  const afterDelete = await caches.keys();
+  assert(afterDelete.includes("keys-a"));
+  assertFalse(afterDelete.includes("keys-b"));
+  assert(afterDelete.includes("keys-c"));
+
+  assert(await caches.delete("keys-a"));
+  assert(await caches.delete("keys-c"));
+});
+
 Deno.test(async function cacheApi() {
   const cacheName = "cache-v1";
   const cache = await caches.open(cacheName);

@@ -213,6 +213,23 @@ impl SqliteBackedCache {
     .await?
   }
 
+  /// List all cache names.
+  pub async fn storage_keys(&self) -> Result<Vec<String>, CacheError> {
+    let db = self.connection.clone();
+    spawn_blocking(move || {
+      let db = db.lock();
+      let mut stmt =
+        db.prepare("SELECT cache_name FROM cache_storage ORDER BY id")?;
+      let rows = stmt.query_map([], |row| row.get::<_, String>(0))?;
+      let mut names = Vec::new();
+      for row in rows {
+        names.push(row?);
+      }
+      Ok::<Vec<String>, CacheError>(names)
+    })
+    .await?
+  }
+
   pub async fn put(
     &self,
     request_response: CachePutRequest,

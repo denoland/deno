@@ -16,6 +16,8 @@ interface CacheStorage {
   has(cacheName: string): Promise<boolean>;
   /** Delete cache storage for the provided name. */
   delete(cacheName: string): Promise<boolean>;
+  /** Return an array of all cache names tracked by the cache storage. */
+  keys(): Promise<string[]>;
 }
 
 /** @category Cache */

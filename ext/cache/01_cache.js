@@ -6,6 +6,7 @@ import {
   op_cache_put,
   op_cache_storage_delete,
   op_cache_storage_has,
+  op_cache_storage_keys,
   op_cache_storage_open,
 } from "ext:core/ops";
 const {
@@ -63,6 +64,11 @@ class CacheStorage {
     webidl.requiredArguments(arguments.length, 1, prefix);
     cacheName = webidl.converters["DOMString"](cacheName, prefix, "Argument 1");
     return await op_cache_storage_delete(cacheName);
+  }
+
+  async keys() {
+    webidl.assertBranded(this, CacheStoragePrototype);
+    return await op_cache_storage_keys();
   }
 
   [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
