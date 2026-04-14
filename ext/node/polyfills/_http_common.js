@@ -171,6 +171,9 @@ function parserOnBody(b) {
 
   // Pretend this was the result of a stream._read call.
   if (!stream._dumped) {
+    // Mark as consuming so resOnFinish does not auto-dump a
+    // paused request that already had data delivered.
+    stream._consuming = true;
     // deno-lint-ignore prefer-primordials
     const ret = stream.push(b);
     if (!ret) {
