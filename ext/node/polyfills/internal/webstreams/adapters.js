@@ -569,8 +569,7 @@ export function newWritableStreamFromStreamWritable(streamWritable) {
   // whose writable option is false. For a Duplex that is not writable,
   // we want it to pass this check but return a closed WritableStream.
   // We check if the given stream is a stream.Writable or http.OutgoingMessage
-  const checkIfWritableOrOutgoingMessage =
-    streamWritable &&
+  const checkIfWritableOrOutgoingMessage = streamWritable &&
     typeof streamWritable?.write === "function" &&
     typeof streamWritable?.on === "function";
   if (!checkIfWritableOrOutgoingMessage) {

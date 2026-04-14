@@ -1637,10 +1637,7 @@ impl TLSWrap {
       // rather than failing TLS initialization entirely.  Node.js allows
       // invalid hostnames through TLS setup and lets DNS resolution fail
       // later with the proper error code (ENOTFOUND / EAI_FAIL).
-      match rustls::pki_types::ServerName::try_from(server_name) {
-        Ok(name) => Some(name),
-        Err(_) => None,
-      }
+      rustls::pki_types::ServerName::try_from(server_name).ok()
     };
 
     let inner = unsafe { &mut *self.inner.as_mut_ptr() };
