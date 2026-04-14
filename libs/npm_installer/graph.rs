@@ -79,7 +79,7 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmInstallerSys>
       if let Some(npm_installer) = &self.npm_installer {
         let npm_installer = npm_installer.clone();
         let package_name = package_name.to_string();
-        deno_unsync::spawn(async move {
+        tokio::task::spawn_local(async move {
           let _ignore = npm_installer.cache_package_info(&package_name).await;
         });
       }

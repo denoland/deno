@@ -1,7 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 #[cfg(not(target_arch = "wasm32"))]
-use deno_unsync::JoinHandle;
+use tokio::task::JoinHandle;
 #[cfg(target_arch = "wasm32")]
 pub type JoinHandle<T> =
   std::future::Ready<Result<T, std::convert::Infallible>>;
@@ -19,6 +19,6 @@ pub fn spawn_blocking<
   }
   #[cfg(not(target_arch = "wasm32"))]
   {
-    deno_unsync::spawn_blocking(f)
+    tokio::task::spawn_blocking(f)
   }
 }

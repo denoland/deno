@@ -68,6 +68,9 @@ thiserror.workspace = true
 twox-hash.workspace = true
 url.workspace = true
 
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+tokio.workspace = true
+
 [dev-dependencies]
 node_resolver.workspace = true
 sys_traits = { workspace = true, features = ["memory", "real", "serde_json"] }

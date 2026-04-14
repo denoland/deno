@@ -2645,7 +2645,7 @@ where
   Fut::Output: Send + 'static,
 {
   fn execute(&self, fut: Fut) {
-    deno_unsync::spawn(fut);
+    tokio::task::spawn_local(fut);
   }
 }
 

@@ -15,12 +15,12 @@ use std::task::ready;
 
 use bit_set::BitSet;
 use deno_error::JsErrorClass;
-use deno_unsync::JoinHandle;
 use deno_unsync::UnsyncWaker;
-use deno_unsync::spawn;
 use futures::FutureExt;
 use futures::Stream;
 use futures::stream::FuturesUnordered;
+use tokio::task::JoinHandle;
+use tokio::task::spawn_local as spawn;
 
 use super::OpDriver;
 use super::OpInflightStats;

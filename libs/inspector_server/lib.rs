@@ -154,12 +154,12 @@ pub enum InspectorServerError {
   },
 }
 
-fn create_basic_runtime() -> tokio::runtime::Runtime {
+fn create_basic_runtime() -> tokio::runtime::LocalRuntime {
   tokio::runtime::Builder::new_current_thread()
     .enable_io()
     .enable_time()
     .max_blocking_threads(4)
-    .build()
+    .build_local(Default::default())
     .unwrap()
 }
 
@@ -185,18 +185,14 @@ impl InspectorServer {
 
     let thread_handle = thread::spawn(move || {
       let rt = create_basic_runtime();
-      let local = tokio::task::LocalSet::new();
-      local.block_on(
-        &rt,
-        server(
-          tcp_listener,
-          register_inspector_rx,
-          shutdown_server_rx,
-          reset_rx,
-          name,
-          publish_uid,
-        ),
-      )
+      rt.block_on(server(
+        tcp_listener,
+        register_inspector_rx,
+        shutdown_server_rx,
+        reset_rx,
+        name,
+        publish_uid,
+      ))
     });
 
     Ok(Self {
