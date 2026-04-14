@@ -1472,7 +1472,9 @@ Object.defineProperty(Socket.prototype, "bufferSize", {
 
 Object.defineProperty(Socket.prototype, "bytesRead", {
   get: function () {
-    return this._handle ? this._handle.bytesRead : this[kBytesRead];
+    return this._handle
+      ? (this._handle.getBytesRead?.() ?? this._handle.bytesRead ?? 0)
+      : this[kBytesRead];
   },
 });
 
