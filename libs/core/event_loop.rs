@@ -16,14 +16,23 @@ pub(crate) struct CloseCallback {
   pub callback: Box<dyn FnOnce()>,
 }
 
+/// V8 close callback that needs a scope to run JS.
+/// Used by HandleWrap.close() to defer the JS close callback to the
+/// close phase of the event loop, matching libuv's uv_close behavior.
+pub struct V8CloseCallback {
+  pub callback: Box<dyn FnOnce(&mut v8::PinScope<'_, '_>) + 'static>,
+}
+
 /// Phase-specific state for the event loop.
 ///
 /// Currently only tracks close callbacks. Other phase hooks (idle, prepare,
 /// check) are handled by `UvLoopInner` for the libuv compat path.
 #[derive(Default)]
-pub(crate) struct EventLoopPhases {
+pub struct EventLoopPhases {
   /// Phase 6: Close callbacks.
   pub close_callbacks: VecDeque<CloseCallback>,
+  /// Phase 6: V8 close callbacks (need a scope to call JS).
+  pub v8_close_callbacks: VecDeque<V8CloseCallback>,
 }
 
 impl EventLoopPhases {
@@ -33,4 +42,12 @@ impl EventLoopPhases {
       (cb.callback)();
     }
   }
+
+  /// Drain all V8 close callbacks (called with a scope from jsruntime).
+  pub(crate) fn drain_v8_close_callbacks(
+    &mut self,
+  ) -> Vec<V8CloseCallback> {
+    self.v8_close_callbacks.drain(..).collect()
+  }
 }
+

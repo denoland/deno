@@ -502,8 +502,11 @@ function socketCloseListener() {
   const req = socket._httpMessage;
 
   // Guard against close firing on a socket whose request was already
-  // handled by responseKeepAlive. This can happen when the agent
-  // destroys kept-alive sockets during process shutdown.
+  // handled by responseKeepAlive. In Node.js, the close callback from
+  // uv_close fires on the next event loop iteration (after nextTick),
+  // so responseKeepAlive's removeListener always runs before close.
+  // In Deno, V8TaskSpawner may fire before nextTick, so close can
+  // fire before responseKeepAlive removes the listener.
   if (!req || req.destroyed) {
     return;
   }

@@ -1685,21 +1685,13 @@ Socket.prototype._destroy = function (exception, cb) {
     this[kBytesRead] = this._handle.bytesRead;
     this[kBytesWritten] = this._handle.bytesWritten;
 
-    // deno-lint-ignore no-this-alias
-    const self = this;
     this._handle.close(() => {
-      self._handle.onread = _noop;
-      self._handle = null;
-      self._sockname = undefined;
+      this._handle.onread = _noop;
+      this._handle = null;
+      this._sockname = undefined;
 
-      // Defer close emission via nextTick so it fires after error.
-      // handle.close() callback runs via V8TaskSpawner which has higher
-      // priority than nextTick. By deferring close to nextTick here,
-      // error (also queued via nextTick from cb) fires first.
-      nextTick(() => {
-        debug("emit close");
-        self.emit("close", isException);
-      });
+      debug("emit close");
+      this.emit("close", isException);
     });
     cb(exception);
   } else {

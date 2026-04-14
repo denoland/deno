@@ -499,10 +499,23 @@ fn uv_close<F>(
     fn_.call(scope, this.into(), &[]);
   }
 
-  op_state
-    .borrow()
-    .borrow::<deno_core::V8TaskSpawner>()
-    .spawn(on_close);
+  let context = scope.get_current_context();
+  let context_state = unsafe {
+    let ptr = context.get_aligned_pointer_from_embedder_data(
+      deno_core::CONTEXT_STATE_SLOT_INDEX,
+    );
+    let rc = std::rc::Rc::from_raw(ptr as *const deno_core::ContextState);
+    let cloned = rc.clone();
+    std::mem::forget(rc);
+    cloned
+  };
+  context_state
+    .event_loop_phases
+    .borrow_mut()
+    .v8_close_callbacks
+    .push_back(deno_core::event_loop::V8CloseCallback {
+      callback: Box::new(on_close),
+    });
 }
 
 #[cfg(test)]
