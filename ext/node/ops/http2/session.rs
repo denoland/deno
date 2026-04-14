@@ -1562,6 +1562,11 @@ impl Session {
     let stream = match self.stream {
       Some(stream) => stream,
       None => {
+        // JS write path: no consumed stream, but still check for graceful
+        // close completion. The JS side handles data serialization via
+        // getOutgoingData/sendPending, but the graceful close notification
+        // must still fire when nghttp2 reports no more pending I/O.
+        self.maybe_notify_graceful_close_complete();
         return;
       }
     };

@@ -3326,11 +3326,16 @@ class Http2Session extends EventEmitter {
     if (typeof callback === "function") {
       this.once("close", callback);
     }
-    this.goaway();
+    // Set graceful close flag BEFORE sending GOAWAY so that when goaway()
+    // calls send_pending_data() -> maybe_notify_graceful_close_complete(),
+    // the flag is already set. In Node.js this ordering doesn't matter
+    // because writes to the socket are async (the completion callback fires
+    // after both calls), but in Deno writes are synchronous.
     const handle = this[kHandle];
     if (handle) {
       handle.setGracefulClose();
     }
+    this.goaway();
     this[kMaybeDestroy]();
   }
 
