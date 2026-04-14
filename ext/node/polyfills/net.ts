@@ -1682,8 +1682,10 @@ Socket.prototype._destroy = function (exception, cb) {
   if (this._handle) {
     debug("close handle");
     const isException = exception ? true : false;
-    this[kBytesRead] = this._handle.bytesRead;
-    this[kBytesWritten] = this._handle.bytesWritten;
+    this[kBytesRead] = this._handle.getBytesRead?.() ??
+      this._handle.bytesRead ?? 0;
+    this[kBytesWritten] = this._handle.getBytesWritten?.() ??
+      this._handle.bytesWritten ?? 0;
 
     this._handle.close(() => {
       this._handle.onread = _noop;
@@ -1791,7 +1793,9 @@ Object.defineProperty(Socket.prototype, "_connecting", {
 
 Object.defineProperty(Socket.prototype, "_bytesDispatched", {
   get: function () {
-    return this._handle ? this._handle.bytesWritten : this[kBytesWritten];
+    return this._handle
+      ? (this._handle.getBytesWritten?.() ?? this._handle.bytesWritten ?? 0)
+      : this[kBytesWritten];
   },
 });
 

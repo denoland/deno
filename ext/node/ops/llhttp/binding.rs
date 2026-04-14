@@ -363,7 +363,24 @@ unsafe extern "C" fn on_header_value_complete(
   let ctx = unsafe { get_ctx(parser) };
   let inner = unsafe { &mut *ctx.inner };
   let field = std::mem::take(&mut inner.current_header_field);
-  let value = std::mem::take(&mut inner.current_header_value);
+  let mut value = std::mem::take(&mut inner.current_header_value);
+  // Strip leading/trailing OWS (spaces and tabs) from header values,
+  // matching Node.js's HTTP parser behavior (RFC 9110 §5.5).
+  let trimmed = {
+    let bytes = value.as_slice();
+    let start = bytes
+      .iter()
+      .position(|&b| b != b' ' && b != b'\t')
+      .unwrap_or(bytes.len());
+    let end = bytes
+      .iter()
+      .rposition(|&b| b != b' ' && b != b'\t')
+      .map_or(start, |p| p + 1);
+    start..end
+  };
+  if trimmed.start > 0 || trimmed.end < value.len() {
+    value = value[trimmed].to_vec();
+  }
   inner.header_fields.push(field);
   inner.header_values.push(value);
   inner.in_header_value = false;
