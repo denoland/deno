@@ -407,20 +407,47 @@ unsafe extern "C" fn on_headers_complete(parser: *mut sys::llhttp_t) -> c_int {
     return 0;
   };
 
+  // Flush any remaining headers via kOnHeaders first, matching Node.js
+  // behavior.  This ensures all headers end up in parser._headers so
+  // parserOnHeadersComplete reads them via the `if (headers === undefined)`
+  // path.  Without this, when the total header count exceeds
+  // MAX_HEADER_PAIRS the first batch (sent via kOnHeaders during parsing)
+  // would be lost because kOnHeadersComplete would receive only the
+  // leftover headers and skip parser._headers.
+  if !inner.header_fields.is_empty() {
+    let flush_headers = Inner::create_headers_array(
+      scope,
+      &inner.header_fields,
+      &inner.header_values,
+    );
+    let flush_url = v8::String::new_from_one_byte(
+      scope,
+      &inner.url,
+      v8::NewStringType::Normal,
+    )
+    .unwrap_or_else(|| v8::String::empty(scope));
+
+    if let Some(on_hdr) = cb_obj.get_index(scope, K_ON_HEADERS)
+      && let Ok(on_hdr_fn) = v8::Local::<v8::Function>::try_from(on_hdr)
+    {
+      let _ = on_hdr_fn.call(
+        scope,
+        cb_obj.into(),
+        &[flush_headers.into(), flush_url.into()],
+      );
+    }
+    inner.header_fields.clear();
+    inner.header_values.clear();
+    inner.url.clear();
+  }
+
   let version_major =
     v8::Integer::new(scope, unsafe { (*parser).http_major } as i32);
   let version_minor =
     v8::Integer::new(scope, unsafe { (*parser).http_minor } as i32);
-  let headers = if !inner.header_fields.is_empty() {
-    Inner::create_headers_array(
-      scope,
-      &inner.header_fields,
-      &inner.header_values,
-    )
-    .into()
-  } else {
-    v8::undefined(scope).into()
-  };
+  // All headers have been flushed via kOnHeaders above, so always pass
+  // undefined here.  parserOnHeadersComplete will read from parser._headers.
+  let headers: v8::Local<v8::Value> = v8::undefined(scope).into();
   let is_request = unsafe { (*parser).type_ } == sys::HTTP_REQUEST as u8;
   let undef = v8::undefined(scope);
 

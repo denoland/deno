@@ -494,6 +494,8 @@ function connectionListenerInternal(server, socket) {
     outgoingData: 0,
     requestsCount: 0,
     keepAliveTimeoutSet: false,
+    keepAliveTimerId: null,
+    keepAliveTimerCloseHandler: null,
   };
   state.onData = socketOnData.bind(undefined, server, socket, parser, state);
   state.onEnd = socketOnEnd.bind(undefined, server, socket, parser, state);
@@ -629,6 +631,15 @@ function resetSocketTimeout(server, socket, state) {
   if (!state.keepAliveTimeoutSet) return;
   socket.setTimeout(server.timeout || 0);
   state.keepAliveTimeoutSet = false;
+  // Cancel the system timer created for keep-alive idle timeout
+  if (state.keepAliveTimerId !== null) {
+    core.cancelTimer(state.keepAliveTimerId);
+    state.keepAliveTimerId = null;
+  }
+  if (state.keepAliveTimerCloseHandler !== null) {
+    socket.removeListener("close", state.keepAliveTimerCloseHandler);
+    state.keepAliveTimerCloseHandler = null;
+  }
 }
 
 function socketOnDrain(socket, state) {
@@ -902,6 +913,8 @@ function resOnFinish(req, res, socket, state, server) {
         // in Deno's test sanitizer checks.
         const timerId = core.createTimer(
           () => {
+            state.keepAliveTimerId = null;
+            state.keepAliveTimerCloseHandler = null;
             // Socket timed out waiting for another request
             socket.destroy();
           },
@@ -911,7 +924,14 @@ function resOnFinish(req, res, socket, state, server) {
           false, // isRefed
           true, // isSystem
         );
-        socket.once("close", () => core.cancelTimer(timerId));
+        const closeHandler = () => {
+          core.cancelTimer(timerId);
+          state.keepAliveTimerId = null;
+          state.keepAliveTimerCloseHandler = null;
+        };
+        socket.once("close", closeHandler);
+        state.keepAliveTimerId = timerId;
+        state.keepAliveTimerCloseHandler = closeHandler;
         state.keepAliveTimeoutSet = true;
       }
     }

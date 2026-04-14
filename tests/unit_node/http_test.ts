@@ -1064,11 +1064,8 @@ Deno.test("[node/http] server emits error if addr in use", async () => {
   server.close(() => deferred1.resolve());
   server2.close();
   await deferred1.promise;
-  const expectedMsg = Deno.build.os === "windows"
-    ? "Only one usage of each socket address"
-    : "EADDRINUSE";
   assert(
-    err.message.includes(expectedMsg),
+    err.message.includes("EADDRINUSE"),
     `Wrong error: ${err.message}`,
   );
 });

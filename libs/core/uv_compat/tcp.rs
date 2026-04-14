@@ -774,6 +774,7 @@ pub(crate) unsafe fn poll_tcp_handle(
     }
   };
   if let Some((req, cb, result)) = connect_result {
+    any_work = true;
     // SAFETY: tcp_ptr is valid, no outstanding borrows.
     unsafe {
       let status = match result {

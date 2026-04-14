@@ -1637,9 +1637,13 @@ impl TLSWrap {
     let server_name = if server_name.is_empty() {
       None
     } else {
+      // If the hostname is not a valid DNS name or IP address, skip SNI
+      // rather than failing TLS initialization entirely.  Node.js allows
+      // invalid hostnames through TLS setup and lets DNS resolution fail
+      // later with the proper error code (ENOTFOUND / EAI_FAIL).
       match rustls::pki_types::ServerName::try_from(server_name) {
         Ok(name) => Some(name),
-        Err(_) => return -1,
+        Err(_) => None,
       }
     };
 
