@@ -7,48 +7,16 @@ const {
   SafeRegExp,
   Symbol,
 } = primordials;
-import { HTTPParser } from "ext:deno_node/internal_binding/http_parser.ts";
+import {
+  HTTPParser,
+  methods,
+} from "ext:deno_node/internal_binding/http_parser.ts";
 
 export const CRLF = "\r\n";
 export const kIncomingMessage = Symbol("IncomingMessage");
 const tokenRegExp = new SafeRegExp(/^[\^_`a-zA-Z\-0-9!#$%&'*+.|~]+$/);
 
-export const methods = [
-  "ACL",
-  "BIND",
-  "CHECKOUT",
-  "CONNECT",
-  "COPY",
-  "DELETE",
-  "GET",
-  "HEAD",
-  "LINK",
-  "LOCK",
-  "M-SEARCH",
-  "MERGE",
-  "MKACTIVITY",
-  "MKCALENDAR",
-  "MKCOL",
-  "MOVE",
-  "NOTIFY",
-  "OPTIONS",
-  "PATCH",
-  "POST",
-  "PROPFIND",
-  "PROPPATCH",
-  "PURGE",
-  "PUT",
-  "REBIND",
-  "REPORT",
-  "SEARCH",
-  "SOURCE",
-  "SUBSCRIBE",
-  "TRACE",
-  "UNBIND",
-  "UNLINK",
-  "UNLOCK",
-  "UNSUBSCRIBE",
-];
+export { methods };
 
 /**
  * Verifies that the given val is a valid HTTP token

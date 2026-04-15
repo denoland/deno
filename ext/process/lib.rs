@@ -666,8 +666,12 @@ fn create_command(
         }
         for &(src, dst) in &fds_to_dup {
           if src >= 0 && dst >= 0 {
-            let _fd = libc::dup2(src, dst);
-            libc::close(src);
+            if src != dst {
+              libc::dup2(src, dst);
+              libc::close(src);
+            }
+            // Clear CLOEXEC so the fd survives exec.
+            libc::fcntl(dst, libc::F_SETFD, 0);
           }
         }
         libc::setgroups(0, std::ptr::null());
@@ -785,7 +789,7 @@ struct NodeChild {
   stdout_fd: Option<i64>,
   stderr_fd: Option<i64>,
   ipc_pipe_rid: Option<ResourceId>,
-  extra_pipe_rids: Vec<Option<ResourceId>>,
+  extra_pipe_fds: Vec<Option<i64>>,
 }
 
 /// Spawn a child process, returning the raw child and its PID.
@@ -991,24 +995,6 @@ fn spawn_child_node(
   let stdout_fd = child_stdio_to_fd!(child, stdout);
   let stderr_fd = child_stdio_to_fd!(child, stderr);
 
-  // Extra pipes need BiPipeResource (not raw fds) because they are
-  // bidirectional and StdFileResourceInner serializes reads and writes
-  // through a single queue, causing deadlocks when both are active.
-  let extra_pipe_rids = extra_pipe_fds
-    .into_iter()
-    .map(|maybe_fd| {
-      maybe_fd
-        .map(|fd| {
-          let resource = deno_io::BiPipeResource::from_raw_handle(
-            fd as deno_io::RawBiPipeHandle,
-          )?;
-          Ok(state.resource_table.add(resource))
-        })
-        .transpose()
-    })
-    .collect::<Result<Vec<_>, std::io::Error>>()
-    .map_err(ProcessError::Io)?;
-
   let child_rid = state.resource_table.add(ChildResource {
     child: RefCell::new(child),
     pid,
@@ -1022,7 +1008,7 @@ fn spawn_child_node(
     stdout_fd,
     stderr_fd,
     ipc_pipe_rid,
-    extra_pipe_rids,
+    extra_pipe_fds,
   })
 }
 

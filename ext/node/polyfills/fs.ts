@@ -51,6 +51,7 @@ import {
   ReadStream,
   WriteStream,
 } from "ext:deno_node/internal/fs/streams.mjs";
+import SyncWriteStream from "ext:deno_node/internal/fs/sync_write_stream.js";
 import {
   arrayBufferViewToUint8Array,
   BigIntStats,
@@ -3437,6 +3438,7 @@ export default {
   writeFileSync,
   WriteStream,
   writeSync,
+  SyncWriteStream,
   // For tests
   _toUnixTimestamp,
 };
@@ -3536,6 +3538,7 @@ export {
   statSync,
   symlink,
   symlinkSync,
+  SyncWriteStream,
   truncate,
   truncateSync,
   unlink,

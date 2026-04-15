@@ -18,7 +18,7 @@ import {
 // Bump this number when you want to purge the cache.
 // Note: the tools/release/01_bump_crate_versions.ts script will update this version
 // automatically via regex, so ensure that this line maintains this format.
-const cacheVersion = 108;
+const cacheVersion = 109;
 
 const ubuntuX86Runner = "ubuntu-24.04";
 const ubuntuARMRunner = "ubuntu-24.04-arm";
@@ -132,6 +132,7 @@ ${installPkgsCommand} || (echo 'Failed. Trying again.' && sudo apt-get clean && 
 (yes '' | sudo update-alternatives --force --all) > /dev/null 2> /dev/null || true
 
 clang-${llvmVersion} -c -o /tmp/memfd_create_shim.o tools/memfd_create_shim.c -fPIC
+clang-${llvmVersion} -c -o /tmp/glibc_math_shim.o tools/glibc_math_shim.c -fPIC
 
 echo "Decompressing sysroot..."
 wget -q https://github.com/denoland/deno_sysroot_build/releases/download/sysroot-20250207/sysroot-\`uname -m\`.tar.xz -O /tmp/sysroot.tar.xz
@@ -171,6 +172,12 @@ RUSTFLAGS<<__1
   -C link-arg=-Wl,--thinlto-cache-dir=$(pwd)/target/release/lto-cache
   -C link-arg=-Wl,--thinlto-cache-policy,cache_size_bytes=700m
   -C link-arg=/tmp/memfd_create_shim.o
+  -C link-arg=/tmp/glibc_math_shim.o
+  -C link-arg=-Wl,--wrap=expf
+  -C link-arg=-Wl,--wrap=powf
+  -C link-arg=-Wl,--wrap=exp2f
+  -C link-arg=-Wl,--wrap=log2f
+  -C link-arg=-Wl,--wrap=logf
   --cfg tokio_unstable
   $RUSTFLAGS
 __1
@@ -183,6 +190,12 @@ RUSTDOCFLAGS<<__1
   -C link-arg=-Wl,--thinlto-cache-dir=$(pwd)/target/release/lto-cache
   -C link-arg=-Wl,--thinlto-cache-policy,cache_size_bytes=700m
   -C link-arg=/tmp/memfd_create_shim.o
+  -C link-arg=/tmp/glibc_math_shim.o
+  -C link-arg=-Wl,--wrap=expf
+  -C link-arg=-Wl,--wrap=powf
+  -C link-arg=-Wl,--wrap=exp2f
+  -C link-arg=-Wl,--wrap=log2f
+  -C link-arg=-Wl,--wrap=logf
   --cfg tokio_unstable
   $RUSTFLAGS
 __1
