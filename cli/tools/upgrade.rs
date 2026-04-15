@@ -1506,9 +1506,12 @@ fn get_download_url(
   })
 }
 
-/// Check if two semver versions are adjacent patch releases in the same
-/// major.minor series (e.g. 2.7.11 and 2.7.12).
-fn are_adjacent_versions(
+/// Check if two semver versions are eligible for delta upgrade.
+/// Supports:
+/// - Same minor, patch diff <= 3 (e.g. 2.7.10 -> 2.7.12)
+/// - Cross-minor boundary (e.g. 2.6.x -> 2.7.0)
+/// Returns true if a delta patch MIGHT exist for this version pair.
+fn is_delta_eligible(
   current_version: &str,
   target_version: &str,
 ) -> bool {
@@ -1518,12 +1521,21 @@ fn are_adjacent_versions(
   let Ok(target) = Version::parse_standard(target_version) else {
     return false;
   };
-  // Must be same major.minor, no pre-release tags, and patch diff == 1
-  current.major == target.major
-    && current.minor == target.minor
-    && current.pre.is_empty()
-    && target.pre.is_empty()
-    && target.patch == current.patch + 1
+  if !current.pre.is_empty() || !target.pre.is_empty() {
+    return false;
+  }
+  if current.major != target.major {
+    return false;
+  }
+  if current.minor == target.minor {
+    // Same minor: allow up to 3 patch versions apart
+    target.patch > current.patch && target.patch <= current.patch + 3
+  } else if target.minor == current.minor + 1 && target.patch == 0 {
+    // Cross-minor: e.g. 2.6.10 -> 2.7.0
+    true
+  } else {
+    false
+  }
 }
 
 /// Construct the delta patch download URL for a stable release.
@@ -1614,9 +1626,9 @@ async fn try_delta_upgrade(
   current_version: &str,
   target_version: &str,
 ) -> Option<Vec<u8>> {
-  if !are_adjacent_versions(current_version, target_version) {
+  if !is_delta_eligible(current_version, target_version) {
     log::debug!(
-      "Versions {} and {} are not adjacent, skipping delta upgrade",
+      "Versions {} and {} are not eligible for delta upgrade",
       current_version,
       target_version
     );
@@ -3153,37 +3165,47 @@ mod test {
   }
 
   #[test]
-  fn test_are_adjacent_versions() {
-    // Adjacent patch versions
-    assert!(are_adjacent_versions("2.7.11", "2.7.12"));
-    assert!(are_adjacent_versions("2.7.0", "2.7.1"));
-    assert!(are_adjacent_versions("2.0.0", "2.0.1"));
-    assert!(are_adjacent_versions("1.46.2", "1.46.3"));
+  fn test_is_delta_eligible() {
+    // Adjacent patch versions (diff == 1)
+    assert!(is_delta_eligible("2.7.11", "2.7.12"));
+    assert!(is_delta_eligible("2.7.0", "2.7.1"));
+    assert!(is_delta_eligible("2.0.0", "2.0.1"));
+    assert!(is_delta_eligible("1.46.2", "1.46.3"));
 
-    // Not adjacent: patch diff > 1
-    assert!(!are_adjacent_versions("2.7.10", "2.7.12"));
-    assert!(!are_adjacent_versions("2.7.0", "2.7.5"));
+    // Multi-step patches (diff 2-3)
+    assert!(is_delta_eligible("2.7.10", "2.7.12"));
+    assert!(is_delta_eligible("2.7.9", "2.7.12"));
 
-    // Not adjacent: different minor
-    assert!(!are_adjacent_versions("2.6.10", "2.7.0"));
-    assert!(!are_adjacent_versions("2.6.0", "2.7.0"));
+    // Too far apart (diff > 3)
+    assert!(!is_delta_eligible("2.7.0", "2.7.5"));
+    assert!(!is_delta_eligible("2.7.8", "2.7.12"));
 
-    // Not adjacent: different major
-    assert!(!are_adjacent_versions("1.46.3", "2.0.0"));
+    // Cross-minor boundary (x.Y.z -> x.Y+1.0)
+    assert!(is_delta_eligible("2.6.10", "2.7.0"));
+    assert!(is_delta_eligible("2.6.0", "2.7.0"));
 
-    // Not adjacent: downgrade
-    assert!(!are_adjacent_versions("2.7.12", "2.7.11"));
+    // Cross-minor but not to .0
+    assert!(!is_delta_eligible("2.6.10", "2.7.1"));
 
-    // Not adjacent: same version
-    assert!(!are_adjacent_versions("2.7.12", "2.7.12"));
+    // Cross-minor too far
+    assert!(!is_delta_eligible("2.5.10", "2.7.0"));
 
-    // Not adjacent: pre-release versions
-    assert!(!are_adjacent_versions("2.7.11-rc.0", "2.7.12"));
-    assert!(!are_adjacent_versions("2.7.11", "2.7.12-rc.0"));
+    // Different major
+    assert!(!is_delta_eligible("1.46.3", "2.0.0"));
+
+    // Downgrade
+    assert!(!is_delta_eligible("2.7.12", "2.7.11"));
+
+    // Same version
+    assert!(!is_delta_eligible("2.7.12", "2.7.12"));
+
+    // Pre-release versions
+    assert!(!is_delta_eligible("2.7.11-rc.0", "2.7.12"));
+    assert!(!is_delta_eligible("2.7.11", "2.7.12-rc.0"));
 
     // Invalid versions
-    assert!(!are_adjacent_versions("invalid", "2.7.12"));
-    assert!(!are_adjacent_versions("2.7.11", "invalid"));
+    assert!(!is_delta_eligible("invalid", "2.7.12"));
+    assert!(!is_delta_eligible("2.7.11", "invalid"));
   }
 
   #[test]

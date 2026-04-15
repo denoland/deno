@@ -34,6 +34,7 @@ use http_body_util::combinators::UnsyncBoxBody;
 use hyper_utils::run_server_with_remote_addr;
 use pretty_assertions::assert_eq;
 use prost::Message;
+use sha2::Digest;
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpStream;
 
@@ -1145,6 +1146,97 @@ console.log("imported", import.meta.url);
           .unwrap(),
       )
     }
+    // for testing deno upgrade -- uncompressed binary SHA-256
+    (&Method::GET, path)
+      if path.starts_with("/deno-upgrade/download/")
+        && path.ends_with(".sha256sum")
+        && !path.ends_with(".zip.sha256sum")
+        && !path.ends_with(".bsdiff.sha256sum") =>
+    {
+      let version = path
+        .strip_prefix("/deno-upgrade/download/v")
+        .and_then(|s| s.split('/').next())
+        .unwrap_or("unknown");
+      // The fake binary content matches what the zip handler produces
+      let content = format!("DENO_UPGRADE_TEST_BINARY_VERSION_{}", version);
+      let hash = sha2_digest(&content.as_bytes());
+      let filename = path.rsplit('/').next().unwrap_or("deno");
+      let body = format!("{}  {}\n", hash, filename);
+      Ok(
+        Response::builder()
+          .status(StatusCode::OK)
+          .header("content-type", "text/plain")
+          .body(UnsyncBoxBody::new(Full::new(Bytes::from(body))))
+          .unwrap(),
+      )
+    }
+    // for testing deno upgrade -- bsdiff delta patch
+    (&Method::GET, path)
+      if path.starts_with("/deno-upgrade/download/")
+        && path.ends_with(".bsdiff") =>
+    {
+      let version = path
+        .strip_prefix("/deno-upgrade/download/v")
+        .and_then(|s| s.split('/').next())
+        .unwrap_or("unknown");
+      // Extract source version from filename: deno-{target}.from-{src}.bsdiff
+      let filename = path.rsplit('/').next().unwrap_or("");
+      let src_version = filename
+        .rsplit(".from-")
+        .next()
+        .and_then(|s| s.strip_suffix(".bsdiff"))
+        .unwrap_or("unknown");
+      // Generate a bsdiff patch from the old to the new fake binary
+      let old_content =
+        format!("DENO_UPGRADE_TEST_BINARY_VERSION_{}", src_version);
+      let new_content =
+        format!("DENO_UPGRADE_TEST_BINARY_VERSION_{}", version);
+      let mut patch = Vec::new();
+      bsdiff::diff(old_content.as_bytes(), new_content.as_bytes(), &mut patch)
+        .unwrap();
+      Ok(
+        Response::builder()
+          .status(StatusCode::OK)
+          .header("content-type", "application/octet-stream")
+          .body(UnsyncBoxBody::new(Full::new(Bytes::from(patch))))
+          .unwrap(),
+      )
+    }
+    // for testing deno upgrade -- bsdiff delta patch SHA-256
+    (&Method::GET, path)
+      if path.starts_with("/deno-upgrade/download/")
+        && path.ends_with(".bsdiff.sha256sum") =>
+    {
+      let version = path
+        .strip_prefix("/deno-upgrade/download/v")
+        .and_then(|s| s.split('/').next())
+        .unwrap_or("unknown");
+      let filename_with_sum = path.rsplit('/').next().unwrap_or("");
+      let bsdiff_filename =
+        filename_with_sum.strip_suffix(".sha256sum").unwrap_or("");
+      // We need to generate the same bsdiff patch to compute its hash
+      let src_version = bsdiff_filename
+        .rsplit(".from-")
+        .next()
+        .and_then(|s| s.strip_suffix(".bsdiff"))
+        .unwrap_or("unknown");
+      let old_content =
+        format!("DENO_UPGRADE_TEST_BINARY_VERSION_{}", src_version);
+      let new_content =
+        format!("DENO_UPGRADE_TEST_BINARY_VERSION_{}", version);
+      let mut patch = Vec::new();
+      bsdiff::diff(old_content.as_bytes(), new_content.as_bytes(), &mut patch)
+        .unwrap();
+      let hash = sha2_digest(&patch);
+      let body = format!("{}  {}\n", hash, bsdiff_filename);
+      Ok(
+        Response::builder()
+          .status(StatusCode::OK)
+          .header("content-type", "text/plain")
+          .body(UnsyncBoxBody::new(Full::new(Bytes::from(body))))
+          .unwrap(),
+      )
+    }
     _ => {
       let uri_path = req.uri().path();
       let mut file_path = testdata_path().to_path_buf();
@@ -1470,4 +1562,9 @@ pub fn custom_headers(
   }
 
   response
+}
+
+fn sha2_digest(data: &[u8]) -> String {
+  let hash = sha2::Sha256::digest(data);
+  faster_hex::hex_string(&hash)
 }

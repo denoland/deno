@@ -10384,6 +10384,7 @@ dependencies = [
  "anyhow",
  "async-stream",
  "base64 0.22.1",
+ "bsdiff",
  "bytes",
  "deno_unsync",
  "denokv_proto",
