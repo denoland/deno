@@ -2116,6 +2116,7 @@ export class IncomingMessageForServer extends NodeReadable {
   url: string;
   method: string;
   socket: Socket | FakeSocket;
+  complete: boolean;
 
   constructor(socket: FakeSocket | Socket) {
     const reader = socket instanceof FakeSocket
@@ -2129,12 +2130,18 @@ export class IncomingMessageForServer extends NodeReadable {
       objectMode: false,
       read: async function (_size) {
         if (!reader) {
+          this.complete = true;
           return this.push(null);
         }
 
         try {
           const { value } = await reader!.read();
-          this.push(value !== undefined ? Buffer.from(value) : null);
+          if (value === undefined) {
+            this.complete = true;
+            this.push(null);
+          } else {
+            this.push(Buffer.from(value));
+          }
         } catch (err) {
           this.destroy(err as Error);
         }
@@ -2149,6 +2156,7 @@ export class IncomingMessageForServer extends NodeReadable {
     this.method = "";
     this.socket = socket;
     this.upgrade = null;
+    this.complete = false;
     this[kRawHeaders] = [];
     socket?.on("error", (e) => {
       if (this.listenerCount("error") > 0) {
