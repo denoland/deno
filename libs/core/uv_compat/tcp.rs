@@ -916,8 +916,29 @@ pub(crate) unsafe fn poll_tcp_handle(
               break;
             }
             Err(ref e) => {
-              // Match libuv: report real error codes, not UV_EOF.
-              let status = io_error_to_uv(e);
+              // Match libuv's uv__process_tcp_read_req on Windows: translate
+              // WSAECONNABORTED to UV_ECONNRESET so consumers see the same
+              // error code as on Unix when the peer aborts the connection.
+              // Node.js's socketOnError in http2 explicitly ignores
+              // ECONNRESET (but not ECONNABORTED) after GOAWAY; without this
+              // mapping the test-http2-compat-serverrequest-end.js test (and
+              // others that rely on the close/GOAWAY race) surface an
+              // uncaught read error on Windows.
+              let status = {
+                let raw = io_error_to_uv(e);
+                #[cfg(windows)]
+                {
+                  if raw == crate::uv_compat::UV_ECONNABORTED {
+                    crate::uv_compat::UV_ECONNRESET
+                  } else {
+                    raw
+                  }
+                }
+                #[cfg(not(windows))]
+                {
+                  raw
+                }
+              };
               read_cb(tcp_ptr as *mut uv_stream_t, status as isize, &buf);
               (*tcp_ptr).internal_reading = false;
               crate::uv_compat::stream::maybe_clear_tcp_active(tcp_ptr);

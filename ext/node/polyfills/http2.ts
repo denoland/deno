@@ -2858,6 +2858,32 @@ function closeSession(session, code, error) {
 
   // Destroy the handle if it exists at this point.
   if (handle !== undefined) {
+    // Match Node.js's Http2Session::Close (src/node_http2.cc): submit a
+    // GOAWAY before destroying so the peer gets a graceful shutdown
+    // notification instead of an abrupt socket close. Without this, a
+    // peer seeing ECONNRESET/RST on Windows (from the local close-with-
+    // unread-data path) has no goawayCode set and socketOnError bubbles
+    // the error as uncaught (e.g. test-http2-zero-length-header.js).
+    //
+    // Skip when the session already walked the graceful close() path
+    // (SESSION_FLAGS_CLOSED): that path submitted the GOAWAY via
+    // submitGoaway + scheduleSendPending, and the later destroy() here
+    // is the ongracefulclosecomplete follow-up. Also skip when code is
+    // not a numeric code (same path: destroy(null) from kMaybeDestroy).
+    // The state.flags |= SESSION_FLAGS_DESTROYED above ensures the
+    // getOutgoingData -> maybe_notify_graceful_close_complete ->
+    // kMaybeDestroy -> destroy re-entry short-circuits on this.destroyed.
+    if (
+      typeof code === "number" &&
+      (state.flags & SESSION_FLAGS_CLOSED) === 0 &&
+      socket && !socket.destroyed && typeof handle.goaway === "function"
+    ) {
+      handle.goaway(code, 0);
+      const pending = handle.getOutgoingData();
+      if (pending && pending.byteLength > 0 && !socket.destroyed) {
+        socket.write(pending);
+      }
+    }
     handle.ondone = FunctionPrototypeBind(
       finishSessionClose,
       null,
