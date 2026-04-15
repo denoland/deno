@@ -104,6 +104,28 @@ async fn compile_desktop(
   mut desktop_flags: DesktopFlags,
   cli_options: &Arc<CliOptions>,
 ) -> Result<(), AnyError> {
+  // If the user asked for a `.dmg` (macOS) installer via `--output`, strip
+  // the extension for the intermediate compile/bundle step and remember the
+  // original so we can wrap the resulting .app in a DMG at the end.
+  let dmg_output = desktop_flags
+    .output
+    .as_ref()
+    .filter(|o| o.to_lowercase().ends_with(".dmg"))
+    .cloned();
+  if let Some(ref dmg) = dmg_output {
+    let stem = Path::new(dmg)
+      .file_stem()
+      .map(|s| s.to_string_lossy().into_owned())
+      .unwrap_or_else(|| "App".to_string());
+    let parent = Path::new(dmg)
+      .parent()
+      .filter(|p| !p.as_os_str().is_empty());
+    desktop_flags.output = Some(match parent {
+      Some(p) => p.join(&stem).to_string_lossy().into_owned(),
+      None => stem,
+    });
+  }
+
   // Desktop framework detection: when --desktop is used and the source is
   // "." (a directory), detect the framework and generate the entrypoint.
   let _desktop_entrypoint_file = if desktop_flags.source_file == "." {
@@ -197,18 +219,28 @@ async fn compile_desktop(
     // Package the dylib into a platform-specific app bundle.
     let bundle_path =
       package_desktop_app(&output_path, &desktop_flags, cli_options)?;
+
+    // If the user requested a .dmg, wrap the .app in one and report the DMG.
+    let final_path = if let Some(dmg) = dmg_output.as_deref() {
+      let dmg_abs = cli_options.initial_cwd().join(dmg);
+      create_macos_dmg(&bundle_path, &dmg_abs)?;
+      dmg_abs
+    } else {
+      bundle_path
+    };
+
     let initial_cwd =
       deno_path_util::url_from_directory_path(cli_options.initial_cwd())?;
     log::info!(
       "{} {}",
       colors::green("Bundle"),
-      if let Ok(bundle_url) = deno_path_util::url_from_file_path(&bundle_path) {
+      if let Ok(bundle_url) = deno_path_util::url_from_file_path(&final_path) {
         crate::util::path::relative_specifier_path_for_display(
           &initial_cwd,
           &bundle_url,
         )
       } else {
-        bundle_path.display().to_string()
+        final_path.display().to_string()
       }
     );
   }
@@ -367,6 +399,20 @@ fn package_windows_app_dir(
   // Copy WEF backend directory (binary + CEF support files) as the shell.
   crate::tools::compile::copy_dir_all(&wef_dir, &app_dir)?;
 
+  // Drop any self-extracting runtime cache dir that tagged along.
+  let wef_exe_stem = Path::new(&wef_binary_name)
+    .file_stem()
+    .map(|s| s.to_string_lossy().into_owned())
+    .unwrap_or_else(|| wef_binary_name.clone());
+  let cache_dir = app_dir.join(format!(".{}", wef_exe_stem));
+  if cache_dir.exists() {
+    let _ = std::fs::remove_dir_all(&cache_dir);
+  }
+  let cache_file = app_dir.join(format!(".{}.cache", wef_exe_stem));
+  if cache_file.exists() {
+    let _ = std::fs::remove_file(&cache_file);
+  }
+
   // Copy the compiled dylib (denort.dll) alongside the backend binary.
   let dylib_filename = dylib_path.file_name().unwrap();
   std::fs::copy(dylib_path, app_dir.join(dylib_filename))?;
@@ -463,6 +509,20 @@ fn package_linux_app_dir(
 
   // Copy WEF backend directory (binary + CEF support files) as the shell.
   crate::tools::compile::copy_dir_all(&wef_dir, &app_dir)?;
+
+  // Drop any self-extracting runtime cache dir that tagged along.
+  let wef_exe_stem = Path::new(&wef_binary_name)
+    .file_stem()
+    .map(|s| s.to_string_lossy().into_owned())
+    .unwrap_or_else(|| wef_binary_name.clone());
+  let cache_dir = app_dir.join(format!(".{}", wef_exe_stem));
+  if cache_dir.exists() {
+    let _ = std::fs::remove_dir_all(&cache_dir);
+  }
+  let cache_file = app_dir.join(format!(".{}.cache", wef_exe_stem));
+  if cache_file.exists() {
+    let _ = std::fs::remove_file(&cache_file);
+  }
 
   // Copy the compiled dylib alongside the backend binary.
   let dylib_filename = dylib_path.file_name().unwrap();
@@ -759,6 +819,22 @@ fn package_macos_app_bundle(
   let resources_dir = contents_dir.join("Resources");
   std::fs::create_dir_all(&resources_dir)?;
 
+  // The backend binary extracts its self-extracting VFS to a sibling
+  // `.<exe>` dir on first run. If the source wef.app was ever run, that dir
+  // gets copied along with it — drop any such runtime caches.
+  let wef_exe_stem = Path::new(&wef_executable_name)
+    .file_stem()
+    .map(|s| s.to_string_lossy().into_owned())
+    .unwrap_or_else(|| wef_executable_name.clone());
+  let cache_dir = macos_dir.join(format!(".{}", wef_exe_stem));
+  if cache_dir.exists() {
+    let _ = std::fs::remove_dir_all(&cache_dir);
+  }
+  let cache_file = macos_dir.join(format!(".{}.cache", wef_exe_stem));
+  if cache_file.exists() {
+    let _ = std::fs::remove_file(&cache_file);
+  }
+
   // Strip unnecessary bulk from the CEF framework.
   strip_cef_bloat(&contents_dir);
 
@@ -868,6 +944,79 @@ fn package_macos_app_bundle(
   let _ = std::fs::remove_file(dylib_path);
 
   Ok(app_bundle)
+}
+
+/// Wrap a macOS `.app` bundle in a drag-to-Applications `.dmg` installer.
+///
+/// Builds a staging directory containing the `.app` plus a symlink to
+/// `/Applications`, then invokes `hdiutil` to create a compressed read-only
+/// disk image.
+fn create_macos_dmg(
+  app_bundle: &Path,
+  dmg_path: &Path,
+) -> Result<(), AnyError> {
+  let app_name = app_bundle
+    .file_stem()
+    .map(|s| s.to_string_lossy().into_owned())
+    .unwrap_or_else(|| "App".to_string());
+
+  // Stage in a sibling temp directory so hdiutil doesn't traverse unrelated
+  // files. Use a unique suffix to avoid collisions with concurrent builds.
+  let staging = dmg_path.with_file_name(format!(
+    ".{}.dmg-staging",
+    dmg_path.file_name().unwrap_or_default().to_string_lossy()
+  ));
+  if staging.exists() {
+    std::fs::remove_dir_all(&staging)?;
+  }
+  std::fs::create_dir_all(&staging)?;
+
+  // Copy the .app into the staging dir and add an /Applications symlink so
+  // users can drag the app across in the mounted DMG window.
+  let staged_app = staging.join(
+    app_bundle
+      .file_name()
+      .ok_or_else(|| deno_core::anyhow::anyhow!("app bundle has no name"))?,
+  );
+  crate::tools::compile::copy_dir_all(app_bundle, &staged_app)?;
+  #[cfg(unix)]
+  {
+    let _ =
+      std::os::unix::fs::symlink("/Applications", staging.join("Applications"));
+  }
+
+  if dmg_path.exists() {
+    std::fs::remove_file(dmg_path)?;
+  }
+  if let Some(parent) = dmg_path.parent()
+    && !parent.as_os_str().is_empty()
+  {
+    std::fs::create_dir_all(parent)?;
+  }
+
+  let status = std::process::Command::new("hdiutil")
+    .args([
+      "create",
+      "-volname",
+      &app_name,
+      "-srcfolder",
+      &staging.display().to_string(),
+      "-ov",
+      "-format",
+      "UDZO",
+      &dmg_path.display().to_string(),
+    ])
+    .stdout(std::process::Stdio::null())
+    .stderr(std::process::Stdio::inherit())
+    .status()
+    .context("Failed to run hdiutil")?;
+
+  let _ = std::fs::remove_dir_all(&staging);
+
+  if !status.success() {
+    bail!("hdiutil failed to create DMG at {}", dmg_path.display());
+  }
+  Ok(())
 }
 
 /// Recursively copy a directory tree, ensuring writable permissions on the
