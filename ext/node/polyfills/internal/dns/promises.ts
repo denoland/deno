@@ -42,6 +42,8 @@ import {
   validateHints,
   validDnsOrders,
 } from "ext:deno_node/internal/dns/utils.ts";
+
+export { getDefaultDnsOrder as getDefaultResultOrder };
 import type {
   LookupAddress,
   LookupAllOptions,
@@ -574,6 +576,7 @@ export default {
   lookup,
   lookupService,
   Resolver,
+  getDefaultResultOrder: getDefaultDnsOrder,
   getServers,
   resolveAny,
   resolve4,

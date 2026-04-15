@@ -5,17 +5,23 @@ use std::rc::Rc;
 
 use crate::fs::File;
 
-/// Central table that owns file descriptor -> File mappings.
+/// How an fd's lifetime is managed.
+pub enum FdOwnership {
+  /// FdTable owns the File; dropping the entry closes the fd.
+  /// Used by fs.openSync, stdio fds 0/1/2, etc.
+  TableOwned(Rc<dyn File>),
+  /// A uv handle (e.g. uv_pipe_t) owns the fd; FdTable just tracks
+  /// that it exists for duplicate detection. The entry is removed
+  /// when uv_close fires, but no file is dropped.
+  UvOwned,
+}
+
+/// Central table tracking all known file descriptors.
 ///
-/// Both Deno's resource table (for `Deno.stdin`/`stdout`/`stderr`) and
-/// Node's fd-based ops (`op_node_fs_read_sync`, `op_node_fs_write_sync`,
-/// etc.) reference the same `Rc<dyn File>` entries. This ensures that
-/// closing an fd from either side is visible to the other.
-///
-/// Async reads use the raw OS fd directly (no dup/clone), so closing
-/// the fd naturally interrupts any blocking read on a spawned thread.
+/// Both Deno's resource table and Node's fd-based ops use this table
+/// to look up files and detect duplicate registrations.
 pub struct FdTable {
-  entries: HashMap<i32, Rc<dyn File>>,
+  entries: HashMap<i32, FdOwnership>,
 }
 
 impl FdTable {
@@ -25,27 +31,44 @@ impl FdTable {
     }
   }
 
-  /// Register an fd with its File. Returns false if the fd was already
-  /// registered (caller should handle this as appropriate).
+  /// Register a TableOwned fd. Returns false if already registered.
   pub fn register(&mut self, fd: i32, file: Rc<dyn File>) -> bool {
     if self.entries.contains_key(&fd) {
       return false;
     }
-    self.entries.insert(fd, file);
+    self.entries.insert(fd, FdOwnership::TableOwned(file));
     true
   }
 
-  /// Get the File for an fd.
+  /// Register a UvOwned fd (tracked but not owned). Returns false if
+  /// already registered.
+  pub fn register_uv_owned(&mut self, fd: i32) -> bool {
+    if self.entries.contains_key(&fd) {
+      return false;
+    }
+    self.entries.insert(fd, FdOwnership::UvOwned);
+    true
+  }
+
+  /// Get the File for a TableOwned fd. Returns None for UvOwned or missing.
   pub fn get(&self, fd: i32) -> Option<&Rc<dyn File>> {
-    self.entries.get(&fd)
+    match self.entries.get(&fd) {
+      Some(FdOwnership::TableOwned(file)) => Some(file),
+      _ => None,
+    }
   }
 
-  /// Remove and return the File for an fd.
+  /// Remove an fd entry. For TableOwned, returns the File (caller drops
+  /// to close). For UvOwned, returns None (uv handle closes the fd).
   pub fn remove(&mut self, fd: i32) -> Option<Rc<dyn File>> {
-    self.entries.remove(&fd)
+    match self.entries.remove(&fd) {
+      Some(FdOwnership::TableOwned(file)) => Some(file),
+      Some(FdOwnership::UvOwned) => None,
+      None => None,
+    }
   }
 
-  /// Check if an fd is registered.
+  /// Check if an fd is registered (either ownership type).
   pub fn contains(&self, fd: i32) -> bool {
     self.entries.contains_key(&fd)
   }

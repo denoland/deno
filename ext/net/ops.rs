@@ -267,6 +267,17 @@ pub async fn op_net_send_udp(
     .next()
     .ok_or(NetError::NoResolvedAddress)?;
 
+  {
+    state
+      .borrow_mut()
+      .borrow_mut::<PermissionsContainer>()
+      .check_net_resolved(
+        &addr.ip(),
+        addr.port(),
+        "Deno.DatagramConn.send()",
+      )?;
+  }
+
   let resource = state
     .borrow_mut()
     .resource_table
@@ -508,6 +519,16 @@ pub async fn op_net_connect_tcp_inner(
     .next()
     .ok_or_else(|| NetError::NoResolvedAddress)?;
 
+  // Post-resolution deny check: verify the resolved IP is not denied.
+  // This prevents bypassing IP-literal deny rules via numeric hostname
+  // aliases (e.g. 2130706433 → 127.0.0.1).
+  {
+    state
+      .borrow_mut()
+      .borrow_mut::<PermissionsContainer>()
+      .check_net_resolved(&addr.ip(), addr.port(), "Deno.connect()")?;
+  }
+
   let cancel_handle = resource_abort_id.and_then(|rid| {
     state
       .borrow_mut()
@@ -576,6 +597,9 @@ pub fn op_net_listen_tcp(
   let addr = resolve_addr_sync(&addr.hostname, addr.port)?
     .next()
     .ok_or_else(|| NetError::NoResolvedAddress)?;
+  state
+    .borrow_mut::<PermissionsContainer>()
+    .check_net_resolved(&addr.ip(), addr.port(), "Deno.listen()")?;
 
   let listener = if load_balanced {
     TcpListener::bind_load_balanced(addr, tcp_backlog)
@@ -601,6 +625,9 @@ fn net_listen_udp(
   let addr = resolve_addr_sync(&addr.hostname, addr.port)?
     .next()
     .ok_or_else(|| NetError::NoResolvedAddress)?;
+  state
+    .borrow_mut::<PermissionsContainer>()
+    .check_net_resolved(&addr.ip(), addr.port(), "Deno.listenDatagram()")?;
 
   let domain = if addr.is_ipv4() {
     Domain::IPV4

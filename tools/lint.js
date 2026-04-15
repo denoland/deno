@@ -173,6 +173,7 @@ async function lintNodePolyfillDenoApis() {
       JSON.stringify({
         lint: {
           plugins: [pluginPath],
+          rules: { tags: [] },
         },
       }),
     );
