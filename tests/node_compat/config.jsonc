@@ -2083,6 +2083,9 @@
     "parallel/test-require-long-path.js": {},
     "parallel/test-require-nul.js": {},
     "parallel/test-require-process.js": {},
+    "parallel/test-require-resolve.js": {},
+    "parallel/test-require-resolve-invalid-paths.js": {},
+    "parallel/test-require-resolve-opts-paths-relative.js": {},
     "parallel/test-runner-cli-concurrency.js": {
       "ignore": true,
       "reason": "Tests Node.js-specific CLI flags/options that are not supported in Deno"
