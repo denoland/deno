@@ -11,6 +11,7 @@ import {
   kStreamBaseField,
   streamBaseState,
 } from "ext:deno_node/internal_binding/stream_wrap.ts";
+import { Console } from "ext:deno_web/01_console.js";
 import "node:module";
 
 let initialized = false;
@@ -165,3 +166,27 @@ nativeModuleExports["internal/console/constructor"].bindStreamsLazy(
   nativeModuleExports["console"],
   nativeModuleExports["process"],
 );
+
+// Replace the global console's output methods so that they route through
+// process.stdout/process.stderr. This is critical for Node.js compatibility:
+// npm packages commonly monkey-patch process.stdout.write/process.stderr.write
+// to intercept output (e.g., Ink, Jest, ConsolePatcher in @google/gemini-cli).
+// In Node.js, console.log internally calls process.stdout.write, so the
+// monkey-patching captures the output. Deno's console uses core.print which
+// bypasses process.stdout entirely, breaking these interception patterns.
+{
+  const proc = nativeModuleExports["process"];
+  const globalConsole = nativeModuleExports["console"];
+  const nodeConsole = new Console((msg, level) => {
+    if (level > 1) {
+      proc.stderr.write(msg);
+    } else {
+      proc.stdout.write(msg);
+    }
+  });
+  for (const key of Object.keys(nodeConsole)) {
+    if (typeof nodeConsole[key] === "function") {
+      globalConsole[key] = nodeConsole[key];
+    }
+  }
+}
