@@ -1,6 +1,6 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-import { assertEquals, loadTestLibrary } from "./common.js";
+import { assertEquals, assertThrows, loadTestLibrary } from "./common.js";
 
 const lib = loadTestLibrary();
 
@@ -27,14 +27,14 @@ Deno.test("napi nested handle scopes", function () {
 // Ported from Node.js test_handle_scope: NewScopeWithException
 // Verifies that closing a handle scope works while an exception is pending.
 Deno.test("napi handle scope with pending exception", function () {
-  try {
-    lib.test_scope_with_exception(() => {
-      throw new RangeError("test exception");
-    });
-  } catch (e) {
-    // The exception from the callback is expected to propagate
-    assertEquals(e instanceof RangeError, true);
-  }
+  assertThrows(
+    () => {
+      lib.test_scope_with_exception(() => {
+        throw new RangeError("test exception");
+      });
+    },
+    RangeError,
+  );
 });
 
 Deno.test("napi handle scope stress test (many handles)", function () {
