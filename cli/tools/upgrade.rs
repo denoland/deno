@@ -1116,6 +1116,9 @@ pub async fn upgrade(
         let Some(data) = download_package(&client, download_url).await?
         else {
           log::error!("Download could not be found, aborting");
+          if requested_version.release_channel() == ReleaseChannel::Canary {
+            log::error!("Note: canary releases are only kept for 30 days.");
+          }
           deno_runtime::exit(1)
         };
 
