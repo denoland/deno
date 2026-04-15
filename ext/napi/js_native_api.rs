@@ -3007,6 +3007,13 @@ fn napi_close_handle_scope(
   napi_clear_last_error(env)
 }
 
+/// Data for a heap-allocated escapable handle scope.
+/// Contains a real V8 HandleScope and a flag to prevent double-escape.
+struct EscapableHandleScopeData {
+  handle_scope_ptr: *mut v8::ScopeStorage<v8::HandleScope<'static, ()>>,
+  escape_called: bool,
+}
+
 #[napi_sym]
 fn napi_open_escapable_handle_scope(
   env: *mut Env,
@@ -3015,13 +3022,22 @@ fn napi_open_escapable_handle_scope(
   let env = check_env!(env);
   check_arg!(env, result);
 
-  // Allocate a bool to track whether escape has been called.
-  // The pointer is cast to napi_escapable_handle_scope (opaque).
-  let escaped_flag = Box::into_raw(Box::new(false));
-  unsafe {
-    *result = escaped_flag as napi_escapable_handle_scope;
-  }
+  // Open a real V8 HandleScope so handles created inside are properly
+  // scoped. This matches napi_open_handle_scope but with escape tracking.
+  let storage = v8::HandleScope::new(env.isolate());
+  let storage: v8::ScopeStorage<v8::HandleScope<'static, ()>> =
+    unsafe { std::mem::transmute(storage) };
+  let mut pinned = Box::pin(storage);
+  let _ = pinned.as_mut().init();
+  let scope_ptr =
+    unsafe { Box::into_raw(std::pin::Pin::into_inner_unchecked(pinned)) };
 
+  let wrapper = Box::new(EscapableHandleScopeData {
+    handle_scope_ptr: scope_ptr,
+    escape_called: false,
+  });
+  unsafe { *result = Box::into_raw(wrapper) as napi_escapable_handle_scope }
+  env.open_handle_scopes += 1;
   napi_clear_last_error(env)
 }
 
@@ -3031,14 +3047,16 @@ fn napi_close_escapable_handle_scope(
   scope: napi_escapable_handle_scope,
 ) -> napi_status {
   let env = check_env!(env);
-
-  if !scope.is_null() {
-    // Reclaim the bool we allocated in open.
-    unsafe {
-      let _ = Box::from_raw(scope as *mut bool);
-    }
+  check_arg!(env, scope);
+  if env.open_handle_scopes == 0 {
+    return napi_set_last_error(env, napi_handle_scope_mismatch);
   }
 
+  env.open_handle_scopes -= 1;
+  unsafe {
+    let wrapper = Box::from_raw(scope as *mut EscapableHandleScopeData);
+    drop(Box::from_raw(wrapper.handle_scope_ptr));
+  }
   napi_clear_last_error(env)
 }
 
@@ -3053,15 +3071,17 @@ fn napi_escape_handle<'s>(
   check_arg!(env, scope);
   check_arg!(env, result);
 
-  let escaped_flag = scope as *mut bool;
-  unsafe {
-    if *escaped_flag {
-      return napi_set_last_error(env, napi_escape_called_twice);
-    }
-    *escaped_flag = true;
-    *result = escapee;
+  let wrapper = unsafe { &mut *(scope as *mut EscapableHandleScopeData) };
+  if wrapper.escape_called {
+    return napi_set_last_error(env, napi_escape_called_twice);
   }
+  wrapper.escape_called = true;
 
+  // Copy the napi_value. In rusty_v8, napi_value wraps a direct pointer
+  // to the V8 object (not a handle table slot), so the value remains
+  // valid after the inner scope closes -- V8 doesn't free the object
+  // until GC runs, which won't happen within a synchronous callback.
+  unsafe { *result = escapee }
   napi_clear_last_error(env)
 }
 
