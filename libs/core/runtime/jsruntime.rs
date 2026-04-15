@@ -1817,7 +1817,7 @@ impl JsRuntime {
   /// event loop resolves the underlying promise. If the future rejects, the future will
   /// resolve with the underlying error.
   ///
-  /// The event loop must be polled seperately for this future to resolve. If the event loop
+  /// The event loop must be polled separately for this future to resolve. If the event loop
   /// is not polled, the future will never make progress.
   pub fn call(
     &mut self,
@@ -1832,7 +1832,7 @@ impl JsRuntime {
   /// event loop resolves the underlying promise. If the future rejects, the future will
   /// resolve with the underlying error.
   ///
-  /// The event loop must be polled seperately for this future to resolve. If the event loop
+  /// The event loop must be polled separately for this future to resolve. If the event loop
   /// is not polled, the future will never make progress.
   pub fn scoped_call(
     scope: &mut v8::PinScope,
@@ -1847,7 +1847,7 @@ impl JsRuntime {
   /// event loop resolves the underlying promise. If the future rejects, the future will
   /// resolve with the underlying error.
   ///
-  /// The event loop must be polled seperately for this future to resolve. If the event loop
+  /// The event loop must be polled separately for this future to resolve. If the event loop
   /// is not polled, the future will never make progress.
   pub fn call_with_args(
     &mut self,
@@ -1864,7 +1864,7 @@ impl JsRuntime {
   /// event loop resolves the underlying promise. If the future rejects, the future will
   /// resolve with the underlying error.
   ///
-  /// The event loop must be polled seperately for this future to resolve. If the event loop
+  /// The event loop must be polled separately for this future to resolve. If the event loop
   /// is not polled, the future will never make progress.
   pub fn scoped_call_with_args(
     scope: &mut v8::PinScope,
