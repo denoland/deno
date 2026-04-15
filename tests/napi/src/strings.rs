@@ -277,25 +277,7 @@ extern "C" fn test_utf16_roundtrip(
   result
 }
 
-// External string API declarations (not in napi_sys bindings)
-#[allow(non_camel_case_types, reason = "matches NAPI naming convention")]
-type napi_basic_finalize = unsafe extern "C" fn(
-  env: napi_env,
-  finalize_data: *mut std::ffi::c_void,
-  finalize_hint: *mut std::ffi::c_void,
-);
-
-unsafe extern "C" {
-  fn node_api_create_external_string_latin1(
-    env: napi_env,
-    str: *const c_char,
-    length: usize,
-    finalize_callback: Option<napi_basic_finalize>,
-    finalize_hint: *mut std::ffi::c_void,
-    result: *mut napi_value,
-    copied: *mut bool,
-  ) -> napi_status;
-}
+// node_api_create_external_string_latin1 is declared in napi_sys
 
 /// Test that node_api_create_external_string_latin1 creates a string
 /// and reports whether the data was copied.
