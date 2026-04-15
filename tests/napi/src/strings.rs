@@ -277,6 +277,76 @@ extern "C" fn test_utf16_roundtrip(
   result
 }
 
+// External string API declarations (not in napi_sys bindings)
+#[allow(non_camel_case_types, reason = "matches NAPI naming convention")]
+type napi_basic_finalize = unsafe extern "C" fn(
+  env: napi_env,
+  finalize_data: *mut std::ffi::c_void,
+  finalize_hint: *mut std::ffi::c_void,
+);
+
+unsafe extern "C" {
+  fn node_api_create_external_string_latin1(
+    env: napi_env,
+    str: *const c_char,
+    length: usize,
+    finalize_callback: Option<napi_basic_finalize>,
+    finalize_hint: *mut std::ffi::c_void,
+    result: *mut napi_value,
+    copied: *mut bool,
+  ) -> napi_status;
+}
+
+/// Test that node_api_create_external_string_latin1 creates a string
+/// and reports whether the data was copied.
+extern "C" fn test_external_latin1(
+  env: napi_env,
+  _info: napi_callback_info,
+) -> napi_value {
+  // Allocate a buffer that the external string will reference
+  let data = b"hello latin1".to_vec();
+  let ptr = data.as_ptr();
+  let len = data.len();
+  std::mem::forget(data);
+
+  let mut result: napi_value = std::ptr::null_mut();
+  let mut copied = true; // Initialize to see if it changes
+  let status = unsafe {
+    node_api_create_external_string_latin1(
+      env,
+      ptr as *const c_char,
+      len,
+      None, // No finalize callback for this simple test
+      std::ptr::null_mut(),
+      &mut result,
+      &mut copied,
+    )
+  };
+  assert_eq!(status, 0); // napi_ok
+
+  // Read back the string to verify content
+  let mut buf: Vec<u8> = vec![0; 64];
+  let mut out_len: usize = 0;
+  assert_napi_ok!(napi_get_value_string_latin1(
+    env,
+    result,
+    buf.as_mut_ptr() as *mut c_char,
+    buf.len(),
+    &mut out_len
+  ));
+  assert_eq!(&buf[..out_len], b"hello latin1");
+
+  // Clean up the leaked buffer (since we passed no finalize callback)
+  unsafe {
+    drop(Vec::from_raw_parts(ptr as *mut u8, len, len));
+  }
+
+  let mut ret: napi_value = std::ptr::null_mut();
+  // Return whether the string was copied (false = zero-copy, true = copied)
+  assert_napi_ok!(napi_get_boolean(env, !copied, &mut ret));
+  ret
+}
+
 pub fn init(env: napi_env, exports: napi_value) {
   let properties = &[
     napi_new_property!(env, "test_utf8", test_utf8),
@@ -291,6 +361,7 @@ pub fn init(env: napi_env, exports: napi_value) {
     napi_new_property!(env, "test_property_key_utf16", test_property_key_utf16),
     napi_new_property!(env, "test_latin1_roundtrip", test_latin1_roundtrip),
     napi_new_property!(env, "test_utf16_roundtrip", test_utf16_roundtrip),
+    napi_new_property!(env, "test_external_latin1", test_external_latin1),
   ];
 
   assert_napi_ok!(napi_define_properties(

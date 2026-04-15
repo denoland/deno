@@ -1301,6 +1301,38 @@ fn napi_create_string_utf16(
   return napi_clear_last_error(env_ptr);
 }
 
+/// Metadata for an external one-byte string's finalize callback.
+/// Stored in a global map keyed by buffer address so the V8 destructor
+/// (which only receives the buffer pointer) can invoke the NAPI callback.
+struct ExternalStringMeta {
+  callback: napi_finalize,
+  env: *mut Env,
+  hint: *mut c_void,
+}
+
+// SAFETY: The pointers are only accessed from the main V8 thread.
+unsafe impl Send for ExternalStringMeta {}
+
+static EXTERNAL_STRING_METADATA: std::sync::LazyLock<
+  std::sync::Mutex<std::collections::HashMap<usize, ExternalStringMeta>>,
+> = std::sync::LazyLock::new(|| {
+  std::sync::Mutex::new(std::collections::HashMap::new())
+});
+
+/// V8 destructor for external one-byte strings. Looks up the NAPI
+/// finalize callback from the global map and invokes it.
+unsafe extern "C" fn external_onebyte_destructor(
+  data: *mut std::ffi::c_char,
+  _len: usize,
+) {
+  let key = data as usize;
+  if let Some(meta) = EXTERNAL_STRING_METADATA.lock().unwrap().remove(&key) {
+    unsafe {
+      (meta.callback)(meta.env as napi_env, data as *mut c_void, meta.hint);
+    }
+  }
+}
+
 #[napi_sym]
 fn node_api_create_external_string_latin1(
   env_ptr: *mut Env,
@@ -1311,21 +1343,69 @@ fn node_api_create_external_string_latin1(
   result: *mut napi_value,
   copied: *mut bool,
 ) -> napi_status {
+  let env = check_env!(env_ptr);
+  check_arg!(env, string);
+  check_arg!(env, result);
+
+  let len = if length == usize::MAX {
+    // NAPI_AUTO_LENGTH: find null terminator
+    unsafe { std::ffi::CStr::from_ptr(string).to_bytes().len() }
+  } else {
+    length
+  };
+
+  if let Some(finalize) = nogc_finalize_callback {
+    // Try zero-copy: create a V8 external string backed by the
+    // caller's buffer. V8 will call our destructor when the string
+    // is GC'd, which in turn calls the NAPI finalize callback.
+    let v8_str = {
+      v8::callback_scope!(unsafe scope, env.context());
+      unsafe {
+        v8::String::new_external_onebyte_raw(
+          scope,
+          string as *mut std::ffi::c_char,
+          len,
+          external_onebyte_destructor,
+        )
+      }
+    };
+    if let Some(v8_str) = v8_str {
+      // Register the finalize callback
+      EXTERNAL_STRING_METADATA.lock().unwrap().insert(
+        string as usize,
+        ExternalStringMeta {
+          callback: finalize,
+          env: env_ptr,
+          hint: finalize_hint,
+        },
+      );
+      unsafe {
+        *result = v8::Local::<v8::Value>::from(v8_str).into();
+        if !copied.is_null() {
+          *copied = false;
+        }
+      }
+      return napi_clear_last_error(check_env!(env_ptr));
+    }
+    // V8 rejected the external string (e.g. too short), fall through
+    // to copy path
+  }
+
+  // Fallback: copy the string and call finalize immediately
   let status =
     unsafe { napi_create_string_latin1(env_ptr, string, length, result) };
-
   if status == napi_ok {
     unsafe {
-      *copied = true;
+      if !copied.is_null() {
+        *copied = true;
+      }
     }
-
     if let Some(finalize) = nogc_finalize_callback {
       unsafe {
         finalize(env_ptr as napi_env, string as *mut c_void, finalize_hint);
       }
     }
   }
-
   status
 }
 
@@ -1339,12 +1419,16 @@ fn node_api_create_external_string_utf16(
   result: *mut napi_value,
   copied: *mut bool,
 ) -> napi_status {
+  // rusty_v8 doesn't expose a non-static external two-byte string API,
+  // so we always copy for UTF-16 strings.
   let status =
     unsafe { napi_create_string_utf16(env_ptr, string, length, result) };
 
   if status == napi_ok {
     unsafe {
-      *copied = true;
+      if !copied.is_null() {
+        *copied = true;
+      }
     }
 
     if let Some(finalize) = nogc_finalize_callback {
