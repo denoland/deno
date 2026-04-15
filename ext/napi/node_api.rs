@@ -194,11 +194,23 @@ fn napi_open_callback_scope(
   let env = check_env!(env);
   check_arg!(env, result);
 
-  // we open scope automatically when it's needed
-  unsafe {
-    *result = std::ptr::null_mut();
-  }
+  // In Node.js, callback scopes set up async hooks and manage
+  // microtask queues via InternalCallbackScope. Since Deno does not
+  // support async_hooks, we implement this as a V8 HandleScope
+  // (matching napi_open_handle_scope) so that native modules get
+  // proper handle lifetime management.
+  let storage = v8::HandleScope::new(env.isolate());
+  let storage: v8::ScopeStorage<v8::HandleScope<'static, ()>> =
+    unsafe { std::mem::transmute(storage) };
+  let mut pinned: std::pin::Pin<
+    Box<v8::ScopeStorage<v8::HandleScope<'static, ()>>>,
+  > = Box::pin(storage);
+  let _ = pinned.as_mut().init();
 
+  let ptr =
+    unsafe { Box::into_raw(std::pin::Pin::into_inner_unchecked(pinned)) };
+  unsafe { *result = ptr as napi_callback_scope }
+  env.open_callback_scopes += 1;
   napi_clear_last_error(env)
 }
 
@@ -208,8 +220,16 @@ fn napi_close_callback_scope(
   scope: napi_callback_scope,
 ) -> napi_status {
   let env = check_env!(env);
-  // we close scope automatically when it's needed
-  assert!(scope.is_null());
+  check_arg!(env, scope);
+  if env.open_callback_scopes == 0 {
+    return napi_set_last_error(env, napi_callback_scope_mismatch);
+  }
+
+  env.open_callback_scopes -= 1;
+  unsafe {
+    let ptr = scope as *mut v8::ScopeStorage<v8::HandleScope<'static, ()>>;
+    drop(Box::from_raw(ptr));
+  }
   napi_clear_last_error(env)
 }
 
