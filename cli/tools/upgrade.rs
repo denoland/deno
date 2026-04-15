@@ -1512,9 +1512,13 @@ fn get_download_url(
 ///   download 2.7.11's delta from 2.7.10, apply,
 ///   download 2.7.12's delta from 2.7.11, apply.
 ///
-/// Returns the list of (source, target) version pairs, or empty if
-/// the versions are not eligible for delta upgrade.
-/// Supports same-minor with patch diff <= 3.
+/// Supports:
+/// - Same-minor patch upgrades (e.g. 2.7.10 -> 2.7.12)
+/// - Cross-minor upgrades (e.g. 2.7.13 -> 2.8.0 -> 2.8.1): the first
+///   step crosses the minor boundary, remaining steps are same-minor.
+///
+/// Total chain length is capped at 3 steps. Returns empty if the
+/// versions are not eligible for delta upgrade.
 fn build_delta_chain(
   current_version: &str,
   target_version: &str,
@@ -1528,27 +1532,48 @@ fn build_delta_chain(
   if !current.pre.is_empty()
     || !target.pre.is_empty()
     || current.major != target.major
-    || current.minor != target.minor
   {
     return vec![];
   }
-  let diff = target.patch.saturating_sub(current.patch);
-  if diff == 0 || diff > 3 {
+
+  let mut chain = Vec::new();
+
+  if current.minor == target.minor {
+    // Same minor: chain through consecutive patches
+    let diff = target.patch.saturating_sub(current.patch);
+    if diff == 0 || diff > 3 {
+      return vec![];
+    }
+    for i in 0..diff {
+      chain.push((
+        format!("{}.{}.{}", current.major, current.minor, current.patch + i),
+        format!(
+          "{}.{}.{}",
+          current.major,
+          current.minor,
+          current.patch + i + 1
+        ),
+      ));
+    }
+  } else if target.minor == current.minor + 1 {
+    // Cross-minor: first step jumps to target_minor.0, then chain patches
+    let minor_zero = format!("{}.{}.0", target.major, target.minor);
+    chain.push((current_version.to_string(), minor_zero));
+    for i in 0..target.patch {
+      chain.push((
+        format!("{}.{}.{}", target.major, target.minor, i),
+        format!("{}.{}.{}", target.major, target.minor, i + 1),
+      ));
+    }
+    if chain.len() > 3 {
+      return vec![];
+    }
+  } else {
+    // Too many minor versions apart
     return vec![];
   }
-  (0..diff)
-    .map(|i| {
-      let src =
-        format!("{}.{}.{}", current.major, current.minor, current.patch + i);
-      let dst = format!(
-        "{}.{}.{}",
-        current.major,
-        current.minor,
-        current.patch + i + 1
-      );
-      (src, dst)
-    })
-    .collect()
+
+  chain
 }
 
 /// Construct the delta patch download URL for a stable release.
@@ -3205,12 +3230,40 @@ mod test {
       ]
     );
 
-    // Too far apart (> 3 steps)
+    // Too far apart (> 3 steps, same minor)
     assert!(build_delta_chain("2.7.0", "2.7.5").is_empty());
     assert!(build_delta_chain("2.7.8", "2.7.12").is_empty());
 
-    // Different minor
-    assert!(build_delta_chain("2.6.10", "2.7.0").is_empty());
+    // Cross-minor: direct jump to .0
+    assert_eq!(
+      build_delta_chain("2.7.13", "2.8.0"),
+      vec![("2.7.13".to_string(), "2.8.0".to_string())]
+    );
+
+    // Cross-minor: jump to .0 then one patch
+    assert_eq!(
+      build_delta_chain("2.7.13", "2.8.1"),
+      vec![
+        ("2.7.13".to_string(), "2.8.0".to_string()),
+        ("2.8.0".to_string(), "2.8.1".to_string()),
+      ]
+    );
+
+    // Cross-minor: jump to .0 then two patches (3 steps total, max)
+    assert_eq!(
+      build_delta_chain("2.7.13", "2.8.2"),
+      vec![
+        ("2.7.13".to_string(), "2.8.0".to_string()),
+        ("2.8.0".to_string(), "2.8.1".to_string()),
+        ("2.8.1".to_string(), "2.8.2".to_string()),
+      ]
+    );
+
+    // Cross-minor: too many steps (> 3)
+    assert!(build_delta_chain("2.7.13", "2.8.3").is_empty());
+
+    // Cross-minor: too many minors apart
+    assert!(build_delta_chain("2.6.10", "2.8.0").is_empty());
 
     // Different major
     assert!(build_delta_chain("1.46.3", "2.0.0").is_empty());
