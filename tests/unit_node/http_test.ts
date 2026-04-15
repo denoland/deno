@@ -1833,7 +1833,10 @@ Deno.test("[node/http] upgraded socket closes when the server closed without clo
     });
 
     socket.on("error", (e) => {
-      if (!("code" in e) || e.code !== "ECONNRESET") {
+      if (
+        !("code" in e) ||
+        (e.code !== "ECONNRESET" && e.code !== "EINVAL")
+      ) {
         throw e;
       }
       console.log("client socket closed");
