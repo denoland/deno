@@ -2164,10 +2164,18 @@ Deno.test("[node/http] rawHeaders are in flattened format", async () => {
 // TODO(@bartlomieju): re-enable once server-side HTTP also uses llhttp
 // (currently the Deno.serve-based server path still needs RID access)
 Deno.test("[node/http] client http over unix socket works", async () => {
-  const { promise, resolve } = Promise.withResolvers<void>();
-  const socketPath = Deno.makeTempDirSync() + "/server.sock";
+  const { promise, resolve, reject } = Promise.withResolvers<void>();
+  // On Windows, IPC uses named pipes; on Unix, use a domain socket path.
+  const socketPath = Deno.build.os === "windows"
+    ? `\\\\?\\pipe\\deno-test-${crypto.randomUUID()}`
+    : Deno.makeTempDirSync() + "/server.sock";
   const server = http.createServer((_req, res) => {
     res.end("ok");
+  });
+  server.on("error", (e: Error) => {
+    // Unix sockets may not work on all platforms (e.g. Windows)
+    server.close();
+    reject(e);
   });
   server.listen(socketPath, () => {
     const options = {
