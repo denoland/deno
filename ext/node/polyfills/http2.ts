@@ -2881,7 +2881,8 @@ function socketOnError(error) {
     // the GOAWAY exchange (eg. server.close() followed by client.close()).
     if (
       (error.code === "ECONNRESET" || error.code === "EPIPE") &&
-        session[kState].goawayCode !== null || session.closed || session
+      (session[kState].goawayCode !== null || session.closed ||
+        session.destroyed)
     ) {
       return session.destroy();
     }
