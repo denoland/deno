@@ -1564,7 +1564,7 @@ fn get_delta_checksum_url(
   })
 }
 
-/// Construct the URL for the full binary's SHA-256 checksum file.
+/// Construct the URL for the uncompressed binary's SHA-256 checksum file.
 fn get_binary_checksum_url(
   target_version: &str,
 ) -> Result<Url, AnyError> {
@@ -1575,7 +1575,7 @@ fn get_binary_checksum_url(
   };
   let url = format!(
     "{}/download/v{}/{}.sha256sum",
-    release_url, target_version, *ARCHIVE_NAME
+    release_url, target_version, *DELTA_TARGET_NAME
   );
   Url::parse(&url).with_context(|| {
     format!("Failed to parse binary checksum URL: {}", url)
@@ -1633,19 +1633,32 @@ async fn try_delta_upgrade(
   };
 
   // Verify the current binary's integrity by checking its hash against
-  // the published checksum for the current version
+  // the published checksum for the current version. If the binary has
+  // been modified, the delta patch won't produce a valid result.
   let current_checksum_url =
     get_binary_checksum_url(current_version).ok()?;
   if let Some(expected_hash) =
     fetch_sha256_from_url(client, current_checksum_url).await
   {
-    // The checksum file is for the zip archive, not the raw binary.
-    // We cannot verify the current uncompressed binary against the zip hash.
-    // Instead, we rely on the output binary verification below.
-    // But we can still check if the current binary's hash is known from the
-    // zip checksum to detect modifications -- skip this for now, since the
-    // zip hash != binary hash. The output verification is sufficient.
-    let _ = expected_hash;
+    let actual_hash = compute_sha256(&current_binary);
+    if actual_hash != expected_hash {
+      log::debug!(
+        "Current binary checksum mismatch (expected {}, got {}), skipping delta",
+        expected_hash,
+        actual_hash,
+      );
+      return None;
+    }
+    log::info!("{}", colors::gray("Current binary checksum verified"));
+  } else {
+    // If we can't verify the current binary (e.g. checksum file not
+    // published for this version), skip delta and fall back to full
+    // download for safety.
+    log::debug!(
+      "Could not fetch checksum for current binary v{}, skipping delta",
+      current_version,
+    );
+    return None;
   }
 
   // Download the delta patch
@@ -1704,21 +1717,27 @@ async fn try_delta_upgrade(
   };
 
   // Verify the patched binary's SHA-256 against the published checksum
-  // for the target version. The published checksum is for the zip archive,
-  // so we need to fetch the binary hash from a separate source.
-  // For now, we compute the hash of the patched binary and verify it against
-  // a known-good hash. The release publishes .zip.sha256sum files (for the
-  // zip), but we need the hash of the uncompressed binary. We will use a
-  // dedicated .sha256sum for the uncompressed binary if available, or
-  // extract and hash the binary from the zip checksum.
-  //
-  // Since the existing release infrastructure only publishes zip checksums,
-  // we rely on the delta patch checksum verification above and the
-  // check_exe() validation that runs after this. The output binary is
-  // validated by running `deno -V` on it.
-  //
-  // TODO(bartlomieju): Once the CI publishes uncompressed binary checksums,
-  // add verification here.
+  // of the uncompressed target binary.
+  let binary_checksum_url = get_binary_checksum_url(target_version).ok()?;
+  if let Some(expected_binary_hash) =
+    fetch_sha256_from_url(client, binary_checksum_url).await
+  {
+    let actual_binary_hash = compute_sha256(&patched_binary);
+    if actual_binary_hash != expected_binary_hash {
+      log::warn!(
+        "Patched binary checksum mismatch (expected {}, got {}), falling back to full download",
+        expected_binary_hash,
+        actual_binary_hash,
+      );
+      return None;
+    }
+    log::info!("{}", colors::gray("Patched binary checksum verified"));
+  } else {
+    log::debug!(
+      "Could not fetch binary checksum for verification, falling back to full download"
+    );
+    return None;
+  }
 
   log::info!(
     "{}",
