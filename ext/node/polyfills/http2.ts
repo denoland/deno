@@ -2877,7 +2877,12 @@ function socketOnError(error) {
   if (session !== undefined) {
     // We can ignore ECONNRESET after GOAWAY was received as there's nothing
     // we can do and the other side is fully within its rights to do so.
-    if (error.code === "ECONNRESET" && session[kState].goawayCode !== null) {
+    // Similarly, EPIPE can coccure when the peer closes the connection during
+    // the GOAWAY exchange (eg. server.close() followed by client.close()).
+    if (
+      (error.code === "ECONNRESET" || error.code === "EPIPE") &&
+        session[kState].goawayCode !== null || session.closed || session
+    ) {
       return session.destroy();
     }
     debugSessionObj(this, "socket error [%s]", error.message);

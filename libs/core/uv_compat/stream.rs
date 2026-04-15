@@ -401,6 +401,12 @@ pub unsafe fn uv_shutdown(
         handles.push(pipe);
       }
       (*pipe).flags |= UV_HANDLE_ACTIVE;
+      drop(handles);
+
+      // Wake the event loop so run_io processes the deferred shutdown.
+      if let Some(waker) = inner.waker.borrow().as_ref() {
+        waker.wake_by_ref();
+      }
       return 0;
     }
 
