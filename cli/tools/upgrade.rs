@@ -1094,38 +1094,35 @@ pub async fn upgrade(
     new_exe_path
   } else {
     // Full download path (existing behavior)
-    let archive_data =
-      if let Some(data) = try_read_cached_binary(sys, &cache_path) {
-        log::info!(
-          "{}",
-          colors::gray(format!(
-            "Using cached binary from {}",
-            cache_path.display()
-          ))
-        );
-        data
-      } else {
-        let download_url = get_download_url(
-          &selected_version_to_upgrade.version_or_hash,
-          requested_version.release_channel(),
-        )?;
-        log::info!(
-          "{}",
-          colors::gray(format!("Downloading {}", &download_url))
-        );
-        let Some(data) = download_package(&client, download_url).await?
-        else {
-          log::error!("Download could not be found, aborting");
-          if requested_version.release_channel() == ReleaseChannel::Canary {
-            log::error!("Note: canary releases are only kept for 30 days.");
-          }
-          deno_runtime::exit(1)
-        };
-
-        store_cached_binary(sys, &cache_path, &data);
-
-        data
+    let archive_data = if let Some(data) =
+      try_read_cached_binary(sys, &cache_path)
+    {
+      log::info!(
+        "{}",
+        colors::gray(format!(
+          "Using cached binary from {}",
+          cache_path.display()
+        ))
+      );
+      data
+    } else {
+      let download_url = get_download_url(
+        &selected_version_to_upgrade.version_or_hash,
+        requested_version.release_channel(),
+      )?;
+      log::info!("{}", colors::gray(format!("Downloading {}", &download_url)));
+      let Some(data) = download_package(&client, download_url).await? else {
+        log::error!("Download could not be found, aborting");
+        if requested_version.release_channel() == ReleaseChannel::Canary {
+          log::error!("Note: canary releases are only kept for 30 days.");
+        }
+        deno_runtime::exit(1)
       };
+
+      store_cached_binary(sys, &cache_path, &data);
+
+      data
+    };
 
     // verify checksum if provided
     if let Some(expected_checksum) = &upgrade_flags.checksum {
@@ -1541,12 +1538,8 @@ fn build_delta_chain(
   }
   (0..diff)
     .map(|i| {
-      let src = format!(
-        "{}.{}.{}",
-        current.major,
-        current.minor,
-        current.patch + i
-      );
+      let src =
+        format!("{}.{}.{}", current.major, current.minor, current.patch + i);
       let dst = format!(
         "{}.{}.{}",
         current.major,
@@ -1572,9 +1565,8 @@ fn get_delta_download_url(
     "{}/download/v{}/{}.from-{}.bsdiff",
     release_url, target_version, *DELTA_TARGET_NAME, current_version
   );
-  Url::parse(&url).with_context(|| {
-    format!("Failed to parse delta download URL: {}", url)
-  })
+  Url::parse(&url)
+    .with_context(|| format!("Failed to parse delta download URL: {}", url))
 }
 
 /// Construct the URL for the delta patch's SHA-256 checksum file.
@@ -1591,15 +1583,12 @@ fn get_delta_checksum_url(
     "{}/download/v{}/{}.from-{}.bsdiff.sha256sum",
     release_url, target_version, *DELTA_TARGET_NAME, current_version
   );
-  Url::parse(&url).with_context(|| {
-    format!("Failed to parse delta checksum URL: {}", url)
-  })
+  Url::parse(&url)
+    .with_context(|| format!("Failed to parse delta checksum URL: {}", url))
 }
 
 /// Construct the URL for the uncompressed binary's SHA-256 checksum file.
-fn get_binary_checksum_url(
-  target_version: &str,
-) -> Result<Url, AnyError> {
+fn get_binary_checksum_url(target_version: &str) -> Result<Url, AnyError> {
   let release_url = if std::env::var_os("DENO_TESTING_UPGRADE").is_some() {
     "http://localhost:4545/deno-upgrade"
   } else {
@@ -1609,9 +1598,8 @@ fn get_binary_checksum_url(
     "{}/download/v{}/{}.sha256sum",
     release_url, target_version, *DELTA_TARGET_NAME
   );
-  Url::parse(&url).with_context(|| {
-    format!("Failed to parse binary checksum URL: {}", url)
-  })
+  Url::parse(&url)
+    .with_context(|| format!("Failed to parse binary checksum URL: {}", url))
 }
 
 /// Fetch a SHA-256 hash from a .sha256sum file hosted as a release asset.
@@ -1680,16 +1668,13 @@ async fn try_delta_upgrade(
   };
 
   // Verify the current binary's integrity
-  let current_checksum_url =
-    get_binary_checksum_url(current_version).ok()?;
+  let current_checksum_url = get_binary_checksum_url(current_version).ok()?;
   if let Some(expected_hash) =
     fetch_sha256_from_url(client, current_checksum_url).await
   {
     let actual_hash = compute_sha256(&binary);
     if actual_hash != expected_hash {
-      log::debug!(
-        "Current binary checksum mismatch, skipping delta"
-      );
+      log::debug!("Current binary checksum mismatch, skipping delta");
       return None;
     }
   } else {
@@ -1705,10 +1690,7 @@ async fn try_delta_upgrade(
     if steps > 1 {
       log::info!(
         "{}",
-        colors::gray(format!(
-          "Step {}/{}: {} -> {}",
-          i + 1, steps, src, dst
-        ))
+        colors::gray(format!("Step {}/{}: {} -> {}", i + 1, steps, src, dst))
       );
     }
 
@@ -1737,14 +1719,15 @@ async fn try_delta_upgrade(
     {
       let actual_delta_hash = compute_sha256(&delta_data);
       if actual_delta_hash != expected_delta_hash {
-        log::warn!(
-          "Delta patch checksum mismatch for {} -> {}",
-          src, dst
-        );
+        log::warn!("Delta patch checksum mismatch for {} -> {}", src, dst);
         return None;
       }
     } else {
-      log::debug!("Could not fetch delta patch checksum for {} -> {}", src, dst);
+      log::debug!(
+        "Could not fetch delta patch checksum for {} -> {}",
+        src,
+        dst
+      );
       return None;
     }
 
@@ -1766,7 +1749,8 @@ async fn try_delta_upgrade(
       if actual_hash != expected_hash {
         log::warn!(
           "Patched binary checksum mismatch after step {} -> {}",
-          src, dst
+          src,
+          dst
         );
         return None;
       }
@@ -3284,6 +3268,120 @@ mod test {
     assert_eq!(
       hash,
       "916f0027a575074ce72a331777c3478d6513f786a591bd892da1a577bf2335f9"
+    );
+  }
+
+  #[test]
+  fn test_chained_bsdiff_patches() {
+    // Simulate a 3-step upgrade: 2.7.10 -> 2.7.11 -> 2.7.12 -> 2.7.13
+    // Use realistic-ish binary content that differs slightly per version
+    let base = b"DENO_BINARY_v2.7.10_padding_to_simulate_real_binary_size_";
+    let mut binary_v10 = base.to_vec();
+    binary_v10.extend_from_slice(&[0u8; 1024]);
+
+    let mut binary_v11 = binary_v10.clone();
+    // Simulate code changes: modify some bytes
+    binary_v11[20..26].copy_from_slice(b"2.7.11");
+    binary_v11[500..510].copy_from_slice(b"new_code_1");
+
+    let mut binary_v12 = binary_v11.clone();
+    binary_v12[20..26].copy_from_slice(b"2.7.12");
+    binary_v12[700..710].copy_from_slice(b"new_code_2");
+
+    let mut binary_v13 = binary_v12.clone();
+    binary_v13[20..26].copy_from_slice(b"2.7.13");
+    binary_v13[900..910].copy_from_slice(b"new_code_3");
+
+    // Generate consecutive delta patches
+    let mut patch_10_11 = Vec::new();
+    bsdiff::diff(&binary_v10, &binary_v11, &mut patch_10_11).unwrap();
+    let mut patch_11_12 = Vec::new();
+    bsdiff::diff(&binary_v11, &binary_v12, &mut patch_11_12).unwrap();
+    let mut patch_12_13 = Vec::new();
+    bsdiff::diff(&binary_v12, &binary_v13, &mut patch_12_13).unwrap();
+
+    // Chain: apply patches sequentially starting from v10
+    let result_v11 = apply_bsdiff_patch(&binary_v10, &patch_10_11).unwrap();
+    assert_eq!(result_v11, binary_v11, "v10 -> v11 patch failed");
+
+    let result_v12 = apply_bsdiff_patch(&result_v11, &patch_11_12).unwrap();
+    assert_eq!(result_v12, binary_v12, "v11 -> v12 patch failed");
+
+    let result_v13 = apply_bsdiff_patch(&result_v12, &patch_12_13).unwrap();
+    assert_eq!(result_v13, binary_v13, "v12 -> v13 patch failed");
+
+    // Verify patches are reasonable size (bsdiff has overhead for small
+    // inputs, so just check they're not wildly larger)
+    assert!(
+      patch_10_11.len() < binary_v10.len() * 2,
+      "patch should not be much larger than binary: {} vs {}",
+      patch_10_11.len(),
+      binary_v10.len()
+    );
+  }
+
+  #[test]
+  fn test_chained_patches_checksum_verification() {
+    // Verify that applying a wrong patch produces a different checksum,
+    // which would be caught by the per-step verification in
+    // try_delta_upgrade
+    let binary_a = b"binary_version_a_content_here_padding";
+    let binary_b = b"binary_version_b_content_here_padding";
+    let binary_c = b"binary_version_c_content_here_padding";
+
+    let mut patch_ab = Vec::new();
+    bsdiff::diff(binary_a, binary_b, &mut patch_ab).unwrap();
+    let mut patch_bc = Vec::new();
+    bsdiff::diff(binary_b, binary_c, &mut patch_bc).unwrap();
+
+    // Correct chain: A -> B -> C
+    let result_b = apply_bsdiff_patch(binary_a, &patch_ab).unwrap();
+    let hash_b = compute_sha256(&result_b);
+    let expected_hash_b = compute_sha256(binary_b);
+    assert_eq!(hash_b, expected_hash_b, "intermediate hash should match");
+
+    let result_c = apply_bsdiff_patch(&result_b, &patch_bc).unwrap();
+    let hash_c = compute_sha256(&result_c);
+    let expected_hash_c = compute_sha256(binary_c);
+    assert_eq!(hash_c, expected_hash_c, "final hash should match");
+
+    // Wrong order: applying B->C patch to A should produce wrong result
+    // (bsdiff will produce SOMETHING but it won't match)
+    let wrong_result = apply_bsdiff_patch(binary_a, &patch_bc).unwrap();
+    let wrong_hash = compute_sha256(&wrong_result);
+    assert_ne!(
+      wrong_hash, expected_hash_c,
+      "wrong patch order should produce different hash"
+    );
+  }
+
+  #[test]
+  fn test_delta_url_uses_target_release() {
+    // Verify that the delta URL downloads from the TARGET version's
+    // release (not the source), since patches live on the new release
+    let url = get_delta_download_url("2.7.10", "2.7.11").unwrap();
+    assert!(
+      url.to_string().contains("/download/v2.7.11/"),
+      "delta should be fetched from target release: {url}"
+    );
+    assert!(
+      url.to_string().contains(".from-2.7.10.bsdiff"),
+      "delta filename should reference source version: {url}"
+    );
+
+    // For a chain 2.7.10 -> 2.7.12, the intermediate step should
+    // fetch from v2.7.11's release
+    let chain = build_delta_chain("2.7.10", "2.7.12");
+    assert_eq!(chain.len(), 2);
+    let url_step1 = get_delta_download_url(&chain[0].0, &chain[0].1).unwrap();
+    assert!(
+      url_step1.to_string().contains("/download/v2.7.11/"),
+      "step 1 should fetch from v2.7.11 release"
+    );
+    let url_step2 = get_delta_download_url(&chain[1].0, &chain[1].1).unwrap();
+    assert!(
+      url_step2.to_string().contains("/download/v2.7.12/"),
+      "step 2 should fetch from v2.7.12 release"
     );
   }
 }

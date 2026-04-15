@@ -1189,8 +1189,7 @@ console.log("imported", import.meta.url);
       // Generate a bsdiff patch from the old to the new fake binary
       let old_content =
         format!("DENO_UPGRADE_TEST_BINARY_VERSION_{}", src_version);
-      let new_content =
-        format!("DENO_UPGRADE_TEST_BINARY_VERSION_{}", version);
+      let new_content = format!("DENO_UPGRADE_TEST_BINARY_VERSION_{}", version);
       let mut patch = Vec::new();
       bsdiff::diff(old_content.as_bytes(), new_content.as_bytes(), &mut patch)
         .unwrap();
@@ -1222,8 +1221,7 @@ console.log("imported", import.meta.url);
         .unwrap_or("unknown");
       let old_content =
         format!("DENO_UPGRADE_TEST_BINARY_VERSION_{}", src_version);
-      let new_content =
-        format!("DENO_UPGRADE_TEST_BINARY_VERSION_{}", version);
+      let new_content = format!("DENO_UPGRADE_TEST_BINARY_VERSION_{}", version);
       let mut patch = Vec::new();
       bsdiff::diff(old_content.as_bytes(), new_content.as_bytes(), &mut patch)
         .unwrap();
