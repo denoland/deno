@@ -186,8 +186,7 @@ async function runAsyncTests() {
   try {
     const r = await win.executeJs("({a: 1, b: [2, 3]})");
     const v = (r as any).ok !== undefined ? (r as any).value : r;
-    const ok =
-      v && typeof v === "object" && v.a === 1 && Array.isArray(v.b);
+    const ok = v && typeof v === "object" && v.a === 1 && Array.isArray(v.b);
     record("executeJs:complex", ok, JSON.stringify(r));
   } catch (e) {
     record("executeJs:complex", false, String(e));

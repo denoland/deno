@@ -295,17 +295,240 @@ fn package_desktop_app(
   desktop_flags: &DesktopFlags,
   cli_options: &CliOptions,
 ) -> Result<PathBuf, AnyError> {
-  let is_darwin = match &desktop_flags.target {
+  let target = desktop_flags.target.as_deref();
+  let is_darwin = match target {
     Some(target) => target.contains("darwin"),
     None => cfg!(target_os = "macos"),
+  };
+  let is_windows = match target {
+    Some(target) => target.contains("windows"),
+    None => cfg!(target_os = "windows"),
   };
 
   if is_darwin {
     package_macos_app_bundle(dylib_path, desktop_flags, cli_options)
+  } else if is_windows {
+    package_windows_app_dir(dylib_path, desktop_flags, cli_options)
   } else {
-    // TODO(divy): Windows and Linux packaging
-    Ok(dylib_path.to_path_buf())
+    package_linux_app_dir(dylib_path, desktop_flags, cli_options)
   }
+}
+
+/// Find the directory containing the WEF backend binary. For non-macOS
+/// platforms, the binary and its support files (e.g., CEF DLLs, locales)
+/// sit alongside each other in a single flat directory.
+fn find_wef_backend_dir(backend: &str) -> Result<PathBuf, AnyError> {
+  let backend_binary = find_wef_backend(backend)?;
+  let parent = backend_binary.parent().ok_or_else(|| {
+    deno_core::anyhow::anyhow!(
+      "WEF backend binary has no parent directory: {}",
+      backend_binary.display()
+    )
+  })?;
+  Ok(parent.to_path_buf())
+}
+
+/// Create a Windows app directory from the compiled desktop dylib.
+///
+/// Directory structure:
+/// ```text
+/// AppName/
+///   AppName.bat         (launcher)
+///   wef.exe             (WEF backend binary)
+///   libcef.dll, ...     (CEF support files, if any)
+///   denort.dll          (compiled Deno runtime + user code)
+///   AppIcon.ico         (optional)
+/// ```
+fn package_windows_app_dir(
+  dylib_path: &Path,
+  desktop_flags: &DesktopFlags,
+  cli_options: &CliOptions,
+) -> Result<PathBuf, AnyError> {
+  let app_name = dylib_path
+    .file_stem()
+    .unwrap()
+    .to_string_lossy()
+    .to_string();
+  let app_dir = dylib_path.parent().unwrap().join(&app_name);
+
+  let backend = desktop_flags.backend.as_deref().unwrap_or("cef");
+  let wef_dir = find_wef_backend_dir(backend)?;
+  let wef_binary = find_wef_backend(backend)?;
+  let wef_binary_name = wef_binary
+    .file_name()
+    .unwrap()
+    .to_string_lossy()
+    .to_string();
+
+  if app_dir.exists() {
+    std::fs::remove_dir_all(&app_dir)?;
+  }
+
+  // Copy WEF backend directory (binary + CEF support files) as the shell.
+  crate::tools::compile::copy_dir_all(&wef_dir, &app_dir)?;
+
+  // Copy the compiled dylib (denort.dll) alongside the backend binary.
+  let dylib_filename = dylib_path.file_name().unwrap();
+  std::fs::copy(dylib_path, app_dir.join(dylib_filename))?;
+
+  // Create a .bat launcher that invokes the backend with --runtime.
+  let launcher_path = app_dir.join(format!("{}.bat", app_name));
+  std::fs::write(
+    &launcher_path,
+    format!(
+      "@echo off\r\n\
+       set DIR=%~dp0\r\n\
+       \"%DIR%{wef_binary}\" --runtime \"%DIR%{dylib}\" %*\r\n",
+      wef_binary = wef_binary_name,
+      dylib = dylib_filename.to_string_lossy(),
+    ),
+  )?;
+
+  // Handle icon — drop an .ico next to the launcher. Embedding the icon
+  // into the .exe itself requires rcedit or equivalent and is out of scope.
+  if let Some(ref icon) = desktop_flags.icon {
+    let dest = app_dir.join("AppIcon.ico");
+    match icon {
+      crate::args::IconConfig::Single(path) => {
+        let icon_path = cli_options.initial_cwd().join(path);
+        if icon_path.exists() {
+          match icon_path.extension().and_then(|e| e.to_str()) {
+            Some("ico") => {
+              std::fs::copy(&icon_path, &dest)?;
+            }
+            _ => {
+              log::warn!(
+                "Icon '{}' is not .ico, skipping",
+                icon_path.display()
+              );
+            }
+          }
+        } else {
+          log::warn!("Icon '{}' not found, skipping", icon_path.display());
+        }
+      }
+      crate::args::IconConfig::Set(entries) => {
+        convert_icon_set_to_ico(cli_options.initial_cwd(), entries, &dest)?;
+      }
+    }
+  }
+
+  // Remove the standalone dylib (it's now inside the app dir).
+  let _ = std::fs::remove_file(dylib_path);
+
+  Ok(app_dir)
+}
+
+/// Create a Linux app directory from the compiled desktop dylib.
+///
+/// Directory structure:
+/// ```text
+/// AppName/
+///   AppName             (launcher shell script)
+///   wef                 (WEF backend binary)
+///   libcef.so, ...      (CEF support files, if any)
+///   libdenort.so        (compiled Deno runtime + user code)
+///   AppIcon.png         (optional)
+/// ```
+fn package_linux_app_dir(
+  dylib_path: &Path,
+  desktop_flags: &DesktopFlags,
+  cli_options: &CliOptions,
+) -> Result<PathBuf, AnyError> {
+  let app_name = dylib_path
+    .file_stem()
+    .unwrap()
+    .to_string_lossy()
+    .to_string();
+  // `file_stem` on "libdenort.so" returns "libdenort" — strip the "lib" prefix
+  // so the app directory is named after the app, not the runtime library.
+  let app_name = app_name
+    .strip_prefix("lib")
+    .map(|s| s.to_string())
+    .unwrap_or(app_name);
+  let app_dir = dylib_path.parent().unwrap().join(&app_name);
+
+  let backend = desktop_flags.backend.as_deref().unwrap_or("cef");
+  let wef_dir = find_wef_backend_dir(backend)?;
+  let wef_binary = find_wef_backend(backend)?;
+  let wef_binary_name = wef_binary
+    .file_name()
+    .unwrap()
+    .to_string_lossy()
+    .to_string();
+
+  if app_dir.exists() {
+    std::fs::remove_dir_all(&app_dir)?;
+  }
+
+  // Copy WEF backend directory (binary + CEF support files) as the shell.
+  crate::tools::compile::copy_dir_all(&wef_dir, &app_dir)?;
+
+  // Copy the compiled dylib alongside the backend binary.
+  let dylib_filename = dylib_path.file_name().unwrap();
+  std::fs::copy(dylib_path, app_dir.join(dylib_filename))?;
+
+  // Create a shell launcher that invokes the backend with --runtime.
+  let launcher_path = app_dir.join(&app_name);
+  std::fs::write(
+    &launcher_path,
+    format!(
+      "#!/bin/bash\n\
+       DIR=\"$(cd \"$(dirname \"$0\")\" && pwd)\"\n\
+       exec \"$DIR/{wef_binary}\" --runtime \"$DIR/{dylib}\" \"$@\"\n",
+      wef_binary = wef_binary_name,
+      dylib = dylib_filename.to_string_lossy(),
+    ),
+  )?;
+  #[cfg(unix)]
+  {
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::set_permissions(
+      &launcher_path,
+      std::fs::Permissions::from_mode(0o755),
+    )?;
+  }
+
+  // Handle icon — copy a .png next to the launcher.
+  if let Some(ref icon) = desktop_flags.icon {
+    let dest = app_dir.join("AppIcon.png");
+    match icon {
+      crate::args::IconConfig::Single(path) => {
+        let icon_path = cli_options.initial_cwd().join(path);
+        if icon_path.exists() {
+          match icon_path.extension().and_then(|e| e.to_str()) {
+            Some("png") => {
+              std::fs::copy(&icon_path, &dest)?;
+            }
+            _ => {
+              log::warn!(
+                "Icon '{}' is not .png, skipping",
+                icon_path.display()
+              );
+            }
+          }
+        } else {
+          log::warn!("Icon '{}' not found, skipping", icon_path.display());
+        }
+      }
+      crate::args::IconConfig::Set(entries) => {
+        // Pick the largest provided size as the single icon file.
+        if let Some(largest) = entries.iter().max_by_key(|e| e.size) {
+          let src = cli_options.initial_cwd().join(&largest.path);
+          if src.exists() {
+            std::fs::copy(&src, &dest)?;
+          } else {
+            log::warn!("Icon '{}' not found, skipping", src.display());
+          }
+        }
+      }
+    }
+  }
+
+  // Remove the standalone dylib (it's now inside the app dir).
+  let _ = std::fs::remove_file(dylib_path);
+
+  Ok(app_dir)
 }
 
 /// Environment variable for the WEF backend executable path.
@@ -622,9 +845,7 @@ fn package_macos_app_bundle(
               std::fs::copy(&icon_path, &dest)?;
             }
             Some("png") => {
-              crate::tools::compile::convert_png_to_icns(
-                &icon_path, &dest,
-              )?;
+              crate::tools::compile::convert_png_to_icns(&icon_path, &dest)?;
             }
             _ => {
               log::warn!(
@@ -634,18 +855,11 @@ fn package_macos_app_bundle(
             }
           }
         } else {
-          log::warn!(
-            "Icon '{}' not found, skipping",
-            icon_path.display()
-          );
+          log::warn!("Icon '{}' not found, skipping", icon_path.display());
         }
       }
       crate::args::IconConfig::Set(entries) => {
-        convert_icon_set_to_icns(
-          cli_options.initial_cwd(),
-          entries,
-          &dest,
-        )?;
+        convert_icon_set_to_icns(cli_options.initial_cwd(), entries, &dest)?;
       }
     }
   }
@@ -780,9 +994,7 @@ fn convert_icon_set_to_icns(
   let _ = std::fs::remove_dir_all(&iconset_dir);
 
   if !status.success() {
-    deno_core::anyhow::bail!(
-      "iconutil failed to create .icns from icon set"
-    );
+    deno_core::anyhow::bail!("iconutil failed to create .icns from icon set");
   }
 
   Ok(())
