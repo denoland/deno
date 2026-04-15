@@ -2429,12 +2429,37 @@ impl JsRuntime {
       {
         // pass, will be polled again
       } else {
-        return Poll::Ready(Err(
-          CoreErrorKind::Js(find_and_report_stalled_level_await_in_any_realm(
+        // Last-resort: try one more microtask checkpoint before reporting
+        // a stalled TLA. Under Explicit microtask policy, V8's internal
+        // async module evaluation state machine may require an additional
+        // checkpoint to fully resolve the evaluation promise (e.g. when
+        // TLA resumes trigger lazy module loads whose nested checkpoints
+        // are no-ops due to V8's reentrancy guard).
+        scope.perform_microtask_checkpoint();
+        let modules = &realm.0.module_map();
+        if !modules.has_pending_module_evaluation() {
+          // The checkpoint resolved the evaluation -- keep going
+          self.inner.state.waker.wake();
+        } else if let Some(js_error) =
+          find_and_report_stalled_level_await_in_any_realm(
             scope, &realm.0,
-          ))
-          .into_box(),
-        ));
+          )
+        {
+          return Poll::Ready(Err(
+            CoreErrorKind::Js(js_error).into_box(),
+          ));
+        } else {
+          // V8 reports no stalled TLA but the evaluation promise is still
+          // pending. This can happen with large async module graphs under
+          // Explicit microtask policy. Give the event loop one more
+          // iteration to make progress.
+          #[cfg(debug_assertions)]
+          eprintln!(
+            "warning: module evaluation pending but no stalled top-level \
+             await found, retrying event loop iteration"
+          );
+          self.inner.state.waker.wake();
+        }
       }
     }
 
@@ -2449,12 +2474,22 @@ impl JsRuntime {
       {
         // pass, will be polled again
       } else if realm.modules_idle() {
-        return Poll::Ready(Err(
-          CoreErrorKind::Js(find_and_report_stalled_level_await_in_any_realm(
+        if let Some(js_error) =
+          find_and_report_stalled_level_await_in_any_realm(
             scope, &realm.0,
-          ))
-          .into_box(),
-        ));
+          )
+        {
+          return Poll::Ready(Err(
+            CoreErrorKind::Js(js_error).into_box(),
+          ));
+        } else {
+          #[cfg(debug_assertions)]
+          eprintln!(
+            "warning: dynamic module evaluation pending but no stalled \
+             top-level await found, retrying event loop iteration"
+          );
+          self.inner.state.waker.wake();
+        }
       } else {
         realm.increment_modules_idle();
         self.inner.state.waker.wake();
@@ -2468,7 +2503,7 @@ impl JsRuntime {
 fn find_and_report_stalled_level_await_in_any_realm(
   scope: &mut v8::PinScope,
   inner_realm: &JsRealmInner,
-) -> Box<JsError> {
+) -> Option<Box<JsError>> {
   let module_map = inner_realm.module_map();
   let messages = module_map.find_stalled_top_level_await(scope);
 
@@ -2479,10 +2514,10 @@ fn find_and_report_stalled_level_await_in_any_realm(
     // situation is gonna be very rare, if ever happening).
     let msg = v8::Local::new(scope, &messages[0]);
     let js_error = JsError::from_v8_message(scope, msg);
-    return js_error;
+    return Some(js_error);
   }
 
-  unreachable!("Expected at least one stalled top-level await");
+  None
 }
 
 fn create_context<'s, 'i>(
