@@ -23,3 +23,15 @@ Deno.test("napi nested handle scopes", function () {
   const result = lib.test_nested_scopes();
   assertEquals(result, true);
 });
+
+// Ported from Node.js test_handle_scope: NewScopeWithException
+Deno.test("napi handle scope with pending exception", function () {
+  lib.test_scope_with_exception(() => {
+    throw new RangeError("test exception");
+  });
+});
+
+Deno.test("napi handle scope stress test (many handles)", function () {
+  const result = lib.test_handle_scope_many_handles();
+  assertEquals(result, true);
+});
