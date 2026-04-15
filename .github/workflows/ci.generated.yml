@@ -686,20 +686,26 @@ jobs:
           strip -x -S ./denort
           zip -r denort-x86_64-apple-darwin.zip denort
           shasum -a 256 denort-x86_64-apple-darwin.zip > denort-x86_64-apple-darwin.zip.sha256sum
-      - name: Generate delta patch (mac)
+      - name: Build bsdiff helper
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && startsWith(github.ref, ''refs/tags/'')'
+        run: cargo build --release -p bsdiff_helper
+      - name: Generate delta patches (mac)
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && startsWith(github.ref, ''refs/tags/'')'
         run: |-
-          brew install bsdiff
-          PREV_VERSION=$(curl -sf https://dl.deno.land/release-latest.txt | tr -d "v\n") || true
-          if [ -z "$PREV_VERSION" ]; then echo "No previous version found, skipping delta"; exit 0; fi
           TARGET="x86_64-apple-darwin"
-          echo "Generating delta from $PREV_VERSION for $TARGET"
-          curl -fSL -o prev.zip "https://github.com/denoland/deno/releases/download/v${PREV_VERSION}/deno-${TARGET}.zip" || { echo "Previous release not found, skipping delta"; exit 0; }
-          unzip -o prev.zip -d prev/
-          bsdiff prev/deno target/release/deno "target/release/deno-${TARGET}.from-${PREV_VERSION}.bsdiff"
-          cd target/release && shasum -a 256 "deno-${TARGET}.from-${PREV_VERSION}.bsdiff" > "deno-${TARGET}.from-${PREV_VERSION}.bsdiff.sha256sum"
-          echo "Delta patch generated: deno-${TARGET}.from-${PREV_VERSION}.bsdiff"
-          ls -lh "target/release/deno-${TARGET}.from-${PREV_VERSION}.bsdiff"
+          NEW_VERSION=${GITHUB_REF#refs/tags/v}
+          BSDIFF=./target/release/bsdiff_helper
+          EXE=target/release/deno
+          VERSIONS=$(curl -sf "https://api.github.com/repos/denoland/deno/releases?per_page=4" | grep '"tag_name":' | sed 's/.*"v\(.*\)".*/\1/' | head -3)
+          for PREV_VERSION in $VERSIONS; do
+            echo "Generating delta from $PREV_VERSION to $NEW_VERSION for $TARGET"
+            curl -fSL -o "prev-${PREV_VERSION}.zip" "https://github.com/denoland/deno/releases/download/v${PREV_VERSION}/deno-${TARGET}.zip" || { echo "Release v${PREV_VERSION} not found for ${TARGET}, skipping"; continue; }
+            rm -rf prev && mkdir prev
+            unzip -o "prev-${PREV_VERSION}.zip" -d prev/
+            $BSDIFF prev/deno "$EXE" "target/release/deno-${TARGET}.from-${PREV_VERSION}.bsdiff"
+            cd target/release && shasum -a 256 "deno-${TARGET}.from-${PREV_VERSION}.bsdiff" > "deno-${TARGET}.from-${PREV_VERSION}.bsdiff.sha256sum" && cd ../..
+            echo "  -> $(ls -lh "target/release/deno-${TARGET}.from-${PREV_VERSION}.bsdiff" | awk '{print $5}')"
+          done
       - name: Upload canary to dl.deno.land
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && github.ref == ''refs/heads/main'''
         env:
@@ -1392,7 +1398,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         env:
           CARGO_PROFILE_DEV_DEBUG: 0
-        run: cargo test --locked --lib -p deno -p denort -p node_shim -p deno_lib -p deno_snapshots -p deno_bundle_runtime -p deno_cache -p deno_cron -p deno_crypto -p deno_fetch -p deno_ffi -p deno_fs -p deno_http -p deno_image -p deno_io -p deno_kv -p deno_napi -p napi_sym -p deno_net -p deno_node -p deno_node_crypto -p deno_node_sqlite -p denort_helper -p deno_signals -p deno_telemetry -p deno_url -p deno_web -p deno_webgpu -p deno_webidl -p deno_websocket -p deno_webstorage -p deno_cache_dir -p deno_config -p deno_crypto_provider -p deno_dotenv -p eszip -p deno_inspector_server -p deno_lockfile -p deno_maybe_sync -p napi_sys -p node_resolver -p deno_npm -p deno_npm_cache -p deno_npm_installer -p deno_npmrc -p deno_package_json -p deno_resolver -p deno_typescript_go_client_rust -p deno_runtime -p deno_features -p deno_permissions -p deno_subprocess_windows
+        run: cargo test --locked --lib -p deno -p denort -p node_shim -p bsdiff_helper -p deno_lib -p deno_snapshots -p deno_bundle_runtime -p deno_cache -p deno_cron -p deno_crypto -p deno_fetch -p deno_ffi -p deno_fs -p deno_http -p deno_image -p deno_io -p deno_kv -p deno_napi -p napi_sym -p deno_net -p deno_node -p deno_node_crypto -p deno_node_sqlite -p denort_helper -p deno_signals -p deno_telemetry -p deno_url -p deno_web -p deno_webgpu -p deno_webidl -p deno_websocket -p deno_webstorage -p deno_cache_dir -p deno_config -p deno_crypto_provider -p deno_dotenv -p eszip -p deno_inspector_server -p deno_lockfile -p deno_maybe_sync -p napi_sys -p node_resolver -p deno_npm -p deno_npm_cache -p deno_npm_installer -p deno_npmrc -p deno_package_json -p deno_resolver -p deno_typescript_go_client_rust -p deno_runtime -p deno_features -p deno_permissions -p deno_subprocess_windows
       - name: Cache cargo home
         uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830
         if: '!startsWith(github.ref, ''refs/tags/'') && github.ref == ''refs/heads/main'''
@@ -1554,20 +1560,26 @@ jobs:
           strip -x -S ./denort
           zip -r denort-aarch64-apple-darwin.zip denort
           shasum -a 256 denort-aarch64-apple-darwin.zip > denort-aarch64-apple-darwin.zip.sha256sum
-      - name: Generate delta patch (mac)
+      - name: Build bsdiff helper
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && startsWith(github.ref, ''refs/tags/'')'
+        run: cargo build --release -p bsdiff_helper
+      - name: Generate delta patches (mac)
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && startsWith(github.ref, ''refs/tags/'')'
         run: |-
-          brew install bsdiff
-          PREV_VERSION=$(curl -sf https://dl.deno.land/release-latest.txt | tr -d "v\n") || true
-          if [ -z "$PREV_VERSION" ]; then echo "No previous version found, skipping delta"; exit 0; fi
           TARGET="aarch64-apple-darwin"
-          echo "Generating delta from $PREV_VERSION for $TARGET"
-          curl -fSL -o prev.zip "https://github.com/denoland/deno/releases/download/v${PREV_VERSION}/deno-${TARGET}.zip" || { echo "Previous release not found, skipping delta"; exit 0; }
-          unzip -o prev.zip -d prev/
-          bsdiff prev/deno target/release/deno "target/release/deno-${TARGET}.from-${PREV_VERSION}.bsdiff"
-          cd target/release && shasum -a 256 "deno-${TARGET}.from-${PREV_VERSION}.bsdiff" > "deno-${TARGET}.from-${PREV_VERSION}.bsdiff.sha256sum"
-          echo "Delta patch generated: deno-${TARGET}.from-${PREV_VERSION}.bsdiff"
-          ls -lh "target/release/deno-${TARGET}.from-${PREV_VERSION}.bsdiff"
+          NEW_VERSION=${GITHUB_REF#refs/tags/v}
+          BSDIFF=./target/release/bsdiff_helper
+          EXE=target/release/deno
+          VERSIONS=$(curl -sf "https://api.github.com/repos/denoland/deno/releases?per_page=4" | grep '"tag_name":' | sed 's/.*"v\(.*\)".*/\1/' | head -3)
+          for PREV_VERSION in $VERSIONS; do
+            echo "Generating delta from $PREV_VERSION to $NEW_VERSION for $TARGET"
+            curl -fSL -o "prev-${PREV_VERSION}.zip" "https://github.com/denoland/deno/releases/download/v${PREV_VERSION}/deno-${TARGET}.zip" || { echo "Release v${PREV_VERSION} not found for ${TARGET}, skipping"; continue; }
+            rm -rf prev && mkdir prev
+            unzip -o "prev-${PREV_VERSION}.zip" -d prev/
+            $BSDIFF prev/deno "$EXE" "target/release/deno-${TARGET}.from-${PREV_VERSION}.bsdiff"
+            cd target/release && shasum -a 256 "deno-${TARGET}.from-${PREV_VERSION}.bsdiff" > "deno-${TARGET}.from-${PREV_VERSION}.bsdiff.sha256sum" && cd ../..
+            echo "  -> $(ls -lh "target/release/deno-${TARGET}.from-${PREV_VERSION}.bsdiff" | awk '{print $5}')"
+          done
       - name: Upload canary to dl.deno.land
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && github.ref == ''refs/heads/main'''
         env:
@@ -2211,7 +2223,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         env:
           CARGO_PROFILE_DEV_DEBUG: 0
-        run: cargo test --locked --lib -p deno -p denort -p node_shim -p deno_lib -p deno_snapshots -p deno_bundle_runtime -p deno_cache -p deno_cron -p deno_crypto -p deno_fetch -p deno_ffi -p deno_fs -p deno_http -p deno_image -p deno_io -p deno_kv -p deno_napi -p napi_sym -p deno_net -p deno_node -p deno_node_crypto -p deno_node_sqlite -p denort_helper -p deno_signals -p deno_telemetry -p deno_url -p deno_web -p deno_webgpu -p deno_webidl -p deno_websocket -p deno_webstorage -p deno_cache_dir -p deno_config -p deno_crypto_provider -p deno_dotenv -p eszip -p deno_inspector_server -p deno_lockfile -p deno_maybe_sync -p napi_sys -p node_resolver -p deno_npm -p deno_npm_cache -p deno_npm_installer -p deno_npmrc -p deno_package_json -p deno_resolver -p deno_typescript_go_client_rust -p deno_runtime -p deno_features -p deno_permissions -p deno_subprocess_windows
+        run: cargo test --locked --lib -p deno -p denort -p node_shim -p bsdiff_helper -p deno_lib -p deno_snapshots -p deno_bundle_runtime -p deno_cache -p deno_cron -p deno_crypto -p deno_fetch -p deno_ffi -p deno_fs -p deno_http -p deno_image -p deno_io -p deno_kv -p deno_napi -p napi_sym -p deno_net -p deno_node -p deno_node_crypto -p deno_node_sqlite -p denort_helper -p deno_signals -p deno_telemetry -p deno_url -p deno_web -p deno_webgpu -p deno_webidl -p deno_websocket -p deno_webstorage -p deno_cache_dir -p deno_config -p deno_crypto_provider -p deno_dotenv -p eszip -p deno_inspector_server -p deno_lockfile -p deno_maybe_sync -p napi_sys -p node_resolver -p deno_npm -p deno_npm_cache -p deno_npm_installer -p deno_npmrc -p deno_package_json -p deno_resolver -p deno_typescript_go_client_rust -p deno_runtime -p deno_features -p deno_permissions -p deno_subprocess_windows
       - name: Cache cargo home
         uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830
         if: '!startsWith(github.ref, ''refs/tags/'') && github.ref == ''refs/heads/main'''
@@ -2374,6 +2386,29 @@ jobs:
           Compress-Archive -CompressionLevel Optimal -Force -Path target/release/denort.exe -DestinationPath target/release/denort-x86_64-pc-windows-msvc.zip
           Get-FileHash target/release/denort-x86_64-pc-windows-msvc.zip -Algorithm SHA256 | Format-List > target/release/denort-x86_64-pc-windows-msvc.zip.sha256sum
           target/release/deno.exe -A tools/release/create_symcache.ts target/release/deno-x86_64-pc-windows-msvc.symcache
+      - name: Build bsdiff helper
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && startsWith(github.ref, ''refs/tags/'')'
+        run: cargo build --release -p bsdiff_helper
+      - name: Generate delta patches (windows)
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && startsWith(github.ref, ''refs/tags/'')'
+        shell: pwsh
+        run: |-
+          $Target = "x86_64-pc-windows-msvc"
+          $NewVersion = $env:GITHUB_REF -replace "refs/tags/v", ""
+          $Bsdiff = ".\target\release\bsdiff_helper.exe"
+          $Exe = "target\release\deno.exe"
+          $releases = (Invoke-RestMethod "https://api.github.com/repos/denoland/deno/releases?per_page=4") | Select-Object -First 3
+          foreach ($rel in $releases) {
+            $PrevVersion = $rel.tag_name -replace "^v", ""
+            Write-Host "Generating delta from $PrevVersion to $NewVersion for $Target"
+            $url = "https://github.com/denoland/deno/releases/download/v$PrevVersion/deno-$Target.zip"
+            try { Invoke-WebRequest -Uri $url -OutFile "prev-$PrevVersion.zip" } catch { Write-Host "Release v$PrevVersion not found for $Target, skipping"; continue }
+            Remove-Item -Recurse -Force prev -ErrorAction SilentlyContinue; New-Item -ItemType Directory -Path prev | Out-Null
+            Expand-Archive -Force -Path "prev-$PrevVersion.zip" -DestinationPath prev
+            & $Bsdiff "prev\deno.exe" $Exe "target\release\deno-$Target.from-$PrevVersion.bsdiff"
+            Get-FileHash "target\release\deno-$Target.from-$PrevVersion.bsdiff" -Algorithm SHA256 | Format-List > "target\release\deno-$Target.from-$PrevVersion.bsdiff.sha256sum"
+            Write-Host "  -> $((Get-Item "target\release\deno-$Target.from-$PrevVersion.bsdiff").Length) bytes"
+          }
       - name: Upload canary to dl.deno.land
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && github.ref == ''refs/heads/main'''
         env:
@@ -3063,6 +3098,29 @@ jobs:
           Compress-Archive -CompressionLevel Optimal -Force -Path target/release/denort.exe -DestinationPath target/release/denort-aarch64-pc-windows-msvc.zip
           Get-FileHash target/release/denort-aarch64-pc-windows-msvc.zip -Algorithm SHA256 | Format-List > target/release/denort-aarch64-pc-windows-msvc.zip.sha256sum
           target/release/deno.exe -A tools/release/create_symcache.ts target/release/deno-aarch64-pc-windows-msvc.symcache
+      - name: Build bsdiff helper
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && startsWith(github.ref, ''refs/tags/'')'
+        run: cargo build --release -p bsdiff_helper
+      - name: Generate delta patches (windows)
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && startsWith(github.ref, ''refs/tags/'')'
+        shell: pwsh
+        run: |-
+          $Target = "aarch64-pc-windows-msvc"
+          $NewVersion = $env:GITHUB_REF -replace "refs/tags/v", ""
+          $Bsdiff = ".\target\release\bsdiff_helper.exe"
+          $Exe = "target\release\deno.exe"
+          $releases = (Invoke-RestMethod "https://api.github.com/repos/denoland/deno/releases?per_page=4") | Select-Object -First 3
+          foreach ($rel in $releases) {
+            $PrevVersion = $rel.tag_name -replace "^v", ""
+            Write-Host "Generating delta from $PrevVersion to $NewVersion for $Target"
+            $url = "https://github.com/denoland/deno/releases/download/v$PrevVersion/deno-$Target.zip"
+            try { Invoke-WebRequest -Uri $url -OutFile "prev-$PrevVersion.zip" } catch { Write-Host "Release v$PrevVersion not found for $Target, skipping"; continue }
+            Remove-Item -Recurse -Force prev -ErrorAction SilentlyContinue; New-Item -ItemType Directory -Path prev | Out-Null
+            Expand-Archive -Force -Path "prev-$PrevVersion.zip" -DestinationPath prev
+            & $Bsdiff "prev\deno.exe" $Exe "target\release\deno-$Target.from-$PrevVersion.bsdiff"
+            Get-FileHash "target\release\deno-$Target.from-$PrevVersion.bsdiff" -Algorithm SHA256 | Format-List > "target\release\deno-$Target.from-$PrevVersion.bsdiff.sha256sum"
+            Write-Host "  -> $((Get-Item "target\release\deno-$Target.from-$PrevVersion.bsdiff").Length) bytes"
+          }
       - name: Upload canary to dl.deno.land
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && github.ref == ''refs/heads/main'''
         env:
@@ -3518,20 +3576,26 @@ jobs:
           zip -r denort-x86_64-unknown-linux-gnu.zip denort
           shasum -a 256 denort-x86_64-unknown-linux-gnu.zip > denort-x86_64-unknown-linux-gnu.zip.sha256sum
           ./deno types > lib.deno.d.ts
-      - name: Generate delta patch (linux)
+      - name: Build bsdiff helper
+        if: 'github.repository == ''denoland/deno'' && startsWith(github.ref, ''refs/tags/'')'
+        run: cargo build --release -p bsdiff_helper
+      - name: Generate delta patches (linux)
         if: 'github.repository == ''denoland/deno'' && startsWith(github.ref, ''refs/tags/'')'
         run: |-
-          sudo apt-get install -y bsdiff
-          PREV_VERSION=$(curl -sf https://dl.deno.land/release-latest.txt | tr -d "v\n") || true
-          if [ -z "$PREV_VERSION" ]; then echo "No previous version found, skipping delta"; exit 0; fi
           TARGET="x86_64-unknown-linux-gnu"
-          echo "Generating delta from $PREV_VERSION for $TARGET"
-          curl -fSL -o prev.zip "https://github.com/denoland/deno/releases/download/v${PREV_VERSION}/deno-${TARGET}.zip" || { echo "Previous release not found, skipping delta"; exit 0; }
-          unzip -o prev.zip -d prev/
-          bsdiff prev/deno target/release/deno "target/release/deno-${TARGET}.from-${PREV_VERSION}.bsdiff"
-          cd target/release && shasum -a 256 "deno-${TARGET}.from-${PREV_VERSION}.bsdiff" > "deno-${TARGET}.from-${PREV_VERSION}.bsdiff.sha256sum"
-          echo "Delta patch generated: deno-${TARGET}.from-${PREV_VERSION}.bsdiff"
-          ls -lh "target/release/deno-${TARGET}.from-${PREV_VERSION}.bsdiff"
+          NEW_VERSION=${GITHUB_REF#refs/tags/v}
+          BSDIFF=./target/release/bsdiff_helper
+          EXE=target/release/deno
+          VERSIONS=$(curl -sf "https://api.github.com/repos/denoland/deno/releases?per_page=4" | grep '"tag_name":' | sed 's/.*"v\(.*\)".*/\1/' | head -3)
+          for PREV_VERSION in $VERSIONS; do
+            echo "Generating delta from $PREV_VERSION to $NEW_VERSION for $TARGET"
+            curl -fSL -o "prev-${PREV_VERSION}.zip" "https://github.com/denoland/deno/releases/download/v${PREV_VERSION}/deno-${TARGET}.zip" || { echo "Release v${PREV_VERSION} not found for ${TARGET}, skipping"; continue; }
+            rm -rf prev && mkdir prev
+            unzip -o "prev-${PREV_VERSION}.zip" -d prev/
+            $BSDIFF prev/deno "$EXE" "target/release/deno-${TARGET}.from-${PREV_VERSION}.bsdiff"
+            cd target/release && shasum -a 256 "deno-${TARGET}.from-${PREV_VERSION}.bsdiff" > "deno-${TARGET}.from-${PREV_VERSION}.bsdiff.sha256sum" && cd ../..
+            echo "  -> $(ls -lh "target/release/deno-${TARGET}.from-${PREV_VERSION}.bsdiff" | awk '{print $5}')"
+          done
       - name: Upload canary to dl.deno.land
         if: github.repository == 'denoland/deno' && github.ref == 'refs/heads/main'
         env:
@@ -5008,7 +5072,7 @@ jobs:
         if: '!startsWith(github.ref, ''refs/tags/'')'
         env:
           CARGO_PROFILE_DEV_DEBUG: 0
-        run: cargo test --locked --lib -p deno -p denort -p node_shim -p deno_lib -p deno_snapshots -p deno_bundle_runtime -p deno_cache -p deno_cron -p deno_crypto -p deno_fetch -p deno_ffi -p deno_fs -p deno_http -p deno_image -p deno_io -p deno_kv -p deno_napi -p napi_sym -p deno_net -p deno_node -p deno_node_crypto -p deno_node_sqlite -p denort_helper -p deno_signals -p deno_telemetry -p deno_url -p deno_web -p deno_webgpu -p deno_webidl -p deno_websocket -p deno_webstorage -p deno_cache_dir -p deno_config -p deno_crypto_provider -p deno_dotenv -p eszip -p deno_inspector_server -p deno_lockfile -p deno_maybe_sync -p napi_sys -p node_resolver -p deno_npm -p deno_npm_cache -p deno_npm_installer -p deno_npmrc -p deno_package_json -p deno_resolver -p deno_typescript_go_client_rust -p deno_runtime -p deno_features -p deno_permissions -p deno_subprocess_windows
+        run: cargo test --locked --lib -p deno -p denort -p node_shim -p bsdiff_helper -p deno_lib -p deno_snapshots -p deno_bundle_runtime -p deno_cache -p deno_cron -p deno_crypto -p deno_fetch -p deno_ffi -p deno_fs -p deno_http -p deno_image -p deno_io -p deno_kv -p deno_napi -p napi_sym -p deno_net -p deno_node -p deno_node_crypto -p deno_node_sqlite -p denort_helper -p deno_signals -p deno_telemetry -p deno_url -p deno_web -p deno_webgpu -p deno_webidl -p deno_websocket -p deno_webstorage -p deno_cache_dir -p deno_config -p deno_crypto_provider -p deno_dotenv -p eszip -p deno_inspector_server -p deno_lockfile -p deno_maybe_sync -p napi_sys -p node_resolver -p deno_npm -p deno_npm_cache -p deno_npm_installer -p deno_npmrc -p deno_package_json -p deno_resolver -p deno_typescript_go_client_rust -p deno_runtime -p deno_features -p deno_permissions -p deno_subprocess_windows
       - name: Cache cargo home
         uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830
         if: '!startsWith(github.ref, ''refs/tags/'') && github.ref == ''refs/heads/main'''
@@ -5234,20 +5298,26 @@ jobs:
           zip -r denort-aarch64-unknown-linux-gnu.zip denort
           shasum -a 256 denort-aarch64-unknown-linux-gnu.zip > denort-aarch64-unknown-linux-gnu.zip.sha256sum
           ./deno types > lib.deno.d.ts
-      - name: Generate delta patch (linux)
+      - name: Build bsdiff helper
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && startsWith(github.ref, ''refs/tags/'')'
+        run: cargo build --release -p bsdiff_helper
+      - name: Generate delta patches (linux)
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && startsWith(github.ref, ''refs/tags/'')'
         run: |-
-          sudo apt-get install -y bsdiff
-          PREV_VERSION=$(curl -sf https://dl.deno.land/release-latest.txt | tr -d "v\n") || true
-          if [ -z "$PREV_VERSION" ]; then echo "No previous version found, skipping delta"; exit 0; fi
           TARGET="aarch64-unknown-linux-gnu"
-          echo "Generating delta from $PREV_VERSION for $TARGET"
-          curl -fSL -o prev.zip "https://github.com/denoland/deno/releases/download/v${PREV_VERSION}/deno-${TARGET}.zip" || { echo "Previous release not found, skipping delta"; exit 0; }
-          unzip -o prev.zip -d prev/
-          bsdiff prev/deno target/release/deno "target/release/deno-${TARGET}.from-${PREV_VERSION}.bsdiff"
-          cd target/release && shasum -a 256 "deno-${TARGET}.from-${PREV_VERSION}.bsdiff" > "deno-${TARGET}.from-${PREV_VERSION}.bsdiff.sha256sum"
-          echo "Delta patch generated: deno-${TARGET}.from-${PREV_VERSION}.bsdiff"
-          ls -lh "target/release/deno-${TARGET}.from-${PREV_VERSION}.bsdiff"
+          NEW_VERSION=${GITHUB_REF#refs/tags/v}
+          BSDIFF=./target/release/bsdiff_helper
+          EXE=target/release/deno
+          VERSIONS=$(curl -sf "https://api.github.com/repos/denoland/deno/releases?per_page=4" | grep '"tag_name":' | sed 's/.*"v\(.*\)".*/\1/' | head -3)
+          for PREV_VERSION in $VERSIONS; do
+            echo "Generating delta from $PREV_VERSION to $NEW_VERSION for $TARGET"
+            curl -fSL -o "prev-${PREV_VERSION}.zip" "https://github.com/denoland/deno/releases/download/v${PREV_VERSION}/deno-${TARGET}.zip" || { echo "Release v${PREV_VERSION} not found for ${TARGET}, skipping"; continue; }
+            rm -rf prev && mkdir prev
+            unzip -o "prev-${PREV_VERSION}.zip" -d prev/
+            $BSDIFF prev/deno "$EXE" "target/release/deno-${TARGET}.from-${PREV_VERSION}.bsdiff"
+            cd target/release && shasum -a 256 "deno-${TARGET}.from-${PREV_VERSION}.bsdiff" > "deno-${TARGET}.from-${PREV_VERSION}.bsdiff.sha256sum" && cd ../..
+            echo "  -> $(ls -lh "target/release/deno-${TARGET}.from-${PREV_VERSION}.bsdiff" | awk '{print $5}')"
+          done
       - name: Upload canary to dl.deno.land
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && github.ref == ''refs/heads/main'''
         env:
