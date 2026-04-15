@@ -102,14 +102,14 @@ pub(crate) fn io_error_to_uv(err: &std::io::Error) -> c_int {
       #[cfg(windows)]
       if let Some(code) = err.raw_os_error() {
         return match code {
-          10054 => UV_ECONNRESET,    // WSAECONNRESET
-          10053 => UV_ECONNABORTED,  // WSAECONNABORTED
-          10061 => UV_ECONNREFUSED,  // WSAECONNREFUSED
-          10048 => UV_EADDRINUSE,    // WSAEADDRINUSE
-          10060 => UV_ETIMEDOUT,     // WSAETIMEDOUT
-          10057 => UV_ENOTCONN,      // WSAENOTCONN
-          10038 => UV_ENOTSOCK,      // WSAENOTSOCK
-          10035 => UV_EAGAIN,        // WSAEWOULDBLOCK
+          10054 => UV_ECONNRESET,   // WSAECONNRESET
+          10053 => UV_ECONNABORTED, // WSAECONNABORTED
+          10061 => UV_ECONNREFUSED, // WSAECONNREFUSED
+          10048 => UV_EADDRINUSE,   // WSAEADDRINUSE
+          10060 => UV_ETIMEDOUT,    // WSAETIMEDOUT
+          10057 => UV_ENOTCONN,     // WSAENOTCONN
+          10038 => UV_ENOTSOCK,     // WSAENOTSOCK
+          10035 => UV_EAGAIN,       // WSAEWOULDBLOCK
           _ => UV_EINVAL,
         };
       }
