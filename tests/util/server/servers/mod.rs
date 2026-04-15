@@ -1159,7 +1159,7 @@ console.log("imported", import.meta.url);
         .unwrap_or("unknown");
       // The fake binary content matches what the zip handler produces
       let content = format!("DENO_UPGRADE_TEST_BINARY_VERSION_{}", version);
-      let hash = sha2_digest(&content.as_bytes());
+      let hash = sha2_digest(content.as_bytes());
       let filename = path.rsplit('/').next().unwrap_or("deno");
       let body = format!("{}  {}\n", hash, filename);
       Ok(

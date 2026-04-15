@@ -1610,7 +1610,7 @@ async fn fetch_sha256_from_url(
 ) -> Option<String> {
   let text = client.download_text(url).await.ok()?;
   // sha256sum files are formatted as "<hash>  <filename>" or just "<hash>"
-  let hash = text.trim().split_whitespace().next()?;
+  let hash = text.split_whitespace().next()?;
   if hash.len() == 64 && hash.chars().all(|c| c.is_ascii_hexdigit()) {
     Some(hash.to_lowercase())
   } else {
