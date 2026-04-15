@@ -1509,36 +1509,53 @@ fn get_download_url(
   })
 }
 
-/// Check if two semver versions are eligible for delta upgrade.
-/// Supports:
-/// - Same minor, patch diff <= 3 (e.g. 2.7.10 -> 2.7.12)
-/// - Cross-minor boundary (e.g. 2.6.x -> 2.7.0)
-/// Returns true if a delta patch MIGHT exist for this version pair.
-fn is_delta_eligible(
+/// Build the chain of consecutive versions from current to target.
+/// Each release only has a delta from its immediate predecessor, so
+/// multi-step upgrades (e.g. 2.7.10 -> 2.7.12) require chaining:
+///   download 2.7.11's delta from 2.7.10, apply,
+///   download 2.7.12's delta from 2.7.11, apply.
+///
+/// Returns the list of (source, target) version pairs, or empty if
+/// the versions are not eligible for delta upgrade.
+/// Supports same-minor with patch diff <= 3.
+fn build_delta_chain(
   current_version: &str,
   target_version: &str,
-) -> bool {
+) -> Vec<(String, String)> {
   let Ok(current) = Version::parse_standard(current_version) else {
-    return false;
+    return vec![];
   };
   let Ok(target) = Version::parse_standard(target_version) else {
-    return false;
+    return vec![];
   };
-  if !current.pre.is_empty() || !target.pre.is_empty() {
-    return false;
+  if !current.pre.is_empty()
+    || !target.pre.is_empty()
+    || current.major != target.major
+    || current.minor != target.minor
+  {
+    return vec![];
   }
-  if current.major != target.major {
-    return false;
+  let diff = target.patch.saturating_sub(current.patch);
+  if diff == 0 || diff > 3 {
+    return vec![];
   }
-  if current.minor == target.minor {
-    // Same minor: allow up to 3 patch versions apart
-    target.patch > current.patch && target.patch <= current.patch + 3
-  } else if target.minor == current.minor + 1 && target.patch == 0 {
-    // Cross-minor: e.g. 2.6.10 -> 2.7.0
-    true
-  } else {
-    false
-  }
+  (0..diff)
+    .map(|i| {
+      let src = format!(
+        "{}.{}.{}",
+        current.major,
+        current.minor,
+        current.patch + i
+      );
+      let dst = format!(
+        "{}.{}.{}",
+        current.major,
+        current.minor,
+        current.patch + i + 1
+      );
+      (src, dst)
+    })
+    .collect()
 }
 
 /// Construct the delta patch download URL for a stable release.
@@ -1620,26 +1637,41 @@ fn compute_sha256(data: &[u8]) -> String {
   faster_hex::hex_string(&digest)
 }
 
-/// Attempt a delta upgrade: download a bsdiff patch, apply it to the
-/// current binary, and verify the result. Returns `Some(patched_binary)`
-/// on success, or `None` on any failure (triggering full download fallback).
+/// Attempt a delta upgrade by chaining consecutive bsdiff patches.
+/// For a single-step upgrade (e.g. 2.7.11 -> 2.7.12), downloads and
+/// applies one patch. For multi-step (e.g. 2.7.10 -> 2.7.12), chains
+/// patches: downloads the 2.7.10->2.7.11 patch from the 2.7.11 release,
+/// applies it, then downloads the 2.7.11->2.7.12 patch from the 2.7.12
+/// release, applies that. Returns `Some(final_binary)` on success, or
+/// `None` on any failure (triggering full download fallback).
 async fn try_delta_upgrade(
   client: &HttpClient,
   current_exe: &Path,
   current_version: &str,
   target_version: &str,
 ) -> Option<Vec<u8>> {
-  if !is_delta_eligible(current_version, target_version) {
+  let chain = build_delta_chain(current_version, target_version);
+  if chain.is_empty() {
     log::debug!(
-      "Versions {} and {} are not eligible for delta upgrade",
+      "No delta chain from {} to {}, skipping delta upgrade",
       current_version,
       target_version
     );
     return None;
   }
 
+  let steps = chain.len();
+  log::info!(
+    "{}",
+    colors::gray(format!(
+      "Attempting delta upgrade ({} step{})",
+      steps,
+      if steps > 1 { "s" } else { "" }
+    ))
+  );
+
   // Read the current binary
-  let current_binary = match std::fs::read(current_exe) {
+  let mut binary = match std::fs::read(current_exe) {
     Ok(data) => data,
     Err(e) => {
       log::debug!("Failed to read current binary: {}", e);
@@ -1647,28 +1679,20 @@ async fn try_delta_upgrade(
     }
   };
 
-  // Verify the current binary's integrity by checking its hash against
-  // the published checksum for the current version. If the binary has
-  // been modified, the delta patch won't produce a valid result.
+  // Verify the current binary's integrity
   let current_checksum_url =
     get_binary_checksum_url(current_version).ok()?;
   if let Some(expected_hash) =
     fetch_sha256_from_url(client, current_checksum_url).await
   {
-    let actual_hash = compute_sha256(&current_binary);
+    let actual_hash = compute_sha256(&binary);
     if actual_hash != expected_hash {
       log::debug!(
-        "Current binary checksum mismatch (expected {}, got {}), skipping delta",
-        expected_hash,
-        actual_hash,
+        "Current binary checksum mismatch, skipping delta"
       );
       return None;
     }
-    log::info!("{}", colors::gray("Current binary checksum verified"));
   } else {
-    // If we can't verify the current binary (e.g. checksum file not
-    // published for this version), skip delta and fall back to full
-    // download for safety.
     log::debug!(
       "Could not fetch checksum for current binary v{}, skipping delta",
       current_version,
@@ -1676,93 +1700,96 @@ async fn try_delta_upgrade(
     return None;
   }
 
-  // Download the delta patch
-  let delta_url =
-    get_delta_download_url(current_version, target_version).ok()?;
-  log::info!(
-    "{}",
-    colors::gray(format!("Downloading delta patch {}", &delta_url))
-  );
-  let delta_data = match download_package(client, delta_url).await {
-    Ok(Some(data)) => data,
-    Ok(None) => {
-      log::debug!("Delta patch not found, falling back to full download");
-      return None;
+  // Apply each step in the chain
+  for (i, (src, dst)) in chain.iter().enumerate() {
+    if steps > 1 {
+      log::info!(
+        "{}",
+        colors::gray(format!(
+          "Step {}/{}: {} -> {}",
+          i + 1, steps, src, dst
+        ))
+      );
     }
-    Err(e) => {
-      log::debug!("Failed to download delta patch: {}", e);
-      return None;
-    }
-  };
 
-  // Verify the delta patch's own checksum
-  let delta_checksum_url =
-    get_delta_checksum_url(current_version, target_version).ok()?;
-  if let Some(expected_delta_hash) =
-    fetch_sha256_from_url(client, delta_checksum_url).await
-  {
-    let actual_delta_hash = compute_sha256(&delta_data);
-    if actual_delta_hash != expected_delta_hash {
-      log::warn!(
-        "Delta patch checksum mismatch (expected {}, got {}), falling back to full download",
-        expected_delta_hash,
-        actual_delta_hash,
+    // Download the delta patch (from the DST version's release)
+    let delta_url = get_delta_download_url(src, dst).ok()?;
+    log::info!(
+      "{}",
+      colors::gray(format!("Downloading delta patch {}", &delta_url))
+    );
+    let delta_data = match download_package(client, delta_url).await {
+      Ok(Some(data)) => data,
+      Ok(None) => {
+        log::debug!("Delta patch not found for {} -> {}", src, dst);
+        return None;
+      }
+      Err(e) => {
+        log::debug!("Failed to download delta patch: {}", e);
+        return None;
+      }
+    };
+
+    // Verify the delta patch's own checksum
+    let delta_checksum_url = get_delta_checksum_url(src, dst).ok()?;
+    if let Some(expected_delta_hash) =
+      fetch_sha256_from_url(client, delta_checksum_url).await
+    {
+      let actual_delta_hash = compute_sha256(&delta_data);
+      if actual_delta_hash != expected_delta_hash {
+        log::warn!(
+          "Delta patch checksum mismatch for {} -> {}",
+          src, dst
+        );
+        return None;
+      }
+    } else {
+      log::debug!("Could not fetch delta patch checksum for {} -> {}", src, dst);
+      return None;
+    }
+
+    // Apply the bsdiff patch
+    binary = match apply_bsdiff_patch(&binary, &delta_data) {
+      Ok(data) => data,
+      Err(e) => {
+        log::warn!("Failed to apply delta patch {} -> {}: {}", src, dst, e);
+        return None;
+      }
+    };
+
+    // Verify the intermediate/final binary
+    let checksum_url = get_binary_checksum_url(dst).ok()?;
+    if let Some(expected_hash) =
+      fetch_sha256_from_url(client, checksum_url).await
+    {
+      let actual_hash = compute_sha256(&binary);
+      if actual_hash != expected_hash {
+        log::warn!(
+          "Patched binary checksum mismatch after step {} -> {}",
+          src, dst
+        );
+        return None;
+      }
+    } else {
+      log::debug!(
+        "Could not fetch binary checksum for v{}, skipping delta",
+        dst
       );
       return None;
     }
-    log::info!("{}", colors::gray("Delta patch checksum verified"));
-  } else {
-    log::debug!(
-      "Could not fetch delta patch checksum, falling back to full download"
-    );
-    return None;
   }
 
-  // Apply the bsdiff patch
-  log::info!("{}", colors::gray("Applying delta patch..."));
-  let patched_binary = match apply_bsdiff_patch(&current_binary, &delta_data) {
-    Ok(data) => data,
-    Err(e) => {
-      log::warn!(
-        "Failed to apply delta patch: {}, falling back to full download",
-        e
-      );
-      return None;
-    }
-  };
-
-  // Verify the patched binary's SHA-256 against the published checksum
-  // of the uncompressed target binary.
-  let binary_checksum_url = get_binary_checksum_url(target_version).ok()?;
-  if let Some(expected_binary_hash) =
-    fetch_sha256_from_url(client, binary_checksum_url).await
-  {
-    let actual_binary_hash = compute_sha256(&patched_binary);
-    if actual_binary_hash != expected_binary_hash {
-      log::warn!(
-        "Patched binary checksum mismatch (expected {}, got {}), falling back to full download",
-        expected_binary_hash,
-        actual_binary_hash,
-      );
-      return None;
-    }
-    log::info!("{}", colors::gray("Patched binary checksum verified"));
-  } else {
-    log::debug!(
-      "Could not fetch binary checksum for verification, falling back to full download"
-    );
-    return None;
-  }
+  log::info!("{}", colors::gray("Delta upgrade checksum verified"));
 
   log::info!(
     "{}",
     colors::gray(format!(
-      "Delta patch applied successfully ({:.1} MB patched binary)",
-      patched_binary.len() as f64 / 1_000_000.0
+      "Delta upgrade applied successfully ({:.1} MB binary)",
+      binary.len() as f64 / 1_000_000.0
     ))
   );
 
-  Some(patched_binary)
+  Some(binary)
 }
 
 /// Apply a bsdiff patch to produce a new binary.
@@ -3168,47 +3195,53 @@ mod test {
   }
 
   #[test]
-  fn test_is_delta_eligible() {
-    // Adjacent patch versions (diff == 1)
-    assert!(is_delta_eligible("2.7.11", "2.7.12"));
-    assert!(is_delta_eligible("2.7.0", "2.7.1"));
-    assert!(is_delta_eligible("2.0.0", "2.0.1"));
-    assert!(is_delta_eligible("1.46.2", "1.46.3"));
+  fn test_build_delta_chain() {
+    // Single step
+    assert_eq!(
+      build_delta_chain("2.7.11", "2.7.12"),
+      vec![("2.7.11".to_string(), "2.7.12".to_string())]
+    );
 
-    // Multi-step patches (diff 2-3)
-    assert!(is_delta_eligible("2.7.10", "2.7.12"));
-    assert!(is_delta_eligible("2.7.9", "2.7.12"));
+    // Multi-step (2 steps)
+    assert_eq!(
+      build_delta_chain("2.7.10", "2.7.12"),
+      vec![
+        ("2.7.10".to_string(), "2.7.11".to_string()),
+        ("2.7.11".to_string(), "2.7.12".to_string()),
+      ]
+    );
 
-    // Too far apart (diff > 3)
-    assert!(!is_delta_eligible("2.7.0", "2.7.5"));
-    assert!(!is_delta_eligible("2.7.8", "2.7.12"));
+    // Multi-step (3 steps, max)
+    assert_eq!(
+      build_delta_chain("2.7.9", "2.7.12"),
+      vec![
+        ("2.7.9".to_string(), "2.7.10".to_string()),
+        ("2.7.10".to_string(), "2.7.11".to_string()),
+        ("2.7.11".to_string(), "2.7.12".to_string()),
+      ]
+    );
 
-    // Cross-minor boundary (x.Y.z -> x.Y+1.0)
-    assert!(is_delta_eligible("2.6.10", "2.7.0"));
-    assert!(is_delta_eligible("2.6.0", "2.7.0"));
+    // Too far apart (> 3 steps)
+    assert!(build_delta_chain("2.7.0", "2.7.5").is_empty());
+    assert!(build_delta_chain("2.7.8", "2.7.12").is_empty());
 
-    // Cross-minor but not to .0
-    assert!(!is_delta_eligible("2.6.10", "2.7.1"));
-
-    // Cross-minor too far
-    assert!(!is_delta_eligible("2.5.10", "2.7.0"));
+    // Different minor
+    assert!(build_delta_chain("2.6.10", "2.7.0").is_empty());
 
     // Different major
-    assert!(!is_delta_eligible("1.46.3", "2.0.0"));
+    assert!(build_delta_chain("1.46.3", "2.0.0").is_empty());
 
     // Downgrade
-    assert!(!is_delta_eligible("2.7.12", "2.7.11"));
+    assert!(build_delta_chain("2.7.12", "2.7.11").is_empty());
 
     // Same version
-    assert!(!is_delta_eligible("2.7.12", "2.7.12"));
+    assert!(build_delta_chain("2.7.12", "2.7.12").is_empty());
 
-    // Pre-release versions
-    assert!(!is_delta_eligible("2.7.11-rc.0", "2.7.12"));
-    assert!(!is_delta_eligible("2.7.11", "2.7.12-rc.0"));
+    // Pre-release
+    assert!(build_delta_chain("2.7.11-rc.0", "2.7.12").is_empty());
 
-    // Invalid versions
-    assert!(!is_delta_eligible("invalid", "2.7.12"));
-    assert!(!is_delta_eligible("2.7.11", "invalid"));
+    // Invalid
+    assert!(build_delta_chain("invalid", "2.7.12").is_empty());
   }
 
   #[test]
