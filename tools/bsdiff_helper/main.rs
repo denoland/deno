@@ -31,10 +31,7 @@ fn main() {
   });
 
   std::fs::write(&args[3], &patch).unwrap_or_else(|e| {
-    print_stderr(&format!(
-      "Failed to write patch file '{}': {}",
-      args[3], e
-    ));
+    print_stderr(&format!("Failed to write patch file '{}': {}", args[3], e));
     std::process::exit(1);
   });
 
