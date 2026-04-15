@@ -213,18 +213,40 @@ fn napi_close_callback_scope(
   napi_clear_last_error(env)
 }
 
-// NOTE: we don't support "async_hooks::AsyncContext" so these APIs are noops.
+/// Opaque async context. In Node.js this stores async_id/trigger_async_id
+/// for async_hooks integration. In Deno we store the resource object so
+/// the API contract works (allocate on init, free on destroy) even though
+/// we don't emit async_hooks events.
+struct NapiAsyncContext {
+  #[allow(dead_code, reason = "prevents GC of the resource object")]
+  resource: v8::Global<v8::Object>,
+}
+
 #[napi_sym]
 fn napi_async_init(
   env: *mut Env,
-  _async_resource: napi_value,
+  async_resource: napi_value,
   _async_resource_name: napi_value,
   result: *mut napi_async_context,
 ) -> napi_status {
   let env = check_env!(env);
-  unsafe {
-    *result = ptr::null_mut();
-  }
+  check_arg!(env, result);
+
+  let resource = {
+    v8::callback_scope!(unsafe scope, env.context());
+    let obj = if let Some(resource) =
+      async_resource.and_then(|v| v8::Local::<v8::Object>::try_from(v).ok())
+    {
+      resource
+    } else {
+      // If no resource provided, create a new empty object (matching Node.js)
+      v8::Object::new(scope)
+    };
+    v8::Global::new(scope, obj)
+  };
+
+  let ctx = Box::new(NapiAsyncContext { resource });
+  unsafe { *result = Box::into_raw(ctx) as napi_async_context }
   napi_clear_last_error(env)
 }
 
@@ -234,7 +256,11 @@ fn napi_async_destroy(
   async_context: napi_async_context,
 ) -> napi_status {
   let env = check_env!(env);
-  assert!(async_context.is_null());
+  check_arg!(env, async_context);
+
+  unsafe {
+    drop(Box::from_raw(async_context as *mut NapiAsyncContext));
+  }
   napi_clear_last_error(env)
 }
 
@@ -272,8 +298,6 @@ fn napi_make_callback<'s>(
   } else {
     &[]
   };
-
-  // TODO: async_context
 
   let Some(v) = func.call(scope, recv.into(), args) else {
     return napi_generic_failure;

@@ -12,3 +12,13 @@ Deno.test("napi make_callback with async context", function () {
   const result = lib.test_make_callback_with_async_context(() => 42);
   assertEquals(result, 42);
 });
+
+Deno.test("napi async context lifecycle", function () {
+  // Tests napi_async_init with and without resource, and napi_async_destroy
+  assertEquals(lib.test_async_context_lifecycle(), true);
+});
+
+Deno.test("napi make_callback with real async context", function () {
+  const result = lib.test_make_callback_with_real_context(() => 99);
+  assertEquals(result, 99);
+});
