@@ -723,6 +723,90 @@ pub unsafe fn uv_pipe_connect(
   }
 }
 
+/// Attempt a non-blocking write to a pipe. Returns the number of bytes
+/// written (>= 0) or a negative `UV_*` error code. `UV_EAGAIN` when the
+/// pipe would block. Mirrors `uv__try_write()` in libuv.
+///
+/// # Safety
+/// `pipe` must be a valid pointer to an initialized `uv_pipe_t`.
+pub(crate) unsafe fn try_write_pipe(
+  pipe: *mut uv_pipe_t,
+  data: &[u8],
+) -> c_int {
+  unsafe {
+    // Queued writes must complete in order; don't front-run them.
+    if !(*pipe).internal_write_queue.is_empty()
+      || (*pipe).internal_connect.is_some()
+    {
+      return super::UV_EAGAIN;
+    }
+
+    #[cfg(unix)]
+    {
+      if let Some(ref stream) = (*pipe).internal_stream {
+        return match stream.try_write(data) {
+          Ok(n) => n as c_int,
+          Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+            super::UV_EAGAIN
+          }
+          Err(ref e) => io_error_to_uv(e),
+        };
+      }
+      if let Some(fd) = (*pipe).internal_fd {
+        let n =
+          libc::write(fd, data.as_ptr() as *const std::ffi::c_void, data.len());
+        return if n >= 0 {
+          n as c_int
+        } else {
+          let e = std::io::Error::last_os_error();
+          if e.kind() == std::io::ErrorKind::WouldBlock {
+            super::UV_EAGAIN
+          } else {
+            io_error_to_uv(&e)
+          }
+        };
+      }
+      super::UV_EBADF
+    }
+    #[cfg(windows)]
+    {
+      if let Some(ref client) = (*pipe).internal_win_client {
+        return match client.try_write(data) {
+          Ok(n) => n as c_int,
+          Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+            super::UV_EAGAIN
+          }
+          Err(ref e) => io_error_to_uv(e),
+        };
+      }
+      if let Some(ref server) = (*pipe).internal_win_server {
+        return match server.try_write(data) {
+          Ok(n) => n as c_int,
+          Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+            super::UV_EAGAIN
+          }
+          Err(ref e) => io_error_to_uv(e),
+        };
+      }
+      if let Some(handle) = (*pipe).internal_handle {
+        use std::io::Write;
+        use std::os::windows::io::FromRawHandle;
+        let mut file = std::fs::File::from_raw_handle(handle);
+        let result = file.write(data);
+        let _ = std::os::windows::io::IntoRawHandle::into_raw_handle(file);
+        return match result {
+          Ok(n) => n as c_int,
+          Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+            super::UV_EAGAIN
+          }
+          Err(ref e) => io_error_to_uv(e),
+        };
+      }
+      super::UV_EBADF
+    }
+  }
+}
+
 /// Close the pipe handle: close the fd and clean up.
 ///
 /// # Safety
