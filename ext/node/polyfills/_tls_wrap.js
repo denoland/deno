@@ -462,17 +462,13 @@ TLSSocket.prototype._init = function (socket, wrap) {
   }
 
   if (options.handshakeTimeout > 0) {
-    this[kHandshakeTimer] = core.createTimer(
+    this[kHandshakeTimer] = core.createSystemTimer(
       () => {
         core.cancelTimer(this[kHandshakeTimer]);
         this[kHandshakeTimer] = null;
         this._handleTimeout();
       },
       options.handshakeTimeout,
-      undefined,
-      false,
-      false,
-      true, // isSystem: avoid test sanitizer detection
     );
   }
 

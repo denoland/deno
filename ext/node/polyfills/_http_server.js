@@ -494,8 +494,6 @@ function connectionListenerInternal(server, socket) {
     outgoingData: 0,
     requestsCount: 0,
     keepAliveTimeoutSet: false,
-    keepAliveTimerId: null,
-    keepAliveTimerCloseHandler: null,
   };
   state.onData = socketOnData.bind(undefined, server, socket, parser, state);
   state.onEnd = socketOnEnd.bind(undefined, server, socket, parser, state);
@@ -631,15 +629,6 @@ function resetSocketTimeout(server, socket, state) {
   if (!state.keepAliveTimeoutSet) return;
   socket.setTimeout(server.timeout || 0);
   state.keepAliveTimeoutSet = false;
-  // Cancel the system timer created for keep-alive idle timeout
-  if (state.keepAliveTimerId !== null) {
-    core.cancelTimer(state.keepAliveTimerId);
-    state.keepAliveTimerId = null;
-  }
-  if (state.keepAliveTimerCloseHandler !== null) {
-    socket.removeListener("close", state.keepAliveTimerCloseHandler);
-    state.keepAliveTimerCloseHandler = null;
-  }
 }
 
 function socketOnDrain(socket, state) {
@@ -911,29 +900,7 @@ function resOnFinish(req, res, socket, state, server) {
         : 0;
 
       if (keepAliveTimeout) {
-        // Use core.createTimer as a system timer to avoid participating
-        // in Deno's test sanitizer checks.
-        const timerId = core.createTimer(
-          () => {
-            state.keepAliveTimerId = null;
-            state.keepAliveTimerCloseHandler = null;
-            // Socket timed out waiting for another request
-            socket.destroy();
-          },
-          keepAliveTimeout + 1000,
-          undefined, // args
-          false, // isRepeat
-          false, // isRefed
-          true, // isSystem
-        );
-        const closeHandler = () => {
-          core.cancelTimer(timerId);
-          state.keepAliveTimerId = null;
-          state.keepAliveTimerCloseHandler = null;
-        };
-        socket.once("close", closeHandler);
-        state.keepAliveTimerId = timerId;
-        state.keepAliveTimerCloseHandler = closeHandler;
+        socket.setTimeout(keepAliveTimeout + 1000);
         state.keepAliveTimeoutSet = true;
       }
     }
@@ -1003,17 +970,10 @@ function setupConnectionsTracking() {
     core.cancelTimer(this[kConnectionsCheckingInterval]);
   }
 
-  // Use core.createTimer as a system timer to avoid participating in
-  // Deno's test sanitizer checks.
   const interval = this.connectionsCheckingInterval || 30_000;
-  // args: callback, after, args, isRepeat, isRefed, isSystem
-  this[kConnectionsCheckingInterval] = core.createTimer(
+  this[kConnectionsCheckingInterval] = core.createSystemInterval(
     checkConnections.bind(this),
     interval,
-    undefined, // args
-    true, // isRepeat
-    false, // isRefed (unref'd)
-    true, // isSystem
   );
 }
 

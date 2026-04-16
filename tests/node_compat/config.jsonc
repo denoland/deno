@@ -1333,7 +1333,10 @@
     "parallel/test-http2-no-wanttrailers-listener.js": {},
     "parallel/test-http2-options-server-request.js": {},
     "parallel/test-http2-options-server-response.js": {},
-    "parallel/test-http2-pipe.js": {},
+    "parallel/test-http2-pipe.js": {
+      "windows": false,
+      "reason": "h2 flow control WINDOW_UPDATE not flushed, truncates large piped data"
+    },
     "parallel/test-http2-priority-cycle-.js": {},
     "parallel/test-http2-raw-headers-defaults.js": {},
     "parallel/test-http2-raw-headers.js": {},

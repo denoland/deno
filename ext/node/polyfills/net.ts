@@ -2696,17 +2696,14 @@ Server.prototype._emitCloseIfDrained = function () {
   // ref: https://github.com/denoland/deno_std/issues/2788
   // deno-lint-ignore no-this-alias
   const self = this;
-  // Use core.createTimer directly to avoid creating a Node Timeout object.
-  // Must be ref'd (last param true) so the event loop waits for the close event.
-  core.createTimer(
+  // Use a system timer to avoid test sanitizer detection.
+  // Must be ref'd so the event loop waits for the close event.
+  core.createSystemTimer(
     () => {
       _emitCloseNT(self);
     },
     0,
-    undefined,
-    false,
     true,
-    true, // isSystem: avoid test sanitizer detection
   );
 };
 
