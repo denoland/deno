@@ -208,7 +208,12 @@ mod npm {
 
     let minimal_severity =
       AdvisorySeverity::parse(&audit_flags.severity).unwrap();
-    print_report(&vulns, &advisories, minimal_severity);
+    print_report(
+      &vulns,
+      &advisories,
+      minimal_severity,
+      audit_flags.ignore_unfixable,
+    );
 
     // Exit code 1 only if there are vulnerabilities at or above the specified level
     let exit_code = if vulns.count_at_or_above(minimal_severity) > 0 {
@@ -223,6 +228,7 @@ mod npm {
     vulns: &AuditVulnerabilities,
     advisories: &[AuditAdvisory],
     minimal_severity: AdvisorySeverity,
+    ignore_unfixable: bool,
   ) {
     let stdout = &mut std::io::stdout();
 
@@ -231,6 +237,11 @@ mod npm {
         continue;
       };
       if severity < minimal_severity {
+        continue;
+      }
+
+      let has_fix = !adv.patched_versions.is_empty();
+      if !has_fix && ignore_unfixable {
         continue;
       }
 
@@ -258,15 +269,24 @@ mod npm {
         colors::gray("Vulnerable:"),
         adv.vulnerable_versions
       );
-      if !adv.patched_versions.is_empty() {
+      if has_fix {
         _ = writeln!(
           stdout,
           "│ {}    {}",
           colors::gray("Patched:"),
           adv.patched_versions
         );
+        _ = writeln!(stdout, "│ {}       {}", colors::gray("Info:"), adv.url);
+        _ = writeln!(
+          stdout,
+          "╰ {}    update {} to {}",
+          colors::gray("Actions:"),
+          adv.module_name,
+          adv.patched_versions
+        );
+      } else {
+        _ = writeln!(stdout, "╰ {}       {}", colors::gray("Info:"), adv.url);
       }
-      _ = writeln!(stdout, "╰ {}       {}", colors::gray("Info:"), adv.url);
       _ = writeln!(stdout);
     }
 

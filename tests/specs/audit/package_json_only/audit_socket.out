@@ -3,14 +3,16 @@
 │ Package:    @denotest/with-vuln1
 │ Vulnerable: <1.1.0
 │ Patched:    >=1.1.0
-╰ Info:       https://example.com/vuln/101010
+│ Info:       https://example.com/vuln/101010
+╰ Actions:    update @denotest/with-vuln1 to >=1.1.0
 
 ╭ @denotest/with-vuln2 can steal crypto keys
 │ Severity:   critical
 │ Package:    @denotest/with-vuln2
 │ Vulnerable: <2.0.0
 │ Patched:    >=2.0.0
-╰ Info:       https://example.com/vuln/202020
+│ Info:       https://example.com/vuln/202020
+╰ Actions:    update @denotest/with-vuln2 to >=2.0.0
 
 Found 2 vulnerabilities
 Severity: 0 low, 0 moderate, 1 high, 1 critical
