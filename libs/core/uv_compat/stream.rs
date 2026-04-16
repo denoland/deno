@@ -330,6 +330,14 @@ pub unsafe fn uv_write(
       cb,
       status: None,
     });
+
+    // Ensure the handle is active so poll_tcp_handle drains the queue.
+    (*tcp).flags |= UV_HANDLE_ACTIVE;
+    let inner = get_inner((*tcp).loop_);
+    let mut handles = inner.tcp_handles.borrow_mut();
+    if !handles.iter().any(|&h| std::ptr::eq(h, tcp)) {
+      handles.push(tcp);
+    }
     0
   }
 }
@@ -393,6 +401,12 @@ pub unsafe fn uv_shutdown(
         handles.push(pipe);
       }
       (*pipe).flags |= UV_HANDLE_ACTIVE;
+      drop(handles);
+
+      // Wake the event loop so run_io processes the deferred shutdown.
+      if let Some(waker) = inner.waker.borrow().as_ref() {
+        waker.wake_by_ref();
+      }
       return 0;
     }
 
@@ -417,6 +431,16 @@ pub unsafe fn uv_shutdown(
       handles.push(tcp);
     }
     (*tcp).flags |= UV_HANDLE_ACTIVE;
+    drop(handles);
+
+    // Wake the event loop so run_io processes the deferred shutdown.
+    // Without this, shutdowns scheduled from nextTick/microtask
+    // callbacks (e.g. endWritableNT for allowHalfOpen=false sockets)
+    // would stall because the Tokio reactor has no pending future to
+    // wake it.
+    if let Some(waker) = inner.waker.borrow().as_ref() {
+      waker.wake_by_ref();
+    }
   }
   0
 }

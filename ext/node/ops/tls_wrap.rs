@@ -1539,14 +1539,10 @@ impl TLSWrap {
     inner.bytes_written += byte_length as u64;
 
     if byte_length == 0 {
-      let result = inner.clear_out_process();
-      let enc_action = inner.enc_out_collect();
-      let inner_ptr = inner as *mut TLSWrapInner;
-      // SAFETY: inner_ptr is valid; callbacks are reference-free
-      unsafe {
-        TLSWrapInner::dispatch_clear_out_callbacks(inner_ptr, &result);
-        TLSWrapInner::do_enc_out_action(inner_ptr, enc_action);
-      }
+      // Zero-byte writes are no-ops — don't interact with the TLS
+      // state machine.  Processing enc_in/enc_out here can corrupt
+      // the record stream (Node.js / OpenSSL treats a 0-byte
+      // SSL_write the same way).
       return 0;
     }
 
@@ -1637,10 +1633,11 @@ impl TLSWrap {
     let server_name = if server_name.is_empty() {
       None
     } else {
-      match rustls::pki_types::ServerName::try_from(server_name) {
-        Ok(name) => Some(name),
-        Err(_) => return -1,
-      }
+      // If the hostname is not a valid DNS name or IP address, skip SNI
+      // rather than failing TLS initialization entirely.  Node.js allows
+      // invalid hostnames through TLS setup and lets DNS resolution fail
+      // later with the proper error code (ENOTFOUND / EAI_FAIL).
+      rustls::pki_types::ServerName::try_from(server_name).ok()
     };
 
     let inner = unsafe { &mut *self.inner.as_mut_ptr() };
@@ -1686,11 +1683,11 @@ impl TLSWrap {
   #[nofast]
   fn attach(
     &self,
-    #[cppgc] tcp: &crate::ops::libuv_stream::TCP,
+    #[cppgc] tcp: &crate::ops::tcp_wrap::TCPWrap,
     scope: &mut v8::PinScope,
     op_state: &mut OpState,
   ) -> i32 {
-    let stream = tcp.stream();
+    let stream = tcp.stream_ptr();
 
     if stream.is_null() {
       return UV_EBADF;
@@ -2871,7 +2868,7 @@ fn build_client_config(
   };
 
   let mut root_cert_store =
-    root_cert_store.unwrap_or_else(rustls::RootCertStore::empty);
+    root_cert_store.unwrap_or_else(deno_tls::create_default_root_cert_store);
 
   // Collect raw DER bytes of root certs so NodeServerCertVerifier can
   // check CaUsedAsEndEntity certs against the trust store.

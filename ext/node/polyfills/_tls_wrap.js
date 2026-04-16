@@ -31,10 +31,6 @@ import {
   constants as TCPConstants,
   TCP,
 } from "ext:deno_node/internal_binding/tcp_wrap.ts";
-import {
-  kStreamBaseField,
-  kUseNativeWrap,
-} from "ext:deno_node/internal_binding/stream_wrap.ts";
 import { kMaybeDestroy } from "ext:deno_node/internal/stream_base_commons.ts";
 import {
   constants as PipeConstants,
@@ -315,7 +311,6 @@ TLSSocket.prototype._wrapHandle = function (wrap, handle) {
     handle = options.pipe
       ? new Pipe(PipeConstants.SOCKET)
       : new TCP(TCPConstants.SOCKET);
-    handle[kUseNativeWrap] = true;
   }
 
   // Wrap socket's handle with TLSWrap
@@ -328,10 +323,10 @@ TLSSocket.prototype._wrapHandle = function (wrap, handle) {
   };
 
   // Get the native TCP handle for attachment
-  const nativeHandle = handle._nativeHandle ?? handle;
+  const nativeHandle = handle;
 
-  // Strip trailing dot from servername for SNI and certificate matching.
-  let servername = options.servername;
+  // Derive servername for SNI. Default to host, or the wrapped socket's host.
+  let servername = options.servername ?? options.host ?? wrap?._host;
   if (servername && servername.endsWith(".")) {
     servername = servername.slice(0, -1);
   }
@@ -380,19 +375,6 @@ TLSSocket.prototype._wrapHandle = function (wrap, handle) {
 
   // Proxy the reading property
   defineHandleReading(this, handle);
-
-  // Proxy kStreamBaseField from the parent TCP handle so that the HTTP
-  // module can get the underlying connection RID for
-  // op_node_http_request_with_conn. The HTTP module reads
-  // handle[kStreamBaseField][internalRidSymbol] to get the TCP RID.
-  Object.defineProperty(res, kStreamBaseField, {
-    __proto__: null,
-    get: () => handle[kStreamBaseField],
-    set: (v) => {
-      handle[kStreamBaseField] = v;
-    },
-    configurable: true,
-  });
 
   if (wrap) {
     wrap.on("close", () => this.destroy());
@@ -480,16 +462,13 @@ TLSSocket.prototype._init = function (socket, wrap) {
   }
 
   if (options.handshakeTimeout > 0) {
-    this[kHandshakeTimer] = core.createTimer(
+    this[kHandshakeTimer] = core.createSystemTimer(
       () => {
         core.cancelTimer(this[kHandshakeTimer]);
         this[kHandshakeTimer] = null;
         this._handleTimeout();
       },
       options.handshakeTimeout,
-      undefined,
-      false,
-      false,
     );
   }
 
@@ -503,7 +482,7 @@ TLSSocket.prototype._init = function (socket, wrap) {
       // connect() (because it had no handle when we wrapped it),
       // re-attach the TLS wrap to the socket's actual TCP handle.
       if (ssl && socket._handle) {
-        const nativeHandle = socket._handle._nativeHandle ?? socket._handle;
+        const nativeHandle = socket._handle;
         ssl.attach(nativeHandle);
       }
       this.emit("connect");
@@ -607,8 +586,13 @@ TLSSocket.prototype._start = function () {
 
   // Start reading on the underlying native TCP handle so that encrypted
   // data flows to the TLSWrap via the JS onread interceptor.
-  if (this._handle._nativeTcpHandle) {
-    this._handle._nativeTcpHandle.readStart();
+  const tcpHandle = this._handle._nativeTcpHandle;
+  if (tcpHandle) {
+    // readStart caches the onread callback on first call. If it was already
+    // called (e.g. by net.Socket.resume), we need to stop and restart to
+    // pick up the new interceptor callback.
+    tcpHandle.readStop();
+    tcpHandle.readStart();
   }
 };
 
@@ -990,6 +974,11 @@ function connect(...args) {
 
   const context = options.secureContext || createSecureContext(options);
 
+  // Default servername to host for SNI (matches Node.js behavior)
+  if (!options.servername && options.host && !net.isIP(options.host)) {
+    options.servername = options.host;
+  }
+
   const tlssock = new TLSSocket(options.socket, {
     allowHalfOpen: options.allowHalfOpen,
     pipe: !!options.path,
@@ -1000,6 +989,7 @@ function connect(...args) {
     session: options.session,
     ALPNProtocols: options.ALPNProtocols,
     highWaterMark: options.highWaterMark,
+    servername: options.servername,
     onread: options.onread,
     signal: options.signal,
   });

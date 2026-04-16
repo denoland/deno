@@ -173,8 +173,22 @@ export function writevGeneric(
 
     for (let i = 0; i < data.length; i++) {
       const entry = data[i];
-      chunks[i * 2] = entry.chunk;
-      chunks[i * 2 + 1] = entry.encoding;
+      const enc = entry.encoding;
+      // The native writev only handles utf8, latin1, ascii, ucs2, and
+      // buffer.  For other encodings (base64, hex, etc.) pre-convert to
+      // a Buffer so the bytes are correct on the wire.
+      if (
+        typeof entry.chunk === "string" && enc !== "utf8" &&
+        enc !== "utf-8" && enc !== "latin1" && enc !== "binary" &&
+        enc !== "ascii" && enc !== "ucs2" && enc !== "ucs-2" &&
+        enc !== "utf16le" && enc !== "utf-16le" && enc !== "buffer"
+      ) {
+        chunks[i * 2] = Buffer.from(entry.chunk, enc);
+        chunks[i * 2 + 1] = "buffer";
+      } else {
+        chunks[i * 2] = entry.chunk;
+        chunks[i * 2 + 1] = enc;
+      }
     }
   }
 

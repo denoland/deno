@@ -1,4 +1,3 @@
 fs.openSync returned fd: [WILDCARD]
 Pipe.open([WILDCARD]) returned: [WILDCARD]
 PASS: Pipe.open() correctly rejected already-registered fd
-[WILDCARD]

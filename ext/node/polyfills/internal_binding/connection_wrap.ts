@@ -30,35 +30,13 @@ import {
   providerType,
 } from "ext:deno_node/internal_binding/async_wrap.ts";
 
-interface Reader {
-  read(p: Uint8Array): Promise<number | null>;
-}
-
-interface Writer {
-  write(p: Uint8Array): Promise<number>;
-}
-
-export interface Closer {
-  close(): void;
-}
-
-type Ref = { ref(): void; unref(): void };
-
 export class ConnectionWrap extends LibuvStreamWrap {
   /** Optional connection callback. */
   onconnection: ((status: number, handle?: ConnectionWrap) => void) | null =
     null;
 
-  /**
-   * Creates a new ConnectionWrap class instance.
-   * @param provider Provider type.
-   * @param object Optional stream object.
-   */
-  constructor(
-    provider: providerType,
-    object?: Reader & Writer & Closer & Ref,
-  ) {
-    super(provider, object);
+  constructor(provider: providerType) {
+    super(provider);
   }
 
   /**
@@ -88,7 +66,5 @@ export class ConnectionWrap extends LibuvStreamWrap {
     } catch {
       // swallow callback errors.
     }
-
-    return;
   }
 }

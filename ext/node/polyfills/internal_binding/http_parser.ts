@@ -177,10 +177,13 @@ HTTPParser.prototype.execute = function (
 
   // Wrap the kOnBody callback to convert Uint8Array to Buffer.
   // Node.js passes Buffer objects to body callbacks.
+  // deno-lint-ignore no-this-alias
+  const parser = this;
   const origOnBody = this[kOnBody];
   if (origOnBody) {
     this[kOnBody] = function (buf: Uint8Array) {
-      return origOnBody(
+      return origOnBody.call(
+        parser,
         Buffer.from(buf.buffer, buf.byteOffset, buf.byteLength),
       );
     };
@@ -196,6 +199,16 @@ HTTPParser.prototype.execute = function (
 
   // Restore original callback
   this[kOnBody] = origOnBody;
+
+  // Re-throw any JS exception that was captured during parsing.
+  // The #[op2(reentrant)] framework swallows pending v8 exceptions,
+  // so we capture them in a TryCatch in the Rust callbacks and
+  // store them on the JS parser object as __lastException.
+  if (this.__lastException !== undefined) {
+    const err = this.__lastException;
+    this.__lastException = undefined;
+    throw err;
+  }
 
   return result;
 };
@@ -228,13 +241,14 @@ HTTPParser.prototype.getCurrentBuffer = function (this: any) {
   return this._native.getCurrentBuffer();
 };
 
-// consume/unconsume - server optimization (not yet implemented)
-HTTPParser.prototype.consume = function (_handle: any) {
-  // TODO(@bartlomieju): implement StreamListener-based consume for server optimization
+// consume/unconsume - server optimization: data flows directly from the
+// TCP handle to the parser, bypassing the JS readable stream layer.
+HTTPParser.prototype.consume = function (this: any, handle: any) {
+  this._native.consume(this, handle);
 };
 
-HTTPParser.prototype.unconsume = function () {
-  // TODO(@bartlomieju): implement unconsume
+HTTPParser.prototype.unconsume = function (this: any) {
+  this._native.unconsume();
 };
 
 // Static constants

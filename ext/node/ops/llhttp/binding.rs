@@ -24,12 +24,18 @@ use std::cell::UnsafeCell;
 use std::ffi::CStr;
 use std::os::raw::c_char;
 use std::os::raw::c_int;
+use std::os::raw::c_void;
 
 use deno_core::GarbageCollected;
 use deno_core::op2;
+use deno_core::uv_compat::uv_buf_t;
+use deno_core::uv_compat::uv_stream_t;
 use deno_core::v8;
 
 use super::sys;
+use crate::ops::stream_wrap::LibUvStreamWrap;
+use crate::ops::stream_wrap::clone_context_from_uv_loop;
+use crate::ops::stream_wrap_state::ReadInterceptor;
 
 // JS callback indices — must match the constants in http_parser.ts
 const K_ON_MESSAGE_BEGIN: u32 = 0;
@@ -37,7 +43,7 @@ const K_ON_HEADERS: u32 = 1;
 const K_ON_HEADERS_COMPLETE: u32 = 2;
 const K_ON_BODY: u32 = 3;
 const K_ON_MESSAGE_COMPLETE: u32 = 4;
-// const K_ON_EXECUTE: u32 = 5;
+const K_ON_EXECUTE: u32 = 5;
 // const K_ON_TIMEOUT: u32 = 6;
 
 /// Maximum number of header field/value pairs to accumulate before
@@ -67,6 +73,15 @@ struct Inner {
   max_header_size: u32,
   header_nread: u32,
   initialized: bool,
+
+  /// The stream being consumed (for parser.consume optimization).
+  /// When set, the parser reads directly from the stream handle
+  /// via a ReadInterceptor, bypassing the JS readable stream.
+  consumed_stream: Option<*mut uv_stream_t>,
+  /// Persistent handle to the JS wrapper object for callbacks during consume.
+  consume_callbacks: Option<v8::Global<v8::Object>>,
+  /// Raw isolate pointer for creating scopes in the interceptor callback.
+  consume_isolate: v8::UnsafeRawIsolatePtr,
 }
 
 /// The CppGC-managed HTTP parser object.
@@ -113,6 +128,9 @@ impl HTTPParser {
         max_header_size: 0,
         header_nread: 0,
         initialized: false,
+        consumed_stream: None,
+        consume_callbacks: None,
+        consume_isolate: v8::UnsafeRawIsolatePtr::null(),
       }),
     }
   }
@@ -266,10 +284,19 @@ unsafe extern "C" fn on_message_begin(parser: *mut sys::llhttp_t) -> c_int {
   let cb = cb_obj.get_index(scope, K_ON_MESSAGE_BEGIN);
   if let Some(cb) = cb
     && let Ok(func) = v8::Local::<v8::Function>::try_from(cb)
-    && func.call(scope, cb_obj.into(), &[]).is_none()
   {
-    inner.got_exception = true;
-    return -1;
+    v8::tc_scope!(tc, scope);
+    if func.call(tc, cb_obj.into(), &[]).is_none() {
+      if tc.has_caught() {
+        if let Some(exc) = tc.exception() {
+          let key = v8::String::new(tc, "__lastException").unwrap();
+          cb_obj.set(tc, key.into(), exc);
+        }
+        tc.reset();
+      }
+      inner.got_exception = true;
+      return -1;
+    }
   }
   0
 }
@@ -336,7 +363,24 @@ unsafe extern "C" fn on_header_value_complete(
   let ctx = unsafe { get_ctx(parser) };
   let inner = unsafe { &mut *ctx.inner };
   let field = std::mem::take(&mut inner.current_header_field);
-  let value = std::mem::take(&mut inner.current_header_value);
+  let mut value = std::mem::take(&mut inner.current_header_value);
+  // Strip leading/trailing OWS (spaces and tabs) from header values,
+  // matching Node.js's HTTP parser behavior (RFC 9110 §5.5).
+  let trimmed = {
+    let bytes = value.as_slice();
+    let start = bytes
+      .iter()
+      .position(|&b| b != b' ' && b != b'\t')
+      .unwrap_or(bytes.len());
+    let end = bytes
+      .iter()
+      .rposition(|&b| b != b' ' && b != b'\t')
+      .map_or(start, |p| p + 1);
+    start..end
+  };
+  if trimmed.start > 0 || trimmed.end < value.len() {
+    value = value[trimmed].to_vec();
+  }
   inner.header_fields.push(field);
   inner.header_values.push(value);
   inner.in_header_value = false;
@@ -369,7 +413,8 @@ unsafe extern "C" fn on_header_value_complete(
 
 unsafe extern "C" fn on_headers_complete(parser: *mut sys::llhttp_t) -> c_int {
   let ctx = unsafe { get_ctx(parser) };
-  let inner = unsafe { &mut *ctx.inner };
+  let inner_ptr = ctx.inner;
+  let inner = unsafe { &mut *inner_ptr };
   let (scope, cb_obj) = unsafe { ctx.scope_and_callbacks() };
 
   let Some(cb) = cb_obj.get_index(scope, K_ON_HEADERS_COMPLETE) else {
@@ -379,20 +424,47 @@ unsafe extern "C" fn on_headers_complete(parser: *mut sys::llhttp_t) -> c_int {
     return 0;
   };
 
+  // Flush any remaining headers via kOnHeaders first, matching Node.js
+  // behavior.  This ensures all headers end up in parser._headers so
+  // parserOnHeadersComplete reads them via the `if (headers === undefined)`
+  // path.  Without this, when the total header count exceeds
+  // MAX_HEADER_PAIRS the first batch (sent via kOnHeaders during parsing)
+  // would be lost because kOnHeadersComplete would receive only the
+  // leftover headers and skip parser._headers.
+  if !inner.header_fields.is_empty() {
+    let flush_headers = Inner::create_headers_array(
+      scope,
+      &inner.header_fields,
+      &inner.header_values,
+    );
+    let flush_url = v8::String::new_from_one_byte(
+      scope,
+      &inner.url,
+      v8::NewStringType::Normal,
+    )
+    .unwrap_or_else(|| v8::String::empty(scope));
+
+    if let Some(on_hdr) = cb_obj.get_index(scope, K_ON_HEADERS)
+      && let Ok(on_hdr_fn) = v8::Local::<v8::Function>::try_from(on_hdr)
+    {
+      let _ = on_hdr_fn.call(
+        scope,
+        cb_obj.into(),
+        &[flush_headers.into(), flush_url.into()],
+      );
+    }
+    inner.header_fields.clear();
+    inner.header_values.clear();
+    inner.url.clear();
+  }
+
   let version_major =
     v8::Integer::new(scope, unsafe { (*parser).http_major } as i32);
   let version_minor =
     v8::Integer::new(scope, unsafe { (*parser).http_minor } as i32);
-  let headers = if !inner.header_fields.is_empty() {
-    Inner::create_headers_array(
-      scope,
-      &inner.header_fields,
-      &inner.header_values,
-    )
-    .into()
-  } else {
-    v8::undefined(scope).into()
-  };
+  // All headers have been flushed via kOnHeaders above, so always pass
+  // undefined here.  parserOnHeadersComplete will read from parser._headers.
+  let headers: v8::Local<v8::Value> = v8::undefined(scope).into();
   let is_request = unsafe { (*parser).type_ } == sys::HTTP_REQUEST as u8;
   let undef = v8::undefined(scope);
 
@@ -404,13 +476,10 @@ unsafe extern "C" fn on_headers_complete(parser: *mut sys::llhttp_t) -> c_int {
   } else {
     undef.into()
   };
-  let url: v8::Local<v8::Value> = if is_request {
-    v8::String::new_from_one_byte(scope, &inner.url, v8::NewStringType::Normal)
-      .unwrap_or_else(|| v8::String::empty(scope))
-      .into()
-  } else {
-    undef.into()
-  };
+  // URL was also flushed via kOnHeaders above (just like headers),
+  // so always pass undefined.  parserOnHeadersComplete will read
+  // from parser._url.
+  let url: v8::Local<v8::Value> = undef.into();
   let status_code: v8::Local<v8::Value> = if !is_request {
     v8::Integer::new(scope, unsafe { (*parser).status_code } as i32).into()
   } else {
@@ -445,7 +514,9 @@ unsafe extern "C" fn on_headers_complete(parser: *mut sys::llhttp_t) -> c_int {
     should_keep_alive.into(),
   ];
 
-  let result = func.call(scope, cb_obj.into(), &args);
+  v8::tc_scope!(tc, scope);
+  let result = func.call(tc, cb_obj.into(), &args);
+  let inner = unsafe { &mut *inner_ptr };
   inner.header_fields.clear();
   inner.header_values.clear();
   inner.url.clear();
@@ -453,10 +524,17 @@ unsafe extern "C" fn on_headers_complete(parser: *mut sys::llhttp_t) -> c_int {
 
   match result {
     None => {
+      if tc.has_caught() {
+        if let Some(exc) = tc.exception() {
+          let key = v8::String::new(tc, "__lastException").unwrap();
+          cb_obj.set(tc, key.into(), exc);
+        }
+        tc.reset();
+      }
       inner.got_exception = true;
       -1
     }
-    Some(val) => val.int32_value(scope).unwrap_or(0),
+    Some(val) => val.int32_value(tc).unwrap_or(0),
   }
 }
 
@@ -466,6 +544,7 @@ unsafe extern "C" fn on_body(
   length: usize,
 ) -> c_int {
   let ctx = unsafe { get_ctx(parser) };
+  let inner_ptr = ctx.inner;
   let (scope, cb_obj) = unsafe { ctx.scope_and_callbacks() };
 
   let Some(cb) = cb_obj.get_index(scope, K_ON_BODY) else {
@@ -483,9 +562,17 @@ unsafe extern "C" fn on_body(
   let ab = v8::ArrayBuffer::with_backing_store(scope, &store);
   let buffer = v8::Uint8Array::new(scope, ab, 0, length).unwrap();
 
-  let result = func.call(scope, cb_obj.into(), &[buffer.into()]);
+  v8::tc_scope!(tc, scope);
+  let result = func.call(tc, cb_obj.into(), &[buffer.into()]);
   if result.is_none() {
-    let inner = unsafe { &mut *ctx.inner };
+    let inner = unsafe { &mut *inner_ptr };
+    if tc.has_caught() {
+      if let Some(exc) = tc.exception() {
+        let key = v8::String::new(tc, "__lastException").unwrap();
+        cb_obj.set(tc, key.into(), exc);
+      }
+      tc.reset();
+    }
     inner.got_exception = true;
     unsafe {
       sys::llhttp_set_error_reason(
@@ -529,12 +616,143 @@ unsafe extern "C" fn on_message_complete(parser: *mut sys::llhttp_t) -> c_int {
 
   if let Some(cb) = cb_obj.get_index(scope, K_ON_MESSAGE_COMPLETE)
     && let Ok(func) = v8::Local::<v8::Function>::try_from(cb)
-    && func.call(scope, cb_obj.into(), &[]).is_none()
   {
-    inner.got_exception = true;
-    return -1;
+    v8::tc_scope!(tc, scope);
+    if func.call(tc, cb_obj.into(), &[]).is_none() {
+      if tc.has_caught() {
+        if let Some(exc) = tc.exception() {
+          let key = v8::String::new(tc, "__lastException").unwrap();
+          cb_obj.set(tc, key.into(), exc);
+        }
+        tc.reset();
+      }
+      inner.got_exception = true;
+      return -1;
+    }
   }
   0
+}
+
+// ---- ReadInterceptor callback for consume() ----
+
+/// Called by the stream's read callback when data arrives.
+/// `ptr` points to the HTTPParser's Inner state.
+unsafe fn consume_read_callback(
+  ptr: *mut c_void,
+  stream: *mut uv_stream_t,
+  nread: isize,
+  _buf: *const uv_buf_t,
+) {
+  let inner = unsafe { &mut *(ptr as *mut Inner) };
+
+  // Clone what we need from inner before taking mutable borrows
+  let isolate_ptr = inner.consume_isolate;
+  if isolate_ptr.is_null() {
+    return;
+  }
+  let Some(ref callbacks_global) = inner.consume_callbacks else {
+    return;
+  };
+  let callbacks_global = callbacks_global.clone();
+
+  // Get isolate and create scope
+  let mut isolate = unsafe { v8::Isolate::from_raw_isolate_ptr(isolate_ptr) };
+  let loop_ptr = unsafe { (*stream).loop_ };
+  let context = unsafe { clone_context_from_uv_loop(&mut isolate, loop_ptr) };
+  v8::scope!(let handle_scope, &mut isolate);
+  let context = v8::Local::new(handle_scope, context);
+  let scope = &mut v8::ContextScope::new(handle_scope, context);
+
+  if nread <= 0 {
+    // EOF or error - invoke kOnExecute callback with the nread value.
+    // Use TryCatch to absorb exceptions from socket lifecycle errors
+    // (hang up, reset, etc.) which are expected during connection close.
+    let cb_obj = v8::Local::new(scope, &callbacks_global);
+    if let Some(cb) = cb_obj.get_index(scope, K_ON_EXECUTE)
+      && let Ok(func) = v8::Local::<v8::Function>::try_from(cb)
+    {
+      v8::tc_scope!(tc, scope);
+      let nread_val = v8::Integer::new(tc, nread as i32);
+      let _ = func.call(tc, cb_obj.into(), &[nread_val.into()]);
+      // Absorb any exception - EOF errors are normal lifecycle events
+      if tc.has_caught() {
+        tc.reset();
+      }
+    }
+    return;
+  }
+
+  let data = unsafe {
+    std::slice::from_raw_parts((*_buf).base as *const u8, nread as usize)
+  };
+
+  // Execute the parser directly on the buffer
+  inner.current_buffer_data = data.as_ptr();
+  inner.current_buffer_len = data.len();
+  inner.got_exception = false;
+
+  let callbacks_local = v8::Local::new(scope, &callbacks_global);
+  // SAFETY: ContextScope and PinScope both deref to HandleScope.
+  // The ExecuteContext only accesses the scope via HandleScope methods.
+  let scope_ptr = scope as *mut v8::ContextScope<v8::HandleScope> as *mut ();
+  let callbacks_static: v8::Local<'static, v8::Object> =
+    unsafe { std::mem::transmute(callbacks_local) };
+
+  let mut ctx = ExecuteContext {
+    inner: inner as *mut Inner,
+    scope_ptr,
+    callbacks: callbacks_static,
+  };
+
+  inner.parser.data = &mut ctx as *mut ExecuteContext as *mut std::ffi::c_void;
+
+  let err = unsafe {
+    sys::llhttp_execute(
+      &mut inner.parser,
+      data.as_ptr() as *const c_char,
+      data.len(),
+    )
+  };
+
+  inner.parser.data = std::ptr::null_mut();
+  inner.current_buffer_data = std::ptr::null();
+  inner.current_buffer_len = 0;
+
+  let mut nread_result = data.len() as i32;
+  if err != sys::HPE_OK {
+    let error_pos = unsafe { sys::llhttp_get_error_pos(&inner.parser) };
+    if !error_pos.is_null() {
+      nread_result =
+        unsafe { error_pos.offset_from(data.as_ptr() as *const c_char) as i32 };
+    }
+    if err == sys::HPE_PAUSED_UPGRADE {
+      unsafe {
+        sys::llhttp_resume_after_upgrade(&mut inner.parser);
+      }
+    }
+  }
+
+  if inner.pending_pause {
+    inner.pending_pause = false;
+    unsafe {
+      sys::llhttp_pause(&mut inner.parser);
+    }
+  }
+
+  // Invoke kOnExecute with the result (bytes parsed or error)
+  let cb_obj = v8::Local::new(scope, &callbacks_global);
+  if let Some(cb) = cb_obj.get_index(scope, K_ON_EXECUTE)
+    && let Ok(func) = v8::Local::<v8::Function>::try_from(cb)
+  {
+    let result_val = if inner.got_exception
+      || (inner.parser.upgrade == 0 && err != sys::HPE_OK)
+    {
+      v8::Integer::new(scope, -1)
+    } else {
+      v8::Integer::new(scope, nread_result)
+    };
+    let _ = func.call(scope, cb_obj.into(), &[result_val.into()]);
+  }
 }
 
 // ---- Op implementations ----
@@ -695,5 +913,57 @@ impl HTTPParser {
       )
     };
     data.to_vec().into_boxed_slice()
+  }
+
+  /// Consume a stream handle: register a ReadInterceptor so data
+  /// flows directly from the TCP handle into llhttp_execute,
+  /// bypassing the JS readable stream layer.
+  /// `callbacks` is the JS wrapper object with indexed callback properties.
+  /// `handle` is the LibUvStreamWrap (e.g. TCPWrap) cppgc object.
+  #[nofast]
+  fn consume(
+    &self,
+    scope: &mut v8::PinScope,
+    callbacks: v8::Local<v8::Object>,
+    handle: v8::Local<v8::Object>,
+  ) {
+    let inner = self.inner();
+
+    // Try to get the LibUvStreamWrap from the handle
+    let handle_value: v8::Local<v8::Value> = handle.into();
+    let Some(stream_wrap) = deno_core::cppgc::try_unwrap_cppgc_object::<
+      LibUvStreamWrap,
+    >(scope, handle_value) else {
+      return;
+    };
+
+    let stream = stream_wrap.stream_ptr();
+    if stream.is_null() {
+      return;
+    }
+
+    // Store the callbacks and isolate for use in the interceptor
+    inner.consume_callbacks = Some(v8::Global::new(scope, callbacks));
+    inner.consume_isolate = unsafe { scope.as_raw_isolate_ptr() };
+    inner.consumed_stream = Some(stream);
+
+    // Register the read interceptor
+    let interceptor = ReadInterceptor {
+      ptr: inner as *mut Inner as *mut c_void,
+      callback: consume_read_callback,
+    };
+    LibUvStreamWrap::set_read_interceptor_for_stream(stream, Some(interceptor));
+  }
+
+  /// Unconsume: remove the ReadInterceptor so data goes back
+  /// through the normal JS readable stream path.
+  #[fast]
+  fn unconsume(&self) {
+    let inner = self.inner();
+    if let Some(stream) = inner.consumed_stream.take() {
+      LibUvStreamWrap::set_read_interceptor_for_stream(stream, None);
+    }
+    inner.consume_callbacks = None;
+    inner.consume_isolate = v8::UnsafeRawIsolatePtr::null();
   }
 }

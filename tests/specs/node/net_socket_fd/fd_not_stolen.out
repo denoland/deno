@@ -1,3 +1,2 @@
 Pipe.open() succeeded
 PASS: fd was closed with the pipe (ownership transferred)
-[WILDCARD]
