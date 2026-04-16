@@ -645,6 +645,7 @@ mod npm {
   pub struct AuditResponse {
     #[serde(default)]
     pub actions: Vec<AuditAction>,
+    #[serde(default)]
     pub advisories: HashMap<i32, AuditAdvisory>,
     pub metadata: AuditMetadata,
   }
@@ -976,6 +977,26 @@ mod tests {
     // This can happen with some npm registry responses
     let json = r#"{
       "advisories": {},
+      "metadata": {
+        "vulnerabilities": {
+          "low": 0,
+          "moderate": 0,
+          "high": 0,
+          "critical": 0
+        }
+      }
+    }"#;
+    let response: AuditResponse = serde_json::from_str(json).unwrap();
+    assert!(response.actions.is_empty());
+    assert!(response.advisories.is_empty());
+  }
+
+  #[test]
+  fn test_audit_response_deserialize_without_advisories() {
+    // Test that AuditResponse can be deserialized when the `advisories` field is missing
+    // This can happen with some npm registry responses (similar to issue #33287)
+    let json = r#"{
+      "actions": [],
       "metadata": {
         "vulnerabilities": {
           "low": 0,
