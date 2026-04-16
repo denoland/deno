@@ -1166,10 +1166,7 @@
     "parallel/test-http-head-response-has-no-body-end-implicit-headers.js": {},
     "parallel/test-http-head-response-has-no-body-end.js": {},
     "parallel/test-http-head-response-has-no-body.js": {},
-    "parallel/test-http-head-throw-on-response-body-write.js": {
-      "ignore": true,
-      "reason": "rejectNonStandardBodyWrites server option not yet implemented"
-    },
+    "parallel/test-http-head-throw-on-response-body-write.js": {},
     "parallel/test-http-header-obstext.js": {},
     "parallel/test-http-header-owstext.js": {},
     "parallel/test-http-header-read.js": {},
