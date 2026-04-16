@@ -13,10 +13,34 @@ jobs:
         include:
           - os: linux
             runner: ubuntu-latest
+            shard_index: '0'
+            shard_total: '2'
+            shard_label: (1/2)
+          - os: linux
+            runner: ubuntu-latest
+            shard_index: '1'
+            shard_total: '2'
+            shard_label: (2/2)
           - os: windows
             runner: windows-latest
+            shard_index: '0'
+            shard_total: '2'
+            shard_label: (1/2)
+          - os: windows
+            runner: windows-latest
+            shard_index: '1'
+            shard_total: '2'
+            shard_label: (2/2)
           - os: darwin
             runner: macos-latest
+            shard_index: '0'
+            shard_total: '2'
+            shard_label: (1/2)
+          - os: darwin
+            runner: macos-latest
+            shard_index: '1'
+            shard_total: '2'
+            shard_label: (2/2)
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
@@ -48,6 +72,8 @@ jobs:
       - name: Run tests
         env:
           CARGO_ENCODED_RUSTFLAGS: ''
+          CI_SHARD_INDEX: '${{ matrix.shard_index }}'
+          CI_SHARD_TOTAL: '${{ matrix.shard_total }}'
         run: deno task --cwd tests/node_compat/runner test --report
       - name: Gzip the report
         run: gzip tests/node_compat/report.json
@@ -58,7 +84,7 @@ jobs:
           AWS_SECRET_ACCESS_KEY: '${{ secrets.S3_SECRET_ACCESS_KEY }}'
           AWS_ENDPOINT_URL_S3: '${{ vars.S3_ENDPOINT }}'
           AWS_DEFAULT_REGION: '${{vars.S3_REGION }}'
-        run: 'aws s3 cp tests/node_compat/report.json.gz s3://dl-deno-land/node-compat-test/$(date +%F)/report-${{matrix.os}}.json.gz'
+        run: 'aws s3 cp tests/node_compat/report.json.gz s3://dl-deno-land/node-compat-test/$(date +%F)/report-${{matrix.os}}-${{matrix.shard_index}}.json.gz'
   summary:
     needs:
       - test

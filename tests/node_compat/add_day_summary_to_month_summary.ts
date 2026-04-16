@@ -88,15 +88,11 @@ function extractMetadata(
   };
 }
 
-export async function fetchReport(
-  date: string,
-  os: "linux" | "windows" | "darwin",
+async function fetchSingleReport(
+  url: string,
 ): Promise<TestReport | undefined> {
-  console.log("fetching", date, os);
   try {
-    const res = await fetch(
-      `https://dl.deno.land/node-compat-test/${date}/report-${os}.json.gz`,
-    );
+    const res = await fetch(url);
     if (res.status === 404) {
       return undefined;
     }
@@ -108,6 +104,46 @@ export async function fetchReport(
     console.error(e);
     return undefined;
   }
+}
+
+const SHARD_COUNT = 2;
+
+export async function fetchReport(
+  date: string,
+  os: "linux" | "windows" | "darwin",
+): Promise<TestReport | undefined> {
+  console.log("fetching", date, os);
+  // Fetch all shard reports and merge them
+  const shardReports: TestReport[] = [];
+  for (let i = 0; i < SHARD_COUNT; i++) {
+    const report = await fetchSingleReport(
+      `https://dl.deno.land/node-compat-test/${date}/report-${os}-${i}.json.gz`,
+    );
+    if (report) {
+      shardReports.push(report);
+    }
+  }
+  // Fall back to unsharded report name for older reports
+  if (shardReports.length === 0) {
+    return await fetchSingleReport(
+      `https://dl.deno.land/node-compat-test/${date}/report-${os}.json.gz`,
+    );
+  }
+  if (shardReports.length === 1) {
+    return shardReports[0];
+  }
+  // Merge shard reports: combine results, sum counts
+  const merged = { ...shardReports[0] };
+  merged.results = { ...merged.results };
+  for (let i = 1; i < shardReports.length; i++) {
+    const shard = shardReports[i];
+    for (const [key, value] of Object.entries(shard.results)) {
+      merged.results[key] = value;
+    }
+    merged.total += shard.total;
+    merged.pass += shard.pass;
+  }
+  return merged;
 }
 
 async function main() {
