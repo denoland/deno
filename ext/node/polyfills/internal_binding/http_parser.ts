@@ -24,6 +24,7 @@
 
 import { HTTPParser as NativeHTTPParser } from "ext:core/ops";
 import { Buffer } from "node:buffer";
+import { AsyncResource } from "node:async_hooks";
 
 // Method names indexed by llhttp method enum values.
 // Order must match llhttp_method_t in llhttp.h.
@@ -147,10 +148,18 @@ export function HTTPParser(this: any, type?: number) {
 HTTPParser.prototype.initialize = function (
   this: any,
   type: number,
-  _options?: any,
+  asyncResource?: any,
   maxHeaderSize?: number,
   lenientFlags?: number,
 ) {
+  // Store the async resource so execute() can run callbacks in the
+  // correct async context (preserves AsyncLocalStorage through the
+  // native parser, emulating Node's MakeCallback behavior).
+  if (asyncResource) {
+    this._asyncResource = new AsyncResource(
+      asyncResource.type || "HTTPPARSER",
+    );
+  }
   this._native.initialize(
     type,
     maxHeaderSize ?? 0,
@@ -192,10 +201,16 @@ HTTPParser.prototype.execute = function (
   // Pass `this` (the JS wrapper) directly so callbacks set during
   // parsing (e.g. trailer headers set in kOnHeadersComplete) are
   // visible to subsequent callbacks.
-  const result = this._native.execute(
-    this,
-    new Uint8Array(data.buffer, data.byteOffset, data.byteLength),
-  );
+  // Run within the async resource scope to preserve AsyncLocalStorage
+  // context through native parser callbacks (emulates Node's MakeCallback).
+  const doExecute = () =>
+    this._native.execute(
+      this,
+      new Uint8Array(data.buffer, data.byteOffset, data.byteLength),
+    );
+  const result = this._asyncResource
+    ? this._asyncResource.runInAsyncScope(doExecute)
+    : doExecute();
 
   // Restore original callback
   this[kOnBody] = origOnBody;

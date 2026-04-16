@@ -102,10 +102,7 @@
     "parallel/test-async-local-storage-contexts.js": {},
     "parallel/test-async-local-storage-deep-stack.js": {},
     "parallel/test-async-local-storage-exit-does-not-leak.js": {},
-    "parallel/test-async-local-storage-http-multiclients.js": {
-      "ignore": true,
-      "reason": "AsyncLocalStorage context lost in HTTP response data callbacks — async_hooks propagation through native parser consume path not implemented"
-    },
+    "parallel/test-async-local-storage-http-multiclients.js": {},
     "parallel/test-async-local-storage-snapshot.js": {},
     "parallel/test-atomics-wake.js": {},
     "parallel/test-bad-unicode.js": {},

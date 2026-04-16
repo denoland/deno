@@ -301,6 +301,7 @@ function cleanParser(parser) {
   parser._consumed = false;
   parser.onIncoming = null;
   parser.joinDuplicateHeaders = null;
+  parser._asyncResource = null;
 }
 
 function prepareError(err, parser, rawPacket) {
