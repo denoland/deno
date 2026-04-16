@@ -417,10 +417,10 @@ pub fn collect_tsc(
         | tsc::ScriptElementKind::MemberFunctionElement
         | tsc::ScriptElementKind::MemberVariableElement
         | tsc::ScriptElementKind::MemberGetAccessorElement
-        | tsc::ScriptElementKind::MemberSetAccessorElement => {
-          if ABSTRACT_MODIFIER.is_match(&i.kind_modifiers) {
-            code_lenses.push(i.to_code_lens(line_index, uri, source));
-          }
+        | tsc::ScriptElementKind::MemberSetAccessorElement
+          if ABSTRACT_MODIFIER.is_match(&i.kind_modifiers) =>
+        {
+          code_lenses.push(i.to_code_lens(line_index, uri, source));
         }
         _ => (),
       }
@@ -435,22 +435,20 @@ pub fn collect_tsc(
         code_lenses.push(i.to_code_lens(line_index, uri, source));
       }
       match i.kind {
-        tsc::ScriptElementKind::FunctionElement => {
-          if code_lens_settings.references_all_functions {
-            code_lenses.push(i.to_code_lens(line_index, uri, source));
-          }
+        tsc::ScriptElementKind::FunctionElement
+          if code_lens_settings.references_all_functions =>
+        {
+          code_lenses.push(i.to_code_lens(line_index, uri, source));
         }
         tsc::ScriptElementKind::ConstElement
         | tsc::ScriptElementKind::LetElement
-        | tsc::ScriptElementKind::VariableElement => {
-          if EXPORT_MODIFIER.is_match(&i.kind_modifiers) {
-            code_lenses.push(i.to_code_lens(line_index, uri, source));
-          }
+        | tsc::ScriptElementKind::VariableElement
+          if EXPORT_MODIFIER.is_match(&i.kind_modifiers) =>
+        {
+          code_lenses.push(i.to_code_lens(line_index, uri, source));
         }
-        tsc::ScriptElementKind::ClassElement => {
-          if i.text != "<class>" {
-            code_lenses.push(i.to_code_lens(line_index, uri, source));
-          }
+        tsc::ScriptElementKind::ClassElement if i.text != "<class>" => {
+          code_lenses.push(i.to_code_lens(line_index, uri, source));
         }
         tsc::ScriptElementKind::InterfaceElement
         | tsc::ScriptElementKind::TypeElement

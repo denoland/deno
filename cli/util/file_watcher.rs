@@ -63,9 +63,7 @@ impl DebouncedReceiver {
 
   async fn recv(&mut self) -> Option<Vec<PathBuf>> {
     if self.received_items.is_empty() {
-      self
-        .received_items
-        .extend(self.receiver.recv().await?.into_iter());
+      self.received_items.extend(self.receiver.recv().await?);
     }
 
     loop {

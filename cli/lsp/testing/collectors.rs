@@ -87,26 +87,22 @@ fn parse_test_context_param(
           ast::ObjectPatProp::KeyValue(key_value_pat_prop) => {
             match &key_value_pat_prop.key {
               // handles `({ step: s })`
-              ast::PropName::Ident(ident) => {
-                if ident.sym.eq("step") {
-                  if let ast::Pat::Ident(ident) =
-                    key_value_pat_prop.value.as_ref()
-                  {
-                    maybe_step_var = Some(ident.id.sym.to_string());
-                  }
-                  break;
+              ast::PropName::Ident(ident) if ident.sym.eq("step") => {
+                if let ast::Pat::Ident(ident) =
+                  key_value_pat_prop.value.as_ref()
+                {
+                  maybe_step_var = Some(ident.id.sym.to_string());
                 }
+                break;
               }
               // handles `({ "step": s })`
-              ast::PropName::Str(string) => {
-                if string.value.eq("step") {
-                  if let ast::Pat::Ident(ident) =
-                    key_value_pat_prop.value.as_ref()
-                  {
-                    maybe_step_var = Some(ident.id.sym.to_string());
-                  }
-                  break;
+              ast::PropName::Str(string) if string.value.eq("step") => {
+                if let ast::Pat::Ident(ident) =
+                  key_value_pat_prop.value.as_ref()
+                {
+                  maybe_step_var = Some(ident.id.sym.to_string());
                 }
+                break;
               }
               _ => (),
             }
@@ -175,10 +171,8 @@ fn visit_call_expr(
               }
               // matches template literals with only a single quasis
               // (e.g. `test name`)
-              ast::Expr::Tpl(tpl) => {
-                if tpl.quasis.len() == 1 {
-                  maybe_name = Some(tpl.quasis[0].raw.to_string());
-                }
+              ast::Expr::Tpl(tpl) if tpl.quasis.len() == 1 => {
+                maybe_name = Some(tpl.quasis[0].raw.to_string());
               }
               _ => {}
             }
@@ -465,10 +459,8 @@ impl Visit for TestStepCollector<'_> {
 
             for prop in &object_pat.props {
               match prop {
-                ast::ObjectPatProp::Assign(prop) => {
-                  if prop.key.sym.eq("step") {
-                    self.vars.insert(prop.key.sym.to_string());
-                  }
+                ast::ObjectPatProp::Assign(prop) if prop.key.sym.eq("step") => {
+                  self.vars.insert(prop.key.sym.to_string());
                 }
                 ast::ObjectPatProp::KeyValue(prop) => {
                   if let ast::PropName::Ident(key_ident) = &prop.key

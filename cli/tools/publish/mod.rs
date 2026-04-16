@@ -1145,11 +1145,8 @@ fn collect_excluded_module_diagnostics(
         if !deno_path_util::is_relative_specifier(specifier_text) {
           continue;
         }
-        let resolutions = dep
-          .maybe_code
-          .ok()
-          .into_iter()
-          .chain(dep.maybe_type.ok().into_iter());
+        let resolutions =
+          dep.maybe_code.ok().into_iter().chain(dep.maybe_type.ok());
         let mut maybe_res = resolutions.filter_map(|r| {
           let pkg = all_jsr_packages.get_for_specifier(&r.specifier)?;
           if pkg.member_dir.dir_url().as_ref() != root_dir {
