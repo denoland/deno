@@ -7,7 +7,9 @@ use std::sync::Arc;
 use deno_core::anyhow::Context;
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
+use deno_core::url::Url;
 use deno_terminal::colors;
+use sha2::Digest;
 
 use crate::args::CliOptions;
 use crate::args::CompileFlags;
@@ -16,6 +18,18 @@ use crate::args::DesktopFlags;
 use crate::args::Flags;
 use crate::args::TypeCheckMode;
 use crate::factory::CliFactory;
+use crate::http_util::HttpClientProvider;
+use crate::util::progress_bar::ProgressBar;
+use crate::util::progress_bar::ProgressBarStyle;
+
+/// Version of the `wef` capi crate pinned in the workspace Cargo.lock.
+/// Populated by `cli/build.rs` and used to resolve matching prebuilt backend
+/// binaries from `github.com/denoland/wef/releases/tag/v{WEF_VERSION}`.
+const WEF_VERSION: &str = env!("WEF_VERSION");
+
+/// Rustc target triple the deno binary was built for. Used as the default
+/// target when selecting a prebuilt wef backend archive.
+const WEF_NATIVE_TARGET: &str = env!("TARGET");
 
 pub async fn desktop(
   flags: Flags,
@@ -27,6 +41,7 @@ pub async fn desktop(
   let factory = CliFactory::from_flags(Arc::new(config_flags));
   let cli_options = factory.cli_options()?;
   let desktop_config = cli_options.start_dir.to_desktop_config()?.clone();
+  let wef_resolver = Arc::new(WefBackendResolver::new(&factory)?);
 
   if let Some(output) = desktop_config.output
     && desktop_flags.output.is_none()
@@ -91,11 +106,17 @@ pub async fn desktop(
       log::info!("Building for target: {}", target);
       let mut desktop_flags = desktop_flags.clone();
       desktop_flags.target = Some(target.to_string());
-      compile_desktop(flags.clone(), desktop_flags, cli_options).await?;
+      compile_desktop(
+        flags.clone(),
+        desktop_flags,
+        cli_options,
+        &wef_resolver,
+      )
+      .await?;
     }
     Ok(())
   } else {
-    compile_desktop(flags, desktop_flags, cli_options).await
+    compile_desktop(flags, desktop_flags, cli_options, &wef_resolver).await
   }
 }
 
@@ -103,6 +124,7 @@ async fn compile_desktop(
   mut flags: Flags,
   mut desktop_flags: DesktopFlags,
   cli_options: &Arc<CliOptions>,
+  wef_resolver: &WefBackendResolver,
 ) -> Result<(), AnyError> {
   // If the user asked for a `.dmg` (macOS) installer via `--output`, strip
   // the extension for the intermediate compile/bundle step and remember the
@@ -214,11 +236,19 @@ async fn compile_desktop(
     let cwd = cli_options.initial_cwd();
     let framework = super::framework::detect_framework(cwd)?;
     let backend = desktop_flags.backend.as_deref().unwrap_or("webview");
-    run_desktop_hmr(&output_path, cwd, framework.as_ref(), backend).await?;
+    run_desktop_hmr(
+      &output_path,
+      cwd,
+      framework.as_ref(),
+      backend,
+      wef_resolver,
+    )
+    .await?;
   } else {
     // Package the dylib into a platform-specific app bundle.
     let bundle_path =
-      package_desktop_app(&output_path, &desktop_flags, cli_options)?;
+      package_desktop_app(&output_path, &desktop_flags, cli_options, wef_resolver)
+        .await?;
 
     // If the user requested a .dmg, wrap the .app in one and report the DMG.
     let final_path = if let Some(dmg) = dmg_output.as_deref() {
@@ -264,8 +294,10 @@ async fn run_desktop_hmr(
   source_dir: &Path,
   framework: Option<&super::framework::FrameworkDetection>,
   backend: &str,
+  wef_resolver: &WefBackendResolver,
 ) -> Result<(), AnyError> {
-  let wef_backend = find_wef_backend(backend)?;
+  let wef_backend =
+    wef_resolver.find_binary(backend, WEF_NATIVE_TARGET).await?;
   let dylib_abs = dylib_path
     .canonicalize()
     .unwrap_or(dylib_path.to_path_buf());
@@ -322,10 +354,11 @@ async fn run_desktop_hmr(
 }
 
 /// Package a compiled desktop dylib into a platform-specific app bundle.
-fn package_desktop_app(
+async fn package_desktop_app(
   dylib_path: &Path,
   desktop_flags: &DesktopFlags,
   cli_options: &CliOptions,
+  wef_resolver: &WefBackendResolver,
 ) -> Result<PathBuf, AnyError> {
   let target = desktop_flags.target.as_deref();
   let is_darwin = match target {
@@ -338,26 +371,15 @@ fn package_desktop_app(
   };
 
   if is_darwin {
-    package_macos_app_bundle(dylib_path, desktop_flags, cli_options)
+    package_macos_app_bundle(dylib_path, desktop_flags, cli_options, wef_resolver)
+      .await
   } else if is_windows {
-    package_windows_app_dir(dylib_path, desktop_flags, cli_options)
+    package_windows_app_dir(dylib_path, desktop_flags, cli_options, wef_resolver)
+      .await
   } else {
-    package_linux_app_dir(dylib_path, desktop_flags, cli_options)
+    package_linux_app_dir(dylib_path, desktop_flags, cli_options, wef_resolver)
+      .await
   }
-}
-
-/// Find the directory containing the WEF backend binary. For non-macOS
-/// platforms, the binary and its support files (e.g., CEF DLLs, locales)
-/// sit alongside each other in a single flat directory.
-fn find_wef_backend_dir(backend: &str) -> Result<PathBuf, AnyError> {
-  let backend_binary = find_wef_backend(backend)?;
-  let parent = backend_binary.parent().ok_or_else(|| {
-    deno_core::anyhow::anyhow!(
-      "WEF backend binary has no parent directory: {}",
-      backend_binary.display()
-    )
-  })?;
-  Ok(parent.to_path_buf())
 }
 
 /// Create a Windows app directory from the compiled desktop dylib.
@@ -371,10 +393,11 @@ fn find_wef_backend_dir(backend: &str) -> Result<PathBuf, AnyError> {
 ///   denort.dll          (compiled Deno runtime + user code)
 ///   AppIcon.ico         (optional)
 /// ```
-fn package_windows_app_dir(
+async fn package_windows_app_dir(
   dylib_path: &Path,
   desktop_flags: &DesktopFlags,
   cli_options: &CliOptions,
+  wef_resolver: &WefBackendResolver,
 ) -> Result<PathBuf, AnyError> {
   let app_name = dylib_path
     .file_stem()
@@ -384,8 +407,9 @@ fn package_windows_app_dir(
   let app_dir = dylib_path.parent().unwrap().join(&app_name);
 
   let backend = desktop_flags.backend.as_deref().unwrap_or("cef");
-  let wef_dir = find_wef_backend_dir(backend)?;
-  let wef_binary = find_wef_backend(backend)?;
+  let target = wef_target_for(desktop_flags);
+  let wef_binary = wef_resolver.find_binary(backend, target).await?;
+  let wef_dir = wef_resolver.find_binary_dir(backend, target).await?;
   let wef_binary_name = wef_binary
     .file_name()
     .unwrap()
@@ -476,10 +500,11 @@ fn package_windows_app_dir(
 ///   libdenort.so        (compiled Deno runtime + user code)
 ///   AppIcon.png         (optional)
 /// ```
-fn package_linux_app_dir(
+async fn package_linux_app_dir(
   dylib_path: &Path,
   desktop_flags: &DesktopFlags,
   cli_options: &CliOptions,
+  wef_resolver: &WefBackendResolver,
 ) -> Result<PathBuf, AnyError> {
   let app_name = dylib_path
     .file_stem()
@@ -495,8 +520,9 @@ fn package_linux_app_dir(
   let app_dir = dylib_path.parent().unwrap().join(&app_name);
 
   let backend = desktop_flags.backend.as_deref().unwrap_or("cef");
-  let wef_dir = find_wef_backend_dir(backend)?;
-  let wef_binary = find_wef_backend(backend)?;
+  let target = wef_target_for(desktop_flags);
+  let wef_binary = wef_resolver.find_binary(backend, target).await?;
+  let wef_dir = wef_resolver.find_binary_dir(backend, target).await?;
   let wef_binary_name = wef_binary
     .file_name()
     .unwrap()
@@ -591,161 +617,339 @@ fn package_linux_app_dir(
   Ok(app_dir)
 }
 
-/// Environment variable for the WEF backend executable path.
-const WEF_BACKEND_ENV: &str = "WEF_BACKEND";
+/// Environment variable pointing at a local wef checkout, used to bypass the
+/// download path during development. Build-tree subpaths under this directory
+/// are searched the same way the old sibling-checkout heuristic searched.
+const WEF_DEV_DIR_ENV: &str = "WEF_DEV_DIR";
 
-/// Find the deno repo root from the current exe path.
-/// Dev builds live at `<repo>/target/{debug,release}/deno`.
-/// Resolve WEF backend binary search paths based on the chosen backend.
-fn wef_backend_search_paths(backend: &str) -> Vec<PathBuf> {
-  let wef_base = option_env!("CARGO_MANIFEST_DIR")
-    .map(|d| std::path::Path::new(d).join("../../wef"))
-    .filter(|p| p.exists());
-
-  let mut paths = Vec::new();
-  if let Some(ref wef) = wef_base {
-    match backend {
-      "cef" => {
-        paths
-          .push(wef.join("result-cef/Applications/wef.app/Contents/MacOS/wef"));
-        paths.push(wef.join("result/Applications/wef.app/Contents/MacOS/wef"));
-        paths.push(wef.join("cef/build/Release/wef.app/Contents/MacOS/wef"));
-        paths.push(wef.join("cef/build/wef.app/Contents/MacOS/wef"));
-      }
-      "servo" => {
-        paths.push(wef.join("target/release/wef_servo"));
-        paths.push(wef.join("target/debug/wef_servo"));
-      }
-      "raw" => {
-        paths.push(wef.join("target/release/wef_winit"));
-        paths.push(wef.join("target/debug/wef_winit"));
-      }
-      _ => {
-        paths.push(wef.join(
-          "result-1/Applications/wef_webview.app/Contents/MacOS/wef_webview",
-        ));
-        paths.push(wef.join(
-          "result/Applications/wef_webview.app/Contents/MacOS/wef_webview",
-        ));
-        paths.push(
-          wef.join("webview/build/wef_webview.app/Contents/MacOS/wef_webview"),
-        );
-      }
-    }
-  }
-  paths
+/// Resolves WEF backend binaries and `.app` bundles, falling back to
+/// downloading prebuilt archives from the wef GitHub releases when
+/// `WEF_DEV_DIR` is not set.
+struct WefBackendResolver {
+  http_client_provider: Arc<HttpClientProvider>,
+  /// `<deno_dir>/wef/<version>/`
+  cache_root: PathBuf,
 }
 
-/// Environment variable pointing to a WEF backend .app bundle.
-const WEF_BACKEND_APP_ENV: &str = "WEF_BACKEND_APP";
-
-/// Resolve WEF backend .app search paths based on the chosen backend.
-fn wef_backend_app_search_paths(backend: &str) -> Vec<String> {
-  // Derive the wef repo path from this crate's location.
-  // CARGO_MANIFEST_DIR is cli/, the wef repo is at ../../wef relative to that
-  // (i.e. a sibling of the deno repo in the parent directory).
-  let wef_base = option_env!("CARGO_MANIFEST_DIR")
-    .map(|d| std::path::Path::new(d).join("../../wef"))
-    .filter(|p| p.exists());
-
-  let mut paths = Vec::new();
-  if let Some(ref wef) = wef_base {
-    match backend {
-      "cef" => {
-        paths.push(
-          wef
-            .join("result-cef/Applications/wef.app")
-            .to_string_lossy()
-            .to_string(),
-        );
-        paths.push(
-          wef
-            .join("result/Applications/wef.app")
-            .to_string_lossy()
-            .to_string(),
-        );
-        paths.push(
-          wef
-            .join("cef/build/Release/wef.app")
-            .to_string_lossy()
-            .to_string(),
-        );
-        paths.push(wef.join("cef/build/wef.app").to_string_lossy().to_string());
-      }
-      "raw" | "servo" => {} // Not .app bundles
-      _ => {
-        paths.push(
-          wef
-            .join("result-1/Applications/wef_webview.app")
-            .to_string_lossy()
-            .to_string(),
-        );
-        paths.push(
-          wef
-            .join("result/Applications/wef_webview.app")
-            .to_string_lossy()
-            .to_string(),
-        );
-        paths.push(
-          wef
-            .join("webview/build/wef_webview.app")
-            .to_string_lossy()
-            .to_string(),
-        );
-      }
-    }
+impl WefBackendResolver {
+  fn new(factory: &CliFactory) -> Result<Self, AnyError> {
+    let cache_root = factory
+      .deno_dir()?
+      .root
+      .join("wef")
+      .join(WEF_VERSION);
+    Ok(Self {
+      http_client_provider: factory.http_client_provider().clone(),
+      cache_root,
+    })
   }
-  paths
-}
 
-/// Find the WEF backend .app bundle directory.
-fn find_wef_backend_app_bundle(backend: &str) -> Result<PathBuf, AnyError> {
-  // Check explicit env var first.
-  if let Ok(path) = std::env::var(WEF_BACKEND_APP_ENV) {
-    let p = PathBuf::from(&path);
-    if p.exists() && p.extension().map_or(false, |e| e == "app") {
-      return Ok(p);
+  fn backend_cache_dir(&self, backend: &str, target: &str) -> PathBuf {
+    self.cache_root.join(backend).join(target)
+  }
+
+  /// Download + verify + extract a backend archive if it isn't already in
+  /// `<deno_dir>/wef/<version>/<backend>/<target>/`.
+  async fn ensure_downloaded(
+    &self,
+    backend: &str,
+    target: &str,
+  ) -> Result<PathBuf, AnyError> {
+    let dir = self.backend_cache_dir(backend, target);
+    let marker = dir.join(".downloaded");
+    if marker.exists() {
+      return Ok(dir);
     }
-    bail!(
-      "WEF backend .app not found at {} (set via {})",
-      path,
-      WEF_BACKEND_APP_ENV
+
+    let archive = wef_archive_name(backend, target);
+    let client = self.http_client_provider.get_or_create()?;
+
+    let sums_url = Url::parse(&wef_release_url("SHA256SUMS"))?;
+    let sums = client
+      .download_text(sums_url.clone())
+      .await
+      .with_context(|| {
+        format!(
+          "failed to fetch {sums_url} (wef v{WEF_VERSION} may not be published yet)"
+        )
+      })?;
+    let expected = parse_sha256sum(&sums, &archive).ok_or_else(|| {
+      deno_core::anyhow::anyhow!(
+        "no checksum for {archive} in SHA256SUMS (wef v{WEF_VERSION} release may not include backend '{backend}' for target '{target}')"
+      )
+    })?;
+
+    log::info!(
+      "{} wef {} backend for {} (v{})",
+      colors::green("Downloading"),
+      backend,
+      target,
+      WEF_VERSION,
     );
+
+    let url = Url::parse(&wef_release_url(&archive))?;
+    let progress_bar = ProgressBar::new(ProgressBarStyle::DownloadBars);
+    let progress = progress_bar.update(&archive);
+    let response = client
+      .download_with_progress_and_retries(
+        url.clone(),
+        &Default::default(),
+        &progress,
+      )
+      .await
+      .with_context(|| format!("failed to download {url}"))?;
+    let data = response
+      .into_maybe_bytes()?
+      .ok_or_else(|| deno_core::anyhow::anyhow!("empty response from {url}"))?;
+
+    let actual =
+      faster_hex::hex_string(&sha2::Sha256::digest(&data)).to_lowercase();
+    let expected_lc = expected.to_lowercase();
+    if actual != expected_lc {
+      bail!(
+        "checksum mismatch for {archive}\n  expected: {expected_lc}\n  actual:   {actual}"
+      );
+    }
+
+    if dir.exists() {
+      std::fs::remove_dir_all(&dir)?;
+    }
+    std::fs::create_dir_all(&dir)?;
+    extract_wef_archive(&archive, &data, &dir)
+      .with_context(|| format!("failed to extract {archive}"))?;
+    std::fs::write(&marker, format!("v{WEF_VERSION}\n"))?;
+    Ok(dir)
   }
 
-  // Search well-known paths.
-  let exe_dir = std::env::current_exe()
-    .ok()
-    .and_then(|p| p.parent().map(|p| p.to_path_buf()));
-  for search_path in wef_backend_app_search_paths(backend) {
-    let p = PathBuf::from(&search_path);
-    if p.exists() {
-      return Ok(p);
+  /// Locate the WEF backend binary for `backend` on `target`.
+  ///
+  /// Resolution order: `WEF_DEV_DIR` checkout → cached download →
+  /// fresh download.
+  async fn find_binary(
+    &self,
+    backend: &str,
+    target: &str,
+  ) -> Result<PathBuf, AnyError> {
+    if let Some(dev_dir) = wef_dev_dir() {
+      return locate_dev_backend_binary(&dev_dir, backend).ok_or_else(|| {
+        deno_core::anyhow::anyhow!(
+          "could not find '{backend}' backend binary under {} (set via {})",
+          dev_dir.display(),
+          WEF_DEV_DIR_ENV
+        )
+      });
     }
-    if let Some(exe_dir) = &exe_dir {
-      let p = exe_dir.join(&search_path);
-      if p.exists() {
-        return Ok(p);
-      }
-    }
+
+    let dir = self.ensure_downloaded(backend, target).await?;
+    locate_backend_binary(&dir, backend, target).ok_or_else(|| {
+      deno_core::anyhow::anyhow!(
+        "could not find '{backend}' backend binary inside {}",
+        dir.display()
+      )
+    })
   }
 
-  // Derive from the WEF backend binary path (walk up to .app).
-  if let Ok(backend_binary) = find_wef_backend(backend) {
-    let mut current = backend_binary.as_path();
-    while let Some(parent) = current.parent() {
-      if parent.extension().map_or(false, |e| e == "app") {
-        return Ok(parent.to_path_buf());
-      }
-      current = parent;
+  /// Locate the WEF `.app` bundle for `backend` on a macOS `target`.
+  async fn find_app_bundle(
+    &self,
+    backend: &str,
+    target: &str,
+  ) -> Result<PathBuf, AnyError> {
+    if let Some(dev_dir) = wef_dev_dir() {
+      return locate_dev_app_bundle(&dev_dir, backend).ok_or_else(|| {
+        deno_core::anyhow::anyhow!(
+          "could not find '{backend}' .app bundle under {} (set via {})",
+          dev_dir.display(),
+          WEF_DEV_DIR_ENV
+        )
+      });
     }
+
+    let dir = self.ensure_downloaded(backend, target).await?;
+    locate_app_bundle(&dir, backend).ok_or_else(|| {
+      deno_core::anyhow::anyhow!(
+        "could not find '{backend}' .app bundle inside {} (backend may not ship as an app for target '{target}')",
+        dir.display()
+      )
+    })
   }
 
-  bail!(
-    "WEF backend '{}' .app bundle not found. Set {} to the path of the WEF .app bundle.",
-    backend,
-    WEF_BACKEND_APP_ENV
+  /// Directory containing the backend binary and its support files (used on
+  /// Windows / Linux where support files sit alongside the binary).
+  async fn find_binary_dir(
+    &self,
+    backend: &str,
+    target: &str,
+  ) -> Result<PathBuf, AnyError> {
+    let binary = self.find_binary(backend, target).await?;
+    let parent = binary.parent().ok_or_else(|| {
+      deno_core::anyhow::anyhow!(
+        "WEF backend binary has no parent directory: {}",
+        binary.display()
+      )
+    })?;
+    Ok(parent.to_path_buf())
+  }
+}
+
+fn wef_archive_name(backend: &str, target: &str) -> String {
+  let ext = if target.contains("windows") {
+    "zip"
+  } else {
+    "tar.gz"
+  };
+  format!("wef-{backend}-{target}.{ext}")
+}
+
+fn wef_release_url(file: &str) -> String {
+  format!(
+    "https://github.com/denoland/wef/releases/download/v{WEF_VERSION}/{file}"
   )
+}
+
+/// Pick out the hex digest for `file` from a GNU `sha256sum`-style file. Each
+/// line is `<hex>  <filename>` (optionally `<hex>  *<filename>` for binary
+/// mode).
+fn parse_sha256sum(contents: &str, file: &str) -> Option<String> {
+  for line in contents.lines() {
+    let mut parts = line.split_whitespace();
+    let hex = parts.next()?;
+    let name = parts.next()?;
+    if name.trim_start_matches('*') == file {
+      return Some(hex.to_string());
+    }
+  }
+  None
+}
+
+fn extract_wef_archive(
+  name: &str,
+  data: &[u8],
+  dest: &Path,
+) -> Result<(), AnyError> {
+  if name.ends_with(".tar.gz") {
+    let decoder = flate2::read::GzDecoder::new(data);
+    let mut archive = tar::Archive::new(decoder);
+    archive.set_preserve_permissions(true);
+    archive.unpack(dest)?;
+  } else if name.ends_with(".zip") {
+    let mut archive = zip::ZipArchive::new(std::io::Cursor::new(data))?;
+    archive.extract(dest)?;
+  } else {
+    bail!("unsupported archive format: {name}");
+  }
+  Ok(())
+}
+
+/// Resolve the backend binary path inside an extracted archive directory.
+fn locate_backend_binary(
+  dir: &Path,
+  backend: &str,
+  target: &str,
+) -> Option<PathBuf> {
+  let is_windows = target.contains("windows");
+  let is_macos = target.contains("apple-darwin");
+  match backend {
+    "cef" if is_macos => {
+      let p = dir.join("wef.app/Contents/MacOS/wef");
+      p.exists().then_some(p)
+    }
+    "webview" if is_macos => {
+      let p = dir.join("wef_webview.app/Contents/MacOS/wef_webview");
+      p.exists().then_some(p)
+    }
+    _ => {
+      let stem = match backend {
+        "cef" => "wef",
+        "raw" => "wef_winit",
+        "servo" => "wef_servo",
+        _ => "wef_webview",
+      };
+      let exe = if is_windows {
+        format!("{stem}.exe")
+      } else {
+        stem.to_string()
+      };
+      let p = dir.join(&exe);
+      p.exists().then_some(p)
+    }
+  }
+}
+
+fn locate_app_bundle(dir: &Path, backend: &str) -> Option<PathBuf> {
+  let name = match backend {
+    "cef" => "wef.app",
+    _ => "wef_webview.app",
+  };
+  let p = dir.join(name);
+  p.exists().then_some(p)
+}
+
+/// Target triple to use when selecting a wef backend archive. Honors
+/// `desktop_flags.target` (for cross-target packaging); otherwise defaults to
+/// the host triple this deno binary was built for.
+fn wef_target_for(desktop_flags: &DesktopFlags) -> &str {
+  desktop_flags
+    .target
+    .as_deref()
+    .unwrap_or(WEF_NATIVE_TARGET)
+}
+
+/// Resolve `WEF_DEV_DIR` to a directory path if set and present on disk.
+fn wef_dev_dir() -> Option<PathBuf> {
+  let raw = std::env::var(WEF_DEV_DIR_ENV).ok()?;
+  let p = PathBuf::from(raw);
+  p.is_dir().then_some(p)
+}
+
+/// Find a built backend binary inside a wef checkout. Mirrors the well-known
+/// build-tree paths produced by wef's Makefile + Nix flakes.
+fn locate_dev_backend_binary(wef: &Path, backend: &str) -> Option<PathBuf> {
+  let candidates: Vec<PathBuf> = match backend {
+    "cef" => vec![
+      wef.join("result-cef/Applications/wef.app/Contents/MacOS/wef"),
+      wef.join("result/Applications/wef.app/Contents/MacOS/wef"),
+      wef.join("cef/build/Release/wef.app/Contents/MacOS/wef"),
+      wef.join("cef/build/wef.app/Contents/MacOS/wef"),
+      wef.join("cef/build/Release/wef"),
+      wef.join("cef/build/wef"),
+    ],
+    "servo" => vec![
+      wef.join("target/release/wef_servo"),
+      wef.join("target/debug/wef_servo"),
+    ],
+    "raw" => vec![
+      wef.join("target/release/wef_winit"),
+      wef.join("target/debug/wef_winit"),
+    ],
+    _ => vec![
+      wef
+        .join("result-1/Applications/wef_webview.app/Contents/MacOS/wef_webview"),
+      wef.join("result/Applications/wef_webview.app/Contents/MacOS/wef_webview"),
+      wef.join("webview/build/wef_webview.app/Contents/MacOS/wef_webview"),
+      wef.join("webview/build/wef_webview"),
+    ],
+  };
+  candidates.into_iter().find(|p| p.exists())
+}
+
+/// Find a built backend `.app` bundle inside a wef checkout.
+fn locate_dev_app_bundle(wef: &Path, backend: &str) -> Option<PathBuf> {
+  let candidates: Vec<PathBuf> = match backend {
+    "cef" => vec![
+      wef.join("result-cef/Applications/wef.app"),
+      wef.join("result/Applications/wef.app"),
+      wef.join("cef/build/Release/wef.app"),
+      wef.join("cef/build/wef.app"),
+    ],
+    "raw" | "servo" => return None,
+    _ => vec![
+      wef.join("result-1/Applications/wef_webview.app"),
+      wef.join("result/Applications/wef_webview.app"),
+      wef.join("webview/build/wef_webview.app"),
+    ],
+  };
+  candidates.into_iter().find(|p| p.exists())
 }
 
 /// Extract a string value from a plist XML by key.
@@ -772,10 +976,11 @@ fn extract_plist_string(plist_xml: &str, key: &str) -> Option<String> {
 ///     Resources/
 ///       AppIcon.icns     (optional)
 /// ```
-fn package_macos_app_bundle(
+async fn package_macos_app_bundle(
   dylib_path: &Path,
   desktop_flags: &DesktopFlags,
   cli_options: &CliOptions,
+  wef_resolver: &WefBackendResolver,
 ) -> Result<PathBuf, AnyError> {
   let app_name = dylib_path
     .file_stem()
@@ -789,7 +994,8 @@ fn package_macos_app_bundle(
 
   // Find the WEF backend .app and its main executable.
   let backend = desktop_flags.backend.as_deref().unwrap_or("cef");
-  let wef_app = find_wef_backend_app_bundle(backend)?;
+  let target = wef_target_for(desktop_flags);
+  let wef_app = wef_resolver.find_app_bundle(backend, target).await?;
   let wef_plist_path = wef_app.join("Contents/Info.plist");
   let wef_executable_name = if wef_plist_path.exists() {
     let plist_content = std::fs::read_to_string(&wef_plist_path)?;
@@ -1056,44 +1262,6 @@ fn strip_cef_bloat(contents_dir: &Path) {
   // Remove SwiftShader (software Vulkan fallback, not needed on macOS with Metal).
   let _ = std::fs::remove_file(cef_libraries.join("libvk_swiftshader.dylib"));
   let _ = std::fs::remove_file(cef_libraries.join("vk_swiftshader_icd.json"));
-}
-
-/// Find the WEF backend executable.
-fn find_wef_backend(backend: &str) -> Result<PathBuf, AnyError> {
-  if let Ok(path) = std::env::var(WEF_BACKEND_ENV) {
-    let p = PathBuf::from(&path);
-    if p.exists() {
-      return Ok(p);
-    }
-    bail!(
-      "WEF backend not found at {} (set via {})",
-      path,
-      WEF_BACKEND_ENV
-    );
-  }
-
-  // Search relative to the deno executable for development.
-  let exe_dir = std::env::current_exe()
-    .ok()
-    .and_then(|p| p.parent().map(|p| p.to_path_buf()));
-  for search_path in wef_backend_search_paths(backend) {
-    let p = PathBuf::from(&search_path);
-    if p.exists() {
-      return Ok(p);
-    }
-    if let Some(exe_dir) = &exe_dir {
-      let p = exe_dir.join(&search_path);
-      if p.exists() {
-        return Ok(p);
-      }
-    }
-  }
-
-  bail!(
-    "WEF backend '{}' not found. Set {} to the path of the WEF backend executable.",
-    backend,
-    WEF_BACKEND_ENV
-  )
 }
 
 /// Build a macOS `.icns` from an icon set (multiple PNGs at specified sizes).
