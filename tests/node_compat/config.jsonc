@@ -1254,10 +1254,7 @@
     "parallel/test-http2-compat-aborted.js": {},
     "parallel/test-http2-compat-errors.js": {},
     "parallel/test-http2-compat-expect-continue-check.js": {},
-    "parallel/test-http2-compat-expect-continue.js": {
-      "ignore": true,
-      "reason": "HTTP/2 100-continue flow times out — continue event not emitted"
-    },
+    "parallel/test-http2-compat-expect-continue.js": {},
     "parallel/test-http2-compat-expect-handling.js": {},
     "parallel/test-http2-compat-method-connect.js": {},
     "parallel/test-http2-compat-serverrequest-end.js": {},
