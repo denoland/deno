@@ -889,18 +889,18 @@ pub(crate) unsafe fn poll_pipe_handle(
     // 2. Poll the pending `NamedPipeServer::connect()` future. When it
     // resolves, a client has attached to the named pipe and we fire
     // the connection callback so JS-side accept() can pick it up.
-    if let Some(ref mut fut) = (*pipe_ptr).internal_win_connect_fut {
-      if let Poll::Ready(res) = fut.as_mut().poll(cx) {
-        (*pipe_ptr).internal_win_connect_fut = None;
-        let status = match res {
-          Ok(()) => 0,
-          Err(ref e) => io_error_to_uv(e),
-        };
-        if let Some(cb) = (*pipe_ptr).internal_connection_cb {
-          cb(pipe_ptr as *mut uv_stream_t, status);
-        }
-        any_work = true;
+    if let Some(ref mut fut) = (*pipe_ptr).internal_win_connect_fut
+      && let Poll::Ready(res) = fut.as_mut().poll(cx)
+    {
+      (*pipe_ptr).internal_win_connect_fut = None;
+      let status = match res {
+        Ok(()) => 0,
+        Err(ref e) => io_error_to_uv(e),
+      };
+      if let Some(cb) = (*pipe_ptr).internal_connection_cb {
+        cb(pipe_ptr as *mut uv_stream_t, status);
       }
+      any_work = true;
     }
 
     // 3. Poll writes.
