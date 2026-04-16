@@ -2867,6 +2867,9 @@ fn build_client_config(
     TlsKeysHolder::from(TlsKeys::Null)
   };
 
+  // Fall back to the default Mozilla root cert store (same as deno_tls's
+  // own `create_client_config`).  The old `RootCertStore::empty()` caused
+  // every TLS connection without explicit CA options to fail verification.
   let mut root_cert_store =
     root_cert_store.unwrap_or_else(deno_tls::create_default_root_cert_store);
 

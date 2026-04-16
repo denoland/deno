@@ -1217,10 +1217,7 @@
     "parallel/test-http-set-cookies.js": {},
     "parallel/test-http-set-header-chain.js": {},
     "parallel/test-http-status-code.js": {},
-    "parallel/test-http-status-reason-invalid-chars.js": {
-      "ignore": true,
-      "reason": "writeHead() does not validate statusMessage for CRLF injection characters"
-    },
+    "parallel/test-http-status-reason-invalid-chars.js": {},
     "parallel/test-http-uncaught-from-request-callback.js": {},
     "parallel/test-http-url.parse-auth.js": {},
     "parallel/test-http-url.parse-basic.js": {},

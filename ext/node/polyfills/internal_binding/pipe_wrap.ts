@@ -150,6 +150,7 @@ export class Pipe extends ConnectionWrap {
     _req: WriteWrap<LibuvStreamWrap>,
     data: Uint8Array,
   ): number {
+    // The native pipe write is synchronous, so we report it as such.
     this.#native.writeBuffer(data);
     // deno-lint-ignore prefer-primordials
     const len = data.byteLength;
