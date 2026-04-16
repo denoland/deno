@@ -2080,10 +2080,8 @@ impl TLSWrap {
 
       inner.shutdown = true;
 
-      let handshaking = inner
-        .tls_conn
-        .as_ref()
-        .is_some_and(|c| c.is_handshaking());
+      let handshaking =
+        inner.tls_conn.as_ref().is_some_and(|c| c.is_handshaking());
 
       if handshaking {
         // Handshake not yet complete — defer close_notify and underlying
