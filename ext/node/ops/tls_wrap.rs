@@ -1181,6 +1181,17 @@ impl TLSWrapInner {
         if let Some(ctx) = extract_emit_ctx(ptr) {
           do_emit_handshake_done(&ctx);
         }
+
+        // If shutdown was requested before handshake completed, execute
+        // the deferred close_notify + underlying shutdown now.
+        if (*ptr).shutdown {
+          if let Some(ref mut conn) = (*ptr).tls_conn {
+            conn.send_close_notify();
+          }
+          let enc_action = (*ptr).enc_out_collect();
+          TLSWrapInner::do_enc_out_action(ptr, enc_action);
+          (*ptr).underlying.shutdown();
+        }
       }
 
       if !result.data.is_empty() {
@@ -2067,19 +2078,31 @@ impl TLSWrap {
     {
       let inner = unsafe { &mut *self.inner.as_mut_ptr() };
 
-      if let Some(ref mut conn) = inner.tls_conn {
-        conn.send_close_notify();
-      }
       inner.shutdown = true;
-      let enc_action = inner.enc_out_collect();
-      let inner_ptr = inner as *mut TLSWrapInner;
-      unsafe { TLSWrapInner::do_enc_out_action(inner_ptr, enc_action) };
 
-      // Forward shutdown to underlying stream, matching Node's
-      // TLSWrap::DoShutdown → underlying_stream()->DoShutdown().
-      // uv_shutdown defers until the write queue drains, so the
-      // close_notify (written by enc_out above) is sent first.
-      inner.underlying.shutdown();
+      let handshaking = inner
+        .tls_conn
+        .as_ref()
+        .map_or(false, |c| c.is_handshaking());
+
+      if handshaking {
+        // Handshake not yet complete — defer close_notify and underlying
+        // shutdown.  dispatch_clear_out_callbacks will check the shutdown
+        // flag once the handshake finishes and drive the close then.
+      } else {
+        if let Some(ref mut conn) = inner.tls_conn {
+          conn.send_close_notify();
+        }
+        let enc_action = inner.enc_out_collect();
+        let inner_ptr = inner as *mut TLSWrapInner;
+        unsafe { TLSWrapInner::do_enc_out_action(inner_ptr, enc_action) };
+
+        // Forward shutdown to underlying stream, matching Node's
+        // TLSWrap::DoShutdown → underlying_stream()->DoShutdown().
+        // uv_shutdown defers until the write queue drains, so the
+        // close_notify (written by enc_out above) is sent first.
+        inner.underlying.shutdown();
+      }
     }
 
     // Call req.oncomplete(0) to signal completion to the JS side,

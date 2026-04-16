@@ -2558,10 +2558,7 @@
     "parallel/test-tls-session-cache.js": {},
     "parallel/test-tls-timeout-server-2.js": {},
     "parallel/test-tls-transport-destroy-after-own-gc.js": {},
-    "parallel/test-tls-zero-clear-in.js": {
-      "ignore": true,
-      "reason": "rustls rejects close_notify sent before TLS handshake completes (conn.end('') before connect callback)"
-    },
+    "parallel/test-tls-zero-clear-in.js": {},
     "parallel/test-trace-events-api.js": {},
     "parallel/test-trace-events-async-hooks-dynamic.js": {},
     "parallel/test-trace-events-async-hooks-worker.js": {},
