@@ -259,6 +259,9 @@ pub unsafe fn uv_pipe_open(pipe: *mut uv_pipe_t, fd: c_int) -> c_int {
 /// `fd` must be a valid CRT file descriptor.
 #[cfg(windows)]
 pub unsafe fn uv_pipe_open(pipe: *mut uv_pipe_t, fd: c_int) -> c_int {
+  use windows_sys::Win32::Storage::FileSystem::FILE_TYPE_PIPE;
+  use windows_sys::Win32::Storage::FileSystem::GetFileType;
+
   if fd < 0 {
     return UV_EBADF;
   }
@@ -270,7 +273,31 @@ pub unsafe fn uv_pipe_open(pipe: *mut uv_pipe_t, fd: c_int) -> c_int {
     return UV_EBADF;
   }
 
+  // If this is a named pipe, wrap it in a tokio NamedPipeClient so reads
+  // and writes go through the async reactor. A sync `ReadFile` on a pipe
+  // opened with `FILE_FLAG_OVERLAPPED` aborts inside Rust's std when the
+  // operation returns `ERROR_IO_PENDING`, which is the common case when
+  // no data is immediately available. We cannot know the overlapped flag
+  // after the fact, so we fall through to the raw-handle path only for
+  // non-pipe handles.
   unsafe {
+    let h = handle as *mut std::ffi::c_void;
+    if GetFileType(h) == FILE_TYPE_PIPE {
+      match tokio::net::windows::named_pipe::NamedPipeClient::from_raw_handle(
+        handle as std::os::windows::io::RawHandle,
+      ) {
+        Ok(client) => {
+          (*pipe).internal_win_client = Some(client);
+          return 0;
+        }
+        Err(_) => {
+          // Fall through to raw-handle path on failure (e.g. handle not
+          // overlapped). NamedPipeClient owns the handle on success; on
+          // failure it does not, so it is safe to reuse `handle` below.
+        }
+      }
+    }
+
     (*pipe).internal_handle = Some(handle as std::os::windows::io::RawHandle);
     // Note: do NOT set UV_HANDLE_ACTIVE here. See Unix uv_pipe_open.
   }
