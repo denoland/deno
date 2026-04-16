@@ -105,6 +105,13 @@ impl<'a> ToV8<'a> for ExecuteJsResult {
   }
 }
 
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OpenDevtoolsOptions {
+  pub renderer: Option<bool>,
+  pub deno: Option<bool>,
+}
+
 /// A single event type that flows from the WEF backend to the Deno runtime.
 #[derive(Debug, serde::Serialize)]
 #[serde(tag = "kind", rename_all = "camelCase")]
@@ -300,7 +307,7 @@ pub trait DesktopApi: Send + Sync + 'static {
     raw_window_handle::RawDisplayHandle,
   );
 
-  fn open_devtools(&self, window_id: u32);
+  fn open_devtools(&self, window_id: u32, renderer: bool, deno: bool);
 
   fn execute_js(
     &self,
@@ -514,9 +521,21 @@ impl BrowserWindow {
     self.api.navigate(self.window_id, url);
   }
 
-  #[fast]
-  fn open_devtools(&self) {
-    self.api.open_devtools(self.window_id);
+  fn open_devtools(
+    &self,
+    #[serde] options: Option<OpenDevtoolsOptions>,
+  ) -> Result<(), deno_error::JsErrorBox> {
+    let (renderer, deno) = match options {
+      Some(opts) => (opts.renderer.unwrap_or(true), opts.deno.unwrap_or(true)),
+      None => (true, true),
+    };
+    if !renderer && !deno {
+      return Err(deno_error::JsErrorBox::type_error(
+        "At least one of 'renderer' or 'deno' must be true",
+      ));
+    }
+    self.api.open_devtools(self.window_id, renderer, deno);
+    Ok(())
   }
 
   #[fast]

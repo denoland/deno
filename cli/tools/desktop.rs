@@ -408,11 +408,11 @@ async fn run_desktop_hmr(
     .await?;
 
     log::info!(
-      "{} unified DevTools at ws://{}/  (chrome://inspect)",
-      colors::green("Listening"),
+      "{} DevTools on ws://{}  (open chrome://inspect)",
+      colors::green("Inspector"),
       handle.listen,
     );
-    log::info!(
+    log::debug!(
       "[desktop] internal upstream ports: deno={} cef={}",
       deno_internal,
       cef_internal,
@@ -423,6 +423,10 @@ async fn run_desktop_hmr(
         "DENO_DESKTOP_INSPECT_INTERNAL_PORT",
         deno_internal.to_string(),
       )
+      // Exposed so rt_desktop's `openDevtools()` can launch a browser
+      // pointed at the unified DevTools frontend instead of CEF's
+      // renderer-only native window.
+      .env("DENO_DESKTOP_MUX_WS", handle.listen.to_string())
       .env("WEF_REMOTE_DEBUGGING_PORT", cef_internal.port().to_string());
     if flags.inspect_brk.is_some() {
       cmd.env("DENO_DESKTOP_INSPECT_BRK", "1");
@@ -435,9 +439,12 @@ async fn run_desktop_hmr(
     None
   };
 
-  let mut child = tokio::process::Command::from(cmd).spawn().with_context(
-    || format!("Failed to launch WEF backend: {}", wef_backend.display()),
-  )?;
+  let mut child =
+    tokio::process::Command::from(cmd)
+      .spawn()
+      .with_context(|| {
+        format!("Failed to launch WEF backend: {}", wef_backend.display())
+      })?;
 
   let status = child
     .wait()
@@ -1353,7 +1360,10 @@ fn create_linux_appimage(
   // AppDir root.
   let staging = appimage_path.with_file_name(format!(
     ".{}.appimage-staging",
-    appimage_path.file_name().unwrap_or_default().to_string_lossy()
+    appimage_path
+      .file_name()
+      .unwrap_or_default()
+      .to_string_lossy()
   ));
   if staging.exists() {
     std::fs::remove_dir_all(&staging)?;

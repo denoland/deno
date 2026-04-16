@@ -96,6 +96,13 @@ declare class WheelEvent extends MouseEvent {
 declare namespace Deno {
   export {}; // stop default export type behavior
 
+  export interface OpenDevtoolsOptions {
+    /** Inspect the CEF renderer isolate. @default {true} */
+    renderer?: boolean;
+    /** Inspect the Deno runtime isolate. @default {true} */
+    deno?: boolean;
+  }
+
   export interface BrowserWindowOptions {
     title?: string;
     /** @default {800} */
@@ -240,7 +247,12 @@ declare namespace Deno {
     hide();
     focus();
     navigate(url: string);
-    openDevtools();
+    /** Open a DevTools window.
+     *
+     * By default both targets are shown. Pass an options object to
+     * select which targets to inspect. At least one must be `true`.
+     */
+    openDevtools(options?: OpenDevtoolsOptions): void;
     reload();
 
     setApplicationMenu(menu: MenuItem[]);
