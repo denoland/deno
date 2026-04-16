@@ -1273,10 +1273,7 @@
     "parallel/test-http2-compat-serverresponse-end-after-statuses-without-body.js": {},
     "parallel/test-http2-compat-serverresponse-finished.js": {},
     "parallel/test-http2-compat-serverresponse-headers-after-destroy.js": {},
-    "parallel/test-http2-compat-serverresponse-headers-send-date.js": {
-      "ignore": true,
-      "reason": "HTTP/2 JS data pump regression after TCPWrap migration"
-    },
+    "parallel/test-http2-compat-serverresponse-headers-send-date.js": {},
     "parallel/test-http2-compat-serverresponse-settimeout.js": {},
     "parallel/test-http2-compat-serverresponse-statuscode.js": {},
     "parallel/test-http2-compat-serverresponse-statusmessage-property-set.js": {},
