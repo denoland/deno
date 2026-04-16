@@ -1253,10 +1253,7 @@
     "parallel/test-http2-client-write-empty-string.js": {},
     "parallel/test-http2-compat-aborted.js": {},
     "parallel/test-http2-compat-errors.js": {},
-    "parallel/test-http2-compat-expect-continue-check.js": {
-      "ignore": true,
-      "reason": "HTTP/2 100-continue checkContinue flow not fully implemented"
-    },
+    "parallel/test-http2-compat-expect-continue-check.js": {},
     "parallel/test-http2-compat-expect-continue.js": {
       "ignore": true,
       "reason": "HTTP/2 100-continue flow times out — continue event not emitted"

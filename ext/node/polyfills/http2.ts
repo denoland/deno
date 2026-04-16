@@ -817,6 +817,7 @@ function requestOnConnect(headersList, options) {
     return;
   }
   this[kInit](ret.id(), ret);
+  scheduleSendPending(session);
   if (onClientStreamStartChannel.hasSubscribers) {
     onClientStreamStartChannel.publish({
       stream: this,
