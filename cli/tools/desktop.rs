@@ -144,6 +144,27 @@ async fn compile_desktop(
     });
   }
 
+  // Same for `.AppImage` on Linux — strip extension, wrap app dir in an
+  // AppImage at the end.
+  let appimage_output = desktop_flags
+    .output
+    .as_ref()
+    .filter(|o| o.to_lowercase().ends_with(".appimage"))
+    .cloned();
+  if let Some(ref appimage) = appimage_output {
+    let stem = Path::new(appimage)
+      .file_stem()
+      .map(|s| s.to_string_lossy().into_owned())
+      .unwrap_or_else(|| "App".to_string());
+    let parent = Path::new(appimage)
+      .parent()
+      .filter(|p| !p.as_os_str().is_empty());
+    desktop_flags.output = Some(match parent {
+      Some(p) => p.join(&stem).to_string_lossy().into_owned(),
+      None => stem,
+    });
+  }
+
   // Desktop framework detection: when --desktop is used and the source is
   // "." (a directory), detect the framework and generate the entrypoint.
   let _desktop_entrypoint_file = if desktop_flags.source_file == "." {
@@ -257,10 +278,15 @@ async fn compile_desktop(
     .await?;
 
     // If the user requested a .dmg, wrap the .app in one and report the DMG.
+    // If the user requested a .AppImage, wrap the Linux app dir in one.
     let final_path = if let Some(dmg) = dmg_output.as_deref() {
       let dmg_abs = cli_options.initial_cwd().join(dmg);
       create_macos_dmg(&bundle_path, &dmg_abs)?;
       dmg_abs
+    } else if let Some(appimage) = appimage_output.as_deref() {
+      let appimage_abs = cli_options.initial_cwd().join(appimage);
+      create_linux_appimage(&bundle_path, &appimage_abs)?;
+      appimage_abs
     } else {
       bundle_path
     };
@@ -639,13 +665,18 @@ async fn package_linux_app_dir(
   std::fs::copy(dylib_path, app_dir.join(dylib_filename))?;
 
   // Create a shell launcher that invokes the backend with --runtime.
+  // --ozone-platform=x11 forces CEF to create X11 windows (via XWayland on
+  // Wayland sessions). The Linux WEF mouse/focus/resize event monitor uses
+  // XI2 on X11 and does not support Wayland.
+  // GDK_BACKEND=x11 aligns GDK with Ozone so GDK_IS_X11_DISPLAY is true.
   let launcher_path = app_dir.join(&app_name);
   std::fs::write(
     &launcher_path,
     format!(
       "#!/bin/bash\n\
        DIR=\"$(cd \"$(dirname \"$0\")\" && pwd)\"\n\
-       exec \"$DIR/{wef_binary}\" --runtime \"$DIR/{dylib}\" \"$@\"\n",
+       export GDK_BACKEND=x11\n\
+       exec \"$DIR/{wef_binary}\" --ozone-platform=x11 --runtime \"$DIR/{dylib}\" \"$@\"\n",
       wef_binary = wef_binary_name,
       dylib = dylib_filename.to_string_lossy(),
     ),
@@ -1300,6 +1331,121 @@ fn create_macos_dmg(
 
   if !status.success() {
     bail!("hdiutil failed to create DMG at {}", dmg_path.display());
+  }
+  Ok(())
+}
+
+/// Wrap a Linux app directory in an `.AppImage` single-file executable.
+///
+/// Stages the app dir as an AppDir (adding `AppRun`, a `.desktop` entry, and
+/// a top-level icon) and invokes `appimagetool` to build the AppImage. The
+/// user must have `appimagetool` on `PATH`.
+fn create_linux_appimage(
+  app_dir: &Path,
+  appimage_path: &Path,
+) -> Result<(), AnyError> {
+  let app_name = app_dir
+    .file_name()
+    .map(|s| s.to_string_lossy().into_owned())
+    .unwrap_or_else(|| "App".to_string());
+
+  // Stage in a sibling directory. appimagetool treats the staging dir as the
+  // AppDir root.
+  let staging = appimage_path.with_file_name(format!(
+    ".{}.appimage-staging",
+    appimage_path.file_name().unwrap_or_default().to_string_lossy()
+  ));
+  if staging.exists() {
+    std::fs::remove_dir_all(&staging)?;
+  }
+  std::fs::create_dir_all(&staging)?;
+
+  crate::tools::compile::copy_dir_all(app_dir, &staging)?;
+
+  // AppRun is what the AppImage invokes on launch. Use a thin shell script
+  // so we don't have to deal with $ORIGIN-relative rpath in AppRun itself —
+  // the existing launcher already sets $DIR and execs the backend.
+  let apprun = staging.join("AppRun");
+  std::fs::write(
+    &apprun,
+    format!(
+      "#!/bin/bash\n\
+       DIR=\"$(cd \"$(dirname \"$0\")\" && pwd)\"\n\
+       exec \"$DIR/{app_name}\" \"$@\"\n",
+    ),
+  )?;
+  #[cfg(unix)]
+  {
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::set_permissions(&apprun, std::fs::Permissions::from_mode(0o755))?;
+  }
+
+  // .desktop entry. appimagetool requires one at the AppDir root.
+  let desktop_entry = format!(
+    "[Desktop Entry]\n\
+     Type=Application\n\
+     Name={app_name}\n\
+     Exec={app_name}\n\
+     Icon={app_name}\n\
+     Categories=Utility;\n",
+  );
+  std::fs::write(staging.join(format!("{app_name}.desktop")), desktop_entry)?;
+
+  // Icon: appimagetool looks for <Name>.png (or .svg) at the AppDir root.
+  // package_linux_app_dir writes the user icon as AppIcon.png — rename it.
+  // Fall back to a 1x1 transparent PNG if no icon was provided.
+  let icon_target = staging.join(format!("{app_name}.png"));
+  if !icon_target.exists() {
+    let app_icon = staging.join("AppIcon.png");
+    if app_icon.exists() {
+      std::fs::rename(&app_icon, &icon_target)?;
+    } else {
+      const STUB_PNG: &[u8] = &[
+        0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d,
+        0x49, 0x48, 0x44, 0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01,
+        0x08, 0x06, 0x00, 0x00, 0x00, 0x1f, 0x15, 0xc4, 0x89, 0x00, 0x00, 0x00,
+        0x0d, 0x49, 0x44, 0x41, 0x54, 0x78, 0x9c, 0x63, 0x00, 0x01, 0x00, 0x00,
+        0x05, 0x00, 0x01, 0x0d, 0x0a, 0x2d, 0xb4, 0x00, 0x00, 0x00, 0x00, 0x49,
+        0x45, 0x4e, 0x44, 0xae, 0x42, 0x60, 0x82,
+      ];
+      std::fs::write(&icon_target, STUB_PNG)?;
+    }
+  }
+
+  if appimage_path.exists() {
+    std::fs::remove_file(appimage_path)?;
+  }
+  if let Some(parent) = appimage_path.parent()
+    && !parent.as_os_str().is_empty()
+  {
+    std::fs::create_dir_all(parent)?;
+  }
+
+  // ARCH env var is required by appimagetool to name the runtime correctly.
+  let arch = match std::env::consts::ARCH {
+    "x86_64" => "x86_64",
+    "aarch64" => "aarch64",
+    other => other,
+  };
+
+  let status = std::process::Command::new("appimagetool")
+    .env("ARCH", arch)
+    .arg(&staging)
+    .arg(appimage_path)
+    .stdout(std::process::Stdio::null())
+    .stderr(std::process::Stdio::inherit())
+    .status()
+    .context(
+      "Failed to run appimagetool (install from https://appimage.github.io/appimagetool/)",
+    )?;
+
+  let _ = std::fs::remove_dir_all(&staging);
+
+  if !status.success() {
+    bail!(
+      "appimagetool failed to create AppImage at {}",
+      appimage_path.display()
+    );
   }
   Ok(())
 }
