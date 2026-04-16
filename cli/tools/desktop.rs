@@ -1,5 +1,6 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
+use std::net::SocketAddr;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -106,13 +107,8 @@ pub async fn desktop(
       log::info!("Building for target: {}", target);
       let mut desktop_flags = desktop_flags.clone();
       desktop_flags.target = Some(target.to_string());
-      compile_desktop(
-        flags.clone(),
-        desktop_flags,
-        cli_options,
-        &wef_resolver,
-      )
-      .await?;
+      compile_desktop(flags.clone(), desktop_flags, cli_options, &wef_resolver)
+        .await?;
     }
     Ok(())
   } else {
@@ -232,7 +228,11 @@ async fn compile_desktop(
     super::compile::compile_binary(Arc::new(temp_flags), compile_flags, true)
       .await?;
 
-  if desktop_flags.hmr {
+  let inspector_requested = flags.inspect.is_some()
+    || flags.inspect_brk.is_some()
+    || flags.inspect_wait.is_some();
+
+  if desktop_flags.hmr || inspector_requested {
     let cwd = cli_options.initial_cwd();
     let framework = super::framework::detect_framework(cwd)?;
     let backend = desktop_flags.backend.as_deref().unwrap_or("webview");
@@ -242,13 +242,19 @@ async fn compile_desktop(
       framework.as_ref(),
       backend,
       wef_resolver,
+      &flags,
+      &desktop_flags,
     )
     .await?;
   } else {
     // Package the dylib into a platform-specific app bundle.
-    let bundle_path =
-      package_desktop_app(&output_path, &desktop_flags, cli_options, wef_resolver)
-        .await?;
+    let bundle_path = package_desktop_app(
+      &output_path,
+      &desktop_flags,
+      cli_options,
+      wef_resolver,
+    )
+    .await?;
 
     // If the user requested a .dmg, wrap the .app in one and report the DMG.
     let final_path = if let Some(dmg) = dmg_output.as_deref() {
@@ -295,6 +301,8 @@ async fn run_desktop_hmr(
   framework: Option<&super::framework::FrameworkDetection>,
   backend: &str,
   wef_resolver: &WefBackendResolver,
+  flags: &Flags,
+  desktop_flags: &DesktopFlags,
 ) -> Result<(), AnyError> {
   let wef_backend =
     wef_resolver.find_binary(backend, WEF_NATIVE_TARGET).await?;
@@ -341,11 +349,77 @@ async fn run_desktop_hmr(
     }
   }
 
-  let mut child = cmd.spawn().with_context(|| {
-    format!("Failed to launch WEF backend: {}", wef_backend.display())
-  })?;
+  // Wire up the unified DevTools multiplexer when --inspect is set.
+  // The mux runs in this (parent) process and fronts both the Deno runtime
+  // inspector (in the WEF subprocess) and the CEF renderer's debug port
+  // (in CEF's child process). We allocate two internal ports here, hand
+  // them to the subprocess via env vars, and bind the user-visible port
+  // for DevTools to attach to.
+  let user_inspect = flags.inspect.or(flags.inspect_brk).or(flags.inspect_wait);
+  let mux_handle = if let Some(user_addr) = user_inspect {
+    let deno_internal: SocketAddr = format!(
+      "127.0.0.1:{}",
+      crate::tools::desktop_devtools::allocate_random_port()?
+    )
+    .parse()
+    .unwrap();
+    let cef_internal: SocketAddr = match desktop_flags.inspect_renderer {
+      Some(addr) => addr,
+      None => format!(
+        "127.0.0.1:{}",
+        crate::tools::desktop_devtools::allocate_random_port()?
+      )
+      .parse()
+      .unwrap(),
+    };
+    let handle = crate::tools::desktop_devtools::spawn_mux(
+      crate::tools::desktop_devtools::MuxConfig {
+        listen: user_addr,
+        deno_internal,
+        cef_internal,
+      },
+    )
+    .await?;
 
-  let status = child.wait().context("Failed waiting for WEF backend")?;
+    log::info!(
+      "{} unified DevTools at ws://{}/  (chrome://inspect)",
+      colors::green("Listening"),
+      handle.listen,
+    );
+    log::info!(
+      "[desktop] internal upstream ports: deno={} cef={}",
+      deno_internal,
+      cef_internal,
+    );
+
+    cmd
+      .env(
+        "DENO_DESKTOP_INSPECT_INTERNAL_PORT",
+        deno_internal.to_string(),
+      )
+      .env("WEF_REMOTE_DEBUGGING_PORT", cef_internal.port().to_string());
+    if flags.inspect_brk.is_some() {
+      cmd.env("DENO_DESKTOP_INSPECT_BRK", "1");
+    }
+    if flags.inspect_wait.is_some() {
+      cmd.env("DENO_DESKTOP_INSPECT_WAIT", "1");
+    }
+    Some(handle)
+  } else {
+    None
+  };
+
+  let mut child = tokio::process::Command::from(cmd).spawn().with_context(
+    || format!("Failed to launch WEF backend: {}", wef_backend.display()),
+  )?;
+
+  let status = child
+    .wait()
+    .await
+    .context("Failed waiting for WEF backend")?;
+
+  // Keep the mux alive until the subprocess exits, then drop it.
+  drop(mux_handle);
 
   if !status.success() {
     bail!("WEF backend exited with status: {}", status);
@@ -371,11 +445,21 @@ async fn package_desktop_app(
   };
 
   if is_darwin {
-    package_macos_app_bundle(dylib_path, desktop_flags, cli_options, wef_resolver)
-      .await
+    package_macos_app_bundle(
+      dylib_path,
+      desktop_flags,
+      cli_options,
+      wef_resolver,
+    )
+    .await
   } else if is_windows {
-    package_windows_app_dir(dylib_path, desktop_flags, cli_options, wef_resolver)
-      .await
+    package_windows_app_dir(
+      dylib_path,
+      desktop_flags,
+      cli_options,
+      wef_resolver,
+    )
+    .await
   } else {
     package_linux_app_dir(dylib_path, desktop_flags, cli_options, wef_resolver)
       .await
@@ -633,11 +717,7 @@ struct WefBackendResolver {
 
 impl WefBackendResolver {
   fn new(factory: &CliFactory) -> Result<Self, AnyError> {
-    let cache_root = factory
-      .deno_dir()?
-      .root
-      .join("wef")
-      .join(WEF_VERSION);
+    let cache_root = factory.deno_dir()?.root.join("wef").join(WEF_VERSION);
     Ok(Self {
       http_client_provider: factory.http_client_provider().clone(),
       cache_root,
@@ -889,10 +969,7 @@ fn locate_app_bundle(dir: &Path, backend: &str) -> Option<PathBuf> {
 /// `desktop_flags.target` (for cross-target packaging); otherwise defaults to
 /// the host triple this deno binary was built for.
 fn wef_target_for(desktop_flags: &DesktopFlags) -> &str {
-  desktop_flags
-    .target
-    .as_deref()
-    .unwrap_or(WEF_NATIVE_TARGET)
+  desktop_flags.target.as_deref().unwrap_or(WEF_NATIVE_TARGET)
 }
 
 /// Resolve `WEF_DEV_DIR` to a directory path if set and present on disk.
@@ -923,9 +1000,11 @@ fn locate_dev_backend_binary(wef: &Path, backend: &str) -> Option<PathBuf> {
       wef.join("target/debug/wef_winit"),
     ],
     _ => vec![
+      wef.join(
+        "result-1/Applications/wef_webview.app/Contents/MacOS/wef_webview",
+      ),
       wef
-        .join("result-1/Applications/wef_webview.app/Contents/MacOS/wef_webview"),
-      wef.join("result/Applications/wef_webview.app/Contents/MacOS/wef_webview"),
+        .join("result/Applications/wef_webview.app/Contents/MacOS/wef_webview"),
       wef.join("webview/build/wef_webview.app/Contents/MacOS/wef_webview"),
       wef.join("webview/build/wef_webview"),
     ],

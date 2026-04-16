@@ -833,6 +833,14 @@ pub struct RunOptions {
   pub auto_update_rolled_back: bool,
   /// Error reporting URL from deno.json `desktop.errorReporting.url`.
   pub error_reporting_url: Option<String>,
+  /// Stop on the first line of user code. Mirrors `--inspect-brk`.
+  pub inspect_brk: bool,
+  /// Wait for a DevTools session to attach before running user code.
+  /// Mirrors `--inspect-wait`.
+  pub inspect_wait: bool,
+  /// Enables inspector-related setup in the worker (registers the runtime
+  /// with the global inspector server). Mirrors `--inspect`/`-brk`/`-wait`.
+  pub is_inspecting: bool,
 }
 
 impl Default for RunOptions {
@@ -848,6 +856,9 @@ impl Default for RunOptions {
       auto_update_version: None,
       auto_update_rolled_back: false,
       error_reporting_url: None,
+      inspect_brk: false,
+      inspect_wait: false,
+      is_inspecting: false,
     }
   }
 }
@@ -1196,10 +1207,10 @@ pub async fn run_with_options(
     log_level: WorkerLogLevel::Info,
     enable_testing_features: false,
     has_node_modules_dir,
-    inspect_brk: false,
-    inspect_wait: false,
+    inspect_brk: options.inspect_brk,
+    inspect_wait: options.inspect_wait,
     trace_ops: None,
-    is_inspecting: false,
+    is_inspecting: options.is_inspecting,
     is_standalone: true,
     auto_serve: options.auto_serve,
     skip_op_registration: true,

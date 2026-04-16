@@ -1096,6 +1096,38 @@ async fn run_desktop(update_rolled_back: bool) -> Result<(), AnyError> {
 
   let desktop_serve_port = allocate_random_port()?;
 
+  // Wire up the Deno-side inspector when launched under
+  // `deno desktop --inspect[-brk|-wait]`. The parent process binds the
+  // user-visible port and runs a multiplexer that fronts both this
+  // inspector and the CEF renderer's debug port; we just listen on the
+  // internal port that the parent allocated for us.
+  let inspect_internal_port_raw =
+    env::var("DENO_DESKTOP_INSPECT_INTERNAL_PORT").ok();
+  let inspect_internal_port = inspect_internal_port_raw
+    .as_deref()
+    .and_then(|s| s.parse::<std::net::SocketAddr>().ok());
+  let inspect_brk = env::var("DENO_DESKTOP_INSPECT_BRK").is_ok();
+  let inspect_wait = env::var("DENO_DESKTOP_INSPECT_WAIT").is_ok();
+  eprintln!(
+    "[desktop] inspect env: DENO_DESKTOP_INSPECT_INTERNAL_PORT={:?} parsed={:?} brk={} wait={}",
+    inspect_internal_port_raw, inspect_internal_port, inspect_brk, inspect_wait,
+  );
+  if let Some(addr) = inspect_internal_port {
+    match deno_runtime::deno_inspector_server::create_inspector_server(
+      addr,
+      "deno-desktop",
+      // Don't print the ws:// URL ourselves — DevTools attaches via the
+      // parent mux's user-visible port.
+      deno_runtime::deno_inspector_server::InspectPublishUid {
+        console: false,
+        http: true,
+      },
+    ) {
+      Ok(_) => eprintln!("[desktop] inspector server bound on {addr}"),
+      Err(err) => eprintln!("[desktop] inspector server bind failed: {err:?}"),
+    }
+  }
+
   // Set DENO_SERVE_ADDRESS so Deno.serve() and Node http servers
   // automatically bind to the desktop port.
   #[allow(clippy::undocumented_unsafe_blocks)]
@@ -1200,6 +1232,9 @@ async fn run_desktop(update_rolled_back: bool) -> Result<(), AnyError> {
     auto_update_version,
     auto_update_rolled_back,
     error_reporting_url: data.metadata.error_reporting_url.clone(),
+    inspect_brk,
+    inspect_wait,
+    is_inspecting: inspect_internal_port.is_some(),
   };
 
   // Run the Deno runtime and WEF event loop concurrently.

@@ -203,6 +203,10 @@ pub struct DesktopFlags {
   pub hmr: bool,
   pub backend: Option<String>,
   pub all_targets: bool,
+  /// Optional override for the CEF renderer debugger port. When unset, a free
+  /// port is allocated. The user-visible inspector port (from `--inspect`) is
+  /// separate and is carried on `Flags::inspect`.
+  pub inspect_renderer: Option<SocketAddr>,
 }
 
 impl CompileFlags {
@@ -2922,8 +2926,21 @@ framework (Next.js, Astro, etc.).
     UnstableArgsConfig::ResolutionAndRuntime,
   )
   .defer(|cmd| {
-    runtime_args(cmd, true, false, true)
+    runtime_args(cmd, true, true, true)
       .arg(check_arg(true))
+      .arg(
+        Arg::new("inspect-renderer")
+          .long("inspect-renderer")
+          .value_name("HOST_PORT")
+          .default_missing_value("127.0.0.1:0")
+          .help(
+            "Override the CEF renderer debugger listen address; defaults to an auto-allocated port",
+          )
+          .num_args(0..=1)
+          .require_equals(true)
+          .value_parser(inspect_value_parser)
+          .help_heading(DEBUGGING_HEADING),
+      )
       .arg(
         Arg::new("include")
           .long("include")
@@ -6442,7 +6459,7 @@ fn desktop_parse(
   matches: &mut ArgMatches,
 ) -> clap::error::Result<()> {
   flags.type_check_mode = TypeCheckMode::Local;
-  runtime_args_parse(flags, matches, true, false, true)?;
+  runtime_args_parse(flags, matches, true, true, true)?;
 
   if let Some(initial_cwd) = flags.initial_cwd.take() {
     flags.initial_cwd = Some(
@@ -6461,6 +6478,7 @@ fn desktop_parse(
   let hmr = matches.get_flag("hmr");
   let backend = matches.remove_one::<String>("backend");
   let all_targets = matches.get_flag("all-targets");
+  let inspect_renderer = matches.remove_one::<SocketAddr>("inspect-renderer");
   let include = matches
     .remove_many::<String>("include")
     .map(|f| f.collect::<Vec<_>>())
@@ -6484,6 +6502,7 @@ fn desktop_parse(
     hmr,
     backend,
     all_targets,
+    inspect_renderer,
   });
 
   Ok(())
