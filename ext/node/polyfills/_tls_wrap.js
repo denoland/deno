@@ -495,6 +495,16 @@ TLSSocket.prototype._init = function (socket, wrap) {
     assert(!socket);
     this.connecting = true;
   }
+
+  // Auto-start server-side TLS when the underlying socket is already
+  // connected. This handles the STARTTLS pattern where a plain TCP socket
+  // is wrapped with `new TLSSocket(socket, { isServer: true })` after a
+  // plaintext exchange (SMTP, IMAP, XMPP, PostgreSQL, etc.).
+  // Use nextTick so the caller can attach event listeners first.
+  // Client-side sockets are started by tls.connect() instead.
+  if (options.isServer && wrap && !this.connecting) {
+    nextTick(() => this._start());
+  }
 };
 
 TLSSocket.prototype.renegotiate = function (_options, callback) {

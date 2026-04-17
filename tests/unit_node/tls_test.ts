@@ -529,6 +529,69 @@ BnRlc3RDQTCB
   (tls as any).setDefaultCACertificates([testCert]);
 });
 
+// https://github.com/denoland/deno/issues/31759
+// Server-side STARTTLS: new tls.TLSSocket(socket, { isServer: true }) must
+// auto-start the TLS handshake without requiring an explicit _start() call.
+// This is used by SMTP, IMAP, XMPP, and similar STARTTLS protocols.
+Deno.test("tls.TLSSocket server-side STARTTLS auto-starts handshake", async () => {
+  const { promise, resolve, reject } = Promise.withResolvers<void>();
+
+  const server = net.createServer((rawSocket) => {
+    rawSocket.write("READY");
+    rawSocket.once("data", (data) => {
+      if (data.toString() === "STARTTLS") {
+        rawSocket.write("OK", () => {
+          // Server-side STARTTLS: no explicit _start() call
+          // deno-lint-ignore no-explicit-any
+          const tlsSocket = new tls.TLSSocket(rawSocket, {
+            isServer: true,
+            key,
+            cert,
+          } as any);
+          tlsSocket.on("secure", () => {
+            tlsSocket.write("SECURE");
+          });
+          tlsSocket.on("error", () => {});
+        });
+      }
+    });
+  });
+
+  server.listen(0, () => {
+    // deno-lint-ignore no-explicit-any
+    const port = (server.address() as any).port;
+    const socket = net.connect({ host: "localhost", port });
+    socket.once("data", (greeting) => {
+      assertEquals(greeting.toString(), "READY");
+      socket.write("STARTTLS");
+      socket.once("data", (response) => {
+        assertEquals(response.toString(), "OK");
+        const tlsSocket = tls.connect({
+          socket,
+          host: "localhost",
+          ca: rootCaCert,
+        });
+        tlsSocket.on("secureConnect", () => {
+          assert(tlsSocket.authorized);
+        });
+        tlsSocket.setEncoding("utf8");
+        tlsSocket.on("data", (d) => {
+          assertEquals(d, "SECURE");
+          tlsSocket.destroy();
+          server.close();
+          resolve();
+        });
+        tlsSocket.on("error", (err: Error) => {
+          server.close();
+          reject(err);
+        });
+      });
+    });
+  });
+
+  await promise;
+});
+
 // https://github.com/denoland/deno/issues/33296
 // Regression test: tls.connect({ socket, host }) must send SNI derived from host.
 // pg (PostgreSQL client) does STARTTLS: exchanges plaintext over TCP then calls
