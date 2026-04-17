@@ -232,7 +232,7 @@
     "parallel/test-child-process-fork-detached.js": {},
     "parallel/test-child-process-fork-no-shell.js": {},
     "parallel/test-child-process-fork-stdio-string-variant.js": {},
-    // TODO(bartlomieju): flaky on Windows with NativePipe
+    // TODO(bartlomieju): flaky on Windows with PipeWrap
     "parallel/test-child-process-fork-stdio.js": { "windows": false },
     "parallel/test-child-process-fork-ref.js": {},
     "parallel/test-child-process-fork-ref2.js": {},
