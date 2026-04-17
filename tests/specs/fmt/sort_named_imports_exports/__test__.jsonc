@@ -1,0 +1,13 @@
+{
+  "tests": {
+    "preserves_order_when_disabled": {
+      "args": "fmt --config deno.jsonc --check unsorted.ts",
+      "output": "Checked 1 file\n"
+    },
+    "sorts_by_default": {
+      "args": "fmt --no-config --check unsorted.ts",
+      "output": "[WILDCARD]error: Found 1 not formatted file in 1 file\n",
+      "exitCode": 1
+    }
+  }
+}
