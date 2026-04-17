@@ -1983,8 +1983,6 @@ impl Http2Session {
         break;
       }
     }
-    // After draining nghttp2's output, check if graceful close can complete.
-    session.maybe_notify_graceful_close_complete();
     output.into_boxed_slice()
   }
 
