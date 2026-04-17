@@ -591,10 +591,23 @@ export class ChildProcess extends EventEmitter {
       return false;
     }
 
-    const denoSignal = signal == null ? "SIGTERM" : toDenoSignal(signal);
+    const signalName = signal == null ? "SIGTERM" : toDenoSignal(signal);
+    // On Windows, Deno only supports a subset of signals (SIGTERM, SIGKILL,
+    // SIGINT). Node maps all signals to TerminateProcess, so we fall back
+    // to SIGTERM for unsupported signals while preserving the original
+    // signal name in signalCode.
+    let denoSignal = signalName;
+    if (isWindows) {
+      if (
+        denoSignal !== "SIGTERM" && denoSignal !== "SIGKILL" &&
+        denoSignal !== "SIGINT"
+      ) {
+        denoSignal = "SIGTERM";
+      }
+    }
     this.#closePipes();
     try {
-      this.#process.kill(denoSignal);
+      this.#process.kill(denoSignal as Deno.Signal);
     } catch (err) {
       const alreadyClosed = err instanceof TypeError ||
         err instanceof Deno.errors.PermissionDenied;
@@ -611,7 +624,7 @@ export class ChildProcess extends EventEmitter {
     }
 
     this.killed = true;
-    this.signalCode = denoSignal;
+    this.signalCode = signalName;
     return true;
   }
 
@@ -693,18 +706,23 @@ function toDenoStdio(
 }
 
 function toDenoSignal(signal: number | string): Deno.Signal {
+  // Use Node's signal constants (which include all POSIX signals on
+  // every platform) rather than Deno's os.signals (which only lists
+  // platform-native signals). This lets cross-platform code like
+  // kill("SIGQUIT") on Windows work -- the caller maps unsupported
+  // signals to SIGTERM.
+  const nodeSignals = os.signals as Record<string, number>;
   if (typeof signal === "number") {
-    for (const name of keys(os.signals)) {
-      if (os.signals[name] === signal) {
+    for (const name of keys(nodeSignals)) {
+      if (nodeSignals[name] === signal) {
         return name as Deno.Signal;
       }
     }
     throw new ERR_UNKNOWN_SIGNAL(String(signal));
   }
 
-  const denoSignal = signal as Deno.Signal;
-  if (denoSignal in os.signals) {
-    return denoSignal;
+  if (signal in nodeSignals) {
+    return signal as Deno.Signal;
   }
   throw new ERR_UNKNOWN_SIGNAL(signal);
 }

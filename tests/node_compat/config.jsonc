@@ -244,7 +244,7 @@
     "parallel/test-child-process-fork3.js": {},
     "parallel/test-child-process-ipc.js": {},
     "parallel/test-child-process-ipc-next-tick.js": {},
-    "parallel/test-child-process-kill.js": { "windows": false },
+    "parallel/test-child-process-kill.js": {},
     "parallel/test-child-process-no-deprecation.js": {},
     "parallel/test-child-process-promisified.js": {},
     "parallel/test-child-process-reject-null-bytes.js": {},
