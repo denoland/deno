@@ -2506,3 +2506,53 @@ Deno.test(
     await promise;
   },
 );
+
+// Regression test: socket.write() + socket.end() in an upgrade handler
+// must not crash. Previously, llhttp_finish() was called without setting
+// up the ExecuteContext, causing a null pointer dereference when the
+// client-side HTTP parser processed the rejected-upgrade response.
+// https://github.com/denoland/deno/issues/28654
+Deno.test(
+  "[node/http] upgrade rejection via socket.write + socket.end does not crash",
+  async () => {
+    const { promise, resolve } = Promise.withResolvers<void>();
+
+    const server = http.createServer();
+
+    server.on("upgrade", (_req, socket, _head) => {
+      socket.write("HTTP/1.1 404 Not Found\r\n\r\n");
+      socket.end();
+    });
+
+    server.listen(0, () => {
+      const port = (server.address() as AddressInfo).port;
+
+      const req = http.request({
+        port,
+        host: "127.0.0.1",
+        path: "/",
+        headers: {
+          Connection: "Upgrade",
+          Upgrade: "websocket",
+          "Sec-WebSocket-Key": "dGhlIHNhbXBsZSBub25jZQ==",
+          "Sec-WebSocket-Version": "13",
+        },
+      });
+
+      req.on("response", (res) => {
+        assertEquals(res.statusCode, 404);
+        req.destroy();
+        server.close(() => resolve());
+      });
+
+      req.on("error", () => {
+        // Connection reset is acceptable
+        server.close(() => resolve());
+      });
+
+      req.end();
+    });
+
+    await promise;
+  },
+);
