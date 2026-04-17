@@ -105,6 +105,8 @@ pub struct uv_pipe_t {
   pub(crate) internal_shutdown: Option<super::tcp::ShutdownPending>,
   pub(crate) pending_instances: i32,
   pub(crate) ipc: bool,
+  pub(crate) internal_waker:
+    Option<std::sync::Arc<crate::uv_compat::waker::PipeHandleWaker>>,
 }
 
 /// In-flight pipe connect operation.
@@ -193,6 +195,7 @@ pub fn new_pipe(ipc: bool) -> uv_pipe_t {
     internal_shutdown: None,
     pending_instances: 4, // libuv default
     ipc,
+    internal_waker: None,
   }
 }
 
@@ -210,6 +213,10 @@ pub unsafe fn uv_pipe_init(
     (*pipe).loop_ = loop_;
     // Match libuv: handles start ref'd so they keep the event loop alive.
     (*pipe).flags = super::UV_HANDLE_REF;
+    let shared = super::get_inner(loop_).shared.clone();
+    (*pipe).internal_waker = Some(
+      crate::uv_compat::waker::PipeHandleWaker::new(pipe as usize, shared),
+    );
   }
   0
 }
@@ -414,6 +421,9 @@ pub unsafe fn uv_pipe_listen(
     if !handles.iter().any(|&h| std::ptr::eq(h, pipe)) {
       handles.push(pipe);
     }
+    if let Some(w) = (*pipe).internal_waker.as_ref() {
+      w.mark_ready();
+    }
   }
   0
 }
@@ -561,6 +571,9 @@ pub unsafe fn uv_pipe_connect(
     if !handles.iter().any(|&h| std::ptr::eq(h, pipe)) {
       handles.push(pipe);
     }
+    if let Some(w) = (*pipe).internal_waker.as_ref() {
+      w.mark_ready();
+    }
   }
   0
 }
@@ -605,6 +618,9 @@ pub unsafe fn uv_pipe_listen(
     let mut handles = inner.pipe_handles.borrow_mut();
     if !handles.iter().any(|&h| std::ptr::eq(h, pipe)) {
       handles.push(pipe);
+    }
+    if let Some(w) = (*pipe).internal_waker.as_ref() {
+      w.mark_ready();
     }
   }
   0
@@ -705,6 +721,9 @@ pub unsafe fn uv_pipe_connect(
         let mut handles = inner.pipe_handles.borrow_mut();
         if !handles.iter().any(|&h| std::ptr::eq(h, pipe)) {
           handles.push(pipe);
+        }
+        if let Some(w) = (*pipe).internal_waker.as_ref() {
+          w.mark_ready();
         }
         0
       }
@@ -897,6 +916,9 @@ pub(crate) unsafe fn read_start_pipe(
     if !handles.iter().any(|&h| std::ptr::eq(h, pipe)) {
       handles.push(pipe);
     }
+    if let Some(w) = (*pipe).internal_waker.as_ref() {
+      w.mark_ready();
+    }
   }
   0
 }
@@ -931,6 +953,9 @@ pub(crate) unsafe fn read_start_pipe(
     let mut handles = inner.pipe_handles.borrow_mut();
     if !handles.iter().any(|&h| std::ptr::eq(h, pipe)) {
       handles.push(pipe);
+    }
+    if let Some(w) = (*pipe).internal_waker.as_ref() {
+      w.mark_ready();
     }
   }
   0

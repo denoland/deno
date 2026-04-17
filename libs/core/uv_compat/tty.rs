@@ -253,6 +253,9 @@ pub struct uv_tty_t {
   pub(crate) internal_line_read_result: Option<LineReadResult>,
   #[cfg(windows)]
   pub(crate) internal_line_read_pending: bool,
+
+  pub(crate) internal_waker:
+    Option<std::sync::Arc<crate::uv_compat::waker::TtyHandleWaker>>,
 }
 
 #[cfg(windows)]
@@ -1485,6 +1488,15 @@ pub unsafe fn uv_tty_init(
       write(addr_of_mut!((*tty).internal_line_read_result), None);
       write(addr_of_mut!((*tty).internal_line_read_pending), false);
     }
+
+    let shared = super::get_inner(loop_).shared.clone();
+    write(
+      addr_of_mut!((*tty).internal_waker),
+      Some(crate::uv_compat::waker::TtyHandleWaker::new(
+        tty as usize,
+        shared,
+      )),
+    );
   }
   0
 }
@@ -1750,6 +1762,9 @@ pub(crate) unsafe fn read_start_tty(
       handles.push(tty);
     }
     drop(handles);
+    if let Some(w) = (*tty).internal_waker.as_ref() {
+      w.mark_ready();
+    }
 
     // Wake the event loop so poll_tty_handle runs on the next tick.
     // This registers the RegisterWaitForSingleObject (for future
@@ -1977,6 +1992,9 @@ unsafe fn ensure_tty_registered(tty: *mut uv_tty_t) {
       handles.push(tty);
     }
     drop(handles);
+    if let Some(w) = (*tty).internal_waker.as_ref() {
+      w.mark_ready();
+    }
 
     // On Windows, wake the event loop so pending write callbacks are
     // processed promptly. Without this, deferred callbacks can stall
@@ -2016,6 +2034,9 @@ pub(crate) unsafe fn shutdown_tty(
       handles.push(tty);
     }
     (*tty).flags |= UV_HANDLE_ACTIVE;
+    if let Some(w) = (*tty).internal_waker.as_ref() {
+      w.mark_ready();
+    }
   }
   0
 }
@@ -2597,6 +2618,7 @@ pub fn new_tty() -> uv_tty_t {
     internal_line_read_result: None,
     #[cfg(windows)]
     internal_line_read_pending: false,
+    internal_waker: None,
   }
 }
 
