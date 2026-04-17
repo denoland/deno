@@ -229,7 +229,7 @@ HTTPParser.prototype.execute = function (
 };
 
 HTTPParser.prototype.finish = function (this: any) {
-  return this._native.finish();
+  return this._native.finish(this);
 };
 
 HTTPParser.prototype.pause = function (this: any) {
