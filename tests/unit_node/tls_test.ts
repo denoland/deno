@@ -542,11 +542,11 @@ Deno.test("tls.TLSSocket server-side STARTTLS auto-starts handshake", async () =
       if (data.toString() === "STARTTLS") {
         rawSocket.write("OK", () => {
           // Server-side STARTTLS: no explicit _start() call
-          // deno-lint-ignore no-explicit-any
           const tlsSocket = new tls.TLSSocket(rawSocket, {
             isServer: true,
             key,
             cert,
+            // deno-lint-ignore no-explicit-any
           } as any);
           tlsSocket.on("secure", () => {
             tlsSocket.write("SECURE");
@@ -605,11 +605,11 @@ Deno.test("tls.connect socket upgrade sends SNI from host option", async () => {
     rawSocket.once("data", (data) => {
       if (data.toString() === "STARTTLS") {
         rawSocket.write("OK", () => {
-          // deno-lint-ignore no-explicit-any
           const tlsSocket = new tls.TLSSocket(rawSocket, {
             isServer: true,
             key,
             cert,
+            // deno-lint-ignore no-explicit-any
           } as any);
           // deno-lint-ignore no-explicit-any
           (tlsSocket as any)._start();
@@ -664,11 +664,11 @@ Deno.test("tls.connect socket upgrade derives SNI from socket._host", async () =
     rawSocket.once("data", (data) => {
       if (data.toString() === "STARTTLS") {
         rawSocket.write("OK", () => {
-          // deno-lint-ignore no-explicit-any
           const tlsSocket = new tls.TLSSocket(rawSocket, {
             isServer: true,
             key,
             cert,
+            // deno-lint-ignore no-explicit-any
           } as any);
           // deno-lint-ignore no-explicit-any
           (tlsSocket as any)._start();
