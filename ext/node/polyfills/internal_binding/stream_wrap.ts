@@ -78,4 +78,3 @@ export class ShutdownWrap<H extends HandleWrap> extends AsyncWrap {
     super(providerType.SHUTDOWNWRAP);
   }
 }
-
