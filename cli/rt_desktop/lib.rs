@@ -1258,9 +1258,45 @@ async fn run_desktop(update_rolled_back: bool) -> Result<(), AnyError> {
   // Wait for the server to be ready, then navigate the initial window.
   // Do a full HTTP request instead of just a TCP connect — frameworks
   // like Vite accept connections before they're ready to serve.
+  let wait_for_debugger = inspect_brk || inspect_wait;
+  let mux_addr = env::var("DENO_DESKTOP_MUX_WS").ok();
   let navigate_fut = async move {
     use tokio::io::AsyncReadExt;
     use tokio::io::AsyncWriteExt;
+
+    // When --inspect-wait or --inspect-brk: block until a DevTools
+    // client has connected to the mux. This prevents the renderer
+    // from racing ahead while the developer is still opening DevTools.
+    if wait_for_debugger {
+      if let Some(ref mux) = mux_addr {
+        eprintln!(
+          "[desktop] Waiting for debugger to attach on ws://{mux} …"
+        );
+        loop {
+          if let Ok(mut stream) =
+            tokio::net::TcpStream::connect(mux.as_str()).await
+          {
+            let req = format!(
+              "GET /debugger-attached HTTP/1.1\r\nHost: {mux}\r\nConnection: close\r\n\r\n",
+            );
+            if stream.write_all(req.as_bytes()).await.is_ok() {
+              let mut buf = vec![0u8; 128];
+              if let Ok(n) = stream.read(&mut buf).await {
+                let resp = String::from_utf8_lossy(&buf[..n]);
+                if resp.starts_with("HTTP/1.1 200")
+                  || resp.starts_with("HTTP/1.0 200")
+                {
+                  eprintln!("[desktop] Debugger attached");
+                  break;
+                }
+              }
+            }
+          }
+          tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+        }
+      }
+    }
+
     for i in 0..60 {
       if let Ok(mut stream) =
         tokio::net::TcpStream::connect(("127.0.0.1", desktop_serve_port)).await

@@ -201,6 +201,12 @@ pub const DESKTOP_JS: &str = r#"
   // Per-window bind callback registry: windowId -> Map<name, fn>
   const windowBindCallbacks = new Map();
 
+  // Binding-call correlation: when --inspect is active, both the Deno
+  // and renderer consoles emit matching console.debug messages so the
+  // developer can trace a binding call across isolates.
+  const bindingTrace = typeof Deno.env?.get === "function"
+    && Deno.env.get("DENO_DESKTOP_MUX_WS") != null;
+
   const nativeBind = BrowserWindowPrototype.bind;
   BrowserWindowPrototype.bind = function(name, fn) {
     const windowId = this.windowId;
@@ -209,6 +215,41 @@ pub const DESKTOP_JS: &str = r#"
     }
     windowBindCallbacks.get(windowId).set(name, fn.bind(this));
     nativeBind.call(this, name);
+
+    // Inject a renderer-side wrapper that emits console.debug around
+    // every binding call. The wrapper waits for the native binding to
+    // appear (CEF registers it asynchronously via IPC) and then
+    // replaces it with a logging shim.
+    if (bindingTrace) {
+      const escapedName = JSON.stringify(name);
+      this.executeJs(`(function() {
+        var n = ${escapedName};
+        var seq = 0;
+        function tryWrap() {
+          if (typeof window.bindings === "undefined" || typeof window.bindings[n] !== "function") {
+            setTimeout(tryWrap, 10);
+            return;
+          }
+          var orig = window.bindings[n];
+          if (orig.__bindTrace) return;
+          window.bindings[n] = async function() {
+            var id = ++seq;
+            var args = Array.prototype.slice.call(arguments);
+            console.debug("[binding:call]", n, ":" + id, args);
+            try {
+              var result = await orig.apply(this, arguments);
+              console.debug("[binding:return]", n, ":" + id, result);
+              return result;
+            } catch (e) {
+              console.debug("[binding:error]", n, ":" + id, e);
+              throw e;
+            }
+          };
+          window.bindings[n].__bindTrace = true;
+        }
+        tryWrap();
+      })();`);
+    }
   };
 
   const nativeUnbind = BrowserWindowPrototype.unbind;
@@ -294,9 +335,18 @@ pub const DESKTOP_JS: &str = r#"
             (async () => {
               try {
                 const args = Array.isArray(ev.args) ? ev.args : [];
+                if (bindingTrace) {
+                  console.debug("[binding:call]", ev.name, ":" + ev.callId, args);
+                }
                 const result = await fn_(...args);
+                if (bindingTrace) {
+                  console.debug("[binding:return]", ev.name, ":" + ev.callId, result);
+                }
                 op_desktop_resolve_bind_call(ev.callId, result ?? null);
               } catch (e) {
+                if (bindingTrace) {
+                  console.debug("[binding:error]", ev.name, ":" + ev.callId, String(e));
+                }
                 op_desktop_reject_bind_call(ev.callId, String(e));
               }
             })();

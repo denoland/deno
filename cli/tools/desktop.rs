@@ -398,11 +398,15 @@ async fn run_desktop_hmr(
       .parse()
       .unwrap(),
     };
+    let wait_for_debugger =
+      flags.inspect_brk.is_some() || flags.inspect_wait.is_some();
     let handle = crate::tools::desktop_devtools::spawn_mux(
       crate::tools::desktop_devtools::MuxConfig {
         listen: user_addr,
         deno_internal,
         cef_internal,
+        inspect_brk: flags.inspect_brk.is_some(),
+        wait_for_debugger,
       },
     )
     .await?;
@@ -556,7 +560,9 @@ async fn package_windows_app_dir(
 
   // Copy the compiled dylib (denort.dll) alongside the backend binary.
   let dylib_filename = dylib_path.file_name().unwrap();
-  std::fs::copy(dylib_path, app_dir.join(dylib_filename))?;
+  let dest_dylib = app_dir.join(dylib_filename);
+  std::fs::copy(dylib_path, &dest_dylib)?;
+  strip_dylib(&dest_dylib);
 
   // Create a .bat launcher that invokes the backend with --runtime.
   let launcher_path = app_dir.join(format!("{}.bat", app_name));
@@ -669,7 +675,9 @@ async fn package_linux_app_dir(
 
   // Copy the compiled dylib alongside the backend binary.
   let dylib_filename = dylib_path.file_name().unwrap();
-  std::fs::copy(dylib_path, app_dir.join(dylib_filename))?;
+  let dest_dylib = app_dir.join(dylib_filename);
+  std::fs::copy(dylib_path, &dest_dylib)?;
+  strip_dylib(&dest_dylib);
 
   // Create a shell launcher that invokes the backend with --runtime.
   // --ozone-platform=x11 forces CEF to create X11 windows (via XWayland on
@@ -1161,9 +1169,11 @@ async fn package_macos_app_bundle(
   // Strip unnecessary bulk from the CEF framework.
   strip_cef_bloat(&contents_dir);
 
-  // Copy the compiled dylib.
+  // Copy the compiled dylib and strip symbols.
   let dylib_filename = dylib_path.file_name().unwrap();
-  std::fs::copy(dylib_path, macos_dir.join(dylib_filename))?;
+  let dest_dylib = macos_dir.join(dylib_filename);
+  std::fs::copy(dylib_path, &dest_dylib)?;
+  strip_dylib(&dest_dylib);
 
   // Create launcher script as the main executable.
   let launcher_path = macos_dir.join(&app_name);
@@ -1458,6 +1468,39 @@ fn create_linux_appimage(
     );
   }
   Ok(())
+}
+
+/// Strip local symbols from the compiled dylib to reduce size.
+///
+/// On macOS uses `strip -x` (remove local symbols, keep global/debug-essential).
+/// On Linux uses `strip --strip-unneeded` (remove symbols not needed for relocation).
+fn strip_dylib(dylib_path: &Path) {
+  let strip_args: &[&str] = if cfg!(target_os = "macos") {
+    &["-x", dylib_path.to_str().unwrap_or_default()]
+  } else if cfg!(target_os = "linux") {
+    &[
+      "--strip-unneeded",
+      dylib_path.to_str().unwrap_or_default(),
+    ]
+  } else {
+    return;
+  };
+
+  match std::process::Command::new("strip").args(strip_args).output() {
+    Ok(output) if output.status.success() => {
+      log::info!("Stripped symbols from {}", dylib_path.display());
+    }
+    Ok(output) => {
+      log::warn!(
+        "strip exited with {}: {}",
+        output.status,
+        String::from_utf8_lossy(&output.stderr)
+      );
+    }
+    Err(e) => {
+      log::warn!("Failed to run strip on {}: {}", dylib_path.display(), e);
+    }
+  }
 }
 
 /// Recursively copy a directory tree, ensuring writable permissions on the
