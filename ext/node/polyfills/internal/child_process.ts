@@ -575,7 +575,7 @@ export class ChildProcess extends EventEmitter {
    */
   kill(signal?: number | string): boolean {
     if (this.killed) {
-      return this.killed;
+      return false;
     }
 
     // Signal 0 is a special case: it checks if the process exists
@@ -599,6 +599,8 @@ export class ChildProcess extends EventEmitter {
       if (!alreadyClosed) {
         throw err;
       }
+      // Process already exited, signal was not delivered.
+      return false;
     }
 
     /* Cancel any pending IPC I/O */
@@ -608,7 +610,7 @@ export class ChildProcess extends EventEmitter {
 
     this.killed = true;
     this.signalCode = denoSignal;
-    return this.killed;
+    return true;
   }
 
   [Symbol.dispose]() {
