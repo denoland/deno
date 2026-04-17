@@ -2656,10 +2656,7 @@ function setupHandle(socket, type, options) {
       handle.receive(buf);
       // After receiving, nghttp2 may have generated response frames
       // (SETTINGS_ACK, WINDOW_UPDATE, etc.). Flush them to the socket.
-      const pending = handle.getOutgoingData();
-      if (pending && pending.byteLength > 0) {
-        socket.write(pending);
-      }
+      handle.sendPending();
     }
   });
   socket.resume();
@@ -2674,6 +2671,13 @@ function setupHandle(socket, type, options) {
     if (pending && pending.byteLength > 0) {
       socket.write(pending);
     }
+    // Trigger graceful-close check AFTER the data has been queued on the
+    // socket.  getOutgoingData() drains nghttp2's output but must not
+    // trigger the destroy chain itself -- the data would never be written
+    // because destroy -> socket.end() would run before socket.write().
+    // The native send_pending_data() (stream==None path) only checks
+    // maybe_notify_graceful_close_complete, so this is safe.
+    origSendPending();
   };
 
   // Process data on the next tick - a remoteSettings handler may be attached.
@@ -3390,14 +3394,15 @@ class Http2Session extends EventEmitter {
   // * session is closed and there are no more pending or open streams
   [kMaybeDestroy](error) {
     if (error == null) {
-      const handle = this[kHandle];
-      const hasPendingData = !!handle && handle.hasPendingData();
       const state = this[kState];
-      // Do not destroy if we're not closed and there are pending/open streams
+      // Do not destroy if we're not closed and there are pending/open streams.
+      // Matches Node.js: only checks JS-tracked streams, not nghttp2's
+      // internal state (hasPendingData). The JS write path ensures data is
+      // flushed to the socket before kMaybeDestroy runs.
       if (
         !this.closed ||
         state.streams.size > 0 ||
-        state.pendingStreams.size > 0 || hasPendingData
+        state.pendingStreams.size > 0
       ) {
         return;
       }
