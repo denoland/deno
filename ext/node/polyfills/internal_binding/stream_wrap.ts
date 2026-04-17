@@ -32,8 +32,6 @@ const {
   Int32Array,
 } = primordials;
 
-import { Buffer } from "node:buffer";
-import { notImplemented } from "ext:deno_node/_utils.ts";
 import { HandleWrap } from "ext:deno_node/internal_binding/handle_wrap.ts";
 import {
   AsyncWrap,
@@ -81,87 +79,3 @@ export class ShutdownWrap<H extends HandleWrap> extends AsyncWrap {
   }
 }
 
-/**
- * Base class for stream handles (TCP, Pipe, etc.).
- *
- * Subclasses (TCP, Pipe) override readStart/readStop/writeBuffer/writev/shutdown
- * with native libuv implementations. The base class provides the interface
- * contract and shared state.
- */
-export class LibuvStreamWrap extends HandleWrap {
-  reading!: boolean;
-  destroyed = false;
-  writeQueueSize = 0;
-  bytesRead = 0;
-  bytesWritten = 0;
-
-  onread!:
-    | ((_arrayBuffer: Uint8Array, _nread: number) => Uint8Array | undefined)
-    | undefined;
-
-  constructor(provider: providerType) {
-    super(provider);
-  }
-
-  readStart(): number {
-    notImplemented("LibuvStreamWrap.prototype.readStart");
-  }
-
-  readStop(): number {
-    notImplemented("LibuvStreamWrap.prototype.readStop");
-  }
-
-  shutdown(req: ShutdownWrap<LibuvStreamWrap>): number {
-    const status = this._onClose();
-
-    try {
-      req.oncomplete(status);
-    } catch {
-      // swallow callback error.
-    }
-
-    return 0;
-  }
-
-  useUserBuffer(_userBuf: unknown): number {
-    notImplemented("LibuvStreamWrap.prototype.useUserBuffer");
-  }
-
-  writeBuffer(
-    _req: WriteWrap<LibuvStreamWrap>,
-    _data: Uint8Array,
-  ): number {
-    notImplemented("LibuvStreamWrap.prototype.writeBuffer");
-  }
-
-  writev(
-    _req: WriteWrap<LibuvStreamWrap>,
-    _chunks: Buffer[] | (string | Buffer)[],
-    _allBuffers: boolean,
-  ): number {
-    notImplemented("LibuvStreamWrap.prototype.writev");
-  }
-
-  writeAsciiString(req: WriteWrap<LibuvStreamWrap>, data: string): number {
-    const buffer = new TextEncoder().encode(data);
-    return this.writeBuffer(req, buffer);
-  }
-
-  writeUtf8String(req: WriteWrap<LibuvStreamWrap>, data: string): number {
-    const buffer = new TextEncoder().encode(data);
-    return this.writeBuffer(req, buffer);
-  }
-
-  writeUcs2String(_req: WriteWrap<LibuvStreamWrap>, _data: string): number {
-    notImplemented("LibuvStreamWrap.prototype.writeUcs2String");
-  }
-
-  writeLatin1String(req: WriteWrap<LibuvStreamWrap>, data: string): number {
-    const buffer = Buffer.from(data, "latin1");
-    return this.writeBuffer(req, buffer);
-  }
-
-  override _onClose(): number {
-    return 0;
-  }
-}
