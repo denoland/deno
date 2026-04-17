@@ -72,6 +72,7 @@ struct Inner {
 
   max_header_size: u32,
   header_nread: u32,
+  header_overflow: bool,
   initialized: bool,
 
   /// The stream being consumed (for parser.consume optimization).
@@ -127,6 +128,7 @@ impl HTTPParser {
         pending_pause: false,
         max_header_size: 0,
         header_nread: 0,
+        header_overflow: false,
         initialized: false,
         consumed_stream: None,
         consume_callbacks: None,
@@ -266,6 +268,17 @@ unsafe fn get_ctx<'a>(parser: *mut sys::llhttp_t) -> &'a mut ExecuteContext {
   unsafe { &mut *((*parser).data as *mut ExecuteContext) }
 }
 
+/// Check if header size exceeds the configured maximum.
+/// Returns -1 (HPE_USER) if overflow, 0 if ok.
+/// Matches Node.js's TrackHeader() behavior in node_http_parser.cc.
+fn check_header_overflow(inner: &mut Inner) -> c_int {
+  if inner.max_header_size > 0 && inner.header_nread >= inner.max_header_size {
+    inner.header_overflow = true;
+    return -1;
+  }
+  0
+}
+
 // ---- llhttp C callbacks ----
 
 unsafe extern "C" fn on_message_begin(parser: *mut sys::llhttp_t) -> c_int {
@@ -279,6 +292,7 @@ unsafe extern "C" fn on_message_begin(parser: *mut sys::llhttp_t) -> c_int {
   inner.current_header_value.clear();
   inner.in_header_value = false;
   inner.header_nread = 0;
+  inner.header_overflow = false;
 
   let (scope, cb_obj) = unsafe { ctx.scope_and_callbacks() };
   let cb = cb_obj.get_index(scope, K_ON_MESSAGE_BEGIN);
@@ -311,7 +325,7 @@ unsafe extern "C" fn on_url(
   let data = unsafe { std::slice::from_raw_parts(at as *const u8, length) };
   inner.url.extend_from_slice(data);
   inner.header_nread += length as u32;
-  0
+  check_header_overflow(inner)
 }
 
 unsafe extern "C" fn on_status(
@@ -324,7 +338,7 @@ unsafe extern "C" fn on_status(
   let data = unsafe { std::slice::from_raw_parts(at as *const u8, length) };
   inner.status_message.extend_from_slice(data);
   inner.header_nread += length as u32;
-  0
+  check_header_overflow(inner)
 }
 
 unsafe extern "C" fn on_header_field(
@@ -340,7 +354,7 @@ unsafe extern "C" fn on_header_field(
   }
   inner.current_header_field.extend_from_slice(data);
   inner.header_nread += length as u32;
-  0
+  check_header_overflow(inner)
 }
 
 unsafe extern "C" fn on_header_value(
@@ -354,7 +368,7 @@ unsafe extern "C" fn on_header_value(
   inner.in_header_value = true;
   inner.current_header_value.extend_from_slice(data);
   inner.header_nread += length as u32;
-  0
+  check_header_overflow(inner)
 }
 
 unsafe extern "C" fn on_header_value_complete(
@@ -922,6 +936,12 @@ impl HTTPParser {
 
   #[fast]
   fn remove(&self) {}
+
+  /// Check if the last parse error was caused by header overflow.
+  #[fast]
+  fn has_header_overflow(&self) -> bool {
+    self.inner().header_overflow
+  }
 
   /// Get the current buffer being parsed (for error reporting).
   #[buffer]

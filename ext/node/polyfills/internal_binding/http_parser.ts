@@ -152,6 +152,9 @@ HTTPParser.prototype.initialize = function (
   maxHeaderSize?: number,
   lenientFlags?: number,
 ) {
+  // Default to the global maxHeaderSize (16384) when not specified,
+  // matching Node.js behavior where 0 means "use the default".
+  const effectiveMaxHeaderSize = maxHeaderSize || 16384;
   // Store the async resource so execute() can run callbacks in the
   // correct async context (preserves AsyncLocalStorage through the
   // native parser, emulating Node's MakeCallback behavior).
@@ -162,7 +165,7 @@ HTTPParser.prototype.initialize = function (
   }
   this._native.initialize(
     type,
-    maxHeaderSize ?? 0,
+    effectiveMaxHeaderSize,
     lenientFlags ?? 0,
   );
 };
@@ -223,6 +226,22 @@ HTTPParser.prototype.execute = function (
     const err = this.__lastException;
     this.__lastException = undefined;
     throw err;
+  }
+
+  // On parser error, create an Error object with code/reason/bytesParsed
+  // matching Node.js behavior (node_http_parser.cc returns an Error object).
+  if (result < 0) {
+    const err: any = new Error("Parse Error");
+    if (this._native.hasHeaderOverflow()) {
+      err.code = "HPE_HEADER_OVERFLOW";
+      err.reason = "Header overflow";
+      err.message = "Parse Error: Header overflow";
+    } else {
+      err.code = "HPE_ERROR";
+      err.reason = "Parse Error";
+    }
+    err.bytesParsed = data.byteLength;
+    return err;
   }
 
   return result;

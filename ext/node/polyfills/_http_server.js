@@ -604,7 +604,7 @@ function onParserExecuteCommon(server, socket, parser, state, ret, d) {
 
   if (ret instanceof Error) {
     prepareError(ret, parser, d);
-    socket.destroy(ret);
+    socketOnError.call(socket, ret);
     return;
   }
 

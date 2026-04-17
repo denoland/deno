@@ -2507,6 +2507,154 @@ Deno.test(
   },
 );
 
+// Regression test: oversized headers must trigger HPE_HEADER_OVERFLOW on the
+// server's clientError event, and the default handler should respond with 431.
+// Previously maxHeaderSize was tracked but never enforced.
+// https://github.com/denoland/deno/issues/33060
+Deno.test(
+  "[node/http] server emits HPE_HEADER_OVERFLOW for oversized headers",
+  async () => {
+    const { promise, resolve } = Promise.withResolvers<void>();
+
+    const server = http.createServer((_req, res) => {
+      res.end("should not reach");
+    });
+
+    let gotClientError = false;
+    server.on("clientError", (err: Error & { code?: string }, socket) => {
+      gotClientError = true;
+      assertEquals(err.code, "HPE_HEADER_OVERFLOW");
+      assertStringIncludes(err.message, "Header overflow");
+      if (socket.writable) {
+        socket.end(
+          "HTTP/1.1 431 Request Header Fields Too Large\r\nConnection: close\r\n\r\n",
+        );
+      }
+    });
+
+    server.listen(0, () => {
+      const port = (server.address() as AddressInfo).port;
+      // Send a request with a header exceeding the 16KB default limit
+      const hugeHeader = "x".repeat(16384 + 1);
+      const sock = net.createConnection(port, "127.0.0.1", () => {
+        sock.write(
+          `GET / HTTP/1.1\r\nHost: localhost\r\nX-Huge: ${hugeHeader}\r\n\r\n`,
+        );
+      });
+      sock.on("data", () => {});
+      sock.on("close", () => {
+        assert(gotClientError, "clientError should have been emitted");
+        server.close(() => resolve());
+      });
+      sock.on("error", () => {
+        server.close(() => resolve());
+      });
+    });
+
+    await promise;
+  },
+);
+
+// Boundary test: header_nread tracks bytes from the URL, header fields,
+// and header values (not the framing \r\n separators). A request that
+// pushes header_nread to exactly maxHeaderSize must be rejected (>=).
+Deno.test(
+  "[node/http] header overflow boundary: exactly maxHeaderSize is rejected",
+  async () => {
+    const { promise, resolve } = Promise.withResolvers<void>();
+    // Use a small limit so we can construct precise test cases.
+    // header_nread counts: URL path + header field names + header values
+    // (NOT the "GET ", " HTTP/1.1\r\n", ": ", or "\r\n" framing).
+    // For "GET /xx HTTP/1.1\r\nH: V\r\n\r\n":
+    //   header_nread = len("/xx") + len("H") + len("V") = 3 + 1 + 1 = 5
+    const LIMIT = 100;
+
+    const server = http.createServer({
+      maxHeaderSize: LIMIT,
+    }, (_req, res) => {
+      res.end("should not reach");
+    });
+
+    let gotClientError = false;
+    server.on("clientError", (err: Error & { code?: string }, socket) => {
+      gotClientError = true;
+      assertEquals(err.code, "HPE_HEADER_OVERFLOW");
+      if (socket.writable) {
+        socket.end("HTTP/1.1 431 Too Large\r\n\r\n");
+      }
+    });
+
+    server.listen(0, () => {
+      const port = (server.address() as AddressInfo).port;
+      // header_nread = len("/") + len("Host") + len("x") + len("X-Pad") + len(value)
+      //             = 1 + 4 + 1 + 5 + value_len
+      //             = 11 + value_len
+      // We need 11 + value_len = LIMIT, so value_len = LIMIT - 11
+      const valueLen = LIMIT - 11;
+      const sock = net.createConnection(port, "127.0.0.1", () => {
+        sock.write(
+          `GET / HTTP/1.1\r\nHost: x\r\nX-Pad: ${"a".repeat(valueLen)}\r\n\r\n`,
+        );
+      });
+      sock.on("data", () => {});
+      sock.on("close", () => {
+        assert(
+          gotClientError,
+          "exactly maxHeaderSize should trigger overflow",
+        );
+        server.close(() => resolve());
+      });
+      sock.on("error", () => {
+        server.close(() => resolve());
+      });
+    });
+
+    await promise;
+  },
+);
+
+Deno.test(
+  "[node/http] header overflow boundary: maxHeaderSize - 1 is accepted",
+  async () => {
+    const { promise, resolve } = Promise.withResolvers<void>();
+    const LIMIT = 100;
+
+    const server = http.createServer({
+      maxHeaderSize: LIMIT,
+    }, (_req, res) => {
+      res.end("accepted");
+    });
+
+    server.on("clientError", () => {
+      throw new Error("should not get clientError for headers under limit");
+    });
+
+    server.listen(0, () => {
+      const port = (server.address() as AddressInfo).port;
+      // header_nread = 11 + value_len; need < LIMIT, so value_len = LIMIT - 12
+      const valueLen = LIMIT - 12;
+      const sock = net.createConnection(port, "127.0.0.1", () => {
+        sock.write(
+          `GET / HTTP/1.1\r\nHost: x\r\nX-Pad: ${"a".repeat(valueLen)}\r\n\r\n`,
+        );
+      });
+      let data = "";
+      sock.on("data", (d) => {
+        data += d.toString();
+      });
+      sock.on("close", () => {
+        assertStringIncludes(data, "accepted");
+        server.close(() => resolve());
+      });
+      sock.on("error", () => {
+        server.close(() => resolve());
+      });
+    });
+
+    await promise;
+  },
+);
+
 // Regression test: socket.write() + socket.end() in an upgrade handler
 // must not crash. Previously, llhttp_finish() was called without setting
 // up the ExecuteContext, causing a null pointer dereference when the
