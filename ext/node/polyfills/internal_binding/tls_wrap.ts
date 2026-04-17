@@ -61,14 +61,11 @@ export function wrap(
     // Wire up the encrypted output callback: when TLSWrap has encrypted
     // data to send, it calls res.encOut(arrayBuffer). We write that
     // to the JSStreamSocket's underlying Duplex stream.
-    // The write is deferred via queueMicrotask to avoid reentrant borrows:
-    // cycle() -> encOut -> duplexpair -> other side -> write to TCPWrap
-    // would re-enter the TCPWrap's CppGC RefCell if done synchronously.
     const jsStreamOwner = nativeHandle[kOwner];
     res.encOut = (data: ArrayBuffer) => {
       const buf = new Uint8Array(data);
       if (jsStreamOwner?.stream) {
-        queueMicrotask(() => jsStreamOwner.stream.write(buf));
+        jsStreamOwner.stream.write(buf);
       }
     };
 
