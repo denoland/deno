@@ -272,7 +272,7 @@ unsafe fn get_ctx<'a>(parser: *mut sys::llhttp_t) -> &'a mut ExecuteContext {
 /// Returns -1 (HPE_USER) if overflow, 0 if ok.
 /// Matches Node.js's TrackHeader() behavior in node_http_parser.cc.
 fn check_header_overflow(inner: &mut Inner) -> c_int {
-  if inner.max_header_size > 0 && inner.header_nread > inner.max_header_size {
+  if inner.max_header_size > 0 && inner.header_nread >= inner.max_header_size {
     inner.header_overflow = true;
     return -1;
   }
