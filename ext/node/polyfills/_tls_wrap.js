@@ -503,7 +503,9 @@ TLSSocket.prototype._init = function (socket, wrap) {
   // Use nextTick so the caller can attach event listeners first.
   // Client-side sockets are started by tls.connect() instead.
   if (options.isServer && wrap && !this.connecting) {
-    nextTick(() => this._start());
+    nextTick(() => {
+      if (!this.destroyed) this._start();
+    });
   }
 };
 
