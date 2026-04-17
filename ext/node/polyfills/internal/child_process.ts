@@ -574,12 +574,10 @@ export class ChildProcess extends EventEmitter {
    * @param signal NOTE: this parameter is not yet implemented.
    */
   kill(signal?: number | string): boolean {
-    if (this.killed) {
-      return false;
-    }
-
     // Signal 0 is a special case: it checks if the process exists
-    // without sending a signal (POSIX kill(pid, 0)).
+    // without sending a signal (POSIX kill(pid, 0)). This must run
+    // before the `killed` check because kill(0) is an existence probe
+    // that should work even after a prior successful kill().
     if (signal === 0 || signal === "0") {
       try {
         process.kill(this.pid!, 0);
@@ -587,6 +585,10 @@ export class ChildProcess extends EventEmitter {
       } catch {
         return false;
       }
+    }
+
+    if (this.killed) {
+      return false;
     }
 
     const denoSignal = signal == null ? "SIGTERM" : toDenoSignal(signal);
