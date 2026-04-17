@@ -27,6 +27,7 @@ import {
 } from "ext:deno_node/internal/async_hooks.ts";
 const { async_id_symbol } = symbols;
 import {
+  ERR_HTTP_BODY_NOT_ALLOWED,
   ERR_HTTP_HEADERS_SENT,
   ERR_HTTP_INVALID_HEADER_VALUE,
   ERR_HTTP_TRAILER_INVALID,
@@ -1128,6 +1129,9 @@ function write_(
   }
 
   if (!msg._hasBody) {
+    if (msg[kRejectNonStandardBodyWrites]) {
+      throw new ERR_HTTP_BODY_NOT_ALLOWED();
+    }
     debug(
       "This type of response MUST NOT have a body. " +
         "Ignoring write() calls.",

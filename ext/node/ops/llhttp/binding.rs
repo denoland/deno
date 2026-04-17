@@ -859,14 +859,38 @@ impl HTTPParser {
     nread as i32
   }
 
-  /// Signal end of input.
-  #[fast]
-  fn finish(&self) -> i32 {
+  /// Signal end of input. Like execute(), this can trigger llhttp callbacks
+  /// (e.g. on_message_complete), so we must set up the ExecuteContext with
+  /// a valid scope and callbacks object.
+  #[nofast]
+  #[reentrant]
+  fn finish(
+    &self,
+    scope: &mut v8::PinScope,
+    callbacks: v8::Local<v8::Object>,
+  ) -> i32 {
     let inner = self.inner();
     if !inner.initialized {
       return -1;
     }
+
+    let scope_ptr = scope as *mut v8::PinScope as *mut ();
+    let callbacks_static: v8::Local<'static, v8::Object> =
+      unsafe { std::mem::transmute(callbacks) };
+
+    let mut ctx = ExecuteContext {
+      inner: inner as *mut Inner,
+      scope_ptr,
+      callbacks: callbacks_static,
+    };
+
+    inner.parser.data =
+      &mut ctx as *mut ExecuteContext as *mut std::ffi::c_void;
+
     let err = unsafe { sys::llhttp_finish(&mut inner.parser) };
+
+    inner.parser.data = std::ptr::null_mut();
+
     if err != sys::HPE_OK { -1 } else { 0 }
   }
 

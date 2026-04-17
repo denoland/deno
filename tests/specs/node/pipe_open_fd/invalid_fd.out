@@ -1,2 +1,3 @@
 open(-1) returned: [WILDCARD]
 PASS: Invalid fd returns error code
+[WILDCARD]

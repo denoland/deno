@@ -102,10 +102,7 @@
     "parallel/test-async-local-storage-contexts.js": {},
     "parallel/test-async-local-storage-deep-stack.js": {},
     "parallel/test-async-local-storage-exit-does-not-leak.js": {},
-    "parallel/test-async-local-storage-http-multiclients.js": {
-      "ignore": true,
-      "reason": "AsyncLocalStorage context lost in HTTP response data callbacks — async_hooks propagation through native parser consume path not implemented"
-    },
+    "parallel/test-async-local-storage-http-multiclients.js": {},
     "parallel/test-async-local-storage-snapshot.js": {},
     "parallel/test-atomics-wake.js": {},
     "parallel/test-bad-unicode.js": {},
@@ -1163,10 +1160,7 @@
     "parallel/test-http-head-response-has-no-body-end-implicit-headers.js": {},
     "parallel/test-http-head-response-has-no-body-end.js": {},
     "parallel/test-http-head-response-has-no-body.js": {},
-    "parallel/test-http-head-throw-on-response-body-write.js": {
-      "ignore": true,
-      "reason": "rejectNonStandardBodyWrites server option not yet implemented"
-    },
+    "parallel/test-http-head-throw-on-response-body-write.js": {},
     "parallel/test-http-header-obstext.js": {},
     "parallel/test-http-header-owstext.js": {},
     "parallel/test-http-header-read.js": {},
@@ -1214,10 +1208,7 @@
     "parallel/test-http-set-cookies.js": {},
     "parallel/test-http-set-header-chain.js": {},
     "parallel/test-http-status-code.js": {},
-    "parallel/test-http-status-reason-invalid-chars.js": {
-      "ignore": true,
-      "reason": "writeHead() does not validate statusMessage for CRLF injection characters"
-    },
+    "parallel/test-http-status-reason-invalid-chars.js": {},
     "parallel/test-http-uncaught-from-request-callback.js": {},
     "parallel/test-http-url.parse-auth.js": {},
     "parallel/test-http-url.parse-basic.js": {},
@@ -2531,10 +2522,7 @@
     "parallel/test-tls-session-cache.js": {},
     "parallel/test-tls-timeout-server-2.js": {},
     "parallel/test-tls-transport-destroy-after-own-gc.js": {},
-    "parallel/test-tls-zero-clear-in.js": {
-      "ignore": true,
-      "reason": "rustls rejects close_notify sent before TLS handshake completes (conn.end('') before connect callback)"
-    },
+    "parallel/test-tls-zero-clear-in.js": {},
     "parallel/test-trace-events-api.js": {},
     "parallel/test-trace-events-async-hooks-dynamic.js": {},
     "parallel/test-trace-events-async-hooks-worker.js": {},

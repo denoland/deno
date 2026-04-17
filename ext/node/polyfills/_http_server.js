@@ -432,6 +432,10 @@ ServerResponse.prototype.writeHead = function writeHead(
     headers = obj;
   }
 
+  if (checkInvalidHeaderChar(this.statusMessage)) {
+    throw new ERR_INVALID_CHAR("statusMessage");
+  }
+
   const statusLine = "HTTP/1.1 " + statusCode + " " + this.statusMessage +
     "\r\n";
   this._storeHeader(statusLine, headers);
