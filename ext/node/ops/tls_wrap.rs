@@ -1947,6 +1947,7 @@ impl TLSWrap {
   /// DoWrite — encrypt cleartext and write to underlying stream.
   /// Mirrors Node's TLSWrap::DoWrite().
   #[nofast]
+  #[reentrant]
   fn write_buffer(
     &self,
     req_wrap_obj: v8::Local<v8::Object>,
