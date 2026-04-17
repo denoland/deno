@@ -1007,8 +1007,22 @@ fn clone_dir_recursive_except_node_modules_child(
         &new_to,
       )?;
     } else if file_type.is_file() {
-      hard_link_file(sys.as_ref(), &new_from, &new_to)
-        .or_else(|_| sys.fs_copy(&new_from, &new_to).map(|_| ()))?;
+      hard_link_file(sys.as_ref(), &new_from, &new_to).or_else(|_| {
+        sys
+          .fs_copy(&new_from, &new_to)
+          .or_else(|err| {
+            if deno_npm_cache::is_etxtbsy(&err) {
+              // The destination is a hardlink to a currently-executing
+              // binary (ETXTBSY). Remove it to break the hardlink, then
+              // retry the copy.
+              let _ = sys.fs_remove_file(&new_to);
+              sys.fs_copy(&new_from, &new_to)
+            } else {
+              Err(err)
+            }
+          })
+          .map(|_| ())
+      })?;
     }
   }
   Ok(())

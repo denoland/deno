@@ -40,6 +40,7 @@ mod tarball_extract;
 
 pub use fs_util::hard_link_dir_recursive;
 pub use fs_util::hard_link_file;
+pub use fs_util::is_etxtbsy;
 pub use registry_info::RegistryInfoProvider;
 pub use registry_info::SerializedCachedPackageInfo;
 pub use registry_info::get_package_url;
