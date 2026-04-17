@@ -403,6 +403,8 @@ pub struct FmtOptionsConfig {
   pub space_surrounding_properties: Option<bool>,
   pub vue_component_case: Option<VueComponentCase>,
   pub angular_next_control_flow_same_line: Option<bool>,
+  pub sort_named_imports: Option<bool>,
+  pub sort_named_exports: Option<bool>,
 }
 
 impl FmtOptionsConfig {
@@ -429,6 +431,8 @@ impl FmtOptionsConfig {
       && self.space_surrounding_properties.is_none()
       && self.vue_component_case.is_none()
       && self.angular_next_control_flow_same_line.is_none()
+      && self.sort_named_imports.is_none()
+      && self.sort_named_exports.is_none()
   }
 }
 
@@ -504,6 +508,8 @@ struct SerializedFmtConfig {
   pub space_surrounding_properties: Option<bool>,
   pub vue_component_case: Option<VueComponentCase>,
   pub angular_next_control_flow_same_line: Option<bool>,
+  pub sort_named_imports: Option<bool>,
+  pub sort_named_exports: Option<bool>,
   #[serde(rename = "options")]
   pub deprecated_options: FmtOptionsConfig,
   pub include: Option<Vec<String>>,
@@ -544,6 +550,8 @@ impl SerializedFmtConfig {
       vue_component_case: self.vue_component_case,
       angular_next_control_flow_same_line: self
         .angular_next_control_flow_same_line,
+      sort_named_imports: self.sort_named_imports,
+      sort_named_exports: self.sort_named_exports,
     };
     if !self.deprecated_files.is_null() {
       log::warn!(
@@ -2443,7 +2451,9 @@ mod tests {
         "spaceAround": true,
         "spaceSurroundingProperties": true,
         "vueComponentCase": "pascal-case",
-        "angularNextControlFlowSameLine": false
+        "angularNextControlFlowSameLine": false,
+        "sortNamedImports": false,
+        "sortNamedExports": false
       },
       "tasks": {
         "build": "deno run --allow-read --allow-write build.ts",
@@ -2519,6 +2529,8 @@ mod tests {
           space_surrounding_properties: Some(true),
           vue_component_case: Some(VueComponentCase::PascalCase),
           angular_next_control_flow_same_line: Some(false),
+          sort_named_imports: Some(false),
+          sort_named_exports: Some(false),
         },
       }
     );

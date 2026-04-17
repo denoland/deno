@@ -2103,6 +2103,14 @@ impl WorkspaceDirectory {
           .options
           .angular_next_control_flow_same_line
           .or(root_config.options.angular_next_control_flow_same_line),
+        sort_named_imports: member_config
+          .options
+          .sort_named_imports
+          .or(root_config.options.sort_named_imports),
+        sort_named_exports: member_config
+          .options
+          .sort_named_exports
+          .or(root_config.options.sort_named_exports),
       },
       files: combine_patterns(root_config.files, member_config.files),
     })
@@ -3663,6 +3671,8 @@ pub mod test {
           space_surrounding_properties: Some(true),
           vue_component_case: None,
           angular_next_control_flow_same_line: None,
+          sort_named_imports: None,
+          sort_named_exports: None,
         },
         files: FilePatterns {
           base: root_dir().join("member"),
@@ -3707,6 +3717,8 @@ pub mod test {
           space_surrounding_properties: Some(false),
           vue_component_case: None,
           angular_next_control_flow_same_line: None,
+          sort_named_imports: None,
+          sort_named_exports: None,
         },
         files: FilePatterns {
           base: root_dir(),

@@ -1451,6 +1451,20 @@ fn get_typescript_config_builder(
     );
   }
 
+  if let Some(sort_named_imports) = options.sort_named_imports {
+    builder.import_declaration_sort_named_imports(match sort_named_imports {
+      true => dprint_config::SortOrder::CaseInsensitive,
+      false => dprint_config::SortOrder::Maintain,
+    });
+  }
+
+  if let Some(sort_named_exports) = options.sort_named_exports {
+    builder.export_declaration_sort_named_exports(match sort_named_exports {
+      true => dprint_config::SortOrder::CaseInsensitive,
+      false => dprint_config::SortOrder::Maintain,
+    });
+  }
+
   builder
 }
 

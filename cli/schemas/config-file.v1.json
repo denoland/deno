@@ -796,6 +796,16 @@
           "default": true,
           "type": "boolean"
         },
+        "sortNamedImports": {
+          "description": "Whether to sort named imports alphabetically within an import statement.",
+          "default": true,
+          "type": "boolean"
+        },
+        "sortNamedExports": {
+          "description": "Whether to sort named exports alphabetically within an export statement.",
+          "default": true,
+          "type": "boolean"
+        },
         "options": {
           "type": "object",
           "properties": {
