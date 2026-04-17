@@ -48,3 +48,10 @@ Deno.test("napi external string latin1", function () {
   // Either outcome is valid -- zero-copy is preferred but copy is acceptable
   assertEquals(typeof zeroCopy, "boolean");
 });
+
+Deno.test("napi external string utf16", function () {
+  // Returns true if zero-copy (not copied), false if copied
+  const zeroCopy = strings.test_external_utf16();
+  // Either outcome is valid -- zero-copy is preferred but copy is acceptable
+  assertEquals(typeof zeroCopy, "boolean");
+});

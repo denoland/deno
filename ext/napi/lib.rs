@@ -454,6 +454,7 @@ pub struct Env {
   pub global: v8::Global<v8::Object>,
   pub create_buffer: v8::Global<v8::Function>,
   pub report_error: v8::Global<v8::Function>,
+  pub external_string_finalizers: HashMap<usize, (napi_finalize, *mut c_void)>,
 }
 
 unsafe impl Send for Env {}
@@ -491,6 +492,7 @@ impl Env {
         error_code: Cell::new(napi_ok),
       },
       last_exception: None,
+      external_string_finalizers: HashMap::new(),
     }
   }
 
