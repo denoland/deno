@@ -1244,10 +1244,7 @@
     "parallel/test-http2-client-setNextStreamID-errors.js": {},
     "parallel/test-http2-client-settings-before-connect.js": {},
     "parallel/test-http2-client-stream-destroy-before-connect.js": {},
-    "parallel/test-http2-client-upload-reject.js": {
-      "ignore": true,
-      "reason": "HTTP/2 stream rejection causes ECONNRESET instead of proper RST_STREAM handling"
-    },
+    "parallel/test-http2-client-upload-reject.js": {},
     "parallel/test-http2-client-upload.js": {},
     "parallel/test-http2-client-write-before-connect.js": {},
     "parallel/test-http2-client-write-empty-string.js": {},
@@ -1258,10 +1255,7 @@
     "parallel/test-http2-compat-expect-handling.js": {},
     "parallel/test-http2-compat-method-connect.js": {},
     "parallel/test-http2-compat-serverrequest-end.js": {},
-    "parallel/test-http2-compat-serverrequest-headers.js": {
-      "ignore": true,
-      "reason": "HTTP/2 ECONNRESET during compat server request header handling"
-    },
+    "parallel/test-http2-compat-serverrequest-headers.js": {},
     "parallel/test-http2-compat-serverrequest-host.js": {},
     "parallel/test-http2-compat-serverrequest-pause.js": {},
     "parallel/test-http2-compat-serverrequest-pipe.js": {},
@@ -1301,18 +1295,12 @@
     "parallel/test-http2-endafterheaders.js": {},
     "parallel/test-http2-error-order.js": {},
     "parallel/test-http2-goaway-delayed-request.js": {},
-    "parallel/test-http2-graceful-close.js": {
-      "ignore": true,
-      "reason": "HTTP/2 received data off by 16 bytes — data framing issue during graceful close"
-    },
+    "parallel/test-http2-graceful-close.js": {},
     "parallel/test-http2-head-request.js": {},
     "parallel/test-http2-invalidargtypes-errors.js": {},
     "parallel/test-http2-large-write-multiple-requests.js": {},
     "parallel/test-http2-malformed-altsvc.js": {},
-    "parallel/test-http2-many-writes-and-destroy.js": {
-      "ignore": true,
-      "reason": "HTTP/2 session handle leak — process does not exit after server.close() and client.close()"
-    },
+    "parallel/test-http2-many-writes-and-destroy.js": {},
     "parallel/test-http2-methods.js": {},
     "parallel/test-http2-misc-util.js": {},
     "parallel/test-http2-multiheaders-raw.js": {},
@@ -1321,10 +1309,7 @@
     "parallel/test-http2-no-wanttrailers-listener.js": {},
     "parallel/test-http2-options-server-request.js": {},
     "parallel/test-http2-options-server-response.js": {},
-    "parallel/test-http2-pipe.js": {
-      "windows": false,
-      "reason": "h2 flow control WINDOW_UPDATE not flushed, truncates large piped data"
-    },
+    "parallel/test-http2-pipe.js": {},
     "parallel/test-http2-priority-cycle-.js": {},
     "parallel/test-http2-raw-headers-defaults.js": {},
     "parallel/test-http2-raw-headers.js": {},
@@ -1358,10 +1343,7 @@
     "parallel/test-http2-server-setLocalWindowSize.js": {},
     "parallel/test-http2-server-shutdown-before-respond.js": {},
     "parallel/test-http2-server-shutdown-options-errors.js": {},
-    "parallel/test-http2-session-graceful-close.js": {
-      "ignore": true,
-      "reason": "HTTP/2 GOAWAY frame not sent during graceful session close"
-    },
+    "parallel/test-http2-session-graceful-close.js": {},
     "parallel/test-http2-session-stream-state.js": {},
     "parallel/test-http2-session-timeout.js": {},
     "parallel/test-http2-settings-unsolicited-ack.js": {},
@@ -1372,10 +1354,7 @@
     "parallel/test-http2-stream-destroy-event-order.js": {},
     "parallel/test-http2-stream-removelisteners-after-close.js": {},
     "parallel/test-http2-timeouts.js": {},
-    "parallel/test-http2-trailers-after-session-close.js": {
-      "ignore": true,
-      "reason": "HTTP/2 trailers not sent after session close — GOAWAY handling incomplete"
-    },
+    "parallel/test-http2-trailers-after-session-close.js": {},
     "parallel/test-http2-util-asserts.js": {},
     "parallel/test-http2-window-size.js": {},
     "parallel/test-http2-unbound-socket-proxy.js": {},
