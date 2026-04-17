@@ -21,12 +21,12 @@
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 import { ownerSymbol } from "ext:deno_node/internal/async_hooks.ts";
+import { HandleWrap } from "ext:deno_node/internal_binding/handle_wrap.ts";
 import {
   kArrayBufferOffset,
   kBytesWritten,
   kLastWriteWasAsync,
   kReadBytesOrError,
-  LibuvStreamWrap,
   streamBaseState,
   WriteWrap,
 } from "ext:deno_node/internal_binding/stream_wrap.ts";
@@ -136,10 +136,10 @@ function onWriteComplete(this: any, status: number) {
 }
 
 function createWriteWrap(
-  handle: LibuvStreamWrap,
+  handle: HandleWrap,
   callback: (err?: Error | null) => void,
 ) {
-  const req = new WriteWrap<LibuvStreamWrap>();
+  const req = new WriteWrap<HandleWrap>();
 
   req.handle = handle;
   req.oncomplete = onWriteComplete;

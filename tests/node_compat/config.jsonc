@@ -270,10 +270,7 @@
     "parallel/test-child-process-spawnsync.js": {},
     "parallel/test-child-process-stdin-ipc.js": {},
     "parallel/test-child-process-stdin.js": {},
-    "parallel/test-child-process-stdio-big-write-end.js": {
-      "ignore": true,
-      "reason": "Timeout — child process stdin large buffered write with end() does not flush correctly"
-    },
+    "parallel/test-child-process-stdio-big-write-end.js": {},
     "parallel/test-child-process-stdio-inherit.js": {},
     "parallel/test-child-process-stdio-overlapped.js": {},
     "parallel/test-child-process-stdio.js": {},
