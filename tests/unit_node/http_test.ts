@@ -2507,6 +2507,54 @@ Deno.test(
   },
 );
 
+// Regression test: oversized headers must trigger HPE_HEADER_OVERFLOW on the
+// server's clientError event, and the default handler should respond with 431.
+// Previously maxHeaderSize was tracked but never enforced.
+// https://github.com/denoland/deno/issues/33060
+Deno.test(
+  "[node/http] server emits HPE_HEADER_OVERFLOW for oversized headers",
+  async () => {
+    const { promise, resolve } = Promise.withResolvers<void>();
+
+    const server = http.createServer((_req, res) => {
+      res.end("should not reach");
+    });
+
+    let gotClientError = false;
+    server.on("clientError", (err: Error & { code?: string }, socket) => {
+      gotClientError = true;
+      assertEquals(err.code, "HPE_HEADER_OVERFLOW");
+      assertStringIncludes(err.message, "Header overflow");
+      if (socket.writable) {
+        socket.end(
+          "HTTP/1.1 431 Request Header Fields Too Large\r\nConnection: close\r\n\r\n",
+        );
+      }
+    });
+
+    server.listen(0, () => {
+      const port = (server.address() as AddressInfo).port;
+      // Send a request with a header exceeding the 16KB default limit
+      const hugeHeader = "x".repeat(16384 + 1);
+      const sock = net.createConnection(port, "127.0.0.1", () => {
+        sock.write(
+          `GET / HTTP/1.1\r\nHost: localhost\r\nX-Huge: ${hugeHeader}\r\n\r\n`,
+        );
+      });
+      sock.on("data", () => {});
+      sock.on("close", () => {
+        assert(gotClientError, "clientError should have been emitted");
+        server.close(() => resolve());
+      });
+      sock.on("error", () => {
+        server.close(() => resolve());
+      });
+    });
+
+    await promise;
+  },
+);
+
 // Regression test: socket.write() + socket.end() in an upgrade handler
 // must not crash. Previously, llhttp_finish() was called without setting
 // up the ExecuteContext, causing a null pointer dereference when the
