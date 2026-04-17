@@ -234,11 +234,22 @@ pub unsafe fn uv_stream_set_blocking(
 
 /// ### Safety
 /// `handle` must be a valid pointer to an initialized stream handle
-/// (`uv_tcp_t` or `uv_tty_t`, cast as `uv_stream_t`).
+/// (`uv_tcp_t`, `uv_tty_t`, or `uv_pipe_t`, cast as `uv_stream_t`).
 pub unsafe fn uv_try_write(handle: *mut uv_stream_t, data: &[u8]) -> i32 {
+  // Dispatch by handle type; `uv_tcp_t`, `uv_pipe_t`, and `uv_tty_t` have
+  // different struct layouts, so the TCP path below must only be taken
+  // for `UV_TCP` handles.
+  // SAFETY: `handle` is a valid initialized uv stream per caller contract.
+  let handle_type = unsafe { (*handle).r#type };
   unsafe {
-    if (*handle).r#type == uv_handle_type::UV_TTY {
+    if handle_type == uv_handle_type::UV_TTY {
       return super::tty::try_write_tty(handle, data);
+    }
+    if handle_type == uv_handle_type::UV_NAMED_PIPE {
+      return super::pipe::try_write_pipe(
+        handle as *mut super::pipe::uv_pipe_t,
+        data,
+      );
     }
   }
   // SAFETY: Caller guarantees handle is a valid, initialized uv_tcp_t.

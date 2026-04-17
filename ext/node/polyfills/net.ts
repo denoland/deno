@@ -98,6 +98,7 @@ import {
   constants as PipeConstants,
   Pipe,
   PipeConnectWrap,
+  setupListenWrap as setupPipeListenWrap,
 } from "ext:deno_node/internal_binding/pipe_wrap.ts";
 import { ShutdownWrap } from "ext:deno_node/internal_binding/stream_wrap.ts";
 import assert from "node:assert";
@@ -2217,10 +2218,13 @@ function _setupListenHandle(
   this._handle.onconnection = _onconnection;
   this._handle[ownerSymbol] = this;
 
-  // For TCP handles, wrap the onconnection callback to create client handles
-  // and call uv_accept before forwarding to _onconnection(status, clientHandle).
+  // For TCP and Pipe handles, wrap the onconnection callback to create
+  // client handles and call uv_accept before forwarding to
+  // _onconnection(status, clientHandle).
   if (this._handle instanceof TCP) {
     setupListenWrap(this._handle);
+  } else if (this._handle instanceof Pipe) {
+    setupPipeListenWrap(this._handle);
   }
 
   // Use a backlog of 512 entries. We pass 511 to the listen() call because

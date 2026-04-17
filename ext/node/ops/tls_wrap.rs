@@ -618,7 +618,7 @@ impl UnderlyingStream {
 
   #[allow(
     dead_code,
-    reason = "will be used when libuv_stream::TCP is replaced"
+    reason = "reserved for a future native read-stop path; today reads are stopped at the JS layer"
   )]
   fn read_stop(&self) {
     match self {
@@ -688,7 +688,7 @@ impl UnderlyingStream {
 
   #[allow(
     dead_code,
-    reason = "may be used when libuv_stream::TCP is replaced by LibUvStreamWrap-based TCPWrap"
+    reason = "reserved for a future native read-interception path; today TLS receives ciphertext via a JS-layer onread forwarder"
   )]
   fn set_read_interceptor(&self, interceptor: Option<ReadInterceptor>) {
     if let UnderlyingStream::Uv { stream } = self {
@@ -1322,16 +1322,15 @@ impl TLSWrapInner {
 // ---------------------------------------------------------------------------
 
 /// Called when encrypted data arrives from the underlying stream.
-/// The underlying LibUvStreamWrap owns the native read lifecycle and forwards
-/// raw read events here when TLS is registered as its read interceptor.
+/// The underlying LibUvStreamWrap would forward raw read events here if TLS
+/// registered as its read interceptor.
 ///
-/// Currently unused because libuv_stream::TCP's stream.data layout is
-/// incompatible with stream_wrap::StreamHandleData. Read interception is
-/// done at the JS layer instead. This will be used once libuv_stream::TCP
-/// is replaced by a LibUvStreamWrap-based TCPWrap.
+/// Currently unused: read interception is performed at the JS layer, where
+/// `nativeHandle.onread` forwards encrypted chunks to `TLSWrap.receive()`.
+/// Kept for a future switch to native (Rust-side) read interception.
 #[allow(
   dead_code,
-  reason = "will be used when TCPWrap replaces libuv_stream::TCP"
+  reason = "reserved for a future native read-interception path"
 )]
 unsafe fn tls_read_interceptor_cb(
   tls_wrap: *mut std::ffi::c_void,
@@ -1678,8 +1677,8 @@ impl TLSWrap {
   ///
   /// Read interception is handled at the JS layer: the JS binding sets
   /// `nativeHandle.onread` to forward encrypted data to `TLSWrap.receive()`.
-  /// This avoids conflicting with `libuv_stream::TCP`'s own `stream.data`
-  /// layout which is incompatible with `stream_wrap::StreamHandleData`.
+  /// A native interceptor path exists (see `tls_read_interceptor_cb`) but
+  /// is not currently wired up.
   #[nofast]
   fn attach(
     &self,
@@ -1862,15 +1861,14 @@ impl TLSWrap {
   }
 
   /// ReadStop — for Uv streams, don't stop the native TCP reads.
-  /// The NativeTCP should continue reading encrypted data; we just
+  /// The underlying TCP handle keeps reading encrypted data; we just
   /// stop delivering decrypted plaintext to JS by clearing onread.
-  /// This avoids the stream.data incompatibility with libuv_stream::TCP.
   ///
   /// Known limitation: the TCP socket keeps receiving and buffering
   /// encrypted data in the kernel even after read_stop(). For long-lived
-  /// connections with flow control this could accumulate data. This will
-  /// be properly fixed when libuv_stream::TCP is replaced by a
-  /// LibUvStreamWrap-based TCPWrap that has compatible stream.data.
+  /// connections with flow control this could accumulate data. Properly
+  /// plumbing a native uv_read_stop through TLSWrap is deferred until the
+  /// native read-interception path (`tls_read_interceptor_cb`) is wired up.
   #[fast]
   fn read_stop(&self, _scope: &mut v8::PinScope) -> i32 {
     let inner = unsafe { &mut *self.inner.as_mut_ptr() };
