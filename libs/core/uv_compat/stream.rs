@@ -316,15 +316,50 @@ pub unsafe fn uv_write(
 
     let write_data = collect_bufs(bufs, nbufs);
 
-    // Try to write synchronously when the queue is empty, matching libuv's
-    // uv_write2() → uv__write() → uv__try_write() path.  This pushes data
-    // into the kernel buffer immediately.  The callback is NOT fired here;
-    // it is deferred to the poll loop (the entry is queued with the
-    // already-written offset so the poll loop sees it as complete and fires
-    // the callback then).  Deferring the callback is important because
-    // callers like TLSWrap's enc_out() set re-entrancy guards (in_dowrite)
-    // that would suppress the completion notification if it fired
-    // synchronously.
+    uv_write_owned_impl(req, tcp, write_data, cb)
+  }
+}
+
+/// Take an already-owned `Vec<u8>` and queue it as a pending write on
+/// the TCP handle. This avoids the extra allocation + memcpy that
+/// `uv_write` does via `collect_bufs` when the caller has already
+/// materialized the bytes into a single buffer (e.g. the stream_wrap
+/// `writev` op concatenates JS chunks into one Vec before writing).
+///
+/// ### Safety
+/// `req` must be valid until the write callback fires. `tcp` must be
+/// initialized by `uv_tcp_init`.
+pub unsafe fn uv_write_owned_tcp(
+  req: *mut uv_write_t,
+  tcp: *mut uv_tcp_t,
+  data: Vec<u8>,
+  cb: Option<uv_write_cb>,
+) -> c_int {
+  unsafe {
+    (*req).handle = tcp as *mut uv_stream_t;
+    if (*tcp).internal_stream.is_none() {
+      return UV_EBADF;
+    }
+    uv_write_owned_impl(req, tcp, data, cb)
+  }
+}
+
+/// Shared logic for queuing a pre-built Vec<u8> as a write.
+///
+/// ### Safety
+/// `req` must be valid until the write callback fires. `tcp` must be
+/// initialized and have `internal_stream` set.
+unsafe fn uv_write_owned_impl(
+  req: *mut uv_write_t,
+  tcp: *mut uv_tcp_t,
+  write_data: Vec<u8>,
+  cb: Option<uv_write_cb>,
+) -> c_int {
+  unsafe {
+    // Try sync write when the queue is empty, matching libuv's
+    // uv_write2 → uv__write → uv__try_write path. Callback is
+    // deferred to the poll loop to avoid re-entrancy with callers
+    // like TLSWrap that set `in_dowrite` guards.
     let mut offset = 0;
     if (*tcp).internal_write_queue.is_empty()
       && let Some(ref stream) = (*tcp).internal_stream
@@ -345,7 +380,6 @@ pub unsafe fn uv_write(
       status: None,
     });
 
-    // Ensure the handle is active so poll_tcp_handle drains the queue.
     (*tcp).flags |= UV_HANDLE_ACTIVE;
     let inner = get_inner((*tcp).loop_);
     let mut handles = inner.tcp_handles.borrow_mut();

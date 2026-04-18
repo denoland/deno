@@ -1227,7 +1227,7 @@ impl LibUvStreamWrap {
       return 0;
     }
 
-    self.do_write(scope, stream, &data, total_bytes, req_wrap_obj, state_array)
+    self.do_write(scope, stream, data, total_bytes, req_wrap_obj, state_array)
   }
 
   #[fast]
@@ -1365,13 +1365,16 @@ impl LibUvStreamWrap {
         return 0;
       }
 
-      // Partial try_write — async write only the remaining bytes
+      // Partial try_write — async write only the remaining bytes.
+      // split_off gives us an owned Vec of the tail without extra
+      // allocation beyond the single tail-copy.
       if try_result > 0 {
         let written = try_result as usize;
+        let tail = data.split_off(written);
         return self.do_write(
           scope,
           stream,
-          &data[written..],
+          tail,
           total_bytes,
           req_wrap_obj,
           state_array,
@@ -1380,23 +1383,23 @@ impl LibUvStreamWrap {
     }
 
     // Full async write (no try_write or try_write returned error/0)
-    self.do_write(scope, stream, &data, total_bytes, req_wrap_obj, state_array)
+    self.do_write(scope, stream, data, total_bytes, req_wrap_obj, state_array)
   }
 
+  /// Queue an owned `Vec<u8>` as a pending write. Takes `data` by move
+  /// so the Vec can be threaded all the way down into the uv_compat
+  /// write queue without a re-allocation + memcpy (the old path went
+  /// through `uv_write(bufs, nbufs)` which re-collected the bufs into
+  /// a new Vec via `collect_bufs`).
   fn do_write(
     &self,
     scope: &mut v8::PinScope,
     stream: *mut uv_stream_t,
-    data: &[u8],
+    data: Vec<u8>,
     total_bytes: usize,
     req_wrap_obj: v8::Local<v8::Object>,
     state_array: v8::Local<v8::Int32Array>,
   ) -> i32 {
-    let buf = uv_buf_t {
-      base: data.as_ptr() as *mut c_char,
-      len: data.len(),
-    };
-
     let stream_handle = self
       .js_handle_global(scope)
       .unwrap_or_else(|| v8::Global::new(scope, v8::Object::new(scope)));
@@ -1413,9 +1416,14 @@ impl LibUvStreamWrap {
     );
     let req_ptr = Box::into_raw(req);
 
-    // SAFETY: req_ptr is a valid uv_write_t and stream is a valid non-null uv_stream_t.
+    // SAFETY: req_ptr is a valid uv_write_t and stream is a valid TCP handle.
     let err = unsafe {
-      uv_compat::uv_write(req_ptr, stream, &buf, 1, Some(after_uv_write))
+      uv_compat::uv_write_owned_tcp(
+        req_ptr,
+        stream as *mut _,
+        data,
+        Some(after_uv_write),
+      )
     };
 
     if err != 0 {

@@ -30,6 +30,7 @@ import {
   emitBefore,
   emitDestroy,
   emitInit,
+  enabledHooksExist,
   executionAsyncId,
   newAsyncId as nextAsyncId,
 } from "ext:deno_node/internal/async_hooks.ts";
@@ -86,7 +87,12 @@ export function Timeout(callback, after, args, isRepeat, isRefed) {
 
   this[kTimerId] = this[createTimer]();
 
-  emitInit(asyncId, "Timeout", triggerAsyncId, this);
+  // Match node: only emit async_hooks init if there are live hooks.
+  // emitInit does non-trivial work (try/finally, empty-array loop,
+  // lookupPublicResource) that's pure overhead in the common case.
+  if (enabledHooksExist()) {
+    emitInit(asyncId, "Timeout", triggerAsyncId, this);
+  }
 }
 
 Timeout.prototype[createTimer] = function () {
@@ -95,33 +101,57 @@ Timeout.prototype[createTimer] = function () {
   const asyncContext = getAsyncContext();
   const asyncId = this._asyncId;
   const triggerAsyncId = this._triggerAsyncId;
-  const cb = function () {
-    const oldContext = getAsyncContext();
-    try {
-      setAsyncContext(asyncContext);
-      emitBefore(asyncId, triggerAsyncId, self);
-      if (!self._isRepeat) {
-        MapPrototypeDelete(activeTimers, self[kTimerId]);
+  // Fast path: when no async_hooks are registered, the emit* calls are
+  // pure overhead (array push/pop + empty-array iteration). Keep the
+  // outer closure (ALS context must still propagate) but elide the
+  // hook machinery.
+  let cb;
+  if (enabledHooksExist()) {
+    cb = function () {
+      const oldContext = getAsyncContext();
+      try {
+        setAsyncContext(asyncContext);
+        emitBefore(asyncId, triggerAsyncId, self);
+        if (!self._isRepeat) {
+          MapPrototypeDelete(activeTimers, self[kTimerId]);
+        }
+        const args = self._timerArgs;
+        let ret;
+        if (args !== undefined && args.length > 0) {
+          ret = ReflectApply(callback, self, args);
+        } else {
+          ret = FunctionPrototypeCall(callback, self);
+        }
+        // Only emit after/destroy on success. On error, the domain's
+        // uncaught exception handler manages the stack cleanup.
+        emitAfter(asyncId);
+        if (!self._isRepeat && !self._asyncDestroyed) {
+          self._asyncDestroyed = true;
+          emitDestroy(asyncId);
+        }
+        return ret;
+      } finally {
+        setAsyncContext(oldContext);
       }
-      const args = self._timerArgs;
-      let ret;
-      if (args !== undefined && args.length > 0) {
-        ret = ReflectApply(callback, self, args);
-      } else {
-        ret = FunctionPrototypeCall(callback, self);
+    };
+  } else {
+    cb = function () {
+      const oldContext = getAsyncContext();
+      try {
+        setAsyncContext(asyncContext);
+        if (!self._isRepeat) {
+          MapPrototypeDelete(activeTimers, self[kTimerId]);
+        }
+        const args = self._timerArgs;
+        if (args !== undefined && args.length > 0) {
+          return ReflectApply(callback, self, args);
+        }
+        return FunctionPrototypeCall(callback, self);
+      } finally {
+        setAsyncContext(oldContext);
       }
-      // Only emit after/destroy on success. On error, the domain's
-      // uncaught exception handler manages the stack cleanup.
-      emitAfter(asyncId);
-      if (!self._isRepeat && !self._asyncDestroyed) {
-        self._asyncDestroyed = true;
-        emitDestroy(asyncId);
-      }
-      return ret;
-    } finally {
-      setAsyncContext(oldContext);
-    }
-  };
+    };
+  }
   const timer = createTimer_(
     cb,
     this._idleTimeout,
@@ -129,13 +159,9 @@ Timeout.prototype[createTimer] = function () {
     this._isRepeat,
     this[kRefed],
   );
-  ObjectDefineProperty(this, "_timer", {
-    __proto__: null,
-    value: timer,
-    writable: true,
-    enumerable: false,
-    configurable: true,
-  });
+  // Direct assignment instead of ObjectDefineProperty -- this path
+  // runs per setTimeout on keep-alive HTTP connections.
+  this._timer = timer;
   const id = timer._timerId;
   MapPrototypeSet(activeTimers, id, this);
   return id;
@@ -146,7 +172,11 @@ Timeout.prototype[kDestroy] = function () {
     this._destroyed = true;
     cancelTimer_(this._timer);
     MapPrototypeDelete(activeTimers, this[kTimerId]);
-    if (this._asyncId !== undefined && !this._asyncDestroyed) {
+    if (
+      this._asyncId !== undefined
+      && !this._asyncDestroyed
+      && enabledHooksExist()
+    ) {
       this._asyncDestroyed = true;
       emitDestroy(this._asyncId);
     }
