@@ -2995,10 +2995,13 @@ fn napi_get_reference_value(
 type HandleScopeBox =
   std::pin::Pin<Box<v8::ScopeStorage<v8::HandleScope<'static, ()>>>>;
 
-/// Tracks whether `napi_escape_handle` has been called on an
-/// escapable handle scope (to prevent double-escape).
-/// The actual V8 scoping is handled by napi_open/close_handle_scope;
-/// the escapable variant just adds the escape-once tracking.
+/// Data for a heap-allocated escapable handle scope.
+/// Contains a real V8 HandleScope and a flag to prevent double-escape.
+///
+/// We use a regular HandleScope rather than V8's EscapableHandleScope
+/// because napi_value is a direct pointer (not a V8 handle table slot),
+/// so V8's escape-slot mechanism does not apply. Escaping is a simple
+/// value copy, and this flag enforces the single-escape contract.
 struct EscapableHandleScopeData {
   handle_scope_ptr: *mut v8::ScopeStorage<v8::HandleScope<'static, ()>>,
   escape_called: bool,
@@ -3112,8 +3115,9 @@ fn napi_escape_handle<'s>(
     return napi_set_last_error(env, napi_escape_called_twice);
   }
   wrapper.escape_called = true;
-  // Copy the handle value. The V8 handle remains valid in the parent
-  // scope's handle block because we opened a real V8 HandleScope.
+  // Copy the handle value. napi_value wraps a direct V8 object pointer
+  // (not a handle table slot), so the value remains valid in the parent
+  // scope -- V8 won't GC within a synchronous callback.
   unsafe { *result = escapee }
   napi_clear_last_error(env)
 }
