@@ -505,6 +505,9 @@ Deno.test("[node/http2] createSecureServer with allowHTTP1", {
   const key = Deno.readTextFileSync("tests/testdata/tls/localhost.key");
   const ca = Deno.readTextFileSync("tests/testdata/tls/RootCA.pem");
 
+  // Verifies that createSecureServer with allowHTTP1 doesn't throw
+  // ReferenceError for setupConnectionsTracking/httpServerPreClose/HttpServer.
+  // TODO(denoland/deno#33317): test HTTP/1.1 fallback once that path works.
   const server = http2.createSecureServer(
     { allowHTTP1: true, cert, key },
     (_req, res) => {

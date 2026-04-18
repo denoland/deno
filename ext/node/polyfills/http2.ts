@@ -54,6 +54,7 @@ import net from "node:net";
 import assert from "node:assert";
 import http from "node:http";
 import {
+  _connectionListener as httpConnectionListener,
   httpServerPreClose,
   Server as HttpServer,
   setupConnectionsTracking,
