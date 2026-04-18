@@ -348,7 +348,8 @@ impl Drop for NapiState {
     // string after the Env is gone.
     for env_ptr in &self.env_ptrs {
       let env = unsafe { &mut **env_ptr };
-      let keys: Vec<usize> = env.external_string_finalizers.keys().copied().collect();
+      let keys: Vec<usize> =
+        env.external_string_finalizers.keys().copied().collect();
       for key in keys {
         crate::js_native_api::remove_external_string_env_entry(key);
       }
@@ -730,7 +731,9 @@ fn op_napi_open<'scope>(
   {
     let mut state = op_state.borrow_mut();
     let napi_state = state.borrow_mut::<NapiState>();
-    napi_state.env_shared_ptrs.push(unsafe { (*env_ptr).shared });
+    napi_state
+      .env_shared_ptrs
+      .push(unsafe { (*env_ptr).shared });
     napi_state.env_ptrs.push(env_ptr);
   }
   let env_ptr = env_ptr as _;
