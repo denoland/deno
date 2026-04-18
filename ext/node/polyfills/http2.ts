@@ -53,6 +53,12 @@ import {
 import net from "node:net";
 import assert from "node:assert";
 import http from "node:http";
+import {
+  _connectionListener as httpConnectionListener,
+  httpServerPreClose,
+  Server as HttpServer,
+  setupConnectionsTracking,
+} from "node:_http_server";
 import { Duplex } from "node:stream";
 import tls from "node:tls";
 import { deprecate } from "node:util";
@@ -301,9 +307,10 @@ const nameForErrorCode = [
 ];
 
 // Session field indices
-const kSessionUint8FieldCount = 1;
+const kSessionUint8FieldCount = 2;
 const kSessionRemoteSettingsIsUpToDate = 0;
 const kSessionPriorityListenerCount = 0;
+const kSessionFrameErrorListenerCount = 1;
 const kBitfield = 0;
 
 // Private symbols
@@ -1381,7 +1388,12 @@ class Http2Stream extends Duplex {
     // Wrap the native write methods to flush pending h2 frames after
     // each write. The native writeBuffer/writeUtf8String are synchronous
     // (they buffer data in nghttp2's pending_data), so kLastWriteWasAsync
-    // stays 0 and afterWriteDispatched calls req.callback synchronously.
+    // must be 0 for afterWriteDispatched to call req.callback synchronously.
+    //
+    // scheduleSendPending() may write to the underlying socket (e.g. TLS),
+    // which can set kLastWriteWasAsync = 1 on the shared streamBaseState.
+    // We must reset it to 0 after flushing so that the h2 stream's own
+    // write is still considered synchronous by afterWriteDispatched.
     const nativeWriteUtf8String = FunctionPrototypeBind(
       handle.writeUtf8String,
       handle,
@@ -1390,11 +1402,13 @@ class Http2Stream extends Duplex {
     handle.writeUtf8String = function (req, data) {
       const err = nativeWriteUtf8String(req, data);
       scheduleSendPending(session);
+      streamBaseState[kLastWriteWasAsync] = 0;
       return err;
     };
     handle.writeBuffer = function (req, data) {
       const err = nativeWriteBuffer(req, data);
       scheduleSendPending(session);
+      streamBaseState[kLastWriteWasAsync] = 0;
       return err;
     };
     handle.writev = function (req, chunks, allBuffers) {
@@ -2723,13 +2737,15 @@ function setupHandle(socket, type, options) {
   };
 
   this[kHandle] = handle;
-  if (this[kNativeFields]) {
+  if (this[kNativeFields] && handle.fields) {
     // If some options have already been set before the handle existed, copy
     // those (and only those) that have manually been set over.
     this[kNativeFields].copyAssigned(handle.fields);
   }
 
-  this[kNativeFields] = handle.fields;
+  if (handle.fields) {
+    this[kNativeFields] = handle.fields;
+  }
 
   if (socket.encrypted) {
     this[kAlpnProtocol] = socket.alpnProtocol;
