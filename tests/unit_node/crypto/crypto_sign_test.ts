@@ -593,3 +593,21 @@ QIDAQAB
   const isVerified = verify(null, data, { key: pubkey }, sig);
   assertEquals(isVerified, true);
 });
+
+// Companion to the above test: verify sign(null, ...) also infers digest from RSA-PSS key params
+Deno.test("crypto.sign - RSA-PSS key with null algorithm infers digest from key params", () => {
+  const { privateKey, publicKey } = generateKeyPairSync("rsa-pss", {
+    modulusLength: 2048,
+    hashAlgorithm: "sha384",
+  });
+
+  const data = Buffer.from("test data for RSA-PSS sign with null algorithm");
+
+  // algorithm=null should infer SHA-384 from the RSA-PSS key parameters
+  const signature = sign(null, data, privateKey);
+  assert(signature.length > 0);
+
+  // Verify the signature using the same null-algorithm path
+  const isVerified = verify(null, data, publicKey, signature);
+  assertEquals(isVerified, true);
+});
