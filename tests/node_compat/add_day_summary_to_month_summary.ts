@@ -132,7 +132,7 @@ export async function fetchReport(
   if (shardReports.length === 1) {
     return shardReports[0];
   }
-  // Merge shard reports: combine results, sum counts
+  // Merge shard reports: combine results, recompute counts
   const merged = { ...shardReports[0] };
   merged.results = { ...merged.results };
   for (let i = 1; i < shardReports.length; i++) {
@@ -140,9 +140,12 @@ export async function fetchReport(
     for (const [key, value] of Object.entries(shard.results)) {
       merged.results[key] = value;
     }
-    merged.total += shard.total;
-    merged.pass += shard.pass;
   }
+  // Recompute total/pass from merged results to stay consistent
+  // even if shards overlap due to a bug or retry
+  const values = Object.values(merged.results);
+  merged.total = values.length;
+  merged.pass = values.filter((v) => v === true).length;
   return merged;
 }
 
