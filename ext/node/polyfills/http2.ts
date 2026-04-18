@@ -301,9 +301,10 @@ const nameForErrorCode = [
 ];
 
 // Session field indices
-const kSessionUint8FieldCount = 1;
+const kSessionUint8FieldCount = 2;
 const kSessionRemoteSettingsIsUpToDate = 0;
 const kSessionPriorityListenerCount = 0;
+const kSessionFrameErrorListenerCount = 1;
 const kBitfield = 0;
 
 // Private symbols
