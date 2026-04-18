@@ -1,6 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::ffi::c_char;
+use std::ffi::c_void;
 
 use napi_sys::ValueType::napi_string;
 use napi_sys::*;
@@ -279,6 +280,16 @@ extern "C" fn test_utf16_roundtrip(
 
 // node_api_create_external_string_latin1 is declared in napi_sys
 
+/// Release a latin1 buffer allocated via Vec<u8>.
+unsafe extern "C" fn finalize_latin1(
+  _env: napi_env,
+  data: *mut c_void,
+  hint: *mut c_void,
+) {
+  let len = hint as usize;
+  unsafe { drop(Vec::from_raw_parts(data as *mut u8, len, len)) };
+}
+
 /// Test that node_api_create_external_string_latin1 creates a string
 /// and reports whether the data was copied.
 extern "C" fn test_external_latin1(
@@ -298,8 +309,8 @@ extern "C" fn test_external_latin1(
       env,
       ptr as *const c_char,
       len,
-      None, // No finalize callback for this simple test
-      std::ptr::null_mut(),
+      Some(finalize_latin1),
+      len as *mut c_void, // pass length as hint for deallocation
       &mut result,
       &mut copied,
     )
@@ -318,15 +329,29 @@ extern "C" fn test_external_latin1(
   ));
   assert_eq!(&buf[..out_len], b"hello latin1");
 
-  // Clean up the leaked buffer (since we passed no finalize callback)
-  unsafe {
-    drop(Vec::from_raw_parts(ptr as *mut u8, len, len));
+  if copied {
+    // V8 copied the data, so we still own the buffer and must free it.
+    unsafe {
+      drop(Vec::from_raw_parts(ptr as *mut u8, len, len));
+    }
   }
+  // If !copied (zero-copy), V8 owns the buffer and will call
+  // finalize_latin1 when the string is garbage collected.
 
   let mut ret: napi_value = std::ptr::null_mut();
   // Return whether the string was copied (false = zero-copy, true = copied)
   assert_napi_ok!(napi_get_boolean(env, !copied, &mut ret));
   ret
+}
+
+/// Release a UTF-16 buffer allocated via Vec<u16>.
+unsafe extern "C" fn finalize_utf16(
+  _env: napi_env,
+  data: *mut c_void,
+  hint: *mut c_void,
+) {
+  let len = hint as usize;
+  unsafe { drop(Vec::from_raw_parts(data as *mut u16, len, len)) };
 }
 
 /// Test that node_api_create_external_string_utf16 creates a string
@@ -348,8 +373,8 @@ extern "C" fn test_external_utf16(
       env,
       ptr,
       len,
-      None, // No finalize callback for this simple test
-      std::ptr::null_mut(),
+      Some(finalize_utf16),
+      len as *mut c_void, // pass length as hint for deallocation
       &mut result,
       &mut copied,
     )
@@ -369,10 +394,14 @@ extern "C" fn test_external_utf16(
   let expected: Vec<u16> = "hello utf16".encode_utf16().collect();
   assert_eq!(&buf[..out_len], &expected[..]);
 
-  // Clean up the leaked buffer (since we passed no finalize callback)
-  unsafe {
-    drop(Vec::from_raw_parts(ptr as *mut u16, len, len));
+  if copied {
+    // V8 copied the data, so we still own the buffer and must free it.
+    unsafe {
+      drop(Vec::from_raw_parts(ptr as *mut u16, len, len));
+    }
   }
+  // If !copied (zero-copy), V8 owns the buffer and will call
+  // finalize_utf16 when the string is garbage collected.
 
   let mut ret: napi_value = std::ptr::null_mut();
   // Return whether the string was copied (false = zero-copy, true = copied)
