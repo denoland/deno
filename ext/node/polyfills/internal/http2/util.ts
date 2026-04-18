@@ -185,8 +185,18 @@ const kNoPayloadMethods = new SafeSet([
 // the native side with values that are filled in on demand, the js code then
 // reads those values out. The set of IDX constants that follow identify the
 // relevant data positions within these buffers.
-const { settingsBuffer, optionsBuffer, sessionState, streamState } =
-  op_http2_http_state();
+// These buffers are backed by thread-local memory in Rust. They must be
+// initialized at runtime (not snapshot time) so the pointers are valid.
+let settingsBuffer: Uint32Array;
+let optionsBuffer: Uint32Array;
+let sessionState: Float32Array;
+let streamState: Float32Array;
+
+function initHttp2State() {
+  if (settingsBuffer) return;
+  ({ settingsBuffer, optionsBuffer, sessionState, streamState } =
+    op_http2_http_state());
+}
 
 const IDX_SETTINGS_HEADER_TABLE_SIZE = 0;
 const IDX_SETTINGS_ENABLE_PUSH = 1;
@@ -232,6 +242,7 @@ const IDX_OPTIONS_STRICT_HTTP_FIELD_WHITESPACE_VALIDATION = 12;
 const IDX_OPTIONS_FLAGS = 13;
 
 function updateOptionsBuffer(options) {
+  initHttp2State();
   let flags = 0;
   if (typeof options.maxDeflateDynamicTableSize === "number") {
     flags |= 1 << IDX_OPTIONS_MAX_DEFLATE_DYNAMIC_TABLE_SIZE;
@@ -339,6 +350,7 @@ function getDefaultSettings() {
 // Remote is a boolean. true to fetch remote settings, false to fetch local.
 // this is only called internally
 function getSettings(session, remote) {
+  initHttp2State();
   if (remote) {
     session.remoteSettings();
   } else {
@@ -363,6 +375,7 @@ function getSettings(session, remote) {
 }
 
 function updateSettingsBuffer(settings) {
+  initHttp2State();
   let flags = 0;
   let numCustomSettings = 0;
 

@@ -552,7 +552,8 @@ TLSSocket.prototype._finishInit = function () {
     this._handle.getAlpnNegotiatedProtocol(alpnOut);
     this.alpnProtocol = alpnOut.alpnProtocol || false;
     if (this.servername === null) {
-      this.servername = this._handle.getServername?.() ?? null;
+      this.servername = this._handle.getServername?.() ??
+        this._tlsOptions?.servername ?? null;
     }
   } catch (_e) {
     // getAlpnNegotiatedProtocol/getServername may not be available

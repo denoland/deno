@@ -2665,6 +2665,8 @@ function setupHandle(socket, type, options) {
 
   // Pump data from socket to session via JS events.
   // After receiving data, flush outgoing h2 frames back to the socket.
+  // Pump data from socket to session via JS events.
+  // After receiving data, flush outgoing h2 frames back to the socket.
   socket.on("data", (buf) => {
     if (!this.destroyed) {
       handle.receive(buf);
@@ -2840,11 +2842,18 @@ function finishSessionClose(session, error) {
     // Always wait for writable side to finish.
     socket.end((err) => {
       debugSessionObj(session, "finishSessionClose socket end", err, error);
-      // If session.destroy() was called, destroy the underlying socket.
-      // Delay it a bit to try to avoid ECONNRESET on Windows.
+      // If session.destroy() was called (not graceful close via close()),
+      // destroy the underlying socket. Delay it a bit to try to avoid
+      // ECONNRESET on Windows.
       if (!session.closed) {
         setImmediate(() => {
           socket.destroy(error);
+        });
+      } else {
+        // For graceful close, destroy the socket after end() so we don't
+        // keep the event loop alive waiting for the peer to close.
+        socket.once("finish", () => {
+          socket.destroy();
         });
       }
     });
