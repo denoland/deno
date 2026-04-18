@@ -210,8 +210,10 @@ pub(crate) fn externalize_sources(
     // sources so that they line up correct.
     let offset = 0;
     for (index, source) in snapshot_sources.iter().enumerate() {
+      // SAFETY: Snapshot sources were already validated as ASCII during
+      // snapshot creation, so we can skip the ASCII check.
       externals[index + offset] =
-        FastStaticString::create_external_onebyte_const(source);
+        v8::String::create_external_onebyte_const_unchecked(source);
     }
 
     // Next, add the non-snapshot sources. For each source file, we swap its `code`
@@ -219,13 +221,11 @@ pub(crate) fn externalize_sources(
     // we keep the original source alive.
     let offset = snapshot_sources.len();
     for (index, source) in sources.into_iter().enumerate() {
+      // SAFETY: Extension sources are transpiled JS, guaranteed to be ASCII.
       externals[index + offset] =
-        FastStaticString::create_external_onebyte_const(std::mem::transmute::<
-          &[u8],
-          &[u8],
-        >(
-          source.code.as_bytes(),
-        ));
+        v8::String::create_external_onebyte_const_unchecked(
+          std::mem::transmute::<&[u8], &[u8]>(source.code.as_bytes()),
+        );
       let ptr = &externals[index + offset] as *const v8::OneByteConst;
       let original_source = std::mem::replace(
         &mut source.code,

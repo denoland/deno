@@ -358,10 +358,20 @@ impl ModuleMapData {
     debug_assert_eq!(self.by_name.len(), self.handles.len());
     debug_assert_eq!(self.info.len(), self.handles.len());
 
+    // Clear requests from module info before snapshotting. The requests
+    // contain ModuleReference with parsed URLs (ModuleSpecifier) that are
+    // expensive to deserialize (~2500 Url::parse calls). Snapshotted
+    // modules are already instantiated and linked, so their import
+    // requests are never needed at runtime.
+    let mut modules = self.info;
+    for module in &mut modules {
+      module.requests.clear();
+    }
+
     let mut ser = ModuleMapSnapshotData {
       next_load_id: self.next_load_id,
       main_module_id: self.main_module_id.map(|x| x as _),
-      modules: self.info,
+      modules,
       ..Default::default()
     };
 
