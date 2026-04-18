@@ -53,6 +53,7 @@ import {
 import net from "node:net";
 import assert from "node:assert";
 import http from "node:http";
+import { setupConnectionsTracking } from "node:_http_server";
 import { Duplex } from "node:stream";
 import tls from "node:tls";
 import { deprecate } from "node:util";
