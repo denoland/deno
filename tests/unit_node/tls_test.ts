@@ -20,6 +20,71 @@ const key = Deno.readTextFileSync(join(tlsTestdataDir, "localhost.key"));
 const cert = Deno.readTextFileSync(join(tlsTestdataDir, "localhost.crt"));
 const rootCaCert = Deno.readTextFileSync(join(tlsTestdataDir, "RootCA.pem"));
 
+// Regression test for https://github.com/denoland/deno/issues/30724
+// TLS over a back-to-back Duplex pair (like native-duplexpair used by
+// tedious/mssql) previously panicked with "RefCell already borrowed"
+// because encOut synchronously wrote to the paired stream, re-entering
+// the same CppGC RefCell.
+Deno.test("tls over js-backed duplex pair does not panic", async () => {
+  const server = tls.createServer({ cert, key }, (socket) => {
+    socket.on("error", () => {});
+    socket.write("hello from server");
+    socket.end();
+  });
+
+  const { promise: listening, resolve: resolveListening } = Promise
+    .withResolvers<void>();
+  server.listen(0, () => resolveListening());
+  await listening;
+  const { port } = server.address() as net.AddressInfo;
+
+  // Raw TCP connection to the TLS server.
+  const rawSocket = net.connect(port, "localhost");
+  const { promise: connected, resolve: resolveConnected } = Promise
+    .withResolvers<void>();
+  rawSocket.on("connect", () => resolveConnected());
+  await connected;
+
+  // Wrap rawSocket in a plain Duplex (NOT a net.Socket) to trigger
+  // JSStreamSocket in _tls_wrap.js, mimicking tedious/mssql TLS-over-TDS.
+  const wrapper = new stream.Duplex({
+    read() {},
+    write(
+      chunk: Uint8Array,
+      _enc: string,
+      cb: (err?: Error | null) => void,
+    ) {
+      if (rawSocket.destroyed) {
+        cb();
+        return;
+      }
+      rawSocket.write(chunk, cb);
+    },
+  });
+  rawSocket.on("data", (d: Uint8Array) => wrapper.push(d));
+  rawSocket.on("end", () => wrapper.push(null));
+
+  const tlsSocket = tls.connect({
+    socket: wrapper as net.Socket,
+    rejectUnauthorized: false,
+  });
+
+  const received = await new Promise<string>((resolve, reject) => {
+    let data = "";
+    tlsSocket.on("error", reject);
+    tlsSocket.on("data", (chunk: Uint8Array) => {
+      data += chunk.toString();
+    });
+    tlsSocket.on("end", () => resolve(data));
+  });
+
+  assertEquals(received, "hello from server");
+
+  tlsSocket.destroy();
+  rawSocket.destroy();
+  server.close();
+});
+
 for (
   const [alpnServer, alpnClient, expected] of [
     [["a", "b"], ["a"], ["a"]],
