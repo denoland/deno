@@ -18,10 +18,12 @@ import {
   op_node_cipheriv_take,
   op_node_create_cipheriv,
   op_node_create_decipheriv,
+  op_node_create_private_key,
   op_node_decipheriv_auth_tag,
   op_node_decipheriv_decrypt,
   op_node_decipheriv_final,
   op_node_decipheriv_set_aad,
+  op_node_export_private_key_pem,
   op_node_export_secret_key,
   op_node_private_decrypt,
   op_node_private_encrypt,
@@ -698,12 +700,39 @@ export function prepareKey(key) {
     const data = key.export({ type: "pkcs8", format: "pem" });
     return { data: getArrayBufferOrView(data, "key") };
   } else if (typeof key == "object") {
-    const { key: data, encoding } = key;
+    const { key: data, encoding, passphrase, format, type: typ } = key;
     if (isKeyObject(data)) {
       return prepareKey(data);
     }
     if (!isStringOrBuffer(data)) {
       throw new TypeError("Invalid key type");
+    }
+
+    // If passphrase is provided, decrypt the key via native code and
+    // re-export as unencrypted PEM for the encrypt/decrypt ops.
+    if (passphrase != null) {
+      try {
+        const keyFormat = format ?? (typeof data === "string" ? "pem" : "der");
+        const keyData = getArrayBufferOrView(data, "key", encoding);
+        const passphraseData = getArrayBufferOrView(passphrase, "passphrase");
+        const handle = op_node_create_private_key(
+          keyData,
+          keyFormat,
+          typ ?? "",
+          passphraseData,
+        );
+        const pem = op_node_export_private_key_pem(
+          handle,
+          "pkcs8",
+          null,
+          null,
+        );
+        return { data: getArrayBufferOrView(pem, "key") };
+      } catch {
+        // Decryption failed (wrong passphrase, corrupt key, etc.)
+        // Fall through and return the raw data; the subsequent op will
+        // produce the appropriate Node-compatible error.
+      }
     }
 
     return { data: getArrayBufferOrView(data, "key", encoding) };

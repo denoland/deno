@@ -710,6 +710,7 @@ export function createPublicKey(
       res.data,
       res.format,
       res.type ?? "",
+      res.passphrase,
     );
     return new PublicKeyObject(handle);
   }
@@ -966,7 +967,14 @@ export class PrivateKeyObject extends AsymmetricKeyObject {
         passphrase != null ? passphrase.toString() : null,
       );
     } else {
-      return Buffer.from(op_node_export_private_key_der(this[kHandle], type));
+      return Buffer.from(
+        op_node_export_private_key_der(
+          this[kHandle],
+          type,
+          cipher ?? null,
+          passphrase != null ? passphrase.toString() : null,
+        ),
+      );
     }
   }
 }

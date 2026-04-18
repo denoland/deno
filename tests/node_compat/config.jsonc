@@ -401,11 +401,31 @@
     "parallel/test-crypto-getcipherinfo.js": {},
     "parallel/test-crypto-hmac.js": {},
     "parallel/test-crypto-keygen.js": {},
+    "parallel/test-crypto-keygen-async-dsa.js": {},
     "parallel/test-crypto-keygen-async-dsa-key-object.js": {},
     "parallel/test-crypto-keygen-async-elliptic-curve-jwk-ec.js": {},
     "parallel/test-crypto-keygen-async-elliptic-curve-jwk.js": {},
     "parallel/test-crypto-keygen-async-elliptic-curve-jwk-rsa.js": {},
+    "parallel/test-crypto-keygen-async-encrypted-private-key.js": {},
+    "parallel/test-crypto-keygen-async-encrypted-private-key-der.js": {},
+    "parallel/test-crypto-keygen-async-explicit-elliptic-curve.js": {},
+    "parallel/test-crypto-keygen-async-explicit-elliptic-curve-encrypted.js.js": {
+      "ignore": true,
+      "reason": "Test expects OpenSSL 3 error message (hasOpenSSL3 is true) but Deno throws ERR_MISSING_PASSPHRASE since we use Rust crypto, not OpenSSL"
+    },
+    "parallel/test-crypto-keygen-async-explicit-elliptic-curve-encrypted-p256.js": {
+      "ignore": true,
+      "reason": "Test expects OpenSSL 3 error message (hasOpenSSL3 is true) but Deno throws ERR_MISSING_PASSPHRASE since we use Rust crypto, not OpenSSL"
+    },
     "parallel/test-crypto-keygen-async-named-elliptic-curve.js": {},
+    "parallel/test-crypto-keygen-async-named-elliptic-curve-encrypted.js": {
+      "ignore": true,
+      "reason": "Test expects OpenSSL 3 error message (hasOpenSSL3 is true) but Deno throws ERR_MISSING_PASSPHRASE since we use Rust crypto, not OpenSSL"
+    },
+    "parallel/test-crypto-keygen-async-named-elliptic-curve-encrypted-p256.js": {
+      "ignore": true,
+      "reason": "Test expects OpenSSL 3 error message (hasOpenSSL3 is true) but Deno throws ERR_MISSING_PASSPHRASE since we use Rust crypto, not OpenSSL"
+    },
     "parallel/test-crypto-keygen-async-rsa.js": {
       "ignore": true,
       "reason": "Decrypting legacy PEM encrypted private keys (Proc-Type/DEK-Info format) is not yet supported; only PKCS#8 encrypted key import works"
@@ -426,6 +446,10 @@
     "parallel/test-crypto-pqc-keygen-slh-dsa.js": {},
     "parallel/test-crypto-pqc-sign-verify-ml-dsa.js": {},
     "parallel/test-crypto-keygen-empty-passphrase-no-error.js": {},
+    "parallel/test-crypto-keygen-empty-passphrase-no-prompt.js": {
+      "ignore": true,
+      "reason": "Test expects OpenSSL 3 error message (hasOpenSSL3 is true) but Deno throws ERR_MISSING_PASSPHRASE since we use Rust crypto, not OpenSSL"
+    },
     "parallel/test-crypto-keygen-invalid-parameter-encoding-dsa.js": {},
     "parallel/test-crypto-keygen-invalid-parameter-encoding-ec.js": {},
     "parallel/test-crypto-keygen-key-object-without-encoding.js": {},
