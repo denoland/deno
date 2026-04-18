@@ -39,7 +39,7 @@ struct OutdatedPackage {
   name: StackString,
 }
 
-#[allow(clippy::print_stdout)]
+#[allow(clippy::print_stdout, reason = "print method")]
 fn print_outdated_table(packages: &[OutdatedPackage]) {
   const HEADINGS: &[&str] = &["Package", "Current", "Update", "Latest"];
 
@@ -333,7 +333,8 @@ fn choose_new_version_req(
     )
     .unwrap();
     if preferred.version <= resolved.version
-      && candidate_version_req == dep.req.version_req
+      && (candidate_version_req == dep.req.version_req
+        || preferred.version < resolved.version)
     {
       return ChosenVersionReq::None {
         latest_available: !update_to_latest

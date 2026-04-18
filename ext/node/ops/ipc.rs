@@ -175,7 +175,6 @@ mod impl_ {
 
   // Open IPC pipe from bootstrap options.
   #[op2]
-  #[to_v8]
   pub fn op_node_child_ipc_pipe(
     state: &mut OpState,
   ) -> Result<Option<(ResourceId, u8)>, io::Error> {
@@ -187,18 +186,28 @@ mod impl_ {
     log::debug!("op_node_child_ipc_pipe: {:?}, {:?}", fd, serialization);
     let ref_tracker = IpcRefTracker::new(state.external_ops_tracker.clone());
     match serialization {
-      ChildIpcSerialization::Json => Ok(Some((
-        state
-          .resource_table
-          .add(IpcJsonStreamResource::new(fd, ref_tracker)?),
-        0,
-      ))),
-      ChildIpcSerialization::Advanced => Ok(Some((
-        state
-          .resource_table
-          .add(IpcAdvancedStreamResource::new(fd, ref_tracker)?),
-        1,
-      ))),
+      ChildIpcSerialization::Json => {
+        match IpcJsonStreamResource::new(fd, ref_tracker) {
+          Ok(resource) => Ok(Some((state.resource_table.add(resource), 0))),
+          Err(err) => {
+            log::error!(
+              "Failed to open IPC channel from NODE_CHANNEL_FD ({fd}): {err}"
+            );
+            std::process::exit(1);
+          }
+        }
+      }
+      ChildIpcSerialization::Advanced => {
+        match IpcAdvancedStreamResource::new(fd, ref_tracker) {
+          Ok(resource) => Ok(Some((state.resource_table.add(resource), 1))),
+          Err(err) => {
+            log::error!(
+              "Failed to open IPC channel from NODE_CHANNEL_FD ({fd}): {err}"
+            );
+            std::process::exit(1);
+          }
+        }
+      }
     }
   }
 
@@ -227,7 +236,7 @@ mod impl_ {
     ReadValueFailed,
   }
 
-  #[op2(async)]
+  #[op2]
   pub fn op_node_ipc_write_json<'a>(
     scope: &mut v8::PinScope<'a, '_>,
     state: Rc<RefCell<OpState>>,
@@ -434,7 +443,7 @@ mod impl_ {
     state.put(constants);
   }
 
-  #[op2(async)]
+  #[op2]
   pub fn op_node_ipc_write_advanced<'a>(
     scope: &mut v8::PinScope<'a, '_>,
     state: Rc<RefCell<OpState>>,
@@ -757,8 +766,7 @@ mod impl_ {
     }
   }
 
-  #[op2(async)]
-  #[to_v8]
+  #[op2]
   pub async fn op_node_ipc_read_advanced(
     state: Rc<RefCell<OpState>>,
     #[smi] rid: ResourceId,
@@ -787,7 +795,7 @@ mod impl_ {
     })
   }
 
-  #[op2(async)]
+  #[op2]
   #[serde]
   pub async fn op_node_ipc_read_json(
     state: Rc<RefCell<OpState>>,

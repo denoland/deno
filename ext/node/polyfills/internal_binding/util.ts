@@ -31,6 +31,7 @@
 import {
   op_node_get_own_non_index_properties,
   op_node_guess_handle_type,
+  op_node_parse_env,
   op_node_view_has_buffer,
 } from "ext:core/ops";
 
@@ -103,6 +104,19 @@ export function arrayBufferViewHasBuffer(
   return op_node_view_has_buffer(view);
 }
 
+export const parseEnv = op_node_parse_env as (
+  env: string,
+) => Record<string, string>;
+
 export const untransferableSymbol = Symbol.for(
   "nodejs.worker_threads.untransferable",
 );
+
+export default {
+  guessHandleType,
+  isArrayIndex,
+  getOwnNonIndexProperties,
+  arrayBufferViewHasBuffer,
+  parseEnv,
+  untransferableSymbol,
+};

@@ -31,7 +31,6 @@ use cache_control::CacheControl;
 use deno_core::AsyncRefCell;
 use deno_core::AsyncResult;
 use deno_core::BufView;
-use deno_core::ByteString;
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
@@ -41,6 +40,7 @@ use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_core::StringOrBuffer;
+use deno_core::convert::ByteString;
 use deno_core::futures::FutureExt;
 use deno_core::futures::StreamExt;
 use deno_core::futures::TryFutureExt;
@@ -78,7 +78,6 @@ use hyper_v014::header::HeaderValue;
 use hyper_v014::server::conn::Http;
 use hyper_v014::service::Service;
 use once_cell::sync::OnceCell;
-use serde::Serialize;
 use tokio::io::AsyncRead;
 use tokio::io::AsyncWrite;
 use tokio::io::AsyncWriteExt;
@@ -172,6 +171,8 @@ deno_core::extension!(
     http_next::op_http_set_response_trailers,
     http_next::op_http_upgrade_websocket_next,
     http_next::op_http_upgrade_raw,
+    http_next::op_http_upgrade_raw_connect,
+    http_next::op_http_upgrade_raw_get_head,
     http_next::op_raw_write_vectored,
     http_next::op_can_write_vectored,
     http_next::op_http_try_wait,
@@ -179,6 +180,7 @@ deno_core::extension!(
     http_next::op_http_close,
     http_next::op_http_cancel,
     http_next::op_http_metric_handle_otel_error,
+    http_next::op_http_copy_span_to_otel_info,
   ],
   esm = ["00_serve.ts", "01_http.js", "02_websocket.ts"],
   options = {
@@ -222,6 +224,8 @@ deno_core::extension!(
     http_next::op_http_set_response_trailers,
     http_next::op_http_upgrade_websocket_next,
     http_next::op_http_upgrade_raw,
+    http_next::op_http_upgrade_raw_connect,
+    http_next::op_http_upgrade_raw_get_head,
     http_next::op_raw_write_vectored,
     http_next::op_can_write_vectored,
     http_next::op_http_try_wait,
@@ -229,6 +233,7 @@ deno_core::extension!(
     http_next::op_http_close,
     http_next::op_http_cancel,
     http_next::op_http_metric_handle_otel_error,
+    http_next::op_http_copy_span_to_otel_info,
   ],
   esm = ["00_serve.ts", "01_http.js", "02_websocket.ts"],
   options = {
@@ -318,6 +323,7 @@ struct OtelInfoAttributes {
   server_address: Option<String>,
   server_port: Option<i64>,
   error_type: Option<&'static str>,
+  http_route: Option<String>,
   http_response_status_code: Option<i64>,
 }
 
@@ -432,6 +438,11 @@ impl OtelInfoAttributes {
     if let Some(error) = self.error_type {
       histogram_attributes
         .push(deno_telemetry::KeyValue::new("error.type", error));
+    }
+
+    if let Some(route) = self.http_route.clone() {
+      histogram_attributes
+        .push(deno_telemetry::KeyValue::new("http.route", route));
     }
 
     histogram_attributes
@@ -694,6 +705,7 @@ impl HttpConnResource {
               server_address: request.uri().host().map(|host| host.to_string()),
               server_port: request.uri().port_u16().map(|port| port as i64),
               error_type: Default::default(),
+              http_route: None,
               http_response_status_code: Default::default(),
             },
           ))))
@@ -994,8 +1006,7 @@ impl Drop for BodyUncompressedSender {
 }
 
 // We use a tuple instead of struct to avoid serialization overhead of the keys.
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(deno_core::ToV8)]
 struct NextRequestResponse(
   // read_stream_rid:
   ResourceId,
@@ -1009,8 +1020,7 @@ struct NextRequestResponse(
   String,
 );
 
-#[op2(async)]
-#[serde]
+#[op2]
 async fn op_http_accept(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
@@ -1119,12 +1129,12 @@ fn req_headers(
   headers
 }
 
-#[op2(async)]
+#[op2]
 async fn op_http_write_headers(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: u32,
   #[smi] status: u16,
-  #[serde] headers: Vec<(ByteString, ByteString)>,
+  #[scoped] headers: Vec<(ByteString, ByteString)>,
   #[serde] data: Option<StringOrBuffer>,
 ) -> Result<(), HttpError> {
   let stream = state
@@ -1198,7 +1208,6 @@ async fn op_http_write_headers(
 }
 
 #[op2]
-#[serde]
 fn op_http_headers(
   state: &mut OpState,
   #[smi] rid: u32,
@@ -1351,7 +1360,7 @@ fn should_compress(headers: &hyper_v014::HeaderMap) -> bool {
       .unwrap_or_default()
 }
 
-#[op2(async)]
+#[op2]
 async fn op_http_write_resource(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
@@ -1410,7 +1419,7 @@ async fn op_http_write_resource(
   Ok(())
 }
 
-#[op2(async)]
+#[op2]
 async fn op_http_write(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
@@ -1472,7 +1481,7 @@ async fn op_http_write(
 /// Gracefully closes the write half of the HTTP stream. Note that this does not
 /// remove the HTTP stream resource from the resource table; it still has to be
 /// closed with `Deno.core.close()`.
-#[op2(async)]
+#[op2]
 async fn op_http_shutdown(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
@@ -1517,7 +1526,7 @@ fn op_http_websocket_accept_header(#[string] key: String) -> String {
   BASE64_STANDARD.encode(digest)
 }
 
-#[op2(async)]
+#[op2]
 #[smi]
 async fn op_http_upgrade_websocket(
   state: Rc<RefCell<OpState>>,
@@ -1702,7 +1711,6 @@ fn extract_network_stream<U: CanDowncastUpgrade>(
 }
 
 #[op2]
-#[serde]
 pub fn op_http_serve_address_override() -> (u8, String, u32, bool) {
   if let Ok(val) = std::env::var("DENO_SERVE_ADDRESS") {
     return parse_serve_address(&val);

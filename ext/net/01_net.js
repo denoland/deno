@@ -87,7 +87,7 @@ async function resolveDns(query, recordType, options) {
       query,
       recordType,
       options,
-    });
+    }, /* useEdns0 */ true);
     return ArrayPrototypeMap(res, (recordWithTtl) => recordWithTtl.data);
   } finally {
     if (options?.signal) {
@@ -257,17 +257,6 @@ class UnixConn extends Conn {
 class VsockConn extends Conn {
   constructor(rid, remoteAddr, localAddr) {
     super(rid, remoteAddr, localAddr);
-    ObjectDefineProperty(this, internalRidSymbol, {
-      __proto__: null,
-      enumerable: false,
-      value: rid,
-    });
-  }
-}
-
-class PipeConn extends Conn {
-  constructor(rid) {
-    super(rid, null, null);
     ObjectDefineProperty(this, internalRidSymbol, {
       __proto__: null,
       enumerable: false,
@@ -760,7 +749,6 @@ export {
   listen,
   Listener,
   listenOptionApiName,
-  PipeConn,
   resolveDns,
   setDatagramBroadcast,
   setMulticastLoopback,

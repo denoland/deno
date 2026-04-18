@@ -169,15 +169,8 @@ fn is_word_boundary(c: char) -> bool {
 
 fn get_expr_from_line_at_pos(line: &str, cursor_pos: usize) -> &str {
   let start = line[..cursor_pos].rfind(is_word_boundary).unwrap_or(0);
-  let end = line[cursor_pos..]
-    .rfind(is_word_boundary)
-    .map(|i| cursor_pos + i)
-    .unwrap_or(cursor_pos);
-
-  let word = &line[start..end];
-  let word = word.strip_prefix(is_word_boundary).unwrap_or(word);
-
-  (word.strip_suffix(is_word_boundary).unwrap_or(word)) as _
+  let word = &line[start..cursor_pos];
+  word.strip_prefix(is_word_boundary).unwrap_or(word)
 }
 
 impl Completer for EditorHelper {
@@ -189,15 +182,6 @@ impl Completer for EditorHelper {
     pos: usize,
     _ctx: &Context<'_>,
   ) -> Result<(usize, Vec<String>), ReadlineError> {
-    let lsp_completions = self.sync_sender.lsp_completions(line, pos);
-    if !lsp_completions.is_empty() {
-      // assumes all lsp completions have the same start position
-      return Ok((
-        lsp_completions[0].range.start,
-        lsp_completions.into_iter().map(|c| c.new_text).collect(),
-      ));
-    }
-
     let expr = get_expr_from_line_at_pos(line, pos);
 
     // check if the expression is in the form `obj.prop`
@@ -336,7 +320,12 @@ impl Highlighter for EditorHelper {
     }
   }
 
-  fn highlight_char(&self, line: &str, _: usize, _: bool) -> bool {
+  fn highlight_char(
+    &self,
+    line: &str,
+    _: usize,
+    _: rustyline::highlight::CmdKind,
+  ) -> bool {
     !line.is_empty()
   }
 

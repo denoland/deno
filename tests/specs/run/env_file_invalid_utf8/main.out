@@ -1,0 +1,3 @@
+Warning Error reading from environment file: invalid utf-8 sequence of 1 bytes from index 50
+    at [WILDLINE]invalid_utf8_env
+undefined

@@ -5,11 +5,14 @@ import { op_cron_create, op_cron_next } from "ext:core/ops";
 const {
   ArrayPrototypeJoin,
   NumberPrototypeToString,
+  SafeArrayIterator,
   TypeError,
 } = primordials;
 import {
   builtinTracer,
+  ContextManager,
   enterSpan,
+  PROPAGATORS,
   restoreSnapshot,
   TRACING_ENABLED,
 } from "ext:deno_telemetry/telemetry.ts";
@@ -161,12 +164,30 @@ function cron(
     let success = true;
     while (true) {
       const r = await op_cron_next(rid, success);
-      if (r === false) {
+      if (!r.active) {
         break;
       }
       let span;
       if (TRACING_ENABLED) {
-        span = builtinTracer().startSpan("deno.cron", { kind: 0 });
+        let activeContext = ContextManager.active();
+        if (r.traceparent) {
+          for (const propagator of new SafeArrayIterator(PROPAGATORS)) {
+            activeContext = propagator.extract(activeContext, {}, {
+              get(_carrier, key) {
+                if (key === "traceparent") return r.traceparent;
+              },
+              keys(_carrier) {
+                return ["traceparent"];
+              },
+            });
+          }
+        }
+
+        span = builtinTracer().startSpan(
+          "deno.cron",
+          { kind: 0 },
+          activeContext,
+        );
         span.setAttribute("deno.cron.name", name);
         span.setAttribute("deno.cron.schedule", schedule);
       }

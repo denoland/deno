@@ -41,6 +41,7 @@ const {
   Error,
   JSONParse,
   ObjectCreate,
+  ObjectDefineProperty,
   ObjectEntries,
   ObjectGetOwnPropertyDescriptor,
   ObjectGetPrototypeOf,
@@ -49,6 +50,7 @@ const {
   ObjectPrototype,
   ObjectSetPrototypeOf,
   Proxy,
+  ReflectSet,
   RegExpPrototypeTest,
   SafeArrayIterator,
   SafeMap,
@@ -115,6 +117,7 @@ import internalCryptoUtil from "ext:deno_node/internal/crypto/util.ts";
 import internalCryptoX509 from "ext:deno_node/internal/crypto/x509.ts";
 import internalDgram from "ext:deno_node/internal/dgram.ts";
 import internalDnsPromises from "ext:deno_node/internal/dns/promises.ts";
+import internalBuffer from "ext:deno_node/internal/buffer.mjs";
 import internalErrors from "ext:deno_node/internal/errors.ts";
 import internalEventTarget from "ext:deno_node/internal/event_target.mjs";
 import internalFsUtils from "ext:deno_node/internal/fs/utils.mjs";
@@ -220,6 +223,7 @@ function setupBuiltinModules() {
     "internal/crypto/x509": internalCryptoX509,
     "internal/dgram": internalDgram,
     "internal/dns/promises": internalDnsPromises,
+    "internal/buffer": internalBuffer,
     "internal/errors": internalErrors,
     "internal/event_target": internalEventTarget,
     "internal/fs/utils": internalFsUtils,
@@ -306,6 +310,7 @@ let hasBrokenOnInspectBrk = false;
 let hasInspectBrk = false;
 // Are we running with --node-modules-dir flag or byonm?
 let usesLocalNodeModulesDir = false;
+let patched = false;
 
 function stat(filename) {
   if (statCache !== null) {
@@ -354,6 +359,22 @@ function tryPackage(requestPath, exts, isMain, originalPath) {
   }
 
   const filename = pathResolve(requestPath, pkg);
+  // Ensure the resolved main path doesn't escape the package directory
+  // via path traversal (e.g. "main": "../../secret.json")
+  if (
+    !StringPrototypeStartsWith(filename, requestPath + "/") &&
+    !StringPrototypeStartsWith(filename, requestPath + "\\") &&
+    filename !== requestPath
+  ) {
+    const err = new Error(
+      `Cannot find module '${filename}'. ` +
+        'Please verify that the package.json has a valid "main" entry',
+    );
+    err.code = "MODULE_NOT_FOUND";
+    err.path = pathResolve(requestPath, "package.json");
+    err.requestPath = originalPath;
+    throw err;
+  }
   let actual = tryFile(filename, isMain) ||
     tryExtensions(filename, exts, isMain) ||
     tryExtensions(
@@ -632,6 +653,26 @@ Module._nodeModulePaths = function (fromPath) {
 };
 
 Module._resolveLookupPaths = function (request, parent) {
+  if (typeof request !== "string") {
+    throw new internalErrors.ERR_INVALID_ARG_TYPE(
+      "request",
+      "string",
+      request,
+    );
+  }
+
+  // Return null for built-in modules, matching Node.js behavior.
+  // Libraries like requizzle rely on this to detect native modules.
+  const normalizedRequest = StringPrototypeStartsWith(request, "node:")
+    ? StringPrototypeSlice(request, 5)
+    : request;
+  if (
+    isBuiltin(request) ||
+    normalizedRequest in nativeModuleExports
+  ) {
+    return null;
+  }
+
   const paths = [];
 
   if (op_require_is_request_relative(request)) {
@@ -764,21 +805,55 @@ Module._resolveFilename = function (
   isMain,
   options,
 ) {
-  if (
-    StringPrototypeStartsWith(request, "node:") ||
-    nativeModuleCanBeRequiredByUsers(request)
-  ) {
+  if (typeof request !== "string") {
+    throw new internalErrors.ERR_INVALID_ARG_TYPE(
+      "request",
+      "string",
+      request,
+    );
+  }
+
+  if (nativeModuleCanBeRequiredByUsers(request)) {
     return request;
+  }
+
+  if (StringPrototypeStartsWith(request, "node:")) {
+    const id = StringPrototypeSlice(request, 5);
+    if (nativeModuleExports[id]) {
+      return request;
+    }
+    const err = new Error(`Cannot find module '${request}'`);
+    err.code = "MODULE_NOT_FOUND";
+    throw err;
   }
 
   let paths;
 
   if (typeof options === "object" && options !== null) {
     if (ArrayIsArray(options.paths)) {
+      // Validate all path entries are strings before using them.
+      for (let i = 0; i < options.paths.length; i++) {
+        if (typeof options.paths[i] !== "string") {
+          throw new internalErrors.ERR_INVALID_ARG_TYPE(
+            "options.paths",
+            "string",
+            options.paths[i],
+          );
+        }
+      }
+
       const isRelative = op_require_is_request_relative(request);
 
       if (isRelative) {
-        paths = options.paths;
+        // Resolve relative entries to absolute paths so _findPath can
+        // stat them correctly.
+        paths = [];
+        for (let i = 0; i < options.paths.length; i++) {
+          ArrayPrototypePush(
+            paths,
+            pathResolve(process.cwd(), options.paths[i]),
+          );
+        }
       } else {
         const fakeParent = new Module("", null);
         paths = [];
@@ -798,9 +873,10 @@ Module._resolveFilename = function (
     } else if (options.paths === undefined) {
       paths = Module._resolveLookupPaths(request, parent);
     } else {
-      // TODO:
-      // throw new ERR_INVALID_ARG_VALUE("options.paths", options.paths);
-      throw new Error("Invalid arg value options.paths", options.path);
+      throw new internalErrors.ERR_INVALID_ARG_VALUE(
+        "options.paths",
+        options.paths,
+      );
     }
   } else {
     paths = Module._resolveLookupPaths(request, parent);
@@ -962,14 +1038,49 @@ Module.prototype.require = function (id) {
 // access to magic node globals, like `Buffer`. The second one is the actual
 // wrapper function we run the users code in. The only observable difference is
 // that in Deno `arguments.callee` is not null.
-Module.wrapper = [
+const wrapper = [
   `(function (exports, require, module, __filename, __dirname) { var { Buffer, clearImmediate, clearInterval, clearTimeout, global, process, setImmediate, setInterval, setTimeout } = Deno[Deno.internal].nodeGlobals; (() => {`,
   "\n})(); })",
 ];
-Module.wrap = function (script) {
+
+export let wrap = function (script) {
   script = script.replace(/^#!.*?\n/, "");
   return `${Module.wrapper[0]}${script}${Module.wrapper[1]}`;
 };
+
+let wrapperProxy = new Proxy(wrapper, {
+  set(target, property, value, receiver) {
+    patched = true;
+    return ReflectSet(target, property, value, receiver);
+  },
+
+  defineProperty(target, property, descriptor) {
+    patched = true;
+    return ObjectDefineProperty(target, property, descriptor);
+  },
+});
+
+ObjectDefineProperty(Module, "wrap", {
+  get() {
+    return wrap;
+  },
+
+  set(value) {
+    patched = true;
+    wrap = value;
+  },
+});
+
+ObjectDefineProperty(Module, "wrapper", {
+  get() {
+    return wrapperProxy;
+  },
+
+  set(value) {
+    patched = true;
+    wrapperProxy = value;
+  },
+});
 
 function isEsmSyntaxError(error) {
   return error instanceof SyntaxError && (
@@ -996,12 +1107,29 @@ function wrapSafe(
   cjsModuleInstance,
   format,
 ) {
-  const wrapper = Module.wrap(content);
-  const [f, err] = core.evalContext(
-    wrapper,
-    url.pathToFileURL(filename).toString(),
-    [format !== "module"],
-  );
+  let f;
+  let err;
+
+  if (patched) {
+    [f, err] = core.evalContext(
+      Module.wrap(content),
+      url.pathToFileURL(filename).toString(),
+      [format !== "module"],
+    );
+  } else {
+    [f, err] = core.compileFunction(
+      content,
+      url.pathToFileURL(filename).toString(),
+      [format !== "module"],
+      [
+        "exports",
+        "require",
+        "module",
+        "__filename",
+        "__dirname",
+      ],
+    );
+  }
   if (err) {
     if (process.mainModule === cjsModuleInstance) {
       enrichCJSError(err.thrown);
@@ -1343,6 +1471,5 @@ export const _preloadModules = Module._preloadModules;
 export const _resolveFilename = Module._resolveFilename;
 export const _resolveLookupPaths = Module._resolveLookupPaths;
 export const globalPaths = Module.globalPaths;
-export const wrap = Module.wrap;
 
 export default Module;

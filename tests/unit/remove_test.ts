@@ -247,11 +247,11 @@ Deno.test(
       // MAKE TEMPORARY UNIX SOCKET
       const path = Deno.makeTempDirSync() + "/test.sock";
       const listener = Deno.listen({ transport: "unix", path });
-      listener.close();
       Deno.statSync(path); // check if unix socket exists
 
       await Deno[method](path);
       assertThrows(() => Deno.statSync(path), Deno.errors.NotFound);
+      listener.close();
     }
   },
 );

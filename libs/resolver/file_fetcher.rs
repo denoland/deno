@@ -127,7 +127,7 @@ pub trait PermissionedFileFetcherSys:
 {
 }
 
-#[allow(clippy::disallowed_types)]
+#[allow(clippy::disallowed_types, reason = "definition")]
 type PermissionedFileFetcherRc<TBlobStore, TSys, THttpClient> =
   deno_maybe_sync::MaybeArc<
     PermissionedFileFetcher<TBlobStore, TSys, THttpClient>,
@@ -384,7 +384,10 @@ impl<
 }
 
 pub trait GraphLoaderReporter: Send + Sync {
-  #[allow(unused_variables)]
+  #[allow(
+    unused_variables,
+    reason = "default trait implementation ignores arguments"
+  )]
   fn on_load(
     &self,
     specifier: &Url,
@@ -393,12 +396,17 @@ pub trait GraphLoaderReporter: Send + Sync {
   }
 }
 
-#[allow(clippy::disallowed_types)]
+#[allow(clippy::disallowed_types, reason = "definition")]
 pub type GraphLoaderReporterRc =
   deno_maybe_sync::MaybeArc<dyn GraphLoaderReporter>;
 
 pub struct DenoGraphLoaderOptions {
   pub file_header_overrides: HashMap<Url, HashMap<String, String>>,
+  /// Whether to include npm package sources in the graph.
+  ///
+  /// Generally we don't do this for performance reasons because we
+  /// don't need to pre-analyze npm sources for https specifiers.
+  pub include_npm_sources: bool,
   pub permissions: Option<PermissionsContainer>,
   pub reporter: Option<GraphLoaderReporterRc>,
 }
@@ -417,12 +425,18 @@ pub struct DenoGraphLoader<
   THttpClient: HttpClient,
 > {
   file_header_overrides: HashMap<Url, HashMap<String, String>>,
+  #[allow(
+    clippy::disallowed_types,
+    reason = "Arc is needed for source content"
+  )]
+  file_content_overrides: Option<HashMap<Url, std::sync::Arc<[u8]>>>,
   file_fetcher: PermissionedFileFetcherRc<TBlobStore, TSys, THttpClient>,
   global_http_cache: GlobalHttpCacheRc<TSys>,
   in_npm_pkg_checker: DenoInNpmPackageChecker,
   permissions: Option<PermissionsContainer>,
   sys: TSys,
   cache_info_enabled: bool,
+  include_npm_sources: bool,
   reporter: Option<GraphLoaderReporterRc>,
 }
 
@@ -447,8 +461,21 @@ impl<
       file_header_overrides: options.file_header_overrides,
       permissions: options.permissions,
       cache_info_enabled: false,
+      include_npm_sources: options.include_npm_sources,
       reporter: options.reporter,
+      file_content_overrides: Default::default(),
     }
+  }
+
+  #[allow(
+    clippy::disallowed_types,
+    reason = "Arc is needed for source content"
+  )]
+  pub fn set_file_content_overrides(
+    &mut self,
+    overrides: HashMap<Url, std::sync::Arc<[u8]>>,
+  ) {
+    self.file_content_overrides = Some(overrides);
   }
 
   pub fn insert_file_header_override(
@@ -481,7 +508,7 @@ impl<
   fn load_or_cache<TStrategy: LoadOrCacheStrategy + 'static>(
     &self,
     strategy: TStrategy,
-    specifier: &Url,
+    specifier: Url,
     options: deno_graph::source::LoadOptions,
   ) -> LocalBoxFuture<
     'static,
@@ -489,7 +516,6 @@ impl<
   > {
     let file_fetcher = self.file_fetcher.clone();
     let permissions = self.permissions.clone();
-    let specifier = specifier.clone();
     let is_statically_analyzable = !options.was_dynamic_root;
 
     async move {
@@ -611,7 +637,7 @@ impl<
     specifier: &Url,
     options: deno_graph::source::LoadOptions,
   ) -> LoadFuture {
-    if specifier.scheme() == "file"
+    let specifier = if specifier.scheme() == "file"
       && specifier.path().contains("/node_modules/")
     {
       // The specifier might be in a completely different symlinked tree than
@@ -619,15 +645,25 @@ impl<
       // symlinked to `/my-project-2/node_modules`), so first we checked if the path
       // is in a node_modules dir to avoid needlessly canonicalizing, then now compare
       // against the canonicalized specifier.
+      let original_specifier = specifier;
       let specifier = node_resolver::resolve_specifier_into_node_modules(
         &self.sys, specifier,
       );
       if self.in_npm_pkg_checker.in_npm_package(&specifier) {
-        return Box::pin(std::future::ready(Ok(Some(
-          LoadResponse::External { specifier },
-        ))));
+        if self.include_npm_sources {
+          // use the canonical specifier for npm packages
+          Cow::Owned(specifier)
+        } else {
+          return Box::pin(std::future::ready(Ok(Some(
+            LoadResponse::External { specifier },
+          ))));
+        }
+      } else {
+        Cow::Borrowed(original_specifier)
       }
-    }
+    } else {
+      Cow::Borrowed(specifier)
+    };
 
     if !matches!(
       specifier.scheme(),
@@ -635,9 +671,20 @@ impl<
     ) {
       return Box::pin(std::future::ready(Ok(Some(
         deno_graph::source::LoadResponse::External {
-          specifier: specifier.clone(),
+          specifier: specifier.into_owned(),
         },
       ))));
+    }
+    if let Some(overrides) = &self.file_content_overrides
+      && let Some(content) = overrides.get(&specifier)
+    {
+      return std::future::ready(Ok(Some(LoadResponse::Module {
+        content: content.clone(),
+        mtime: None,
+        maybe_headers: self.file_header_overrides.get(&specifier).cloned(),
+        specifier: specifier.into_owned(),
+      })))
+      .boxed_local();
     }
 
     self.load_or_cache(
@@ -646,7 +693,7 @@ impl<
         file_header_overrides: self.file_header_overrides.clone(),
         reporter: self.reporter.clone(),
       },
-      specifier,
+      specifier.into_owned(),
       options,
     )
   }
@@ -656,11 +703,20 @@ impl<
     specifier: &Url,
     options: deno_graph::source::LoadOptions,
   ) -> deno_graph::source::EnsureCachedFuture {
+    if let Some(overrides) = &self.file_content_overrides
+      && overrides.contains_key(specifier)
+    {
+      return std::future::ready(Ok(Some(
+        deno_graph::source::CacheResponse::Cached,
+      )))
+      .boxed_local();
+    }
+
     self.load_or_cache(
       CacheStrategy {
         file_fetcher: self.file_fetcher.clone(),
       },
-      specifier,
+      specifier.clone(),
       options,
     )
   }
@@ -770,7 +826,7 @@ impl<TBlobStore: BlobStore, TSys: DenoGraphLoaderSys, THttpClient: HttpClient>
 }
 
 fn load_error(err: JsErrorBox) -> deno_graph::source::LoadError {
-  #[allow(clippy::disallowed_types)] // ok, deno_graph requires an Arc
+  #[allow(clippy::disallowed_types, reason = "deno_graph requires an Arc")]
   let err = std::sync::Arc::new(err);
   deno_graph::source::LoadError::Other(err)
 }
@@ -782,5 +838,194 @@ fn validate_scheme(specifier: &Url) -> Result<(), UnsupportedSchemeError> {
       scheme: specifier.scheme().to_string(),
       url: specifier.clone(),
     }),
+  }
+}
+
+#[cfg(test)]
+mod test {
+  use std::collections::HashMap;
+  use std::path::PathBuf;
+
+  use deno_cache_dir::file_fetcher::CacheSetting;
+  use deno_cache_dir::file_fetcher::NullBlobStore;
+  use deno_cache_dir::file_fetcher::SendError;
+  use deno_cache_dir::file_fetcher::SendResponse;
+  use deno_graph::source::CacheSetting as LoaderCacheSetting;
+  use deno_graph::source::LoadResponse;
+  use deno_graph::source::Loader;
+  use sys_traits::impls::InMemorySys;
+  use url::Url;
+
+  use super::*;
+  use crate::factory::ConfigDiscoveryOption;
+  use crate::factory::WorkspaceFactory;
+  use crate::factory::WorkspaceFactoryOptions;
+
+  #[derive(Debug)]
+  struct TestHttpClient;
+
+  #[async_trait::async_trait(?Send)]
+  impl deno_cache_dir::file_fetcher::HttpClient for TestHttpClient {
+    async fn send_no_follow(
+      &self,
+      _url: &Url,
+      _headers: http::HeaderMap,
+    ) -> Result<SendResponse, SendError> {
+      Err(SendError::NotFound)
+    }
+  }
+
+  fn create_test_loader(
+    sys: InMemorySys,
+  ) -> DenoGraphLoader<NullBlobStore, InMemorySys, TestHttpClient> {
+    let cwd = get_cwd();
+    let factory = WorkspaceFactory::new(
+      sys.clone(),
+      cwd.join("project"),
+      WorkspaceFactoryOptions {
+        maybe_custom_deno_dir_root: Some(cwd.join("deno_dir")),
+        config_discovery: ConfigDiscoveryOption::Disabled,
+        ..Default::default()
+      },
+    );
+    let global_http_cache = factory.global_http_cache().unwrap().clone();
+    let memory_files =
+      deno_maybe_sync::new_rc(crate::loader::MemoryFiles::default());
+    let file_fetcher = deno_maybe_sync::new_rc(PermissionedFileFetcher::new(
+      NullBlobStore,
+      deno_maybe_sync::new_rc(deno_cache_dir::GlobalOrLocalHttpCache::from(
+        global_http_cache.clone(),
+      )),
+      TestHttpClient,
+      memory_files,
+      sys.clone(),
+      PermissionedFileFetcherOptions {
+        allow_remote: false,
+        cache_setting: CacheSetting::Use,
+      },
+    ));
+    DenoGraphLoader::new(
+      file_fetcher,
+      global_http_cache,
+      crate::npm::DenoInNpmPackageChecker::new(
+        crate::npm::CreateInNpmPkgCheckerOptions::Byonm,
+      ),
+      sys,
+      DenoGraphLoaderOptions {
+        file_header_overrides: HashMap::new(),
+        permissions: None,
+        reporter: None,
+        include_npm_sources: false,
+      },
+    )
+  }
+
+  fn load_options() -> deno_graph::source::LoadOptions {
+    deno_graph::source::LoadOptions {
+      in_dynamic_branch: false,
+      was_dynamic_root: false,
+      cache_setting: LoaderCacheSetting::Use,
+      maybe_checksum: None,
+    }
+  }
+
+  #[test]
+  fn file_content_overrides_load_returns_overridden_content() {
+    let cwd = get_cwd();
+    let sys = InMemorySys::new_with_cwd(&cwd);
+    let mut loader = create_test_loader(sys);
+
+    let specifier =
+      deno_path_util::url_from_file_path(&cwd.join("test.ts")).unwrap();
+    let content = b"console.log('hello')".as_slice().into();
+    let mut overrides = HashMap::new();
+    overrides.insert(specifier.clone(), content);
+    loader.set_file_content_overrides(overrides);
+
+    let mut pool = futures::executor::LocalPool::new();
+    let result = pool
+      .run_until(loader.load(&specifier, load_options()))
+      .unwrap();
+
+    match result {
+      Some(LoadResponse::Module {
+        content: loaded_content,
+        specifier: loaded_specifier,
+        mtime,
+        maybe_headers,
+      }) => {
+        assert_eq!(loaded_specifier, specifier);
+        assert_eq!(&*loaded_content, b"console.log('hello')");
+        assert!(mtime.is_none());
+        assert!(maybe_headers.is_none());
+      }
+      other => panic!("expected Module response, got {:?}", other),
+    }
+  }
+
+  #[test]
+  fn file_content_overrides_load_includes_header_overrides() {
+    let cwd = get_cwd();
+    let sys = InMemorySys::new_with_cwd(&cwd);
+    let mut loader = create_test_loader(sys);
+
+    let specifier =
+      deno_path_util::url_from_file_path(&cwd.join("test.ts")).unwrap();
+    let content = b"export {}".as_slice().into();
+    let mut overrides = HashMap::new();
+    overrides.insert(specifier.clone(), content);
+    loader.set_file_content_overrides(overrides);
+
+    let mut headers = HashMap::new();
+    headers.insert(
+      "content-type".to_string(),
+      "application/typescript".to_string(),
+    );
+    loader.insert_file_header_override(specifier.clone(), headers);
+
+    let mut pool = futures::executor::LocalPool::new();
+    let result = pool
+      .run_until(loader.load(&specifier, load_options()))
+      .unwrap();
+
+    match result {
+      Some(LoadResponse::Module { maybe_headers, .. }) => {
+        let h = maybe_headers.unwrap();
+        assert_eq!(h.get("content-type").unwrap(), "application/typescript");
+      }
+      other => panic!("expected Module response, got {:?}", other),
+    }
+  }
+
+  #[test]
+  fn file_content_overrides_ensure_cached_returns_cached() {
+    let cwd = get_cwd();
+    let sys = InMemorySys::new_with_cwd(&cwd);
+    let mut loader = create_test_loader(sys);
+
+    let specifier =
+      deno_path_util::url_from_file_path(&cwd.join("test.ts")).unwrap();
+    let content = b"export {}".as_slice().into();
+    let mut overrides = HashMap::new();
+    overrides.insert(specifier.clone(), content);
+    loader.set_file_content_overrides(overrides);
+
+    let mut pool = futures::executor::LocalPool::new();
+    let result = pool
+      .run_until(loader.ensure_cached(&specifier, load_options()))
+      .unwrap();
+
+    assert!(matches!(
+      result,
+      Some(deno_graph::source::CacheResponse::Cached)
+    ));
+  }
+
+  fn get_cwd() -> PathBuf {
+    if cfg!(windows) {
+      PathBuf::from("K:\\folder\\")
+    } else {
+      PathBuf::from("/")
+    }
   }
 }

@@ -176,11 +176,11 @@ fn find_config_file(
   let start_dir = &cli_options.start_dir;
 
   // Check for deno.json first - it takes priority
-  if let Some(deno_json) = start_dir.maybe_deno_json() {
+  if let Some(deno_json) = start_dir.member_deno_json() {
     let config_path = deno_path_util::url_to_file_path(&deno_json.specifier)
       .context("Failed to convert deno.json URL to path")?;
     return ConfigUpdater::new(config_path);
-  } else if let Some(pkg_json) = start_dir.maybe_pkg_json() {
+  } else if let Some(pkg_json) = start_dir.member_pkg_json() {
     // Only fall back to package.json if deno.json doesn't exist
     return ConfigUpdater::new(pkg_json.path.clone());
   }

@@ -631,8 +631,8 @@ function setNodeGetters(ctx) {
     hasCommenstGetter = true;
     Object.defineProperty(FacadeNode.prototype, "comments", {
       get() {
-        materializeComments(ctx);
-        return ctx.comments;
+        materializeComments(this[INTERNAL_CTX]);
+        return this[INTERNAL_CTX].comments;
       },
     });
   }

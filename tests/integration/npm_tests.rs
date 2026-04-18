@@ -369,25 +369,32 @@ fn node_modules_dir_cache() {
 fn ensure_registry_files_local() {
   // ensures the registry files all point at local tarballs
   let registry_dir_path = util::tests_path().join("registry").join("npm");
-  for entry in walkdir::WalkDir::new(&registry_dir_path).max_depth(2) {
+  let check_dir = |dir: &std::path::Path| {
+    let registry_json_path = dir.join("registry.json");
+    if registry_json_path.exists() {
+      let file_text = std::fs::read_to_string(&registry_json_path).unwrap();
+      if file_text.contains(&format!(
+        "https://registry.npmjs.org/{}/-/",
+        dir
+          .strip_prefix(&registry_dir_path)
+          .unwrap()
+          .to_string_lossy()
+      )) {
+        panic!(
+          "file {} contained a reference to the npm registry",
+          registry_json_path.display()
+        );
+      }
+    }
+  };
+  for entry in registry_dir_path.read_dir() {
     let entry = entry.unwrap();
-    if entry.metadata().unwrap().is_dir() {
-      let registry_json_path = entry.path().join("registry.json");
-
-      if registry_json_path.exists() {
-        let file_text = std::fs::read_to_string(&registry_json_path).unwrap();
-        if file_text.contains(&format!(
-          "https://registry.npmjs.org/{}/-/",
-          entry
-            .path()
-            .strip_prefix(&registry_dir_path)
-            .unwrap()
-            .to_string_lossy()
-        )) {
-          panic!(
-            "file {} contained a reference to the npm registry",
-            registry_json_path.display()
-          );
+    if entry.file_type().unwrap().is_dir() {
+      check_dir(&entry.path());
+      for inner in std::fs::read_dir(entry.path()).unwrap() {
+        let inner = inner.unwrap();
+        if inner.file_type().unwrap().is_dir() {
+          check_dir(&inner.path());
         }
       }
     }
@@ -1915,4 +1922,34 @@ async fn test_private_npm_registry() {
   );
   let resp = client.execute(req).await.unwrap();
   assert_eq!(resp.status(), reqwest::StatusCode::OK);
+}
+
+#[test]
+fn npm_config_registry_overrides_npmrc() {
+  let _server = http_server();
+
+  let context = util::TestContextBuilder::new()
+    .use_temp_cwd()
+    .add_npm_env_vars()
+    .build();
+  let temp_dir = context.temp_dir();
+
+  // Create .npmrc with a wrong registry that would fail if used
+  temp_dir.write(".npmrc", "registry=http://localhost:99999/\n");
+
+  // Create a simple script that imports from npm
+  temp_dir.write(
+    "main.ts",
+    "import { getValue, setValue } from 'npm:@denotest/esm-basic'; setValue(2); console.log(getValue());",
+  );
+
+  // NPM_CONFIG_REGISTRY should override the .npmrc registry
+  // If it doesn't, this would fail trying to connect to localhost:99999
+  let output = context
+    .new_command()
+    .args("run -A main.ts")
+    .env("NPM_CONFIG_REGISTRY", "http://localhost:4260/")
+    .run();
+
+  output.assert_matches_text("[WILDCARD]2\n");
 }

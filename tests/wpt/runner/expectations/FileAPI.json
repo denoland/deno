@@ -1,0 +1,195 @@
+{
+  "blob": {
+    "Blob-array-buffer.any.html": true,
+    "Blob-array-buffer.any.worker.html": true,
+    "Blob-constructor.any.html": true,
+    "Blob-constructor.any.worker.html": true,
+    "Blob-slice-overflow.any.html": true,
+    "Blob-slice-overflow.any.worker.html": true,
+    "Blob-slice.any.html": true,
+    "Blob-slice.any.worker.html": true,
+    "Blob-stream.any.html": true,
+    "Blob-stream.any.worker.html": true,
+    "Blob-text.any.html": true,
+    "Blob-text.any.worker.html": true,
+    "Blob-in-worker.worker.html": true,
+    "Blob-constructor-dom.window.html": false,
+    "Blob-bytes.any.html": true,
+    "Blob-bytes.any.worker.html": true,
+    "Blob-constructor-endings.html": true
+  },
+  "file": {
+    "File-constructor.any.html": true,
+    "File-constructor.any.worker.html": true,
+    "send-file-formdata-controls.any.html": true,
+    "send-file-formdata-controls.any.worker.html": true,
+    "send-file-formdata-punctuation.any.html": true,
+    "send-file-formdata-punctuation.any.worker.html": true,
+    "send-file-formdata-utf-8.any.html": true,
+    "send-file-formdata-utf-8.any.worker.html": true,
+    "send-file-formdata.any.html": true,
+    "send-file-formdata.any.worker.html": true,
+    "Worker-read-file-constructor.worker.html": true,
+    "File-constructor-endings.html": true,
+    "send-file-form-controls.html": false,
+    "send-file-form-iso-2022-jp.html": false,
+    "send-file-form-punctuation.html": false,
+    "send-file-form-utf-8.html": false,
+    "send-file-form-windows-1252.html": false,
+    "send-file-form-x-user-defined.html": false,
+    "send-file-form.html": false
+  },
+  "fileReader.any.html": true,
+  "fileReader.any.worker.html": true,
+  "url": {
+    "url-format.any.html": true,
+    "url-format.any.worker.html": true,
+    "url-with-fetch.any.html": true,
+    "url-with-fetch.any.worker.html": true,
+    "url-charset.window.html": false,
+    "url-in-tags-revoke.window.html": false,
+    "url-in-tags.window.html": false,
+    "url-reload.window.html": false,
+    "url-with-xhr.any.html": false,
+    "url-with-xhr.any.worker.html": false,
+    "cross-global-revoke.sub.html": {
+      "expectedFailures": [
+        "It is possible to revoke same-origin blob URLs from different frames.",
+        "It is not possible to revoke cross-origin blob URLs."
+      ]
+    },
+    "multi-global-origin-serialization.sub.html": false,
+    "sandboxed-iframe.html": false,
+    "unicode-origin.sub.html": false,
+    "url-lifetime.html": false
+  },
+  "reading-data-section": {
+    "Determining-Encoding.any.html": true,
+    "Determining-Encoding.any.worker.html": true,
+    "FileReader-event-handler-attributes.any.html": true,
+    "FileReader-event-handler-attributes.any.worker.html": true,
+    "FileReader-multiple-reads.any.html": true,
+    "FileReader-multiple-reads.any.worker.html": true,
+    "filereader_abort.any.html": true,
+    "filereader_abort.any.worker.html": true,
+    "filereader_error.any.html": true,
+    "filereader_error.any.worker.html": true,
+    "filereader_events.any.html": false,
+    "filereader_events.any.worker.html": false,
+    "filereader_readAsArrayBuffer.any.html": true,
+    "filereader_readAsArrayBuffer.any.worker.html": true,
+    "filereader_readAsBinaryString.any.html": true,
+    "filereader_readAsBinaryString.any.worker.html": true,
+    "filereader_readAsDataURL.any.html": true,
+    "filereader_readAsDataURL.any.worker.html": true,
+    "filereader_readAsText.any.html": true,
+    "filereader_readAsText.any.worker.html": true,
+    "filereader_readystate.any.html": true,
+    "filereader_readystate.any.worker.html": true,
+    "filereader_result.any.html": true,
+    "filereader_result.any.worker.html": true
+  },
+  "idlharness.any.html": {
+    "expectedFailures": [
+      "FileList interface: existence and properties of interface object",
+      "FileList interface object length",
+      "FileList interface object name",
+      "FileList interface: existence and properties of interface prototype object",
+      "FileList interface: existence and properties of interface prototype object's \"constructor\" property",
+      "FileList interface: existence and properties of interface prototype object's @@unscopables property",
+      "FileList interface: operation item(unsigned long)",
+      "FileList interface: attribute length"
+    ]
+  },
+  "idlharness.any.worker.html": {
+    "expectedFailures": [
+      "FileList interface: existence and properties of interface object",
+      "FileList interface object length",
+      "FileList interface object name",
+      "FileList interface: existence and properties of interface prototype object",
+      "FileList interface: existence and properties of interface prototype object's \"constructor\" property",
+      "FileList interface: existence and properties of interface prototype object's @@unscopables property",
+      "FileList interface: operation item(unsigned long)",
+      "FileList interface: attribute length",
+      "FileReaderSync interface: existence and properties of interface object",
+      "FileReaderSync interface object length",
+      "FileReaderSync interface object name",
+      "FileReaderSync interface: existence and properties of interface prototype object",
+      "FileReaderSync interface: existence and properties of interface prototype object's \"constructor\" property",
+      "FileReaderSync interface: existence and properties of interface prototype object's @@unscopables property",
+      "FileReaderSync interface: operation readAsArrayBuffer(Blob)",
+      "FileReaderSync interface: operation readAsBinaryString(Blob)",
+      "FileReaderSync interface: operation readAsText(Blob, optional DOMString)",
+      "FileReaderSync interface: operation readAsDataURL(Blob)"
+    ]
+  },
+  "FileReaderSync.worker.html": false,
+  "idlharness.worker.html": {
+    "expectedFailures": [
+      "FileList interface: existence and properties of interface object",
+      "FileList interface object length",
+      "FileList interface object name",
+      "FileList interface: existence and properties of interface prototype object",
+      "FileList interface: existence and properties of interface prototype object's \"constructor\" property",
+      "FileList interface: existence and properties of interface prototype object's @@unscopables property",
+      "FileList interface: operation item(unsigned long)",
+      "FileList interface: attribute length",
+      "FileReaderSync interface: existence and properties of interface object",
+      "FileReaderSync interface object length",
+      "FileReaderSync interface object name",
+      "FileReaderSync interface: existence and properties of interface prototype object",
+      "FileReaderSync interface: existence and properties of interface prototype object's \"constructor\" property",
+      "FileReaderSync interface: existence and properties of interface prototype object's @@unscopables property",
+      "FileReaderSync interface: operation readAsArrayBuffer(Blob)",
+      "FileReaderSync interface: operation readAsBinaryString(Blob)",
+      "FileReaderSync interface: operation readAsText(Blob, optional DOMString)",
+      "FileReaderSync interface: operation readAsDataURL(Blob)",
+      "FileReaderSync must be primary interface of new FileReaderSync()",
+      "Stringification of new FileReaderSync()",
+      "FileReaderSync interface: new FileReaderSync() must inherit property \"readAsArrayBuffer(Blob)\" with the proper type",
+      "FileReaderSync interface: calling readAsArrayBuffer(Blob) on new FileReaderSync() with too few arguments must throw TypeError",
+      "FileReaderSync interface: new FileReaderSync() must inherit property \"readAsBinaryString(Blob)\" with the proper type",
+      "FileReaderSync interface: calling readAsBinaryString(Blob) on new FileReaderSync() with too few arguments must throw TypeError",
+      "FileReaderSync interface: new FileReaderSync() must inherit property \"readAsText(Blob, optional DOMString)\" with the proper type",
+      "FileReaderSync interface: calling readAsText(Blob, optional DOMString) on new FileReaderSync() with too few arguments must throw TypeError",
+      "FileReaderSync interface: new FileReaderSync() must inherit property \"readAsDataURL(Blob)\" with the proper type",
+      "FileReaderSync interface: calling readAsDataURL(Blob) on new FileReaderSync() with too few arguments must throw TypeError"
+    ]
+  },
+  "Blob-methods-from-detached-frame.html": false,
+  "FileReader": {
+    "progress_event_bubbles_cancelable.html": true,
+    "workers.html": false
+  },
+  "filelist-section": {
+    "filelist.html": false
+  },
+  "historical.https.html": {
+    "expectedFailures": [
+      "Service worker test setup"
+    ]
+  },
+  "idlharness.html": {
+    "expectedFailures": [
+      "FileList interface: existence and properties of interface object",
+      "FileList interface object length",
+      "FileList interface object name",
+      "FileList interface: existence and properties of interface prototype object",
+      "FileList interface: existence and properties of interface prototype object's \"constructor\" property",
+      "FileList interface: existence and properties of interface prototype object's @@unscopables property",
+      "FileList interface: operation item(unsigned long)",
+      "FileList interface: attribute length",
+      "FileList must be primary interface of document.querySelector(\"#fileChooser\").files",
+      "Stringification of document.querySelector(\"#fileChooser\").files",
+      "FileList interface: document.querySelector(\"#fileChooser\").files must inherit property \"item(unsigned long)\" with the proper type",
+      "FileList interface: calling item(unsigned long) on document.querySelector(\"#fileChooser\").files with too few arguments must throw TypeError",
+      "FileList interface: document.querySelector(\"#fileChooser\").files must inherit property \"length\" with the proper type"
+    ]
+  },
+  "unicode.html": true,
+  "BlobURL": {
+    "cross-partition-navigation.https.html": false,
+    "cross-partition-worker-creation.https.html": false,
+    "cross-partition.https.html": false
+  }
+}

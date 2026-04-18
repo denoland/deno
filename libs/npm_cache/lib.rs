@@ -10,7 +10,8 @@ use deno_cache_dir::file_fetcher::CacheSetting;
 use deno_cache_dir::npm::NpmCacheDir;
 use deno_error::JsErrorBox;
 use deno_npm::NpmPackageCacheFolderId;
-use deno_npm::npm_rc::ResolvedNpmRc;
+use deno_npmrc::RegistryConfig;
+use deno_npmrc::ResolvedNpmRc;
 use deno_path_util::fs::atomic_write_file_with_retries;
 use deno_semver::StackString;
 use deno_semver::Version;
@@ -37,8 +38,6 @@ mod rt;
 mod tarball;
 mod tarball_extract;
 
-pub use fs_util::HardLinkDirRecursiveError;
-pub use fs_util::HardLinkFileError;
 pub use fs_util::hard_link_dir_recursive;
 pub use fs_util::hard_link_file;
 pub use registry_info::RegistryInfoProvider;
@@ -70,6 +69,14 @@ impl std::fmt::Display for DownloadError {
   }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NpmPackumentFormat {
+  /// Request the abbreviated install manifest (smaller, but omits `time` and `scripts`).
+  Abbreviated,
+  /// Request the full packument (needed when `minimumDependencyAge` is configured).
+  Full,
+}
+
 pub enum NpmCacheHttpClientResponse {
   NotFound,
   NotModified,
@@ -88,6 +95,7 @@ pub trait NpmCacheHttpClient: std::fmt::Debug + Send + Sync + 'static {
     url: Url,
     maybe_auth: Option<String>,
     maybe_etag: Option<String>,
+    maybe_registry_config: Option<&RegistryConfig>,
   ) -> Result<NpmCacheHttpClientResponse, DownloadError>;
 }
 

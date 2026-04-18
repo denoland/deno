@@ -1,0 +1,14 @@
+{
+  "tests": {
+    "without_flag": {
+      "args": "check main.js",
+      "output": "without_flag.out",
+      "exitCode": 0
+    },
+    "with_flag": {
+      "args": "check --check-js main.js",
+      "output": "with_flag.out",
+      "exitCode": 1
+    }
+  }
+}

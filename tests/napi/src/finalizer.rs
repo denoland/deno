@@ -144,6 +144,48 @@ extern "C" fn test_external_arraybuffer(
   result
 }
 
+/// Wrap finalizer that prints a message. Used to test that wrap finalizers
+/// are called at shutdown even when the wrapped object is still reachable.
+unsafe extern "C" fn wrap_leak_release(
+  _env: napi_env,
+  data: *mut ::std::os::raw::c_void,
+  _hint: *mut ::std::os::raw::c_void,
+) {
+  let msg = unsafe { Box::from_raw(data as *mut String) };
+  println!("{}", msg);
+}
+
+/// Creates a napi_wrap on the given JS object with a finalizer that prints
+/// a message. The wrap is NOT explicitly removed, so only the shutdown
+/// finalizer path will trigger the callback. This tests that NAPI wrap
+/// finalizers are called during environment teardown (matching Node.js
+/// behavior).
+extern "C" fn test_wrap_leak(
+  env: napi_env,
+  info: napi_callback_info,
+) -> napi_value {
+  let (args, argc, _) = napi_get_callback_info!(env, info, 1);
+  assert_eq!(argc, 1);
+
+  let mut ty = -1;
+  assert_napi_ok!(napi_typeof(env, args[0], &mut ty));
+  assert_eq!(ty, napi_object);
+
+  let msg = Box::new(String::from("pointers released on shutdown"));
+  let msg_ptr = Box::into_raw(msg) as *mut ::std::os::raw::c_void;
+
+  assert_napi_ok!(napi_wrap(
+    env,
+    args[0],
+    msg_ptr,
+    Some(wrap_leak_release),
+    ptr::null_mut(),
+    ptr::null_mut(),
+  ));
+
+  args[0]
+}
+
 pub fn init(env: napi_env, exports: napi_value) {
   let properties = &[
     napi_new_property!(env, "test_bind_finalizer", test_bind_finalizer),
@@ -159,6 +201,7 @@ pub fn init(env: napi_env, exports: napi_value) {
       "test_static_external_buffer",
       test_static_external_buffer
     ),
+    napi_new_property!(env, "test_wrap_leak", test_wrap_leak),
   ];
 
   assert_napi_ok!(napi_define_properties(

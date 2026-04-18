@@ -3,6 +3,7 @@
 use std::mem::MaybeUninit;
 
 use deno_core::OpState;
+use deno_core::ToV8;
 use deno_core::op2;
 use deno_permissions::PermissionCheckError;
 use deno_permissions::PermissionsContainer;
@@ -26,6 +27,13 @@ pub enum OsError {
   #[class(inherit)]
   #[error("Failed to get user info")]
   FailedToGetUserInfo(
+    #[source]
+    #[inherit]
+    std::io::Error,
+  ),
+  #[class(inherit)]
+  #[error("Failed to get groups")]
+  FailedToGetGroups(
     #[source]
     #[inherit]
     std::io::Error,
@@ -59,7 +67,7 @@ pub fn op_node_os_set_priority(
   priority::set_priority(pid, priority).map_err(OsError::Priority)
 }
 
-#[derive(serde::Serialize)]
+#[derive(ToV8)]
 pub struct UserInfo {
   username: String,
   homedir: String,
@@ -199,7 +207,6 @@ fn get_user_info(_uid: u32) -> Result<UserInfo, OsError> {
 }
 
 #[op2(stack_trace)]
-#[serde]
 pub fn op_node_os_user_info(
   state: &mut OpState,
   #[smi] uid: u32,
@@ -244,6 +251,43 @@ pub fn op_getegid(state: &mut OpState) -> Result<u32, PermissionCheckError> {
   let egid = unsafe { libc::getegid() };
 
   Ok(egid)
+}
+
+#[op2(stack_trace)]
+#[serde]
+pub fn op_getgroups(state: &mut OpState) -> Result<Vec<u32>, OsError> {
+  {
+    let permissions = state.borrow_mut::<PermissionsContainer>();
+    permissions.check_sys("gid", "node:process.getgroups()")?;
+  }
+
+  #[cfg(windows)]
+  {
+    Ok(vec![])
+  }
+  #[cfg(unix)]
+  {
+    // SAFETY: Call to libc getgroups with 0/null to query group count.
+    let ngroups = unsafe { libc::getgroups(0, std::ptr::null_mut()) };
+    if ngroups < 0 {
+      return Err(OsError::FailedToGetGroups(std::io::Error::last_os_error()));
+    }
+    if ngroups == 0 {
+      return Ok(vec![]);
+    }
+    let mut groups: Vec<libc::gid_t> = vec![0; ngroups as usize];
+    // SAFETY: Call to libc getgroups with properly sized buffer.
+    let ngroups = unsafe { libc::getgroups(ngroups, groups.as_mut_ptr()) };
+    if ngroups < 0 {
+      return Err(OsError::FailedToGetGroups(std::io::Error::last_os_error()));
+    }
+    groups.truncate(ngroups as usize);
+    #[allow(
+      clippy::unnecessary_cast,
+      reason = "gid_t may not be u32 on all platforms"
+    )]
+    Ok(groups.iter().map(|&g| g as u32).collect())
+  }
 }
 
 #[op2(stack_trace)]

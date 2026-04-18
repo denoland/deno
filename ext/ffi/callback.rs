@@ -73,7 +73,10 @@ impl PtrSymbol {
   }
 }
 
-#[allow(clippy::non_send_fields_in_send_ty)]
+#[allow(
+  clippy::non_send_fields_in_send_ty,
+  reason = "pointers are used for FFI interop"
+)]
 // SAFETY: unsafe trait must have unsafe implementation
 unsafe impl Send for PtrSymbol {}
 // SAFETY: unsafe trait must have unsafe implementation
@@ -83,7 +86,10 @@ struct UnsafeCallbackResource {
   cancel: Rc<CancelHandle>,
   // Closure is never directly touched, but it keeps the C callback alive
   // until `close()` method is called.
-  #[allow(dead_code)]
+  #[allow(
+    dead_code,
+    reason = "closure must be kept alive to prevent C callback from dangling"
+  )]
   closure: libffi::middle::Closure<'static>,
   info: *mut CallbackInfo,
 }
@@ -150,7 +156,10 @@ unsafe extern "C" fn deno_ffi_callback(
   args: *const *const c_void,
   info: &CallbackInfo,
 ) {
-  #[allow(clippy::undocumented_unsafe_blocks)]
+  #[allow(
+    clippy::undocumented_unsafe_blocks,
+    reason = "safety comment on the containing block"
+  )]
   unsafe {
     LOCAL_THREAD_ID.with(|s| {
       if *s.borrow() == info.thread_id {
@@ -190,6 +199,10 @@ unsafe extern "C" fn deno_ffi_callback(
           if tc_scope.exception().is_some() {
             log::error!("Illegal unhandled exception in nonblocking callback");
           }
+          // Flush microtasks queued by the callback before unblocking the
+          // calling thread.  With explicit microtask policy, microtasks
+          // won't run automatically after the JS callback returns.
+          tc_scope.perform_microtask_checkpoint();
         });
       }
     });
@@ -203,7 +216,10 @@ unsafe fn do_ffi_callback(
   result: &mut c_void,
   args: *const *const c_void,
 ) {
-  #[allow(clippy::undocumented_unsafe_blocks)]
+  #[allow(
+    clippy::undocumented_unsafe_blocks,
+    reason = "safety comment on the containing block"
+  )]
   unsafe {
     let callback: NonNull<v8::Function> = info.callback;
     let func = std::mem::transmute::<
@@ -547,7 +563,7 @@ unsafe fn do_ffi_callback(
   }
 }
 
-#[op2(async)]
+#[op2]
 pub fn op_ffi_unsafe_callback_ref(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,

@@ -1,0 +1,5 @@
+main started
+main worker booted
+main got from worker "hello from client"
+worker got from main "ok from main"
+main exiting

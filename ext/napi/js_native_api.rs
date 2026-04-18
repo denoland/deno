@@ -1,6 +1,6 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-#![allow(non_upper_case_globals)]
+#![allow(non_upper_case_globals, reason = "native code")]
 #![deny(unsafe_op_in_unsafe_fn)]
 
 const NAPI_VERSION: u32 = 9;
@@ -132,6 +132,9 @@ impl Reference {
     // it might free the reference (which would be a UAF)
     let ownership = reference.ownership;
     if let Some(finalize_cb) = finalize_cb {
+      // Deregister before calling so it won't be called again at shutdown
+      let env = unsafe { &*reference.env };
+      env.remove_ref_finalizer(finalize_data);
       unsafe {
         finalize_cb(reference.env as _, finalize_data, finalize_hint);
       }
@@ -213,7 +216,7 @@ fn napi_create_function<'s>(
 }
 
 #[napi_sym]
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, reason = "matches Node-API signature")]
 fn napi_define_class<'s>(
   env: &'s mut Env,
   utf8name: *const c_char,
@@ -285,13 +288,6 @@ fn napi_define_class<'s>(
       let setter = p
         .setter
         .map(|s| create_function_template(scope, env_ptr, None, s, p.data));
-      if getter.is_some()
-        && setter.is_some()
-        && (p.attributes & napi_writable) == 0
-      {
-        accessor_property =
-          accessor_property | v8::PropertyAttribute::READ_ONLY;
-      }
       let proto = tpl.prototype_template(scope);
       proto.set_accessor_property(name, getter, setter, accessor_property);
     } else if let Some(method) = p.method {
@@ -998,6 +994,139 @@ fn napi_create_object(
 }
 
 #[napi_sym]
+fn node_api_create_object_with_properties<'s>(
+  env_ptr: *mut Env,
+  prototype_or_null: napi_value<'s>,
+  property_names: *const napi_value<'s>,
+  property_values: *const napi_value<'s>,
+  property_count: usize,
+  result: *mut napi_value<'s>,
+) -> napi_status {
+  let env = check_env!(env_ptr);
+  check_arg!(env, result);
+
+  if property_count > 0 {
+    check_arg!(env, property_names);
+    check_arg!(env, property_values);
+  }
+
+  unsafe {
+    v8::callback_scope!(unsafe scope, env.context());
+
+    let prototype = if let Some(proto) = *prototype_or_null {
+      proto
+    } else {
+      v8::null(scope).into()
+    };
+
+    let (names, values): (&[napi_value<'s>], &[napi_value<'s>]) =
+      if property_count == 0 {
+        (&[], &[])
+      } else {
+        (
+          std::slice::from_raw_parts(property_names, property_count),
+          std::slice::from_raw_parts(property_values, property_count),
+        )
+      };
+
+    for name in names {
+      if let Some(name_val) = **name {
+        if !name_val.is_name() {
+          return napi_name_expected;
+        }
+      } else {
+        return napi_invalid_arg;
+      }
+    }
+
+    let mut v8_names = Vec::with_capacity(property_count);
+    let mut v8_values = Vec::with_capacity(property_count);
+
+    for i in 0..property_count {
+      if let Some(name) = *names[i] {
+        v8_names.push(name.try_cast::<v8::Name>().unwrap());
+      }
+      if let Some(value) = *values[i] {
+        v8_values.push(value);
+      }
+    }
+
+    *result = v8::Object::with_prototype_and_properties(
+      scope, prototype, &v8_names, &v8_values,
+    )
+    .into();
+  }
+
+  return napi_clear_last_error(env_ptr);
+}
+
+#[napi_sym]
+fn node_api_create_object_with_named_properties<'s>(
+  env_ptr: *mut Env,
+  result: *mut napi_value<'s>,
+  property_count: usize,
+  property_names: *const *const c_char,
+  property_values: *const napi_value<'s>,
+) -> napi_status {
+  let env = check_env!(env_ptr);
+  check_arg!(env, result);
+
+  if property_count > 0 {
+    check_arg!(env, property_names);
+    check_arg!(env, property_values);
+  }
+
+  unsafe {
+    v8::callback_scope!(unsafe scope, env.context());
+
+    let names = if property_count == 0 {
+      &[]
+    } else {
+      std::slice::from_raw_parts(property_names, property_count)
+    };
+
+    let values = if property_count == 0 {
+      &[]
+    } else {
+      std::slice::from_raw_parts(property_values, property_count)
+    };
+
+    let mut v8_names = Vec::with_capacity(property_count);
+    let mut v8_values = Vec::with_capacity(property_count);
+
+    for i in 0..property_count {
+      let c_str = names[i];
+      if c_str.is_null() {
+        return napi_invalid_arg;
+      }
+      let name_str = std::ffi::CStr::from_ptr(c_str);
+      let Some(v8_name) = v8::String::new_from_utf8(
+        scope,
+        name_str.to_bytes(),
+        v8::NewStringType::Internalized,
+      ) else {
+        return napi_set_last_error(env_ptr, napi_generic_failure);
+      };
+      v8_names.push(v8_name.into());
+
+      if let Some(value) = *values[i] {
+        v8_values.push(value);
+      } else {
+        return napi_invalid_arg;
+      }
+    }
+
+    let prototype = v8::null(scope).into();
+    *result = v8::Object::with_prototype_and_properties(
+      scope, prototype, &v8_names, &v8_values,
+    )
+    .into();
+  }
+
+  return napi_clear_last_error(env_ptr);
+}
+
+#[napi_sym]
 fn napi_create_array(
   env_ptr: *mut Env,
   result: *mut napi_value,
@@ -1226,6 +1355,102 @@ fn node_api_create_external_string_utf16(
   }
 
   status
+}
+
+#[napi_sym]
+fn node_api_create_property_key_latin1(
+  env_ptr: *mut Env,
+  string: *const c_char,
+  length: usize,
+  result: *mut napi_value,
+) -> napi_status {
+  let env = check_env!(env_ptr);
+  if length > 0 {
+    check_arg!(env, string);
+  }
+  crate::return_status_if_false!(
+    env,
+    (length == NAPI_AUTO_LENGTH) || length <= INT_MAX as _,
+    napi_invalid_arg
+  );
+
+  let buffer = if length > 0 {
+    unsafe {
+      std::slice::from_raw_parts(
+        string as _,
+        if length == NAPI_AUTO_LENGTH {
+          std::ffi::CStr::from_ptr(string).to_bytes().len()
+        } else {
+          length
+        },
+      )
+    }
+  } else {
+    &[]
+  };
+
+  let Some(string) = ({
+    v8::callback_scope!(unsafe scope, env.context());
+    v8::String::new_from_one_byte(
+      scope,
+      buffer,
+      v8::NewStringType::Internalized,
+    )
+  }) else {
+    return napi_set_last_error(env_ptr, napi_generic_failure);
+  };
+
+  unsafe {
+    *result = string.into();
+  }
+
+  return napi_clear_last_error(env_ptr);
+}
+
+#[napi_sym]
+fn node_api_create_property_key_utf8(
+  env_ptr: *mut Env,
+  string: *const c_char,
+  length: usize,
+  result: *mut napi_value,
+) -> napi_status {
+  let env = check_env!(env_ptr);
+  if length > 0 {
+    check_arg!(env, string);
+  }
+  crate::return_status_if_false!(
+    env,
+    (length == NAPI_AUTO_LENGTH) || length <= INT_MAX as _,
+    napi_invalid_arg
+  );
+
+  let buffer = if length > 0 {
+    unsafe {
+      std::slice::from_raw_parts(
+        string as _,
+        if length == NAPI_AUTO_LENGTH {
+          std::ffi::CStr::from_ptr(string).to_bytes().len()
+        } else {
+          length
+        },
+      )
+    }
+  } else {
+    &[]
+  };
+
+  let Some(string) = ({
+    v8::callback_scope!(unsafe scope, env.context());
+    v8::String::new_from_utf8(scope, buffer, v8::NewStringType::Internalized)
+  }) else {
+    return napi_set_last_error(env_ptr, napi_generic_failure);
+  };
+
+  unsafe {
+    *result = string.into();
+  }
+
+  return napi_clear_last_error(env_ptr);
 }
 
 #[napi_sym]
@@ -1763,10 +1988,14 @@ fn napi_throw(env: *mut Env, error: napi_value) -> napi_status {
     return napi_pending_exception;
   }
 
+  // Store in last_exception only. Do NOT call throw_exception() here.
+  // The NAPI callback wrapper (call_fn) checks last_exception after
+  // the callback returns and throws via V8 then. Throwing here would
+  // make it impossible to clear with napi_get_and_clear_last_exception
+  // since V8 would still have a pending exception.
   let error = {
     let error = error.unwrap();
     v8::callback_scope!(unsafe scope, env.context());
-    scope.throw_exception(error);
     v8::Global::new(scope, error)
   };
   env.last_exception = Some(error);
@@ -2105,7 +2334,7 @@ fn napi_get_value_bool(
   return napi_clear_last_error(env_ptr);
 }
 
-#[allow(deprecated)]
+#[allow(deprecated, reason = "needed for compatibility")]
 #[napi_sym]
 fn napi_get_value_string_latin1(
   env_ptr: *mut Env,
@@ -2129,16 +2358,12 @@ fn napi_get_value_string_latin1(
       *result = value.length();
     }
   } else if bufsize != 0 {
-    let buffer =
-      unsafe { std::slice::from_raw_parts_mut(buf as _, bufsize - 1) };
-    value.write_one_byte_v2(scope, 0, buffer, v8::WriteFlags::empty());
-    let copied = buffer.len();
-    unsafe {
-      buf.add(copied).write(0);
-    }
+    let length = value.length().min(bufsize - 1);
+    let buffer = unsafe { std::slice::from_raw_parts_mut(buf as _, length) };
+    value.write_one_byte_v2(scope, 0, buffer, v8::WriteFlags::kNullTerminate);
     if !result.is_null() {
       unsafe {
-        *result = copied;
+        *result = length;
       }
     }
   } else if !result.is_null() {
@@ -2150,7 +2375,7 @@ fn napi_get_value_string_latin1(
   napi_clear_last_error(env_ptr)
 }
 
-#[allow(deprecated)]
+#[allow(deprecated, reason = "needed for compatibility")]
 #[napi_sym]
 fn napi_get_value_string_utf8(
   env_ptr: *mut Env,
@@ -2177,14 +2402,12 @@ fn napi_get_value_string_utf8(
   } else if bufsize != 0 {
     let buffer =
       unsafe { std::slice::from_raw_parts_mut(buf as _, bufsize - 1) };
-    let mut nchars = 0;
-    value.write_utf8_v2(
+    let copied = value.write_utf8_v2(
       scope,
       buffer,
       v8::WriteFlags::kReplaceInvalidUtf8,
-      Some(&mut nchars),
+      None,
     );
-    let copied = nchars;
     unsafe {
       buf.add(copied).write(0);
     }
@@ -2202,7 +2425,7 @@ fn napi_get_value_string_utf8(
   napi_clear_last_error(env_ptr)
 }
 
-#[allow(deprecated)]
+#[allow(deprecated, reason = "needed for compatibility")]
 #[napi_sym]
 fn napi_get_value_string_utf16(
   env_ptr: *mut Env,
@@ -2227,16 +2450,12 @@ fn napi_get_value_string_utf16(
       *result = value.length();
     }
   } else if bufsize != 0 {
-    let buffer =
-      unsafe { std::slice::from_raw_parts_mut(buf as _, bufsize - 1) };
-    value.write_v2(scope, 0, buffer, v8::WriteFlags::empty());
-    let copied = buffer.len();
-    unsafe {
-      buf.add(copied).write(0);
-    }
+    let length = value.length().min(bufsize - 1);
+    let buffer = unsafe { std::slice::from_raw_parts_mut(buf as _, length) };
+    value.write_v2(scope, 0, buffer, v8::WriteFlags::kNullTerminate);
     if !result.is_null() {
       unsafe {
-        *result = copied;
+        *result = length;
       }
     }
   } else if !result.is_null() {
@@ -2298,7 +2517,15 @@ fn napi_coerce_to_object<'s>(
   check_arg!(env, result);
 
   v8::callback_scope!(unsafe scope, env.context());
-  let Some(coerced) = value.unwrap().to_object(scope) else {
+  let val = value.unwrap();
+  // Check for null/undefined before calling to_object() to avoid
+  // V8 generating a TypeError exception that would get stored in
+  // env.last_exception and later re-thrown as a spurious unhandled
+  // rejection (ECMAScript's ToObject throws for null/undefined).
+  if val.is_null_or_undefined() {
+    return napi_invalid_arg;
+  }
+  let Some(coerced) = val.to_object(scope) else {
     return napi_object_expected;
   };
 
@@ -2374,6 +2601,15 @@ fn napi_wrap(
     finalize_hint,
   );
 
+  if let Some(cb) = finalize_cb {
+    env.add_ref_finalizer(
+      env_ptr as napi_env,
+      cb,
+      native_object,
+      finalize_hint,
+    );
+  }
+
   let reference = Reference::into_raw(reference) as *mut c_void;
 
   if !result.is_null() {
@@ -2425,6 +2661,7 @@ fn unwrap(
   }
 
   if !keep {
+    env.remove_ref_finalizer(reference.finalize_data);
     assert!(obj.delete_private(scope, napi_wrap).unwrap_or(false));
     unsafe { Reference::remove(reference) };
   }
@@ -2476,6 +2713,12 @@ fn napi_create_external<'s>(
   let external = v8::External::new(scope, wrapper as _);
 
   if let Some(finalize_cb) = finalize_cb {
+    env.add_ref_finalizer(
+      env_ptr as napi_env,
+      finalize_cb,
+      data,
+      finalize_hint,
+    );
     Reference::into_raw(Reference::new(
       env_ptr,
       external.into(),
@@ -2746,55 +2989,132 @@ fn napi_get_reference_value(
   napi_clear_last_error(env_ptr)
 }
 
+/// Opaque wrapper for a heap-allocated V8 HandleScope.
+/// Matches Node.js's `HandleScopeWrapper` pattern: the V8 scope is
+/// heap-allocated so it can outlive the stack frame that created it.
+type HandleScopeBox =
+  std::pin::Pin<Box<v8::ScopeStorage<v8::HandleScope<'static, ()>>>>;
+
+/// Tracks whether `napi_escape_handle` has been called on an
+/// escapable handle scope (to prevent double-escape).
+/// The actual V8 scoping is handled by napi_open/close_handle_scope;
+/// the escapable variant just adds the escape-once tracking.
+struct EscapableHandleScopeData {
+  handle_scope_ptr: *mut v8::ScopeStorage<v8::HandleScope<'static, ()>>,
+  escape_called: bool,
+}
+
 #[napi_sym]
 fn napi_open_handle_scope(
   env: *mut Env,
-  _result: *mut napi_handle_scope,
+  result: *mut napi_handle_scope,
 ) -> napi_status {
   let env = check_env!(env);
+  check_arg!(env, result);
+
+  // SAFETY: The isolate pointer is valid for the lifetime of the NAPI
+  // callback. We erase the borrow lifetime via transmute because the
+  // scope is heap-allocated and managed manually via close.
+  let storage = v8::HandleScope::new(env.isolate());
+  let storage: v8::ScopeStorage<v8::HandleScope<'static, ()>> =
+    unsafe { std::mem::transmute(storage) };
+  let mut pinned: HandleScopeBox = Box::pin(storage);
+  let _ = pinned.as_mut().init();
+
+  let ptr =
+    unsafe { Box::into_raw(std::pin::Pin::into_inner_unchecked(pinned)) };
+  unsafe { *result = ptr as napi_handle_scope }
+  env.open_handle_scopes += 1;
   napi_clear_last_error(env)
 }
 
 #[napi_sym]
 fn napi_close_handle_scope(
   env: *mut Env,
-  _scope: napi_handle_scope,
+  scope: napi_handle_scope,
 ) -> napi_status {
   let env = check_env!(env);
+  check_arg!(env, scope);
+  if env.open_handle_scopes == 0 {
+    return napi_set_last_error(env, napi_handle_scope_mismatch);
+  }
+
+  env.open_handle_scopes -= 1;
+  // SAFETY: Reconstruct the Box and drop it, which runs the V8
+  // HandleScope destructor (pops V8's internal scope stack).
+  unsafe {
+    let ptr = scope as *mut v8::ScopeStorage<v8::HandleScope<'static, ()>>;
+    drop(Box::from_raw(ptr));
+  }
   napi_clear_last_error(env)
 }
 
 #[napi_sym]
 fn napi_open_escapable_handle_scope(
   env: *mut Env,
-  _result: *mut napi_escapable_handle_scope,
+  result: *mut napi_escapable_handle_scope,
 ) -> napi_status {
   let env = check_env!(env);
+  check_arg!(env, result);
+
+  // Open a real V8 HandleScope (same as napi_open_handle_scope)
+  let storage = v8::HandleScope::new(env.isolate());
+  let storage: v8::ScopeStorage<v8::HandleScope<'static, ()>> =
+    unsafe { std::mem::transmute(storage) };
+  let mut pinned: HandleScopeBox = Box::pin(storage);
+  let _ = pinned.as_mut().init();
+  let scope_ptr =
+    unsafe { Box::into_raw(std::pin::Pin::into_inner_unchecked(pinned)) };
+
+  // Wrap in EscapableHandleScopeData to track double-escape
+  let wrapper = Box::new(EscapableHandleScopeData {
+    handle_scope_ptr: scope_ptr,
+    escape_called: false,
+  });
+  unsafe { *result = Box::into_raw(wrapper) as napi_escapable_handle_scope }
+  env.open_handle_scopes += 1;
   napi_clear_last_error(env)
 }
 
 #[napi_sym]
 fn napi_close_escapable_handle_scope(
   env: *mut Env,
-  _scope: napi_escapable_handle_scope,
+  scope: napi_escapable_handle_scope,
 ) -> napi_status {
   let env = check_env!(env);
+  check_arg!(env, scope);
+  if env.open_handle_scopes == 0 {
+    return napi_set_last_error(env, napi_handle_scope_mismatch);
+  }
+
+  env.open_handle_scopes -= 1;
+  unsafe {
+    let wrapper = Box::from_raw(scope as *mut EscapableHandleScopeData);
+    // Drop the underlying V8 HandleScope
+    drop(Box::from_raw(wrapper.handle_scope_ptr));
+  }
   napi_clear_last_error(env)
 }
 
 #[napi_sym]
 fn napi_escape_handle<'s>(
   env: *mut Env,
-  _scope: napi_escapable_handle_scope,
+  scope: napi_escapable_handle_scope,
   escapee: napi_value<'s>,
   result: *mut napi_value<'s>,
 ) -> napi_status {
   let env = check_env!(env);
+  check_arg!(env, scope);
+  check_arg!(env, result);
 
-  unsafe {
-    *result = escapee;
+  let wrapper = unsafe { &mut *(scope as *mut EscapableHandleScopeData) };
+  if wrapper.escape_called {
+    return napi_set_last_error(env, napi_escape_called_twice);
   }
-
+  wrapper.escape_called = true;
+  // Copy the handle value. The V8 handle remains valid in the parent
+  // scope's handle block because we opened a real V8 HandleScope.
+  unsafe { *result = escapee }
   napi_clear_last_error(env)
 }
 
@@ -3523,6 +3843,16 @@ fn napi_add_finalizer(
   } else {
     ReferenceOwnership::Userland
   };
+
+  if let Some(cb) = finalize_cb {
+    env.add_ref_finalizer(
+      env_ptr as napi_env,
+      cb,
+      finalize_data,
+      finalize_hint,
+    );
+  }
+
   let reference = Reference::new(
     env,
     value.into(),
@@ -3579,6 +3909,9 @@ fn napi_set_instance_data(
 ) -> napi_status {
   let env = check_env!(env);
 
+  // Note: instance data finalizers are NOT registered in ref_tracker because
+  // they already have their own teardown path in NapiState::Drop which calls
+  // EnvShared instance_data finalize_cb directly.
   env.shared_mut().instance_data = Some(InstanceData {
     data,
     finalize_cb,

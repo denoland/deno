@@ -10,13 +10,13 @@ use std::sync::atomic::AtomicI32;
 use std::sync::atomic::Ordering;
 
 use deno_core::OpState;
+use deno_core::ToV8;
 use deno_core::op2;
 use deno_core::v8;
 use deno_path_util::normalize_path;
 use deno_permissions::PermissionCheckError;
 use deno_permissions::PermissionState;
 use deno_permissions::PermissionsContainer;
-use serde::Serialize;
 
 mod ops;
 pub mod sys_info;
@@ -43,8 +43,31 @@ impl ExitCode {
 
 pub fn exit(code: i32) -> ! {
   deno_signals::run_exit();
-  #[allow(clippy::disallowed_methods)]
+  #[allow(
+    clippy::disallowed_methods,
+    reason = "exit is the intended behavior"
+  )]
   std::process::exit(code);
+}
+
+/// Callbacks to run before the process exits via `Deno.exit()`.
+///
+/// Used to flush CPU profiling data and coverage data that would otherwise
+/// be lost when `Deno.exit()` calls `std::process::exit()` directly,
+/// bypassing normal cleanup in the worker's run loop.
+#[derive(Default)]
+pub struct OpExitCallbacks(Vec<Box<dyn FnMut()>>);
+
+impl OpExitCallbacks {
+  pub fn push(&mut self, cb: Box<dyn FnMut()>) {
+    self.0.push(cb);
+  }
+
+  fn run(&mut self) {
+    for cb in self.0.iter_mut() {
+      cb();
+    }
+  }
 }
 
 deno_core::extension!(
@@ -168,7 +191,10 @@ fn op_set_env(
     return Err(OsError::EnvInvalidValue(value.to_string()));
   }
 
-  #[allow(clippy::undocumented_unsafe_blocks)]
+  #[allow(
+    clippy::undocumented_unsafe_blocks,
+    reason = "env::set_var is unsafe since Rust 1.66"
+  )]
   unsafe {
     env::set_var(key, value)
   };
@@ -292,7 +318,10 @@ fn op_delete_env(
     return Err(OsError::EnvInvalidKey(key.to_string()));
   }
 
-  #[allow(clippy::undocumented_unsafe_blocks)]
+  #[allow(
+    clippy::undocumented_unsafe_blocks,
+    reason = "env::remove_var is unsafe since Rust 1.66"
+  )]
   unsafe {
     env::remove_var(key)
   };
@@ -317,6 +346,9 @@ fn op_get_exit_code(state: &mut OpState) -> i32 {
 
 #[op2(fast)]
 fn op_exit(state: &mut OpState) {
+  if let Some(cbs) = state.try_borrow_mut::<OpExitCallbacks>() {
+    cbs.run();
+  }
   if let Some(exit_code) = state.try_borrow::<ExitCode>() {
     exit(exit_code.get())
   }
@@ -352,7 +384,6 @@ fn op_os_release(state: &mut OpState) -> Result<String, PermissionCheckError> {
 }
 
 #[op2(stack_trace)]
-#[serde]
 fn op_network_interfaces(
   state: &mut OpState,
 ) -> Result<Vec<NetworkInterface>, OsError> {
@@ -362,7 +393,7 @@ fn op_network_interfaces(
   Ok(netif::up()?.map(NetworkInterface::from).collect())
 }
 
-#[derive(Serialize)]
+#[derive(ToV8)]
 struct NetworkInterface {
   family: &'static str,
   name: String,
@@ -422,7 +453,7 @@ fn op_gid(state: &mut OpState) -> Result<Option<u32>, PermissionCheckError> {
     .borrow_mut::<PermissionsContainer>()
     .check_sys("gid", "Deno.gid()")?;
   // TODO(bartlomieju):
-  #[allow(clippy::undocumented_unsafe_blocks)]
+  #[allow(clippy::undocumented_unsafe_blocks, reason = "libc call")]
   unsafe {
     Ok(Some(libc::getgid()))
   }
@@ -446,7 +477,7 @@ fn op_uid(state: &mut OpState) -> Result<Option<u32>, PermissionCheckError> {
     .borrow_mut::<PermissionsContainer>()
     .check_sys("uid", "Deno.uid()")?;
   // TODO(bartlomieju):
-  #[allow(clippy::undocumented_unsafe_blocks)]
+  #[allow(clippy::undocumented_unsafe_blocks, reason = "libc call")]
   unsafe {
     Ok(Some(libc::getuid()))
   }
@@ -615,7 +646,10 @@ fn rss() -> u64 {
     (out, idx)
   }
 
-  #[allow(clippy::disallowed_methods)]
+  #[allow(
+    clippy::disallowed_methods,
+    reason = "reading /proc/self requires direct fs access"
+  )]
   let statm_content = if let Ok(c) = std::fs::read_to_string("/proc/self/statm")
   {
     c

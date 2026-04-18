@@ -179,7 +179,7 @@ pub static UNSTABLE_FEATURES: &[UnstableFeatureDefinition] = &[
     name: "temporal",
     flag_name: "unstable-temporal",
     help_text: "Enable unstable Temporal API",
-    show_in_help: true,
+    show_in_help: false,
     id: 21,
     kind: UnstableFeatureKind::Runtime,
   },

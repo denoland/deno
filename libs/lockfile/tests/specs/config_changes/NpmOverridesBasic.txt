@@ -1,0 +1,36 @@
+# original
+{
+  "version": "5",
+  "workspace": {
+    "packageJson": {
+      "dependencies": [
+        "npm:foo@^1.0.0"
+      ]
+    }
+  }
+}
+
+# add npm overrides
+{
+  "packageJson": {
+    "dependencies": ["npm:foo@^1.0.0"]
+  },
+  "npmOverrides": {
+    "bar": "2.0.0"
+  }
+}
+
+# npm overrides should be serialized in packageJson section
+{
+  "version": "5",
+  "workspace": {
+    "packageJson": {
+      "dependencies": [
+        "npm:foo@1"
+      ],
+      "overrides": {
+        "bar": "2.0.0"
+      }
+    }
+  }
+}

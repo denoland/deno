@@ -32,6 +32,9 @@ import {
 } from "ext:deno_node/internal_binding/ares.ts";
 import {
   ChannelWrap,
+  DNS_ORDER_IPV4_FIRST,
+  DNS_ORDER_IPV6_FIRST,
+  DNS_ORDER_VERBATIM,
   strerror,
 } from "ext:deno_node/internal_binding/cares_wrap.ts";
 import {
@@ -293,7 +296,8 @@ export class Resolver {
   }
 
   getServers(): string[] {
-    return this._handle.getServers().map((val: [string, number]) => {
+    const servers = this._handle.getServers() || [];
+    return servers.map((val: [string, number]) => {
       if (!val[1] || val[1] === IANA_DNS_PORT) {
         return val[0];
       }
@@ -421,21 +425,35 @@ export function emitInvalidHostnameWarning(hostname: string) {
   );
 }
 
-let dnsOrder = getOptionValue("--dns-result-order") || "ipv4first";
+let dnsOrder: string | undefined;
 
-export function getDefaultVerbatim() {
-  switch (dnsOrder) {
-    case "verbatim": {
-      return true;
-    }
-    case "ipv4first": {
-      return false;
-    }
-    default: {
-      return false;
-    }
+function ensureDnsOrder(): string {
+  if (dnsOrder === undefined) {
+    dnsOrder = getOptionValue("--dns-result-order") || "ipv4first";
+  }
+  return dnsOrder;
+}
+
+export function getDefaultDnsOrder(): string {
+  return ensureDnsOrder();
+}
+
+const validDnsOrders = ["verbatim", "ipv4first", "ipv6first"];
+
+export function dnsOrderToNumber(order: string): number {
+  switch (order) {
+    case "verbatim":
+      return DNS_ORDER_VERBATIM;
+    case "ipv4first":
+      return DNS_ORDER_IPV4_FIRST;
+    case "ipv6first":
+      return DNS_ORDER_IPV6_FIRST;
+    default:
+      throw new ERR_INVALID_ARG_VALUE("order", order);
   }
 }
+
+export { validDnsOrders };
 
 /**
  * Set the default value of `verbatim` in `lookup` and `dnsPromises.lookup()`.
@@ -451,8 +469,10 @@ export function getDefaultVerbatim() {
  *
  * @param order must be `'ipv4first'` or `'verbatim'`.
  */
-export function setDefaultResultOrder(order: "ipv4first" | "verbatim") {
-  validateOneOf(order, "dnsOrder", ["verbatim", "ipv4first"]);
+export function setDefaultResultOrder(
+  order: "ipv4first" | "verbatim" | "ipv6first",
+) {
+  validateOneOf(order, "dnsOrder", ["verbatim", "ipv4first", "ipv6first"]);
   dnsOrder = order;
 }
 

@@ -123,6 +123,11 @@ impl StreamWrapper {
     unsafe { zlib::inflate(&mut self.strm, flush as _) }
   }
 
+  pub fn deflate_params(&mut self, level: c_int, strategy: c_int) -> c_int {
+    // SAFETY: `self.strm` is an initialized `zlib::z_stream`.
+    unsafe { zlib::deflateParams(&mut self.strm, level, strategy) }
+  }
+
   pub fn inflate_set_dictionary(&mut self, dictionary: &[u8]) -> c_int {
     // SAFETY: `self.strm` is an initialized `zlib::z_stream`.
     unsafe {

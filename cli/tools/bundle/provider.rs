@@ -30,6 +30,7 @@ impl From<RtBundleOptions> for crate::args::BundleFlags {
       external: value.external,
       format: value.format,
       minify: value.minify,
+      keep_names: value.keep_names,
       code_splitting: value.code_splitting,
       platform: value.platform,
       watch: false,
@@ -74,7 +75,7 @@ fn convert_build_output_file(
 ) -> rt_bundle::BuildOutputFile {
   rt_bundle::BuildOutputFile {
     path: file.path,
-    contents: Some(file.contents),
+    contents: Some(file.contents.into()),
     hash: file.hash,
   }
 }

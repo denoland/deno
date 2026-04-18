@@ -1,11 +1,7 @@
 Running...
 NotCapable: Requires run access to "binary", run again with the --allow-run flag
     [WILDCARD]
-    at file:///[WILDLINE]/sub.ts:15:5 {
-  name: "NotCapable"
-}
+    at file:///[WILDLINE]/sub.ts:15:5
 NotCapable: Requires run access to "binary", run again with the --allow-run flag
     [WILDCARD]
-    at file:///[WILDLINE]/sub.ts:23:22 {
-  name: "NotCapable"
-}
+    at file:///[WILDLINE]/sub.ts:23:22

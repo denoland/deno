@@ -5,8 +5,8 @@ Deno.
 
 - ./runner/suite/ - vendored Node.js test cases (git submodule at
   https://github.com/denoland/node_test)
-- ./config.toml - has the list of passing Node.js test cases
-- ./test.ts - The script entrypoint of node compat test.
+- ./config.jsonc - has the list of passing Node.js test cases
+- ./mod.rs - The script entrypoint of node compat test.
 
 If you run single node.js test case, use the command:
 
@@ -16,7 +16,7 @@ cargo test <name of test file>
 
 ## Configuration file
 
-The `config.toml` specifies which tests should pass in Deno and includes
+The `config.jsonc` specifies which tests should pass in Deno and includes
 platform-specific and behavioral settings for each test.
 
 ### Options
@@ -40,24 +40,31 @@ Each test entry can include the following optional configuration properties:
 
 ### Examples
 
-```toml
-# Should pass on all platforms
-"parallel/test-foo.js" = {}
+```jsonc
+{
+  // Should pass on all platforms
+  "parallel/test-foo.js": {},
 
-# Test marked as flaky
-"parallel/test-bar.js" = { flaky = true }
+  // Test marked as flaky
+  "parallel/test-bar.js": { "flaky": true },
 
-# Test skipped on all platforms with explanation
-"parallel/test-baz.js" = { darwin = false, linux = false, windows = false, reason = "some reason" }
+  // Test skipped on all platforms with explanation
+  "parallel/test-baz.js": {
+    "darwin": false,
+    "linux": false,
+    "windows": false,
+    "reason": "some reason"
+  },
 
-# Test skipped only on Windows
-"parallel/test-qux.js" = { windows = false }
+  // Test skipped only on Windows
+  "parallel/test-qux.js": { "windows": false }
+}
 ```
 
 ## Add test case entry to CI check
 
 If you fixed some Node.js compabitility and some test cases started passing,
-then add those cases to `config.toml`. The items listed in there are checked in
+then add those cases to `config.jsonc`. The items listed in there are checked in
 CI check.
 
 ## Daily test viewer

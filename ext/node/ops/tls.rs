@@ -19,6 +19,7 @@ use base64::Engine;
 use bytes::Bytes;
 use deno_core::AsyncRefCell;
 use deno_core::AsyncResult;
+use deno_core::FromV8;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
@@ -29,6 +30,8 @@ use deno_net::UnsafelyIgnoreCertificateErrors;
 use deno_net::ops::NetError;
 use deno_net::ops::TlsHandshakeInfo;
 use deno_net::ops_tls::TlsStreamResource;
+use deno_node_crypto::x509::Certificate;
+use deno_node_crypto::x509::CertificateObject;
 use deno_tls::SocketUse;
 use deno_tls::TlsClientConfigOptions;
 use deno_tls::TlsKeys;
@@ -40,19 +43,16 @@ use rustls_tokio_stream::TlsStream;
 use rustls_tokio_stream::TlsStreamRead;
 use rustls_tokio_stream::TlsStreamWrite;
 use rustls_tokio_stream::UnderlyingStream;
-use serde::Deserialize;
 use webpki_root_certs;
 
-use super::crypto::x509::Certificate;
-use super::crypto::x509::CertificateObject;
-
 #[derive(Clone)]
-struct NodeTlsState {
-  custom_ca_certs: Option<Vec<String>>,
+pub(crate) struct NodeTlsState {
+  pub(crate) custom_ca_certs: Option<Vec<String>>,
+  pub(crate) client_session_store:
+    Arc<dyn deno_tls::rustls::client::ClientSessionStore>,
 }
 
 #[op2]
-#[serde]
 pub fn op_get_root_certificates(state: &mut OpState) -> Vec<String> {
   if let Some(tls_state) = state.try_borrow::<NodeTlsState>()
     && let Some(certs) = &tls_state.custom_ca_certs
@@ -92,6 +92,9 @@ pub fn op_set_default_ca_certificates(
   } else {
     state.put(NodeTlsState {
       custom_ca_certs: Some(certs),
+      client_session_store: Arc::new(
+        deno_tls::rustls::client::ClientSessionMemoryCache::new(256),
+      ),
     });
   }
 }
@@ -338,6 +341,8 @@ struct JSDuplexResource {
   readable: Arc<Mutex<tokio::sync::mpsc::Receiver<Bytes>>>,
   writable: tokio::sync::mpsc::Sender<Bytes>,
   read_buffer: Arc<Mutex<VecDeque<Bytes>>>,
+  closed: AtomicBool,
+  close_notify: tokio::sync::Notify,
 }
 
 impl JSDuplexResource {
@@ -349,14 +354,23 @@ impl JSDuplexResource {
       readable: Arc::new(Mutex::new(readable)),
       writable,
       read_buffer: Arc::new(Mutex::new(VecDeque::new())),
+      closed: AtomicBool::new(false),
+      close_notify: tokio::sync::Notify::new(),
     }
   }
 
-  #[allow(clippy::await_holding_lock)]
+  #[allow(
+    clippy::await_holding_lock,
+    reason = "lock is dropped before await points"
+  )]
   pub async fn read(
     self: Rc<Self>,
     data: &mut [u8],
   ) -> Result<usize, std::io::Error> {
+    if self.closed.load(Ordering::Relaxed) {
+      return Ok(0);
+    }
+
     // First check if we have buffered data from previous partial read
     if let Ok(mut buffer) = self.read_buffer.lock()
       && let Some(buffered_data) = buffer.pop_front()
@@ -372,13 +386,19 @@ impl JSDuplexResource {
       return Ok(len);
     }
 
-    // No buffered data, receive new data from channel
+    // No buffered data, receive new data from channel.
+    // We use select! so that close() can wake us up via close_notify
+    // even though we hold the readable mutex across the await (the
+    // close() method uses try_lock to avoid deadlock).
     let bytes = {
       let mut receiver = self
         .readable
         .lock()
         .map_err(|_| Error::other("Failed to acquire lock"))?;
-      receiver.recv().await
+      tokio::select! {
+        result = receiver.recv() => result,
+        _ = self.close_notify.notified() => None,
+      }
     };
 
     match bytes {
@@ -396,7 +416,7 @@ impl JSDuplexResource {
         Ok(len)
       }
       None => {
-        // Channel closed
+        // Channel closed or resource closing
         Ok(0)
       }
     }
@@ -425,10 +445,31 @@ impl Resource for JSDuplexResource {
   fn name(&self) -> Cow<'_, str> {
     "JSDuplexResource".into()
   }
+
+  fn close(self: Rc<Self>) {
+    // Signal that this resource is closing.  The read() method checks
+    // this flag and the close_notify to break out of pending recv().
+    //
+    // Without this cleanup, a circular Rc dependency between
+    // JSDuplexResource and JSStreamTlsResource prevents either from
+    // being dropped, keeping the event loop alive indefinitely.
+    self.closed.store(true, Ordering::Relaxed);
+
+    // Wake up any pending read via Notify.  We use notify_one() which
+    // stores a permit if no one is currently waiting, so the next
+    // notified().await will complete immediately.
+    self.close_notify.notify_one();
+
+    // Also try to close the receiver directly.  We use try_lock()
+    // because read() holds the mutex across an await point; using
+    // lock() here would deadlock.
+    if let Ok(mut rx) = self.readable.try_lock() {
+      rx.close();
+    }
+  }
 }
 
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(FromV8)]
 pub struct StartJSTlsArgs {
   ca_certs: Vec<String>,
   hostname: String,
@@ -507,7 +548,7 @@ impl Resource for JSStreamTlsResource {
 #[op2]
 pub fn op_node_tls_start(
   state: Rc<RefCell<OpState>>,
-  #[serde] args: StartJSTlsArgs,
+  #[scoped] args: StartJSTlsArgs,
   #[buffer] output: &mut [u32],
 ) -> Result<(), NetError> {
   let reject_unauthorized = args.reject_unauthorized.unwrap_or(true);
@@ -587,7 +628,7 @@ pub fn op_node_tls_start(
   Ok(())
 }
 
-#[op2(async)]
+#[op2]
 #[serde]
 pub async fn op_node_tls_handshake(
   state: Rc<RefCell<OpState>>,

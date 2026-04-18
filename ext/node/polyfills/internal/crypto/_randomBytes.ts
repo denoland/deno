@@ -24,7 +24,7 @@ function generateRandomBytes(size: number) {
     );
   }
 
-  const bytes = Buffer.allocUnsafe(size);
+  const bytes = Buffer.allocUnsafeSlow(size);
 
   //Work around for getRandomValues max generation
   if (size > MAX_RANDOM_VALUES) {
@@ -77,7 +77,7 @@ export default function randomBytes(
     const resource = {};
     emitInit(asyncId, "RANDOMBYTESREQUEST", triggerAsyncId, resource);
 
-    setTimeout(() => {
+    process.nextTick(() => {
       emitBefore(asyncId);
       try {
         if (err) {
@@ -96,7 +96,7 @@ export default function randomBytes(
         emitAfter(asyncId);
         emitDestroy(asyncId);
       }
-    }, 0);
+    });
   } else {
     return generateRandomBytes(size);
   }

@@ -136,8 +136,7 @@ impl<TSys: DiskCacheSys> DiskCache<TSys> {
 
 #[cfg(test)]
 mod tests {
-  // ok, testing
-  #[allow(clippy::disallowed_types)]
+  #[allow(clippy::disallowed_types, reason = "ok in tests")]
   use sys_traits::impls::RealSys;
   use test_util::TempDir;
 

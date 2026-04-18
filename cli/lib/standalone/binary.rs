@@ -92,6 +92,10 @@ pub struct Metadata {
   pub unstable_config: UnstableConfig,
   pub otel_config: OtelConfig,
   pub vfs_case_sensitivity: FileSystemCaseSensitivity,
+  /// When set, the binary is self-extracting. The value is a precomputed
+  /// hash of the VFS data used for versioning the extraction directory.
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub self_extracting: Option<String>,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
@@ -189,7 +193,7 @@ impl<'a> DenoRtSerializable<'a> for RemoteModuleEntry<'a> {
 
 impl<'a> DenoRtDeserializable<'a> for RemoteModuleEntry<'a> {
   fn deserialize(input: &'a [u8]) -> std::io::Result<(&'a [u8], Self)> {
-    #[allow(clippy::type_complexity)]
+    #[allow(clippy::type_complexity, reason = "private code")]
     fn deserialize_data_if_has_flag(
       input: &[u8],
       has_data_flags: u8,
@@ -246,12 +250,13 @@ fn serialize_media_type(media_type: MediaType) -> u8 {
     MediaType::Json => 11,
     MediaType::Jsonc => 12,
     MediaType::Json5 => 13,
-    MediaType::Wasm => 14,
-    MediaType::Css => 15,
-    MediaType::Html => 16,
-    MediaType::SourceMap => 17,
-    MediaType::Sql => 18,
-    MediaType::Unknown => 19,
+    MediaType::Markdown => 14,
+    MediaType::Wasm => 15,
+    MediaType::Css => 16,
+    MediaType::Html => 17,
+    MediaType::SourceMap => 18,
+    MediaType::Sql => 19,
+    MediaType::Unknown => 20,
   }
 }
 
@@ -273,12 +278,13 @@ impl<'a> DenoRtDeserializable<'a> for MediaType {
       11 => MediaType::Json,
       12 => MediaType::Jsonc,
       13 => MediaType::Json5,
-      14 => MediaType::Wasm,
-      15 => MediaType::Css,
-      16 => MediaType::Html,
-      17 => MediaType::SourceMap,
-      18 => MediaType::Sql,
-      19 => MediaType::Unknown,
+      14 => MediaType::Markdown,
+      15 => MediaType::Wasm,
+      16 => MediaType::Css,
+      17 => MediaType::Html,
+      18 => MediaType::SourceMap,
+      19 => MediaType::Sql,
+      20 => MediaType::Unknown,
       value => {
         return Err(std::io::Error::new(
           std::io::ErrorKind::InvalidData,
@@ -314,7 +320,7 @@ impl<TData> SpecifierDataStore<TData> {
     self.data.iter().map(|(k, v)| (*k, v))
   }
 
-  #[allow(clippy::len_without_is_empty)]
+  #[allow(clippy::len_without_is_empty, reason = "not useful")]
   pub fn len(&self) -> usize {
     self.data.len()
   }

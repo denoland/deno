@@ -105,7 +105,7 @@ fn parse_url(
   }
 }
 
-#[allow(dead_code)]
+#[allow(dead_code, reason = "used in JS")]
 #[derive(Eq, PartialEq, Debug)]
 #[repr(u8)]
 pub enum UrlSetter {
@@ -192,7 +192,6 @@ pub fn op_url_reparse(
 }
 
 #[op2]
-#[serde]
 pub fn op_url_parse_search_params(
   #[string] args: Option<String>,
   #[buffer] zero_copy: Option<JsBuffer>,
@@ -214,7 +213,7 @@ pub fn op_url_parse_search_params(
 #[op2]
 #[string]
 pub fn op_url_stringify_search_params(
-  #[serde] args: Vec<(String, String)>,
+  #[scoped] args: Vec<(String, String)>,
 ) -> String {
   form_urlencoded::Serializer::new(String::new())
     .extend_pairs(args)

@@ -1,0 +1,4 @@
+=== Default stack trace ===
+    at <anonymous> (wasm://wasm/<hash>:wasm-function[0]:0x30)
+=== prepareStackTrace callsite.toString() ===
+wasm://wasm/<hash>:wasm-function[0]:0x30

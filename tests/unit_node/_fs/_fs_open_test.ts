@@ -397,15 +397,13 @@ Deno.test("[std/node/fs] open callback isn't called twice if error is thrown", a
       await Deno.remove(tempFile);
     },
   });
+});
 
-  Deno.test({
-    name: "SYNC: open file with flag set to 0 (readonly)",
-    fn() {
-      const file = Deno.makeTempFileSync();
-      const fd = openSync(file, 0);
-      closeSync(fd);
-    },
-  });
+Deno.test("SYNC: open file with flag set to 0 (readonly)", async () => {
+  const file = Deno.makeTempFileSync();
+  const fd = openSync(file, 0);
+  closeSync(fd);
+  await Deno.remove(file);
 });
 
 Deno.test("[std/node/fs] openSync with custom flag", {
@@ -566,3 +564,52 @@ Deno.test(
     await Deno.remove(path);
   },
 );
+
+Deno.test({
+  name:
+    "open with numeric flag `O_RDONLY | O_CREAT` creates file and opens for reading",
+  fn() {
+    const file = join(tempDir, "o_rdonly_o_creat_test");
+    // Ensure file doesn't exist
+    try {
+      Deno.removeSync(file);
+    } catch {
+      // ignore
+    }
+    assertEquals(existsSync(file), false);
+
+    // O_RDONLY | O_CREAT should create the file if it doesn't exist,
+    // then open it for reading only (matching POSIX / Node.js behavior)
+    const fd = openSync(file, O_RDONLY | O_CREAT);
+    assertEquals(typeof fd, "number");
+    assertEquals(existsSync(file), true);
+
+    // The file should be empty
+    const buf = new Uint8Array(10);
+    const bytesRead = readSync(fd, buf, 0, 10, 0);
+    assertEquals(bytesRead, 0);
+
+    closeSync(fd);
+    Deno.removeSync(file);
+  },
+});
+
+Deno.test({
+  name:
+    "open with numeric flag `O_RDONLY | O_CREAT` opens existing file for reading",
+  fn() {
+    const file = Deno.makeTempFileSync();
+    Deno.writeTextFileSync(file, "hello");
+
+    const fd = openSync(file, O_RDONLY | O_CREAT);
+    assertEquals(typeof fd, "number");
+
+    // Should be able to read the existing content
+    const buf = new Uint8Array(10);
+    const bytesRead = readSync(fd, buf, 0, 10, 0);
+    assertEquals(bytesRead, 5);
+
+    closeSync(fd);
+    Deno.removeSync(file);
+  },
+});

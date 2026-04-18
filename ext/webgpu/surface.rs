@@ -86,7 +86,6 @@ impl GPUCanvasContext {
   }
 
   #[getter]
-  #[global]
   fn canvas(&self) -> v8::Global<v8::Object> {
     self.canvas.clone()
   }

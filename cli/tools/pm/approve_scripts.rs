@@ -78,6 +78,10 @@ pub async fn approve_scripts(
       Vec::new(),
     )
   } else {
+    let npm_installer = factory.npm_installer().await?;
+    npm_installer
+      .ensure_top_level_package_json_install()
+      .await?;
     let npm_resolver = factory.npm_resolver().await?;
     let candidates = find_script_candidates(
       npm_resolver,

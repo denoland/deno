@@ -1,0 +1,5 @@
+main started
+main worker booted
+main got from worker "hello from client"
+[ERR] Uncaught Error: execution terminated
+main exiting

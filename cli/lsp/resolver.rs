@@ -31,6 +31,7 @@ use deno_resolver::NodeAndNpmResolvers;
 use deno_resolver::cjs::IsCjsResolutionMode;
 use deno_resolver::deno_json::CompilerOptionsResolver;
 use deno_resolver::deno_json::JsxImportSourceConfig;
+use deno_resolver::factory::npm_overrides_from_workspace;
 use deno_resolver::graph::FoundPackageJsonDepFlag;
 use deno_resolver::npm::CreateInNpmPkgCheckerOptions;
 use deno_resolver::npm::DenoInNpmPackageChecker;
@@ -80,6 +81,7 @@ use crate::npm::CliNpmInstaller;
 use crate::npm::CliNpmRegistryInfoProvider;
 use crate::npm::CliNpmResolver;
 use crate::npm::CliNpmResolverCreateOptions;
+use crate::npm::NpmPackumentFormat;
 use crate::resolver::CliIsCjsResolver;
 use crate::resolver::CliNpmReqResolver;
 use crate::resolver::CliResolver;
@@ -210,6 +212,7 @@ impl LspScopedResolver {
                 root_node_modules_dir: byonm_npm_resolver
                   .root_node_modules_path()
                   .map(|p| p.to_path_buf()),
+                search_stop_dir: None,
                 sys: factory.node_resolution_sys.clone(),
                 pkg_json_resolver: self.pkg_json_resolver.clone(),
               },
@@ -217,19 +220,19 @@ impl LspScopedResolver {
           }
           CliNpmResolver::Managed(managed_npm_resolver) => {
             CliNpmResolverCreateOptions::Managed({
-              let sys = CliSys::default();
+              let sys = &factory.sys;
               let npmrc = self
                 .config_data
                 .as_ref()
                 .and_then(|d| d.npmrc.clone())
-                .unwrap_or_else(|| Arc::new(create_default_npmrc(&sys)));
+                .unwrap_or_else(|| Arc::new(create_default_npmrc(sys)));
               let npm_cache_dir = Arc::new(NpmCacheDir::new(
-                &sys,
+                sys,
                 managed_npm_resolver.global_cache_root_path().to_path_buf(),
                 npmrc.get_all_known_registries_urls(),
               ));
               ManagedNpmResolverCreateOptions {
-                sys,
+                sys: factory.node_resolution_sys.clone(),
                 npm_cache_dir,
                 maybe_node_modules_path: managed_npm_resolver
                   .root_node_modules_path()
@@ -878,6 +881,7 @@ impl<'a> ResolverFactory<'a> {
               .map(|p| p.join("node_modules/"))
           })
         }),
+        search_stop_dir: None,
       })
     } else {
       let npmrc = self
@@ -903,11 +907,13 @@ impl<'a> ResolverFactory<'a> {
       let npm_client = Arc::new(CliNpmCacheHttpClient::new(
         http_client_provider.clone(),
         pb.clone(),
+        NpmPackumentFormat::Abbreviated,
       ));
       let registry_info_provider = Arc::new(CliNpmRegistryInfoProvider::new(
         npm_cache.clone(),
         npm_client.clone(),
         npmrc.clone(),
+        NpmPackumentFormat::Abbreviated,
       ));
       let link_packages: WorkspaceNpmLinkPackagesRc = self
         .config_data
@@ -941,9 +947,15 @@ impl<'a> ResolverFactory<'a> {
         npmrc.clone(),
         None,
       ));
+      // parse npm overrides from workspace config
+      let overrides = self
+        .config_data
+        .map(|d| npm_overrides_from_workspace(&d.member_dir.workspace))
+        .unwrap_or_default();
       let npm_version_resolver = Arc::new(NpmVersionResolver {
         link_packages: link_packages.0.clone(),
         newest_dependency_date_options: Default::default(),
+        overrides: Arc::new(overrides),
       });
       let npm_resolution_installer = Arc::new(NpmResolutionInstaller::new(
         Default::default(),
@@ -966,6 +978,7 @@ impl<'a> ResolverFactory<'a> {
         sys.clone(),
         tarball_cache.clone(),
         deno_npm_installer::NpmInstallerOptions {
+          clean_on_install: false,
           maybe_lockfile,
           maybe_node_modules_path: maybe_node_modules_path.clone(),
           lifecycle_scripts: Arc::new(LifecycleScriptsConfig::default()),
@@ -979,7 +992,7 @@ impl<'a> ResolverFactory<'a> {
       }
 
       CliNpmResolverCreateOptions::Managed(ManagedNpmResolverCreateOptions {
-        sys: CliSys::default(),
+        sys: self.node_resolution_sys.clone(),
         npm_cache_dir,
         maybe_node_modules_path,
         npmrc,

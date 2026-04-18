@@ -1,0 +1,5 @@
+{
+  "name": "@denotest/not-on-registry-local-pkg",
+  "version": "1.0.0",
+  "exports": "./main.mjs"
+}

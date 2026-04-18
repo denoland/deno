@@ -14,7 +14,7 @@ use base64::Engine;
 use base64::prelude::BASE64_URL_SAFE_NO_PAD;
 use deno_core::JsBuffer;
 use deno_core::OpState;
-use deno_core::ToJsBuffer;
+use deno_core::convert::Uint8Array;
 use deno_core::op2;
 use deno_core::unsync::spawn_blocking;
 use deno_error::JsErrorBox;
@@ -26,6 +26,9 @@ use p256::pkcs8::DecodePrivateKey;
 use p384::ecdsa::Signature as P384Signature;
 use p384::ecdsa::SigningKey as P384SigningKey;
 use p384::ecdsa::VerifyingKey as P384VerifyingKey;
+use p521::ecdsa::Signature as P521Signature;
+use p521::ecdsa::SigningKey as P521SigningKey;
+use p521::ecdsa::VerifyingKey as P521VerifyingKey;
 pub use rand;
 use rand::Rng;
 use rand::SeedableRng;
@@ -223,10 +226,9 @@ pub enum CryptoError {
 }
 
 #[op2]
-#[serde]
 pub fn op_crypto_base64url_decode(
   #[string] data: String,
-) -> Result<ToJsBuffer, CryptoError> {
+) -> Result<Uint8Array, CryptoError> {
   let data: Vec<u8> = BASE64_URL_SAFE_NO_PAD.decode(data)?;
   Ok(data.into())
 }
@@ -281,22 +283,24 @@ pub struct KeyData {
   data: JsBuffer,
 }
 
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(deno_core::FromV8)]
 pub struct SignArg {
+  #[from_v8(serde)]
   key: KeyData,
+  #[from_v8(serde)]
   algorithm: Algorithm,
   salt_length: Option<u32>,
+  #[from_v8(serde)]
   hash: Option<CryptoHash>,
+  #[from_v8(serde)]
   named_curve: Option<CryptoNamedCurve>,
 }
 
-#[op2(async)]
-#[serde]
+#[op2]
 pub async fn op_crypto_sign_key(
-  #[serde] args: SignArg,
+  #[scoped] args: SignArg,
   #[buffer] zero_copy: JsBuffer,
-) -> Result<ToJsBuffer, CryptoError> {
+) -> Result<Uint8Array, CryptoError> {
   deno_core::unsync::spawn_blocking(move || {
     let data = &*zero_copy;
     let algorithm = args.algorithm;
@@ -393,6 +397,32 @@ pub async fn op_crypto_sign_key(
               signing_key.sign_prehash(&prehash)?;
             signature.to_bytes().to_vec()
           }
+          CryptoNamedCurve::P521 => {
+            let secret_key = p521::SecretKey::from_pkcs8_der(&args.key.data)
+              .map_err(|_| CryptoError::InvalidKeyFormat)?;
+            let signing_key =
+              P521SigningKey::from_bytes(&secret_key.to_bytes())
+                .map_err(|_| CryptoError::InvalidKeyFormat)?;
+            let prehash = match hash {
+              CryptoHash::Sha1 => sha1::Sha1::digest(data).to_vec(),
+              CryptoHash::Sha256 => sha2::Sha256::digest(data).to_vec(),
+              CryptoHash::Sha384 => sha2::Sha384::digest(data).to_vec(),
+              CryptoHash::Sha512 => sha2::Sha512::digest(data).to_vec(),
+            };
+            // P-521 field size is 66 bytes; bits2field requires at least
+            // half that (33 bytes). Left-pad shorter hashes to meet the
+            // minimum.
+            let prehash = if prehash.len() < 33 {
+              let mut padded = vec![0u8; 33 - prehash.len()];
+              padded.extend_from_slice(&prehash);
+              padded
+            } else {
+              prehash
+            };
+            let signature: P521Signature =
+              signing_key.sign_prehash(&prehash)?;
+            signature.to_bytes().to_vec()
+          }
         }
       }
       Algorithm::Hmac => {
@@ -412,20 +442,23 @@ pub async fn op_crypto_sign_key(
   .await?
 }
 
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(deno_core::FromV8)]
 pub struct VerifyArg {
+  #[from_v8(serde)]
   key: KeyData,
+  #[from_v8(serde)]
   algorithm: Algorithm,
   salt_length: Option<u32>,
+  #[from_v8(serde)]
   hash: Option<CryptoHash>,
-  signature: JsBuffer,
+  signature: Uint8Array,
+  #[from_v8(serde)]
   named_curve: Option<CryptoNamedCurve>,
 }
 
-#[op2(async)]
+#[op2]
 pub async fn op_crypto_verify_key(
-  #[serde] args: VerifyArg,
+  #[scoped] args: VerifyArg,
   #[buffer] zero_copy: JsBuffer,
 ) -> Result<bool, CryptoError> {
   deno_core::unsync::spawn_blocking(move || {
@@ -437,7 +470,7 @@ pub async fn op_crypto_verify_key(
         use rsa::pkcs1v15::Signature;
         use rsa::pkcs1v15::VerifyingKey;
         let public_key = read_rsa_public_key(args.key)?;
-        let signature: Signature = args.signature.as_ref().try_into()?;
+        let signature: Signature = (&*args.signature).try_into()?;
         match args.hash.ok_or_else(|| CryptoError::MissingArgumentHash)? {
           CryptoHash::Sha1 => {
             let verifying_key = VerifyingKey::<Sha1>::new(public_key);
@@ -556,6 +589,46 @@ pub async fn op_crypto_verify_key(
               _ => false,
             }
           }
+          CryptoNamedCurve::P521 => {
+            let verifying_key = match args.key.r#type {
+              KeyType::Public => {
+                P521VerifyingKey::from_sec1_bytes(&args.key.data)
+                  .map_err(|_| CryptoError::InvalidKeyFormat)?
+              }
+              KeyType::Private => {
+                let secret_key =
+                  p521::SecretKey::from_pkcs8_der(&args.key.data)
+                    .map_err(|_| CryptoError::InvalidKeyFormat)?;
+                // Construct inner ecdsa signing key to get verifying key
+                let inner_signing_key =
+                  ecdsa::SigningKey::<p521::NistP521>::from(secret_key);
+                P521VerifyingKey::from(*inner_signing_key.verifying_key())
+              }
+              _ => return Err(CryptoError::InvalidKeyFormat),
+            };
+            match P521Signature::from_slice(&args.signature) {
+              Ok(signature) => {
+                let prehash = match hash {
+                  CryptoHash::Sha1 => sha1::Sha1::digest(data).to_vec(),
+                  CryptoHash::Sha256 => sha2::Sha256::digest(data).to_vec(),
+                  CryptoHash::Sha384 => sha2::Sha384::digest(data).to_vec(),
+                  CryptoHash::Sha512 => sha2::Sha512::digest(data).to_vec(),
+                };
+                // P-521 field size is 66 bytes; bits2field requires at least
+                // half that (33 bytes). Left-pad shorter hashes to meet the
+                // minimum.
+                let prehash = if prehash.len() < 33 {
+                  let mut padded = vec![0u8; 33 - prehash.len()];
+                  padded.extend_from_slice(&prehash);
+                  padded
+                } else {
+                  prehash
+                };
+                verifying_key.verify_prehash(&prehash, &signature).is_ok()
+              }
+              _ => false,
+            }
+          }
         }
       }
       _ => return Err(CryptoError::UnsupportedAlgorithm),
@@ -566,27 +639,31 @@ pub async fn op_crypto_verify_key(
   .await?
 }
 
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(deno_core::FromV8)]
 pub struct DeriveKeyArg {
+  #[from_v8(serde)]
   key: KeyData,
+  #[from_v8(serde)]
   algorithm: Algorithm,
+  #[from_v8(serde)]
   hash: Option<CryptoHash>,
   length: usize,
   iterations: Option<u32>,
   // ECDH
+  #[from_v8(serde)]
   public_key: Option<KeyData>,
+  #[from_v8(serde)]
   named_curve: Option<CryptoNamedCurve>,
   // HKDF
+  #[from_v8(serde)]
   info: Option<JsBuffer>,
 }
 
-#[op2(async)]
-#[serde]
+#[op2]
 pub async fn op_crypto_derive_bits(
-  #[serde] args: DeriveKeyArg,
+  #[scoped] args: DeriveKeyArg,
   #[buffer] zero_copy: Option<JsBuffer>,
-) -> Result<ToJsBuffer, CryptoError> {
+) -> Result<Uint8Array, CryptoError> {
   deno_core::unsync::spawn_blocking(move || {
     let algorithm = args.algorithm;
     match algorithm {
@@ -690,6 +767,39 @@ pub async fn op_crypto_derive_bits(
             // raw serialized x-coordinate of the computed point
             Ok(shared_secret.raw_secret_bytes().to_vec().into())
           }
+          CryptoNamedCurve::P521 => {
+            let secret_key = p521::SecretKey::from_pkcs8_der(&args.key.data)
+              .map_err(|_| CryptoError::DecodePrivateKey)?;
+
+            let public_key = match public_key.r#type {
+              KeyType::Private => {
+                p521::SecretKey::from_pkcs8_der(&public_key.data)
+                  .map_err(|_| CryptoError::DecodePrivateKey)?
+                  .public_key()
+              }
+              KeyType::Public => {
+                let point = p521::EncodedPoint::from_bytes(public_key.data)
+                  .map_err(|_| CryptoError::DecodePrivateKey)?;
+
+                let pk = p521::PublicKey::from_encoded_point(&point);
+                // pk is a constant time Option.
+                if pk.is_some().into() {
+                  pk.unwrap()
+                } else {
+                  return Err(CryptoError::DecodePrivateKey);
+                }
+              }
+              _ => unreachable!(),
+            };
+
+            let shared_secret = p521::elliptic_curve::ecdh::diffie_hellman(
+              secret_key.to_nonzero_scalar(),
+              public_key.as_affine(),
+            );
+
+            // raw serialized x-coordinate of the computed point
+            Ok(shared_secret.raw_secret_bytes().to_vec().into())
+          }
         }
       }
       Algorithm::Hkdf => {
@@ -755,12 +865,11 @@ pub fn op_crypto_random_uuid(
   Ok(uuid)
 }
 
-#[op2(async)]
-#[serde]
+#[op2]
 pub async fn op_crypto_subtle_digest(
   #[serde] algorithm: CryptoHash,
   #[buffer] data: JsBuffer,
-) -> Result<ToJsBuffer, CryptoError> {
+) -> Result<Uint8Array, CryptoError> {
   let output = spawn_blocking(move || {
     digest::digest(algorithm.into(), &data)
       .as_ref()
@@ -780,11 +889,10 @@ pub struct WrapUnwrapKeyArg {
 }
 
 #[op2]
-#[serde]
 pub fn op_crypto_wrap_key(
   #[serde] args: WrapUnwrapKeyArg,
   #[buffer] data: JsBuffer,
-) -> Result<ToJsBuffer, CryptoError> {
+) -> Result<Uint8Array, CryptoError> {
   let algorithm = args.algorithm;
 
   match algorithm {
@@ -810,11 +918,10 @@ pub fn op_crypto_wrap_key(
 }
 
 #[op2]
-#[serde]
 pub fn op_crypto_unwrap_key(
   #[serde] args: WrapUnwrapKeyArg,
   #[buffer] data: JsBuffer,
-) -> Result<ToJsBuffer, CryptoError> {
+) -> Result<Uint8Array, CryptoError> {
   let algorithm = args.algorithm;
   match algorithm {
     Algorithm::AesKw => {

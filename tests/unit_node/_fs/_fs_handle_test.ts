@@ -158,6 +158,38 @@ Deno.test(
 );
 
 Deno.test(
+  "[node/fs filehandle.readv] Read into array of buffers from file",
+  async function () {
+    const fileHandle = await fs.open(testData);
+
+    const buffer1 = Buffer.alloc(5);
+    const buffer2 = Buffer.alloc(6);
+    const res = await fileHandle.readv([buffer1, buffer2]);
+
+    await fileHandle.close();
+
+    assertEquals(res.bytesRead, 11);
+    assertEquals(decoder.decode(buffer1), "hello");
+    assertEquals(decoder.decode(buffer2), " world");
+  },
+);
+
+Deno.test(
+  "[node/fs filehandle.readv] Read into array of buffers with position",
+  async function () {
+    const fileHandle = await fs.open(testData);
+
+    const buffer1 = Buffer.alloc(5);
+    const res = await fileHandle.readv([buffer1], 6);
+
+    await fileHandle.close();
+
+    assertEquals(res.bytesRead, 5);
+    assertEquals(decoder.decode(buffer1), "world");
+  },
+);
+
+Deno.test(
   "[node/fs filehandle.truncate] Truncate file with length",
   async function () {
     const tempFile: string = await Deno.makeTempFile();
@@ -263,12 +295,15 @@ Deno.test({
   async fn() {
     const fileHandle = await fs.open(testData, "a");
 
-    const atime = new Date();
+    // Use whole-second timestamps to avoid sub-millisecond rounding
+    // differences between JS Date and filesystem timestamp resolution.
+    const now = Math.floor(Date.now() / 1000) * 1000;
+    const atime = new Date(now);
     const mtime = new Date(0);
 
     await fileHandle.utimes(atime, mtime);
-    assertEquals(Deno.statSync(testData).atime!, atime);
-    assertEquals(Deno.statSync(testData).mtime!, mtime);
+    assertEquals(Deno.statSync(testData).atime!.getTime(), atime.getTime());
+    assertEquals(Deno.statSync(testData).mtime!.getTime(), mtime.getTime());
 
     await fileHandle.close();
   },

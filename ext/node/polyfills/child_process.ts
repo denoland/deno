@@ -28,6 +28,8 @@ import {
 import {
   validateAbortSignal,
   validateFunction,
+  validateInteger,
+  validateNumber,
   validateObject,
   validateString,
 } from "ext:deno_node/internal/validators.mjs";
@@ -45,6 +47,7 @@ import {
   convertToValidSignal,
   kEmptyObject,
 } from "ext:deno_node/internal/util.mjs";
+import { toPathIfFileURL } from "ext:deno_node/internal/url.ts";
 import { kNeedsNpmProcessState } from "ext:deno_process/40_process.js";
 
 const {
@@ -69,10 +72,11 @@ type ForkOptions = ChildProcessOptions;
  * @returns
  */
 export function fork(
-  modulePath: string,
+  modulePath: string | URL,
   _args?: string[],
   _options?: ForkOptions,
 ) {
+  modulePath = toPathIfFileURL(modulePath) as string;
   validateString(modulePath, "modulePath");
   validateNullByteNotInArg(modulePath, "modulePath");
 
@@ -142,32 +146,45 @@ export function fork(
   // Combine execArgv (Node CLI flags), modulePath (script), and args (script args)
   const nodeArgs = [...(execArgv || []), modulePath, ...args].map(String);
 
-  // Use the Rust parser to translate Node.js CLI args to Deno args
-  // The parser handles Deno-style args (e.g., from vitest) by passing them through unchanged
-  const result = op_node_translate_cli_args(nodeArgs, false);
-  const denoArgs = result.deno_args;
-  const bootstrapArgs = op_bootstrap_unstable_args();
-
-  // Insert bootstrap unstable args after "run" but before other args
-  // denoArgs is like ["run", "-A", "script.js", ...]
-  // We need ["run", ...bootstrapArgs, "-A", "script.js", ...]
-  if (
-    denoArgs.length > 0 && denoArgs[0] === "run" && bootstrapArgs.length > 0
-  ) {
-    args = [denoArgs[0], ...bootstrapArgs, ...denoArgs.slice(1)];
+  if (Deno.build.standalone) {
+    // In standalone (compiled) binaries, skip Node-to-Deno arg translation.
+    // The binary already has permissions and unstable config baked in.
+    // Translating would inject "run -A --unstable-..." which the compiled
+    // binary doesn't understand and would pass through as app args.
+    args = nodeArgs;
   } else {
-    args = [...bootstrapArgs, ...denoArgs];
-  }
+    // Use the Rust parser to translate Node.js CLI args to Deno args
+    // The parser handles Deno-style args (e.g., from vitest) by passing them through unchanged
+    const result = op_node_translate_cli_args(nodeArgs, false, true);
+    const denoArgs = result.deno_args;
+    const bootstrapArgs = op_bootstrap_unstable_args();
 
-  // Handle NODE_OPTIONS if the parser returned any
-  if (result.node_options.length > 0) {
-    const nodeOptionsStr = result.node_options.join(" ");
-    if (options.env) {
-      options.env.NODE_OPTIONS = options.env.NODE_OPTIONS
-        ? options.env.NODE_OPTIONS + " " + nodeOptionsStr
-        : nodeOptionsStr;
+    // Insert bootstrap unstable args after "run" but before other args.
+    // Filter out any that the translator already added to avoid duplicates
+    // (e.g. --unstable-bare-node-builtins).
+    // denoArgs is like ["run", "-A", "--unstable-...", "script.js", ...]
+    // We need ["run", ...uniqueBootstrapArgs, "-A", "--unstable-...", "script.js", ...]
+    const denoArgSet = new Set(denoArgs);
+    const uniqueBootstrapArgs = bootstrapArgs.filter((a) => !denoArgSet.has(a));
+    if (
+      denoArgs.length > 0 && denoArgs[0] === "run" &&
+      uniqueBootstrapArgs.length > 0
+    ) {
+      args = [denoArgs[0], ...uniqueBootstrapArgs, ...denoArgs.slice(1)];
     } else {
-      options.env = { ...process.env, NODE_OPTIONS: nodeOptionsStr };
+      args = [...uniqueBootstrapArgs, ...denoArgs];
+    }
+
+    // Handle NODE_OPTIONS if the parser returned any
+    if (result.node_options.length > 0) {
+      const nodeOptionsStr = result.node_options.join(" ");
+      if (options.env) {
+        options.env.NODE_OPTIONS = options.env.NODE_OPTIONS
+          ? options.env.NODE_OPTIONS + " " + nodeOptionsStr
+          : nodeOptionsStr;
+      } else {
+        options.env = { ...process.env, NODE_OPTIONS: nodeOptionsStr };
+      }
     }
   }
 
@@ -217,28 +234,39 @@ export function spawn(
   options = normalizeSpawnArguments(command, args, options);
 
   validateAbortSignal(options?.signal, "options.signal");
+  validateTimeout(options?.timeout);
 
   const child = new ChildProcess();
   child.spawn(options);
+
+  const timeout = options?.timeout;
+  if (timeout != null && timeout > 0) {
+    const killSignal = options?.killSignal ?? "SIGTERM";
+    let timeoutId: ReturnType<typeof setTimeout> | null = setTimeout(() => {
+      timeoutId = null;
+      child.kill(killSignal as string);
+    }, timeout);
+
+    child.once("exit", () => {
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+        timeoutId = null;
+      }
+    });
+  }
+
   return child;
 }
 
 function validateTimeout(timeout?: number) {
-  if (timeout != null && !(Number.isInteger(timeout) && timeout >= 0)) {
-    throw new ERR_OUT_OF_RANGE("timeout", "an unsigned integer", timeout);
+  if (timeout != null) {
+    validateInteger(timeout, "timeout", 0);
   }
 }
 
 function validateMaxBuffer(maxBuffer?: number) {
-  if (
-    maxBuffer != null &&
-    !(typeof maxBuffer === "number" && maxBuffer >= 0)
-  ) {
-    throw new ERR_OUT_OF_RANGE(
-      "options.maxBuffer",
-      "a positive number",
-      maxBuffer,
-    );
+  if (maxBuffer != null) {
+    validateNumber(maxBuffer, "options.maxBuffer", 0);
   }
 }
 

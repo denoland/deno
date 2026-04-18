@@ -1,7 +1,9 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
+mod handler_impl;
 mod interface;
 pub mod local;
+mod socket;
 
 use std::borrow::Cow;
 use std::cell::RefCell;
@@ -15,6 +17,10 @@ use deno_core::op2;
 use deno_error::JsErrorBox;
 use deno_error::JsErrorClass;
 use deno_features::FeatureChecker;
+pub use handler_impl::CronHandleImpl;
+pub use handler_impl::CronHandlerImpl;
+pub use socket::SocketCronHandle;
+pub use socket::SocketCronHandler;
 
 pub use crate::interface::*;
 
@@ -77,6 +83,12 @@ pub enum CronError {
   #[class(generic)]
   #[error(transparent)]
   AcquireError(#[from] tokio::sync::AcquireError),
+  #[class(generic)]
+  #[error("Cron socket error: {0}")]
+  SocketError(String),
+  #[class(generic)]
+  #[error("Error registering cron: {0}")]
+  RejectedError(String),
   #[class(inherit)]
   #[error(transparent)]
   Other(JsErrorBox),
@@ -88,7 +100,7 @@ fn op_cron_create<C>(
   state: Rc<RefCell<OpState>>,
   #[string] name: String,
   #[string] cron_schedule: String,
-  #[serde] backoff_schedule: Option<Vec<u32>>,
+  #[scoped] backoff_schedule: Option<Vec<u32>>,
 ) -> Result<ResourceId, CronError>
 where
   C: CronHandler + 'static,
@@ -118,12 +130,13 @@ where
   Ok(handle_rid)
 }
 
-#[op2(async)]
+#[op2]
+#[serde]
 async fn op_cron_next<C>(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
   prev_success: bool,
-) -> Result<bool, CronError>
+) -> Result<CronNextResult, CronError>
 where
   C: CronHandler + 'static,
 {
@@ -133,7 +146,10 @@ where
       Ok(resource) => resource,
       Err(err) => {
         if err.get_class() == "BadResource" {
-          return Ok(false);
+          return Ok(CronNextResult {
+            active: false,
+            traceparent: None,
+          });
         } else {
           return Err(CronError::Resource(err));
         }

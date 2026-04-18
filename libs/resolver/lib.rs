@@ -64,11 +64,11 @@ pub mod npmrc;
 mod rt;
 pub mod workspace;
 
-#[allow(clippy::disallowed_types)]
+#[allow(clippy::disallowed_types, reason = "definition")]
 pub type WorkspaceResolverRc<TSys> =
   deno_maybe_sync::MaybeArc<WorkspaceResolver<TSys>>;
 
-#[allow(clippy::disallowed_types)]
+#[allow(clippy::disallowed_types, reason = "definition")]
 pub(crate) type NpmCacheDirRc = deno_maybe_sync::MaybeArc<NpmCacheDir>;
 
 #[derive(Debug, Clone)]
@@ -114,7 +114,6 @@ impl DenoResolveError {
       | DenoResolveErrorKind::ResolvePkgFolderFromDenoReq(_)
       | DenoResolveErrorKind::InvalidVendorFolderImport
       | DenoResolveErrorKind::UnsupportedPackageJsonFileSpecifier
-      | DenoResolveErrorKind::UnsupportedPackageJsonJsrReq
       | DenoResolveErrorKind::NodeModulesOutOfDate(_)
       | DenoResolveErrorKind::PackageJsonDepValueParse(_)
       | DenoResolveErrorKind::PackageJsonDepValueUrlParse(_) => None,
@@ -134,9 +133,6 @@ pub enum DenoResolveErrorKind {
     "Importing npm packages via a file: specifier is only supported with --node-modules-dir=manual"
   )]
   UnsupportedPackageJsonFileSpecifier,
-  #[class(type)]
-  #[error("JSR specifiers are not yet supported in package.json")]
-  UnsupportedPackageJsonJsrReq,
   #[class(inherit)]
   #[error(transparent)]
   MappedResolution(#[from] MappedResolutionError),
@@ -171,7 +167,6 @@ impl DenoResolveErrorKind {
     match self {
       DenoResolveErrorKind::InvalidVendorFolderImport
       | DenoResolveErrorKind::UnsupportedPackageJsonFileSpecifier
-      | DenoResolveErrorKind::UnsupportedPackageJsonJsrReq
       | DenoResolveErrorKind::MappedResolution { .. }
       | DenoResolveErrorKind::NodeModulesOutOfDate { .. }
       | DenoResolveErrorKind::PackageJsonDepValueParse { .. }
@@ -238,7 +233,7 @@ pub struct DenoResolverOptions<
   pub maybe_vendor_dir: Option<&'a PathBuf>,
 }
 
-#[allow(clippy::disallowed_types)]
+#[allow(clippy::disallowed_types, reason = "definition")]
 pub type RawDenoResolverRc<
   TInNpmPackageChecker,
   TIsBuiltInNodeModuleChecker,
@@ -421,9 +416,6 @@ impl<
                     .into_box(),
                 )
               }
-              PackageJsonDepValue::JsrReq(_) => Err(
-                DenoResolveErrorKind::UnsupportedPackageJsonJsrReq.into_box(),
-              ),
               // todo(dsherret): it seems bad that we're converting this
               // to a url because the req might not be a valid url.
               PackageJsonDepValue::Req(req) => Url::parse(&format!(

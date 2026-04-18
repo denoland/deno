@@ -2,7 +2,7 @@
 
 [package]
 name = "denort"
-version = "2.6.6"
+version = "2.7.12"
 authors.workspace = true
 default-run = "denort"
 edition.workspace = true
@@ -15,6 +15,9 @@ description = "Provides the denort executable"
 name = "denort"
 path = "main.rs"
 doc = false
+
+[lib]
+path = "./lib.rs"
 
 [[test]]
 name = "integration"
@@ -33,6 +36,7 @@ deno_error.workspace = true
 deno_lib.workspace = true
 deno_media_type = { workspace = true, features = ["data_url", "decoding"] }
 deno_npm.workspace = true
+deno_npmrc.workspace = true
 deno_package_json = { workspace = true, features = ["sync"] }
 deno_path_util.workspace = true
 deno_resolver = { workspace = true, features = ["sync"] }
@@ -57,6 +61,7 @@ tokio.workspace = true
 url.workspace = true
 
 [target.'cfg(windows)'.dependencies]
+junction.workspace = true
 memmap2.workspace = true
 deno_subprocess_windows.workspace = true
 

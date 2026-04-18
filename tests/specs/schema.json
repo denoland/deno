@@ -111,6 +111,10 @@
           "repeat": {
             "type": "number"
           },
+          "timeout": {
+            "type": "number",
+            "description": "Timeout in seconds for each step. Defaults to 300 (5 minutes)."
+          },
           "steps": {
             "type": "array",
             "items": {
@@ -154,6 +158,10 @@
             },
             "repeat": {
               "type": "number"
+            },
+            "timeout": {
+              "type": "number",
+              "description": "Timeout in seconds for each step. Defaults to 300 (5 minutes)."
             }
           }
         }, {
@@ -178,6 +186,10 @@
         },
         "repeat": {
           "type": "number"
+        },
+        "timeout": {
+          "type": "number",
+          "description": "Timeout in seconds for each step. Defaults to 300 (5 minutes)."
         },
         "tests": {
           "type": "object",
