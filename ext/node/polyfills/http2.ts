@@ -426,7 +426,7 @@ function submitSettings(settings, callback) {
 // be used. The opaqueData must either be a typed array or undefined
 // (which will be checked elsewhere).
 function submitGoaway(code, lastStreamID, opaqueData) {
-  if (this.destroyed) {
+  if (this.destroyed || !this[kHandle]) {
     return;
   }
   debugSessionObj(this, "submitting goaway");
@@ -2663,36 +2663,42 @@ function setupHandle(socket, type, options) {
   const handle = new InternalHttp2Session(type);
   handle[kOwner] = this;
 
-  // Pump data from socket to session via JS events.
-  // After receiving data, flush outgoing h2 frames back to the socket.
-  socket.on("data", (buf) => {
-    if (!this.destroyed) {
-      handle.receive(buf);
-      // After receiving, nghttp2 may have generated response frames
-      // (SETTINGS_ACK, WINDOW_UPDATE, etc.). Flush them to the socket.
-      handle.sendPending();
-    }
-  });
-  socket.resume();
-  debug("i/o stream consumed (socket data events)");
+  // Try to take over the socket's TCP handle for direct I/O via libuv.
+  // This is equivalent to Node's handle.consume(socket._handle).
+  // Only works for plain TCP sockets (not TLS). For TLS or other socket
+  // types, fall back to the JS write path.
+  const canConsume = socket._handle &&
+    socket._handle.constructor?.name === "TCPWrap";
+  if (canConsume) {
+    handle.consumeStream(socket._handle);
+    // Mark the socket handle as "reading" so the JS socket layer won't
+    // try to restart reads via readStart() (which would overwrite our
+    // h2 read callbacks).
+    socket._handle.reading = true;
+    socket._readableState.reading = true;
+    debug("i/o stream consumed (native)");
+  } else {
+    // JS write path fallback for TLS and non-TCP sockets.
+    // Pump data from socket to session via JS events.
+    socket.on("data", (buf) => {
+      if (!this.destroyed) {
+        handle.receive(buf);
+        handle.sendPending();
+      }
+    });
+    socket.resume();
 
-  // Override sendPending to write via JS socket instead of native uv_write.
-  // This is needed because consume_stream is not used - self.stream is None
-  // in the Rust session, so send_pending_data is a no-op.
-  const origSendPending = FunctionPrototypeBind(handle.sendPending, handle);
-  handle.sendPending = () => {
-    const pending = handle.getOutgoingData();
-    if (pending && pending.byteLength > 0) {
-      socket.write(pending);
-    }
-    // Trigger graceful-close check AFTER the data has been queued on the
-    // socket.  getOutgoingData() drains nghttp2's output but must not
-    // trigger the destroy chain itself -- the data would never be written
-    // because destroy -> socket.end() would run before socket.write().
-    // The native send_pending_data() (stream==None path) only checks
-    // maybe_notify_graceful_close_complete, so this is safe.
-    origSendPending();
-  };
+    // Override sendPending to write via JS socket.
+    const origSendPending = FunctionPrototypeBind(handle.sendPending, handle);
+    handle.sendPending = () => {
+      const pending = handle.getOutgoingData();
+      if (pending && pending.byteLength > 0) {
+        socket.write(pending);
+      }
+      origSendPending();
+    };
+    debug("i/o stream consumed (JS fallback)");
+  }
 
   // Process data on the next tick - a remoteSettings handler may be attached.
   // Also drain any already-buffered data from the socket.
@@ -2780,6 +2786,12 @@ function setupHandle(socket, type, options) {
 
   this.settings(settings);
 
+  // For the JS fallback path, flush the client preface + SETTINGS.
+  // The native path flushes via send_pending_data() internally.
+  if (!canConsume) {
+    handle.sendPending();
+  }
+
   if (
     type === NGHTTP2_SESSION_SERVER &&
     ArrayIsArray(options.origins)
@@ -2837,16 +2849,17 @@ function finishSessionClose(session, error) {
       socket.resume();
     }
 
-    // Always wait for writable side to finish.
+    // Always wait for writable side to finish, then destroy.
     socket.end((err) => {
       debugSessionObj(session, "finishSessionClose socket end", err, error);
-      // If session.destroy() was called, destroy the underlying socket.
-      // Delay it a bit to try to avoid ECONNRESET on Windows.
-      if (!session.closed) {
-        setImmediate(() => {
+      // Destroy the socket after end. For the graceful close path
+      // (session.closed=true), the session has already sent GOAWAY and
+      // all streams are done. For the destroy path, destroy immediately.
+      setImmediate(() => {
+        if (!socket.destroyed) {
           socket.destroy(error);
-        });
-      }
+        }
+      });
     });
   } else {
     process.nextTick(emitClose, session, error);
@@ -2900,10 +2913,9 @@ function closeSession(session, code, error) {
       socket && !socket.destroyed && typeof handle.goaway === "function"
     ) {
       handle.goaway(code, 0);
-      const pending = handle.getOutgoingData();
-      if (pending && pending.byteLength > 0 && !socket.destroyed) {
-        socket.write(pending);
-      }
+      // For native path, send_pending_data() flushes inside goaway().
+      // For JS fallback, flush via the overridden sendPending.
+      handle.sendPending();
     }
     handle.ondone = FunctionPrototypeBind(
       finishSessionClose,
@@ -2912,6 +2924,15 @@ function closeSession(session, code, error) {
       error,
     );
     handle.destroy(code, socket.destroyed);
+    // After destroy releases the TCP handle (uv_read_stop + side table
+    // removal), restore the socket's reading state so the JS socket
+    // layer can properly close/end the socket in finishSessionClose.
+    if (socket && socket._handle) {
+      socket._handle.reading = false;
+      if (socket._readableState) {
+        socket._readableState.reading = false;
+      }
+    }
   } else {
     finishSessionClose(session, error);
   }
@@ -2940,7 +2961,7 @@ function socketOnError(error) {
 
 function socketOnClose() {
   const session = this[kBoundSession];
-  if (session !== undefined) {
+  if (session !== undefined && !session.destroyed) {
     debugSessionObj(session, "socket closed");
     const err = session.connecting ? new ERR_SOCKET_CLOSED() : null;
     const state = session[kState];

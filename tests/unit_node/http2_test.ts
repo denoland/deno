@@ -162,6 +162,34 @@ Deno.test(`[node/http2 client body overflow]`, async () => {
   assertEquals(receivedTrailers?.["req_body_len"], "5");
 });
 
+// Regression test for https://github.com/denoland/deno/issues/28566
+// grpc-js 1.13+ waits for remoteSettings instead of connect event.
+Deno.test("[node/http2 client remoteSettings with createConnection]", async () => {
+  const url = "http://127.0.0.1:4246";
+  const remoteSettingsDeferred = Promise.withResolvers<void>();
+  const client = http2.connect(url, {
+    createConnection() {
+      return net.connect({ host: "127.0.0.1", port: 4246 });
+    },
+  });
+  client.on("error", (err) => console.error(err));
+  client.on("remoteSettings", () => {
+    remoteSettingsDeferred.resolve();
+  });
+
+  const timeout = setTimeout(() => {
+    remoteSettingsDeferred.reject(new Error("remoteSettings not received"));
+  }, 5000);
+
+  await remoteSettingsDeferred.promise;
+  clearTimeout(timeout);
+
+  const settings = client.remoteSettings;
+  assert(settings !== undefined);
+  assert(typeof settings.initialWindowSize === "number");
+  client.close();
+});
+
 Deno.test("[node/http2 client GET https://www.example.com]", {
   // TODO(littledivy): h2 over TLS is not yet implemented
   ignore: true,

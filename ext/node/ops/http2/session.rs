@@ -49,6 +49,14 @@ thread_local! {
 
   static SETTINGS: UnsafeCell<[u32; SETTINGS_LEN]> =
     const { UnsafeCell::new([0; SETTINGS_LEN]) };
+
+  /// Side table mapping uv_stream_t pointers to Session pointers.
+  /// This allows consume_stream to take over a TCP handle's read/write
+  /// without overwriting `stream.data` (which LibUvStreamWrap uses for
+  /// its own StreamHandleData). The h2 read/write callbacks look up the
+  /// session from this table instead of from `stream.data`.
+  static H2_SESSIONS: RefCell<HashMap<usize, *mut Session>> =
+    RefCell::new(HashMap::new());
 }
 
 #[derive(Serialize)]
@@ -170,16 +178,21 @@ unsafe extern "C" fn h2_write_cb(
   req: *mut deno_core::uv_compat::UvWrite,
   _status: i32,
 ) {
-  // Get the session pointer from the stream handle's data field.
+  // Look up the session from the side table using the stream handle pointer.
   // SAFETY: req is valid per libuv write callback contract; handle was set by uv_write
   let stream_handle = unsafe { (*req).handle };
   if !stream_handle.is_null() {
-    // SAFETY: stream_handle is valid per libuv; casting to UvHandle to read data field
-    let session_ptr =
-      unsafe { (*(stream_handle as *mut deno_core::uv_compat::UvHandle)).data };
-    if !session_ptr.is_null() {
-      // SAFETY: session_ptr was set in consume_stream and points to a valid Session
-      let session = unsafe { &mut *(session_ptr as *mut Session) };
+    // Look up session, dropping the borrow before calling into session
+    // to avoid RefCell conflicts if the callback triggers destroy().
+    let session_ptr = H2_SESSIONS.with(|sessions| {
+      sessions
+        .borrow()
+        .get(&(stream_handle as usize))
+        .copied()
+    });
+    if let Some(session_ptr) = session_ptr {
+      // SAFETY: session_ptr was registered in consume_stream and is valid
+      let session = unsafe { &mut *session_ptr };
       session.maybe_notify_graceful_close_complete();
     }
   }
@@ -187,36 +200,6 @@ unsafe extern "C" fn h2_write_cb(
   // Free the write request
   // SAFETY: req was created by Box::into_raw in send_pending_data
   let _ = unsafe { Box::from_raw(req as *mut H2WriteReq) };
-}
-
-unsafe extern "C" fn h2_stream_close_cb(
-  handle: *mut deno_core::uv_compat::UvHandle,
-) {
-  // The stream handle was a UvTcp allocated by the TCP cppgc object.
-  // Now that we've taken ownership via detach(), we're responsible for
-  // freeing the memory.
-  // SAFETY: handle was allocated by Box::into_raw and ownership transferred via detach
-  let _ = unsafe { Box::from_raw(handle as *mut deno_core::uv_compat::UvTcp) };
-}
-
-unsafe extern "C" fn h2_shutdown_cb(
-  req: *mut deno_core::uv_compat::UvShutdown,
-  _status: i32,
-) {
-  // After graceful shutdown (FIN sent), close the handle to free it.
-  // SAFETY: req.handle was set by uv_shutdown and is a valid stream handle
-  let stream_handle = unsafe { (*req).handle };
-  if !stream_handle.is_null() {
-    // SAFETY: stream_handle is valid per uv_shutdown callback contract
-    unsafe {
-      deno_core::uv_compat::uv_close(
-        stream_handle as *mut deno_core::uv_compat::UvHandle,
-        Some(h2_stream_close_cb),
-      );
-    }
-  }
-  // SAFETY: req was allocated by Box::into_raw in destroy()
-  let _ = unsafe { Box::from_raw(req) };
 }
 
 unsafe extern "C" fn h2_alloc_cb(
@@ -238,10 +221,14 @@ unsafe extern "C" fn h2_read_cb(
   nread: isize,
   buf: *const deno_core::uv_compat::UvBuf,
 ) {
-  // Get the session from the handle's data pointer
-  // SAFETY: handle is valid per libuv read callback contract
-  let session_ptr = unsafe { (*handle).data as *mut Session };
-  if session_ptr.is_null() {
+  // Look up the session from the side table using the stream handle pointer.
+  let session_ptr = H2_SESSIONS.with(|sessions| {
+    sessions
+      .borrow()
+      .get(&(handle as usize))
+      .copied()
+  });
+  let Some(session_ptr) = session_ptr else {
     // Free the buffer
     // SAFETY: buf is valid per libuv read callback contract
     if !buf.is_null() && !unsafe { (*buf).base.is_null() } {
@@ -254,9 +241,9 @@ unsafe extern "C" fn h2_read_cb(
       };
     }
     return;
-  }
+  };
 
-  // SAFETY: session_ptr was set in consume_stream and is non-null (checked above)
+  // SAFETY: session_ptr was registered in consume_stream and is valid
   let session = unsafe { &mut *session_ptr };
 
   if nread < 0 {
@@ -1407,9 +1394,6 @@ pub struct Session {
   /// double-free a stream (with no_closed_streams=1). Instead, we
   /// defer and flush them after send_pending_data completes.
   pub pending_rst_streams: Vec<(i32, u32)>,
-  /// Original stream.data pointer saved before consume_stream overwrites it.
-  /// Restored when the session releases the stream.
-  pub orig_stream_data: *mut std::ffi::c_void,
 }
 
 impl Session {
@@ -1680,34 +1664,18 @@ impl Session {
     self.is_sending = false;
     self.send_pending_data();
 
-    // Complete deferred destroy: close the TCP handle now that
+    // Complete deferred destroy: release the TCP handle now that
     // send_pending_data has had a chance to send GOAWAY etc.
     if self.pending_destroy {
       self.pending_destroy = false;
       if let Some(stream) = self.stream.take() {
-        // Restore original stream.data that was saved in consume_stream
-        // SAFETY: stream is a valid libuv handle
-        unsafe {
-          (*stream).data = self.orig_stream_data;
-        }
-        self.orig_stream_data = std::ptr::null_mut();
+        // Remove from side table and stop reads.
+        // The socket still owns the handle - we don't close it.
+        H2_SESSIONS
+          .with(|sessions| sessions.borrow_mut().remove(&(stream as usize)));
         // SAFETY: stream is a valid libuv handle
         unsafe {
           deno_core::uv_compat::uv_read_stop(stream);
-          let req =
-            Box::into_raw(Box::new(deno_core::uv_compat::new_shutdown()));
-          let ret = deno_core::uv_compat::uv_shutdown(
-            req,
-            stream,
-            Some(h2_shutdown_cb),
-          );
-          if ret != 0 {
-            let _ = Box::from_raw(req);
-            deno_core::uv_compat::uv_close(
-              stream as *mut deno_core::uv_compat::UvHandle,
-              Some(h2_stream_close_cb),
-            );
-          }
         }
       }
     }
@@ -1798,7 +1766,6 @@ impl Http2Session {
       is_sending: false,
       pending_destroy: false,
       pending_rst_streams: Vec::new(),
-      orig_stream_data: std::ptr::null_mut(),
     }));
 
     // SAFETY: inner is valid (just allocated); callbacks and options are valid
@@ -1913,28 +1880,22 @@ impl Http2Session {
     let session = unsafe { &mut *self.inner };
     let stream = tcp.stream_ptr();
 
-    // Save the original stream.data (LibUvStreamWrap's StreamHandleData)
-    // before overwriting it with our session pointer.
-    // SAFETY: stream is a valid libuv stream handle from TCPWrap
-    let orig_data = unsafe { (*stream).data };
-    session.orig_stream_data = orig_data;
-
-    // Stop the existing read on the TCP handle
+    // Stop the existing read on the TCP handle (LibUvStreamWrap's reads)
     // SAFETY: stream is a valid libuv stream handle from TCP object
     unsafe {
       deno_core::uv_compat::uv_read_stop(stream);
     }
 
-    // Store the session pointer in the stream's data field so
-    // the read callback can access it
-    // SAFETY: stream is a valid libuv handle; self.inner is a valid pointer
-    unsafe {
-      (*stream).data = self.inner as *mut std::ffi::c_void;
-    }
+    // Register the session in the side table so h2 callbacks can find it
+    // without overwriting stream.data (which LibUvStreamWrap uses for
+    // StreamHandleData).
+    H2_SESSIONS.with(|sessions| {
+      sessions.borrow_mut().insert(stream as usize, self.inner);
+    });
 
     session.stream = Some(stream);
 
-    // Start reading from the stream
+    // Start reading from the stream with h2-specific callbacks
     // SAFETY: stream is a valid libuv stream handle with valid callbacks
     let ret = unsafe {
       deno_core::uv_compat::uv_read_start(
@@ -2003,30 +1964,16 @@ impl Http2Session {
       // closes.
       session.pending_destroy = true;
     } else {
-      // Close the stream handle we took ownership of via consume_stream.
-      // Use uv_shutdown first to send TCP FIN (graceful close) so the
-      // peer can read any remaining buffered data. On Windows, calling
-      // uv_close directly sends TCP RST which discards buffered data.
+      // Release the stream handle taken via consume_stream.
+      // Stop reads and remove from side table, but do NOT close/shutdown
+      // the handle - the socket still owns it.
       if let Some(stream) = session.stream.take() {
-        // SAFETY: stream is a valid libuv handle taken via consume_stream
+        // Remove from side table
+        H2_SESSIONS
+          .with(|sessions| sessions.borrow_mut().remove(&(stream as usize)));
+        // SAFETY: stream is a valid libuv handle
         unsafe {
           deno_core::uv_compat::uv_read_stop(stream);
-          let req =
-            Box::into_raw(Box::new(deno_core::uv_compat::new_shutdown()));
-          let ret = deno_core::uv_compat::uv_shutdown(
-            req,
-            stream,
-            Some(h2_shutdown_cb),
-          );
-          if ret != 0 {
-            // Shutdown failed (e.g. not connected), fall back to
-            // closing the handle directly.
-            let _ = Box::from_raw(req);
-            deno_core::uv_compat::uv_close(
-              stream as *mut deno_core::uv_compat::UvHandle,
-              Some(h2_stream_close_cb),
-            );
-          }
         }
       }
     }
