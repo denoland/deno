@@ -653,6 +653,26 @@ Module._nodeModulePaths = function (fromPath) {
 };
 
 Module._resolveLookupPaths = function (request, parent) {
+  if (typeof request !== "string") {
+    throw new internalErrors.ERR_INVALID_ARG_TYPE(
+      "request",
+      "string",
+      request,
+    );
+  }
+
+  // Return null for built-in modules, matching Node.js behavior.
+  // Libraries like requizzle rely on this to detect native modules.
+  const normalizedRequest = StringPrototypeStartsWith(request, "node:")
+    ? StringPrototypeSlice(request, 5)
+    : request;
+  if (
+    isBuiltin(request) ||
+    normalizedRequest in nativeModuleExports
+  ) {
+    return null;
+  }
+
   const paths = [];
 
   if (op_require_is_request_relative(request)) {
@@ -785,21 +805,55 @@ Module._resolveFilename = function (
   isMain,
   options,
 ) {
-  if (
-    StringPrototypeStartsWith(request, "node:") ||
-    nativeModuleCanBeRequiredByUsers(request)
-  ) {
+  if (typeof request !== "string") {
+    throw new internalErrors.ERR_INVALID_ARG_TYPE(
+      "request",
+      "string",
+      request,
+    );
+  }
+
+  if (nativeModuleCanBeRequiredByUsers(request)) {
     return request;
+  }
+
+  if (StringPrototypeStartsWith(request, "node:")) {
+    const id = StringPrototypeSlice(request, 5);
+    if (nativeModuleExports[id]) {
+      return request;
+    }
+    const err = new Error(`Cannot find module '${request}'`);
+    err.code = "MODULE_NOT_FOUND";
+    throw err;
   }
 
   let paths;
 
   if (typeof options === "object" && options !== null) {
     if (ArrayIsArray(options.paths)) {
+      // Validate all path entries are strings before using them.
+      for (let i = 0; i < options.paths.length; i++) {
+        if (typeof options.paths[i] !== "string") {
+          throw new internalErrors.ERR_INVALID_ARG_TYPE(
+            "options.paths",
+            "string",
+            options.paths[i],
+          );
+        }
+      }
+
       const isRelative = op_require_is_request_relative(request);
 
       if (isRelative) {
-        paths = options.paths;
+        // Resolve relative entries to absolute paths so _findPath can
+        // stat them correctly.
+        paths = [];
+        for (let i = 0; i < options.paths.length; i++) {
+          ArrayPrototypePush(
+            paths,
+            pathResolve(process.cwd(), options.paths[i]),
+          );
+        }
       } else {
         const fakeParent = new Module("", null);
         paths = [];
@@ -819,9 +873,10 @@ Module._resolveFilename = function (
     } else if (options.paths === undefined) {
       paths = Module._resolveLookupPaths(request, parent);
     } else {
-      // TODO:
-      // throw new ERR_INVALID_ARG_VALUE("options.paths", options.paths);
-      throw new Error("Invalid arg value options.paths", options.path);
+      throw new internalErrors.ERR_INVALID_ARG_VALUE(
+        "options.paths",
+        options.paths,
+      );
     }
   } else {
     paths = Module._resolveLookupPaths(request, parent);

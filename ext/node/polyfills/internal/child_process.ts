@@ -53,7 +53,10 @@ import {
 } from "ext:deno_node/internal/errors.ts";
 import { Buffer } from "node:buffer";
 import { FastBuffer } from "ext:deno_node/internal/buffer.mjs";
-import { errnoException } from "ext:deno_node/internal/errors.ts";
+import {
+  ERR_IPC_DISCONNECTED,
+  errnoException,
+} from "ext:deno_node/internal/errors.ts";
 import { ErrnoException } from "ext:deno_node/_global.d.ts";
 import { codeMap } from "ext:deno_node/internal_binding/uv.ts";
 import {
@@ -571,12 +574,10 @@ export class ChildProcess extends EventEmitter {
    * @param signal NOTE: this parameter is not yet implemented.
    */
   kill(signal?: number | string): boolean {
-    if (this.killed) {
-      return this.killed;
-    }
-
     // Signal 0 is a special case: it checks if the process exists
-    // without sending a signal (POSIX kill(pid, 0)).
+    // without sending a signal (POSIX kill(pid, 0)). This must run
+    // before the `killed` check because kill(0) is an existence probe
+    // that should work even after a prior successful kill().
     if (signal === 0 || signal === "0") {
       try {
         process.kill(this.pid!, 0);
@@ -586,15 +587,37 @@ export class ChildProcess extends EventEmitter {
       }
     }
 
-    const denoSignal = signal == null ? "SIGTERM" : toDenoSignal(signal);
+    if (this.killed) {
+      return false;
+    }
+
+    let signalName = signal == null ? "SIGTERM" : toDenoSignal(signal);
     this.#closePipes();
     try {
-      this.#process.kill(denoSignal);
+      this.#process.kill(signalName as Deno.Signal);
     } catch (err) {
-      const alreadyClosed = err instanceof TypeError ||
-        err instanceof Deno.errors.PermissionDenied;
-      if (!alreadyClosed) {
-        throw err;
+      if (isWindows) {
+        // On Windows, unsupported signals fall back to SIGKILL
+        // (matching Node's TerminateProcess behavior).
+        try {
+          this.#process.kill("SIGKILL");
+          signalName = "SIGKILL";
+        } catch (err2) {
+          const alreadyClosed = err2 instanceof TypeError ||
+            err2 instanceof Deno.errors.PermissionDenied;
+          if (!alreadyClosed) {
+            throw err2;
+          }
+          return false;
+        }
+      } else {
+        const alreadyClosed = err instanceof TypeError ||
+          err instanceof Deno.errors.PermissionDenied;
+        if (!alreadyClosed) {
+          throw err;
+        }
+        // Process already exited, signal was not delivered.
+        return false;
       }
     }
 
@@ -604,8 +627,8 @@ export class ChildProcess extends EventEmitter {
     }
 
     this.killed = true;
-    this.signalCode = denoSignal;
-    return this.killed;
+    this.signalCode = signalName;
+    return true;
   }
 
   [Symbol.dispose]() {
@@ -686,18 +709,23 @@ function toDenoStdio(
 }
 
 function toDenoSignal(signal: number | string): Deno.Signal {
+  const nodeSignals = os.signals as Record<string, number>;
   if (typeof signal === "number") {
-    for (const name of keys(os.signals)) {
-      if (os.signals[name] === signal) {
+    for (const name of keys(nodeSignals)) {
+      if (nodeSignals[name] === signal) {
         return name as Deno.Signal;
       }
     }
     throw new ERR_UNKNOWN_SIGNAL(String(signal));
   }
 
-  const denoSignal = signal as Deno.Signal;
-  if (denoSignal in os.signals) {
-    return denoSignal;
+  if (signal in nodeSignals) {
+    return signal as Deno.Signal;
+  }
+  // On Windows, os.signals only lists native signals. Accept any
+  // POSIX signal name so the caller can remap it to SIGTERM.
+  if (isWindows && signal.startsWith("SIG")) {
+    return signal as Deno.Signal;
   }
   throw new ERR_UNKNOWN_SIGNAL(signal);
 }
@@ -1928,8 +1956,7 @@ export function setupChannel(
 
   target.disconnect = function () {
     if (!target.connected) {
-      target.emit("error", new Error("IPC channel is already disconnected"));
-      return;
+      throw new ERR_IPC_DISCONNECTED();
     }
 
     target.connected = false;
