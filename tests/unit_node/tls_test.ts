@@ -529,6 +529,190 @@ BnRlc3RDQTCB
   (tls as any).setDefaultCACertificates([testCert]);
 });
 
+// https://github.com/denoland/deno/issues/31759
+// Server-side STARTTLS: new tls.TLSSocket(socket, { isServer: true }) must
+// auto-start the TLS handshake without requiring an explicit _start() call.
+// This is used by SMTP, IMAP, XMPP, and similar STARTTLS protocols.
+Deno.test("tls.TLSSocket server-side STARTTLS auto-starts handshake", async () => {
+  const { promise, resolve, reject } = Promise.withResolvers<void>();
+
+  const server = net.createServer((rawSocket) => {
+    rawSocket.write("READY");
+    rawSocket.once("data", (data) => {
+      if (data.toString() === "STARTTLS") {
+        rawSocket.write("OK", () => {
+          // Server-side STARTTLS: no explicit _start() call
+          const tlsSocket = new tls.TLSSocket(rawSocket, {
+            isServer: true,
+            key,
+            cert,
+            // deno-lint-ignore no-explicit-any
+          } as any);
+          tlsSocket.on("secure", () => {
+            tlsSocket.write("SECURE");
+          });
+          tlsSocket.on("error", () => {});
+        });
+      }
+    });
+  });
+
+  server.listen(0, () => {
+    // deno-lint-ignore no-explicit-any
+    const port = (server.address() as any).port;
+    const socket = net.connect({ host: "localhost", port });
+    socket.once("data", (greeting) => {
+      assertEquals(greeting.toString(), "READY");
+      socket.write("STARTTLS");
+      socket.once("data", (response) => {
+        assertEquals(response.toString(), "OK");
+        const tlsSocket = tls.connect({
+          socket,
+          host: "localhost",
+          ca: rootCaCert,
+        });
+        tlsSocket.on("secureConnect", () => {
+          assert(tlsSocket.authorized);
+        });
+        tlsSocket.setEncoding("utf8");
+        tlsSocket.on("data", (d) => {
+          assertEquals(d, "SECURE");
+          tlsSocket.destroy();
+          server.close();
+          resolve();
+        });
+        tlsSocket.on("error", (err: Error) => {
+          server.close();
+          reject(err);
+        });
+      });
+    });
+  });
+
+  await promise;
+});
+
+// https://github.com/denoland/deno/issues/33296
+// Regression test: tls.connect({ socket, host }) must send SNI derived from host.
+// pg (PostgreSQL client) does STARTTLS: exchanges plaintext over TCP then calls
+// tls.connect({ socket, host }) to upgrade. Without SNI, SNI-dependent servers
+// (e.g. Neon PostgreSQL) drop the connection.
+Deno.test("tls.connect socket upgrade sends SNI from host option", async () => {
+  const { promise, resolve, reject } = Promise.withResolvers<void>();
+
+  // Server that checks SNI was received
+  const server = net.createServer((rawSocket) => {
+    rawSocket.once("data", (data) => {
+      if (data.toString() === "STARTTLS") {
+        rawSocket.write("OK", () => {
+          const tlsSocket = new tls.TLSSocket(rawSocket, {
+            isServer: true,
+            key,
+            cert,
+            // deno-lint-ignore no-explicit-any
+          } as any);
+          // deno-lint-ignore no-explicit-any
+          (tlsSocket as any)._start();
+          tlsSocket.on("secure", () => {
+            tlsSocket.write("hello");
+          });
+          tlsSocket.on("error", () => {});
+        });
+      }
+    });
+  });
+
+  server.listen(0, () => {
+    // deno-lint-ignore no-explicit-any
+    const port = (server.address() as any).port;
+    const socket = net.connect({ host: "localhost", port });
+    socket.on("connect", () => {
+      // Exchange plaintext first (like pg SSLRequest/S)
+      socket.write("STARTTLS");
+      socket.once("data", (data) => {
+        assertEquals(data.toString(), "OK");
+        // Upgrade to TLS with host but no explicit servername
+        const tlsSocket = tls.connect({
+          socket,
+          host: "localhost",
+          ca: rootCaCert,
+        });
+        tlsSocket.on("secureConnect", () => {
+          assert(tlsSocket.authorized, "Connection should be authorized");
+          tlsSocket.destroy();
+          server.close();
+          resolve();
+        });
+        tlsSocket.on("error", (err: Error) => {
+          server.close();
+          reject(err);
+        });
+      });
+    });
+  });
+
+  await promise;
+});
+
+// https://github.com/denoland/deno/issues/33296
+// Regression test: tls.connect({ socket }) without host should derive SNI
+// from the underlying socket's _host property.
+Deno.test("tls.connect socket upgrade derives SNI from socket._host", async () => {
+  const { promise, resolve, reject } = Promise.withResolvers<void>();
+
+  const server = net.createServer((rawSocket) => {
+    rawSocket.once("data", (data) => {
+      if (data.toString() === "STARTTLS") {
+        rawSocket.write("OK", () => {
+          const tlsSocket = new tls.TLSSocket(rawSocket, {
+            isServer: true,
+            key,
+            cert,
+            // deno-lint-ignore no-explicit-any
+          } as any);
+          // deno-lint-ignore no-explicit-any
+          (tlsSocket as any)._start();
+          tlsSocket.on("secure", () => {
+            tlsSocket.write("hello");
+          });
+          tlsSocket.on("error", () => {});
+        });
+      }
+    });
+  });
+
+  server.listen(0, () => {
+    // deno-lint-ignore no-explicit-any
+    const port = (server.address() as any).port;
+    // Connect with host="localhost" so socket._host is set
+    const socket = net.connect({ host: "localhost", port });
+    socket.on("connect", () => {
+      socket.write("STARTTLS");
+      socket.once("data", (data) => {
+        assertEquals(data.toString(), "OK");
+        // Upgrade without host or servername - should use socket._host
+        const tlsSocket = tls.connect({
+          socket,
+          // No host or servername!
+          ca: rootCaCert,
+          rejectUnauthorized: false,
+        });
+        tlsSocket.on("secureConnect", () => {
+          tlsSocket.destroy();
+          server.close();
+          resolve();
+        });
+        tlsSocket.on("error", (err: Error) => {
+          server.close();
+          reject(err);
+        });
+      });
+    });
+  });
+
+  await promise;
+});
+
 // https://github.com/denoland/deno/issues/30170
 Deno.test("tls.connect strips trailing dot from servername", async () => {
   const listener = Deno.listenTls({
