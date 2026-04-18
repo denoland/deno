@@ -57,12 +57,12 @@ import { Duplex } from "node:stream";
 import tls from "node:tls";
 import { deprecate } from "node:util";
 import dc from "node:diagnostics_channel";
-import {
-  kStreamBaseField,
-  kUseNativeWrap,
-} from "ext:deno_node/internal_binding/stream_wrap.ts";
 import { utcDate } from "ext:deno_node/internal/http.ts";
-import { ShutdownWrap } from "ext:deno_node/internal_binding/stream_wrap.ts";
+import {
+  kLastWriteWasAsync,
+  ShutdownWrap,
+  streamBaseState,
+} from "ext:deno_node/internal_binding/stream_wrap.ts";
 import { EventEmitter } from "node:events";
 import {
   defaultTriggerAsyncIdScope,
@@ -425,6 +425,7 @@ function submitGoaway(code, lastStreamID, opaqueData) {
   debugSessionObj(this, "submitting goaway");
   this[kUpdateTimer]();
   this[kHandle].goaway(code, lastStreamID, opaqueData);
+  scheduleSendPending(this);
 }
 
 // Also keep track of listeners for the Http2Stream instances, as some events
@@ -816,6 +817,7 @@ function requestOnConnect(headersList, options) {
     return;
   }
   this[kInit](ret.id(), ret);
+  scheduleSendPending(session);
   if (onClientStreamStartChannel.hasSubscribers) {
     onClientStreamStartChannel.publish({
       stream: this,
@@ -1376,31 +1378,22 @@ class Http2Stream extends Duplex {
     handle[kOwner] = this;
     this[kHandle] = handle;
 
-    // Add missing StreamBase write methods and wrap existing ones.
-    // Deno sets streamBaseState[kLastWriteWasAsync] = 1 globally, which
-    // means afterWriteDispatched won't call req.callback synchronously.
-    // HTTP2 stream writes are synchronous (they buffer data), so we need
-    // to call req.oncomplete(0) to signal write completion.
+    // Wrap the native write methods to flush pending h2 frames after
+    // each write. The native writeBuffer/writeUtf8String are synchronous
+    // (they buffer data in nghttp2's pending_data), so kLastWriteWasAsync
+    // stays 0 and afterWriteDispatched calls req.callback synchronously.
     const nativeWriteUtf8String = FunctionPrototypeBind(
       handle.writeUtf8String,
       handle,
     );
     const nativeWriteBuffer = FunctionPrototypeBind(handle.writeBuffer, handle);
-    function completeWrite(req, err) {
-      if (err === 0 && typeof req.oncomplete === "function") {
-        process.nextTick(() => {
-          FunctionPrototypeCall(req.oncomplete, req, 0);
-        });
-      }
-      return err;
-    }
     handle.writeUtf8String = function (req, data) {
-      const err = completeWrite(req, nativeWriteUtf8String(req, data));
+      const err = nativeWriteUtf8String(req, data);
       scheduleSendPending(session);
       return err;
     };
     handle.writeBuffer = function (req, data) {
-      const err = completeWrite(req, nativeWriteBuffer(req, data));
+      const err = nativeWriteBuffer(req, data);
       scheduleSendPending(session);
       return err;
     };
@@ -2656,46 +2649,50 @@ function setupHandle(socket, type, options) {
   const handle = new InternalHttp2Session(type);
   handle[kOwner] = this;
 
-  // Get the native TCP handle from the socket wrapper
-  const tcpHandle = socket._handle;
-  const nativeHandle = tcpHandle?._nativeHandle;
-
-  if (nativeHandle && !tcpHandle[kUseNativeWrap]) {
-    const streamBase = tcpHandle[kStreamBaseField];
-    const rid = streamBase?.rid ?? streamBase?.[internalRidSymbol];
-    if (typeof rid !== "number" || nativeHandle.openFromRid(rid) < 0) {
-      socket.destroy(new Error("Failed to open TCP handle from resource"));
-      return;
+  // Pump data from socket to session via JS events.
+  // After receiving data, flush outgoing h2 frames back to the socket.
+  socket.on("data", (buf) => {
+    if (!this.destroyed) {
+      handle.receive(buf);
+      // After receiving, nghttp2 may have generated response frames
+      // (SETTINGS_ACK, WINDOW_UPDATE, etc.). Flush them to the socket.
+      handle.sendPending();
     }
-  }
+  });
+  socket.resume();
+  debug("i/o stream consumed (socket data events)");
 
-  if (nativeHandle) {
-    // Cache socket address info before detaching the native handle,
-    // since getpeername/getsockname won't work after detach.
-    socket._getpeername();
-    socket._getsockname();
-    // Stop any existing reads on the handle
-    tcpHandle.readStop();
-    // Consume the stream directly via libuv
-    handle.consumeStream(nativeHandle);
-    // Transfer ownership of the libuv handle to the H2 session.
-    // The TCP cppgc object must NOT call uv_close on the handle anymore.
-    nativeHandle.detach();
-    // Mark the handle as reading so the socket doesn't try to call
-    // readStart() again (which would fail with EALREADY since the
-    // H2 session already started reading via consume_stream).
-    tcpHandle.reading = true;
-    debug("i/o stream consumed (native)");
-  } else {
-    // Fallback: pump data from socket to session via JS events
-    socket.on("data", (buf) => {
-      if (!this.destroyed) {
+  // Override sendPending to write via JS socket instead of native uv_write.
+  // This is needed because consume_stream is not used - self.stream is None
+  // in the Rust session, so send_pending_data is a no-op.
+  const origSendPending = FunctionPrototypeBind(handle.sendPending, handle);
+  handle.sendPending = () => {
+    const pending = handle.getOutgoingData();
+    if (pending && pending.byteLength > 0) {
+      socket.write(pending);
+    }
+    // Trigger graceful-close check AFTER the data has been queued on the
+    // socket.  getOutgoingData() drains nghttp2's output but must not
+    // trigger the destroy chain itself -- the data would never be written
+    // because destroy -> socket.end() would run before socket.write().
+    // The native send_pending_data() (stream==None path) only checks
+    // maybe_notify_graceful_close_complete, so this is safe.
+    origSendPending();
+  };
+
+  // Process data on the next tick - a remoteSettings handler may be attached.
+  // Also drain any already-buffered data from the socket.
+  // https://github.com/nodejs/node/issues/35981
+  // https://github.com/nodejs/node/issues/35475
+  process.nextTick(() => {
+    if (socket.readableLength) {
+      let buf;
+      while ((buf = socket.read()) !== null) {
+        debug(`${buf.length} bytes already in buffer`);
         handle.receive(buf);
       }
-    });
-    socket.resume();
-    debug("i/o stream consumed (socket data events)");
-  }
+    }
+  });
 
   handle.ongracefulclosecomplete = FunctionPrototypeBind(
     this[kMaybeDestroy],
@@ -2866,6 +2863,32 @@ function closeSession(session, code, error) {
 
   // Destroy the handle if it exists at this point.
   if (handle !== undefined) {
+    // Match Node.js's Http2Session::Close (src/node_http2.cc): submit a
+    // GOAWAY before destroying so the peer gets a graceful shutdown
+    // notification instead of an abrupt socket close. Without this, a
+    // peer seeing ECONNRESET/RST on Windows (from the local close-with-
+    // unread-data path) has no goawayCode set and socketOnError bubbles
+    // the error as uncaught (e.g. test-http2-zero-length-header.js).
+    //
+    // Skip when the session already walked the graceful close() path
+    // (SESSION_FLAGS_CLOSED): that path submitted the GOAWAY via
+    // submitGoaway + scheduleSendPending, and the later destroy() here
+    // is the ongracefulclosecomplete follow-up. Also skip when code is
+    // not a numeric code (same path: destroy(null) from kMaybeDestroy).
+    // The state.flags |= SESSION_FLAGS_DESTROYED above ensures the
+    // getOutgoingData -> maybe_notify_graceful_close_complete ->
+    // kMaybeDestroy -> destroy re-entry short-circuits on this.destroyed.
+    if (
+      typeof code === "number" &&
+      (state.flags & SESSION_FLAGS_CLOSED) === 0 &&
+      socket && !socket.destroyed && typeof handle.goaway === "function"
+    ) {
+      handle.goaway(code, 0);
+      const pending = handle.getOutgoingData();
+      if (pending && pending.byteLength > 0 && !socket.destroyed) {
+        socket.write(pending);
+      }
+    }
     handle.ondone = FunctionPrototypeBind(
       finishSessionClose,
       null,
@@ -2885,7 +2908,13 @@ function socketOnError(error) {
   if (session !== undefined) {
     // We can ignore ECONNRESET after GOAWAY was received as there's nothing
     // we can do and the other side is fully within its rights to do so.
-    if (error.code === "ECONNRESET" && session[kState].goawayCode !== null) {
+    // Similarly, EPIPE can coccure when the peer closes the connection during
+    // the GOAWAY exchange (eg. server.close() followed by client.close()).
+    if (
+      (error.code === "ECONNRESET" || error.code === "EPIPE") &&
+      (session[kState].goawayCode !== null || session.closed ||
+        session.destroyed)
+    ) {
       return session.destroy();
     }
     debugSessionObj(this, "socket error [%s]", error.message);
@@ -3335,11 +3364,16 @@ class Http2Session extends EventEmitter {
     if (typeof callback === "function") {
       this.once("close", callback);
     }
-    this.goaway();
+    // Set graceful close flag BEFORE sending GOAWAY so that when goaway()
+    // calls send_pending_data() -> maybe_notify_graceful_close_complete(),
+    // the flag is already set. In Node.js this ordering doesn't matter
+    // because writes to the socket are async (the completion callback fires
+    // after both calls), but in Deno writes are synchronous.
     const handle = this[kHandle];
     if (handle) {
       handle.setGracefulClose();
     }
+    this.goaway();
     this[kMaybeDestroy]();
   }
 
@@ -3360,14 +3394,15 @@ class Http2Session extends EventEmitter {
   // * session is closed and there are no more pending or open streams
   [kMaybeDestroy](error) {
     if (error == null) {
-      const handle = this[kHandle];
-      const hasPendingData = !!handle && handle.hasPendingData();
       const state = this[kState];
-      // Do not destroy if we're not closed and there are pending/open streams
+      // Do not destroy if we're not closed and there are pending/open streams.
+      // Matches Node.js: only checks JS-tracked streams, not nghttp2's
+      // internal state (hasPendingData). The JS write path ensures data is
+      // flushed to the socket before kMaybeDestroy runs.
       if (
         !this.closed ||
         state.streams.size > 0 ||
-        state.pendingStreams.size > 0 || hasPendingData
+        state.pendingStreams.size > 0
       ) {
         return;
       }
@@ -4010,8 +4045,6 @@ function connect(authority, options, listener) {
   } else if (authority.host) {
     host = authority.host;
   }
-
-  options[kUseNativeWrap] = true;
 
   let socket;
   if (typeof options.createConnection === "function") {

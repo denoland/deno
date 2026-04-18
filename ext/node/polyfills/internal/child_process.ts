@@ -53,7 +53,10 @@ import {
 } from "ext:deno_node/internal/errors.ts";
 import { Buffer } from "node:buffer";
 import { FastBuffer } from "ext:deno_node/internal/buffer.mjs";
-import { errnoException } from "ext:deno_node/internal/errors.ts";
+import {
+  ERR_IPC_DISCONNECTED,
+  errnoException,
+} from "ext:deno_node/internal/errors.ts";
 import { ErrnoException } from "ext:deno_node/_global.d.ts";
 import { codeMap } from "ext:deno_node/internal_binding/uv.ts";
 import {
@@ -1928,8 +1931,7 @@ export function setupChannel(
 
   target.disconnect = function () {
     if (!target.connected) {
-      target.emit("error", new Error("IPC channel is already disconnected"));
-      return;
+      throw new ERR_IPC_DISCONNECTED();
     }
 
     target.connected = false;

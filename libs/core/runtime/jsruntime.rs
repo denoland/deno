@@ -2352,6 +2352,14 @@ impl JsRuntime {
     }
     scope.perform_microtask_checkpoint();
 
+    // Drain nextTick queue before close phase, matching Node.js/libuv
+    // where process.nextTick fires between each event loop phase.
+    // This ensures nextTicks from I/O callbacks (Phase 4) fire before
+    // close callbacks (Phase 6).
+    if context_state.has_tick_scheduled() {
+      Self::drain_next_tick_and_macrotasks(scope, context_state)?;
+    }
+
     // ===== Phase 6: Close =====
     exception_state.check_exception_condition(scope)?;
     {
@@ -2361,8 +2369,27 @@ impl JsRuntime {
     if let Some(uv_inner_ptr) = context_state.uv_loop_inner.get() {
       unsafe { (*uv_inner_ptr).run_close() };
     }
+    // Run V8 close callbacks (JS handle.close() callbacks).
+    // These are deferred to Phase 6 to match libuv's uv_close behavior
+    // where close callbacks fire at the END of the event loop iteration,
+    // after all nextTick and microtask queues have drained.
+    {
+      let v8_cbs = context_state
+        .event_loop_phases
+        .borrow_mut()
+        .drain_v8_close_callbacks();
+      for cb in v8_cbs {
+        (cb.callback)(scope);
+      }
+    }
     // libuv close callbacks may call into JS; flush microtasks if present.
-    if has_uv {
+    if has_uv
+      || !context_state
+        .event_loop_phases
+        .borrow()
+        .v8_close_callbacks
+        .is_empty()
+    {
       scope.perform_microtask_checkpoint();
     }
 

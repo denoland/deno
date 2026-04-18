@@ -2989,29 +2989,64 @@ fn napi_get_reference_value(
   napi_clear_last_error(env_ptr)
 }
 
+/// Opaque wrapper for a heap-allocated V8 HandleScope.
+/// Matches Node.js's `HandleScopeWrapper` pattern: the V8 scope is
+/// heap-allocated so it can outlive the stack frame that created it.
+type HandleScopeBox =
+  std::pin::Pin<Box<v8::ScopeStorage<v8::HandleScope<'static, ()>>>>;
+
+/// Tracks whether `napi_escape_handle` has been called on an
+/// escapable handle scope (to prevent double-escape).
+/// The actual V8 scoping is handled by napi_open/close_handle_scope;
+/// the escapable variant just adds the escape-once tracking.
+struct EscapableHandleScopeData {
+  handle_scope_ptr: *mut v8::ScopeStorage<v8::HandleScope<'static, ()>>,
+  escape_called: bool,
+}
+
 #[napi_sym]
 fn napi_open_handle_scope(
   env: *mut Env,
-  _result: *mut napi_handle_scope,
+  result: *mut napi_handle_scope,
 ) -> napi_status {
   let env = check_env!(env);
+  check_arg!(env, result);
+
+  // SAFETY: The isolate pointer is valid for the lifetime of the NAPI
+  // callback. We erase the borrow lifetime via transmute because the
+  // scope is heap-allocated and managed manually via close.
+  let storage = v8::HandleScope::new(env.isolate());
+  let storage: v8::ScopeStorage<v8::HandleScope<'static, ()>> =
+    unsafe { std::mem::transmute(storage) };
+  let mut pinned: HandleScopeBox = Box::pin(storage);
+  let _ = pinned.as_mut().init();
+
+  let ptr =
+    unsafe { Box::into_raw(std::pin::Pin::into_inner_unchecked(pinned)) };
+  unsafe { *result = ptr as napi_handle_scope }
+  env.open_handle_scopes += 1;
   napi_clear_last_error(env)
 }
 
 #[napi_sym]
 fn napi_close_handle_scope(
   env: *mut Env,
-  _scope: napi_handle_scope,
+  scope: napi_handle_scope,
 ) -> napi_status {
   let env = check_env!(env);
-  napi_clear_last_error(env)
-}
+  check_arg!(env, scope);
+  if env.open_handle_scopes == 0 {
+    return napi_set_last_error(env, napi_handle_scope_mismatch);
+  }
 
-/// Data for a heap-allocated escapable handle scope.
-/// Contains a real V8 HandleScope and a flag to prevent double-escape.
-struct EscapableHandleScopeData {
-  handle_scope_ptr: *mut v8::ScopeStorage<v8::HandleScope<'static, ()>>,
-  escape_called: bool,
+  env.open_handle_scopes -= 1;
+  // SAFETY: Reconstruct the Box and drop it, which runs the V8
+  // HandleScope destructor (pops V8's internal scope stack).
+  unsafe {
+    let ptr = scope as *mut v8::ScopeStorage<v8::HandleScope<'static, ()>>;
+    drop(Box::from_raw(ptr));
+  }
+  napi_clear_last_error(env)
 }
 
 #[napi_sym]
@@ -3022,16 +3057,16 @@ fn napi_open_escapable_handle_scope(
   let env = check_env!(env);
   check_arg!(env, result);
 
-  // Open a real V8 HandleScope so handles created inside are properly
-  // scoped. This matches napi_open_handle_scope but with escape tracking.
+  // Open a real V8 HandleScope (same as napi_open_handle_scope)
   let storage = v8::HandleScope::new(env.isolate());
   let storage: v8::ScopeStorage<v8::HandleScope<'static, ()>> =
     unsafe { std::mem::transmute(storage) };
-  let mut pinned = Box::pin(storage);
+  let mut pinned: HandleScopeBox = Box::pin(storage);
   let _ = pinned.as_mut().init();
   let scope_ptr =
     unsafe { Box::into_raw(std::pin::Pin::into_inner_unchecked(pinned)) };
 
+  // Wrap in EscapableHandleScopeData to track double-escape
   let wrapper = Box::new(EscapableHandleScopeData {
     handle_scope_ptr: scope_ptr,
     escape_called: false,
@@ -3055,6 +3090,7 @@ fn napi_close_escapable_handle_scope(
   env.open_handle_scopes -= 1;
   unsafe {
     let wrapper = Box::from_raw(scope as *mut EscapableHandleScopeData);
+    // Drop the underlying V8 HandleScope
     drop(Box::from_raw(wrapper.handle_scope_ptr));
   }
   napi_clear_last_error(env)
@@ -3076,11 +3112,8 @@ fn napi_escape_handle<'s>(
     return napi_set_last_error(env, napi_escape_called_twice);
   }
   wrapper.escape_called = true;
-
-  // Copy the napi_value. In rusty_v8, napi_value wraps a direct pointer
-  // to the V8 object (not a handle table slot), so the value remains
-  // valid after the inner scope closes -- V8 doesn't free the object
-  // until GC runs, which won't happen within a synchronous callback.
+  // Copy the handle value. The V8 handle remains valid in the parent
+  // scope's handle block because we opened a real V8 HandleScope.
   unsafe { *result = escapee }
   napi_clear_last_error(env)
 }

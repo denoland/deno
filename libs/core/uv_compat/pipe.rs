@@ -59,16 +59,27 @@ pub struct uv_pipe_t {
   pub(crate) internal_pending_read:
     Option<tokio::task::JoinHandle<std::io::Result<(Vec<u8>, usize)>>>,
   /// Windows named pipe server (waiting for or connected to a client).
+  /// Wrapped in Arc so the connect future can hold its own reference
+  /// without self-referential lifetime issues.
   #[cfg(windows)]
   pub(crate) internal_win_server:
-    Option<tokio::net::windows::named_pipe::NamedPipeServer>,
+    Option<std::sync::Arc<tokio::net::windows::named_pipe::NamedPipeServer>>,
   /// Windows named pipe client (connected to a server).
   #[cfg(windows)]
   pub(crate) internal_win_client:
     Option<tokio::net::windows::named_pipe::NamedPipeClient>,
-  /// Whether the server is waiting for a client connection.
+  /// Pending `NamedPipeServer::connect()` future. When ready, a client
+  /// has connected and the connection callback should fire.
   #[cfg(windows)]
-  pub(crate) internal_win_server_connecting: bool,
+  #[allow(
+    clippy::type_complexity,
+    reason = "pinned boxed async connect future"
+  )]
+  pub(crate) internal_win_connect_fut: Option<
+    std::pin::Pin<
+      Box<dyn std::future::Future<Output = std::io::Result<()>> + Send>,
+    >,
+  >,
 
   // Connected stream (from connect or accept)
   #[cfg(unix)]
@@ -165,7 +176,7 @@ pub fn new_pipe(ipc: bool) -> uv_pipe_t {
     #[cfg(windows)]
     internal_win_client: None,
     #[cfg(windows)]
-    internal_win_server_connecting: false,
+    internal_win_connect_fut: None,
     #[cfg(unix)]
     internal_stream: None,
     #[cfg(unix)]
@@ -248,6 +259,9 @@ pub unsafe fn uv_pipe_open(pipe: *mut uv_pipe_t, fd: c_int) -> c_int {
 /// `fd` must be a valid CRT file descriptor.
 #[cfg(windows)]
 pub unsafe fn uv_pipe_open(pipe: *mut uv_pipe_t, fd: c_int) -> c_int {
+  use windows_sys::Win32::Storage::FileSystem::FILE_TYPE_PIPE;
+  use windows_sys::Win32::Storage::FileSystem::GetFileType;
+
   if fd < 0 {
     return UV_EBADF;
   }
@@ -259,7 +273,31 @@ pub unsafe fn uv_pipe_open(pipe: *mut uv_pipe_t, fd: c_int) -> c_int {
     return UV_EBADF;
   }
 
+  // If this is a named pipe, wrap it in a tokio NamedPipeClient so reads
+  // and writes go through the async reactor. A sync `ReadFile` on a pipe
+  // opened with `FILE_FLAG_OVERLAPPED` aborts inside Rust's std when the
+  // operation returns `ERROR_IO_PENDING`, which is the common case when
+  // no data is immediately available. We cannot know the overlapped flag
+  // after the fact, so we fall through to the raw-handle path only for
+  // non-pipe handles.
   unsafe {
+    let h = handle as *mut std::ffi::c_void;
+    if GetFileType(h) == FILE_TYPE_PIPE {
+      match tokio::net::windows::named_pipe::NamedPipeClient::from_raw_handle(
+        handle as std::os::windows::io::RawHandle,
+      ) {
+        Ok(client) => {
+          (*pipe).internal_win_client = Some(client);
+          return 0;
+        }
+        Err(_) => {
+          // Fall through to raw-handle path on failure (e.g. handle not
+          // overlapped). NamedPipeClient owns the handle on success; on
+          // failure it does not, so it is safe to reuse `handle` below.
+        }
+      }
+    }
+
     (*pipe).internal_handle = Some(handle as std::os::windows::io::RawHandle);
     // Note: do NOT set UV_HANDLE_ACTIVE here. See Unix uv_pipe_open.
   }
@@ -552,8 +590,14 @@ pub unsafe fn uv_pipe_listen(
       Err(e) => return io_error_to_uv(&e),
     };
 
+    // Wrap in Arc so the connect future can hold its own reference.
+    // Without awaiting connect(), the server never notices a client
+    // attaching, so poll_write_ready / poll_read_ready stay Pending.
+    let server = std::sync::Arc::new(server);
+    let fut_server = server.clone();
+    let connect_fut = Box::pin(async move { fut_server.connect().await });
     (*pipe).internal_win_server = Some(server);
-    (*pipe).internal_win_server_connecting = true;
+    (*pipe).internal_win_connect_fut = Some(connect_fut);
     (*pipe).internal_connection_cb = cb;
     (*pipe).flags |= UV_HANDLE_ACTIVE;
 
@@ -591,13 +635,18 @@ pub unsafe fn uv_pipe_accept(
         handles.push(client);
       }
 
-      // Create a new server instance for the next connection.
+      // Create a new server instance for the next connection, and
+      // queue up its connect future so we notice the next client.
       if let Some(ref path) = (*server).internal_bind_path {
         let mut opts = tokio::net::windows::named_pipe::ServerOptions::new();
         opts.first_pipe_instance(false);
         if let Ok(new_server) = opts.create(path.as_str()) {
+          let new_server = std::sync::Arc::new(new_server);
+          let fut_server = new_server.clone();
+          let connect_fut = Box::pin(async move { fut_server.connect().await });
           (*server).internal_win_server = Some(new_server);
-          (*server).internal_win_server_connecting = true;
+          (*server).internal_win_connect_fut = Some(connect_fut);
+          (*server).flags |= UV_HANDLE_ACTIVE;
         }
       }
       0
@@ -674,6 +723,90 @@ pub unsafe fn uv_pipe_connect(
   }
 }
 
+/// Attempt a non-blocking write to a pipe. Returns the number of bytes
+/// written (>= 0) or a negative `UV_*` error code. `UV_EAGAIN` when the
+/// pipe would block. Mirrors `uv__try_write()` in libuv.
+///
+/// # Safety
+/// `pipe` must be a valid pointer to an initialized `uv_pipe_t`.
+pub(crate) unsafe fn try_write_pipe(
+  pipe: *mut uv_pipe_t,
+  data: &[u8],
+) -> c_int {
+  unsafe {
+    // Queued writes must complete in order; don't front-run them.
+    if !(*pipe).internal_write_queue.is_empty()
+      || (*pipe).internal_connect.is_some()
+    {
+      return super::UV_EAGAIN;
+    }
+
+    #[cfg(unix)]
+    {
+      if let Some(ref stream) = (*pipe).internal_stream {
+        return match stream.try_write(data) {
+          Ok(n) => n as c_int,
+          Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+            super::UV_EAGAIN
+          }
+          Err(ref e) => io_error_to_uv(e),
+        };
+      }
+      if let Some(fd) = (*pipe).internal_fd {
+        let n =
+          libc::write(fd, data.as_ptr() as *const std::ffi::c_void, data.len());
+        return if n >= 0 {
+          n as c_int
+        } else {
+          let e = std::io::Error::last_os_error();
+          if e.kind() == std::io::ErrorKind::WouldBlock {
+            super::UV_EAGAIN
+          } else {
+            io_error_to_uv(&e)
+          }
+        };
+      }
+      super::UV_EBADF
+    }
+    #[cfg(windows)]
+    {
+      if let Some(ref client) = (*pipe).internal_win_client {
+        return match client.try_write(data) {
+          Ok(n) => n as c_int,
+          Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+            super::UV_EAGAIN
+          }
+          Err(ref e) => io_error_to_uv(e),
+        };
+      }
+      if let Some(ref server) = (*pipe).internal_win_server {
+        return match server.try_write(data) {
+          Ok(n) => n as c_int,
+          Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+            super::UV_EAGAIN
+          }
+          Err(ref e) => io_error_to_uv(e),
+        };
+      }
+      if let Some(handle) = (*pipe).internal_handle {
+        use std::io::Write;
+        use std::os::windows::io::FromRawHandle;
+        let mut file = std::fs::File::from_raw_handle(handle);
+        let result = file.write(data);
+        let _ = std::os::windows::io::IntoRawHandle::into_raw_handle(file);
+        return match result {
+          Ok(n) => n as c_int,
+          Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+            super::UV_EAGAIN
+          }
+          Err(ref e) => io_error_to_uv(e),
+        };
+      }
+      super::UV_EBADF
+    }
+  }
+}
+
 /// Close the pipe handle: close the fd and clean up.
 ///
 /// # Safety
@@ -715,10 +848,12 @@ pub(crate) unsafe fn close_pipe(pipe: *mut uv_pipe_t) {
         // SAFETY: handle is a valid OS handle from get_osfhandle.
         windows_sys::Win32::Foundation::CloseHandle(handle as _);
       }
+      // Drop the connect future first so its Arc ref is released
+      // before we drop the server Arc.
+      (*pipe).internal_win_connect_fut = None;
       // Drop named pipe server/client (closes handles).
       (*pipe).internal_win_server = None;
       (*pipe).internal_win_client = None;
-      (*pipe).internal_win_server_connecting = false;
     }
   }
 }
@@ -862,29 +997,21 @@ pub(crate) unsafe fn poll_pipe_handle(
       any_work = true;
     }
 
-    // 2. Poll server waiting for client connection.
-    // On Windows, NamedPipeServer::connect() is async. We poll for
-    // write readiness which indicates a client has connected.
-    if (*pipe_ptr).internal_win_server_connecting
-      && let Some(ref server) = (*pipe_ptr).internal_win_server
+    // 2. Poll the pending `NamedPipeServer::connect()` future. When it
+    // resolves, a client has attached to the named pipe and we fire
+    // the connection callback so JS-side accept() can pick it up.
+    if let Some(ref mut fut) = (*pipe_ptr).internal_win_connect_fut
+      && let Poll::Ready(res) = fut.as_mut().poll(cx)
     {
-      match server.poll_write_ready(cx) {
-        Poll::Ready(Ok(_)) => {
-          (*pipe_ptr).internal_win_server_connecting = false;
-          if let Some(cb) = (*pipe_ptr).internal_connection_cb {
-            cb(pipe_ptr as *mut uv_stream_t, 0);
-          }
-          any_work = true;
-        }
-        Poll::Ready(Err(ref e)) => {
-          (*pipe_ptr).internal_win_server_connecting = false;
-          if let Some(cb) = (*pipe_ptr).internal_connection_cb {
-            cb(pipe_ptr as *mut uv_stream_t, io_error_to_uv(e));
-          }
-          any_work = true;
-        }
-        Poll::Pending => {}
+      (*pipe_ptr).internal_win_connect_fut = None;
+      let status = match res {
+        Ok(()) => 0,
+        Err(ref e) => io_error_to_uv(e),
+      };
+      if let Some(cb) = (*pipe_ptr).internal_connection_cb {
+        cb(pipe_ptr as *mut uv_stream_t, status);
       }
+      any_work = true;
     }
 
     // 3. Poll writes.
@@ -901,6 +1028,16 @@ pub(crate) unsafe fn poll_pipe_handle(
       let remaining = &pw.data[pw.offset..];
       use std::io::Write;
       use std::os::windows::io::FromRawHandle;
+      // Register write-readiness with the reactor so the waker fires
+      // when the pipe becomes writable. Without this, try_write can
+      // loop forever on WouldBlock because the driver never learns
+      // we are interested in write-readiness.
+      if let Some(ref server) = (*pipe_ptr).internal_win_server {
+        let _ = server.poll_write_ready(cx);
+      }
+      if let Some(ref client) = (*pipe_ptr).internal_win_client {
+        let _ = client.poll_write_ready(cx);
+      }
       let write_result = if let Some(ref handle) = (*pipe_ptr).internal_handle {
         let mut file = std::fs::File::from_raw_handle(*handle);
         let r = file.write(remaining);
@@ -1077,7 +1214,7 @@ pub(crate) unsafe fn poll_pipe_handle(
     let has_pending_work = !(*pipe_ptr).internal_write_queue.is_empty()
       || (*pipe_ptr).internal_reading
       || (*pipe_ptr).internal_connect.is_some()
-      || (*pipe_ptr).internal_win_server_connecting
+      || (*pipe_ptr).internal_win_connect_fut.is_some()
       || ((*pipe_ptr).internal_win_server.is_some()
         && (*pipe_ptr).internal_connection_cb.is_some())
       || (*pipe_ptr).internal_shutdown.is_some();

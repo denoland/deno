@@ -2,6 +2,10 @@
 // deno-lint-ignore-file no-explicit-any prefer-primordials
 
 import { TLSWrap } from "ext:core/ops";
+import {
+  kReadBytesOrError,
+  streamBaseState,
+} from "ext:deno_node/internal_binding/stream_wrap.ts";
 // Use Symbol.for to access symbols from js_stream_socket.js
 // without importing it (avoids circular dependency).
 const kJSStreamHandle = Symbol.for("kJSStreamHandle");
@@ -44,7 +48,7 @@ export function wrap(
     throw err;
   }
 
-  const nativeHandle = handle._nativeHandle ?? handle;
+  const nativeHandle = handle;
 
   if (nativeHandle[kJSStreamHandle]) {
     // JS-backed stream (e.g. JSStreamSocket wrapping a Duplex).
@@ -81,18 +85,19 @@ export function wrap(
       throw new Error(`TLS wrap attach failed: ${attachResult}`);
     }
 
-    // Read interception at the JS layer: intercept the NativeTCP's onread
+    // Read interception at the JS layer: intercept the TCPWrap's onread
     // callback to forward encrypted data from the TCP stream to the TLSWrap
-    // via receive(). This avoids conflicting with libuv_stream::TCP's own
-    // stream.data layout (which is incompatible with stream_wrap's
-    // StreamHandleData needed by the Rust-level read interceptor).
-    nativeHandle.onread = function (
-      nread: number,
-      buf: Uint8Array | undefined,
-    ) {
+    // via receive().
+    // Note: LibUvStreamWrap's read callback uses (buf) signature with nread
+    // in streamBaseState, matching onStreamRead in stream_base_commons.ts.
+    nativeHandle.onread = function (buf: ArrayBuffer | Uint8Array | undefined) {
+      const nread = streamBaseState[kReadBytesOrError];
       if (nread > 0 && buf) {
-        // Feed encrypted data from TCP to rustls
-        res.receive(buf.subarray(0, nread));
+        // LibUvStreamWrap passes an ArrayBuffer; convert to Uint8Array for receive()
+        const data = buf instanceof ArrayBuffer
+          ? new Uint8Array(buf, 0, nread)
+          : buf.subarray(0, nread);
+        res.receive(data);
       } else if (nread < 0) {
         // EOF or error - stop native TCP reads and unref the handle.
         // Without this, the libuv handle keeps a ref on the event loop
