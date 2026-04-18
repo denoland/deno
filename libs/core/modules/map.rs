@@ -389,7 +389,7 @@ impl ModuleMap {
   pub(crate) fn serialize_for_snapshotting(
     &self,
     data_store: &mut SnapshotStoreDataStore,
-  ) -> ModuleMapSnapshotData {
+  ) -> ModuleMapSnapshotData<'static> {
     let data = std::mem::take(&mut *self.data.borrow_mut());
     data.serialize_for_snapshotting(data_store)
   }

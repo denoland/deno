@@ -289,7 +289,8 @@ pub fn create_snapshot(
 pub(crate) struct SnapshottedData<'snapshot> {
   pub js_handled_promise_rejection_cb: Option<u32>,
   pub ext_import_meta_proto: Option<u32>,
-  pub module_map_data: ModuleMapSnapshotData,
+  #[serde(borrow)]
+  pub module_map_data: ModuleMapSnapshotData<'snapshot>,
   pub function_templates_data: FunctionTemplateSnapshotData,
   pub extensions: Vec<&'snapshot str>,
   pub op_count: usize,

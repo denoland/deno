@@ -1,5 +1,6 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
+use std::borrow::Cow;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -203,15 +204,42 @@ pub(crate) struct ModuleMapData {
   pub(crate) sources: HashMap<ModuleSourceKey, Rc<v8::Global<v8::Object>>>,
 }
 
-/// Snapshot-compatible representation of this data.
+/// Snapshot-only form of [`ModuleInfo`] that omits `requests` and borrows
+/// name strings from the snapshot buffer for zero-copy deserialization.
+#[derive(Serialize, Deserialize)]
+struct ModuleInfoSnapshot<'a> {
+  id: ModuleId,
+  main: bool,
+  #[serde(borrow)]
+  name: Cow<'a, str>,
+  module_type: ModuleType,
+}
+
+/// Snapshot-only form of [`SymbolicModule`] that borrows strings.
+#[derive(Serialize, Deserialize)]
+enum SymbolicModuleSnapshot<'a> {
+  #[serde(borrow)]
+  Alias(Cow<'a, str>),
+  Mod(ModuleId),
+}
+
+/// Snapshot-compatible representation of the module map.
+/// Uses borrowed strings (`Cow<'a, str>`) and a stripped-down module info
+/// to avoid heap allocations and `Url::parse` during deserialization.
 #[derive(Default, Serialize, Deserialize)]
-pub(crate) struct ModuleMapSnapshotData {
+pub(crate) struct ModuleMapSnapshotData<'a> {
   next_load_id: i32,
   main_module_id: Option<i32>,
-  modules: Vec<ModuleInfo>,
+  #[serde(borrow)]
+  modules: Vec<ModuleInfoSnapshot<'a>>,
   module_handles: Vec<SnapshotDataId>,
   main_module_callbacks: Vec<SnapshotDataId>,
-  by_name: Vec<(FastString, RequestedModuleType, SymbolicModule)>,
+  #[serde(borrow)]
+  by_name: Vec<(
+    Cow<'a, str>,
+    RequestedModuleType,
+    SymbolicModuleSnapshot<'a>,
+  )>,
 }
 
 impl ModuleMapData {
@@ -354,19 +382,22 @@ impl ModuleMapData {
   pub fn serialize_for_snapshotting(
     self,
     data_store: &mut SnapshotStoreDataStore,
-  ) -> ModuleMapSnapshotData {
+  ) -> ModuleMapSnapshotData<'static> {
     debug_assert_eq!(self.by_name.len(), self.handles.len());
     debug_assert_eq!(self.info.len(), self.handles.len());
 
-    // Clear requests from module info before snapshotting. The requests
-    // contain ModuleReference with parsed URLs (ModuleSpecifier) that are
-    // expensive to deserialize (~2500 Url::parse calls). Snapshotted
-    // modules are already instantiated and linked, so their import
-    // requests are never needed at runtime.
-    let mut modules = self.info;
-    for module in &mut modules {
-      module.requests.clear();
-    }
+    // Convert to snapshot form: drop requests (they contain URLs that are
+    // expensive to deserialize) and use Cow for zero-copy string deser.
+    let modules = self
+      .info
+      .into_iter()
+      .map(|info| ModuleInfoSnapshot {
+        id: info.id,
+        main: info.main,
+        name: Cow::Owned(info.name.as_str().to_owned()),
+        module_type: info.module_type,
+      })
+      .collect();
 
     let mut ser = ModuleMapSnapshotData {
       next_load_id: self.next_load_id,
@@ -387,7 +418,17 @@ impl ModuleMapData {
       .collect();
 
     self.by_name.drain(|_, module_type, name, module| {
-      ser.by_name.push((name, module_type.clone(), module));
+      let snap_module = match module {
+        SymbolicModule::Alias(target) => {
+          SymbolicModuleSnapshot::Alias(Cow::Owned(target.as_str().to_owned()))
+        }
+        SymbolicModule::Mod(id) => SymbolicModuleSnapshot::Mod(id),
+      };
+      ser.by_name.push((
+        Cow::Owned(name.as_str().to_owned()),
+        module_type.clone(),
+        snap_module,
+      ));
     });
 
     ser
@@ -401,7 +442,17 @@ impl ModuleMapData {
   ) {
     self.next_load_id = data.next_load_id;
     self.main_module_id = data.main_module_id.map(|x| x as _);
-    self.info = data.modules;
+    self.info = data
+      .modules
+      .into_iter()
+      .map(|snap| ModuleInfo {
+        id: snap.id,
+        main: snap.main,
+        name: cow_to_fast_string(snap.name),
+        requests: vec![],
+        module_type: snap.module_type,
+      })
+      .collect();
     self.handles.reserve(data.module_handles.len());
     self.handles_inverted.reserve(data.module_handles.len());
     self.main_module_callbacks = data
@@ -418,6 +469,13 @@ impl ModuleMapData {
     }
 
     for (name, module_type, module) in data.by_name {
+      let name = cow_to_fast_string(name);
+      let module = match module {
+        SymbolicModuleSnapshot::Alias(target) => {
+          SymbolicModule::Alias(cow_to_fast_string(target))
+        }
+        SymbolicModuleSnapshot::Mod(id) => SymbolicModule::Mod(id),
+      };
       self.by_name.insert(&module_type, name, module)
     }
   }
@@ -442,6 +500,22 @@ impl ModuleMapData {
         Some(&SymbolicModule::Mod(info.id))
       );
     }
+  }
+}
+
+/// Convert a `Cow<str>` from snapshot deserialization into a `FastString`.
+/// Snapshot buffers are always `&'static` (via `Box::leak`), so borrowed
+/// strings can be used directly without copying.
+fn cow_to_fast_string(cow: Cow<str>) -> FastString {
+  match cow {
+    Cow::Borrowed(s) => {
+      // SAFETY: Snapshot buffers are always Box::leak'd to &'static [u8],
+      // so strings borrowed by bincode from the buffer are &'static str.
+      let static_str: &'static str =
+        unsafe { std::mem::transmute::<&str, &'static str>(s) };
+      FastString::from_static(static_str)
+    }
+    Cow::Owned(s) => s.into(),
   }
 }
 
