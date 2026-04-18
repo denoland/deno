@@ -185,10 +185,7 @@ unsafe extern "C" fn h2_write_cb(
     // Look up session, dropping the borrow before calling into session
     // to avoid RefCell conflicts if the callback triggers destroy().
     let session_ptr = H2_SESSIONS.with(|sessions| {
-      sessions
-        .borrow()
-        .get(&(stream_handle as usize))
-        .copied()
+      sessions.borrow().get(&(stream_handle as usize)).copied()
     });
     if let Some(session_ptr) = session_ptr {
       // SAFETY: session_ptr was registered in consume_stream and is valid
@@ -222,12 +219,8 @@ unsafe extern "C" fn h2_read_cb(
   buf: *const deno_core::uv_compat::UvBuf,
 ) {
   // Look up the session from the side table using the stream handle pointer.
-  let session_ptr = H2_SESSIONS.with(|sessions| {
-    sessions
-      .borrow()
-      .get(&(handle as usize))
-      .copied()
-  });
+  let session_ptr = H2_SESSIONS
+    .with(|sessions| sessions.borrow().get(&(handle as usize)).copied());
   let Some(session_ptr) = session_ptr else {
     // Free the buffer
     // SAFETY: buf is valid per libuv read callback contract
