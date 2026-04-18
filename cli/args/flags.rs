@@ -4620,9 +4620,13 @@ fn bump_version_subcommand() -> Command {
     "bump-version",
     cstr!(
       "Update version in the configuration file.
-  <p(245)>deno bump-version patch</>  # 1.0.0 -> 1.0.1
-  <p(245)>deno bump-version minor</>  # 1.0.0 -> 1.1.0
-  <p(245)>deno bump-version major</>  # 1.0.0 -> 2.0.0"
+  <p(245)>deno bump-version patch</>       <p(245)># 1.4.6 -> 1.4.7</>
+  <p(245)>deno bump-version minor</>       <p(245)># 1.4.6 -> 1.5.0</>
+  <p(245)>deno bump-version major</>       <p(245)># 1.4.6 -> 2.0.0</>
+  <p(245)>deno bump-version prepatch</>    <p(245)># 1.4.6 -> 1.4.7-0</>
+  <p(245)>deno bump-version preminor</>    <p(245)># 1.4.6 -> 1.5.0-0</>
+  <p(245)>deno bump-version premajor</>    <p(245)># 1.4.6 -> 2.0.0-0</>
+  <p(245)>deno bump-version prerelease</>  <p(245)># 1.4.7-0 -> 1.4.7-1</>"
     ),
     UnstableArgsConfig::None,
   )
@@ -15510,5 +15514,123 @@ Usage: deno repl [OPTIONS] [-- [ARGS]...]\n"
     let flags = flags_from_vec(svec!["deno", "run", "script.ts",]).unwrap();
     set_test_node_options(None);
     assert_eq!(flags.require, vec!["known.js"]);
+  }
+
+  #[test]
+  fn bump_version_patch() {
+    let r = flags_from_vec(svec!["deno", "bump-version", "patch"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::BumpVersion(VersionFlags {
+          increment: Some(VersionIncrement::Patch),
+        }),
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn bump_version_minor() {
+    let r = flags_from_vec(svec!["deno", "bump-version", "minor"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::BumpVersion(VersionFlags {
+          increment: Some(VersionIncrement::Minor),
+        }),
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn bump_version_major() {
+    let r = flags_from_vec(svec!["deno", "bump-version", "major"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::BumpVersion(VersionFlags {
+          increment: Some(VersionIncrement::Major),
+        }),
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn bump_version_prerelease() {
+    let r = flags_from_vec(svec!["deno", "bump-version", "prerelease"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::BumpVersion(VersionFlags {
+          increment: Some(VersionIncrement::Prerelease),
+        }),
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn bump_version_premajor() {
+    let r = flags_from_vec(svec!["deno", "bump-version", "premajor"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::BumpVersion(VersionFlags {
+          increment: Some(VersionIncrement::Premajor),
+        }),
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn bump_version_preminor() {
+    let r = flags_from_vec(svec!["deno", "bump-version", "preminor"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::BumpVersion(VersionFlags {
+          increment: Some(VersionIncrement::Preminor),
+        }),
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn bump_version_prepatch() {
+    let r = flags_from_vec(svec!["deno", "bump-version", "prepatch"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::BumpVersion(VersionFlags {
+          increment: Some(VersionIncrement::Prepatch),
+        }),
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn bump_version_no_args() {
+    let r = flags_from_vec(svec!["deno", "bump-version"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::BumpVersion(VersionFlags {
+          increment: None,
+        }),
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn bump_version_invalid_increment() {
+    let r = flags_from_vec(svec!["deno", "bump-version", "invalid"]);
+    assert!(r.is_err());
   }
 }

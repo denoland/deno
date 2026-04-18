@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -13,7 +13,6 @@ use jsonc_parser::cst::CstRootNode;
 use jsonc_parser::json;
 use log::info;
 
-use crate::args::CliOptions;
 use crate::args::Flags;
 use crate::args::VersionFlags;
 use crate::args::VersionIncrement;
@@ -51,10 +50,6 @@ impl ConfigUpdater {
       .unwrap_or_else(|_| self.path.display().to_string())
   }
 
-  fn contents(&self) -> String {
-    self.cst.to_string()
-  }
-
   fn get_version(&self) -> Option<String> {
     self
       .root_object
@@ -84,7 +79,7 @@ impl ConfigUpdater {
       return Ok(());
     }
 
-    let new_text = self.contents();
+    let new_text = self.cst.to_string();
     std::fs::write(&self.path, new_text).with_context(|| {
       format!("failed writing to '{}'", self.path.display())
     })?;
@@ -95,8 +90,8 @@ impl ConfigUpdater {
 fn increment_version(
   current: &Version,
   increment: &VersionIncrement,
-) -> Result<Version, AnyError> {
-  let new_version = match increment {
+) -> Version {
+  match increment {
     VersionIncrement::Major => Version {
       major: current.major + 1,
       minor: 0,
@@ -118,42 +113,43 @@ fn increment_version(
       pre: Default::default(),
       build: Default::default(),
     },
-
-    VersionIncrement::Premajor
-    | VersionIncrement::Preminor
-    | VersionIncrement::Prepatch => {
-      let mut version = match increment {
-        VersionIncrement::Premajor => Version {
-          major: current.major + 1,
-          minor: 0,
-          patch: 0,
-          ..Default::default()
-        },
-        VersionIncrement::Preminor => Version {
-          major: current.major,
-          minor: current.minor + 1,
-          patch: 0,
-          ..Default::default()
-        },
-        VersionIncrement::Prepatch => Version {
-          major: current.major,
-          minor: current.minor,
-          patch: current.patch + 1,
-          ..Default::default()
-        },
-        _ => unreachable!(),
+    VersionIncrement::Premajor => {
+      let mut v = Version {
+        major: current.major + 1,
+        minor: 0,
+        patch: 0,
+        ..Default::default()
       };
-      version.pre = vec![SmallStackString::from_static("0")].into();
-      version
+      v.pre = vec![SmallStackString::from_static("0")].into();
+      v
     }
-
+    VersionIncrement::Preminor => {
+      let mut v = Version {
+        major: current.major,
+        minor: current.minor + 1,
+        patch: 0,
+        ..Default::default()
+      };
+      v.pre = vec![SmallStackString::from_static("0")].into();
+      v
+    }
+    VersionIncrement::Prepatch => {
+      let mut v = Version {
+        major: current.major,
+        minor: current.minor,
+        patch: current.patch + 1,
+        ..Default::default()
+      };
+      v.pre = vec![SmallStackString::from_static("0")].into();
+      v
+    }
     VersionIncrement::Prerelease => {
-      let mut new_version = current.clone();
-      if new_version.pre.is_empty() {
-        new_version.patch += 1;
-        new_version.pre = vec![SmallStackString::from_static("0")].into();
+      let mut v = current.clone();
+      if v.pre.is_empty() {
+        v.patch += 1;
+        v.pre = vec![SmallStackString::from_static("0")].into();
       } else {
-        let mut pre_vec = new_version.pre.iter().cloned().collect::<Vec<_>>();
+        let mut pre_vec = v.pre.iter().cloned().collect::<Vec<_>>();
         if let Some(last) = pre_vec.last_mut() {
           if let Ok(num) = last.parse::<u64>() {
             *last = SmallStackString::from_string((num + 1).to_string());
@@ -161,17 +157,15 @@ fn increment_version(
             pre_vec.push(SmallStackString::from_static("0"));
           }
         }
-        new_version.pre = pre_vec.into();
+        v.pre = pre_vec.into();
       }
-      new_version
+      v
     }
-  };
-
-  Ok(new_version)
+  }
 }
 
-fn find_config_file(
-  cli_options: &CliOptions,
+fn load_config(
+  cli_options: &crate::args::CliOptions,
 ) -> Result<ConfigUpdater, AnyError> {
   let start_dir = &cli_options.start_dir;
 
@@ -195,10 +189,8 @@ pub fn bump_version_command(
   let factory = CliFactory::from_flags(flags);
   let cli_options = factory.cli_options()?;
 
-  // Find and load config file
-  let mut config = find_config_file(cli_options)?;
+  let mut config = load_config(cli_options)?;
 
-  // Get the current version from the config file
   let current_version = if let Some(version_str) = config.get_version() {
     Version::parse_standard(&version_str).with_context(|| {
       format!(
@@ -209,32 +201,32 @@ pub fn bump_version_command(
     })?
   } else {
     if version_flags.increment.is_none() {
-      // If no increment specified and no version found, just show current state
-      info!("No version found in configuration file");
+      println!("No version found in configuration file");
       return Ok(());
     }
     // Default to 0.1.0 if no version is found but increment is specified
+    info!("No version found, defaulting to 0.1.0");
     Version::parse_standard("0.1.0")
       .with_context(|| "Failed to create default version")?
   };
 
   let new_version = match &version_flags.increment {
-    Some(increment) => increment_version(&current_version, increment)?,
+    Some(increment) => increment_version(&current_version, increment),
     None => {
-      // Just show the current version
-      info!("{}", current_version);
+      println!("{}", current_version);
       return Ok(());
     }
   };
 
-  // Update version in config file
   config.set_version(&new_version.to_string());
   config.commit()?;
-  info!("Updated version in {}", config.display_path());
 
+  println!("{}", new_version);
   info!(
-    "Version updated from {} to {}",
-    current_version, new_version
+    "Version updated from {} to {} in {}",
+    current_version,
+    new_version,
+    config.display_path()
   );
   Ok(())
 }

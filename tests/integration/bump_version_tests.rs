@@ -1,16 +1,14 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use test_util as util;
 use util::TestContextBuilder;
 use util::assert_contains;
 
 #[test]
-fn deno_bump_version_patch_increments_correctly() {
+fn bump_version_patch() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let cwd = context.temp_dir().path();
-
-  // Create a deno.json with initial version
-  cwd.join("deno.json").write(r#"{"version": "1.0.0"}"#);
+  cwd.join("deno.json").write(r#"{"version": "1.4.6"}"#);
 
   let output = context
     .new_command()
@@ -19,20 +17,17 @@ fn deno_bump_version_patch_increments_correctly() {
     .run();
 
   output.assert_exit_code(0);
-  assert_contains!(output.stderr(), "Version updated from 1.0.0 to 1.0.1");
+  assert_contains!(output.stdout(), "1.4.7");
 
-  // Verify the file was updated
-  let deno_json_content = cwd.join("deno.json").read_to_string();
-  assert_contains!(deno_json_content, r#""version": "1.0.1""#);
+  let content = cwd.join("deno.json").read_to_string();
+  assert_contains!(content, r#""version": "1.4.7""#);
 }
 
 #[test]
-fn deno_bump_version_minor_increments_correctly() {
+fn bump_version_minor() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let cwd = context.temp_dir().path();
-
-  // Create a deno.json with initial version
-  cwd.join("deno.json").write(r#"{"version": "1.2.3"}"#);
+  cwd.join("deno.json").write(r#"{"version": "1.4.6"}"#);
 
   let output = context
     .new_command()
@@ -41,19 +36,16 @@ fn deno_bump_version_minor_increments_correctly() {
     .run();
 
   output.assert_exit_code(0);
-  assert_contains!(output.stderr(), "Version updated from 1.2.3 to 1.3.0");
+  assert_contains!(output.stdout(), "1.5.0");
 
-  // Verify the file was updated
-  let deno_json_content = cwd.join("deno.json").read_to_string();
-  assert_contains!(deno_json_content, r#""version": "1.3.0""#);
+  let content = cwd.join("deno.json").read_to_string();
+  assert_contains!(content, r#""version": "1.5.0""#);
 }
 
 #[test]
-fn deno_bump_version_major_increments_correctly() {
+fn bump_version_major() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let cwd = context.temp_dir().path();
-
-  // Create a deno.json with initial version
   cwd.join("deno.json").write(r#"{"version": "2.5.9"}"#);
 
   let output = context
@@ -63,19 +55,73 @@ fn deno_bump_version_major_increments_correctly() {
     .run();
 
   output.assert_exit_code(0);
-  assert_contains!(output.stderr(), "Version updated from 2.5.9 to 3.0.0");
+  assert_contains!(output.stdout(), "3.0.0");
 
-  // Verify the file was updated
-  let deno_json_content = cwd.join("deno.json").read_to_string();
-  assert_contains!(deno_json_content, r#""version": "3.0.0""#);
+  let content = cwd.join("deno.json").read_to_string();
+  assert_contains!(content, r#""version": "3.0.0""#);
 }
 
 #[test]
-fn deno_bump_version_prerelease_increments_correctly() {
+fn bump_version_premajor() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let cwd = context.temp_dir().path();
+  cwd.join("deno.json").write(r#"{"version": "1.4.6"}"#);
 
-  // Test initial prerelease
+  let output = context
+    .new_command()
+    .args("bump-version premajor")
+    .split_output()
+    .run();
+
+  output.assert_exit_code(0);
+  assert_contains!(output.stdout(), "2.0.0-0");
+
+  let content = cwd.join("deno.json").read_to_string();
+  assert_contains!(content, r#""version": "2.0.0-0""#);
+}
+
+#[test]
+fn bump_version_preminor() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let cwd = context.temp_dir().path();
+  cwd.join("deno.json").write(r#"{"version": "1.4.6"}"#);
+
+  let output = context
+    .new_command()
+    .args("bump-version preminor")
+    .split_output()
+    .run();
+
+  output.assert_exit_code(0);
+  assert_contains!(output.stdout(), "1.5.0-0");
+
+  let content = cwd.join("deno.json").read_to_string();
+  assert_contains!(content, r#""version": "1.5.0-0""#);
+}
+
+#[test]
+fn bump_version_prepatch() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let cwd = context.temp_dir().path();
+  cwd.join("deno.json").write(r#"{"version": "1.4.6"}"#);
+
+  let output = context
+    .new_command()
+    .args("bump-version prepatch")
+    .split_output()
+    .run();
+
+  output.assert_exit_code(0);
+  assert_contains!(output.stdout(), "1.4.7-0");
+
+  let content = cwd.join("deno.json").read_to_string();
+  assert_contains!(content, r#""version": "1.4.7-0""#);
+}
+
+#[test]
+fn bump_version_prerelease_from_stable() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let cwd = context.temp_dir().path();
   cwd.join("deno.json").write(r#"{"version": "1.0.0"}"#);
 
   let output = context
@@ -85,9 +131,25 @@ fn deno_bump_version_prerelease_increments_correctly() {
     .run();
 
   output.assert_exit_code(0);
-  assert_contains!(output.stderr(), "Version updated from 1.0.0 to 1.0.1-0");
+  assert_contains!(output.stdout(), "1.0.1-0");
 
-  // Test subsequent prerelease increment
+  let content = cwd.join("deno.json").read_to_string();
+  assert_contains!(content, r#""version": "1.0.1-0""#);
+}
+
+#[test]
+fn bump_version_prerelease_increments_pre_tag() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let cwd = context.temp_dir().path();
+
+  // First prerelease
+  cwd.join("deno.json").write(r#"{"version": "1.0.0"}"#);
+  context
+    .new_command()
+    .args("bump-version prerelease")
+    .run();
+
+  // Second prerelease should increment the pre-release number
   let output = context
     .new_command()
     .args("bump-version prerelease")
@@ -95,19 +157,17 @@ fn deno_bump_version_prerelease_increments_correctly() {
     .run();
 
   output.assert_exit_code(0);
-  assert_contains!(output.stderr(), "Version updated from 1.0.1-0 to 1.0.1-1");
+  assert_contains!(output.stdout(), "1.0.1-1");
 
-  // Verify the file was updated
-  let deno_json_content = cwd.join("deno.json").read_to_string();
-  assert_contains!(deno_json_content, r#""version": "1.0.1-1""#);
+  let content = cwd.join("deno.json").read_to_string();
+  assert_contains!(content, r#""version": "1.0.1-1""#);
 }
 
 #[test]
-fn deno_bump_version_works_with_deno_json() {
+fn bump_version_preserves_deno_json_structure() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let cwd = context.temp_dir().path();
 
-  // Create a deno.json with complex structure
   cwd.join("deno.json").write(
     r#"{
   "name": "@example/my-package",
@@ -126,28 +186,23 @@ fn deno_bump_version_works_with_deno_json() {
     .run();
 
   output.assert_exit_code(0);
-  assert_contains!(output.stderr(), "Version updated from 0.1.0 to 0.1.1");
-  assert_contains!(output.stderr(), "Updated version in");
 
-  // Verify the file structure is preserved
-  let deno_json_content = cwd.join("deno.json").read_to_string();
-  assert_contains!(deno_json_content, r#""version": "0.1.1""#);
-  assert_contains!(deno_json_content, r#""name": "@example/my-package""#);
-  assert_contains!(deno_json_content, r#""exports": "./mod.ts""#);
-  assert_contains!(deno_json_content, r#""tasks""#);
+  let content = cwd.join("deno.json").read_to_string();
+  assert_contains!(content, r#""version": "0.1.1""#);
+  assert_contains!(content, r#""name": "@example/my-package""#);
+  assert_contains!(content, r#""exports": "./mod.ts""#);
+  assert_contains!(content, r#""tasks""#);
 }
 
 #[test]
-fn deno_bump_version_works_with_package_json() {
+fn bump_version_works_with_package_json() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let cwd = context.temp_dir().path();
 
-  // Create a package.json
   cwd.join("package.json").write(
     r#"{
   "name": "my-package",
   "version": "1.5.2",
-  "description": "A test package",
   "scripts": {
     "test": "deno test"
   }
@@ -161,17 +216,15 @@ fn deno_bump_version_works_with_package_json() {
     .run();
 
   output.assert_exit_code(0);
-  assert_contains!(output.stderr(), "Version updated from 1.5.2 to 1.6.0");
+  assert_contains!(output.stdout(), "1.6.0");
 
-  // Verify the file structure is preserved
-  let package_json_content = cwd.join("package.json").read_to_string();
-  assert_contains!(package_json_content, r#""version": "1.6.0""#);
-  assert_contains!(package_json_content, r#""name": "my-package""#);
-  assert_contains!(package_json_content, r#""scripts""#);
+  let content = cwd.join("package.json").read_to_string();
+  assert_contains!(content, r#""version": "1.6.0""#);
+  assert_contains!(content, r#""name": "my-package""#);
 }
 
 #[test]
-fn deno_bump_version_fails_without_config_files() {
+fn bump_version_fails_without_config_files() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
 
   let output = context
@@ -185,10 +238,9 @@ fn deno_bump_version_fails_without_config_files() {
 }
 
 #[test]
-fn deno_bump_version_without_increment_shows_current() {
+fn bump_version_no_args_shows_current_version() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let cwd = context.temp_dir().path();
-
   cwd.join("deno.json").write(r#"{"version": "2.3.4"}"#);
 
   let output = context
@@ -198,19 +250,17 @@ fn deno_bump_version_without_increment_shows_current() {
     .run();
 
   output.assert_exit_code(0);
-  assert_contains!(output.stderr(), "2.3.4");
+  assert_contains!(output.stdout(), "2.3.4");
 
-  // Verify the file was NOT updated
-  let deno_json_content = cwd.join("deno.json").read_to_string();
-  assert_contains!(deno_json_content, r#""version": "2.3.4""#);
+  // File should not be modified
+  let content = cwd.join("deno.json").read_to_string();
+  assert_contains!(content, r#""version": "2.3.4""#);
 }
 
 #[test]
-fn deno_bump_version_creates_default_version_when_missing() {
+fn bump_version_defaults_to_0_1_0_when_missing() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let cwd = context.temp_dir().path();
-
-  // Create deno.json without version
   cwd.join("deno.json").write(r#"{"name": "test-package"}"#);
 
   let output = context
@@ -220,10 +270,28 @@ fn deno_bump_version_creates_default_version_when_missing() {
     .run();
 
   output.assert_exit_code(0);
-  assert_contains!(output.stderr(), "Version updated from 0.1.0 to 0.1.1");
+  assert_contains!(output.stdout(), "0.1.1");
 
-  // Verify version was added
-  let deno_json_content = cwd.join("deno.json").read_to_string();
-  assert_contains!(deno_json_content, r#""version": "0.1.1""#);
-  assert_contains!(deno_json_content, r#""name": "test-package""#);
+  let content = cwd.join("deno.json").read_to_string();
+  assert_contains!(content, r#""version": "0.1.1""#);
+  assert_contains!(content, r#""name": "test-package""#);
+}
+
+#[test]
+fn bump_version_major_clears_prerelease() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let cwd = context.temp_dir().path();
+  cwd.join("deno.json").write(r#"{"version": "1.2.3-beta.1"}"#);
+
+  let output = context
+    .new_command()
+    .args("bump-version major")
+    .split_output()
+    .run();
+
+  output.assert_exit_code(0);
+  assert_contains!(output.stdout(), "2.0.0");
+
+  let content = cwd.join("deno.json").read_to_string();
+  assert_contains!(content, r#""version": "2.0.0""#);
 }
