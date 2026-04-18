@@ -20,7 +20,7 @@ pub static FEATURE_DESCRIPTIONS: &[UnstableFeatureDescription] = &[
   UnstableFeatureDescription {
     name: "bare-node-builtins",
     help_text: "Enable unstable bare node builtins feature",
-    show_in_help: true,
+    show_in_help: false,
     kind: UnstableFeatureKind::Cli,
     env_var: Some("DENO_UNSTABLE_BARE_NODE_BUILTINS"),
   },
