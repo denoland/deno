@@ -335,7 +335,6 @@ async fn init_npm(
       ..Default::default()
     },
     unstable_config: UnstableConfig {
-      bare_node_builtins: true,
       sloppy_imports: true,
       detect_cjs: true,
       ..Default::default()

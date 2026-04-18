@@ -1287,11 +1287,6 @@ impl CliOptions {
     &self.flags.unsafely_ignore_certificate_errors
   }
 
-  pub fn unstable_bare_node_builtins(&self) -> bool {
-    self.flags.unstable_config.bare_node_builtins
-      || self.workspace().has_unstable("bare-node-builtins")
-  }
-
   pub fn unstable_detect_cjs(&self) -> bool {
     self.flags.unstable_config.detect_cjs
       || self.workspace().has_unstable("detect-cjs")

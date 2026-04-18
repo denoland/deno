@@ -15,7 +15,6 @@ use deno_semver::npm::NpmPackageReqReference;
 pub use node_resolver::DenoIsBuiltInNodeModuleChecker;
 use node_resolver::InNpmPackageChecker;
 use node_resolver::IsBuiltInNodeModuleChecker;
-use node_resolver::NodeResolution;
 use node_resolver::NodeResolutionKind;
 pub use node_resolver::NodeResolverOptions;
 use node_resolver::NodeResolverRc;
@@ -224,8 +223,6 @@ pub struct DenoResolverOptions<
     >,
   >,
   pub workspace_resolver: WorkspaceResolverRc<TSys>,
-  /// Whether bare node built-ins are enabled (ex. resolve "path" as "node:path").
-  pub bare_node_builtins: bool,
   /// Whether "bring your own node_modules" is enabled where Deno does not
   /// setup the node_modules directories automatically, but instead uses
   /// what already exists on the file system.
@@ -276,7 +273,6 @@ pub struct RawDenoResolver<
     >,
   >,
   workspace_resolver: WorkspaceResolverRc<TSys>,
-  bare_node_builtins: bool,
   is_byonm: bool,
   maybe_vendor_specifier: Option<Url>,
 }
@@ -306,7 +302,6 @@ impl<
       in_npm_pkg_checker: options.in_npm_pkg_checker,
       node_and_npm_resolver: options.node_and_req_resolver,
       workspace_resolver: options.workspace_resolver,
-      bare_node_builtins: options.bare_node_builtins,
       is_byonm: options.is_byonm,
       maybe_vendor_specifier: options
         .maybe_vendor_dir
@@ -591,6 +586,17 @@ impl<
         })
       }
       Err(err) => {
+        // Check if the bare specifier is a known Node built-in module.
+        // Built-ins always take priority, matching Node.js behavior where
+        // built-in modules cannot be shadowed by node_modules packages.
+        if node_resolver.is_builtin_node_module(raw_specifier) {
+          return Ok(DenoResolution {
+            url: Url::parse(&format!("node:{}", raw_specifier)).unwrap(),
+            maybe_diagnostic,
+            found_package_json_dep,
+          });
+        }
+
         // If byonm, check if the bare specifier resolves to an npm package
         if self.is_byonm && referrer.scheme() == "file" {
           let maybe_resolution = npm_req_resolver
@@ -609,34 +615,12 @@ impl<
               }
             })?;
           if let Some(res) = maybe_resolution {
-            match res {
-              NodeResolution::Module(ref _url) => {
-                return Ok(DenoResolution {
-                  url: res.into_url()?,
-                  maybe_diagnostic,
-                  found_package_json_dep,
-                });
-              }
-              NodeResolution::BuiltIn(ref _module) => {
-                if self.bare_node_builtins {
-                  return Ok(DenoResolution {
-                    url: res.into_url()?,
-                    maybe_diagnostic,
-                    found_package_json_dep,
-                  });
-                }
-              }
-            }
+            return Ok(DenoResolution {
+              url: res.into_url()?,
+              maybe_diagnostic,
+              found_package_json_dep,
+            });
           }
-        } else if self.bare_node_builtins
-          && matches!(err.as_kind(), DenoResolveErrorKind::MappedResolution(err) if err.is_unmapped_bare_specifier())
-          && node_resolver.is_builtin_node_module(raw_specifier)
-        {
-          return Ok(DenoResolution {
-            url: Url::parse(&format!("node:{}", raw_specifier)).unwrap(),
-            maybe_diagnostic,
-            found_package_json_dep,
-          });
         }
 
         Err(err)
