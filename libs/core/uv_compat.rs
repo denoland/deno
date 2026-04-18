@@ -70,6 +70,10 @@ uv_errno!(UV_ENOTSUP, libc::ENOTSUP, -4049);
 uv_errno!(UV_EALREADY, libc::EALREADY, -4084);
 uv_errno!(UV_ENOENT, libc::ENOENT, -4058);
 uv_errno!(UV_ENOTSOCK, libc::ENOTSOCK, -4050);
+uv_errno!(UV_ECONNRESET, libc::ECONNRESET, -4077);
+uv_errno!(UV_ECONNABORTED, libc::ECONNABORTED, -4079);
+uv_errno!(UV_ETIMEDOUT, libc::ETIMEDOUT, -4039);
+uv_errno!(UV_EACCES, libc::EACCES, -4092);
 pub const UV_EOF: i32 = -4095;
 
 /// Map a `std::io::Error` to the closest libuv error code.
@@ -79,16 +83,35 @@ pub(crate) fn io_error_to_uv(err: &std::io::Error) -> c_int {
     ErrorKind::AddrInUse => UV_EADDRINUSE,
     ErrorKind::AddrNotAvailable => UV_EINVAL,
     ErrorKind::ConnectionRefused => UV_ECONNREFUSED,
+    ErrorKind::ConnectionReset => UV_ECONNRESET,
+    ErrorKind::ConnectionAborted => UV_ECONNABORTED,
     ErrorKind::NotConnected => UV_ENOTCONN,
     ErrorKind::NotFound => UV_ENOENT,
     ErrorKind::BrokenPipe => UV_EPIPE,
     ErrorKind::InvalidInput => UV_EINVAL,
     ErrorKind::WouldBlock => UV_EAGAIN,
+    ErrorKind::TimedOut => UV_ETIMEDOUT,
+    ErrorKind::PermissionDenied => UV_EACCES,
     _ => {
       // On Unix, try to use the raw OS error for a more accurate mapping.
       #[cfg(unix)]
       if let Some(code) = err.raw_os_error() {
         return -code;
+      }
+      // On Windows, map common Winsock errors to libuv codes.
+      #[cfg(windows)]
+      if let Some(code) = err.raw_os_error() {
+        return match code {
+          10054 => UV_ECONNRESET,   // WSAECONNRESET
+          10053 => UV_ECONNABORTED, // WSAECONNABORTED
+          10061 => UV_ECONNREFUSED, // WSAECONNREFUSED
+          10048 => UV_EADDRINUSE,   // WSAEADDRINUSE
+          10060 => UV_ETIMEDOUT,    // WSAETIMEDOUT
+          10057 => UV_ENOTCONN,     // WSAENOTCONN
+          10038 => UV_ENOTSOCK,     // WSAENOTSOCK
+          10035 => UV_EAGAIN,       // WSAEWOULDBLOCK
+          _ => UV_EINVAL,
+        };
       }
       UV_EINVAL
     }
@@ -489,16 +512,15 @@ impl UvLoopInner {
     for _pass in 0..16 {
       let mut any_work = false;
 
-      let mut i = 0;
-      loop {
-        let tcp_ptr = {
-          let handles = self.tcp_handles.borrow();
-          if i >= handles.len() {
-            break;
-          }
-          handles[i]
-        };
-        i += 1;
+      // Snapshot the handle lists before iterating.  Callbacks fired
+      // during poll_tcp_handle (etc.) may close other handles, which
+      // removes them from tcp_handles via stop_tcp.  Index-based
+      // iteration over a list that shrinks during iteration would skip
+      // entries.  Snapshotting avoids this: each handle pointer is
+      // polled exactly once per pass regardless of mutations.
+      let tcp_snapshot: Vec<_> =
+        self.tcp_handles.borrow().iter().copied().collect();
+      for &tcp_ptr in &tcp_snapshot {
         // SAFETY: tcp_ptr comes from tcp_handles; caller guarantees validity.
         if unsafe { (*tcp_ptr).flags } & UV_HANDLE_ACTIVE == 0 {
           continue;
@@ -510,16 +532,9 @@ impl UvLoopInner {
       } // end per-tcp-handle loop
 
       {
-        let mut pi = 0;
-        loop {
-          let pipe_ptr = {
-            let handles = self.pipe_handles.borrow();
-            if pi >= handles.len() {
-              break;
-            }
-            handles[pi]
-          };
-          pi += 1;
+        let pipe_snapshot: Vec<_> =
+          self.pipe_handles.borrow().iter().copied().collect();
+        for &pipe_ptr in &pipe_snapshot {
           // SAFETY: pipe_ptr comes from pipe_handles; caller guarantees validity.
           if unsafe { (*pipe_ptr).flags } & UV_HANDLE_ACTIVE == 0 {
             continue;
@@ -531,16 +546,9 @@ impl UvLoopInner {
         }
       } // end per-pipe-handle loop
 
-      let mut j = 0;
-      loop {
-        let tty_ptr = {
-          let handles = self.tty_handles.borrow();
-          if j >= handles.len() {
-            break;
-          }
-          handles[j]
-        };
-        j += 1;
+      let tty_snapshot: Vec<_> =
+        self.tty_handles.borrow().iter().copied().collect();
+      for &tty_ptr in &tty_snapshot {
         // SAFETY: tty_ptr comes from tty_handles; caller guarantees validity.
         if unsafe { (*tty_ptr).flags } & UV_HANDLE_ACTIVE == 0 {
           continue;

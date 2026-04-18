@@ -90,6 +90,7 @@ import {
 } from "ext:deno_node/internal/validators.mjs";
 import {
   constants as TCPConstants,
+  setupListenWrap,
   TCP,
   TCPConnectWrap,
 } from "ext:deno_node/internal_binding/tcp_wrap.ts";
@@ -97,11 +98,9 @@ import {
   constants as PipeConstants,
   Pipe,
   PipeConnectWrap,
+  setupListenWrap as setupPipeListenWrap,
 } from "ext:deno_node/internal_binding/pipe_wrap.ts";
-import {
-  kUseNativeWrap,
-  ShutdownWrap,
-} from "ext:deno_node/internal_binding/stream_wrap.ts";
+import { ShutdownWrap } from "ext:deno_node/internal_binding/stream_wrap.ts";
 import assert from "node:assert";
 import { isWindows } from "ext:deno_node/_util/os.ts";
 import { ADDRCONFIG, lookup as dnsLookup } from "node:dns";
@@ -380,7 +379,6 @@ function _afterConnect(
     socket.emit("ready");
 
     // Deno specific: run tls handshake if it's from a tls socket
-    // This swaps the handle[kStreamBaseField] from TcpConn to TlsConn
     if (typeof handle.afterConnectTls === "function") {
       handle.afterConnectTls();
     }
@@ -972,7 +970,11 @@ function _lookupAndConnect(self: Socket, options: TcpSocketConnectOptions) {
         addressType: number,
         netPermToken,
       ) {
-        self._handle?.setNetPermToken(netPermToken);
+        // Store the permission token from DNS lookup so connect() checks
+        // permissions against the original hostname instead of the resolved IP.
+        if (netPermToken && self._handle?.setNetPermToken) {
+          self._handle.setNetPermToken(netPermToken);
+        }
         self.emit("lookup", err, ip, addressType, host);
 
         // It's possible we were destroyed while looking this up.
@@ -1037,7 +1039,9 @@ function _lookupAndConnectMultiple(
 ) {
   defaultTriggerAsyncIdScope(self[asyncIdSymbol], function emitLookup() {
     lookup(host, dnsopts, function emitLookup(err, addresses, _, netPermToken) {
-      self._handle?.setNetPermToken(netPermToken);
+      if (netPermToken && self._handle?.setNetPermToken) {
+        self._handle.setNetPermToken(netPermToken);
+      }
       // It's possible we were destroyed while looking this up.
       // XXX it would be great if we could cancel the promise returned by
       // the look up.
@@ -1175,12 +1179,6 @@ function _emitCloseNT(s: Socket | Server) {
 }
 
 // The packages that need socket initialization workaround
-const pkgsNeedsSockInitWorkaround = [
-  "@npmcli/agent",
-  "npm-check-updates",
-  "playwright-core",
-  "twitter-api-v2",
-];
 
 /**
  * This class is an abstraction of a TCP socket or a streaming `IPC` endpoint
@@ -1235,18 +1233,8 @@ export function Socket(options) {
   this._pendingEncoding = "";
   this._host = null;
   this._parent = null;
-  this._needsSockInitWorkaround = false;
   this.autoSelectFamilyAttemptedAddresses = undefined;
   this.connecting = false;
-
-  this[kUseNativeWrap] = options[kUseNativeWrap] || false;
-
-  const errorStack = new Error().stack;
-  this._needsSockInitWorkaround = options.handle?.ipc !== true &&
-    pkgsNeedsSockInitWorkaround.some((pkg) => errorStack?.includes(pkg));
-  if (this._needsSockInitWorkaround) {
-    this.pause();
-  }
 
   if (options.handle) {
     this._handle = options.handle;
@@ -1350,10 +1338,6 @@ Socket.prototype.connect = function (...args) {
     this._handle = pipe
       ? new Pipe(PipeConstants.SOCKET)
       : new TCP(TCPConstants.SOCKET);
-
-    if (this[kUseNativeWrap]) {
-      this._handle[kUseNativeWrap] = this[kUseNativeWrap];
-    }
 
     _initSocketHandle(this);
   }
@@ -1489,7 +1473,9 @@ Object.defineProperty(Socket.prototype, "bufferSize", {
 
 Object.defineProperty(Socket.prototype, "bytesRead", {
   get: function () {
-    return this._handle ? this._handle.bytesRead : this[kBytesRead];
+    return this._handle
+      ? (this._handle.getBytesRead?.() ?? this._handle.bytesRead ?? 0)
+      : this[kBytesRead];
   },
 });
 
@@ -1699,8 +1685,10 @@ Socket.prototype._destroy = function (exception, cb) {
   if (this._handle) {
     debug("close handle");
     const isException = exception ? true : false;
-    this[kBytesRead] = this._handle.bytesRead;
-    this[kBytesWritten] = this._handle.bytesWritten;
+    this[kBytesRead] = this._handle.getBytesRead?.() ??
+      this._handle.bytesRead ?? 0;
+    this[kBytesWritten] = this._handle.getBytesWritten?.() ??
+      this._handle.bytesWritten ?? 0;
 
     this._handle.close(() => {
       this._handle.onread = _noop;
@@ -1808,7 +1796,9 @@ Object.defineProperty(Socket.prototype, "_connecting", {
 
 Object.defineProperty(Socket.prototype, "_bytesDispatched", {
   get: function () {
-    return this._handle ? this._handle.bytesWritten : this[kBytesWritten];
+    return this._handle
+      ? (this._handle.getBytesWritten?.() ?? this._handle.bytesWritten ?? 0)
+      : this[kBytesWritten];
   },
 });
 
@@ -2227,6 +2217,15 @@ function _setupListenHandle(
   this[asyncIdSymbol] = _getNewAsyncId(this._handle);
   this._handle.onconnection = _onconnection;
   this._handle[ownerSymbol] = this;
+
+  // For TCP and Pipe handles, wrap the onconnection callback to create
+  // client handles and call uv_accept before forwarding to
+  // _onconnection(status, clientHandle).
+  if (this._handle instanceof TCP) {
+    setupListenWrap(this._handle);
+  } else if (this._handle instanceof Pipe) {
+    setupPipeListenWrap(this._handle);
+  }
 
   // Use a backlog of 512 entries. We pass 511 to the listen() call because
   // the kernel does: backlogsize = roundup_pow_of_two(backlogsize + 1);
@@ -2701,15 +2700,13 @@ Server.prototype._emitCloseIfDrained = function () {
   // ref: https://github.com/denoland/deno_std/issues/2788
   // deno-lint-ignore no-this-alias
   const self = this;
-  // Use core.createTimer directly to avoid creating a Node Timeout object.
-  // Must be ref'd (last param true) so the event loop waits for the close event.
-  core.createTimer(
+  // Use a system timer to avoid test sanitizer detection.
+  // Must be ref'd so the event loop waits for the close event.
+  core.createSystemTimer(
     () => {
       _emitCloseNT(self);
     },
     0,
-    undefined,
-    false,
     true,
   );
 };

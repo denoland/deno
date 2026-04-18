@@ -1517,6 +1517,14 @@ export class ERR_HTTP2_UNSUPPORTED_PROTOCOL extends NodeError {
     super("ERR_HTTP2_UNSUPPORTED_PROTOCOL", `protocol "${x}" is unsupported.`);
   }
 }
+export class ERR_HTTP_BODY_NOT_ALLOWED extends NodeError {
+  constructor() {
+    super(
+      "ERR_HTTP_BODY_NOT_ALLOWED",
+      "Adding content for this request method or response status is not allowed.",
+    );
+  }
+}
 export class ERR_HTTP_HEADERS_SENT extends NodeError {
   constructor(x: string) {
     super(
@@ -3193,6 +3201,7 @@ export default {
   ERR_HTTP2_TRAILERS_ALREADY_SENT,
   ERR_HTTP2_TRAILERS_NOT_READY,
   ERR_HTTP2_UNSUPPORTED_PROTOCOL,
+  ERR_HTTP_BODY_NOT_ALLOWED,
   ERR_HTTP_HEADERS_SENT,
   ERR_HTTP_INVALID_HEADER_VALUE,
   ERR_HTTP_INVALID_STATUS_CODE,

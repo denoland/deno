@@ -42,6 +42,7 @@ extern "C" fn test_callback_scope(
     async_context,
     &mut scope,
   ));
+  assert!(!scope.is_null(), "callback scope should not be null");
 
   assert_napi_ok!(napi_close_callback_scope(env, scope));
   assert_napi_ok!(napi_async_destroy(env, async_context));
@@ -174,6 +175,54 @@ extern "C" fn test_make_callback_with_real_context(
   result
 }
 
+/// Ported from Node.js test_callback_scope: RunInCallbackScope.
+/// Opens an async context + callback scope, calls a JS function inside
+/// the scope, then cleans up.
+extern "C" fn test_run_in_callback_scope(
+  env: napi_env,
+  info: napi_callback_info,
+) -> napi_value {
+  let (args, argc, _) = napi_get_callback_info!(env, info, 3);
+  assert_eq!(argc, 3, "Expected 3 arguments: resource, name, callback");
+
+  let resource = args[0];
+  let resource_name = args[1];
+  let callback = args[2];
+
+  let mut async_context: napi_async_context = ptr::null_mut();
+  assert_napi_ok!(napi_async_init(
+    env,
+    resource,
+    resource_name,
+    &mut async_context,
+  ));
+
+  let mut scope: napi_callback_scope = ptr::null_mut();
+  assert_napi_ok!(napi_open_callback_scope(
+    env,
+    resource,
+    async_context,
+    &mut scope,
+  ));
+
+  // Call the JS function inside the callback scope.
+  // If the function throws, we still need to close the scope.
+  let mut result: napi_value = ptr::null_mut();
+  let call_status = unsafe {
+    napi_call_function(env, resource, callback, 0, ptr::null(), &mut result)
+  };
+
+  assert_napi_ok!(napi_close_callback_scope(env, scope));
+  assert_napi_ok!(napi_async_destroy(env, async_context));
+
+  if call_status != Status::napi_ok {
+    // Re-throw by returning null (exception is already pending)
+    return ptr::null_mut();
+  }
+
+  result
+}
+
 pub fn init(env: napi_env, exports: napi_value) {
   let properties = &[
     napi_new_property!(env, "test_callback_scope", test_callback_scope),
@@ -191,6 +240,11 @@ pub fn init(env: napi_env, exports: napi_value) {
       env,
       "test_make_callback_with_real_context",
       test_make_callback_with_real_context
+    ),
+    napi_new_property!(
+      env,
+      "test_run_in_callback_scope",
+      test_run_in_callback_scope
     ),
   ];
 
