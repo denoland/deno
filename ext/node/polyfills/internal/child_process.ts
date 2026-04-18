@@ -591,31 +591,34 @@ export class ChildProcess extends EventEmitter {
       return false;
     }
 
-    const signalName = signal == null ? "SIGTERM" : toDenoSignal(signal);
-    // On Windows, Deno only supports a subset of signals (SIGTERM, SIGKILL,
-    // SIGINT). Node maps all signals to TerminateProcess, so we fall back
-    // to SIGTERM for unsupported signals while preserving the original
-    // signal name in signalCode.
-    let denoSignal = signalName;
-    if (isWindows) {
-      if (
-        denoSignal !== "SIGTERM" && denoSignal !== "SIGKILL" &&
-        denoSignal !== "SIGINT"
-      ) {
-        denoSignal = "SIGTERM";
-      }
-    }
+    let signalName = signal == null ? "SIGTERM" : toDenoSignal(signal);
     this.#closePipes();
     try {
-      this.#process.kill(denoSignal as Deno.Signal);
+      this.#process.kill(signalName as Deno.Signal);
     } catch (err) {
-      const alreadyClosed = err instanceof TypeError ||
-        err instanceof Deno.errors.PermissionDenied;
-      if (!alreadyClosed) {
-        throw err;
+      if (isWindows) {
+        // On Windows, unsupported signals fall back to SIGKILL
+        // (matching Node's TerminateProcess behavior).
+        try {
+          this.#process.kill("SIGKILL");
+          signalName = "SIGKILL";
+        } catch (err2) {
+          const alreadyClosed = err2 instanceof TypeError ||
+            err2 instanceof Deno.errors.PermissionDenied;
+          if (!alreadyClosed) {
+            throw err2;
+          }
+          return false;
+        }
+      } else {
+        const alreadyClosed = err instanceof TypeError ||
+          err instanceof Deno.errors.PermissionDenied;
+        if (!alreadyClosed) {
+          throw err;
+        }
+        // Process already exited, signal was not delivered.
+        return false;
       }
-      // Process already exited, signal was not delivered.
-      return false;
     }
 
     /* Cancel any pending IPC I/O */
@@ -706,11 +709,6 @@ function toDenoStdio(
 }
 
 function toDenoSignal(signal: number | string): Deno.Signal {
-  // Use Node's signal constants (which include all POSIX signals on
-  // every platform) rather than Deno's os.signals (which only lists
-  // platform-native signals). This lets cross-platform code like
-  // kill("SIGQUIT") on Windows work -- the caller maps unsupported
-  // signals to SIGTERM.
   const nodeSignals = os.signals as Record<string, number>;
   if (typeof signal === "number") {
     for (const name of keys(nodeSignals)) {
@@ -722,6 +720,11 @@ function toDenoSignal(signal: number | string): Deno.Signal {
   }
 
   if (signal in nodeSignals) {
+    return signal as Deno.Signal;
+  }
+  // On Windows, os.signals only lists native signals. Accept any
+  // POSIX signal name so the caller can remap it to SIGTERM.
+  if (isWindows && signal.startsWith("SIG")) {
     return signal as Deno.Signal;
   }
   throw new ERR_UNKNOWN_SIGNAL(signal);
