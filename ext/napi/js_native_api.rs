@@ -1312,6 +1312,12 @@ static EXTERNAL_STRING_ENVS: std::sync::LazyLock<
   std::sync::Mutex::new(std::collections::HashMap::new())
 });
 
+/// Remove an entry from the global env map. Called during Env teardown
+/// to prevent stale pointer dereferences.
+pub fn remove_external_string_env_entry(key: usize) {
+  EXTERNAL_STRING_ENVS.lock().unwrap().remove(&key);
+}
+
 /// V8 destructor for external one-byte strings. Looks up the Env from
 /// the global index, then retrieves and invokes the NAPI finalize callback.
 unsafe extern "C" fn external_onebyte_destructor(
