@@ -724,15 +724,7 @@ fn allow_scripts_arg_parse(result: &ParseResult, flags: &mut Flags) {
             flags.allow_scripts = PackagesAllowedScripts::All;
         } else {
             flags.allow_scripts = PackagesAllowedScripts::Some(
-                values
-                    .iter()
-                    .map(|s| {
-                        // Strip npm: prefix to match PackageReq behavior
-                        s.strip_prefix("npm:")
-                            .unwrap_or(s)
-                            .to_string()
-                    })
-                    .collect(),
+                values.iter().map(|s| s.to_string()).collect(),
             );
         }
     }

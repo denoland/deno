@@ -2612,6 +2612,13 @@ fn validate_parser_flags(
           "error: the argument '--doc' cannot be used with '--doc-only'",
         ));
       }
+      // --all/--remote conflicts with --no-remote
+      if flags.type_check_mode == TypeCheckMode::All && flags.no_remote {
+        return Err(make_clap_error(
+          ErrorKind::ArgumentConflict,
+          "error: the argument '--all' cannot be used with '--no-remote'",
+        ));
+      }
     }
     DenoSubcommand::Test(_test_flags) => {
       // --fail-fast=0 is invalid (NonZeroUsize)
@@ -2648,15 +2655,41 @@ fn validate_parser_flags(
       }
     }
     DenoSubcommand::Doc(doc_flags) => {
-      // --html without source files
+      // --html requires source files
       if doc_flags.html.is_some() {
-        if let DocSourceFileFlag::Paths(ref paths) = doc_flags.source_files {
-          if paths.is_empty() {
+        let has_files = match &doc_flags.source_files {
+          DocSourceFileFlag::Paths(paths) => !paths.is_empty(),
+          DocSourceFileFlag::Builtin => false,
+        };
+        if !has_files {
+          return Err(make_clap_error(
+            ErrorKind::MissingRequiredArgument,
+            "error: the following required arguments were not provided:\n  <source_file>\n\ntip: '--html' requires source files to be specified",
+          ));
+        }
+      }
+      // --html requires --output
+      if doc_flags.html.is_some() {
+        if let Some(ref html) = doc_flags.html {
+          if html.output.is_empty() {
             return Err(make_clap_error(
               ErrorKind::MissingRequiredArgument,
-              "error: the following required arguments were not provided:\n  <source_file>\n\ntip: '--html' requires source files to be specified",
+              "error: the following required arguments were not provided:\n  --output <path>",
             ));
           }
+        }
+      }
+      // --lint requires source files
+      if doc_flags.lint {
+        let has_files = match &doc_flags.source_files {
+          DocSourceFileFlag::Paths(paths) => !paths.is_empty(),
+          DocSourceFileFlag::Builtin => false,
+        };
+        if !has_files {
+          return Err(make_clap_error(
+            ErrorKind::MissingRequiredArgument,
+            "error: the following required arguments were not provided:\n  <source_file>\n\ntip: '--lint' requires source files to be specified",
+          ));
         }
       }
     }
@@ -2668,6 +2701,35 @@ fn validate_parser_flags(
         .any(|a| a == "create");
 
       if is_create {
+        // --jsr and --npm conflict
+        if has_arg("--jsr") && has_arg("--npm") {
+          return Err(make_clap_error(
+            ErrorKind::ArgumentConflict,
+            "error: the argument '--jsr' cannot be used with '--npm'",
+          ));
+        }
+        // --jsr with npm: specifier is contradictory
+        if has_arg("--jsr") {
+          if let Some(ref pkg) = init_flags.package {
+            if pkg.starts_with("npm:") {
+              return Err(make_clap_error(
+                ErrorKind::InvalidValue,
+                "error: cannot use '--jsr' with an npm: specifier",
+              ));
+            }
+          }
+        }
+        // --npm with jsr: specifier is contradictory
+        if has_arg("--npm") {
+          if let Some(ref pkg) = init_flags.package {
+            if pkg.starts_with("jsr:") {
+              return Err(make_clap_error(
+                ErrorKind::InvalidValue,
+                "error: cannot use '--npm' with a jsr: specifier",
+              ));
+            }
+          }
+        }
         // `deno create` requires a package
         if init_flags.package.is_none()
           || init_flags.package.as_deref() == Some("")
@@ -2677,12 +2739,20 @@ fn validate_parser_flags(
             "error: the following required arguments were not provided:\n  <PACKAGE>",
           ));
         }
-        // Package must have npm: or jsr: prefix (or --npm/--jsr was used)
+        // Package must have npm: or jsr: prefix with a non-empty name
         if let Some(ref pkg) = init_flags.package {
           if !pkg.starts_with("npm:") && !pkg.starts_with("jsr:") {
             return Err(make_clap_error(
               ErrorKind::InvalidValue,
               "Missing `jsr:` or `npm:` prefix. For example: `deno create npm:vite`.",
+            ));
+          }
+          // Check for empty package name after prefix
+          let name = pkg.strip_prefix("npm:").or_else(|| pkg.strip_prefix("jsr:")).unwrap_or(pkg);
+          if name.is_empty() {
+            return Err(make_clap_error(
+              ErrorKind::InvalidValue,
+              "error: empty package name after prefix",
             ));
           }
         }
@@ -2701,9 +2771,32 @@ fn validate_parser_flags(
         }
       } else {
         // Regular `deno init` validations
+        let has_jsr = has_arg("--jsr");
+        let has_npm = has_arg("--npm");
+
+        // --jsr conflicts with --npm, --lib, --serve, --empty
+        if has_jsr && has_npm {
+          return Err(make_clap_error(
+            ErrorKind::ArgumentConflict,
+            "error: the argument '--jsr' cannot be used with '--npm'",
+          ));
+        }
+        if has_jsr && init_flags.lib {
+          return Err(make_clap_error(
+            ErrorKind::ArgumentConflict,
+            "error: the argument '--jsr' cannot be used with '--lib'",
+          ));
+        }
+        // --jsr without a package name
+        if has_jsr && init_flags.package.is_none() {
+          return Err(make_clap_error(
+            ErrorKind::MissingRequiredArgument,
+            "error: '--jsr' requires a package name",
+          ));
+        }
+
         // --lib/--serve conflict with --npm
-        if init_flags.package.is_some() {
-          // --npm was used (package is set)
+        if init_flags.package.is_some() && has_npm {
           if init_flags.lib {
             return Err(make_clap_error(
               ErrorKind::ArgumentConflict,
@@ -2876,7 +2969,7 @@ pub fn flags_from_vec_with_initial_cwd(
     // - aren't defined in our parser (bundle, audit, x)
     matches!(
       arg.as_str(),
-      "json_reference" | "bundle" | "audit" | "x"
+      "json_reference" | "bundle" | "audit" | "x" | "help"
     )
   });
 
@@ -2889,7 +2982,10 @@ pub fn flags_from_vec_with_initial_cwd(
         // only works in tests; we need the real env var reading here)
         apply_node_options(&mut flags);
 
-        // For completions, fall back to clap to generate real scripts
+        // For help and completions, fall back to clap for proper output
+        if matches!(flags.subcommand, DenoSubcommand::Help(_)) {
+          return flags_from_vec_clap(args, initial_cwd);
+        }
         if matches!(
           flags.subcommand,
           DenoSubcommand::Completions(CompletionsFlags::Static(ref b)) if b.is_empty()
