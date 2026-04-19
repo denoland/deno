@@ -723,8 +723,8 @@ async fn resolve_flags_and_init(
   let mut flags =
     match flags_from_vec_with_initial_cwd(args, initial_cwd.clone()) {
       Ok(flags) => flags,
-      Err(err @ clap::Error { .. })
-        if err.kind() == clap::error::ErrorKind::DisplayVersion =>
+      Err(err)
+        if err.kind() == args::FlagsErrorKind::DisplayVersion =>
       {
         // Ignore results to avoid BrokenPipe errors.
         let _ = err.print();

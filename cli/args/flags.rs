@@ -23,7 +23,6 @@ use clap::Command;
 use clap::ValueHint;
 use clap::builder::FalseyValueParser;
 use clap::builder::styling::AnsiColor;
-use clap::error::ErrorKind;
 use clap::value_parser;
 use clap_complete::CompletionCandidate;
 use clap_complete::engine::SubcommandCandidates;
@@ -69,6 +68,79 @@ use serde::Serialize;
 use super::flags_net;
 use crate::util::env::resolve_cwd;
 use crate::util::fs::canonicalize_path;
+
+// ============================================================
+// Error type for flag parsing (replaces clap::Error)
+// ============================================================
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FlagsErrorKind {
+  DisplayVersion,
+  DisplayHelp,
+  UnknownArgument,
+  MissingRequiredArgument,
+  InvalidValue,
+  ArgumentConflict,
+  Other,
+}
+
+#[derive(Debug)]
+pub struct FlagsError {
+  kind: FlagsErrorKind,
+  message: String,
+}
+
+impl FlagsError {
+  pub fn new(kind: FlagsErrorKind, message: impl Into<String>) -> Self {
+    Self {
+      kind,
+      message: message.into(),
+    }
+  }
+
+  pub fn kind(&self) -> FlagsErrorKind {
+    self.kind
+  }
+
+  pub fn print(&self) -> std::io::Result<()> {
+    use std::io::Write;
+    let mut stderr = std::io::stderr().lock();
+    write!(stderr, "{}", self.message)
+  }
+}
+
+impl std::fmt::Display for FlagsError {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    write!(f, "{}", self.message)
+  }
+}
+
+impl std::error::Error for FlagsError {}
+
+impl From<clap::Error> for FlagsError {
+  fn from(e: clap::Error) -> Self {
+    use clap::error::ErrorKind as ClapKind;
+    let kind = match e.kind() {
+      ClapKind::DisplayVersion => FlagsErrorKind::DisplayVersion,
+      ClapKind::DisplayHelp => FlagsErrorKind::DisplayHelp,
+      ClapKind::UnknownArgument => FlagsErrorKind::UnknownArgument,
+      ClapKind::MissingRequiredArgument => {
+        FlagsErrorKind::MissingRequiredArgument
+      }
+      ClapKind::InvalidValue => FlagsErrorKind::InvalidValue,
+      ClapKind::ArgumentConflict => {
+        FlagsErrorKind::ArgumentConflict
+      }
+      _ => FlagsErrorKind::Other,
+    };
+    Self {
+      kind,
+      message: e.to_string(),
+    }
+  }
+}
+
+// ============================================================
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub enum ConfigFlag {
@@ -818,9 +890,9 @@ impl TypeCheckMode {
 
 fn minutes_duration_or_date_parser(
   s: &str,
-) -> Result<NewestDependencyDate, clap::Error> {
+) -> Result<NewestDependencyDate, String> {
   deno_config::parse_minutes_duration_or_date(&sys_traits::impls::RealSys, s)
-    .map_err(|e| clap::Error::raw(clap::error::ErrorKind::InvalidValue, e))
+    .map_err(|e| e.to_string())
 }
 
 fn parse_packages_allowed_scripts(s: &str) -> Result<String, AnyError> {
@@ -1685,7 +1757,7 @@ static DENO_HELP: &str = cstr!(
 <y>Discord:</> https://discord.gg/deno
 ");
 
-pub fn flags_from_vec(args: Vec<OsString>) -> clap::error::Result<Flags> {
+pub fn flags_from_vec(args: Vec<OsString>) -> Result<Flags, FlagsError> {
   flags_from_vec_with_initial_cwd(args, None)
 }
 
@@ -2505,12 +2577,12 @@ fn convert_parser_flags(
   }
 }
 
-/// Helper to create clap errors from our validation code.
-fn make_clap_error(
-  kind: ErrorKind,
+/// Helper to create flags errors from our validation code.
+fn make_flags_error(
+  kind: FlagsErrorKind,
   message: impl std::fmt::Display,
-) -> clap::Error {
-  clap::Error::raw(kind, format!("{message}\n"))
+) -> FlagsError {
+  FlagsError::new(kind, format!("{message}\n"))
 }
 
 /// Validate converted flags and return an error if there are conflicts or
@@ -2519,7 +2591,7 @@ fn make_clap_error(
 fn validate_parser_flags(
   flags: &mut Flags,
   string_args: &[String],
-) -> clap::error::Result<()> {
+) -> Result<(), FlagsError> {
   let has_arg = |name: &str| {
     string_args.iter().any(|a| {
       a == name || a.starts_with(&format!("{name}="))
@@ -2528,16 +2600,16 @@ fn validate_parser_flags(
 
   // --no-check and --check conflict
   if has_arg("--no-check") && has_arg("--check") {
-    return Err(make_clap_error(
-      ErrorKind::ArgumentConflict,
+    return Err(make_flags_error(
+      FlagsErrorKind::ArgumentConflict,
       "error: the argument '--no-check' cannot be used with '--check'",
     ));
   }
 
   // --config and --no-config conflict
   if has_arg("--no-config") && (has_arg("--config") || has_arg("-c")) {
-    return Err(make_clap_error(
-      ErrorKind::ArgumentConflict,
+    return Err(make_flags_error(
+      FlagsErrorKind::ArgumentConflict,
       "error: the argument '--no-config' cannot be used with '--config <FILE>'",
     ));
   }
@@ -2546,8 +2618,8 @@ fn validate_parser_flags(
   if (has_arg("--hmr") || has_arg("--watch-hmr") || has_arg("--unstable-hmr"))
     && has_arg("--watch")
   {
-    return Err(make_clap_error(
-      ErrorKind::ArgumentConflict,
+    return Err(make_flags_error(
+      FlagsErrorKind::ArgumentConflict,
       "error: the argument '--watch-hmr' cannot be used with '--watch'",
     ));
   }
@@ -2555,8 +2627,8 @@ fn validate_parser_flags(
   // Validate --location URL scheme
   if let Some(ref url) = flags.location {
     if !["http", "https"].contains(&url.scheme()) {
-      return Err(make_clap_error(
-        ErrorKind::InvalidValue,
+      return Err(make_flags_error(
+        FlagsErrorKind::InvalidValue,
         "error: invalid value for '--location <HREF>': Expected protocol \"http\" or \"https\"",
       ));
     }
@@ -2566,16 +2638,16 @@ fn validate_parser_flags(
   match &flags.subcommand {
     DenoSubcommand::Add(add_flags) => {
       if add_flags.packages.is_empty() {
-        return Err(make_clap_error(
-          ErrorKind::MissingRequiredArgument,
+        return Err(make_flags_error(
+          FlagsErrorKind::MissingRequiredArgument,
           "error: one or more packages are required",
         ));
       }
     }
     DenoSubcommand::Remove(remove_flags) => {
       if remove_flags.packages.is_empty() {
-        return Err(make_clap_error(
-          ErrorKind::MissingRequiredArgument,
+        return Err(make_flags_error(
+          FlagsErrorKind::MissingRequiredArgument,
           "error: one or more packages are required",
         ));
       }
@@ -2584,8 +2656,8 @@ fn validate_parser_flags(
       InstallFlagsLocal::Add(add_flags),
     )) => {
       if add_flags.packages.is_empty() {
-        return Err(make_clap_error(
-          ErrorKind::MissingRequiredArgument,
+        return Err(make_flags_error(
+          FlagsErrorKind::MissingRequiredArgument,
           "error: one or more packages are required",
         ));
       }
@@ -2594,16 +2666,16 @@ fn validate_parser_flags(
       match &uninstall_flags.kind {
         UninstallKind::Local(remove_flags) => {
           if remove_flags.packages.is_empty() {
-            return Err(make_clap_error(
-              ErrorKind::MissingRequiredArgument,
+            return Err(make_flags_error(
+              FlagsErrorKind::MissingRequiredArgument,
               "error: one or more packages are required",
             ));
           }
         }
         UninstallKind::Global(g) => {
           if g.name.is_empty() {
-            return Err(make_clap_error(
-              ErrorKind::MissingRequiredArgument,
+            return Err(make_flags_error(
+              FlagsErrorKind::MissingRequiredArgument,
               "error: package name is required",
             ));
           }
@@ -2613,15 +2685,15 @@ fn validate_parser_flags(
     DenoSubcommand::Check(check_flags) => {
       // --doc and --doc-only are mutually exclusive
       if check_flags.doc && check_flags.doc_only {
-        return Err(make_clap_error(
-          ErrorKind::ArgumentConflict,
+        return Err(make_flags_error(
+          FlagsErrorKind::ArgumentConflict,
           "error: the argument '--doc' cannot be used with '--doc-only'",
         ));
       }
       // --all/--remote conflicts with --no-remote
       if flags.type_check_mode == TypeCheckMode::All && flags.no_remote {
-        return Err(make_clap_error(
-          ErrorKind::ArgumentConflict,
+        return Err(make_flags_error(
+          FlagsErrorKind::ArgumentConflict,
           "error: the argument '--all' cannot be used with '--no-remote'",
         ));
       }
@@ -2629,8 +2701,8 @@ fn validate_parser_flags(
     DenoSubcommand::Test(_test_flags) => {
       // --fail-fast=0 is invalid (NonZeroUsize)
       if has_arg("--fail-fast=0") {
-        return Err(make_clap_error(
-          ErrorKind::InvalidValue,
+        return Err(make_flags_error(
+          FlagsErrorKind::InvalidValue,
           "error: invalid value '0' for '--fail-fast <N>': 0 is not allowed",
         ));
       }
@@ -2638,15 +2710,15 @@ fn validate_parser_flags(
     DenoSubcommand::Upgrade(upgrade_flags) => {
       // --rc and --canary conflict
       if upgrade_flags.release_candidate && upgrade_flags.canary {
-        return Err(make_clap_error(
-          ErrorKind::ArgumentConflict,
+        return Err(make_flags_error(
+          FlagsErrorKind::ArgumentConflict,
           "error: the argument '--rc' cannot be used with '--canary'",
         ));
       }
       // --rc and --version conflict
       if upgrade_flags.release_candidate && has_arg("--version") {
-        return Err(make_clap_error(
-          ErrorKind::ArgumentConflict,
+        return Err(make_flags_error(
+          FlagsErrorKind::ArgumentConflict,
           "error: the argument '--rc' cannot be used with '--version'",
         ));
       }
@@ -2654,8 +2726,8 @@ fn validate_parser_flags(
     DenoSubcommand::Fmt(fmt_flags) => {
       // --ext requires files
       if flags.ext.is_some() && fmt_flags.files.include.is_empty() {
-        return Err(make_clap_error(
-          ErrorKind::MissingRequiredArgument,
+        return Err(make_flags_error(
+          FlagsErrorKind::MissingRequiredArgument,
           "error: the following required arguments were not provided:\n  <files>...\n\ntip: '--ext' requires files to be specified",
         ));
       }
@@ -2668,8 +2740,8 @@ fn validate_parser_flags(
           DocSourceFileFlag::Builtin => false,
         };
         if !has_files {
-          return Err(make_clap_error(
-            ErrorKind::MissingRequiredArgument,
+          return Err(make_flags_error(
+            FlagsErrorKind::MissingRequiredArgument,
             "error: the following required arguments were not provided:\n  <source_file>\n\ntip: '--html' requires source files to be specified",
           ));
         }
@@ -2678,8 +2750,8 @@ fn validate_parser_flags(
       if doc_flags.html.is_some() {
         if let Some(ref html) = doc_flags.html {
           if html.output.is_empty() {
-            return Err(make_clap_error(
-              ErrorKind::MissingRequiredArgument,
+            return Err(make_flags_error(
+              FlagsErrorKind::MissingRequiredArgument,
               "error: the following required arguments were not provided:\n  --output <path>",
             ));
           }
@@ -2692,8 +2764,8 @@ fn validate_parser_flags(
           DocSourceFileFlag::Builtin => false,
         };
         if !has_files {
-          return Err(make_clap_error(
-            ErrorKind::MissingRequiredArgument,
+          return Err(make_flags_error(
+            FlagsErrorKind::MissingRequiredArgument,
             "error: the following required arguments were not provided:\n  <source_file>\n\ntip: '--lint' requires source files to be specified",
           ));
         }
@@ -2709,8 +2781,8 @@ fn validate_parser_flags(
       if is_create {
         // --jsr and --npm conflict
         if has_arg("--jsr") && has_arg("--npm") {
-          return Err(make_clap_error(
-            ErrorKind::ArgumentConflict,
+          return Err(make_flags_error(
+            FlagsErrorKind::ArgumentConflict,
             "error: the argument '--jsr' cannot be used with '--npm'",
           ));
         }
@@ -2718,8 +2790,8 @@ fn validate_parser_flags(
         if has_arg("--jsr") {
           if let Some(ref pkg) = init_flags.package {
             if pkg.starts_with("npm:") {
-              return Err(make_clap_error(
-                ErrorKind::InvalidValue,
+              return Err(make_flags_error(
+                FlagsErrorKind::InvalidValue,
                 "error: cannot use '--jsr' with an npm: specifier",
               ));
             }
@@ -2729,8 +2801,8 @@ fn validate_parser_flags(
         if has_arg("--npm") {
           if let Some(ref pkg) = init_flags.package {
             if pkg.starts_with("jsr:") {
-              return Err(make_clap_error(
-                ErrorKind::InvalidValue,
+              return Err(make_flags_error(
+                FlagsErrorKind::InvalidValue,
                 "error: cannot use '--npm' with a jsr: specifier",
               ));
             }
@@ -2740,24 +2812,24 @@ fn validate_parser_flags(
         if init_flags.package.is_none()
           || init_flags.package.as_deref() == Some("")
         {
-          return Err(make_clap_error(
-            ErrorKind::MissingRequiredArgument,
+          return Err(make_flags_error(
+            FlagsErrorKind::MissingRequiredArgument,
             "error: the following required arguments were not provided:\n  <PACKAGE>",
           ));
         }
         // Package must have npm: or jsr: prefix with a non-empty name
         if let Some(ref pkg) = init_flags.package {
           if !pkg.starts_with("npm:") && !pkg.starts_with("jsr:") {
-            return Err(make_clap_error(
-              ErrorKind::InvalidValue,
+            return Err(make_flags_error(
+              FlagsErrorKind::InvalidValue,
               "Missing `jsr:` or `npm:` prefix. For example: `deno create npm:vite`.",
             ));
           }
           // Check for empty package name after prefix
           let name = pkg.strip_prefix("npm:").or_else(|| pkg.strip_prefix("jsr:")).unwrap_or(pkg);
           if name.is_empty() {
-            return Err(make_clap_error(
-              ErrorKind::InvalidValue,
+            return Err(make_flags_error(
+              FlagsErrorKind::InvalidValue,
               "error: empty package name after prefix",
             ));
           }
@@ -2769,8 +2841,8 @@ fn validate_parser_flags(
         if !init_flags.package_args.is_empty() {
           let has_double_dash = string_args.iter().any(|a| a == "--");
           if !has_double_dash {
-            return Err(make_clap_error(
-              ErrorKind::InvalidValue,
+            return Err(make_flags_error(
+              FlagsErrorKind::InvalidValue,
               "error: unexpected arguments after package name; use '--' to pass arguments to the create package",
             ));
           }
@@ -2782,21 +2854,21 @@ fn validate_parser_flags(
 
         // --jsr conflicts with --npm, --lib, --serve, --empty
         if has_jsr && has_npm {
-          return Err(make_clap_error(
-            ErrorKind::ArgumentConflict,
+          return Err(make_flags_error(
+            FlagsErrorKind::ArgumentConflict,
             "error: the argument '--jsr' cannot be used with '--npm'",
           ));
         }
         if has_jsr && init_flags.lib {
-          return Err(make_clap_error(
-            ErrorKind::ArgumentConflict,
+          return Err(make_flags_error(
+            FlagsErrorKind::ArgumentConflict,
             "error: the argument '--jsr' cannot be used with '--lib'",
           ));
         }
         // --jsr without a package name
         if has_jsr && init_flags.package.is_none() {
-          return Err(make_clap_error(
-            ErrorKind::MissingRequiredArgument,
+          return Err(make_flags_error(
+            FlagsErrorKind::MissingRequiredArgument,
             "error: '--jsr' requires a package name",
           ));
         }
@@ -2804,14 +2876,14 @@ fn validate_parser_flags(
         // --lib/--serve conflict with --npm
         if init_flags.package.is_some() && has_npm {
           if init_flags.lib {
-            return Err(make_clap_error(
-              ErrorKind::ArgumentConflict,
+            return Err(make_flags_error(
+              FlagsErrorKind::ArgumentConflict,
               "error: the argument '--lib' cannot be used with '--npm'",
             ));
           }
           if init_flags.serve {
-            return Err(make_clap_error(
-              ErrorKind::ArgumentConflict,
+            return Err(make_flags_error(
+              FlagsErrorKind::ArgumentConflict,
               "error: the argument '--serve' cannot be used with '--npm'",
             ));
           }
@@ -2821,8 +2893,8 @@ fn validate_parser_flags(
     DenoSubcommand::Task(task_flags) => {
       // --eval requires a task expression
       if task_flags.eval && task_flags.task.is_none() {
-        return Err(make_clap_error(
-          ErrorKind::MissingRequiredArgument,
+        return Err(make_flags_error(
+          FlagsErrorKind::MissingRequiredArgument,
           "error: '--eval' requires a task expression",
         ));
       }
@@ -2830,22 +2902,22 @@ fn validate_parser_flags(
     DenoSubcommand::Jupyter(jupyter_flags) => {
       // --install and --conn conflict
       if jupyter_flags.install && jupyter_flags.conn_file.is_some() {
-        return Err(make_clap_error(
-          ErrorKind::ArgumentConflict,
+        return Err(make_flags_error(
+          FlagsErrorKind::ArgumentConflict,
           "error: the argument '--install' cannot be used with '--conn'",
         ));
       }
       // --install and --kernel conflict
       if jupyter_flags.install && jupyter_flags.kernel {
-        return Err(make_clap_error(
-          ErrorKind::ArgumentConflict,
+        return Err(make_flags_error(
+          FlagsErrorKind::ArgumentConflict,
           "error: the argument '--install' cannot be used with '--kernel'",
         ));
       }
       // --kernel requires --conn
       if jupyter_flags.kernel && jupyter_flags.conn_file.is_none() {
-        return Err(make_clap_error(
-          ErrorKind::MissingRequiredArgument,
+        return Err(make_flags_error(
+          FlagsErrorKind::MissingRequiredArgument,
           "error: '--kernel' requires '--conn <FILE>'",
         ));
       }
@@ -2854,22 +2926,22 @@ fn validate_parser_flags(
         && !jupyter_flags.install
         && !jupyter_flags.kernel
       {
-        return Err(make_clap_error(
-          ErrorKind::ArgumentConflict,
+        return Err(make_flags_error(
+          FlagsErrorKind::ArgumentConflict,
           "error: '--display' requires '--install'",
         ));
       }
       // --kernel and --display conflict
       if jupyter_flags.kernel && jupyter_flags.display.is_some() {
-        return Err(make_clap_error(
-          ErrorKind::ArgumentConflict,
+        return Err(make_flags_error(
+          FlagsErrorKind::ArgumentConflict,
           "error: the argument '--kernel' cannot be used with '--display'",
         ));
       }
       // --force requires --install
       if jupyter_flags.force && !jupyter_flags.install {
-        return Err(make_clap_error(
-          ErrorKind::ArgumentConflict,
+        return Err(make_flags_error(
+          FlagsErrorKind::ArgumentConflict,
           "error: '--force' requires '--install'",
         ));
       }
@@ -2893,7 +2965,7 @@ fn validate_parser_flags(
 fn validate_allow_scripts(
   _flags: &Flags,
   string_args: &[String],
-) -> clap::error::Result<()> {
+) -> Result<(), FlagsError> {
   // Find the raw --allow-scripts=... value from args
   for arg in string_args {
     if let Some(value) = arg.strip_prefix("--allow-scripts=") {
@@ -2904,8 +2976,8 @@ fn validate_allow_scripts(
           continue;
         }
         if !pkg_str.starts_with("npm:") {
-          return Err(make_clap_error(
-            ErrorKind::InvalidValue,
+          return Err(make_flags_error(
+            FlagsErrorKind::InvalidValue,
             format!(
               "Invalid package for --allow-scripts: '{}'. An 'npm:' specifier is required",
               pkg_str
@@ -2914,11 +2986,11 @@ fn validate_allow_scripts(
         }
         // Check for tags (e.g., npm:foo@next)
         let dep = JsrDepPackageReq::from_str_loose(pkg_str).map_err(|e| {
-          make_clap_error(ErrorKind::InvalidValue, e)
+          make_flags_error(FlagsErrorKind::InvalidValue, e)
         })?;
         if dep.req.version_req.tag().is_some() {
-          return Err(make_clap_error(
-            ErrorKind::InvalidValue,
+          return Err(make_flags_error(
+            FlagsErrorKind::InvalidValue,
             format!(
               "Tags are not supported in --allow-scripts: {}",
               pkg_str
@@ -2954,7 +3026,7 @@ fn handle_dx_shim(args: Vec<OsString>) -> Vec<OsString> {
 pub fn flags_from_vec_with_initial_cwd(
   args: Vec<OsString>,
   initial_cwd: Option<PathBuf>,
-) -> clap::error::Result<Flags> {
+) -> Result<Flags, FlagsError> {
   // Handle dx/denox/dnx shim
   let args = handle_dx_shim(args);
 
@@ -2999,7 +3071,13 @@ pub fn flags_from_vec_with_initial_cwd(
       Err(e) => {
         match e.kind {
           deno_cli_parser::CliErrorKind::DisplayVersion => {
-            return Err(clap::Error::new(ErrorKind::DisplayVersion));
+            return Err(FlagsError::new(
+              FlagsErrorKind::DisplayVersion,
+              format!(
+                "deno {}\n",
+                DENO_VERSION_INFO.deno,
+              ),
+            ));
           }
           deno_cli_parser::CliErrorKind::DisplayHelp => {
             // Fall back to clap for proper help output (converts to
@@ -3024,13 +3102,20 @@ pub fn flags_from_vec_with_initial_cwd(
 fn flags_from_vec_clap(
   args: Vec<OsString>,
   initial_cwd: Option<PathBuf>,
+) -> Result<Flags, FlagsError> {
+  flags_from_vec_clap_inner(args, initial_cwd).map_err(FlagsError::from)
+}
+
+fn flags_from_vec_clap_inner(
+  args: Vec<OsString>,
+  initial_cwd: Option<PathBuf>,
 ) -> clap::error::Result<Flags> {
   let mut app = clap_root();
   let mut matches =
     app
       .try_get_matches_from_mut(&args)
       .map_err(|mut e| match e.kind() {
-        ErrorKind::MissingRequiredArgument => {
+        clap::error::ErrorKind::MissingRequiredArgument => {
           if let Some(clap::error::ContextValue::Strings(s)) =
             e.get(clap::error::ContextKind::InvalidArg)
             && s.len() == 1
@@ -3162,7 +3247,7 @@ fn flags_from_vec_clap(
           app.find_subcommand_mut(&subcommand).unwrap().render_usage();
 
         let mut err =
-          clap::error::Error::new(ErrorKind::UnknownArgument).with_cmd(&app);
+          clap::error::Error::new(clap::error::ErrorKind::UnknownArgument).with_cmd(&app);
         err.insert(
           clap::error::ContextKind::InvalidArg,
           clap::error::ContextValue::String(arg.clone()),
@@ -9489,12 +9574,12 @@ mod tests {
     let r = flags_from_vec(svec!["deno", "--version"]);
     assert_eq!(
       r.unwrap_err().kind(),
-      clap::error::ErrorKind::DisplayVersion
+      FlagsErrorKind::DisplayVersion
     );
     let r = flags_from_vec(svec!["deno", "-V"]);
     assert_eq!(
       r.unwrap_err().kind(),
-      clap::error::ErrorKind::DisplayVersion
+      FlagsErrorKind::DisplayVersion
     );
   }
 
@@ -10900,7 +10985,7 @@ mod tests {
     ]);
     assert_eq!(
       r.unwrap_err().kind(),
-      clap::error::ErrorKind::ArgumentConflict
+      FlagsErrorKind::ArgumentConflict
     );
 
     for all_flag in ["--remote", "--all"] {
@@ -10929,7 +11014,7 @@ mod tests {
       ]);
       assert_eq!(
         r.unwrap_err().kind(),
-        clap::error::ErrorKind::ArgumentConflict
+        FlagsErrorKind::ArgumentConflict
       );
     }
 
@@ -14552,7 +14637,7 @@ mod tests {
     let r = flags_from_vec(svec!["deno", "task", "--no-config"]);
     assert_eq!(
       r.unwrap_err().kind(),
-      clap::error::ErrorKind::UnknownArgument
+      FlagsErrorKind::UnknownArgument
     );
   }
 
