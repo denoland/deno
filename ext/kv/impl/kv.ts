@@ -69,6 +69,10 @@ function base64urlEncode(data: Uint8Array): string {
 }
 
 function base64urlDecode(str: string): Uint8Array {
+  // Count padding to determine exact byte count
+  let padding = 0;
+  if (str.endsWith("==")) padding = 2;
+  else if (str.endsWith("=")) padding = 1;
   const s = str.replace(/=+$/, "");
   const lookup = new Uint8Array(128);
   for (let i = 0; i < BASE64URL.length; i++) {
@@ -82,10 +86,12 @@ function base64urlDecode(str: string): Uint8Array {
     const d = lookup[s.charCodeAt(i + 3)] ?? 0;
     const n = (a << 18) | (b << 12) | (c << 6) | d;
     bytes.push((n >> 16) & 0xff);
-    if (i + 2 < s.length) bytes.push((n >> 8) & 0xff);
-    if (i + 3 < s.length) bytes.push(n & 0xff);
+    bytes.push((n >> 8) & 0xff);
+    bytes.push(n & 0xff);
   }
-  return new Uint8Array(bytes);
+  // Trim excess bytes from padding
+  const exactLength = bytes.length - padding;
+  return new Uint8Array(bytes.slice(0, exactLength));
 }
 
 // ---------------------------------------------------------------------------
@@ -218,9 +224,12 @@ function kvValueToProto(
 
 // Config limits (matching the Rust KvConfig defaults)
 const MAX_WRITE_KEY_SIZE = 2048;
+const MAX_READ_KEY_SIZE = 2049;
 const MAX_VALUE_SIZE = 65536;
 const MAX_CHECKS = 100;
 const MAX_MUTATIONS = 1000;
+const MAX_READ_RANGES = 10;
+const MAX_READ_ENTRIES = 1000;
 const MAX_TOTAL_MUTATION_SIZE = 819200;
 const MAX_TOTAL_KEY_SIZE = 81920;
 
@@ -241,6 +250,14 @@ function validateWriteKey(encoded: Uint8Array): void {
   if (encoded.length > MAX_WRITE_KEY_SIZE) {
     throw new TypeError(
       `Key too large for write (max ${MAX_WRITE_KEY_SIZE} bytes)`,
+    );
+  }
+}
+
+function validateReadKey(encoded: Uint8Array): void {
+  if (encoded.length > MAX_READ_KEY_SIZE) {
+    throw new TypeError(
+      `Key too large for read (max ${MAX_READ_KEY_SIZE} bytes)`,
     );
   }
 }
@@ -703,6 +720,16 @@ class KvU64 {
   get [Symbol.toStringTag](): string {
     return "Deno.KvU64";
   }
+
+  [Symbol.for("Deno.privateCustomInspect")](
+    inspect: (v: unknown, opts?: unknown) => string,
+    inspectOptions: unknown,
+  ): string {
+    return inspect(Object(this.value), inspectOptions).replace(
+      "BigInt",
+      "Deno.KvU64",
+    );
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -779,9 +806,11 @@ class Kv {
     opts?: { consistency?: Deno.KvConsistencyLevel },
   ): Promise<Deno.KvEntryMaybe<unknown>> {
     const encodedKey = encodeKvKey(key);
+    validateReadKey(encodedKey);
     const endKey = new Uint8Array(encodedKey.length + 1);
     endKey.set(encodedKey);
     endKey[encodedKey.length] = 0;
+    validateReadKey(endKey);
 
     const [entries] = await this.#backend.snapshotRead(
       [{ start: encodedKey, end: endKey, limit: 1, reverse: false }],
@@ -804,8 +833,12 @@ class Kv {
     keys: Deno.KvKey[],
     opts?: { consistency?: Deno.KvConsistencyLevel },
   ): Promise<Deno.KvEntryMaybe<unknown>[]> {
+    if (keys.length > MAX_READ_RANGES) {
+      throw new TypeError(`Too many ranges (max ${MAX_READ_RANGES})`);
+    }
     const ranges: ReadRange[] = keys.map((key) => {
       const encodedKey = encodeKvKey(key);
+      validateReadKey(encodedKey);
       const endKey = new Uint8Array(encodedKey.length + 1);
       endKey.set(encodedKey);
       endKey[encodedKey.length] = 0;
@@ -885,6 +918,9 @@ class Kv {
     let batchSize = options.batchSize ?? (options.limit ?? 100);
     if (batchSize <= 0) throw new Error("batchSize must be positive");
     if (options.batchSize === undefined && batchSize > 500) batchSize = 500;
+    if (batchSize > MAX_READ_ENTRIES) {
+      throw new TypeError(`Too many entries (max ${MAX_READ_ENTRIES})`);
+    }
 
     const backend = this.#backend;
     const pullBatch = async (
@@ -962,11 +998,18 @@ class Kv {
     if (this.#isClosed) throw new Error("Queue already closed");
 
     while (!this.#isClosed) {
-      const next = await this.#backend.dequeueNextMessage();
+      let next: { payload: Uint8Array; id: string } | null;
+      try {
+        next = await this.#backend.dequeueNextMessage();
+      } catch (e) {
+        // DB may have been closed
+        if (this.#isClosed) break;
+        throw e;
+      }
       if (next === null) {
         if (this.#isClosed) break;
         // Poll interval when no messages
-        await new Promise((r) => setTimeout(r, 1000));
+        await new Promise((r) => setTimeout(r, 100));
         continue;
       }
 
@@ -985,8 +1028,12 @@ class Kv {
         success = true;
       } catch (error) {
         console.error("Exception in queue handler", error);
-      } finally {
+      }
+      try {
         await this.#backend.finishMessage(next.id, success);
+      } catch {
+        // DB may have been closed during message processing
+        if (this.#isClosed) break;
       }
     }
   }
@@ -1094,10 +1141,11 @@ class AtomicOperation {
       const encodedKey = encodeKvKey(check.key);
       validateWriteKey(encodedKey);
       let versionstamp: Uint8Array | null = null;
-      if (check.versionstamp) {
+      if (check.versionstamp !== null && check.versionstamp !== undefined) {
         if (
           typeof check.versionstamp !== "string" ||
-          check.versionstamp.length !== 20
+          check.versionstamp.length !== 20 ||
+          !/^[0-9a-f]{20}$/.test(check.versionstamp)
         ) {
           throw new TypeError("invalid versionstamp");
         }
@@ -1116,15 +1164,24 @@ class AtomicOperation {
 
       switch (m.type) {
         case "delete":
+          if (m.value) {
+            throw new TypeError("Invalid mutation 'delete' with value");
+          }
           kind = { type: "delete" };
           break;
         case "set":
+          if (!("value" in m)) {
+            throw new TypeError("Invalid mutation 'set' without value");
+          }
           kind = {
             type: "set",
             value: rawValueToKvValue(serializeValue(m.value)),
           };
           break;
         case "sum":
+          if (!("value" in m)) {
+            throw new TypeError("Invalid mutation 'sum' without value");
+          }
           kind = {
             type: "sum",
             value: rawValueToKvValue(serializeValue(m.value)),
@@ -1134,12 +1191,18 @@ class AtomicOperation {
           };
           break;
         case "min":
+          if (!("value" in m)) {
+            throw new TypeError("Invalid mutation 'min' without value");
+          }
           kind = {
             type: "min",
             value: rawValueToKvValue(serializeValue(m.value)),
           };
           break;
         case "max":
+          if (!("value" in m)) {
+            throw new TypeError("Invalid mutation 'max' without value");
+          }
           kind = {
             type: "max",
             value: rawValueToKvValue(serializeValue(m.value)),
@@ -1476,12 +1539,18 @@ function openKv(path?: string): Promise<Kv> {
     backend = new RemoteKvBackend(resolvedPath, accessToken);
   } else {
     // Local SQLite backend
-    let dbPath: string;
-    if (resolvedPath === "" || resolvedPath === ":memory:") {
-      dbPath = ":memory:";
-    } else {
-      dbPath = resolvedPath;
+    if (resolvedPath === "") {
+      throw new TypeError("Filename cannot be empty");
     }
+    if (
+      resolvedPath.startsWith(":") && resolvedPath !== ":memory:" &&
+      !resolvedPath.startsWith("./") && !resolvedPath.startsWith("../")
+    ) {
+      throw new TypeError(
+        "Filename cannot start with ':' unless prefixed with './'",
+      );
+    }
+    const dbPath = resolvedPath;
     backend = new SqliteKvBackend(dbPath);
   }
 

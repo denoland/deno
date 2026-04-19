@@ -608,6 +608,18 @@ export class SqliteBackend {
   ): void {
     // For U64 operands, use wrapping addition (matching the Rust backend)
     if (operand.kind === "u64") {
+      // Check if existing value is a different type
+      const row = this.#stmtPointGetValueOnly!.get(key) as
+        | { v: Uint8Array; v_encoding: number }
+        | undefined;
+      if (row) {
+        const existing = decodeValue(asUint8Array(row.v), row.v_encoding);
+        if (existing.kind !== "u64") {
+          throw new TypeError(
+            `Failed to perform 'sum' mutation on a non-U64 value in the database`,
+          );
+        }
+      }
       this.#applyLE64Mutation(
         key,
         "sum",
@@ -618,9 +630,7 @@ export class SqliteBackend {
       return;
     }
 
-    // V8 sum: requires deserializing V8 values (BigInt/Number types)
-    // This is a complex operation that involves V8 value serialization.
-    // For now, handle the basic case where the key doesn't exist (set the operand).
+    // V8 sum (Number/BigInt operand): check if existing value is incompatible
     const row = this.#stmtPointGetValueOnly!.get(key) as
       | { v: Uint8Array; v_encoding: number }
       | undefined;
@@ -638,9 +648,15 @@ export class SqliteBackend {
       return;
     }
 
-    // V8 sum with existing value is not supported in this JS backend.
-    // This would require a V8 value serializer/deserializer to handle
-    // BigInt and Number types properly.
+    const existing = decodeValue(asUint8Array(row.v), row.v_encoding);
+    if (existing.kind === "u64") {
+      // Existing is KvU64 but operand is V8 (Number/BigInt) - type mismatch
+      throw new TypeError(
+        "Cannot sum KvU64 with Number",
+      );
+    }
+
+    // Both are V8: would require V8 value deserialization
     throw new TypeError(
       "V8 sum mutation on existing values is not yet supported in the JS backend",
     );
