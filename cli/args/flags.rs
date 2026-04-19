@@ -659,7 +659,7 @@ pub struct PublishFlags {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct HelpFlags {
-  pub help: clap::builder::StyledStr,
+  pub help: String,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -2460,7 +2460,7 @@ fn convert_subcommand(
       set_version: f.set_version.clone(),
     }),
     Src::Help(f) => DenoSubcommand::Help(HelpFlags {
-      help: clap::builder::StyledStr::from(f.help.clone()),
+      help: f.help.clone(),
     }),
     Src::X(f) => {
       use deno_cli_parser::flags::XFlagsKind as SrcKind;
@@ -3441,7 +3441,7 @@ fn help_parse(flags: &mut Flags, mut subcommand: Command) {
   }
 
   flags.subcommand = DenoSubcommand::Help(HelpFlags {
-    help: subcommand.render_help(),
+    help: subcommand.render_help().to_string(),
   });
 }
 

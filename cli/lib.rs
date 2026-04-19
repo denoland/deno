@@ -474,7 +474,7 @@ async fn run_subcommand(
         },
       );
 
-      match stream.write_all(help_flags.help.ansi().to_string().as_bytes()) {
+      match stream.write_all(help_flags.help.as_bytes()) {
         Ok(()) => Ok(()),
         Err(e) => match e.kind() {
           std::io::ErrorKind::BrokenPipe => Ok(()),
