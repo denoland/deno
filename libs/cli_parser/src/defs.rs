@@ -1698,6 +1698,160 @@ pub static VENDOR_SUBCOMMAND: CommandDef = CommandDef {
     passthrough: false,
 };
 
+pub static BUNDLE_SUBCOMMAND: CommandDef = CommandDef {
+    name: "bundle",
+    about: "Output a single JavaScript file with all dependencies",
+    aliases: &[],
+    args: &[
+        ArgDef::new("file")
+            .positional()
+            .action(ArgAction::Append)
+            .num_args(NumArgs::OneOrMore),
+        ArgDef::new("output")
+            .short('o')
+            .long("output")
+            .action(ArgAction::Set)
+            .num_args(NumArgs::Exact(1)),
+        ArgDef::new("outdir")
+            .long("outdir")
+            .action(ArgAction::Set)
+            .num_args(NumArgs::Exact(1)),
+        ArgDef::new("format")
+            .long("format")
+            .action(ArgAction::Set)
+            .num_args(NumArgs::Exact(1))
+            .default_value("esm"),
+        ArgDef::new("packages")
+            .long("packages")
+            .action(ArgAction::Set)
+            .num_args(NumArgs::Exact(1))
+            .default_value("bundle"),
+        ArgDef::new("platform")
+            .long("platform")
+            .action(ArgAction::Set)
+            .num_args(NumArgs::Exact(1))
+            .default_value("deno"),
+        ArgDef::new("sourcemap")
+            .long("sourcemap")
+            .action(ArgAction::Set)
+            .num_args(NumArgs::Exact(1)),
+        ArgDef::new("external")
+            .long("external")
+            .action(ArgAction::Append)
+            .num_args(NumArgs::ZeroOrMore),
+        ArgDef::new("watch")
+            .long("watch")
+            .set_true(),
+        ArgDef::new("minify")
+            .long("minify")
+            .set_true(),
+        ArgDef::new("keep-names")
+            .long("keep-names")
+            .set_true(),
+        ArgDef::new("code-splitting")
+            .long("code-splitting")
+            .set_true(),
+        ArgDef::new("inline-imports")
+            .long("inline-imports")
+            .set_true(),
+    ],
+    arg_groups: &[COMPILE_ARGS, UNSTABLE_ARGS],
+    subcommands: &[],
+    default_subcommand: None,
+    trailing_var_arg: false,
+    passthrough: false,
+};
+
+pub static AUDIT_SUBCOMMAND: CommandDef = CommandDef {
+    name: "audit",
+    about: "Audit currently installed dependencies",
+    aliases: &[],
+    args: &[
+        ArgDef::new("level")
+            .long("level")
+            .long_aliases(&["audit-level", "severity"])
+            .action(ArgAction::Set)
+            .num_args(NumArgs::Exact(1))
+            .default_value("low"),
+        ArgDef::new("ignore-unfixable")
+            .long("ignore-unfixable")
+            .set_true(),
+        ArgDef::new("ignore-registry-errors")
+            .long("ignore-registry-errors")
+            .set_true(),
+        ArgDef::new("socket")
+            .long("socket")
+            .set_true(),
+        ArgDef::new("ignore")
+            .long("ignore")
+            .action(ArgAction::Append)
+            .num_args(NumArgs::ZeroOrMore)
+            .require_equals()
+            .value_delimiter(','),
+    ],
+    arg_groups: &[LOCK_ARGS],
+    subcommands: &[],
+    default_subcommand: None,
+    trailing_var_arg: false,
+    passthrough: false,
+};
+
+pub static X_SUBCOMMAND: CommandDef = CommandDef {
+    name: "x",
+    about: "Execute a binary from npm or jsr, like npx",
+    aliases: &[],
+    args: &[
+        ArgDef::new("script_arg")
+            .positional()
+            .action(ArgAction::Append)
+            .num_args(NumArgs::ZeroOrMore)
+            .trailing(),
+        ArgDef::new("yes")
+            .short('y')
+            .long("yes")
+            .set_true(),
+        ArgDef::new("install-alias")
+            .long("install-alias")
+            .action(ArgAction::Set)
+            .num_args(NumArgs::Optional)
+            .default_value("dx"),
+    ],
+    arg_groups: &[COMPILE_ARGS, PERMISSION_ARGS, RUNTIME_MISC_ARGS, INSPECT_ARGS, UNSTABLE_ARGS],
+    subcommands: &[],
+    default_subcommand: None,
+    trailing_var_arg: true,
+    passthrough: false,
+};
+
+pub static JSON_REFERENCE_SUBCOMMAND: CommandDef = CommandDef {
+    name: "json_reference",
+    about: "",
+    aliases: &[],
+    args: &[],
+    arg_groups: &[],
+    subcommands: &[],
+    default_subcommand: None,
+    trailing_var_arg: false,
+    passthrough: false,
+};
+
+pub static HELP_SUBCOMMAND: CommandDef = CommandDef {
+    name: "help",
+    about: "Show help for a command",
+    aliases: &[],
+    args: &[
+        ArgDef::new("subcommand")
+            .positional()
+            .action(ArgAction::Set)
+            .num_args(NumArgs::Optional),
+    ],
+    arg_groups: &[],
+    subcommands: &[],
+    default_subcommand: None,
+    trailing_var_arg: false,
+    passthrough: false,
+};
+
 // ============================================================
 // Root command
 // ============================================================
@@ -1770,6 +1924,11 @@ pub static DENO_ROOT: CommandDef = CommandDef {
         APPROVE_SCRIPTS_SUBCOMMAND,
         LSP_SUBCOMMAND,
         VENDOR_SUBCOMMAND,
+        BUNDLE_SUBCOMMAND,
+        AUDIT_SUBCOMMAND,
+        X_SUBCOMMAND,
+        JSON_REFERENCE_SUBCOMMAND,
+        HELP_SUBCOMMAND,
     ],
     default_subcommand: Some("run"),
     trailing_var_arg: false,

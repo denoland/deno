@@ -561,6 +561,11 @@ pub struct HelpFlags {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub struct JSONReferenceFlags {
+  pub json: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CleanFlags {
   pub except_paths: Vec<String>,
   pub dry_run: bool,
@@ -699,6 +704,7 @@ pub enum DenoSubcommand {
   Publish(PublishFlags),
   Help(HelpFlags),
   X(XFlags),
+  JSONReference(JSONReferenceFlags),
 }
 
 impl Default for DenoSubcommand {

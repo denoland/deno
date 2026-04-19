@@ -2404,6 +2404,12 @@ fn convert_subcommand(
       };
       DenoSubcommand::X(XFlags { kind })
     }
+    Src::JSONReference(f) => {
+      // Parse the JSON string from our parser into serde_json::Value
+      let json = serde_json::from_str(&f.json)
+        .unwrap_or_else(|_| serde_json::Value::Null);
+      DenoSubcommand::JSONReference(JSONReferenceFlags { json })
+    }
   }
 }
 
@@ -2960,17 +2966,9 @@ pub fn flags_from_vec_with_initial_cwd(
     .collect();
 
   // Check if we need to fall back to clap for subcommands
-  // the custom parser doesn't handle (completions with shell generation,
-  // json_reference, bundle, audit, x).
-  // We detect this by checking the subcommand name in the args.
+  // that still require the clap Command tree.
   let needs_clap_fallback = string_args.iter().skip(1).any(|arg| {
-    // These subcommands need clap because they either:
-    // - require the clap Command tree (completions, json_reference)
-    // - aren't defined in our parser (bundle, audit, x)
-    matches!(
-      arg.as_str(),
-      "json_reference" | "bundle" | "audit" | "x" | "help"
-    )
+    matches!(arg.as_str(), "help")
   });
 
   if !needs_clap_fallback {

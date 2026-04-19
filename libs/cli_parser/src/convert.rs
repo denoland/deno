@@ -98,6 +98,11 @@ pub fn convert(result: ParseResult) -> Result<Flags, CliError> {
         Some("vendor") => vendor_parse(&mut flags),
         Some("deploy") => deploy_parse(&result, &mut flags, false),
         Some("sandbox") => deploy_parse(&result, &mut flags, true),
+        Some("bundle") => bundle_parse(&result, &mut flags),
+        Some("audit") => audit_parse(&result, &mut flags),
+        Some("x") => x_parse(&result, &mut flags),
+        Some("json_reference") => json_reference_parse(&mut flags),
+        Some("help") => help_subcommand_parse(&result, &mut flags),
         None => default_parse(&result, &mut flags)?,
         Some(other) => {
             return Err(CliError::new(
@@ -2288,4 +2293,254 @@ fn apply_node_options(flags: &mut Flags) {
             }
         }
     }
+}
+
+fn bundle_parse(result: &ParseResult, flags: &mut Flags) {
+    compile_args_without_check_parse(result, flags);
+    unstable_args_parse(result, flags);
+
+    let entrypoints = result
+        .get_many("file")
+        .map(|v| v.to_vec())
+        .unwrap_or_default();
+    let output_path = result.get_one("output").map(|s| s.to_string());
+    let output_dir = result.get_one("outdir").map(|s| s.to_string());
+    let format_str = result.get_one("format").unwrap_or("esm");
+    let format = match format_str {
+        "cjs" => BundleFormat::Cjs,
+        "iife" => BundleFormat::Iife,
+        _ => BundleFormat::Esm,
+    };
+    let packages_str = result.get_one("packages").unwrap_or("bundle");
+    let packages = match packages_str {
+        "external" => PackageHandling::External,
+        _ => PackageHandling::Bundle,
+    };
+    let platform_str = result.get_one("platform").unwrap_or("deno");
+    let platform = match platform_str {
+        "browser" => BundlePlatform::Browser,
+        _ => BundlePlatform::Deno,
+    };
+    let sourcemap = result.get_one("sourcemap").map(|s| match s {
+        "inline" => SourceMapType::Inline,
+        "external" => SourceMapType::External,
+        _ => SourceMapType::Linked,
+    });
+    let external = result
+        .get_many("external")
+        .map(|v| v.to_vec())
+        .unwrap_or_default();
+
+    flags.subcommand = DenoSubcommand::Bundle(BundleFlags {
+        entrypoints,
+        output_path,
+        output_dir,
+        external,
+        format,
+        packages,
+        platform,
+        sourcemap,
+        watch: result.get_bool("watch"),
+        minify: result.get_bool("minify"),
+        keep_names: result.get_bool("keep-names"),
+        code_splitting: result.get_bool("code-splitting"),
+        inline_imports: result.get_bool("inline-imports"),
+    });
+}
+
+fn audit_parse(result: &ParseResult, flags: &mut Flags) {
+    lock_args_parse(result, flags);
+
+    let severity = result
+        .get_one("level")
+        .unwrap_or("low")
+        .to_string();
+    let ignore_unfixable = result.get_bool("ignore-unfixable");
+    let ignore_registry_errors = result.get_bool("ignore-registry-errors");
+    let socket = result.get_bool("socket");
+    let ignore = result
+        .get_many("ignore")
+        .map(|v| v.to_vec())
+        .unwrap_or_default();
+
+    flags.subcommand = DenoSubcommand::Audit(AuditFlags {
+        severity,
+        dev: true,
+        prod: true,
+        optional: true,
+        ignore_registry_errors,
+        ignore_unfixable,
+        ignore,
+        socket,
+    });
+}
+
+fn x_parse(result: &ParseResult, flags: &mut Flags) {
+    let kind = if let Some(alias) = result.get_one("install-alias") {
+        if !result.contains("install-alias") {
+            // Not provided, check for script_arg
+            goto_script(result, flags)
+        } else {
+            let name = match alias {
+                "dx" => DenoXShimName::Dx,
+                "denox" => DenoXShimName::Denox,
+                "dnx" => DenoXShimName::Dnx,
+                other => DenoXShimName::Other(other.to_string()),
+            };
+            XFlagsKind::InstallAlias(name)
+        }
+    } else {
+        goto_script(result, flags)
+    };
+
+    fn goto_script(result: &ParseResult, flags: &mut Flags) -> XFlagsKind {
+        if let Some(args) = result.get_many("script_arg") {
+            if !args.is_empty() {
+                let command = args[0].clone();
+                let yes = result.get_bool("yes");
+                runtime_args_parse(result, flags, true, true, true);
+                permission_args_parse(result, flags);
+                flags.argv.extend(args[1..].iter().cloned());
+                XFlagsKind::Command(XCommandFlags { yes, command })
+            } else {
+                XFlagsKind::Print
+            }
+        } else {
+            XFlagsKind::Print
+        }
+    }
+
+    if !flags.permissions.has_permission() && flags.permission_set.is_none() {
+        flags.permissions.allow_all = true;
+    }
+    flags.subcommand = DenoSubcommand::X(XFlags { kind });
+}
+
+fn json_reference_parse(flags: &mut Flags) {
+    // Build a JSON representation of all commands from our static definitions.
+    // This replaces the clap-based json_reference_parse.
+    let root = &crate::defs::DENO_ROOT;
+    let json = serialize_command_def(root, true);
+    flags.subcommand = DenoSubcommand::JSONReference(JSONReferenceFlags {
+        json,
+    });
+}
+
+fn serialize_command_def(cmd: &crate::CommandDef, top_level: bool) -> String {
+    use std::fmt::Write;
+    let mut out = String::new();
+    out.push('{');
+
+    // name
+    write!(out, "\"name\":{}", json_escape(cmd.name)).unwrap();
+
+    // about
+    write!(out, ",\"about\":{}", json_escape_option(if cmd.about.is_empty() { None } else { Some(cmd.about) })).unwrap();
+
+    // usage
+    let usage = format!("Usage: {}", cmd.name);
+    write!(out, ",\"usage\":{}", json_escape(&usage)).unwrap();
+
+    // args
+    let args: Vec<&crate::ArgDef> = if top_level {
+        cmd.all_args().filter(|a| a.global && !a.hidden).collect()
+    } else {
+        cmd.all_args().filter(|a| !a.global && !a.hidden).collect()
+    };
+
+    out.push_str(",\"args\":[");
+    for (i, arg) in args.iter().enumerate() {
+        if i > 0 {
+            out.push(',');
+        }
+        out.push('{');
+        write!(out, "\"name\":{}", json_escape(arg.name)).unwrap();
+        if let Some(short) = arg.short {
+            write!(out, ",\"short\":\"{}\"", short).unwrap();
+        } else {
+            out.push_str(",\"short\":null");
+        }
+        if let Some(long) = arg.long {
+            write!(out, ",\"long\":{}", json_escape(long)).unwrap();
+        } else {
+            out.push_str(",\"long\":null");
+        }
+        write!(out, ",\"required\":{}", arg.required).unwrap();
+        write!(out, ",\"help\":{}", json_escape_option(if arg.help.is_empty() { None } else { Some(arg.help) })).unwrap();
+        out.push_str(",\"help_heading\":null");
+
+        // usage string
+        let mut usage = String::new();
+        if let Some(short) = arg.short {
+            write!(usage, "-{}", short).unwrap();
+            if arg.long.is_some() {
+                usage.push_str(", ");
+            }
+        }
+        if let Some(long) = arg.long {
+            write!(usage, "--{}", long).unwrap();
+        }
+        write!(out, ",\"usage\":{}", json_escape(&usage)).unwrap();
+
+        out.push('}');
+    }
+    out.push(']');
+
+    // subcommands
+    out.push_str(",\"subcommands\":[");
+    let visible_subs: Vec<&crate::CommandDef> = cmd
+        .subcommands
+        .iter()
+        .filter(|s| !s.name.starts_with("json_reference") && s.name != "help")
+        .collect();
+    for (i, sub) in visible_subs.iter().enumerate() {
+        if i > 0 {
+            out.push(',');
+        }
+        out.push_str(&serialize_command_def(sub, false));
+    }
+    out.push(']');
+
+    out.push('}');
+    out
+}
+
+fn json_escape(s: &str) -> String {
+    let mut out = String::with_capacity(s.len() + 2);
+    out.push('"');
+    for c in s.chars() {
+        match c {
+            '"' => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            c if c < '\u{20}' => {
+                use std::fmt::Write;
+                write!(out, "\\u{:04x}", c as u32).unwrap();
+            }
+            c => out.push(c),
+        }
+    }
+    out.push('"');
+    out
+}
+
+fn json_escape_option(s: Option<&str>) -> String {
+    match s {
+        Some(s) => json_escape(s),
+        None => "null".to_string(),
+    }
+}
+
+fn help_subcommand_parse(result: &ParseResult, flags: &mut Flags) {
+    let root = &crate::defs::DENO_ROOT;
+    let sub_name = result.get_one("subcommand");
+    let cmd = sub_name
+        .and_then(|name| root.find_subcommand(name))
+        .unwrap_or(root);
+    let help_text = crate::help::render_help(cmd);
+    flags.subcommand = DenoSubcommand::Help(HelpFlags {
+        help: help_text,
+    });
 }
