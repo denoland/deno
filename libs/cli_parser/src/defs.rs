@@ -289,42 +289,116 @@ pub static CPU_PROF_ARGS: &[ArgDef] = &[
     .hidden(),
 ];
 
+// All unstable feature flags from runtime/features/gen.rs.
+// Keep in sync with UNSTABLE_FEATURES.
 pub static UNSTABLE_ARGS: &[ArgDef] = &[
   ArgDef::new("unstable").long("unstable").set_true().hidden(),
   ArgDef::new("unstable-bare-node-builtins")
     .long("unstable-bare-node-builtins")
     .set_true()
     .hidden(),
+  ArgDef::new("unstable-broadcast-channel")
+    .long("unstable-broadcast-channel")
+    .set_true()
+    .hidden(),
+  ArgDef::new("unstable-bundle")
+    .long("unstable-bundle")
+    .set_true()
+    .hidden(),
+  ArgDef::new("unstable-byonm")
+    .long("unstable-byonm")
+    .set_true()
+    .hidden(),
+  ArgDef::new("unstable-cron")
+    .long("unstable-cron")
+    .set_true()
+    .hidden(),
   ArgDef::new("unstable-detect-cjs")
     .long("unstable-detect-cjs")
-    .set_true()
-    .hidden(),
-  ArgDef::new("unstable-lazy-dynamic-imports")
-    .long("unstable-lazy-dynamic-imports")
-    .set_true()
-    .hidden(),
-  ArgDef::new("unstable-sloppy-imports")
-    .long("unstable-sloppy-imports")
-    .set_true()
-    .hidden(),
-  ArgDef::new("unstable-npm-lazy-caching")
-    .long("unstable-npm-lazy-caching")
     .set_true()
     .hidden(),
   ArgDef::new("unstable-ffi")
     .long("unstable-ffi")
     .set_true()
     .hidden(),
-  ArgDef::new("unstable-worker-options")
-    .long("unstable-worker-options")
+  ArgDef::new("unstable-fs")
+    .long("unstable-fs")
+    .set_true()
+    .hidden(),
+  ArgDef::new("unstable-http")
+    .long("unstable-http")
+    .set_true()
+    .hidden(),
+  ArgDef::new("unstable-kv")
+    .long("unstable-kv")
+    .set_true()
+    .hidden(),
+  ArgDef::new("unstable-lazy-dynamic-imports")
+    .long("unstable-lazy-dynamic-imports")
+    .set_true()
+    .hidden(),
+  ArgDef::new("unstable-lockfile-v5")
+    .long("unstable-lockfile-v5")
+    .set_true()
+    .hidden(),
+  ArgDef::new("unstable-net")
+    .long("unstable-net")
+    .set_true()
+    .hidden(),
+  ArgDef::new("unstable-no-legacy-abort")
+    .long("unstable-no-legacy-abort")
+    .set_true()
+    .hidden(),
+  ArgDef::new("unstable-node-globals")
+    .long("unstable-node-globals")
+    .set_true()
+    .hidden(),
+  ArgDef::new("unstable-npm-lazy-caching")
+    .long("unstable-npm-lazy-caching")
+    .set_true()
+    .hidden(),
+  ArgDef::new("unstable-otel")
+    .long("unstable-otel")
+    .set_true()
+    .hidden(),
+  ArgDef::new("unstable-process")
+    .long("unstable-process")
     .set_true()
     .hidden(),
   ArgDef::new("unstable-raw-imports")
     .long("unstable-raw-imports")
     .set_true()
     .hidden(),
+  ArgDef::new("unstable-sloppy-imports")
+    .long("unstable-sloppy-imports")
+    .set_true()
+    .hidden(),
+  ArgDef::new("unstable-subdomain-wildcards")
+    .long("unstable-subdomain-wildcards")
+    .set_true()
+    .hidden(),
+  ArgDef::new("unstable-temporal")
+    .long("unstable-temporal")
+    .set_true()
+    .hidden(),
   ArgDef::new("unstable-tsgo")
     .long("unstable-tsgo")
+    .set_true()
+    .hidden(),
+  ArgDef::new("unstable-unsafe-proto")
+    .long("unstable-unsafe-proto")
+    .set_true()
+    .hidden(),
+  ArgDef::new("unstable-vsock")
+    .long("unstable-vsock")
+    .set_true()
+    .hidden(),
+  ArgDef::new("unstable-webgpu")
+    .long("unstable-webgpu")
+    .set_true()
+    .hidden(),
+  ArgDef::new("unstable-worker-options")
+    .long("unstable-worker-options")
     .set_true()
     .hidden(),
 ];
@@ -1087,6 +1161,10 @@ pub static COMPILE_SUBCOMMAND: CommandDef = CommandDef {
     ArgDef::new("no-code-cache")
       .long("no-code-cache")
       .set_true(),
+    ArgDef::new("ext")
+      .long("ext")
+      .action(ArgAction::Set)
+      .num_args(NumArgs::Exact(1)),
   ],
   arg_groups: &[
     PERMISSION_ARGS,
