@@ -1838,6 +1838,7 @@ dependencies = [
  "deno_ast",
  "deno_bundle_runtime",
  "deno_cache_dir",
+ "deno_cli_parser",
  "deno_config",
  "deno_core",
  "deno_doc",
@@ -2090,6 +2091,15 @@ dependencies = [
  "thiserror 2.0.12",
  "tokio",
  "url",
+]
+
+[[package]]
+name = "deno_cli_parser"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "criterion",
+ "pretty_assertions",
 ]
 
 [[package]]

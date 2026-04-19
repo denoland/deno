@@ -33,6 +33,7 @@ members = [
   "ext/webidl",
   "ext/websocket",
   "ext/webstorage",
+  "libs/cli_parser",
   "libs/cache_dir",
   "libs/config",
   "libs/core",

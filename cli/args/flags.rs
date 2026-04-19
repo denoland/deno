@@ -1689,12 +1689,1152 @@ pub fn flags_from_vec(args: Vec<OsString>) -> clap::error::Result<Flags> {
   flags_from_vec_with_initial_cwd(args, None)
 }
 
-/// Main entry point for parsing deno's command line flags.
-pub fn flags_from_vec_with_initial_cwd(
-  args: Vec<OsString>,
+// ---------------------------------------------------------------------------
+// Conversion from deno_cli_parser types to Deno CLI types
+// ---------------------------------------------------------------------------
+
+/// Convert parser's LogLevel to log::Level.
+fn convert_log_level(
+  level: &deno_cli_parser::flags::LogLevel,
+) -> Level {
+  match level {
+    deno_cli_parser::flags::LogLevel::Trace => Level::Trace,
+    deno_cli_parser::flags::LogLevel::Debug => Level::Debug,
+    deno_cli_parser::flags::LogLevel::Info => Level::Info,
+    deno_cli_parser::flags::LogLevel::Warn => Level::Warn,
+    deno_cli_parser::flags::LogLevel::Error => Level::Error,
+  }
+}
+
+/// Parse a socket address string like "127.0.0.1:9229" into SocketAddr.
+fn parse_socket_addr(s: &str) -> Option<SocketAddr> {
+  let default_port: u16 = 9229;
+  // Try parsing as-is first (e.g. "127.0.0.1:9229")
+  if let Ok(addr) = s.parse::<SocketAddr>() {
+    return Some(addr);
+  }
+  // Try as just a port (e.g. "10000" or "0")
+  if let Ok(port) = s.parse::<u16>() {
+    return Some(SocketAddr::new(
+      IpAddr::from([127, 0, 0, 1]),
+      port,
+    ));
+  }
+  // Try as just an IP address without port (e.g. "192.168.0.1")
+  if let Ok(ip) = s.parse::<IpAddr>() {
+    return Some(SocketAddr::new(ip, default_port));
+  }
+  // Try as host:port where host might not be an IP
+  if let Some((host, port_str)) = s.rsplit_once(':') {
+    if let Ok(port) = port_str.parse::<u16>() {
+      if host.is_empty() {
+        // Handle ":10000" format
+        return Some(SocketAddr::new(
+          IpAddr::from([127, 0, 0, 1]),
+          port,
+        ));
+      }
+      if let Ok(ip) = host.parse::<IpAddr>() {
+        return Some(SocketAddr::new(ip, port));
+      }
+    }
+  }
+  None
+}
+
+/// Convert parser's CaData to Deno's CaData.
+fn convert_ca_data(
+  src: &deno_cli_parser::flags::CaData,
+) -> CaData {
+  match src {
+    deno_cli_parser::flags::CaData::File(path) => {
+      CaData::File(path.clone())
+    }
+    deno_cli_parser::flags::CaData::Bytes(bytes) => {
+      CaData::Bytes(bytes.clone())
+    }
+  }
+}
+
+/// Convert parser's NodeModulesDirMode to deno_config's NodeModulesDirMode.
+fn convert_node_modules_dir_mode(
+  src: &deno_cli_parser::flags::NodeModulesDirMode,
+) -> NodeModulesDirMode {
+  match src {
+    deno_cli_parser::flags::NodeModulesDirMode::Auto => {
+      NodeModulesDirMode::Auto
+    }
+    deno_cli_parser::flags::NodeModulesDirMode::Manual => {
+      NodeModulesDirMode::Manual
+    }
+    deno_cli_parser::flags::NodeModulesDirMode::None => {
+      NodeModulesDirMode::None
+    }
+  }
+}
+
+/// Convert parser's PackagesAllowedScripts to deno_npm_installer's.
+fn convert_packages_allowed_scripts(
+  src: &deno_cli_parser::flags::PackagesAllowedScripts,
+) -> PackagesAllowedScripts {
+  match src {
+    deno_cli_parser::flags::PackagesAllowedScripts::All => {
+      PackagesAllowedScripts::All
+    }
+    deno_cli_parser::flags::PackagesAllowedScripts::Some(packages) => {
+      PackagesAllowedScripts::Some(
+        packages
+          .iter()
+          .filter_map(|s| {
+            let dep = JsrDepPackageReq::from_str_loose(s).ok()?;
+            if dep.kind != PackageKind::Npm {
+              return None;
+            }
+            Some(dep.req)
+          })
+          .collect(),
+      )
+    }
+    deno_cli_parser::flags::PackagesAllowedScripts::None => {
+      PackagesAllowedScripts::None
+    }
+  }
+}
+
+/// Convert parser's InspectPublishUid to Deno's InspectPublishUid.
+fn convert_inspect_publish_uid(
+  src: &deno_cli_parser::flags::InspectPublishUid,
+) -> InspectPublishUid {
+  InspectPublishUid {
+    console: src.console,
+    http: src.http,
+  }
+}
+
+/// Convert parser's UnstableConfig to deno_lib's UnstableConfig.
+fn convert_unstable_config(
+  src: &deno_cli_parser::flags::UnstableConfig,
+) -> UnstableConfig {
+  UnstableConfig {
+    legacy_flag_enabled: src.legacy_flag_enabled,
+    bare_node_builtins: src.bare_node_builtins,
+    detect_cjs: src.detect_cjs,
+    lazy_dynamic_imports: src.lazy_dynamic_imports,
+    raw_imports: src.raw_imports,
+    sloppy_imports: src.sloppy_imports,
+    npm_lazy_caching: src.npm_lazy_caching,
+    tsgo: src.tsgo,
+    features: src.features.clone(),
+  }
+}
+
+/// Convert parser's ConfigFlag to Deno's ConfigFlag.
+fn convert_config_flag(
+  src: &deno_cli_parser::flags::ConfigFlag,
+) -> ConfigFlag {
+  match src {
+    deno_cli_parser::flags::ConfigFlag::Discover => ConfigFlag::Discover,
+    deno_cli_parser::flags::ConfigFlag::Path(p) => {
+      ConfigFlag::Path(p.clone())
+    }
+    deno_cli_parser::flags::ConfigFlag::Disabled => ConfigFlag::Disabled,
+  }
+}
+
+/// Convert parser's TypeCheckMode to Deno's TypeCheckMode.
+fn convert_type_check_mode(
+  src: &deno_cli_parser::flags::TypeCheckMode,
+) -> TypeCheckMode {
+  match src {
+    deno_cli_parser::flags::TypeCheckMode::All => TypeCheckMode::All,
+    deno_cli_parser::flags::TypeCheckMode::None => TypeCheckMode::None,
+    deno_cli_parser::flags::TypeCheckMode::Local => TypeCheckMode::Local,
+  }
+}
+
+/// Convert parser's FileFlags to Deno's FileFlags.
+fn convert_file_flags(
+  src: &deno_cli_parser::flags::FileFlags,
+) -> FileFlags {
+  FileFlags {
+    ignore: src.ignore.clone(),
+    include: src.include.clone(),
+  }
+}
+
+/// Convert parser's WatchFlags to Deno's WatchFlags.
+fn convert_watch_flags(
+  src: &deno_cli_parser::flags::WatchFlags,
+) -> WatchFlags {
+  WatchFlags {
+    hmr: src.hmr,
+    no_clear_screen: src.no_clear_screen,
+    exclude: src.exclude.clone(),
+  }
+}
+
+/// Convert parser's WatchFlagsWithPaths to Deno's WatchFlagsWithPaths.
+fn convert_watch_flags_with_paths(
+  src: &deno_cli_parser::flags::WatchFlagsWithPaths,
+) -> WatchFlagsWithPaths {
+  WatchFlagsWithPaths {
+    hmr: src.hmr,
+    paths: src.paths.clone(),
+    no_clear_screen: src.no_clear_screen,
+    exclude: src.exclude.clone(),
+  }
+}
+
+/// Convert parser's PermissionFlags to Deno's PermissionFlags.
+fn convert_permission_flags(
+  src: &deno_cli_parser::flags::PermissionFlags,
+) -> PermissionFlags {
+  PermissionFlags {
+    allow_all: src.allow_all,
+    allow_env: src.allow_env.clone(),
+    deny_env: src.deny_env.clone(),
+    ignore_env: src.ignore_env.clone(),
+    allow_ffi: src.allow_ffi.clone(),
+    deny_ffi: src.deny_ffi.clone(),
+    allow_net: src.allow_net.clone(),
+    deny_net: src.deny_net.clone(),
+    allow_read: src.allow_read.clone(),
+    deny_read: src.deny_read.clone(),
+    ignore_read: src.ignore_read.clone(),
+    allow_run: src.allow_run.clone(),
+    deny_run: src.deny_run.clone(),
+    allow_sys: src.allow_sys.clone(),
+    deny_sys: src.deny_sys.clone(),
+    allow_write: src.allow_write.clone(),
+    deny_write: src.deny_write.clone(),
+    no_prompt: src.no_prompt,
+    allow_import: src.allow_import.clone(),
+    deny_import: src.deny_import.clone(),
+  }
+}
+
+/// Convert parser's InternalFlags to Deno's InternalFlags.
+fn convert_internal_flags(
+  src: &deno_cli_parser::flags::InternalFlags,
+) -> InternalFlags {
+  InternalFlags {
+    cache_path: src.cache_path.as_ref().map(PathBuf::from),
+    root_node_modules_dir_override: src
+      .root_node_modules_dir_override
+      .as_ref()
+      .map(PathBuf::from),
+    lockfile_skip_write: src.lockfile_skip_write,
+  }
+}
+
+/// Convert parser's CoverageType to Deno's CoverageType.
+fn convert_coverage_type(
+  src: &deno_cli_parser::flags::CoverageType,
+) -> CoverageType {
+  match src {
+    deno_cli_parser::flags::CoverageType::Summary => CoverageType::Summary,
+    deno_cli_parser::flags::CoverageType::Detailed => CoverageType::Detailed,
+    deno_cli_parser::flags::CoverageType::Lcov => CoverageType::Lcov,
+    deno_cli_parser::flags::CoverageType::Html => CoverageType::Html,
+  }
+}
+
+/// Convert parser's DocSourceFileFlag to Deno's DocSourceFileFlag.
+fn convert_doc_source_file_flag(
+  src: &deno_cli_parser::flags::DocSourceFileFlag,
+) -> DocSourceFileFlag {
+  match src {
+    deno_cli_parser::flags::DocSourceFileFlag::Builtin => {
+      DocSourceFileFlag::Builtin
+    }
+    deno_cli_parser::flags::DocSourceFileFlag::Paths(paths) => {
+      DocSourceFileFlag::Paths(paths.clone())
+    }
+  }
+}
+
+/// Convert parser's TestReporterConfig to Deno's TestReporterConfig.
+fn convert_test_reporter_config(
+  src: &deno_cli_parser::flags::TestReporterConfig,
+) -> TestReporterConfig {
+  match src {
+    deno_cli_parser::flags::TestReporterConfig::Pretty => {
+      TestReporterConfig::Pretty
+    }
+    deno_cli_parser::flags::TestReporterConfig::Dot => TestReporterConfig::Dot,
+    deno_cli_parser::flags::TestReporterConfig::Junit => {
+      TestReporterConfig::Junit
+    }
+    deno_cli_parser::flags::TestReporterConfig::Tap => TestReporterConfig::Tap,
+  }
+}
+
+/// Convert parser's DefaultRegistry to Deno's DefaultRegistry.
+fn convert_default_registry(
+  src: &deno_cli_parser::flags::DefaultRegistry,
+) -> DefaultRegistry {
+  match src {
+    deno_cli_parser::flags::DefaultRegistry::Npm => DefaultRegistry::Npm,
+    deno_cli_parser::flags::DefaultRegistry::Jsr => DefaultRegistry::Jsr,
+  }
+}
+
+/// Convert parser's OutdatedKind to Deno's OutdatedKind.
+fn convert_outdated_kind(
+  src: &deno_cli_parser::flags::OutdatedKind,
+) -> OutdatedKind {
+  match src {
+    deno_cli_parser::flags::OutdatedKind::Update {
+      latest,
+      interactive,
+      lockfile_only,
+    } => OutdatedKind::Update {
+      latest: *latest,
+      interactive: *interactive,
+      lockfile_only: *lockfile_only,
+    },
+    deno_cli_parser::flags::OutdatedKind::PrintOutdated { compatible } => {
+      OutdatedKind::PrintOutdated {
+        compatible: *compatible,
+      }
+    }
+  }
+}
+
+/// Convert parser's DenoXShimName to Deno's DenoXShimName.
+fn convert_deno_x_shim_name(
+  src: &deno_cli_parser::flags::DenoXShimName,
+) -> DenoXShimName {
+  match src {
+    deno_cli_parser::flags::DenoXShimName::Dx => DenoXShimName::Dx,
+    deno_cli_parser::flags::DenoXShimName::Denox => DenoXShimName::Denox,
+    deno_cli_parser::flags::DenoXShimName::Dnx => DenoXShimName::Dnx,
+    deno_cli_parser::flags::DenoXShimName::Other(name) => {
+      DenoXShimName::Other(name.clone())
+    }
+  }
+}
+
+/// Convert parser's BundleFormat to deno_bundle_runtime's BundleFormat.
+fn convert_bundle_format(
+  src: &deno_cli_parser::flags::BundleFormat,
+) -> BundleFormat {
+  match src {
+    deno_cli_parser::flags::BundleFormat::Esm => BundleFormat::Esm,
+    deno_cli_parser::flags::BundleFormat::Cjs => BundleFormat::Cjs,
+    deno_cli_parser::flags::BundleFormat::Iife => BundleFormat::Iife,
+  }
+}
+
+/// Convert parser's BundlePlatform to deno_bundle_runtime's BundlePlatform.
+fn convert_bundle_platform(
+  src: &deno_cli_parser::flags::BundlePlatform,
+) -> BundlePlatform {
+  match src {
+    deno_cli_parser::flags::BundlePlatform::Browser => {
+      BundlePlatform::Browser
+    }
+    deno_cli_parser::flags::BundlePlatform::Deno => BundlePlatform::Deno,
+  }
+}
+
+/// Convert parser's PackageHandling to deno_bundle_runtime's PackageHandling.
+fn convert_package_handling(
+  src: &deno_cli_parser::flags::PackageHandling,
+) -> PackageHandling {
+  match src {
+    deno_cli_parser::flags::PackageHandling::Bundle => {
+      PackageHandling::Bundle
+    }
+    deno_cli_parser::flags::PackageHandling::External => {
+      PackageHandling::External
+    }
+  }
+}
+
+/// Convert parser's SourceMapType to deno_bundle_runtime's SourceMapType.
+fn convert_source_map_type(
+  src: &deno_cli_parser::flags::SourceMapType,
+) -> SourceMapType {
+  match src {
+    deno_cli_parser::flags::SourceMapType::Linked => SourceMapType::Linked,
+    deno_cli_parser::flags::SourceMapType::Inline => SourceMapType::Inline,
+    deno_cli_parser::flags::SourceMapType::External => {
+      SourceMapType::External
+    }
+  }
+}
+
+/// Convert parser's DenoSubcommand to Deno's DenoSubcommand.
+fn convert_subcommand(
+  src: &deno_cli_parser::flags::DenoSubcommand,
+) -> DenoSubcommand {
+  use deno_cli_parser::flags::DenoSubcommand as Src;
+  match src {
+    Src::Add(f) => DenoSubcommand::Add(AddFlags {
+      packages: f.packages.clone(),
+      dev: f.dev,
+      default_registry: f
+        .default_registry
+        .as_ref()
+        .map(convert_default_registry),
+      lockfile_only: f.lockfile_only,
+      save_exact: f.save_exact,
+    }),
+    Src::Audit(f) => DenoSubcommand::Audit(AuditFlags {
+      severity: f.severity.clone(),
+      ignore_registry_errors: f.ignore_registry_errors,
+      ignore_unfixable: f.ignore_unfixable,
+      dev: f.dev,
+      prod: f.prod,
+      optional: f.optional,
+      ignore: f.ignore.clone(),
+      socket: f.socket,
+    }),
+    Src::ApproveScripts(f) => {
+      DenoSubcommand::ApproveScripts(ApproveScriptsFlags {
+        lockfile_only: f.lockfile_only,
+        packages: f.packages.clone(),
+      })
+    }
+    Src::Remove(f) => DenoSubcommand::Remove(RemoveFlags {
+      packages: f.packages.clone(),
+      lockfile_only: f.lockfile_only,
+    }),
+    Src::Bench(f) => DenoSubcommand::Bench(BenchFlags {
+      files: convert_file_flags(&f.files),
+      filter: f.filter.clone(),
+      json: f.json,
+      no_run: f.no_run,
+      permit_no_files: f.permit_no_files,
+      watch: f.watch.as_ref().map(convert_watch_flags),
+    }),
+    Src::Bundle(f) => DenoSubcommand::Bundle(BundleFlags {
+      entrypoints: f.entrypoints.clone(),
+      output_path: f.output_path.clone(),
+      output_dir: f.output_dir.clone(),
+      external: f.external.clone(),
+      format: convert_bundle_format(&f.format),
+      minify: f.minify,
+      keep_names: f.keep_names,
+      code_splitting: f.code_splitting,
+      inline_imports: f.inline_imports,
+      packages: convert_package_handling(&f.packages),
+      sourcemap: f.sourcemap.as_ref().map(convert_source_map_type),
+      platform: convert_bundle_platform(&f.platform),
+      watch: f.watch,
+    }),
+    Src::Cache(f) => DenoSubcommand::Cache(CacheFlags {
+      files: f.files.clone(),
+    }),
+    Src::Check(f) => DenoSubcommand::Check(CheckFlags {
+      files: f.files.clone(),
+      doc: f.doc,
+      doc_only: f.doc_only,
+      check_js: f.check_js,
+    }),
+    Src::Clean(f) => DenoSubcommand::Clean(CleanFlags {
+      except_paths: f.except_paths.clone(),
+      dry_run: f.dry_run,
+    }),
+    Src::Compile(f) => DenoSubcommand::Compile(CompileFlags {
+      source_file: f.source_file.clone(),
+      output: f.output.clone(),
+      args: f.args.clone(),
+      target: f.target.clone(),
+      no_terminal: f.no_terminal,
+      icon: f.icon.clone(),
+      include: f.include.clone(),
+      exclude: f.exclude.clone(),
+      eszip: f.eszip,
+      self_extracting: f.self_extracting,
+    }),
+    Src::Completions => {
+      // The parser doesn't generate completion scripts; use clap to generate
+      // a static bash completion as a fallback. The real completions_parse
+      // with clap's Command is used via the clap fallback path.
+      // For the custom parser path, we generate a placeholder that will be
+      // handled by the clap fallback.
+      DenoSubcommand::Completions(CompletionsFlags::Static(
+        Box::new([]) as Box<[u8]>,
+      ))
+    }
+    Src::Coverage(f) => DenoSubcommand::Coverage(CoverageFlags {
+      files: convert_file_flags(&f.files),
+      output: f.output.clone(),
+      include: f.include.clone(),
+      exclude: f.exclude.clone(),
+      r#type: convert_coverage_type(&f.r#type),
+    }),
+    Src::Deploy(f) => DenoSubcommand::Deploy(DeployFlags {
+      sandbox: f.sandbox,
+    }),
+    Src::Doc(f) => DenoSubcommand::Doc(DocFlags {
+      private: f.private,
+      json: f.json,
+      lint: f.lint,
+      html: f.html.as_ref().map(|h| DocHtmlFlag {
+        name: h.name.clone(),
+        category_docs_path: h.category_docs_path.clone(),
+        symbol_redirect_map_path: h.symbol_redirect_map_path.clone(),
+        default_symbol_map_path: h.default_symbol_map_path.clone(),
+        strip_trailing_html: h.strip_trailing_html,
+        output: h.output.clone(),
+      }),
+      source_files: convert_doc_source_file_flag(&f.source_files),
+      filter: f.filter.clone(),
+    }),
+    Src::Eval(f) => DenoSubcommand::Eval(EvalFlags {
+      print: f.print,
+      code: f.code.clone(),
+    }),
+    Src::Fmt(f) => DenoSubcommand::Fmt(FmtFlags {
+      check: f.check,
+      fail_fast: f.fail_fast,
+      files: convert_file_flags(&f.files),
+      permit_no_files: f.permit_no_files,
+      use_tabs: f.use_tabs,
+      line_width: f.line_width.and_then(NonZeroU32::new),
+      indent_width: f.indent_width.and_then(NonZeroU8::new),
+      single_quote: f.single_quote,
+      prose_wrap: f.prose_wrap.clone(),
+      no_semicolons: f.no_semicolons,
+      watch: f.watch.as_ref().map(convert_watch_flags),
+      unstable_component: f.unstable_component,
+      unstable_sql: f.unstable_sql,
+    }),
+    Src::Init(f) => DenoSubcommand::Init(InitFlags {
+      package: f.package.clone(),
+      package_args: f.package_args.clone(),
+      dir: f.dir.clone(),
+      lib: f.lib,
+      serve: f.serve,
+      empty: f.empty,
+      yes: f.yes,
+    }),
+    Src::Info(f) => DenoSubcommand::Info(InfoFlags {
+      json: f.json,
+      file: f.file.clone(),
+    }),
+    Src::Install(f) => {
+      use deno_cli_parser::flags::InstallFlags as SrcInstall;
+      match f {
+        SrcInstall::Local(local) => {
+          use deno_cli_parser::flags::InstallFlagsLocal as SrcLocal;
+          match local {
+            SrcLocal::Add(add) => {
+              DenoSubcommand::Install(InstallFlags::Local(
+                InstallFlagsLocal::Add(AddFlags {
+                  packages: add.packages.clone(),
+                  dev: add.dev,
+                  default_registry: add
+                    .default_registry
+                    .as_ref()
+                    .map(convert_default_registry),
+                  lockfile_only: add.lockfile_only,
+                  save_exact: add.save_exact,
+                }),
+              ))
+            }
+            SrcLocal::TopLevel(tl) => {
+              DenoSubcommand::Install(InstallFlags::Local(
+                InstallFlagsLocal::TopLevel(InstallTopLevelFlags {
+                  lockfile_only: tl.lockfile_only,
+                }),
+              ))
+            }
+            SrcLocal::Entrypoints(ep) => {
+              DenoSubcommand::Install(InstallFlags::Local(
+                InstallFlagsLocal::Entrypoints(InstallEntrypointsFlags {
+                  entrypoints: ep.entrypoints.clone(),
+                  lockfile_only: ep.lockfile_only,
+                }),
+              ))
+            }
+          }
+        }
+        SrcInstall::Global(g) => {
+          DenoSubcommand::Install(InstallFlags::Global(InstallFlagsGlobal {
+            module_urls: g.module_urls.clone(),
+            args: g.args.clone(),
+            name: g.name.clone(),
+            root: g.root.clone(),
+            force: g.force,
+            compile: g.compile,
+          }))
+        }
+      }
+    }
+    Src::Jupyter(f) => DenoSubcommand::Jupyter(JupyterFlags {
+      install: f.install,
+      name: f.name.clone(),
+      display: f.display.clone(),
+      kernel: f.kernel,
+      conn_file: f.conn_file.clone(),
+      force: f.force,
+    }),
+    Src::Uninstall(f) => {
+      use deno_cli_parser::flags::UninstallKind as SrcKind;
+      let kind = match &f.kind {
+        SrcKind::Local(rm) => UninstallKind::Local(RemoveFlags {
+          packages: rm.packages.clone(),
+          lockfile_only: rm.lockfile_only,
+        }),
+        SrcKind::Global(g) => {
+          UninstallKind::Global(UninstallFlagsGlobal {
+            name: g.name.clone(),
+            root: g.root.clone(),
+          })
+        }
+      };
+      DenoSubcommand::Uninstall(UninstallFlags { kind })
+    }
+    Src::Lsp => DenoSubcommand::Lsp,
+    Src::Lint(f) => DenoSubcommand::Lint(LintFlags {
+      files: convert_file_flags(&f.files),
+      rules: f.rules,
+      fix: f.fix,
+      maybe_rules_tags: f.maybe_rules_tags.clone(),
+      maybe_rules_include: f.maybe_rules_include.clone(),
+      maybe_rules_exclude: f.maybe_rules_exclude.clone(),
+      permit_no_files: f.permit_no_files,
+      json: f.json,
+      compact: f.compact,
+      watch: f.watch.as_ref().map(convert_watch_flags),
+    }),
+    Src::Repl(f) => DenoSubcommand::Repl(ReplFlags {
+      eval_files: f.eval_files.clone(),
+      eval: f.eval.clone(),
+      is_default_command: f.is_default_command,
+      json: f.json,
+    }),
+    Src::Run(f) => DenoSubcommand::Run(RunFlags {
+      script: f.script.clone(),
+      watch: f
+        .watch
+        .as_ref()
+        .map(convert_watch_flags_with_paths),
+      bare: f.bare,
+      coverage_dir: f.coverage_dir.clone(),
+      print_task_list: f.print_task_list,
+    }),
+    Src::Serve(f) => DenoSubcommand::Serve(ServeFlags {
+      script: f.script.clone(),
+      watch: f
+        .watch
+        .as_ref()
+        .map(convert_watch_flags_with_paths),
+      port: f.port,
+      host: f.host.clone(),
+      parallel: f.parallel,
+      open_site: f.open_site,
+    }),
+    Src::Task(f) => DenoSubcommand::Task(TaskFlags {
+      cwd: f.cwd.clone(),
+      task: f.task.clone(),
+      is_run: f.is_run,
+      recursive: f.recursive,
+      filter: f.filter.clone(),
+      eval: f.eval,
+    }),
+    Src::Test(f) => DenoSubcommand::Test(TestFlags {
+      doc: f.doc,
+      no_run: f.no_run,
+      coverage_dir: f.coverage_dir.clone(),
+      coverage_raw_data_only: f.coverage_raw_data_only,
+      clean: f.clean,
+      fail_fast: f
+        .fail_fast
+        .and_then(NonZeroUsize::new),
+      files: convert_file_flags(&f.files),
+      parallel: f.parallel,
+      permit_no_files: f.permit_no_files,
+      filter: f.filter.clone(),
+      shuffle: f.shuffle,
+      trace_leaks: f.trace_leaks,
+      watch: f
+        .watch
+        .as_ref()
+        .map(convert_watch_flags_with_paths),
+      reporter: convert_test_reporter_config(&f.reporter),
+      junit_path: f.junit_path.clone(),
+      hide_stacktraces: f.hide_stacktraces,
+    }),
+    Src::Outdated(f) => DenoSubcommand::Outdated(OutdatedFlags {
+      filters: f.filters.clone(),
+      recursive: f.recursive,
+      kind: convert_outdated_kind(&f.kind),
+    }),
+    Src::Types => DenoSubcommand::Types,
+    Src::Upgrade(f) => DenoSubcommand::Upgrade(UpgradeFlags {
+      dry_run: f.dry_run,
+      force: f.force,
+      release_candidate: f.release_candidate,
+      canary: f.canary,
+      version: f.version.clone(),
+      output: f.output.clone(),
+      version_or_hash_or_channel: f.version_or_hash_or_channel.clone(),
+      checksum: f.checksum.clone(),
+      pr: f.pr,
+      branch: f.branch.clone(),
+    }),
+    Src::Vendor => DenoSubcommand::Vendor,
+    Src::Publish(f) => DenoSubcommand::Publish(PublishFlags {
+      token: f.token.clone(),
+      dry_run: f.dry_run,
+      allow_slow_types: f.allow_slow_types,
+      allow_dirty: f.allow_dirty,
+      no_provenance: f.no_provenance,
+      set_version: f.set_version.clone(),
+    }),
+    Src::Help(f) => DenoSubcommand::Help(HelpFlags {
+      help: clap::builder::StyledStr::from(f.help.clone()),
+    }),
+    Src::X(f) => {
+      use deno_cli_parser::flags::XFlagsKind as SrcKind;
+      let kind = match &f.kind {
+        SrcKind::InstallAlias(name) => {
+          XFlagsKind::InstallAlias(convert_deno_x_shim_name(name))
+        }
+        SrcKind::Command(cmd) => XFlagsKind::Command(XCommandFlags {
+          yes: cmd.yes,
+          command: cmd.command.clone(),
+        }),
+        SrcKind::Print => XFlagsKind::Print,
+      };
+      DenoSubcommand::X(XFlags { kind })
+    }
+  }
+}
+
+/// Convert the parser's Flags struct into Deno's Flags struct.
+/// Handles all type conversions between the simplified parser types
+/// and Deno's richer types.
+fn convert_parser_flags(
+  src: deno_cli_parser::flags::Flags,
   initial_cwd: Option<PathBuf>,
-) -> clap::error::Result<Flags> {
-  let args = if !args.is_empty()
+) -> Flags {
+  Flags {
+    initial_cwd: initial_cwd.or_else(|| {
+      src.initial_cwd.as_ref().map(PathBuf::from)
+    }),
+    argv: src.argv.clone(),
+    subcommand: convert_subcommand(&src.subcommand),
+    frozen_lockfile: src.frozen_lockfile,
+    ca_stores: src.ca_stores.clone(),
+    ca_data: src.ca_data.as_ref().map(convert_ca_data),
+    cache_blocklist: src.cache_blocklist.clone(),
+    cached_only: src.cached_only,
+    type_check_mode: convert_type_check_mode(&src.type_check_mode),
+    config_flag: convert_config_flag(&src.config_flag),
+    node_modules_dir: src
+      .node_modules_dir
+      .as_ref()
+      .map(convert_node_modules_dir_mode),
+    vendor: src.vendor,
+    enable_testing_features: src.enable_testing_features,
+    ext: src.ext.clone(),
+    internal: convert_internal_flags(&src.internal),
+    ignore: src.ignore.clone(),
+    import_map_path: src.import_map_path.clone(),
+    env_file: src.env_file.clone(),
+    inspect_brk: src
+      .inspect_brk
+      .as_ref()
+      .and_then(|s| parse_socket_addr(s)),
+    inspect_wait: src
+      .inspect_wait
+      .as_ref()
+      .and_then(|s| parse_socket_addr(s)),
+    inspect: src
+      .inspect
+      .as_ref()
+      .and_then(|s| parse_socket_addr(s)),
+    inspect_publish_uid: src
+      .inspect_publish_uid
+      .as_ref()
+      .map(convert_inspect_publish_uid),
+    location: src
+      .location
+      .as_ref()
+      .and_then(|s| Url::parse(s).ok()),
+    lock: src.lock.clone(),
+    log_level: src.log_level.as_ref().map(convert_log_level),
+    minimum_dependency_age: src.minimum_dependency_age.as_ref().and_then(
+      |s| {
+        deno_config::parse_minutes_duration_or_date(
+          &sys_traits::impls::RealSys,
+          s,
+        )
+        .ok()
+      },
+    ),
+    no_remote: src.no_remote,
+    no_lock: src.no_lock,
+    no_npm: src.no_npm,
+    reload: src.reload,
+    seed: src.seed,
+    trace_ops: src.trace_ops.clone(),
+    unstable_config: convert_unstable_config(&src.unstable_config),
+    unsafely_ignore_certificate_errors: src
+      .unsafely_ignore_certificate_errors
+      .clone(),
+    v8_flags: src.v8_flags.clone(),
+    code_cache_enabled: src.code_cache_enabled,
+    permissions: convert_permission_flags(&src.permissions),
+    allow_scripts: convert_packages_allowed_scripts(&src.allow_scripts),
+    permission_set: src.permission_set.clone(),
+    eszip: src.eszip,
+    node_conditions: src.node_conditions.clone(),
+    preload: src.preload.clone(),
+    require: src.require.clone(),
+    tunnel: src.tunnel,
+    cpu_prof: src.cpu_prof.as_ref().map(|c| CpuProfFlags {
+      dir: c.dir.clone(),
+      name: c.name.clone(),
+      interval: c.interval,
+      md: c.md,
+      flamegraph: c.flamegraph,
+    }),
+  }
+}
+
+/// Helper to create clap errors from our validation code.
+fn make_clap_error(
+  kind: ErrorKind,
+  message: impl std::fmt::Display,
+) -> clap::Error {
+  clap::Error::raw(kind, format!("{message}\n"))
+}
+
+/// Validate converted flags and return an error if there are conflicts or
+/// invalid values that the custom parser doesn't enforce. This replaces
+/// clap's built-in conflict/requires validation.
+fn validate_parser_flags(
+  flags: &mut Flags,
+  string_args: &[String],
+) -> clap::error::Result<()> {
+  let has_arg = |name: &str| {
+    string_args.iter().any(|a| {
+      a == name || a.starts_with(&format!("{name}="))
+    })
+  };
+
+  // --no-check and --check conflict
+  if has_arg("--no-check") && has_arg("--check") {
+    return Err(make_clap_error(
+      ErrorKind::ArgumentConflict,
+      "error: the argument '--no-check' cannot be used with '--check'",
+    ));
+  }
+
+  // --config and --no-config conflict
+  if has_arg("--no-config") && (has_arg("--config") || has_arg("-c")) {
+    return Err(make_clap_error(
+      ErrorKind::ArgumentConflict,
+      "error: the argument '--no-config' cannot be used with '--config <FILE>'",
+    ));
+  }
+
+  // --hmr/--watch-hmr and --watch conflict
+  if (has_arg("--hmr") || has_arg("--watch-hmr") || has_arg("--unstable-hmr"))
+    && has_arg("--watch")
+  {
+    return Err(make_clap_error(
+      ErrorKind::ArgumentConflict,
+      "error: the argument '--watch-hmr' cannot be used with '--watch'",
+    ));
+  }
+
+  // Validate --location URL scheme
+  if let Some(ref url) = flags.location {
+    if !["http", "https"].contains(&url.scheme()) {
+      return Err(make_clap_error(
+        ErrorKind::InvalidValue,
+        "error: invalid value for '--location <HREF>': Expected protocol \"http\" or \"https\"",
+      ));
+    }
+  }
+
+  // Subcommand-specific validations
+  match &flags.subcommand {
+    DenoSubcommand::Add(add_flags) => {
+      if add_flags.packages.is_empty() {
+        return Err(make_clap_error(
+          ErrorKind::MissingRequiredArgument,
+          "error: one or more packages are required",
+        ));
+      }
+    }
+    DenoSubcommand::Remove(remove_flags) => {
+      if remove_flags.packages.is_empty() {
+        return Err(make_clap_error(
+          ErrorKind::MissingRequiredArgument,
+          "error: one or more packages are required",
+        ));
+      }
+    }
+    DenoSubcommand::Install(InstallFlags::Local(
+      InstallFlagsLocal::Add(add_flags),
+    )) => {
+      if add_flags.packages.is_empty() {
+        return Err(make_clap_error(
+          ErrorKind::MissingRequiredArgument,
+          "error: one or more packages are required",
+        ));
+      }
+    }
+    DenoSubcommand::Uninstall(uninstall_flags) => {
+      match &uninstall_flags.kind {
+        UninstallKind::Local(remove_flags) => {
+          if remove_flags.packages.is_empty() {
+            return Err(make_clap_error(
+              ErrorKind::MissingRequiredArgument,
+              "error: one or more packages are required",
+            ));
+          }
+        }
+        UninstallKind::Global(g) => {
+          if g.name.is_empty() {
+            return Err(make_clap_error(
+              ErrorKind::MissingRequiredArgument,
+              "error: package name is required",
+            ));
+          }
+        }
+      }
+    }
+    DenoSubcommand::Check(check_flags) => {
+      // --doc and --doc-only are mutually exclusive
+      if check_flags.doc && check_flags.doc_only {
+        return Err(make_clap_error(
+          ErrorKind::ArgumentConflict,
+          "error: the argument '--doc' cannot be used with '--doc-only'",
+        ));
+      }
+    }
+    DenoSubcommand::Test(_test_flags) => {
+      // --fail-fast=0 is invalid (NonZeroUsize)
+      if has_arg("--fail-fast=0") {
+        return Err(make_clap_error(
+          ErrorKind::InvalidValue,
+          "error: invalid value '0' for '--fail-fast <N>': 0 is not allowed",
+        ));
+      }
+    }
+    DenoSubcommand::Upgrade(upgrade_flags) => {
+      // --rc and --canary conflict
+      if upgrade_flags.release_candidate && upgrade_flags.canary {
+        return Err(make_clap_error(
+          ErrorKind::ArgumentConflict,
+          "error: the argument '--rc' cannot be used with '--canary'",
+        ));
+      }
+      // --rc and --version conflict
+      if upgrade_flags.release_candidate && has_arg("--version") {
+        return Err(make_clap_error(
+          ErrorKind::ArgumentConflict,
+          "error: the argument '--rc' cannot be used with '--version'",
+        ));
+      }
+    }
+    DenoSubcommand::Fmt(fmt_flags) => {
+      // --ext requires files
+      if flags.ext.is_some() && fmt_flags.files.include.is_empty() {
+        return Err(make_clap_error(
+          ErrorKind::MissingRequiredArgument,
+          "error: the following required arguments were not provided:\n  <files>...\n\ntip: '--ext' requires files to be specified",
+        ));
+      }
+    }
+    DenoSubcommand::Doc(doc_flags) => {
+      // --html without source files
+      if doc_flags.html.is_some() {
+        if let DocSourceFileFlag::Paths(ref paths) = doc_flags.source_files {
+          if paths.is_empty() {
+            return Err(make_clap_error(
+              ErrorKind::MissingRequiredArgument,
+              "error: the following required arguments were not provided:\n  <source_file>\n\ntip: '--html' requires source files to be specified",
+            ));
+          }
+        }
+      }
+    }
+    DenoSubcommand::Init(init_flags) => {
+      // Check if this came from the `create` subcommand
+      let is_create = string_args
+        .iter()
+        .skip(1)
+        .any(|a| a == "create");
+
+      if is_create {
+        // `deno create` requires a package
+        if init_flags.package.is_none()
+          || init_flags.package.as_deref() == Some("")
+        {
+          return Err(make_clap_error(
+            ErrorKind::MissingRequiredArgument,
+            "error: the following required arguments were not provided:\n  <PACKAGE>",
+          ));
+        }
+        // Package must have npm: or jsr: prefix (or --npm/--jsr was used)
+        if let Some(ref pkg) = init_flags.package {
+          if !pkg.starts_with("npm:") && !pkg.starts_with("jsr:") {
+            return Err(make_clap_error(
+              ErrorKind::InvalidValue,
+              "Missing `jsr:` or `npm:` prefix. For example: `deno create npm:vite`.",
+            ));
+          }
+        }
+        // `deno create npm:vite my-project` (args without --) should error
+        // The parser puts extra positional args into package_args, but the
+        // clap definition uses .last(true) which only accepts after --.
+        // Detect this: if we have package_args but the raw args don't contain "--"
+        if !init_flags.package_args.is_empty() {
+          let has_double_dash = string_args.iter().any(|a| a == "--");
+          if !has_double_dash {
+            return Err(make_clap_error(
+              ErrorKind::InvalidValue,
+              "error: unexpected arguments after package name; use '--' to pass arguments to the create package",
+            ));
+          }
+        }
+      } else {
+        // Regular `deno init` validations
+        // --lib/--serve conflict with --npm
+        if init_flags.package.is_some() {
+          // --npm was used (package is set)
+          if init_flags.lib {
+            return Err(make_clap_error(
+              ErrorKind::ArgumentConflict,
+              "error: the argument '--lib' cannot be used with '--npm'",
+            ));
+          }
+          if init_flags.serve {
+            return Err(make_clap_error(
+              ErrorKind::ArgumentConflict,
+              "error: the argument '--serve' cannot be used with '--npm'",
+            ));
+          }
+        }
+      }
+    }
+    DenoSubcommand::Task(task_flags) => {
+      // --eval requires a task expression
+      if task_flags.eval && task_flags.task.is_none() {
+        return Err(make_clap_error(
+          ErrorKind::MissingRequiredArgument,
+          "error: '--eval' requires a task expression",
+        ));
+      }
+    }
+    DenoSubcommand::Jupyter(jupyter_flags) => {
+      // --install and --conn conflict
+      if jupyter_flags.install && jupyter_flags.conn_file.is_some() {
+        return Err(make_clap_error(
+          ErrorKind::ArgumentConflict,
+          "error: the argument '--install' cannot be used with '--conn'",
+        ));
+      }
+      // --install and --kernel conflict
+      if jupyter_flags.install && jupyter_flags.kernel {
+        return Err(make_clap_error(
+          ErrorKind::ArgumentConflict,
+          "error: the argument '--install' cannot be used with '--kernel'",
+        ));
+      }
+      // --kernel requires --conn
+      if jupyter_flags.kernel && jupyter_flags.conn_file.is_none() {
+        return Err(make_clap_error(
+          ErrorKind::MissingRequiredArgument,
+          "error: '--kernel' requires '--conn <FILE>'",
+        ));
+      }
+      // --display requires --install (or --name implies install context)
+      if jupyter_flags.display.is_some()
+        && !jupyter_flags.install
+        && !jupyter_flags.kernel
+      {
+        return Err(make_clap_error(
+          ErrorKind::ArgumentConflict,
+          "error: '--display' requires '--install'",
+        ));
+      }
+      // --kernel and --display conflict
+      if jupyter_flags.kernel && jupyter_flags.display.is_some() {
+        return Err(make_clap_error(
+          ErrorKind::ArgumentConflict,
+          "error: the argument '--kernel' cannot be used with '--display'",
+        ));
+      }
+      // --force requires --install
+      if jupyter_flags.force && !jupyter_flags.install {
+        return Err(make_clap_error(
+          ErrorKind::ArgumentConflict,
+          "error: '--force' requires '--install'",
+        ));
+      }
+    }
+    DenoSubcommand::Clean(clean_flags) => {
+      // When --except is used, set cached_only to true
+      if !clean_flags.except_paths.is_empty() {
+        flags.cached_only = true;
+      }
+    }
+    _ => {}
+  }
+
+  // Validate --allow-scripts values
+  validate_allow_scripts(flags, string_args)?;
+
+  Ok(())
+}
+
+/// Validate --allow-scripts values for proper npm: prefix and no tags.
+fn validate_allow_scripts(
+  _flags: &Flags,
+  string_args: &[String],
+) -> clap::error::Result<()> {
+  // Find the raw --allow-scripts=... value from args
+  for arg in string_args {
+    if let Some(value) = arg.strip_prefix("--allow-scripts=") {
+      // Parse each comma-separated package
+      for pkg_str in value.split(',') {
+        let pkg_str = pkg_str.trim();
+        if pkg_str.is_empty() {
+          continue;
+        }
+        if !pkg_str.starts_with("npm:") {
+          return Err(make_clap_error(
+            ErrorKind::InvalidValue,
+            format!(
+              "Invalid package for --allow-scripts: '{}'. An 'npm:' specifier is required",
+              pkg_str
+            ),
+          ));
+        }
+        // Check for tags (e.g., npm:foo@next)
+        let dep = JsrDepPackageReq::from_str_loose(pkg_str).map_err(|e| {
+          make_clap_error(ErrorKind::InvalidValue, e)
+        })?;
+        if dep.req.version_req.tag().is_some() {
+          return Err(make_clap_error(
+            ErrorKind::InvalidValue,
+            format!(
+              "Tags are not supported in --allow-scripts: {}",
+              pkg_str
+            ),
+          ));
+        }
+      }
+    }
+  }
+  Ok(())
+}
+
+/// Handle the dx/denox/dnx shim by inserting "x" as the subcommand.
+fn handle_dx_shim(args: Vec<OsString>) -> Vec<OsString> {
+  if !args.is_empty()
     && (args[0].as_encoded_bytes().ends_with(b"dx")
       || args[0].as_encoded_bytes().ends_with(b"denox")
       || args[0].as_encoded_bytes().ends_with(b"dnx"))
@@ -1708,7 +2848,89 @@ pub fn flags_from_vec_with_initial_cwd(
     new_args
   } else {
     args
-  };
+  }
+}
+
+/// Main entry point for parsing deno's command line flags.
+pub fn flags_from_vec_with_initial_cwd(
+  args: Vec<OsString>,
+  initial_cwd: Option<PathBuf>,
+) -> clap::error::Result<Flags> {
+  // Handle dx/denox/dnx shim
+  let args = handle_dx_shim(args);
+
+  // Convert OsString args to String for our custom parser
+  let string_args: Vec<String> = args
+    .iter()
+    .filter_map(|s| s.to_str())
+    .map(|s| s.to_string())
+    .collect();
+
+  // Check if we need to fall back to clap for subcommands
+  // the custom parser doesn't handle (completions with shell generation,
+  // json_reference, bundle, audit, x).
+  // We detect this by checking the subcommand name in the args.
+  let needs_clap_fallback = string_args.iter().skip(1).any(|arg| {
+    // These subcommands need clap because they either:
+    // - require the clap Command tree (completions, json_reference)
+    // - aren't defined in our parser (bundle, audit, x)
+    matches!(
+      arg.as_str(),
+      "json_reference" | "bundle" | "audit" | "x"
+    )
+  });
+
+  if !needs_clap_fallback {
+    // Try our fast custom parser first
+    match deno_cli_parser::convert::flags_from_vec(string_args.clone()) {
+      Ok(parser_flags) => {
+        let mut flags = convert_parser_flags(parser_flags, initial_cwd.clone());
+        // Apply NODE_OPTIONS from the environment (the parser's version
+        // only works in tests; we need the real env var reading here)
+        apply_node_options(&mut flags);
+
+        // For completions, fall back to clap to generate real scripts
+        if matches!(
+          flags.subcommand,
+          DenoSubcommand::Completions(CompletionsFlags::Static(ref b)) if b.is_empty()
+        ) {
+          return flags_from_vec_clap(args, initial_cwd);
+        }
+
+        // Run post-conversion validation
+        validate_parser_flags(&mut flags, &string_args)?;
+
+        return Ok(flags);
+      }
+      Err(e) => {
+        match e.kind {
+          deno_cli_parser::CliErrorKind::DisplayVersion => {
+            return Err(clap::Error::new(ErrorKind::DisplayVersion));
+          }
+          deno_cli_parser::CliErrorKind::DisplayHelp => {
+            // Fall back to clap for proper help output (converts to
+            // Help subcommand instead of an error)
+            return flags_from_vec_clap(args, initial_cwd);
+          }
+          _ => {
+            // For other errors, fall back to clap for better error messages
+            // (with suggestions, colored output, etc.)
+            return flags_from_vec_clap(args, initial_cwd);
+          }
+        }
+      }
+    }
+  }
+
+  // Fall back to the original clap-based parsing
+  flags_from_vec_clap(args, initial_cwd)
+}
+
+/// Original clap-based flag parsing, used as fallback.
+fn flags_from_vec_clap(
+  args: Vec<OsString>,
+  initial_cwd: Option<PathBuf>,
+) -> clap::error::Result<Flags> {
   let mut app = clap_root();
   let mut matches =
     app

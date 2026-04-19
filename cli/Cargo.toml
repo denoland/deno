@@ -102,6 +102,7 @@ bytes-str = "0.2.5"
 capacity_builder.workspace = true
 chrono = { workspace = true, features = ["now"] }
 clap = { workspace = true, features = ["env", "string", "wrap_help", "error-context"] }
+deno_cli_parser = { path = "../libs/cli_parser" }
 clap_complete.workspace = true
 clap_complete_fig.workspace = true
 color-print.workspace = true

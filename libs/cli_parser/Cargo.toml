@@ -1,0 +1,15 @@
+[package]
+name = "deno_cli_parser"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+
+[dev-dependencies]
+pretty_assertions = "1"
+criterion = { version = "0.5", features = ["html_reports"] }
+clap = { version = "4.5", features = ["string", "wrap_help"] }
+
+[[bench]]
+name = "parse_benchmark"
+harness = false
