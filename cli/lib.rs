@@ -347,13 +347,11 @@ async fn run_subcommand(
                   args::did_you_mean(&run_flags.script, command_names);
                 if !suggestions.is_empty() && !run_flags.script.contains('.') {
                   let suggestion_text = suggestions.join(", ");
-                  Err(
-                    deno_core::anyhow::anyhow!(
-                      "Unknown subcommand '{}'. Did you mean: {}?",
-                      run_flags.script,
-                      suggestion_text,
-                    )
-                  )
+                  Err(deno_core::anyhow::anyhow!(
+                    "Unknown subcommand '{}'. Did you mean: {}?",
+                    run_flags.script,
+                    suggestion_text,
+                  ))
                 } else {
                   Err(script_err)
                 }
@@ -719,9 +717,7 @@ async fn resolve_flags_and_init(
   let mut flags =
     match flags_from_vec_with_initial_cwd(args, initial_cwd.clone()) {
       Ok(flags) => flags,
-      Err(err)
-        if err.kind() == args::FlagsErrorKind::DisplayVersion =>
-      {
+      Err(err) if err.kind() == args::FlagsErrorKind::DisplayVersion => {
         // Ignore results to avoid BrokenPipe errors.
         let _ = err.print();
         deno_runtime::exit(0);

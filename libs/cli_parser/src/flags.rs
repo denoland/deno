@@ -1,4 +1,5 @@
-#![allow(dead_code)]
+// Copyright 2018-2026 the Deno authors. MIT license.
+#![allow(dead_code, reason = "types are used by the deno CLI crate")]
 
 // Simplified versions of Deno's CLI flag types.
 // External dependencies are replaced with simpler types:

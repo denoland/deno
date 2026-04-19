@@ -12,9 +12,7 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::str::FromStr;
 use std::sync::Arc;
-use std::sync::LazyLock;
 
-use clap_complete::CompletionCandidate;
 use color_print::cstr;
 use deno_bundle_runtime::BundleFormat;
 use deno_bundle_runtime::BundlePlatform;
@@ -25,7 +23,6 @@ use deno_config::deno_json::NodeModulesDirMode;
 use deno_config::glob::FilePatterns;
 use deno_config::glob::PathOrPatternSet;
 use deno_core::anyhow::Context;
-use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_core::url::Url;
@@ -59,8 +56,6 @@ use crate::util::fs::canonicalize_path;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FlagsErrorKind {
   DisplayVersion,
-  DisplayHelp,
-  UnknownArgument,
   MissingRequiredArgument,
   InvalidValue,
   ArgumentConflict,
@@ -221,6 +216,10 @@ impl CompileFlags {
 #[derive(Clone)]
 pub enum CompletionsFlags {
   Static(Box<[u8]>),
+  #[allow(
+    dead_code,
+    reason = "variant is matched in lib.rs but not currently constructed"
+  )]
   Dynamic(Arc<dyn Fn() -> Result<(), AnyError> + Send + Sync + 'static>),
 }
 
@@ -848,24 +847,6 @@ impl TypeCheckMode {
   }
 }
 
-fn minutes_duration_or_date_parser(
-  s: &str,
-) -> Result<NewestDependencyDate, String> {
-  deno_config::parse_minutes_duration_or_date(&sys_traits::impls::RealSys, s)
-    .map_err(|e| e.to_string())
-}
-
-fn parse_packages_allowed_scripts(s: &str) -> Result<String, AnyError> {
-  if !s.starts_with("npm:") {
-    bail!(
-      "Invalid package for --allow-scripts: '{}'. An 'npm:' specifier is required",
-      s
-    );
-  } else {
-    Ok(s.into())
-  }
-}
-
 /// Parse --inspect-publish-uid from a comma-separated string like "stderr,http".
 pub fn parse_inspect_publish_uid(s: &str) -> Result<InspectPublishUid, String> {
   let mut result = InspectPublishUid {
@@ -1437,19 +1418,6 @@ impl Flags {
     })
   }
 
-  #[inline(always)]
-  fn allow_all(&mut self) {
-    self.permissions.allow_all = true;
-    self.permissions.allow_read = None;
-    self.permissions.allow_env = None;
-    self.permissions.allow_net = None;
-    self.permissions.allow_run = None;
-    self.permissions.allow_write = None;
-    self.permissions.allow_sys = None;
-    self.permissions.allow_ffi = None;
-    self.permissions.allow_import = None;
-  }
-
   pub fn resolve_watch_exclude_set(
     &self,
   ) -> Result<PathOrPatternSet, AnyError> {
@@ -1483,9 +1451,7 @@ pub fn flags_from_vec(args: Vec<OsString>) -> Result<Flags, FlagsError> {
 // ---------------------------------------------------------------------------
 
 /// Convert parser's LogLevel to log::Level.
-fn convert_log_level(
-  level: &deno_cli_parser::flags::LogLevel,
-) -> Level {
+fn convert_log_level(level: &deno_cli_parser::flags::LogLevel) -> Level {
   match level {
     deno_cli_parser::flags::LogLevel::Trace => Level::Trace,
     deno_cli_parser::flags::LogLevel::Debug => Level::Debug,
@@ -1504,41 +1470,31 @@ fn parse_socket_addr(s: &str) -> Option<SocketAddr> {
   }
   // Try as just a port (e.g. "10000" or "0")
   if let Ok(port) = s.parse::<u16>() {
-    return Some(SocketAddr::new(
-      IpAddr::from([127, 0, 0, 1]),
-      port,
-    ));
+    return Some(SocketAddr::new(IpAddr::from([127, 0, 0, 1]), port));
   }
   // Try as just an IP address without port (e.g. "192.168.0.1")
   if let Ok(ip) = s.parse::<IpAddr>() {
     return Some(SocketAddr::new(ip, default_port));
   }
   // Try as host:port where host might not be an IP
-  if let Some((host, port_str)) = s.rsplit_once(':') {
-    if let Ok(port) = port_str.parse::<u16>() {
-      if host.is_empty() {
-        // Handle ":10000" format
-        return Some(SocketAddr::new(
-          IpAddr::from([127, 0, 0, 1]),
-          port,
-        ));
-      }
-      if let Ok(ip) = host.parse::<IpAddr>() {
-        return Some(SocketAddr::new(ip, port));
-      }
+  if let Some((host, port_str)) = s.rsplit_once(':')
+    && let Ok(port) = port_str.parse::<u16>()
+  {
+    if host.is_empty() {
+      // Handle ":10000" format
+      return Some(SocketAddr::new(IpAddr::from([127, 0, 0, 1]), port));
+    }
+    if let Ok(ip) = host.parse::<IpAddr>() {
+      return Some(SocketAddr::new(ip, port));
     }
   }
   None
 }
 
 /// Convert parser's CaData to Deno's CaData.
-fn convert_ca_data(
-  src: &deno_cli_parser::flags::CaData,
-) -> CaData {
+fn convert_ca_data(src: &deno_cli_parser::flags::CaData) -> CaData {
   match src {
-    deno_cli_parser::flags::CaData::File(path) => {
-      CaData::File(path.clone())
-    }
+    deno_cli_parser::flags::CaData::File(path) => CaData::File(path.clone()),
     deno_cli_parser::flags::CaData::Bytes(bytes) => {
       CaData::Bytes(bytes.clone())
     }
@@ -1618,14 +1574,10 @@ fn convert_unstable_config(
 }
 
 /// Convert parser's ConfigFlag to Deno's ConfigFlag.
-fn convert_config_flag(
-  src: &deno_cli_parser::flags::ConfigFlag,
-) -> ConfigFlag {
+fn convert_config_flag(src: &deno_cli_parser::flags::ConfigFlag) -> ConfigFlag {
   match src {
     deno_cli_parser::flags::ConfigFlag::Discover => ConfigFlag::Discover,
-    deno_cli_parser::flags::ConfigFlag::Path(p) => {
-      ConfigFlag::Path(p.clone())
-    }
+    deno_cli_parser::flags::ConfigFlag::Path(p) => ConfigFlag::Path(p.clone()),
     deno_cli_parser::flags::ConfigFlag::Disabled => ConfigFlag::Disabled,
   }
 }
@@ -1642,9 +1594,7 @@ fn convert_type_check_mode(
 }
 
 /// Convert parser's FileFlags to Deno's FileFlags.
-fn convert_file_flags(
-  src: &deno_cli_parser::flags::FileFlags,
-) -> FileFlags {
+fn convert_file_flags(src: &deno_cli_parser::flags::FileFlags) -> FileFlags {
   FileFlags {
     ignore: src.ignore.clone(),
     include: src.include.clone(),
@@ -1652,9 +1602,7 @@ fn convert_file_flags(
 }
 
 /// Convert parser's WatchFlags to Deno's WatchFlags.
-fn convert_watch_flags(
-  src: &deno_cli_parser::flags::WatchFlags,
-) -> WatchFlags {
+fn convert_watch_flags(src: &deno_cli_parser::flags::WatchFlags) -> WatchFlags {
   WatchFlags {
     hmr: src.hmr,
     no_clear_screen: src.no_clear_screen,
@@ -1820,9 +1768,7 @@ fn convert_bundle_platform(
   src: &deno_cli_parser::flags::BundlePlatform,
 ) -> BundlePlatform {
   match src {
-    deno_cli_parser::flags::BundlePlatform::Browser => {
-      BundlePlatform::Browser
-    }
+    deno_cli_parser::flags::BundlePlatform::Browser => BundlePlatform::Browser,
     deno_cli_parser::flags::BundlePlatform::Deno => BundlePlatform::Deno,
   }
 }
@@ -1832,9 +1778,7 @@ fn convert_package_handling(
   src: &deno_cli_parser::flags::PackageHandling,
 ) -> PackageHandling {
   match src {
-    deno_cli_parser::flags::PackageHandling::Bundle => {
-      PackageHandling::Bundle
-    }
+    deno_cli_parser::flags::PackageHandling::Bundle => PackageHandling::Bundle,
     deno_cli_parser::flags::PackageHandling::External => {
       PackageHandling::External
     }
@@ -1848,9 +1792,7 @@ fn convert_source_map_type(
   match src {
     deno_cli_parser::flags::SourceMapType::Linked => SourceMapType::Linked,
     deno_cli_parser::flags::SourceMapType::Inline => SourceMapType::Inline,
-    deno_cli_parser::flags::SourceMapType::External => {
-      SourceMapType::External
-    }
+    deno_cli_parser::flags::SourceMapType::External => SourceMapType::External,
   }
 }
 
@@ -1954,9 +1896,9 @@ fn convert_subcommand(
       exclude: f.exclude.clone(),
       r#type: convert_coverage_type(&f.r#type),
     }),
-    Src::Deploy(f) => DenoSubcommand::Deploy(DeployFlags {
-      sandbox: f.sandbox,
-    }),
+    Src::Deploy(f) => {
+      DenoSubcommand::Deploy(DeployFlags { sandbox: f.sandbox })
+    }
     Src::Doc(f) => DenoSubcommand::Doc(DocFlags {
       private: f.private,
       json: f.json,
@@ -2010,20 +1952,18 @@ fn convert_subcommand(
         SrcInstall::Local(local) => {
           use deno_cli_parser::flags::InstallFlagsLocal as SrcLocal;
           match local {
-            SrcLocal::Add(add) => {
-              DenoSubcommand::Install(InstallFlags::Local(
-                InstallFlagsLocal::Add(AddFlags {
-                  packages: add.packages.clone(),
-                  dev: add.dev,
-                  default_registry: add
-                    .default_registry
-                    .as_ref()
-                    .map(convert_default_registry),
-                  lockfile_only: add.lockfile_only,
-                  save_exact: add.save_exact,
-                }),
-              ))
-            }
+            SrcLocal::Add(add) => DenoSubcommand::Install(InstallFlags::Local(
+              InstallFlagsLocal::Add(AddFlags {
+                packages: add.packages.clone(),
+                dev: add.dev,
+                default_registry: add
+                  .default_registry
+                  .as_ref()
+                  .map(convert_default_registry),
+                lockfile_only: add.lockfile_only,
+                save_exact: add.save_exact,
+              }),
+            )),
             SrcLocal::TopLevel(tl) => {
               DenoSubcommand::Install(InstallFlags::Local(
                 InstallFlagsLocal::TopLevel(InstallTopLevelFlags {
@@ -2068,12 +2008,10 @@ fn convert_subcommand(
           packages: rm.packages.clone(),
           lockfile_only: rm.lockfile_only,
         }),
-        SrcKind::Global(g) => {
-          UninstallKind::Global(UninstallFlagsGlobal {
-            name: g.name.clone(),
-            root: g.root.clone(),
-          })
-        }
+        SrcKind::Global(g) => UninstallKind::Global(UninstallFlagsGlobal {
+          name: g.name.clone(),
+          root: g.root.clone(),
+        }),
       };
       DenoSubcommand::Uninstall(UninstallFlags { kind })
     }
@@ -2098,20 +2036,14 @@ fn convert_subcommand(
     }),
     Src::Run(f) => DenoSubcommand::Run(RunFlags {
       script: f.script.clone(),
-      watch: f
-        .watch
-        .as_ref()
-        .map(convert_watch_flags_with_paths),
+      watch: f.watch.as_ref().map(convert_watch_flags_with_paths),
       bare: f.bare,
       coverage_dir: f.coverage_dir.clone(),
       print_task_list: f.print_task_list,
     }),
     Src::Serve(f) => DenoSubcommand::Serve(ServeFlags {
       script: f.script.clone(),
-      watch: f
-        .watch
-        .as_ref()
-        .map(convert_watch_flags_with_paths),
+      watch: f.watch.as_ref().map(convert_watch_flags_with_paths),
       port: f.port,
       host: f.host.clone(),
       parallel: f.parallel,
@@ -2131,19 +2063,14 @@ fn convert_subcommand(
       coverage_dir: f.coverage_dir.clone(),
       coverage_raw_data_only: f.coverage_raw_data_only,
       clean: f.clean,
-      fail_fast: f
-        .fail_fast
-        .and_then(NonZeroUsize::new),
+      fail_fast: f.fail_fast.and_then(NonZeroUsize::new),
       files: convert_file_flags(&f.files),
       parallel: f.parallel,
       permit_no_files: f.permit_no_files,
       filter: f.filter.clone(),
       shuffle: f.shuffle,
       trace_leaks: f.trace_leaks,
-      watch: f
-        .watch
-        .as_ref()
-        .map(convert_watch_flags_with_paths),
+      watch: f.watch.as_ref().map(convert_watch_flags_with_paths),
       reporter: convert_test_reporter_config(&f.reporter),
       junit_path: f.junit_path.clone(),
       hide_stacktraces: f.hide_stacktraces,
@@ -2209,9 +2136,8 @@ fn convert_parser_flags(
   initial_cwd: Option<PathBuf>,
 ) -> Flags {
   Flags {
-    initial_cwd: initial_cwd.or_else(|| {
-      src.initial_cwd.as_ref().map(PathBuf::from)
-    }),
+    initial_cwd: initial_cwd
+      .or_else(|| src.initial_cwd.as_ref().map(PathBuf::from)),
     argv: src.argv.clone(),
     subcommand: convert_subcommand(&src.subcommand),
     frozen_lockfile: src.frozen_lockfile,
@@ -2232,37 +2158,23 @@ fn convert_parser_flags(
     ignore: src.ignore.clone(),
     import_map_path: src.import_map_path.clone(),
     env_file: src.env_file.clone(),
-    inspect_brk: src
-      .inspect_brk
-      .as_ref()
-      .and_then(|s| parse_socket_addr(s)),
-    inspect_wait: src
-      .inspect_wait
-      .as_ref()
-      .and_then(|s| parse_socket_addr(s)),
-    inspect: src
-      .inspect
-      .as_ref()
-      .and_then(|s| parse_socket_addr(s)),
+    inspect_brk: src.inspect_brk.as_ref().and_then(|s| parse_socket_addr(s)),
+    inspect_wait: src.inspect_wait.as_ref().and_then(|s| parse_socket_addr(s)),
+    inspect: src.inspect.as_ref().and_then(|s| parse_socket_addr(s)),
     inspect_publish_uid: src
       .inspect_publish_uid
       .as_ref()
       .map(convert_inspect_publish_uid),
-    location: src
-      .location
-      .as_ref()
-      .and_then(|s| Url::parse(s).ok()),
+    location: src.location.as_ref().and_then(|s| Url::parse(s).ok()),
     lock: src.lock.clone(),
     log_level: src.log_level.as_ref().map(convert_log_level),
-    minimum_dependency_age: src.minimum_dependency_age.as_ref().and_then(
-      |s| {
-        deno_config::parse_minutes_duration_or_date(
-          &sys_traits::impls::RealSys,
-          s,
-        )
-        .ok()
-      },
-    ),
+    minimum_dependency_age: src.minimum_dependency_age.as_ref().and_then(|s| {
+      deno_config::parse_minutes_duration_or_date(
+        &sys_traits::impls::RealSys,
+        s,
+      )
+      .ok()
+    }),
     no_remote: src.no_remote,
     no_lock: src.no_lock,
     no_npm: src.no_npm,
@@ -2309,9 +2221,9 @@ fn validate_parser_flags(
   string_args: &[String],
 ) -> Result<(), FlagsError> {
   let has_arg = |name: &str| {
-    string_args.iter().any(|a| {
-      a == name || a.starts_with(&format!("{name}="))
-    })
+    string_args
+      .iter()
+      .any(|a| a == name || a.starts_with(&format!("{name}=")))
   };
 
   // --no-check and --check conflict
@@ -2341,13 +2253,13 @@ fn validate_parser_flags(
   }
 
   // Validate --location URL scheme
-  if let Some(ref url) = flags.location {
-    if !["http", "https"].contains(&url.scheme()) {
-      return Err(make_flags_error(
-        FlagsErrorKind::InvalidValue,
-        "error: invalid value for '--location <HREF>': Expected protocol \"http\" or \"https\"",
-      ));
-    }
+  if let Some(ref url) = flags.location
+    && !["http", "https"].contains(&url.scheme())
+  {
+    return Err(make_flags_error(
+      FlagsErrorKind::InvalidValue,
+      "error: invalid value for '--location <HREF>': Expected protocol \"http\" or \"https\"",
+    ));
   }
 
   // Subcommand-specific validations
@@ -2368,9 +2280,9 @@ fn validate_parser_flags(
         ));
       }
     }
-    DenoSubcommand::Install(InstallFlags::Local(
-      InstallFlagsLocal::Add(add_flags),
-    )) => {
+    DenoSubcommand::Install(InstallFlags::Local(InstallFlagsLocal::Add(
+      add_flags,
+    ))) => {
       if add_flags.packages.is_empty() {
         return Err(make_flags_error(
           FlagsErrorKind::MissingRequiredArgument,
@@ -2378,26 +2290,24 @@ fn validate_parser_flags(
         ));
       }
     }
-    DenoSubcommand::Uninstall(uninstall_flags) => {
-      match &uninstall_flags.kind {
-        UninstallKind::Local(remove_flags) => {
-          if remove_flags.packages.is_empty() {
-            return Err(make_flags_error(
-              FlagsErrorKind::MissingRequiredArgument,
-              "error: one or more packages are required",
-            ));
-          }
-        }
-        UninstallKind::Global(g) => {
-          if g.name.is_empty() {
-            return Err(make_flags_error(
-              FlagsErrorKind::MissingRequiredArgument,
-              "error: package name is required",
-            ));
-          }
+    DenoSubcommand::Uninstall(uninstall_flags) => match &uninstall_flags.kind {
+      UninstallKind::Local(remove_flags) => {
+        if remove_flags.packages.is_empty() {
+          return Err(make_flags_error(
+            FlagsErrorKind::MissingRequiredArgument,
+            "error: one or more packages are required",
+          ));
         }
       }
-    }
+      UninstallKind::Global(g) => {
+        if g.name.is_empty() {
+          return Err(make_flags_error(
+            FlagsErrorKind::MissingRequiredArgument,
+            "error: package name is required",
+          ));
+        }
+      }
+    },
     DenoSubcommand::Check(check_flags) => {
       // --doc and --doc-only are mutually exclusive
       if check_flags.doc && check_flags.doc_only {
@@ -2450,28 +2360,25 @@ fn validate_parser_flags(
     }
     DenoSubcommand::Doc(doc_flags) => {
       // --html requires source files
-      if doc_flags.html.is_some() {
-        let has_files = match &doc_flags.source_files {
-          DocSourceFileFlag::Paths(paths) => !paths.is_empty(),
-          DocSourceFileFlag::Builtin => false,
-        };
-        if !has_files {
-          return Err(make_flags_error(
-            FlagsErrorKind::MissingRequiredArgument,
-            "error: the following required arguments were not provided:\n  <source_file>\n\ntip: '--html' requires source files to be specified",
-          ));
-        }
+      if doc_flags.html.is_some()
+        && !matches!(
+          &doc_flags.source_files,
+          DocSourceFileFlag::Paths(paths) if !paths.is_empty()
+        )
+      {
+        return Err(make_flags_error(
+          FlagsErrorKind::MissingRequiredArgument,
+          "error: the following required arguments were not provided:\n  <source_file>\n\ntip: '--html' requires source files to be specified",
+        ));
       }
       // --html requires --output
-      if doc_flags.html.is_some() {
-        if let Some(ref html) = doc_flags.html {
-          if html.output.is_empty() {
-            return Err(make_flags_error(
-              FlagsErrorKind::MissingRequiredArgument,
-              "error: the following required arguments were not provided:\n  --output <path>",
-            ));
-          }
-        }
+      if let Some(ref html) = doc_flags.html
+        && html.output.is_empty()
+      {
+        return Err(make_flags_error(
+          FlagsErrorKind::MissingRequiredArgument,
+          "error: the following required arguments were not provided:\n  --output <path>",
+        ));
       }
       // --lint requires source files
       if doc_flags.lint {
@@ -2489,10 +2396,7 @@ fn validate_parser_flags(
     }
     DenoSubcommand::Init(init_flags) => {
       // Check if this came from the `create` subcommand
-      let is_create = string_args
-        .iter()
-        .skip(1)
-        .any(|a| a == "create");
+      let is_create = string_args.iter().skip(1).any(|a| a == "create");
 
       if is_create {
         // --jsr and --npm conflict
@@ -2503,26 +2407,24 @@ fn validate_parser_flags(
           ));
         }
         // --jsr with npm: specifier is contradictory
-        if has_arg("--jsr") {
-          if let Some(ref pkg) = init_flags.package {
-            if pkg.starts_with("npm:") {
-              return Err(make_flags_error(
-                FlagsErrorKind::InvalidValue,
-                "error: cannot use '--jsr' with an npm: specifier",
-              ));
-            }
-          }
+        if has_arg("--jsr")
+          && let Some(ref pkg) = init_flags.package
+          && pkg.starts_with("npm:")
+        {
+          return Err(make_flags_error(
+            FlagsErrorKind::InvalidValue,
+            "error: cannot use '--jsr' with an npm: specifier",
+          ));
         }
         // --npm with jsr: specifier is contradictory
-        if has_arg("--npm") {
-          if let Some(ref pkg) = init_flags.package {
-            if pkg.starts_with("jsr:") {
-              return Err(make_flags_error(
-                FlagsErrorKind::InvalidValue,
-                "error: cannot use '--npm' with a jsr: specifier",
-              ));
-            }
-          }
+        if has_arg("--npm")
+          && let Some(ref pkg) = init_flags.package
+          && pkg.starts_with("jsr:")
+        {
+          return Err(make_flags_error(
+            FlagsErrorKind::InvalidValue,
+            "error: cannot use '--npm' with a jsr: specifier",
+          ));
         }
         // `deno create` requires a package
         if init_flags.package.is_none()
@@ -2542,7 +2444,10 @@ fn validate_parser_flags(
             ));
           }
           // Check for empty package name after prefix
-          let name = pkg.strip_prefix("npm:").or_else(|| pkg.strip_prefix("jsr:")).unwrap_or(pkg);
+          let name = pkg
+            .strip_prefix("npm:")
+            .or_else(|| pkg.strip_prefix("jsr:"))
+            .unwrap_or(pkg);
           if name.is_empty() {
             return Err(make_flags_error(
               FlagsErrorKind::InvalidValue,
@@ -2701,16 +2606,12 @@ fn validate_allow_scripts(
           ));
         }
         // Check for tags (e.g., npm:foo@next)
-        let dep = JsrDepPackageReq::from_str_loose(pkg_str).map_err(|e| {
-          make_flags_error(FlagsErrorKind::InvalidValue, e)
-        })?;
+        let dep = JsrDepPackageReq::from_str_loose(pkg_str)
+          .map_err(|e| make_flags_error(FlagsErrorKind::InvalidValue, e))?;
         if dep.req.version_req.tag().is_some() {
           return Err(make_flags_error(
             FlagsErrorKind::InvalidValue,
-            format!(
-              "Tags are not supported in --allow-scripts: {}",
-              pkg_str
-            ),
+            format!("Tags are not supported in --allow-scripts: {}", pkg_str),
           ));
         }
       }
@@ -2766,18 +2667,13 @@ pub fn flags_from_vec_with_initial_cwd(
     }
     Err(e) => {
       match e.kind {
-        deno_cli_parser::CliErrorKind::DisplayVersion => {
-          Err(FlagsError::new(
-            FlagsErrorKind::DisplayVersion,
-            format!("deno {}\n", DENO_VERSION_INFO.deno),
-          ))
-        }
+        deno_cli_parser::CliErrorKind::DisplayVersion => Err(FlagsError::new(
+          FlagsErrorKind::DisplayVersion,
+          format!("deno {}\n", DENO_VERSION_INFO.deno),
+        )),
         _ => {
           // Convert parser error to FlagsError
-          Err(FlagsError::new(
-            FlagsErrorKind::Other,
-            e.to_string(),
-          ))
+          Err(FlagsError::new(FlagsErrorKind::Other, e.to_string()))
         }
       }
     }
@@ -2800,14 +2696,6 @@ where
   candidates
     .sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
   candidates.into_iter().map(|(_, pv)| pv).collect()
-}
-
-fn handle_repl_flags(flags: &mut Flags, repl_flags: ReplFlags) {
-  // If user runs just `deno` binary we enter REPL and allow all permissions.
-  if repl_flags.is_default_command {
-    flags.allow_all();
-  }
-  flags.subcommand = DenoSubcommand::Repl(repl_flags);
 }
 
 #[cfg(test)]
@@ -2857,65 +2745,11 @@ fn apply_node_options(flags: &mut Flags) {
     flags.require = require_values;
   }
 
-  if flags.inspect_publish_uid.is_none() {
-    if let Some(val) = inspect_publish_uid_value {
-      if let Ok(uid) = parse_inspect_publish_uid(&val) {
-        flags.inspect_publish_uid = Some(uid);
-      }
-    }
-  }
-}
-
-// This is used to pass the parsed flags to the completion function. This is so
-// we can take into account things like the `--config` flag. We could also take into account
-// `--recursive` or `--filter` in the future.
-// The completion function can't take any args, so we use a static instead.
-// This code will only run if we are actually running the completion code.
-static TASK_FLAGS_FOR_COMPLETION: LazyLock<Option<Flags>> =
-  LazyLock::new(|| {
-    let args: Vec<String> = std::env::args()
-      .skip(1)
-      .collect();
-    let parsed = deno_cli_parser::convert::flags_from_vec(args).ok()?;
-    let flags = convert_parser_flags(parsed, None);
-    if matches!(flags.subcommand, DenoSubcommand::Task(_)) {
-      Some(flags)
-    } else {
-      None
-    }
-  });
-
-fn complete_available_tasks_inner() -> Result<Vec<CompletionCandidate>, AnyError>
-{
-  let parsed_flags = TASK_FLAGS_FOR_COMPLETION.clone();
-
-  let flags = parsed_flags.unwrap_or_default();
-
-  let completions = crate::tools::task::get_available_tasks_for_completion(
-    std::sync::Arc::new(flags),
-  )?;
-
-  Ok(
-    completions
-      .into_iter()
-      .map(|c| {
-        let mut candidate = CompletionCandidate::new(c.name);
-        if let Some(description) = c.task.description {
-          candidate = candidate.help(Some(description.into()));
-        }
-        candidate
-      })
-      .collect(),
-  )
-}
-
-fn complete_available_tasks() -> Vec<CompletionCandidate> {
-  match complete_available_tasks_inner() {
-    Ok(candidates) => candidates,
-    Err(e) => {
-      log::debug!("Error during available tasks completion: {e}");
-      vec![]
-    }
+  if flags.inspect_publish_uid.is_none()
+    && let Some(val) = inspect_publish_uid_value
+    && let Ok(uid) = parse_inspect_publish_uid(&val)
+  {
+    flags.inspect_publish_uid = Some(uid);
   }
 }
 
@@ -2952,6 +2786,7 @@ pub fn handle_shell_completion(_cwd: &Path) -> Result<(), AnyError> {
   Ok(())
 }
 
+#[cfg(test)]
 fn escape_and_split_commas(s: String) -> Result<Vec<String>, String> {
   let mut result = vec![];
   let mut current = String::new();
@@ -2986,88 +2821,6 @@ fn escape_and_split_commas(s: String) -> Result<Vec<String>, String> {
   result.push(current);
 
   Ok(result)
-}
-
-/// Strips fragment part of URL. Panics on bad URL.
-pub fn resolve_urls(urls: Vec<String>) -> Vec<String> {
-  let mut out: Vec<String> = vec![];
-  for urlstr in urls.iter() {
-    if let Ok(mut url) = Url::from_str(urlstr) {
-      url.set_fragment(None);
-      let mut full_url = String::from(url.as_str());
-      if full_url.len() > 1 && full_url.ends_with('/') {
-        full_url.pop();
-      }
-      out.push(full_url);
-    } else {
-      panic!("Bad Url: {urlstr}");
-    }
-  }
-  out
-}
-
-/// Parse a host:port string for the inspector.
-pub fn inspect_value_parser(host_and_port: &str) -> Result<SocketAddr, String> {
-  const DEFAULT_HOST: &str = "127.0.0.1";
-  const DEFAULT_PORT: u16 = 9229;
-
-  fn parse_port(port: &str) -> Result<u16, String> {
-    port
-      .parse::<u16>()
-      .map_err(|_| format!("Invalid inspector port '{port}'"))
-  }
-
-  let default_host: IpAddr = DEFAULT_HOST.parse().unwrap();
-
-  if host_and_port.is_empty() {
-    return Err("Inspector address cannot be empty".to_string());
-  }
-
-  if let Some(port_part) = host_and_port.strip_prefix(':') {
-    let port = if port_part.is_empty() {
-      DEFAULT_PORT
-    } else {
-      parse_port(port_part)?
-    };
-    return Ok(SocketAddr::new(default_host, port));
-  }
-
-  if host_and_port.contains(':') {
-    if let Ok(addr) = host_and_port.parse::<SocketAddr>() {
-      return Ok(addr);
-    }
-
-    if let Ok(host_ip) = host_and_port.parse::<IpAddr>() {
-      return Ok(SocketAddr::new(host_ip, DEFAULT_PORT));
-    }
-
-    let (host_part, port_part) = host_and_port
-      .rsplit_once(':')
-      .ok_or_else(|| format!("Invalid inspector address '{host_and_port}'"))?;
-
-    let port = if port_part.is_empty() {
-      DEFAULT_PORT
-    } else {
-      parse_port(port_part)?
-    };
-
-    let host_ip = host_part
-      .parse::<IpAddr>()
-      .map_err(|e| format!("Invalid inspector host '{host_part}': {:?}", e))?;
-
-    return Ok(SocketAddr::new(host_ip, port));
-  }
-
-  if host_and_port.chars().all(|c| c.is_ascii_digit()) {
-    let port = parse_port(host_and_port)?;
-    return Ok(SocketAddr::new(default_host, port));
-  }
-
-  let host_ip = host_and_port.parse::<IpAddr>().map_err(|e| {
-    format!("Invalid inspector host '{host_and_port}': {:?}", e)
-  })?;
-
-  Ok(SocketAddr::new(host_ip, DEFAULT_PORT))
 }
 
 #[cfg(test)]
@@ -3155,15 +2908,9 @@ mod tests {
   #[test]
   fn version() {
     let r = flags_from_vec(svec!["deno", "--version"]);
-    assert_eq!(
-      r.unwrap_err().kind(),
-      FlagsErrorKind::DisplayVersion
-    );
+    assert_eq!(r.unwrap_err().kind(), FlagsErrorKind::DisplayVersion);
     let r = flags_from_vec(svec!["deno", "-V"]);
-    assert_eq!(
-      r.unwrap_err().kind(),
-      FlagsErrorKind::DisplayVersion
-    );
+    assert_eq!(r.unwrap_err().kind(), FlagsErrorKind::DisplayVersion);
   }
 
   #[test]
@@ -4566,10 +4313,7 @@ mod tests {
       "--doc-only",
       "script.ts"
     ]);
-    assert_eq!(
-      r.unwrap_err().kind(),
-      FlagsErrorKind::ArgumentConflict
-    );
+    assert_eq!(r.unwrap_err().kind(), FlagsErrorKind::ArgumentConflict);
 
     for all_flag in ["--remote", "--all"] {
       let r = flags_from_vec(svec!["deno", "check", all_flag, "script.ts"]);
@@ -4595,10 +4339,7 @@ mod tests {
         "--no-remote",
         "script.ts"
       ]);
-      assert_eq!(
-        r.unwrap_err().kind(),
-        FlagsErrorKind::ArgumentConflict
-      );
+      assert_eq!(r.unwrap_err().kind(), FlagsErrorKind::ArgumentConflict);
     }
 
     let r = flags_from_vec(svec!["deno", "check", "--check-js", "script.js"]);
@@ -7883,7 +7624,8 @@ mod tests {
         .contains("error: the following required arguments were not provided:")
     );
     assert!(
-      error_message.contains("--watch") || error_message.contains("--no-clear-screen"),
+      error_message.contains("--watch")
+        || error_message.contains("--no-clear-screen"),
       "error should mention watch dependency: {error_message}"
     );
   }
@@ -9330,26 +9072,24 @@ mod tests {
         continue;
       }
 
-      let long_flag =
-        match flags_from_vec(svec!["deno", sub.name, "--help"])
-          .unwrap()
-          .subcommand
-        {
-          DenoSubcommand::Help(help) => help.help,
-          _ => {
-            unreachable!("{} --help should produce Help", sub.name)
-          }
-        };
-      let short_flag =
-        match flags_from_vec(svec!["deno", sub.name, "-h"])
-          .unwrap()
-          .subcommand
-        {
-          DenoSubcommand::Help(help) => help.help,
-          _ => {
-            unreachable!("{} -h should produce Help", sub.name)
-          }
-        };
+      let long_flag = match flags_from_vec(svec!["deno", sub.name, "--help"])
+        .unwrap()
+        .subcommand
+      {
+        DenoSubcommand::Help(help) => help.help,
+        _ => {
+          unreachable!("{} --help should produce Help", sub.name)
+        }
+      };
+      let short_flag = match flags_from_vec(svec!["deno", sub.name, "-h"])
+        .unwrap()
+        .subcommand
+      {
+        DenoSubcommand::Help(help) => help.help,
+        _ => {
+          unreachable!("{} -h should produce Help", sub.name)
+        }
+      };
       assert_eq!(long_flag, short_flag, "{} subcommand", sub.name);
     }
   }
@@ -9485,7 +9225,10 @@ mod tests {
   fn flag_before_subcommand() {
     let r = flags_from_vec(svec!["deno", "--allow-net", "repl"]);
     let err = r.unwrap_err().to_string();
-    assert!(err.contains("--allow-net"), "error should mention the flag: {err}");
+    assert!(
+      err.contains("--allow-net"),
+      "error should mention the flag: {err}"
+    );
     assert!(
       err.contains("repl") || err.contains("'repl --allow-net' exists"),
       "error should mention the subcommand: {err}"
