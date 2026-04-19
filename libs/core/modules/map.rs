@@ -2018,7 +2018,7 @@ impl ModuleMap {
             .unwrap()
             .clone();
           match state.phase {
-            ModuleImportPhase::Defer | ModuleImportPhase::Evaluation => {
+            ModuleImportPhase::Evaluation => {
               let module_id =
                 load.root_module_id().expect("Root module should be loaded");
               let result = self.instantiate_module(scope, module_id);
@@ -2032,72 +2032,45 @@ impl ModuleMap {
                 state,
               )?;
             }
-          }
-          _ => {
-            let state = self
-              .dynamic_import_map
-              .borrow()
-              .get(&dyn_import_id)
-              .unwrap()
-              .clone();
-            match state.phase {
-              ModuleImportPhase::Evaluation => {
-                // The top-level module from a dynamic import has been instantiated.
-                // Load is done.
-                let module_id =
-                  load.root_module_id.expect("Root module should be loaded");
-                let result = self.instantiate_module(scope, module_id);
-                if let Err(exception) = result {
-                  self.dynamic_import_reject(scope, dyn_import_id, exception);
-                }
-                self.dynamic_import_module_evaluate(
-                  scope,
-                  module_id,
-                  dyn_import_id,
-                  state,
-                )?;
+            ModuleImportPhase::Defer => {
+              // For defer phase imports, the module is instantiated but NOT evaluated.
+              // V8 will handle creating the deferred namespace object that triggers
+              // evaluation on first property access.
+              let module_id =
+                load.root_module_id().expect("Root module should be loaded");
+              let result = self.instantiate_module(scope, module_id);
+              if let Err(exception) = result {
+                self.dynamic_import_reject(scope, dyn_import_id, exception);
+                continue;
               }
-              ModuleImportPhase::Defer => {
-                // For defer phase imports, the module is instantiated but NOT evaluated.
-                // V8 will handle creating the deferred namespace object that triggers
-                // evaluation on first property access.
-                // Requires V8 flag --js-defer-import-eval (enabled in runtime/setup.rs).
-                let module_id =
-                  load.root_module_id.expect("Root module should be loaded");
-                let result = self.instantiate_module(scope, module_id);
-                if let Err(exception) = result {
-                  self.dynamic_import_reject(scope, dyn_import_id, exception);
-                  continue;
-                }
-                // Resolve with the module namespace without evaluating.
-                // V8's deferred namespace will trigger evaluation on property access.
-                let module_handle =
-                  self.get_handle(module_id).expect("ModuleInfo not found");
-                let module = module_handle.open(scope);
-                let module_namespace = module.get_module_namespace();
-                let resolver_handle = self
-                  .dynamic_import_map
-                  .borrow_mut()
-                  .remove(&dyn_import_id)
-                  .expect("Invalid dynamic import id")
-                  .resolver;
-                let resolver = resolver_handle.open(scope);
-                resolver.resolve(scope, module_namespace).unwrap();
-                scope.perform_microtask_checkpoint();
-              }
-              ModuleImportPhase::Source => {
-                let module_reference = load.root_module_reference().expect(
-                  "Root module reference had to have been resolved to get here.",
-                );
-                let key = ModuleSourceKey::from_reference(module_reference);
-                let source = {
-                  let data = self.data.borrow();
-                  let source = data.sources.get(&key).expect("Source had to have been inserted successfully, or recursion would error.").as_ref();
-                  v8::Local::new(scope, source).into()
-                };
-                let resolver = state.resolver.open(scope);
-                resolver.resolve(scope, source).unwrap();
-              }
+              // Resolve with the module namespace without evaluating.
+              // V8's deferred namespace will trigger evaluation on property access.
+              let module_handle =
+                self.get_handle(module_id).expect("ModuleInfo not found");
+              let module = module_handle.open(scope);
+              let module_namespace = module.get_module_namespace();
+              let resolver_handle = self
+                .dynamic_import_map
+                .borrow_mut()
+                .remove(&dyn_import_id)
+                .expect("Invalid dynamic import id")
+                .resolver;
+              let resolver = resolver_handle.open(scope);
+              resolver.resolve(scope, module_namespace).unwrap();
+              scope.perform_microtask_checkpoint();
+            }
+            ModuleImportPhase::Source => {
+              let module_reference = load.root_module_reference().expect(
+                "Root module reference had to have been resolved to get here.",
+              );
+              let key = ModuleSourceKey::from_reference(module_reference);
+              let source = {
+                let data = self.data.borrow();
+                let source = data.sources.get(&key).expect("Source had to have been inserted successfully, or recursion would error.").as_ref();
+                v8::Local::new(scope, source).into()
+              };
+              let resolver = state.resolver.open(scope);
+              resolver.resolve(scope, source).unwrap();
             }
           }
         }

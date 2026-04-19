@@ -100,7 +100,7 @@ deno_task_shell = "=0.29.0"
 deno_terminal = "=0.2.3"
 deno_unsync = { version = "0.4.4", default-features = false }
 deno_whoami = "0.1.0"
-v8 = { version = "147.2.1", default-features = false, features = ["simdutf"] }
+v8 = { version = "147.3.0", default-features = false, features = ["simdutf"] }
 
 denokv_proto = "0.13.0"
 denokv_remote = "0.13.0"
