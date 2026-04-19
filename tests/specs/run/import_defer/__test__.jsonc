@@ -1,12 +1,20 @@
 {
   "tests": {
     "static_defer": {
-      "args": "run main.js",
+      "args": "run --allow-read main.js",
       "output": "main.out"
     },
     "dynamic_defer": {
-      "args": "run dynamic.js",
+      "args": "run --allow-read dynamic.js",
       "output": "dynamic.out"
+    },
+    "static_defer_ts": {
+      "args": "run --allow-read main_ts.ts",
+      "output": "main.out"
+    },
+    "check_defer_ts": {
+      "args": "check main_ts.ts",
+      "output": "check.out"
     }
   }
 }
