@@ -7,12 +7,51 @@
 //! the relevant parsed arguments and builds the corresponding
 //! `DenoSubcommand` variant plus any shared `Flags` fields.
 
+use std::net::IpAddr;
+use std::net::SocketAddr;
+use std::num::NonZeroU8;
+use std::num::NonZeroU32;
+use std::num::NonZeroUsize;
+
+use deno_semver::jsr::JsrDepPackageReq;
+use deno_semver::package::PackageKind;
+
 use crate::error::CliError;
 use crate::error::CliErrorKind;
 use crate::flags::*;
 use crate::types::ParseResult;
 
 type UnstableFeatureEntry = (&'static str, Option<fn(&mut UnstableConfig)>);
+
+/// Parse a socket address string like "127.0.0.1:9229" into SocketAddr.
+fn parse_socket_addr(s: &str) -> Option<SocketAddr> {
+  let default_port: u16 = 9229;
+  // Try parsing as-is first (e.g. "127.0.0.1:9229")
+  if let Ok(addr) = s.parse::<SocketAddr>() {
+    return Some(addr);
+  }
+  // Try as just a port (e.g. "10000" or "0")
+  if let Ok(port) = s.parse::<u16>() {
+    return Some(SocketAddr::new(IpAddr::from([127, 0, 0, 1]), port));
+  }
+  // Try as just an IP address without port (e.g. "192.168.0.1")
+  if let Ok(ip) = s.parse::<IpAddr>() {
+    return Some(SocketAddr::new(ip, default_port));
+  }
+  // Try as host:port where host might not be an IP
+  if let Some((host, port_str)) = s.rsplit_once(':')
+    && let Ok(port) = port_str.parse::<u16>()
+  {
+    if host.is_empty() {
+      // Handle ":10000" format
+      return Some(SocketAddr::new(IpAddr::from([127, 0, 0, 1]), port));
+    }
+    if let Ok(ip) = host.parse::<IpAddr>() {
+      return Some(SocketAddr::new(ip, port));
+    }
+  }
+  None
+}
 
 // ============================================================
 // High-level API
@@ -290,16 +329,16 @@ fn default_parse(
 fn global_args_parse(result: &ParseResult, flags: &mut Flags) {
   if let Some(level) = result.get_one("log-level") {
     flags.log_level = match level {
-      "trace" => Some(LogLevel::Trace),
-      "debug" => Some(LogLevel::Debug),
-      "info" => Some(LogLevel::Info),
-      "warn" => Some(LogLevel::Warn),
-      "error" => Some(LogLevel::Error),
+      "trace" => Some(log::Level::Trace),
+      "debug" => Some(log::Level::Debug),
+      "info" => Some(log::Level::Info),
+      "warn" => Some(log::Level::Warn),
+      "error" => Some(log::Level::Error),
       _ => None,
     };
   }
   if result.get_bool("quiet") {
-    flags.log_level = Some(LogLevel::Error);
+    flags.log_level = Some(log::Level::Error);
   }
 }
 
@@ -428,25 +467,16 @@ fn permission_args_parse(result: &ParseResult, flags: &mut Flags) {
 
 fn inspect_arg_parse(result: &ParseResult, flags: &mut Flags) {
   if result.contains("inspect") {
-    let val = result
-      .get_one("inspect")
-      .unwrap_or("127.0.0.1:9229")
-      .to_string();
-    flags.inspect = Some(val);
+    let val = result.get_one("inspect").unwrap_or("127.0.0.1:9229");
+    flags.inspect = parse_socket_addr(val);
   }
   if result.contains("inspect-brk") {
-    let val = result
-      .get_one("inspect-brk")
-      .unwrap_or("127.0.0.1:9229")
-      .to_string();
-    flags.inspect_brk = Some(val);
+    let val = result.get_one("inspect-brk").unwrap_or("127.0.0.1:9229");
+    flags.inspect_brk = parse_socket_addr(val);
   }
   if result.contains("inspect-wait") {
-    let val = result
-      .get_one("inspect-wait")
-      .unwrap_or("127.0.0.1:9229")
-      .to_string();
-    flags.inspect_wait = Some(val);
+    let val = result.get_one("inspect-wait").unwrap_or("127.0.0.1:9229");
+    flags.inspect_wait = parse_socket_addr(val);
   }
   if let Some(uid_str) = result.get_one("inspect-publish-uid") {
     let mut uid = InspectPublishUid {
@@ -628,7 +658,11 @@ fn unsafely_ignore_certificate_errors_parse(
 
 fn min_dep_age_arg_parse(result: &ParseResult, flags: &mut Flags) {
   if let Some(age) = result.get_one("min-dep-age") {
-    flags.minimum_dependency_age = Some(age.to_string());
+    flags.minimum_dependency_age = deno_config::parse_minutes_duration_or_date(
+      &sys_traits::impls::RealSys,
+      age,
+    )
+    .ok();
   }
 }
 
@@ -640,7 +674,7 @@ fn cached_only_arg_parse(result: &ParseResult, flags: &mut Flags) {
 
 fn location_arg_parse(result: &ParseResult, flags: &mut Flags) {
   if let Some(loc) = result.get_one("location") {
-    flags.location = Some(loc.to_string());
+    flags.location = deno_core::url::Url::parse(loc).ok();
   }
 }
 
@@ -778,7 +812,16 @@ fn allow_scripts_arg_parse(result: &ParseResult, flags: &mut Flags) {
       flags.allow_scripts = PackagesAllowedScripts::All;
     } else {
       flags.allow_scripts = PackagesAllowedScripts::Some(
-        values.iter().map(|s| s.to_string()).collect(),
+        values
+          .iter()
+          .filter_map(|s| {
+            let dep = JsrDepPackageReq::from_str_loose(s).ok()?;
+            if dep.kind != PackageKind::Npm {
+              return None;
+            }
+            Some(dep.req)
+          })
+          .collect(),
       );
     }
   }
@@ -1231,10 +1274,12 @@ fn fmt_parse(result: &ParseResult, flags: &mut Flags) {
 
   let line_width = result
     .get_one("line-width")
-    .and_then(|s| s.parse::<u32>().ok());
+    .and_then(|s| s.parse::<u32>().ok())
+    .and_then(NonZeroU32::new);
   let indent_width = result
     .get_one("indent-width")
-    .and_then(|s| s.parse::<u8>().ok());
+    .and_then(|s| s.parse::<u8>().ok())
+    .and_then(NonZeroU8::new);
 
   let single_quote = if result.contains("single-quote") {
     Some(!matches!(result.get_one("single-quote"), Some("false")))
@@ -1339,7 +1384,7 @@ fn test_parse(result: &ParseResult, flags: &mut Flags) {
       .get_one("fail-fast")
       .and_then(|s| s.parse::<usize>().ok())
       .unwrap_or(1);
-    Some(val)
+    NonZeroUsize::new(val)
   } else {
     None
   };
@@ -1374,7 +1419,7 @@ fn test_parse(result: &ParseResult, flags: &mut Flags) {
   };
 
   if matches!(reporter, TestReporterConfig::Dot | TestReporterConfig::Tap) {
-    flags.log_level = Some(LogLevel::Error);
+    flags.log_level = Some(log::Level::Error);
   }
 
   let hide_stacktraces = result.get_bool("hide-stacktraces");
@@ -1902,7 +1947,10 @@ fn completions_parse(result: &ParseResult, flags: &mut Flags) {
     .get_one("shell")
     .map(|s| s.to_string())
     .unwrap_or_else(|| "bash".to_string());
-  flags.subcommand = DenoSubcommand::Completions(shell);
+  let buf = crate::completions::generate(&shell, &crate::defs::DENO_ROOT);
+  flags.subcommand = DenoSubcommand::Completions(CompletionsFlags::Static(
+    buf.into_boxed_slice(),
+  ));
 }
 
 fn init_parse(result: &ParseResult, flags: &mut Flags) {
@@ -2429,7 +2477,9 @@ fn json_reference_parse(flags: &mut Flags) {
   // Build a JSON representation of all commands from our static definitions.
   // This replaces the clap-based json_reference_parse.
   let root = &crate::defs::DENO_ROOT;
-  let json = serialize_command_def(root, true);
+  let json_str = serialize_command_def(root, true);
+  let json = deno_core::serde_json::from_str(&json_str)
+    .unwrap_or_else(|_| deno_core::serde_json::Value::Null);
   flags.subcommand = DenoSubcommand::JSONReference(JSONReferenceFlags { json });
 }
 

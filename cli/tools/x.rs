@@ -1,5 +1,4 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
-
 use std::collections::BTreeMap;
 use std::path::Path;
 use std::path::PathBuf;
@@ -18,6 +17,7 @@ use node_resolver::BinValue;
 
 use crate::args::DenoXShimName;
 use crate::args::Flags;
+use crate::args::FlagsExt;
 use crate::args::XFlags;
 use crate::args::XFlagsKind;
 use crate::factory::CliFactory;

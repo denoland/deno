@@ -2088,7 +2088,17 @@ version = "0.1.0"
 dependencies = [
  "clap",
  "criterion",
+ "deno_bundle_runtime",
+ "deno_config",
+ "deno_core",
+ "deno_lib",
+ "deno_npm_installer",
+ "deno_runtime",
+ "deno_semver",
+ "log",
  "pretty_assertions",
+ "serde",
+ "sys_traits",
 ]
 
 [[package]]

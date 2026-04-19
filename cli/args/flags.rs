@@ -3,48 +3,29 @@
 use std::borrow::Cow;
 use std::collections::HashSet;
 use std::ffi::OsString;
-use std::net::IpAddr;
-use std::net::SocketAddr;
-use std::num::NonZeroU8;
-use std::num::NonZeroU32;
-use std::num::NonZeroUsize;
 use std::path::Path;
 use std::path::PathBuf;
 use std::str::FromStr;
-use std::sync::Arc;
 
 use color_print::cstr;
-use deno_bundle_runtime::BundleFormat;
-use deno_bundle_runtime::BundlePlatform;
-use deno_bundle_runtime::PackageHandling;
-use deno_bundle_runtime::SourceMapType;
-use deno_config::deno_json::NewestDependencyDate;
-use deno_config::deno_json::NodeModulesDirMode;
+// Re-export all flag types from the parser crate. This is the single source
+// of truth for flag type definitions.
+pub use deno_cli_parser::flags::*;
 use deno_config::glob::FilePatterns;
 use deno_config::glob::PathOrPatternSet;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
-use deno_core::serde_json;
-use deno_core::url::Url;
 use deno_graph::GraphKind;
-use deno_lib::args::CaData;
-use deno_lib::args::UnstableConfig;
 use deno_lib::version::DENO_VERSION_INFO;
 use deno_npm::NpmSystemInfo;
-use deno_npm_installer::PackagesAllowedScripts;
 use deno_path_util::normalize_path;
 use deno_path_util::resolve_url_or_path;
 use deno_path_util::url_to_file_path;
-pub use deno_runtime::deno_inspector_server::InspectPublishUid;
 use deno_semver::jsr::JsrDepPackageReq;
-use deno_semver::package::PackageKind;
 use deno_telemetry::OtelConfig;
 use deno_telemetry::OtelConsoleConfig;
 use deno_telemetry::OtelPropagators;
-use log::Level;
 use node_shim::parse_node_options_env_var;
-use serde::Deserialize;
-use serde::Serialize;
 
 use crate::util::env::resolve_cwd;
 use crate::util::fs::canonicalize_path;
@@ -96,26 +77,16 @@ impl std::fmt::Display for FlagsError {
 impl std::error::Error for FlagsError {}
 
 // ============================================================
+// Extension traits for flag types that need CLI-specific methods.
+// The type definitions themselves are in `deno_cli_parser::flags`.
+// ============================================================
 
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
-pub enum ConfigFlag {
-  #[default]
-  Discover,
-  Path(String),
-  Disabled,
+pub trait FileFlagsExt {
+  fn as_file_patterns(&self, base: &Path) -> Result<FilePatterns, AnyError>;
 }
 
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
-pub struct FileFlags {
-  pub ignore: Vec<String>,
-  pub include: Vec<String>,
-}
-
-impl FileFlags {
-  pub fn as_file_patterns(
-    &self,
-    base: &Path,
-  ) -> Result<FilePatterns, AnyError> {
+impl FileFlagsExt for FileFlags {
+  fn as_file_patterns(&self, base: &Path) -> Result<FilePatterns, AnyError> {
     Ok(FilePatterns {
       include: if self.include.is_empty() {
         None
@@ -134,78 +105,12 @@ impl FileFlags {
   }
 }
 
-#[derive(Clone, Debug, Copy, Eq, PartialEq)]
-pub enum DefaultRegistry {
-  Npm,
-  Jsr,
+pub trait CompileFlagsExt {
+  fn resolve_target(&self) -> String;
 }
 
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
-pub struct AddFlags {
-  pub packages: Vec<String>,
-  pub dev: bool,
-  pub default_registry: Option<DefaultRegistry>,
-  pub lockfile_only: bool,
-  pub save_exact: bool,
-}
-
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
-pub struct AuditFlags {
-  pub severity: String,
-  pub ignore_registry_errors: bool,
-  pub ignore_unfixable: bool,
-  pub dev: bool,
-  pub prod: bool,
-  pub optional: bool,
-  pub ignore: Vec<String>,
-  pub socket: bool,
-}
-
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
-pub struct RemoveFlags {
-  pub packages: Vec<String>,
-  pub lockfile_only: bool,
-}
-
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
-pub struct BenchFlags {
-  pub files: FileFlags,
-  pub filter: Option<String>,
-  pub json: bool,
-  pub no_run: bool,
-  pub permit_no_files: bool,
-  pub watch: Option<WatchFlags>,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct CacheFlags {
-  pub files: Vec<String>,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct CheckFlags {
-  pub files: Vec<String>,
-  pub doc: bool,
-  pub doc_only: bool,
-  pub check_js: bool,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct CompileFlags {
-  pub source_file: String,
-  pub output: Option<String>,
-  pub args: Vec<String>,
-  pub target: Option<String>,
-  pub no_terminal: bool,
-  pub icon: Option<String>,
-  pub include: Vec<String>,
-  pub exclude: Vec<String>,
-  pub eszip: bool,
-  pub self_extracting: bool,
-}
-
-impl CompileFlags {
-  pub fn resolve_target(&self) -> String {
+impl CompileFlagsExt for CompileFlags {
+  fn resolve_target(&self) -> String {
     self
       .target
       .clone()
@@ -213,544 +118,12 @@ impl CompileFlags {
   }
 }
 
-#[derive(Clone)]
-pub enum CompletionsFlags {
-  Static(Box<[u8]>),
-  #[allow(
-    dead_code,
-    reason = "variant is matched in lib.rs but not currently constructed"
-  )]
-  Dynamic(Arc<dyn Fn() -> Result<(), AnyError> + Send + Sync + 'static>),
+pub trait DenoSubcommandExt {
+  fn npm_system_info(&self) -> NpmSystemInfo;
 }
 
-impl PartialEq for CompletionsFlags {
-  fn eq(&self, other: &Self) -> bool {
-    match (self, other) {
-      (Self::Static(l0), Self::Static(r0)) => l0 == r0,
-      (Self::Dynamic(l0), Self::Dynamic(r0)) => Arc::ptr_eq(l0, r0),
-      _ => false,
-    }
-  }
-}
-
-impl Eq for CompletionsFlags {}
-
-impl std::fmt::Debug for CompletionsFlags {
-  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    match self {
-      Self::Static(arg0) => f.debug_tuple("Static").field(arg0).finish(),
-      Self::Dynamic(_) => f.debug_tuple("Dynamic").finish(),
-    }
-  }
-}
-
-#[derive(Clone, Debug, Eq, PartialEq, Default)]
-pub enum CoverageType {
-  #[default]
-  Summary,
-  Detailed,
-  Lcov,
-  Html,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq, Default)]
-pub struct CoverageFlags {
-  pub files: FileFlags,
-  pub output: Option<String>,
-  pub include: Vec<String>,
-  pub exclude: Vec<String>,
-  pub r#type: CoverageType,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq, Default)]
-pub struct DeployFlags {
-  pub sandbox: bool,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq, Default)]
-pub enum DocSourceFileFlag {
-  #[default]
-  Builtin,
-  Paths(Vec<String>),
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct DocHtmlFlag {
-  pub name: Option<String>,
-  pub category_docs_path: Option<String>,
-  pub symbol_redirect_map_path: Option<String>,
-  pub default_symbol_map_path: Option<String>,
-  pub strip_trailing_html: bool,
-  pub output: String,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct DocFlags {
-  pub private: bool,
-  pub json: bool,
-  pub lint: bool,
-  pub html: Option<DocHtmlFlag>,
-  pub source_files: DocSourceFileFlag,
-  pub filter: Option<String>,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq, Default)]
-pub struct CpuProfFlags {
-  pub dir: Option<String>,
-  pub name: Option<String>,
-  pub interval: Option<u32>,
-  pub md: bool,
-  pub flamegraph: bool,
-}
-
-#[derive(Clone, Default, Debug, Eq, PartialEq)]
-pub struct EvalFlags {
-  pub print: bool,
-  pub code: String,
-}
-
-#[derive(Clone, Default, Debug, Eq, PartialEq)]
-pub struct FmtFlags {
-  pub check: bool,
-  pub fail_fast: bool,
-  pub files: FileFlags,
-  pub permit_no_files: bool,
-  pub use_tabs: Option<bool>,
-  pub line_width: Option<NonZeroU32>,
-  pub indent_width: Option<NonZeroU8>,
-  pub single_quote: Option<bool>,
-  pub prose_wrap: Option<String>,
-  pub no_semicolons: Option<bool>,
-  pub watch: Option<WatchFlags>,
-  pub unstable_component: bool,
-  pub unstable_sql: bool,
-}
-
-impl FmtFlags {
-  pub fn is_stdin(&self) -> bool {
-    let args = &self.files.include;
-    args.len() == 1 && args[0] == "-"
-  }
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct InitFlags {
-  pub package: Option<String>,
-  pub package_args: Vec<String>,
-  pub dir: Option<String>,
-  pub lib: bool,
-  pub serve: bool,
-  pub empty: bool,
-  pub yes: bool,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct InfoFlags {
-  pub json: bool,
-  pub file: Option<String>,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct InstallFlagsGlobal {
-  pub module_urls: Vec<String>,
-  pub args: Vec<String>,
-  pub name: Option<String>,
-  pub root: Option<String>,
-  pub force: bool,
-  pub compile: bool,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub enum InstallFlags {
-  Local(InstallFlagsLocal),
-  Global(InstallFlagsGlobal),
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub enum InstallFlagsLocal {
-  Add(AddFlags),
-  TopLevel(InstallTopLevelFlags),
-  Entrypoints(InstallEntrypointsFlags),
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct InstallTopLevelFlags {
-  pub lockfile_only: bool,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct InstallEntrypointsFlags {
-  pub entrypoints: Vec<String>,
-  pub lockfile_only: bool,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct JSONReferenceFlags {
-  pub json: deno_core::serde_json::Value,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct JupyterFlags {
-  pub install: bool,
-  pub name: Option<String>,
-  pub display: Option<String>,
-  pub kernel: bool,
-  pub conn_file: Option<String>,
-  pub force: bool,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct UninstallFlagsGlobal {
-  pub name: String,
-  pub root: Option<String>,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub enum UninstallKind {
-  Local(RemoveFlags),
-  Global(UninstallFlagsGlobal),
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct UninstallFlags {
-  pub kind: UninstallKind,
-}
-
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
-pub struct LintFlags {
-  pub files: FileFlags,
-  pub rules: bool,
-  pub fix: bool,
-  pub maybe_rules_tags: Option<Vec<String>>,
-  pub maybe_rules_include: Option<Vec<String>>,
-  pub maybe_rules_exclude: Option<Vec<String>>,
-  pub permit_no_files: bool,
-  pub json: bool,
-  pub compact: bool,
-  pub watch: Option<WatchFlags>,
-}
-
-impl LintFlags {
-  pub fn is_stdin(&self) -> bool {
-    let args = &self.files.include;
-    args.len() == 1 && args[0] == "-"
-  }
-}
-
-#[derive(Clone, Debug, Eq, PartialEq, Default)]
-pub struct ReplFlags {
-  pub eval_files: Option<Vec<String>>,
-  pub eval: Option<String>,
-  pub is_default_command: bool,
-  pub json: bool,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq, Default)]
-pub struct RunFlags {
-  pub script: String,
-  pub watch: Option<WatchFlagsWithPaths>,
-  pub bare: bool,
-  pub coverage_dir: Option<String>,
-  pub print_task_list: bool,
-}
-
-impl RunFlags {
-  #[cfg(test)]
-  pub fn new_default(script: String) -> Self {
-    Self {
-      script,
-      watch: None,
-      bare: false,
-      coverage_dir: None,
-      print_task_list: false,
-    }
-  }
-
-  pub fn is_stdin(&self) -> bool {
-    self.script == "-"
-  }
-}
-
-#[derive(Clone, Debug, Eq, PartialEq, Default)]
-pub enum DenoXShimName {
-  #[default]
-  Dx,
-  Denox,
-  Dnx,
-  Other(String),
-}
-
-impl DenoXShimName {
-  pub fn name(&self) -> &str {
-    match self {
-      Self::Dx => "dx",
-      Self::Denox => "denox",
-      Self::Dnx => "dnx",
-      Self::Other(name) => name,
-    }
-  }
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub enum XFlagsKind {
-  InstallAlias(DenoXShimName),
-  Command(XCommandFlags),
-  Print,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct XCommandFlags {
-  pub yes: bool,
-  pub command: String,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct XFlags {
-  pub kind: XFlagsKind,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct ServeFlags {
-  pub script: String,
-  pub watch: Option<WatchFlagsWithPaths>,
-  pub port: u16,
-  pub host: String,
-  pub parallel: bool,
-  pub open_site: bool,
-}
-
-impl ServeFlags {
-  #[cfg(test)]
-  pub fn new_default(script: String, port: u16, host: &str) -> Self {
-    Self {
-      script,
-      watch: None,
-      port,
-      host: host.to_owned(),
-      parallel: false,
-      open_site: false,
-    }
-  }
-}
-
-pub enum WatchFlagsRef<'a> {
-  Watch(&'a WatchFlags),
-  WithPaths(&'a WatchFlagsWithPaths),
-}
-
-#[derive(Clone, Default, Debug, Eq, PartialEq)]
-pub struct WatchFlags {
-  pub hmr: bool,
-  pub no_clear_screen: bool,
-  pub exclude: Vec<String>,
-}
-
-#[derive(Clone, Default, Debug, Eq, PartialEq)]
-pub struct WatchFlagsWithPaths {
-  pub hmr: bool,
-  pub paths: Vec<String>,
-  pub no_clear_screen: bool,
-  pub exclude: Vec<String>,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct TaskFlags {
-  pub cwd: Option<String>,
-  pub task: Option<String>,
-  pub is_run: bool,
-  pub recursive: bool,
-  pub filter: Option<String>,
-  pub eval: bool,
-}
-
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
-pub enum TestReporterConfig {
-  #[default]
-  Pretty,
-  Dot,
-  Junit,
-  Tap,
-}
-
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
-pub struct TestFlags {
-  pub doc: bool,
-  pub no_run: bool,
-  pub coverage_dir: Option<String>,
-  pub coverage_raw_data_only: bool,
-  pub clean: bool,
-  pub fail_fast: Option<NonZeroUsize>,
-  pub files: FileFlags,
-  pub parallel: bool,
-  pub permit_no_files: bool,
-  pub filter: Option<String>,
-  pub shuffle: Option<u64>,
-  pub trace_leaks: bool,
-  pub watch: Option<WatchFlagsWithPaths>,
-  pub reporter: TestReporterConfig,
-  pub junit_path: Option<String>,
-  pub hide_stacktraces: bool,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct UpgradeFlags {
-  pub dry_run: bool,
-  pub force: bool,
-  pub release_candidate: bool,
-  pub canary: bool,
-  pub version: Option<String>,
-  pub output: Option<String>,
-  pub version_or_hash_or_channel: Option<String>,
-  pub checksum: Option<String>,
-  pub pr: Option<u64>,
-  pub branch: Option<String>,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct PublishFlags {
-  pub token: Option<String>,
-  pub dry_run: bool,
-  pub allow_slow_types: bool,
-  pub allow_dirty: bool,
-  pub no_provenance: bool,
-  pub set_version: Option<String>,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct HelpFlags {
-  pub help: String,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct CleanFlags {
-  pub except_paths: Vec<String>,
-  pub dry_run: bool,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct BundleFlags {
-  pub entrypoints: Vec<String>,
-  pub output_path: Option<String>,
-  pub output_dir: Option<String>,
-  pub external: Vec<String>,
-  pub format: BundleFormat,
-  pub minify: bool,
-  pub keep_names: bool,
-  pub code_splitting: bool,
-  pub inline_imports: bool,
-  pub packages: PackageHandling,
-  pub sourcemap: Option<SourceMapType>,
-  pub platform: BundlePlatform,
-  pub watch: bool,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub enum DenoSubcommand {
-  Add(AddFlags),
-  Audit(AuditFlags),
-  ApproveScripts(ApproveScriptsFlags),
-  Remove(RemoveFlags),
-  Bench(BenchFlags),
-  Bundle(BundleFlags),
-  Cache(CacheFlags),
-  Check(CheckFlags),
-  Clean(CleanFlags),
-  Compile(CompileFlags),
-  Completions(CompletionsFlags),
-  Coverage(CoverageFlags),
-  Deploy(DeployFlags),
-  Doc(DocFlags),
-  Eval(EvalFlags),
-  Fmt(FmtFlags),
-  Init(InitFlags),
-  Info(InfoFlags),
-  Install(InstallFlags),
-  JSONReference(JSONReferenceFlags),
-  Jupyter(JupyterFlags),
-  Uninstall(UninstallFlags),
-  Lsp,
-  Lint(LintFlags),
-  Repl(ReplFlags),
-  Run(RunFlags),
-  Serve(ServeFlags),
-  Task(TaskFlags),
-  Test(TestFlags),
-  Outdated(OutdatedFlags),
-  Types,
-  Upgrade(UpgradeFlags),
-  Vendor,
-  Publish(PublishFlags),
-  Help(HelpFlags),
-  X(XFlags),
-}
-
-impl DenoSubcommand {
-  pub fn watch_flags(&self) -> Option<WatchFlagsRef<'_>> {
-    match self {
-      Self::Run(RunFlags {
-        watch: Some(flags), ..
-      })
-      | Self::Test(TestFlags {
-        watch: Some(flags), ..
-      }) => Some(WatchFlagsRef::WithPaths(flags)),
-      Self::Bench(BenchFlags {
-        watch: Some(flags), ..
-      })
-      | Self::Lint(LintFlags {
-        watch: Some(flags), ..
-      })
-      | Self::Fmt(FmtFlags {
-        watch: Some(flags), ..
-      }) => Some(WatchFlagsRef::Watch(flags)),
-      _ => None,
-    }
-  }
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum OutdatedKind {
-  Update {
-    latest: bool,
-    interactive: bool,
-    lockfile_only: bool,
-  },
-  PrintOutdated {
-    compatible: bool,
-  },
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct OutdatedFlags {
-  pub filters: Vec<String>,
-  pub recursive: bool,
-  pub kind: OutdatedKind,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct ApproveScriptsFlags {
-  pub lockfile_only: bool,
-  pub packages: Vec<String>,
-}
-
-impl DenoSubcommand {
-  pub fn is_run(&self) -> bool {
-    matches!(self, Self::Run(_))
-  }
-
-  // Returns `true` if the subcommand depends on testing infrastructure.
-  pub fn needs_test(&self) -> bool {
-    matches!(
-      self,
-      Self::Test(_)
-        | Self::Jupyter(_)
-        | Self::Repl(_)
-        | Self::Bench(_)
-        | Self::Lint(_)
-        | Self::Lsp
-    )
-  }
-
-  pub fn npm_system_info(&self) -> NpmSystemInfo {
+impl DenoSubcommandExt for DenoSubcommand {
+  fn npm_system_info(&self) -> NpmSystemInfo {
     match self {
       DenoSubcommand::Compile(CompileFlags {
         target: Some(target),
@@ -804,42 +177,14 @@ impl DenoSubcommand {
   }
 }
 
-impl Default for DenoSubcommand {
-  fn default() -> DenoSubcommand {
-    DenoSubcommand::Repl(ReplFlags {
-      eval_files: None,
-      eval: None,
-      is_default_command: true,
-      json: false,
-    })
-  }
+pub trait TypeCheckModeExt {
+  fn as_graph_kind(&self) -> GraphKind;
 }
 
-#[derive(Debug, Clone, Copy, Eq, PartialEq, Default)]
-pub enum TypeCheckMode {
-  /// Type-check all modules.
-  All,
-  /// Skip type-checking of all modules. The default value for "deno run" and
-  /// several other subcommands.
-  #[default]
-  None,
-  /// Only type-check local modules. The default value for "deno test" and
-  /// several other subcommands.
-  Local,
-}
-
-impl TypeCheckMode {
-  /// Gets if type checking will occur under this mode.
-  pub fn is_true(&self) -> bool {
-    match self {
-      Self::None => false,
-      Self::Local | Self::All => true,
-    }
-  }
-
+impl TypeCheckModeExt for TypeCheckMode {
   /// Gets the corresponding module `GraphKind` that should be created
   /// for the current `TypeCheckMode`.
-  pub fn as_graph_kind(&self) -> GraphKind {
+  fn as_graph_kind(&self) -> GraphKind {
     match self.is_true() {
       true => GraphKind::All,
       false => GraphKind::CodeOnly,
@@ -870,118 +215,6 @@ pub fn parse_inspect_publish_uid(s: &str) -> Result<InspectPublishUid, String> {
   Ok(result)
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Default)]
-pub struct InternalFlags {
-  /// Used when the language server is configured with an
-  /// explicit cache option.
-  pub cache_path: Option<PathBuf>,
-  /// Override the path to use for the node_modules directory.
-  pub root_node_modules_dir_override: Option<PathBuf>,
-  /// Only reads to the lockfile instead of writing to it.
-  pub lockfile_skip_write: bool,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq, Default)]
-pub struct Flags {
-  pub initial_cwd: Option<PathBuf>,
-  /// Vector of CLI arguments - these are user script arguments, all Deno
-  /// specific flags are removed.
-  pub argv: Vec<String>,
-  pub subcommand: DenoSubcommand,
-
-  pub frozen_lockfile: Option<bool>,
-  pub ca_stores: Option<Vec<String>>,
-  pub ca_data: Option<CaData>,
-  pub cache_blocklist: Vec<String>,
-  pub cached_only: bool,
-  pub type_check_mode: TypeCheckMode,
-  pub config_flag: ConfigFlag,
-  pub node_modules_dir: Option<NodeModulesDirMode>,
-  pub vendor: Option<bool>,
-  pub enable_testing_features: bool,
-  pub ext: Option<String>,
-  /// Flags that aren't exposed in the CLI, but are used internally.
-  pub internal: InternalFlags,
-  pub ignore: Vec<String>,
-  pub import_map_path: Option<String>,
-  pub env_file: Option<Vec<String>>,
-  pub inspect_brk: Option<SocketAddr>,
-  pub inspect_wait: Option<SocketAddr>,
-  pub inspect: Option<SocketAddr>,
-  pub inspect_publish_uid: Option<InspectPublishUid>,
-  pub location: Option<Url>,
-  pub lock: Option<String>,
-  pub log_level: Option<Level>,
-  pub minimum_dependency_age: Option<NewestDependencyDate>,
-  pub no_remote: bool,
-  pub no_lock: bool,
-  pub no_npm: bool,
-  pub reload: bool,
-  pub seed: Option<u64>,
-  pub trace_ops: Option<Vec<String>>,
-  pub unstable_config: UnstableConfig,
-  pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
-  pub v8_flags: Vec<String>,
-  pub code_cache_enabled: bool,
-  pub permissions: PermissionFlags,
-  pub allow_scripts: PackagesAllowedScripts,
-  pub permission_set: Option<String>,
-  pub eszip: bool,
-  pub node_conditions: Vec<String>,
-  pub preload: Vec<String>,
-  pub require: Vec<String>,
-  pub tunnel: bool,
-  pub cpu_prof: Option<CpuProfFlags>,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq, Default, Serialize, Deserialize)]
-pub struct PermissionFlags {
-  pub allow_all: bool,
-  pub allow_env: Option<Vec<String>>,
-  pub deny_env: Option<Vec<String>>,
-  pub ignore_env: Option<Vec<String>>,
-  pub allow_ffi: Option<Vec<String>>,
-  pub deny_ffi: Option<Vec<String>>,
-  pub allow_net: Option<Vec<String>>,
-  pub deny_net: Option<Vec<String>>,
-  pub allow_read: Option<Vec<String>>,
-  pub deny_read: Option<Vec<String>>,
-  pub ignore_read: Option<Vec<String>>,
-  pub allow_run: Option<Vec<String>>,
-  pub deny_run: Option<Vec<String>>,
-  pub allow_sys: Option<Vec<String>>,
-  pub deny_sys: Option<Vec<String>>,
-  pub allow_write: Option<Vec<String>>,
-  pub deny_write: Option<Vec<String>>,
-  pub no_prompt: bool,
-  pub allow_import: Option<Vec<String>>,
-  pub deny_import: Option<Vec<String>>,
-}
-
-impl PermissionFlags {
-  pub fn has_permission(&self) -> bool {
-    self.allow_all
-      || self.allow_env.is_some()
-      || self.deny_env.is_some()
-      || self.ignore_env.is_some()
-      || self.allow_ffi.is_some()
-      || self.deny_ffi.is_some()
-      || self.allow_net.is_some()
-      || self.deny_net.is_some()
-      || self.allow_read.is_some()
-      || self.deny_read.is_some()
-      || self.ignore_read.is_some()
-      || self.allow_run.is_some()
-      || self.deny_run.is_some()
-      || self.allow_sys.is_some()
-      || self.deny_sys.is_some()
-      || self.allow_write.is_some()
-      || self.deny_write.is_some()
-      || self.allow_import.is_some()
-      || self.deny_import.is_some()
-  }
-}
-
 fn join_paths(allowlist: &[String], d: &str) -> String {
   allowlist
     .iter()
@@ -990,10 +223,18 @@ fn join_paths(allowlist: &[String], d: &str) -> String {
     .join(d)
 }
 
-impl Flags {
+pub trait FlagsExt {
+  fn to_permission_args(&self) -> Vec<String>;
+  fn no_legacy_abort(&self) -> bool;
+  fn otel_config(&self) -> OtelConfig;
+  fn config_path_args(&self, current_dir: &Path) -> Option<Vec<PathBuf>>;
+  fn resolve_watch_exclude_set(&self) -> Result<PathOrPatternSet, AnyError>;
+}
+
+impl FlagsExt for Flags {
   /// Return list of permission arguments that are equivalent
   /// to the ones used to create `self`.
-  pub fn to_permission_args(&self) -> Vec<String> {
+  fn to_permission_args(&self) -> Vec<String> {
     let mut args = vec![];
 
     if self.permissions.allow_all {
@@ -1216,14 +457,14 @@ impl Flags {
     args
   }
 
-  pub fn no_legacy_abort(&self) -> bool {
+  fn no_legacy_abort(&self) -> bool {
     self
       .unstable_config
       .features
       .contains(&String::from("no-legacy-abort"))
   }
 
-  pub fn otel_config(&self) -> OtelConfig {
+  fn otel_config(&self) -> OtelConfig {
     let otel_var = |name| match std::env::var(name) {
       Ok(s) if s.eq_ignore_ascii_case("true") => Some(true),
       Ok(s) if s.eq_ignore_ascii_case("false") => Some(false),
@@ -1296,7 +537,7 @@ impl Flags {
   /// Extract the paths the config file should be discovered from.
   ///
   /// Returns `None` if the config file should not be auto-discovered.
-  pub fn config_path_args(&self, current_dir: &Path) -> Option<Vec<PathBuf>> {
+  fn config_path_args(&self, current_dir: &Path) -> Option<Vec<PathBuf>> {
     fn resolve_multiple_files(
       files_or_dirs: &[String],
       current_dir: &Path,
@@ -1394,33 +635,7 @@ impl Flags {
     }
   }
 
-  pub fn has_permission(&self) -> bool {
-    self.permissions.has_permission()
-  }
-
-  pub fn has_permission_in_argv(&self) -> bool {
-    self.argv.iter().any(|arg| {
-      arg == "--allow-all"
-        || arg.starts_with("--allow-env")
-        || arg.starts_with("--deny-env")
-        || arg.starts_with("--allow-ffi")
-        || arg.starts_with("--deny-ffi")
-        || arg.starts_with("--allow-net")
-        || arg.starts_with("--deny-net")
-        || arg.starts_with("--allow-read")
-        || arg.starts_with("--deny-read")
-        || arg.starts_with("--allow-run")
-        || arg.starts_with("--deny-run")
-        || arg.starts_with("--allow-sys")
-        || arg.starts_with("--deny-sys")
-        || arg.starts_with("--allow-write")
-        || arg.starts_with("--deny-write")
-    })
-  }
-
-  pub fn resolve_watch_exclude_set(
-    &self,
-  ) -> Result<PathOrPatternSet, AnyError> {
+  fn resolve_watch_exclude_set(&self) -> Result<PathOrPatternSet, AnyError> {
     match self.subcommand.watch_flags() {
       Some(WatchFlagsRef::WithPaths(WatchFlagsWithPaths {
         exclude: excluded_paths,
@@ -1446,764 +661,7 @@ pub fn flags_from_vec(args: Vec<OsString>) -> Result<Flags, FlagsError> {
   flags_from_vec_with_initial_cwd(args, None)
 }
 
-// ---------------------------------------------------------------------------
-// Conversion from deno_cli_parser types to Deno CLI types
-// ---------------------------------------------------------------------------
-
-/// Convert parser's LogLevel to log::Level.
-fn convert_log_level(level: &deno_cli_parser::flags::LogLevel) -> Level {
-  match level {
-    deno_cli_parser::flags::LogLevel::Trace => Level::Trace,
-    deno_cli_parser::flags::LogLevel::Debug => Level::Debug,
-    deno_cli_parser::flags::LogLevel::Info => Level::Info,
-    deno_cli_parser::flags::LogLevel::Warn => Level::Warn,
-    deno_cli_parser::flags::LogLevel::Error => Level::Error,
-  }
-}
-
-/// Parse a socket address string like "127.0.0.1:9229" into SocketAddr.
-fn parse_socket_addr(s: &str) -> Option<SocketAddr> {
-  let default_port: u16 = 9229;
-  // Try parsing as-is first (e.g. "127.0.0.1:9229")
-  if let Ok(addr) = s.parse::<SocketAddr>() {
-    return Some(addr);
-  }
-  // Try as just a port (e.g. "10000" or "0")
-  if let Ok(port) = s.parse::<u16>() {
-    return Some(SocketAddr::new(IpAddr::from([127, 0, 0, 1]), port));
-  }
-  // Try as just an IP address without port (e.g. "192.168.0.1")
-  if let Ok(ip) = s.parse::<IpAddr>() {
-    return Some(SocketAddr::new(ip, default_port));
-  }
-  // Try as host:port where host might not be an IP
-  if let Some((host, port_str)) = s.rsplit_once(':')
-    && let Ok(port) = port_str.parse::<u16>()
-  {
-    if host.is_empty() {
-      // Handle ":10000" format
-      return Some(SocketAddr::new(IpAddr::from([127, 0, 0, 1]), port));
-    }
-    if let Ok(ip) = host.parse::<IpAddr>() {
-      return Some(SocketAddr::new(ip, port));
-    }
-  }
-  None
-}
-
-/// Convert parser's CaData to Deno's CaData.
-fn convert_ca_data(src: &deno_cli_parser::flags::CaData) -> CaData {
-  match src {
-    deno_cli_parser::flags::CaData::File(path) => CaData::File(path.clone()),
-    deno_cli_parser::flags::CaData::Bytes(bytes) => {
-      CaData::Bytes(bytes.clone())
-    }
-  }
-}
-
-/// Convert parser's NodeModulesDirMode to deno_config's NodeModulesDirMode.
-fn convert_node_modules_dir_mode(
-  src: &deno_cli_parser::flags::NodeModulesDirMode,
-) -> NodeModulesDirMode {
-  match src {
-    deno_cli_parser::flags::NodeModulesDirMode::Auto => {
-      NodeModulesDirMode::Auto
-    }
-    deno_cli_parser::flags::NodeModulesDirMode::Manual => {
-      NodeModulesDirMode::Manual
-    }
-    deno_cli_parser::flags::NodeModulesDirMode::None => {
-      NodeModulesDirMode::None
-    }
-  }
-}
-
-/// Convert parser's PackagesAllowedScripts to deno_npm_installer's.
-fn convert_packages_allowed_scripts(
-  src: &deno_cli_parser::flags::PackagesAllowedScripts,
-) -> PackagesAllowedScripts {
-  match src {
-    deno_cli_parser::flags::PackagesAllowedScripts::All => {
-      PackagesAllowedScripts::All
-    }
-    deno_cli_parser::flags::PackagesAllowedScripts::Some(packages) => {
-      PackagesAllowedScripts::Some(
-        packages
-          .iter()
-          .filter_map(|s| {
-            let dep = JsrDepPackageReq::from_str_loose(s).ok()?;
-            if dep.kind != PackageKind::Npm {
-              return None;
-            }
-            Some(dep.req)
-          })
-          .collect(),
-      )
-    }
-    deno_cli_parser::flags::PackagesAllowedScripts::None => {
-      PackagesAllowedScripts::None
-    }
-  }
-}
-
-/// Convert parser's InspectPublishUid to Deno's InspectPublishUid.
-fn convert_inspect_publish_uid(
-  src: &deno_cli_parser::flags::InspectPublishUid,
-) -> InspectPublishUid {
-  InspectPublishUid {
-    console: src.console,
-    http: src.http,
-  }
-}
-
-/// Convert parser's UnstableConfig to deno_lib's UnstableConfig.
-fn convert_unstable_config(
-  src: &deno_cli_parser::flags::UnstableConfig,
-) -> UnstableConfig {
-  UnstableConfig {
-    legacy_flag_enabled: src.legacy_flag_enabled,
-    bare_node_builtins: src.bare_node_builtins,
-    detect_cjs: src.detect_cjs,
-    lazy_dynamic_imports: src.lazy_dynamic_imports,
-    raw_imports: src.raw_imports,
-    sloppy_imports: src.sloppy_imports,
-    npm_lazy_caching: src.npm_lazy_caching,
-    tsgo: src.tsgo,
-    features: src.features.clone(),
-  }
-}
-
-/// Convert parser's ConfigFlag to Deno's ConfigFlag.
-fn convert_config_flag(src: &deno_cli_parser::flags::ConfigFlag) -> ConfigFlag {
-  match src {
-    deno_cli_parser::flags::ConfigFlag::Discover => ConfigFlag::Discover,
-    deno_cli_parser::flags::ConfigFlag::Path(p) => ConfigFlag::Path(p.clone()),
-    deno_cli_parser::flags::ConfigFlag::Disabled => ConfigFlag::Disabled,
-  }
-}
-
-/// Convert parser's TypeCheckMode to Deno's TypeCheckMode.
-fn convert_type_check_mode(
-  src: &deno_cli_parser::flags::TypeCheckMode,
-) -> TypeCheckMode {
-  match src {
-    deno_cli_parser::flags::TypeCheckMode::All => TypeCheckMode::All,
-    deno_cli_parser::flags::TypeCheckMode::None => TypeCheckMode::None,
-    deno_cli_parser::flags::TypeCheckMode::Local => TypeCheckMode::Local,
-  }
-}
-
-/// Convert parser's FileFlags to Deno's FileFlags.
-fn convert_file_flags(src: &deno_cli_parser::flags::FileFlags) -> FileFlags {
-  FileFlags {
-    ignore: src.ignore.clone(),
-    include: src.include.clone(),
-  }
-}
-
-/// Convert parser's WatchFlags to Deno's WatchFlags.
-fn convert_watch_flags(src: &deno_cli_parser::flags::WatchFlags) -> WatchFlags {
-  WatchFlags {
-    hmr: src.hmr,
-    no_clear_screen: src.no_clear_screen,
-    exclude: src.exclude.clone(),
-  }
-}
-
-/// Convert parser's WatchFlagsWithPaths to Deno's WatchFlagsWithPaths.
-fn convert_watch_flags_with_paths(
-  src: &deno_cli_parser::flags::WatchFlagsWithPaths,
-) -> WatchFlagsWithPaths {
-  WatchFlagsWithPaths {
-    hmr: src.hmr,
-    paths: src.paths.clone(),
-    no_clear_screen: src.no_clear_screen,
-    exclude: src.exclude.clone(),
-  }
-}
-
-/// Convert parser's PermissionFlags to Deno's PermissionFlags.
-fn convert_permission_flags(
-  src: &deno_cli_parser::flags::PermissionFlags,
-) -> PermissionFlags {
-  PermissionFlags {
-    allow_all: src.allow_all,
-    allow_env: src.allow_env.clone(),
-    deny_env: src.deny_env.clone(),
-    ignore_env: src.ignore_env.clone(),
-    allow_ffi: src.allow_ffi.clone(),
-    deny_ffi: src.deny_ffi.clone(),
-    allow_net: src.allow_net.clone(),
-    deny_net: src.deny_net.clone(),
-    allow_read: src.allow_read.clone(),
-    deny_read: src.deny_read.clone(),
-    ignore_read: src.ignore_read.clone(),
-    allow_run: src.allow_run.clone(),
-    deny_run: src.deny_run.clone(),
-    allow_sys: src.allow_sys.clone(),
-    deny_sys: src.deny_sys.clone(),
-    allow_write: src.allow_write.clone(),
-    deny_write: src.deny_write.clone(),
-    no_prompt: src.no_prompt,
-    allow_import: src.allow_import.clone(),
-    deny_import: src.deny_import.clone(),
-  }
-}
-
-/// Convert parser's InternalFlags to Deno's InternalFlags.
-fn convert_internal_flags(
-  src: &deno_cli_parser::flags::InternalFlags,
-) -> InternalFlags {
-  InternalFlags {
-    cache_path: src.cache_path.as_ref().map(PathBuf::from),
-    root_node_modules_dir_override: src
-      .root_node_modules_dir_override
-      .as_ref()
-      .map(PathBuf::from),
-    lockfile_skip_write: src.lockfile_skip_write,
-  }
-}
-
-/// Convert parser's CoverageType to Deno's CoverageType.
-fn convert_coverage_type(
-  src: &deno_cli_parser::flags::CoverageType,
-) -> CoverageType {
-  match src {
-    deno_cli_parser::flags::CoverageType::Summary => CoverageType::Summary,
-    deno_cli_parser::flags::CoverageType::Detailed => CoverageType::Detailed,
-    deno_cli_parser::flags::CoverageType::Lcov => CoverageType::Lcov,
-    deno_cli_parser::flags::CoverageType::Html => CoverageType::Html,
-  }
-}
-
-/// Convert parser's DocSourceFileFlag to Deno's DocSourceFileFlag.
-fn convert_doc_source_file_flag(
-  src: &deno_cli_parser::flags::DocSourceFileFlag,
-) -> DocSourceFileFlag {
-  match src {
-    deno_cli_parser::flags::DocSourceFileFlag::Builtin => {
-      DocSourceFileFlag::Builtin
-    }
-    deno_cli_parser::flags::DocSourceFileFlag::Paths(paths) => {
-      DocSourceFileFlag::Paths(paths.clone())
-    }
-  }
-}
-
-/// Convert parser's TestReporterConfig to Deno's TestReporterConfig.
-fn convert_test_reporter_config(
-  src: &deno_cli_parser::flags::TestReporterConfig,
-) -> TestReporterConfig {
-  match src {
-    deno_cli_parser::flags::TestReporterConfig::Pretty => {
-      TestReporterConfig::Pretty
-    }
-    deno_cli_parser::flags::TestReporterConfig::Dot => TestReporterConfig::Dot,
-    deno_cli_parser::flags::TestReporterConfig::Junit => {
-      TestReporterConfig::Junit
-    }
-    deno_cli_parser::flags::TestReporterConfig::Tap => TestReporterConfig::Tap,
-  }
-}
-
-/// Convert parser's DefaultRegistry to Deno's DefaultRegistry.
-fn convert_default_registry(
-  src: &deno_cli_parser::flags::DefaultRegistry,
-) -> DefaultRegistry {
-  match src {
-    deno_cli_parser::flags::DefaultRegistry::Npm => DefaultRegistry::Npm,
-    deno_cli_parser::flags::DefaultRegistry::Jsr => DefaultRegistry::Jsr,
-  }
-}
-
-/// Convert parser's OutdatedKind to Deno's OutdatedKind.
-fn convert_outdated_kind(
-  src: &deno_cli_parser::flags::OutdatedKind,
-) -> OutdatedKind {
-  match src {
-    deno_cli_parser::flags::OutdatedKind::Update {
-      latest,
-      interactive,
-      lockfile_only,
-    } => OutdatedKind::Update {
-      latest: *latest,
-      interactive: *interactive,
-      lockfile_only: *lockfile_only,
-    },
-    deno_cli_parser::flags::OutdatedKind::PrintOutdated { compatible } => {
-      OutdatedKind::PrintOutdated {
-        compatible: *compatible,
-      }
-    }
-  }
-}
-
-/// Convert parser's DenoXShimName to Deno's DenoXShimName.
-fn convert_deno_x_shim_name(
-  src: &deno_cli_parser::flags::DenoXShimName,
-) -> DenoXShimName {
-  match src {
-    deno_cli_parser::flags::DenoXShimName::Dx => DenoXShimName::Dx,
-    deno_cli_parser::flags::DenoXShimName::Denox => DenoXShimName::Denox,
-    deno_cli_parser::flags::DenoXShimName::Dnx => DenoXShimName::Dnx,
-    deno_cli_parser::flags::DenoXShimName::Other(name) => {
-      DenoXShimName::Other(name.clone())
-    }
-  }
-}
-
-/// Convert parser's BundleFormat to deno_bundle_runtime's BundleFormat.
-fn convert_bundle_format(
-  src: &deno_cli_parser::flags::BundleFormat,
-) -> BundleFormat {
-  match src {
-    deno_cli_parser::flags::BundleFormat::Esm => BundleFormat::Esm,
-    deno_cli_parser::flags::BundleFormat::Cjs => BundleFormat::Cjs,
-    deno_cli_parser::flags::BundleFormat::Iife => BundleFormat::Iife,
-  }
-}
-
-/// Convert parser's BundlePlatform to deno_bundle_runtime's BundlePlatform.
-fn convert_bundle_platform(
-  src: &deno_cli_parser::flags::BundlePlatform,
-) -> BundlePlatform {
-  match src {
-    deno_cli_parser::flags::BundlePlatform::Browser => BundlePlatform::Browser,
-    deno_cli_parser::flags::BundlePlatform::Deno => BundlePlatform::Deno,
-  }
-}
-
-/// Convert parser's PackageHandling to deno_bundle_runtime's PackageHandling.
-fn convert_package_handling(
-  src: &deno_cli_parser::flags::PackageHandling,
-) -> PackageHandling {
-  match src {
-    deno_cli_parser::flags::PackageHandling::Bundle => PackageHandling::Bundle,
-    deno_cli_parser::flags::PackageHandling::External => {
-      PackageHandling::External
-    }
-  }
-}
-
-/// Convert parser's SourceMapType to deno_bundle_runtime's SourceMapType.
-fn convert_source_map_type(
-  src: &deno_cli_parser::flags::SourceMapType,
-) -> SourceMapType {
-  match src {
-    deno_cli_parser::flags::SourceMapType::Linked => SourceMapType::Linked,
-    deno_cli_parser::flags::SourceMapType::Inline => SourceMapType::Inline,
-    deno_cli_parser::flags::SourceMapType::External => SourceMapType::External,
-  }
-}
-
-/// Convert parser's DenoSubcommand to Deno's DenoSubcommand.
-fn convert_subcommand(
-  src: &deno_cli_parser::flags::DenoSubcommand,
-) -> DenoSubcommand {
-  use deno_cli_parser::flags::DenoSubcommand as Src;
-  match src {
-    Src::Add(f) => DenoSubcommand::Add(AddFlags {
-      packages: f.packages.clone(),
-      dev: f.dev,
-      default_registry: f
-        .default_registry
-        .as_ref()
-        .map(convert_default_registry),
-      lockfile_only: f.lockfile_only,
-      save_exact: f.save_exact,
-    }),
-    Src::Audit(f) => DenoSubcommand::Audit(AuditFlags {
-      severity: f.severity.clone(),
-      ignore_registry_errors: f.ignore_registry_errors,
-      ignore_unfixable: f.ignore_unfixable,
-      dev: f.dev,
-      prod: f.prod,
-      optional: f.optional,
-      ignore: f.ignore.clone(),
-      socket: f.socket,
-    }),
-    Src::ApproveScripts(f) => {
-      DenoSubcommand::ApproveScripts(ApproveScriptsFlags {
-        lockfile_only: f.lockfile_only,
-        packages: f.packages.clone(),
-      })
-    }
-    Src::Remove(f) => DenoSubcommand::Remove(RemoveFlags {
-      packages: f.packages.clone(),
-      lockfile_only: f.lockfile_only,
-    }),
-    Src::Bench(f) => DenoSubcommand::Bench(BenchFlags {
-      files: convert_file_flags(&f.files),
-      filter: f.filter.clone(),
-      json: f.json,
-      no_run: f.no_run,
-      permit_no_files: f.permit_no_files,
-      watch: f.watch.as_ref().map(convert_watch_flags),
-    }),
-    Src::Bundle(f) => DenoSubcommand::Bundle(BundleFlags {
-      entrypoints: f.entrypoints.clone(),
-      output_path: f.output_path.clone(),
-      output_dir: f.output_dir.clone(),
-      external: f.external.clone(),
-      format: convert_bundle_format(&f.format),
-      minify: f.minify,
-      keep_names: f.keep_names,
-      code_splitting: f.code_splitting,
-      inline_imports: f.inline_imports,
-      packages: convert_package_handling(&f.packages),
-      sourcemap: f.sourcemap.as_ref().map(convert_source_map_type),
-      platform: convert_bundle_platform(&f.platform),
-      watch: f.watch,
-    }),
-    Src::Cache(f) => DenoSubcommand::Cache(CacheFlags {
-      files: f.files.clone(),
-    }),
-    Src::Check(f) => DenoSubcommand::Check(CheckFlags {
-      files: f.files.clone(),
-      doc: f.doc,
-      doc_only: f.doc_only,
-      check_js: f.check_js,
-    }),
-    Src::Clean(f) => DenoSubcommand::Clean(CleanFlags {
-      except_paths: f.except_paths.clone(),
-      dry_run: f.dry_run,
-    }),
-    Src::Compile(f) => DenoSubcommand::Compile(CompileFlags {
-      source_file: f.source_file.clone(),
-      output: f.output.clone(),
-      args: f.args.clone(),
-      target: f.target.clone(),
-      no_terminal: f.no_terminal,
-      icon: f.icon.clone(),
-      include: f.include.clone(),
-      exclude: f.exclude.clone(),
-      eszip: f.eszip,
-      self_extracting: f.self_extracting,
-    }),
-    Src::Completions(shell) => {
-      let buf = deno_cli_parser::completions::generate(
-        shell,
-        &deno_cli_parser::defs::DENO_ROOT,
-      );
-      DenoSubcommand::Completions(CompletionsFlags::Static(
-        buf.into_boxed_slice(),
-      ))
-    }
-    Src::Coverage(f) => DenoSubcommand::Coverage(CoverageFlags {
-      files: convert_file_flags(&f.files),
-      output: f.output.clone(),
-      include: f.include.clone(),
-      exclude: f.exclude.clone(),
-      r#type: convert_coverage_type(&f.r#type),
-    }),
-    Src::Deploy(f) => {
-      DenoSubcommand::Deploy(DeployFlags { sandbox: f.sandbox })
-    }
-    Src::Doc(f) => DenoSubcommand::Doc(DocFlags {
-      private: f.private,
-      json: f.json,
-      lint: f.lint,
-      html: f.html.as_ref().map(|h| DocHtmlFlag {
-        name: h.name.clone(),
-        category_docs_path: h.category_docs_path.clone(),
-        symbol_redirect_map_path: h.symbol_redirect_map_path.clone(),
-        default_symbol_map_path: h.default_symbol_map_path.clone(),
-        strip_trailing_html: h.strip_trailing_html,
-        output: h.output.clone(),
-      }),
-      source_files: convert_doc_source_file_flag(&f.source_files),
-      filter: f.filter.clone(),
-    }),
-    Src::Eval(f) => DenoSubcommand::Eval(EvalFlags {
-      print: f.print,
-      code: f.code.clone(),
-    }),
-    Src::Fmt(f) => DenoSubcommand::Fmt(FmtFlags {
-      check: f.check,
-      fail_fast: f.fail_fast,
-      files: convert_file_flags(&f.files),
-      permit_no_files: f.permit_no_files,
-      use_tabs: f.use_tabs,
-      line_width: f.line_width.and_then(NonZeroU32::new),
-      indent_width: f.indent_width.and_then(NonZeroU8::new),
-      single_quote: f.single_quote,
-      prose_wrap: f.prose_wrap.clone(),
-      no_semicolons: f.no_semicolons,
-      watch: f.watch.as_ref().map(convert_watch_flags),
-      unstable_component: f.unstable_component,
-      unstable_sql: f.unstable_sql,
-    }),
-    Src::Init(f) => DenoSubcommand::Init(InitFlags {
-      package: f.package.clone(),
-      package_args: f.package_args.clone(),
-      dir: f.dir.clone(),
-      lib: f.lib,
-      serve: f.serve,
-      empty: f.empty,
-      yes: f.yes,
-    }),
-    Src::Info(f) => DenoSubcommand::Info(InfoFlags {
-      json: f.json,
-      file: f.file.clone(),
-    }),
-    Src::Install(f) => {
-      use deno_cli_parser::flags::InstallFlags as SrcInstall;
-      match f {
-        SrcInstall::Local(local) => {
-          use deno_cli_parser::flags::InstallFlagsLocal as SrcLocal;
-          match local {
-            SrcLocal::Add(add) => DenoSubcommand::Install(InstallFlags::Local(
-              InstallFlagsLocal::Add(AddFlags {
-                packages: add.packages.clone(),
-                dev: add.dev,
-                default_registry: add
-                  .default_registry
-                  .as_ref()
-                  .map(convert_default_registry),
-                lockfile_only: add.lockfile_only,
-                save_exact: add.save_exact,
-              }),
-            )),
-            SrcLocal::TopLevel(tl) => {
-              DenoSubcommand::Install(InstallFlags::Local(
-                InstallFlagsLocal::TopLevel(InstallTopLevelFlags {
-                  lockfile_only: tl.lockfile_only,
-                }),
-              ))
-            }
-            SrcLocal::Entrypoints(ep) => {
-              DenoSubcommand::Install(InstallFlags::Local(
-                InstallFlagsLocal::Entrypoints(InstallEntrypointsFlags {
-                  entrypoints: ep.entrypoints.clone(),
-                  lockfile_only: ep.lockfile_only,
-                }),
-              ))
-            }
-          }
-        }
-        SrcInstall::Global(g) => {
-          DenoSubcommand::Install(InstallFlags::Global(InstallFlagsGlobal {
-            module_urls: g.module_urls.clone(),
-            args: g.args.clone(),
-            name: g.name.clone(),
-            root: g.root.clone(),
-            force: g.force,
-            compile: g.compile,
-          }))
-        }
-      }
-    }
-    Src::Jupyter(f) => DenoSubcommand::Jupyter(JupyterFlags {
-      install: f.install,
-      name: f.name.clone(),
-      display: f.display.clone(),
-      kernel: f.kernel,
-      conn_file: f.conn_file.clone(),
-      force: f.force,
-    }),
-    Src::Uninstall(f) => {
-      use deno_cli_parser::flags::UninstallKind as SrcKind;
-      let kind = match &f.kind {
-        SrcKind::Local(rm) => UninstallKind::Local(RemoveFlags {
-          packages: rm.packages.clone(),
-          lockfile_only: rm.lockfile_only,
-        }),
-        SrcKind::Global(g) => UninstallKind::Global(UninstallFlagsGlobal {
-          name: g.name.clone(),
-          root: g.root.clone(),
-        }),
-      };
-      DenoSubcommand::Uninstall(UninstallFlags { kind })
-    }
-    Src::Lsp => DenoSubcommand::Lsp,
-    Src::Lint(f) => DenoSubcommand::Lint(LintFlags {
-      files: convert_file_flags(&f.files),
-      rules: f.rules,
-      fix: f.fix,
-      maybe_rules_tags: f.maybe_rules_tags.clone(),
-      maybe_rules_include: f.maybe_rules_include.clone(),
-      maybe_rules_exclude: f.maybe_rules_exclude.clone(),
-      permit_no_files: f.permit_no_files,
-      json: f.json,
-      compact: f.compact,
-      watch: f.watch.as_ref().map(convert_watch_flags),
-    }),
-    Src::Repl(f) => DenoSubcommand::Repl(ReplFlags {
-      eval_files: f.eval_files.clone(),
-      eval: f.eval.clone(),
-      is_default_command: f.is_default_command,
-      json: f.json,
-    }),
-    Src::Run(f) => DenoSubcommand::Run(RunFlags {
-      script: f.script.clone(),
-      watch: f.watch.as_ref().map(convert_watch_flags_with_paths),
-      bare: f.bare,
-      coverage_dir: f.coverage_dir.clone(),
-      print_task_list: f.print_task_list,
-    }),
-    Src::Serve(f) => DenoSubcommand::Serve(ServeFlags {
-      script: f.script.clone(),
-      watch: f.watch.as_ref().map(convert_watch_flags_with_paths),
-      port: f.port,
-      host: f.host.clone(),
-      parallel: f.parallel,
-      open_site: f.open_site,
-    }),
-    Src::Task(f) => DenoSubcommand::Task(TaskFlags {
-      cwd: f.cwd.clone(),
-      task: f.task.clone(),
-      is_run: f.is_run,
-      recursive: f.recursive,
-      filter: f.filter.clone(),
-      eval: f.eval,
-    }),
-    Src::Test(f) => DenoSubcommand::Test(TestFlags {
-      doc: f.doc,
-      no_run: f.no_run,
-      coverage_dir: f.coverage_dir.clone(),
-      coverage_raw_data_only: f.coverage_raw_data_only,
-      clean: f.clean,
-      fail_fast: f.fail_fast.and_then(NonZeroUsize::new),
-      files: convert_file_flags(&f.files),
-      parallel: f.parallel,
-      permit_no_files: f.permit_no_files,
-      filter: f.filter.clone(),
-      shuffle: f.shuffle,
-      trace_leaks: f.trace_leaks,
-      watch: f.watch.as_ref().map(convert_watch_flags_with_paths),
-      reporter: convert_test_reporter_config(&f.reporter),
-      junit_path: f.junit_path.clone(),
-      hide_stacktraces: f.hide_stacktraces,
-    }),
-    Src::Outdated(f) => DenoSubcommand::Outdated(OutdatedFlags {
-      filters: f.filters.clone(),
-      recursive: f.recursive,
-      kind: convert_outdated_kind(&f.kind),
-    }),
-    Src::Types => DenoSubcommand::Types,
-    Src::Upgrade(f) => DenoSubcommand::Upgrade(UpgradeFlags {
-      dry_run: f.dry_run,
-      force: f.force,
-      release_candidate: f.release_candidate,
-      canary: f.canary,
-      version: f.version.clone(),
-      output: f.output.clone(),
-      version_or_hash_or_channel: f.version_or_hash_or_channel.clone(),
-      checksum: f.checksum.clone(),
-      pr: f.pr,
-      branch: f.branch.clone(),
-    }),
-    Src::Vendor => DenoSubcommand::Vendor,
-    Src::Publish(f) => DenoSubcommand::Publish(PublishFlags {
-      token: f.token.clone(),
-      dry_run: f.dry_run,
-      allow_slow_types: f.allow_slow_types,
-      allow_dirty: f.allow_dirty,
-      no_provenance: f.no_provenance,
-      set_version: f.set_version.clone(),
-    }),
-    Src::Help(f) => DenoSubcommand::Help(HelpFlags {
-      help: f.help.clone(),
-    }),
-    Src::X(f) => {
-      use deno_cli_parser::flags::XFlagsKind as SrcKind;
-      let kind = match &f.kind {
-        SrcKind::InstallAlias(name) => {
-          XFlagsKind::InstallAlias(convert_deno_x_shim_name(name))
-        }
-        SrcKind::Command(cmd) => XFlagsKind::Command(XCommandFlags {
-          yes: cmd.yes,
-          command: cmd.command.clone(),
-        }),
-        SrcKind::Print => XFlagsKind::Print,
-      };
-      DenoSubcommand::X(XFlags { kind })
-    }
-    Src::JSONReference(f) => {
-      // Parse the JSON string from our parser into serde_json::Value
-      let json = serde_json::from_str(&f.json)
-        .unwrap_or_else(|_| serde_json::Value::Null);
-      DenoSubcommand::JSONReference(JSONReferenceFlags { json })
-    }
-  }
-}
-
-/// Convert the parser's Flags struct into Deno's Flags struct.
-/// Handles all type conversions between the simplified parser types
-/// and Deno's richer types.
-fn convert_parser_flags(
-  src: deno_cli_parser::flags::Flags,
-  initial_cwd: Option<PathBuf>,
-) -> Flags {
-  Flags {
-    initial_cwd: initial_cwd
-      .or_else(|| src.initial_cwd.as_ref().map(PathBuf::from)),
-    argv: src.argv.clone(),
-    subcommand: convert_subcommand(&src.subcommand),
-    frozen_lockfile: src.frozen_lockfile,
-    ca_stores: src.ca_stores.clone(),
-    ca_data: src.ca_data.as_ref().map(convert_ca_data),
-    cache_blocklist: src.cache_blocklist.clone(),
-    cached_only: src.cached_only,
-    type_check_mode: convert_type_check_mode(&src.type_check_mode),
-    config_flag: convert_config_flag(&src.config_flag),
-    node_modules_dir: src
-      .node_modules_dir
-      .as_ref()
-      .map(convert_node_modules_dir_mode),
-    vendor: src.vendor,
-    enable_testing_features: src.enable_testing_features,
-    ext: src.ext.clone(),
-    internal: convert_internal_flags(&src.internal),
-    ignore: src.ignore.clone(),
-    import_map_path: src.import_map_path.clone(),
-    env_file: src.env_file.clone(),
-    inspect_brk: src.inspect_brk.as_ref().and_then(|s| parse_socket_addr(s)),
-    inspect_wait: src.inspect_wait.as_ref().and_then(|s| parse_socket_addr(s)),
-    inspect: src.inspect.as_ref().and_then(|s| parse_socket_addr(s)),
-    inspect_publish_uid: src
-      .inspect_publish_uid
-      .as_ref()
-      .map(convert_inspect_publish_uid),
-    location: src.location.as_ref().and_then(|s| Url::parse(s).ok()),
-    lock: src.lock.clone(),
-    log_level: src.log_level.as_ref().map(convert_log_level),
-    minimum_dependency_age: src.minimum_dependency_age.as_ref().and_then(|s| {
-      deno_config::parse_minutes_duration_or_date(
-        &sys_traits::impls::RealSys,
-        s,
-      )
-      .ok()
-    }),
-    no_remote: src.no_remote,
-    no_lock: src.no_lock,
-    no_npm: src.no_npm,
-    reload: src.reload,
-    seed: src.seed,
-    trace_ops: src.trace_ops.clone(),
-    unstable_config: convert_unstable_config(&src.unstable_config),
-    unsafely_ignore_certificate_errors: src
-      .unsafely_ignore_certificate_errors
-      .clone(),
-    v8_flags: src.v8_flags.clone(),
-    code_cache_enabled: src.code_cache_enabled,
-    permissions: convert_permission_flags(&src.permissions),
-    allow_scripts: convert_packages_allowed_scripts(&src.allow_scripts),
-    permission_set: src.permission_set.clone(),
-    eszip: src.eszip,
-    node_conditions: src.node_conditions.clone(),
-    preload: src.preload.clone(),
-    require: src.require.clone(),
-    tunnel: src.tunnel,
-    cpu_prof: src.cpu_prof.as_ref().map(|c| CpuProfFlags {
-      dir: c.dir.clone(),
-      name: c.name.clone(),
-      interval: c.interval,
-      md: c.md,
-      flamegraph: c.flamegraph,
-    }),
-  }
-}
+// (Conversion layer removed — the parser crate now produces the real types.)
 
 /// Helper to create flags errors from our validation code.
 fn make_flags_error(
@@ -2654,10 +1112,12 @@ pub fn flags_from_vec_with_initial_cwd(
     .map(|s| s.to_string())
     .collect();
 
-  // Use the custom parser
+  // Use the custom parser — it now produces the real Flags type directly.
   match deno_cli_parser::convert::flags_from_vec(string_args.clone()) {
-    Ok(parser_flags) => {
-      let mut flags = convert_parser_flags(parser_flags, initial_cwd.clone());
+    Ok(mut flags) => {
+      if flags.initial_cwd.is_none() {
+        flags.initial_cwd = initial_cwd.clone();
+      }
       apply_node_options(&mut flags);
 
       // Run post-conversion validation
@@ -2825,6 +1285,11 @@ fn escape_and_split_commas(s: String) -> Result<Vec<String>, String> {
 
 #[cfg(test)]
 mod tests {
+  use std::net::SocketAddr;
+  use std::num::NonZeroU8;
+  use std::num::NonZeroU32;
+  use std::num::NonZeroUsize;
+
   use deno_semver::package::PackageReq;
   use pretty_assertions::assert_eq;
 

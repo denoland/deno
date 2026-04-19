@@ -54,6 +54,7 @@ use sys_traits::FsMetadata;
 use crate::args::CliLockfile;
 use crate::args::CliOptions;
 use crate::args::DenoSubcommand;
+use crate::args::TypeCheckModeExt;
 use crate::args::config_to_deno_graph_workspace_member;
 use crate::args::jsr_url;
 use crate::cache;

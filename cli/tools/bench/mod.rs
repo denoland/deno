@@ -1,5 +1,4 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
-
 use std::collections::HashSet;
 use std::path::Path;
 use std::sync::Arc;
@@ -37,6 +36,7 @@ use tokio::sync::mpsc::unbounded_channel;
 use crate::args::BenchFlags;
 use crate::args::CliOptions;
 use crate::args::Flags;
+use crate::args::TypeCheckModeExt;
 use crate::colors;
 use crate::display::write_json_to_stdout;
 use crate::factory::CliFactory;

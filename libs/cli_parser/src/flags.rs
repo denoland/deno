@@ -1,98 +1,37 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 #![allow(dead_code, reason = "types are used by the deno CLI crate")]
 
-// Simplified versions of Deno's CLI flag types.
-// External dependencies are replaced with simpler types:
-// - Url, PathBuf, SocketAddr -> String
-// - NonZeroU32 -> u32, NonZeroU8 -> u8, NonZeroUsize -> usize
-// - log::Level -> LogLevel enum
-// - clap::builder::StyledStr -> String
-// Self-contained: no external crate dependencies.
+// Flag types using real Deno dependencies. These are the canonical type
+// definitions shared by both the parser crate and `cli/args/flags.rs`.
 
-// ---------------------------------------------------------------------------
-// Simple replacement enums for external types
-// ---------------------------------------------------------------------------
+use std::net::SocketAddr;
+use std::num::NonZeroU8;
+use std::num::NonZeroU32;
+use std::num::NonZeroUsize;
+use std::path::PathBuf;
+#[allow(
+  clippy::disallowed_types,
+  reason = "Arc needed for CompletionsFlags::Dynamic"
+)]
+use std::sync::Arc;
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum LogLevel {
-  Trace,
-  Debug,
-  Info,
-  Warn,
-  Error,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub enum CaData {
-  /// The string is a file path.
-  File(String),
-  /// The bytes hold the actual certificate data.
-  Bytes(Vec<u8>),
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum NodeModulesDirMode {
-  Auto,
-  Manual,
-  None,
-}
-
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
-pub enum PackagesAllowedScripts {
-  All,
-  Some(Vec<String>),
-  #[default]
-  None,
-}
-
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
-pub struct InspectPublishUid {
-  pub console: bool,
-  pub http: bool,
-}
-
-#[derive(Clone, Default, Debug, Eq, PartialEq)]
-pub struct UnstableConfig {
-  pub legacy_flag_enabled: bool,
-  pub bare_node_builtins: bool,
-  pub detect_cjs: bool,
-  pub lazy_dynamic_imports: bool,
-  pub raw_imports: bool,
-  pub sloppy_imports: bool,
-  pub npm_lazy_caching: bool,
-  pub tsgo: bool,
-  pub features: Vec<String>,
-}
-
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
-pub enum BundleFormat {
-  #[default]
-  Esm,
-  Cjs,
-  Iife,
-}
-
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
-pub enum BundlePlatform {
-  Browser,
-  #[default]
-  Deno,
-}
-
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
-pub enum PackageHandling {
-  #[default]
-  Bundle,
-  External,
-}
-
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
-pub enum SourceMapType {
-  #[default]
-  Linked,
-  Inline,
-  External,
-}
+// Re-export types from dependencies so consumers don't need to depend on
+// them directly.
+pub use deno_bundle_runtime::BundleFormat;
+pub use deno_bundle_runtime::BundlePlatform;
+pub use deno_bundle_runtime::PackageHandling;
+pub use deno_bundle_runtime::SourceMapType;
+pub use deno_config::deno_json::NewestDependencyDate;
+pub use deno_config::deno_json::NodeModulesDirMode;
+use deno_core::error::AnyError;
+pub use deno_core::url::Url;
+pub use deno_lib::args::CaData;
+pub use deno_lib::args::UnstableConfig;
+pub use deno_npm_installer::PackagesAllowedScripts;
+pub use deno_runtime::deno_inspector_server::InspectPublishUid;
+pub use log::Level;
+use serde::Deserialize;
+use serde::Serialize;
 
 // ---------------------------------------------------------------------------
 // Config flag
@@ -194,7 +133,43 @@ pub struct CompileFlags {
   pub self_extracting: bool,
 }
 
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
+#[derive(Clone)]
+pub enum CompletionsFlags {
+  Static(Box<[u8]>),
+  #[allow(
+    dead_code,
+    reason = "variant is matched in lib.rs but not currently constructed"
+  )]
+  #[allow(
+    clippy::disallowed_types,
+    reason = "Arc needed for dynamic completion callback"
+  )]
+  Dynamic(Arc<dyn Fn() -> Result<(), AnyError> + Send + Sync + 'static>),
+}
+
+#[allow(clippy::disallowed_types, reason = "Arc used in Dynamic variant")]
+impl PartialEq for CompletionsFlags {
+  fn eq(&self, other: &Self) -> bool {
+    match (self, other) {
+      (Self::Static(l0), Self::Static(r0)) => l0 == r0,
+      (Self::Dynamic(l0), Self::Dynamic(r0)) => Arc::ptr_eq(l0, r0),
+      _ => false,
+    }
+  }
+}
+
+impl Eq for CompletionsFlags {}
+
+impl std::fmt::Debug for CompletionsFlags {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    match self {
+      Self::Static(arg0) => f.debug_tuple("Static").field(arg0).finish(),
+      Self::Dynamic(_) => f.debug_tuple("Dynamic").finish(),
+    }
+  }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Default)]
 pub enum CoverageType {
   #[default]
   Summary,
@@ -203,7 +178,7 @@ pub enum CoverageType {
   Html,
 }
 
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, Default)]
 pub struct CoverageFlags {
   pub files: FileFlags,
   pub output: Option<String>,
@@ -212,12 +187,12 @@ pub struct CoverageFlags {
   pub r#type: CoverageType,
 }
 
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, Default)]
 pub struct DeployFlags {
   pub sandbox: bool,
 }
 
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, Default)]
 pub enum DocSourceFileFlag {
   #[default]
   Builtin,
@@ -244,7 +219,7 @@ pub struct DocFlags {
   pub filter: Option<String>,
 }
 
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, Default)]
 pub struct CpuProfFlags {
   pub dir: Option<String>,
   pub name: Option<String>,
@@ -253,21 +228,21 @@ pub struct CpuProfFlags {
   pub flamegraph: bool,
 }
 
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
+#[derive(Clone, Default, Debug, Eq, PartialEq)]
 pub struct EvalFlags {
   pub print: bool,
   pub code: String,
 }
 
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
+#[derive(Clone, Default, Debug, Eq, PartialEq)]
 pub struct FmtFlags {
   pub check: bool,
   pub fail_fast: bool,
   pub files: FileFlags,
   pub permit_no_files: bool,
   pub use_tabs: Option<bool>,
-  pub line_width: Option<u32>,
-  pub indent_width: Option<u8>,
+  pub line_width: Option<NonZeroU32>,
+  pub indent_width: Option<NonZeroU8>,
   pub single_quote: Option<bool>,
   pub prose_wrap: Option<String>,
   pub no_semicolons: Option<bool>,
@@ -335,6 +310,11 @@ pub struct InstallEntrypointsFlags {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub struct JSONReferenceFlags {
+  pub json: deno_core::serde_json::Value,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct JupyterFlags {
   pub install: bool,
   pub name: Option<String>,
@@ -382,7 +362,7 @@ impl LintFlags {
   }
 }
 
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, Default)]
 pub struct ReplFlags {
   pub eval_files: Option<Vec<String>>,
   pub eval: Option<String>,
@@ -390,7 +370,7 @@ pub struct ReplFlags {
   pub json: bool,
 }
 
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, Default)]
 pub struct RunFlags {
   pub script: String,
   pub watch: Option<WatchFlagsWithPaths>,
@@ -400,7 +380,6 @@ pub struct RunFlags {
 }
 
 impl RunFlags {
-  #[cfg(test)]
   pub fn new_default(script: String) -> Self {
     Self {
       script,
@@ -416,7 +395,7 @@ impl RunFlags {
   }
 }
 
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, Default)]
 pub enum DenoXShimName {
   #[default]
   Dx,
@@ -465,7 +444,6 @@ pub struct ServeFlags {
 }
 
 impl ServeFlags {
-  #[cfg(test)]
   pub fn new_default(script: String, port: u16, host: &str) -> Self {
     Self {
       script,
@@ -476,6 +454,11 @@ impl ServeFlags {
       open_site: false,
     }
   }
+}
+
+pub enum WatchFlagsRef<'a> {
+  Watch(&'a WatchFlags),
+  WithPaths(&'a WatchFlagsWithPaths),
 }
 
 #[derive(Clone, Default, Debug, Eq, PartialEq)]
@@ -519,7 +502,7 @@ pub struct TestFlags {
   pub coverage_dir: Option<String>,
   pub coverage_raw_data_only: bool,
   pub clean: bool,
-  pub fail_fast: Option<usize>,
+  pub fail_fast: Option<NonZeroUsize>,
   pub files: FileFlags,
   pub parallel: bool,
   pub permit_no_files: bool,
@@ -562,11 +545,6 @@ pub struct HelpFlags {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct JSONReferenceFlags {
-  pub json: String,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CleanFlags {
   pub except_paths: Vec<String>,
   pub dry_run: bool,
@@ -593,7 +571,7 @@ pub struct BundleFlags {
 // Outdated
 // ---------------------------------------------------------------------------
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum OutdatedKind {
   Update {
     latest: bool,
@@ -605,7 +583,7 @@ pub enum OutdatedKind {
   },
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct OutdatedFlags {
   pub filters: Vec<String>,
   pub recursive: bool,
@@ -616,7 +594,7 @@ pub struct OutdatedFlags {
 // ApproveScripts
 // ---------------------------------------------------------------------------
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ApproveScriptsFlags {
   pub lockfile_only: bool,
   pub packages: Vec<String>,
@@ -626,21 +604,21 @@ pub struct ApproveScriptsFlags {
 // TypeCheckMode
 // ---------------------------------------------------------------------------
 
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Default)]
 pub enum TypeCheckMode {
   /// Type-check all modules.
   All,
-  /// Skip type-checking of all modules. The default value for `deno run` and
+  /// Skip type-checking of all modules. The default value for "deno run" and
   /// several other subcommands.
   #[default]
   None,
-  /// Only type-check local modules. The default value for `deno test` and
+  /// Only type-check local modules. The default value for "deno test" and
   /// several other subcommands.
   Local,
 }
 
 impl TypeCheckMode {
-  /// Returns `true` if type checking will occur under this mode.
+  /// Gets if type checking will occur under this mode.
   pub fn is_true(&self) -> bool {
     match self {
       Self::None => false,
@@ -653,13 +631,13 @@ impl TypeCheckMode {
 // InternalFlags
 // ---------------------------------------------------------------------------
 
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, Default)]
 pub struct InternalFlags {
   /// Used when the language server is configured with an
   /// explicit cache option.
-  pub cache_path: Option<String>,
+  pub cache_path: Option<PathBuf>,
   /// Override the path to use for the node_modules directory.
-  pub root_node_modules_dir_override: Option<String>,
+  pub root_node_modules_dir_override: Option<PathBuf>,
   /// Only reads to the lockfile instead of writing to it.
   pub lockfile_skip_write: bool,
 }
@@ -680,7 +658,7 @@ pub enum DenoSubcommand {
   Check(CheckFlags),
   Clean(CleanFlags),
   Compile(CompileFlags),
-  Completions(String),
+  Completions(CompletionsFlags),
   Coverage(CoverageFlags),
   Deploy(DeployFlags),
   Doc(DocFlags),
@@ -689,6 +667,7 @@ pub enum DenoSubcommand {
   Init(InitFlags),
   Info(InfoFlags),
   Install(InstallFlags),
+  JSONReference(JSONReferenceFlags),
   Jupyter(JupyterFlags),
   Uninstall(UninstallFlags),
   Lsp,
@@ -705,26 +684,35 @@ pub enum DenoSubcommand {
   Publish(PublishFlags),
   Help(HelpFlags),
   X(XFlags),
-  JSONReference(JSONReferenceFlags),
-}
-
-impl Default for DenoSubcommand {
-  fn default() -> Self {
-    DenoSubcommand::Repl(ReplFlags {
-      eval_files: None,
-      eval: None,
-      is_default_command: true,
-      json: false,
-    })
-  }
 }
 
 impl DenoSubcommand {
+  pub fn watch_flags(&self) -> Option<WatchFlagsRef<'_>> {
+    match self {
+      Self::Run(RunFlags {
+        watch: Some(flags), ..
+      })
+      | Self::Test(TestFlags {
+        watch: Some(flags), ..
+      }) => Some(WatchFlagsRef::WithPaths(flags)),
+      Self::Bench(BenchFlags {
+        watch: Some(flags), ..
+      })
+      | Self::Lint(LintFlags {
+        watch: Some(flags), ..
+      })
+      | Self::Fmt(FmtFlags {
+        watch: Some(flags), ..
+      }) => Some(WatchFlagsRef::Watch(flags)),
+      _ => None,
+    }
+  }
+
   pub fn is_run(&self) -> bool {
     matches!(self, Self::Run(_))
   }
 
-  /// Returns `true` if the subcommand depends on testing infrastructure.
+  // Returns `true` if the subcommand depends on testing infrastructure.
   pub fn needs_test(&self) -> bool {
     matches!(
       self,
@@ -738,11 +726,22 @@ impl DenoSubcommand {
   }
 }
 
+impl Default for DenoSubcommand {
+  fn default() -> DenoSubcommand {
+    DenoSubcommand::Repl(ReplFlags {
+      eval_files: None,
+      eval: None,
+      is_default_command: true,
+      json: false,
+    })
+  }
+}
+
 // ---------------------------------------------------------------------------
 // PermissionFlags
 // ---------------------------------------------------------------------------
 
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
 pub struct PermissionFlags {
   pub allow_all: bool,
   pub allow_env: Option<Vec<String>>,
@@ -796,7 +795,7 @@ impl PermissionFlags {
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct Flags {
-  pub initial_cwd: Option<String>,
+  pub initial_cwd: Option<PathBuf>,
   /// Vector of CLI arguments - these are user script arguments, all Deno
   /// specific flags are removed.
   pub argv: Vec<String>,
@@ -818,14 +817,14 @@ pub struct Flags {
   pub ignore: Vec<String>,
   pub import_map_path: Option<String>,
   pub env_file: Option<Vec<String>>,
-  pub inspect_brk: Option<String>,
-  pub inspect_wait: Option<String>,
-  pub inspect: Option<String>,
+  pub inspect_brk: Option<SocketAddr>,
+  pub inspect_wait: Option<SocketAddr>,
+  pub inspect: Option<SocketAddr>,
   pub inspect_publish_uid: Option<InspectPublishUid>,
-  pub location: Option<String>,
+  pub location: Option<Url>,
   pub lock: Option<String>,
-  pub log_level: Option<LogLevel>,
-  pub minimum_dependency_age: Option<String>,
+  pub log_level: Option<Level>,
+  pub minimum_dependency_age: Option<NewestDependencyDate>,
   pub no_remote: bool,
   pub no_lock: bool,
   pub no_npm: bool,

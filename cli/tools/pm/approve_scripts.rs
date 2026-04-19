@@ -1,5 +1,4 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
-
 use std::collections::HashSet;
 use std::fmt::Write as _;
 use std::sync::Arc;
@@ -22,6 +21,7 @@ use jsonc_parser::json;
 
 use super::CacheTopLevelDepsOptions;
 use crate::args::ApproveScriptsFlags;
+use crate::args::DenoSubcommandExt;
 use crate::args::Flags;
 use crate::factory::CliFactory;
 use crate::npm::CliNpmResolver;

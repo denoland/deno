@@ -36,7 +36,7 @@ fn global_flags() {
       subcommand: DenoSubcommand::Run(RunFlags::new_default(
         "script.ts".to_string()
       )),
-      log_level: Some(LogLevel::Error),
+      log_level: Some(log::Level::Error),
       code_cache_enabled: true,
       ..Flags::default()
     }
@@ -1103,8 +1103,8 @@ fn fmt() {
         },
         permit_no_files: false,
         use_tabs: Some(true),
-        line_width: Some(60),
-        indent_width: Some(4),
+        line_width: std::num::NonZeroU32::new(60),
+        indent_width: std::num::NonZeroU8::new(4),
         single_quote: Some(true),
         prose_wrap: Some("never".to_string()),
         no_semicolons: Some(true),
@@ -1852,10 +1852,10 @@ fn eval_with_flags() {
       lock: Some(String::from("lock.json")),
       ca_data: Some(CaData::File("example.crt".to_string())),
       cached_only: true,
-      location: Some("https:foo".to_string()),
+      location: deno_core::url::Url::parse("https:foo").ok(),
       v8_flags: svec!["--help", "--random-seed=1"],
       seed: Some(1),
-      inspect: Some("127.0.0.1:9229".to_string()),
+      inspect: Some("127.0.0.1:9229".parse().unwrap()),
       permissions: PermissionFlags {
         allow_all: true,
         ..Default::default()
@@ -1962,10 +1962,10 @@ fn repl_with_flags() {
       lock: Some(String::from("lock.json")),
       ca_data: Some(CaData::File("example.crt".to_string())),
       cached_only: true,
-      location: Some("https:foo".to_string()),
+      location: deno_core::url::Url::parse("https:foo").ok(),
       v8_flags: svec!["--help", "--random-seed=1"],
       seed: Some(1),
-      inspect: Some("127.0.0.1:9229".to_string()),
+      inspect: Some("127.0.0.1:9229".parse().unwrap()),
       permissions: PermissionFlags {
         allow_all: true,
         ..Default::default()
@@ -3120,7 +3120,7 @@ fn install_with_flags() {
       cached_only: true,
       v8_flags: svec!["--help", "--random-seed=1"],
       seed: Some(1),
-      inspect: Some("127.0.0.1:9229".to_string()),
+      inspect: Some("127.0.0.1:9229".parse().unwrap()),
       unsafely_ignore_certificate_errors: Some(vec![]),
       permissions: PermissionFlags {
         allow_net: Some(vec![]),
@@ -3240,7 +3240,7 @@ fn log_level() {
       subcommand: DenoSubcommand::Run(RunFlags::new_default(
         "script.ts".to_string(),
       )),
-      log_level: Some(LogLevel::Debug),
+      log_level: Some(log::Level::Debug),
       code_cache_enabled: true,
       ..Flags::default()
     }
@@ -3264,7 +3264,7 @@ fn quiet() {
         coverage_dir: None,
         print_task_list: false,
       }),
-      log_level: Some(LogLevel::Error),
+      log_level: Some(log::Level::Error),
       code_cache_enabled: true,
       ..Flags::default()
     }
@@ -3325,7 +3325,7 @@ fn run_with_args() {
       subcommand: DenoSubcommand::Run(RunFlags::new_default(
         "script.ts".to_string(),
       )),
-      location: Some("https:foo".to_string()),
+      location: deno_core::url::Url::parse("https:foo").ok(),
       permissions: PermissionFlags {
         allow_read: Some(vec![]),
         ..Default::default()
@@ -3851,7 +3851,7 @@ fn test_with_flags() {
       }),
       no_npm: true,
       no_remote: true,
-      location: Some("https:foo".to_string()),
+      location: deno_core::url::Url::parse("https:foo").ok(),
       type_check_mode: TypeCheckMode::Local,
       permissions: PermissionFlags {
         no_prompt: true,
@@ -3949,7 +3949,7 @@ fn test_with_fail_fast() {
       subcommand: DenoSubcommand::Test(TestFlags {
         no_run: false,
         doc: false,
-        fail_fast: Some(3),
+        fail_fast: std::num::NonZeroUsize::new(3),
         filter: None,
         permit_no_files: false,
         shuffle: None,
@@ -4063,7 +4063,7 @@ fn test_reporter() {
         ..Default::default()
       },
       type_check_mode: TypeCheckMode::Local,
-      log_level: Some(LogLevel::Error),
+      log_level: Some(log::Level::Error),
       ..Flags::default()
     }
   );
@@ -4098,7 +4098,7 @@ fn test_reporter() {
         ..Default::default()
       },
       type_check_mode: TypeCheckMode::Local,
-      log_level: Some(LogLevel::Error),
+      log_level: Some(log::Level::Error),
       ..Flags::default()
     }
   );
@@ -4122,7 +4122,7 @@ fn test_reporter() {
         ..Default::default()
       },
       type_check_mode: TypeCheckMode::Local,
-      log_level: Some(LogLevel::Error),
+      log_level: Some(log::Level::Error),
       ..Flags::default()
     }
   );
@@ -5000,7 +5000,7 @@ fn inspect_default_host() {
       subcommand: DenoSubcommand::Run(RunFlags::new_default(
         "foo.js".to_string(),
       )),
-      inspect: Some("127.0.0.1:9229".to_string()),
+      inspect: Some("127.0.0.1:9229".parse().unwrap()),
       code_cache_enabled: true,
       ..Flags::default()
     }
@@ -5024,7 +5024,7 @@ fn inspect_wait() {
         coverage_dir: None,
         print_task_list: false,
       }),
-      inspect_wait: Some("127.0.0.1:9229".to_string()),
+      inspect_wait: Some("127.0.0.1:9229".parse().unwrap()),
       code_cache_enabled: true,
       ..Flags::default()
     }
@@ -5042,7 +5042,7 @@ fn inspect_wait() {
       subcommand: DenoSubcommand::Run(RunFlags::new_default(
         "foo.js".to_string(),
       )),
-      inspect_wait: Some("127.0.0.1:3567".to_string()),
+      inspect_wait: Some("127.0.0.1:3567".parse().unwrap()),
       code_cache_enabled: true,
       ..Flags::default()
     }
@@ -5114,7 +5114,7 @@ fn compile_with_flags() {
       lock: Some(String::from("lock.json")),
       ca_data: Some(CaData::File("example.crt".to_string())),
       cached_only: true,
-      location: Some("https:foo".to_string()),
+      location: deno_core::url::Url::parse("https:foo").ok(),
       permissions: PermissionFlags {
         allow_read: Some(vec![]),
         allow_net: Some(vec![]),
@@ -5223,7 +5223,7 @@ fn location_with_bad_scheme() {
       subcommand: DenoSubcommand::Run(RunFlags::new_default(
         "mod.ts".to_string(),
       )),
-      location: Some("foo:".to_string()),
+      location: deno_core::url::Url::parse("foo:").ok(),
       code_cache_enabled: true,
       ..Flags::default()
     }
@@ -5517,7 +5517,7 @@ fn task_with_global_flags() {
         filter: None,
         eval: false,
       }),
-      log_level: Some(LogLevel::Error),
+      log_level: Some(log::Level::Error),
       ..Flags::default()
     }
   );
@@ -5645,7 +5645,7 @@ fn bench_with_flags() {
       no_npm: true,
       no_remote: true,
       type_check_mode: TypeCheckMode::Local,
-      location: Some("https:foo".to_string()),
+      location: deno_core::url::Url::parse("https:foo").ok(),
       permissions: PermissionFlags {
         allow_net: Some(vec![]),
         no_prompt: true,
@@ -5863,7 +5863,7 @@ fn init() {
         empty: false,
         yes: false,
       }),
-      log_level: Some(LogLevel::Error),
+      log_level: Some(log::Level::Error),
       ..Flags::default()
     }
   );
@@ -6720,7 +6720,9 @@ fn allow_scripts() {
       subcommand: DenoSubcommand::Cache(CacheFlags {
         files: svec!["script.ts"],
       }),
-      allow_scripts: PackagesAllowedScripts::Some(vec!["npm:foo".to_string(),]),
+      allow_scripts: PackagesAllowedScripts::Some(vec![
+        deno_semver::package::PackageReq::from_str("foo").unwrap(),
+      ]),
       ..Flags::default()
     }
   );
@@ -6738,8 +6740,8 @@ fn allow_scripts() {
         files: svec!["script.ts"],
       }),
       allow_scripts: PackagesAllowedScripts::Some(vec![
-        "npm:foo".to_string(),
-        "npm:bar@2".to_string(),
+        deno_semver::package::PackageReq::from_str("foo").unwrap(),
+        deno_semver::package::PackageReq::from_str("bar@2").unwrap(),
       ]),
       ..Flags::default()
     }
@@ -6786,7 +6788,7 @@ fn bare_global() {
         is_default_command: true,
         json: false,
       }),
-      log_level: Some(LogLevel::Debug),
+      log_level: Some(log::Level::Debug),
       permissions: PermissionFlags {
         allow_all: true,
         ..Default::default()
@@ -7726,7 +7728,7 @@ fn multiple_allow_all() {
         script: "script.ts".to_string(),
         ..Default::default()
       }),
-      inspect: Some("127.0.0.1:9229".to_string()),
+      inspect: Some("127.0.0.1:9229".parse().unwrap()),
       code_cache_enabled: true,
       permissions: PermissionFlags {
         allow_all: true,
@@ -7743,17 +7745,17 @@ fn multiple_allow_all() {
 
 #[test]
 fn inspect_flag_parsing() {
-  // In our crate inspect values are stored as raw strings (no SocketAddr parsing).
-  let cases = vec![
-    "127.0.0.1:9229",
-    "192.168.0.1",
-    "10000",
-    ":10000",
-    ":0",
-    "0",
+  // Inspect values are now parsed into SocketAddr.
+  let cases: Vec<(&str, std::net::SocketAddr)> = vec![
+    ("127.0.0.1:9229", "127.0.0.1:9229".parse().unwrap()),
+    ("192.168.0.1", "192.168.0.1:9229".parse().unwrap()),
+    ("10000", "127.0.0.1:10000".parse().unwrap()),
+    (":10000", "127.0.0.1:10000".parse().unwrap()),
+    (":0", "127.0.0.1:0".parse().unwrap()),
+    ("0", "127.0.0.1:0".parse().unwrap()),
   ];
 
-  for input in cases {
+  for (input, expected_addr) in cases {
     let flags = flags_from_vec(svec![
       "deno",
       "run",
@@ -7767,7 +7769,7 @@ fn inspect_flag_parsing() {
         subcommand: DenoSubcommand::Run(RunFlags::new_default(
           "script.ts".to_string(),
         )),
-        inspect: Some(input.to_string()),
+        inspect: Some(expected_addr),
         code_cache_enabled: true,
         ..Flags::default()
       }
