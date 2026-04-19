@@ -516,6 +516,7 @@ pub static EVAL_SUBCOMMAND: CommandDef = CommandDef {
             .num_args(NumArgs::Exact(1)),
         ArgDef::new("env-file")
             .long("env-file")
+            .long_aliases(&["env"])
             .action(ArgAction::Append)
             .num_args(NumArgs::Optional)
             .require_equals(),
@@ -1283,6 +1284,17 @@ pub static INSTALL_SUBCOMMAND: CommandDef = CommandDef {
             .long("save-exact")
             .long_aliases(&["exact"])
             .set_true(),
+        ArgDef::new("env-file")
+            .long("env-file")
+            .long_aliases(&["env"])
+            .action(ArgAction::Append)
+            .num_args(NumArgs::Optional)
+            .require_equals(),
+        ArgDef::new("check")
+            .long("check")
+            .action(ArgAction::Set)
+            .num_args(NumArgs::Optional)
+            .require_equals(),
     ],
     arg_groups: &[PERMISSION_ARGS, COMPILE_ARGS, INSPECT_ARGS, RUNTIME_MISC_ARGS, ALLOW_SCRIPTS_ARG],
     subcommands: &[],
