@@ -1102,7 +1102,6 @@ pub fn flags_from_vec_with_initial_cwd(
   args: Vec<OsString>,
   initial_cwd: Option<PathBuf>,
 ) -> Result<Flags, FlagsError> {
-  let start = std::time::Instant::now();
   // Handle dx/denox/dnx shim
   let args = handle_dx_shim(args);
 
@@ -1114,7 +1113,7 @@ pub fn flags_from_vec_with_initial_cwd(
     .collect();
 
   // Use the custom parser — it now produces the real Flags type directly.
-  let r = match deno_cli_parser::convert::flags_from_vec(string_args.clone()) {
+  match deno_cli_parser::convert::flags_from_vec(string_args.clone()) {
     Ok(mut flags) => {
       if flags.initial_cwd.is_none() {
         flags.initial_cwd = initial_cwd.clone();
@@ -1138,10 +1137,7 @@ pub fn flags_from_vec_with_initial_cwd(
         }
       }
     }
-  };
-  let elapsed = start.elapsed();
-  eprintln!("[flags] arg parsing took: {:?}", elapsed);
-  r
+  }
 }
 
 pub fn did_you_mean<T, I>(v: &str, possible_values: I) -> Vec<String>
