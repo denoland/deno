@@ -84,19 +84,17 @@ import asyncHooks from "node:async_hooks";
 import buffer from "node:buffer";
 import childProcess from "node:child_process";
 import cluster from "node:cluster";
+import dgram from "node:dgram";
 import console from "node:console";
 import constants from "node:constants";
 import crypto from "node:crypto";
-import dgram from "node:dgram";
 import diagnosticsChannel from "node:diagnostics_channel";
 import dns from "node:dns";
 import dnsPromises from "node:dns/promises";
-import domain from "node:domain";
 import events from "node:events";
 import fs from "node:fs";
 import fsPromises from "node:fs/promises";
 import http from "node:http";
-import http2 from "node:http2";
 import https from "node:https";
 import inspector from "node:inspector";
 import inspectorPromises from "node:inspector/promises";
@@ -143,7 +141,6 @@ import process from "node:process";
 import querystring from "node:querystring";
 import readline from "node:readline";
 import readlinePromises from "node:readline/promises";
-import repl from "node:repl";
 import sqlite from "node:sqlite";
 import stream from "node:stream";
 import streamConsumers from "node:stream/consumers";
@@ -151,23 +148,21 @@ import streamPromises from "node:stream/promises";
 import streamWeb from "node:stream/web";
 import stringDecoder from "node:string_decoder";
 import sys from "node:sys";
-import test from "node:test";
 import timers from "node:timers";
 import timersPromises from "node:timers/promises";
 import tls from "node:tls";
-import traceEvents from "node:trace_events";
 import tty from "node:tty";
 import url from "node:url";
 import utilTypes from "node:util/types";
 import util from "node:util";
-import v8 from "node:v8";
 import vm from "node:vm";
 import workerThreads from "node:worker_threads";
-import wasi from "node:wasi";
 import zlib from "node:zlib";
 
 const nativeModuleExports = ObjectCreate(null);
 const builtinModules = [];
+
+const { createLazyLoader } = core;
 
 // NOTE(bartlomieju): keep this list in sync with `ext/node/lib.rs`
 function setupBuiltinModules() {
@@ -196,12 +191,12 @@ function setupBuiltinModules() {
     diagnostics_channel: diagnosticsChannel,
     dns,
     "dns/promises": dnsPromises,
-    domain,
+    get domain() { return createLazyLoader("node:domain")(); },
     events,
     fs,
     "fs/promises": fsPromises,
     http,
-    http2,
+    get http2() { return createLazyLoader("node:http2")(); },
     https,
     inspector,
     "inspector/promises": inspectorPromises,
@@ -257,7 +252,7 @@ function setupBuiltinModules() {
     querystring,
     readline,
     "readline/promises": readlinePromises,
-    repl,
+    get repl() { return createLazyLoader("node:repl")(); },
     sqlite,
     stream,
     "stream/consumers": streamConsumers,
@@ -265,18 +260,18 @@ function setupBuiltinModules() {
     "stream/web": streamWeb,
     string_decoder: stringDecoder,
     sys,
-    test,
+    get test() { return createLazyLoader("node:test")(); },
     timers,
     "timers/promises": timersPromises,
     tls,
-    traceEvents,
+    get trace_events() { return createLazyLoader("node:trace_events")(); },
     tty,
     url,
     util,
     "util/types": utilTypes,
-    v8,
+    get v8() { return createLazyLoader("node:v8")(); },
     vm,
-    wasi,
+    get wasi() { return createLazyLoader("node:wasi")(); },
     worker_threads: workerThreads,
     zlib,
   };
