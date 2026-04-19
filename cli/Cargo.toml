@@ -104,7 +104,6 @@ chrono = { workspace = true, features = ["now"] }
 clap = { workspace = true, features = ["env", "string", "wrap_help", "error-context"] }
 deno_cli_parser = { path = "../libs/cli_parser" }
 clap_complete.workspace = true
-clap_complete_fig.workspace = true
 color-print.workspace = true
 comrak.workspace = true
 console_static_text.workspace = true
