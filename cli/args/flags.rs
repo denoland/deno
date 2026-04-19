@@ -2221,14 +2221,13 @@ fn convert_subcommand(
       eszip: f.eszip,
       self_extracting: f.self_extracting,
     }),
-    Src::Completions => {
-      // The parser doesn't generate completion scripts; use clap to generate
-      // a static bash completion as a fallback. The real completions_parse
-      // with clap's Command is used via the clap fallback path.
-      // For the custom parser path, we generate a placeholder that will be
-      // handled by the clap fallback.
+    Src::Completions(shell) => {
+      let buf = deno_cli_parser::completions::generate(
+        shell,
+        &deno_cli_parser::defs::DENO_ROOT,
+      );
       DenoSubcommand::Completions(CompletionsFlags::Static(
-        Box::new([]) as Box<[u8]>,
+        buf.into_boxed_slice(),
       ))
     }
     Src::Coverage(f) => DenoSubcommand::Coverage(CoverageFlags {
@@ -3042,14 +3041,6 @@ pub fn flags_from_vec_with_initial_cwd(
     Ok(parser_flags) => {
       let mut flags = convert_parser_flags(parser_flags, initial_cwd.clone());
       apply_node_options(&mut flags);
-
-      // For completions, fall back to clap to generate shell scripts
-      if matches!(
-        flags.subcommand,
-        DenoSubcommand::Completions(CompletionsFlags::Static(ref b)) if b.is_empty()
-      ) {
-        return flags_from_vec_clap(args, initial_cwd);
-      }
 
       // Run post-conversion validation
       validate_parser_flags(&mut flags, &string_args)?;
@@ -5646,22 +5637,15 @@ Evaluate a task from string:
 // This code will only run if we are actually running the completion code.
 static TASK_FLAGS_FOR_COMPLETION: LazyLock<Option<Flags>> =
   LazyLock::new(|| {
-    let mut flags = Flags::default();
-    let args = std::env::args_os().skip(2);
-    let app = clap_root().ignore_errors(true);
-    let Ok(mut matches) = app.clone().try_get_matches_from(args) else {
-      return None;
-    };
-    match matches.remove_subcommand() {
-      Some((sub, mut matches)) => {
-        if sub == "task" {
-          let _ = task_parse(&mut flags, &mut matches, app);
-          Some(flags)
-        } else {
-          None
-        }
-      }
-      None => None,
+    let args: Vec<String> = std::env::args()
+      .skip(1)
+      .collect();
+    let parsed = deno_cli_parser::convert::flags_from_vec(args).ok()?;
+    let flags = convert_parser_flags(parsed, None);
+    if matches!(flags.subcommand, DenoSubcommand::Task(_)) {
+      Some(flags)
+    } else {
+      None
     }
   });
 
@@ -15736,43 +15720,37 @@ mod tests {
 
   #[test]
   fn equal_help_output() {
-    for command in clap_root().get_subcommands() {
-      if command.get_name() == "help" {
+    // Verify --help and -h produce the same output for all subcommands
+    for sub in deno_cli_parser::defs::DENO_ROOT.subcommands {
+      if sub.name == "help"
+        || sub.name == "json_reference"
+        || sub.name == "deploy"
+        || sub.name == "sandbox"
+      {
         continue;
       }
 
       let long_flag =
-        match flags_from_vec(svec!["deno", command.get_name(), "--help"])
+        match flags_from_vec(svec!["deno", sub.name, "--help"])
           .unwrap()
           .subcommand
         {
-          DenoSubcommand::Help(help) => help.help.to_string(),
+          DenoSubcommand::Help(help) => help.help,
           _ => {
-            unreachable!()
+            unreachable!("{} --help should produce Help", sub.name)
           }
         };
       let short_flag =
-        match flags_from_vec(svec!["deno", command.get_name(), "-h"])
+        match flags_from_vec(svec!["deno", sub.name, "-h"])
           .unwrap()
           .subcommand
         {
-          DenoSubcommand::Help(help) => help.help.to_string(),
+          DenoSubcommand::Help(help) => help.help,
           _ => {
-            unreachable!()
+            unreachable!("{} -h should produce Help", sub.name)
           }
         };
-      let subcommand =
-        match flags_from_vec(svec!["deno", "help", command.get_name()])
-          .unwrap()
-          .subcommand
-        {
-          DenoSubcommand::Help(help) => help.help.to_string(),
-          _ => {
-            unreachable!()
-          }
-        };
-      assert_eq!(long_flag, short_flag, "{} subcommand", command.get_name());
-      assert_eq!(long_flag, subcommand, "{} subcommand", command.get_name());
+      assert_eq!(long_flag, short_flag, "{} subcommand", sub.name);
     }
   }
 

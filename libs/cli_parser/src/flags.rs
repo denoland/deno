@@ -679,7 +679,7 @@ pub enum DenoSubcommand {
   Check(CheckFlags),
   Clean(CleanFlags),
   Compile(CompileFlags),
-  Completions,
+  Completions(String),
   Coverage(CoverageFlags),
   Deploy(DeployFlags),
   Doc(DocFlags),

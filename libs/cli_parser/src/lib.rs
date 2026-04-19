@@ -4,6 +4,7 @@ mod types;
 pub mod convert;
 pub mod defs;
 pub mod flags;
+pub mod completions;
 pub mod help;
 
 pub use error::CliError;

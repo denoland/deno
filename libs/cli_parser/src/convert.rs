@@ -1879,8 +1879,12 @@ fn uninstall_parse(result: &ParseResult, flags: &mut Flags) {
     flags.subcommand = DenoSubcommand::Uninstall(UninstallFlags { kind });
 }
 
-fn completions_parse(_result: &ParseResult, flags: &mut Flags) {
-    flags.subcommand = DenoSubcommand::Completions;
+fn completions_parse(result: &ParseResult, flags: &mut Flags) {
+    let shell = result
+        .get_one("shell")
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| "bash".to_string());
+    flags.subcommand = DenoSubcommand::Completions(shell);
 }
 
 fn init_parse(result: &ParseResult, flags: &mut Flags) {
