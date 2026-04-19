@@ -409,6 +409,12 @@ function deserializeJsMessageData(messageData) {
     };
   }
 
+  const deserializers = core.getCloneableDeserializers();
+  if (!options) {
+    options = { deserializers };
+  } else {
+    options.deserializers = deserializers;
+  }
   const data = core.deserialize(messageData.data, options);
 
   for (let i = 0; i < arrayBufferIdsInTransferables.length; ++i) {

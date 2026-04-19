@@ -33,7 +33,7 @@ unsafe impl v8::cppgc::GarbageCollected for ContextifyScript {
 }
 
 impl ContextifyScript {
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "internal code")]
   fn create<'s>(
     scope: &mut v8::PinScope<'s, '_>,
     source: v8::Local<'s, v8::String>,
@@ -201,7 +201,10 @@ impl ContextifyScript {
       r
     };
 
-    #[allow(clippy::disallowed_types)]
+    #[allow(
+      clippy::disallowed_types,
+      reason = "isolated here and sending to separate thread"
+    )]
     let timed_out = std::sync::Arc::new(AtomicBool::new(false));
     let result = if timeout != -1 {
       let timed_out = timed_out.clone();
@@ -601,7 +604,6 @@ pub fn create_v8_context<'a>(
 #[derive(Debug, Clone)]
 struct SlotContextifyGlobalTemplate(v8::Global<v8::ObjectTemplate>);
 
-#[allow(clippy::unnecessary_unwrap)]
 pub fn init_global_template<'a>(
   scope: &mut v8::PinScope<'a, '_, ()>,
   mode: ContextInitMode,
@@ -609,7 +611,9 @@ pub fn init_global_template<'a>(
   let maybe_object_template_slot =
     scope.get_slot::<SlotContextifyGlobalTemplate>();
 
-  if maybe_object_template_slot.is_none() {
+  if let Some(object_template_slot) = maybe_object_template_slot {
+    v8::Local::new(scope, object_template_slot.clone().0)
+  } else {
     let global_object_template = init_global_template_inner(scope);
 
     if mode == ContextInitMode::UseSnapshot {
@@ -619,11 +623,6 @@ pub fn init_global_template<'a>(
       scope.set_slot(contextify_global_template_slot);
     }
     global_object_template
-  } else {
-    let object_template_slot = maybe_object_template_slot
-      .expect("ContextifyGlobalTemplate slot should be already populated.")
-      .clone();
-    v8::Local::new(scope, object_template_slot.0)
   }
 }
 
@@ -1028,9 +1027,13 @@ fn property_enumerator<'s>(
   };
 
   let context_scope = &mut v8::ContextScope::new(scope, context);
-  let Some(properties) = sandbox
-    .get_property_names(context_scope, v8::GetPropertyNamesArgs::default())
-  else {
+  let args = v8::GetPropertyNamesArgsBuilder::new()
+    .mode(v8::KeyCollectionMode::OwnOnly)
+    .property_filter(v8::PropertyFilter::ALL_PROPERTIES)
+    .index_filter(v8::IndexFilter::SkipIndices)
+    .key_conversion(v8::KeyConversionMode::ConvertToString)
+    .build();
+  let Some(properties) = sandbox.get_property_names(context_scope, args) else {
     return;
   };
 
@@ -1051,11 +1054,14 @@ fn indexed_property_enumerator<'s>(
     return;
   };
 
-  // By default, GetPropertyNames returns string and number property names, and
-  // doesn't convert the numbers to strings.
-  let Some(properties) =
-    sandbox.get_property_names(scope, v8::GetPropertyNamesArgs::default())
-  else {
+  // Return only indexed (numeric) own properties, including non-enumerable.
+  let args = v8::GetPropertyNamesArgsBuilder::new()
+    .mode(v8::KeyCollectionMode::OwnOnly)
+    .property_filter(v8::PropertyFilter::ALL_PROPERTIES)
+    .index_filter(v8::IndexFilter::IncludeIndices)
+    .key_conversion(v8::KeyConversionMode::KeepNumbers)
+    .build();
+  let Some(properties) = sandbox.get_property_names(scope, args) else {
     return;
   };
 
@@ -1162,7 +1168,7 @@ fn indexed_property_deleter<'s>(
   v8::Intercepted::kNo
 }
 
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, reason = "op")]
 #[op2]
 #[serde]
 pub fn op_vm_create_script<'a>(
@@ -1269,7 +1275,7 @@ struct CompileResult<'s> {
   cached_data_produced: bool,
 }
 
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, reason = "op")]
 #[op2]
 #[serde]
 pub fn op_vm_compile_function<'s>(

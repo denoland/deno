@@ -86,7 +86,7 @@ macro_rules! match_fixed_digest {
         type $type = ::blake2::Blake2s256;
         $body
       }
-      #[allow(dead_code)]
+      #[allow(dead_code, reason = "wildcard needed for macro expansion")]
       _ => crate::digest::match_fixed_digest_with_eager_block_buffer!($algorithm_name, fn <$type>() $body, _ => $other)
     }
   };

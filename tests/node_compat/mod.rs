@@ -13,15 +13,18 @@ use file_test_runner::collection::CollectedCategoryOrTest;
 use file_test_runner::collection::CollectedTest;
 use file_test_runner::collection::CollectedTestCategory;
 use regex::Regex;
+use report::CollectedResult;
+use report::ErrorInfo;
 use serde::Deserialize;
-use serde::Serialize;
-use serde_json::Value;
 use test_util as util;
 use test_util::IS_CI;
+use test_util::PathRef;
 use test_util::test_runner::FlakyTestTracker;
 use test_util::test_runner::Parallelism;
 use test_util::test_runner::run_maybe_flaky_test;
 use util::tests_path;
+
+mod report;
 
 /// Global counter for generating unique test serial IDs
 static TEST_SERIAL_ID: AtomicUsize = AtomicUsize::new(0);
@@ -44,15 +47,52 @@ const TEST_ARGS: &[&str] = &[
   "--unstable-detect-cjs",
 ];
 
-/// Configuration for a single test from config.json
+/// Per-platform value: either a boolean (true = enabled, false = disabled)
+/// or an object describing an expected failure.
+///
+/// Uses `#[serde(untagged)]` so that config.jsonc can use both
+/// `"windows": false` (boolean) and `"windows": { "exitCode": 1 }` (object).
+#[derive(Debug, Clone, Deserialize)]
+#[serde(untagged)]
+enum PlatformExpectation {
+  Enabled(bool),
+  ExpectedFailure(ExpectedFailure),
+}
+
+/// Describes an expected test failure: the exit code and/or output pattern.
+#[derive(Debug, Clone, Default, Deserialize)]
+struct ExpectedFailure {
+  #[serde(rename = "exitCode")]
+  exit_code: Option<i32>,
+  output: Option<String>,
+}
+
+/// Configuration for a single test from config.jsonc
+///
+/// Platform fields (`windows`, `darwin`, `linux`) accept:
+///   - `false` — skip the test on that OS
+///   - `true` (or omit) — run normally; expected to pass
+///   - `{ "exitCode": N, "output": "pattern with [WILDCARD]" }` — run the test
+///     but expect it to fail with the given exit code / output
+///
+/// Top-level `exitCode` and `output` apply to **all** platforms unless a
+/// platform-specific entry overrides them.
 #[derive(Debug, Clone, Default, Deserialize)]
 struct TestConfig {
   #[serde(default)]
   flaky: bool,
-  windows: Option<bool>,
-  darwin: Option<bool>,
-  linux: Option<bool>,
+  /// When `true`, the test is skipped on all platforms. Requires `reason`.
+  #[serde(default)]
+  ignore: bool,
+  windows: Option<PlatformExpectation>,
+  darwin: Option<PlatformExpectation>,
+  linux: Option<PlatformExpectation>,
   reason: Option<String>,
+  /// Expected exit code for all platforms (overridden by per-platform config)
+  #[serde(rename = "exitCode")]
+  exit_code: Option<i32>,
+  /// Expected output pattern (with [WILDCARD] support) for all platforms
+  output: Option<String>,
 }
 
 /// The full config.json structure
@@ -67,83 +107,38 @@ struct NodeCompatTestData {
   test_path: String,
 }
 
-/// Report structures for generating report.json
-#[derive(Debug, Serialize)]
-struct TestReport {
-  date: String,
-  #[serde(rename = "denoVersion")]
-  deno_version: String,
-  os: String,
-  arch: String,
-  #[serde(rename = "nodeVersion")]
-  node_version: String,
-  #[serde(rename = "runId")]
-  run_id: Option<String>,
-  total: usize,
-  pass: usize,
-  ignore: usize,
-  results: HashMap<String, TestResultEntry>,
-}
-
-// Result entry: [pass: bool | "IGNORE", error: Option<ErrorInfo>, info: ResultInfo]
-type TestResultEntry = (Value, Option<ErrorInfo>, ResultInfo);
-
-#[derive(Debug, Serialize, Clone)]
-struct ErrorInfo {
-  #[serde(skip_serializing_if = "Option::is_none")]
-  code: Option<i32>,
-  #[serde(skip_serializing_if = "Option::is_none")]
-  stderr: Option<String>,
-  #[serde(skip_serializing_if = "Option::is_none")]
-  timeout: Option<u64>,
-  #[serde(skip_serializing_if = "Option::is_none")]
-  message: Option<String>,
-}
-
-#[derive(Debug, Default, Serialize, Clone)]
-struct ResultInfo {
-  #[serde(rename = "usesNodeTest", skip_serializing_if = "Option::is_none")]
-  uses_node_test: Option<u8>,
-  #[serde(rename = "ignoreReason", skip_serializing_if = "Option::is_none")]
-  ignore_reason: Option<String>,
-}
-
-/// Collected test result for report generation
-#[derive(Debug, Clone)]
-struct CollectedResult {
-  passed: Option<bool>, // None means ignored
-  error: Option<ErrorInfo>,
-  uses_node_test: bool,
-  ignore_reason: Option<String>,
-}
-
 fn main() {
-  if test_util::hash::should_skip_on_ci("node_compat", |hasher| {
+  let ci_hash = test_util::hash::check_ci_hash("node_compat", |hasher| {
     let tests = test_util::tests_path();
     hasher
       .hash_dir(tests.join("node_compat"))
       .hash_dir(tests.join("util"))
       .hash_file(test_util::deno_exe_path())
       .hash_file(test_util::test_server_path());
-  }) {
+  });
+  if matches!(ci_hash, test_util::hash::CiHashStatus::Skip) {
     return;
   }
 
   let cli_args = parse_cli_args();
   let config = load_config();
-  let mut category = if cli_args.report {
-    collect_all_tests()
-  } else if let Some(filter) = cli_args.filter.as_ref() {
-    let mut category = collect_all_tests();
-    category.filter_children(filter);
-    category
-  } else {
-    collect_tests_from_config(&config)
-  };
+  let cli_filter = file_test_runner::collection::parse_cli_arg_filter();
+  let mut category = collect_all_tests();
 
-  // Apply CLI filter if provided
-  if let Some(filter) = file_test_runner::collection::parse_cli_arg_filter() {
-    category.filter_children(&filter);
+  if let Some(filter) = &cli_filter {
+    // With a filter, run any matching test from the full suite
+    // e.g. `cargo test --test node_compat -- test-assert`
+    category.filter_children(filter);
+  } else if !cli_args.report {
+    // Without a filter, only run tests listed in config.jsonc
+    let config_tests: std::collections::HashSet<&str> =
+      config.tests.keys().map(|s| s.as_str()).collect();
+    category.children.retain(|child| match child {
+      CollectedCategoryOrTest::Test(t) => {
+        config_tests.contains(t.data.test_path.as_str())
+      }
+      _ => true,
+    });
   }
 
   if category.is_empty() {
@@ -225,7 +220,10 @@ fn main() {
   if !cli_args.report {
     summary.panic_on_failures();
   } else if std::env::var("CI").is_ok() {
-    generate_report(&results.lock().unwrap());
+    report::generate_report(&results.lock().unwrap());
+  }
+  if let test_util::hash::CiHashStatus::RunThenCommit(pending) = ci_hash {
+    pending.commit();
   }
 }
 
@@ -234,31 +232,21 @@ struct CliArgs {
   inspect_brk: bool,
   inspect_wait: bool,
   report: bool,
-  filter: Option<String>,
 }
 
-// You need to run with `--test node_compat` for this to work.
-// For example: `cargo test --test node_compat <test-file-name> -- --inspect-brk`
+// Run with: `cargo test --test node_compat -- <filter>`
+// For example: `cargo test --test node_compat -- test-assert`
+// Debug with: `cargo test --test node_compat -- test-assert --inspect-brk`
 fn parse_cli_args() -> CliArgs {
   let mut inspect_brk = false;
   let mut inspect_wait = false;
   let mut report = false;
-  let mut filter = None;
 
-  let mut has_filter = false;
   for arg in std::env::args() {
-    if has_filter {
-      filter = Some(arg.as_str().to_string());
-      has_filter = false;
-    }
-
     match arg.as_str() {
       "--inspect-brk" => inspect_brk = true,
       "--inspect-wait" => inspect_wait = true,
       "--report" => report = true,
-      "--filter" => {
-        has_filter = true;
-      }
       _ => {}
     }
   }
@@ -267,30 +255,14 @@ fn parse_cli_args() -> CliArgs {
     inspect_brk,
     inspect_wait,
     report,
-    filter,
   }
 }
 
 fn load_config() -> NodeCompatConfig {
   let config_path = tests_path().join("node_compat").join("config.jsonc");
   let config_content = std::fs::read_to_string(&config_path).unwrap();
-  let value =
-    jsonc_parser::parse_to_serde_value(&config_content, &Default::default())
-      .unwrap()
-      .unwrap();
-  serde_json::from_value(value).unwrap()
-}
-
-fn collect_tests_from_config(
-  config: &NodeCompatConfig,
-) -> CollectedTestCategory<NodeCompatTestData> {
-  let children = config
-    .tests
-    .keys()
-    .map(|test_name| create_collected_test(test_name))
-    .collect();
-
-  wrap_in_category(children)
+  jsonc_parser::parse_to_serde_value(&config_content, &Default::default())
+    .unwrap()
 }
 
 // Directories that don't contain runnable tests
@@ -431,20 +403,61 @@ fn wrap_in_category(
   }
 }
 
-fn should_ignore(config: &TestConfig) -> Option<&str> {
+fn platform_expectation(config: &TestConfig) -> Option<&PlatformExpectation> {
   let os = std::env::consts::OS;
   match os {
-    "windows" if config.windows == Some(false) => {
-      Some(config.reason.as_deref().unwrap_or("disabled on windows"))
-    }
-    "linux" if config.linux == Some(false) => {
-      Some(config.reason.as_deref().unwrap_or("disabled on linux"))
-    }
-    "macos" if config.darwin == Some(false) => {
-      Some(config.reason.as_deref().unwrap_or("disabled on macos"))
-    }
+    "windows" => config.windows.as_ref(),
+    "linux" => config.linux.as_ref(),
+    "macos" => config.darwin.as_ref(),
     _ => None,
   }
+}
+
+fn should_ignore(config: &TestConfig) -> Option<&str> {
+  if config.ignore {
+    return Some(
+      config
+        .reason
+        .as_deref()
+        .expect("tests with `ignore: true` must have a `reason`"),
+    );
+  }
+  if let Some(PlatformExpectation::Enabled(false)) =
+    platform_expectation(config)
+  {
+    let os = std::env::consts::OS;
+    return Some(config.reason.as_deref().unwrap_or(match os {
+      "windows" => "disabled on windows",
+      "linux" => "disabled on linux",
+      "macos" => "disabled on macos",
+      _ => "disabled on this platform",
+    }));
+  }
+  None
+}
+
+/// Resolve the expected-failure expectation for the current platform.
+///
+/// Returns `Some(ExpectedFailure)` if the test is expected to fail
+/// (either from a platform-specific object or from top-level fields),
+/// or `None` if the test is expected to pass.
+fn resolve_expected_failure(config: &TestConfig) -> Option<ExpectedFailure> {
+  // 1. Platform-specific object takes precedence
+  if let Some(PlatformExpectation::ExpectedFailure(ef)) =
+    platform_expectation(config)
+  {
+    return Some(ef.clone());
+  }
+
+  // 2. Fall back to top-level exitCode / output
+  if config.exit_code.is_some() || config.output.is_some() {
+    return Some(ExpectedFailure {
+      exit_code: config.exit_code,
+      output: config.output.clone(),
+    });
+  }
+
+  None
 }
 
 fn uses_node_test_module(source: &str) -> bool {
@@ -476,8 +489,14 @@ fn parse_flags(source: &str) -> (Vec<String>, Vec<String>) {
           "--pending-deprecation" => {
             node_options.push("--pending-deprecation".to_string());
           }
+          f if f.starts_with("--dns-result-order=") => {
+            node_options.push(f.to_string());
+          }
           "--allow-natives-syntax" => {
             v8_flags.push("--allow-natives-syntax".to_string());
+          }
+          f if f.starts_with("--title=") => {
+            node_options.push(f.to_string());
           }
           _ => {}
         }
@@ -491,24 +510,187 @@ fn parse_flags(source: &str) -> (Vec<String>, Vec<String>) {
 
 fn truncate_output(output: &str, max_len: usize) -> String {
   if output.len() > max_len {
-    format!("{} ...", &output[..max_len])
+    format!("{} ...", &output[..output.floor_char_boundary(max_len)])
   } else {
     output.to_string()
   }
 }
 
-enum TestOutput {
-  Completed(std::process::Output),
-  TimedOut,
+/// Common setup for running a node compat test (shared between PTY and piped paths).
+struct TestSetup {
+  test_suite_path: PathRef,
+  uses_node_test: bool,
+  args: Vec<String>,
+  env_vars: HashMap<String, String>,
+  timeout: Duration,
 }
 
-fn wait_with_timeout(
-  child: test_util::DenoChild,
+impl TestSetup {
+  fn new(cli_args: &CliArgs, data: &NodeCompatTestData) -> Self {
+    let test_suite_path = tests_path().join("node_compat/runner/suite");
+    let test_path = format!("test/{}", data.test_path);
+    let full_test_path = test_suite_path.join(&test_path);
+
+    let source = full_test_path.read_to_string();
+    let uses_node_test = uses_node_test_module(&source);
+    let (v8_flags, node_options) = parse_flags(&source);
+
+    let mut args: Vec<String> = if uses_node_test {
+      TEST_ARGS.iter().map(|s| s.to_string()).collect()
+    } else {
+      RUN_ARGS.iter().map(|s| s.to_string()).collect()
+    };
+
+    if !v8_flags.is_empty() {
+      args.push(format!("--v8-flags={}", v8_flags.join(",")));
+    }
+    if cli_args.inspect_brk {
+      args.push("--inspect-brk".to_string());
+    }
+    if cli_args.inspect_wait {
+      args.push("--inspect-wait".to_string());
+    }
+    args.push(test_path.clone());
+
+    let serial_id = TEST_SERIAL_ID.fetch_add(1, Ordering::SeqCst);
+
+    let mut env_vars = HashMap::new();
+    env_vars.insert("NODE_TEST_KNOWN_GLOBALS".to_string(), "0".to_string());
+    env_vars.insert("NODE_SKIP_FLAG_CHECK".to_string(), "1".to_string());
+    env_vars.insert("NODE_OPTIONS".to_string(), node_options.join(" "));
+    env_vars.insert("NO_COLOR".to_string(), "1".to_string());
+    env_vars.insert("TEST_SERIAL_ID".to_string(), serial_id.to_string());
+
+    let timeout = Duration::from_millis(if cfg!(target_os = "macos") {
+      20_000
+    } else {
+      10_000
+    });
+
+    TestSetup {
+      test_suite_path,
+      uses_node_test,
+      args,
+      env_vars,
+      timeout,
+    }
+  }
+
+  fn run_piped(&self) -> (bool, String, Option<i32>) {
+    let mut cmd = util::deno_cmd().disable_diagnostic_logging();
+    cmd = cmd.current_dir(&self.test_suite_path);
+    for arg in &self.args {
+      cmd = cmd.arg(arg);
+    }
+    for (key, value) in &self.env_vars {
+      cmd = cmd.env(key, value);
+    }
+
+    let child = cmd.piped_output().spawn().unwrap();
+    match child.wait_with_output_and_timeout(self.timeout) {
+      Ok(output) => {
+        let success = output.status.success();
+        let exit_code = output.status.code();
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let output_str = format!("{}\n{}", stdout, stderr);
+        (success, output_str, exit_code)
+      }
+      Err(_) => {
+        let output_str =
+          format!("Test timed out after {}ms", self.timeout.as_millis());
+        (false, output_str, None)
+      }
+    }
+  }
+
+  fn run_pty(&self) -> (bool, String, Option<i32>) {
+    let deno_exe = util::deno_exe_path();
+    let args: Vec<&str> = self.args.iter().map(|s| s.as_str()).collect();
+
+    // PTY needs the full environment (inherit + our overrides)
+    let mut env_vars = self.env_vars.clone();
+    for (key, value) in std::env::vars() {
+      env_vars.entry(key).or_insert(value);
+    }
+
+    let pty_output = util::pty::run_in_pty(
+      deno_exe.as_path(),
+      &args,
+      self.test_suite_path.as_path(),
+      Some(env_vars),
+      self.timeout,
+    );
+
+    let output_text = String::from_utf8_lossy(&pty_output.output).to_string();
+    let success = pty_output.exit_code == Some(0);
+    (success, output_text, pty_output.exit_code)
+  }
+
+  fn debugging_command_text(&self) -> String {
+    let node_options = self
+      .env_vars
+      .get("NODE_OPTIONS")
+      .map(|s| s.as_str())
+      .unwrap_or("");
+    let args_str = self
+      .args
+      .iter()
+      .map(|a| {
+        if a.contains(' ') {
+          format!("'{}'", a)
+        } else {
+          a.clone()
+        }
+      })
+      .collect::<Vec<_>>()
+      .join(" ");
+    format!(
+      "Command: {}",
+      deno_terminal::colors::gray(format!(
+        "NODE_TEST_KNOWN_GLOBALS=0 NODE_SKIP_FLAG_CHECK=1 NODE_OPTIONS='{}' deno {}",
+        node_options.replace("'", "\\'"),
+        args_str,
+      ))
+    )
+  }
+}
+
+fn make_collected_result(
+  success: bool,
+  output_text: &str,
+  uses_node_test: bool,
   timeout: Duration,
-) -> TestOutput {
-  match child.wait_with_output_and_timeout(timeout) {
-    Ok(output) => TestOutput::Completed(output),
-    Err(_) => TestOutput::TimedOut,
+  timed_out: bool,
+  exit_code: Option<i32>,
+) -> CollectedResult {
+  if success {
+    CollectedResult {
+      passed: Some(true),
+      error: None,
+      uses_node_test,
+      ignore_reason: None,
+    }
+  } else {
+    CollectedResult {
+      passed: Some(false),
+      error: Some(ErrorInfo {
+        code: exit_code,
+        stderr: if output_text.is_empty() {
+          None
+        } else {
+          Some(truncate_output(output_text, 2000))
+        },
+        timeout: if timed_out {
+          Some(timeout.as_millis() as u64)
+        } else {
+          None
+        },
+        message: None,
+      }),
+      uses_node_test,
+      ignore_reason: None,
+    }
   }
 }
 
@@ -549,207 +731,38 @@ fn run_test(
     return TestResult::Ignored;
   }
 
-  let test_suite_path = tests_path().join("node_compat/runner/suite");
-  let test_path = format!("test/{}", data.test_path);
-  let full_test_path = test_suite_path.join(&test_path);
+  let setup = TestSetup::new(cli_args, data);
 
-  // Read source to extract flags and detect node:test usage
-  let source = std::fs::read_to_string(&full_test_path).unwrap_or_default();
-  let uses_node_test = uses_node_test_module(&source);
-  let (v8_flags, node_options) = parse_flags(&source);
-
-  // Build command
-  let mut cmd = util::deno_cmd().disable_diagnostic_logging();
-  cmd = cmd.current_dir(&test_suite_path);
-
-  // Choose deno test vs deno run
-  if uses_node_test {
-    for arg in TEST_ARGS {
-      cmd = cmd.arg(arg);
-    }
+  let (success, output_text, exit_code) = if is_pseudo_tty_test {
+    setup.run_pty()
   } else {
-    for arg in RUN_ARGS {
-      cmd = cmd.arg(arg);
-    }
-  }
-
-  // Add V8 flags
-  if !v8_flags.is_empty() {
-    cmd = cmd.arg(format!("--v8-flags={}", v8_flags.join(",")));
-  }
-
-  if cli_args.inspect_brk {
-    cmd = cmd.arg("--inspect-brk");
-  }
-  if cli_args.inspect_wait {
-    cmd = cmd.arg("--inspect-wait");
-  }
-
-  // Add test file
-  cmd = cmd.arg(&test_path);
-
-  // Generate unique serial ID for this test (used for temp directory isolation)
-  let serial_id = TEST_SERIAL_ID.fetch_add(1, Ordering::SeqCst);
-
-  // Set environment variables
-  cmd = cmd
-    .env("NODE_TEST_KNOWN_GLOBALS", "0")
-    .env("NODE_SKIP_FLAG_CHECK", "1")
-    .env("NODE_OPTIONS", node_options.join(" "))
-    .env("NO_COLOR", "1")
-    .env("TEST_SERIAL_ID", serial_id.to_string());
-
-  let debugging_command_text = format!(
-    "Command: {}",
-    deno_terminal::colors::gray(format!(
-      "NODE_TEST_KNOWN_GLOBALS=0 NODE_SKIP_FLAG_CHECK=1 NODE_OPTIONS='{}' {}",
-      node_options.join(" ").replace("'", "\\'"),
-      cmd.build_command_text_for_debugging()
-    ))
-  );
-
-  let timeout = Duration::from_millis(if cfg!(target_os = "macos") {
-    20_000
-  } else {
-    10_000
-  });
-
-  // Format v8_flags for reuse in both PTY and non-PTY paths
-  let v8_flags_arg = if !v8_flags.is_empty() {
-    Some(format!("--v8-flags={}", v8_flags.join(",")))
-  } else {
-    None
+    setup.run_piped()
   };
 
-  let (success, collected, output_for_error) = if is_pseudo_tty_test {
-    // Run in PTY for pseudo-tty tests (PTY support was already verified above)
-    let deno_exe = util::deno_exe_path();
-    let mut args: Vec<&str> = if uses_node_test {
-      TEST_ARGS.to_vec()
-    } else {
-      RUN_ARGS.to_vec()
-    };
+  let debugging_command_text = setup.debugging_command_text();
 
-    // Add V8 flags
-    if let Some(ref flags) = v8_flags_arg {
-      args.push(flags);
-    }
-
-    // Add inspect flags
-    if cli_args.inspect_brk {
-      args.push("--inspect-brk");
-    }
-    if cli_args.inspect_wait {
-      args.push("--inspect-wait");
-    }
-
-    args.push(&test_path);
-
-    let mut env_vars = std::collections::HashMap::new();
-    env_vars.insert("NODE_TEST_KNOWN_GLOBALS".to_string(), "0".to_string());
-    env_vars.insert("NODE_SKIP_FLAG_CHECK".to_string(), "1".to_string());
-    env_vars.insert("NODE_OPTIONS".to_string(), node_options.join(" "));
-    env_vars.insert("NO_COLOR".to_string(), "1".to_string());
-    env_vars.insert("TEST_SERIAL_ID".to_string(), serial_id.to_string());
-    // Inherit current environment
-    for (key, value) in std::env::vars() {
-      env_vars.entry(key).or_insert(value);
-    }
-
-    let pty_output = util::pty::run_in_pty(
-      deno_exe.as_path(),
-      &args,
-      test_suite_path.as_path(),
-      Some(env_vars),
-      timeout,
+  // Check for expected failure configuration
+  if let Some(ef) = test_config.and_then(resolve_expected_failure) {
+    return handle_expected_failure(
+      &ef,
+      success,
+      exit_code,
+      setup.uses_node_test,
+      &output_text,
+      &debugging_command_text,
+      &data.test_path,
+      results,
     );
+  }
 
-    let output_text = String::from_utf8_lossy(&pty_output.output).to_string();
-    let success = pty_output.exit_code == Some(0);
-
-    let collected = if success {
-      CollectedResult {
-        passed: Some(true),
-        error: None,
-        uses_node_test,
-        ignore_reason: None,
-      }
-    } else {
-      CollectedResult {
-        passed: Some(false),
-        error: Some(ErrorInfo {
-          code: pty_output.exit_code,
-          stderr: Some(truncate_output(&output_text, 2000)),
-          timeout: if pty_output.exit_code.is_none() {
-            Some(timeout.as_millis() as u64)
-          } else {
-            None
-          },
-          message: None,
-        }),
-        uses_node_test,
-        ignore_reason: None,
-      }
-    };
-
-    (success, collected, output_text)
-  } else {
-    // Run normally with piped output
-    let child = cmd.piped_output().spawn().unwrap();
-    let test_output = wait_with_timeout(child, timeout);
-
-    match test_output {
-      TestOutput::Completed(output) => {
-        let success = output.status.success();
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        let output_text = if uses_node_test {
-          stdout.to_string()
-        } else {
-          stderr.to_string()
-        };
-
-        let collected = if success {
-          CollectedResult {
-            passed: Some(true),
-            error: None,
-            uses_node_test,
-            ignore_reason: None,
-          }
-        } else {
-          CollectedResult {
-            passed: Some(false),
-            error: Some(ErrorInfo {
-              code: output.status.code(),
-              stderr: Some(truncate_output(&output_text, 2000)),
-              timeout: None,
-              message: None,
-            }),
-            uses_node_test,
-            ignore_reason: None,
-          }
-        };
-        let output_str = format!("{}\n{}", stdout, stderr);
-        (success, collected, output_str)
-      }
-      TestOutput::TimedOut => {
-        let collected = CollectedResult {
-          passed: Some(false),
-          error: Some(ErrorInfo {
-            code: None,
-            stderr: None,
-            timeout: Some(timeout.as_millis() as u64),
-            message: None,
-          }),
-          uses_node_test,
-          ignore_reason: None,
-        };
-        let output_str =
-          format!("Test timed out after {}ms", timeout.as_millis());
-        (false, collected, output_str)
-      }
-    }
-  };
+  let collected = make_collected_result(
+    success,
+    &output_text,
+    setup.uses_node_test,
+    setup.timeout,
+    !success && output_text.starts_with("Test timed out"),
+    exit_code,
+  );
 
   results
     .lock()
@@ -764,96 +777,118 @@ fn run_test(
   } else {
     TestResult::Failed {
       duration: None,
-      output: format!("{}\n{}", output_for_error, debugging_command_text)
+      output: format!("{}\n{}", output_text, debugging_command_text)
         .into_bytes(),
     }
   }
 }
 
-fn generate_report(results: &HashMap<String, CollectedResult>) {
-  let node_version = read_node_version();
-  let date = chrono::Utc::now().format("%Y-%m-%d").to_string();
-  let deno_version = get_deno_version();
-  let os = std::env::consts::OS.to_string();
-  let arch = std::env::consts::ARCH.to_string();
-  let run_id = std::env::var("GITHUB_RUN_ID").ok();
-
-  let mut report_results: HashMap<String, TestResultEntry> = HashMap::new();
-  let mut pass_count = 0;
-  let mut ignore_count = 0;
-
-  for (test_path, result) in results {
-    let entry = match result.passed {
-      Some(true) => {
-        pass_count += 1;
-        let info = ResultInfo {
-          uses_node_test: if result.uses_node_test { Some(1) } else { None },
-          ignore_reason: None,
-        };
-        (Value::Bool(true), None, info)
-      }
-      Some(false) => {
-        let info = ResultInfo {
-          uses_node_test: if result.uses_node_test { Some(1) } else { None },
-          ignore_reason: None,
-        };
-        (Value::Bool(false), result.error.clone(), info)
-      }
-      None => {
-        ignore_count += 1;
-        let info = ResultInfo {
-          uses_node_test: None,
-          ignore_reason: result.ignore_reason.clone(),
-        };
-        (Value::String("IGNORE".to_string()), None, info)
-      }
+/// Handle a test that has an expected-failure configuration.
+///
+/// Returns `Passed` when the test fails in the expected way (matching exit code
+/// and/or output pattern), and `Failed` otherwise.
+#[allow(clippy::too_many_arguments, reason = "all arguments are needed")]
+fn handle_expected_failure(
+  ef: &ExpectedFailure,
+  success: bool,
+  actual_exit_code: Option<i32>,
+  uses_node_test: bool,
+  output_text: &str,
+  debugging_command_text: &str,
+  test_path: &str,
+  results: &Arc<Mutex<HashMap<String, CollectedResult>>>,
+) -> TestResult {
+  if success {
+    // Test passed but was expected to fail
+    results.lock().unwrap().insert(
+      test_path.to_string(),
+      CollectedResult {
+        passed: Some(false),
+        error: Some(ErrorInfo {
+          code: actual_exit_code,
+          stderr: None,
+          timeout: None,
+          message: Some("expected test to fail but it passed".to_string()),
+        }),
+        uses_node_test,
+        ignore_reason: None,
+      },
+    );
+    return TestResult::Failed {
+      duration: None,
+      output: format!(
+        "Test was expected to fail but passed\n{}",
+        debugging_command_text
+      )
+      .into_bytes(),
     };
-    report_results.insert(test_path.clone(), entry);
   }
 
-  let total = results.len() - ignore_count;
-  let report = TestReport {
-    date,
-    deno_version,
-    os,
-    arch,
-    node_version,
-    run_id,
-    total,
-    pass: pass_count,
-    ignore: ignore_count,
-    results: report_results,
-  };
+  // When exitCode/output are omitted, any value is accepted.
+  let exit_code_matches =
+    ef.exit_code.is_none_or(|ec| actual_exit_code == Some(ec));
+  let output_matches = ef.output.as_ref().is_none_or(|pattern| {
+    util::wildcard_match_detailed(pattern, output_text).is_success()
+  });
 
-  let report_path = tests_path().join("node_compat").join("report.json");
-  let json = serde_json::to_string(&report).unwrap();
-  std::fs::write(&report_path, json).unwrap();
-}
+  if exit_code_matches && output_matches {
+    // Failed as expected — treat as a pass
+    results.lock().unwrap().insert(
+      test_path.to_string(),
+      CollectedResult {
+        passed: Some(true),
+        error: None,
+        uses_node_test,
+        ignore_reason: None,
+      },
+    );
+    if *file_test_runner::NO_CAPTURE {
+      test_util::eprintln!("{}", debugging_command_text);
+    }
+    return TestResult::Passed { duration: None };
+  }
 
-fn get_deno_version() -> String {
-  // Run `deno -v` to get the actual version
-  let output = std::process::Command::new(util::deno_exe_path().as_path())
-    .arg("-v")
-    .output()
-    .ok()
-    .unwrap();
+  // Failed, but not in the expected way
+  let mut mismatch_details = String::new();
+  if !exit_code_matches {
+    mismatch_details.push_str(&format!(
+      "Exit code mismatch: expected {:?}, got {:?}\n",
+      ef.exit_code, actual_exit_code
+    ));
+  }
+  if !output_matches {
+    let match_result = ef
+      .output
+      .as_ref()
+      .map(|pattern| util::wildcard_match_detailed(pattern, output_text));
+    if let Some(util::WildcardMatchResult::Fail(detail)) = match_result {
+      mismatch_details
+        .push_str(&format!("Output mismatch detail:\n{}\n", detail));
+    } else {
+      mismatch_details.push_str("Output did not match expected pattern\n");
+    }
+  }
 
-  let stdout = String::from_utf8_lossy(&output.stdout);
-  // Parse: "deno 2.x.x (...)"
-  let line = stdout.lines().next().unwrap();
-  let version = line.strip_prefix("deno ").unwrap();
-  let version = version.split_whitespace().next().unwrap();
-  version.to_string()
-}
-
-fn read_node_version() -> String {
-  // Read from tests/node_compat/runner/suite/node_version.ts
-  let version_file =
-    tests_path().join("node_compat/runner/suite/node_version.ts");
-  let content = std::fs::read_to_string(&version_file).unwrap_or_default();
-
-  // Parse: export const version = "24.2.0";
-  let re = Regex::new(r#"export const version = "([^"]+)"#).unwrap();
-  let captures = re.captures(&content).unwrap();
-  captures.get(1).unwrap().as_str().to_string()
+  results.lock().unwrap().insert(
+    test_path.to_string(),
+    CollectedResult {
+      passed: Some(false),
+      error: Some(ErrorInfo {
+        code: actual_exit_code,
+        stderr: Some(truncate_output(output_text, 2000)),
+        timeout: None,
+        message: Some(mismatch_details.clone()),
+      }),
+      uses_node_test,
+      ignore_reason: None,
+    },
+  );
+  TestResult::Failed {
+    duration: None,
+    output: format!(
+      "Test failed but not in the expected way:\n{}\nActual output:\n{}\n{}",
+      mismatch_details, output_text, debugging_command_text
+    )
+    .into_bytes(),
+  }
 }

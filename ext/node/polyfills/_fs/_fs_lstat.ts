@@ -2,14 +2,16 @@
 
 import { denoErrorToNodeError } from "ext:deno_node/internal/errors.ts";
 import {
-  BigIntStats,
   CFISBIS,
-  statCallback,
-  statCallbackBigInt,
-  statOptions,
+  type statCallback,
+  type statCallbackBigInt,
+  type statOptions,
+} from "ext:deno_node/internal/fs/stat_utils.ts";
+import {
+  BigIntStats,
+  getValidatedPathToString,
   Stats,
-} from "ext:deno_node/_fs/_fs_stat.ts";
-import { getValidatedPathToString } from "ext:deno_node/internal/fs/utils.mjs";
+} from "ext:deno_node/internal/fs/utils.mjs";
 import { promisify } from "ext:deno_node/internal/util.mjs";
 import { primordials } from "ext:core/mod.js";
 

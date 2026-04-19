@@ -5,7 +5,6 @@
  * ERR_MANIFEST_ASSERT_INTEGRITY
  * ERR_QUICSESSION_VERSION_NEGOTIATION
  * ERR_REQUIRE_ESM
- * ERR_WORKER_PATH
  * ERR_QUIC_ERROR
  * ERR_SYSTEM_ERROR //System error, shouldn't ever happen inside Deno
  * ERR_TTY_INIT_FAILED //System error, shouldn't ever happen inside Deno
@@ -22,6 +21,7 @@ const {
   ArrayPrototypeJoin,
   ArrayPrototypePush,
   ArrayPrototypePop,
+  ArrayPrototypeSlice,
   ArrayPrototypeSplice,
   Error,
   ErrorPrototype,
@@ -54,6 +54,7 @@ const {
   StringPrototypeToString,
   Symbol,
   SymbolFor,
+  SymbolPrototypeToString,
   SyntaxError,
   SyntaxErrorPrototype,
   TypeError,
@@ -403,6 +404,8 @@ export const dnsException = hideStackFrames(function (code, syscall, hostname) {
     ex.hostname = hostname;
   }
 
+  ErrorCaptureStackTrace(ex, dnsException);
+
   return ex;
 });
 
@@ -647,6 +650,10 @@ export const ERR_FS_CP_UNKNOWN = makeSystemErrorWithCode(
 export const ERR_FS_EISDIR = makeSystemErrorWithCode(
   "ERR_FS_EISDIR",
   "Path is a directory",
+);
+export const ERR_TTY_INIT_FAILED = makeSystemErrorWithCode(
+  "ERR_TTY_INIT_FAILED",
+  "TTY initialization failed",
 );
 
 function createInvalidArgType(
@@ -998,6 +1005,15 @@ export class ERR_CRYPTO_UNKNOWN_DH_GROUP extends NodeError {
   }
 }
 
+export class ERR_CRYPTO_UNKNOWN_CIPHER extends NodeError {
+  constructor() {
+    super(
+      "ERR_CRYPTO_UNKNOWN_CIPHER",
+      "Unknown cipher",
+    );
+  }
+}
+
 export class ERR_CRYPTO_ENGINE_UNKNOWN extends NodeError {
   constructor(x: string) {
     super("ERR_CRYPTO_ENGINE_UNKNOWN", `Engine "${x}" was not found`);
@@ -1050,8 +1066,11 @@ export class ERR_CRYPTO_INCOMPATIBLE_KEY_OPTIONS extends NodeError {
 }
 
 export class ERR_CRYPTO_INVALID_DIGEST extends NodeTypeError {
-  constructor(x: string) {
-    super("ERR_CRYPTO_INVALID_DIGEST", `Invalid digest: ${x}`);
+  constructor(x: string, prefix?: string) {
+    super(
+      "ERR_CRYPTO_INVALID_DIGEST",
+      prefix ? `Invalid ${prefix} digest: ${x}` : `Invalid digest: ${x}`,
+    );
   }
 }
 
@@ -1498,6 +1517,14 @@ export class ERR_HTTP2_UNSUPPORTED_PROTOCOL extends NodeError {
     super("ERR_HTTP2_UNSUPPORTED_PROTOCOL", `protocol "${x}" is unsupported.`);
   }
 }
+export class ERR_HTTP_BODY_NOT_ALLOWED extends NodeError {
+  constructor() {
+    super(
+      "ERR_HTTP_BODY_NOT_ALLOWED",
+      "Adding content for this request method or response status is not allowed.",
+    );
+  }
+}
 export class ERR_HTTP_HEADERS_SENT extends NodeError {
   constructor(x: string) {
     super(
@@ -1653,6 +1680,15 @@ export class ERR_INVALID_HTTP_TOKEN extends NodeTypeError {
 export class ERR_INVALID_IP_ADDRESS extends NodeTypeError {
   constructor(x: string) {
     super("ERR_INVALID_IP_ADDRESS", `Invalid IP address: ${x}`);
+  }
+}
+export class ERR_INVALID_MIME_SYNTAX extends NodeTypeError {
+  constructor(production: string, str: string, invalidIndex: number) {
+    const msg = invalidIndex !== -1 ? ` at ${invalidIndex}` : "";
+    super(
+      "ERR_INVALID_MIME_SYNTAX",
+      `The MIME syntax for a ${production} in "${str}" is invalid` + msg,
+    );
   }
 }
 export class ERR_INVALID_OBJECT_DEFINE_PROPERTY extends NodeTypeError {
@@ -2010,10 +2046,15 @@ export class ERR_SOCKET_BAD_PORT extends NodeRangeError {
     );
 
     const operator = allowZero ? ">=" : ">";
+    const portStr = typeof port === "symbol"
+      ? SymbolPrototypeToString(port)
+      : typeof port === "bigint"
+      ? `${port}n`
+      : String(port);
 
     super(
       "ERR_SOCKET_BAD_PORT",
-      `${name} should be ${operator} 0 and < 65536. Received ${port}.`,
+      `${name} should be ${operator} 0 and < 65536. Received ${portStr}.`,
     );
   }
 }
@@ -2391,6 +2432,26 @@ export class ERR_WORKER_INIT_FAILED extends NodeError {
     super("ERR_WORKER_INIT_FAILED", `Worker initialization failure: ${x}`);
   }
 }
+export class ERR_WORKER_PATH extends NodeTypeError {
+  constructor(filename: string) {
+    const base =
+      "The worker script or module filename must be an absolute path or a relative path starting with './' or '../'.";
+    let detail = "";
+    if (
+      typeof filename === "string" &&
+      (StringPrototypeStartsWith(filename, "file://") ||
+        StringPrototypeStartsWith(filename, "File://"))
+    ) {
+      detail = " Wrap file:// URLs with `new URL`.";
+    } else if (
+      typeof filename === "string" &&
+      StringPrototypeStartsWith(filename, "data:")
+    ) {
+      detail = " Wrap data: URLs with `new URL`.";
+    }
+    super("ERR_WORKER_PATH", base + detail);
+  }
+}
 export class ERR_WORKER_NOT_RUNNING extends NodeError {
   constructor() {
     super("ERR_WORKER_NOT_RUNNING", `Worker instance not running`);
@@ -2450,7 +2511,24 @@ export class ERR_HTTP2_TOO_MANY_CUSTOM_SETTINGS extends NodeError {
   }
 }
 
-export class ERR_HTTP2_INVALID_SETTING_VALUE extends NodeRangeError {
+function _http2InvalidSettingMsg(name: string, actual: unknown) {
+  return `Invalid value for setting "${name}": ${actual}`;
+}
+
+// deno-lint-ignore camelcase
+class _ERR_HTTP2_INVALID_SETTING_VALUE_TypeError extends NodeTypeError {
+  actual: unknown;
+  constructor(name: string, actual: unknown) {
+    super(
+      "ERR_HTTP2_INVALID_SETTING_VALUE",
+      _http2InvalidSettingMsg(name, actual),
+    );
+    this.actual = actual;
+  }
+}
+
+// deno-lint-ignore camelcase
+class _ERR_HTTP2_INVALID_SETTING_VALUE_RangeError extends NodeRangeError {
   actual: unknown;
   min?: number;
   max?: number;
@@ -2458,7 +2536,7 @@ export class ERR_HTTP2_INVALID_SETTING_VALUE extends NodeRangeError {
   constructor(name: string, actual: unknown, min?: number, max?: number) {
     super(
       "ERR_HTTP2_INVALID_SETTING_VALUE",
-      `Invalid value for setting "${name}": ${actual}`,
+      _http2InvalidSettingMsg(name, actual),
     );
     this.actual = actual;
     if (min !== undefined) {
@@ -2467,6 +2545,22 @@ export class ERR_HTTP2_INVALID_SETTING_VALUE extends NodeRangeError {
     }
   }
 }
+
+// In Node.js, ERR_HTTP2_INVALID_SETTING_VALUE has both TypeError and RangeError
+// variants. The access patterns used are:
+//   new ERR_HTTP2_INVALID_SETTING_VALUE.HideStackFramesError(...)            -> TypeError
+//   new ERR_HTTP2_INVALID_SETTING_VALUE.RangeError(...)                      -> RangeError
+//   new ERR_HTTP2_INVALID_SETTING_VALUE.RangeError.HideStackFramesError(...) -> RangeError
+
+// deno-lint-ignore no-explicit-any
+const _RangeErrorWithHSFE: any = _ERR_HTTP2_INVALID_SETTING_VALUE_RangeError;
+_RangeErrorWithHSFE.HideStackFramesError =
+  _ERR_HTTP2_INVALID_SETTING_VALUE_RangeError;
+
+export const ERR_HTTP2_INVALID_SETTING_VALUE = {
+  HideStackFramesError: _ERR_HTTP2_INVALID_SETTING_VALUE_TypeError,
+  RangeError: _RangeErrorWithHSFE,
+};
 export class ERR_HTTP2_STREAM_CANCEL extends NodeError {
   override cause?: Error;
   constructor(error?: Error) {
@@ -2842,6 +2936,10 @@ export const denoErrorToNodeSystemError = hideStackFrames((
 });
 
 function extractOsErrorNumberFromErrorMessage(e: unknown): number | undefined {
+  if (typeof e === "object" && typeof e.os_errno === "number") {
+    return e.os_errno;
+  }
+
   const match = ObjectPrototypeIsPrototypeOf(ErrorPrototype, e)
     ? StringPrototypeMatch(e.message, new SafeRegExp(/\(os error (\d+)\)/))
     : false;
@@ -2933,6 +3031,16 @@ codes.ERR_STREAM_WRITE_AFTER_END = ERR_STREAM_WRITE_AFTER_END;
 codes.ERR_BROTLI_INVALID_PARAM = ERR_BROTLI_INVALID_PARAM;
 codes.ERR_ZSTD_INVALID_PARAM = ERR_ZSTD_INVALID_PARAM;
 codes.ERR_ZLIB_INITIALIZATION_FAILED = ERR_ZLIB_INITIALIZATION_FAILED;
+codes.ERR_HTTP2_HEADERS_SENT = ERR_HTTP2_HEADERS_SENT;
+codes.ERR_HTTP2_INFO_STATUS_NOT_ALLOWED = ERR_HTTP2_INFO_STATUS_NOT_ALLOWED;
+codes.ERR_HTTP2_INVALID_HEADER_VALUE = ERR_HTTP2_INVALID_HEADER_VALUE;
+codes.ERR_HTTP2_INVALID_SETTING_VALUE = ERR_HTTP2_INVALID_SETTING_VALUE;
+codes.ERR_HTTP2_INVALID_STREAM = ERR_HTTP2_INVALID_STREAM;
+codes.ERR_HTTP2_NO_SOCKET_MANIPULATION = ERR_HTTP2_NO_SOCKET_MANIPULATION;
+codes.ERR_HTTP2_PAYLOAD_FORBIDDEN = ERR_HTTP2_PAYLOAD_FORBIDDEN;
+codes.ERR_HTTP2_PSEUDOHEADER_NOT_ALLOWED = ERR_HTTP2_PSEUDOHEADER_NOT_ALLOWED;
+codes.ERR_HTTP2_STATUS_INVALID = ERR_HTTP2_STATUS_INVALID;
+codes.ERR_HTTP2_TOO_MANY_CUSTOM_SETTINGS = ERR_HTTP2_TOO_MANY_CUSTOM_SETTINGS;
 
 // TODO(kt3k): assign all error classes here.
 
@@ -3093,6 +3201,7 @@ export default {
   ERR_HTTP2_TRAILERS_ALREADY_SENT,
   ERR_HTTP2_TRAILERS_NOT_READY,
   ERR_HTTP2_UNSUPPORTED_PROTOCOL,
+  ERR_HTTP_BODY_NOT_ALLOWED,
   ERR_HTTP_HEADERS_SENT,
   ERR_HTTP_INVALID_HEADER_VALUE,
   ERR_HTTP_INVALID_STATUS_CODE,
@@ -3126,6 +3235,7 @@ export default {
   ERR_INVALID_HANDLE_TYPE,
   ERR_INVALID_HTTP_TOKEN,
   ERR_INVALID_IP_ADDRESS,
+  ERR_INVALID_MIME_SYNTAX,
   ERR_INVALID_MODULE_SPECIFIER,
   ERR_INVALID_OBJECT_DEFINE_PROPERTY,
   ERR_INVALID_OPT_VALUE,
@@ -3248,6 +3358,7 @@ export default {
   ERR_WORKER_INVALID_EXEC_ARGV,
   ERR_WORKER_NOT_RUNNING,
   ERR_WORKER_OUT_OF_MEMORY,
+  ERR_WORKER_PATH,
   ERR_WORKER_UNSERIALIZABLE_ERROR,
   ERR_WORKER_UNSUPPORTED_EXTENSION,
   ERR_WORKER_UNSUPPORTED_OPERATION,
@@ -3264,6 +3375,7 @@ export default {
   denoErrorToNodeError,
   denoErrorToNodeSystemError,
   dnsException,
+  DNSException: dnsException,
   errnoException,
   errorMap,
   exceptionWithHostPort,

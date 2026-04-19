@@ -139,6 +139,37 @@ fn ffi_basic() {
 }
 
 #[test_util::test]
+fn ffi_nonblocking_buffer_gc() {
+  build();
+
+  let output = deno_cmd()
+    .current_dir(ffi_tests_path())
+    .arg("run")
+    .arg("--config")
+    .arg(deno_config_path())
+    .arg("--no-lock")
+    .arg("--allow-ffi")
+    .arg("--allow-read")
+    .arg("--unstable-ffi")
+    .arg("--quiet")
+    .arg("--v8-flags=--expose-gc")
+    .arg("testdata/nonblocking_buffer_gc_test.js")
+    .env("NO_COLOR", "1")
+    .output()
+    .unwrap();
+  let stdout = std::str::from_utf8(&output.stdout).unwrap();
+  let stderr = std::str::from_utf8(&output.stderr).unwrap();
+  if !output.status.success() {
+    println!("stdout {stdout}");
+    println!("stderr {stderr}");
+  }
+  println!("{:?}", output.status);
+  assert!(output.status.success());
+  assert_eq!(stdout, "nonblocking_buffer_gc_test passed\n");
+  assert_eq!(stderr, "");
+}
+
+#[test_util::test]
 fn ffi_symbol_types() {
   build();
 

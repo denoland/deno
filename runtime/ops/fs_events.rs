@@ -92,25 +92,93 @@ impl From<NotifyEvent> for FsEvent {
   }
 }
 
-type WatchSender = (Vec<PathBuf>, mpsc::Sender<Result<FsEvent, NotifyError>>);
+struct WatchSender {
+  /// Original paths as provided by the caller.
+  paths: Vec<PathBuf>,
+  /// Pre-canonicalized versions of `paths`, computed once at watch time
+  /// to avoid repeated syscalls in the event callback hot path.
+  /// Entries are `None` if canonicalization failed for that path.
+  canonical_paths: Vec<Option<PathBuf>>,
+  sender: mpsc::Sender<Result<FsEvent, NotifyError>>,
+}
 
 struct WatcherState {
   senders: Arc<Mutex<Vec<WatchSender>>>,
   watcher: RecommendedWatcher,
 }
 
-fn starts_with_canonicalized(path: &Path, prefix: &Path) -> bool {
-  #[allow(clippy::disallowed_methods)]
-  let path = path.canonicalize().ok();
-  #[allow(clippy::disallowed_methods)]
-  let prefix = std::fs::canonicalize(prefix).ok();
-  match (path, prefix) {
-    (Some(path), Some(prefix)) => path.starts_with(prefix),
-    _ => false,
-  }
+#[allow(
+  clippy::disallowed_methods,
+  reason = "always using real fs with watcher"
+)]
+fn canonicalize_path(path: &Path) -> Option<PathBuf> {
+  path.canonicalize().ok()
 }
 
-fn is_file_removed(event_path: &PathBuf) -> bool {
+/// Check if `event_path` (or its canonicalized form) matches one of the
+/// watched paths. The watched paths are pre-canonicalized to avoid
+/// repeated syscalls in the hot path.
+fn event_matches_watched_paths(
+  event_path: &Path,
+  paths: &[PathBuf],
+  canonical_paths: &[Option<PathBuf>],
+) -> bool {
+  // Canonicalize the event path at most once per call.
+  let canonical_event_path = canonicalize_path(event_path);
+  for (path, canonical_path) in paths.iter().zip(canonical_paths.iter()) {
+    if same_file::is_same_file(event_path, path).unwrap_or(false) {
+      return true;
+    }
+    if matches!(
+      (&canonical_event_path, canonical_path),
+      (Some(ce), Some(cp)) if ce.starts_with(cp)
+    ) {
+      return true;
+    }
+  }
+  false
+}
+
+/// Check if `event_path` refers to a file that has been removed and
+/// that file is within one of the watched paths. This is needed because
+/// `event_matches_watched_paths` will fail for removed files (canonicalize
+/// and is_same_file don't work on non-existent paths). On macOS with
+/// FSEvents, remove events may arrive as generic events for a path that
+/// no longer exists.
+fn removed_event_matches_watched_paths(
+  event_path: &Path,
+  paths: &[PathBuf],
+  canonical_paths: &[Option<PathBuf>],
+) -> bool {
+  if !is_file_removed(event_path) {
+    return false;
+  }
+  let canonical_parent = event_path.parent().and_then(canonicalize_path);
+  for (path, canonical_path) in paths.iter().zip(canonical_paths.iter()) {
+    // Direct path comparison: the file is gone so is_same_file won't work,
+    // but the event path may match the watched path or its canonical form
+    // exactly (e.g. when watching a single file that gets deleted).
+    if event_path == path {
+      return true;
+    }
+    if canonical_path
+      .as_ref()
+      .is_some_and(|cp| event_path == cp.as_path())
+    {
+      return true;
+    }
+    // Check if the removed file's parent is within a watched directory.
+    if matches!(
+      (&canonical_parent, canonical_path),
+      (Some(cp_event), Some(cp_watched)) if cp_event.starts_with(cp_watched)
+    ) {
+      return true;
+    }
+  }
+  false
+}
+
+fn is_file_removed(event_path: &Path) -> bool {
   let exists_path = std::fs::exists(event_path);
   match exists_path {
     Ok(res) => !res,
@@ -145,17 +213,32 @@ pub enum FsEventsError {
   Canceled(#[from] deno_core::Canceled),
 }
 
+fn make_watch_sender(
+  paths: Vec<PathBuf>,
+  sender: mpsc::Sender<Result<FsEvent, NotifyError>>,
+) -> WatchSender {
+  let canonical_paths = paths.iter().map(|p| canonicalize_path(p)).collect();
+  WatchSender {
+    paths,
+    canonical_paths,
+    sender,
+  }
+}
+
 fn start_watcher(
   state: &mut OpState,
   paths: Vec<PathBuf>,
   sender: mpsc::Sender<Result<FsEvent, NotifyError>>,
 ) -> Result<(), FsEventsError> {
   if let Some(watcher) = state.try_borrow_mut::<WatcherState>() {
-    watcher.senders.lock().push((paths, sender));
+    watcher
+      .senders
+      .lock()
+      .push(make_watch_sender(paths, sender));
     return Ok(());
   }
 
-  let senders = Arc::new(Mutex::new(vec![(paths, sender)]));
+  let senders = Arc::new(Mutex::new(vec![make_watch_sender(paths, sender)]));
 
   let sender_clone = senders.clone();
   let watcher: RecommendedWatcher = Watcher::new(
@@ -163,26 +246,34 @@ fn start_watcher(
       let res2 = res
         .map(FsEvent::from)
         .map_err(|e| FsEventsError::Notify(JsNotifyError(e)));
-      for (paths, sender) in sender_clone.lock().iter() {
+      for ws in sender_clone.lock().iter() {
         // Ignore result, if send failed it means that watcher was already closed,
         // but not all messages have been flushed.
 
-        // Only send the event if the path matches one of the paths that the user is watching
+        // Only send the event if the path matches one of the paths
+        // that the user is watching.
         if let Ok(event) = &res2 {
-          if paths.iter().any(|path| {
-            event.paths.iter().any(|event_path| {
-              same_file::is_same_file(event_path, path).unwrap_or(false)
-                || starts_with_canonicalized(event_path, path)
-            })
+          if event.paths.iter().any(|event_path| {
+            event_matches_watched_paths(
+              event_path,
+              &ws.paths,
+              &ws.canonical_paths,
+            )
           }) {
-            let _ = sender.try_send(Ok(event.clone()));
-          } else if event.paths.iter().any(is_file_removed) {
+            let _ = ws.sender.try_send(Ok(event.clone()));
+          } else if event.paths.iter().any(|event_path| {
+            removed_event_matches_watched_paths(
+              event_path,
+              &ws.paths,
+              &ws.canonical_paths,
+            )
+          }) {
             let remove_event = FsEvent {
               kind: "remove",
               paths: event.paths.clone(),
               flag: None,
             };
-            let _ = sender.try_send(Ok(remove_event));
+            let _ = ws.sender.try_send(Ok(remove_event));
           }
         }
       }

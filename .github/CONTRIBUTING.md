@@ -1,11 +1,20 @@
 # Contributing Guidelines
 
+> **AI-assisted contributions:** If you use AI tools (e.g. Copilot, ChatGPT,
+> Claude, Cursor, etc.) to help write your contribution, **you must disclose
+> this in your PR description**. There is no penalty for using AI tools, but PRs
+> will be rejected if there is suspicion of undisclosed AI usage.
+
+> **Spamming issues or PRs:** If you create multiple issues or PRs or create
+> multiple comments on issue or PRs that look AI generated, that are not
+> substantial, your account may be banned.
+
 This is the main repository that provides the `deno` CLI.
 
-If you want to fix a bug or add a new feature to `deno` this is the repository
+If you want to fix a bug or add a new feature to `deno`, this is the repository
 to contribute to.
 
-Some systems, including a large part of the Node.js compatibility layer are
+Some systems, including a large part of the Node.js compatibility layer, are
 implemented in JavaScript and TypeScript modules. These are a good place to
 start if you are looking to make your first contribution.
 
@@ -15,13 +24,32 @@ provide valuable insight into how the compatibility layer works in practice, and
 where improvements might be needed. They can also serve as a useful guide for
 identifying areas where contributions are most impactful.
 
-While iterating on such modules it is recommended to include `--features hmr` in
-your `cargo` flags. This is a special development mode where the JS/TS sources
-are not included in the binary but read at runtime, meaning the binary will not
-have to be rebuilt if they are changed.
+## The `./x` tool
 
-To use the commands below, you need to first install the necessary tools on your
-system as described [here](#building-from-source).
+Deno uses the `./x` developer CLI for common development tasks like building,
+testing, formatting, and linting. Run `./x --help` to see all available
+commands.
+
+```sh
+./x build       # Build the deno binary (debug mode)
+./x check       # Fast compile check (no linking)
+./x fmt         # Format all code
+./x lint        # Lint all code (JS/TS + Rust)
+./x lint-js     # Lint JavaScript/TypeScript only
+./x verify      # Pre-commit verification (fmt + lint-js)
+./x test        # Run runtime unit tests
+./x node-test   # Run Node.js API unit tests
+./x node-compat # Run Node.js compatibility tests
+./x spec        # Run spec (integration) tests
+./x napi        # Run NAPI (native addon) tests
+```
+
+## Hot Module Replacement (HMR) mode
+
+While iterating on JavaScript/TypeScript modules it is recommended to include
+`--features hmr` in your `cargo` flags. This is a special development mode where
+the JS/TS sources are not included in the binary but read at runtime, meaning
+the binary will not have to be rebuilt if they are changed.
 
 ```sh
 # cargo build
@@ -62,19 +90,14 @@ To use a development version of the LSP in VSCode:
 
 ## Submitting a PR
 
-In addition to the above make sure that:
+Before submitting your pull request, make sure that:
 
-> To use the commands below, you need to first install the necessary tools on
-> your system as described [here](#building-from-source).
+1. `./x fmt` passes without changing files
+2. `./x lint` passes (or `./x lint-js` if you only changed JS/TS)
+3. Relevant tests pass (use `./x test`, `./x spec`, etc.)
 
-1. `cargo test` passes - this will run full test suite for `deno` including unit
-   tests, integration tests and Web Platform Tests
-
-1. Run `./tools/format.js` - this will format all of the code to adhere to the
-   consistent style in the repository
-
-1. Run `./tools/lint.js` - this will check Rust and JavaScript code for common
-   mistakes and errors using `clippy` (for Rust) and `dlint` (for JavaScript)
+You can run `./x verify` as a quick pre-commit check — it runs formatting and
+JS/TS linting in one step.
 
 ## Building from source
 
@@ -150,7 +173,7 @@ brew install cmake
 
 ##### Mac M1/M2
 
-For Apple aarch64 users `lld` must be installed.
+For Apple aarch64 users, `lld` must be installed.
 
 ```console
 brew install llvm lld
@@ -213,18 +236,24 @@ Windows users can download the latest binary release from
 
 ### Building Deno
 
-The easiest way to build Deno is by using a precompiled version of V8.
-
-_For WSL make sure you have sufficient memory allocated in `.wslconfig`. It is
+_For WSL, make sure you have sufficient memory allocated in `.wslconfig`. It is
 recommended that you allocate at least 16GB._
+
+The recommended way to build Deno is using the `./x` tool:
+
+```console
+./x build
+```
+
+This builds the debug binary at `./target/debug/deno`. You can also use cargo
+directly:
 
 ```console
 cargo build -vv
 ```
 
-However, you may also want to build Deno and V8 from source code if you are
-doing lower-level V8 development, or using a platform that does not have
-precompiled versions of V8:
+If you want to build Deno and V8 from source code (for lower-level V8
+development, or on platforms without precompiled V8):
 
 ```console
 V8_FROM_SOURCE=1 cargo build -vv
@@ -236,13 +265,16 @@ the V8 build.
 
 ### Building
 
-Build with Cargo:
+Build with the `./x` tool or Cargo:
 
 ```shell
 # Build:
+./x build
+
+# Or with cargo directly:
 cargo build -vv
 
-# Build errors?  Ensure you have latest main and try building again, or if that doesn't work try:
+# Build errors?  Ensure you have latest main and try building again, or if that doesn't work, try:
 cargo clean && cargo build -vv
 
 # Run:
@@ -251,21 +283,31 @@ cargo clean && cargo build -vv
 
 ### Running the Tests
 
-Deno has a comprehensive test suite written in both Rust and TypeScript. The
-Rust tests can be run during the build process using:
+Use the `./x` tool to run tests:
 
 ```shell
-cargo test -vv
+# Run runtime unit tests (requires a filter argument):
+./x test <filter>
+
+# Run spec (integration) tests:
+./x spec <filter>
+
+# Run Node.js compatibility tests:
+./x node-compat <filter>
+
+# List available tests:
+./x test --list
+./x spec --list
 ```
 
-The TypeScript tests can be run using:
+You can also run tests with cargo directly:
 
 ```shell
-# Run all unit/tests:
-target/debug/deno test -A --unstable --lock=tools/deno.lock.json --config tests/config/deno.json tests/unit
+# Run all tests (this takes a while):
+cargo test -vv
 
-# Run a specific test:
-target/debug/deno test -A --unstable --lock=tools/deno.lock.json --config tests/config/deno.json tests/unit/os_test.ts
+# Run tests in a specific package:
+cargo test -p deno_core
 ```
 
 ### Working with Multiple Crates
@@ -302,7 +344,7 @@ deno_ast = { path = "../deno_ast" }
 This will build the `deno_ast` crate from the local path and link against that
 version instead of fetching it from `crates.io`.
 
-**Note**: It's important that the version of the dependencies in the
-`Cargo.toml` match the version of the dependencies you have on disk.
+**Note**: It's important that the versions of the dependencies in the
+`Cargo.toml` match the versions of the dependencies you have on disk.
 
 Use `cargo search <dependency_name>` to inspect the versions.

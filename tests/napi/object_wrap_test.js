@@ -31,7 +31,7 @@ Deno.test("napi external finalizer", function () {
 
 Deno.test("napi external buffer", function () {
   let buf = objectWrap.test_external_buffer();
-  assertEquals(buf, new Buffer([1, 2, 3]));
+  assertEquals(buf, Buffer.from([1, 2, 3]));
   buf = null;
 });
 
@@ -57,4 +57,10 @@ Deno.test("napi object wrap userland owned", function () {
   obj = null;
   // force finalize callback to get called
   globalThis.gc();
+});
+
+Deno.test("napi remove_wrap", function () {
+  const obj = {};
+  const result = objectWrap.test_remove_wrap(obj);
+  assertEquals(result, true);
 });

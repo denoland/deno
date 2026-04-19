@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_node"
-version = "0.172.0"
+version = "0.183.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -47,6 +47,7 @@ hyper-util.workspace = true
 idna.workspace = true
 ipnetwork.workspace = true
 libc.workspace = true
+libnghttp2 = "1.68.0"
 libz-sys.workspace = true
 log.workspace = true
 node_resolver.workspace = true
@@ -70,7 +71,10 @@ zstd.workspace = true
 errno = "0.3.10"
 nix = { workspace = true, features = ["user"] }
 
+[build-dependencies]
+cc = "1"
+
 [target.'cfg(windows)'.dependencies]
-windows-sys = { workspace = true, features = ["Win32_Networking_WinSock"] }
+windows-sys = { workspace = true, features = ["Win32_Networking_WinSock", "Win32_NetworkManagement_IpHelper"] }
 winapi = { workspace = true, features = ["consoleapi"] }
 deno_subprocess_windows.workspace = true

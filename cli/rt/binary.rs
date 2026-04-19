@@ -91,8 +91,26 @@ pub fn extract_standalone(
   } = deserialize_binary_data_section(&root_url, remaining)?;
 
   let cli_args = cli_args.into_owned();
-  metadata.argv.reserve(cli_args.len() - 1);
-  for arg in cli_args.into_iter().skip(1) {
+  let current_exe = std::env::current_exe().ok();
+  let mut args_iter = cli_args.into_iter();
+  args_iter.next(); // skip argv[0]
+
+  // Node.js apps relaunch with spawn(process.execPath, [process.argv[1], ...args]).
+  // In standalone mode process.argv[1] === execPath (#32990), so the first arg
+  // after argv[0] is a duplicate of the exe path. Strip it.
+  //
+  // NOTE: this means `./myapp ./myapp --foo` would silently lose the first
+  // `./myapp` arg. In practice standalone binaries are never invoked this way,
+  // and this matches how Node.js SEA handles the relaunch pattern.
+  if let Some(first) = args_iter.next() {
+    let is_exe_dup = current_exe
+      .as_ref()
+      .is_some_and(|exe| Path::new(&first) == exe.as_path());
+    if !is_exe_dup {
+      metadata.argv.push(first.into_string().unwrap());
+    }
+  }
+  for arg in args_iter {
     metadata.argv.push(arg.into_string().unwrap());
   }
   let vfs = {
@@ -179,7 +197,7 @@ fn choose_and_create_extraction_dir(
 
   // try next to the executable first
   if let Some(exe_dir) = current_exe.parent() {
-    let dir = exe_dir.join(format!("{}.fs", exe_name)).join(hash_str);
+    let dir = exe_dir.join(format!(".{}", exe_name)).join(hash_str);
     match std::fs::create_dir_all(&dir) {
       Ok(()) => return Ok(dir),
       Err(err) => {
@@ -210,7 +228,7 @@ fn get_data_local_dir() -> Option<PathBuf> {
   }
   #[cfg(target_os = "macos")]
   {
-    #[allow(clippy::disallowed_types)]
+    #[allow(clippy::disallowed_types, reason = "setup code")]
     sys_traits::EnvHomeDir::env_home_dir(&sys_traits::impls::RealSys)
       .map(|h| h.join("Library").join("Application Support"))
   }
@@ -219,7 +237,7 @@ fn get_data_local_dir() -> Option<PathBuf> {
     std::env::var_os("XDG_DATA_HOME")
       .map(PathBuf::from)
       .or_else(|| {
-        #[allow(clippy::disallowed_types)]
+        #[allow(clippy::disallowed_types, reason = "setup code")]
         sys_traits::EnvHomeDir::env_home_dir(&sys_traits::impls::RealSys)
           .map(|h| h.join(".local").join("share"))
       })
@@ -617,9 +635,12 @@ impl StandaloneModules {
             .and_then(|t| self.vfs.read_file_offset_with_len(t).ok());
           bytes
         }
-        Err(err) if err.kind() == ErrorKind::NotFound => {
-          // actually use the real file system here
-          #[allow(clippy::disallowed_types)]
+        Err(err) if err.kind() == ErrorKind::NotFound =>
+        {
+          #[allow(
+            clippy::disallowed_types,
+            reason = "use real file system because not in vfs"
+          )]
           match sys_traits::impls::RealSys.fs_read(&path) {
             Ok(bytes) => bytes,
             Err(err) if err.kind() == ErrorKind::NotFound => {
@@ -800,7 +821,7 @@ impl RemoteModulesStore {
     &'a self,
     original_specifier: &'a Url,
   ) -> Result<Option<DenoCompileModuleData<'a>>, TooManyRedirectsError> {
-    #[allow(clippy::ptr_arg)]
+    #[allow(clippy::ptr_arg, reason = "Cow on data is relevant here")]
     fn handle_cow_ref(data: &Cow<'static, [u8]>) -> Cow<'static, [u8]> {
       match data {
         Cow::Borrowed(data) => Cow::Borrowed(data),
@@ -861,8 +882,8 @@ fn deserialize_npm_snapshot(
     Ok((input, id))
   }
 
-  #[allow(clippy::needless_lifetimes)] // clippy bug
-  #[allow(clippy::type_complexity)]
+  #[allow(clippy::needless_lifetimes, reason = "clippy bug")]
+  #[allow(clippy::type_complexity, reason = "private code")]
   fn parse_root_package<'a>(
     id_to_npm_id: &'a impl Fn(usize) -> Result<NpmPackageId, AnyError>,
   ) -> impl Fn(&[u8]) -> Result<(&[u8], (PackageReq, NpmPackageId)), AnyError> + 'a
@@ -875,8 +896,8 @@ fn deserialize_npm_snapshot(
     }
   }
 
-  #[allow(clippy::needless_lifetimes)] // clippy bug
-  #[allow(clippy::type_complexity)]
+  #[allow(clippy::needless_lifetimes, reason = "clippy bug")]
+  #[allow(clippy::type_complexity, reason = "private code")]
   fn parse_package_dep<'a>(
     id_to_npm_id: &'a impl Fn(usize) -> Result<NpmPackageId, AnyError>,
   ) -> impl Fn(&[u8]) -> Result<(&[u8], (StackString, NpmPackageId)), AnyError> + 'a

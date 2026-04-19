@@ -21,18 +21,20 @@
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 import { ownerSymbol } from "ext:deno_node/internal/async_hooks.ts";
+import { HandleWrap } from "ext:deno_node/internal_binding/handle_wrap.ts";
 import {
   kArrayBufferOffset,
   kBytesWritten,
   kLastWriteWasAsync,
-  LibuvStreamWrap,
+  kReadBytesOrError,
   streamBaseState,
   WriteWrap,
 } from "ext:deno_node/internal_binding/stream_wrap.ts";
 import { isUint8Array } from "ext:deno_node/internal/util/types.ts";
 import { errnoException } from "ext:deno_node/internal/errors.ts";
 import { getTimerDuration, kTimeout } from "ext:deno_node/internal/timers.mjs";
-import { clearTimeout, setUnrefTimeout } from "node:timers";
+import { clearTimeout } from "node:timers";
+import { setUnrefTimeout } from "ext:deno_node/internal/timers.mjs";
 import { validateFunction } from "ext:deno_node/internal/validators.mjs";
 import { codeMap } from "ext:deno_node/internal_binding/uv.ts";
 import { primordials } from "ext:core/mod.js";
@@ -40,8 +42,10 @@ import { Buffer } from "node:buffer";
 
 const {
   Array,
+  ArrayBufferPrototype,
   FunctionPrototypeBind,
   MapPrototypeGet,
+  ObjectPrototypeIsPrototypeOf,
   Symbol,
   TypedArrayPrototypeGetBuffer,
 } = primordials;
@@ -49,6 +53,7 @@ const {
 export const kMaybeDestroy = Symbol("kMaybeDestroy");
 export const kUpdateTimer = Symbol("kUpdateTimer");
 export const kAfterAsyncWrite = Symbol("kAfterAsyncWrite");
+export const kBoundSession = Symbol("kBoundSession");
 export const kHandle = Symbol("kHandle");
 export const kSession = Symbol("kSession");
 export const kBuffer = Symbol("kBuffer");
@@ -132,10 +137,10 @@ function onWriteComplete(this: any, status: number) {
 }
 
 function createWriteWrap(
-  handle: LibuvStreamWrap,
+  handle: HandleWrap,
   callback: (err?: Error | null) => void,
 ) {
-  const req = new WriteWrap<LibuvStreamWrap>();
+  const req = new WriteWrap<HandleWrap>();
 
   req.handle = handle;
   req.oncomplete = onWriteComplete;
@@ -169,8 +174,22 @@ export function writevGeneric(
 
     for (let i = 0; i < data.length; i++) {
       const entry = data[i];
-      chunks[i * 2] = entry.chunk;
-      chunks[i * 2 + 1] = entry.encoding;
+      const enc = entry.encoding;
+      // The native writev only handles utf8, latin1, ascii, ucs2, and
+      // buffer.  For other encodings (base64, hex, etc.) pre-convert to
+      // a Buffer so the bytes are correct on the wire.
+      if (
+        typeof entry.chunk === "string" && enc !== "utf8" &&
+        enc !== "utf-8" && enc !== "latin1" && enc !== "binary" &&
+        enc !== "ascii" && enc !== "ucs2" && enc !== "ucs-2" &&
+        enc !== "utf16le" && enc !== "utf-16le" && enc !== "buffer"
+      ) {
+        chunks[i * 2] = Buffer.from(entry.chunk, enc);
+        chunks[i * 2 + 1] = "buffer";
+      } else {
+        chunks[i * 2] = entry.chunk;
+        chunks[i * 2 + 1] = enc;
+      }
     }
   }
 
@@ -228,8 +247,13 @@ export function onStreamRead(
   // deno-lint-ignore no-explicit-any
   this: any,
   arrayBuffer: Uint8Array,
-  nread: number,
+  nread?: number,
 ) {
+  // When called from the native (Rust) read callback, nread is communicated
+  // via streamBaseState[kReadBytesOrError] rather than as a direct argument.
+  if (nread === undefined) {
+    nread = streamBaseState[kReadBytesOrError];
+  }
   // deno-lint-ignore no-this-alias
   const handle = this;
 
@@ -260,9 +284,13 @@ export function onStreamRead(
     } else {
       const offset = streamBaseState[kArrayBufferOffset];
       // Performance note: Pass ArrayBuffer to Buffer#from to avoid
-      // copy.
+      // copy. When called from native (Rust) code, arrayBuffer is
+      // already an ArrayBuffer; from JS it may be a Uint8Array.
+      const ab = ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, arrayBuffer)
+        ? arrayBuffer
+        : TypedArrayPrototypeGetBuffer(arrayBuffer);
       const buf = Buffer.from(
-        TypedArrayPrototypeGetBuffer(arrayBuffer),
+        ab,
         offset,
         nread,
       );
@@ -307,18 +335,6 @@ export function onStreamRead(
   } else {
     if (stream[kMaybeDestroy]) {
       stream.on("end", stream[kMaybeDestroy]);
-    }
-
-    if (handle.readStop) {
-      const err = handle.readStop();
-
-      if (err) {
-        // CallJSOnreadMethod expects the return value to be a buffer.
-        // Ref: https://github.com/nodejs/node/pull/34375
-        stream.destroy(errnoException(err, "read"));
-
-        return;
-      }
     }
 
     // Push a null to signal the end of data.

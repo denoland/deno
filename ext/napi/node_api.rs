@@ -158,7 +158,7 @@ fn napi_fatal_error(
         std::ffi::CStr::from_ptr(location).to_str().unwrap()
       } else {
         let slice = std::slice::from_raw_parts(
-          location as *const u8,
+          location as *const _,
           location_len as usize,
         );
         std::str::from_utf8(slice).unwrap()
@@ -170,7 +170,7 @@ fn napi_fatal_error(
     unsafe { std::ffi::CStr::from_ptr(message).to_str().unwrap() }
   } else {
     let slice = unsafe {
-      std::slice::from_raw_parts(message as *const u8, message_len as usize)
+      std::slice::from_raw_parts(message as *const _, message_len as usize)
     };
     std::str::from_utf8(slice).unwrap()
   };
@@ -194,11 +194,23 @@ fn napi_open_callback_scope(
   let env = check_env!(env);
   check_arg!(env, result);
 
-  // we open scope automatically when it's needed
-  unsafe {
-    *result = std::ptr::null_mut();
-  }
+  // In Node.js, callback scopes set up async hooks and manage
+  // microtask queues via InternalCallbackScope. Since Deno does not
+  // support async_hooks, we implement this as a V8 HandleScope
+  // (matching napi_open_handle_scope) so that native modules get
+  // proper handle lifetime management.
+  let storage = v8::HandleScope::new(env.isolate());
+  let storage: v8::ScopeStorage<v8::HandleScope<'static, ()>> =
+    unsafe { std::mem::transmute(storage) };
+  let mut pinned: std::pin::Pin<
+    Box<v8::ScopeStorage<v8::HandleScope<'static, ()>>>,
+  > = Box::pin(storage);
+  let _ = pinned.as_mut().init();
 
+  let ptr =
+    unsafe { Box::into_raw(std::pin::Pin::into_inner_unchecked(pinned)) };
+  unsafe { *result = ptr as napi_callback_scope }
+  env.open_callback_scopes += 1;
   napi_clear_last_error(env)
 }
 
@@ -208,8 +220,16 @@ fn napi_close_callback_scope(
   scope: napi_callback_scope,
 ) -> napi_status {
   let env = check_env!(env);
-  // we close scope automatically when it's needed
-  assert!(scope.is_null());
+  check_arg!(env, scope);
+  if env.open_callback_scopes == 0 {
+    return napi_set_last_error(env, napi_callback_scope_mismatch);
+  }
+
+  env.open_callback_scopes -= 1;
+  unsafe {
+    let ptr = scope as *mut v8::ScopeStorage<v8::HandleScope<'static, ()>>;
+    drop(Box::from_raw(ptr));
+  }
   napi_clear_last_error(env)
 }
 
@@ -586,8 +606,18 @@ pub(crate) fn napi_queue_async_work(
   }
 
   let work = SendPtr(work);
+  let sender = env.async_work_sender.clone();
+  let tracker = env.external_ops_tracker.clone();
 
-  env.add_async_work(move || {
+  // Keep the event loop alive while async work is pending.
+  tracker.ref_op();
+
+  // Per NAPI spec, `execute` runs on a worker thread and `complete` runs on
+  // the main thread. Previously both ran on the main thread which caused
+  // deadlocks when `execute` called threadsafe functions.
+  // Uses tokio's blocking threadpool to reuse threads instead of spawning a
+  // new OS thread per call (which has high overhead on Linux).
+  deno_core::unsync::spawn_blocking(move || {
     let work = work.take();
     let work = unsafe { &*work };
 
@@ -612,7 +642,13 @@ pub(crate) fn napi_queue_async_work(
       );
     }
 
-    if let Some(complete) = work.complete {
+    // Capture fields before dispatching to the main thread, since `complete`
+    // may call `napi_delete_async_work` which frees the work struct.
+    let complete = work.complete;
+    let env_ptr = SendPtr(work.env);
+    let data = SendPtr(work.data);
+
+    if let Some(complete) = complete {
       let status = if state.is_ok() {
         napi_ok
       } else if state == Err(AsyncWork::IDLE) {
@@ -621,12 +657,16 @@ pub(crate) fn napi_queue_async_work(
         napi_generic_failure
       };
 
-      unsafe {
-        complete(work.env as _, status, work.data);
-      }
+      // Dispatch `complete` to the main thread where it can safely access V8.
+      sender.spawn(move |_| {
+        unsafe {
+          complete(env_ptr.take() as _, status, data.take() as _);
+        }
+        tracker.unref_op();
+      });
+    } else {
+      tracker.unref_op();
     }
-
-    // `complete` probably deletes this `work`, so don't use it here.
   });
 
   napi_clear_last_error(env)
@@ -804,15 +844,24 @@ impl TsFn {
     let data = SendPtr(data);
     let context = SendPtr(self.context);
     let call_js_cb = self.call_js_cb;
+    // Capture env so we can pass it even after the tsfn is freed. The env
+    // pointer is always valid here because it was created via Box::into_raw
+    // in op_napi_open and is intentionally leaked (never freed).
+    let env = SendPtr(self.env);
 
     self.sender.spawn(move |scope: &mut v8::PinScope<'_, '_>| {
       let data = data.take();
 
-      // if is_closed then tsfn is freed, don't read from it.
+      // If is_closed then the TsFn struct has been freed. Don't read from
+      // the tsfn pointer. We still pass the real env (not null) because:
+      // 1. The env is valid (leaked via Box::into_raw, never freed)
+      // 2. V8 is alive (we're running on the V8 thread with a scope)
+      // 3. Many native addons (e.g. node-pty) dereference env without a
+      //    null check, causing SIGSEGV if we pass null
       if is_closed.load(Ordering::Relaxed) {
         unsafe {
           call_js_cb(
-            std::ptr::null_mut(),
+            env.take() as _,
             None::<v8::Local<v8::Value>>.into(),
             context.take() as _,
             data as _,
@@ -850,7 +899,7 @@ impl TsFn {
 }
 
 #[napi_sym]
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, reason = "private code")]
 fn napi_create_threadsafe_function(
   env: *mut Env,
   func: napi_value,

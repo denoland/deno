@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_node_crypto"
-version = "0.4.0"
+version = "0.15.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -16,6 +16,7 @@ path = "lib.rs"
 aead-gcm-stream.workspace = true
 aes.workspace = true
 aws-lc-rs.workspace = true
+aws-lc-sys.workspace = true
 base64.workspace = true
 blake2.workspace = true
 cbc.workspace = true
@@ -26,11 +27,13 @@ deno_core.workspace = true
 deno_crypto_provider.workspace = true
 deno_error.workspace = true
 der = { workspace = true, features = ["derive"] }
+des.workspace = true
 digest = { workspace = true, features = ["core-api", "std"] }
 dsa.workspace = true
 ecb.workspace = true
 ecdsa.workspace = true
 ed25519-dalek = { workspace = true, features = ["digest", "pkcs8", "rand_core", "signature"] }
+ed448-goldilocks = { workspace = true }
 elliptic-curve.workspace = true
 faster-hex.workspace = true
 hkdf.workspace = true
@@ -59,6 +62,7 @@ sha3 = { workspace = true, features = ["oid"] }
 signature.workspace = true
 sm3.workspace = true
 spki.workspace = true
+subtle.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
 x25519-dalek = { workspace = true, features = ["static_secrets"] }

@@ -1,0 +1,8 @@
+{
+  "dependencies": {
+    "@denotest/using-vuln": "1.0.0"
+  },
+  "overrides": {
+    "@denotest/with-vuln2": "2.0.0"
+  }
+}

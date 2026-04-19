@@ -2,10 +2,10 @@
 
 use deno_core::convert::Uint8Array;
 use deno_core::op2;
-use ed448_goldilocks::Scalar;
-use ed448_goldilocks::curve::MontgomeryPoint;
+use ed448_goldilocks::EdwardsScalar;
+use ed448_goldilocks::MontgomeryPoint;
+use ed448_goldilocks::subtle::ConstantTimeEq;
 use elliptic_curve::pkcs8::PrivateKeyInfo;
-use elliptic_curve::subtle::ConstantTimeEq;
 use rand::RngCore;
 use rand::rngs::OsRng;
 use spki::der::Decode;
@@ -31,12 +31,14 @@ pub fn op_crypto_generate_x448_keypair(
   rng.fill_bytes(pkey);
 
   // x448(pkey, 5)
-  let point = &MontgomeryPoint::generator()
-    * &Scalar::from_bytes(pkey.try_into().unwrap());
+  let mut scalar_bytes = [0u8; 57];
+  scalar_bytes[..56].copy_from_slice(pkey);
+  let scalar = EdwardsScalar::from_bytes_mod_order(&scalar_bytes.into());
+  let point = &MontgomeryPoint::GENERATOR * &scalar;
   pubkey.copy_from_slice(&point.0);
 }
 
-const MONTGOMERY_IDENTITY: MontgomeryPoint = MontgomeryPoint([0; 56]);
+static MONTGOMERY_IDENTITY: MontgomeryPoint = MontgomeryPoint([0; 56]);
 
 #[op2(fast)]
 pub fn op_crypto_derive_bits_x448(
@@ -48,7 +50,10 @@ pub fn op_crypto_derive_bits_x448(
   let u: [u8; 56] = u.try_into().expect("Expected byteLength 56");
 
   // x448(k, u)
-  let point = &MontgomeryPoint(u) * &Scalar::from_bytes(k);
+  let mut scalar_bytes = [0u8; 57];
+  scalar_bytes[..56].copy_from_slice(&k);
+  let scalar = EdwardsScalar::from_bytes_mod_order(&scalar_bytes.into());
+  let point = &MontgomeryPoint(u) * &scalar;
   if point.ct_eq(&MONTGOMERY_IDENTITY).unwrap_u8() == 1 {
     return true;
   }

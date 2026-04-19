@@ -186,18 +186,28 @@ mod impl_ {
     log::debug!("op_node_child_ipc_pipe: {:?}, {:?}", fd, serialization);
     let ref_tracker = IpcRefTracker::new(state.external_ops_tracker.clone());
     match serialization {
-      ChildIpcSerialization::Json => Ok(Some((
-        state
-          .resource_table
-          .add(IpcJsonStreamResource::new(fd, ref_tracker)?),
-        0,
-      ))),
-      ChildIpcSerialization::Advanced => Ok(Some((
-        state
-          .resource_table
-          .add(IpcAdvancedStreamResource::new(fd, ref_tracker)?),
-        1,
-      ))),
+      ChildIpcSerialization::Json => {
+        match IpcJsonStreamResource::new(fd, ref_tracker) {
+          Ok(resource) => Ok(Some((state.resource_table.add(resource), 0))),
+          Err(err) => {
+            log::error!(
+              "Failed to open IPC channel from NODE_CHANNEL_FD ({fd}): {err}"
+            );
+            std::process::exit(1);
+          }
+        }
+      }
+      ChildIpcSerialization::Advanced => {
+        match IpcAdvancedStreamResource::new(fd, ref_tracker) {
+          Ok(resource) => Ok(Some((state.resource_table.add(resource), 1))),
+          Err(err) => {
+            log::error!(
+              "Failed to open IPC channel from NODE_CHANNEL_FD ({fd}): {err}"
+            );
+            std::process::exit(1);
+          }
+        }
+      }
     }
   }
 

@@ -16,7 +16,7 @@ use tokio::io::AsyncWrite;
 use tokio::io::ReadBuf;
 
 // TODO(bartlomieju): remove this
-#[allow(clippy::large_enum_variant)]
+#[allow(clippy::large_enum_variant, reason = "TODO: investigate")]
 pub(crate) enum WsStreamKind {
   Upgraded(TokioIo<Upgraded>),
   Network(NetworkStream),

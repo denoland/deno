@@ -1,7 +1,5 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-use std::collections::HashMap;
-use std::net::SocketAddr;
 use std::rc::Rc;
 use std::sync::OnceLock;
 use std::sync::atomic::AtomicBool;
@@ -167,32 +165,4 @@ impl Resource for TunnelStreamResource {
   fn close(self: Rc<Self>) {
     self.cancel_handle.cancel()
   }
-}
-
-#[allow(dead_code)]
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
-enum StreamHeader {
-  Control {
-    token: String,
-    org: String,
-    app: String,
-  },
-  Stream {
-    local_addr: SocketAddr,
-    remote_addr: SocketAddr,
-  },
-  Agent {},
-}
-
-#[allow(dead_code)]
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
-enum ControlMessage {
-  Authenticated {
-    metadata: HashMap<String, String>,
-    addr: SocketAddr,
-    hostnames: Vec<String>,
-    env: HashMap<String, String>,
-  },
-  Routed {},
-  Migrate {},
 }

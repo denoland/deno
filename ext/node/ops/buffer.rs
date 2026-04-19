@@ -3,7 +3,21 @@
 use deno_core::convert::Uint8Array;
 use deno_core::op2;
 use deno_core::v8;
+use deno_core::v8_static_strings;
 use deno_error::JsErrorBox;
+
+#[op2(fast)]
+pub fn op_mark_as_untransferable(
+  scope: &mut v8::PinScope<'_, '_>,
+  ab: v8::Local<v8::ArrayBuffer>,
+) {
+  v8_static_strings! {
+      UNTRANSFERABLE = "untransferable",
+  }
+
+  let key = UNTRANSFERABLE.v8_string(scope).unwrap();
+  ab.set_detach_key(key.into());
+}
 
 #[op2(fast)]
 pub fn op_is_ascii(#[buffer] buf: &[u8]) -> bool {

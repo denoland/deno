@@ -18,6 +18,8 @@ import {
   op_node_x509_get_issuer,
   op_node_x509_get_raw,
   op_node_x509_get_serial_number,
+  op_node_x509_get_signature_algorithm_name,
+  op_node_x509_get_signature_algorithm_oid,
   op_node_x509_get_subject,
   op_node_x509_get_subject_alt_name,
   op_node_x509_get_valid_from,
@@ -50,6 +52,8 @@ import type { BinaryLike } from "ext:deno_node/internal/crypto/types.ts";
 import { inspect } from "node:util";
 import { customInspectSymbol as kInspect } from "ext:deno_node/internal/util.mjs";
 import type { InspectOptions } from "node:util";
+
+const core = globalThis.Deno.core;
 
 // deno-lint-ignore no-explicit-any
 export type PeerCertificate = any;
@@ -134,6 +138,12 @@ export class X509Certificate {
     }
 
     this.#handle = op_node_x509_parse(buffer);
+    // deno-lint-ignore no-this-alias
+    const self = this;
+    this[core.hostObjectBrand] = () => ({
+      type: "X509Certificate",
+      data: op_node_x509_get_raw(self.#handle),
+    });
   }
 
   [kInspect](depth: number, options: InspectOptions) {
@@ -282,6 +292,14 @@ export class X509Certificate {
     return op_node_x509_get_serial_number(this.#handle);
   }
 
+  get signatureAlgorithm(): string | undefined {
+    return op_node_x509_get_signature_algorithm_name(this.#handle) ?? undefined;
+  }
+
+  get signatureAlgorithmOid(): string {
+    return op_node_x509_get_signature_algorithm_oid(this.#handle);
+  }
+
   get subject(): string {
     return op_node_x509_get_subject(this.#handle) || undefined;
   }
@@ -295,7 +313,20 @@ export class X509Certificate {
   }
 
   toLegacyObject(): PeerCertificate {
-    return op_node_x509_to_legacy_object(this.#handle);
+    const obj = op_node_x509_to_legacy_object(this.#handle);
+    if (obj.raw) {
+      obj.raw = Buffer.from(obj.raw);
+    }
+    if (obj.subject) {
+      obj.subject = Object.assign({ __proto__: null }, obj.subject);
+    }
+    if (obj.issuer) {
+      obj.issuer = Object.assign({ __proto__: null }, obj.issuer);
+    }
+    if (obj.infoAccess) {
+      obj.infoAccess = Object.assign({ __proto__: null }, obj.infoAccess);
+    }
+    return obj;
   }
 
   toString(): string {
@@ -337,6 +368,16 @@ export class X509Certificate {
   }
 }
 
+function isX509Certificate(value: unknown): value is X509Certificate {
+  return value instanceof X509Certificate;
+}
+
+core.registerCloneableResource(
+  "X509Certificate",
+  (data: { data: ArrayBuffer }) => new X509Certificate(Buffer.from(data.data)),
+);
+
 export default {
   X509Certificate,
+  isX509Certificate,
 };

@@ -426,6 +426,85 @@
     return fn;
   }
 
+  // ---------------------------------------------------------------------------
+  // FixedQueue: a singly-linked list of fixed-size circular buffers.
+  // Used by the nextTick queue (and available to other core subsystems).
+  //
+  // Closely mirrors Node.js lib/internal/fixed_queue.js.
+  //
+  // Copyright Joyent, Inc. and other Node contributors.
+  //
+  // Permission is hereby granted, free of charge, to any person obtaining a
+  // copy of this software and associated documentation files (the
+  // "Software"), to deal in the Software without restriction, including
+  // without limitation the rights to use, copy, modify, merge, publish,
+  // distribute, sublicense, and/or sell copies of the Software, and to permit
+  // persons to whom the Software is furnished to do so, subject to the
+  // following conditions:
+  //
+  // The above copyright notice and this permission notice shall be included
+  // in all copies or substantial portions of the Software.
+  //
+  // THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
+  // OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+  // MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN
+  // NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
+  // DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
+  // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
+  // USE OR OTHER DEALINGS IN THE SOFTWARE.
+  // ---------------------------------------------------------------------------
+  const kQueueSize = 2048;
+  const kQueueMask = kQueueSize - 1;
+
+  class FixedCircularBuffer {
+    constructor() {
+      this.bottom = 0;
+      this.top = 0;
+      this.list = new Array(kQueueSize);
+      this.next = null;
+    }
+    isEmpty() {
+      return this.top === this.bottom;
+    }
+    isFull() {
+      return ((this.top + 1) & kQueueMask) === this.bottom;
+    }
+    push(data) {
+      this.list[this.top] = data;
+      this.top = (this.top + 1) & kQueueMask;
+    }
+    shift() {
+      const nextItem = this.list[this.bottom];
+      if (nextItem === undefined) return null;
+      this.list[this.bottom] = undefined;
+      this.bottom = (this.bottom + 1) & kQueueMask;
+      return nextItem;
+    }
+  }
+
+  class FixedQueue {
+    constructor() {
+      this.head = this.tail = new FixedCircularBuffer();
+    }
+    isEmpty() {
+      return this.head.isEmpty();
+    }
+    push(data) {
+      if (this.head.isFull()) {
+        this.head = this.head.next = new FixedCircularBuffer();
+      }
+      this.head.push(data);
+    }
+    shift() {
+      const tail = this.tail;
+      const next = tail.shift();
+      if (tail.isEmpty() && tail.next !== null) {
+        this.tail = tail.next;
+      }
+      return next;
+    }
+  }
+
   // Extra Deno.core.* exports
   const core = ObjectAssign(globalThis.Deno.core, {
     build,
@@ -443,6 +522,7 @@
     __setLeakTracingEnabled,
     __isLeakTracingEnabled,
     __initializeCoreMethods,
+    FixedQueue,
   };
 
   ObjectAssign(globalThis, { __infra: infra });

@@ -3,7 +3,7 @@ changes:
  4 | -    "npm:@denotest/add@1": "1.0.0"
  4 | +    "npm:@denotest/add@1": "1.0.0",
  5 | +    "npm:@denotest/bin@0.7.0": "0.7.0"
-10 | -    }
+   | ...
 11 | +    },
 12 | +    "@denotest/bin@0.7.0": {
 13 | +      "integrity": "sha512-RAE7sQrdTUuV4KdDAshObhsULXb2QjTjfRg/KbzE9asZV8dUmwbPZy2kfmE2CunPo8+6DvwPklXFJ4PQi0Usuw==",
@@ -16,4 +16,3 @@ changes:
 20 | +      "dependencies": [
 21 | +        "npm:@denotest/bin@0.7.0"
 22 | +      ]
-23 | +    }

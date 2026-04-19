@@ -1,0 +1,22 @@
+{
+  "tests": {
+    "net_socket_fd_pipe": {
+      "if": "unix",
+      "args": "run -A main.ts",
+      "output": "main.out"
+    },
+    "net_socket_fd_invalid": {
+      "args": "run -A invalid_fd_type.ts",
+      "output": "invalid_fd_type.out"
+    },
+    "fd_not_stolen": {
+      "if": "unix",
+      "args": "run -A fd_not_stolen.ts",
+      "output": "fd_not_stolen.out"
+    },
+    "tcp_open": {
+      "args": "run -A --unstable-ffi tcp_open.ts",
+      "output": "tcp_open.out"
+    }
+  }
+}
