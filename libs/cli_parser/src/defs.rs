@@ -476,6 +476,7 @@ pub static RUN_SUBCOMMAND: CommandDef = CommandDef {
     // Allow --allow-scripts on run (through arg_groups, but also directly)
   ],
   arg_groups: &[
+    UNSTABLE_ARGS,
     PERMISSION_ARGS,
     COMPILE_ARGS,
     INSPECT_ARGS,
@@ -547,6 +548,7 @@ pub static SERVE_SUBCOMMAND: CommandDef = CommandDef {
       .set_true(),
   ],
   arg_groups: &[
+    UNSTABLE_ARGS,
     PERMISSION_ARGS,
     COMPILE_ARGS,
     INSPECT_ARGS,
@@ -582,6 +584,7 @@ pub static EVAL_SUBCOMMAND: CommandDef = CommandDef {
       .require_equals(),
   ],
   arg_groups: &[
+    UNSTABLE_ARGS,
     PERMISSION_ARGS,
     COMPILE_ARGS,
     INSPECT_ARGS,
@@ -682,7 +685,7 @@ pub static FMT_SUBCOMMAND: CommandDef = CommandDef {
       .set_true()
       .hidden(),
   ],
-  arg_groups: &[],
+  arg_groups: &[UNSTABLE_ARGS],
   subcommands: &[],
   default_subcommand: None,
   trailing_var_arg: false,
@@ -751,7 +754,7 @@ pub static LINT_SUBCOMMAND: CommandDef = CommandDef {
       .num_args(NumArgs::Exact(1)),
     ArgDef::new("no-config").long("no-config").set_true(),
   ],
-  arg_groups: &[PERMISSION_ARGS],
+  arg_groups: &[UNSTABLE_ARGS, PERMISSION_ARGS],
   subcommands: &[],
   default_subcommand: None,
   trailing_var_arg: false,
@@ -836,6 +839,7 @@ pub static TEST_SUBCOMMAND: CommandDef = CommandDef {
       .set_true(),
   ],
   arg_groups: &[
+    UNSTABLE_ARGS,
     PERMISSION_ARGS,
     COMPILE_ARGS,
     INSPECT_ARGS,
@@ -894,7 +898,7 @@ pub static UPGRADE_SUBCOMMAND: CommandDef = CommandDef {
       .action(ArgAction::Set)
       .num_args(NumArgs::Exact(1)),
   ],
-  arg_groups: &[],
+  arg_groups: &[UNSTABLE_ARGS],
   subcommands: &[],
   default_subcommand: None,
   trailing_var_arg: false,
@@ -917,6 +921,7 @@ pub static CACHE_SUBCOMMAND: CommandDef = CommandDef {
       .require_equals(),
   ],
   arg_groups: &[
+    UNSTABLE_ARGS,
     COMPILE_ARGS,
     INSPECT_ARGS,
     PERMISSION_ARGS,
@@ -943,7 +948,7 @@ pub static CHECK_SUBCOMMAND: CommandDef = CommandDef {
     ArgDef::new("doc-only").long("doc-only").set_true(),
     ArgDef::new("check-js").long("check-js").set_true().hidden(),
   ],
-  arg_groups: &[COMPILE_ARGS, RUNTIME_MISC_ARGS],
+  arg_groups: &[UNSTABLE_ARGS, COMPILE_ARGS, RUNTIME_MISC_ARGS],
   subcommands: &[],
   default_subcommand: None,
   trailing_var_arg: false,
@@ -961,7 +966,7 @@ pub static INFO_SUBCOMMAND: CommandDef = CommandDef {
       .num_args(NumArgs::Optional),
     ArgDef::new("json").long("json").set_true(),
   ],
-  arg_groups: &[COMPILE_ARGS, PERMISSION_ARGS],
+  arg_groups: &[UNSTABLE_ARGS, COMPILE_ARGS, PERMISSION_ARGS],
   subcommands: &[],
   default_subcommand: None,
   trailing_var_arg: false,
@@ -1010,7 +1015,7 @@ pub static DOC_SUBCOMMAND: CommandDef = CommandDef {
       .num_args(NumArgs::Exact(1)),
     ArgDef::new("builtin").long("builtin").set_true(),
   ],
-  arg_groups: &[COMPILE_ARGS],
+  arg_groups: &[UNSTABLE_ARGS, COMPILE_ARGS],
   subcommands: &[],
   default_subcommand: None,
   trailing_var_arg: false,
@@ -1057,7 +1062,7 @@ pub static TASK_SUBCOMMAND: CommandDef = CommandDef {
       .num_args(NumArgs::Optional),
     ArgDef::new("no-lock").long("no-lock").set_true(),
   ],
-  arg_groups: &[],
+  arg_groups: &[UNSTABLE_ARGS],
   subcommands: &[],
   default_subcommand: None,
   trailing_var_arg: true,
@@ -1110,6 +1115,7 @@ pub static BENCH_SUBCOMMAND: CommandDef = CommandDef {
       .require_equals(),
   ],
   arg_groups: &[
+    UNSTABLE_ARGS,
     PERMISSION_ARGS,
     COMPILE_ARGS,
     INSPECT_ARGS,
@@ -1167,6 +1173,7 @@ pub static COMPILE_SUBCOMMAND: CommandDef = CommandDef {
       .num_args(NumArgs::Exact(1)),
   ],
   arg_groups: &[
+    UNSTABLE_ARGS,
     PERMISSION_ARGS,
     COMPILE_ARGS,
     INSPECT_ARGS,
@@ -1213,7 +1220,7 @@ pub static COVERAGE_SUBCOMMAND: CommandDef = CommandDef {
       .action(ArgAction::Set)
       .num_args(NumArgs::Exact(1)),
   ],
-  arg_groups: &[],
+  arg_groups: &[UNSTABLE_ARGS],
   subcommands: &[],
   default_subcommand: None,
   trailing_var_arg: false,
@@ -1243,6 +1250,7 @@ pub static REPL_SUBCOMMAND: CommandDef = CommandDef {
       .require_equals(),
   ],
   arg_groups: &[
+    UNSTABLE_ARGS,
     PERMISSION_ARGS,
     COMPILE_ARGS,
     INSPECT_ARGS,
@@ -1302,6 +1310,7 @@ pub static INSTALL_SUBCOMMAND: CommandDef = CommandDef {
       .require_equals(),
   ],
   arg_groups: &[
+    UNSTABLE_ARGS,
     PERMISSION_ARGS,
     COMPILE_ARGS,
     INSPECT_ARGS,
@@ -1332,7 +1341,7 @@ pub static UNINSTALL_SUBCOMMAND: CommandDef = CommandDef {
       .long("lockfile-only")
       .set_true(),
   ],
-  arg_groups: &[COMPILE_ARGS],
+  arg_groups: &[UNSTABLE_ARGS, COMPILE_ARGS],
   subcommands: &[],
   default_subcommand: None,
   trailing_var_arg: false,
@@ -1344,7 +1353,7 @@ pub static TYPES_SUBCOMMAND: CommandDef = CommandDef {
   about: "Print runtime TypeScript declarations",
   aliases: &[],
   args: &[],
-  arg_groups: &[],
+  arg_groups: &[UNSTABLE_ARGS],
   subcommands: &[],
   default_subcommand: None,
   trailing_var_arg: false,
@@ -1359,7 +1368,7 @@ pub static COMPLETIONS_SUBCOMMAND: CommandDef = CommandDef {
     .positional()
     .action(ArgAction::Set)
     .num_args(NumArgs::Exact(1))],
-  arg_groups: &[],
+  arg_groups: &[UNSTABLE_ARGS],
   subcommands: &[],
   default_subcommand: None,
   trailing_var_arg: false,
@@ -1471,7 +1480,7 @@ pub static PUBLISH_SUBCOMMAND: CommandDef = CommandDef {
       .action(ArgAction::Set)
       .num_args(NumArgs::Exact(1)),
   ],
-  arg_groups: &[COMPILE_ARGS],
+  arg_groups: &[UNSTABLE_ARGS, COMPILE_ARGS],
   subcommands: &[],
   default_subcommand: None,
   trailing_var_arg: false,
@@ -1498,7 +1507,7 @@ pub static ADD_SUBCOMMAND: CommandDef = CommandDef {
       .long("lockfile-only")
       .set_true(),
   ],
-  arg_groups: &[ALLOW_SCRIPTS_ARG, COMPILE_ARGS],
+  arg_groups: &[UNSTABLE_ARGS, ALLOW_SCRIPTS_ARG, COMPILE_ARGS],
   subcommands: &[],
   default_subcommand: None,
   trailing_var_arg: false,
@@ -1518,7 +1527,7 @@ pub static REMOVE_SUBCOMMAND: CommandDef = CommandDef {
       .long("lockfile-only")
       .set_true(),
   ],
-  arg_groups: &[COMPILE_ARGS],
+  arg_groups: &[UNSTABLE_ARGS, COMPILE_ARGS],
   subcommands: &[],
   default_subcommand: None,
   trailing_var_arg: false,
@@ -1549,7 +1558,7 @@ pub static OUTDATED_SUBCOMMAND: CommandDef = CommandDef {
       .long("lockfile-only")
       .set_true(),
   ],
-  arg_groups: &[COMPILE_ARGS],
+  arg_groups: &[UNSTABLE_ARGS, COMPILE_ARGS],
   subcommands: &[],
   default_subcommand: None,
   trailing_var_arg: false,
@@ -1578,7 +1587,7 @@ pub static UPDATE_SUBCOMMAND: CommandDef = CommandDef {
       .long("interactive")
       .set_true(),
   ],
-  arg_groups: &[COMPILE_ARGS],
+  arg_groups: &[UNSTABLE_ARGS, COMPILE_ARGS],
   subcommands: &[],
   default_subcommand: None,
   trailing_var_arg: false,
@@ -1590,7 +1599,7 @@ pub static DEPLOY_SUBCOMMAND: CommandDef = CommandDef {
   about: "Deploy to Deno Deploy",
   aliases: &[],
   args: &[],
-  arg_groups: &[],
+  arg_groups: &[UNSTABLE_ARGS],
   subcommands: &[],
   default_subcommand: None,
   trailing_var_arg: false,
@@ -1602,7 +1611,7 @@ pub static SANDBOX_SUBCOMMAND: CommandDef = CommandDef {
   about: "Run in sandbox mode",
   aliases: &[],
   args: &[],
-  arg_groups: &[],
+  arg_groups: &[UNSTABLE_ARGS],
   subcommands: &[],
   default_subcommand: None,
   trailing_var_arg: false,
@@ -1621,7 +1630,7 @@ pub static CLEAN_SUBCOMMAND: CommandDef = CommandDef {
       .value_delimiter(','),
     ArgDef::new("dry-run").long("dry-run").set_true(),
   ],
-  arg_groups: &[],
+  arg_groups: &[UNSTABLE_ARGS],
   subcommands: &[],
   default_subcommand: None,
   trailing_var_arg: false,
@@ -1642,7 +1651,7 @@ pub static APPROVE_SCRIPTS_SUBCOMMAND: CommandDef = CommandDef {
       .long("lockfile-only")
       .set_true(),
   ],
-  arg_groups: &[COMPILE_ARGS],
+  arg_groups: &[UNSTABLE_ARGS, COMPILE_ARGS],
   subcommands: &[],
   default_subcommand: None,
   trailing_var_arg: false,
@@ -1654,7 +1663,7 @@ pub static LSP_SUBCOMMAND: CommandDef = CommandDef {
   about: "Start the language server",
   aliases: &[],
   args: &[],
-  arg_groups: &[],
+  arg_groups: &[UNSTABLE_ARGS],
   subcommands: &[],
   default_subcommand: None,
   trailing_var_arg: false,
@@ -1666,7 +1675,7 @@ pub static VENDOR_SUBCOMMAND: CommandDef = CommandDef {
   about: "Vendor remote modules",
   aliases: &[],
   args: &[],
-  arg_groups: &[],
+  arg_groups: &[UNSTABLE_ARGS],
   subcommands: &[],
   default_subcommand: None,
   trailing_var_arg: false,
@@ -1756,7 +1765,7 @@ pub static AUDIT_SUBCOMMAND: CommandDef = CommandDef {
       .require_equals()
       .value_delimiter(','),
   ],
-  arg_groups: &[LOCK_ARGS],
+  arg_groups: &[UNSTABLE_ARGS, LOCK_ARGS],
   subcommands: &[],
   default_subcommand: None,
   trailing_var_arg: false,
@@ -1781,6 +1790,7 @@ pub static X_SUBCOMMAND: CommandDef = CommandDef {
       .default_value("dx"),
   ],
   arg_groups: &[
+    UNSTABLE_ARGS,
     COMPILE_ARGS,
     PERMISSION_ARGS,
     RUNTIME_MISC_ARGS,
@@ -1856,7 +1866,7 @@ pub static DENO_ROOT: CommandDef = CommandDef {
   about: "A modern JavaScript and TypeScript runtime",
   aliases: &[],
   args: GLOBAL_ARGS,
-  arg_groups: &[],
+  arg_groups: &[UNSTABLE_ARGS],
   subcommands: &[
     RUN_SUBCOMMAND,
     SERVE_SUBCOMMAND,
