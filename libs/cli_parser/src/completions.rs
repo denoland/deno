@@ -290,3 +290,163 @@ fn generate_powershell(cmd: &CommandDef) -> Vec<u8> {
 
     out.into_bytes()
 }
+
+// ============================================================
+// Dynamic completions
+// ============================================================
+
+/// Handle dynamic shell completion. Called when `COMPLETE` env var is set.
+///
+/// Reads the command line from `args`, determines what to complete based on
+/// cursor position, and writes completion candidates to stdout.
+///
+/// Returns `true` if completions were handled.
+pub fn try_complete(
+    cmd: &CommandDef,
+    args: &[String],
+    shell: &str,
+) -> bool {
+    let index = std::env::var("_CLAP_COMPLETE_INDEX")
+        .ok()
+        .and_then(|s| s.parse::<usize>().ok())
+        .unwrap_or(args.len().saturating_sub(1));
+
+    let words: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
+    let current = words.get(index).copied().unwrap_or("");
+
+    let (active_cmd, _) = find_active_command(cmd, &words);
+    let candidates = get_candidates(active_cmd, cmd, current, &words, index);
+
+    let stdout = std::io::stdout();
+    let mut out = std::io::BufWriter::new(stdout.lock());
+
+    use std::io::Write;
+    for (value, help) in &candidates {
+        match shell {
+            "zsh" => {
+                if let Some(h) = help {
+                    let _ = writeln!(out, "{}:{}", value, h);
+                } else {
+                    let _ = writeln!(out, "{}", value);
+                }
+            }
+            "fish" => {
+                if let Some(h) = help {
+                    let _ = writeln!(out, "{}\t{}", value, h);
+                } else {
+                    let _ = writeln!(out, "{}", value);
+                }
+            }
+            _ => {
+                let _ = writeln!(out, "{}", value);
+            }
+        }
+    }
+
+    true
+}
+
+fn find_active_command<'a>(
+    root: &'a CommandDef,
+    words: &[&str],
+) -> (&'a CommandDef, Option<usize>) {
+    for (i, word) in words.iter().enumerate().skip(1) {
+        if word.starts_with('-') {
+            continue;
+        }
+        if let Some(sub) = root.find_subcommand(word) {
+            return (sub, Some(i));
+        }
+        break;
+    }
+    (root, None)
+}
+
+fn get_candidates(
+    active_cmd: &CommandDef,
+    root: &CommandDef,
+    current: &str,
+    words: &[&str],
+    index: usize,
+) -> Vec<(String, Option<String>)> {
+    let mut candidates = Vec::new();
+
+    // Check if previous word was a flag that takes a value
+    if index >= 2 {
+        let prev = words.get(index - 1).copied().unwrap_or("");
+        if prev.starts_with('-') && !prev.contains('=') {
+            let flag_name = prev.trim_start_matches('-');
+            let takes_value = active_cmd
+                .all_args()
+                .chain(root.all_args().filter(|a| a.global))
+                .any(|a| {
+                    (a.long == Some(flag_name)
+                        || a.short.is_some_and(|c| {
+                            c.to_string() == flag_name
+                        }))
+                        && !matches!(
+                            a.action,
+                            ArgAction::SetTrue | ArgAction::Count
+                        )
+                        && a.num_args != NumArgs::Exact(0)
+                });
+            if takes_value {
+                return candidates; // file completion
+            }
+        }
+    }
+
+    // Complete flags
+    if current.starts_with('-') {
+        for arg in active_cmd
+            .all_args()
+            .chain(root.all_args().filter(|a| a.global))
+        {
+            if arg.hidden || arg.positional {
+                continue;
+            }
+            if let Some(long) = arg.long {
+                let flag = format!("--{long}");
+                if flag.starts_with(current) {
+                    let help = if arg.help.is_empty() {
+                        None
+                    } else {
+                        Some(arg.help.to_string())
+                    };
+                    candidates.push((flag, help));
+                }
+            }
+            if let Some(short) = arg.short {
+                let flag = format!("-{short}");
+                if flag.starts_with(current) && current.len() <= 2 {
+                    candidates.push((flag, None));
+                }
+            }
+        }
+        return candidates;
+    }
+
+    // Complete subcommands at root level
+    let in_subcommand = words
+        .iter()
+        .skip(1)
+        .any(|w| !w.starts_with('-') && root.find_subcommand(w).is_some());
+
+    if !in_subcommand {
+        for sub in root.subcommands {
+            if sub.name == "help" || sub.name == "json_reference" {
+                continue;
+            }
+            if sub.name.starts_with(current) {
+                let help = if sub.about.is_empty() {
+                    None
+                } else {
+                    Some(sub.about.to_string())
+                };
+                candidates.push((sub.name.to_string(), help));
+            }
+        }
+    }
+
+    candidates
+}
