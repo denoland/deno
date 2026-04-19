@@ -338,26 +338,22 @@ async fn run_subcommand(
             let script_err_msg = script_err.to_string();
             if should_fallback_on_run_error(script_err_msg.as_str()) {
               if run_flags.bare {
-                let mut cmd = args::clap_root();
-                cmd.build();
-                let command_names = cmd
-                  .get_subcommands()
-                  .map(|command| command.get_name())
+                let command_names = deno_cli_parser::defs::DENO_ROOT
+                  .subcommands
+                  .iter()
+                  .map(|c| c.name)
                   .collect::<Vec<_>>();
                 let suggestions =
                   args::did_you_mean(&run_flags.script, command_names);
                 if !suggestions.is_empty() && !run_flags.script.contains('.') {
-                  let mut error =
-                    clap::error::Error::<clap::error::DefaultFormatter>::new(
-                      clap::error::ErrorKind::InvalidSubcommand,
+                  let suggestion_text = suggestions.join(", ");
+                  Err(
+                    deno_core::anyhow::anyhow!(
+                      "Unknown subcommand '{}'. Did you mean: {}?",
+                      run_flags.script,
+                      suggestion_text,
                     )
-                    .with_cmd(&cmd);
-                  error.insert(
-                    clap::error::ContextKind::SuggestedSubcommand,
-                    clap::error::ContextValue::Strings(suggestions),
-                  );
-
-                  Err(error.into())
+                  )
                 } else {
                   Err(script_err)
                 }
