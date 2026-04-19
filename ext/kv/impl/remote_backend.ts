@@ -203,7 +203,7 @@ export class RemoteBackend {
               while (buffer.length < 4) {
                 const { done, value } = await reader.read();
                 if (done) {
-                  // Stream ended — force reconnect
+                  // Stream ended - force reconnect
                   reader = null;
                   abortController = null;
                   break;
@@ -236,7 +236,7 @@ export class RemoteBackend {
               const frame = buffer.slice(4, 4 + frameLenU);
               buffer = buffer.slice(4 + frameLenU);
 
-              // Empty frames are pings — skip them
+              // Empty frames are pings - skip them
               if (frameLenU === 0) {
                 continue;
               }
@@ -428,7 +428,7 @@ export class RemoteBackend {
           body,
         });
       } catch (err) {
-        // Network error — treat like a 5xx
+        // Network error - treat like a 5xx
         if (attempt >= MAX_DATA_RETRIES) {
           throw new Error(
             `KV ${method} request failed after ${attempt} retries: ${err}`,

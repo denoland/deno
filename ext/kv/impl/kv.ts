@@ -89,7 +89,7 @@ function base64urlDecode(str: string): Uint8Array {
 }
 
 // ---------------------------------------------------------------------------
-// Value serialization — uses V8 structured clone for arbitrary JS values
+// Value serialization - uses V8 structured clone for arbitrary JS values
 // ---------------------------------------------------------------------------
 
 interface RawValue {
@@ -216,10 +216,53 @@ function kvValueToProto(
 // Key encoding helpers
 // ---------------------------------------------------------------------------
 
+// Config limits (matching the Rust KvConfig defaults)
+const MAX_WRITE_KEY_SIZE = 2048;
+const MAX_VALUE_SIZE = 65536;
+const MAX_CHECKS = 100;
+const MAX_MUTATIONS = 1000;
+const MAX_TOTAL_MUTATION_SIZE = 819200;
+const MAX_TOTAL_KEY_SIZE = 81920;
+
 function encodeKvKey(key: Deno.KvKey): Uint8Array {
-  return encodeKey(
+  if (!Array.isArray(key)) {
+    throw new TypeError("key must be an array");
+  }
+  const encoded = encodeKey(
     kvKeyToKeyParts(key as (string | number | bigint | Uint8Array | boolean)[]),
   );
+  return encoded;
+}
+
+function validateWriteKey(encoded: Uint8Array): void {
+  if (encoded.length === 0) {
+    throw new TypeError("key cannot be empty");
+  }
+  if (encoded.length > MAX_WRITE_KEY_SIZE) {
+    throw new TypeError(
+      `Key too large for write (max ${MAX_WRITE_KEY_SIZE} bytes)`,
+    );
+  }
+}
+
+function validateValue(raw: RawValue): void {
+  let size: number;
+  switch (raw.kind) {
+    case "v8":
+      size = (raw.value as Uint8Array).length;
+      break;
+    case "bytes":
+      size = (raw.value as Uint8Array).length;
+      break;
+    case "u64":
+      size = 8;
+      break;
+  }
+  if (size > MAX_VALUE_SIZE) {
+    throw new TypeError(
+      `Value too large (max ${MAX_VALUE_SIZE} bytes)`,
+    );
+  }
 }
 
 function decodeKvKeyBytes(bytes: Uint8Array): Deno.KvKey {
@@ -792,15 +835,19 @@ class Kv {
     value: unknown,
     options?: { expireIn?: number },
   ): Promise<Deno.KvCommitResult> {
+    const encodedKey = encodeKvKey(key);
+    validateWriteKey(encodedKey);
+    const raw = serializeValue(value);
+    validateValue(raw);
     const result = await doAtomicWrite(
       this.#backend,
       [],
       [
         {
-          key: encodeKvKey(key),
+          key: encodedKey,
           kind: {
             type: "set",
-            value: rawValueToKvValue(serializeValue(value)),
+            value: rawValueToKvValue(raw),
           },
           expireAt: options?.expireIn ? Date.now() + options.expireIn : null,
         },
@@ -955,7 +1002,7 @@ class Kv {
     // For SQLite backend, the stream already produces decoded entries
     // For remote, we need to transform the protobuf entries
     // The Kv.watch() method in the original code does deduplication
-    // based on versionstamp changes — replicate that here.
+    // based on versionstamp changes - replicate that here.
     const lastEntries: (Deno.KvEntryMaybe<unknown> | undefined)[] = new Array(
       keys.length,
     );
@@ -1044,10 +1091,19 @@ class AtomicOperation {
 
   check(...checks: Deno.AtomicCheck[]): this {
     for (const check of checks) {
-      this.#checks.push({
-        key: encodeKvKey(check.key),
-        versionstamp: check.versionstamp ? hexDecode(check.versionstamp) : null,
-      });
+      const encodedKey = encodeKvKey(check.key);
+      validateWriteKey(encodedKey);
+      let versionstamp: Uint8Array | null = null;
+      if (check.versionstamp) {
+        if (
+          typeof check.versionstamp !== "string" ||
+          check.versionstamp.length !== 20
+        ) {
+          throw new TypeError("invalid versionstamp");
+        }
+        versionstamp = hexDecode(check.versionstamp);
+      }
+      this.#checks.push({ key: encodedKey, versionstamp });
     }
     return this;
   }
@@ -1055,6 +1111,7 @@ class AtomicOperation {
   mutate(...mutations: Deno.KvMutation[]): this {
     for (const m of mutations) {
       const key = encodeKvKey(m.key);
+      validateWriteKey(key);
       let kind: MutationKind;
 
       switch (m.type) {
@@ -1191,6 +1248,44 @@ class AtomicOperation {
   }
 
   async commit(): Promise<Deno.KvCommitResult | Deno.KvCommitError> {
+    if (this.#checks.length > MAX_CHECKS) {
+      throw new TypeError(`Too many checks (max ${MAX_CHECKS})`);
+    }
+    if (this.#mutations.length + this.#enqueues.length > MAX_MUTATIONS) {
+      throw new TypeError(`Too many mutations (max ${MAX_MUTATIONS})`);
+    }
+
+    // Validate total mutation and key sizes
+    let totalMutationSize = 0;
+    let totalKeySize = 0;
+    for (const m of this.#mutations) {
+      totalKeySize += m.key.length;
+      totalMutationSize += m.key.length;
+      if (m.kind.type !== "delete") {
+        const v = m.kind.value;
+        const vSize = v.kind === "u64" ? 8 : v.data.length;
+        totalMutationSize += vSize + m.key.length;
+      }
+    }
+    for (const e of this.#enqueues) {
+      totalMutationSize += e.payload.length;
+      if (e.payload.length > MAX_VALUE_SIZE) {
+        throw new TypeError(
+          `enqueue payload too large (max ${MAX_VALUE_SIZE} bytes)`,
+        );
+      }
+    }
+    if (totalMutationSize > MAX_TOTAL_MUTATION_SIZE) {
+      throw new TypeError(
+        `Total mutation size too large (max ${MAX_TOTAL_MUTATION_SIZE} bytes)`,
+      );
+    }
+    if (totalKeySize > MAX_TOTAL_KEY_SIZE) {
+      throw new TypeError(
+        `Total key size too large (max ${MAX_TOTAL_KEY_SIZE} bytes)`,
+      );
+    }
+
     const result = await doAtomicWrite(
       this.#backend,
       this.#checks,

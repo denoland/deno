@@ -2,7 +2,7 @@
 // Implements the same binary format as denokv_proto::codec.
 
 // ---------------------------------------------------------------------------
-// Type tags — cross-type ordering: Bytes < String < Int < Float < False < True
+// Type tags - cross-type ordering: Bytes < String < Int < Float < False < True
 // ---------------------------------------------------------------------------
 const BYTES = 0x01;
 const STRING = 0x02;
@@ -28,8 +28,18 @@ type KeyPart =
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-const textEncoder = new TextEncoder();
-const textDecoder = new TextDecoder();
+let textEncoder: TextEncoder;
+let textDecoder: TextDecoder;
+
+function getEncoder(): TextEncoder {
+  if (!textEncoder) textEncoder = new TextEncoder();
+  return textEncoder;
+}
+
+function getDecoder(): TextDecoder {
+  if (!textDecoder) textDecoder = new TextDecoder();
+  return textDecoder;
+}
 
 // Scratch buffer for float64 <-> uint64 bit reinterpretation
 const f64Buf = new ArrayBuffer(8);
@@ -122,7 +132,7 @@ function encodeBytes(w: BufWriter, value: Uint8Array): void {
 }
 
 function encodeString(w: BufWriter, value: string): void {
-  encodeNullEscaped(w, STRING, textEncoder.encode(value));
+  encodeNullEscaped(w, STRING, getEncoder().encode(value));
 }
 
 function encodeInt(w: BufWriter, value: bigint): void {
@@ -274,7 +284,7 @@ function decodeNullEscaped(r: BufReader): Uint8Array {
     if (b === 0x00) {
       // Check if this is an escaped null or the terminator
       if (r.remaining > 0 && r.peek() === ESCAPE) {
-        // Escaped null byte — consume the ESCAPE and emit 0x00
+        // Escaped null byte - consume the ESCAPE and emit 0x00
         r.read();
         chunks.push(0x00);
       } else {
@@ -294,7 +304,7 @@ function decodeBytes(r: BufReader): KeyPart {
 
 function decodeString(r: BufReader): KeyPart {
   const raw = decodeNullEscaped(r);
-  return { type: "string", value: textDecoder.decode(raw) };
+  return { type: "string", value: getDecoder().decode(raw) };
 }
 
 function decodeInt(r: BufReader, tag: number): KeyPart {
@@ -348,10 +358,10 @@ function decodeFloat(r: BufReader): KeyPart {
   // Reverse the XOR: if sign bit set after XOR, it was originally positive
   // (XOR only flipped sign bit), else it was negative (XOR flipped all bits).
   if (hi & 0x80000000) {
-    // Sign bit is set in encoded form — original was non-negative, undo XOR of sign bit
+    // Sign bit is set in encoded form - original was non-negative, undo XOR of sign bit
     hi ^= 0x80000000;
   } else {
-    // Sign bit is clear in encoded form — original was negative, undo XOR of all bits
+    // Sign bit is clear in encoded form - original was negative, undo XOR of all bits
     hi ^= 0xffffffff;
     lo ^= 0xffffffff;
   }

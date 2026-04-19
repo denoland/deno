@@ -424,7 +424,7 @@ function* iterFields(buf: Uint8Array): Generator<WireField> {
     const fieldNum = tag >>> 3;
 
     if (wireType === WIRE_VARINT) {
-      // Decode varint value — we provide both number and bigint forms
+      // Decode varint value - we provide both number and bigint forms
       const [val, off2] = decodeVarint(buf, offset);
       const [val64, _off264] = decodeVarint64(buf, offset);
       offset = off2;
@@ -448,7 +448,7 @@ function* iterFields(buf: Uint8Array): Generator<WireField> {
         data,
       };
     } else if (wireType === 5) {
-      // 32-bit (fixed32, sfixed32, float) — skip 4 bytes
+      // 32-bit (fixed32, sfixed32, float) - skip 4 bytes
       offset += 4;
       yield {
         fieldNum,
@@ -458,7 +458,7 @@ function* iterFields(buf: Uint8Array): Generator<WireField> {
         data: EMPTY,
       };
     } else if (wireType === 1) {
-      // 64-bit (fixed64, sfixed64, double) — skip 8 bytes
+      // 64-bit (fixed64, sfixed64, double) - skip 8 bytes
       offset += 8;
       yield {
         fieldNum,
