@@ -31,13 +31,16 @@ extension!(runtime,
     "06_util.js",
     "10_permissions.js",
     "11_workers.js",
-    "40_fs_events.js",
     "40_tty.js",
     "41_prompt.js",
     "90_deno_ns.js",
     "98_global_scope_shared.js",
     "98_global_scope_window.js",
     "98_global_scope_worker.js"
+  ],
+  lazy_loaded_esm = [
+    dir "js",
+    "40_fs_events.js",
   ],
   customizer = |ext: &mut Extension| {
     #[cfg(not(feature = "exclude_runtime_main_js"))]

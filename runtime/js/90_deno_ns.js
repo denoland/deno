@@ -11,7 +11,6 @@ import {
 import * as timers from "ext:deno_web/02_timers.js";
 import * as httpClient from "ext:deno_fetch/22_http_client.js";
 import * as console from "ext:deno_web/01_console.js";
-import * as ffi from "ext:deno_ffi/00_ffi.js";
 import * as net from "ext:deno_net/01_net.js";
 import * as tls from "ext:deno_net/02_tls.js";
 import * as serve from "ext:deno_http/00_serve.ts";
@@ -23,12 +22,8 @@ import * as permissions from "ext:runtime/10_permissions.js";
 import * as io from "ext:deno_io/12_io.js";
 import * as fs from "ext:deno_fs/30_fs.js";
 import * as os from "ext:deno_os/30_os.js";
-import * as fsEvents from "ext:runtime/40_fs_events.js";
 import * as process from "ext:deno_process/40_process.js";
-import * as signals from "ext:deno_os/40_signals.js";
 import * as tty from "ext:runtime/40_tty.js";
-import * as kv from "ext:deno_kv/01_db.ts";
-import * as cron from "ext:deno_cron/01_cron.ts";
 import * as webgpuSurface from "ext:deno_webgpu/02_surface.js";
 import * as telemetry from "ext:deno_telemetry/telemetry.ts";
 import { unstableIds } from "ext:deno_features/flags.js";
@@ -37,6 +32,11 @@ import { bundle } from "ext:deno_bundle_runtime/bundle.ts";
 
 const { ObjectDefineProperties, Float64Array } = primordials;
 
+const loadFfi = core.createLazyLoader("ext:deno_ffi/00_ffi.js");
+const loadFsEvents = core.createLazyLoader("ext:runtime/40_fs_events.js");
+const loadSignals = core.createLazyLoader("ext:deno_os/40_signals.js");
+const loadKv = core.createLazyLoader("ext:deno_kv/01_db.ts");
+const loadCron = core.createLazyLoader("ext:deno_cron/01_cron.ts");
 const loadQuic = core.createLazyLoader("ext:deno_net/03_quic.js");
 const loadWebTransport = core.createLazyLoader("ext:deno_web/webtransport.js");
 
@@ -55,7 +55,7 @@ const denoNs = {
   readTextFileSync: fs.readTextFileSync,
   readFile: fs.readFile,
   readFileSync: fs.readFileSync,
-  watchFs: fsEvents.watchFs,
+  // watchFs is lazy-loaded below via ObjectDefineProperties
   chmodSync: fs.chmodSync,
   chmod: fs.chmod,
   chown: fs.chown,
@@ -145,8 +145,7 @@ const denoNs = {
   utime: fs.utime,
   utimeSync: fs.utimeSync,
   kill: process.kill,
-  addSignalListener: signals.addSignalListener,
-  removeSignalListener: signals.removeSignalListener,
+  // signals are lazy-loaded below via ObjectDefineProperties
   refTimer: timers.refTimer,
   unrefTimer: timers.unrefTimer,
   osRelease: os.osRelease,
@@ -162,16 +161,45 @@ const denoNs = {
   spawn: process.spawn,
   spawnAndWait: process.spawnAndWait,
   spawnAndWaitSync: process.spawnAndWaitSync,
-  dlopen: ffi.dlopen,
-  UnsafeCallback: ffi.UnsafeCallback,
-  UnsafePointer: ffi.UnsafePointer,
-  UnsafePointerView: ffi.UnsafePointerView,
-  UnsafeFnPointer: ffi.UnsafeFnPointer,
+  // FFI is lazy-loaded below via ObjectDefineProperties
   umask: fs.umask,
   HttpClient: httpClient.HttpClient,
   createHttpClient: httpClient.createHttpClient,
   telemetry: telemetry.telemetry,
 };
+
+// Lazy-loaded properties on denoNs.
+ObjectDefineProperties(denoNs, {
+  watchFs: core.propWritableLazyLoaded(
+    (fsEvents) => fsEvents.watchFs,
+    loadFsEvents,
+  ),
+  dlopen: core.propWritableLazyLoaded((ffi) => ffi.dlopen, loadFfi),
+  UnsafeCallback: core.propWritableLazyLoaded(
+    (ffi) => ffi.UnsafeCallback,
+    loadFfi,
+  ),
+  UnsafePointer: core.propWritableLazyLoaded(
+    (ffi) => ffi.UnsafePointer,
+    loadFfi,
+  ),
+  UnsafePointerView: core.propWritableLazyLoaded(
+    (ffi) => ffi.UnsafePointerView,
+    loadFfi,
+  ),
+  UnsafeFnPointer: core.propWritableLazyLoaded(
+    (ffi) => ffi.UnsafeFnPointer,
+    loadFfi,
+  ),
+  addSignalListener: core.propWritableLazyLoaded(
+    (signals) => signals.addSignalListener,
+    loadSignals,
+  ),
+  removeSignalListener: core.propWritableLazyLoaded(
+    (signals) => signals.removeSignalListener,
+    loadSignals,
+  ),
+});
 
 const denoNsUnstableById = { __proto__: null };
 
@@ -181,17 +209,25 @@ denoNsUnstableById[unstableIds.bundle] = {
 
 // denoNsUnstableById[unstableIds.broadcastChannel] = { __proto__: null }
 
-denoNsUnstableById[unstableIds.cron] = {
-  cron: cron.cron,
-};
+denoNsUnstableById[unstableIds.cron] = {};
+ObjectDefineProperties(denoNsUnstableById[unstableIds.cron], {
+  cron: core.propWritableLazyLoaded((cron) => cron.cron, loadCron),
+});
 
-denoNsUnstableById[unstableIds.kv] = {
-  openKv: kv.openKv,
-  AtomicOperation: kv.AtomicOperation,
-  Kv: kv.Kv,
-  KvU64: kv.KvU64,
-  KvListIterator: kv.KvListIterator,
-};
+denoNsUnstableById[unstableIds.kv] = {};
+ObjectDefineProperties(denoNsUnstableById[unstableIds.kv], {
+  openKv: core.propWritableLazyLoaded((kv) => kv.openKv, loadKv),
+  AtomicOperation: core.propWritableLazyLoaded(
+    (kv) => kv.AtomicOperation,
+    loadKv,
+  ),
+  Kv: core.propWritableLazyLoaded((kv) => kv.Kv, loadKv),
+  KvU64: core.propWritableLazyLoaded((kv) => kv.KvU64, loadKv),
+  KvListIterator: core.propWritableLazyLoaded(
+    (kv) => kv.KvListIterator,
+    loadKv,
+  ),
+});
 
 denoNsUnstableById[unstableIds.net] = {
   listenDatagram: net.createListenDatagram(

@@ -80,7 +80,7 @@ deno_core::extension!(deno_ffi,
     op_ffi_unsafe_callback_ref,
     op_ffi_get_turbocall_target,
   ],
-  esm = [ "00_ffi.js" ],
+  lazy_loaded_esm = [ "00_ffi.js" ],
   options = {
     deno_rt_native_addon_loader: Option<DenoRtNativeAddonLoaderRc>,
   },
