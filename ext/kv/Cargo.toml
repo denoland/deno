@@ -16,13 +16,10 @@ path = "lib.rs"
 [dependencies]
 anyhow.workspace = true
 async-trait.workspace = true
-base64.workspace = true
-boxed_error.workspace = true
 bytes.workspace = true
 chrono = { workspace = true, features = ["now"] }
 deno_core.workspace = true
 deno_error.workspace = true
-deno_features.workspace = true
 deno_fetch.workspace = true
 deno_path_util.workspace = true
 deno_permissions.workspace = true
@@ -30,14 +27,10 @@ deno_tls.workspace = true
 denokv_proto.workspace = true
 denokv_remote.workspace = true
 denokv_sqlite.workspace = true
-faster-hex.workspace = true
 http.workspace = true
 http-body-util.workspace = true
 log.workspace = true
-num-bigint.workspace = true
 rand.workspace = true
 rusqlite.workspace = true
-serde.workspace = true
 sys_traits = { features = ["real"], workspace = true }
-thiserror.workspace = true
 url.workspace = true
