@@ -48,7 +48,6 @@ const {
 import {
   Http2Session as InternalHttp2Session,
   op_http2_callbacks,
-  op_http2_constants,
 } from "ext:core/ops";
 import net from "node:net";
 import assert from "node:assert";
@@ -240,7 +239,7 @@ function scheduleSendPending(session) {
 // HTTP2 Constants
 const MAX_ADDITIONAL_SETTINGS = 10;
 
-const constants = op_http2_constants();
+import * as constants from "ext:deno_node/internal/http2/constants.ts";
 const {
   NGHTTP2_CANCEL,
   NGHTTP2_REFUSED_STREAM,
@@ -472,8 +471,7 @@ function streamListenerRemoved(name) {
 function sessionListenerAdded(name) {
   switch (name) {
     case "remoteSettings":
-      this[kNativeFields][kBitfield] |=
-        1 << kSessionHasRemoteSettingsListeners;
+      this[kNativeFields][kBitfield] |= 1 << kSessionHasRemoteSettingsListeners;
       break;
     case "frameError":
       this[kNativeFields][kSessionFrameErrorListenerCount]++;
