@@ -462,7 +462,8 @@ function connectionListenerInternal(server, socket) {
   if (!server[kConnectionsKey]) server[kConnectionsKey] = new ConnectionsList();
   const connections = server[kConnectionsKey];
   connections.push(socket);
-  socket.on("close", () => connections.pop(socket));
+  const onConnectionClose = () => connections.pop(socket);
+  socket.on("close", onConnectionClose);
 
   if (server.timeout && typeof socket.setTimeout === "function") {
     socket.setTimeout(server.timeout);
@@ -492,6 +493,7 @@ function connectionListenerInternal(server, socket) {
     onData: null,
     onEnd: null,
     onClose: null,
+    onConnectionClose: onConnectionClose,
     onDrain: null,
     outgoing: [],
     incoming: [],
@@ -618,6 +620,19 @@ function onParserExecuteCommon(server, socket, parser, state, ret, d) {
       socket.destroy();
       return;
     }
+
+    // Detach the socket from the server by removing all server-added listeners.
+    // After this point the socket is fully owned by the connect/upgrade handler.
+    socket.removeListener("data", state.onData);
+    socket.removeListener("end", state.onEnd);
+    socket.removeListener("close", state.onClose);
+    socket.removeListener("close", state.onConnectionClose);
+    socket.removeListener("drain", state.onDrain);
+    socket.removeListener("error", socketOnError);
+    socket.removeListener("timeout", socketOnTimeout);
+    // Remove from connection tracking (normally done by the close listener)
+    const connections = server[kConnectionsKey];
+    if (connections) connections.pop(socket);
 
     parser.finish();
     freeParser(parser, req, socket);
