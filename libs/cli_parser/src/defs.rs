@@ -1838,7 +1838,10 @@ pub static BUNDLE_SUBCOMMAND: CommandDef = CommandDef {
       .set_true(),
     ArgDef::new("inline-imports")
       .long("inline-imports")
-      .set_true(),
+      .action(ArgAction::Set)
+      .num_args(NumArgs::Optional)
+      .require_equals()
+      .default_value("true"),
     ArgDef::new("check")
       .long("check")
       .action(ArgAction::Set)

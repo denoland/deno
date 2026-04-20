@@ -2459,7 +2459,7 @@ fn bundle_parse(result: &ParseResult, flags: &mut Flags) {
     minify: result.get_bool("minify"),
     keep_names: result.get_bool("keep-names"),
     code_splitting: result.get_bool("code-splitting"),
-    inline_imports: result.get_bool("inline-imports"),
+    inline_imports: !matches!(result.get_one("inline-imports"), Some("false")),
   });
 }
 
