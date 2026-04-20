@@ -1931,10 +1931,8 @@ fn install_parse(
       if result.contains(flag) {
         return Err(CliError::new(
           CliErrorKind::InvalidValue,
-          format!(
-            "Note: Permission flags can only be used in a global setting\n\
-             Use `deno install -g --allow-net jsr:@std/fs` instead"
-          ),
+          "Note: Permission flags can only be used in a global setting\n\
+             Use `deno install -g --allow-net jsr:@std/fs` instead",
         ));
       }
     }

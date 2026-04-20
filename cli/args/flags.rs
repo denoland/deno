@@ -1136,7 +1136,12 @@ pub fn flags_from_vec_with_initial_cwd(
       match e.kind {
         deno_cli_parser::CliErrorKind::DisplayVersion => Err(FlagsError::new(
           FlagsErrorKind::DisplayVersion,
-          format!("deno {}\n", DENO_VERSION_INFO.deno),
+          format!(
+            "deno {}\nv8 {}\ntypescript {}\n",
+            DENO_VERSION_INFO.deno,
+            deno_core::v8::VERSION_STRING,
+            DENO_VERSION_INFO.typescript,
+          ),
         )),
         _ => {
           // Convert parser error to FlagsError
