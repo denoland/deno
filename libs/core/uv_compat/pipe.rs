@@ -1600,6 +1600,40 @@ pub(crate) unsafe fn poll_pipe_handle(
     if !has_pending_work {
       (*pipe_ptr).flags &= !UV_HANDLE_ACTIVE;
     }
+
+    // Re-register tokio readiness interest if the poll paths above
+    // consumed it without leaving a waker. See the matching comment
+    // in tcp::poll_tcp_handle for the full rationale — in short, if
+    // poll_*_ready returns Ready and we fully drain it, no waker is
+    // registered for the *next* edge, so we either re-register here
+    // (if still Pending) or re-queue the handle for another pass
+    // (if still Ready).
+    let mut needs_requeue = false;
+    if (*pipe_ptr).internal_reading {
+      if let Some(ref afd) = (*pipe_ptr).internal_async_fd {
+        if matches!(afd.poll_read_ready(cx), Poll::Ready(_)) {
+          needs_requeue = true;
+        }
+      } else if let Some(ref stream) = (*pipe_ptr).internal_stream
+        && matches!(stream.poll_read_ready(cx), Poll::Ready(_))
+      {
+        needs_requeue = true;
+      }
+    }
+    if !(*pipe_ptr).internal_write_queue.is_empty() {
+      if let Some(ref afd) = (*pipe_ptr).internal_async_fd {
+        if matches!(afd.poll_write_ready(cx), Poll::Ready(_)) {
+          needs_requeue = true;
+        }
+      } else if let Some(ref stream) = (*pipe_ptr).internal_stream
+        && matches!(stream.poll_write_ready(cx), Poll::Ready(_))
+      {
+        needs_requeue = true;
+      }
+    }
+    if needs_requeue && let Some(w) = (*pipe_ptr).internal_waker.as_ref() {
+      w.mark_ready();
+    }
   }
 
   any_work

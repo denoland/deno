@@ -2449,8 +2449,10 @@ impl TLSWrap {
 
     // Get stream_base_state from OpState
     let state_global = stream_base_state_array(op_state);
-    inner.stream_base_state =
-      Some(v8::Global::new(scope, v8::Local::new(scope, &*state_global)));
+    inner.stream_base_state = Some(v8::Global::new(
+      scope,
+      v8::Local::new(scope, &*state_global),
+    ));
 
     0
   }

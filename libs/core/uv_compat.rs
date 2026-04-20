@@ -525,6 +525,14 @@ impl UvLoopInner {
       let mut any_work = false;
 
       // --- TCP ---
+      // IMPORTANT: always call `reset_queued()` on every popped
+      // handle, even ones we skip (not-live or inactive). If we
+      // skip without resetting, the per-handle `in_queue` flag
+      // stays `true` and a later `mark_ready()` from the same
+      // handle (e.g. after `uv_read_stop` cleared ACTIVE and then
+      // `uv_read_start` re-armed it) becomes a no-op — the handle
+      // never gets enqueued again and the event loop stops polling
+      // it entirely.
       let mut tcp_ready: VecDeque<usize> =
         std::mem::take(&mut *self.shared.ready_tcp.lock().unwrap());
       while let Some(ptr) = tcp_ready.pop_front() {
@@ -538,11 +546,6 @@ impl UvLoopInner {
         if !live {
           continue;
         }
-        // SAFETY: handle is live per the check above; flags read is safe.
-        if unsafe { (*tcp_ptr).flags } & UV_HANDLE_ACTIVE == 0 {
-          continue;
-        }
-        // Build a Context from the handle's own waker, then poll.
         // SAFETY: tcp_ptr is live; internal_waker is Some for any
         // handle that passed through uv_tcp_init.
         let handle_waker = unsafe {
@@ -552,6 +555,10 @@ impl UvLoopInner {
           }
         };
         handle_waker.reset_queued();
+        // SAFETY: handle is live per the check above; flags read is safe.
+        if unsafe { (*tcp_ptr).flags } & UV_HANDLE_ACTIVE == 0 {
+          continue;
+        }
         let waker = std::task::Waker::from(handle_waker);
         let mut cx = Context::from_waker(&waker);
         // SAFETY: tcp_ptr is live per above.
@@ -572,10 +579,6 @@ impl UvLoopInner {
         if !live {
           continue;
         }
-        // SAFETY: live.
-        if unsafe { (*pipe_ptr).flags } & UV_HANDLE_ACTIVE == 0 {
-          continue;
-        }
         let handle_waker = unsafe {
           match (*pipe_ptr).internal_waker.as_ref() {
             Some(w) => w.clone(),
@@ -583,6 +586,10 @@ impl UvLoopInner {
           }
         };
         handle_waker.reset_queued();
+        // SAFETY: live.
+        if unsafe { (*pipe_ptr).flags } & UV_HANDLE_ACTIVE == 0 {
+          continue;
+        }
         let waker = std::task::Waker::from(handle_waker);
         let mut cx = Context::from_waker(&waker);
         // SAFETY: live.
@@ -602,10 +609,6 @@ impl UvLoopInner {
         if !live {
           continue;
         }
-        // SAFETY: live.
-        if unsafe { (*tty_ptr).flags } & UV_HANDLE_ACTIVE == 0 {
-          continue;
-        }
         let handle_waker = unsafe {
           match (*tty_ptr).internal_waker.as_ref() {
             Some(w) => w.clone(),
@@ -613,6 +616,10 @@ impl UvLoopInner {
           }
         };
         handle_waker.reset_queued();
+        // SAFETY: live.
+        if unsafe { (*tty_ptr).flags } & UV_HANDLE_ACTIVE == 0 {
+          continue;
+        }
         let waker = std::task::Waker::from(handle_waker);
         let mut cx = Context::from_waker(&waker);
         // SAFETY: live.

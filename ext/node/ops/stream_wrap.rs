@@ -538,7 +538,8 @@ unsafe extern "C" fn on_uv_alloc(
   {
     ptr
   } else {
-    let layout = std::alloc::Layout::from_size_align(suggested_size, 1).unwrap();
+    let layout =
+      std::alloc::Layout::from_size_align(suggested_size, 1).unwrap();
     // SAFETY: layout has non-zero size (libuv provides a positive suggested_size).
     unsafe { std::alloc::alloc(layout) }
   };

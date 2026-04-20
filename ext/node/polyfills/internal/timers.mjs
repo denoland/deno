@@ -173,9 +173,9 @@ Timeout.prototype[kDestroy] = function () {
     cancelTimer_(this._timer);
     MapPrototypeDelete(activeTimers, this[kTimerId]);
     if (
-      this._asyncId !== undefined
-      && !this._asyncDestroyed
-      && enabledHooksExist()
+      this._asyncId !== undefined &&
+      !this._asyncDestroyed &&
+      enabledHooksExist()
     ) {
       this._asyncDestroyed = true;
       emitDestroy(this._asyncId);

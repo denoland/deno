@@ -1139,11 +1139,24 @@ pub(crate) unsafe fn poll_tcp_handle(
   // correct waker registration on every poll.
   unsafe {
     if let Some(ref stream) = (*tcp_ptr).internal_stream {
-      if (*tcp_ptr).internal_reading {
-        let _ = stream.poll_read_ready(cx);
+      // If poll_*_ready returns Ready, readiness is armed but tokio
+      // registers no waker. Re-queue the handle so the next run_io
+      // pass polls it again; otherwise the readiness sits there
+      // un-drained and no future data-ready wake ever fires (edge
+      // notification).
+      let mut needs_requeue = false;
+      if (*tcp_ptr).internal_reading
+        && matches!(stream.poll_read_ready(cx), Poll::Ready(_))
+      {
+        needs_requeue = true;
       }
-      if !(*tcp_ptr).internal_write_queue.is_empty() {
-        let _ = stream.poll_write_ready(cx);
+      if !(*tcp_ptr).internal_write_queue.is_empty()
+        && matches!(stream.poll_write_ready(cx), Poll::Ready(_))
+      {
+        needs_requeue = true;
+      }
+      if needs_requeue && let Some(w) = (*tcp_ptr).internal_waker.as_ref() {
+        w.mark_ready();
       }
     }
   }
