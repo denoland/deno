@@ -918,9 +918,15 @@ pub(crate) unsafe fn poll_tcp_handle(
               if count == 0 {
                 break;
               }
-              // Match libuv: if we didn't fill the buffer, the next
-              // read would likely return EAGAIN. Exit early to save
-              // a syscall (libuv's uv__read does the same).
+              // Match libuv's uv__read (src/unix/stream.c:1147):
+              // break on partial read to skip the predicted-EAGAIN
+              // syscall. tokio's readiness tracking is edge-style
+              // internally (`try_read` only clears the bit on
+              // WouldBlock), so this leaves readiness armed and
+              // unwoken. The re-register block at the end of this
+              // function detects that case and issues `mark_ready()`
+              // to put the handle back on the ready queue for the
+              // next run_io pass.
               if n < buflen {
                 break;
               }
@@ -1122,28 +1128,20 @@ pub(crate) unsafe fn poll_tcp_handle(
     }
   }
 
-  // 6. Re-register tokio interest.
+  // 6. Re-register tokio interest for the next edge.
   //
-  // `poll_read_ready` / `poll_write_ready` only store a waker when
-  // they return `Pending`. If they returned `Ready` at the top of
-  // this call and we then consumed all readiness via try_read /
-  // try_write until `WouldBlock`, tokio has now cleared readiness
-  // but has NO registered waker — so the next inbound data will
-  // never wake us.  Call poll_*_ready again here: if tokio is now
-  // in the `not-ready` state, this stores the waker; if it's still
-  // ready (unlikely but possible), the handle's waker gets re-queued
-  // the next time the reactor fires.
+  // `poll_*_ready` stores a waker only when it returns Pending.
+  // Under normal operation the read/write loops above hit
+  // WouldBlock on their last iteration, which clears tokio's
+  // internal readiness bit; the paired poll_*_ready here then
+  // returns Pending and stores the waker, and we're good.
   //
-  // The old scan-every-handle design worked around this by polling
-  // unconditionally every tick; the ready-queue design requires
-  // correct waker registration on every poll.
+  // The count==32 starvation break is an exception: it exits
+  // mid-stream with readiness still armed and no waker. In that
+  // case, poll_*_ready returns Ready (no waker stored) and we
+  // mark_ready to re-queue the handle for another run_io pass.
   unsafe {
     if let Some(ref stream) = (*tcp_ptr).internal_stream {
-      // If poll_*_ready returns Ready, readiness is armed but tokio
-      // registers no waker. Re-queue the handle so the next run_io
-      // pass polls it again; otherwise the readiness sits there
-      // un-drained and no future data-ready wake ever fires (edge
-      // notification).
       let mut needs_requeue = false;
       if (*tcp_ptr).internal_reading
         && matches!(stream.poll_read_ready(cx), Poll::Ready(_))

@@ -709,10 +709,21 @@ unsafe fn consume_read_callback(
   let context = v8::Local::new(handle_scope, context);
   let scope = &mut v8::ContextScope::new(handle_scope, context);
 
-  if nread <= 0 {
-    // EOF or error - invoke kOnExecute callback with the nread value.
-    // Use TryCatch to absorb exceptions from socket lifecycle errors
-    // (hang up, reset, etc.) which are expected during connection close.
+  if nread == 0 {
+    // Empty reads (EAGAIN/WouldBlock via libuv's alloc+nread=0 idiom)
+    // have special meaning to the HTTP parser and must be skipped
+    // here — matches Node.js's node_http_parser.cc:OnStreamRead line
+    // 827 ("Ignore, empty reads have special meaning"). This happens
+    // once per request under tokio: we call read_cb(nread=0) so the
+    // alloc buffer is freed, but the kOnExecute JS call must not
+    // fire for them, otherwise every request pays a spurious v8 scope
+    // + function-call round trip.
+    return;
+  }
+  if nread < 0 {
+    // EOF or error: invoke kOnExecute with the nread sentinel so the
+    // JS side can tear down the connection. TryCatch absorbs any
+    // exception thrown while the socket is in a half-closed state.
     let cb_obj = v8::Local::new(scope, &callbacks_global);
     if let Some(cb) = cb_obj.get_index(scope, K_ON_EXECUTE)
       && let Ok(func) = v8::Local::<v8::Function>::try_from(cb)
@@ -720,7 +731,6 @@ unsafe fn consume_read_callback(
       v8::tc_scope!(tc, scope);
       let nread_val = v8::Integer::new(tc, nread as i32);
       let _ = func.call(tc, cb_obj.into(), &[nread_val.into()]);
-      // Absorb any exception - EOF errors are normal lifecycle events
       if tc.has_caught() {
         tc.reset();
       }

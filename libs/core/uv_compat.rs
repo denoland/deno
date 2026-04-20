@@ -513,15 +513,24 @@ impl UvLoopInner {
   pub(crate) unsafe fn run_io(&self) -> bool {
     let mut did_any_work = false;
 
-    // Drain ready queues per-pass. Each popped handle is polled with a
+    // Drain ready queues once. Each popped handle is polled with a
     // `Context` built from its own per-handle waker; tokio re-registers
     // interest under that waker so the next readiness signal re-queues
-    // the handle for the next pass (or the next tick).
+    // the handle for the next tick.
     //
     // Validate each popped pointer against the authoritative `*_handles`
     // list before dereferencing — the handle may have been closed
     // between a waker fire and the drain.
-    for _pass in 0..16 {
+    //
+    // One pass only: looping in place (e.g. `for _ in 0..16`) batches
+    // more I/O per event-loop tick but under sustained HTTP load the
+    // ready queues refill as tokio delivers new readiness while we're
+    // still polling, so the loop never exits. Handles whose data lands
+    // mid-tick then wait for the entire batch to drain before their
+    // response fires, pushing p99 from ~1 ms (Node-matching) to 30–200
+    // ms at 50 concurrent connections. Libuv's uv_run does one
+    // uv__io_poll per iteration for the same reason.
+    {
       let mut any_work = false;
 
       // --- TCP ---
@@ -626,11 +635,8 @@ impl UvLoopInner {
         any_work |= unsafe { tty::poll_tty_handle(tty_ptr, &mut cx) };
       }
 
-      if !any_work {
-        break;
-      }
-      did_any_work = true;
-    } // end multi-pass loop
+      did_any_work = any_work;
+    }
 
     did_any_work
   }
