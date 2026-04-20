@@ -50,7 +50,33 @@ use crate::ops::stream_wrap_state::WriteRequestCallbackState;
 /// Per-environment stream_base_state array, stored in OpState.
 /// This is an Int32Array shared between JS and Rust (mirrors Node's AliasedInt32Array).
 pub struct StreamBaseState {
-  pub array: v8::Global<v8::Int32Array>,
+  pub array: Rc<v8::Global<v8::Int32Array>>,
+}
+
+/// Thread-local cache of the stream base state array. The array is a
+/// per-isolate singleton registered once at startup via
+/// `op_stream_base_register_state`, but write/read ops fetch it via
+/// `op_state.borrow::<StreamBaseState>()` on every call which does a
+/// `BTreeMap<TypeId, _>` lookup. At ~80k writes/sec that adds up to
+/// ~1.7% of CPU in the profile. The array never changes, so after the
+/// first lookup we keep an `Rc` clone in a thread_local.
+thread_local! {
+  static CACHED_STATE_ARRAY: RefCell<Option<Rc<v8::Global<v8::Int32Array>>>> =
+    const { RefCell::new(None) };
+}
+
+#[inline]
+pub(crate) fn stream_base_state_array(
+  op_state: &mut OpState,
+) -> Rc<v8::Global<v8::Int32Array>> {
+  CACHED_STATE_ARRAY.with(|c| {
+    if let Some(rc) = c.borrow().as_ref() {
+      return rc.clone();
+    }
+    let rc = op_state.borrow::<StreamBaseState>().array.clone();
+    *c.borrow_mut() = Some(rc.clone());
+    rc
+  })
 }
 
 pub(crate) struct StreamHandleData {
@@ -70,7 +96,7 @@ pub fn op_stream_base_register_state(
   scope: &mut v8::PinScope,
 ) {
   state.put(StreamBaseState {
-    array: v8::Global::new(scope, array),
+    array: Rc::new(v8::Global::new(scope, array)),
   });
 }
 
@@ -380,8 +406,8 @@ impl LibUvStreamWrap {
       return UV_EBADF;
     };
 
-    let state_global = &op_state.borrow::<StreamBaseState>().array;
-    let state_array = v8::Local::new(scope, state_global);
+    let state_global = stream_base_state_array(op_state);
+    let state_array = v8::Local::new(scope, &*state_global);
 
     self.install_read_state(ReadCallbackState {
       // SAFETY: `scope` is the currently active isolate scope for this op call.
@@ -1129,8 +1155,8 @@ impl LibUvStreamWrap {
     if stream.is_null() {
       return UV_EBADF;
     }
-    let state_global = &op_state.borrow::<StreamBaseState>().array;
-    let state_array = v8::Local::new(scope, state_global);
+    let state_global = stream_base_state_array(op_state);
+    let state_array = v8::Local::new(scope, &*state_global);
 
     let byte_length = buffer.byte_length();
 
@@ -1235,8 +1261,8 @@ impl LibUvStreamWrap {
     if stream.is_null() {
       return UV_EBADF;
     }
-    let state_global = &op_state.borrow::<StreamBaseState>().array;
-    let state_array = v8::Local::new(scope, state_global);
+    let state_global = stream_base_state_array(op_state);
+    let state_array = v8::Local::new(scope, &*state_global);
 
     // Pre-pass: sum per-chunk upper-bound sizes so the concat Vec is
     // allocated once with sufficient capacity — no growth reallocs as
@@ -1347,8 +1373,8 @@ impl LibUvStreamWrap {
     scope: &mut v8::PinScope,
     op_state: &mut OpState,
   ) -> i32 {
-    let state_global = &op_state.borrow::<StreamBaseState>().array;
-    let state_array = v8::Local::new(scope, state_global);
+    let state_global = stream_base_state_array(op_state);
+    let state_array = v8::Local::new(scope, &*state_global);
     self.write_string(
       scope,
       req_wrap_obj,
@@ -1366,8 +1392,8 @@ impl LibUvStreamWrap {
     scope: &mut v8::PinScope,
     op_state: &mut OpState,
   ) -> i32 {
-    let state_global = &op_state.borrow::<StreamBaseState>().array;
-    let state_array = v8::Local::new(scope, state_global);
+    let state_global = stream_base_state_array(op_state);
+    let state_array = v8::Local::new(scope, &*state_global);
     self.write_string(
       scope,
       req_wrap_obj,
@@ -1385,8 +1411,8 @@ impl LibUvStreamWrap {
     scope: &mut v8::PinScope,
     op_state: &mut OpState,
   ) -> i32 {
-    let state_global = &op_state.borrow::<StreamBaseState>().array;
-    let state_array = v8::Local::new(scope, state_global);
+    let state_global = stream_base_state_array(op_state);
+    let state_array = v8::Local::new(scope, &*state_global);
     self.write_string(
       scope,
       req_wrap_obj,
@@ -1404,8 +1430,8 @@ impl LibUvStreamWrap {
     scope: &mut v8::PinScope,
     op_state: &mut OpState,
   ) -> i32 {
-    let state_global = &op_state.borrow::<StreamBaseState>().array;
-    let state_array = v8::Local::new(scope, state_global);
+    let state_global = stream_base_state_array(op_state);
+    let state_array = v8::Local::new(scope, &*state_global);
     self.write_string(
       scope,
       req_wrap_obj,

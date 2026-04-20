@@ -55,6 +55,7 @@ use crate::ops::handle_wrap::OwnedPtr;
 use crate::ops::handle_wrap::ProviderType;
 use crate::ops::stream_wrap::LibUvStreamWrap;
 use crate::ops::stream_wrap::StreamBaseState;
+use crate::ops::stream_wrap::stream_base_state_array;
 use crate::ops::stream_wrap_state::ReadInterceptor;
 use crate::ops::tls::NodeTlsState;
 
@@ -1521,8 +1522,8 @@ impl TLSWrap {
         let existing = inner.pending_cleartext.get_or_insert_with(Vec::new);
         existing.extend_from_slice(data);
 
-        let state_global = &op_state.borrow::<StreamBaseState>().array;
-        let state_array = v8::Local::new(scope, state_global);
+        let state_global = stream_base_state_array(op_state);
+        let state_array = v8::Local::new(scope, &*state_global);
         state_array.set_index(
           scope,
           StreamBaseStateFields::BytesWritten as u32,
@@ -1565,8 +1566,8 @@ impl TLSWrap {
     // SAFETY: inner_ptr is valid; do_enc_out_action is reference-free
     unsafe { TLSWrapInner::do_enc_out_action(inner_ptr, enc_action) };
 
-    let state_global = &op_state.borrow::<StreamBaseState>().array;
-    let state_array = v8::Local::new(scope, state_global);
+    let state_global = stream_base_state_array(op_state);
+    let state_array = v8::Local::new(scope, &*state_global);
     state_array.set_index(
       scope,
       StreamBaseStateFields::BytesWritten as u32,
@@ -2447,9 +2448,9 @@ impl TLSWrap {
     inner.isolate = Some(unsafe { scope.as_raw_isolate_ptr() });
 
     // Get stream_base_state from OpState
-    let state_global = &op_state.borrow::<StreamBaseState>().array;
+    let state_global = stream_base_state_array(op_state);
     inner.stream_base_state =
-      Some(v8::Global::new(scope, v8::Local::new(scope, state_global)));
+      Some(v8::Global::new(scope, v8::Local::new(scope, &*state_global)));
 
     0
   }
@@ -2821,9 +2822,9 @@ impl TLSWrap {
     inner.isolate = Some(unsafe { scope.as_raw_isolate_ptr() });
     inner.cached_loop_ptr = unsafe { (*stream).loop_ };
 
-    let state_global = &op_state.borrow::<StreamBaseState>().array;
+    let state_global = stream_base_state_array(op_state);
     inner.stream_base_state =
-      Some(v8::Global::new(scope, v8::Local::new(scope, state_global)));
+      Some(v8::Global::new(scope, v8::Local::new(scope, &*state_global)));
 
     0
   }
