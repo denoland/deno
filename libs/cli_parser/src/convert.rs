@@ -1072,13 +1072,20 @@ fn validate_permission_args(
     }
   }
 
-  // Validate reload values are valid URLs (must start with a scheme like http:// or https://)
+  // Validate reload values are valid URLs or specifier prefixes (npm:, jsr:)
   for url in &flags.cache_blocklist {
     if url.is_empty()
-      || !url.contains("://")
       || url.starts_with("./")
       || url.starts_with('/')
     {
+      return Err(CliError::new(
+        CliErrorKind::InvalidValue,
+        format!("invalid reload URL: '{url}'"),
+      ));
+    }
+    // Must contain "://" (http://, https://, file://) or be a known
+    // specifier prefix (npm:, jsr:)
+    if !url.contains("://") && !url.starts_with("npm:") && !url.starts_with("jsr:") {
       return Err(CliError::new(
         CliErrorKind::InvalidValue,
         format!("invalid reload URL: '{url}'"),

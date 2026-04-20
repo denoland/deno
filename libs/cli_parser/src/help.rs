@@ -16,7 +16,11 @@ pub fn render_help(cmd: &CommandDef) -> String {
   }
 
   // Usage line
-  out.push_str(&format!("Usage: deno {} [OPTIONS]", cmd.name));
+  if cmd.name == "deno" {
+    out.push_str(&format!("Usage: {} [OPTIONS]", cmd.name));
+  } else {
+    out.push_str(&format!("Usage: deno {} [OPTIONS]", cmd.name));
+  }
 
   let positionals: Vec<&ArgDef> =
     cmd.all_args().filter(|a| a.positional).collect();
@@ -52,10 +56,12 @@ pub fn render_help(cmd: &CommandDef) -> String {
       if sub.name.starts_with("json_reference") {
         continue;
       }
+      // Only use the first line of about text in the commands table
+      let short_about = sub.about.lines().next().unwrap_or("");
       out.push_str(&format!(
         "  {:<width$}  {}\n",
         sub.name,
-        sub.about,
+        short_about,
         width = max_name_len
       ));
     }

@@ -430,7 +430,7 @@ pub static LOCK_ARGS: &[ArgDef] = &[
 
 pub static RUN_SUBCOMMAND: CommandDef = CommandDef {
   name: "run",
-  about: "Run a JavaScript or TypeScript program",
+  about: "Run a JavaScript or TypeScript program, or a task",
   aliases: &[],
   args: &[
     ArgDef::new("script_arg")
@@ -886,7 +886,7 @@ pub static TEST_SUBCOMMAND: CommandDef = CommandDef {
 
 pub static UPGRADE_SUBCOMMAND: CommandDef = CommandDef {
   name: "upgrade",
-  about: "Upgrade deno executable",
+  about: "Upgrade deno executable to given version",
   aliases: &[],
   args: &[
     ArgDef::new("dry-run").long("dry-run").set_true(),
@@ -1003,7 +1003,7 @@ pub static CHECK_SUBCOMMAND: CommandDef = CommandDef {
 
 pub static INFO_SUBCOMMAND: CommandDef = CommandDef {
   name: "info",
-  about: "Show info about cache or a file",
+  about: "Show info about cache or info related to source file",
   aliases: &[],
   args: &[
     ArgDef::new("file")
@@ -1025,7 +1025,7 @@ pub static INFO_SUBCOMMAND: CommandDef = CommandDef {
 
 pub static DOC_SUBCOMMAND: CommandDef = CommandDef {
   name: "doc",
-  about: "Show documentation",
+  about: "Generate and show documentation for a module or built-ins",
   aliases: &[],
   args: &[
     ArgDef::new("source_file")
@@ -1074,7 +1074,7 @@ pub static DOC_SUBCOMMAND: CommandDef = CommandDef {
 
 pub static TASK_SUBCOMMAND: CommandDef = CommandDef {
   name: "task",
-  about: "Run a task",
+  about: "Run a task defined in the configuration file",
   aliases: &[],
   args: &[
     ArgDef::new("task_name")
@@ -1302,7 +1302,7 @@ pub static COVERAGE_SUBCOMMAND: CommandDef = CommandDef {
 
 pub static REPL_SUBCOMMAND: CommandDef = CommandDef {
   name: "repl",
-  about: "Read Eval Print Loop",
+  about: "Start an interactive Read-Eval-Print Loop (REPL) for Deno",
   aliases: &[],
   args: &[
     ArgDef::new("eval")
@@ -1337,7 +1337,7 @@ pub static REPL_SUBCOMMAND: CommandDef = CommandDef {
 
 pub static INSTALL_SUBCOMMAND: CommandDef = CommandDef {
   name: "install",
-  about: "Install dependencies",
+  about: "Installs dependencies either in the local project or globally to a bin directory",
   aliases: &["i"],
   args: &[
     ArgDef::new("cmd")
@@ -1399,7 +1399,7 @@ pub static INSTALL_SUBCOMMAND: CommandDef = CommandDef {
 
 pub static UNINSTALL_SUBCOMMAND: CommandDef = CommandDef {
   name: "uninstall",
-  about: "Uninstall a script or dependency",
+  about: "Uninstalls a dependency or an executable script in the installation root's bin directory",
   aliases: &[],
   args: &[
     ArgDef::new("packages")
@@ -1500,7 +1500,7 @@ pub static CREATE_SUBCOMMAND: CommandDef = CommandDef {
 
 pub static JUPYTER_SUBCOMMAND: CommandDef = CommandDef {
   name: "jupyter",
-  about: "Jupyter kernel",
+  about: "Deno kernel for Jupyter notebooks",
   aliases: &[],
   args: &[
     ArgDef::new("install").long("install").set_true(),
@@ -1534,7 +1534,7 @@ pub static JUPYTER_SUBCOMMAND: CommandDef = CommandDef {
 
 pub static PUBLISH_SUBCOMMAND: CommandDef = CommandDef {
   name: "publish",
-  about: "Publish a package",
+  about: "Publish the current working directory's package or workspace",
   aliases: &[],
   args: &[
     ArgDef::new("token")
