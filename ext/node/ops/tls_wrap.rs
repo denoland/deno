@@ -777,6 +777,7 @@ struct TLSWrapInner {
   /// is freed, so in-flight write callbacks can avoid a dangling deref.
   alive: Rc<Cell<bool>>,
 
+
   // Error string (like Node's error_)
   error: Option<String>,
 
@@ -1329,6 +1330,48 @@ impl TLSWrapInner {
 }
 
 // ---------------------------------------------------------------------------
+// Public API for native cleartext consumers (e.g., HTTP/2 session)
+// ---------------------------------------------------------------------------
+
+/// Write cleartext data from a native consumer (e.g., HTTP/2 session)
+/// through the TLS layer. Feeds data into rustls for encryption, then
+/// flushes encrypted output to the underlying stream.
+///
+/// This bypasses the normal write_data / DoWrite path — no JS write
+/// objects, no write completion tracking. The encrypted output goes
+/// directly to the underlying TCP handle via enc_out.
+///
+/// # Safety
+/// `ptr` must be a valid opaque pointer returned by `TLSWrap::set_h2_consumer`,
+/// pointing to a live TLSWrapInner.
+pub(crate) unsafe fn h2_write_cleartext(
+  ptr: *mut std::ffi::c_void,
+  data: &[u8],
+) {
+  let ptr = ptr as *mut TLSWrapInner;
+  unsafe {
+    let inner = &mut *ptr;
+    let Some(ref mut conn) = inner.tls_conn else {
+      return;
+    };
+
+    // Feed cleartext to rustls writer
+    let mut offset = 0;
+    while offset < data.len() {
+      match conn.writer().write(&data[offset..]) {
+        Ok(0) => break,
+        Ok(n) => offset += n,
+        Err(_) => break,
+      }
+    }
+
+    // Flush encrypted output to the underlying stream.
+    // Use enc_out_flush_only which doesn't fire JS callbacks.
+    inner.enc_out_flush_only();
+  }
+}
+
+// ---------------------------------------------------------------------------
 // C callbacks for intercepting the underlying stream
 // ---------------------------------------------------------------------------
 
@@ -1489,6 +1532,22 @@ impl Drop for TLSWrap {
 }
 
 impl TLSWrap {
+  /// Get an opaque write handle for native cleartext writes (e.g., HTTP/2).
+  /// Returns the inner pointer (for `h2_write_cleartext`) and a clone of
+  /// the `alive` flag for lifetime safety.
+  ///
+  /// # Safety
+  /// The returned pointer is only valid while `alive` is true.
+  pub(crate) unsafe fn get_write_handle(
+    &self,
+  ) -> (*mut std::ffi::c_void, Rc<Cell<bool>>) {
+    let inner = unsafe { &*self.inner.as_mut_ptr() };
+    (
+      self.inner.as_mut_ptr() as *mut std::ffi::c_void,
+      inner.alive.clone(),
+    )
+  }
+
   /// Finalizer-safe cleanup that does NOT invoke JS callbacks.
   /// Safe to call from cppgc Drop.
   fn teardown(&self) {

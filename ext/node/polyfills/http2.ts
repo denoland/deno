@@ -2663,22 +2663,41 @@ function setupHandle(socket, type, options) {
   const handle = new InternalHttp2Session(type);
   handle[kOwner] = this;
 
-  // Try to take over the socket's TCP handle for direct I/O via libuv.
-  // This is equivalent to Node's handle.consume(socket._handle).
-  // Only works for plain TCP sockets (not TLS). For TLS or other socket
-  // types, fall back to the JS write path.
-  const canConsume = socket._handle &&
-    socket._handle.constructor?.name === "TCPWrap";
+  // Take over the socket's handle for direct native I/O.
+  // Equivalent to Node's handle.consume(socket._handle).
+  // Works for TCP (h2c), TLS (h2), and Pipe handles.
+  // Falls back to JS write path only for exotic stream types (JSStreamSocket).
+  const handleName = socket._handle?.constructor?.name;
+  const canConsume = handleName === "TCPWrap" ||
+    handleName === "TLSWrap" ||
+    handleName === "PipeWrap";
   if (canConsume) {
+    // Tell the native side about this stream so send_pending_data()
+    // can write H2 frames directly (via uv_write for TCP/Pipe, or
+    // through TLSWrap's rustls encryption for TLS).
     handle.consumeStream(socket._handle);
-    // Mark the socket handle as "reading" so the JS socket layer won't
-    // try to restart reads via readStart() (which would overwrite our
-    // h2 read callbacks).
-    socket._handle.reading = true;
-    socket._readableState.reading = true;
-    debug("i/o stream consumed (native)");
+
+    if (handleName === "TLSWrap") {
+      // For TLS: native write path only. Reads still flow through JS
+      // because the TLS encrypted read pipeline (TCP -> JS onread ->
+      // tlsWrap.receive -> rustls decrypt -> JS onread) depends on JS.
+      socket.on("data", (buf) => {
+        if (!this.destroyed) {
+          handle.receive(buf);
+        }
+      });
+      socket.resume();
+      debug("i/o stream consumed (TLS: native writes, JS reads)");
+    } else {
+      // For raw streams (TCP, Pipe): fully native I/O. Mark as "reading"
+      // so the JS socket layer won't try to restart reads via readStart()
+      // (which would overwrite our h2 read callbacks).
+      socket._handle.reading = true;
+      socket._readableState.reading = true;
+      debug("i/o stream consumed (native)");
+    }
   } else {
-    // JS write path fallback for TLS and non-TCP sockets.
+    // JS write path fallback for exotic stream types (JSStreamSocket, etc.).
     // Pump data from socket to session via JS events.
     socket.on("data", (buf) => {
       if (!this.destroyed) {
