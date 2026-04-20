@@ -1289,6 +1289,7 @@
     "parallel/test-http2-goaway-delayed-request.js": {},
     "parallel/test-http2-graceful-close.js": {},
     "parallel/test-http2-head-request.js": {},
+    "parallel/test-http2-info-headers.js": {},
     "parallel/test-http2-invalidargtypes-errors.js": {},
     "parallel/test-http2-large-write-multiple-requests.js": {},
     "parallel/test-http2-malformed-altsvc.js": {},
