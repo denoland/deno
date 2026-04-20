@@ -572,12 +572,22 @@ function asyncResetHandle(socket) {
   }
 }
 
-export const globalAgent = new Agent({
+export let globalAgent = new Agent({
   keepAlive: true,
   scheduling: "lifo",
   timeout: 5000,
 });
+
+export function setGlobalAgent(agent) {
+  globalAgent = agent;
+}
+
 export default {
   Agent,
-  globalAgent,
+  get globalAgent() {
+    return globalAgent;
+  },
+  set globalAgent(agent) {
+    globalAgent = agent;
+  },
 };

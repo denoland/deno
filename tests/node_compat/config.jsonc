@@ -1133,6 +1133,7 @@
     "parallel/test-http-client-insecure-http-parser-error.js": {},
     "parallel/test-http-client-invalid-path.js": {},
     "parallel/test-http-client-keep-alive-hint.js": {},
+    "parallel/test-http-client-override-global-agent.js": {},
     "parallel/test-http-client-race-2.js": {},
     "parallel/test-http-client-race.js": {},
     "parallel/test-http-client-read-in-error.js": {},
