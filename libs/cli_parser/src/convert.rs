@@ -2174,7 +2174,7 @@ fn outdated_parse(result: &ParseResult, flags: &mut Flags, is_update: bool) {
 
 fn clean_parse(result: &ParseResult, flags: &mut Flags) {
   let except_paths = result
-    .get_many("except")
+    .get_many("except-paths")
     .map(|v| v.iter().map(|s| s.to_string()).collect())
     .unwrap_or_default();
   let dry_run = result.get_bool("dry-run");

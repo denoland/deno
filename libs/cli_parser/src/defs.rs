@@ -592,6 +592,11 @@ pub static EVAL_SUBCOMMAND: CommandDef = CommandDef {
       .action(ArgAction::Append)
       .num_args(NumArgs::Optional)
       .require_equals(),
+    ArgDef::new("check")
+      .long("check")
+      .action(ArgAction::Set)
+      .num_args(NumArgs::Optional)
+      .require_equals(),
   ],
   arg_groups: &[
     UNSTABLE_ARGS,
@@ -599,6 +604,7 @@ pub static EVAL_SUBCOMMAND: CommandDef = CommandDef {
     COMPILE_ARGS,
     INSPECT_ARGS,
     RUNTIME_MISC_ARGS,
+    CPU_PROF_ARGS,
   ],
   subcommands: &[],
   default_subcommand: None,
@@ -854,6 +860,11 @@ pub static TEST_SUBCOMMAND: CommandDef = CommandDef {
       .long("ext")
       .action(ArgAction::Set)
       .num_args(NumArgs::Exact(1)),
+    ArgDef::new("check")
+      .long("check")
+      .action(ArgAction::Set)
+      .num_args(NumArgs::Optional)
+      .require_equals(),
   ],
   arg_groups: &[
     UNSTABLE_ARGS,
@@ -1149,6 +1160,15 @@ pub static BENCH_SUBCOMMAND: CommandDef = CommandDef {
       .action(ArgAction::Append)
       .num_args(NumArgs::Optional)
       .require_equals(),
+    ArgDef::new("check")
+      .long("check")
+      .action(ArgAction::Set)
+      .num_args(NumArgs::Optional)
+      .require_equals(),
+    ArgDef::new("ext")
+      .long("ext")
+      .action(ArgAction::Set)
+      .num_args(NumArgs::Exact(1)),
   ],
   arg_groups: &[
     UNSTABLE_ARGS,
@@ -1210,6 +1230,11 @@ pub static COMPILE_SUBCOMMAND: CommandDef = CommandDef {
     ArgDef::new("self-extracting")
       .long("self-extracting")
       .set_true(),
+    ArgDef::new("check")
+      .long("check")
+      .action(ArgAction::Set)
+      .num_args(NumArgs::Optional)
+      .require_equals(),
   ],
   arg_groups: &[
     UNSTABLE_ARGS,
@@ -1519,6 +1544,11 @@ pub static PUBLISH_SUBCOMMAND: CommandDef = CommandDef {
       .long("set-version")
       .action(ArgAction::Set)
       .num_args(NumArgs::Exact(1)),
+    ArgDef::new("check")
+      .long("check")
+      .action(ArgAction::Set)
+      .num_args(NumArgs::Optional)
+      .require_equals(),
   ],
   arg_groups: &[UNSTABLE_ARGS, COMPILE_ARGS],
   subcommands: &[],
@@ -1663,11 +1693,11 @@ pub static CLEAN_SUBCOMMAND: CommandDef = CommandDef {
   about: "Remove the cache directory",
   aliases: &[],
   args: &[
-    ArgDef::new("except")
-      .long("except")
+    ArgDef::new("except-paths")
+      .positional()
       .action(ArgAction::Append)
-      .num_args(NumArgs::ZeroOrMore)
-      .value_delimiter(','),
+      .num_args(NumArgs::ZeroOrMore),
+    ArgDef::new("except").long("except").short('e').set_true(),
     ArgDef::new("dry-run").long("dry-run").set_true(),
   ],
   arg_groups: &[UNSTABLE_ARGS],
@@ -1772,6 +1802,11 @@ pub static BUNDLE_SUBCOMMAND: CommandDef = CommandDef {
     ArgDef::new("inline-imports")
       .long("inline-imports")
       .set_true(),
+    ArgDef::new("check")
+      .long("check")
+      .action(ArgAction::Set)
+      .num_args(NumArgs::Optional)
+      .require_equals(),
   ],
   arg_groups: &[
     COMPILE_ARGS,
@@ -1833,6 +1868,16 @@ pub static X_SUBCOMMAND: CommandDef = CommandDef {
       .action(ArgAction::Set)
       .num_args(NumArgs::Optional)
       .default_value("dx"),
+    ArgDef::new("check")
+      .long("check")
+      .action(ArgAction::Set)
+      .num_args(NumArgs::Optional)
+      .require_equals(),
+    ArgDef::new("env-file")
+      .long("env-file")
+      .action(ArgAction::Append)
+      .num_args(NumArgs::Optional)
+      .require_equals(),
   ],
   arg_groups: &[
     UNSTABLE_ARGS,
