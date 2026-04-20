@@ -676,7 +676,7 @@ class Http2ServerResponse extends Stream {
     if (name[0] === ":") {
       assertValidPseudoHeader(name);
     } else if (!checkIsHttpToken(name)) {
-      throw new ERR_INVALID_HTTP_TOKEN("Header name", name);
+      this.destroy(new ERR_INVALID_HTTP_TOKEN("Header name", name));
     }
 
     this[kHeaders][name] = value;
@@ -702,7 +702,7 @@ class Http2ServerResponse extends Stream {
     if (name[0] === ":") {
       assertValidPseudoHeader(name);
     } else if (!checkIsHttpToken(name)) {
-      throw new ERR_INVALID_HTTP_TOKEN("Header name", name);
+      this.destroy(new ERR_INVALID_HTTP_TOKEN("Header name", name));
     }
 
     // Handle various possible cases the same as OutgoingMessage.appendHeader:
