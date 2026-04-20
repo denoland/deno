@@ -1551,9 +1551,13 @@ impl LibUvStreamWrap {
     );
     let req_ptr = Box::into_raw(req);
 
-    // SAFETY: req_ptr is a valid uv_write_t and stream is a valid TCP handle.
+    // SAFETY: req_ptr is a valid uv_write_t and stream is a valid
+    // initialized stream handle (TCP/pipe/TTY). Use the polymorphic
+    // `uv_write_owned` so pipe stdio (e.g. child.stdin) isn't
+    // mis-cast to TCP and corrupted on push_back into the wrong
+    // struct layout.
     let err = unsafe {
-      uv_compat::uv_write_owned_tcp(
+      uv_compat::uv_write_owned(
         req_ptr,
         stream as *mut _,
         data,

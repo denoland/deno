@@ -344,6 +344,48 @@ pub unsafe fn uv_write_owned_tcp(
   }
 }
 
+/// Polymorphic counterpart to `uv_write_owned_tcp` that dispatches on
+/// the runtime stream type. Callers (e.g. the stream_wrap `writev` op)
+/// hold a `*mut uv_stream_t` that may back a TCP, pipe, or TTY handle;
+/// blindly treating it as TCP corrupts the pipe's in-place VecDeque
+/// and trips UB (the write queue is at a different offset in each
+/// struct). For non-TCP types, fall back to the existing `uv_write`
+/// buffer-vector path by materializing a one-entry `uv_buf_t` over
+/// the owned data.
+///
+/// ### Safety
+/// `req` must be valid until the write callback fires. `handle` must
+/// be an initialized stream handle (TCP, pipe, or TTY).
+pub unsafe fn uv_write_owned(
+  req: *mut uv_write_t,
+  handle: *mut uv_stream_t,
+  data: Vec<u8>,
+  cb: Option<uv_write_cb>,
+) -> c_int {
+  unsafe {
+    match (*handle).r#type {
+      uv_handle_type::UV_TCP => {
+        uv_write_owned_tcp(req, handle as *mut uv_tcp_t, data, cb)
+      }
+      // Pipes/TTYs don't have an owned-Vec shortcut — build a single
+      // uv_buf_t and go through the regular `uv_write` dispatch which
+      // knows about the right per-type write queue layouts.
+      _ => {
+        let buf = uv_buf_t {
+          base: data.as_ptr() as *mut c_char,
+          len: data.len(),
+        };
+        // uv_write's pipe/tty paths internally copy the buffer into
+        // their own queue, so releasing ownership of `data` after the
+        // call is safe even though the bufs array lives on the stack.
+        let rc = uv_write(req, handle, &buf, 1, cb);
+        drop(data);
+        rc
+      }
+    }
+  }
+}
+
 /// Shared logic for queuing a pre-built Vec<u8> as a write.
 ///
 /// ### Safety

@@ -789,19 +789,66 @@ unsafe fn consume_read_callback(
     }
   }
 
-  // Invoke kOnExecute with the result (bytes parsed or error)
+  // Invoke kOnExecute with the result. Parse success => number of
+  // bytes consumed; parse error => `Error` object with the same
+  // shape the JS wrapper (`http_parser.ts` .execute override)
+  // builds for the non-consume path, so onParserExecuteCommon's
+  // `ret instanceof Error` branch fires and the connection is
+  // torn down cleanly. Without this, parse errors on the consume
+  // fast path (e.g. HTTP chunked-smuggling) silently drop the
+  // protocol error and leave the connection wedged.
   let cb_obj = v8::Local::new(scope, &callbacks_global);
   if let Some(cb) = cb_obj.get_index(scope, K_ON_EXECUTE)
     && let Ok(func) = v8::Local::<v8::Function>::try_from(cb)
   {
-    let result_val = if inner.got_exception
-      || (inner.parser.upgrade == 0 && err != sys::HPE_OK)
-    {
-      v8::Integer::new(scope, -1)
+    let is_error =
+      inner.got_exception || (inner.parser.upgrade == 0 && err != sys::HPE_OK);
+    let result_val: v8::Local<v8::Value> = if is_error {
+      let header_overflow = inner.header_overflow;
+      let data_len = data.len();
+      let msg = v8::String::new(scope, "Parse Error").unwrap();
+      let err_obj = v8::Exception::error(scope, msg).to_object(scope).unwrap();
+      let code_key = v8::String::new(scope, "code").unwrap().into();
+      let code_val: v8::Local<v8::Value> = v8::String::new(
+        scope,
+        if header_overflow {
+          "HPE_HEADER_OVERFLOW"
+        } else {
+          "HPE_ERROR"
+        },
+      )
+      .unwrap()
+      .into();
+      err_obj.set(scope, code_key, code_val);
+      let reason_key = v8::String::new(scope, "reason").unwrap().into();
+      let reason_val: v8::Local<v8::Value> = v8::String::new(
+        scope,
+        if header_overflow {
+          "Header overflow"
+        } else {
+          "Parse Error"
+        },
+      )
+      .unwrap()
+      .into();
+      err_obj.set(scope, reason_key, reason_val);
+      if header_overflow {
+        let msg_key = v8::String::new(scope, "message").unwrap().into();
+        let msg_val: v8::Local<v8::Value> =
+          v8::String::new(scope, "Parse Error: Header overflow")
+            .unwrap()
+            .into();
+        err_obj.set(scope, msg_key, msg_val);
+      }
+      let bytes_key = v8::String::new(scope, "bytesParsed").unwrap().into();
+      let bytes_val: v8::Local<v8::Value> =
+        v8::Integer::new(scope, data_len as i32).into();
+      err_obj.set(scope, bytes_key, bytes_val);
+      err_obj.into()
     } else {
-      v8::Integer::new(scope, nread_result)
+      v8::Integer::new(scope, nread_result).into()
     };
-    let _ = func.call(scope, cb_obj.into(), &[result_val.into()]);
+    let _ = func.call(scope, cb_obj.into(), &[result_val]);
   }
 }
 
