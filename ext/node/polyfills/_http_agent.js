@@ -103,8 +103,12 @@ export function Agent(options) {
     // case of socket.destroy() below this 'error' has no handler
     // and could cause unhandled exception.
 
-    if (!socket.writable) {
-      socket.destroy();
+    // In Node.js, nextTick (where 'free' is emitted) always runs before I/O,
+    // so the socket is guaranteed to be writable here. In Deno, I/O can
+    // interleave with nextTick, so a server FIN may arrive first making the
+    // socket non-writable but not yet destroyed. Use `destroyed` as the
+    // primary check; the socket will be cleaned up by the 'close' listener.
+    if (socket.destroyed) {
       return;
     }
 
