@@ -350,7 +350,6 @@ const kType = Symbol("type");
 const kWriteGeneric = Symbol("write-generic");
 const kSessions = Symbol("sessions");
 
-const kMaxOutstandingPings = Symbol("maxOutstandingPings");
 const kMaxOutstandingSettings = Symbol("maxOutstandingSettings");
 
 const kMaxFrameSize = (2 ** 24) - 1;
@@ -3082,10 +3081,6 @@ class Http2Session extends EventEmitter {
     this[kSocket] = socket;
     this[kTimeout] = null;
     this[kHandle] = undefined;
-    this[kMaxOutstandingPings] = MathMin(
-      options.maxOutstandingPings | 0,
-      2 ** 31 - 1,
-    ) || 10;
     this[kMaxOutstandingSettings] = MathMin(
       options.maxOutstandingSettings | 0,
       2 ** 31 - 1,
@@ -3238,11 +3233,6 @@ class Http2Session extends EventEmitter {
 
     const cb = pingCallback(callback);
     if (this.connecting || this.closed) {
-      process.nextTick(cb, false, 0.0, payload);
-      return;
-    }
-
-    if (this[kState].pendingAck >= this[kMaxOutstandingPings]) {
       process.nextTick(cb, false, 0.0, payload);
       return;
     }
