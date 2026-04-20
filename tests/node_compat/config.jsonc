@@ -1138,6 +1138,7 @@
     "parallel/test-http-client-race.js": {},
     "parallel/test-http-client-read-in-error.js": {},
     "parallel/test-http-client-reject-unexpected-agent.js": {},
+    "parallel/test-http-client-request-options.js": {},
     "parallel/test-http-client-res-destroyed.js": {},
     "parallel/test-http-client-set-timeout-after-end.js": {},
     "parallel/test-http-client-timeout-with-data.js": {},
