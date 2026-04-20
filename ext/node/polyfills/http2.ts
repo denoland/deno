@@ -172,6 +172,7 @@ import {
   kRequest,
   kSensitiveHeaders,
   kSocket,
+  kStrictSingleValueFields,
   MAX_ADDITIONAL_SETTINGS,
   NghttpError,
   prepareRequestHeadersArray,
@@ -1760,6 +1761,7 @@ class Http2Stream extends Duplex {
     const headersList = buildNgHeaderString(
       headers,
       assertValidPseudoHeaderTrailer,
+      this.session[kStrictSingleValueFields],
     );
     this[kSentTrailers] = headers;
 
@@ -1955,6 +1957,7 @@ function prepareResponseHeaders(stream, headersParam, options) {
   const headersList = buildNgHeaderString(
     headers,
     assertValidPseudoHeaderResponse,
+    stream.session[kStrictSingleValueFields],
   );
 
   return { headers, headersList, statusCode };
@@ -2057,6 +2060,7 @@ function processRespondWithFD(
     headersList = buildNgHeaderString(
       headers,
       assertValidPseudoHeaderResponse,
+      self.session[kStrictSingleValueFields],
     );
   } catch (err) {
     self.destroy(err);
@@ -2319,7 +2323,11 @@ class ServerHttp2Stream extends Http2Stream {
       headRequest = options.endStream = true;
     }
 
-    const headersList = buildNgHeaderString(headers);
+    const headersList = buildNgHeaderString(
+      headers,
+      assertValidPseudoHeader,
+      this.session[kStrictSingleValueFields],
+    );
 
     const streamOptions = options.endStream ? STREAM_OPTION_EMPTY_PAYLOAD : 0;
 
@@ -2640,6 +2648,7 @@ class ServerHttp2Stream extends Http2Stream {
     const headersList = buildNgHeaderString(
       headers,
       assertValidPseudoHeaderResponse,
+      this.session[kStrictSingleValueFields],
     );
     if (!this[kInfoHeaders]) {
       this[kInfoHeaders] = [headers];
@@ -3081,6 +3090,7 @@ class Http2Session extends EventEmitter {
       options.maxOutstandingSettings | 0,
       2 ** 31 - 1,
     ) || 10;
+    this[kStrictSingleValueFields] = options.strictSingleValueFields !== false;
 
     // Do not use nagle's algorithm
     if (typeof socket.setNoDelay === "function") {

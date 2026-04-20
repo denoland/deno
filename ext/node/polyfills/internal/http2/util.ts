@@ -107,6 +107,7 @@ const kSocket = Symbol("socket");
 const kProtocol = Symbol("protocol");
 const kProxySocket = Symbol("proxySocket");
 const kRequest = Symbol("request");
+const kStrictSingleValueFields = Symbol("strictSingleValueFields");
 
 // This set is defined strictly by the HTTP/2 specification. Only
 // :-prefixed headers defined by that specification may be added to
@@ -683,6 +684,7 @@ function prepareRequestHeadersArray(headers, session) {
   const headersList = buildNgHeaderString(
     rawHeaders,
     assertValidPseudoHeader,
+    session[kStrictSingleValueFields],
   );
 
   return {
@@ -734,7 +736,11 @@ function prepareRequestHeadersObject(headers, session) {
     }
   }
 
-  const headersList = buildNgHeaderString(headersObject);
+  const headersList = buildNgHeaderString(
+    headersObject,
+    assertValidPseudoHeader,
+    session[kStrictSingleValueFields],
+  );
 
   return {
     headersObject,
@@ -759,6 +765,7 @@ const kNoHeaderFlags = StringFromCharCode(NGHTTP2_NV_FLAG_NONE);
 function buildNgHeaderString(
   arrayOrMap,
   assertValuePseudoHeader = assertValidPseudoHeader,
+  strictSingleValueFields?,
 ) {
   let headers = "";
   let pseudoHeaders = "";
@@ -773,7 +780,8 @@ function buildNgHeaderString(
 
   function processHeader(key, value) {
     key = StringPrototypeToLowerCase(key);
-    const isSingleValueHeader = kSingleValueHeaders.has(key);
+    const isSingleValueHeader = strictSingleValueFields &&
+      kSingleValueHeaders.has(key);
     let isArray = ArrayIsArray(value);
     if (isArray) {
       switch (value.length) {
@@ -1007,6 +1015,7 @@ export {
   kRequest,
   kSensitiveHeaders,
   kSocket,
+  kStrictSingleValueFields,
   MAX_ADDITIONAL_SETTINGS,
   NghttpError,
   prepareRequestHeadersArray,
@@ -1035,6 +1044,7 @@ export default {
   kAuthority,
   kSensitiveHeaders,
   kSocket,
+  kStrictSingleValueFields,
   kProtocol,
   kProxySocket,
   kRequest,
