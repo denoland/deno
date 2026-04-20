@@ -482,7 +482,11 @@ pub static RUN_SUBCOMMAND: CommandDef = CommandDef {
       .action(ArgAction::Set)
       .num_args(NumArgs::Optional)
       .require_equals(),
-    ArgDef::new("tunnel").long("tunnel").long_aliases(&["connected"]).set_true().hidden(),
+    ArgDef::new("tunnel")
+      .long("tunnel")
+      .long_aliases(&["connected"])
+      .set_true()
+      .hidden(),
     // Allow --allow-scripts on run (through arg_groups, but also directly)
   ],
   arg_groups: &[

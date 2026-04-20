@@ -60,7 +60,6 @@ impl FlagsError {
   pub fn kind(&self) -> FlagsErrorKind {
     self.kind
   }
-
 }
 
 impl std::fmt::Display for FlagsError {
@@ -1263,8 +1262,11 @@ fn complete_task_names(args: &[String], shell: &str) -> Result<(), AnyError> {
   } else {
     args
   };
-  let string_args: Vec<String> =
-    completion_args.iter().filter(|a| !a.is_empty()).cloned().collect();
+  let string_args: Vec<String> = completion_args
+    .iter()
+    .filter(|a| !a.is_empty())
+    .cloned()
+    .collect();
   let flags =
     deno_cli_parser::convert::flags_from_vec(string_args).unwrap_or_default();
   let factory = crate::factory::CliFactory::from_flags(Arc::new(flags));

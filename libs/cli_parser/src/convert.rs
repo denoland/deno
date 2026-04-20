@@ -1074,10 +1074,7 @@ fn validate_permission_args(
 
   // Validate reload values are valid URLs or specifier prefixes (npm:, jsr:)
   for url in &flags.cache_blocklist {
-    if url.is_empty()
-      || url.starts_with("./")
-      || url.starts_with('/')
-    {
+    if url.is_empty() || url.starts_with("./") || url.starts_with('/') {
       return Err(CliError::new(
         CliErrorKind::InvalidValue,
         format!("invalid reload URL: '{url}'"),
@@ -1085,7 +1082,10 @@ fn validate_permission_args(
     }
     // Must contain "://" (http://, https://, file://) or be a known
     // specifier prefix (npm:, jsr:)
-    if !url.contains("://") && !url.starts_with("npm:") && !url.starts_with("jsr:") {
+    if !url.contains("://")
+      && !url.starts_with("npm:")
+      && !url.starts_with("jsr:")
+    {
       return Err(CliError::new(
         CliErrorKind::InvalidValue,
         format!("invalid reload URL: '{url}'"),
@@ -1911,9 +1911,21 @@ fn install_parse(
   // Permission flags (other than --allow-import) are only valid for global installs.
   {
     let perm_flags = [
-      "allow-all", "allow-read", "deny-read", "allow-write", "deny-write",
-      "allow-net", "deny-net", "allow-env", "deny-env", "allow-run",
-      "deny-run", "allow-sys", "deny-sys", "allow-ffi", "deny-ffi",
+      "allow-all",
+      "allow-read",
+      "deny-read",
+      "allow-write",
+      "deny-write",
+      "allow-net",
+      "deny-net",
+      "allow-env",
+      "deny-env",
+      "allow-run",
+      "deny-run",
+      "allow-sys",
+      "deny-sys",
+      "allow-ffi",
+      "deny-ffi",
     ];
     for flag in &perm_flags {
       if result.contains(flag) {
