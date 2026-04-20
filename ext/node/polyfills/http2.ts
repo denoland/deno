@@ -312,6 +312,9 @@ const kSessionRemoteSettingsIsUpToDate = 0;
 const kSessionPriorityListenerCount = 0;
 const kSessionFrameErrorListenerCount = 1;
 const kBitfield = 0;
+const kSessionHasRemoteSettingsListeners = 1;
+const kSessionMaxInvalidFrames = 0;
+const kSessionMaxRejectedStreams = 1;
 
 // Private symbols
 const kAlpnProtocol = Symbol("alpnProtocol");
@@ -336,6 +339,9 @@ const kState = Symbol("state");
 const kType = Symbol("type");
 const kWriteGeneric = Symbol("write-generic");
 const kSessions = Symbol("sessions");
+
+const kMaxOutstandingPings = Symbol("maxOutstandingPings");
+const kMaxOutstandingSettings = Symbol("maxOutstandingSettings");
 
 const kMaxFrameSize = (2 ** 24) - 1;
 const kMaxInt = (2 ** 32) - 1;
@@ -459,6 +465,31 @@ function streamListenerRemoved(name) {
       break;
     case "frameError":
       session[kNativeFields][kSessionFrameErrorListenerCount]--;
+      break;
+  }
+}
+
+function sessionListenerAdded(name) {
+  switch (name) {
+    case "remoteSettings":
+      this[kNativeFields][kBitfield] |=
+        1 << kSessionHasRemoteSettingsListeners;
+      break;
+    case "frameError":
+      this[kNativeFields][kSessionFrameErrorListenerCount]++;
+      break;
+  }
+}
+
+function sessionListenerRemoved(name) {
+  switch (name) {
+    case "remoteSettings":
+      if (this.listenerCount("remoteSettings") > 0) return;
+      this[kNativeFields][kBitfield] &=
+        ~(1 << kSessionHasRemoteSettingsListeners);
+      break;
+    case "frameError":
+      this[kNativeFields][kSessionFrameErrorListenerCount]--;
       break;
   }
 }
@@ -2750,6 +2781,9 @@ function setupHandle(socket, type, options) {
   if (socket.encrypted) {
     this[kAlpnProtocol] = socket.alpnProtocol;
     this[kEncrypted] = true;
+    if (socket.alpnProtocol === "h2") {
+      initOriginSet(this);
+    }
   } else {
     // 'h2c' is the protocol identifier for HTTP/2 over plain-text. We use
     // it here to identify any session that is not explicitly using an
@@ -3030,6 +3064,14 @@ class Http2Session extends EventEmitter {
     this[kSocket] = socket;
     this[kTimeout] = null;
     this[kHandle] = undefined;
+    this[kMaxOutstandingPings] = MathMin(
+      options.maxOutstandingPings | 0,
+      2 ** 31 - 1,
+    ) || 10;
+    this[kMaxOutstandingSettings] = MathMin(
+      options.maxOutstandingSettings | 0,
+      2 ** 31 - 1,
+    ) || 10;
 
     // Do not use nagle's algorithm
     if (typeof socket.setNoDelay === "function") {
@@ -3067,23 +3109,11 @@ class Http2Session extends EventEmitter {
     this[kNativeFields] ||= trackAssignmentsTypedArray(
       new Uint8Array(kSessionUint8FieldCount),
     );
-    // this.on("newListener", sessionListenerAdded);
-    // this.on("removeListener", sessionListenerRemoved);
+    this.on("newListener", sessionListenerAdded);
+    this.on("removeListener", sessionListenerRemoved);
 
-    // Process data on the next tick - a remoteSettings handler may be attached.
-    // https://github.com/nodejs/node/issues/35981
-    process.nextTick(() => {
-      // Socket already has some buffered data - emulate receiving it
-      // https://github.com/nodejs/node/issues/35475
-      // https://github.com/nodejs/node/issues/34532
-      if (socket.readableLength) {
-        let buf;
-        while ((buf = socket.read()) !== null) {
-          debugSession(type, `${buf.length} bytes already in buffer`);
-          this[kHandle].receive(buf);
-        }
-      }
-    });
+    // NOTE: buffered data is drained in setupHandle's process.nextTick,
+    // not here. Having it in both places risks double-processing.
 
     debugSession(type, "created");
   }
@@ -3193,6 +3223,11 @@ class Http2Session extends EventEmitter {
       return;
     }
 
+    if (this[kState].pendingAck >= this[kMaxOutstandingPings]) {
+      process.nextTick(cb, false, 0.0, payload);
+      return;
+    }
+
     return this[kHandle].ping(payload, cb);
   }
 
@@ -3291,6 +3326,9 @@ class Http2Session extends EventEmitter {
     }
     debugSessionObj(this, "sending settings");
 
+    if (this[kState].pendingAck >= this[kMaxOutstandingSettings]) {
+      throw new ERR_HTTP2_MAX_PENDING_SETTINGS_ACK();
+    }
     this[kState].pendingAck++;
 
     const settingsFn = FunctionPrototypeBind(
