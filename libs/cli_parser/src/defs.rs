@@ -769,6 +769,10 @@ pub static LINT_SUBCOMMAND: CommandDef = CommandDef {
       .action(ArgAction::Set)
       .num_args(NumArgs::Exact(1)),
     ArgDef::new("no-config").long("no-config").set_true(),
+    ArgDef::new("ext")
+      .long("ext")
+      .action(ArgAction::Set)
+      .num_args(NumArgs::Exact(1)),
   ],
   arg_groups: &[UNSTABLE_ARGS, PERMISSION_ARGS],
   subcommands: &[],
@@ -985,7 +989,12 @@ pub static CHECK_SUBCOMMAND: CommandDef = CommandDef {
     ArgDef::new("doc-only").long("doc-only").set_true(),
     ArgDef::new("check-js").long("check-js").set_true().hidden(),
   ],
-  arg_groups: &[UNSTABLE_ARGS, COMPILE_ARGS, RUNTIME_MISC_ARGS],
+  arg_groups: &[
+    UNSTABLE_ARGS,
+    COMPILE_ARGS,
+    RUNTIME_MISC_ARGS,
+    PERMISSION_ARGS,
+  ],
   subcommands: &[],
   default_subcommand: None,
   trailing_var_arg: false,
@@ -1056,7 +1065,7 @@ pub static DOC_SUBCOMMAND: CommandDef = CommandDef {
       .num_args(NumArgs::Exact(1)),
     ArgDef::new("builtin").long("builtin").set_true(),
   ],
-  arg_groups: &[UNSTABLE_ARGS, COMPILE_ARGS],
+  arg_groups: &[UNSTABLE_ARGS, COMPILE_ARGS, PERMISSION_ARGS],
   subcommands: &[],
   default_subcommand: None,
   trailing_var_arg: false,
@@ -1699,6 +1708,16 @@ pub static CLEAN_SUBCOMMAND: CommandDef = CommandDef {
       .num_args(NumArgs::ZeroOrMore),
     ArgDef::new("except").long("except").short('e').set_true(),
     ArgDef::new("dry-run").long("dry-run").set_true(),
+    ArgDef::new("node-modules-dir")
+      .long("node-modules-dir")
+      .action(ArgAction::Set)
+      .num_args(NumArgs::Optional)
+      .require_equals(),
+    ArgDef::new("vendor")
+      .long("vendor")
+      .action(ArgAction::Set)
+      .num_args(NumArgs::Optional)
+      .require_equals(),
   ],
   arg_groups: &[UNSTABLE_ARGS],
   subcommands: &[],

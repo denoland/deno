@@ -787,7 +787,7 @@ pub struct AvailableTaskDescription {
   pub task: TaskDefinition,
 }
 
-fn get_available_tasks(
+pub fn get_available_tasks(
   workspace_dir: &Arc<WorkspaceDirectory>,
   tasks_config: &WorkspaceTasksConfig,
 ) -> Result<Vec<AvailableTaskDescription>, std::io::Error> {

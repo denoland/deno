@@ -720,7 +720,11 @@ async fn resolve_flags_and_init(
       Ok(flags) => flags,
       Err(err) if err.kind() == args::FlagsErrorKind::DisplayVersion => {
         // Ignore results to avoid BrokenPipe errors.
-        let _ = err.print();
+        // Version output goes to stdout (matching clap behavior).
+        use std::io::Write;
+        let _ = std::io::stdout()
+          .lock()
+          .write_all(err.to_string().as_bytes());
         deno_runtime::exit(0);
       }
       Err(err) => exit_for_error(AnyError::from(err), initial_cwd.as_deref()),

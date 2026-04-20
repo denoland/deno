@@ -62,8 +62,11 @@ fn parse_socket_addr(s: &str) -> Option<SocketAddr> {
 pub fn flags_from_vec(args: Vec<String>) -> Result<Flags, CliError> {
   let parsed = crate::parse::parse(&crate::defs::DENO_ROOT, &args)?;
 
-  // If --version was set, return DisplayVersion before converting
-  if parsed.get_bool("version") {
+  // If --version was set at the root level (not as a subcommand flag like
+  // `upgrade --version <value>`), return DisplayVersion.
+  // Check: version is present, no subcommand OR subcommand doesn't have its
+  // own --version flag that takes a value.
+  if parsed.get_bool("version") && parsed.get_one("version").is_none() {
     return Err(CliError::new(CliErrorKind::DisplayVersion, "version"));
   }
 
@@ -421,8 +424,9 @@ fn expand_net_list(entries: Vec<String>) -> Vec<String> {
 }
 
 fn permission_args_parse(result: &ParseResult, flags: &mut Flags) {
-  if let Some(set) = result.get_one("permission-set") {
-    flags.permission_set = Some(set.to_string());
+  if result.contains("permission-set") {
+    flags.permission_set =
+      Some(result.get_one("permission-set").unwrap_or("").to_string());
   }
 
   // Helper: for permission flags that use Append + ZeroOrMore + value_delimiter
@@ -1893,13 +1897,9 @@ fn install_parse(
     return Ok(());
   }
 
-  // Permission flags are only valid for global installs
-  if flags.permissions.has_permission() {
-    return Err(CliError::new(
-      CliErrorKind::InvalidValue,
-      "Note: Permission flags can only be used in a global setting",
-    ));
-  }
+  // Note: permission flags on non-global installs are validated at runtime,
+  // not during flag parsing. --allow-import is valid for local entrypoint
+  // installs.
 
   let lockfile_only = result.get_bool("lockfile-only");
 

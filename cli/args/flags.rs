@@ -61,11 +61,6 @@ impl FlagsError {
     self.kind
   }
 
-  pub fn print(&self) -> std::io::Result<()> {
-    use std::io::Write;
-    let mut stderr = std::io::stderr().lock();
-    write!(stderr, "{}", self.message)
-  }
 }
 
 impl std::fmt::Display for FlagsError {
@@ -815,6 +810,13 @@ fn validate_parser_flags(
           "error: the following required arguments were not provided:\n  <files>...\n\ntip: '--ext' requires files to be specified",
         ));
       }
+      // --fail-fast requires --check
+      if fmt_flags.fail_fast && !fmt_flags.check {
+        return Err(make_flags_error(
+          FlagsErrorKind::MissingRequiredArgument,
+          "error: the following required arguments were not provided:\n  --check\n\ntip: '--fail-fast' requires '--check'",
+        ));
+      }
     }
     DenoSubcommand::Doc(doc_flags) => {
       // --html requires source files
@@ -1222,11 +1224,109 @@ pub fn handle_shell_completion(_cwd: &Path) -> Result<(), AnyError> {
   let shell = std::env::var("COMPLETE").unwrap_or_default();
   let args: Vec<String> = std::env::args().collect();
 
+  // Check if we're completing task names
+  if is_completing_task(&args) {
+    complete_task_names(&args, &shell)?;
+    return Ok(());
+  }
+
   deno_cli_parser::completions::try_complete(
     &deno_cli_parser::defs::DENO_ROOT,
     &args,
     &shell,
   );
+
+  Ok(())
+}
+
+/// Check if the args indicate we're completing a task subcommand.
+fn is_completing_task(args: &[String]) -> bool {
+  args.iter().skip(1).any(|a| a == "task")
+}
+
+/// Generate task name completions by reading deno.json/package.json.
+fn complete_task_names(args: &[String], shell: &str) -> Result<(), AnyError> {
+  use std::io::Write;
+  use std::sync::Arc;
+
+  // Parse flags to pick up --config if specified
+  let string_args: Vec<String> =
+    args.iter().filter(|a| !a.is_empty()).cloned().collect();
+  let flags =
+    deno_cli_parser::convert::flags_from_vec(string_args).unwrap_or_default();
+  let factory = crate::factory::CliFactory::from_flags(Arc::new(flags));
+  let Ok(options) = factory.cli_options() else {
+    return Ok(());
+  };
+
+  let member_dir = &options.start_dir;
+  let Ok(tasks_config) = member_dir.to_tasks_config() else {
+    return Ok(());
+  };
+
+  let mut tasks =
+    crate::tools::task::get_available_tasks(member_dir, &tasks_config)
+      .unwrap_or_default();
+  tasks.sort_by(|a, b| a.name.cmp(&b.name));
+
+  let stdout = std::io::stdout();
+  let mut out = std::io::BufWriter::new(stdout.lock());
+
+  for task in &tasks {
+    let desc = task.task.description.as_deref().unwrap_or("");
+    match shell {
+      "fish" => {
+        if desc.is_empty() {
+          let _ = writeln!(out, "{}", task.name);
+        } else {
+          let _ = writeln!(out, "{}\t{}", task.name, desc);
+        }
+      }
+      "zsh" => {
+        if desc.is_empty() {
+          let _ = writeln!(out, "{}", task.name);
+        } else {
+          let _ = writeln!(out, "{}:{}", task.name, desc);
+        }
+      }
+      _ => {
+        let _ = writeln!(out, "{}", task.name);
+      }
+    }
+  }
+
+  // Also add task subcommand flags
+  let task_def = deno_cli_parser::defs::DENO_ROOT.find_subcommand("task");
+  if let Some(task_def) = task_def {
+    for arg in task_def.all_args() {
+      if arg.hidden || arg.positional {
+        continue;
+      }
+      if let Some(long) = arg.long {
+        let flag = format!("--{long}");
+        let help = arg.help;
+        match shell {
+          "fish" => {
+            if help.is_empty() {
+              let _ = writeln!(out, "{flag}");
+            } else {
+              let _ = writeln!(out, "{flag}\t{help}");
+            }
+          }
+          "zsh" => {
+            if help.is_empty() {
+              let _ = writeln!(out, "{flag}");
+            } else {
+              let _ = writeln!(out, "{flag}:{help}");
+            }
+          }
+          _ => {
+            let _ = writeln!(out, "{flag}");
+          }
+        }
+      }
+    }
+  }
 
   Ok(())
 }

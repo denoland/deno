@@ -422,7 +422,8 @@ fn parse_short_flag(
                 .is_some();
               if !next_is_flag {
                 let remaining: String = chars[ci + 1..].iter().collect();
-                apply_value_with_delimiter(result, arg_def, &remaining);
+                let value = remaining.strip_prefix('=').unwrap_or(&remaining);
+                apply_value_with_delimiter(result, arg_def, value);
                 return Ok(pos + 1);
               }
             }
@@ -431,9 +432,10 @@ fn parse_short_flag(
           _ => {
             // This flag takes a value
             if ci + 1 < chars.len() {
-              // Rest of the short flags string is the value: -fvalue
-              let value: String = chars[ci + 1..].iter().collect();
-              apply_value_with_delimiter(result, arg_def, &value);
+              // Rest of the short flags string is the value: -fvalue or -f=value
+              let remaining: String = chars[ci + 1..].iter().collect();
+              let value = remaining.strip_prefix('=').unwrap_or(&remaining);
+              apply_value_with_delimiter(result, arg_def, value);
               return Ok(pos + 1);
             } else if pos + 1 < args.len() {
               // Next arg is the value
