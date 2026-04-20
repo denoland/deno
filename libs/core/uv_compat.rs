@@ -2,7 +2,6 @@
 
 // Drop-in replacement for libuv integrated with deno_core's event loop.
 
-pub mod instr;
 mod pipe;
 mod stream;
 mod tcp;
@@ -514,22 +513,6 @@ impl UvLoopInner {
   pub(crate) unsafe fn run_io(&self) -> bool {
     let mut did_any_work = false;
 
-    // --- instrumentation ---
-    let instr_timer = if instr::enabled() {
-      Some(instr::ScopeTimer::start())
-    } else {
-      None
-    };
-    let mut pass_count: u64 = 0;
-    if instr::enabled() {
-      let tcp_count = self.tcp_handles.borrow().len() as u64;
-      instr::with_stats(|s| {
-        s.run_io_calls += 1;
-        s.run_io_tcp_handles.record(tcp_count);
-      });
-    }
-    // --- /instrumentation ---
-
     // Drain ready queues per-pass. Each popped handle is polled with a
     // `Context` built from its own per-handle waker; tokio re-registers
     // interest under that waker so the next readiness signal re-queues
@@ -636,20 +619,11 @@ impl UvLoopInner {
         any_work |= unsafe { tty::poll_tty_handle(tty_ptr, &mut cx) };
       }
 
-      pass_count += 1;
       if !any_work {
         break;
       }
       did_any_work = true;
     } // end multi-pass loop
-
-    if let Some(t) = instr_timer {
-      let ns = t.elapsed_ns();
-      instr::with_stats(|s| {
-        s.run_io_time.record(ns);
-        s.run_io_passes.record(pass_count);
-      });
-    }
 
     did_any_work
   }
@@ -794,13 +768,6 @@ impl UvLoopInner {
       // the waker memory is released.
       if let Some(w) = tcp.internal_waker.take() {
         w.detach();
-      }
-      if instr::enabled() {
-        instr::with_stats(|s| s.conn_closes += 1);
-        if let Some(t) = tcp.instr_accept_time.take() {
-          let ns = t.elapsed().as_nanos() as u64;
-          instr::with_stats(|s| s.conn_accept_to_close.record(ns));
-        }
       }
       tcp.internal_reading = false;
       tcp.internal_alloc_cb = None;

@@ -2228,27 +2228,6 @@ impl JsRuntime {
     let mut did_work = false;
     let mut uv_did_io = false;
 
-    // --- instrumentation ---
-    let instr_on = uv_compat::instr::enabled();
-    let instr_tick_timer =
-      instr_on.then(uv_compat::instr::ScopeTimer::start);
-    if instr_on {
-      let now = std::time::Instant::now();
-      uv_compat::instr::with_stats(|s| {
-        s.tick_count += 1;
-        if s.start.is_none() {
-          s.start = Some(now);
-        }
-        if let Some(last) = s.last_tick_end {
-          let ns = now.duration_since(last).as_nanos() as u64;
-          s.gap_between_ticks.record(ns);
-        }
-      });
-    }
-    let phase_timer_start =
-      instr_on.then(uv_compat::instr::ScopeTimer::start);
-    // --- /instrumentation ---
-
     // ===== Phase 1: Timers =====
     // 1a. Fire expired libuv C timers
     if let Some(uv_inner_ptr) = context_state.uv_loop_inner.get() {
@@ -2256,13 +2235,6 @@ impl JsRuntime {
       unsafe { (*uv_inner_ptr).update_time() };
       unsafe { (*uv_inner_ptr).run_timers() };
     }
-
-    if let Some(t) = phase_timer_start {
-      let ns = t.elapsed_ns();
-      uv_compat::instr::with_stats(|s| s.phase_timers_ns.record(ns));
-    }
-    let phase_pending_start =
-      instr_on.then(uv_compat::instr::ScopeTimer::start);
 
     // ===== Phase 2: Pending work =====
     // Module progress polling (before ops, matching original ordering)
@@ -2311,13 +2283,6 @@ impl JsRuntime {
     Self::dispatch_rejections(scope, context_state, exception_state)?;
     scope.perform_microtask_checkpoint();
 
-    if let Some(t) = phase_pending_start {
-      let ns = t.elapsed_ns();
-      uv_compat::instr::with_stats(|s| s.phase_pending_ns.record(ns));
-    }
-    let phase_idle_prepare_start =
-      instr_on.then(uv_compat::instr::ScopeTimer::start);
-
     // ===== Phase 3: Idle / Prepare =====
     // In libuv: idle runs after pending callbacks, prepare runs right
     // before I/O polling. Both must precede I/O.
@@ -2331,18 +2296,11 @@ impl JsRuntime {
       scope.perform_microtask_checkpoint();
     }
 
-    if let Some(t) = phase_idle_prepare_start {
-      let ns = t.elapsed_ns();
-      uv_compat::instr::with_stats(|s| s.phase_idle_prepare_ns.record(ns));
-    }
-    let phase_io_start = instr_on.then(uv_compat::instr::ScopeTimer::start);
-
     // ===== Phase 4: I/O =====
     // Tight I/O loop: when run_io reads data and fires callbacks, the
     // resulting JS work (nextTick/macrotasks from HTTP2 frame processing)
     // may produce write calls. Drain those immediately and re-poll for
     // more data, avoiding kqueue/kevent round-trip latency between batches.
-    let mut instr_spins: u64 = 0;
     if let Some(uv_inner_ptr) = context_state.uv_loop_inner.get() {
       unsafe {
         (*uv_inner_ptr).set_waker(cx.waker());
@@ -2353,7 +2311,6 @@ impl JsRuntime {
           break;
         }
         uv_did_io = true;
-        instr_spins += 1;
         // Flush microtasks from I/O callbacks, then drain ticks.
         // processTicksAndRejections runs op_run_microtasks internally,
         // so the trailing checkpoint is only needed when no ticks ran.
@@ -2364,16 +2321,6 @@ impl JsRuntime {
         }
       }
     }
-
-    if let Some(t) = phase_io_start {
-      let ns = t.elapsed_ns();
-      uv_compat::instr::with_stats(|s| {
-        s.phase_io_ns.record(ns);
-        s.io_spin_iterations.record(instr_spins);
-      });
-    }
-    let phase_check_start =
-      instr_on.then(uv_compat::instr::ScopeTimer::start);
 
     // ===== Phase 5: Check =====
     // In libuv: check runs right after I/O polling.
@@ -2414,13 +2361,6 @@ impl JsRuntime {
       Self::drain_next_tick_and_macrotasks(scope, context_state)?;
     }
 
-    if let Some(t) = phase_check_start {
-      let ns = t.elapsed_ns();
-      uv_compat::instr::with_stats(|s| s.phase_check_ns.record(ns));
-    }
-    let phase_close_start =
-      instr_on.then(uv_compat::instr::ScopeTimer::start);
-
     // ===== Phase 6: Close =====
     exception_state.check_exception_condition(scope)?;
     {
@@ -2452,20 +2392,6 @@ impl JsRuntime {
         .is_empty()
     {
       scope.perform_microtask_checkpoint();
-    }
-
-    if let Some(t) = phase_close_start {
-      let ns = t.elapsed_ns();
-      uv_compat::instr::with_stats(|s| s.phase_close_ns.record(ns));
-    }
-    if let Some(t) = instr_tick_timer {
-      let ns = t.elapsed_ns();
-      let now = std::time::Instant::now();
-      uv_compat::instr::with_stats(|s| {
-        s.tick_time.record(ns);
-        s.last_tick_end = Some(now);
-      });
-      uv_compat::instr::maybe_dump();
     }
 
     // Evaluate pending state

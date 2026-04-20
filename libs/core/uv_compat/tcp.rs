@@ -124,17 +124,6 @@ pub struct uv_tcp_t {
   /// (tests, temporary values); real handles get one in `uv_tcp_init`.
   pub(crate) internal_waker:
     Option<std::sync::Arc<crate::uv_compat::waker::TcpHandleWaker>>,
-  /// Instrumentation: when this connection was accepted (populated by
-  /// `uv_accept` for server-side sockets).
-  pub(crate) instr_accept_time: Option<std::time::Instant>,
-  /// Instrumentation: whether we've already recorded the first read.
-  pub(crate) instr_first_read_done: bool,
-  /// Instrumentation: whether we've already recorded the first write.
-  pub(crate) instr_first_write_done: bool,
-  /// Instrumentation: last time `poll_tcp_handle` saw the read side
-  /// register pending (WouldBlock). Used to measure time until the
-  /// next successful read completes.
-  pub(crate) instr_read_pending_since: Option<std::time::Instant>,
 }
 
 /// In-flight TCP connect operation.
@@ -274,10 +263,6 @@ pub unsafe fn uv_tcp_init(loop_: *mut uv_loop_t, tcp: *mut uv_tcp_t) -> c_int {
     let shared = crate::uv_compat::get_inner(loop_).shared.clone();
     let w = crate::uv_compat::waker::TcpHandleWaker::new(tcp as usize, shared);
     write(addr_of_mut!((*tcp).internal_waker), Some(w));
-    write(addr_of_mut!((*tcp).instr_accept_time), None);
-    write(addr_of_mut!((*tcp).instr_first_read_done), false);
-    write(addr_of_mut!((*tcp).instr_first_write_done), false);
-    write(addr_of_mut!((*tcp).instr_read_pending_since), None);
   }
   0
 }
@@ -742,12 +727,6 @@ pub unsafe fn uv_accept(
           stream.set_nodelay(true).ok();
         }
         client_tcp.internal_stream = Some(stream);
-        if crate::uv_compat::instr::enabled() {
-          client_tcp.instr_accept_time = Some(std::time::Instant::now());
-          client_tcp.instr_first_read_done = false;
-          client_tcp.instr_first_write_done = false;
-          crate::uv_compat::instr::with_stats(|s| s.conn_accepts += 1);
-        }
         0
       }
       None => UV_EAGAIN,
@@ -778,10 +757,6 @@ pub fn new_tcp() -> uv_tcp_t {
     internal_backlog: VecDeque::new(),
     internal_shutdown: None,
     internal_waker: None,
-    instr_accept_time: None,
-    instr_first_read_done: false,
-    instr_first_write_done: false,
-    instr_read_pending_since: None,
   }
 }
 
@@ -800,22 +775,6 @@ pub(crate) unsafe fn poll_tcp_handle(
   cx: &mut Context<'_>,
 ) -> bool {
   let mut any_work = false;
-
-  // --- instrumentation ---
-  let instr_timer = if crate::uv_compat::instr::enabled() {
-    Some(crate::uv_compat::instr::ScopeTimer::start())
-  } else {
-    None
-  };
-  let mut instr_bytes_read: u64 = 0;
-  let mut instr_bytes_written: u64 = 0;
-  let mut instr_reads: u64 = 0;
-  let mut instr_writes: u64 = 0;
-  let mut instr_accepts: u64 = 0;
-  if crate::uv_compat::instr::enabled() {
-    crate::uv_compat::instr::with_stats(|s| s.poll_tcp_calls += 1);
-  }
-  // --- /instrumentation ---
 
   // 1. Poll pending connect.
   //    Extract result with a short-lived borrow, then call callback with
@@ -885,7 +844,6 @@ pub(crate) unsafe fn poll_tcp_handle(
       while let Poll::Ready(Ok((stream, _))) = listener.poll_accept(cx) {
         (*tcp_ptr).internal_backlog.push_back(stream);
         any_work = true;
-        instr_accepts += 1;
       }
     }
     while !(*tcp_ptr).internal_backlog.is_empty() {
@@ -954,25 +912,6 @@ pub(crate) unsafe fn poll_tcp_handle(
             }
             Ok(n) => {
               any_work = true;
-              instr_reads += 1;
-              instr_bytes_read += n as u64;
-              if crate::uv_compat::instr::enabled() {
-                if !(*tcp_ptr).instr_first_read_done
-                  && let Some(t) = (*tcp_ptr).instr_accept_time
-                {
-                  let ns = t.elapsed().as_nanos() as u64;
-                  crate::uv_compat::instr::with_stats(|s| {
-                    s.conn_accept_to_first_read.record(ns)
-                  });
-                  (*tcp_ptr).instr_first_read_done = true;
-                }
-                if let Some(t) = (*tcp_ptr).instr_read_pending_since.take() {
-                  let ns = t.elapsed().as_nanos() as u64;
-                  crate::uv_compat::instr::with_stats(|s| {
-                    s.conn_read_wait.record(ns)
-                  });
-                }
-              }
               let buflen = buf.len;
               read_cb(tcp_ptr as *mut uv_stream_t, n as isize, &buf);
               count -= 1;
@@ -987,12 +926,6 @@ pub(crate) unsafe fn poll_tcp_handle(
               }
             }
             Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
-              if crate::uv_compat::instr::enabled()
-                && (*tcp_ptr).instr_read_pending_since.is_none()
-              {
-                (*tcp_ptr).instr_read_pending_since =
-                  Some(std::time::Instant::now());
-              }
               // Match libuv: call read_cb with nread=0 so the user
               // can free the buffer allocated by alloc_cb.
               read_cb(tcp_ptr as *mut uv_stream_t, 0, &buf);
@@ -1132,8 +1065,6 @@ pub(crate) unsafe fn poll_tcp_handle(
             match stream.try_write(&pw.data[pw.offset..]) {
               Ok(n) => {
                 pw.offset += n;
-                instr_writes += 1;
-                instr_bytes_written += n as u64;
               }
               Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
                 break;
@@ -1151,16 +1082,6 @@ pub(crate) unsafe fn poll_tcp_handle(
         if done {
           let pw = (*tcp_ptr).internal_write_queue.pop_front().unwrap();
           any_work = true;
-          if crate::uv_compat::instr::enabled()
-            && !(*tcp_ptr).instr_first_write_done
-            && let Some(t) = (*tcp_ptr).instr_accept_time
-          {
-            let ns = t.elapsed().as_nanos() as u64;
-            crate::uv_compat::instr::with_stats(|s| {
-              s.conn_accept_to_first_write.record(ns)
-            });
-            (*tcp_ptr).instr_first_write_done = true;
-          }
           completed_writes.push((pw.req, pw.cb, 0));
           count -= 1;
           if count > 0 {
@@ -1225,18 +1146,6 @@ pub(crate) unsafe fn poll_tcp_handle(
         let _ = stream.poll_write_ready(cx);
       }
     }
-  }
-
-  if let Some(t) = instr_timer {
-    let ns = t.elapsed_ns();
-    crate::uv_compat::instr::with_stats(|s| {
-      s.poll_tcp_time.record(ns);
-      s.poll_tcp_bytes_read += instr_bytes_read;
-      s.poll_tcp_bytes_written += instr_bytes_written;
-      s.poll_tcp_reads += instr_reads;
-      s.poll_tcp_writes += instr_writes;
-      s.poll_tcp_accepts += instr_accepts;
-    });
   }
 
   any_work
