@@ -16,7 +16,7 @@ pub fn render_help(cmd: &CommandDef) -> String {
   }
 
   // Usage line
-  out.push_str(&format!("Usage: {} [OPTIONS]", cmd.name));
+  out.push_str(&format!("Usage: deno {} [OPTIONS]", cmd.name));
 
   let positionals: Vec<&ArgDef> =
     cmd.all_args().filter(|a| a.positional).collect();
@@ -86,9 +86,9 @@ pub fn render_help(cmd: &CommandDef) -> String {
           NumArgs::Optional => {
             let vn = arg.value_name.unwrap_or("VALUE");
             if arg.require_equals {
-              flag_str.push_str(&format!("[={vn}]"));
+              flag_str.push_str(&format!("[=<{vn}>]"));
             } else {
-              flag_str.push_str(&format!(" [{vn}]"));
+              flag_str.push_str(&format!(" [<{vn}>]"));
             }
           }
           NumArgs::ZeroOrMore => {
@@ -105,7 +105,11 @@ pub fn render_help(cmd: &CommandDef) -> String {
           }
         }
       }
-      out.push_str(&format!("  {:<30}  {}\n", flag_str, arg.help));
+      let help_lines: Vec<&str> = arg.help.split('\n').collect();
+      out.push_str(&format!("  {:<22}  {}\n", flag_str, help_lines[0]));
+      for rest_line in &help_lines[1..] {
+        out.push_str(&format!("{:28}{}\n", "", rest_line));
+      }
     }
   }
 

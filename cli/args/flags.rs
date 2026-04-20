@@ -742,6 +742,12 @@ fn validate_parser_flags(
           "error: one or more packages are required",
         ));
       }
+      if has_arg("--no-config") {
+        return Err(make_flags_error(
+          FlagsErrorKind::ArgumentConflict,
+          "error: deno install can't be used to add packages if `--no-config` is passed.\nhint: to cache the packages without adding to a config, pass the `--entrypoint` flag\n\nUsage: deno install [OPTIONS] [PACKAGE]...",
+        ));
+      }
     }
     DenoSubcommand::Uninstall(uninstall_flags) => match &uninstall_flags.kind {
       UninstallKind::Local(remove_flags) => {
@@ -976,7 +982,7 @@ fn validate_parser_flags(
       if task_flags.eval && task_flags.task.is_none() {
         return Err(make_flags_error(
           FlagsErrorKind::MissingRequiredArgument,
-          "error: '--eval' requires a task expression",
+          "error: [TASK] must be specified when using --eval\n\nUsage: deno task [OPTIONS] [TASK]",
         ));
       }
     }

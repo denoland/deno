@@ -482,7 +482,7 @@ pub static RUN_SUBCOMMAND: CommandDef = CommandDef {
       .action(ArgAction::Set)
       .num_args(NumArgs::Optional)
       .require_equals(),
-    ArgDef::new("tunnel").long("tunnel").set_true().hidden(),
+    ArgDef::new("tunnel").long("tunnel").long_aliases(&["connected"]).set_true().hidden(),
     // Allow --allow-scripts on run (through arg_groups, but also directly)
   ],
   arg_groups: &[
@@ -1761,10 +1761,28 @@ pub static LSP_SUBCOMMAND: CommandDef = CommandDef {
 
 pub static VENDOR_SUBCOMMAND: CommandDef = CommandDef {
   name: "vendor",
-  about: "Vendor remote modules",
+  about: "`deno vendor` was removed in Deno 2.\n\nSee the Deno 1.x to 2.x Migration Guide for migration instructions: https://docs.deno.com/runtime/manual/advanced/migrate_deprecations",
   aliases: &[],
-  args: &[],
-  arg_groups: &[UNSTABLE_ARGS],
+  args: &[
+    ArgDef::new("help")
+      .short('h')
+      .long("help")
+      .action(ArgAction::Append)
+      .num_args(NumArgs::Optional)
+      .require_equals()
+      .value_name("CONTEXT")
+      .help("[possible values: unstable, full]"),
+    ArgDef::new("quiet")
+      .short('q')
+      .long("quiet")
+      .set_true()
+      .help("Suppress diagnostic output"),
+    ArgDef::new("unstable")
+      .long("unstable")
+      .set_true()
+      .help("The `--unstable` flag has been deprecated. Use granular `--unstable-*` flags instead\nTo view the list of individual unstable feature flags, run this command again with --help=unstable"),
+  ],
+  arg_groups: &[],
   subcommands: &[],
   default_subcommand: None,
   trailing_var_arg: false,
