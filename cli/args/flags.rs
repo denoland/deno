@@ -1255,9 +1255,16 @@ fn complete_task_names(args: &[String], shell: &str) -> Result<(), AnyError> {
   use std::io::Write;
   use std::sync::Arc;
 
-  // Parse flags to pick up --config if specified
+  // Parse flags to pick up --config if specified.
+  // Shell completions pass args as: [real_deno, "--", user_deno, subcommand, ...]
+  // Strip the "--" separator so the parser sees [user_deno, subcommand, ...].
+  let completion_args = if args.len() > 2 && args[1] == "--" {
+    &args[2..]
+  } else {
+    args
+  };
   let string_args: Vec<String> =
-    args.iter().filter(|a| !a.is_empty()).cloned().collect();
+    completion_args.iter().filter(|a| !a.is_empty()).cloned().collect();
   let flags =
     deno_cli_parser::convert::flags_from_vec(string_args).unwrap_or_default();
   let factory = crate::factory::CliFactory::from_flags(Arc::new(flags));

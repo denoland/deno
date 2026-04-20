@@ -1116,6 +1116,10 @@ fn validate_permission_args(
   check_no_url_scheme(&flags.permissions.deny_net, "--deny-net")?;
   check_no_url_scheme(&flags.permissions.allow_import, "--allow-import")?;
   check_no_url_scheme(&flags.permissions.deny_import, "--deny-import")?;
+  check_no_url_scheme(
+    &flags.unsafely_ignore_certificate_errors,
+    "--unsafely-ignore-certificate-errors",
+  )?;
 
   // Validate --allow-all conflicts with specific allow flags
   if flags.permissions.allow_all {
