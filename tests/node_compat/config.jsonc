@@ -1142,6 +1142,7 @@
     "parallel/test-http-client-res-destroyed.js": {},
     "parallel/test-http-client-set-timeout-after-end.js": {},
     "parallel/test-http-client-set-timeout.js": {},
+    "parallel/test-http-client-timeout-event.js": {},
     "parallel/test-http-client-timeout-with-data.js": {},
     "parallel/test-http-client-unescaped-path.js": {},
     "parallel/test-http-client-upload-buf.js": {},
