@@ -196,6 +196,7 @@ pub static COMPILE_ARGS: &[ArgDef] = &[
     .value_delimiter(','),
   ArgDef::new("min-dep-age")
     .long("min-dep-age")
+    .long_aliases(&["minimum-dependency-age"])
     .action(ArgAction::Set)
     .num_args(NumArgs::Exact(1)),
 ];
@@ -287,6 +288,14 @@ pub static CPU_PROF_ARGS: &[ArgDef] = &[
     .action(ArgAction::Set)
     .num_args(NumArgs::Exact(1))
     .hidden(),
+  ArgDef::new("cpu-prof-md")
+    .long("cpu-prof-md")
+    .set_true()
+    .hidden(),
+  ArgDef::new("cpu-prof-flamegraph")
+    .long("cpu-prof-flamegraph")
+    .set_true()
+    .hidden(),
 ];
 
 // All unstable feature flags from runtime/features/gen.rs.
@@ -371,6 +380,7 @@ pub static UNSTABLE_ARGS: &[ArgDef] = &[
     .hidden(),
   ArgDef::new("unstable-sloppy-imports")
     .long("unstable-sloppy-imports")
+    .long_aliases(&["sloppy-imports"])
     .set_true()
     .hidden(),
   ArgDef::new("unstable-subdomain-wildcards")
@@ -823,6 +833,9 @@ pub static TEST_SUBCOMMAND: CommandDef = CommandDef {
     ArgDef::new("hide-stacktraces")
       .long("hide-stacktraces")
       .set_true(),
+    ArgDef::new("coverage-raw-data-only")
+      .long("coverage-raw-data-only")
+      .set_true(),
     ArgDef::new("ignore")
       .long("ignore")
       .action(ArgAction::Append)
@@ -837,6 +850,10 @@ pub static TEST_SUBCOMMAND: CommandDef = CommandDef {
     ArgDef::new("permit-no-files")
       .long("permit-no-files")
       .set_true(),
+    ArgDef::new("ext")
+      .long("ext")
+      .action(ArgAction::Set)
+      .num_args(NumArgs::Exact(1)),
   ],
   arg_groups: &[
     UNSTABLE_ARGS,
@@ -914,6 +931,15 @@ pub static CACHE_SUBCOMMAND: CommandDef = CommandDef {
       .positional()
       .action(ArgAction::Append)
       .num_args(NumArgs::OneOrMore),
+    ArgDef::new("check")
+      .long("check")
+      .action(ArgAction::Set)
+      .num_args(NumArgs::Optional)
+      .require_equals(),
+    ArgDef::new("ext")
+      .long("ext")
+      .action(ArgAction::Set)
+      .num_args(NumArgs::Exact(1)),
     ArgDef::new("env-file")
       .long("env-file")
       .action(ArgAction::Append)
@@ -965,6 +991,10 @@ pub static INFO_SUBCOMMAND: CommandDef = CommandDef {
       .action(ArgAction::Set)
       .num_args(NumArgs::Optional),
     ArgDef::new("json").long("json").set_true(),
+    ArgDef::new("location")
+      .long("location")
+      .action(ArgAction::Set)
+      .num_args(NumArgs::Exact(1)),
   ],
   arg_groups: &[UNSTABLE_ARGS, COMPILE_ARGS, PERMISSION_ARGS],
   subcommands: &[],
@@ -1061,6 +1091,12 @@ pub static TASK_SUBCOMMAND: CommandDef = CommandDef {
       .action(ArgAction::Set)
       .num_args(NumArgs::Optional),
     ArgDef::new("no-lock").long("no-lock").set_true(),
+    ArgDef::new("frozen-lockfile")
+      .long("frozen-lockfile")
+      .long_aliases(&["frozen"])
+      .action(ArgAction::Set)
+      .num_args(NumArgs::Optional)
+      .require_equals(),
   ],
   arg_groups: &[UNSTABLE_ARGS],
   subcommands: &[],
@@ -1171,6 +1207,9 @@ pub static COMPILE_SUBCOMMAND: CommandDef = CommandDef {
       .long("ext")
       .action(ArgAction::Set)
       .num_args(NumArgs::Exact(1)),
+    ArgDef::new("self-extracting")
+      .long("self-extracting")
+      .set_true(),
   ],
   arg_groups: &[
     UNSTABLE_ARGS,
@@ -1288,6 +1327,7 @@ pub static INSTALL_SUBCOMMAND: CommandDef = CommandDef {
       .long("entrypoint")
       .action(ArgAction::Append)
       .num_args(NumArgs::OneOrMore),
+    ArgDef::new("compile").long("compile").set_true(),
     ArgDef::new("lockfile-only")
       .long("lockfile-only")
       .set_true(),
@@ -1733,7 +1773,12 @@ pub static BUNDLE_SUBCOMMAND: CommandDef = CommandDef {
       .long("inline-imports")
       .set_true(),
   ],
-  arg_groups: &[COMPILE_ARGS, UNSTABLE_ARGS],
+  arg_groups: &[
+    COMPILE_ARGS,
+    UNSTABLE_ARGS,
+    PERMISSION_ARGS,
+    ALLOW_SCRIPTS_ARG,
+  ],
   subcommands: &[],
   default_subcommand: None,
   trailing_var_arg: false,

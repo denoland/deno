@@ -1452,7 +1452,7 @@ fn test_parse(result: &ParseResult, flags: &mut Flags) {
     no_run,
     doc,
     coverage_dir,
-    coverage_raw_data_only: false,
+    coverage_raw_data_only: result.get_bool("coverage-raw-data-only"),
     clean,
     fail_fast,
     files: FileFlags { include, ignore },
@@ -1552,6 +1552,7 @@ fn cache_parse(result: &ParseResult, flags: &mut Flags) {
   allow_scripts_arg_parse(result, flags);
   allow_and_deny_import_parse(result, flags);
   env_file_arg_parse(result, flags);
+  ext_arg_parse(result, flags);
 
   let files = result
     .get_many("files")
@@ -1861,6 +1862,7 @@ fn install_parse(
   if global {
     let root = result.get_one("root").map(|s| s.to_string());
     let force = result.get_bool("force");
+    let compile = result.get_bool("compile");
     let name = result.get_one("name").map(|s| s.to_string());
     let module_urls = result
       .get_many("cmd")
@@ -1875,7 +1877,7 @@ fn install_parse(
         args,
         root,
         force,
-        compile: false,
+        compile,
       }));
     return Ok(());
   }
@@ -2376,6 +2378,8 @@ fn apply_node_options(flags: &mut Flags) {
 fn bundle_parse(result: &ParseResult, flags: &mut Flags) {
   compile_args_without_check_parse(result, flags);
   unstable_args_parse(result, flags);
+  permission_args_parse(result, flags);
+  allow_scripts_arg_parse(result, flags);
 
   let entrypoints = result
     .get_many("file")
