@@ -500,6 +500,7 @@ unsafe fn do_invoke_queued(
 ///
 /// # Safety
 /// EmitCtx must contain valid pointers. No TLSWrapInner reference may be held by the caller.
+#[allow(dead_code, reason = "retained for native TCP/Pipe enc-out path parity")]
 unsafe fn do_enc_out_js(ctx: &EmitCtx, enc_data: Vec<u8>) {
   unsafe {
     let mut isolate = v8::Isolate::from_raw_isolate_ptr(ctx.isolate_ptr);
@@ -1251,17 +1252,9 @@ impl TLSWrapInner {
           // on synchronous uv_write failure, not during normal flow).
         }
         EncOutAction::WriteJs => {
-          let enc_data = std::mem::take(&mut (*ptr).pending_enc_out);
-          if let Some(ctx) = extract_emit_ctx(ptr) {
-            do_enc_out_js(&ctx, enc_data);
-          }
-          // For JS streams, treat the write as synchronously completed.
-          if (*ptr).write_callback_scheduled
-            && !(*ptr).in_dowrite
-            && let Some((write_obj, ctx)) = prepare_invoke_queued(ptr)
-          {
-            do_invoke_queued(&ctx, write_obj, 0);
-          }
+          // Pull-based: leave data in pending_enc_out for JS to drain
+          // via drain_enc_out(). This avoids calling back into JS from
+          // within an op, eliminating reentrancy issues.
         }
         EncOutAction::InvokeQueued(status) => {
           if let Some((write_obj, ctx)) = prepare_invoke_queued(ptr) {
@@ -2472,6 +2465,24 @@ impl TLSWrap {
     let inner_ptr = inner as *mut TLSWrapInner;
     // SAFETY: inner_ptr points to heap-allocated TLSWrapInner via OwnedPtr
     unsafe { TLSWrapInner::cycle(inner_ptr) };
+  }
+
+  /// Drain buffered encrypted output for JS streams (pull-based).
+  /// Returns the encrypted data that needs to be written to the
+  /// underlying JS stream. Called by JS after operations that may
+  /// produce encrypted output (readBuffer, start, writes).
+  /// Write completion callbacks are handled by the existing
+  /// cycle() -> InvokeQueued path (fired from reentrant ops like
+  /// readBuffer/start, not from write ops where in_dowrite is true).
+  #[buffer]
+  fn drain_enc_out(&self) -> Box<[u8]> {
+    let inner = unsafe { &mut *self.inner.as_mut_ptr() };
+    if !matches!(inner.underlying, UnderlyingStream::Js { .. })
+      || inner.pending_enc_out.is_empty()
+    {
+      return Box::new([]);
+    }
+    std::mem::take(&mut inner.pending_enc_out).into_boxed_slice()
   }
 
   /// Signal EOF on the encrypted input (JSStreamSocket path).

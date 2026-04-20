@@ -213,7 +213,15 @@ function TLSSocket(socket, opts) {
 
   if (socket) {
     if (socket instanceof net.Socket && socket._handle) {
-      wrap = socket;
+      // If the handle is a native TCP or Pipe, we can attach directly.
+      // For other handles (e.g. TLSWrap from another TLS connection),
+      // wrap via JSStreamSocket so TLSWrap gets a JS stream interface.
+      const h = socket._handle;
+      if (h instanceof TCP || h instanceof Pipe) {
+        wrap = socket;
+      } else {
+        wrap = new JSStreamSocket(socket);
+      }
     } else {
       wrap = new JSStreamSocket(socket);
     }
@@ -378,6 +386,31 @@ TLSSocket.prototype._wrapHandle = function (wrap, handle) {
 
   // Proxy the reading property
   defineHandleReading(this, handle);
+
+  // For JS streams (pull-based enc out), wrap write methods to drain
+  // buffered encrypted output after each write op returns.
+  if (res._flushEncOut) {
+    const flush = res._flushEncOut;
+    for (
+      const method of [
+        "writeBuffer",
+        "writeUtf8String",
+        "writeAsciiString",
+        "writeLatin1String",
+        "writeUcs2String",
+        "writev",
+      ]
+    ) {
+      const orig = res[method];
+      if (typeof orig === "function") {
+        res[method] = function (...args) {
+          const ret = orig.apply(res, args);
+          flush();
+          return ret;
+        };
+      }
+    }
+  }
 
   if (wrap) {
     wrap.on("close", () => this.destroy());
@@ -598,6 +631,13 @@ TLSSocket.prototype._start = function () {
   if (!this._handle) return;
 
   this._handle.start();
+
+  // For JS streams, drain any encrypted output produced by start()
+  // (e.g. TLS ClientHello). This is pull-based: Rust buffers the data
+  // and JS flushes it after the op returns.
+  if (this._handle._flushEncOut) {
+    this._handle._flushEncOut();
+  }
 
   // Start reading on the underlying native TCP handle so that encrypted
   // data flows to the TLSWrap via the JS onread interceptor.

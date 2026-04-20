@@ -58,28 +58,45 @@ export function wrap(
       throw new Error(`TLS wrap attach (JS stream) failed: ${attachResult}`);
     }
 
-    // Wire up the encrypted output callback: when TLSWrap has encrypted
-    // data to send, it calls res.encOut(arrayBuffer). We write that
-    // to the JSStreamSocket's underlying Duplex stream.
-    // The write is deferred via queueMicrotask to avoid reentrant borrows:
-    // cycle() -> encOut -> duplexpair -> other side -> write to TCPWrap
-    // would re-enter the TCPWrap's CppGC RefCell if done synchronously.
+    // Pull-based encrypted output: instead of Rust calling a JS
+    // callback (which causes reentrancy issues), Rust buffers encrypted
+    // data and JS drains it after each operation that may produce output.
+    // The flush is scheduled via Promise.resolve().then() to avoid
+    // synchronous feedback loops through DuplexPair.
     const jsStreamOwner = nativeHandle[kOwner];
-    res.encOut = (data: ArrayBuffer) => {
-      const buf = new Uint8Array(data);
-      if (jsStreamOwner?.stream) {
-        queueMicrotask(() => jsStreamOwner.stream.write(buf));
-      }
+    let flushPending = false;
+    const flushEncOut = () => {
+      if (flushPending) return;
+      flushPending = true;
+      Promise.resolve().then(() => {
+        flushPending = false;
+        let data;
+        // Drain in a loop - writing to DuplexPair may trigger readBuffer
+        // on the other side, which produces more encrypted output.
+        while (
+          (data = res.drainEncOut()) && data.byteLength > 0 &&
+          jsStreamOwner?.stream
+        ) {
+          jsStreamOwner.stream.write(new Uint8Array(data));
+        }
+      });
     };
 
     // Wire up readBuffer/emitEOF: JSStreamSocket calls these when the
     // underlying Duplex stream produces data or ends.
+    // After each call, schedule a drain of encrypted output.
     nativeHandle.readBuffer = (chunk: Uint8Array) => {
       res.readBuffer(chunk);
+      flushEncOut();
     };
     nativeHandle.emitEOF = () => {
       res.emitEof();
+      flushEncOut();
     };
+
+    // Store flush function on the TLSWrap so _start() can drain
+    // after initiating the TLS handshake.
+    res._flushEncOut = flushEncOut;
   } else {
     // Native stream (TCP or Pipe handle).
     // attach/attachPipe stores the stream pointer for encrypted writes.
