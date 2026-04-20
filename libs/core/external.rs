@@ -219,6 +219,18 @@ mod tests {
   #[should_panic]
   pub fn test_external_deref_after_take() {
     let external = ExternalPointer::new(External1(1));
+    // Raw dealloc guard that frees the allocation on panic without going
+    // through validate_pointer (which would also panic on the zeroed marker).
+    struct RawDealloc(*mut ManuallyDrop<ExternalWithMarker<External1>>);
+    impl Drop for RawDealloc {
+      fn drop(&mut self) {
+        unsafe {
+          drop(Box::from_raw(self.0));
+        }
+      }
+    }
+    let _guard = RawDealloc(external.ptr);
+
     // Zero the marker to simulate what unsafely_take does, but without
     // deallocating. The previous version of this test called unsafely_take
     // (which frees memory) then unsafely_deref on the freed pointer, which
