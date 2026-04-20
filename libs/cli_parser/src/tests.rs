@@ -867,8 +867,8 @@ fn run_double_dash_trailing() {
   )
   .unwrap();
   assert_eq!(r.get_one("script_arg"), Some("script.ts"));
-  // After script_arg is consumed, rest is trailing (including --)
-  assert_eq!(r.trailing, vec!["--", "arg1", "--flag"]);
+  // After script_arg is consumed, -- is consumed as separator, rest is trailing
+  assert_eq!(r.trailing, vec!["arg1", "--flag"]);
 }
 
 #[test]

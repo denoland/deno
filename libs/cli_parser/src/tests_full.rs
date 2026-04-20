@@ -823,7 +823,7 @@ fn double_hyphen() {
       subcommand: DenoSubcommand::Run(RunFlags::new_default(
         "script.ts".to_string(),
       )),
-      argv: svec!["--", "-D", "--allow-net"],
+      argv: svec!["-D", "--allow-net"],
       permissions: PermissionFlags {
         allow_write: Some(vec![]),
         ..Default::default()
@@ -5401,7 +5401,7 @@ fn task_subcommand_double_hyphen() {
         filter: None,
         eval: false,
       }),
-      argv: svec!["--", "hello", "world"],
+      argv: svec!["hello", "world"],
       config_flag: ConfigFlag::Path("deno.json".to_owned()),
       ..Flags::default()
     }
@@ -5421,7 +5421,7 @@ fn task_subcommand_double_hyphen() {
         filter: None,
         eval: false,
       }),
-      argv: svec!["--", "hello", "world"],
+      argv: svec!["hello", "world"],
       ..Flags::default()
     }
   );
@@ -5445,7 +5445,7 @@ fn task_subcommand_double_hyphen_only() {
         filter: None,
         eval: false,
       }),
-      argv: svec!["--"],
+      argv: svec![],
       ..Flags::default()
     }
   );
