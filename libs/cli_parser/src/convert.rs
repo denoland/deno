@@ -2205,6 +2205,8 @@ fn outdated_parse(result: &ParseResult, flags: &mut Flags, is_update: bool) {
 }
 
 fn clean_parse(result: &ParseResult, flags: &mut Flags) {
+  node_modules_and_vendor_dir_arg_parse(result, flags);
+
   let except_paths = result
     .get_many("except-paths")
     .map(|v| v.iter().map(|s| s.to_string()).collect())
