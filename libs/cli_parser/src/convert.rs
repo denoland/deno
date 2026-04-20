@@ -281,7 +281,11 @@ fn default_parse(
     ext_arg_parse(result, flags);
     flags.tunnel = result.get_bool("tunnel");
     flags.code_cache_enabled = !result.get_bool("no-code-cache");
-    let coverage_dir = result.get_one("coverage").map(|s| s.to_string());
+    let coverage_dir = if result.contains("coverage") {
+      Some(result.get_one("coverage").unwrap_or("coverage").to_string())
+    } else {
+      None
+    };
     cpu_prof_parse(result, flags);
 
     flags.subcommand = DenoSubcommand::Run(RunFlags {
@@ -1191,7 +1195,11 @@ fn run_parse(result: &ParseResult, flags: &mut Flags) {
 
   flags.tunnel = result.get_bool("tunnel");
   flags.code_cache_enabled = !result.get_bool("no-code-cache");
-  let coverage_dir = result.get_one("coverage").map(|s| s.to_string());
+  let coverage_dir = if result.contains("coverage") {
+    Some(result.get_one("coverage").unwrap_or("coverage").to_string())
+  } else {
+    None
+  };
   cpu_prof_parse(result, flags);
 
   if let Some(script) = result.get_one("script_arg") {
