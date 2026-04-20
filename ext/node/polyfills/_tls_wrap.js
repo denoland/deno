@@ -23,6 +23,8 @@ import { convertALPNProtocols } from "ext:deno_node/internal/tls_common.js";
 import { Buffer } from "node:buffer";
 import {
   connResetException,
+  ERR_INVALID_ARG_TYPE,
+  ERR_INVALID_ARG_VALUE,
   ERR_TLS_CERT_ALTNAME_INVALID,
   ERR_TLS_REQUIRED_SERVER_NAME,
 } from "ext:deno_node/internal/errors.ts";
@@ -40,6 +42,7 @@ import { kEmptyObject } from "ext:deno_node/internal/util.mjs";
 import { nextTick } from "ext:deno_node/_next_tick.ts";
 import {
   validateFunction,
+  validateInt32,
   validateNumber,
   validateObject,
 } from "ext:deno_node/internal/validators.mjs";
@@ -210,7 +213,15 @@ function TLSSocket(socket, opts) {
 
   if (socket) {
     if (socket instanceof net.Socket && socket._handle) {
-      wrap = socket;
+      // If the handle is a native TCP or Pipe, we can attach directly.
+      // For other handles (e.g. TLSWrap from another TLS connection),
+      // wrap via JSStreamSocket so TLSWrap gets a JS stream interface.
+      const h = socket._handle;
+      if (h instanceof TCP || h instanceof Pipe) {
+        wrap = socket;
+      } else {
+        wrap = new JSStreamSocket(socket);
+      }
     } else {
       wrap = new JSStreamSocket(socket);
     }
@@ -375,6 +386,31 @@ TLSSocket.prototype._wrapHandle = function (wrap, handle) {
 
   // Proxy the reading property
   defineHandleReading(this, handle);
+
+  // For JS streams (pull-based enc out), wrap write methods to drain
+  // buffered encrypted output after each write op returns.
+  if (res._flushEncOut) {
+    const flush = res._flushEncOut;
+    for (
+      const method of [
+        "writeBuffer",
+        "writeUtf8String",
+        "writeAsciiString",
+        "writeLatin1String",
+        "writeUcs2String",
+        "writev",
+      ]
+    ) {
+      const orig = res[method];
+      if (typeof orig === "function") {
+        res[method] = function (...args) {
+          const ret = orig.apply(res, args);
+          flush();
+          return ret;
+        };
+      }
+    }
+  }
 
   if (wrap) {
     wrap.on("close", () => this.destroy());
@@ -595,6 +631,13 @@ TLSSocket.prototype._start = function () {
   if (!this._handle) return;
 
   this._handle.start();
+
+  // For JS streams, drain any encrypted output produced by start()
+  // (e.g. TLS ClientHello). This is pull-based: Rust buffers the data
+  // and JS flushes it after the op returns.
+  if (this._handle._flushEncOut) {
+    this._handle._flushEncOut();
+  }
 
   // Start reading on the underlying native TCP handle so that encrypted
   // data flows to the TLSWrap via the JS onread interceptor.
@@ -822,9 +865,37 @@ function Server(options, listener) {
     convertALPNProtocols(options.ALPNProtocols, this);
   }
 
+  if (options.sessionTimeout != null) {
+    validateInt32(
+      options.sessionTimeout,
+      "options.sessionTimeout",
+      0,
+    );
+  }
+
+  if (options.ticketKeys != null) {
+    if (!isArrayBufferView(options.ticketKeys)) {
+      throw new ERR_INVALID_ARG_TYPE(
+        "options.ticketKeys",
+        ["Buffer", "TypedArray", "DataView"],
+        options.ticketKeys,
+      );
+    }
+    if (options.ticketKeys.byteLength !== 48) {
+      throw new ERR_INVALID_ARG_VALUE(
+        "options.ticketKeys",
+        options.ticketKeys.byteLength,
+        "must be exactly 48 bytes",
+      );
+    }
+  }
+
   this.setSecureContext(options);
+
+  if (options.handshakeTimeout != null) {
+    validateNumber(options.handshakeTimeout, "options.handshakeTimeout");
+  }
   this._handshakeTimeout = options.handshakeTimeout || (120 * 1000);
-  validateNumber(this._handshakeTimeout, "options.handshakeTimeout");
 
   this._SNICallback = options.SNICallback;
 
@@ -983,6 +1054,15 @@ function connect(...args) {
 
   validateFunction(options.checkServerIdentity, "options.checkServerIdentity");
   validateNumber(options.minDHSize, "options.minDHSize", 1);
+
+  // Reject IP addresses in servername (RFC 6066)
+  if (options.servername && net.isIP(options.servername)) {
+    throw new ERR_INVALID_ARG_VALUE(
+      "options.servername",
+      options.servername,
+      "must not be an IP address",
+    );
+  }
 
   const context = options.secureContext || createSecureContext(options);
 
