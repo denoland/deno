@@ -1101,6 +1101,7 @@
     // "parallel/test-heap-prof-loop-drained.js": {},
     // "parallel/test-heap-prof-name.js": {},
     // "parallel/test-heap-prof-sigint.js": {},
+    "parallel/test-http-aborted.js": {},
     "parallel/test-http-abort-before-end.js": {},
     "parallel/test-http-addrequest-localaddress.js": {},
     "parallel/test-http-agent-close.js": {},
