@@ -1698,25 +1698,19 @@ impl TLSWrap {
     op_state: &mut OpState,
   ) -> i32 {
     let stream = tcp.stream_ptr();
+    Self::do_attach_uv_stream(&self.inner, stream, scope, op_state)
+  }
 
-    if stream.is_null() {
-      return UV_EBADF;
-    }
-
-    let inner = unsafe { &mut *self.inner.as_mut_ptr() };
-    inner.underlying = UnderlyingStream::Uv { stream };
-    inner.isolate = Some(unsafe { scope.as_raw_isolate_ptr() });
-    // Cache the loop pointer now while the stream is still valid.
-    // This avoids dereferencing the stream pointer later when it may
-    // have been freed (e.g. after the TCP handle is closed/GC'd).
-    inner.cached_loop_ptr = unsafe { (*stream).loop_ };
-
-    // Get stream_base_state from OpState
-    let state_global = &op_state.borrow::<StreamBaseState>().array;
-    inner.stream_base_state =
-      Some(v8::Global::new(scope, v8::Local::new(scope, state_global)));
-
-    0
+  /// Attach to a PipeWrap (Unix domain socket) for encrypted I/O.
+  #[nofast]
+  fn attach_pipe(
+    &self,
+    #[cppgc] pipe: &crate::ops::pipe_wrap::PipeWrap,
+    scope: &mut v8::PinScope,
+    op_state: &mut OpState,
+  ) -> i32 {
+    let stream = pipe.stream_ptr();
+    Self::do_attach_uv_stream(&self.inner, stream, scope, op_state)
   }
 
   /// Store the JS handle reference for callbacks.
@@ -2797,6 +2791,30 @@ impl rustls::client::danger::ServerCertVerifier for NodeServerCertVerifier {
 
   fn supported_verify_schemes(&self) -> Vec<rustls::SignatureScheme> {
     self.inner.supported_verify_schemes()
+  }
+}
+
+impl TLSWrap {
+  fn do_attach_uv_stream(
+    inner_ptr: &OwnedPtr<TLSWrapInner>,
+    stream: *mut uv_compat::uv_stream_t,
+    scope: &mut v8::PinScope,
+    op_state: &mut OpState,
+  ) -> i32 {
+    if stream.is_null() {
+      return UV_EBADF;
+    }
+
+    let inner = unsafe { &mut *inner_ptr.as_mut_ptr() };
+    inner.underlying = UnderlyingStream::Uv { stream };
+    inner.isolate = Some(unsafe { scope.as_raw_isolate_ptr() });
+    inner.cached_loop_ptr = unsafe { (*stream).loop_ };
+
+    let state_global = &op_state.borrow::<StreamBaseState>().array;
+    inner.stream_base_state =
+      Some(v8::Global::new(scope, v8::Local::new(scope, state_global)));
+
+    0
   }
 }
 

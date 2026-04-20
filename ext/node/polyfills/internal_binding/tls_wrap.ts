@@ -1,7 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 // deno-lint-ignore-file no-explicit-any prefer-primordials
 
-import { TLSWrap } from "ext:core/ops";
+import { PipeWrap, TLSWrap } from "ext:core/ops";
 import {
   kReadBytesOrError,
   streamBaseState,
@@ -81,9 +81,11 @@ export function wrap(
       res.emitEof();
     };
   } else {
-    // Native stream (TCP handle).
-    // attach() stores the stream pointer for encrypted writes.
-    const attachResult = res.attach(nativeHandle);
+    // Native stream (TCP or Pipe handle).
+    // attach/attachPipe stores the stream pointer for encrypted writes.
+    const attachResult = nativeHandle instanceof PipeWrap
+      ? res.attachPipe(nativeHandle)
+      : res.attach(nativeHandle);
     if (attachResult !== 0) {
       throw new Error(`TLS wrap attach failed: ${attachResult}`);
     }
