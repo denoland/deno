@@ -7,11 +7,7 @@ import {
   validateHeaderValue,
 } from "node:_http_outgoing";
 import { ClientRequest } from "node:_http_client";
-import {
-  Agent,
-  globalAgent,
-  setGlobalAgent,
-} from "node:_http_agent";
+import { Agent, globalAgent, setGlobalAgent } from "node:_http_agent";
 import { IncomingMessage } from "node:_http_incoming";
 import {
   _connectionListener,

@@ -833,7 +833,6 @@ function responseKeepAlive(req) {
   socket.removeListener("data", socketOnData);
   socket.removeListener("end", socketOnEnd);
 
-
   // There are cases where _handle === null. Avoid those. Passing undefined to
   // nextTick() will call getDefaultTriggerAsyncId() to retrieve the id.
   const asyncId = socket._handle ? socket._handle.getAsyncId() : undefined;
