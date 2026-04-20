@@ -231,6 +231,11 @@ fn parse_args(
               && positional_index >= positional_defs.len()
             {
               i += 1;
+              // Skip a `--` separator if present (consume it, don't
+              // include it in the trailing args).
+              if i < args.len() && args[i] == "--" {
+                i += 1;
+              }
               while i < args.len() {
                 result.trailing.push(args[i].clone());
                 i += 1;
