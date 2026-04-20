@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 // HTTP/2 constants inlined from nghttp2 headers. These are all compile-time
 // constants that never change, so there's no reason to fetch them from Rust.
