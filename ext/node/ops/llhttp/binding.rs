@@ -456,8 +456,7 @@ unsafe extern "C" fn on_headers_complete(parser: *mut sys::llhttp_t) -> c_int {
   // chunked-across-packets or >MAX_HEADER_PAIRS case by flushing
   // leftover headers via kOnHeaders so JS reads the full list
   // from parser._headers / parser._url.
-  let skip_flush =
-    !inner.headers_flushed && !inner.header_fields.is_empty();
+  let skip_flush = !inner.headers_flushed && !inner.header_fields.is_empty();
   if !skip_flush && !inner.header_fields.is_empty() {
     let flush_headers = Inner::create_headers_array(
       scope,
@@ -496,28 +495,28 @@ unsafe extern "C" fn on_headers_complete(parser: *mut sys::llhttp_t) -> c_int {
   // uses them instead of reading from parser._headers/_url.
   // Slow path: pass undefined, JS reads from parser._headers/_url
   // which were populated by the flush above.
-  let (headers, url): (v8::Local<v8::Value>, v8::Local<v8::Value>) = if skip_flush
-  {
-    let headers_arr = Inner::create_headers_array(
-      scope,
-      &inner.header_fields,
-      &inner.header_values,
-    );
-    let url_val: v8::Local<v8::Value> = if is_request {
-      v8::String::new_from_one_byte(
+  let (headers, url): (v8::Local<v8::Value>, v8::Local<v8::Value>) =
+    if skip_flush {
+      let headers_arr = Inner::create_headers_array(
         scope,
-        &inner.url,
-        v8::NewStringType::Normal,
-      )
-      .unwrap_or_else(|| v8::String::empty(scope))
-      .into()
+        &inner.header_fields,
+        &inner.header_values,
+      );
+      let url_val: v8::Local<v8::Value> = if is_request {
+        v8::String::new_from_one_byte(
+          scope,
+          &inner.url,
+          v8::NewStringType::Normal,
+        )
+        .unwrap_or_else(|| v8::String::empty(scope))
+        .into()
+      } else {
+        undef.into()
+      };
+      (headers_arr.into(), url_val)
     } else {
-      undef.into()
+      (undef.into(), undef.into())
     };
-    (headers_arr.into(), url_val)
-  } else {
-    (undef.into(), undef.into())
-  };
 
   // For requests: method is set, statusCode/statusMessage are undefined
   // For responses: statusCode/statusMessage are set, method is undefined
@@ -738,10 +737,14 @@ unsafe fn consume_read_callback(
   inner.current_buffer_len = data.len();
   inner.got_exception = false;
 
-  let callbacks_local = v8::Local::new(scope, &callbacks_global);
-  // SAFETY: ContextScope and PinScope both deref to HandleScope.
-  // The ExecuteContext only accesses the scope via HandleScope methods.
-  let scope_ptr = scope as *mut v8::ContextScope<v8::HandleScope> as *mut ();
+  // `scope` here is `&mut ContextScope<HandleScope>`. Casting its
+  // pointer directly to `*mut PinScope` is UB because `ContextScope`
+  // is a wrapper struct with a different layout. Coerce to
+  // `&mut PinScope` via `Deref` before the cast so the ExecuteContext
+  // sees a real PinScope pointer.
+  let pin_scope: &mut v8::PinScope = scope;
+  let scope_ptr = pin_scope as *mut v8::PinScope as *mut ();
+  let callbacks_local = v8::Local::new(pin_scope, &callbacks_global);
   let callbacks_static: v8::Local<'static, v8::Object> =
     unsafe { std::mem::transmute(callbacks_local) };
 
@@ -1006,9 +1009,14 @@ impl HTTPParser {
   ) {
     let inner = self.inner();
 
-    // Try to get the LibUvStreamWrap from the handle
+    // Try to get the LibUvStreamWrap from the handle. Use the
+    // base-object variant so TCPWrap / TLSWrap / PipeWrap (which all
+    // inherit from LibUvStreamWrap via `#[cppgc_inherits_from]`) are
+    // matched — `try_unwrap_cppgc_object` would require the concrete
+    // type to be exactly `LibUvStreamWrap` and silently return `None`
+    // for any subclass, disabling the consume fast path.
     let handle_value: v8::Local<v8::Value> = handle.into();
-    let Some(stream_wrap) = deno_core::cppgc::try_unwrap_cppgc_object::<
+    let Some(stream_wrap) = deno_core::cppgc::try_unwrap_cppgc_base_object::<
       LibUvStreamWrap,
     >(scope, handle_value) else {
       return;

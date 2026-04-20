@@ -531,6 +531,11 @@ unsafe extern "C" fn on_uv_read(
     }
     // SAFETY: interceptor registration guarantees the callback and payload are valid for this read dispatch.
     unsafe { (interceptor.callback)(interceptor.ptr, stream, nread, buf) };
+    // The interceptor borrows `buf.base` during its callback but does
+    // not take ownership — free the buffer here once it returns.
+    // Skipping this previously leaked 64KB per read on the consume
+    // path (RSS climbed into GBs under sustained HTTP traffic).
+    free_uv_buf(buf);
     return;
   }
 
@@ -864,6 +869,35 @@ enum StringEncoding {
   Ucs2,
 }
 
+/// Resolve a writev encoding-name v8 String into a `StringEncoding`
+/// variant without allocating. Encoding names are short ASCII tokens
+/// (max 8 chars: "utf-16le"); read the bytes into a stack buffer and
+/// match against literals. Replaces a `to_rust_string_lossy` +
+/// `match as_deref` pair that allocated a fresh Rust String per chunk
+/// per writev — ~5 allocs/request on the HTTP chunked-encoding path.
+fn parse_encoding_no_alloc(
+  scope: &mut v8::PinScope,
+  encoding: v8::Local<v8::String>,
+) -> StringEncoding {
+  let len = encoding.length();
+  if len == 0 || len > 8 {
+    return StringEncoding::Utf8;
+  }
+  let mut buf = [0u8; 8];
+  encoding.write_one_byte_v2(
+    scope,
+    0,
+    &mut buf[..len],
+    v8::WriteFlags::empty(),
+  );
+  match &buf[..len] {
+    b"latin1" | b"binary" => StringEncoding::Latin1,
+    b"ucs2" | b"ucs-2" | b"utf16le" | b"utf-16le" => StringEncoding::Ucs2,
+    b"ascii" => StringEncoding::Ascii,
+    _ => StringEncoding::Utf8,
+  }
+}
+
 fn encode_string_to_vec(
   scope: &mut v8::PinScope,
   string: v8::Local<v8::String>,
@@ -1146,11 +1180,35 @@ impl LibUvStreamWrap {
     let state_global = &op_state.borrow::<StreamBaseState>().array;
     let state_array = v8::Local::new(scope, state_global);
 
-    let mut data = Vec::new();
+    // Pre-pass: sum per-chunk upper-bound sizes so the concat Vec is
+    // allocated once with sufficient capacity — no growth reallocs as
+    // chunks are appended. For Uint8Arrays the byte length is exact;
+    // for strings we use `length() * 3` which upper-bounds utf-8
+    // output (a single UTF-16 code unit encodes to ≤ 3 bytes). This
+    // replaces an unallocated `Vec::new()` that previously incurred
+    // ~2-3 growth allocations per writev call on the HTTP
+    // chunked-encoding path.
+    let array_len = chunks.length();
+    let (iter_count, stride): (u32, u32) = if all_buffers {
+      (array_len, 1)
+    } else {
+      (array_len / 2, 2)
+    };
+    let mut total_est: usize = 0;
+    for i in 0..iter_count {
+      let Some(chunk) = chunks.get_index(scope, i * stride) else {
+        continue;
+      };
+      if let Ok(buf) = TryInto::<v8::Local<v8::Uint8Array>>::try_into(chunk) {
+        total_est += buf.byte_length();
+      } else if let Ok(s) = TryInto::<v8::Local<v8::String>>::try_into(chunk) {
+        total_est += s.length() * 3;
+      }
+    }
+    let mut data = Vec::with_capacity(total_est);
 
     if all_buffers {
-      let len = chunks.length();
-      for i in 0..len {
+      for i in 0..array_len {
         let Some(chunk) = chunks.get_index(scope, i) else {
           continue;
         };
@@ -1169,8 +1227,7 @@ impl LibUvStreamWrap {
         }
       }
     } else {
-      let len = chunks.length();
-      let count = len / 2;
+      let count = array_len / 2;
       for i in 0..count {
         let Some(chunk) = chunks.get_index(scope, i * 2) else {
           continue;
@@ -1189,18 +1246,11 @@ impl LibUvStreamWrap {
           }
         } else if let Ok(s) = TryInto::<v8::Local<v8::String>>::try_into(chunk)
         {
-          let encoding = chunks
+          let enc = chunks
             .get_index(scope, i * 2 + 1)
             .and_then(|v| TryInto::<v8::Local<v8::String>>::try_into(v).ok())
-            .map(|v| v.to_rust_string_lossy(scope));
-          let enc = match encoding.as_deref() {
-            Some("latin1" | "binary") => StringEncoding::Latin1,
-            Some("ucs2" | "ucs-2" | "utf16le" | "utf-16le") => {
-              StringEncoding::Ucs2
-            }
-            Some("ascii") => StringEncoding::Ascii,
-            _ => StringEncoding::Utf8,
-          };
+            .map(|e| parse_encoding_no_alloc(scope, e))
+            .unwrap_or(StringEncoding::Utf8);
           encode_string_to_vec(scope, s, enc, &mut data);
         }
       }
