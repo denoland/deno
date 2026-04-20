@@ -98,6 +98,9 @@ pub fn convert(result: ParseResult) -> Result<Flags, CliError> {
   // Global flags (log-level, quiet)
   global_args_parse(&result, &mut flags);
 
+  // Unstable feature flags (applies to all subcommands)
+  unstable_args_parse(&result, &mut flags);
+
   match result.subcommand.as_deref() {
     Some("run") => run_parse(&result, &mut flags),
     Some("serve") => serve_parse(&result, &mut flags),
@@ -2076,8 +2079,6 @@ fn jupyter_parse(result: &ParseResult, flags: &mut Flags) {
   let name = result.get_one("name").map(|s| s.to_string());
   let force = result.get_bool("force");
 
-  unstable_args_parse(result, flags);
-
   flags.subcommand = DenoSubcommand::Jupyter(JupyterFlags {
     install,
     kernel,
@@ -2377,7 +2378,6 @@ fn apply_node_options(flags: &mut Flags) {
 
 fn bundle_parse(result: &ParseResult, flags: &mut Flags) {
   compile_args_without_check_parse(result, flags);
-  unstable_args_parse(result, flags);
   permission_args_parse(result, flags);
   allow_scripts_arg_parse(result, flags);
 
