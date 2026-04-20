@@ -125,10 +125,12 @@ import {
   ERR_HTTP2_STREAM_ERROR,
   ERR_HTTP2_STREAM_SELF_DEPENDENCY,
   ERR_HTTP2_TOO_MANY_CUSTOM_SETTINGS,
+  ERR_HTTP2_UNSUPPORTED_PROTOCOL,
   ERR_INVALID_ARG_TYPE,
   ERR_INVALID_ARG_VALUE,
   ERR_INVALID_CHAR,
   ERR_OUT_OF_RANGE,
+  ERR_SOCKET_CLOSED,
   hideStackFrames,
 } from "ext:deno_node/internal/errors.ts";
 import {
@@ -344,6 +346,7 @@ const kMaxOutstandingSettings = Symbol("maxOutstandingSettings");
 
 const kMaxFrameSize = (2 ** 24) - 1;
 const kMaxInt = (2 ** 32) - 1;
+const kMaxInitWindowSize = (2 ** 31) - 1;
 const kMaxStreams = (2 ** 32) - 1;
 const kMaxALTSVC = (2 ** 14) - 2;
 
@@ -880,7 +883,7 @@ function pingCallback(cb) {
 
 // Validates the values in a settings object. Specifically:
 // 1. headerTableSize must be a number in the range 0 <= n <= kMaxInt
-// 2. initialWindowSize must be a number in the range 0 <= n <= kMaxInt
+// 2. initialWindowSize must be a number in the range 0 <= n <= kMaxInitWindowSize
 // 3. maxFrameSize must be a number in the range 16384 <= n <= kMaxFrameSize
 // 4. maxConcurrentStreams must be a number in the range 0 <= n <= kMaxStreams
 // 5. maxHeaderListSize must be a number in the range 0 <= n <= kMaxInt
@@ -925,7 +928,7 @@ const validateSettings = hideStackFrames((settings) => {
     "initialWindowSize",
     settings.initialWindowSize,
     0,
-    kMaxInt,
+    kMaxInitWindowSize,
   );
   assertWithinRange(
     "maxFrameSize",
@@ -4216,19 +4219,16 @@ function getUnpackedSettings(buf) {
   if (
     // deno-lint-ignore prefer-primordials
     !Buffer.isBuffer(buf) &&
-    !ObjectPrototypeIsPrototypeOf(ArrayBuffer.prototype, buf) &&
-    !ArrayBufferIsView(buf)
+    !(ArrayBufferIsView(buf) && !(buf instanceof DataView))
   ) {
     throw new ERR_INVALID_ARG_TYPE("buf", [
       "Buffer",
       "TypedArray",
     ], buf);
   }
-  // deno-lint-ignore prefer-primordials
-  if (buf.byteLength === undefined) buf = Buffer.from(buf);
-  else if (!Buffer.isBuffer(buf)) {
+  if (!Buffer.isBuffer(buf)) {
     // deno-lint-ignore prefer-primordials
-    buf = Buffer.from(buf.buffer, buf.byteOffset, buf.byteLength);
+    buf = Buffer.from(buf);
   }
   if (buf.length % 6 !== 0) {
     throw new ERR_HTTP2_INVALID_PACKED_SETTINGS_LENGTH();
