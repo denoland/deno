@@ -1904,9 +1904,25 @@ fn install_parse(
     return Ok(());
   }
 
-  // Note: permission flags on non-global installs are validated at runtime,
-  // not during flag parsing. --allow-import is valid for local entrypoint
-  // installs.
+  // Permission flags (other than --allow-import) are only valid for global installs.
+  {
+    let perm_flags = [
+      "allow-all", "allow-read", "deny-read", "allow-write", "deny-write",
+      "allow-net", "deny-net", "allow-env", "deny-env", "allow-run",
+      "deny-run", "allow-sys", "deny-sys", "allow-ffi", "deny-ffi",
+    ];
+    for flag in &perm_flags {
+      if result.contains(flag) {
+        return Err(CliError::new(
+          CliErrorKind::InvalidValue,
+          format!(
+            "Note: Permission flags can only be used in a global setting\n\
+             Use `deno install -g --allow-net jsr:@std/fs` instead"
+          ),
+        ));
+      }
+    }
+  }
 
   let lockfile_only = result.get_bool("lockfile-only");
 
