@@ -1291,6 +1291,8 @@
     "parallel/test-http2-head-request.js": {},
     "parallel/test-http2-info-headers.js": {},
     "parallel/test-http2-invalidargtypes-errors.js": {},
+    "parallel/test-http2-invalidheaderfield.js": {},
+    "parallel/test-http2-invalidheaderfields-client.js": {},
     "parallel/test-http2-large-write-multiple-requests.js": {},
     "parallel/test-http2-malformed-altsvc.js": {},
     "parallel/test-http2-many-writes-and-destroy.js": {},
