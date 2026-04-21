@@ -59,6 +59,15 @@ const dependentSignalCleanupRegistry = new SafeFinalizationRegistry(
   },
 );
 
+// When an AbortSignal.timeout() signal is GC'd before its timer fires,
+// cancel the underlying timer so it doesn't leak. The timer callback uses
+// a WeakRef to the signal, so this is the cleanup path for the timer itself.
+const timeoutCleanupRegistry = new SafeFinalizationRegistry(
+  (timerIdValue) => {
+    core.cancelTimer(timerIdValue);
+  },
+);
+
 class AbortSignal extends EventTarget {
   [abortReason] = undefined;
   [abortAlgos] = null;
@@ -96,11 +105,17 @@ class AbortSignal extends EventTarget {
     );
 
     const signal = new AbortSignal(illegalConstructorKey);
+    // Use a WeakRef so the timer callback does not prevent the signal
+    // from being garbage collected. If the signal is GC'd before the
+    // timer fires, the FinalizationRegistry cancels the timer.
+    const weakSignal = new SafeWeakRef(signal);
     signal[timerId] = core.createTimer(
       () => {
-        core.cancelTimer(signal[timerId]);
-        signal[timerId] = null;
-        signal[signalAbort](
+        const s = WeakRefPrototypeDeref(weakSignal);
+        if (s === undefined) return;
+        core.cancelTimer(s[timerId]);
+        s[timerId] = null;
+        s[signalAbort](
           new DOMException("Signal timed out.", "TimeoutError"),
         );
       },
@@ -110,6 +125,7 @@ class AbortSignal extends EventTarget {
       false, // start unrefed (like Node.js)
       true, // system timer: excluded from leak sanitizer
     );
+    timeoutCleanupRegistry.register(signal, signal[timerId]);
     return signal;
   }
 
