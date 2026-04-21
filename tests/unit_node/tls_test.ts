@@ -375,6 +375,93 @@ Deno.test({ name: "tls connect upgrade tcp" }, async () => {
   socket.destroy();
 });
 
+// Regression test for the STARTTLS-style flow used by `npm:pg`:
+//   1. open a plain TCP connection (node:net)
+//   2. write some bytes on the plain socket (Postgres SSLRequest)
+//   3. read a one-byte reply ('S' — server willing to do TLS)
+//   4. hand the already-open socket to tls.connect({ socket })
+//
+// #33208 and #33301 fixed the basic `tls.connect({ socket })` upgrade
+// against a server that starts TLS immediately, but the case where the
+// client has already exchanged bytes on the plain socket before the
+// upgrade was still broken — the server sees the client's TLS
+// ClientHello garbled and replies with a `unexpected_message` alert.
+Deno.test(
+  {
+    name: "tls.connect({ socket }) upgrade after plain read/write (STARTTLS)",
+    permissions: { net: true, read: true },
+  },
+  async () => {
+    const listener = Deno.listen({ hostname: "127.0.0.1", port: 0 });
+    const port = (listener.addr as Deno.NetAddr).port;
+
+    const serverDone = (async () => {
+      const conn = await listener.accept();
+      try {
+        // Read 8 bytes (analogous to pg's SSLRequest).
+        const req = new Uint8Array(8);
+        let read = 0;
+        while (read < 8) {
+          const n = await conn.read(req.subarray(read));
+          if (n === null) throw new Error("client closed early");
+          read += n;
+        }
+        // Reply 'S' — server is willing to upgrade to TLS.
+        await conn.write(new Uint8Array([0x53]));
+        // Server-side upgrade.
+        const tlsConn = await Deno.startTls(conn as Deno.TcpConn, {
+          hostname: "localhost",
+          key,
+          cert,
+        });
+        await tlsConn.write(new TextEncoder().encode("hello from TLS"));
+        tlsConn.close();
+      } catch {
+        try {
+          conn.close();
+        } catch { /* ignored */ }
+      }
+    })();
+
+    const socket = net.connect({ host: "127.0.0.1", port });
+    await new Promise<void>((resolve, reject) => {
+      socket.once("connect", () => resolve());
+      socket.once("error", reject);
+    });
+
+    // Send an 8-byte SSLRequest (length=8, code=80877103).
+    socket.write(Uint8Array.from([0, 0, 0, 8, 0x04, 0xd2, 0x16, 0x2f]));
+
+    // Read the one-byte 'S' reply on the plain socket.
+    const first = await new Promise<Buffer>((resolve, reject) => {
+      socket.once("data", resolve);
+      socket.once("error", reject);
+    });
+    assertEquals(first[0], 0x53);
+
+    // Upgrade the existing socket to TLS.
+    const secure = tls.connect({
+      socket,
+      host: "localhost",
+      secureContext: {
+        ca: rootCaCert,
+        // deno-lint-ignore no-explicit-any
+      } as any,
+    });
+
+    await new Promise<void>((resolve, reject) => {
+      secure.once("secureConnect", () => resolve());
+      secure.once("error", reject);
+      secure.once("close", () =>
+        reject(new Error("socket closed before secureConnect")));
+    });
+
+    secure.destroy();
+    listener.close();
+    await serverDone;
+  },
+);
+
 Deno.test("tlssocket._handle._parentWrap is set", () => {
   // Note: This feature is used in popular 'http2-wrapper' module
   // https://github.com/szmarczak/http2-wrapper/blob/51eeaf59ff9344fb192b092241bfda8506983620/source/utils/js-stream-socket.js#L6
