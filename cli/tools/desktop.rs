@@ -131,6 +131,13 @@ async fn compile_desktop(
     .filter(|o| o.to_lowercase().ends_with(".dmg"))
     .cloned();
   if let Some(ref dmg) = dmg_output {
+    if !cfg!(target_os = "macos") {
+      bail!(
+        "Building a .dmg requires a macOS build host (uses hdiutil). \
+         Requested output: {dmg}. Build on macOS, or choose a different output \
+         format.",
+      );
+    }
     let stem = Path::new(dmg)
       .file_stem()
       .map(|s| s.to_string_lossy().into_owned())
@@ -285,7 +292,11 @@ async fn compile_desktop(
       dmg_abs
     } else if let Some(appimage) = appimage_output.as_deref() {
       let appimage_abs = cli_options.initial_cwd().join(appimage);
-      create_linux_appimage(&bundle_path, &appimage_abs)?;
+      create_linux_appimage(
+        &bundle_path,
+        &appimage_abs,
+        desktop_flags.target.as_deref(),
+      )?;
       appimage_abs
     } else {
       bundle_path
@@ -562,7 +573,6 @@ async fn package_windows_app_dir(
   let dylib_filename = dylib_path.file_name().unwrap();
   let dest_dylib = app_dir.join(dylib_filename);
   std::fs::copy(dylib_path, &dest_dylib)?;
-  strip_dylib(&dest_dylib);
 
   // Create a .bat launcher that invokes the backend with --runtime.
   let launcher_path = app_dir.join(format!("{}.bat", app_name));
@@ -677,7 +687,6 @@ async fn package_linux_app_dir(
   let dylib_filename = dylib_path.file_name().unwrap();
   let dest_dylib = app_dir.join(dylib_filename);
   std::fs::copy(dylib_path, &dest_dylib)?;
-  strip_dylib(&dest_dylib);
 
   // Create a shell launcher that invokes the backend with --runtime.
   // --ozone-platform=x11 forces CEF to create X11 windows (via XWayland on
@@ -1169,11 +1178,10 @@ async fn package_macos_app_bundle(
   // Strip unnecessary bulk from the CEF framework.
   strip_cef_bloat(&contents_dir);
 
-  // Copy the compiled dylib and strip symbols.
+  // Copy the compiled dylib.
   let dylib_filename = dylib_path.file_name().unwrap();
   let dest_dylib = macos_dir.join(dylib_filename);
   std::fs::copy(dylib_path, &dest_dylib)?;
-  strip_dylib(&dest_dylib);
 
   // Create launcher script as the main executable.
   let launcher_path = macos_dir.join(&app_name);
@@ -1352,55 +1360,141 @@ fn create_macos_dmg(
   Ok(())
 }
 
+/// AppImage Type-2 runtime ELF stubs, vendored from
+/// github.com/AppImage/type2-runtime at tag `20251108`. Prepended verbatim to
+/// the SquashFS payload to form the final AppImage.
+const APPIMAGE_RUNTIME_X86_64: &[u8] =
+  include_bytes!("appimage_runtime/runtime-x86_64");
+const APPIMAGE_RUNTIME_AARCH64: &[u8] =
+  include_bytes!("appimage_runtime/runtime-aarch64");
+
+/// 1×1 transparent PNG, used when the caller didn't supply an icon.
+/// appimagetool-built AppImages expect a top-level `<Name>.png` to exist.
+const STUB_ICON_PNG: &[u8] = &[
+  0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d,
+  0x49, 0x48, 0x44, 0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01,
+  0x08, 0x06, 0x00, 0x00, 0x00, 0x1f, 0x15, 0xc4, 0x89, 0x00, 0x00, 0x00,
+  0x0d, 0x49, 0x44, 0x41, 0x54, 0x78, 0x9c, 0x63, 0x00, 0x01, 0x00, 0x00,
+  0x05, 0x00, 0x01, 0x0d, 0x0a, 0x2d, 0xb4, 0x00, 0x00, 0x00, 0x00, 0x49,
+  0x45, 0x4e, 0x44, 0xae, 0x42, 0x60, 0x82,
+];
+
+/// Pick the Type-2 runtime stub for the requested target. Falls back to the
+/// host arch when `target` is None. The triple's leading component is the
+/// arch (e.g. `x86_64-unknown-linux-gnu` → `x86_64`).
+fn appimage_runtime_for_target(
+  target: Option<&str>,
+) -> Result<&'static [u8], AnyError> {
+  let arch = target
+    .and_then(|t| t.split('-').next())
+    .unwrap_or(std::env::consts::ARCH);
+  match arch {
+    "x86_64" => Ok(APPIMAGE_RUNTIME_X86_64),
+    "aarch64" => Ok(APPIMAGE_RUNTIME_AARCH64),
+    other => bail!(
+      "No bundled AppImage runtime for arch '{other}'; supported: x86_64, aarch64"
+    ),
+  }
+}
+
+/// Unix mode bits for a filesystem entry. On non-Unix hosts (cross-compiling
+/// a Linux AppImage from Windows/macOS) we don't have real mode bits, so fall
+/// back to a reasonable default: 0o755 for dirs, 0o644 for files.
+fn unix_mode_of(meta: &std::fs::Metadata) -> u16 {
+  #[cfg(unix)]
+  {
+    use std::os::unix::fs::PermissionsExt;
+    (meta.permissions().mode() & 0o7777) as u16
+  }
+  #[cfg(not(unix))]
+  {
+    if meta.is_dir() { 0o755 } else { 0o644 }
+  }
+}
+
+fn node_header(mode: u16) -> backhand::NodeHeader {
+  backhand::NodeHeader {
+    permissions: mode,
+    uid: 0,
+    gid: 0,
+    mtime: 0,
+  }
+}
+
+/// Walk `fs_root` and push every entry into `writer` at the SquashFS root.
+/// Directories are pushed before their contents (required by backhand).
+fn push_dir_contents_to_squashfs(
+  writer: &mut backhand::FilesystemWriter<'_, '_, '_>,
+  fs_root: &Path,
+) -> Result<(), AnyError> {
+  let mut stack: Vec<PathBuf> = vec![fs_root.to_path_buf()];
+  while let Some(dir) = stack.pop() {
+    let mut entries: Vec<_> =
+      std::fs::read_dir(&dir)?.collect::<Result<_, _>>()?;
+    entries.sort_by_key(|e| e.file_name());
+    for entry in entries {
+      let path = entry.path();
+      let rel = path.strip_prefix(fs_root)?;
+      let arc_path = Path::new("/").join(rel);
+      let meta = std::fs::symlink_metadata(&path)?;
+      let mode = unix_mode_of(&meta);
+      let ft = meta.file_type();
+      if ft.is_symlink() {
+        let target = std::fs::read_link(&path)?;
+        writer.push_symlink(target, &arc_path, node_header(mode))?;
+      } else if ft.is_dir() {
+        writer.push_dir(&arc_path, node_header(mode))?;
+        stack.push(path);
+      } else {
+        let f = std::fs::File::open(&path)?;
+        writer.push_file(f, &arc_path, node_header(mode))?;
+      }
+    }
+  }
+  Ok(())
+}
+
 /// Wrap a Linux app directory in an `.AppImage` single-file executable.
 ///
-/// Stages the app dir as an AppDir (adding `AppRun`, a `.desktop` entry, and
-/// a top-level icon) and invokes `appimagetool` to build the AppImage. The
-/// user must have `appimagetool` on `PATH`.
+/// Packs the app dir into a SquashFS image via the `backhand` crate, adds the
+/// AppDir-required entries (`AppRun`, `.desktop`, top-level icon), then
+/// prepends the vendored AppImage Type-2 runtime ELF for the target arch.
+/// Pure Rust; works on any build host.
 fn create_linux_appimage(
   app_dir: &Path,
   appimage_path: &Path,
+  target: Option<&str>,
 ) -> Result<(), AnyError> {
+  use std::io::Cursor;
+  use std::io::Write as _;
+
   let app_name = app_dir
     .file_name()
     .map(|s| s.to_string_lossy().into_owned())
     .unwrap_or_else(|| "App".to_string());
 
-  // Stage in a sibling directory. appimagetool treats the staging dir as the
-  // AppDir root.
-  let staging = appimage_path.with_file_name(format!(
-    ".{}.appimage-staging",
-    appimage_path
-      .file_name()
-      .unwrap_or_default()
-      .to_string_lossy()
-  ));
-  if staging.exists() {
-    std::fs::remove_dir_all(&staging)?;
-  }
-  std::fs::create_dir_all(&staging)?;
+  let runtime_elf = appimage_runtime_for_target(target)?;
 
-  crate::tools::compile::copy_dir_all(app_dir, &staging)?;
+  let mut writer = backhand::FilesystemWriter::default();
 
-  // AppRun is what the AppImage invokes on launch. Use a thin shell script
-  // so we don't have to deal with $ORIGIN-relative rpath in AppRun itself —
-  // the existing launcher already sets $DIR and execs the backend.
-  let apprun = staging.join("AppRun");
-  std::fs::write(
-    &apprun,
-    format!(
-      "#!/bin/bash\n\
-       DIR=\"$(cd \"$(dirname \"$0\")\" && pwd)\"\n\
-       exec \"$DIR/{app_name}\" \"$@\"\n",
-    ),
+  // Pack everything from the staged app dir into the SquashFS root.
+  push_dir_contents_to_squashfs(&mut writer, app_dir)?;
+
+  // AppRun is what the AppImage invokes on launch. Thin shell shim that
+  // delegates to the existing launcher (which already sets $DIR and execs
+  // the backend with the right args).
+  let apprun = format!(
+    "#!/bin/bash\n\
+     DIR=\"$(cd \"$(dirname \"$0\")\" && pwd)\"\n\
+     exec \"$DIR/{app_name}\" \"$@\"\n",
+  );
+  writer.push_file(
+    Cursor::new(apprun.into_bytes()),
+    "/AppRun",
+    node_header(0o755),
   )?;
-  #[cfg(unix)]
-  {
-    use std::os::unix::fs::PermissionsExt;
-    std::fs::set_permissions(&apprun, std::fs::Permissions::from_mode(0o755))?;
-  }
 
-  // .desktop entry. appimagetool requires one at the AppDir root.
+  // .desktop entry at the AppDir root.
   let desktop_entry = format!(
     "[Desktop Entry]\n\
      Type=Application\n\
@@ -1409,98 +1503,56 @@ fn create_linux_appimage(
      Icon={app_name}\n\
      Categories=Utility;\n",
   );
-  std::fs::write(staging.join(format!("{app_name}.desktop")), desktop_entry)?;
+  writer.push_file(
+    Cursor::new(desktop_entry.into_bytes()),
+    format!("/{app_name}.desktop"),
+    node_header(0o644),
+  )?;
 
-  // Icon: appimagetool looks for <Name>.png (or .svg) at the AppDir root.
-  // package_linux_app_dir writes the user icon as AppIcon.png — rename it.
-  // Fall back to a 1x1 transparent PNG if no icon was provided.
-  let icon_target = staging.join(format!("{app_name}.png"));
-  if !icon_target.exists() {
-    let app_icon = staging.join("AppIcon.png");
-    if app_icon.exists() {
-      std::fs::rename(&app_icon, &icon_target)?;
-    } else {
-      const STUB_PNG: &[u8] = &[
-        0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d,
-        0x49, 0x48, 0x44, 0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01,
-        0x08, 0x06, 0x00, 0x00, 0x00, 0x1f, 0x15, 0xc4, 0x89, 0x00, 0x00, 0x00,
-        0x0d, 0x49, 0x44, 0x41, 0x54, 0x78, 0x9c, 0x63, 0x00, 0x01, 0x00, 0x00,
-        0x05, 0x00, 0x01, 0x0d, 0x0a, 0x2d, 0xb4, 0x00, 0x00, 0x00, 0x00, 0x49,
-        0x45, 0x4e, 0x44, 0xae, 0x42, 0x60, 0x82,
-      ];
-      std::fs::write(&icon_target, STUB_PNG)?;
-    }
-  }
+  // Icon at AppDir root named after the app. package_linux_app_dir writes the
+  // user icon as AppIcon.png; if absent, fall back to a 1×1 transparent PNG.
+  let icon_src = app_dir.join("AppIcon.png");
+  let icon_bytes = if icon_src.exists() {
+    std::fs::read(&icon_src)?
+  } else {
+    STUB_ICON_PNG.to_vec()
+  };
+  writer.push_file(
+    Cursor::new(icon_bytes),
+    format!("/{app_name}.png"),
+    node_header(0o644),
+  )?;
 
-  if appimage_path.exists() {
-    std::fs::remove_file(appimage_path)?;
-  }
+  // Serialize the SquashFS to memory.
+  let mut squashfs = Cursor::new(Vec::<u8>::new());
+  writer
+    .write(&mut squashfs)
+    .context("Failed to write SquashFS image")?;
+  drop(writer);
+
+  // Assemble: runtime ELF + SquashFS, then mark executable.
   if let Some(parent) = appimage_path.parent()
     && !parent.as_os_str().is_empty()
   {
     std::fs::create_dir_all(parent)?;
   }
+  let mut out = std::fs::File::create(appimage_path).with_context(|| {
+    format!("Failed to create AppImage at {}", appimage_path.display())
+  })?;
+  out.write_all(runtime_elf)?;
+  out.write_all(&squashfs.into_inner())?;
+  drop(out);
 
-  // ARCH env var is required by appimagetool to name the runtime correctly.
-  let arch = match std::env::consts::ARCH {
-    "x86_64" => "x86_64",
-    "aarch64" => "aarch64",
-    other => other,
-  };
-
-  let status = std::process::Command::new("appimagetool")
-    .env("ARCH", arch)
-    .arg(&staging)
-    .arg(appimage_path)
-    .stdout(std::process::Stdio::null())
-    .stderr(std::process::Stdio::inherit())
-    .status()
-    .context(
-      "Failed to run appimagetool (install from https://appimage.github.io/appimagetool/)",
-    )?;
-
-  let _ = std::fs::remove_dir_all(&staging);
-
-  if !status.success() {
-    bail!(
-      "appimagetool failed to create AppImage at {}",
-      appimage_path.display()
-    );
-  }
-  Ok(())
-}
-
-/// Strip local symbols from the compiled dylib to reduce size.
-///
-/// On macOS uses `strip -x` (remove local symbols, keep global/debug-essential).
-/// On Linux uses `strip --strip-unneeded` (remove symbols not needed for relocation).
-fn strip_dylib(dylib_path: &Path) {
-  let strip_args: &[&str] = if cfg!(target_os = "macos") {
-    &["-x", dylib_path.to_str().unwrap_or_default()]
-  } else if cfg!(target_os = "linux") {
-    &["--strip-unneeded", dylib_path.to_str().unwrap_or_default()]
-  } else {
-    return;
-  };
-
-  match std::process::Command::new("strip")
-    .args(strip_args)
-    .output()
+  #[cfg(unix)]
   {
-    Ok(output) if output.status.success() => {
-      log::info!("Stripped symbols from {}", dylib_path.display());
-    }
-    Ok(output) => {
-      log::warn!(
-        "strip exited with {}: {}",
-        output.status,
-        String::from_utf8_lossy(&output.stderr)
-      );
-    }
-    Err(e) => {
-      log::warn!("Failed to run strip on {}: {}", dylib_path.display(), e);
-    }
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::set_permissions(
+      appimage_path,
+      std::fs::Permissions::from_mode(0o755),
+    )?;
   }
+
+  Ok(())
 }
 
 /// Recursively copy a directory tree, ensuring writable permissions on the
@@ -1544,73 +1596,80 @@ fn strip_cef_bloat(contents_dir: &Path) {
 
 /// Build a macOS `.icns` from an icon set (multiple PNGs at specified sizes).
 ///
-/// Maps each provided size to the correct `.iconset` filename. The standard
-/// macOS iconset uses 1x and 2x variants:
-///   16px  → icon_16x16.png
-///   32px  → icon_16x16@2x.png AND icon_32x32.png
-///   64px  → icon_32x32@2x.png
-///   128px → icon_128x128.png
-///   256px → icon_128x128@2x.png AND icon_256x256.png
-///   512px → icon_256x256@2x.png AND icon_512x512.png
-///   1024px→ icon_512x512@2x.png
+/// Writes the ICNS container format directly (macOS 10.7+ accepts PNG bytes
+/// as the payload for every modern OSType code, so no re-encoding needed).
+/// Each pixel size maps to one or two OSType codes — the 1x and 2x slots
+/// that share that pixel dimension:
+///   16px  → icp4
+///   32px  → ic11 (16×16@2x) + icp5 (32×32)
+///   64px  → ic12 (32×32@2x)
+///   128px → ic07
+///   256px → ic13 (128×128@2x) + ic08 (256×256)
+///   512px → ic14 (256×256@2x) + ic09 (512×512)
+///   1024px→ ic10 (512×512@2x)
 fn convert_icon_set_to_icns(
   cwd: &Path,
   entries: &[crate::args::IconSetEntry],
   icns_path: &Path,
 ) -> Result<(), deno_core::error::AnyError> {
-  let iconset_dir = icns_path.with_extension("iconset");
-  std::fs::create_dir_all(&iconset_dir)?;
+  use std::io::Write;
 
+  let mut icons: Vec<(&'static [u8; 4], Vec<u8>)> = Vec::new();
   for entry in entries {
     let src = cwd.join(&entry.path);
     if !src.exists() {
       log::warn!("Icon '{}' not found, skipping", src.display());
       continue;
     }
-
-    let names = iconset_names_for_size(entry.size);
-    for name in names {
-      std::fs::copy(&src, iconset_dir.join(name))?;
+    let data = std::fs::read(&src)?;
+    for code in icns_ostypes_for_size(entry.size) {
+      icons.push((*code, data.clone()));
     }
   }
 
-  let status = std::process::Command::new("iconutil")
-    .args([
-      "-c",
-      "icns",
-      &iconset_dir.display().to_string(),
-      "-o",
-      &icns_path.display().to_string(),
-    ])
-    .stdout(std::process::Stdio::null())
-    .stderr(std::process::Stdio::null())
-    .status()?;
-
-  let _ = std::fs::remove_dir_all(&iconset_dir);
-
-  if !status.success() {
-    deno_core::anyhow::bail!("iconutil failed to create .icns from icon set");
+  if icons.is_empty() {
+    deno_core::anyhow::bail!("No valid icon images found for .icns");
   }
 
+  // File header (8 bytes) + for each icon: 4-byte OSType + 4-byte length + payload.
+  let total_size: u32 = icons
+    .iter()
+    .map(|(_, data)| 8 + data.len() as u32)
+    .sum::<u32>()
+    + 8;
+
+  let mut buf = Vec::with_capacity(total_size as usize);
+  buf.write_all(b"icns")?;
+  buf.write_all(&total_size.to_be_bytes())?;
+  for (code, data) in &icons {
+    buf.write_all(*code)?;
+    let entry_len = 8 + data.len() as u32;
+    buf.write_all(&entry_len.to_be_bytes())?;
+    buf.write_all(data)?;
+  }
+
+  std::fs::write(icns_path, &buf)?;
   Ok(())
 }
 
-/// Returns the `.iconset` filenames a given pixel size maps to.
-fn iconset_names_for_size(size: u32) -> Vec<&'static str> {
+/// Returns the ICNS OSType codes a given pixel size maps to. Multiple codes
+/// mean the same PNG is embedded under each (matching how the staged
+/// `.iconset` approach duplicated files across 1x/2x filename slots).
+fn icns_ostypes_for_size(size: u32) -> &'static [&'static [u8; 4]] {
   match size {
-    16 => vec!["icon_16x16.png"],
-    32 => vec!["icon_16x16@2x.png", "icon_32x32.png"],
-    64 => vec!["icon_32x32@2x.png"],
-    128 => vec!["icon_128x128.png"],
-    256 => vec!["icon_128x128@2x.png", "icon_256x256.png"],
-    512 => vec!["icon_256x256@2x.png", "icon_512x512.png"],
-    1024 => vec!["icon_512x512@2x.png"],
+    16 => &[b"icp4"],
+    32 => &[b"ic11", b"icp5"],
+    64 => &[b"ic12"],
+    128 => &[b"ic07"],
+    256 => &[b"ic13", b"ic08"],
+    512 => &[b"ic14", b"ic09"],
+    1024 => &[b"ic10"],
     _ => {
       log::warn!(
         "Icon size {}px doesn't map to a standard macOS iconset slot, skipping",
         size
       );
-      vec![]
+      &[]
     }
   }
 }
