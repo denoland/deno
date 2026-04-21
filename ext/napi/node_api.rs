@@ -276,31 +276,30 @@ fn napi_async_init(
 ) -> napi_status {
   let env = check_env!(env);
   check_arg!(env, result);
+  // Node.js requires async_resource_name to be provided.
+  check_arg!(env, async_resource_name);
 
   let async_id = env.next_async_id;
   env.next_async_id += 1;
 
   let resource = {
     v8::callback_scope!(unsafe scope, env.context());
-    let obj = if let Some(resource) =
-      async_resource.and_then(|v| v8::Local::<v8::Object>::try_from(v).ok())
-    {
-      resource
-    } else {
+    let obj = if async_resource.is_none() {
       // If no resource provided, create a new empty object (matching Node.js)
       v8::Object::new(scope)
+    } else {
+      // Node.js applies ToObject() coercion on the resource value.
+      let resource_local = async_resource.unwrap();
+      resource_local
+        .to_object(scope)
+        .unwrap_or_else(|| v8::Object::new(scope))
     };
 
     // Emit async_hooks init event
     let init_fn = v8::Local::new(scope, &env.async_hooks_init);
     let recv = v8::undefined(scope).into();
     let id = v8::Number::new(scope, async_id as f64).into();
-    let type_name: v8::Local<v8::Value> =
-      if let Some(name) = *async_resource_name {
-        name
-      } else {
-        v8::String::new(scope, "NAPI").unwrap().into()
-      };
+    let type_name: v8::Local<v8::Value> = (*async_resource_name).unwrap();
     // triggerAsyncId = 0 means use the current execution async ID
     let trigger = v8::Number::new(scope, 0.0).into();
     let resource_val: v8::Local<v8::Value> = obj.into();
