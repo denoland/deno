@@ -105,14 +105,19 @@ export function Agent(options) {
 
     // In Node.js, nextTick (where 'free' is emitted) always runs before I/O,
     // so the socket is guaranteed to be writable here. In Deno, I/O can
-    // interleave with nextTick, so a server FIN may arrive first making the
-    // socket non-writable but not yet destroyed. Use `destroyed` as the
-    // primary check; the socket will be cleaned up by the 'close' listener.
+    // interleave with nextTick, so a server FIN may arrive before 'free'
+    // runs, making the socket non-writable but not yet destroyed.
     if (socket.destroyed) {
       return;
     }
 
+    // For queued requests, require the socket to be writable - don't hand
+    // a half-closed socket to a new request.
     const requests = this.requests[name];
+    if (requests && requests.length && !socket.writable) {
+      socket.destroy();
+      return;
+    }
     if (requests && requests.length) {
       const req = requests.shift();
       const reqAsyncRes = req[kRequestAsyncResource];
