@@ -460,6 +460,30 @@ impl TCPWrap {
     }
   }
 
+  /// Take the underlying TCP stream from this handle and create a server
+  /// WebSocket resource from it. This detaches the stream from libuv.
+  /// Returns the WebSocket resource ID.
+  fn upgrade_to_websocket(
+    &self,
+    state: &mut OpState,
+    #[buffer] extra_bytes: &[u8],
+  ) -> Result<ResourceId, deno_error::JsErrorBox> {
+    let tcp = self.tcp_ptr();
+    if tcp.is_null() {
+      return Err(deno_error::JsErrorBox::generic("TCP handle is closed"));
+    }
+    // SAFETY: tcp is valid (null-checked above)
+    let tcp_stream = unsafe { (*tcp).internal_stream.take() };
+    let tcp_stream = tcp_stream.ok_or_else(|| {
+      deno_error::JsErrorBox::generic("TCP handle has no active stream")
+    })?;
+    let transport = deno_net::raw::NetworkStream::Tcp(tcp_stream);
+    let read_buf = bytes::Bytes::copy_from_slice(extra_bytes);
+    Ok(deno_websocket::ws_create_server_stream(
+      state, transport, read_buf,
+    ))
+  }
+
   #[fast]
   fn set_no_delay(&self, enable: bool) -> i32 {
     let tcp = self.tcp_ptr();

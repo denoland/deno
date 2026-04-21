@@ -11,6 +11,8 @@ const {
   StringPrototypeToUpperCase,
   TypeError,
   Symbol,
+  PromiseResolve,
+  Uint8Array,
 } = primordials;
 import { toInnerRequest } from "ext:deno_fetch/23_request.js";
 import {
@@ -119,6 +121,60 @@ function upgradeWebSocket(request, options = { __proto__: null }) {
       } catch (error) {
         const event = new ErrorEvent("error", { error });
         socket.dispatchEvent(event);
+      }
+    })();
+  } else if (options.socket) {
+    // node:http upgrade path: the socket is a node net.Socket from the
+    // upgrade event. Write the 101 response, take the TCP stream from
+    // libuv, and create a WebSocket directly over it.
+    const nodeSocket = options.socket;
+    const head =
+      `HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: ${accept}\r\n`;
+    const protocolHeader = options.protocol
+      ? `Sec-WebSocket-Protocol: ${options.protocol}\r\n`
+      : "";
+    const responseHead = head + protocolHeader + "\r\n";
+
+    // Write the upgrade response via the socket
+    nodeSocket.write(responseHead);
+
+    const handle = nodeSocket._handle;
+    if (!handle) {
+      throw new TypeError("Socket has no handle - cannot upgrade");
+    }
+
+    // Stop libuv from reading this socket before we take the stream
+    handle.readStop();
+
+    // Extra bytes that were already buffered (e.g., from the upgrade
+    // request body that arrived with the headers)
+    const extraBytes = options.head || new Uint8Array(0);
+
+    // Defer setup so the caller can attach event handlers (onopen,
+    // onmessage, etc.) before events fire.
+    (async () => {
+      try {
+        // Yield to let the caller set up event handlers first.
+        await PromiseResolve();
+
+        // Take the TCP stream from libuv and create the WebSocket
+        // resource directly in Rust - no fd roundtrip through JS.
+        const wsRid = handle.upgradeToWebsocket(extraBytes);
+
+        socket[_rid] = wsRid;
+        socket[_readyState] = WebSocket.OPEN;
+        socket.dispatchEvent(new Event("open"));
+
+        socket[_eventLoop]();
+        if (socket[_idleTimeoutDuration]) {
+          socket.addEventListener(
+            "close",
+            () => clearTimeout(socket[_idleTimeoutTimeout]),
+          );
+        }
+        socket[_serverHandleIdleTimeout]();
+      } catch (error) {
+        socket.dispatchEvent(new ErrorEvent("error", { error }));
       }
     })();
   }

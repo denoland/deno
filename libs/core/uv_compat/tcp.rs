@@ -106,7 +106,7 @@ pub struct uv_tcp_t {
   /// Deferred bind error (e.g. EADDRINUSE). Reported from listen/connect,
   /// matching libuv's `delayed_error` semantics.
   pub(crate) internal_delayed_error: c_int,
-  pub(crate) internal_stream: Option<tokio::net::TcpStream>,
+  pub internal_stream: Option<tokio::net::TcpStream>,
   pub(crate) internal_listener: Option<tokio::net::TcpListener>,
   pub(crate) internal_listener_addr: Option<SocketAddr>,
   pub(crate) internal_nodelay: bool,
