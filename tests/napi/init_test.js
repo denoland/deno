@@ -3,15 +3,15 @@
 import { Buffer } from "node:buffer";
 import { assert, libSuffix } from "./common.js";
 import { Worker } from "node:worker_threads";
-import {
-  emitInit,
-  emitBefore,
-  emitAfter,
-  emitDestroy,
-} from "ext:deno_node/internal/async_hooks.ts";
-
 const ops = Deno[Deno.internal].core.ops;
 const noop = () => {};
+
+// Use noops for async hooks -- this test only validates module
+// initialization, not async context propagation.
+const emitInit = noop;
+const emitBefore = noop;
+const emitAfter = noop;
+const emitDestroy = noop;
 
 Deno.test("ctr initialization (napi_module_register)", {
   ignore: Deno.build.os == "windows",
