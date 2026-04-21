@@ -54,7 +54,6 @@ use crate::ops::handle_wrap::HandleWrap;
 use crate::ops::handle_wrap::OwnedPtr;
 use crate::ops::handle_wrap::ProviderType;
 use crate::ops::stream_wrap::LibUvStreamWrap;
-use crate::ops::stream_wrap::StreamBaseState;
 use crate::ops::stream_wrap::stream_base_state_array;
 use crate::ops::stream_wrap_state::ReadInterceptor;
 use crate::ops::tls::NodeTlsState;

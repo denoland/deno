@@ -815,20 +815,19 @@ unsafe extern "C" fn backing_store_deleter(
 /// owning `StreamHandleData`. `req.handle.loop_.data` must be a raw
 /// `Global<Context>` pointer.
 unsafe extern "C" fn after_uv_write(req: *mut uv_write_t, status: i32) {
-  // SAFETY: req is a valid uv_write_t per the uv_write_cb contract.
-  let req_data = unsafe { (*req).data };
-  // SAFETY: `req.handle` is a valid uv stream for the lifetime of this completion callback.
-  let handle_data =
-    unsafe { LibUvStreamWrap::stable_handle_data((*req).handle) };
+  // Reclaim ownership of the request allocated in `do_write` /
+  // `write_buffer`. Dropping at end-of-scope ensures every exit path
+  // frees it, avoiding the leak that existed when only the detached
+  // path called `Box::from_raw`.
+  // SAFETY: `req` was allocated with `Box::new` and is valid per the
+  // uv_write_cb contract.
+  let req = unsafe { Box::from_raw(req) };
+  let req_data = req.data;
+  let handle_data = LibUvStreamWrap::stable_handle_data(req.handle);
   let Some(handle_data_ptr) = handle_data else {
-    // Handle was detached (e.g. GC). Free the request to avoid a leak.
-    // SAFETY: `req` was allocated with `Box::new` in `do_write` and is
-    // valid per the uv_write_cb contract.
-    unsafe { drop(Box::from_raw(req)) };
+    // Handle was detached (e.g. GC).
     return;
   };
-  // SAFETY: req is a valid uv_write_t per the uv_write_cb contract.
-  unsafe { (*req).data = std::ptr::null_mut() };
   // SAFETY: `uv_stream_t.data` points at the owning handle's stable
   // `StreamHandleData` allocation while the native stream is alive.
   let handle_data = unsafe { handle_data_ptr.as_ref() };
@@ -841,8 +840,8 @@ unsafe extern "C" fn after_uv_write(req: *mut uv_write_t, status: i32) {
   // SAFETY: cb_data.isolate is the raw isolate pointer captured during the write call and is still valid.
   let mut isolate =
     unsafe { v8::Isolate::from_raw_isolate_ptr(cb_data.isolate) };
-  // SAFETY: req is a valid uv_write_t; its handle and loop_ fields are valid per libuv guarantees.
-  let loop_ptr = unsafe { (*(*req).handle).loop_ };
+  // SAFETY: req.handle and its loop_ field are valid per libuv guarantees.
+  let loop_ptr = unsafe { (*req.handle).loop_ };
   // SAFETY: loop_ptr comes from a valid uv request whose loop has been registered.
   let context = unsafe { clone_context_from_uv_loop(&mut isolate, loop_ptr) };
   v8::scope!(let handle_scope, &mut isolate);
@@ -886,20 +885,17 @@ unsafe extern "C" fn after_uv_write(req: *mut uv_write_t, status: i32) {
 /// owning `StreamHandleData`. `req.handle.loop_.data` must be a raw
 /// `Global<Context>` pointer.
 unsafe extern "C" fn after_uv_shutdown(req: *mut uv_shutdown_t, status: i32) {
-  // SAFETY: req is a valid uv_shutdown_t per the uv_shutdown_cb contract.
-  let req_data = unsafe { (*req).data };
-  // SAFETY: `req.handle` is a valid uv stream for the lifetime of this completion callback.
-  let handle_data =
-    unsafe { LibUvStreamWrap::stable_handle_data((*req).handle) };
+  // Reclaim ownership so every exit path frees the request allocated
+  // in `do_shutdown`.
+  // SAFETY: `req` was allocated with `Box::new` and is valid per the
+  // uv_shutdown_cb contract.
+  let req = unsafe { Box::from_raw(req) };
+  let req_data = req.data;
+  let handle_data = LibUvStreamWrap::stable_handle_data(req.handle);
   let Some(handle_data_ptr) = handle_data else {
-    // Handle was detached (e.g. GC). Free the request to avoid a leak.
-    // SAFETY: `req` was allocated with `Box::new` in `do_shutdown` and is
-    // valid per the uv_shutdown_cb contract.
-    unsafe { drop(Box::from_raw(req)) };
+    // Handle was detached (e.g. GC).
     return;
   };
-  // SAFETY: req is a valid uv_shutdown_t per the uv_shutdown_cb contract.
-  unsafe { (*req).data = std::ptr::null_mut() };
   // SAFETY: `uv_stream_t.data` points at the owning handle's stable
   // `StreamHandleData` allocation while the native stream is alive.
   let handle_data = unsafe { handle_data_ptr.as_ref() };
@@ -912,8 +908,8 @@ unsafe extern "C" fn after_uv_shutdown(req: *mut uv_shutdown_t, status: i32) {
   // SAFETY: cb_data.isolate is the raw isolate pointer captured during the shutdown call and is still valid.
   let mut isolate =
     unsafe { v8::Isolate::from_raw_isolate_ptr(cb_data.isolate) };
-  // SAFETY: req is a valid uv_shutdown_t; its handle and loop_ fields are valid per libuv guarantees.
-  let loop_ptr = unsafe { (*(*req).handle).loop_ };
+  // SAFETY: req.handle and its loop_ field are valid per libuv guarantees.
+  let loop_ptr = unsafe { (*req.handle).loop_ };
   // SAFETY: loop_ptr comes from a valid uv request whose loop has been registered.
   let context = unsafe { clone_context_from_uv_loop(&mut isolate, loop_ptr) };
   v8::scope!(let handle_scope, &mut isolate);
