@@ -531,6 +531,11 @@ unsafe extern "C" fn on_uv_read(
     }
     // SAFETY: interceptor registration guarantees the callback and payload are valid for this read dispatch.
     unsafe { (interceptor.callback)(interceptor.ptr, stream, nread, buf) };
+    // The interceptor borrows `buf.base` during its callback but does
+    // not take ownership — free the buffer here once it returns.
+    // Skipping this previously leaked 64KB per read on the consume
+    // path (RSS climbed into GBs under sustained HTTP traffic).
+    free_uv_buf(buf);
     return;
   }
 
