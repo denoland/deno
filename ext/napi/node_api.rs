@@ -284,22 +284,35 @@ fn napi_async_init(
 
   let resource = {
     v8::callback_scope!(unsafe scope, env.context());
+
     let obj = if async_resource.is_none() {
       // If no resource provided, create a new empty object (matching Node.js)
       v8::Object::new(scope)
     } else {
-      // Node.js applies ToObject() coercion on the resource value.
+      // Node.js applies ToObject() coercion. If it fails (e.g. null/undefined),
+      // propagate the error rather than silently substituting {}.
       let resource_local = async_resource.unwrap();
-      resource_local
-        .to_object(scope)
-        .unwrap_or_else(|| v8::Object::new(scope))
+      match resource_local.to_object(scope) {
+        Some(obj) => obj,
+        None => {
+          return napi_set_last_error(env, napi_object_expected);
+        }
+      }
+    };
+
+    // Node.js coerces async_resource_name to a string via ToString().
+    let name_local: v8::Local<v8::Value> = (*async_resource_name).unwrap();
+    let type_name: v8::Local<v8::Value> = match name_local.to_string(scope) {
+      Some(s) => s.into(),
+      None => {
+        return napi_set_last_error(env, napi_string_expected);
+      }
     };
 
     // Emit async_hooks init event
     let init_fn = v8::Local::new(scope, &env.async_hooks_init);
     let recv = v8::undefined(scope).into();
     let id = v8::Number::new(scope, async_id as f64).into();
-    let type_name: v8::Local<v8::Value> = (*async_resource_name).unwrap();
     // triggerAsyncId = 0 means use the current execution async ID
     let trigger = v8::Number::new(scope, 0.0).into();
     let resource_val: v8::Local<v8::Value> = obj.into();
