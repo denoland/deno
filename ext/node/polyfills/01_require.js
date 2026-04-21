@@ -82,10 +82,10 @@ import assert from "node:assert";
 import assertStrict from "node:assert/strict";
 import asyncHooks from "node:async_hooks";
 import {
-  emitInit as internalAsyncHooksEmitInit,
-  emitBefore as internalAsyncHooksEmitBefore,
   emitAfter as internalAsyncHooksEmitAfter,
+  emitBefore as internalAsyncHooksEmitBefore,
   emitDestroy as internalAsyncHooksEmitDestroy,
+  emitInit as internalAsyncHooksEmitInit,
 } from "ext:deno_node/internal/async_hooks.ts";
 import buffer from "node:buffer";
 import childProcess from "node:child_process";
