@@ -626,8 +626,10 @@ function spawnInner(command, {
       "Piped stdin is not supported for this function, use 'Deno.Command().spawn()' instead",
     );
   }
-  // Bypass ChildProcess to avoid the instance and its #status promise
-  // chain (which captures `this`) from preventing GC of native resources.
+  // Bypass ChildProcess and ReadableStream machinery. Creating streams
+  // just to immediately collect all data has significant overhead that
+  // causes RSS growth in tight loops. Reading directly from the resource
+  // IDs avoids that overhead.
   const child = op_spawn_child({
     cmd: pathFromURL(command),
     args: ArrayPrototypeMap(args, String),
