@@ -52,19 +52,15 @@ for (const url of ["http://localhost:4246", "https://localhost:4247"]) {
     req.on("data", (chunk) => {
       receivedData += chunk;
     });
-    req.end();
 
     const { promise, resolve } = Promise.withResolvers<void>();
-    setTimeout(() => {
-      try {
-        client.close();
-      } catch (_) {
-        // pass
-      }
+    req.on("end", () => {
       resolve();
-    }, 2000);
+    });
+    req.end();
 
     await promise;
+    client.close();
     assertEquals(receivedHeaders?.[":status"], 200);
     assertEquals(receivedData, "hello world\n");
 
@@ -102,20 +98,16 @@ Deno.test(`[node/http2 client createConnection]`, async () => {
   req.on("data", (chunk) => {
     receivedData += chunk;
   });
-  req.end();
 
   const endPromise = Promise.withResolvers<void>();
-  setTimeout(() => {
-    try {
-      client.close();
-    } catch (_) {
-      // pass
-    }
+  req.on("end", () => {
     endPromise.resolve();
-  }, 2000);
+  });
+  req.end();
 
   await createConnDeferred.promise;
   await endPromise.promise;
+  client.close();
   assertEquals(receivedData, "hello world\n");
 });
 
@@ -156,20 +148,15 @@ Deno.test(`[node/http2 client body overflow]`, async () => {
     receivedTrailers = trailers;
   });
 
-  req.end();
-
   const endPromise = Promise.withResolvers<void>();
-  setTimeout(() => {
-    try {
-      client.close();
-    } catch (_) {
-      // pass
-    }
+  req.on("end", () => {
     endPromise.resolve();
-  }, 2000);
+  });
+  req.end();
 
   await createConnDeferred.promise;
   await endPromise.promise;
+  client.close();
   assertEquals(receivedData, "hello world\n");
 
   assertEquals(receivedTrailers?.["req_body_len"], "5");
@@ -506,6 +493,123 @@ Deno.test("[node/http2] Server.address() includes family property", async () => 
 
     await promise;
   }
+});
+
+Deno.test("[node/http2] createSecureServer with allowHTTP1", {
+  ignore: Deno.build.os === "windows",
+  sanitizeResources: false,
+  sanitizeOps: false,
+}, async () => {
+  const { promise, resolve, reject } = Promise.withResolvers<void>();
+  const cert = Deno.readTextFileSync("tests/testdata/tls/localhost.crt");
+  const key = Deno.readTextFileSync("tests/testdata/tls/localhost.key");
+  const ca = Deno.readTextFileSync("tests/testdata/tls/RootCA.pem");
+
+  // Verifies that createSecureServer with allowHTTP1 doesn't throw
+  // ReferenceError for setupConnectionsTracking/httpServerPreClose/HttpServer.
+  // TODO(denoland/deno#33317): test HTTP/1.1 fallback once that path works.
+  const server = http2.createSecureServer(
+    { allowHTTP1: true, cert, key },
+    (_req, res) => {
+      res.writeHead(200);
+      res.end("ok");
+    },
+  );
+
+  server.listen(0, () => {
+    const addr = server.address() as net.AddressInfo;
+    const client = http2.connect(`https://localhost:${addr.port}`, { ca });
+    client.on("error", reject);
+    const req = client.request({ ":path": "/" });
+    let data = "";
+    req.setEncoding("utf8");
+    req.on("data", (chunk: string) => {
+      data += chunk;
+    });
+    req.on("end", () => {
+      assertEquals(data, "ok");
+      client.close();
+      server.close(() => resolve());
+    });
+    req.on("error", reject);
+    req.end();
+  });
+
+  await promise;
+});
+
+Deno.test("[node/http2] createSecureServer responds to client", {
+  ignore: Deno.build.os === "windows",
+  sanitizeResources: false,
+  sanitizeOps: false,
+}, async () => {
+  const { promise, resolve, reject } = Promise.withResolvers<void>();
+  const cert = Deno.readTextFileSync("tests/testdata/tls/localhost.crt");
+  const key = Deno.readTextFileSync("tests/testdata/tls/localhost.key");
+  const ca = Deno.readTextFileSync("tests/testdata/tls/RootCA.pem");
+
+  const server = http2.createSecureServer({ cert, key }, (_req, res) => {
+    res.writeHead(200);
+    res.end("hello-tls");
+  });
+
+  server.listen(0, () => {
+    const addr = server.address() as net.AddressInfo;
+    const client = http2.connect(`https://localhost:${addr.port}`, { ca });
+    client.on("error", reject);
+    const req = client.request({ ":path": "/" });
+    let data = "";
+    req.setEncoding("utf8");
+    req.on("data", (chunk: string) => {
+      data += chunk;
+    });
+    req.on("end", () => {
+      assertEquals(data, "hello-tls");
+      client.close();
+      server.close(() => resolve());
+    });
+    req.on("error", reject);
+    req.end();
+  });
+
+  await promise;
+});
+
+Deno.test("[node/http2] stream frameError listener does not throw", {
+  ignore: Deno.build.os === "windows",
+  sanitizeResources: false,
+  sanitizeOps: false,
+}, async () => {
+  const { promise, resolve, reject } = Promise.withResolvers<void>();
+
+  const server = http2.createServer((_req, res) => {
+    res.writeHead(200);
+    res.end("ok");
+  });
+
+  server.listen(0, () => {
+    const addr = server.address() as net.AddressInfo;
+    const client = http2.connect(`http://localhost:${addr.port}`);
+    client.on("error", reject);
+    const req = client.request({ ":path": "/" });
+    // Adding a frameError listener exercises kSessionFrameErrorListenerCount
+    // and should not throw a ReferenceError
+    req.once("frameError", () => {});
+    let data = "";
+    req.setEncoding("utf8");
+    req.on("data", (chunk: string) => {
+      data += chunk;
+    });
+    req.on("end", () => {
+      assertEquals(data, "ok");
+      client.close();
+      server.close(() => resolve());
+    });
+    req.on("error", reject);
+    req.end();
+  });
+
+  await promise;
 });
 
 Deno.test("[node/http2 client] connect without net permission", {

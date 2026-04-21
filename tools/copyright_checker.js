@@ -53,6 +53,7 @@ export async function checkCopyright() {
 
     // c
     "*.c",
+    ":!:ext/node/ops/llhttp/c/**",
 
     // toml
     "*Cargo.toml",

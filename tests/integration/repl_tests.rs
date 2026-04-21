@@ -922,8 +922,8 @@ fn npm_packages() {
       true,
     );
 
+    assert!(err.is_empty(), "stderr: {}\nstdout: {}", err, out);
     assert_contains!(out, "hello");
-    assert!(err.is_empty(), "Error: {}", err);
   }
 
   {
@@ -938,8 +938,8 @@ fn npm_packages() {
       true,
     );
 
+    assert!(err.is_empty(), "stderr: {}\nstdout: {}", err, out);
     assert_contains!(out, "hello");
-    assert!(err.is_empty(), "Error: {}", err);
   }
 
   {

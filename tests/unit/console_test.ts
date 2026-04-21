@@ -2378,6 +2378,36 @@ Deno.test(function inspectProxy() {
   );
 });
 
+Deno.test(function inspectProxyWithNodeCustomInspect() {
+  // Proxy that hides symbols from `has`/`ownKeys` but exposes them via `get`.
+  // This pattern is used by nodejs-polars DataFrames (issue #33236).
+  const nodeInspect = Symbol.for("nodejs.util.inspect.custom");
+  const target = {
+    [nodeInspect]() {
+      return "custom proxy output";
+    },
+  };
+  const proxy = new Proxy(target, {
+    has(_t, p) {
+      return typeof p === "string" && p === "x";
+    },
+    ownKeys() {
+      return ["x"];
+    },
+    getOwnPropertyDescriptor(_t, p) {
+      if (p === "x") return { configurable: true, enumerable: true, value: 1 };
+      return undefined;
+    },
+    get(t, p, r) {
+      return Reflect.get(t, p, r);
+    },
+  });
+  assertEquals(
+    stripAnsiCode(Deno.inspect(proxy)),
+    "custom proxy output",
+  );
+});
+
 Deno.test(function inspectError() {
   const error1 = new Error("This is an error");
   const error2 = new Error("This is an error", {

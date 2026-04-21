@@ -1043,7 +1043,12 @@ fn open_options(options: OpenOptions) -> fs::OpenOptions {
   open_options.read(options.read);
   open_options.create(options.create);
   open_options.write(options.write);
-  open_options.truncate(options.truncate);
+  // On Windows, truncate and create_new produce conflicting
+  // dwCreationDisposition flags (TRUNCATE_EXISTING vs CREATE_NEW).
+  // When create_new is set, the file must not exist, so truncation
+  // is meaningless. Passing both can cause spurious "os error 0"
+  // (ERROR_SUCCESS) failures and file corruption on Windows.
+  open_options.truncate(options.truncate && !options.create_new);
   open_options.append(options.append);
   open_options.create_new(options.create_new);
   open_options

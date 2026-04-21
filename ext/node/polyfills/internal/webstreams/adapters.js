@@ -18,7 +18,10 @@ import {
   kEmptyObject,
   normalizeEncoding,
 } from "ext:deno_node/internal/util.mjs";
-import { AbortError } from "ext:deno_node/internal/errors.ts";
+import {
+  AbortError,
+  ERR_INVALID_ARG_TYPE,
+} from "ext:deno_node/internal/errors.ts";
 import process from "node:process";
 import { Buffer } from "node:buffer";
 import { Duplex, Readable, Writable } from "node:stream";
@@ -565,7 +568,11 @@ export function newWritableStreamFromStreamWritable(streamWritable) {
   // here because it will return false if streamWritable is a Duplex
   // whose writable option is false. For a Duplex that is not writable,
   // we want it to pass this check but return a closed WritableStream.
-  if (typeof streamWritable?._writableState !== "object") {
+  // We check if the given stream is a stream.Writable or http.OutgoingMessage
+  const checkIfWritableOrOutgoingMessage = streamWritable &&
+    typeof streamWritable?.write === "function" &&
+    typeof streamWritable?.on === "function";
+  if (!checkIfWritableOrOutgoingMessage) {
     throw new ERR_INVALID_ARG_TYPE(
       "streamWritable",
       "stream.Writable",
