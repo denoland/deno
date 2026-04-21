@@ -103,12 +103,21 @@ export function Agent(options) {
     // case of socket.destroy() below this 'error' has no handler
     // and could cause unhandled exception.
 
-    if (!socket.writable) {
-      socket.destroy();
+    // In Node.js, nextTick (where 'free' is emitted) always runs before I/O,
+    // so the socket is guaranteed to be writable here. In Deno, I/O can
+    // interleave with nextTick, so a server FIN may arrive before 'free'
+    // runs, making the socket non-writable but not yet destroyed.
+    if (socket.destroyed) {
       return;
     }
 
+    // For queued requests, require the socket to be writable - don't hand
+    // a half-closed socket to a new request.
     const requests = this.requests[name];
+    if (requests && requests.length && !socket.writable) {
+      socket.destroy();
+      return;
+    }
     if (requests && requests.length) {
       const req = requests.shift();
       const reqAsyncRes = req[kRequestAsyncResource];
@@ -568,12 +577,22 @@ function asyncResetHandle(socket) {
   }
 }
 
-export const globalAgent = new Agent({
+export let globalAgent = new Agent({
   keepAlive: true,
   scheduling: "lifo",
   timeout: 5000,
 });
+
+export function setGlobalAgent(agent) {
+  globalAgent = agent;
+}
+
 export default {
   Agent,
-  globalAgent,
+  get globalAgent() {
+    return globalAgent;
+  },
+  set globalAgent(agent) {
+    globalAgent = agent;
+  },
 };

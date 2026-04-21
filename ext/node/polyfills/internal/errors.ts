@@ -1527,6 +1527,14 @@ export class ERR_HTTP_BODY_NOT_ALLOWED extends NodeError {
     );
   }
 }
+export class ERR_HTTP_CONTENT_LENGTH_MISMATCH extends NodeError {
+  constructor(bodyLength: number, contentLength: number) {
+    super(
+      "ERR_HTTP_CONTENT_LENGTH_MISMATCH",
+      `Response body's content-length of ${bodyLength} byte(s) does not match the content-length of ${contentLength} byte(s) set in header`,
+    );
+  }
+}
 export class ERR_HTTP_HEADERS_SENT extends NodeError {
   constructor(x: string) {
     super(

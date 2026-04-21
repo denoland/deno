@@ -28,6 +28,7 @@ import {
 const { async_id_symbol } = symbols;
 import {
   ERR_HTTP_BODY_NOT_ALLOWED,
+  ERR_HTTP_CONTENT_LENGTH_MISMATCH,
   ERR_HTTP_HEADERS_SENT,
   ERR_HTTP_INVALID_HEADER_VALUE,
   ERR_HTTP_TRAILER_INVALID,
@@ -456,6 +457,16 @@ Object.defineProperties(
 
       if (typeof callback === "function") {
         this.once("finish", callback);
+      }
+
+      if (
+        _checkStrictContentLength(this) &&
+        this[kBytesWritten] !== this._contentLength
+      ) {
+        throw new ERR_HTTP_CONTENT_LENGTH_MISMATCH(
+          this[kBytesWritten],
+          this._contentLength,
+        );
       }
 
       const finish = onFinish.bind(undefined, this);
@@ -1115,6 +1126,19 @@ function write_(
     len ??= typeof chunk === "string"
       ? Buffer.byteLength(chunk, encoding)
       : chunk.byteLength;
+
+    if (
+      _checkStrictContentLength(msg) &&
+      (fromEnd
+        ? msg[kBytesWritten] + len !== msg._contentLength
+        : msg[kBytesWritten] + len > msg._contentLength)
+    ) {
+      throw new ERR_HTTP_CONTENT_LENGTH_MISMATCH(
+        len + msg[kBytesWritten],
+        msg._contentLength,
+      );
+    }
+
     msg[kBytesWritten] += len;
   }
 
