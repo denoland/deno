@@ -38,35 +38,6 @@ impl LoopShared {
   pub fn new() -> Arc<Self> {
     Arc::new(Self::default())
   }
-
-  /// Manually mark a TCP handle ready (used on state changes like
-  /// `uv_read_start` where no tokio wake has fired yet).
-  #[allow(dead_code)]
-  pub fn mark_tcp_ready(&self, ptr: usize) {
-    if ptr == 0 {
-      return;
-    }
-    self.ready_tcp.lock().unwrap().push_back(ptr);
-    self.loop_waker.wake();
-  }
-
-  #[allow(dead_code)]
-  pub fn mark_pipe_ready(&self, ptr: usize) {
-    if ptr == 0 {
-      return;
-    }
-    self.ready_pipe.lock().unwrap().push_back(ptr);
-    self.loop_waker.wake();
-  }
-
-  #[allow(dead_code)]
-  pub fn mark_tty_ready(&self, ptr: usize) {
-    if ptr == 0 {
-      return;
-    }
-    self.ready_tty.lock().unwrap().push_back(ptr);
-    self.loop_waker.wake();
-  }
 }
 
 /// Per-kind waker. Generic so the same type backs TCP / pipe / TTY
@@ -109,12 +80,6 @@ impl<const KIND: u8> HandleWaker<KIND> {
   /// will re-queue it for the next pass.
   pub fn reset_queued(&self) {
     self.in_queue.store(false, Ordering::Release);
-  }
-
-  /// Return the current handle pointer (0 if detached).
-  #[allow(dead_code)]
-  pub fn ptr(&self) -> usize {
-    self.ptr.load(Ordering::Acquire)
   }
 
   fn push_ready(&self) {
