@@ -333,7 +333,7 @@ class EventSource extends EventTarget {
     }
     this.#readyState = CONNECTING;
     this.dispatchEvent(new Event("error"));
-    this.#reconnectionTimerId = core.createTimer(
+    this.#reconnectionTimerId = core.createSystemTimer(
       () => {
         if (this.#readyState !== CONNECTING) {
           return;
@@ -341,9 +341,6 @@ class EventSource extends EventTarget {
         this.#loop();
       },
       this.#reconnectionTime,
-      undefined,
-      false,
-      true,
       true,
     );
   }

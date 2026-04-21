@@ -657,11 +657,11 @@ class WebSocket extends EventTarget {
       if (this[_idleTimeoutTimeout]) {
         core.cancelTimer(this[_idleTimeoutTimeout]);
       }
-      this[_idleTimeoutTimeout] = core.createTimer(
+      this[_idleTimeoutTimeout] = core.createSystemTimer(
         async () => {
           if (this[_readyState] === OPEN) {
             await PromisePrototypeCatch(op_ws_send_ping(this[_rid]), () => {});
-            this[_idleTimeoutTimeout] = core.createTimer(
+            this[_idleTimeoutTimeout] = core.createSystemTimer(
               async () => {
                 if (this[_readyState] === OPEN) {
                   this[_readyState] = CLOSING;
@@ -691,9 +691,6 @@ class WebSocket extends EventTarget {
                 }
               },
               (this[_idleTimeoutDuration] / 2) * 1000,
-              undefined,
-              false,
-              true,
               true,
             );
           } else {
@@ -703,9 +700,6 @@ class WebSocket extends EventTarget {
           }
         },
         (this[_idleTimeoutDuration] / 2) * 1000,
-        undefined,
-        false,
-        true,
         true,
       );
     }

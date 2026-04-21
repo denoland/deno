@@ -146,15 +146,12 @@ function windowClose() {
     PromisePrototypeThen(
       PromiseResolve(),
       () =>
-        core.createTimer(
+        core.createSystemTimer(
           () => {
             // This should be fine, since only Window/MainWorker has .close()
             os.exit(0);
           },
           0,
-          undefined,
-          false,
-          true,
           true,
         ),
     );
