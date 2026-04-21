@@ -511,8 +511,6 @@ impl UvLoopInner {
   /// # Safety
   /// All TCP handle pointers in `tcp_handles` must be valid.
   pub(crate) unsafe fn run_io(&self) -> bool {
-    let mut did_any_work = false;
-
     // Drain ready queues once. Each popped handle is polled with a
     // `Context` built from its own per-handle waker; tokio re-registers
     // interest under that waker so the next readiness signal re-queues
@@ -635,10 +633,8 @@ impl UvLoopInner {
         any_work |= unsafe { tty::poll_tty_handle(tty_ptr, &mut cx) };
       }
 
-      did_any_work = any_work;
+      any_work
     }
-
-    did_any_work
   }
 
   /// ### Safety

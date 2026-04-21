@@ -53,13 +53,13 @@ pub struct StreamBaseState {
   pub array: Rc<v8::Global<v8::Int32Array>>,
 }
 
-/// Thread-local cache of the stream base state array. The array is a
-/// per-isolate singleton registered once at startup via
-/// `op_stream_base_register_state`, but write/read ops fetch it via
-/// `op_state.borrow::<StreamBaseState>()` on every call which does a
-/// `BTreeMap<TypeId, _>` lookup. At ~80k writes/sec that adds up to
-/// ~1.7% of CPU in the profile. The array never changes, so after the
-/// first lookup we keep an `Rc` clone in a thread_local.
+// Thread-local cache of the stream base state array. The array is a
+// per-isolate singleton registered once at startup via
+// `op_stream_base_register_state`, but write/read ops fetch it via
+// `op_state.borrow::<StreamBaseState>()` on every call which does a
+// `BTreeMap<TypeId, _>` lookup. At ~80k writes/sec that adds up to
+// ~1.7% of CPU in the profile. The array never changes, so after the
+// first lookup we keep an `Rc` clone in a thread_local.
 thread_local! {
   static CACHED_STATE_ARRAY: RefCell<Option<Rc<v8::Global<v8::Int32Array>>>> =
     const { RefCell::new(None) };
