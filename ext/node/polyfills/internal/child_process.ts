@@ -835,7 +835,7 @@ function normalizeStdioOption(
     // `[null, null, null]` is equivalent to `"pipe"
     if (
       stdio.length === 3 &&
-        stdio[0] === null || stdio[1] === null || stdio[2] === null
+      (stdio[0] === null && stdio[1] === null && stdio[2] === null)
     ) {
       return ["pipe", "pipe", "pipe"];
     }
@@ -1622,8 +1622,24 @@ export function spawnSync(
     stdin_ = "pipe",
     stdout_ = "pipe",
     stderr_ = "pipe",
-    _channel, // TODO(kt3k): handle this correctly
+    ...extraStdio_
   ] = normalizeStdioOption(stdio);
+
+  const extraStdioNormalized: DenoStdio[] = [];
+  for (let i = 0; i < extraStdio_.length; i++) {
+    const val = extraStdio_[i];
+    const fd = i + 3; // extra stdio starts at FD 3
+    // null/undefined means "don't pass this fd"
+    if (val == null) {
+      extraStdioNormalized.push("null");
+    } else if (val === "inherit") {
+      // "inherit" for extra FDs means pass the parent's FD at this index
+      extraStdioNormalized.push(fd);
+    } else {
+      extraStdioNormalized.push(toDenoStdio(val));
+    }
+  }
+
   let includeNpmProcessState = false;
   // args[0] is argv0 (prepended by normalizeSpawnArguments). Capture it
   // before slicing so we can pass it via kArgv0 for OS-level argv[0].
@@ -1649,6 +1665,7 @@ export function spawnSync(
       uid,
       gid,
       clearEnv: false,
+      extraStdio: extraStdioNormalized,
       windowsRawArguments: windowsVerbatimArguments,
       // deno-lint-ignore no-explicit-any
       needsNpmProcessState: (options as any)[kNeedsNpmProcessState] ||
