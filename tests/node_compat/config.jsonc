@@ -1150,6 +1150,7 @@
     "parallel/test-http-common.js": {},
     "parallel/test-http-connect-req-res.js": {},
     "parallel/test-http-connect.js": {},
+    "parallel/test-http-content-length-mismatch.js": {},
     "parallel/test-http-contentLength0.js": {},
     "parallel/test-http-correct-hostname.js": {},
     "parallel/test-http-createConnection.js": {},
