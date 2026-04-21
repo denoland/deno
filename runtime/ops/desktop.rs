@@ -265,6 +265,9 @@ pub trait DesktopApi: Send + Sync + 'static {
   fn create_window(&self, width: i32, height: i32) -> u32;
   /// Close a specific window.
   fn close_window(&self, window_id: u32);
+  /// Returns true if the given window has been closed (either via
+  /// `close_window` or because the OS window was destroyed).
+  fn is_closed(&self, window_id: u32) -> bool;
 
   fn set_title(&self, window_id: u32, title: &str);
 
@@ -488,7 +491,7 @@ impl BrowserWindow {
 
   #[fast]
   fn is_closed(&self) -> bool {
-    todo!("implement")
+    self.api.is_closed(self.window_id)
   }
 
   #[fast]
@@ -540,7 +543,9 @@ impl BrowserWindow {
 
   #[fast]
   fn reload(&self) {
-    todo!("implement")
+    self
+      .api
+      .execute_js(self.window_id, "location.reload()", Box::new(|_| {}));
   }
 
   async fn execute_js(

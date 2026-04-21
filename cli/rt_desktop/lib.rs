@@ -12,10 +12,12 @@
 //! and navigates the webview to it.
 
 use std::borrow::Cow;
+use std::collections::HashSet;
 use std::env;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::sync::Mutex;
 use std::sync::atomic::AtomicU32;
 use std::sync::atomic::Ordering;
 
@@ -43,6 +45,7 @@ struct WefDesktopApi {
     deno_runtime::ops::desktop::DesktopEvent,
   >,
   pending_responses: deno_runtime::ops::desktop::PendingBindResponses,
+  closed_windows: Arc<Mutex<HashSet<u32>>>,
 }
 
 impl WefDesktopApi {
@@ -58,6 +61,7 @@ impl WefDesktopApi {
     let resize_tx = self.event_tx.clone();
     let move_tx = self.event_tx.clone();
     let close_tx = self.event_tx.clone();
+    let closed_windows = self.closed_windows.clone();
 
     window
       .on_keyboard_event(move |ev| {
@@ -175,6 +179,7 @@ impl WefDesktopApi {
           });
       })
       .on_close_requested(move |ev| {
+        closed_windows.lock().unwrap().insert(ev.window_id);
         let _ = close_tx.send(
           deno_runtime::ops::desktop::DesktopEvent::CloseRequested {
             window_id: ev.window_id,
@@ -192,7 +197,12 @@ impl denort::desktop::DesktopApi for WefDesktopApi {
   }
 
   fn close_window(&self, window_id: u32) {
+    self.closed_windows.lock().unwrap().insert(window_id);
     wef::Window::from_id(window_id).close();
+  }
+
+  fn is_closed(&self, window_id: u32) -> bool {
+    self.closed_windows.lock().unwrap().contains(&window_id)
   }
 
   fn set_title(&self, window_id: u32, title: &str) {
@@ -255,10 +265,10 @@ impl denort::desktop::DesktopApi for WefDesktopApi {
         (false, true) => ("/deno", "js_app.html"),
         (false, false) => unreachable!(),
       };
-      let url = format!(
-        "http://{mux}/devtools/{frontend}?ws={mux}{endpoint}"
+      let url = format!("http://{mux}/devtools/{frontend}?ws={mux}{endpoint}");
+      log::info!(
+        "[desktop] openDevtools(renderer={renderer}, deno={deno}) → {url}"
       );
-      log::info!("[desktop] openDevtools(renderer={renderer}, deno={deno}) → {url}");
       let window = wef::Window::new(1200, 800);
       window.set_title("Deno Desktop DevTools");
       window.navigate(&url);
@@ -1219,6 +1229,7 @@ async fn run_desktop(update_rolled_back: bool) -> Result<(), AnyError> {
       let api = WefDesktopApi {
         event_tx: event_tx.0.clone(),
         pending_responses: pending_responses.clone(),
+        closed_windows: Arc::new(Mutex::new(HashSet::new())),
       };
 
       // Create the initial window and wire up event handlers.
@@ -1269,9 +1280,7 @@ async fn run_desktop(update_rolled_back: bool) -> Result<(), AnyError> {
     // from racing ahead while the developer is still opening DevTools.
     if wait_for_debugger {
       if let Some(ref mux) = mux_addr {
-        eprintln!(
-          "[desktop] Waiting for debugger to attach on ws://{mux} …"
-        );
+        eprintln!("[desktop] Waiting for debugger to attach on ws://{mux} …");
         loop {
           if let Ok(mut stream) =
             tokio::net::TcpStream::connect(mux.as_str()).await

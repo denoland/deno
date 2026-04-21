@@ -1478,15 +1478,15 @@ fn strip_dylib(dylib_path: &Path) {
   let strip_args: &[&str] = if cfg!(target_os = "macos") {
     &["-x", dylib_path.to_str().unwrap_or_default()]
   } else if cfg!(target_os = "linux") {
-    &[
-      "--strip-unneeded",
-      dylib_path.to_str().unwrap_or_default(),
-    ]
+    &["--strip-unneeded", dylib_path.to_str().unwrap_or_default()]
   } else {
     return;
   };
 
-  match std::process::Command::new("strip").args(strip_args).output() {
+  match std::process::Command::new("strip")
+    .args(strip_args)
+    .output()
+  {
     Ok(output) if output.status.success() => {
       log::info!("Stripped symbols from {}", dylib_path.display());
     }

@@ -96,6 +96,41 @@ declare class WheelEvent extends MouseEvent {
 declare namespace Deno {
   export {}; // stop default export type behavior
 
+  /** The application version read from `deno.json` at compile time, or
+   * `null` if no version was configured. Only available in apps compiled
+   * with `deno desktop`. */
+  export const desktopVersion: string | null;
+
+  export interface AutoUpdateOptions {
+    /** Base URL of the release server hosting `latest.json` and patch
+     * files. Required unless a string URL is passed directly to
+     * {@linkcode Deno.autoUpdate}. */
+    url?: string;
+    /** Poll interval in milliseconds. If omitted, only a single check is
+     * performed ~1s after the call. */
+    interval?: number;
+    /** Called once an update has been downloaded and staged for the next
+     * launch. */
+    onUpdateReady?: (version: string) => void;
+    /** Called if the previous launch's update failed to start and was
+     * rolled back. */
+    onRollback?: (reason: string) => void;
+  }
+
+  /** Start polling a release server for binary-diff updates.
+   *
+   * The manifest at `<url>/latest.json` is fetched and compared against
+   * {@linkcode Deno.desktopVersion}. If a newer version is available and
+   * a patch from the current version exists, the patch is downloaded and
+   * staged for the next launch, and `onUpdateReady` is invoked.
+   *
+   * If the previous launch's update failed and was rolled back,
+   * `onRollback` is invoked shortly after this call.
+   *
+   * Only available in apps compiled with `deno desktop`. */
+  export function autoUpdate(url: string): void;
+  export function autoUpdate(options: AutoUpdateOptions): void;
+
   export interface OpenDevtoolsOptions {
     /** Inspect the CEF renderer isolate. @default {true} */
     renderer?: boolean;

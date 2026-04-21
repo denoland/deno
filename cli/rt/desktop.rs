@@ -478,74 +478,86 @@ pub fn desktop_auto_update_js(
     op_desktop_apply_patch,
     op_desktop_confirm_update,
   }} = Deno[Deno.internal].core.ops;
+  const {{ propReadOnly, propWritable }} = Deno[Deno.internal].core;
 
   const _version = {version};
   const _rolledBack = {rolled_back};
 
-  if (_rolledBack) {{
-    queueMicrotask(() => {{
-      dispatchEvent(
-        new CustomEvent("desktop-update-rollback", {{
-          detail: {{ reason: "Update failed to start, rolled back." }},
-        }}),
-      );
-    }});
-  }} else {{
+  const ROLLBACK_REASON = "Update failed to start, rolled back.";
+
+  if (!_rolledBack) {{
     op_desktop_confirm_update();
   }}
 
   let autoUpdateTimer = null;
 
-  Deno.desktop = {{
-    get version() {{ return _version; }},
+  function autoUpdate(urlOrOpts) {{
+    const opts = typeof urlOrOpts === "string"
+      ? {{ url: urlOrOpts }}
+      : (urlOrOpts ?? {{}});
+    const {{ url, interval, onUpdateReady, onRollback }} = opts;
 
-    autoUpdate(urlOrOpts) {{
-      const opts = typeof urlOrOpts === "string"
-        ? {{ url: urlOrOpts }}
-        : urlOrOpts;
-      const {{ url, interval }} = opts;
-      if (!_version) {{
-        console.warn("Deno.desktop.autoUpdate: no version in deno.json, skipping");
-        return;
-      }}
-
-      const check = async () => {{
-        try {{
-          const manifestUrl = url.replace(/\/$/, "") + "/latest.json";
-          const resp = await fetch(manifestUrl);
-          if (!resp.ok) return;
-          const manifest = await resp.json();
-          if (manifest.version === _version) return;
-
-          const patchName = manifest.patches?.[_version];
-          if (patchName) {{
-            const patchUrl = url.replace(/\/$/, "") + "/" + patchName;
-            const patchResp = await fetch(patchUrl);
-            if (patchResp.ok) {{
-              const patchBytes = new Uint8Array(await patchResp.arrayBuffer());
-              op_desktop_apply_patch(patchBytes);
-              dispatchEvent(
-                new CustomEvent("desktop-update-ready", {{
-                  detail: {{ version: manifest.version }},
-                }}),
-              );
-              if (autoUpdateTimer) clearInterval(autoUpdateTimer);
-              return;
-            }}
-          }}
-          console.warn("Deno.desktop.autoUpdate: no patch available for",
-            _version, "->", manifest.version);
-        }} catch (e) {{
-          console.warn("Deno.desktop.autoUpdate: check failed:", e.message);
+    if (_rolledBack && typeof onRollback === "function") {{
+      queueMicrotask(() => {{
+        try {{ onRollback(ROLLBACK_REASON); }} catch (e) {{
+          console.error("Deno.autoUpdate onRollback threw:", e);
         }}
-      }};
+      }});
+    }}
 
-      setTimeout(check, 1000);
-      if (interval) {{
-        autoUpdateTimer = setInterval(check, interval);
+    if (!_version) {{
+      console.warn("Deno.autoUpdate: no version in deno.json, skipping");
+      return;
+    }}
+    if (typeof url !== "string" || url.length === 0) {{
+      console.warn("Deno.autoUpdate: missing 'url' option, skipping");
+      return;
+    }}
+
+    const base = url.replace(/\/$/, "");
+
+    const check = async () => {{
+      try {{
+        const resp = await fetch(base + "/latest.json");
+        if (!resp.ok) return;
+        const manifest = await resp.json();
+        if (manifest.version === _version) return;
+
+        const patchName = manifest.patches?.[_version];
+        if (patchName) {{
+          const patchResp = await fetch(base + "/" + patchName);
+          if (patchResp.ok) {{
+            const patchBytes = new Uint8Array(await patchResp.arrayBuffer());
+            op_desktop_apply_patch(patchBytes);
+            if (typeof onUpdateReady === "function") {{
+              try {{ onUpdateReady(manifest.version); }} catch (e) {{
+                console.error("Deno.autoUpdate onUpdateReady threw:", e);
+              }}
+            }}
+            if (autoUpdateTimer) {{
+              clearInterval(autoUpdateTimer);
+              autoUpdateTimer = null;
+            }}
+            return;
+          }}
+        }}
+        console.warn("Deno.autoUpdate: no patch available for",
+          _version, "->", manifest.version);
+      }} catch (e) {{
+        console.warn("Deno.autoUpdate: check failed:", e.message);
       }}
-    }},
-  }};
+    }};
+
+    setTimeout(check, 1000);
+    if (interval) {{
+      autoUpdateTimer = setInterval(check, interval);
+    }}
+  }}
+
+  Object.defineProperties(Deno, {{
+    desktopVersion: propReadOnly(_version),
+    autoUpdate: propWritable(autoUpdate),
+  }});
 }})();
 "#,
     version = match version {
