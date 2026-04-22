@@ -118,6 +118,12 @@ pub struct uv_tcp_t {
   pub(crate) internal_connection_cb: Option<uv_connection_cb>,
   pub(crate) internal_backlog: VecDeque<tokio::net::TcpStream>,
   pub(crate) internal_shutdown: Option<ShutdownPending>,
+  /// Per-handle waker. Used to register interest with tokio's reactor
+  /// and enqueue this handle on the loop's ready queue when the fd
+  /// becomes ready. `None` on handles constructed via `new_tcp()`
+  /// (tests, temporary values); real handles get one in `uv_tcp_init`.
+  pub(crate) internal_waker:
+    Option<std::sync::Arc<crate::uv_compat::waker::TcpHandleWaker>>,
 }
 
 /// In-flight TCP connect operation.
@@ -254,6 +260,9 @@ pub unsafe fn uv_tcp_init(loop_: *mut uv_loop_t, tcp: *mut uv_tcp_t) -> c_int {
     write(addr_of_mut!((*tcp).internal_connection_cb), None);
     write(addr_of_mut!((*tcp).internal_backlog), VecDeque::new());
     write(addr_of_mut!((*tcp).internal_shutdown), None);
+    let shared = crate::uv_compat::get_inner(loop_).shared.clone();
+    let w = crate::uv_compat::waker::TcpHandleWaker::new(tcp as usize, shared);
+    write(addr_of_mut!((*tcp).internal_waker), Some(w));
   }
   0
 }
@@ -436,6 +445,9 @@ pub unsafe fn uv_tcp_connect(
     let mut handles = inner.tcp_handles.borrow_mut();
     if !handles.iter().any(|&h| std::ptr::eq(h, tcp)) {
       handles.push(tcp);
+    }
+    if let Some(w) = (*tcp).internal_waker.as_ref() {
+      w.mark_ready();
     }
 
     // Take the pre-created socket from bind (if any). This preserves
@@ -691,6 +703,9 @@ pub unsafe fn uv_listen(
     if !handles.iter().any(|&h| std::ptr::eq(h, tcp)) {
       handles.push(tcp);
     }
+    if let Some(w) = tcp_ref.internal_waker.as_ref() {
+      w.mark_ready();
+    }
   }
   0
 }
@@ -741,6 +756,7 @@ pub fn new_tcp() -> uv_tcp_t {
     internal_connection_cb: None,
     internal_backlog: VecDeque::new(),
     internal_shutdown: None,
+    internal_waker: None,
   }
 }
 
@@ -902,9 +918,15 @@ pub(crate) unsafe fn poll_tcp_handle(
               if count == 0 {
                 break;
               }
-              // Match libuv: if we didn't fill the buffer, the next
-              // read would likely return EAGAIN. Exit early to save
-              // a syscall (libuv's uv__read does the same).
+              // Match libuv's uv__read (src/unix/stream.c:1147):
+              // break on partial read to skip the predicted-EAGAIN
+              // syscall. tokio's readiness tracking is edge-style
+              // internally (`try_read` only clears the bit on
+              // WouldBlock), so this leaves readiness armed and
+              // unwoken. The re-register block at the end of this
+              // function detects that case and issues `mark_ready()`
+              // to put the handle back on the ready queue for the
+              // next run_io pass.
               if n < buflen {
                 break;
               }
@@ -1047,7 +1069,9 @@ pub(crate) unsafe fn poll_tcp_handle(
               break;
             }
             match stream.try_write(&pw.data[pw.offset..]) {
-              Ok(n) => pw.offset += n,
+              Ok(n) => {
+                pw.offset += n;
+              }
               Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
                 break;
               }
@@ -1101,6 +1125,37 @@ pub(crate) unsafe fn poll_tcp_handle(
     {
       crate::uv_compat::stream::complete_shutdown(tcp_ptr, cx);
       any_work = true;
+    }
+  }
+
+  // 6. Re-register tokio interest for the next edge.
+  //
+  // `poll_*_ready` stores a waker only when it returns Pending.
+  // Under normal operation the read/write loops above hit
+  // WouldBlock on their last iteration, which clears tokio's
+  // internal readiness bit; the paired poll_*_ready here then
+  // returns Pending and stores the waker, and we're good.
+  //
+  // The count==32 starvation break is an exception: it exits
+  // mid-stream with readiness still armed and no waker. In that
+  // case, poll_*_ready returns Ready (no waker stored) and we
+  // mark_ready to re-queue the handle for another run_io pass.
+  unsafe {
+    if let Some(ref stream) = (*tcp_ptr).internal_stream {
+      let mut needs_requeue = false;
+      if (*tcp_ptr).internal_reading
+        && matches!(stream.poll_read_ready(cx), Poll::Ready(_))
+      {
+        needs_requeue = true;
+      }
+      if !(*tcp_ptr).internal_write_queue.is_empty()
+        && matches!(stream.poll_write_ready(cx), Poll::Ready(_))
+      {
+        needs_requeue = true;
+      }
+      if needs_requeue && let Some(w) = (*tcp_ptr).internal_waker.as_ref() {
+        w.mark_ready();
+      }
     }
   }
 

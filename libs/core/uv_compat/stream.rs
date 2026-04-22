@@ -143,6 +143,9 @@ pub unsafe fn uv_read_start(
     if !handles.iter().any(|&h| std::ptr::eq(h, tcp)) {
       handles.push(tcp);
     }
+    if let Some(w) = tcp_ref.internal_waker.as_ref() {
+      w.mark_ready();
+    }
   }
   0
 }
@@ -425,6 +428,9 @@ unsafe fn uv_write_owned_impl(
     if !handles.iter().any(|&h| std::ptr::eq(h, tcp)) {
       handles.push(tcp);
     }
+    if let Some(w) = (*tcp).internal_waker.as_ref() {
+      w.mark_ready();
+    }
     0
   }
 }
@@ -489,6 +495,9 @@ pub unsafe fn uv_shutdown(
       }
       (*pipe).flags |= UV_HANDLE_ACTIVE;
       drop(handles);
+      if let Some(w) = (*pipe).internal_waker.as_ref() {
+        w.mark_ready();
+      }
 
       // Wake the event loop so run_io processes the deferred shutdown.
       if let Some(waker) = inner.waker.borrow().as_ref() {
@@ -519,6 +528,9 @@ pub unsafe fn uv_shutdown(
     }
     (*tcp).flags |= UV_HANDLE_ACTIVE;
     drop(handles);
+    if let Some(w) = (*tcp).internal_waker.as_ref() {
+      w.mark_ready();
+    }
 
     // Wake the event loop so run_io processes the deferred shutdown.
     // Without this, shutdowns scheduled from nextTick/microtask
@@ -701,6 +713,9 @@ unsafe fn write_pipe(
       handles.push(pipe);
     }
     (*pipe).flags |= UV_HANDLE_ACTIVE;
+    if let Some(w) = (*pipe).internal_waker.as_ref() {
+      w.mark_ready();
+    }
   }
   0
 }
