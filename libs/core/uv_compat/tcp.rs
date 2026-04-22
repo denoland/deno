@@ -303,10 +303,10 @@ pub unsafe fn uv_tcp_open(tcp: *mut uv_tcp_t, fd: c_int) -> c_int {
   }
 }
 
-/// ### Safety
-/// `tcp` must be initialized by `uv_tcp_init`. `addr` must point to a valid sockaddr.
 const UV_TCP_REUSEPORT: u32 = 4;
 
+/// ### Safety
+/// `tcp` must be initialized by `uv_tcp_init`. `addr` must point to a valid sockaddr.
 pub unsafe fn uv_tcp_bind(
   tcp: *mut uv_tcp_t,
   addr: *const c_void,
