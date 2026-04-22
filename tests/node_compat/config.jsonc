@@ -1677,6 +1677,7 @@
     "parallel/test-net-server-async-dispose.mjs": {},
     "parallel/test-net-server-blocklist.js": {},
     "parallel/test-net-server-capture-rejection.js": {},
+    "parallel/test-net-server-close-before-calling-lookup-callback.js": {},
     "parallel/test-net-server-close.js": {},
     "parallel/test-net-server-listen-options-signal.js": {},
     "parallel/test-net-server-listen-options.js": {},

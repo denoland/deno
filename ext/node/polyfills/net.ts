@@ -1992,7 +1992,11 @@ function _lookupAndListen(
   exclusive: boolean,
   flags: number,
 ) {
+  const listeningId = server._listeningId;
   dnsLookup(address, { port }, function doListen(err, ip, addressType) {
+    if (server._listeningId !== listeningId) {
+      return;
+    }
     if (err) {
       server.emit("error", err);
     } else {
@@ -2321,6 +2325,7 @@ export function Server(
   this._unref = false;
   this._pipeName = undefined;
   this._connectionKey = undefined;
+  this._listeningId = 1;
 
   if (_isConnectionListener(options)) {
     this.on("connection", options);
@@ -2375,6 +2380,8 @@ Server.prototype.listen = function (...args: unknown[]) {
   const normalized = _normalizeArgs(args);
   let options = normalized[0] as Partial<ListenOptions>;
   const cb = normalized[1];
+
+  this._listeningId++;
 
   if (this._handle) {
     throw new ERR_SERVER_ALREADY_LISTEN();
@@ -2529,6 +2536,8 @@ Server.prototype.listen = function (...args: unknown[]) {
  * @param cb Called when the server is closed.
  */
 Server.prototype.close = function (cb?: (err?: Error) => void) {
+  this._listeningId++;
+
   if (typeof cb === "function") {
     if (!this._handle) {
       this.once("close", function close() {
