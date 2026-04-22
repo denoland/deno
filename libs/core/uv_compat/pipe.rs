@@ -324,13 +324,6 @@ pub unsafe fn uv_pipe_bind(pipe: *mut uv_pipe_t, path: &str) -> c_int {
     // The fd is available immediately for the `fd` property.
     #[cfg(unix)]
     {
-      // Remove existing socket file if present.
-      #[allow(
-        clippy::disallowed_methods,
-        reason = "uv_compat is not compiled to WASM"
-      )]
-      let _ = std::fs::remove_file(path);
-
       // Create a Unix domain stream socket.
       let fd = libc::socket(libc::AF_UNIX, libc::SOCK_STREAM, 0);
       if fd < 0 {

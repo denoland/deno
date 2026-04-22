@@ -1681,6 +1681,7 @@
     "parallel/test-net-server-close.js": {},
     "parallel/test-net-server-listen-options-signal.js": {},
     "parallel/test-net-server-listen-options.js": {},
+    "parallel/test-net-server-listen-path.js": {},
     "parallel/test-net-server-listen-remove-callback.js": {},
     "parallel/test-net-server-options.js": {},
     "parallel/test-net-server-pause-on-connect.js": {},
