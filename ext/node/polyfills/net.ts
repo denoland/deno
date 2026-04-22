@@ -878,7 +878,11 @@ function _lookupAndConnect(self: Socket, options: TcpSocketConnectOptions) {
   }
 
   if (autoSelectFamilyAttemptTimeout !== undefined) {
-    validateInt32(autoSelectFamilyAttemptTimeout);
+    validateInt32(
+      autoSelectFamilyAttemptTimeout,
+      "options.autoSelectFamilyAttemptTimeout",
+      1,
+    );
 
     if (autoSelectFamilyAttemptTimeout < 10) {
       autoSelectFamilyAttemptTimeout = 10;
