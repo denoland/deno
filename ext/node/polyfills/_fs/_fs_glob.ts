@@ -521,7 +521,7 @@ export class Glob {
       children = this.#cache.readdirSync(fullpath);
     }
 
-    for (let i = 0; i < children.length; i++) {
+    childrenLoop: for (let i = 0; i < children.length; i++) {
       const entry = children[i];
       const entryPath = join(path, entry.name);
       this.#cache.addToStatCache(join(fullpath, entry.name), entry);
@@ -534,7 +534,12 @@ export class Glob {
           this.#cache.seen(entryPath, pattern, index) ||
           this.#cache.seen(entryPath, pattern, index + 1)
         ) {
-          return;
+          // Skip this child, but continue processing remaining children.
+          // Using `return` here would abort the entire method, which is
+          // incorrect when the same path gets queued multiple times via
+          // the ".." handler -- readdir ordering could cause a cached
+          // sibling to cut off all subsequent siblings.
+          continue childrenLoop;
         }
         const current = pattern.at(index);
         const nextIndex = index + 1;
@@ -777,7 +782,7 @@ export class Glob {
       children = await this.#cache.readdir(fullpath);
     }
 
-    for (let i = 0; i < children.length; i++) {
+    childrenLoop: for (let i = 0; i < children.length; i++) {
       const entry = children[i];
       const entryPath = join(path, entry.name);
       this.#cache.addToStatCache(join(fullpath, entry.name), entry);
@@ -790,7 +795,8 @@ export class Glob {
           this.#cache.seen(entryPath, pattern, index) ||
           this.#cache.seen(entryPath, pattern, index + 1)
         ) {
-          return;
+          // Skip this child, but continue processing remaining children.
+          continue childrenLoop;
         }
         const current = pattern.at(index);
         const nextIndex = index + 1;
