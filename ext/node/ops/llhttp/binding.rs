@@ -647,6 +647,34 @@ unsafe extern "C" fn on_message_complete(parser: *mut sys::llhttp_t) -> c_int {
   0
 }
 
+/// Shape matches the error that `HTTPParser.prototype.execute` builds in
+/// JS for the non-consume path (see `http_parser.ts`), so both paths
+/// deliver the same object to `onParserExecuteCommon` in `_http_server.js`.
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+enum ParseError {
+  #[class(generic)]
+  #[error("Parse Error: Header overflow")]
+  #[property("code" = "HPE_HEADER_OVERFLOW")]
+  #[property("reason" = "Header overflow")]
+  #[property("bytesParsed" = self.bytes_parsed())]
+  HeaderOverflow { bytes_parsed: i32 },
+  #[class(generic)]
+  #[error("Parse Error")]
+  #[property("code" = "HPE_ERROR")]
+  #[property("reason" = "Parse Error")]
+  #[property("bytesParsed" = self.bytes_parsed())]
+  Generic { bytes_parsed: i32 },
+}
+
+impl ParseError {
+  fn bytes_parsed(&self) -> i32 {
+    match self {
+      ParseError::HeaderOverflow { bytes_parsed } => *bytes_parsed,
+      ParseError::Generic { bytes_parsed } => *bytes_parsed,
+    }
+  }
+}
+
 // ---- ReadInterceptor callback for consume() ----
 
 /// Called by the stream's read callback when data arrives.
@@ -782,47 +810,13 @@ unsafe fn consume_read_callback(
     let is_error =
       inner.got_exception || (inner.parser.upgrade == 0 && err != sys::HPE_OK);
     let result_val: v8::Local<v8::Value> = if is_error {
-      let header_overflow = inner.header_overflow;
-      let data_len = data.len();
-      let msg = v8::String::new(scope, "Parse Error").unwrap();
-      let err_obj = v8::Exception::error(scope, msg).to_object(scope).unwrap();
-      let code_key = v8::String::new(scope, "code").unwrap().into();
-      let code_val: v8::Local<v8::Value> = v8::String::new(
-        scope,
-        if header_overflow {
-          "HPE_HEADER_OVERFLOW"
-        } else {
-          "HPE_ERROR"
-        },
-      )
-      .unwrap()
-      .into();
-      err_obj.set(scope, code_key, code_val);
-      let reason_key = v8::String::new(scope, "reason").unwrap().into();
-      let reason_val: v8::Local<v8::Value> = v8::String::new(
-        scope,
-        if header_overflow {
-          "Header overflow"
-        } else {
-          "Parse Error"
-        },
-      )
-      .unwrap()
-      .into();
-      err_obj.set(scope, reason_key, reason_val);
-      if header_overflow {
-        let msg_key = v8::String::new(scope, "message").unwrap().into();
-        let msg_val: v8::Local<v8::Value> =
-          v8::String::new(scope, "Parse Error: Header overflow")
-            .unwrap()
-            .into();
-        err_obj.set(scope, msg_key, msg_val);
-      }
-      let bytes_key = v8::String::new(scope, "bytesParsed").unwrap().into();
-      let bytes_val: v8::Local<v8::Value> =
-        v8::Integer::new(scope, data_len as i32).into();
-      err_obj.set(scope, bytes_key, bytes_val);
-      err_obj.into()
+      let bytes_parsed = data.len() as i32;
+      let parse_err = if inner.header_overflow {
+        ParseError::HeaderOverflow { bytes_parsed }
+      } else {
+        ParseError::Generic { bytes_parsed }
+      };
+      deno_core::error::to_v8_error(scope, &parse_err)
     } else {
       v8::Integer::new(scope, nread_result).into()
     };
