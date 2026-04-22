@@ -844,6 +844,13 @@ pub(crate) unsafe fn close_pipe(pipe: *mut uv_pipe_t) {
     (*pipe).internal_read_cb = None;
     (*pipe).internal_connection_cb = None;
     (*pipe).internal_connect = None;
+
+    // Match libuv: unlink the socket file before closing the fd so
+    // another server can bind to the same path immediately.
+    #[cfg(unix)]
+    if let Some(ref path) = (*pipe).internal_bind_path {
+      let _ = std::fs::remove_file(path);
+    }
     (*pipe).internal_bind_path = None;
 
     // Cancel pending writes.
