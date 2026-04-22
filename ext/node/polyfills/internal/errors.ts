@@ -2087,6 +2087,14 @@ export class ERR_SOCKET_CLOSED extends NodeError {
     super("ERR_SOCKET_CLOSED", `Socket is closed`);
   }
 }
+export class ERR_SOCKET_CLOSED_BEFORE_CONNECTION extends NodeError {
+  constructor() {
+    super(
+      "ERR_SOCKET_CLOSED_BEFORE_CONNECTION",
+      `Socket closed before the connection was established`,
+    );
+  }
+}
 export class ERR_SOCKET_CONNECTION_TIMEOUT extends NodeError {
   constructor() {
     super("ERR_SOCKET_CONNECTION_TIMEOUT", `Socket connection timeout`);
