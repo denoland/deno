@@ -36,6 +36,7 @@ use crate::uv_compat::UV_ECANCELED;
 use crate::uv_compat::UV_EINVAL;
 use crate::uv_compat::UV_ENOBUFS;
 use crate::uv_compat::UV_ENOTCONN;
+#[cfg(unix)]
 use crate::uv_compat::UV_ENOTSUP;
 use crate::uv_compat::UV_EOF;
 use crate::uv_compat::UV_EPIPE;
