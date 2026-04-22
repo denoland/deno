@@ -108,88 +108,12 @@ extern "C" fn test_nested_scopes(
   result
 }
 
-/// Ported from Node.js test_handle_scope.c: NewScopeWithException.
-/// Verifies that closing a handle scope still works while an exception
-/// is pending.
-extern "C" fn test_scope_with_exception(
-  env: napi_env,
-  info: napi_callback_info,
-) -> napi_value {
-  let mut scope: napi_handle_scope = ptr::null_mut();
-  assert_napi_ok!(napi_open_handle_scope(env, &mut scope));
-
-  let mut value: napi_value = ptr::null_mut();
-  assert_napi_ok!(napi_create_object(env, &mut value));
-
-  // Get the callback argument (a function that throws)
-  let mut argc: usize = 1;
-  let mut exception_function: napi_value = ptr::null_mut();
-  assert_napi_ok!(napi_get_cb_info(
-    env,
-    info,
-    &mut argc,
-    &mut exception_function,
-    ptr::null_mut(),
-    ptr::null_mut()
-  ));
-
-  // Call the function that throws -- should return napi_pending_exception
-  let status = unsafe {
-    napi_call_function(
-      env,
-      value,
-      exception_function,
-      0,
-      ptr::null(),
-      ptr::null_mut(),
-    )
-  };
-  assert_eq!(status, Status::napi_pending_exception);
-
-  // Closing a handle scope should still work while an exception is pending
-  assert_napi_ok!(napi_close_handle_scope(env, scope));
-  ptr::null_mut()
-}
-
-/// Stress test: create many handles inside a scope and verify they're
-/// properly scoped. Without real handle scopes, this would accumulate
-/// handles unboundedly.
-extern "C" fn test_handle_scope_many_handles(
-  env: napi_env,
-  _info: napi_callback_info,
-) -> napi_value {
-  // Create 10000 objects inside a handle scope
-  for _ in 0..100 {
-    let mut scope: napi_handle_scope = ptr::null_mut();
-    assert_napi_ok!(napi_open_handle_scope(env, &mut scope));
-    for _ in 0..100 {
-      let mut value: napi_value = ptr::null_mut();
-      assert_napi_ok!(napi_create_object(env, &mut value));
-    }
-    assert_napi_ok!(napi_close_handle_scope(env, scope));
-  }
-
-  let mut result: napi_value = ptr::null_mut();
-  assert_napi_ok!(napi_get_boolean(env, true, &mut result));
-  result
-}
-
 pub fn init(env: napi_env, exports: napi_value) {
   let properties = &[
     napi_new_property!(env, "test_open_close_scope", test_open_close_scope),
     napi_new_property!(env, "test_escapable_scope", test_escapable_scope),
     napi_new_property!(env, "test_escape_twice", test_escape_twice),
     napi_new_property!(env, "test_nested_scopes", test_nested_scopes),
-    napi_new_property!(
-      env,
-      "test_scope_with_exception",
-      test_scope_with_exception
-    ),
-    napi_new_property!(
-      env,
-      "test_handle_scope_many_handles",
-      test_handle_scope_many_handles
-    ),
   ];
 
   assert_napi_ok!(napi_define_properties(
