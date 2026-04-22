@@ -98,15 +98,69 @@ fn ebadf() -> FsError {
 }
 
 /// Get the File trait object for an OS file descriptor from FdTable.
+///
+/// If the fd is not in the table (e.g. an inherited pipe from
+/// `child_process.spawn`), validates and wraps the raw OS fd so that
+/// `fs.write(fd)` / `fs.read(fd)` work on any open descriptor.
 fn file_for_fd(
   state: &OpState,
   fd: i32,
 ) -> Result<Rc<dyn deno_io::fs::File>, FsError> {
-  state
-    .borrow::<deno_io::FdTable>()
-    .get(fd)
-    .cloned()
-    .ok_or_else(ebadf)
+  if let Some(file) = state.borrow::<deno_io::FdTable>().get(fd) {
+    return Ok(file.clone());
+  }
+  // The fd may be a valid OS fd not registered in FdTable (e.g., an
+  // extra stdio pipe inherited from a parent process). Dup it so the
+  // wrapper won't close the original fd when dropped.
+  wrap_raw_fd(fd)
+}
+
+#[cfg(unix)]
+fn wrap_raw_fd(fd: i32) -> Result<Rc<dyn deno_io::fs::File>, FsError> {
+  use std::os::unix::io::FromRawFd;
+  // SAFETY: libc calls with a valid fd argument
+  let duped = unsafe { libc::dup(fd) };
+  if duped < 0 {
+    return Err(ebadf());
+  }
+  // SAFETY: duped is a new valid fd returned by dup()
+  let std_file = unsafe { std::fs::File::from_raw_fd(duped) };
+  Ok(Rc::new(deno_io::StdFileResourceInner::file(std_file, None)))
+}
+
+#[cfg(windows)]
+fn wrap_raw_fd(fd: i32) -> Result<Rc<dyn deno_io::fs::File>, FsError> {
+  use std::os::windows::io::FromRawHandle;
+
+  use windows_sys::Win32::Foundation::DUPLICATE_SAME_ACCESS;
+  use windows_sys::Win32::Foundation::DuplicateHandle;
+  use windows_sys::Win32::System::Threading::GetCurrentProcess;
+
+  // SAFETY: _get_osfhandle returns the OS handle for a CRT fd
+  let handle = unsafe { libc::get_osfhandle(fd) };
+  if handle == -1 {
+    return Err(ebadf());
+  }
+  // Duplicate the handle so we don't close the original on drop.
+  let mut new_handle: isize = 0;
+  // SAFETY: handle is a valid OS handle from get_osfhandle
+  let ok = unsafe {
+    DuplicateHandle(
+      GetCurrentProcess(),
+      handle,
+      GetCurrentProcess(),
+      &mut new_handle,
+      0,
+      0, // not inheritable
+      DUPLICATE_SAME_ACCESS,
+    )
+  };
+  if ok == 0 {
+    return Err(ebadf());
+  }
+  // SAFETY: new_handle is a valid duplicated OS handle
+  let std_file = unsafe { std::fs::File::from_raw_handle(new_handle as _) };
+  Ok(Rc::new(deno_io::StdFileResourceInner::file(std_file, None)))
 }
 
 /// When `sync_fs` is enabled, `FileSystemRc` is `Arc` (Send) and we can
