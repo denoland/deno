@@ -521,7 +521,7 @@ export class Glob {
       children = this.#cache.readdirSync(fullpath);
     }
 
-    childrenLoop: for (let i = 0; i < children.length; i++) {
+    for (let i = 0; i < children.length; i++) {
       const entry = children[i];
       const entryPath = join(path, entry.name);
       this.#cache.addToStatCache(join(fullpath, entry.name), entry);
@@ -529,18 +529,6 @@ export class Glob {
       const subPatterns = new SafeSet();
       const nSymlinks = new SafeSet();
       for (const index of pattern.indexes) {
-        // For each child, check potential patterns
-        if (
-          this.#cache.seen(entryPath, pattern, index) ||
-          this.#cache.seen(entryPath, pattern, index + 1)
-        ) {
-          // Skip this child, but continue processing remaining children.
-          // Using `return` here would abort the entire method, which is
-          // incorrect when the same path gets queued multiple times via
-          // the ".." handler -- readdir ordering could cause a cached
-          // sibling to cut off all subsequent siblings.
-          continue childrenLoop;
-        }
         const current = pattern.at(index);
         const nextIndex = index + 1;
         const next = pattern.at(nextIndex);
@@ -782,7 +770,7 @@ export class Glob {
       children = await this.#cache.readdir(fullpath);
     }
 
-    childrenLoop: for (let i = 0; i < children.length; i++) {
+    for (let i = 0; i < children.length; i++) {
       const entry = children[i];
       const entryPath = join(path, entry.name);
       this.#cache.addToStatCache(join(fullpath, entry.name), entry);
@@ -790,14 +778,6 @@ export class Glob {
       const subPatterns = new SafeSet();
       const nSymlinks = new SafeSet();
       for (const index of pattern.indexes) {
-        // For each child, check potential patterns
-        if (
-          this.#cache.seen(entryPath, pattern, index) ||
-          this.#cache.seen(entryPath, pattern, index + 1)
-        ) {
-          // Skip this child, but continue processing remaining children.
-          continue childrenLoop;
-        }
         const current = pattern.at(index);
         const nextIndex = index + 1;
         const next = pattern.at(nextIndex);
