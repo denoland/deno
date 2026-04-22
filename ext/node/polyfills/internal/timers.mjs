@@ -159,9 +159,13 @@ Timeout.prototype[createTimer] = function () {
     this._isRepeat,
     this[kRefed],
   );
-  // Direct assignment instead of ObjectDefineProperty -- this path
-  // runs per setTimeout on keep-alive HTTP connections.
-  this._timer = timer;
+  ObjectDefineProperty(this, "_timer", {
+    __proto__: null,
+    value: timer,
+    writable: true,
+    enumerable: false,
+    configurable: true,
+  });
   const id = timer._timerId;
   MapPrototypeSet(activeTimers, id, this);
   return id;
