@@ -41,6 +41,7 @@ import {
   ownerSymbol,
 } from "ext:deno_node/internal/async_hooks.ts";
 import {
+  AbortError,
   ERR_INVALID_ADDRESS_FAMILY,
   ERR_INVALID_ARG_TYPE,
   ERR_INVALID_ARG_VALUE,
@@ -1197,6 +1198,21 @@ function _emitCloseNT(s: Socket | Server) {
   s.emit("close");
 }
 
+function _addClientAbortSignalOption(socket: Socket, signal: AbortSignal) {
+  if (signal.aborted) {
+    nextTick(() => socket.destroy(new AbortError()));
+    return;
+  }
+
+  const onAbort = () => {
+    socket.destroy(new AbortError());
+  };
+  signal.addEventListener("abort", onAbort, { once: true });
+  socket.once("close", () => {
+    signal.removeEventListener("abort", onAbort);
+  });
+}
+
 // The packages that need socket initialization workaround
 
 /**
@@ -1322,6 +1338,10 @@ export function Socket(options) {
     } else if (!options.manualStart) {
       this.read(0);
     }
+  }
+
+  if (options.signal) {
+    _addClientAbortSignalOption(this, options.signal);
   }
 }
 Object.setPrototypeOf(Socket.prototype, Duplex.prototype);
