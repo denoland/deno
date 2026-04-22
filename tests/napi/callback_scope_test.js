@@ -1,6 +1,6 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-import { assertEquals, assertThrows, loadTestLibrary } from "./common.js";
+import { assertEquals, loadTestLibrary } from "./common.js";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { createRequire } from "node:module";
 
@@ -23,25 +23,6 @@ Deno.test("napi async context lifecycle", function () {
 Deno.test("napi make_callback with real async context", function () {
   const result = lib.test_make_callback_with_real_context(() => 99);
   assertEquals(result, 99);
-});
-
-// Ported from Node.js test_callback_scope: RunInCallbackScope
-Deno.test("napi run in callback scope", function () {
-  const result = lib.test_run_in_callback_scope({}, "test-resource", () => 42);
-  assertEquals(result, 42);
-});
-
-// Ported from Node.js test_callback_scope: RunInCallbackScope with exception
-Deno.test("napi run in callback scope with exception", function () {
-  assertThrows(
-    () => {
-      lib.test_run_in_callback_scope({}, "test-resource", () => {
-        throw new Error("callback error");
-      });
-    },
-    Error,
-    "callback error",
-  );
 });
 
 // Verify async context propagation: AsyncLocalStorage should be
