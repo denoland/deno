@@ -1690,6 +1690,7 @@
     "parallel/test-net-server-unref.js": {},
     "parallel/test-net-settimeout.js": {},
     "parallel/test-net-socket-connect-invalid-autoselectfamily.js": {},
+    "parallel/test-net-socket-connect-invalid-autoselectfamilyattempttimeout.js": {},
     "parallel/test-net-socket-connect-without-cb.js": {},
     "parallel/test-net-socket-connecting.js": {},
     "parallel/test-net-socket-destroy-send.js": {},
