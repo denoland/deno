@@ -5,10 +5,12 @@
 // deno-lint-ignore-file prefer-primordials no-explicit-any
 
 import {
+  ERR_INVALID_ARG_TYPE,
   ERR_TLS_INVALID_PROTOCOL_VERSION,
   ERR_TLS_PROTOCOL_VERSION_CONFLICT,
 } from "ext:deno_node/internal/errors.ts";
 import { isArrayBufferView } from "ext:deno_node/internal/util/types.ts";
+import { validateString } from "ext:deno_node/internal/validators.mjs";
 
 // Map legacy secureProtocol strings to [minVersion, maxVersion] pairs.
 // Node.js maps these in src/crypto/crypto_context.cc.
@@ -107,6 +109,43 @@ function getProtocolRange(
   return { minVersion, maxVersion };
 }
 
+function isValidKeyCertValue(val: any): boolean {
+  return typeof val === "string" ||
+    isArrayBufferView(val) ||
+    val instanceof globalThis.ArrayBuffer;
+}
+
+function validateKeyCertOption(
+  val: any,
+  name: string,
+  allowKeyObjects: boolean,
+) {
+  if (!val) return; // falsy values (false, null, undefined, 0, '') are skipped
+  if (isValidKeyCertValue(val)) return;
+  if (globalThis.Array.isArray(val)) {
+    for (let i = 0; i < val.length; i++) {
+      const item = val[i];
+      if (!item) continue;
+      if (isValidKeyCertValue(item)) continue;
+      // For key, objects like { pem, passphrase } are allowed inside arrays
+      if (
+        allowKeyObjects && typeof item === "object" && item !== null
+      ) continue;
+      throw new ERR_INVALID_ARG_TYPE(
+        name,
+        ["string", "Buffer", "TypedArray", "DataView"],
+        item,
+      );
+    }
+    return;
+  }
+  throw new ERR_INVALID_ARG_TYPE(
+    name,
+    ["string", "Buffer", "TypedArray", "DataView"],
+    val,
+  );
+}
+
 export class SecureContext {
   context: {
     ca?: string | string[];
@@ -121,6 +160,32 @@ export class SecureContext {
   };
 
   constructor(options: any = {}) {
+    if (options.ciphers != null) {
+      validateString(options.ciphers, "options.ciphers");
+    }
+    if (options.key && options.passphrase != null) {
+      validateString(options.passphrase, "options.passphrase");
+    }
+    if (options.clientCertEngine != null) {
+      validateString(options.clientCertEngine, "options.clientCertEngine");
+    }
+    if (options.privateKeyEngine != null) {
+      validateString(options.privateKeyEngine, "options.privateKeyEngine");
+    }
+    if (options.privateKeyIdentifier != null) {
+      validateString(
+        options.privateKeyIdentifier,
+        "options.privateKeyIdentifier",
+      );
+    }
+    if (options.ecdhCurve != null) {
+      validateString(options.ecdhCurve, "options.ecdhCurve");
+    }
+    // Validate cert before key - Node.js processes cert first (SetCert before SetKey)
+    validateKeyCertOption(options.cert, "options.cert", false);
+    validateKeyCertOption(options.key, "options.key", true);
+    validateKeyCertOption(options.ca, "options.ca", false);
+
     const { minVersion, maxVersion } = getProtocolRange(options);
 
     this.context = {

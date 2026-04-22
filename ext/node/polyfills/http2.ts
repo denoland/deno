@@ -48,7 +48,6 @@ const {
 import {
   Http2Session as InternalHttp2Session,
   op_http2_callbacks,
-  op_http2_constants,
 } from "ext:core/ops";
 import net from "node:net";
 import assert from "node:assert";
@@ -105,31 +104,41 @@ import {
   ERR_HTTP2_GOAWAY_SESSION,
   ERR_HTTP2_HEADERS_AFTER_RESPOND,
   ERR_HTTP2_HEADERS_SENT,
+  ERR_HTTP2_INVALID_INFO_STATUS,
   ERR_HTTP2_INVALID_ORIGIN,
   ERR_HTTP2_INVALID_PACKED_SETTINGS_LENGTH,
   ERR_HTTP2_INVALID_SESSION,
   ERR_HTTP2_INVALID_SETTING_VALUE,
   ERR_HTTP2_INVALID_STREAM,
+  ERR_HTTP2_MAX_PENDING_SETTINGS_ACK,
+  ERR_HTTP2_NESTED_PUSH,
   ERR_HTTP2_NO_SOCKET_MANIPULATION,
   ERR_HTTP2_ORIGIN_LENGTH,
   ERR_HTTP2_OUT_OF_STREAMS,
   ERR_HTTP2_PAYLOAD_FORBIDDEN,
+  ERR_HTTP2_PING_CANCEL,
   ERR_HTTP2_PING_LENGTH,
   ERR_HTTP2_PUSH_DISABLED,
   ERR_HTTP2_SEND_FILE,
   ERR_HTTP2_SEND_FILE_NOSEEK,
   ERR_HTTP2_SESSION_ERROR,
+  ERR_HTTP2_SETTINGS_CANCEL,
   ERR_HTTP2_SOCKET_BOUND,
   ERR_HTTP2_SOCKET_UNBOUND,
+  ERR_HTTP2_STATUS_101,
   ERR_HTTP2_STATUS_INVALID,
   ERR_HTTP2_STREAM_CANCEL,
   ERR_HTTP2_STREAM_ERROR,
   ERR_HTTP2_STREAM_SELF_DEPENDENCY,
   ERR_HTTP2_TOO_MANY_CUSTOM_SETTINGS,
+  ERR_HTTP2_TRAILERS_ALREADY_SENT,
+  ERR_HTTP2_TRAILERS_NOT_READY,
+  ERR_HTTP2_UNSUPPORTED_PROTOCOL,
   ERR_INVALID_ARG_TYPE,
   ERR_INVALID_ARG_VALUE,
   ERR_INVALID_CHAR,
   ERR_OUT_OF_RANGE,
+  ERR_SOCKET_CLOSED,
   hideStackFrames,
 } from "ext:deno_node/internal/errors.ts";
 import {
@@ -163,6 +172,7 @@ import {
   kRequest,
   kSensitiveHeaders,
   kSocket,
+  kStrictSingleValueFields,
   MAX_ADDITIONAL_SETTINGS,
   NghttpError,
   prepareRequestHeadersArray,
@@ -240,7 +250,7 @@ function scheduleSendPending(session) {
 // HTTP2 Constants
 const MAX_ADDITIONAL_SETTINGS = 10;
 
-const constants = op_http2_constants();
+import * as constants from "ext:deno_node/internal/http2/constants.ts";
 const {
   NGHTTP2_CANCEL,
   NGHTTP2_REFUSED_STREAM,
@@ -312,6 +322,9 @@ const kSessionRemoteSettingsIsUpToDate = 0;
 const kSessionPriorityListenerCount = 0;
 const kSessionFrameErrorListenerCount = 1;
 const kBitfield = 0;
+const kSessionHasRemoteSettingsListeners = 1;
+const kSessionMaxInvalidFrames = 0;
+const kSessionMaxRejectedStreams = 1;
 
 // Private symbols
 const kAlpnProtocol = Symbol("alpnProtocol");
@@ -337,8 +350,11 @@ const kType = Symbol("type");
 const kWriteGeneric = Symbol("write-generic");
 const kSessions = Symbol("sessions");
 
+const kMaxOutstandingSettings = Symbol("maxOutstandingSettings");
+
 const kMaxFrameSize = (2 ** 24) - 1;
 const kMaxInt = (2 ** 32) - 1;
+const kMaxInitWindowSize = (2 ** 31) - 1;
 const kMaxStreams = (2 ** 32) - 1;
 const kMaxALTSVC = (2 ** 14) - 2;
 
@@ -459,6 +475,30 @@ function streamListenerRemoved(name) {
       break;
     case "frameError":
       session[kNativeFields][kSessionFrameErrorListenerCount]--;
+      break;
+  }
+}
+
+function sessionListenerAdded(name) {
+  switch (name) {
+    case "remoteSettings":
+      this[kNativeFields][kBitfield] |= 1 << kSessionHasRemoteSettingsListeners;
+      break;
+    case "frameError":
+      this[kNativeFields][kSessionFrameErrorListenerCount]++;
+      break;
+  }
+}
+
+function sessionListenerRemoved(name) {
+  switch (name) {
+    case "remoteSettings":
+      if (this.listenerCount("remoteSettings") > 0) return;
+      this[kNativeFields][kBitfield] &=
+        ~(1 << kSessionHasRemoteSettingsListeners);
+      break;
+    case "frameError":
+      this[kNativeFields][kSessionFrameErrorListenerCount]--;
       break;
   }
 }
@@ -851,7 +891,7 @@ function pingCallback(cb) {
 
 // Validates the values in a settings object. Specifically:
 // 1. headerTableSize must be a number in the range 0 <= n <= kMaxInt
-// 2. initialWindowSize must be a number in the range 0 <= n <= kMaxInt
+// 2. initialWindowSize must be a number in the range 0 <= n <= kMaxInitWindowSize
 // 3. maxFrameSize must be a number in the range 16384 <= n <= kMaxFrameSize
 // 4. maxConcurrentStreams must be a number in the range 0 <= n <= kMaxStreams
 // 5. maxHeaderListSize must be a number in the range 0 <= n <= kMaxInt
@@ -896,7 +936,7 @@ const validateSettings = hideStackFrames((settings) => {
     "initialWindowSize",
     settings.initialWindowSize,
     0,
-    kMaxInt,
+    kMaxInitWindowSize,
   );
   assertWithinRange(
     "maxFrameSize",
@@ -1720,6 +1760,7 @@ class Http2Stream extends Duplex {
     const headersList = buildNgHeaderString(
       headers,
       assertValidPseudoHeaderTrailer,
+      this.session[kStrictSingleValueFields],
     );
     this[kSentTrailers] = headers;
 
@@ -1915,6 +1956,7 @@ function prepareResponseHeaders(stream, headersParam, options) {
   const headersList = buildNgHeaderString(
     headers,
     assertValidPseudoHeaderResponse,
+    stream.session[kStrictSingleValueFields],
   );
 
   return { headers, headersList, statusCode };
@@ -2017,6 +2059,7 @@ function processRespondWithFD(
     headersList = buildNgHeaderString(
       headers,
       assertValidPseudoHeaderResponse,
+      self.session[kStrictSingleValueFields],
     );
   } catch (err) {
     self.destroy(err);
@@ -2279,7 +2322,11 @@ class ServerHttp2Stream extends Http2Stream {
       headRequest = options.endStream = true;
     }
 
-    const headersList = buildNgHeaderString(headers);
+    const headersList = buildNgHeaderString(
+      headers,
+      assertValidPseudoHeader,
+      this.session[kStrictSingleValueFields],
+    );
 
     const streamOptions = options.endStream ? STREAM_OPTION_EMPTY_PAYLOAD : 0;
 
@@ -2600,6 +2647,7 @@ class ServerHttp2Stream extends Http2Stream {
     const headersList = buildNgHeaderString(
       headers,
       assertValidPseudoHeaderResponse,
+      this.session[kStrictSingleValueFields],
     );
     if (!this[kInfoHeaders]) {
       this[kInfoHeaders] = [headers];
@@ -2750,6 +2798,9 @@ function setupHandle(socket, type, options) {
   if (socket.encrypted) {
     this[kAlpnProtocol] = socket.alpnProtocol;
     this[kEncrypted] = true;
+    if (socket.alpnProtocol === "h2") {
+      initOriginSet(this);
+    }
   } else {
     // 'h2c' is the protocol identifier for HTTP/2 over plain-text. We use
     // it here to identify any session that is not explicitly using an
@@ -3030,6 +3081,11 @@ class Http2Session extends EventEmitter {
     this[kSocket] = socket;
     this[kTimeout] = null;
     this[kHandle] = undefined;
+    this[kMaxOutstandingSettings] = MathMin(
+      options.maxOutstandingSettings | 0,
+      2 ** 31 - 1,
+    ) || 10;
+    this[kStrictSingleValueFields] = options.strictSingleValueFields !== false;
 
     // Do not use nagle's algorithm
     if (typeof socket.setNoDelay === "function") {
@@ -3067,23 +3123,11 @@ class Http2Session extends EventEmitter {
     this[kNativeFields] ||= trackAssignmentsTypedArray(
       new Uint8Array(kSessionUint8FieldCount),
     );
-    // this.on("newListener", sessionListenerAdded);
-    // this.on("removeListener", sessionListenerRemoved);
+    this.on("newListener", sessionListenerAdded);
+    this.on("removeListener", sessionListenerRemoved);
 
-    // Process data on the next tick - a remoteSettings handler may be attached.
-    // https://github.com/nodejs/node/issues/35981
-    process.nextTick(() => {
-      // Socket already has some buffered data - emulate receiving it
-      // https://github.com/nodejs/node/issues/35475
-      // https://github.com/nodejs/node/issues/34532
-      if (socket.readableLength) {
-        let buf;
-        while ((buf = socket.read()) !== null) {
-          debugSession(type, `${buf.length} bytes already in buffer`);
-          this[kHandle].receive(buf);
-        }
-      }
-    });
+    // NOTE: buffered data is drained in setupHandle's process.nextTick,
+    // not here. Having it in both places risks double-processing.
 
     debugSession(type, "created");
   }
@@ -3291,6 +3335,9 @@ class Http2Session extends EventEmitter {
     }
     debugSessionObj(this, "sending settings");
 
+    if (this[kState].pendingAck >= this[kMaxOutstandingSettings]) {
+      throw new ERR_HTTP2_MAX_PENDING_SETTINGS_ACK();
+    }
     this[kState].pendingAck++;
 
     const settingsFn = FunctionPrototypeBind(
@@ -4180,19 +4227,16 @@ function getUnpackedSettings(buf) {
   if (
     // deno-lint-ignore prefer-primordials
     !Buffer.isBuffer(buf) &&
-    !ObjectPrototypeIsPrototypeOf(ArrayBuffer.prototype, buf) &&
-    !ArrayBufferIsView(buf)
+    !(ArrayBufferIsView(buf) && !(buf instanceof DataView))
   ) {
     throw new ERR_INVALID_ARG_TYPE("buf", [
       "Buffer",
       "TypedArray",
     ], buf);
   }
-  // deno-lint-ignore prefer-primordials
-  if (buf.byteLength === undefined) buf = Buffer.from(buf);
-  else if (!Buffer.isBuffer(buf)) {
+  if (!Buffer.isBuffer(buf)) {
     // deno-lint-ignore prefer-primordials
-    buf = Buffer.from(buf.buffer, buf.byteOffset, buf.byteLength);
+    buf = Buffer.from(buf);
   }
   if (buf.length % 6 !== 0) {
     throw new ERR_HTTP2_INVALID_PACKED_SETTINGS_LENGTH();
