@@ -1576,9 +1576,7 @@ Socket.prototype.resetAndDestroy = function () {
 };
 
 Socket.prototype._reset = function () {
-  if (this._handle) {
-    this._handle.reset();
-  }
+  this._resetAndClosing = true;
   this.destroy();
 };
 
@@ -1810,6 +1808,13 @@ Socket.prototype._destroy = function (exception, cb) {
       this._handle.bytesRead ?? 0;
     this[kBytesWritten] = this._handle.getBytesWritten?.() ??
       this._handle.bytesWritten ?? 0;
+
+    if (this._resetAndClosing) {
+      this._resetAndClosing = false;
+      if (typeof this._handle.reset === "function") {
+        this._handle.reset();
+      }
+    }
 
     this._handle.close(() => {
       this._handle.onread = _noop;
