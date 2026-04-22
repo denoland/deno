@@ -60,6 +60,12 @@ struct Inner {
   current_header_field: Vec<u8>,
   current_header_value: Vec<u8>,
   in_header_value: bool,
+  /// Set to true when a partial batch of headers was flushed to JS via
+  /// kOnHeaders during parsing (when total exceeded MAX_HEADER_PAIRS).
+  /// When false at `on_headers_complete` with accumulated headers, we
+  /// can skip the flush and pass the headers array directly to
+  /// parserOnHeadersComplete — matching node's fast path.
+  headers_flushed: bool,
 
   url: Vec<u8>,
   status_message: Vec<u8>,
@@ -120,6 +126,7 @@ impl HTTPParser {
         current_header_field: Vec::new(),
         current_header_value: Vec::new(),
         in_header_value: false,
+        headers_flushed: false,
         url: Vec::new(),
         status_message: Vec::new(),
         current_buffer_data: std::ptr::null(),
@@ -207,6 +214,7 @@ impl Inner {
     self.current_header_field.clear();
     self.current_header_value.clear();
     self.in_header_value = false;
+    self.headers_flushed = false;
     self.url.clear();
     self.status_message.clear();
     self.got_exception = false;
@@ -291,6 +299,7 @@ unsafe extern "C" fn on_message_begin(parser: *mut sys::llhttp_t) -> c_int {
   inner.current_header_field.clear();
   inner.current_header_value.clear();
   inner.in_header_value = false;
+  inner.headers_flushed = false;
   inner.header_nread = 0;
   inner.header_overflow = false;
 
@@ -421,6 +430,7 @@ unsafe extern "C" fn on_header_value_complete(
     inner.header_fields.clear();
     inner.header_values.clear();
     inner.url.clear();
+    inner.headers_flushed = true;
   }
   0
 }
@@ -438,14 +448,16 @@ unsafe extern "C" fn on_headers_complete(parser: *mut sys::llhttp_t) -> c_int {
     return 0;
   };
 
-  // Flush any remaining headers via kOnHeaders first, matching Node.js
-  // behavior.  This ensures all headers end up in parser._headers so
-  // parserOnHeadersComplete reads them via the `if (headers === undefined)`
-  // path.  Without this, when the total header count exceeds
-  // MAX_HEADER_PAIRS the first batch (sent via kOnHeaders during parsing)
-  // would be lost because kOnHeadersComplete would receive only the
-  // leftover headers and skip parser._headers.
-  if !inner.header_fields.is_empty() {
+  // Fast path: when no prior kOnHeaders flush occurred (all headers
+  // fit in the current parser.execute batch and total stayed under
+  // MAX_HEADER_PAIRS), pass the accumulated headers directly to
+  // parserOnHeadersComplete as the 3rd/5th args, skipping the
+  // kOnHeaders flush JS call. Slow path (below) handles the
+  // chunked-across-packets or >MAX_HEADER_PAIRS case by flushing
+  // leftover headers via kOnHeaders so JS reads the full list
+  // from parser._headers / parser._url.
+  let skip_flush = !inner.headers_flushed && !inner.header_fields.is_empty();
+  if !skip_flush && !inner.header_fields.is_empty() {
     let flush_headers = Inner::create_headers_array(
       scope,
       &inner.header_fields,
@@ -476,24 +488,44 @@ unsafe extern "C" fn on_headers_complete(parser: *mut sys::llhttp_t) -> c_int {
     v8::Integer::new(scope, unsafe { (*parser).http_major } as i32);
   let version_minor =
     v8::Integer::new(scope, unsafe { (*parser).http_minor } as i32);
-  // All headers have been flushed via kOnHeaders above, so always pass
-  // undefined here.  parserOnHeadersComplete will read from parser._headers.
-  let headers: v8::Local<v8::Value> = v8::undefined(scope).into();
   let is_request = unsafe { (*parser).type_ } == sys::HTTP_REQUEST as u8;
   let undef = v8::undefined(scope);
 
-  // For requests: method and url are set, statusCode/statusMessage are undefined
-  // For responses: statusCode/statusMessage are set, method/url are undefined
+  // Fast path: pass headers + url directly so parserOnHeadersComplete
+  // uses them instead of reading from parser._headers/_url.
+  // Slow path: pass undefined, JS reads from parser._headers/_url
+  // which were populated by the flush above.
+  let (headers, url): (v8::Local<v8::Value>, v8::Local<v8::Value>) =
+    if skip_flush {
+      let headers_arr = Inner::create_headers_array(
+        scope,
+        &inner.header_fields,
+        &inner.header_values,
+      );
+      let url_val: v8::Local<v8::Value> = if is_request {
+        v8::String::new_from_one_byte(
+          scope,
+          &inner.url,
+          v8::NewStringType::Normal,
+        )
+        .unwrap_or_else(|| v8::String::empty(scope))
+        .into()
+      } else {
+        undef.into()
+      };
+      (headers_arr.into(), url_val)
+    } else {
+      (undef.into(), undef.into())
+    };
+
+  // For requests: method is set, statusCode/statusMessage are undefined
+  // For responses: statusCode/statusMessage are set, method is undefined
   let method: v8::Local<v8::Value> = if is_request {
     v8::Integer::new_from_unsigned(scope, unsafe { (*parser).method } as u32)
       .into()
   } else {
     undef.into()
   };
-  // URL was also flushed via kOnHeaders above (just like headers),
-  // so always pass undefined.  parserOnHeadersComplete will read
-  // from parser._url.
-  let url: v8::Local<v8::Value> = undef.into();
   let status_code: v8::Local<v8::Value> = if !is_request {
     v8::Integer::new(scope, unsafe { (*parser).status_code } as i32).into()
   } else {
