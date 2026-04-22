@@ -1869,10 +1869,12 @@ Deno.test(
       const results = globSync("a/**/../*", { cwd: tmp }).sort();
 
       // Every entry in "a/" must appear regardless of readdir ordering
+      const sep = join("a", "b").includes("\\") ? "\\" : "/";
       for (const expected of ["a/b", "a/c", "a/x", "a/z"]) {
+        const normalized = expected.replaceAll("/", sep);
         assert(
-          results.includes(expected),
-          `Expected "${expected}" in glob results, got: ${
+          results.includes(normalized),
+          `Expected "${normalized}" in glob results, got: ${
             JSON.stringify(results)
           }`,
         );
