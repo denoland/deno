@@ -1844,7 +1844,7 @@ Deno.test(
 
 Deno.test(
   "[node/fs globSync] **/../* must not skip siblings due to readdir ordering",
-  { permissions: { read: true, write: true } },
+  { permissions: { read: true, write: true, env: true } },
   () => {
     // Regression test: the ".." handler in glob can queue the same path
     // multiple times. With the LIFO queue, a duplicate entry may be processed
