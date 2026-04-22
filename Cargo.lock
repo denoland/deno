@@ -10654,8 +10654,7 @@ dependencies = [
 [[package]]
 name = "tokio-eld"
 version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9166030f05d6bc5642bdb8f8c2be31eb3c02cd465d662bcdc2df82d4aa41a584"
+source = "git+https://github.com/nikicat/tokio_eld?branch=fix%2Feld-histogram-uaf#0814887131709b8251f737ad062f0a499745e728"
 dependencies = [
  "hdrhistogram",
  "tokio",

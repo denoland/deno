@@ -607,3 +607,12 @@ opt-level = 3
 opt-level = 3
 [profile.release.package.twox-hash]
 opt-level = 3
+
+# Interim patch: upstream `tokio-eld` 0.2.0 has a use-after-free in the sampling
+# task that surfaces as flaky SIGSEGV during `deno test` shutdown whenever a
+# test isolate enables `perf_hooks.monitorEventLoopDelay` (e.g. via prom-client).
+# See https://github.com/denoland/deno/issues/33374
+# and https://github.com/littledivy/tokio_eld/pull/2
+# Remove this patch once the fix is released to crates.io.
+[patch.crates-io]
+tokio-eld = { git = "https://github.com/nikicat/tokio_eld", branch = "fix/eld-histogram-uaf" }
