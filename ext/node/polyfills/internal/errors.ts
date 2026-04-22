@@ -1693,6 +1693,11 @@ export class ERR_INVALID_IP_ADDRESS extends NodeTypeError {
     super("ERR_INVALID_IP_ADDRESS", `Invalid IP address: ${x}`);
   }
 }
+export class ERR_IP_BLOCKED extends NodeError {
+  constructor(x: string) {
+    super("ERR_IP_BLOCKED", `Address blocked: ${x}`);
+  }
+}
 export class ERR_INVALID_MIME_SYNTAX extends NodeTypeError {
   constructor(production: string, str: string, invalidIndex: number) {
     const msg = invalidIndex !== -1 ? ` at ${invalidIndex}` : "";

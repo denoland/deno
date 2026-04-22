@@ -46,6 +46,7 @@ import {
   ERR_INVALID_ARG_VALUE,
   ERR_INVALID_FD_TYPE,
   ERR_INVALID_IP_ADDRESS,
+  ERR_IP_BLOCKED,
   ERR_MISSING_ARGS,
   ERR_SERVER_ALREADY_LISTEN,
   ERR_SERVER_NOT_RUNNING,
@@ -552,6 +553,13 @@ function _internalConnect(
 ) {
   assert(socket.connecting);
 
+  if (
+    socket.blockList?.check(address, `ipv${addressType}`)
+  ) {
+    socket.destroy(new ERR_IP_BLOCKED(address));
+    return;
+  }
+
   let err;
 
   if (localAddress || localPort) {
@@ -681,6 +689,17 @@ function _internalConnectMultiple(context, canceled?: boolean) {
       _internalConnectMultiple(context);
       return;
     }
+  }
+
+  if (
+    self.blockList?.check(address, `ipv${addressType}`)
+  ) {
+    ArrayPrototypePush(
+      context.errors,
+      new ERR_IP_BLOCKED(address),
+    );
+    _internalConnectMultiple(context);
+    return;
   }
 
   debug(
@@ -1235,6 +1254,10 @@ export function Socket(options) {
   this._parent = null;
   this.autoSelectFamilyAttemptedAddresses = undefined;
   this.connecting = false;
+
+  if (options.blockList) {
+    this.blockList = options.blockList;
+  }
 
   if (options.handle) {
     this._handle = options.handle;
