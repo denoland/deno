@@ -2550,6 +2550,12 @@ Server.prototype.close = function (cb?: (err?: Error) => void) {
   return this;
 };
 
+Server.prototype[Symbol.asyncDispose] = function () {
+  return new Promise((resolve) => {
+    this.close(() => resolve());
+  });
+};
+
 /**
  * Returns the bound `address`, the address `family` name, and `port` of the server
  * as reported by the operating system if listening on an IP socket
