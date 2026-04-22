@@ -303,10 +303,10 @@ pub unsafe fn uv_tcp_open(tcp: *mut uv_tcp_t, fd: c_int) -> c_int {
   }
 }
 
-/// ### Safety
-/// `tcp` must be initialized by `uv_tcp_init`. `addr` must point to a valid sockaddr.
 const UV_TCP_REUSEPORT: u32 = 4;
 
+/// ### Safety
+/// `tcp` must be initialized by `uv_tcp_init`. `addr` must point to a valid sockaddr.
 pub unsafe fn uv_tcp_bind(
   tcp: *mut uv_tcp_t,
   addr: *const c_void,
@@ -538,13 +538,10 @@ pub unsafe fn uv_tcp_nodelay(tcp: *mut uv_tcp_t, enable: c_int) -> c_int {
 pub unsafe fn uv_tcp_reset(tcp: *mut uv_tcp_t) -> c_int {
   // SAFETY: Caller guarantees tcp is valid and initialized.
   unsafe {
-    if let Some(ref stream) = (*tcp).internal_stream {
-      if stream
-        .set_linger(Some(std::time::Duration::ZERO))
-        .is_err()
-      {
-        return UV_EINVAL;
-      }
+    if let Some(ref stream) = (*tcp).internal_stream
+      && stream.set_linger(Some(std::time::Duration::ZERO)).is_err()
+    {
+      return UV_EINVAL;
     }
   }
   0
