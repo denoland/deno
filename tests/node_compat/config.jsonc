@@ -1698,6 +1698,7 @@
     "parallel/test-net-socket-end-callback.js": {},
     "parallel/test-net-socket-no-halfopen-enforcer.js": {},
     "parallel/test-net-socket-ready-without-cb.js": {},
+    "parallel/test-net-socket-reset-send.js": {},
     "parallel/test-net-socket-setnodelay.js": {},
     "parallel/test-net-socket-timeout-unref.js": {},
     "parallel/test-net-socket-write-after-close.js": {},
