@@ -52,6 +52,7 @@ import {
   ERR_SERVER_ALREADY_LISTEN,
   ERR_SERVER_NOT_RUNNING,
   ERR_SOCKET_CLOSED,
+  ERR_SOCKET_CLOSED_BEFORE_CONNECTION,
   ERR_SOCKET_CONNECTION_TIMEOUT,
   errnoException,
   exceptionWithHostPort,
@@ -1870,9 +1871,15 @@ Socket.prototype._writeGeneric = function (writev, data, encoding, cb) {
   if (this.connecting) {
     this._pendingData = data;
     this._pendingEncoding = encoding;
+
+    const onClose = () => {
+      cb(new ERR_SOCKET_CLOSED_BEFORE_CONNECTION());
+    };
     this.once("connect", function connect() {
+      this.off("close", onClose);
       this._writeGeneric(writev, data, encoding, cb);
     });
+    this.once("close", onClose);
 
     return;
   }
