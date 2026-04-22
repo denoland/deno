@@ -2070,8 +2070,15 @@ function _isConnectionListener(
   return typeof connectionListener === "function";
 }
 
-function _getFlags(ipv6Only?: boolean): number {
-  return ipv6Only === true ? TCPConstants.UV_TCP_IPV6ONLY : 0;
+function _getFlags(ipv6Only?: boolean, reusePort?: boolean): number {
+  let flags = 0;
+  if (ipv6Only === true) {
+    flags |= TCPConstants.UV_TCP_IPV6ONLY;
+  }
+  if (reusePort === true) {
+    flags |= TCPConstants.UV_TCP_REUSEPORT;
+  }
+  return flags;
 }
 
 function _listenInCluster(
@@ -2225,7 +2232,7 @@ export function _createServerHandle(
     } else if (addressType === 6) {
       err = (handle as TCP).bind6(address, port ?? 0, flags ?? 0);
     } else {
-      err = (handle as TCP).bind(address, port ?? 0);
+      err = (handle as TCP).bind(address, port ?? 0, flags ?? 0);
     }
   }
 
@@ -2492,7 +2499,7 @@ Server.prototype.listen = function (...args: unknown[]) {
 
   // deno-lint-ignore no-explicit-any
   options = (options as any)._handle || (options as any).handle || options;
-  const flags = _getFlags(options.ipv6Only);
+  const flags = _getFlags(options.ipv6Only, options.reusePort);
 
   // (handle[, backlog][, cb]) where handle is an object with a handle
   if (options instanceof TCP) {
@@ -2534,6 +2541,10 @@ Server.prototype.listen = function (...args: unknown[]) {
   if (typeof options.port === "number" || typeof options.port === "string") {
     validatePort(options.port, "options.port");
     backlog = options.backlog || backlogFromArgs;
+
+    if (options.reusePort === true) {
+      options.exclusive = true;
+    }
 
     // start TCP server listening on host:port
     if (options.host) {

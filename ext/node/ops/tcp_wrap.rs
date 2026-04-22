@@ -356,6 +356,7 @@ impl TCPWrap {
     state: &mut OpState,
     #[string] address: &str,
     #[smi] port: i32,
+    #[smi] flags: u32,
   ) -> Result<i32, deno_permissions::PermissionCheckError> {
     state
       .borrow_mut::<PermissionsContainer>()
@@ -385,7 +386,7 @@ impl TCPWrap {
         {
           sock_addr.len() as u32
         },
-        0,
+        flags,
       ))
     }
   }
@@ -396,6 +397,7 @@ impl TCPWrap {
     state: &mut OpState,
     #[string] address: &str,
     #[smi] port: i32,
+    #[smi] flags: u32,
   ) -> Result<i32, deno_permissions::PermissionCheckError> {
     state
       .borrow_mut::<PermissionsContainer>()
@@ -424,7 +426,7 @@ impl TCPWrap {
         {
           sock_addr.len() as u32
         },
-        0,
+        flags,
       ))
     }
   }
