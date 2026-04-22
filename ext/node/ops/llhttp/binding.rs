@@ -679,6 +679,34 @@ unsafe extern "C" fn on_message_complete(parser: *mut sys::llhttp_t) -> c_int {
   0
 }
 
+/// Shape matches the error that `HTTPParser.prototype.execute` builds in
+/// JS for the non-consume path (see `http_parser.ts`), so both paths
+/// deliver the same object to `onParserExecuteCommon` in `_http_server.js`.
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+enum ParseError {
+  #[class(generic)]
+  #[error("Parse Error: Header overflow")]
+  #[property("code" = "HPE_HEADER_OVERFLOW")]
+  #[property("reason" = "Header overflow")]
+  #[property("bytesParsed" = self.bytes_parsed())]
+  HeaderOverflow { bytes_parsed: i32 },
+  #[class(generic)]
+  #[error("Parse Error")]
+  #[property("code" = "HPE_ERROR")]
+  #[property("reason" = "Parse Error")]
+  #[property("bytesParsed" = self.bytes_parsed())]
+  Generic { bytes_parsed: i32 },
+}
+
+impl ParseError {
+  fn bytes_parsed(&self) -> i32 {
+    match self {
+      ParseError::HeaderOverflow { bytes_parsed } => *bytes_parsed,
+      ParseError::Generic { bytes_parsed } => *bytes_parsed,
+    }
+  }
+}
+
 // ---- ReadInterceptor callback for consume() ----
 
 /// Called by the stream's read callback when data arrives.
@@ -709,10 +737,21 @@ unsafe fn consume_read_callback(
   let context = v8::Local::new(handle_scope, context);
   let scope = &mut v8::ContextScope::new(handle_scope, context);
 
-  if nread <= 0 {
-    // EOF or error - invoke kOnExecute callback with the nread value.
-    // Use TryCatch to absorb exceptions from socket lifecycle errors
-    // (hang up, reset, etc.) which are expected during connection close.
+  if nread == 0 {
+    // Empty reads (EAGAIN/WouldBlock via libuv's alloc+nread=0 idiom)
+    // have special meaning to the HTTP parser and must be skipped
+    // here — matches Node.js's node_http_parser.cc:OnStreamRead line
+    // 827 ("Ignore, empty reads have special meaning"). This happens
+    // once per request under tokio: we call read_cb(nread=0) so the
+    // alloc buffer is freed, but the kOnExecute JS call must not
+    // fire for them, otherwise every request pays a spurious v8 scope
+    // + function-call round trip.
+    return;
+  }
+  if nread < 0 {
+    // EOF or error: invoke kOnExecute with the nread sentinel so the
+    // JS side can tear down the connection. TryCatch absorbs any
+    // exception thrown while the socket is in a half-closed state.
     let cb_obj = v8::Local::new(scope, &callbacks_global);
     if let Some(cb) = cb_obj.get_index(scope, K_ON_EXECUTE)
       && let Ok(func) = v8::Local::<v8::Function>::try_from(cb)
@@ -720,7 +759,6 @@ unsafe fn consume_read_callback(
       v8::tc_scope!(tc, scope);
       let nread_val = v8::Integer::new(tc, nread as i32);
       let _ = func.call(tc, cb_obj.into(), &[nread_val.into()]);
-      // Absorb any exception - EOF errors are normal lifecycle events
       if tc.has_caught() {
         tc.reset();
       }
@@ -737,10 +775,14 @@ unsafe fn consume_read_callback(
   inner.current_buffer_len = data.len();
   inner.got_exception = false;
 
-  let callbacks_local = v8::Local::new(scope, &callbacks_global);
-  // SAFETY: ContextScope and PinScope both deref to HandleScope.
-  // The ExecuteContext only accesses the scope via HandleScope methods.
-  let scope_ptr = scope as *mut v8::ContextScope<v8::HandleScope> as *mut ();
+  // `scope` here is `&mut ContextScope<HandleScope>`. Casting its
+  // pointer directly to `*mut PinScope` is UB because `ContextScope`
+  // is a wrapper struct with a different layout. Coerce to
+  // `&mut PinScope` via `Deref` before the cast so the ExecuteContext
+  // sees a real PinScope pointer.
+  let pin_scope: &mut v8::PinScope = scope;
+  let scope_ptr = pin_scope as *mut v8::PinScope as *mut ();
+  let callbacks_local = v8::Local::new(pin_scope, &callbacks_global);
   let callbacks_static: v8::Local<'static, v8::Object> =
     unsafe { std::mem::transmute(callbacks_local) };
 
@@ -785,19 +827,65 @@ unsafe fn consume_read_callback(
     }
   }
 
-  // Invoke kOnExecute with the result (bytes parsed or error)
+  // Invoke kOnExecute with the result. Parse success => number of
+  // bytes consumed; parse error => `Error` object with the same
+  // shape the JS wrapper (`http_parser.ts` .execute override)
+  // builds for the non-consume path, so onParserExecuteCommon's
+  // `ret instanceof Error` branch fires and the connection is
+  // torn down cleanly. Without this, parse errors on the consume
+  // fast path (e.g. HTTP chunked-smuggling) silently drop the
+  // protocol error and leave the connection wedged.
   let cb_obj = v8::Local::new(scope, &callbacks_global);
   if let Some(cb) = cb_obj.get_index(scope, K_ON_EXECUTE)
     && let Ok(func) = v8::Local::<v8::Function>::try_from(cb)
   {
-    let result_val = if inner.got_exception
-      || (inner.parser.upgrade == 0 && err != sys::HPE_OK)
-    {
-      v8::Integer::new(scope, -1)
+    let is_error =
+      inner.got_exception || (inner.parser.upgrade == 0 && err != sys::HPE_OK);
+    let result_val: v8::Local<v8::Value> = if is_error {
+      let bytes_parsed = data.len() as i32;
+      let parse_err = if inner.header_overflow {
+        ParseError::HeaderOverflow { bytes_parsed }
+      } else {
+        ParseError::Generic { bytes_parsed }
+      };
+      deno_core::error::to_v8_error(scope, &parse_err)
     } else {
-      v8::Integer::new(scope, nread_result)
+      v8::Integer::new(scope, nread_result).into()
     };
-    let _ = func.call(scope, cb_obj.into(), &[result_val.into()]);
+    // When the parser signals upgrade/CONNECT, the JS
+    // `onParserExecuteCommon` upgrade branch computes
+    // `bodyHead = d.slice(bytesParsed)`. In the non-consume path `d`
+    // is the buffer JS passed into `parser.execute(d)`; here we
+    // don't have that — pass the current read buffer as a Uint8Array
+    // second argument so the JS side can slice it. For non-upgrade
+    // requests we leave the 2nd arg off (avoids the per-request
+    // allocation of a JS view).
+    if !is_error && inner.parser.upgrade != 0 {
+      let byte_len = data.len();
+      let ab = v8::ArrayBuffer::new(scope, byte_len);
+      if byte_len > 0 {
+        let backing = ab.get_backing_store();
+        if let Some(backing_data) = backing.data() {
+          // SAFETY: ab is freshly created; we own exclusive access to the backing store
+          // for this synchronous copy. backing_data is non-null per the Option guard.
+          unsafe {
+            std::ptr::copy_nonoverlapping(
+              data.as_ptr(),
+              backing_data.as_ptr() as *mut u8,
+              byte_len,
+            );
+          }
+        }
+      }
+      let u8a =
+        v8::Uint8Array::new(scope, ab, 0, byte_len).unwrap_or_else(|| {
+          v8::Uint8Array::new(scope, v8::ArrayBuffer::new(scope, 0), 0, 0)
+            .unwrap()
+        });
+      let _ = func.call(scope, cb_obj.into(), &[result_val, u8a.into()]);
+    } else {
+      let _ = func.call(scope, cb_obj.into(), &[result_val]);
+    }
   }
 }
 
@@ -1005,9 +1093,14 @@ impl HTTPParser {
   ) {
     let inner = self.inner();
 
-    // Try to get the LibUvStreamWrap from the handle
+    // Try to get the LibUvStreamWrap from the handle. Use the
+    // base-object variant so TCPWrap / TLSWrap / PipeWrap (which all
+    // inherit from LibUvStreamWrap via `#[cppgc_inherits_from]`) are
+    // matched — `try_unwrap_cppgc_object` would require the concrete
+    // type to be exactly `LibUvStreamWrap` and silently return `None`
+    // for any subclass, disabling the consume fast path.
     let handle_value: v8::Local<v8::Value> = handle.into();
-    let Some(stream_wrap) = deno_core::cppgc::try_unwrap_cppgc_object::<
+    let Some(stream_wrap) = deno_core::cppgc::try_unwrap_cppgc_base_object::<
       LibUvStreamWrap,
     >(scope, handle_value) else {
       return;

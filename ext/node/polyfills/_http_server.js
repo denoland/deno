@@ -36,6 +36,7 @@ const {
 } = primordials;
 
 import net from "node:net";
+import { Buffer } from "node:buffer";
 import { ok as assert } from "node:assert";
 import {
   _checkInvalidHeaderChar as checkInvalidHeaderChar,
@@ -540,9 +541,18 @@ function connectionListenerInternal(server, socket) {
   socket._paused = false;
 }
 
-function onParserExecute(server, socket, parser, state, ret) {
+function onParserExecute(server, socket, parser, state, ret, d) {
   socket._unrefTimer?.();
-  onParserExecuteCommon(server, socket, parser, state, ret, undefined);
+  // The consume path (parser.consume(handle)) passes `d` as a bare
+  // Uint8Array from the C++ binding. onParserExecuteCommon's upgrade
+  // branch does `d.slice(bytesParsed).toString()` and expects the
+  // Buffer `.toString(encoding)` semantics, not the plain Uint8Array
+  // behavior. Wrap to match the non-consume path where `d` came from
+  // `socket.on('data')` as a Buffer.
+  if (d !== undefined && !Buffer.isBuffer(d)) {
+    d = Buffer.from(d.buffer, d.byteOffset, d.byteLength);
+  }
+  onParserExecuteCommon(server, socket, parser, state, ret, d);
 }
 
 function socketOnTimeout() {
