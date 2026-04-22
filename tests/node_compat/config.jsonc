@@ -1652,6 +1652,10 @@
     "parallel/test-net-listening.js": {},
     "parallel/test-net-local-address-port.js": {},
     "parallel/test-net-localerror.js": {},
+    "parallel/test-net-normalize-args.js": {
+      "ignore": true,
+      "reason": "Tests Node.js internal module (require('internal/net'))"
+    },
     "parallel/test-net-options-lookup.js": {},
     "parallel/test-net-pause-resume-connecting.js": {},
     "parallel/test-net-persistent-keepalive.js": {},
