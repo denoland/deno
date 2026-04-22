@@ -1246,6 +1246,47 @@ pub(crate) unsafe fn poll_pipe_handle(
     if !has_pending_work {
       (*pipe_ptr).flags &= !UV_HANDLE_ACTIVE;
     }
+
+    // Re-register tokio read/write interest for the next edge.
+    //
+    // `NamedPipeServer::poll_{read,write}_ready` only stores a waker
+    // when it returns Pending. If the drain above saw Ready and
+    // consumed all available data/space with `try_read` / `try_write`,
+    // no waker is registered — and since the ready-queue polling
+    // only re-enters `poll_pipe_handle` on a wake, the next event
+    // (EOF after child exit, more data arriving, write-side draining)
+    // would never reach us. Calling poll_*_ready here after the drain
+    // either stores a waker (Pending) or signals us to re-queue
+    // (Ready). Mirrors the re-register block at the end of
+    // `tcp::poll_tcp_handle`.
+    let mut needs_requeue = false;
+    if (*pipe_ptr).internal_reading {
+      if let Some(ref server) = (*pipe_ptr).internal_win_server
+        && matches!(server.poll_read_ready(cx), Poll::Ready(_))
+      {
+        needs_requeue = true;
+      }
+      if let Some(ref client) = (*pipe_ptr).internal_win_client
+        && matches!(client.poll_read_ready(cx), Poll::Ready(_))
+      {
+        needs_requeue = true;
+      }
+    }
+    if !(*pipe_ptr).internal_write_queue.is_empty() {
+      if let Some(ref server) = (*pipe_ptr).internal_win_server
+        && matches!(server.poll_write_ready(cx), Poll::Ready(_))
+      {
+        needs_requeue = true;
+      }
+      if let Some(ref client) = (*pipe_ptr).internal_win_client
+        && matches!(client.poll_write_ready(cx), Poll::Ready(_))
+      {
+        needs_requeue = true;
+      }
+    }
+    if needs_requeue && let Some(w) = (*pipe_ptr).internal_waker.as_ref() {
+      w.mark_ready();
+    }
   }
 
   any_work
