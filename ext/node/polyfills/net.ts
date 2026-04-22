@@ -577,7 +577,7 @@ function _internalConnect(
     localPort = (localPort ?? 0) | 0;
     if (addressType === 4) {
       localAddress = localAddress || DEFAULT_IPV4_ADDR;
-      err = (socket._handle as TCP).bind(localAddress, localPort, 0);
+      err = (socket._handle as TCP).bind(localAddress, localPort);
     } else {
       // addressType === 6
       localAddress = localAddress || DEFAULT_IPV6_ADDR;
@@ -677,7 +677,7 @@ function _internalConnectMultiple(context, canceled?: boolean) {
   if (localPort) {
     if (addressType === 4) {
       localAddress = DEFAULT_IPV4_ADDR;
-      err = self._handle.bind(localAddress, localPort, 0);
+      err = self._handle.bind(localAddress, localPort);
     } else {
       // addressType === 6
       localAddress = DEFAULT_IPV6_ADDR;
@@ -2236,7 +2236,7 @@ export function _createServerHandle(
     } else if (addressType === 6) {
       err = (handle as TCP).bind6(address, port ?? 0, flags ?? 0);
     } else {
-      err = (handle as TCP).bind(address, port ?? 0, flags ?? 0);
+      err = (handle as TCP).bindWithFlags(address, port ?? 0, flags ?? 0);
     }
   }
 
