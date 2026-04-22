@@ -152,12 +152,124 @@ pub(crate) struct WritePending {
   pub(crate) req: *mut uv_write_t,
   pub(crate) data: Vec<u8>,
   pub(crate) offset: usize,
+  /// When `Some`, iovecs take precedence over `data`/`offset` for the
+  /// write drain. Retention for the memory pointed to by these iovecs
+  /// is the caller's responsibility (typically `stream_wrap` retains
+  /// `v8::Global<v8::ArrayBuffer>` refs on the write request's
+  /// callback state so the memory stays alive until the callback).
+  /// `data` is kept empty in this mode.
+  pub(crate) iovecs: Option<IovecCursor>,
   pub(crate) cb: Option<uv_write_cb>,
   /// Pre-determined completion status. When `Some`, the write is already
   /// complete and the callback should be fired with this status without
   /// attempting any I/O. This is used to defer synchronous write
   /// completions to the event loop, preventing re-entrancy issues.
   pub(crate) status: Option<c_int>,
+}
+
+/// Cursor over a scatter-gather write: a list of iovecs plus a byte
+/// offset into the first one (entries past the first are always full).
+/// Mirrors libuv's `uv__write`'s queue entry which carries `(bufs,
+/// nbufs, write_index)` through the drain loop.
+pub(crate) struct IovecCursor {
+  pub(crate) bufs: smallvec::SmallVec<[uv_buf_t; 4]>,
+  /// Byte offset into `bufs[0]` for the next write. Entries 1.. are
+  /// always consumed whole.
+  pub(crate) head_off: usize,
+}
+
+impl IovecCursor {
+  pub(crate) fn new(bufs: smallvec::SmallVec<[uv_buf_t; 4]>) -> Self {
+    Self { bufs, head_off: 0 }
+  }
+
+  /// Unwritten slice at the head of the iovec list. Callers that can't
+  /// do true scatter-gather (pipes/TTY) use this to walk one iovec at a
+  /// time while still preserving zero-copy semantics.
+  ///
+  /// # Safety
+  /// The memory pointed to by the head iovec must be valid for reads.
+  pub(crate) unsafe fn head_slice(&self) -> &[u8] {
+    if self.bufs.is_empty() {
+      return &[];
+    }
+    // SAFETY: caller guarantees iovec memory is valid.
+    unsafe {
+      let head = &self.bufs[0];
+      if head.len <= self.head_off || head.base.is_null() {
+        return &[];
+      }
+      std::slice::from_raw_parts(
+        (head.base as *const u8).add(self.head_off),
+        head.len - self.head_off,
+      )
+    }
+  }
+
+  /// Total unwritten bytes across all iovecs.
+  #[allow(dead_code, reason = "public helper for external iovec consumers")]
+  pub(crate) fn remaining(&self) -> usize {
+    if self.bufs.is_empty() {
+      return 0;
+    }
+    let first = self.bufs[0].len.saturating_sub(self.head_off);
+    first + self.bufs[1..].iter().map(|b| b.len).sum::<usize>()
+  }
+
+  pub(crate) fn is_empty(&self) -> bool {
+    self.bufs.is_empty()
+      || (self.bufs.len() == 1 && self.head_off >= self.bufs[0].len)
+  }
+
+  /// Advance the cursor by `n` bytes written. Drops bufs fully consumed
+  /// from the front; slices the partially-written head in place.
+  /// Mirrors the pointer advance loop in libuv's `DoTryWrite`.
+  pub(crate) fn advance(&mut self, mut n: usize) {
+    while n > 0 && !self.bufs.is_empty() {
+      let avail = self.bufs[0].len.saturating_sub(self.head_off);
+      if n >= avail {
+        n -= avail;
+        self.bufs.remove(0);
+        self.head_off = 0;
+      } else {
+        self.head_off += n;
+        n = 0;
+      }
+    }
+  }
+
+  /// Build `IoSlice`s for the unwritten window, appending to `out`.
+  /// Lifetimes borrow from `self`; pointers must remain valid (caller
+  /// guarantees retention).
+  ///
+  /// # Safety
+  /// The memory pointed to by each iovec's `base` must be valid and
+  /// readable for its `len`.
+  pub(crate) unsafe fn io_slices<'a>(
+    &'a self,
+    out: &mut smallvec::SmallVec<[std::io::IoSlice<'a>; 16]>,
+  ) {
+    if self.bufs.is_empty() {
+      return;
+    }
+    // SAFETY: caller guarantees iovecs point to valid readable memory.
+    unsafe {
+      let head = &self.bufs[0];
+      if head.len > self.head_off {
+        let base = (head.base as *const u8).add(self.head_off);
+        let len = head.len - self.head_off;
+        out.push(std::io::IoSlice::new(std::slice::from_raw_parts(base, len)));
+      }
+      for buf in &self.bufs[1..] {
+        if !buf.base.is_null() && buf.len > 0 {
+          out.push(std::io::IoSlice::new(std::slice::from_raw_parts(
+            buf.base as *const u8,
+            buf.len,
+          )));
+        }
+      }
+    }
+  }
 }
 
 /// Pending shutdown request, deferred until the write queue drains.
@@ -1106,21 +1218,65 @@ pub(crate) unsafe fn poll_tcp_handle(
           let pw = (*tcp_ptr).internal_write_queue.front_mut().unwrap();
           let mut done = false;
           let mut error = false;
-          loop {
-            if pw.offset >= pw.data.len() {
-              done = true;
-              break;
+          if let Some(ref mut iov) = pw.iovecs {
+            // Scatter-gather write. Loop until drained, WouldBlock, or
+            // error — mirrors uv__write's write-all-the-bytes-you-can
+            // inner loop.
+            loop {
+              if iov.is_empty() {
+                done = true;
+                break;
+              }
+              // Scope the IoSlice borrow so we can advance `iov`
+              // afterwards.
+              let write_result = {
+                let mut slices: smallvec::SmallVec<[std::io::IoSlice; 16]> =
+                  smallvec::SmallVec::new();
+                // SAFETY: iovec memory is kept alive by caller retention.
+                iov.io_slices(&mut slices);
+                if slices.is_empty() {
+                  None
+                } else {
+                  Some(stream.try_write_vectored(&slices))
+                }
+              };
+              match write_result {
+                None => {
+                  done = true;
+                  break;
+                }
+                Some(Ok(0)) => break,
+                Some(Ok(n)) => {
+                  iov.advance(n);
+                }
+                Some(Err(ref e))
+                  if e.kind() == std::io::ErrorKind::WouldBlock =>
+                {
+                  break;
+                }
+                Some(Err(_)) => {
+                  error = true;
+                  break;
+                }
+              }
             }
-            match stream.try_write(&pw.data[pw.offset..]) {
-              Ok(n) => {
-                pw.offset += n;
-              }
-              Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+          } else {
+            loop {
+              if pw.offset >= pw.data.len() {
+                done = true;
                 break;
               }
-              Err(_) => {
-                error = true;
-                break;
+              match stream.try_write(&pw.data[pw.offset..]) {
+                Ok(n) => {
+                  pw.offset += n;
+                }
+                Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                  break;
+                }
+                Err(_) => {
+                  error = true;
+                  break;
+                }
               }
             }
           }

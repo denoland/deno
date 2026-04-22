@@ -1850,6 +1850,7 @@ pub(crate) unsafe fn write_tty(
         req,
         data,
         offset: 0,
+        iovecs: None,
         cb,
         status: None,
       });
@@ -1872,6 +1873,7 @@ pub(crate) unsafe fn write_tty(
                   req,
                   data: Vec::new(),
                   offset: 0,
+                  iovecs: None,
                   cb,
                   status: Some(0),
                 });
@@ -1884,6 +1886,7 @@ pub(crate) unsafe fn write_tty(
                 req,
                 data: data[offset..].to_vec(),
                 offset: 0,
+                iovecs: None,
                 cb,
                 status: None,
               });
@@ -1895,6 +1898,7 @@ pub(crate) unsafe fn write_tty(
                 req,
                 data: Vec::new(),
                 offset: 0,
+                iovecs: None,
                 cb,
                 status: Some(UV_EPIPE),
               });
@@ -1908,6 +1912,7 @@ pub(crate) unsafe fn write_tty(
         req,
         data: Vec::new(),
         offset: 0,
+        iovecs: None,
         cb,
         status: Some(0),
       });
@@ -1922,6 +1927,7 @@ pub(crate) unsafe fn write_tty(
         req,
         data: Vec::new(),
         offset: 0,
+        iovecs: None,
         cb,
         status: Some(0),
       });
@@ -1939,6 +1945,7 @@ pub(crate) unsafe fn write_tty(
               req,
               data: Vec::new(),
               offset: 0,
+              iovecs: None,
               cb,
               status: Some(0),
             });
@@ -1951,6 +1958,7 @@ pub(crate) unsafe fn write_tty(
             req,
             data: data[offset..].to_vec(),
             offset: 0,
+            iovecs: None,
             cb,
             status: None,
           });
@@ -1962,6 +1970,7 @@ pub(crate) unsafe fn write_tty(
             req,
             data: Vec::new(),
             offset: 0,
+            iovecs: None,
             cb,
             status: Some(UV_EPIPE),
           });
@@ -2487,19 +2496,48 @@ pub(crate) unsafe fn poll_tty_handle(
           let pw = (*tty_ptr).internal_write_queue.front_mut().unwrap();
           let mut done = false;
           let mut error = false;
-          loop {
-            if pw.offset >= pw.data.len() {
-              done = true;
-              break;
-            }
-            match tty_try_write(tty_ptr, &pw.data[pw.offset..]) {
-              Ok(n) => pw.offset += n,
-              Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+          if let Some(ref mut iov) = pw.iovecs {
+            // TTY has no native writev — iterate across iovecs calling
+            // single-buffer try_write.
+            loop {
+              if iov.is_empty() {
+                done = true;
                 break;
               }
-              Err(_) => {
-                error = true;
+              let (head_base, head_len) = {
+                let first = &iov.bufs[0];
+                (first.base, first.len - iov.head_off)
+              };
+              let slice = std::slice::from_raw_parts(
+                (head_base as *const u8).add(iov.head_off),
+                head_len,
+              );
+              match tty_try_write(tty_ptr, slice) {
+                Ok(n) => iov.advance(n),
+                Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                  break;
+                }
+                Err(_) => {
+                  error = true;
+                  break;
+                }
+              }
+            }
+          } else {
+            loop {
+              if pw.offset >= pw.data.len() {
+                done = true;
                 break;
+              }
+              match tty_try_write(tty_ptr, &pw.data[pw.offset..]) {
+                Ok(n) => pw.offset += n,
+                Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                  break;
+                }
+                Err(_) => {
+                  error = true;
+                  break;
+                }
               }
             }
           }
