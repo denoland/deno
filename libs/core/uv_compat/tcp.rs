@@ -36,6 +36,7 @@ use crate::uv_compat::UV_ECANCELED;
 use crate::uv_compat::UV_EINVAL;
 use crate::uv_compat::UV_ENOBUFS;
 use crate::uv_compat::UV_ENOTCONN;
+use crate::uv_compat::UV_ENOTSUP;
 use crate::uv_compat::UV_EOF;
 use crate::uv_compat::UV_EPIPE;
 use crate::uv_compat::UV_HANDLE_ACTIVE;
@@ -304,11 +305,13 @@ pub unsafe fn uv_tcp_open(tcp: *mut uv_tcp_t, fd: c_int) -> c_int {
 
 /// ### Safety
 /// `tcp` must be initialized by `uv_tcp_init`. `addr` must point to a valid sockaddr.
+const UV_TCP_REUSEPORT: u32 = 4;
+
 pub unsafe fn uv_tcp_bind(
   tcp: *mut uv_tcp_t,
   addr: *const c_void,
   _addrlen: u32,
-  _flags: u32,
+  flags: u32,
 ) -> c_int {
   // SAFETY: Caller guarantees addr points to a valid sockaddr.
   let sock_addr = unsafe { sockaddr_to_std(addr) };
@@ -338,6 +341,14 @@ pub unsafe fn uv_tcp_bind(
     // sockets don't block rebinding.
     #[cfg(unix)]
     socket.set_reuseaddr(true).ok();
+
+    // SO_REUSEPORT allows multiple sockets to bind to the same port.
+    if flags & UV_TCP_REUSEPORT != 0 {
+      #[cfg(unix)]
+      if socket.set_reuseport(true).is_err() {
+        return UV_ENOTSUP;
+      }
+    }
 
     // Match libuv: on Windows, set SO_EXCLUSIVEADDRUSE to prevent other
     // sockets from binding to the same port. This is the Windows equivalent
