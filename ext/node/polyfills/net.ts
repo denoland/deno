@@ -1487,8 +1487,9 @@ Socket.prototype.resetAndDestroy = function () {
 };
 
 Socket.prototype._reset = function () {
-  // Ideally we'd call handle.reset() to send RST, but for now
-  // destroy achieves the same end result (connection teardown).
+  if (this._handle) {
+    this._handle.reset();
+  }
   this.destroy();
 };
 
