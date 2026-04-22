@@ -820,7 +820,40 @@ unsafe fn consume_read_callback(
     } else {
       v8::Integer::new(scope, nread_result).into()
     };
-    let _ = func.call(scope, cb_obj.into(), &[result_val]);
+    // When the parser signals upgrade/CONNECT, the JS
+    // `onParserExecuteCommon` upgrade branch computes
+    // `bodyHead = d.slice(bytesParsed)`. In the non-consume path `d`
+    // is the buffer JS passed into `parser.execute(d)`; here we
+    // don't have that — pass the current read buffer as a Uint8Array
+    // second argument so the JS side can slice it. For non-upgrade
+    // requests we leave the 2nd arg off (avoids the per-request
+    // allocation of a JS view).
+    if !is_error && inner.parser.upgrade != 0 {
+      let byte_len = data.len();
+      let ab = v8::ArrayBuffer::new(scope, byte_len);
+      if byte_len > 0 {
+        let backing = ab.get_backing_store();
+        if let Some(backing_data) = backing.data() {
+          // SAFETY: ab is freshly created; we own exclusive access to the backing store
+          // for this synchronous copy. backing_data is non-null per the Option guard.
+          unsafe {
+            std::ptr::copy_nonoverlapping(
+              data.as_ptr(),
+              backing_data.as_ptr() as *mut u8,
+              byte_len,
+            );
+          }
+        }
+      }
+      let u8a =
+        v8::Uint8Array::new(scope, ab, 0, byte_len).unwrap_or_else(|| {
+          v8::Uint8Array::new(scope, v8::ArrayBuffer::new(scope, 0), 0, 0)
+            .unwrap()
+        });
+      let _ = func.call(scope, cb_obj.into(), &[result_val, u8a.into()]);
+    } else {
+      let _ = func.call(scope, cb_obj.into(), &[result_val]);
+    }
   }
 }
 

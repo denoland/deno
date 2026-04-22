@@ -519,24 +519,30 @@ unsafe extern "C" fn on_uv_read(
   };
 
   if let Some(interceptor) = snapshot.read_interceptor {
-    if nread > 0 {
-      snapshot
-        .bytes_read
-        .set(snapshot.bytes_read.get() + nread as u64);
-    }
     if nread < 0 {
-      // Match libuv's EOF/error behavior: the underlying stream stops
-      // itself before higher-level listeners observe the terminal read.
+      // Socket-level error or EOF: don't hand it to the interceptor.
+      // Match Node's PassReadErrorToPreviousListener — the consume
+      // interceptor only handles data; terminal reads go back to the
+      // normal JS read path so `socket.on('error')` / `'end'`
+      // listeners (which the HTTP server relies on to detect aborts
+      // and close connections) fire.
       let _ = LibUvStreamWrap::read_stop_for_stream(stream);
+      // Fall through to the normal read_cb path below.
+    } else {
+      if nread > 0 {
+        snapshot
+          .bytes_read
+          .set(snapshot.bytes_read.get() + nread as u64);
+      }
+      // SAFETY: interceptor registration guarantees the callback and payload are valid for this read dispatch.
+      unsafe { (interceptor.callback)(interceptor.ptr, stream, nread, buf) };
+      // The interceptor borrows `buf.base` during its callback but does
+      // not take ownership — free the buffer here once it returns.
+      // Skipping this previously leaked 64KB per read on the consume
+      // path (RSS climbed into GBs under sustained HTTP traffic).
+      free_uv_buf(buf);
+      return;
     }
-    // SAFETY: interceptor registration guarantees the callback and payload are valid for this read dispatch.
-    unsafe { (interceptor.callback)(interceptor.ptr, stream, nread, buf) };
-    // The interceptor borrows `buf.base` during its callback but does
-    // not take ownership — free the buffer here once it returns.
-    // Skipping this previously leaked 64KB per read on the consume
-    // path (RSS climbed into GBs under sustained HTTP traffic).
-    free_uv_buf(buf);
-    return;
   }
 
   let Some(stream_base_state) = snapshot.stream_base_state else {
