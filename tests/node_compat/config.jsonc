@@ -1641,6 +1641,7 @@
     "parallel/test-net-connect-reset-after-destroy.js": {},
     "parallel/test-net-connect-reset-before-connected.js": {},
     "parallel/test-net-connect-reset-until-connected.js": {},
+    "parallel/test-net-connect-reset.js": {},
     "parallel/test-net-dns-custom-lookup.js": {},
     "parallel/test-net-dns-error.js": {},
     "parallel/test-net-dns-lookup-skip.js": {},
