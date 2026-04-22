@@ -349,34 +349,39 @@ pub unsafe fn uv_tcp_bind(
       if socket.set_reuseport(true).is_err() {
         return UV_ENOTSUP;
       }
-    }
-
-    // Match libuv: on Windows, set SO_EXCLUSIVEADDRUSE to prevent other
-    // sockets from binding to the same port. This is the Windows equivalent
-    // of the default Unix behavior (without SO_REUSEADDR's Windows semantics
-    // which would allow port sharing).
-    #[cfg(windows)]
-    {
-      use std::os::windows::io::AsRawSocket;
-      unsafe extern "system" {
-        fn setsockopt(
-          s: usize,
-          level: c_int,
-          optname: c_int,
-          optval: *const c_void,
-          optlen: c_int,
-        ) -> c_int;
+      // On Windows, SO_REUSEADDR allows multiple sockets to bind to the
+      // same port (unlike Unix where it only affects TIME_WAIT). This is
+      // the Windows equivalent of SO_REUSEPORT.
+      #[cfg(windows)]
+      socket.set_reuseaddr(true).ok();
+    } else {
+      // Match libuv: on Windows, set SO_EXCLUSIVEADDRUSE to prevent other
+      // sockets from binding to the same port. This is the Windows equivalent
+      // of the default Unix behavior (without SO_REUSEADDR's Windows semantics
+      // which would allow port sharing).
+      #[cfg(windows)]
+      {
+        use std::os::windows::io::AsRawSocket;
+        unsafe extern "system" {
+          fn setsockopt(
+            s: usize,
+            level: c_int,
+            optname: c_int,
+            optval: *const c_void,
+            optlen: c_int,
+          ) -> c_int;
+        }
+        const SOL_SOCKET: c_int = 0xffff;
+        const SO_EXCLUSIVEADDRUSE: c_int = -5; // ~SO_REUSEADDR
+        let one: c_int = 1;
+        setsockopt(
+          socket.as_raw_socket() as usize,
+          SOL_SOCKET,
+          SO_EXCLUSIVEADDRUSE,
+          &one as *const c_int as *const c_void,
+          std::mem::size_of::<c_int>() as c_int,
+        );
       }
-      const SOL_SOCKET: c_int = 0xffff;
-      const SO_EXCLUSIVEADDRUSE: c_int = -5; // ~SO_REUSEADDR
-      let one: c_int = 1;
-      setsockopt(
-        socket.as_raw_socket() as usize,
-        SOL_SOCKET,
-        SO_EXCLUSIVEADDRUSE,
-        &one as *const c_int as *const c_void,
-        std::mem::size_of::<c_int>() as c_int,
-      );
     }
 
     // Store the raw fd so uv_tcp_nodelay etc. can
