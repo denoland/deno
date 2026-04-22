@@ -1685,6 +1685,7 @@
     "parallel/test-net-server-listen-remove-callback.js": {},
     "parallel/test-net-server-options.js": {},
     "parallel/test-net-server-pause-on-connect.js": {},
+    "parallel/test-net-server-reset.js": {},
     "parallel/test-net-server-unref-persistent.js": {},
     "parallel/test-net-server-unref.js": {},
     "parallel/test-net-settimeout.js": {},
