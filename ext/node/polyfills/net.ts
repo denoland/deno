@@ -879,6 +879,8 @@ function _lookupAndConnect(self: Socket, options: TcpSocketConnectOptions) {
   const host = options.host || "localhost";
   let { port, autoSelectFamilyAttemptTimeout, autoSelectFamily } = options;
 
+  validateString(host, "options.host");
+
   if (localAddress && !isIP(localAddress)) {
     throw new ERR_INVALID_IP_ADDRESS(localAddress);
   }
@@ -1248,6 +1250,28 @@ export function Socket(options) {
     options = { fd: options };
   } else {
     options = { ...options };
+  }
+
+  if (options.objectMode) {
+    throw new ERR_INVALID_ARG_VALUE(
+      "options.objectMode",
+      options.objectMode,
+      "is not supported",
+    );
+  }
+  if (options.readableObjectMode) {
+    throw new ERR_INVALID_ARG_VALUE(
+      "options.readableObjectMode",
+      options.readableObjectMode,
+      "is not supported",
+    );
+  }
+  if (options.writableObjectMode) {
+    throw new ERR_INVALID_ARG_VALUE(
+      "options.writableObjectMode",
+      options.writableObjectMode,
+      "is not supported",
+    );
   }
 
   // Default to *not* allowing half open sockets.
