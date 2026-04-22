@@ -132,6 +132,8 @@ let debug = debuglog("net", (fn) => {
 
 const kLastWriteQueueSize = Symbol("lastWriteQueueSize");
 const kSetNoDelay = Symbol("kSetNoDelay");
+const kSetKeepAlive = Symbol("kSetKeepAlive");
+const kSetKeepAliveInitialDelay = Symbol("kSetKeepAliveInitialDelay");
 const kBytesRead = Symbol("kBytesRead");
 const kBytesWritten = Symbol("kBytesWritten");
 
@@ -373,6 +375,14 @@ function _afterConnect(
 
     if (socket.writable && !writable) {
       socket.end();
+    }
+
+    if (socket[kSetNoDelay] && socket._handle?.setNoDelay) {
+      socket._handle.setNoDelay(true);
+    }
+
+    if (socket[kSetKeepAlive] && socket._handle?.setKeepAlive) {
+      socket._handle.setKeepAlive(true, socket[kSetKeepAliveInitialDelay]);
     }
 
     socket._unrefTimer();
@@ -1252,7 +1262,9 @@ export function Socket(options) {
 
   this[asyncIdSymbol] = -1;
   this[kHandle] = null;
-  this[kSetNoDelay] = false;
+  this[kSetNoDelay] = Boolean(options.noDelay);
+  this[kSetKeepAlive] = Boolean(options.keepAlive);
+  this[kSetKeepAliveInitialDelay] = ~~(options.keepAliveInitialDelay / 1000);
   this[kLastWriteQueueSize] = 0;
   this[kTimeout] = null;
   this[kBuffer] = null;
@@ -1465,8 +1477,18 @@ Socket.prototype.setKeepAlive = function (enable, initialDelay) {
     return this;
   }
 
-  if ("setKeepAlive" in this._handle) {
-    this._handle.setKeepAlive(enable, ~~(initialDelay / 1000));
+  const newEnable = Boolean(enable);
+  const newDelay = ~~(initialDelay / 1000);
+
+  if (
+    "setKeepAlive" in this._handle &&
+    this._handle.setKeepAlive &&
+    (newEnable !== this[kSetKeepAlive] ||
+      newDelay !== this[kSetKeepAliveInitialDelay])
+  ) {
+    this[kSetKeepAlive] = newEnable;
+    this[kSetKeepAliveInitialDelay] = newDelay;
+    this._handle.setKeepAlive(newEnable, newDelay);
   }
 
   return this;
