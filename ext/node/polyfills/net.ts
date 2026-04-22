@@ -558,7 +558,7 @@ function _internalConnect(
     localPort = (localPort ?? 0) | 0;
     if (addressType === 4) {
       localAddress = localAddress || DEFAULT_IPV4_ADDR;
-      err = (socket._handle as TCP).bind(localAddress, localPort);
+      err = (socket._handle as TCP).bind(localAddress, localPort, 0);
     } else {
       // addressType === 6
       localAddress = localAddress || DEFAULT_IPV6_ADDR;
@@ -658,7 +658,7 @@ function _internalConnectMultiple(context, canceled?: boolean) {
   if (localPort) {
     if (addressType === 4) {
       localAddress = DEFAULT_IPV4_ADDR;
-      err = self._handle.bind(localAddress, localPort);
+      err = self._handle.bind(localAddress, localPort, 0);
     } else {
       // addressType === 6
       localAddress = DEFAULT_IPV6_ADDR;
