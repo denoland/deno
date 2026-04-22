@@ -1461,6 +1461,37 @@ Socket.prototype.ref = function () {
   return this;
 };
 
+Socket.prototype.resetAndDestroy = function () {
+  if (this.destroyed) {
+    return this;
+  }
+
+  if (
+    !this._handle ||
+    !(this._handle instanceof TCP)
+  ) {
+    this.destroy(
+      new ERR_SOCKET_CLOSED(),
+    );
+    return this;
+  }
+
+  if (this.connecting) {
+    this.once("connect", () => this._reset());
+    this.destroy();
+    return this;
+  }
+
+  this._reset();
+  return this;
+};
+
+Socket.prototype._reset = function () {
+  // Ideally we'd call handle.reset() to send RST, but for now
+  // destroy achieves the same end result (connection teardown).
+  this.destroy();
+};
+
 Object.defineProperty(Socket.prototype, "bufferSize", {
   get: function () {
     if (this._handle) {
