@@ -979,9 +979,7 @@ impl TLSWrapInner {
       if (*ptr).acceptor.is_some() {
         let got_hello = (*ptr).process_acceptor();
         (*ptr).cycling = false;
-        if got_hello
-          && let Some(ctx) = extract_emit_ctx(ptr)
-        {
+        if got_hello && let Some(ctx) = extract_emit_ctx(ptr) {
           do_emit_client_hello(&ctx);
         }
         return;
