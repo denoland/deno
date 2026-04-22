@@ -2240,8 +2240,10 @@ export function _createServerHandle(
       // }
     } else if (addressType === 6) {
       err = (handle as TCP).bind6(address, port ?? 0, flags ?? 0);
-    } else {
+    } else if (isTCP) {
       err = (handle as TCP).bindWithFlags(address, port ?? 0, flags ?? 0);
+    } else {
+      err = handle.bind(address);
     }
   }
 
