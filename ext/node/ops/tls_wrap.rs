@@ -176,6 +176,13 @@ impl TlsConnection {
         .map(|_| ()),
     }
   }
+
+  fn server_name(&self) -> Option<&str> {
+    match self {
+      TlsConnection::Client(_) => None,
+      TlsConnection::Server(c) => c.server_name(),
+    }
+  }
 }
 
 #[derive(serde::Serialize)]
@@ -444,6 +451,40 @@ unsafe fn do_emit_handshake_done(ctx: &EmitCtx) {
     let key =
       v8::String::new_external_onebyte_static(scope, b"onhandshakedone")
         .unwrap();
+    if let Some(val) = this.get(scope, key.into())
+      && let Ok(func) = v8::Local::<v8::Function>::try_from(val)
+    {
+      func.call(scope, this.into(), &[]);
+    }
+  }
+}
+
+/// Emit client hello callback (onclienthello) to JS.
+/// Called when the Acceptor has extracted the ClientHello so JS can
+/// invoke SNICallback and ALPNCallback before the handshake continues.
+///
+/// # Safety
+/// EmitCtx must contain valid pointers. No TLSWrapInner reference may be held by the caller.
+unsafe fn do_emit_client_hello(ctx: &EmitCtx) {
+  unsafe {
+    let mut isolate = v8::Isolate::from_raw_isolate_ptr(ctx.isolate_ptr);
+
+    if ctx.loop_ptr.is_null() {
+      return;
+    }
+    let ctx_ptr = (*ctx.loop_ptr).data;
+    if ctx_ptr.is_null() {
+      return;
+    }
+    let context_global = clone_context_global(&mut isolate, ctx_ptr);
+
+    v8::scope!(let handle_scope, &mut isolate);
+    let context = v8::Local::new(handle_scope, context_global);
+    let scope = &mut v8::ContextScope::new(handle_scope, context);
+
+    let this = v8::Local::new(scope, &ctx.js_handle);
+    let key =
+      v8::String::new_external_onebyte_static(scope, b"onclienthello").unwrap();
     if let Some(val) = this.get(scope, key.into())
       && let Ok(func) = v8::Local::<v8::Function>::try_from(val)
     {
@@ -796,6 +837,15 @@ struct TLSWrapInner {
   /// Cached uv_loop pointer, set during attach(). Avoids dereferencing
   /// the stream pointer (which may become dangling) to get the loop.
   cached_loop_ptr: *mut uv_compat::uv_loop_t,
+
+  // Acceptor-based server handshake (when SNICallback or ALPNCallback is set).
+  // Instead of creating ServerConnection immediately in start(), we use
+  // an Acceptor to intercept the ClientHello and call back to JS.
+  use_acceptor: bool,
+  acceptor: Option<rustls::server::Acceptor>,
+  accepted: Option<rustls::server::Accepted>,
+  client_hello_servername: Option<String>,
+  client_hello_alpn: Vec<Vec<u8>>,
 }
 
 /// Convert a rustls error to a (message, code) pair that matches Node's
@@ -849,6 +899,7 @@ fn rustls_error_to_node_error(e: &rustls::Error) -> (String, String) {
         AD::InappropriateFallback => "TLSV1_ALERT_INAPPROPRIATE_FALLBACK",
         AD::UserCanceled => "TLSV1_ALERT_USER_CANCELLED",
         AD::NoRenegotiation => "TLSV1_ALERT_NO_RENEGOTIATION",
+        AD::NoApplicationProtocol => "TLSV1_ALERT_NO_APPLICATION_PROTOCOL",
         _ => "SSLV3_ALERT_HANDSHAKE_FAILURE",
       };
       (format!("{e}"), format!("ERR_SSL_{code}"))
@@ -898,6 +949,11 @@ impl TLSWrapInner {
       pending_server_name: None,
       pending_server_config: None,
       cached_loop_ptr: std::ptr::null_mut(),
+      use_acceptor: false,
+      acceptor: None,
+      accepted: None,
+      client_hello_servername: None,
+      client_hello_alpn: Vec::new(),
     }
   }
 
@@ -916,6 +972,20 @@ impl TLSWrapInner {
         return;
       }
       (*ptr).cycling = true;
+
+      // Handle acceptor phase: feed encrypted data to the Acceptor until
+      // the ClientHello is complete, then emit onclienthello to JS.
+      if (*ptr).acceptor.is_some() {
+        let got_hello = (*ptr).process_acceptor();
+        (*ptr).cycling = false;
+        if got_hello
+          && let Some(ctx) = extract_emit_ctx(ptr)
+        {
+          do_emit_client_hello(&ctx);
+        }
+        return;
+      }
+
       (*ptr).clear_in();
       let result = (*ptr).clear_out_process();
       let enc_action = (*ptr).enc_out_collect();
@@ -927,6 +997,57 @@ impl TLSWrapInner {
         return;
       }
       TLSWrapInner::do_enc_out_action(ptr, enc_action);
+    }
+  }
+
+  /// Feed encrypted input to the Acceptor and try to extract the ClientHello.
+  /// Returns true if the ClientHello was received and onclienthello should fire.
+  fn process_acceptor(&mut self) -> bool {
+    let acceptor = match self.acceptor.as_mut() {
+      Some(a) => a,
+      None => return false,
+    };
+
+    // Feed buffered encrypted data to the acceptor.
+    if !self.enc_in.is_empty() {
+      let mut cursor = std::io::Cursor::new(&self.enc_in[..]);
+      match acceptor.read_tls(&mut cursor) {
+        Ok(n) => {
+          self.enc_in.drain(..n);
+        }
+        Err(_) => {
+          self.error = Some("TLS acceptor read error".to_string());
+          return false;
+        }
+      }
+    }
+
+    // Try to extract the ClientHello. accept(&mut self) puts the inner
+    // back on Ok(None), so the Acceptor stays valid for the next cycle.
+    let acceptor = self.acceptor.as_mut().unwrap();
+    match acceptor.accept() {
+      Ok(Some(accepted)) => {
+        let hello = accepted.client_hello();
+        self.client_hello_servername =
+          hello.server_name().map(|s| s.to_string());
+        self.client_hello_alpn = hello
+          .alpn()
+          .map(|iter| iter.map(|p| p.to_vec()).collect())
+          .unwrap_or_default();
+        // Acceptor is consumed on success, remove it.
+        self.acceptor = None;
+        self.accepted = Some(accepted);
+        true
+      }
+      Ok(None) => {
+        // Need more data; acceptor retains its state internally.
+        false
+      }
+      Err((_err, _alert)) => {
+        self.acceptor = None;
+        self.error = Some("TLS accept error".to_string());
+        false
+      }
     }
   }
 
@@ -1792,17 +1913,24 @@ impl TLSWrap {
         }
       }
       Kind::Server => {
-        let Some(config) = inner.pending_server_config.take() else {
-          inner.error = Some("TLS config not initialized".to_string());
-          return -1;
-        };
-        match rustls::ServerConnection::new(config) {
-          Ok(conn) => {
-            inner.tls_conn = Some(TlsConnection::Server(conn));
-          }
-          Err(e) => {
-            inner.error = Some(format!("TLS connection error: {e}"));
+        if inner.use_acceptor {
+          // Acceptor path: defer ServerConnection creation until we have
+          // the ClientHello so we can invoke SNICallback / ALPNCallback.
+          // pending_server_config is kept for finish_accept().
+          inner.acceptor = Some(rustls::server::Acceptor::default());
+        } else {
+          let Some(config) = inner.pending_server_config.take() else {
+            inner.error = Some("TLS config not initialized".to_string());
             return -1;
+          };
+          match rustls::ServerConnection::new(config) {
+            Ok(conn) => {
+              inner.tls_conn = Some(TlsConnection::Server(conn));
+            }
+            Err(e) => {
+              inner.error = Some(format!("TLS connection error: {e}"));
+              return -1;
+            }
           }
         }
       }
@@ -2372,6 +2500,107 @@ impl TLSWrap {
       inner.pending_server_name = Some(server_name);
     }
     // After start(), this is a no-op — SNI is already set on the connection.
+  }
+
+  /// Enable the Acceptor-based server handshake path.
+  /// Must be called before start(). When enabled, start() creates an
+  /// Acceptor instead of a ServerConnection, allowing SNICallback and
+  /// ALPNCallback to be invoked from JS before the handshake proceeds.
+  #[fast]
+  fn enable_client_hello_cb(&self) {
+    let inner = unsafe { &mut *self.inner.as_mut_ptr() };
+    inner.use_acceptor = true;
+  }
+
+  /// Get the server name (SNI) from the TLS connection.
+  /// For server-side connections this returns the SNI sent by the client.
+  /// Works both during the acceptor phase (from stored ClientHello info)
+  /// and after the handshake (from the established connection).
+  #[string]
+  fn get_servername(&self) -> Option<String> {
+    let inner = unsafe { &*self.inner.as_mut_ptr() };
+    // Try established connection first
+    if let Some(ref conn) = inner.tls_conn
+      && let Some(name) = conn.server_name()
+    {
+      return Some(name.to_string());
+    }
+    // Fall back to client hello info (during acceptor phase)
+    inner.client_hello_servername.clone()
+  }
+
+  /// Get the client's offered ALPN protocols from the ClientHello.
+  /// Only available during the acceptor phase (after onclienthello fires).
+  /// Returns a serialized Vec of strings.
+  #[serde]
+  fn get_client_hello_alpn(&self) -> Vec<String> {
+    let inner = unsafe { &*self.inner.as_mut_ptr() };
+    inner
+      .client_hello_alpn
+      .iter()
+      .filter_map(|p| std::str::from_utf8(p).ok().map(|s| s.to_string()))
+      .collect()
+  }
+
+  /// Complete the Acceptor-based handshake after JS has processed
+  /// SNICallback and ALPNCallback. Builds a per-connection ServerConfig
+  /// from the provided SecureContext and ALPN selection, then creates
+  /// the ServerConnection and continues the handshake.
+  #[nofast]
+  #[reentrant]
+  fn finish_accept(
+    &self,
+    context: v8::Local<v8::Object>,
+    alpn_protocol: v8::Local<v8::Value>,
+    scope: &mut v8::PinScope,
+  ) -> i32 {
+    let inner = unsafe { &mut *self.inner.as_mut_ptr() };
+
+    let accepted = match inner.accepted.take() {
+      Some(a) => a,
+      None => {
+        inner.error = Some("No pending Accepted".to_string());
+        return -1;
+      }
+    };
+
+    // Build server config from the provided SecureContext
+    let mut server_config = match build_server_config(scope, context) {
+      Some(c) => c,
+      None => {
+        inner.error = Some("Failed to build server config".to_string());
+        return -1;
+      }
+    };
+
+    // Determine ALPN protocols
+    if let Ok(s) = v8::Local::<v8::String>::try_from(alpn_protocol) {
+      // ALPNCallback selected a specific protocol
+      let len = s.utf8_length(scope);
+      let mut buf = vec![0u8; len];
+      s.write_utf8_v2(scope, &mut buf, v8::WriteFlags::default(), None);
+      server_config.alpn_protocols = vec![buf];
+    } else if let Some(ref config) = inner.pending_server_config {
+      // No ALPNCallback result; use static ALPN from original config
+      server_config.alpn_protocols = config.alpn_protocols.clone();
+    }
+
+    // Create the ServerConnection from the Accepted + config
+    match accepted.into_connection(Arc::new(server_config)) {
+      Ok(conn) => {
+        inner.tls_conn = Some(TlsConnection::Server(conn));
+      }
+      Err((e, _accepted)) => {
+        inner.error = Some(format!("TLS accept error: {e}"));
+        return -1;
+      }
+    }
+
+    // Drive the state machine to continue the handshake
+    let inner_ptr = inner as *mut TLSWrapInner;
+    unsafe { TLSWrapInner::cycle(inner_ptr) };
+
+    0
   }
 
   /// Inject encrypted data (for testing / JSStreamSocket integration).

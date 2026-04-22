@@ -1,0 +1,5 @@
+SNICallback: localhost
+ALPNCallback: localhost ["h2","http/1.1"]
+client alpn: h2
+server alpn: h2
+server servername: localhost

@@ -1,0 +1,16 @@
+{
+  "tests": {
+    "alpn_callback": {
+      "args": "run --allow-all alpn_callback.ts",
+      "output": "alpn_callback.out"
+    },
+    "sni_callback": {
+      "args": "run --allow-all sni_callback.ts",
+      "output": "sni_callback.out"
+    },
+    "both_callbacks": {
+      "args": "run --allow-all both_callbacks.ts",
+      "output": "both_callbacks.out"
+    }
+  }
+}
