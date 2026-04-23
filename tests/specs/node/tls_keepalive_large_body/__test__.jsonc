@@ -1,4 +1,12 @@
 {
-  "args": "run -A main.ts",
-  "output": "main.out"
+  "tests": {
+    "happy_path": {
+      "args": "run -A main.ts",
+      "output": "main.out"
+    },
+    "peer_reset_mid_upload": {
+      "args": "run -A peer_reset.ts",
+      "output": "peer_reset.out"
+    }
+  }
 }

@@ -1,0 +1,2 @@
+req1: status=200
+req2 error surfaced: true (code=ECONNRESET)
