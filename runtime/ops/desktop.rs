@@ -203,6 +203,10 @@ pub enum DesktopEvent {
     message: String,
     stack: Option<String>,
   },
+  #[serde(rename_all = "camelCase")]
+  DockMenuClick { id: String },
+  #[serde(rename_all = "camelCase")]
+  DockReopen { has_visible_windows: bool },
 }
 
 pub struct DesktopEventReceiver(
@@ -335,6 +339,19 @@ pub trait DesktopApi: Send + Sync + 'static {
     default_value: &str,
     callback: Box<dyn FnOnce(Option<String>) + Send + 'static>,
   );
+
+  /// Set a short text badge on the app's dock / taskbar icon. An empty
+  /// string clears the badge.
+  fn set_dock_badge(&self, text: &str);
+  /// Bounce the dock icon (macOS) or the closest native analog. `critical`
+  /// maps to a continuous bounce; otherwise a single bounce.
+  fn bounce_dock(&self, critical: bool);
+  /// Set a custom right-click menu on the app's dock icon (macOS only).
+  fn set_dock_menu(&self, menu: Vec<MenuItem>);
+  /// Clear any custom dock menu previously set.
+  fn clear_dock_menu(&self);
+  /// Show or hide the app's dock icon (macOS activation policy).
+  fn set_dock_visible(&self, visible: bool);
 }
 
 /// Stores the window ID of the initial window created during runtime init.
@@ -961,6 +978,77 @@ fn op_desktop_prompt(
   }
 }
 
+struct Dock {
+  api: Arc<dyn DesktopApi>,
+}
+
+// SAFETY: we're sure this can be GCed
+unsafe impl deno_core::GarbageCollected for Dock {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"Dock"
+  }
+}
+
+impl deno_core::Resource for Dock {
+  fn name(&self) -> Cow<'_, str> {
+    "Dock".into()
+  }
+}
+
+#[op2]
+impl Dock {
+  #[constructor]
+  fn new(
+    state: &OpState,
+    scope: &mut v8::PinScope<'_, '_>,
+  ) -> v8::Global<v8::Value> {
+    let api = state
+      .try_borrow::<Arc<dyn DesktopApi>>()
+      .expect("desktop mode enabled")
+      .clone();
+
+    let dock = Dock { api };
+    let dock = deno_core::cppgc::make_cppgc_object(scope, dock);
+    let event_target_setup = state.borrow::<EventTargetSetup>();
+    let webidl_brand = v8::Local::new(scope, event_target_setup.brand.clone());
+    dock.set(scope, webidl_brand, webidl_brand);
+    let set_event_target_data =
+      v8::Local::new(scope, event_target_setup.set_event_target_data.clone())
+        .cast::<v8::Function>();
+    let null = v8::null(scope);
+    set_event_target_data.call(scope, null.into(), &[dock.into()]);
+    let dock = dock.cast::<v8::Value>();
+
+    v8::Global::new(scope, dock)
+  }
+
+  #[fast]
+  fn set_badge(&self, #[string] text: &str) {
+    self.api.set_dock_badge(text);
+  }
+
+  #[fast]
+  fn bounce(&self, critical: bool) {
+    self.api.bounce_dock(critical);
+  }
+
+  fn set_menu(&self, #[serde] menu: Vec<MenuItem>) {
+    self.api.set_dock_menu(menu);
+  }
+
+  #[fast]
+  fn clear_menu(&self) {
+    self.api.clear_dock_menu();
+  }
+
+  #[fast]
+  fn set_visible(&self, visible: bool) {
+    self.api.set_dock_visible(visible);
+  }
+}
+
 deno_core::extension!(
   deno_desktop,
   ops = [
@@ -975,5 +1063,5 @@ deno_core::extension!(
     op_desktop_prompt,
     op_desktop_send_error_report,
   ],
-  objects = [BrowserWindow,],
+  objects = [BrowserWindow, Dock,],
 );

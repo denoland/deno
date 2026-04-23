@@ -5,33 +5,62 @@
 //! Architecture:
 //!
 //! ```text
-//!                 ┌──────────────────────────────────┐
-//!                 │   CDP Multiplexer (this file)    │
-//!   DevTools ◄──► │   - /json/version, /json/list    │
-//!   (single ws)   │   - /unified  (primary entry)    │
-//!                 │   - /deno, /cef (direct bypass)  │
-//!                 │   - /devtools/* (frontend proxy) │
-//!                 └──────┬───────────────────┬───────┘
-//!                        │                   │
-//!              Deno inspector          CEF renderer
-//!              (internal port)         (internal port)
+//!                 ┌──────────────────────────────────────────┐
+//!                 │   CDP Multiplexer (this file)            │
+//!   DevTools ◄──► │   HTTP: /json/{version,list,protocol}    │
+//!   (single ws)   │         /debugger-attached (gate)        │
+//!                 │   WS:   /unified  (primary entry)        │
+//!                 │         /deno, /cef (direct bypass)      │
+//!                 │   HTTP: /devtools/* (frontend proxy)     │
+//!                 └──────┬─────────────────────────┬─────────┘
+//!                        │                         │
+//!              Deno inspector                CEF renderer
+//!              (internal port)               (internal port)
 //! ```
 //!
-//! The `/unified` endpoint is the primary session. CEF is the default
-//! (un-sessioned) target; the Deno runtime appears as an attached child
-//! via a synthetic `Target.attachedToTarget` event with a stable
-//! `sessionId`. The mux routes frames by `sessionId` — Deno-bound
-//! frames have the sessionId stripped before forwarding, and responses
-//! get it re-injected. Everything else goes to CEF verbatim.
+//! ## Unified session
+//!
+//! `/unified` is the primary session. CEF is the default (un-sessioned)
+//! target; the Deno runtime appears as an attached child via a
+//! synthetic `Target.attachedToTarget` event with a stable `sessionId`
+//! the mux invents. Frame routing:
+//!
+//! - Client → mux frames with `sessionId == deno_session_id` have the
+//!   field stripped and are forwarded to Deno.
+//! - Deno → client frames get the `sessionId` re-injected.
+//! - `Target.attachToTarget`/`detachFromTarget` for the Deno child are
+//!   answered locally — CEF never learns of the synthetic session.
+//! - `Runtime.executionContextCreated` gets its `context.name`
+//!   rewritten ("Renderer" on the CEF leg, "Deno" on the Deno leg) so
+//!   the Console dropdown shows meaningful labels instead of V8's
+//!   defaults.
+//! - The synthetic `Target.attachedToTarget` event is emitted lazily,
+//!   on the first `Target.setAutoAttach`/`setDiscoverTargets` from the
+//!   client — firing earlier loses the event to the frontend's
+//!   not-yet-ready auto-attach manager.
 //!
 //! DevTools sees both isolates in one window: the Console dropdown
 //! shows "Renderer" / "Deno", and the Sources panel Threads sidebar
 //! lists both.
 //!
-//! `/deno` and `/cef` are direct passthrough endpoints for debugging
-//! each isolate in isolation. `/devtools/*` proxies CEF's bundled
-//! DevTools frontend assets so `openDevtools()` can pop a CEF window
-//! without triggering the remote-debugging-port interception.
+//! ## `--inspect-brk` / `--inspect-wait`
+//!
+//! The child process blocks on `GET /debugger-attached` before
+//! navigating CEF. The mux flips that endpoint to 200 only after the
+//! DevTools client has connected AND — under `--inspect-brk` — the
+//! `Debugger.enable` + `Debugger.pause` injection against CEF has
+//! acked both responses. This guarantees the renderer pauses on the
+//! first JS statement of the loaded page instead of racing past it.
+//! Deno's own `--inspect-brk` handles the Deno isolate separately.
+//!
+//! ## Direct / frontend endpoints
+//!
+//! `/deno` and `/cef` are direct passthrough WebSockets for debugging
+//! each isolate in isolation when the unified session misbehaves.
+//! `/devtools/*` proxies CEF's bundled DevTools frontend assets
+//! through the mux port so `openDevtools()` can pop a CEF window
+//! without triggering CEF's own remote-debugging-port frontend
+//! interception.
 
 use std::convert::Infallible;
 use std::net::SocketAddr;
@@ -483,11 +512,12 @@ async fn handle_upgrade(
       }
     };
 
-    // Signal that a debugger has connected — the child process polls
-    // `/debugger-attached` to gate navigation under --inspect-wait/brk.
-    state
-      .debugger_attached
-      .store(true, std::sync::atomic::Ordering::SeqCst);
+    // `debugger_attached` is what releases the child process from its
+    // `/debugger-attached` poll so it can navigate CEF. Under
+    // `--inspect-brk` we MUST inject `Debugger.enable` + `Debugger.pause`
+    // into the CEF isolate BEFORE the child navigates, otherwise the
+    // page's JS executes before the pause request arrives. So each
+    // target-specific handler signals attachment at its own right moment.
 
     match kind {
       TargetKind::Unified => {
@@ -495,7 +525,10 @@ async fn handle_upgrade(
           log::debug!("[devtools-mux] unified session ended: {err:?}");
         }
       }
-      TargetKind::Deno | TargetKind::Cef => {
+      TargetKind::Deno => {
+        // Deno has its own `--inspect-brk` mechanism that blocks the
+        // isolate until a client attaches — nothing to inject here.
+        mark_debugger_attached(&state);
         match connect_upstream(&state, kind).await {
           Ok(upstream) => {
             if let Err(err) = proxy_frames(client, upstream).await {
@@ -504,11 +537,31 @@ async fn handle_upgrade(
           }
           Err(err) => {
             log::error!(
-              "[devtools-mux] failed to connect upstream for {kind:?}: {err:?}"
+              "[devtools-mux] failed to connect upstream for Deno: {err:?}"
             );
           }
         }
       }
+      TargetKind::Cef => match connect_upstream(&state, kind).await {
+        Ok(mut upstream) => {
+          if state.config.inspect_brk
+            && let Err(err) = inject_cef_pause(&mut upstream).await
+          {
+            log::error!(
+              "[devtools-mux] failed to inject pause into CEF: {err:?}"
+            );
+          }
+          mark_debugger_attached(&state);
+          if let Err(err) = proxy_frames(client, upstream).await {
+            log::debug!("[devtools-mux] proxy ended: {err:?}");
+          }
+        }
+        Err(err) => {
+          log::error!(
+            "[devtools-mux] failed to connect upstream for CEF: {err:?}"
+          );
+        }
+      },
     }
   });
 
@@ -754,6 +807,77 @@ impl OwnedFrame {
   }
 }
 
+/// Set `debugger_attached` so the child process's `/debugger-attached`
+/// poll returns 200 and it can proceed with navigation. Only call this
+/// once the CEF pause injection (if any) has completed.
+fn mark_debugger_attached(state: &MuxState) {
+  state
+    .debugger_attached
+    .store(true, std::sync::atomic::Ordering::SeqCst);
+}
+
+/// Send `Debugger.enable` + `Debugger.pause` to the CEF upstream,
+/// swallowing their responses. Called before the child is released to
+/// navigate, so the renderer stops on the first JS statement of the
+/// loaded page.
+///
+/// Any CEF → client frames that arrive during the injection window are
+/// discarded. This is acceptable because the renderer has not yet
+/// navigated to a user page (the child is blocked on
+/// `/debugger-attached`), so the only traffic is CEF's own protocol
+/// setup (e.g. unsolicited `Target.targetCreated` for about:blank),
+/// which DevTools will re-observe via `Target.setDiscoverTargets` once
+/// the session opens.
+async fn inject_cef_pause<S>(cef: &mut WebSocket<S>) -> Result<(), AnyError>
+where
+  S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin,
+{
+  let enable = json!({"id": -1, "method": "Debugger.enable"});
+  cef
+    .write_frame(Frame::new(
+      true,
+      OpCode::Text,
+      None,
+      fastwebsockets::Payload::Owned(serde_json::to_vec(&enable).unwrap()),
+    ))
+    .await?;
+
+  let pause = json!({"id": -2, "method": "Debugger.pause"});
+  cef
+    .write_frame(Frame::new(
+      true,
+      OpCode::Text,
+      None,
+      fastwebsockets::Payload::Owned(serde_json::to_vec(&pause).unwrap()),
+    ))
+    .await?;
+
+  // Read frames until we've observed both responses. CEF may interleave
+  // unsolicited events, which we drop.
+  let mut saw_enable = false;
+  let mut saw_pause = false;
+  while !(saw_enable && saw_pause) {
+    let frame = cef.read_frame().await?;
+    if frame.opcode != OpCode::Text {
+      continue;
+    }
+    let value: Value = match serde_json::from_slice(&frame.payload) {
+      Ok(v) => v,
+      Err(_) => continue,
+    };
+    match value.get("id").and_then(|v| v.as_i64()) {
+      Some(-1) => saw_enable = true,
+      Some(-2) => saw_pause = true,
+      _ => {}
+    }
+  }
+
+  log::debug!(
+    "[devtools-mux] injected Debugger.enable + Debugger.pause into CEF"
+  );
+  Ok(())
+}
+
 /// Run the unified DevTools session: one client WebSocket fronting two
 /// upstreams (CEF as the default session, Deno attached via a
 /// synthetic `sessionId`).
@@ -779,39 +903,15 @@ async fn run_unified_session(
   let session_id = state.deno_session_id.clone();
 
   // When --inspect-brk is active, inject Debugger.enable + Debugger.pause
-  // into the CEF session BEFORE forwarding any client frames. This ensures
-  // the renderer pauses on the very first JS statement after navigation.
+  // into the CEF session BEFORE the child is allowed to navigate. The
+  // child polls `/debugger-attached` and will only navigate once we
+  // signal attachment, so doing the injection first — and releasing
+  // attachment afterwards — guarantees the renderer pauses on the very
+  // first JS statement of the loaded page.
   if state.config.inspect_brk {
-    let enable = json!({"id": -1, "method": "Debugger.enable"});
-    let enable_bytes = serde_json::to_vec(&enable).unwrap();
-    cef
-      .write_frame(Frame::new(
-        true,
-        OpCode::Text,
-        None,
-        fastwebsockets::Payload::Owned(enable_bytes),
-      ))
-      .await?;
-
-    // Read the enable response before sending pause.
-    let _resp = cef.read_frame().await?;
-
-    let pause = json!({"id": -2, "method": "Debugger.pause"});
-    let pause_bytes = serde_json::to_vec(&pause).unwrap();
-    cef
-      .write_frame(Frame::new(
-        true,
-        OpCode::Text,
-        None,
-        fastwebsockets::Payload::Owned(pause_bytes),
-      ))
-      .await?;
-    let _resp = cef.read_frame().await?;
-
-    log::debug!(
-      "[devtools-mux] injected Debugger.enable + Debugger.pause into CEF"
-    );
+    inject_cef_pause(&mut cef).await?;
   }
+  mark_debugger_attached(&state);
 
   let (mut client_rx, mut client_tx) = client.split(tokio::io::split);
   let (mut cef_rx, mut cef_tx) = cef.split(tokio::io::split);
@@ -1322,6 +1422,68 @@ mod tests {
     assert!(client_rx.try_recv().is_err());
   }
 
+  #[test]
+  fn route_client_text_set_discover_targets_also_triggers_announce() {
+    // The lazy-announce trigger is either setAutoAttach OR
+    // setDiscoverTargets — DevTools sometimes uses one, sometimes the
+    // other, depending on which panel initialised first.
+    let (client_tx, mut client_rx) = mpsc::unbounded_channel::<OwnedFrame>();
+    let (cef_tx, _cef_rx) = mpsc::unbounded_channel::<OwnedFrame>();
+    let (deno_tx, _deno_rx) = mpsc::unbounded_channel::<OwnedFrame>();
+    let announced = Arc::new(std::sync::atomic::AtomicBool::new(false));
+
+    let msg = json!({
+      "id": 7,
+      "method": "Target.setDiscoverTargets",
+      "params": { "discover": true },
+    });
+    let payload = serde_json::to_vec(&msg).unwrap();
+
+    route_client_text(
+      &payload, "sess", &client_tx, &cef_tx, &deno_tx, &announced,
+    );
+
+    let frame = client_rx
+      .try_recv()
+      .expect("setDiscoverTargets should also trigger announce");
+    let value: Value = serde_json::from_slice(&frame.payload).unwrap();
+    assert_eq!(value["method"], "Target.attachedToTarget");
+    assert!(announced.load(std::sync::atomic::Ordering::SeqCst));
+  }
+
+  #[test]
+  fn route_client_text_attach_to_cef_target_forwards_to_cef() {
+    // `Target.attachToTarget` for any target ID that isn't ours (e.g.
+    // a real CEF subframe or worker) must pass through — only the
+    // synthetic Deno target is answered locally.
+    let (client_tx, mut client_rx) = mpsc::unbounded_channel::<OwnedFrame>();
+    let (cef_tx, mut cef_rx) = mpsc::unbounded_channel::<OwnedFrame>();
+    let (deno_tx, _deno_rx) = mpsc::unbounded_channel::<OwnedFrame>();
+    let announced = Arc::new(std::sync::atomic::AtomicBool::new(true));
+
+    let msg = json!({
+      "id": 11,
+      "method": "Target.attachToTarget",
+      "params": { "targetId": "some-cef-subframe-target" },
+    });
+    let payload = serde_json::to_vec(&msg).unwrap();
+
+    route_client_text(
+      &payload,
+      "deno-sess",
+      &client_tx,
+      &cef_tx,
+      &deno_tx,
+      &announced,
+    );
+
+    let forwarded = cef_rx.try_recv().expect("expected frame on cef");
+    let value: Value = serde_json::from_slice(&forwarded.payload).unwrap();
+    assert_eq!(value["method"], "Target.attachToTarget");
+    assert_eq!(value["params"]["targetId"], "some-cef-subframe-target");
+    assert!(client_rx.try_recv().is_err());
+  }
+
   // ── context name rewriting ────────────────────────────────────────
 
   #[test]
@@ -1358,6 +1520,37 @@ mod tests {
     let out = rewrite_text_from_upstream(&payload, None, "Renderer");
     let value: Value = serde_json::from_slice(&out).unwrap();
     assert!(value.get("sessionId").is_none());
+  }
+
+  #[test]
+  fn rewrite_leaves_non_execution_context_messages_unchanged() {
+    // Any `name` field on other methods must not be touched — only
+    // `Runtime.executionContextCreated.params.context.name` is rewritten.
+    let input = json!({
+      "method": "Target.targetInfoChanged",
+      "params": { "targetInfo": { "name": "something" } },
+    });
+    let payload = serde_json::to_vec(&input).unwrap();
+    let out = rewrite_text_from_upstream(&payload, None, "Renderer");
+    let value: Value = serde_json::from_slice(&out).unwrap();
+    assert_eq!(value["params"]["targetInfo"]["name"], "something");
+  }
+
+  #[test]
+  fn rewrite_invalid_json_returned_verbatim() {
+    let payload = b"totally not json".to_vec();
+    let out = rewrite_text_from_upstream(&payload, Some("sid"), "Renderer");
+    assert_eq!(out, payload);
+  }
+
+  #[test]
+  fn rewrite_non_object_json_returned_verbatim() {
+    // Arrays / scalars have no "sessionId" slot to inject into —
+    // they must pass through untouched rather than being wrapped.
+    let input = json!([1, 2, 3]);
+    let payload = serde_json::to_vec(&input).unwrap();
+    let out = rewrite_text_from_upstream(&payload, Some("sid"), "Renderer");
+    assert_eq!(out, payload);
   }
 
   // ── /json/list shape ──────────────────────────────────────────────
@@ -1401,5 +1594,607 @@ mod tests {
         .unwrap()
         .ends_with("/cef")
     );
+
+    // Every entry must expose a devtoolsFrontendUrl that points at
+    // its own ws:// endpoint — DevTools uses it to launch the right
+    // frontend (inspector.html vs js_app.html) against the right mux
+    // route. Every entry must also advertise a stable UUID id and
+    // include description + faviconUrl, which DevTools renders in the
+    // target picker.
+    for entry in &list {
+      let frontend = entry["devtoolsFrontendUrl"].as_str().unwrap();
+      let ws = entry["webSocketDebuggerUrl"].as_str().unwrap();
+      let ws_host_path = ws.strip_prefix("ws://").unwrap();
+      assert!(
+        frontend.contains(ws_host_path),
+        "frontend {frontend} must embed ws host+path {ws_host_path}"
+      );
+
+      let id = entry["id"].as_str().unwrap();
+      Uuid::parse_str(id).unwrap_or_else(|_| panic!("id {id} is not a UUID"));
+      assert!(entry["description"].is_string());
+      assert!(entry["faviconUrl"].is_string());
+    }
+
+    // Deno direct entry uses `js_app.html` (DevTools' node variant)
+    // while CEF and unified use the full `inspector.html`.
+    assert!(
+      list[1]["devtoolsFrontendUrl"]
+        .as_str()
+        .unwrap()
+        .contains("js_app.html"),
+      "deno direct entry should launch js_app.html"
+    );
+    for page_entry in [&list[0], &list[2]] {
+      assert!(
+        page_entry["devtoolsFrontendUrl"]
+          .as_str()
+          .unwrap()
+          .contains("inspector.html"),
+      );
+    }
+
+    // IDs must be stable across calls — DevTools caches them.
+    let resp2 = json_list(&state).await;
+    let bytes2 = resp2.into_body().collect().await.unwrap().to_bytes();
+    let list2: Vec<Value> = serde_json::from_slice(&bytes2).unwrap();
+    for (a, b) in list.iter().zip(list2.iter()) {
+      assert_eq!(
+        a["id"], b["id"],
+        "target id changed across /json/list calls"
+      );
+    }
+  }
+
+  #[tokio::test]
+  async fn json_version_shape() {
+    let state = MuxState::new(test_config(), "127.0.0.1:9229".parse().unwrap());
+    let resp = json_version(&state);
+    assert_eq!(resp.status(), http::StatusCode::OK);
+    let ct = resp.headers().get(http::header::CONTENT_TYPE).unwrap();
+    assert_eq!(ct, "application/json");
+
+    let bytes = resp.into_body().collect().await.unwrap().to_bytes();
+    let value: Value = serde_json::from_slice(&bytes).unwrap();
+    assert_eq!(value["Protocol-Version"], "1.3");
+    assert!(
+      value["Browser"]
+        .as_str()
+        .unwrap()
+        .starts_with("deno-desktop/")
+    );
+    assert!(value["V8-Version"].is_string());
+    // The browser-level webSocketDebuggerUrl must point at the CEF
+    // target — DevTools' chrome://inspect auto-attach needs the
+    // richer Target.* domain that CEF implements.
+    let ws = value["webSocketDebuggerUrl"].as_str().unwrap();
+    assert!(ws.ends_with("/cef"), "got {ws}");
+  }
+
+  // ── Target.detachFromTarget dispatch ──────────────────────────────
+
+  #[test]
+  fn route_client_text_detach_from_deno_session_synthesizes_reply_and_event() {
+    let (client_tx, mut client_rx) = mpsc::unbounded_channel::<OwnedFrame>();
+    let (cef_tx, mut cef_rx) = mpsc::unbounded_channel::<OwnedFrame>();
+    let (deno_tx, _deno_rx) = mpsc::unbounded_channel::<OwnedFrame>();
+    let announced = Arc::new(std::sync::atomic::AtomicBool::new(true));
+
+    let session_id = "deno-sess-xyz";
+    let msg = json!({
+      "id": 42,
+      "method": "Target.detachFromTarget",
+      "params": { "sessionId": session_id },
+    });
+    let payload = serde_json::to_vec(&msg).unwrap();
+
+    route_client_text(
+      &payload, session_id, &client_tx, &cef_tx, &deno_tx, &announced,
+    );
+
+    // First frame: the id=42 reply.
+    let reply = client_rx.try_recv().expect("expected detach reply");
+    let reply_val: Value = serde_json::from_slice(&reply.payload).unwrap();
+    assert_eq!(reply_val["id"], 42);
+    assert!(reply_val["result"].is_object());
+
+    // Second frame: the synthesized Target.detachedFromTarget event.
+    let event = client_rx.try_recv().expect("expected detached event");
+    let event_val: Value = serde_json::from_slice(&event.payload).unwrap();
+    assert_eq!(event_val["method"], "Target.detachedFromTarget");
+    assert_eq!(event_val["params"]["sessionId"], session_id);
+    assert_eq!(event_val["params"]["targetId"], DENO_CHILD_TARGET_ID);
+
+    // Must NOT be forwarded to CEF — CEF has no knowledge of our
+    // synthetic Deno session.
+    assert!(cef_rx.try_recv().is_err());
+  }
+
+  #[test]
+  fn route_client_text_detach_from_unknown_session_forwards_to_cef() {
+    // A detach for a session CEF owns (not our synthetic Deno one)
+    // must flow through to CEF unchanged.
+    let (client_tx, mut client_rx) = mpsc::unbounded_channel::<OwnedFrame>();
+    let (cef_tx, mut cef_rx) = mpsc::unbounded_channel::<OwnedFrame>();
+    let (deno_tx, _deno_rx) = mpsc::unbounded_channel::<OwnedFrame>();
+    let announced = Arc::new(std::sync::atomic::AtomicBool::new(true));
+
+    let msg = json!({
+      "id": 99,
+      "method": "Target.detachFromTarget",
+      "params": { "sessionId": "some-cef-session" },
+    });
+    let payload = serde_json::to_vec(&msg).unwrap();
+
+    route_client_text(
+      &payload,
+      "deno-sess",
+      &client_tx,
+      &cef_tx,
+      &deno_tx,
+      &announced,
+    );
+
+    let forwarded = cef_rx.try_recv().expect("expected frame forwarded");
+    let value: Value = serde_json::from_slice(&forwarded.payload).unwrap();
+    assert_eq!(value["id"], 99);
+    assert!(client_rx.try_recv().is_err());
+  }
+
+  // ── Malformed / edge-case dispatch ────────────────────────────────
+
+  #[test]
+  fn route_client_text_invalid_json_forwards_to_cef() {
+    let (client_tx, mut client_rx) = mpsc::unbounded_channel::<OwnedFrame>();
+    let (cef_tx, mut cef_rx) = mpsc::unbounded_channel::<OwnedFrame>();
+    let (deno_tx, _deno_rx) = mpsc::unbounded_channel::<OwnedFrame>();
+    let announced = Arc::new(std::sync::atomic::AtomicBool::new(true));
+
+    let payload = b"not-json".to_vec();
+    route_client_text(
+      &payload, "sess", &client_tx, &cef_tx, &deno_tx, &announced,
+    );
+
+    let frame = cef_rx.try_recv().expect("expected frame on cef");
+    assert_eq!(frame.payload, b"not-json");
+    assert!(client_rx.try_recv().is_err());
+  }
+
+  // ── End-to-end integration ────────────────────────────────────────
+  //
+  // Spin up mock upstream HTTP+WS servers for CEF and Deno, start the
+  // mux in front of them, then drive a real WebSocket client through
+  // the `/unified` endpoint to exercise routing, context rewriting,
+  // and the `--inspect-brk` pause injection.
+
+  /// Simple mock upstream: serves `/json/list` pointing at its own
+  /// `/ws` path, accepts a WebSocket upgrade there, and exposes
+  /// unbounded channels so tests can pump frames in/out.
+  struct MockUpstream {
+    listen: SocketAddr,
+    /// Frames received from the mux.
+    from_mux: tokio::sync::Mutex<mpsc::UnboundedReceiver<OwnedFrame>>,
+    /// Frames to send to the mux.
+    to_mux: mpsc::UnboundedSender<OwnedFrame>,
+  }
+
+  async fn spawn_mock_upstream() -> Arc<MockUpstream> {
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let listen = listener.local_addr().unwrap();
+    let (in_tx, in_rx) = mpsc::unbounded_channel::<OwnedFrame>();
+    let (out_tx, out_rx) = mpsc::unbounded_channel::<OwnedFrame>();
+
+    let upstream = Arc::new(MockUpstream {
+      listen,
+      from_mux: tokio::sync::Mutex::new(in_rx),
+      to_mux: out_tx,
+    });
+
+    // Shared across every connection the mux makes to this upstream —
+    // the mux opens one TCP connection for `/json/list` and a separate
+    // one for the WS upgrade, so the out_rx must only be consumed when
+    // the upgrade actually happens.
+    let shared_out_rx = Arc::new(std::sync::Mutex::new(Some(out_rx)));
+
+    tokio::spawn(async move {
+      loop {
+        let (stream, _) = match listener.accept().await {
+          Ok(v) => v,
+          Err(_) => return,
+        };
+        let in_tx = in_tx.clone();
+        let shared_out_rx = shared_out_rx.clone();
+        let listen_str = listen.to_string();
+        tokio::spawn(async move {
+          let io = TokioIo::new(stream);
+          let service = hyper::service::service_fn(move |mut req| {
+            let in_tx = in_tx.clone();
+            let shared_out_rx = shared_out_rx.clone();
+            let listen_str = listen_str.clone();
+            async move {
+              let path = req.uri().path().to_string();
+              if path == "/json/list" {
+                let body = serde_json::to_vec(&json!([{
+                  "id": "mock-target",
+                  "type": "page",
+                  "webSocketDebuggerUrl": format!("ws://{listen_str}/ws"),
+                }]))
+                .unwrap();
+                return Ok::<_, Infallible>(
+                  hyper::Response::builder()
+                    .status(http::StatusCode::OK)
+                    .header(http::header::CONTENT_TYPE, "application/json")
+                    .body(Full::new(Bytes::from(body)))
+                    .unwrap(),
+                );
+              }
+              if path == "/ws" {
+                let Ok((resp, upgrade_fut)) =
+                  fastwebsockets::upgrade::upgrade(&mut req)
+                else {
+                  return Ok(simple_response(
+                    http::StatusCode::BAD_REQUEST,
+                    "bad upgrade",
+                  ));
+                };
+                let in_tx = in_tx.clone();
+                let out_rx = shared_out_rx.lock().unwrap().take();
+                tokio::spawn(async move {
+                  let mut ws = match upgrade_fut.await {
+                    Ok(w) => w,
+                    Err(_) => return,
+                  };
+                  ws.set_auto_close(false);
+                  ws.set_auto_pong(false);
+                  let (mut rx, mut tx) = ws.split(tokio::io::split);
+                  let reader = async move {
+                    let mut noop =
+                      |_: Frame<'_>| async { Ok::<(), WebSocketError>(()) };
+                    loop {
+                      let frame = match rx.read_frame(&mut noop).await {
+                        Ok(f) => f,
+                        Err(_) => return,
+                      };
+                      let owned = OwnedFrame {
+                        opcode: frame.opcode,
+                        payload: frame.payload.to_vec(),
+                      };
+                      let is_close = owned.opcode == OpCode::Close;
+                      if in_tx.send(owned).is_err() || is_close {
+                        return;
+                      }
+                    }
+                  };
+                  let writer = async move {
+                    let Some(mut out_rx) = out_rx else { return };
+                    while let Some(owned) = out_rx.recv().await {
+                      let close = owned.opcode == OpCode::Close;
+                      if tx.write_frame(owned.into_frame()).await.is_err() {
+                        return;
+                      }
+                      if close {
+                        return;
+                      }
+                    }
+                  };
+                  tokio::join!(reader, writer);
+                });
+                let (parts, _) = resp.into_parts();
+                return Ok(hyper::Response::from_parts(
+                  parts,
+                  Full::new(Bytes::new()),
+                ));
+              }
+              Ok(simple_response(http::StatusCode::NOT_FOUND, "Not Found"))
+            }
+          });
+          let _ = hyper::server::conn::http1::Builder::new()
+            .serve_connection(io, service)
+            .with_upgrades()
+            .await;
+        });
+      }
+    });
+
+    upstream
+  }
+
+  /// Open a WebSocket from the test to `ws://<addr><path>`.
+  async fn test_connect_ws(
+    ws_url: &str,
+  ) -> WebSocket<TokioIo<hyper::upgrade::Upgraded>> {
+    connect_ws(ws_url).await.unwrap()
+  }
+
+  async fn read_text_value<S>(ws: &mut WebSocket<S>) -> Value
+  where
+    S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin,
+  {
+    loop {
+      let frame = ws.read_frame().await.unwrap();
+      if frame.opcode != OpCode::Text {
+        continue;
+      }
+      return serde_json::from_slice(&frame.payload).unwrap();
+    }
+  }
+
+  async fn write_json<S>(ws: &mut WebSocket<S>, v: &Value)
+  where
+    S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin,
+  {
+    let payload = serde_json::to_vec(v).unwrap();
+    ws.write_frame(Frame::new(
+      true,
+      OpCode::Text,
+      None,
+      fastwebsockets::Payload::Owned(payload),
+    ))
+    .await
+    .unwrap();
+  }
+
+  async fn spawn_test_mux(
+    cef: &MockUpstream,
+    deno: &MockUpstream,
+    inspect_brk: bool,
+  ) -> MuxHandle {
+    let listen_port = allocate_random_port().unwrap();
+    spawn_mux(MuxConfig {
+      listen: format!("127.0.0.1:{listen_port}").parse().unwrap(),
+      deno_internal: deno.listen,
+      cef_internal: cef.listen,
+      inspect_brk,
+      wait_for_debugger: inspect_brk,
+    })
+    .await
+    .unwrap()
+  }
+
+  /// GET a path from the mux over raw HTTP and return the body bytes.
+  async fn http_get(addr: SocketAddr, path: &str) -> (http::StatusCode, Bytes) {
+    let stream = TcpStream::connect(addr).await.unwrap();
+    let io = TokioIo::new(stream);
+    let (mut sender, conn) =
+      hyper::client::conn::http1::handshake(io).await.unwrap();
+    tokio::spawn(async move {
+      let _ = conn.await;
+    });
+    let req = hyper::Request::builder()
+      .method(http::Method::GET)
+      .uri(path)
+      .header(http::header::HOST, addr.to_string())
+      .body(Empty::<Bytes>::new())
+      .unwrap();
+    let resp = sender.send_request(req).await.unwrap();
+    let status = resp.status();
+    let bytes = resp.collect().await.unwrap().to_bytes();
+    (status, bytes)
+  }
+
+  #[tokio::test]
+  async fn integration_http_endpoints() {
+    let cef = spawn_mock_upstream().await;
+    let deno = spawn_mock_upstream().await;
+    let mux = spawn_test_mux(&cef, &deno, false).await;
+
+    // /json/list — the mux advertises three targets; the HTTP path
+    // does not need upstream WS to be live.
+    let (status, body) = http_get(mux.listen, "/json/list").await;
+    assert_eq!(status, http::StatusCode::OK);
+    let list: Vec<Value> = serde_json::from_slice(&body).unwrap();
+    assert_eq!(list.len(), 3);
+
+    // /json/version.
+    let (status, body) = http_get(mux.listen, "/json/version").await;
+    assert_eq!(status, http::StatusCode::OK);
+    let v: Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(v["Protocol-Version"], "1.3");
+
+    // /debugger-attached returns 503 before any client connects.
+    let (status, _) = http_get(mux.listen, "/debugger-attached").await;
+    assert_eq!(status, http::StatusCode::SERVICE_UNAVAILABLE);
+
+    // Unknown path → 404.
+    let (status, _) = http_get(mux.listen, "/nope").await;
+    assert_eq!(status, http::StatusCode::NOT_FOUND);
+  }
+
+  #[tokio::test]
+  async fn integration_unified_session_routes_and_rewrites() {
+    let cef = spawn_mock_upstream().await;
+    let deno = spawn_mock_upstream().await;
+    let mux = spawn_test_mux(&cef, &deno, false).await;
+
+    let ws_url = format!("ws://{}/unified", mux.listen);
+    let mut client = test_connect_ws(&ws_url).await;
+    client.set_auto_close(false);
+    client.set_auto_pong(false);
+
+    // Before any client activity, /debugger-attached should flip to 200.
+    // Give the spawned upgrade task a moment to run.
+    for _ in 0..50 {
+      let (status, _) = http_get(mux.listen, "/debugger-attached").await;
+      if status == http::StatusCode::OK {
+        break;
+      }
+      tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+
+    // 1) Client sends Target.setAutoAttach. Mux should forward it to
+    //    CEF *and* synthesize Target.attachedToTarget to the client.
+    write_json(
+      &mut client,
+      &json!({
+        "id": 1,
+        "method": "Target.setAutoAttach",
+        "params": { "autoAttach": true, "waitForDebuggerOnStart": false },
+      }),
+    )
+    .await;
+
+    let attached = read_text_value(&mut client).await;
+    assert_eq!(attached["method"], "Target.attachedToTarget");
+    let session_id = attached["params"]["sessionId"]
+      .as_str()
+      .unwrap()
+      .to_string();
+    assert_eq!(attached["params"]["targetInfo"]["type"], "worker");
+
+    // CEF upstream should have received the setAutoAttach verbatim.
+    let received = {
+      let mut rx = cef.from_mux.lock().await;
+      tokio::time::timeout(Duration::from_secs(2), rx.recv())
+        .await
+        .unwrap()
+        .unwrap()
+    };
+    let received_val: Value =
+      serde_json::from_slice(&received.payload).unwrap();
+    assert_eq!(received_val["method"], "Target.setAutoAttach");
+
+    // 2) Client sends a frame with sessionId=deno. Mux strips it and
+    //    forwards to Deno upstream.
+    write_json(
+      &mut client,
+      &json!({
+        "id": 2,
+        "method": "Debugger.enable",
+        "sessionId": session_id,
+      }),
+    )
+    .await;
+    let deno_received = {
+      let mut rx = deno.from_mux.lock().await;
+      tokio::time::timeout(Duration::from_secs(2), rx.recv())
+        .await
+        .unwrap()
+        .unwrap()
+    };
+    let deno_val: Value =
+      serde_json::from_slice(&deno_received.payload).unwrap();
+    assert_eq!(deno_val["id"], 2);
+    assert_eq!(deno_val["method"], "Debugger.enable");
+    assert!(deno_val["sessionId"].is_null());
+
+    // 3) Upstream CEF emits Runtime.executionContextCreated. The mux
+    //    rewrites context.name to "Renderer" and forwards to client
+    //    WITHOUT a sessionId.
+    cef
+      .to_mux
+      .send(OwnedFrame::text(
+        serde_json::to_vec(&json!({
+          "method": "Runtime.executionContextCreated",
+          "params": { "context": { "id": 1, "origin": "", "name": "top" } },
+        }))
+        .unwrap(),
+      ))
+      .unwrap();
+    let from_cef = read_text_value(&mut client).await;
+    assert_eq!(from_cef["method"], "Runtime.executionContextCreated");
+    assert_eq!(from_cef["params"]["context"]["name"], "Renderer");
+    assert!(from_cef["sessionId"].is_null());
+
+    // 4) Upstream Deno emits the same. Mux rewrites to "Deno" AND
+    //    injects the synthetic sessionId.
+    deno
+      .to_mux
+      .send(OwnedFrame::text(
+        serde_json::to_vec(&json!({
+          "method": "Runtime.executionContextCreated",
+          "params": { "context": { "id": 1, "origin": "", "name": "main realm" } },
+        }))
+        .unwrap(),
+      ))
+      .unwrap();
+    let from_deno = read_text_value(&mut client).await;
+    assert_eq!(from_deno["method"], "Runtime.executionContextCreated");
+    assert_eq!(from_deno["params"]["context"]["name"], "Deno");
+    assert_eq!(from_deno["sessionId"], session_id);
+
+    drop(client);
+    drop(mux);
+  }
+
+  #[tokio::test]
+  async fn integration_inspect_brk_injects_before_marking_attached() {
+    // The core contract: under --inspect-brk the mux must send
+    // Debugger.enable + Debugger.pause to the CEF upstream BEFORE
+    // /debugger-attached flips to 200. If that order is reversed the
+    // child process navigates CEF before the pause is in flight and
+    // the renderer races past the first JS statement.
+    let cef = spawn_mock_upstream().await;
+    let deno = spawn_mock_upstream().await;
+    let mux = spawn_test_mux(&cef, &deno, true).await;
+
+    let ws_url = format!("ws://{}/unified", mux.listen);
+    let client_connect =
+      tokio::spawn(async move { test_connect_ws(&ws_url).await });
+
+    // Observe the first two frames CEF receives. With inspect_brk=true
+    // they must be Debugger.enable then Debugger.pause.
+    let enable_frame = {
+      let mut rx = cef.from_mux.lock().await;
+      tokio::time::timeout(Duration::from_secs(5), rx.recv())
+        .await
+        .expect("no frame received on CEF upstream")
+        .unwrap()
+    };
+    let enable_val: Value =
+      serde_json::from_slice(&enable_frame.payload).unwrap();
+    assert_eq!(enable_val["method"], "Debugger.enable");
+
+    // /debugger-attached MUST still be 503 until we ack enable+pause.
+    // We haven't replied yet, so the mux is still blocked waiting.
+    let (status, _) = http_get(mux.listen, "/debugger-attached").await;
+    assert_eq!(
+      status,
+      http::StatusCode::SERVICE_UNAVAILABLE,
+      "debugger_attached must not be signalled until pause injection completes"
+    );
+
+    let pause_frame = {
+      let mut rx = cef.from_mux.lock().await;
+      tokio::time::timeout(Duration::from_secs(5), rx.recv())
+        .await
+        .expect("no pause frame received")
+        .unwrap()
+    };
+    let pause_val: Value =
+      serde_json::from_slice(&pause_frame.payload).unwrap();
+    assert_eq!(pause_val["method"], "Debugger.pause");
+
+    // Now ack both from the upstream side, simulating CEF's responses.
+    cef
+      .to_mux
+      .send(OwnedFrame::text(
+        serde_json::to_vec(&json!({"id": -1, "result": {}})).unwrap(),
+      ))
+      .unwrap();
+    cef
+      .to_mux
+      .send(OwnedFrame::text(
+        serde_json::to_vec(&json!({"id": -2, "result": {}})).unwrap(),
+      ))
+      .unwrap();
+
+    // With both injection acks in flight, the mux should mark
+    // attached. Give it a moment to run.
+    let mut saw_attached = false;
+    for _ in 0..100 {
+      let (status, _) = http_get(mux.listen, "/debugger-attached").await;
+      if status == http::StatusCode::OK {
+        saw_attached = true;
+        break;
+      }
+      tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+    assert!(
+      saw_attached,
+      "debugger_attached never flipped to 200 after injection completed"
+    );
+
+    let _client = client_connect.await.unwrap();
+    drop(mux);
   }
 }

@@ -316,4 +316,84 @@ declare namespace Deno {
       options?: boolean | EventListenerOptions,
     ): void;
   }
+
+  interface DockReopenDetail {
+    hasVisibleWindows: boolean;
+  }
+
+  interface DockEventMap {
+    menuclick: CustomEvent<MenuClickDetail>;
+    reopen: CustomEvent<DockReopenDetail>;
+  }
+
+  type DockEventHandlers = {
+    [K in keyof DockEventMap as `on${K}`]:
+      | ((this: Dock, ev: DockEventMap[K]) => any)
+      | null;
+  };
+
+  export interface Dock extends DockEventHandlers {}
+
+  /** App-level dock / taskbar handle.
+   *
+   * A `"reopen"` event fires on macOS when the user clicks the dock icon;
+   * the default behavior of showing the last hidden window is swallowed,
+   * so listeners decide what (if anything) to do.
+   *
+   * Only available in apps compiled with `deno desktop`. */
+  export class Dock extends EventTarget {
+    constructor();
+
+    /** Set a short text badge on the app's dock icon (macOS) or taskbar
+     * icon (Windows), or prefix the focused window's title on Linux.
+     * Pass `null` or an empty string to clear the badge. */
+    setBadge(text: string | null): void;
+
+    /** Bounce the dock icon (macOS), flash the focused window's taskbar
+     * button (Windows), or set the urgency hint on the focused window
+     * (Linux).
+     *
+     * `"informational"` (the default) triggers a single bounce;
+     * `"critical"` bounces continuously until the app is focused. */
+    bounce(type?: "informational" | "critical"): void;
+
+    /** Set a custom right-click menu on the app's dock icon.
+     *
+     * macOS only. Click events are delivered as `"menuclick"` events on
+     * {@linkcode Deno.dock}. No-op on Windows and Linux. */
+    setMenu(menu: MenuItem[]): void;
+
+    /** Remove the custom dock menu set by {@linkcode Dock.setMenu}. */
+    clearMenu(): void;
+
+    /** Show or hide the app's dock icon.
+     *
+     * macOS only — controls the app's activation policy. No-op on
+     * Windows and Linux. */
+    setVisible(visible: boolean): void;
+
+    addEventListener<K extends keyof DockEventMap>(
+      type: K,
+      listener: (this: Dock, ev: DockEventMap[K]) => any,
+      options?: boolean | AddEventListenerOptions,
+    ): void;
+    addEventListener(
+      type: string,
+      listener: EventListenerOrEventListenerObject,
+      options?: boolean | AddEventListenerOptions,
+    ): void;
+    removeEventListener<K extends keyof DockEventMap>(
+      type: K,
+      listener: (this: Dock, ev: DockEventMap[K]) => any,
+      options?: boolean | EventListenerOptions,
+    ): void;
+    removeEventListener(
+      type: string,
+      listener: EventListenerOrEventListenerObject,
+      options?: boolean | EventListenerOptions,
+    ): void;
+  }
+
+  /** App-level dock / taskbar singleton. */
+  export const dock: Dock;
 }

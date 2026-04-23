@@ -20,6 +20,7 @@ pub const DESKTOP_JS: &str = r#"
   const internals = Deno[Deno.internal];
   const {
     BrowserWindow,
+    Dock,
     op_desktop_init,
     op_desktop_recv_event,
     op_desktop_resolve_bind_call,
@@ -284,6 +285,26 @@ pub const DESKTOP_JS: &str = r#"
     WheelEvent: internals.core.propNonEnumerable(WheelEvent),
   });
 
+  const DockPrototype = Dock.prototype;
+  Object.setPrototypeOf(DockPrototype, EventTarget.prototype);
+
+  const docks = new Set();
+  const nativeDockConstructor = Dock;
+  const OrigDock = function(...args) {
+    const instance = new nativeDockConstructor(...args);
+    docks.add(instance);
+    return instance;
+  };
+  Object.setPrototypeOf(OrigDock, nativeDockConstructor);
+  Object.setPrototypeOf(OrigDock.prototype, nativeDockConstructor.prototype);
+  Deno.Dock = OrigDock;
+
+  internals.defineEventHandler(DockPrototype, "menuclick");
+  internals.defineEventHandler(DockPrototype, "reopen");
+
+  const dock = new OrigDock();
+  Object.defineProperty(Deno, "dock", internals.core.propReadOnly(dock));
+
   // Start polling loops immediately. Use core.unrefOpPromise so these
   // pending ops don't block event loop completion (e.g. the pre-module
   // tick used by HMR, or module evaluation with top-level await).
@@ -455,6 +476,22 @@ pub const DESKTOP_JS: &str = r#"
               message: ev.message,
               error: new Error(ev.message),
             }));
+            break;
+          }
+          case "dockMenuClick": {
+            for (const d of docks) {
+              d.dispatchEvent(new CustomEvent("menuclick", {
+                detail: { id: ev.id },
+              }));
+            }
+            break;
+          }
+          case "dockReopen": {
+            for (const d of docks) {
+              d.dispatchEvent(new CustomEvent("reopen", {
+                detail: { hasVisibleWindows: ev.hasVisibleWindows },
+              }));
+            }
             break;
           }
         }

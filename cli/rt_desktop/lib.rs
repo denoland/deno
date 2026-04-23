@@ -479,6 +479,40 @@ impl denort::desktop::DesktopApi for WefDesktopApi {
   ) {
     wef::prompt(title, message, default_value, callback);
   }
+
+  fn set_dock_badge(&self, text: &str) {
+    wef::set_dock_badge(if text.is_empty() { None } else { Some(text) });
+  }
+
+  fn bounce_dock(&self, critical: bool) {
+    wef::bounce_dock(if critical {
+      wef::DockBounceType::Critical
+    } else {
+      wef::DockBounceType::Informational
+    });
+  }
+
+  fn set_dock_menu(&self, menu: Vec<denort::desktop::MenuItem>) {
+    let menu = menu
+      .into_iter()
+      .map(desktop_menu_item_to_wef_menu_item)
+      .collect::<Vec<_>>();
+    let tx = self.event_tx.clone();
+    wef::set_dock_menu(&menu, move |id: &str| {
+      let _ =
+        tx.send(deno_runtime::ops::desktop::DesktopEvent::DockMenuClick {
+          id: id.to_string(),
+        });
+    });
+  }
+
+  fn clear_dock_menu(&self) {
+    wef::clear_dock_menu();
+  }
+
+  fn set_dock_visible(&self, visible: bool) {
+    wef::set_dock_visible(visible);
+  }
 }
 
 fn desktop_menu_item_to_wef_menu_item(
@@ -1231,6 +1265,20 @@ async fn run_desktop(update_rolled_back: bool) -> Result<(), AnyError> {
         pending_responses: pending_responses.clone(),
         closed_windows: Arc::new(Mutex::new(HashSet::new())),
       };
+
+      // Forward macOS dock-reopen callbacks (clicking the dock icon while
+      // no windows are visible) into the shared event channel so JS can
+      // observe them as `Deno.dock` "reopen" events.
+      {
+        let reopen_tx = event_tx.0.clone();
+        wef::on_dock_reopen(move |has_visible_windows| {
+          let _ = reopen_tx.send(
+            deno_runtime::ops::desktop::DesktopEvent::DockReopen {
+              has_visible_windows,
+            },
+          );
+        });
+      }
 
       // Create the initial window and wire up event handlers.
       let window_id = api.create_window(800, 600);
