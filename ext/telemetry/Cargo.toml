@@ -1,8 +1,8 @@
-# Copyright 2018-2025 the Deno authors. MIT license.
+# Copyright 2018-2026 the Deno authors. MIT license.
 
 [package]
 name = "deno_telemetry"
-version = "0.34.0"
+version = "0.68.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -19,6 +19,7 @@ deno_core.workspace = true
 deno_error.workspace = true
 deno_net.workspace = true
 deno_signals.workspace = true
+deno_terminal.workspace = true
 deno_tls.workspace = true
 http-body-util.workspace = true
 hyper.workspace = true
@@ -29,13 +30,16 @@ once_cell.workspace = true
 opentelemetry.workspace = true
 opentelemetry-http.workspace = true
 opentelemetry-otlp.workspace = true
+opentelemetry-proto.workspace = true
 opentelemetry-semantic-conventions.workspace = true
 opentelemetry_sdk.workspace = true
+prost.workspace = true
 pin-project.workspace = true
 serde.workspace = true
+sys_traits.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
 tower-service.workspace = true
 
-[target.'cfg(any(target_os = "linux", target_os = "macos"))'.dependencies]
+[target.'cfg(any(target_os = "android", target_os = "linux", target_os = "macos"))'.dependencies]
 tokio-vsock.workspace = true

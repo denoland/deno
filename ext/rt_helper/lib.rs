@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::fs::File;
@@ -9,6 +9,8 @@ use std::io::Read;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
+
+use sys_traits::EnvTempDir;
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum LoadError {
@@ -26,6 +28,9 @@ pub enum LoadError {
     #[source]
     source: std::io::Error,
   },
+  #[class(inherit)]
+  #[error(transparent)]
+  Io(std::io::Error),
 }
 
 pub type DenoRtNativeAddonLoaderRc = Arc<dyn DenoRtNativeAddonLoader>;
@@ -49,7 +54,13 @@ pub trait DenoRtNativeAddonLoader: Send + Sync {
           .and_then(|p| p.file_stem())
           .map(|s| s.to_string_lossy())
           .unwrap_or("denort".into());
-        let real_path = resolve_temp_file_name(&exe_name, path, &bytes);
+        let real_path = resolve_temp_file_name(
+          &sys_traits::impls::RealSys,
+          &exe_name,
+          path,
+          &bytes,
+        )
+        .map_err(LoadError::Io)?;
         if let Err(err) = deno_path_util::fs::atomic_write_file(
           &sys_traits::impls::RealSys,
           &real_path,
@@ -117,10 +128,11 @@ fn file_matches_bytes(path: &Path, expected_bytes: &[u8]) -> bool {
 }
 
 fn resolve_temp_file_name(
+  sys: &impl EnvTempDir,
   current_exe_name: &str,
   path: &Path,
   bytes: &[u8],
-) -> PathBuf {
+) -> std::io::Result<PathBuf> {
   // should be deterministic
   let path_hash = {
     let mut hasher = twox_hash::XxHash64::default();
@@ -138,11 +150,17 @@ fn resolve_temp_file_name(
     file_name.push('.');
     file_name.push_str(&ext.to_string_lossy());
   }
-  std::env::temp_dir().join(&file_name)
+  Ok(sys.env_temp_dir()?.join(&file_name))
 }
 
 #[cfg(test)]
 mod test {
+  #![allow(clippy::disallowed_methods, reason = "test code")]
+
+  use sys_traits::EnvTempDir;
+  use sys_traits::FsCreateDirAll;
+  use sys_traits::impls::InMemorySys;
+
   use super::*;
 
   #[test]
@@ -161,12 +179,17 @@ mod test {
 
   #[test]
   fn test_resolve_temp_file_name() {
+    let sys = InMemorySys::default();
+    sys.fs_create_dir_all("/").unwrap();
     let file_path = PathBuf::from("/test/test.node");
     let bytes: [u8; 3] = [1, 2, 3];
-    let temp_file = resolve_temp_file_name("exe_name", &file_path, &bytes);
+    let temp_file =
+      resolve_temp_file_name(&sys, "exe_name", &file_path, &bytes).unwrap();
     assert_eq!(
       temp_file,
-      std::env::temp_dir()
+      sys
+        .env_temp_dir()
+        .unwrap()
         .join("exe_name1805603793990095570513255480333703631005.node")
     );
   }

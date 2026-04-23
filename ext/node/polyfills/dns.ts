@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -30,13 +30,15 @@ import {
   validateFunction,
   validateNumber,
   validateOneOf,
+  validatePort,
   validateString,
 } from "ext:deno_node/internal/validators.mjs";
 import { isIP } from "ext:deno_node/internal/net.ts";
 import {
+  dnsOrderToNumber,
   emitInvalidHostnameWarning,
+  getDefaultDnsOrder,
   getDefaultResolver,
-  getDefaultVerbatim,
   isFamily,
   isLookupCallback,
   isLookupOptions,
@@ -45,6 +47,7 @@ import {
   setDefaultResolver,
   setDefaultResultOrder,
   validateHints,
+  validDnsOrders,
 } from "ext:deno_node/internal/dns/utils.ts";
 import type {
   AnyAaaaRecord,
@@ -80,6 +83,8 @@ import {
   dnsException,
   ERR_INVALID_ARG_TYPE,
   ERR_INVALID_ARG_VALUE,
+  ERR_MISSING_ARGS,
+  handleDnsError,
 } from "ext:deno_node/internal/errors.ts";
 import {
   AI_ADDRCONFIG as ADDRCONFIG,
@@ -89,9 +94,13 @@ import {
 import cares, {
   type ChannelWrapQuery,
   GetAddrInfoReqWrap,
+  GetNameInfoReqWrap,
   QueryReqWrap,
 } from "ext:deno_node/internal_binding/cares_wrap.ts";
 import { domainToASCII } from "ext:deno_node/internal/idna.ts";
+import { primordials } from "ext:core/mod.js";
+
+const { ObjectDefineProperty } = primordials;
 
 function onlookup(
   this: GetAddrInfoReqWrap,
@@ -197,7 +206,7 @@ export function lookup(
   let hints = 0;
   let family = 0;
   let all = false;
-  let verbatim = getDefaultVerbatim();
+  let dnsOrder = getDefaultDnsOrder();
   let port = undefined;
 
   // Parse arguments
@@ -227,8 +236,19 @@ export function lookup(
     }
 
     if (options?.family != null) {
-      validateOneOf(options.family, "options.family", validFamilies);
-      family = options.family;
+      // Accept both numeric (0, 4, 6) and string ('IPv4', 'IPv6') family values
+      // to match Node.js behavior
+      switch (options.family) {
+        case "IPv4":
+          family = 4;
+          break;
+        case "IPv6":
+          family = 6;
+          break;
+        default:
+          validateOneOf(options.family, "options.family", validFamilies);
+          family = options.family;
+      }
     }
 
     if (options?.all != null) {
@@ -238,7 +258,16 @@ export function lookup(
 
     if (options?.verbatim != null) {
       validateBoolean(options.verbatim, "options.verbatim");
-      verbatim = options.verbatim;
+      dnsOrder = options.verbatim ? "verbatim" : "ipv4first";
+    }
+
+    if ((options as Record<string, unknown>)?.order != null) {
+      validateOneOf(
+        (options as Record<string, unknown>).order,
+        "options.order",
+        validDnsOrders,
+      );
+      dnsOrder = (options as Record<string, unknown>).order as string;
     }
 
     if (options?.port != null) {
@@ -285,7 +314,7 @@ export function lookup(
     domainToASCII(hostname),
     family,
     hints,
-    verbatim ? cares.DNS_ORDER_VERBATIM : cares.DNS_ORDER_IPV4_FIRST,
+    dnsOrderToNumber(dnsOrder),
   );
 
   if (err) {
@@ -302,6 +331,60 @@ export function lookup(
 
 Object.defineProperty(lookup, customPromisifyArgs, {
   value: ["address", "family"],
+  enumerable: false,
+});
+
+function onlookupservice(
+  this: GetNameInfoReqWrap,
+  err: Error | null,
+  hostname?: string,
+  service?: string,
+) {
+  if (err) {
+    return this.callback!(handleDnsError(err, "getnameinfo", this.address));
+  }
+
+  this.callback!(err, hostname, service);
+}
+
+export function lookupService(
+  address: string,
+  port: number,
+  callback: (
+    err: ErrnoException | null,
+    hostname?: string,
+    service?: string,
+  ) => void,
+): GetNameInfoReqWrap {
+  if (arguments.length !== 3) {
+    throw new ERR_MISSING_ARGS("address", "port", "callback");
+  }
+
+  if (isIP(address) === 0) {
+    throw new ERR_INVALID_ARG_VALUE("address", address);
+  }
+
+  port = validatePort(port);
+
+  validateFunction(callback, "callback");
+
+  const req = new GetNameInfoReqWrap();
+  req.callback = callback;
+  req.address = address;
+  req.port = port;
+  req.oncomplete = onlookupservice;
+
+  const errCode = cares.getnameinfo(req, address, port);
+  if (errCode) {
+    throw dnsException(errCode, "getnameinfo", address);
+  }
+
+  return req;
+}
+
+ObjectDefineProperty(lookupService, customPromisifyArgs, {
+  __proto__: null,
+  value: ["hostname", "service"],
   enumerable: false,
 });
 
@@ -920,6 +1003,7 @@ export const CANCELLED = "ECANCELLED";
 
 const promises = {
   ...promisesBase,
+  getDefaultResultOrder: getDefaultDnsOrder,
   setDefaultResultOrder,
   setServers,
 
@@ -949,6 +1033,8 @@ const promises = {
   ADDRGETNETWORKPARAMS,
   CANCELLED,
 };
+
+export { getDefaultDnsOrder as getDefaultResultOrder };
 
 export { ADDRCONFIG, ALL, promises, setDefaultResultOrder, V4MAPPED };
 
@@ -986,6 +1072,7 @@ export default {
   ALL,
   V4MAPPED,
   lookup,
+  lookupService,
   getServers,
   resolveAny,
   resolve4,
@@ -1003,6 +1090,7 @@ export default {
   Resolver,
   reverse,
   setServers,
+  getDefaultResultOrder: getDefaultDnsOrder,
   setDefaultResultOrder,
   promises,
   NODATA,

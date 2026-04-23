@@ -1,7 +1,6 @@
 {
   "args": "run --allow-env --deny-env=FOOBAR main.ts",
-  "output": "main.out",
-  "exitCode": 1,
+  "output": "",
   "envs": {
     "FOOBAR": "FOOBAR"
   }

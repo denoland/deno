@@ -1,0 +1,9 @@
+{
+  "tempDir": true,
+  "steps": [
+    {
+      "args": "bundle main.ts -o out.js",
+      "output": "[WILDCARD]\nBundled 1 module in [WILDCARD]s\n  out.js [WILDCARD]"
+    }
+  ]
+}

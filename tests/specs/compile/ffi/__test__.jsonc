@@ -9,6 +9,6 @@
   }, {
     "commandName": "./out",
     "args": [],
-    "output": "5\n"
+    "output": "something\n"
   }]
 }

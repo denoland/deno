@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use super::fmt::format_test_error;
 use super::fmt::to_relative_path_or_remote_url;
@@ -108,7 +108,10 @@ pub(super) fn report_summary(
   options: &TestFailureFormatOptions,
 ) {
   if !summary.failures.is_empty() || !summary.uncaught_errors.is_empty() {
-    #[allow(clippy::type_complexity)] // Type alias doesn't look better here
+    #[allow(
+      clippy::type_complexity,
+      reason = "Type alias doesn't look better here"
+    )]
     let mut failures_by_origin: BTreeMap<
       String,
       (

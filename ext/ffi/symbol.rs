@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use deno_error::JsErrorBox;
 
@@ -74,7 +74,10 @@ pub struct Symbol {
   pub result_type: NativeType,
 }
 
-#[allow(clippy::non_send_fields_in_send_ty)]
+#[allow(
+  clippy::non_send_fields_in_send_ty,
+  reason = "pointers are used for FFI interop"
+)]
 // SAFETY: unsafe trait must have unsafe implementation
 unsafe impl Send for Symbol {}
 // SAFETY: unsafe trait must have unsafe implementation

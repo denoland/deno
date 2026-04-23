@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 use std::future::Future;
 use std::io;
 use std::net::SocketAddr;
@@ -14,7 +14,7 @@ use hyper_util::client::legacy::connect::dns::Name;
 use tokio::task::JoinHandle;
 use tower::Service;
 
-#[allow(clippy::large_enum_variant)]
+#[allow(clippy::large_enum_variant, reason = "TODO: investigate")]
 #[derive(Clone, Debug)]
 pub enum Resolver {
   /// A resolver using blocking `getaddrinfo` calls in a threadpool.
@@ -55,7 +55,7 @@ impl Resolver {
   /// Create a [`AsyncResolver`] from system conf.
   pub fn hickory() -> Result<Self, hickory_resolver::ResolveError> {
     Ok(Self::Hickory(
-      hickory_resolver::Resolver::tokio_from_system_conf()?,
+      hickory_resolver::Resolver::builder_tokio()?.build(),
     ))
   }
 

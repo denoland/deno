@@ -1,23 +1,26 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
 
+use boxed_error::Boxed;
+use deno_bundle_runtime::BundleProvider;
 use deno_core::error::JsError;
 use deno_node::NodeRequireLoaderRc;
+use deno_node::ops::ipc::ChildIpcSerialization;
 use deno_path_util::url_from_file_path;
 use deno_path_util::url_to_file_path;
 use deno_resolver::npm::DenoInNpmPackageChecker;
 use deno_resolver::npm::NpmResolver;
 use deno_runtime::BootstrapOptions;
+use deno_runtime::CpuProfilerConfig;
 use deno_runtime::FeatureChecker;
 use deno_runtime::UNSTABLE_FEATURES;
 use deno_runtime::WorkerExecutionMode;
 use deno_runtime::WorkerLogLevel;
 use deno_runtime::colors;
-use deno_runtime::deno_broadcast_channel::InMemoryBroadcastChannel;
 use deno_runtime::deno_core;
 use deno_runtime::deno_core::CompiledWasmModuleStore;
 use deno_runtime::deno_core::Extension;
@@ -28,6 +31,7 @@ use deno_runtime::deno_core::SharedArrayBufferStore;
 use deno_runtime::deno_core::error::CoreError;
 use deno_runtime::deno_core::v8;
 use deno_runtime::deno_fs;
+use deno_runtime::deno_inspector_server::MainInspectorSessionChannel;
 use deno_runtime::deno_napi::DenoRtNativeAddonLoaderRc;
 use deno_runtime::deno_node::NodeExtInitServices;
 use deno_runtime::deno_node::NodeRequireLoader;
@@ -37,8 +41,8 @@ use deno_runtime::deno_process::NpmProcessStateProviderRc;
 use deno_runtime::deno_telemetry::OtelConfig;
 use deno_runtime::deno_tls::RootCertStoreProvider;
 use deno_runtime::deno_web::BlobStore;
+use deno_runtime::deno_web::InMemoryBroadcastChannel;
 use deno_runtime::fmt_errors::format_js_error;
-use deno_runtime::inspector_server::InspectorServer;
 use deno_runtime::ops::worker_host::CreateWebWorkerCb;
 use deno_runtime::web_worker::WebWorker;
 use deno_runtime::web_worker::WebWorkerOptions;
@@ -120,8 +124,10 @@ impl StorageKeyResolver {
 }
 
 pub fn get_cache_storage_dir() -> PathBuf {
-  // ok because this won't ever be used by the js runtime
-  #[allow(clippy::disallowed_methods)]
+  #[allow(
+    clippy::disallowed_methods,
+    reason = "ok because this won't ever be used by the js runtime"
+  )]
   // Note: we currently use temp_dir() to avoid managing storage size.
   std::env::temp_dir().join("deno_cache")
 }
@@ -131,8 +137,11 @@ pub fn get_cache_storage_dir() -> PathBuf {
 /// as a default. In case the platform is Linux and `DENO_USE_CGROUPS` is set,
 /// parse cgroup config to get the cgroup-constrained memory limit.
 pub fn create_isolate_create_params<TSys: DenoLibSys>(
-  // This is used only in Linux to get cgroup-constrained memory limit.
-  #[allow(unused_variables)] sys: &TSys,
+  #[allow(
+    unused_variables,
+    reason = "used only in Linux to get cgroup-constrained memory limit"
+  )]
+  sys: &TSys,
 ) -> Option<v8::CreateParams> {
   #[cfg(any(target_os = "android", target_os = "linux"))]
   {
@@ -153,6 +162,9 @@ pub fn create_isolate_create_params<TSys: DenoLibSys>(
 
 #[cfg(any(target_os = "android", target_os = "linux"))]
 mod linux {
+  use deno_runtime::deno_node::ops::process::cgroup::CgroupVersion;
+  use deno_runtime::deno_node::ops::process::cgroup::parse_self_cgroup;
+
   /// Get memory limit with cgroup (either v1 or v2) taken into account.
   pub(super) fn get_memory_limit<TSys: crate::sys::DenoLibSys>(
     sys: &TSys,
@@ -161,7 +173,7 @@ mod linux {
       .map(|mem_info| mem_info.total);
 
     // For performance, parse cgroup config only when DENO_USE_CGROUPS is set
-    if std::env::var("DENO_USE_CGROUPS").is_err() {
+    if sys.env_var_os("DENO_USE_CGROUPS").is_none() {
       return system_total_memory;
     }
 
@@ -193,108 +205,15 @@ mod linux {
 
     limit.or(system_total_memory)
   }
-
-  enum CgroupVersion<'a> {
-    V1 { cgroup_relpath: &'a str },
-    V2 { cgroup_relpath: &'a str },
-    None,
-  }
-
-  fn parse_self_cgroup(self_cgroup_content: &str) -> CgroupVersion<'_> {
-    // Initialize the cgroup version as None. This will be updated based on the parsed lines.
-    let mut cgroup_version = CgroupVersion::None;
-
-    // Iterate through each line in the cgroup content. Each line represents a cgroup entry.
-    for line in self_cgroup_content.lines() {
-      // Split the line into parts using ":" as the delimiter. The format is typically:
-      // "<hierarchy_id>:<subsystems>:<cgroup_path>"
-      let split = line.split(":").collect::<Vec<_>>();
-
-      match &split[..] {
-        // If the line specifies "memory" as the subsystem, it indicates cgroup v1 is used
-        // for memory management. Extract the relative path and update the cgroup version.
-        [_, "memory", cgroup_v1_relpath] => {
-          cgroup_version = CgroupVersion::V1 {
-            cgroup_relpath: cgroup_v1_relpath
-              .strip_prefix("/")
-              .unwrap_or(cgroup_v1_relpath),
-          };
-          // Break early since v1 explicitly manages memory, and no further checks are needed.
-          break;
-        }
-        // If the line starts with "0::", it indicates cgroup v2 is used. However, in hybrid
-        // mode, memory might still be managed by v1. Continue checking other lines to confirm.
-        ["0", "", cgroup_v2_relpath] => {
-          cgroup_version = CgroupVersion::V2 {
-            cgroup_relpath: cgroup_v2_relpath
-              .strip_prefix("/")
-              .unwrap_or(cgroup_v2_relpath),
-          };
-        }
-        _ => {}
-      }
-    }
-
-    cgroup_version
-  }
-
-  #[test]
-  fn test_parse_self_cgroup_v2() {
-    let self_cgroup = "0::/user.slice/user-1000.slice/session-3.scope";
-    let cgroup_version = parse_self_cgroup(self_cgroup);
-    assert!(matches!(
-      cgroup_version,
-      CgroupVersion::V2 { cgroup_relpath } if cgroup_relpath == "user.slice/user-1000.slice/session-3.scope"
-    ));
-  }
-
-  #[test]
-  fn test_parse_self_cgroup_hybrid() {
-    let self_cgroup = r#"12:rdma:/
-11:blkio:/user.slice
-10:devices:/user.slice
-9:cpu,cpuacct:/user.slice
-8:pids:/user.slice/user-1000.slice/session-3.scope
-7:memory:/user.slice/user-1000.slice/session-3.scope
-6:perf_event:/
-5:freezer:/
-4:net_cls,net_prio:/
-3:hugetlb:/
-2:cpuset:/
-1:name=systemd:/user.slice/user-1000.slice/session-3.scope
-0::/user.slice/user-1000.slice/session-3.scope
-"#;
-    let cgroup_version = parse_self_cgroup(self_cgroup);
-    assert!(matches!(
-      cgroup_version,
-      CgroupVersion::V1 { cgroup_relpath } if cgroup_relpath == "user.slice/user-1000.slice/session-3.scope"
-    ));
-  }
-
-  #[test]
-  fn test_parse_self_cgroup_v1() {
-    let self_cgroup = r#"11:hugetlb:/
-10:pids:/user.slice/user-1000.slice
-9:perf_event:/
-8:devices:/user.slice
-7:net_cls,net_prio:/
-6:memory:/
-5:blkio:/
-4:cpuset:/
-3:cpu,cpuacct:/
-2:freezer:/
-1:name=systemd:/user.slice/user-1000.slice/session-2.scope
-"#;
-    let cgroup_version = parse_self_cgroup(self_cgroup);
-    assert!(matches!(
-      cgroup_version,
-      CgroupVersion::V1 { cgroup_relpath } if cgroup_relpath.is_empty()
-    ));
-  }
 }
 
+#[derive(Debug, Boxed, deno_error::JsError)]
+pub struct ResolveNpmBinaryEntrypointError(
+  pub Box<ResolveNpmBinaryEntrypointErrorKind>,
+);
+
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
-pub enum ResolveNpmBinaryEntrypointError {
+pub enum ResolveNpmBinaryEntrypointErrorKind {
   #[class(inherit)]
   #[error(transparent)]
   PathToUrl(#[from] deno_path_util::PathToUrlError),
@@ -324,13 +243,12 @@ pub enum ResolveNpmBinaryEntrypointFallbackError {
 pub struct LibMainWorkerOptions {
   pub argv: Vec<String>,
   pub log_level: WorkerLogLevel,
-  pub enable_op_summary_metrics: bool,
   pub enable_raw_imports: bool,
   pub enable_testing_features: bool,
   pub has_node_modules_dir: bool,
   pub inspect_brk: bool,
   pub inspect_wait: bool,
-  pub strace_ops: Option<Vec<String>>,
+  pub trace_ops: Option<Vec<String>>,
   pub is_inspecting: bool,
   /// If this is a `deno compile`-ed executable.
   pub is_standalone: bool,
@@ -344,11 +262,12 @@ pub struct LibMainWorkerOptions {
   pub seed: Option<u64>,
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
   pub skip_op_registration: bool,
-  pub node_ipc: Option<i64>,
+  pub node_ipc_init: Option<(i64, ChildIpcSerialization)>,
   pub no_legacy_abort: bool,
   pub startup_snapshot: Option<&'static [u8]>,
   pub serve_port: Option<u16>,
   pub serve_host: Option<String>,
+  pub maybe_initial_cwd: Option<Url>,
 }
 
 #[derive(Default, Clone)]
@@ -365,7 +284,9 @@ struct LibWorkerFactorySharedState<TSys: DenoLibSys> {
   deno_rt_native_addon_loader: Option<DenoRtNativeAddonLoaderRc>,
   feature_checker: Arc<FeatureChecker>,
   fs: Arc<dyn deno_fs::FileSystem>,
-  maybe_inspector_server: Option<Arc<InspectorServer>>,
+  maybe_coverage_dir: Option<PathBuf>,
+  maybe_cpu_prof_config: Option<CpuProfilerConfig>,
+  main_inspector_session_tx: MainInspectorSessionChannel,
   module_loader_factory: Box<dyn ModuleLoaderFactory>,
   node_resolver:
     Arc<NodeResolver<DenoInNpmPackageChecker, NpmResolver<TSys>, TSys>>,
@@ -376,6 +297,7 @@ struct LibWorkerFactorySharedState<TSys: DenoLibSys> {
   storage_key_resolver: StorageKeyResolver,
   sys: TSys,
   options: LibMainWorkerOptions,
+  bundle_provider: Option<Arc<dyn BundleProvider>>,
 }
 
 impl<TSys: DenoLibSys> LibWorkerFactorySharedState<TSys> {
@@ -410,8 +332,6 @@ impl<TSys: DenoLibSys> LibWorkerFactorySharedState<TSys> {
   ) -> Arc<CreateWebWorkerCb> {
     let shared = self.clone();
     Arc::new(move |args| {
-      let maybe_inspector_server = shared.maybe_inspector_server.clone();
-
       let CreateModuleLoaderResult {
         module_loader,
         node_require_loader,
@@ -452,13 +372,63 @@ impl<TSys: DenoLibSys> LibWorkerFactorySharedState<TSys> {
         compiled_wasm_module_store: Some(
           shared.compiled_wasm_module_store.clone(),
         ),
-        maybe_inspector_server,
+        main_inspector_session_tx: shared.main_inspector_session_tx.clone(),
         feature_checker,
         npm_process_state_provider: Some(
           shared.npm_process_state_provider.clone(),
         ),
         permissions: args.permissions,
+        bundle_provider: shared.bundle_provider.clone(),
       };
+      let maybe_initial_cwd = shared.options.maybe_initial_cwd.clone();
+      // Apply resource limits to v8::CreateParams if specified.
+      // Uses individual V8 ResourceConstraints setters to match Node.js
+      // behavior (node_worker.cc UpdateResourceConstraints).
+      let (create_params, resolved_limits) = if let Some(ref limits) =
+        args.resource_limits
+      {
+        let mut params =
+          create_isolate_create_params(&shared.sys).unwrap_or_default();
+
+        if let Some(max_old) =
+          limits.max_old_generation_size_mb.filter(|&v| v > 0)
+        {
+          params =
+            params.set_max_old_generation_size_in_bytes(max_old * 1024 * 1024);
+        }
+        if let Some(max_young) =
+          limits.max_young_generation_size_mb.filter(|&v| v > 0)
+        {
+          params = params
+            .set_max_young_generation_size_in_bytes(max_young * 1024 * 1024);
+        }
+        if let Some(code_range) = limits.code_range_size_mb.filter(|&v| v > 0) {
+          params =
+            params.set_code_range_size_in_bytes(code_range * 1024 * 1024);
+        }
+
+        let mb = 1024 * 1024;
+        // Read back resolved values (including V8 defaults for
+        // unspecified fields), matching Node.js behavior.
+        // Note: integer division truncates sub-MB fractions, which is fine
+        // since V8 and Node.js both work in whole-MB granularity here.
+        let resolved = deno_node::ops::worker_threads::ResolvedResourceLimits {
+          max_young_generation_size_mb: params
+            .max_young_generation_size_in_bytes()
+            / mb,
+          max_old_generation_size_mb: params.max_old_generation_size_in_bytes()
+            / mb,
+          code_range_size_mb: params.code_range_size_in_bytes() / mb,
+          stack_size_mb: limits
+            .stack_size_mb
+            .unwrap_or(deno_node::ops::worker_threads::DEFAULT_STACK_SIZE_MB),
+        };
+
+        (Some(params), Some(resolved))
+      } else {
+        (create_isolate_create_params(&shared.sys), None)
+      };
+
       let options = WebWorkerOptions {
         name: args.name,
         main_module: args.main_module.clone(),
@@ -470,7 +440,6 @@ impl<TSys: DenoLibSys> LibWorkerFactorySharedState<TSys> {
             .map(|p| p.get())
             .unwrap_or(1),
           log_level: shared.options.log_level,
-          enable_op_summary_metrics: shared.options.enable_op_summary_metrics,
           enable_testing_features: shared.options.enable_testing_features,
           locale: deno_core::v8::icu::get_language_tag(),
           location: Some(args.main_module),
@@ -483,7 +452,7 @@ impl<TSys: DenoLibSys> LibWorkerFactorySharedState<TSys> {
           has_node_modules_dir: shared.options.has_node_modules_dir,
           argv0: shared.options.argv0.clone(),
           node_debug: shared.options.node_debug.clone(),
-          node_ipc_fd: None,
+          node_ipc_init: None,
           mode: WorkerExecutionMode::Worker,
           serve_port: shared.options.serve_port,
           serve_host: shared.options.serve_host.clone(),
@@ -493,25 +462,59 @@ impl<TSys: DenoLibSys> LibWorkerFactorySharedState<TSys> {
         },
         extensions: vec![],
         startup_snapshot: shared.options.startup_snapshot,
-        create_params: create_isolate_create_params(&shared.sys),
+        create_params,
         unsafely_ignore_certificate_errors: shared
           .options
           .unsafely_ignore_certificate_errors
           .clone(),
         seed: shared.options.seed,
         create_web_worker_cb,
-        format_js_error_fn: Some(Arc::new(format_js_error)),
+        format_js_error_fn: Some(Arc::new(move |a| {
+          format_js_error(a, maybe_initial_cwd.as_ref())
+        })),
         worker_type: args.worker_type,
         stdio: stdio.clone(),
         cache_storage_dir,
-        strace_ops: shared.options.strace_ops.clone(),
+        trace_ops: shared.options.trace_ops.clone(),
         close_on_idle: args.close_on_idle,
         maybe_worker_metadata: args.maybe_worker_metadata,
+        maybe_coverage_dir: shared.maybe_coverage_dir.clone(),
+        maybe_cpu_prof_config: shared.maybe_cpu_prof_config.clone(),
         enable_raw_imports: shared.options.enable_raw_imports,
-        enable_stack_trace_arg_in_ops: has_trace_permissions_enabled(),
+        enable_stack_trace_arg_in_ops: has_trace_permissions_enabled(
+          &shared.sys,
+        ),
       };
 
-      WebWorker::bootstrap_from_options(services, options)
+      let has_resource_limits = args.resource_limits.is_some();
+      let (mut worker, handle, bootstrap_options) =
+        WebWorker::from_options(services, options);
+
+      // Store resolved resource limits in the worker's op state BEFORE
+      // bootstrapping, so the worker_threads polyfill can read them
+      // via op during init.
+      if let Some(resolved) = resolved_limits {
+        worker.js_runtime.op_state().borrow_mut().put(resolved);
+      }
+
+      worker.bootstrap(&bootstrap_options);
+
+      // When resource limits are set, install a near-heap-limit callback
+      // that terminates the worker's isolate gracefully instead of
+      // crashing the entire process with a V8 fatal OOM.
+      if has_resource_limits {
+        let ts_handle = worker.js_runtime.v8_isolate().thread_safe_handle();
+        let oom_flag = worker.oom_triggered.clone();
+        worker.js_runtime.add_near_heap_limit_callback(
+          move |current_limit, _initial_limit| {
+            oom_flag.store(true, std::sync::atomic::Ordering::SeqCst);
+            ts_handle.terminate_execution();
+            current_limit * 2
+          },
+        );
+      }
+
+      (worker, handle)
     })
   }
 }
@@ -521,14 +524,15 @@ pub struct LibMainWorkerFactory<TSys: DenoLibSys> {
 }
 
 impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "construction")]
   pub fn new(
     blob_store: Arc<BlobStore>,
     code_cache: Option<Arc<dyn deno_runtime::code_cache::CodeCache>>,
     deno_rt_native_addon_loader: Option<DenoRtNativeAddonLoaderRc>,
     feature_checker: Arc<FeatureChecker>,
     fs: Arc<dyn deno_fs::FileSystem>,
-    maybe_inspector_server: Option<Arc<InspectorServer>>,
+    maybe_coverage_dir: Option<PathBuf>,
+    maybe_cpu_prof_config: Option<CpuProfilerConfig>,
     module_loader_factory: Box<dyn ModuleLoaderFactory>,
     node_resolver: Arc<
       NodeResolver<DenoInNpmPackageChecker, NpmResolver<TSys>, TSys>,
@@ -540,6 +544,7 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
     sys: TSys,
     options: LibMainWorkerOptions,
     roots: LibWorkerFactoryRoots,
+    bundle_provider: Option<Arc<dyn BundleProvider>>,
   ) -> Self {
     Self {
       shared: Arc::new(LibWorkerFactorySharedState {
@@ -550,7 +555,9 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
         deno_rt_native_addon_loader,
         feature_checker,
         fs,
-        maybe_inspector_server,
+        maybe_coverage_dir,
+        maybe_cpu_prof_config,
+        main_inspector_session_tx: MainInspectorSessionChannel::new(),
         module_loader_factory,
         node_resolver,
         npm_process_state_provider,
@@ -560,22 +567,24 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
         storage_key_resolver,
         sys,
         options,
+        bundle_provider,
       }),
     }
   }
 
-  #[allow(clippy::result_large_err)]
   pub fn create_main_worker(
     &self,
     mode: WorkerExecutionMode,
     permissions: PermissionsContainer,
     main_module: Url,
     preload_modules: Vec<Url>,
+    require_modules: Vec<Url>,
   ) -> Result<LibMainWorker, CoreError> {
     self.create_custom_worker(
       mode,
       main_module,
       preload_modules,
+      require_modules,
       permissions,
       vec![],
       Default::default(),
@@ -583,13 +592,13 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
     )
   }
 
-  #[allow(clippy::result_large_err)]
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "TODO: cleanup")]
   pub fn create_custom_worker(
     &self,
     mode: WorkerExecutionMode,
     main_module: Url,
     preload_modules: Vec<Url>,
+    require_modules: Vec<Url>,
     permissions: PermissionsContainer,
     custom_extensions: Vec<Extension>,
     stdio: deno_runtime::deno_io::Stdio,
@@ -646,7 +655,10 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
       feature_checker,
       permissions,
       v8_code_cache: shared.code_cache.clone(),
+      bundle_provider: shared.bundle_provider.clone(),
     };
+
+    let maybe_initial_cwd = shared.options.maybe_initial_cwd.clone();
 
     let options = WorkerOptions {
       bootstrap: BootstrapOptions {
@@ -656,7 +668,6 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
           .map(|p| p.get())
           .unwrap_or(1),
         log_level: shared.options.log_level,
-        enable_op_summary_metrics: shared.options.enable_op_summary_metrics,
         enable_testing_features: shared.options.enable_testing_features,
         locale: deno_core::v8::icu::get_language_tag(),
         location: shared.options.location.clone(),
@@ -669,7 +680,7 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
         has_node_modules_dir: shared.options.has_node_modules_dir,
         argv0: shared.options.argv0.clone(),
         node_debug: shared.options.node_debug.clone(),
-        node_ipc_fd: shared.options.node_ipc,
+        node_ipc_init: shared.options.node_ipc_init,
         mode,
         no_legacy_abort: shared.options.no_legacy_abort,
         serve_port: shared.options.serve_port,
@@ -685,18 +696,19 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
         .unsafely_ignore_certificate_errors
         .clone(),
       seed: shared.options.seed,
-      format_js_error_fn: Some(Arc::new(format_js_error)),
+      format_js_error_fn: Some(Arc::new(move |e| {
+        format_js_error(e, maybe_initial_cwd.as_ref())
+      })),
       create_web_worker_cb: shared.create_web_worker_callback(stdio.clone()),
-      maybe_inspector_server: shared.maybe_inspector_server.clone(),
       should_break_on_first_statement: shared.options.inspect_brk,
       should_wait_for_inspector_session: shared.options.inspect_wait,
-      strace_ops: shared.options.strace_ops.clone(),
+      trace_ops: shared.options.trace_ops.clone(),
       cache_storage_dir,
       origin_storage_dir,
       stdio,
       skip_op_registration: shared.options.skip_op_registration,
       enable_raw_imports: shared.options.enable_raw_imports,
-      enable_stack_trace_arg_in_ops: has_trace_permissions_enabled(),
+      enable_stack_trace_arg_in_ops: has_trace_permissions_enabled(&shared.sys),
       unconfigured_runtime,
     };
 
@@ -704,14 +716,19 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
       MainWorker::bootstrap_from_options(&main_module, services, options);
     worker.setup_memory_trim_handler();
 
+    // Store the main inspector session sender for worker debugging
+    let inspector = worker.js_runtime.inspector();
+    let session_tx = inspector.get_session_sender();
+    shared.main_inspector_session_tx.set(session_tx);
+
     Ok(LibMainWorker {
       main_module,
       preload_modules,
+      require_modules,
       worker,
     })
   }
 
-  #[allow(clippy::result_large_err)]
   pub fn resolve_npm_binary_entrypoint(
     &self,
     package_folder: &Path,
@@ -722,22 +739,26 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
       .node_resolver
       .resolve_binary_export(package_folder, sub_path)
     {
-      Ok(path) => Ok(url_from_file_path(&path)?),
+      Ok(bin_value) => Ok(url_from_file_path(bin_value.path())?),
       Err(original_err) => {
         // if the binary entrypoint was not found, fallback to regular node resolution
         let result =
           self.resolve_binary_entrypoint_fallback(package_folder, sub_path);
         match result {
           Ok(Some(path)) => Ok(url_from_file_path(&path)?),
-          Ok(None) => {
-            Err(ResolveNpmBinaryEntrypointError::ResolvePkgJsonBinExport(
+          Ok(None) => Err(
+            ResolveNpmBinaryEntrypointErrorKind::ResolvePkgJsonBinExport(
               original_err,
-            ))
-          }
-          Err(fallback_err) => Err(ResolveNpmBinaryEntrypointError::Fallback {
-            original: original_err,
-            fallback: fallback_err,
-          }),
+            )
+            .into_box(),
+          ),
+          Err(fallback_err) => Err(
+            ResolveNpmBinaryEntrypointErrorKind::Fallback {
+              original: original_err,
+              fallback: fallback_err,
+            }
+            .into_box(),
+          ),
         }
       }
     }
@@ -794,6 +815,7 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
 pub struct LibMainWorker {
   main_module: Url,
   preload_modules: Vec<Url>,
+  require_modules: Vec<Url>,
   worker: MainWorker,
 }
 
@@ -811,53 +833,89 @@ impl LibMainWorker {
   }
 
   #[inline]
-  pub fn create_inspector_session(&mut self) -> LocalInspectorSession {
-    self.worker.create_inspector_session()
+  pub fn create_inspector_session(
+    &mut self,
+    cb: deno_core::InspectorSessionSend,
+  ) -> LocalInspectorSession {
+    self.worker.create_inspector_session(cb)
   }
 
   #[inline]
-  #[allow(clippy::result_large_err)]
-  pub fn dispatch_load_event(&mut self) -> Result<(), JsError> {
+  pub fn dispatch_load_event(&mut self) -> Result<(), Box<JsError>> {
     self.worker.dispatch_load_event()
   }
 
   #[inline]
-  #[allow(clippy::result_large_err)]
-  pub fn dispatch_beforeunload_event(&mut self) -> Result<bool, JsError> {
+  pub fn dispatch_beforeunload_event(&mut self) -> Result<bool, Box<JsError>> {
     self.worker.dispatch_beforeunload_event()
   }
 
   #[inline]
-  #[allow(clippy::result_large_err)]
-  pub fn dispatch_process_beforeexit_event(&mut self) -> Result<bool, JsError> {
+  pub fn dispatch_process_beforeexit_event(
+    &mut self,
+  ) -> Result<bool, Box<JsError>> {
     self.worker.dispatch_process_beforeexit_event()
   }
 
   #[inline]
-  #[allow(clippy::result_large_err)]
-  pub fn dispatch_unload_event(&mut self) -> Result<(), JsError> {
+  pub fn dispatch_unload_event(&mut self) -> Result<(), Box<JsError>> {
     self.worker.dispatch_unload_event()
   }
 
   #[inline]
-  #[allow(clippy::result_large_err)]
-  pub fn dispatch_process_exit_event(&mut self) -> Result<(), JsError> {
+  pub fn dispatch_process_exit_event(&mut self) -> Result<(), Box<JsError>> {
     self.worker.dispatch_process_exit_event()
+  }
+
+  #[inline]
+  pub fn run_napi_ref_finalizers(&mut self) {
+    self.worker.run_napi_ref_finalizers()
   }
 
   pub async fn execute_main_module(&mut self) -> Result<(), CoreError> {
     let id = self.worker.preload_main_module(&self.main_module).await?;
-    self.worker.evaluate_module(id).await
+    self.worker.evaluate_module(id).await?;
+
+    // After loading and evaluating all modules, trim the glibc malloc arena.
+    // Module loading/TypeScript compilation creates heavy allocation churn
+    // that glibc's allocator doesn't release back to the OS, causing RSS on
+    // Linux to be much higher than on other platforms (see #25722).
+    #[cfg(all(target_os = "linux", target_env = "gnu"))]
+    {
+      // SAFETY: calling libc malloc_trim which is safe to call at any time.
+      unsafe {
+        libc::malloc_trim(0);
+      }
+    }
+
+    Ok(())
   }
 
   pub async fn execute_side_module(&mut self) -> Result<(), CoreError> {
     let id = self.worker.preload_side_module(&self.main_module).await?;
-    self.worker.evaluate_module(id).await
+    self.worker.evaluate_module(id).await?;
+
+    #[cfg(all(target_os = "linux", target_env = "gnu"))]
+    {
+      // SAFETY: calling libc malloc_trim which is safe to call at any time.
+      unsafe {
+        libc::malloc_trim(0);
+      }
+    }
+
+    Ok(())
   }
 
   pub async fn execute_preload_modules(&mut self) -> Result<(), CoreError> {
     for preload_module_url in self.preload_modules.iter() {
       let id = self.worker.preload_side_module(preload_module_url).await?;
+      self.worker.evaluate_module(id).await?;
+      self.worker.run_event_loop(false).await?;
+    }
+    // Even though we load as ESM here, these files will be forced to be loaded as CJS
+    // because of checks in get_known_mode_with_is_script
+    for require_module_url in self.require_modules.iter() {
+      let id = self.worker.preload_side_module(require_module_url).await?;
       self.worker.evaluate_module(id).await?;
       self.worker.run_event_loop(false).await?;
     }
@@ -890,6 +948,7 @@ impl LibMainWorker {
 
     self.worker.dispatch_unload_event()?;
     self.worker.dispatch_process_exit_event()?;
+    self.worker.run_napi_ref_finalizers();
 
     Ok(self.worker.exit_code())
   }

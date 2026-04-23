@@ -1,0 +1,10 @@
+{
+  "tempDir": true,
+  "tests": {
+    "empty_permissions_no_flag": {
+      "args": "bench main.ts",
+      "output": "pass.out",
+      "exitCode": 0
+    }
+  }
+}

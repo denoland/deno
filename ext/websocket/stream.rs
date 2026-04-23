@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 use std::io::ErrorKind;
 use std::pin::Pin;
 use std::task::Poll;
@@ -16,7 +16,7 @@ use tokio::io::AsyncWrite;
 use tokio::io::ReadBuf;
 
 // TODO(bartlomieju): remove this
-#[allow(clippy::large_enum_variant)]
+#[allow(clippy::large_enum_variant, reason = "TODO: investigate")]
 pub(crate) enum WsStreamKind {
   Upgraded(TokioIo<Upgraded>),
   Network(NetworkStream),

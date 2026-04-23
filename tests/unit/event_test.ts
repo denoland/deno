@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 import { assertEquals, assertStringIncludes } from "./test_util.ts";
 
 Deno.test(function eventInitializedWithType() {
@@ -140,6 +140,19 @@ Deno.test(function inspectEvent() {
     // check a substring because one property is a timestamp
     `Event {\n  bubbles: false,\n  cancelable: false,`,
   );
+});
+
+Deno.test(function removeEventListenerWithEmptyObjectOptions() {
+  const target = new EventTarget();
+  let callCount = 0;
+  const listener = () => {
+    callCount++;
+  };
+
+  target.addEventListener("foo", listener);
+  target.removeEventListener("foo", listener, {});
+  target.dispatchEvent(new Event("foo"));
+  assertEquals(callCount, 0);
 });
 
 Deno.test("default argument is null prototype", () => {

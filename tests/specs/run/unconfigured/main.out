@@ -2,4 +2,4 @@ true
 hello world
 EVENT: "Serving"
 
-[Object: null prototype] { success: true, code: 0, signal: null }
+[Object: null prototype] { code: 0, signal: null, success: true }

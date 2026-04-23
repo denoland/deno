@@ -1,0 +1,11 @@
+{
+  "version": 2,
+  "nodes": {
+    "file:///[WILDCARD]/README.md": {
+      "module_doc": {
+        "doc": "# Test\n"
+      },
+      "symbols": []
+    }
+  }
+}

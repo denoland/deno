@@ -5,7 +5,7 @@
     "output": "check.out",
     "exitCode": 1
   }, {
-    "args": "fmt",
+    "args": "fmt .",
     "output": "format.out"
   }, {
     "args": "run -R --unstable-raw-imports verify.ts",

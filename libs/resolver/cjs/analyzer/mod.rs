@@ -1,8 +1,10 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 
 use deno_error::JsErrorBox;
+use deno_maybe_sync::MaybeSend;
+use deno_maybe_sync::MaybeSync;
 use deno_media_type::MediaType;
 use node_resolver::analyze::CjsAnalysis as ExtNodeCjsAnalysis;
 use node_resolver::analyze::CjsAnalysisExports;
@@ -14,8 +16,6 @@ use url::Url;
 
 use super::CjsTrackerRc;
 use crate::npm::DenoInNpmPackageChecker;
-use crate::sync::MaybeSend;
-use crate::sync::MaybeSync;
 
 #[cfg(feature = "deno_ast")]
 mod deno_ast;
@@ -43,8 +43,8 @@ pub enum DenoCjsAnalysis {
 #[derive(Debug, Copy, Clone)]
 pub struct NodeAnalysisCacheSourceHash(pub u64);
 
-#[allow(clippy::disallowed_types)]
-pub type NodeAnalysisCacheRc = crate::sync::MaybeArc<dyn NodeAnalysisCache>;
+#[allow(clippy::disallowed_types, reason = "definition")]
+pub type NodeAnalysisCacheRc = deno_maybe_sync::MaybeArc<dyn NodeAnalysisCache>;
 
 pub trait NodeAnalysisCache: MaybeSend + MaybeSync {
   fn compute_source_hash(&self, source: &str) -> NodeAnalysisCacheSourceHash;
@@ -87,7 +87,7 @@ impl NodeAnalysisCache for NullNodeAnalysisCache {
 
 #[sys_traits::auto_impl]
 pub trait DenoCjsCodeAnalyzerSys:
-  sys_traits::FsRead + MaybeSend + MaybeSync + 'static
+  sys_traits::FsRead + sys_traits::FsMetadata + MaybeSend + MaybeSync + 'static
 {
 }
 
@@ -98,11 +98,14 @@ pub trait ModuleForExportAnalysis {
   fn analyze_es_runtime_exports(&self) -> ModuleExportsAndReExports;
 }
 
-#[allow(clippy::disallowed_types)]
+#[allow(clippy::disallowed_types, reason = "definition")]
 pub type ModuleExportAnalyzerRc =
-  crate::sync::MaybeArc<dyn ModuleExportAnalyzer>;
+  deno_maybe_sync::MaybeArc<dyn ModuleExportAnalyzer>;
 
-#[allow(clippy::disallowed_types)]
+#[allow(
+  clippy::disallowed_types,
+  reason = "source text is always stored as Arc<str>"
+)]
 type ArcStr = std::sync::Arc<str>;
 
 pub trait ModuleExportAnalyzer: MaybeSend + MaybeSync {
@@ -128,9 +131,9 @@ impl ModuleExportAnalyzer for NotImplementedModuleExportAnalyzer {
   }
 }
 
-#[allow(clippy::disallowed_types)]
+#[allow(clippy::disallowed_types, reason = "definition")]
 pub type DenoCjsCodeAnalyzerRc<TSys> =
-  crate::sync::MaybeArc<DenoCjsCodeAnalyzer<TSys>>;
+  deno_maybe_sync::MaybeArc<DenoCjsCodeAnalyzer<TSys>>;
 
 pub struct DenoCjsCodeAnalyzer<TSys: DenoCjsCodeAnalyzerSys> {
   cache: NodeAnalysisCacheRc,

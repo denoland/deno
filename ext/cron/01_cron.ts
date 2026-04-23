@@ -1,15 +1,22 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 import { core, internals, primordials } from "ext:core/mod.js";
-const {
-  isPromise,
-} = core;
 import { op_cron_create, op_cron_next } from "ext:core/ops";
 const {
   ArrayPrototypeJoin,
   NumberPrototypeToString,
+  SafeArrayIterator,
   TypeError,
 } = primordials;
+import {
+  builtinTracer,
+  ContextManager,
+  enterSpan,
+  PROPAGATORS,
+  restoreSnapshot,
+  TRACING_ENABLED,
+} from "ext:deno_telemetry/telemetry.ts";
+import { updateSpanFromError } from "ext:deno_telemetry/util.ts";
 
 export function formatToCronSchedule(
   value?: number | { exact: number | number[] } | {
@@ -157,14 +164,54 @@ function cron(
     let success = true;
     while (true) {
       const r = await op_cron_next(rid, success);
-      if (r === false) {
+      if (!r.active) {
         break;
       }
+      let span;
+      if (TRACING_ENABLED) {
+        let activeContext = ContextManager.active();
+        if (r.traceparent) {
+          for (const propagator of new SafeArrayIterator(PROPAGATORS)) {
+            activeContext = propagator.extract(activeContext, {}, {
+              get(_carrier, key) {
+                if (key === "traceparent") return r.traceparent;
+              },
+              keys(_carrier) {
+                return ["traceparent"];
+              },
+            });
+          }
+        }
+
+        span = builtinTracer().startSpan(
+          "deno.cron",
+          { kind: 0 },
+          activeContext,
+        );
+        span.setAttribute("deno.cron.name", name);
+        span.setAttribute("deno.cron.schedule", schedule);
+      }
       try {
-        const result = handler();
-        const _res = isPromise(result) ? (await result) : result;
+        if (span) {
+          const snapshot = enterSpan(span);
+          let result;
+          try {
+            result = handler();
+          } finally {
+            if (snapshot) restoreSnapshot(snapshot);
+          }
+          await result;
+          span.setStatus({ code: 1 });
+          span.end();
+        } else {
+          await handler();
+        }
         success = true;
       } catch (error) {
+        if (span) {
+          updateSpanFromError(span, error);
+          span.end();
+        }
         import.meta.log("error", `Exception in cron handler ${name}`, error);
         success = false;
       }

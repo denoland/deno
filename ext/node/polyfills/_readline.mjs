@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -133,12 +133,13 @@ Interface.prototype.question = function question(query, options, cb) {
     };
     options.signal.addEventListener("abort", onAbort, { once: true });
     const cleanup = () => {
-      options.signal.removeEventListener(onAbort);
+      options.signal.removeEventListener("abort", onAbort);
     };
-    cb = typeof cb === "function"
+    const originalCb = cb;
+    cb = typeof originalCb === "function"
       ? (answer) => {
         cleanup();
-        return cb(answer);
+        return originalCb(answer);
       }
       : cleanup;
   }

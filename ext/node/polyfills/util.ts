@@ -1,6 +1,6 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
-import { primordials } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 import { op_node_call_is_from_dependency } from "ext:core/ops";
 const {
   ArrayIsArray,
@@ -14,6 +14,7 @@ const {
   DatePrototypeGetSeconds,
   ErrorCaptureStackTrace,
   NumberPrototypeToString,
+  ObjectCreate,
   ObjectDefineProperty,
   ObjectKeys,
   ObjectSetPrototypeOf,
@@ -42,7 +43,6 @@ import {
 import { codes } from "ext:deno_node/internal/error_codes.ts";
 import types from "node:util/types";
 import { isDeepStrictEqual } from "ext:deno_node/internal/util/comparisons.ts";
-import process from "node:process";
 import {
   validateAbortSignal,
   validateNumber,
@@ -50,8 +50,17 @@ import {
   validateString,
 } from "ext:deno_node/internal/validators.mjs";
 import { parseArgs } from "ext:deno_node/internal/util/parse_args/parse_args.js";
+import { MIMEParams, MIMEType } from "ext:deno_node/internal/mime.ts";
 import * as abortSignal from "ext:deno_web/03_abort_signal.js";
 import { ERR_INVALID_ARG_TYPE } from "ext:deno_node/internal/errors.ts";
+import binding from "ext:deno_node/internal_binding/util.ts";
+import { validateOneOf } from "ext:deno_node/internal/validators.mjs";
+import { os as osConstants } from "ext:deno_node/internal_binding/constants.ts";
+
+let process: NodeJS.Process;
+const lazyLoadProcess = core.createLazyLoader<NodeJS.Process>(
+  "node:process",
+);
 
 export {
   callbackify,
@@ -60,6 +69,8 @@ export {
   format,
   formatWithOptions,
   inspect,
+  MIMEParams,
+  MIMEType,
   parseArgs,
   promisify,
   stripVTControlCharacters,
@@ -122,6 +133,7 @@ export function inherits<T, U>(
 import {
   _TextDecoder,
   _TextEncoder,
+  getSystemErrorMessage,
   getSystemErrorName,
 } from "ext:deno_node/_utils.ts";
 
@@ -191,6 +203,7 @@ const codesWarned = new SafeSet();
 // If --no-deprecation is set, then it is a no-op.
 // deno-lint-ignore no-explicit-any
 export function deprecate(fn: any, msg: string, code?: any) {
+  process ??= lazyLoadProcess();
   if (process.noDeprecation === true) {
     return fn;
   }
@@ -307,19 +320,44 @@ export function getCallSites(
   return capturedTraces;
 }
 
-export { getSystemErrorName, isDeepStrictEqual };
+export function parseEnv(
+  input: string,
+): Record<string, string> {
+  validateString(input, "content");
+  const parsed = binding.parseEnv(input);
+  const result = ObjectCreate(null);
+  const keys = ObjectKeys(parsed);
+  for (let i = 0; i < keys.length; i++) {
+    result[keys[i]] = parsed[keys[i]];
+  }
+  return result;
+}
+
+export function convertProcessSignalToExitCode(
+  signalCode: string,
+): number {
+  const { signals } = osConstants;
+  validateOneOf(signalCode, "signalCode", ObjectKeys(signals));
+  return 128 + signals[signalCode];
+}
+
+export { getSystemErrorMessage, getSystemErrorName, isDeepStrictEqual };
 
 export default {
   format,
   formatWithOptions,
   inspect,
   _extend,
+  convertProcessSignalToExitCode,
   getCallSites,
   getSystemErrorName,
+  getSystemErrorMessage,
   aborted,
   deprecate,
   callbackify,
   parseArgs,
+  MIMEParams,
+  MIMEType,
   promisify,
   inherits,
   types,
@@ -333,4 +371,5 @@ export default {
   isDeepStrictEqual,
   isArray,
   styleText,
+  parseEnv,
 };

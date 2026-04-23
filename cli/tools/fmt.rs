@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 //! This module provides file formatting utilities using
 //! [`dprint-plugin-typescript`](https://github.com/dprint/dprint-plugin-typescript).
@@ -21,6 +21,7 @@ use std::sync::atomic::Ordering;
 
 use async_trait::async_trait;
 use deno_ast::ParsedSource;
+use deno_config::deno_json::VueComponentCase as DenoVueComponentCase;
 use deno_config::glob::FileCollector;
 use deno_config::glob::FilePatterns;
 use deno_core::anyhow::Context;
@@ -48,6 +49,7 @@ use crate::cache::IncrementalCache;
 use crate::colors;
 use crate::factory::CliFactory;
 use crate::sys::CliSys;
+use crate::util;
 use crate::util::file_watcher;
 use crate::util::fs::canonicalize_path;
 use crate::util::path::get_extension;
@@ -165,6 +167,8 @@ fn resolve_paths_with_options_batches(
   cli_options: &CliOptions,
   fmt_flags: &FmtFlags,
 ) -> Result<Vec<PathsWithOptions>, AnyError> {
+  maybe_show_format_confirmation(cli_options, fmt_flags)?;
+
   let members_fmt_options =
     cli_options.resolve_fmt_options_for_members(fmt_flags)?;
   let mut paths_with_options_batches =
@@ -186,6 +190,37 @@ fn resolve_paths_with_options_batches(
   Ok(paths_with_options_batches)
 }
 
+fn maybe_show_format_confirmation(
+  cli_options: &CliOptions,
+  fmt_flags: &FmtFlags,
+) -> Result<(), AnyError> {
+  if fmt_flags.check
+    || !fmt_flags.files.include.is_empty()
+    || cli_options.workspace().deno_jsons().next().is_some()
+    || cli_options.workspace().package_jsons().next().is_some()
+  {
+    return Ok(());
+  }
+
+  let confirm_result =
+    util::console::confirm(util::console::ConfirmOptions {
+      default: true,
+      message: format!(
+        "{} It looks like you're not in a workspace. Are you sure you want to format the entire '{}' directory?",
+        colors::yellow("Warning"),
+        cli_options.initial_cwd().display()
+      ),
+    })
+    .unwrap_or(false);
+  if confirm_result {
+    Ok(())
+  } else {
+    bail!(
+      "Did not format non-workspace directory. Run again specifying the current directory (ex. `deno fmt .`)"
+    )
+  }
+}
+
 async fn format_files(
   caches: &Arc<Caches>,
   cli_options: &Arc<CliOptions>,
@@ -193,7 +228,8 @@ async fn format_files(
   paths_with_options_batches: Vec<PathsWithOptions>,
 ) -> Result<(), AnyError> {
   let formatter: Box<dyn Formatter> = if fmt_flags.check {
-    Box::new(CheckFormatter::default())
+    let fail_fast = fmt_flags.fail_fast || cli_options.is_quiet();
+    Box::new(CheckFormatter::new(fail_fast))
   } else {
     Box::new(RealFormatter::default())
   };
@@ -237,7 +273,7 @@ fn collect_fmt_files(
   .ignore_node_modules()
   .use_gitignore()
   .set_vendor_folder(cli_options.vendor_dir_path().map(ToOwned::to_owned))
-  .collect_file_patterns(&CliSys::default(), files)
+  .collect_file_patterns(&CliSys::default(), &files)
 }
 
 /// Formats markdown (using <https://github.com/dprint/dprint-plugin-markdown>) and its code blocks
@@ -329,7 +365,10 @@ fn format_markdown(
                 text: text.to_string(),
                 config: &codeblock_config,
                 external_formatter: Some(
-                  &create_external_formatter_for_typescript(unstable_options),
+                  &create_external_formatter_for_typescript(
+                    unstable_options,
+                    fmt_options,
+                  ),
                 ),
               },
             )
@@ -454,6 +493,13 @@ pub fn format_html(
             },
           )
         }
+        ext if ext.starts_with("markup-fmt-jinja-") => {
+          // Jinja/Nunjucks expressions may contain non-JS syntax (e.g.
+          // filters such as `|>`), so preserve the original text instead
+          // of passing it through the TypeScript formatter.
+          // Ref: https://github.com/g-plane/markup_fmt/blob/v0.27.0/src/ctx.rs
+          Ok(Cow::from(text))
+        }
         _ => {
           let mut typescript_config_builder =
             get_typescript_config_builder(fmt_options);
@@ -467,7 +513,10 @@ pub fn format_html(
               text: text.to_string(),
               config: &typescript_config,
               external_formatter: Some(
-                &create_external_formatter_for_typescript(unstable_options),
+                &create_external_formatter_for_typescript(
+                  unstable_options,
+                  fmt_options,
+                ),
               ),
             },
           )
@@ -536,6 +585,7 @@ pub fn format_html(
 /// A function for formatting embedded code blocks in JavaScript and TypeScript.
 fn create_external_formatter_for_typescript(
   unstable_options: &UnstableFmtOptions,
+  fmt_options: &FmtOptionsConfig,
 ) -> impl Fn(
   &str,
   String,
@@ -543,9 +593,12 @@ fn create_external_formatter_for_typescript(
 ) -> deno_core::anyhow::Result<Option<String>>
 + use<> {
   let unstable_sql = unstable_options.sql;
+  let markup_lang_opts = embedded_markup_language_options(fmt_options);
   move |lang, text, config| match lang {
     "css" => format_embedded_css(&text, config),
-    "html" | "xml" | "svg" => format_embedded_html(lang, &text, config),
+    "html" | "xml" | "svg" => {
+      format_embedded_html(lang, &text, config, &markup_lang_opts)
+    }
     "sql" => {
       if unstable_sql {
         format_embedded_sql(&text, config)
@@ -602,6 +655,7 @@ fn format_embedded_css(
       single_line_block_threshold: None,
       keyframe_selector_notation: None,
       attr_value_quotes: config::AttrValueQuotes::Always,
+      attr_selector_quotes: None,
       prefer_single_line: false,
       selectors_prefer_single_line: None,
       function_args_prefer_single_line: None,
@@ -667,6 +721,7 @@ fn format_embedded_html(
   lang: &str,
   text: &str,
   config: &dprint_plugin_typescript::configuration::Configuration,
+  lang_opts: &markup_fmt::config::LanguageOptions,
 ) -> deno_core::anyhow::Result<Option<String>> {
   use markup_fmt::config;
 
@@ -690,49 +745,7 @@ fn format_embedded_html(
         _ => config::LineBreak::Lf,
       },
     },
-    language: config::LanguageOptions {
-      quotes: config::Quotes::Double,
-      format_comments: false,
-      script_indent: false,
-      html_script_indent: None,
-      vue_script_indent: None,
-      svelte_script_indent: None,
-      astro_script_indent: None,
-      style_indent: false,
-      html_style_indent: None,
-      vue_style_indent: None,
-      svelte_style_indent: None,
-      astro_style_indent: None,
-      closing_bracket_same_line: false,
-      closing_tag_line_break_for_empty:
-        config::ClosingTagLineBreakForEmpty::Fit,
-      max_attrs_per_line: None,
-      prefer_attrs_single_line: false,
-      single_attr_same_line: false,
-      html_normal_self_closing: None,
-      html_void_self_closing: None,
-      component_self_closing: None,
-      svg_self_closing: None,
-      mathml_self_closing: None,
-      whitespace_sensitivity: config::WhitespaceSensitivity::Css,
-      component_whitespace_sensitivity: None,
-      doctype_keyword_case: config::DoctypeKeywordCase::Upper,
-      v_bind_style: None,
-      v_on_style: None,
-      v_for_delimiter_style: None,
-      v_slot_style: None,
-      component_v_slot_style: None,
-      default_v_slot_style: None,
-      named_v_slot_style: None,
-      v_bind_same_name_short_hand: None,
-      strict_svelte_attr: false,
-      svelte_attr_shorthand: None,
-      svelte_directive_shorthand: None,
-      astro_attr_shorthand: None,
-      script_formatter: None,
-      ignore_comment_directive: "deno-fmt-ignore".into(),
-      ignore_file_comment_directive: "deno-fmt-ignore-file".into(),
-    },
+    language: lang_opts.clone(),
   };
   let text = markup_fmt::format_text(text, language, &options, |code, _| {
     Ok::<_, std::convert::Infallible>(code.into())
@@ -863,6 +876,7 @@ pub fn format_file(
           config: &config,
           external_formatter: Some(&create_external_formatter_for_typescript(
             unstable_options,
+            fmt_options,
           )),
         },
       )?
@@ -887,7 +901,10 @@ pub fn format_parsed_source(
   dprint_plugin_typescript::format_parsed_source(
     parsed_source,
     &get_resolved_typescript_config(fmt_options),
-    Some(&create_external_formatter_for_typescript(unstable_options)),
+    Some(&create_external_formatter_for_typescript(
+      unstable_options,
+      fmt_options,
+    )),
   )
 }
 
@@ -905,10 +922,24 @@ trait Formatter {
   fn finish(&self) -> Result<(), AnyError>;
 }
 
-#[derive(Default)]
 struct CheckFormatter {
   not_formatted_files_count: Arc<AtomicUsize>,
   checked_files_count: Arc<AtomicUsize>,
+  fail_fast_found_error: Option<Arc<std::sync::atomic::AtomicBool>>,
+}
+
+impl CheckFormatter {
+  fn new(fail_fast: bool) -> Self {
+    Self {
+      not_formatted_files_count: Arc::new(AtomicUsize::new(0)),
+      checked_files_count: Arc::new(AtomicUsize::new(0)),
+      fail_fast_found_error: if fail_fast {
+        Some(Arc::new(std::sync::atomic::AtomicBool::new(false)))
+      } else {
+        None
+      },
+    }
+  }
 }
 
 #[async_trait]
@@ -927,7 +958,15 @@ impl Formatter for CheckFormatter {
     run_parallelized(paths, {
       let not_formatted_files_count = self.not_formatted_files_count.clone();
       let checked_files_count = self.checked_files_count.clone();
+      let fail_fast_found_error = self.fail_fast_found_error.clone();
       move |file_path| {
+        // Early exit if fail-fast is enabled and we've already found an error
+        if let Some(fast) = &fail_fast_found_error
+          && fast.load(Ordering::Relaxed)
+        {
+          return Ok(());
+        }
+
         checked_files_count.fetch_add(1, Ordering::Relaxed);
         let file = read_file_contents(&file_path)?;
 
@@ -947,6 +986,9 @@ impl Formatter for CheckFormatter {
         ) {
           Ok(Some(formatted_text)) => {
             not_formatted_files_count.fetch_add(1, Ordering::Relaxed);
+            if let Some(fast) = &fail_fast_found_error {
+              fast.store(true, Ordering::Relaxed);
+            }
             let _g = output_lock.lock();
             let diff =
               deno_resolver::display::diff(&file.text, &formatted_text);
@@ -967,6 +1009,9 @@ impl Formatter for CheckFormatter {
           }
           Err(e) => {
             not_formatted_files_count.fetch_add(1, Ordering::Relaxed);
+            if let Some(fast) = &fail_fast_found_error {
+              fast.store(true, Ordering::Relaxed);
+            }
             let _g = output_lock.lock();
             warn!("Error checking: {}", file_path.to_string_lossy());
             warn!(
@@ -1196,7 +1241,7 @@ fn format_stdin(
     None,
   )?;
   if fmt_flags.check {
-    #[allow(clippy::print_stdout)]
+    #[allow(clippy::print_stdout, reason = "actually want to output")]
     if formatted_text.is_some() {
       println!("Not formatted stdin");
     }
@@ -1398,6 +1443,12 @@ fn get_typescript_config_builder(
     options.space_surrounding_properties
   {
     builder.space_surrounding_properties(space_surrounding_properties);
+    builder.import_declaration_space_surrounding_named_imports(
+      space_surrounding_properties,
+    );
+    builder.export_declaration_space_surrounding_named_exports(
+      space_surrounding_properties,
+    );
   }
 
   builder
@@ -1492,6 +1543,7 @@ fn get_resolved_malva_config(
     single_line_block_threshold: None,
     keyframe_selector_notation: None,
     attr_value_quotes: AttrValueQuotes::Always,
+    attr_selector_quotes: None,
     prefer_single_line: false,
     selectors_prefer_single_line: None,
     function_args_prefer_single_line: None,
@@ -1528,18 +1580,45 @@ fn get_resolved_markup_fmt_config(
     line_break: LineBreak::Lf,
   };
 
+  // Start from the shared embedded defaults, then override for
+  // top-level component file formatting (script/style indent, Svelte
+  // shorthand, dprint script formatter).
   let language_options = LanguageOptions {
     script_formatter: Some(markup_fmt::config::ScriptFormatter::Dprint),
+    script_indent: true,
+    vue_script_indent: Some(false),
+    style_indent: true,
+    vue_style_indent: Some(false),
+    svelte_attr_shorthand: Some(true),
+    svelte_directive_shorthand: Some(true),
+    astro_attr_shorthand: Some(true),
+    ..embedded_markup_language_options(options)
+  };
+
+  FormatOptions {
+    layout: layout_options,
+    language: language_options,
+  }
+}
+
+/// Build `LanguageOptions` for embedded HTML/XML/SVG formatting (inside
+/// JS/TS tagged templates). Shares the vue/angular config resolution
+/// with `get_resolved_markup_fmt_config` to avoid duplication.
+fn embedded_markup_language_options(
+  options: &FmtOptionsConfig,
+) -> markup_fmt::config::LanguageOptions {
+  use markup_fmt::config::*;
+  LanguageOptions {
     quotes: Quotes::Double,
     format_comments: false,
-    script_indent: true,
+    script_indent: false,
     html_script_indent: None,
-    vue_script_indent: Some(false),
+    vue_script_indent: None,
     svelte_script_indent: None,
     astro_script_indent: None,
-    style_indent: true,
+    style_indent: false,
     html_style_indent: None,
-    vue_style_indent: Some(false),
+    vue_style_indent: None,
     svelte_style_indent: None,
     astro_style_indent: None,
     closing_bracket_same_line: false,
@@ -1562,19 +1641,43 @@ fn get_resolved_markup_fmt_config(
     component_v_slot_style: None,
     default_v_slot_style: None,
     named_v_slot_style: None,
+    vue_component_case: resolved_vue_component_case(options),
     v_bind_same_name_short_hand: None,
+    angular_next_control_flow_same_line:
+      resolved_angular_next_control_flow_same_line(options),
     strict_svelte_attr: false,
-    svelte_attr_shorthand: Some(true),
-    svelte_directive_shorthand: Some(true),
-    astro_attr_shorthand: Some(true),
+    svelte_attr_shorthand: None,
+    svelte_directive_shorthand: None,
+    astro_attr_shorthand: None,
+    script_formatter: None,
     ignore_comment_directive: "deno-fmt-ignore".into(),
     ignore_file_comment_directive: "deno-fmt-ignore-file".into(),
-  };
-
-  FormatOptions {
-    layout: layout_options,
-    language: language_options,
   }
+}
+
+fn resolved_vue_component_case(
+  options: &FmtOptionsConfig,
+) -> markup_fmt::config::VueComponentCase {
+  match options
+    .vue_component_case
+    .unwrap_or(DenoVueComponentCase::Ignore)
+  {
+    DenoVueComponentCase::Ignore => {
+      markup_fmt::config::VueComponentCase::Ignore
+    }
+    DenoVueComponentCase::PascalCase => {
+      markup_fmt::config::VueComponentCase::PascalCase
+    }
+    DenoVueComponentCase::KebabCase => {
+      markup_fmt::config::VueComponentCase::KebabCase
+    }
+  }
+}
+
+fn resolved_angular_next_control_flow_same_line(
+  options: &FmtOptionsConfig,
+) -> bool {
+  options.angular_next_control_flow_same_line.unwrap_or(true)
 }
 
 fn get_resolved_yaml_config(

@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use deno_ast::ParsedSource;
 use deno_graph::ast::CapturingEsParser;
@@ -26,7 +26,10 @@ impl<'a> LazyGraphSourceParser<'a> {
     Self { cache, graph }
   }
 
-  #[allow(clippy::result_large_err)]
+  #[allow(
+    clippy::result_large_err,
+    reason = "ParseDiagnostic is intentionally large"
+  )]
   pub fn get_or_parse_source(
     &self,
     module_specifier: &Url,
@@ -42,19 +45,25 @@ impl<'a> LazyGraphSourceParser<'a> {
   }
 }
 
-#[allow(clippy::disallowed_types)] // ok because we always store source text as Arc<str>
+#[allow(
+  clippy::disallowed_types,
+  reason = "source text is always stored as Arc<str>"
+)]
 type ArcStr = std::sync::Arc<str>;
 
-#[allow(clippy::disallowed_types)]
-pub type ParsedSourceCacheRc = crate::sync::MaybeArc<ParsedSourceCache>;
+#[allow(clippy::disallowed_types, reason = "definition")]
+pub type ParsedSourceCacheRc = deno_maybe_sync::MaybeArc<ParsedSourceCache>;
 
 #[derive(Debug, Default)]
 pub struct ParsedSourceCache {
-  sources: crate::sync::MaybeDashMap<Url, ParsedSource>,
+  sources: deno_maybe_sync::MaybeDashMap<Url, ParsedSource>,
 }
 
 impl ParsedSourceCache {
-  #[allow(clippy::result_large_err)]
+  #[allow(
+    clippy::result_large_err,
+    reason = "ParseDiagnostic is intentionally large"
+  )]
   pub fn get_parsed_source_from_js_module(
     &self,
     module: &deno_graph::JsModule,
@@ -66,7 +75,10 @@ impl ParsedSourceCache {
     )
   }
 
-  #[allow(clippy::result_large_err)]
+  #[allow(
+    clippy::result_large_err,
+    reason = "ParseDiagnostic is intentionally large"
+  )]
   pub fn get_matching_parsed_source(
     &self,
     specifier: &Url,
@@ -83,7 +95,11 @@ impl ParsedSourceCache {
     })
   }
 
-  #[allow(clippy::result_large_err, clippy::disallowed_types)]
+  #[allow(
+    clippy::result_large_err,
+    clippy::disallowed_types,
+    reason = "ParseDiagnostic is intentionally large, ArcStr type alias"
+  )]
   pub fn remove_or_parse_module(
     &self,
     specifier: &Url,
@@ -123,7 +139,10 @@ impl ParsedSourceCache {
     CapturingEsParser::new(None, self)
   }
 
-  #[allow(clippy::len_without_is_empty)]
+  #[allow(
+    clippy::len_without_is_empty,
+    reason = "is_empty is not needed for this type"
+  )]
   pub fn len(&self) -> usize {
     self.sources.len()
   }

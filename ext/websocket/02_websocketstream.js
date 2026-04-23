@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 /// <reference path="../../core/internal.d.ts" />
 
@@ -33,7 +33,7 @@ const {
 } = primordials;
 
 import * as webidl from "ext:deno_webidl/00_webidl.js";
-import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
+import { createFilteredInspectProxy } from "ext:deno_web/01_console.js";
 import { Deferred, writableStreamClose } from "ext:deno_web/06_streams.js";
 import { DOMException } from "ext:deno_web/01_dom_exception.js";
 import { add, remove } from "ext:deno_web/03_abort_signal.js";

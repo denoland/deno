@@ -1,20 +1,20 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
+use deno_maybe_sync::MaybeDashMap;
 use deno_media_type::MediaType;
 use node_resolver::InNpmPackageChecker;
 use node_resolver::PackageJsonResolverRc;
 use node_resolver::ResolutionMode;
-use node_resolver::errors::ClosestPkgJsonError;
+use node_resolver::errors::PackageJsonLoadError;
+use sys_traits::FsMetadata;
 use sys_traits::FsRead;
 use url::Url;
 
-use crate::sync::MaybeDashMap;
-
 pub mod analyzer;
 
-#[allow(clippy::disallowed_types)]
+#[allow(clippy::disallowed_types, reason = "definition")]
 pub type CjsTrackerRc<TInNpmPackageChecker, TSys> =
-  crate::sync::MaybeArc<CjsTracker<TInNpmPackageChecker, TSys>>;
+  deno_maybe_sync::MaybeArc<CjsTracker<TInNpmPackageChecker, TSys>>;
 
 /// Keeps track of what module specifiers were resolved as CJS.
 ///
@@ -22,18 +22,23 @@ pub type CjsTrackerRc<TInNpmPackageChecker, TSys> =
 /// be CJS or ESM after they're loaded based on their contents. So these
 /// files will be "maybe CJS" until they're loaded.
 #[derive(Debug)]
-pub struct CjsTracker<TInNpmPackageChecker: InNpmPackageChecker, TSys: FsRead> {
+pub struct CjsTracker<
+  TInNpmPackageChecker: InNpmPackageChecker,
+  TSys: FsRead + FsMetadata,
+> {
   is_cjs_resolver: IsCjsResolver<TInNpmPackageChecker, TSys>,
   known: MaybeDashMap<Url, ResolutionMode>,
+  require_modules: Vec<Url>,
 }
 
-impl<TInNpmPackageChecker: InNpmPackageChecker, TSys: FsRead>
+impl<TInNpmPackageChecker: InNpmPackageChecker, TSys: FsRead + FsMetadata>
   CjsTracker<TInNpmPackageChecker, TSys>
 {
   pub fn new(
     in_npm_pkg_checker: TInNpmPackageChecker,
     pkg_json_resolver: PackageJsonResolverRc<TSys>,
     mode: IsCjsResolutionMode,
+    require_modules: Vec<Url>,
   ) -> Self {
     Self {
       is_cjs_resolver: IsCjsResolver::new(
@@ -42,6 +47,7 @@ impl<TInNpmPackageChecker: InNpmPackageChecker, TSys: FsRead>
         mode,
       ),
       known: Default::default(),
+      require_modules,
     }
   }
 
@@ -52,7 +58,7 @@ impl<TInNpmPackageChecker: InNpmPackageChecker, TSys: FsRead>
     &self,
     specifier: &Url,
     media_type: MediaType,
-  ) -> Result<bool, ClosestPkgJsonError> {
+  ) -> Result<bool, PackageJsonLoadError> {
     self.treat_as_cjs_with_is_script(specifier, media_type, None)
   }
 
@@ -86,7 +92,7 @@ impl<TInNpmPackageChecker: InNpmPackageChecker, TSys: FsRead>
     specifier: &Url,
     media_type: MediaType,
     is_script: bool,
-  ) -> Result<bool, ClosestPkgJsonError> {
+  ) -> Result<bool, PackageJsonLoadError> {
     self.treat_as_cjs_with_is_script(specifier, media_type, Some(is_script))
   }
 
@@ -95,7 +101,7 @@ impl<TInNpmPackageChecker: InNpmPackageChecker, TSys: FsRead>
     specifier: &Url,
     media_type: MediaType,
     is_script: Option<bool>,
-  ) -> Result<bool, ClosestPkgJsonError> {
+  ) -> Result<bool, PackageJsonLoadError> {
     let kind = match self
       .get_known_mode_with_is_script(specifier, media_type, is_script)
     {
@@ -132,10 +138,12 @@ impl<TInNpmPackageChecker: InNpmPackageChecker, TSys: FsRead>
     media_type: MediaType,
     is_script: Option<bool>,
   ) -> Option<ResolutionMode> {
+    let is_from_require = self.require_modules.contains(specifier);
     self.is_cjs_resolver.get_known_mode_with_is_script(
       specifier,
       media_type,
       is_script,
+      is_from_require,
       &self.known,
     )
   }
@@ -156,14 +164,14 @@ pub enum IsCjsResolutionMode {
 #[derive(Debug)]
 pub struct IsCjsResolver<
   TInNpmPackageChecker: InNpmPackageChecker,
-  TSys: FsRead,
+  TSys: FsRead + FsMetadata,
 > {
   in_npm_pkg_checker: TInNpmPackageChecker,
   pkg_json_resolver: PackageJsonResolverRc<TSys>,
   mode: IsCjsResolutionMode,
 }
 
-impl<TInNpmPackageChecker: InNpmPackageChecker, TSys: FsRead>
+impl<TInNpmPackageChecker: InNpmPackageChecker, TSys: FsRead + FsMetadata>
   IsCjsResolver<TInNpmPackageChecker, TSys>
 {
   pub fn new(
@@ -204,6 +212,9 @@ impl<TInNpmPackageChecker: InNpmPackageChecker, TSys: FsRead>
       // treat these as unknown
       | MediaType::Css
       | MediaType::Html
+      | MediaType::Jsonc
+      | MediaType::Json5
+      | MediaType::Markdown
       | MediaType::SourceMap
       | MediaType::Sql
       | MediaType::Unknown => {
@@ -220,6 +231,7 @@ impl<TInNpmPackageChecker: InNpmPackageChecker, TSys: FsRead>
     specifier: &Url,
     media_type: MediaType,
     is_script: Option<bool>,
+    is_from_require: bool,
     known_cache: &MaybeDashMap<Url, ResolutionMode>,
   ) -> Option<ResolutionMode> {
     if specifier.scheme() != "file" {
@@ -251,9 +263,16 @@ impl<TInNpmPackageChecker: InNpmPackageChecker, TSys: FsRead>
       // treat these as unknown
       | MediaType::Css
       | MediaType::Html
+      | MediaType::Jsonc
+      | MediaType::Json5
+      | MediaType::Markdown
       | MediaType::SourceMap
       | MediaType::Sql
       | MediaType::Unknown => {
+        if is_from_require {
+          return Some(ResolutionMode::Require);
+        }
+
         if let Some(value) = known_cache.get(specifier).map(|v| *v) {
           if value == ResolutionMode::Require && is_script == Some(false) {
             // we now know this is actually esm
@@ -276,7 +295,7 @@ impl<TInNpmPackageChecker: InNpmPackageChecker, TSys: FsRead>
   fn check_based_on_pkg_json(
     &self,
     specifier: &Url,
-  ) -> Result<ResolutionMode, ClosestPkgJsonError> {
+  ) -> Result<ResolutionMode, PackageJsonLoadError> {
     if self.in_npm_pkg_checker.in_npm_package(specifier) {
       let Ok(path) = deno_path_util::url_to_file_path(specifier) else {
         return Ok(ResolutionMode::Require);

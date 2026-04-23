@@ -1,0 +1,3 @@
+[# this just ensures it goes to the original npm registry]
+Download http://localhost:4260/@jsr%2fdenotest__basic
+error: npm package '@jsr/denotest__basic' does not exist.

@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 // @ts-check
 /// <reference path="../../core/lib.deno_core.d.ts" />
@@ -38,13 +38,14 @@ const {
   TypedArrayPrototypeGetBuffer,
   TypedArrayPrototypeGetByteLength,
   TypedArrayPrototypeGetByteOffset,
+  TypedArrayPrototypeGetSymbolToStringTag,
   TypedArrayPrototypeSubarray,
   Uint32Array,
   Uint8Array,
 } = primordials;
 
 import * as webidl from "ext:deno_webidl/00_webidl.js";
-import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
+import { createFilteredInspectProxy } from "./01_console.js";
 
 class TextDecoder {
   /** @type {string} */
@@ -71,7 +72,15 @@ class TextDecoder {
       prefix,
       "Argument 2",
     );
-    const encoding = op_encoding_normalize_label(label);
+    // Fast path for common UTF-8 labels - avoid Rust op call
+    let encoding;
+    if (
+      label === "utf-8" || label === "utf8" || label === "unicode-1-1-utf-8"
+    ) {
+      encoding = "utf-8";
+    } else {
+      encoding = op_encoding_normalize_label(label);
+    }
     this.#encoding = encoding;
     this.#fatal = options.fatal;
     this.#ignoreBOM = options.ignoreBOM;
@@ -103,20 +112,31 @@ class TextDecoder {
    */
   decode(input = new Uint8Array(), options = undefined) {
     webidl.assertBranded(this, TextDecoderPrototype);
-    const prefix = "Failed to execute 'decode' on 'TextDecoder'";
     if (input !== undefined) {
-      input = webidl.converters.BufferSource(input, prefix, "Argument 1", {
-        allowShared: true,
-      });
+      // Fast path: skip full BufferSource validation for Uint8Array
+      if (
+        !(TypedArrayPrototypeGetSymbolToStringTag(input) === "Uint8Array") ||
+        isSharedArrayBuffer(TypedArrayPrototypeGetBuffer(input))
+      ) {
+        const prefix = "Failed to execute 'decode' on 'TextDecoder'";
+        input = webidl.converters.BufferSource(input, prefix, "Argument 1", {
+          allowShared: true,
+        });
+      }
     }
     let stream = false;
     if (options !== undefined) {
+      const prefix = "Failed to execute 'decode' on 'TextDecoder'";
       options = webidl.converters.TextDecodeOptions(
         options,
         prefix,
         "Argument 2",
       );
       stream = options.stream;
+    }
+
+    if (stream && input.length === 0) {
+      return "";
     }
 
     try {
@@ -224,13 +244,14 @@ class TextEncoder {
    */
   encode(input = "") {
     webidl.assertBranded(this, TextEncoderPrototype);
-    // The WebIDL type of `input` is `USVString`, but `core.encode` already
-    // converts lone surrogates to the replacement character.
-    input = webidl.converters.DOMString(
-      input,
-      "Failed to execute 'encode' on 'TextEncoder'",
-      "Argument 1",
-    );
+    // Fast path: if input is already a string, skip DOMString converter
+    if (typeof input !== "string") {
+      input = webidl.converters.DOMString(
+        input,
+        "Failed to execute 'encode' on 'TextEncoder'",
+        "Argument 1",
+      );
+    }
     return core.encode(input);
   }
 

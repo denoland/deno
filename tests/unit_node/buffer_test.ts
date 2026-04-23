@@ -1,7 +1,14 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
-import { Buffer } from "node:buffer";
+// Copyright 2018-2026 the Deno authors. MIT license.
+import {
+  Buffer,
+  constants,
+  File as BufferFile,
+  resolveObjectURL,
+} from "node:buffer";
 import { assertEquals, assertThrows } from "@std/assert";
 import { strictEqual } from "node:assert";
+
+const { MAX_STRING_LENGTH } = constants;
 
 Deno.test({
   name: "[node/buffer] alloc fails if size is not a number",
@@ -272,6 +279,29 @@ Deno.test({
 });
 
 Deno.test({
+  name: "[node/buffer] Buffer.allocUnsafe does not truncate lengths > 2^32",
+  ignore: true, // requires >4GB of memory
+  fn() {
+    const size = 2 ** 32 + 5;
+    const buf = Buffer.allocUnsafe(size);
+    assertEquals(buf.length, size);
+  },
+});
+
+Deno.test({
+  name: "[node/buffer] Buffer concat does not truncate buffers larger than 4GB",
+  ignore: true, // requires >4GB of memory
+  fn() {
+    const size = 2 ** 32 + 5;
+    const largeBuffer = Buffer.alloc(size);
+    largeBuffer.fill(111);
+    const result = Buffer.concat([largeBuffer]);
+    assertEquals(result.length, size);
+    assertEquals(Array.from(result.subarray(0, 5)), [111, 111, 111, 111, 111]);
+  },
+});
+
+Deno.test({
   name: "[node/buffer] Buffer 8 bit unsigned integers",
   fn() {
     const buffer = Buffer.from([0xff, 0x2a, 0x2a, 0x2a]);
@@ -476,6 +506,26 @@ Deno.test({
   },
 });
 
+// https://github.com/denoland/deno/issues/24908
+Deno.test({
+  name: "[node/buffer] Buffer from base64 with non-base64 characters",
+  fn() {
+    // Strings with hyphens should not throw
+    const buf1 = Buffer.from("base64-encoded-bytes-from-browser", "base64");
+    assertEquals(buf1.length, 24);
+    assertEquals(
+      buf1.toString("hex"),
+      "6dab1eeb8f9e9dca1d79df9bcad7acf9fae89be6eba30b1e",
+    );
+
+    const buf2 = Buffer.from("not-valid-base64!!!", "base64");
+    assertEquals(buf2.length, 12);
+
+    // Single character (too short for base64)
+    assertEquals(Buffer.from("A", "base64").length, 0);
+  },
+});
+
 Deno.test({
   name: "[node/buffer] Buffer to string base64",
   fn() {
@@ -669,5 +719,113 @@ Deno.test({
       Buffer.from([239, 187, 191, 97, 98]).toString("utf8"),
       "\uFEFFab",
     );
+  },
+});
+
+Deno.test({
+  name: "[node/buffer] throws ERR_STRING_TOO_LONG with the correct message",
+  fn() {
+    assertThrows(
+      () => {
+        Buffer.allocUnsafe(2 ** 31).toString();
+      },
+      Error,
+      `Cannot create a string longer than 0x${
+        MAX_STRING_LENGTH.toString(16)
+      } characters`,
+    );
+  },
+});
+
+Deno.test({
+  name:
+    "[node/buffer] Buffer.from with hex encoding should truncate first non-hex character",
+  fn() {
+    const buf = Buffer.from("00aafffz", "hex");
+    assertEquals(buf, Buffer.from([0x00, 0xaa, 0xff]));
+
+    const buf2 = Buffer.from("zz34", "hex");
+    assertEquals(buf2, Buffer.from([]));
+
+    const buf3 = Buffer.from("123😁aa", "hex");
+    assertEquals(buf3, Buffer.from([0x12]));
+  },
+});
+
+Deno.test({
+  name: "[node/buffer] File is exported from node:buffer",
+  fn() {
+    assertEquals(typeof BufferFile, "function");
+    const file = new BufferFile(["hello"], "hello.txt", {
+      type: "text/plain",
+    });
+    assertEquals(file.name, "hello.txt");
+    assertEquals(file.type, "text/plain");
+    assertEquals(file.size, 5);
+    assertEquals(file instanceof Blob, true);
+  },
+});
+
+Deno.test({
+  name: "[node/buffer] latin1Slice returns correct string",
+  fn() {
+    // deno-lint-ignore no-explicit-any
+    const buf: any = Buffer.of(1, 2, 3, 0xff);
+    assertEquals(buf.latin1Slice().length, 4);
+    assertEquals(buf.latin1Slice(), "\x01\x02\x03\xff");
+    assertEquals(buf.latin1Slice(1, 3), "\x02\x03");
+  },
+});
+
+Deno.test({
+  name: "[node/buffer] hexSlice returns correct string",
+  fn() {
+    // deno-lint-ignore no-explicit-any
+    const buf: any = Buffer.of(1, 2, 3, 0xff);
+    assertEquals(buf.hexSlice(), "010203ff");
+    assertEquals(buf.hexSlice(1, 3), "0203");
+  },
+});
+
+Deno.test({
+  name: "[node/buffer] resolveObjectURL resolves blob URL",
+  async fn() {
+    const blob = new Blob(["hello"]);
+    const url = URL.createObjectURL(blob);
+    try {
+      const resolved = resolveObjectURL(url);
+      assertEquals(resolved instanceof Blob, true);
+      assertEquals(resolved!.size, 5);
+      assertEquals(
+        Buffer.from(await resolved!.arrayBuffer()).toString(),
+        "hello",
+      );
+    } finally {
+      URL.revokeObjectURL(url);
+    }
+  },
+});
+
+Deno.test({
+  name: "[node/buffer] resolveObjectURL returns undefined for revoked URL",
+  fn() {
+    const blob = new Blob(["hello"]);
+    const url = URL.createObjectURL(blob);
+    URL.revokeObjectURL(url);
+    assertEquals(resolveObjectURL(url), undefined);
+  },
+});
+
+Deno.test({
+  name: "[node/buffer] resolveObjectURL returns undefined for invalid inputs",
+  fn() {
+    assertEquals(resolveObjectURL("not a url"), undefined);
+    assertEquals(resolveObjectURL("blob:nodedata:1:wrong"), undefined);
+    // deno-lint-ignore no-explicit-any
+    assertEquals(resolveObjectURL(undefined as any), undefined);
+    // deno-lint-ignore no-explicit-any
+    assertEquals(resolveObjectURL(1 as any), undefined);
+    // deno-lint-ignore no-explicit-any
+    assertEquals(resolveObjectURL({} as any), undefined);
   },
 });

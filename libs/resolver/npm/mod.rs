@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::fmt::Debug;
@@ -7,8 +7,11 @@ use std::path::PathBuf;
 
 use boxed_error::Boxed;
 use deno_error::JsError;
+use deno_maybe_sync::MaybeSend;
+use deno_maybe_sync::MaybeSync;
+use deno_maybe_sync::new_rc;
+use deno_semver::Version;
 use deno_semver::npm::NpmPackageReqReference;
-use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
 use deno_semver::package::PackageReqReference;
 use node_resolver::InNpmPackageChecker;
@@ -30,7 +33,6 @@ use node_resolver::errors::PackageNotFoundError;
 use node_resolver::errors::PackageResolveErrorKind;
 use node_resolver::errors::PackageSubpathFromDenoModuleResolveError;
 use node_resolver::errors::TypesNotFoundError;
-use node_resolver::types_package_name;
 use thiserror::Error;
 use url::Url;
 
@@ -47,9 +49,6 @@ pub use self::managed::ManagedNpmResolver;
 use self::managed::ManagedNpmResolverCreateOptions;
 pub use self::managed::ManagedNpmResolverRc;
 use self::managed::create_managed_in_npm_pkg_checker;
-use crate::sync::MaybeSend;
-use crate::sync::MaybeSync;
-use crate::sync::new_rc;
 
 mod byonm;
 mod local;
@@ -319,7 +318,7 @@ impl<TSys: NpmResolverSys> NpmResolver<TSys> {
         .resolve_pkg_folder_from_deno_module_req(req, referrer)
         .map_err(ResolvePkgFolderFromDenoReqError::Byonm),
       NpmResolver::Managed(managed_resolver) => managed_resolver
-        .resolve_pkg_folder_from_deno_module_req(req, referrer)
+        .resolve_pkg_folder_from_deno_module_req(req)
         .map_err(ResolvePkgFolderFromDenoReqError::Managed),
     }
   }
@@ -337,6 +336,28 @@ impl<TSys: NpmResolverSys> NpmPackageFolderResolver for NpmResolver<TSys> {
       }
       NpmResolver::Managed(managed_resolver) => managed_resolver
         .resolve_package_folder_from_package(specifier, referrer),
+    }
+  }
+
+  fn resolve_types_package_folder(
+    &self,
+    types_package_name: &str,
+    maybe_package_version: Option<&Version>,
+    maybe_referrer: Option<&UrlOrPathRef>,
+  ) -> Option<PathBuf> {
+    match self {
+      NpmResolver::Byonm(byonm_resolver) => byonm_resolver
+        .resolve_types_package_folder(
+          types_package_name,
+          maybe_package_version,
+          maybe_referrer,
+        ),
+      NpmResolver::Managed(managed_resolver) => managed_resolver
+        .resolve_types_package_folder(
+          types_package_name,
+          maybe_package_version,
+          maybe_referrer,
+        ),
     }
   }
 }
@@ -358,13 +379,13 @@ pub struct NpmReqResolverOptions<
   pub sys: TSys,
 }
 
-#[allow(clippy::disallowed_types)]
+#[allow(clippy::disallowed_types, reason = "definition")]
 pub type NpmReqResolverRc<
   TInNpmPackageChecker,
   TIsBuiltInNodeModuleChecker,
   TNpmPackageFolderResolver,
   TSys,
-> = crate::sync::MaybeArc<
+> = deno_maybe_sync::MaybeArc<
   NpmReqResolver<
     TInNpmPackageChecker,
     TIsBuiltInNodeModuleChecker,
@@ -492,41 +513,6 @@ impl<
     match resolution_result {
       Ok(url) => Ok(url),
       Err(err) => {
-        if err.as_types_not_found().is_some() {
-          let maybe_definitely_typed_req =
-            if let Some(npm_resolver) = self.npm_resolver.as_managed() {
-              let snapshot = npm_resolver.resolution().snapshot();
-              if let Some(nv) = snapshot.package_reqs().get(req) {
-                let type_req = find_definitely_typed_package(
-                  nv,
-                  snapshot.package_reqs().iter(),
-                );
-
-                type_req.map(|(r, _)| r).cloned()
-              } else {
-                None
-              }
-            } else {
-              Some(
-                PackageReq::from_str(&format!(
-                  "{}@*",
-                  types_package_name(&req.name)
-                ))
-                .unwrap(),
-              )
-            };
-          if let Some(req) = maybe_definitely_typed_req
-            && let Ok(resolved) = self.resolve_req_with_sub_path(
-              &req,
-              sub_path,
-              referrer,
-              resolution_mode,
-              resolution_kind,
-            )
-          {
-            return Ok(resolved);
-          }
-        }
         if matches!(self.npm_resolver, NpmResolver::Byonm(_)) {
           let package_json_path = package_folder.join("package.json");
           if !self.sys.fs_exists_no_err(&package_json_path) {
@@ -558,6 +544,36 @@ impl<
       resolution_kind,
     );
     match resolution_result {
+      Ok(NodeResolution::BuiltIn(builtin_name)) => {
+        // The specifier matches a Node built-in name (e.g. "events") but
+        // an npm package with the same name may be installed. Try resolving
+        // as an npm package first -- if found, the npm package takes
+        // precedence over the built-in, matching Node.js behavior where
+        // node_modules packages shadow built-ins.
+        match self.node_resolver.resolve_package(
+          specifier,
+          referrer,
+          resolution_mode,
+          resolution_kind,
+        ) {
+          Ok(res) => Ok(Some(res)),
+          Err(err) => {
+            let err_kind = err.into_kind();
+            match err_kind {
+              // If the npm package can't be found in node_modules, fall
+              // back to the built-in. Other errors (e.g. broken exports
+              // map) should propagate so the user gets a useful diagnostic.
+              NodeResolveErrorKind::PackageResolve(_) => {
+                Ok(Some(NodeResolution::BuiltIn(builtin_name)))
+              }
+              _ => Err(
+                ResolveIfForNpmPackageErrorKind::NodeResolve(err_kind.into())
+                  .into_box(),
+              ),
+            }
+          }
+        }
+      }
       Ok(res) => Ok(Some(res)),
       Err(err) => {
         let err = err.into_kind();
@@ -582,7 +598,7 @@ impl<
                 )
                 .into_box(),
               ),
-              PackageResolveErrorKind::ClosestPkgJson(_)
+              PackageResolveErrorKind::PkgJsonLoad(_)
               | PackageResolveErrorKind::InvalidModuleSpecifier(_)
               | PackageResolveErrorKind::ExportsResolve(_)
               | PackageResolveErrorKind::SubpathResolve(_) => Err(
@@ -656,40 +672,18 @@ impl<
   }
 }
 
-/// Attempt to choose the "best" `@types/*` package
-/// if possible. If multiple versions exist, try to match
-/// the major and minor versions of the `@types` package with the
-/// actual package, falling back to the latest @types version present.
-pub fn find_definitely_typed_package<'a>(
-  nv: &'a PackageNv,
-  packages: impl IntoIterator<Item = (&'a PackageReq, &'a PackageNv)>,
-) -> Option<(&'a PackageReq, &'a PackageNv)> {
-  let types_name = types_package_name(&nv.name);
-  let mut best_patch = 0;
-  let mut highest: Option<(&PackageReq, &PackageNv)> = None;
-  let mut best = None;
-
-  for (req, type_nv) in packages {
-    if type_nv.name != types_name {
-      continue;
-    }
-    if type_nv.version.major == nv.version.major
-      && type_nv.version.minor == nv.version.minor
-      && type_nv.version.patch >= best_patch
-      && type_nv.version.pre == nv.version.pre
-    {
-      best = Some((req, type_nv));
-      best_patch = type_nv.version.patch;
-    }
-
-    if let Some((_, highest_nv)) = highest {
-      if type_nv.version > highest_nv.version {
-        highest = Some((req, type_nv));
+pub(crate) fn join_package_name_to_path(
+  mut path: Cow<'_, Path>,
+  package_name: &str,
+) -> PathBuf {
+  // ensure backslashes are used on windows
+  for part in package_name.split('/') {
+    match path {
+      Cow::Borrowed(inner) => path = Cow::Owned(inner.join(part)),
+      Cow::Owned(ref mut path) => {
+        path.push(part);
       }
-    } else {
-      highest = Some((req, type_nv));
     }
   }
-
-  best.or(highest)
+  path.into_owned()
 }

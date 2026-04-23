@@ -1,10 +1,11 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 mod common;
 mod global;
 mod local;
 mod resolution;
 
+use std::borrow::Cow;
 use std::path::Path;
 use std::path::PathBuf;
 
@@ -15,17 +16,17 @@ use deno_npm::resolution::PackageCacheFolderIdNotFoundError;
 use deno_npm::resolution::PackageNvNotFoundError;
 use deno_npm::resolution::PackageReqNotFoundError;
 use deno_path_util::fs::canonicalize_path_maybe_not_exists;
-use deno_semver::package::PackageNv;
+use deno_semver::Version;
 use deno_semver::package::PackageReq;
 use node_resolver::InNpmPackageChecker;
 use node_resolver::NpmPackageFolderResolver;
 use node_resolver::UrlOrPathRef;
-use sys_traits::FsCanonicalize;
-use sys_traits::FsMetadata;
+use node_resolver::cache::NodeResolutionSys;
 use url::Url;
 
 use self::common::NpmPackageFsResolver;
 use self::global::GlobalNpmPackageResolver;
+use self::global::GlobalNpmPackageResolverSys;
 use self::local::LocalNpmPackageResolver;
 pub use self::resolution::NpmResolutionCell;
 pub use self::resolution::NpmResolutionCellRc;
@@ -89,7 +90,7 @@ pub enum ResolvePkgIdFromSpecifierError {
 
 pub struct ManagedNpmResolverCreateOptions<TSys: ManagedNpmResolverSys> {
   pub npm_cache_dir: NpmCacheDirRc,
-  pub sys: TSys,
+  pub sys: NodeResolutionSys<TSys>,
   pub maybe_node_modules_path: Option<PathBuf>,
   pub npm_system_info: NpmSystemInfo,
   pub npmrc: ResolvedNpmRcRc,
@@ -97,18 +98,18 @@ pub struct ManagedNpmResolverCreateOptions<TSys: ManagedNpmResolverSys> {
 }
 
 #[sys_traits::auto_impl]
-pub trait ManagedNpmResolverSys: FsCanonicalize + FsMetadata + Clone {}
+pub trait ManagedNpmResolverSys: GlobalNpmPackageResolverSys + Clone {}
 
-#[allow(clippy::disallowed_types)]
+#[allow(clippy::disallowed_types, reason = "definition")]
 pub type ManagedNpmResolverRc<TSys> =
-  crate::sync::MaybeArc<ManagedNpmResolver<TSys>>;
+  deno_maybe_sync::MaybeArc<ManagedNpmResolver<TSys>>;
 
 #[derive(Debug)]
 pub struct ManagedNpmResolver<TSys: ManagedNpmResolverSys> {
   fs_resolver: NpmPackageFsResolver<TSys>,
   npm_cache_dir: NpmCacheDirRc,
   resolution: NpmResolutionCellRc,
-  sys: TSys,
+  sys: NodeResolutionSys<TSys>,
 }
 
 impl<TSys: ManagedNpmResolverSys> ManagedNpmResolver<TSys> {
@@ -127,6 +128,7 @@ impl<TSys: ManagedNpmResolverSys> ManagedNpmResolver<TSys> {
         options.npm_cache_dir.clone(),
         options.npmrc.clone(),
         options.npm_resolution.clone(),
+        options.sys.clone(),
       )),
     };
 
@@ -162,7 +164,7 @@ impl<TSys: ManagedNpmResolverSys> ManagedNpmResolver<TSys> {
       .resolve_pkg_id_from_pkg_req(req)
       .ok()
       .and_then(|id| self.resolve_pkg_folder_from_pkg_id(&id).ok())
-      .map(|folder| self.sys.fs_exists_no_err(folder))
+      .map(|folder| self.sys.exists_(Cow::Owned(folder)))
       .unwrap_or(false)
   }
 
@@ -192,18 +194,16 @@ impl<TSys: ManagedNpmResolverSys> ManagedNpmResolver<TSys> {
     Ok(path)
   }
 
-  pub fn resolve_pkg_folder_from_deno_module(
+  pub fn resolve_pkg_id_from_deno_module_req(
     &self,
-    nv: &PackageNv,
-  ) -> Result<PathBuf, ResolvePkgFolderFromDenoModuleError> {
-    let pkg_id = self.resolution.resolve_pkg_id_from_deno_module(nv)?;
-    Ok(self.resolve_pkg_folder_from_pkg_id(&pkg_id)?)
+    req: &PackageReq,
+  ) -> Result<NpmPackageId, PackageReqNotFoundError> {
+    self.resolution.resolve_pkg_id_from_pkg_req(req)
   }
 
   pub fn resolve_pkg_folder_from_deno_module_req(
     &self,
     req: &PackageReq,
-    _referrer: &Url,
   ) -> Result<PathBuf, ManagedResolvePkgFolderFromDenoReqError> {
     let pkg_id = self.resolution.resolve_pkg_id_from_pkg_req(req)?;
     Ok(self.resolve_pkg_folder_from_pkg_id(&pkg_id)?)
@@ -256,6 +256,19 @@ impl<TSys: ManagedNpmResolverSys> NpmPackageFolderResolver
       path.display()
     );
     Ok(path)
+  }
+
+  fn resolve_types_package_folder(
+    &self,
+    types_package_name: &str,
+    maybe_package_version: Option<&Version>,
+    maybe_referrer: Option<&UrlOrPathRef>,
+  ) -> Option<PathBuf> {
+    self.fs_resolver.resolve_types_package_folder(
+      types_package_name,
+      maybe_package_version,
+      maybe_referrer,
+    )
   }
 }
 

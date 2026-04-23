@@ -1,4 +1,4 @@
-Check [WILDCARD]/meta.ts
+Check [WILDCARD]meta.ts
 import.meta.main: false
 import.meta.url: [WILDCARD]/meta.ts
     CPU | [WILDCARD]

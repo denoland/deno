@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 //! These represent the various types of TLS keys we support for both client and server
 //! connections.
@@ -31,6 +31,8 @@ use tokio::sync::mpsc;
 use tokio::sync::oneshot;
 use webpki::types::CertificateDer;
 use webpki::types::PrivateKeyDer;
+
+use crate::get_ssl_key_log;
 
 #[derive(Debug, thiserror::Error)]
 pub enum TlsKeyError {
@@ -68,7 +70,10 @@ pub enum TlsKeys {
 
 pub struct TlsKeysHolder(RefCell<TlsKeys>);
 
-impl deno_core::GarbageCollected for TlsKeysHolder {
+// SAFETY: we're sure `TlsKeysHolder` can be GCed
+unsafe impl deno_core::GarbageCollected for TlsKeysHolder {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"TlsKeyHolder"
   }
@@ -135,6 +140,7 @@ impl TlsKeyResolver {
     let mut tls_config = ServerConfig::builder()
       .with_no_client_auth()
       .with_single_cert(key.0, key.1.clone_key())?;
+    tls_config.key_log = get_ssl_key_log();
     tls_config.alpn_protocols = alpn;
     Ok(tls_config.into())
   }
@@ -234,7 +240,7 @@ impl TlsKeyResolver {
 }
 
 pub struct TlsKeyLookup {
-  #[allow(clippy::type_complexity)]
+  #[allow(clippy::type_complexity, reason = "complex type is necessary here")]
   resolution_rx: RefCell<
     mpsc::UnboundedReceiver<(
       String,
@@ -245,7 +251,10 @@ pub struct TlsKeyLookup {
     RefCell<HashMap<String, broadcast::Sender<Result<TlsKey, ErrorType>>>>,
 }
 
-impl deno_core::GarbageCollected for TlsKeyLookup {
+// SAFETY: we're sure `TlsKeyLookup` can be GCed
+unsafe impl deno_core::GarbageCollected for TlsKeyLookup {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"TlsKeyLookup"
   }
@@ -277,6 +286,8 @@ impl TlsKeyLookup {
 
 #[cfg(test)]
 pub mod tests {
+  #![allow(clippy::disallowed_methods, reason = "tests")]
+
   use deno_core::unsync::spawn;
 
   use super::*;

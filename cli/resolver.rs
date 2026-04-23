@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use deno_resolver::npm::DenoInNpmPackageChecker;
 use node_resolver::DenoIsBuiltInNodeModuleChecker;
@@ -10,11 +10,11 @@ pub type CliCjsTracker =
   deno_resolver::cjs::CjsTracker<DenoInNpmPackageChecker, CliSys>;
 pub type CliIsCjsResolver =
   deno_resolver::cjs::IsCjsResolver<DenoInNpmPackageChecker, CliSys>;
-pub type CliNpmReqResolver = deno_resolver::npm::NpmReqResolver<
+pub type CliNpmReqResolver<TSys = CliSys> = deno_resolver::npm::NpmReqResolver<
   DenoInNpmPackageChecker,
   DenoIsBuiltInNodeModuleChecker,
-  CliNpmResolver,
-  CliSys,
+  CliNpmResolver<TSys>,
+  TSys,
 >;
 pub type CliResolver = deno_resolver::graph::DenoResolver<
   DenoInNpmPackageChecker,

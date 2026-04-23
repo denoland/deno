@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::hash::Hash;
@@ -13,8 +13,8 @@ use url::Url;
 use super::DiskCache;
 use super::DiskCacheSys;
 
-#[allow(clippy::disallowed_types)]
-pub type EmitCacheRc<TSys> = crate::sync::MaybeArc<EmitCache<TSys>>;
+#[allow(clippy::disallowed_types, reason = "definition")]
+pub type EmitCacheRc<TSys> = deno_maybe_sync::MaybeArc<EmitCache<TSys>>;
 
 #[sys_traits::auto_impl]
 pub trait EmitCacheSys: DiskCacheSys + sys_traits::EnvVar {}

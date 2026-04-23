@@ -1,11 +1,11 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::collections::BTreeMap;
 
 use url::Url;
 
-#[allow(clippy::disallowed_types)]
-type UrlRc = crate::sync::MaybeArc<Url>;
+#[allow(clippy::disallowed_types, reason = "definition")]
+type UrlRc = deno_maybe_sync::MaybeArc<Url>;
 
 /// A map that stores values scoped to a specific directory
 /// on the file system.

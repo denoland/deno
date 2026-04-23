@@ -1,0 +1,57 @@
+{
+  "name": "@types/express",
+  "dist-tags": {
+    "ts6.0": "5.0.6",
+    "latest": "5.0.6",
+    "ts5.5": "5.0.6",
+    "ts5.4": "5.0.6",
+    "ts5.9": "5.0.6",
+    "ts5.6": "5.0.6",
+    "ts5.2": "5.0.6",
+    "ts5.8": "5.0.6",
+    "ts5.3": "5.0.6",
+    "ts5.7": "5.0.6"
+  },
+  "versions": {
+    "5.0.6": {
+      "name": "@types/express",
+      "version": "5.0.6",
+      "license": "MIT",
+      "_id": "@types/express@5.0.6",
+      "dist": {
+        "shasum": "2d724b2c990dcb8c8444063f3580a903f6d500cc",
+        "tarball": "http://localhost:4260/@types/express/express-5.0.6.tgz",
+        "fileCount": 5,
+        "integrity": "sha512-sKYVuV7Sv9fbPIt/442koC7+IIwK5olP1KWeD88e/idgoJqDm3JV/YUiPwkoKK92ylff2MGxSz1CSjsXelx0YA==",
+        "unpackedSize": 7576
+      },
+      "main": "",
+      "types": "index.d.ts",
+      "scripts": {},
+      "repository": {
+        "url": "https://github.com/DefinitelyTyped/DefinitelyTyped.git",
+        "type": "git",
+        "directory": "types/express"
+      },
+      "description": "TypeScript definitions for express",
+      "directories": {},
+      "dependencies": {
+        "@types/body-parser": "*",
+        "@types/serve-static": "^2",
+        "@types/express-serve-static-core": "^5.0.0"
+      },
+      "_hasShrinkwrap": false,
+      "peerDependencies": {},
+      "typeScriptVersion": "5.2",
+      "typesPublisherContentHash": "d4b85097ff826bcd411f53fe4b61bcdfa304d54cc0efb8e64b184f65d149d2f8"
+    }
+  },
+  "license": "MIT",
+  "homepage": "https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/express",
+  "repository": {
+    "url": "https://github.com/DefinitelyTyped/DefinitelyTyped.git",
+    "type": "git",
+    "directory": "types/express"
+  },
+  "description": "TypeScript definitions for express"
+}

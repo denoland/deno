@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::error::Error;
 use std::fmt;
@@ -10,7 +10,11 @@ use deno_core::serde::Serialize;
 use deno_core::serde::Serializer;
 use deno_core::sourcemap::SourceMap;
 use deno_graph::ModuleGraph;
+use deno_graph::ResolutionError;
+use deno_resolver::graph::enhanced_resolution_error_message;
 use deno_terminal::colors;
+
+use crate::graph_util::resolution_error_for_tsc_diagnostic;
 
 const MAX_SOURCE_LINE_LENGTH: usize = 150;
 
@@ -77,10 +81,10 @@ impl From<i64> for DiagnosticCategory {
 #[derive(Debug, Deserialize, Serialize, Clone, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct DiagnosticMessageChain {
-  message_text: String,
-  category: DiagnosticCategory,
-  code: i64,
-  next: Option<Vec<DiagnosticMessageChain>>,
+  pub message_text: String,
+  pub category: DiagnosticCategory,
+  pub code: i64,
+  pub next: Option<Vec<DiagnosticMessageChain>>,
 }
 
 impl DiagnosticMessageChain {
@@ -158,13 +162,10 @@ impl Diagnostic {
     maybe_range: Option<&deno_graph::Range>,
     additional_message: Option<String>,
   ) -> Self {
-    Self {
-      category: DiagnosticCategory::Error,
-      code: 2307,
-      start: maybe_range.map(|r| Position::from_deno_graph(r.range.start)),
-      end: maybe_range.map(|r| Position::from_deno_graph(r.range.end)),
-      original_source_start: None, // will be applied later
-      message_text: Some(format!(
+    Self::from_missing_error_with_message(
+      specifier,
+      maybe_range,
+      format!(
         "Cannot find module '{}'.{}{}",
         specifier,
         if additional_message.is_none() {
@@ -173,7 +174,22 @@ impl Diagnostic {
           " "
         },
         additional_message.unwrap_or_default()
-      )),
+      ),
+    )
+  }
+
+  pub fn from_missing_error_with_message(
+    specifier: &str,
+    maybe_range: Option<&deno_graph::Range>,
+    message: String,
+  ) -> Self {
+    Self {
+      category: DiagnosticCategory::Error,
+      code: 2307,
+      start: maybe_range.map(|r| Position::from_deno_graph(r.range.start)),
+      end: maybe_range.map(|r| Position::from_deno_graph(r.range.end)),
+      original_source_start: None, // will be applied later
+      message_text: Some(message),
       message_chain: None,
       source: None,
       source_line: None,
@@ -183,6 +199,39 @@ impl Diagnostic {
       reports_unnecessary: None,
       other: Default::default(),
       missing_specifier: Some(specifier.to_string()),
+    }
+  }
+
+  pub fn maybe_from_resolution_error(error: &ResolutionError) -> Option<Self> {
+    /// Some node resolution errors say "imported from '...'", but it's not
+    /// very useful in a tsc diagnostic because it already has the referrer
+    /// context, so remove that text
+    fn remove_imported_from(message: &mut String) {
+      let prefix = " imported from '";
+      if let Some(start) = message.find(prefix)
+        && let Some(end) = message[start + prefix.len()..].find('\'')
+      {
+        let end = start + prefix.len() + end + 1;
+        message.replace_range(start..end, "");
+      }
+    }
+
+    let error_ref = resolution_error_for_tsc_diagnostic(error)?;
+    if error_ref.is_module_not_found {
+      Some(Self::from_missing_error(
+        error_ref.specifier,
+        Some(error_ref.range),
+        None,
+      ))
+    } else {
+      let mut message = enhanced_resolution_error_message(error);
+      // the diagnostic already shows the location, so this is redundant
+      remove_imported_from(&mut message);
+      Some(Self::from_missing_error_with_message(
+        error_ref.specifier,
+        Some(error_ref.range),
+        message,
+      ))
     }
   }
 
@@ -325,6 +374,12 @@ impl fmt::Display for Diagnostic {
 #[derive(Clone, Debug, Default, Eq, PartialEq, deno_error::JsError)]
 #[class(generic)]
 pub struct Diagnostics(Vec<Diagnostic>);
+
+impl From<Vec<Diagnostic>> for Diagnostics {
+  fn from(diagnostics: Vec<Diagnostic>) -> Self {
+    Diagnostics(diagnostics)
+  }
+}
 
 impl Diagnostics {
   #[cfg(test)]

@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 // Copyright (c) The Rust Project Contributors
 
@@ -212,7 +212,7 @@ pub fn anon_pipe(
     //
     // Additionally we don't enable overlapped mode on this because most
     // client processes aren't enabled to work with that.
-    #[allow(clippy::disallowed_methods)]
+    #[allow(clippy::disallowed_methods, reason = "requires real OpenOptions")]
     let mut opts = OpenOptions::new();
     opts.write(ours_readable);
     opts.read(!ours_readable);

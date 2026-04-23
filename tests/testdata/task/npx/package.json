@@ -1,6 +1,0 @@
-{
-  "scripts": {
-    "non-existent": "npx this-command-should-not-exist-for-you",
-    "on-own": "npx"
-  }
-}

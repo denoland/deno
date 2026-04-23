@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::ptr;
 
@@ -28,7 +28,7 @@ pub enum StaticError {
 
 #[op2]
 pub fn op_ffi_get_static<'scope>(
-  scope: &mut v8::HandleScope<'scope>,
+  scope: &mut v8::PinScope<'scope, '_>,
   state: &mut OpState,
   #[smi] rid: ResourceId,
   #[string] name: String,

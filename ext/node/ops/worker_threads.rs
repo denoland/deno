@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::path::Path;
@@ -8,23 +8,32 @@ use deno_core::OpState;
 use deno_core::op2;
 use deno_core::url::Url;
 use deno_error::JsErrorBox;
-use sys_traits::FsCanonicalize;
-use sys_traits::FsMetadata;
+use deno_permissions::PermissionsContainer;
 
 use crate::ExtNodeSys;
-use crate::NodePermissions;
 use crate::NodeRequireLoaderRc;
 
+/// Default thread stack size in MB, matching Node.js default.
+pub const DEFAULT_STACK_SIZE_MB: usize = 4;
+
+/// Resolved resource limits with V8 defaults filled in for unspecified values.
+/// Stored in the worker's OpState so the JS polyfill can read actual values.
+#[derive(deno_core::serde::Serialize, Clone, Debug, Default, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ResolvedResourceLimits {
+  pub max_young_generation_size_mb: usize,
+  pub max_old_generation_size_mb: usize,
+  pub code_range_size_mb: usize,
+  pub stack_size_mb: usize,
+}
+
 #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
-fn ensure_read_permission<'a, P>(
+fn ensure_read_permission<'a>(
   state: &mut OpState,
   file_path: Cow<'a, Path>,
-) -> Result<Cow<'a, Path>, JsErrorBox>
-where
-  P: NodePermissions + 'static,
-{
+) -> Result<Cow<'a, Path>, JsErrorBox> {
   let loader = state.borrow::<NodeRequireLoaderRc>().clone();
-  let permissions = state.borrow_mut::<P>();
+  let permissions = state.borrow_mut::<PermissionsContainer>();
   loader.ensure_read_permission(permissions, file_path)
 }
 
@@ -44,11 +53,11 @@ pub enum WorkerThreadsFilenameError {
   #[error("Relative path entries must start with '.' or '..'")]
   InvalidRelativeUrl,
   #[class(generic)]
-  #[error("URL from Path-String")]
-  UrlFromPathString,
+  #[error(transparent)]
+  UrlFromPathString(#[from] deno_path_util::PathToUrlError),
   #[class(generic)]
-  #[error("URL to Path-String")]
-  UrlToPathString,
+  #[error(transparent)]
+  UrlToPathString(#[from] deno_path_util::UrlToFilePathError),
   #[class(generic)]
   #[error("URL to Path")]
   UrlToPath,
@@ -74,10 +83,7 @@ pub enum WorkerThreadsFilenameError {
 // todo(dsherret): we should remove this and do all this work inside op_create_worker
 #[op2(stack_trace)]
 #[string]
-pub fn op_worker_threads_filename<
-  P: NodePermissions + 'static,
-  TSys: ExtNodeSys + 'static,
->(
+pub fn op_worker_threads_filename<TSys: ExtNodeSys + 'static>(
   state: &mut OpState,
   #[string] specifier: &str,
 ) -> Result<Option<String>, WorkerThreadsFilenameError> {
@@ -91,24 +97,28 @@ pub fn op_worker_threads_filename<
     if path.is_relative() && !specifier.starts_with('.') {
       return Err(WorkerThreadsFilenameError::InvalidRelativeUrl);
     }
-    let path = ensure_read_permission::<P>(state, Cow::Borrowed(path))
+    let path = ensure_read_permission(state, Cow::Borrowed(path))
       .map_err(WorkerThreadsFilenameError::Permission)?;
     let sys = state.borrow::<TSys>();
-    let canonicalized_path =
-      deno_path_util::strip_unc_prefix(sys.fs_canonicalize(&path)?);
-    Url::from_file_path(canonicalized_path)
-      .map_err(|_| WorkerThreadsFilenameError::UrlFromPathString)?
+    let canonicalized_path = match sys.fs_canonicalize(&path) {
+      Ok(p) => Cow::Owned(deno_path_util::strip_unc_prefix(p)),
+      Err(_) => path,
+    };
+    deno_path_util::url_from_file_path(&canonicalized_path)?
   };
-  let url_path = url
-    .to_file_path()
-    .map_err(|_| WorkerThreadsFilenameError::UrlToPathString)?;
-  let url_path = ensure_read_permission::<P>(state, Cow::Owned(url_path))
+  let url_path = deno_path_util::url_to_file_path(&url)?;
+  let _url_path = ensure_read_permission(state, Cow::Owned(url_path))
     .map_err(WorkerThreadsFilenameError::Permission)?;
-  let sys = state.borrow::<TSys>();
-  if !sys.fs_exists_no_err(&url_path) {
-    return Err(WorkerThreadsFilenameError::FileNotFound(
-      url_path.to_path_buf(),
-    ));
-  }
   Ok(Some(url.into()))
+}
+
+/// Returns the resolved resource limits for this worker, or None if
+/// no resource limits were configured. Called from worker_threads
+/// polyfill during init to get actual V8 values (with defaults filled in).
+#[op2]
+#[serde]
+pub fn op_worker_get_resource_limits(
+  state: &mut OpState,
+) -> Option<ResolvedResourceLimits> {
+  state.try_borrow::<ResolvedResourceLimits>().cloned()
 }

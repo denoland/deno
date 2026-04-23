@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 // Validation logic in this file is shared with registry/api/src/ids.rs
 
@@ -339,5 +339,5 @@ fn collect_paths(
   .ignore_node_modules()
   .set_vendor_folder(cli_options.vendor_dir_path().map(ToOwned::to_owned))
   .use_gitignore()
-  .collect_file_patterns(&CliSys::default(), file_patterns)
+  .collect_file_patterns(&CliSys::default(), &file_patterns)
 }

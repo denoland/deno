@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 import { core, primordials } from "ext:core/mod.js";
 import { escapeName, withPermissions } from "ext:cli/40_test_common.js";
@@ -7,6 +7,7 @@ import { escapeName, withPermissions } from "ext:cli/40_test_common.js";
 const {
   op_register_test_step,
   op_register_test,
+  op_register_test_hook,
   op_test_event_step_result_failed,
   op_test_event_step_result_ignored,
   op_test_event_step_result_ok,
@@ -19,9 +20,13 @@ const {
   DateNow,
   Error,
   Map,
+  NumberIsNaN,
   MapPrototypeGet,
   MapPrototypeSet,
   SafeArrayIterator,
+  StringPrototypeLastIndexOf,
+  StringPrototypeSlice,
+  SymbolFor,
   SymbolToStringTag,
   TypeError,
 } = primordials;
@@ -79,6 +84,51 @@ const DenoNs = globalThis.Deno;
 
 /** @type {Map<number, TestState | TestStepState>} */
 const testStates = new Map();
+
+/**
+ * Symbol that test functions (or their wrappers) can carry to tell the test
+ * runner which source location to report for the test, instead of the call
+ * site of `Deno.test()` itself.
+ *
+ * The value must be a string in the format `"fileName:lineNumber:columnNumber"`,
+ * where `fileName` may be an absolute file URL or any remote URL.  Parsing
+ * works from the right so that URL schemes (which also contain `:`) are
+ * handled correctly.
+ *
+ * This is primarily intended for test-helper libraries (e.g. `@std/testing/bdd`)
+ * that call `Deno.test()` on behalf of the user: by setting this symbol on the
+ * wrapped function they can report the location in *user* code rather than the
+ * location inside the library itself.
+ */
+const TEST_LOCATION_SYMBOL = SymbolFor("Deno.test.location");
+
+/**
+ * Parse a location string of the form `"fileName:lineNumber:columnNumber"`.
+ * Parsing is done from the right so that file names that contain `:` (such as
+ * `file://` or `https://` URLs) are handled correctly.
+ *
+ * Returns `null` if the string is not a valid location.
+ *
+ * @param {string} str
+ * @returns {{ fileName: string, lineNumber: number, columnNumber: number } | null}
+ */
+function parseTestLocation(str) {
+  if (typeof str !== "string") return null;
+  const lastColon = StringPrototypeLastIndexOf(str, ":");
+  if (lastColon <= 0) return null;
+  const secondLastColon = StringPrototypeLastIndexOf(str, ":", lastColon - 1);
+  if (secondLastColon <= 0) return null;
+  const lineNumber = parseInt(
+    StringPrototypeSlice(str, secondLastColon + 1, lastColon),
+  );
+  const columnNumber = parseInt(StringPrototypeSlice(str, lastColon + 1));
+  if (NumberIsNaN(lineNumber) || NumberIsNaN(columnNumber)) return null;
+  return {
+    fileName: StringPrototypeSlice(str, 0, secondLastColon),
+    lineNumber,
+    columnNumber,
+  };
+}
 
 // Wrap test function in additional assertion that makes sure
 // that the test case does not accidentally exit prematurely.
@@ -298,7 +348,10 @@ function testInner(
     cachedOrigin = op_test_get_origin();
   }
 
-  testDesc.location = core.currentUserCallSite();
+  const locationOverride = parseTestLocation(
+    testDesc.fn[TEST_LOCATION_SYMBOL],
+  );
+  testDesc.location = locationOverride ?? core.currentUserCallSite();
   testDesc.fn = wrapTest(testDesc);
   testDesc.name = escapeName(testDesc.name);
 
@@ -313,6 +366,7 @@ function testInner(
     testDesc.location.lineNumber,
     testDesc.location.columnNumber,
     registerTestIdRetBufU8,
+    testDesc.sanitizeOnly ?? true,
   );
   testDesc.id = registerTestIdRetBuf[0];
   testDesc.origin = cachedOrigin;
@@ -342,6 +396,35 @@ test.only = function (
   maybeFn,
 ) {
   return testInner(nameOrFnOrOptions, optionsOrFn, maybeFn, { only: true });
+};
+
+function registerHook(hookType, fn) {
+  // No-op if we're not running in `deno test` subcommand.
+  if (typeof op_register_test_hook !== "function") {
+    return;
+  }
+
+  if (typeof fn !== "function") {
+    throw new TypeError(`Expected a function for ${hookType} hook`);
+  }
+
+  op_register_test_hook(hookType, fn);
+}
+
+test.beforeAll = function (fn) {
+  registerHook("beforeAll", fn);
+};
+
+test.beforeEach = function (fn) {
+  registerHook("beforeEach", fn);
+};
+
+test.afterEach = function (fn) {
+  registerHook("afterEach", fn);
+};
+
+test.afterAll = function (fn) {
+  registerHook("afterAll", fn);
 };
 
 function getFullName(desc) {

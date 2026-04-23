@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::ffi::OsStr;
 use std::ffi::OsString;
@@ -20,7 +20,10 @@ pub enum NpmProcessStateKind {
 }
 
 #[sys_traits::auto_impl]
-pub trait NpmProcessStateFromEnvVarSys: sys_traits::FsOpen {}
+pub trait NpmProcessStateFromEnvVarSys:
+  sys_traits::FsOpen + sys_traits::EnvVar + sys_traits::EnvRemoveVar
+{
+}
 
 /// The serialized npm process state which can be written to a file and then
 /// the FD or path can be passed to a spawned deno process via the

@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::sync::Arc;
 
@@ -6,8 +6,9 @@ use dashmap::DashMap;
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
-use deno_core::url::Url;
-use deno_npm::npm_rc::NpmRc;
+use deno_npm::resolution::NpmVersionResolver;
+use deno_npmrc::NpmRc;
+use deno_npmrc::NpmRegistryUrl;
 use deno_semver::Version;
 use deno_semver::package::PackageNv;
 use once_cell::sync::Lazy;
@@ -28,10 +29,14 @@ pub struct CliNpmSearchApi {
 }
 
 impl CliNpmSearchApi {
-  pub fn new(file_fetcher: Arc<CliFileFetcher>) -> Self {
+  pub fn new(
+    file_fetcher: Arc<CliFileFetcher>,
+    npm_version_resolver: Arc<NpmVersionResolver>,
+  ) -> Self {
     let resolver = NpmFetchResolver::new(
       file_fetcher.clone(),
       Arc::new(NpmRc::default().as_resolved(npm_registry_url()).unwrap()),
+      npm_version_resolver,
     );
     Self {
       file_fetcher,
@@ -54,7 +59,7 @@ impl PackageSearchApi for CliNpmSearchApi {
     if let Some(names) = self.search_cache.get(query) {
       return Ok(names.clone());
     }
-    let mut search_url = npm_registry_url().join("-/v1/search")?;
+    let mut search_url = npm_registry_url().url.join("-/v1/search")?;
     search_url
       .query_pairs_mut()
       .append_pair("text", &format!("{} boost-exact:false", query));
@@ -78,7 +83,12 @@ impl PackageSearchApi for CliNpmSearchApi {
       .package_info(name)
       .await
       .ok_or_else(|| anyhow!("npm package info not found: {}", name))?;
-    let mut versions = info.versions.keys().cloned().collect::<Vec<_>>();
+    let mut versions = self
+      .resolver
+      .applicable_version_infos(&info)
+      .map(|vi| &vi.version)
+      .cloned()
+      .collect::<Vec<_>>();
     versions.sort();
     versions.reverse();
     let versions = Arc::new(versions);
@@ -114,9 +124,9 @@ fn parse_npm_search_response(source: &str) -> Result<Vec<String>, AnyError> {
 }
 
 // this is buried here because generally you want to use the ResolvedNpmRc instead of this.
-fn npm_registry_url() -> &'static Url {
-  static NPM_REGISTRY_DEFAULT_URL: Lazy<Url> =
-    Lazy::new(|| deno_resolver::npmrc::npm_registry_url(&CliSys::default()));
+fn npm_registry_url() -> &'static NpmRegistryUrl {
+  static NPM_REGISTRY_DEFAULT_URL: Lazy<NpmRegistryUrl> =
+    Lazy::new(|| NpmRegistryUrl::for_npm(&CliSys::default()));
 
   &NPM_REGISTRY_DEFAULT_URL
 }

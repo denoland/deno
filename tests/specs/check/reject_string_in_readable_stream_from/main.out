@@ -1,4 +1,4 @@
-Check [WILDCARD]/main.ts
+Check [WILDCARD]main.ts
 TS2345 [ERROR]: Argument of type 'string' is not assignable to parameter of type 'AsyncIterable<string> | (Iterable<string | PromiseLike<string>> & object)'.
 ReadableStream.from("string");
                     ~~~~~~~~

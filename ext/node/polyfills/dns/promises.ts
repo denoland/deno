@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -21,8 +21,10 @@
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 import { promises } from "node:dns";
 export const {
+  getDefaultResultOrder,
   getServers,
   lookup,
+  lookupService,
   resolve,
   resolve4,
   resolve6,

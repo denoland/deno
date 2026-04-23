@@ -1,8 +1,9 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::collections::VecDeque;
+use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
 
@@ -17,10 +18,10 @@ use deno_lib::util::hash::FastInsecureHasher;
 use deno_resolver::deno_json::CompilerOptionsData;
 use deno_resolver::deno_json::CompilerOptionsParseError;
 use deno_resolver::deno_json::CompilerOptionsResolver;
+use deno_resolver::deno_json::JsxImportSourceConfigResolver;
 use deno_resolver::deno_json::ToMaybeJsxImportSourceConfigError;
-use deno_resolver::factory::WorkspaceDirectoryProvider;
 use deno_resolver::graph::maybe_additional_sloppy_imports_message;
-use deno_semver::npm::NpmPackageNvReference;
+use deno_semver::npm::NpmPackageReqReference;
 use deno_terminal::colors;
 use indexmap::IndexMap;
 use once_cell::sync::Lazy;
@@ -37,14 +38,13 @@ use crate::cache::TypeCheckCache;
 use crate::graph_util::BuildFastCheckGraphOptions;
 use crate::graph_util::ModuleGraphBuilder;
 use crate::graph_util::module_error_for_tsc_diagnostic;
-use crate::graph_util::resolution_error_for_tsc_diagnostic;
 use crate::node::CliNodeResolver;
+use crate::node::CliPackageJsonResolver;
 use crate::npm::CliNpmResolver;
 use crate::sys::CliSys;
 use crate::tsc;
 use crate::tsc::Diagnostics;
 use crate::tsc::TypeCheckingCjsTracker;
-use crate::util::path::to_percent_decoded_str;
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 #[class(type)]
@@ -59,8 +59,11 @@ pub struct FailedTypeCheckingError {
   can_skip: bool,
 }
 
+#[derive(Debug, boxed_error::Boxed, deno_error::JsError)]
+pub struct CheckError(pub Box<CheckErrorKind>);
+
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
-pub enum CheckError {
+pub enum CheckErrorKind {
   #[class(inherit)]
   #[error(transparent)]
   FailedTypeChecking(#[from] FailedTypeCheckingError),
@@ -105,14 +108,14 @@ pub struct TypeChecker {
   module_graph_builder: Arc<ModuleGraphBuilder>,
   node_resolver: Arc<CliNodeResolver>,
   npm_resolver: CliNpmResolver,
+  package_json_resolver: Arc<CliPackageJsonResolver>,
   sys: CliSys,
-  workspace_directory_provider: Arc<WorkspaceDirectoryProvider>,
   compiler_options_resolver: Arc<CompilerOptionsResolver>,
   code_cache: Option<Arc<crate::cache::CodeCache>>,
 }
 
 impl TypeChecker {
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "construction")]
   pub fn new(
     caches: Arc<Caches>,
     cjs_tracker: Arc<TypeCheckingCjsTracker>,
@@ -120,8 +123,8 @@ impl TypeChecker {
     module_graph_builder: Arc<ModuleGraphBuilder>,
     node_resolver: Arc<CliNodeResolver>,
     npm_resolver: CliNpmResolver,
+    package_json_resolver: Arc<CliPackageJsonResolver>,
     sys: CliSys,
-    workspace_directory_provider: Arc<WorkspaceDirectoryProvider>,
     compiler_options_resolver: Arc<CompilerOptionsResolver>,
     code_cache: Option<Arc<crate::cache::CodeCache>>,
   ) -> Self {
@@ -132,8 +135,8 @@ impl TypeChecker {
       module_graph_builder,
       node_resolver,
       npm_resolver,
+      package_json_resolver,
       sys,
-      workspace_directory_provider,
       compiler_options_resolver,
       code_cache,
     }
@@ -143,7 +146,6 @@ impl TypeChecker {
   ///
   /// It is expected that it is determined if a check and/or emit is validated
   /// before the function is called.
-  #[allow(clippy::result_large_err)]
   pub fn check(
     &self,
     graph: ModuleGraph,
@@ -178,7 +180,6 @@ impl TypeChecker {
   ///
   /// It is expected that it is determined if a check and/or emit is validated
   /// before the function is called.
-  #[allow(clippy::result_large_err)]
   pub fn check_diagnostics(
     &self,
     mut graph: ModuleGraph,
@@ -236,8 +237,14 @@ impl TypeChecker {
         graph,
         sys: &self.sys,
         cjs_tracker: &self.cjs_tracker,
+        jsx_import_source_config_resolver: Arc::new(
+          JsxImportSourceConfigResolver::from_compiler_options_resolver(
+            &self.compiler_options_resolver,
+          )?,
+        ),
         node_resolver: &self.node_resolver,
         npm_resolver: &self.npm_resolver,
+        _package_json_resolver: &self.package_json_resolver,
         compiler_options_resolver: &self.compiler_options_resolver,
         log_level: self.cli_options.log_level(),
         npm_check_state_hash: check_state_hash(&self.npm_resolver),
@@ -249,13 +256,17 @@ impl TypeChecker {
         options,
         seen_diagnotics: Default::default(),
         code_cache: self.code_cache.clone(),
+        initial_cwd: self.cli_options.initial_cwd().to_path_buf(),
+        current_dir: deno_path_util::url_from_directory_path(
+          self.cli_options.initial_cwd(),
+        )
+        .map_err(|e| CheckErrorKind::Other(JsErrorBox::from_err(e)))?,
       }),
     ))
   }
 
   /// Groups the roots based on the compiler options, which includes the
   /// resolved CompilerOptions and resolved compilerOptions.types
-  #[allow(clippy::result_large_err)]
   fn group_roots_by_compiler_options<'a>(
     &'a self,
     graph: &ModuleGraph,
@@ -280,17 +291,15 @@ impl TypeChecker {
         .clone();
       let group_key = (compiler_options, imports.clone());
       let group = groups_by_key.entry(group_key).or_insert_with(|| {
-        let dir = self.workspace_directory_provider.for_specifier(root);
+        let dir = self.cli_options.workspace().resolve_member_dir(root);
         CheckGroup {
           roots: Default::default(),
           compiler_options,
           imports,
           // this is slightly hacky. It's used as the referrer for resolving
           // npm imports in the key
-          referrer: self
-            .workspace_directory_provider
-            .for_specifier(root)
-            .maybe_deno_json()
+          referrer: dir
+            .member_or_root_deno_json()
             .map(|d| d.specifier.clone())
             .unwrap_or_else(|| dir.dir_url().as_ref().clone()),
         }
@@ -354,7 +363,10 @@ impl Iterator for DiagnosticsByFolderIterator<'_> {
   }
 }
 
-#[allow(clippy::large_enum_variant)]
+#[allow(
+  clippy::large_enum_variant,
+  reason = "large variant is used more often"
+)]
 enum DiagnosticsByFolderIteratorInner<'a> {
   Empty(Arc<ModuleGraph>),
   Real(DiagnosticsByFolderRealIterator<'a>),
@@ -364,8 +376,10 @@ struct DiagnosticsByFolderRealIterator<'a> {
   graph: Arc<ModuleGraph>,
   sys: &'a CliSys,
   cjs_tracker: &'a Arc<TypeCheckingCjsTracker>,
+  jsx_import_source_config_resolver: Arc<JsxImportSourceConfigResolver>,
   node_resolver: &'a Arc<CliNodeResolver>,
   npm_resolver: &'a CliNpmResolver,
+  _package_json_resolver: &'a Arc<CliPackageJsonResolver>,
   compiler_options_resolver: &'a CompilerOptionsResolver,
   type_check_cache: TypeCheckCache,
   groups: Vec<CheckGroup<'a>>,
@@ -375,6 +389,8 @@ struct DiagnosticsByFolderRealIterator<'a> {
   seen_diagnotics: HashSet<String>,
   options: CheckOptions,
   code_cache: Option<Arc<crate::cache::CodeCache>>,
+  initial_cwd: PathBuf,
+  current_dir: Url,
 }
 
 impl Iterator for DiagnosticsByFolderRealIterator<'_> {
@@ -409,7 +425,7 @@ impl Iterator for DiagnosticsByFolderRealIterator<'_> {
 /// Converts the list of ambient module names to regex string
 pub fn ambient_modules_to_regex_string(ambient_modules: &[String]) -> String {
   let mut regex_string = String::with_capacity(ambient_modules.len() * 8);
-  regex_string.push('(');
+  regex_string.push_str("^(");
   let last = ambient_modules.len() - 1;
   for (idx, part) in ambient_modules.iter().enumerate() {
     let trimmed = part.trim_matches('"');
@@ -420,23 +436,24 @@ pub fn ambient_modules_to_regex_string(ambient_modules: &[String]) -> String {
       regex_string.push('|');
     }
   }
-  regex_string.push(')');
+  regex_string.push_str(")$");
   regex_string
 }
 
 impl DiagnosticsByFolderRealIterator<'_> {
-  #[allow(clippy::too_many_arguments)]
-  #[allow(clippy::result_large_err)]
   fn check_diagnostics_in_folder(
     &self,
     check_group: &CheckGroup,
   ) -> Result<Diagnostics, CheckError> {
-    fn log_provided_roots(provided_roots: &[Url]) {
+    fn log_provided_roots(provided_roots: &[Url], current_dir: &Url) {
       for root in provided_roots {
         log::info!(
           "{} {}",
           colors::green("Check"),
-          to_percent_decoded_str(root.as_str())
+          crate::util::path::relative_specifier_path_for_display(
+            current_dir,
+            root
+          ),
         );
       }
     }
@@ -473,7 +490,7 @@ impl DiagnosticsByFolderRealIterator<'_> {
 
     if root_names.is_empty() {
       if missing_diagnostics.has_diagnostic() {
-        log_provided_roots(&check_group.roots);
+        log_provided_roots(&check_group.roots, &self.current_dir);
       }
       return Ok(missing_diagnostics);
     }
@@ -489,7 +506,7 @@ impl DiagnosticsByFolderRealIterator<'_> {
     }
 
     // log out the roots that we're checking
-    log_provided_roots(&check_group.roots);
+    log_provided_roots(&check_group.roots, &self.current_dir);
 
     // the first root will always either be the specifier that the user provided
     // or the first specifier in a directory
@@ -509,8 +526,10 @@ impl DiagnosticsByFolderRealIterator<'_> {
     // to make tsc build info work, we need to consistently hash modules, so that
     // tsc can better determine if an emit is still valid or not, so we provide
     // that data here.
+    let compiler_options = check_group.compiler_options.clone();
+
     let compiler_options_hash_data = FastInsecureHasher::new_deno_versioned()
-      .write_hashable(check_group.compiler_options)
+      .write_hashable(&compiler_options)
       .finish();
     let code_cache = self.code_cache.as_ref().map(|c| {
       let c: Arc<dyn deno_runtime::code_cache::CodeCache> = c.clone();
@@ -518,9 +537,12 @@ impl DiagnosticsByFolderRealIterator<'_> {
     });
     let response = tsc::exec(
       tsc::Request {
-        config: check_group.compiler_options.clone(),
+        config: compiler_options,
         debug: self.log_level == Some(log::Level::Debug),
         graph: self.graph.clone(),
+        jsx_import_source_config_resolver: self
+          .jsx_import_source_config_resolver
+          .clone(),
         hash_data: compiler_options_hash_data,
         maybe_npm: Some(tsc::RequestNpmState {
           cjs_tracker: self.cjs_tracker.clone(),
@@ -530,6 +552,7 @@ impl DiagnosticsByFolderRealIterator<'_> {
         maybe_tsbuildinfo,
         root_names,
         check_mode: self.options.type_check_mode,
+        initial_cwd: self.initial_cwd.clone(),
       },
       code_cache,
     )?;
@@ -629,7 +652,7 @@ struct GraphWalker<'a> {
 }
 
 impl<'a> GraphWalker<'a> {
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "construction")]
   pub fn new(
     graph: &'a ModuleGraph,
     sys: &'a CliSys,
@@ -672,8 +695,8 @@ impl<'a> GraphWalker<'a> {
   pub fn add_config_import(&mut self, specifier: &'a Url, referrer: &Url) {
     let specifier = self.graph.resolve(specifier);
     if self.seen.insert(specifier) {
-      match NpmPackageNvReference::from_specifier(specifier) {
-        Ok(nv_ref) => match self.resolve_npm_nv_ref(&nv_ref, referrer) {
+      match NpmPackageReqReference::from_specifier(specifier) {
+        Ok(req_ref) => match self.resolve_npm_req_ref(&req_ref, referrer) {
           Some(resolved) => {
             let mt = MediaType::from_specifier(&resolved);
             self.roots.push((resolved, mt));
@@ -711,7 +734,14 @@ impl<'a> GraphWalker<'a> {
   /// redirects resolved. We need to include all the emittable files in
   /// the roots, so they get type checked and optionally emitted,
   /// otherwise they would be ignored if only imported into JavaScript.
-  pub fn into_tsc_roots(self) -> TscRoots {
+  pub fn into_tsc_roots(mut self) -> TscRoots {
+    if self.has_seen_node_builtin && !self.roots.is_empty() {
+      // inject a specifier that will force node types to be resolved
+      self.roots.push((
+        ModuleSpecifier::parse("asset:///reference_types_node.d.ts").unwrap(),
+        MediaType::Dts,
+      ));
+    }
     TscRoots {
       roots: self.roots,
       missing_diagnostics: self.missing_diagnostics,
@@ -774,12 +804,16 @@ impl<'a> GraphWalker<'a> {
         Module::Node(_) => {
           if !self.has_seen_node_builtin {
             self.has_seen_node_builtin = true;
-            // inject a specifier that will resolve node types
-            self.roots.push((
-              ModuleSpecifier::parse("asset:///node_types.d.ts").unwrap(),
-              MediaType::Dts,
-            ));
           }
+        }
+      }
+
+      if module.media_type().is_declaration() {
+        let compiler_options_data = self
+          .compiler_options_resolver
+          .for_specifier(module.specifier());
+        if compiler_options_data.skip_lib_check() {
+          continue;
         }
       }
 
@@ -795,7 +829,9 @@ impl<'a> GraphWalker<'a> {
               }
             }
           }
-
+          if dep.is_dynamic {
+            continue;
+          }
           // only surface the code error if there's no type
           let dep_to_check_error = if dep.maybe_type.is_none() {
             &dep.maybe_code
@@ -804,16 +840,10 @@ impl<'a> GraphWalker<'a> {
           };
           if let deno_graph::Resolution::Err(resolution_error) =
             dep_to_check_error
-            && let Some(err) =
-              resolution_error_for_tsc_diagnostic(resolution_error)
+            && let Some(diagnostic) =
+              tsc::Diagnostic::maybe_from_resolution_error(resolution_error)
           {
-            self
-              .missing_diagnostics
-              .push(tsc::Diagnostic::from_missing_error(
-                err.specifier,
-                err.maybe_range,
-                None,
-              ));
+            self.missing_diagnostics.push(diagnostic);
           }
         }
       }
@@ -856,9 +886,12 @@ impl<'a> GraphWalker<'a> {
             }
           }
           MediaType::Json
+          | MediaType::Jsonc
+          | MediaType::Json5
           | MediaType::Wasm
           | MediaType::Css
           | MediaType::Html
+          | MediaType::Markdown
           | MediaType::SourceMap
           | MediaType::Sql
           | MediaType::Unknown => None,
@@ -927,22 +960,22 @@ impl<'a> GraphWalker<'a> {
     }
   }
 
-  fn resolve_npm_nv_ref(
+  fn resolve_npm_req_ref(
     &self,
-    nv_ref: &NpmPackageNvReference,
+    req_ref: &NpmPackageReqReference,
     referrer: &ModuleSpecifier,
   ) -> Option<ModuleSpecifier> {
     let pkg_dir = self
       .npm_resolver
       .as_managed()
       .unwrap()
-      .resolve_pkg_folder_from_deno_module(nv_ref.nv())
+      .resolve_pkg_folder_from_deno_module_req(req_ref.req())
       .ok()?;
     let resolved = self
       .node_resolver
       .resolve_package_subpath_from_deno_module(
         &pkg_dir,
-        nv_ref.sub_path(),
+        req_ref.sub_path(),
         Some(referrer),
         node_resolver::ResolutionMode::Import,
         node_resolver::NodeResolutionKind::Types,
@@ -972,6 +1005,9 @@ fn has_ts_check(media_type: MediaType, file_text: &str) -> bool {
     | MediaType::Dmts
     | MediaType::Tsx
     | MediaType::Json
+    | MediaType::Jsonc
+    | MediaType::Json5
+    | MediaType::Markdown
     | MediaType::Wasm
     | MediaType::Css
     | MediaType::Html
@@ -1097,6 +1133,6 @@ mod test {
       "*.css".to_string(),
       "$virtual/module".to_string(),
     ]);
-    assert_eq!(result, r"(foo|.*\.css|\$virtual/module)");
+    assert_eq!(result, r"^(foo|.*\.css|\$virtual/module)$");
   }
 }

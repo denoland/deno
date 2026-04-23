@@ -1,8 +1,8 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use serde_json::json;
 use test_util as util;
-use test_util::itest;
+use test_util::test;
 use util::PathRef;
 use util::TestContext;
 use util::TestContextBuilder;
@@ -67,6 +67,12 @@ fn fmt_test() {
   let badly_formatted_sql = t.path().join("badly_formatted.sql");
   badly_formatted_original_sql.copy(&badly_formatted_sql);
 
+  let fixed_vue = testdata_fmt_dir.join("badly_formatted_fixed.vue");
+  let badly_formatted_original_vue =
+    testdata_fmt_dir.join("badly_formatted.vue");
+  let badly_formatted_vue = t.path().join("badly_formatted.vue");
+  badly_formatted_original_vue.copy(&badly_formatted_vue);
+
   // First, check formatting by ignoring the badly formatted file.
   let output = context
     .new_command()
@@ -79,10 +85,10 @@ fn fmt_test() {
       "--unstable-yaml".to_string(),
       "--unstable-sql".to_string(),
       format!(
-        "--ignore={badly_formatted_js},{badly_formatted_md},{badly_formatted_json},{badly_formatted_css},{badly_formatted_html},{badly_formatted_component},{badly_formatted_yaml},{badly_formatted_ipynb},{badly_formatted_sql}",
+        "--ignore={badly_formatted_js},{badly_formatted_md},{badly_formatted_json},{badly_formatted_css},{badly_formatted_html},{badly_formatted_component},{badly_formatted_yaml},{badly_formatted_ipynb},{badly_formatted_sql},{badly_formatted_vue}",
       ),
       format!(
-        "--check {badly_formatted_js} {badly_formatted_md} {badly_formatted_json} {badly_formatted_css} {badly_formatted_html} {badly_formatted_component} {badly_formatted_yaml} {badly_formatted_ipynb} {badly_formatted_sql}",
+        "--check {badly_formatted_js} {badly_formatted_md} {badly_formatted_json} {badly_formatted_css} {badly_formatted_html} {badly_formatted_component} {badly_formatted_yaml} {badly_formatted_ipynb} {badly_formatted_sql} {badly_formatted_vue}",
       ),
     ])
     .run();
@@ -112,6 +118,7 @@ fn fmt_test() {
       badly_formatted_yaml.to_string(),
       badly_formatted_ipynb.to_string(),
       badly_formatted_sql.to_string(),
+      badly_formatted_vue.to_string(),
     ])
     .run();
 
@@ -138,6 +145,7 @@ fn fmt_test() {
       badly_formatted_yaml.to_string(),
       badly_formatted_ipynb.to_string(),
       badly_formatted_sql.to_string(),
+      badly_formatted_vue.to_string(),
     ])
     .run();
 
@@ -153,6 +161,7 @@ fn fmt_test() {
   let expected_yaml = fixed_yaml.read_to_string();
   let expected_ipynb = fixed_ipynb.read_to_string();
   let expected_sql = fixed_sql.read_to_string();
+  let expected_vue = fixed_vue.read_to_string();
   let actual_js = badly_formatted_js.read_to_string();
   let actual_md = badly_formatted_md.read_to_string();
   let actual_json = badly_formatted_json.read_to_string();
@@ -162,6 +171,7 @@ fn fmt_test() {
   let actual_yaml = badly_formatted_yaml.read_to_string();
   let actual_ipynb = badly_formatted_ipynb.read_to_string();
   let actual_sql = badly_formatted_sql.read_to_string();
+  let actual_vue = badly_formatted_vue.read_to_string();
   assert_eq!(expected_js, actual_js);
   assert_eq!(expected_md, actual_md);
   assert_eq!(expected_json, actual_json);
@@ -171,6 +181,7 @@ fn fmt_test() {
   assert_eq!(expected_yaml, actual_yaml);
   assert_eq!(expected_ipynb, actual_ipynb);
   assert_eq!(expected_sql, actual_sql);
+  assert_eq!(expected_vue, actual_vue);
 }
 
 #[test]
@@ -214,98 +225,12 @@ fn fmt_auto_ignore_git_and_node_modules() {
     .new_command()
     .current_dir(t)
     .env("NO_COLOR", "1")
-    .args("fmt")
+    .args("fmt .")
     .run();
 
   output.assert_exit_code(1);
   assert_eq!(output.combined_output(), "error: No target files found.\n");
 }
-
-itest!(fmt_quiet_check_fmt_dir {
-  args: "fmt --check --quiet fmt/regular/",
-  output_str: Some(""),
-  exit_code: 0,
-});
-
-itest!(fmt_check_formatted_files {
-  args: "fmt --check fmt/regular/formatted1.js fmt/regular/formatted2.ts fmt/regular/formatted3.markdown fmt/regular/formatted4.jsonc",
-  output: "fmt/expected_fmt_check_formatted_files.out",
-  exit_code: 0,
-});
-
-itest!(fmt_check_ignore {
-  args: "fmt --check --ignore=fmt/regular/formatted1.js fmt/regular/",
-  output: "fmt/expected_fmt_check_ignore.out",
-  exit_code: 0,
-});
-
-itest!(fmt_stdin {
-  args: "fmt -",
-  input: Some("const a = 1\n"),
-  output_str: Some("const a = 1;\n"),
-});
-
-itest!(fmt_stdin_markdown {
-  args: "fmt --ext=md -",
-  input: Some(
-    "# Hello      Markdown\n```ts\nconsole.log( \"text\")\n```\n\n```cts\nconsole.log( 5 )\n```"
-  ),
-  output_str: Some(
-    "# Hello Markdown\n\n```ts\nconsole.log(\"text\");\n```\n\n```cts\nconsole.log(5);\n```\n"
-  ),
-});
-
-itest!(fmt_stdin_json {
-  args: "fmt --ext=json -",
-  input: Some("{    \"key\":   \"value\"}"),
-  output_str: Some("{ \"key\": \"value\" }\n"),
-});
-
-itest!(fmt_stdin_ipynb {
-  args: "fmt --ext=ipynb -",
-  input: Some(include_str!("../testdata/fmt/badly_formatted.ipynb")),
-  output_str: Some(include_str!("../testdata/fmt/badly_formatted_fixed.ipynb")),
-});
-
-itest!(fmt_stdin_check_formatted {
-  args: "fmt --check -",
-  input: Some("const a = 1;\n"),
-  output_str: Some(""),
-});
-
-itest!(fmt_stdin_check_not_formatted {
-  args: "fmt --check -",
-  input: Some("const a = 1\n"),
-  output_str: Some("Not formatted stdin\n"),
-});
-
-itest!(fmt_with_config {
-  args: "fmt --config fmt/with_config/deno.jsonc fmt/with_config/subdir",
-  output: "fmt/fmt_with_config.out",
-});
-
-itest!(fmt_with_config_default {
-  args: "fmt fmt/with_config/subdir",
-  output: "fmt/fmt_with_config.out",
-});
-
-// Check if CLI flags take precedence
-itest!(fmt_with_config_and_flags {
-  args: "fmt --config fmt/with_config/deno.jsonc --ignore=fmt/with_config/subdir/a.ts,fmt/with_config/subdir/b.ts",
-  output: "fmt/fmt_with_config_and_flags.out",
-});
-
-itest!(fmt_with_malformed_config {
-  args: "fmt --config fmt/deno.malformed.jsonc",
-  output: "fmt/fmt_with_malformed_config.out",
-  exit_code: 1,
-});
-
-itest!(fmt_with_malformed_config2 {
-  args: "fmt --config fmt/deno.malformed2.jsonc",
-  output: "fmt/fmt_with_malformed_config2.out",
-  exit_code: 1,
-});
 
 #[test]
 fn fmt_with_glob_config() {
@@ -420,4 +345,135 @@ fn opt_out_top_level_exclude_via_fmt_unexclude() {
   assert_contains!(output, "main.ts");
   assert_contains!(output, "excluded.ts");
   assert_not_contains!(output, "actually_excluded.ts");
+}
+
+#[test(flaky)]
+fn test_tty_non_workspace_directory() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir().path();
+  temp_dir.join("main.ts").write("const a = 1;\n");
+  context.new_command().arg("fmt").with_pty(|mut pty| {
+    pty.expect("Are you sure you want to format the entire");
+    pty.write_raw("y\r\n");
+    pty.expect("Checked 1 file");
+  });
+
+  context.new_command().arg("fmt").with_pty(|mut pty| {
+    pty.expect("Are you sure you want to format");
+    pty.write_raw("n\r\n");
+    pty.expect("Did not format non-workspace directory");
+  });
+}
+
+#[test]
+fn fmt_check_fail_fast_stops_on_first_error() {
+  let context = TestContext::default();
+  let t = context.deno_dir();
+
+  // Create multiple badly formatted files
+  let bad1 = t.path().join("bad1.ts");
+  let bad2 = t.path().join("bad2.ts");
+  let bad3 = t.path().join("bad3.ts");
+
+  bad1.write("const a   =   1\n");
+  bad2.write("const b   =   2\n");
+  bad3.write("const c   =   3\n");
+
+  // Run with --fail-fast
+  let output = context
+    .new_command()
+    .args_vec(vec![
+      "fmt".to_string(),
+      "--check".to_string(),
+      "--fail-fast".to_string(),
+      bad1.to_string(),
+      bad2.to_string(),
+      bad3.to_string(),
+    ])
+    .run();
+
+  output.assert_exit_code(1);
+
+  // Due to parallel processing, multiple files might be checked before
+  // the error flag is set. The important thing is that we exit early
+  // and don't check ALL files. With 3 files, we should see 1-3 reported
+  // (but the flag prevents checking additional files after the first batch).
+  let output_text = output.combined_output();
+  // Just verify it failed - the exact count depends on parallel execution timing
+  assert_contains!(output_text, "not formatted file");
+}
+
+#[test]
+fn fmt_check_fail_fast_with_no_errors() {
+  let context = TestContext::default();
+  let t = context.deno_dir();
+
+  // Create properly formatted files
+  let good1 = t.path().join("good1.ts");
+  let good2 = t.path().join("good2.ts");
+
+  good1.write("const a = 1;\n");
+  good2.write("const b = 2;\n");
+
+  let output = context
+    .new_command()
+    .args_vec(vec![
+      "fmt".to_string(),
+      "--check".to_string(),
+      "--fail-fast".to_string(),
+      good1.to_string(),
+      good2.to_string(),
+    ])
+    .run();
+
+  output.assert_exit_code(0);
+  assert_contains!(output.combined_output(), "Checked 2 files");
+}
+
+#[test]
+fn fmt_check_fail_fast_requires_check() {
+  let context = TestContext::default();
+  let t = context.deno_dir();
+  let file = t.path().join("file.ts");
+  file.write("const a = 1;\n");
+
+  let output = context
+    .new_command()
+    .args_vec(vec![
+      "fmt".to_string(),
+      "--fail-fast".to_string(),
+      file.to_string(),
+    ])
+    .run();
+
+  output.assert_exit_code(1);
+  assert_contains!(
+    output.combined_output(),
+    "the following required arguments were not provided"
+  );
+}
+
+#[test]
+fn fmt_check_fail_fast_quiet() {
+  let context = TestContext::default();
+  let t = context.deno_dir();
+
+  let bad1 = t.path().join("bad1.ts");
+  bad1.write("const a   =   1\n");
+
+  let output = context
+    .new_command()
+    .args_vec(vec![
+      "fmt".to_string(),
+      "--check".to_string(),
+      "--fail-fast".to_string(),
+      "--quiet".to_string(),
+      bad1.to_string(),
+    ])
+    .run();
+
+  output.assert_exit_code(1);
+  // With --quiet, errors are still shown but info messages are suppressed
+  let output_text = output.combined_output();
+  assert_contains!(output_text, "Found 1 not formatted file");
 }

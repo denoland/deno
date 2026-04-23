@@ -1,4 +1,3 @@
-// https://github.com/denoland/deno/issues/30116
 {
   "tests": {
     "import_map": {

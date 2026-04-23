@@ -1,8 +1,10 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::sync::Arc;
 
+use boxed_error::Boxed;
 use deno_core::OpState;
+use deno_core::ToV8;
 use deno_core::futures::StreamExt;
 use deno_core::op2;
 use deno_core::url::Url;
@@ -11,8 +13,6 @@ use deno_fetch::data_url::DataUrl;
 use deno_web::BlobStore;
 use http_body_util::BodyExt;
 use hyper::body::Bytes;
-use serde::Deserialize;
-use serde::Serialize;
 
 use crate::web_worker::WebWorkerInternalHandle;
 use crate::web_worker::WorkerThreadType;
@@ -26,8 +26,11 @@ fn mime_type_essence(mime_type: &str) -> String {
   essence.trim().to_ascii_lowercase()
 }
 
+#[derive(Debug, Boxed, deno_error::JsError)]
+pub struct SyncFetchError(pub Box<SyncFetchErrorKind>);
+
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
-pub enum SyncFetchError {
+pub enum SyncFetchErrorKind {
   #[class(type)]
   #[error("Blob URLs are not supported in this context.")]
   BlobUrlsNotSupportedInContext,
@@ -75,28 +78,22 @@ pub enum SyncFetchError {
   Other(#[inherit] deno_error::JsErrorBox),
 }
 
-#[derive(Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(ToV8)]
 pub struct SyncFetchScript {
   url: String,
   script: String,
 }
 
 #[op2]
-#[serde]
-#[allow(clippy::result_large_err)]
 pub fn op_worker_sync_fetch(
   state: &mut OpState,
-  #[serde] scripts: Vec<String>,
+  #[scoped] scripts: Vec<String>,
   loose_mime_checks: bool,
 ) -> Result<Vec<SyncFetchScript>, SyncFetchError> {
   let handle = state.borrow::<WebWorkerInternalHandle>().clone();
   assert_eq!(handle.worker_type, WorkerThreadType::Classic);
 
-  // it's not safe to share a client across tokio runtimes, so create a fresh one
-  // https://github.com/seanmonstar/reqwest/issues/1148#issuecomment-910868788
-  let options = state.borrow::<deno_fetch::Options>().clone();
-  let client = deno_fetch::create_client_from_options(&options)
+  let client = deno_fetch::get_or_create_client_from_state(state)
     .map_err(FetchError::ClientCreate)?;
 
   // TODO(andreubotella) It's not good to throw an exception related to blob
@@ -104,7 +101,7 @@ pub fn op_worker_sync_fetch(
   // Also, in which contexts are blob URLs not supported?
   let blob_store = state
     .try_borrow::<Arc<BlobStore>>()
-    .ok_or(SyncFetchError::BlobUrlsNotSupportedInContext)?
+    .ok_or(SyncFetchErrorKind::BlobUrlsNotSupportedInContext)?
     .clone();
 
   // TODO(andreubotella): make the below thread into a resource that can be
@@ -124,7 +121,7 @@ pub fn op_worker_sync_fetch(
           let blob_store = blob_store.clone();
           deno_core::unsync::spawn(async move {
             let script_url = Url::parse(&script)
-              .map_err(|_| SyncFetchError::InvalidScriptUrl)?;
+              .map_err(|_| SyncFetchErrorKind::InvalidScriptUrl)?;
             let mut loose_mime_checks = loose_mime_checks;
 
             let (body, mime_type, res_url) = match script_url.scheme() {
@@ -138,7 +135,9 @@ pub fn op_worker_sync_fetch(
                 if resp.status().is_client_error()
                   || resp.status().is_server_error()
                 {
-                  return Err(SyncFetchError::InvalidStatusCode(resp.status()));
+                  return Err(SyncFetchErrorKind::InvalidStatusCode(
+                    resp.status(),
+                  ));
                 }
 
                 // TODO(andreubotella) Properly run fetch's "extract a MIME type".
@@ -154,7 +153,7 @@ pub fn op_worker_sync_fetch(
                 let body = resp
                   .collect()
                   .await
-                  .map_err(SyncFetchError::Other)?
+                  .map_err(SyncFetchErrorKind::Other)?
                   .to_bytes();
 
                 (body, mime_type, script)
@@ -186,7 +185,7 @@ pub fn op_worker_sync_fetch(
               }
               _ => {
                 return Err(
-                  SyncFetchError::ClassicScriptSchemeUnsupportedInWorkers(
+                  SyncFetchErrorKind::ClassicScriptSchemeUnsupportedInWorkers(
                     script_url.scheme().to_string(),
                   ),
                 );
@@ -198,11 +197,11 @@ pub fn op_worker_sync_fetch(
               match mime_type.as_deref() {
                 Some("application/javascript" | "text/javascript") => {}
                 Some(mime_type) => {
-                  return Err(SyncFetchError::InvalidMimeType(
+                  return Err(SyncFetchErrorKind::InvalidMimeType(
                     mime_type.to_string(),
                   ));
                 }
-                None => return Err(SyncFetchError::MissingMimeType),
+                None => return Err(SyncFetchErrorKind::MissingMimeType),
               }
             }
 

@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 /// <reference path="../../core/internal.d.ts" />
 
@@ -15,7 +15,7 @@ const {
   WeakMapPrototypeSet,
 } = primordials;
 
-import { URL } from "ext:deno_url/00_url.js";
+import { URL } from "ext:deno_web/00_url.js";
 import { DOMException } from "./01_dom_exception.js";
 
 const locationConstructorKey = Symbol("locationConstructorKey");

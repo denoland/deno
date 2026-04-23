@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use deno_ast::MediaType;
 use deno_ast::ParsedSource;
@@ -21,7 +21,10 @@ impl DenoAstModuleExportAnalyzer {
   }
 }
 
-#[allow(clippy::disallowed_types)]
+#[allow(
+  clippy::disallowed_types,
+  reason = "source text is always stored as Arc<str>"
+)]
 type ArcStr = std::sync::Arc<str>;
 
 impl ModuleExportAnalyzer for DenoAstModuleExportAnalyzer {

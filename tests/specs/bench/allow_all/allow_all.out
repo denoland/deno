@@ -1,5 +1,5 @@
 [WILDCARD]
-Check [WILDLINE]/allow_all.ts
+Check [WILDCARD]allow_all.ts
     CPU | [WILDLINE]
 Runtime | Deno [WILDLINE] ([WILDLINE])
 

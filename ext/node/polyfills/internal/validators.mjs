@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 
 import { primordials } from "ext:core/mod.js";
@@ -23,14 +23,14 @@ const {
 import { codes } from "ext:deno_node/internal/error_codes.ts";
 import { hideStackFrames } from "ext:deno_node/internal/hide_stack_frames.ts";
 import { isArrayBufferView } from "ext:deno_node/internal/util/types.ts";
-import { normalizeEncoding } from "ext:deno_node/internal/normalize_encoding.mjs";
+import { normalizeEncoding } from "ext:deno_node/internal/util.mjs";
 
 /**
  * @param {number} value
  * @returns {boolean}
  */
 function isInt32(value) {
-  return value === (value | 0);
+  return typeof value === "number" && value === (value | 0);
 }
 
 /**
@@ -69,6 +69,7 @@ function parseFileMode(value, name, def) {
   return value;
 }
 
+/** @type {(buffer: unknown, name?: string) => asserts buffer is ArrayBufferView} */
 const validateBuffer = hideStackFrames((buffer, name = "buffer") => {
   if (!isArrayBufferView(buffer)) {
     throw new codes.ERR_INVALID_ARG_TYPE(
@@ -79,6 +80,7 @@ const validateBuffer = hideStackFrames((buffer, name = "buffer") => {
   }
 });
 
+/** @type {ValidateNumber} */
 const validateInteger = hideStackFrames(
   (
     value,
@@ -99,14 +101,14 @@ const validateInteger = hideStackFrames(
 );
 
 /**
- * @param {unknown} value
- * @param {string} name
- * @param {{
+ * @typedef {{
  *   allowArray?: boolean,
  *   allowFunction?: boolean,
- *   nullable?: boolean
- * }} [options]
+ *   nullable?: boolean,
+ * }} ValidateObjectOptions
  */
+/** @typedef {(value: unknown, name: string, options?: ValidateObjectOptions) => asserts value is object} ValidateObject */
+/** @type {ValidateObject} */
 const validateObject = hideStackFrames((value, name, options) => {
   const useDefaultOptions = options == null;
   const allowArray = useDefaultOptions ? false : options.allowArray;
@@ -123,6 +125,7 @@ const validateObject = hideStackFrames((value, name, options) => {
   }
 });
 
+/** @type {ValidateNumber} */
 const validateInt32 = hideStackFrames(
   (value, name, min = -2147483648, max = 2147483647) => {
     // The defaults for min and max correspond to the limits of 32-bit integers.
@@ -144,6 +147,9 @@ const validateInt32 = hideStackFrames(
   },
 );
 
+/**
+ * @type {(value: unknown, name: string, positive?: boolean) => asserts value is number}
+ */
 const validateUint32 = hideStackFrames(
   (value, name, positive) => {
     if (!isUint32(value)) {
@@ -177,11 +183,9 @@ function validateString(value, name) {
   }
 }
 
-/**
- * @param {unknown} value
- * @param {string} name
- */
-function validateNumber(value, name, min = undefined, max) {
+/** @typedef {(value: unknown, name: string, min?: number, max?: number) => asserts value is number} ValidateNumber */
+/** @type {ValidateNumber} */
+const validateNumber = hideStackFrames((value, name, min = undefined, max) => {
   if (typeof value !== "number") {
     throw new codes.ERR_INVALID_ARG_TYPE(name, "number", value);
   }
@@ -198,7 +202,7 @@ function validateNumber(value, name, min = undefined, max) {
       value,
     );
   }
-}
+});
 
 /**
  * @param {unknown} value
@@ -210,27 +214,22 @@ function validateBoolean(value, name) {
   }
 }
 
-/**
- * @param {unknown} value
- * @param {string} name
- * @param {unknown[]} oneOf
- */
-const validateOneOf = hideStackFrames(
-  (value, name, oneOf) => {
-    if (!ArrayPrototypeIncludes(oneOf, value)) {
-      const allowed = ArrayPrototypeJoin(
-        ArrayPrototypeMap(
-          oneOf,
-          (v) => (typeof v === "string" ? `'${v}'` : String(v)),
-        ),
-        ", ",
-      );
-      const reason = "must be one of: " + allowed;
+/** @typedef {<T>(value: unknown, name: string, oneOf: readonly T[]) => asserts value is T} ValidateOneOf */
+/** @type {ValidateOneOf} */
+const validateOneOf = hideStackFrames((value, name, oneOf) => {
+  if (!ArrayPrototypeIncludes(oneOf, value)) {
+    const allowed = ArrayPrototypeJoin(
+      ArrayPrototypeMap(
+        oneOf,
+        (v) => (typeof v === "string" ? `'${v}'` : String(v)),
+      ),
+      ", ",
+    );
+    const reason = "must be one of: " + allowed;
 
-      throw new codes.ERR_INVALID_ARG_VALUE(name, value, reason);
-    }
-  },
-);
+    throw new codes.ERR_INVALID_ARG_VALUE(name, value, reason);
+  }
+});
 
 export function validateEncoding(data, encoding) {
   const normalizedEncoding = normalizeEncoding(encoding);
@@ -283,10 +282,7 @@ const validateAbortSignal = hideStackFrames(
   },
 );
 
-/**
- * @param {unknown} value
- * @param {string} name
- */
+/** @type {(value: unknown, name: string) => asserts value is Function} */
 const validateFunction = hideStackFrames(
   (value, name) => {
     if (typeof value !== "function") {
@@ -399,6 +395,53 @@ const checkRangesOrGetDefault = hideStackFrames(
   },
 );
 
+const linkValueRegExp = new SafeRegExp("^(?:<[^>]*>)(?:\\s*;\\s*[^;]*)*$");
+
+const validateLinkHeaderFormat = hideStackFrames((value, name) => {
+  if (
+    typeof value === "undefined" ||
+    !RegExpPrototypeTest(linkValueRegExp, value)
+  ) {
+    throw new codes.ERR_INVALID_ARG_VALUE(
+      name,
+      value,
+      'must be an array or string of format "</styles.css>; rel=preload; as=style"',
+    );
+  }
+});
+
+const validateLinkHeaderValue = hideStackFrames((hints) => {
+  if (typeof hints === "string") {
+    validateLinkHeaderFormat(hints, "hints");
+    return hints;
+  } else if (ArrayIsArray(hints)) {
+    const hintsLength = hints.length;
+    let result = "";
+
+    if (hintsLength === 0) {
+      return result;
+    }
+
+    for (let i = 0; i < hintsLength; i++) {
+      const link = hints[i];
+      validateLinkHeaderFormat(link, "hints");
+      result += link;
+
+      if (i !== hintsLength - 1) {
+        result += ", ";
+      }
+    }
+
+    return result;
+  }
+
+  throw new codes.ERR_INVALID_ARG_VALUE(
+    "hints",
+    hints,
+    'must be an array or string of format "</styles.css>; rel=preload; as=style"',
+  );
+});
+
 export default {
   isInt32,
   isUint32,
@@ -420,6 +463,7 @@ export default {
   validateUint32,
   validateUnion,
   validateFiniteNumber,
+  validateLinkHeaderValue,
   checkRangesOrGetDefault,
 };
 export {
@@ -436,6 +480,7 @@ export {
   validateFunction,
   validateInt32,
   validateInteger,
+  validateLinkHeaderValue,
   validateNumber,
   validateObject,
   validateOneOf,

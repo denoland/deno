@@ -1,0 +1,1 @@
+error: Did not format non-workspace directory. Run again specifying the current directory (ex. `deno fmt .`)

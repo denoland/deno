@@ -1,24 +1,16 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
 
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-import { primordials } from "ext:core/mod.js";
 import {
-  op_node_check_prime,
-  op_node_check_prime_async,
   op_node_check_prime_bytes,
   op_node_check_prime_bytes_async,
   op_node_gen_prime,
   op_node_gen_prime_async,
 } from "ext:core/ops";
-const {
-  StringPrototypePadStart,
-  StringPrototypeToString,
-} = primordials;
 
-import { notImplemented } from "ext:deno_node/_utils.ts";
 import randomBytes from "ext:deno_node/internal/crypto/_randomBytes.ts";
 import randomFill, {
   randomFillSync,
@@ -37,6 +29,8 @@ import {
 import {
   ERR_INVALID_ARG_TYPE,
   ERR_OUT_OF_RANGE,
+  NodeError,
+  NodeRangeError,
 } from "ext:deno_node/internal/errors.ts";
 import { Buffer } from "node:buffer";
 
@@ -46,6 +40,10 @@ export {
   randomFillSync,
 } from "ext:deno_node/internal/crypto/_randomFill.mjs";
 export { default as randomInt } from "ext:deno_node/internal/crypto/_randomInt.ts";
+
+// OpenSSL BIGNUM max size: INT_MAX / (4 * BN_BITS2) words * 8 bytes/word
+// On 64-bit: (2^31 - 1) / 256 * 8 = 67108856 bytes
+const OPENSSL_BIGNUM_MAX_BYTES = (((2 ** 31 - 1) / (4 * 64)) | 0) * 8;
 
 export type LargeNumberLike =
   | ArrayBufferView
@@ -94,13 +92,24 @@ export function checkPrime(
 
   validateInt32(checks, "options.checks", 0);
 
-  let op = op_node_check_prime_bytes_async;
+  let candidateBytes: ArrayBufferView | ArrayBuffer;
   if (typeof candidate === "bigint") {
     if (candidate < 0) {
       throw new ERR_OUT_OF_RANGE("candidate", ">= 0", candidate);
     }
-    op = op_node_check_prime_async;
-  } else if (!isAnyArrayBuffer(candidate) && !isArrayBufferView(candidate)) {
+    candidateBytes = bigintToBytes(candidate);
+  } else if (isAnyArrayBuffer(candidate) || isArrayBufferView(candidate)) {
+    const byteLength = isArrayBufferView(candidate)
+      ? (candidate as ArrayBufferView).byteLength
+      : (candidate as ArrayBuffer).byteLength;
+    if (byteLength > OPENSSL_BIGNUM_MAX_BYTES) {
+      throw new NodeError(
+        "ERR_OSSL_BN_BIGNUM_TOO_LONG",
+        "bignum too long",
+      );
+    }
+    candidateBytes = candidate;
+  } else {
     throw new ERR_INVALID_ARG_TYPE(
       "candidate",
       [
@@ -114,7 +123,7 @@ export function checkPrime(
     );
   }
 
-  op(candidate, checks).then(
+  op_node_check_prime_bytes_async(candidateBytes, checks).then(
     (result) => {
       callback?.(null, result);
     },
@@ -135,9 +144,24 @@ export function checkPrimeSync(
 
   validateInt32(checks, "options.checks", 0);
 
+  let candidateBytes: ArrayBufferView | ArrayBuffer;
   if (typeof candidate === "bigint") {
-    return op_node_check_prime(candidate, checks);
-  } else if (!isAnyArrayBuffer(candidate) && !isArrayBufferView(candidate)) {
+    if (candidate < 0) {
+      throw new ERR_OUT_OF_RANGE("candidate", ">= 0", candidate);
+    }
+    candidateBytes = bigintToBytes(candidate);
+  } else if (isAnyArrayBuffer(candidate) || isArrayBufferView(candidate)) {
+    const byteLength = isArrayBufferView(candidate)
+      ? (candidate as ArrayBufferView).byteLength
+      : (candidate as ArrayBuffer).byteLength;
+    if (byteLength > OPENSSL_BIGNUM_MAX_BYTES) {
+      throw new NodeError(
+        "ERR_OSSL_BN_BIGNUM_TOO_LONG",
+        "bignum too long",
+      );
+    }
+    candidateBytes = candidate;
+  } else {
     throw new ERR_INVALID_ARG_TYPE(
       "candidate",
       [
@@ -151,7 +175,7 @@ export function checkPrimeSync(
     );
   }
 
-  return op_node_check_prime_bytes(candidate, checks);
+  return op_node_check_prime_bytes(candidateBytes, checks);
 }
 
 export interface GeneratePrimeOptions {
@@ -177,12 +201,21 @@ export function generatePrime(
   validateFunction(callback, "callback");
   const {
     bigint,
+    safe,
+    add,
+    rem,
   } = validateRandomPrimeJob(size, options);
-  op_node_gen_prime_async(size).then((prime: Uint8Array) =>
-    bigint ? arrayBufferToUnsignedBigInt(prime.buffer) : prime.buffer
-  ).then((prime: ArrayBuffer | bigint) => {
-    callback?.(null, prime);
-  });
+  op_node_gen_prime_async(size, safe, add ?? null, rem ?? null).then(
+    (prime: Uint8Array) => {
+      const result = bigint
+        ? arrayBufferToUnsignedBigInt(prime.buffer)
+        : prime.buffer;
+      callback?.(null, result);
+    },
+    (err: Error) => {
+      callback?.(err, null as unknown as ArrayBuffer);
+    },
+  );
 }
 
 export function generatePrimeSync(
@@ -191,17 +224,39 @@ export function generatePrimeSync(
 ): ArrayBuffer | bigint {
   const {
     bigint,
+    safe,
+    add,
+    rem,
   } = validateRandomPrimeJob(size, options);
 
-  const prime = op_node_gen_prime(size);
+  const prime = op_node_gen_prime(size, safe, add ?? null, rem ?? null);
   if (bigint) return arrayBufferToUnsignedBigInt(prime.buffer);
   return prime.buffer;
+}
+
+interface ValidatedPrimeOptions {
+  safe: boolean;
+  bigint: boolean;
+  add?: Uint8Array;
+  rem?: Uint8Array;
+}
+
+function toUint8Array(
+  value: ArrayBuffer | ArrayBufferView | Buffer,
+): Uint8Array {
+  if (value instanceof Uint8Array) {
+    return value;
+  }
+  if (isArrayBufferView(value)) {
+    return new Uint8Array(value.buffer, value.byteOffset, value.byteLength);
+  }
+  return new Uint8Array(value);
 }
 
 function validateRandomPrimeJob(
   size: number,
   options: GeneratePrimeOptions,
-): GeneratePrimeOptions {
+): ValidatedPrimeOptions {
   validateInt32(size, "size", 1);
   validateObject(options, "options");
 
@@ -251,17 +306,66 @@ function validateRandomPrimeJob(
     }
   }
 
-  // TODO(@littledivy): safe, add and rem options are not implemented.
-  if (safe || add || rem) {
-    notImplemented("safe, add and rem options are not implemented.");
+  const addBuf = add ? toUint8Array(add) : undefined;
+  const remBuf = rem ? toUint8Array(rem) : undefined;
+
+  if (addBuf) {
+    // add must be non-zero; a zero modulus would cause division by zero in the
+    // Rust generator.
+    const addBitCount = bitCount(addBuf);
+    if (addBitCount === 0) {
+      throw new NodeRangeError("ERR_OUT_OF_RANGE", "invalid options.add");
+    }
+    // Node.js/OpenSSL: bit count of add must not exceed requested size
+    if (addBitCount > size) {
+      throw new NodeRangeError("ERR_OUT_OF_RANGE", "invalid options.add");
+    }
+
+    if (remBuf) {
+      // rem must be strictly less than add
+      const addBigInt = bufferToBigInt(addBuf);
+      const remBigInt = bufferToBigInt(remBuf);
+      if (addBigInt <= remBigInt) {
+        throw new NodeRangeError("ERR_OUT_OF_RANGE", "invalid options.rem");
+      }
+    }
   }
 
   return {
     safe,
     bigint,
-    add,
-    rem,
+    add: addBuf,
+    rem: remBuf,
   };
+}
+
+function bigintToBytes(n: bigint): Uint8Array {
+  if (n === 0n) return new Uint8Array([0]);
+  const hex = n.toString(16);
+  const padded = hex.length % 2 ? "0" + hex : hex;
+  const bytes = new Uint8Array(padded.length / 2);
+  for (let i = 0; i < bytes.length; i++) {
+    bytes[i] = parseInt(padded.substring(i * 2, i * 2 + 2), 16);
+  }
+  return bytes;
+}
+
+function bufferToBigInt(buf: Uint8Array): bigint {
+  let result = 0n;
+  for (let i = 0; i < buf.length; i++) {
+    result = (result << 8n) | BigInt(buf[i]);
+  }
+  return result;
+}
+
+function bitCount(buf: Uint8Array): number {
+  // Count the number of significant bits in a big-endian byte array
+  for (let i = 0; i < buf.length; i++) {
+    if (buf[i] !== 0) {
+      return (buf.length - i) * 8 - Math.clz32(buf[i]) + 24;
+    }
+  }
+  return 0;
 }
 
 /**
@@ -296,8 +400,8 @@ function unsignedBigIntToBuffer(bigint: bigint, name: string) {
     throw new ERR_OUT_OF_RANGE(name, ">= 0", bigint);
   }
 
-  const hex = StringPrototypeToString(bigint, 16);
-  const padded = StringPrototypePadStart(hex, hex.length + (hex.length % 2), 0);
+  const hex = bigint.toString(16);
+  const padded = hex.padStart(hex.length + (hex.length % 2), "0");
   return Buffer.from(padded, "hex");
 }
 

@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 // @ts-check
 /// <reference path="../webidl/internal.d.ts" />
@@ -60,6 +60,7 @@ const {
   PromisePrototypeThen,
   PromiseReject,
   PromiseResolve,
+  PromiseWithResolvers,
   RangeError,
   ReflectHas,
   SafeFinalizationRegistry,
@@ -99,7 +100,7 @@ import {
   signalAbort,
 } from "./03_abort_signal.js";
 
-import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
+import { createFilteredInspectProxy } from "./01_console.js";
 import { assert, AssertionError } from "./00_infra.js";
 
 /** @template T */
@@ -219,10 +220,31 @@ function uponRejection(promise, onRejected) {
  * @returns {void}
  */
 function uponPromise(promise, onFulfilled, onRejected) {
+  // Optimized: single .then() instead of double promise chain.
+  // The original code was:
+  //   PromisePrototypeThen(
+  //     PromisePrototypeThen(promise, onFulfilled, onRejected),
+  //     undefined, rethrowAssertionErrorRejection);
+  // This created 2 promises per call. We collapse it into 1 by wrapping
+  // the handlers with try/catch to catch assertion errors thrown by them.
   PromisePrototypeThen(
-    PromisePrototypeThen(promise, onFulfilled, onRejected),
-    undefined,
-    rethrowAssertionErrorRejection,
+    promise,
+    onFulfilled && ((v) => {
+      try {
+        onFulfilled(v);
+      } catch (e) {
+        rethrowAssertionErrorRejection(e);
+      }
+    }),
+    onRejected
+      ? (e) => {
+        try {
+          onRejected(e);
+        } catch (err) {
+          rethrowAssertionErrorRejection(err);
+        }
+      }
+      : rethrowAssertionErrorRejection,
   );
 }
 
@@ -787,8 +809,7 @@ class ResourceStreamResourceSink {
 async function readableStreamWriteChunkFn(reader, sink, chunk) {
   // Empty chunk. Re-read.
   if (chunk.length == 0) {
-    await readableStreamReadFn(reader, sink);
-    return;
+    return true;
   }
 
   const res = op_readable_stream_resource_write_sync(sink.external, chunk);
@@ -796,9 +817,10 @@ async function readableStreamWriteChunkFn(reader, sink, chunk) {
     // Closed
     await reader.cancel("resource closed");
     sink.close();
+
+    return false;
   } else if (res == 1) {
-    // Successfully written (synchronous). Re-read.
-    await readableStreamReadFn(reader, sink);
+    return true;
   } else if (res == 2) {
     // Full. If the channel is full, we perform an async await until we can write, and then return
     // to a synchronous loop.
@@ -808,10 +830,12 @@ async function readableStreamWriteChunkFn(reader, sink, chunk) {
         chunk,
       )
     ) {
-      await readableStreamReadFn(reader, sink);
+      return true;
     } else {
       await reader.cancel("resource closed");
       sink.close();
+
+      return false;
     }
   }
 }
@@ -820,60 +844,66 @@ async function readableStreamWriteChunkFn(reader, sink, chunk) {
  * @param {ReadableStreamDefaultReader<Uint8Array>} reader
  * @param {any} sink
  */
-function readableStreamReadFn(reader, sink) {
-  // The ops here look like op_write_all/op_close, but we're not actually writing to a
-  // real resource.
-  let reentrant = true;
-  let gotChunk = undefined;
-  const promise = new Deferred();
-  readableStreamDefaultReaderRead(reader, {
-    chunkSteps(chunk) {
-      // If the chunk has non-zero length, write it
-      if (reentrant) {
-        gotChunk = chunk;
-      } else {
-        PromisePrototypeThen(
-          readableStreamWriteChunkFn(reader, sink, chunk),
-          () => promise.resolve(),
-          (e) => promise.reject(e),
-        );
-      }
-    },
-    closeSteps() {
-      sink.close();
-      promise.resolve();
-    },
-    errorSteps(error) {
-      const success = op_readable_stream_resource_write_error(
-        sink.external,
-        extractStringErrorFromError(error),
-      );
-      // We don't cancel the reader if there was an error reading. We'll let the downstream
-      // consumer close the resource after it receives the error.
-      if (!success) {
-        PromisePrototypeThen(
-          reader.cancel("resource closed"),
-          () => {
-            sink.close();
-            promise.resolve();
-          },
-          (e) => promise.reject(e),
-        );
-      } else {
+async function readableStreamReadFn(reader, sink) {
+  let loop = true;
+
+  while (loop) {
+    // The ops here look like op_write_all/op_close, but we're not actually writing to a
+    // real resource.
+    let reentrant = true;
+    let gotChunk = undefined;
+    const promise = new Deferred();
+
+    readableStreamDefaultReaderRead(reader, {
+      chunkSteps(chunk) {
+        // If the chunk has non-zero length, write it
+        if (reentrant) {
+          gotChunk = chunk;
+        } else {
+          PromisePrototypeThen(
+            readableStreamWriteChunkFn(reader, sink, chunk),
+            (loop) => promise.resolve(loop),
+            (e) => promise.reject(e),
+          );
+        }
+      },
+      closeSteps() {
         sink.close();
-        promise.resolve();
-      }
-    },
-  });
-  reentrant = false;
-  if (gotChunk) {
-    PromisePrototypeThen(
-      readableStreamWriteChunkFn(reader, sink, gotChunk),
-      () => promise.resolve(),
-      (e) => promise.reject(e),
-    );
+        promise.resolve(false);
+      },
+      errorSteps(error) {
+        const success = op_readable_stream_resource_write_error(
+          sink.external,
+          extractStringErrorFromError(error),
+        );
+        // We don't cancel the reader if there was an error reading. We'll let the downstream
+        // consumer close the resource after it receives the error.
+        if (!success) {
+          PromisePrototypeThen(
+            reader.cancel("resource closed"),
+            () => {
+              sink.close();
+              promise.resolve(false);
+            },
+            (e) => promise.reject(e),
+          );
+        } else {
+          sink.close();
+          promise.resolve(false);
+        }
+      },
+    });
+    reentrant = false;
+    if (gotChunk) {
+      PromisePrototypeThen(
+        readableStreamWriteChunkFn(reader, sink, gotChunk),
+        (loop) => promise.resolve(loop),
+        (e) => promise.reject(e),
+      );
+    }
+
+    loop = await promise.promise;
   }
-  return promise.promise;
 }
 
 /**
@@ -1006,10 +1036,11 @@ const _isUnref = Symbol("isUnref");
  * compatible with fast-path resource-backed streams.
  *
  * @param {number} rid The resource ID to read from.
+ * @param constructor A class that extends ReadableStream.
  * @returns {ReadableStream<Uint8Array>}
  */
-function readableStreamForRidUnrefable(rid) {
-  const stream = new ReadableStream(_brand);
+function readableStreamForRidUnrefable(rid, constructor = ReadableStream) {
+  const stream = new constructor(_brand);
   stream[promiseSymbol] = undefined;
   stream[_isUnref] = false;
   stream[_resourceBackingUnrefable] = { rid, autoClose: true };
@@ -1160,7 +1191,7 @@ async function readableStreamCollectIntoUint8Array(stream) {
  * @param {boolean=} autoClose If the resource should be auto-closed when the stream closes. Defaults to true.
  * @returns {ReadableStream<Uint8Array>}
  */
-function writableStreamForRid(rid, autoClose = true, cfn) {
+function writableStreamForRid(rid, autoClose = true, cfn, options) {
   const stream = cfn ? cfn(_brand) : new WritableStream(_brand);
   stream[_resourceBacking] = { rid, autoClose };
 
@@ -1174,29 +1205,77 @@ function writableStreamForRid(rid, autoClose = true, cfn) {
     RESOURCE_REGISTRY.register(stream, rid, stream);
   }
 
+  const bufferSize = options?.bufferSize ?? 0;
+  let buffer = null;
+  let bufferOffset = 0;
+
+  async function flushBuffer() {
+    if (bufferOffset > 0) {
+      const toWrite = TypedArrayPrototypeSlice(buffer, 0, bufferOffset);
+      bufferOffset = 0;
+      await core.writeAll(rid, toWrite);
+    }
+  }
+
   const underlyingSink = {
     async write(chunk, controller) {
       try {
-        await core.writeAll(rid, chunk);
+        if (bufferSize > 0) {
+          const chunkLen = TypedArrayPrototypeGetByteLength(chunk);
+          // Large chunks: flush buffer then write directly
+          if (chunkLen >= bufferSize) {
+            await flushBuffer();
+            await core.writeAll(rid, chunk);
+            return;
+          }
+
+          // Lazily allocate buffer
+          if (buffer === null) {
+            buffer = new Uint8Array(bufferSize);
+          }
+
+          // If chunk won't fit, flush first
+          if (bufferOffset + chunkLen > bufferSize) {
+            await flushBuffer();
+          }
+
+          // Copy chunk into buffer
+          TypedArrayPrototypeSet(buffer, chunk, bufferOffset);
+          bufferOffset += chunkLen;
+        } else {
+          await core.writeAll(rid, chunk);
+        }
       } catch (e) {
         controller.error(e);
         tryClose();
       }
     },
-    close() {
+    async close() {
+      try {
+        await flushBuffer();
+      } catch {
+        // ignore errors on flush during close
+      }
       tryClose();
     },
     abort() {
+      bufferOffset = 0;
       tryClose();
     },
   };
+
+  const highWaterMark = bufferSize > 0 ? bufferSize : 1;
+  const sizeAlgorithm = bufferSize > 0
+    ? (chunk) => TypedArrayPrototypeGetByteLength(chunk)
+    : () => 1;
+
   initializeWritableStream(stream);
   setUpWritableStreamDefaultControllerFromUnderlyingSink(
     stream,
     underlyingSink,
     underlyingSink,
-    1,
-    () => 1,
+    highWaterMark,
+    sizeAlgorithm,
   );
   return stream;
 }
@@ -1265,20 +1344,18 @@ function readableByteStreamControllerCallPullIfNeeded(controller) {
   controller[_pulling] = true;
   /** @type {Promise<void>} */
   const pullPromise = controller[_pullAlgorithm](controller);
-  setPromiseIsHandledToTrue(
-    PromisePrototypeThen(
-      pullPromise,
-      () => {
-        controller[_pulling] = false;
-        if (controller[_pullAgain]) {
-          controller[_pullAgain] = false;
-          readableByteStreamControllerCallPullIfNeeded(controller);
-        }
-      },
-      (e) => {
-        readableByteStreamControllerError(controller, e);
-      },
-    ),
+  uponPromise(
+    pullPromise,
+    () => {
+      controller[_pulling] = false;
+      if (controller[_pullAgain]) {
+        controller[_pullAgain] = false;
+        readableByteStreamControllerCallPullIfNeeded(controller);
+      }
+    },
+    (e) => {
+      readableByteStreamControllerError(controller, e);
+    },
   );
 }
 
@@ -1727,16 +1804,19 @@ function readableStreamDefaultControllerCallPullIfNeeded(controller) {
   assert(controller[_pullAgain] === false);
   controller[_pulling] = true;
   const pullPromise = controller[_pullAlgorithm](controller);
-  uponFulfillment(pullPromise, () => {
-    controller[_pulling] = false;
-    if (controller[_pullAgain] === true) {
-      controller[_pullAgain] = false;
-      readableStreamDefaultControllerCallPullIfNeeded(controller);
-    }
-  });
-  uponRejection(pullPromise, (e) => {
-    readableStreamDefaultControllerError(controller, e);
-  });
+  uponPromise(
+    pullPromise,
+    () => {
+      controller[_pulling] = false;
+      if (controller[_pullAgain] === true) {
+        controller[_pullAgain] = false;
+        readableStreamDefaultControllerCallPullIfNeeded(controller);
+      }
+    },
+    (e) => {
+      readableStreamDefaultControllerError(controller, e);
+    },
+  );
 }
 
 /**
@@ -3545,19 +3625,17 @@ function setUpReadableByteStreamController(
   stream[_controller] = controller;
   const startResult = startAlgorithm();
   const startPromise = PromiseResolve(startResult);
-  setPromiseIsHandledToTrue(
-    PromisePrototypeThen(
-      startPromise,
-      () => {
-        controller[_started] = true;
-        assert(controller[_pulling] === false);
-        assert(controller[_pullAgain] === false);
-        readableByteStreamControllerCallPullIfNeeded(controller);
-      },
-      (r) => {
-        readableByteStreamControllerError(controller, r);
-      },
-    ),
+  uponPromise(
+    startPromise,
+    () => {
+      controller[_started] = true;
+      assert(controller[_pulling] === false);
+      assert(controller[_pullAgain] === false);
+      readableByteStreamControllerCallPullIfNeeded(controller);
+    },
+    (r) => {
+      readableByteStreamControllerError(controller, r);
+    },
   );
 }
 
@@ -4298,11 +4376,12 @@ function transformStreamUnblockWrite(stream) {
  * @returns {Promise<void>}
  */
 function writableStreamAbort(stream, reason) {
-  const state = stream[_state];
+  let state = stream[_state];
   if (state === "closed" || state === "errored") {
     return PromiseResolve(undefined);
   }
   stream[_controller][_signal][signalAbort](reason);
+  state = stream[_state];
   if (state === "closed" || state === "errored") {
     return PromiseResolve(undefined);
   }
@@ -4315,7 +4394,7 @@ function writableStreamAbort(stream, reason) {
     wasAlreadyErroring = true;
     reason = undefined;
   }
-  /** Deferred<void> */
+  /** @type {Deferred<void>} */
   const deferred = new Deferred();
   stream[_pendingAbortRequest] = {
     deferred,
@@ -5147,6 +5226,8 @@ class ReadableStream {
   [_resourceBacking] = null;
   /** @type {Deferred<void>} */
   [_isClosedPromise];
+
+  [core.hostObjectBrand] = "ReadableStream";
 
   /**
    * @param {UnderlyingSource<R>=} underlyingSource
@@ -6155,6 +6236,8 @@ class TransformStream {
   /** @type {WritableStream<I>} */
   [_writable];
 
+  [core.hostObjectBrand] = "TransformStream";
+
   /**
    * @param {Transformer<I, O>} transformer
    * @param {QueuingStrategy<I>} writableStrategy
@@ -6165,6 +6248,10 @@ class TransformStream {
     writableStrategy = { __proto__: null },
     readableStrategy = { __proto__: null },
   ) {
+    if (transformer === _brand) {
+      this[_brand] = _brand;
+      return;
+    }
     const prefix = "Failed to construct 'TransformStream'";
     if (transformer !== undefined) {
       transformer = webidl.converters.object(transformer, prefix, "Argument 1");
@@ -6364,6 +6451,8 @@ class WritableStream {
   [_writer];
   /** @type {Deferred<void>[]} */
   [_writeRequests];
+
+  [core.hostObjectBrand] = "WritableStream";
 
   /**
    * @param {UnderlyingSink<W>=} underlyingSink
@@ -6731,6 +6820,283 @@ function createProxy(stream) {
   return stream.pipeThrough(new TransformStream());
 }
 
+function packAndPostMessage(port, type, value) {
+  port.postMessage({ type, value, __proto__: null });
+}
+
+function crossRealmTransformSendError(port, error) {
+  packAndPostMessage(port, "error", error);
+}
+
+function packAndPostMessageHandlingError(port, type, value) {
+  try {
+    packAndPostMessage(port, type, value);
+  } catch (e) {
+    crossRealmTransformSendError(port, e);
+    throw e;
+  }
+}
+
+/**
+ * @param stream {ReadableStream<any>}
+ * @param port {MessagePort}
+ */
+function setUpCrossRealmTransformReadable(stream, port) {
+  initializeReadableStream(stream);
+  const controller = new ReadableStreamDefaultController(_brand);
+  port.addEventListener("message", (event) => {
+    if (event.data.type === "chunk") {
+      readableStreamDefaultControllerEnqueue(controller, event.data.value);
+    } else if (event.data.type === "close") {
+      readableStreamDefaultControllerClose(controller);
+      port.close();
+    } else if (event.data.type === "error") {
+      readableStreamDefaultControllerError(controller, event.data.value);
+      port.close();
+    }
+  });
+  port.addEventListener("messageerror", (event) => {
+    crossRealmTransformSendError(port, event.error);
+    readableStreamDefaultControllerError(controller, event.error);
+    port.close();
+  });
+  port.start();
+  const startAlgorithm = () => undefined;
+  const pullAlgorithm = () => {
+    packAndPostMessage(port, "pull", undefined);
+    return PromiseResolve(undefined);
+  };
+  const cancelAlgorithm = (reason) => {
+    try {
+      packAndPostMessageHandlingError(port, "error", reason);
+    } catch (e) {
+      return PromiseReject(e);
+    } finally {
+      port.close();
+    }
+    return PromiseResolve(undefined);
+  };
+  const sizeAlgorithm = () => 1;
+  setUpReadableStreamDefaultController(
+    stream,
+    controller,
+    startAlgorithm,
+    pullAlgorithm,
+    cancelAlgorithm,
+    0,
+    sizeAlgorithm,
+  );
+}
+
+/**
+ * @param stream {WritableStream<any>}
+ * @param port {MessagePort}
+ */
+function setUpCrossRealmTransformWritable(stream, port) {
+  initializeWritableStream(stream);
+  const controller = new WritableStreamDefaultController(_brand);
+  let backpressurePromise = PromiseWithResolvers();
+  port.addEventListener("message", (event) => {
+    if (event.data.type === "pull") {
+      if (backpressurePromise) {
+        backpressurePromise.resolve();
+        backpressurePromise = undefined;
+      }
+    } else if (event.data.type === "error") {
+      writableStreamDefaultControllerErrorIfNeeded(
+        controller,
+        event.data.value,
+      );
+      if (backpressurePromise) {
+        backpressurePromise.resolve();
+        backpressurePromise = undefined;
+      }
+    }
+  });
+  port.addEventListener("messageerror", (event) => {
+    crossRealmTransformSendError(port, event.error);
+    writableStreamDefaultControllerErrorIfNeeded(controller, event.error);
+    port.close();
+  });
+  port.start();
+  const startAlgorithm = () => undefined;
+  const writeAlgorithm = (chunk) => {
+    if (!backpressurePromise) {
+      backpressurePromise = PromiseWithResolvers();
+      backpressurePromise.resolve();
+    }
+    return PromisePrototypeThen(backpressurePromise.promise, () => {
+      backpressurePromise = PromiseWithResolvers();
+      try {
+        packAndPostMessageHandlingError(port, "chunk", chunk);
+      } catch (e) {
+        port.close();
+        throw e;
+      }
+    });
+  };
+  const closeAlgorithm = () => {
+    packAndPostMessage(port, "close", undefined);
+    port.close();
+    return PromiseResolve(undefined);
+  };
+  const abortAlgorithm = (reason) => {
+    try {
+      packAndPostMessageHandlingError(port, "error", reason);
+      return PromiseResolve(undefined);
+    } catch (error) {
+      return PromiseReject(error);
+    } finally {
+      port.close();
+    }
+  };
+  const sizeAlgorithm = () => 1;
+  setUpWritableStreamDefaultController(
+    stream,
+    controller,
+    startAlgorithm,
+    writeAlgorithm,
+    closeAlgorithm,
+    abortAlgorithm,
+    1,
+    sizeAlgorithm,
+  );
+}
+
+/**
+ * @param value {ReadableStream<any>}
+ * @param port {MessagePort}
+ */
+function readableStreamTransferSteps(value, port) {
+  if (isReadableStreamLocked(value)) {
+    throw new DOMException(
+      "Cannot transfer a locked ReadableStream",
+      "DataCloneError",
+    );
+  }
+  const writable = new WritableStream(_brand);
+  setUpCrossRealmTransformWritable(writable, port);
+  const promise = readableStreamPipeTo(value, writable, false, false, false);
+  setPromiseIsHandledToTrue(promise);
+}
+
+/**
+ * @param port {MessagePort}
+ * @returns {ReadableStream<any>}
+ */
+function readableStreamTransferReceivingSteps(port) {
+  const stream = new ReadableStream(_brand);
+  setUpCrossRealmTransformReadable(stream, port);
+  return stream;
+}
+
+/**
+ * @param value {WritableStream<any>}
+ * @param port {MessagePort}
+ */
+function writableStreamTransferSteps(value, port) {
+  if (isWritableStreamLocked(value)) {
+    throw new DOMException(
+      "Cannot transfer a locked WritableStream",
+      "DataCloneError",
+    );
+  }
+  const readable = new ReadableStream(_brand);
+  setUpCrossRealmTransformReadable(readable, port);
+  const promise = readableStreamPipeTo(readable, value, false, false, false);
+  setPromiseIsHandledToTrue(promise);
+}
+
+/**
+ * @param port {MessagePort}
+ * @returns {WritableStream<any>}
+ */
+function writableStreamTransferReceivingSteps(port) {
+  const stream = new WritableStream(_brand);
+  setUpCrossRealmTransformWritable(stream, port);
+  return stream;
+}
+
+/**
+ * @param value {TransformStream<any>}
+ * @param portR {MessagePort}
+ * @param portW {MessagePort}
+ */
+function transformStreamTransferSteps(value, portR, portW) {
+  if (isReadableStreamLocked(value.readable)) {
+    throw new DOMException(
+      "Cannot transfer a locked ReadableStream",
+      "DataCloneError",
+    );
+  }
+  if (isWritableStreamLocked(value.writable)) {
+    throw new DOMException(
+      "Cannot transfer a locked WritableStream",
+      "DataCloneError",
+    );
+  }
+  readableStreamTransferSteps(value.readable, portR);
+  writableStreamTransferSteps(value.writable, portW);
+}
+
+/**
+ * @param portR {MessagePort}
+ * @param portW {MessagePort}
+ * @returns {TransformStream<any>}
+ */
+function transformStreamTransferReceivingSteps(portR, portW) {
+  const stream = new TransformStream(_brand);
+  stream[_readable] = new ReadableStream(_brand);
+  setUpCrossRealmTransformReadable(stream[_readable], portR);
+  stream[_writable] = new WritableStream(_brand);
+  setUpCrossRealmTransformWritable(stream[_writable], portW);
+  return stream;
+}
+
+core.registerTransferableResource(
+  "ReadableStream",
+  (value) => {
+    const { port1, port2 } = new MessageChannel();
+    readableStreamTransferSteps(value, port1);
+    return core.getTransferableResource("MessagePort").send(port2);
+  },
+  (rid) => {
+    const port = core.getTransferableResource("MessagePort").receive(rid);
+    return readableStreamTransferReceivingSteps(port);
+  },
+);
+
+core.registerTransferableResource(
+  "WritableStream",
+  (value) => {
+    const { port1, port2 } = new MessageChannel();
+    writableStreamTransferSteps(value, port1);
+    return core.getTransferableResource("MessagePort").send(port2);
+  },
+  (rid) => {
+    const port = core.getTransferableResource("MessagePort").receive(rid);
+    return writableStreamTransferReceivingSteps(port);
+  },
+);
+
+core.registerTransferableResource(
+  "TransformStream",
+  (value) => {
+    const { port1: portR1, port2: portR2 } = new MessageChannel();
+    const { port1: portW1, port2: portW2 } = new MessageChannel();
+    transformStreamTransferSteps(value, portR1, portW1);
+    return [
+      core.getTransferableResource("MessagePort").send(portR2),
+      core.getTransferableResource("MessagePort").send(portW2),
+    ];
+  },
+  (rids) => {
+    const portR = core.getTransferableResource("MessagePort").receive(rids[0]);
+    const portW = core.getTransferableResource("MessagePort").receive(rids[1]);
+    return transformStreamTransferReceivingSteps(portR, portW);
+  },
+);
+
 webidl.converters.ReadableStream = webidl
   .createInterfaceConverter("ReadableStream", ReadableStream.prototype);
 webidl.converters.WritableStream = webidl
@@ -6964,6 +7330,7 @@ export {
   ReadableStream,
   ReadableStreamBYOBReader,
   ReadableStreamBYOBRequest,
+  readableStreamCancel,
   readableStreamClose,
   readableStreamCollectIntoUint8Array,
   ReadableStreamDefaultController,

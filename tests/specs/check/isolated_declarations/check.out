@@ -1,0 +1,12 @@
+Check [WILDCARD]main.ts
+TS9007 [ERROR]: Function must have an explicit return type annotation with --isolatedDeclarations.
+export function add(a: number, b: number) {
+                ~~~
+    at file:///[WILDLINE]/main.ts:1:17
+
+TS9031 [ERROR]:     Add a return type to the function declaration.
+    export function add(a: number, b: number) {
+                    ~~~
+        at file:///[WILDLINE]/main.ts:1:17
+
+error: Type checking failed.

@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use super::common;
 use super::fmt::to_relative_path_or_remote_url;
@@ -12,7 +12,7 @@ pub struct DotTestReporter {
   failure_format_options: TestFailureFormatOptions,
 }
 
-#[allow(clippy::print_stdout)]
+#[allow(clippy::print_stdout, reason = "test reporter")]
 impl DotTestReporter {
   pub fn new(
     cwd: Url,
@@ -41,7 +41,7 @@ impl DotTestReporter {
       return;
     }
 
-    if self.n != 0 && self.n % self.width == 0 {
+    if self.n != 0 && self.n.is_multiple_of(self.width) {
       println!();
     }
     self.n += 1;
@@ -86,7 +86,7 @@ fn fmt_cancelled() -> String {
   colors::gray("!").to_string()
 }
 
-#[allow(clippy::print_stdout)]
+#[allow(clippy::print_stdout, reason = "test reporter")]
 impl TestReporter for DotTestReporter {
   fn report_register(&mut self, _description: &TestDescription) {}
 

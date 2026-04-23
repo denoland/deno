@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 import { core, primordials } from "ext:core/mod.js";
 import {
@@ -26,11 +26,12 @@ import {
   OtelSpan,
   OtelTracer,
 } from "ext:core/ops";
-import { Console } from "ext:deno_console/01_console.js";
+import { Console } from "ext:deno_web/01_console.js";
 
 const {
   ArrayFrom,
   ArrayIsArray,
+  ArrayPrototypeConcat,
   ArrayPrototypeFilter,
   ArrayPrototypeForEach,
   ArrayPrototypeJoin,
@@ -42,6 +43,8 @@ const {
   ArrayPrototypeSlice,
   DatePrototype,
   DatePrototypeGetTime,
+  decodeURIComponent,
+  encodeURIComponent,
   Error,
   MapPrototypeEntries,
   MapPrototypeKeys,
@@ -56,8 +59,8 @@ const {
   ObjectValues,
   ReflectApply,
   SafeArrayIterator,
-  SafeIterator,
   SafeMap,
+  SafeMapIterator,
   SafePromiseAll,
   SafeRegExp,
   SafeSet,
@@ -69,8 +72,6 @@ const {
   StringPrototypeTrim,
   SymbolFor,
   TypeError,
-  decodeURIComponent,
-  encodeURIComponent,
 } = primordials;
 const { AsyncVariable, getAsyncContext, setAsyncContext } = core;
 
@@ -202,9 +203,13 @@ interface AsyncContextSnapshot {
   __brand: "AsyncContextSnapshot";
 }
 
-export function enterSpan(span: Span): AsyncContextSnapshot | undefined {
+export function enterSpan(
+  span: Span,
+  context?: Context,
+): AsyncContextSnapshot | undefined {
   if (!span.isRecording()) return undefined;
-  const context = (CURRENT.get() ?? ROOT_CONTEXT).setValue(SPAN_KEY, span);
+  context = (context ?? CURRENT.get() ?? ROOT_CONTEXT)
+    .setValue(SPAN_KEY, span);
   return CURRENT.enter(context);
 }
 
@@ -421,11 +426,11 @@ class Tracer {
   }
 }
 
-const SPAN_KEY = SymbolFor("OpenTelemetry Context Key SPAN");
+export const SPAN_KEY = SymbolFor("OpenTelemetry Context Key SPAN");
 
-let getOtelSpan: (span: object) => OtelSpan | null | undefined;
+export let getOtelSpan: (span: object) => OtelSpan | null | undefined;
 
-class Span {
+export class Span {
   #otelSpan: OtelSpan | null;
   #spanContext: SpanContext | undefined;
 
@@ -748,7 +753,7 @@ class BatchObservableResult {
 
   static {
     batchResultHasObservables = (cb, observables) => {
-      for (const observable of new SafeIterator(observables)) {
+      for (const observable of new SafeArrayIterator(observables)) {
         if (!cb.#observables.has(observable)) return false;
       }
       return true;
@@ -1179,13 +1184,35 @@ const otelConsoleConfig = {
   replace: 2,
 };
 
+let pendingException: Error | undefined;
+
+const OTEL_CONSOLE_METHODS = ["log", "debug", "info", "warn", "error"];
+
+function wrapOtelConsoleMethods(otelConsole: Console) {
+  for (let i = 0; i < OTEL_CONSOLE_METHODS.length; i++) {
+    const method = OTEL_CONSOLE_METHODS[i];
+    const orig = otelConsole[method];
+    otelConsole[method] = (...args: unknown[]) => {
+      if (args.length >= 1 && core.isNativeError(args[0])) {
+        pendingException = args[0] as Error;
+      }
+      return ReflectApply(orig, otelConsole, args);
+    };
+  }
+}
+
 function otelLog(message: string, level: number) {
+  const exception = pendingException;
+  pendingException = undefined;
+  const excType = exception?.name ?? "";
+  const excMessage = exception?.message ?? "";
+  const excStacktrace = exception?.stack ?? "";
   const currentSpan = CURRENT.get()?.getValue(SPAN_KEY);
   const otelSpan = currentSpan !== undefined
     ? getOtelSpan(currentSpan)
     : undefined;
   if (otelSpan || currentSpan === undefined) {
-    op_otel_log(message, level, otelSpan);
+    op_otel_log(message, level, otelSpan, excType, excMessage, excStacktrace);
   } else {
     const spanContext = currentSpan.spanContext();
     op_otel_log_foreign(
@@ -1194,6 +1221,9 @@ function otelLog(message: string, level: number) {
       spanContext.traceId,
       spanContext.spanId,
       spanContext.traceFlags,
+      excType,
+      excMessage,
+      excStacktrace,
     );
   }
 }
@@ -1632,7 +1662,13 @@ class BaggageImpl implements Baggage {
   #entries: Map<string, BaggageEntry>;
 
   constructor(entries?: Map<string, BaggageEntry>) {
-    this.#entries = entries ? new SafeMap(entries) : new SafeMap();
+    this.#entries = new SafeMap();
+    // The `SafeMap` constructor that takes an iterable doesn't work for non Array iterables correctly.
+    if (entries) {
+      for (const { 0: key, 1: entry } of new SafeMapIterator(entries)) {
+        this.#entries.set(key, ObjectAssign({}, entry));
+      }
+    }
   }
 
   getEntry(key: string): BaggageEntry | undefined {
@@ -1676,9 +1712,11 @@ class BaggageImpl implements Baggage {
   }
 }
 
+const BAGGAGE_KEY = SymbolFor("OpenTelemetry Baggage Key");
+
 export class W3CBaggagePropagator implements TextMapPropagator {
   inject(context: Context, carrier: unknown, setter: TextMapSetter): void {
-    const baggage = context.getValue(baggageEntryMetadataSymbol) as
+    const baggage = context.getValue(BAGGAGE_KEY) as
       | Baggage
       | undefined;
     if (!baggage || isTracingSuppressed(context)) return;
@@ -1702,9 +1740,6 @@ export class W3CBaggagePropagator implements TextMapPropagator {
       : headerValue;
     if (!baggageString) return context;
     const baggage: Record<string, BaggageEntry> = {};
-    if (baggageString.length === 0) {
-      return context;
-    }
     const pairs = StringPrototypeSplit(baggageString, BAGGAGE_ITEMS_SEPARATOR);
     ArrayPrototypeForEach(pairs, (entry) => {
       const keyPair = parsePairKeyValue(entry);
@@ -1721,13 +1756,67 @@ export class W3CBaggagePropagator implements TextMapPropagator {
     }
 
     return context.setValue(
-      baggageEntryMetadataSymbol,
+      BAGGAGE_KEY,
       new BaggageImpl(new SafeMap(ObjectEntries(baggage))),
     );
   }
 
   fields(): string[] {
     return [BAGGAGE_HEADER];
+  }
+}
+
+export class CompositePropagator implements TextMapPropagator {
+  #propagators: TextMapPropagator[];
+  #fields: string[];
+
+  constructor(propagators: TextMapPropagator[]) {
+    this.#propagators = propagators;
+    this.#fields = ArrayFrom(
+      new SafeSet(
+        ArrayPrototypeReduce(
+          ArrayPrototypeMap(
+            this.#propagators,
+            (p) => p.fields(),
+          ),
+          (x, y) => ArrayPrototypeConcat(x, y),
+          [],
+        ),
+      ),
+    );
+  }
+
+  inject(context: Context, carrier: unknown, setter: TextMapSetter): void {
+    for (const propagator of new SafeArrayIterator(this.#propagators)) {
+      try {
+        propagator.inject(context, carrier, setter);
+      } catch (err) {
+        // deno-lint-ignore no-console
+        console.warn(
+          `Failed to inject with ${propagator.constructor.name}.`,
+          err,
+        );
+      }
+    }
+  }
+
+  extract(context: Context, carrier: unknown, getter: TextMapGetter): Context {
+    return ArrayPrototypeReduce(this.#propagators, (ctx, propagator) => {
+      try {
+        return propagator.extract(ctx, carrier, getter);
+      } catch (err) {
+        // deno-lint-ignore no-console
+        console.warn(
+          `Failed to extract with ${propagator.constructor.name}.`,
+          err,
+        );
+      }
+      return ctx;
+    }, context);
+  }
+
+  fields(): string[] {
+    return ArrayPrototypeSlice(this.#fields);
   }
 }
 
@@ -1785,21 +1874,27 @@ export function bootstrap(
   );
 
   switch (consoleConfig) {
-    case otelConsoleConfig.capture:
-      core.wrapConsole(globalThis.console, new Console(otelLog));
+    case otelConsoleConfig.capture: {
+      const otelConsole = new Console(otelLog);
+      wrapOtelConsoleMethods(otelConsole);
+      core.wrapConsole(globalThis.console, otelConsole);
       break;
-    case otelConsoleConfig.replace:
+    }
+    case otelConsoleConfig.replace: {
+      const otelConsole = new Console(otelLog);
+      wrapOtelConsoleMethods(otelConsole);
       ObjectDefineProperty(
         globalThis,
         "console",
-        core.propNonEnumerable(new Console(otelLog)),
+        core.propNonEnumerable(otelConsole),
       );
       break;
+    }
     default:
       break;
   }
 
-  if (TRACING_ENABLED || METRICS_ENABLED) {
+  if (TRACING_ENABLED || METRICS_ENABLED || PROPAGATORS.length > 0) {
     const otel = globalThis[SymbolFor("opentelemetry.js.api.1")] ??= {
       version: OTEL_API_COMPAT_VERSION,
     };
@@ -1810,6 +1905,9 @@ export function bootstrap(
     if (METRICS_ENABLED) {
       otel.metrics = MeterProvider;
       enableIsolateMetrics();
+    }
+    if (PROPAGATORS.length > 0) {
+      otel.propagation = new CompositePropagator(PROPAGATORS);
     }
   }
 }

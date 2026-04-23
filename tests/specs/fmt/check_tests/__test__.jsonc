@@ -1,0 +1,16 @@
+{
+  "tests": {
+    "fmt_quiet_check_fmt_dir": {
+      "args": "fmt --check --quiet regular/",
+      "output": ""
+    },
+    "fmt_check_formatted_files": {
+      "args": "fmt --check regular/formatted1.js regular/formatted2.ts regular/formatted3.markdown regular/formatted4.jsonc",
+      "output": "Checked 4 files\n"
+    },
+    "fmt_check_ignore": {
+      "args": "fmt --check --ignore=regular/formatted1.js regular/",
+      "output": "Checked 3 files\n"
+    }
+  }
+}

@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -43,7 +43,7 @@ impl LscBackend {
   }
 }
 
-#[allow(clippy::unused_async)]
+#[allow(clippy::unused_async, reason = "trait requires async interface")]
 impl LscBackend {
   /// Open a cache storage. Internally, this allocates an id and maps it
   /// to the provided cache name.

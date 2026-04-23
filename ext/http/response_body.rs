@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 use std::io::Write;
 use std::pin::Pin;
 use std::rc::Rc;
@@ -567,7 +567,7 @@ impl PollFrame for BrotliResponseStream {
   }
 }
 
-#[allow(clippy::print_stderr)]
+#[allow(clippy::print_stderr, reason = "test code")]
 #[cfg(test)]
 mod tests {
   use std::future::poll_fn;

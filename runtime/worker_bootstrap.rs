@@ -1,10 +1,11 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::cell::RefCell;
 use std::thread;
 
 use deno_core::ModuleSpecifier;
 use deno_core::v8;
+use deno_node::ops::ipc::ChildIpcSerialization;
 use deno_telemetry::OtelConfig;
 use deno_terminal::colors;
 use serde::Serialize;
@@ -95,7 +96,6 @@ pub struct BootstrapOptions {
   pub args: Vec<String>,
   pub cpu_count: usize,
   pub log_level: WorkerLogLevel,
-  pub enable_op_summary_metrics: bool,
   pub enable_testing_features: bool,
   pub locale: String,
   pub location: Option<ModuleSpecifier>,
@@ -109,7 +109,7 @@ pub struct BootstrapOptions {
   pub has_node_modules_dir: bool,
   pub argv0: Option<String>,
   pub node_debug: Option<String>,
-  pub node_ipc_fd: Option<i64>,
+  pub node_ipc_init: Option<(i64, ChildIpcSerialization)>,
   pub mode: WorkerExecutionMode,
   pub no_legacy_abort: bool,
   // Used by `deno serve`
@@ -136,7 +136,6 @@ impl Default for BootstrapOptions {
       user_agent,
       cpu_count,
       color_level: colors::get_color_level(),
-      enable_op_summary_metrics: false,
       enable_testing_features: false,
       log_level: Default::default(),
       locale: "en".to_string(),
@@ -149,7 +148,7 @@ impl Default for BootstrapOptions {
       has_node_modules_dir: false,
       argv0: None,
       node_debug: None,
-      node_ipc_fd: None,
+      node_ipc_init: None,
       mode: WorkerExecutionMode::None,
       no_legacy_abort: false,
       serve_port: Default::default(),
@@ -211,7 +210,7 @@ impl BootstrapOptions {
   /// Return the v8 equivalent of this structure.
   pub fn as_v8<'s>(
     &self,
-    scope: &mut v8::HandleScope<'s>,
+    scope: &mut v8::PinScope<'s, '_>,
   ) -> v8::Local<'s, v8::Value> {
     let scope = RefCell::new(scope);
     let ser = deno_core::serde_v8::Serializer::new(&scope);

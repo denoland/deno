@@ -1,0 +1,13 @@
+{
+  "tempDir": true,
+  "steps": [
+    {
+      "args": "bundle main.cjs -o out.js",
+      "output": "[WILDCARD]\nBundled 1 module in [WILDCARD]s\n  out.js [WILDCARD]"
+    },
+    {
+      "args": "run out.js",
+      "output": "freemem\nrequire\n"
+    }
+  ]
+}

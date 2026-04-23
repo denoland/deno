@@ -1,12 +1,9 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use deno_core::error::AnyError;
-pub use repl::ReplCompletionItem;
-pub use repl::ReplLanguageServer;
 use tower_lsp::LspService;
 use tower_lsp::Server;
 
-use self::diagnostics::should_send_diagnostic_batch_index_notifications;
 use crate::lsp::language_server::LanguageServer;
 
 mod analysis;
@@ -30,13 +27,13 @@ mod path_to_regex;
 mod performance;
 mod refactor;
 mod registries;
-mod repl;
 mod resolver;
 mod search;
 mod semantic_tokens;
 mod testing;
 mod text;
 mod trace;
+mod ts_server;
 mod tsc;
 mod urls;
 
@@ -60,16 +57,15 @@ pub async fn start() -> Result<(), AnyError> {
   .custom_method(
     lsp_custom::VIRTUAL_TEXT_DOCUMENT,
     LanguageServer::virtual_text_document,
+  )
+  .custom_method(
+    lsp_custom::VIRTUAL_TEXT_DOCUMENT,
+    LanguageServer::virtual_text_document,
+  )
+  .custom_method(
+    lsp_custom::VIRTUAL_TEXT_DOCUMENT,
+    LanguageServer::virtual_text_document,
   );
-
-  let builder = if should_send_diagnostic_batch_index_notifications() {
-    builder.custom_method(
-      lsp_custom::LATEST_DIAGNOSTIC_BATCH_INDEX,
-      LanguageServer::latest_diagnostic_batch_index_request,
-    )
-  } else {
-    builder
-  };
 
   let (service, socket, pending) = builder.finish();
   Server::new(stdin, stdout, socket, pending)

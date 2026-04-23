@@ -1,0 +1,22 @@
+[UNORDERED_START]
+Download http://localhost:4260/@denotest%2fbetter-say-hello
+Download http://localhost:4260/@denotest%2fsay-hello-on-install
+Download http://localhost:4260/@denotest%2fsay-hello
+Download http://localhost:4260/@denotest/better-say-hello/1.0.0.tgz
+Download http://localhost:4260/@denotest/say-hello-on-install/1.0.0.tgz
+Download http://localhost:4260/@denotest/say-hello/1.0.0.tgz
+Initialize @denotest/better-say-hello@1.0.0
+Initialize @denotest/say-hello-on-install@1.0.0
+Initialize @denotest/say-hello@1.0.0
+Initialize @denotest/say-hello-on-install@1.0.0: running 'install' script
+[UNORDERED_END]
+Installed 3 packages in [WILDCARD]
+Reused 0 packages from cache
+Downloaded 0 packages from JSR
+Downloaded 3 packages from npm
++++
+
+Dependencies:
++ npm:@denotest/better-say-hello 1.0.0
++ npm:@denotest/say-hello-on-install 1.0.0
+

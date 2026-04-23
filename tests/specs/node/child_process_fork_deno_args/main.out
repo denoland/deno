@@ -1,0 +1,8 @@
+Test 1: Fork with Deno-style execArgv
+With run -A --conditions=custom: ok
+
+Test 2: Fork with multiple Deno-style conditions
+With multiple conditions: ok
+
+Test 3: Fork with Node-style execArgv
+With Node-style args: ok

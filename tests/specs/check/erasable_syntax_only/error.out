@@ -1,4 +1,4 @@
-Check file:///[WILDLINE]/main.ts
+Check [WILDCARD]main.ts
 TS1294 [ERROR]: This syntax is not allowed when 'erasableSyntaxOnly' is enabled.
 namespace Test {
           ~~~~

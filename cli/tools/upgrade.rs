@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 //! This module provides feature to upgrade deno executable
 
@@ -24,6 +24,9 @@ use deno_lib::version;
 use deno_semver::SmallStackString;
 use deno_semver::Version;
 use once_cell::sync::Lazy;
+use sha2::Digest;
+use sys_traits::FsDirEntry;
+use sys_traits::FsMetadataValue;
 
 use crate::args::Flags;
 use crate::args::UPGRADE_USAGE;
@@ -36,9 +39,9 @@ use crate::util::archive;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
 
-const RELEASE_URL: &str = "https://github.com/denoland/deno/releases";
-const CANARY_URL: &str = "https://dl.deno.land/canary";
-const DL_RELEASE_URL: &str = "https://dl.deno.land/release";
+static RELEASE_URL: &str = "https://github.com/denoland/deno/releases";
+static CANARY_URL: &str = "https://dl.deno.land/canary";
+static DL_RELEASE_URL: &str = "https://dl.deno.land/release";
 
 pub static ARCHIVE_NAME: Lazy<String> =
   Lazy::new(|| format!("deno-{}.zip", env!("TARGET")));
@@ -391,6 +394,24 @@ pub fn check_for_upgrades(
           colors::italic_gray("Run `deno upgrade lts` to install it.")
         );
       }
+      ReleaseChannel::Alpha => {
+        log::info!(
+          "{} {} → {} {}",
+          colors::green("A new alpha release of Deno is available:"),
+          colors::cyan(version::DENO_VERSION_INFO.deno),
+          colors::cyan(&upgrade_version),
+          colors::italic_gray("Run `deno upgrade alpha` to install it.")
+        );
+      }
+      ReleaseChannel::Beta => {
+        log::info!(
+          "{} {} → {} {}",
+          colors::green("A new beta release of Deno is available:"),
+          colors::cyan(version::DENO_VERSION_INFO.deno),
+          colors::cyan(&upgrade_version),
+          colors::italic_gray("Run `deno upgrade beta` to install it.")
+        );
+      }
     }
 
     update_checker.store_prompted();
@@ -428,7 +449,11 @@ async fn check_for_upgrades_for_lsp_with_provider(
   }
 
   match release_channel {
-    ReleaseChannel::Stable | ReleaseChannel::Rc | ReleaseChannel::Lts => {
+    ReleaseChannel::Stable
+    | ReleaseChannel::Rc
+    | ReleaseChannel::Lts
+    | ReleaseChannel::Alpha
+    | ReleaseChannel::Beta => {
       if let Ok(current) = Version::parse_standard(&current_version)
         && let Ok(latest) =
           Version::parse_standard(&latest_version.version_or_hash)
@@ -477,22 +502,504 @@ async fn fetch_and_store_latest_version<
   env.write_check_file(&version_file.serialize());
 }
 
+fn get_binary_cache_path(
+  dl_dir: &Path,
+  version: &str,
+  release_channel: ReleaseChannel,
+) -> PathBuf {
+  let binary_path_suffix = match release_channel {
+    ReleaseChannel::Canary => {
+      format!("canary/{}/{}", version, *ARCHIVE_NAME)
+    }
+    _ => {
+      format!("release/v{}/{}", version, *ARCHIVE_NAME)
+    }
+  };
+  dl_dir.join(binary_path_suffix)
+}
+
+fn prune_canary_cache<
+  Sys: sys_traits::FsReadDir + sys_traits::FsRemoveDirAll,
+>(
+  sys: &Sys,
+  dl_dir: &Path,
+  max_entries: usize,
+) {
+  let canary_dir = dl_dir.join("canary");
+  let Ok(entries) = sys.fs_read_dir(&canary_dir) else {
+    return;
+  };
+
+  let mut dirs: Vec<(PathBuf, std::time::SystemTime)> = entries
+    .filter_map(|e| e.ok())
+    .filter(|e| e.file_type().map(|t| t.is_dir()).unwrap_or(false))
+    .filter_map(|e| {
+      let modified = e.metadata().ok()?.modified().ok()?;
+      Some((e.path().into_owned(), modified))
+    })
+    .collect();
+
+  if dirs.len() <= max_entries {
+    return;
+  }
+
+  // Sort by modification time, most recent first
+  dirs.sort_by(|a, b| b.1.cmp(&a.1));
+
+  for (path, _) in dirs.into_iter().skip(max_entries) {
+    let _ = sys.fs_remove_dir_all(&path);
+  }
+}
+
+fn try_read_cached_binary(
+  sys: &impl sys_traits::FsRead,
+  cache_path: &Path,
+) -> Option<Vec<u8>> {
+  match sys.fs_read(cache_path) {
+    Ok(data) => Some(data.into_owned()),
+    Err(_) => None,
+  }
+}
+
+fn store_cached_binary(
+  sys: &impl deno_path_util::fs::AtomicWriteFileSys,
+  cache_path: &Path,
+  data: &[u8],
+) {
+  if let Err(err) =
+    deno_path_util::fs::atomic_write_file(sys, cache_path, data, 0o644)
+  {
+    log::debug!("Failed to cache binary: {}", err);
+  }
+}
+
+/// Get the artifact name for the current platform.
+/// CI artifacts are named like `{profile}-{os}-{arch}-deno`.
+fn get_pr_artifact_name() -> Result<String, AnyError> {
+  let target = env!("TARGET");
+
+  let (os, arch) = if target.contains("linux") && target.contains("x86_64") {
+    ("linux", "x86_64")
+  } else if target.contains("linux") && target.contains("aarch64") {
+    ("linux", "aarch64")
+  } else if target.contains("apple") && target.contains("x86_64") {
+    ("macos", "x86_64")
+  } else if target.contains("apple") && target.contains("aarch64") {
+    ("macos", "aarch64")
+  } else if target.contains("windows") && target.contains("x86_64") {
+    ("windows", "x86_64")
+  } else if target.contains("windows") && target.contains("aarch64") {
+    ("windows", "aarch64")
+  } else {
+    bail!("Unsupported platform for PR builds: {}", target)
+  };
+
+  // Prefer release builds, fall back to debug
+  Ok(format!("release-{os}-{arch}-deno"))
+}
+
+fn get_pr_debug_artifact_name() -> Result<String, AnyError> {
+  let release_name = get_pr_artifact_name()?;
+  Ok(release_name.replacen("release-", "debug-", 1))
+}
+
+fn upgrade_from_pr(
+  pr_number: u64,
+  upgrade_flags: &UpgradeFlags,
+) -> Result<(), AnyError> {
+  // Check that `gh` CLI is available
+  let gh_version = Command::new("gh").arg("--version").output();
+  if gh_version.is_err() {
+    bail!(
+      "The `gh` CLI is required for installing from a PR.\n\
+       Install it from https://cli.github.com/ and run `gh auth login`."
+    );
+  }
+
+  log::info!("{}", colors::gray(format!("Looking up PR #{pr_number}...")));
+
+  // Verify the PR exists and get its title/state/branch
+  let pr_info = Command::new("gh")
+    .args([
+      "pr",
+      "view",
+      &pr_number.to_string(),
+      "--repo",
+      "denoland/deno",
+      "--json",
+      "title,state,headRefName,headRefOid",
+      "-q",
+      r#"[.title, .state, .headRefName, .headRefOid] | @tsv"#,
+    ])
+    .output()
+    .context("failed to run `gh pr view`")?;
+
+  if !pr_info.status.success() {
+    let stderr = String::from_utf8_lossy(&pr_info.stderr);
+    bail!("Failed to find PR #{pr_number}: {stderr}");
+  }
+
+  let pr_info_str = String::from_utf8_lossy(&pr_info.stdout);
+  let pr_fields: Vec<&str> = pr_info_str.trim().splitn(4, '\t').collect();
+  let pr_title = pr_fields.first().unwrap_or(&"unknown");
+  let pr_state = pr_fields.get(1).unwrap_or(&"unknown");
+  let pr_branch = pr_fields.get(2).unwrap_or(&"");
+  let pr_head_sha = pr_fields.get(3).unwrap_or(&"");
+
+  log::info!(
+    "PR #{}: {} ({})",
+    pr_number,
+    colors::bold(pr_title),
+    pr_state
+  );
+
+  let artifact_name = get_pr_artifact_name()?;
+  let debug_artifact_name = get_pr_debug_artifact_name()?;
+
+  // Find CI runs for this PR by branch name
+  log::info!("{}", colors::gray("Finding CI artifacts..."));
+
+  let mut all_run_ids = Vec::new();
+
+  if !pr_branch.is_empty() {
+    // Filter by headSha to ensure we only get runs for the PR's current commit
+    let jq_filter = if pr_head_sha.is_empty() {
+      ".[].databaseId".to_string()
+    } else {
+      format!(
+        r#"[.[] | select(.headSha == "{}")] | .[].databaseId"#,
+        pr_head_sha
+      )
+    };
+    let branch_runs = Command::new("gh")
+      .args([
+        "run",
+        "list",
+        "--repo",
+        "denoland/deno",
+        "--branch",
+        pr_branch,
+        "--workflow",
+        "ci",
+        "--limit",
+        "5",
+        "--json",
+        "databaseId,headSha",
+        "-q",
+        &jq_filter,
+      ])
+      .output()
+      .context("failed to query CI runs by branch")?;
+
+    if branch_runs.status.success() {
+      let ids = String::from_utf8_lossy(&branch_runs.stdout);
+      for id in ids.trim().lines() {
+        if !id.is_empty() {
+          all_run_ids.push(id.to_string());
+        }
+      }
+    }
+  }
+
+  if all_run_ids.is_empty() {
+    bail!(
+      "No CI runs found for PR #{pr_number}. \
+       The PR may not have been pushed yet, CI hasn't started, \
+       or CI hasn't run on the latest commit yet."
+    );
+  }
+
+  // Try each run to find one with our artifact
+  let temp_dir =
+    tempfile::TempDir::new().context("failed to create temporary directory")?;
+  let download_dir = temp_dir.path();
+
+  let mut downloaded = false;
+  for run_id in &all_run_ids {
+    // Try release build first, then debug
+    for name in [&artifact_name, &debug_artifact_name] {
+      log::info!(
+        "{}",
+        colors::gray(format!("Trying run {run_id}, artifact \"{name}\"..."))
+      );
+
+      let dl_result = Command::new("gh")
+        .args([
+          "run",
+          "download",
+          run_id,
+          "--repo",
+          "denoland/deno",
+          "--name",
+          name,
+          "--dir",
+          &download_dir.to_string_lossy(),
+        ])
+        .output()
+        .context("failed to run `gh run download`")?;
+
+      if dl_result.status.success() {
+        log::info!(
+          "Downloaded artifact \"{}\" from run {}",
+          colors::green(name),
+          run_id
+        );
+        downloaded = true;
+        break;
+      }
+    }
+    if downloaded {
+      break;
+    }
+  }
+
+  if !downloaded {
+    bail!(
+      "Could not find a \"{}\" artifact for PR #{pr_number}.\n\
+       Available artifacts may have expired or CI may not have completed.\n\
+       Only release builds on linux-x86_64 and debug builds are typically available for PRs.",
+      artifact_name
+    );
+  }
+
+  // Find the downloaded binary
+  let exe_name = if cfg!(windows) { "deno.exe" } else { "deno" };
+  let new_exe_path = download_dir.join(exe_name);
+
+  if !new_exe_path.exists() {
+    bail!(
+      "Downloaded artifact does not contain '{}'. Contents: {:?}",
+      exe_name,
+      fs::read_dir(download_dir)?
+        .filter_map(|e| e.ok())
+        .map(|e| e.file_name().to_string_lossy().to_string())
+        .collect::<Vec<_>>()
+    );
+  }
+
+  // Set executable permissions
+  #[cfg(unix)]
+  {
+    use std::os::unix::fs::PermissionsExt;
+    fs::set_permissions(&new_exe_path, std::fs::Permissions::from_mode(0o755))?;
+  }
+
+  // Verify the binary works
+  check_exe(&new_exe_path)?;
+
+  if upgrade_flags.dry_run {
+    log::info!("Upgraded successfully (dry run)");
+    drop(temp_dir);
+    return Ok(());
+  }
+
+  let current_exe_path = std::env::current_exe()
+    .context("failed to get the path of the current executable")?;
+  let output_exe_path = if let Some(output) = &upgrade_flags.output {
+    Cow::Owned(PathBuf::from(output))
+  } else {
+    Cow::Borrowed(&current_exe_path)
+  };
+
+  #[cfg(windows)]
+  kill_running_deno_lsp_processes();
+
+  let output_result = if *output_exe_path == current_exe_path {
+    replace_exe(&new_exe_path, &output_exe_path)
+  } else {
+    fs::rename(&new_exe_path, &*output_exe_path)
+      .or_else(|_| fs::copy(&new_exe_path, &*output_exe_path).map(|_| ()))
+  };
+  check_windows_access_denied_error(output_result, &output_exe_path)?;
+
+  log::info!(
+    "\nUpgraded successfully from PR #{} {}\n",
+    colors::green(&pr_number.to_string()),
+    colors::gray(&format!("({})", pr_title))
+  );
+
+  drop(temp_dir);
+  Ok(())
+}
+
+fn upgrade_from_branch(
+  branch: &str,
+  upgrade_flags: &UpgradeFlags,
+) -> Result<(), AnyError> {
+  let gh_version = Command::new("gh").arg("--version").output();
+  if gh_version.is_err() {
+    bail!(
+      "The `gh` CLI is required for installing from a branch.\n\
+       Install it from https://cli.github.com/ and run `gh auth login`."
+    );
+  }
+
+  log::info!(
+    "{}",
+    colors::gray(format!("Finding CI artifacts for branch '{branch}'..."))
+  );
+
+  let artifact_name = get_pr_artifact_name()?;
+  let debug_artifact_name = get_pr_debug_artifact_name()?;
+
+  let runs_output = Command::new("gh")
+    .args([
+      "run",
+      "list",
+      "--repo",
+      "denoland/deno",
+      "--branch",
+      branch,
+      "--workflow",
+      "ci",
+      "--limit",
+      "5",
+      "--json",
+      "databaseId",
+      "-q",
+      ".[].databaseId",
+    ])
+    .output()
+    .context("failed to query CI runs")?;
+
+  if !runs_output.status.success() {
+    let stderr = String::from_utf8_lossy(&runs_output.stderr);
+    bail!("Failed to find CI runs for branch '{branch}': {stderr}");
+  }
+
+  let run_ids: Vec<String> = String::from_utf8_lossy(&runs_output.stdout)
+    .trim()
+    .lines()
+    .filter(|l| !l.is_empty())
+    .map(|s| s.to_string())
+    .collect();
+
+  if run_ids.is_empty() {
+    bail!(
+      "No CI runs found for branch '{branch}'. \
+       CI may not have run yet."
+    );
+  }
+
+  let temp_dir =
+    tempfile::TempDir::new().context("failed to create temporary directory")?;
+  let download_dir = temp_dir.path();
+
+  let mut downloaded = false;
+  for run_id in &run_ids {
+    for name in [&artifact_name, &debug_artifact_name] {
+      log::info!(
+        "{}",
+        colors::gray(format!("Trying run {run_id}, artifact \"{name}\"..."))
+      );
+
+      let dl_result = Command::new("gh")
+        .args([
+          "run",
+          "download",
+          run_id,
+          "--repo",
+          "denoland/deno",
+          "--name",
+          name,
+          "--dir",
+          &download_dir.to_string_lossy(),
+        ])
+        .output()
+        .context("failed to run `gh run download`")?;
+
+      if dl_result.status.success() {
+        log::info!(
+          "Downloaded artifact \"{}\" from run {}",
+          colors::green(name),
+          run_id
+        );
+        downloaded = true;
+        break;
+      }
+    }
+    if downloaded {
+      break;
+    }
+  }
+
+  if !downloaded {
+    bail!(
+      "Could not find a \"{artifact_name}\" artifact for branch '{branch}'.\n\
+       Artifacts may have expired or CI may not have completed."
+    );
+  }
+
+  let exe_name = if cfg!(windows) { "deno.exe" } else { "deno" };
+  let new_exe_path = download_dir.join(exe_name);
+
+  if !new_exe_path.exists() {
+    bail!("Downloaded artifact does not contain '{exe_name}'.");
+  }
+
+  #[cfg(unix)]
+  {
+    use std::os::unix::fs::PermissionsExt;
+    fs::set_permissions(&new_exe_path, std::fs::Permissions::from_mode(0o755))?;
+  }
+
+  check_exe(&new_exe_path)?;
+
+  if upgrade_flags.dry_run {
+    log::info!("Upgraded successfully (dry run)");
+    drop(temp_dir);
+    return Ok(());
+  }
+
+  let current_exe_path = std::env::current_exe()
+    .context("failed to get the path of the current executable")?;
+  let output_exe_path = if let Some(output) = &upgrade_flags.output {
+    Cow::Owned(PathBuf::from(output))
+  } else {
+    Cow::Borrowed(&current_exe_path)
+  };
+
+  #[cfg(windows)]
+  kill_running_deno_lsp_processes();
+
+  let output_result = if *output_exe_path == current_exe_path {
+    replace_exe(&new_exe_path, &output_exe_path)
+  } else {
+    fs::rename(&new_exe_path, &*output_exe_path)
+      .or_else(|_| fs::copy(&new_exe_path, &*output_exe_path).map(|_| ()))
+  };
+  check_windows_access_denied_error(output_result, &output_exe_path)?;
+
+  log::info!(
+    "\nUpgraded successfully from branch '{}'\n",
+    colors::green(branch),
+  );
+
+  drop(temp_dir);
+  Ok(())
+}
+
 pub async fn upgrade(
   flags: Arc<Flags>,
   upgrade_flags: UpgradeFlags,
 ) -> Result<(), AnyError> {
+  if let Some(pr_number) = upgrade_flags.pr {
+    return upgrade_from_pr(pr_number, &upgrade_flags);
+  }
+  if let Some(ref branch) = upgrade_flags.branch {
+    return upgrade_from_branch(branch, &upgrade_flags);
+  }
+
   let factory = CliFactory::from_flags(flags);
+  let cli_options = factory.cli_options()?;
   let http_client_provider = factory.http_client_provider();
   let client = http_client_provider.get_or_create()?;
-  let current_exe_path = std::env::current_exe()?;
-  let full_path_output_flag = match &upgrade_flags.output {
-    Some(output) => Some(
-      std::env::current_dir()
-        .context("failed getting cwd")?
-        .join(output),
-    ),
-    None => None,
-  };
+  let current_exe_path = std::env::current_exe()
+    .context("failed to get the path of the current executable")?;
+  let full_path_output_flag = upgrade_flags
+    .output
+    .as_ref()
+    .map(|output| cli_options.initial_cwd().join(output));
   let output_exe_path =
     full_path_output_flag.as_ref().unwrap_or(&current_exe_path);
 
@@ -529,16 +1036,53 @@ pub async fn upgrade(
     return Ok(());
   };
 
-  let download_url = get_download_url(
+  let banner_handle = spawn_banner_task(
+    &selected_version_to_upgrade.version_or_hash,
+    selected_version_to_upgrade.release_channel,
+    http_client_provider.get_or_create()?,
+  );
+
+  let dl_dir = factory.deno_dir()?.dl_folder_path();
+  let cache_path = get_binary_cache_path(
+    &dl_dir,
     &selected_version_to_upgrade.version_or_hash,
     requested_version.release_channel(),
-  )?;
-  log::info!("{}", colors::gray(format!("Downloading {}", &download_url)));
-  let Some(archive_data) = download_package(&client, download_url).await?
-  else {
-    log::error!("Download could not be found, aborting");
-    deno_runtime::exit(1)
-  };
+  );
+
+  let sys = &sys_traits::impls::RealSys;
+  let archive_data =
+    if let Some(data) = try_read_cached_binary(sys, &cache_path) {
+      log::info!(
+        "{}",
+        colors::gray(format!(
+          "Using cached binary from {}",
+          cache_path.display()
+        ))
+      );
+      data
+    } else {
+      let download_url = get_download_url(
+        &selected_version_to_upgrade.version_or_hash,
+        requested_version.release_channel(),
+      )?;
+      log::info!("{}", colors::gray(format!("Downloading {}", &download_url)));
+      let Some(data) = download_package(&client, download_url).await? else {
+        log::error!("Download could not be found, aborting");
+        if requested_version.release_channel() == ReleaseChannel::Canary {
+          log::error!("Note: canary releases are only kept for 30 days.");
+        }
+        deno_runtime::exit(1)
+      };
+
+      store_cached_binary(sys, &cache_path, &data);
+
+      data
+    };
+
+  // verify checksum if provided
+  if let Some(expected_checksum) = &upgrade_flags.checksum {
+    verify_checksum(&archive_data, expected_checksum)?;
+  }
 
   log::info!(
     "{}",
@@ -548,19 +1092,25 @@ pub async fn upgrade(
     ))
   );
 
-  let temp_dir = tempfile::TempDir::new()?;
+  let temp_dir =
+    tempfile::TempDir::new().context("failed to create temporary directory")?;
   let new_exe_path = archive::unpack_into_dir(archive::UnpackArgs {
     exe_name: "deno",
     archive_name: &ARCHIVE_NAME,
     archive_data: &archive_data,
     is_windows: cfg!(windows),
     dest_path: temp_dir.path(),
+  })
+  .context("failed to extract archive")?;
+  fs::set_permissions(&new_exe_path, permissions).with_context(|| {
+    format!("failed to set permissions on '{}'", new_exe_path.display())
   })?;
-  fs::set_permissions(&new_exe_path, permissions)?;
   check_exe(&new_exe_path)?;
 
   if upgrade_flags.dry_run {
-    fs::remove_file(&new_exe_path)?;
+    fs::remove_file(&new_exe_path).with_context(|| {
+      format!("failed to remove '{}'", new_exe_path.display())
+    })?;
     log::info!("Upgraded successfully (dry run)");
     if requested_version.release_channel() == ReleaseChannel::Stable {
       print_release_notes(
@@ -605,7 +1155,17 @@ pub async fn upgrade(
     .await;
   }
 
+  if let Ok(Some(text)) = banner_handle.await {
+    log::info!("\n{}\n", text);
+  }
+
   drop(temp_dir); // delete the temp dir
+
+  // Prune old canary cache entries to avoid unbounded growth
+  if requested_version.release_channel() == ReleaseChannel::Canary {
+    prune_canary_cache(sys, &dl_dir, 10);
+  }
+
   Ok(())
 }
 
@@ -671,7 +1231,11 @@ impl RequestedVersion {
         );
       };
 
-      if semver.pre.contains(&SmallStackString::from_static("rc")) {
+      if semver.pre.contains(&SmallStackString::from_static("alpha")) {
+        (ReleaseChannel::Alpha, passed_version)
+      } else if semver.pre.contains(&SmallStackString::from_static("beta")) {
+        (ReleaseChannel::Beta, passed_version)
+      } else if semver.pre.contains(&SmallStackString::from_static("rc")) {
         (ReleaseChannel::Rc, passed_version)
       } else {
         (ReleaseChannel::Stable, passed_version)
@@ -696,7 +1260,11 @@ fn select_specific_version_for_upgrade(
   force: bool,
 ) -> Result<Option<AvailableVersion>, AnyError> {
   let current_is_passed = match release_channel {
-    ReleaseChannel::Stable | ReleaseChannel::Rc | ReleaseChannel::Lts => {
+    ReleaseChannel::Stable
+    | ReleaseChannel::Rc
+    | ReleaseChannel::Lts
+    | ReleaseChannel::Alpha
+    | ReleaseChannel::Beta => {
       version::DENO_VERSION_INFO.release_channel == release_channel
         && version::DENO_VERSION_INFO.deno == version
     }
@@ -751,9 +1319,11 @@ async fn find_latest_version_to_upgrade(
 
   let current_version = match release_channel {
     ReleaseChannel::Canary => version::DENO_VERSION_INFO.git_hash,
-    ReleaseChannel::Stable | ReleaseChannel::Lts | ReleaseChannel::Rc => {
-      version::DENO_VERSION_INFO.deno
-    }
+    ReleaseChannel::Stable
+    | ReleaseChannel::Lts
+    | ReleaseChannel::Rc
+    | ReleaseChannel::Alpha
+    | ReleaseChannel::Beta => version::DENO_VERSION_INFO.deno,
   };
   let should_upgrade = force
     || current_version != latest_version_found.version_or_hash
@@ -811,7 +1381,11 @@ fn normalize_version_from_server(
 ) -> Result<AvailableVersion, AnyError> {
   let text = text.trim();
   match release_channel {
-    ReleaseChannel::Stable | ReleaseChannel::Rc | ReleaseChannel::Lts => {
+    ReleaseChannel::Stable
+    | ReleaseChannel::Rc
+    | ReleaseChannel::Lts
+    | ReleaseChannel::Alpha
+    | ReleaseChannel::Beta => {
       let v = text.trim_start_matches('v').to_string();
       Ok(AvailableVersion {
         version_or_hash: v.to_string(),
@@ -837,6 +1411,8 @@ fn get_latest_version_url(
     }
     ReleaseChannel::Rc => Cow::Borrowed("release-rc-latest.txt"),
     ReleaseChannel::Lts => Cow::Borrowed("release-lts-latest.txt"),
+    ReleaseChannel::Alpha => Cow::Borrowed("release-alpha-latest.txt"),
+    ReleaseChannel::Beta => Cow::Borrowed("release-beta-latest.txt"),
   };
   let query_param = match check_kind {
     UpgradeCheckKind::Execution => "",
@@ -859,8 +1435,13 @@ fn get_download_url(
   release_channel: ReleaseChannel,
 ) -> Result<Url, AnyError> {
   let download_url = match release_channel {
-    ReleaseChannel::Stable => {
-      format!("{}/download/v{}/{}", RELEASE_URL, version, *ARCHIVE_NAME)
+    ReleaseChannel::Stable | ReleaseChannel::Alpha | ReleaseChannel::Beta => {
+      let release_url = if std::env::var_os("DENO_TESTING_UPGRADE").is_some() {
+        "http://localhost:4545/deno-upgrade"
+      } else {
+        RELEASE_URL
+      };
+      format!("{}/download/v{}/{}", release_url, version, *ARCHIVE_NAME)
     }
     ReleaseChannel::Rc => {
       format!("{}/v{}/{}", DL_RELEASE_URL, version, *ARCHIVE_NAME)
@@ -881,6 +1462,45 @@ fn get_download_url(
   })
 }
 
+fn spawn_banner_task(
+  version: &str,
+  release_channel: ReleaseChannel,
+  client: HttpClient,
+) -> deno_core::unsync::JoinHandle<Option<String>> {
+  let banner_url = get_banner_url(version, release_channel);
+  deno_core::unsync::spawn(async move {
+    let banner_url = banner_url?;
+    tokio::select! {
+      result = client.download_text(banner_url) => {
+        result.ok()
+      }
+      _ = tokio::time::sleep(Duration::from_secs(5)) => {
+        None
+      }
+    }
+  })
+}
+
+fn get_banner_url(
+  version: &str,
+  release_channel: ReleaseChannel,
+) -> Option<Url> {
+  let download_url = match release_channel {
+    ReleaseChannel::Stable => {
+      format!("{}/v{}/banner.txt", DL_RELEASE_URL, version)
+    }
+    ReleaseChannel::Rc
+    | ReleaseChannel::Lts
+    | ReleaseChannel::Canary
+    | ReleaseChannel::Alpha
+    | ReleaseChannel::Beta => {
+      return None;
+    }
+  };
+
+  Url::parse(&download_url).ok()
+}
+
 async fn download_package(
   client: &HttpClient,
   download_url: Url,
@@ -894,6 +1514,26 @@ async fn download_package(
     .await
     .with_context(|| format!("Failed downloading {download_url}. The version you requested may not have been built for the current architecture."))?;
   Ok(response.into_maybe_bytes()?)
+}
+
+fn verify_checksum(
+  data: &[u8],
+  expected_checksum: &str,
+) -> Result<(), AnyError> {
+  let computed = sha2::Sha256::digest(data);
+  let computed_hex = faster_hex::hex_string(&computed);
+
+  let expected_checksum = expected_checksum.trim().to_lowercase();
+  if computed_hex != expected_checksum {
+    bail!(
+      "Checksum verification failed.\n  Actual:   {}\n  Expected: {}",
+      expected_checksum,
+      computed_hex
+    );
+  }
+
+  log::info!("{}", colors::gray("Checksum verified"));
+  Ok(())
 }
 
 fn replace_exe(from: &Path, to: &Path) -> Result<(), std::io::Error> {
@@ -919,7 +1559,12 @@ fn check_windows_access_denied_error(
   };
 
   if !cfg!(windows) {
-    return Err(err.into());
+    return Err(err).with_context(|| {
+      format!(
+        "failed to replace the executable at '{}'",
+        output_exe_path.display()
+      )
+    });
   }
 
   const WIN_ERROR_ACCESS_DENIED: i32 = 5;
@@ -976,7 +1621,12 @@ fn set_exe_permissions(
   output_exe_path: &Path,
 ) -> Result<std::fs::Permissions, AnyError> {
   let Ok(metadata) = fs::metadata(output_exe_path) else {
-    let metadata = fs::metadata(current_exe_path)?;
+    let metadata = fs::metadata(current_exe_path).with_context(|| {
+      format!(
+        "failed to get metadata of the current executable at '{}'",
+        current_exe_path.display()
+      )
+    })?;
     return Ok(metadata.permissions());
   };
 
@@ -1007,7 +1657,8 @@ fn check_exe(exe_path: &Path) -> Result<(), AnyError> {
   let output = Command::new(exe_path)
     .arg("-V")
     .stderr(std::process::Stdio::inherit())
-    .output()?;
+    .output()
+    .with_context(|| format!("failed to run '{}'", exe_path.display()))?;
   if !output.status.success() {
     bail!(
       "Failed to validate Deno executable. This may be because your OS is unsupported or the executable is corrupted"
@@ -1097,6 +1748,47 @@ mod test {
   use super::*;
 
   #[test]
+  fn test_get_pr_artifact_name() {
+    let name = get_pr_artifact_name().unwrap();
+    // Should match the pattern "release-{os}-{arch}-deno"
+    assert!(
+      name.starts_with("release-"),
+      "artifact name should start with 'release-': {name}"
+    );
+    assert!(
+      name.ends_with("-deno"),
+      "artifact name should end with '-deno': {name}"
+    );
+    // Should contain a valid os
+    assert!(
+      name.contains("linux")
+        || name.contains("macos")
+        || name.contains("windows"),
+      "artifact name should contain os: {name}"
+    );
+    // Should contain a valid arch
+    assert!(
+      name.contains("x86_64") || name.contains("aarch64"),
+      "artifact name should contain arch: {name}"
+    );
+  }
+
+  #[test]
+  fn test_get_pr_debug_artifact_name() {
+    let release_name = get_pr_artifact_name().unwrap();
+    let debug_name = get_pr_debug_artifact_name().unwrap();
+    assert!(
+      debug_name.starts_with("debug-"),
+      "debug artifact name should start with 'debug-': {debug_name}"
+    );
+    // The rest should match
+    assert_eq!(
+      release_name.strip_prefix("release-"),
+      debug_name.strip_prefix("debug-"),
+    );
+  }
+
+  #[test]
   fn test_requested_version() {
     let mut upgrade_flags = UpgradeFlags {
       dry_run: false,
@@ -1106,6 +1798,9 @@ mod test {
       version: None,
       output: None,
       version_or_hash_or_channel: None,
+      checksum: None,
+      pr: None,
+      branch: None,
     };
 
     let req_ver =
@@ -1180,6 +1875,39 @@ mod test {
     let req_ver =
       RequestedVersion::from_upgrade_flags(upgrade_flags.clone()).unwrap();
     assert_eq!(req_ver, RequestedVersion::Latest(ReleaseChannel::Rc,));
+
+    upgrade_flags.version_or_hash_or_channel = Some("alpha".to_string());
+    let req_ver =
+      RequestedVersion::from_upgrade_flags(upgrade_flags.clone()).unwrap();
+    assert_eq!(req_ver, RequestedVersion::Latest(ReleaseChannel::Alpha));
+
+    upgrade_flags.version_or_hash_or_channel = Some("beta".to_string());
+    let req_ver =
+      RequestedVersion::from_upgrade_flags(upgrade_flags.clone()).unwrap();
+    assert_eq!(req_ver, RequestedVersion::Latest(ReleaseChannel::Beta));
+
+    upgrade_flags.version_or_hash_or_channel =
+      Some("2.8.0-alpha.0".to_string());
+    let req_ver =
+      RequestedVersion::from_upgrade_flags(upgrade_flags.clone()).unwrap();
+    assert_eq!(
+      req_ver,
+      RequestedVersion::SpecificVersion(
+        ReleaseChannel::Alpha,
+        "2.8.0-alpha.0".to_string()
+      )
+    );
+
+    upgrade_flags.version_or_hash_or_channel = Some("2.8.0-beta.1".to_string());
+    let req_ver =
+      RequestedVersion::from_upgrade_flags(upgrade_flags.clone()).unwrap();
+    assert_eq!(
+      req_ver,
+      RequestedVersion::SpecificVersion(
+        ReleaseChannel::Beta,
+        "2.8.0-beta.1".to_string()
+      )
+    );
 
     upgrade_flags.version_or_hash_or_channel =
       Some("5c69b4861b52ab406e73b9cd85c254f0505cb20f".to_string());
@@ -1285,6 +2013,16 @@ mod test {
     assert_eq!(
       file.serialize(),
       "2020-01-01T00:00:00+00:00!2020-01-01T00:00:00+00:00!1.2.3!1.2.2!lts"
+    );
+    file.current_release_channel = ReleaseChannel::Alpha;
+    assert_eq!(
+      file.serialize(),
+      "2020-01-01T00:00:00+00:00!2020-01-01T00:00:00+00:00!1.2.3!1.2.2!alpha"
+    );
+    file.current_release_channel = ReleaseChannel::Beta;
+    assert_eq!(
+      file.serialize(),
+      "2020-01-01T00:00:00+00:00!2020-01-01T00:00:00+00:00!1.2.3!1.2.2!beta"
     );
   }
 
@@ -1477,6 +2215,34 @@ mod test {
       checker.should_prompt(),
       Some((ReleaseChannel::Rc, "1.46.0-rc.1".to_string()))
     );
+
+    // now switch to Alpha release
+    env.set_release_channel(ReleaseChannel::Alpha);
+    env.set_current_version("2.8.0-alpha.0");
+    env.set_latest_version("2.8.0-alpha.1", ReleaseChannel::Alpha);
+    fetch_and_store_latest_version(&env, &env).await;
+    env.add_hours(UPGRADE_CHECK_INTERVAL + 1);
+
+    let checker = UpdateChecker::new(env.clone(), env.clone());
+    assert!(checker.should_check_for_new_version());
+    assert_eq!(
+      checker.should_prompt(),
+      Some((ReleaseChannel::Alpha, "2.8.0-alpha.1".to_string()))
+    );
+
+    // now switch to Beta release
+    env.set_release_channel(ReleaseChannel::Beta);
+    env.set_current_version("2.8.0-beta.0");
+    env.set_latest_version("2.8.0-beta.1", ReleaseChannel::Beta);
+    fetch_and_store_latest_version(&env, &env).await;
+    env.add_hours(UPGRADE_CHECK_INTERVAL + 1);
+
+    let checker = UpdateChecker::new(env.clone(), env.clone());
+    assert!(checker.should_check_for_new_version());
+    assert_eq!(
+      checker.should_prompt(),
+      Some((ReleaseChannel::Beta, "2.8.0-beta.1".to_string()))
+    );
   }
 
   #[tokio::test]
@@ -1660,6 +2426,38 @@ mod test {
       ),
       "https://dl.deno.land/release-lts-latest.txt?lsp"
     );
+    assert_eq!(
+      get_latest_version_url(
+        ReleaseChannel::Alpha,
+        "aarch64-apple-darwin",
+        UpgradeCheckKind::Execution
+      ),
+      "https://dl.deno.land/release-alpha-latest.txt"
+    );
+    assert_eq!(
+      get_latest_version_url(
+        ReleaseChannel::Alpha,
+        "x86_64-pc-windows-msvc",
+        UpgradeCheckKind::Lsp
+      ),
+      "https://dl.deno.land/release-alpha-latest.txt?lsp"
+    );
+    assert_eq!(
+      get_latest_version_url(
+        ReleaseChannel::Beta,
+        "aarch64-apple-darwin",
+        UpgradeCheckKind::Execution
+      ),
+      "https://dl.deno.land/release-beta-latest.txt"
+    );
+    assert_eq!(
+      get_latest_version_url(
+        ReleaseChannel::Beta,
+        "x86_64-pc-windows-msvc",
+        UpgradeCheckKind::Lsp
+      ),
+      "https://dl.deno.land/release-beta-latest.txt?lsp"
+    );
   }
 
   #[test]
@@ -1702,6 +2500,25 @@ mod test {
       AvailableVersion {
         version_or_hash: "1.46.0-rc.0".to_string(),
         release_channel: ReleaseChannel::Rc,
+      },
+    );
+    assert_eq!(
+      normalize_version_from_server(
+        ReleaseChannel::Alpha,
+        "v2.8.0-alpha.0\n\n"
+      )
+      .unwrap(),
+      AvailableVersion {
+        version_or_hash: "2.8.0-alpha.0".to_string(),
+        release_channel: ReleaseChannel::Alpha,
+      },
+    );
+    assert_eq!(
+      normalize_version_from_server(ReleaseChannel::Beta, "v2.8.0-beta.1\n\n")
+        .unwrap(),
+      AvailableVersion {
+        version_or_hash: "2.8.0-beta.1".to_string(),
+        release_channel: ReleaseChannel::Beta,
       },
     );
   }
@@ -1775,7 +2592,7 @@ mod test {
         .unwrap();
       assert_eq!(maybe_info, None);
     }
-    // canary different
+    // rc different
     {
       env.set_latest_version("1.2.3-rc.0", ReleaseChannel::Rc);
       env.set_latest_version("1.2.3-rc.1", ReleaseChannel::Rc);
@@ -1786,6 +2603,54 @@ mod test {
         maybe_info,
         Some(LspVersionUpgradeInfo {
           latest_version: "1.2.3-rc.1".to_string(),
+          is_canary: false,
+        })
+      );
+    }
+    // alpha equal
+    {
+      env.set_release_channel(ReleaseChannel::Alpha);
+      env.set_current_version("2.8.0-alpha.0");
+      env.set_latest_version("2.8.0-alpha.0", ReleaseChannel::Alpha);
+      let maybe_info = check_for_upgrades_for_lsp_with_provider(&env)
+        .await
+        .unwrap();
+      assert_eq!(maybe_info, None);
+    }
+    // alpha newer available
+    {
+      env.set_latest_version("2.8.0-alpha.1", ReleaseChannel::Alpha);
+      let maybe_info = check_for_upgrades_for_lsp_with_provider(&env)
+        .await
+        .unwrap();
+      assert_eq!(
+        maybe_info,
+        Some(LspVersionUpgradeInfo {
+          latest_version: "2.8.0-alpha.1".to_string(),
+          is_canary: false,
+        })
+      );
+    }
+    // beta equal
+    {
+      env.set_release_channel(ReleaseChannel::Beta);
+      env.set_current_version("2.8.0-beta.0");
+      env.set_latest_version("2.8.0-beta.0", ReleaseChannel::Beta);
+      let maybe_info = check_for_upgrades_for_lsp_with_provider(&env)
+        .await
+        .unwrap();
+      assert_eq!(maybe_info, None);
+    }
+    // beta newer available
+    {
+      env.set_latest_version("2.8.0-beta.1", ReleaseChannel::Beta);
+      let maybe_info = check_for_upgrades_for_lsp_with_provider(&env)
+        .await
+        .unwrap();
+      assert_eq!(
+        maybe_info,
+        Some(LspVersionUpgradeInfo {
+          latest_version: "2.8.0-beta.1".to_string(),
           is_canary: false,
         })
       );
@@ -1817,5 +2682,172 @@ mod test {
       get_rc_version_blog_post_url(&version),
       "https://deno.com/blog/v2.0-rc-2"
     );
+  }
+
+  #[test]
+  fn test_get_binary_cache_path() {
+    let dl_dir = Path::new("/dl");
+
+    let path = get_binary_cache_path(dl_dir, "1.46.0", ReleaseChannel::Stable);
+    assert_eq!(
+      path,
+      dl_dir.join(format!("release/v1.46.0/{}", *ARCHIVE_NAME))
+    );
+
+    let path = get_binary_cache_path(dl_dir, "1.46.0-rc.0", ReleaseChannel::Rc);
+    assert_eq!(
+      path,
+      dl_dir.join(format!("release/v1.46.0-rc.0/{}", *ARCHIVE_NAME))
+    );
+
+    let path = get_binary_cache_path(dl_dir, "1.0.0", ReleaseChannel::Lts);
+    assert_eq!(
+      path,
+      dl_dir.join(format!("release/v1.0.0/{}", *ARCHIVE_NAME))
+    );
+
+    let path =
+      get_binary_cache_path(dl_dir, "abc123def456", ReleaseChannel::Canary);
+    assert_eq!(
+      path,
+      dl_dir.join(format!("canary/abc123def456/{}", *ARCHIVE_NAME))
+    );
+
+    let path =
+      get_binary_cache_path(dl_dir, "2.8.0-alpha.0", ReleaseChannel::Alpha);
+    assert_eq!(
+      path,
+      dl_dir.join(format!("release/v2.8.0-alpha.0/{}", *ARCHIVE_NAME))
+    );
+
+    let path =
+      get_binary_cache_path(dl_dir, "2.8.0-beta.1", ReleaseChannel::Beta);
+    assert_eq!(
+      path,
+      dl_dir.join(format!("release/v2.8.0-beta.1/{}", *ARCHIVE_NAME))
+    );
+  }
+
+  #[test]
+  fn test_try_read_cached_binary() {
+    use sys_traits::FsCreateDirAll;
+    use sys_traits::FsWrite;
+    use sys_traits::impls::InMemorySys;
+
+    let sys = InMemorySys::default();
+
+    // Returns None when file doesn't exist
+    let result =
+      try_read_cached_binary(&sys, Path::new("/dl/release/v1.0.0/deno.zip"));
+    assert!(result.is_none());
+
+    // Returns data when file exists
+    let cache_path = Path::new("/dl/release/v1.0.0/deno.zip");
+    sys.fs_create_dir_all(cache_path.parent().unwrap()).unwrap();
+    sys.fs_write(cache_path, b"archive-data").unwrap();
+
+    let result = try_read_cached_binary(&sys, cache_path);
+    assert_eq!(result.unwrap(), b"archive-data");
+  }
+
+  #[test]
+  fn test_store_cached_binary() {
+    use sys_traits::FsRead;
+    use sys_traits::impls::InMemorySys;
+
+    let sys = InMemorySys::default();
+    sys.set_seed(Some(42));
+
+    let cache_path = Path::new("/dl/release/v1.0.0/deno.zip");
+
+    // Should create parent dirs and write the file
+    store_cached_binary(&sys, cache_path, b"archive-data");
+
+    let data = sys.fs_read(cache_path).unwrap();
+    assert_eq!(data.as_ref(), b"archive-data");
+  }
+
+  #[test]
+  fn test_store_and_read_cached_binary_roundtrip() {
+    use sys_traits::impls::InMemorySys;
+
+    let sys = InMemorySys::default();
+    sys.set_seed(Some(42));
+
+    let cache_path = Path::new("/dl/canary/abc123/deno.zip");
+
+    // Initially no cache
+    assert!(try_read_cached_binary(&sys, cache_path).is_none());
+
+    // Store it
+    let original_data = b"test-archive-contents";
+    store_cached_binary(&sys, cache_path, original_data);
+
+    // Read it back
+    let cached = try_read_cached_binary(&sys, cache_path).unwrap();
+    assert_eq!(cached, original_data);
+  }
+
+  #[test]
+  fn test_prune_canary_cache_no_dir() {
+    use sys_traits::impls::InMemorySys;
+
+    let sys = InMemorySys::default();
+
+    // Should not panic when directory doesn't exist
+    prune_canary_cache(&sys, Path::new("/dl"), 10);
+  }
+
+  #[test]
+  fn test_prune_canary_cache_under_limit() {
+    use sys_traits::FsCreateDirAll;
+    use sys_traits::FsMetadata;
+    use sys_traits::impls::InMemorySys;
+
+    let sys = InMemorySys::default();
+    let dl_dir = Path::new("/dl");
+
+    sys.fs_create_dir_all(dl_dir.join("canary/hash1")).unwrap();
+    sys.fs_create_dir_all(dl_dir.join("canary/hash2")).unwrap();
+
+    prune_canary_cache(&sys, dl_dir, 5);
+
+    // Both should still exist
+    assert!(sys.fs_exists(dl_dir.join("canary/hash1")).unwrap());
+    assert!(sys.fs_exists(dl_dir.join("canary/hash2")).unwrap());
+  }
+
+  #[test]
+  fn test_prune_canary_cache_over_limit() {
+    use std::time::Duration;
+    use std::time::SystemTime;
+
+    use sys_traits::FsCreateDirAll;
+    use sys_traits::FsMetadata;
+    use sys_traits::FsSetFileTimes;
+    use sys_traits::impls::InMemorySys;
+
+    let sys = InMemorySys::default();
+    let dl_dir = Path::new("/dl");
+
+    let base_time = SystemTime::UNIX_EPOCH + Duration::from_secs(1_000_000);
+
+    // Create 4 canary dirs with different modification times
+    for (i, name) in ["oldest", "old", "new", "newest"].iter().enumerate() {
+      let dir = dl_dir.join(format!("canary/{}", name));
+      sys.fs_create_dir_all(&dir).unwrap();
+      let time = base_time + Duration::from_secs(i as u64 * 100);
+      sys.fs_set_file_times(&dir, time, time).unwrap();
+    }
+
+    // Prune to keep only 2
+    prune_canary_cache(&sys, dl_dir, 2);
+
+    // Newest 2 should remain
+    assert!(sys.fs_exists(dl_dir.join("canary/newest")).unwrap());
+    assert!(sys.fs_exists(dl_dir.join("canary/new")).unwrap());
+    // Oldest 2 should be pruned
+    assert!(!sys.fs_exists(dl_dir.join("canary/oldest")).unwrap());
+    assert!(!sys.fs_exists(dl_dir.join("canary/old")).unwrap());
   }
 }

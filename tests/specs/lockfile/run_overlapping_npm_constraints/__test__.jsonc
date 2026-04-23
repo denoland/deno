@@ -1,0 +1,23 @@
+{
+  "tempDir": true,
+  "tests": {
+    "analyzable_dynamic": {
+      "steps": [{
+        "args": "run --check analyzable_dynamic.ts",
+        "output": "analyzable_dynamic.out"
+      }, {
+        "args": "run -R output_lockfile.ts",
+        "output": "analyzable_dynamic_lock.out"
+      }]
+    },
+    "non_analyzable_dynamic": {
+      "steps": [{
+        "args": "run --check non_analyzable_dynamic.ts",
+        "output": "non_analyzable_dynamic.out"
+      }, {
+        "args": "run -R output_lockfile.ts",
+        "output": "non_analyzable_dynamic_lock.out"
+      }]
+    }
+  }
+}

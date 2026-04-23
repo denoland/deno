@@ -1,20 +1,22 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 import { denoErrorToNodeError } from "ext:deno_node/internal/errors.ts";
 import {
-  BigIntStats,
   CFISBIS,
-  statCallback,
-  statCallbackBigInt,
-  statOptions,
+  type statCallback,
+  type statCallbackBigInt,
+  type statOptions,
+} from "ext:deno_node/internal/fs/stat_utils.ts";
+import {
+  BigIntStats,
+  getValidatedPathToString,
   Stats,
-} from "ext:deno_node/_fs/_fs_stat.ts";
+} from "ext:deno_node/internal/fs/utils.mjs";
 import { promisify } from "ext:deno_node/internal/util.mjs";
 import { primordials } from "ext:core/mod.js";
 
 const {
   Error,
-  ErrorPrototype,
   PromisePrototypeThen,
   ObjectPrototypeIsPrototypeOf,
 } = primordials;
@@ -48,9 +50,9 @@ export function lstat(
   if (!callback) throw new Error("No callback function supplied");
 
   PromisePrototypeThen(
-    Deno.lstat(path),
+    Deno.lstat(getValidatedPathToString(path)),
     (stat) => callback(null, CFISBIS(stat, options.bigint)),
-    (err) => callback(err),
+    (err) => callback(denoErrorToNodeError(err, { syscall: "lstat" })),
   );
 }
 
@@ -74,7 +76,7 @@ export function lstatSync(
   options?: statOptions,
 ): Stats | BigIntStats {
   try {
-    const origin = Deno.lstatSync(path);
+    const origin = Deno.lstatSync(getValidatedPathToString(path));
     return CFISBIS(origin, options?.bigint || false);
   } catch (err) {
     if (
@@ -83,11 +85,6 @@ export function lstatSync(
     ) {
       return;
     }
-
-    if (ObjectPrototypeIsPrototypeOf(ErrorPrototype, err)) {
-      throw denoErrorToNodeError(err, { syscall: "stat" });
-    } else {
-      throw err;
-    }
+    throw denoErrorToNodeError(err, { syscall: "lstat" });
   }
 }

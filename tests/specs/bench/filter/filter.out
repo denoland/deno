@@ -1,6 +1,6 @@
-Check [WILDCARD]/bench/filter/a_bench.ts
-Check [WILDCARD]/bench/filter/b_bench.ts
-Check [WILDCARD]/bench/filter/c_bench.ts
+Check [WILDCARD]a_bench.ts
+Check [WILDCARD]b_bench.ts
+Check [WILDCARD]c_bench.ts
     CPU | [WILDCARD]
 Runtime | Deno [WILDCARD] ([WILDCARD])
 

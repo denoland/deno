@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::collections::HashSet;
@@ -71,7 +71,7 @@ impl<TFilter: Fn(WalkEntry) -> bool> FileCollector<TFilter> {
   pub fn collect_file_patterns<TSys: FsRead + FsMetadata + FsReadDir>(
     &self,
     sys: &TSys,
-    file_patterns: FilePatterns,
+    file_patterns: &FilePatterns,
   ) -> Vec<PathBuf> {
     fn is_pattern_matched(
       maybe_git_ignore: Option<&DirGitIgnores>,
@@ -219,31 +219,31 @@ impl<TFilter: Fn(WalkEntry) -> bool> FileCollector<TFilter> {
 
 #[cfg(test)]
 mod test {
-  use std::path::PathBuf;
-
+  use sys_traits::FsCreateDirAll;
+  use sys_traits::FsWrite;
   use sys_traits::impls::RealSys;
-  use tempfile::TempDir;
 
   use super::*;
   use crate::glob::FilePatterns;
   use crate::glob::PathOrPattern;
   use crate::glob::PathOrPatternSet;
 
-  #[allow(clippy::disallowed_methods)] // allow fs methods
+  fn create_files(dir_path: &Path, files: &[&str]) {
+    RealSys.fs_create_dir_all(dir_path).unwrap();
+    for f in files {
+      RealSys.fs_write(dir_path.join(f), "").unwrap();
+    }
+  }
+
   #[test]
   fn test_collect_files() {
-    fn create_files(dir_path: &PathBuf, files: &[&str]) {
-      std::fs::create_dir_all(dir_path).unwrap();
-      for f in files {
-        std::fs::write(dir_path.join(f), "").unwrap();
-      }
-    }
+    let t = tempfile::tempdir().unwrap();
 
     // dir.ts
     // ├── a.ts
     // ├── b.js
     // ├── child
-    // |   ├── git
+    // |   ├── .git
     // |   |   └── git.js
     // |   ├── node_modules
     // |   |   └── node_modules.js
@@ -259,31 +259,26 @@ mod test {
     //     ├── g.d.ts
     //     └── .gitignore
 
-    let t = TempDir::new().unwrap();
-
     let root_dir_path = t.path().join("dir.ts");
-    let root_dir_files = ["a.ts", "b.js", "c.tsx", "d.jsx"];
-    create_files(&root_dir_path, &root_dir_files);
+    create_files(&root_dir_path, &["a.ts", "b.js", "c.tsx", "d.jsx"]);
 
     let child_dir_path = root_dir_path.join("child");
-    let child_dir_files = ["e.mjs", "f.mjsx", ".foo.TS", "README.md"];
-    create_files(&child_dir_path, &child_dir_files);
+    create_files(
+      &child_dir_path,
+      &["e.mjs", "f.mjsx", ".foo.TS", "README.md"],
+    );
 
-    std::fs::create_dir_all(t.path().join("dir.ts/child/node_modules"))
-      .unwrap();
-    std::fs::write(
-      t.path().join("dir.ts/child/node_modules/node_modules.js"),
-      "",
-    )
-    .unwrap();
-    std::fs::create_dir_all(t.path().join("dir.ts/child/.git")).unwrap();
-    std::fs::write(t.path().join("dir.ts/child/.git/git.js"), "").unwrap();
-    std::fs::create_dir_all(t.path().join("dir.ts/child/vendor")).unwrap();
-    std::fs::write(t.path().join("dir.ts/child/vendor/vendor.js"), "").unwrap();
+    let node_modules_dir = child_dir_path.join("node_modules");
+    create_files(&node_modules_dir, &["node_modules.js"]);
+
+    let git_dir = child_dir_path.join(".git");
+    create_files(&git_dir, &["git.js"]);
+
+    let vendor_dir = child_dir_path.join("vendor");
+    create_files(&vendor_dir, &["vendor.js"]);
 
     let ignore_dir_path = root_dir_path.join("ignore");
-    let ignore_dir_files = ["g.d.ts", ".gitignore"];
-    create_files(&ignore_dir_path, &ignore_dir_files);
+    create_files(&ignore_dir_path, &["g.d.ts", ".gitignore"]);
 
     let file_patterns = FilePatterns {
       base: root_dir_path.to_path_buf(),
@@ -301,8 +296,7 @@ mod test {
         .unwrap_or(false)
     });
 
-    let result =
-      file_collector.collect_file_patterns(&RealSys, file_patterns.clone());
+    let result = file_collector.collect_file_patterns(&RealSys, &file_patterns);
     let expected = [
       "README.md",
       "a.ts",
@@ -326,9 +320,8 @@ mod test {
     let file_collector = file_collector
       .ignore_git_folder()
       .ignore_node_modules()
-      .set_vendor_folder(Some(child_dir_path.join("vendor").to_path_buf()));
-    let result =
-      file_collector.collect_file_patterns(&RealSys, file_patterns.clone());
+      .set_vendor_folder(Some(vendor_dir.to_path_buf()));
+    let result = file_collector.collect_file_patterns(&RealSys, &file_patterns);
     let expected = [
       "README.md",
       "a.ts",
@@ -350,15 +343,13 @@ mod test {
       base: root_dir_path.to_path_buf(),
       include: Some(PathOrPatternSet::new(vec![
         PathOrPattern::Path(root_dir_path.to_path_buf()),
-        PathOrPattern::Path(
-          root_dir_path.to_path_buf().join("child/node_modules/"),
-        ),
+        PathOrPattern::Path(node_modules_dir.to_path_buf()),
       ])),
       exclude: PathOrPatternSet::new(vec![PathOrPattern::Path(
         ignore_dir_path.to_path_buf(),
       )]),
     };
-    let result = file_collector.collect_file_patterns(&RealSys, file_patterns);
+    let result = file_collector.collect_file_patterns(&RealSys, &file_patterns);
     let expected = [
       "README.md",
       "a.ts",

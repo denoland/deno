@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use serde_json::json;
 use test_util as util;
@@ -6,6 +6,7 @@ use util::TestContext;
 use util::TestContextBuilder;
 use util::assert_contains;
 use util::assert_not_contains;
+use util::test;
 
 #[test]
 fn recursive_permissions_pledge() {

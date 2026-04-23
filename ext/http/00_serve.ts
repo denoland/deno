@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 import { core, internals, primordials } from "ext:core/mod.js";
 const {
@@ -11,6 +11,7 @@ import {
   op_http_cancel,
   op_http_close,
   op_http_close_after_finish,
+  op_http_copy_span_to_otel_info,
   op_http_get_request_headers,
   op_http_get_request_method_and_url,
   op_http_metric_handle_otel_error,
@@ -29,6 +30,8 @@ import {
   op_http_set_response_trailers,
   op_http_try_wait,
   op_http_upgrade_raw,
+  op_http_upgrade_raw_connect,
+  op_http_upgrade_raw_get_head,
   op_http_upgrade_websocket_next,
   op_http_wait,
 } from "ext:core/ops";
@@ -47,6 +50,7 @@ const {
   StringPrototypeSlice,
   StringPrototypeStartsWith,
   Symbol,
+  SymbolAsyncDispose,
   TypeError,
   TypedArrayPrototypeGetSymbolToStringTag,
   Uint8Array,
@@ -55,7 +59,6 @@ const {
 } = primordials;
 
 import { InnerBody } from "ext:deno_fetch/22_body.js";
-import { Event } from "ext:deno_web/02_event.js";
 import {
   fromInnerResponse,
   newInnerResponse,
@@ -76,13 +79,9 @@ import {
   _readyState,
   _rid,
   _role,
-  _server,
   _serverHandleIdleTimeout,
-  SERVER,
-  WebSocket,
 } from "ext:deno_websocket/01_websocket.js";
 import {
-  Deferred,
   getReadableStreamResourceBacking,
   readableStreamForRid,
   ReadableStreamPrototype,
@@ -94,12 +93,12 @@ import {
   UpgradedConn,
 } from "ext:deno_net/01_net.js";
 import { hasTlsKeyPairOptions, listenTls } from "ext:deno_net/02_tls.js";
-import { SymbolAsyncDispose } from "ext:deno_web/00_infra.js";
 import {
   builtinTracer,
   ContextManager,
   currentSnapshot,
   enterSpan,
+  getOtelSpan,
   METRICS_ENABLED,
   PROPAGATORS,
   restoreSnapshot,
@@ -107,7 +106,7 @@ import {
 } from "ext:deno_telemetry/telemetry.ts";
 import {
   updateSpanFromRequest,
-  updateSpanFromResponse,
+  updateSpanFromServerResponse,
 } from "ext:deno_telemetry/util.ts";
 
 const _upgraded = Symbol("_upgraded");
@@ -148,12 +147,22 @@ const UPGRADE_RESPONSE_SENTINEL = fromInnerResponse(
   "immutable",
 );
 
-function upgradeHttpRaw(req, conn) {
+function upgradeHttpRaw(req) {
   const inner = toInnerRequest(req);
-  if (inner._wantsUpgrade) {
-    return inner._wantsUpgrade("upgradeHttpRaw", conn);
+  if (inner?._wantsUpgrade) {
+    return inner._wantsUpgrade("upgradeHttpRaw");
   }
   throw new TypeError("'upgradeHttpRaw' may only be used with Deno.serve");
+}
+
+function upgradeHttpRawConnect(req) {
+  const inner = toInnerRequest(req);
+  if (inner?._wantsUpgrade) {
+    return inner._wantsUpgrade("upgradeConnect");
+  }
+  throw new TypeError(
+    "'upgradeHttpRawConnect' may only be used with Deno.serve",
+  );
 }
 
 function addTrailers(resp, headerList) {
@@ -203,7 +212,7 @@ class InnerRequest {
     return this.#upgraded;
   }
 
-  _wantsUpgrade(upgradeType, ...originalArgs) {
+  _wantsUpgrade(upgradeType) {
     if (this.#upgraded) {
       throw new Deno.errors.Http("Already upgraded");
     }
@@ -211,77 +220,61 @@ class InnerRequest {
       throw new Deno.errors.Http("Already closed");
     }
 
-    // upgradeHttpRaw is sync
     if (upgradeType == "upgradeHttpRaw") {
       const external = this.#external;
-      const underlyingConn = originalArgs[0];
 
       this.url();
       this.headerList;
       this.close();
 
-      this.#upgraded = () => {};
+      this.#upgraded = true;
 
       const upgradeRid = op_http_upgrade_raw(external);
 
       const conn = new UpgradedConn(
         upgradeRid,
-        underlyingConn?.remoteAddr,
-        underlyingConn?.localAddr,
+        this.remoteAddr,
+        this.#context.listener.addr,
       );
 
       return { response: UPGRADE_RESPONSE_SENTINEL, conn };
     }
 
-    // upgradeWebSocket is sync
-    if (upgradeType == "upgradeWebSocket") {
-      const response = originalArgs[0];
-      const ws = originalArgs[1];
+    if (upgradeType == "upgradeConnect") {
+      const external = this.#external;
+      const remoteAddr = this.remoteAddr;
+      const localAddr = this.#context.listener.addr;
 
+      this.url();
+      this.headerList;
+      this.close();
+
+      this.#upgraded = true;
+
+      return (async () => {
+        const upgradeRid = await op_http_upgrade_raw_connect(external);
+        const head = op_http_upgrade_raw_get_head(upgradeRid);
+
+        const conn = new UpgradedConn(
+          upgradeRid,
+          remoteAddr,
+          localAddr,
+        );
+
+        return { response: UPGRADE_RESPONSE_SENTINEL, conn, head };
+      })();
+    }
+
+    if (upgradeType == "upgradeWebSocket") {
       const external = this.#external;
 
       this.url();
       this.headerList;
       this.close();
 
-      const goAhead = new Deferred();
-      this.#upgraded = () => {
-        goAhead.resolve();
-      };
-      const wsPromise = op_http_upgrade_websocket_next(
-        external,
-        response.headerList,
-      );
+      this.#upgraded = true;
 
-      // Start the upgrade in the background.
-      (async () => {
-        try {
-          // Returns the upgraded websocket connection
-          const wsRid = await wsPromise;
-
-          // We have to wait for the go-ahead signal
-          await goAhead.promise;
-
-          ws[_rid] = wsRid;
-          ws[_readyState] = WebSocket.OPEN;
-          ws[_role] = SERVER;
-          const event = new Event("open");
-          ws.dispatchEvent(event);
-
-          ws[_eventLoop]();
-          if (ws[_idleTimeoutDuration]) {
-            ws.addEventListener(
-              "close",
-              () => clearTimeout(ws[_idleTimeoutTimeout]),
-            );
-          }
-          ws[_serverHandleIdleTimeout]();
-        } catch (error) {
-          const event = new ErrorEvent("error", { error });
-          ws.dispatchEvent(event);
-        }
-      })();
-      return { response: UPGRADE_RESPONSE_SENTINEL, socket: ws };
+      return op_http_upgrade_websocket_next(external);
     }
   }
 
@@ -611,21 +604,28 @@ function mapToCallback(context, callback, onError) {
     }
 
     if (span) {
-      updateSpanFromResponse(span, response);
+      updateSpanFromServerResponse(span, response);
+      // Copy span attributes (like http.route) to OtelInfo for HTTP metrics.
+      // Must be done here, before the request external is invalidated.
+      const otelSpan = getOtelSpan(span);
+      if (otelSpan) {
+        op_http_copy_span_to_otel_info(req, otelSpan);
+      }
     }
 
     const inner = toInnerResponse(response);
     if (innerRequest?.[_upgraded]) {
-      // We're done here as the connection has been upgraded during the callback and no longer requires servicing.
-      if (response !== UPGRADE_RESPONSE_SENTINEL) {
+      if (response.status !== 101) {
         import.meta.log(
           "error",
           "Upgrade response was not returned from callback",
         );
         context.close();
+        return;
       }
-      innerRequest?.[_upgraded]();
-      return;
+      if (response === UPGRADE_RESPONSE_SENTINEL) {
+        return;
+      }
     }
 
     // Did everything shut down while we were waiting?
@@ -683,7 +683,7 @@ function mapToCallback(context, callback, onError) {
         { kind: 1 },
         activeContext,
       );
-      enterSpan(span);
+      enterSpan(span, activeContext);
       try {
         return SafePromisePrototypeFinally(
           origMapped(req, span),
@@ -743,6 +743,9 @@ function formatHostName(hostname: string): string {
   return StringPrototypeIncludes(hostname, ":") ? `[${hostname}]` : hostname;
 }
 
+// Flag to track if DENO_SERVE_ADDRESS override has been consumed
+let serveAddressOverrideConsumed = false;
+
 function serve(arg1, arg2) {
   let options: RawServeOptions | undefined;
   let handler: RawHandler | undefined;
@@ -772,6 +775,10 @@ function serve(arg1, arg2) {
     options = { __proto__: null };
   }
 
+  if (serveAddressOverrideConsumed) {
+    return serveInner(options, handler);
+  }
+
   const {
     0: overrideKind,
     1: overrideHost,
@@ -779,7 +786,11 @@ function serve(arg1, arg2) {
     3: duplicateListener,
   } = op_http_serve_address_override();
   if (overrideKind) {
-    let envOptions = duplicateListener ? { __proto__: null } : options;
+    serveAddressOverrideConsumed = true;
+
+    let envOptions = duplicateListener
+      ? { __proto__: null, signal: options.signal, onError: options.onError }
+      : options;
 
     switch (overrideKind) {
       case 1: {
@@ -936,6 +947,7 @@ function serveInner(options, handler) {
     port: options.port ?? 8000,
     reusePort: options.reusePort ?? false,
     loadBalanced: options[kLoadBalanced] ?? false,
+    tcpBacklog: options.tcpBacklog,
   };
 
   if (options.certFile || options.keyFile) {
@@ -975,7 +987,8 @@ function serveInner(options, handler) {
       const host = formatHostName(addr.hostname);
 
       const url = `${scheme}${host}:${addr.port}/`;
-      const helper = addr.hostname === "0.0.0.0" || addr.hostname === "::"
+      const helper = host !== "localhost" &&
+          (addr.hostname === "0.0.0.0" || addr.hostname === "::")
         ? ` (${scheme}localhost:${addr.port}/)`
         : "";
 
@@ -1133,6 +1146,7 @@ function serveHttpOn(context, addr, callback) {
 
 internals.addTrailers = addTrailers;
 internals.upgradeHttpRaw = upgradeHttpRaw;
+internals.upgradeHttpRawConnect = upgradeHttpRawConnect;
 internals.serveHttpOnListener = serveHttpOnListener;
 internals.serveHttpOnConnection = serveHttpOnConnection;
 
@@ -1210,4 +1224,5 @@ export {
   serveHttpOnConnection,
   serveHttpOnListener,
   upgradeHttpRaw,
+  upgradeHttpRawConnect,
 };

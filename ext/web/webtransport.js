@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 import { primordials } from "ext:core/mod.js";
 import * as webidl from "ext:deno_webidl/00_webidl.js";
@@ -713,9 +713,10 @@ class WebTransportDatagramDuplexStream {
 
       ArrayPrototypePush(queue, { datagram, timestamp: DateNow() });
 
-      const toBeRemoved = queue.length - this.#incomingHighWaterMark;
+      let toBeRemoved = queue.length - this.#incomingHighWaterMark;
       while (toBeRemoved > 0) {
         ArrayPrototypeShift(queue);
+        toBeRemoved--;
       }
 
       while (queue.length > 0) {

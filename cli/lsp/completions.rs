@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use deno_ast::LineAndColumnIndex;
 use deno_ast::SourceTextInfo;
@@ -36,6 +36,8 @@ use super::resolver::LspResolver;
 use super::search::PackageSearchApi;
 use super::tsc;
 use crate::jsr::JsrFetchResolver;
+use crate::lsp::registries::DocumentationCompletionItemData;
+use crate::util::env::resolve_cwd;
 use crate::util::path::is_importable_ext;
 use crate::util::path::relative_specifier;
 
@@ -49,11 +51,9 @@ pub(crate) const IMPORT_COMMIT_CHARS: &[&str] = &["\"", "'"];
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct CompletionItemData {
-  #[serde(skip_serializing_if = "Option::is_none")]
-  pub documentation: Option<String>,
-  #[serde(skip_serializing_if = "Option::is_none")]
-  pub tsc: Option<tsc::CompletionItemData>,
+pub enum CompletionItemData {
+  Documentation(DocumentationCompletionItemData),
+  TsJs(tsc::TsJsCompletionItemData),
 }
 
 /// Check if the origin can be auto-configured for completions, and if so, send
@@ -146,7 +146,7 @@ fn to_narrow_lsp_range(
 /// Given a specifier, a position, and a snapshot, optionally return a
 /// completion response, which will be valid import completions for the specific
 /// context.
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, reason = "TODO: cleanup")]
 #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
 pub async fn get_import_completions(
   module: &DocumentModule,
@@ -433,7 +433,7 @@ fn get_local_completions(
     .ok()?;
   let resolved_parent_path = url_to_file_path(&resolved_parent).ok()?;
   if resolved_parent_path.is_dir() {
-    let cwd = std::env::current_dir().ok()?;
+    let cwd = resolve_cwd(None).ok()?;
     let entries = std::fs::read_dir(resolved_parent_path).ok()?;
     let items = entries
       .filter_map(|de| {
@@ -532,7 +532,7 @@ async fn get_jsr_completions(
       let export_prefix = sub_path.unwrap_or("");
       let req = req_ref.req();
       let nv = match jsr_resolver {
-        Some(jsr_resolver) => jsr_resolver.req_to_nv(req).await,
+        Some(jsr_resolver) => jsr_resolver.req_to_nv(req).await.ok().flatten(),
         None => None,
       };
       let nv = nv.or_else(|| PackageNv::from_str(&req.to_string()).ok())?;

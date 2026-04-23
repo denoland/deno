@@ -1,0 +1,33 @@
+# original
+{
+  "version": "5",
+  "workspace": {
+    "packageJson": {
+      "dependencies": [
+        "npm:foo@^1.0.0"
+      ],
+      "overrides": {
+        "bar": "2.0.0"
+      }
+    }
+  }
+}
+
+# remove npm overrides (set to null/none)
+{
+  "packageJson": {
+    "dependencies": ["npm:foo@^1.0.0"]
+  }
+}
+
+# npm overrides should be removed from output
+{
+  "version": "5",
+  "workspace": {
+    "packageJson": {
+      "dependencies": [
+        "npm:foo@1"
+      ]
+    }
+  }
+}

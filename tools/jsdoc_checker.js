@@ -1,5 +1,5 @@
 #!/usr/bin/env -S deno run --allow-read --allow-env --allow-sys --config=tests/config/deno.json
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 import { Node, Project, ts } from "npm:ts-morph@25.0.1";
 import { join, ROOT_PATH } from "./util.js";
 
@@ -18,10 +18,10 @@ const libs = [
   join(ROOT_PATH, "cli/tsc/dts/lib.deno.shared_globals.d.ts"),
   join(ROOT_PATH, "cli/tsc/dts/lib.deno.window.d.ts"),
   join(ROOT_PATH, "cli/tsc/dts/lib.deno_webgpu.d.ts"),
+  join(ROOT_PATH, "cli/tsc/dts/lib.deno_broadcast_channel.d.ts"),
 ];
 
 const unstableLibs = [
-  join(ROOT_PATH, "cli/tsc/dts/lib.deno_broadcast_channel.d.ts"),
   join(ROOT_PATH, "cli/tsc/dts/lib.deno.unstable.d.ts"),
 ];
 

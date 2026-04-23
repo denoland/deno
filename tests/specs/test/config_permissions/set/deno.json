@@ -1,0 +1,13 @@
+{
+  "test": {
+    "permissions": "read-only"
+  },
+  "permissions": {
+    "read-only": {
+      "read": true
+    },
+    "write-only": {
+      "write": true
+    }
+  }
+}

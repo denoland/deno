@@ -1,8 +1,9 @@
 // deno-lint-ignore-file
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 import process from "node:process";
 import { primordials } from "ext:core/mod.js";
+import { core } from "ext:core/mod.js";
 import imported1 from "ext:deno_node/internal/errors.ts";
 import { kEmptyObject, once } from "ext:deno_node/internal/util.mjs";
 import {
@@ -69,6 +70,22 @@ function eos(stream, options, callback) {
   }
   validateFunction(callback, "callback");
   validateAbortSignal(options.signal, "options.signal");
+
+  // Capture the current async context so that the callback runs in the
+  // same AsyncLocalStorage scope that was active when eos() was called.
+  // In Node.js this happens automatically through the native AsyncWrap
+  // layer, but Deno's ops don't propagate Node-style async context.
+  const snapshot = core.getAsyncContext();
+  const originalCallback = callback;
+  callback = function (...args) {
+    const previousContext = core.getAsyncContext();
+    try {
+      core.setAsyncContext(snapshot);
+      return originalCallback.apply(this, args);
+    } finally {
+      core.setAsyncContext(previousContext);
+    }
+  };
 
   callback = once(callback);
 

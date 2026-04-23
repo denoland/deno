@@ -69,7 +69,6 @@ Where:
 
 - **deno_webidl**: Provided by the `deno_webidl` crate
 - **deno_web**: Provided by the `deno_web` crate
-- **deno_url**: Provided by the `deno_url` crate
 - **deno_console**: Provided by the `deno_console` crate
 
 ## Provided ops

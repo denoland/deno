@@ -1,0 +1,6 @@
+{
+  "imports": {
+    "@denotest/add": "npm:@denotest/add",
+    "@denotest/subtract": "npm:@denotest/subtract"
+  }
+}

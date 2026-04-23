@@ -1,22 +1,25 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
+use std::borrow::Cow;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::path::Path;
 use std::path::PathBuf;
 
 use sys_traits::BaseFsCanonicalize;
+use sys_traits::BaseFsOpen;
 use sys_traits::BaseFsRead;
 use sys_traits::BaseFsReadDir;
 use sys_traits::FileType;
 use sys_traits::FsCanonicalize;
 use sys_traits::FsMetadata;
 use sys_traits::FsMetadataValue;
+use sys_traits::FsOpen;
 use sys_traits::FsRead;
 use sys_traits::FsReadDir;
 
 pub trait NodeResolutionCache:
-  std::fmt::Debug + crate::sync::MaybeSend + crate::sync::MaybeSync
+  std::fmt::Debug + deno_maybe_sync::MaybeSend + deno_maybe_sync::MaybeSync
 {
   fn get_canonicalized(
     &self,
@@ -85,8 +88,9 @@ impl NodeResolutionCache for NodeResolutionThreadLocalCache {
   }
 }
 
-#[allow(clippy::disallowed_types)]
-pub type NodeResolutionCacheRc = crate::sync::MaybeArc<dyn NodeResolutionCache>;
+#[allow(clippy::disallowed_types, reason = "definition")]
+pub type NodeResolutionCacheRc =
+  deno_maybe_sync::MaybeArc<dyn NodeResolutionCache>;
 
 #[derive(Debug, Default)]
 pub struct NodeResolutionSys<TSys> {
@@ -108,28 +112,35 @@ impl<TSys: FsMetadata> NodeResolutionSys<TSys> {
     Self { sys, cache: store }
   }
 
-  pub fn is_file(&self, path: &Path) -> bool {
+  pub fn has_cache(&self) -> bool {
+    self.cache.is_some()
+  }
+
+  pub fn is_file(&self, path: Cow<'_, Path>) -> bool {
     match self.get_file_type(path) {
       Ok(file_type) => file_type.is_file(),
       Err(_) => false,
     }
   }
 
-  pub fn is_dir(&self, path: &Path) -> bool {
+  pub fn is_dir(&self, path: Cow<'_, Path>) -> bool {
     match self.get_file_type(path) {
       Ok(file_type) => file_type.is_dir(),
       Err(_) => false,
     }
   }
 
-  pub fn exists_(&self, path: &Path) -> bool {
+  pub fn exists_(&self, path: Cow<'_, Path>) -> bool {
     self.get_file_type(path).is_ok()
   }
 
-  pub fn get_file_type(&self, path: &Path) -> std::io::Result<FileType> {
+  pub fn get_file_type(
+    &self,
+    path: Cow<'_, Path>,
+  ) -> std::io::Result<FileType> {
     {
       if let Some(maybe_value) =
-        self.cache.as_ref().and_then(|c| c.get_file_type(path))
+        self.cache.as_ref().and_then(|c| c.get_file_type(&path))
       {
         return match maybe_value {
           Some(value) => Ok(value),
@@ -140,16 +151,16 @@ impl<TSys: FsMetadata> NodeResolutionSys<TSys> {
         };
       }
     }
-    match self.sys.fs_metadata(path) {
+    match self.sys.fs_metadata(&path) {
       Ok(metadata) => {
         if let Some(cache) = &self.cache {
-          cache.set_file_type(path.to_path_buf(), Some(metadata.file_type()));
+          cache.set_file_type(path.into_owned(), Some(metadata.file_type()));
         }
         Ok(metadata.file_type())
       }
       Err(err) => {
         if let Some(cache) = &self.cache {
-          cache.set_file_type(path.to_path_buf(), None);
+          cache.set_file_type(path.into_owned(), None);
         }
         Err(err)
       }
@@ -193,5 +204,17 @@ impl<TSys: FsRead> BaseFsRead for NodeResolutionSys<TSys> {
     path: &Path,
   ) -> std::io::Result<std::borrow::Cow<'static, [u8]>> {
     self.sys.base_fs_read(path)
+  }
+}
+
+impl<TSys: FsOpen> BaseFsOpen for NodeResolutionSys<TSys> {
+  type File = TSys::File;
+
+  fn base_fs_open(
+    &self,
+    path: &Path,
+    flags: &sys_traits::OpenOptions,
+  ) -> std::io::Result<Self::File> {
+    self.sys.base_fs_open(path, flags)
   }
 }

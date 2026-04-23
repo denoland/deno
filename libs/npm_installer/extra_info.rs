@@ -1,5 +1,6 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
+use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Arc;
 
@@ -7,7 +8,7 @@ use deno_error::JsErrorBox;
 use deno_npm::NpmPackageExtraInfo;
 use deno_npm::NpmResolutionPackage;
 use deno_npm::registry::NpmRegistryApi;
-use deno_resolver::workspace::WorkspaceNpmLinkPackages;
+use deno_resolver::workspace::WorkspaceNpmLinkPackagesRc;
 use deno_semver::package::PackageNv;
 use parking_lot::RwLock;
 
@@ -72,7 +73,7 @@ pub trait NpmPackageExtraInfoProviderSys:
 pub struct NpmPackageExtraInfoProvider {
   npm_registry_info_provider: Arc<dyn NpmRegistryApi + Send + Sync>,
   sys: Arc<dyn NpmPackageExtraInfoProviderSys>,
-  workspace_link_packages: Arc<WorkspaceNpmLinkPackages>,
+  workspace_link_packages: WorkspaceNpmLinkPackagesRc,
 }
 
 impl std::fmt::Debug for NpmPackageExtraInfoProvider {
@@ -85,7 +86,7 @@ impl NpmPackageExtraInfoProvider {
   pub fn new(
     npm_registry_info_provider: Arc<dyn NpmRegistryApi + Send + Sync>,
     sys: Arc<dyn NpmPackageExtraInfoProviderSys>,
-    workspace_link_packages: Arc<WorkspaceNpmLinkPackages>,
+    workspace_link_packages: WorkspaceNpmLinkPackagesRc,
   ) -> Self {
     Self {
       npm_registry_info_provider,
@@ -106,14 +107,28 @@ impl NpmPackageExtraInfoProvider {
       self.fetch_from_registry(package_nv).await
     } else {
       match self.fetch_from_package_json(package_path).await {
-        Ok(extra_info) => {
-          // some packages have bin in registry but not in package.json (e.g. esbuild-wasm)
-          // still not sure how that happens
-          if (expected.bin && extra_info.bin.is_none())
-            || (expected.scripts && extra_info.scripts.is_empty())
-          {
+        Ok(mut extra_info) => {
+          // some packages that use "directories.bin" have a "bin" entry in
+          // the packument, but not in package.json (e.g. esbuild-wasm)
+          if expected.bin && extra_info.bin.is_none() {
             self.fetch_from_registry(package_nv).await
           } else {
+            // When a package has a binding.gyp and no install/preinstall script,
+            // npm injects `"install": "node-gyp rebuild"` at publish time. This
+            // script appears in the packument but not in the tarball's package.json.
+            // Match pnpm's behavior and detect this case by checking for the file.
+            if expected.scripts
+              && extra_info.scripts.is_empty()
+              && self
+                .sys
+                .base_fs_read(&package_path.join("binding.gyp"))
+                .is_ok()
+            {
+              extra_info.scripts = HashMap::from([(
+                "install".into(),
+                "node-gyp rebuild".to_string(),
+              )]);
+            }
             Ok(extra_info)
           }
         }

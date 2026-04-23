@@ -1,6 +1,6 @@
 [# Warning! It should not show that it downloaded anything here]
-Check file:///[WILDLINE]
-Compile file:///[WILDLINE]
+Check [WILDCARD]
+Compile [WILDCARD]
 
 Embedded Files
 

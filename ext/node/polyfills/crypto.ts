@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
 
 // TODO(petamoriken): enable prefer-primordials for node polyfills
@@ -164,9 +164,7 @@ import type {
   TransformOptions,
   WritableOptions,
 } from "ext:deno_node/_stream.d.ts";
-import {
-  normalizeEncoding,
-} from "ext:deno_node/internal/normalize_encoding.mjs";
+import { normalizeEncoding } from "ext:deno_node/internal/util.mjs";
 import { isArrayBufferView } from "ext:deno_node/internal/util/types.ts";
 import { validateString } from "ext:deno_node/internal/validators.mjs";
 import { crypto as webcrypto } from "ext:deno_crypto/00_crypto.js";
@@ -193,7 +191,10 @@ function getRandomValues(typedArray) {
 function hash(
   algorithm: string,
   data: BinaryLike,
-  outputEncoding: BinaryToTextEncoding = "hex",
+  outputEncodingOrOptions: BinaryToTextEncoding | {
+    outputEncoding?: BinaryToTextEncoding;
+    outputLength?: number;
+  } = "hex",
 ) {
   validateString(algorithm, "algorithm");
   if (typeof data !== "string" && !isArrayBufferView(data)) {
@@ -204,6 +205,17 @@ function hash(
       "string",
     ], data);
   }
+
+  let outputEncoding: string;
+  let outputLength: number | undefined;
+
+  if (typeof outputEncodingOrOptions === "object") {
+    outputEncoding = outputEncodingOrOptions.outputEncoding ?? "hex";
+    outputLength = outputEncodingOrOptions.outputLength;
+  } else {
+    outputEncoding = outputEncodingOrOptions;
+  }
+
   let normalized = outputEncoding;
   // Fast case: if it's 'hex', we don't need to validate it further.
   if (outputEncoding !== "hex") {
@@ -219,9 +231,66 @@ function hash(
       }
     }
   }
-  const hash = createHash(algorithm);
-  hash.update(data);
-  return hash.digest(outputEncoding);
+
+  const algoLower = algorithm.toLowerCase();
+  const isXof = algoLower === "shake128" || algoLower === "shake256";
+
+  if (outputLength != null && !isXof) {
+    // For non-XOF hashes, outputLength must match the algorithm's digest size.
+    const testHash = createHash(algorithm);
+    testHash.update("");
+    const expectedLen = testHash.digest().length;
+    if (outputLength !== expectedLen) {
+      throw new Error(
+        `Output length ${outputLength} is invalid for ${algoLower}, which does not support XOF`,
+      );
+    }
+  }
+
+  const h = createHash(
+    algorithm,
+    outputLength != null ? { outputLength } : undefined,
+  );
+  h.update(data);
+
+  if (outputLength === 0) {
+    return normalized === "buffer" ? globalThis.Buffer.alloc(0) : "";
+  }
+
+  return h.digest(outputEncoding);
+}
+
+function validateCipherivArgs(
+  cipher: unknown,
+  key: unknown,
+  iv: unknown,
+) {
+  if (typeof cipher !== "string") {
+    throw new ERR_INVALID_ARG_TYPE(
+      "cipher",
+      "string",
+      cipher,
+    );
+  }
+  if (
+    typeof key !== "string" && !isArrayBufferView(key) &&
+    !(key && typeof key === "object" && "type" in key)
+  ) {
+    throw new ERR_INVALID_ARG_TYPE(
+      "key",
+      ["string", "ArrayBufferView", "Buffer", "KeyObject"],
+      key,
+    );
+  }
+  if (
+    iv !== null && typeof iv !== "string" && !isArrayBufferView(iv)
+  ) {
+    throw new ERR_INVALID_ARG_TYPE(
+      "iv",
+      ["string", "ArrayBufferView", "Buffer", "null"],
+      iv,
+    );
+  }
 }
 
 function createCipheriv(
@@ -254,7 +323,8 @@ function createCipheriv(
   iv: BinaryLike | null,
   options?: TransformOptions,
 ): Cipher {
-  return new Cipheriv(cipher, key, iv, options);
+  validateCipherivArgs(cipher, key, iv);
+  return Cipheriv(cipher, key, iv, options);
 }
 
 function createDecipheriv(
@@ -281,7 +351,8 @@ function createDecipheriv(
   iv: BinaryLike | null,
   options?: TransformOptions,
 ): Decipher {
-  return new Decipheriv(algorithm, key, iv, options);
+  validateCipherivArgs(algorithm, key, iv);
+  return Decipheriv(algorithm, key, iv, options);
 }
 
 function createDiffieHellman(
@@ -331,7 +402,7 @@ function createHmac(
   key: string | ArrayBuffer | KeyObject,
   options?: TransformOptions,
 ) {
-  return Hmac(hmac, key, options);
+  return Hmac_(hmac, key, options);
 }
 
 function createSign(algorithm: string, options?: WritableOptions): Sign {

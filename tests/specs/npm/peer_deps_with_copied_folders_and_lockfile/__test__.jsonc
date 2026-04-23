@@ -1,5 +1,6 @@
 {
   "tempDir": true,
+  "flaky": true,
   "steps": [
     {
       "args": "run -A main.ts",

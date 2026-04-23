@@ -1,0 +1,28 @@
+{
+  "tempDir": true,
+  "tests": {
+    "install_and_run": {
+      "steps": [{
+        "if": "unix",
+        "args": "install -g --compile --root ./bins --name hello main.ts",
+        "output": "install.out"
+      }, {
+        "if": "unix",
+        "commandName": "./bins/bin/hello",
+        "args": [],
+        "output": "run.out",
+        "exitCode": 0
+      }, {
+        "if": "windows",
+        "args": "install -g --compile --root ./bins --name hello main.ts",
+        "output": "install.out"
+      }, {
+        "if": "windows",
+        "commandName": "./bins/bin/hello.exe",
+        "args": [],
+        "output": "run.out",
+        "exitCode": 0
+      }]
+    }
+  }
+}

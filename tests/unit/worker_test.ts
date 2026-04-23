@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 // deno-lint-ignore-file no-console
 
@@ -15,7 +15,7 @@ Deno.test(
   { permissions: { read: true } },
   function utimeSyncFileSuccess() {
     const w = new Worker(
-      resolveWorker("worker_types.ts"),
+      resolveWorker("test_worker.js"),
       { type: "module" },
     );
     assert(w);
@@ -301,7 +301,7 @@ Deno.test({
     worker.postMessage("boom");
     worker.postMessage("ping");
     assertEquals(await promise, {
-      messageHandlersCalled: 4,
+      messageHandlersCalled: 3,
       errorHandlersCalled: 4,
     });
     worker.terminate();

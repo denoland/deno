@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::collections::HashMap;
@@ -7,16 +7,17 @@ use std::path::PathBuf;
 
 use boxed_error::Boxed;
 use deno_config::workspace::Workspace;
-use deno_npm::npm_rc::NpmRc;
-use deno_npm::npm_rc::ResolvedNpmRc;
+use deno_npmrc::NpmRc;
+use deno_npmrc::NpmRegistryUrl;
+use deno_npmrc::RegistryConfigWithUrl;
+use deno_npmrc::ResolvedNpmRc;
 use sys_traits::EnvHomeDir;
 use sys_traits::EnvVar;
 use sys_traits::FsRead;
 use thiserror::Error;
-use url::Url;
 
-#[allow(clippy::disallowed_types)]
-pub type ResolvedNpmRcRc = crate::sync::MaybeArc<ResolvedNpmRc>;
+#[allow(clippy::disallowed_types, reason = "definition")]
+pub type ResolvedNpmRcRc = deno_maybe_sync::MaybeArc<ResolvedNpmRc>;
 
 #[derive(Debug, Boxed)]
 pub struct NpmRcDiscoverError(pub Box<NpmRcDiscoverErrorKind>);
@@ -46,7 +47,7 @@ pub struct NpmRcLoadError {
 pub struct NpmRcParseError {
   path: PathBuf,
   #[source]
-  source: std::io::Error,
+  source: deno_npmrc::NpmRcParseError,
 }
 
 #[derive(Debug, Error)]
@@ -54,7 +55,7 @@ pub struct NpmRcParseError {
 pub struct NpmRcOptionsResolveError {
   path: PathBuf,
   #[source]
-  source: deno_npm::npm_rc::ResolveError,
+  source: deno_npmrc::ResolveError,
 }
 
 /// Discover `.npmrc` file - currently we only support it next to `package.json`,
@@ -105,15 +106,11 @@ fn discover_npmrc<TSys: EnvVar + EnvHomeDir + FsRead>(
     source: &str,
     path: &Path,
   ) -> Result<NpmRc, NpmRcDiscoverError> {
-    let npmrc = NpmRc::parse(source, &|name| sys.env_var(name).ok()).map_err(
-      |source| {
-        NpmRcParseError {
-          path: path.to_path_buf(),
-          // todo(dsherret): use source directly here once it's no longer an internal type
-          source: std::io::Error::new(std::io::ErrorKind::InvalidData, source),
-        }
-      },
-    )?;
+    let npmrc =
+      NpmRc::parse(sys, source).map_err(|source| NpmRcParseError {
+        path: path.to_path_buf(),
+        source,
+      })?;
     log::debug!(".npmrc found at: '{}'", path.display());
     Ok(npmrc)
   }
@@ -185,15 +182,22 @@ fn discover_npmrc<TSys: EnvVar + EnvHomeDir + FsRead>(
   }
 
   let resolve_npmrc = |path: PathBuf, npm_rc: NpmRc| {
-    Ok((
-      npm_rc
-        .as_resolved(&npm_registry_url(sys))
-        .map_err(|source| NpmRcOptionsResolveError {
+    let registry_url = NpmRegistryUrl::for_npm(sys);
+    let mut resolved_npm_rc =
+      npm_rc.as_resolved(&registry_url).map_err(|source| {
+        NpmRcOptionsResolveError {
           path: path.to_path_buf(),
           source,
-        })?,
-      Some(path),
-    ))
+        }
+      })?;
+    resolved_npm_rc
+      .scopes
+      .entry("jsr".to_string())
+      .or_insert_with(|| RegistryConfigWithUrl {
+        registry_url: NpmRegistryUrl::for_jsr(sys).url,
+        config: Default::default(),
+      });
+    Ok((resolved_npm_rc, Some(path)))
   };
 
   match (home_npmrc, project_npmrc) {
@@ -219,29 +223,17 @@ fn discover_npmrc<TSys: EnvVar + EnvHomeDir + FsRead>(
 
 pub fn create_default_npmrc(sys: &impl EnvVar) -> ResolvedNpmRc {
   ResolvedNpmRc {
-    default_config: deno_npm::npm_rc::RegistryConfigWithUrl {
-      registry_url: npm_registry_url(sys).clone(),
+    default_config: deno_npmrc::RegistryConfigWithUrl {
+      registry_url: NpmRegistryUrl::for_npm(sys).url,
       config: Default::default(),
     },
-    scopes: Default::default(),
+    scopes: HashMap::from([(
+      "jsr".to_string(),
+      RegistryConfigWithUrl {
+        registry_url: NpmRegistryUrl::for_jsr(sys).url,
+        config: Default::default(),
+      },
+    )]),
     registry_configs: Default::default(),
   }
-}
-
-pub fn npm_registry_url(sys: &impl EnvVar) -> Url {
-  let env_var_name = "NPM_CONFIG_REGISTRY";
-  if let Ok(registry_url) = sys.env_var(env_var_name) {
-    // ensure there is a trailing slash for the directory
-    let registry_url = format!("{}/", registry_url.trim_end_matches('/'));
-    match Url::parse(&registry_url) {
-      Ok(url) => {
-        return url;
-      }
-      Err(err) => {
-        log::debug!("Invalid {} environment variable: {:#}", env_var_name, err,);
-      }
-    }
-  }
-
-  Url::parse("https://registry.npmjs.org").unwrap()
 }

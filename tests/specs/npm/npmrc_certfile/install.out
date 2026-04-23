@@ -1,0 +1,11 @@
+Download https://localhost:4265/@denotest%2fbasic
+Download https://localhost:4265/@denotest/basic/1.0.0.tgz
+Initialize @denotest/basic@1.0.0
+Installed 1 package in [WILDCARD]
+Reused 0 packages from cache
+Downloaded 0 packages from JSR
+Downloaded 1 package from npm
++
+
+Dependencies:
+[WILDCARD]

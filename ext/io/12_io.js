@@ -1,15 +1,11 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 // Interfaces 100% copied from Go.
 // Documentation liberally lifted from them too.
 // Thank you! We love Go! <3
 
 import { core, primordials } from "ext:core/mod.js";
-import {
-  op_read_create_cancel_handle,
-  op_read_with_cancel_handle,
-  op_set_raw,
-} from "ext:core/ops";
+import { op_set_raw } from "ext:core/ops";
 const {
   Uint8Array,
   ArrayPrototypePush,
@@ -17,7 +13,6 @@ const {
   TypedArrayPrototypeSubarray,
   TypedArrayPrototypeSet,
   TypedArrayPrototypeGetByteLength,
-  PromisePrototypeThen,
 } = primordials;
 
 import {
@@ -116,8 +111,6 @@ const STDERR_RID = 2;
 const REF = Symbol("REF");
 const UNREF = Symbol("UNREF");
 
-const _readWithCancelHandle = Symbol("_readWithCancelHandle");
-
 class Stdin {
   #rid = STDIN_RID;
   #ref = true;
@@ -139,22 +132,6 @@ class Stdin {
     }
     const nread = await this.#opPromise;
     return nread === 0 ? null : nread;
-  }
-
-  [_readWithCancelHandle](p) {
-    const handle = op_read_create_cancel_handle();
-    if (p.length === 0) return { cancelHandle: handle, nread: 0 };
-    this.#opPromise = op_read_with_cancel_handle(this.#rid, handle, p);
-    if (!this.#ref) {
-      core.unrefOpPromise(this.#opPromise);
-    }
-    return {
-      cancelHandle: handle,
-      nread: PromisePrototypeThen(
-        this.#opPromise,
-        (nread) => nread === 0 ? null : nread,
-      ),
-    };
   }
 
   readSync(p) {
@@ -271,7 +248,6 @@ const stdout = new Stdout();
 const stderr = new Stderr();
 
 export {
-  _readWithCancelHandle,
   read,
   readAll,
   readAllSync,

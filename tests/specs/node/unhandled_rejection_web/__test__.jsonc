@@ -1,0 +1,5 @@
+// Regression test for https://github.com/denoland/deno/issues/16928
+{
+  "args": "run -A unhandled_rejection_web.ts",
+  "output": "unhandled_rejection_web.ts.out"
+}

@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 /// <https://chromedevtools.github.io/devtools-protocol/tot/>
 use deno_core::serde_json::Value;
@@ -9,7 +9,7 @@ use serde::Serialize;
 /// <https://chromedevtools.github.io/devtools-protocol/tot/Runtime/#method-awaitPromise>
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-#[allow(dead_code)]
+#[allow(dead_code, reason = "not used yet")]
 pub struct AwaitPromiseArgs {
   pub promise_object_id: RemoteObjectId,
   #[serde(skip_serializing_if = "Option::is_none")]
@@ -56,7 +56,7 @@ pub struct CallFunctionOnResponse {
 /// <https://chromedevtools.github.io/devtools-protocol/tot/Runtime/#method-compileScript>
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-#[allow(dead_code)]
+#[allow(dead_code, reason = "not used yet")]
 pub struct CompileScriptArgs {
   pub expression: String,
   #[serde(rename = "sourceURL")]
@@ -152,7 +152,7 @@ pub struct GlobalLexicalScopeNamesResponse {
 /// <https://chromedevtools.github.io/devtools-protocol/tot/Runtime/#method-queryObjects>
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-#[allow(dead_code)]
+#[allow(dead_code, reason = "not used yet")]
 pub struct QueryObjectsArgs {
   pub prototype_object_id: RemoteObjectId,
   #[serde(skip_serializing_if = "Option::is_none")]
@@ -162,7 +162,7 @@ pub struct QueryObjectsArgs {
 /// <https://chromedevtools.github.io/devtools-protocol/tot/Runtime/#method-releaseObject>
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-#[allow(dead_code)]
+#[allow(dead_code, reason = "not used yet")]
 pub struct ReleaseObjectArgs {
   pub object_id: RemoteObjectId,
 }
@@ -170,7 +170,7 @@ pub struct ReleaseObjectArgs {
 /// <https://chromedevtools.github.io/devtools-protocol/tot/Runtime/#method-releaseObjectGroup>
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-#[allow(dead_code)]
+#[allow(dead_code, reason = "not used yet")]
 pub struct ReleaseObjectGroupArgs {
   pub object_group: String,
 }
@@ -178,7 +178,7 @@ pub struct ReleaseObjectGroupArgs {
 /// <https://chromedevtools.github.io/devtools-protocol/tot/Runtime/#method-runScript>
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-#[allow(dead_code)]
+#[allow(dead_code, reason = "not used yet")]
 pub struct RunScriptArgs {
   pub script_id: ScriptId,
   #[serde(skip_serializing_if = "Option::is_none")]
@@ -203,7 +203,7 @@ pub struct RunScriptArgs {
 /// <https://chromedevtools.github.io/devtools-protocol/tot/Runtime/#method-setAsyncCallStackDepth>
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-#[allow(dead_code)]
+#[allow(dead_code, reason = "not used yet")]
 pub struct SetAsyncCallStackDepthArgs {
   pub max_depth: u64,
 }
@@ -355,12 +355,15 @@ pub struct ScriptCoverage {
 /// <https://chromedevtools.github.io/devtools-protocol/tot/Profiler/#method-startPreciseCoverage>
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[allow(dead_code, reason = "not used yet")]
 pub struct StartPreciseCoverageArgs {
   pub call_count: bool,
   pub detailed: bool,
   pub allow_triggered_updates: bool,
 }
 
+// TODO(bartlomieju): in Rust 1.90 some structs started getting flagged as not used
+#[allow(dead_code, reason = "not used yet")]
 /// <https://chromedevtools.github.io/devtools-protocol/tot/Profiler/#method-startPreciseCoverage>
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -371,6 +374,7 @@ pub struct StartPreciseCoverageResponse {
 /// <https://chromedevtools.github.io/devtools-protocol/tot/Profiler/#method-takePreciseCoverage>
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[allow(dead_code, reason = "not used yet")]
 pub struct TakePreciseCoverageResponse {
   pub result: Vec<ScriptCoverage>,
   pub timestamp: f64,

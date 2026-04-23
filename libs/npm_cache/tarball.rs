@@ -1,11 +1,11 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::collections::HashMap;
 use std::sync::Arc;
 
 use deno_error::JsErrorBox;
-use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm::registry::NpmPackageVersionDistInfo;
+use deno_npmrc::ResolvedNpmRc;
 use deno_semver::package::PackageNv;
 use futures::FutureExt;
 use futures::future::LocalBoxFuture;
@@ -21,7 +21,8 @@ use crate::remote::maybe_auth_header_value_for_npm_registry;
 use crate::rt::MultiRuntimeAsyncValueCreator;
 use crate::rt::spawn_blocking;
 use crate::tarball_extract::TarballExtractionMode;
-use crate::tarball_extract::verify_and_extract_tarball;
+use crate::tarball_extract::verify_and_decompress_tarball;
+use crate::tarball_extract::write_extracted_tarball;
 
 type LoadResult = Result<(), Arc<JsErrorBox>>;
 type LoadFuture = LocalBoxFuture<'static, LoadResult>;
@@ -36,6 +37,15 @@ enum MemoryCacheItem {
   Cached,
 }
 
+/// Maximum number of concurrent filesystem write operations for tarball extraction.
+/// Filesystem operations (open/write/close per file) dominate extraction time,
+/// and on macOS APFS has an internal mutex that makes highly parallel filesystem
+/// operations contend heavily. Limiting concurrency reduces this contention.
+/// Decompression (CPU-bound) is not gated by this limit.
+#[cfg(not(target_arch = "wasm32"))]
+const MAX_CONCURRENT_FS_WRITES: usize =
+  if cfg!(target_os = "macos") { 4 } else { 128 };
+
 /// Coordinates caching of tarballs being loaded from
 /// the npm registry.
 ///
@@ -47,6 +57,10 @@ pub struct TarballCache<THttpClient: NpmCacheHttpClient, TSys: NpmCacheSys> {
   sys: TSys,
   npmrc: Arc<ResolvedNpmRc>,
   memory_cache: Mutex<HashMap<PackageNv, MemoryCacheItem>>,
+  #[cfg(not(target_arch = "wasm32"))]
+  fs_write_semaphore: tokio::sync::Semaphore,
+
+  reporter: Option<Arc<dyn TarballCacheReporter>>,
 }
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
@@ -58,6 +72,12 @@ pub struct EnsurePackageError {
   source: Arc<JsErrorBox>,
 }
 
+pub trait TarballCacheReporter: std::fmt::Debug + Send + Sync {
+  fn download_started(&self, _nv: &PackageNv) {}
+  fn downloaded(&self, _nv: &PackageNv) {}
+  fn reused_cache(&self, _nv: &PackageNv) {}
+}
+
 impl<THttpClient: NpmCacheHttpClient, TSys: NpmCacheSys>
   TarballCache<THttpClient, TSys>
 {
@@ -66,6 +86,7 @@ impl<THttpClient: NpmCacheHttpClient, TSys: NpmCacheSys>
     http_client: Arc<THttpClient>,
     sys: TSys,
     npmrc: Arc<ResolvedNpmRc>,
+    reporter: Option<Arc<dyn TarballCacheReporter>>,
   ) -> Self {
     Self {
       cache,
@@ -73,6 +94,9 @@ impl<THttpClient: NpmCacheHttpClient, TSys: NpmCacheSys>
       sys,
       npmrc,
       memory_cache: Default::default(),
+      #[cfg(not(target_arch = "wasm32"))]
+      fs_write_semaphore: tokio::sync::Semaphore::new(MAX_CONCURRENT_FS_WRITES),
+      reporter,
     }
   }
 
@@ -142,6 +166,7 @@ impl<THttpClient: NpmCacheHttpClient, TSys: NpmCacheSys>
   ) -> LoadFuture {
     let tarball_cache = self.clone();
     let sys = self.sys.clone();
+    let reporter = self.reporter.clone();
     async move {
       let registry_url = tarball_cache.npmrc.get_registry_url(&package_nv.name);
       let package_folder =
@@ -149,6 +174,9 @@ impl<THttpClient: NpmCacheHttpClient, TSys: NpmCacheSys>
       let should_use_cache = tarball_cache.cache.should_use_cache_for_package(&package_nv);
       let package_folder_exists = tarball_cache.sys.fs_exists_no_err(&package_folder);
       if should_use_cache && package_folder_exists {
+        if let Some(reporter) = reporter {
+          reporter.reused_cache(&package_nv);
+        }
         return Ok(());
       } else if tarball_cache.cache.cache_setting() == &NpmCacheSetting::Only {
         return Err(JsErrorBox::new(
@@ -168,13 +196,19 @@ impl<THttpClient: NpmCacheHttpClient, TSys: NpmCacheSys>
       // IMPORTANT: npm registries may specify tarball URLs at different URLS than the
       // registry, so we MUST get the auth for the tarball URL and not the registry URL.
       let tarball_uri = Url::parse(&dist.tarball).map_err(JsErrorBox::from_err)?;
-      let maybe_registry_config =
-        tarball_cache.npmrc.tarball_config(&tarball_uri);
+      let maybe_registry_config = tarball_cache.npmrc.tarball_config(&tarball_uri);
       let maybe_auth_header = maybe_registry_config.and_then(|c| maybe_auth_header_value_for_npm_registry(c).ok()?);
 
+      if let Some(reporter) = &reporter {
+        reporter.download_started(&package_nv);
+
+      }
       let result = tarball_cache.http_client
-        .download_with_retries_on_any_tokio_runtime(tarball_uri, maybe_auth_header, None)
+        .download_with_retries_on_any_tokio_runtime(tarball_uri, maybe_auth_header, None, maybe_registry_config.map(|c| c.as_ref()))
         .await;
+      if let Some(reporter) = &reporter {
+        reporter.downloaded(&package_nv);
+      }
       let maybe_bytes = match result {
         Ok(response) => match response {
           NpmCacheHttpClientResponse::NotModified => unreachable!(), // no e-tag
@@ -215,19 +249,33 @@ impl<THttpClient: NpmCacheHttpClient, TSys: NpmCacheSys>
             // renaming. So we settle for overwriting.
             TarballExtractionMode::Overwrite
           };
-          let dist = dist.clone();
-          let package_nv = package_nv.clone();
+          // Phase 1: verify integrity + decompress (CPU-bound, no concurrency limit)
+          let tar_data = spawn_blocking(move || {
+            verify_and_decompress_tarball(&package_nv, &bytes, &dist)
+          })
+          .await
+          .map_err(JsErrorBox::from_err)?
+          .map_err(JsErrorBox::from_err)?;
+          // Phase 2: write to disk (I/O-bound, limited concurrency to
+          // avoid filesystem contention — especially on macOS APFS)
+          #[cfg(not(target_arch = "wasm32"))]
+          let _permit = tarball_cache
+            .fs_write_semaphore
+            .acquire()
+            .await
+            .map_err(|e| JsErrorBox::generic(e.to_string()))?;
+
           spawn_blocking(move || {
-            verify_and_extract_tarball(
+            write_extracted_tarball(
               &sys,
-              &package_nv,
-              &bytes,
-              &dist,
+              &tar_data,
               &package_folder,
               extraction_mode,
             )
           })
-          .await.map_err(JsErrorBox::from_err)?.map_err(JsErrorBox::from_err)
+          .await
+          .map_err(JsErrorBox::from_err)?
+          .map_err(JsErrorBox::from_err)
         }
         None => {
           Err(JsErrorBox::generic(format!("Could not find npm package tarball at: {}", dist.tarball)))

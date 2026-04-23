@@ -1,0 +1,13 @@
+{
+  "tests": {
+    "main": {
+      "args": "check --quiet main.ts",
+      "output": ""
+    },
+    "unmapped": {
+      "args": "check --quiet unmapped.ts",
+      "output": "unmapped.out",
+      "exitCode": 1
+    }
+  }
+}

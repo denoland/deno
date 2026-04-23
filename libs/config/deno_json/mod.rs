@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::collections::BTreeMap;
@@ -14,13 +14,13 @@ use deno_path_util::url_to_file_path;
 use deno_semver::jsr::JsrDepPackageReq;
 use import_map::ImportMapWithDiagnostics;
 use indexmap::IndexMap;
-use jsonc_parser::ParseResult;
 use serde::Deserialize;
 use serde::Deserializer;
 use serde::Serialize;
 use serde::de;
 use serde::de::Unexpected;
 use serde::de::Visitor;
+use serde::ser::Error;
 use serde_json::Value;
 use serde_json::json;
 use sys_traits::FsRead;
@@ -33,14 +33,88 @@ use crate::glob::PathOrPatternSet;
 use crate::import_map::imports_values;
 use crate::import_map::scope_values;
 use crate::import_map::value_to_dep_req;
-use crate::import_map::values_to_set;
 use crate::util::is_skippable_io_error;
 
+mod permissions;
 mod ts;
 
+pub use permissions::AllowDenyIgnorePermissionConfig;
+pub use permissions::AllowDenyIgnorePermissionConfigValue;
+pub use permissions::AllowDenyPermissionConfig;
+pub use permissions::AllowDenyPermissionConfigValue;
+pub use permissions::PermissionConfigValue;
+pub use permissions::PermissionNameOrObject;
+pub use permissions::PermissionsConfig;
+pub use permissions::PermissionsObject;
+pub use permissions::PermissionsObjectWithBase;
 pub use ts::CompilerOptions;
 pub use ts::EmitConfigOptions;
 pub use ts::RawJsxCompilerOptions;
+
+#[derive(Clone, Debug, Hash, PartialEq)]
+pub enum AllowScriptsValueConfig {
+  All,
+  Limited(Vec<JsrDepPackageReq>),
+}
+
+impl Default for AllowScriptsValueConfig {
+  fn default() -> Self {
+    Self::Limited(Vec::new())
+  }
+}
+
+impl<'de> Deserialize<'de> for AllowScriptsValueConfig {
+  fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+  where
+    D: Deserializer<'de>,
+  {
+    struct ApprovedScriptsValueConfigVisitor;
+
+    impl<'de> Visitor<'de> for ApprovedScriptsValueConfigVisitor {
+      type Value = AllowScriptsValueConfig;
+
+      fn expecting(
+        &self,
+        formatter: &mut std::fmt::Formatter,
+      ) -> std::fmt::Result {
+        formatter.write_str("a boolean or an array of strings")
+      }
+
+      fn visit_bool<E>(self, v: bool) -> Result<Self::Value, E>
+      where
+        E: de::Error,
+      {
+        if v {
+          Ok(AllowScriptsValueConfig::All)
+        } else {
+          Ok(AllowScriptsValueConfig::Limited(Vec::new()))
+        }
+      }
+
+      fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
+      where
+        A: de::SeqAccess<'de>,
+      {
+        let mut items = Vec::new();
+        while let Some(item) = seq.next_element::<JsrDepPackageReq>()? {
+          items.push(item);
+        }
+        Ok(AllowScriptsValueConfig::Limited(items))
+      }
+    }
+
+    deserializer.deserialize_any(ApprovedScriptsValueConfigVisitor)
+  }
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Hash, PartialEq)]
+#[serde(default, deny_unknown_fields)]
+pub struct AllowScriptsConfig {
+  #[serde(default)]
+  pub allow: AllowScriptsValueConfig,
+  #[serde(default)]
+  pub deny: Vec<JsrDepPackageReq>,
+}
 
 #[derive(Clone, Debug, Default, Deserialize, Hash, PartialEq)]
 #[serde(default, deny_unknown_fields)]
@@ -49,6 +123,11 @@ pub struct LintRulesConfig {
   pub include: Option<Vec<String>>,
   pub exclude: Option<Vec<String>>,
 }
+
+#[derive(Debug, JsError, Error)]
+#[class(generic)]
+#[error("Could not find permission set '{0}' in deno.json")]
+pub struct UndefinedPermissionError(String);
 
 #[derive(Debug, JsError, Boxed)]
 pub struct IntoResolvedError(pub Box<IntoResolvedErrorKind>);
@@ -67,6 +146,9 @@ pub enum IntoResolvedErrorKind {
   #[class(inherit)]
   #[error("Invalid exclude: {0}")]
   InvalidExclude(crate::glob::FromExcludeRelativePathOrPatternsError),
+  #[class(inherit)]
+  #[error(transparent)]
+  UndefinedPermission(#[from] UndefinedPermissionError),
 }
 
 #[derive(Debug, Error, JsError)]
@@ -286,6 +368,16 @@ pub enum SeparatorKind {
   Comma,
 }
 
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, Hash, PartialEq)]
+#[serde(deny_unknown_fields, rename_all = "kebab-case")]
+pub enum VueComponentCase {
+  Ignore,
+  #[serde(alias = "pascalCase", alias = "PascalCase")]
+  PascalCase,
+  #[serde(alias = "kebabCase")]
+  KebabCase,
+}
+
 #[derive(Clone, Debug, Default, Serialize, Deserialize, Hash, PartialEq)]
 #[serde(default, deny_unknown_fields, rename_all = "camelCase")]
 pub struct FmtOptionsConfig {
@@ -309,6 +401,8 @@ pub struct FmtOptionsConfig {
   pub type_literal_separator_kind: Option<SeparatorKind>,
   pub space_around: Option<bool>,
   pub space_surrounding_properties: Option<bool>,
+  pub vue_component_case: Option<VueComponentCase>,
+  pub angular_next_control_flow_same_line: Option<bool>,
 }
 
 impl FmtOptionsConfig {
@@ -333,6 +427,8 @@ impl FmtOptionsConfig {
       && self.type_literal_separator_kind.is_none()
       && self.space_around.is_none()
       && self.space_surrounding_properties.is_none()
+      && self.vue_component_case.is_none()
+      && self.angular_next_control_flow_same_line.is_none()
   }
 }
 
@@ -406,6 +502,8 @@ struct SerializedFmtConfig {
   pub type_literal_separator_kind: Option<SeparatorKind>,
   pub space_around: Option<bool>,
   pub space_surrounding_properties: Option<bool>,
+  pub vue_component_case: Option<VueComponentCase>,
+  pub angular_next_control_flow_same_line: Option<bool>,
   #[serde(rename = "options")]
   pub deprecated_options: FmtOptionsConfig,
   pub include: Option<Vec<String>>,
@@ -443,6 +541,9 @@ impl SerializedFmtConfig {
       type_literal_separator_kind: self.type_literal_separator_kind,
       space_around: self.space_around,
       space_surrounding_properties: self.space_surrounding_properties,
+      vue_component_case: self.vue_component_case,
+      angular_next_control_flow_same_line: self
+        .angular_next_control_flow_same_line,
     };
     if !self.deprecated_files.is_null() {
       log::warn!(
@@ -507,12 +608,14 @@ struct SerializedTestConfig {
   pub exclude: Vec<String>,
   #[serde(rename = "files")]
   pub deprecated_files: serde_json::Value,
+  pub permissions: Option<PermissionNameOrObject>,
 }
 
 impl SerializedTestConfig {
   pub fn into_resolved(
     self,
     config_file_specifier: &Url,
+    permissions: &PermissionsConfig,
   ) -> Result<TestConfig, IntoResolvedError> {
     let (include, exclude) = (self.include, self.exclude);
     let files = SerializedFilesConfig { include, exclude };
@@ -523,6 +626,18 @@ impl SerializedTestConfig {
     }
     Ok(TestConfig {
       files: files.into_resolved(config_file_specifier)?,
+      permissions: match self.permissions {
+        Some(PermissionNameOrObject::Name(name)) => {
+          Some(Box::new(permissions.get(&name)?.clone()))
+        }
+        Some(PermissionNameOrObject::Object(permissions)) => {
+          Some(Box::new(PermissionsObjectWithBase {
+            base: config_file_specifier.clone(),
+            permissions: *permissions,
+          }))
+        }
+        None => None,
+      },
     })
   }
 }
@@ -530,12 +645,14 @@ impl SerializedTestConfig {
 #[derive(Clone, Debug, Hash, PartialEq)]
 pub struct TestConfig {
   pub files: FilePatterns,
+  pub permissions: Option<Box<PermissionsObjectWithBase>>,
 }
 
 impl TestConfig {
   pub fn new_with_base(base: PathBuf) -> Self {
     Self {
       files: FilePatterns::new_with_base(base),
+      permissions: None,
     }
   }
 }
@@ -587,12 +704,14 @@ struct SerializedBenchConfig {
   pub exclude: Vec<String>,
   #[serde(rename = "files")]
   pub deprecated_files: serde_json::Value,
+  pub permissions: Option<PermissionNameOrObject>,
 }
 
 impl SerializedBenchConfig {
   pub fn into_resolved(
     self,
     config_file_specifier: &Url,
+    permissions: &PermissionsConfig,
   ) -> Result<BenchConfig, IntoResolvedError> {
     let (include, exclude) = (self.include, self.exclude);
     let files = SerializedFilesConfig { include, exclude };
@@ -603,6 +722,18 @@ impl SerializedBenchConfig {
     }
     Ok(BenchConfig {
       files: files.into_resolved(config_file_specifier)?,
+      permissions: match self.permissions {
+        Some(PermissionNameOrObject::Name(name)) => {
+          Some(Box::new(permissions.get(&name)?.clone()))
+        }
+        Some(PermissionNameOrObject::Object(permissions)) => {
+          Some(Box::new(PermissionsObjectWithBase {
+            base: config_file_specifier.clone(),
+            permissions: *permissions,
+          }))
+        }
+        None => None,
+      },
     })
   }
 }
@@ -610,14 +741,69 @@ impl SerializedBenchConfig {
 #[derive(Clone, Debug, PartialEq)]
 pub struct BenchConfig {
   pub files: FilePatterns,
+  pub permissions: Option<Box<PermissionsObjectWithBase>>,
 }
 
 impl BenchConfig {
   pub fn new_with_base(base: PathBuf) -> Self {
     Self {
       files: FilePatterns::new_with_base(base),
+      permissions: None,
     }
   }
+}
+
+/// `compile` config representation for serde
+///
+/// fields `include` and `exclude` are expanded from [SerializedFilesConfig].
+#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
+#[serde(default, deny_unknown_fields)]
+struct SerializedCompileConfig {
+  pub include: Vec<String>,
+  pub exclude: Vec<String>,
+  pub permissions: Option<PermissionNameOrObject>,
+}
+
+impl SerializedCompileConfig {
+  pub fn into_resolved(
+    self,
+    config_file_specifier: &Url,
+    permissions: &PermissionsConfig,
+  ) -> Result<CompileConfig, IntoResolvedError> {
+    let config_dir = url_parent(config_file_specifier);
+    let config_dir_path = url_to_file_path(&config_dir)?;
+    Ok(CompileConfig {
+      include: self
+        .include
+        .into_iter()
+        .map(|p| config_dir_path.join(&p).to_string_lossy().to_string())
+        .collect(),
+      exclude: self
+        .exclude
+        .into_iter()
+        .map(|p| config_dir_path.join(&p).to_string_lossy().to_string())
+        .collect(),
+      permissions: match self.permissions {
+        Some(PermissionNameOrObject::Name(name)) => {
+          Some(Box::new(permissions.get(&name)?.clone()))
+        }
+        Some(PermissionNameOrObject::Object(permissions)) => {
+          Some(Box::new(PermissionsObjectWithBase {
+            base: config_file_specifier.clone(),
+            permissions: *permissions,
+          }))
+        }
+        None => None,
+      },
+    })
+  }
+}
+
+#[derive(Clone, Default, Debug, PartialEq)]
+pub struct CompileConfig {
+  pub include: Vec<String>,
+  pub exclude: Vec<String>,
+  pub permissions: Option<Box<PermissionsObjectWithBase>>,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq)]
@@ -765,19 +951,11 @@ pub enum ConfigFileReadErrorKind {
     source: std::io::Error,
   },
   #[class(type)]
-  #[error("Unable to parse config file JSON {specifier}.")]
-  Parse {
-    specifier: Url,
-    #[source]
-    source: Box<jsonc_parser::errors::ParseError>,
-  },
-  #[class(inherit)]
   #[error("Failed deserializing config file '{specifier}'.")]
   Deserialize {
     specifier: Url,
     #[source]
-    #[inherit]
-    source: serde_json::Error,
+    source: Box<jsonc_parser::errors::ParseError>,
   },
   #[class(type)]
   #[error("Config file JSON should be an object '{specifier}'.")]
@@ -790,6 +968,57 @@ pub enum ConfigFileReadErrorKind {
 pub struct NodeModulesDirParseError {
   #[source]
   pub source: serde_json::Error,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NewestDependencyDate {
+  Enabled(chrono::DateTime<chrono::Utc>),
+  /// Disable using a minimum dependency date.
+  Disabled,
+}
+
+impl NewestDependencyDate {
+  pub fn into_option(self) -> Option<chrono::DateTime<chrono::Utc>> {
+    match self {
+      Self::Enabled(date_time) => Some(date_time),
+      Self::Disabled => None,
+    }
+  }
+}
+
+#[derive(Debug, Default, Clone, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct RawMinimumDependencyAgeConfig {
+  pub age: serde_json::Value,
+  #[serde(default)]
+  pub exclude: Vec<String>,
+}
+
+#[derive(Debug, Default, Clone)]
+pub struct MinimumDependencyAgeConfig {
+  pub age: Option<NewestDependencyDate>,
+  pub exclude: Vec<String>,
+}
+
+#[derive(Debug, Error, JsError)]
+#[class(type)]
+pub enum MinimumDependencyAgeParseError {
+  #[error("Unsupported \"minimumDependencyAge\" value.")]
+  ParseDateOrDuration(
+    #[from]
+    #[source]
+    crate::ParseDateOrDurationError,
+  ),
+  #[error(
+    "Unsupported \"minimumDependencyAge\" value. Expected a string or number."
+  )]
+  ExpectedStringOrNumber,
+  #[error(
+    "Unsupported \"minimumDependencyAge\" value. Could not convert number to i64."
+  )]
+  InvalidNumber,
+  #[error("Unsupported \"minimumDependencyAge\" object.")]
+  UnsupportedObject(#[source] serde_json::Error),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -865,14 +1094,44 @@ impl NodeModulesDirMode {
   }
 }
 
+/// `deploy` config representation for serde
+///
+/// fields `include` and `exclude` are expanded from [SerializedFilesConfig].
 #[derive(Clone, Debug, Deserialize, PartialEq)]
-#[serde(deny_unknown_fields)]
-pub struct DeployConfig {
+struct SerializedDeployConfig {
   pub org: String,
-  pub app: String,
+  pub app: Option<String>,
+  #[serde(default)]
+  pub include: Option<Vec<String>>,
+  #[serde(default)]
+  pub exclude: Vec<String>,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+impl SerializedDeployConfig {
+  pub fn into_resolved(
+    self,
+    config_file_specifier: &Url,
+  ) -> Result<DeployConfig, IntoResolvedError> {
+    let files = SerializedFilesConfig {
+      include: self.include,
+      exclude: self.exclude,
+    };
+    Ok(DeployConfig {
+      org: self.org,
+      app: self.app,
+      files: files.into_resolved(config_file_specifier)?,
+    })
+  }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct DeployConfig {
+  pub org: String,
+  pub app: Option<String>,
+  pub files: FilePatterns,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ConfigFileJson {
   pub compiler_options: Option<Value>,
@@ -884,13 +1143,17 @@ pub struct ConfigFileJson {
   pub tasks: Option<Value>,
   pub test: Option<Value>,
   pub bench: Option<Value>,
+  pub compile: Option<Value>,
   pub lock: Option<Value>,
   pub exclude: Option<Value>,
+  pub minimum_dependency_age: Option<Value>,
   pub node_modules_dir: Option<Value>,
   pub vendor: Option<bool>,
   pub license: Option<Value>,
+  pub permissions: Option<Value>,
   pub publish: Option<Value>,
   pub deploy: Option<Value>,
+  pub allow_scripts: Option<Value>,
 
   pub name: Option<String>,
   pub version: Option<String>,
@@ -1082,8 +1345,8 @@ pub enum ToLockConfigError {
   UrlToFilePath(#[from] UrlToFilePathError),
 }
 
-#[allow(clippy::disallowed_types)]
-pub type ConfigFileRc = crate::sync::MaybeArc<ConfigFile>;
+#[allow(clippy::disallowed_types, reason = "definition")]
+pub type ConfigFileRc = deno_maybe_sync::MaybeArc<ConfigFile>;
 
 #[derive(Clone, Debug)]
 pub struct ConfigFile {
@@ -1133,7 +1396,7 @@ impl ConfigFile {
       }
       match ConfigFile::read(sys, &file_path) {
         Ok(cf) => {
-          let cf = crate::sync::new_rc(cf);
+          let cf = deno_maybe_sync::new_rc(cf);
           log::debug!("Config file found at '{}'", file_path.display());
           if let Some(cache) = maybe_cache {
             cache.set(file_path, cf.clone());
@@ -1187,51 +1450,33 @@ impl ConfigFile {
   }
 
   pub fn new(text: &str, specifier: Url) -> Result<Self, ConfigFileReadError> {
-    let jsonc = match jsonc_parser::parse_to_ast(
-      text,
-      &Default::default(),
-      &Default::default(),
-    ) {
-      Ok(ParseResult {
-        value: Some(value @ jsonc_parser::ast::Value::Object(_)),
-        ..
-      }) => Value::from(value),
-      Ok(ParseResult { value: None, .. }) => {
-        json!({})
-      }
-      Err(e) => {
-        return Err(
-          ConfigFileReadErrorKind::Parse {
-            specifier,
-            source: Box::new(e),
+    let json: Option<ConfigFileJson> =
+      jsonc_parser::parse_to_serde_value(text, &Default::default()).map_err(
+        |err| {
+          ConfigFileReadErrorKind::Deserialize {
+            specifier: specifier.clone(),
+            source: Box::new(err),
           }
-          .into_box(),
-        );
-      }
-      _ => {
-        return Err(
-          ConfigFileReadErrorKind::NotObject { specifier }.into_box(),
-        );
-      }
-    };
-    let json: ConfigFileJson =
-      serde_json::from_value(jsonc).map_err(|err| {
-        ConfigFileReadErrorKind::Deserialize {
-          specifier: specifier.clone(),
-          source: err,
-        }
-        .into_box()
-      })?;
+          .into_box()
+        },
+      )?;
 
-    Ok(Self { specifier, json })
+    Ok(Self {
+      specifier,
+      json: json.unwrap_or_default(),
+    })
   }
 
   pub fn dir_path(&self) -> PathBuf {
-    url_to_file_path(&self.specifier)
-      .unwrap()
-      .parent()
-      .unwrap()
-      .to_path_buf()
+    let path = url_to_file_path(&self.specifier).unwrap();
+    match path.parent() {
+      Some(parent) => parent.to_path_buf(),
+      None => panic!(
+        "Could not get parent of {} ({})",
+        path.display(),
+        self.specifier
+      ),
+    }
   }
 
   pub fn to_import_map_specifier(
@@ -1336,6 +1581,10 @@ impl ConfigFile {
 
   pub fn is_package(&self) -> bool {
     self.json.name.is_some() && self.json.exports.is_some()
+  }
+
+  pub fn should_publish(&self) -> bool {
+    !matches!(self.json.publish, Some(serde_json::Value::Bool(false)))
   }
 
   pub fn is_workspace(&self) -> bool {
@@ -1548,7 +1797,10 @@ impl ConfigFile {
     Ok(exclude)
   }
 
-  pub fn to_bench_config(&self) -> Result<BenchConfig, ToInvalidConfigError> {
+  pub fn to_bench_config(
+    &self,
+    permissions: &PermissionsConfig,
+  ) -> Result<BenchConfig, ToInvalidConfigError> {
     match self.json.bench.clone() {
       Some(config) => {
         let mut exclude_patterns = self.resolve_exclude_patterns()?;
@@ -1562,16 +1814,41 @@ impl ConfigFile {
         // top level excludes at the start because they're lower priority
         exclude_patterns.extend(std::mem::take(&mut serialized.exclude));
         serialized.exclude = exclude_patterns;
-        serialized.into_resolved(&self.specifier).map_err(|error| {
-          ToInvalidConfigError::InvalidConfig {
+        serialized
+          .into_resolved(&self.specifier, permissions)
+          .map_err(|error| ToInvalidConfigError::InvalidConfig {
             config: "bench",
             source: error,
-          }
-        })
+          })
       }
       None => Ok(BenchConfig {
         files: self.to_exclude_files_config()?,
+        permissions: None,
       }),
+    }
+  }
+
+  pub fn to_compile_config(
+    &self,
+    permissions: &PermissionsConfig,
+  ) -> Result<CompileConfig, ToInvalidConfigError> {
+    match self.json.compile.clone() {
+      Some(config) => {
+        let serialized: SerializedCompileConfig =
+          serde_json::from_value(config).map_err(|error| {
+            ToInvalidConfigError::Parse {
+              config: "compile",
+              source: error,
+            }
+          })?;
+        serialized
+          .into_resolved(&self.specifier, permissions)
+          .map_err(|error| ToInvalidConfigError::InvalidConfig {
+            config: "compile",
+            source: error,
+          })
+      }
+      None => Ok(CompileConfig::default()),
     }
   }
 
@@ -1631,7 +1908,10 @@ impl ConfigFile {
     }
   }
 
-  pub fn to_test_config(&self) -> Result<TestConfig, ToInvalidConfigError> {
+  pub(crate) fn to_test_config(
+    &self,
+    permissions: &PermissionsConfig,
+  ) -> Result<TestConfig, ToInvalidConfigError> {
     match self.json.test.clone() {
       Some(config) => {
         let mut exclude_patterns = self.resolve_exclude_patterns()?;
@@ -1645,27 +1925,44 @@ impl ConfigFile {
         // top level excludes at the start because they're lower priority
         exclude_patterns.extend(std::mem::take(&mut serialized.exclude));
         serialized.exclude = exclude_patterns;
-        serialized.into_resolved(&self.specifier).map_err(|error| {
-          ToInvalidConfigError::InvalidConfig {
+        serialized
+          .into_resolved(&self.specifier, permissions)
+          .map_err(|error| ToInvalidConfigError::InvalidConfig {
             config: "test",
             source: error,
-          }
-        })
+          })
       }
       None => Ok(TestConfig {
         files: self.to_exclude_files_config()?,
+        permissions: None,
       }),
+    }
+  }
+
+  pub(crate) fn to_permissions_config(
+    &self,
+  ) -> Result<PermissionsConfig, ToInvalidConfigError> {
+    match self.json.permissions.clone() {
+      Some(config) => PermissionsConfig::parse(config, &self.specifier)
+        .map_err(|error| ToInvalidConfigError::Parse {
+          config: "permissions",
+          source: error,
+        }),
+      None => Ok(Default::default()),
     }
   }
 
   pub(crate) fn to_publish_config(
     &self,
   ) -> Result<PublishConfig, ToInvalidConfigError> {
-    match self.json.publish.clone() {
+    match &self.json.publish {
+      Some(serde_json::Value::Bool(_)) | None => Ok(PublishConfig {
+        files: self.to_exclude_files_config()?,
+      }),
       Some(config) => {
         let mut exclude_patterns = self.resolve_exclude_patterns()?;
         let mut serialized: SerializedPublishConfig =
-          serde_json::from_value(config).map_err(|error| {
+          serde_json::from_value(config.clone()).map_err(|error| {
             ToInvalidConfigError::Parse {
               config: "publish",
               source: error,
@@ -1681,9 +1978,6 @@ impl ConfigFile {
           }
         })
       }
-      None => Ok(PublishConfig {
-        files: self.to_exclude_files_config()?,
-      }),
     }
   }
 
@@ -1776,19 +2070,173 @@ impl ConfigFile {
     }
   }
 
+  pub fn to_allow_scripts_config(
+    &self,
+  ) -> Result<AllowScriptsConfig, ToInvalidConfigError> {
+    let config = match &self.json.allow_scripts {
+      Some(Value::Array(value)) => {
+        let items: Vec<JsrDepPackageReq> =
+          serde_json::from_value(value.clone().into()).map_err(|error| {
+            ToInvalidConfigError::Parse {
+              config: "allowScripts",
+              source: error,
+            }
+          })?;
+        AllowScriptsConfig {
+          allow: AllowScriptsValueConfig::Limited(items),
+          deny: vec![],
+        }
+      }
+      Some(Value::Object(value)) => {
+        let config: AllowScriptsConfig =
+          serde_json::from_value(value.clone().into()).map_err(|error| {
+            ToInvalidConfigError::Parse {
+              config: "allowScripts",
+              source: error,
+            }
+          })?;
+        config
+      }
+      Some(Value::Bool(value)) => {
+        if *value {
+          AllowScriptsConfig {
+            allow: AllowScriptsValueConfig::All,
+            deny: Vec::new(),
+          }
+        } else {
+          AllowScriptsConfig {
+            allow: AllowScriptsValueConfig::Limited(Vec::new()),
+            deny: Vec::new(),
+          }
+        }
+      }
+      Some(Value::Number(_) | Value::String(_)) => {
+        return Err(ToInvalidConfigError::Parse {
+          config: "allowScripts",
+          source: serde_json::Error::custom(
+            "expected string array, boolean, or object",
+          ),
+        });
+      }
+      Some(Value::Null) | None => AllowScriptsConfig {
+        allow: AllowScriptsValueConfig::Limited(Vec::new()),
+        deny: Vec::new(),
+      },
+    };
+    let ensure_reqs_no_tag = |reqs: &[JsrDepPackageReq]| {
+      // it's too much of a hassle to support tags,
+      // so error if someone uses one
+      for req in reqs {
+        if req.req.version_req.tag().is_some() {
+          return Err(ToInvalidConfigError::Parse {
+            config: "allowScripts",
+            source: serde_json::Error::custom(format!(
+              "tags are not supported in '{}'",
+              req
+            )),
+          });
+        }
+      }
+      Ok(())
+    };
+    match &config.allow {
+      AllowScriptsValueConfig::All => {}
+      AllowScriptsValueConfig::Limited(reqs) => {
+        ensure_reqs_no_tag(reqs)?;
+      }
+    }
+    ensure_reqs_no_tag(&config.deny)?;
+
+    Ok(config)
+  }
+
   pub fn to_deploy_config(
     &self,
   ) -> Result<Option<DeployConfig>, ToInvalidConfigError> {
-    match &self.json.deploy {
+    match self.json.deploy.clone() {
       Some(config) => {
-        Ok(Some(serde_json::from_value(config.clone()).map_err(
-          |error| ToInvalidConfigError::Parse {
+        let mut exclude_patterns = self.resolve_exclude_patterns()?;
+        let mut serialized: SerializedDeployConfig =
+          serde_json::from_value(config).map_err(|error| {
+            ToInvalidConfigError::Parse {
+              config: "deploy",
+              source: error,
+            }
+          })?;
+        // top level excludes at the start because they're lower priority
+        exclude_patterns.extend(std::mem::take(&mut serialized.exclude));
+        serialized.exclude = exclude_patterns;
+        serialized
+          .into_resolved(&self.specifier)
+          .map(Some)
+          .map_err(|error| ToInvalidConfigError::InvalidConfig {
             config: "deploy",
             source: error,
-          },
-        )?))
+          })
       }
       None => Ok(None),
+    }
+  }
+
+  pub fn to_minimum_dependency_age_config(
+    &self,
+    sys: &impl sys_traits::SystemTimeNow,
+  ) -> Result<MinimumDependencyAgeConfig, MinimumDependencyAgeParseError> {
+    fn parse_number(
+      minutes: &serde_json::Number,
+      sys: &impl sys_traits::SystemTimeNow,
+    ) -> Result<chrono::DateTime<chrono::Utc>, MinimumDependencyAgeParseError>
+    {
+      match minutes.as_i64() {
+        Some(minutes) => {
+          let now = chrono::DateTime::<chrono::Utc>::from(sys.sys_time_now());
+          Ok(now - chrono::Duration::minutes(minutes))
+        }
+        None => Err(MinimumDependencyAgeParseError::InvalidNumber),
+      }
+    }
+
+    fn parse_date(
+      value: &serde_json::Value,
+      sys: &impl sys_traits::SystemTimeNow,
+    ) -> Result<Option<NewestDependencyDate>, MinimumDependencyAgeParseError>
+    {
+      match value {
+        serde_json::Value::Null => Ok(None),
+        serde_json::Value::Number(minutes) => Ok(Some(
+          NewestDependencyDate::Enabled(parse_number(minutes, sys)?),
+        )),
+        serde_json::Value::String(value) => Ok(Some(
+          crate::util::parse_minutes_duration_or_date(sys, value)?,
+        )),
+        serde_json::Value::Bool(false) => {
+          Ok(Some(NewestDependencyDate::Disabled))
+        }
+        serde_json::Value::Bool(true)
+        | serde_json::Value::Object(_)
+        | serde_json::Value::Array(_) => {
+          Err(MinimumDependencyAgeParseError::ExpectedStringOrNumber)
+        }
+      }
+    }
+
+    match &self.json.minimum_dependency_age {
+      Some(v) => match v {
+        serde_json::Value::Object(_) => {
+          let obj: RawMinimumDependencyAgeConfig =
+            serde_json::from_value(v.clone())
+              .map_err(MinimumDependencyAgeParseError::UnsupportedObject)?;
+          Ok(MinimumDependencyAgeConfig {
+            age: parse_date(&obj.age, sys)?,
+            exclude: obj.exclude,
+          })
+        }
+        _ => Ok(MinimumDependencyAgeConfig {
+          age: parse_date(v, sys)?,
+          exclude: Default::default(),
+        }),
+      },
+      None => Ok(Default::default()),
     }
   }
 
@@ -1858,10 +2306,10 @@ impl ConfigFile {
   }
 
   pub fn dependencies(&self) -> HashSet<JsrDepPackageReq> {
-    let values = imports_values(self.json.imports.as_ref())
-      .into_iter()
-      .chain(scope_values(self.json.scopes.as_ref()));
-    let mut set = values_to_set(values);
+    let mut set = imports_values(self.json.imports.as_ref())
+      .chain(scope_values(self.json.scopes.as_ref()))
+      .filter_map(value_to_dep_req)
+      .collect::<HashSet<_>>();
 
     if let Some(serde_json::Value::Object(compiler_options)) =
       &self.json.compiler_options
@@ -1993,7 +2441,9 @@ mod tests {
         "jsx.multiLineParens": "never",
         "typeLiteral.separatorKind": "semiColon",
         "spaceAround": true,
-        "spaceSurroundingProperties": true
+        "spaceSurroundingProperties": true,
+        "vueComponentCase": "pascal-case",
+        "angularNextControlFlowSameLine": false
       },
       "tasks": {
         "build": "deno run --allow-read --allow-write build.ts",
@@ -2067,6 +2517,8 @@ mod tests {
           type_literal_separator_kind: Some(SeparatorKind::SemiColon),
           space_around: Some(true),
           space_surrounding_properties: Some(true),
+          vue_component_case: Some(VueComponentCase::PascalCase),
+          angular_next_control_flow_same_line: Some(false),
         },
       }
     );
@@ -2191,7 +2643,7 @@ mod tests {
     let config_specifier = Url::parse("file:///deno/tsconfig.json").unwrap();
     let config_file = ConfigFile::new(config_text, config_specifier).unwrap();
 
-    let test_config = config_file.to_test_config().unwrap();
+    let test_config = config_file.to_test_config(&Default::default()).unwrap();
     assert_eq!(test_config.files.include, None);
     assert_eq!(
       test_config.files.exclude,
@@ -2202,7 +2654,8 @@ mod tests {
       .unwrap()
     );
 
-    let bench_config = config_file.to_bench_config().unwrap();
+    let bench_config =
+      config_file.to_bench_config(&Default::default()).unwrap();
     assert_eq!(
       bench_config.files.exclude,
       PathOrPatternSet::from_absolute_paths(&["/deno/foo/".to_string()])
@@ -2660,7 +3113,9 @@ mod tests {
       ) -> std::io::Result<Cow<'static, [u8]>> {
         assert_eq!(
           path,
-          root_url().to_file_path().unwrap().join("import_map.json")
+          deno_path_util::url_to_file_path(&root_url())
+            .unwrap()
+            .join("import_map.json")
         );
         Ok(Cow::Borrowed(
           r#"{ "imports": { "@std/test": "jsr:@std/test@0.2.0" } }"#.as_bytes(),
@@ -2754,12 +3209,12 @@ mod tests {
   #[test]
   fn resolve_import_map_url_parent() {
     let config_text = r#"{ "importMap": "../import_map.json" }"#;
-    let file_path = root_url()
-      .join("sub/deno.json")
-      .unwrap()
-      .to_file_path()
-      .unwrap();
-    let config_specifier = Url::from_file_path(&file_path).unwrap();
+    let file_path = deno_path_util::url_to_file_path(
+      &root_url().join("sub/deno.json").unwrap(),
+    )
+    .unwrap();
+    let config_specifier =
+      deno_path_util::url_from_file_path(&file_path).unwrap();
     let config_file = ConfigFile::new(config_text, config_specifier).unwrap();
     assert_eq!(
       config_file.to_import_map_path().unwrap().unwrap(),
@@ -2775,7 +3230,7 @@ mod tests {
   #[test]
   fn lock_object() {
     fn root_joined(path: &str) -> PathBuf {
-      root_url().join(path).unwrap().to_file_path().unwrap()
+      deno_path_util::url_to_file_path(&root_url().join(path).unwrap()).unwrap()
     }
     let cases = [
       (
@@ -2822,5 +3277,96 @@ mod tests {
         expected
       );
     }
+  }
+
+  #[test]
+  fn test_to_allow_scripts() {
+    fn get_result(
+      text: &str,
+    ) -> Result<AllowScriptsConfig, ToInvalidConfigError> {
+      let config_specifier = root_url().join("deno.json").unwrap();
+      let config_file = ConfigFile::new(text, config_specifier).unwrap();
+      config_file.to_allow_scripts_config()
+    }
+
+    assert_eq!(
+      get_result(r#"{}"#).unwrap(),
+      AllowScriptsConfig {
+        allow: AllowScriptsValueConfig::Limited(Vec::new()),
+        deny: vec![],
+      }
+    );
+    assert_eq!(
+      get_result(
+        r#"{
+        "allowScripts": true
+      }"#
+      )
+      .unwrap(),
+      AllowScriptsConfig {
+        allow: AllowScriptsValueConfig::All,
+        deny: vec![],
+      }
+    );
+    assert_eq!(
+      get_result(
+        r#"{
+        "allowScripts": [
+          "npm:chalk",
+          "npm:package@1",
+        ]
+      }"#
+      )
+      .unwrap(),
+      AllowScriptsConfig {
+        allow: AllowScriptsValueConfig::Limited(Vec::from([
+          JsrDepPackageReq::from_str("npm:chalk").unwrap(),
+          JsrDepPackageReq::from_str("npm:package@1").unwrap(),
+        ])),
+        deny: vec![],
+      }
+    );
+    assert_eq!(
+      get_result(
+        r#"{
+        "allowScripts": {
+          "allow": [
+            "npm:chalk",
+            "npm:package@1",
+          ],
+          "deny": [
+            "npm:example@1"
+          ]
+        }
+      }"#
+      )
+      .unwrap(),
+      AllowScriptsConfig {
+        allow: AllowScriptsValueConfig::Limited(Vec::from([
+          JsrDepPackageReq::from_str("npm:chalk").unwrap(),
+          JsrDepPackageReq::from_str("npm:package@1").unwrap(),
+        ])),
+        deny: Vec::from(
+          [JsrDepPackageReq::from_str("npm:example@1").unwrap(),]
+        ),
+      }
+    );
+
+    // tag
+    assert_contains!(
+      format!(
+        "{:#?}",
+        get_result(r#"{ "allowScripts": ["npm:chalk@next"] }"#).unwrap_err()
+      ),
+      "tags are not supported in 'npm:chalk@next'"
+    );
+    assert_contains!(
+      format!(
+        "{:#?}",
+        get_result(r#"{ "allowScripts": { "allow": ["npm:chalk@next"] } }"#)
+          .unwrap_err()
+      ),
+      "tags are not supported in 'npm:chalk@next'"
+    );
   }
 }

@@ -1,0 +1,15 @@
+[# TODO(bartlomieju): type checking doesn't work properly for now, most likely will wait till Deno 3]
+Check [WILDCARD]node_globals.ts
+TS2304 [ERROR]: Cannot find name 'setImmediate'.
+const i = setImmediate(() => {});
+          ~~~~~~~~~~~~
+    at [WILDCARD]node_globals.ts:1:11
+
+TS2304 [ERROR]: Cannot find name 'clearImmediate'.
+clearImmediate(i);
+~~~~~~~~~~~~~~
+    at [WILDCARD]node_globals.ts:3:1
+
+Found 2 errors.
+
+error: Type checking failed.

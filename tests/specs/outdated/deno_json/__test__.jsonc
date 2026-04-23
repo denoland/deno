@@ -111,6 +111,26 @@
           "output": "filtered/deno.json.out"
         }
       ]
+    },
+    "update_latest_lockfile_only": {
+      "steps": [
+        {
+          "args": "install",
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": "outdated --update --latest --lockfile-only",
+          "output": "update_latest_lockfile_only/update.out"
+        },
+        {
+          "args": "-A print_file.ts ./deno.json",
+          "output": "./update_latest/deno.json.out"
+        },
+        {
+          "args": "-A print_file.ts ./deno.lock",
+          "output": "./update_latest/deno.lock.out"
+        }
+      ]
     }
   }
 }

@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 
@@ -32,6 +32,12 @@ pub enum ShaHash {
   Sha384,
   #[serde(rename = "SHA-512")]
   Sha512,
+  #[serde(rename = "SHA3-256")]
+  Sha3_256,
+  #[serde(rename = "SHA3-384")]
+  Sha3_384,
+  #[serde(rename = "SHA3-512")]
+  Sha3_512,
 }
 
 #[derive(Serialize, Deserialize, Copy, Clone, Eq, PartialEq)]

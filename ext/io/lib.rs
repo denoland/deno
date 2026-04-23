@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::cell::RefCell;
@@ -10,11 +10,11 @@ use std::io::Read;
 use std::io::Seek;
 use std::io::Write;
 #[cfg(unix)]
-use std::os::fd::AsRawFd;
-#[cfg(unix)]
 use std::os::unix::io::FromRawFd;
 #[cfg(windows)]
 use std::os::windows::io::FromRawHandle;
+use std::path::Path;
+use std::path::PathBuf;
 #[cfg(unix)]
 use std::process::Stdio as StdStdio;
 use std::rc::Rc;
@@ -26,10 +26,8 @@ use deno_core::AsyncRefCell;
 use deno_core::AsyncResult;
 use deno_core::BufMutView;
 use deno_core::BufView;
-use deno_core::CancelFuture;
 use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
-use deno_core::JsBuffer;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
@@ -46,8 +44,6 @@ use fs::FileResource;
 use fs::FsError;
 use fs::FsResult;
 use fs::FsStat;
-use fs3::FileExt;
-use once_cell::sync::Lazy;
 #[cfg(windows)]
 use parking_lot::Condvar;
 #[cfg(windows)]
@@ -62,6 +58,7 @@ use winapi::um::processenv::GetStdHandle;
 #[cfg(windows)]
 use winapi::um::winbase;
 
+mod fd_table;
 pub mod fs;
 mod pipe;
 #[cfg(windows)]
@@ -75,6 +72,7 @@ pub use bi_pipe::BiPipeResource;
 pub use bi_pipe::BiPipeWrite;
 pub use bi_pipe::RawBiPipeHandle;
 pub use bi_pipe::bi_pipe_pair_raw;
+pub use fd_table::FdTable;
 pub use pipe::AsyncPipeRead;
 pub use pipe::AsyncPipeWrite;
 pub use pipe::PipeRead;
@@ -188,47 +186,30 @@ pub fn close_raw_handle(handle: RawIoHandle) {
   }
 }
 
-// Store the stdio fd/handles in global statics in order to keep them
-// alive for the duration of the application since the last handle/fd
-// being dropped will close the corresponding pipe.
+/// Wrap a stdio fd as a StdFile without global statics.
+///
+/// Uses the raw fd directly. The StdFileResourceInner Drop impl leaks
+/// stdio fds (via into_raw_fd) to prevent closing fds 0/1/2 at shutdown.
 #[cfg(unix)]
-pub static STDIN_HANDLE: Lazy<StdFile> = Lazy::new(|| {
-  // SAFETY: corresponds to OS stdin
-  unsafe { StdFile::from_raw_fd(0) }
-});
-#[cfg(unix)]
-pub static STDOUT_HANDLE: Lazy<StdFile> = Lazy::new(|| {
-  // SAFETY: corresponds to OS stdout
-  unsafe { StdFile::from_raw_fd(1) }
-});
-#[cfg(unix)]
-pub static STDERR_HANDLE: Lazy<StdFile> = Lazy::new(|| {
-  // SAFETY: corresponds to OS stderr
-  unsafe { StdFile::from_raw_fd(2) }
-});
+fn stdio_fd(fd: i32) -> StdFile {
+  // SAFETY: fd is a valid stdio descriptor (0, 1, or 2).
+  unsafe { StdFile::from_raw_fd(fd) }
+}
 
 #[cfg(windows)]
-pub static STDIN_HANDLE: Lazy<StdFile> = Lazy::new(|| {
-  // SAFETY: corresponds to OS stdin
-  unsafe { StdFile::from_raw_handle(GetStdHandle(winbase::STD_INPUT_HANDLE)) }
-});
-#[cfg(windows)]
-pub static STDOUT_HANDLE: Lazy<StdFile> = Lazy::new(|| {
-  // SAFETY: corresponds to OS stdout
-  unsafe { StdFile::from_raw_handle(GetStdHandle(winbase::STD_OUTPUT_HANDLE)) }
-});
-#[cfg(windows)]
-pub static STDERR_HANDLE: Lazy<StdFile> = Lazy::new(|| {
-  // SAFETY: corresponds to OS stderr
-  unsafe { StdFile::from_raw_handle(GetStdHandle(winbase::STD_ERROR_HANDLE)) }
-});
+fn stdio_fd(fd: i32) -> StdFile {
+  let std_handle = match fd {
+    0 => winbase::STD_INPUT_HANDLE,
+    1 => winbase::STD_OUTPUT_HANDLE,
+    2 => winbase::STD_ERROR_HANDLE,
+    _ => panic!("Invalid stdio fd {fd}"),
+  };
+  // SAFETY: GetStdHandle returns a valid handle for the given std device.
+  unsafe { StdFile::from_raw_handle(GetStdHandle(std_handle)) }
+}
 
 deno_core::extension!(deno_io,
   deps = [ deno_web ],
-  ops = [
-    op_read_with_cancel_handle,
-    op_read_create_cancel_handle,
-  ],
   esm = [ "12_io.js" ],
   options = {
     stdio: Option<Stdio>,
@@ -238,6 +219,8 @@ deno_core::extension!(deno_io,
     _ => op,
   },
   state = |state, options| {
+    let mut fd_table = FdTable::new();
+
     if let Some(stdio) = options.stdio {
       #[cfg(windows)]
       let stdin_state = {
@@ -250,42 +233,71 @@ deno_core::extension!(deno_io,
 
       let t = &mut state.resource_table;
 
-      let rid = t.add(fs::FileResource::new(
-        Rc::new(match stdio.stdin.pipe {
-          StdioPipeInner::Inherit => StdFileResourceInner::new(
-            StdFileResourceKind::Stdin(stdin_state),
-            STDIN_HANDLE.try_clone().unwrap(),
-          ),
-          StdioPipeInner::File(pipe) => StdFileResourceInner::file(pipe),
-        }),
-        "stdin".to_string(),
-      ));
+      let stdin_file: Rc<dyn fs::File> = Rc::new(match stdio.stdin.pipe {
+        StdioPipeInner::Inherit => StdFileResourceInner::new(
+          StdFileResourceKind::Stdin(stdin_state),
+          stdio_fd(0),
+          None,
+        ),
+        StdioPipeInner::File(pipe) => StdFileResourceInner::file(pipe, None),
+      });
+      fd_table.register(0, stdin_file.clone());
+      let rid = t.add(fs::FileResource::new(stdin_file, "stdin".to_string()));
       assert_eq!(rid, 0, "stdin must have ResourceId 0");
 
-      let rid = t.add(FileResource::new(
-        Rc::new(match stdio.stdout.pipe {
-          StdioPipeInner::Inherit => StdFileResourceInner::new(
-            StdFileResourceKind::Stdout,
-            STDOUT_HANDLE.try_clone().unwrap(),
-          ),
-          StdioPipeInner::File(pipe) => StdFileResourceInner::file(pipe),
-        }),
-        "stdout".to_string(),
-      ));
+      let (stdout_file, child_stdout): (Rc<dyn fs::File>, StdFile) = match stdio.stdout.pipe {
+        StdioPipeInner::Inherit => {
+          let file = stdio_fd(1);
+          // dup for ChildProcessStdio -- it drops normally and must
+          // not close the real fd 1.
+          let child_handle = file.try_clone().unwrap();
+          (
+            Rc::new(StdFileResourceInner::new(
+              StdFileResourceKind::Stdout,
+              file,
+              None,
+            )),
+            child_handle,
+          )
+        }
+        StdioPipeInner::File(pipe) => {
+          let child_handle = pipe.try_clone().unwrap();
+          (Rc::new(StdFileResourceInner::file(pipe, None)), child_handle)
+        }
+      };
+      fd_table.register(1, stdout_file.clone());
+      let rid = t.add(FileResource::new(stdout_file, "stdout".to_string()));
       assert_eq!(rid, 1, "stdout must have ResourceId 1");
 
-      let rid = t.add(FileResource::new(
-        Rc::new(match stdio.stderr.pipe {
-          StdioPipeInner::Inherit => StdFileResourceInner::new(
-            StdFileResourceKind::Stderr,
-            STDERR_HANDLE.try_clone().unwrap(),
-          ),
-          StdioPipeInner::File(pipe) => StdFileResourceInner::file(pipe),
-        }),
-        "stderr".to_string(),
-      ));
+      let (stderr_file, child_stderr): (Rc<dyn fs::File>, StdFile) = match stdio.stderr.pipe {
+        StdioPipeInner::Inherit => {
+          let file = stdio_fd(2);
+          let child_handle = file.try_clone().unwrap();
+          (
+            Rc::new(StdFileResourceInner::new(
+              StdFileResourceKind::Stderr,
+              file,
+              None,
+            )),
+            child_handle,
+          )
+        }
+        StdioPipeInner::File(pipe) => {
+          let child_handle = pipe.try_clone().unwrap();
+          (Rc::new(StdFileResourceInner::file(pipe, None)), child_handle)
+        }
+      };
+      fd_table.register(2, stderr_file.clone());
+      let rid = t.add(FileResource::new(stderr_file, "stderr".to_string()));
       assert_eq!(rid, 2, "stderr must have ResourceId 2");
+
+      state.put(ChildProcessStdio {
+        stdout: child_stdout,
+        stderr: child_stderr,
+      });
     }
+
+    state.put(fd_table);
   },
 );
 
@@ -335,6 +347,18 @@ pub struct Stdio {
   pub stdin: StdioPipe,
   pub stdout: StdioPipe,
   pub stderr: StdioPipe,
+}
+
+/// Holds the effective stdout/stderr handles for child process inheritance.
+///
+/// When the runtime redirects stdout/stderr (e.g. during `deno test` for
+/// output capture), child processes spawned with `stdio: "inherit"` need
+/// to inherit the redirected handles, not the original OS stdout/stderr.
+/// This struct is stored in `OpState` during IO extension init and read
+/// by the process extension when spawning children.
+pub struct ChildProcessStdio {
+  pub stdout: StdFile,
+  pub stderr: StdFile,
 }
 
 #[derive(Debug)]
@@ -494,14 +518,48 @@ pub struct StdFileResourceInner {
   // to occur at a time
   cell_async_task_queue: Rc<TaskQueue>,
   handle: ResourceHandleFd,
+  maybe_path: Option<PathBuf>,
+}
+
+impl Drop for StdFileResourceInner {
+  fn drop(&mut self) {
+    // For stdio resources, leak the fd to prevent closing fds 0/1/2.
+    // These fds must stay open for the lifetime of the process -- without
+    // global statics holding them, we rely on this leak to keep them alive.
+    match self.kind {
+      StdFileResourceKind::Stdin(_)
+      | StdFileResourceKind::Stdout
+      | StdFileResourceKind::Stderr => {
+        if let Some(file) = self.cell.borrow_mut().take() {
+          #[cfg(unix)]
+          {
+            use std::os::unix::io::IntoRawFd;
+            let _ = file.into_raw_fd();
+          }
+          #[cfg(windows)]
+          {
+            use std::os::windows::io::IntoRawHandle;
+            let _ = file.into_raw_handle();
+          }
+        }
+      }
+      StdFileResourceKind::File => {
+        // Regular files close normally via Drop
+      }
+    }
+  }
 }
 
 impl StdFileResourceInner {
-  pub fn file(fs_file: StdFile) -> Self {
-    StdFileResourceInner::new(StdFileResourceKind::File, fs_file)
+  pub fn file(fs_file: StdFile, maybe_path: Option<PathBuf>) -> Self {
+    StdFileResourceInner::new(StdFileResourceKind::File, fs_file, maybe_path)
   }
 
-  fn new(kind: StdFileResourceKind, fs_file: StdFile) -> Self {
+  fn new(
+    kind: StdFileResourceKind,
+    fs_file: StdFile,
+    maybe_path: Option<PathBuf>,
+  ) -> Self {
     // We know this will be an fd
     let handle = ResourceHandle::from_fd_like(&fs_file).as_fd_like().unwrap();
     StdFileResourceInner {
@@ -509,6 +567,7 @@ impl StdFileResourceInner {
       handle,
       cell: RefCell::new(Some(fs_file)),
       cell_async_task_queue: Default::default(),
+      maybe_path,
     }
   }
 
@@ -659,6 +718,10 @@ impl StdFileResourceInner {
 
 #[async_trait::async_trait(?Send)]
 impl crate::fs::File for StdFileResourceInner {
+  fn maybe_path(&self) -> Option<&Path> {
+    self.maybe_path.as_deref()
+  }
+
   fn write_sync(self: Rc<Self>, buf: &[u8]) -> FsResult<usize> {
     // Rust will line buffer and we don't want that behavior
     // (see https://github.com/denoland/deno/issues/948), so flush stdout and stderr.
@@ -690,8 +753,24 @@ impl crate::fs::File for StdFileResourceInner {
 
   fn read_sync(self: Rc<Self>, buf: &mut [u8]) -> FsResult<usize> {
     match self.kind {
-      StdFileResourceKind::File | StdFileResourceKind::Stdin(_) => {
-        self.with_sync(|file| Ok(file.read(buf)?))
+      StdFileResourceKind::File => self.with_sync(|file| Ok(file.read(buf)?)),
+      StdFileResourceKind::Stdin(_) => {
+        // Stdin may be set to non-blocking mode by Node's process.stdin
+        // (via uv_pipe_open/uv_tty_init which set O_NONBLOCK on the fd).
+        // Since O_NONBLOCK is per-file-description, it affects all users
+        // of fd 0. Retry on WouldBlock to avoid surfacing EAGAIN to JS.
+        self.with_sync(|file| {
+          loop {
+            match file.read(buf) {
+              Ok(nread) => return Ok(nread),
+              Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                std::thread::yield_now();
+                continue;
+              }
+              Err(e) => return Err(e.into()),
+            }
+          }
+        })
       }
       StdFileResourceKind::Stdout | StdFileResourceKind::Stderr => {
         Err(FsError::NotSupported)
@@ -828,29 +907,69 @@ impl crate::fs::File for StdFileResourceInner {
     }
   }
 
-  fn chmod_sync(self: Rc<Self>, _mode: u32) -> FsResult<()> {
+  fn chmod_sync(self: Rc<Self>, mode: u32) -> FsResult<()> {
     #[cfg(unix)]
     {
       use std::os::unix::prelude::PermissionsExt;
       self.with_sync(|file| {
-        Ok(file.set_permissions(std::fs::Permissions::from_mode(_mode))?)
+        Ok(file.set_permissions(std::fs::Permissions::from_mode(mode))?)
       })
     }
-    #[cfg(not(unix))]
-    Err(FsError::NotSupported)
+    #[cfg(windows)]
+    {
+      self.with_sync(|file| {
+        let mut permissions = file.metadata()?.permissions();
+        if mode & libc::S_IWRITE as u32 > 0 {
+          // clippy warning should only be applicable to Unix platforms
+          // https://rust-lang.github.io/rust-clippy/master/index.html#permissions_set_readonly_false
+          #[allow(
+            clippy::permissions_set_readonly_false,
+            reason = "only applicable to Unix platforms"
+          )]
+          permissions.set_readonly(false);
+        } else {
+          permissions.set_readonly(true);
+        }
+        file.set_permissions(permissions)?;
+        Ok(())
+      })
+    }
   }
-  async fn chmod_async(self: Rc<Self>, _mode: u32) -> FsResult<()> {
+  async fn chmod_async(self: Rc<Self>, mode: u32) -> FsResult<()> {
     #[cfg(unix)]
     {
       use std::os::unix::prelude::PermissionsExt;
       self
         .with_inner_blocking_task(move |file| {
-          Ok(file.set_permissions(std::fs::Permissions::from_mode(_mode))?)
+          Ok(file.set_permissions(std::fs::Permissions::from_mode(mode))?)
         })
         .await
     }
-    #[cfg(not(unix))]
-    Err(FsError::NotSupported)
+    #[cfg(windows)]
+    {
+      self
+        .with_inner_blocking_task(move |file| {
+          let mut permissions = file.metadata()?.permissions();
+          if mode & libc::S_IWRITE as u32 > 0 {
+            // clippy warning should only be applicable to Unix platforms
+            // https://rust-lang.github.io/rust-clippy/master/index.html#permissions_set_readonly_false
+            #[allow(
+              clippy::permissions_set_readonly_false,
+              reason = "only applicable to Unix platforms"
+            )]
+            permissions.set_readonly(false);
+          } else {
+            permissions.set_readonly(true);
+          }
+          file.set_permissions(permissions)?;
+          Ok(())
+        })
+        .await
+    }
+    #[cfg(not(any(unix, windows)))]
+    {
+      Err(FsError::NotSupported)
+    }
   }
 
   fn chown_sync(
@@ -862,7 +981,9 @@ impl crate::fs::File for StdFileResourceInner {
     {
       let owner = _uid.map(nix::unistd::Uid::from_raw);
       let group = _gid.map(nix::unistd::Gid::from_raw);
-      let res = nix::unistd::fchown(self.handle, owner, group);
+      // SAFETY: self.handle is a valid open file descriptor
+      let raw_fd = unsafe { std::os::fd::BorrowedFd::borrow_raw(self.handle) };
+      let res = nix::unistd::fchown(raw_fd, owner, group);
       if let Err(err) = res {
         Err(io::Error::from_raw_os_error(err as i32).into())
       } else {
@@ -885,7 +1006,7 @@ impl crate::fs::File for StdFileResourceInner {
           use std::os::fd::AsFd;
           let owner = _uid.map(nix::unistd::Uid::from_raw);
           let group = _gid.map(nix::unistd::Gid::from_raw);
-          nix::unistd::fchown(file.as_fd().as_raw_fd(), owner, group)
+          nix::unistd::fchown(file.as_fd(), owner, group)
             .map_err(|err| io::Error::from_raw_os_error(err as i32).into())
         })
         .await
@@ -922,22 +1043,54 @@ impl crate::fs::File for StdFileResourceInner {
   }
 
   fn stat_sync(self: Rc<Self>) -> FsResult<FsStat> {
-    self.with_sync(|file| Ok(file.metadata().map(FsStat::from_std)?))
+    #[cfg(unix)]
+    {
+      self.with_sync(|file| Ok(file.metadata().map(FsStat::from_std)?))
+    }
+    #[cfg(windows)]
+    {
+      self.with_sync(|file| {
+        let mut fs_stat = file.metadata().map(FsStat::from_std)?;
+        stat_extra(file, &mut fs_stat)?;
+        Ok(fs_stat)
+      })
+    }
+    #[cfg(not(any(unix, windows)))]
+    {
+      Err(FsError::NotSupported)
+    }
   }
   async fn stat_async(self: Rc<Self>) -> FsResult<FsStat> {
-    self
-      .with_inner_blocking_task(|file| {
-        Ok(file.metadata().map(FsStat::from_std)?)
-      })
-      .await
+    #[cfg(unix)]
+    {
+      self
+        .with_inner_blocking_task(|file| {
+          Ok(file.metadata().map(FsStat::from_std)?)
+        })
+        .await
+    }
+    #[cfg(windows)]
+    {
+      self
+        .with_inner_blocking_task(|file| {
+          let mut fs_stat = file.metadata().map(FsStat::from_std)?;
+          stat_extra(file, &mut fs_stat)?;
+          Ok(fs_stat)
+        })
+        .await
+    }
+    #[cfg(not(any(unix, windows)))]
+    {
+      Err(FsError::NotSupported)
+    }
   }
 
   fn lock_sync(self: Rc<Self>, exclusive: bool) -> FsResult<()> {
     self.with_sync(|file| {
       if exclusive {
-        file.lock_exclusive()?;
+        file.lock()?;
       } else {
-        fs3::FileExt::lock_shared(file)?;
+        file.lock_shared()?;
       }
       Ok(())
     })
@@ -946,21 +1099,54 @@ impl crate::fs::File for StdFileResourceInner {
     self
       .with_inner_blocking_task(move |file| {
         if exclusive {
-          file.lock_exclusive()?;
+          file.lock()?;
         } else {
-          fs3::FileExt::lock_shared(file)?;
+          file.lock_shared()?;
         }
         Ok(())
       })
       .await
   }
 
+  fn try_lock_sync(self: Rc<Self>, exclusive: bool) -> FsResult<bool> {
+    use std::fs::TryLockError;
+    self.with_sync(|file| {
+      let result = if exclusive {
+        file.try_lock()
+      } else {
+        file.try_lock_shared()
+      };
+      match result {
+        Ok(()) => Ok(true),
+        Err(TryLockError::WouldBlock) => Ok(false),
+        Err(TryLockError::Error(err)) => Err(err.into()),
+      }
+    })
+  }
+  async fn try_lock_async(self: Rc<Self>, exclusive: bool) -> FsResult<bool> {
+    use std::fs::TryLockError;
+    self
+      .with_inner_blocking_task(move |file| {
+        let result = if exclusive {
+          file.try_lock()
+        } else {
+          file.try_lock_shared()
+        };
+        match result {
+          Ok(()) => Ok(true),
+          Err(TryLockError::WouldBlock) => Ok(false),
+          Err(TryLockError::Error(err)) => Err(err.into()),
+        }
+      })
+      .await
+  }
+
   fn unlock_sync(self: Rc<Self>) -> FsResult<()> {
-    self.with_sync(|file| Ok(fs3::FileExt::unlock(file)?))
+    self.with_sync(|file| Ok(file.unlock()?))
   }
   async fn unlock_async(self: Rc<Self>) -> FsResult<()> {
     self
-      .with_inner_blocking_task(|file| Ok(fs3::FileExt::unlock(file)?))
+      .with_inner_blocking_task(|file| Ok(file.unlock()?))
       .await
   }
 
@@ -1016,6 +1202,25 @@ impl crate::fs::File for StdFileResourceInner {
       StdFileResourceKind::Stdin(state) => {
         self.handle_stdin_read(state.clone(), buf).await
       }
+      #[cfg(not(windows))]
+      StdFileResourceKind::Stdin(_) => {
+        // Stdin may be set to non-blocking mode by Node's process.stdin.
+        // Retry on WouldBlock (see read_sync comment for details).
+        self
+          .with_inner_blocking_task(|file| {
+            loop {
+              match file.read(&mut buf) {
+                Ok(nread) => return Ok((nread, buf)),
+                Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                  std::thread::yield_now();
+                  continue;
+                }
+                Err(e) => return Err(e.into()),
+              }
+            }
+          })
+          .await
+      }
       _ => {
         self
           .with_inner_blocking_task(|file| {
@@ -1035,6 +1240,7 @@ impl crate::fs::File for StdFileResourceInner {
         cell: RefCell::new(Some(inner.try_clone()?)),
         cell_async_task_queue: Default::default(),
         handle: self.handle,
+        maybe_path: self.maybe_path.clone(),
       })),
       None => Err(FsError::FileBusy),
     }
@@ -1050,62 +1256,83 @@ impl crate::fs::File for StdFileResourceInner {
     }
   }
 
+  fn read_at_sync(
+    self: Rc<Self>,
+    buf: &mut [u8],
+    position: u64,
+  ) -> FsResult<usize> {
+    self.with_sync(|file| {
+      #[cfg(unix)]
+      {
+        use std::os::unix::fs::FileExt;
+        Ok(file.read_at(buf, position)?)
+      }
+      #[cfg(windows)]
+      {
+        // Windows seek_read moves the cursor, so save/restore it.
+        use std::io::Seek;
+        use std::os::windows::fs::FileExt;
+        let current = file.stream_position()?;
+        let result = file.seek_read(buf, position);
+        file.seek(std::io::SeekFrom::Start(current))?;
+        Ok(result?)
+      }
+    })
+  }
+
+  async fn read_at_async(
+    self: Rc<Self>,
+    mut buf: BufMutView,
+    position: u64,
+  ) -> FsResult<(usize, BufMutView)> {
+    self
+      .with_inner_blocking_task(move |file| {
+        #[cfg(unix)]
+        {
+          use std::os::unix::fs::FileExt;
+          let nread = file.read_at(&mut buf, position)?;
+          Ok((nread, buf))
+        }
+        #[cfg(windows)]
+        {
+          use std::io::Seek;
+          use std::os::windows::fs::FileExt;
+          let current = file.stream_position()?;
+          let result = file.seek_read(&mut buf, position);
+          file.seek(std::io::SeekFrom::Start(current))?;
+          Ok((result?, buf))
+        }
+      })
+      .await
+  }
+
+  fn write_at_sync(
+    self: Rc<Self>,
+    buf: &[u8],
+    position: u64,
+  ) -> FsResult<usize> {
+    self.with_sync(|file| {
+      #[cfg(unix)]
+      {
+        use std::os::unix::fs::FileExt;
+        Ok(file.write_at(buf, position)?)
+      }
+      #[cfg(windows)]
+      {
+        // Windows seek_write moves the cursor, so save/restore it.
+        use std::io::Seek;
+        use std::os::windows::fs::FileExt;
+        let current = file.stream_position()?;
+        let result = file.seek_write(buf, position);
+        file.seek(std::io::SeekFrom::Start(current))?;
+        Ok(result?)
+      }
+    })
+  }
+
   fn backing_fd(self: Rc<Self>) -> Option<ResourceHandleFd> {
     Some(self.handle)
   }
-}
-
-pub struct ReadCancelResource(Rc<CancelHandle>);
-
-impl Resource for ReadCancelResource {
-  fn name(&self) -> Cow<'_, str> {
-    "readCancel".into()
-  }
-
-  fn close(self: Rc<Self>) {
-    self.0.cancel();
-  }
-}
-
-#[op2(fast)]
-#[smi]
-pub fn op_read_create_cancel_handle(state: &mut OpState) -> u32 {
-  state
-    .resource_table
-    .add(ReadCancelResource(CancelHandle::new_rc()))
-}
-
-#[op2(async)]
-pub async fn op_read_with_cancel_handle(
-  state: Rc<RefCell<OpState>>,
-  #[smi] rid: u32,
-  #[smi] cancel_handle: u32,
-  #[buffer] buf: JsBuffer,
-) -> Result<u32, JsErrorBox> {
-  let (fut, cancel_rc) = {
-    let state = state.borrow();
-    let cancel_handle = state
-      .resource_table
-      .get::<ReadCancelResource>(cancel_handle)
-      .unwrap()
-      .0
-      .clone();
-
-    (
-      FileResource::with_file(&state, rid, |file| {
-        let view = BufMutView::from(buf);
-        Ok(file.read_byob(view))
-      }),
-      cancel_handle,
-    )
-  };
-
-  fut?
-    .or_cancel(cancel_rc)
-    .await
-    .map_err(|_| JsErrorBox::generic("cancelled"))?
-    .map(|(n, _)| n as u32)
-    .map_err(JsErrorBox::from_err)
 }
 
 // override op_print to use the stdout and stderr in the resource table
@@ -1117,8 +1344,138 @@ pub fn op_print(
 ) -> Result<(), JsErrorBox> {
   let rid = if is_err { 2 } else { 1 };
   FileResource::with_file(state, rid, move |file| {
-    file
-      .write_all_sync(msg.as_bytes())
-      .map_err(JsErrorBox::from_err)
+    match file.write_all_sync(msg.as_bytes()) {
+      Err(FsError::Io(io)) if io.kind() == ErrorKind::BrokenPipe => Ok(()),
+      other => other,
+    }
+    .map_err(JsErrorBox::from_err)
   })
+}
+
+#[cfg(windows)]
+pub fn stat_extra(file: &std::fs::File, fsstat: &mut FsStat) -> FsResult<()> {
+  use std::os::windows::io::AsRawHandle;
+
+  unsafe fn get_dev(
+    handle: winapi::shared::ntdef::HANDLE,
+  ) -> std::io::Result<u64> {
+    use winapi::shared::minwindef::FALSE;
+    use winapi::um::fileapi::BY_HANDLE_FILE_INFORMATION;
+    use winapi::um::fileapi::GetFileInformationByHandle;
+
+    // SAFETY: winapi calls
+    unsafe {
+      let info = {
+        let mut info =
+          std::mem::MaybeUninit::<BY_HANDLE_FILE_INFORMATION>::zeroed();
+        if GetFileInformationByHandle(handle, info.as_mut_ptr()) == FALSE {
+          return Err(std::io::Error::last_os_error());
+        }
+
+        info.assume_init()
+      };
+
+      Ok(info.dwVolumeSerialNumber as u64)
+    }
+  }
+
+  const WINDOWS_TICK: i64 = 10_000; // 100-nanosecond intervals in a millisecond
+  const SEC_TO_UNIX_EPOCH: i64 = 11_644_473_600; // Seconds between Windows epoch and Unix epoch
+
+  fn windows_time_to_unix_time_msec(windows_time: &i64) -> i64 {
+    let milliseconds_since_windows_epoch = windows_time / WINDOWS_TICK;
+    milliseconds_since_windows_epoch - SEC_TO_UNIX_EPOCH * 1000
+  }
+
+  use windows_sys::Wdk::Storage::FileSystem::FILE_ALL_INFORMATION;
+  use windows_sys::Win32::Foundation::NTSTATUS;
+
+  unsafe fn query_file_information(
+    handle: winapi::shared::ntdef::HANDLE,
+  ) -> Result<FILE_ALL_INFORMATION, NTSTATUS> {
+    use windows_sys::Wdk::Storage::FileSystem::NtQueryInformationFile;
+    use windows_sys::Win32::Foundation::ERROR_MORE_DATA;
+    use windows_sys::Win32::Foundation::RtlNtStatusToDosError;
+    use windows_sys::Win32::System::IO::IO_STATUS_BLOCK;
+
+    // SAFETY: winapi calls
+    unsafe {
+      let mut info = std::mem::MaybeUninit::<FILE_ALL_INFORMATION>::zeroed();
+      let mut io_status_block =
+        std::mem::MaybeUninit::<IO_STATUS_BLOCK>::zeroed();
+      let status = NtQueryInformationFile(
+        handle as _,
+        io_status_block.as_mut_ptr(),
+        info.as_mut_ptr() as *mut _,
+        std::mem::size_of::<FILE_ALL_INFORMATION>() as _,
+        18, /* FileAllInformation */
+      );
+
+      if status < 0 {
+        let converted_status = RtlNtStatusToDosError(status);
+
+        // If error more data is returned, then it means that the buffer is too small to get full filename information
+        // to have that we should retry. However, since we only use BasicInformation and StandardInformation, it is fine to ignore it
+        // since struct is populated with other data anyway.
+        // https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntifs/nf-ntifs-ntqueryinformationfile#remarksdd
+        if converted_status != ERROR_MORE_DATA {
+          return Err(converted_status as NTSTATUS);
+        }
+      }
+
+      Ok(info.assume_init())
+    }
+  }
+
+  // SAFETY: winapi calls
+  unsafe {
+    let file_handle = file.as_raw_handle();
+
+    fsstat.dev = get_dev(file_handle)?;
+
+    if let Ok(file_info) = query_file_information(file_handle) {
+      fsstat.ctime = Some(windows_time_to_unix_time_msec(
+        &file_info.BasicInformation.ChangeTime,
+      ) as u64);
+
+      if file_info.BasicInformation.FileAttributes
+        & winapi::um::winnt::FILE_ATTRIBUTE_REPARSE_POINT
+        != 0
+      {
+        fsstat.is_symlink = true;
+      }
+
+      if file_info.BasicInformation.FileAttributes
+        & winapi::um::winnt::FILE_ATTRIBUTE_DIRECTORY
+        != 0
+      {
+        fsstat.mode |= libc::S_IFDIR as u32;
+        fsstat.size = 0;
+      } else {
+        fsstat.mode |= libc::S_IFREG as u32;
+        fsstat.size = file_info.StandardInformation.EndOfFile as u64;
+      }
+
+      if file_info.BasicInformation.FileAttributes
+        & winapi::um::winnt::FILE_ATTRIBUTE_READONLY
+        != 0
+      {
+        fsstat.mode |=
+          (libc::S_IREAD | (libc::S_IREAD >> 3) | (libc::S_IREAD >> 6)) as u32;
+      } else {
+        fsstat.mode |= ((libc::S_IREAD | libc::S_IWRITE)
+          | ((libc::S_IREAD | libc::S_IWRITE) >> 3)
+          | ((libc::S_IREAD | libc::S_IWRITE) >> 6))
+          as u32;
+      }
+
+      /* The on-disk allocation size in 512-byte units. */
+      fsstat.blocks =
+        Some(file_info.StandardInformation.AllocationSize as u64 >> 9);
+      fsstat.ino = Some(file_info.InternalInformation.IndexNumber as u64);
+      fsstat.nlink = Some(file_info.StandardInformation.NumberOfLinks as u64);
+    }
+
+    Ok(())
+  }
 }

@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 #![deny(clippy::print_stderr)]
 #![deny(clippy::print_stdout)]
@@ -62,15 +62,14 @@ pub mod npm;
 pub mod npmrc;
 #[cfg(feature = "sync")]
 mod rt;
-mod sync;
 pub mod workspace;
 
-#[allow(clippy::disallowed_types)]
+#[allow(clippy::disallowed_types, reason = "definition")]
 pub type WorkspaceResolverRc<TSys> =
-  crate::sync::MaybeArc<WorkspaceResolver<TSys>>;
+  deno_maybe_sync::MaybeArc<WorkspaceResolver<TSys>>;
 
-#[allow(clippy::disallowed_types)]
-pub(crate) type NpmCacheDirRc = crate::sync::MaybeArc<NpmCacheDir>;
+#[allow(clippy::disallowed_types, reason = "definition")]
+pub(crate) type NpmCacheDirRc = deno_maybe_sync::MaybeArc<NpmCacheDir>;
 
 #[derive(Debug, Clone)]
 pub struct DenoResolution {
@@ -85,7 +84,6 @@ pub struct DenoResolveError(pub Box<DenoResolveErrorKind>);
 impl DenoResolveError {
   #[cfg(feature = "graph")]
   pub fn into_deno_graph_error(self) -> deno_graph::source::ResolveError {
-    use deno_error::JsErrorBox;
     use deno_graph::source::ResolveError;
 
     match self.into_kind() {
@@ -93,13 +91,14 @@ impl DenoResolveError {
         match mapped_resolution_error {
           MappedResolutionError::Specifier(e) => ResolveError::Specifier(e),
           // deno_graph checks specifically for an ImportMapError
-          MappedResolutionError::ImportMap(e) => ResolveError::ImportMap(e),
-          MappedResolutionError::Workspace(e) => {
-            ResolveError::Other(JsErrorBox::from_err(e))
+          MappedResolutionError::ImportMap(e) => ResolveError::from_err(e),
+          MappedResolutionError::Workspace(e) => ResolveError::from_err(e),
+          MappedResolutionError::NotFoundInCompilerOptionsPaths(e) => {
+            ResolveError::from_err(e)
           }
         }
       }
-      err => ResolveError::Other(JsErrorBox::from_err(err)),
+      err => ResolveError::from_err(err),
     }
   }
 
@@ -115,7 +114,6 @@ impl DenoResolveError {
       | DenoResolveErrorKind::ResolvePkgFolderFromDenoReq(_)
       | DenoResolveErrorKind::InvalidVendorFolderImport
       | DenoResolveErrorKind::UnsupportedPackageJsonFileSpecifier
-      | DenoResolveErrorKind::UnsupportedPackageJsonJsrReq
       | DenoResolveErrorKind::NodeModulesOutOfDate(_)
       | DenoResolveErrorKind::PackageJsonDepValueParse(_)
       | DenoResolveErrorKind::PackageJsonDepValueUrlParse(_) => None,
@@ -135,9 +133,6 @@ pub enum DenoResolveErrorKind {
     "Importing npm packages via a file: specifier is only supported with --node-modules-dir=manual"
   )]
   UnsupportedPackageJsonFileSpecifier,
-  #[class(type)]
-  #[error("JSR specifiers are not yet supported in package.json")]
-  UnsupportedPackageJsonJsrReq,
   #[class(inherit)]
   #[error(transparent)]
   MappedResolution(#[from] MappedResolutionError),
@@ -172,7 +167,6 @@ impl DenoResolveErrorKind {
     match self {
       DenoResolveErrorKind::InvalidVendorFolderImport
       | DenoResolveErrorKind::UnsupportedPackageJsonFileSpecifier
-      | DenoResolveErrorKind::UnsupportedPackageJsonJsrReq
       | DenoResolveErrorKind::MappedResolution { .. }
       | DenoResolveErrorKind::NodeModulesOutOfDate { .. }
       | DenoResolveErrorKind::PackageJsonDepValueParse { .. }
@@ -239,13 +233,13 @@ pub struct DenoResolverOptions<
   pub maybe_vendor_dir: Option<&'a PathBuf>,
 }
 
-#[allow(clippy::disallowed_types)]
+#[allow(clippy::disallowed_types, reason = "definition")]
 pub type RawDenoResolverRc<
   TInNpmPackageChecker,
   TIsBuiltInNodeModuleChecker,
   TNpmPackageFolderResolver,
   TSys,
-> = crate::sync::MaybeArc<
+> = deno_maybe_sync::MaybeArc<
   RawDenoResolver<
     TInNpmPackageChecker,
     TIsBuiltInNodeModuleChecker,
@@ -422,9 +416,6 @@ impl<
                     .into_box(),
                 )
               }
-              PackageJsonDepValue::JsrReq(_) => Err(
-                DenoResolveErrorKind::UnsupportedPackageJsonJsrReq.into_box(),
-              ),
               // todo(dsherret): it seems bad that we're converting this
               // to a url because the req might not be a valid url.
               PackageJsonDepValue::Req(req) => Url::parse(&format!(

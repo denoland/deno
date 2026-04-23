@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use once_cell::sync::Lazy;
 use parking_lot::Mutex;
@@ -49,8 +49,9 @@ static MAYBE_BEFORE_PROMPT_CALLBACK: Lazy<Mutex<Option<PromptCallback>>> =
 static MAYBE_AFTER_PROMPT_CALLBACK: Lazy<Mutex<Option<PromptCallback>>> =
   Lazy::new(|| Mutex::new(None));
 
-static MAYBE_CURRENT_STACKTRACE: Lazy<Mutex<Option<GetFormattedStackFn>>> =
-  Lazy::new(|| Mutex::new(None));
+pub(crate) static MAYBE_CURRENT_STACKTRACE: Lazy<
+  Mutex<Option<GetFormattedStackFn>>,
+> = Lazy::new(|| Mutex::new(None));
 
 pub fn set_current_stacktrace(get_stack: GetFormattedStackFn) {
   *MAYBE_CURRENT_STACKTRACE.lock() = Some(get_stack);
@@ -89,7 +90,7 @@ pub fn set_prompter(prompter: Box<dyn PermissionPrompter>) {
 
 pub type PromptCallback = Box<dyn FnMut() + Send + Sync>;
 
-pub type GetFormattedStackFn = Box<dyn FnOnce() -> Vec<String> + Send + Sync>;
+pub type GetFormattedStackFn = Box<dyn Fn() -> Vec<String> + Send + Sync>;
 
 pub trait PermissionPrompter: Send + Sync {
   fn prompt(
@@ -339,7 +340,7 @@ impl PermissionPrompter for TtyPrompter {
       return PromptResponse::Deny;
     };
 
-    #[allow(clippy::print_stderr)]
+    #[allow(clippy::print_stderr, reason = "actually want to print")]
     if message.len() > MAX_PERMISSION_PROMPT_LENGTH {
       eprintln!(
         "❌ Permission prompt length ({} bytes) was larger than the configured maximum length ({} bytes): denying request.",
@@ -366,7 +367,7 @@ impl PermissionPrompter for TtyPrompter {
 
     // For security reasons we must consume everything in stdin so that previously
     // buffered data cannot affect the prompt.
-    #[allow(clippy::print_stderr)]
+    #[allow(clippy::print_stderr, reason = "actually want to output here")]
     if let Err(err) = clear_stdin(&mut stdin_lock, &mut stderr_lock) {
       eprintln!("Error clearing stdin for permission prompt. {err:#}");
       return PromptResponse::Deny; // don't grant permission if this fails
@@ -448,7 +449,10 @@ impl PermissionPrompter for TtyPrompter {
       // Clear stdin each time we loop around in case the user accidentally pasted
       // multiple lines or otherwise did something silly to generate a torrent of
       // input. This doesn't work on Windows because `clear_stdin` has other side-effects.
-      #[allow(clippy::print_stderr)]
+      #[allow(
+        clippy::print_stderr,
+        reason = "force outputting when permission prompt fails to output"
+      )]
       #[cfg(unix)]
       if let Err(err) = clear_stdin(&mut stdin_lock, &mut stderr_lock) {
         eprintln!("Error clearing stdin for permission prompt. {err:#}");

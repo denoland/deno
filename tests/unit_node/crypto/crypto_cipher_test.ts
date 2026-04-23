@@ -1,9 +1,10 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 import crypto from "node:crypto";
 import { Buffer } from "node:buffer";
 import { Readable } from "node:stream";
 import { buffer, text } from "node:stream/consumers";
 import { assert, assertEquals, assertThrows } from "@std/assert";
+import { AssertionError } from "node:assert";
 
 const rsaPrivateKey = Deno.readTextFileSync(
   new URL("../testdata/rsa_private.pem", import.meta.url),
@@ -48,12 +49,12 @@ Deno.test({
 });
 
 Deno.test({
-  name: "rsa private encrypt and private decrypt",
+  name: "rsa private encrypt and public decrypt",
   fn() {
     const encrypted = crypto.privateEncrypt(rsaPrivateKey, input);
     assert(Buffer.isBuffer(encrypted));
-    const decrypted = crypto.privateDecrypt(
-      rsaPrivateKey,
+    const decrypted = crypto.publicDecrypt(
+      rsaPublicKey,
       Buffer.from(encrypted),
     );
     assert(Buffer.isBuffer(decrypted));
@@ -317,10 +318,17 @@ Deno.test({
       Iv,
     }
     const table = [
+      ["aes128", 15, 16, Invalid.Key],
+      ["aes-128-cbc", 15, 16, Invalid.Key],
+      ["aes128", 16, 15, Invalid.Iv],
+      ["aes-128-cbc", 16, 15, Invalid.Iv],
       ["aes256", 31, 16, Invalid.Key],
       ["aes-256-cbc", 31, 16, Invalid.Key],
       ["aes256", 32, 15, Invalid.Iv],
       ["aes-256-cbc", 32, 15, Invalid.Iv],
+      ["aes-128-ecb", 15, 0, Invalid.Key],
+      ["aes-192-ecb", 16, 0, Invalid.Key],
+      ["aes-256-ecb", 16, 0, Invalid.Key],
       ["aes-128-ctr", 32, 16, Invalid.Key],
       ["aes-128-ctr", 16, 32, Invalid.Iv],
       ["aes-192-ctr", 16, 16, Invalid.Key],
@@ -365,10 +373,15 @@ Deno.test({
       Iv,
     }
     const table = [
+      ["aes-128-cbc", 15, 16, Invalid.Key],
+      ["aes-128-cbc", 16, 15, Invalid.Iv],
       ["aes256", 31, 16, Invalid.Key],
       ["aes-256-cbc", 31, 16, Invalid.Key],
       ["aes256", 32, 15, Invalid.Iv],
       ["aes-256-cbc", 32, 15, Invalid.Iv],
+      ["aes-128-ecb", 15, 0, Invalid.Key],
+      ["aes-192-ecb", 16, 0, Invalid.Key],
+      ["aes-256-ecb", 16, 0, Invalid.Key],
       ["aes-128-ctr", 32, 16, Invalid.Key],
       ["aes-128-ctr", 16, 32, Invalid.Iv],
       ["aes-192-ctr", 16, 16, Invalid.Key],
@@ -399,11 +412,17 @@ Deno.test({
     assertEquals(crypto.getCiphers().includes("aes-128-cbc"), true);
     assertEquals(crypto.getCiphers().includes("aes-256-ctr"), true);
 
-    const getZeroKey = (cipher: string) => zeros(+cipher.match(/\d+/)![0] / 8);
+    const getZeroKey = (cipher: string) => {
+      if (cipher === "des-ede3-cbc") return zeros(24);
+      if (cipher === "chacha20-poly1305") return zeros(32);
+      return zeros(+cipher.match(/\d+/)![0] / 8);
+    };
     const getZeroIv = (cipher: string) => {
       if (cipher.includes("gcm") || cipher.includes("ecb")) {
         return zeros(12);
       }
+      if (cipher === "chacha20-poly1305") return zeros(12);
+      if (cipher.includes("des")) return zeros(8);
       return zeros(16);
     };
 
@@ -486,5 +505,513 @@ Deno.test({
       RangeError,
       "wrong final block length",
     );
+  },
+});
+
+Deno.test({
+  name: "Cipheriv - change encoding after first update",
+  fn() {
+    const cipher = crypto.createCipheriv(
+      "aes-128-cbc",
+      new Uint8Array(16),
+      new Uint8Array(16),
+    );
+    cipher.update(new Uint8Array(16), undefined, "hex");
+    assertThrows(
+      () => {
+        cipher.final("utf-8");
+      },
+      AssertionError,
+      "Cannot change encoding",
+    );
+
+    cipher.final();
+  },
+});
+
+Deno.test({
+  name: "Decipheriv - change encoding after first update",
+  fn() {
+    const decipher = crypto.createDecipheriv(
+      "aes-256-cbc",
+      new Uint8Array(32),
+      new Uint8Array(16),
+    );
+    decipher.update(new Uint32Array(), undefined, "hex");
+    assertThrows(
+      () => {
+        decipher.final("utf-8");
+      },
+      AssertionError,
+      "Cannot change encoding",
+    );
+
+    decipher.final();
+  },
+});
+
+// https://github.com/denoland/deno/issues/30722
+Deno.test({
+  name: "base64 cipher/decipher with non multiple of 4 char length",
+  fn() {
+    const aes256Encrypt = (plaintext: string, key: string) => {
+      const hash = crypto.createHash("sha256").update(key).digest();
+      const iv = crypto.randomBytes(16);
+      const cipher = crypto.createCipheriv("aes-256-cbc", hash, iv);
+
+      let encrypted = cipher.update(plaintext, "utf8", "base64");
+      encrypted += cipher.final("base64");
+
+      return iv.toString("base64") + "." + encrypted;
+    };
+
+    const aes256Decrypt = (encryptedText: string, key: string): string => {
+      const hash = crypto.createHash("sha256").update(key).digest();
+      const [ivPart, encryptedPart] = encryptedText.split(".");
+
+      const iv = Buffer.from(ivPart, "base64");
+      const decipher = crypto.createDecipheriv("aes-256-cbc", hash, iv);
+
+      let decrypted = decipher.update(encryptedPart, "base64", "utf8");
+      decrypted += decipher.final("utf8");
+
+      return decrypted;
+    };
+
+    const key = "my secret key";
+    const text = "The quick brown fox jumps over the lazy dog";
+
+    const cipherText = aes256Encrypt(text, key);
+    const decryptedText = aes256Decrypt(cipherText, key);
+
+    assertEquals(decryptedText, text);
+  },
+});
+
+Deno.test({
+  name: "createCipheriv - setAutoPadding behavior",
+  fn() {
+    const algorithm = "aes-256-cbc";
+    const key = Buffer.alloc(32, 0);
+    const iv = Buffer.alloc(16, 0);
+
+    const cipherWithAutoPadding = crypto
+      .createCipheriv(algorithm, key, iv)
+      .setAutoPadding(true);
+    let encrypted = cipherWithAutoPadding.update("", "utf8", "binary");
+    encrypted += cipherWithAutoPadding.final("binary");
+    assertEquals(encrypted.length, 16);
+
+    const cipherWithoutAutoPadding = crypto
+      .createCipheriv(algorithm, key, iv)
+      .setAutoPadding(false);
+    let otherEncrypted = cipherWithoutAutoPadding.update("", "utf8", "binary");
+    otherEncrypted += cipherWithoutAutoPadding.final("binary");
+    assertEquals(otherEncrypted.length, 0);
+  },
+});
+
+Deno.test({
+  name: "createCipheriv - cipher lockdown after final()",
+  fn() {
+    const key = crypto.randomBytes(32);
+    const iv = crypto.randomBytes(16);
+    const cipher = crypto.createCipheriv("aes-256-cbc", key, iv);
+
+    // Call final() to lock down the cipher
+    cipher.final();
+
+    assertThrows(
+      () => {
+        cipher.update("test data");
+      },
+      Error,
+      "Invalid state for operation update",
+    );
+
+    assertThrows(
+      () => {
+        cipher.final();
+      },
+      Error,
+      "Invalid state for operation final",
+    );
+  },
+});
+
+Deno.test({
+  name: "createDecipheriv - decipher lockdown after final()",
+  fn() {
+    const key = crypto.randomBytes(32);
+    const iv = crypto.randomBytes(16);
+
+    const cipher = crypto.createCipheriv("aes-256-cbc", key, iv);
+    const encrypted = Buffer.concat([
+      cipher.update("test data"),
+      cipher.final(),
+    ]);
+
+    const decipher = crypto.createDecipheriv("aes-256-cbc", key, iv);
+    decipher.update(encrypted);
+    decipher.final();
+
+    assertThrows(
+      () => {
+        decipher.update(encrypted);
+      },
+      Error,
+      "Invalid state for operation update",
+    );
+
+    assertThrows(
+      () => {
+        decipher.final();
+      },
+      Error,
+      "Invalid state for operation final",
+    );
+  },
+});
+
+Deno.test({
+  name: "aes-256-cbc setAutoPadding(false) roundtrip",
+  fn() {
+    const key = Buffer.alloc(32, 0x01);
+    const iv = Buffer.alloc(16, 0x02);
+    // 32 bytes = exactly 2 blocks, no PKCS7 padding needed
+    const plaintext = Buffer.from("a]B$y;^&5}0[e-k+D7zIn9Co*q#m!LpX");
+
+    const cipher = crypto.createCipheriv("aes-256-cbc", key, iv);
+    cipher.setAutoPadding(false);
+    const encrypted = Buffer.concat([cipher.update(plaintext), cipher.final()]);
+
+    const decipher = crypto.createDecipheriv("aes-256-cbc", key, iv);
+    decipher.setAutoPadding(false);
+    const decrypted = Buffer.concat([
+      decipher.update(encrypted),
+      decipher.final(),
+    ]);
+
+    assertEquals(decrypted, plaintext);
+  },
+});
+
+Deno.test({
+  name: "publicEncrypt/privateDecrypt with DER keys",
+  fn() {
+    const pair = crypto.generateKeyPairSync("rsa", { modulusLength: 2048 });
+
+    // Export as DER (binary) format
+    const publicDer = pair.publicKey.export({ type: "spki", format: "der" });
+    const privateDer = pair.privateKey.export({
+      type: "pkcs8",
+      format: "der",
+    });
+
+    const secret = Buffer.from("hello DER keys");
+    const encrypted = crypto.publicEncrypt(
+      { key: publicDer, padding: crypto.constants.RSA_PKCS1_PADDING },
+      secret,
+    );
+    assert(Buffer.isBuffer(encrypted));
+
+    const decrypted = crypto.privateDecrypt(
+      { key: privateDer, padding: crypto.constants.RSA_PKCS1_PADDING },
+      encrypted,
+    );
+    assertEquals(decrypted, secret);
+  },
+});
+
+Deno.test({
+  name: "aes-128-cbc setAutoPadding(false) roundtrip",
+  fn() {
+    const key = Buffer.alloc(16, 0x03);
+    const iv = Buffer.alloc(16, 0x04);
+    // 16 bytes = exactly 1 block
+    const plaintext = Buffer.from("0123456789abcdef");
+
+    const cipher = crypto.createCipheriv("aes-128-cbc", key, iv);
+    cipher.setAutoPadding(false);
+    const encrypted = Buffer.concat([cipher.update(plaintext), cipher.final()]);
+
+    const decipher = crypto.createDecipheriv("aes-128-cbc", key, iv);
+    decipher.setAutoPadding(false);
+    const decrypted = Buffer.concat([
+      decipher.update(encrypted),
+      decipher.final(),
+    ]);
+
+    assertEquals(decrypted, plaintext);
+  },
+});
+
+Deno.test({
+  name: "publicEncrypt/privateDecrypt with PKCS#1 DER keys",
+  fn() {
+    const pair = crypto.generateKeyPairSync("rsa", { modulusLength: 2048 });
+
+    // Export as PKCS#1 DER (binary) format
+    const publicDer = pair.publicKey.export({ type: "pkcs1", format: "der" });
+    const privateDer = pair.privateKey.export({
+      type: "pkcs1",
+      format: "der",
+    });
+
+    const secret = Buffer.from("hello PKCS1 DER keys");
+    const encrypted = crypto.publicEncrypt(
+      { key: publicDer, padding: crypto.constants.RSA_PKCS1_PADDING },
+      secret,
+    );
+    assert(Buffer.isBuffer(encrypted));
+
+    const decrypted = crypto.privateDecrypt(
+      { key: privateDer, padding: crypto.constants.RSA_PKCS1_PADDING },
+      encrypted,
+    );
+    assertEquals(decrypted, secret);
+  },
+});
+
+// Regression test for https://github.com/denoland/deno/issues/31957
+Deno.test({
+  name: "createDecipheriv - setAutoPadding(false) with empty final input",
+  fn() {
+    // Test aes-256-ecb (the original issue)
+    {
+      const decipher = crypto.createDecipheriv(
+        "aes-256-ecb",
+        Buffer.alloc(32),
+        "",
+      );
+      decipher.setAutoPadding(false);
+      const output = decipher.update(Buffer.alloc(16));
+      assertEquals(output.length, 16);
+      decipher.final();
+    }
+
+    // Test aes-128-ecb
+    {
+      const decipher = crypto.createDecipheriv(
+        "aes-128-ecb",
+        Buffer.alloc(16),
+        "",
+      );
+      decipher.setAutoPadding(false);
+      const output = decipher.update(Buffer.alloc(16));
+      assertEquals(output.length, 16);
+      decipher.final();
+    }
+
+    // Test aes-192-ecb
+    {
+      const decipher = crypto.createDecipheriv(
+        "aes-192-ecb",
+        Buffer.alloc(24),
+        "",
+      );
+      decipher.setAutoPadding(false);
+      const output = decipher.update(Buffer.alloc(16));
+      assertEquals(output.length, 16);
+      decipher.final();
+    }
+
+    // Test aes-128-cbc
+    {
+      const decipher = crypto.createDecipheriv(
+        "aes-128-cbc",
+        Buffer.alloc(16),
+        Buffer.alloc(16),
+      );
+      decipher.setAutoPadding(false);
+      const output = decipher.update(Buffer.alloc(16));
+      assertEquals(output.length, 16);
+      decipher.final();
+    }
+
+    // Test aes-256-cbc
+    {
+      const decipher = crypto.createDecipheriv(
+        "aes-256-cbc",
+        Buffer.alloc(32),
+        Buffer.alloc(16),
+      );
+      decipher.setAutoPadding(false);
+      const output = decipher.update(Buffer.alloc(16));
+      assertEquals(output.length, 16);
+      decipher.final();
+    }
+  },
+});
+
+Deno.test({
+  name:
+    "createDecipheriv - setAutoPadding(false) with invalid block length should error",
+  fn() {
+    // Invalid block length (10 bytes instead of 16) should throw an error, not panic
+    // Test all affected cipher modes
+
+    // aes-256-ecb
+    {
+      const decipher = crypto.createDecipheriv(
+        "aes-256-ecb",
+        Buffer.alloc(32),
+        "",
+      );
+      decipher.setAutoPadding(false);
+      decipher.update(Buffer.alloc(10));
+      assertThrows(
+        () => {
+          decipher.final();
+        },
+        RangeError,
+        "wrong final block length",
+      );
+    }
+
+    // aes-128-ecb
+    {
+      const decipher = crypto.createDecipheriv(
+        "aes-128-ecb",
+        Buffer.alloc(16),
+        "",
+      );
+      decipher.setAutoPadding(false);
+      decipher.update(Buffer.alloc(10));
+      assertThrows(
+        () => {
+          decipher.final();
+        },
+        RangeError,
+        "wrong final block length",
+      );
+    }
+
+    // aes-192-ecb
+    {
+      const decipher = crypto.createDecipheriv(
+        "aes-192-ecb",
+        Buffer.alloc(24),
+        "",
+      );
+      decipher.setAutoPadding(false);
+      decipher.update(Buffer.alloc(10));
+      assertThrows(
+        () => {
+          decipher.final();
+        },
+        RangeError,
+        "wrong final block length",
+      );
+    }
+
+    // aes-128-cbc
+    {
+      const decipher = crypto.createDecipheriv(
+        "aes-128-cbc",
+        Buffer.alloc(16),
+        Buffer.alloc(16),
+      );
+      decipher.setAutoPadding(false);
+      decipher.update(Buffer.alloc(10));
+      assertThrows(
+        () => {
+          decipher.final();
+        },
+        RangeError,
+        "wrong final block length",
+      );
+    }
+
+    // aes-256-cbc
+    {
+      const decipher = crypto.createDecipheriv(
+        "aes-256-cbc",
+        Buffer.alloc(32),
+        Buffer.alloc(16),
+      );
+      decipher.setAutoPadding(false);
+      decipher.update(Buffer.alloc(10));
+      assertThrows(
+        () => {
+          decipher.final();
+        },
+        RangeError,
+        "wrong final block length",
+      );
+    }
+  },
+});
+
+Deno.test({
+  name: "createDecipheriv - invalid PKCS7 padding throws bad decrypt",
+  fn() {
+    const key = Buffer.alloc(16, 0x01);
+    const iv = Buffer.alloc(16, 0x02);
+
+    // Encrypt without padding so we control the raw plaintext bytes
+    const cipher = crypto.createCipheriv("aes-128-cbc", key, iv);
+    cipher.setAutoPadding(false);
+
+    // Last byte 0x00 is invalid PKCS7 padding (valid range is 1-16)
+    const plaintext = Buffer.from(
+      "0123456789abcde\x00",
+    );
+    const encrypted = Buffer.concat([
+      cipher.update(plaintext),
+      cipher.final(),
+    ]);
+
+    // Decrypt with autoPadding=true (default) should throw
+    const decipher = crypto.createDecipheriv("aes-128-cbc", key, iv);
+    assertThrows(
+      () => {
+        decipher.update(encrypted);
+        decipher.final();
+      },
+      Error,
+      "bad decrypt",
+    );
+  },
+});
+
+Deno.test({
+  name: "chacha20-poly1305 repeated setAAD produces correct tag",
+  fn() {
+    const key = Buffer.alloc(32, 0x42);
+    const iv = Buffer.alloc(12, 0x24);
+    const plaintext = Buffer.from("hello world");
+    const aad1 = Buffer.from("first");
+    const aad2 = Buffer.from("second");
+    const fullAad = Buffer.concat([aad1, aad2]);
+
+    // deno-lint-ignore no-explicit-any
+    const createCipher = (crypto.createCipheriv as any).bind(crypto);
+    // deno-lint-ignore no-explicit-any
+    const createDecipher = (crypto.createDecipheriv as any).bind(crypto);
+    const opts = { authTagLength: 16 };
+
+    // Encrypt with single setAAD containing the full AAD
+    const c1 = createCipher("chacha20-poly1305", key, iv, opts);
+    c1.setAAD(fullAad);
+    const enc1 = Buffer.concat([c1.update(plaintext), c1.final()]);
+    const tag1 = c1.getAuthTag();
+
+    // Encrypt with two separate setAAD calls
+    const c2 = createCipher("chacha20-poly1305", key, iv, opts);
+    c2.setAAD(aad1);
+    c2.setAAD(aad2);
+    const enc2 = Buffer.concat([c2.update(plaintext), c2.final()]);
+    const tag2 = c2.getAuthTag();
+
+    assertEquals(enc1, enc2);
+    assertEquals(tag1, tag2);
+
+    // Verify decryption with combined AAD works for both
+    const d = createDecipher("chacha20-poly1305", key, iv, opts);
+    d.setAAD(fullAad);
+    d.setAuthTag(tag2);
+    const dec = Buffer.concat([d.update(enc2), d.final()]);
+    assertEquals(dec, plaintext);
   },
 });

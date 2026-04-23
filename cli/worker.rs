@@ -1,13 +1,13 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::cell::RefCell;
+use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
 
 use deno_ast::ModuleSpecifier;
 use deno_core::Extension;
 use deno_core::OpState;
-use deno_core::PollEventLoopOptions;
 use deno_core::error::CoreError;
 use deno_core::error::JsError;
 use deno_core::futures::FutureExt;
@@ -18,41 +18,45 @@ use deno_lib::worker::LibMainWorkerFactory;
 use deno_lib::worker::ResolveNpmBinaryEntrypointError;
 use deno_npm_installer::PackageCaching;
 use deno_npm_installer::graph::NpmCachingStrategy;
+use deno_runtime::CpuProfilerConfig;
 use deno_runtime::WorkerExecutionMode;
+use deno_runtime::coverage::CoverageCollector;
+use deno_runtime::cpu_prof_filename;
+use deno_runtime::cpu_profiler::CpuProfiler;
+use deno_runtime::deno_os::OpExitCallbacks;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_runtime::worker::MainWorker;
 use deno_semver::npm::NpmPackageReqReference;
-use sys_traits::EnvCurrentDir;
 use tokio::select;
 
 use crate::args::CliLockfile;
 use crate::npm::CliNpmInstaller;
 use crate::npm::CliNpmResolver;
 use crate::sys::CliSys;
-use crate::tools::coverage::CoverageCollector;
 use crate::tools::run::hmr::HmrRunner;
+use crate::tools::run::hmr::HmrRunnerState;
 use crate::util::file_watcher::WatcherCommunicator;
 use crate::util::file_watcher::WatcherRestartMode;
+use crate::util::progress_bar::ProgressBar;
 
-pub type CreateHmrRunnerCb =
-  Box<dyn Fn(deno_core::LocalInspectorSession) -> HmrRunner + Send + Sync>;
-
-pub type CreateCoverageCollectorCb = Box<
-  dyn Fn(deno_core::LocalInspectorSession) -> CoverageCollector + Send + Sync,
->;
+pub type CreateHmrRunnerCb = Box<dyn Fn() -> HmrRunnerState + Send + Sync>;
 
 pub struct CliMainWorkerOptions {
   pub create_hmr_runner: Option<CreateHmrRunnerCb>,
-  pub create_coverage_collector: Option<CreateCoverageCollectorCb>,
+  pub maybe_coverage_dir: Option<PathBuf>,
+  pub maybe_cpu_prof_config: Option<CpuProfilerConfig>,
   pub default_npm_caching_strategy: NpmCachingStrategy,
   pub needs_test_modules: bool,
+  pub initial_cwd: Arc<ModuleSpecifier>,
 }
 
 /// Data shared between the factory and workers.
 struct SharedState {
   pub create_hmr_runner: Option<CreateHmrRunnerCb>,
-  pub create_coverage_collector: Option<CreateCoverageCollectorCb>,
+  pub maybe_coverage_dir: Option<PathBuf>,
+  pub maybe_cpu_prof_config: Option<CpuProfilerConfig>,
   pub maybe_file_watcher_communicator: Option<Arc<WatcherCommunicator>>,
+  pub initial_cwd: Arc<ModuleSpecifier>,
 }
 
 pub struct CliMainWorker {
@@ -72,9 +76,55 @@ impl CliMainWorker {
   }
 
   pub async fn run(&mut self) -> Result<i32, CoreError> {
-    let mut maybe_coverage_collector =
-      self.maybe_setup_coverage_collector().await?;
-    let mut maybe_hmr_runner = self.maybe_setup_hmr_runner().await?;
+    let maybe_coverage_collector = self.maybe_setup_coverage_collector();
+    let maybe_cpu_profiler = self.maybe_setup_cpu_profiler();
+    let mut maybe_hmr_runner = self.maybe_setup_hmr_runner();
+
+    // Wrap profiler and coverage in Rc<RefCell<Option<...>>> so that
+    // both the normal cleanup path and the Deno.exit() op_exit path
+    // can stop them. Whichever runs first takes the value; the other
+    // finds None and skips.
+    let coverage_cell: Rc<RefCell<Option<CoverageCollector>>> =
+      Rc::new(RefCell::new(maybe_coverage_collector));
+    let profiler_cell: Rc<RefCell<Option<CpuProfiler>>> =
+      Rc::new(RefCell::new(maybe_cpu_profiler));
+
+    // Register exit callbacks so Deno.exit() flushes profiling/coverage
+    // data before calling std::process::exit().
+    {
+      let coverage_for_exit = coverage_cell.clone();
+      let profiler_for_exit = profiler_cell.clone();
+      let inspector = self.worker.js_runtime().inspector();
+      let mut cbs = OpExitCallbacks::default();
+      cbs.push(Box::new(move || {
+        if let Some(mut cc) = coverage_for_exit.borrow_mut().take() {
+          let _ = cc.stop_collecting();
+        }
+      }));
+      cbs.push(Box::new(move || {
+        if let Some(mut cp) = profiler_for_exit.borrow_mut().take() {
+          let _ = cp.stop_profiling();
+        }
+      }));
+      // When an inspector session is connected, notify it that the
+      // execution context is being destroyed before exiting. Without this,
+      // process.exit() would call std::process::exit() immediately,
+      // skipping the normal event-loop shutdown path where V8's
+      // context_destroyed is called and Runtime.executionContextDestroyed
+      // is sent to debuggers.
+      cbs.push(Box::new(move || {
+        let sessions_state = inspector.sessions_state();
+        if sessions_state.has_nonblocking_wait_for_disconnect {
+          inspector.broadcast_context_destroyed();
+          // Match Node.js message format that debugger clients rely on
+          log::info!("Waiting for the debugger to disconnect...");
+          inspector.wait_for_sessions_disconnect();
+        }
+      }));
+      self.worker.js_runtime().op_state().borrow_mut().put(cbs);
+    }
+
+    let has_coverage = coverage_cell.borrow().is_some();
 
     // WARNING: Remember to update cli/lib/worker.rs to align with
     // changes made here so that they affect deno_compile as well.
@@ -110,10 +160,8 @@ impl CliMainWorker {
           return Err(e);
         }
       } else {
-        self
-          .worker
-          .run_event_loop(maybe_coverage_collector.is_none())
-          .await?;
+        // TODO(bartlomieju): this might not be needed anymore
+        self.worker.run_event_loop(!has_coverage).await?;
       }
 
       let web_continue = self.worker.dispatch_beforeunload_event()?;
@@ -127,26 +175,16 @@ impl CliMainWorker {
 
     self.worker.dispatch_unload_event()?;
     self.worker.dispatch_process_exit_event()?;
+    self.worker.run_napi_ref_finalizers();
 
-    if let Some(coverage_collector) = maybe_coverage_collector.as_mut() {
-      self
-        .worker
-        .js_runtime()
-        .with_event_loop_future(
-          coverage_collector.stop_collecting().boxed_local(),
-          PollEventLoopOptions::default(),
-        )
-        .await?;
+    if let Some(mut coverage_collector) = coverage_cell.borrow_mut().take() {
+      coverage_collector.stop_collecting()?;
+    }
+    if let Some(mut cpu_profiler) = profiler_cell.borrow_mut().take() {
+      cpu_profiler.stop_profiling()?;
     }
     if let Some(hmr_runner) = maybe_hmr_runner.as_mut() {
-      self
-        .worker
-        .js_runtime()
-        .with_event_loop_future(
-          hmr_runner.stop().boxed_local(),
-          PollEventLoopOptions::default(),
-        )
-        .await?;
+      hmr_runner.stop();
     }
 
     Ok(self.worker.exit_code())
@@ -172,9 +210,16 @@ impl CliMainWorker {
       /// Execute the given main module emitting load and unload events before and after execution
       /// respectively.
       pub async fn execute(&mut self) -> Result<(), CoreError> {
-        self.inner.execute_main_module().await?;
-        self.inner.worker.dispatch_load_event()?;
+        // Set pending_unload before module execution so that if the future
+        // is cancelled during a top-level await, Drop will still dispatch
+        // the unload event for any handlers registered during partial
+        // module evaluation.
         self.pending_unload = true;
+        if let Err(e) = self.inner.execute_main_module().await {
+          self.pending_unload = false;
+          return Err(e);
+        }
+        self.inner.worker.dispatch_load_event()?;
 
         let result = loop {
           match self.inner.worker.run_event_loop(false).await {
@@ -196,6 +241,7 @@ impl CliMainWorker {
 
         self.inner.worker.dispatch_unload_event()?;
         self.inner.worker.dispatch_process_exit_event()?;
+        self.inner.worker.run_napi_ref_finalizers();
 
         Ok(())
       }
@@ -205,6 +251,7 @@ impl CliMainWorker {
       fn drop(&mut self) {
         if self.pending_unload {
           let _ = self.inner.worker.dispatch_unload_event();
+          let _ = self.inner.worker.dispatch_process_exit_event();
         }
       }
     }
@@ -232,56 +279,53 @@ impl CliMainWorker {
     self.worker.js_runtime().op_state()
   }
 
-  pub async fn maybe_setup_hmr_runner(
-    &mut self,
-  ) -> Result<Option<HmrRunner>, CoreError> {
-    let Some(setup_hmr_runner) = self.shared.create_hmr_runner.as_ref() else {
-      return Ok(None);
-    };
+  pub fn maybe_setup_hmr_runner(&mut self) -> Option<HmrRunner> {
+    let setup_hmr_runner = self.shared.create_hmr_runner.as_ref()?;
 
-    let session = self.worker.create_inspector_session();
+    let hmr_runner_state = setup_hmr_runner();
+    let state = hmr_runner_state.clone();
 
-    let mut hmr_runner = setup_hmr_runner(session);
+    let callback = Box::new(move |message| hmr_runner_state.callback(message));
+    let session = self.worker.create_inspector_session(callback);
+    let mut hmr_runner = HmrRunner::new(state, session);
+    hmr_runner.start();
 
-    self
-      .worker
-      .js_runtime()
-      .with_event_loop_future(
-        hmr_runner.start().boxed_local(),
-        PollEventLoopOptions::default(),
-      )
-      .await?;
-    Ok(Some(hmr_runner))
+    Some(hmr_runner)
   }
 
-  pub async fn maybe_setup_coverage_collector(
+  pub fn maybe_setup_coverage_collector(
     &mut self,
-  ) -> Result<Option<CoverageCollector>, CoreError> {
-    let Some(create_coverage_collector) =
-      self.shared.create_coverage_collector.as_ref()
-    else {
-      return Ok(None);
-    };
+  ) -> Option<CoverageCollector> {
+    let coverage_dir = self.shared.maybe_coverage_dir.as_ref()?;
+    let mut coverage_collector =
+      CoverageCollector::new(self.worker.js_runtime(), coverage_dir.clone());
+    coverage_collector.start_collecting();
 
-    let session = self.worker.create_inspector_session();
-    let mut coverage_collector = create_coverage_collector(session);
-    self
-      .worker
-      .js_runtime()
-      .with_event_loop_future(
-        coverage_collector.start_collecting().boxed_local(),
-        PollEventLoopOptions::default(),
-      )
-      .await?;
-    Ok(Some(coverage_collector))
+    Some(coverage_collector)
   }
 
-  #[allow(clippy::result_large_err)]
+  pub fn maybe_setup_cpu_profiler(&mut self) -> Option<CpuProfiler> {
+    let config = self.shared.maybe_cpu_prof_config.as_ref()?;
+    let filename = cpu_prof_filename(config, None);
+
+    let mut cpu_profiler = CpuProfiler::new(
+      self.worker.js_runtime(),
+      config.dir.clone(),
+      filename,
+      config.interval,
+      config.md,
+      config.flamegraph,
+    );
+    cpu_profiler.start_profiling();
+
+    Some(cpu_profiler)
+  }
+
   pub fn execute_script_static(
     &mut self,
     name: &'static str,
     source_code: &'static str,
-  ) -> Result<v8::Global<v8::Value>, JsError> {
+  ) -> Result<v8::Global<v8::Value>, Box<JsError>> {
     self.worker.js_runtime().execute_script(name, source_code)
   }
 }
@@ -318,22 +362,22 @@ pub struct CliMainWorkerFactory {
   maybe_lockfile: Option<Arc<CliLockfile>>,
   npm_installer: Option<Arc<CliNpmInstaller>>,
   npm_resolver: CliNpmResolver,
+  progress_bar: ProgressBar,
   root_permissions: PermissionsContainer,
   shared: Arc<SharedState>,
-  sys: CliSys,
   default_npm_caching_strategy: NpmCachingStrategy,
   needs_test_modules: bool,
 }
 
 impl CliMainWorkerFactory {
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "construction")]
   pub fn new(
     lib_main_worker_factory: LibMainWorkerFactory<CliSys>,
     maybe_file_watcher_communicator: Option<Arc<WatcherCommunicator>>,
     maybe_lockfile: Option<Arc<CliLockfile>>,
     npm_installer: Option<Arc<CliNpmInstaller>>,
     npm_resolver: CliNpmResolver,
-    sys: CliSys,
+    progress_bar: ProgressBar,
     options: CliMainWorkerOptions,
     root_permissions: PermissionsContainer,
   ) -> Self {
@@ -342,12 +386,14 @@ impl CliMainWorkerFactory {
       maybe_lockfile,
       npm_installer,
       npm_resolver,
+      progress_bar,
       root_permissions,
-      sys,
       shared: Arc::new(SharedState {
         create_hmr_runner: options.create_hmr_runner,
-        create_coverage_collector: options.create_coverage_collector,
+        maybe_coverage_dir: options.maybe_coverage_dir,
+        maybe_cpu_prof_config: options.maybe_cpu_prof_config,
         maybe_file_watcher_communicator,
+        initial_cwd: options.initial_cwd,
       }),
       default_npm_caching_strategy: options.default_npm_caching_strategy,
       needs_test_modules: options.needs_test_modules,
@@ -359,12 +405,14 @@ impl CliMainWorkerFactory {
     mode: WorkerExecutionMode,
     main_module: ModuleSpecifier,
     preload_modules: Vec<ModuleSpecifier>,
+    require_modules: Vec<ModuleSpecifier>,
   ) -> Result<CliMainWorker, CreateCustomWorkerError> {
     self
       .create_custom_worker(
         mode,
         main_module,
         preload_modules,
+        require_modules,
         self.root_permissions.clone(),
         vec![],
         Default::default(),
@@ -378,6 +426,7 @@ impl CliMainWorkerFactory {
     mode: WorkerExecutionMode,
     main_module: ModuleSpecifier,
     preload_modules: Vec<ModuleSpecifier>,
+    require_modules: Vec<ModuleSpecifier>,
     unconfigured_runtime: Option<deno_runtime::UnconfiguredRuntime>,
   ) -> Result<CliMainWorker, CreateCustomWorkerError> {
     self
@@ -385,6 +434,7 @@ impl CliMainWorkerFactory {
         mode,
         main_module,
         preload_modules,
+        require_modules,
         self.root_permissions.clone(),
         vec![],
         Default::default(),
@@ -393,12 +443,13 @@ impl CliMainWorkerFactory {
       .await
   }
 
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "construction")]
   pub async fn create_custom_worker(
     &self,
     mode: WorkerExecutionMode,
     main_module: ModuleSpecifier,
     preload_modules: Vec<ModuleSpecifier>,
+    require_modules: Vec<ModuleSpecifier>,
     permissions: PermissionsContainer,
     custom_extensions: Vec<Extension>,
     stdio: deno_runtime::deno_io::Stdio,
@@ -408,6 +459,7 @@ impl CliMainWorkerFactory {
     {
       Ok(package_ref) => {
         if let Some(npm_installer) = &self.npm_installer {
+          let _clear_guard = self.progress_bar.deferred_keep_initialize_alive();
           let reqs = &[package_ref.req().clone()];
           npm_installer
             .add_package_reqs(
@@ -426,10 +478,7 @@ impl CliMainWorkerFactory {
         }
 
         // use a fake referrer that can be used to discover the package.json if necessary
-        let referrer =
-          ModuleSpecifier::from_directory_path(self.sys.env_current_dir()?)
-            .unwrap()
-            .join("package.json")?;
+        let referrer = self.shared.initial_cwd.join("package.json")?;
         let package_folder =
           self.npm_resolver.resolve_pkg_folder_from_deno_module_req(
             package_ref.req(),
@@ -457,6 +506,7 @@ impl CliMainWorkerFactory {
       mode,
       main_module,
       preload_modules,
+      require_modules,
       permissions,
       custom_extensions,
       stdio,
@@ -483,6 +533,11 @@ impl CliMainWorkerFactory {
       );
     }
 
+    let op_state = worker.js_runtime().op_state();
+    op_state.borrow_mut().put(deno_core::error::InitialCwd(
+      self.shared.initial_cwd.clone(),
+    ));
+
     Ok(CliMainWorker {
       worker,
       shared: self.shared.clone(),
@@ -490,8 +545,8 @@ impl CliMainWorkerFactory {
   }
 }
 
-#[allow(clippy::print_stdout)]
-#[allow(clippy::print_stderr)]
+#[allow(clippy::print_stdout, reason = "test code")]
+#[allow(clippy::print_stderr, reason = "test code")]
 #[cfg(test)]
 mod tests {
   use std::rc::Rc;
@@ -506,10 +561,11 @@ mod tests {
   use deno_runtime::worker::WorkerServiceOptions;
 
   use super::*;
+  use crate::util::env::resolve_cwd;
 
   fn create_test_worker() -> MainWorker {
     let main_module =
-      resolve_path("./hello.js", &std::env::current_dir().unwrap()).unwrap();
+      resolve_path("./hello.js", &resolve_cwd(None).unwrap()).unwrap();
     let fs = Arc::new(RealFs);
     let permission_desc_parser = Arc::new(
       RuntimePermissionDescriptorParser::new(crate::sys::CliSys::default()),
@@ -543,6 +599,7 @@ mod tests {
         compiled_wasm_module_store: Default::default(),
         v8_code_cache: Default::default(),
         fs,
+        bundle_provider: None,
       },
       options,
     )
@@ -584,8 +641,7 @@ mod tests {
     // "foo" is not a valid module specifier so this should return an error.
     let mut worker = create_test_worker();
     let module_specifier =
-      resolve_path("./does-not-exist", &std::env::current_dir().unwrap())
-        .unwrap();
+      resolve_path("./does-not-exist", &resolve_cwd(None).unwrap()).unwrap();
     let result = worker.execute_main_module(&module_specifier).await;
     assert!(result.is_err());
   }

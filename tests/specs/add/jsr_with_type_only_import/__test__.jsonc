@@ -1,0 +1,6 @@
+// Regression test for https://github.com/denoland/deno/issues/31550.
+{
+  "tempDir": true,
+  "args": "add jsr:@denotest/type-only-import@1.0.0",
+  "output": "add.out"
+}

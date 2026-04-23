@@ -1,13 +1,12 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::io::Error;
 use std::io::ErrorKind;
 use std::path::Path;
-use std::path::PathBuf;
 
-use sys_traits::FsCreateDirAll;
 use sys_traits::FsDirEntry;
 use sys_traits::FsSymlinkDir;
+use sys_traits::PathsInErrorsExt;
 
 #[sys_traits::auto_impl]
 pub trait CloneDirRecursiveSys:
@@ -28,7 +27,8 @@ pub fn clone_dir_recursive<TSys: CloneDirRecursiveSys>(
   sys: &TSys,
   from: &Path,
   to: &Path,
-) -> Result<(), CopyDirRecursiveError> {
+) -> Result<(), std::io::Error> {
+  let sys = sys.with_paths_in_errors();
   if cfg!(target_vendor = "apple") {
     if let Some(parent) = to.parent() {
       sys.fs_create_dir_all(parent)?;
@@ -48,56 +48,16 @@ pub fn clone_dir_recursive<TSys: CloneDirRecursiveSys>(
       }
       // clonefile won't overwrite existing files, so if the dir exists
       // we need to handle it recursively.
-      copy_dir_recursive(sys, from, to)?;
+      copy_dir_recursive(sys.as_ref(), from, to)?;
     }
-  } else if let Err(e) = deno_npm_cache::hard_link_dir_recursive(sys, from, to)
+  } else if let Err(e) =
+    deno_npm_cache::hard_link_dir_recursive(sys.as_ref(), from, to)
   {
     log::debug!("Failed to hard link dir {:?} to {:?}: {}", from, to, e);
-    copy_dir_recursive(sys, from, to)?;
+    copy_dir_recursive(sys.as_ref(), from, to)?;
   }
 
   Ok(())
-}
-
-#[derive(Debug, thiserror::Error, deno_error::JsError)]
-pub enum CopyDirRecursiveError {
-  #[class(inherit)]
-  #[error("Creating {path}")]
-  Creating {
-    path: PathBuf,
-    #[source]
-    #[inherit]
-    source: Error,
-  },
-  #[class(inherit)]
-  #[error("Reading {path}")]
-  Reading {
-    path: PathBuf,
-    #[source]
-    #[inherit]
-    source: Error,
-  },
-  #[class(inherit)]
-  #[error("Dir {from} to {to}")]
-  Dir {
-    from: PathBuf,
-    to: PathBuf,
-    #[source]
-    #[inherit]
-    source: Box<Self>,
-  },
-  #[class(inherit)]
-  #[error("Copying {from} to {to}")]
-  Copying {
-    from: PathBuf,
-    to: PathBuf,
-    #[source]
-    #[inherit]
-    source: Error,
-  },
-  #[class(inherit)]
-  #[error(transparent)]
-  Other(#[from] Error),
 }
 
 #[sys_traits::auto_impl]
@@ -117,20 +77,10 @@ pub fn copy_dir_recursive<TSys: CopyDirRecursiveSys>(
   sys: &TSys,
   from: &Path,
   to: &Path,
-) -> Result<(), CopyDirRecursiveError> {
-  sys.fs_create_dir_all(to).map_err(|source| {
-    CopyDirRecursiveError::Creating {
-      path: to.to_path_buf(),
-      source,
-    }
-  })?;
-  let read_dir =
-    sys
-      .fs_read_dir(from)
-      .map_err(|source| CopyDirRecursiveError::Reading {
-        path: from.to_path_buf(),
-        source,
-      })?;
+) -> Result<(), std::io::Error> {
+  let sys = sys.with_paths_in_errors();
+  sys.fs_create_dir_all(to)?;
+  let read_dir = sys.fs_read_dir(from)?;
 
   for entry in read_dir {
     let entry = entry?;
@@ -139,21 +89,9 @@ pub fn copy_dir_recursive<TSys: CopyDirRecursiveSys>(
     let new_to = to.join(entry.file_name());
 
     if file_type.is_dir() {
-      copy_dir_recursive(sys, &new_from, &new_to).map_err(|source| {
-        CopyDirRecursiveError::Dir {
-          from: new_from.to_path_buf(),
-          to: new_to.to_path_buf(),
-          source: Box::new(source),
-        }
-      })?;
+      copy_dir_recursive(sys.as_ref(), &new_from, &new_to)?;
     } else if file_type.is_file() {
-      sys.fs_copy(&new_from, &new_to).map_err(|source| {
-        CopyDirRecursiveError::Copying {
-          from: new_from.to_path_buf(),
-          to: new_to.to_path_buf(),
-          source,
-        }
-      })?;
+      sys.fs_copy(&new_from, &new_to)?;
     }
   }
 

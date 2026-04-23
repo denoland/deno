@@ -1,14 +1,14 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
-use std::collections::HashMap;
+use std::io::BufReader;
+use std::path::Path;
 use std::sync::Arc;
-use std::thread::ThreadId;
 
 use boxed_error::Boxed;
+use dashmap::DashMap;
 use deno_cache_dir::file_fetcher::RedirectHeaderParseError;
 use deno_core::error::AnyError;
 use deno_core::futures::StreamExt;
-use deno_core::parking_lot::Mutex;
 use deno_core::serde;
 use deno_core::serde_json;
 use deno_core::url::Url;
@@ -20,12 +20,16 @@ use deno_runtime::deno_fetch::CreateHttpClientOptions;
 use deno_runtime::deno_fetch::ResBody;
 use deno_runtime::deno_fetch::create_http_client;
 use deno_runtime::deno_tls::RootCertStoreProvider;
+use deno_runtime::deno_tls::TlsKey;
+use deno_runtime::deno_tls::load_certs;
+use deno_runtime::deno_tls::load_private_keys;
 use http::HeaderMap;
 use http::StatusCode;
 use http::header::CONTENT_LENGTH;
 use http::header::HeaderName;
 use http::header::HeaderValue;
 use http_body_util::BodyExt;
+use once_cell::sync::OnceCell;
 use thiserror::Error;
 
 use crate::util::progress_bar::UpdateGuard;
@@ -41,10 +45,8 @@ pub enum SendError {
 pub struct HttpClientProvider {
   options: CreateHttpClientOptions,
   root_cert_store_provider: Option<Arc<dyn RootCertStoreProvider>>,
-  // it's not safe to share a reqwest::Client across tokio runtimes,
-  // so we store these Clients keyed by thread id
-  // https://github.com/seanmonstar/reqwest/issues/1148#issuecomment-910868788
-  clients_by_thread_id: Mutex<HashMap<ThreadId, deno_fetch::Client>>,
+  client: OnceCell<deno_fetch::Client>,
+  cert_clients: DashMap<(String, String), deno_fetch::Client>,
 }
 
 impl std::fmt::Debug for HttpClientProvider {
@@ -66,33 +68,86 @@ impl HttpClientProvider {
         ..Default::default()
       },
       root_cert_store_provider,
-      clients_by_thread_id: Default::default(),
+      client: OnceCell::new(),
+      cert_clients: DashMap::new(),
     }
   }
 
   pub fn get_or_create(&self) -> Result<HttpClient, JsErrorBox> {
-    use std::collections::hash_map::Entry;
-    let thread_id = std::thread::current().id();
-    let mut clients = self.clients_by_thread_id.lock();
-    let entry = clients.entry(thread_id);
-    match entry {
-      Entry::Occupied(entry) => Ok(HttpClient::new(entry.get().clone())),
-      Entry::Vacant(entry) => {
-        let client = create_http_client(
-          DENO_VERSION_INFO.user_agent,
-          CreateHttpClientOptions {
-            root_cert_store: match &self.root_cert_store_provider {
-              Some(provider) => Some(provider.get_or_try_init()?.clone()),
-              None => None,
-            },
-            ..self.options.clone()
+    let client = self.client.get_or_try_init(|| {
+      create_http_client(
+        DENO_VERSION_INFO.user_agent,
+        CreateHttpClientOptions {
+          root_cert_store: match &self.root_cert_store_provider {
+            Some(provider) => Some(provider.get_or_try_init()?.clone()),
+            None => None,
           },
-        )
-        .map_err(JsErrorBox::from_err)?;
-        entry.insert(client.clone());
-        Ok(HttpClient::new(client))
-      }
+          ..self.options.clone()
+        },
+      )
+      .map_err(JsErrorBox::from_err)
+    })?;
+    Ok(HttpClient::new(client.clone()))
+  }
+
+  pub fn get_or_create_with_client_cert(
+    &self,
+    certfile: &Path,
+    keyfile: &Path,
+  ) -> Result<HttpClient, JsErrorBox> {
+    let cache_key = (
+      certfile.to_string_lossy().into_owned(),
+      keyfile.to_string_lossy().into_owned(),
+    );
+    if let Some(client) = self.cert_clients.get(&cache_key) {
+      return Ok(HttpClient::new(client.clone()));
     }
+    let cert_data = std::fs::read(certfile).map_err(|e| {
+      JsErrorBox::generic(format!(
+        "Failed to read npmrc certfile '{}': {e}",
+        certfile.display()
+      ))
+    })?;
+    let key_data = std::fs::read(keyfile).map_err(|e| {
+      JsErrorBox::generic(format!(
+        "Failed to read npmrc keyfile '{}': {e}",
+        keyfile.display()
+      ))
+    })?;
+    let certs =
+      load_certs(&mut BufReader::new(cert_data.as_slice())).map_err(|e| {
+        JsErrorBox::generic(format!(
+          "Failed to parse npmrc certfile '{}': {e}",
+          certfile.display()
+        ))
+      })?;
+    let mut keys = load_private_keys(&key_data).map_err(|e| {
+      JsErrorBox::generic(format!(
+        "Failed to parse npmrc keyfile '{}': {e}",
+        keyfile.display()
+      ))
+    })?;
+    if keys.is_empty() {
+      return Err(JsErrorBox::generic(format!(
+        "No private keys found in npmrc keyfile '{}'",
+        keyfile.display()
+      )));
+    }
+    let tls_key = TlsKey(certs, keys.remove(0));
+    let client = create_http_client(
+      DENO_VERSION_INFO.user_agent,
+      CreateHttpClientOptions {
+        root_cert_store: match &self.root_cert_store_provider {
+          Some(provider) => Some(provider.get_or_try_init()?.clone()),
+          None => None,
+        },
+        client_cert_chain_and_key: Some(tls_key),
+        ..self.options.clone()
+      },
+    )
+    .map_err(JsErrorBox::from_err)?;
+    self.cert_clients.insert(cache_key, client.clone());
+    Ok(HttpClient::new(client))
   }
 }
 
@@ -179,21 +234,13 @@ impl HttpClientResponse {
 #[derive(Debug)]
 pub struct HttpClient {
   client: deno_fetch::Client,
-  // don't allow sending this across threads because then
-  // it might be shared accidentally across tokio runtimes
-  // which will cause issues
-  // https://github.com/seanmonstar/reqwest/issues/1148#issuecomment-910868788
-  _unsend_marker: deno_core::unsync::UnsendMarker,
 }
 
 impl HttpClient {
   // DO NOT make this public. You should always be creating one of these from
   // the HttpClientProvider
   fn new(client: deno_fetch::Client) -> Self {
-    Self {
-      client,
-      _unsend_marker: deno_core::unsync::UnsendMarker::default(),
-    }
+    Self { client }
   }
 
   pub fn get(&self, url: Url) -> Result<RequestBuilder, http::Error> {
@@ -261,7 +308,9 @@ impl HttpClient {
   }
 
   pub async fn download(&self, url: Url) -> Result<Vec<u8>, DownloadError> {
-    let response = self.download_inner(url, &Default::default(), None).await?;
+    let response = self
+      .download_inner(url, &Default::default(), None, true)
+      .await?;
     response.into_bytes()
   }
 
@@ -272,7 +321,29 @@ impl HttpClient {
     progress_guard: &UpdateGuard,
   ) -> Result<HttpClientResponse, DownloadError> {
     crate::util::retry::retry(
-      || self.download_inner(url.clone(), headers, Some(progress_guard)),
+      || self.download_inner(url.clone(), headers, Some(progress_guard), true),
+      |e| {
+        matches!(
+          e.as_kind(),
+          DownloadErrorKind::BadResponse(_) | DownloadErrorKind::Fetch(_)
+        )
+      },
+    )
+    .await
+  }
+
+  /// Like `download_with_progress_and_retries`, but bypasses the transparent
+  /// decompression middleware. The response body will contain raw bytes
+  /// (potentially gzip-compressed). The caller should check the
+  /// Content-Encoding header and decompress if needed.
+  pub async fn download_with_progress_and_retries_no_decompress(
+    &self,
+    url: Url,
+    headers: &HeaderMap,
+    progress_guard: &UpdateGuard,
+  ) -> Result<HttpClientResponse, DownloadError> {
+    crate::util::retry::retry(
+      || self.download_inner(url.clone(), headers, Some(progress_guard), false),
       |e| {
         matches!(
           e.as_kind(),
@@ -288,7 +359,7 @@ impl HttpClient {
     url: Url,
     headers: &HeaderMap<HeaderValue>,
   ) -> Result<Url, AnyError> {
-    let (_, url) = self.get_redirected_response(url, headers).await?;
+    let (_, url) = self.get_redirected_response(url, headers, true).await?;
     Ok(url)
   }
 
@@ -297,8 +368,11 @@ impl HttpClient {
     url: Url,
     headers: &HeaderMap<HeaderValue>,
     progress_guard: Option<&UpdateGuard>,
+    should_decompress: bool,
   ) -> Result<HttpClientResponse, DownloadError> {
-    let (response, _) = self.get_redirected_response(url, headers).await?;
+    let (response, _) = self
+      .get_redirected_response(url, headers, should_decompress)
+      .await?;
 
     if response.status() == 404 {
       return Ok(HttpClientResponse::NotFound);
@@ -328,15 +402,16 @@ impl HttpClient {
     &self,
     mut url: Url,
     headers: &HeaderMap<HeaderValue>,
+    should_decompress: bool,
   ) -> Result<(http::Response<deno_fetch::ResBody>, Url), DownloadError> {
     let mut req = self.get(url.clone())?.build();
     *req.headers_mut() = headers.clone();
-    let mut response = self
-      .client
-      .clone()
-      .send(req)
-      .await
-      .map_err(|e| DownloadErrorKind::Fetch(e).into_box())?;
+    let mut response = if should_decompress {
+      self.client.clone().send(req).await
+    } else {
+      self.client.clone().send_no_decompress(req).await
+    }
+    .map_err(|e| DownloadErrorKind::Fetch(e).into_box())?;
     let status = response.status();
     if status.is_redirection() && status != http::StatusCode::NOT_MODIFIED {
       for _ in 0..5 {
@@ -344,18 +419,17 @@ impl HttpClient {
         let mut req = self.get(new_url.clone())?.build();
 
         let mut headers = headers.clone();
-        // SECURITY: Do NOT forward auth headers to a new origin
-        if new_url.origin() != url.origin() {
+        if should_strip_auth_on_redirect(&url, &new_url) {
           headers.remove(http::header::AUTHORIZATION);
         }
         *req.headers_mut() = headers;
 
-        let new_response = self
-          .client
-          .clone()
-          .send(req)
-          .await
-          .map_err(|e| DownloadErrorKind::Fetch(e).into_box())?;
+        let new_response = if should_decompress {
+          self.client.clone().send(req).await
+        } else {
+          self.client.clone().send_no_decompress(req).await
+        }
+        .map_err(|e| DownloadErrorKind::Fetch(e).into_box())?;
         let status = new_response.status();
         if status.is_redirection() {
           response = new_response;
@@ -369,6 +443,16 @@ impl HttpClient {
       Ok((response, url))
     }
   }
+}
+
+/// Returns true if auth headers should be stripped when redirecting from
+/// `original` to `new_url`. Auth is stripped when the host or port changes,
+/// or on a scheme downgrade (https -> http) to avoid leaking credentials
+/// over plaintext. Same-host scheme upgrades (http -> https) are allowed.
+fn should_strip_auth_on_redirect(original: &Url, new_url: &Url) -> bool {
+  new_url.host() != original.host()
+    || new_url.port() != original.port()
+    || (original.scheme() == "https" && new_url.scheme() == "http")
 }
 
 pub async fn get_response_body_with_progress(
@@ -395,7 +479,7 @@ pub async fn get_response_body_with_progress(
         let bytes = item?;
         current_size += bytes.len() as u64;
         progress_guard.set_position(current_size);
-        data.extend(bytes.into_iter());
+        data.extend_from_slice(&bytes);
       }
       return Ok((parts.headers, data));
     }
@@ -461,8 +545,8 @@ impl RequestBuilder {
   }
 }
 
-#[allow(clippy::print_stdout)]
-#[allow(clippy::print_stderr)]
+#[allow(clippy::print_stdout, reason = "test code")]
+#[allow(clippy::print_stderr, reason = "test code")]
 #[cfg(test)]
 mod test {
   use std::collections::HashSet;
@@ -720,5 +804,38 @@ mod test {
     );
     assert_eq!(headers.get("etag"), None);
     assert_eq!(headers.get("x-typescript-types"), None);
+  }
+
+  #[test]
+  fn test_should_strip_auth_on_redirect() {
+    // http -> https same host: safe upgrade, retain auth
+    assert!(!should_strip_auth_on_redirect(
+      &Url::parse("http://npm.pkg.github.com/package").unwrap(),
+      &Url::parse("https://npm.pkg.github.com/package").unwrap(),
+    ));
+
+    // same origin: retain auth
+    assert!(!should_strip_auth_on_redirect(
+      &Url::parse("https://registry.example.com/a").unwrap(),
+      &Url::parse("https://registry.example.com/b").unwrap(),
+    ));
+
+    // different host: strip auth
+    assert!(should_strip_auth_on_redirect(
+      &Url::parse("https://registry.example.com/package").unwrap(),
+      &Url::parse("https://other.example.com/package").unwrap(),
+    ));
+
+    // different port: strip auth
+    assert!(should_strip_auth_on_redirect(
+      &Url::parse("https://registry.example.com:8080/package").unwrap(),
+      &Url::parse("https://registry.example.com:9090/package").unwrap(),
+    ));
+
+    // https -> http same host: scheme downgrade, strip auth
+    assert!(should_strip_auth_on_redirect(
+      &Url::parse("https://npm.pkg.github.com/package").unwrap(),
+      &Url::parse("http://npm.pkg.github.com/package").unwrap(),
+    ));
   }
 }

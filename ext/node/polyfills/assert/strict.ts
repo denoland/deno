@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 import { strict } from "node:assert";
 
 export {
@@ -17,6 +17,7 @@ export {
   notEqual,
   notStrictEqual,
   ok,
+  partialDeepStrictEqual,
   rejects,
   strictEqual,
   throws,

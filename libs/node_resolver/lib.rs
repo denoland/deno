@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 #![deny(clippy::print_stderr)]
 #![deny(clippy::print_stdout)]
@@ -11,8 +11,6 @@ mod npm;
 mod package_json;
 mod path;
 mod resolution;
-
-mod sync;
 
 pub use builtin_modules::DENO_SUPPORTED_BUILTIN_NODE_MODULES;
 pub use builtin_modules::DenoIsBuiltInNodeModuleChecker;
@@ -29,6 +27,7 @@ pub use package_json::PackageJsonThreadLocalCache;
 pub use path::PathClean;
 pub use path::UrlOrPath;
 pub use path::UrlOrPathRef;
+pub use resolution::BinValue;
 pub use resolution::IMPORT_CONDITIONS;
 pub use resolution::NodeConditionOptions;
 pub use resolution::NodeResolution;

@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::collections::BTreeSet;
@@ -15,14 +15,12 @@ use futures::stream::FuturesUnordered;
 use once_cell::sync::Lazy;
 use serde::Deserialize;
 use serde::Serialize;
-use sys_traits::FsCanonicalize;
-use sys_traits::FsMetadata;
-use sys_traits::FsRead;
 use url::Url;
 
 use crate::InNpmPackageChecker;
 use crate::IsBuiltInNodeModuleChecker;
 use crate::NodeResolutionKind;
+use crate::NodeResolverSys;
 use crate::NpmPackageFolderResolver;
 use crate::PackageJsonResolverRc;
 use crate::PathClean;
@@ -77,14 +75,17 @@ pub enum ResolvedCjsAnalysis<'a> {
   Cjs(BTreeSet<String>),
 }
 
-#[allow(clippy::disallowed_types)]
+#[sys_traits::auto_impl]
+pub trait CjsModuleExportAnalyzerSys: NodeResolverSys {}
+
+#[allow(clippy::disallowed_types, reason = "definition")]
 pub type CjsModuleExportAnalyzerRc<
   TCjsCodeAnalyzer,
   TInNpmPackageChecker,
   TIsBuiltInNodeModuleChecker,
   TNpmPackageFolderResolver,
   TSys,
-> = crate::sync::MaybeArc<
+> = deno_maybe_sync::MaybeArc<
   CjsModuleExportAnalyzer<
     TCjsCodeAnalyzer,
     TInNpmPackageChecker,
@@ -99,7 +100,7 @@ pub struct CjsModuleExportAnalyzer<
   TInNpmPackageChecker: InNpmPackageChecker,
   TIsBuiltInNodeModuleChecker: IsBuiltInNodeModuleChecker,
   TNpmPackageFolderResolver: NpmPackageFolderResolver,
-  TSys: FsCanonicalize + FsMetadata + FsRead,
+  TSys: CjsModuleExportAnalyzerSys,
 > {
   cjs_code_analyzer: TCjsCodeAnalyzer,
   in_npm_pkg_checker: TInNpmPackageChecker,
@@ -119,7 +120,7 @@ impl<
   TInNpmPackageChecker: InNpmPackageChecker,
   TIsBuiltInNodeModuleChecker: IsBuiltInNodeModuleChecker,
   TNpmPackageFolderResolver: NpmPackageFolderResolver,
-  TSys: FsCanonicalize + FsMetadata + FsRead,
+  TSys: CjsModuleExportAnalyzerSys,
 >
   CjsModuleExportAnalyzer<
     TCjsCodeAnalyzer,
@@ -194,7 +195,10 @@ impl<
     Ok(ResolvedCjsAnalysis::Cjs(all_exports))
   }
 
-  #[allow(clippy::needless_lifetimes)]
+  #[allow(
+    clippy::needless_lifetimes,
+    reason = "explicit lifetimes improve clarity"
+  )]
   async fn analyze_reexports<'a>(
     &'a self,
     entry_specifier: &url::Url,
@@ -516,16 +520,16 @@ pub struct CjsAnalysisCouldNotLoadError {
 }
 
 #[sys_traits::auto_impl]
-pub trait NodeCodeTranslatorSys: FsCanonicalize + FsMetadata + FsRead {}
+pub trait NodeCodeTranslatorSys: CjsModuleExportAnalyzerSys {}
 
-#[allow(clippy::disallowed_types)]
+#[allow(clippy::disallowed_types, reason = "definition")]
 pub type NodeCodeTranslatorRc<
   TCjsCodeAnalyzer,
   TInNpmPackageChecker,
   TIsBuiltInNodeModuleChecker,
   TNpmPackageFolderResolver,
   TSys,
-> = crate::sync::MaybeArc<
+> = deno_maybe_sync::MaybeArc<
   NodeCodeTranslator<
     TCjsCodeAnalyzer,
     TInNpmPackageChecker,

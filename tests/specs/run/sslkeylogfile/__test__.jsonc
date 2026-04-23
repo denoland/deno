@@ -1,0 +1,28 @@
+{
+  "tempDir": true,
+  "tests": {
+    "writes_keylog": {
+      "envs": { "SSLKEYLOGFILE": "./keylog.txt" },
+      "steps": [
+        {
+          "args": "run --allow-net --allow-env main.ts",
+          "output": "[WILDCARD]200[WILDCARD]"
+        },
+        {
+          "commandName": "cat",
+          "args": "keylog.txt",
+          "output": "[WILDCARD]CLIENT_HANDSHAKE_TRAFFIC_SECRET[WILDCARD]"
+        }
+      ]
+    },
+    "warns_on_unwritable_path": {
+      "envs": { "SSLKEYLOGFILE": "/nonexistent/path/keylog.txt" },
+      "args": "run --allow-net --allow-env main.ts",
+      "output": "[WILDCARD]SSLKEYLOGFILE is set but '/nonexistent/path/keylog.txt' could not be opened:[WILDCARD]"
+    },
+    "mutating_env_does_not_enable_keylog": {
+      "args": "run --allow-net --allow-env=SSLKEYLOGFILE --allow-read=./late_keylog.txt mutate_env.ts",
+      "output": "[WILDCARD]200[WILDCARD]late_keylog.txt has not been created[WILDCARD]"
+    }
+  }
+}

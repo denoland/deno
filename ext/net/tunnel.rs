@@ -1,7 +1,5 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
-use std::collections::HashMap;
-use std::net::SocketAddr;
 use std::rc::Rc;
 use std::sync::OnceLock;
 use std::sync::atomic::AtomicBool;
@@ -48,15 +46,15 @@ pub fn disable_before_exit() {
 }
 
 pub fn before_exit() {
-  if let Some(tunnel) = get_tunnel() {
-    log::trace!("deno_net::tunnel::before_exit >");
+  log::trace!("deno_net::tunnel::before_exit >");
 
+  if let Some(tunnel) = get_tunnel() {
     // stay alive long enough to actually send the close frame, since
     // we can't rely on the linux kernel to close this like with tcp.
     deno_core::futures::executor::block_on(tunnel.close(1u32, b""));
-
-    log::trace!("deno_net::tunnel::before_exit <");
   }
+
+  log::trace!("deno_net::tunnel::before_exit <");
 }
 
 pub fn get_tunnel() -> Option<&'static TunnelConnection> {
@@ -167,30 +165,4 @@ impl Resource for TunnelStreamResource {
   fn close(self: Rc<Self>) {
     self.cancel_handle.cancel()
   }
-}
-
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
-enum StreamHeader {
-  Control {
-    token: String,
-    org: String,
-    app: String,
-  },
-  Stream {
-    local_addr: SocketAddr,
-    remote_addr: SocketAddr,
-  },
-  Agent {},
-}
-
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
-enum ControlMessage {
-  Authenticated {
-    metadata: HashMap<String, String>,
-    addr: SocketAddr,
-    hostnames: Vec<String>,
-    env: HashMap<String, String>,
-  },
-  Routed {},
-  Migrate {},
 }

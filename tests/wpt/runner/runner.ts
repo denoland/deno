@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 import {
   delay,
   join,
@@ -90,6 +90,31 @@ export async function runSingleTest(
   reporter: (result: TestCaseResult) => void,
   inspectBrk: boolean,
   timeouts: { long: number; default: number },
+  fileTimeout = 2 * 60_000,
+): Promise<TestResult> {
+  const result = await Promise.race([
+    runSingleTestInner(url, _options, reporter, inspectBrk, timeouts),
+    new Promise<TestResult>((resolve) =>
+      setTimeout(() => {
+        resolve({
+          cases: [],
+          harnessStatus: null,
+          duration: fileTimeout,
+          status: 1,
+          stderr: `test file timed out after ${fileTimeout / 1000}s\n`,
+        });
+      }, fileTimeout)
+    ),
+  ]);
+  return result;
+}
+
+async function runSingleTestInner(
+  url: URL,
+  _options: ManifestTestOptions,
+  reporter: (result: TestCaseResult) => void,
+  inspectBrk: boolean,
+  timeouts: { long: number; default: number },
 ): Promise<TestResult> {
   const timeout = _options.timeout === "long"
     ? timeouts.long
@@ -114,7 +139,6 @@ export async function runSingleTest(
     const args = [
       "run",
       "-A",
-      "--unstable-broadcast-channel",
       "--unstable-webgpu",
       "--unstable-net",
       "--v8-flags=--expose-gc",
@@ -158,7 +182,7 @@ export async function runSingleTest(
         proc.kill("SIGINT");
       }
     }, 1000);
-    for await (const line of lines) {
+    for await (const line of lines as AsyncIterable<string>) {
       if (line.startsWith("{")) {
         const data = JSON.parse(line);
         const result = { ...data, passed: data.status == 0 };
@@ -190,6 +214,35 @@ export async function runSingleTest(
   }
 }
 
+function getShim(test: string): string {
+  const shim = [];
+
+  shim.push("globalThis.window = globalThis;");
+
+  if (test.includes("streams/transferable")) {
+    shim.push(`
+      {
+        const { port1, port2 } = new MessageChannel();
+        port2.addEventListener('message', (e) => {
+          queueMicrotask(() => {
+            globalThis.dispatchEvent(e);
+          });
+        });
+        port2.start();
+        globalThis.postMessage = (message, targetOriginOrOptions, transfer) => {
+          let options = targetOriginOrOptions;
+          if (transfer || typeof targetOriginOrOptions === 'string') {
+            options = { transfer };
+          }
+          return port1.postMessage(message, options);
+        };
+      }
+    `);
+  }
+
+  return shim.join("\n");
+}
+
 async function generateBundle(location: URL): Promise<string> {
   const res = await fetch(location);
   const body = await res.text();
@@ -207,6 +260,7 @@ async function generateBundle(location: URL): Promise<string> {
       `globalThis.META_TITLE=${JSON.stringify(title)}`,
     ]);
   }
+  const shim = getShim(location.pathname);
   for (const script of scripts) {
     const src = script.getAttribute("src");
     if (src === "/resources/testharnessreport.js") {
@@ -214,20 +268,20 @@ async function generateBundle(location: URL): Promise<string> {
         join(ROOT_PATH, "./tests/wpt/runner/testharnessreport.js"),
       );
       const contents = await Deno.readTextFile(url);
-      scriptContents.push([url.href, "globalThis.window = globalThis;"]);
+      scriptContents.push([url.href, shim]);
       scriptContents.push([url.href, contents]);
     } else if (src) {
       const url = new URL(src, location);
       const res = await fetch(url);
       if (res.ok) {
         const contents = await res.text();
-        scriptContents.push([url.href, "globalThis.window = globalThis;"]);
+        scriptContents.push([url.href, shim]);
         scriptContents.push([url.href, contents]);
       }
     } else {
       const url = new URL(`#${inlineScriptCount}`, location);
       inlineScriptCount++;
-      scriptContents.push([url.href, "globalThis.window = globalThis;"]);
+      scriptContents.push([url.href, shim]);
       scriptContents.push([url.href, script.textContent]);
     }
   }

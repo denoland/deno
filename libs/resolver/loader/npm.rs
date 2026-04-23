@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::path::PathBuf;
@@ -41,7 +41,7 @@ pub enum NpmModuleLoadError {
   StrippingTypesNodeModules(#[from] StrippingTypesNodeModulesError),
   #[class(inherit)]
   #[error(transparent)]
-  ClosestPkgJson(#[from] node_resolver::errors::ClosestPkgJsonError),
+  ClosestPkgJson(#[from] node_resolver::errors::PackageJsonLoadError),
   #[class(inherit)]
   #[error(transparent)]
   TranslateCjsToEsm(#[from] node_resolver::analyze::TranslateCjsToEsmError),
@@ -94,9 +94,9 @@ fn format_dir_import_message(
 #[sys_traits::auto_impl]
 pub trait NpmModuleLoaderSys: NodeCodeTranslatorSys {}
 
-#[allow(clippy::disallowed_types)]
+#[allow(clippy::disallowed_types, reason = "definition")]
 pub type DenoNpmModuleLoaderRc<TSys> =
-  crate::sync::MaybeArc<DenoNpmModuleLoader<TSys>>;
+  deno_maybe_sync::MaybeArc<DenoNpmModuleLoader<TSys>>;
 
 pub type DenoNpmModuleLoader<TSys> = NpmModuleLoader<
   crate::cjs::analyzer::DenoCjsCodeAnalyzer<TSys>,
@@ -115,7 +115,6 @@ pub struct NpmModuleLoader<
   TSys: NpmModuleLoaderSys,
 > {
   cjs_tracker: CjsTrackerRc<TInNpmPackageChecker, TSys>,
-  sys: TSys,
   node_code_translator: NodeCodeTranslatorRc<
     TCjsCodeAnalyzer,
     TInNpmPackageChecker,
@@ -123,6 +122,7 @@ pub struct NpmModuleLoader<
     TNpmPackageFolderResolver,
     TSys,
   >,
+  sys: TSys,
 }
 
 impl<

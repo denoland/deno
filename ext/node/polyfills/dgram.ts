@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -63,6 +63,7 @@ import {
 import { guessHandleType } from "ext:deno_node/internal_binding/util.ts";
 import { os } from "ext:deno_node/internal_binding/constants.ts";
 import { nextTick } from "node:process";
+import { deprecate } from "node:util";
 import { channel } from "node:diagnostics_channel";
 import { isArrayBufferView } from "ext:deno_node/internal/util/types.ts";
 
@@ -528,7 +529,10 @@ export class Socket extends EventEmitter {
       return this;
     }
 
-    healthCheck(this);
+    if (!state.handle) {
+      return this;
+    }
+
     stopReceiving(this);
 
     state.handle!.close(() => {
@@ -1004,6 +1008,29 @@ export class Socket extends EventEmitter {
     }
   }
 
+  sendto(
+    buffer: unknown,
+    offset: unknown,
+    length: unknown,
+    port: unknown,
+    address: unknown,
+    callback?: unknown,
+  ) {
+    validateNumber(offset, "offset");
+    validateNumber(length, "length");
+    validateNumber(port, "port");
+    validateString(address, "address");
+
+    this.send(
+      buffer as MessageType,
+      offset as number,
+      length as number,
+      port as number,
+      address as string,
+      callback as (error: ErrnoException | null, bytes?: number) => void,
+    );
+  }
+
   /**
    * Sets or clears the `SO_BROADCAST` socket option. When set to `true`, UDP
    * packets may be sent to a local interface's broadcast address.
@@ -1191,7 +1218,72 @@ export class Socket extends EventEmitter {
 
     return this;
   }
+
+  [Symbol.asyncDispose](): Promise<void> {
+    const state = this[kStateSymbol];
+    if (!state.handle) {
+      return Promise.resolve();
+    }
+
+    return new Promise((resolve) => {
+      this.close(() => resolve());
+    });
+  }
 }
+
+// Deprecated properties (DEP0112)
+const deprecatedProps = [
+  "_handle",
+  "_receiving",
+  "_bindState",
+  "_queue",
+  "_reuseAddr",
+];
+const stateKeys: Record<string, string> = {
+  _handle: "handle",
+  _receiving: "receiving",
+  _bindState: "bindState",
+  _queue: "queue",
+  _reuseAddr: "reuseAddr",
+};
+
+for (const prop of deprecatedProps) {
+  Object.defineProperty(Socket.prototype, prop, {
+    get: deprecate(
+      function (this: Socket) {
+        return this[kStateSymbol][stateKeys[prop] as keyof SocketInternalState];
+      },
+      `Socket.prototype.${prop} is deprecated`,
+      "DEP0112",
+    ),
+    set: deprecate(
+      function (this: Socket, val: unknown) {
+        // deno-lint-ignore no-explicit-any
+        (this[kStateSymbol] as any)[stateKeys[prop]] = val;
+      },
+      `Socket.prototype.${prop} is deprecated`,
+      "DEP0112",
+    ),
+    configurable: true,
+    enumerable: false,
+  });
+}
+
+Socket.prototype._healthCheck = deprecate(
+  function (this: Socket) {
+    healthCheck(this);
+  },
+  "Socket.prototype._healthCheck() is deprecated",
+  "DEP0112",
+);
+
+Socket.prototype._stopReceiving = deprecate(
+  function (this: Socket) {
+    stopReceiving(this);
+  },
+  "Socket.prototype._stopReceiving() is deprecated",
+  "DEP0112",
+);
 
 /**
  * Creates a `dgram.Socket` object. Once the socket is created, calling

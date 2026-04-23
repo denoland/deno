@@ -1,6 +1,6 @@
-Check [WILDCARD]/main.ts
-Check [WILDCARD]/main.ts$11-19.ts
-Check [WILDCARD]/main.ts$25-30.ts
+Check [WILDCARD]main.ts
+Check [WILDCARD]main.ts$11-19.ts
+Check [WILDCARD]main.ts$25-30.ts
 running 0 tests from ./main.ts
 running 1 test from ./main.ts$11-19.ts
 [WILDCARD]/main.ts$11-19.ts ... ok ([WILDLINE])

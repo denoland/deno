@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 /** A library of assertion functions.
  * If the assertion is false an `AssertionError` will be thrown which will

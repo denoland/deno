@@ -1,4 +1,4 @@
-Check [WILDCARD]/finally_timeout.ts
+Check [WILDCARD]finally_timeout.ts
     CPU | [WILDCARD]
 Runtime | Deno [WILDCARD] ([WILDCARD])
 

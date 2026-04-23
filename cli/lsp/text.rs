@@ -1,8 +1,9 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use deno_core::error::AnyError;
-use dissimilar::Chunk;
-use dissimilar::diff;
+use imara_diff::Algorithm;
+use imara_diff::Diff;
+use imara_diff::InternedInput;
 use text_size::TextRange;
 use text_size::TextSize;
 use tower_lsp::jsonrpc;
@@ -73,8 +74,8 @@ pub fn get_edits(a: &str, b: &str, line_index: &LineIndex) -> Vec<TextEdit> {
   if a == b {
     return vec![];
   }
-  // Heuristic to detect things like large JSON or minified files. `diff()` is
-  // expensive.
+  // Heuristic to detect things like large JSON or minified files. Diffing is
+  // expensive on very large inputs.
   let b_lines = b.chars().filter(|c| *c == '\n').count();
   if b_lines > 10000 || b_lines > line_index.inner.utf8_offsets_len() * 3 {
     return vec![TextEdit {
@@ -85,48 +86,44 @@ pub fn get_edits(a: &str, b: &str, line_index: &LineIndex) -> Vec<TextEdit> {
       new_text: b.to_string(),
     }];
   }
-  let chunks = diff(a, b);
-  let mut text_edits = Vec::<TextEdit>::new();
-  let mut iter = chunks.iter().peekable();
-  let mut a_pos = TextSize::from(0);
-  loop {
-    let chunk = iter.next();
-    match chunk {
-      None => break,
-      Some(Chunk::Equal(e)) => {
-        a_pos += TextSize::from(e.encode_utf16().count() as u32);
-      }
-      Some(Chunk::Delete(d)) => {
-        let start = line_index.position_utf16(a_pos);
-        a_pos += TextSize::from(d.encode_utf16().count() as u32);
-        let end = line_index.position_utf16(a_pos);
-        let range = lsp::Range { start, end };
-        match iter.peek() {
-          Some(Chunk::Insert(i)) => {
-            iter.next();
-            text_edits.push(TextEdit {
-              range,
-              new_text: i.to_string(),
-            });
-          }
-          _ => text_edits.push(TextEdit {
-            range,
-            new_text: "".to_string(),
-          }),
-        }
-      }
-      Some(Chunk::Insert(i)) => {
-        let pos = line_index.position_utf16(a_pos);
-        let range = lsp::Range {
-          start: pos,
-          end: pos,
-        };
-        text_edits.push(TextEdit {
-          range,
-          new_text: i.to_string(),
-        });
-      }
+
+  let input = InternedInput::new(a, b);
+  let mut diff = Diff::compute(Algorithm::Histogram, &input);
+  diff.postprocess_lines(&input);
+
+  // Build a mapping from line index to utf16 offset for the original text.
+  // Line i starts at a_line_offsets[i] (in utf16 units).
+  let a_line_offsets: Vec<u32> = {
+    let mut offsets = vec![0u32];
+    let mut pos = 0u32;
+    for line_token in input.before.iter() {
+      let line_str = input.interner[*line_token];
+      pos += line_str.encode_utf16().count() as u32;
+      offsets.push(pos);
     }
+    offsets
+  };
+
+  let mut text_edits = Vec::<TextEdit>::new();
+
+  for hunk in diff.hunks() {
+    let del_start_line = hunk.before.start as usize;
+    let del_end_line = hunk.before.end as usize;
+
+    // Range in the original document being replaced
+    let start_offset = TextSize::from(a_line_offsets[del_start_line]);
+    let end_offset = TextSize::from(a_line_offsets[del_end_line]);
+    let start = line_index.position_utf16(start_offset);
+    let end = line_index.position_utf16(end_offset);
+    let range = lsp::Range { start, end };
+
+    // Build the replacement text from the "after" lines
+    let mut new_text = String::new();
+    for ins_idx in hunk.after.start..hunk.after.end {
+      new_text.push_str(input.interner[input.after[ins_idx as usize]]);
+    }
+
+    text_edits.push(TextEdit { range, new_text });
   }
 
   text_edits
@@ -141,36 +138,22 @@ mod tests {
     let a = "abcdefg";
     let b = "a\nb\nchije\nfg\n";
     let actual = get_edits(a, b, &LineIndex::new(a));
+    // Line-level diff replaces the entire single-line input
     assert_eq!(
       actual,
-      vec![
-        TextEdit {
-          range: lsp::Range {
-            start: lsp::Position {
-              line: 0,
-              character: 1
-            },
-            end: lsp::Position {
-              line: 0,
-              character: 5
-            }
+      vec![TextEdit {
+        range: lsp::Range {
+          start: lsp::Position {
+            line: 0,
+            character: 0
           },
-          new_text: "\nb\nchije\n".to_string()
+          end: lsp::Position {
+            line: 0,
+            character: 7
+          }
         },
-        TextEdit {
-          range: lsp::Range {
-            start: lsp::Position {
-              line: 0,
-              character: 7
-            },
-            end: lsp::Position {
-              line: 0,
-              character: 7
-            }
-          },
-          new_text: "\n".to_string()
-        },
-      ]
+        new_text: "a\nb\nchije\nfg\n".to_string()
+      }]
     );
   }
 
@@ -179,36 +162,52 @@ mod tests {
     let a = "const bar = \"👍🇺🇸😃\";\nconsole.log('hello deno')\n";
     let b = "const bar = \"👍🇺🇸😃\";\nconsole.log(\"hello deno\");\n";
     let actual = get_edits(a, b, &LineIndex::new(a));
+    // Line-level diff replaces only the changed line
     assert_eq!(
       actual,
-      vec![
-        TextEdit {
-          range: lsp::Range {
-            start: lsp::Position {
-              line: 1,
-              character: 12
-            },
-            end: lsp::Position {
-              line: 1,
-              character: 13
-            }
+      vec![TextEdit {
+        range: lsp::Range {
+          start: lsp::Position {
+            line: 1,
+            character: 0
           },
-          new_text: "\"".to_string()
+          end: lsp::Position {
+            line: 2,
+            character: 0
+          }
         },
-        TextEdit {
-          range: lsp::Range {
-            start: lsp::Position {
-              line: 1,
-              character: 23
-            },
-            end: lsp::Position {
-              line: 1,
-              character: 25
-            }
-          },
-          new_text: "\");".to_string()
-        },
-      ]
+        new_text: "console.log(\"hello deno\");\n".to_string()
+      }]
     )
+  }
+
+  #[test]
+  fn test_get_edits_no_changes() {
+    let a = "hello world\n";
+    let actual = get_edits(a, a, &LineIndex::new(a));
+    assert_eq!(actual, vec![]);
+  }
+
+  #[test]
+  fn test_get_edits_insert_line() {
+    let a = "line1\nline3\n";
+    let b = "line1\nline2\nline3\n";
+    let actual = get_edits(a, b, &LineIndex::new(a));
+    assert_eq!(
+      actual,
+      vec![TextEdit {
+        range: lsp::Range {
+          start: lsp::Position {
+            line: 1,
+            character: 0
+          },
+          end: lsp::Position {
+            line: 1,
+            character: 0
+          }
+        },
+        new_text: "line2\n".to_string()
+      }]
+    );
   }
 }

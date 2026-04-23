@@ -1,0 +1,8 @@
+local: [WILDCARD]main.ts
+type: TypeScript
+dependencies: 6 unique
+size: [WILDCARD]
+
+file:///[WILDCARD]/main.ts (93B)
+└─┬ npm:/ajv@8.11.0/dist/jtd.js ([WILDCARD])
+[WILDCARD]

@@ -1,14 +1,14 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::path::Path;
+use std::str::FromStr;
 use std::sync::Arc;
 
 use deno_ast::SourceRange;
-use deno_ast::SourceRangedForSpanned;
 use deno_ast::SourceTextInfo;
 use deno_core::ModuleSpecifier;
 use deno_core::anyhow::anyhow;
@@ -47,7 +47,6 @@ use tower_lsp::lsp_types as lsp;
 use tower_lsp::lsp_types::Position;
 use tower_lsp::lsp_types::Range;
 
-use super::diagnostics::DenoDiagnostic;
 use super::diagnostics::DiagnosticSource;
 use super::documents::DocumentModule;
 use super::documents::DocumentModules;
@@ -55,6 +54,7 @@ use super::language_server;
 use super::resolver::LspResolver;
 use super::tsc;
 use crate::args::jsr_url;
+use crate::lsp::urls::uri_to_url;
 use crate::tools::lint::CliLinter;
 use crate::util::path::relative_specifier;
 
@@ -245,15 +245,55 @@ pub fn import_map_lookup(
   specifier: &Url,
   referrer: &Url,
 ) -> Option<String> {
+  import_map_lookup_inner(
+    import_map,
+    specifier,
+    referrer,
+    ReferrerInAddressSkip::SkipAll,
+  )
+}
+
+#[derive(Clone, Copy)]
+enum ReferrerInAddressSkip {
+  /// Skip all entries where the referrer is inside the mapped directory.
+  /// Used for diagnostics where suggesting an alias over a relative path
+  /// within the same mapped directory is not helpful.
+  SkipAll,
+  /// Only skip entries where the import map key is a passthrough mapping
+  /// (key matches the last path segment of the address, e.g.
+  /// `"src/": "./src/"`). For meaningful aliases like `"@app/": "./src/"`,
+  /// the entry is kept so the alias is suggested in auto-imports.
+  SkipPassthrough,
+}
+
+fn import_map_lookup_inner(
+  import_map: &ImportMap,
+  specifier: &Url,
+  referrer: &Url,
+  skip_mode: ReferrerInAddressSkip,
+) -> Option<String> {
   let specifier_str = specifier.as_str();
   for entry in import_map.entries_for_referrer(referrer) {
     if let Some(address) = entry.value {
       let address_str = address.as_str();
       if referrer.as_str().starts_with(address_str) {
-        // ignore when the referrer has a common base with the
-        // import map entry (ex. `./src/a.ts` importing `./src/b.ts`
-        // and there's a `"$src/": "./src/"` import map entry)
-        continue;
+        match skip_mode {
+          ReferrerInAddressSkip::SkipAll => continue,
+          ReferrerInAddressSkip::SkipPassthrough => {
+            // Only skip if the key is a passthrough mapping, i.e. the
+            // address path ends with the key preceded by '/'
+            // (e.g. ".../src/" ends with "/src/" for key "src/").
+            // Aliases like "@app/" won't match.
+            if address_str
+              .as_bytes()
+              .get(address_str.len().wrapping_sub(entry.raw_key.len() + 1))
+              == Some(&b'/')
+              && address_str.ends_with(entry.raw_key)
+            {
+              continue;
+            }
+          }
+        }
       }
       if address_str == specifier_str {
         return Some(entry.raw_key.to_string());
@@ -272,7 +312,7 @@ pub struct TsResponseImportMapper<'a> {
   scope: Option<Arc<ModuleSpecifier>>,
   maybe_import_map: Option<&'a ImportMap>,
   resolver: &'a LspResolver,
-  tsc_specifier_map: &'a tsc::TscSpecifierMap,
+  tsc_specifier_map: Arc<tsc::TscSpecifierMap>,
 }
 
 impl<'a> TsResponseImportMapper<'a> {
@@ -280,7 +320,7 @@ impl<'a> TsResponseImportMapper<'a> {
     document_modules: &'a DocumentModules,
     scope: Option<Arc<ModuleSpecifier>>,
     resolver: &'a LspResolver,
-    tsc_specifier_map: &'a tsc::TscSpecifierMap,
+    tsc_specifier_map: Arc<tsc::TscSpecifierMap>,
   ) -> Self {
     let maybe_import_map = resolver
       .get_scoped_resolver(scope.as_deref())
@@ -320,7 +360,7 @@ impl<'a> TsResponseImportMapper<'a> {
       self.resolver.get_scoped_resolver(self.scope.as_deref());
 
     if let Some(dep_name) =
-      scoped_resolver.resource_url_to_configured_dep_key(specifier)
+      scoped_resolver.resource_url_to_configured_dep_key(specifier, referrer)
     {
       return Some(dep_name);
     }
@@ -474,9 +514,17 @@ impl<'a> TsResponseImportMapper<'a> {
       return Some(bare_package_specifier);
     }
 
-    // check if the import map has this specifier
+    // check if the import map has this specifier, only skipping passthrough
+    // entries (e.g. "src/": "./src/") where a relative path is cleaner.
+    // Meaningful aliases like "@app/": "./src/" are kept so they are
+    // suggested in auto-imports.
     if let Some(import_map) = self.maybe_import_map
-      && let Some(result) = import_map_lookup(import_map, specifier, referrer)
+      && let Some(result) = import_map_lookup_inner(
+        import_map,
+        specifier,
+        referrer,
+        ReferrerInAddressSkip::SkipPassthrough,
+      )
     {
       return Some(result);
     }
@@ -545,6 +593,7 @@ impl<'a> TsResponseImportMapper<'a> {
     specifier: &str,
     referrer: &ModuleSpecifier,
     resolution_mode: ResolutionMode,
+    new_file_hints: &[Url],
   ) -> Option<String> {
     let specifier_stem = specifier.strip_suffix(".js").unwrap_or(specifier);
     let specifiers = std::iter::once(Cow::Borrowed(specifier)).chain(
@@ -567,9 +616,10 @@ impl<'a> TsResponseImportMapper<'a> {
         .ok()
         .and_then(|s| self.tsc_specifier_map.normalize(s.as_str()).ok())
         .filter(|s| {
-          self
-            .document_modules
-            .specifier_exists(s, self.scope.as_deref())
+          new_file_hints.contains(s)
+            || self
+              .document_modules
+              .specifier_exists(s, self.scope.as_deref())
         })
         && let Some(specifier) = self
           .check_specifier(&specifier, referrer)
@@ -690,6 +740,11 @@ pub fn fix_ts_import_changes(
   token: &CancellationToken,
 ) -> Result<Vec<tsc::FileTextChanges>, AnyError> {
   let mut r = Vec::new();
+  let new_file_hints = changes
+    .iter()
+    .filter(|c| c.is_new_file.unwrap_or(false))
+    .filter_map(|c| resolve_url(&c.file_name).ok())
+    .collect::<Vec<_>>();
   for change in changes {
     if token.is_cancelled() {
       return Err(anyhow!("request cancelled"));
@@ -701,11 +756,11 @@ pub fn fix_ts_import_changes(
     let target_module = if is_new_file {
       None
     } else {
-      let Some(target_module) = language_server
-        .document_modules
-        .inspect_module_for_specifier(
+      let Some(target_module) =
+        language_server.document_modules.module_for_specifier(
           &target_specifier,
           module.scope.as_deref(),
+          Some(&module.compiler_options_key),
         )
       else {
         continue;
@@ -731,6 +786,7 @@ pub fn fix_ts_import_changes(
                 specifier,
                 &target_specifier,
                 resolution_mode,
+                &new_file_hints,
               )
             {
               line.replace(specifier, &new_specifier)
@@ -753,6 +809,54 @@ pub fn fix_ts_import_changes(
       text_changes,
       is_new_file: change.is_new_file,
     });
+  }
+  Ok(r)
+}
+
+pub fn fix_ts_import_changes_for_file_rename(
+  changes: Vec<tsc::FileTextChanges>,
+  new_uri: &str,
+  old_module: &DocumentModule,
+  language_server: &language_server::Inner,
+  token: &CancellationToken,
+) -> Result<Vec<tsc::FileTextChanges>, AnyError> {
+  let Ok(new_uri) = Uri::from_str(new_uri) else {
+    return Ok(Vec::new());
+  };
+  if !new_uri.scheme().as_str().eq_ignore_ascii_case("file") {
+    return Ok(Vec::new());
+  }
+  let new_file_hints = [uri_to_url(&new_uri)];
+  let mut r = Vec::with_capacity(changes.len());
+  for mut change in changes {
+    if token.is_cancelled() {
+      return Err(anyhow!("request cancelled"));
+    }
+    let Ok(target_specifier) = resolve_url(&change.file_name) else {
+      continue;
+    };
+    let Some(target_module) =
+      language_server.document_modules.module_for_specifier(
+        &target_specifier,
+        old_module.scope.as_deref(),
+        Some(&old_module.compiler_options_key),
+      )
+    else {
+      continue;
+    };
+    let import_mapper =
+      language_server.get_ts_response_import_mapper(&target_module);
+    for text_change in &mut change.text_changes {
+      if let Some(new_specifier) = import_mapper.check_unresolved_specifier(
+        &text_change.new_text,
+        &target_module.specifier,
+        target_module.resolution_mode,
+        &new_file_hints,
+      ) {
+        text_change.new_text = new_specifier;
+      }
+    }
+    r.push(change);
   }
   Ok(r)
 }
@@ -783,6 +887,12 @@ fn fix_ts_import_action<'a>(
     specifier,
     &module.specifier,
     module.resolution_mode,
+    &action
+      .changes
+      .iter()
+      .filter(|c| c.is_new_file.unwrap_or(false))
+      .filter_map(|c| resolve_url(&c.file_name).ok())
+      .collect::<Vec<_>>(),
   ) {
     let description = action.description.replace(specifier, &new_specifier);
     let changes = action
@@ -835,45 +945,6 @@ fn is_equivalent_code(
     == FIX_ALL_ERROR_CODES.get(b_code.as_str())
 }
 
-/// Return a boolean flag to indicate if the specified action is the preferred
-/// action for a given set of actions.
-fn is_preferred(
-  action: &tsc::CodeFixAction,
-  actions: &[CodeActionKind],
-  fix_priority: u32,
-  only_one: bool,
-) -> bool {
-  actions.iter().all(|i| {
-    if let CodeActionKind::Tsc(_, a) = i {
-      if action == a {
-        return true;
-      }
-      if a.fix_id.is_some() {
-        return true;
-      }
-      if let Some((other_fix_priority, _)) =
-        PREFERRED_FIXES.get(a.fix_name.as_str())
-      {
-        match other_fix_priority.cmp(&fix_priority) {
-          Ordering::Less => return true,
-          Ordering::Greater => return false,
-          Ordering::Equal => (),
-        }
-        if only_one && action.fix_name == a.fix_name {
-          return false;
-        }
-      }
-      true
-    } else if let CodeActionKind::Deno(_) = i {
-      // This is to make sure 'Remove import' isn't preferred over 'Cache
-      // dependencies'.
-      false
-    } else {
-      true
-    }
-  })
-}
-
 /// Convert changes returned from a TypeScript quick fix action into edits
 /// for an LSP CodeAction.
 pub fn ts_changes_to_edit(
@@ -881,17 +952,17 @@ pub fn ts_changes_to_edit(
   module: &DocumentModule,
   language_server: &language_server::Inner,
 ) -> Result<Option<lsp::WorkspaceEdit>, AnyError> {
-  let mut text_document_edits = Vec::new();
+  let mut edits_by_uri = HashMap::with_capacity(changes.len());
   for change in changes {
-    let Some(edit) = change.to_text_document_edit(module, language_server)
+    let Some((uri, edits)) = change.to_text_edits(module, language_server)
     else {
       continue;
     };
-    text_document_edits.push(edit);
+    edits_by_uri.insert(uri, edits);
   }
   Ok(Some(lsp::WorkspaceEdit {
-    changes: None,
-    document_changes: Some(lsp::DocumentChanges::Edits(text_document_edits)),
+    changes: Some(edits_by_uri),
+    document_changes: None,
     change_annotations: None,
   }))
 }
@@ -903,253 +974,22 @@ pub struct CodeActionData {
   pub fix_id: String,
 }
 
-#[derive(Debug, Clone)]
-enum CodeActionKind {
-  Deno(lsp::CodeAction),
-  DenoLint(lsp::CodeAction),
-  Tsc(lsp::CodeAction, tsc::CodeFixAction),
-}
-
-#[derive(Debug, Hash, PartialEq, Eq)]
-enum FixAllKind {
-  Tsc(String),
-}
-
 #[derive(Debug, Default)]
-pub struct CodeActionCollection {
-  actions: Vec<CodeActionKind>,
-  fix_all_actions: HashMap<FixAllKind, CodeActionKind>,
+pub struct TsFixActionCollector {
+  entries: Vec<(lsp::CodeAction, tsc::CodeFixAction)>,
+  fix_all_entries_by_id: HashMap<String, (lsp::CodeAction, tsc::CodeFixAction)>,
 }
 
-impl CodeActionCollection {
-  pub fn add_deno_fix_action(
-    &mut self,
-    uri: &Uri,
-    specifier: &ModuleSpecifier,
-    diagnostic: &lsp::Diagnostic,
-  ) -> Result<(), AnyError> {
-    let code_action =
-      DenoDiagnostic::get_code_action(uri, specifier, diagnostic)?;
-    self.actions.push(CodeActionKind::Deno(code_action));
-    Ok(())
-  }
-
-  pub fn add_deno_lint_actions(
-    &mut self,
-    uri: &Uri,
-    module: &DocumentModule,
-    diagnostic: &lsp::Diagnostic,
-  ) -> Result<(), AnyError> {
-    if let Some(data_quick_fixes) = diagnostic
-      .data
-      .as_ref()
-      .and_then(|d| serde_json::from_value::<Vec<DataQuickFix>>(d.clone()).ok())
-    {
-      for quick_fix in data_quick_fixes {
-        let mut changes = HashMap::new();
-        changes.insert(
-          uri.clone(),
-          quick_fix
-            .changes
-            .into_iter()
-            .map(|change| lsp::TextEdit {
-              new_text: change.new_text.clone(),
-              range: change.range,
-            })
-            .collect(),
-        );
-        let code_action = lsp::CodeAction {
-          title: quick_fix.description.to_string(),
-          kind: Some(lsp::CodeActionKind::QUICKFIX),
-          diagnostics: Some(vec![diagnostic.clone()]),
-          command: None,
-          is_preferred: None,
-          disabled: None,
-          data: None,
-          edit: Some(lsp::WorkspaceEdit {
-            changes: Some(changes),
-            change_annotations: None,
-            document_changes: None,
-          }),
-        };
-        self.actions.push(CodeActionKind::DenoLint(code_action));
-      }
-    }
-    self.add_deno_lint_ignore_action(uri, module, diagnostic)
-  }
-
-  fn add_deno_lint_ignore_action(
-    &mut self,
-    uri: &Uri,
-    module: &DocumentModule,
-    diagnostic: &lsp::Diagnostic,
-  ) -> Result<(), AnyError> {
-    let code = diagnostic
-      .code
-      .as_ref()
-      .map(|v| match v {
-        lsp::NumberOrString::String(v) => v.to_owned(),
-        _ => "".to_string(),
-      })
-      .unwrap();
-    let text_info = module.text_info();
-
-    let line_content = text_info
-      .line_text(diagnostic.range.start.line as usize)
-      .to_string();
-
-    let mut changes = HashMap::new();
-    changes.insert(
-      uri.clone(),
-      vec![lsp::TextEdit {
-        new_text: prepend_whitespace(
-          format!("// deno-lint-ignore {code}\n"),
-          Some(line_content),
-        ),
-        range: lsp::Range {
-          start: lsp::Position {
-            line: diagnostic.range.start.line,
-            character: 0,
-          },
-          end: lsp::Position {
-            line: diagnostic.range.start.line,
-            character: 0,
-          },
-        },
-      }],
-    );
-    let ignore_error_action = lsp::CodeAction {
-      title: format!("Disable {code} for this line"),
-      kind: Some(lsp::CodeActionKind::QUICKFIX),
-      diagnostics: Some(vec![diagnostic.clone()]),
-      command: None,
-      is_preferred: None,
-      disabled: None,
-      data: None,
-      edit: Some(lsp::WorkspaceEdit {
-        changes: Some(changes),
-        change_annotations: None,
-        document_changes: None,
-      }),
-    };
-    self
-      .actions
-      .push(CodeActionKind::DenoLint(ignore_error_action));
-
-    // Disable a lint error for the entire file.
-    let maybe_ignore_comment = module
-      .open_data
-      .as_ref()
-      .and_then(|d| d.parsed_source.as_ref())
-      .and_then(|ps| {
-        let ps = ps.as_ref().ok()?;
-        // Note: we can use ps.get_leading_comments() but it doesn't
-        // work when shebang is present at the top of the file.
-        ps.comments().get_vec().iter().find_map(|c| {
-          let comment_text = c.text.trim();
-          comment_text.split_whitespace().next().and_then(|prefix| {
-            if prefix == "deno-lint-ignore-file" {
-              Some(c.clone())
-            } else {
-              None
-            }
-          })
-        })
-      });
-
-    let mut new_text = format!("// deno-lint-ignore-file {code}\n");
-    let mut range = lsp::Range {
-      start: lsp::Position {
-        line: 0,
-        character: 0,
-      },
-      end: lsp::Position {
-        line: 0,
-        character: 0,
-      },
-    };
-    // If ignore file comment already exists, append the lint code
-    // to the existing comment.
-    if let Some(ignore_comment) = maybe_ignore_comment {
-      new_text = format!(" {code}");
-      // Get the end position of the comment.
-      let line = text_info.line_and_column_index(ignore_comment.end());
-      let position = lsp::Position {
-        line: line.line_index as u32,
-        character: line.column_index as u32,
-      };
-      // Set the edit range to the end of the comment.
-      range.start = position;
-      range.end = position;
-    }
-
-    let mut changes = HashMap::new();
-    changes.insert(uri.clone(), vec![lsp::TextEdit { new_text, range }]);
-    let ignore_file_action = lsp::CodeAction {
-      title: format!("Disable {code} for the entire file"),
-      kind: Some(lsp::CodeActionKind::QUICKFIX),
-      diagnostics: Some(vec![diagnostic.clone()]),
-      command: None,
-      is_preferred: None,
-      disabled: None,
-      data: None,
-      edit: Some(lsp::WorkspaceEdit {
-        changes: Some(changes),
-        change_annotations: None,
-        document_changes: None,
-      }),
-    };
-    self
-      .actions
-      .push(CodeActionKind::DenoLint(ignore_file_action));
-
-    let mut changes = HashMap::new();
-    changes.insert(
-      uri.clone(),
-      vec![lsp::TextEdit {
-        new_text: "// deno-lint-ignore-file\n".to_string(),
-        range: lsp::Range {
-          start: lsp::Position {
-            line: 0,
-            character: 0,
-          },
-          end: lsp::Position {
-            line: 0,
-            character: 0,
-          },
-        },
-      }],
-    );
-    let ignore_file_action = lsp::CodeAction {
-      title: "Ignore lint errors for the entire file".to_string(),
-      kind: Some(lsp::CodeActionKind::QUICKFIX),
-      diagnostics: Some(vec![diagnostic.clone()]),
-      command: None,
-      is_preferred: None,
-      disabled: None,
-      data: None,
-      edit: Some(lsp::WorkspaceEdit {
-        changes: Some(changes),
-        change_annotations: None,
-        document_changes: None,
-      }),
-    };
-    self
-      .actions
-      .push(CodeActionKind::DenoLint(ignore_file_action));
-
-    Ok(())
-  }
-
+impl TsFixActionCollector {
   /// Add a TypeScript code fix action to the code actions collection.
   pub fn add_ts_fix_action(
     &mut self,
-    action: &tsc::CodeFixAction,
+    fix_action: &tsc::CodeFixAction,
     diagnostic: &lsp::Diagnostic,
     module: &DocumentModule,
     language_server: &language_server::Inner,
   ) -> Result<(), AnyError> {
-    if action.commands.is_some() {
+    if fix_action.commands.is_some() {
       // In theory, tsc can return actions that require "commands" to be applied
       // back into TypeScript.  Currently there is only one command, `install
       // package` but Deno doesn't support that.  The problem is that the
@@ -1165,13 +1005,15 @@ impl CodeActionCollection {
         .into(),
       );
     }
-    let Some(action) = fix_ts_import_action(action, module, language_server)
+    let Some(fix_action) =
+      fix_ts_import_action(fix_action, module, language_server)
     else {
       return Ok(());
     };
-    let edit = ts_changes_to_edit(&action.changes, module, language_server)?;
-    let code_action = lsp::CodeAction {
-      title: action.description.clone(),
+    let edit =
+      ts_changes_to_edit(&fix_action.changes, module, language_server)?;
+    let action = lsp::CodeAction {
+      title: fix_action.description.clone(),
       kind: Some(lsp::CodeActionKind::QUICKFIX),
       diagnostics: Some(vec![diagnostic.clone()]),
       edit,
@@ -1180,28 +1022,19 @@ impl CodeActionCollection {
       disabled: None,
       data: None,
     };
-    self.actions.retain(|i| match i {
-      CodeActionKind::Tsc(c, a) => {
-        !(action.fix_name == a.fix_name && code_action.edit == c.edit)
-      }
-      _ => true,
+    self.entries.retain(|(a, f)| {
+      !(fix_action.fix_name == f.fix_name && action.edit == a.edit)
     });
-    self
-      .actions
-      .push(CodeActionKind::Tsc(code_action, action.as_ref().clone()));
+    self.entries.push((action, fix_action.as_ref().clone()));
 
-    if let Some(fix_id) = &action.fix_id
-      && let Some(CodeActionKind::Tsc(existing_fix_all, existing_action)) =
-        self.fix_all_actions.get(&FixAllKind::Tsc(fix_id.clone()))
+    if let Some(fix_id) = &fix_action.fix_id
+      && let Some((existing_fix_all, existing_action)) =
+        self.fix_all_entries_by_id.get(fix_id)
     {
-      self.actions.retain(|i| match i {
-        CodeActionKind::Tsc(c, _) => c != existing_fix_all,
-        _ => true,
-      });
-      self.actions.push(CodeActionKind::Tsc(
-        existing_fix_all.clone(),
-        existing_action.clone(),
-      ));
+      self.entries.retain(|(c, _)| c != existing_fix_all);
+      self
+        .entries
+        .push((existing_fix_all.clone(), existing_action.clone()));
     }
     Ok(())
   }
@@ -1236,45 +1069,17 @@ impl CodeActionCollection {
       disabled: None,
       data,
     };
-    if let Some(CodeActionKind::Tsc(existing, _)) = self
-      .fix_all_actions
-      .get(&FixAllKind::Tsc(action.fix_id.clone().unwrap()))
+    if let Some((existing, _)) = self
+      .fix_all_entries_by_id
+      .get(action.fix_id.as_ref().unwrap())
     {
-      self.actions.retain(|i| match i {
-        CodeActionKind::Tsc(c, _) => c != existing,
-        _ => true,
-      });
+      self.entries.retain(|(a, _)| a != existing);
     }
-    self
-      .actions
-      .push(CodeActionKind::Tsc(code_action.clone(), action.clone()));
-    self.fix_all_actions.insert(
-      FixAllKind::Tsc(action.fix_id.clone().unwrap()),
-      CodeActionKind::Tsc(code_action, action.clone()),
+    self.entries.push((code_action.clone(), action.clone()));
+    self.fix_all_entries_by_id.insert(
+      action.fix_id.clone().unwrap(),
+      (code_action, action.clone()),
     );
-  }
-
-  /// Move out the code actions and return them as a `CodeActionResponse`.
-  pub fn get_response(self) -> lsp::CodeActionResponse {
-    // Prefer Deno fixes first, then TSC fixes, then Deno lint fixes.
-    let (deno, rest): (Vec<_>, Vec<_>) = self
-      .actions
-      .into_iter()
-      .partition(|a| matches!(a, CodeActionKind::Deno(_)));
-    let (tsc, deno_lint): (Vec<_>, Vec<_>) = rest
-      .into_iter()
-      .partition(|a| matches!(a, CodeActionKind::Tsc(..)));
-
-    deno
-      .into_iter()
-      .chain(tsc)
-      .chain(deno_lint)
-      .map(|k| match k {
-        CodeActionKind::Deno(c) => lsp::CodeActionOrCommand::CodeAction(c),
-        CodeActionKind::DenoLint(c) => lsp::CodeActionOrCommand::CodeAction(c),
-        CodeActionKind::Tsc(c, _) => lsp::CodeActionOrCommand::CodeAction(c),
-      })
-      .collect()
   }
 
   /// Determine if a action can be converted into a "fix all" action.
@@ -1286,10 +1091,10 @@ impl CodeActionCollection {
   ) -> bool {
     // If the action does not have a fix id (indicating it can be "bundled up")
     // or if the collection already contains a "bundled" action return false
-    if action.fix_id.is_none()
-      || self
-        .fix_all_actions
-        .contains_key(&FixAllKind::Tsc(action.fix_id.clone().unwrap()))
+    if action
+      .fix_id
+      .as_ref()
+      .is_none_or(|fix_id| self.fix_all_entries_by_id.contains_key(fix_id))
     {
       false
     } else {
@@ -1297,56 +1102,77 @@ impl CodeActionCollection {
       // other diagnostics that could be bundled together in a "fix all" code
       // action
       file_diagnostics.iter().any(|d| {
-        if d == diagnostic || d.code.is_none() || diagnostic.code.is_none() {
-          false
-        } else {
-          d.code == diagnostic.code
-            || is_equivalent_code(&d.code, &diagnostic.code)
+        if d.source.as_deref() != Some(DiagnosticSource::Ts.as_lsp_source())
+          || d == diagnostic
+          || d.code.is_none()
+          || diagnostic.code.is_none()
+        {
+          return false;
         }
+        d.code == diagnostic.code
+          || is_equivalent_code(&d.code, &diagnostic.code)
       })
     }
   }
 
-  /// Set the `.is_preferred` flag on code actions, this should be only executed
-  /// when all actions are added to the collection.
-  pub fn set_preferred_fixes(&mut self) {
-    let actions = self.actions.clone();
-    for entry in self.actions.iter_mut() {
-      if let CodeActionKind::Tsc(code_action, action) = entry {
-        if action.fix_id.is_some() {
-          continue;
+  pub fn into_code_actions(
+    self,
+    has_deno_code_actions: bool,
+  ) -> impl Iterator<Item = lsp::CodeAction> {
+    // Finalize `CodeAction::is_preferred` before returning.
+    let is_preferred_list = self
+      .entries
+      .iter()
+      .map(|(_, fix_action)| {
+        if fix_action.fix_id.is_some() {
+          return None;
         }
-        if let Some((fix_priority, only_one)) =
-          PREFERRED_FIXES.get(action.fix_name.as_str())
-        {
-          code_action.is_preferred =
-            Some(is_preferred(action, &actions, *fix_priority, *only_one));
+        let (fix_priority, only_one) =
+          PREFERRED_FIXES.get(fix_action.fix_name.as_str())?;
+        // This is to make sure 'Remove import' isn't preferred over 'Cache
+        // dependencies'.
+        if has_deno_code_actions {
+          return Some(false);
         }
-      }
-    }
-  }
-
-  pub fn add_cache_all_action(
-    &mut self,
-    specifier: &ModuleSpecifier,
-    diagnostics: Vec<lsp::Diagnostic>,
-  ) {
-    self.actions.push(CodeActionKind::Deno(lsp::CodeAction {
-      title: "Cache all dependencies of this module.".to_string(),
-      kind: Some(lsp::CodeActionKind::QUICKFIX),
-      diagnostics: Some(diagnostics),
-      command: Some(lsp::Command {
-        title: "".to_string(),
-        command: "deno.cache".to_string(),
-        arguments: Some(vec![json!([]), json!(&specifier)]),
-      }),
-      ..Default::default()
-    }));
+        for (_, other_fix_action) in &self.entries {
+          if other_fix_action == fix_action {
+            continue;
+          }
+          if other_fix_action.fix_id.is_some() {
+            continue;
+          }
+          let Some((other_fix_priority, _)) =
+            PREFERRED_FIXES.get(other_fix_action.fix_name.as_str())
+          else {
+            continue;
+          };
+          match other_fix_priority.cmp(fix_priority) {
+            Ordering::Less => continue,
+            Ordering::Greater => return Some(false),
+            Ordering::Equal => {
+              if *only_one && fix_action.fix_name == other_fix_action.fix_name {
+                return Some(false);
+              }
+            }
+          }
+        }
+        Some(true)
+      })
+      .collect::<Vec<_>>();
+    self.entries.into_iter().zip(is_preferred_list).map(
+      |((mut action, _), is_preferred)| {
+        action.is_preferred = is_preferred;
+        action
+      },
+    )
   }
 }
 
 /// Prepend the whitespace characters found at the start of line_content to content.
-fn prepend_whitespace(content: String, line_content: Option<String>) -> String {
+pub fn prepend_whitespace(
+  content: String,
+  line_content: Option<String>,
+) -> String {
   if let Some(line) = line_content {
     let whitespace_end = line
       .char_indices()

@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::collections::BTreeMap;
@@ -86,10 +86,16 @@ pub struct Metadata {
   pub env_vars_from_env_file: IndexMap<String, String>,
   pub workspace_resolver: SerializedWorkspaceResolver,
   pub entrypoint_key: String,
+  pub preload_modules: Vec<String>,
+  pub require_modules: Vec<String>,
   pub node_modules: Option<NodeModules>,
   pub unstable_config: UnstableConfig,
   pub otel_config: OtelConfig,
   pub vfs_case_sensitivity: FileSystemCaseSensitivity,
+  /// When set, the binary is self-extracting. The value is a precomputed
+  /// hash of the VFS data used for versioning the extraction directory.
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub self_extracting: Option<String>,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
@@ -187,7 +193,7 @@ impl<'a> DenoRtSerializable<'a> for RemoteModuleEntry<'a> {
 
 impl<'a> DenoRtDeserializable<'a> for RemoteModuleEntry<'a> {
   fn deserialize(input: &'a [u8]) -> std::io::Result<(&'a [u8], Self)> {
-    #[allow(clippy::type_complexity)]
+    #[allow(clippy::type_complexity, reason = "private code")]
     fn deserialize_data_if_has_flag(
       input: &[u8],
       has_data_flags: u8,
@@ -242,12 +248,15 @@ fn serialize_media_type(media_type: MediaType) -> u8 {
     MediaType::Dcts => 9,
     MediaType::Tsx => 10,
     MediaType::Json => 11,
-    MediaType::Wasm => 12,
-    MediaType::Css => 13,
-    MediaType::Html => 14,
-    MediaType::SourceMap => 15,
-    MediaType::Sql => 16,
-    MediaType::Unknown => 17,
+    MediaType::Jsonc => 12,
+    MediaType::Json5 => 13,
+    MediaType::Markdown => 14,
+    MediaType::Wasm => 15,
+    MediaType::Css => 16,
+    MediaType::Html => 17,
+    MediaType::SourceMap => 18,
+    MediaType::Sql => 19,
+    MediaType::Unknown => 20,
   }
 }
 
@@ -267,12 +276,15 @@ impl<'a> DenoRtDeserializable<'a> for MediaType {
       9 => MediaType::Dcts,
       10 => MediaType::Tsx,
       11 => MediaType::Json,
-      12 => MediaType::Wasm,
-      13 => MediaType::Css,
-      14 => MediaType::Html,
-      15 => MediaType::SourceMap,
-      16 => MediaType::Sql,
-      17 => MediaType::Unknown,
+      12 => MediaType::Jsonc,
+      13 => MediaType::Json5,
+      14 => MediaType::Markdown,
+      15 => MediaType::Wasm,
+      16 => MediaType::Css,
+      17 => MediaType::Html,
+      18 => MediaType::SourceMap,
+      19 => MediaType::Sql,
+      20 => MediaType::Unknown,
       value => {
         return Err(std::io::Error::new(
           std::io::ErrorKind::InvalidData,
@@ -308,7 +320,7 @@ impl<TData> SpecifierDataStore<TData> {
     self.data.iter().map(|(k, v)| (*k, v))
   }
 
-  #[allow(clippy::len_without_is_empty)]
+  #[allow(clippy::len_without_is_empty, reason = "not useful")]
   pub fn len(&self) -> usize {
     self.data.len()
   }

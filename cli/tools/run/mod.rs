@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::io::Read;
 use std::sync::Arc;
@@ -8,14 +8,11 @@ use deno_config::deno_json::NodeModulesDirMode;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::futures::FutureExt;
-use deno_lib::standalone::binary::SerializedWorkspaceResolverImportMap;
 use deno_lib::worker::LibWorkerFactoryRoots;
 use deno_npm_installer::PackageCaching;
 use deno_npm_installer::graph::NpmCachingStrategy;
 use deno_path_util::resolve_url_or_path;
 use deno_runtime::WorkerExecutionMode;
-use eszip::EszipV2;
-use jsonc_parser::ParseOptions;
 
 use crate::args::EvalFlags;
 use crate::args::Flags;
@@ -40,10 +37,10 @@ To grant permissions, set them before the script argument. For example:
   }
 }
 
-fn set_npm_user_agent() {
+pub fn set_npm_user_agent() {
   static ONCE: std::sync::Once = std::sync::Once::new();
   ONCE.call_once(|| {
-    #[allow(clippy::undocumented_unsafe_blocks)]
+    // SAFETY: guarded by Once so only called once from a single thread
     unsafe {
       std::env::set_var(
         crate::npm::NPM_CONFIG_USER_AGENT_ENV_VAR,
@@ -89,6 +86,7 @@ pub async fn run_script(
     ),
   ))?;
   let preload_modules = cli_options.preload_modules()?;
+  let require_modules = cli_options.require_modules()?;
 
   if main_module.scheme() == "npm" {
     set_npm_user_agent();
@@ -104,6 +102,7 @@ pub async fn run_script(
       mode,
       main_module.clone(),
       preload_modules,
+      require_modules,
       unconfigured_runtime,
     )
     .await
@@ -125,6 +124,7 @@ pub async fn run_from_stdin(
   let cli_options = factory.cli_options()?;
   let main_module = cli_options.resolve_main_module()?;
   let preload_modules = cli_options.preload_modules()?;
+  let require_modules = cli_options.require_modules()?;
 
   maybe_npm_install(&factory).await?;
 
@@ -141,6 +141,7 @@ pub async fn run_from_stdin(
     mtime: None,
     maybe_headers: None,
     source: source.into(),
+    loaded_from: deno_cache_dir::file_fetcher::LoadedFrom::Local,
   });
 
   let mut worker = worker_factory
@@ -148,6 +149,7 @@ pub async fn run_from_stdin(
       WorkerExecutionMode::Run,
       main_module.clone(),
       preload_modules,
+      require_modules,
       unconfigured_runtime,
     )
     .await?;
@@ -180,6 +182,7 @@ async fn run_with_watch(
         let cli_options = factory.cli_options()?;
         let main_module = cli_options.resolve_main_module()?;
         let preload_modules = cli_options.preload_modules()?;
+        let require_modules = cli_options.require_modules()?;
 
         if main_module.scheme() == "npm" {
           set_npm_user_agent();
@@ -192,7 +195,12 @@ async fn run_with_watch(
         let mut worker = factory
           .create_cli_main_worker_factory()
           .await?
-          .create_main_worker(mode, main_module.clone(), preload_modules)
+          .create_main_worker(
+            mode,
+            main_module.clone(),
+            preload_modules,
+            require_modules,
+          )
           .await?;
 
         if watch_flags.hmr {
@@ -215,11 +223,53 @@ pub async fn eval_command(
   flags: Arc<Flags>,
   eval_flags: EvalFlags,
 ) -> Result<i32, AnyError> {
+  // Auto-detect CJS vs ESM if --ext was not explicitly provided.
+  // Default is ESM (preserving existing behavior). Only switch to CJS if
+  // the code contains CJS-specific patterns like require() calls.
+  // We check for import/export declarations first — if present, it's
+  // definitely ESM. If absent, we look for CJS patterns to decide.
+  let flags = if flags.ext.is_none() {
+    let source_code = if eval_flags.print {
+      format!("console.log({})", &eval_flags.code)
+    } else {
+      eval_flags.code.clone()
+    };
+    let specifier = deno_core::url::Url::parse("file:///eval.js").unwrap();
+    let is_script = deno_ast::parse_program(deno_ast::ParseParams {
+      specifier,
+      text: source_code.clone().into(),
+      media_type: deno_ast::MediaType::JavaScript,
+      capture_tokens: false,
+      scope_analysis: false,
+      maybe_syntax: None,
+    })
+    .map(|parsed| parsed.compute_is_script())
+    .unwrap_or(true);
+    // Only treat as CJS if it parses as a script AND contains CJS patterns.
+    // This preserves backward compatibility: code without imports/exports
+    // defaults to ESM (the longstanding deno eval behavior).
+    let has_cjs_patterns = is_script
+      && (source_code.contains("require(")
+        || source_code.contains("module.exports")
+        || source_code.contains("exports.")
+        || source_code.contains("__dirname")
+        || source_code.contains("__filename"));
+    if has_cjs_patterns {
+      let mut flags = (*flags).clone();
+      flags.ext = Some("cjs".to_string());
+      Arc::new(flags)
+    } else {
+      flags
+    }
+  } else {
+    flags
+  };
   let factory = CliFactory::from_flags(flags);
   let cli_options = factory.cli_options()?;
   let file_fetcher = factory.file_fetcher()?;
   let main_module = cli_options.resolve_main_module()?;
   let preload_modules = cli_options.preload_modules()?;
+  let require_modules = cli_options.require_modules()?;
 
   maybe_npm_install(&factory).await?;
 
@@ -237,6 +287,7 @@ pub async fn eval_command(
     mtime: None,
     maybe_headers: None,
     source: source_code.into_bytes().into(),
+    loaded_from: deno_cache_dir::file_fetcher::LoadedFrom::Local,
   });
 
   let worker_factory = factory.create_cli_main_worker_factory().await?;
@@ -245,6 +296,7 @@ pub async fn eval_command(
       WorkerExecutionMode::Eval,
       main_module.clone(),
       preload_modules,
+      require_modules,
     )
     .await?;
   let exit_code = worker.run().await?;
@@ -296,6 +348,7 @@ pub async fn run_eszip(
   let mode = WorkerExecutionMode::Run;
   let main_module = resolve_url_or_path(entrypoint, cli_options.initial_cwd())?;
   let preload_modules = cli_options.preload_modules()?;
+  let require_modules = cli_options.require_modules()?;
 
   let worker_factory = factory
     .create_cli_main_worker_factory_with_roots(roots)
@@ -305,46 +358,11 @@ pub async fn run_eszip(
       mode,
       main_module.clone(),
       preload_modules,
+      require_modules,
       unconfigured_runtime,
     )
     .await?;
 
   let exit_code = worker.run().await?;
   Ok(exit_code)
-}
-
-#[allow(unused)]
-async fn load_import_map(
-  eszips: &[EszipV2],
-  specifier: &str,
-) -> Result<SerializedWorkspaceResolverImportMap, AnyError> {
-  let maybe_module = eszips
-    .iter()
-    .rev()
-    .find_map(|eszip| eszip.get_import_map(specifier));
-  let Some(module) = maybe_module else {
-    return Err(AnyError::msg(format!("import map not found '{specifier}'")));
-  };
-  let base_url = deno_core::url::Url::parse(specifier).map_err(|err| {
-    AnyError::msg(format!(
-      "import map specifier '{specifier}' is not a valid url: {err}"
-    ))
-  })?;
-  let bytes = module
-    .source()
-    .await
-    .ok_or_else(|| AnyError::msg("import map not found '{specifier}'"))?;
-  let text = String::from_utf8_lossy(&bytes);
-  let json_value =
-    jsonc_parser::parse_to_serde_value(&text, &ParseOptions::default())
-      .map_err(|err| {
-        AnyError::msg(format!("import map failed to parse: {err}"))
-      })?
-      .ok_or_else(|| AnyError::msg("import map is not valid JSON"))?;
-  let import_map = import_map::parse_from_value(base_url, json_value)?;
-
-  Ok(SerializedWorkspaceResolverImportMap {
-    specifier: specifier.to_string(),
-    json: import_map.import_map.to_json(),
-  })
 }

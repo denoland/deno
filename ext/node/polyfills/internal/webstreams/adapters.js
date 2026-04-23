@@ -1,5 +1,5 @@
 // deno-lint-ignore-file
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 import { destroy } from "ext:deno_node/internal/streams/destroy.js";
 import finished from "ext:deno_node/internal/streams/end-of-stream.js";
 import {
@@ -18,7 +18,10 @@ import {
   kEmptyObject,
   normalizeEncoding,
 } from "ext:deno_node/internal/util.mjs";
-import { AbortError } from "ext:deno_node/internal/errors.ts";
+import {
+  AbortError,
+  ERR_INVALID_ARG_TYPE,
+} from "ext:deno_node/internal/errors.ts";
 import process from "node:process";
 import { Buffer } from "node:buffer";
 import { Duplex, Readable, Writable } from "node:stream";
@@ -516,6 +519,8 @@ export function newReadableStreamFromStreamReadable(
 
   streamReadable.pause();
 
+  let isCanceled = false;
+
   const cleanup = finished(streamReadable, (error) => {
     if (error?.code === "ERR_STREAM_PREMATURE_CLOSE") {
       const err = new AbortError(undefined, { cause: error });
@@ -529,12 +534,16 @@ export function newReadableStreamFromStreamReadable(
     if (error) {
       return controller.error(error);
     }
+    if (isCanceled) {
+      return;
+    }
     controller.close();
   });
 
   streamReadable.on("data", onData);
 
-  return new ReadableStream({
+  const isByteStream = options?.type === "bytes";
+  const underlyingSource = {
     start(c) {
       controller = c;
     },
@@ -544,9 +553,14 @@ export function newReadableStreamFromStreamReadable(
     },
 
     cancel(reason) {
-      destroy(streamReadable, reason);
+      isCanceled = true;
+      destroy.call(streamReadable, reason);
     },
-  }, strategy);
+  };
+  if (isByteStream) {
+    underlyingSource.type = "bytes";
+  }
+  return new ReadableStream(underlyingSource, strategy);
 }
 
 export function newWritableStreamFromStreamWritable(streamWritable) {
@@ -554,7 +568,11 @@ export function newWritableStreamFromStreamWritable(streamWritable) {
   // here because it will return false if streamWritable is a Duplex
   // whose writable option is false. For a Duplex that is not writable,
   // we want it to pass this check but return a closed WritableStream.
-  if (typeof streamWritable?._writableState !== "object") {
+  // We check if the given stream is a stream.Writable or http.OutgoingMessage
+  const checkIfWritableOrOutgoingMessage = streamWritable &&
+    typeof streamWritable?.write === "function" &&
+    typeof streamWritable?.on === "function";
+  if (!checkIfWritableOrOutgoingMessage) {
     throw new ERR_INVALID_ARG_TYPE(
       "streamWritable",
       "stream.Writable",
@@ -651,7 +669,10 @@ export function newWritableStreamFromStreamWritable(streamWritable) {
   }, strategy);
 }
 
-export function newReadableWritablePairFromDuplex(duplex) {
+export function newReadableWritablePairFromDuplex(
+  duplex,
+  options = kEmptyObject,
+) {
   // Not using the internal/streams/utils isWritableNodeStream and
   // isReadableNodestream utilities here because they will return false
   // if the duplex was created with writable or readable options set to
@@ -681,8 +702,11 @@ export function newReadableWritablePairFromDuplex(duplex) {
     writable.close();
   }
 
+  const readableType = options?.readableType || options?.type;
+  const readableOptions = readableType ? { type: readableType } : kEmptyObject;
+
   const readable = isReadable(duplex)
-    ? newReadableStreamFromStreamReadable(duplex)
+    ? newReadableStreamFromStreamReadable(duplex, readableOptions)
     : new ReadableStream();
 
   if (!isReadable(duplex)) {

@@ -1,7 +1,13 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
-import { assertEquals, assertRejects, assertThrows, fail } from "@std/assert";
-import { rm, rmSync } from "node:fs";
-import { existsSync } from "node:fs";
+// Copyright 2018-2026 the Deno authors. MIT license.
+import {
+  assert,
+  assertEquals,
+  assertRejects,
+  assertThrows,
+  fail,
+} from "@std/assert";
+import { existsSync, lstatSync, rm, rmSync, symlinkSync } from "node:fs";
+import { rm as rmPromise } from "node:fs/promises";
 import { join } from "@std/path";
 
 Deno.test({
@@ -130,5 +136,37 @@ Deno.test({
     "SYNC: remove should not fail if target does not exist and force option is true",
   fn() {
     rmSync("/path/to/noexist.text", { force: true });
+  },
+});
+
+Deno.test({
+  name: "SYNC: remove symlinks",
+  fn() {
+    const baseDir = Deno.makeTempDirSync();
+    const dir = `${baseDir}/foo`;
+    const link = `${baseDir}/bar`;
+    Deno.mkdirSync(dir);
+    symlinkSync(dir, link);
+
+    rmSync(link);
+
+    assertEquals(lstatSync(link, { throwIfNoEntry: false }), undefined);
+    assert(lstatSync(dir, { throwIfNoEntry: false }));
+  },
+});
+
+Deno.test({
+  name: "ASYNC: remove symlinks",
+  async fn() {
+    const baseDir = await Deno.makeTempDir();
+    const dir = `${baseDir}/foo`;
+    const link = `${baseDir}/bar`;
+    Deno.mkdirSync(dir);
+    symlinkSync(dir, link);
+
+    await rmPromise(link);
+
+    assertEquals(lstatSync(link, { throwIfNoEntry: false }), undefined);
+    assert(lstatSync(dir, { throwIfNoEntry: false }));
   },
 });

@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::cell::Cell;
@@ -49,6 +49,7 @@ use deno_lib::util::v8::construct_v8_flags;
 use deno_lib::version::DENO_VERSION_INFO;
 use deno_npm::NpmSystemInfo;
 use deno_npm::resolution::SerializedNpmResolutionSnapshot;
+use deno_npm::resolution::ValidSerializedNpmResolutionSnapshot;
 use deno_path_util::fs::atomic_write_file_with_retries;
 use deno_path_util::url_from_directory_path;
 use deno_path_util::url_to_file_path;
@@ -56,6 +57,7 @@ use deno_resolver::file_fetcher::FetchLocalOptions;
 use deno_resolver::file_fetcher::FetchOptions;
 use deno_resolver::file_fetcher::FetchPermissionsOptionRef;
 use deno_resolver::workspace::WorkspaceResolver;
+use deno_semver::npm::NpmPackageReqReference;
 use indexmap::IndexMap;
 use node_resolver::analyze::ResolvedCjsAnalysis;
 
@@ -72,6 +74,9 @@ use crate::npm::CliNpmResolver;
 use crate::resolver::CliCjsTracker;
 use crate::sys::CliSys;
 use crate::util::archive;
+use crate::util::env::handle_dotenv_error;
+use crate::util::env::handle_dotenv_io_error;
+use crate::util::env::handle_dotenv_not_found;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
 
@@ -180,7 +185,6 @@ pub fn is_standalone_binary(exe_path: &Path) -> bool {
   let Ok(data) = std::fs::read(exe_path) else {
     return false;
   };
-
   libsui::utils::is_elf(&data)
     || libsui::utils::is_pe(&data)
     || libsui::utils::is_macho(&data)
@@ -210,7 +214,7 @@ pub struct DenoCompileBinaryWriter<'a> {
 }
 
 impl<'a> DenoCompileBinaryWriter<'a> {
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "construction")]
   pub fn new(
     cjs_module_export_analyzer: &'a CliCjsModuleExportAnalyzer,
     cjs_tracker: &'a CliCjsTracker,
@@ -262,7 +266,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
         bail!(
           "The `--icon` flag is only available when targeting Windows (current: {})",
           target,
-        )
+        );
       }
     }
     self.write_standalone_binary(options, original_binary).await
@@ -364,7 +368,6 @@ impl<'a> DenoCompileBinaryWriter<'a> {
 
   /// This functions creates a standalone deno binary by appending a bundle
   /// and magic trailer to the currently executing binary.
-  #[allow(clippy::too_many_arguments)]
   async fn write_standalone_binary(
     &self,
     options: WriteBinOptions<'_>,
@@ -392,22 +395,36 @@ impl<'a> DenoCompileBinaryWriter<'a> {
     }
     let npm_snapshot = match &self.npm_resolver {
       CliNpmResolver::Managed(managed) => {
-        if graph.npm_packages.is_empty() {
-          None
-        } else {
-          let snapshot = managed
-            .resolution()
-            .serialized_valid_snapshot_for_system(&self.npm_system_info);
+        if graph.modules().any(|m| m.npm().is_some()) {
+          let snapshot = managed.resolution().snapshot();
+          let snapshot = if self.cli_options.unstable_npm_lazy_caching() {
+            let reqs = graph
+              .specifiers()
+              .filter_map(|(s, _)| {
+                NpmPackageReqReference::from_specifier(s)
+                  .ok()
+                  .map(|req_ref| req_ref.into_inner().req)
+              })
+              .collect::<Vec<_>>();
+            snapshot.subset(&reqs)
+          } else {
+            snapshot
+          }
+          .as_valid_serialized_for_system(&self.npm_system_info);
           if !snapshot.as_serialized().packages.is_empty() {
-            self.fill_npm_vfs(&mut vfs).context("Building npm vfs.")?;
+            self
+              .fill_npm_vfs(&mut vfs, Some(&snapshot))
+              .context("Building npm vfs.")?;
             Some(snapshot)
           } else {
             None
           }
+        } else {
+          None
         }
       }
       CliNpmResolver::Byonm(_) => {
-        self.fill_npm_vfs(&mut vfs)?;
+        self.fill_npm_vfs(&mut vfs, None)?;
         None
       }
     };
@@ -551,7 +568,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       match url.scheme() {
         "file" => {
           let file_path = deno_path_util::url_to_file_path(url)?;
-          vfs.add_file_at_path(&file_path)?;
+          vfs.add_path(&file_path)?;
         }
         "http" | "https" => {
           let specifier_id = specifier_store.get_or_add(url);
@@ -696,32 +713,69 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       }),
     };
 
-    let env_vars_from_env_file = match self.cli_options.env_file_name() {
-      Some(env_filenames) => {
-        let mut aggregated_env_vars = IndexMap::new();
-        for env_filename in env_filenames.iter().rev() {
-          log::info!(
-            "{} Environment variables from the file \"{}\" were embedded in the generated executable file",
-            crate::colors::yellow("Warning"),
-            env_filename
-          );
-
-          let env_vars = get_file_env_vars(env_filename.to_string())?;
-          aggregated_env_vars.extend(env_vars);
-        }
-        aggregated_env_vars
+    let env_vars_from_env_file = {
+      let mut aggregated_env_vars = IndexMap::new();
+      for env_file_name in self.cli_options.env_file_names().rev() {
+        match deno_dotenv::find_path_and_content(
+          &CliSys::default(),
+          self.cli_options.initial_cwd(),
+          env_file_name,
+        ) {
+          Ok(Some((env_file_path, content))) => {
+            match get_file_env_vars(&content) {
+              Ok(env_vars) => {
+                aggregated_env_vars.extend(env_vars);
+                log::info!(
+                  "{} Environment variables from the file \"{}\" were embedded in the generated executable file",
+                  crate::colors::yellow("Warning"),
+                  env_file_path.display()
+                );
+              }
+              Err(e) => {
+                handle_dotenv_error(
+                  &e,
+                  &env_file_path,
+                  self.cli_options.log_level(),
+                );
+              }
+            };
+          }
+          Ok(None) => {
+            handle_dotenv_not_found(
+              env_file_name,
+              self.cli_options.log_level(),
+            );
+          }
+          Err(e) => {
+            handle_dotenv_io_error(&e, self.cli_options.log_level());
+          }
+        };
       }
-      None => Default::default(),
+      aggregated_env_vars
     };
 
     output_vfs(&vfs, display_output_filename);
+
+    let preload_modules = self
+      .cli_options
+      .preload_modules()?
+      .into_iter()
+      .map(|s| root_dir_url.specifier_key(&s).into_owned())
+      .collect::<Vec<_>>();
+
+    let require_modules = self
+      .cli_options
+      .require_modules()?
+      .into_iter()
+      .map(|s| root_dir_url.specifier_key(&s).into_owned())
+      .collect::<Vec<_>>();
 
     let metadata = Metadata {
       argv: compile_flags.args.clone(),
       seed: self.cli_options.seed(),
       code_cache_key,
       location: self.cli_options.location_flag().clone(),
-      permissions: self.cli_options.permissions_options(),
+      permissions: self.cli_options.permissions_options()?,
       v8_flags: construct_v8_flags(
         &get_default_v8_flags(),
         self.cli_options.v8_flags(),
@@ -736,6 +790,8 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       ca_data,
       env_vars_from_env_file,
       entrypoint_key: root_dir_url.specifier_key(entrypoint).into_owned(),
+      preload_modules,
+      require_modules,
       workspace_resolver: SerializedWorkspaceResolver {
         import_map: self.workspace_resolver.maybe_import_map().map(|i| {
           SerializedWorkspaceResolverImportMap {
@@ -788,9 +844,20 @@ impl<'a> DenoCompileBinaryWriter<'a> {
         npm_lazy_caching: self.cli_options.unstable_npm_lazy_caching(),
         raw_imports: self.cli_options.unstable_raw_imports(),
         sloppy_imports: self.cli_options.unstable_sloppy_imports(),
+        tsgo: self.cli_options.unstable_tsgo(),
       },
       otel_config: self.cli_options.otel_config(),
       vfs_case_sensitivity: vfs.case_sensitivity,
+      self_extracting: if compile_flags.self_extracting {
+        let mut hasher = FastInsecureHasher::new_deno_versioned();
+        for file in &vfs.files {
+          hasher.write_u64(file.len() as u64);
+          hasher.write(file);
+        }
+        Some(format!("{:016x}", hasher.finish()))
+      } else {
+        None
+      },
     };
 
     let (data_section_bytes, section_sizes) = serialize_binary_data_section(
@@ -849,7 +916,11 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       .await
   }
 
-  fn fill_npm_vfs(&self, builder: &mut VfsBuilder) -> Result<(), AnyError> {
+  fn fill_npm_vfs(
+    &self,
+    builder: &mut VfsBuilder,
+    snapshot: Option<&ValidSerializedNpmResolutionSnapshot>,
+  ) -> Result<(), AnyError> {
     fn maybe_warn_different_system(system_info: &NpmSystemInfo) {
       if system_info != &NpmSystemInfo::default() {
         log::warn!(
@@ -866,10 +937,10 @@ impl<'a> DenoCompileBinaryWriter<'a> {
           builder.add_dir_recursive(node_modules_path)?;
           Ok(())
         } else {
+          let snapshot = snapshot.unwrap();
           // we'll flatten to remove any custom registries later
-          let mut packages = npm_resolver
-            .resolution()
-            .all_system_packages(&self.npm_system_info);
+          let mut packages =
+            snapshot.as_serialized().packages.iter().collect::<Vec<_>>();
           packages.sort_by(|a, b| a.id.cmp(&b.id)); // determinism
           let current_system = NpmSystemInfo::default();
           for package in packages {
@@ -893,7 +964,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       CliNpmResolver::Byonm(_) => {
         maybe_warn_different_system(&self.npm_system_info);
         for pkg_json in self.cli_options.workspace().package_jsons() {
-          builder.add_file_at_path(&pkg_json.path)?;
+          builder.add_path(&pkg_json.path)?;
         }
         // traverse and add all the node_modules directories in the workspace
         let mut pending_dirs = VecDeque::new();
@@ -901,7 +972,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
           self
             .cli_options
             .workspace()
-            .root_dir()
+            .root_dir_url()
             .to_file_path()
             .unwrap(),
         );
@@ -1032,7 +1103,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
   }
 }
 
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, reason = "private code")]
 fn write_binary_bytes(
   mut file_writer: File,
   original_bin: Vec<u8>,
@@ -1079,7 +1150,7 @@ struct BinaryDataSectionSizes {
 /// * <vfs_headers_len><vfs_headers>
 /// * <vfs_file_data_len><vfs_file_data>
 /// * d3n0l4nd
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, reason = "private code")]
 fn serialize_binary_data_section(
   metadata: &Metadata,
   npm_snapshot: Option<SerializedNpmResolutionSnapshot>,
@@ -1220,10 +1291,13 @@ fn get_dev_binary_path() -> Option<OsString> {
 /// This function returns the environment variables specified
 /// in the passed environment file.
 fn get_file_env_vars(
-  filename: String,
-) -> Result<IndexMap<String, String>, dotenvy::Error> {
+  content: &str,
+) -> Result<IndexMap<String, String>, deno_dotenv::ParseError> {
   let mut file_env_vars = IndexMap::new();
-  for item in dotenvy::from_filename_iter(filename)? {
+  for item in deno_dotenv::from_content_sanitized_iter_with_substitution(
+    &CliSys::default(),
+    content,
+  )? {
     let Ok((key, val)) = item else {
       continue; // this failure will be warned about on load
     };

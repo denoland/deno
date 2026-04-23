@@ -6,6 +6,6 @@ Arguments from self.onerror: [
   9,
   9,
   Error: Some error message
-    at [WILDCARD]
+      at [WILDCARD]
 ]
 Is event canceled?: true

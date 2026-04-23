@@ -1,0 +1,10 @@
+# original
+{
+  "version": "3",
+  "remote": {}
+}
+
+# output
+{
+  "version": "5"
+}

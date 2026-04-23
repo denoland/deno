@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 import {
   assert,
   assertEquals,
@@ -232,5 +232,37 @@ Deno.test(
   async function permissionQueryImport() {
     await Deno.permissions.query({ name: "import", host: "jsr.io:443" });
     await Deno.permissions.query({ name: "import", host: "deno.test:443" });
+  },
+);
+
+Deno.test(
+  { permissions: { read: true } },
+  function permissionDevTtyReadAllowed() {
+    if (Deno.build.os !== "linux" && Deno.build.os !== "darwin") {
+      return;
+    }
+    try {
+      const f = Deno.openSync("/dev/tty", { read: true });
+      f.close();
+    } catch (e) {
+      // CI environments may lack /dev/tty (NXIO). We only check for permission errors.
+      if (e instanceof Deno.errors.NotCapable) {
+        throw e;
+      }
+    }
+  },
+);
+
+Deno.test(
+  { permissions: { read: true, write: true } },
+  function permissionDevTtyWriteBlocked() {
+    if (Deno.build.os !== "linux" && Deno.build.os !== "darwin") {
+      return;
+    }
+    assertThrows(() => {
+      // Write access to /dev/tty is always blocked to prevent prompt spoofing.
+      const f = Deno.openSync("/dev/tty", { write: true });
+      f.close();
+    }, Deno.errors.NotCapable);
   },
 );

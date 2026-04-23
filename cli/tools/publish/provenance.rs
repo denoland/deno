@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::collections::HashMap;
 use std::env;
@@ -326,7 +326,7 @@ pub async fn attest(
   let pae = pre_auth_encoding(type_, data);
 
   let signer = FulcioSigner::new(http_client)?;
-  let (signature, key_material) = signer.sign(&pae).await?;
+  let (signature, key_material) = Box::pin(signer.sign(&pae)).await?;
 
   let content = SignatureBundle {
     case: "dsseSignature",
@@ -471,9 +471,8 @@ impl<'a> FulcioSigner<'a> {
     let pem = spki.to_pem(LineEnding::LF)?;
 
     // Create signing certificate
-    let certificates = self
-      .create_signing_certificate(&token, pem, challenge)
-      .await?;
+    let certificates =
+      Box::pin(self.create_signing_certificate(&token, pem, challenge)).await?;
 
     let signature = self.ephemeral_signer.sign(&self.rng, data)?;
 
@@ -582,7 +581,7 @@ static DEFAULT_REKOR_URL: Lazy<String> = Lazy::new(|| {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LogEntry {
-  #[allow(dead_code)]
+  #[allow(dead_code, reason = "useful for debugging")]
   #[serde(rename = "logID")]
   pub log_id: String,
   pub log_index: u64,
@@ -713,11 +712,13 @@ mod tests {
   use super::Subject;
   use super::SubjectDigest;
 
+  // TODO(dsherret): use sys_traits in the implementation so that this can
+  // be properly tested without polluting the process environment
   #[test]
   fn slsa_github_actions() {
     // Set environment variable
     if env::var("GITHUB_ACTIONS").is_err() {
-      #[allow(clippy::undocumented_unsafe_blocks)]
+      // SAFETY: test code
       unsafe {
         env::set_var("CI", "true");
         env::set_var("GITHUB_ACTIONS", "true");

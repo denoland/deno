@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use deno_core::serde_json::json;
 use deno_core::serde_json::{self};
@@ -23,7 +23,7 @@ pub struct TapTestReporter {
   failure_format_options: TestFailureFormatOptions,
 }
 
-#[allow(clippy::print_stdout)]
+#[allow(clippy::print_stdout, reason = "test reporter")]
 impl TapTestReporter {
   pub fn new(
     cwd: Url,
@@ -121,7 +121,7 @@ impl TapTestReporter {
   }
 }
 
-#[allow(clippy::print_stdout)]
+#[allow(clippy::print_stdout, reason = "test reporter")]
 impl TestReporter for TapTestReporter {
   fn report_register(&mut self, _description: &TestDescription) {}
 

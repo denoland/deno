@@ -1,0 +1,1229 @@
+{
+  "nested": {
+    "opentelemetry": {
+      "nested": {
+        "proto": {
+          "nested": {
+            "common": {
+              "nested": {
+                "v1": {
+                  "options": {
+                    "csharp_namespace": "OpenTelemetry.Proto.Common.V1",
+                    "java_multiple_files": true,
+                    "java_package": "io.opentelemetry.proto.common.v1",
+                    "java_outer_classname": "CommonProto",
+                    "go_package": "go.opentelemetry.io/proto/otlp/common/v1"
+                  },
+                  "nested": {
+                    "AnyValue": {
+                      "oneofs": {
+                        "value": {
+                          "oneof": [
+                            "stringValue",
+                            "boolValue",
+                            "intValue",
+                            "doubleValue",
+                            "arrayValue",
+                            "kvlistValue",
+                            "bytesValue"
+                          ]
+                        }
+                      },
+                      "fields": {
+                        "stringValue": {
+                          "type": "string",
+                          "id": 1
+                        },
+                        "boolValue": {
+                          "type": "bool",
+                          "id": 2
+                        },
+                        "intValue": {
+                          "type": "int64",
+                          "id": 3
+                        },
+                        "doubleValue": {
+                          "type": "double",
+                          "id": 4
+                        },
+                        "arrayValue": {
+                          "type": "ArrayValue",
+                          "id": 5
+                        },
+                        "kvlistValue": {
+                          "type": "KeyValueList",
+                          "id": 6
+                        },
+                        "bytesValue": {
+                          "type": "bytes",
+                          "id": 7
+                        }
+                      }
+                    },
+                    "ArrayValue": {
+                      "fields": {
+                        "values": {
+                          "rule": "repeated",
+                          "type": "AnyValue",
+                          "id": 1
+                        }
+                      }
+                    },
+                    "KeyValueList": {
+                      "fields": {
+                        "values": {
+                          "rule": "repeated",
+                          "type": "KeyValue",
+                          "id": 1
+                        }
+                      }
+                    },
+                    "KeyValue": {
+                      "fields": {
+                        "key": {
+                          "type": "string",
+                          "id": 1
+                        },
+                        "value": {
+                          "type": "AnyValue",
+                          "id": 2
+                        }
+                      }
+                    },
+                    "InstrumentationScope": {
+                      "fields": {
+                        "name": {
+                          "type": "string",
+                          "id": 1
+                        },
+                        "version": {
+                          "type": "string",
+                          "id": 2
+                        },
+                        "attributes": {
+                          "rule": "repeated",
+                          "type": "KeyValue",
+                          "id": 3
+                        },
+                        "droppedAttributesCount": {
+                          "type": "uint32",
+                          "id": 4
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "resource": {
+              "nested": {
+                "v1": {
+                  "options": {
+                    "csharp_namespace": "OpenTelemetry.Proto.Resource.V1",
+                    "java_multiple_files": true,
+                    "java_package": "io.opentelemetry.proto.resource.v1",
+                    "java_outer_classname": "ResourceProto",
+                    "go_package": "go.opentelemetry.io/proto/otlp/resource/v1"
+                  },
+                  "nested": {
+                    "Resource": {
+                      "fields": {
+                        "attributes": {
+                          "rule": "repeated",
+                          "type": "opentelemetry.proto.common.v1.KeyValue",
+                          "id": 1
+                        },
+                        "droppedAttributesCount": {
+                          "type": "uint32",
+                          "id": 2
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "trace": {
+              "nested": {
+                "v1": {
+                  "options": {
+                    "csharp_namespace": "OpenTelemetry.Proto.Trace.V1",
+                    "java_multiple_files": true,
+                    "java_package": "io.opentelemetry.proto.trace.v1",
+                    "java_outer_classname": "TraceProto",
+                    "go_package": "go.opentelemetry.io/proto/otlp/trace/v1"
+                  },
+                  "nested": {
+                    "TracesData": {
+                      "fields": {
+                        "resourceSpans": {
+                          "rule": "repeated",
+                          "type": "ResourceSpans",
+                          "id": 1
+                        }
+                      }
+                    },
+                    "ResourceSpans": {
+                      "fields": {
+                        "resource": {
+                          "type": "opentelemetry.proto.resource.v1.Resource",
+                          "id": 1
+                        },
+                        "scopeSpans": {
+                          "rule": "repeated",
+                          "type": "ScopeSpans",
+                          "id": 2
+                        },
+                        "schemaUrl": {
+                          "type": "string",
+                          "id": 3
+                        }
+                      },
+                      "reserved": [
+                        [
+                          1000,
+                          1000
+                        ]
+                      ]
+                    },
+                    "ScopeSpans": {
+                      "fields": {
+                        "scope": {
+                          "type": "opentelemetry.proto.common.v1.InstrumentationScope",
+                          "id": 1
+                        },
+                        "spans": {
+                          "rule": "repeated",
+                          "type": "Span",
+                          "id": 2
+                        },
+                        "schemaUrl": {
+                          "type": "string",
+                          "id": 3
+                        }
+                      }
+                    },
+                    "Span": {
+                      "fields": {
+                        "traceId": {
+                          "type": "bytes",
+                          "id": 1
+                        },
+                        "spanId": {
+                          "type": "bytes",
+                          "id": 2
+                        },
+                        "traceState": {
+                          "type": "string",
+                          "id": 3
+                        },
+                        "parentSpanId": {
+                          "type": "bytes",
+                          "id": 4
+                        },
+                        "flags": {
+                          "type": "fixed32",
+                          "id": 16
+                        },
+                        "name": {
+                          "type": "string",
+                          "id": 5
+                        },
+                        "kind": {
+                          "type": "SpanKind",
+                          "id": 6
+                        },
+                        "startTimeUnixNano": {
+                          "type": "fixed64",
+                          "id": 7
+                        },
+                        "endTimeUnixNano": {
+                          "type": "fixed64",
+                          "id": 8
+                        },
+                        "attributes": {
+                          "rule": "repeated",
+                          "type": "opentelemetry.proto.common.v1.KeyValue",
+                          "id": 9
+                        },
+                        "droppedAttributesCount": {
+                          "type": "uint32",
+                          "id": 10
+                        },
+                        "events": {
+                          "rule": "repeated",
+                          "type": "Event",
+                          "id": 11
+                        },
+                        "droppedEventsCount": {
+                          "type": "uint32",
+                          "id": 12
+                        },
+                        "links": {
+                          "rule": "repeated",
+                          "type": "Link",
+                          "id": 13
+                        },
+                        "droppedLinksCount": {
+                          "type": "uint32",
+                          "id": 14
+                        },
+                        "status": {
+                          "type": "Status",
+                          "id": 15
+                        }
+                      },
+                      "nested": {
+                        "SpanKind": {
+                          "values": {
+                            "SPAN_KIND_UNSPECIFIED": 0,
+                            "SPAN_KIND_INTERNAL": 1,
+                            "SPAN_KIND_SERVER": 2,
+                            "SPAN_KIND_CLIENT": 3,
+                            "SPAN_KIND_PRODUCER": 4,
+                            "SPAN_KIND_CONSUMER": 5
+                          }
+                        },
+                        "Event": {
+                          "fields": {
+                            "timeUnixNano": {
+                              "type": "fixed64",
+                              "id": 1
+                            },
+                            "name": {
+                              "type": "string",
+                              "id": 2
+                            },
+                            "attributes": {
+                              "rule": "repeated",
+                              "type": "opentelemetry.proto.common.v1.KeyValue",
+                              "id": 3
+                            },
+                            "droppedAttributesCount": {
+                              "type": "uint32",
+                              "id": 4
+                            }
+                          }
+                        },
+                        "Link": {
+                          "fields": {
+                            "traceId": {
+                              "type": "bytes",
+                              "id": 1
+                            },
+                            "spanId": {
+                              "type": "bytes",
+                              "id": 2
+                            },
+                            "traceState": {
+                              "type": "string",
+                              "id": 3
+                            },
+                            "attributes": {
+                              "rule": "repeated",
+                              "type": "opentelemetry.proto.common.v1.KeyValue",
+                              "id": 4
+                            },
+                            "droppedAttributesCount": {
+                              "type": "uint32",
+                              "id": 5
+                            },
+                            "flags": {
+                              "type": "fixed32",
+                              "id": 6
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "Status": {
+                      "fields": {
+                        "message": {
+                          "type": "string",
+                          "id": 2
+                        },
+                        "code": {
+                          "type": "StatusCode",
+                          "id": 3
+                        }
+                      },
+                      "reserved": [
+                        [
+                          1,
+                          1
+                        ]
+                      ],
+                      "nested": {
+                        "StatusCode": {
+                          "values": {
+                            "STATUS_CODE_UNSET": 0,
+                            "STATUS_CODE_OK": 1,
+                            "STATUS_CODE_ERROR": 2
+                          }
+                        }
+                      }
+                    },
+                    "SpanFlags": {
+                      "values": {
+                        "SPAN_FLAGS_DO_NOT_USE": 0,
+                        "SPAN_FLAGS_TRACE_FLAGS_MASK": 255,
+                        "SPAN_FLAGS_CONTEXT_HAS_IS_REMOTE_MASK": 256,
+                        "SPAN_FLAGS_CONTEXT_IS_REMOTE_MASK": 512
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "logs": {
+              "nested": {
+                "v1": {
+                  "options": {
+                    "csharp_namespace": "OpenTelemetry.Proto.Logs.V1",
+                    "java_multiple_files": true,
+                    "java_package": "io.opentelemetry.proto.logs.v1",
+                    "java_outer_classname": "LogsProto",
+                    "go_package": "go.opentelemetry.io/proto/otlp/logs/v1"
+                  },
+                  "nested": {
+                    "LogsData": {
+                      "fields": {
+                        "resourceLogs": {
+                          "rule": "repeated",
+                          "type": "ResourceLogs",
+                          "id": 1
+                        }
+                      }
+                    },
+                    "ResourceLogs": {
+                      "fields": {
+                        "resource": {
+                          "type": "opentelemetry.proto.resource.v1.Resource",
+                          "id": 1
+                        },
+                        "scopeLogs": {
+                          "rule": "repeated",
+                          "type": "ScopeLogs",
+                          "id": 2
+                        },
+                        "schemaUrl": {
+                          "type": "string",
+                          "id": 3
+                        }
+                      },
+                      "reserved": [
+                        [
+                          1000,
+                          1000
+                        ]
+                      ]
+                    },
+                    "ScopeLogs": {
+                      "fields": {
+                        "scope": {
+                          "type": "opentelemetry.proto.common.v1.InstrumentationScope",
+                          "id": 1
+                        },
+                        "logRecords": {
+                          "rule": "repeated",
+                          "type": "LogRecord",
+                          "id": 2
+                        },
+                        "schemaUrl": {
+                          "type": "string",
+                          "id": 3
+                        }
+                      }
+                    },
+                    "SeverityNumber": {
+                      "values": {
+                        "SEVERITY_NUMBER_UNSPECIFIED": 0,
+                        "SEVERITY_NUMBER_TRACE": 1,
+                        "SEVERITY_NUMBER_TRACE2": 2,
+                        "SEVERITY_NUMBER_TRACE3": 3,
+                        "SEVERITY_NUMBER_TRACE4": 4,
+                        "SEVERITY_NUMBER_DEBUG": 5,
+                        "SEVERITY_NUMBER_DEBUG2": 6,
+                        "SEVERITY_NUMBER_DEBUG3": 7,
+                        "SEVERITY_NUMBER_DEBUG4": 8,
+                        "SEVERITY_NUMBER_INFO": 9,
+                        "SEVERITY_NUMBER_INFO2": 10,
+                        "SEVERITY_NUMBER_INFO3": 11,
+                        "SEVERITY_NUMBER_INFO4": 12,
+                        "SEVERITY_NUMBER_WARN": 13,
+                        "SEVERITY_NUMBER_WARN2": 14,
+                        "SEVERITY_NUMBER_WARN3": 15,
+                        "SEVERITY_NUMBER_WARN4": 16,
+                        "SEVERITY_NUMBER_ERROR": 17,
+                        "SEVERITY_NUMBER_ERROR2": 18,
+                        "SEVERITY_NUMBER_ERROR3": 19,
+                        "SEVERITY_NUMBER_ERROR4": 20,
+                        "SEVERITY_NUMBER_FATAL": 21,
+                        "SEVERITY_NUMBER_FATAL2": 22,
+                        "SEVERITY_NUMBER_FATAL3": 23,
+                        "SEVERITY_NUMBER_FATAL4": 24
+                      }
+                    },
+                    "LogRecordFlags": {
+                      "values": {
+                        "LOG_RECORD_FLAGS_DO_NOT_USE": 0,
+                        "LOG_RECORD_FLAGS_TRACE_FLAGS_MASK": 255
+                      }
+                    },
+                    "LogRecord": {
+                      "fields": {
+                        "timeUnixNano": {
+                          "type": "fixed64",
+                          "id": 1
+                        },
+                        "observedTimeUnixNano": {
+                          "type": "fixed64",
+                          "id": 11
+                        },
+                        "severityNumber": {
+                          "type": "SeverityNumber",
+                          "id": 2
+                        },
+                        "severityText": {
+                          "type": "string",
+                          "id": 3
+                        },
+                        "body": {
+                          "type": "opentelemetry.proto.common.v1.AnyValue",
+                          "id": 5
+                        },
+                        "attributes": {
+                          "rule": "repeated",
+                          "type": "opentelemetry.proto.common.v1.KeyValue",
+                          "id": 6
+                        },
+                        "droppedAttributesCount": {
+                          "type": "uint32",
+                          "id": 7
+                        },
+                        "flags": {
+                          "type": "fixed32",
+                          "id": 8
+                        },
+                        "traceId": {
+                          "type": "bytes",
+                          "id": 9
+                        },
+                        "spanId": {
+                          "type": "bytes",
+                          "id": 10
+                        }
+                      },
+                      "reserved": [
+                        [
+                          4,
+                          4
+                        ]
+                      ]
+                    }
+                  }
+                }
+              }
+            },
+            "metrics": {
+              "nested": {
+                "v1": {
+                  "options": {
+                    "csharp_namespace": "OpenTelemetry.Proto.Metrics.V1",
+                    "java_multiple_files": true,
+                    "java_package": "io.opentelemetry.proto.metrics.v1",
+                    "java_outer_classname": "MetricsProto",
+                    "go_package": "go.opentelemetry.io/proto/otlp/metrics/v1"
+                  },
+                  "nested": {
+                    "MetricsData": {
+                      "fields": {
+                        "resourceMetrics": {
+                          "rule": "repeated",
+                          "type": "ResourceMetrics",
+                          "id": 1
+                        }
+                      }
+                    },
+                    "ResourceMetrics": {
+                      "fields": {
+                        "resource": {
+                          "type": "opentelemetry.proto.resource.v1.Resource",
+                          "id": 1
+                        },
+                        "scopeMetrics": {
+                          "rule": "repeated",
+                          "type": "ScopeMetrics",
+                          "id": 2
+                        },
+                        "schemaUrl": {
+                          "type": "string",
+                          "id": 3
+                        }
+                      },
+                      "reserved": [
+                        [
+                          1000,
+                          1000
+                        ]
+                      ]
+                    },
+                    "ScopeMetrics": {
+                      "fields": {
+                        "scope": {
+                          "type": "opentelemetry.proto.common.v1.InstrumentationScope",
+                          "id": 1
+                        },
+                        "metrics": {
+                          "rule": "repeated",
+                          "type": "Metric",
+                          "id": 2
+                        },
+                        "schemaUrl": {
+                          "type": "string",
+                          "id": 3
+                        }
+                      }
+                    },
+                    "Metric": {
+                      "oneofs": {
+                        "data": {
+                          "oneof": [
+                            "gauge",
+                            "sum",
+                            "histogram",
+                            "exponentialHistogram",
+                            "summary"
+                          ]
+                        }
+                      },
+                      "fields": {
+                        "name": {
+                          "type": "string",
+                          "id": 1
+                        },
+                        "description": {
+                          "type": "string",
+                          "id": 2
+                        },
+                        "unit": {
+                          "type": "string",
+                          "id": 3
+                        },
+                        "gauge": {
+                          "type": "Gauge",
+                          "id": 5
+                        },
+                        "sum": {
+                          "type": "Sum",
+                          "id": 7
+                        },
+                        "histogram": {
+                          "type": "Histogram",
+                          "id": 9
+                        },
+                        "exponentialHistogram": {
+                          "type": "ExponentialHistogram",
+                          "id": 10
+                        },
+                        "summary": {
+                          "type": "Summary",
+                          "id": 11
+                        },
+                        "metadata": {
+                          "rule": "repeated",
+                          "type": "opentelemetry.proto.common.v1.KeyValue",
+                          "id": 12
+                        }
+                      },
+                      "reserved": [
+                        [
+                          4,
+                          4
+                        ],
+                        [
+                          6,
+                          6
+                        ],
+                        [
+                          8,
+                          8
+                        ]
+                      ]
+                    },
+                    "Gauge": {
+                      "fields": {
+                        "dataPoints": {
+                          "rule": "repeated",
+                          "type": "NumberDataPoint",
+                          "id": 1
+                        }
+                      }
+                    },
+                    "Sum": {
+                      "fields": {
+                        "dataPoints": {
+                          "rule": "repeated",
+                          "type": "NumberDataPoint",
+                          "id": 1
+                        },
+                        "aggregationTemporality": {
+                          "type": "AggregationTemporality",
+                          "id": 2
+                        },
+                        "isMonotonic": {
+                          "type": "bool",
+                          "id": 3
+                        }
+                      }
+                    },
+                    "Histogram": {
+                      "fields": {
+                        "dataPoints": {
+                          "rule": "repeated",
+                          "type": "HistogramDataPoint",
+                          "id": 1
+                        },
+                        "aggregationTemporality": {
+                          "type": "AggregationTemporality",
+                          "id": 2
+                        }
+                      }
+                    },
+                    "ExponentialHistogram": {
+                      "fields": {
+                        "dataPoints": {
+                          "rule": "repeated",
+                          "type": "ExponentialHistogramDataPoint",
+                          "id": 1
+                        },
+                        "aggregationTemporality": {
+                          "type": "AggregationTemporality",
+                          "id": 2
+                        }
+                      }
+                    },
+                    "Summary": {
+                      "fields": {
+                        "dataPoints": {
+                          "rule": "repeated",
+                          "type": "SummaryDataPoint",
+                          "id": 1
+                        }
+                      }
+                    },
+                    "AggregationTemporality": {
+                      "values": {
+                        "AGGREGATION_TEMPORALITY_UNSPECIFIED": 0,
+                        "AGGREGATION_TEMPORALITY_DELTA": 1,
+                        "AGGREGATION_TEMPORALITY_CUMULATIVE": 2
+                      }
+                    },
+                    "DataPointFlags": {
+                      "values": {
+                        "DATA_POINT_FLAGS_DO_NOT_USE": 0,
+                        "DATA_POINT_FLAGS_NO_RECORDED_VALUE_MASK": 1
+                      }
+                    },
+                    "NumberDataPoint": {
+                      "oneofs": {
+                        "value": {
+                          "oneof": [
+                            "asDouble",
+                            "asInt"
+                          ]
+                        }
+                      },
+                      "fields": {
+                        "attributes": {
+                          "rule": "repeated",
+                          "type": "opentelemetry.proto.common.v1.KeyValue",
+                          "id": 7
+                        },
+                        "startTimeUnixNano": {
+                          "type": "fixed64",
+                          "id": 2
+                        },
+                        "timeUnixNano": {
+                          "type": "fixed64",
+                          "id": 3
+                        },
+                        "asDouble": {
+                          "type": "double",
+                          "id": 4
+                        },
+                        "asInt": {
+                          "type": "sfixed64",
+                          "id": 6
+                        },
+                        "exemplars": {
+                          "rule": "repeated",
+                          "type": "Exemplar",
+                          "id": 5
+                        },
+                        "flags": {
+                          "type": "uint32",
+                          "id": 8
+                        }
+                      },
+                      "reserved": [
+                        [
+                          1,
+                          1
+                        ]
+                      ]
+                    },
+                    "HistogramDataPoint": {
+                      "oneofs": {
+                        "_sum": {
+                          "oneof": [
+                            "sum"
+                          ]
+                        },
+                        "_min": {
+                          "oneof": [
+                            "min"
+                          ]
+                        },
+                        "_max": {
+                          "oneof": [
+                            "max"
+                          ]
+                        }
+                      },
+                      "fields": {
+                        "attributes": {
+                          "rule": "repeated",
+                          "type": "opentelemetry.proto.common.v1.KeyValue",
+                          "id": 9
+                        },
+                        "startTimeUnixNano": {
+                          "type": "fixed64",
+                          "id": 2
+                        },
+                        "timeUnixNano": {
+                          "type": "fixed64",
+                          "id": 3
+                        },
+                        "count": {
+                          "type": "fixed64",
+                          "id": 4
+                        },
+                        "sum": {
+                          "type": "double",
+                          "id": 5,
+                          "options": {
+                            "proto3_optional": true
+                          }
+                        },
+                        "bucketCounts": {
+                          "rule": "repeated",
+                          "type": "fixed64",
+                          "id": 6
+                        },
+                        "explicitBounds": {
+                          "rule": "repeated",
+                          "type": "double",
+                          "id": 7
+                        },
+                        "exemplars": {
+                          "rule": "repeated",
+                          "type": "Exemplar",
+                          "id": 8
+                        },
+                        "flags": {
+                          "type": "uint32",
+                          "id": 10
+                        },
+                        "min": {
+                          "type": "double",
+                          "id": 11,
+                          "options": {
+                            "proto3_optional": true
+                          }
+                        },
+                        "max": {
+                          "type": "double",
+                          "id": 12,
+                          "options": {
+                            "proto3_optional": true
+                          }
+                        }
+                      },
+                      "reserved": [
+                        [
+                          1,
+                          1
+                        ]
+                      ]
+                    },
+                    "ExponentialHistogramDataPoint": {
+                      "oneofs": {
+                        "_sum": {
+                          "oneof": [
+                            "sum"
+                          ]
+                        },
+                        "_min": {
+                          "oneof": [
+                            "min"
+                          ]
+                        },
+                        "_max": {
+                          "oneof": [
+                            "max"
+                          ]
+                        }
+                      },
+                      "fields": {
+                        "attributes": {
+                          "rule": "repeated",
+                          "type": "opentelemetry.proto.common.v1.KeyValue",
+                          "id": 1
+                        },
+                        "startTimeUnixNano": {
+                          "type": "fixed64",
+                          "id": 2
+                        },
+                        "timeUnixNano": {
+                          "type": "fixed64",
+                          "id": 3
+                        },
+                        "count": {
+                          "type": "fixed64",
+                          "id": 4
+                        },
+                        "sum": {
+                          "type": "double",
+                          "id": 5,
+                          "options": {
+                            "proto3_optional": true
+                          }
+                        },
+                        "scale": {
+                          "type": "sint32",
+                          "id": 6
+                        },
+                        "zeroCount": {
+                          "type": "fixed64",
+                          "id": 7
+                        },
+                        "positive": {
+                          "type": "Buckets",
+                          "id": 8
+                        },
+                        "negative": {
+                          "type": "Buckets",
+                          "id": 9
+                        },
+                        "flags": {
+                          "type": "uint32",
+                          "id": 10
+                        },
+                        "exemplars": {
+                          "rule": "repeated",
+                          "type": "Exemplar",
+                          "id": 11
+                        },
+                        "min": {
+                          "type": "double",
+                          "id": 12,
+                          "options": {
+                            "proto3_optional": true
+                          }
+                        },
+                        "max": {
+                          "type": "double",
+                          "id": 13,
+                          "options": {
+                            "proto3_optional": true
+                          }
+                        },
+                        "zeroThreshold": {
+                          "type": "double",
+                          "id": 14
+                        }
+                      },
+                      "nested": {
+                        "Buckets": {
+                          "fields": {
+                            "offset": {
+                              "type": "sint32",
+                              "id": 1
+                            },
+                            "bucketCounts": {
+                              "rule": "repeated",
+                              "type": "uint64",
+                              "id": 2
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "SummaryDataPoint": {
+                      "fields": {
+                        "attributes": {
+                          "rule": "repeated",
+                          "type": "opentelemetry.proto.common.v1.KeyValue",
+                          "id": 7
+                        },
+                        "startTimeUnixNano": {
+                          "type": "fixed64",
+                          "id": 2
+                        },
+                        "timeUnixNano": {
+                          "type": "fixed64",
+                          "id": 3
+                        },
+                        "count": {
+                          "type": "fixed64",
+                          "id": 4
+                        },
+                        "sum": {
+                          "type": "double",
+                          "id": 5
+                        },
+                        "quantileValues": {
+                          "rule": "repeated",
+                          "type": "ValueAtQuantile",
+                          "id": 6
+                        },
+                        "flags": {
+                          "type": "uint32",
+                          "id": 8
+                        }
+                      },
+                      "reserved": [
+                        [
+                          1,
+                          1
+                        ]
+                      ],
+                      "nested": {
+                        "ValueAtQuantile": {
+                          "fields": {
+                            "quantile": {
+                              "type": "double",
+                              "id": 1
+                            },
+                            "value": {
+                              "type": "double",
+                              "id": 2
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "Exemplar": {
+                      "oneofs": {
+                        "value": {
+                          "oneof": [
+                            "asDouble",
+                            "asInt"
+                          ]
+                        }
+                      },
+                      "fields": {
+                        "filteredAttributes": {
+                          "rule": "repeated",
+                          "type": "opentelemetry.proto.common.v1.KeyValue",
+                          "id": 7
+                        },
+                        "timeUnixNano": {
+                          "type": "fixed64",
+                          "id": 2
+                        },
+                        "asDouble": {
+                          "type": "double",
+                          "id": 3
+                        },
+                        "asInt": {
+                          "type": "sfixed64",
+                          "id": 6
+                        },
+                        "spanId": {
+                          "type": "bytes",
+                          "id": 4
+                        },
+                        "traceId": {
+                          "type": "bytes",
+                          "id": 5
+                        }
+                      },
+                      "reserved": [
+                        [
+                          1,
+                          1
+                        ]
+                      ]
+                    }
+                  }
+                }
+              }
+            },
+            "collector": {
+              "nested": {
+                "trace": {
+                  "nested": {
+                    "v1": {
+                      "options": {
+                        "csharp_namespace": "OpenTelemetry.Proto.Collector.Trace.V1",
+                        "java_multiple_files": true,
+                        "java_package": "io.opentelemetry.proto.collector.trace.v1",
+                        "java_outer_classname": "TraceServiceProto",
+                        "go_package": "go.opentelemetry.io/proto/otlp/collector/trace/v1"
+                      },
+                      "nested": {
+                        "TraceService": {
+                          "methods": {
+                            "Export": {
+                              "requestType": "ExportTraceServiceRequest",
+                              "responseType": "ExportTraceServiceResponse"
+                            }
+                          }
+                        },
+                        "ExportTraceServiceRequest": {
+                          "fields": {
+                            "resourceSpans": {
+                              "rule": "repeated",
+                              "type": "opentelemetry.proto.trace.v1.ResourceSpans",
+                              "id": 1
+                            }
+                          }
+                        },
+                        "ExportTraceServiceResponse": {
+                          "fields": {
+                            "partialSuccess": {
+                              "type": "ExportTracePartialSuccess",
+                              "id": 1
+                            }
+                          }
+                        },
+                        "ExportTracePartialSuccess": {
+                          "fields": {
+                            "rejectedSpans": {
+                              "type": "int64",
+                              "id": 1
+                            },
+                            "errorMessage": {
+                              "type": "string",
+                              "id": 2
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "logs": {
+                  "nested": {
+                    "v1": {
+                      "options": {
+                        "csharp_namespace": "OpenTelemetry.Proto.Collector.Logs.V1",
+                        "java_multiple_files": true,
+                        "java_package": "io.opentelemetry.proto.collector.logs.v1",
+                        "java_outer_classname": "LogsServiceProto",
+                        "go_package": "go.opentelemetry.io/proto/otlp/collector/logs/v1"
+                      },
+                      "nested": {
+                        "LogsService": {
+                          "methods": {
+                            "Export": {
+                              "requestType": "ExportLogsServiceRequest",
+                              "responseType": "ExportLogsServiceResponse"
+                            }
+                          }
+                        },
+                        "ExportLogsServiceRequest": {
+                          "fields": {
+                            "resourceLogs": {
+                              "rule": "repeated",
+                              "type": "opentelemetry.proto.logs.v1.ResourceLogs",
+                              "id": 1
+                            }
+                          }
+                        },
+                        "ExportLogsServiceResponse": {
+                          "fields": {
+                            "partialSuccess": {
+                              "type": "ExportLogsPartialSuccess",
+                              "id": 1
+                            }
+                          }
+                        },
+                        "ExportLogsPartialSuccess": {
+                          "fields": {
+                            "rejectedLogRecords": {
+                              "type": "int64",
+                              "id": 1
+                            },
+                            "errorMessage": {
+                              "type": "string",
+                              "id": 2
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "metrics": {
+                  "nested": {
+                    "v1": {
+                      "options": {
+                        "csharp_namespace": "OpenTelemetry.Proto.Collector.Metrics.V1",
+                        "java_multiple_files": true,
+                        "java_package": "io.opentelemetry.proto.collector.metrics.v1",
+                        "java_outer_classname": "MetricsServiceProto",
+                        "go_package": "go.opentelemetry.io/proto/otlp/collector/metrics/v1"
+                      },
+                      "nested": {
+                        "MetricsService": {
+                          "methods": {
+                            "Export": {
+                              "requestType": "ExportMetricsServiceRequest",
+                              "responseType": "ExportMetricsServiceResponse"
+                            }
+                          }
+                        },
+                        "ExportMetricsServiceRequest": {
+                          "fields": {
+                            "resourceMetrics": {
+                              "rule": "repeated",
+                              "type": "opentelemetry.proto.metrics.v1.ResourceMetrics",
+                              "id": 1
+                            }
+                          }
+                        },
+                        "ExportMetricsServiceResponse": {
+                          "fields": {
+                            "partialSuccess": {
+                              "type": "ExportMetricsPartialSuccess",
+                              "id": 1
+                            }
+                          }
+                        },
+                        "ExportMetricsPartialSuccess": {
+                          "fields": {
+                            "rejectedDataPoints": {
+                              "type": "int64",
+                              "id": 1
+                            },
+                            "errorMessage": {
+                              "type": "string",
+                              "id": 2
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

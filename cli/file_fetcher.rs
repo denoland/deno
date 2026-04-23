@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::sync::Arc;
 
@@ -14,6 +14,7 @@ use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::url::Url;
 use deno_resolver::file_fetcher::PermissionedFileFetcherOptions;
+use deno_resolver::loader::MemoryFiles;
 use deno_runtime::deno_web::BlobStore;
 use http::HeaderMap;
 use http::StatusCode;
@@ -78,11 +79,12 @@ pub struct CreateCliFileFetcherOptions {
   pub progress_bar: Option<ProgressBar>,
 }
 
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, reason = "construction")]
 pub fn create_cli_file_fetcher(
   blob_store: Arc<BlobStore>,
   http_cache: GlobalOrLocalHttpCache<CliSys>,
   http_client_provider: Arc<HttpClientProvider>,
+  memory_files: Arc<MemoryFiles>,
   sys: CliSys,
   options: CreateCliFileFetcherOptions,
 ) -> CliFileFetcher {
@@ -94,6 +96,7 @@ pub fn create_cli_file_fetcher(
       download_log_level: options.download_log_level,
       progress_bar: options.progress_bar,
     },
+    memory_files,
     sys,
     PermissionedFileFetcherOptions {
       allow_remote: options.allow_remote,
@@ -247,6 +250,7 @@ mod tests {
   use deno_core::resolve_url;
   use deno_resolver::file_fetcher::FetchErrorKind;
   use deno_resolver::file_fetcher::FetchPermissionsOptionRef;
+  use deno_resolver::loader::MemoryFilesRc;
   use deno_runtime::deno_web::Blob;
   use deno_runtime::deno_web::InMemoryBlobPart;
   use test_util::TempDir;
@@ -291,6 +295,7 @@ mod tests {
       blob_store.clone(),
       GlobalOrLocalHttpCache::Global(cache.clone()),
       Arc::new(HttpClientProvider::new(None, None)),
+      MemoryFilesRc::default(),
       CliSys::default(),
       CreateCliFileFetcherOptions {
         allow_remote: true,
@@ -392,6 +397,7 @@ mod tests {
         "content-type".to_string(),
         "application/javascript".to_string(),
       )])),
+      loaded_from: deno_cache_dir::file_fetcher::LoadedFrom::Local,
     };
     file_fetcher.insert_memory_files(file.clone());
 
@@ -514,6 +520,7 @@ mod tests {
       Default::default(),
       Arc::new(GlobalHttpCache::new(CliSys::default(), location)).into(),
       Arc::new(HttpClientProvider::new(None, None)),
+      MemoryFilesRc::default(),
       CliSys::default(),
       CreateCliFileFetcherOptions {
         allow_remote: true,
@@ -547,6 +554,7 @@ mod tests {
         Default::default(),
         http_cache.clone().into(),
         Arc::new(HttpClientProvider::new(None, None)),
+        MemoryFilesRc::default(),
         CliSys::default(),
         CreateCliFileFetcherOptions {
           allow_remote: true,
@@ -571,6 +579,7 @@ mod tests {
         Default::default(),
         Arc::new(GlobalHttpCache::new(CliSys::default(), location)).into(),
         Arc::new(HttpClientProvider::new(None, None)),
+        MemoryFilesRc::default(),
         CliSys::default(),
         CreateCliFileFetcherOptions {
           allow_remote: true,
@@ -706,6 +715,7 @@ mod tests {
         Default::default(),
         http_cache.clone().into(),
         Arc::new(HttpClientProvider::new(None, None)),
+        MemoryFilesRc::default(),
         CliSys::default(),
         CreateCliFileFetcherOptions {
           allow_remote: true,
@@ -731,6 +741,7 @@ mod tests {
         Default::default(),
         http_cache.clone().into(),
         Arc::new(HttpClientProvider::new(None, None)),
+        MemoryFilesRc::default(),
         CliSys::default(),
         CreateCliFileFetcherOptions {
           allow_remote: true,
@@ -840,6 +851,7 @@ mod tests {
       Default::default(),
       Arc::new(GlobalHttpCache::new(CliSys::default(), location)).into(),
       Arc::new(HttpClientProvider::new(None, None)),
+      MemoryFilesRc::default(),
       CliSys::default(),
       CreateCliFileFetcherOptions {
         allow_remote: false,
@@ -888,6 +900,7 @@ mod tests {
       Arc::new(GlobalHttpCache::new(CliSys::default(), location.clone()))
         .into(),
       Arc::new(HttpClientProvider::new(None, None)),
+      MemoryFilesRc::default(),
       CliSys::default(),
       CreateCliFileFetcherOptions {
         allow_remote: true,
@@ -900,6 +913,7 @@ mod tests {
       Default::default(),
       Arc::new(GlobalHttpCache::new(CliSys::default(), location)).into(),
       Arc::new(HttpClientProvider::new(None, None)),
+      MemoryFilesRc::default(),
       CliSys::default(),
       CreateCliFileFetcherOptions {
         allow_remote: true,
@@ -1049,6 +1063,7 @@ mod tests {
   }
 
   fn create_http_client_adapter() -> HttpClientAdapter {
+    let _ = rustls::crypto::ring::default_provider().install_default();
     HttpClientAdapter {
       http_client_provider: Arc::new(HttpClientProvider::new(None, None)),
       download_log_level: log::Level::Info,

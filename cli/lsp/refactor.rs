@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 // The logic of this module is heavily influenced by
 // https://github.com/microsoft/vscode/blob/main/extensions/typescript-language-features/src/languageFeatures/refactor.ts
@@ -157,7 +157,7 @@ pub struct RefactorCodeActionData {
 }
 
 pub fn prune_invalid_actions(
-  actions: Vec<lsp::CodeAction>,
+  actions: impl Iterator<Item = lsp::CodeAction>,
   number_of_invalid: usize,
 ) -> Vec<lsp::CodeAction> {
   let mut available_actions = Vec::<lsp::CodeAction>::new();
