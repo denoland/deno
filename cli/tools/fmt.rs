@@ -1492,10 +1492,24 @@ fn get_resolved_markdown_config(
 fn get_resolved_json_config(
   options: &FmtOptionsConfig,
 ) -> dprint_plugin_json::configuration::Configuration {
+  use deno_config::deno_json::JsonTrailingCommaKind;
+  use dprint_plugin_json::configuration::TrailingCommaKind;
+
   let mut builder =
     dprint_plugin_json::configuration::ConfigurationBuilder::new();
 
   builder.deno();
+  builder.trailing_commas(
+    match options
+      .json_trailing_commas
+      .unwrap_or(JsonTrailingCommaKind::Jsonc)
+    {
+      JsonTrailingCommaKind::Always => TrailingCommaKind::Always,
+      JsonTrailingCommaKind::Jsonc => TrailingCommaKind::Jsonc,
+      JsonTrailingCommaKind::Maintain => TrailingCommaKind::Maintain,
+      JsonTrailingCommaKind::Never => TrailingCommaKind::Never,
+    },
+  );
 
   if let Some(use_tabs) = options.use_tabs {
     builder.use_tabs(use_tabs);
@@ -1837,6 +1851,7 @@ fn is_supported_ext_fmt(path: &Path) -> bool {
 
 #[cfg(test)]
 mod test {
+  use deno_config::deno_json::JsonTrailingCommaKind;
   use test_util::assert_starts_with;
 
   use super::*;
@@ -2018,5 +2033,111 @@ mod test {
     .unwrap()
     .unwrap();
     assert_eq!(file_text, "let a = 1;\n",);
+  }
+
+  #[test]
+  fn test_jsonc_adds_trailing_commas() {
+    let file_text = format_file(
+      Path::new("test.jsonc"),
+      &FileContents {
+        had_bom: false,
+        text: r#"{
+  "a": 1,
+  "b": 2
+}
+"#
+        .into(),
+      },
+      &FmtOptionsConfig::default(),
+      &UnstableFmtOptions::default(),
+      None,
+    )
+    .unwrap()
+    .unwrap();
+    assert_eq!(
+      file_text,
+      r#"{
+  "a": 1,
+  "b": 2,
+}
+"#
+    );
+  }
+
+  #[test]
+  fn test_json_does_not_add_trailing_commas() {
+    let file_text = format_file(
+      Path::new("test.json"),
+      &FileContents {
+        had_bom: false,
+        text: r#"{
+  "a": 1,
+  "b": 2
+}
+"#
+        .into(),
+      },
+      &FmtOptionsConfig::default(),
+      &UnstableFmtOptions::default(),
+      None,
+    )
+    .unwrap();
+    assert_eq!(file_text, None);
+  }
+
+  #[test]
+  fn test_jsonc_trailing_commas_can_be_disabled() {
+    let file_text = format_file(
+      Path::new("test.jsonc"),
+      &FileContents {
+        had_bom: false,
+        text: r#"{
+  "a": 1,
+  "b": 2
+}
+"#
+        .into(),
+      },
+      &FmtOptionsConfig {
+        json_trailing_commas: Some(JsonTrailingCommaKind::Never),
+        ..Default::default()
+      },
+      &UnstableFmtOptions::default(),
+      None,
+    )
+    .unwrap();
+    assert_eq!(file_text, None);
+  }
+
+  #[test]
+  fn test_json_trailing_commas_can_be_enabled() {
+    let file_text = format_file(
+      Path::new("test.json"),
+      &FileContents {
+        had_bom: false,
+        text: r#"{
+  "a": 1,
+  "b": 2
+}
+"#
+        .into(),
+      },
+      &FmtOptionsConfig {
+        json_trailing_commas: Some(JsonTrailingCommaKind::Always),
+        ..Default::default()
+      },
+      &UnstableFmtOptions::default(),
+      None,
+    )
+    .unwrap()
+    .unwrap();
+    assert_eq!(
+      file_text,
+      r#"{
+  "a": 1,
+  "b": 2,
+}
+"#
+    );
   }
 }
