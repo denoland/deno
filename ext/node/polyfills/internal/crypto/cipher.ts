@@ -657,9 +657,13 @@ export function privateEncrypt(
   checkUnsupportedKeyType(privateKey);
   const { data } = prepareKey(privateKey);
   const padding = privateKey.padding || 1;
+  const oaepHash = privateKey.oaepHash || undefined;
+  const oaepLabel = privateKey.oaepLabel || undefined;
 
   buffer = getArrayBufferOrView(buffer, "buffer");
-  return Buffer.from(op_node_private_encrypt(data, buffer, padding));
+  return Buffer.from(
+    op_node_private_encrypt(data, buffer, padding, oaepHash, oaepLabel),
+  );
 }
 
 export function privateDecrypt(
@@ -669,9 +673,13 @@ export function privateDecrypt(
   checkUnsupportedKeyType(privateKey);
   const { data } = prepareKey(privateKey);
   const padding = privateKey.padding || 1;
+  const oaepHash = privateKey.oaepHash || undefined;
+  const oaepLabel = privateKey.oaepLabel || undefined;
 
   buffer = getArrayBufferOrView(buffer, "buffer");
-  return Buffer.from(op_node_private_decrypt(data, buffer, padding));
+  return Buffer.from(
+    op_node_private_decrypt(data, buffer, padding, oaepHash, oaepLabel),
+  );
 }
 
 export function publicEncrypt(
@@ -681,9 +689,13 @@ export function publicEncrypt(
   checkUnsupportedKeyType(publicKey);
   const { data } = prepareKey(publicKey);
   const padding = publicKey.padding || 1;
+  const oaepHash = publicKey.oaepHash || undefined;
+  const oaepLabel = publicKey.oaepLabel || undefined;
 
   buffer = getArrayBufferOrView(buffer, "buffer");
-  return Buffer.from(op_node_public_encrypt(data, buffer, padding));
+  return Buffer.from(
+    op_node_public_encrypt(data, buffer, padding, oaepHash, oaepLabel),
+  );
 }
 
 export function prepareKey(key) {

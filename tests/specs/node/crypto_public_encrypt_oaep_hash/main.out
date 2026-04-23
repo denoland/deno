@@ -1,0 +1,6 @@
+PASS: invalid oaepHash throws
+PASS: sha256 roundtrip: hello
+PASS: sha384 roundtrip: hello
+PASS: sha512 roundtrip: hello
+PASS: default sha1 roundtrip: hello
+PASS: mismatched hash throws
