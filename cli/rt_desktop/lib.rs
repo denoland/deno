@@ -577,12 +577,11 @@ impl denort::desktop::DesktopApi for WefDesktopApi {
           .collect::<Vec<_>>();
         let tx = self.event_tx.clone();
         tray.set_menu(&menu, move |id: &str| {
-          let _ = tx.send(
-            deno_runtime::ops::desktop::DesktopEvent::TrayMenuClick {
+          let _ =
+            tx.send(deno_runtime::ops::desktop::DesktopEvent::TrayMenuClick {
               tray_id,
               id: id.to_string(),
-            },
-          );
+            });
         });
       }
       None => tray.clear_menu(),

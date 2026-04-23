@@ -215,17 +215,20 @@ pub enum DesktopEvent {
   TrayMenuClick { tray_id: u32, id: String },
 }
 
-pub struct DesktopEventReceiver(
-  pub Arc<tokio::sync::Mutex<tokio::sync::mpsc::UnboundedReceiver<DesktopEvent>>>,
-);
-pub struct DesktopEventSender(
-  pub tokio::sync::mpsc::UnboundedSender<DesktopEvent>,
-);
+type DesktopEventRx =
+  tokio::sync::Mutex<tokio::sync::mpsc::UnboundedReceiver<DesktopEvent>>;
+type DesktopEventTx = tokio::sync::mpsc::UnboundedSender<DesktopEvent>;
+
+pub struct DesktopEventReceiver(pub Arc<DesktopEventRx>);
+pub struct DesktopEventSender(pub DesktopEventTx);
 
 pub fn create_desktop_event_channel()
 -> (DesktopEventSender, DesktopEventReceiver) {
   let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
-  (DesktopEventSender(tx), DesktopEventReceiver(Arc::new(tokio::sync::Mutex::new(rx))))
+  (
+    DesktopEventSender(tx),
+    DesktopEventReceiver(Arc::new(tokio::sync::Mutex::new(rx))),
+  )
 }
 
 /// A pending call from the webview to a bound Deno function.
@@ -235,16 +238,12 @@ pub struct PendingBindCall {
   pub response: tokio::sync::oneshot::Sender<Result<serde_json::Value, String>>,
 }
 
+type PendingBindResponsesMap =
+  HashMap<u32, tokio::sync::oneshot::Sender<Result<serde_json::Value, String>>>;
+
 #[derive(Clone)]
 pub struct PendingBindResponses(
-  pub  Arc<
-    std::sync::Mutex<
-      HashMap<
-        u32,
-        tokio::sync::oneshot::Sender<Result<serde_json::Value, String>>,
-      >,
-    >,
-  >,
+  pub Arc<std::sync::Mutex<PendingBindResponsesMap>>,
 );
 
 impl PendingBindResponses {

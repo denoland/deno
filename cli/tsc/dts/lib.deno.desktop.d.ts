@@ -255,43 +255,43 @@ declare namespace Deno {
 
     readonly windowId: number;
 
-    bind<N extends keyof T>(name: N, fn: T[N]);
-    unbind<N extends keyof T>(name: N);
+    bind<N extends keyof T>(name: N, fn: T[N]): void;
+    unbind<N extends keyof T>(name: N): void;
     /** @throws {BrowserWindowValue} */
     executeJs(script: string): Promise<BrowserWindowValue>;
 
-    setTitle(title: string);
+    setTitle(title: string): void;
 
     getSize(): [number, number];
-    setSize(width: number, height: number);
+    setSize(width: number, height: number): void;
 
     getPosition(): [number, number];
-    setPosition(x: number, y: number);
+    setPosition(x: number, y: number): void;
 
     isResizable(): boolean;
-    setResizable(resizable: boolean);
+    setResizable(resizable: boolean): void;
 
     isAlwaysOnTop(): boolean;
-    setAlwaysOnTop(alwaysOnTop: boolean);
+    setAlwaysOnTop(alwaysOnTop: boolean): void;
 
     isClosed(): boolean;
-    close();
+    close(): void;
 
     isVisible(): boolean;
-    show();
-    hide();
-    focus();
-    navigate(url: string);
+    show(): void;
+    hide(): void;
+    focus(): void;
+    navigate(url: string): void;
     /** Open a DevTools window.
      *
      * By default both targets are shown. Pass an options object to
      * select which targets to inspect. At least one must be `true`.
      */
     openDevtools(options?: OpenDevtoolsOptions): void;
-    reload();
+    reload(): void;
 
-    setApplicationMenu(menu: MenuItem[]);
-    showContextMenu(x: number, y: number, menu: MenuItem[]);
+    setApplicationMenu(menu: MenuItem[]): void;
+    showContextMenu(x: number, y: number, menu: MenuItem[]): void;
 
     getNativeWindow(): Deno.UnsafeWindowSurface;
 
@@ -339,8 +339,7 @@ declare namespace Deno {
    * A `"reopen"` event fires on macOS when the user clicks the dock icon;
    * the default behavior of showing the last hidden window is swallowed,
    * so listeners decide what (if anything) to do.
-   *
-   * Only available in apps compiled with `deno desktop`. */
+   */
   export class Dock extends EventTarget {
     constructor();
 
@@ -414,8 +413,7 @@ declare namespace Deno {
    *
    * The icon is removed from the OS when {@linkcode Tray.destroy} is
    * called. Multiple trays may be created.
-   *
-   * Only available in apps compiled with `deno desktop`. */
+   */
   export class Tray extends EventTarget implements Disposable {
     constructor();
 
