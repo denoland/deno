@@ -560,6 +560,9 @@ impl PackageJson {
       };
       let mut result = IndexMap::with_capacity(deps.len());
       for (key, value) in deps {
+        if key.is_empty() {
+          continue;
+        }
         result
           .entry(StackString::from(key.as_str()))
           .or_insert_with(|| PackageJsonDepValue::parse(key, value));
