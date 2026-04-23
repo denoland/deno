@@ -3,18 +3,15 @@
 // because clear_in() rate-limits to 48KB and the remainder was never drained.
 
 import https from "node:https";
-import { execSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 import { Buffer } from "node:buffer";
 
-const certOut = execSync(
-  'openssl req -x509 -newkey rsa:2048 -keyout /dev/stdout -out /dev/stdout -days 1 -nodes -subj "/CN=localhost" 2>/dev/null',
-).toString();
-const key = certOut.match(
-  /-----BEGIN PRIVATE KEY-----[\s\S]+?-----END PRIVATE KEY-----/,
-)![0];
-const cert = certOut.match(
-  /-----BEGIN CERTIFICATE-----[\s\S]+?-----END CERTIFICATE-----/,
-)![0];
+const cert = readFileSync(
+  new URL("../../../testdata/tls/localhost.crt", import.meta.url),
+);
+const key = readFileSync(
+  new URL("../../../testdata/tls/localhost.key", import.meta.url),
+);
 
 const server = https.createServer({ key, cert }, (req, res) => {
   let bodyLen = 0;
