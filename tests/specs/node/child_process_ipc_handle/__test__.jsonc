@@ -1,0 +1,16 @@
+{
+  "tests": {
+    "json_serialization": {
+      "if": "unix",
+      "args": "run -A main.mjs json",
+      "output": "main.out",
+      "exitCode": 0
+    },
+    "advanced_serialization": {
+      "if": "unix",
+      "args": "run -A main.mjs advanced",
+      "output": "main.out",
+      "exitCode": 0
+    }
+  }
+}

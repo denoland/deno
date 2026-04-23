@@ -12,6 +12,18 @@ use tokio::io::AsyncWriteExt;
 
 pub type RawBiPipeHandle = super::RawIoHandle;
 
+#[cfg(unix)]
+fn set_cloexec(fd: std::os::fd::RawFd) {
+  // SAFETY: fcntl is called with a valid fd received from the OS. Errors are
+  // intentionally ignored here because CLOEXEC is a best-effort leak guard.
+  unsafe {
+    let flags = libc::fcntl(fd, libc::F_GETFD);
+    if flags != -1 {
+      libc::fcntl(fd, libc::F_SETFD, flags | libc::FD_CLOEXEC);
+    }
+  }
+}
+
 /// One end of a bidirectional pipe. This implements the
 /// `Resource` trait.
 pub struct BiPipeResource {
@@ -133,6 +145,83 @@ impl From<tokio::net::unix::OwnedReadHalf> for BiPipeRead {
     Self { inner: value }
   }
 }
+
+#[cfg(unix)]
+impl BiPipeRead {
+  pub async fn recv_with_fd(
+    &self,
+    buf: &mut [u8],
+  ) -> Result<(usize, Option<std::os::fd::RawFd>), std::io::Error> {
+    use std::io;
+    use std::mem::size_of;
+    use std::os::fd::AsRawFd;
+
+    use tokio::io::Interest;
+
+    debug_assert!(!buf.is_empty());
+    let stream = self.inner.as_ref();
+    let stream_fd = stream.as_raw_fd();
+
+    // SAFETY: CMSG_SPACE only computes the required control-buffer size.
+    let cmsg_space = unsafe {
+      libc::CMSG_SPACE(size_of::<std::os::fd::RawFd>() as _) as usize
+    };
+    let mut control = vec![0u8; cmsg_space];
+
+    loop {
+      stream.readable().await?;
+      let res = stream.try_io(Interest::READABLE, || {
+        let mut iov = libc::iovec {
+          iov_base: buf.as_mut_ptr().cast(),
+          iov_len: buf.len(),
+        };
+        // SAFETY: msghdr is a plain C struct where zero is a valid initial state.
+        let mut msg: libc::msghdr = unsafe { std::mem::zeroed() };
+        msg.msg_iov = &mut iov;
+        msg.msg_iovlen = 1;
+        msg.msg_control = control.as_mut_ptr().cast();
+        msg.msg_controllen = control.len() as _;
+
+        // Retry EINTR in place: it doesn't change readiness, so there's no
+        // need to bounce back through the outer await.
+        let nread = loop {
+          // SAFETY: msg points to valid iovec and control buffers for this call.
+          let n = unsafe { libc::recvmsg(stream_fd, &mut msg, 0) };
+          if n != -1 {
+            break n as usize;
+          }
+          let err = io::Error::last_os_error();
+          if err.kind() == io::ErrorKind::Interrupted {
+            continue;
+          }
+          return Err(err);
+        };
+
+        let mut fd = None;
+        // SAFETY: msg was populated by recvmsg; CMSG_* helpers inspect the
+        // control buffer bounded by msg_controllen.
+        unsafe {
+          let cmsg = libc::CMSG_FIRSTHDR(&msg);
+          if !cmsg.is_null()
+            && (*cmsg).cmsg_level == libc::SOL_SOCKET
+            && (*cmsg).cmsg_type == libc::SCM_RIGHTS
+          {
+            let data = libc::CMSG_DATA(cmsg).cast::<std::os::fd::RawFd>();
+            let received_fd = *data;
+            set_cloexec(received_fd);
+            fd = Some(received_fd);
+          }
+        }
+        Ok((nread, fd))
+      });
+      match res {
+        Ok(v) => return Ok(v),
+        Err(err) if err.kind() == io::ErrorKind::WouldBlock => continue,
+        Err(err) => return Err(err),
+      }
+    }
+  }
+}
 #[cfg(windows)]
 impl From<tokio::io::ReadHalf<tokio::net::windows::named_pipe::NamedPipeClient>>
   for BiPipeRead
@@ -160,6 +249,82 @@ pub struct BiPipeWrite {
 impl From<tokio::net::unix::OwnedWriteHalf> for BiPipeWrite {
   fn from(value: tokio::net::unix::OwnedWriteHalf) -> Self {
     Self { inner: value }
+  }
+}
+
+#[cfg(unix)]
+impl BiPipeWrite {
+  pub async fn send_with_fd(
+    &self,
+    buf: &[u8],
+    fd: std::os::fd::RawFd,
+  ) -> Result<usize, std::io::Error> {
+    use std::io;
+    use std::mem::size_of;
+    use std::os::fd::AsRawFd;
+
+    use tokio::io::Interest;
+
+    debug_assert!(!buf.is_empty());
+    let stream = self.inner.as_ref();
+    let stream_fd = stream.as_raw_fd();
+
+    // SAFETY: CMSG_SPACE only computes the required control-buffer size.
+    let cmsg_space = unsafe {
+      libc::CMSG_SPACE(size_of::<std::os::fd::RawFd>() as _) as usize
+    };
+    let mut control = vec![0u8; cmsg_space];
+
+    loop {
+      stream.writable().await?;
+      let res = stream.try_io(Interest::WRITABLE, || {
+        let mut iov = libc::iovec {
+          iov_base: buf.as_ptr().cast_mut().cast(),
+          iov_len: buf.len(),
+        };
+        // SAFETY: msghdr is a plain C struct where zero is a valid initial state.
+        let mut msg: libc::msghdr = unsafe { std::mem::zeroed() };
+        msg.msg_iov = &mut iov;
+        msg.msg_iovlen = 1;
+        msg.msg_control = control.as_mut_ptr().cast();
+        msg.msg_controllen = control.len() as _;
+
+        // SAFETY: msg has a valid control buffer large enough for one fd.
+        unsafe {
+          let cmsg = libc::CMSG_FIRSTHDR(&msg);
+          if cmsg.is_null() {
+            return Err(io::Error::other("failed to create control message"));
+          }
+          (*cmsg).cmsg_level = libc::SOL_SOCKET;
+          (*cmsg).cmsg_type = libc::SCM_RIGHTS;
+          (*cmsg).cmsg_len =
+            libc::CMSG_LEN(size_of::<std::os::fd::RawFd>() as _) as _;
+          let data = libc::CMSG_DATA(cmsg).cast::<std::os::fd::RawFd>();
+          *data = fd;
+          msg.msg_controllen =
+            libc::CMSG_SPACE(size_of::<std::os::fd::RawFd>() as _) as _;
+        }
+
+        // Retry EINTR in place (see note in recv_with_fd).
+        loop {
+          // SAFETY: msg points to valid iovec and control buffers for this call.
+          let nwritten = unsafe { libc::sendmsg(stream_fd, &msg, 0) };
+          if nwritten != -1 {
+            return Ok(nwritten as usize);
+          }
+          let err = io::Error::last_os_error();
+          if err.kind() == io::ErrorKind::Interrupted {
+            continue;
+          }
+          return Err(err);
+        }
+      });
+      match res {
+        Ok(n) => return Ok(n),
+        Err(err) if err.kind() == io::ErrorKind::WouldBlock => continue,
+        Err(err) => return Err(err),
+      }
+    }
   }
 }
 

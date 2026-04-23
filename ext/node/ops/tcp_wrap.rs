@@ -332,6 +332,17 @@ impl TCPWrap {
     }
   }
 
+  #[cfg(unix)]
+  #[fast]
+  fn fd_for_ipc(&self) -> i32 {
+    let tcp = self.tcp_ptr();
+    if tcp.is_null() {
+      return -1;
+    }
+    // SAFETY: tcp is valid (null-checked above).
+    unsafe { uv_compat::uv_tcp_fd_for_ipc(tcp) }
+  }
+
   #[fast]
   fn open_from_rid(&self, state: &mut OpState, #[smi] rid: ResourceId) -> i32 {
     let tcp = self.tcp_ptr();

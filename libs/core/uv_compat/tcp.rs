@@ -303,6 +303,33 @@ pub unsafe fn uv_tcp_open(tcp: *mut uv_tcp_t, fd: c_int) -> c_int {
 }
 
 /// ### Safety
+/// `tcp` must be a valid pointer to an initialized `uv_tcp_t`.
+///
+/// Returns the underlying socket file descriptor, for use as the payload of
+/// an SCM_RIGHTS cmsg on an IPC channel. The fd is *not* duplicated: the
+/// handle retains ownership, and callers must keep the handle alive (and
+/// avoid closing it) until the receiver acknowledges the transfer, matching
+/// libuv's `uv_write2` + Node's `NODE_HANDLE` / `NODE_HANDLE_ACK` protocol.
+#[cfg(unix)]
+pub unsafe fn uv_tcp_fd_for_ipc(tcp: *mut uv_tcp_t) -> c_int {
+  use std::os::fd::AsRawFd;
+
+  if tcp.is_null() {
+    return -1;
+  }
+
+  // SAFETY: Caller guarantees tcp is initialized and valid.
+  unsafe {
+    let tcp = &*tcp;
+    if let Some(stream) = tcp.internal_stream.as_ref() {
+      stream.as_raw_fd()
+    } else {
+      tcp.internal_fd.unwrap_or(-1)
+    }
+  }
+}
+
+/// ### Safety
 /// `tcp` must be initialized by `uv_tcp_init`. `addr` must point to a valid sockaddr.
 pub unsafe fn uv_tcp_bind(
   tcp: *mut uv_tcp_t,

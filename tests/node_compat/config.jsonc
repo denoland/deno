@@ -230,6 +230,10 @@
     "parallel/test-child-process-fork-and-spawn.js": {},
     "parallel/test-child-process-fork-close.js": {},
     "parallel/test-child-process-fork-detached.js": {},
+    "parallel/test-child-process-fork-net-socket.js": {
+      "windows": false,
+      "reason": "net.Socket IPC handle passing uses SCM_RIGHTS, not yet implemented on Windows"
+    },
     "parallel/test-child-process-fork-no-shell.js": {},
     "parallel/test-child-process-fork-stdio-string-variant.js": {},
     // TODO(bartlomieju): flaky on Windows with PipeWrap
@@ -247,6 +251,10 @@
     "parallel/test-child-process-reject-null-bytes.js": {},
     "parallel/test-child-process-send-after-close.js": {},
     "parallel/test-child-process-send-cb.js": {},
+    "parallel/test-child-process-send-keep-open.js": {
+      "windows": false,
+      "reason": "net.Socket IPC handle passing uses SCM_RIGHTS, not yet implemented on Windows"
+    },
     "parallel/test-child-process-send-type-error.js": {},
     "parallel/test-child-process-set-blocking.js": {},
     "parallel/test-child-process-silent.js": {},
