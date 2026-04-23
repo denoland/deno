@@ -473,9 +473,10 @@ impl TCPWrap {
       return Err(deno_error::JsErrorBox::generic("TCP handle is closed"));
     }
     // SAFETY: tcp is valid (null-checked above)
-    let tcp_stream = unsafe { (*tcp).internal_stream.take() };
-    let tcp_stream = tcp_stream.ok_or_else(|| {
-      deno_error::JsErrorBox::generic("TCP handle has no active stream")
+    let tcp_stream = unsafe { (*tcp).take_stream() }.ok_or_else(|| {
+      deno_error::JsErrorBox::generic(
+        "TCP handle has no active stream — already taken or not connected",
+      )
     })?;
     let transport = deno_net::raw::NetworkStream::Tcp(tcp_stream);
     let read_buf = bytes::Bytes::copy_from_slice(extra_bytes);

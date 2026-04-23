@@ -4882,6 +4882,33 @@ declare namespace Deno {
      * The unit is seconds, with a default of 30.
      * Set to `0` to disable timeouts. */
     idleTimeout?: number;
+    /** A `node:net` `Socket` from a `node:http` server's `"upgrade"` event.
+     * When provided, the WebSocket upgrade is performed over this existing
+     * TCP connection instead of through `Deno.serve`'s built-in upgrade
+     * mechanism. The 101 Switching Protocols response is written
+     * automatically.
+     *
+     * ```ts
+     * import http from "node:http";
+     *
+     * const server = http.createServer();
+     * server.on("upgrade", (req, socket, head) => {
+     *   const { socket: ws } = Deno.upgradeWebSocket(
+     *     new Request(`http://${req.headers.host}/`, {
+     *       headers: req.headers,
+     *     }),
+     *     { socket, head },
+     *   );
+     *   ws.onmessage = (e) => ws.send(e.data);
+     * });
+     * ```
+     */
+    socket?: import("node:net").Socket;
+    /** Extra bytes already buffered by the HTTP parser that arrived with
+     * the upgrade request headers. This is the `head` `Buffer` from the
+     * `node:http` server's `"upgrade"` event and must be forwarded so
+     * those bytes are not lost. */
+    head?: Uint8Array;
   }
 
   /**

@@ -106,7 +106,7 @@ pub struct uv_tcp_t {
   /// Deferred bind error (e.g. EADDRINUSE). Reported from listen/connect,
   /// matching libuv's `delayed_error` semantics.
   pub(crate) internal_delayed_error: c_int,
-  pub internal_stream: Option<tokio::net::TcpStream>,
+  pub(crate) internal_stream: Option<tokio::net::TcpStream>,
   pub(crate) internal_listener: Option<tokio::net::TcpListener>,
   pub(crate) internal_listener_addr: Option<SocketAddr>,
   pub(crate) internal_nodelay: bool,
@@ -118,6 +118,15 @@ pub struct uv_tcp_t {
   pub(crate) internal_connection_cb: Option<uv_connection_cb>,
   pub(crate) internal_backlog: VecDeque<tokio::net::TcpStream>,
   pub(crate) internal_shutdown: Option<ShutdownPending>,
+}
+
+impl uv_tcp_t {
+  /// Detach and return the underlying TCP stream, e.g. for handing it
+  /// off to a WebSocket. The caller takes ownership of the stream;
+  /// subsequent reads/writes through libuv will see `None`.
+  pub fn take_stream(&mut self) -> Option<tokio::net::TcpStream> {
+    self.internal_stream.take()
+  }
 }
 
 /// In-flight TCP connect operation.

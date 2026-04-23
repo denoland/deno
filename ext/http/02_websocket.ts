@@ -125,7 +125,7 @@ function upgradeWebSocket(request, options = { __proto__: null }) {
     })();
   } else if (options.socket) {
     // node:http upgrade path: the socket is a node net.Socket from the
-    // upgrade event. Write the 101 response, take the TCP stream from
+    // "upgrade" event. Write the 101 response, take the TCP stream from
     // libuv, and create a WebSocket directly over it.
     const nodeSocket = options.socket;
     const head =
@@ -135,16 +135,10 @@ function upgradeWebSocket(request, options = { __proto__: null }) {
       : "";
     const responseHead = head + protocolHeader + "\r\n";
 
-    // Write the upgrade response via the socket
-    nodeSocket.write(responseHead);
-
     const handle = nodeSocket._handle;
     if (!handle) {
       throw new TypeError("Socket has no handle - cannot upgrade");
     }
-
-    // Stop libuv from reading this socket before we take the stream
-    handle.readStop();
 
     // Extra bytes that were already buffered (e.g., from the upgrade
     // request body that arrived with the headers)
@@ -154,12 +148,28 @@ function upgradeWebSocket(request, options = { __proto__: null }) {
     // onmessage, etc.) before events fire.
     (async () => {
       try {
-        // Yield to let the caller set up event handlers first.
-        await PromiseResolve();
+        // Wait for the 101 response to fully flush before taking the
+        // stream. A fire-and-forget write could leave data in the
+        // internal_write_queue that would be orphaned once
+        // upgradeToWebsocket() detaches the stream from libuv.
+        await new Promise((resolve, reject) => {
+          nodeSocket.write(responseHead, (err) => {
+            if (err) reject(err);
+            else resolve();
+          });
+        });
+
+        // Stop libuv from reading this socket before we take the stream
+        handle.readStop();
 
         // Take the TCP stream from libuv and create the WebSocket
         // resource directly in Rust - no fd roundtrip through JS.
         const wsRid = handle.upgradeToWebsocket(extraBytes);
+
+        // The stream is now owned by the WebSocket. Detach the node
+        // socket so it doesn't try to use the gutted handle.
+        nodeSocket._handle = null;
+        nodeSocket.destroyed = true;
 
         socket[_rid] = wsRid;
         socket[_readyState] = WebSocket.OPEN;
