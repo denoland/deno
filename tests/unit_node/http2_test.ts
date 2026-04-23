@@ -625,3 +625,63 @@ Deno.test("[node/http2 client] connect without net permission", {
     Deno.errors.NotCapable,
   );
 });
+
+// https://github.com/denoland/deno/issues/33009
+Deno.test("[node/http2 client] connect with pre-created socket", {
+  ignore: Deno.build.os === "windows",
+  sanitizeResources: false,
+  sanitizeOps: false,
+}, async () => {
+  const server = http2.createServer();
+  server.on("stream", (stream) => {
+    stream.respond({ ":status": 200, "content-type": "text/plain" });
+    stream.end("ok");
+  });
+
+  const port = await new Promise<number>((resolve) => {
+    server.listen(0, "127.0.0.1", () => {
+      resolve((server.address() as net.AddressInfo).port);
+    });
+  });
+
+  // Pre-create a connected socket before passing to http2.connect()
+  // (pattern used by @grpc/grpc-js)
+  const socket = await new Promise<net.Socket>((resolve, reject) => {
+    const s = net.connect({ host: "127.0.0.1", port }, () => resolve(s));
+    s.once("error", reject);
+  });
+
+  const client = http2.connect(`http://127.0.0.1:${port}`, {
+    createConnection: () => socket,
+  });
+
+  await new Promise<void>((resolve, reject) => {
+    const timeout = setTimeout(
+      () => reject(new Error("remoteSettings timeout")),
+      5000,
+    );
+    client.once("remoteSettings", () => {
+      clearTimeout(timeout);
+      resolve();
+    });
+    client.on("error", (err) => {
+      clearTimeout(timeout);
+      reject(err);
+    });
+  });
+
+  const req = client.request({ ":method": "GET", ":path": "/" });
+  req.end();
+
+  const body = await new Promise<string>((resolve) => {
+    let data = "";
+    req.setEncoding("utf8");
+    req.on("data", (chunk: string) => (data += chunk));
+    req.on("end", () => resolve(data));
+  });
+
+  assertEquals(body, "ok");
+  client.close();
+  server.close();
+  await new Promise<void>((resolve) => server.on("close", resolve));
+});
