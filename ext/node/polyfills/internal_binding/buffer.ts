@@ -126,7 +126,7 @@ function indexOfBuffer(
   encoding: Encodings,
   forwardDirection: boolean,
 ) {
-  if (!Encodings[encoding] === undefined) {
+  if (Encodings[encoding] === undefined) {
     throw new Error(`Unknown encoding code ${encoding}`);
   }
 
