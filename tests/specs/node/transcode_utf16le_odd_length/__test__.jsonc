@@ -1,0 +1,8 @@
+{
+  "tests": {
+    "odd_length_utf16le_does_not_panic": {
+      "args": "run main.ts",
+      "output": "main.out"
+    }
+  }
+}
