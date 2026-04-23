@@ -357,14 +357,12 @@ declare namespace Deno {
      * `"critical"` bounces continuously until the app is focused. */
     bounce(type?: "informational" | "critical"): void;
 
-    /** Set a custom right-click menu on the app's dock icon.
+    /** Set a custom right-click menu on the app's dock icon. Pass
+     * `null` to remove any menu previously set.
      *
      * macOS only. Click events are delivered as `"menuclick"` events on
      * {@linkcode Deno.dock}. No-op on Windows and Linux. */
-    setMenu(menu: MenuItem[]): void;
-
-    /** Remove the custom dock menu set by {@linkcode Dock.setMenu}. */
-    clearMenu(): void;
+    setMenu(menu: MenuItem[] | null): void;
 
     /** Show or hide the app's dock icon.
      *
@@ -396,4 +394,74 @@ declare namespace Deno {
 
   /** App-level dock / taskbar singleton. */
   export const dock: Dock;
+
+  interface TrayEventMap {
+    click: MouseEvent;
+    dblclick: MouseEvent;
+    menuclick: CustomEvent<MenuClickDetail>;
+  }
+
+  type TrayEventHandlers = {
+    [K in keyof TrayEventMap as `on${K}`]:
+      | ((this: Tray, ev: TrayEventMap[K]) => any)
+      | null;
+  };
+
+  export interface Tray extends TrayEventHandlers {}
+
+  /** A persistent icon in the OS status area (macOS menu bar extras,
+   * Windows system tray, Linux AppIndicator).
+   *
+   * The icon is removed from the OS when {@linkcode Tray.destroy} is
+   * called. Multiple trays may be created.
+   *
+   * Only available in apps compiled with `deno desktop`. */
+  export class Tray extends EventTarget implements Disposable {
+    constructor();
+
+    readonly trayId: number;
+
+    /** Set the tray icon image from PNG-encoded bytes. */
+    setIcon(pngBytes: Uint8Array): void;
+
+    /** Set the tray icon used in OS dark mode. Pass `null` to clear
+     * it. */
+    setIconDark(pngBytes: Uint8Array | null): void;
+
+    /** Set the tooltip shown on hover. Pass `null` or an empty string
+     * to clear the tooltip. */
+    setTooltip(text: string | null): void;
+
+    /** Set the right-click context menu. Click events are delivered as
+     * `"menuclick"` events on the tray. Pass `null` to remove any
+     * menu previously set. */
+    setMenu(menu: MenuItem[] | null): void;
+
+    /** Remove the tray icon from the OS status area. The instance must
+     * not be used after this call. */
+    destroy(): void;
+
+    [Symbol.dispose](): void;
+
+    addEventListener<K extends keyof TrayEventMap>(
+      type: K,
+      listener: (this: Tray, ev: TrayEventMap[K]) => any,
+      options?: boolean | AddEventListenerOptions,
+    ): void;
+    addEventListener(
+      type: string,
+      listener: EventListenerOrEventListenerObject,
+      options?: boolean | AddEventListenerOptions,
+    ): void;
+    removeEventListener<K extends keyof TrayEventMap>(
+      type: K,
+      listener: (this: Tray, ev: TrayEventMap[K]) => any,
+      options?: boolean | EventListenerOptions,
+    ): void;
+    removeEventListener(
+      type: string,
+      listener: EventListenerOrEventListenerObject,
+      options?: boolean | EventListenerOptions,
+    ): void;
+  }
 }

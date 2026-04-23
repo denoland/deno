@@ -545,6 +545,7 @@ const NOT_IMPORTED_OPS = [
   // Related to `Deno.desktop` API (deno compile --desktop)
   "BrowserWindow",
   "Dock",
+  "Tray",
   "op_desktop_apply_patch",
   "op_desktop_confirm_update",
   "op_desktop_init",

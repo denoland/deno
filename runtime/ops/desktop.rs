@@ -207,6 +207,12 @@ pub enum DesktopEvent {
   DockMenuClick { id: String },
   #[serde(rename_all = "camelCase")]
   DockReopen { has_visible_windows: bool },
+  #[serde(rename_all = "camelCase")]
+  TrayClick { tray_id: u32 },
+  #[serde(rename_all = "camelCase")]
+  TrayDoubleClick { tray_id: u32 },
+  #[serde(rename_all = "camelCase")]
+  TrayMenuClick { tray_id: u32, id: String },
 }
 
 pub struct DesktopEventReceiver(
@@ -305,7 +311,6 @@ pub trait DesktopApi: Send + Sync + 'static {
     menu: Vec<MenuItem>,
   );
 
-  /// Returns the raw window and display handles for the given window.
   fn get_raw_window_handle(
     &self,
     window_id: u32,
@@ -347,11 +352,24 @@ pub trait DesktopApi: Send + Sync + 'static {
   /// maps to a continuous bounce; otherwise a single bounce.
   fn bounce_dock(&self, critical: bool);
   /// Set a custom right-click menu on the app's dock icon (macOS only).
-  fn set_dock_menu(&self, menu: Vec<MenuItem>);
-  /// Clear any custom dock menu previously set.
-  fn clear_dock_menu(&self);
+  /// `None` clears any menu previously set.
+  fn set_dock_menu(&self, menu: Option<Vec<MenuItem>>);
   /// Show or hide the app's dock icon (macOS activation policy).
   fn set_dock_visible(&self, visible: bool);
+
+  /// Returns `0` if the backend doesn't support tray icons.
+  fn create_tray(&self) -> u32;
+  /// Destroy a tray icon previously created with `create_tray`.
+  fn destroy_tray(&self, tray_id: u32);
+  /// Set the tray icon image from PNG-encoded bytes.
+  fn set_tray_icon(&self, tray_id: u32, png_bytes: &[u8]);
+  /// Set the tray icon used in OS dark mode. `None` clears it.
+  fn set_tray_icon_dark(&self, tray_id: u32, png_bytes: Option<&[u8]>);
+  /// Set the tooltip shown on hover. `None` clears it.
+  fn set_tray_tooltip(&self, tray_id: u32, text: Option<&str>);
+  /// Set the right-click context menu on the tray icon. `None` clears
+  /// any menu previously set.
+  fn set_tray_menu(&self, tray_id: u32, menu: Option<Vec<MenuItem>>);
 }
 
 /// Stores the window ID of the initial window created during runtime init.
@@ -1034,18 +1052,89 @@ impl Dock {
     self.api.bounce_dock(critical);
   }
 
-  fn set_menu(&self, #[serde] menu: Vec<MenuItem>) {
+  fn set_menu(&self, #[serde] menu: Option<Vec<MenuItem>>) {
     self.api.set_dock_menu(menu);
-  }
-
-  #[fast]
-  fn clear_menu(&self) {
-    self.api.clear_dock_menu();
   }
 
   #[fast]
   fn set_visible(&self, visible: bool) {
     self.api.set_dock_visible(visible);
+  }
+}
+
+struct Tray {
+  api: Arc<dyn DesktopApi>,
+  tray_id: u32,
+}
+
+// SAFETY: we're sure this can be GCed
+unsafe impl deno_core::GarbageCollected for Tray {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"Tray"
+  }
+}
+
+impl deno_core::Resource for Tray {
+  fn name(&self) -> Cow<'_, str> {
+    "Tray".into()
+  }
+}
+
+#[op2]
+impl Tray {
+  #[constructor]
+  fn new(
+    state: &OpState,
+    scope: &mut v8::PinScope<'_, '_>,
+  ) -> v8::Global<v8::Value> {
+    let api = state
+      .try_borrow::<Arc<dyn DesktopApi>>()
+      .expect("desktop mode enabled")
+      .clone();
+
+    let tray_id = api.create_tray();
+    let tray = Tray { api, tray_id };
+    let tray = deno_core::cppgc::make_cppgc_object(scope, tray);
+    let event_target_setup = state.borrow::<EventTargetSetup>();
+    let webidl_brand = v8::Local::new(scope, event_target_setup.brand.clone());
+    tray.set(scope, webidl_brand, webidl_brand);
+    let set_event_target_data =
+      v8::Local::new(scope, event_target_setup.set_event_target_data.clone())
+        .cast::<v8::Function>();
+    let null = v8::null(scope);
+    set_event_target_data.call(scope, null.into(), &[tray.into()]);
+    let tray = tray.cast::<v8::Value>();
+
+    v8::Global::new(scope, tray)
+  }
+
+  #[getter]
+  fn tray_id(&self) -> u32 {
+    self.tray_id
+  }
+
+  #[fast]
+  fn set_icon(&self, #[buffer] png_bytes: &[u8]) {
+    self.api.set_tray_icon(self.tray_id, png_bytes);
+  }
+
+  fn set_icon_dark(&self, #[buffer] png_bytes: Option<&[u8]>) {
+    self.api.set_tray_icon_dark(self.tray_id, png_bytes);
+  }
+
+  fn set_tooltip(&self, #[string] text: Option<String>) {
+    self.api.set_tray_tooltip(self.tray_id, text.as_deref());
+  }
+
+  fn set_menu(&self, #[serde] menu: Option<Vec<MenuItem>>) {
+    self.api.set_tray_menu(self.tray_id, menu);
+  }
+
+  #[fast]
+  fn destroy(&self) {
+    self.api.destroy_tray(self.tray_id);
   }
 }
 
@@ -1063,5 +1152,5 @@ deno_core::extension!(
     op_desktop_prompt,
     op_desktop_send_error_report,
   ],
-  objects = [BrowserWindow, Dock,],
+  objects = [BrowserWindow, Dock, Tray],
 );

@@ -21,6 +21,7 @@ pub const DESKTOP_JS: &str = r#"
   const {
     BrowserWindow,
     Dock,
+    Tray,
     op_desktop_init,
     op_desktop_recv_event,
     op_desktop_resolve_bind_call,
@@ -305,6 +306,33 @@ pub const DESKTOP_JS: &str = r#"
   const dock = new OrigDock();
   Object.defineProperty(Deno, "dock", internals.core.propReadOnly(dock));
 
+  const TrayPrototype = Tray.prototype;
+  Object.setPrototypeOf(TrayPrototype, EventTarget.prototype);
+
+  const trays = new Map();
+  const nativeTrayConstructor = Tray;
+  const OrigTray = function(...args) {
+    const instance = new nativeTrayConstructor(...args);
+    trays.set(instance.trayId, instance);
+    return instance;
+  };
+  Object.setPrototypeOf(OrigTray, nativeTrayConstructor);
+  Object.setPrototypeOf(OrigTray.prototype, nativeTrayConstructor.prototype);
+  Deno.Tray = OrigTray;
+
+  const nativeTrayDestroy = TrayPrototype.destroy;
+  TrayPrototype.destroy = function() {
+    trays.delete(this.trayId);
+    nativeTrayDestroy.call(this);
+  };
+  TrayPrototype[Symbol.dispose] = function() {
+    this.destroy();
+  };
+
+  internals.defineEventHandler(TrayPrototype, "click");
+  internals.defineEventHandler(TrayPrototype, "dblclick");
+  internals.defineEventHandler(TrayPrototype, "menuclick");
+
   // Start polling loops immediately. Use core.unrefOpPromise so these
   // pending ops don't block event loop completion (e.g. the pre-module
   // tick used by HMR, or module evaluation with top-level await).
@@ -492,6 +520,26 @@ pub const DESKTOP_JS: &str = r#"
                 detail: { hasVisibleWindows: ev.hasVisibleWindows },
               }));
             }
+            break;
+          }
+          case "trayClick": {
+            const target = trays.get(ev.trayId);
+            if (!target) break;
+            target.dispatchEvent(new MouseEvent("click"));
+            break;
+          }
+          case "trayDoubleClick": {
+            const target = trays.get(ev.trayId);
+            if (!target) break;
+            target.dispatchEvent(new MouseEvent("dblclick"));
+            break;
+          }
+          case "trayMenuClick": {
+            const target = trays.get(ev.trayId);
+            if (!target) break;
+            target.dispatchEvent(new CustomEvent("menuclick", {
+              detail: { id: ev.id },
+            }));
             break;
           }
         }

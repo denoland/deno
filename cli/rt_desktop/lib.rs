@@ -12,6 +12,7 @@
 //! and navigates the webview to it.
 
 use std::borrow::Cow;
+use std::collections::HashMap;
 use std::collections::HashSet;
 use std::env;
 use std::path::Path;
@@ -46,6 +47,7 @@ struct WefDesktopApi {
   >,
   pending_responses: deno_runtime::ops::desktop::PendingBindResponses,
   closed_windows: Arc<Mutex<HashSet<u32>>>,
+  trays: Arc<Mutex<HashMap<u32, wef::TrayIcon>>>,
 }
 
 impl WefDesktopApi {
@@ -492,26 +494,99 @@ impl denort::desktop::DesktopApi for WefDesktopApi {
     });
   }
 
-  fn set_dock_menu(&self, menu: Vec<denort::desktop::MenuItem>) {
-    let menu = menu
-      .into_iter()
-      .map(desktop_menu_item_to_wef_menu_item)
-      .collect::<Vec<_>>();
-    let tx = self.event_tx.clone();
-    wef::set_dock_menu(&menu, move |id: &str| {
-      let _ =
-        tx.send(deno_runtime::ops::desktop::DesktopEvent::DockMenuClick {
-          id: id.to_string(),
+  fn set_dock_menu(&self, menu: Option<Vec<denort::desktop::MenuItem>>) {
+    match menu {
+      Some(menu) => {
+        let menu = menu
+          .into_iter()
+          .map(desktop_menu_item_to_wef_menu_item)
+          .collect::<Vec<_>>();
+        let tx = self.event_tx.clone();
+        wef::set_dock_menu(&menu, move |id: &str| {
+          let _ =
+            tx.send(deno_runtime::ops::desktop::DesktopEvent::DockMenuClick {
+              id: id.to_string(),
+            });
         });
-    });
-  }
-
-  fn clear_dock_menu(&self) {
-    wef::clear_dock_menu();
+      }
+      None => wef::clear_dock_menu(),
+    }
   }
 
   fn set_dock_visible(&self, visible: bool) {
     wef::set_dock_visible(visible);
+  }
+
+  fn create_tray(&self) -> u32 {
+    let tray = wef::TrayIcon::new();
+    let tray_id = tray.id();
+    if tray_id == 0 {
+      return 0;
+    }
+    let click_tx = self.event_tx.clone();
+    let tray = tray.on_click(move || {
+      let _ = click_tx
+        .send(deno_runtime::ops::desktop::DesktopEvent::TrayClick { tray_id });
+    });
+    let dblclick_tx = self.event_tx.clone();
+    tray.set_double_click_handler(move || {
+      let _ = dblclick_tx.send(
+        deno_runtime::ops::desktop::DesktopEvent::TrayDoubleClick { tray_id },
+      );
+    });
+    self.trays.lock().unwrap().insert(tray_id, tray);
+    tray_id
+  }
+
+  fn destroy_tray(&self, tray_id: u32) {
+    self.trays.lock().unwrap().remove(&tray_id);
+  }
+
+  fn set_tray_icon(&self, tray_id: u32, png_bytes: &[u8]) {
+    if let Some(tray) = self.trays.lock().unwrap().get(&tray_id) {
+      tray.set_icon(png_bytes);
+    }
+  }
+
+  fn set_tray_icon_dark(&self, tray_id: u32, png_bytes: Option<&[u8]>) {
+    if let Some(tray) = self.trays.lock().unwrap().get(&tray_id) {
+      tray.set_icon_dark(png_bytes.unwrap_or(&[]));
+    }
+  }
+
+  fn set_tray_tooltip(&self, tray_id: u32, text: Option<&str>) {
+    if let Some(tray) = self.trays.lock().unwrap().get(&tray_id) {
+      tray.set_tooltip(text);
+    }
+  }
+
+  fn set_tray_menu(
+    &self,
+    tray_id: u32,
+    menu: Option<Vec<denort::desktop::MenuItem>>,
+  ) {
+    let trays = self.trays.lock().unwrap();
+    let Some(tray) = trays.get(&tray_id) else {
+      return;
+    };
+    match menu {
+      Some(menu) => {
+        let menu = menu
+          .into_iter()
+          .map(desktop_menu_item_to_wef_menu_item)
+          .collect::<Vec<_>>();
+        let tx = self.event_tx.clone();
+        tray.set_menu(&menu, move |id: &str| {
+          let _ = tx.send(
+            deno_runtime::ops::desktop::DesktopEvent::TrayMenuClick {
+              tray_id,
+              id: id.to_string(),
+            },
+          );
+        });
+      }
+      None => tray.clear_menu(),
+    }
   }
 }
 
@@ -1264,6 +1339,7 @@ async fn run_desktop(update_rolled_back: bool) -> Result<(), AnyError> {
         event_tx: event_tx.0.clone(),
         pending_responses: pending_responses.clone(),
         closed_windows: Arc::new(Mutex::new(HashSet::new())),
+        trays: Arc::new(Mutex::new(HashMap::new())),
       };
 
       // Forward macOS dock-reopen callbacks (clicking the dock icon while
