@@ -50,6 +50,7 @@ export function toPathIfFileURL(
 export function urlToHttpOptions(url: URL): HttpOptions {
   validateObject(url, "url", { allowArray: true, allowFunction: true });
   const options: HttpOptions = {
+    ...url, // In case the url object was extended by the user.
     protocol: url.protocol,
     hostname: typeof url.hostname === "string" &&
         StringPrototypeStartsWith(url.hostname, "[")

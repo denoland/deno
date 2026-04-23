@@ -2,91 +2,104 @@
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 
 // TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials
+// deno-lint-ignore-file prefer-primordials no-explicit-any
 
-import { notImplemented } from "ext:deno_node/_utils.ts";
+import tls from "node:tls";
 import { urlToHttpOptions } from "ext:deno_node/internal/url.ts";
 import {
+  _connectionListener,
   ClientRequest,
-  IncomingMessageForClient as IncomingMessage,
-  type RequestOptions,
+  type ServerHandler,
+  ServerImpl as HttpServer,
 } from "node:http";
+import {
+  httpServerPreClose,
+  setupConnectionsTracking,
+  storeHTTPOptions,
+} from "node:_http_server";
 import { Agent as HttpAgent } from "node:_http_agent";
-import { createHttpClient } from "ext:deno_fetch/22_http_client.js";
-import { type ServerHandler, ServerImpl as HttpServer } from "node:http";
 import { validateObject } from "ext:deno_node/internal/validators.mjs";
 import { kEmptyObject } from "ext:deno_node/internal/util.mjs";
-import { Buffer } from "node:buffer";
-import { listenTls } from "ext:deno_net/02_tls.js";
 
-export class Server extends HttpServer {
-  constructor(opts, requestListener?: ServerHandler) {
-    if (typeof opts === "function") {
-      requestListener = opts;
-      opts = kEmptyObject;
-    } else if (opts == null) {
-      opts = kEmptyObject;
-    } else {
-      validateObject(opts, "options");
-    }
-
-    if (opts.cert && Array.isArray(opts.cert)) {
-      notImplemented("https.Server.opts.cert array type");
-    }
-
-    if (opts.key && Array.isArray(opts.key)) {
-      notImplemented("https.Server.opts.key array type");
-    }
-
-    super(opts, requestListener);
+// https.Server extends tls.Server (which extends net.Server).
+// Each accepted TCP connection is wrapped with TLS by tls.Server's
+// connectionListener, then the HTTP _connectionListener handles the
+// HTTP protocol on the decrypted stream. Matches Node.js architecture.
+export function Server(
+  this: any,
+  opts: any,
+  requestListener?: ServerHandler,
+) {
+  if (!(this instanceof Server)) {
+    return new (Server as any)(opts, requestListener);
   }
 
-  _listen(hostname: string, port: number): Deno.Listener {
-    const cert = this._opts.cert instanceof Buffer
-      ? this._opts.cert.toString()
-      : this._opts.cert;
-    const key = this._opts.key instanceof Buffer
-      ? this._opts.key.toString()
-      : this._opts.key;
-    return listenTls({
-      hostname,
-      port,
-      cert,
-      key,
-      alpnProtocols: ["h2", "http/1.1"],
-    });
+  let ALPNProtocols: string[] | undefined = ["http/1.1"];
+  if (typeof opts === "function") {
+    requestListener = opts;
+    opts = kEmptyObject;
+  } else if (opts == null) {
+    opts = kEmptyObject;
+  } else {
+    validateObject(opts, "options");
+    // Only set default ALPNProtocols if the caller has not set either
+    if (opts.ALPNProtocols || opts.ALPNCallback) {
+      ALPNProtocols = undefined;
+    }
   }
 
-  _encrypted = true;
+  storeHTTPOptions.call(this, opts);
+
+  tls.Server.call(this, {
+    noDelay: true,
+    ALPNProtocols,
+    ...opts,
+  }, _connectionListener);
+
+  this.httpAllowHalfOpen = false;
+
+  if (requestListener) {
+    this.addListener("request", requestListener);
+  }
+
+  this.addListener("tlsClientError", function (this: any, err: any, conn: any) {
+    if (!this.emit("clientError", err, conn)) {
+      conn.destroy(err);
+    }
+  });
+
+  this.timeout = 0;
+  this.maxHeadersCount = null;
+  this.on("listening", setupConnectionsTracking);
 }
-export function createServer(opts, requestListener?: ServerHandler) {
-  return new Server(opts, requestListener);
+Object.setPrototypeOf(Server.prototype, tls.Server.prototype);
+Object.setPrototypeOf(Server, tls.Server);
+
+Server.prototype.closeAllConnections = HttpServer.prototype.closeAllConnections;
+Server.prototype.closeIdleConnections =
+  HttpServer.prototype.closeIdleConnections;
+Server.prototype.setTimeout = HttpServer.prototype.setTimeout;
+
+Server.prototype.close = function close(this: any) {
+  httpServerPreClose(this);
+  tls.Server.prototype.close.apply(this, arguments);
+  return this;
+};
+
+Server.prototype[Symbol.asyncDispose] = async function (this: any) {
+  await new Promise<void>((resolve, reject) => {
+    this.close((err: any) => (err ? reject(err) : resolve()));
+  });
+};
+
+export function createServer(
+  opts: any,
+  requestListener?: ServerHandler,
+) {
+  return new (Server as any)(opts, requestListener);
 }
 
-interface HttpsRequestOptions extends RequestOptions {
-  _: unknown;
-}
-
-// Store additional root CAs.
-// undefined means NODE_EXTRA_CA_CERTS is not checked yet.
-// null means there's no additional root CAs.
-let caCerts: string[] | undefined | null;
-
-/** Makes a request to an https server. */
-export function get(
-  url: string | URL,
-  cb?: (res: IncomingMessage) => void,
-): HttpsClientRequest;
-export function get(
-  opts: HttpsRequestOptions,
-  cb?: (res: IncomingMessage) => void,
-): HttpsClientRequest;
-export function get(
-  url: string | URL,
-  opts: HttpsRequestOptions,
-  cb?: (res: IncomingMessage) => void,
-): HttpsClientRequest;
-// deno-lint-ignore no-explicit-any
+/** Makes a GET request to an https server. */
 export function get(...args: any[]) {
   const req = request(args[0], args[1], args[2]);
   req.end();
@@ -94,10 +107,15 @@ export function get(...args: any[]) {
 }
 
 export class Agent extends HttpAgent {
-  constructor(options) {
+  declare maxCachedSessions: number;
+  declare _sessionCache: { map: Record<string, any>; list: string[] };
+
+  constructor(options: any) {
+    options = { __proto__: null, ...options };
+    options.defaultPort ??= 443;
+    options.protocol ??= "https:";
     super(options);
-    this.defaultPort = 443;
-    this.protocol = "https:";
+
     this.maxCachedSessions = this.options.maxCachedSessions;
     if (this.maxCachedSessions === undefined) {
       this.maxCachedSessions = 100;
@@ -108,6 +126,155 @@ export class Agent extends HttpAgent {
       list: [],
     };
   }
+
+  getName(options: any = {}) {
+    let name = super.getName(options);
+
+    name += ":";
+    if (options.ca) name += options.ca;
+
+    name += ":";
+    if (options.cert) name += options.cert;
+
+    name += ":";
+    if (options.clientCertEngine) name += options.clientCertEngine;
+
+    name += ":";
+    if (options.ciphers) name += options.ciphers;
+
+    name += ":";
+    if (options.key) name += options.key;
+
+    name += ":";
+    if (options.pfx) name += options.pfx;
+
+    name += ":";
+    if (options.rejectUnauthorized !== undefined) {
+      name += options.rejectUnauthorized;
+    }
+
+    name += ":";
+    if (options.servername && options.servername !== options.host) {
+      name += options.servername;
+    }
+
+    name += ":";
+    if (options.minVersion) name += options.minVersion;
+
+    name += ":";
+    if (options.maxVersion) name += options.maxVersion;
+
+    name += ":";
+    if (options.secureProtocol) name += options.secureProtocol;
+
+    name += ":";
+    if (options.crl) name += options.crl;
+
+    name += ":";
+    if (options.honorCipherOrder !== undefined) {
+      name += options.honorCipherOrder;
+    }
+
+    name += ":";
+    if (options.ecdhCurve) name += options.ecdhCurve;
+
+    name += ":";
+    if (options.dhparam) name += options.dhparam;
+
+    name += ":";
+    if (options.secureOptions !== undefined) name += options.secureOptions;
+
+    name += ":";
+    if (options.sessionIdContext) name += options.sessionIdContext;
+
+    name += ":";
+    if (options.sigalgs) name += JSON.stringify(options.sigalgs);
+
+    name += ":";
+    if (options.privateKeyIdentifier) name += options.privateKeyIdentifier;
+
+    name += ":";
+    if (options.privateKeyEngine) name += options.privateKeyEngine;
+
+    return name;
+  }
+
+  _getSession(key: string) {
+    return this._sessionCache.map[key];
+  }
+
+  _cacheSession(key: string, session: any) {
+    if (this.maxCachedSessions === 0) return;
+
+    if (this._sessionCache.map[key]) {
+      this._sessionCache.map[key] = session;
+      return;
+    }
+
+    if (this._sessionCache.list.length >= this.maxCachedSessions) {
+      const oldKey = this._sessionCache.list.shift()!;
+      delete this._sessionCache.map[oldKey];
+    }
+
+    this._sessionCache.list.push(key);
+    this._sessionCache.map[key] = session;
+  }
+
+  _evictSession(key: string) {
+    const index = this._sessionCache.list.indexOf(key);
+    if (index === -1) return;
+
+    this._sessionCache.list.splice(index, 1);
+    delete this._sessionCache.map[key];
+  }
+
+  createConnection(options: any, cb?: any) {
+    if (typeof options === "number") {
+      // createConnection(port, host, options) signature
+      const args = arguments;
+      const opts: any = {};
+      if (args[0] !== null && typeof args[0] === "object") {
+        Object.assign(opts, args[0]);
+      } else if (args[1] !== null && typeof args[1] === "object") {
+        Object.assign(opts, args[1]);
+      } else if (args[2] !== null && typeof args[2] === "object") {
+        Object.assign(opts, args[2]);
+      }
+      if (typeof args[0] === "number") opts.port = args[0];
+      if (typeof args[1] === "string") opts.host = args[1];
+      if (typeof args[args.length - 1] === "function") {
+        cb = args[args.length - 1];
+      }
+      options = opts;
+    }
+
+    // Look up cached TLS session for reuse
+    if (options._agentKey) {
+      const session = this._getSession(options._agentKey);
+      if (session) {
+        options = { session, ...options };
+      }
+    }
+
+    const socket = tls.connect(options as any);
+
+    // Cache session on new session event
+    if (options._agentKey) {
+      socket.on("session", (session: any) => {
+        this._cacheSession(options._agentKey, session);
+      });
+
+      socket.once("close", (err: any) => {
+        if (err) this._evictSession(options._agentKey);
+      });
+    }
+
+    if (cb) {
+      socket.once("secureConnect", cb);
+    }
+
+    return socket;
+  }
 }
 
 export const globalAgent = new Agent({
@@ -116,53 +283,9 @@ export const globalAgent = new Agent({
   timeout: 5000,
 });
 
-/** HttpsClientRequest class loosely follows http.ClientRequest class API. */
-class HttpsClientRequest extends ClientRequest {
-  override _encrypted = true;
-  override defaultProtocol = "https:";
-  override _getClient(): Deno.HttpClient | undefined {
-    if (caCerts === null) {
-      return undefined;
-    }
-    if (caCerts !== undefined) {
-      return createHttpClient({ caCerts, http2: false });
-    }
-    // const status = await Deno.permissions.query({
-    //   name: "env",
-    //   variable: "NODE_EXTRA_CA_CERTS",
-    // });
-    // if (status.state !== "granted") {
-    //   caCerts = null;
-    //   return undefined;
-    // }
-    const certFilename = Deno.env.get("NODE_EXTRA_CA_CERTS");
-    if (!certFilename) {
-      caCerts = null;
-      return undefined;
-    }
-    const caCert = Deno.readTextFileSync(certFilename);
-    caCerts = [caCert];
-    return createHttpClient({ caCerts, http2: false });
-  }
-}
-
 /** Makes a request to an https server. */
-export function request(
-  url: string | URL,
-  cb?: (res: IncomingMessage) => void,
-): HttpsClientRequest;
-export function request(
-  opts: HttpsRequestOptions,
-  cb?: (res: IncomingMessage) => void,
-): HttpsClientRequest;
-export function request(
-  url: string | URL,
-  opts: HttpsRequestOptions,
-  cb?: (res: IncomingMessage) => void,
-): HttpsClientRequest;
-// deno-lint-ignore no-explicit-any
 export function request(...args: any[]) {
-  let options = {};
+  let options: any = {};
 
   if (typeof args[0] === "string") {
     const urlStr = args.shift();
@@ -176,31 +299,11 @@ export function request(...args: any[]) {
   }
 
   options._defaultAgent = globalAgent;
-  if (options.agent === undefined) {
-    if (options.key !== undefined) {
-      options._defaultAgent.options.key = options.key;
-    }
-    if (options.cert !== undefined) {
-      options._defaultAgent.options.cert = options.cert;
-    }
-    if (options.ca !== undefined) {
-      options._defaultAgent.options.ca = options.ca;
-    }
-  } else {
-    if (options.key !== undefined) {
-      options.agent.options.key = options.key;
-    }
-    if (options.cert !== undefined) {
-      options.agent.options.cert = options.cert;
-    }
-    if (options.ca !== undefined) {
-      options.agent.options.ca = options.ca;
-    }
-  }
   args.unshift(options);
 
-  return new HttpsClientRequest(args[0], args[1]);
+  return new ClientRequest(args[0], args[1], args[2]);
 }
+
 export default {
   Agent,
   Server,

@@ -24,6 +24,7 @@
 
 import { HTTPParser as NativeHTTPParser } from "ext:core/ops";
 import { Buffer } from "node:buffer";
+import { AsyncResource } from "node:async_hooks";
 
 // Method names indexed by llhttp method enum values.
 // Order must match llhttp_method_t in llhttp.h.
@@ -147,13 +148,24 @@ export function HTTPParser(this: any, type?: number) {
 HTTPParser.prototype.initialize = function (
   this: any,
   type: number,
-  _options?: any,
+  asyncResource?: any,
   maxHeaderSize?: number,
   lenientFlags?: number,
 ) {
+  // Default to the global maxHeaderSize (16384) when not specified,
+  // matching Node.js behavior where 0 means "use the default".
+  const effectiveMaxHeaderSize = maxHeaderSize || 16384;
+  // Store the async resource so execute() can run callbacks in the
+  // correct async context (preserves AsyncLocalStorage through the
+  // native parser, emulating Node's MakeCallback behavior).
+  if (asyncResource) {
+    this._asyncResource = new AsyncResource(
+      asyncResource.type || "HTTPPARSER",
+    );
+  }
   this._native.initialize(
     type,
-    maxHeaderSize ?? 0,
+    effectiveMaxHeaderSize,
     lenientFlags ?? 0,
   );
 };
@@ -177,10 +189,13 @@ HTTPParser.prototype.execute = function (
 
   // Wrap the kOnBody callback to convert Uint8Array to Buffer.
   // Node.js passes Buffer objects to body callbacks.
+  // deno-lint-ignore no-this-alias
+  const parser = this;
   const origOnBody = this[kOnBody];
   if (origOnBody) {
     this[kOnBody] = function (buf: Uint8Array) {
-      return origOnBody(
+      return origOnBody.call(
+        parser,
         Buffer.from(buf.buffer, buf.byteOffset, buf.byteLength),
       );
     };
@@ -189,19 +204,51 @@ HTTPParser.prototype.execute = function (
   // Pass `this` (the JS wrapper) directly so callbacks set during
   // parsing (e.g. trailer headers set in kOnHeadersComplete) are
   // visible to subsequent callbacks.
-  const result = this._native.execute(
-    this,
-    new Uint8Array(data.buffer, data.byteOffset, data.byteLength),
-  );
+  // Run within the async resource scope to preserve AsyncLocalStorage
+  // context through native parser callbacks (emulates Node's MakeCallback).
+  const doExecute = () =>
+    this._native.execute(
+      this,
+      new Uint8Array(data.buffer, data.byteOffset, data.byteLength),
+    );
+  const result = this._asyncResource
+    ? this._asyncResource.runInAsyncScope(doExecute)
+    : doExecute();
 
   // Restore original callback
   this[kOnBody] = origOnBody;
+
+  // Re-throw any JS exception that was captured during parsing.
+  // The #[op2(reentrant)] framework swallows pending v8 exceptions,
+  // so we capture them in a TryCatch in the Rust callbacks and
+  // store them on the JS parser object as __lastException.
+  if (this.__lastException !== undefined) {
+    const err = this.__lastException;
+    this.__lastException = undefined;
+    throw err;
+  }
+
+  // On parser error, create an Error object with code/reason/bytesParsed
+  // matching Node.js behavior (node_http_parser.cc returns an Error object).
+  if (result < 0) {
+    const err: any = new Error("Parse Error");
+    if (this._native.hasHeaderOverflow()) {
+      err.code = "HPE_HEADER_OVERFLOW";
+      err.reason = "Header overflow";
+      err.message = "Parse Error: Header overflow";
+    } else {
+      err.code = "HPE_ERROR";
+      err.reason = "Parse Error";
+    }
+    err.bytesParsed = data.byteLength;
+    return err;
+  }
 
   return result;
 };
 
 HTTPParser.prototype.finish = function (this: any) {
-  return this._native.finish();
+  return this._native.finish(this);
 };
 
 HTTPParser.prototype.pause = function (this: any) {
@@ -228,13 +275,14 @@ HTTPParser.prototype.getCurrentBuffer = function (this: any) {
   return this._native.getCurrentBuffer();
 };
 
-// consume/unconsume - server optimization (not yet implemented)
-HTTPParser.prototype.consume = function (_handle: any) {
-  // TODO(@bartlomieju): implement StreamListener-based consume for server optimization
+// consume/unconsume - server optimization: data flows directly from the
+// TCP handle to the parser, bypassing the JS readable stream layer.
+HTTPParser.prototype.consume = function (this: any, handle: any) {
+  this._native.consume(this, handle);
 };
 
-HTTPParser.prototype.unconsume = function () {
-  // TODO(@bartlomieju): implement unconsume
+HTTPParser.prototype.unconsume = function (this: any) {
+  this._native.unconsume();
 };
 
 // Static constants

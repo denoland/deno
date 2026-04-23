@@ -96,7 +96,7 @@ class AbortSignal extends EventTarget {
     );
 
     const signal = new AbortSignal(illegalConstructorKey);
-    signal[timerId] = core.createTimer(
+    signal[timerId] = core.createSystemTimer(
       () => {
         core.cancelTimer(signal[timerId]);
         signal[timerId] = null;
@@ -105,10 +105,7 @@ class AbortSignal extends EventTarget {
         );
       },
       millis,
-      undefined,
-      false,
       false, // start unrefed (like Node.js)
-      true, // system timer: excluded from leak sanitizer
     );
     return signal;
   }

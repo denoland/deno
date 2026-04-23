@@ -529,13 +529,6 @@ export class Glob {
       const subPatterns = new SafeSet();
       const nSymlinks = new SafeSet();
       for (const index of pattern.indexes) {
-        // For each child, check potential patterns
-        if (
-          this.#cache.seen(entryPath, pattern, index) ||
-          this.#cache.seen(entryPath, pattern, index + 1)
-        ) {
-          return;
-        }
         const current = pattern.at(index);
         const nextIndex = index + 1;
         const next = pattern.at(nextIndex);
@@ -785,13 +778,6 @@ export class Glob {
       const subPatterns = new SafeSet();
       const nSymlinks = new SafeSet();
       for (const index of pattern.indexes) {
-        // For each child, check potential patterns
-        if (
-          this.#cache.seen(entryPath, pattern, index) ||
-          this.#cache.seen(entryPath, pattern, index + 1)
-        ) {
-          return;
-        }
         const current = pattern.at(index);
         const nextIndex = index + 1;
         const next = pattern.at(nextIndex);
