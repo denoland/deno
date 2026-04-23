@@ -747,6 +747,11 @@
           "default": "onlyMultiLine",
           "enum": ["never", "always", "onlyMultiLine"]
         },
+        "json.trailingCommas": {
+          "description": "Whether to add trailing commas in JSON and JSONC. The default \"jsonc\" adds trailing commas in JSONC files and omits them in JSON files.",
+          "default": "jsonc",
+          "enum": ["never", "always", "maintain", "jsonc"]
+        },
         "operatorPosition": {
           "description": "Where to place the operator for expressions that span multiple lines in JavaScript and TypeScript.",
           "default": "sameLine",

@@ -2067,6 +2067,10 @@ impl WorkspaceDirectory {
           .options
           .trailing_commas
           .or(root_config.options.trailing_commas),
+        json_trailing_commas: member_config
+          .options
+          .json_trailing_commas
+          .or(root_config.options.json_trailing_commas),
         operator_position: member_config
           .options
           .operator_position
@@ -2801,6 +2805,7 @@ pub mod test {
   use crate::deno_json::BracePosition;
   use crate::deno_json::BracketPosition;
   use crate::deno_json::DenoJsonCache;
+  use crate::deno_json::JsonTrailingCommaKind;
   use crate::deno_json::MultiLineParens;
   use crate::deno_json::NewLineKind;
   use crate::deno_json::NextControlFlowPosition;
@@ -3598,6 +3603,7 @@ pub mod test {
           "singleBodyPosition": "sameLine",
           "nextControlFlowPosition": "nextLine",
           "trailingCommas": "always",
+          "json.trailingCommas": "never",
           "operatorPosition": "sameLine",
           "jsx.bracketPosition": "sameLine",
           "jsx.forceNewLinesSurroundingContent": false,
@@ -3623,6 +3629,7 @@ pub mod test {
           "singleBodyPosition": "maintain",
           "nextControlFlowPosition": "maintain",
           "trailingCommas": "onlyMultiLine",
+          "json.trailingCommas": "maintain",
           "operatorPosition": "nextLine",
           "jsx.bracketPosition": "nextLine",
           "jsx.forceNewLinesSurroundingContent": true,
@@ -3654,6 +3661,7 @@ pub mod test {
           single_body_position: Some(SingleBodyPosition::Maintain),
           next_control_flow_position: Some(NextControlFlowPosition::Maintain),
           trailing_commas: Some(TrailingCommas::OnlyMultiLine),
+          json_trailing_commas: Some(JsonTrailingCommaKind::Maintain),
           operator_position: Some(OperatorPosition::NextLine),
           jsx_bracket_position: Some(BracketPosition::NextLine),
           jsx_force_new_lines_surrounding_content: Some(true),
@@ -3698,6 +3706,7 @@ pub mod test {
           single_body_position: Some(SingleBodyPosition::SameLine),
           next_control_flow_position: Some(NextControlFlowPosition::NextLine),
           trailing_commas: Some(TrailingCommas::Always),
+          json_trailing_commas: Some(JsonTrailingCommaKind::Never),
           operator_position: Some(OperatorPosition::SameLine),
           jsx_bracket_position: Some(BracketPosition::SameLine),
           jsx_force_new_lines_surrounding_content: Some(false),
