@@ -166,10 +166,14 @@ pub fn op_node_buffer_compare_offset(
   }
 
   if source_start > source_end {
-    panic!("source_start > source_end");
+    return Err(JsErrorBox::from_err(BufferError::OutOfRangeNamed(
+      "sourceEnd".to_string(),
+    )));
   }
   if target_start > target_end {
-    panic!("target_start > target_end");
+    return Err(JsErrorBox::from_err(BufferError::OutOfRangeNamed(
+      "targetEnd".to_string(),
+    )));
   }
 
   Ok(

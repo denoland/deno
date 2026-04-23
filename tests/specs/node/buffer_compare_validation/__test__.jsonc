@@ -1,0 +1,8 @@
+{
+  "tests": {
+    "validates_sourceStart_and_sourceEnd": {
+      "args": "run main.ts",
+      "output": "main.out"
+    }
+  }
+}

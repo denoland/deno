@@ -854,13 +854,13 @@ Buffer.prototype.compare = function compare(
   if (thisStart === undefined) {
     thisStart = 0;
   } else {
-    validateOffset(start, "sourceStart", 0, kMaxLength);
+    validateOffset(thisStart, "sourceStart", 0, kMaxLength);
   }
 
   if (thisEnd === undefined) {
     thisEnd = this.length;
   } else {
-    validateOffset(end, "sourceEnd", 0, this.length);
+    validateOffset(thisEnd, "sourceEnd", 0, this.length);
   }
 
   if (
