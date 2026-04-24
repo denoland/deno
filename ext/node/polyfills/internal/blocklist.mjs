@@ -19,17 +19,43 @@ import {
   validateString,
   validateUint32,
 } from "ext:deno_node/internal/validators.mjs";
-import { ERR_INVALID_ARG_VALUE } from "ext:deno_node/internal/errors.ts";
+import {
+  ERR_INVALID_ARG_TYPE,
+  ERR_INVALID_ARG_VALUE,
+} from "ext:deno_node/internal/errors.ts";
 import { customInspectSymbol } from "ext:deno_node/internal/util.mjs";
 import { inspect } from "ext:deno_node/internal/util/inspect.mjs";
 
-const { Symbol } = primordials;
+const {
+  ArrayIsArray,
+  ArrayPrototypeUnshift,
+  JSONParse,
+  NumberParseInt,
+  StringPrototypeMatch,
+  StringPrototypeToLowerCase,
+  Symbol,
+} = primordials;
 
 const internalBlockList = Symbol("blocklist");
+const kRules = Symbol("rules");
+
+// Node formats family as "IPv4" / "IPv6" in rule strings (see
+// BlockListWrap::GetRules in src/node_sockaddr.cc).
+function formatFamily(family) {
+  return family === "ipv6" ? "IPv6" : "IPv4";
+}
 
 class BlockList {
   constructor() {
     this[internalBlockList] = op_blocklist_new();
+    // Match Node: rules are reported in reverse insertion order.
+    this[kRules] = [];
+  }
+
+  // Match Node: BlockList.isBlockList returns true for BlockList
+  // instances (see lib/internal/blocklist.js).
+  static isBlockList(value) {
+    return value?.[internalBlockList] !== undefined;
   }
 
   [customInspectSymbol](depth, options) {
@@ -44,7 +70,7 @@ class BlockList {
 
     return `BlockList ${
       inspect({
-        rules: [], // TODO(satyarohith): provide the actual rules
+        rules: this[kRules],
       }, opts)
     }`;
   }
@@ -58,9 +84,14 @@ class BlockList {
         family,
       });
     } else {
+      family = address.family;
       address = address.address;
     }
     op_blocklist_add_address(this[internalBlockList], address);
+    ArrayPrototypeUnshift(
+      this[kRules],
+      `Address: ${formatFamily(StringPrototypeToLowerCase(family))} ${address}`,
+    );
   }
 
   addRange(start, end, family = "ipv4") {
@@ -72,6 +103,7 @@ class BlockList {
         family,
       });
     } else {
+      family = start.family;
       start = start.address;
     }
     if (!SocketAddress.isSocketAddress(end)) {
@@ -88,6 +120,12 @@ class BlockList {
     if (ret === false) {
       throw new ERR_INVALID_ARG_VALUE("start", start, "must come before end");
     }
+    ArrayPrototypeUnshift(
+      this[kRules],
+      `Range: ${
+        formatFamily(StringPrototypeToLowerCase(family))
+      } ${start}-${end}`,
+    );
   }
 
   addSubnet(network, prefix, family = "ipv4") {
@@ -99,9 +137,12 @@ class BlockList {
         family,
       });
     } else {
-      network = network.address;
+      // Read family before reassigning network; the existing code here
+      // had the order flipped and would use undefined.
       family = network.family;
+      network = network.address;
     }
+    family = StringPrototypeToLowerCase(family);
     switch (family) {
       case "ipv4":
         validateInt32(prefix, "prefix", 0, 32);
@@ -111,6 +152,10 @@ class BlockList {
         break;
     }
     op_blocklist_add_subnet(this[internalBlockList], network, prefix);
+    ArrayPrototypeUnshift(
+      this[kRules],
+      `Subnet: ${formatFamily(family)} ${network}/${prefix}`,
+    );
   }
 
   check(address, family = "ipv4") {
@@ -140,8 +185,98 @@ class BlockList {
   }
 
   get rules() {
-    // TODO(satyarohith): return the actual rules
-    return [];
+    return this[kRules];
+  }
+
+  // Match Node: toJSON returns rules; fromJSON accepts the same format
+  // (array of rule strings or a JSON-serialized array), invalid rules
+  // are ignored. See lib/internal/blocklist.js.
+  toJSON() {
+    return this[kRules];
+  }
+
+  fromJSON(data) {
+    if (ArrayIsArray(data)) {
+      for (const n of data) {
+        if (typeof n !== "string") {
+          throw new ERR_INVALID_ARG_TYPE("data", ["string", "string[]"], data);
+        }
+      }
+    } else if (typeof data !== "string") {
+      throw new ERR_INVALID_ARG_TYPE("data", ["string", "string[]"], data);
+    } else {
+      data = JSONParse(data);
+      if (!ArrayIsArray(data)) {
+        throw new ERR_INVALID_ARG_TYPE("data", ["string", "string[]"], data);
+      }
+      for (const n of data) {
+        if (typeof n !== "string") {
+          throw new ERR_INVALID_ARG_TYPE("data", ["string", "string[]"], data);
+        }
+      }
+    }
+    parseIPInfo(this, data);
+  }
+}
+
+function parseIPInfo(self, data) {
+  for (const item of data) {
+    if (item.includes("IPv4")) {
+      const subnetMatch = StringPrototypeMatch(
+        item,
+        /Subnet: IPv4 (\d{1,3}(?:\.\d{1,3}){3})\/(\d{1,2})/,
+      );
+      if (subnetMatch) {
+        self.addSubnet(subnetMatch[1], NumberParseInt(subnetMatch[2]));
+        continue;
+      }
+      const addressMatch = StringPrototypeMatch(
+        item,
+        /Address: IPv4 (\d{1,3}(?:\.\d{1,3}){3})/,
+      );
+      if (addressMatch) {
+        self.addAddress(addressMatch[1]);
+        continue;
+      }
+      const rangeMatch = StringPrototypeMatch(
+        item,
+        /Range: IPv4 (\d{1,3}(?:\.\d{1,3}){3})-(\d{1,3}(?:\.\d{1,3}){3})/,
+      );
+      if (rangeMatch) {
+        self.addRange(rangeMatch[1], rangeMatch[2]);
+        continue;
+      }
+    }
+    if (item.includes("IPv6")) {
+      const ipv6SubnetMatch = StringPrototypeMatch(
+        item,
+        /Subnet: IPv6 ([0-9a-fA-F:]{1,39})\/([0-9]{1,3})/i,
+      );
+      if (ipv6SubnetMatch) {
+        self.addSubnet(
+          ipv6SubnetMatch[1],
+          NumberParseInt(ipv6SubnetMatch[2]),
+          "ipv6",
+        );
+        continue;
+      }
+      const ipv6AddressMatch = StringPrototypeMatch(
+        item,
+        /Address: IPv6 ([0-9a-fA-F:]{1,39})/i,
+      );
+      if (ipv6AddressMatch) {
+        self.addAddress(ipv6AddressMatch[1], "ipv6");
+        continue;
+      }
+      const ipv6RangeMatch = StringPrototypeMatch(
+        item,
+        /Range: IPv6 ([0-9a-fA-F:]{1,39})-([0-9a-fA-F:]{1,39})/i,
+      );
+      if (ipv6RangeMatch) {
+        self.addRange(ipv6RangeMatch[1], ipv6RangeMatch[2], "ipv6");
+        continue;
+      }
+    }
   }
 }
 
