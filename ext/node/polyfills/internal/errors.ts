@@ -2989,6 +2989,7 @@ export function aggregateTwoErrors(
     );
     // deno-lint-ignore no-explicit-any
     (err as any).code = outerError.code;
+    ErrorCaptureStackTrace(err, aggregateTwoErrors);
     return err;
   }
   return innerError || outerError;
