@@ -2559,13 +2559,25 @@
     "parallel/test-tls-transport-destroy-after-own-gc.js": {},
     "parallel/test-tls-wrap-econnreset-pipe.js": { "windows": false },
     "parallel/test-tls-zero-clear-in.js": {},
-    "parallel/test-trace-events-api.js": {},
-    "parallel/test-trace-events-async-hooks-dynamic.js": {},
-    "parallel/test-trace-events-async-hooks-worker.js": {},
+    "parallel/test-trace-events-api.js": {
+      "ignore": true,
+      "reason": "Deno's node:trace_events polyfill is a stub (createTracing returns an object without .enable/.disable, getEnabledCategories returns \"\" instead of undefined). These tests were silently skipping via try/catch(require('trace_events')) until that lookup was fixed."
+    },
+    "parallel/test-trace-events-async-hooks-dynamic.js": {
+      "ignore": true,
+      "reason": "Deno's node:trace_events polyfill is a stub (createTracing returns an object without .enable/.disable, getEnabledCategories returns \"\" instead of undefined). These tests were silently skipping via try/catch(require('trace_events')) until that lookup was fixed."
+    },
+    "parallel/test-trace-events-async-hooks-worker.js": {
+      "ignore": true,
+      "reason": "Deno's node:trace_events polyfill is a stub (createTracing returns an object without .enable/.disable, getEnabledCategories returns \"\" instead of undefined). These tests were silently skipping via try/catch(require('trace_events')) until that lookup was fixed."
+    },
     "parallel/test-trace-events-dynamic-enable-workers-disabled.js": {},
     // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
     // "parallel/test-trace-events-dynamic-enable.js": {},
-    "parallel/test-trace-events-get-category-enabled-buffer.js": {},
+    "parallel/test-trace-events-get-category-enabled-buffer.js": {
+      "ignore": true,
+      "reason": "Deno's node:trace_events polyfill is a stub (createTracing returns an object without .enable/.disable, getEnabledCategories returns \"\" instead of undefined). These tests were silently skipping via try/catch(require('trace_events')) until that lookup was fixed."
+    },
     "parallel/test-tty-stdin-end.js": {},
     "parallel/test-tty-stdin-pipe.js": {},
     "parallel/test-ttywrap-invalid-fd.js": {},
