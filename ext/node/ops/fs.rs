@@ -32,6 +32,31 @@ use crate::ops::constant::UV_FS_COPYFILE_EXCL;
 /// On Windows, this duplicates the OS HANDLE and converts it to a CRT
 /// file descriptor. The duplicate ensures the CRT fd and the File trait
 /// object own independent handles, avoiding double-close on cleanup.
+/// Read CRT errno and map it to a Win32 error code for std::io::Error.
+///
+/// `open_osfhandle` (and other CRT functions) report failures via errno,
+/// NOT GetLastError(). Calling `std::io::Error::last_os_error()` after a
+/// CRT failure reads a stale Win32 error from a prior API call — e.g.
+/// ERROR_ALREADY_EXISTS (183) left over from CreateFileW(CREATE_ALWAYS),
+/// which would be misreported as EEXIST.
+#[cfg(windows)]
+fn crt_error() -> std::io::Error {
+  // SAFETY: _errno() is a standard MSVC CRT function that returns a
+  // pointer to the thread-local errno value. Always valid to call.
+  extern "C" {
+    fn _errno() -> *mut i32;
+  }
+  let crt_errno = unsafe { *_errno() };
+  let win32_code = match crt_errno {
+    libc::EMFILE => 4,  // ERROR_TOO_MANY_OPEN_FILES
+    libc::EBADF => 6,   // ERROR_INVALID_HANDLE
+    libc::ENOMEM => 8,  // ERROR_NOT_ENOUGH_MEMORY
+    libc::EINVAL => 87, // ERROR_INVALID_PARAMETER
+    _ => 0,             // Unmapped → maps to UV "UNKNOWN"
+  };
+  std::io::Error::from_raw_os_error(win32_code)
+}
+
 fn raw_fd_for_file(file: Rc<dyn deno_io::fs::File>) -> Result<i32, FsError> {
   let handle_fd = file.backing_fd().ok_or_else(|| {
     FsError::Io(std::io::Error::other(
@@ -79,15 +104,7 @@ fn raw_fd_for_file(file: Rc<dyn deno_io::fs::File>) -> Result<i32, FsError> {
     if crt_fd == -1 {
       // SAFETY: Clean up the duplicated handle on failure.
       unsafe { CloseHandle(dup_handle) };
-      // open_osfhandle is a CRT function that sets errno, NOT
-      // GetLastError(). Using last_os_error() here would read a stale
-      // Win32 error from a prior API call — e.g. ERROR_ALREADY_EXISTS
-      // (183) left over from CreateFileW(CREATE_ALWAYS), which would
-      // be misreported as EEXIST. The most common (and practically
-      // only) reason open_osfhandle fails is CRT fd table exhaustion.
-      return Err(FsError::Io(std::io::Error::from_raw_os_error(
-        4, // ERROR_TOO_MANY_OPEN_FILES
-      )));
+      return Err(FsError::Io(crt_error()));
     }
     Ok(crt_fd)
   }
@@ -362,15 +379,10 @@ pub fn op_node_open_sync(
   let fd = raw_fd_for_file(file.clone())?;
 
   #[cfg(windows)]
-  if deferred_truncate {
-    if let Err(e) = file.clone().truncate_sync(0) {
-      // Clean up the fd on failure.
-      // SAFETY: crt_fd is a valid CRT fd just created by raw_fd_for_file.
-      unsafe {
-        libc::close(fd);
-      }
-      return Err(e.into());
-    }
+  if deferred_truncate && let Err(e) = file.clone().truncate_sync(0) {
+    // SAFETY: fd is a valid CRT fd just created by raw_fd_for_file.
+    unsafe { libc::close(fd) };
+    return Err(e.into());
   }
 
   state.borrow_mut::<deno_io::FdTable>().register(fd, file);
@@ -420,13 +432,10 @@ pub async fn op_node_open(
   let fd = raw_fd_for_file(file.clone())?;
 
   #[cfg(windows)]
-  if deferred_truncate {
-    if let Err(e) = file.clone().truncate_sync(0) {
-      unsafe {
-        libc::close(fd);
-      }
-      return Err(e.into());
-    }
+  if deferred_truncate && let Err(e) = file.clone().truncate_sync(0) {
+    // SAFETY: fd is a valid CRT fd just created by raw_fd_for_file.
+    unsafe { libc::close(fd) };
+    return Err(e.into());
   }
 
   let mut state = state.borrow_mut();

@@ -64,6 +64,29 @@ use ipc::IpcRefTracker;
 
 pub const UNSTABLE_FEATURE_NAME: &str = "process";
 
+/// Read CRT errno and map it to a Win32 error code for std::io::Error.
+///
+/// CRT functions like `open_osfhandle` report failures via errno, NOT
+/// GetLastError(). Calling `last_os_error()` after a CRT failure reads
+/// a stale Win32 error from a prior API call.
+#[cfg(windows)]
+fn crt_error() -> std::io::Error {
+  // SAFETY: _errno() is a standard MSVC CRT function that returns a
+  // pointer to the thread-local errno value. Always valid to call.
+  extern "C" {
+    fn _errno() -> *mut i32;
+  }
+  let crt_errno = unsafe { *_errno() };
+  let win32_code = match crt_errno {
+    libc::EMFILE => 4,  // ERROR_TOO_MANY_OPEN_FILES
+    libc::EBADF => 6,   // ERROR_INVALID_HANDLE
+    libc::ENOMEM => 8,  // ERROR_NOT_ENOUGH_MEMORY
+    libc::EINVAL => 87, // ERROR_INVALID_PARAMETER
+    _ => 0,             // Unmapped → maps to UV "UNKNOWN"
+  };
+  std::io::Error::from_raw_os_error(win32_code)
+}
+
 #[derive(Copy, Clone, Eq, PartialEq, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Stdio {
@@ -761,11 +784,7 @@ fn create_command(
             unsafe {
               windows_sys::Win32::Foundation::CloseHandle(fd1 as _);
             }
-            // open_osfhandle sets errno, not GetLastError(). Using
-            // last_os_error() reads a stale Win32 error code.
-            return Err(ProcessError::Io(
-              std::io::Error::from_raw_os_error(4), // ERROR_TOO_MANY_OPEN_FILES
-            ));
+            return Err(ProcessError::Io(crt_error()));
           }
           extra_pipe_fds.push(Some(crt_fd as i64));
         }
@@ -991,11 +1010,7 @@ macro_rules! child_stdio_to_fd {
           // SAFETY: raw_handle is a valid OS handle from the child process.
           let crt_fd = unsafe { libc::open_osfhandle(raw_handle as isize, 0) };
           if crt_fd == -1 {
-            // open_osfhandle sets errno, not GetLastError(). Using
-            // last_os_error() reads a stale Win32 error code.
-            return Err(ProcessError::Io(
-              std::io::Error::from_raw_os_error(4), // ERROR_TOO_MANY_OPEN_FILES
-            ));
+            return Err(ProcessError::Io(crt_error()));
           }
           Ok(crt_fd as i64)
         })
