@@ -81,6 +81,12 @@ import _tlsWrap from "node:_tls_wrap";
 import assert from "node:assert";
 import assertStrict from "node:assert/strict";
 import asyncHooks from "node:async_hooks";
+import {
+  emitAfter as internalAsyncHooksEmitAfter,
+  emitBefore as internalAsyncHooksEmitBefore,
+  emitDestroy as internalAsyncHooksEmitDestroy,
+  emitInit as internalAsyncHooksEmitInit,
+} from "ext:deno_node/internal/async_hooks.ts";
 import buffer from "node:buffer";
 import childProcess from "node:child_process";
 import cluster from "node:cluster";
@@ -1249,6 +1255,20 @@ Module._extensions[".json"] = function (module, filename) {
   }
 };
 
+// Async hooks wrappers for NAPI - called from Rust via V8 function calls.
+function napiAsyncHooksEmitInit(asyncId, type, triggerAsyncId, resource) {
+  internalAsyncHooksEmitInit(asyncId, type, triggerAsyncId, resource);
+}
+function napiAsyncHooksEmitBefore(asyncId) {
+  internalAsyncHooksEmitBefore(asyncId);
+}
+function napiAsyncHooksEmitAfter(asyncId) {
+  internalAsyncHooksEmitAfter(asyncId);
+}
+function napiAsyncHooksEmitDestroy(asyncId) {
+  internalAsyncHooksEmitDestroy(asyncId);
+}
+
 // Native extension for .node
 Module._extensions[".node"] = function (module, filename) {
   if (filename.endsWith("cpufeatures.node")) {
@@ -1259,6 +1279,10 @@ Module._extensions[".node"] = function (module, filename) {
     globalThis,
     buffer.Buffer.from,
     reportError,
+    napiAsyncHooksEmitInit,
+    napiAsyncHooksEmitBefore,
+    napiAsyncHooksEmitAfter,
+    napiAsyncHooksEmitDestroy,
   );
 };
 

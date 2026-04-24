@@ -39,9 +39,11 @@ import {
   ftruncateSync,
   futimes,
   futimesSync,
+  globSync,
   link,
   linkSync,
   lstatSync,
+  mkdirSync,
   mkdtempSync,
   openAsBlob,
   opendirSync,
@@ -50,6 +52,7 @@ import {
   promises as fsPromises,
   readFileSync,
   readSync,
+  rmSync,
   Stats,
   statSync,
   unlink,
@@ -1836,5 +1839,48 @@ Deno.test(
   async () => {
     await using dir = await fsPromises.opendir(".");
     void dir;
+  },
+);
+
+Deno.test(
+  "[node/fs globSync] **/../* must not skip siblings due to readdir ordering",
+  { permissions: { read: true, write: true, env: true } },
+  () => {
+    // Regression test: the ".." handler in glob can queue the same path
+    // multiple times. With the LIFO queue, a duplicate entry may be processed
+    // first, adding it to the cache. When the parent directory later iterates
+    // its children and encounters this cached entry, the old code used `return`
+    // which aborted processing of ALL remaining siblings. The fix changes it to
+    // `continue` on the outer loop so only the cached child is skipped.
+    const tmp = mkdtempSync(join(tmpdir(), "glob-dotdot-"));
+    try {
+      // Build fixture tree:
+      //   a/b/c/d   (nested dirs)
+      //   a/c/d/c/  (nested dirs - child "c" of a/c/d triggers ".." back to
+      //              a/c, creating a duplicate queue entry for a/c)
+      //   a/x       (file)
+      //   a/z       (file)
+      const a = join(tmp, "a");
+      mkdirSync(join(a, "b", "c", "d"), { recursive: true });
+      mkdirSync(join(a, "c", "d", "c"), { recursive: true });
+      writeFileSync(join(a, "x"), "");
+      writeFileSync(join(a, "z"), "");
+
+      const results = globSync("a/**/../*", { cwd: tmp }).sort();
+
+      // Every entry in "a/" must appear regardless of readdir ordering
+      const sep = join("a", "b").includes("\\") ? "\\" : "/";
+      for (const expected of ["a/b", "a/c", "a/x", "a/z"]) {
+        const normalized = expected.replaceAll("/", sep);
+        assert(
+          results.includes(normalized),
+          `Expected "${normalized}" in glob results, got: ${
+            JSON.stringify(results)
+          }`,
+        );
+      }
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
   },
 );

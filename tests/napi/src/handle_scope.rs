@@ -108,70 +108,48 @@ extern "C" fn test_nested_scopes(
   result
 }
 
-/// Ported from Node.js test_handle_scope.c: NewScopeWithException.
-/// Verifies that closing a handle scope still works while an exception
-/// is pending.
-extern "C" fn test_scope_with_exception(
+/// Regression test for #33281: values created inside a handle scope
+/// must remain valid after the scope is closed. With real V8 HandleScopes
+/// this would be a use-after-free since closing the scope frees all
+/// handles allocated within it.
+extern "C" fn test_use_value_after_close(
   env: napi_env,
-  info: napi_callback_info,
+  _info: napi_callback_info,
 ) -> napi_value {
   let mut scope: napi_handle_scope = ptr::null_mut();
   assert_napi_ok!(napi_open_handle_scope(env, &mut scope));
 
+  // Create a string inside the handle scope
   let mut value: napi_value = ptr::null_mut();
-  assert_napi_ok!(napi_create_object(env, &mut value));
-
-  // Get the callback argument (a function that throws)
-  let mut argc: usize = 1;
-  let mut exception_function: napi_value = ptr::null_mut();
-  assert_napi_ok!(napi_get_cb_info(
+  assert_napi_ok!(napi_create_string_utf8(
     env,
-    info,
-    &mut argc,
-    &mut exception_function,
-    ptr::null_mut(),
-    ptr::null_mut()
+    c"hello".as_ptr(),
+    5,
+    &mut value
   ));
 
-  // Call the function that throws -- should return napi_pending_exception
-  let status = unsafe {
-    napi_call_function(
-      env,
-      value,
-      exception_function,
-      0,
-      ptr::null(),
-      ptr::null_mut(),
-    )
-  };
-  assert_eq!(status, Status::napi_pending_exception);
-
-  // Closing a handle scope should still work while an exception is pending
   assert_napi_ok!(napi_close_handle_scope(env, scope));
-  ptr::null_mut()
-}
 
-/// Stress test: create many handles inside a scope and verify they're
-/// properly scoped. Without real handle scopes, this would accumulate
-/// handles unboundedly.
-extern "C" fn test_handle_scope_many_handles(
-  env: napi_env,
-  _info: napi_callback_info,
-) -> napi_value {
-  // Create 10000 objects inside a handle scope
-  for _ in 0..100 {
-    let mut scope: napi_handle_scope = ptr::null_mut();
-    assert_napi_ok!(napi_open_handle_scope(env, &mut scope));
-    for _ in 0..100 {
-      let mut value: napi_value = ptr::null_mut();
-      assert_napi_ok!(napi_create_object(env, &mut value));
-    }
-    assert_napi_ok!(napi_close_handle_scope(env, scope));
-  }
+  // Use the value AFTER closing the scope. With real V8 HandleScopes
+  // the handle would be dangling and this would crash or corrupt data.
+  let mut obj: napi_value = ptr::null_mut();
+  assert_napi_ok!(napi_create_object(env, &mut obj));
 
-  let mut result: napi_value = ptr::null_mut();
-  assert_napi_ok!(napi_get_boolean(env, true, &mut result));
-  result
+  let mut key: napi_value = ptr::null_mut();
+  assert_napi_ok!(napi_create_string_utf8(
+    env,
+    c"greeting".as_ptr(),
+    8,
+    &mut key
+  ));
+
+  assert_napi_ok!(napi_set_property(env, obj, key, value));
+
+  // Read it back to verify the handle is still valid
+  let mut read_back: napi_value = ptr::null_mut();
+  assert_napi_ok!(napi_get_property(env, obj, key, &mut read_back));
+
+  read_back
 }
 
 pub fn init(env: napi_env, exports: napi_value) {
@@ -182,13 +160,8 @@ pub fn init(env: napi_env, exports: napi_value) {
     napi_new_property!(env, "test_nested_scopes", test_nested_scopes),
     napi_new_property!(
       env,
-      "test_scope_with_exception",
-      test_scope_with_exception
-    ),
-    napi_new_property!(
-      env,
-      "test_handle_scope_many_handles",
-      test_handle_scope_many_handles
+      "test_use_value_after_close",
+      test_use_value_after_close
     ),
   ];
 
