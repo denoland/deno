@@ -854,6 +854,7 @@ function tlsConnectionListener(rawSocket) {
     const err = socket._initError;
     socket._initError = null;
     this.emit("tlsClientError", err, rawSocket);
+    socket.destroy();
     rawSocket.destroy();
     return;
   }
