@@ -2719,8 +2719,8 @@ Deno.test(
         method: req.method,
         headers: req.headers as HeadersInit,
         body: req as unknown as BodyInit,
-        // deno-lint-ignore no-explicit-any
         duplex: "half",
+        // deno-lint-ignore no-explicit-any
       } as any);
 
       const reader = request.body!.getReader({ mode: "byob" });
