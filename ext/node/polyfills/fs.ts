@@ -42,12 +42,7 @@ import { readdir, readdirSync } from "ext:deno_node/_fs/_fs_readdir.ts";
 import { EventEmitter } from "node:events";
 import { clearTimeout, setTimeout } from "node:timers";
 import { type MaybeEmpty, notImplemented } from "ext:deno_node/_utils.ts";
-<<<<<<< HEAD
-import { promisify } from "node:util";
-=======
 import { deprecate, promisify } from "node:util";
-import { delay } from "ext:deno_node/_util/async.ts";
->>>>>>> upstream/main
 import promises from "ext:deno_node/internal/fs/promises.ts";
 // @deno-types="./internal/fs/streams.d.ts"
 import {
