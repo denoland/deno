@@ -927,10 +927,7 @@
     "parallel/test-fs-long-path.js": {},
     "parallel/test-fs-make-callback.js": {},
     "parallel/test-fs-makeStatsCallback.js": {},
-    "parallel/test-fs-mkdir-mode-mask.js": {
-      "windows": false,
-      "reason": "mode is not supported in mkdir on Windows"
-    },
+    "parallel/test-fs-mkdir-mode-mask.js": {},
     "parallel/test-fs-mkdir-recursive-eaccess.js": {
       "windows": false,
       "reason": "Unix-specific test (chown/symlink/mode)"
