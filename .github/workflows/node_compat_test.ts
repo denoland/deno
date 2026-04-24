@@ -10,7 +10,7 @@ import {
 
 const isMainBranch = conditions.isBranch("main");
 
-const shardCount = 2;
+const shardCount = 3;
 const matrix = defineMatrix({
   include: [
     { os: "linux", runner: "ubuntu-latest" },

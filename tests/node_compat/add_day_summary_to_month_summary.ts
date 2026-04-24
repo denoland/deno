@@ -106,7 +106,7 @@ async function fetchSingleReport(
   }
 }
 
-const SHARD_COUNT = 2;
+const SHARD_COUNT = 3;
 
 export async function fetchReport(
   date: string,
