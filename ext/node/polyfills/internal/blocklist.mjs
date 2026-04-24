@@ -31,6 +31,7 @@ const {
   ArrayPrototypeUnshift,
   JSONParse,
   NumberParseInt,
+  SafeArrayIterator,
   StringPrototypeMatch,
   StringPrototypeToLowerCase,
   Symbol,
@@ -197,7 +198,7 @@ class BlockList {
 
   fromJSON(data) {
     if (ArrayIsArray(data)) {
-      for (const n of data) {
+      for (const n of new SafeArrayIterator(data)) {
         if (typeof n !== "string") {
           throw new ERR_INVALID_ARG_TYPE("data", ["string", "string[]"], data);
         }
@@ -209,7 +210,7 @@ class BlockList {
       if (!ArrayIsArray(data)) {
         throw new ERR_INVALID_ARG_TYPE("data", ["string", "string[]"], data);
       }
-      for (const n of data) {
+      for (const n of new SafeArrayIterator(data)) {
         if (typeof n !== "string") {
           throw new ERR_INVALID_ARG_TYPE("data", ["string", "string[]"], data);
         }
@@ -220,7 +221,7 @@ class BlockList {
 }
 
 function parseIPInfo(self, data) {
-  for (const item of data) {
+  for (const item of new SafeArrayIterator(data)) {
     if (item.includes("IPv4")) {
       const subnetMatch = StringPrototypeMatch(
         item,
