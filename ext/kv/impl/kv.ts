@@ -1135,6 +1135,9 @@ class Kv {
   ): Promise<void> {
     if (this.#isClosed) throw new Error("Queue already closed");
 
+    // Track in-flight handler promises so we can wait for them on close.
+    const inflight: Promise<void>[] = [];
+
     while (!this.#isClosed) {
       let next: { payload: Uint8Array; id: string } | null;
       try {
@@ -1146,8 +1149,13 @@ class Kv {
       }
       if (next === null) {
         if (this.#isClosed) break;
-        // Poll interval when no messages
-        await new Promise((r) => setTimeout(r, 100));
+        // Poll interval when no messages - race against close
+        const closed = Symbol("closed");
+        const winner = await SafePromiseRace([
+          new Promise((r) => setTimeout(r, 100)),
+          PromisePrototypeThen(this.#closePromise, () => closed),
+        ]);
+        if (winner === closed) break;
         continue;
       }
 
@@ -1155,33 +1163,45 @@ class Kv {
         forStorage: true,
       });
 
-      let success = false;
-      try {
-        const result = handler(deserialized);
-        if (
-          result && typeof (result as Promise<void>).then === "function"
-        ) {
-          // Race handler against close signal so db.close() unblocks
-          // listenQueue even if the handler never resolves.
-          const closed = Symbol("closed");
-          const winner = await SafePromiseRace([
-            PromisePrototypeThen(result as Promise<void>, () => undefined),
-            PromisePrototypeThen(this.#closePromise, () => closed),
-          ]);
-          if (winner === closed) break;
-        }
-        success = true;
-      } catch (error) {
-        if (this.#isClosed) break;
-        // deno-lint-ignore no-console
-        console.error("Exception in queue handler", error);
-      }
-      try {
-        await this.#backend.finishMessage(next.id, success);
-      } catch {
-        // DB may have been closed during message processing
-        if (this.#isClosed) break;
-      }
+      // Dispatch handler concurrently (fire-and-forget with finishMessage
+      // callback), matching the Rust backend behavior where handlers run
+      // independently and don't block the dequeue loop.
+      const messageId = next.id;
+      const backend = this.#backend;
+      const p = PromisePrototypeThen(
+        PromiseResolve(),
+        async () => {
+          let success = false;
+          try {
+            const result = handler(deserialized);
+            if (
+              result &&
+              typeof (result as Promise<void>).then === "function"
+            ) {
+              await (result as Promise<void>);
+            }
+            success = true;
+          } catch (error) {
+            // deno-lint-ignore no-console
+            console.error("Exception in queue handler", error);
+          }
+          try {
+            await backend.finishMessage(messageId, success);
+          } catch {
+            // DB may have been closed
+          }
+        },
+      );
+      ArrayPrototypePush(inflight, p);
+    }
+
+    // Wait for all in-flight handlers or until close
+    if (inflight.length > 0) {
+      await SafePromiseRace([
+        // deno-lint-ignore prefer-primordials
+        Promise.allSettled(inflight),
+        this.#closePromise,
+      ]);
     }
   }
 
