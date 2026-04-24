@@ -1884,3 +1884,44 @@ Deno.test(
     }
   },
 );
+
+Deno.test({
+  name: "[node/fs] watch recursive returns relative path for nested files",
+  ignore: Deno.build.os === "windows",
+  async fn() {
+    const tmp = Deno.makeTempDirSync();
+    const subdir = join(tmp, "sub");
+    fs.mkdirSync(subdir, { recursive: true });
+
+    try {
+      const filenames: string[] = [];
+      const { promise, resolve } = Promise.withResolvers<void>();
+
+      const watcher = fs.watch(
+        tmp,
+        { recursive: true },
+        (_event, filename) => {
+          if (filename) filenames.push(filename);
+          if (filenames.length >= 1) resolve();
+        },
+      );
+
+      // Small delay to let the watcher start
+      await new Promise((r) => setTimeout(r, 100));
+      fs.writeFileSync(join(subdir, "test.txt"), "hello");
+
+      await promise;
+      watcher.close();
+
+      const hasRelative = filenames.some((f) =>
+        f === join("sub", "test.txt") || f === "sub/test.txt"
+      );
+      assert(
+        hasRelative,
+        `Expected relative path like "sub/test.txt", got: ${filenames}`,
+      );
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  },
+});
