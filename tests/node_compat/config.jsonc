@@ -728,6 +728,7 @@
     },
     "parallel/test-dsa-fips-invalid-key.js": {},
     "parallel/test-env-newprotomethod-remove-unnecessary-prototypes.js": {},
+    "parallel/test-error-aggregateTwoErrors.js": {},
     "parallel/test-error-format-list.js": {},
     "parallel/test-errors-aborterror.js": {},
     "parallel/test-eslint-alphabetize-errors.js": {},
@@ -811,6 +812,7 @@
     "parallel/test-file-write-stream5.js": {},
     "parallel/test-filehandle-close.js": {},
     "parallel/test-finalization-registry-shutdown.js": {},
+    "parallel/test-fs-append-file-sync.js": {},
     "parallel/test-fs-buffertype-writesync.js": {},
     "parallel/test-fs-chmod-mask.js": {},
     "parallel/test-fs-chmod.js": {},
@@ -925,6 +927,7 @@
     "parallel/test-fs-long-path.js": {},
     "parallel/test-fs-make-callback.js": {},
     "parallel/test-fs-makeStatsCallback.js": {},
+    "parallel/test-fs-mkdir-mode-mask.js": {},
     "parallel/test-fs-mkdir-recursive-eaccess.js": {
       "windows": false,
       "reason": "Unix-specific test (chown/symlink/mode)"
@@ -980,7 +983,7 @@
     "parallel/test-fs-read-stream-file-handle.js": {},
     "parallel/test-fs-read-stream-inherit.js": {},
     "parallel/test-fs-read-stream-patch-open.js": {},
-    "parallel/test-fs-read-stream-pos.js": {},
+    "parallel/test-fs-read-stream-pos.js": { "windows": false },
     "parallel/test-fs-read-stream-resume.js": {},
     "parallel/test-fs-read-stream-throw-type-error.js": {},
     "parallel/test-fs-read-stream.js": {},
@@ -1982,6 +1985,7 @@
     "parallel/test-process-env-deprecation.js": {},
     "parallel/test-process-env-ignore-getter-setter.js": {},
     "parallel/test-process-env-sideeffects.js": {},
+    "parallel/test-process-env-symbols.js": {},
     "parallel/test-process-env-tz.js": {},
     "parallel/test-process-env-windows-error-reset.js": {},
     "parallel/test-process-exception-capture-errors.js": {},
@@ -1994,6 +1998,7 @@
     "parallel/test-process-exit-recursive.js": {},
     "parallel/test-process-exit.js": {},
     "parallel/test-process-features.js": {},
+    "parallel/test-process-get-builtin.mjs": {},
     "parallel/test-process-getgroups.js": {},
     "parallel/test-process-hrtime-bigint.js": {},
     "parallel/test-process-hrtime.js": {},
@@ -2138,8 +2143,7 @@
     // "parallel/test-runner-inspect.mjs": {},
     "parallel/test-runner-source-maps-invalid-json.js": {},
     "parallel/test-runner-subtest-after-hook.js": {},
-    // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
-    // "parallel/test-set-process-debug-port.js": {},
+    "parallel/test-set-process-debug-port.js": {},
     "parallel/test-setproctitle.js": {},
     "parallel/test-signal-handler-remove-on-exit.js": {},
     "parallel/test-signal-handler.js": {},
@@ -2558,13 +2562,25 @@
     "parallel/test-tls-transport-destroy-after-own-gc.js": {},
     "parallel/test-tls-wrap-econnreset-pipe.js": { "windows": false },
     "parallel/test-tls-zero-clear-in.js": {},
-    "parallel/test-trace-events-api.js": {},
-    "parallel/test-trace-events-async-hooks-dynamic.js": {},
-    "parallel/test-trace-events-async-hooks-worker.js": {},
+    "parallel/test-trace-events-api.js": {
+      "ignore": true,
+      "reason": "Deno's node:trace_events polyfill is a stub (createTracing returns an object without .enable/.disable, getEnabledCategories returns \"\" instead of undefined). These tests were silently skipping via try/catch(require('trace_events')) until that lookup was fixed."
+    },
+    "parallel/test-trace-events-async-hooks-dynamic.js": {
+      "ignore": true,
+      "reason": "Deno's node:trace_events polyfill is a stub (createTracing returns an object without .enable/.disable, getEnabledCategories returns \"\" instead of undefined). These tests were silently skipping via try/catch(require('trace_events')) until that lookup was fixed."
+    },
+    "parallel/test-trace-events-async-hooks-worker.js": {
+      "ignore": true,
+      "reason": "Deno's node:trace_events polyfill is a stub (createTracing returns an object without .enable/.disable, getEnabledCategories returns \"\" instead of undefined). These tests were silently skipping via try/catch(require('trace_events')) until that lookup was fixed."
+    },
     "parallel/test-trace-events-dynamic-enable-workers-disabled.js": {},
     // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
     // "parallel/test-trace-events-dynamic-enable.js": {},
-    "parallel/test-trace-events-get-category-enabled-buffer.js": {},
+    "parallel/test-trace-events-get-category-enabled-buffer.js": {
+      "ignore": true,
+      "reason": "Deno's node:trace_events polyfill is a stub (createTracing returns an object without .enable/.disable, getEnabledCategories returns \"\" instead of undefined). These tests were silently skipping via try/catch(require('trace_events')) until that lookup was fixed."
+    },
     "parallel/test-tty-stdin-end.js": {},
     "parallel/test-tty-stdin-pipe.js": {},
     "parallel/test-ttywrap-invalid-fd.js": {},
@@ -2580,6 +2596,7 @@
     "parallel/test-url-format-invalid-input.js": {},
     "parallel/test-url-format-whatwg.js": {},
     "parallel/test-url-format.js": {},
+    "parallel/test-url-invalid-file-url-path-input.js": {},
     "parallel/test-url-parse-format.js": {},
     "parallel/test-url-parse-query.js": {},
     "parallel/test-url-pathtofileurl.js": {},
@@ -2593,6 +2610,7 @@
     "parallel/test-util-isDeepStrictEqual.js": {},
     "parallel/test-util-parse-env.js": {},
     "parallel/test-util-primordial-monkeypatching.js": {},
+    "parallel/test-util-promisify-custom-names.mjs": {},
     "parallel/test-util-stripvtcontrolcharacters.js": {},
     "parallel/test-util-text-decoder.js": {},
     "parallel/test-util-types-exists.js": {},
