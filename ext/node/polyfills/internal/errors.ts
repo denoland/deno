@@ -2089,6 +2089,14 @@ export class ERR_SOCKET_CLOSED extends NodeError {
     super("ERR_SOCKET_CLOSED", `Socket is closed`);
   }
 }
+export class ERR_SOCKET_CLOSED_BEFORE_CONNECTION extends NodeError {
+  constructor() {
+    super(
+      "ERR_SOCKET_CLOSED_BEFORE_CONNECTION",
+      "Socket closed before the connection was established",
+    );
+  }
+}
 export class ERR_SOCKET_CONNECTION_TIMEOUT extends NodeError {
   constructor() {
     super("ERR_SOCKET_CONNECTION_TIMEOUT", `Socket connection timeout`);
@@ -3326,6 +3334,7 @@ export default {
   ERR_SOCKET_BAD_TYPE,
   ERR_SOCKET_BUFFER_SIZE,
   ERR_SOCKET_CLOSED,
+  ERR_SOCKET_CLOSED_BEFORE_CONNECTION,
   ERR_SOCKET_DGRAM_IS_CONNECTED,
   ERR_SOCKET_DGRAM_NOT_CONNECTED,
   ERR_SOCKET_DGRAM_NOT_RUNNING,

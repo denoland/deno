@@ -1689,6 +1689,7 @@
     "parallel/test-net-sync-cork.js": {},
     "parallel/test-net-timeout-no-handle.js": {},
     "parallel/test-net-writable.js": {},
+    "parallel/test-net-write-cb-on-destroy-before-connect.js": {},
     "parallel/test-net-write-connect-write.js": {},
     "parallel/test-net-write-fully-async-buffer.js": {},
     "parallel/test-net-write-slow.js": {},
