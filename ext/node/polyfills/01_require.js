@@ -54,7 +54,9 @@ const {
   RegExpPrototypeTest,
   SafeArrayIterator,
   SafeMap,
+  SafeSet,
   SafeWeakMap,
+  SetPrototypeHas,
   String,
   StringPrototypeCharCodeAt,
   StringPrototypeEndsWith,
@@ -275,7 +277,7 @@ function setupBuiltinModules() {
     timers,
     "timers/promises": timersPromises,
     tls,
-    traceEvents,
+    trace_events: traceEvents,
     tty,
     url,
     util,
@@ -286,9 +288,27 @@ function setupBuiltinModules() {
     worker_threads: workerThreads,
     zlib,
   };
+  // Match Node's schemelessBlockList: these modules can only be imported
+  // via the `node:` scheme (see lib/internal/bootstrap/realm.js), so they
+  // appear in `builtinModules` as `node:<name>` rather than `<name>`.
+  const schemelessBlockList = new SafeSet([
+    "sea",
+    "sqlite",
+    "test",
+    "test/reporters",
+  ]);
   for (const [name, moduleExports] of ObjectEntries(nodeModules)) {
     nativeModuleExports[name] = moduleExports;
-    ArrayPrototypePush(builtinModules, name);
+    // `internal/*` modules are only exposed under --expose-internals, so
+    // they aren't part of the public builtinModules list.
+    if (StringPrototypeStartsWith(name, "internal/")) {
+      continue;
+    }
+    if (SetPrototypeHas(schemelessBlockList, name)) {
+      ArrayPrototypePush(builtinModules, `node:${name}`);
+    } else {
+      ArrayPrototypePush(builtinModules, name);
+    }
   }
 }
 setupBuiltinModules();
@@ -1372,6 +1392,9 @@ function isBuiltin(moduleName) {
 }
 
 function getBuiltinModule(id) {
+  if (typeof id !== "string") {
+    throw new internalErrors.ERR_INVALID_ARG_TYPE("id", "string", id);
+  }
   if (!isBuiltin(id)) {
     return undefined;
   }

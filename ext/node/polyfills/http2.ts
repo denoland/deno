@@ -55,6 +55,8 @@ import http from "node:http";
 import {
   _connectionListener as httpConnectionListener,
   httpServerPreClose,
+  kIncomingMessage,
+  kServerResponse,
   Server as HttpServer,
   setupConnectionsTracking,
 } from "node:_http_server";
@@ -2830,6 +2832,12 @@ function setupHandle(socket, type, options) {
   const settings = typeof options.settings === "object" ? options.settings : {};
 
   this.settings(settings);
+
+  // Flush the client connection preface + SETTINGS frame to the socket.
+  // The Rust send_pending_data() is a no-op when the stream is not consumed
+  // (JS write path), so we must explicitly drain nghttp2's output buffer
+  // via the JS sendPending override that calls getOutgoingData + socket.write.
+  handle.sendPending();
 
   if (
     type === NGHTTP2_SESSION_SERVER &&
