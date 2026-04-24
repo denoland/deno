@@ -87,6 +87,11 @@ const backslashRegEx = /\\/g;
 const newlineRegEx = /\n/g;
 const carriageReturnRegEx = /\r/g;
 const tabRegEx = /\t/g;
+const caretRegEx = /\^/g;
+const leftBracketRegEx = /\[/g;
+const rightBracketRegEx = /]/g;
+const pipeRegEx = /\|/g;
+const tildeRegEx = /~/g;
 // Reference: RFC 3986, RFC 1808, RFC 2396
 
 // define these here so at least they only have to be
@@ -1374,6 +1379,21 @@ function encodePathChars(
   if (filepath.includes("\t")) {
     filepath = filepath.replace(tabRegEx, "%09");
   }
+  if (filepath.includes("^")) {
+    filepath = filepath.replace(caretRegEx, "%5E");
+  }
+  if (filepath.includes("[")) {
+    filepath = filepath.replace(leftBracketRegEx, "%5B");
+  }
+  if (filepath.includes("]")) {
+    filepath = filepath.replace(rightBracketRegEx, "%5D");
+  }
+  if (filepath.includes("|")) {
+    filepath = filepath.replace(pipeRegEx, "%7C");
+  }
+  if (filepath.includes("~")) {
+    filepath = filepath.replace(tildeRegEx, "%7E");
+  }
   return filepath;
 }
 
@@ -1391,27 +1411,52 @@ export function pathToFileURL(
   validateString(filepath, "path");
   const windows = options?.windows;
   const outURL = new URL("file://");
-  if ((windows ?? isWindows) && filepath.startsWith("\\\\")) {
+  const isWin = windows ?? isWindows;
+  // Extended Win32 path format (\\?\C:\...) is treated as a regular drive
+  // path after stripping the \\?\ prefix. Extended UNC (\\?\UNC\server\...)
+  // still goes through the UNC branch, with the \\?\UNC\ prefix stripped.
+  if (
+    isWin && filepath.startsWith("\\\\?\\") &&
+    !filepath.startsWith("\\\\?\\UNC\\")
+  ) {
+    const stripped = filepath.slice(4);
+    outURL.pathname = encodePathChars(stripped, { windows });
+    return outURL;
+  }
+  if (isWin && filepath.startsWith("\\\\")) {
     // UNC path format: \\server\share\resource
-    const paths = filepath.split("\\");
-    if (paths.length <= 3) {
+    // Extended UNC path format: \\?\UNC\server\share\resource
+    const isExtendedUNC = filepath.startsWith("\\\\?\\UNC\\");
+    const prefixLength = isExtendedUNC ? 8 : 2;
+    const hostnameEndIndex = filepath.indexOf("\\", prefixLength);
+    if (hostnameEndIndex === -1) {
       throw new ERR_INVALID_ARG_VALUE(
         "filepath",
         filepath,
         "Missing UNC resource path",
       );
     }
-    const hostname = paths[2];
-    if (hostname.length === 0) {
+    if (hostnameEndIndex === prefixLength) {
       throw new ERR_INVALID_ARG_VALUE(
         "filepath",
         filepath,
         "Empty UNC servername",
       );
     }
+    const hostname = filepath.slice(prefixLength, hostnameEndIndex);
+    const rest = filepath.slice(hostnameEndIndex + 1);
+    if (rest.length === 0) {
+      throw new ERR_INVALID_ARG_VALUE(
+        "filepath",
+        filepath,
+        "Missing UNC resource path",
+      );
+    }
 
     outURL.hostname = idnaToASCII(hostname);
-    outURL.pathname = encodePathChars(paths.slice(3).join("/"), { windows });
+    outURL.pathname = encodePathChars(rest.replace(backslashRegEx, "/"), {
+      windows,
+    });
   } else {
     let resolved = (windows ?? isWindows)
       ? path.win32.resolve(filepath)
