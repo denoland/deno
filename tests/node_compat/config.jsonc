@@ -1262,7 +1262,6 @@
     "parallel/test-http-client-insecure-http-parser-error.js": {},
     "parallel/test-http-client-invalid-path.js": {},
     "parallel/test-http-client-keep-alive-hint.js": {},
-    "parallel/test-http-client-keep-alive-release-before-finish.js": {},
     "parallel/test-http-client-override-global-agent.js": {},
     "parallel/test-http-client-path-toctou.js": {},
     "parallel/test-http-client-pipe-end.js": {},
