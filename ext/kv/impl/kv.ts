@@ -1689,7 +1689,23 @@ class KvListIterator implements AsyncIterableIterator<Deno.KvEntry<unknown>> {
 // ---------------------------------------------------------------------------
 
 function openKv(path?: string): Promise<Kv> {
-  const resolvedPath = path ?? "";
+  let resolvedPath = path ?? "";
+
+  // Match Rust behavior: check DENO_KV_DEFAULT_PATH when no path given
+  if (resolvedPath === "") {
+    const defaultPath = Deno.env.get("DENO_KV_DEFAULT_PATH");
+    if (defaultPath) {
+      resolvedPath = defaultPath;
+    }
+  }
+
+  // Match Rust behavior: check DENO_KV_PATH_PREFIX for non-empty paths
+  if (resolvedPath !== "") {
+    const prefix = Deno.env.get("DENO_KV_PATH_PREFIX");
+    if (prefix) {
+      resolvedPath = prefix + resolvedPath;
+    }
+  }
 
   let backend: KvBackend;
 
@@ -1709,20 +1725,25 @@ function openKv(path?: string): Promise<Kv> {
   } else {
     // Local SQLite backend
     if (resolvedPath === "") {
-      throw new TypeError("Filename cannot be empty");
+      // No path and no DENO_KV_DEFAULT_PATH: use in-memory database
+      // (matches Rust behavior when path is None and no default_storage_dir)
+      resolvedPath = ":memory:";
     }
-    if (
-      StringPrototypeStartsWith(resolvedPath, ":") &&
-      resolvedPath !== ":memory:" &&
-      !StringPrototypeStartsWith(resolvedPath, "./") &&
-      !StringPrototypeStartsWith(resolvedPath, "../")
-    ) {
-      throw new TypeError(
-        "Filename cannot start with ':' unless prefixed with './'",
-      );
+    if (resolvedPath !== ":memory:") {
+      if (resolvedPath === "") {
+        throw new TypeError("Filename cannot be empty");
+      }
+      if (
+        StringPrototypeStartsWith(resolvedPath, ":") &&
+        !StringPrototypeStartsWith(resolvedPath, "./") &&
+        !StringPrototypeStartsWith(resolvedPath, "../")
+      ) {
+        throw new TypeError(
+          "Filename cannot start with ':' unless prefixed with './'",
+        );
+      }
     }
-    const dbPath = resolvedPath;
-    backend = new SqliteKvBackend(dbPath);
+    backend = new SqliteKvBackend(resolvedPath);
   }
 
   return PromiseResolve(new Kv(backend, kvSymbol));
