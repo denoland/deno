@@ -983,7 +983,7 @@
     "parallel/test-fs-read-stream-file-handle.js": {},
     "parallel/test-fs-read-stream-inherit.js": {},
     "parallel/test-fs-read-stream-patch-open.js": {},
-    "parallel/test-fs-read-stream-pos.js": {},
+    "parallel/test-fs-read-stream-pos.js": { "windows": false },
     "parallel/test-fs-read-stream-resume.js": {},
     "parallel/test-fs-read-stream-throw-type-error.js": {},
     "parallel/test-fs-read-stream.js": {},
