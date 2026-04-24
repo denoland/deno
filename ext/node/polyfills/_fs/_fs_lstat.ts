@@ -52,7 +52,18 @@ export function lstat(
   PromisePrototypeThen(
     Deno.lstat(getValidatedPathToString(path)),
     (stat) => callback(null, CFISBIS(stat, options.bigint)),
-    (err) => callback(denoErrorToNodeError(err, { syscall: "lstat" })),
+    (err) => {
+      // Match Node: `{ throwIfNoEntry: false }` suppresses ENOENT and yields
+      // undefined stats (see lib/fs.js lstat()).
+      if (
+        (options as statOptions)?.throwIfNoEntry === false &&
+        ObjectPrototypeIsPrototypeOf(Deno.errors.NotFound.prototype, err)
+      ) {
+        callback(null, undefined);
+        return;
+      }
+      callback(denoErrorToNodeError(err, { syscall: "lstat" }));
+    },
   );
 }
 
