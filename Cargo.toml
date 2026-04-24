@@ -312,7 +312,7 @@ termcolor = "1.1.3"
 testing_macros = "1.0.0"
 thiserror = "2.0.12"
 tokio = { version = "1.47.1", features = ["full"] }
-tokio-eld = "0.2"
+tokio-eld = "0.3"
 tokio-metrics = { version = "0.3.0", features = ["rt"] }
 tokio-rustls = { version = "0.26.0", default-features = false, features = ["aws_lc_rs", "tls12"] }
 tokio-socks = "0.5.1"
@@ -607,12 +607,3 @@ opt-level = 3
 opt-level = 3
 [profile.release.package.twox-hash]
 opt-level = 3
-
-# Interim patch: upstream `tokio-eld` 0.2.0 has a use-after-free in the sampling
-# task that surfaces as flaky SIGSEGV during `deno test` shutdown whenever a
-# test isolate enables `perf_hooks.monitorEventLoopDelay` (e.g. via prom-client).
-# See https://github.com/denoland/deno/issues/33374
-# and https://github.com/littledivy/tokio_eld/pull/2
-# Remove this patch once the fix is released to crates.io.
-[patch.crates-io]
-tokio-eld = { git = "https://github.com/nikicat/tokio_eld", branch = "fix/eld-histogram-uaf" }
