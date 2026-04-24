@@ -829,7 +829,6 @@
     "parallel/test-eslint-required-modules.js": {},
     // "parallel/test-esm-loader-hooks-inspect-brk.js": {},
     // "parallel/test-esm-loader-hooks-inspect-wait.js": {},
-    "parallel/test-esm-loader-hooks-inspect-brk.js": {},
     "parallel/test-eval-strict-referenceerror.js": {},
     "parallel/test-eval.js": {},
     "parallel/test-event-capture-rejections.js": {},
