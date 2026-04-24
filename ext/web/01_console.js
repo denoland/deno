@@ -3737,7 +3737,7 @@ class Console {
   // printer (not dir). Node also aliases console.dirxml to log (see
   // lib/internal/console/constructor.js). Use a fresh arrow so the
   // method's .name is "dirxml" rather than "dir".
-  dirxml = (...args) => this.log(...args);
+  dirxml = (...args) => this.log(...new SafeArrayIterator(args));
 
   warn = (...args) => {
     this.#printFunc(
