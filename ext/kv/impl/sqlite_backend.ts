@@ -4,6 +4,37 @@
 // This is a pure-JS rewrite of the Rust denokv_sqlite backend, maintaining
 // exact schema and behavioral compatibility.
 
+import { primordials } from "ext:core/mod.js";
+const {
+  ArrayFrom,
+  ArrayPrototypeMap,
+  ArrayPrototypePush,
+  ArrayPrototypeSlice,
+  BigInt,
+  BigIntAsUintN,
+  DataView,
+  DataViewPrototypeGetBigUint64,
+  DataViewPrototypeSetBigInt64,
+  DataViewPrototypeSetBigUint64,
+  DateNow,
+  Error,
+  JSONParse,
+  JSONStringify,
+  MathFloor,
+  MathRandom,
+  Number,
+  ObjectPrototypeIsPrototypeOf,
+  StringPrototypeCharCodeAt,
+  TypeError,
+  TypedArrayPrototypeGetBuffer,
+  TypedArrayPrototypeGetByteLength,
+  TypedArrayPrototypeGetByteOffset,
+  TypedArrayPrototypeGetLength,
+  TypedArrayPrototypeSet,
+  Uint8Array,
+  Uint8ArrayPrototype,
+} = primordials;
+
 import { DatabaseSync } from "node:sqlite";
 
 // Value encoding constants (must match denokv_proto)
@@ -152,8 +183,8 @@ const SQL_QUEUE_GET_RUNNING_BY_ID =
  */
 function versionToVersionstamp(version: number | bigint): Uint8Array {
   const buf = new Uint8Array(10);
-  const view = new DataView(buf.buffer);
-  view.setBigInt64(0, BigInt(version), false); // big-endian
+  const view = new DataView(TypedArrayPrototypeGetBuffer(buf));
+  DataViewPrototypeSetBigInt64(view, 0, BigInt(version), false); // big-endian
   // bytes [8] and [9] remain 0
   return buf;
 }
@@ -168,8 +199,10 @@ function versionstampEquals(
 ): boolean {
   if (a === null && b === null) return true;
   if (a === null || b === null) return false;
-  if (a.length !== b.length) return false;
-  for (let i = 0; i < a.length; i++) {
+  if (TypedArrayPrototypeGetLength(a) !== TypedArrayPrototypeGetLength(b)) {
+    return false;
+  }
+  for (let i = 0; i < TypedArrayPrototypeGetLength(a); i++) {
     if (a[i] !== b[i]) return false;
   }
   return true;
@@ -186,8 +219,8 @@ function encodeValue(value: KvValue): { data: Uint8Array; encoding: number } {
       return { data: value.data, encoding: VE_BYTES };
     case "u64": {
       const buf = new Uint8Array(8);
-      const view = new DataView(buf.buffer);
-      view.setBigUint64(0, value.value, true); // little-endian
+      const view = new DataView(TypedArrayPrototypeGetBuffer(buf));
+      DataViewPrototypeSetBigUint64(view, 0, value.value, true); // little-endian
       return { data: buf, encoding: VE_LE64 };
     }
   }
@@ -204,11 +237,14 @@ function decodeValue(data: Uint8Array, encoding: number): KvValue {
       return { kind: "bytes", data };
     case VE_LE64: {
       const view = new DataView(
-        data.buffer,
-        data.byteOffset,
-        data.byteLength,
+        TypedArrayPrototypeGetBuffer(data),
+        TypedArrayPrototypeGetByteOffset(data),
+        TypedArrayPrototypeGetByteLength(data),
       );
-      return { kind: "u64", value: view.getBigUint64(0, true) };
+      return {
+        kind: "u64",
+        value: DataViewPrototypeGetBigUint64(view, 0, true),
+      };
     }
     default:
       throw new TypeError(`Unknown value encoding: ${encoding}`);
@@ -220,8 +256,8 @@ function decodeValue(data: Uint8Array, encoding: number): KvValue {
  */
 function writeLE64(value: bigint): Uint8Array {
   const buf = new Uint8Array(8);
-  const view = new DataView(buf.buffer);
-  view.setBigUint64(0, value, true);
+  const view = new DataView(TypedArrayPrototypeGetBuffer(buf));
+  DataViewPrototypeSetBigUint64(view, 0, value, true);
   return buf;
 }
 
@@ -229,7 +265,7 @@ function writeLE64(value: bigint): Uint8Array {
  * Generate a random integer in [min, max) range.
  */
 function randomInt(min: number, max: number): number {
-  return min + Math.floor(Math.random() * (max - min));
+  return min + MathFloor(MathRandom() * (max - min));
 }
 
 /**
@@ -243,20 +279,18 @@ function generateUUID(): string {
  * Hex-encode a Uint8Array to a lowercase hex string.
  */
 function hexEncode(bytes: Uint8Array): string {
-  let result = "";
-  for (let i = 0; i < bytes.length; i++) {
-    result += bytes[i].toString(16).padStart(2, "0");
-  }
-  return result;
+  return bytes.toHex();
 }
 
 /**
  * Concatenate two Uint8Arrays.
  */
 function concatBytes(a: Uint8Array, b: Uint8Array): Uint8Array {
-  const result = new Uint8Array(a.length + b.length);
-  result.set(a, 0);
-  result.set(b, a.length);
+  const result = new Uint8Array(
+    TypedArrayPrototypeGetLength(a) + TypedArrayPrototypeGetLength(b),
+  );
+  TypedArrayPrototypeSet(result, a, 0);
+  TypedArrayPrototypeSet(result, b, TypedArrayPrototypeGetLength(a));
   return result;
 }
 
@@ -358,7 +392,8 @@ export class SqliteBackend {
 
     this.#db.exec("BEGIN");
     try {
-      for (const range of ranges) {
+      for (let ri = 0; ri < ranges.length; ri++) {
+        const range = ranges[ri];
         const stmt = range.reverse
           ? this.#stmtRangeScanReverse!
           : this.#stmtRangeScan!;
@@ -370,14 +405,15 @@ export class SqliteBackend {
         }>;
 
         const entries: KvEntry[] = [];
-        for (const row of rows) {
-          entries.push({
+        for (let j = 0; j < rows.length; j++) {
+          const row = rows[j];
+          ArrayPrototypePush(entries, {
             key: asUint8Array(row.k),
             value: decodeValue(asUint8Array(row.v), row.v_encoding),
             versionstamp: versionToVersionstamp(row.version),
           });
         }
-        results.push(entries);
+        ArrayPrototypePush(results, entries);
       }
 
       this.#db.exec("COMMIT");
@@ -402,13 +438,14 @@ export class SqliteBackend {
 
     this.#db.exec("BEGIN IMMEDIATE");
     try {
-      const now = Date.now();
+      const now = DateNow();
 
       // 1. Delete expired entries
       this.#stmtDeleteAllExpired!.run(now);
 
       // 2. Perform checks
-      for (const check of checks) {
+      for (let ci = 0; ci < checks.length; ci++) {
+        const check = checks[ci];
         const row = this.#stmtPointGetVersionOnly!.get(check.key) as
           | { version: number | bigint }
           | undefined;
@@ -431,18 +468,22 @@ export class SqliteBackend {
       const newVersionstamp = versionToVersionstamp(version);
 
       // 4. Apply mutations
-      for (const mutation of mutations) {
-        this.#applyMutation(mutation, version, newVersionstamp);
+      for (let mi = 0; mi < mutations.length; mi++) {
+        this.#applyMutation(mutations[mi], version, newVersionstamp);
       }
 
       // 5. Enqueue messages
-      for (const enqueue of enqueues) {
+      for (let ei = 0; ei < enqueues.length; ei++) {
+        const enqueue = enqueues[ei];
         const id = generateUUID();
-        const backoffSchedule = JSON.stringify(
+        const backoffSchedule = JSONStringify(
           enqueue.backoffSchedule ?? DEFAULT_BACKOFF_SCHEDULE,
         );
-        const keysIfUndelivered = JSON.stringify(
-          enqueue.keysIfUndelivered.map((k) => Array.from(k)),
+        const keysIfUndelivered = JSONStringify(
+          ArrayPrototypeMap(
+            enqueue.keysIfUndelivered,
+            (k: Uint8Array) => ArrayFrom(k),
+          ),
         );
 
         this.#stmtQueueAddReady!.run(
@@ -531,7 +572,7 @@ export class SqliteBackend {
         const suffix = new Uint8Array(22);
         suffix[0] = 0x02;
         for (let i = 0; i < 20; i++) {
-          suffix[1 + i] = hexStr.charCodeAt(i);
+          suffix[1 + i] = StringPrototypeCharCodeAt(hexStr, i);
         }
         // suffix[21] is already 0x00
 
@@ -625,7 +666,7 @@ export class SqliteBackend {
         "sum",
         operand,
         version,
-        (a, b) => BigInt.asUintN(64, a + b),
+        (a, b) => BigIntAsUintN(64, a + b),
       );
       return;
     }
@@ -669,7 +710,7 @@ export class SqliteBackend {
   dequeueNextMessage(): { payload: Uint8Array; id: string } | null {
     this.#ensureOpen();
 
-    const now = Date.now();
+    const now = DateNow();
 
     this.#db.exec("BEGIN IMMEDIATE");
     try {
@@ -756,15 +797,17 @@ export class SqliteBackend {
       return;
     }
 
-    const backoffSchedule: number[] | null = JSON.parse(row.backoff_schedule);
+    const backoffSchedule: number[] | null = JSONParse(row.backoff_schedule);
     const schedule = backoffSchedule ?? [];
 
-    const now = Date.now();
+    const now = DateNow();
 
     if (schedule.length > 0) {
       // Requeue with the first backoff delay, rest is remaining schedule
       const newTs = now + schedule[0];
-      const newBackoffSchedule = JSON.stringify(schedule.slice(1));
+      const newBackoffSchedule = JSONStringify(
+        ArrayPrototypeSlice(schedule, 1),
+      );
 
       this.#stmtQueueAddReady!.run(
         newTs,
@@ -775,7 +818,7 @@ export class SqliteBackend {
       );
     } else {
       // No more retries. Write to keys_if_undelivered.
-      const keysIfUndelivered: number[][] = JSON.parse(
+      const keysIfUndelivered: number[][] = JSONParse(
         row.keys_if_undelivered,
       );
       if (keysIfUndelivered.length > 0) {
@@ -785,8 +828,8 @@ export class SqliteBackend {
         };
         const version = versionRow.version;
 
-        for (const keyArr of keysIfUndelivered) {
-          const key = new Uint8Array(keyArr);
+        for (let ki = 0; ki < keysIfUndelivered.length; ki++) {
+          const key = new Uint8Array(keysIfUndelivered[ki]);
           this.#stmtPointSet!.run({
             ":k": key,
             ":v": row.data,
@@ -818,8 +861,8 @@ export class SqliteBackend {
  * this normalizes them.
  */
 function asUint8Array(value: Uint8Array | ArrayBuffer): Uint8Array {
-  if (value instanceof Uint8Array) {
-    return value;
+  if (ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, value)) {
+    return value as Uint8Array;
   }
   return new Uint8Array(value);
 }

@@ -5,6 +5,25 @@
 // using hand-rolled protobuf from the sibling module for the data path
 // and JSON for metadata exchange.
 
+import { primordials } from "ext:core/mod.js";
+const {
+  ArrayPrototypeMap,
+  Date,
+  DateNow,
+  DatePrototypeGetTime,
+  Error,
+  JSONStringify,
+  MathMax,
+  MathRandom,
+  Promise,
+  PromisePrototypeCatch,
+  String,
+  TypedArrayPrototypeGetLength,
+  TypedArrayPrototypeSet,
+  TypedArrayPrototypeSlice,
+  Uint8Array,
+} = primordials;
+
 import {
   type AtomicWriteOutput,
   AtomicWriteStatus,
@@ -89,7 +108,7 @@ function delay(ms: number): Promise<void> {
 /** Exponential backoff with jitter. */
 function backoffDelay(base: number, attempt: number): number {
   const exponential = base * (2 ** attempt);
-  const jitter = Math.random() * base;
+  const jitter = MathRandom() * base;
   return exponential + jitter;
 }
 
@@ -142,7 +161,10 @@ export class RemoteBackend {
       );
     }
 
-    return output.ranges.map((range) => range.values.map(protoEntryToRemote));
+    return ArrayPrototypeMap(
+      output.ranges,
+      (range) => ArrayPrototypeMap(range.values, protoEntryToRemote),
+    );
   }
 
   async atomicWrite(
@@ -200,7 +222,7 @@ export class RemoteBackend {
             // Inner loop: read frames from the current connection
             while (true) {
               // Ensure we have at least 4 bytes for the frame length
-              while (buffer.length < 4) {
+              while (TypedArrayPrototypeGetLength(buffer) < 4) {
                 const { done, value } = await reader.read();
                 if (done) {
                   // Stream ended - force reconnect
@@ -222,7 +244,7 @@ export class RemoteBackend {
               const frameLenU = frameLen >>> 0;
 
               // Ensure we have the full frame
-              while (buffer.length < 4 + frameLenU) {
+              while (TypedArrayPrototypeGetLength(buffer) < 4 + frameLenU) {
                 const { done, value } = await reader.read();
                 if (done) {
                   throw new Error(
@@ -233,8 +255,8 @@ export class RemoteBackend {
               }
 
               // Extract the frame and advance the buffer
-              const frame = buffer.slice(4, 4 + frameLenU);
-              buffer = buffer.slice(4 + frameLenU);
+              const frame = TypedArrayPrototypeSlice(buffer, 4, 4 + frameLenU);
+              buffer = TypedArrayPrototypeSlice(buffer, 4 + frameLenU);
 
               // Empty frames are pings - skip them
               if (frameLenU === 0) {
@@ -252,13 +274,16 @@ export class RemoteBackend {
                 return;
               }
 
-              const updates: WatchKeyUpdate[] = output.keys.map((k) => {
-                const update: WatchKeyUpdate = { changed: k.changed };
-                if (k.entryIfChanged !== null) {
-                  update.entry = protoEntryToRemote(k.entryIfChanged);
-                }
-                return update;
-              });
+              const updates: WatchKeyUpdate[] = ArrayPrototypeMap(
+                output.keys,
+                (k) => {
+                  const update: WatchKeyUpdate = { changed: k.changed };
+                  if (k.entryIfChanged !== null) {
+                    update.entry = protoEntryToRemote(k.entryIfChanged);
+                  }
+                  return update;
+                },
+              );
 
               controller.enqueue(updates);
               return; // One frame per pull
@@ -324,7 +349,7 @@ export class RemoteBackend {
   async #ensureMetadata(): Promise<Metadata> {
     if (
       this.#metadata !== null &&
-      this.#metadata.expiresAt.getTime() > Date.now()
+      DatePrototypeGetTime(this.#metadata.expiresAt) > DateNow()
     ) {
       return this.#metadata;
     }
@@ -341,11 +366,14 @@ export class RemoteBackend {
             "content-type": "application/json",
             "authorization": `Bearer ${this.#accessToken}`,
           },
-          body: JSON.stringify({ supportedVersions: SUPPORTED_VERSIONS }),
+          body: JSONStringify({ supportedVersions: SUPPORTED_VERSIONS }),
         });
 
         if (!resp.ok) {
-          const text = await resp.text().catch(() => "");
+          const text = await PromisePrototypeCatch(
+            resp.text(),
+            () => "",
+          );
           throw new Error(
             `Metadata exchange failed (HTTP ${resp.status}): ${text}`,
           );
@@ -381,15 +409,16 @@ export class RemoteBackend {
       clearTimeout(this.#metadataRefreshTimer);
     }
 
-    const timeUntilExpiry = metadata.expiresAt.getTime() - Date.now();
-    const refreshIn = Math.max(
+    const timeUntilExpiry = DatePrototypeGetTime(metadata.expiresAt) -
+      DateNow();
+    const refreshIn = MathMax(
       MIN_REFRESH_INTERVAL_MS,
       timeUntilExpiry - REFRESH_BEFORE_EXPIRY_MS,
     );
 
     this.#metadataRefreshTimer = setTimeout(() => {
       if (!this.#closed) {
-        this.#fetchMetadata().catch(() => {
+        PromisePrototypeCatch(this.#fetchMetadata(), () => {
           // Refresh failure is non-fatal; the next operation will retry.
         });
       }
@@ -441,7 +470,10 @@ export class RemoteBackend {
 
       if (resp.status >= 500 && resp.status < 600) {
         if (attempt >= MAX_DATA_RETRIES) {
-          const text = await resp.text().catch(() => "");
+          const text = await PromisePrototypeCatch(
+            resp.text(),
+            () => "",
+          );
           throw new Error(
             `KV ${method} request failed with HTTP ${resp.status} after ${attempt} retries: ${text}`,
           );
@@ -452,7 +484,10 @@ export class RemoteBackend {
       }
 
       if (resp.status >= 400 && resp.status < 500) {
-        const text = await resp.text().catch(() => "");
+        const text = await PromisePrototypeCatch(
+          resp.text(),
+          () => "",
+        );
         if (resp.status === 401 || resp.status === 403) {
           throw new Error(
             `KV authentication error (HTTP ${resp.status}): ${text}`,
@@ -488,7 +523,10 @@ export class RemoteBackend {
     });
 
     if (!resp.ok) {
-      const text = await resp.text().catch(() => "");
+      const text = await PromisePrototypeCatch(
+        resp.text(),
+        () => "",
+      );
       throw new Error(
         `Watch request failed with HTTP ${resp.status}: ${text}`,
       );
@@ -538,8 +576,12 @@ export class RemoteBackend {
     metadata: Metadata,
     consistency: "strong" | "eventual",
   ): MetadataEndpoint {
+    const endpoints = metadata.endpoints;
+    const endpointsLen = endpoints.length;
+
     // Try to find an endpoint matching the requested consistency
-    for (const ep of metadata.endpoints) {
+    for (let i = 0; i < endpointsLen; i++) {
+      const ep = endpoints[i];
       if (ep.consistency === consistency) {
         return ep;
       }
@@ -548,7 +590,8 @@ export class RemoteBackend {
     // Fall back to "strong" if "eventual" was requested but not available,
     // since strong is always acceptable.
     if (consistency === "eventual") {
-      for (const ep of metadata.endpoints) {
+      for (let i = 0; i < endpointsLen; i++) {
+        const ep = endpoints[i];
         if (ep.consistency === "strong") {
           return ep;
         }
@@ -556,8 +599,8 @@ export class RemoteBackend {
     }
 
     // Last resort: use the first endpoint
-    if (metadata.endpoints.length > 0) {
-      return metadata.endpoints[0];
+    if (endpointsLen > 0) {
+      return endpoints[0];
     }
 
     throw new Error("No KV endpoints available in metadata");
@@ -569,8 +612,10 @@ export class RemoteBackend {
 // ---------------------------------------------------------------------------
 
 function appendBuffer(existing: Uint8Array, chunk: Uint8Array): Uint8Array {
-  const combined = new Uint8Array(existing.length + chunk.length);
-  combined.set(existing, 0);
-  combined.set(chunk, existing.length);
+  const existingLen = TypedArrayPrototypeGetLength(existing);
+  const chunkLen = TypedArrayPrototypeGetLength(chunk);
+  const combined = new Uint8Array(existingLen + chunkLen);
+  TypedArrayPrototypeSet(combined, existing, 0);
+  TypedArrayPrototypeSet(combined, chunk, existingLen);
   return combined;
 }

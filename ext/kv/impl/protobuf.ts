@@ -4,6 +4,18 @@
 // No external dependencies. Implements only the wire format primitives needed
 // for the datapath messages defined in com.deno.kv.datapath.
 
+import { primordials } from "ext:core/mod.js";
+const {
+  ArrayPrototypePush,
+  BigInt,
+  Error,
+  Number,
+  TypedArrayPrototypeGetLength,
+  TypedArrayPrototypeSet,
+  TypedArrayPrototypeSubarray,
+  Uint8Array,
+} = primordials;
+
 // ---------------------------------------------------------------------------
 // Enums
 // ---------------------------------------------------------------------------
@@ -161,7 +173,7 @@ export function encodeVarint(n: number | bigint): Uint8Array {
       let byte = n & 0x7F;
       n >>>= 7;
       if (n > 0) byte |= 0x80;
-      bytes.push(byte);
+      ArrayPrototypePush(bytes, byte);
     }
     return new Uint8Array(bytes);
   }
@@ -176,7 +188,7 @@ export function encodeVarint(n: number | bigint): Uint8Array {
     let byte = Number(v & 0x7Fn);
     v >>= 7n;
     if (v > 0n) byte |= 0x80;
-    bytes.push(byte);
+    ArrayPrototypePush(bytes, byte);
   }
   return new Uint8Array(bytes);
 }
@@ -189,16 +201,17 @@ export function encodeVarint(n: number | bigint): Uint8Array {
 export function decodeVarint(
   buf: Uint8Array,
   offset: number,
-): [number, number] {
+): { value: number; offset: number } {
   let result = 0;
   let shift = 0;
   let pos = offset;
-  while (pos < buf.length) {
+  const len = TypedArrayPrototypeGetLength(buf);
+  while (pos < len) {
     const byte = buf[pos++];
     result += (byte & 0x7F) * (2 ** shift); // avoid bitwise to support >32 bits
     shift += 7;
     if ((byte & 0x80) === 0) {
-      return [result, pos];
+      return { value: result, offset: pos };
     }
   }
   throw new Error("protobuf: unterminated varint");
@@ -211,16 +224,17 @@ export function decodeVarint(
 export function decodeVarint64(
   buf: Uint8Array,
   offset: number,
-): [bigint, number] {
+): { value: bigint; offset: number } {
   let result = 0n;
   let shift = 0n;
   let pos = offset;
-  while (pos < buf.length) {
+  const len = TypedArrayPrototypeGetLength(buf);
+  while (pos < len) {
     const byte = buf[pos++];
     result |= BigInt(byte & 0x7F) << shift;
     shift += 7n;
     if ((byte & 0x80) === 0) {
-      return [result, pos];
+      return { value: result, offset: pos };
     }
   }
   throw new Error("protobuf: unterminated varint");
@@ -233,14 +247,14 @@ export function encodeField(
   data: Uint8Array,
 ): Uint8Array {
   const tag = encodeVarint((fieldNum << 3) | wireType);
-  return concat(tag, data);
+  return concatArrays([tag, data]);
 }
 
 /** Encode a length-delimited (wire type 2) field: tag + length + data. */
 export function encodeBytes(fieldNum: number, data: Uint8Array): Uint8Array {
   const tag = encodeVarint((fieldNum << 3) | WIRE_LENGTH_DELIMITED);
-  const len = encodeVarint(data.length);
-  return concat(tag, len, data);
+  const len = encodeVarint(TypedArrayPrototypeGetLength(data));
+  return concatArrays([tag, len, data]);
 }
 
 /** Encode a varint (wire type 0) field: tag + varint value. */
@@ -250,20 +264,30 @@ export function encodeVarintField(
 ): Uint8Array {
   const tag = encodeVarint((fieldNum << 3) | WIRE_VARINT);
   const val = encodeVarint(value);
-  return concat(tag, val);
+  return concatArrays([tag, val]);
 }
 
 /** Concatenate multiple Uint8Arrays into one. */
-export function concat(...arrays: Uint8Array[]): Uint8Array {
+export function concat(a: Uint8Array, b: Uint8Array): Uint8Array {
+  const aLen = TypedArrayPrototypeGetLength(a);
+  const bLen = TypedArrayPrototypeGetLength(b);
+  const result = new Uint8Array(aLen + bLen);
+  TypedArrayPrototypeSet(result, a, 0);
+  TypedArrayPrototypeSet(result, b, aLen);
+  return result;
+}
+
+/** Concatenate an array of Uint8Arrays into one. */
+function concatArrays(arrays: Uint8Array[]): Uint8Array {
   let totalLen = 0;
   for (let i = 0; i < arrays.length; i++) {
-    totalLen += arrays[i].length;
+    totalLen += TypedArrayPrototypeGetLength(arrays[i]);
   }
   const result = new Uint8Array(totalLen);
   let offset = 0;
   for (let i = 0; i < arrays.length; i++) {
-    result.set(arrays[i], offset);
-    offset += arrays[i].length;
+    TypedArrayPrototypeSet(result, arrays[i], offset);
+    offset += TypedArrayPrototypeGetLength(arrays[i]);
   }
   return result;
 }
@@ -288,10 +312,10 @@ function encodeMessage(fieldNum: number, inner: Uint8Array): Uint8Array {
 function encodePackedUint32(fieldNum: number, values: number[]): Uint8Array {
   if (values.length === 0) return EMPTY;
   const parts: Uint8Array[] = [];
-  for (const v of values) {
-    parts.push(encodeVarint(v));
+  for (let i = 0; i < values.length; i++) {
+    ArrayPrototypePush(parts, encodeVarint(values[i]));
   }
-  return encodeBytes(fieldNum, concat(...parts));
+  return encodeBytes(fieldNum, concatArrays(parts));
 }
 
 // ---------------------------------------------------------------------------
@@ -300,59 +324,89 @@ function encodePackedUint32(fieldNum: number, values: number[]): Uint8Array {
 
 function encodeReadRange(r: ReadRange): Uint8Array {
   const parts: Uint8Array[] = [];
-  if (r.start.length > 0) parts.push(encodeBytes(1, r.start));
-  if (r.end.length > 0) parts.push(encodeBytes(2, r.end));
-  if (r.limit !== 0) parts.push(encodeVarintField(3, r.limit));
-  if (r.reverse) parts.push(encodeVarintField(4, 1));
-  return concat(...parts);
+  if (TypedArrayPrototypeGetLength(r.start) > 0) {
+    ArrayPrototypePush(parts, encodeBytes(1, r.start));
+  }
+  if (TypedArrayPrototypeGetLength(r.end) > 0) {
+    ArrayPrototypePush(parts, encodeBytes(2, r.end));
+  }
+  if (r.limit !== 0) ArrayPrototypePush(parts, encodeVarintField(3, r.limit));
+  if (r.reverse) ArrayPrototypePush(parts, encodeVarintField(4, 1));
+  return concatArrays(parts);
 }
 
 function encodeCheck(c: Check): Uint8Array {
   const parts: Uint8Array[] = [];
-  if (c.key.length > 0) parts.push(encodeBytes(1, c.key));
-  if (c.versionstamp.length > 0) parts.push(encodeBytes(2, c.versionstamp));
-  return concat(...parts);
+  if (TypedArrayPrototypeGetLength(c.key) > 0) {
+    ArrayPrototypePush(parts, encodeBytes(1, c.key));
+  }
+  if (TypedArrayPrototypeGetLength(c.versionstamp) > 0) {
+    ArrayPrototypePush(parts, encodeBytes(2, c.versionstamp));
+  }
+  return concatArrays(parts);
 }
 
 function encodeKvValue(v: KvValue): Uint8Array {
   const parts: Uint8Array[] = [];
-  if (v.data.length > 0) parts.push(encodeBytes(1, v.data));
-  if (v.encoding !== 0) parts.push(encodeVarintField(2, v.encoding));
-  return concat(...parts);
+  if (TypedArrayPrototypeGetLength(v.data) > 0) {
+    ArrayPrototypePush(parts, encodeBytes(1, v.data));
+  }
+  if (v.encoding !== 0) {
+    ArrayPrototypePush(parts, encodeVarintField(2, v.encoding));
+  }
+  return concatArrays(parts);
 }
 
 function encodeMutation(m: Mutation): Uint8Array {
   const parts: Uint8Array[] = [];
-  if (m.key.length > 0) parts.push(encodeBytes(1, m.key));
-  if (m.value !== null) {
-    parts.push(encodeMessage(2, encodeKvValue(m.value)));
+  if (TypedArrayPrototypeGetLength(m.key) > 0) {
+    ArrayPrototypePush(parts, encodeBytes(1, m.key));
   }
-  if (m.mutationType !== 0) parts.push(encodeVarintField(3, m.mutationType));
+  if (m.value !== null) {
+    ArrayPrototypePush(parts, encodeMessage(2, encodeKvValue(m.value)));
+  }
+  if (m.mutationType !== 0) {
+    ArrayPrototypePush(parts, encodeVarintField(3, m.mutationType));
+  }
   const expireMs = toBigInt(m.expireAtMs);
-  if (expireMs !== 0n) parts.push(encodeVarintField(4, expireMs));
-  if (m.sumMin.length > 0) parts.push(encodeBytes(5, m.sumMin));
-  if (m.sumMax.length > 0) parts.push(encodeBytes(6, m.sumMax));
-  if (m.sumClamp) parts.push(encodeVarintField(7, 1));
-  return concat(...parts);
+  if (expireMs !== 0n) {
+    ArrayPrototypePush(parts, encodeVarintField(4, expireMs));
+  }
+  if (TypedArrayPrototypeGetLength(m.sumMin) > 0) {
+    ArrayPrototypePush(parts, encodeBytes(5, m.sumMin));
+  }
+  if (TypedArrayPrototypeGetLength(m.sumMax) > 0) {
+    ArrayPrototypePush(parts, encodeBytes(6, m.sumMax));
+  }
+  if (m.sumClamp) ArrayPrototypePush(parts, encodeVarintField(7, 1));
+  return concatArrays(parts);
 }
 
 function encodeEnqueue(e: Enqueue): Uint8Array {
   const parts: Uint8Array[] = [];
-  if (e.payload.length > 0) parts.push(encodeBytes(1, e.payload));
+  if (TypedArrayPrototypeGetLength(e.payload) > 0) {
+    ArrayPrototypePush(parts, encodeBytes(1, e.payload));
+  }
   const deadlineMs = toBigInt(e.deadlineMs);
-  if (deadlineMs !== 0n) parts.push(encodeVarintField(2, deadlineMs));
-  for (const key of e.keysIfUndelivered) {
-    parts.push(encodeBytes(3, key));
+  if (deadlineMs !== 0n) {
+    ArrayPrototypePush(parts, encodeVarintField(2, deadlineMs));
+  }
+  for (let i = 0; i < e.keysIfUndelivered.length; i++) {
+    ArrayPrototypePush(parts, encodeBytes(3, e.keysIfUndelivered[i]));
   }
   const packed = encodePackedUint32(4, e.backoffSchedule);
-  if (packed.length > 0) parts.push(packed);
-  return concat(...parts);
+  if (TypedArrayPrototypeGetLength(packed) > 0) {
+    ArrayPrototypePush(parts, packed);
+  }
+  return concatArrays(parts);
 }
 
 function encodeWatchKey(k: WatchKey): Uint8Array {
   const parts: Uint8Array[] = [];
-  if (k.key.length > 0) parts.push(encodeBytes(1, k.key));
-  return concat(...parts);
+  if (TypedArrayPrototypeGetLength(k.key) > 0) {
+    ArrayPrototypePush(parts, encodeBytes(1, k.key));
+  }
+  return concatArrays(parts);
 }
 
 // ---------------------------------------------------------------------------
@@ -362,10 +416,10 @@ function encodeWatchKey(k: WatchKey): Uint8Array {
 /** Encode a SnapshotRead message. */
 export function encodeSnapshotRead(ranges: ReadRange[]): Uint8Array {
   const parts: Uint8Array[] = [];
-  for (const r of ranges) {
-    parts.push(encodeMessage(1, encodeReadRange(r)));
+  for (let i = 0; i < ranges.length; i++) {
+    ArrayPrototypePush(parts, encodeMessage(1, encodeReadRange(ranges[i])));
   }
-  return concat(...parts);
+  return concatArrays(parts);
 }
 
 /** Encode an AtomicWrite message. */
@@ -373,25 +427,34 @@ export function encodeAtomicWrite(
   write: { checks: Check[]; mutations: Mutation[]; enqueues: Enqueue[] },
 ): Uint8Array {
   const parts: Uint8Array[] = [];
-  for (const c of write.checks) {
-    parts.push(encodeMessage(1, encodeCheck(c)));
+  for (let i = 0; i < write.checks.length; i++) {
+    ArrayPrototypePush(parts, encodeMessage(1, encodeCheck(write.checks[i])));
   }
-  for (const m of write.mutations) {
-    parts.push(encodeMessage(2, encodeMutation(m)));
+  for (let i = 0; i < write.mutations.length; i++) {
+    ArrayPrototypePush(
+      parts,
+      encodeMessage(2, encodeMutation(write.mutations[i])),
+    );
   }
-  for (const e of write.enqueues) {
-    parts.push(encodeMessage(3, encodeEnqueue(e)));
+  for (let i = 0; i < write.enqueues.length; i++) {
+    ArrayPrototypePush(
+      parts,
+      encodeMessage(3, encodeEnqueue(write.enqueues[i])),
+    );
   }
-  return concat(...parts);
+  return concatArrays(parts);
 }
 
 /** Encode a Watch message. */
 export function encodeWatch(keys: Uint8Array[]): Uint8Array {
   const parts: Uint8Array[] = [];
-  for (const key of keys) {
-    parts.push(encodeMessage(1, encodeWatchKey({ key })));
+  for (let i = 0; i < keys.length; i++) {
+    ArrayPrototypePush(
+      parts,
+      encodeMessage(1, encodeWatchKey({ key: keys[i] })),
+    );
   }
-  return concat(...parts);
+  return concatArrays(parts);
 }
 
 // ---------------------------------------------------------------------------
@@ -411,66 +474,73 @@ interface WireField {
 }
 
 /**
- * Iterate over all fields in a protobuf message buffer.
- * Yields WireField objects with the appropriate field populated
+ * Parse all fields in a protobuf message buffer.
+ * Returns an array of WireField objects with the appropriate field populated
  * based on the wire type.
  */
-function* iterFields(buf: Uint8Array): Generator<WireField> {
+function parseFields(buf: Uint8Array): WireField[] {
+  const fields: WireField[] = [];
   let offset = 0;
-  while (offset < buf.length) {
-    const [tag, newOffset] = decodeVarint(buf, offset);
-    offset = newOffset;
-    const wireType = tag & 0x07;
-    const fieldNum = tag >>> 3;
+  const bufLen = TypedArrayPrototypeGetLength(buf);
+  while (offset < bufLen) {
+    const tagResult = decodeVarint(buf, offset);
+    offset = tagResult.offset;
+    const wireType = tagResult.value & 0x07;
+    const fieldNum = tagResult.value >>> 3;
 
     if (wireType === WIRE_VARINT) {
       // Decode varint value - we provide both number and bigint forms
-      const [val, off2] = decodeVarint(buf, offset);
-      const [val64, _off264] = decodeVarint64(buf, offset);
-      offset = off2;
-      yield {
+      const valResult = decodeVarint(buf, offset);
+      const val64Result = decodeVarint64(buf, offset);
+      offset = valResult.offset;
+      ArrayPrototypePush(fields, {
         fieldNum,
         wireType,
-        varintValue: val,
-        varint64Value: val64,
+        varintValue: valResult.value,
+        varint64Value: val64Result.value,
         data: EMPTY,
-      };
+      });
     } else if (wireType === WIRE_LENGTH_DELIMITED) {
-      const [len, off2] = decodeVarint(buf, offset);
-      offset = off2;
-      const data = buf.subarray(offset, offset + len);
-      offset += len;
-      yield {
+      const lenResult = decodeVarint(buf, offset);
+      offset = lenResult.offset;
+      const data = TypedArrayPrototypeSubarray(
+        buf,
+        offset,
+        offset + lenResult.value,
+      );
+      offset += lenResult.value;
+      ArrayPrototypePush(fields, {
         fieldNum,
         wireType,
         varintValue: 0,
         varint64Value: 0n,
         data,
-      };
+      });
     } else if (wireType === 5) {
       // 32-bit (fixed32, sfixed32, float) - skip 4 bytes
       offset += 4;
-      yield {
+      ArrayPrototypePush(fields, {
         fieldNum,
         wireType,
         varintValue: 0,
         varint64Value: 0n,
         data: EMPTY,
-      };
+      });
     } else if (wireType === 1) {
       // 64-bit (fixed64, sfixed64, double) - skip 8 bytes
       offset += 8;
-      yield {
+      ArrayPrototypePush(fields, {
         fieldNum,
         wireType,
         varintValue: 0,
         varint64Value: 0n,
         data: EMPTY,
-      };
+      });
     } else {
       throw new Error(`protobuf: unsupported wire type ${wireType}`);
     }
   }
+  return fields;
 }
 
 /**
@@ -480,10 +550,11 @@ function* iterFields(buf: Uint8Array): Generator<WireField> {
 function decodePackedUint32(data: Uint8Array): number[] {
   const values: number[] = [];
   let offset = 0;
-  while (offset < data.length) {
-    const [val, newOffset] = decodeVarint(data, offset);
-    values.push(val);
-    offset = newOffset;
+  const len = TypedArrayPrototypeGetLength(data);
+  while (offset < len) {
+    const r = decodeVarint(data, offset);
+    ArrayPrototypePush(values, r.value);
+    offset = r.offset;
   }
   return values;
 }
@@ -499,7 +570,9 @@ function decodeKvEntry(buf: Uint8Array): KvEntry {
     encoding: 0 as ValueEncoding,
     versionstamp: EMPTY,
   };
-  for (const f of iterFields(buf)) {
+  const fields = parseFields(buf);
+  for (let i = 0; i < fields.length; i++) {
+    const f = fields[i];
     switch (f.fieldNum) {
       case 1:
         entry.key = f.data;
@@ -520,9 +593,11 @@ function decodeKvEntry(buf: Uint8Array): KvEntry {
 
 function decodeReadRangeOutput(buf: Uint8Array): ReadRangeOutput {
   const output: ReadRangeOutput = { values: [] };
-  for (const f of iterFields(buf)) {
+  const fields = parseFields(buf);
+  for (let i = 0; i < fields.length; i++) {
+    const f = fields[i];
     if (f.fieldNum === 1) {
-      output.values.push(decodeKvEntry(f.data));
+      ArrayPrototypePush(output.values, decodeKvEntry(f.data));
     }
   }
   return output;
@@ -533,7 +608,9 @@ function decodeWatchKeyOutput(buf: Uint8Array): WatchKeyOutput {
     changed: false,
     entryIfChanged: null,
   };
-  for (const f of iterFields(buf)) {
+  const fields = parseFields(buf);
+  for (let i = 0; i < fields.length; i++) {
+    const f = fields[i];
     switch (f.fieldNum) {
       case 1:
         output.changed = f.varintValue !== 0;
@@ -558,10 +635,12 @@ export function decodeSnapshotReadOutput(buf: Uint8Array): SnapshotReadOutput {
     readIsStronglyConsistent: false,
     status: 0 as SnapshotReadStatus,
   };
-  for (const f of iterFields(buf)) {
+  const fields = parseFields(buf);
+  for (let i = 0; i < fields.length; i++) {
+    const f = fields[i];
     switch (f.fieldNum) {
       case 1:
-        output.ranges.push(decodeReadRangeOutput(f.data));
+        ArrayPrototypePush(output.ranges, decodeReadRangeOutput(f.data));
         break;
       case 2:
         output.readDisabled = f.varintValue !== 0;
@@ -584,7 +663,9 @@ export function decodeAtomicWriteOutput(buf: Uint8Array): AtomicWriteOutput {
     versionstamp: EMPTY,
     failedChecks: [],
   };
-  for (const f of iterFields(buf)) {
+  const fields = parseFields(buf);
+  for (let i = 0; i < fields.length; i++) {
+    const f = fields[i];
     switch (f.fieldNum) {
       case 1:
         output.status = f.varintValue as AtomicWriteStatus;
@@ -595,9 +676,12 @@ export function decodeAtomicWriteOutput(buf: Uint8Array): AtomicWriteOutput {
       case 4:
         // Can appear as packed (length-delimited) or individual varints.
         if (f.wireType === WIRE_LENGTH_DELIMITED) {
-          output.failedChecks.push(...decodePackedUint32(f.data));
+          const packed = decodePackedUint32(f.data);
+          for (let j = 0; j < packed.length; j++) {
+            ArrayPrototypePush(output.failedChecks, packed[j]);
+          }
         } else {
-          output.failedChecks.push(f.varintValue);
+          ArrayPrototypePush(output.failedChecks, f.varintValue);
         }
         break;
     }
@@ -611,13 +695,15 @@ export function decodeWatchOutput(buf: Uint8Array): WatchOutput {
     status: 0 as SnapshotReadStatus,
     keys: [],
   };
-  for (const f of iterFields(buf)) {
+  const fields = parseFields(buf);
+  for (let i = 0; i < fields.length; i++) {
+    const f = fields[i];
     switch (f.fieldNum) {
       case 1:
         output.status = f.varintValue as SnapshotReadStatus;
         break;
       case 2:
-        output.keys.push(decodeWatchKeyOutput(f.data));
+        ArrayPrototypePush(output.keys, decodeWatchKeyOutput(f.data));
         break;
     }
   }

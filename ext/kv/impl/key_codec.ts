@@ -1,6 +1,32 @@
 // FoundationDB-style tuple layer key encoder/decoder for Deno KV.
 // Implements the same binary format as denokv_proto::codec.
 
+import { primordials } from "ext:core/mod.js";
+const {
+  ArrayBuffer,
+  ArrayPrototypePush,
+  BigInt,
+  BigIntPrototypeToString,
+  DataView,
+  DataViewPrototypeGetFloat64,
+  DataViewPrototypeGetUint32,
+  DataViewPrototypeSetFloat64,
+  DataViewPrototypeSetUint32,
+  Error,
+  NumberIsNaN,
+  NumberParseInt,
+  NumberPrototypeToString,
+  ObjectPrototypeIsPrototypeOf,
+  StringPrototypeSubstring,
+  TypeError,
+  Uint8Array,
+  Uint8ArrayPrototype,
+  TypedArrayPrototypeSet,
+  TypedArrayPrototypeSlice,
+  TypedArrayPrototypeSubarray,
+  TypedArrayPrototypeGetLength,
+} = primordials;
+
 // ---------------------------------------------------------------------------
 // Type tags - cross-type ordering: Bytes < String < Int < Float < False < True
 // ---------------------------------------------------------------------------
@@ -48,20 +74,23 @@ const f64View = new DataView(f64Buf);
 /** Convert a non-negative bigint to minimal big-endian bytes. */
 function bigintToBeBytes(v: bigint): Uint8Array {
   if (v === 0n) return new Uint8Array(0);
-  let hex = v.toString(16);
+  let hex = BigIntPrototypeToString(v, 16);
   if (hex.length & 1) hex = "0" + hex;
   const bytes = new Uint8Array(hex.length >> 1);
-  for (let i = 0; i < bytes.length; i++) {
-    bytes[i] = parseInt(hex.substring(i * 2, i * 2 + 2), 16);
+  for (let i = 0; i < TypedArrayPrototypeGetLength(bytes); i++) {
+    bytes[i] = NumberParseInt(
+      StringPrototypeSubstring(hex, i * 2, i * 2 + 2),
+      16,
+    );
   }
   return bytes;
 }
 
 /** Convert big-endian bytes to a non-negative bigint. */
 function beBytesToBigint(bytes: Uint8Array): bigint {
-  if (bytes.length === 0) return 0n;
+  if (TypedArrayPrototypeGetLength(bytes) === 0) return 0n;
   let v = 0n;
-  for (let i = 0; i < bytes.length; i++) {
+  for (let i = 0; i < TypedArrayPrototypeGetLength(bytes); i++) {
     v = (v << 8n) | BigInt(bytes[i]);
   }
   return v;
@@ -69,7 +98,7 @@ function beBytesToBigint(bytes: Uint8Array): bigint {
 
 /** Ones'-complement every byte in place and return the array. */
 function onesComplement(bytes: Uint8Array): Uint8Array {
-  for (let i = 0; i < bytes.length; i++) {
+  for (let i = 0; i < TypedArrayPrototypeGetLength(bytes); i++) {
     bytes[i] ^= 0xff;
   }
   return bytes;
@@ -86,28 +115,31 @@ class BufWriter {
     this.buf = new Uint8Array(initialCap);
   }
 
-  private grow(need: number): void {
-    if (this.len + need <= this.buf.length) return;
-    let cap = this.buf.length;
+  private ensureCapacity(need: number): void {
+    if (this.len + need <= TypedArrayPrototypeGetLength(this.buf)) return;
+    let cap = TypedArrayPrototypeGetLength(this.buf);
     while (cap < this.len + need) cap *= 2;
     const next = new Uint8Array(cap);
-    next.set(this.buf.subarray(0, this.len));
+    TypedArrayPrototypeSet(
+      next,
+      TypedArrayPrototypeSubarray(this.buf, 0, this.len),
+    );
     this.buf = next;
   }
 
-  push(byte: number): void {
-    this.grow(1);
+  writeByte(byte: number): void {
+    this.ensureCapacity(1);
     this.buf[this.len++] = byte;
   }
 
   pushBytes(data: Uint8Array): void {
-    this.grow(data.length);
-    this.buf.set(data, this.len);
-    this.len += data.length;
+    this.ensureCapacity(TypedArrayPrototypeGetLength(data));
+    TypedArrayPrototypeSet(this.buf, data, this.len);
+    this.len += TypedArrayPrototypeGetLength(data);
   }
 
   finish(): Uint8Array {
-    return this.buf.slice(0, this.len);
+    return TypedArrayPrototypeSlice(this.buf, 0, this.len);
   }
 }
 
@@ -117,14 +149,14 @@ class BufWriter {
 
 /** Encode a null-escaped byte sequence (used for both BYTES and STRING). */
 function encodeNullEscaped(w: BufWriter, tag: number, data: Uint8Array): void {
-  w.push(tag);
-  for (let i = 0; i < data.length; i++) {
-    w.push(data[i]);
+  w.writeByte(tag);
+  for (let i = 0; i < TypedArrayPrototypeGetLength(data); i++) {
+    w.writeByte(data[i]);
     if (data[i] === 0x00) {
-      w.push(ESCAPE);
+      w.writeByte(ESCAPE);
     }
   }
-  w.push(0x00); // terminator
+  w.writeByte(0x00); // terminator
 }
 
 function encodeBytes(w: BufWriter, value: Uint8Array): void {
@@ -137,33 +169,33 @@ function encodeString(w: BufWriter, value: string): void {
 
 function encodeInt(w: BufWriter, value: bigint): void {
   if (value === 0n) {
-    w.push(INTZERO);
+    w.writeByte(INTZERO);
     return;
   }
 
   if (value > 0n) {
     const beBytes = bigintToBeBytes(value);
-    const n = beBytes.length;
+    const n = TypedArrayPrototypeGetLength(beBytes);
     if (n <= 8) {
-      w.push(INTZERO + n);
+      w.writeByte(INTZERO + n);
       w.pushBytes(beBytes);
     } else {
-      w.push(POSINTEND);
-      w.push(n);
+      w.writeByte(POSINTEND);
+      w.writeByte(n);
       w.pushBytes(beBytes);
     }
   } else {
     // negative
     const abs = -value;
     const beBytes = bigintToBeBytes(abs);
-    const n = beBytes.length;
+    const n = TypedArrayPrototypeGetLength(beBytes);
     const complemented = onesComplement(beBytes);
     if (n <= 8) {
-      w.push(INTZERO - n);
+      w.writeByte(INTZERO - n);
       w.pushBytes(complemented);
     } else {
-      w.push(NEGINTSTART);
-      w.push(n ^ 0xff);
+      w.writeByte(NEGINTSTART);
+      w.writeByte(n ^ 0xff);
       w.pushBytes(complemented);
     }
   }
@@ -171,27 +203,27 @@ function encodeInt(w: BufWriter, value: bigint): void {
 
 function encodeFloat(w: BufWriter, value: number): void {
   // Canonicalize NaN: preserve sign but force canonical payload
-  if (Number.isNaN(value)) {
+  if (NumberIsNaN(value)) {
     // Read the original bits to detect the sign bit.
     // JS `-NaN` is just `NaN`, but negative NaN can arrive via DataView
     // or typed-array manipulation and the sign bit is preserved.
-    f64View.setFloat64(0, value, false);
-    const signBit = f64View.getUint32(0, false) & 0x80000000;
+    DataViewPrototypeSetFloat64(f64View, 0, value, false);
+    const signBit = DataViewPrototypeGetUint32(f64View, 0, false) & 0x80000000;
     if (signBit) {
       // Negative NaN: canonical bits 0xfff8000000000000
-      f64View.setUint32(0, 0xfff80000, false);
+      DataViewPrototypeSetUint32(f64View, 0, 0xfff80000, false);
     } else {
       // Positive NaN: canonical bits 0x7ff8000000000000
-      f64View.setUint32(0, 0x7ff80000, false);
+      DataViewPrototypeSetUint32(f64View, 0, 0x7ff80000, false);
     }
-    f64View.setUint32(4, 0x00000000, false);
+    DataViewPrototypeSetUint32(f64View, 4, 0x00000000, false);
   } else {
-    f64View.setFloat64(0, value, false);
+    DataViewPrototypeSetFloat64(f64View, 0, value, false);
   }
 
   // Read as two u32 for bit manipulation (JS doesn't have u64)
-  let hi = f64View.getUint32(0, false);
-  let lo = f64View.getUint32(4, false);
+  let hi = DataViewPrototypeGetUint32(f64View, 0, false);
+  let lo = DataViewPrototypeGetUint32(f64View, 4, false);
 
   // If sign bit set, XOR all bits; else XOR only sign bit
   if (hi & 0x80000000) {
@@ -201,16 +233,16 @@ function encodeFloat(w: BufWriter, value: number): void {
     hi ^= 0x80000000;
   }
 
-  w.push(DOUBLE);
+  w.writeByte(DOUBLE);
   // Write 8 big-endian bytes
-  w.push((hi >>> 24) & 0xff);
-  w.push((hi >>> 16) & 0xff);
-  w.push((hi >>> 8) & 0xff);
-  w.push(hi & 0xff);
-  w.push((lo >>> 24) & 0xff);
-  w.push((lo >>> 16) & 0xff);
-  w.push((lo >>> 8) & 0xff);
-  w.push(lo & 0xff);
+  w.writeByte((hi >>> 24) & 0xff);
+  w.writeByte((hi >>> 16) & 0xff);
+  w.writeByte((hi >>> 8) & 0xff);
+  w.writeByte(hi & 0xff);
+  w.writeByte((lo >>> 24) & 0xff);
+  w.writeByte((lo >>> 16) & 0xff);
+  w.writeByte((lo >>> 8) & 0xff);
+  w.writeByte(lo & 0xff);
 }
 
 function encodePart(w: BufWriter, part: KeyPart): void {
@@ -228,10 +260,10 @@ function encodePart(w: BufWriter, part: KeyPart): void {
       encodeFloat(w, part.value);
       break;
     case "false":
-      w.push(FALSE);
+      w.writeByte(FALSE);
       break;
     case "true":
-      w.push(TRUE);
+      w.writeByte(TRUE);
       break;
   }
 }
@@ -249,28 +281,28 @@ class BufReader {
   }
 
   get remaining(): number {
-    return this.data.length - this.pos;
+    return TypedArrayPrototypeGetLength(this.data) - this.pos;
   }
 
   peek(): number {
-    if (this.pos >= this.data.length) {
+    if (this.pos >= TypedArrayPrototypeGetLength(this.data)) {
       throw new Error("Unexpected end of key data");
     }
     return this.data[this.pos];
   }
 
   read(): number {
-    if (this.pos >= this.data.length) {
+    if (this.pos >= TypedArrayPrototypeGetLength(this.data)) {
       throw new Error("Unexpected end of key data");
     }
     return this.data[this.pos++];
   }
 
   readBytes(n: number): Uint8Array {
-    if (this.pos + n > this.data.length) {
+    if (this.pos + n > TypedArrayPrototypeGetLength(this.data)) {
       throw new Error("Unexpected end of key data");
     }
-    const slice = this.data.slice(this.pos, this.pos + n);
+    const slice = TypedArrayPrototypeSlice(this.data, this.pos, this.pos + n);
     this.pos += n;
     return slice;
   }
@@ -286,13 +318,13 @@ function decodeNullEscaped(r: BufReader): Uint8Array {
       if (r.remaining > 0 && r.peek() === ESCAPE) {
         // Escaped null byte - consume the ESCAPE and emit 0x00
         r.read();
-        chunks.push(0x00);
+        ArrayPrototypePush(chunks, 0x00);
       } else {
         // Terminator
         break;
       }
     } else {
-      chunks.push(b);
+      ArrayPrototypePush(chunks, b);
     }
   }
   return new Uint8Array(chunks);
@@ -343,7 +375,9 @@ function decodeInt(r: BufReader, tag: number): KeyPart {
     return { type: "int", value: -beBytesToBigint(beBytes) };
   }
 
-  throw new Error(`Invalid integer tag: 0x${tag.toString(16)}`);
+  throw new Error(
+    `Invalid integer tag: 0x${NumberPrototypeToString(tag, 16)}`,
+  );
 }
 
 function decodeFloat(r: BufReader): KeyPart {
@@ -366,9 +400,9 @@ function decodeFloat(r: BufReader): KeyPart {
     lo ^= 0xffffffff;
   }
 
-  f64View.setUint32(0, hi, false);
-  f64View.setUint32(4, lo, false);
-  const value = f64View.getFloat64(0, false);
+  DataViewPrototypeSetUint32(f64View, 0, hi, false);
+  DataViewPrototypeSetUint32(f64View, 4, lo, false);
+  const value = DataViewPrototypeGetFloat64(f64View, 0, false);
 
   return { type: "float", value };
 }
@@ -387,7 +421,9 @@ function decodePart(r: BufReader): KeyPart {
     return decodeInt(r, tag);
   }
 
-  throw new Error(`Unknown key part tag: 0x${tag.toString(16)}`);
+  throw new Error(
+    `Unknown key part tag: 0x${NumberPrototypeToString(tag, 16)}`,
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -408,7 +444,7 @@ export function decodeKey(bytes: Uint8Array): KeyPart[] {
   const r = new BufReader(bytes);
   const parts: KeyPart[] = [];
   while (r.remaining > 0) {
-    parts.push(decodePart(r));
+    ArrayPrototypePush(parts, decodePart(r));
   }
   return parts;
 }
@@ -425,15 +461,15 @@ export function kvKeyToKeyParts(
   for (let i = 0; i < key.length; i++) {
     const el = key[i];
     if (typeof el === "string") {
-      parts.push({ type: "string", value: el });
+      ArrayPrototypePush(parts, { type: "string", value: el });
     } else if (typeof el === "bigint") {
-      parts.push({ type: "int", value: el });
+      ArrayPrototypePush(parts, { type: "int", value: el });
     } else if (typeof el === "number") {
-      parts.push({ type: "float", value: el });
+      ArrayPrototypePush(parts, { type: "float", value: el });
     } else if (typeof el === "boolean") {
-      parts.push(el ? { type: "true" } : { type: "false" });
-    } else if (el instanceof Uint8Array) {
-      parts.push({ type: "bytes", value: el });
+      ArrayPrototypePush(parts, el ? { type: "true" } : { type: "false" });
+    } else if (ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, el)) {
+      ArrayPrototypePush(parts, { type: "bytes", value: el });
     } else {
       throw new TypeError(
         `Invalid KvKey element at index ${i}: ${typeof el}`,
@@ -452,22 +488,22 @@ export function keyPartsToKvKey(
     const p = parts[i];
     switch (p.type) {
       case "string":
-        key.push(p.value);
+        ArrayPrototypePush(key, p.value);
         break;
       case "int":
-        key.push(p.value);
+        ArrayPrototypePush(key, p.value);
         break;
       case "float":
-        key.push(p.value);
+        ArrayPrototypePush(key, p.value);
         break;
       case "bytes":
-        key.push(p.value);
+        ArrayPrototypePush(key, p.value);
         break;
       case "true":
-        key.push(true);
+        ArrayPrototypePush(key, true);
         break;
       case "false":
-        key.push(false);
+        ArrayPrototypePush(key, false);
         break;
     }
   }

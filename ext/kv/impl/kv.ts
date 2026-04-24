@@ -7,7 +7,55 @@
 // from deno_core for V8 structured clone of arbitrary JS values.
 // That is the only native dependency remaining.
 
-import { core } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
+const {
+  Array,
+  ArrayFrom,
+  ArrayIsArray,
+  ArrayPrototypeMap,
+  ArrayPrototypePop,
+  ArrayPrototypePush,
+  ArrayPrototypeReverse,
+  ArrayPrototypeSlice,
+  BigInt,
+  BigIntPrototypeToString,
+  DataView,
+  DataViewPrototypeGetBigUint64,
+  DataViewPrototypeSetBigUint64,
+  DateNow,
+  Error,
+  MathMin,
+  NumberIsNaN,
+  Object,
+  ObjectAssign,
+  ObjectFreeze,
+  ObjectPrototypeIsPrototypeOf,
+  Promise,
+  PromiseResolve,
+  RangeError,
+  ReflectHas,
+  RegExpPrototypeTest,
+  SafeRegExp,
+  StringPrototypeCharCodeAt,
+  StringPrototypeEndsWith,
+  StringPrototypeReplace,
+  StringPrototypeStartsWith,
+  Symbol,
+  SymbolAsyncIterator,
+  SymbolDispose,
+  SymbolFor,
+  SymbolToStringTag,
+  TypeError,
+  TypedArrayPrototypeGetBuffer,
+  TypedArrayPrototypeGetByteLength,
+  TypedArrayPrototypeGetByteOffset,
+  TypedArrayPrototypeGetLength,
+  TypedArrayPrototypeSet,
+  TypedArrayPrototypeSlice,
+  Uint8Array,
+  Uint8ArrayPrototype,
+} = primordials;
+
 import { ReadableStream } from "ext:deno_web/06_streams.js";
 
 import {
@@ -41,6 +89,9 @@ import {
   ValueEncoding,
 } from "./protobuf.ts";
 
+const eqTailRe = new SafeRegExp("=+$");
+const versionstampRe = new SafeRegExp("^[0-9a-f]{20}$");
+
 // ---------------------------------------------------------------------------
 // Base64url for cursor encoding (matching the Rust backend)
 // ---------------------------------------------------------------------------
@@ -51,18 +102,19 @@ const BASE64URL =
 function base64urlEncode(data: Uint8Array): string {
   let result = "";
   let i = 0;
-  while (i < data.length) {
+  const dataLen = TypedArrayPrototypeGetLength(data);
+  while (i < dataLen) {
     const b0 = data[i++];
-    const b1 = i < data.length ? data[i++] : 0;
-    const b2 = i < data.length ? data[i++] : 0;
+    const b1 = i < dataLen ? data[i++] : 0;
+    const b2 = i < dataLen ? data[i++] : 0;
     const n = (b0 << 16) | (b1 << 8) | b2;
     result += BASE64URL[(n >> 18) & 63];
     result += BASE64URL[(n >> 12) & 63];
-    if (i - 1 <= data.length) result += BASE64URL[(n >> 6) & 63];
-    if (i <= data.length) result += BASE64URL[n & 63];
+    if (i - 1 <= dataLen) result += BASE64URL[(n >> 6) & 63];
+    if (i <= dataLen) result += BASE64URL[n & 63];
   }
   // Padding with '='
-  const pad = data.length % 3;
+  const pad = dataLen % 3;
   if (pad === 1) result += "==";
   else if (pad === 2) result += "=";
   return result;
@@ -71,27 +123,27 @@ function base64urlEncode(data: Uint8Array): string {
 function base64urlDecode(str: string): Uint8Array {
   // Count padding to determine exact byte count
   let padding = 0;
-  if (str.endsWith("==")) padding = 2;
-  else if (str.endsWith("=")) padding = 1;
-  const s = str.replace(/=+$/, "");
+  if (StringPrototypeEndsWith(str, "==")) padding = 2;
+  else if (StringPrototypeEndsWith(str, "=")) padding = 1;
+  const s = StringPrototypeReplace(str, eqTailRe, "");
   const lookup = new Uint8Array(128);
   for (let i = 0; i < BASE64URL.length; i++) {
-    lookup[BASE64URL.charCodeAt(i)] = i;
+    lookup[StringPrototypeCharCodeAt(BASE64URL, i)] = i;
   }
   const bytes: number[] = [];
   for (let i = 0; i < s.length; i += 4) {
-    const a = lookup[s.charCodeAt(i)];
-    const b = lookup[s.charCodeAt(i + 1)] ?? 0;
-    const c = lookup[s.charCodeAt(i + 2)] ?? 0;
-    const d = lookup[s.charCodeAt(i + 3)] ?? 0;
+    const a = lookup[StringPrototypeCharCodeAt(s, i)];
+    const b = lookup[StringPrototypeCharCodeAt(s, i + 1)] ?? 0;
+    const c = lookup[StringPrototypeCharCodeAt(s, i + 2)] ?? 0;
+    const d = lookup[StringPrototypeCharCodeAt(s, i + 3)] ?? 0;
     const n = (a << 18) | (b << 12) | (c << 6) | d;
-    bytes.push((n >> 16) & 0xff);
-    bytes.push((n >> 8) & 0xff);
-    bytes.push(n & 0xff);
+    ArrayPrototypePush(bytes, (n >> 16) & 0xff);
+    ArrayPrototypePush(bytes, (n >> 8) & 0xff);
+    ArrayPrototypePush(bytes, n & 0xff);
   }
   // Trim excess bytes from padding
   const exactLength = bytes.length - padding;
-  return new Uint8Array(bytes.slice(0, exactLength));
+  return new Uint8Array(ArrayPrototypeSlice(bytes, 0, exactLength));
 }
 
 // ---------------------------------------------------------------------------
@@ -104,10 +156,10 @@ interface RawValue {
 }
 
 function serializeValue(value: unknown): RawValue {
-  if (value instanceof Uint8Array) {
-    return { kind: "bytes", value };
-  } else if (value instanceof KvU64) {
-    return { kind: "u64", value: value.value };
+  if (ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, value)) {
+    return { kind: "bytes", value: value as Uint8Array };
+  } else if (ObjectPrototypeIsPrototypeOf(KvU64Prototype, value)) {
+    return { kind: "u64", value: (value as KvU64).value };
   } else {
     return {
       kind: "v8",
@@ -158,19 +210,12 @@ function kvValueToRawValue(kv: KvValue): RawValue {
 // ---------------------------------------------------------------------------
 
 function hexEncode(buf: Uint8Array): string {
-  let s = "";
-  for (let i = 0; i < buf.length; i++) {
-    s += buf[i].toString(16).padStart(2, "0");
-  }
-  return s;
+  return buf.toHex();
 }
 
 function hexDecode(s: string): Uint8Array {
-  const out = new Uint8Array(s.length >> 1);
-  for (let i = 0; i < out.length; i++) {
-    out[i] = parseInt(s.substring(i * 2, i * 2 + 2), 16);
-  }
-  return out;
+  // deno-lint-ignore prefer-primordials
+  return Uint8Array.fromHex(s);
 }
 
 // ---------------------------------------------------------------------------
@@ -186,11 +231,15 @@ function remoteEntryToKvEntry(e: RemoteKvEntry): SqliteKvEntry {
     case ValueEncoding.VE_LE64:
       value = {
         kind: "u64",
-        value: new DataView(
-          e.value.buffer,
-          e.value.byteOffset,
-          e.value.byteLength,
-        ).getBigUint64(0, true),
+        value: DataViewPrototypeGetBigUint64(
+          new DataView(
+            TypedArrayPrototypeGetBuffer(e.value),
+            TypedArrayPrototypeGetByteOffset(e.value),
+            TypedArrayPrototypeGetByteLength(e.value),
+          ),
+          0,
+          true,
+        ),
       };
       break;
     case ValueEncoding.VE_BYTES:
@@ -212,7 +261,12 @@ function kvValueToProto(
       return { data: value.data, encoding: ValueEncoding.VE_BYTES };
     case "u64": {
       const buf = new Uint8Array(8);
-      new DataView(buf.buffer).setBigUint64(0, value.value, true);
+      DataViewPrototypeSetBigUint64(
+        new DataView(TypedArrayPrototypeGetBuffer(buf)),
+        0,
+        value.value,
+        true,
+      );
       return { data: buf, encoding: ValueEncoding.VE_LE64 };
     }
   }
@@ -234,7 +288,7 @@ const MAX_TOTAL_MUTATION_SIZE = 819200;
 const MAX_TOTAL_KEY_SIZE = 81920;
 
 function encodeKvKey(key: Deno.KvKey): Uint8Array {
-  if (!Array.isArray(key)) {
+  if (!ArrayIsArray(key)) {
     throw new TypeError("key must be an array");
   }
   const encoded = encodeKey(
@@ -244,10 +298,10 @@ function encodeKvKey(key: Deno.KvKey): Uint8Array {
 }
 
 function validateWriteKey(encoded: Uint8Array): void {
-  if (encoded.length === 0) {
+  if (TypedArrayPrototypeGetLength(encoded) === 0) {
     throw new TypeError("key cannot be empty");
   }
-  if (encoded.length > MAX_WRITE_KEY_SIZE) {
+  if (TypedArrayPrototypeGetLength(encoded) > MAX_WRITE_KEY_SIZE) {
     throw new TypeError(
       `Key too large for write (max ${MAX_WRITE_KEY_SIZE} bytes)`,
     );
@@ -255,7 +309,7 @@ function validateWriteKey(encoded: Uint8Array): void {
 }
 
 function validateReadKey(encoded: Uint8Array): void {
-  if (encoded.length > MAX_READ_KEY_SIZE) {
+  if (TypedArrayPrototypeGetLength(encoded) > MAX_READ_KEY_SIZE) {
     throw new TypeError(
       `Key too large for read (max ${MAX_READ_KEY_SIZE} bytes)`,
     );
@@ -266,10 +320,10 @@ function validateValue(raw: RawValue): void {
   let size: number;
   switch (raw.kind) {
     case "v8":
-      size = (raw.value as Uint8Array).length;
+      size = TypedArrayPrototypeGetLength(raw.value as Uint8Array);
       break;
     case "bytes":
-      size = (raw.value as Uint8Array).length;
+      size = TypedArrayPrototypeGetLength(raw.value as Uint8Array);
       break;
     case "u64":
       size = 8;
@@ -311,8 +365,9 @@ function selectorFromKv(
   }
   if (prefixBytes && startBytes && !endBytes) {
     if (
-      !startsWith(startBytes, prefixBytes) ||
-      startBytes.length === prefixBytes.length
+      !bytesStartsWith(startBytes, prefixBytes) ||
+      TypedArrayPrototypeGetLength(startBytes) ===
+        TypedArrayPrototypeGetLength(prefixBytes)
     ) {
       throw new TypeError("Start key is not in the keyspace defined by prefix");
     }
@@ -320,8 +375,9 @@ function selectorFromKv(
   }
   if (prefixBytes && !startBytes && endBytes) {
     if (
-      !startsWith(endBytes, prefixBytes) ||
-      endBytes.length === prefixBytes.length
+      !bytesStartsWith(endBytes, prefixBytes) ||
+      TypedArrayPrototypeGetLength(endBytes) ===
+        TypedArrayPrototypeGetLength(prefixBytes)
     ) {
       throw new TypeError("End key is not in the keyspace defined by prefix");
     }
@@ -334,9 +390,10 @@ function selectorFromKv(
     return { kind: "range", start: startBytes, end: endBytes };
   }
   if (!prefixBytes && startBytes && !endBytes) {
-    const endComputed = new Uint8Array(startBytes.length + 1);
-    endComputed.set(startBytes);
-    endComputed[startBytes.length] = 0;
+    const startLen = TypedArrayPrototypeGetLength(startBytes);
+    const endComputed = new Uint8Array(startLen + 1);
+    TypedArrayPrototypeSet(endComputed, startBytes);
+    endComputed[startLen] = 0;
     return { kind: "range", start: startBytes, end: endComputed };
   }
   throw new TypeError(
@@ -347,9 +404,10 @@ function selectorFromKv(
 function selectorRangeStart(sel: RawSelector): Uint8Array {
   if (sel.start) return sel.start;
   if (sel.prefix) {
-    const r = new Uint8Array(sel.prefix.length + 1);
-    r.set(sel.prefix);
-    r[sel.prefix.length] = 0x00;
+    const prefixLen = TypedArrayPrototypeGetLength(sel.prefix);
+    const r = new Uint8Array(prefixLen + 1);
+    TypedArrayPrototypeSet(r, sel.prefix);
+    r[prefixLen] = 0x00;
     return r;
   }
   throw new TypeError("Invalid selector");
@@ -358,9 +416,10 @@ function selectorRangeStart(sel: RawSelector): Uint8Array {
 function selectorRangeEnd(sel: RawSelector): Uint8Array {
   if (sel.end) return sel.end;
   if (sel.prefix) {
-    const r = new Uint8Array(sel.prefix.length + 1);
-    r.set(sel.prefix);
-    r[sel.prefix.length] = 0xff;
+    const prefixLen = TypedArrayPrototypeGetLength(sel.prefix);
+    const r = new Uint8Array(prefixLen + 1);
+    TypedArrayPrototypeSet(r, sel.prefix);
+    r[prefixLen] = 0xff;
     return r;
   }
   throw new TypeError("Invalid selector");
@@ -370,9 +429,11 @@ function selectorCommonPrefix(sel: RawSelector): Uint8Array {
   if (sel.prefix) return sel.prefix;
   const start = sel.start!;
   const end = sel.end!;
+  const startLen = TypedArrayPrototypeGetLength(start);
+  const endLen = TypedArrayPrototypeGetLength(end);
   let i = 0;
-  while (i < start.length && i < end.length && start[i] === end[i]) i++;
-  return start.slice(0, i);
+  while (i < startLen && i < endLen && start[i] === end[i]) i++;
+  return TypedArrayPrototypeSlice(start, 0, i);
 }
 
 function encodeCursorFromSelector(
@@ -380,10 +441,15 @@ function encodeCursorFromSelector(
   boundaryKey: Uint8Array,
 ): string {
   const common = selectorCommonPrefix(sel);
-  if (!startsWith(boundaryKey, common)) {
+  if (!bytesStartsWith(boundaryKey, common)) {
     throw new TypeError("Invalid boundary key");
   }
-  return base64urlEncode(boundaryKey.slice(common.length));
+  return base64urlEncode(
+    TypedArrayPrototypeSlice(
+      boundaryKey,
+      TypedArrayPrototypeGetLength(common),
+    ),
+  );
 }
 
 function decodeSelectorAndCursor(
@@ -397,20 +463,22 @@ function decodeSelectorAndCursor(
 
   const common = selectorCommonPrefix(sel);
   const cursorBytes = base64urlDecode(cursor);
+  const commonLen = TypedArrayPrototypeGetLength(common);
+  const cursorLen = TypedArrayPrototypeGetLength(cursorBytes);
 
   let firstKey: Uint8Array;
   let lastKey: Uint8Array;
 
   if (reverse) {
     firstKey = selectorRangeStart(sel);
-    lastKey = new Uint8Array(common.length + cursorBytes.length);
-    lastKey.set(common);
-    lastKey.set(cursorBytes, common.length);
+    lastKey = new Uint8Array(commonLen + cursorLen);
+    TypedArrayPrototypeSet(lastKey, common);
+    TypedArrayPrototypeSet(lastKey, cursorBytes, commonLen);
   } else {
-    firstKey = new Uint8Array(common.length + cursorBytes.length + 1);
-    firstKey.set(common);
-    firstKey.set(cursorBytes, common.length);
-    firstKey[common.length + cursorBytes.length] = 0;
+    firstKey = new Uint8Array(commonLen + cursorLen + 1);
+    TypedArrayPrototypeSet(firstKey, common);
+    TypedArrayPrototypeSet(firstKey, cursorBytes, commonLen);
+    firstKey[commonLen + cursorLen] = 0;
     lastKey = selectorRangeEnd(sel);
   }
 
@@ -421,21 +489,25 @@ function decodeSelectorAndCursor(
 // Byte comparison helpers
 // ---------------------------------------------------------------------------
 
-function startsWith(a: Uint8Array, prefix: Uint8Array): boolean {
-  if (a.length < prefix.length) return false;
-  for (let i = 0; i < prefix.length; i++) {
+function bytesStartsWith(a: Uint8Array, prefix: Uint8Array): boolean {
+  const aLen = TypedArrayPrototypeGetLength(a);
+  const prefixLen = TypedArrayPrototypeGetLength(prefix);
+  if (aLen < prefixLen) return false;
+  for (let i = 0; i < prefixLen; i++) {
     if (a[i] !== prefix[i]) return false;
   }
   return true;
 }
 
 function compareBytes(a: Uint8Array, b: Uint8Array): number {
-  const len = Math.min(a.length, b.length);
+  const aLen = TypedArrayPrototypeGetLength(a);
+  const bLen = TypedArrayPrototypeGetLength(b);
+  const len = MathMin(aLen, bLen);
   for (let i = 0; i < len; i++) {
     if (a[i] < b[i]) return -1;
     if (a[i] > b[i]) return 1;
   }
-  return a.length - b.length;
+  return aLen - bLen;
 }
 
 // ---------------------------------------------------------------------------
@@ -474,7 +546,7 @@ class SqliteKvBackend implements KvBackend {
     ranges: ReadRange[],
     _consistency: "strong" | "eventual",
   ): Promise<SqliteKvEntry[][]> {
-    return Promise.resolve(this.#backend.snapshotRead(ranges));
+    return PromiseResolve(this.#backend.snapshotRead(ranges));
   }
 
   atomicWrite(
@@ -482,36 +554,47 @@ class SqliteKvBackend implements KvBackend {
     mutations: SqliteMutation[],
     enqueues: SqliteEnqueue[],
   ): Promise<CommitResult | null> {
-    return Promise.resolve(
+    return PromiseResolve(
       this.#backend.atomicWrite(checks, mutations, enqueues),
     );
   }
 
   dequeueNextMessage(): Promise<{ payload: Uint8Array; id: string } | null> {
-    return Promise.resolve(this.#backend.dequeueNextMessage());
+    return PromiseResolve(this.#backend.dequeueNextMessage());
   }
 
   finishMessage(id: string, success: boolean): Promise<void> {
     this.#backend.finishMessage(id, success);
-    return Promise.resolve();
+    return PromiseResolve();
   }
 
   watch(keys: Uint8Array[]): ReadableStream {
     // SQLite watch: poll-based implementation
     // For now, return a stream that polls every 500ms
     const backend = this.#backend;
-    const lastVersionstamps: (string | null)[] = keys.map(() => null);
+    const lastVersionstamps: (string | null)[] = ArrayPrototypeMap(
+      keys,
+      () => null,
+    );
     let closed = false;
 
     return new ReadableStream({
       async pull(controller) {
         while (!closed) {
-          const ranges = keys.map((k) => ({
-            start: k,
-            end: new Uint8Array([...k, 0]),
-            limit: 1,
-            reverse: false,
-          }));
+          const ranges: ReadRange[] = [];
+          for (let i = 0; i < keys.length; i++) {
+            const k = keys[i];
+            const kLen = TypedArrayPrototypeGetLength(k);
+            const endKey = new Uint8Array(kLen + 1);
+            TypedArrayPrototypeSet(endKey, k);
+            endKey[kLen] = 0;
+            ArrayPrototypePush(ranges, {
+              start: k,
+              end: endKey,
+              limit: 1,
+              reverse: false,
+            });
+          }
 
           const results = backend.snapshotRead(ranges);
           let changed = false;
@@ -526,13 +609,13 @@ class SqliteKvBackend implements KvBackend {
             }
             if (entry) {
               const decodedKey = decodeKvKeyBytes(entry.key);
-              entries.push({
+              ArrayPrototypePush(entries, {
                 key: decodedKey,
                 value: deserializeRawValue(kvValueToRawValue(entry.value)),
                 versionstamp: hexEncode(entry.versionstamp),
               });
             } else {
-              entries.push({
+              ArrayPrototypePush(entries, {
                 key: decodeKvKeyBytes(keys[i]),
                 value: null,
                 versionstamp: null,
@@ -572,14 +655,21 @@ class RemoteKvBackend implements KvBackend {
     ranges: ReadRange[],
     consistency: "strong" | "eventual",
   ): Promise<SqliteKvEntry[][]> {
-    const protoRanges: ProtoReadRange[] = ranges.map((r) => ({
-      start: r.start,
-      end: r.end,
-      limit: r.limit,
-      reverse: r.reverse,
-    }));
+    const protoRanges: ProtoReadRange[] = ArrayPrototypeMap(
+      ranges,
+      (r: ReadRange) => ({
+        start: r.start,
+        end: r.end,
+        limit: r.limit,
+        reverse: r.reverse,
+      }),
+    );
     const result = await this.#backend.snapshotRead(protoRanges, consistency);
-    return result.map((entries) => entries.map(remoteEntryToKvEntry));
+    return ArrayPrototypeMap(
+      result,
+      (entries: RemoteKvEntry[]) =>
+        ArrayPrototypeMap(entries, remoteEntryToKvEntry),
+    );
   }
 
   async atomicWrite(
@@ -587,71 +677,80 @@ class RemoteKvBackend implements KvBackend {
     mutations: SqliteMutation[],
     enqueues: SqliteEnqueue[],
   ): Promise<CommitResult | null> {
-    const protoChecks: ProtoCheck[] = checks.map((c) => ({
-      key: c.key,
-      versionstamp: c.versionstamp ?? new Uint8Array(0),
-    }));
+    const protoChecks: ProtoCheck[] = ArrayPrototypeMap(
+      checks,
+      (c: SqliteCheck) => ({
+        key: c.key,
+        versionstamp: c.versionstamp ?? new Uint8Array(0),
+      }),
+    );
 
-    const protoMutations: ProtoMutation[] = mutations.map((m) => {
-      let mutationType: number;
-      let value: { data: Uint8Array; encoding: number } | null = null;
-      let sumMin = new Uint8Array(0);
-      let sumMax = new Uint8Array(0);
-      let sumClamp = false;
+    const protoMutations: ProtoMutation[] = ArrayPrototypeMap(
+      mutations,
+      (m: SqliteMutation) => {
+        let mutationType: number;
+        let value: { data: Uint8Array; encoding: number } | null = null;
+        let sumMin = new Uint8Array(0);
+        let sumMax = new Uint8Array(0);
+        let sumClamp = false;
 
-      switch (m.kind.type) {
-        case "set":
-          mutationType = MutationType.M_SET;
-          value = kvValueToProto(m.kind.value);
-          break;
-        case "delete":
-          mutationType = MutationType.M_DELETE;
-          break;
-        case "sum":
-          mutationType = MutationType.M_SUM;
-          value = kvValueToProto(m.kind.value);
-          sumMin = m.kind.minV8;
-          sumMax = m.kind.maxV8;
-          sumClamp = m.kind.clamp;
-          break;
-        case "min":
-          mutationType = MutationType.M_MIN;
-          value = kvValueToProto(m.kind.value);
-          break;
-        case "max":
-          mutationType = MutationType.M_MAX;
-          value = kvValueToProto(m.kind.value);
-          break;
-        case "setSuffixVersionstampedKey":
-          mutationType = MutationType.M_SET_SUFFIX_VERSIONSTAMPED_KEY;
-          value = kvValueToProto(m.kind.value);
-          break;
-        default:
-          throw new TypeError("Unknown mutation type");
-      }
+        switch (m.kind.type) {
+          case "set":
+            mutationType = MutationType.M_SET;
+            value = kvValueToProto(m.kind.value);
+            break;
+          case "delete":
+            mutationType = MutationType.M_DELETE;
+            break;
+          case "sum":
+            mutationType = MutationType.M_SUM;
+            value = kvValueToProto(m.kind.value);
+            sumMin = m.kind.minV8;
+            sumMax = m.kind.maxV8;
+            sumClamp = m.kind.clamp;
+            break;
+          case "min":
+            mutationType = MutationType.M_MIN;
+            value = kvValueToProto(m.kind.value);
+            break;
+          case "max":
+            mutationType = MutationType.M_MAX;
+            value = kvValueToProto(m.kind.value);
+            break;
+          case "setSuffixVersionstampedKey":
+            mutationType = MutationType.M_SET_SUFFIX_VERSIONSTAMPED_KEY;
+            value = kvValueToProto(m.kind.value);
+            break;
+          default:
+            throw new TypeError("Unknown mutation type");
+        }
 
-      return {
-        key: m.key,
-        value: value
-          ? {
-            data: value.data,
-            encoding: value.encoding as ValueEncoding,
-          }
-          : null,
-        mutationType: mutationType as MutationType,
-        expireAtMs: m.expireAt ? BigInt(m.expireAt) : 0n,
-        sumMin,
-        sumMax,
-        sumClamp,
-      };
-    });
+        return {
+          key: m.key,
+          value: value
+            ? {
+              data: value.data,
+              encoding: value.encoding as ValueEncoding,
+            }
+            : null,
+          mutationType: mutationType as MutationType,
+          expireAtMs: m.expireAt ? BigInt(m.expireAt) : 0n,
+          sumMin,
+          sumMax,
+          sumClamp,
+        };
+      },
+    );
 
-    const protoEnqueues: ProtoEnqueue[] = enqueues.map((e) => ({
-      payload: e.payload,
-      deadlineMs: BigInt(e.deadlineMs),
-      keysIfUndelivered: e.keysIfUndelivered,
-      backoffSchedule: e.backoffSchedule ?? [],
-    }));
+    const protoEnqueues: ProtoEnqueue[] = ArrayPrototypeMap(
+      enqueues,
+      (e: SqliteEnqueue) => ({
+        payload: e.payload,
+        deadlineMs: BigInt(e.deadlineMs),
+        keysIfUndelivered: e.keysIfUndelivered,
+        backoffSchedule: e.backoffSchedule ?? [],
+      }),
+    );
 
     const result = await this.#backend.atomicWrite(
       protoChecks,
@@ -664,12 +763,12 @@ class RemoteKvBackend implements KvBackend {
 
   dequeueNextMessage(): Promise<{ payload: Uint8Array; id: string } | null> {
     // Queue operations not supported on remote backend
-    return Promise.resolve(null);
+    return PromiseResolve(null);
   }
 
   finishMessage(_id: string, _success: boolean): Promise<void> {
     // Queue operations not supported on remote backend
-    return Promise.resolve();
+    return PromiseResolve();
   }
 
   watch(keys: Uint8Array[]): ReadableStream {
@@ -706,7 +805,7 @@ class KvU64 {
       throw new RangeError("Value must fit in a 64-bit unsigned integer");
     }
     this.value = value;
-    Object.freeze(this);
+    ObjectFreeze(this);
   }
 
   valueOf(): bigint {
@@ -714,23 +813,26 @@ class KvU64 {
   }
 
   toString(): string {
-    return this.value.toString();
+    return BigIntPrototypeToString(this.value);
   }
 
-  get [Symbol.toStringTag](): string {
+  get [SymbolToStringTag](): string {
     return "Deno.KvU64";
   }
 
-  [Symbol.for("Deno.privateCustomInspect")](
+  [SymbolFor("Deno.privateCustomInspect")](
     inspect: (v: unknown, opts?: unknown) => string,
     inspectOptions: unknown,
   ): string {
-    return inspect(Object(this.value), inspectOptions).replace(
+    return StringPrototypeReplace(
+      inspect(Object(this.value), inspectOptions),
       "BigInt",
       "Deno.KvU64",
     );
   }
 }
+
+const KvU64Prototype = KvU64.prototype;
 
 // ---------------------------------------------------------------------------
 // Config limits (matching the Rust KvConfig defaults)
@@ -751,7 +853,7 @@ function validateQueueDelay(delay: number) {
       `Delay cannot be greater than 30 days: received ${delay}`,
     );
   }
-  if (Number.isNaN(delay)) throw new TypeError("Delay cannot be NaN");
+  if (NumberIsNaN(delay)) throw new TypeError("Delay cannot be NaN");
 }
 
 function validateBackoffSchedule(schedule: number[]) {
@@ -764,7 +866,7 @@ function validateBackoffSchedule(schedule: number[]) {
     if (
       schedule[i] < 0 ||
       schedule[i] > MAX_QUEUE_BACKOFF_INTERVAL ||
-      Number.isNaN(schedule[i])
+      NumberIsNaN(schedule[i])
     ) {
       throw new TypeError(
         `Invalid backoffSchedule, interval at index ${i} is invalid`,
@@ -807,15 +909,17 @@ class Kv {
   ): Promise<Deno.KvEntryMaybe<unknown>> {
     const encodedKey = encodeKvKey(key);
     validateReadKey(encodedKey);
-    const endKey = new Uint8Array(encodedKey.length + 1);
-    endKey.set(encodedKey);
-    endKey[encodedKey.length] = 0;
+    const encodedKeyLen = TypedArrayPrototypeGetLength(encodedKey);
+    const endKey = new Uint8Array(encodedKeyLen + 1);
+    TypedArrayPrototypeSet(endKey, encodedKey);
+    endKey[encodedKeyLen] = 0;
     validateReadKey(endKey);
 
-    const [entries] = await this.#backend.snapshotRead(
+    const readResult = await this.#backend.snapshotRead(
       [{ start: encodedKey, end: endKey, limit: 1, reverse: false }],
       opts?.consistency ?? "strong",
     );
+    const entries = readResult[0];
 
     if (!entries.length) {
       return { key, value: null, versionstamp: null };
@@ -836,31 +940,38 @@ class Kv {
     if (keys.length > MAX_READ_RANGES) {
       throw new TypeError(`Too many ranges (max ${MAX_READ_RANGES})`);
     }
-    const ranges: ReadRange[] = keys.map((key) => {
-      const encodedKey = encodeKvKey(key);
-      validateReadKey(encodedKey);
-      const endKey = new Uint8Array(encodedKey.length + 1);
-      endKey.set(encodedKey);
-      endKey[encodedKey.length] = 0;
-      return { start: encodedKey, end: endKey, limit: 1, reverse: false };
-    });
+    const ranges: ReadRange[] = ArrayPrototypeMap(
+      keys,
+      (key: Deno.KvKey) => {
+        const encodedKey = encodeKvKey(key);
+        validateReadKey(encodedKey);
+        const encodedKeyLen = TypedArrayPrototypeGetLength(encodedKey);
+        const endKey = new Uint8Array(encodedKeyLen + 1);
+        TypedArrayPrototypeSet(endKey, encodedKey);
+        endKey[encodedKeyLen] = 0;
+        return { start: encodedKey, end: endKey, limit: 1, reverse: false };
+      },
+    );
 
     const results = await this.#backend.snapshotRead(
       ranges,
       opts?.consistency ?? "strong",
     );
 
-    return results.map((entries, i) => {
-      if (!entries.length) {
-        return { key: keys[i], value: null, versionstamp: null };
-      }
-      const e = entries[0];
-      return {
-        key: decodeKvKeyBytes(e.key),
-        value: deserializeRawValue(kvValueToRawValue(e.value)),
-        versionstamp: hexEncode(e.versionstamp),
-      };
-    });
+    return ArrayPrototypeMap(
+      results,
+      (entries: SqliteKvEntry[], i: number) => {
+        if (!entries.length) {
+          return { key: keys[i], value: null, versionstamp: null };
+        }
+        const e = entries[0];
+        return {
+          key: decodeKvKeyBytes(e.key),
+          value: deserializeRawValue(kvValueToRawValue(e.value)),
+          versionstamp: hexEncode(e.versionstamp),
+        };
+      },
+    );
   }
 
   async set(
@@ -882,7 +993,7 @@ class Kv {
             type: "set",
             value: rawValueToKvValue(raw),
           },
-          expireAt: options?.expireIn ? Date.now() + options.expireIn : null,
+          expireAt: options?.expireIn ? DateNow() + options.expireIn : null,
         },
       ],
       [],
@@ -909,7 +1020,13 @@ class Kv {
       cursor?: string;
       reverse?: boolean;
       consistency?: Deno.KvConsistencyLevel;
-    } = {},
+    } = { __proto__: null } as {
+      limit?: number;
+      batchSize?: number;
+      cursor?: string;
+      reverse?: boolean;
+      consistency?: Deno.KvConsistencyLevel;
+    },
   ): KvListIterator {
     if (options.limit !== undefined && options.limit <= 0) {
       throw new Error(`Limit must be positive: received ${options.limit}`);
@@ -929,9 +1046,15 @@ class Kv {
       reverse: boolean,
       consistency: Deno.KvConsistencyLevel,
     ): Promise<Deno.KvEntry<unknown>[]> => {
-      const prefix = "prefix" in sel ? sel.prefix : null;
-      const start = "start" in sel ? sel.start : null;
-      const end = "end" in sel ? sel.end : null;
+      const prefix = ReflectHas(sel, "prefix")
+        ? (sel as { prefix: Deno.KvKey }).prefix
+        : null;
+      const start = ReflectHas(sel, "start")
+        ? (sel as { start: Deno.KvKey }).start
+        : null;
+      const end = ReflectHas(sel, "end")
+        ? (sel as { end: Deno.KvKey }).end
+        : null;
 
       const rawSel = selectorFromKv(
         prefix ?? null,
@@ -944,16 +1067,20 @@ class Kv {
         cursor,
       );
 
-      const [entries] = await backend.snapshotRead(
+      const readResult = await backend.snapshotRead(
         [{ start: rangeStart, end: rangeEnd, limit: batchSize, reverse }],
         consistency,
       );
+      const entries = readResult[0];
 
-      return entries.map((e) => ({
-        key: decodeKvKeyBytes(e.key),
-        value: deserializeRawValue(kvValueToRawValue(e.value)),
-        versionstamp: hexEncode(e.versionstamp),
-      }));
+      return ArrayPrototypeMap(
+        entries,
+        (e: SqliteKvEntry) => ({
+          key: decodeKvKeyBytes(e.key),
+          value: deserializeRawValue(kvValueToRawValue(e.value)),
+          versionstamp: hexEncode(e.versionstamp),
+        }),
+      );
     };
 
     return new KvListIterator({
@@ -983,8 +1110,11 @@ class Kv {
     const result = await doAtomicWrite(this.#backend, [], [], [
       {
         payload: core.serialize(message, { forStorage: true }),
-        deadlineMs: Date.now() + (opts?.delay ?? 0),
-        keysIfUndelivered: (opts?.keysIfUndelivered ?? []).map(encodeKvKey),
+        deadlineMs: DateNow() + (opts?.delay ?? 0),
+        keysIfUndelivered: ArrayPrototypeMap(
+          opts?.keysIfUndelivered ?? [],
+          encodeKvKey,
+        ),
         backoffSchedule: opts?.backoffSchedule ?? null,
       },
     ]);
@@ -1027,6 +1157,7 @@ class Kv {
         }
         success = true;
       } catch (error) {
+        // deno-lint-ignore no-console
         console.error("Exception in queue handler", error);
       }
       try {
@@ -1040,9 +1171,9 @@ class Kv {
 
   watch(
     keys: Deno.KvKey[],
-    options: { raw?: boolean } = {},
+    options: { raw?: boolean } = { __proto__: null } as { raw?: boolean },
   ): ReadableStream<Deno.KvEntryMaybe<unknown>[]> {
-    const encodedKeys = keys.map(encodeKvKey);
+    const encodedKeys = ArrayPrototypeMap(keys, encodeKvKey);
     const raw = options.raw ?? false;
     const rawStream = this.#backend.watch(encodedKeys);
 
@@ -1089,7 +1220,7 @@ class Kv {
             changed = true;
             if (update.value === null) {
               lastEntries[i] = {
-                key: [...keys[i]],
+                key: ArrayPrototypeSlice(keys[i], 0),
                 value: null,
                 versionstamp: null,
               };
@@ -1098,7 +1229,13 @@ class Kv {
             }
           }
           if (!changed && !raw) continue;
-          controller.enqueue(lastEntries.map((e) => ({ ...e! })));
+          controller.enqueue(
+            ArrayPrototypeMap(
+              lastEntries,
+              (e: Deno.KvEntryMaybe<unknown> | undefined) =>
+                ObjectAssign({}, e!),
+            ),
+          );
           return;
         }
       },
@@ -1113,7 +1250,7 @@ class Kv {
     this.#isClosed = true;
   }
 
-  [Symbol.dispose](): void {
+  [SymbolDispose](): void {
     try {
       this.close();
     } catch {
@@ -1137,7 +1274,8 @@ class AtomicOperation {
   }
 
   check(...checks: Deno.AtomicCheck[]): this {
-    for (const check of checks) {
+    for (let ci = 0; ci < checks.length; ci++) {
+      const check = checks[ci];
       const encodedKey = encodeKvKey(check.key);
       validateWriteKey(encodedKey);
       let versionstamp: Uint8Array | null = null;
@@ -1145,19 +1283,20 @@ class AtomicOperation {
         if (
           typeof check.versionstamp !== "string" ||
           check.versionstamp.length !== 20 ||
-          !/^[0-9a-f]{20}$/.test(check.versionstamp)
+          !RegExpPrototypeTest(versionstampRe, check.versionstamp)
         ) {
           throw new TypeError("invalid versionstamp");
         }
         versionstamp = hexDecode(check.versionstamp);
       }
-      this.#checks.push({ key: encodedKey, versionstamp });
+      ArrayPrototypePush(this.#checks, { key: encodedKey, versionstamp });
     }
     return this;
   }
 
   mutate(...mutations: Deno.KvMutation[]): this {
-    for (const m of mutations) {
+    for (let mi = 0; mi < mutations.length; mi++) {
+      const m = mutations[mi];
       const key = encodeKvKey(m.key);
       validateWriteKey(key);
       let kind: MutationKind;
@@ -1170,7 +1309,7 @@ class AtomicOperation {
           kind = { type: "delete" };
           break;
         case "set":
-          if (!("value" in m)) {
+          if (!ReflectHas(m, "value")) {
             throw new TypeError("Invalid mutation 'set' without value");
           }
           kind = {
@@ -1179,7 +1318,7 @@ class AtomicOperation {
           };
           break;
         case "sum":
-          if (!("value" in m)) {
+          if (!ReflectHas(m, "value")) {
             throw new TypeError("Invalid mutation 'sum' without value");
           }
           kind = {
@@ -1191,7 +1330,7 @@ class AtomicOperation {
           };
           break;
         case "min":
-          if (!("value" in m)) {
+          if (!ReflectHas(m, "value")) {
             throw new TypeError("Invalid mutation 'min' without value");
           }
           kind = {
@@ -1200,7 +1339,7 @@ class AtomicOperation {
           };
           break;
         case "max":
-          if (!("value" in m)) {
+          if (!ReflectHas(m, "value")) {
             throw new TypeError("Invalid mutation 'max' without value");
           }
           kind = {
@@ -1212,11 +1351,11 @@ class AtomicOperation {
           throw new TypeError("Invalid mutation type");
       }
 
-      this.#mutations.push({
+      ArrayPrototypePush(this.#mutations, {
         key,
         kind,
-        expireAt: ("expireIn" in m && typeof m.expireIn === "number")
-          ? Date.now() + m.expireIn
+        expireAt: (ReflectHas(m, "expireIn") && typeof m.expireIn === "number")
+          ? DateNow() + m.expireIn
           : null,
       });
     }
@@ -1224,7 +1363,7 @@ class AtomicOperation {
   }
 
   sum(key: Deno.KvKey, n: bigint): this {
-    this.#mutations.push({
+    ArrayPrototypePush(this.#mutations, {
       key: encodeKvKey(key),
       kind: {
         type: "sum",
@@ -1239,7 +1378,7 @@ class AtomicOperation {
   }
 
   min(key: Deno.KvKey, n: bigint): this {
-    this.#mutations.push({
+    ArrayPrototypePush(this.#mutations, {
       key: encodeKvKey(key),
       kind: { type: "min", value: { kind: "u64", value: new KvU64(n).value } },
       expireAt: null,
@@ -1248,7 +1387,7 @@ class AtomicOperation {
   }
 
   max(key: Deno.KvKey, n: bigint): this {
-    this.#mutations.push({
+    ArrayPrototypePush(this.#mutations, {
       key: encodeKvKey(key),
       kind: { type: "max", value: { kind: "u64", value: new KvU64(n).value } },
       expireAt: null,
@@ -1265,23 +1404,23 @@ class AtomicOperation {
       key.length > 0 &&
       key[key.length - 1] === commitVersionstampSymbol
     ) {
-      actualKey = key.slice(0, -1);
+      actualKey = ArrayPrototypeSlice(key, 0, -1);
       mutationType = "setSuffixVersionstampedKey";
     }
 
-    this.#mutations.push({
+    ArrayPrototypePush(this.#mutations, {
       key: encodeKvKey(actualKey),
       kind: {
         type: mutationType,
         value: rawValueToKvValue(serializeValue(value)),
       },
-      expireAt: options?.expireIn ? Date.now() + options.expireIn : null,
+      expireAt: options?.expireIn ? DateNow() + options.expireIn : null,
     });
     return this;
   }
 
   delete(key: Deno.KvKey): this {
-    this.#mutations.push({
+    ArrayPrototypePush(this.#mutations, {
       key: encodeKvKey(key),
       kind: { type: "delete" },
       expireAt: null,
@@ -1301,10 +1440,13 @@ class AtomicOperation {
     if (opts?.backoffSchedule !== undefined) {
       validateBackoffSchedule(opts.backoffSchedule);
     }
-    this.#enqueues.push({
+    ArrayPrototypePush(this.#enqueues, {
       payload: core.serialize(message, { forStorage: true }),
-      deadlineMs: Date.now() + (opts?.delay ?? 0),
-      keysIfUndelivered: (opts?.keysIfUndelivered ?? []).map(encodeKvKey),
+      deadlineMs: DateNow() + (opts?.delay ?? 0),
+      keysIfUndelivered: ArrayPrototypeMap(
+        opts?.keysIfUndelivered ?? [],
+        encodeKvKey,
+      ),
       backoffSchedule: opts?.backoffSchedule ?? null,
     });
     return this;
@@ -1321,18 +1463,24 @@ class AtomicOperation {
     // Validate total mutation and key sizes
     let totalMutationSize = 0;
     let totalKeySize = 0;
-    for (const m of this.#mutations) {
-      totalKeySize += m.key.length;
-      totalMutationSize += m.key.length;
+    for (let i = 0; i < this.#mutations.length; i++) {
+      const m = this.#mutations[i];
+      const keyLen = TypedArrayPrototypeGetLength(m.key);
+      totalKeySize += keyLen;
+      totalMutationSize += keyLen;
       if (m.kind.type !== "delete") {
         const v = m.kind.value;
-        const vSize = v.kind === "u64" ? 8 : v.data.length;
-        totalMutationSize += vSize + m.key.length;
+        const vSize = v.kind === "u64"
+          ? 8
+          : TypedArrayPrototypeGetLength(v.data);
+        totalMutationSize += vSize + keyLen;
       }
     }
-    for (const e of this.#enqueues) {
-      totalMutationSize += e.payload.length;
-      if (e.payload.length > MAX_VALUE_SIZE) {
+    for (let i = 0; i < this.#enqueues.length; i++) {
+      const e = this.#enqueues[i];
+      const payloadLen = TypedArrayPrototypeGetLength(e.payload);
+      totalMutationSize += payloadLen;
+      if (payloadLen > MAX_VALUE_SIZE) {
         throw new TypeError(
           `enqueue payload too large (max ${MAX_VALUE_SIZE} bytes)`,
         );
@@ -1424,14 +1572,29 @@ class KvListIterator implements AsyncIterableIterator<Deno.KvEntry<unknown>> {
     let start: Deno.KvKey | undefined;
     let end: Deno.KvKey | undefined;
 
-    if ("prefix" in selector && selector.prefix !== undefined) {
-      prefix = Object.freeze([...selector.prefix]);
+    if (
+      ReflectHas(selector, "prefix") &&
+      (selector as { prefix?: Deno.KvKey }).prefix !== undefined
+    ) {
+      prefix = ObjectFreeze(
+        ArrayFrom((selector as { prefix: Deno.KvKey }).prefix),
+      );
     }
-    if ("start" in selector && selector.start !== undefined) {
-      start = Object.freeze([...selector.start]);
+    if (
+      ReflectHas(selector, "start") &&
+      (selector as { start?: Deno.KvKey }).start !== undefined
+    ) {
+      start = ObjectFreeze(
+        ArrayFrom((selector as { start: Deno.KvKey }).start),
+      );
     }
-    if ("end" in selector && selector.end !== undefined) {
-      end = Object.freeze([...selector.end]);
+    if (
+      ReflectHas(selector, "end") &&
+      (selector as { end?: Deno.KvKey }).end !== undefined
+    ) {
+      end = ObjectFreeze(
+        ArrayFrom((selector as { end: Deno.KvKey }).end),
+      );
     }
 
     if (prefix) {
@@ -1452,7 +1615,7 @@ class KvListIterator implements AsyncIterableIterator<Deno.KvEntry<unknown>> {
       }
     }
 
-    Object.freeze(this.#selector);
+    ObjectFreeze(this.#selector);
     this.#pullBatch = pullBatch;
     this.#limit = limit;
     this.#reverse = reverse;
@@ -1483,14 +1646,14 @@ class KvListIterator implements AsyncIterableIterator<Deno.KvEntry<unknown>> {
         this.#reverse,
         this.#consistency,
       );
-      batch.reverse();
+      ArrayPrototypeReverse(batch);
       this.#entries = batch;
       if (batch.length < this.#batchSize) {
         this.#lastBatch = true;
       }
     }
 
-    const entry = this.#entries?.pop();
+    const entry = this.#entries ? ArrayPrototypePop(this.#entries) : undefined;
     if (!entry) {
       this.#done = true;
       this.#cursorGen = () => "";
@@ -1499,9 +1662,15 @@ class KvListIterator implements AsyncIterableIterator<Deno.KvEntry<unknown>> {
 
     this.#cursorGen = () => {
       const sel = this.#selector;
-      const prefix = "prefix" in sel ? sel.prefix : null;
-      const start = "start" in sel ? sel.start : null;
-      const end = "end" in sel ? sel.end : null;
+      const prefix = ReflectHas(sel, "prefix")
+        ? (sel as { prefix: Deno.KvKey }).prefix
+        : null;
+      const start = ReflectHas(sel, "start")
+        ? (sel as { start: Deno.KvKey }).start
+        : null;
+      const end = ReflectHas(sel, "end")
+        ? (sel as { end: Deno.KvKey }).end
+        : null;
       const rawSel = selectorFromKv(prefix ?? null, start ?? null, end ?? null);
       const boundaryKey = encodeKvKey(entry.key);
       return encodeCursorFromSelector(rawSel, boundaryKey);
@@ -1510,7 +1679,7 @@ class KvListIterator implements AsyncIterableIterator<Deno.KvEntry<unknown>> {
     return { done: false, value: entry };
   }
 
-  [Symbol.asyncIterator](): AsyncIterableIterator<Deno.KvEntry<unknown>> {
+  [SymbolAsyncIterator](): AsyncIterableIterator<Deno.KvEntry<unknown>> {
     return this;
   }
 }
@@ -1525,8 +1694,8 @@ function openKv(path?: string): Promise<Kv> {
   let backend: KvBackend;
 
   if (
-    resolvedPath.startsWith("https://") ||
-    resolvedPath.startsWith("http://")
+    StringPrototypeStartsWith(resolvedPath, "https://") ||
+    StringPrototypeStartsWith(resolvedPath, "http://")
   ) {
     // Remote backend
     const accessToken = Deno.env.get("DENO_KV_ACCESS_TOKEN");
@@ -1543,8 +1712,10 @@ function openKv(path?: string): Promise<Kv> {
       throw new TypeError("Filename cannot be empty");
     }
     if (
-      resolvedPath.startsWith(":") && resolvedPath !== ":memory:" &&
-      !resolvedPath.startsWith("./") && !resolvedPath.startsWith("../")
+      StringPrototypeStartsWith(resolvedPath, ":") &&
+      resolvedPath !== ":memory:" &&
+      !StringPrototypeStartsWith(resolvedPath, "./") &&
+      !StringPrototypeStartsWith(resolvedPath, "../")
     ) {
       throw new TypeError(
         "Filename cannot start with ':' unless prefixed with './'",
@@ -1554,7 +1725,7 @@ function openKv(path?: string): Promise<Kv> {
     backend = new SqliteKvBackend(dbPath);
   }
 
-  return Promise.resolve(new Kv(backend, kvSymbol));
+  return PromiseResolve(new Kv(backend, kvSymbol));
 }
 
 // ---------------------------------------------------------------------------
