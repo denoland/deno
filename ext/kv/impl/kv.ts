@@ -1528,7 +1528,8 @@ async function doAtomicWrite(
 // KvListIterator
 // ---------------------------------------------------------------------------
 
-class KvListIterator implements AsyncIterableIterator<Deno.KvEntry<unknown>> {
+class KvListIterator extends Object
+  implements AsyncIterableIterator<Deno.KvEntry<unknown>> {
   #selector: Deno.KvListSelector;
   #entries: Deno.KvEntry<unknown>[] | null = null;
   #cursorGen: (() => string) | null = null;
@@ -1568,6 +1569,7 @@ class KvListIterator implements AsyncIterableIterator<Deno.KvEntry<unknown>> {
       consistency: Deno.KvConsistencyLevel,
     ) => Promise<Deno.KvEntry<unknown>[]>;
   }) {
+    super();
     // Validate and freeze selector
     let prefix: Deno.KvKey | undefined;
     let start: Deno.KvKey | undefined;
@@ -1690,11 +1692,15 @@ class KvListIterator implements AsyncIterableIterator<Deno.KvEntry<unknown>> {
 // ---------------------------------------------------------------------------
 
 async function openKv(path?: string): Promise<Kv> {
+  // Distinguish between no argument (undefined) and explicit empty string.
+  // undefined - check env vars, then fall back to :memory:
+  // "" - reject with "Filename cannot be empty"
+  const pathWasProvided = path !== undefined;
   let resolvedPath = path ?? "";
 
   // Match Rust MultiBackendDbHandler behavior: check env vars without
   // requiring --allow-env (these are internal runtime configuration).
-  if (resolvedPath === "") {
+  if (!pathWasProvided && resolvedPath === "") {
     const defaultPath = op_get_env_no_permission_check("DENO_KV_DEFAULT_PATH");
     if (defaultPath) {
       resolvedPath = defaultPath;
@@ -1727,24 +1733,22 @@ async function openKv(path?: string): Promise<Kv> {
     backend = new RemoteKvBackend(resolvedPath, accessToken);
   } else {
     // Local SQLite backend
-    if (resolvedPath === "") {
+    if (resolvedPath === "" && !pathWasProvided) {
       // No path and no DENO_KV_DEFAULT_PATH: use in-memory database
       // (matches Rust behavior when path is None and no default_storage_dir)
       resolvedPath = ":memory:";
+    } else if (resolvedPath === "") {
+      throw new TypeError("Filename cannot be empty");
     }
-    if (resolvedPath !== ":memory:") {
-      if (resolvedPath === "") {
-        throw new TypeError("Filename cannot be empty");
-      }
-      if (
-        StringPrototypeStartsWith(resolvedPath, ":") &&
-        !StringPrototypeStartsWith(resolvedPath, "./") &&
-        !StringPrototypeStartsWith(resolvedPath, "../")
-      ) {
-        throw new TypeError(
-          "Filename cannot start with ':' unless prefixed with './'",
-        );
-      }
+    if (
+      resolvedPath !== ":memory:" &&
+      StringPrototypeStartsWith(resolvedPath, ":") &&
+      !StringPrototypeStartsWith(resolvedPath, "./") &&
+      !StringPrototypeStartsWith(resolvedPath, "../")
+    ) {
+      throw new TypeError(
+        "Filename cannot start with ':' unless prefixed with './'",
+      );
     }
     backend = new SqliteKvBackend(resolvedPath);
   }
