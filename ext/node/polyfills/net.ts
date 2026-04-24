@@ -1461,6 +1461,23 @@ Socket.prototype.ref = function () {
   return this;
 };
 
+// Match Node: lib/net.js resetAndDestroy sends TCP RST via _reset when a
+// handle is present, otherwise destroys with ERR_SOCKET_CLOSED. Deno's TCP
+// handle does not expose an RST primitive, so fall back to a graceful
+// destroy when connected; callers still observe the 'close' event.
+Socket.prototype.resetAndDestroy = function () {
+  if (this._handle) {
+    if (this.connecting) {
+      this.once("connect", () => this.destroy());
+    } else {
+      this.destroy();
+    }
+  } else {
+    this.destroy(new ERR_SOCKET_CLOSED());
+  }
+  return this;
+};
+
 Object.defineProperty(Socket.prototype, "bufferSize", {
   get: function () {
     if (this._handle) {
