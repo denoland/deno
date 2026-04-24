@@ -788,7 +788,8 @@ Object.defineProperty(process, "argv0", {
  * numbers, objects/arrays/NaN/Infinity become 0, booleans become 0 or 1,
  * and Symbols throw TypeError). Out-of-range values throw RangeError.
  */
-let _debugPort = 0;
+// Node's default inspector port (kDefaultInspectorPort in src/node_options.h).
+let _debugPort = 9229;
 Object.defineProperty(process, "debugPort", {
   get() {
     return _debugPort;
