@@ -1,4 +1,5 @@
 import http from "node:http";
+import type { Socket } from "node:net";
 
 const server = http.createServer((_req, res) => {
   res.writeHead(200);
@@ -7,8 +8,10 @@ const server = http.createServer((_req, res) => {
 
 server.on("upgrade", (req, nodeSocket, head) => {
   const { socket } = Deno.upgradeWebSocket(
-    new Request("http://localhost/", { headers: req.headers }),
-    { socket: nodeSocket, head },
+    new Request("http://localhost/", {
+      headers: req.headers as HeadersInit,
+    }),
+    { socket: nodeSocket as Socket, head },
   );
 
   socket.onopen = () => {

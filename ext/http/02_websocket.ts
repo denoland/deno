@@ -11,7 +11,7 @@ const {
   StringPrototypeToUpperCase,
   TypeError,
   Symbol,
-  PromiseResolve,
+  Promise,
   Uint8Array,
 } = primordials;
 import { toInnerRequest } from "ext:deno_fetch/23_request.js";

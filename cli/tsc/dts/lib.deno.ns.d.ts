@@ -4888,16 +4888,16 @@ declare namespace Deno {
      * mechanism. The 101 Switching Protocols response is written
      * automatically.
      *
-     * ```ts
+     * ```ts ignore
      * import http from "node:http";
      *
      * const server = http.createServer();
      * server.on("upgrade", (req, socket, head) => {
      *   const { socket: ws } = Deno.upgradeWebSocket(
      *     new Request(`http://${req.headers.host}/`, {
-     *       headers: req.headers,
+     *       headers: req.headers as HeadersInit,
      *     }),
-     *     { socket, head },
+     *     { socket: socket as import("node:net").Socket, head },
      *   );
      *   ws.onmessage = (e) => ws.send(e.data);
      * });
