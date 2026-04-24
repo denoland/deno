@@ -1181,6 +1181,7 @@
     "parallel/test-http-host-headers.js": {},
     "parallel/test-http-incoming-message-destroy.js": {},
     "parallel/test-http-invalid-path-chars.js": {},
+    "parallel/test-http-invalid-urls.js": {},
     "parallel/test-http-invalidheaderfield.js": {},
     "parallel/test-http-invalidheaderfield2.js": {},
     "parallel/test-http-keep-alive-timeout-custom.js": {},
