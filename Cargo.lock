@@ -3751,13 +3751,13 @@ dependencies = [
  "deno_snapshots",
  "deno_terminal",
  "denort",
+ "just-wef",
  "libsui",
  "log",
  "raw-window-handle",
  "rustls",
  "serde_json",
  "tokio",
- "wef",
 ]
 
 [[package]]
@@ -6418,6 +6418,16 @@ dependencies = [
  "serde_json",
  "thiserror 2.0.12",
  "uuid",
+]
+
+[[package]]
+name = "just-wef"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "292e3bba5522d06dd78cf2899ba72a5215268ba1294b5dc5bf210f21065021ca"
+dependencies = [
+ "bindgen 0.72.1",
+ "tokio",
 ]
 
 [[package]]
@@ -11806,14 +11816,6 @@ name = "weezl"
 version = "0.1.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "53a85b86a771b1c87058196170769dd264f66c0782acf1ae6cc51bfd64b39082"
-
-[[package]]
-name = "wef"
-version = "0.1.0"
-dependencies = [
- "bindgen 0.72.1",
- "tokio",
-]
 
 [[package]]
 name = "wgpu-core"

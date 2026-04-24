@@ -275,7 +275,7 @@ fn emit_wef_version() {
 
   let mut in_wef = false;
   for line in lock.lines() {
-    if line == "name = \"wef\"" {
+    if line == "name = \"just-wef\"" {
       in_wef = true;
       continue;
     }

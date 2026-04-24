@@ -28,7 +28,7 @@ deno_snapshots.workspace = true
 deno_terminal.workspace = true
 denort = { path = "../rt" }
 libsui.workspace = true
-wef = { path = "../../../wef/capi" }
+just-wef = "0.1.0"
 
 log = { workspace = true, features = ["serde"] }
 raw-window-handle.workspace = true

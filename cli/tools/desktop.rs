@@ -938,7 +938,7 @@ fn wef_archive_name(backend: &str, target: &str) -> String {
 
 fn wef_release_url(file: &str) -> String {
   format!(
-    "https://github.com/denoland/wef/releases/download/v{WEF_VERSION}/{file}"
+    "https://github.com/littledivy/wef/releases/download/v{WEF_VERSION}/{file}"
   )
 }
 

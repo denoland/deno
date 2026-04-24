@@ -47,13 +47,13 @@ struct WefDesktopApi {
   >,
   pending_responses: deno_runtime::ops::desktop::PendingBindResponses,
   closed_windows: Arc<Mutex<HashSet<u32>>>,
-  trays: Arc<Mutex<HashMap<u32, wef::TrayIcon>>>,
+  trays: Arc<Mutex<HashMap<u32, just_wef::TrayIcon>>>,
 }
 
 impl WefDesktopApi {
   /// Set up all event handlers on a newly created window, wiring events
   /// into the shared event channel.
-  fn setup_window_events(&self, window: wef::Window) -> wef::Window {
+  fn setup_window_events(&self, window: just_wef::Window) -> just_wef::Window {
     let kb_tx = self.event_tx.clone();
     let mouse_click_tx = self.event_tx.clone();
     let mouse_move_tx = self.event_tx.clone();
@@ -71,8 +71,8 @@ impl WefDesktopApi {
           kb_tx.send(deno_runtime::ops::desktop::DesktopEvent::KeyboardEvent {
             window_id: ev.window_id,
             r#type: match ev.state {
-              wef::KeyState::Pressed => "keydown".to_string(),
-              wef::KeyState::Released => "keyup".to_string(),
+              just_wef::KeyState::Pressed => "keydown".to_string(),
+              just_wef::KeyState::Released => "keyup".to_string(),
             },
             key: ev.key,
             code: ev.code,
@@ -88,16 +88,16 @@ impl WefDesktopApi {
           deno_runtime::ops::desktop::DesktopEvent::MouseClick {
             window_id: ev.window_id,
             state: match ev.state {
-              wef::MouseButtonState::Pressed => "pressed".to_string(),
-              wef::MouseButtonState::Released => "released".to_string(),
+              just_wef::MouseButtonState::Pressed => "pressed".to_string(),
+              just_wef::MouseButtonState::Released => "released".to_string(),
             },
             button: match ev.button {
-              wef::MouseButton::Left => 0,
-              wef::MouseButton::Middle => 1,
-              wef::MouseButton::Right => 2,
-              wef::MouseButton::Back => 3,
-              wef::MouseButton::Forward => 4,
-              wef::MouseButton::Other(n) => n,
+              just_wef::MouseButton::Left => 0,
+              just_wef::MouseButton::Middle => 1,
+              just_wef::MouseButton::Right => 2,
+              just_wef::MouseButton::Back => 3,
+              just_wef::MouseButton::Forward => 4,
+              just_wef::MouseButton::Other(n) => n,
             },
             client_x: ev.x,
             client_y: ev.y,
@@ -129,9 +129,9 @@ impl WefDesktopApi {
             delta_x: ev.delta_x,
             delta_y: ev.delta_y,
             delta_mode: match ev.delta_mode {
-              wef::WheelDeltaMode::Pixel => 0,
-              wef::WheelDeltaMode::Line => 1,
-              wef::WheelDeltaMode::Page => 2,
+              just_wef::WheelDeltaMode::Pixel => 0,
+              just_wef::WheelDeltaMode::Line => 1,
+              just_wef::WheelDeltaMode::Page => 2,
             },
             client_x: ev.x,
             client_y: ev.y,
@@ -193,14 +193,14 @@ impl WefDesktopApi {
 
 impl denort::desktop::DesktopApi for WefDesktopApi {
   fn create_window(&self, width: i32, height: i32) -> u32 {
-    let window = wef::Window::new(width, height);
+    let window = just_wef::Window::new(width, height);
     let window = self.setup_window_events(window);
     window.id()
   }
 
   fn close_window(&self, window_id: u32) {
     self.closed_windows.lock().unwrap().insert(window_id);
-    wef::Window::from_id(window_id).close();
+    just_wef::Window::from_id(window_id).close();
   }
 
   fn is_closed(&self, window_id: u32) -> bool {
@@ -208,55 +208,55 @@ impl denort::desktop::DesktopApi for WefDesktopApi {
   }
 
   fn set_title(&self, window_id: u32, title: &str) {
-    wef::Window::from_id(window_id).set_title(title);
+    just_wef::Window::from_id(window_id).set_title(title);
   }
 
   fn get_window_size(&self, window_id: u32) -> (i32, i32) {
-    wef::Window::from_id(window_id).get_size()
+    just_wef::Window::from_id(window_id).get_size()
   }
 
   fn set_window_size(&self, window_id: u32, width: i32, height: i32) {
-    wef::Window::from_id(window_id).set_size(width, height);
+    just_wef::Window::from_id(window_id).set_size(width, height);
   }
 
   fn get_window_position(&self, window_id: u32) -> (i32, i32) {
-    wef::Window::from_id(window_id).get_position()
+    just_wef::Window::from_id(window_id).get_position()
   }
 
   fn set_window_position(&self, window_id: u32, x: i32, y: i32) {
-    wef::Window::from_id(window_id).set_position(x, y);
+    just_wef::Window::from_id(window_id).set_position(x, y);
   }
 
   fn is_resizable(&self, window_id: u32) -> bool {
-    wef::Window::from_id(window_id).get_resizable()
+    just_wef::Window::from_id(window_id).get_resizable()
   }
 
   fn set_resizable(&self, window_id: u32, resizable: bool) {
-    wef::Window::from_id(window_id).set_resizable(resizable);
+    just_wef::Window::from_id(window_id).set_resizable(resizable);
   }
 
   fn is_always_on_top(&self, window_id: u32) -> bool {
-    wef::Window::from_id(window_id).get_always_on_top()
+    just_wef::Window::from_id(window_id).get_always_on_top()
   }
 
   fn set_always_on_top(&self, window_id: u32, always_on_top: bool) {
-    wef::Window::from_id(window_id).set_always_on_top(always_on_top);
+    just_wef::Window::from_id(window_id).set_always_on_top(always_on_top);
   }
 
   fn is_visible(&self, window_id: u32) -> bool {
-    wef::Window::from_id(window_id).get_visible()
+    just_wef::Window::from_id(window_id).get_visible()
   }
 
   fn show(&self, window_id: u32) {
-    wef::Window::from_id(window_id).show();
+    just_wef::Window::from_id(window_id).show();
   }
 
   fn hide(&self, window_id: u32) {
-    wef::Window::from_id(window_id).hide();
+    just_wef::Window::from_id(window_id).hide();
   }
 
   fn focus(&self, window_id: u32) {
-    wef::Window::from_id(window_id).focus();
+    just_wef::Window::from_id(window_id).focus();
   }
 
   fn open_devtools(&self, window_id: u32, renderer: bool, deno: bool) {
@@ -271,13 +271,13 @@ impl denort::desktop::DesktopApi for WefDesktopApi {
       log::info!(
         "[desktop] openDevtools(renderer={renderer}, deno={deno}) → {url}"
       );
-      let window = wef::Window::new(1200, 800);
+      let window = just_wef::Window::new(1200, 800);
       window.set_title("Deno Desktop DevTools");
       window.navigate(&url);
       let _ = self.setup_window_events(window);
       return;
     }
-    wef::Window::from_id(window_id).open_devtools();
+    just_wef::Window::from_id(window_id).open_devtools();
   }
 
   fn execute_js(
@@ -294,9 +294,9 @@ impl denort::desktop::DesktopApi for WefDesktopApi {
         + 'static,
     >,
   ) {
-    wef::Window::from_id(window_id).execute_js(
+    just_wef::Window::from_id(window_id).execute_js(
       script,
-      Some(move |result: Result<wef::Value, wef::Value>| {
+      Some(move |result: Result<just_wef::Value, just_wef::Value>| {
         callback(match result {
           Ok(val) => Ok(wef_value_to_desktop_value(val)),
           Err(err) => Err(wef_value_to_desktop_value(err)),
@@ -309,7 +309,7 @@ impl denort::desktop::DesktopApi for WefDesktopApi {
     let tx = self.event_tx.clone();
     let responses = self.pending_responses.clone();
     let name_owned = name.to_string();
-    wef::Window::from_id(window_id).add_binding_async(name, move |js_call| {
+    just_wef::Window::from_id(window_id).add_binding_async(name, move |js_call| {
       let tx = tx.clone();
       let responses = responses.clone();
       let name = name_owned.clone();
@@ -327,7 +327,7 @@ impl denort::desktop::DesktopApi for WefDesktopApi {
         };
         if tx.send(event).is_err() {
           js_call
-            .reject(wef::Value::String("event channel closed".to_string()));
+            .reject(just_wef::Value::String("event channel closed".to_string()));
           return;
         }
         match resp_rx.await {
@@ -335,10 +335,10 @@ impl denort::desktop::DesktopApi for WefDesktopApi {
             js_call.resolve(json_to_wef_value(&result));
           }
           Ok(Err(error)) => {
-            js_call.reject(wef::Value::String(error));
+            js_call.reject(just_wef::Value::String(error));
           }
           Err(_) => {
-            js_call.reject(wef::Value::String(
+            js_call.reject(just_wef::Value::String(
               "bind response channel dropped".to_string(),
             ));
           }
@@ -348,15 +348,15 @@ impl denort::desktop::DesktopApi for WefDesktopApi {
   }
 
   fn unbind(&self, window_id: u32, name: &str) {
-    wef::Window::from_id(window_id).unbind(name);
+    just_wef::Window::from_id(window_id).unbind(name);
   }
 
   fn navigate(&self, window_id: u32, url: &str) {
-    wef::Window::from_id(window_id).navigate(url);
+    just_wef::Window::from_id(window_id).navigate(url);
   }
 
   fn quit(&self) {
-    wef::quit();
+    just_wef::quit();
   }
 
   fn set_application_menu(
@@ -369,7 +369,7 @@ impl denort::desktop::DesktopApi for WefDesktopApi {
       .map(desktop_menu_item_to_wef_menu_item)
       .collect::<Vec<_>>();
     let tx = self.event_tx.clone();
-    wef::Window::from_id(window_id).set_menu(&menu, move |id: &str| {
+    just_wef::Window::from_id(window_id).set_menu(&menu, move |id: &str| {
       let _ = tx.send(deno_runtime::ops::desktop::DesktopEvent::AppMenuClick {
         window_id,
         id: id.to_string(),
@@ -389,7 +389,7 @@ impl denort::desktop::DesktopApi for WefDesktopApi {
       .map(desktop_menu_item_to_wef_menu_item)
       .collect::<Vec<_>>();
     let tx = self.event_tx.clone();
-    wef::Window::from_id(window_id).show_context_menu(
+    just_wef::Window::from_id(window_id).show_context_menu(
       x,
       y,
       &menu,
@@ -410,13 +410,13 @@ impl denort::desktop::DesktopApi for WefDesktopApi {
     raw_window_handle::RawWindowHandle,
     raw_window_handle::RawDisplayHandle,
   ) {
-    let window = wef::Window::from_id(window_id);
+    let window = just_wef::Window::from_id(window_id);
     let handle_type = window.get_window_handle_type();
     let raw_win = window.get_window_handle();
     let raw_display = window.get_display_handle();
 
     match handle_type {
-      wef::WEF_WINDOW_HANDLE_APPKIT => {
+      just_wef::WEF_WINDOW_HANDLE_APPKIT => {
         use raw_window_handle::*;
         let win = RawWindowHandle::AppKit(AppKitWindowHandle::new(
           std::ptr::NonNull::new(raw_win).expect("null window handle"),
@@ -424,7 +424,7 @@ impl denort::desktop::DesktopApi for WefDesktopApi {
         let display = RawDisplayHandle::AppKit(AppKitDisplayHandle::new());
         (win, display)
       }
-      wef::WEF_WINDOW_HANDLE_WIN32 => {
+      just_wef::WEF_WINDOW_HANDLE_WIN32 => {
         use raw_window_handle::*;
         let mut handle = Win32WindowHandle::new(
           std::num::NonZeroIsize::new(raw_win as isize)
@@ -436,7 +436,7 @@ impl denort::desktop::DesktopApi for WefDesktopApi {
         let display = RawDisplayHandle::Windows(WindowsDisplayHandle::new());
         (win, display)
       }
-      wef::WEF_WINDOW_HANDLE_X11 => {
+      just_wef::WEF_WINDOW_HANDLE_X11 => {
         use raw_window_handle::*;
         let win = RawWindowHandle::Xlib(XlibWindowHandle::new(raw_win as _));
         let display = RawDisplayHandle::Xlib(XlibDisplayHandle::new(
@@ -445,7 +445,7 @@ impl denort::desktop::DesktopApi for WefDesktopApi {
         ));
         (win, display)
       }
-      wef::WEF_WINDOW_HANDLE_WAYLAND => {
+      just_wef::WEF_WINDOW_HANDLE_WAYLAND => {
         use raw_window_handle::*;
         let win = RawWindowHandle::Wayland(WaylandWindowHandle::new(
           std::ptr::NonNull::new(raw_win).expect("null window handle"),
@@ -460,7 +460,7 @@ impl denort::desktop::DesktopApi for WefDesktopApi {
   }
 
   fn alert(&self, title: &str, message: &str) {
-    wef::alert(title, message);
+    just_wef::alert(title, message);
   }
 
   fn confirm(
@@ -469,7 +469,7 @@ impl denort::desktop::DesktopApi for WefDesktopApi {
     message: &str,
     callback: Box<dyn FnOnce(bool) + Send + 'static>,
   ) {
-    wef::confirm(title, message, callback);
+    just_wef::confirm(title, message, callback);
   }
 
   fn prompt(
@@ -479,18 +479,18 @@ impl denort::desktop::DesktopApi for WefDesktopApi {
     default_value: &str,
     callback: Box<dyn FnOnce(Option<String>) + Send + 'static>,
   ) {
-    wef::prompt(title, message, default_value, callback);
+    just_wef::prompt(title, message, default_value, callback);
   }
 
   fn set_dock_badge(&self, text: &str) {
-    wef::set_dock_badge(if text.is_empty() { None } else { Some(text) });
+    just_wef::set_dock_badge(if text.is_empty() { None } else { Some(text) });
   }
 
   fn bounce_dock(&self, critical: bool) {
-    wef::bounce_dock(if critical {
-      wef::DockBounceType::Critical
+    just_wef::bounce_dock(if critical {
+      just_wef::DockBounceType::Critical
     } else {
-      wef::DockBounceType::Informational
+      just_wef::DockBounceType::Informational
     });
   }
 
@@ -502,23 +502,23 @@ impl denort::desktop::DesktopApi for WefDesktopApi {
           .map(desktop_menu_item_to_wef_menu_item)
           .collect::<Vec<_>>();
         let tx = self.event_tx.clone();
-        wef::set_dock_menu(&menu, move |id: &str| {
+        just_wef::set_dock_menu(&menu, move |id: &str| {
           let _ =
             tx.send(deno_runtime::ops::desktop::DesktopEvent::DockMenuClick {
               id: id.to_string(),
             });
         });
       }
-      None => wef::clear_dock_menu(),
+      None => just_wef::clear_dock_menu(),
     }
   }
 
   fn set_dock_visible(&self, visible: bool) {
-    wef::set_dock_visible(visible);
+    just_wef::set_dock_visible(visible);
   }
 
   fn create_tray(&self) -> u32 {
-    let tray = wef::TrayIcon::new();
+    let tray = just_wef::TrayIcon::new();
     let tray_id = tray.id();
     if tray_id == 0 {
       return 0;
@@ -591,21 +591,21 @@ impl denort::desktop::DesktopApi for WefDesktopApi {
 
 fn desktop_menu_item_to_wef_menu_item(
   item: denort::desktop::MenuItem,
-) -> wef::MenuItem {
+) -> just_wef::MenuItem {
   match item {
     denort::desktop::MenuItem::Item {
       label,
       id,
       accelerator,
       enabled,
-    } => wef::MenuItem::Item {
+    } => just_wef::MenuItem::Item {
       label,
       id,
       accelerator,
       enabled,
     },
     denort::desktop::MenuItem::Submenu { label, items } => {
-      wef::MenuItem::Submenu {
+      just_wef::MenuItem::Submenu {
         label,
         items: items
           .into_iter()
@@ -613,30 +613,30 @@ fn desktop_menu_item_to_wef_menu_item(
           .collect(),
       }
     }
-    denort::desktop::MenuItem::Separator => wef::MenuItem::Separator,
-    denort::desktop::MenuItem::Role { role } => wef::MenuItem::Role { role },
+    denort::desktop::MenuItem::Separator => just_wef::MenuItem::Separator,
+    denort::desktop::MenuItem::Role { role } => just_wef::MenuItem::Role { role },
   }
 }
 
 #[allow(dead_code)]
 fn wef_value_to_v8<'a>(
   scope: &v8::PinScope<'a, '_>,
-  val: wef::Value,
+  val: just_wef::Value,
 ) -> v8::Local<'a, v8::Value> {
   match val {
-    wef::Value::Null => v8::null(scope).into(),
-    wef::Value::Bool(bool) => v8::Boolean::new(scope, bool).into(),
-    wef::Value::Int(int) => v8::Integer::new(scope, int).into(),
-    wef::Value::Double(double) => v8::Number::new(scope, double).into(),
-    wef::Value::String(str) => v8::String::new(scope, &str).unwrap().into(),
-    wef::Value::List(list) => {
+    just_wef::Value::Null => v8::null(scope).into(),
+    just_wef::Value::Bool(bool) => v8::Boolean::new(scope, bool).into(),
+    just_wef::Value::Int(int) => v8::Integer::new(scope, int).into(),
+    just_wef::Value::Double(double) => v8::Number::new(scope, double).into(),
+    just_wef::Value::String(str) => v8::String::new(scope, &str).unwrap().into(),
+    just_wef::Value::List(list) => {
       let elements = list
         .into_iter()
         .map(|v| wef_value_to_v8(scope, v))
         .collect::<Vec<_>>();
       v8::Array::new_with_elements(scope, &elements).into()
     }
-    wef::Value::Dict(dict) => {
+    just_wef::Value::Dict(dict) => {
       let mut names = Vec::with_capacity(dict.len());
       let mut values = Vec::with_capacity(dict.len());
 
@@ -651,7 +651,7 @@ fn wef_value_to_v8<'a>(
       )
       .into()
     }
-    wef::Value::Binary(bin) => {
+    just_wef::Value::Binary(bin) => {
       let len = bin.len();
       let backing_store = v8::ArrayBuffer::new_backing_store_from_vec(bin);
       let backing_store = backing_store.make_shared();
@@ -666,24 +666,24 @@ fn wef_value_to_v8<'a>(
 fn v8_to_wef_value<'a>(
   scope: &v8::PinScope<'a, '_>,
   val: v8::Local<'a, v8::Value>,
-) -> wef::Value {
+) -> just_wef::Value {
   if val.is_null_or_undefined() {
-    wef::Value::Null
+    just_wef::Value::Null
   } else if val.is_boolean() {
-    wef::Value::Bool(val.boolean_value(scope))
+    just_wef::Value::Bool(val.boolean_value(scope))
   } else if val.is_int32() {
-    wef::Value::Int(val.int32_value(scope).unwrap_or(0))
+    just_wef::Value::Int(val.int32_value(scope).unwrap_or(0))
   } else if val.is_number() {
-    wef::Value::Double(val.number_value(scope).unwrap_or(0.0))
+    just_wef::Value::Double(val.number_value(scope).unwrap_or(0.0))
   } else if val.is_string() {
     let s = val.to_rust_string_lossy(scope);
-    wef::Value::String(s)
+    just_wef::Value::String(s)
   } else if val.is_array_buffer_view() {
     let view: v8::Local<v8::ArrayBufferView> = val.try_into().unwrap();
     let len = view.byte_length();
     let mut buf = vec![0u8; len];
     view.copy_contents(&mut buf);
-    wef::Value::Binary(buf)
+    just_wef::Value::Binary(buf)
   } else if val.is_array() {
     let arr: v8::Local<v8::Array> = val.try_into().unwrap();
     let len = arr.length();
@@ -693,7 +693,7 @@ fn v8_to_wef_value<'a>(
         list.push(v8_to_wef_value(scope, elem));
       }
     }
-    wef::Value::List(list)
+    just_wef::Value::List(list)
   } else if val.is_object() {
     let obj: v8::Local<v8::Object> = val.try_into().unwrap();
     let mut map = std::collections::HashMap::new();
@@ -709,10 +709,10 @@ fn v8_to_wef_value<'a>(
         }
       }
     }
-    wef::Value::Dict(map)
+    just_wef::Value::Dict(map)
   } else {
     // Fallback: coerce to string
-    wef::Value::String(val.to_rust_string_lossy(scope))
+    just_wef::Value::String(val.to_rust_string_lossy(scope))
   }
 }
 
@@ -833,7 +833,7 @@ fn apply_pending_update(dylib_path: &Path) -> bool {
   false
 }
 
-wef::main!(|| {
+just_wef::main!(|| {
   // Apply any pending update before anything else.
   #[cfg(unix)]
   let update_rolled_back = {
@@ -931,7 +931,7 @@ wef::main!(|| {
     .install_default()
     .unwrap();
 
-  wef::set_js_namespace("bindings");
+  just_wef::set_js_namespace("bindings");
 
   let rt = tokio::runtime::Builder::new_current_thread()
     .enable_all()
@@ -956,7 +956,7 @@ wef::main!(|| {
         // Only show native alert for non-JS errors (startup crashes).
         // JS errors are already handled by the error reporting JS listener.
         if !is_js_error {
-          wef::alert(
+          just_wef::alert(
             "Application Error",
             error_string.trim_start_matches("error: "),
           );
@@ -1109,73 +1109,73 @@ fn extract_fork_script_path(
   None
 }
 
-/// Convert a wef::Value to a DesktopValue for direct V8 conversion.
+/// Convert a just_wef::Value to a DesktopValue for direct V8 conversion.
 fn wef_value_to_desktop_value(
-  v: wef::Value,
+  v: just_wef::Value,
 ) -> deno_runtime::ops::desktop::DesktopValue {
   use deno_runtime::ops::desktop::DesktopValue;
   match v {
-    wef::Value::Null => DesktopValue::Null,
-    wef::Value::Bool(b) => DesktopValue::Bool(b),
-    wef::Value::Int(i) => DesktopValue::Int(i),
-    wef::Value::Double(d) => DesktopValue::Double(d),
-    wef::Value::String(s) => DesktopValue::String(s),
-    wef::Value::List(l) => DesktopValue::List(
+    just_wef::Value::Null => DesktopValue::Null,
+    just_wef::Value::Bool(b) => DesktopValue::Bool(b),
+    just_wef::Value::Int(i) => DesktopValue::Int(i),
+    just_wef::Value::Double(d) => DesktopValue::Double(d),
+    just_wef::Value::String(s) => DesktopValue::String(s),
+    just_wef::Value::List(l) => DesktopValue::List(
       l.into_iter().map(wef_value_to_desktop_value).collect(),
     ),
-    wef::Value::Dict(d) => DesktopValue::Dict(
+    just_wef::Value::Dict(d) => DesktopValue::Dict(
       d.into_iter()
         .map(|(k, v)| (k, wef_value_to_desktop_value(v)))
         .collect(),
     ),
-    wef::Value::Binary(b) => DesktopValue::Binary(b),
+    just_wef::Value::Binary(b) => DesktopValue::Binary(b),
   }
 }
 
-/// Convert a wef::Value to a serde_json::Value for channel transport.
-fn wef_value_to_json(v: &wef::Value) -> serde_json::Value {
+/// Convert a just_wef::Value to a serde_json::Value for channel transport.
+fn wef_value_to_json(v: &just_wef::Value) -> serde_json::Value {
   match v {
-    wef::Value::Null => serde_json::Value::Null,
-    wef::Value::Bool(b) => serde_json::Value::Bool(*b),
-    wef::Value::Int(i) => serde_json::json!(*i),
-    wef::Value::Double(d) => serde_json::json!(*d),
-    wef::Value::String(s) => serde_json::Value::String(s.clone()),
-    wef::Value::List(l) => {
+    just_wef::Value::Null => serde_json::Value::Null,
+    just_wef::Value::Bool(b) => serde_json::Value::Bool(*b),
+    just_wef::Value::Int(i) => serde_json::json!(*i),
+    just_wef::Value::Double(d) => serde_json::json!(*d),
+    just_wef::Value::String(s) => serde_json::Value::String(s.clone()),
+    just_wef::Value::List(l) => {
       serde_json::Value::Array(l.iter().map(wef_value_to_json).collect())
     }
-    wef::Value::Dict(d) => {
+    just_wef::Value::Dict(d) => {
       let mut map = serde_json::Map::new();
       for (k, v) in d {
         map.insert(k.clone(), wef_value_to_json(v));
       }
       serde_json::Value::Object(map)
     }
-    wef::Value::Binary(b) => serde_json::json!(b),
+    just_wef::Value::Binary(b) => serde_json::json!(b),
   }
 }
 
-/// Convert a serde_json::Value to a wef::Value for the menu template.
-fn json_to_wef_value(v: &serde_json::Value) -> wef::Value {
+/// Convert a serde_json::Value to a just_wef::Value for the menu template.
+fn json_to_wef_value(v: &serde_json::Value) -> just_wef::Value {
   match v {
-    serde_json::Value::Null => wef::Value::Null,
-    serde_json::Value::Bool(b) => wef::Value::Bool(*b),
+    serde_json::Value::Null => just_wef::Value::Null,
+    serde_json::Value::Bool(b) => just_wef::Value::Bool(*b),
     serde_json::Value::Number(n) => {
       if let Some(i) = n.as_i64() {
-        wef::Value::Int(i as i32)
+        just_wef::Value::Int(i as i32)
       } else {
-        wef::Value::Double(n.as_f64().unwrap_or(0.0))
+        just_wef::Value::Double(n.as_f64().unwrap_or(0.0))
       }
     }
-    serde_json::Value::String(s) => wef::Value::String(s.clone()),
+    serde_json::Value::String(s) => just_wef::Value::String(s.clone()),
     serde_json::Value::Array(arr) => {
-      wef::Value::List(arr.iter().map(json_to_wef_value).collect())
+      just_wef::Value::List(arr.iter().map(json_to_wef_value).collect())
     }
     serde_json::Value::Object(obj) => {
       let mut map = std::collections::HashMap::new();
       for (k, v) in obj {
         map.insert(k.clone(), json_to_wef_value(v));
       }
-      wef::Value::Dict(map)
+      just_wef::Value::Dict(map)
     }
   }
 }
@@ -1291,8 +1291,8 @@ async fn run_desktop(update_rolled_back: bool) -> Result<(), AnyError> {
       Some(Box::new(move || {
         let id = initial_window_id_for_hmr.load(Ordering::Acquire);
         if id != 0 {
-          wef::Window::from_id(id)
-            .execute_js::<fn(Result<wef::Value, wef::Value>)>(
+          just_wef::Window::from_id(id)
+            .execute_js::<fn(Result<just_wef::Value, just_wef::Value>)>(
               "location.reload()",
               None,
             );
@@ -1308,7 +1308,7 @@ async fn run_desktop(update_rolled_back: bool) -> Result<(), AnyError> {
     denort::desktop::AutoUpdateState {
       dylib_path: p,
       app_version: data.metadata.app_version.clone(),
-      rolled_back: update_rolled_back, // from wef::main! startup check
+      rolled_back: update_rolled_back, // from just_wef::main! startup check
     }
   });
   #[cfg(not(unix))]
@@ -1346,7 +1346,7 @@ async fn run_desktop(update_rolled_back: bool) -> Result<(), AnyError> {
       // observe them as `Deno.dock` "reopen" events.
       {
         let reopen_tx = event_tx.0.clone();
-        wef::on_dock_reopen(move |has_visible_windows| {
+        just_wef::on_dock_reopen(move |has_visible_windows| {
           let _ = reopen_tx.send(
             deno_runtime::ops::desktop::DesktopEvent::DockReopen {
               has_visible_windows,
@@ -1387,7 +1387,7 @@ async fn run_desktop(update_rolled_back: bool) -> Result<(), AnyError> {
   eprintln!("[desktop] starting runtime and wef event loop");
   let run_fut =
     denort::run::run_with_options(Arc::new(sys.clone()), sys, data, run_opts);
-  let wef_fut = wef::run();
+  let wef_fut = just_wef::run();
 
   // Wait for the server to be ready, then navigate the initial window.
   // Do a full HTTP request instead of just a TCP connect — frameworks
@@ -1452,7 +1452,7 @@ async fn run_desktop(update_rolled_back: bool) -> Result<(), AnyError> {
                 &url
               );
               let id = initial_window_id_for_navigate.load(Ordering::Acquire);
-              wef::Window::from_id(id).navigate(&url);
+              just_wef::Window::from_id(id).navigate(&url);
               return;
             }
           }
@@ -1462,7 +1462,7 @@ async fn run_desktop(update_rolled_back: bool) -> Result<(), AnyError> {
     }
     log::warn!("Server not ready after 15s, navigating anyway");
     let id = initial_window_id_for_navigate.load(Ordering::Acquire);
-    wef::Window::from_id(id).navigate(&url);
+    just_wef::Window::from_id(id).navigate(&url);
   };
 
   tokio::spawn(navigate_fut);
