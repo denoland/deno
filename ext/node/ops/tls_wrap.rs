@@ -500,6 +500,7 @@ unsafe fn do_invoke_queued(
 ///
 /// # Safety
 /// EmitCtx must contain valid pointers. No TLSWrapInner reference may be held by the caller.
+#[allow(dead_code, reason = "retained for native TCP/Pipe enc-out path parity")]
 unsafe fn do_enc_out_js(ctx: &EmitCtx, enc_data: Vec<u8>) {
   unsafe {
     let mut isolate = v8::Isolate::from_raw_isolate_ptr(ctx.isolate_ptr);
@@ -1251,17 +1252,9 @@ impl TLSWrapInner {
           // on synchronous uv_write failure, not during normal flow).
         }
         EncOutAction::WriteJs => {
-          let enc_data = std::mem::take(&mut (*ptr).pending_enc_out);
-          if let Some(ctx) = extract_emit_ctx(ptr) {
-            do_enc_out_js(&ctx, enc_data);
-          }
-          // For JS streams, treat the write as synchronously completed.
-          if (*ptr).write_callback_scheduled
-            && !(*ptr).in_dowrite
-            && let Some((write_obj, ctx)) = prepare_invoke_queued(ptr)
-          {
-            do_invoke_queued(&ctx, write_obj, 0);
-          }
+          // Pull-based: leave data in pending_enc_out for JS to drain
+          // via drain_enc_out(). This avoids calling back into JS from
+          // within an op, eliminating reentrancy issues.
         }
         EncOutAction::InvokeQueued(status) => {
           if let Some((write_obj, ctx)) = prepare_invoke_queued(ptr) {
@@ -1441,10 +1434,17 @@ unsafe extern "C" fn enc_write_cb(req: *mut uv_write_t, status: i32) {
       (*ptr).enc_writes_in_flight =
         (*ptr).enc_writes_in_flight.saturating_sub(1);
       if (*ptr).enc_writes_in_flight == 0 && status >= 0 {
-        // Don't drain more cleartext here — that's done by cycle()
-        // which is triggered by incoming reads. This prevents TCP
-        // send buffer deadlocks: we let the event loop process reads
-        // (echo data from the peer) between encryption rounds.
+        // If clear_in() was rate-limited (MAX_CLEAR_IN) and left
+        // pending cleartext, drain the next chunk now. Without
+        // this the remaining bytes are never fed to rustls and the
+        // peer never receives the full body ("socket hang up").
+        if (*ptr)
+          .pending_cleartext
+          .as_ref()
+          .is_some_and(|v| !v.is_empty())
+        {
+          (*ptr).clear_in();
+        }
         let enc_action = (*ptr).enc_out_collect();
         TLSWrapInner::do_enc_out_action(ptr, enc_action);
       } else if (*ptr).enc_writes_in_flight == 0
@@ -1698,25 +1698,19 @@ impl TLSWrap {
     op_state: &mut OpState,
   ) -> i32 {
     let stream = tcp.stream_ptr();
+    Self::do_attach_uv_stream(&self.inner, stream, scope, op_state)
+  }
 
-    if stream.is_null() {
-      return UV_EBADF;
-    }
-
-    let inner = unsafe { &mut *self.inner.as_mut_ptr() };
-    inner.underlying = UnderlyingStream::Uv { stream };
-    inner.isolate = Some(unsafe { scope.as_raw_isolate_ptr() });
-    // Cache the loop pointer now while the stream is still valid.
-    // This avoids dereferencing the stream pointer later when it may
-    // have been freed (e.g. after the TCP handle is closed/GC'd).
-    inner.cached_loop_ptr = unsafe { (*stream).loop_ };
-
-    // Get stream_base_state from OpState
-    let state_global = &op_state.borrow::<StreamBaseState>().array;
-    inner.stream_base_state =
-      Some(v8::Global::new(scope, v8::Local::new(scope, state_global)));
-
-    0
+  /// Attach to a PipeWrap (Unix domain socket) for encrypted I/O.
+  #[nofast]
+  fn attach_pipe(
+    &self,
+    #[cppgc] pipe: &crate::ops::pipe_wrap::PipeWrap,
+    scope: &mut v8::PinScope,
+    op_state: &mut OpState,
+  ) -> i32 {
+    let stream = pipe.stream_ptr();
+    Self::do_attach_uv_stream(&self.inner, stream, scope, op_state)
   }
 
   /// Store the JS handle reference for callbacks.
@@ -2480,6 +2474,24 @@ impl TLSWrap {
     unsafe { TLSWrapInner::cycle(inner_ptr) };
   }
 
+  /// Drain buffered encrypted output for JS streams (pull-based).
+  /// Returns the encrypted data that needs to be written to the
+  /// underlying JS stream. Called by JS after operations that may
+  /// produce encrypted output (readBuffer, start, writes).
+  /// Write completion callbacks are handled by the existing
+  /// cycle() -> InvokeQueued path (fired from reentrant ops like
+  /// readBuffer/start, not from write ops where in_dowrite is true).
+  #[buffer]
+  fn drain_enc_out(&self) -> Box<[u8]> {
+    let inner = unsafe { &mut *self.inner.as_mut_ptr() };
+    if !matches!(inner.underlying, UnderlyingStream::Js { .. })
+      || inner.pending_enc_out.is_empty()
+    {
+      return Box::new([]);
+    }
+    std::mem::take(&mut inner.pending_enc_out).into_boxed_slice()
+  }
+
   /// Signal EOF on the encrypted input (JSStreamSocket path).
   /// Called when the underlying JS Duplex stream ends.
   #[fast]
@@ -2797,6 +2809,30 @@ impl rustls::client::danger::ServerCertVerifier for NodeServerCertVerifier {
 
   fn supported_verify_schemes(&self) -> Vec<rustls::SignatureScheme> {
     self.inner.supported_verify_schemes()
+  }
+}
+
+impl TLSWrap {
+  fn do_attach_uv_stream(
+    inner_ptr: &OwnedPtr<TLSWrapInner>,
+    stream: *mut uv_compat::uv_stream_t,
+    scope: &mut v8::PinScope,
+    op_state: &mut OpState,
+  ) -> i32 {
+    if stream.is_null() {
+      return UV_EBADF;
+    }
+
+    let inner = unsafe { &mut *inner_ptr.as_mut_ptr() };
+    inner.underlying = UnderlyingStream::Uv { stream };
+    inner.isolate = Some(unsafe { scope.as_raw_isolate_ptr() });
+    inner.cached_loop_ptr = unsafe { (*stream).loop_ };
+
+    let state_global = &op_state.borrow::<StreamBaseState>().array;
+    inner.stream_base_state =
+      Some(v8::Global::new(scope, v8::Local::new(scope, state_global)));
+
+    0
   }
 }
 

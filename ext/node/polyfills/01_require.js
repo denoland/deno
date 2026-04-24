@@ -54,7 +54,9 @@ const {
   RegExpPrototypeTest,
   SafeArrayIterator,
   SafeMap,
+  SafeSet,
   SafeWeakMap,
+  SetPrototypeHas,
   String,
   StringPrototypeCharCodeAt,
   StringPrototypeEndsWith,
@@ -81,6 +83,12 @@ import _tlsWrap from "node:_tls_wrap";
 import assert from "node:assert";
 import assertStrict from "node:assert/strict";
 import asyncHooks from "node:async_hooks";
+import {
+  emitAfter as internalAsyncHooksEmitAfter,
+  emitBefore as internalAsyncHooksEmitBefore,
+  emitDestroy as internalAsyncHooksEmitDestroy,
+  emitInit as internalAsyncHooksEmitInit,
+} from "ext:deno_node/internal/async_hooks.ts";
 import buffer from "node:buffer";
 import childProcess from "node:child_process";
 import cluster from "node:cluster";
@@ -269,7 +277,7 @@ function setupBuiltinModules() {
     timers,
     "timers/promises": timersPromises,
     tls,
-    traceEvents,
+    trace_events: traceEvents,
     tty,
     url,
     util,
@@ -280,9 +288,27 @@ function setupBuiltinModules() {
     worker_threads: workerThreads,
     zlib,
   };
+  // Match Node's schemelessBlockList: these modules can only be imported
+  // via the `node:` scheme (see lib/internal/bootstrap/realm.js), so they
+  // appear in `builtinModules` as `node:<name>` rather than `<name>`.
+  const schemelessBlockList = new SafeSet([
+    "sea",
+    "sqlite",
+    "test",
+    "test/reporters",
+  ]);
   for (const [name, moduleExports] of ObjectEntries(nodeModules)) {
     nativeModuleExports[name] = moduleExports;
-    ArrayPrototypePush(builtinModules, name);
+    // `internal/*` modules are only exposed under --expose-internals, so
+    // they aren't part of the public builtinModules list.
+    if (StringPrototypeStartsWith(name, "internal/")) {
+      continue;
+    }
+    if (SetPrototypeHas(schemelessBlockList, name)) {
+      ArrayPrototypePush(builtinModules, `node:${name}`);
+    } else {
+      ArrayPrototypePush(builtinModules, name);
+    }
   }
 }
 setupBuiltinModules();
@@ -1249,6 +1275,20 @@ Module._extensions[".json"] = function (module, filename) {
   }
 };
 
+// Async hooks wrappers for NAPI - called from Rust via V8 function calls.
+function napiAsyncHooksEmitInit(asyncId, type, triggerAsyncId, resource) {
+  internalAsyncHooksEmitInit(asyncId, type, triggerAsyncId, resource);
+}
+function napiAsyncHooksEmitBefore(asyncId) {
+  internalAsyncHooksEmitBefore(asyncId);
+}
+function napiAsyncHooksEmitAfter(asyncId) {
+  internalAsyncHooksEmitAfter(asyncId);
+}
+function napiAsyncHooksEmitDestroy(asyncId) {
+  internalAsyncHooksEmitDestroy(asyncId);
+}
+
 // Native extension for .node
 Module._extensions[".node"] = function (module, filename) {
   if (filename.endsWith("cpufeatures.node")) {
@@ -1259,6 +1299,10 @@ Module._extensions[".node"] = function (module, filename) {
     globalThis,
     buffer.Buffer.from,
     reportError,
+    napiAsyncHooksEmitInit,
+    napiAsyncHooksEmitBefore,
+    napiAsyncHooksEmitAfter,
+    napiAsyncHooksEmitDestroy,
   );
 };
 
@@ -1348,6 +1392,9 @@ function isBuiltin(moduleName) {
 }
 
 function getBuiltinModule(id) {
+  if (typeof id !== "string") {
+    throw new internalErrors.ERR_INVALID_ARG_TYPE("id", "string", id);
+  }
   if (!isBuiltin(id)) {
     return undefined;
   }

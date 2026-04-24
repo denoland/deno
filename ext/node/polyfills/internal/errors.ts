@@ -1311,6 +1311,7 @@ export class ERR_HTTP2_INVALID_CONNECTION_HEADERS extends NodeTypeError {
   }
 }
 export class ERR_HTTP2_INVALID_HEADER_VALUE extends NodeTypeError {
+  static HideStackFramesError = this;
   constructor(x: string, y: string) {
     super(
       "ERR_HTTP2_INVALID_HEADER_VALUE",
@@ -1419,6 +1420,7 @@ export class ERR_HTTP2_PING_LENGTH extends NodeRangeError {
   }
 }
 export class ERR_HTTP2_PSEUDOHEADER_NOT_ALLOWED extends NodeTypeError {
+  static HideStackFramesError = this;
   constructor() {
     super(
       "ERR_HTTP2_PSEUDOHEADER_NOT_ALLOWED",
@@ -1522,6 +1524,14 @@ export class ERR_HTTP_BODY_NOT_ALLOWED extends NodeError {
     super(
       "ERR_HTTP_BODY_NOT_ALLOWED",
       "Adding content for this request method or response status is not allowed.",
+    );
+  }
+}
+export class ERR_HTTP_CONTENT_LENGTH_MISMATCH extends NodeError {
+  constructor(bodyLength: number, contentLength: number) {
+    super(
+      "ERR_HTTP_CONTENT_LENGTH_MISMATCH",
+      `Response body's content-length of ${bodyLength} byte(s) does not match the content-length of ${contentLength} byte(s) set in header`,
     );
   }
 }
@@ -1663,8 +1673,10 @@ export class ERR_INVALID_FILE_URL_HOST extends NodeTypeError {
   }
 }
 export class ERR_INVALID_FILE_URL_PATH extends NodeTypeError {
-  constructor(x: string) {
+  input?: URL;
+  constructor(x: string, input?: URL) {
     super("ERR_INVALID_FILE_URL_PATH", `File URL path ${x}`);
+    this.input = input;
   }
 }
 export class ERR_INVALID_HANDLE_TYPE extends NodeTypeError {
@@ -1673,6 +1685,7 @@ export class ERR_INVALID_HANDLE_TYPE extends NodeTypeError {
   }
 }
 export class ERR_INVALID_HTTP_TOKEN extends NodeTypeError {
+  static HideStackFramesError = this;
   constructor(x: string, y: string) {
     super("ERR_INVALID_HTTP_TOKEN", `${x} must be a valid HTTP token ["${y}"]`);
   }
@@ -1680,6 +1693,11 @@ export class ERR_INVALID_HTTP_TOKEN extends NodeTypeError {
 export class ERR_INVALID_IP_ADDRESS extends NodeTypeError {
   constructor(x: string) {
     super("ERR_INVALID_IP_ADDRESS", `Invalid IP address: ${x}`);
+  }
+}
+export class ERR_IP_BLOCKED extends NodeError {
+  constructor(x: string) {
+    super("ERR_IP_BLOCKED", `Address blocked: ${x}`);
   }
 }
 export class ERR_INVALID_MIME_SYNTAX extends NodeTypeError {
@@ -2978,6 +2996,7 @@ export function aggregateTwoErrors(
     );
     // deno-lint-ignore no-explicit-any
     (err as any).code = outerError.code;
+    ErrorCaptureStackTrace(err, aggregateTwoErrors);
     return err;
   }
   return innerError || outerError;
@@ -3009,6 +3028,7 @@ codes.ERR_MULTIPLE_CALLBACK = ERR_MULTIPLE_CALLBACK;
 codes.ERR_STREAM_WRITE_AFTER_END = ERR_STREAM_WRITE_AFTER_END;
 codes.ERR_INVALID_ARG_TYPE = ERR_INVALID_ARG_TYPE;
 codes.ERR_INVALID_ARG_VALUE = ERR_INVALID_ARG_VALUE;
+codes.ERR_INVALID_HTTP_TOKEN = ERR_INVALID_HTTP_TOKEN;
 codes.ERR_UNAVAILABLE_DURING_EXIT = ERR_UNAVAILABLE_DURING_EXIT;
 codes.ERR_OUT_OF_RANGE = ERR_OUT_OF_RANGE;
 codes.ERR_SOCKET_BAD_PORT = ERR_SOCKET_BAD_PORT;
@@ -3031,9 +3051,16 @@ codes.ERR_STREAM_WRITE_AFTER_END = ERR_STREAM_WRITE_AFTER_END;
 codes.ERR_BROTLI_INVALID_PARAM = ERR_BROTLI_INVALID_PARAM;
 codes.ERR_ZSTD_INVALID_PARAM = ERR_ZSTD_INVALID_PARAM;
 codes.ERR_ZLIB_INITIALIZATION_FAILED = ERR_ZLIB_INITIALIZATION_FAILED;
+codes.ERR_HTTP2_CONNECT_AUTHORITY = ERR_HTTP2_CONNECT_AUTHORITY;
+codes.ERR_HTTP2_CONNECT_PATH = ERR_HTTP2_CONNECT_PATH;
+codes.ERR_HTTP2_CONNECT_SCHEME = ERR_HTTP2_CONNECT_SCHEME;
+codes.ERR_HTTP2_HEADER_SINGLE_VALUE = ERR_HTTP2_HEADER_SINGLE_VALUE;
 codes.ERR_HTTP2_HEADERS_SENT = ERR_HTTP2_HEADERS_SENT;
 codes.ERR_HTTP2_INFO_STATUS_NOT_ALLOWED = ERR_HTTP2_INFO_STATUS_NOT_ALLOWED;
+codes.ERR_HTTP2_INVALID_CONNECTION_HEADERS =
+  ERR_HTTP2_INVALID_CONNECTION_HEADERS;
 codes.ERR_HTTP2_INVALID_HEADER_VALUE = ERR_HTTP2_INVALID_HEADER_VALUE;
+codes.ERR_HTTP2_INVALID_PSEUDOHEADER = ERR_HTTP2_INVALID_PSEUDOHEADER;
 codes.ERR_HTTP2_INVALID_SETTING_VALUE = ERR_HTTP2_INVALID_SETTING_VALUE;
 codes.ERR_HTTP2_INVALID_STREAM = ERR_HTTP2_INVALID_STREAM;
 codes.ERR_HTTP2_NO_SOCKET_MANIPULATION = ERR_HTTP2_NO_SOCKET_MANIPULATION;

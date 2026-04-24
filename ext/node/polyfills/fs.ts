@@ -1803,7 +1803,9 @@ function mkdir(
 
   if (typeof options == "function") {
     callback = options;
-  } else if (typeof options === "number") {
+  } else if (typeof options === "number" || typeof options === "string") {
+    // Match Node: a number or string second arg is a file mode
+    // (see lib/fs.js mkdir).
     mode = parseFileMode(options, "mode");
   } else if (typeof options === "boolean") {
     recursive = options;
@@ -1855,7 +1857,9 @@ function mkdirSync(
   let mode = 0o777;
   let recursive = false;
 
-  if (typeof options === "number") {
+  if (typeof options === "number" || typeof options === "string") {
+    // Match Node: a number or string second arg is a file mode
+    // (see lib/fs.js mkdirSync).
     mode = parseFileMode(options, "mode");
   } else if (typeof options === "boolean") {
     recursive = options;
@@ -2629,7 +2633,10 @@ function writeFileSync(
 
   const encoding = getValidatedEncoding(options) || "utf8";
 
-  if (!ArrayBufferIsView(data) && !_isCustomIterable(data)) {
+  // Match Node: fs.writeFileSync only accepts string or ArrayBufferView for
+  // data (see lib/fs.js). The async Promise variant supports custom
+  // iterables, but the sync version does not.
+  if (!ArrayBufferIsView(data)) {
     validateStringAfterArrayBufferView(data, "data");
     data = Buffer.from(data, encoding);
   }
