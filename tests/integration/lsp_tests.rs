@@ -14699,6 +14699,80 @@ fn lsp_testing_api_failure() {
   client.shutdown();
 }
 
+// Regression test for https://github.com/denoland/deno/issues/33284
+// When `deno.testing.args` contains `--env-file=…`, variables from that file
+// must be loaded for the test run just like `deno test --env-file=…` does on
+// the CLI.
+#[test(timeout = 300)]
+fn lsp_testing_api_env_file() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write("./deno.json", json!({}).to_string());
+  temp_dir.write("./test.env", "LSP_TESTING_ENV_VAR=from-env-file\n");
+  let file = temp_dir.source_file(
+    "test.ts",
+    r#"
+      Deno.test("env_file_loaded", () => {
+        const actual = Deno.env.get("LSP_TESTING_ENV_VAR");
+        if (actual !== "from-env-file") {
+          throw new Error("expected 'from-env-file', got " + JSON.stringify(actual));
+        }
+      });
+    "#,
+  );
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.change_configuration(json!({
+    "deno": {
+      "enable": true,
+      "testing": {
+        "args": ["--allow-env", "--no-check", "--env-file=test.env"],
+      },
+    },
+  }));
+  client.did_open_file(&file);
+  let _ = client.read_notification_with_method::<Value>("deno/testModule");
+  let res = client.write_request_with_res_as::<TestRunResponseParams>(
+    "deno/testRun",
+    json!({
+      "id": 1,
+      "kind": "run",
+    }),
+  );
+  assert_eq!(res.enqueued.len(), 1);
+  let id = res.enqueued[0].ids[0].clone();
+  // started
+  let _ = client.read_notification_with_method::<Value>("deno/testRunProgress");
+  // Look for the passed/failed message for our test id.
+  loop {
+    let notification = client
+      .read_notification_with_method::<Value>("deno/testRunProgress")
+      .unwrap();
+    let message = notification.get("message").unwrap().as_object().unwrap();
+    match message.get("type").and_then(|v| v.as_str()) {
+      Some("passed") => {
+        assert_eq!(
+          message.get("test"),
+          Some(&json!({
+            "textDocument": { "uri": file.uri() },
+            "id": id,
+          })),
+        );
+        break;
+      }
+      Some("failed") => {
+        panic!(
+          "test run failed; env-file likely not applied: {}",
+          json!(notification)
+        );
+      }
+      Some("end") => panic!("test run ended without a pass/fail for the test"),
+      _ => continue,
+    }
+  }
+  client.shutdown();
+}
+
 #[test(timeout = 300)]
 fn lsp_testing_api_describe_it_failure() {
   let context = TestContextBuilder::new()

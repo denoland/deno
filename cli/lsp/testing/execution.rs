@@ -3,6 +3,7 @@
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::collections::HashSet;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 use std::time::Instant;
@@ -17,6 +18,7 @@ use deno_core::futures::stream;
 use deno_core::parking_lot::RwLock;
 use deno_core::unsync::spawn;
 use deno_core::unsync::spawn_blocking;
+use deno_path_util::url_to_file_path;
 use deno_runtime::deno_permissions::Permissions;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_runtime::tokio_util::create_and_run_current_thread;
@@ -44,6 +46,8 @@ use crate::tools::test::FailFastTracker;
 use crate::tools::test::TestFailure;
 use crate::tools::test::TestFailureFormatOptions;
 use crate::tools::test::create_test_event_channel;
+use crate::util::env::load_env_variables_from_env_files;
+use crate::util::env::resolve_cwd;
 
 /// Logic to convert a test request into a set of test modules to be tested and
 /// any filters to be applied to those tests
@@ -229,9 +233,19 @@ impl TestRun {
   ) -> Result<(), AnyError> {
     let args = self.get_args();
     lsp_log!("Executing test run with arguments: {}", args.join(" "));
-    let flags = Arc::new(flags_from_vec(
+    let flags = flags_from_vec(
       args.into_iter().map(|s| From::from(s.as_ref())).collect(),
-    )?);
+    )?;
+    if let Some(env_files) = &flags.env_file {
+      let root_path = maybe_root_uri
+        .and_then(|url| url_to_file_path(url).ok());
+      let cwd = match resolve_cwd(root_path.as_deref()) {
+        Ok(cwd) => cwd.into_owned(),
+        Err(_) => PathBuf::from("."),
+      };
+      load_env_variables_from_env_files(&cwd, env_files, flags.log_level);
+    }
+    let flags = Arc::new(flags);
     let factory = CliFactory::from_flags(flags);
     let cli_options = factory.cli_options()?;
     let permission_desc_parser = factory.permission_desc_parser()?;
