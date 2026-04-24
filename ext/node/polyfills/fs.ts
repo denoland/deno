@@ -165,6 +165,7 @@ const {
   MapPrototypeDelete,
   MapPrototypeGet,
   MapPrototypeSet,
+  MathMax,
   MathMin,
   MathTrunc,
   Number,
@@ -1267,27 +1268,40 @@ function fchownSync(
 
 function ftruncate(
   fd: number,
-  lenOrCallback: number | CallbackWithError,
+  lenOrCallback: number | CallbackWithError = 0,
   maybeCallback?: CallbackWithError,
 ) {
-  const len: number | undefined = typeof lenOrCallback === "number"
-    ? lenOrCallback
-    : undefined;
-  const callback: CallbackWithError = typeof lenOrCallback === "function"
-    ? lenOrCallback
-    : (maybeCallback as CallbackWithError);
+  let len: number = 0;
+  let callback: CallbackWithError | undefined;
+  if (typeof lenOrCallback === "function") {
+    callback = lenOrCallback;
+  } else {
+    len = lenOrCallback;
+    callback = maybeCallback;
+  }
+
+  // Match Node: validate fd and len before any async work (lib/fs.js).
+  if (typeof fd !== "number") {
+    throw new ERR_INVALID_ARG_TYPE("fd", "number", fd);
+  }
+  validateInteger(len, "len");
+  len = MathMax(0, len);
 
   if (!callback) throw new Error("No callback function supplied");
 
   PromisePrototypeThen(
-    op_node_fs_ftruncate(fd, len ?? 0),
+    op_node_fs_ftruncate(fd, len),
     () => callback(null),
     callback,
   );
 }
 
-function ftruncateSync(fd: number, len?: number) {
-  op_node_fs_ftruncate_sync(fd, len ?? 0);
+function ftruncateSync(fd: number, len: number = 0) {
+  if (typeof fd !== "number") {
+    throw new ERR_INVALID_ARG_TYPE("fd", "number", fd);
+  }
+  validateInteger(len, "len");
+  op_node_fs_ftruncate_sync(fd, MathMax(0, len));
 }
 
 function _getValidTime(
@@ -2786,34 +2800,50 @@ function _checkAborted(signal?: AbortSignal) {
 
 function truncate(
   path: string | URL,
-  lenOrCallback: number | CallbackWithError,
+  lenOrCallback: number | CallbackWithError = 0,
   maybeCallback?: CallbackWithError,
 ) {
-  path = ObjectPrototypeIsPrototypeOf(URLPrototype, path)
-    ? pathFromURL(path)
-    : path;
-  const len: number | undefined = typeof lenOrCallback === "number"
-    ? lenOrCallback
-    : undefined;
-  const callback: CallbackWithError = typeof lenOrCallback === "function"
-    ? lenOrCallback
-    : maybeCallback as CallbackWithError;
+  let len: number = 0;
+  let callback: CallbackWithError | undefined;
+  if (typeof lenOrCallback === "function") {
+    callback = lenOrCallback;
+  } else {
+    len = lenOrCallback;
+    callback = maybeCallback;
+  }
+
+  // Match Node: validate len before any async work (lib/fs.js truncate).
+  validateInteger(len, "len");
+  len = MathMax(0, len);
 
   if (!callback) throw new Error("No callback function supplied");
 
-  PromisePrototypeThen(
-    Deno.truncate(path, len),
-    () => callback(null),
-    callback,
-  );
+  // Match Node: open with 'r+', ftruncate, close so ENOENT and other
+  // errors surface with a path/syscall='open' rather than the raw
+  // truncate error.
+  open(path, "r+", (openErr, fd) => {
+    if (openErr) {
+      callback(openErr);
+      return;
+    }
+    ftruncate(fd as number, len, (ftErr) => {
+      close(fd as number, (closeErr) => {
+        callback(ftErr || closeErr || null);
+      });
+    });
+  });
 }
 
-function truncateSync(path: string | URL, len?: number) {
-  path = ObjectPrototypeIsPrototypeOf(URLPrototype, path)
-    ? pathFromURL(path)
-    : path;
-
-  Deno.truncateSync(path, len);
+function truncateSync(path: string | URL, len: number = 0) {
+  validateInteger(len, "len");
+  len = MathMax(0, len);
+  // Match Node: open with 'r+', ftruncate, close.
+  const fd = openSync(path, "r+");
+  try {
+    ftruncateSync(fd, len);
+  } finally {
+    closeSync(fd);
+  }
 }
 
 // -- utimes --
