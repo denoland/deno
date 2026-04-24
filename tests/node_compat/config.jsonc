@@ -1634,6 +1634,7 @@
     "parallel/test-net-connect-immediate-finish.js": {},
     "parallel/test-net-connect-no-arg.js": {},
     "parallel/test-net-connect-options-fd.js": {},
+    "parallel/test-net-connect-options-invalid.js": {},
     "parallel/test-net-connect-options-ipv6.js": {},
     "parallel/test-net-connect-options-port.js": {},
     "parallel/test-net-connect-paused-connection.js": {},

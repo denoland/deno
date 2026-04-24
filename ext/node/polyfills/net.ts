@@ -849,6 +849,11 @@ function _lookupAndConnect(self: Socket, options: TcpSocketConnectOptions) {
   const host = options.host || "localhost";
   let { port, autoSelectFamilyAttemptTimeout, autoSelectFamily } = options;
 
+  // Match Node: lookupAndConnect runs validateString(host, 'options.host')
+  // (see lib/net.js), so arrays/numbers/etc throw ERR_INVALID_ARG_TYPE
+  // before any DNS lookup.
+  validateString(host, "options.host");
+
   if (localAddress && !isIP(localAddress)) {
     throw new ERR_INVALID_IP_ADDRESS(localAddress);
   }
@@ -1196,6 +1201,25 @@ function _emitCloseNT(s: Socket | Server) {
 export function Socket(options) {
   if (!(this instanceof Socket)) {
     return new Socket(options);
+  }
+
+  // Match Node: objectMode / readableObjectMode / writableObjectMode are
+  // unsupported on net.Socket and produce ERR_INVALID_ARG_VALUE with a
+  // 'is not supported' reason (see function Socket in lib/net.js).
+  if (options?.objectMode) {
+    throw new ERR_INVALID_ARG_VALUE(
+      "options.objectMode",
+      options.objectMode,
+      "is not supported",
+    );
+  } else if (options?.readableObjectMode || options?.writableObjectMode) {
+    throw new ERR_INVALID_ARG_VALUE(
+      `options.${
+        options.readableObjectMode ? "readableObjectMode" : "writableObjectMode"
+      }`,
+      options.readableObjectMode || options.writableObjectMode,
+      "is not supported",
+    );
   }
 
   if (typeof options === "number") {
