@@ -57,6 +57,7 @@ import {
   statSync,
   unlink,
   unlinkSync,
+  watch,
   writeFileSync,
 } from "node:fs";
 import { readFile } from "node:fs/promises";
@@ -1891,16 +1892,16 @@ Deno.test({
   async fn() {
     const tmp = Deno.makeTempDirSync();
     const subdir = join(tmp, "sub");
-    fs.mkdirSync(subdir, { recursive: true });
+    mkdirSync(subdir, { recursive: true });
 
     try {
       const filenames: string[] = [];
       const { promise, resolve } = Promise.withResolvers<void>();
 
-      const watcher = fs.watch(
+      const watcher = watch(
         tmp,
         { recursive: true },
-        (_event, filename) => {
+        (_event: string, filename: string | null) => {
           if (filename) filenames.push(filename);
           if (filenames.length >= 1) resolve();
         },
@@ -1908,7 +1909,7 @@ Deno.test({
 
       // Small delay to let the watcher start
       await new Promise((r) => setTimeout(r, 100));
-      fs.writeFileSync(join(subdir, "test.txt"), "hello");
+      writeFileSync(join(subdir, "test.txt"), "hello");
 
       await promise;
       watcher.close();
@@ -1921,7 +1922,7 @@ Deno.test({
         `Expected relative path like "sub/test.txt", got: ${filenames}`,
       );
     } finally {
-      fs.rmSync(tmp, { recursive: true, force: true });
+      rmSync(tmp, { recursive: true, force: true });
     }
   },
 });
