@@ -817,6 +817,17 @@ Deno.test({
 });
 
 Deno.test({
+  name: "[node/buffer] indexOf and includes work correctly",
+  fn() {
+    const buf = Buffer.from("Hello World");
+    assertEquals(buf.indexOf("World"), 6);
+    assertEquals(buf.indexOf("World", 0, "utf8"), 6);
+    assertEquals(buf.includes("Hello"), true);
+    assertEquals(buf.indexOf(Buffer.from("World")), 6);
+  },
+});
+
+Deno.test({
   name: "[node/buffer] resolveObjectURL returns undefined for invalid inputs",
   fn() {
     assertEquals(resolveObjectURL("not a url"), undefined);

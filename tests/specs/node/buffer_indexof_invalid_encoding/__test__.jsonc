@@ -1,8 +1,0 @@
-{
-  "tests": {
-    "valid_encoding_works": {
-      "args": "run main.ts",
-      "output": "main.out"
-    }
-  }
-}
