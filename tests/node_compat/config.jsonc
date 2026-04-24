@@ -1982,6 +1982,7 @@
     "parallel/test-process-env-deprecation.js": {},
     "parallel/test-process-env-ignore-getter-setter.js": {},
     "parallel/test-process-env-sideeffects.js": {},
+    "parallel/test-process-env-symbols.js": {},
     "parallel/test-process-env-tz.js": {},
     "parallel/test-process-env-windows-error-reset.js": {},
     "parallel/test-process-exception-capture-errors.js": {},

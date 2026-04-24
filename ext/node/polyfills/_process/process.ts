@@ -100,10 +100,10 @@ export const env:
         };
       }
     },
-    set(target, prop, value) {
-      if (typeof prop === "symbol") {
-        target[prop] = value;
-        return true;
+    set(_target, prop, value) {
+      // Match Node: v8 ToString on a symbol key or value throws TypeError.
+      if (typeof prop === "symbol" || typeof value === "symbol") {
+        throw new TypeError("Cannot convert a Symbol value to a string");
       }
 
       if (typeof value !== "string") {
