@@ -1434,10 +1434,17 @@ unsafe extern "C" fn enc_write_cb(req: *mut uv_write_t, status: i32) {
       (*ptr).enc_writes_in_flight =
         (*ptr).enc_writes_in_flight.saturating_sub(1);
       if (*ptr).enc_writes_in_flight == 0 && status >= 0 {
-        // Don't drain more cleartext here — that's done by cycle()
-        // which is triggered by incoming reads. This prevents TCP
-        // send buffer deadlocks: we let the event loop process reads
-        // (echo data from the peer) between encryption rounds.
+        // If clear_in() was rate-limited (MAX_CLEAR_IN) and left
+        // pending cleartext, drain the next chunk now. Without
+        // this the remaining bytes are never fed to rustls and the
+        // peer never receives the full body ("socket hang up").
+        if (*ptr)
+          .pending_cleartext
+          .as_ref()
+          .is_some_and(|v| !v.is_empty())
+        {
+          (*ptr).clear_in();
+        }
         let enc_action = (*ptr).enc_out_collect();
         TLSWrapInner::do_enc_out_action(ptr, enc_action);
       } else if (*ptr).enc_writes_in_flight == 0
