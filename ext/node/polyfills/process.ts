@@ -545,14 +545,16 @@ Process.prototype.constructor = _process;
 // Maps original user listeners to wrapped versions that pass the signal name.
 // Node.js calls signal listeners with the signal name as the first argument,
 // but Deno.addSignalListener calls them with no arguments.
-// deno-lint-ignore no-explicit-any
-const _signalListenerWrappers = new WeakMap<Function, Map<string, Function>>();
+type SignalListener = (...args: string[]) => void;
+const _signalListenerWrappers = new WeakMap<
+  SignalListener,
+  Map<string, SignalListener>
+>();
 
-// deno-lint-ignore no-explicit-any
 function _wrapSignalListener(
   event: string,
-  listener: (...args: any[]) => void,
-) {
+  listener: SignalListener,
+): SignalListener {
   let wrappersByEvent = _signalListenerWrappers.get(listener);
   if (!wrappersByEvent) {
     wrappersByEvent = new Map();
@@ -566,11 +568,10 @@ function _wrapSignalListener(
   return wrapper;
 }
 
-// deno-lint-ignore no-explicit-any
 function _unwrapSignalListener(
   event: string,
-  listener: (...args: any[]) => void,
-) {
+  listener: SignalListener,
+): SignalListener {
   const wrappersByEvent = _signalListenerWrappers.get(listener);
   if (!wrappersByEvent) return listener;
   const wrapper = wrappersByEvent.get(event);

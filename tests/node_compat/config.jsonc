@@ -2145,6 +2145,7 @@
     "parallel/test-runner-subtest-after-hook.js": {},
     "parallel/test-set-process-debug-port.js": {},
     "parallel/test-setproctitle.js": {},
+    "parallel/test-signal-args.js": {},
     "parallel/test-signal-handler-remove-on-exit.js": {},
     "parallel/test-signal-handler.js": {},
     "parallel/test-snapshot-api.js": {
