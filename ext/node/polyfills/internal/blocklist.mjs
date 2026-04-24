@@ -31,11 +31,37 @@ const {
   ArrayPrototypeUnshift,
   JSONParse,
   NumberParseInt,
+  RegExpPrototypeExec,
   SafeArrayIterator,
-  StringPrototypeMatch,
+  SafeRegExp,
+  StringPrototypeIncludes,
   StringPrototypeToLowerCase,
   Symbol,
 } = primordials;
+
+// Pre-compiled primordial regexes for parseIPInfo. Same patterns as Node's
+// lib/internal/blocklist.js #parseIPInfo.
+const kIPv4SubnetRe = new SafeRegExp(
+  "Subnet: IPv4 (\\d{1,3}(?:\\.\\d{1,3}){3})\\/(\\d{1,2})",
+);
+const kIPv4AddressRe = new SafeRegExp(
+  "Address: IPv4 (\\d{1,3}(?:\\.\\d{1,3}){3})",
+);
+const kIPv4RangeRe = new SafeRegExp(
+  "Range: IPv4 (\\d{1,3}(?:\\.\\d{1,3}){3})-(\\d{1,3}(?:\\.\\d{1,3}){3})",
+);
+const kIPv6SubnetRe = new SafeRegExp(
+  "Subnet: IPv6 ([0-9a-fA-F:]{1,39})\\/([0-9]{1,3})",
+  "i",
+);
+const kIPv6AddressRe = new SafeRegExp(
+  "Address: IPv6 ([0-9a-fA-F:]{1,39})",
+  "i",
+);
+const kIPv6RangeRe = new SafeRegExp(
+  "Range: IPv6 ([0-9a-fA-F:]{1,39})-([0-9a-fA-F:]{1,39})",
+  "i",
+);
 
 const internalBlockList = Symbol("blocklist");
 const kRules = Symbol("rules");
@@ -222,37 +248,25 @@ class BlockList {
 
 function parseIPInfo(self, data) {
   for (const item of new SafeArrayIterator(data)) {
-    if (item.includes("IPv4")) {
-      const subnetMatch = StringPrototypeMatch(
-        item,
-        /Subnet: IPv4 (\d{1,3}(?:\.\d{1,3}){3})\/(\d{1,2})/,
-      );
+    if (StringPrototypeIncludes(item, "IPv4")) {
+      const subnetMatch = RegExpPrototypeExec(kIPv4SubnetRe, item);
       if (subnetMatch) {
         self.addSubnet(subnetMatch[1], NumberParseInt(subnetMatch[2]));
         continue;
       }
-      const addressMatch = StringPrototypeMatch(
-        item,
-        /Address: IPv4 (\d{1,3}(?:\.\d{1,3}){3})/,
-      );
+      const addressMatch = RegExpPrototypeExec(kIPv4AddressRe, item);
       if (addressMatch) {
         self.addAddress(addressMatch[1]);
         continue;
       }
-      const rangeMatch = StringPrototypeMatch(
-        item,
-        /Range: IPv4 (\d{1,3}(?:\.\d{1,3}){3})-(\d{1,3}(?:\.\d{1,3}){3})/,
-      );
+      const rangeMatch = RegExpPrototypeExec(kIPv4RangeRe, item);
       if (rangeMatch) {
         self.addRange(rangeMatch[1], rangeMatch[2]);
         continue;
       }
     }
-    if (item.includes("IPv6")) {
-      const ipv6SubnetMatch = StringPrototypeMatch(
-        item,
-        /Subnet: IPv6 ([0-9a-fA-F:]{1,39})\/([0-9]{1,3})/i,
-      );
+    if (StringPrototypeIncludes(item, "IPv6")) {
+      const ipv6SubnetMatch = RegExpPrototypeExec(kIPv6SubnetRe, item);
       if (ipv6SubnetMatch) {
         self.addSubnet(
           ipv6SubnetMatch[1],
@@ -261,18 +275,12 @@ function parseIPInfo(self, data) {
         );
         continue;
       }
-      const ipv6AddressMatch = StringPrototypeMatch(
-        item,
-        /Address: IPv6 ([0-9a-fA-F:]{1,39})/i,
-      );
+      const ipv6AddressMatch = RegExpPrototypeExec(kIPv6AddressRe, item);
       if (ipv6AddressMatch) {
         self.addAddress(ipv6AddressMatch[1], "ipv6");
         continue;
       }
-      const ipv6RangeMatch = StringPrototypeMatch(
-        item,
-        /Range: IPv6 ([0-9a-fA-F:]{1,39})-([0-9a-fA-F:]{1,39})/i,
-      );
+      const ipv6RangeMatch = RegExpPrototypeExec(kIPv6RangeRe, item);
       if (ipv6RangeMatch) {
         self.addRange(ipv6RangeMatch[1], ipv6RangeMatch[2], "ipv6");
         continue;
