@@ -1050,6 +1050,7 @@
     "parallel/test-fs-utimes-y2K38.js": {},
     "parallel/test-fs-utimes.js": {},
     "parallel/test-fs-watch.js": {},
+    "parallel/test-fs-watchfile-ref-unref.js": {},
     "parallel/test-fs-watchfile.js": {},
     "parallel/test-fs-whatwg-url.js": {},
     "parallel/test-fs-write-buffer-large.js": {},
