@@ -110,6 +110,10 @@ Deno.test("[node/module register] is a function", () => {
   assertEquals(register("foo"), undefined);
 });
 
+Deno.test("[node/module] self is undefined in node context", () => {
+  assertEquals(typeof self, "undefined");
+});
+
 Deno.test("[node/module] overriding Module._compile is possible and Node globals work", () => {
   // @ts-ignore Not documented but available
   const originalCompile = Module.prototype._compile;
