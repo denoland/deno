@@ -79,7 +79,15 @@ fn raw_fd_for_file(file: Rc<dyn deno_io::fs::File>) -> Result<i32, FsError> {
     if crt_fd == -1 {
       // SAFETY: Clean up the duplicated handle on failure.
       unsafe { CloseHandle(dup_handle) };
-      return Err(FsError::Io(std::io::Error::last_os_error()));
+      // open_osfhandle is a CRT function that sets errno, NOT
+      // GetLastError(). Using last_os_error() here would read a stale
+      // Win32 error from a prior API call — e.g. ERROR_ALREADY_EXISTS
+      // (183) left over from CreateFileW(CREATE_ALWAYS), which would
+      // be misreported as EEXIST. The most common (and practically
+      // only) reason open_osfhandle fails is CRT fd table exhaustion.
+      return Err(FsError::Io(std::io::Error::from_raw_os_error(
+        4, // ERROR_TOO_MANY_OPEN_FILES
+      )));
     }
     Ok(crt_fd)
   }
@@ -329,8 +337,42 @@ pub fn op_node_open_sync(
     open_options_to_access_kind(&options),
     Some("node:fs.openSync"),
   )?;
-  let file = fs.open_sync(&path, options)?;
+
+  // On Windows, opening with create + truncate uses CREATE_ALWAYS which
+  // truncates the file to 0 bytes immediately. If the subsequent CRT fd
+  // creation (open_osfhandle) fails, the file is left at 0 bytes — causing
+  // permanent data loss. To prevent this, open without truncation first,
+  // create the fd, and then truncate.
+  #[cfg(windows)]
+  let deferred_truncate =
+    options.truncate && options.create && !options.create_new;
+  #[cfg(windows)]
+  let open_options = if deferred_truncate {
+    OpenOptions {
+      truncate: false,
+      ..options
+    }
+  } else {
+    options
+  };
+  #[cfg(not(windows))]
+  let open_options = options;
+
+  let file = fs.open_sync(&path, open_options)?;
   let fd = raw_fd_for_file(file.clone())?;
+
+  #[cfg(windows)]
+  if deferred_truncate {
+    if let Err(e) = file.clone().truncate_sync(0) {
+      // Clean up the fd on failure.
+      // SAFETY: crt_fd is a valid CRT fd just created by raw_fd_for_file.
+      unsafe {
+        libc::close(fd);
+      }
+      return Err(e.into());
+    }
+  }
+
   state.borrow_mut::<deno_io::FdTable>().register(fd, file);
   Ok(fd)
 }
@@ -357,8 +399,35 @@ pub async fn op_node_open(
       )?,
     )
   };
-  let file = fs.open_async(path.as_owned(), options).await?;
+
+  // See op_node_open_sync for why we defer truncation on Windows.
+  #[cfg(windows)]
+  let deferred_truncate =
+    options.truncate && options.create && !options.create_new;
+  #[cfg(windows)]
+  let open_options = if deferred_truncate {
+    OpenOptions {
+      truncate: false,
+      ..options
+    }
+  } else {
+    options
+  };
+  #[cfg(not(windows))]
+  let open_options = options;
+
+  let file = fs.open_async(path.as_owned(), open_options).await?;
   let fd = raw_fd_for_file(file.clone())?;
+
+  #[cfg(windows)]
+  if deferred_truncate {
+    if let Err(e) = file.clone().truncate_sync(0) {
+      unsafe {
+        libc::close(fd);
+      }
+      return Err(e.into());
+    }
+  }
 
   let mut state = state.borrow_mut();
   state.borrow_mut::<deno_io::FdTable>().register(fd, file);

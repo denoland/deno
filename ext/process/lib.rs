@@ -757,12 +757,15 @@ fn create_command(
           // SAFETY: fd1 is a valid pipe HANDLE from bi_pipe_pair_raw.
           let crt_fd = unsafe { libc::open_osfhandle(fd1 as isize, 0) };
           if crt_fd == -1 {
-            let err = std::io::Error::last_os_error();
             // SAFETY: fd1 is a valid HANDLE we just failed to wrap.
             unsafe {
               windows_sys::Win32::Foundation::CloseHandle(fd1 as _);
             }
-            return Err(ProcessError::Io(err));
+            // open_osfhandle sets errno, not GetLastError(). Using
+            // last_os_error() reads a stale Win32 error code.
+            return Err(ProcessError::Io(
+              std::io::Error::from_raw_os_error(4), // ERROR_TOO_MANY_OPEN_FILES
+            ));
           }
           extra_pipe_fds.push(Some(crt_fd as i64));
         }
@@ -988,7 +991,11 @@ macro_rules! child_stdio_to_fd {
           // SAFETY: raw_handle is a valid OS handle from the child process.
           let crt_fd = unsafe { libc::open_osfhandle(raw_handle as isize, 0) };
           if crt_fd == -1 {
-            return Err(ProcessError::Io(std::io::Error::last_os_error()));
+            // open_osfhandle sets errno, not GetLastError(). Using
+            // last_os_error() reads a stale Win32 error code.
+            return Err(ProcessError::Io(
+              std::io::Error::from_raw_os_error(4), // ERROR_TOO_MANY_OPEN_FILES
+            ));
           }
           Ok(crt_fd as i64)
         })

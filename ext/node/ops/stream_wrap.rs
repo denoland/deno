@@ -206,6 +206,11 @@ impl LibUvStreamWrap {
     self.fd.set(fd);
   }
 
+  #[allow(dead_code, reason = "used on Windows for CRT fd cleanup")]
+  pub(crate) fn get_fd(&self) -> i32 {
+    self.fd.get()
+  }
+
   #[allow(dead_code, reason = "used by upcoming TCPWrap/TLSWrap")]
   pub(crate) fn handle_wrap(&self) -> &HandleWrap {
     &self.base

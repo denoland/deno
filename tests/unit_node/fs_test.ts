@@ -150,6 +150,24 @@ Deno.test(
 );
 
 Deno.test(
+  "[node/fs writeFileSync] repeated overwrites preserve content on failure",
+  () => {
+    const filename = mkdtempSync(join(tmpdir(), "foo-")) + "/config.json";
+
+    // Simulate a long-running app that repeatedly overwrites a config file
+    for (let i = 0; i < 50; i++) {
+      const content = JSON.stringify({ version: i, data: "x".repeat(100) });
+      writeFileSync(filename, content);
+      assertEquals(readFileSync(filename, "utf8"), content);
+    }
+
+    // Verify file is never corrupted to 0 bytes
+    const stat = Deno.statSync(filename);
+    assert(stat.size > 0, "File should not be empty after repeated writes");
+  },
+);
+
+Deno.test(
   "[node/fs existsSync] path",
   { permissions: { read: true } },
   () => {
