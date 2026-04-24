@@ -28,6 +28,7 @@ const {
   ObjectCreate,
   ObjectDefineProperties,
   ObjectDefineProperty,
+  ObjectGetOwnPropertyDescriptor,
   ObjectKeys,
   ObjectHasOwn,
   ObjectValues,
@@ -149,7 +150,11 @@ function Console(options /* or: stdout, stderr, ignoreErrors = true */) {
   }
 
   if (typeof colorMode !== "boolean" && colorMode !== "auto") {
-    throw new ERR_INVALID_ARG_VALUE("colorMode", colorMode);
+    throw new ERR_INVALID_ARG_VALUE(
+      "colorMode",
+      colorMode,
+      "must be one of: 'auto', true, false",
+    );
   }
 
   if (groupIndentation !== undefined) {
@@ -771,6 +776,55 @@ export function bindStreamsLazy(console, object) {
   FunctionPrototypeCall(Console.prototype[kBindStreamsLazy], console, object);
 }
 
+// Apply Node Console prototype methods and internal state to an existing
+// console object (e.g. the global Deno web console) so that methods like
+// console.count() / console.log() write through process.stdout.write instead
+// of core.print(). This must be called after bindStreamsLazy.
+export function bindNodeConsoleMethodsToGlobal(console) {
+  // Set up internal properties needed by Console methods
+  FunctionPrototypeCall(
+    Console.prototype[kBindProperties],
+    console,
+    true,
+    "auto",
+  );
+
+  // Set up the kWriteToConsole and related internal methods
+  const internalDescriptors = {
+    [kWriteToConsole]: true,
+    [kGetInspectOptions]: true,
+    [kFormatForStdout]: true,
+    [kFormatForStderr]: true,
+  };
+
+  for (
+    const key of new SafeArrayIterator(
+      ReflectOwnKeys(Console.prototype),
+    )
+  ) {
+    const desc = ObjectGetOwnPropertyDescriptor(Console.prototype, key);
+    if (desc && typeof desc.value === "function") {
+      if (internalDescriptors[key]) {
+        // Internal symbol methods: define as non-enumerable
+        ObjectDefineProperty(console, key, {
+          __proto__: null,
+          writable: true,
+          enumerable: false,
+          configurable: true,
+          value: FunctionPrototypeBind(desc.value, console),
+        });
+      } else if (typeof key === "string") {
+        // Public methods: replace on the console object
+        console[key] = FunctionPrototypeBind(desc.value, console);
+        ObjectDefineProperty(console[key], "name", {
+          __proto__: null,
+          value: key,
+        });
+      }
+    }
+  }
+}
+
 export { Console, formatTime, kBindProperties, kBindStreamsLazy };
 export default {
   Console,
@@ -778,4 +832,5 @@ export default {
   kBindProperties,
   formatTime,
   bindStreamsLazy,
+  bindNodeConsoleMethodsToGlobal,
 };

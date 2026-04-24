@@ -538,6 +538,17 @@ function formatValue(
   // any proxy handlers.
   // TODO(wafuwafu13): Set Proxy
   const proxyDetails = core.getProxyDetails(value);
+
+  // Detect revoked proxies early: getProxyDetails returns [null, null] for
+  // revoked proxies (vs null for non-proxies, and [target, handler] for live
+  // proxies). Any further property access on them will throw, so short-circuit.
+  if (
+    proxyDetails !== null &&
+    proxyDetails[0] === null &&
+    proxyDetails[1] === null
+  ) {
+    return ctx.stylize("<Revoked Proxy>", "special");
+  }
   // const proxy = getProxyDetails(value, !!ctx.showProxy);
   // if (proxy !== undefined) {
   //   if (ctx.showProxy) {
