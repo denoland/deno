@@ -781,6 +781,32 @@ Object.defineProperty(process, "argv0", {
   set(_val) {},
 });
 
+/**
+ * https://nodejs.org/api/process.html#processdebugport
+ *
+ * Node coerces the value via v8's ToInt32 (so numeric strings convert to
+ * numbers, objects/arrays/NaN/Infinity become 0, booleans become 0 or 1,
+ * and Symbols throw TypeError). Out-of-range values throw RangeError.
+ */
+let _debugPort = 0;
+Object.defineProperty(process, "debugPort", {
+  get() {
+    return _debugPort;
+  },
+  set(val) {
+    // `| 0` performs ToInt32, matching Int32Value() in node_process_object.cc.
+    const port = val | 0;
+    if ((port !== 0 && port < 1024) || port > 65535) {
+      throw new RangeError(
+        "process.debugPort must be 0 or in range 1024 to 65535",
+      );
+    }
+    _debugPort = port;
+  },
+  enumerable: true,
+  configurable: true,
+});
+
 /** https://nodejs.org/api/process.html#process_process_chdir_directory */
 process.chdir = chdir;
 
