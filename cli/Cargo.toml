@@ -103,12 +103,12 @@ capacity_builder.workspace = true
 chrono = { workspace = true, features = ["now"] }
 clap = { workspace = true, features = ["env", "string", "wrap_help", "error-context"] }
 clap_complete.workspace = true
-clap_complete_fig.workspace = true
 color-print.workspace = true
 comrak.workspace = true
 console_static_text.workspace = true
 crossterm.workspace = true
 dashmap.workspace = true
+deno_cli_parser = { path = "../libs/cli_parser" }
 deno_dotenv.workspace = true
 dhat = { workspace = true, optional = true }
 dprint-core.workspace = true

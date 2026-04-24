@@ -1,5 +1,4 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
-
 use std::env;
 use std::fs;
 use std::fs::File;
@@ -35,6 +34,7 @@ use crate::args::CompileFlags;
 use crate::args::ConfigFlag;
 use crate::args::DenoSubcommand;
 use crate::args::Flags;
+use crate::args::FlagsExt;
 use crate::args::InstallEntrypointsFlags;
 use crate::args::InstallFlags;
 use crate::args::InstallFlagsGlobal;

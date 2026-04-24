@@ -1042,16 +1042,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "clap_complete_fig"
-version = "4.5.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d494102c8ff3951810c72baf96910b980fb065ca5d3101243e6a8dc19747c86b"
-dependencies = [
- "clap",
- "clap_complete",
-]
-
-[[package]]
 name = "clap_derive"
 version = "4.5.55"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1829,7 +1819,6 @@ dependencies = [
  "chrono",
  "clap",
  "clap_complete",
- "clap_complete_fig",
  "color-print",
  "comrak",
  "console_static_text",
@@ -1838,6 +1827,7 @@ dependencies = [
  "deno_ast",
  "deno_bundle_runtime",
  "deno_cache_dir",
+ "deno_cli_parser",
  "deno_config",
  "deno_core",
  "deno_doc",
@@ -2090,6 +2080,25 @@ dependencies = [
  "thiserror 2.0.12",
  "tokio",
  "url",
+]
+
+[[package]]
+name = "deno_cli_parser"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "criterion",
+ "deno_bundle_runtime",
+ "deno_config",
+ "deno_core",
+ "deno_lib",
+ "deno_npm_installer",
+ "deno_runtime",
+ "deno_semver",
+ "log",
+ "pretty_assertions",
+ "serde",
+ "sys_traits",
 ]
 
 [[package]]

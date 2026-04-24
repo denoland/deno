@@ -1,5 +1,4 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
-
 use std::borrow::Cow;
 use std::future::Future;
 use std::path::Path;
@@ -65,7 +64,9 @@ use crate::args::CliLockfile;
 use crate::args::CliOptions;
 use crate::args::ConfigFlag;
 use crate::args::DenoSubcommand;
+use crate::args::DenoSubcommandExt;
 use crate::args::Flags;
+use crate::args::FlagsExt;
 use crate::args::InstallFlags;
 use crate::args::InstallFlagsLocal;
 use crate::cache::Caches;

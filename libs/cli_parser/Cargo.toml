@@ -1,0 +1,27 @@
+# Copyright 2018-2026 the Deno authors. MIT license.
+
+[package]
+name = "deno_cli_parser"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+deno_bundle_runtime.workspace = true
+deno_config = { workspace = true, features = ["workspace"] }
+deno_core.workspace = true
+deno_lib.workspace = true
+deno_npm_installer.workspace = true
+deno_runtime.workspace = true
+deno_semver.workspace = true
+log.workspace = true
+serde = { workspace = true, features = ["derive"] }
+sys_traits = { workspace = true, features = ["real"] }
+
+[dev-dependencies]
+clap = { version = "4.5", features = ["string", "wrap_help"] }
+criterion = { version = "0.5", features = ["html_reports"] }
+pretty_assertions = "1"
+
+[[bench]]
+name = "parse_benchmark"
+harness = false

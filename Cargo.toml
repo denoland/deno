@@ -34,6 +34,7 @@ members = [
   "ext/websocket",
   "ext/webstorage",
   "libs/cache_dir",
+  "libs/cli_parser",
   "libs/config",
   "libs/core",
   "libs/core/examples/snapshot",

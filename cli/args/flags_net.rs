@@ -1,9 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-use std::net::IpAddr;
 use std::str::FromStr;
 
-use deno_core::url::Url;
 use deno_runtime::deno_permissions::NetDescriptor;
 
 #[derive(Debug, PartialEq, Eq)]
@@ -25,18 +23,6 @@ impl FromStr for BarePort {
         "Bare Port doesn't start with ':'".to_string(),
       ))
     }
-  }
-}
-
-pub fn validator(host_and_port: &str) -> Result<String, String> {
-  if Url::parse(&format!("internal://{host_and_port}")).is_ok()
-    || host_and_port.parse::<IpAddr>().is_ok()
-    || host_and_port.parse::<BarePort>().is_ok()
-    || NetDescriptor::parse_for_list(host_and_port).is_ok()
-  {
-    Ok(host_and_port.to_string())
-  } else {
-    Err(format!("Bad host:port pair: {host_and_port}"))
   }
 }
 

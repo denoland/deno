@@ -455,9 +455,17 @@ async function ensureWorkflowYmlsUpToDate() {
  * this convention.
  */
 async function ensureNoNonPermissionCapitalLetterShortFlags() {
-  const text = await Deno.readTextFile(join(ROOT_PATH, "cli/args/flags.rs"));
+  // Check both the main flags.rs and the parser crate's defs.rs
+  const flagsText = await Deno.readTextFile(
+    join(ROOT_PATH, "cli/args/flags.rs"),
+  );
+  const defsText = await Deno.readTextFile(
+    join(ROOT_PATH, "libs/cli_parser/src/defs.rs"),
+  );
+  const text = flagsText + "\n" + defsText;
   const shortFlags = text.matchAll(/\.short\('([A-Z])'\)/g);
-  const values = Array.from(shortFlags.map((flag) => flag[1])).sort();
+  const values = [...new Set(Array.from(shortFlags.map((flag) => flag[1])))]
+    .sort();
   // DO NOT update this list with a non-permission short flag without
   // discussion--there needs to be precedence to add to this list.
   const expected = [

@@ -1,4 +1,5 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
+use crate::args::FlagsExt;
 
 mod args;
 mod cache;
@@ -338,26 +339,20 @@ async fn run_subcommand(
             let script_err_msg = script_err.to_string();
             if should_fallback_on_run_error(script_err_msg.as_str()) {
               if run_flags.bare {
-                let mut cmd = args::clap_root();
-                cmd.build();
-                let command_names = cmd
-                  .get_subcommands()
-                  .map(|command| command.get_name())
+                let command_names = deno_cli_parser::defs::DENO_ROOT
+                  .subcommands
+                  .iter()
+                  .map(|c| c.name)
                   .collect::<Vec<_>>();
                 let suggestions =
                   args::did_you_mean(&run_flags.script, command_names);
                 if !suggestions.is_empty() && !run_flags.script.contains('.') {
-                  let mut error =
-                    clap::error::Error::<clap::error::DefaultFormatter>::new(
-                      clap::error::ErrorKind::InvalidSubcommand,
-                    )
-                    .with_cmd(&cmd);
-                  error.insert(
-                    clap::error::ContextKind::SuggestedSubcommand,
-                    clap::error::ContextValue::Strings(suggestions),
-                  );
-
-                  Err(error.into())
+                  let suggestion_text = suggestions.join(", ");
+                  Err(deno_core::anyhow::anyhow!(
+                    "Unknown subcommand '{}'. Did you mean: {}?",
+                    run_flags.script,
+                    suggestion_text,
+                  ))
                 } else {
                   Err(script_err)
                 }
@@ -478,7 +473,7 @@ async fn run_subcommand(
         },
       );
 
-      match stream.write_all(help_flags.help.ansi().to_string().as_bytes()) {
+      match stream.write_all(help_flags.help.as_bytes()) {
         Ok(()) => Ok(()),
         Err(e) => match e.kind() {
           std::io::ErrorKind::BrokenPipe => Ok(()),
@@ -723,11 +718,13 @@ async fn resolve_flags_and_init(
   let mut flags =
     match flags_from_vec_with_initial_cwd(args, initial_cwd.clone()) {
       Ok(flags) => flags,
-      Err(err @ clap::Error { .. })
-        if err.kind() == clap::error::ErrorKind::DisplayVersion =>
-      {
+      Err(err) if err.kind() == args::FlagsErrorKind::DisplayVersion => {
         // Ignore results to avoid BrokenPipe errors.
-        let _ = err.print();
+        // Version output goes to stdout (matching clap behavior).
+        use std::io::Write;
+        let _ = std::io::stdout()
+          .lock()
+          .write_all(err.to_string().as_bytes());
         deno_runtime::exit(0);
       }
       Err(err) => exit_for_error(AnyError::from(err), initial_cwd.as_deref()),

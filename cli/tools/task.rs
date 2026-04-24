@@ -787,19 +787,7 @@ pub struct AvailableTaskDescription {
   pub task: TaskDefinition,
 }
 
-pub fn get_available_tasks_for_completion(
-  flags: Arc<Flags>,
-) -> Result<Vec<AvailableTaskDescription>, AnyError> {
-  let factory = crate::factory::CliFactory::from_flags(flags);
-  let options = factory.cli_options()?;
-
-  let member_dir = &options.start_dir;
-  let tasks_config = member_dir.to_tasks_config()?;
-
-  get_available_tasks(member_dir, &tasks_config).map_err(AnyError::from)
-}
-
-fn get_available_tasks(
+pub fn get_available_tasks(
   workspace_dir: &Arc<WorkspaceDirectory>,
   tasks_config: &WorkspaceTasksConfig,
 ) -> Result<Vec<AvailableTaskDescription>, std::io::Error> {

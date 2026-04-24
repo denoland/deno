@@ -21,23 +21,24 @@ impl CliBundleProvider {
   }
 }
 
-impl From<RtBundleOptions> for crate::args::BundleFlags {
-  fn from(value: RtBundleOptions) -> Self {
-    Self {
-      entrypoints: value.entrypoints,
-      output_path: value.output_path,
-      output_dir: value.output_dir,
-      external: value.external,
-      format: value.format,
-      minify: value.minify,
-      keep_names: value.keep_names,
-      code_splitting: value.code_splitting,
-      platform: value.platform,
-      watch: false,
-      sourcemap: value.sourcemap,
-      inline_imports: value.inline_imports,
-      packages: value.packages,
-    }
+#[allow(dead_code, reason = "used in bundle runtime integration")]
+fn bundle_flags_from_rt_options(
+  value: RtBundleOptions,
+) -> crate::args::BundleFlags {
+  crate::args::BundleFlags {
+    entrypoints: value.entrypoints,
+    output_path: value.output_path,
+    output_dir: value.output_dir,
+    external: value.external,
+    format: value.format,
+    minify: value.minify,
+    keep_names: value.keep_names,
+    code_splitting: value.code_splitting,
+    platform: value.platform,
+    watch: false,
+    sourcemap: value.sourcemap,
+    inline_imports: value.inline_imports,
+    packages: value.packages,
   }
 }
 
@@ -146,7 +147,8 @@ impl BundleProvider for CliBundleProvider {
     flags_clone.type_check_mode = crate::args::TypeCheckMode::None;
     let write_output = options.write
       && (options.output_dir.is_some() || options.output_path.is_some());
-    let bundle_flags: crate::args::BundleFlags = options.into();
+    let bundle_flags: crate::args::BundleFlags =
+      bundle_flags_from_rt_options(options);
     flags_clone.subcommand = DenoSubcommand::Bundle(bundle_flags.clone());
     let (tx, rx) = tokio::sync::oneshot::channel();
     std::thread::spawn(move || {
