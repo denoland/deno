@@ -3,4 +3,8 @@ PASS: sha256 roundtrip: hello
 PASS: sha384 roundtrip: hello
 PASS: sha512 roundtrip: hello
 PASS: default sha1 roundtrip: hello
+PASS: SHA256 (uppercase) roundtrip: hello
+PASS: SHA-256 (WebCrypto-style) roundtrip: hello
+PASS: sha3-256 roundtrip: hello
+PASS: md5 roundtrip: hello
 PASS: mismatched hash throws

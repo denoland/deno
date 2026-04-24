@@ -103,6 +103,93 @@ try {
   console.log("PASS: default sha1 roundtrip:", decrypted.toString());
 }
 
+// Case-insensitive hash names
+{
+  const encrypted = crypto.publicEncrypt(
+    {
+      key: publicKey,
+      padding: crypto.constants.RSA_PKCS1_OAEP_PADDING,
+      oaepHash: "SHA256",
+    },
+    Buffer.from("hello"),
+  );
+  const decrypted = crypto.privateDecrypt(
+    {
+      key: privateKey,
+      padding: crypto.constants.RSA_PKCS1_OAEP_PADDING,
+      oaepHash: "SHA256",
+    },
+    encrypted,
+  );
+  console.log("PASS: SHA256 (uppercase) roundtrip:", decrypted.toString());
+}
+
+// WebCrypto-style hyphenated names
+{
+  const encrypted = crypto.publicEncrypt(
+    {
+      key: publicKey,
+      padding: crypto.constants.RSA_PKCS1_OAEP_PADDING,
+      oaepHash: "SHA-256",
+    },
+    Buffer.from("hello"),
+  );
+  const decrypted = crypto.privateDecrypt(
+    {
+      key: privateKey,
+      padding: crypto.constants.RSA_PKCS1_OAEP_PADDING,
+      oaepHash: "SHA-256",
+    },
+    encrypted,
+  );
+  console.log(
+    "PASS: SHA-256 (WebCrypto-style) roundtrip:",
+    decrypted.toString(),
+  );
+}
+
+// sha3-256 roundtrip
+{
+  const encrypted = crypto.publicEncrypt(
+    {
+      key: publicKey,
+      padding: crypto.constants.RSA_PKCS1_OAEP_PADDING,
+      oaepHash: "sha3-256",
+    },
+    Buffer.from("hello"),
+  );
+  const decrypted = crypto.privateDecrypt(
+    {
+      key: privateKey,
+      padding: crypto.constants.RSA_PKCS1_OAEP_PADDING,
+      oaepHash: "sha3-256",
+    },
+    encrypted,
+  );
+  console.log("PASS: sha3-256 roundtrip:", decrypted.toString());
+}
+
+// md5 roundtrip
+{
+  const encrypted = crypto.publicEncrypt(
+    {
+      key: publicKey,
+      padding: crypto.constants.RSA_PKCS1_OAEP_PADDING,
+      oaepHash: "md5",
+    },
+    Buffer.from("hello"),
+  );
+  const decrypted = crypto.privateDecrypt(
+    {
+      key: privateKey,
+      padding: crypto.constants.RSA_PKCS1_OAEP_PADDING,
+      oaepHash: "md5",
+    },
+    encrypted,
+  );
+  console.log("PASS: md5 roundtrip:", decrypted.toString());
+}
+
 // Mismatched hash should fail
 try {
   const encrypted = crypto.publicEncrypt(

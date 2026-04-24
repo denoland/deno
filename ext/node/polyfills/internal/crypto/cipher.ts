@@ -650,6 +650,14 @@ function checkUnsupportedKeyType(key) {
   }
 }
 
+function normalizeOaepHash(hash: string | undefined): string | undefined {
+  if (!hash) return undefined;
+  // Normalize to lowercase and strip WebCrypto-style hyphens
+  // (e.g. "SHA-256" -> "sha256") but keep sha3/sha512 sub-variants
+  // (e.g. "sha3-256", "sha512-224") intact.
+  return hash.toLowerCase().replace(/^(sha)-(?!3-)/, "$1");
+}
+
 export function privateEncrypt(
   privateKey: ArrayBufferView | string | KeyObject,
   buffer: ArrayBufferView,
@@ -657,7 +665,7 @@ export function privateEncrypt(
   checkUnsupportedKeyType(privateKey);
   const { data } = prepareKey(privateKey);
   const padding = privateKey.padding || 1;
-  const oaepHash = privateKey.oaepHash || undefined;
+  const oaepHash = normalizeOaepHash(privateKey.oaepHash);
   const oaepLabel = privateKey.oaepLabel || undefined;
 
   buffer = getArrayBufferOrView(buffer, "buffer");
@@ -673,7 +681,7 @@ export function privateDecrypt(
   checkUnsupportedKeyType(privateKey);
   const { data } = prepareKey(privateKey);
   const padding = privateKey.padding || 1;
-  const oaepHash = privateKey.oaepHash || undefined;
+  const oaepHash = normalizeOaepHash(privateKey.oaepHash);
   const oaepLabel = privateKey.oaepLabel || undefined;
 
   buffer = getArrayBufferOrView(buffer, "buffer");
@@ -689,7 +697,7 @@ export function publicEncrypt(
   checkUnsupportedKeyType(publicKey);
   const { data } = prepareKey(publicKey);
   const padding = publicKey.padding || 1;
-  const oaepHash = publicKey.oaepHash || undefined;
+  const oaepHash = normalizeOaepHash(publicKey.oaepHash);
   const oaepLabel = publicKey.oaepLabel || undefined;
 
   buffer = getArrayBufferOrView(buffer, "buffer");

@@ -355,14 +355,11 @@ fn create_oaep(
   label: Option<&[u8]>,
 ) -> Result<Oaep, PrivateEncryptDecryptError> {
   let hash = hash.unwrap_or("sha1");
-  let mut oaep = match hash {
-    "sha1" | "sha-1" => Oaep::new::<sha1::Sha1>(),
-    "sha224" | "sha-224" => Oaep::new::<sha2::Sha224>(),
-    "sha256" | "sha-256" => Oaep::new::<sha2::Sha256>(),
-    "sha384" | "sha-384" => Oaep::new::<sha2::Sha384>(),
-    "sha512" | "sha-512" => Oaep::new::<sha2::Sha512>(),
-    _ => return Err(PrivateEncryptDecryptError::InvalidDigest),
-  };
+  let mut oaep = digest::match_fixed_digest!(hash, fn <D>() {
+    Oaep::new::<D>()
+  }, _ => {
+    return Err(PrivateEncryptDecryptError::InvalidDigest);
+  });
   if let Some(label) = label {
     // The rsa crate stores the label as String but only uses
     // .as_bytes() on it, so the UTF-8 invariant is not relied upon.
