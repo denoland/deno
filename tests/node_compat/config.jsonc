@@ -1190,6 +1190,7 @@
     "parallel/test-http-outgoing-end-types.js": {},
     "parallel/test-http-outgoing-finished.js": {},
     "parallel/test-http-outgoing-message-write-callback.js": {},
+    "parallel/test-http-outgoing-proto.js": {},
     "parallel/test-http-outgoing-renderHeaders.js": {},
     "parallel/test-http-outgoing-settimeout.js": {},
     "parallel/test-http-outgoing-write-types.js": {},
