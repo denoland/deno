@@ -52,6 +52,7 @@ import {
   ERR_SERVER_ALREADY_LISTEN,
   ERR_SERVER_NOT_RUNNING,
   ERR_SOCKET_CLOSED,
+  ERR_SOCKET_CLOSED_BEFORE_CONNECTION,
   ERR_SOCKET_CONNECTION_TIMEOUT,
   errnoException,
   exceptionWithHostPort,
@@ -1550,6 +1551,36 @@ Socket.prototype.ref = function () {
   return this;
 };
 
+Socket.prototype.resetAndDestroy = function () {
+  if (this.destroyed) {
+    return this;
+  }
+
+  if (
+    !this._handle ||
+    !(this._handle instanceof TCP)
+  ) {
+    this.destroy(
+      new ERR_SOCKET_CLOSED(),
+    );
+    return this;
+  }
+
+  if (this.connecting) {
+    this.once("connect", () => this._reset());
+    this.destroy();
+    return this;
+  }
+
+  this._reset();
+  return this;
+};
+
+Socket.prototype._reset = function () {
+  this._resetAndClosing = true;
+  this.destroy();
+};
+
 Object.defineProperty(Socket.prototype, "bufferSize", {
   get: function () {
     if (this._handle) {
@@ -1779,6 +1810,13 @@ Socket.prototype._destroy = function (exception, cb) {
     this[kBytesWritten] = this._handle.getBytesWritten?.() ??
       this._handle.bytesWritten ?? 0;
 
+    if (this._resetAndClosing) {
+      this._resetAndClosing = false;
+      if (typeof this._handle.reset === "function") {
+        this._handle.reset();
+      }
+    }
+
     this._handle.close(() => {
       this._handle.onread = _noop;
       this._handle = null;
@@ -1829,9 +1867,15 @@ Socket.prototype._writeGeneric = function (writev, data, encoding, cb) {
   if (this.connecting) {
     this._pendingData = data;
     this._pendingEncoding = encoding;
+
+    const onClose = () => {
+      cb(new ERR_SOCKET_CLOSED_BEFORE_CONNECTION());
+    };
     this.once("connect", function connect() {
+      this.off("close", onClose);
       this._writeGeneric(writev, data, encoding, cb);
     });
+    this.once("close", onClose);
 
     return;
   }
