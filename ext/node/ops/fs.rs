@@ -46,6 +46,7 @@ fn crt_error() -> std::io::Error {
   unsafe extern "C" {
     fn _errno() -> *mut i32;
   }
+  // SAFETY: _errno() returns a valid pointer to thread-local errno.
   let crt_errno = unsafe { *_errno() };
   let win32_code = match crt_errno {
     libc::EMFILE => 4,  // ERROR_TOO_MANY_OPEN_FILES
