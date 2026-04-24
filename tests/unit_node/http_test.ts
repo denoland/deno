@@ -2704,3 +2704,44 @@ Deno.test(
     await promise;
   },
 );
+
+// Regression test: a `node:http` IncomingMessage used as the body of a
+// `Request` must produce a byte `ReadableStream`, so that
+// `getReader({ mode: "byob" })` works.
+// https://github.com/denoland/deno/issues/33392
+Deno.test(
+  "[node/http] IncomingMessage as Request body supports BYOB reader",
+  async () => {
+    const { promise, resolve } = Promise.withResolvers<void>();
+
+    const server = http.createServer(async (req, res) => {
+      const request = new Request("http://localhost/", {
+        method: req.method,
+        headers: req.headers as HeadersInit,
+        body: req as unknown as BodyInit,
+        // deno-lint-ignore no-explicit-any
+        duplex: "half",
+      } as any);
+
+      const reader = request.body!.getReader({ mode: "byob" });
+      const buf = new Uint8Array(32);
+      const { value, done } = await reader.read(buf);
+      assertEquals(done, false);
+      assertEquals(new TextDecoder().decode(value), "hello world");
+
+      res.end("OK");
+      server.close(() => resolve());
+    });
+
+    server.listen(0, async () => {
+      const port = (server.address() as AddressInfo).port;
+      const res = await fetch(`http://localhost:${port}/`, {
+        method: "POST",
+        body: "hello world",
+      });
+      assertEquals(await res.text(), "OK");
+    });
+
+    await promise;
+  },
+);
