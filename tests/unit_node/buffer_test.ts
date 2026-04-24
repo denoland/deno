@@ -4,6 +4,7 @@ import {
   constants,
   File as BufferFile,
   resolveObjectURL,
+  transcode,
 } from "node:buffer";
 import { assertEquals, assertThrows } from "@std/assert";
 import { strictEqual } from "node:assert";
@@ -827,5 +828,26 @@ Deno.test({
     assertEquals(resolveObjectURL(1 as any), undefined);
     // deno-lint-ignore no-explicit-any
     assertEquals(resolveObjectURL({} as any), undefined);
+  },
+});
+
+Deno.test({
+  name: "[node/buffer] transcode UTF-16LE to UTF-8 with odd-length input",
+  fn() {
+    // Odd-length: trailing byte is dropped (matches Node.js)
+    const odd = Buffer.from([0x61, 0x00, 0x62]);
+    assertEquals(transcode(odd, "utf16le", "utf8").toString(), "a");
+
+    // Even-length: normal case
+    const even = Buffer.from([0x48, 0x00, 0x69, 0x00]);
+    assertEquals(transcode(even, "utf16le", "utf8").toString(), "Hi");
+
+    // Empty buffer
+    const empty = Buffer.alloc(0);
+    assertEquals(transcode(empty, "utf16le", "utf8").toString(), "");
+
+    // Single byte (all trailing, dropped)
+    const single = Buffer.from([0x41]);
+    assertEquals(transcode(single, "utf16le", "utf8").toString(), "");
   },
 });
