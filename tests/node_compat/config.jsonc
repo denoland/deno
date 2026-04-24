@@ -2595,6 +2595,7 @@
     "parallel/test-url-format-invalid-input.js": {},
     "parallel/test-url-format-whatwg.js": {},
     "parallel/test-url-format.js": {},
+    "parallel/test-url-invalid-file-url-path-input.js": {},
     "parallel/test-url-parse-format.js": {},
     "parallel/test-url-parse-query.js": {},
     "parallel/test-url-pathtofileurl.js": {},
