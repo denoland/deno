@@ -42,7 +42,7 @@ impl Reactor for TokioReactor {
     &self,
     fut: Pin<Box<dyn Future<Output = ()> + 'static>>,
   ) -> Pin<Box<dyn Future<Output = ()>>> {
-    let handle = deno_unsync::spawn(fut);
+    let handle = tokio::task::spawn_local(fut);
     Box::pin(async move {
       let _ = handle.await;
     })

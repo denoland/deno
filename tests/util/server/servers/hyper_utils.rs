@@ -51,7 +51,7 @@ where
       loop {
         let (stream, _) = listener.accept().await?;
         let io = TokioIo::new(stream);
-        deno_unsync::spawn(hyper_serve_connection(
+        tokio::task::spawn_local(hyper_serve_connection(
           io,
           handler,
           options.error_msg,
@@ -85,7 +85,7 @@ pub async fn run_server_with_acceptor<A, F, S>(
       while let Some(result) = acceptor.next().await {
         let stream = result?;
         let io = TokioIo::new(stream);
-        deno_unsync::spawn(hyper_serve_connection(
+        tokio::task::spawn_local(hyper_serve_connection(
           io, handler, error_msg, kind,
         ));
       }
@@ -115,7 +115,7 @@ pub async fn run_server_with_remote_addr<F, S>(
       loop {
         let (stream, addr) = listener.accept().await?;
         let io = TokioIo::new(stream);
-        deno_unsync::spawn(hyper_serve_connection(
+        tokio::task::spawn_local(hyper_serve_connection(
           io,
           move |req| handler(req, addr),
           options.error_msg,
@@ -148,7 +148,7 @@ async fn hyper_serve_connection<I, F, S>(
   let result: Result<(), anyhow::Error> = match kind {
     ServerKind::Auto => {
       let builder =
-        hyper_util::server::conn::auto::Builder::new(DenoUnsyncExecutor);
+        hyper_util::server::conn::auto::Builder::new(LocalSpawnExecutor);
       builder
         .serve_connection(io, service)
         .await
@@ -163,7 +163,7 @@ async fn hyper_serve_connection<I, F, S>(
     }
     ServerKind::OnlyHttp2 => {
       let builder =
-        hyper::server::conn::http2::Builder::new(DenoUnsyncExecutor);
+        hyper::server::conn::http2::Builder::new(LocalSpawnExecutor);
       builder
         .serve_connection(io, service)
         .await
@@ -180,14 +180,14 @@ async fn hyper_serve_connection<I, F, S>(
 }
 
 #[derive(Clone)]
-struct DenoUnsyncExecutor;
+struct LocalSpawnExecutor;
 
-impl<Fut> hyper::rt::Executor<Fut> for DenoUnsyncExecutor
+impl<Fut> hyper::rt::Executor<Fut> for LocalSpawnExecutor
 where
   Fut: Future + 'static,
   Fut::Output: 'static,
 {
   fn execute(&self, fut: Fut) {
-    deno_unsync::spawn(fut);
+    tokio::task::spawn_local(fut);
   }
 }

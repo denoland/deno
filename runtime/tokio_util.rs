@@ -2,7 +2,6 @@
 use std::fmt::Debug;
 use std::str::FromStr;
 
-use deno_core::unsync::MaskFutureAsSend;
 #[cfg(tokio_unstable)]
 use tokio_metrics::RuntimeMonitor;
 
@@ -22,7 +21,7 @@ where
   }
 }
 
-pub fn create_basic_runtime() -> tokio::runtime::Runtime {
+pub fn create_basic_runtime() -> tokio::runtime::LocalRuntime {
   let (event_interval, global_queue_interval, max_io_events_per_tick) =
     tokio_configuration();
 
@@ -52,7 +51,7 @@ pub fn create_basic_runtime() -> tokio::runtime::Runtime {
     } else {
       32
     })
-    .build()
+    .build_local(Default::default())
     .unwrap()
 }
 
@@ -63,7 +62,7 @@ fn create_and_run_current_thread_inner<F, R>(
 ) -> R
 where
   F: std::future::Future<Output = R> + 'static,
-  R: Send + 'static,
+  R: 'static,
 {
   let rt = create_basic_runtime();
 
@@ -72,23 +71,18 @@ where
   // function #[inline(always)] to avoid holding the unboxed, unused future on the stack.
 
   #[cfg(debug_assertions)]
-  // SAFETY: this is guaranteed to be running on a current-thread executor
-  let future = Box::pin(unsafe { MaskFutureAsSend::new(future) });
-
-  #[cfg(not(debug_assertions))]
-  // SAFETY: this is guaranteed to be running on a current-thread executor
-  let future = unsafe { MaskFutureAsSend::new(future) };
+  let future = Box::pin(future);
 
   #[cfg(tokio_unstable)]
   let join_handle = if metrics_enabled {
-    rt.spawn(async move {
+    rt.spawn_local(async move {
       let metrics_interval: u64 = std::env::var("DENO_TOKIO_METRICS_INTERVAL")
         .ok()
         .and_then(|val| val.parse().ok())
         .unwrap_or(1000);
       let handle = tokio::runtime::Handle::current();
       let runtime_monitor = RuntimeMonitor::new(&handle);
-      tokio::spawn(async move {
+      tokio::task::spawn_local(async move {
         #[allow(
           clippy::print_stderr,
           reason = "we actually want to output here"
@@ -105,13 +99,13 @@ where
       future.await
     })
   } else {
-    rt.spawn(future)
+    rt.spawn_local(future)
   };
 
   #[cfg(not(tokio_unstable))]
-  let join_handle = rt.spawn(future);
+  let join_handle = rt.spawn_local(future);
 
-  let r = rt.block_on(join_handle).unwrap().into_inner();
+  let r = rt.block_on(join_handle).unwrap();
   // Forcefully shutdown the runtime - we're done executing JS code at this
   // point, but there might be outstanding blocking tasks that were created and
   // latered "unrefed". They won't terminate on their own, so we're forcing
@@ -124,7 +118,7 @@ where
 pub fn create_and_run_current_thread<F, R>(future: F) -> R
 where
   F: std::future::Future<Output = R> + 'static,
-  R: Send + 'static,
+  R: 'static,
 {
   create_and_run_current_thread_inner(future, false)
 }
@@ -133,7 +127,7 @@ where
 pub fn create_and_run_current_thread_with_maybe_metrics<F, R>(future: F) -> R
 where
   F: std::future::Future<Output = R> + 'static,
-  R: Send + 'static,
+  R: 'static,
 {
   let metrics_enabled = std::env::var("DENO_TOKIO_METRICS").ok().is_some();
   create_and_run_current_thread_inner(future, metrics_enabled)

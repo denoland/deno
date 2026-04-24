@@ -59,7 +59,7 @@ pub use deno_path_util::normalize_path;
 pub use deno_path_util::resolve_path;
 pub use deno_path_util::resolve_url_or_path;
 pub use deno_path_util::specifier_has_uri_scheme;
-pub use deno_unsync as unsync;
+pub mod unsync;
 pub use futures;
 pub use parking_lot;
 pub use serde;
