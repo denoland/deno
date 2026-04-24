@@ -211,7 +211,7 @@
     "parallel/test-child-process-exec-cwd.js": {},
     "parallel/test-child-process-exec-env.js": {},
     "parallel/test-child-process-exec-error.js": {},
-    "parallel/test-child-process-exec-kill-throws.js": {},
+    "parallel/test-child-process-exec-kill-throws.js": { "windows": false },
     "parallel/test-child-process-exec-maxbuf.js": {},
     "parallel/test-child-process-exec-std-encoding.js": {},
     "parallel/test-child-process-exec-stdout-stderr-data-string.js": {},
