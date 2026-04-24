@@ -17,6 +17,7 @@ const {
   ObjectPrototypeIsPrototypeOf,
   ReflectDefineProperty,
   ReflectHas,
+  TypeError,
   TypeErrorPrototype,
 } = primordials;
 const { build, createLazyLoader } = core;
