@@ -1,4 +1,4 @@
-// Copyright 2018-2026 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 // Hand-rolled protobuf3 encoder/decoder for the Deno KV Connect protocol.
 // No external dependencies. Implements only the wire format primitives needed

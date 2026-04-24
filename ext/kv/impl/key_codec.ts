@@ -1,3 +1,5 @@
+// Copyright 2018-2026 the Deno authors. MIT license.
+
 // FoundationDB-style tuple layer key encoder/decoder for Deno KV.
 // Implements the same binary format as denokv_proto::codec.
 

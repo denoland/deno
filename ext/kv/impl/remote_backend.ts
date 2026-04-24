@@ -1,4 +1,4 @@
-// Copyright 2018-2026 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 // Remote backend for Deno KV using the KV Connect protocol.
 // Communicates with Deno Deploy (or any compatible endpoint) over HTTP,
