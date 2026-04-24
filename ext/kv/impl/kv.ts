@@ -32,10 +32,12 @@ const {
   ObjectFreeze,
   ObjectPrototypeIsPrototypeOf,
   Promise,
+  PromisePrototypeThen,
   PromiseResolve,
   RangeError,
   ReflectHas,
   RegExpPrototypeTest,
+  SafePromiseRace,
   SafeRegExp,
   StringPrototypeCharCodeAt,
   StringPrototypeEndsWith,
@@ -886,6 +888,8 @@ const commitVersionstampSymbol = Symbol("KvCommitVersionstamp");
 class Kv {
   #backend: KvBackend;
   #isClosed = false;
+  #closeResolve: (() => void) | null = null;
+  #closePromise: Promise<void>;
 
   constructor(backend: KvBackend, symbol: symbol) {
     if (kvSymbol !== symbol) {
@@ -894,6 +898,9 @@ class Kv {
       );
     }
     this.#backend = backend;
+    this.#closePromise = new Promise((resolve) => {
+      this.#closeResolve = resolve;
+    });
   }
 
   atomic(): AtomicOperation {
@@ -1154,10 +1161,18 @@ class Kv {
         if (
           result && typeof (result as Promise<void>).then === "function"
         ) {
-          await result;
+          // Race handler against close signal so db.close() unblocks
+          // listenQueue even if the handler never resolves.
+          const closed = Symbol("closed");
+          const winner = await SafePromiseRace([
+            PromisePrototypeThen(result as Promise<void>, () => undefined),
+            PromisePrototypeThen(this.#closePromise, () => closed),
+          ]);
+          if (winner === closed) break;
         }
         success = true;
       } catch (error) {
+        if (this.#isClosed) break;
         // deno-lint-ignore no-console
         console.error("Exception in queue handler", error);
       }
@@ -1249,6 +1264,10 @@ class Kv {
   close(): void {
     this.#backend.close();
     this.#isClosed = true;
+    if (this.#closeResolve) {
+      this.#closeResolve();
+      this.#closeResolve = null;
+    }
   }
 
   [SymbolDispose](): void {
