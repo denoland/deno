@@ -73,7 +73,7 @@ pub const UNSTABLE_FEATURE_NAME: &str = "process";
 fn crt_error() -> std::io::Error {
   // SAFETY: _errno() is a standard MSVC CRT function that returns a
   // pointer to the thread-local errno value. Always valid to call.
-  extern "C" {
+  unsafe extern "C" {
     fn _errno() -> *mut i32;
   }
   let crt_errno = unsafe { *_errno() };
