@@ -663,6 +663,13 @@ pub unsafe fn uv_pipe_accept(
           (*server).internal_win_server = Some(new_server);
           (*server).internal_win_connect_fut = Some(connect_fut);
           (*server).flags |= UV_HANDLE_ACTIVE;
+
+          // Wake the event loop so it polls the new connect future.
+          // Without this, the loop never notices the next client
+          // attaching to the named pipe (same pattern as uv_pipe_listen).
+          if let Some(w) = (*server).internal_waker.as_ref() {
+            w.mark_ready();
+          }
         }
       }
       0

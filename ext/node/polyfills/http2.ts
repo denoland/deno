@@ -2831,6 +2831,12 @@ function setupHandle(socket, type, options) {
 
   this.settings(settings);
 
+  // Flush the client connection preface + SETTINGS frame to the socket.
+  // The Rust send_pending_data() is a no-op when the stream is not consumed
+  // (JS write path), so we must explicitly drain nghttp2's output buffer
+  // via the JS sendPending override that calls getOutgoingData + socket.write.
+  handle.sendPending();
+
   if (
     type === NGHTTP2_SESSION_SERVER &&
     ArrayIsArray(options.origins)
