@@ -1445,13 +1445,6 @@ export function pathToFileURL(
     }
     const hostname = filepath.slice(prefixLength, hostnameEndIndex);
     const rest = filepath.slice(hostnameEndIndex + 1);
-    if (rest.length === 0) {
-      throw new ERR_INVALID_ARG_VALUE(
-        "filepath",
-        filepath,
-        "Missing UNC resource path",
-      );
-    }
 
     outURL.hostname = idnaToASCII(hostname);
     outURL.pathname = encodePathChars(rest.replace(backslashRegEx, "/"), {
