@@ -1673,8 +1673,10 @@ export class ERR_INVALID_FILE_URL_HOST extends NodeTypeError {
   }
 }
 export class ERR_INVALID_FILE_URL_PATH extends NodeTypeError {
-  constructor(x: string) {
+  input?: URL;
+  constructor(x: string, input?: URL) {
     super("ERR_INVALID_FILE_URL_PATH", `File URL path ${x}`);
+    this.input = input;
   }
 }
 export class ERR_INVALID_HANDLE_TYPE extends NodeTypeError {
@@ -1691,6 +1693,11 @@ export class ERR_INVALID_HTTP_TOKEN extends NodeTypeError {
 export class ERR_INVALID_IP_ADDRESS extends NodeTypeError {
   constructor(x: string) {
     super("ERR_INVALID_IP_ADDRESS", `Invalid IP address: ${x}`);
+  }
+}
+export class ERR_IP_BLOCKED extends NodeError {
+  constructor(x: string) {
+    super("ERR_IP_BLOCKED", `Address blocked: ${x}`);
   }
 }
 export class ERR_INVALID_MIME_SYNTAX extends NodeTypeError {
@@ -2997,6 +3004,7 @@ export function aggregateTwoErrors(
     );
     // deno-lint-ignore no-explicit-any
     (err as any).code = outerError.code;
+    ErrorCaptureStackTrace(err, aggregateTwoErrors);
     return err;
   }
   return innerError || outerError;
