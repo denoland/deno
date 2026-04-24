@@ -2619,7 +2619,7 @@ export class ERR_INVALID_CHAR extends NodeTypeError {
   constructor(name: string, field?: string) {
     super(
       "ERR_INVALID_CHAR",
-      field
+      field === undefined
         ? `Invalid character in ${name}`
         : `Invalid character in ${name} ["${field}"]`,
     );
