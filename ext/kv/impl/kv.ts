@@ -8,6 +8,7 @@
 // That is the only native dependency remaining.
 
 import { core, primordials } from "ext:core/mod.js";
+import { op_get_env_no_permission_check } from "ext:core/ops";
 const {
   Array,
   ArrayFrom,
@@ -1688,20 +1689,20 @@ class KvListIterator implements AsyncIterableIterator<Deno.KvEntry<unknown>> {
 // openKv factory
 // ---------------------------------------------------------------------------
 
-function openKv(path?: string): Promise<Kv> {
+async function openKv(path?: string): Promise<Kv> {
   let resolvedPath = path ?? "";
 
-  // Match Rust behavior: check DENO_KV_DEFAULT_PATH when no path given
+  // Match Rust MultiBackendDbHandler behavior: check env vars without
+  // requiring --allow-env (these are internal runtime configuration).
   if (resolvedPath === "") {
-    const defaultPath = Deno.env.get("DENO_KV_DEFAULT_PATH");
+    const defaultPath = op_get_env_no_permission_check("DENO_KV_DEFAULT_PATH");
     if (defaultPath) {
       resolvedPath = defaultPath;
     }
   }
 
-  // Match Rust behavior: check DENO_KV_PATH_PREFIX for non-empty paths
   if (resolvedPath !== "") {
-    const prefix = Deno.env.get("DENO_KV_PATH_PREFIX");
+    const prefix = op_get_env_no_permission_check("DENO_KV_PATH_PREFIX");
     if (prefix) {
       resolvedPath = prefix + resolvedPath;
     }
@@ -1714,7 +1715,9 @@ function openKv(path?: string): Promise<Kv> {
     StringPrototypeStartsWith(resolvedPath, "http://")
   ) {
     // Remote backend
-    const accessToken = Deno.env.get("DENO_KV_ACCESS_TOKEN");
+    const accessToken = op_get_env_no_permission_check(
+      "DENO_KV_ACCESS_TOKEN",
+    );
     if (!accessToken) {
       throw new Error(
         "Missing DENO_KV_ACCESS_TOKEN environment variable. " +
@@ -1746,7 +1749,7 @@ function openKv(path?: string): Promise<Kv> {
     backend = new SqliteKvBackend(resolvedPath);
   }
 
-  return PromiseResolve(new Kv(backend, kvSymbol));
+  return await PromiseResolve(new Kv(backend, kvSymbol));
 }
 
 // ---------------------------------------------------------------------------
