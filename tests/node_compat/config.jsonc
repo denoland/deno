@@ -638,6 +638,7 @@
     "parallel/test-dgram-oob-buffer.js": {},
     "parallel/test-dgram-recv-error.js": {},
     "parallel/test-dgram-ref.js": {},
+    "parallel/test-dgram-send-address-types.js": {},
     "parallel/test-dgram-send-bad-arguments.js": {},
     "parallel/test-dgram-send-callback-buffer-empty-address.js": {},
     "parallel/test-dgram-send-callback-buffer-length-empty-address.js": {},
