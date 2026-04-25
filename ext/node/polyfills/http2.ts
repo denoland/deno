@@ -4150,18 +4150,23 @@ function connect(authority, options, listener) {
 }
 
 // Support util.promisify
+const promisifyConnect = function (authority, options) {
+  return new Promise((resolve, reject) => {
+    const server = connect(authority, options, () => {
+      server.removeListener("error", reject);
+      return resolve(server);
+    });
+
+    server.once("error", reject);
+  });
+};
+ObjectDefineProperty(promisifyConnect, "name", {
+  value: "connect",
+  configurable: true,
+});
 ObjectDefineProperty(connect, promisify.custom, {
   __proto__: null,
-  value: function (authority, options) {
-    return new Promise((resolve, reject) => {
-      const server = connect(authority, options, () => {
-        server.removeListener("error", reject);
-        return resolve(server);
-      });
-
-      server.once("error", reject);
-    });
-  },
+  value: promisifyConnect,
 });
 
 let _init = false;
