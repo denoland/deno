@@ -32,6 +32,7 @@ use std::ptr::NonNull;
 use std::rc::Rc;
 use std::sync::Arc;
 
+use deno_core::v8_static_strings;
 use deno_core::CppgcInherits;
 use deno_core::GarbageCollected;
 use deno_core::OpState;
@@ -3133,7 +3134,10 @@ fn build_server_config(
   let builder = if request_cert {
     let mut root_cert_store = rustls::RootCertStore::empty();
     let mut root_cert_ders: Vec<Vec<u8>> = Vec::new();
-    let ca_key = v8::String::new(scope, "ca").unwrap();
+    v8_static_strings! {
+      CA = "ca",
+    }
+    let ca_key = CA.v8_string(scope).unwrap();
     if let Some(ca_val) = context.get(scope, ca_key.into()) {
       let mut ca_pems: Vec<Vec<u8>> = Vec::new();
       if let Ok(arr) = v8::Local::<v8::Array>::try_from(ca_val) {
@@ -3157,13 +3161,15 @@ fn build_server_config(
             Ok(cert) => {
               root_cert_ders.push(cert.as_ref().to_vec());
               if let Err(e) = root_cert_store.add(cert) {
-                log::warn!(
+                log::debug!(
                   "TLSWrap: ignoring invalid client CA certificate: {e}"
                 );
               }
             }
             Err(e) => {
-              log::warn!("TLSWrap: failed to parse client CA PEM entry: {e}");
+              log::debug!(
+                "TLSWrap: failed to parse client CA PEM entry: {e}"
+              );
             }
           }
         }
@@ -3184,10 +3190,10 @@ fn build_server_config(
         }))
       }
       Err(e) => {
-        log::warn!(
-          "TLSWrap: failed to build client cert verifier, falling back to no client auth: {e}"
+        log::debug!(
+          "TLSWrap: failed to build client cert verifier: {e}"
         );
-        builder.with_no_client_auth()
+        return None;
       }
     }
   } else {
