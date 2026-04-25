@@ -2011,7 +2011,10 @@
     "parallel/test-process-binding.js": {},
     "parallel/test-process-chdir.js": {},
     "parallel/test-process-config.js": {},
-    "parallel/test-process-constants-noatime.js": {},
+    "parallel/test-process-constants-noatime.js": {
+      "darwin": false,
+      "windows": false
+    },
     "parallel/test-process-constrained-memory.js": {},
     "parallel/test-process-cpuUsage.js": {},
     "parallel/test-process-default.js": {},
