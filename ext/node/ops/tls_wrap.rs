@@ -55,6 +55,7 @@ use crate::ops::handle_wrap::OwnedPtr;
 use crate::ops::handle_wrap::ProviderType;
 use crate::ops::stream_wrap::LibUvStreamWrap;
 use crate::ops::stream_wrap::StreamBaseState;
+use crate::ops::stream_wrap::free_uv_buf;
 use crate::ops::stream_wrap_state::ReadInterceptor;
 use crate::ops::tls::NodeTlsState;
 
@@ -1397,17 +1398,6 @@ unsafe fn tls_read_interceptor_cb(
 
     // Drive the TLS state machine (uses raw pointer internally)
     TLSWrapInner::cycle(ptr);
-  }
-}
-
-#[allow(dead_code, reason = "used by tls_read_interceptor_cb")]
-fn free_uv_buf(buf: *const uv_buf_t) {
-  // SAFETY: buf was allocated by stream_wrap::on_uv_alloc with matching layout
-  unsafe {
-    if !(*buf).base.is_null() && (*buf).len > 0 {
-      let layout = std::alloc::Layout::from_size_align((*buf).len, 1).unwrap();
-      std::alloc::dealloc((*buf).base as *mut u8, layout);
-    }
   }
 }
 

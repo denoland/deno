@@ -349,6 +349,12 @@ TLSSocket.prototype._wrapHandle = function (wrap, handle) {
     servername,
   );
 
+  // If TLS initialization failed (e.g. missing cert/key), store the error
+  // so it can be emitted asynchronously instead of crashing the process.
+  if (res._initError) {
+    this._initError = res._initError;
+  }
+
   res._parent = handle; // C++ "wrap" object: TCPWrap, etc.
   res._parentWrap = wrap; // JS object: net.Socket, etc.
   res._secureContext = context;
@@ -630,6 +636,15 @@ TLSSocket.prototype._start = function () {
 
   if (!this._handle) return;
 
+  // If TLS init failed (e.g. unsupported protocol on client side),
+  // emit the error and tear down instead of proceeding with the handshake.
+  if (this._initError) {
+    const err = this._initError;
+    this._initError = null;
+    this.destroy(err);
+    return;
+  }
+
   this._handle.start();
 
   // For JS streams, drain any encrypted output produced by start()
@@ -831,6 +846,18 @@ function tlsConnectionListener(rawSocket) {
     SNICallback: this._SNICallback,
     pauseOnConnect: this.pauseOnConnect,
   });
+
+  // TLS init can fail synchronously (e.g. missing cert/key, unsupported
+  // protocol).  Emit as tlsClientError like Node does for handshake
+  // failures instead of letting it surface as an uncaught exception.
+  if (socket._initError) {
+    const err = socket._initError;
+    socket._initError = null;
+    this.emit("tlsClientError", err, rawSocket);
+    socket.destroy();
+    rawSocket.destroy();
+    return;
+  }
 
   // Start the TLS handshake for server-side sockets
   socket._start();
