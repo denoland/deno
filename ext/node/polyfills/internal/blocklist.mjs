@@ -39,8 +39,6 @@ const {
   Symbol,
 } = primordials;
 
-// Pre-compiled primordial regexes for parseIPInfo. Same patterns as Node's
-// lib/internal/blocklist.js #parseIPInfo.
 const kIPv4SubnetRe = new SafeRegExp(
   "Subnet: IPv4 (\\d{1,3}(?:\\.\\d{1,3}){3})\\/(\\d{1,2})",
 );
@@ -66,8 +64,6 @@ const kIPv6RangeRe = new SafeRegExp(
 const internalBlockList = Symbol("blocklist");
 const kRules = Symbol("rules");
 
-// Node formats family as "IPv4" / "IPv6" in rule strings (see
-// BlockListWrap::GetRules in src/node_sockaddr.cc).
 function formatFamily(family) {
   return family === "ipv6" ? "IPv6" : "IPv4";
 }
@@ -75,12 +71,9 @@ function formatFamily(family) {
 class BlockList {
   constructor() {
     this[internalBlockList] = op_blocklist_new();
-    // Match Node: rules are reported in reverse insertion order.
     this[kRules] = [];
   }
 
-  // Match Node: BlockList.isBlockList returns true for BlockList
-  // instances (see lib/internal/blocklist.js).
   static isBlockList(value) {
     return value?.[internalBlockList] !== undefined;
   }
@@ -164,8 +157,6 @@ class BlockList {
         family,
       });
     } else {
-      // Read family before reassigning network; the existing code here
-      // had the order flipped and would use undefined.
       family = network.family;
       network = network.address;
     }
@@ -215,9 +206,6 @@ class BlockList {
     return this[kRules];
   }
 
-  // Match Node: toJSON returns rules; fromJSON accepts the same format
-  // (array of rule strings or a JSON-serialized array), invalid rules
-  // are ignored. See lib/internal/blocklist.js.
   toJSON() {
     return this[kRules];
   }
