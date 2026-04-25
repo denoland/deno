@@ -401,6 +401,7 @@
     "parallel/test-crypto-domains.js": {},
     "parallel/test-crypto-ecdh-convert-key.js": {},
     "parallel/test-crypto-ecb.js": {},
+    "parallel/test-crypto-encap-decap.js": {},
     "parallel/test-crypto-from-binary.js": {},
     "parallel/test-crypto-getcipherinfo.js": {},
     "parallel/test-crypto-hmac.js": {},
