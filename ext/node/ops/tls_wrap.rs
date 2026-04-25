@@ -44,6 +44,7 @@ use deno_core::uv_compat::uv_buf_t;
 use deno_core::uv_compat::uv_stream_t;
 use deno_core::uv_compat::uv_write_t;
 use deno_core::v8;
+use deno_core::v8_static_strings;
 use deno_node_crypto::x509::Certificate;
 use deno_node_crypto::x509::CertificateObject;
 use deno_tls::rustls;
@@ -55,6 +56,7 @@ use crate::ops::handle_wrap::OwnedPtr;
 use crate::ops::handle_wrap::ProviderType;
 use crate::ops::stream_wrap::LibUvStreamWrap;
 use crate::ops::stream_wrap::StreamBaseState;
+use crate::ops::stream_wrap::free_uv_buf;
 use crate::ops::stream_wrap_state::ReadInterceptor;
 use crate::ops::tls::NodeTlsState;
 
@@ -500,6 +502,7 @@ unsafe fn do_invoke_queued(
 ///
 /// # Safety
 /// EmitCtx must contain valid pointers. No TLSWrapInner reference may be held by the caller.
+#[allow(dead_code, reason = "retained for native TCP/Pipe enc-out path parity")]
 unsafe fn do_enc_out_js(ctx: &EmitCtx, enc_data: Vec<u8>) {
   unsafe {
     let mut isolate = v8::Isolate::from_raw_isolate_ptr(ctx.isolate_ptr);
@@ -618,7 +621,7 @@ impl UnderlyingStream {
 
   #[allow(
     dead_code,
-    reason = "will be used when libuv_stream::TCP is replaced"
+    reason = "reserved for a future native read-stop path; today reads are stopped at the JS layer"
   )]
   fn read_stop(&self) {
     match self {
@@ -688,7 +691,7 @@ impl UnderlyingStream {
 
   #[allow(
     dead_code,
-    reason = "may be used when libuv_stream::TCP is replaced by LibUvStreamWrap-based TCPWrap"
+    reason = "reserved for a future native read-interception path; today TLS receives ciphertext via a JS-layer onread forwarder"
   )]
   fn set_read_interceptor(&self, interceptor: Option<ReadInterceptor>) {
     if let UnderlyingStream::Uv { stream } = self {
@@ -1181,6 +1184,17 @@ impl TLSWrapInner {
         if let Some(ctx) = extract_emit_ctx(ptr) {
           do_emit_handshake_done(&ctx);
         }
+
+        // If shutdown was requested before handshake completed, execute
+        // the deferred close_notify + underlying shutdown now.
+        if (*ptr).shutdown {
+          if let Some(ref mut conn) = (*ptr).tls_conn {
+            conn.send_close_notify();
+          }
+          let enc_action = (*ptr).enc_out_collect();
+          TLSWrapInner::do_enc_out_action(ptr, enc_action);
+          (*ptr).underlying.shutdown();
+        }
       }
 
       if !result.data.is_empty() {
@@ -1240,17 +1254,9 @@ impl TLSWrapInner {
           // on synchronous uv_write failure, not during normal flow).
         }
         EncOutAction::WriteJs => {
-          let enc_data = std::mem::take(&mut (*ptr).pending_enc_out);
-          if let Some(ctx) = extract_emit_ctx(ptr) {
-            do_enc_out_js(&ctx, enc_data);
-          }
-          // For JS streams, treat the write as synchronously completed.
-          if (*ptr).write_callback_scheduled
-            && !(*ptr).in_dowrite
-            && let Some((write_obj, ctx)) = prepare_invoke_queued(ptr)
-          {
-            do_invoke_queued(&ctx, write_obj, 0);
-          }
+          // Pull-based: leave data in pending_enc_out for JS to drain
+          // via drain_enc_out(). This avoids calling back into JS from
+          // within an op, eliminating reentrancy issues.
         }
         EncOutAction::InvokeQueued(status) => {
           if let Some((write_obj, ctx)) = prepare_invoke_queued(ptr) {
@@ -1322,16 +1328,15 @@ impl TLSWrapInner {
 // ---------------------------------------------------------------------------
 
 /// Called when encrypted data arrives from the underlying stream.
-/// The underlying LibUvStreamWrap owns the native read lifecycle and forwards
-/// raw read events here when TLS is registered as its read interceptor.
+/// The underlying LibUvStreamWrap would forward raw read events here if TLS
+/// registered as its read interceptor.
 ///
-/// Currently unused because libuv_stream::TCP's stream.data layout is
-/// incompatible with stream_wrap::StreamHandleData. Read interception is
-/// done at the JS layer instead. This will be used once libuv_stream::TCP
-/// is replaced by a LibUvStreamWrap-based TCPWrap.
+/// Currently unused: read interception is performed at the JS layer, where
+/// `nativeHandle.onread` forwards encrypted chunks to `TLSWrap.receive()`.
+/// Kept for a future switch to native (Rust-side) read interception.
 #[allow(
   dead_code,
-  reason = "will be used when TCPWrap replaces libuv_stream::TCP"
+  reason = "reserved for a future native read-interception path"
 )]
 unsafe fn tls_read_interceptor_cb(
   tls_wrap: *mut std::ffi::c_void,
@@ -1397,17 +1402,6 @@ unsafe fn tls_read_interceptor_cb(
   }
 }
 
-#[allow(dead_code, reason = "used by tls_read_interceptor_cb")]
-fn free_uv_buf(buf: *const uv_buf_t) {
-  // SAFETY: buf was allocated by stream_wrap::on_uv_alloc with matching layout
-  unsafe {
-    if !(*buf).base.is_null() && (*buf).len > 0 {
-      let layout = std::alloc::Layout::from_size_align((*buf).len, 1).unwrap();
-      std::alloc::dealloc((*buf).base as *mut u8, layout);
-    }
-  }
-}
-
 /// Callback for shutdown request — just frees the request.
 unsafe extern "C" fn shutdown_cb(
   req: *mut uv_compat::uv_shutdown_t,
@@ -1431,10 +1425,17 @@ unsafe extern "C" fn enc_write_cb(req: *mut uv_write_t, status: i32) {
       (*ptr).enc_writes_in_flight =
         (*ptr).enc_writes_in_flight.saturating_sub(1);
       if (*ptr).enc_writes_in_flight == 0 && status >= 0 {
-        // Don't drain more cleartext here — that's done by cycle()
-        // which is triggered by incoming reads. This prevents TCP
-        // send buffer deadlocks: we let the event loop process reads
-        // (echo data from the peer) between encryption rounds.
+        // If clear_in() was rate-limited (MAX_CLEAR_IN) and left
+        // pending cleartext, drain the next chunk now. Without
+        // this the remaining bytes are never fed to rustls and the
+        // peer never receives the full body ("socket hang up").
+        if (*ptr)
+          .pending_cleartext
+          .as_ref()
+          .is_some_and(|v| !v.is_empty())
+        {
+          (*ptr).clear_in();
+        }
         let enc_action = (*ptr).enc_out_collect();
         TLSWrapInner::do_enc_out_action(ptr, enc_action);
       } else if (*ptr).enc_writes_in_flight == 0
@@ -1539,14 +1540,10 @@ impl TLSWrap {
     inner.bytes_written += byte_length as u64;
 
     if byte_length == 0 {
-      let result = inner.clear_out_process();
-      let enc_action = inner.enc_out_collect();
-      let inner_ptr = inner as *mut TLSWrapInner;
-      // SAFETY: inner_ptr is valid; callbacks are reference-free
-      unsafe {
-        TLSWrapInner::dispatch_clear_out_callbacks(inner_ptr, &result);
-        TLSWrapInner::do_enc_out_action(inner_ptr, enc_action);
-      }
+      // Zero-byte writes are no-ops — don't interact with the TLS
+      // state machine.  Processing enc_in/enc_out here can corrupt
+      // the record stream (Node.js / OpenSSL treats a 0-byte
+      // SSL_write the same way).
       return 0;
     }
 
@@ -1637,10 +1634,11 @@ impl TLSWrap {
     let server_name = if server_name.is_empty() {
       None
     } else {
-      match rustls::pki_types::ServerName::try_from(server_name) {
-        Ok(name) => Some(name),
-        Err(_) => return -1,
-      }
+      // If the hostname is not a valid DNS name or IP address, skip SNI
+      // rather than failing TLS initialization entirely.  Node.js allows
+      // invalid hostnames through TLS setup and lets DNS resolution fail
+      // later with the proper error code (ENOTFOUND / EAI_FAIL).
+      rustls::pki_types::ServerName::try_from(server_name).ok()
     };
 
     let inner = unsafe { &mut *self.inner.as_mut_ptr() };
@@ -1681,35 +1679,29 @@ impl TLSWrap {
   ///
   /// Read interception is handled at the JS layer: the JS binding sets
   /// `nativeHandle.onread` to forward encrypted data to `TLSWrap.receive()`.
-  /// This avoids conflicting with `libuv_stream::TCP`'s own `stream.data`
-  /// layout which is incompatible with `stream_wrap::StreamHandleData`.
+  /// A native interceptor path exists (see `tls_read_interceptor_cb`) but
+  /// is not currently wired up.
   #[nofast]
   fn attach(
     &self,
-    #[cppgc] tcp: &crate::ops::libuv_stream::TCP,
+    #[cppgc] tcp: &crate::ops::tcp_wrap::TCPWrap,
     scope: &mut v8::PinScope,
     op_state: &mut OpState,
   ) -> i32 {
-    let stream = tcp.stream();
+    let stream = tcp.stream_ptr();
+    Self::do_attach_uv_stream(&self.inner, stream, scope, op_state)
+  }
 
-    if stream.is_null() {
-      return UV_EBADF;
-    }
-
-    let inner = unsafe { &mut *self.inner.as_mut_ptr() };
-    inner.underlying = UnderlyingStream::Uv { stream };
-    inner.isolate = Some(unsafe { scope.as_raw_isolate_ptr() });
-    // Cache the loop pointer now while the stream is still valid.
-    // This avoids dereferencing the stream pointer later when it may
-    // have been freed (e.g. after the TCP handle is closed/GC'd).
-    inner.cached_loop_ptr = unsafe { (*stream).loop_ };
-
-    // Get stream_base_state from OpState
-    let state_global = &op_state.borrow::<StreamBaseState>().array;
-    inner.stream_base_state =
-      Some(v8::Global::new(scope, v8::Local::new(scope, state_global)));
-
-    0
+  /// Attach to a PipeWrap (Unix domain socket) for encrypted I/O.
+  #[nofast]
+  fn attach_pipe(
+    &self,
+    #[cppgc] pipe: &crate::ops::pipe_wrap::PipeWrap,
+    scope: &mut v8::PinScope,
+    op_state: &mut OpState,
+  ) -> i32 {
+    let stream = pipe.stream_ptr();
+    Self::do_attach_uv_stream(&self.inner, stream, scope, op_state)
   }
 
   /// Store the JS handle reference for callbacks.
@@ -1865,15 +1857,14 @@ impl TLSWrap {
   }
 
   /// ReadStop — for Uv streams, don't stop the native TCP reads.
-  /// The NativeTCP should continue reading encrypted data; we just
+  /// The underlying TCP handle keeps reading encrypted data; we just
   /// stop delivering decrypted plaintext to JS by clearing onread.
-  /// This avoids the stream.data incompatibility with libuv_stream::TCP.
   ///
   /// Known limitation: the TCP socket keeps receiving and buffering
   /// encrypted data in the kernel even after read_stop(). For long-lived
-  /// connections with flow control this could accumulate data. This will
-  /// be properly fixed when libuv_stream::TCP is replaced by a
-  /// LibUvStreamWrap-based TCPWrap that has compatible stream.data.
+  /// connections with flow control this could accumulate data. Properly
+  /// plumbing a native uv_read_stop through TLSWrap is deferred until the
+  /// native read-interception path (`tls_read_interceptor_cb`) is wired up.
   #[fast]
   fn read_stop(&self, _scope: &mut v8::PinScope) -> i32 {
     let inner = unsafe { &mut *self.inner.as_mut_ptr() };
@@ -2070,19 +2061,29 @@ impl TLSWrap {
     {
       let inner = unsafe { &mut *self.inner.as_mut_ptr() };
 
-      if let Some(ref mut conn) = inner.tls_conn {
-        conn.send_close_notify();
-      }
       inner.shutdown = true;
-      let enc_action = inner.enc_out_collect();
-      let inner_ptr = inner as *mut TLSWrapInner;
-      unsafe { TLSWrapInner::do_enc_out_action(inner_ptr, enc_action) };
 
-      // Forward shutdown to underlying stream, matching Node's
-      // TLSWrap::DoShutdown → underlying_stream()->DoShutdown().
-      // uv_shutdown defers until the write queue drains, so the
-      // close_notify (written by enc_out above) is sent first.
-      inner.underlying.shutdown();
+      let handshaking =
+        inner.tls_conn.as_ref().is_some_and(|c| c.is_handshaking());
+
+      if handshaking {
+        // Handshake not yet complete — defer close_notify and underlying
+        // shutdown.  dispatch_clear_out_callbacks will check the shutdown
+        // flag once the handshake finishes and drive the close then.
+      } else {
+        if let Some(ref mut conn) = inner.tls_conn {
+          conn.send_close_notify();
+        }
+        let enc_action = inner.enc_out_collect();
+        let inner_ptr = inner as *mut TLSWrapInner;
+        unsafe { TLSWrapInner::do_enc_out_action(inner_ptr, enc_action) };
+
+        // Forward shutdown to underlying stream, matching Node's
+        // TLSWrap::DoShutdown → underlying_stream()->DoShutdown().
+        // uv_shutdown defers until the write queue drains, so the
+        // close_notify (written by enc_out above) is sent first.
+        inner.underlying.shutdown();
+      }
     }
 
     // Call req.oncomplete(0) to signal completion to the JS side,
@@ -2464,6 +2465,24 @@ impl TLSWrap {
     unsafe { TLSWrapInner::cycle(inner_ptr) };
   }
 
+  /// Drain buffered encrypted output for JS streams (pull-based).
+  /// Returns the encrypted data that needs to be written to the
+  /// underlying JS stream. Called by JS after operations that may
+  /// produce encrypted output (readBuffer, start, writes).
+  /// Write completion callbacks are handled by the existing
+  /// cycle() -> InvokeQueued path (fired from reentrant ops like
+  /// readBuffer/start, not from write ops where in_dowrite is true).
+  #[buffer]
+  fn drain_enc_out(&self) -> Box<[u8]> {
+    let inner = unsafe { &mut *self.inner.as_mut_ptr() };
+    if !matches!(inner.underlying, UnderlyingStream::Js { .. })
+      || inner.pending_enc_out.is_empty()
+    {
+      return Box::new([]);
+    }
+    std::mem::take(&mut inner.pending_enc_out).into_boxed_slice()
+  }
+
   /// Signal EOF on the encrypted input (JSStreamSocket path).
   /// Called when the underlying JS Duplex stream ends.
   #[fast]
@@ -2784,6 +2803,30 @@ impl rustls::client::danger::ServerCertVerifier for NodeServerCertVerifier {
   }
 }
 
+impl TLSWrap {
+  fn do_attach_uv_stream(
+    inner_ptr: &OwnedPtr<TLSWrapInner>,
+    stream: *mut uv_compat::uv_stream_t,
+    scope: &mut v8::PinScope,
+    op_state: &mut OpState,
+  ) -> i32 {
+    if stream.is_null() {
+      return UV_EBADF;
+    }
+
+    let inner = unsafe { &mut *inner_ptr.as_mut_ptr() };
+    inner.underlying = UnderlyingStream::Uv { stream };
+    inner.isolate = Some(unsafe { scope.as_raw_isolate_ptr() });
+    inner.cached_loop_ptr = unsafe { (*stream).loop_ };
+
+    let state_global = &op_state.borrow::<StreamBaseState>().array;
+    inner.stream_base_state =
+      Some(v8::Global::new(scope, v8::Local::new(scope, state_global)));
+
+    0
+  }
+}
+
 /// Build a rustls ClientConfig from a SecureContext JS object.
 fn build_client_config(
   scope: &mut v8::PinScope,
@@ -2870,8 +2913,11 @@ fn build_client_config(
     TlsKeysHolder::from(TlsKeys::Null)
   };
 
+  // Fall back to the default Mozilla root cert store (same as deno_tls's
+  // own `create_client_config`).  The old `RootCertStore::empty()` caused
+  // every TLS connection without explicit CA options to fail verification.
   let mut root_cert_store =
-    root_cert_store.unwrap_or_else(rustls::RootCertStore::empty);
+    root_cert_store.unwrap_or_else(deno_tls::create_default_root_cert_store);
 
   // Collect raw DER bytes of root certs so NodeServerCertVerifier can
   // check CaUsedAsEndEntity certs against the trust store.
@@ -2940,6 +2986,94 @@ fn build_client_config(
   Some(config)
 }
 
+/// A `ClientCertVerifier` for `node:tls` servers that wraps
+/// `WebPkiClientVerifier` with two pieces of extra leniency to match the
+/// OpenSSL-backed Node behaviour:
+///
+///  * `rejectUnauthorized: false` → verify_client_cert always returns Ok,
+///    so the TLS handshake succeeds regardless of chain validity and JS
+///    code can inspect the peer via `getPeerCertificate()` /
+///    `TLSSocket.authorized`.
+///  * Self-signed client certs used as their own CA (i.e. the cert DER is
+///    also in the trusted `ca` list) are accepted — rustls/webpki rejects
+///    these with `CaUsedAsEndEntity`, but OpenSSL/Node trusts them if
+///    they're in the configured `ca`. Mirrors `NodeServerCertVerifier`'s
+///    handling of the same case on the client side.
+#[derive(Debug)]
+struct NodeClientCertVerifier {
+  inner: Arc<dyn rustls::server::danger::ClientCertVerifier>,
+  root_cert_ders: Vec<Vec<u8>>,
+  reject_unauthorized: bool,
+}
+
+impl rustls::server::danger::ClientCertVerifier for NodeClientCertVerifier {
+  fn offer_client_auth(&self) -> bool {
+    true
+  }
+
+  fn client_auth_mandatory(&self) -> bool {
+    self.reject_unauthorized
+  }
+
+  fn root_hint_subjects(&self) -> &[rustls::DistinguishedName] {
+    self.inner.root_hint_subjects()
+  }
+
+  fn verify_client_cert(
+    &self,
+    end_entity: &rustls::pki_types::CertificateDer<'_>,
+    intermediates: &[rustls::pki_types::CertificateDer<'_>],
+    now: rustls::pki_types::UnixTime,
+  ) -> Result<rustls::server::danger::ClientCertVerified, rustls::Error> {
+    // Fast path: if the presented client cert is byte-identical to one of
+    // the trusted CA DERs, accept it even when webpki would say
+    // `CaUsedAsEndEntity`.
+    let ee_bytes: &[u8] = end_entity.as_ref();
+    if self.root_cert_ders.iter().any(|r| r.as_slice() == ee_bytes) {
+      return Ok(rustls::server::danger::ClientCertVerified::assertion());
+    }
+    match self
+      .inner
+      .verify_client_cert(end_entity, intermediates, now)
+    {
+      Ok(v) => Ok(v),
+      Err(e) => {
+        if self.reject_unauthorized {
+          Err(e)
+        } else {
+          // `rejectUnauthorized: false` — succeed the handshake and let the
+          // JS layer decide via `TLSSocket.authorized` / `authorizationError`.
+          Ok(rustls::server::danger::ClientCertVerified::assertion())
+        }
+      }
+    }
+  }
+
+  fn verify_tls12_signature(
+    &self,
+    message: &[u8],
+    cert: &rustls::pki_types::CertificateDer<'_>,
+    dss: &rustls::DigitallySignedStruct,
+  ) -> Result<rustls::client::danger::HandshakeSignatureValid, rustls::Error>
+  {
+    self.inner.verify_tls12_signature(message, cert, dss)
+  }
+
+  fn verify_tls13_signature(
+    &self,
+    message: &[u8],
+    cert: &rustls::pki_types::CertificateDer<'_>,
+    dss: &rustls::DigitallySignedStruct,
+  ) -> Result<rustls::client::danger::HandshakeSignatureValid, rustls::Error>
+  {
+    self.inner.verify_tls13_signature(message, cert, dss)
+  }
+
+  fn supported_verify_schemes(&self) -> Vec<rustls::SignatureScheme> {
+    self.inner.supported_verify_schemes()
+  }
+}
+
 /// Build a rustls ServerConfig from a SecureContext JS object.
 fn build_server_config(
   scope: &mut v8::PinScope,
@@ -2977,10 +3111,82 @@ fn build_server_config(
   .ok()
   .flatten()?;
 
-  rustls::ServerConfig::builder_with_protocol_versions(protocol_versions)
-    .with_no_client_auth()
-    .with_single_cert(certs, private_key)
-    .ok()
+  let request_cert = get_js_bool(scope, context, "requestCert", false);
+  let reject_unauthorized =
+    get_js_bool(scope, context, "rejectUnauthorized", true);
+
+  let builder =
+    rustls::ServerConfig::builder_with_protocol_versions(protocol_versions);
+
+  // When `requestCert` is true, the server sends a CertificateRequest during
+  // the TLS handshake so the client presents its certificate. Without this
+  // the peer certificate is never available to `getPeerCertificate()`.
+  let builder = if request_cert {
+    let mut root_cert_store = rustls::RootCertStore::empty();
+    let mut root_cert_ders: Vec<Vec<u8>> = Vec::new();
+    v8_static_strings! {
+      CA = "ca",
+    }
+    let ca_key = CA.v8_string(scope).unwrap();
+    if let Some(ca_val) = context.get(scope, ca_key.into()) {
+      let mut ca_pems: Vec<Vec<u8>> = Vec::new();
+      if let Ok(arr) = v8::Local::<v8::Array>::try_from(ca_val) {
+        for i in 0..arr.length() {
+          if let Some(v) = arr.get_index(scope, i)
+            && let Some(s) = v.to_string(scope)
+          {
+            ca_pems.push(s.to_rust_string_lossy(scope).into_bytes());
+          }
+        }
+      } else if !ca_val.is_undefined()
+        && !ca_val.is_null()
+        && let Some(s) = ca_val.to_string(scope)
+      {
+        ca_pems.push(s.to_rust_string_lossy(scope).into_bytes());
+      }
+      for pem in &ca_pems {
+        let reader = &mut std::io::BufReader::new(std::io::Cursor::new(pem));
+        for parsed in rustls_pemfile::certs(reader) {
+          match parsed {
+            Ok(cert) => {
+              root_cert_ders.push(cert.as_ref().to_vec());
+              if let Err(e) = root_cert_store.add(cert) {
+                log::debug!(
+                  "TLSWrap: ignoring invalid client CA certificate: {e}"
+                );
+              }
+            }
+            Err(e) => {
+              log::debug!("TLSWrap: failed to parse client CA PEM entry: {e}");
+            }
+          }
+        }
+      }
+    }
+
+    let mut verifier_builder =
+      rustls::server::WebPkiClientVerifier::builder(Arc::new(root_cert_store));
+    if !reject_unauthorized {
+      verifier_builder = verifier_builder.allow_unauthenticated();
+    }
+    match verifier_builder.build() {
+      Ok(inner) => {
+        builder.with_client_cert_verifier(Arc::new(NodeClientCertVerifier {
+          inner,
+          root_cert_ders,
+          reject_unauthorized,
+        }))
+      }
+      Err(e) => {
+        log::debug!("TLSWrap: failed to build client cert verifier: {e}");
+        return None;
+      }
+    }
+  } else {
+    builder.with_no_client_auth()
+  };
+
+  builder.with_single_cert(certs, private_key).ok()
 }
 
 #[cfg(test)]

@@ -747,7 +747,24 @@ fn create_command(
           };
           handles_to_close.push(fd2);
           command.extra_handle(Some(fd2));
-          extra_pipe_fds.push(Some(fd1 as i64));
+          // `fd1` is a raw Windows HANDLE, but the JS side treats the
+          // value it receives as a CRT file descriptor (it calls
+          // `Pipe.open(fd)` which ultimately passes the value to
+          // `_get_osfhandle`). Wrap the HANDLE in a CRT fd so the
+          // pipe can be read/written from JS. Ownership of the
+          // HANDLE transfers to the CRT fd; closing the fd closes
+          // the HANDLE.
+          // SAFETY: fd1 is a valid pipe HANDLE from bi_pipe_pair_raw.
+          let crt_fd = unsafe { libc::open_osfhandle(fd1 as isize, 0) };
+          if crt_fd == -1 {
+            let err = std::io::Error::last_os_error();
+            // SAFETY: fd1 is a valid HANDLE we just failed to wrap.
+            unsafe {
+              windows_sys::Win32::Foundation::CloseHandle(fd1 as _);
+            }
+            return Err(ProcessError::Io(err));
+          }
+          extra_pipe_fds.push(Some(crt_fd as i64));
         }
         StdioOrFd::Fd(fd) => {
           // SAFETY: fd is a valid CRT file descriptor passed from the JS stdio array

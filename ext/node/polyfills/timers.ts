@@ -14,7 +14,6 @@ import {
   getActiveTimer,
   Immediate,
   kDestroy,
-  setUnrefTimeout,
   Timeout,
 } from "ext:deno_node/internal/timers.mjs";
 import {
@@ -25,7 +24,6 @@ import {
   validateObject,
 } from "ext:deno_node/internal/validators.mjs";
 import { kEmptyObject, promisify } from "ext:deno_node/internal/util.mjs";
-export { setUnrefTimeout } from "ext:deno_node/internal/timers.mjs";
 import { AbortError } from "ext:deno_node/internal/errors.ts";
 import { kResistStopPropagation } from "ext:deno_node/internal/event_target.mjs";
 import type { Abortable } from "node:events";
@@ -108,6 +106,11 @@ function setTimeoutPromise<T = void>(
     )
     : promise;
 }
+
+ObjectDefineProperty(setTimeoutPromise, "name", {
+  __proto__: null,
+  value: "setTimeout",
+});
 
 ObjectDefineProperty(setTimeout, promisify.custom, {
   __proto__: null,
@@ -320,7 +323,6 @@ export default {
   setInterval,
   clearInterval,
   setImmediate,
-  setUnrefTimeout,
   clearImmediate,
   promises,
 };
