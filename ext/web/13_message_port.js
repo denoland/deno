@@ -40,7 +40,12 @@ import {
   setEventTargetData,
   setIsTrusted,
 } from "./02_event.js";
-import { isDetachedBuffer } from "./06_streams.js";
+import {
+  isDetachedBuffer,
+  ReadableStream,
+  TransformStream,
+  WritableStream,
+} from "./06_streams.js";
 import { DOMException } from "./01_dom_exception.js";
 
 // counter of how many message ports are actively refed
@@ -515,45 +520,36 @@ webidl.converters.StructuredSerializeOptions = webidl
     ],
   );
 
-// Lazily resolved prototypes of Web API types whose specs explicitly mark
-// them as non-serializable. V8's structured clone serialiser doesn't know
-// about Web API "platform" types (they're plain JS objects from V8's
-// perspective with no enumerable own properties), so without this check the
-// fast `core.structuredClone` path silently round-trips them as `{}`,
-// matching neither the Web Platform spec nor Node's behaviour, which both
-// raise `DataCloneError`.
-let nonSerializablePrototypes = null;
-const NON_SERIALIZABLE_GLOBAL_NAMES = [
-  // `Headers`, `Request`, `Response`, and the stream classes are all
-  // marked NOT [Serializable] in their respective specs.
-  "Headers",
-  "Request",
-  "Response",
-  "ReadableStream",
-  "WritableStream",
-  "TransformStream",
-];
-function getNonSerializablePrototypes() {
-  if (nonSerializablePrototypes !== null) return nonSerializablePrototypes;
-  nonSerializablePrototypes = [];
-  for (let i = 0; i < NON_SERIALIZABLE_GLOBAL_NAMES.length; i++) {
-    const name = NON_SERIALIZABLE_GLOBAL_NAMES[i];
-    const ctor = globalThis[name];
-    if (typeof ctor === "function" && ctor.prototype !== undefined) {
-      ArrayPrototypePush(nonSerializablePrototypes, ctor.prototype);
-    }
-  }
-  return nonSerializablePrototypes;
+// Marker symbol for Web API types whose specs explicitly mark them as
+// non-serializable. V8's structured clone serialiser doesn't know about Web
+// API "platform" types (they're plain JS objects from V8's perspective with
+// no enumerable own properties), so without this opt-out the fast
+// `core.structuredClone` path silently round-trips them as `{}`, matching
+// neither the Web Platform spec nor Node's behaviour, which both raise
+// `DataCloneError`.
+//
+// Each non-serializable class installs this symbol on its prototype via
+// `markNotSerializable()`. The descriptor is non-enumerable and
+// non-configurable so it can't be hidden, deleted, or overridden on the
+// instance.
+const kNotSerializable = Symbol("[[NotSerializable]]");
+
+function markNotSerializable(target) {
+  ObjectDefineProperty(target, kNotSerializable, {
+    __proto__: null,
+    value: true,
+    enumerable: false,
+    writable: false,
+    configurable: false,
+  });
 }
 
-function isKnownNonSerializable(value) {
-  if (value === null || typeof value !== "object") return false;
-  const protos = getNonSerializablePrototypes();
-  for (let i = 0; i < protos.length; i++) {
-    if (ObjectPrototypeIsPrototypeOf(protos[i], value)) return true;
-  }
-  return false;
-}
+// Streams are defined in this extension, so mark them here. Fetch types
+// (Headers / Request / Response) call `markNotSerializable` themselves at
+// the bottom of their respective modules.
+markNotSerializable(ReadableStream.prototype);
+markNotSerializable(WritableStream.prototype);
+markNotSerializable(TransformStream.prototype);
 
 function structuredClone(value, options) {
   const prefix = "Failed to execute 'structuredClone'";
@@ -564,7 +560,9 @@ function structuredClone(value, options) {
     "Argument 2",
   );
 
-  if (isKnownNonSerializable(value)) {
+  if (
+    value !== null && typeof value === "object" && value[kNotSerializable]
+  ) {
     throw new DOMException(
       "Cannot clone object of unsupported type.",
       "DataCloneError",
@@ -589,6 +587,7 @@ function structuredClone(value, options) {
 
 export {
   deserializeJsMessageData,
+  markNotSerializable,
   MessageChannel,
   MessagePort,
   MessagePortIdSymbol,
