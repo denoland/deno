@@ -168,3 +168,27 @@ Deno.test("default argument is null prototype", () => {
   // @ts-ignore this is done on purpose
   delete Object.prototype.bubbles;
 });
+
+// Regression test for https://github.com/denoland/deno/issues/17321
+// `MessageEvent.source` used to be a getter that always returned `null`,
+// so any value passed via `MessageEventInit.source` was lost.
+Deno.test(function messageEventSourceIsRetainedFromInit() {
+  const obj = {};
+  const e = new MessageEvent("message", { source: obj });
+  assertEquals(e.source, obj);
+
+  const channel = new MessageChannel();
+  try {
+    const e2 = new MessageEvent("message", { source: channel.port1 });
+    assertEquals(e2.source, channel.port1);
+  } finally {
+    channel.port1.close();
+    channel.port2.close();
+  }
+
+  const e3 = new MessageEvent("message");
+  assertEquals(e3.source, null);
+
+  const e4 = new MessageEvent("message", {});
+  assertEquals(e4.source, null);
+});
