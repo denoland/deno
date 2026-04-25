@@ -2577,6 +2577,7 @@
     "dangling-markup": {
       "dangling-markup-mitigation-data-url.tentative.sub.html": false,
       "dangling-markup-mitigation.tentative.html": {
+        "flaky": true,
         "expectedFailures": [
           "<img id=\"dangling\" src=\"/images/green-1x1.png?img=&lt;b\">",
           "<img id=\"dangling\" src=\"/images/green-1x1.png?img=&#10;b\">",
