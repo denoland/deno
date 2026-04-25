@@ -2917,6 +2917,7 @@
     // "parallel/test-warn-sigprof.js": {},
     "parallel/test-weakref.js": {},
     "parallel/test-webcrypto-encrypt-decrypt.js": {},
+    "parallel/test-webcrypto-getRandomValues.js": {},
     "parallel/test-webcrypto-random.js": {},
     "parallel/test-webcrypto-keygen-kmac.js": {
       "ignore": true,
