@@ -1,0 +1,1 @@
+ok: readFile properly aborted on non-terminating source
