@@ -1887,8 +1887,7 @@ Deno.test(
 
 Deno.test(
   {
-    name:
-      "[node/fs] readFile on non-terminating source respects AbortSignal",
+    name: "[node/fs] readFile on non-terminating source respects AbortSignal",
     ignore: Deno.build.os === "windows",
   },
   async () => {
