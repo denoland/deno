@@ -106,7 +106,7 @@ export function Timeout(callback, after, args, isRepeat, isRefed) {
   this._idleTimeout = after;
   this._onTimeout = callback;
   this._timerArgs = args;
-  this._isRepeat = isRepeat;
+  this._repeat = isRepeat;
   this._destroyed = false;
   this[kRefed] = isRefed;
 
@@ -137,42 +137,46 @@ Timeout.prototype[createTimer] = function () {
   // outer closure (ALS context must still propagate) but elide the
   // hook machinery.
   let cb;
+  function invokeCallback() {
+    const wasRepeat = self._repeat;
+    if (!wasRepeat) {
+      MapPrototypeDelete(activeTimers, self[kTimerId]);
+    } else {
+      const currentCb = self._onTimeout;
+      if (currentCb === null) {
+        self[kDestroy]();
+        return;
+      }
+    }
+    const currentCb = wasRepeat ? self._onTimeout : callback;
+    const args = self._timerArgs;
+    let ret;
+    if (args !== undefined && args.length > 0) {
+      ret = ReflectApply(currentCb, self, args);
+    } else {
+      ret = FunctionPrototypeCall(currentCb, self);
+    }
+    if (wasRepeat) {
+      if (self._idleTimeout < 0 || self._onTimeout === null) {
+        self[kDestroy]();
+      }
+    } else if (self._repeat) {
+      // timeout was converted to interval inside callback
+      self[kTimerId] = self[createTimer]();
+    }
+    return ret;
+  }
   if (enabledHooksExist()) {
     cb = function () {
       const oldContext = getAsyncContext();
       try {
         setAsyncContext(asyncContext);
         emitBefore(asyncId, triggerAsyncId, self);
-        if (!self._isRepeat) {
-          MapPrototypeDelete(activeTimers, self[kTimerId]);
-        }
-        const args = self._timerArgs;
-        let ret;
-        if (!self._isRepeat) {
-          if (args !== undefined && args.length > 0) {
-            ret = ReflectApply(callback, self, args);
-          } else {
-            ret = FunctionPrototypeCall(callback, self);
-          }
-        } else {
-          const currentCb = self._onTimeout;
-          if (currentCb === null) {
-            self[kDestroy]();
-            return;
-          }
-          if (args !== undefined && args.length > 0) {
-            ret = ReflectApply(currentCb, self, args);
-          } else {
-            ret = FunctionPrototypeCall(currentCb, self);
-          }
-          if (self._idleTimeout < 0 || self._onTimeout === null) {
-            self[kDestroy]();
-          }
-        }
+        const ret = invokeCallback();
         // Only emit after/destroy on success. On error, the domain's
         // uncaught exception handler manages the stack cleanup.
         emitAfter(asyncId);
-        if (!self._isRepeat && !self._asyncDestroyed) {
+        if (!self._repeat && !self._asyncDestroyed) {
           self._asyncDestroyed = true;
           emitDestroy(asyncId);
         }
@@ -186,30 +190,7 @@ Timeout.prototype[createTimer] = function () {
       const oldContext = getAsyncContext();
       try {
         setAsyncContext(asyncContext);
-        if (!self._isRepeat) {
-          MapPrototypeDelete(activeTimers, self[kTimerId]);
-          const args = self._timerArgs;
-          if (args !== undefined && args.length > 0) {
-            return ReflectApply(callback, self, args);
-          }
-          return FunctionPrototypeCall(callback, self);
-        }
-        const currentCb = self._onTimeout;
-        if (currentCb === null) {
-          self[kDestroy]();
-          return;
-        }
-        const args = self._timerArgs;
-        let ret;
-        if (args !== undefined && args.length > 0) {
-          ret = ReflectApply(currentCb, self, args);
-        } else {
-          ret = FunctionPrototypeCall(currentCb, self);
-        }
-        if (self._idleTimeout < 0 || self._onTimeout === null) {
-          self[kDestroy]();
-        }
-        return ret;
+        return invokeCallback();
       } finally {
         setAsyncContext(oldContext);
       }
@@ -219,7 +200,7 @@ Timeout.prototype[createTimer] = function () {
     cb,
     this._idleTimeout,
     undefined,
-    this._isRepeat,
+    this._repeat,
     this[kRefed],
   );
   ObjectDefineProperty(this, "_timer", {
