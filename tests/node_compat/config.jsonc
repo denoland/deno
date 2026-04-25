@@ -97,6 +97,7 @@
     "parallel/test-assert-partial-deep-equal.js": {},
     "parallel/test-assert-typedarray-deepequal.js": {},
     "parallel/test-assert.js": {},
+    "parallel/test-als-defaultvalue-original.js": {},
     "parallel/test-async-hooks-run-in-async-scope-caught-exception.js": {},
     "parallel/test-async-hooks-run-in-async-scope-this-arg.js": {},
     "parallel/test-async-local-storage-bind.js": {},
