@@ -529,18 +529,70 @@ export let execPath: string = "";
 // The process class needs to be an ES5 class because it can be instantiated
 // in Node without the `new` keyword. It's not a true class in Node. Popular
 // test runners like Jest rely on this.
+//
+// Use a named function expression so the syntactic name ("process") is
+// captured at parse time. V8 uses that name for runtime class strings
+// in error messages like "Cannot delete property 'exitCode' of
+// #<process>", which `Object.defineProperty(F, "name", ...)` does not
+// affect. Match Node's FunctionTemplate-based binding (see
+// CreateProcessObject in src/node_process_object.cc).
 // deno-lint-ignore no-explicit-any
-function Process(this: any) {
+const Process = function process(this: any) {
   // deno-lint-ignore no-explicit-any
   if (!(this instanceof Process)) return new (Process as any)();
 
   EventEmitter.call(this);
-}
+};
 Process.prototype = Object.create(EventEmitter.prototype);
-// V8 uses the constructor's name for error messages like
-// "Cannot delete property 'exitCode' of #<process>"
-const _process = function process() {};
-Process.prototype.constructor = _process;
+// Point the prototype's `constructor` at the real class with the same
+// descriptor Node uses (writable, non-enumerable, configurable) so
+// `process instanceof process.constructor` is true.
+Object.defineProperty(Process.prototype, "constructor", {
+  __proto__: null,
+  value: Process,
+  writable: true,
+  enumerable: false,
+  configurable: true,
+});
+
+// Maps original user listeners to wrapped versions that pass the signal name.
+// Node.js calls signal listeners with the signal name as the first argument,
+// but Deno.addSignalListener calls them with no arguments.
+type SignalListener = (...args: string[]) => void;
+const _signalListenerWrappers = new WeakMap<
+  SignalListener,
+  Map<string, SignalListener>
+>();
+
+function _wrapSignalListener(
+  event: string,
+  listener: SignalListener,
+): SignalListener {
+  let wrappersByEvent = _signalListenerWrappers.get(listener);
+  if (!wrappersByEvent) {
+    wrappersByEvent = new Map();
+    _signalListenerWrappers.set(listener, wrappersByEvent);
+  }
+  let wrapper = wrappersByEvent.get(event);
+  if (!wrapper) {
+    wrapper = () => listener(event);
+    wrappersByEvent.set(event, wrapper);
+  }
+  return wrapper;
+}
+
+function _unwrapSignalListener(
+  event: string,
+  listener: SignalListener,
+): SignalListener {
+  const wrappersByEvent = _signalListenerWrappers.get(listener);
+  if (!wrappersByEvent) return listener;
+  const wrapper = wrappersByEvent.get(event);
+  if (wrapper) {
+    wrappersByEvent.delete(event);
+  }
+  return wrapper ?? listener;
+}
 
 // Look up the actual registered listener for a signal event. When `once()` is
 // used, EventEmitter wraps the listener in a function with a `.listener`
@@ -587,7 +639,10 @@ Process.prototype.on = function (
       // TODO(#26331): Ignores all signals except SIGBREAK, SIGINT, and SIGWINCH on windows.
     } else {
       EventEmitter.prototype.on.call(this, event, listener);
-      Deno.addSignalListener(event as Deno.Signal, listener);
+      Deno.addSignalListener(
+        event as Deno.Signal,
+        _wrapSignalListener(event, listener),
+      );
     }
   } else {
     EventEmitter.prototype.on.call(this, event, listener);
@@ -618,9 +673,10 @@ Process.prototype.off = function (
       // to pass the wrapper (not the original) to Deno.removeSignalListener.
       const registered = _findSignalListener(this, event, listener);
       EventEmitter.prototype.off.call(this, event, listener);
+      const unwrapped = _unwrapSignalListener(event, registered ?? listener);
       Deno.removeSignalListener(
         event as Deno.Signal,
-        registered ?? listener,
+        unwrapped,
       );
     }
   } else {
@@ -652,7 +708,10 @@ Process.prototype.prependListener = function (
       // Ignores SIGBREAK if the platform is not windows.
     } else {
       EventEmitter.prototype.prependListener.call(this, event, listener);
-      Deno.addSignalListener(event as Deno.Signal, listener);
+      Deno.addSignalListener(
+        event as Deno.Signal,
+        _wrapSignalListener(event, listener),
+      );
     }
   } else {
     EventEmitter.prototype.prependListener.call(this, event, listener);
@@ -779,6 +838,33 @@ Object.defineProperty(process, "argv0", {
     return argv0;
   },
   set(_val) {},
+});
+
+/**
+ * https://nodejs.org/api/process.html#processdebugport
+ *
+ * Node coerces the value via v8's ToInt32 (so numeric strings convert to
+ * numbers, objects/arrays/NaN/Infinity become 0, booleans become 0 or 1,
+ * and Symbols throw TypeError). Out-of-range values throw RangeError.
+ */
+// Node's default inspector port (kDefaultInspectorPort in src/node_options.h).
+let _debugPort = 9229;
+Object.defineProperty(process, "debugPort", {
+  get() {
+    return _debugPort;
+  },
+  set(val) {
+    // `| 0` performs ToInt32, matching Int32Value() in node_process_object.cc.
+    const port = val | 0;
+    if ((port !== 0 && port < 1024) || port > 65535) {
+      throw new RangeError(
+        "process.debugPort must be 0 or in range 1024 to 65535",
+      );
+    }
+    _debugPort = port;
+  },
+  enumerable: true,
+  configurable: true,
 });
 
 /** https://nodejs.org/api/process.html#process_process_chdir_directory */

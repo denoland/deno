@@ -470,6 +470,17 @@ impl TCPWrap {
     unsafe { uv_compat::uv_tcp_nodelay(tcp, enable as i32) }
   }
 
+  /// Set SO_LINGER to 0 so the next close sends RST instead of FIN.
+  #[fast]
+  fn reset(&self) -> i32 {
+    let tcp = self.tcp_ptr();
+    if tcp.is_null() {
+      return -1;
+    }
+    // SAFETY: tcp is valid (null-checked above).
+    unsafe { uv_compat::uv_tcp_reset(tcp) }
+  }
+
   /// Store the original hostname from DNS lookup for permission checks.
   /// When set, connect() checks permissions against this hostname
   /// instead of the resolved IP, matching Node.js netPermToken behavior.

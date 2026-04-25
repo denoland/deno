@@ -3,6 +3,7 @@
 // deno-lint-ignore-file no-console
 
 import * as http2 from "node:http2";
+import * as https from "node:https";
 import { Buffer } from "node:buffer";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -684,4 +685,47 @@ Deno.test("[node/http2 client] connect with pre-created socket", {
   client.close();
   server.close();
   await new Promise<void>((resolve) => server.on("close", resolve));
+});
+
+// Regression test for https://github.com/denoland/deno/issues/33317
+// `http2.createSecureServer({ allowHTTP1: true })` must handle HTTP/1.1
+// clients without throwing `ReferenceError: kIncomingMessage is not defined`.
+Deno.test("[node/http2] allowHTTP1 fallback handles HTTP/1.1 clients", async () => {
+  const cert = Deno.readTextFileSync("tests/testdata/tls/localhost.crt");
+  const key = Deno.readTextFileSync("tests/testdata/tls/localhost.key");
+  const ca = Deno.readTextFileSync("tests/testdata/tls/RootCA.pem");
+
+  const { promise, resolve } = Promise.withResolvers<void>();
+
+  const server = http2.createSecureServer(
+    { allowHTTP1: true, cert, key },
+    (_req, res) => {
+      res.writeHead(200, { "content-type": "text/plain" });
+      res.end("ok");
+    },
+  );
+
+  server.listen(0, () => {
+    const port = (server.address() as net.AddressInfo).port;
+    const req = https.request(
+      { hostname: "localhost", port, path: "/", method: "GET", ca },
+      (res) => {
+        let data = "";
+        res.setEncoding("utf8");
+        res.on("data", (chunk: string) => (data += chunk));
+        res.on("end", () => {
+          assertEquals(res.statusCode, 200);
+          assertEquals(data, "ok");
+          server.close(() => resolve());
+        });
+      },
+    );
+    req.on("error", (e) => {
+      server.close();
+      throw e;
+    });
+    req.end();
+  });
+
+  await promise;
 });
