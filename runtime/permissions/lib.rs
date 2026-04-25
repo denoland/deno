@@ -1322,20 +1322,27 @@ impl PartialEq<PathDescriptor> for PathQueryDescriptor<'_> {
 ///   inode (e.g. `ß`/`ss`, `ﬁ`/`fi`, NFC/NFD forms, upper/lower).
 /// - Other platforms: returns a clone (case-sensitive, no normalization).
 #[inline]
+#[cfg(windows)]
 fn comparison_path(path: &Path) -> PathBuf {
-  if cfg!(windows) {
-    PathBuf::from(path.to_string_lossy().to_ascii_lowercase())
-  } else if cfg!(target_os = "macos") {
-    use unicode_normalization::UnicodeNormalization;
-    // NFKD handles canonical decomposition (NFC→NFD) and compatibility
-    // decomposition (ligatures like ﬁ→fi). Uppercase then lowercase
-    // approximates Unicode case folding (maps ß→SS→ss, etc.).
-    let s = path.to_string_lossy();
-    let normalized: String = s.nfkd().collect();
-    PathBuf::from(normalized.to_uppercase().to_lowercase())
-  } else {
-    path.to_path_buf()
-  }
+  PathBuf::from(path.to_string_lossy().to_ascii_lowercase())
+}
+
+#[inline]
+#[cfg(target_os = "macos")]
+fn comparison_path(path: &Path) -> PathBuf {
+  use unicode_normalization::UnicodeNormalization;
+  // NFKD handles canonical decomposition (NFC->NFD) and compatibility
+  // decomposition (ligatures like fi->fi). Uppercase then lowercase
+  // approximates Unicode case folding (maps ss->SS->ss, etc.).
+  let s = path.to_string_lossy();
+  let normalized: String = s.nfkd().collect();
+  PathBuf::from(normalized.to_uppercase().to_lowercase())
+}
+
+#[inline]
+#[cfg(not(any(windows, target_os = "macos")))]
+fn comparison_path(path: &Path) -> PathBuf {
+  path.to_path_buf()
 }
 
 impl<'a> PathQueryDescriptor<'a> {
