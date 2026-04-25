@@ -55,9 +55,15 @@ pub fn detect_framework(
     return Ok(Some(detect_nuxt(dir)));
   }
 
-  // SvelteKit: svelte.config.{js,ts}
-  if has_config_file(dir, "svelte.config") {
-    return Ok(Some(detect_sveltekit(dir)));
+  // SvelteKit: svelte.config.{js,ts} — but only when there's positive
+  // evidence of a Deno-targeted adapter or a recognized server output
+  // shape. A bare svelte.config.* is not enough, since SvelteKit can be
+  // built with many adapters (node, vercel, cloudflare, static, ...) that
+  // do not produce `./.output/server/index.{ts,mjs}`.
+  if has_config_file(dir, "svelte.config")
+    && let Some(detection) = detect_sveltekit(dir)
+  {
+    return Ok(Some(detection));
   }
 
   // --- Package.json dependency-based detection ---
@@ -189,30 +195,62 @@ fn detect_nuxt(dir: &Path) -> FrameworkDetection {
   detect_nitro_framework(dir, "Nuxt")
 }
 
-fn detect_sveltekit(dir: &Path) -> FrameworkDetection {
-  // SvelteKit with @deno/svelte-adapter outputs to .deno-deploy/
-  let prod_entrypoint = if dir.join(".deno-deploy/server.ts").exists() {
-    "// @ts-nocheck\nimport \"./.deno-deploy/server.ts\";\n".to_string()
-  } else {
-    // Nitro-based output
+fn detect_sveltekit(dir: &Path) -> Option<FrameworkDetection> {
+  // Prefer post-build evidence of a supported output shape, since that
+  // proves which adapter was actually used.
+  if dir.join(".deno-deploy/server.ts").exists() {
+    return Some(FrameworkDetection {
+      name: "SvelteKit",
+      entrypoint_code: "// @ts-nocheck\nimport \"./.deno-deploy/server.ts\";\n"
+        .into(),
+      include_paths: vec![".deno-deploy".into()],
+      build_command: Some(deno_task_build()),
+    });
+  }
+  if dir.join(".output/server/index.ts").exists()
+    || dir.join(".output/server/index.mjs").exists()
+  {
     let ext = if dir.join(".output/server/index.ts").exists() {
       "ts"
     } else {
       "mjs"
     };
-    format!("// @ts-nocheck\nimport \"./.output/server/index.{ext}\";\n")
-  };
-  let include_paths = if dir.join(".deno-deploy/server.ts").exists() {
-    vec![".deno-deploy".into()]
-  } else {
-    vec![".output".into()]
-  };
-  FrameworkDetection {
-    name: "SvelteKit",
-    entrypoint_code: prod_entrypoint,
-    include_paths,
-    build_command: Some(deno_task_build()),
+    return Some(FrameworkDetection {
+      name: "SvelteKit",
+      entrypoint_code: format!(
+        "// @ts-nocheck\nimport \"./.output/server/index.{ext}\";\n"
+      ),
+      include_paths: vec![".output".into()],
+      build_command: Some(deno_task_build()),
+    });
   }
+  // No build artifacts yet — fall back to config inspection. We only
+  // claim SvelteKit if the config references a supported adapter.
+  let config_text =
+    ["svelte.config.js", "svelte.config.ts", "svelte.config.mjs"]
+      .iter()
+      .find_map(|f| std::fs::read_to_string(dir.join(f)).ok())?;
+  if config_text.contains("@deno/svelte-adapter") {
+    return Some(FrameworkDetection {
+      name: "SvelteKit",
+      entrypoint_code: "// @ts-nocheck\nimport \"./.deno-deploy/server.ts\";\n"
+        .into(),
+      include_paths: vec![".deno-deploy".into()],
+      build_command: Some(deno_task_build()),
+    });
+  }
+  if config_text.contains("nitro")
+    || config_text.contains("svelte-adapter-deno")
+  {
+    return Some(FrameworkDetection {
+      name: "SvelteKit",
+      entrypoint_code:
+        "// @ts-nocheck\nimport \"./.output/server/index.mjs\";\n".into(),
+      include_paths: vec![".output".into()],
+      build_command: Some(deno_task_build()),
+    });
+  }
+  None
 }
 
 /// Nuxt, SolidStart, TanStack Start all use Nitro with the `deno_server`
@@ -524,14 +562,42 @@ mod tests {
   }
 
   #[test]
-  fn detects_sveltekit_nitro() {
+  fn detects_sveltekit_nitro_from_built_output() {
     let dir = setup_dir();
     fs::write(dir.path().join("svelte.config.ts"), "").unwrap();
-    // no .deno-deploy => falls back to .output
+    fs::create_dir_all(dir.path().join(".output/server")).unwrap();
+    fs::write(dir.path().join(".output/server/index.mjs"), "").unwrap();
     let det = detect_framework(dir.path()).unwrap().unwrap();
     assert_eq!(det.name, "SvelteKit");
     assert_eq!(det.include_paths, vec![".output"]);
     assert!(det.build_command.is_some());
+  }
+
+  #[test]
+  fn detects_sveltekit_nitro_from_config() {
+    let dir = setup_dir();
+    fs::write(
+      dir.path().join("svelte.config.js"),
+      "import adapter from 'svelte-adapter-deno';\nexport default { kit: { adapter: adapter() } };\n",
+    )
+    .unwrap();
+    let det = detect_framework(dir.path()).unwrap().unwrap();
+    assert_eq!(det.name, "SvelteKit");
+    assert_eq!(det.include_paths, vec![".output"]);
+  }
+
+  #[test]
+  fn does_not_detect_sveltekit_with_unknown_adapter() {
+    // Regression: a SvelteKit project using e.g. adapter-vercel should
+    // NOT be claimed by our detector — it would generate a wrong
+    // entrypoint that imports a path that doesn't exist.
+    let dir = setup_dir();
+    fs::write(
+      dir.path().join("svelte.config.js"),
+      "import adapter from '@sveltejs/adapter-vercel';\nexport default { kit: { adapter: adapter() } };\n",
+    )
+    .unwrap();
+    assert!(detect_framework(dir.path()).unwrap().is_none());
   }
 
   // --- Package.json dependency-based detection ---
