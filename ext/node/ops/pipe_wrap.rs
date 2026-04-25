@@ -464,41 +464,10 @@ impl PipeWrap {
         }
       }
     }
-    // On Windows, the CRT fd created by open_osfhandle in the spawn
-    // path is never freed by close_pipe (which only calls CloseHandle
-    // on the OS handle). We must:
-    // 1. Remove the FdTable entry (same as Unix).
-    // 2. Free the CRT fd slot via libc::close AFTER close_handle has
-    //    closed the underlying OS handle.
-    #[cfg(windows)]
-    let crt_fd = {
-      let fd = self.base.get_fd();
-      if fd >= 0 {
-        op_state
-          .borrow_mut()
-          .borrow_mut::<deno_io::FdTable>()
-          .remove(fd);
-      }
-      fd
-    };
     self.base.clear_js_handle();
-    let result = self
+    self
       .base
       .handle_wrap()
-      .close_handle(op_state, this, scope, cb);
-    // close_handle synchronously calls uv_close → stop_pipe →
-    // close_pipe, which CloseHandle's the OS handle. Now we can
-    // safely free the CRT fd slot. libc::close will call CloseHandle
-    // on the (already-closed) handle, which fails harmlessly, and
-    // then frees the CRT fd slot so it can be reused.
-    #[cfg(windows)]
-    if crt_fd >= 0 {
-      // SAFETY: crt_fd is a valid CRT fd created by open_osfhandle.
-      // The underlying OS handle was already closed by close_pipe.
-      unsafe {
-        libc::close(crt_fd);
-      }
-    }
-    result
+      .close_handle(op_state, this, scope, cb)
   }
 }
