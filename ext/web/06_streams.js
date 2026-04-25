@@ -5804,10 +5804,10 @@ const ReadableStreamBYOBReaderPrototype = ReadableStreamBYOBReader.prototype;
 class ReadableStreamBYOBRequest {
   /** @type {ReadableByteStreamController} */
   [_controller];
-  /** @type {ArrayBufferView | null} */
+  /** @type {Uint8Array<ArrayBuffer> | null} */
   [_view];
 
-  /** @returns {ArrayBufferView | null} */
+  /** @returns {Uint8Array<ArrayBuffer> | null} */
   get view() {
     webidl.assertBranded(this, ReadableStreamBYOBRequestPrototype);
     return this[_view];
