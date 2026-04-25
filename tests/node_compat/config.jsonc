@@ -2586,6 +2586,11 @@
     "parallel/test-timers-next-tick.js": {},
     "parallel/test-timers-non-integer-delay.js": {},
     "parallel/test-timers-not-emit-duration-zero.js": {},
+    "parallel/test-timers-now.js": {
+      "ignore": true,
+      "reason": "Tests V8 natives syntax (%OptimizeFunctionOnNextCall) and fast API call counting which are not supported in Deno"
+    },
+    "parallel/test-timers-ordering.js": {},
     "parallel/test-timers-process-tampering.js": {},
     "parallel/test-timers-promises.js": {},
     "parallel/test-timers-promises-scheduler.js": {},
