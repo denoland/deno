@@ -1070,6 +1070,7 @@
     "parallel/test-fs-watch-stop-async.js": {},
     "parallel/test-fs-watch-stop-sync.js": {},
     "parallel/test-fs-watch.js": {},
+    "parallel/test-fs-watchfile-ref-unref.js": {},
     "parallel/test-fs-watchfile.js": {},
     "parallel/test-fs-whatwg-url.js": {},
     "parallel/test-fs-write-buffer-large.js": {},
