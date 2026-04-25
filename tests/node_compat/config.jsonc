@@ -1610,6 +1610,7 @@
     "parallel/test-module-children.js": {},
     "parallel/test-module-circular-symlinks.js": {},
     "parallel/test-module-create-require-multibyte.js": {},
+    "parallel/test-module-create-require.js": {},
     "parallel/test-module-isBuiltin.js": {},
     "parallel/test-module-main-extension-lookup.js": {},
     "parallel/test-module-nodemodulepaths.js": {},
