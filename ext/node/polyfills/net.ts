@@ -561,7 +561,7 @@ function _internalConnect(
   addressType: number,
   localAddress: string,
   localPort: number | undefined,
-  flags: number,
+  flags: number = 0,
 ) {
   assert(socket.connecting);
 
@@ -1186,6 +1186,7 @@ function _lookupAndConnectMultiple(
         current: 0,
         port,
         localPort,
+        flags: 0,
         timeout,
         [kTimeout]: null,
         errors: [],
