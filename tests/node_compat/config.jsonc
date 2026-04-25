@@ -97,6 +97,7 @@
     "parallel/test-assert-partial-deep-equal.js": {},
     "parallel/test-assert-typedarray-deepequal.js": {},
     "parallel/test-assert.js": {},
+    "parallel/test-als-defaultvalue-original.js": {},
     "parallel/test-async-hooks-run-in-async-scope-caught-exception.js": {},
     "parallel/test-async-hooks-run-in-async-scope-this-arg.js": {},
     "parallel/test-async-local-storage-bind.js": {},
@@ -122,6 +123,8 @@
     },
     "parallel/test-blocklist.js": {},
     "parallel/test-btoa-atob.js": {},
+    "parallel/test-buffer-alloc-unsafe-is-initialized-with-zero-fill-flag.js": {},
+    "parallel/test-buffer-alloc-unsafe-is-uninitialized.js": {},
     "parallel/test-buffer-alloc.js": {},
     "parallel/test-buffer-arraybuffer.js": {},
     "parallel/test-buffer-ascii.js": {},
@@ -401,6 +404,7 @@
     "parallel/test-crypto-domain.js": {},
     "parallel/test-crypto-domains.js": {},
     "parallel/test-crypto-ecdh-convert-key.js": {},
+    "parallel/test-crypto-ecdh-setpublickey-deprecation.js": {},
     "parallel/test-crypto-ecb.js": {},
     "parallel/test-crypto-fips.js": {
       "ignore": true,
@@ -807,6 +811,7 @@
     "parallel/test-events-list.js": {},
     "parallel/test-events-listener-count-with-listener.js": {},
     "parallel/test-events-on-async-iterator.js": {},
+    "parallel/test-events-once.js": {},
     "parallel/test-events-static-geteventlisteners.js": {},
     "parallel/test-events-uncaught-exception-stack.js": {},
     "parallel/test-eventsource.js": {},
@@ -1641,6 +1646,7 @@
     "parallel/test-module-children.js": {},
     "parallel/test-module-circular-symlinks.js": {},
     "parallel/test-module-create-require-multibyte.js": {},
+    "parallel/test-module-create-require.js": {},
     "parallel/test-module-isBuiltin.js": {},
     "parallel/test-module-main-extension-lookup.js": {},
     "parallel/test-module-multi-extensions.js": {},
@@ -1819,6 +1825,7 @@
     },
     "parallel/test-os-constants-signals.js": {},
     "parallel/test-os-eol.js": {},
+    "parallel/test-os-fast.js": {},
     "parallel/test-os-homedir-no-envvar.js": {},
     "parallel/test-os-process-priority.js": {},
     "parallel/test-os-userinfo-handles-getter-errors.js": {},
@@ -2061,6 +2068,10 @@
     "parallel/test-process-binding.js": {},
     "parallel/test-process-chdir.js": {},
     "parallel/test-process-config.js": {},
+    "parallel/test-process-constants-noatime.js": {
+      "darwin": false,
+      "windows": false
+    },
     "parallel/test-process-constrained-memory.js": {},
     "parallel/test-process-cpuUsage.js": {},
     "parallel/test-process-default.js": {},
@@ -2100,6 +2111,9 @@
     "parallel/test-process-no-deprecation.js": {},
     "parallel/test-process-ppid.js": {},
     "parallel/test-process-prototype.js": {},
+    "parallel/test-process-raw-debug.js": {
+      "windows": false
+    },
     "parallel/test-process-really-exit.js": {},
     "parallel/test-process-remove-all-signal-listeners.js": {},
     "parallel/test-process-title-cli.js": {},
@@ -2408,6 +2422,7 @@
     "parallel/test-stream-compose-operator.js": {},
     "parallel/test-stream-compose.js": {},
     "parallel/test-stream-construct.js": {},
+    "parallel/test-stream-consumers.js": {},
     "parallel/test-stream-decoder-objectmode.js": {},
     "parallel/test-stream-destroy-event-order.js": {},
     "parallel/test-stream-destroy.js": {},
@@ -2835,6 +2850,7 @@
     "parallel/test-webcrypto-encrypt-decrypt.js": {},
     "parallel/test-webcrypto-export-import-ml-dsa.js": {},
     "parallel/test-webcrypto-export-import-ml-kem.js": {},
+    "parallel/test-webcrypto-random.js": {},
     "parallel/test-webcrypto-keygen-kmac.js": {
       "ignore": true,
       "reason": "Tests SubtleCrypto generateKey for KMAC128 / KMAC256, a Node-specific WebCrypto extension that requires OpenSSL >= 3 (test gates on hasOpenSSL(3)); Deno's ext/crypto/ does not register KMAC as a recognised SubtleCrypto algorithm. Could be revisited if KMAC is added — a SHA-3-based KMAC is implementable via the sha3 / cshake Rust crates"
@@ -2847,6 +2863,10 @@
     "parallel/test-webcrypto-supports.mjs": {
       "ignore": true,
       "reason": "Requires the WebCrypto Level 2 SubtleCrypto.supports() static method, which Deno does not implement; the test also exercises algorithms Deno does not support (SHA-3, KMAC, Argon2, X448 KEM, encapsulateKey/decapsulateBits). Could be revisited if SubtleCrypto.supports lands in ext/crypto/ along with the algorithms it advertises"
+    },
+    "parallel/test-webcrypto-webidl.js": {
+      "ignore": true,
+      "reason": "Tests Node's internal/crypto/webidl JS module (WebIDL converters such as converters.boolean, converters.DOMString, requiredArguments) via require('internal/crypto/webidl') with --expose-internals; Deno's WebCrypto is implemented in Rust (ext/crypto/) and does not expose this internal module"
     },
     "parallel/test-websocket.js": {},
     "parallel/test-webstorage-without-sqlite.js": {},

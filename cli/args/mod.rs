@@ -1359,11 +1359,21 @@ impl CliOptions {
   }
 
   /// Returns unstable feature flags as CLI arguments (e.g., "--unstable-unsafe-proto").
-  /// This includes features from both CLI flags and config file.
+  /// This includes features from both CLI flags and config file. Features that
+  /// are only valid in `deno.json` (e.g. `fmt-component`, `fmt-sql`) and don't
+  /// have a registered CLI flag are filtered out, otherwise child processes
+  /// spawned with these args (e.g. via `deno x`) would reject them with
+  /// "unexpected argument".
   pub fn unstable_args(&self) -> Vec<String> {
+    let cli_flag_names: std::collections::HashSet<&str> =
+      deno_runtime::UNSTABLE_FEATURES
+        .iter()
+        .map(|f| f.name)
+        .collect();
     self
       .unstable_features()
       .into_iter()
+      .filter(|f| cli_flag_names.contains(*f))
       .map(|f| format!("--unstable-{}", f))
       .collect()
   }

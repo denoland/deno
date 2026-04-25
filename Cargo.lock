@@ -2039,7 +2039,6 @@ name = "deno_cache"
 version = "0.179.0"
 dependencies = [
  "async-stream",
- "async-trait",
  "base64 0.22.1",
  "bytes",
  "chrono",
