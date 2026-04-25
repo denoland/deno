@@ -2682,6 +2682,7 @@
     "parallel/test-url-parse-query.js": {},
     "parallel/test-url-pathtofileurl.js": {},
     "parallel/test-url-relative.js": {},
+    "parallel/test-url-revokeobjecturl.js": {},
     "parallel/test-url-urltooptions.js": {},
     "parallel/test-utf8-scripts.js": {},
     "parallel/test-util-convert-signal-to-exit-code.mjs": {},
