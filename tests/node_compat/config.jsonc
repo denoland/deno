@@ -1056,6 +1056,7 @@
     "parallel/test-fs-timestamp-parsing-error.js": {},
     "parallel/test-fs-truncate-clear-file-zero.js": {},
     "parallel/test-fs-truncate-sync.js": {},
+    "parallel/test-fs-truncate.js": {},
     "parallel/test-fs-unlink-type-check.js": {},
     "parallel/test-fs-utils-get-dirents.js": {},
     "parallel/test-fs-util-validateoffsetlength.js": {},
