@@ -99,6 +99,8 @@ deno_core::extension!(
     op_node_public_decrypt,
     op_node_public_encrypt,
     op_node_random_int,
+    op_node_argon2_async,
+    op_node_argon2_sync,
     op_node_scrypt_async,
     op_node_scrypt_sync,
     op_node_sign,
@@ -1028,6 +1030,129 @@ pub async fn op_node_scrypt_async(
     )
     .map(|_| output_buffer.into())
     .map_err(ScryptAsyncError::Other)
+  })
+  .await?
+}
+
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+pub enum Argon2Error {
+  #[class(generic)]
+  #[error("Invalid Argon2 algorithm")]
+  InvalidAlgorithm,
+  #[class(generic)]
+  #[error("Invalid Argon2 parameters: {0}")]
+  InvalidParams(String),
+  #[class(generic)]
+  #[error("Argon2 hashing failed: {0}")]
+  HashFailed(String),
+  #[class(inherit)]
+  #[error(transparent)]
+  Join(#[from] tokio::task::JoinError),
+}
+
+fn argon2_algorithm(name: &str) -> Result<argon2::Algorithm, Argon2Error> {
+  match name {
+    "argon2d" => Ok(argon2::Algorithm::Argon2d),
+    "argon2i" => Ok(argon2::Algorithm::Argon2i),
+    "argon2id" => Ok(argon2::Algorithm::Argon2id),
+    _ => Err(Argon2Error::InvalidAlgorithm),
+  }
+}
+
+#[allow(clippy::too_many_arguments, reason = "all arguments are needed")]
+fn argon2_compute(
+  algorithm: &str,
+  message: &[u8],
+  nonce: &[u8],
+  secret: Option<&[u8]>,
+  associated_data: Option<&[u8]>,
+  parallelism: u32,
+  tag_length: u32,
+  memory: u32,
+  passes: u32,
+) -> Result<Vec<u8>, Argon2Error> {
+  let alg = argon2_algorithm(algorithm)?;
+  let mut builder = argon2::ParamsBuilder::new();
+  builder
+    .m_cost(memory)
+    .t_cost(passes)
+    .p_cost(parallelism)
+    .output_len(tag_length as usize);
+  if let Some(ad) = associated_data {
+    let data = argon2::AssociatedData::new(ad)
+      .map_err(|e| Argon2Error::InvalidParams(e.to_string()))?;
+    builder.data(data);
+  }
+  let params = builder
+    .build()
+    .map_err(|e| Argon2Error::InvalidParams(e.to_string()))?;
+  let argon = match secret {
+    Some(s) => {
+      argon2::Argon2::new_with_secret(s, alg, argon2::Version::V0x13, params)
+        .map_err(|e| Argon2Error::InvalidParams(e.to_string()))?
+    }
+    None => argon2::Argon2::new(alg, argon2::Version::V0x13, params),
+  };
+  let mut output = vec![0u8; tag_length as usize];
+  argon
+    .hash_password_into(message, nonce, &mut output)
+    .map_err(|e| Argon2Error::HashFailed(e.to_string()))?;
+  Ok(output)
+}
+
+#[allow(clippy::too_many_arguments, reason = "all arguments are needed")]
+#[op2]
+pub fn op_node_argon2_sync(
+  #[string] algorithm: &str,
+  #[buffer] message: &[u8],
+  #[buffer] nonce: &[u8],
+  #[buffer] secret: Option<&[u8]>,
+  #[buffer] associated_data: Option<&[u8]>,
+  #[smi] parallelism: u32,
+  #[smi] tag_length: u32,
+  #[smi] memory: u32,
+  #[smi] passes: u32,
+) -> Result<Uint8Array, Argon2Error> {
+  argon2_compute(
+    algorithm,
+    message,
+    nonce,
+    secret,
+    associated_data,
+    parallelism,
+    tag_length,
+    memory,
+    passes,
+  )
+  .map(Into::into)
+}
+
+#[allow(clippy::too_many_arguments, reason = "all arguments are needed")]
+#[op2]
+pub async fn op_node_argon2_async(
+  #[string] algorithm: String,
+  #[buffer(copy)] message: Vec<u8>,
+  #[buffer(copy)] nonce: Vec<u8>,
+  #[buffer(copy)] secret: Option<Vec<u8>>,
+  #[buffer(copy)] associated_data: Option<Vec<u8>>,
+  #[smi] parallelism: u32,
+  #[smi] tag_length: u32,
+  #[smi] memory: u32,
+  #[smi] passes: u32,
+) -> Result<Uint8Array, Argon2Error> {
+  spawn_blocking(move || {
+    argon2_compute(
+      &algorithm,
+      &message,
+      &nonce,
+      secret.as_deref(),
+      associated_data.as_deref(),
+      parallelism,
+      tag_length,
+      memory,
+      passes,
+    )
+    .map(Into::into)
   })
   .await?
 }

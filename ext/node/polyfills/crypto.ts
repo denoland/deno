@@ -94,8 +94,8 @@ import {
 import {
   ERR_INVALID_ARG_TYPE,
   ERR_INVALID_ARG_VALUE,
-  NodeError,
 } from "ext:deno_node/internal/errors.ts";
+import { argon2, argon2Sync } from "ext:deno_node/internal/crypto/argon2.ts";
 import type {
   Cipher,
   CipherCCM,
@@ -440,33 +440,6 @@ const verify = verifyOneShot;
 
 /* Deprecated in Node.js, alias of randomBytes */
 const pseudoRandomBytes = randomBytes;
-
-// Argon2 KDF (Node 24+ behind OpenSSL >= 3.2). Deno does not yet implement
-// it; throw the canonical "not supported" error so callers can detect this
-// path the same way they would on a Node build without OpenSSL >= 3.2.
-function argon2NotSupported(): never {
-  throw new NodeError(
-    "ERR_CRYPTO_ARGON2_NOT_SUPPORTED",
-    "Argon2 is not supported",
-  );
-}
-function argon2(
-  _algorithm?: unknown,
-  _password?: unknown,
-  _salt?: unknown,
-  _options?: unknown,
-  _callback?: unknown,
-): void {
-  argon2NotSupported();
-}
-function argon2Sync(
-  _algorithm?: unknown,
-  _password?: unknown,
-  _salt?: unknown,
-  _options?: unknown,
-): never {
-  argon2NotSupported();
-}
 
 export default {
   argon2,
