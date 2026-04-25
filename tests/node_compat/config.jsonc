@@ -1687,7 +1687,10 @@
     "parallel/test-net-reconnect.js": {},
     "parallel/test-net-remote-address-port.js": {},
     "parallel/test-net-remote-address.js": {},
-    "parallel/test-net-reuseport.js": {},
+    "parallel/test-net-reuseport.js": {
+      "ignore": true,
+      "reason": "reusePort option not implemented"
+    },
     "parallel/test-net-server-async-dispose.mjs": {},
     "parallel/test-net-server-blocklist.js": {},
     "parallel/test-net-server-capture-rejection.js": {},
