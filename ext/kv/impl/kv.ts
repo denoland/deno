@@ -751,7 +751,7 @@ class RemoteKvBackend implements KvBackend {
         payload: e.payload,
         deadlineMs: BigInt(e.deadlineMs),
         keysIfUndelivered: e.keysIfUndelivered,
-        backoffSchedule: e.backoffSchedule ?? [],
+        backoffSchedule: e.backoffSchedule,
       }),
     );
 
