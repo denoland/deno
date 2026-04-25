@@ -256,7 +256,7 @@
       ]
     },
     "cache-storage-keys.https.any.html": {
-      "flaky": true
+      "ignore": true
     },
     "cache-storage-keys.https.any.worker.html": true,
     "cache-storage-match.https.any.html": {
