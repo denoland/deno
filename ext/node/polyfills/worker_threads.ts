@@ -66,7 +66,6 @@ const {
   ObjectPrototypeIsPrototypeOf,
   PromiseReject,
   PromiseResolve,
-  queueMicrotask,
   ReflectHas,
   SafeMap,
   SafeRegExp,
@@ -1118,7 +1117,7 @@ class NodeMessageChannel {
         port2.dispatchEvent(new Event("close"));
       }
       if (typeof callback === "function") {
-        queueMicrotask(callback);
+        process.nextTick(callback);
       }
     };
     port2.close = (callback) => {
@@ -1128,7 +1127,7 @@ class NodeMessageChannel {
         port1.dispatchEvent(new Event("close"));
       }
       if (typeof callback === "function") {
-        queueMicrotask(callback);
+        process.nextTick(callback);
       }
     };
   }
@@ -1147,12 +1146,8 @@ function webMessagePortToNodeMessagePort(port: MessagePort) {
       if (name == "message" || name == "messageerror") {
         patchMessagePortIfFound(ev.data);
         listener(ev.data);
-      } else if (ArrayIsArray(ev.detail)) {
-        // Multi-arg emit: detail is the args array
-        ReflectApply(listener, undefined, ev.detail);
       } else {
-        // Single-arg emit: detail is the value itself
-        listener(ev.detail ?? ev.data ?? ev);
+        ReflectApply(listener, undefined, ev.detail);
       }
     };
     if (name == "message") {
@@ -1189,8 +1184,7 @@ function webMessagePortToNodeMessagePort(port: MessagePort) {
     return this;
   };
   port.emit = function (name: string, ...args: unknown[]) {
-    const detail = args.length <= 1 ? args[0] : args;
-    const ev = new CustomEvent(name, { detail });
+    const ev = new CustomEvent(name, { detail: args });
     return port.dispatchEvent(ev);
   };
   port[nodeWorkerThreadCloseCb] = () => {
@@ -1220,20 +1214,20 @@ function webMessagePortToNodeMessagePort(port: MessagePort) {
             transfer === null || typeof transfer !== "object" ||
             !ReflectHas(transfer, SymbolIterator)
           ) {
-            const err = new TypeError(
-              "Optional options.transfer argument must be an iterable",
+            throw new ERR_INVALID_ARG_TYPE(
+              "options.transfer",
+              "iterable",
+              transfer,
             );
-            err.code = "ERR_INVALID_ARG_TYPE";
-            throw err;
           }
           try {
             transferList = ArrayFrom(transfer);
           } catch {
-            const err = new TypeError(
-              "Optional options.transfer argument must be an iterable",
+            throw new ERR_INVALID_ARG_TYPE(
+              "options.transfer",
+              "iterable",
+              transfer,
             );
-            err.code = "ERR_INVALID_ARG_TYPE";
-            throw err;
           }
         } else {
           // Plain object without transfer - treat as no transfer
@@ -1244,11 +1238,11 @@ function webMessagePortToNodeMessagePort(port: MessagePort) {
         !ReflectHas(transferList, SymbolIterator)
       ) {
         // Not iterable (number, boolean, symbol, string)
-        const err = new TypeError(
-          "Optional transferList argument must be an iterable",
+        throw new ERR_INVALID_ARG_TYPE(
+          "transferList",
+          "iterable",
+          transferList,
         );
-        err.code = "ERR_INVALID_ARG_TYPE";
-        throw err;
       }
     }
 
