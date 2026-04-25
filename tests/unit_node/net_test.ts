@@ -313,7 +313,8 @@ Deno.test("[node/net] Socket.remoteFamily returns string", async () => {
   });
   server.listen(0, () => {
     const { port } = server.address() as net.AddressInfo;
-    net.createConnection(port, "127.0.0.1");
+    const client = net.createConnection(port, "127.0.0.1");
+    client.on("end", () => client.destroy());
   });
   await deferred.promise;
 });

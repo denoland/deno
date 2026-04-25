@@ -182,15 +182,6 @@ impl Completer for EditorHelper {
     pos: usize,
     _ctx: &Context<'_>,
   ) -> Result<(usize, Vec<String>), ReadlineError> {
-    let lsp_completions = self.sync_sender.lsp_completions(line, pos);
-    if !lsp_completions.is_empty() {
-      // assumes all lsp completions have the same start position
-      return Ok((
-        lsp_completions[0].range.start,
-        lsp_completions.into_iter().map(|c| c.new_text).collect(),
-      ));
-    }
-
     let expr = get_expr_from_line_at_pos(line, pos);
 
     // check if the expression is in the form `obj.prop`

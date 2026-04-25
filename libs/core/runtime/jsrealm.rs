@@ -124,7 +124,7 @@ pub struct ContextState {
   pub(crate) external_ops_tracker: ExternalOpsTracker,
   pub(crate) ext_import_meta_proto: RefCell<Option<v8::Global<v8::Object>>>,
   /// Phase-specific state for the libuv-style event loop.
-  pub(crate) event_loop_phases: RefCell<EventLoopPhases>,
+  pub event_loop_phases: RefCell<EventLoopPhases>,
   /// Pointer to the `UvLoopInner` for the libuv compat layer.
   /// Set via [`JsRuntime::register_uv_loop`] when a `uv_loop_t` is
   /// associated with this context.
