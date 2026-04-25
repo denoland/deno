@@ -874,6 +874,20 @@ internals.__initWorkerThreads = (
     parentPort.removeEventListener = function (name, listener) {
       return nativeRemoveEventListener(name, listener);
     };
+    // Delegate parentPort.onmessage to globalThis.onmessage so that
+    // setting parentPort.onmessage = handler works like the old code
+    // where parentPort === globalThis.
+    ObjectDefineProperty(parentPort, "onmessage", {
+      __proto__: null,
+      get() {
+        return globalThis.onmessage;
+      },
+      set(handler) {
+        globalThis.onmessage = handler;
+      },
+      configurable: true,
+      enumerable: true,
+    });
 
     // Track Node-style message listener count to prevent double delivery.
     // When parentPort.on('message') listeners exist, suppress the web
@@ -888,22 +902,36 @@ internals.__initWorkerThreads = (
     // when both parentPort.on('message') and self.onmessage are set.
     if (maybeWorkerMetadata) {
       let storedOnmessage: ((ev: Event) => void) | null = null;
+      // Dynamically add/remove the forwarding listener so we don't
+      // keep a permanent "message" listener on globalThis. A permanent
+      // listener would make hasMessageEventListener() always true and
+      // prevent the worker from exiting.
+      let onmessageForwarder: ((ev: Event) => void) | null = null;
       ObjectDefineProperty(globalThis, "onmessage", {
         __proto__: null,
         get() {
           return storedOnmessage;
         },
         set(handler) {
+          // Remove old forwarder if any
+          if (onmessageForwarder) {
+            nativeRemoveEventListener("message", onmessageForwarder);
+            onmessageForwarder = null;
+          }
           storedOnmessage = handler;
+          // Add forwarder only when a handler is set
+          if (typeof handler === "function") {
+            onmessageForwarder = (ev: Event) => {
+              if (messageListenerCount > 0) return;
+              if (typeof storedOnmessage === "function") {
+                storedOnmessage(ev);
+              }
+            };
+            nativeAddEventListener("message", onmessageForwarder);
+          }
         },
         configurable: true,
         enumerable: true,
-      });
-      nativeAddEventListener("message", (ev: Event) => {
-        if (messageListenerCount > 0) return;
-        if (typeof storedOnmessage === "function") {
-          storedOnmessage(ev);
-        }
       });
     }
 
