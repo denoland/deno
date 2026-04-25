@@ -32,7 +32,6 @@ use std::ptr::NonNull;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use deno_core::v8_static_strings;
 use deno_core::CppgcInherits;
 use deno_core::GarbageCollected;
 use deno_core::OpState;
@@ -45,6 +44,7 @@ use deno_core::uv_compat::uv_buf_t;
 use deno_core::uv_compat::uv_stream_t;
 use deno_core::uv_compat::uv_write_t;
 use deno_core::v8;
+use deno_core::v8_static_strings;
 use deno_node_crypto::x509::Certificate;
 use deno_node_crypto::x509::CertificateObject;
 use deno_tls::rustls;
@@ -3167,9 +3167,7 @@ fn build_server_config(
               }
             }
             Err(e) => {
-              log::debug!(
-                "TLSWrap: failed to parse client CA PEM entry: {e}"
-              );
+              log::debug!("TLSWrap: failed to parse client CA PEM entry: {e}");
             }
           }
         }
@@ -3190,9 +3188,7 @@ fn build_server_config(
         }))
       }
       Err(e) => {
-        log::debug!(
-          "TLSWrap: failed to build client cert verifier: {e}"
-        );
+        log::debug!("TLSWrap: failed to build client cert verifier: {e}");
         return None;
       }
     }
