@@ -84,7 +84,7 @@ import type {
 } from "./sqlite_backend.ts";
 
 import { RemoteBackend } from "./remote_backend.ts";
-import type { RemoteKvEntry } from "./remote_backend.ts";
+import type { RemoteKvEntry, WatchKeyUpdate } from "./remote_backend.ts";
 
 import {
   type Check as ProtoCheck,
@@ -778,9 +778,42 @@ class RemoteKvBackend implements KvBackend {
   }
 
   watch(keys: Uint8Array[]): ReadableStream {
-    const raw = this.#backend.watch(keys);
-    // Transform WatchKeyUpdate[] to the format expected by the Kv.watch() API
-    return raw;
+    const rawStream = this.#backend.watch(keys);
+    const reader = rawStream.getReader();
+    // Transform WatchKeyUpdate[] → (Deno.KvEntryMaybe | "unchanged")[]
+    return new ReadableStream({
+      async pull(controller) {
+        const { done, value: updates } = await reader.read();
+        if (done) {
+          controller.close();
+          return;
+        }
+        const entries: (Deno.KvEntryMaybe<unknown> | "unchanged")[] = [];
+        for (let i = 0; i < (updates as WatchKeyUpdate[]).length; i++) {
+          const u = (updates as WatchKeyUpdate[])[i];
+          if (!u.changed) {
+            ArrayPrototypePush(entries, "unchanged");
+          } else if (u.entry) {
+            const kvEntry = remoteEntryToKvEntry(u.entry);
+            ArrayPrototypePush(entries, {
+              key: decodeKvKeyBytes(kvEntry.key),
+              value: deserializeRawValue(kvValueToRawValue(kvEntry.value)),
+              versionstamp: hexEncode(kvEntry.versionstamp),
+            });
+          } else {
+            ArrayPrototypePush(entries, {
+              key: decodeKvKeyBytes(keys[i]),
+              value: null,
+              versionstamp: null,
+            });
+          }
+        }
+        controller.enqueue(entries);
+      },
+      cancel() {
+        reader.cancel();
+      },
+    });
   }
 
   close() {
@@ -1348,7 +1381,17 @@ class AtomicOperation {
   mutate(...mutations: Deno.KvMutation[]): this {
     for (let mi = 0; mi < mutations.length; mi++) {
       const m = mutations[mi];
-      const key = encodeKvKey(m.key);
+      // Handle commitVersionstamp symbol as last key element
+      let mKey = m.key;
+      let isVersionstampedKey = false;
+      if (
+        mKey.length > 0 &&
+        mKey[mKey.length - 1] === commitVersionstampSymbol
+      ) {
+        mKey = ArrayPrototypeSlice(mKey, 0, -1) as Deno.KvKey;
+        isVersionstampedKey = true;
+      }
+      const key = encodeKvKey(mKey);
       validateWriteKey(key);
       let kind: MutationKind;
 
@@ -1364,7 +1407,7 @@ class AtomicOperation {
             throw new TypeError("Invalid mutation 'set' without value");
           }
           kind = {
-            type: "set",
+            type: isVersionstampedKey ? "setSuffixVersionstampedKey" : "set",
             value: rawValueToKvValue(serializeValue(m.value)),
           };
           break;

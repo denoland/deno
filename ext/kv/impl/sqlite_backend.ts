@@ -174,6 +174,8 @@ const SQL_QUEUE_ADD_RUNNING =
 const SQL_QUEUE_REMOVE_RUNNING = "DELETE FROM queue_running WHERE id = ?";
 const SQL_QUEUE_GET_RUNNING_BY_ID =
   "SELECT deadline, id, data, backoff_schedule, keys_if_undelivered FROM queue_running WHERE id = ?";
+const SQL_QUEUE_GET_RUNNING_PAST_DEADLINE =
+  "SELECT deadline, id, data, backoff_schedule, keys_if_undelivered FROM queue_running WHERE deadline <= ? ORDER BY deadline";
 
 // -- Helpers --
 
@@ -315,6 +317,8 @@ export class SqliteBackend {
   #stmtQueueAddRunning: ReturnType<DatabaseSync["prepare"]> | null = null;
   #stmtQueueRemoveRunning: ReturnType<DatabaseSync["prepare"]> | null = null;
   #stmtQueueGetRunningById: ReturnType<DatabaseSync["prepare"]> | null = null;
+  #stmtQueueGetRunningPastDeadline: ReturnType<DatabaseSync["prepare"]> | null =
+    null;
 
   constructor(path: string | ":memory:") {
     this.#db = new DatabaseSync(path);
@@ -371,6 +375,9 @@ export class SqliteBackend {
     this.#stmtQueueRemoveRunning = this.#db.prepare(SQL_QUEUE_REMOVE_RUNNING);
     this.#stmtQueueGetRunningById = this.#db.prepare(
       SQL_QUEUE_GET_RUNNING_BY_ID,
+    );
+    this.#stmtQueueGetRunningPastDeadline = this.#db.prepare(
+      SQL_QUEUE_GET_RUNNING_PAST_DEADLINE,
     );
   }
 
@@ -718,6 +725,9 @@ export class SqliteBackend {
 
     const now = DateNow();
 
+    // Clean up messages stuck in the running queue past their deadline
+    this.#cleanupRunningQueue(now);
+
     this.#db.exec("BEGIN IMMEDIATE");
     try {
       const row = this.#stmtQueueGetNextReady!.get(now) as
@@ -777,6 +787,30 @@ export class SqliteBackend {
 
       // Failure: requeue with backoff
       this.#requeueMessage(id);
+      this.#db.exec("COMMIT");
+    } catch (e) {
+      try {
+        this.#db.exec("ROLLBACK");
+      } catch {
+        // Ignore rollback errors
+      }
+      throw e;
+    }
+  }
+
+  #cleanupRunningQueue(now: number): void {
+    this.#db.exec("BEGIN IMMEDIATE");
+    try {
+      const rows = this.#stmtQueueGetRunningPastDeadline!.all(now) as Array<{
+        deadline: number;
+        id: string;
+        data: Uint8Array;
+        backoff_schedule: string;
+        keys_if_undelivered: string;
+      }>;
+      for (let i = 0; i < rows.length; i++) {
+        this.#requeueMessage(rows[i].id);
+      }
       this.#db.exec("COMMIT");
     } catch (e) {
       try {
