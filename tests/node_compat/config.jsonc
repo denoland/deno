@@ -2081,6 +2081,7 @@
     },
     "parallel/test-process-really-exit.js": {},
     "parallel/test-process-remove-all-signal-listeners.js": {},
+    "parallel/test-process-setsourcemapsenabled.js": {},
     "parallel/test-process-title-cli.js": {},
     "parallel/test-process-release.js": {},
     "parallel/test-process-threadCpuUsage-main-thread.js": {},
