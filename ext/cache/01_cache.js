@@ -86,12 +86,16 @@ class CacheStorage {
         return undefined;
       }
       const cache = await this.open(cacheName);
-      return await cache.match(request, options);
+      return await Cache.prototype.match.call(cache, request, options);
     }
     const names = await op_cache_storage_keys();
     for (let i = 0; i < names.length; ++i) {
       const cache = await this.open(names[i]);
-      const response = await cache.match(request, options);
+      const response = await Cache.prototype.match.call(
+        cache,
+        request,
+        options,
+      );
       if (response !== undefined) {
         return response;
       }
