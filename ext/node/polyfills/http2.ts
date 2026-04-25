@@ -4149,6 +4149,21 @@ function connect(authority, options, listener) {
   return session;
 }
 
+// Support util.promisify
+ObjectDefineProperty(connect, promisify.custom, {
+  __proto__: null,
+  value: function (authority, options) {
+    return new Promise((resolve, reject) => {
+      const server = connect(authority, options, () => {
+        server.removeListener("error", reject);
+        return resolve(server);
+      });
+
+      server.once("error", reject);
+    });
+  },
+});
+
 let _init = false;
 function initCallbacks() {
   if (_init) return;
