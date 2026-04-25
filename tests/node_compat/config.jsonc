@@ -151,6 +151,7 @@
     "parallel/test-buffer-fakes.js": {},
     "parallel/test-buffer-fill.js": {},
     "parallel/test-buffer-from.js": {},
+    "parallel/test-buffer-generic-methods.js": {},
     "parallel/test-buffer-includes.js": {},
     "parallel/test-buffer-indexof.js": {},
     "parallel/test-buffer-inheritance.js": {},
