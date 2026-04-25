@@ -401,10 +401,6 @@
     "parallel/test-crypto-domains.js": {},
     "parallel/test-crypto-ecdh-convert-key.js": {},
     "parallel/test-crypto-ecb.js": {},
-    "parallel/test-crypto-encap-decap.js": {
-      "ignore": true,
-      "reason": "Tests crypto.encapsulate / crypto.decapsulate (Node 24+ KEM API, requires OpenSSL >= 3 for RSASVE and OpenSSL >= 3.2 for DHKEM); Deno does not implement these APIs. Could be revisited if a KEM implementation lands in ext/node/ops/crypto/"
-    },
     "parallel/test-crypto-from-binary.js": {},
     "parallel/test-crypto-getcipherinfo.js": {},
     "parallel/test-crypto-hmac.js": {},
