@@ -55,6 +55,7 @@ use crate::ops::handle_wrap::OwnedPtr;
 use crate::ops::handle_wrap::ProviderType;
 use crate::ops::stream_wrap::LibUvStreamWrap;
 use crate::ops::stream_wrap::StreamBaseState;
+use crate::ops::stream_wrap::free_uv_buf;
 use crate::ops::stream_wrap_state::ReadInterceptor;
 use crate::ops::tls::NodeTlsState;
 
@@ -1400,17 +1401,6 @@ unsafe fn tls_read_interceptor_cb(
   }
 }
 
-#[allow(dead_code, reason = "used by tls_read_interceptor_cb")]
-fn free_uv_buf(buf: *const uv_buf_t) {
-  // SAFETY: buf was allocated by stream_wrap::on_uv_alloc with matching layout
-  unsafe {
-    if !(*buf).base.is_null() && (*buf).len > 0 {
-      let layout = std::alloc::Layout::from_size_align((*buf).len, 1).unwrap();
-      std::alloc::dealloc((*buf).base as *mut u8, layout);
-    }
-  }
-}
-
 /// Callback for shutdown request — just frees the request.
 unsafe extern "C" fn shutdown_cb(
   req: *mut uv_compat::uv_shutdown_t,
@@ -1434,10 +1424,17 @@ unsafe extern "C" fn enc_write_cb(req: *mut uv_write_t, status: i32) {
       (*ptr).enc_writes_in_flight =
         (*ptr).enc_writes_in_flight.saturating_sub(1);
       if (*ptr).enc_writes_in_flight == 0 && status >= 0 {
-        // Don't drain more cleartext here — that's done by cycle()
-        // which is triggered by incoming reads. This prevents TCP
-        // send buffer deadlocks: we let the event loop process reads
-        // (echo data from the peer) between encryption rounds.
+        // If clear_in() was rate-limited (MAX_CLEAR_IN) and left
+        // pending cleartext, drain the next chunk now. Without
+        // this the remaining bytes are never fed to rustls and the
+        // peer never receives the full body ("socket hang up").
+        if (*ptr)
+          .pending_cleartext
+          .as_ref()
+          .is_some_and(|v| !v.is_empty())
+        {
+          (*ptr).clear_in();
+        }
         let enc_action = (*ptr).enc_out_collect();
         TLSWrapInner::do_enc_out_action(ptr, enc_action);
       } else if (*ptr).enc_writes_in_flight == 0

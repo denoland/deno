@@ -41,7 +41,7 @@ import { read, readSync } from "ext:deno_node/_fs/_fs_read.ts";
 import { readdir, readdirSync } from "ext:deno_node/_fs/_fs_readdir.ts";
 import { EventEmitter } from "node:events";
 import { type MaybeEmpty, notImplemented } from "ext:deno_node/_utils.ts";
-import { promisify } from "node:util";
+import { deprecate, promisify } from "node:util";
 import { delay } from "ext:deno_node/_util/async.ts";
 import promises from "ext:deno_node/internal/fs/promises.ts";
 // @deno-types="./internal/fs/streams.d.ts"
@@ -231,10 +231,21 @@ function stat(
   PromisePrototypeThen(
     Deno.stat(path),
     (stat) => callback(null, CFISBIS(stat, options.bigint)),
-    (err) =>
+    (err) => {
+      // Match Node: `{ throwIfNoEntry: false }` suppresses ENOENT and yields
+      // undefined stats, matching the behavior of binding.stat(..., false)
+      // in lib/fs.js stat().
+      if (
+        (options as statOptions)?.throwIfNoEntry === false &&
+        ObjectPrototypeIsPrototypeOf(Deno.errors.NotFound.prototype, err)
+      ) {
+        callback(null, undefined);
+        return;
+      }
       callback(
         denoErrorToNodeError(err, { syscall: "stat", path }),
-      ),
+      );
+    },
   );
 }
 
@@ -308,38 +319,87 @@ function encodeRealpathResult(
   return asBuffer.toString(options.encoding);
 }
 
-function realpath(
+function realpathImpl(
   path: string | Buffer,
-  options?: RealpathOptions | RealpathCallback | RealpathEncoding,
-  callback?: RealpathCallback,
+  options:
+    | RealpathOptions
+    | RealpathCallback
+    | RealpathEncoding
+    | undefined,
+  callback: RealpathCallback | undefined,
+  syscall: "lstat" | "realpath",
 ) {
   if (typeof options === "function") {
     callback = options;
   }
   validateFunction(callback, "cb");
   options = getOptions(options) as RealpathEncodingObj;
-  path = getValidatedPathToString(path);
+  const validatedPath = getValidatedPathToString(path);
 
   PromisePrototypeThen(
-    Deno.realPath(path),
-    (path) => callback!(null, encodeRealpathResult(path, options)),
-    (err) => callback!(err),
+    Deno.realPath(validatedPath),
+    (resolved) =>
+      callback!(null, encodeRealpathResult(resolved, options as never)),
+    (err) =>
+      callback!(
+        denoErrorToNodeError(err as Error, {
+          syscall,
+          path: validatedPath,
+        }),
+      ),
   );
 }
 
-realpath.native = realpath;
+function realpath(
+  path: string | Buffer,
+  options?: RealpathOptions | RealpathCallback | RealpathEncoding,
+  callback?: RealpathCallback,
+) {
+  // Match Node: `fs.realpath` uses lstat under the hood and emits
+  // `syscall: 'lstat'`; `fs.realpath.native` calls the platform realpath
+  // and emits `syscall: 'realpath'` (see lib/fs.js).
+  realpathImpl(path, options, callback, "lstat");
+}
+
+realpath.native = function realpath_native(
+  path: string | Buffer,
+  options?: RealpathOptions | RealpathCallback | RealpathEncoding,
+  callback?: RealpathCallback,
+) {
+  realpathImpl(path, options, callback, "realpath");
+};
+
+function realpathSyncImpl(
+  path: string,
+  options: RealpathOptions | RealpathEncoding | undefined,
+  syscall: "lstat" | "realpath",
+): string | Buffer {
+  options = getOptions(options) as RealpathEncodingObj;
+  const validatedPath = getValidatedPathToString(path);
+  try {
+    const result = Deno.realPathSync(validatedPath);
+    return encodeRealpathResult(result, options);
+  } catch (err) {
+    throw denoErrorToNodeError(err as Error, {
+      syscall,
+      path: validatedPath,
+    });
+  }
+}
 
 function realpathSync(
   path: string,
   options?: RealpathOptions | RealpathEncoding,
 ): string | Buffer {
-  options = getOptions(options) as RealpathEncodingObj;
-  path = getValidatedPathToString(path);
-  const result = Deno.realPathSync(path);
-  return encodeRealpathResult(result, options);
+  return realpathSyncImpl(path, options, "lstat");
 }
 
-realpathSync.native = realpathSync;
+realpathSync.native = function realpathSync_native(
+  path: string,
+  options?: RealpathOptions | RealpathEncoding,
+): string | Buffer {
+  return realpathSyncImpl(path, options, "realpath");
+};
 
 // -- readv --
 
@@ -1481,10 +1541,18 @@ function link(
   existingPath = getValidatedPathToString(existingPath);
   newPath = getValidatedPathToString(newPath);
 
+  // Match Node: errors carry both `path` and `dest` (see lib/fs.js link).
   PromisePrototypeThen(
     Deno.link(existingPath, newPath),
     () => callback(null),
-    callback,
+    (err) =>
+      callback(
+        denoErrorToNodeError(err as Error, {
+          syscall: "link",
+          path: existingPath as string,
+          dest: newPath as string,
+        }),
+      ),
   );
 }
 
@@ -1495,7 +1563,15 @@ function linkSync(
   existingPath = getValidatedPathToString(existingPath);
   newPath = getValidatedPathToString(newPath);
 
-  Deno.linkSync(existingPath, newPath);
+  try {
+    Deno.linkSync(existingPath, newPath);
+  } catch (err) {
+    throw denoErrorToNodeError(err as Error, {
+      syscall: "link",
+      path: existingPath as string,
+      dest: newPath as string,
+    });
+  }
 }
 
 function unlink(
@@ -1803,7 +1879,9 @@ function mkdir(
 
   if (typeof options == "function") {
     callback = options;
-  } else if (typeof options === "number") {
+  } else if (typeof options === "number" || typeof options === "string") {
+    // Match Node: a number or string second arg is a file mode
+    // (see lib/fs.js mkdir).
     mode = parseFileMode(options, "mode");
   } else if (typeof options === "boolean") {
     recursive = options;
@@ -1855,7 +1933,9 @@ function mkdirSync(
   let mode = 0o777;
   let recursive = false;
 
-  if (typeof options === "number") {
+  if (typeof options === "number" || typeof options === "string") {
+    // Match Node: a number or string second arg is a file mode
+    // (see lib/fs.js mkdirSync).
     mode = parseFileMode(options, "mode");
   } else if (typeof options === "boolean") {
     recursive = options;
@@ -2629,7 +2709,10 @@ function writeFileSync(
 
   const encoding = getValidatedEncoding(options) || "utf8";
 
-  if (!ArrayBufferIsView(data) && !_isCustomIterable(data)) {
+  // Match Node: fs.writeFileSync only accepts string or ArrayBufferView for
+  // data (see lib/fs.js). The async Promise variant supports custom
+  // iterables, but the sync version does not.
+  if (!ArrayBufferIsView(data)) {
     validateStringAfterArrayBufferView(data, "data");
     data = Buffer.from(data, encoding);
   }
@@ -3286,7 +3369,10 @@ class StatWatcher extends EventEmitter {
       return;
     }
     this.#abortController.abort();
-    this.emit("stop");
+    // Match Node: stop fires asynchronously so listeners removed
+    // synchronously after stop() are not called (see
+    // StatWatcher.prototype.stop in lib/internal/fs/watchers.js).
+    process.nextTick(() => this.emit("stop"));
   }
   ref() {
     notImplemented("StatWatcher.ref() is not implemented");
@@ -3335,6 +3421,15 @@ function convertDenoFsEventToNodeFsEvent(
     return "change";
   }
 }
+
+// Match Node: the public `fs.Stats` export is deprecated (DEP0180).
+// Internal call sites use the un-deprecated `Stats` directly (see
+// emptyStats above). See lib/internal/fs/utils.js `Stats: deprecate(...)`.
+const DeprecatedStats = deprecate(
+  Stats,
+  "fs.Stats constructor is deprecated.",
+  "DEP0180",
+);
 
 export default {
   access,
@@ -3416,7 +3511,7 @@ export default {
   rm,
   rmSync,
   stat,
-  Stats,
+  Stats: DeprecatedStats,
   statSync,
   statfs,
   statfsSync,
@@ -3469,6 +3564,7 @@ export {
   cpSync,
   createReadStream,
   createWriteStream,
+  DeprecatedStats as Stats,
   Dir,
   Dirent,
   exists,
@@ -3534,7 +3630,6 @@ export {
   stat,
   statfs,
   statfsSync,
-  Stats,
   statSync,
   symlink,
   symlinkSync,
