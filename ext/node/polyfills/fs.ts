@@ -3064,7 +3064,7 @@ function watch(
   // Resolve the watched path once so we can compute relative paths.
   // Use realPathSync to resolve symlinks (e.g. macOS /var -> /private/var)
   // since Deno.watchFs returns real (symlink-resolved) paths.
-  const resolvedWatchPath = Deno.realPathSync(watchPath);
+  const resolvedWatchPath = realpathSync(watchPath) as string;
 
   asyncIterableToCallback<Deno.FsEvent>(iterator, (val, done) => {
     if (done) return;
@@ -3122,7 +3122,7 @@ function watchPromise(
   const watcher = Deno.watchFs(watchPath, {
     recursive,
   });
-  const resolvedWatchPath = Deno.realPathSync(watchPath);
+  const resolvedWatchPath = realpathSync(watchPath) as string;
 
   if (options?.signal) {
     if (options.signal.aborted) {
