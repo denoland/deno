@@ -149,7 +149,7 @@ import {
   kEmptyObject,
   normalizeEncoding,
 } from "ext:deno_node/internal/util.mjs";
-import { basename, resolve, toNamespacedPath } from "node:path";
+import { basename, relative, resolve, toNamespacedPath } from "node:path";
 import * as pathModule from "node:path";
 import type { Encoding } from "node:crypto";
 import { core, primordials } from "ext:core/mod.js";
@@ -3167,16 +3167,27 @@ function watch(
   // deno-lint-ignore prefer-primordials
   const watchPath = getValidatedPath(filename).toString();
 
+  const recursive = options?.recursive || false;
   const iterator: Deno.FsWatcher = Deno.watchFs(watchPath, {
-    recursive: options?.recursive || false,
+    recursive,
   });
+
+  // Resolve the watched path once so we can compute relative paths.
+  // Use realPathSync to resolve symlinks (e.g. macOS /var -> /private/var)
+  // since Deno.watchFs returns real (symlink-resolved) paths.
+  const resolvedWatchPath = realpathSync(watchPath) as string;
 
   asyncIterableToCallback<Deno.FsEvent>(iterator, (val, done) => {
     if (done) return;
+    // Node.js returns the relative path from the watched directory for
+    // recursive watches, but just the basename for non-recursive watches.
+    const filename = recursive
+      ? relative(resolvedWatchPath, val.paths[0])
+      : basename(val.paths[0]);
     fsWatcher.emit(
       "change",
       convertDenoFsEventToNodeFsEvent(val.kind),
-      basename(val.paths[0]),
+      filename,
     );
   }, (e) => {
     fsWatcher.emit("error", e);
@@ -3218,9 +3229,11 @@ function watchPromise(
   // deno-lint-ignore prefer-primordials
   const watchPath = getValidatedPath(filename).toString();
 
+  const recursive = options?.recursive ?? false;
   const watcher = Deno.watchFs(watchPath, {
-    recursive: options?.recursive ?? false,
+    recursive,
   });
+  const resolvedWatchPath = realpathSync(watchPath) as string;
 
   if (options?.signal) {
     if (options.signal.aborted) {
@@ -3246,8 +3259,11 @@ function watchPromise(
       const eventType = convertDenoFsEventToNodeFsEvent(
         iterResult.value.kind,
       );
+      const fname = recursive
+        ? relative(resolvedWatchPath, iterResult.value.paths[0])
+        : basename(iterResult.value.paths[0]);
       return {
-        value: { eventType, filename: basename(iterResult.value.paths[0]) },
+        value: { eventType, filename: fname },
         done: false,
       };
     },
