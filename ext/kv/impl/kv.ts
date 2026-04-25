@@ -1149,12 +1149,20 @@ class Kv {
       }
       if (next === null) {
         if (this.#isClosed) break;
-        // Poll interval when no messages - race against close
+        // Poll interval when no messages - race against close.
+        // We must clear the timer if close wins to avoid leaking an async op
+        // that would trip the test sanitizer.
+        let timerId: number | undefined;
         const winner = await SafePromiseRace([
-          new Promise((r) => setTimeout(r, 100)),
+          new Promise((r) => {
+            timerId = setTimeout(r, 100);
+          }),
           PromisePrototypeThen(this.#closePromise, () => closedSentinel),
         ]);
-        if (winner === closedSentinel) break;
+        if (winner === closedSentinel) {
+          clearTimeout(timerId);
+          break;
+        }
         continue;
       }
 
