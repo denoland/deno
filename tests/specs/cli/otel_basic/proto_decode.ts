@@ -68,6 +68,26 @@ class Reader {
     return (hi << 32n) | lo;
   }
 
+  float64() {
+    const dv = new DataView(
+      this.buf.buffer,
+      this.buf.byteOffset + this.pos,
+      8,
+    );
+    this.pos += 8;
+    return dv.getFloat64(0, true);
+  }
+
+  float32() {
+    const dv = new DataView(
+      this.buf.buffer,
+      this.buf.byteOffset + this.pos,
+      4,
+    );
+    this.pos += 4;
+    return dv.getFloat32(0, true);
+  }
+
   skip(wireType) {
     switch (wireType) {
       case VARINT:
@@ -116,10 +136,13 @@ function resolveType(typeName, context) {
   return null;
 }
 
-// Convert BigInt to Number if it fits safely, otherwise to string.
-// This matches what the Rust serde JSON serializer does: small values are
-// numbers, large values (like nanosecond timestamps) are strings.
-function bigintToNumber(v) {
+// Convert BigInt to a JavaScript value. For int64/uint64/sint64 types the
+// protobuf JSON mapping always uses strings, matching the Rust serde
+// serializer. For fixed32/uint32 etc. use Number.
+function bigintToNumber(v, asString = false) {
+  if (asString) {
+    return v.toString();
+  }
   if (v >= -9007199254740991n && v <= 9007199254740991n) {
     return Number(v);
   }
@@ -139,6 +162,9 @@ const INT64_TYPES = new Set([
   "fixed64",
   "sfixed64",
 ]);
+// Types that the Rust serde serializer outputs as JSON strings (matching the
+// custom `serialize_to_value` in opentelemetry-proto for AnyValue.intValue).
+const INT64_STRING_TYPES = new Set(["int64", "sint64"]);
 
 export function decode(typeName, buf) {
   const typeDef = typeRegistry.get(typeName);
@@ -157,10 +183,13 @@ function decodeMessage(typeDef, typeName, reader) {
     fieldMap[field.id] = { name, ...field };
   }
 
-  // Determine which fields belong to a oneof
+  // Determine which fields belong to a oneof. Synthetic oneofs (proto3
+  // optional fields) use a name starting with "_" and should be treated as
+  // regular fields — prost/serde serializes them inline.
   const oneofFieldNames = new Set();
   if (typeDef.oneofs) {
-    for (const oneof of Object.values(typeDef.oneofs)) {
+    for (const [oneofName, oneof] of Object.entries(typeDef.oneofs)) {
+      if (oneofName.startsWith("_")) continue;
       for (const fieldName of oneof.oneof) {
         oneofFieldNames.add(fieldName);
       }
@@ -187,7 +216,11 @@ function decodeMessage(typeDef, typeName, reader) {
         if (resolvedType) {
           // Embedded message
           const len = Number(reader.varint());
-          const subReader = new Reader(reader.buf, reader.pos, reader.pos + len);
+          const subReader = new Reader(
+            reader.buf,
+            reader.pos,
+            reader.pos + len,
+          );
           reader.pos += len;
           value = decodeMessage(resolvedType, fieldType, subReader);
         } else if (fieldType === "string") {
@@ -210,16 +243,20 @@ function decodeMessage(typeDef, typeName, reader) {
           }
           while (reader.pos < end) {
             let v;
-            if (
+            if (fieldType === "double") {
+              v = reader.float64();
+            } else if (fieldType === "float") {
+              v = reader.float32();
+            } else if (
               FIXED64_TYPES.has(fieldType)
             ) {
               const raw = reader.fixed64();
-              v = bigintToNumber(raw);
+              v = bigintToNumber(raw, INT64_STRING_TYPES.has(fieldType));
             } else if (FIXED32_TYPES.has(fieldType)) {
               v = reader.fixed32();
             } else {
               const raw = reader.varint();
-              v = bigintToNumber(raw);
+              v = bigintToNumber(raw, INT64_STRING_TYPES.has(fieldType));
             }
             repeatedFields[fieldInfo.name].push(v);
           }
@@ -237,19 +274,27 @@ function decodeMessage(typeDef, typeName, reader) {
         if (fieldType === "bool") {
           value = v !== 0n;
         } else if (INT64_TYPES.has(fieldType)) {
-          value = bigintToNumber(v);
+          value = bigintToNumber(v, INT64_STRING_TYPES.has(fieldType));
         } else {
           value = Number(v);
         }
         break;
       }
       case I64: {
-        const v = reader.fixed64();
-        value = bigintToNumber(v);
+        if (fieldType === "double") {
+          value = reader.float64();
+        } else {
+          const v = reader.fixed64();
+          value = bigintToNumber(v, INT64_STRING_TYPES.has(fieldType));
+        }
         break;
       }
       case I32: {
-        value = reader.fixed32();
+        if (fieldType === "float") {
+          value = reader.float32();
+        } else {
+          value = reader.fixed32();
+        }
         break;
       }
       default:
@@ -288,6 +333,8 @@ function decodeMessage(typeDef, typeName, reader) {
         ordered[name] = "";
       } else if (field.type === "bool") {
         ordered[name] = false;
+      } else if (INT64_STRING_TYPES.has(field.type)) {
+        ordered[name] = "0";
       } else {
         ordered[name] = 0;
       }

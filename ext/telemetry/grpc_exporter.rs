@@ -8,11 +8,11 @@ use opentelemetry_proto::tonic::collector::logs::v1::ExportLogsServiceRequest;
 use opentelemetry_proto::tonic::collector::metrics::v1::ExportMetricsServiceRequest;
 use opentelemetry_proto::tonic::collector::trace::v1::ExportTraceServiceRequest;
 use opentelemetry_proto::transform::common::tonic::ResourceAttributesWithSchema;
+use opentelemetry_sdk::Resource;
 use opentelemetry_sdk::export::logs::LogBatch;
 use opentelemetry_sdk::export::trace::SpanData;
 use opentelemetry_sdk::metrics::Temporality;
 use opentelemetry_sdk::metrics::data::ResourceMetrics;
-use opentelemetry_sdk::Resource;
 use prost::Message;
 
 use crate::hyper_client::HyperClient;
@@ -32,19 +32,22 @@ fn grpc_endpoint() -> String {
     .unwrap_or_else(|_| DEFAULT_GRPC_ENDPOINT.to_string())
 }
 
-fn grpc_headers(
-) -> impl Iterator<Item = (header::HeaderName, header::HeaderValue)> {
+fn grpc_headers()
+-> impl Iterator<Item = (header::HeaderName, header::HeaderValue)> {
   ["OTEL_EXPORTER_OTLP_HEADERS"]
     .into_iter()
     .filter_map(|var| std::env::var(var).ok())
     .flat_map(|val| {
-      val.split(',').filter_map(|pair| {
-        let (k, v) = pair.split_once('=')?;
-        Some((
-          header::HeaderName::from_bytes(k.trim().as_bytes()).ok()?,
-          header::HeaderValue::from_str(v.trim()).ok()?,
-        ))
-      }).collect::<Vec<_>>()
+      val
+        .split(',')
+        .filter_map(|pair| {
+          let (k, v) = pair.split_once('=')?;
+          Some((
+            header::HeaderName::from_bytes(k.trim().as_bytes()).ok()?,
+            header::HeaderValue::from_str(v.trim()).ok()?,
+          ))
+        })
+        .collect::<Vec<_>>()
     })
 }
 
@@ -221,9 +224,7 @@ impl opentelemetry_sdk::metrics::exporter::PushMetricExporter
       })
   }
 
-  async fn force_flush(
-    &self,
-  ) -> opentelemetry_sdk::metrics::MetricResult<()> {
+  async fn force_flush(&self) -> opentelemetry_sdk::metrics::MetricResult<()> {
     Ok(())
   }
 

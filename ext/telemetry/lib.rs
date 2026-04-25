@@ -1014,8 +1014,7 @@ pub fn init(
   } else if protocol == Protocol::Grpc {
     let client = hyper_client::HyperClient::new(sys)?;
 
-    let span_exporter =
-      grpc_exporter::GrpcSpanExporter::new(client.clone());
+    let span_exporter = grpc_exporter::GrpcSpanExporter::new(client.clone());
     let mut span_processor =
       BatchSpanProcessor::builder(span_exporter, OtelSharedRuntime).build();
     span_processor.set_resource(&resource);
