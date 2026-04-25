@@ -1375,10 +1375,9 @@ function isAbsolute(filenameOrUrl) {
   return RE_START_OF_ABS_PATH.test(filenameOrUrl);
 }
 
-// Mirrors Node's lib/internal/modules/cjs/loader.js createRequire()
-// reason string so ERR_INVALID_ARG_VALUE messages line up.
-const createRequireError = "must be a file URL object, file URL string, or " +
-  "absolute path string";
+// Match Node's error reason (see lib/internal/modules/cjs/loader.js).
+const kCreateRequireError =
+  "must be a file URL object, file URL string, or absolute path string";
 
 function createRequire(filenameOrUrl) {
   let fileUrlStr;
@@ -1387,7 +1386,7 @@ function createRequire(filenameOrUrl) {
       throw new internalErrors.ERR_INVALID_ARG_VALUE(
         "filename",
         filenameOrUrl,
-        createRequireError,
+        kCreateRequireError,
       );
     }
     fileUrlStr = filenameOrUrl.toString();
@@ -1396,7 +1395,7 @@ function createRequire(filenameOrUrl) {
       throw new internalErrors.ERR_INVALID_ARG_VALUE(
         "filename",
         filenameOrUrl,
-        createRequireError,
+        kCreateRequireError,
       );
     }
     fileUrlStr = filenameOrUrl;
@@ -1404,7 +1403,7 @@ function createRequire(filenameOrUrl) {
     throw new internalErrors.ERR_INVALID_ARG_VALUE(
       "filename",
       filenameOrUrl,
-      createRequireError,
+      kCreateRequireError,
     );
   }
   const filename = op_require_as_file_path(fileUrlStr) ?? fileUrlStr;

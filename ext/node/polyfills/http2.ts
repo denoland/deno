@@ -55,6 +55,8 @@ import http from "node:http";
 import {
   _connectionListener as httpConnectionListener,
   httpServerPreClose,
+  kIncomingMessage,
+  kServerResponse,
   Server as HttpServer,
   setupConnectionsTracking,
 } from "node:_http_server";

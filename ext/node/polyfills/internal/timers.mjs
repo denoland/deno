@@ -18,6 +18,7 @@ const {
   MapPrototypeGet,
   MapPrototypeSet,
   NumberIsFinite,
+  NumberIsNaN,
   ObjectDefineProperty,
   ReflectApply,
   SafeArrayIterator,
@@ -67,9 +68,39 @@ export function getActiveTimer(id) {
   return MapPrototypeGet(activeTimers, id);
 }
 
+let warnedNegativeNumber = false;
+let warnedNotNumber = false;
+
 // Timer constructor function.
 export function Timeout(callback, after, args, isRepeat, isRefed) {
-  if (typeof after === "number" && after > TIMEOUT_MAX) {
+  if (after === undefined) {
+    after = 1;
+  } else {
+    after *= 1; // Coalesce to number or NaN
+  }
+
+  if (!(after >= 1 && after <= TIMEOUT_MAX)) {
+    if (after > TIMEOUT_MAX) {
+      emitWarning(
+        `${after} does not fit into a 32-bit signed integer.` +
+          "\nTimeout duration was set to 1.",
+        "TimeoutOverflowWarning",
+      );
+    } else if (after < 0 && !warnedNegativeNumber) {
+      warnedNegativeNumber = true;
+      emitWarning(
+        `${after} is a negative number.` +
+          "\nTimeout duration was set to 1.",
+        "TimeoutNegativeWarning",
+      );
+    } else if (NumberIsNaN(after) && !warnedNotNumber) {
+      warnedNotNumber = true;
+      emitWarning(
+        `${after} is not a number.` +
+          "\nTimeout duration was set to 1.",
+        "TimeoutNaNWarning",
+      );
+    }
     after = 1;
   }
   this._idleTimeout = after;
