@@ -1435,6 +1435,10 @@ pub struct Session {
   pub op_state: Rc<RefCell<OpState>>,
   pub this: v8::Global<v8::Object>,
   pub padding_strategy: PaddingStrategy,
+  /// Maximum number of header name/value pairs accepted on a stream.
+  /// Mirrors Node's `Http2Stream::max_header_pairs_`. Sourced from the
+  /// `maxHeaderListPairs` option (default `DEFAULT_MAX_HEADER_LIST_PAIRS`).
+  pub max_header_pairs: u32,
   pub graceful_close_initiated: bool,
   pub stream: Option<*mut deno_core::uv_compat::UvStream>,
   /// Prevents recursive send_pending_data calls. When mem_recv fires
@@ -1455,10 +1459,6 @@ pub struct Session {
   /// Original stream.data pointer saved before consume_stream overwrites it.
   /// Restored when the session releases the stream.
   pub orig_stream_data: *mut std::ffi::c_void,
-  /// Maximum number of header pairs allowed per stream. Mirrors Node.js's
-  /// per-session limit derived from the `maxHeaderListPairs` option.
-  /// Streams that receive more headers are reset with NGHTTP2_ENHANCE_YOUR_CALM.
-  pub max_header_pairs: u32,
 }
 
 impl Session {
@@ -1828,6 +1828,7 @@ impl Http2Session {
     let mut session: *mut ffi::nghttp2_session = std::ptr::null_mut();
     let options =
       Http2Options::new(session_type, no_strict_field_ws_validation);
+    let max_header_pairs = options.max_header_pairs();
 
     let context = scope.get_current_context();
     let context = v8::Global::new(scope, context);
@@ -1844,13 +1845,13 @@ impl Http2Session {
       outgoing_buffers: Vec::with_capacity(32),
       outgoing_length: 0,
       padding_strategy: options.padding_strategy(),
+      max_header_pairs,
       graceful_close_initiated: false,
       stream: None,
       is_sending: false,
       pending_destroy: false,
       pending_rst_streams: Vec::new(),
       orig_stream_data: std::ptr::null_mut(),
-      max_header_pairs: options.max_header_pairs(),
     }));
 
     // SAFETY: inner is valid (just allocated); callbacks and options are valid

@@ -230,13 +230,37 @@ impl Http2Stream {
       return false;
     };
 
-    // SAFETY: session outlives the stream
-    let max_header_pairs = unsafe { (*self.session).max_header_pairs } as usize;
-    if self.current_headers.borrow().len() >= max_header_pairs {
-      return false;
+    // Empty header names are ignored (matches Node's Http2Stream::AddHeader).
+    if name.is_empty() {
+      return true;
     }
 
     let header_length = name.len() + value.len() + 32;
+
+    // SAFETY: session pointer is valid for the stream's lifetime
+    let session = unsafe { &*self.session };
+    // SAFETY: session.session is a valid nghttp2 session pointer
+    let max_header_length = unsafe {
+      ffi::nghttp2_session_get_local_settings(
+        session.session,
+        ffi::NGHTTP2_SETTINGS_MAX_HEADER_LIST_SIZE,
+      )
+    } as u64;
+
+    let max_header_pairs = session.max_header_pairs as usize;
+    let current_pairs = self.current_headers.borrow().len();
+    let current_length = *self.current_headers_length.borrow() as u64;
+
+    // Reject the header (and the whole stream) if adding it would exceed
+    // either the configured max header pair count or the local
+    // SETTINGS_MAX_HEADER_LIST_SIZE limit. Mirrors Node's
+    // Http2Stream::AddHeader behaviour.
+    if current_pairs >= max_header_pairs
+      || current_length.saturating_add(header_length as u64) > max_header_length
+    {
+      return false;
+    }
+
     self.current_headers.borrow_mut().push((
       name_str.to_string(),
       value_str.to_string(),
