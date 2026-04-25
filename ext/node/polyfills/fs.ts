@@ -3289,7 +3289,10 @@ class StatWatcher extends EventEmitter {
       return;
     }
     this.#abortController.abort();
-    this.emit("stop");
+    // Match Node: stop fires asynchronously so listeners removed
+    // synchronously after stop() are not called (see
+    // StatWatcher.prototype.stop in lib/internal/fs/watchers.js).
+    process.nextTick(() => this.emit("stop"));
   }
   ref() {
     notImplemented("StatWatcher.ref() is not implemented");
