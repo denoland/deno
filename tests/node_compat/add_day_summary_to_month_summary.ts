@@ -142,10 +142,11 @@ export async function fetchReport(
     }
   }
   // Recompute total/pass from merged results to stay consistent
-  // even if shards overlap due to a bug or retry
+  // even if shards overlap due to a bug or retry.
+  // Each result is a tuple [pass: bool | "IGNORE", error, info].
   const values = Object.values(merged.results);
-  merged.total = values.length;
-  merged.pass = values.filter((v) => v === true).length;
+  merged.total = values.filter((v) => v[0] !== "IGNORE").length;
+  merged.pass = values.filter((v) => v[0] === true).length;
   return merged;
 }
 

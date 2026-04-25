@@ -1695,6 +1695,11 @@ export class ERR_INVALID_IP_ADDRESS extends NodeTypeError {
     super("ERR_INVALID_IP_ADDRESS", `Invalid IP address: ${x}`);
   }
 }
+export class ERR_IP_BLOCKED extends NodeError {
+  constructor(x: string) {
+    super("ERR_IP_BLOCKED", `Address blocked: ${x}`);
+  }
+}
 export class ERR_INVALID_MIME_SYNTAX extends NodeTypeError {
   constructor(production: string, str: string, invalidIndex: number) {
     const msg = invalidIndex !== -1 ? ` at ${invalidIndex}` : "";
@@ -2087,6 +2092,14 @@ export class ERR_SOCKET_BUFFER_SIZE extends NodeSystemError {
 export class ERR_SOCKET_CLOSED extends NodeError {
   constructor() {
     super("ERR_SOCKET_CLOSED", `Socket is closed`);
+  }
+}
+export class ERR_SOCKET_CLOSED_BEFORE_CONNECTION extends NodeError {
+  constructor() {
+    super(
+      "ERR_SOCKET_CLOSED_BEFORE_CONNECTION",
+      `Socket closed before the connection was established`,
+    );
   }
 }
 export class ERR_SOCKET_CONNECTION_TIMEOUT extends NodeError {
@@ -2606,7 +2619,7 @@ export class ERR_INVALID_CHAR extends NodeTypeError {
   constructor(name: string, field?: string) {
     super(
       "ERR_INVALID_CHAR",
-      field
+      field === undefined
         ? `Invalid character in ${name}`
         : `Invalid character in ${name} ["${field}"]`,
     );

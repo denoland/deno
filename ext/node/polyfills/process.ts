@@ -529,18 +529,31 @@ export let execPath: string = "";
 // The process class needs to be an ES5 class because it can be instantiated
 // in Node without the `new` keyword. It's not a true class in Node. Popular
 // test runners like Jest rely on this.
+//
+// Use a named function expression so the syntactic name ("process") is
+// captured at parse time. V8 uses that name for runtime class strings
+// in error messages like "Cannot delete property 'exitCode' of
+// #<process>", which `Object.defineProperty(F, "name", ...)` does not
+// affect. Match Node's FunctionTemplate-based binding (see
+// CreateProcessObject in src/node_process_object.cc).
 // deno-lint-ignore no-explicit-any
-function Process(this: any) {
+const Process = function process(this: any) {
   // deno-lint-ignore no-explicit-any
   if (!(this instanceof Process)) return new (Process as any)();
 
   EventEmitter.call(this);
-}
+};
 Process.prototype = Object.create(EventEmitter.prototype);
-// V8 uses the constructor's name for error messages like
-// "Cannot delete property 'exitCode' of #<process>"
-const _process = function process() {};
-Process.prototype.constructor = _process;
+// Point the prototype's `constructor` at the real class with the same
+// descriptor Node uses (writable, non-enumerable, configurable) so
+// `process instanceof process.constructor` is true.
+Object.defineProperty(Process.prototype, "constructor", {
+  __proto__: null,
+  value: Process,
+  writable: true,
+  enumerable: false,
+  configurable: true,
+});
 
 // Maps original user listeners to wrapped versions that pass the signal name.
 // Node.js calls signal listeners with the signal name as the first argument,
