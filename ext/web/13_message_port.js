@@ -515,6 +515,46 @@ webidl.converters.StructuredSerializeOptions = webidl
     ],
   );
 
+// Lazily resolved prototypes of Web API types whose specs explicitly mark
+// them as non-serializable. V8's structured clone serialiser doesn't know
+// about Web API "platform" types (they're plain JS objects from V8's
+// perspective with no enumerable own properties), so without this check the
+// fast `core.structuredClone` path silently round-trips them as `{}`,
+// matching neither the Web Platform spec nor Node's behaviour, which both
+// raise `DataCloneError`.
+let nonSerializablePrototypes = null;
+const NON_SERIALIZABLE_GLOBAL_NAMES = [
+  // `Headers`, `Request`, `Response`, and the stream classes are all
+  // marked NOT [Serializable] in their respective specs.
+  "Headers",
+  "Request",
+  "Response",
+  "ReadableStream",
+  "WritableStream",
+  "TransformStream",
+];
+function getNonSerializablePrototypes() {
+  if (nonSerializablePrototypes !== null) return nonSerializablePrototypes;
+  nonSerializablePrototypes = [];
+  for (let i = 0; i < NON_SERIALIZABLE_GLOBAL_NAMES.length; i++) {
+    const name = NON_SERIALIZABLE_GLOBAL_NAMES[i];
+    const ctor = globalThis[name];
+    if (typeof ctor === "function" && ctor.prototype !== undefined) {
+      ArrayPrototypePush(nonSerializablePrototypes, ctor.prototype);
+    }
+  }
+  return nonSerializablePrototypes;
+}
+
+function isKnownNonSerializable(value) {
+  if (value === null || typeof value !== "object") return false;
+  const protos = getNonSerializablePrototypes();
+  for (let i = 0; i < protos.length; i++) {
+    if (ObjectPrototypeIsPrototypeOf(protos[i], value)) return true;
+  }
+  return false;
+}
+
 function structuredClone(value, options) {
   const prefix = "Failed to execute 'structuredClone'";
   webidl.requiredArguments(arguments.length, 1, prefix);
@@ -523,6 +563,13 @@ function structuredClone(value, options) {
     prefix,
     "Argument 2",
   );
+
+  if (isKnownNonSerializable(value)) {
+    throw new DOMException(
+      "Cannot clone object of unsupported type.",
+      "DataCloneError",
+    );
+  }
 
   // Fast-path, avoiding round-trip serialization and deserialization
   if (options.transfer.length === 0) {
