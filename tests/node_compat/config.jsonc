@@ -369,6 +369,7 @@
     "parallel/test-console-instance.js": {},
     "parallel/test-console-log-stdio-broken-dest.js": {},
     "parallel/test-console-log-throw-primitive.js": {},
+    "parallel/test-console-methods.js": {},
     "parallel/test-console-no-swallow-stack-overflow.js": {},
     "parallel/test-console-not-call-toString.js": {},
     "parallel/test-console-self-assign.js": {},
