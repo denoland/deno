@@ -59,6 +59,7 @@ import {
   validateNumber,
   validatePort,
   validateString,
+  validateUint32,
 } from "ext:deno_node/internal/validators.mjs";
 import { guessHandleType } from "ext:deno_node/internal_binding/util.ts";
 import { os } from "ext:deno_node/internal_binding/constants.ts";
@@ -175,6 +176,15 @@ export class Socket extends EventEmitter {
       options = type;
       type = options.type;
       lookup = options.lookup;
+      // Match Node: validate buffer sizes before any handle setup so a
+      // bad value produces ERR_INVALID_ARG_TYPE rather than a cast error
+      // from the native op (see lib/dgram.js).
+      if (options.recvBufferSize) {
+        validateUint32(options.recvBufferSize, "options.recvBufferSize");
+      }
+      if (options.sendBufferSize) {
+        validateUint32(options.sendBufferSize, "options.sendBufferSize");
+      }
       recvBufferSize = options.recvBufferSize;
       sendBufferSize = options.sendBufferSize;
     }
@@ -964,8 +974,8 @@ export class Socket extends EventEmitter {
     if (typeof address === "function") {
       callback = address;
       address = undefined;
-    } else if (address && typeof address !== "string") {
-      throw new ERR_INVALID_ARG_TYPE("address", ["string", "falsy"], address);
+    } else if (address != null) {
+      validateString(address, "address");
     }
 
     healthCheck(this);

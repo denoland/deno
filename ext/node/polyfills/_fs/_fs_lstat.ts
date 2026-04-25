@@ -49,8 +49,10 @@ export function lstat(
 
   if (!callback) throw new Error("No callback function supplied");
 
+  // Match Node: errors carry the requested path (see lib/fs.js lstat).
+  const validatedPath = getValidatedPathToString(path);
   PromisePrototypeThen(
-    Deno.lstat(getValidatedPathToString(path)),
+    Deno.lstat(validatedPath),
     (stat) => callback(null, CFISBIS(stat, options.bigint)),
     (err) => {
       // Match Node: `{ throwIfNoEntry: false }` suppresses ENOENT and yields
@@ -62,7 +64,9 @@ export function lstat(
         callback(null, undefined);
         return;
       }
-      callback(denoErrorToNodeError(err, { syscall: "lstat" }));
+      callback(
+        denoErrorToNodeError(err, { syscall: "lstat", path: validatedPath }),
+      );
     },
   );
 }
@@ -86,8 +90,9 @@ export function lstatSync(
   path: string | URL,
   options?: statOptions,
 ): Stats | BigIntStats {
+  const validatedPath = getValidatedPathToString(path);
   try {
-    const origin = Deno.lstatSync(getValidatedPathToString(path));
+    const origin = Deno.lstatSync(validatedPath);
     return CFISBIS(origin, options?.bigint || false);
   } catch (err) {
     if (
@@ -96,6 +101,6 @@ export function lstatSync(
     ) {
       return;
     }
-    throw denoErrorToNodeError(err, { syscall: "lstat" });
+    throw denoErrorToNodeError(err, { syscall: "lstat", path: validatedPath });
   }
 }

@@ -40,9 +40,9 @@ import { lutimes, lutimesSync } from "ext:deno_node/_fs/_fs_lutimes.ts";
 import { read, readSync } from "ext:deno_node/_fs/_fs_read.ts";
 import { readdir, readdirSync } from "ext:deno_node/_fs/_fs_readdir.ts";
 import { EventEmitter } from "node:events";
+import { clearTimeout, setTimeout } from "node:timers";
 import { type MaybeEmpty, notImplemented } from "ext:deno_node/_utils.ts";
 import { deprecate, promisify } from "node:util";
-import { delay } from "ext:deno_node/_util/async.ts";
 import promises from "ext:deno_node/internal/fs/promises.ts";
 // @deno-types="./internal/fs/streams.d.ts"
 import {
@@ -165,6 +165,7 @@ const {
   MapPrototypeDelete,
   MapPrototypeGet,
   MapPrototypeSet,
+  MathMax,
   MathMin,
   MathTrunc,
   Number,
@@ -319,38 +320,87 @@ function encodeRealpathResult(
   return asBuffer.toString(options.encoding);
 }
 
-function realpath(
+function realpathImpl(
   path: string | Buffer,
-  options?: RealpathOptions | RealpathCallback | RealpathEncoding,
-  callback?: RealpathCallback,
+  options:
+    | RealpathOptions
+    | RealpathCallback
+    | RealpathEncoding
+    | undefined,
+  callback: RealpathCallback | undefined,
+  syscall: "lstat" | "realpath",
 ) {
   if (typeof options === "function") {
     callback = options;
   }
   validateFunction(callback, "cb");
   options = getOptions(options) as RealpathEncodingObj;
-  path = getValidatedPathToString(path);
+  const validatedPath = getValidatedPathToString(path);
 
   PromisePrototypeThen(
-    Deno.realPath(path),
-    (path) => callback!(null, encodeRealpathResult(path, options)),
-    (err) => callback!(err),
+    Deno.realPath(validatedPath),
+    (resolved) =>
+      callback!(null, encodeRealpathResult(resolved, options as never)),
+    (err) =>
+      callback!(
+        denoErrorToNodeError(err as Error, {
+          syscall,
+          path: validatedPath,
+        }),
+      ),
   );
 }
 
-realpath.native = realpath;
+function realpath(
+  path: string | Buffer,
+  options?: RealpathOptions | RealpathCallback | RealpathEncoding,
+  callback?: RealpathCallback,
+) {
+  // Match Node: `fs.realpath` uses lstat under the hood and emits
+  // `syscall: 'lstat'`; `fs.realpath.native` calls the platform realpath
+  // and emits `syscall: 'realpath'` (see lib/fs.js).
+  realpathImpl(path, options, callback, "lstat");
+}
+
+realpath.native = function realpath_native(
+  path: string | Buffer,
+  options?: RealpathOptions | RealpathCallback | RealpathEncoding,
+  callback?: RealpathCallback,
+) {
+  realpathImpl(path, options, callback, "realpath");
+};
+
+function realpathSyncImpl(
+  path: string,
+  options: RealpathOptions | RealpathEncoding | undefined,
+  syscall: "lstat" | "realpath",
+): string | Buffer {
+  options = getOptions(options) as RealpathEncodingObj;
+  const validatedPath = getValidatedPathToString(path);
+  try {
+    const result = Deno.realPathSync(validatedPath);
+    return encodeRealpathResult(result, options);
+  } catch (err) {
+    throw denoErrorToNodeError(err as Error, {
+      syscall,
+      path: validatedPath,
+    });
+  }
+}
 
 function realpathSync(
   path: string,
   options?: RealpathOptions | RealpathEncoding,
 ): string | Buffer {
-  options = getOptions(options) as RealpathEncodingObj;
-  path = getValidatedPathToString(path);
-  const result = Deno.realPathSync(path);
-  return encodeRealpathResult(result, options);
+  return realpathSyncImpl(path, options, "lstat");
 }
 
-realpathSync.native = realpathSync;
+realpathSync.native = function realpathSync_native(
+  path: string,
+  options?: RealpathOptions | RealpathEncoding,
+): string | Buffer {
+  return realpathSyncImpl(path, options, "realpath");
+};
 
 // -- readv --
 
@@ -601,6 +651,7 @@ async function readFileFromFd(fd: number, options?: FileOptions) {
 
   const buffer = new Uint8Array(length);
   const buffers: Uint8Array[] = [];
+  let totalRead = 0;
 
   while (true) {
     readFileCheckAborted(signal);
@@ -609,6 +660,10 @@ async function readFileFromFd(fd: number, options?: FileOptions) {
     const nread = await op_node_fs_read_deferred(fd, buffer, -1);
     if (nread === 0) {
       break;
+    }
+    totalRead += nread;
+    if (totalRead > kIoMaxLength) {
+      throw new ERR_FS_FILE_TOO_LARGE(totalRead);
     }
     ArrayPrototypePush(buffers, TypedArrayPrototypeSubarray(buffer, 0, nread));
   }
@@ -1278,27 +1333,40 @@ function fchownSync(
 
 function ftruncate(
   fd: number,
-  lenOrCallback: number | CallbackWithError,
+  lenOrCallback: number | CallbackWithError = 0,
   maybeCallback?: CallbackWithError,
 ) {
-  const len: number | undefined = typeof lenOrCallback === "number"
-    ? lenOrCallback
-    : undefined;
-  const callback: CallbackWithError = typeof lenOrCallback === "function"
-    ? lenOrCallback
-    : (maybeCallback as CallbackWithError);
+  let len: number = 0;
+  let callback: CallbackWithError | undefined;
+  if (typeof lenOrCallback === "function") {
+    callback = lenOrCallback;
+  } else {
+    len = lenOrCallback;
+    callback = maybeCallback;
+  }
+
+  // Match Node: validate fd and len before any async work (lib/fs.js).
+  if (typeof fd !== "number") {
+    throw new ERR_INVALID_ARG_TYPE("fd", "number", fd);
+  }
+  validateInteger(len, "len");
+  len = MathMax(0, len);
 
   if (!callback) throw new Error("No callback function supplied");
 
   PromisePrototypeThen(
-    op_node_fs_ftruncate(fd, len ?? 0),
+    op_node_fs_ftruncate(fd, len),
     () => callback(null),
     callback,
   );
 }
 
-function ftruncateSync(fd: number, len?: number) {
-  op_node_fs_ftruncate_sync(fd, len ?? 0);
+function ftruncateSync(fd: number, len: number = 0) {
+  if (typeof fd !== "number") {
+    throw new ERR_INVALID_ARG_TYPE("fd", "number", fd);
+  }
+  validateInteger(len, "len");
+  op_node_fs_ftruncate_sync(fd, MathMax(0, len));
 }
 
 function _getValidTime(
@@ -1492,10 +1560,18 @@ function link(
   existingPath = getValidatedPathToString(existingPath);
   newPath = getValidatedPathToString(newPath);
 
+  // Match Node: errors carry both `path` and `dest` (see lib/fs.js link).
   PromisePrototypeThen(
     Deno.link(existingPath, newPath),
     () => callback(null),
-    callback,
+    (err) =>
+      callback(
+        denoErrorToNodeError(err as Error, {
+          syscall: "link",
+          path: existingPath as string,
+          dest: newPath as string,
+        }),
+      ),
   );
 }
 
@@ -1506,7 +1582,15 @@ function linkSync(
   existingPath = getValidatedPathToString(existingPath);
   newPath = getValidatedPathToString(newPath);
 
-  Deno.linkSync(existingPath, newPath);
+  try {
+    Deno.linkSync(existingPath, newPath);
+  } catch (err) {
+    throw denoErrorToNodeError(err as Error, {
+      syscall: "link",
+      path: existingPath as string,
+      dest: newPath as string,
+    });
+  }
 }
 
 function unlink(
@@ -2801,34 +2885,50 @@ function _checkAborted(signal?: AbortSignal) {
 
 function truncate(
   path: string | URL,
-  lenOrCallback: number | CallbackWithError,
+  lenOrCallback: number | CallbackWithError = 0,
   maybeCallback?: CallbackWithError,
 ) {
-  path = ObjectPrototypeIsPrototypeOf(URLPrototype, path)
-    ? pathFromURL(path)
-    : path;
-  const len: number | undefined = typeof lenOrCallback === "number"
-    ? lenOrCallback
-    : undefined;
-  const callback: CallbackWithError = typeof lenOrCallback === "function"
-    ? lenOrCallback
-    : maybeCallback as CallbackWithError;
+  let len: number = 0;
+  let callback: CallbackWithError | undefined;
+  if (typeof lenOrCallback === "function") {
+    callback = lenOrCallback;
+  } else {
+    len = lenOrCallback;
+    callback = maybeCallback;
+  }
+
+  // Match Node: validate len before any async work (lib/fs.js truncate).
+  validateInteger(len, "len");
+  len = MathMax(0, len);
 
   if (!callback) throw new Error("No callback function supplied");
 
-  PromisePrototypeThen(
-    Deno.truncate(path, len),
-    () => callback(null),
-    callback,
-  );
+  // Match Node: open with 'r+', ftruncate, close so ENOENT and other
+  // errors surface with a path/syscall='open' rather than the raw
+  // truncate error.
+  open(path, "r+", (openErr, fd) => {
+    if (openErr) {
+      callback(openErr);
+      return;
+    }
+    ftruncate(fd as number, len, (ftErr) => {
+      close(fd as number, (closeErr) => {
+        callback(ftErr || closeErr || null);
+      });
+    });
+  });
 }
 
-function truncateSync(path: string | URL, len?: number) {
-  path = ObjectPrototypeIsPrototypeOf(URLPrototype, path)
-    ? pathFromURL(path)
-    : path;
-
-  Deno.truncateSync(path, len);
+function truncateSync(path: string | URL, len: number = 0) {
+  validateInteger(len, "len");
+  len = MathMax(0, len);
+  // Match Node: open with 'r+', ftruncate, close.
+  const fd = openSync(path, "r+");
+  try {
+    ftruncateSync(fd, len);
+  } finally {
+    closeSync(fd);
+  }
 }
 
 // -- utimes --
@@ -3246,6 +3346,10 @@ class StatWatcher extends EventEmitter {
   #bigint: boolean;
   #refCount = 0;
   #abortController = new AbortController();
+  #refed = true;
+  // The current in-flight interval timer, ref'd / unref'd when ref()/unref()
+  // is called between polls so the process can exit while nothing is changing.
+  #timer: Timeout | null = null;
 
   constructor(bigint: boolean) {
     super();
@@ -3269,7 +3373,7 @@ class StatWatcher extends EventEmitter {
 
       try {
         while (true) {
-          await delay(interval, { signal: this.#abortController.signal });
+          await this.#sleep(interval);
           const curr = await statAsync(filename);
           if (
             DatePrototypeGetTime(curr?.mtime) !==
@@ -3290,6 +3394,31 @@ class StatWatcher extends EventEmitter {
       }
     })();
   }
+  #sleep(ms: number): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const signal = this.#abortController.signal;
+      if (signal.aborted) {
+        reject(signal.reason);
+        return;
+      }
+      const abort = () => {
+        clearTimeout(timer);
+        this.#timer = null;
+        reject(signal.reason);
+      };
+      const done = () => {
+        signal.removeEventListener("abort", abort);
+        this.#timer = null;
+        resolve();
+      };
+      const timer = setTimeout(done, ms);
+      if (!this.#refed) {
+        timer.unref();
+      }
+      this.#timer = timer;
+      signal.addEventListener("abort", abort, { once: true });
+    });
+  }
   [kFSStatWatcherAddOrCleanRef](addOrClean: "add" | "clean" | "cleanAll") {
     if (addOrClean === "add") {
       this.#refCount++;
@@ -3304,13 +3433,24 @@ class StatWatcher extends EventEmitter {
       return;
     }
     this.#abortController.abort();
-    this.emit("stop");
+    // Match Node: stop fires asynchronously so listeners removed
+    // synchronously after stop() are not called (see
+    // StatWatcher.prototype.stop in lib/internal/fs/watchers.js).
+    process.nextTick(() => this.emit("stop"));
   }
+  // Node's ref/unref toggle whether the StatWatcher's internal handle keeps
+  // the event loop alive (see lib/internal/fs/watchers.js). In Deno the
+  // handle is the interval Timeout used between poll iterations, so we
+  // ref/unref that.
   ref() {
-    notImplemented("StatWatcher.ref() is not implemented");
+    this.#refed = true;
+    this.#timer?.ref();
+    return this;
   }
   unref() {
-    notImplemented("StatWatcher.unref() is not implemented");
+    this.#refed = false;
+    this.#timer?.unref();
+    return this;
   }
 }
 
