@@ -560,6 +560,11 @@ function structuredClone(value, options) {
     "Argument 2",
   );
 
+  // NOTE: This only catches non-serializable types at the top level.
+  // Nested non-serializable objects (e.g. { x: new Response() }) will
+  // still silently serialize as {} because V8's ValueSerializer doesn't
+  // know about Web API platform types. Fixing this fully requires a
+  // custom V8 serializer delegate in C++/Rust.
   if (
     value !== null && typeof value === "object" && value[kNotSerializable]
   ) {

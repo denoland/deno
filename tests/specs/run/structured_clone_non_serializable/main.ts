@@ -19,6 +19,8 @@ check("Response", () => new Response());
 check("Request", () => new Request("http://localhost"));
 check("Headers", () => new Headers());
 check("ReadableStream", () => new ReadableStream());
+check("WritableStream", () => new WritableStream());
+check("TransformStream", () => new TransformStream());
 
 // Sanity check: types that ARE serializable still clone successfully.
 const obj = structuredClone({ a: 1, nested: { b: 2 } });

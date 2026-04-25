@@ -2,6 +2,8 @@ Response: DataCloneError Cannot clone object of unsupported type.
 Request: DataCloneError Cannot clone object of unsupported type.
 Headers: DataCloneError Cannot clone object of unsupported type.
 ReadableStream: DataCloneError Cannot clone object of unsupported type.
+WritableStream: DataCloneError Cannot clone object of unsupported type.
+TransformStream: DataCloneError Cannot clone object of unsupported type.
 plain object: {"a":1,"nested":{"b":2}}
 array: [1,[2,[3]]]
 date: 1970-01-01T00:00:00.000Z
