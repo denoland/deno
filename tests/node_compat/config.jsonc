@@ -618,6 +618,7 @@
     "parallel/test-dgram-connect-send-multi-buffer-copy.js": {},
     "parallel/test-dgram-connect-send-multi-string-array.js": {},
     "parallel/test-dgram-connect.js": {},
+    "parallel/test-dgram-createSocket-type.js": {},
     "parallel/test-dgram-custom-lookup.js": {},
     "parallel/test-dgram-deprecation-error.js": {},
     "parallel/test-dgram-error-message-address.js": {},
