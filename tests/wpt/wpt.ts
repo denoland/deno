@@ -267,7 +267,7 @@ Options:
     const iter = pooledMap(cores, partitionedTests, async (tests) => {
       for (const test of tests) {
         if (!inParallel) {
-          console.log(`${blue("-".repeat(40))}\n${bold(test.path)}\n`);
+          console.log(`${blue("-".repeat(40))}\n${bold(test.path)}`);
         }
         let result = await runSingleTest(
           test.url,
@@ -319,7 +319,7 @@ Options:
         }
         results.push({ test, result });
         if (inParallel) {
-          console.log(`${blue("-".repeat(40))}\n${bold(test.path)}\n`);
+          console.log(`${blue("-".repeat(40))}\n${bold(test.path)}`);
         }
         reportVariation(result, test.expectation);
       }
@@ -522,7 +522,7 @@ Options:
     const results = [];
 
     for (const test of tests) {
-      console.log(`${blue("-".repeat(40))}\n${bold(test.path)}\n`);
+      console.log(`${blue("-".repeat(40))}\n${bold(test.path)}`);
       const result = await runSingleTest(
         test.url,
         test.options,
