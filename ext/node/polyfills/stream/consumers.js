@@ -65,6 +65,14 @@ async function buffer(stream) {
 
 /**
  * @param {AsyncIterable|ReadableStream|Readable} stream
+ * @returns {Promise<Uint8Array>}
+ */
+async function bytes(stream) {
+  return new Uint8Array(await arrayBuffer(stream));
+}
+
+/**
+ * @param {AsyncIterable|ReadableStream|Readable} stream
  * @returns {Promise<string>}
  */
 async function text(stream) {
@@ -104,9 +112,10 @@ const _defaultExport1 = {
   arrayBuffer,
   blob,
   buffer,
+  bytes,
   text,
   json,
 };
 
 export default _defaultExport1;
-export { arrayBuffer, blob, buffer, json, text };
+export { arrayBuffer, blob, buffer, bytes, json, text };

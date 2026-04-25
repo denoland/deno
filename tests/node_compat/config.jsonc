@@ -2313,6 +2313,7 @@
     "parallel/test-stream-compose-operator.js": {},
     "parallel/test-stream-compose.js": {},
     "parallel/test-stream-construct.js": {},
+    "parallel/test-stream-consumers.js": {},
     "parallel/test-stream-decoder-objectmode.js": {},
     "parallel/test-stream-destroy-event-order.js": {},
     "parallel/test-stream-destroy.js": {},
