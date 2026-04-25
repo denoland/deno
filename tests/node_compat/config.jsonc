@@ -461,6 +461,7 @@
     "parallel/test-crypto-psychic-signatures.js": {},
     // TODO(bartlomieju): requires encrypted PEM export (cipher+passphrase in privateKeyEncoding)
     // "parallel/test-crypto-publicDecrypt-fails-first-time.js": {},
+    "parallel/test-crypto-random.js": {},
     "parallel/test-crypto-randomfillsync-regression.js": {},
     "parallel/test-crypto-randomuuid.js": {},
     "parallel/test-crypto-prime.js": {},
