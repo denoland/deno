@@ -26,7 +26,7 @@ function foo(): number {
 {
   // Comment in JSON
   "key": "value",
-  "key2": "value2"
+  "key2": "value2",
 }
 ```
 
