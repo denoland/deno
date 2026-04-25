@@ -12,6 +12,7 @@ import {
   type ServerHandler,
   ServerImpl as HttpServer,
 } from "node:http";
+import { ERR_INVALID_URL } from "ext:deno_node/internal/errors.ts";
 import {
   httpServerPreClose,
   setupConnectionsTracking,
@@ -289,7 +290,14 @@ export function request(...args: any[]) {
 
   if (typeof args[0] === "string") {
     const urlStr = args.shift();
-    options = urlToHttpOptions(new URL(urlStr));
+    // Match Node: surface invalid URL strings as ERR_INVALID_URL.
+    let parsed;
+    try {
+      parsed = new URL(urlStr);
+    } catch {
+      throw new ERR_INVALID_URL(urlStr);
+    }
+    options = urlToHttpOptions(parsed);
   } else if (args[0] instanceof URL) {
     options = urlToHttpOptions(args.shift());
   }

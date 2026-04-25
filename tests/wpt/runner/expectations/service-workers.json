@@ -100,10 +100,6 @@
       "Cache interface: self.cacheInstance must inherit property \"keys(optional RequestInfo, optional CacheQueryOptions)\" with the proper type",
       "Cache interface: calling keys(optional RequestInfo, optional CacheQueryOptions) on self.cacheInstance with too few arguments must throw TypeError",
       "CacheStorage interface: operation match(RequestInfo, optional MultiCacheQueryOptions)",
-      "CacheStorage interface: operation keys()",
-      "CacheStorage interface: caches must inherit property \"match(RequestInfo, optional MultiCacheQueryOptions)\" with the proper type",
-      "CacheStorage interface: calling match(RequestInfo, optional MultiCacheQueryOptions) on caches with too few arguments must throw TypeError",
-      "CacheStorage interface: caches must inherit property \"keys()\" with the proper type",
       "Window interface: attribute caches",
       "Navigator interface: attribute serviceWorker",
       "idl_test setup"
@@ -190,10 +186,6 @@
       "Cache interface: self.cacheInstance must inherit property \"keys(optional RequestInfo, optional CacheQueryOptions)\" with the proper type",
       "Cache interface: calling keys(optional RequestInfo, optional CacheQueryOptions) on self.cacheInstance with too few arguments must throw TypeError",
       "CacheStorage interface: operation match(RequestInfo, optional MultiCacheQueryOptions)",
-      "CacheStorage interface: operation keys()",
-      "CacheStorage interface: caches must inherit property \"match(RequestInfo, optional MultiCacheQueryOptions)\" with the proper type",
-      "CacheStorage interface: calling match(RequestInfo, optional MultiCacheQueryOptions) on caches with too few arguments must throw TypeError",
-      "CacheStorage interface: caches must inherit property \"keys()\" with the proper type",
       "WorkerGlobalScope interface: attribute caches",
       "WorkerNavigator interface: attribute serviceWorker"
     ]
@@ -264,9 +256,21 @@
       ]
     },
     "cache-storage-keys.https.any.html": false,
-    "cache-storage-keys.https.any.worker.html": false,
-    "cache-storage-match.https.any.html": false,
-    "cache-storage-match.https.any.worker.html": false,
+    "cache-storage-keys.https.any.worker.html": true,
+    "cache-storage-match.https.any.html": {
+      "expectedFailures": [
+        "CacheStorageMatch supports ignoreSearch",
+        "Cache.match supports ignoreMethod",
+        "CacheStorageMatch supports ignoreVary"
+      ]
+    },
+    "cache-storage-match.https.any.worker.html": {
+      "expectedFailures": [
+        "CacheStorageMatch supports ignoreSearch",
+        "Cache.match supports ignoreMethod",
+        "CacheStorageMatch supports ignoreVary"
+      ]
+    },
     "cache-storage.https.any.html": {
       "expectedFailures": [
         "CacheStorage.delete dooms, but does not delete immediately",

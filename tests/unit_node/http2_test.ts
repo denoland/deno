@@ -3,6 +3,7 @@
 // deno-lint-ignore-file no-console
 
 import * as http2 from "node:http2";
+import * as https from "node:https";
 import { Buffer } from "node:buffer";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -624,4 +625,107 @@ Deno.test("[node/http2 client] connect without net permission", {
     },
     Deno.errors.NotCapable,
   );
+});
+
+// https://github.com/denoland/deno/issues/33009
+Deno.test("[node/http2 client] connect with pre-created socket", {
+  ignore: Deno.build.os === "windows",
+  sanitizeResources: false,
+  sanitizeOps: false,
+}, async () => {
+  const server = http2.createServer();
+  server.on("stream", (stream) => {
+    stream.respond({ ":status": 200, "content-type": "text/plain" });
+    stream.end("ok");
+  });
+
+  const port = await new Promise<number>((resolve) => {
+    server.listen(0, "127.0.0.1", () => {
+      resolve((server.address() as net.AddressInfo).port);
+    });
+  });
+
+  // Pre-create a connected socket before passing to http2.connect()
+  // (pattern used by @grpc/grpc-js)
+  const socket = await new Promise<net.Socket>((resolve, reject) => {
+    const s = net.connect({ host: "127.0.0.1", port }, () => resolve(s));
+    s.once("error", reject);
+  });
+
+  const client = http2.connect(`http://127.0.0.1:${port}`, {
+    createConnection: () => socket,
+  });
+
+  await new Promise<void>((resolve, reject) => {
+    const timeout = setTimeout(
+      () => reject(new Error("remoteSettings timeout")),
+      5000,
+    );
+    client.once("remoteSettings", () => {
+      clearTimeout(timeout);
+      resolve();
+    });
+    client.on("error", (err) => {
+      clearTimeout(timeout);
+      reject(err);
+    });
+  });
+
+  const req = client.request({ ":method": "GET", ":path": "/" });
+  req.end();
+
+  const body = await new Promise<string>((resolve) => {
+    let data = "";
+    req.setEncoding("utf8");
+    req.on("data", (chunk: string) => (data += chunk));
+    req.on("end", () => resolve(data));
+  });
+
+  assertEquals(body, "ok");
+  client.close();
+  server.close();
+  await new Promise<void>((resolve) => server.on("close", resolve));
+});
+
+// Regression test for https://github.com/denoland/deno/issues/33317
+// `http2.createSecureServer({ allowHTTP1: true })` must handle HTTP/1.1
+// clients without throwing `ReferenceError: kIncomingMessage is not defined`.
+Deno.test("[node/http2] allowHTTP1 fallback handles HTTP/1.1 clients", async () => {
+  const cert = Deno.readTextFileSync("tests/testdata/tls/localhost.crt");
+  const key = Deno.readTextFileSync("tests/testdata/tls/localhost.key");
+  const ca = Deno.readTextFileSync("tests/testdata/tls/RootCA.pem");
+
+  const { promise, resolve } = Promise.withResolvers<void>();
+
+  const server = http2.createSecureServer(
+    { allowHTTP1: true, cert, key },
+    (_req, res) => {
+      res.writeHead(200, { "content-type": "text/plain" });
+      res.end("ok");
+    },
+  );
+
+  server.listen(0, () => {
+    const port = (server.address() as net.AddressInfo).port;
+    const req = https.request(
+      { hostname: "localhost", port, path: "/", method: "GET", ca },
+      (res) => {
+        let data = "";
+        res.setEncoding("utf8");
+        res.on("data", (chunk: string) => (data += chunk));
+        res.on("end", () => {
+          assertEquals(res.statusCode, 200);
+          assertEquals(data, "ok");
+          server.close(() => resolve());
+        });
+      },
+    );
+    req.on("error", (e) => {
+      server.close();
+      throw e;
+    });
+    req.end();
+  });
+
+  await promise;
 });

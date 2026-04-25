@@ -663,6 +663,13 @@ pub unsafe fn uv_pipe_accept(
           (*server).internal_win_server = Some(new_server);
           (*server).internal_win_connect_fut = Some(connect_fut);
           (*server).flags |= UV_HANDLE_ACTIVE;
+
+          // Wake the event loop so it polls the new connect future.
+          // Without this, the loop never notices the next client
+          // attaching to the named pipe (same pattern as uv_pipe_listen).
+          if let Some(w) = (*server).internal_waker.as_ref() {
+            w.mark_ready();
+          }
         }
       }
       0
@@ -837,6 +844,17 @@ pub(crate) unsafe fn close_pipe(pipe: *mut uv_pipe_t) {
     (*pipe).internal_read_cb = None;
     (*pipe).internal_connection_cb = None;
     (*pipe).internal_connect = None;
+
+    // Match libuv: unlink the socket file before closing the fd so
+    // another server can bind to the same path immediately.
+    #[cfg(unix)]
+    if let Some(ref path) = (*pipe).internal_bind_path {
+      #[allow(
+        clippy::disallowed_methods,
+        reason = "uv_compat is not compiled to WASM"
+      )]
+      let _ = std::fs::remove_file(path);
+    }
     (*pipe).internal_bind_path = None;
 
     // Cancel pending writes.
