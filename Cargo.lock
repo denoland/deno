@@ -3242,6 +3242,7 @@ dependencies = [
  "tokio",
  "tokio-metrics",
  "twox-hash 2.1.0",
+ "unicode-normalization",
  "uuid",
  "winapi",
  "windows-sys 0.59.0",
