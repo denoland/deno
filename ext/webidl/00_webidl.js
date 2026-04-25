@@ -1131,7 +1131,13 @@ function assertBranded(self, prototype) {
   if (
     !ObjectPrototypeIsPrototypeOf(prototype, self) || self[brand] !== brand
   ) {
-    throw new TypeError("Illegal invocation");
+    const err = new TypeError("Illegal invocation");
+    // Match Node's convention of attaching `code: 'ERR_INVALID_THIS'` to
+    // brand-check failures, so callers using node:crypto and other Node
+    // APIs that re-expose Web Platform classes can detect the error the
+    // same way.
+    err.code = "ERR_INVALID_THIS";
+    throw err;
   }
 }
 
