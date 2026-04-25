@@ -1091,6 +1091,10 @@
     "parallel/test-global-domexception.js": {},
     "parallel/test-global-encoder.js": {},
     "parallel/test-global-webcrypto.js": {},
+    "parallel/test-global-webcrypto-classes.js": {
+      "ignore": true,
+      "reason": "Runs with --expose-internals and requires Node's internal/crypto/webcrypto JS module to assert strict-equal identity against the global Crypto / CryptoKey / SubtleCrypto classes; Deno's WebCrypto is implemented in Rust (ext/crypto/) and has no internal JS module to compare against"
+    },
     "parallel/test-global-webstreams.js": {},
     "parallel/test-h2-large-header-cause-client-to-hangup.js": {
       "ignore": true,
