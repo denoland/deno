@@ -1017,6 +1017,10 @@
     "parallel/test-fs-realpath-buffer-encoding.js": {},
     "parallel/test-fs-realpath-native.js": {},
     "parallel/test-fs-realpath-pipe.js": {},
+    "parallel/test-fs-realpath.js": {
+      "windows": false,
+      "reason": "Windows path handling in symlink+realpath round-trip diverges; tracked separately"
+    },
     "parallel/test-fs-rename-type-check.js": {},
     "parallel/test-fs-rm.js": {
       "parallel/test-fs-rmSync-special-char.js": {},
