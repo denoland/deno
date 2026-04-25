@@ -53,17 +53,20 @@ import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
 
 const {
+  ArrayFrom,
   ArrayIsArray,
   Error,
   EvalError,
   FunctionPrototypeCall,
   NumberIsFinite,
+  ReflectApply,
   NumberIsNaN,
   ObjectHasOwn,
   ObjectKeys,
   ObjectPrototypeIsPrototypeOf,
   PromiseReject,
   PromiseResolve,
+  ReflectHas,
   SafeMap,
   SafeRegExp,
   SafeSet,
@@ -1061,6 +1064,14 @@ export function markAsUntransferable(obj: object) {
     op_mark_as_untransferable(obj as ArrayBuffer);
   }
 }
+export function markAsUncloneable(obj: object) {
+  if (
+    (typeof obj !== "object" && typeof obj !== "function") || obj === null
+  ) {
+    return;
+  }
+  obj[core.uncloneableBrand] = true;
+}
 export function moveMessagePortToContext() {
   notImplemented("moveMessagePortToContext");
 }
@@ -1099,18 +1110,24 @@ class NodeMessageChannel {
     const origClose1 = FunctionPrototypeBind(port1.close, port1);
     const origClose2 = FunctionPrototypeBind(port2.close, port2);
 
-    port1.close = () => {
+    port1.close = (callback) => {
       origClose1();
       if (!port2[nodeWorkerThreadCloseCbInvoked]) {
         port2[nodeWorkerThreadCloseCbInvoked] = true;
         port2.dispatchEvent(new Event("close"));
       }
+      if (typeof callback === "function") {
+        process.nextTick(callback);
+      }
     };
-    port2.close = () => {
+    port2.close = (callback) => {
       origClose2();
       if (!port1[nodeWorkerThreadCloseCbInvoked]) {
         port1[nodeWorkerThreadCloseCbInvoked] = true;
         port1.dispatchEvent(new Event("close"));
+      }
+      if (typeof callback === "function") {
+        process.nextTick(callback);
       }
     };
   }
@@ -1126,8 +1143,12 @@ function webMessagePortToNodeMessagePort(port: MessagePort) {
   port.on = port.addListener = function (this: MessagePort, name, listener) {
     // deno-lint-ignore no-explicit-any
     const _listener = (ev: any) => {
-      patchMessagePortIfFound(ev.data);
-      listener(ev.data);
+      if (name == "message" || name == "messageerror") {
+        patchMessagePortIfFound(ev.data);
+        listener(ev.data);
+      } else {
+        ReflectApply(listener, undefined, ev.detail);
+      }
     };
     if (name == "message") {
       if (port.onmessage === null) {
@@ -1141,10 +1162,8 @@ function webMessagePortToNodeMessagePort(port: MessagePort) {
       } else {
         port.addEventListener("messageerror", _listener);
       }
-    } else if (name == "close") {
-      port.addEventListener("close", _listener);
     } else {
-      throw new Error(`Unknown event: "${name}"`);
+      port.addEventListener(name, _listener);
     }
     listeners.set(listener, _listener);
     return this;
@@ -1158,13 +1177,15 @@ function webMessagePortToNodeMessagePort(port: MessagePort) {
       port.removeEventListener("message", listeners.get(listener)!);
     } else if (name == "messageerror") {
       port.removeEventListener("messageerror", listeners.get(listener)!);
-    } else if (name == "close") {
-      port.removeEventListener("close", listeners.get(listener)!);
     } else {
-      throw new Error(`Unknown event: "${name}"`);
+      port.removeEventListener(name, listeners.get(listener)!);
     }
     listeners.delete(listener);
     return this;
+  };
+  port.emit = function (name: string, ...args: unknown[]) {
+    const ev = new CustomEvent(name, { detail: args });
+    return port.dispatchEvent(ev);
   };
   port[nodeWorkerThreadCloseCb] = () => {
     port.dispatchEvent(new Event("close"));
@@ -1177,6 +1198,54 @@ function webMessagePortToNodeMessagePort(port: MessagePort) {
   };
   const webPostMessage = port.postMessage;
   port.postMessage = (message, transferList) => {
+    if (transferList !== undefined && transferList !== null) {
+      // If it's an object with a 'transfer' key, validate the transfer value
+      if (
+        typeof transferList === "object" && !ArrayIsArray(transferList) &&
+        !ReflectHas(transferList, SymbolIterator)
+      ) {
+        if (ReflectHas(transferList, "transfer")) {
+          const transfer = transferList.transfer;
+          if (transfer === undefined) {
+            // { transfer: undefined } is ok, treat as no transfer
+            return FunctionPrototypeCall(webPostMessage, port, message);
+          }
+          if (
+            transfer === null || typeof transfer !== "object" ||
+            !ReflectHas(transfer, SymbolIterator)
+          ) {
+            throw new ERR_INVALID_ARG_TYPE(
+              "options.transfer",
+              "iterable",
+              transfer,
+            );
+          }
+          try {
+            transferList = ArrayFrom(transfer);
+          } catch {
+            throw new ERR_INVALID_ARG_TYPE(
+              "options.transfer",
+              "iterable",
+              transfer,
+            );
+          }
+        } else {
+          // Plain object without transfer - treat as no transfer
+          return FunctionPrototypeCall(webPostMessage, port, message);
+        }
+      } else if (
+        typeof transferList !== "object" ||
+        !ReflectHas(transferList, SymbolIterator)
+      ) {
+        // Not iterable (number, boolean, symbol, string)
+        throw new ERR_INVALID_ARG_TYPE(
+          "transferList",
+          "iterable",
+          transferList,
+        );
+      }
+    }
+
     for (let i = 0; i < transferList?.length; i++) {
       const item = transferList[i];
       if (item[untransferableSymbol] === true) {
@@ -1247,6 +1316,7 @@ export {
 
 const defaultExport = {
   markAsUntransferable,
+  markAsUncloneable,
   moveMessagePortToContext,
   receiveMessageOnPort,
   MessagePort,

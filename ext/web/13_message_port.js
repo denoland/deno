@@ -460,6 +460,16 @@ function serializeJsMessageData(data, transferables) {
     };
   }
 
+  if (
+    typeof data === "object" && data !== null && !isArrayBuffer(data) &&
+    data[core.uncloneableBrand]
+  ) {
+    throw new DOMException(
+      "Cannot clone object marked as uncloneable",
+      "DataCloneError",
+    );
+  }
+
   const serializedData = core.serialize(data, options, (err) => {
     throw new DOMException(err, "DataCloneError");
   });
@@ -523,6 +533,16 @@ function structuredClone(value, options) {
     prefix,
     "Argument 2",
   );
+
+  if (
+    typeof value === "object" && value !== null && !isArrayBuffer(value) &&
+    value[core.uncloneableBrand]
+  ) {
+    throw new DOMException(
+      "Cannot clone object marked as uncloneable",
+      "DataCloneError",
+    );
+  }
 
   // Fast-path, avoiding round-trip serialization and deserialization
   if (options.transfer.length === 0) {

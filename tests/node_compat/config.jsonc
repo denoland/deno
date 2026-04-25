@@ -2991,6 +2991,7 @@
     "parallel/test-worker-load-file-with-extension-other-than-js.js": {},
     "parallel/test-worker-message-channel.js": {},
     "parallel/test-worker-message-channel-sharedarraybuffer.js": {},
+    "parallel/test-worker-message-port-arraybuffer.js": {},
     "parallel/test-worker-message-port-infinite-message-loop.js": {},
     "parallel/test-worker-message-port-multiple-sharedarraybuffers.js": {},
     "parallel/test-worker-message-port-receive-message.js": {},
@@ -2998,6 +2999,11 @@
     "parallel/test-worker-message-port-transfer-terminate.js": {},
     "parallel/test-worker-message-port-wasm-module.js": {},
     "parallel/test-worker-message-port-wasm-threads.js": {},
+    "parallel/test-worker-message-port.js": {
+      "exitCode": 1,
+      "output": "[WILDCARD]deepStrictEqual[WILDCARD]",
+      "reason": "Deno's MessagePort extends EventTarget (Web API) instead of EventEmitter, so prototype shape differs"
+    },
     "parallel/test-worker-mjs-workerdata.js": {},
     // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
     // "parallel/test-worker-name.js": {},
