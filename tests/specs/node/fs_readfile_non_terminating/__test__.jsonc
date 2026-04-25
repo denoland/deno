@@ -1,5 +1,0 @@
-{
-  "if": "unix",
-  "args": "run -A main.ts",
-  "output": "main.out"
-}
