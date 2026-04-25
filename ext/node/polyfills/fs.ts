@@ -41,7 +41,7 @@ import { read, readSync } from "ext:deno_node/_fs/_fs_read.ts";
 import { readdir, readdirSync } from "ext:deno_node/_fs/_fs_readdir.ts";
 import { EventEmitter } from "node:events";
 import { type MaybeEmpty, notImplemented } from "ext:deno_node/_utils.ts";
-import { promisify } from "node:util";
+import { deprecate, promisify } from "node:util";
 import { delay } from "ext:deno_node/_util/async.ts";
 import promises from "ext:deno_node/internal/fs/promises.ts";
 // @deno-types="./internal/fs/streams.d.ts"
@@ -231,10 +231,21 @@ function stat(
   PromisePrototypeThen(
     Deno.stat(path),
     (stat) => callback(null, CFISBIS(stat, options.bigint)),
-    (err) =>
+    (err) => {
+      // Match Node: `{ throwIfNoEntry: false }` suppresses ENOENT and yields
+      // undefined stats, matching the behavior of binding.stat(..., false)
+      // in lib/fs.js stat().
+      if (
+        (options as statOptions)?.throwIfNoEntry === false &&
+        ObjectPrototypeIsPrototypeOf(Deno.errors.NotFound.prototype, err)
+      ) {
+        callback(null, undefined);
+        return;
+      }
       callback(
         denoErrorToNodeError(err, { syscall: "stat", path }),
-      ),
+      );
+    },
   );
 }
 
@@ -1868,7 +1879,9 @@ function mkdir(
 
   if (typeof options == "function") {
     callback = options;
-  } else if (typeof options === "number") {
+  } else if (typeof options === "number" || typeof options === "string") {
+    // Match Node: a number or string second arg is a file mode
+    // (see lib/fs.js mkdir).
     mode = parseFileMode(options, "mode");
   } else if (typeof options === "boolean") {
     recursive = options;
@@ -1920,7 +1933,9 @@ function mkdirSync(
   let mode = 0o777;
   let recursive = false;
 
-  if (typeof options === "number") {
+  if (typeof options === "number" || typeof options === "string") {
+    // Match Node: a number or string second arg is a file mode
+    // (see lib/fs.js mkdirSync).
     mode = parseFileMode(options, "mode");
   } else if (typeof options === "boolean") {
     recursive = options;
@@ -3404,6 +3419,15 @@ function convertDenoFsEventToNodeFsEvent(
   }
 }
 
+// Match Node: the public `fs.Stats` export is deprecated (DEP0180).
+// Internal call sites use the un-deprecated `Stats` directly (see
+// emptyStats above). See lib/internal/fs/utils.js `Stats: deprecate(...)`.
+const DeprecatedStats = deprecate(
+  Stats,
+  "fs.Stats constructor is deprecated.",
+  "DEP0180",
+);
+
 export default {
   access,
   accessSync,
@@ -3484,7 +3508,7 @@ export default {
   rm,
   rmSync,
   stat,
-  Stats,
+  Stats: DeprecatedStats,
   statSync,
   statfs,
   statfsSync,
@@ -3537,6 +3561,7 @@ export {
   cpSync,
   createReadStream,
   createWriteStream,
+  DeprecatedStats as Stats,
   Dir,
   Dirent,
   exists,
@@ -3602,7 +3627,6 @@ export {
   stat,
   statfs,
   statfsSync,
-  Stats,
   statSync,
   symlink,
   symlinkSync,

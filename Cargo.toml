@@ -100,7 +100,7 @@ deno_task_shell = "=0.29.0"
 deno_terminal = "=0.2.3"
 deno_unsync = { version = "0.4.4", default-features = false }
 deno_whoami = "0.1.0"
-v8 = { version = "147.2.1", default-features = false, features = ["simdutf"] }
+v8 = { version = "147.4.0", default-features = false, features = ["simdutf"] }
 
 denokv_proto = "0.13.0"
 denokv_remote = "0.13.0"
@@ -312,7 +312,7 @@ termcolor = "1.1.3"
 testing_macros = "1.0.0"
 thiserror = "2.0.12"
 tokio = { version = "1.47.1", features = ["full"] }
-tokio-eld = "0.2"
+tokio-eld = "0.3"
 tokio-metrics = { version = "0.3.0", features = ["rt"] }
 tokio-rustls = { version = "0.26.0", default-features = false, features = ["aws_lc_rs", "tls12"] }
 tokio-socks = "0.5.1"
