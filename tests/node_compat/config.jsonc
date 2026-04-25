@@ -1408,6 +1408,7 @@
     "parallel/test-http-response-readable.js": {},
     "parallel/test-http-response-setheaders.js": {},
     "parallel/test-http-response-writehead-returns-this.js": {},
+    "parallel/test-http-server-clear-timer.js": {},
     "parallel/test-http-server-delete-parser.js": {},
     "parallel/test-http-server-method.query.js": {},
     "parallel/test-http-server-write-after-end.js": {},

@@ -24,7 +24,7 @@
 
 // deno-lint-ignore-file prefer-primordials
 
-import { core, primordials } from "ext:core/mod.js";
+import { primordials } from "ext:core/mod.js";
 const {
   ArrayIsArray,
   Error,
@@ -74,6 +74,7 @@ import {
   validateObject,
 } from "ext:deno_node/internal/validators.mjs";
 import { nextTick } from "ext:deno_node/_next_tick.ts";
+import { clearInterval, setInterval } from "node:timers";
 import {
   builtinTracer,
   ContextManager,
@@ -996,14 +997,14 @@ function setupConnectionsTracking() {
   this[kConnectionsKey] ||= new ConnectionsList();
 
   if (this[kConnectionsCheckingInterval]) {
-    core.cancelTimer(this[kConnectionsCheckingInterval]);
+    clearInterval(this[kConnectionsCheckingInterval]);
   }
 
   const interval = this.connectionsCheckingInterval || 30_000;
-  this[kConnectionsCheckingInterval] = core.createSystemInterval(
+  this[kConnectionsCheckingInterval] = setInterval(
     checkConnections.bind(this),
     interval,
-  );
+  ).unref();
 }
 
 function checkConnections() {
@@ -1027,8 +1028,7 @@ function checkConnections() {
 function httpServerPreClose(server) {
   server.closeIdleConnections();
   if (server[kConnectionsCheckingInterval]) {
-    core.cancelTimer(server[kConnectionsCheckingInterval]);
-    server[kConnectionsCheckingInterval] = null;
+    clearInterval(server[kConnectionsCheckingInterval]);
   }
 }
 
@@ -1151,6 +1151,7 @@ Server.prototype.closeIdleConnections = function closeIdleConnections() {
 export {
   connectionListener as _connectionListener,
   httpServerPreClose,
+  kConnectionsCheckingInterval,
   kIncomingMessage,
   kServerResponse,
   Server,
@@ -1163,6 +1164,7 @@ export {
 export default {
   _connectionListener: connectionListener,
   httpServerPreClose,
+  kConnectionsCheckingInterval,
   kIncomingMessage,
   kServerResponse,
   Server,
