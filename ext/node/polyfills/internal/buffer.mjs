@@ -22,6 +22,7 @@ const {
   DataViewPrototypeGetByteOffset,
   Float32Array,
   Float64Array,
+  FunctionPrototypeCall,
   MathFloor,
   MathMin,
   MathTrunc,
@@ -750,7 +751,12 @@ Buffer.prototype.toString = function toString(encoding, start, end) {
 
   // Fast path for base64 - skip getEncodingOps dispatch overhead
   if (encoding === "base64") {
-    return Buffer.prototype.base64Slice.call(this, start, end);
+    return FunctionPrototypeCall(
+      Buffer.prototype.base64Slice,
+      this,
+      start,
+      end,
+    );
   }
 
   const ops = getEncodingOps(encoding);
@@ -788,7 +794,13 @@ Buffer.prototype[customInspectSymbol] =
         StringPrototypeReplace(
           // Use Buffer.prototype.toString so the inspect output stays
           // hex-formatted even when the receiver is a Uint8Array.
-          Buffer.prototype.toString.call(this, "hex", 0, INSPECT_MAX_BYTES_),
+          FunctionPrototypeCall(
+            Buffer.prototype.toString,
+            this,
+            "hex",
+            0,
+            INSPECT_MAX_BYTES_,
+          ),
           SPACER_PATTERN,
           "$1 ",
         ),
@@ -1157,12 +1169,24 @@ Buffer.prototype.write = function write(string, offset, length, encoding) {
   }
 
   if (!encoding) {
-    return Buffer.prototype.utf8Write.call(this, string, offset, length);
+    return FunctionPrototypeCall(
+      Buffer.prototype.utf8Write,
+      this,
+      string,
+      offset,
+      length,
+    );
   }
 
   // Fast path for base64 - skip getEncodingOps dispatch overhead
   if (encoding === "base64") {
-    return Buffer.prototype.base64Write.call(this, string, offset, length);
+    return FunctionPrototypeCall(
+      Buffer.prototype.base64Write,
+      this,
+      string,
+      offset,
+      length,
+    );
   }
 
   const ops = getEncodingOps(encoding);
@@ -1318,13 +1342,13 @@ Buffer.prototype.readUintLE = Buffer.prototype.readUIntLE = function readUIntLE(
     return readUInt24LE(this, offset);
   }
   if (byteLength === 4) {
-    return Buffer.prototype.readUInt32LE.call(this, offset);
+    return FunctionPrototypeCall(Buffer.prototype.readUInt32LE, this, offset);
   }
   if (byteLength === 2) {
-    return Buffer.prototype.readUInt16LE.call(this, offset);
+    return FunctionPrototypeCall(Buffer.prototype.readUInt16LE, this, offset);
   }
   if (byteLength === 1) {
-    return Buffer.prototype.readUInt8.call(this, offset);
+    return FunctionPrototypeCall(Buffer.prototype.readUInt8, this, offset);
   }
 
   boundsError(byteLength, 6, "byteLength");
@@ -1347,13 +1371,13 @@ Buffer.prototype.readUintBE = Buffer.prototype.readUIntBE = function readUIntBE(
     return readUInt24BE(this, offset);
   }
   if (byteLength === 4) {
-    return Buffer.prototype.readUInt32BE.call(this, offset);
+    return FunctionPrototypeCall(Buffer.prototype.readUInt32BE, this, offset);
   }
   if (byteLength === 2) {
-    return Buffer.prototype.readUInt16BE.call(this, offset);
+    return FunctionPrototypeCall(Buffer.prototype.readUInt16BE, this, offset);
   }
   if (byteLength === 1) {
-    return Buffer.prototype.readUInt8.call(this, offset);
+    return FunctionPrototypeCall(Buffer.prototype.readUInt8, this, offset);
   }
 
   boundsError(byteLength, 6, "byteLength");
@@ -1456,13 +1480,13 @@ Buffer.prototype.readIntLE = function readIntLE(
     return readInt24LE(this, offset);
   }
   if (byteLength === 4) {
-    return Buffer.prototype.readInt32LE.call(this, offset);
+    return FunctionPrototypeCall(Buffer.prototype.readInt32LE, this, offset);
   }
   if (byteLength === 2) {
-    return Buffer.prototype.readInt16LE.call(this, offset);
+    return FunctionPrototypeCall(Buffer.prototype.readInt16LE, this, offset);
   }
   if (byteLength === 1) {
-    return Buffer.prototype.readInt8.call(this, offset);
+    return FunctionPrototypeCall(Buffer.prototype.readInt8, this, offset);
   }
 
   boundsError(byteLength, 6, "byteLength");
@@ -1482,13 +1506,13 @@ Buffer.prototype.readIntBE = function readIntBE(offset, byteLength) {
     return readInt24BE(this, offset);
   }
   if (byteLength === 4) {
-    return Buffer.prototype.readInt32BE.call(this, offset);
+    return FunctionPrototypeCall(Buffer.prototype.readInt32BE, this, offset);
   }
   if (byteLength === 2) {
-    return Buffer.prototype.readInt16BE.call(this, offset);
+    return FunctionPrototypeCall(Buffer.prototype.readInt16BE, this, offset);
   }
   if (byteLength === 1) {
-    return Buffer.prototype.readInt8.call(this, offset);
+    return FunctionPrototypeCall(Buffer.prototype.readInt8, this, offset);
   }
 
   boundsError(byteLength, 6, "byteLength");
@@ -2537,9 +2561,15 @@ export const encodingOps = {
         dir,
       ),
     slice: (buf, start, end) =>
-      Buffer.prototype.asciiSlice.call(buf, start, end),
+      FunctionPrototypeCall(Buffer.prototype.asciiSlice, buf, start, end),
     write: (buf, string, offset, len) =>
-      Buffer.prototype.asciiWrite.call(buf, string, offset, len),
+      FunctionPrototypeCall(
+        Buffer.prototype.asciiWrite,
+        buf,
+        string,
+        offset,
+        len,
+      ),
   },
   base64: {
     byteLength: (string) => base64ByteLength(string, string.length),
@@ -2554,9 +2584,15 @@ export const encodingOps = {
         dir,
       ),
     slice: (buf, start, end) =>
-      Buffer.prototype.base64Slice.call(buf, start, end),
+      FunctionPrototypeCall(Buffer.prototype.base64Slice, buf, start, end),
     write: (buf, string, offset, len) =>
-      Buffer.prototype.base64Write.call(buf, string, offset, len),
+      FunctionPrototypeCall(
+        Buffer.prototype.base64Write,
+        buf,
+        string,
+        offset,
+        len,
+      ),
   },
   base64url: {
     byteLength: (string) => base64ByteLength(string, string.length),
@@ -2571,9 +2607,15 @@ export const encodingOps = {
         dir,
       ),
     slice: (buf, start, end) =>
-      Buffer.prototype.base64urlSlice.call(buf, start, end),
+      FunctionPrototypeCall(Buffer.prototype.base64urlSlice, buf, start, end),
     write: (buf, string, offset, len) =>
-      Buffer.prototype.base64urlWrite.call(buf, string, offset, len),
+      FunctionPrototypeCall(
+        Buffer.prototype.base64urlWrite,
+        buf,
+        string,
+        offset,
+        len,
+      ),
   },
   hex: {
     byteLength: (string) => string.length >>> 1,
@@ -2587,9 +2629,16 @@ export const encodingOps = {
         encodingsMap.hex,
         dir,
       ),
-    slice: (buf, start, end) => Buffer.prototype.hexSlice.call(buf, start, end),
+    slice: (buf, start, end) =>
+      FunctionPrototypeCall(Buffer.prototype.hexSlice, buf, start, end),
     write: (buf, string, offset, len) =>
-      Buffer.prototype.hexWrite.call(buf, string, offset, len),
+      FunctionPrototypeCall(
+        Buffer.prototype.hexWrite,
+        buf,
+        string,
+        offset,
+        len,
+      ),
   },
   latin1: {
     byteLength: (string) => string.length,
@@ -2604,9 +2653,15 @@ export const encodingOps = {
         dir,
       ),
     slice: (buf, start, end) =>
-      Buffer.prototype.latin1Slice.call(buf, start, end),
+      FunctionPrototypeCall(Buffer.prototype.latin1Slice, buf, start, end),
     write: (buf, string, offset, len) =>
-      Buffer.prototype.latin1Write.call(buf, string, offset, len),
+      FunctionPrototypeCall(
+        Buffer.prototype.latin1Write,
+        buf,
+        string,
+        offset,
+        len,
+      ),
   },
   ucs2: {
     byteLength: (string) => string.length * 2,
@@ -2621,9 +2676,15 @@ export const encodingOps = {
         dir,
       ),
     slice: (buf, start, end) =>
-      Buffer.prototype.ucs2Slice.call(buf, start, end),
+      FunctionPrototypeCall(Buffer.prototype.ucs2Slice, buf, start, end),
     write: (buf, string, offset, len) =>
-      Buffer.prototype.ucs2Write.call(buf, string, offset, len),
+      FunctionPrototypeCall(
+        Buffer.prototype.ucs2Write,
+        buf,
+        string,
+        offset,
+        len,
+      ),
   },
   utf8: {
     byteLength: byteLengthUtf8,
@@ -2638,9 +2699,15 @@ export const encodingOps = {
         dir,
       ),
     slice: (buf, start, end) =>
-      Buffer.prototype.utf8Slice.call(buf, start, end),
+      FunctionPrototypeCall(Buffer.prototype.utf8Slice, buf, start, end),
     write: (buf, string, offset, len) =>
-      Buffer.prototype.utf8Write.call(buf, string, offset, len),
+      FunctionPrototypeCall(
+        Buffer.prototype.utf8Write,
+        buf,
+        string,
+        offset,
+        len,
+      ),
   },
   utf16le: {
     byteLength: (string) => string.length * 2,
@@ -2655,9 +2722,15 @@ export const encodingOps = {
         dir,
       ),
     slice: (buf, start, end) =>
-      Buffer.prototype.ucs2Slice.call(buf, start, end),
+      FunctionPrototypeCall(Buffer.prototype.ucs2Slice, buf, start, end),
     write: (buf, string, offset, len) =>
-      Buffer.prototype.ucs2Write.call(buf, string, offset, len),
+      FunctionPrototypeCall(
+        Buffer.prototype.ucs2Write,
+        buf,
+        string,
+        offset,
+        len,
+      ),
   },
 };
 
