@@ -555,6 +555,45 @@ Object.defineProperty(Process.prototype, "constructor", {
   configurable: true,
 });
 
+// Maps original user listeners to wrapped versions that pass the signal name.
+// Node.js calls signal listeners with the signal name as the first argument,
+// but Deno.addSignalListener calls them with no arguments.
+type SignalListener = (...args: string[]) => void;
+const _signalListenerWrappers = new WeakMap<
+  SignalListener,
+  Map<string, SignalListener>
+>();
+
+function _wrapSignalListener(
+  event: string,
+  listener: SignalListener,
+): SignalListener {
+  let wrappersByEvent = _signalListenerWrappers.get(listener);
+  if (!wrappersByEvent) {
+    wrappersByEvent = new Map();
+    _signalListenerWrappers.set(listener, wrappersByEvent);
+  }
+  let wrapper = wrappersByEvent.get(event);
+  if (!wrapper) {
+    wrapper = () => listener(event);
+    wrappersByEvent.set(event, wrapper);
+  }
+  return wrapper;
+}
+
+function _unwrapSignalListener(
+  event: string,
+  listener: SignalListener,
+): SignalListener {
+  const wrappersByEvent = _signalListenerWrappers.get(listener);
+  if (!wrappersByEvent) return listener;
+  const wrapper = wrappersByEvent.get(event);
+  if (wrapper) {
+    wrappersByEvent.delete(event);
+  }
+  return wrapper ?? listener;
+}
+
 // Look up the actual registered listener for a signal event. When `once()` is
 // used, EventEmitter wraps the listener in a function with a `.listener`
 // property. We need the wrapper to pass to `Deno.removeSignalListener`.
@@ -600,7 +639,10 @@ Process.prototype.on = function (
       // TODO(#26331): Ignores all signals except SIGBREAK, SIGINT, and SIGWINCH on windows.
     } else {
       EventEmitter.prototype.on.call(this, event, listener);
-      Deno.addSignalListener(event as Deno.Signal, listener);
+      Deno.addSignalListener(
+        event as Deno.Signal,
+        _wrapSignalListener(event, listener),
+      );
     }
   } else {
     EventEmitter.prototype.on.call(this, event, listener);
@@ -631,9 +673,10 @@ Process.prototype.off = function (
       // to pass the wrapper (not the original) to Deno.removeSignalListener.
       const registered = _findSignalListener(this, event, listener);
       EventEmitter.prototype.off.call(this, event, listener);
+      const unwrapped = _unwrapSignalListener(event, registered ?? listener);
       Deno.removeSignalListener(
         event as Deno.Signal,
-        registered ?? listener,
+        unwrapped,
       );
     }
   } else {
@@ -665,7 +708,10 @@ Process.prototype.prependListener = function (
       // Ignores SIGBREAK if the platform is not windows.
     } else {
       EventEmitter.prototype.prependListener.call(this, event, listener);
-      Deno.addSignalListener(event as Deno.Signal, listener);
+      Deno.addSignalListener(
+        event as Deno.Signal,
+        _wrapSignalListener(event, listener),
+      );
     }
   } else {
     EventEmitter.prototype.prependListener.call(this, event, listener);
