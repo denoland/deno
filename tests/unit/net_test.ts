@@ -350,12 +350,20 @@ Deno.test(
 Deno.test(
   { permissions: { net: true } },
   async function netUdpSendReceive() {
-    const alice = Deno.listenDatagram({ port: listenPort, transport: "udp" });
+    const alice = Deno.listenDatagram({
+      port: listenPort,
+      transport: "udp",
+      hostname: "127.0.0.1",
+    });
     assert(alice.addr.transport === "udp");
     assertEquals(alice.addr.port, listenPort);
     assertEquals(alice.addr.hostname, "127.0.0.1");
 
-    const bob = Deno.listenDatagram({ port: listenPort2, transport: "udp" });
+    const bob = Deno.listenDatagram({
+      port: listenPort2,
+      transport: "udp",
+      hostname: "127.0.0.1",
+    });
     assert(bob.addr.transport === "udp");
     assertEquals(bob.addr.port, listenPort2);
     assertEquals(bob.addr.hostname, "127.0.0.1");
@@ -374,6 +382,21 @@ Deno.test(
     assertEquals(3, recvd[2]);
     alice.close();
     bob.close();
+  },
+);
+
+// Regression test for https://github.com/denoland/deno/issues/25581
+// `Deno.listenDatagram` with no `hostname` should bind to `0.0.0.0` (matching
+// the documented default and `Deno.listen`/`Deno.serve`), not `127.0.0.1`.
+// Binding to `127.0.0.1` made it impossible to send to a network broadcast
+// address such as `10.x.x.255` (the OS rejected the send with EINVAL/EFAULT).
+Deno.test(
+  { permissions: { net: true } },
+  function netUdpDefaultHostnameIsAnyAddress() {
+    const socket = Deno.listenDatagram({ port: 0, transport: "udp" });
+    assertEquals(socket.addr.transport, "udp");
+    assertEquals(socket.addr.hostname, "0.0.0.0");
+    socket.close();
   },
 );
 
