@@ -388,6 +388,7 @@
     },
     "parallel/test-client-request-destroy.js": {},
     "parallel/test-cluster-eaddrinuse.js": {},
+    "parallel/test-cluster-shared-handle-bind-error.js": {},
     "parallel/test-cluster-uncaught-exception.js": {},
     "parallel/test-common-countdown.js": {},
     "parallel/test-common-expect-warning.js": {},

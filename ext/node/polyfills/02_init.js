@@ -49,6 +49,7 @@ function initialize(args) {
       moduleSpecifier,
     );
     internals.__setupChildProcessIpcChannel();
+    internals.__initCluster();
     op_stream_base_register_state(streamBaseState);
     // `Deno[Deno.internal].requireImpl` will be unreachable after this line.
     delete internals.requireImpl;
