@@ -1,0 +1,14 @@
+{
+  "tests": {
+    "main_path_traversal_cjs": {
+      "args": "run main.cjs",
+      "output": "main.out",
+      "exitCode": 1
+    },
+    "main_path_traversal_esm": {
+      "args": "run main.mjs",
+      "output": "main_esm.out",
+      "exitCode": 1
+    }
+  }
+}
