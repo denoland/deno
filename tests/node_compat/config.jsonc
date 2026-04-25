@@ -72,6 +72,7 @@
       "ignore": true,
       "reason": "Node.js snapshot/heap profiling features (--build-snapshot, --heap-prof, --heapsnapshot-near-heap-limit) are not implemented in Deno"
     },
+    "parallel/test-abort-controller-any-timeout.js": {},
     "parallel/test-abortcontroller-internal.js": {
       "ignore": true,
       "reason": "Tests Node.js internal modules (require('internal/...')) which are not exposed in Deno"
@@ -402,6 +403,10 @@
     "parallel/test-crypto-ecdh-convert-key.js": {},
     "parallel/test-crypto-ecb.js": {},
     "parallel/test-crypto-encap-decap.js": {},
+    "parallel/test-crypto-fips.js": {
+      "ignore": true,
+      "reason": "Tests Node's FIPS mode (--enable-fips/--force-fips, OPENSSL_CONF, --openssl-config CLI flags) and uses internalBinding('crypto').testFipsCrypto via require('internal/test/binding'); FIPS is an OpenSSL-specific feature and Deno does not embed OpenSSL"
+    },
     "parallel/test-crypto-from-binary.js": {},
     "parallel/test-crypto-getcipherinfo.js": {},
     "parallel/test-crypto-hmac.js": {},
@@ -457,6 +462,10 @@
     "parallel/test-crypto-oneshot-hash-xof.js": {},
     "parallel/test-crypto-oaep-zero-length.js": {},
     "parallel/test-crypto-op-during-process-exit.js": {},
+    "parallel/test-crypto-no-algorithm.js": {
+      "ignore": true,
+      "reason": "Test gates on hasOpenSSL3 (skips if not OpenSSL 3.x), calls crypto.setFips(1) (FIPS mode is unsupported in Deno), asserts on OpenSSL-specific error strings ('digital envelope routines::unsupported', 'random number generator::unable to fetch drbg') and the err.opensslErrorStack field, and spawns a child with --openssl-config=...; none of these are available outside Node's OpenSSL-backed crypto"
+    },
     "parallel/test-crypto-padding.js": {},
     "parallel/test-crypto-padding-aes256.js": {},
     "parallel/test-crypto-pqc-key-objects-ml-dsa.js": {},
@@ -635,6 +644,7 @@
     "parallel/test-dgram-oob-buffer.js": {},
     "parallel/test-dgram-recv-error.js": {},
     "parallel/test-dgram-ref.js": {},
+    "parallel/test-dgram-send-address-types.js": {},
     "parallel/test-dgram-send-bad-arguments.js": {},
     "parallel/test-dgram-send-callback-buffer-empty-address.js": {},
     "parallel/test-dgram-send-callback-buffer-length-empty-address.js": {},
@@ -1066,6 +1076,7 @@
     "parallel/test-fs-watch-stop-async.js": {},
     "parallel/test-fs-watch-stop-sync.js": {},
     "parallel/test-fs-watch.js": {},
+    "parallel/test-fs-watchfile-ref-unref.js": {},
     "parallel/test-fs-watchfile.js": {},
     "parallel/test-fs-whatwg-url.js": {},
     "parallel/test-fs-write-buffer-large.js": {},
@@ -1092,6 +1103,10 @@
     "parallel/test-global-domexception.js": {},
     "parallel/test-global-encoder.js": {},
     "parallel/test-global-webcrypto.js": {},
+    "parallel/test-global-webcrypto-classes.js": {
+      "ignore": true,
+      "reason": "Runs with --expose-internals and requires Node's internal/crypto/webcrypto JS module to assert strict-equal identity against the global Crypto / CryptoKey / SubtleCrypto classes; Deno's WebCrypto is implemented in Rust (ext/crypto/) and has no internal JS module to compare against"
+    },
     "parallel/test-global-webstreams.js": {},
     "parallel/test-h2-large-header-cause-client-to-hangup.js": {
       "ignore": true,
@@ -1677,6 +1692,10 @@
     "parallel/test-net-listening.js": {},
     "parallel/test-net-local-address-port.js": {},
     "parallel/test-net-localerror.js": {},
+    "parallel/test-net-normalize-args.js": {
+      "ignore": true,
+      "reason": "Tests Node.js internal module (require('internal/net'))"
+    },
     "parallel/test-net-options-lookup.js": {},
     "parallel/test-net-pause-resume-connecting.js": {},
     "parallel/test-net-persistent-keepalive.js": {},
@@ -1687,7 +1706,10 @@
     "parallel/test-net-reconnect.js": {},
     "parallel/test-net-remote-address-port.js": {},
     "parallel/test-net-remote-address.js": {},
+    "parallel/test-net-server-async-dispose.mjs": {},
+    "parallel/test-net-server-blocklist.js": {},
     "parallel/test-net-server-capture-rejection.js": {},
+    "parallel/test-net-server-close-before-calling-lookup-callback.js": {},
     "parallel/test-net-server-close.js": {},
     "parallel/test-net-server-listen-options-signal.js": {},
     "parallel/test-net-server-listen-options.js": {},
@@ -1699,6 +1721,7 @@
     "parallel/test-net-server-unref.js": {},
     "parallel/test-net-settimeout.js": {},
     "parallel/test-net-socket-connect-invalid-autoselectfamily.js": {},
+    "parallel/test-net-socket-connect-invalid-autoselectfamilyattempttimeout.js": {},
     "parallel/test-net-socket-connect-without-cb.js": {},
     "parallel/test-net-socket-connecting.js": {},
     "parallel/test-net-socket-destroy-send.js": {},
@@ -2705,6 +2728,22 @@
     // "parallel/test-warn-sigprof.js": {},
     "parallel/test-weakref.js": {},
     "parallel/test-webcrypto-encrypt-decrypt.js": {},
+    "parallel/test-webcrypto-keygen-kmac.js": {
+      "ignore": true,
+      "reason": "Tests SubtleCrypto generateKey for KMAC128 / KMAC256, a Node-specific WebCrypto extension that requires OpenSSL >= 3 (test gates on hasOpenSSL(3)); Deno's ext/crypto/ does not register KMAC as a recognised SubtleCrypto algorithm. Could be revisited if KMAC is added — a SHA-3-based KMAC is implementable via the sha3 / cshake Rust crates"
+    },
+    "parallel/test-webcrypto-util.js": {
+      "ignore": true,
+      "reason": "Runs with --expose-internals and requires Node's internal/crypto/util JS module to whitebox-test the internal normalizeAlgorithm() helper; Deno's WebCrypto is implemented in Rust (ext/crypto/) and does not expose this Node-internal module"
+    },
+    "parallel/test-webcrypto-supports.mjs": {
+      "ignore": true,
+      "reason": "Requires the WebCrypto Level 2 SubtleCrypto.supports() static method, which Deno does not implement; the test also exercises algorithms Deno does not support (SHA-3, KMAC, Argon2, X448 KEM, encapsulateKey/decapsulateBits). Could be revisited if SubtleCrypto.supports lands in ext/crypto/ along with the algorithms it advertises"
+    },
+    "parallel/test-webcrypto-webidl.js": {
+      "ignore": true,
+      "reason": "Tests Node's internal/crypto/webidl JS module (WebIDL converters such as converters.boolean, converters.DOMString, requiredArguments) via require('internal/crypto/webidl') with --expose-internals; Deno's WebCrypto is implemented in Rust (ext/crypto/) and does not expose this internal module"
+    },
     "parallel/test-websocket.js": {},
     "parallel/test-webstream-string-tag.js": {},
     "parallel/test-webstreams-compose.js": {},
