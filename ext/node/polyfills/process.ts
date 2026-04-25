@@ -30,6 +30,7 @@ import { report } from "ext:deno_node/internal/process/report.ts";
 import { onWarning } from "ext:deno_node/internal/process/warning.ts";
 import {
   parseFileMode,
+  validateBoolean,
   validateNumber,
   validateObject,
   validateString,
@@ -1039,7 +1040,8 @@ Object.defineProperty(process, "platform", {
 });
 
 // https://nodejs.org/api/process.html#processsetsourcemapsenabledval
-process.setSourceMapsEnabled = (_val: boolean) => {
+process.setSourceMapsEnabled = (val: boolean) => {
+  validateBoolean(val, "val");
   // This is a no-op in Deno. Source maps are always enabled.
   // TODO(@satyarohith): support disabling source maps if needed.
 };
