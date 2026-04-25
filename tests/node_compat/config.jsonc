@@ -2703,6 +2703,10 @@
     // "parallel/test-warn-sigprof.js": {},
     "parallel/test-weakref.js": {},
     "parallel/test-webcrypto-encrypt-decrypt.js": {},
+    "parallel/test-webcrypto-webidl.js": {
+      "ignore": true,
+      "reason": "Tests Node's internal/crypto/webidl JS module (WebIDL converters such as converters.boolean, converters.DOMString, requiredArguments) via require('internal/crypto/webidl') with --expose-internals; Deno's WebCrypto is implemented in Rust (ext/crypto/) and does not expose this internal module"
+    },
     "parallel/test-websocket.js": {},
     "parallel/test-webstream-string-tag.js": {},
     "parallel/test-webstreams-compose.js": {},
