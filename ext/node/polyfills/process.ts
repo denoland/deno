@@ -533,7 +533,7 @@ export let execPath: string = "";
 // Use a named function expression so the syntactic name ("process") is
 // captured at parse time. V8 uses that name for runtime class strings
 // in error messages like "Cannot delete property 'exitCode' of
-// #<process>", which `Object.defineProperty(F, "name", …)` does not
+// #<process>", which `Object.defineProperty(F, "name", ...)` does not
 // affect. Match Node's FunctionTemplate-based binding (see
 // CreateProcessObject in src/node_process_object.cc).
 // deno-lint-ignore no-explicit-any
