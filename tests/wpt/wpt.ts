@@ -371,7 +371,7 @@ Options:
   // Copy non-expectation files (like schema.json) into the tmp dir so
   // git diff --no-index doesn't show them as spurious deletions.
   for await (const entry of Deno.readDir(EXPECTATIONS_DIR)) {
-    if (entry.isFile && !entry.name.endsWith(".json")) continue;
+    if (!entry.isFile || !entry.name.endsWith(".json")) continue;
     const tmpPath = `${tmpDir}/${entry.name}`;
     try {
       await Deno.stat(tmpPath);
