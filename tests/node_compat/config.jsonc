@@ -1014,6 +1014,7 @@
     "parallel/test-fs-realpath-buffer-encoding.js": {},
     "parallel/test-fs-realpath-native.js": {},
     "parallel/test-fs-realpath-pipe.js": {},
+    "parallel/test-fs-realpath.js": {},
     "parallel/test-fs-rename-type-check.js": {},
     "parallel/test-fs-rm.js": {
       "parallel/test-fs-rmSync-special-char.js": {},
