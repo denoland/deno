@@ -1349,25 +1349,35 @@ function isAbsolute(filenameOrUrl) {
   return RE_START_OF_ABS_PATH.test(filenameOrUrl);
 }
 
+// Match Node's error reason (see lib/internal/modules/cjs/loader.js).
+const kCreateRequireError =
+  "must be a file URL object, file URL string, or absolute path string";
+
 function createRequire(filenameOrUrl) {
   let fileUrlStr;
   if (filenameOrUrl instanceof URL) {
     if (filenameOrUrl.protocol !== "file:") {
-      throw new Error(
-        `The argument 'filename' must be a file URL object, file URL string, or absolute path string. Received ${filenameOrUrl}`,
+      throw new internalErrors.ERR_INVALID_ARG_VALUE(
+        "filename",
+        filenameOrUrl,
+        kCreateRequireError,
       );
     }
     fileUrlStr = filenameOrUrl.toString();
   } else if (typeof filenameOrUrl === "string") {
     if (!filenameOrUrl.startsWith("file:") && !isAbsolute(filenameOrUrl)) {
-      throw new Error(
-        `The argument 'filename' must be a file URL object, file URL string, or absolute path string. Received ${filenameOrUrl}`,
+      throw new internalErrors.ERR_INVALID_ARG_VALUE(
+        "filename",
+        filenameOrUrl,
+        kCreateRequireError,
       );
     }
     fileUrlStr = filenameOrUrl;
   } else {
-    throw new Error(
-      `The argument 'filename' must be a file URL object, file URL string, or absolute path string. Received ${filenameOrUrl}`,
+    throw new internalErrors.ERR_INVALID_ARG_VALUE(
+      "filename",
+      filenameOrUrl,
+      kCreateRequireError,
     );
   }
   const filename = op_require_as_file_path(fileUrlStr) ?? fileUrlStr;

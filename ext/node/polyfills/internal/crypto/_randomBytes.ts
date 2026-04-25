@@ -3,7 +3,7 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-import { Buffer } from "node:buffer";
+import { Buffer, kMaxLength } from "node:buffer";
 import {
   emitAfter,
   emitBefore,
@@ -12,18 +12,35 @@ import {
   executionAsyncId,
   newAsyncId,
 } from "ext:deno_node/internal/async_hooks.ts";
+import {
+  validateFunction,
+  validateNumber,
+} from "ext:deno_node/internal/validators.mjs";
+import { ERR_OUT_OF_RANGE } from "ext:deno_node/internal/errors.ts";
 import process from "node:process";
 
 export const MAX_RANDOM_VALUES = 65536;
-export const MAX_SIZE = 4294967295;
+const kMaxInt32 = 2 ** 31 - 1;
+const kMaxPossibleLength = Math.min(kMaxLength, kMaxInt32);
+export const MAX_SIZE = kMaxPossibleLength;
 
-function generateRandomBytes(size: number) {
-  if (size > MAX_SIZE) {
-    throw new RangeError(
-      `The value of "size" is out of range. It must be >= 0 && <= ${MAX_SIZE}. Received ${size}`,
+// Mirrors Node's lib/internal/crypto/random.js assertSize() with
+// elementSize = 1, offset = 0, length = Infinity.
+function assertSize(size: number): number {
+  validateNumber(size, "size");
+
+  if (Number.isNaN(size) || size > kMaxPossibleLength || size < 0) {
+    throw new ERR_OUT_OF_RANGE(
+      "size",
+      `>= 0 && <= ${kMaxPossibleLength}`,
+      size,
     );
   }
 
+  return size >>> 0;
+}
+
+function generateRandomBytes(size: number) {
   const bytes = Buffer.allocUnsafeSlow(size);
 
   //Work around for getRandomValues max generation
@@ -52,19 +69,16 @@ export default function randomBytes(
   size: number,
   cb?: (err: Error | null, buf?: Buffer) => void,
 ): Buffer | void {
+  size = assertSize(size);
+  if (cb !== undefined) {
+    validateFunction(cb, "callback");
+  }
   if (typeof cb === "function") {
     let err: Error | null = null, bytes: Buffer;
     try {
       bytes = generateRandomBytes(size);
     } catch (e) {
-      //NodeJS nonsense
-      //If the size is out of range it will throw sync, otherwise throw async
-      if (
-        e instanceof RangeError &&
-        e.message.includes('The value of "size" is out of range')
-      ) {
-        throw e;
-      } else if (e instanceof Error) {
+      if (e instanceof Error) {
         err = e;
       } else {
         err = new Error("[non-error thrown]");

@@ -1927,3 +1927,24 @@ Deno.test({
     }
   },
 });
+
+Deno.test(
+  {
+    name: "[node/fs] readFile on non-terminating source respects AbortSignal",
+    ignore: Deno.build.os === "windows",
+  },
+  async () => {
+    const controller = new AbortController();
+    setTimeout(() => controller.abort(), 500);
+
+    await assertRejects(
+      () =>
+        readFile("/dev/urandom", {
+          encoding: "utf8",
+          signal: controller.signal,
+        }),
+      Error,
+      "abort",
+    );
+  },
+);
