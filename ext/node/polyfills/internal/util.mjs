@@ -210,6 +210,15 @@ export class WeakReference {
 
 promisify.custom = kCustomPromisifiedSymbol;
 
+let _sleepView;
+
+export function sleep(msec) {
+  if (_sleepView === undefined) {
+    _sleepView = new Int32Array(new SharedArrayBuffer(4));
+  }
+  Atomics.wait(_sleepView, 0, 0, msec);
+}
+
 export default {
   convertToValidSignal,
   customInspectSymbol,
@@ -222,4 +231,5 @@ export default {
   once,
   promisify,
   removeColors,
+  sleep,
 };
