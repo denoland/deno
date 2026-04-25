@@ -718,15 +718,26 @@ fn property_query<'s>(
     return v8::Intercepted::kNo;
   };
 
-  match sandbox.has_real_named_property(scope, property) {
+  // Use `Has` rather than `HasRealNamedProperty` for the sandbox so the
+  // `in` operator walks the sandbox's prototype chain, matching Node's
+  // behaviour. With the own-only check, a user that does
+  // `Object.setPrototypeOf(sandbox, someProto)` would not see properties
+  // from `someProto` reachable via `propName in window` inside the vm
+  // context.
+  //
+  // The fallback path on the global proxy keeps using
+  // `HasRealNamedProperty` to avoid recursing back into this interceptor:
+  // the global proxy carries the named-property handler that brought us
+  // here, so a regular `Has` would re-enter `property_query` infinitely.
+  let property_value: v8::Local<v8::Value> = property.into();
+  match sandbox.has(scope, property_value) {
     None => v8::Intercepted::kNo,
     Some(true) => {
-      let Some(attr) =
-        sandbox.get_real_named_property_attributes(scope, property)
-      else {
-        return v8::Intercepted::kNo;
-      };
-      rv.set_uint32(attr.as_u32());
+      let attr = sandbox
+        .get_property_attributes(scope, property_value)
+        .map(|a| a.as_u32())
+        .unwrap_or(0);
+      rv.set_uint32(attr);
       v8::Intercepted::kYes
     }
     Some(false) => {
