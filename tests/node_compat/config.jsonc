@@ -2795,6 +2795,7 @@
     "parallel/test-whatwg-events-eventtarget-this-of-listener.js": {},
     "parallel/test-whatwg-readablebytestreambyob.js": {},
     "parallel/test-whatwg-readablestream.mjs": {},
+    "parallel/test-whatwg-transformstream-cancel-write-race.js": {},
     "parallel/test-whatwg-url-custom-deepequal.js": {},
     "parallel/test-whatwg-url-custom-global.js": {},
     "parallel/test-whatwg-url-custom-href-side-effect.js": {},
