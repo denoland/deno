@@ -119,6 +119,7 @@
       "windows": false,
       "reason": "URL.createObjectURL does not throw ERR_INVALID_ARG_TYPE for non-Blob arguments"
     },
+    "parallel/test-blocklist.js": {},
     "parallel/test-btoa-atob.js": {},
     "parallel/test-buffer-alloc.js": {},
     "parallel/test-buffer-arraybuffer.js": {},
