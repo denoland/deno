@@ -392,7 +392,10 @@ type ExecOutputForPromisify = {
 type ExecExceptionForPromisify = ExecException & ExecOutputForPromisify;
 
 const customPromiseExecFunction = (orig: typeof exec) => {
-  return (...args: [command: string, options: ExecOptions]) => {
+  // Give the returned function the same name as the original so
+  // `promisify(exec).name === 'exec'`, matching Node's
+  // `assignFunctionName(orig.name, ...)` (see lib/child_process.js).
+  const fn = (...args: [command: string, options: ExecOptions]) => {
     const { promise, resolve, reject } = PromiseWithResolvers();
 
     promise.child = orig(...args, (err, stdout, stderr) => {
@@ -408,6 +411,8 @@ const customPromiseExecFunction = (orig: typeof exec) => {
 
     return promise;
   };
+  Object.defineProperty(fn, "name", { value: orig.name, configurable: true });
+  return fn;
 };
 
 Object.defineProperty(exec, promisify.custom, {
@@ -744,7 +749,7 @@ const customPromiseExecFileFunction = (
     maybeCallback?: ExecFileCallback,
   ) => ChildProcess,
 ) => {
-  return (
+  const fn = (
     ...args: [
       file: string,
       argsOrOptions?: string[] | ExecFileOptions,
@@ -766,6 +771,8 @@ const customPromiseExecFileFunction = (
 
     return promise;
   };
+  Object.defineProperty(fn, "name", { value: orig.name, configurable: true });
+  return fn;
 };
 
 Object.defineProperty(execFile, promisify.custom, {

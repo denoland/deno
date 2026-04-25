@@ -287,7 +287,11 @@ fn op_create_worker(
   })?;
 
   // Receive WebWorkerHandle from newly created worker
-  let worker_handle = handle_receiver.recv().unwrap();
+  let worker_handle = handle_receiver.recv().map_err(|_| {
+    std::io::Error::other(
+      "Worker thread terminated unexpectedly before initialization completed",
+    )
+  })?;
 
   let worker_thread = WorkerThread {
     worker_handle: worker_handle.into(),

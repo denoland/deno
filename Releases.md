@@ -6,6 +6,58 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 2.7.13 / 2026.04.22
+
+- feat(ext/node): implement node:repl module (#32799)
+- feat(ext/node): rewrite node:http with llhttp and native TCPWrap (#33208)
+- feat(upgrade): support installing from a PR (#33252)
+- fix(audit): migrate to bulk advisory endpoint (#33292)
+- fix(console): find nodejs.util.inspect.custom on Proxy objects via get trap
+  (#33265)
+- fix(doc): Add Prism support for JSX/TSX code blocks (#33255)
+- fix(ext/http): treat empty Host header as missing in request URL (#33234)
+- fix(ext/napi): defer GC weak-callback finalizers to the event loop (#33260)
+- fix(ext/napi): implement real V8 handle scopes and callback scopes (#33281)
+- fix(ext/napi): implement zero-copy external Latin-1 strings (#33283)
+- fix(ext/node): ChildProcess.kill() returns false when process already exited
+  (#33305)
+- fix(ext/node): address node:http rewrite review comments (#33299)
+- fix(ext/node): auto-start server-side STARTTLS handshake, add TLS upgrade
+  tests (#33303)
+- fix(ext/node): defer JS stream encOut to avoid reentrant CppGC borrow (#33304)
+- fix(ext/node): enable HTTP parser consume fast path (#33354)
+- fix(ext/node): enforce maxHeaderSize in HTTP parser (#33306)
+- fix(ext/node): fix EEXIST error and file corruption with writeFileSync on
+  Windows (#33253)
+- fix(ext/node): fix Module._resolveLookupPaths and require.resolve compat
+  (#33261)
+- fix(ext/node): fix multiple http2 bugs (#33315)
+- fix(ext/node): fix playwright on windows (#33295)
+- fix(ext/node): flush HTTP/2 HEADERS frame after client request (#33300)
+- fix(ext/node): free uv_write and uv_shutdown requests in every exit path
+  (#33350)
+- fix(ext/node): http client compat improvements (#33337)
+- fix(ext/node): http2 improvements — constants, error codes, settings,
+  validation (#33332)
+- fix(ext/node): improve node:tls compat (validation, pipes, JS streams)
+  (#33331)
+- fix(ext/node): support FD-indexed stdio inheritance in spawnSync (#33341)
+- fix(ext/node): support RSA-PSS keys in crypto.verify with null algorithm
+  (#33314)
+- fix(runtime): warn on unsupported web Worker options and fix recv panic
+  (#33310)
+- fix(test): fix specific_canary upgrade test on Windows (#33286)
+- fix: add note for canary's 30-day retention period (#33271)
+- fix: restore glibc < 2.27 compatibility for Linux release builds (#33259)
+- fix: update v8 crate to 147.2.1 (#33318)
+- perf(ext/node): elide async_hooks emit in timers when no hooks registered
+  (#33355)
+- perf(ext/node): flush-free header fast path in HTTP parser (#33351)
+- perf(ext/node): reduce writev op allocations and write copies (#33352)
+- perf(libs/core): poll only ready handles and yield between I/O batches
+  (#33349)
+- perf: reduce memory usage of Command.output() (#33335)
+
 ### 2.7.12 / 2026.04.09
 
 - feat(ext/node): add fs.SyncWriteStream (#33226)

@@ -25,9 +25,68 @@ const {
   Symbol,
 } = primordials;
 
-import { op_http2_constants, op_http2_http_state } from "ext:core/ops";
+import { op_http2_http_state } from "ext:core/ops";
 import { _checkIsHttpToken as checkIsHttpToken } from "node:_http_common";
 import { codes, hideStackFrames } from "ext:deno_node/internal/errors.ts";
+import {
+  HTTP2_HEADER_ACCESS_CONTROL_ALLOW_CREDENTIALS,
+  HTTP2_HEADER_ACCESS_CONTROL_MAX_AGE,
+  HTTP2_HEADER_ACCESS_CONTROL_REQUEST_METHOD,
+  HTTP2_HEADER_AGE,
+  HTTP2_HEADER_AUTHORITY,
+  HTTP2_HEADER_AUTHORIZATION,
+  HTTP2_HEADER_CONNECTION,
+  HTTP2_HEADER_CONTENT_ENCODING,
+  HTTP2_HEADER_CONTENT_LANGUAGE,
+  HTTP2_HEADER_CONTENT_LENGTH,
+  HTTP2_HEADER_CONTENT_LOCATION,
+  HTTP2_HEADER_CONTENT_MD5,
+  HTTP2_HEADER_CONTENT_RANGE,
+  HTTP2_HEADER_CONTENT_TYPE,
+  HTTP2_HEADER_COOKIE,
+  HTTP2_HEADER_DATE,
+  HTTP2_HEADER_DNT,
+  HTTP2_HEADER_ETAG,
+  HTTP2_HEADER_EXPIRES,
+  HTTP2_HEADER_FROM,
+  HTTP2_HEADER_HOST,
+  HTTP2_HEADER_HTTP2_SETTINGS,
+  HTTP2_HEADER_IF_MATCH,
+  HTTP2_HEADER_IF_MODIFIED_SINCE,
+  HTTP2_HEADER_IF_NONE_MATCH,
+  HTTP2_HEADER_IF_RANGE,
+  HTTP2_HEADER_IF_UNMODIFIED_SINCE,
+  HTTP2_HEADER_KEEP_ALIVE,
+  HTTP2_HEADER_LAST_MODIFIED,
+  HTTP2_HEADER_LOCATION,
+  HTTP2_HEADER_MAX_FORWARDS,
+  HTTP2_HEADER_METHOD,
+  HTTP2_HEADER_PATH,
+  HTTP2_HEADER_PROTOCOL,
+  HTTP2_HEADER_PROXY_AUTHORIZATION,
+  HTTP2_HEADER_PROXY_CONNECTION,
+  HTTP2_HEADER_RANGE,
+  HTTP2_HEADER_REFERER,
+  HTTP2_HEADER_RETRY_AFTER,
+  HTTP2_HEADER_SCHEME,
+  HTTP2_HEADER_SET_COOKIE,
+  HTTP2_HEADER_STATUS,
+  HTTP2_HEADER_TE,
+  HTTP2_HEADER_TK,
+  HTTP2_HEADER_TRANSFER_ENCODING,
+  HTTP2_HEADER_UPGRADE,
+  HTTP2_HEADER_UPGRADE_INSECURE_REQUESTS,
+  HTTP2_HEADER_USER_AGENT,
+  HTTP2_HEADER_X_CONTENT_TYPE_OPTIONS,
+  HTTP2_METHOD_CONNECT,
+  HTTP2_METHOD_DELETE,
+  HTTP2_METHOD_GET,
+  HTTP2_METHOD_HEAD,
+  NGHTTP2_NV_FLAG_NO_INDEX,
+  NGHTTP2_NV_FLAG_NONE,
+  NGHTTP2_SESSION_CLIENT,
+  NGHTTP2_SESSION_SERVER,
+} from "ext:deno_node/internal/http2/constants.ts";
 
 const {
   ERR_HTTP2_CONNECT_AUTHORITY,
@@ -48,69 +107,7 @@ const kSocket = Symbol("socket");
 const kProtocol = Symbol("protocol");
 const kProxySocket = Symbol("proxySocket");
 const kRequest = Symbol("request");
-
-const {
-  NGHTTP2_NV_FLAG_NONE,
-  NGHTTP2_NV_FLAG_NO_INDEX,
-  NGHTTP2_SESSION_CLIENT,
-  NGHTTP2_SESSION_SERVER,
-
-  HTTP2_HEADER_STATUS,
-  HTTP2_HEADER_METHOD,
-  HTTP2_HEADER_AUTHORITY,
-  HTTP2_HEADER_SCHEME,
-  HTTP2_HEADER_PATH,
-  HTTP2_HEADER_PROTOCOL,
-  HTTP2_HEADER_ACCESS_CONTROL_ALLOW_CREDENTIALS,
-  HTTP2_HEADER_ACCESS_CONTROL_MAX_AGE,
-  HTTP2_HEADER_ACCESS_CONTROL_REQUEST_METHOD,
-  HTTP2_HEADER_AGE,
-  HTTP2_HEADER_AUTHORIZATION,
-  HTTP2_HEADER_CONTENT_ENCODING,
-  HTTP2_HEADER_CONTENT_LANGUAGE,
-  HTTP2_HEADER_CONTENT_LENGTH,
-  HTTP2_HEADER_CONTENT_LOCATION,
-  HTTP2_HEADER_CONTENT_MD5,
-  HTTP2_HEADER_CONTENT_RANGE,
-  HTTP2_HEADER_CONTENT_TYPE,
-  HTTP2_HEADER_COOKIE,
-  HTTP2_HEADER_DATE,
-  HTTP2_HEADER_DNT,
-  HTTP2_HEADER_ETAG,
-  HTTP2_HEADER_EXPIRES,
-  HTTP2_HEADER_FROM,
-  HTTP2_HEADER_HOST,
-  HTTP2_HEADER_IF_MATCH,
-  HTTP2_HEADER_IF_NONE_MATCH,
-  HTTP2_HEADER_IF_MODIFIED_SINCE,
-  HTTP2_HEADER_IF_RANGE,
-  HTTP2_HEADER_IF_UNMODIFIED_SINCE,
-  HTTP2_HEADER_LAST_MODIFIED,
-  HTTP2_HEADER_LOCATION,
-  HTTP2_HEADER_MAX_FORWARDS,
-  HTTP2_HEADER_PROXY_AUTHORIZATION,
-  HTTP2_HEADER_RANGE,
-  HTTP2_HEADER_REFERER,
-  HTTP2_HEADER_RETRY_AFTER,
-  HTTP2_HEADER_SET_COOKIE,
-  HTTP2_HEADER_TK,
-  HTTP2_HEADER_UPGRADE_INSECURE_REQUESTS,
-  HTTP2_HEADER_USER_AGENT,
-  HTTP2_HEADER_X_CONTENT_TYPE_OPTIONS,
-
-  HTTP2_HEADER_CONNECTION,
-  HTTP2_HEADER_UPGRADE,
-  HTTP2_HEADER_HTTP2_SETTINGS,
-  HTTP2_HEADER_TE,
-  HTTP2_HEADER_TRANSFER_ENCODING,
-  HTTP2_HEADER_KEEP_ALIVE,
-  HTTP2_HEADER_PROXY_CONNECTION,
-
-  HTTP2_METHOD_CONNECT,
-  HTTP2_METHOD_DELETE,
-  HTTP2_METHOD_GET,
-  HTTP2_METHOD_HEAD,
-} = op_http2_constants();
+const kStrictSingleValueFields = Symbol("strictSingleValueFields");
 
 // This set is defined strictly by the HTTP/2 specification. Only
 // :-prefixed headers defined by that specification may be added to
@@ -687,6 +684,7 @@ function prepareRequestHeadersArray(headers, session) {
   const headersList = buildNgHeaderString(
     rawHeaders,
     assertValidPseudoHeader,
+    session[kStrictSingleValueFields],
   );
 
   return {
@@ -738,7 +736,11 @@ function prepareRequestHeadersObject(headers, session) {
     }
   }
 
-  const headersList = buildNgHeaderString(headersObject);
+  const headersList = buildNgHeaderString(
+    headersObject,
+    assertValidPseudoHeader,
+    session[kStrictSingleValueFields],
+  );
 
   return {
     headersObject,
@@ -763,6 +765,7 @@ const kNoHeaderFlags = StringFromCharCode(NGHTTP2_NV_FLAG_NONE);
 function buildNgHeaderString(
   arrayOrMap,
   assertValuePseudoHeader = assertValidPseudoHeader,
+  strictSingleValueFields?,
 ) {
   let headers = "";
   let pseudoHeaders = "";
@@ -777,7 +780,8 @@ function buildNgHeaderString(
 
   function processHeader(key, value) {
     key = StringPrototypeToLowerCase(key);
-    const isSingleValueHeader = kSingleValueHeaders.has(key);
+    const isSingleValueHeader = strictSingleValueFields &&
+      kSingleValueHeaders.has(key);
     let isArray = ArrayIsArray(value);
     if (isArray) {
       switch (value.length) {
@@ -1011,6 +1015,7 @@ export {
   kRequest,
   kSensitiveHeaders,
   kSocket,
+  kStrictSingleValueFields,
   MAX_ADDITIONAL_SETTINGS,
   NghttpError,
   prepareRequestHeadersArray,
@@ -1039,6 +1044,7 @@ export default {
   kAuthority,
   kSensitiveHeaders,
   kSocket,
+  kStrictSingleValueFields,
   kProtocol,
   kProxySocket,
   kRequest,
