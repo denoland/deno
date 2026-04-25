@@ -1131,7 +1131,9 @@ function assertBranded(self, prototype) {
   if (
     !ObjectPrototypeIsPrototypeOf(prototype, self) || self[brand] !== brand
   ) {
-    throw new TypeError("Illegal invocation");
+    const err = new TypeError("Illegal invocation");
+    err.code = "ERR_INVALID_THIS";
+    throw err;
   }
 }
 
