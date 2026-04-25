@@ -86,13 +86,15 @@ class CacheStorage {
         return undefined;
       }
       const cache = await this.open(cacheName);
-      // deno-lint-ignore prefer-primordials false positive: cache is a local Cache instance, not a global intrinsic
+      // false positive: cache is a local Cache instance, not a global intrinsic
+      // deno-lint-ignore prefer-primordials
       return await cache.match(request, options);
     }
     const names = await op_cache_storage_keys();
     for (let i = 0; i < names.length; ++i) {
       const cache = await this.open(names[i]);
-      // deno-lint-ignore prefer-primordials false positive: cache is a local Cache instance, not a global intrinsic
+      // false positive: cache is a local Cache instance, not a global intrinsic
+      // deno-lint-ignore prefer-primordials
       const response = await cache.match(request, options);
       if (response !== undefined) {
         return response;
