@@ -190,16 +190,15 @@ Deno.test({
 
     const windowPrototype = Object.create(EventTarget.prototype);
 
-    function Window() {
+    // deno-lint-ignore no-explicit-any
+    function Window(this: any) {
       createContext(this);
-      // @ts-ignore: dynamic property
       this._globalProxy = runInContext("this", this);
       Object.setPrototypeOf(this, windowPrototype);
       // deno-lint-ignore no-this-alias
       const window = this;
       Object.defineProperty(this, "window", {
         get() {
-          // @ts-ignore: dynamic property
           return window._globalProxy;
         },
         enumerable: true,
@@ -207,7 +206,8 @@ Deno.test({
       });
     }
 
-    const window = new (Window as unknown as new () => object)();
+    const window =
+      new (Window as unknown as new () => Record<string, unknown>)();
 
     // Proto-chain hit: addEventListener lives on EventTarget.prototype
     assertEquals(runInContext(`"addEventListener" in window`, window), true);
