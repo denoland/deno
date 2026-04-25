@@ -154,9 +154,9 @@ CREATE INDEX kv_expiration_ms_idx ON kv (expiration_ms);`,
 const SQL_INC_AND_GET_DATA_VERSION =
   "UPDATE data_version SET version = version + ? WHERE k = 0 RETURNING version";
 const SQL_KV_RANGE_SCAN =
-  "SELECT k, v, v_encoding, version FROM kv WHERE k >= ? AND k < ? ORDER BY k ASC LIMIT ?";
+  "SELECT k, v, v_encoding, version FROM kv WHERE k >= ? AND k < ? AND (expiration_ms < 0 OR expiration_ms > ?) ORDER BY k ASC LIMIT ?";
 const SQL_KV_RANGE_SCAN_REVERSE =
-  "SELECT k, v, v_encoding, version FROM kv WHERE k >= ? AND k < ? ORDER BY k DESC LIMIT ?";
+  "SELECT k, v, v_encoding, version FROM kv WHERE k >= ? AND k < ? AND (expiration_ms < 0 OR expiration_ms > ?) ORDER BY k DESC LIMIT ?";
 const SQL_KV_POINT_GET_VALUE_ONLY = "SELECT v, v_encoding FROM kv WHERE k = ?";
 const SQL_KV_POINT_GET_VERSION_ONLY = "SELECT version FROM kv WHERE k = ?";
 const SQL_KV_POINT_SET =
@@ -389,6 +389,7 @@ export class SqliteBackend {
 
     // Wrap in a transaction for a consistent snapshot
     const results: KvEntry[][] = [];
+    const now = DateNow();
 
     this.#db.exec("BEGIN");
     try {
@@ -397,7 +398,12 @@ export class SqliteBackend {
         const stmt = range.reverse
           ? this.#stmtRangeScanReverse!
           : this.#stmtRangeScan!;
-        const rows = stmt.all(range.start, range.end, range.limit) as Array<{
+        const rows = stmt.all(
+          range.start,
+          range.end,
+          now,
+          range.limit,
+        ) as Array<{
           k: Uint8Array;
           v: Uint8Array;
           v_encoding: number;

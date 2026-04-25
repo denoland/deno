@@ -27,9 +27,11 @@ const {
   Error,
   MathMin,
   NumberIsNaN,
+  AsyncGeneratorPrototype,
   Object,
   ObjectAssign,
   ObjectFreeze,
+  ObjectGetPrototypeOf,
   ObjectPrototypeIsPrototypeOf,
   Promise,
   PromisePrototypeThen,
@@ -37,6 +39,7 @@ const {
   RangeError,
   ReflectHas,
   RegExpPrototypeTest,
+  SafeMap,
   SafePromiseRace,
   SafeRegExp,
   StringPrototypeCharCodeAt,
@@ -104,17 +107,17 @@ const BASE64URL =
 
 function base64urlEncode(data: Uint8Array): string {
   let result = "";
-  let i = 0;
   const dataLen = TypedArrayPrototypeGetLength(data);
-  while (i < dataLen) {
-    const b0 = data[i++];
-    const b1 = i < dataLen ? data[i++] : 0;
-    const b2 = i < dataLen ? data[i++] : 0;
+  for (let i = 0; i < dataLen; i += 3) {
+    const remaining = dataLen - i;
+    const b0 = data[i];
+    const b1 = remaining > 1 ? data[i + 1] : 0;
+    const b2 = remaining > 2 ? data[i + 2] : 0;
     const n = (b0 << 16) | (b1 << 8) | b2;
     result += BASE64URL[(n >> 18) & 63];
     result += BASE64URL[(n >> 12) & 63];
-    if (i - 1 <= dataLen) result += BASE64URL[(n >> 6) & 63];
-    if (i <= dataLen) result += BASE64URL[n & 63];
+    if (remaining > 1) result += BASE64URL[(n >> 6) & 63];
+    if (remaining > 2) result += BASE64URL[n & 63];
   }
   // Padding with '='
   const pad = dataLen % 3;
@@ -1011,10 +1014,12 @@ class Kv {
   }
 
   async delete(key: Deno.KvKey): Promise<void> {
+    const encodedKey = encodeKvKey(key);
+    validateWriteKey(encodedKey);
     const result = await doAtomicWrite(
       this.#backend,
       [],
-      [{ key: encodeKvKey(key), kind: { type: "delete" }, expireAt: null }],
+      [{ key: encodedKey, kind: { type: "delete" }, expireAt: null }],
       [],
     );
     if (!result) throw new TypeError("Failed to delete value");
@@ -1136,7 +1141,8 @@ class Kv {
     if (this.#isClosed) throw new Error("Queue already closed");
 
     const closedSentinel = Symbol("closed");
-    const inflightFinishes: Promise<void>[] = [];
+    const inflightHandlers = new SafeMap<number, Promise<void>>();
+    let nextHandlerId = 0;
 
     while (!this.#isClosed) {
       let next: { payload: Uint8Array; id: string } | null;
@@ -1175,6 +1181,7 @@ class Kv {
       // multiple handlers can run in parallel.
       const messageId = next.id;
       const backend = this.#backend;
+      const handleId = nextHandlerId++;
       const finishPromise = (async () => {
         let success = false;
         try {
@@ -1194,15 +1201,16 @@ class Kv {
         } catch {
           // DB may have been closed
         }
+        inflightHandlers.delete(handleId);
       })();
-      ArrayPrototypePush(inflightFinishes, finishPromise);
+      inflightHandlers.set(handleId, finishPromise);
     }
 
     // Wait for in-flight handlers to finish or close to resolve
-    if (inflightFinishes.length > 0) {
+    if (inflightHandlers.size > 0) {
       await SafePromiseRace([
         // deno-lint-ignore prefer-primordials
-        Promise.allSettled(inflightFinishes),
+        Promise.allSettled(inflightHandlers.values()),
         this.#closePromise,
       ]);
     }
@@ -1570,7 +1578,17 @@ async function doAtomicWrite(
 // KvListIterator
 // ---------------------------------------------------------------------------
 
-class KvListIterator extends Object
+// This gets the %AsyncIteratorPrototype% object (which exists but is not a
+// global). We extend the KvListIterator iterator from, so that we immediately
+// support async iterator helpers once they land. The %AsyncIterator% does not
+// yet actually exist however, so right now the AsyncIterator binding refers to
+// %Object%. I know.
+// Once AsyncIterator is a global, we can just use it (from primordials), rather
+// than doing this here.
+const AsyncIteratorPrototype = ObjectGetPrototypeOf(AsyncGeneratorPrototype);
+const AsyncIterator = AsyncIteratorPrototype.constructor;
+
+class KvListIterator extends AsyncIterator
   implements AsyncIterableIterator<Deno.KvEntry<unknown>> {
   #selector: Deno.KvListSelector;
   #entries: Deno.KvEntry<unknown>[] | null = null;
