@@ -24,7 +24,7 @@
 
 // deno-lint-ignore-file prefer-primordials
 
-import { primordials } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 const {
   ArrayIsArray,
   Error,
@@ -74,7 +74,6 @@ import {
   validateObject,
 } from "ext:deno_node/internal/validators.mjs";
 import { nextTick } from "ext:deno_node/_next_tick.ts";
-import { clearInterval, setInterval } from "node:timers";
 import {
   builtinTracer,
   ContextManager,
@@ -993,18 +992,34 @@ function Server(options, requestListener) {
   this[kUniqueHeaders] = parseUniqueHeadersOption(options.uniqueHeaders);
 }
 
+// Wraps a deno_core system interval ID so the stored handle exposes a
+// Node-compatible `_destroyed` flag. Tests (and Node user code) read
+// `server[kConnectionsCheckingInterval]._destroyed` to confirm the
+// interval was cleared.
+class ConnectionsCheckingInterval {
+  _timerId = 0;
+  _destroyed = false;
+}
+
 function setupConnectionsTracking() {
   this[kConnectionsKey] ||= new ConnectionsList();
 
-  if (this[kConnectionsCheckingInterval]) {
-    clearInterval(this[kConnectionsCheckingInterval]);
-  }
+  destroyConnectionsCheckingInterval(this[kConnectionsCheckingInterval]);
 
   const interval = this.connectionsCheckingInterval || 30_000;
-  this[kConnectionsCheckingInterval] = setInterval(
+  const handle = new ConnectionsCheckingInterval();
+  handle._timerId = core.createSystemInterval(
     checkConnections.bind(this),
     interval,
-  ).unref();
+  );
+  this[kConnectionsCheckingInterval] = handle;
+}
+
+function destroyConnectionsCheckingInterval(handle) {
+  if (handle && !handle._destroyed) {
+    core.cancelTimer(handle._timerId);
+    handle._destroyed = true;
+  }
 }
 
 function checkConnections() {
@@ -1027,9 +1042,7 @@ function checkConnections() {
 
 function httpServerPreClose(server) {
   server.closeIdleConnections();
-  if (server[kConnectionsCheckingInterval]) {
-    clearInterval(server[kConnectionsCheckingInterval]);
-  }
+  destroyConnectionsCheckingInterval(server[kConnectionsCheckingInterval]);
 }
 
 function storeHTTPOptions(options) {
