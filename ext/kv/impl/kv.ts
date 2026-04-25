@@ -63,9 +63,6 @@ const {
 } = primordials;
 
 import { ReadableStream } from "ext:deno_web/06_streams.js";
-
-// Capture built-ins at load time to prevent monkeypatching
-const uint8ArrayToHex = Uint8Array.prototype.toHex;
 // deno-lint-ignore prefer-primordials
 const promiseAllSettled = Promise.allSettled.bind(Promise);
 
@@ -220,14 +217,32 @@ function kvValueToRawValue(kv: KvValue): RawValue {
 // Hex encoding for versionstamps
 // ---------------------------------------------------------------------------
 
+const HEX_CHARS = "0123456789abcdef";
 function hexEncode(buf: Uint8Array): string {
-  // deno-lint-ignore prefer-primordials
-  return uint8ArrayToHex.call(buf);
+  let result = "";
+  for (let i = 0; i < TypedArrayPrototypeGetLength(buf); i++) {
+    result += HEX_CHARS[buf[i] >> 4] + HEX_CHARS[buf[i] & 0xf];
+  }
+  return result;
+}
+
+function hexCharToNibble(c: number): number {
+  // 0-9: 0x30-0x39, a-f: 0x61-0x66, A-F: 0x41-0x46
+  if (c >= 0x30 && c <= 0x39) return c - 0x30;
+  if (c >= 0x61 && c <= 0x66) return c - 0x61 + 10;
+  if (c >= 0x41 && c <= 0x46) return c - 0x41 + 10;
+  return 0;
 }
 
 function hexDecode(s: string): Uint8Array {
-  // deno-lint-ignore prefer-primordials
-  return Uint8Array.fromHex(s);
+  const len = s.length >> 1;
+  const buf = new Uint8Array(len);
+  for (let i = 0; i < len; i++) {
+    const hi = hexCharToNibble(StringPrototypeCharCodeAt(s, i * 2));
+    const lo = hexCharToNibble(StringPrototypeCharCodeAt(s, i * 2 + 1));
+    buf[i] = (hi << 4) | lo;
+  }
+  return buf;
 }
 
 // ---------------------------------------------------------------------------

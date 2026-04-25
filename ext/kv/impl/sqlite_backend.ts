@@ -35,12 +35,12 @@ const {
   Uint8ArrayPrototype,
 } = primordials;
 
+import { crypto } from "ext:deno_crypto/00_crypto.js";
 import { DatabaseSync } from "node:sqlite";
 
 // Capture built-ins at load time to prevent monkeypatching
 // deno-lint-ignore prefer-primordials
 const cryptoRandomUUID = crypto.randomUUID.bind(crypto);
-const uint8ArrayToHex = Uint8Array.prototype.toHex;
 
 // Value encoding constants (must match denokv_proto)
 const VE_V8 = 1;
@@ -285,9 +285,13 @@ function generateUUID(): string {
 /**
  * Hex-encode a Uint8Array to a lowercase hex string.
  */
+const HEX_CHARS = "0123456789abcdef";
 function hexEncode(bytes: Uint8Array): string {
-  // deno-lint-ignore prefer-primordials
-  return uint8ArrayToHex.call(bytes);
+  let result = "";
+  for (let i = 0; i < TypedArrayPrototypeGetLength(bytes); i++) {
+    result += HEX_CHARS[bytes[i] >> 4] + HEX_CHARS[bytes[i] & 0xf];
+  }
+  return result;
 }
 
 /**
