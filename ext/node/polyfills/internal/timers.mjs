@@ -148,10 +148,26 @@ Timeout.prototype[createTimer] = function () {
         }
         const args = self._timerArgs;
         let ret;
-        if (args !== undefined && args.length > 0) {
-          ret = ReflectApply(callback, self, args);
+        if (!self._isRepeat) {
+          if (args !== undefined && args.length > 0) {
+            ret = ReflectApply(callback, self, args);
+          } else {
+            ret = FunctionPrototypeCall(callback, self);
+          }
         } else {
-          ret = FunctionPrototypeCall(callback, self);
+          const currentCb = self._onTimeout;
+          if (currentCb === null) {
+            self[kDestroy]();
+            return;
+          }
+          if (args !== undefined && args.length > 0) {
+            ret = ReflectApply(currentCb, self, args);
+          } else {
+            ret = FunctionPrototypeCall(currentCb, self);
+          }
+          if (self._idleTimeout < 0 || self._onTimeout === null) {
+            self[kDestroy]();
+          }
         }
         // Only emit after/destroy on success. On error, the domain's
         // uncaught exception handler manages the stack cleanup.
@@ -172,12 +188,28 @@ Timeout.prototype[createTimer] = function () {
         setAsyncContext(asyncContext);
         if (!self._isRepeat) {
           MapPrototypeDelete(activeTimers, self[kTimerId]);
+          const args = self._timerArgs;
+          if (args !== undefined && args.length > 0) {
+            return ReflectApply(callback, self, args);
+          }
+          return FunctionPrototypeCall(callback, self);
+        }
+        const currentCb = self._onTimeout;
+        if (currentCb === null) {
+          self[kDestroy]();
+          return;
         }
         const args = self._timerArgs;
+        let ret;
         if (args !== undefined && args.length > 0) {
-          return ReflectApply(callback, self, args);
+          ret = ReflectApply(currentCb, self, args);
+        } else {
+          ret = FunctionPrototypeCall(currentCb, self);
         }
-        return FunctionPrototypeCall(callback, self);
+        if (self._idleTimeout < 0 || self._onTimeout === null) {
+          self[kDestroy]();
+        }
+        return ret;
       } finally {
         setAsyncContext(oldContext);
       }
@@ -253,6 +285,11 @@ Timeout.prototype.ref = function () {
       refTimer_(this._timer);
     }
   }
+  return this;
+};
+
+Timeout.prototype.close = function () {
+  this[kDestroy]();
   return this;
 };
 
