@@ -538,9 +538,24 @@ function Process(this: any) {
 }
 Process.prototype = Object.create(EventEmitter.prototype);
 // V8 uses the constructor's name for error messages like
-// "Cannot delete property 'exitCode' of #<process>"
-const _process = function process() {};
-Process.prototype.constructor = _process;
+// "Cannot delete property 'exitCode' of #<process>". Match Node by
+// keeping the constructor's name "process" while still pointing at the
+// real class so `process instanceof process.constructor` is true. Set
+// the descriptor explicitly so it's non-enumerable, matching the
+// Node FunctionTemplate-based binding (see CreateProcessObject in
+// src/node_process_object.cc).
+Object.defineProperty(Process, "name", {
+  __proto__: null,
+  value: "process",
+  configurable: true,
+});
+Object.defineProperty(Process.prototype, "constructor", {
+  __proto__: null,
+  value: Process,
+  writable: true,
+  enumerable: false,
+  configurable: true,
+});
 
 // Look up the actual registered listener for a signal event. When `once()` is
 // used, EventEmitter wraps the listener in a function with a `.listener`
