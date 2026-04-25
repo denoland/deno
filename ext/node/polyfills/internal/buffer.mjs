@@ -1317,7 +1317,6 @@ Buffer.prototype.slice = function slice(start, end) {
   // Intentionally `this.subarray` so generic calls on a Uint8Array stay a
   // Uint8Array (Uint8Array.prototype.subarray) while Buffer instances pick up
   // Buffer.prototype.subarray and produce a FastBuffer.
-  // deno-lint-ignore prefer-primordials
   return this.subarray(start, end);
 };
 
