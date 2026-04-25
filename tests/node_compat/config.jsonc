@@ -1305,6 +1305,7 @@
     "parallel/test-http-client-race.js": {},
     "parallel/test-http-client-read-in-error.js": {},
     "parallel/test-http-client-readable.js": {},
+    "parallel/test-http-client-reject-chunked-with-content-length.js": {},
     "parallel/test-http-client-reject-unexpected-agent.js": {},
     "parallel/test-http-client-req-error-dont-double-fire.js": {},
     "parallel/test-http-client-request-options.js": {},
