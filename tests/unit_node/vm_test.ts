@@ -179,3 +179,40 @@ Deno.test({
     assertEquals(result, 1);
   },
 });
+
+// https://github.com/denoland/deno/issues/32921
+Deno.test({
+  name: "vm in operator walks prototype chain of sandbox",
+  fn() {
+    class EventTarget {
+      addEventListener() {}
+    }
+
+    const windowPrototype = Object.create(EventTarget.prototype);
+
+    function Window() {
+      createContext(this);
+      // @ts-ignore: dynamic property
+      this._globalProxy = runInContext("this", this);
+      Object.setPrototypeOf(this, windowPrototype);
+      const window = this;
+      Object.defineProperty(this, "window", {
+        get() {
+          // @ts-ignore: dynamic property
+          return window._globalProxy;
+        },
+        enumerable: true,
+        configurable: true,
+      });
+    }
+
+    const window = new (Window as unknown as new () => object)();
+
+    // Proto-chain hit: addEventListener lives on EventTarget.prototype
+    assertEquals(runInContext(`"addEventListener" in window`, window), true);
+    // Own property: "window" is defined directly on the sandbox
+    assertEquals(runInContext(`"window" in window`, window), true);
+    // Negative case: property not on the chain
+    assertEquals(runInContext(`"doesNotExist" in window`, window), false);
+  },
+});
