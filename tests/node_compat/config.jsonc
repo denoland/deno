@@ -2708,6 +2708,10 @@
     // "parallel/test-warn-sigprof.js": {},
     "parallel/test-weakref.js": {},
     "parallel/test-webcrypto-encrypt-decrypt.js": {},
+    "parallel/test-webcrypto-keygen-kmac.js": {
+      "ignore": true,
+      "reason": "Tests SubtleCrypto generateKey for KMAC128 / KMAC256, a Node-specific WebCrypto extension that requires OpenSSL >= 3 (test gates on hasOpenSSL(3)); Deno's ext/crypto/ does not register KMAC as a recognised SubtleCrypto algorithm. Could be revisited if KMAC is added — a SHA-3-based KMAC is implementable via the sha3 / cshake Rust crates"
+    },
     "parallel/test-webcrypto-util.js": {
       "ignore": true,
       "reason": "Runs with --expose-internals and requires Node's internal/crypto/util JS module to whitebox-test the internal normalizeAlgorithm() helper; Deno's WebCrypto is implemented in Rust (ext/crypto/) and does not expose this Node-internal module"
