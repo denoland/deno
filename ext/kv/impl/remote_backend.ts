@@ -24,6 +24,10 @@ const {
   Uint8Array,
 } = primordials;
 
+// Capture built-ins at load time to prevent monkeypatching
+const globalFetch = globalThis.fetch;
+const GlobalAbortController = globalThis.AbortController;
+
 import {
   type AtomicWriteOutput,
   AtomicWriteStatus,
@@ -360,7 +364,7 @@ export class RemoteBackend {
     let attempt = 0;
     while (true) {
       try {
-        const resp = await fetch(this.#metadataUrl, {
+        const resp = await globalFetch(this.#metadataUrl, {
           method: "POST",
           headers: {
             "content-type": "application/json",
@@ -451,7 +455,7 @@ export class RemoteBackend {
     while (true) {
       let resp: Response;
       try {
-        resp = await fetch(url, {
+        resp = await globalFetch(url, {
           method: "POST",
           headers,
           body,
@@ -513,9 +517,9 @@ export class RemoteBackend {
     const headers = this.#buildHeaders(metadata);
     const body = encodeWatch(keys);
 
-    const abortController = new AbortController();
+    const abortController = new GlobalAbortController();
 
-    const resp = await fetch(url, {
+    const resp = await globalFetch(url, {
       method: "POST",
       headers,
       body,

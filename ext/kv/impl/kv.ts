@@ -64,6 +64,11 @@ const {
 
 import { ReadableStream } from "ext:deno_web/06_streams.js";
 
+// Capture built-ins at load time to prevent monkeypatching
+const uint8ArrayToHex = Uint8Array.prototype.toHex;
+// deno-lint-ignore prefer-primordials
+const promiseAllSettled = Promise.allSettled.bind(Promise);
+
 import {
   decodeKey,
   encodeKey,
@@ -216,7 +221,8 @@ function kvValueToRawValue(kv: KvValue): RawValue {
 // ---------------------------------------------------------------------------
 
 function hexEncode(buf: Uint8Array): string {
-  return buf.toHex();
+  // deno-lint-ignore prefer-primordials
+  return uint8ArrayToHex.call(buf);
 }
 
 function hexDecode(s: string): Uint8Array {
@@ -1243,7 +1249,7 @@ class Kv {
     if (inflightHandlers.size > 0) {
       await SafePromiseRace([
         // deno-lint-ignore prefer-primordials
-        Promise.allSettled(inflightHandlers.values()),
+        promiseAllSettled(inflightHandlers.values()),
         this.#closePromise,
       ]);
     }

@@ -37,6 +37,11 @@ const {
 
 import { DatabaseSync } from "node:sqlite";
 
+// Capture built-ins at load time to prevent monkeypatching
+// deno-lint-ignore prefer-primordials
+const cryptoRandomUUID = crypto.randomUUID.bind(crypto);
+const uint8ArrayToHex = Uint8Array.prototype.toHex;
+
 // Value encoding constants (must match denokv_proto)
 const VE_V8 = 1;
 const VE_LE64 = 2;
@@ -274,14 +279,15 @@ function randomInt(min: number, max: number): number {
  * Generate a UUID v4 string.
  */
 function generateUUID(): string {
-  return crypto.randomUUID();
+  return cryptoRandomUUID();
 }
 
 /**
  * Hex-encode a Uint8Array to a lowercase hex string.
  */
 function hexEncode(bytes: Uint8Array): string {
-  return bytes.toHex();
+  // deno-lint-ignore prefer-primordials
+  return uint8ArrayToHex.call(bytes);
 }
 
 /**
