@@ -965,10 +965,6 @@ export class Socket extends EventEmitter {
       callback = address;
       address = undefined;
     } else if (address != null) {
-      // Match Node: `validateString(address, 'address')` after a `!= null`
-      // check (see Socket.prototype.send in lib/dgram.js), so the expected
-      // TypeError message is "The \"address\" argument must be of type
-      // string." for any non-nullish non-string input.
       validateString(address, "address");
     }
 
