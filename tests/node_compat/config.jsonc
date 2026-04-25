@@ -460,6 +460,7 @@
       "reason": "Tests Node's FIPS mode (--enable-fips/--force-fips, OPENSSL_CONF, --openssl-config CLI flags) and uses internalBinding('crypto').testFipsCrypto via require('internal/test/binding'); FIPS is an OpenSSL-specific feature and Deno does not embed OpenSSL"
     },
     "parallel/test-crypto-from-binary.js": {},
+    "parallel/test-crypto-gcm-implicit-short-tag.js": {},
     "parallel/test-crypto-getcipherinfo.js": {},
     "parallel/test-crypto-hkdf.js": {},
     "parallel/test-crypto-hmac.js": {},
@@ -2920,6 +2921,7 @@
     // "parallel/test-warn-sigprof.js": {},
     "parallel/test-weakref.js": {},
     "parallel/test-webcrypto-encrypt-decrypt.js": {},
+    "parallel/test-webcrypto-getRandomValues.js": {},
     "parallel/test-webcrypto-random.js": {},
     "parallel/test-webcrypto-keygen-kmac.js": {
       "ignore": true,

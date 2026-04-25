@@ -30,6 +30,7 @@ import {
 } from "ext:core/ops";
 
 import { Buffer } from "node:buffer";
+import process from "node:process";
 import type { TransformOptions } from "ext:deno_node/_stream.d.ts";
 import { Transform } from "node:stream";
 import {
@@ -474,6 +475,9 @@ export function Decipheriv(
     !(cipher == "aes-128-gcm" || cipher == "aes-256-gcm" ||
       cipher == "aes-128-ctr" || cipher == "aes-192-ctr" ||
       cipher == "aes-256-ctr" || cipher == "chacha20-poly1305");
+  this._isGcmMode = cipher == "aes-128-gcm" || cipher == "aes-192-gcm" ||
+    cipher == "aes-256-gcm";
+  this._authTagLength = authTagLength;
   this._authTag = undefined;
   this._finalized = false;
   this._decoder = undefined;
@@ -547,12 +551,29 @@ Decipheriv.prototype.setAAD = function (
   return this;
 };
 
+let gcmShortTagDeprecationEmitted = false;
+
 Decipheriv.prototype.setAuthTag = function (
   buffer: BinaryLike,
   _encoding?: string,
 ) {
   if (this._authTag) {
     throw new ERR_CRYPTO_INVALID_STATE("setAuthTag");
+  }
+  // DEP0182: warn once per process when using a short GCM auth tag without
+  // an explicit `authTagLength` option at decipher creation time.
+  if (
+    this._isGcmMode && this._authTagLength === -1 &&
+    buffer.byteLength !== 16 && !gcmShortTagDeprecationEmitted
+  ) {
+    gcmShortTagDeprecationEmitted = true;
+    process.emitWarning(
+      "Using AES-GCM authentication tags of less than 128 bits without " +
+        "specifying the authTagLength option when initializing decryption " +
+        "is deprecated.",
+      "DeprecationWarning",
+      "DEP0182",
+    );
   }
   op_node_decipheriv_auth_tag(this._context, buffer.byteLength);
   this._authTag = buffer;
