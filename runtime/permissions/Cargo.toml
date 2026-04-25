@@ -34,6 +34,9 @@ thiserror.workspace = true
 url.workspace = true
 which.workspace = true
 
+[target.'cfg(target_os = "macos")'.dependencies]
+unicode-normalization = { workspace = true }
+
 [target.'cfg(windows)'.dependencies]
 winapi = { workspace = true, features = ["commapi", "knownfolders", "mswsock", "objbase", "psapi", "shlobj", "tlhelp32", "winbase", "winerror", "winuser", "winsock2", "processenv", "wincon", "wincontypes"] }
 windows-sys = { workspace = true, features = ["Win32_Storage_FileSystem"] }

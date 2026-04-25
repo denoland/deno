@@ -1314,12 +1314,25 @@ impl PartialEq<PathDescriptor> for PathQueryDescriptor<'_> {
   }
 }
 
-/// On Windows, returns a lowercased copy of the path for case-insensitive
-/// comparison, matching NTFS behavior. On other platforms, returns a clone.
+/// Returns a normalized copy of the path for filesystem-aware comparison.
+///
+/// - Windows (NTFS): ASCII-lowercased for case-insensitive matching.
+/// - macOS (APFS/HFS+): NFKD-normalized and Unicode-case-folded, because
+///   APFS resolves Unicode-equivalent and case-differing paths to the same
+///   inode (e.g. `ß`/`ss`, `ﬁ`/`fi`, NFC/NFD forms, upper/lower).
+/// - Other platforms: returns a clone (case-sensitive, no normalization).
 #[inline]
 fn comparison_path(path: &Path) -> PathBuf {
   if cfg!(windows) {
     PathBuf::from(path.to_string_lossy().to_ascii_lowercase())
+  } else if cfg!(target_os = "macos") {
+    use unicode_normalization::UnicodeNormalization;
+    // NFKD handles canonical decomposition (NFC→NFD) and compatibility
+    // decomposition (ligatures like ﬁ→fi). Uppercase then lowercase
+    // approximates Unicode case folding (maps ß→SS→ss, etc.).
+    let s = path.to_string_lossy();
+    let normalized: String = s.nfkd().collect();
+    PathBuf::from(normalized.to_uppercase().to_lowercase())
   } else {
     path.to_path_buf()
   }
@@ -5599,6 +5612,118 @@ mod tests {
         is_ok
       );
     }
+  }
+
+  #[test]
+  #[cfg(target_os = "macos")]
+  fn check_paths_macos_unicode_normalization() {
+    set_prompter(Box::new(TestPrompter));
+    let parser = TestPermissionDescriptorParser;
+
+    // Deny a path containing ß — on APFS this is the same file as one with "ss"
+    let perms = Permissions::from_options(
+      &parser,
+      &PermissionsOptions {
+        allow_read: Some(svec!["/data"]),
+        deny_read: Some(svec!["/data/file_\u{00df}.txt"]),
+        allow_write: Some(svec!["/data"]),
+        deny_write: Some(svec!["/data/file_\u{00df}.txt"]),
+        ..Default::default()
+      },
+    )
+    .unwrap();
+    let perms = PermissionsContainer::new(Arc::new(parser), perms);
+
+    // Access via "ss" form must also be denied (APFS treats ß and ss as same file)
+    assert!(
+      perms
+        .check_open(
+          Cow::Borrowed(Path::new("/data/file_ss.txt")),
+          OpenAccessKind::Read,
+          Some("api")
+        )
+        .is_err(),
+      "deny-read bypass via ß/ss equivalence"
+    );
+    assert!(
+      perms
+        .check_open(
+          Cow::Borrowed(Path::new("/data/file_ss.txt")),
+          OpenAccessKind::Write,
+          Some("api")
+        )
+        .is_err(),
+      "deny-write bypass via ß/ss equivalence"
+    );
+
+    // NFC é (U+00E9) vs NFD e + combining accent (U+0065 U+0301)
+    let parser = TestPermissionDescriptorParser;
+    let perms = Permissions::from_options(
+      &parser,
+      &PermissionsOptions {
+        allow_read: Some(svec!["/data"]),
+        deny_read: Some(svec!["/data/file_\u{00e9}.txt"]),
+        ..Default::default()
+      },
+    )
+    .unwrap();
+    let perms = PermissionsContainer::new(Arc::new(parser), perms);
+    assert!(
+      perms
+        .check_open(
+          Cow::Borrowed(Path::new("/data/file_e\u{0301}.txt")),
+          OpenAccessKind::Read,
+          Some("api")
+        )
+        .is_err(),
+      "deny-read bypass via NFC/NFD equivalence"
+    );
+
+    // Case insensitivity: APFS is case-insensitive by default
+    let parser = TestPermissionDescriptorParser;
+    let perms = Permissions::from_options(
+      &parser,
+      &PermissionsOptions {
+        allow_read: Some(svec!["/data"]),
+        deny_read: Some(svec!["/data/SECRET.txt"]),
+        ..Default::default()
+      },
+    )
+    .unwrap();
+    let perms = PermissionsContainer::new(Arc::new(parser), perms);
+    assert!(
+      perms
+        .check_open(
+          Cow::Borrowed(Path::new("/data/secret.txt")),
+          OpenAccessKind::Read,
+          Some("api")
+        )
+        .is_err(),
+      "deny-read bypass via case insensitivity"
+    );
+
+    // fi ligature (U+FB01) vs "fi" — NFKD compatibility decomposition
+    let parser = TestPermissionDescriptorParser;
+    let perms = Permissions::from_options(
+      &parser,
+      &PermissionsOptions {
+        allow_read: Some(svec!["/data"]),
+        deny_read: Some(svec!["/data/file_\u{fb01}.txt"]),
+        ..Default::default()
+      },
+    )
+    .unwrap();
+    let perms = PermissionsContainer::new(Arc::new(parser), perms);
+    assert!(
+      perms
+        .check_open(
+          Cow::Borrowed(Path::new("/data/file_fi.txt")),
+          OpenAccessKind::Read,
+          Some("api")
+        )
+        .is_err(),
+      "deny-read bypass via fi ligature equivalence"
+    );
   }
 
   #[test]

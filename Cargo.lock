@@ -3092,6 +3092,7 @@ dependencies = [
  "serde_json",
  "sys_traits",
  "thiserror 2.0.12",
+ "unicode-normalization",
  "url",
  "which 8.0.0",
  "winapi",
