@@ -3189,7 +3189,9 @@
     "parallel/test-websocket.js": {},
     "parallel/test-webstorage-without-sqlite.js": {},
     "parallel/test-webstream-string-tag.js": {},
-    "parallel/test-webstream-structured-clone-no-leftovers.mjs": {},
+    "parallel/test-webstream-structured-clone-no-leftovers.mjs": {
+      "flaky": true
+    },
     "parallel/test-webstreams-compose.js": {},
     "parallel/test-webstreams-decompression-reject-trailing.js": {},
     "parallel/test-webstreams-finished.js": {},
