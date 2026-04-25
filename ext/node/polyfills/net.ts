@@ -911,7 +911,11 @@ function _lookupAndConnect(self: Socket, options: TcpSocketConnectOptions) {
   }
 
   if (autoSelectFamilyAttemptTimeout !== undefined) {
-    validateInt32(autoSelectFamilyAttemptTimeout);
+    validateInt32(
+      autoSelectFamilyAttemptTimeout,
+      "options.autoSelectFamilyAttemptTimeout",
+      1,
+    );
 
     if (autoSelectFamilyAttemptTimeout < 10) {
       autoSelectFamilyAttemptTimeout = 10;
@@ -2125,7 +2129,11 @@ function _lookupAndListen(
   exclusive: boolean,
   flags: number,
 ) {
+  const listeningId = server._listeningId;
   dnsLookup(address, { port }, function doListen(err, ip, addressType) {
+    if (server._listeningId !== listeningId) {
+      return;
+    }
     if (err) {
       server.emit("error", err);
     } else {
@@ -2279,6 +2287,22 @@ function _onconnection(this: any, err: number, clientHandle?: Handle) {
     clientHandle!.close();
 
     return;
+  }
+
+  if (
+    self.blockList &&
+    clientHandle &&
+    typeof clientHandle.getpeername === "function"
+  ) {
+    const out = {};
+    if (clientHandle.getpeername(out) === 0) {
+      const { address, family } = out as { address: string; family: string };
+      const type = family === "IPv6" ? "ipv6" : "ipv4";
+      if (self.blockList.check(address, type)) {
+        clientHandle.close();
+        return;
+      }
+    }
   }
 
   const socket = self._createSocket(clientHandle);
@@ -2438,12 +2462,17 @@ export function Server(
   this._unref = false;
   this._pipeName = undefined;
   this._connectionKey = undefined;
+  this._listeningId = 1;
 
   if (_isConnectionListener(options)) {
     this.on("connection", options);
   } else if (_isServerSocketOptions(options)) {
     this.allowHalfOpen = options?.allowHalfOpen || false;
     this.pauseOnConnect = !!options?.pauseOnConnect;
+
+    if (options?.blockList) {
+      this.blockList = options.blockList;
+    }
 
     if (_isConnectionListener(connectionListener)) {
       this.on("connection", connectionListener);
@@ -2488,6 +2517,8 @@ Server.prototype.listen = function (...args: unknown[]) {
   const normalized = _normalizeArgs(args);
   let options = normalized[0] as Partial<ListenOptions>;
   const cb = normalized[1];
+
+  this._listeningId++;
 
   if (this._handle) {
     throw new ERR_SERVER_ALREADY_LISTEN();
@@ -2642,6 +2673,8 @@ Server.prototype.listen = function (...args: unknown[]) {
  * @param cb Called when the server is closed.
  */
 Server.prototype.close = function (cb?: (err?: Error) => void) {
+  this._listeningId++;
+
   if (typeof cb === "function") {
     if (!this._handle) {
       this.once("close", function close() {
@@ -2681,6 +2714,12 @@ Server.prototype.close = function (cb?: (err?: Error) => void) {
   }
 
   return this;
+};
+
+Server.prototype[Symbol.asyncDispose] = function () {
+  return new Promise((resolve) => {
+    this.close(() => resolve());
+  });
 };
 
 /**

@@ -90,6 +90,7 @@
       "ignore": true,
       "reason": "Node.js snapshot/heap profiling features (--build-snapshot, --heap-prof, --heapsnapshot-near-heap-limit) are not implemented in Deno"
     },
+    "parallel/test-abort-controller-any-timeout.js": {},
     "parallel/test-abortcontroller-internal.js": {
       "ignore": true,
       "reason": "Tests Node.js internal modules (require('internal/...')) which are not exposed in Deno"
@@ -114,6 +115,7 @@
     "parallel/test-assert-partial-deep-equal.js": {},
     "parallel/test-assert-typedarray-deepequal.js": {},
     "parallel/test-assert.js": {},
+    "parallel/test-als-defaultvalue-original.js": {},
     "parallel/test-async-hooks-close-during-destroy.js": {},
     "parallel/test-async-hooks-constructor.js": {},
     "parallel/test-async-hooks-enable-disable.js": {},
@@ -152,6 +154,8 @@
     },
     "parallel/test-blocklist.js": {},
     "parallel/test-btoa-atob.js": {},
+    "parallel/test-buffer-alloc-unsafe-is-initialized-with-zero-fill-flag.js": {},
+    "parallel/test-buffer-alloc-unsafe-is-uninitialized.js": {},
     "parallel/test-buffer-alloc.js": {},
     "parallel/test-buffer-arraybuffer.js": {},
     "parallel/test-buffer-ascii.js": {},
@@ -510,6 +514,10 @@
     "parallel/test-crypto-oneshot-hash-xof.js": {},
     "parallel/test-crypto-oaep-zero-length.js": {},
     "parallel/test-crypto-op-during-process-exit.js": {},
+    "parallel/test-crypto-no-algorithm.js": {
+      "ignore": true,
+      "reason": "Test gates on hasOpenSSL3 (skips if not OpenSSL 3.x), calls crypto.setFips(1) (FIPS mode is unsupported in Deno), asserts on OpenSSL-specific error strings ('digital envelope routines::unsupported', 'random number generator::unable to fetch drbg') and the err.opensslErrorStack field, and spawns a child with --openssl-config=...; none of these are available outside Node's OpenSSL-backed crypto"
+    },
     "parallel/test-crypto-padding.js": {},
     "parallel/test-crypto-padding-aes256.js": {},
     "parallel/test-crypto-pqc-key-objects-ml-dsa.js": {},
@@ -874,6 +882,7 @@
     "parallel/test-events-list.js": {},
     "parallel/test-events-listener-count-with-listener.js": {},
     "parallel/test-events-on-async-iterator.js": {},
+    "parallel/test-events-once.js": {},
     "parallel/test-events-static-geteventlisteners.js": {},
     "parallel/test-events-uncaught-exception-stack.js": {},
     "parallel/test-eventsource.js": {},
@@ -1188,6 +1197,10 @@
     "parallel/test-global-domexception.js": {},
     "parallel/test-global-encoder.js": {},
     "parallel/test-global-webcrypto.js": {},
+    "parallel/test-global-webcrypto-classes.js": {
+      "ignore": true,
+      "reason": "Runs with --expose-internals and requires Node's internal/crypto/webcrypto JS module to assert strict-equal identity against the global Crypto / CryptoKey / SubtleCrypto classes; Deno's WebCrypto is implemented in Rust (ext/crypto/) and has no internal JS module to compare against"
+    },
     "parallel/test-global-webstreams.js": {},
     "parallel/test-h2-large-header-cause-client-to-hangup.js": {
       "ignore": true,
@@ -1787,6 +1800,7 @@
     "parallel/test-module-children.js": {},
     "parallel/test-module-circular-symlinks.js": {},
     "parallel/test-module-create-require-multibyte.js": {},
+    "parallel/test-module-create-require.js": {},
     "parallel/test-module-isBuiltin.js": {},
     "parallel/test-module-main-extension-lookup.js": {},
     "parallel/test-module-nodemodulepaths.js": {},
@@ -1838,6 +1852,10 @@
     "parallel/test-net-listening.js": {},
     "parallel/test-net-local-address-port.js": {},
     "parallel/test-net-localerror.js": {},
+    "parallel/test-net-normalize-args.js": {
+      "ignore": true,
+      "reason": "Tests Node.js internal module (require('internal/net'))"
+    },
     "parallel/test-net-options-lookup.js": {},
     "parallel/test-net-pause-resume-connecting.js": {},
     "parallel/test-net-persistent-keepalive.js": {},
@@ -1848,7 +1866,10 @@
     "parallel/test-net-reconnect.js": {},
     "parallel/test-net-remote-address-port.js": {},
     "parallel/test-net-remote-address.js": {},
+    "parallel/test-net-server-async-dispose.mjs": {},
+    "parallel/test-net-server-blocklist.js": {},
     "parallel/test-net-server-capture-rejection.js": {},
+    "parallel/test-net-server-close-before-calling-lookup-callback.js": {},
     "parallel/test-net-server-close.js": {},
     "parallel/test-net-server-listen-options-signal.js": {},
     "parallel/test-net-server-listen-options.js": {},
@@ -1860,6 +1881,7 @@
     "parallel/test-net-server-unref.js": {},
     "parallel/test-net-settimeout.js": {},
     "parallel/test-net-socket-connect-invalid-autoselectfamily.js": {},
+    "parallel/test-net-socket-connect-invalid-autoselectfamilyattempttimeout.js": {},
     "parallel/test-net-socket-connect-without-cb.js": {},
     "parallel/test-net-socket-connecting.js": {},
     "parallel/test-net-socket-destroy-send.js": {},
@@ -1927,6 +1949,7 @@
     },
     "parallel/test-os-constants-signals.js": {},
     "parallel/test-os-eol.js": {},
+    "parallel/test-os-fast.js": {},
     "parallel/test-os-homedir-no-envvar.js": {},
     "parallel/test-os-process-priority.js": {},
     "parallel/test-os-userinfo-handles-getter-errors.js": {},
@@ -1944,9 +1967,11 @@
     "parallel/test-path-normalize.js": {},
     "parallel/test-path-parse-format.js": {},
     "parallel/test-path-posix-exists.js": {},
+    "parallel/test-path-posix-relative-on-windows.js": {},
     "parallel/test-path-relative.js": {},
     "parallel/test-path-resolve.js": {},
     "parallel/test-path-win32-exists.js": {},
+    "parallel/test-path-win32-normalize-device-names.js": {},
     "parallel/test-path-zero-length-strings.js": {},
     "parallel/test-path.js": {},
     "parallel/test-perf-gc-crash.js": {},
@@ -2161,6 +2186,10 @@
     "parallel/test-process-binding.js": {},
     "parallel/test-process-chdir.js": {},
     "parallel/test-process-config.js": {},
+    "parallel/test-process-constants-noatime.js": {
+      "darwin": false,
+      "windows": false
+    },
     "parallel/test-process-constrained-memory.js": {},
     "parallel/test-process-cpuUsage.js": {},
     "parallel/test-process-default.js": {},
@@ -2180,11 +2209,15 @@
     "parallel/test-process-exception-capture-should-abort-on-uncaught-setflagsfromstring.js": {},
     "parallel/test-process-exception-capture-should-abort-on-uncaught.js": {},
     "parallel/test-process-exception-capture.js": {},
+    "parallel/test-process-execve-no-args.js": {},
+    "parallel/test-process-execve-worker-threads.js": {},
     "parallel/test-process-exit-code-validation.js": {},
     "parallel/test-process-exit-from-before-exit.js": {},
     "parallel/test-process-exit-handler.js": {},
     "parallel/test-process-exit-recursive.js": {},
     "parallel/test-process-exit.js": {},
+    "parallel/test-process-external-stdio-close-spawn.js": {},
+    "parallel/test-process-external-stdio-close.js": {},
     "parallel/test-process-features.js": {},
     "parallel/test-process-get-builtin.mjs": {},
     "parallel/test-process-getgroups.js": {},
@@ -2196,7 +2229,11 @@
     "parallel/test-process-no-deprecation.js": {},
     "parallel/test-process-ppid.js": {},
     "parallel/test-process-prototype.js": {},
+    "parallel/test-process-raw-debug.js": {
+      "windows": false
+    },
     "parallel/test-process-really-exit.js": {},
+    "parallel/test-process-remove-all-signal-listeners.js": {},
     "parallel/test-process-title-cli.js": {},
     "parallel/test-process-release.js": {},
     "parallel/test-process-threadCpuUsage-main-thread.js": {},
@@ -2478,6 +2515,7 @@
     "parallel/test-stdout-stderr-write.js": {},
     "parallel/test-stdout-to-file.js": {},
     "parallel/test-stream-add-abort-signal.js": {},
+    "parallel/test-stream-aliases-legacy.js": {},
     "parallel/test-stream-auto-destroy.js": {},
     "parallel/test-stream-await-drain-writers-in-synchronously-recursion-write.js": {},
     "parallel/test-stream-backpressure.js": {},
@@ -2488,6 +2526,7 @@
     "parallel/test-stream-compose-operator.js": {},
     "parallel/test-stream-compose.js": {},
     "parallel/test-stream-construct.js": {},
+    "parallel/test-stream-consumers.js": {},
     "parallel/test-stream-decoder-objectmode.js": {},
     "parallel/test-stream-destroy-event-order.js": {},
     "parallel/test-stream-destroy.js": {},
@@ -2508,10 +2547,12 @@
     "parallel/test-stream-event-names.js": {},
     "parallel/test-stream-events-prepend.js": {},
     "parallel/test-stream-filter.js": {},
+    "parallel/test-stream-finished.js": {},
     "parallel/test-stream-flatMap.js": {},
     "parallel/test-stream-forEach.js": {},
     "parallel/test-stream-inheritance.js": {},
     "parallel/test-stream-ispaused.js": {},
+    "parallel/test-stream-iterator-helpers-test262-tests.mjs": {},
     "parallel/test-stream-map.js": {},
     "parallel/test-stream-objectmode-undefined.js": {},
     "parallel/test-stream-once-readable-pipe.js": {},
@@ -2540,6 +2581,7 @@
     "parallel/test-stream-pipeline-queued-end-in-destroy.js": {},
     "parallel/test-stream-pipeline-uncaught.js": {},
     "parallel/test-stream-pipeline-with-empty-string.js": {},
+    "parallel/test-stream-pipeline.js": {},
     "parallel/test-stream-preprocess.js": {},
     "parallel/test-stream-promises.js": {},
     "parallel/test-stream-push-order.js": {},
@@ -2579,6 +2621,7 @@
     "parallel/test-stream-readable-setEncoding-null.js": {},
     "parallel/test-stream-readable-strategy-option.js": {},
     "parallel/test-stream-readable-to-web-termination.js": {},
+    "parallel/test-stream-readable-to-web.mjs": {},
     "parallel/test-stream-readable-unpipe-resume.js": {
       "flaky": true
     },
@@ -2794,6 +2837,8 @@
     "parallel/test-utf8-scripts.js": {},
     "parallel/test-util-convert-signal-to-exit-code.mjs": {},
     "parallel/test-util-deprecate-invalid-code.js": {},
+    "parallel/test-util-getcallsites-preparestacktrace.js": {},
+    "parallel/test-util-getcallsites.js": {},
     "parallel/test-util-inherits.js": {},
     "parallel/test-util-inspect-getters-accessing-this.js": {},
     "parallel/test-util-isDeepStrictEqual.js": {},
@@ -2866,6 +2911,22 @@
     // "parallel/test-warn-sigprof.js": {},
     "parallel/test-weakref.js": {},
     "parallel/test-webcrypto-encrypt-decrypt.js": {},
+    "parallel/test-webcrypto-keygen-kmac.js": {
+      "ignore": true,
+      "reason": "Tests SubtleCrypto generateKey for KMAC128 / KMAC256, a Node-specific WebCrypto extension that requires OpenSSL >= 3 (test gates on hasOpenSSL(3)); Deno's ext/crypto/ does not register KMAC as a recognised SubtleCrypto algorithm. Could be revisited if KMAC is added — a SHA-3-based KMAC is implementable via the sha3 / cshake Rust crates"
+    },
+    "parallel/test-webcrypto-util.js": {
+      "ignore": true,
+      "reason": "Runs with --expose-internals and requires Node's internal/crypto/util JS module to whitebox-test the internal normalizeAlgorithm() helper; Deno's WebCrypto is implemented in Rust (ext/crypto/) and does not expose this Node-internal module"
+    },
+    "parallel/test-webcrypto-supports.mjs": {
+      "ignore": true,
+      "reason": "Requires the WebCrypto Level 2 SubtleCrypto.supports() static method, which Deno does not implement; the test also exercises algorithms Deno does not support (SHA-3, KMAC, Argon2, X448 KEM, encapsulateKey/decapsulateBits). Could be revisited if SubtleCrypto.supports lands in ext/crypto/ along with the algorithms it advertises"
+    },
+    "parallel/test-webcrypto-webidl.js": {
+      "ignore": true,
+      "reason": "Tests Node's internal/crypto/webidl JS module (WebIDL converters such as converters.boolean, converters.DOMString, requiredArguments) via require('internal/crypto/webidl') with --expose-internals; Deno's WebCrypto is implemented in Rust (ext/crypto/) and does not expose this internal module"
+    },
     "parallel/test-websocket.js": {},
     "parallel/test-webstream-string-tag.js": {},
     "parallel/test-webstreams-compose.js": {},
