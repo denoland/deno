@@ -2251,6 +2251,9 @@
     "parallel/test-process-exception-capture-should-abort-on-uncaught-setflagsfromstring.js": {},
     "parallel/test-process-exception-capture-should-abort-on-uncaught.js": {},
     "parallel/test-process-exception-capture.js": {},
+    "parallel/test-process-execve-abort.js": {
+      "windows": false
+    },
     "parallel/test-process-execve-no-args.js": {},
     "parallel/test-process-execve-worker-threads.js": {},
     "parallel/test-process-exit-code-validation.js": {},
