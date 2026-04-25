@@ -107,6 +107,11 @@ function setTimeoutPromise<T = void>(
     : promise;
 }
 
+ObjectDefineProperty(setTimeoutPromise, "name", {
+  __proto__: null,
+  value: "setTimeout",
+});
+
 ObjectDefineProperty(setTimeout, promisify.custom, {
   __proto__: null,
   enumerable: true,

@@ -841,10 +841,12 @@ pub(crate) unsafe fn close_pipe(pipe: *mut uv_pipe_t) {
     // Match libuv: unlink the socket file before closing the fd so
     // another server can bind to the same path immediately.
     #[cfg(unix)]
-    if let Some(ref path) = (*pipe).internal_bind_path
-      && let Ok(c_path) = std::ffi::CString::new(path.as_str())
-    {
-      libc::unlink(c_path.as_ptr());
+    if let Some(ref path) = (*pipe).internal_bind_path {
+      #[allow(
+        clippy::disallowed_methods,
+        reason = "uv_compat is not compiled to WASM"
+      )]
+      let _ = std::fs::remove_file(path);
     }
     (*pipe).internal_bind_path = None;
 

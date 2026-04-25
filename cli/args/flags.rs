@@ -5479,14 +5479,14 @@ fn hmr_arg(takes_files: bool) -> Arg {
       .require_equals(true)
       .help(
         cstr!(
-        "Watch for file changes and restart process automatically.
+        "Watch for file changes and hot-replace modules. The process restarts if hot replacement fails.
   <p(245)>Local files from entry point module graph are watched by default.
   Additional paths might be watched by passing them as arguments to this flag.</>"),
       )
       .value_hint(ValueHint::AnyPath)
   } else {
     arg.action(ArgAction::SetTrue).help(cstr!(
-      "Watch for file changes and restart process automatically.
+      "Watch for file changes and hot-replace modules. The process restarts if hot replacement fails.
   <p(245)>Only local files from entry point module graph are watched.</>"
     ))
   }

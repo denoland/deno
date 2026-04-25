@@ -452,21 +452,64 @@ impl LibUvStreamWrap {
 // In Node, these live as LibuvStreamWrap::OnUvAlloc / LibuvStreamWrap::OnUvRead.
 // ---------------------------------------------------------------------------
 
-/// Alloc callback for uv_read_start. Allocates a buffer via
-/// `ArrayBuffer::new_backing_store_uninit`.
+/// Thread-local free list of 64KB read buffers. libuv calls the alloc
+/// callback with a 65536-byte suggested size on every read.
+///
+/// We allocate read buffers with `std::alloc::alloc` which goes through
+/// the system allocator (xzone on macOS). At ~70k reads/sec of a fixed
+/// 64KB size, every free triggers a `mach_vm_reclaim_*` kernel trap
+/// (~6% of CPU in the pre-pool profile). Pooling keeps the 64KB slab
+/// owned by the runtime and reused across reads instead of handed back
+/// to the kernel.
+///
+/// The pool is capped so long-lived idle processes don't retain excess
+/// memory. Non-65536 sizes skip the pool entirely.
+const POOLED_BUF_SIZE: usize = 65536;
+const POOLED_BUF_MAX: usize = 128;
+
+thread_local! {
+  static READ_BUF_POOL: std::cell::RefCell<Vec<*mut u8>> =
+    const { std::cell::RefCell::new(Vec::new()) };
+}
+
+#[inline]
+fn pool_acquire_buf() -> Option<*mut u8> {
+  READ_BUF_POOL.with(|p| p.borrow_mut().pop())
+}
+
+#[inline]
+fn pool_release_buf(ptr: *mut u8) -> bool {
+  READ_BUF_POOL.with(|p| {
+    let mut pool = p.borrow_mut();
+    if pool.len() < POOLED_BUF_MAX {
+      pool.push(ptr);
+      true
+    } else {
+      false
+    }
+  })
+}
+
+/// Alloc callback for uv_read_start. Returns a pooled 64KB slab when
+/// `suggested_size` matches, otherwise falls back to `std::alloc::alloc`.
 ///
 /// # Safety
-/// `handle` must be a valid uv_handle_t whose `data` field points to the
-/// owning `StreamHandleData`.
+/// `buf` must be the out-param provided by libuv per the `uv_alloc_cb` contract.
 unsafe extern "C" fn on_uv_alloc(
   _handle: *mut uv_compat::uv_handle_t,
   suggested_size: usize,
   buf: *mut uv_buf_t,
 ) {
-  // Allocate raw memory for the read buffer.
-  let layout = std::alloc::Layout::from_size_align(suggested_size, 1).unwrap();
-  // SAFETY: layout has non-zero size (libuv provides a positive suggested_size).
-  let ptr = unsafe { std::alloc::alloc(layout) };
+  let ptr = if suggested_size == POOLED_BUF_SIZE
+    && let Some(ptr) = pool_acquire_buf()
+  {
+    ptr
+  } else {
+    let layout =
+      std::alloc::Layout::from_size_align(suggested_size, 1).unwrap();
+    // SAFETY: layout has non-zero size (libuv provides a positive suggested_size).
+    unsafe { std::alloc::alloc(layout) }
+  };
   if ptr.is_null() {
     // SAFETY: buf is a valid pointer provided by libuv per the uv_alloc_cb contract.
     unsafe {
@@ -673,12 +716,17 @@ fn call_fatal_exception(
 }
 
 /// Free a buffer allocated by on_uv_alloc.
-fn free_uv_buf(buf: *const uv_buf_t) {
+pub(crate) fn free_uv_buf(buf: *const uv_buf_t) {
   // SAFETY: buf is a valid uv_buf_t from on_uv_alloc; base was allocated with alloc(len, 1).
   unsafe {
     if !(*buf).base.is_null() && (*buf).len > 0 {
-      let layout = std::alloc::Layout::from_size_align((*buf).len, 1).unwrap();
-      std::alloc::dealloc((*buf).base as *mut u8, layout);
+      let len = (*buf).len;
+      let ptr = (*buf).base as *mut u8;
+      if len == POOLED_BUF_SIZE && pool_release_buf(ptr) {
+        return;
+      }
+      let layout = std::alloc::Layout::from_size_align(len, 1).unwrap();
+      std::alloc::dealloc(ptr, layout);
     }
   }
 }
@@ -718,9 +766,13 @@ unsafe extern "C" fn backing_store_deleter(
   // which may be smaller (nread < allocated size is common for partial reads).
   let alloc_size = deleter_data as usize;
   if !data.is_null() && alloc_size > 0 {
+    let ptr = data as *mut u8;
+    if alloc_size == POOLED_BUF_SIZE && pool_release_buf(ptr) {
+      return;
+    }
     let layout = std::alloc::Layout::from_size_align(alloc_size, 1).unwrap();
     // SAFETY: data was allocated via alloc(Layout::from_size_align(alloc_size, 1)) in on_uv_alloc.
-    unsafe { std::alloc::dealloc(data as *mut u8, layout) };
+    unsafe { std::alloc::dealloc(ptr, layout) };
   }
 }
 

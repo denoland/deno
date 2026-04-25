@@ -536,6 +536,32 @@ pub unsafe fn uv_tcp_nodelay(tcp: *mut uv_tcp_t, enable: c_int) -> c_int {
   0
 }
 
+/// Set SO_LINGER to 0 on the TCP socket and close it immediately so
+/// the OS sends RST instead of FIN.  This matches libuv's
+/// `uv_tcp_close_reset`.
+///
+/// The stream is taken and dropped here rather than in `stop_tcp`,
+/// because `stop_tcp` calls `shutdown(Both)` which sends FIN and
+/// defeats the RST behaviour.
+///
+/// ### Safety
+/// `tcp` must be a valid pointer to a `uv_tcp_t` initialized by `uv_tcp_init`.
+pub unsafe fn uv_tcp_reset(tcp: *mut uv_tcp_t) -> c_int {
+  // SAFETY: Caller guarantees tcp is valid and initialized.
+  unsafe {
+    if let Some(ref stream) = (*tcp).internal_stream
+      && stream.set_linger(Some(std::time::Duration::ZERO)).is_err()
+    {
+      return UV_EINVAL;
+    }
+    // Drop the stream immediately so the fd is closed with SO_LINGER=0,
+    // causing the kernel to send RST to the peer.  `stop_tcp` will find
+    // `internal_stream` already `None` and skip the graceful shutdown.
+    let _ = (*tcp).internal_stream.take();
+  }
+  0
+}
+
 /// ### Safety
 /// `tcp` must be initialized by `uv_tcp_init`. `name` must be writable and large enough
 /// for a sockaddr. `namelen` must be a valid, writable pointer.
