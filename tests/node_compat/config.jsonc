@@ -456,6 +456,10 @@
     "parallel/test-crypto-oneshot-hash-xof.js": {},
     "parallel/test-crypto-oaep-zero-length.js": {},
     "parallel/test-crypto-op-during-process-exit.js": {},
+    "parallel/test-crypto-no-algorithm.js": {
+      "ignore": true,
+      "reason": "Test gates on hasOpenSSL3 (skips if not OpenSSL 3.x), calls crypto.setFips(1) (FIPS mode is unsupported in Deno), asserts on OpenSSL-specific error strings ('digital envelope routines::unsupported', 'random number generator::unable to fetch drbg') and the err.opensslErrorStack field, and spawns a child with --openssl-config=...; none of these are available outside Node's OpenSSL-backed crypto"
+    },
     "parallel/test-crypto-padding.js": {},
     "parallel/test-crypto-padding-aes256.js": {},
     "parallel/test-crypto-pqc-key-objects-ml-dsa.js": {},
