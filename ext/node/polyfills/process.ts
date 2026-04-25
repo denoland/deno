@@ -225,8 +225,7 @@ export function execve(
   // Mimic Node's failure path: format an errno-tagged error to stderr and
   // abort, so callers (and tests like parallel/test-process-execve-abort)
   // observe the same fail-and-die contract Node provides on execve failure.
-  const stderrText =
-    `process.execve failed with error code ENOENT\n` +
+  const stderrText = `process.execve failed with error code ENOENT\n` +
     `Error: ENOENT: no such file or directory, execve '${execPath}'\n` +
     `    at execve (node:internal/process/per_thread:1:1)\n`;
   core.print(stderrText, true);
