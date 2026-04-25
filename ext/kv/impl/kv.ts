@@ -786,7 +786,7 @@ class RemoteKvBackend implements KvBackend {
   watch(keys: Uint8Array[]): ReadableStream {
     const rawStream = this.#backend.watch(keys);
     const reader = rawStream.getReader();
-    // Transform WatchKeyUpdate[] → (Deno.KvEntryMaybe | "unchanged")[]
+    // Transform WatchKeyUpdate[] to (Deno.KvEntryMaybe | "unchanged")[]
     return new ReadableStream({
       async pull(controller) {
         const { done, value: updates } = await reader.read();
