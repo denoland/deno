@@ -4169,7 +4169,12 @@ function transformStreamDefaultControllerError(controller, e) {
  * @returns {Promise<void>}
  */
 function transformStreamDefaultControllerPerformTransform(controller, chunk) {
-  const transformPromise = controller[_transformAlgorithm](chunk, controller);
+  const transformAlgorithm = controller[_transformAlgorithm];
+  if (transformAlgorithm === undefined) {
+    // Algorithms were cleared by a concurrent cancel/abort/close.
+    return PromiseResolve(undefined);
+  }
+  const transformPromise = transformAlgorithm(chunk, controller);
   return transformPromiseWith(transformPromise, undefined, (r) => {
     transformStreamError(controller[_stream], r);
     throw r;
