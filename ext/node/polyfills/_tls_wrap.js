@@ -331,6 +331,7 @@ TLSSocket.prototype._wrapHandle = function (wrap, handle) {
   const secureContext = {
     ...(context?.context ?? context),
     rejectUnauthorized: options.rejectUnauthorized !== false,
+    requestCert: options.requestCert === true,
   };
 
   // Get the native TCP handle for attachment

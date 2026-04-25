@@ -40,7 +40,12 @@ import {
   setEventTargetData,
   setIsTrusted,
 } from "./02_event.js";
-import { isDetachedBuffer } from "./06_streams.js";
+import {
+  isDetachedBuffer,
+  ReadableStream,
+  TransformStream,
+  WritableStream,
+} from "./06_streams.js";
 import { DOMException } from "./01_dom_exception.js";
 
 // counter of how many message ports are actively refed
@@ -515,6 +520,37 @@ webidl.converters.StructuredSerializeOptions = webidl
     ],
   );
 
+// Marker symbol for Web API types whose specs explicitly mark them as
+// non-serializable. V8's structured clone serialiser doesn't know about Web
+// API "platform" types (they're plain JS objects from V8's perspective with
+// no enumerable own properties), so without this opt-out the fast
+// `core.structuredClone` path silently round-trips them as `{}`, matching
+// neither the Web Platform spec nor Node's behaviour, which both raise
+// `DataCloneError`.
+//
+// Each non-serializable class installs this symbol on its prototype via
+// `markNotSerializable()`. The descriptor is non-enumerable and
+// non-configurable so it can't be hidden, deleted, or overridden on the
+// instance.
+const kNotSerializable = Symbol("[[NotSerializable]]");
+
+function markNotSerializable(target) {
+  ObjectDefineProperty(target, kNotSerializable, {
+    __proto__: null,
+    value: true,
+    enumerable: false,
+    writable: false,
+    configurable: false,
+  });
+}
+
+// Streams are defined in this extension, so mark them here. Fetch types
+// (Headers / Request / Response) call `markNotSerializable` themselves at
+// the bottom of their respective modules.
+markNotSerializable(ReadableStream.prototype);
+markNotSerializable(WritableStream.prototype);
+markNotSerializable(TransformStream.prototype);
+
 function structuredClone(value, options) {
   const prefix = "Failed to execute 'structuredClone'";
   webidl.requiredArguments(arguments.length, 1, prefix);
@@ -523,6 +559,20 @@ function structuredClone(value, options) {
     prefix,
     "Argument 2",
   );
+
+  // NOTE: This only catches non-serializable types at the top level.
+  // Nested non-serializable objects (e.g. { x: new Response() }) will
+  // still silently serialize as {} because V8's ValueSerializer doesn't
+  // know about Web API platform types. Fixing this fully requires a
+  // custom V8 serializer delegate in C++/Rust.
+  if (
+    value !== null && typeof value === "object" && value[kNotSerializable]
+  ) {
+    throw new DOMException(
+      "Cannot clone object of unsupported type.",
+      "DataCloneError",
+    );
+  }
 
   // Fast-path, avoiding round-trip serialization and deserialization
   if (options.transfer.length === 0) {
@@ -542,6 +592,7 @@ function structuredClone(value, options) {
 
 export {
   deserializeJsMessageData,
+  markNotSerializable,
   MessageChannel,
   MessagePort,
   MessagePortIdSymbol,

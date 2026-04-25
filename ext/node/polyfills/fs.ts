@@ -40,9 +40,9 @@ import { lutimes, lutimesSync } from "ext:deno_node/_fs/_fs_lutimes.ts";
 import { read, readSync } from "ext:deno_node/_fs/_fs_read.ts";
 import { readdir, readdirSync } from "ext:deno_node/_fs/_fs_readdir.ts";
 import { EventEmitter } from "node:events";
+import { clearTimeout, setTimeout } from "node:timers";
 import { type MaybeEmpty, notImplemented } from "ext:deno_node/_utils.ts";
 import { deprecate, promisify } from "node:util";
-import { delay } from "ext:deno_node/_util/async.ts";
 import promises from "ext:deno_node/internal/fs/promises.ts";
 // @deno-types="./internal/fs/streams.d.ts"
 import {
@@ -149,7 +149,7 @@ import {
   kEmptyObject,
   normalizeEncoding,
 } from "ext:deno_node/internal/util.mjs";
-import { basename, resolve, toNamespacedPath } from "node:path";
+import { basename, relative, resolve, toNamespacedPath } from "node:path";
 import * as pathModule from "node:path";
 import type { Encoding } from "node:crypto";
 import { core, primordials } from "ext:core/mod.js";
@@ -651,6 +651,7 @@ async function readFileFromFd(fd: number, options?: FileOptions) {
 
   const buffer = new Uint8Array(length);
   const buffers: Uint8Array[] = [];
+  let totalRead = 0;
 
   while (true) {
     readFileCheckAborted(signal);
@@ -659,6 +660,10 @@ async function readFileFromFd(fd: number, options?: FileOptions) {
     const nread = await op_node_fs_read_deferred(fd, buffer, -1);
     if (nread === 0) {
       break;
+    }
+    totalRead += nread;
+    if (totalRead > kIoMaxLength) {
+      throw new ERR_FS_FILE_TOO_LARGE(totalRead);
     }
     ArrayPrototypePush(buffers, TypedArrayPrototypeSubarray(buffer, 0, nread));
   }
@@ -3162,16 +3167,27 @@ function watch(
   // deno-lint-ignore prefer-primordials
   const watchPath = getValidatedPath(filename).toString();
 
+  const recursive = options?.recursive || false;
   const iterator: Deno.FsWatcher = Deno.watchFs(watchPath, {
-    recursive: options?.recursive || false,
+    recursive,
   });
+
+  // Resolve the watched path once so we can compute relative paths.
+  // Use realPathSync to resolve symlinks (e.g. macOS /var -> /private/var)
+  // since Deno.watchFs returns real (symlink-resolved) paths.
+  const resolvedWatchPath = realpathSync(watchPath) as string;
 
   asyncIterableToCallback<Deno.FsEvent>(iterator, (val, done) => {
     if (done) return;
+    // Node.js returns the relative path from the watched directory for
+    // recursive watches, but just the basename for non-recursive watches.
+    const filename = recursive
+      ? relative(resolvedWatchPath, val.paths[0])
+      : basename(val.paths[0]);
     fsWatcher.emit(
       "change",
       convertDenoFsEventToNodeFsEvent(val.kind),
-      basename(val.paths[0]),
+      filename,
     );
   }, (e) => {
     fsWatcher.emit("error", e);
@@ -3213,9 +3229,11 @@ function watchPromise(
   // deno-lint-ignore prefer-primordials
   const watchPath = getValidatedPath(filename).toString();
 
+  const recursive = options?.recursive ?? false;
   const watcher = Deno.watchFs(watchPath, {
-    recursive: options?.recursive ?? false,
+    recursive,
   });
+  const resolvedWatchPath = realpathSync(watchPath) as string;
 
   if (options?.signal) {
     if (options.signal.aborted) {
@@ -3241,8 +3259,11 @@ function watchPromise(
       const eventType = convertDenoFsEventToNodeFsEvent(
         iterResult.value.kind,
       );
+      const fname = recursive
+        ? relative(resolvedWatchPath, iterResult.value.paths[0])
+        : basename(iterResult.value.paths[0]);
       return {
-        value: { eventType, filename: basename(iterResult.value.paths[0]) },
+        value: { eventType, filename: fname },
         done: false,
       };
     },
@@ -3341,6 +3362,10 @@ class StatWatcher extends EventEmitter {
   #bigint: boolean;
   #refCount = 0;
   #abortController = new AbortController();
+  #refed = true;
+  // The current in-flight interval timer, ref'd / unref'd when ref()/unref()
+  // is called between polls so the process can exit while nothing is changing.
+  #timer: Timeout | null = null;
 
   constructor(bigint: boolean) {
     super();
@@ -3364,7 +3389,7 @@ class StatWatcher extends EventEmitter {
 
       try {
         while (true) {
-          await delay(interval, { signal: this.#abortController.signal });
+          await this.#sleep(interval);
           const curr = await statAsync(filename);
           if (
             DatePrototypeGetTime(curr?.mtime) !==
@@ -3385,6 +3410,31 @@ class StatWatcher extends EventEmitter {
       }
     })();
   }
+  #sleep(ms: number): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const signal = this.#abortController.signal;
+      if (signal.aborted) {
+        reject(signal.reason);
+        return;
+      }
+      const abort = () => {
+        clearTimeout(timer);
+        this.#timer = null;
+        reject(signal.reason);
+      };
+      const done = () => {
+        signal.removeEventListener("abort", abort);
+        this.#timer = null;
+        resolve();
+      };
+      const timer = setTimeout(done, ms);
+      if (!this.#refed) {
+        timer.unref();
+      }
+      this.#timer = timer;
+      signal.addEventListener("abort", abort, { once: true });
+    });
+  }
   [kFSStatWatcherAddOrCleanRef](addOrClean: "add" | "clean" | "cleanAll") {
     if (addOrClean === "add") {
       this.#refCount++;
@@ -3404,11 +3454,19 @@ class StatWatcher extends EventEmitter {
     // StatWatcher.prototype.stop in lib/internal/fs/watchers.js).
     process.nextTick(() => this.emit("stop"));
   }
+  // Node's ref/unref toggle whether the StatWatcher's internal handle keeps
+  // the event loop alive (see lib/internal/fs/watchers.js). In Deno the
+  // handle is the interval Timeout used between poll iterations, so we
+  // ref/unref that.
   ref() {
-    notImplemented("StatWatcher.ref() is not implemented");
+    this.#refed = true;
+    this.#timer?.ref();
+    return this;
   }
   unref() {
-    notImplemented("StatWatcher.unref() is not implemented");
+    this.#refed = false;
+    this.#timer?.unref();
+    return this;
   }
 }
 

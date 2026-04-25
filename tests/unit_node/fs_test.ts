@@ -57,6 +57,7 @@ import {
   statSync,
   unlink,
   unlinkSync,
+  watch,
   writeFileSync,
 } from "node:fs";
 import { readFile } from "node:fs/promises";
@@ -1882,5 +1883,68 @@ Deno.test(
     } finally {
       rmSync(tmp, { recursive: true, force: true });
     }
+  },
+);
+
+Deno.test({
+  name: "[node/fs] watch recursive returns relative path for nested files",
+  ignore: Deno.build.os === "windows",
+  async fn() {
+    const tmp = Deno.makeTempDirSync();
+    const subdir = join(tmp, "sub");
+    mkdirSync(subdir, { recursive: true });
+
+    try {
+      const filenames: string[] = [];
+      const { promise, resolve } = Promise.withResolvers<void>();
+
+      const watcher = watch(
+        tmp,
+        { recursive: true },
+        (_event: string, filename: string | null) => {
+          if (filename) filenames.push(filename);
+          if (filenames.length >= 1) resolve();
+        },
+      );
+
+      // Small delay to let the watcher start
+      await new Promise((r) => setTimeout(r, 100));
+      writeFileSync(join(subdir, "test.txt"), "hello");
+
+      await promise;
+      watcher.close();
+
+      // macOS FSEvents only delivers directory-granularity events for
+      // recursive watches, so the filename may be "sub" instead of
+      // "sub/test.txt". Both are correct relative paths.
+      const hasRelative = filenames.some((f) => f.startsWith("sub"));
+      assert(
+        hasRelative,
+        `Expected relative path starting with "sub", got: ${filenames}`,
+      );
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  },
+});
+
+Deno.test(
+  {
+    name: "[node/fs] readFile on non-terminating source respects AbortSignal",
+    ignore: Deno.build.os === "windows",
+  },
+  async () => {
+    const controller = new AbortController();
+    setTimeout(() => controller.abort(), 500);
+
+    await assertRejects(
+      () =>
+        readFile("/dev/urandom", {
+          encoding: "utf8",
+          signal: controller.signal,
+        }),
+      Error,
+      "abort",
+    );
   },
 );

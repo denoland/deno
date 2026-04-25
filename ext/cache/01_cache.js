@@ -6,6 +6,7 @@ import {
   op_cache_put,
   op_cache_storage_delete,
   op_cache_storage_has,
+  op_cache_storage_keys,
   op_cache_storage_open,
 } from "ext:core/ops";
 const {
@@ -63,6 +64,43 @@ class CacheStorage {
     webidl.requiredArguments(arguments.length, 1, prefix);
     cacheName = webidl.converters["DOMString"](cacheName, prefix, "Argument 1");
     return await op_cache_storage_delete(cacheName);
+  }
+
+  async keys() {
+    webidl.assertBranded(this, CacheStoragePrototype);
+    return await op_cache_storage_keys();
+  }
+
+  async match(request, options) {
+    webidl.assertBranded(this, CacheStoragePrototype);
+    const prefix = "Failed to execute 'match' on 'CacheStorage'";
+    webidl.requiredArguments(arguments.length, 1, prefix);
+    request = webidl.converters["RequestInfo_DOMString"](
+      request,
+      prefix,
+      "Argument 1",
+    );
+    const cacheName = options?.cacheName;
+    if (cacheName !== undefined) {
+      if (!(await op_cache_storage_has(cacheName))) {
+        return undefined;
+      }
+      const cache = await this.open(cacheName);
+      // false positive: cache is a local Cache instance, not a global intrinsic
+      // deno-lint-ignore prefer-primordials
+      return await cache.match(request, options);
+    }
+    const names = await op_cache_storage_keys();
+    for (let i = 0; i < names.length; ++i) {
+      const cache = await this.open(names[i]);
+      // false positive: cache is a local Cache instance, not a global intrinsic
+      // deno-lint-ignore prefer-primordials
+      const response = await cache.match(request, options);
+      if (response !== undefined) {
+        return response;
+      }
+    }
+    return undefined;
   }
 
   [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
