@@ -4,7 +4,7 @@
 // This is a pure-JS rewrite of the Rust denokv_sqlite backend, maintaining
 // exact schema and behavioral compatibility.
 
-import { primordials } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 const {
   ArrayFrom,
   ArrayPrototypeMap,
@@ -655,9 +655,9 @@ export class SqliteBackend {
   #applySumMutation(
     key: Uint8Array,
     operand: KvValue,
-    _minV8: Uint8Array,
-    _maxV8: Uint8Array,
-    _clamp: boolean,
+    minV8: Uint8Array,
+    maxV8: Uint8Array,
+    clamp: boolean,
     version: number | bigint,
   ): void {
     // For U64 operands, use wrapping addition (matching the Rust backend)
@@ -684,7 +684,7 @@ export class SqliteBackend {
       return;
     }
 
-    // V8 sum (Number/BigInt operand): check if existing value is incompatible
+    // V8 sum (Number/BigInt operand)
     const row = this.#stmtPointGetValueOnly!.get(key) as
       | { v: Uint8Array; v_encoding: number }
       | undefined;
@@ -704,16 +704,35 @@ export class SqliteBackend {
 
     const existing = decodeValue(asUint8Array(row.v), row.v_encoding);
     if (existing.kind === "u64") {
-      // Existing is KvU64 but operand is V8 (Number/BigInt) - type mismatch
       throw new TypeError(
         "Cannot sum KvU64 with Number",
       );
     }
 
-    // Both are V8: would require V8 value deserialization
-    throw new TypeError(
-      "V8 sum mutation on existing values is not yet supported in the JS backend",
-    );
+    // Both are V8: deserialize, add, clamp, re-serialize
+    const existingVal = core.deserialize(existing.data, { forStorage: true });
+    const operandVal = core.deserialize(operand.data, { forStorage: true });
+    let result = existingVal + operandVal;
+
+    if (clamp) {
+      const minVal = TypedArrayPrototypeGetLength(minV8) > 0
+        ? core.deserialize(minV8, { forStorage: true })
+        : undefined;
+      const maxVal = TypedArrayPrototypeGetLength(maxV8) > 0
+        ? core.deserialize(maxV8, { forStorage: true })
+        : undefined;
+      if (minVal !== undefined && result < minVal) result = minVal;
+      if (maxVal !== undefined && result > maxVal) result = maxVal;
+    }
+
+    const serialized = core.serialize(result, { forStorage: true });
+    this.#stmtPointSet!.run({
+      ":k": key,
+      ":v": serialized,
+      ":v_encoding": VE_V8,
+      ":version": version,
+      ":expiration_ms": -1,
+    });
   }
 
   /**
