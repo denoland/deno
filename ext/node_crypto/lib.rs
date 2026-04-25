@@ -99,6 +99,8 @@ deno_core::extension!(
     op_node_public_decrypt,
     op_node_public_encrypt,
     op_node_random_int,
+    op_node_rsa_encapsulate,
+    op_node_rsa_decapsulate,
     op_node_scrypt_async,
     op_node_scrypt_sync,
     op_node_sign,
@@ -532,6 +534,133 @@ pub fn op_node_public_decrypt(
     }
     _ => Err(PrivateEncryptDecryptError::UnknownPadding),
   }
+}
+
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+pub enum EncapsulateError {
+  #[class(generic)]
+  #[error("encap_decap: key_decode")]
+  KeyDecode,
+  #[class(generic)]
+  #[error("encap_decap: initialize")]
+  Initialize,
+  #[class(generic)]
+  #[error("encap_decap: perform")]
+  Perform,
+}
+
+fn parse_rsa_public_key(key: &[u8]) -> Result<RsaPublicKey, EncapsulateError> {
+  match std::str::from_utf8(key) {
+    Ok(pem) => RsaPublicKey::from_public_key_pem(pem)
+      .or_else(|_| rsa::pkcs1::DecodeRsaPublicKey::from_pkcs1_pem(pem))
+      .or_else(|_| {
+        RsaPrivateKey::from_pkcs8_pem(pem)
+          .or_else(|_| {
+            rsa::pkcs1::DecodeRsaPrivateKey::from_pkcs1_pem(pem)
+              .map_err(pkcs8::Error::from)
+          })
+          .map(|k| k.to_public_key())
+          .map_err(|_| EncapsulateError::KeyDecode)
+      })
+      .map_err(|_| EncapsulateError::KeyDecode),
+    Err(_) => RsaPublicKey::from_public_key_der(key)
+      .or_else(|_| RsaPublicKey::from_pkcs1_der(key).map_err(spki::Error::from))
+      .or_else(|_| {
+        RsaPrivateKey::from_pkcs8_der(key)
+          .or_else(|_| {
+            RsaPrivateKey::from_pkcs1_der(key).map_err(pkcs8::Error::from)
+          })
+          .map(|k| k.to_public_key())
+          .map_err(spki::Error::from)
+      })
+      .map_err(|_| EncapsulateError::KeyDecode),
+  }
+}
+
+fn parse_rsa_private_key(
+  key: &[u8],
+) -> Result<RsaPrivateKey, EncapsulateError> {
+  match std::str::from_utf8(key) {
+    Ok(pem) => RsaPrivateKey::from_pkcs8_pem(pem)
+      .or_else(|_| {
+        rsa::pkcs1::DecodeRsaPrivateKey::from_pkcs1_pem(pem)
+          .map_err(pkcs8::Error::from)
+      })
+      .map_err(|_| EncapsulateError::KeyDecode),
+    Err(_) => RsaPrivateKey::from_pkcs8_der(key)
+      .or_else(|_| {
+        RsaPrivateKey::from_pkcs1_der(key).map_err(pkcs8::Error::from)
+      })
+      .map_err(|_| EncapsulateError::KeyDecode),
+  }
+}
+
+/// Pad a big-endian byte vector with leading zeros to length `k`.
+fn left_pad_to(mut bytes: Vec<u8>, k: usize) -> Vec<u8> {
+  if bytes.len() >= k {
+    return bytes;
+  }
+  let mut out = vec![0u8; k - bytes.len()];
+  out.append(&mut bytes);
+  out
+}
+
+/// Sample a uniformly random integer in `[0, n)` using rejection sampling.
+fn rand_uniform_below(
+  n: &num_bigint_dig::BigUint,
+  rng: &mut impl rand::RngCore,
+) -> num_bigint_dig::BigUint {
+  let bits = n.bits();
+  let k = bits.div_ceil(8);
+  let top_bits = bits % 8;
+  let mut buf = vec![0u8; k];
+  loop {
+    rng.fill_bytes(&mut buf);
+    if top_bits != 0 {
+      buf[0] &= (1u8 << top_bits) - 1;
+    }
+    let z = num_bigint_dig::BigUint::from_bytes_be(&buf);
+    if &z < n {
+      return z;
+    }
+  }
+}
+
+/// RSASVE encapsulation per NIST SP 800-56B / OpenSSL `EVP_PKEY_encapsulate`:
+/// pick uniformly random `Z in [0, n)`, ciphertext = `Z^e mod n`, both encoded
+/// as big-endian byte strings of length `len(n)`. Returns `(sharedKey, ciphertext)`.
+#[op2]
+pub fn op_node_rsa_encapsulate(
+  #[buffer] key: &[u8],
+) -> Result<(Uint8Array, Uint8Array), EncapsulateError> {
+  let pk = parse_rsa_public_key(key)?;
+  let n = pk.n();
+  let k = pk.size();
+  let mut rng = rand::thread_rng();
+  let z = rand_uniform_below(n, &mut rng);
+  let c = rsa_encrypt(&pk, &z).map_err(|_| EncapsulateError::Perform)?;
+  let shared = left_pad_to(z.to_bytes_be(), k);
+  let ciphertext = left_pad_to(c.to_bytes_be(), k);
+  Ok((shared.into(), ciphertext.into()))
+}
+
+/// RSASVE decapsulation: `Z = ciphertext^d mod n`, encoded as big-endian byte
+/// string of length `len(n)`.
+#[op2]
+pub fn op_node_rsa_decapsulate(
+  #[buffer] key: &[u8],
+  #[buffer] ciphertext: &[u8],
+) -> Result<Uint8Array, EncapsulateError> {
+  let sk = parse_rsa_private_key(key)?;
+  let k = sk.size();
+  if ciphertext.len() != k {
+    return Err(EncapsulateError::Perform);
+  }
+  let mut rng = rand::thread_rng();
+  let c = num_bigint_dig::BigUint::from_bytes_be(ciphertext);
+  let z = rsa_decrypt_and_check(&sk, Some(&mut rng), &c)
+    .map_err(|_| EncapsulateError::Perform)?;
+  Ok(left_pad_to(z.to_bytes_be(), k).into())
 }
 
 #[op2(fast)]
