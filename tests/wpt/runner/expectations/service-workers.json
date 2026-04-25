@@ -258,7 +258,9 @@
     "cache-storage-keys.https.any.html": {
       "ignore": true
     },
-    "cache-storage-keys.https.any.worker.html": true,
+    "cache-storage-keys.https.any.worker.html": {
+      "ignore": true
+    },
     "cache-storage-match.https.any.html": {
       "expectedFailures": [
         "CacheStorageMatch supports ignoreSearch",
