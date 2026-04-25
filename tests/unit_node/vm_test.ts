@@ -195,6 +195,7 @@ Deno.test({
       // @ts-ignore: dynamic property
       this._globalProxy = runInContext("this", this);
       Object.setPrototypeOf(this, windowPrototype);
+      // deno-lint-ignore no-this-alias
       const window = this;
       Object.defineProperty(this, "window", {
         get() {
