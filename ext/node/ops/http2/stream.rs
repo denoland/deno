@@ -230,6 +230,12 @@ impl Http2Stream {
       return false;
     };
 
+    // SAFETY: session outlives the stream
+    let max_header_pairs = unsafe { (*self.session).max_header_pairs } as usize;
+    if self.current_headers.borrow().len() >= max_header_pairs {
+      return false;
+    }
+
     let header_length = name.len() + value.len() + 32;
     self.current_headers.borrow_mut().push((
       name_str.to_string(),

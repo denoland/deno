@@ -339,9 +339,12 @@ const OPTIONS_FLAG_NO_AUTO_WINDOW_UPDATE: u32 = 0x1;
 const OPTIONS_FLAG_NO_RECV_CLIENT_MAGIC: u32 = 0x2;
 const OPTIONS_FLAG_NO_HTTP_MESSAGING: u32 = 0x4;
 
+const DEFAULT_MAX_HEADER_LIST_PAIRS: u32 = 128;
+
 struct Http2Options {
   options: *mut ffi::nghttp2_option,
   padding_strategy: PaddingStrategy,
+  max_header_pairs: u32,
 }
 
 impl Http2Options {
@@ -350,8 +353,13 @@ impl Http2Options {
     // SAFETY: passing valid pointer to be initialized by nghttp2
     unsafe { ffi::nghttp2_option_new(&mut options) };
 
+    let mut max_header_pairs: u32 = DEFAULT_MAX_HEADER_LIST_PAIRS;
     let padding_strategy = with_options(|buffer| {
       let flags = buffer[OptionsIndex::Flags as usize];
+
+      if flags & (1 << OptionsIndex::MaxHeaderListPairs as u32) != 0 {
+        max_header_pairs = buffer[OptionsIndex::MaxHeaderListPairs as usize];
+      }
 
       // SAFETY: options was successfully initialized by nghttp2_option_new
       unsafe {
@@ -446,9 +454,18 @@ impl Http2Options {
       }
     });
 
+    // Apply Node.js semantics: server min 4, client min 1.
+    // See node_http_common-inl.h: GetServerMaxHeaderPairs / GetClientMaxHeaderPairs.
+    let min_pairs = match session_type {
+      SessionType::Server => 4,
+      SessionType::Client => 1,
+    };
+    let max_header_pairs = std::cmp::max(max_header_pairs, min_pairs);
+
     Self {
       options,
       padding_strategy,
+      max_header_pairs,
     }
   }
 
@@ -458,6 +475,10 @@ impl Http2Options {
 
   fn padding_strategy(&self) -> PaddingStrategy {
     self.padding_strategy
+  }
+
+  fn max_header_pairs(&self) -> u32 {
+    self.max_header_pairs
   }
 }
 
@@ -1410,6 +1431,10 @@ pub struct Session {
   /// Original stream.data pointer saved before consume_stream overwrites it.
   /// Restored when the session releases the stream.
   pub orig_stream_data: *mut std::ffi::c_void,
+  /// Maximum number of header pairs allowed per stream. Mirrors Node.js's
+  /// per-session limit derived from the `maxHeaderListPairs` option.
+  /// Streams that receive more headers are reset with NGHTTP2_ENHANCE_YOUR_CALM.
+  pub max_header_pairs: u32,
 }
 
 impl Session {
@@ -1799,6 +1824,7 @@ impl Http2Session {
       pending_destroy: false,
       pending_rst_streams: Vec::new(),
       orig_stream_data: std::ptr::null_mut(),
+      max_header_pairs: options.max_header_pairs(),
     }));
 
     // SAFETY: inner is valid (just allocated); callbacks and options are valid
