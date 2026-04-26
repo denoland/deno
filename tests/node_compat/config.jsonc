@@ -3059,6 +3059,10 @@
     "parallel/test-webcrypto-encrypt-decrypt.js": {},
     "parallel/test-webcrypto-export-import-ml-dsa.js": {},
     "parallel/test-webcrypto-export-import-ml-kem.js": {},
+    "parallel/test-webcrypto-export-import.js": {
+      "ignore": true,
+      "reason": "Exercises symmetric-key import/export across every SubtleCrypto symmetric algorithm; the AES-OCB / KMAC / Argon2 / chacha20-poly1305 paths use the Node-specific 'raw-secret' KeyFormat. Deno's WebIDL `KeyFormat` enum does not recognise 'raw-secret' (it isn't in the WebCrypto Level 1/2 spec), so the test fails at the first 'raw-secret' importKey before any of the format / round-trip logic is exercised. Could be revisited if 'raw-secret' lands in ext/crypto/"
+    },
     "parallel/test-webcrypto-getRandomValues.js": {},
     "parallel/test-webcrypto-random.js": {},
     "parallel/test-webcrypto-keygen-kmac.js": {
