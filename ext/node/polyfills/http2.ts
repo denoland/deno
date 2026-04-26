@@ -3083,7 +3083,11 @@ function socketOnClose() {
     // deno-lint-ignore prefer-primordials
     state.pendingStreams.forEach((stream) => stream.close(NGHTTP2_CANCEL));
     session.close();
-    closeSession(session, NGHTTP2_NO_ERROR, err);
+    // Route through kMaybeDestroy -> destroy(err) so the `if (this.destroyed)`
+    // guard in destroy() prevents a second emit("close") when the Rust-side
+    // EOF (handle.onstreamclose) and the JS-side socket "close" both fire
+    // for the same socket teardown (e.g. external client[kSocket].destroy()).
+    session[kMaybeDestroy](err);
   }
 }
 

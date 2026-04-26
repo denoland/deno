@@ -1450,6 +1450,7 @@
     "parallel/test-http2-client-setLocalWindowSize.js": {},
     "parallel/test-http2-client-setNextStreamID-errors.js": {},
     "parallel/test-http2-client-settings-before-connect.js": {},
+    "parallel/test-http2-client-socket-destroy.js": {},
     "parallel/test-http2-client-stream-destroy-before-connect.js": {},
     "parallel/test-http2-client-upload-reject.js": {},
     "parallel/test-http2-client-upload.js": {},
