@@ -734,10 +734,10 @@ fn matches_package(
   // Fall back to the workspace member's directory name when neither
   // deno.json nor package.json carry a `name`. Without this fallback,
   // `deno task --filter <dir>` silently failed for members whose
-  // package name didn't happen to match the directory (#28620). The
-  // fallback is gated on the folder having no name so it never
-  // accidentally selects the workspace root (which doesn't carry a
-  // name and is intentionally excluded by `--filter *`).
+  // package name didn't happen to match the directory (#28620).
+  // Gated on the folder having a name so we never accidentally select
+  // the workspace root (which doesn't carry one and is intentionally
+  // excluded from `--filter *`).
   let has_name = config
     .deno_json
     .as_ref()
