@@ -84,6 +84,7 @@ import { addAbortListener } from "ext:deno_node/internal/events/abort_listener.m
 export { addAbortListener } from "ext:deno_node/internal/events/abort_listener.mjs";
 import fs from "node:fs";
 import { FileHandle as FsFileHandle } from "ext:deno_node/internal/fs/handle.ts";
+import { JSStreamSocket } from "ext:deno_node/internal/js_stream_socket.js";
 import { format } from "node:util";
 import {
   isUint32,
@@ -376,9 +377,6 @@ const kMaxALTSVC = (2 ** 14) - 2;
 const kQuotedString = new SafeRegExp(
   "^[\\x09\\x20-\\x5b\\x5d-\\x7e\\x80-\\xff]*$",
 );
-
-// Placeholder classes and functions - these need proper implementation
-class JSStreamSocket {}
 
 // Validates that priority options are correct, specifically:
 // 1. options.weight must be a number
