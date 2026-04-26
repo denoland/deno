@@ -455,6 +455,10 @@
     "parallel/test-crypto-dh-odd-key.js": {},
     "parallel/test-crypto-dh-padding.js": {},
     "parallel/test-crypto-dh-shared.js": {},
+    "parallel/test-crypto-dh-stateless.js": {
+      "ignore": true,
+      "reason": "Tests `crypto.diffieHellman({ privateKey, publicKey })` (the stateless DH API in node:crypto). Deno rejects with `TypeError: DH parameters mismatch` for keys generated against the same modp group -- the parameter-equality check in `op_node_diffie_hellman` in ext/node_crypto compares the raw encoded parameters byte-for-byte, but the Rust DH path does not normalise the encoding the way OpenSSL's `EVP_PKEY_param_check` does (e.g. canonical leading-zero stripping on prime/generator integers). Could be revisited if the parameter-equality check is replaced with a value-aware comparison or normalised encoding"
+    },
     "parallel/test-crypto-dh.js": {},
     "parallel/test-crypto-domain.js": {},
     "parallel/test-crypto-domains.js": {},
