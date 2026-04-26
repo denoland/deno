@@ -6,6 +6,7 @@ import { EventEmitter } from "node:events";
 import { fork as childProcessFork } from "node:child_process";
 import process from "node:process";
 import { nextTick } from "ext:deno_node/_next_tick.ts";
+import { isWindows } from "ext:deno_node/_util/os.ts";
 
 const {
   Error,
@@ -46,10 +47,11 @@ export let isMaster = true;
 export let worker: Worker | undefined = undefined;
 
 /** The scheduling policy, either cluster.SCHED_RR for round-robin or
- * cluster.SCHED_NONE to leave it to the operating system. This is a global
- * setting and effectively frozen once either the first worker is spawned, or
- * .setupPrimary() is called, whichever comes first. */
-export let schedulingPolicy: number | undefined = SCHED_NONE;
+ * cluster.SCHED_NONE to leave it to the operating system. Matches Node:
+ * SCHED_RR on POSIX, SCHED_NONE on Windows. */
+export let schedulingPolicy: number | undefined = isWindows
+  ? SCHED_NONE
+  : SCHED_RR;
 
 /** A Worker object contains all public information and method about a worker.
  * In the primary it can be obtained using cluster.workers. In a worker it can
@@ -103,9 +105,15 @@ export class Worker extends EventEmitter {
   kill(signal: string = "SIGTERM") {
     this.exitedAfterDisconnect = true;
     if (this.process === process) {
-      // In a worker, kill() means disconnect and exit.
-      if (this.process.connected) this.process.disconnect();
-      process.exit(0);
+      // In a worker, kill() means disconnect and exit. Wait for the IPC
+      // disconnect to actually flush before exiting so any in-flight
+      // messages aren't dropped (matches Node's lib/internal/cluster/child.js).
+      if (!this.process.connected) {
+        process.exit(0);
+        return;
+      }
+      process.once("disconnect", () => process.exit(0));
+      this.process.disconnect();
     } else {
       this.process.kill(signal);
     }
@@ -187,7 +195,12 @@ export function fork(env?: Record<string, any>): Worker {
 }
 
 /** setupPrimary is used to change the default 'fork' behavior. Once called,
- * the settings will be present in cluster.settings. */
+ * the settings will be present in cluster.settings.
+ *
+ * TODO(@divy-work): fork() does not yet honor the `exec`, `args`, `silent`,
+ * `cwd`, or `serialization` settings populated here -- workers always run
+ * `process.argv[1]` with the parent's stdio inherited.
+ */
 // deno-lint-ignore no-explicit-any
 export function setupPrimary(options?: Record<string, any>) {
   if (options) {
@@ -262,34 +275,22 @@ ObjectDefineProperty(cluster, "schedulingPolicy", {
   configurable: true,
 });
 
-// Called from `02_init.js` once `process.env` is available so we can decide
-// whether this process is a cluster worker. Accessing `process.env` at
-// snapshot time fails ("Bad resource ID") because `Deno.env` is unavailable.
-internals.__initCluster = () => {
-  let uniqueId: string | undefined;
-  try {
-    const v = process.env.NODE_UNIQUE_ID;
-    if (typeof v === "string" && v.length > 0) uniqueId = v;
-  } catch {
-    // ignore
-  }
-  if (uniqueId === undefined) return;
-
+// Called from `02_init.js` only when NODE_UNIQUE_ID is present in the
+// environment, so plain `deno run` never enters this path and never touches
+// the env permission system. The caller passes both env values directly so
+// this module never imports a permission-checked Deno API.
+internals.__initCluster = (
+  uniqueId: string,
+  schedPolicyEnv: string | undefined,
+) => {
   isPrimary = false;
   isWorker = true;
   isMaster = false;
 
-  let policy: number | undefined;
-  try {
-    const p = process.env.NODE_CLUSTER_SCHED_POLICY;
-    if (typeof p === "string" && p.length > 0) {
-      const n = Number(p);
-      if (!NumberIsNaN(n)) policy = n;
-    }
-  } catch {
-    // ignore
+  if (typeof schedPolicyEnv === "string" && schedPolicyEnv.length > 0) {
+    const n = Number(schedPolicyEnv);
+    if (!NumberIsNaN(n)) schedulingPolicy = n;
   }
-  if (policy !== undefined) schedulingPolicy = policy;
 
   worker = new Worker(process, Number(uniqueId));
   worker.state = "online";
