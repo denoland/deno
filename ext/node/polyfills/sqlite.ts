@@ -53,23 +53,18 @@ const nativeLimitsGetter = ObjectGetOwnPropertyDescriptor(
 function createLimitsProxy(nativeLimits: object): object {
   return new Proxy(nativeLimits, {
     get(target, prop, _receiver) {
-      if (
-        typeof prop === "string" &&
-        LIMIT_NAMES_SET.has(prop)
-      ) {
-        return target[prop];
+      if (typeof prop !== "string" || !LIMIT_NAMES_SET.has(prop)) {
+        return undefined;
       }
-      return undefined;
+      return target[prop];
     },
     set(target, prop, value, _receiver) {
-      if (
-        typeof prop === "string" &&
-        LIMIT_NAMES_SET.has(prop)
-      ) {
-        target[prop] = value;
-        return true;
+      if (typeof prop !== "string" || !LIMIT_NAMES_SET.has(prop)) {
+        return false;
       }
-      return false;
+
+      target[prop] = value;
+      return true;
     },
     has(_target, prop) {
       return typeof prop === "string" &&
@@ -79,18 +74,16 @@ function createLimitsProxy(nativeLimits: object): object {
       return LIMIT_NAMES;
     },
     getOwnPropertyDescriptor(target, prop) {
-      if (
-        typeof prop === "string" &&
-        LIMIT_NAMES_SET.has(prop)
-      ) {
-        return {
-          value: target[prop],
-          writable: true,
-          enumerable: true,
-          configurable: true,
-        };
+      if (typeof prop !== "string" || !LIMIT_NAMES_SET.has(prop)) {
+        return undefined;
       }
-      return undefined;
+
+      return {
+        value: target[prop],
+        writable: true,
+        enumerable: true,
+        configurable: true,
+      };
     },
   });
 }
