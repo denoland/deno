@@ -62,8 +62,11 @@ pub use provider::CliBundleProvider;
 
 use crate::args::BundleFlags;
 use crate::args::Flags;
+use crate::args::TypeCheckMode;
 use crate::factory::CliFactory;
 use crate::file_fetcher::CliFileFetcher;
+use crate::graph_container::CheckSpecifiersOptions;
+use crate::graph_container::CollectSpecifiersOptions;
 use crate::graph_container::MainModuleGraphContainer;
 use crate::graph_container::ModuleGraphContainer;
 use crate::graph_container::ModuleGraphUpdatePermit;
@@ -301,6 +304,29 @@ pub async fn bundle(
   {
     let flags_mut = Arc::make_mut(&mut flags);
     flags_mut.unstable_config.sloppy_imports = true;
+  }
+  // `--check[=all]` is documented in `bundle --help`; honour it before we
+  // hand the graph to esbuild so type errors surface alongside (and not
+  // after) the bundle output (denoland/deno#30159).
+  if !matches!(flags.type_check_mode, TypeCheckMode::None) {
+    let check_factory = CliFactory::from_flags(flags.clone());
+    let main_graph_container =
+      check_factory.main_module_graph_container().await?;
+    let specifiers = main_graph_container.collect_specifiers(
+      &bundle_flags.entrypoints,
+      CollectSpecifiersOptions {
+        include_ignored_specified: false,
+      },
+    )?;
+    main_graph_container
+      .check_specifiers(
+        &specifiers,
+        CheckSpecifiersOptions {
+          allow_unknown_media_types: true,
+          ..Default::default()
+        },
+      )
+      .await?;
   }
   let bundler = bundle_init(flags.clone(), &bundle_flags).await?;
   let init_cwd = bundler.cwd.clone();
