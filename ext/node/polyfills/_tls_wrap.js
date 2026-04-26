@@ -284,12 +284,20 @@ tlsWrap.TLSWrap.prototype.close = function close(cb) {
     this._owner.ssl = null;
   }
 
+  // Tear down the TLS state synchronously so any cleartext that is still
+  // being decoded (e.g. inside a re-entrant Rust -> JS handshake callback
+  // that triggered this close) is not delivered to a destroyed Readable.
+  // Without this, the JS stream is destroyed while Rust still holds a
+  // reference to onStreamRead, and a subsequent push of cleartext lands in
+  // onStreamRead with nread > 0 on a destroyed stream -- which the Node
+  // algorithm reports as errnoException(positiveNread).
+  if (ssl) {
+    ssl.destroySsl();
+  }
+
   // deno-lint-ignore no-this-alias
   const self = this;
   const done = () => {
-    if (ssl) {
-      ssl.destroySsl();
-    }
     // Close the native TCP handle to remove it from the event loop.
     if (self._nativeTcpHandle) {
       self._nativeTcpHandle.readStop();

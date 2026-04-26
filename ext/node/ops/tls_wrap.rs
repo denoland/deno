@@ -852,6 +852,7 @@ fn rustls_error_to_node_error(e: &rustls::Error) -> (String, String) {
         AD::InappropriateFallback => "TLSV1_ALERT_INAPPROPRIATE_FALLBACK",
         AD::UserCanceled => "TLSV1_ALERT_USER_CANCELLED",
         AD::NoRenegotiation => "TLSV1_ALERT_NO_RENEGOTIATION",
+        AD::NoApplicationProtocol => "TLSV1_ALERT_NO_APPLICATION_PROTOCOL",
         _ => "SSLV3_ALERT_HANDSHAKE_FAILURE",
       };
       (format!("{e}"), format!("ERR_SSL_{code}"))
@@ -1183,6 +1184,15 @@ impl TLSWrapInner {
         (*ptr).established = true;
         if let Some(ctx) = extract_emit_ctx(ptr) {
           do_emit_handshake_done(&ctx);
+        }
+
+        // The handshake_done callback can synchronously destroy the
+        // TLSSocket (e.g. http2's `unknownProtocol` handler may call
+        // `socket.destroy()`).  If teardown has run, the JS-side stream
+        // is gone and any further data delivery would push bytes into a
+        // destroyed Readable, tripping `errnoException(positiveNread)`.
+        if !(*ptr).alive.get() {
+          return;
         }
 
         // If shutdown was requested before handshake completed, execute
@@ -2748,19 +2758,30 @@ impl rustls::client::danger::ServerCertVerifier for NodeServerCertVerifier {
         ) {
           return Ok(rustls::client::danger::ServerCertVerified::assertion());
         }
-        // CaUsedAsEndEntity is a rustls/webpki-specific check that
-        // OpenSSL does not have.  If the cert is actually in our
-        // root store, trust it silently.  Otherwise store an error.
-        if let rustls::CertificateError::Other(other) = cert_error
-          && format!("{other}").contains("CaUsedAsEndEntity")
-        {
-          let ee_bytes: &[u8] = end_entity.as_ref();
-          let is_trusted =
-            self.root_cert_ders.iter().any(|r| r.as_slice() == ee_bytes);
-          if is_trusted {
+        if let rustls::CertificateError::Other(other) = cert_error {
+          let msg = format!("{other}");
+          // CaUsedAsEndEntity is a rustls/webpki-specific check that
+          // OpenSSL does not have.  If the cert is actually in our
+          // root store, trust it silently.  Otherwise store an error.
+          if msg.contains("CaUsedAsEndEntity") {
+            let ee_bytes: &[u8] = end_entity.as_ref();
+            let is_trusted =
+              self.root_cert_ders.iter().any(|r| r.as_slice() == ee_bytes);
+            if is_trusted {
+              return Ok(
+                rustls::client::danger::ServerCertVerified::assertion(),
+              );
+            }
+            // Not trusted — fall through to store the error below.
+          }
+          // OpenSSL accepts X.509 v1 certificates; webpki/rustls do not.
+          // Trust the handshake signature checks (which are filtered for
+          // the same error in verify_tls1{2,3}_signature) and accept.
+          if msg.contains("UnsupportedCertVersion")
+            || matches!(cert_error, rustls::CertificateError::BadEncoding)
+          {
             return Ok(rustls::client::danger::ServerCertVerified::assertion());
           }
-          // Not trusted — fall through to store the error below.
         }
         // Store the error for verifyError() and let the handshake
         // proceed.  The JS layer will decide whether to tear down
