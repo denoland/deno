@@ -1494,6 +1494,7 @@
     "parallel/test-http2-error-order.js": {},
     "parallel/test-http2-getpackedsettings.js": {},
     "parallel/test-http2-goaway-delayed-request.js": {},
+    "parallel/test-http2-goaway-opaquedata.js": {},
     "parallel/test-http2-graceful-close.js": {},
     "parallel/test-http2-head-request.js": {},
     "parallel/test-http2-info-headers.js": {},

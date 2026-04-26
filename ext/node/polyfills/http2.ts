@@ -781,7 +781,13 @@ function onGoawayData(code, lastStreamID, buf) {
   state.goawayCode = code;
   state.goawayLastStreamID = lastStreamID;
 
-  session.emit("goaway", code, lastStreamID, buf);
+  // Node.js exposes the GOAWAY opaque data as a Buffer, not a plain
+  // Uint8Array. The native binding hands us a Uint8Array, so wrap it
+  // as a Buffer (zero-copy) before emitting.
+  const opaqueData = buf !== undefined
+    ? Buffer.from(buf.buffer, buf.byteOffset, buf.byteLength)
+    : buf;
+  session.emit("goaway", code, lastStreamID, opaqueData);
   if (code === NGHTTP2_NO_ERROR) {
     // If this is a no error goaway, begin shutting down.
     // No new streams permitted, but existing streams may
