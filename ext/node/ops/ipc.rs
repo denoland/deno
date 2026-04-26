@@ -26,7 +26,6 @@ pub struct ChildPipeFd(pub i64, pub ChildIpcSerialization);
 
 mod impl_ {
   use std::cell::RefCell;
-  use std::future::Future;
   use std::io;
   use std::rc::Rc;
 
@@ -239,52 +238,6 @@ mod impl_ {
     Io(#[from] io::Error),
   }
 
-  #[op2]
-  pub fn op_node_ipc_write_json<'a>(
-    scope: &mut v8::PinScope<'a, '_>,
-    state: Rc<RefCell<OpState>>,
-    #[smi] rid: ResourceId,
-    value: v8::Local<'a, v8::Value>,
-    // using an array as an "out parameter".
-    // index 0 is a boolean indicating whether the queue is under the limit.
-    //
-    // ideally we would just return `Result<(impl Future, bool), ..>`, but that's not
-    // supported by `op2` currently.
-    queue_ok: v8::Local<'a, v8::Array>,
-  ) -> Result<impl Future<Output = Result<(), io::Error>> + use<>, IpcError> {
-    let mut serialized = Vec::with_capacity(64);
-    let mut ser = serde_json::Serializer::new(&mut serialized);
-    serialize_v8_value(scope, value, &mut ser).map_err(IpcError::SerdeJson)?;
-    serialized.push(b'\n');
-
-    let stream = state
-      .borrow()
-      .resource_table
-      .get::<IpcJsonStreamResource>(rid)?;
-    let old = stream
-      .queued_bytes
-      .fetch_add(serialized.len(), std::sync::atomic::Ordering::Relaxed);
-    if old + serialized.len() > 2 * INITIAL_CAPACITY {
-      // sending messages too fast
-      let v = false.to_v8(scope).unwrap(); // Infallible
-      queue_ok.set_index(scope, 0, v);
-    }
-    Ok(async move {
-      let cancel = stream.cancel.clone();
-      let result = stream
-        .clone()
-        .write_msg_bytes(&serialized)
-        .or_cancel(cancel)
-        .await;
-      // adjust count even on error
-      stream
-        .queued_bytes
-        .fetch_sub(serialized.len(), std::sync::atomic::Ordering::Relaxed);
-      result??;
-      Ok(())
-    })
-  }
-
   pub struct AdvancedSerializerDelegate {
     constants: AdvancedIpcConstants,
   }
@@ -444,51 +397,6 @@ mod impl_ {
       }),
     };
     state.put(constants);
-  }
-
-  #[op2]
-  pub fn op_node_ipc_write_advanced<'a>(
-    scope: &mut v8::PinScope<'a, '_>,
-    state: Rc<RefCell<OpState>>,
-    #[smi] rid: ResourceId,
-    value: v8::Local<'a, v8::Value>,
-    // using an array as an "out parameter".
-    // index 0 is a boolean indicating whether the queue is under the limit.
-    //
-    // ideally we would just return `Result<(impl Future, bool), ..>`, but that's not
-    // supported by `op2` currently.
-    queue_ok: v8::Local<'a, v8::Array>,
-  ) -> Result<impl Future<Output = Result<(), io::Error>> + use<>, IpcError> {
-    let constants = state.borrow().borrow::<AdvancedIpcConstants>().clone();
-    let serializer = AdvancedSerializer::new(scope, constants);
-    let serialized = serializer.serialize(scope, value)?;
-
-    let stream = state
-      .borrow()
-      .resource_table
-      .get::<IpcAdvancedStreamResource>(rid)?;
-    let old = stream
-      .queued_bytes
-      .fetch_add(serialized.len(), std::sync::atomic::Ordering::Relaxed);
-    if old + serialized.len() > 2 * INITIAL_CAPACITY {
-      // sending messages too fast
-      let Ok(v) = false.to_v8(scope);
-      queue_ok.set_index(scope, 0, v);
-    }
-    Ok(async move {
-      let cancel = stream.cancel.clone();
-      let result = stream
-        .clone()
-        .write_msg_bytes(&serialized)
-        .or_cancel(cancel)
-        .await;
-      // adjust count even on error
-      stream
-        .queued_bytes
-        .fetch_sub(serialized.len(), std::sync::atomic::Ordering::Relaxed);
-      result??;
-      Ok(())
-    })
   }
 
   struct AdvancedSerializer {
@@ -775,7 +683,7 @@ mod impl_ {
   #[op2(nofast)]
   pub fn op_node_ipc_write_json_sync<'a>(
     scope: &mut v8::PinScope<'a, '_>,
-    state: &mut OpState,
+    state: &OpState,
     #[smi] rid: ResourceId,
     value: v8::Local<'a, v8::Value>,
     queue_ok: v8::Local<'a, v8::Array>,
@@ -805,7 +713,7 @@ mod impl_ {
   #[op2(nofast)]
   pub fn op_node_ipc_write_advanced_sync<'a>(
     scope: &mut v8::PinScope<'a, '_>,
-    state: &mut OpState,
+    state: &OpState,
     #[smi] rid: ResourceId,
     value: v8::Local<'a, v8::Value>,
     queue_ok: v8::Local<'a, v8::Array>,
