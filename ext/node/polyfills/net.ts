@@ -52,6 +52,7 @@ import {
   ERR_SERVER_ALREADY_LISTEN,
   ERR_SERVER_NOT_RUNNING,
   ERR_SOCKET_CLOSED,
+  ERR_SOCKET_CLOSED_BEFORE_CONNECTION,
   ERR_SOCKET_CONNECTION_TIMEOUT,
   errnoException,
   exceptionWithHostPort,
@@ -910,7 +911,11 @@ function _lookupAndConnect(self: Socket, options: TcpSocketConnectOptions) {
   }
 
   if (autoSelectFamilyAttemptTimeout !== undefined) {
-    validateInt32(autoSelectFamilyAttemptTimeout);
+    validateInt32(
+      autoSelectFamilyAttemptTimeout,
+      "options.autoSelectFamilyAttemptTimeout",
+      1,
+    );
 
     if (autoSelectFamilyAttemptTimeout < 10) {
       autoSelectFamilyAttemptTimeout = 10;
@@ -1550,6 +1555,36 @@ Socket.prototype.ref = function () {
   return this;
 };
 
+Socket.prototype.resetAndDestroy = function () {
+  if (this.destroyed) {
+    return this;
+  }
+
+  if (
+    !this._handle ||
+    !(this._handle instanceof TCP)
+  ) {
+    this.destroy(
+      new ERR_SOCKET_CLOSED(),
+    );
+    return this;
+  }
+
+  if (this.connecting) {
+    this.once("connect", () => this._reset());
+    this.destroy();
+    return this;
+  }
+
+  this._reset();
+  return this;
+};
+
+Socket.prototype._reset = function () {
+  this._resetAndClosing = true;
+  this.destroy();
+};
+
 Object.defineProperty(Socket.prototype, "bufferSize", {
   get: function () {
     if (this._handle) {
@@ -1779,6 +1814,13 @@ Socket.prototype._destroy = function (exception, cb) {
     this[kBytesWritten] = this._handle.getBytesWritten?.() ??
       this._handle.bytesWritten ?? 0;
 
+    if (this._resetAndClosing) {
+      this._resetAndClosing = false;
+      if (typeof this._handle.reset === "function") {
+        this._handle.reset();
+      }
+    }
+
     this._handle.close(() => {
       this._handle.onread = _noop;
       this._handle = null;
@@ -1829,9 +1871,15 @@ Socket.prototype._writeGeneric = function (writev, data, encoding, cb) {
   if (this.connecting) {
     this._pendingData = data;
     this._pendingEncoding = encoding;
+
+    const onClose = () => {
+      cb(new ERR_SOCKET_CLOSED_BEFORE_CONNECTION());
+    };
     this.once("connect", function connect() {
+      this.off("close", onClose);
       this._writeGeneric(writev, data, encoding, cb);
     });
+    this.once("close", onClose);
 
     return;
   }
@@ -2081,7 +2129,11 @@ function _lookupAndListen(
   exclusive: boolean,
   flags: number,
 ) {
+  const listeningId = server._listeningId;
   dnsLookup(address, { port }, function doListen(err, ip, addressType) {
+    if (server._listeningId !== listeningId) {
+      return;
+    }
     if (err) {
       server.emit("error", err);
     } else {
@@ -2235,6 +2287,22 @@ function _onconnection(this: any, err: number, clientHandle?: Handle) {
     clientHandle!.close();
 
     return;
+  }
+
+  if (
+    self.blockList &&
+    clientHandle &&
+    typeof clientHandle.getpeername === "function"
+  ) {
+    const out = {};
+    if (clientHandle.getpeername(out) === 0) {
+      const { address, family } = out as { address: string; family: string };
+      const type = family === "IPv6" ? "ipv6" : "ipv4";
+      if (self.blockList.check(address, type)) {
+        clientHandle.close();
+        return;
+      }
+    }
   }
 
   const socket = self._createSocket(clientHandle);
@@ -2394,12 +2462,17 @@ export function Server(
   this._unref = false;
   this._pipeName = undefined;
   this._connectionKey = undefined;
+  this._listeningId = 1;
 
   if (_isConnectionListener(options)) {
     this.on("connection", options);
   } else if (_isServerSocketOptions(options)) {
     this.allowHalfOpen = options?.allowHalfOpen || false;
     this.pauseOnConnect = !!options?.pauseOnConnect;
+
+    if (options?.blockList) {
+      this.blockList = options.blockList;
+    }
 
     if (_isConnectionListener(connectionListener)) {
       this.on("connection", connectionListener);
@@ -2444,6 +2517,8 @@ Server.prototype.listen = function (...args: unknown[]) {
   const normalized = _normalizeArgs(args);
   let options = normalized[0] as Partial<ListenOptions>;
   const cb = normalized[1];
+
+  this._listeningId++;
 
   if (this._handle) {
     throw new ERR_SERVER_ALREADY_LISTEN();
@@ -2598,6 +2673,8 @@ Server.prototype.listen = function (...args: unknown[]) {
  * @param cb Called when the server is closed.
  */
 Server.prototype.close = function (cb?: (err?: Error) => void) {
+  this._listeningId++;
+
   if (typeof cb === "function") {
     if (!this._handle) {
       this.once("close", function close() {
@@ -2637,6 +2714,12 @@ Server.prototype.close = function (cb?: (err?: Error) => void) {
   }
 
   return this;
+};
+
+Server.prototype[Symbol.asyncDispose] = function () {
+  return new Promise((resolve) => {
+    this.close(() => resolve());
+  });
 };
 
 /**

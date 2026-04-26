@@ -45,7 +45,13 @@ export function wrap(
     // rustls cannot negotiate TLSv1.0/TLSv1.1, so surface the closest
     // OpenSSL-style error instead of hanging the socket.
     (err as Error & { code?: string }).code = "ERR_SSL_UNSUPPORTED_PROTOCOL";
-    throw err;
+    // Store the init error on the handle so the caller can detect and
+    // report it instead of throwing synchronously.  A throw from here
+    // surfaces as an uncaught exception when the TLSSocket is created
+    // inside a native libuv callback (e.g. server_connection_cb) because
+    // there is no native TryCatch scope on the call stack.
+    res._initError = err;
+    return res;
   }
 
   const nativeHandle = handle;

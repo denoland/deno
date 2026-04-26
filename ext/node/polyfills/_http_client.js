@@ -66,6 +66,7 @@ import {
   ERR_INVALID_ARG_TYPE,
   ERR_INVALID_HTTP_TOKEN,
   ERR_INVALID_PROTOCOL,
+  ERR_INVALID_URL,
   ERR_UNESCAPED_CHARACTERS,
 } from "ext:deno_node/internal/errors.ts";
 import {
@@ -139,7 +140,17 @@ function ClientRequest(input, options, cb) {
 
   if (typeof input === "string") {
     const urlStr = input;
-    input = urlToHttpOptions(new URL(urlStr));
+    // Match Node: `new URL(...)` in ClientRequest surfaces as
+    // ERR_INVALID_URL (node's internal URL constructor calls
+    // bindingUrl.parse with raiseException=true). Deno's Web URL
+    // throws a generic TypeError, so wrap it to attach the code.
+    let parsed;
+    try {
+      parsed = new URL(urlStr);
+    } catch {
+      throw new ERR_INVALID_URL(urlStr);
+    }
+    input = urlToHttpOptions(parsed);
   } else if (isURL(input)) {
     input = urlToHttpOptions(input);
   } else {
