@@ -3053,6 +3053,10 @@
     "parallel/test-weakref.js": {},
     "parallel/test-webcrypto-cryptokey-workers.js": {},
     "parallel/test-webcrypto-derivebits-argon2.js": {},
+    "parallel/test-webcrypto-derivekey.js": {
+      "ignore": true,
+      "reason": "Iterates HKDF/PBKDF2 deriveKey across every supported derived-key algorithm. SHA-3 source hashes self-skip via `printSkipMessage`, but the loop then derives into algorithms Deno's WebCrypto doesn't recognise (e.g. AES-KW, ChaCha20-Poly1305, KMAC) and `subtle.deriveKey` rejects with `NotSupportedError: Unrecognized algorithm name`. Could be revisited piece-by-piece as Deno's algorithm coverage grows"
+    },
     "parallel/test-webcrypto-encap-decap-ml-kem.js": {},
     "parallel/test-webcrypto-encrypt-decrypt-chacha20-poly1305.js": {},
     "parallel/test-webcrypto-encrypt-decrypt-rsa.js": {},
