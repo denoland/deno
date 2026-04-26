@@ -523,50 +523,67 @@ export class ChildProcess extends EventEmitter {
         throw _createSpawnError("EPERM", command, args.slice(1));
       }
 
-      // Set up stdio streams even when spawn fails (Node.js creates pipes
-      // before the OS spawn call, so they exist regardless of spawn outcome).
-      if (stdin === "pipe") {
-        this.stdin = new Writable({
-          write(_chunk, _enc, cb) {
-            cb(new Error("spawn failed"));
-          },
-        });
-      }
-      if (stdout === "pipe") {
-        this.stdout = new Readable({ read() {} });
-        this[kClosesNeeded]++;
-        this.stdout.on("close", () => {
-          maybeClose(this);
-        });
-      }
-      if (stderr === "pipe") {
-        this.stderr = new Readable({ read() {} });
-        this[kClosesNeeded]++;
-        this.stderr.on("close", () => {
-          maybeClose(this);
-        });
-      }
+      // When spawn fails due to EMFILE/ENFILE, the OS couldn't create pipes
+      // so stdio must remain undefined (matching Node.js behavior).
+      const isResourceError = e && (e.code === "EMFILE" || e.code === "ENFILE");
 
-      this.stdio[0] = this.stdin;
-      this.stdio[1] = this.stdout;
-      this.stdio[2] = this.stderr;
+      if (isResourceError) {
+        // deno-lint-ignore no-explicit-any
+        (this as any).stdin = undefined;
+        // deno-lint-ignore no-explicit-any
+        (this as any).stdout = undefined;
+        // deno-lint-ignore no-explicit-any
+        (this as any).stderr = undefined;
+        // deno-lint-ignore no-explicit-any
+        (this as any).stdio = undefined;
+      } else {
+        // Set up stdio streams even when spawn fails (Node.js creates pipes
+        // before the OS spawn call, so they exist regardless of spawn outcome).
+        if (stdin === "pipe") {
+          this.stdin = new Writable({
+            write(_chunk, _enc, cb) {
+              cb(new Error("spawn failed"));
+            },
+          });
+        }
+        if (stdout === "pipe") {
+          this.stdout = new Readable({ read() {} });
+          this[kClosesNeeded]++;
+          this.stdout.on("close", () => {
+            maybeClose(this);
+          });
+        }
+        if (stderr === "pipe") {
+          this.stderr = new Readable({ read() {} });
+          this[kClosesNeeded]++;
+          this.stderr.on("close", () => {
+            maybeClose(this);
+          });
+        }
+
+        this.stdio[0] = this.stdin;
+        this.stdio[1] = this.stdout;
+        this.stdio[2] = this.stderr;
+      }
 
       this.#_handleError(e);
 
-      // Destroy stdio streams and emit close (matching Node.js behavior
-      // where failed spawns still trigger 'close' but not 'exit').
-      nextTick(() => {
-        if (this.stdout) {
-          this.stdout.destroy();
-        }
-        if (this.stderr) {
-          this.stderr.destroy();
-        }
-        if (this.stdin) {
-          this.stdin.destroy();
-        }
-        maybeClose(this);
-      });
+      if (!isResourceError) {
+        // Destroy stdio streams and emit close (matching Node.js behavior
+        // where failed spawns still trigger 'close' but not 'exit').
+        nextTick(() => {
+          if (this.stdout) {
+            this.stdout.destroy();
+          }
+          if (this.stderr) {
+            this.stderr.destroy();
+          }
+          if (this.stdin) {
+            this.stdin.destroy();
+          }
+          maybeClose(this);
+        });
+      }
     }
   }
 
@@ -1294,6 +1311,21 @@ function transformDenoShellCommand(
   }
 
   if (!startsWithDeno) {
+    // The command doesn't start with deno, but it may contain a deno
+    // invocation after a shell compound operator (&&, ||, ;).
+    // Split on the first operator and try to transform the remainder.
+    const operatorMatch = command.match(
+      /^(.*?)\s*(&&|\|\||;)\s*/,
+    );
+    if (operatorMatch) {
+      const prefix = operatorMatch[1];
+      const operator = operatorMatch[2];
+      const rest = command.slice(operatorMatch[0].length);
+      const transformedRest = transformDenoShellCommand(rest, env, isCmdExe);
+      if (transformedRest !== rest) {
+        return prefix + " " + operator + " " + transformedRest;
+      }
+    }
     return command;
   }
 
