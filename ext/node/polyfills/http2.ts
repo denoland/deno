@@ -781,7 +781,13 @@ function onGoawayData(code, lastStreamID, buf) {
   state.goawayCode = code;
   state.goawayLastStreamID = lastStreamID;
 
-  session.emit("goaway", code, lastStreamID, buf);
+  // Node.js exposes the GOAWAY opaque data as a Buffer, not a plain
+  // Uint8Array. The native binding hands us a Uint8Array, so wrap it
+  // as a Buffer (zero-copy) before emitting.
+  const opaqueData = buf !== undefined
+    ? Buffer.from(buf.buffer, buf.byteOffset, buf.byteLength)
+    : buf;
+  session.emit("goaway", code, lastStreamID, opaqueData);
   if (code === NGHTTP2_NO_ERROR) {
     // If this is a no error goaway, begin shutting down.
     // No new streams permitted, but existing streams may
@@ -795,6 +801,37 @@ function onGoawayData(code, lastStreamID, buf) {
     // shutdown.
     session.destroy(new ERR_HTTP2_SESSION_ERROR(code), NGHTTP2_NO_ERROR);
   }
+}
+
+// Returns true if the stream's outgoing request headers carry a non-zero
+// content-length value. Handles both object-form (kSentHeaders) and
+// array-form (kRawHeaders) headers.
+function hasNonZeroContentLength(stream) {
+  const sent = stream[kSentHeaders];
+  if (sent !== undefined) {
+    const keys = ObjectKeys(sent);
+    for (let i = 0; i < keys.length; ++i) {
+      if (
+        StringPrototypeToLowerCase(keys[i]) === HTTP2_HEADER_CONTENT_LENGTH
+      ) {
+        const v = sent[keys[i]];
+        if (v !== undefined && Number(v) !== 0) return true;
+      }
+    }
+    return false;
+  }
+  const raw = stream[kRawHeaders];
+  if (raw !== undefined) {
+    for (let i = 0; i < raw.length; i += 2) {
+      if (
+        StringPrototypeToLowerCase(raw[i]) === HTTP2_HEADER_CONTENT_LENGTH
+      ) {
+        const v = raw[i + 1];
+        if (v !== undefined && Number(v) !== 0) return true;
+      }
+    }
+  }
+  return false;
 }
 
 // When a ClientHttp2Session is first created, the socket may not yet be
@@ -818,6 +855,21 @@ function requestOnConnect(headersList, options) {
   }
 
   debugSessionObj(session, "connected, initializing request");
+
+  // Match newer nghttp2 / Node.js behavior: a request with content-length > 0
+  // but END_STREAM (no body, e.g. GET with content-length) is an HTTP
+  // messaging violation. nghttp2 1.68 (vendored by libnghttp2) terminates
+  // the entire session with PROTOCOL_ERROR when the server detects this;
+  // newer nghttp2 only RST_STREAMs the offending stream. Emulate the modern
+  // server-side rejection locally so the session survives and the stream
+  // emits ERR_HTTP2_STREAM_ERROR("NGHTTP2_PROTOCOL_ERROR").
+  if (options.endStream && hasNonZeroContentLength(this)) {
+    process.nextTick(() => {
+      if (this.destroyed) return;
+      this.destroy(new ERR_HTTP2_STREAM_ERROR("NGHTTP2_PROTOCOL_ERROR"));
+    });
+    return;
+  }
 
   let streamOptions = 0;
   if (options.endStream) {
@@ -2710,7 +2762,10 @@ function setupHandle(socket, type, options) {
   if (options.remoteCustomSettings) {
     remoteCustomSettingsToBuffer(options.remoteCustomSettings);
   }
-  const handle = new InternalHttp2Session(type);
+  const handle = new InternalHttp2Session(
+    type,
+    options.strictFieldWhitespaceValidation === false,
+  );
   handle[kOwner] = this;
 
   // Pump data from socket to session via JS events.
@@ -4148,6 +4203,26 @@ function connect(authority, options, listener) {
 
   return session;
 }
+
+// Support util.promisify
+const promisifyConnect = function (authority, options) {
+  return new Promise((resolve, reject) => {
+    const server = connect(authority, options, () => {
+      server.removeListener("error", reject);
+      return resolve(server);
+    });
+
+    server.once("error", reject);
+  });
+};
+ObjectDefineProperty(promisifyConnect, "name", {
+  value: "connect",
+  configurable: true,
+});
+ObjectDefineProperty(connect, promisify.custom, {
+  __proto__: null,
+  value: promisifyConnect,
+});
 
 let _init = false;
 function initCallbacks() {
