@@ -287,6 +287,8 @@ class Worker extends EventTarget {
   };
 
   postMessage(message, transferOrOptions = { __proto__: null }) {
+    const prefix = "Failed to execute 'postMessage' on 'MessagePort'";
+    webidl.requiredArguments(arguments.length, 1, prefix);
     if (this.#status !== "RUNNING") return;
     // Fast path: no transferables
     if (
@@ -300,8 +302,6 @@ class Worker extends EventTarget {
       );
       return;
     }
-    const prefix = "Failed to execute 'postMessage' on 'MessagePort'";
-    webidl.requiredArguments(arguments.length, 1, prefix);
     message = webidl.converters.any(message);
     let options;
     if (

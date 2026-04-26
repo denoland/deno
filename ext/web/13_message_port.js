@@ -50,9 +50,6 @@ import {
 } from "./06_streams.js";
 import { DOMException } from "./01_dom_exception.js";
 
-const emptyTransfer = [];
-ObjectFreeze(emptyTransfer);
-
 // counter of how many message ports are actively refed
 // either due to the existence of "message" event listeners or
 // explicit calls to ref/unref (in the case of node message ports)

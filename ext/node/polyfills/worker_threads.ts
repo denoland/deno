@@ -658,9 +658,11 @@ class NodeWorker extends EventEmitter {
         return;
       }
       if (!this.#dispatchWorkerThreadMessage(data)) return;
-      // Sync drain: process any already-queued messages without
-      // going through the async op machinery
-      while (this.#status !== "TERMINATED") {
+      // Sync drain: process a limited batch of already-queued messages
+      // without going through the async op machinery. The batch limit
+      // prevents starvation of the event loop when message handlers
+      // synchronously post new messages (e.g. ping-pong patterns).
+      for (let i = 0; i < 1000 && this.#status !== "TERMINATED"; i++) {
         const syncData = op_host_recv_message_sync(this.#id);
         if (syncData === null) break;
         if (!this.#dispatchWorkerThreadMessage(syncData)) return;
@@ -669,6 +671,8 @@ class NodeWorker extends EventEmitter {
   };
 
   postMessage(message, transferOrOptions = { __proto__: null }) {
+    const prefix = "Failed to execute 'postMessage' on 'MessagePort'";
+    webidl.requiredArguments(arguments.length, 1, prefix);
     if (this.#status !== "RUNNING") return;
     // Fast path: no transferables
     if (
@@ -682,8 +686,6 @@ class NodeWorker extends EventEmitter {
       );
       return;
     }
-    const prefix = "Failed to execute 'postMessage' on 'MessagePort'";
-    webidl.requiredArguments(arguments.length, 1, prefix);
     message = webidl.converters.any(message);
     let options;
     if (

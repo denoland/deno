@@ -170,6 +170,9 @@ function workerClose() {
 }
 
 function postMessage(message, transferOrOptions = { __proto__: null }) {
+  const prefix =
+    "Failed to execute 'postMessage' on 'DedicatedWorkerGlobalScope'";
+  webidl.requiredArguments(arguments.length, 1, prefix);
   // Fast path: no transferables
   if (
     transferOrOptions === undefined ||
@@ -179,9 +182,6 @@ function postMessage(message, transferOrOptions = { __proto__: null }) {
     op_worker_post_message_raw(core.serialize(message));
     return;
   }
-  const prefix =
-    "Failed to execute 'postMessage' on 'DedicatedWorkerGlobalScope'";
-  webidl.requiredArguments(arguments.length, 1, prefix);
   message = webidl.converters.any(message);
   let options;
   if (
@@ -273,9 +273,11 @@ async function pollForMessages() {
     const data = await recvMessage;
     if (data === null) break;
     dispatchWorkerMessage(data);
-    // Sync drain: process any already-queued messages without
-    // going through the async op machinery
-    while (!isClosing) {
+    // Sync drain: process a limited batch of already-queued messages
+    // without going through the async op machinery. The batch limit
+    // prevents starvation of the event loop when message handlers
+    // synchronously post new messages (e.g. ping-pong patterns).
+    for (let i = 0; i < 1000 && !isClosing; i++) {
       const syncData = op_worker_recv_message_sync();
       if (syncData === null) break;
       dispatchWorkerMessage(syncData);
