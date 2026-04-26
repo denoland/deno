@@ -808,7 +808,29 @@ interface NodeEventTarget extends
   removeListener: NodeEventTarget["off"];
 }
 
-type ParentPort = typeof self & NodeEventTarget;
+interface ParentPort extends NodeEventTarget {
+  postMessage(message: unknown, transferOrOptions?: unknown): void;
+  addEventListener(
+    name: string,
+    listener: EventListenerOrEventListenerObject,
+    options?: boolean | AddEventListenerOptions,
+  ): void;
+  removeEventListener(
+    name: string,
+    listener: EventListenerOrEventListenerObject,
+  ): void;
+  onmessage: ((ev: Event) => void) | null;
+  // deno-lint-ignore no-explicit-any
+  emit(...args: any[]): any;
+  removeAllListeners(): void;
+  setMaxListeners(n: number): void;
+  getMaxListeners(): number;
+  eventNames(): string[];
+  listenerCount(): number;
+  unref(): void;
+  ref(): void;
+  [key: symbol]: unknown;
+}
 
 // deno-lint-ignore no-explicit-any
 let parentPort: ParentPort = null as any;
@@ -864,15 +886,23 @@ internals.__initWorkerThreads = (
       globalThis.removeEventListener,
       globalThis,
     );
+    // Track message listener count to prevent double delivery.
+    // When parentPort message listeners exist, suppress the web IDL
+    // onmessage handler (globalThis.onmessage) since both would fire
+    // for the same MessageEvent.
+    let messageListenerCount = 0;
+
     parentPort = ObjectCreate(null) as ParentPort;
     parentPort.postMessage = function (message, transferOrOptions?) {
       return nativePostMessage(message, transferOrOptions);
     };
     parentPort.addEventListener = function (name, listener, options?) {
-      return nativeAddEventListener(name, listener, options);
+      nativeAddEventListener(name, listener, options);
+      if (name === "message") messageListenerCount++;
     };
     parentPort.removeEventListener = function (name, listener) {
-      return nativeRemoveEventListener(name, listener);
+      nativeRemoveEventListener(name, listener);
+      if (name === "message") messageListenerCount--;
     };
     // Delegate parentPort.onmessage to globalThis.onmessage so that
     // setting parentPort.onmessage = handler works like the old code
@@ -888,14 +918,6 @@ internals.__initWorkerThreads = (
       configurable: true,
       enumerable: true,
     });
-
-    // Track Node-style message listener count to prevent double delivery.
-    // When parentPort.on('message') listeners exist, suppress the web
-    // IDL onmessage handler (globalThis.onmessage) since both would fire
-    // for the same MessageEvent. Node.js doesn't have globalThis.onmessage
-    // in workers, so libraries like Emscripten that set both
-    // parentPort.on('message') AND self.onmessage get double delivery.
-    let messageListenerCount = 0;
 
     // Only intercept globalThis.onmessage for Node worker threads
     // (not plain Deno web workers) to prevent double message delivery
@@ -1066,9 +1088,11 @@ internals.__initWorkerThreads = (
       name,
       listener,
     ) {
-      nativeRemoveEventListener(name, listeners.get(listener)!);
-      listeners.delete(listener);
-      if (name === "message") messageListenerCount--;
+      if (listeners.has(listener)) {
+        nativeRemoveEventListener(name, listeners.get(listener)!);
+        listeners.delete(listener);
+        if (name === "message") messageListenerCount--;
+      }
       return parentPort;
     };
     parentPort.on = parentPort.addListener = function (
