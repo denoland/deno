@@ -683,7 +683,8 @@ fn create_command(
     }
 
     let detached = args.detached;
-    if detached || !fds_to_dup.is_empty() || args.gid.is_some() {
+    let drop_supplementary_groups = args.gid.is_some();
+    if detached || !fds_to_dup.is_empty() || drop_supplementary_groups {
       command.pre_exec(move || {
         if detached {
           libc::setsid();
@@ -698,7 +699,13 @@ fn create_command(
             libc::fcntl(dst, libc::F_SETFD, 0);
           }
         }
-        libc::setgroups(0, std::ptr::null());
+        // Only clear supplementary groups when the caller is also
+        // changing the primary gid. Otherwise keep them — dropping
+        // them unconditionally breaks Docker workflows that rely on
+        // groups granted to the parent process (denoland/deno#29770).
+        if drop_supplementary_groups {
+          libc::setgroups(0, std::ptr::null());
+        }
         Ok(())
       });
     }
@@ -1672,18 +1679,11 @@ mod deprecated {
       c.env(key.inner, value);
     }
 
-    #[cfg(unix)]
-    // TODO(bartlomieju):
-    #[allow(
-      clippy::undocumented_unsafe_blocks,
-      reason = "TODO: add safety comment"
-    )]
-    unsafe {
-      c.pre_exec(|| {
-        libc::setgroups(0, std::ptr::null());
-        Ok(())
-      });
-    }
+    // `Deno.run` doesn't expose `gid` / `uid`, so there's no primary-gid
+    // change that would call for clearing supplementary groups. The
+    // historical unconditional `setgroups(0, null)` here silently
+    // dropped them, which broke containers that gave the parent
+    // process group-based access (denoland/deno#29770).
 
     // TODO: make this work with other resources, eg. sockets
     c.stdin(run_args.stdin.as_stdio()?);
