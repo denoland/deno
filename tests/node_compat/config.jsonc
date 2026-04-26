@@ -474,6 +474,10 @@
       "ignore": true,
       "reason": "Same `paramEncoding: 'explicit'` blocker as test-crypto-keygen-async-explicit-elliptic-curve.js, plus asserts on the OpenSSL-3-specific error string `error:07880109:common libcrypto routines::interrupted or cancelled` when signing without the passphrase. Both depend on OpenSSL internals Deno doesn't embed; the explicit-encoding side is the harder requirement"
     },
+    "parallel/test-crypto-keygen-async-explicit-elliptic-curve-encrypted-p256.js": {
+      "ignore": true,
+      "reason": "Same `paramEncoding: 'explicit'` blocker as test-crypto-keygen-async-explicit-elliptic-curve.js (P-256 + PKCS#8-encrypted-PEM variant), plus asserts on the OpenSSL-3-specific error string `error:07880109:common libcrypto routines::interrupted or cancelled` when signing without the passphrase"
+    },
     "parallel/test-crypto-keygen-async-elliptic-curve-jwk-ec.js": {},
     "parallel/test-crypto-keygen-async-elliptic-curve-jwk.js": {},
     "parallel/test-crypto-keygen-async-elliptic-curve-jwk-rsa.js": {},
