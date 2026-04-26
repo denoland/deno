@@ -538,6 +538,10 @@
     "parallel/test-crypto-randomfillsync-regression.js": {},
     "parallel/test-crypto-randomuuid.js": {},
     "parallel/test-crypto-prime.js": {},
+    "parallel/test-crypto-private-decrypt-gh32240.js": {
+      "ignore": true,
+      "reason": "Exports an RSA private key as PKCS#1 PEM with cipher+passphrase (the legacy `BEGIN RSA PRIVATE KEY` + Proc-Type/DEK-Info form), which Deno does not yet emit (only PKCS#8 encrypted PEM is supported), and asserts on the OpenSSL-3-specific error string `error:07880109:common libcrypto routines::interrupted or cancelled` when decrypting without the passphrase. Same legacy-PEM bucket as test-crypto-keygen-async-rsa.js; could be revisited if PKCS#1 encrypted PEM emission lands"
+    },
     "parallel/test-crypto-rsa-pss-default-salt-length.js": {},
     "parallel/test-crypto-sec-level.js": {},
     "parallel/test-crypto-secret-keygen.js": {},
