@@ -2613,6 +2613,7 @@ Server.prototype.listen = function (...args: unknown[]) {
         backlog,
         undefined,
         options.exclusive,
+        flags,
       );
     }
 
