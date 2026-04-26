@@ -499,6 +499,10 @@
     "parallel/test-crypto-pqc-keygen-slh-dsa.js": {},
     "parallel/test-crypto-pqc-sign-verify-ml-dsa.js": {},
     "parallel/test-crypto-keygen-empty-passphrase-no-error.js": {},
+    "parallel/test-crypto-keygen-empty-passphrase-no-prompt.js": {
+      "ignore": true,
+      "reason": "Generates an RSA keypair encrypted with an empty passphrase string (`cipher: 'aes-256-cbc', passphrase: ''`) and then expects `createPrivateKey({ key, passphrase: '' })` to round-trip successfully. Deno's PEM decryptor rejects empty passphrases with `TypeError: invalid encrypted PEM private key` -- it normalises `''` and `Buffer.alloc(0)` to no-passphrase before checking. Plus the test asserts on the OpenSSL-3-specific `error:07880109:common libcrypto routines::interrupted or cancelled` string when signing without a passphrase. Could be revisited once empty-string passphrases are accepted as a valid (zero-length) PBKDF2 input"
+    },
     "parallel/test-crypto-keygen-invalid-parameter-encoding-dsa.js": {},
     "parallel/test-crypto-keygen-invalid-parameter-encoding-ec.js": {},
     "parallel/test-crypto-keygen-key-object-without-encoding.js": {},
