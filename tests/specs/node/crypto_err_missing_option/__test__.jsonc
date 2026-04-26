@@ -1,0 +1,13 @@
+// Regression test: TypeErrors thrown by WebIDL dictionary converters
+// when a `required: true` member is absent must carry
+// `code: 'ERR_MISSING_OPTION'`, matching Node so that
+// `assert.rejects(..., { code: 'ERR_MISSING_OPTION' })` -- the shape
+// used throughout Node's crypto test suite -- passes.
+{
+  "tests": {
+    "missing_option_code": {
+      "args": "run -A main.mjs",
+      "output": "main.out"
+    }
+  }
+}

@@ -808,12 +808,18 @@ function createDictionaryConverter(name, ...dictionaries) {
           opts,
         );
       } else if (member.required) {
-        throw makeException(
+        const err = makeException(
           TypeError,
           `can not be converted to '${name}' because '${key}' is required in '${name}'`,
           prefix,
           context,
         );
+        // Match Node's convention of attaching `code: 'ERR_MISSING_OPTION'`
+        // to TypeErrors thrown when a required dictionary member is absent
+        // (parallel to the `ERR_INVALID_THIS` code on `assertBranded` and
+        // `ERR_ILLEGAL_CONSTRUCTOR` on `illegalConstructor`).
+        err.code = "ERR_MISSING_OPTION";
+        throw err;
       } else if (ReflectHas(defaultValues, key)) {
         idlDict[key] = defaultValues[key];
       }
