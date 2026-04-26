@@ -462,6 +462,7 @@
     "parallel/test-crypto-from-binary.js": {},
     "parallel/test-crypto-gcm-implicit-short-tag.js": {},
     "parallel/test-crypto-getcipherinfo.js": {},
+    "parallel/test-crypto-hash-stream-pipe.js": {},
     "parallel/test-crypto-hkdf.js": {},
     "parallel/test-crypto-hmac.js": {},
     "parallel/test-crypto-keygen.js": {},
