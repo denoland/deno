@@ -389,13 +389,69 @@ export class ChildProcess extends EventEmitter {
       }
 
       if (stdin instanceof Stream) {
-        this.stdin = stdin;
+        if (streamHandleFd(stdin) >= 0) {
+          // The fd was passed directly to the child via dup(). The child
+          // reads/writes the shared pipe at the OS level. The parent's
+          // Stream is not assigned as this.stdin so the caller retains
+          // independent control of the original stream.
+        } else if (this.#process.stdinFd != null) {
+          // Stream without a usable fd - we created a pipe. Wire up
+          // JS-level piping from the user's readable stream into the
+          // child's stdin pipe.
+          const p = new Pipe(socketType.SOCKET);
+          p.open(this.#process.stdinFd);
+          const stdinSocket = new Socket({
+            handle: p,
+            writable: true,
+            readable: false,
+          });
+          if (typeof stdin.pipe === "function") {
+            stdin.pipe(stdinSocket);
+          }
+          this.stdin = stdinSocket;
+        }
       }
       if (stdout instanceof Stream) {
-        this.stdout = stdout;
+        if (streamHandleFd(stdout) >= 0) {
+          // fd passed directly - see stdin comment above.
+        } else if (this.#process.stdoutFd != null) {
+          this[kClosesNeeded]++;
+          const p = new Pipe(socketType.SOCKET);
+          p.open(this.#process.stdoutFd);
+          const stdoutSocket = new Socket({
+            handle: p,
+            writable: false,
+            readable: true,
+          });
+          if (typeof stdout.write === "function") {
+            stdoutSocket.pipe(stdout);
+          }
+          this.stdout = stdoutSocket;
+          stdoutSocket.on("close", () => {
+            maybeClose(this);
+          });
+        }
       }
       if (stderr instanceof Stream) {
-        this.stderr = stderr;
+        if (streamHandleFd(stderr) >= 0) {
+          // fd passed directly - see stdin comment above.
+        } else if (this.#process.stderrFd != null) {
+          this[kClosesNeeded]++;
+          const p = new Pipe(socketType.SOCKET);
+          p.open(this.#process.stderrFd);
+          const stderrSocket = new Socket({
+            handle: p,
+            writable: false,
+            readable: true,
+          });
+          if (typeof stderr.write === "function") {
+            stderrSocket.pipe(stderr);
+          }
+          this.stderr = stderrSocket;
+          stderrSocket.on("close", () => {
+            maybeClose(this);
+          });
+        }
       }
 
       if (stdout === "pipe" && this.#process.stdoutFd != null) {
@@ -682,11 +738,31 @@ export class ChildProcess extends EventEmitter {
   }
 }
 
+// deno-lint-ignore no-explicit-any
+function streamHandleFd(stream: any): number {
+  const handle = stream._handle;
+  if (handle && typeof handle.fd === "number" && handle.fd >= 0) {
+    return handle.fd;
+  }
+  return -1;
+}
+
 function toDenoStdio(
   pipe: NodeStdio | number | Stream | null | undefined,
 ): DenoStdio {
   if (pipe instanceof Stream) {
-    return "inherit";
+    // If the stream has an underlying handle with a valid fd (e.g. a Socket
+    // backed by a PipeWrap), pass that fd directly to the child process.
+    // The Rust side will dup() it so both parent and child share the pipe.
+    // This matches Node.js behavior where passing a child's stdout as
+    // another child's stdin shares the underlying OS pipe.
+    const fd = streamHandleFd(pipe);
+    if (fd >= 0) {
+      return fd;
+    }
+    // For streams without a usable fd, create a pipe and set up JS-level
+    // piping after spawn.
+    return "piped";
   }
   if (typeof pipe === "number") {
     return pipe;
