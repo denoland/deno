@@ -3186,7 +3186,16 @@ fn build_server_config(
     builder.with_no_client_auth()
   };
 
-  builder.with_single_cert(certs, private_key).ok()
+  // Skip rustls' built-in `keys_match` validation by constructing the
+  // CertifiedKey manually and registering it via a resolver.  `keys_match`
+  // calls webpki's certificate parser, which rejects X.509v1 certs
+  // (UnsupportedCertVersion).  Node uses OpenSSL, which accepts v1 certs,
+  // and several upstream Node test fixtures (e.g. agent2, agent3) are v1.
+  let provider = builder.crypto_provider().clone();
+  let signing_key = provider.key_provider.load_private_key(private_key).ok()?;
+  let certified_key = rustls::sign::CertifiedKey::new(certs, signing_key);
+  let resolver = rustls::sign::SingleCertAndKey::from(certified_key);
+  Some(builder.with_cert_resolver(Arc::new(resolver)))
 }
 
 #[cfg(test)]
