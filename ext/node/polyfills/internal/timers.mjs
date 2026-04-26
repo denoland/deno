@@ -375,14 +375,7 @@ export class Immediate {
   }
 
   [SymbolDispose]() {
-    if (!this._destroyed) {
-      this._destroyed = true;
-      core.clearImmediate(this);
-      if (this[kRefed]) {
-        this[kRefed] = false;
-        immediateRefCount(false);
-      }
-    }
+    core.clearImmediate(this);
   }
 
   [inspect.custom] = function (_, options) {

@@ -224,7 +224,6 @@ export function clearImmediate(immediate: Immediate) {
   if (!immediate?._onImmediate || immediate._destroyed) {
     return;
   }
-  immediate._destroyed = true;
   core.clearImmediate(immediate);
 }
 
