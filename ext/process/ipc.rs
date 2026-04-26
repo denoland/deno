@@ -89,7 +89,7 @@ impl IpcRefTracker {
 }
 
 /// Synchronous write to a raw file descriptor/handle.
-/// Handles EAGAIN/EWOULDBLOCK by yielding and retrying, matching
+/// Handles EAGAIN/EWOULDBLOCK by poll(POLLOUT) + retry, matching
 /// Node.js behavior where IPC pipe writes are synchronous.
 fn write_all_sync(raw_handle: i64, msg: &[u8]) -> Result<(), io::Error> {
   #[cfg(unix)]
@@ -109,10 +109,18 @@ fn write_all_sync(raw_handle: i64, msg: &[u8]) -> Result<(), io::Error> {
         written += result as usize;
       } else {
         let err = io::Error::last_os_error();
-        if err.kind() == io::ErrorKind::WouldBlock
-          || err.kind() == io::ErrorKind::Interrupted
-        {
-          std::thread::yield_now();
+        if err.kind() == io::ErrorKind::WouldBlock {
+          // Wait for the fd to become writable instead of spinning.
+          let mut pollfd = libc::pollfd {
+            fd,
+            events: libc::POLLOUT,
+            revents: 0,
+          };
+          // SAFETY: pollfd is valid and on the stack.
+          unsafe { libc::poll(&mut pollfd, 1, -1) };
+          continue;
+        }
+        if err.kind() == io::ErrorKind::Interrupted {
           continue;
         }
         return Err(err);
@@ -122,13 +130,76 @@ fn write_all_sync(raw_handle: i64, msg: &[u8]) -> Result<(), io::Error> {
   }
   #[cfg(windows)]
   {
-    use std::os::windows::io::FromRawHandle;
-    // SAFETY: raw_write_handle is a valid Windows HANDLE owned by the BiPipe.
-    let mut file = unsafe { std::fs::File::from_raw_handle(raw_handle as _) };
-    let result = std::io::Write::write_all(&mut file, msg);
-    // Don't close the handle - it's still owned by the BiPipe.
-    mem::forget(file);
-    result
+    use winapi::shared::minwindef::DWORD;
+    use winapi::um::errhandlingapi::GetLastError;
+    use winapi::um::fileapi::WriteFile;
+    use winapi::um::ioapiset::GetOverlappedResult;
+    use winapi::um::minwinbase::OVERLAPPED;
+    use winapi::um::synchapi::CreateEventW;
+    use winapi::um::synchapi::WaitForSingleObject;
+    use winapi::um::winbase::INFINITE;
+    use winapi::um::winbase::WAIT_OBJECT_0;
+    use winapi::um::winnt::HANDLE;
+
+    let handle = raw_handle as HANDLE;
+    let mut written = 0usize;
+    while written < msg.len() {
+      let mut ov: OVERLAPPED = unsafe { mem::zeroed() };
+      // SAFETY: Creating an auto-reset event for the OVERLAPPED struct.
+      ov.hEvent =
+        unsafe { CreateEventW(std::ptr::null_mut(), 0, 0, std::ptr::null()) };
+      if ov.hEvent.is_null() {
+        return Err(io::Error::last_os_error());
+      }
+
+      let buf = &msg[written..];
+      let mut bytes_written: DWORD = 0;
+      // SAFETY: handle is a valid HANDLE, buf and ov are valid pointers.
+      let ok = unsafe {
+        WriteFile(
+          handle,
+          buf.as_ptr() as *const _,
+          buf.len() as DWORD,
+          &mut bytes_written,
+          &mut ov,
+        )
+      };
+
+      if ok != 0 {
+        written += bytes_written as usize;
+      } else {
+        let err = unsafe { GetLastError() };
+        if err == winapi::shared::winerror::ERROR_IO_PENDING {
+          // Wait for the overlapped write to complete.
+          // SAFETY: ov.hEvent is a valid event handle.
+          let wait = unsafe { WaitForSingleObject(ov.hEvent, INFINITE) };
+          if wait == WAIT_OBJECT_0 {
+            let mut transferred: DWORD = 0;
+            // SAFETY: handle and ov are valid.
+            let ok = unsafe {
+              GetOverlappedResult(handle, &mut ov, &mut transferred, 0)
+            };
+            if ok != 0 {
+              written += transferred as usize;
+            } else {
+              unsafe { winapi::um::handleapi::CloseHandle(ov.hEvent) };
+              return Err(io::Error::last_os_error());
+            }
+          } else {
+            unsafe { winapi::um::handleapi::CloseHandle(ov.hEvent) };
+            return Err(io::Error::new(
+              io::ErrorKind::Other,
+              format!("WaitForSingleObject failed: {}", wait),
+            ));
+          }
+        } else {
+          unsafe { winapi::um::handleapi::CloseHandle(ov.hEvent) };
+          return Err(io::Error::from_raw_os_error(err as i32));
+        }
+      }
+      unsafe { winapi::um::handleapi::CloseHandle(ov.hEvent) };
+    }
+    Ok(())
   }
 }
 
