@@ -144,6 +144,7 @@ fn write_all_sync(raw_handle: i64, msg: &[u8]) -> Result<(), io::Error> {
     let handle = raw_handle as HANDLE;
     let mut written = 0usize;
     while written < msg.len() {
+      // SAFETY: OVERLAPPED is a POD type, zeroing is valid initialization.
       let mut ov: OVERLAPPED = unsafe { mem::zeroed() };
       // SAFETY: Creating an auto-reset event for the OVERLAPPED struct.
       ov.hEvent =
@@ -154,7 +155,8 @@ fn write_all_sync(raw_handle: i64, msg: &[u8]) -> Result<(), io::Error> {
 
       let buf = &msg[written..];
       let mut bytes_written: DWORD = 0;
-      // SAFETY: handle is a valid HANDLE, buf and ov are valid pointers.
+      // SAFETY: handle is a valid HANDLE owned by the BiPipe,
+      // buf and ov are valid pointers on the stack.
       let ok = unsafe {
         WriteFile(
           handle,
@@ -168,35 +170,39 @@ fn write_all_sync(raw_handle: i64, msg: &[u8]) -> Result<(), io::Error> {
       if ok != 0 {
         written += bytes_written as usize;
       } else {
+        // SAFETY: Retrieving the last Win32 error code after WriteFile failed.
         let err = unsafe { GetLastError() };
         if err == winapi::shared::winerror::ERROR_IO_PENDING {
-          // Wait for the overlapped write to complete.
-          // SAFETY: ov.hEvent is a valid event handle.
+          // SAFETY: ov.hEvent is a valid event handle created above.
           let wait = unsafe { WaitForSingleObject(ov.hEvent, INFINITE) };
           if wait == WAIT_OBJECT_0 {
             let mut transferred: DWORD = 0;
-            // SAFETY: handle and ov are valid.
+            // SAFETY: handle and ov are valid, operation has completed.
             let ok = unsafe {
               GetOverlappedResult(handle, &mut ov, &mut transferred, 0)
             };
             if ok != 0 {
               written += transferred as usize;
             } else {
+              // SAFETY: ov.hEvent is a valid handle that must be closed.
               unsafe { winapi::um::handleapi::CloseHandle(ov.hEvent) };
               return Err(io::Error::last_os_error());
             }
           } else {
+            // SAFETY: ov.hEvent is a valid handle that must be closed.
             unsafe { winapi::um::handleapi::CloseHandle(ov.hEvent) };
-            return Err(io::Error::new(
-              io::ErrorKind::Other,
-              format!("WaitForSingleObject failed: {}", wait),
-            ));
+            return Err(io::Error::other(format!(
+              "WaitForSingleObject failed: {}",
+              wait
+            )));
           }
         } else {
+          // SAFETY: ov.hEvent is a valid handle that must be closed.
           unsafe { winapi::um::handleapi::CloseHandle(ov.hEvent) };
           return Err(io::Error::from_raw_os_error(err as i32));
         }
       }
+      // SAFETY: ov.hEvent is a valid handle that must be closed.
       unsafe { winapi::um::handleapi::CloseHandle(ov.hEvent) };
     }
     Ok(())
