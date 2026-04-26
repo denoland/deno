@@ -3320,6 +3320,10 @@
     "pummel/test-crypto-dh-hash.js": {},
     "pummel/test-crypto-dh-keys.js": {},
     "pummel/test-dh-regr.js": {},
+    "pummel/test-webcrypto-derivebits-pbkdf2.js": {
+      "ignore": true,
+      "reason": "Iterates PBKDF2 deriveBits across the full SubtleCrypto derived-key matrix, which includes AES-KW (`OperationError: Invalid length` from Deno's bit-length validator at the entry point) -- the Rust crypto provider doesn't register AES-KW as a supported derived-key target. Same coverage-census shape as the just-ignored `parallel/test-webcrypto-derivekey.js` and `parallel/test-webcrypto-wrap-unwrap.js`; will pass piece-by-piece as Deno's algorithm coverage grows"
+    },
     "pummel/test-fs-watch-system-limit.js": {},
     "pummel/test-heapdump-dns.js": {
       "ignore": true,
