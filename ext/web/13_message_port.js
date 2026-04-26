@@ -400,7 +400,10 @@ const emptyTransferables = ObjectFreeze([]);
 function deserializeJsMessageData(messageData) {
   // Fast path: no transferables (most common case)
   if (messageData.transferables.length === 0) {
-    const data = core.deserialize(messageData.data);
+    const deserializers = core.getCloneableDeserializers();
+    const data = deserializers
+      ? core.deserialize(messageData.data, { deserializers })
+      : core.deserialize(messageData.data);
     return [data, emptyTransferables];
   }
 

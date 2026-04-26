@@ -179,7 +179,9 @@ function postMessage(message, transferOrOptions = { __proto__: null }) {
     transferOrOptions === null ||
     (arguments.length <= 1)
   ) {
-    op_worker_post_message_raw(core.serialize(message));
+    op_worker_post_message_raw(core.serialize(message, undefined, (err) => {
+      throw new DOMException(err, "DataCloneError");
+    }));
     return;
   }
   message = webidl.converters.any(message);
@@ -221,9 +223,20 @@ function hasMessageEventListener() {
 }
 
 function dispatchWorkerMessage(data) {
-  const v = messagePort.deserializeJsMessageData(data);
-  const message = v[0];
-  const transferables = v[1];
+  let message, transferables;
+  try {
+    const v = messagePort.deserializeJsMessageData(data);
+    message = v[0];
+    transferables = v[1];
+  } catch (err) {
+    const errorEvent = new event.MessageEvent("messageerror", {
+      cancelable: false,
+      data: err,
+    });
+    event.setIsTrusted(errorEvent, true);
+    globalDispatchEvent(errorEvent);
+    return;
+  }
 
   const msgEvent = new event.MessageEvent("message", {
     cancelable: false,

@@ -41,6 +41,7 @@ import {
   MessagePortPrototype,
   serializeJsMessageData,
 } from "ext:deno_web/13_message_port.js";
+import { DOMException } from "ext:deno_web/01_dom_exception.js";
 
 function createWorker(
   specifier,
@@ -298,7 +299,9 @@ class Worker extends EventTarget {
     ) {
       op_host_post_message_raw(
         this.#id,
-        core.serialize(message),
+        core.serialize(message, undefined, (err) => {
+          throw new DOMException(err, "DataCloneError");
+        }),
       );
       return;
     }
