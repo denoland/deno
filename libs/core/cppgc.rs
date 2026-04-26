@@ -112,7 +112,7 @@ pub struct UnsafePtr<T: GarbageCollected> {
 }
 
 impl<T: GarbageCollected> UnsafePtr<T> {
-  #[allow(clippy::missing_safety_doc)]
+  #[allow(clippy::missing_safety_doc, reason = "internal hidden API")]
   pub unsafe fn as_ref(&self) -> &T {
     unsafe { &self.inner.as_ref().member }
   }
@@ -138,7 +138,10 @@ impl<T: GarbageCollected> std::ops::Deref for UnsafePtr<T> {
 }
 
 #[doc(hidden)]
-#[allow(clippy::needless_lifetimes)]
+#[allow(
+  clippy::needless_lifetimes,
+  reason = "explicit lifetimes improve clarity"
+)]
 fn try_unwrap_cppgc_with<'sc, T: GarbageCollected + 'static>(
   isolate: &mut v8::Isolate,
   val: v8::Local<'sc, v8::Value>,
@@ -167,7 +170,10 @@ fn try_unwrap_cppgc_with<'sc, T: GarbageCollected + 'static>(
 }
 
 #[doc(hidden)]
-#[allow(clippy::needless_lifetimes)]
+#[allow(
+  clippy::needless_lifetimes,
+  reason = "explicit lifetimes improve clarity"
+)]
 pub fn try_unwrap_cppgc_object<'sc, T: GarbageCollected + 'static>(
   isolate: &mut v8::Isolate,
   val: v8::Local<'sc, v8::Value>,
@@ -176,7 +182,10 @@ pub fn try_unwrap_cppgc_object<'sc, T: GarbageCollected + 'static>(
 }
 
 #[doc(hidden)]
-#[allow(clippy::needless_lifetimes)]
+#[allow(
+  clippy::needless_lifetimes,
+  reason = "explicit lifetimes improve clarity"
+)]
 pub fn try_unwrap_cppgc_base_object<
   'sc,
   T: GarbageCollected + Base + 'static,
@@ -199,7 +208,10 @@ impl<T: GarbageCollected> std::ops::Deref for Ref<T> {
 }
 
 #[doc(hidden)]
-#[allow(clippy::needless_lifetimes)]
+#[allow(
+  clippy::needless_lifetimes,
+  reason = "explicit lifetimes improve clarity"
+)]
 pub fn try_unwrap_cppgc_persistent_object<
   'sc,
   T: GarbageCollected + 'static,
@@ -214,7 +226,10 @@ pub fn try_unwrap_cppgc_persistent_object<
 }
 
 #[doc(hidden)]
-#[allow(clippy::needless_lifetimes)]
+#[allow(
+  clippy::needless_lifetimes,
+  reason = "explicit lifetimes improve clarity"
+)]
 pub fn try_unwrap_cppgc_base_persistent_object<
   'sc,
   T: GarbageCollected + Base + 'static,
@@ -317,7 +332,10 @@ pub struct SameObject<T: GarbageCollected + 'static> {
 }
 
 impl<T: GarbageCollected + 'static> SameObject<T> {
-  #[allow(clippy::new_without_default)]
+  #[allow(
+    clippy::new_without_default,
+    reason = "Default would hide the intentional construction"
+  )]
   pub fn new() -> Self {
     Self {
       cell: Default::default(),

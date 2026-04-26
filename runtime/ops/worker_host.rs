@@ -111,6 +111,7 @@ deno_core::extension!(
     op_host_recv_message,
     op_host_recv_message_sync,
     op_host_get_worker_cpu_usage,
+    op_current_thread_cpu_usage,
   ],
   options = {
     create_web_worker_cb: Arc<CreateWebWorkerCb>,
@@ -273,11 +274,28 @@ fn op_create_worker(
       .await
     };
 
-    create_and_run_current_thread(fut)
+    let _ = create_and_run_current_thread(fut);
+
+    // After the worker's tokio runtime and JsRuntime/V8 isolate have been
+    // dropped, ask the system allocator to release freed memory back to the
+    // OS. Without this, glibc in particular holds onto the fragmented heap
+    // pages, causing RSS to remain high after many workers are created and
+    // destroyed (https://github.com/denoland/deno/issues/26058).
+    #[cfg(target_os = "linux")]
+    {
+      // SAFETY: calling libc function with no preconditions.
+      unsafe {
+        libc::malloc_trim(0);
+      }
+    }
   })?;
 
   // Receive WebWorkerHandle from newly created worker
-  let worker_handle = handle_receiver.recv().unwrap();
+  let worker_handle = handle_receiver.recv().map_err(|_| {
+    std::io::Error::other(
+      "Worker thread terminated unexpectedly before initialization completed",
+    )
+  })?;
 
   let worker_thread = WorkerThread {
     worker_handle: worker_handle.into(),
@@ -502,6 +520,14 @@ fn op_host_get_worker_cpu_usage(
   out[1] = 0.0;
 }
 
+#[op2(fast)]
+fn op_current_thread_cpu_usage(#[buffer] out: &mut [f64]) {
+  let handle = capture_current_thread_handle();
+  let (user, system) = get_thread_cpu_usage_by_handle(handle);
+  out[0] = user;
+  out[1] = system;
+}
+
 #[cfg(target_os = "macos")]
 fn capture_current_thread_handle() -> u64 {
   // SAFETY: FFI call to get the current thread's Mach port.
@@ -577,7 +603,7 @@ fn capture_current_thread_handle() -> u64 {
 fn get_thread_cpu_usage_by_handle(handle: u64) -> (f64, f64) {
   let tid = handle as i32;
   let path = format!("/proc/self/task/{}/stat", tid);
-  #[allow(clippy::disallowed_methods)]
+  #[allow(clippy::disallowed_methods, reason = "requires real fs")]
   if let Ok(contents) = std::fs::read_to_string(&path) {
     // Parse utime and stime after pid(comm)
     if let Some(pos) = contents.rfind(')') {

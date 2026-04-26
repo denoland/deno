@@ -411,7 +411,10 @@ impl PartialEq for KeyObjectHandle {
     match (self, other) {
       (Self::AsymmetricPrivate(a), Self::AsymmetricPrivate(b)) => a == b,
       (Self::AsymmetricPublic(a), Self::AsymmetricPublic(b)) => a == b,
-      (Self::Secret(a), Self::Secret(b)) => a == b,
+      (Self::Secret(a), Self::Secret(b)) => {
+        use subtle::ConstantTimeEq;
+        a.ct_eq(b).into()
+      }
       _ => false,
     }
   }
@@ -869,6 +872,22 @@ impl KeyObjectHandle {
               SecretDocument::from_sec1_der(doc.as_bytes())
                 .map_err(|_| AsymmetricPrivateKeyError::InvalidSec1PrivateKey)?
             }
+            "DSA PRIVATE KEY" => {
+              // Traditional DSA private key format:
+              // DSAPrivateKey ::= SEQUENCE {
+              //   version  INTEGER,
+              //   p        INTEGER,
+              //   q        INTEGER,
+              //   g        INTEGER,
+              //   pub_key  INTEGER,
+              //   priv_key INTEGER
+              // }
+              let private_key =
+                parse_traditional_dsa_private_key(doc.as_bytes())?;
+              return Ok(KeyObjectHandle::AsymmetricPrivate(
+                AsymmetricPrivateKey::Dsa(private_key),
+              ));
+            }
             _ => {
               return Err(AsymmetricPrivateKeyError::UnsupportedPemLabel(
                 label.to_string(),
@@ -1312,10 +1331,10 @@ impl KeyObjectHandle {
           )
         })?;
 
-        let (label, document) = Document::from_pem(pem)
-          .map_err(|_| AsymmetricPublicKeyError::InvalidPemPublicKey)?;
+        let (label, document) = decode_pem_lenient(pem)
+          .ok_or(AsymmetricPublicKeyError::InvalidPemPublicKey)?;
 
-        match label {
+        match label.as_str() {
           SubjectPublicKeyInfoRef::PEM_LABEL => document,
           rsa::pkcs1::RsaPublicKey::PEM_LABEL => {
             Document::from_pkcs1_der(document.as_bytes())
@@ -1324,7 +1343,8 @@ impl KeyObjectHandle {
           EncryptedPrivateKeyInfo::PEM_LABEL
           | PrivateKeyInfo::PEM_LABEL
           | sec1::EcPrivateKey::PEM_LABEL
-          | rsa::pkcs1::RsaPrivateKey::PEM_LABEL => {
+          | rsa::pkcs1::RsaPrivateKey::PEM_LABEL
+          | "DSA PRIVATE KEY" => {
             let handle = KeyObjectHandle::new_asymmetric_private_key_from_js(
               key, format, typ, passphrase,
             )?;
@@ -1513,6 +1533,103 @@ pub enum RsaPssParamsParseError {
   MalformedOrMissingPssMaskGenAlgorithm,
 }
 
+/// Parse a traditional DSA private key (PEM label "DSA PRIVATE KEY").
+///
+/// The traditional format is:
+/// ```asn1
+/// DSAPrivateKey ::= SEQUENCE {
+///   version  INTEGER,
+///   p        INTEGER,
+///   q        INTEGER,
+///   g        INTEGER,
+///   pub_key  INTEGER,
+///   priv_key INTEGER
+/// }
+/// ```
+fn parse_traditional_dsa_private_key(
+  der: &[u8],
+) -> Result<dsa::SigningKey, AsymmetricPrivateKeyError> {
+  use spki::der::Decode;
+  use spki::der::Reader as _;
+  use spki::der::SliceReader;
+
+  let err = || AsymmetricPrivateKeyError::InvalidDsaPrivateKey;
+
+  let mut reader = SliceReader::new(der).map_err(|_| err())?;
+  reader
+    .sequence(|seq_reader| {
+      // version
+      let _version = asn1::UintRef::decode(seq_reader)?;
+      // p
+      let p_ref = asn1::UintRef::decode(seq_reader)?;
+      // q
+      let q_ref = asn1::UintRef::decode(seq_reader)?;
+      // g
+      let g_ref = asn1::UintRef::decode(seq_reader)?;
+      // y (public key)
+      let y_ref = asn1::UintRef::decode(seq_reader)?;
+      // x (private key)
+      let x_ref = asn1::UintRef::decode(seq_reader)?;
+
+      let p = num_bigint_dig::BigUint::from_bytes_be(p_ref.as_bytes());
+      let q = num_bigint_dig::BigUint::from_bytes_be(q_ref.as_bytes());
+      let g = num_bigint_dig::BigUint::from_bytes_be(g_ref.as_bytes());
+      let y = num_bigint_dig::BigUint::from_bytes_be(y_ref.as_bytes());
+      let x = num_bigint_dig::BigUint::from_bytes_be(x_ref.as_bytes());
+
+      let components = dsa::Components::from_components(p, q, g)
+        .map_err(|_| spki::der::Tag::Sequence.value_error())?;
+      let verifying_key = dsa::VerifyingKey::from_components(components, y)
+        .map_err(|_| spki::der::Tag::Sequence.value_error())?;
+      dsa::SigningKey::from_components(verifying_key, x)
+        .map_err(|_| spki::der::Tag::Sequence.value_error())
+    })
+    .map_err(|_| err())
+}
+
+/// Leniently decode a PEM string, tolerating non-standard line widths.
+/// The strict `Document::from_pem` / `SecretDocument::from_pem` reject PEM
+/// with lines longer than 64 base64 characters (per RFC 7468), but OpenSSL
+/// and Node.js accept any line width. This function falls back to manual
+/// base64 decoding when the strict parser fails.
+fn decode_pem_lenient(pem: &str) -> Option<(String, Document)> {
+  // Try strict parsing first
+  if let Ok((label, doc)) = Document::from_pem(pem) {
+    return Some((label.to_string(), doc));
+  }
+
+  // Fall back to lenient parsing: extract label and base64 manually
+  let pem = pem.trim();
+  let first_line = pem.lines().next()?;
+  let last_line = pem.lines().next_back()?;
+
+  let label = first_line
+    .strip_prefix("-----BEGIN ")
+    .and_then(|s: &str| s.strip_suffix("-----"))?;
+  let end_label = last_line
+    .strip_prefix("-----END ")
+    .and_then(|s: &str| s.strip_suffix("-----"))?;
+
+  if label != end_label {
+    return None;
+  }
+
+  let b64: String = pem
+    .lines()
+    .filter(|line| !line.starts_with("-----"))
+    .flat_map(|line| line.chars())
+    .filter(|c| !c.is_whitespace())
+    .collect();
+
+  let der = base64::engine::general_purpose::STANDARD
+    .decode(&b64)
+    .ok()?;
+
+  let doc = Document::from_der(&der).ok()?;
+
+  Some((label.to_string(), doc))
+}
+
 fn parse_rsa_pss_params(
   parameters: Option<AnyRef<'_>>,
 ) -> Result<Option<RsaPssDetails>, RsaPssParamsParseError> {
@@ -1537,10 +1654,25 @@ fn parse_rsa_pss_params(
         if alg.oid != ID_MFG1 {
           return Err(RsaPssParamsParseError::UnsupportedPssMaskGenAlgorithm);
         }
-        let params = alg.parameters_oid().map_err(|_| {
-          RsaPssParamsParseError::MalformedOrMissingPssMaskGenAlgorithm
-        })?;
-        match params {
+        let mgf1_params_any = alg.parameters.ok_or(
+          RsaPssParamsParseError::MalformedOrMissingPssMaskGenAlgorithm,
+        )?;
+        // MGF1 parameters are an AlgorithmIdentifier (SEQUENCE { OID, params? }).
+        // parameters_oid() fails because it expects a bare OID, but the actual
+        // value is a SEQUENCE. Decode the SEQUENCE to extract the hash OID.
+        let mgf1_hash_oid = mgf1_params_any
+          .sequence(|reader| {
+            let oid = rsa::pkcs8::ObjectIdentifier::decode(reader)?;
+            // Consume optional parameters (e.g. NULL) without failing
+            while !reader.is_finished() {
+              rsa::pkcs8::der::asn1::AnyRef::decode(reader)?;
+            }
+            Ok(oid)
+          })
+          .map_err(|_| {
+            RsaPssParamsParseError::MalformedOrMissingPssMaskGenAlgorithm
+          })?;
+        match mgf1_hash_oid {
           ID_SHA1_OID => RsaPssHashAlgorithm::Sha1,
           ID_SHA224_OID => RsaPssHashAlgorithm::Sha224,
           ID_SHA256_OID => RsaPssHashAlgorithm::Sha256,
@@ -1581,9 +1713,13 @@ fn bytes_to_b64(bytes: &[u8]) -> String {
 pub enum AsymmetricPrivateKeyJwkError {
   #[error("key is not an asymmetric private key")]
   KeyIsNotAsymmetricPrivateKey,
-  #[error("Unsupported JWK EC curve: P224")]
+  #[class(generic)]
+  #[property("code" = "ERR_CRYPTO_JWK_UNSUPPORTED_CURVE")]
+  #[error("Unsupported JWK EC curve: secp224r1.")]
   UnsupportedJwkEcCurveP224,
-  #[error("jwk export not implemented for this key type")]
+  #[class(generic)]
+  #[property("code" = "ERR_CRYPTO_JWK_UNSUPPORTED_KEY_TYPE")]
+  #[error("Unsupported JWK Key Type.")]
   JwkExportNotImplementedForKeyType,
 }
 
@@ -1592,9 +1728,13 @@ pub enum AsymmetricPrivateKeyJwkError {
 pub enum AsymmetricPublicKeyJwkError {
   #[error("key is not an asymmetric public key")]
   KeyIsNotAsymmetricPublicKey,
-  #[error("Unsupported JWK EC curve: P224")]
+  #[class(generic)]
+  #[property("code" = "ERR_CRYPTO_JWK_UNSUPPORTED_CURVE")]
+  #[error("Unsupported JWK EC curve: secp224r1.")]
   UnsupportedJwkEcCurveP224,
-  #[error("jwk export not implemented for this key type")]
+  #[class(generic)]
+  #[property("code" = "ERR_CRYPTO_JWK_UNSUPPORTED_KEY_TYPE")]
+  #[error("Unsupported JWK Key Type.")]
   JwkExportNotImplementedForKeyType,
 }
 
@@ -1720,8 +1860,22 @@ impl AsymmetricPublicKey {
             .map_err(|_| AsymmetricPublicKeyDerError::InvalidRsaPublicKey)?
             .into_vec()
             .into_boxed_slice(),
-          AsymmetricPublicKey::RsaPss(_key) => {
-            return Err(AsymmetricPublicKeyDerError::ExportingNonRsaPssPublicKeyAsSpkiUnsupported)
+          AsymmetricPublicKey::RsaPss(key) => {
+            let pkcs1_der = key.key
+              .to_pkcs1_der()
+              .map_err(|_| AsymmetricPublicKeyDerError::InvalidRsaPublicKey)?;
+            let spki = SubjectPublicKeyInfoRef {
+              algorithm: rsa::pkcs8::AlgorithmIdentifierRef {
+                oid: RSASSA_PSS_OID,
+                parameters: None,
+              },
+              subject_public_key: BitStringRef::from_bytes(pkcs1_der.as_bytes())
+                .map_err(|_| AsymmetricPublicKeyDerError::InvalidRsaPublicKey)?,
+            };
+            spki
+              .to_der()
+              .map_err(|_| AsymmetricPublicKeyDerError::InvalidRsaPublicKey)?
+              .into_boxed_slice()
           }
           AsymmetricPublicKey::Dsa(key) => key
             .to_public_key_der()
@@ -2304,7 +2458,7 @@ pub enum AsymmetricKeyDetails {
     mgf1_hash_algorithm: &'static str,
     salt_length: u32,
   },
-  #[serde(rename = "rsaPss")]
+  #[serde(rename = "rsaPss", rename_all = "camelCase")]
   RsaPssBasic {
     modulus_length: usize,
     public_exponent: V8BigInt,
@@ -2536,18 +2690,25 @@ pub fn op_node_get_private_key_from_pair(
 fn generate_rsa(
   modulus_length: usize,
   public_exponent: usize,
-) -> KeyObjectHandlePair {
+) -> Result<KeyObjectHandlePair, JsErrorBox> {
+  if public_exponent <= 1 || public_exponent.is_multiple_of(2) {
+    return Err(JsErrorBox::generic(format!(
+      "invalid RSA public exponent: {}",
+      public_exponent
+    )));
+  }
+
   let private_key = RsaPrivateKey::new_with_exp(
     &mut thread_rng(),
     modulus_length,
     &rsa::BigUint::from_usize(public_exponent).unwrap(),
   )
-  .unwrap();
+  .map_err(|e| JsErrorBox::generic(e.to_string()))?;
 
   let private_key = AsymmetricPrivateKey::Rsa(private_key);
   let public_key = private_key.to_public_key();
 
-  KeyObjectHandlePair::new(private_key, public_key)
+  Ok(KeyObjectHandlePair::new(private_key, public_key))
 }
 
 #[op2]
@@ -2555,7 +2716,7 @@ fn generate_rsa(
 pub fn op_node_generate_rsa_key(
   #[smi] modulus_length: usize,
   #[smi] public_exponent: usize,
-) -> KeyObjectHandlePair {
+) -> Result<KeyObjectHandlePair, JsErrorBox> {
   generate_rsa(modulus_length, public_exponent)
 }
 
@@ -2564,7 +2725,7 @@ pub fn op_node_generate_rsa_key(
 pub async fn op_node_generate_rsa_key_async(
   #[smi] modulus_length: usize,
   #[smi] public_exponent: usize,
-) -> KeyObjectHandlePair {
+) -> Result<KeyObjectHandlePair, JsErrorBox> {
   spawn_blocking(move || generate_rsa(modulus_length, public_exponent))
     .await
     .unwrap()
@@ -2682,7 +2843,10 @@ fn dsa_generate(
   use dsa::SigningKey;
 
   let key_size = match (modulus_length, divisor_length) {
-    #[allow(deprecated)]
+    #[allow(
+      deprecated,
+      reason = "needed for compatibility with legacy DSA key sizes"
+    )]
     (1024, 160) => KeySize::DSA_1024_160,
     (2048, 224) => KeySize::DSA_2048_224,
     (2048, 256) => KeySize::DSA_2048_256,
@@ -2747,10 +2911,7 @@ fn ec_generate(named_curve: &str) -> Result<KeyObjectHandlePair, JsErrorBox> {
       AsymmetricPrivateKey::Ec(EcPrivateKey::Secp256k1(key))
     }
     _ => {
-      return Err(JsErrorBox::type_error(format!(
-        "unsupported named curve: {}",
-        named_curve
-      )));
+      return Err(JsErrorBox::type_error("Invalid EC curve name"));
     }
   };
   let public_key = private_key.to_public_key();
@@ -3116,6 +3277,114 @@ pub enum ExportPrivateKeyPemError {
   #[class(generic)]
   #[error(transparent)]
   Der(#[from] der::Error),
+  #[class(type)]
+  #[error("{0}")]
+  UnsupportedCipher(String),
+  #[class(type)]
+  #[error(
+    "cipher and passphrase must both be provided for encrypted key export"
+  )]
+  MissingCipherOrPassphrase,
+}
+
+/// Derive an encryption key from a passphrase and salt using the legacy
+/// OpenSSL EVP_BytesToKey algorithm (MD5-based). This is used for the
+/// traditional PEM encryption format (Proc-Type/DEK-Info headers).
+fn evp_bytes_to_key(
+  passphrase: &[u8],
+  salt: &[u8; 8],
+  key_len: usize,
+) -> Vec<u8> {
+  use digest::Digest;
+
+  let mut key = Vec::with_capacity(key_len);
+  let mut prev_hash: Option<[u8; 16]> = None;
+
+  while key.len() < key_len {
+    let mut hasher = md5::Md5::new();
+    if let Some(ref prev) = prev_hash {
+      hasher.update(prev);
+    }
+    hasher.update(passphrase);
+    hasher.update(salt);
+    let hash: [u8; 16] = hasher.finalize().into();
+    key.extend_from_slice(&hash);
+    prev_hash = Some(hash);
+  }
+
+  key.truncate(key_len);
+  key
+}
+
+/// Encrypt DER data and format as legacy OpenSSL encrypted PEM with
+/// Proc-Type and DEK-Info headers.
+fn encrypt_private_key_pem(
+  label: &str,
+  data: &[u8],
+  cipher_name: &str,
+  passphrase: &[u8],
+) -> Result<String, ExportPrivateKeyPemError> {
+  use aes::cipher::BlockEncryptMut;
+  use aes::cipher::KeyIvInit;
+  use aes::cipher::block_padding::Pkcs7;
+
+  let (key_len, dek_info_name, iv_len) = match cipher_name {
+    "aes-128-cbc" => (16, "AES-128-CBC", 16),
+    "aes-192-cbc" => (24, "AES-192-CBC", 16),
+    "aes-256-cbc" => (32, "AES-256-CBC", 16),
+    "des-ede3-cbc" => (24, "DES-EDE3-CBC", 8),
+    _ => {
+      return Err(ExportPrivateKeyPemError::UnsupportedCipher(format!(
+        "Unsupported cipher for PEM encryption: {cipher_name}"
+      )));
+    }
+  };
+
+  // Generate random IV
+  let mut iv = vec![0u8; iv_len];
+  thread_rng().fill_bytes(&mut iv);
+
+  // Derive key using EVP_BytesToKey (uses first 8 bytes of IV as salt)
+  let mut salt = [0u8; 8];
+  salt.copy_from_slice(&iv[..8]);
+  let key = evp_bytes_to_key(passphrase, &salt, key_len);
+
+  // Encrypt with PKCS#7 padding
+  let encrypted = match cipher_name {
+    "aes-128-cbc" => cbc::Encryptor::<aes::Aes128>::new_from_slices(&key, &iv)
+      .unwrap()
+      .encrypt_padded_vec_mut::<Pkcs7>(data),
+    "aes-192-cbc" => cbc::Encryptor::<aes::Aes192>::new_from_slices(&key, &iv)
+      .unwrap()
+      .encrypt_padded_vec_mut::<Pkcs7>(data),
+    "aes-256-cbc" => cbc::Encryptor::<aes::Aes256>::new_from_slices(&key, &iv)
+      .unwrap()
+      .encrypt_padded_vec_mut::<Pkcs7>(data),
+    "des-ede3-cbc" => {
+      cbc::Encryptor::<des::TdesEde3>::new_from_slices(&key, &iv)
+        .unwrap()
+        .encrypt_padded_vec_mut::<Pkcs7>(data)
+    }
+    _ => unreachable!(),
+  };
+
+  // Format as legacy encrypted PEM
+  let iv_hex = iv.iter().map(|b| format!("{b:02X}")).collect::<String>();
+  let b64 = base64::engine::general_purpose::STANDARD.encode(&encrypted);
+
+  // Split base64 into 64-char lines
+  let mut pem = String::new();
+  pem.push_str(&format!("-----BEGIN {label}-----\n"));
+  pem.push_str("Proc-Type: 4,ENCRYPTED\n");
+  pem.push_str(&format!("DEK-Info: {dek_info_name},{iv_hex}\n"));
+  pem.push('\n');
+  for chunk in b64.as_bytes().chunks(64) {
+    pem.push_str(std::str::from_utf8(chunk).unwrap());
+    pem.push('\n');
+  }
+  pem.push_str(&format!("-----END {label}-----\n"));
+
+  Ok(pem)
 }
 
 #[op2]
@@ -3123,6 +3392,8 @@ pub enum ExportPrivateKeyPemError {
 pub fn op_node_export_private_key_pem(
   #[cppgc] handle: &KeyObjectHandle,
   #[string] typ: &str,
+  #[string] cipher: Option<String>,
+  #[string] passphrase: Option<String>,
 ) -> Result<String, ExportPrivateKeyPemError> {
   let private_key = handle
     .as_private_key()
@@ -3135,6 +3406,21 @@ pub fn op_node_export_private_key_pem(
     "sec1" => "EC PRIVATE KEY",
     _ => unreachable!("export_der would have errored"),
   };
+
+  match (&cipher, &passphrase) {
+    (Some(cipher), Some(passphrase)) => {
+      return encrypt_private_key_pem(
+        label,
+        &data,
+        cipher,
+        passphrase.as_bytes(),
+      );
+    }
+    (Some(_), None) | (None, Some(_)) => {
+      return Err(ExportPrivateKeyPemError::MissingCipherOrPassphrase);
+    }
+    (None, None) => {}
+  }
 
   let pem_len = der::pem::encapsulated_len(label, LineEnding::LF, data.len())
     .map_err(|_| ExportPrivateKeyPemError::VeryLargeData)?;

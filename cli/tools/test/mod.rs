@@ -81,7 +81,6 @@ use crate::sys::CliSys;
 use crate::util::extract::extract_doc_tests;
 use crate::util::file_watcher;
 use crate::util::fs::CollectSpecifiersOptions;
-use crate::util::fs::canonicalize_path;
 use crate::util::fs::collect_specifiers;
 use crate::util::path::get_extension;
 use crate::util::path::is_script_ext;
@@ -330,7 +329,7 @@ pub struct TestFailureFormatOptions {
   pub initial_cwd: Option<Url>,
 }
 
-#[allow(clippy::derive_partial_eq_without_eq)]
+#[allow(clippy::derive_partial_eq_without_eq, reason = "not important")]
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum TestFailure {
@@ -478,7 +477,7 @@ impl TestFailure {
   }
 }
 
-#[allow(clippy::derive_partial_eq_without_eq)]
+#[allow(clippy::derive_partial_eq_without_eq, reason = "not important")]
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum TestResult {
@@ -501,7 +500,7 @@ pub struct TestStepDescription {
   pub root_name: String,
 }
 
-#[allow(clippy::derive_partial_eq_without_eq)]
+#[allow(clippy::derive_partial_eq_without_eq, reason = "not important")]
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum TestStepResult {
@@ -517,14 +516,6 @@ pub struct TestPlan {
   pub total: usize,
   pub filtered_out: usize,
   pub used_only: bool,
-}
-
-// TODO(bartlomieju): in Rust 1.90 some structs started getting flagged as not used
-#[allow(dead_code)]
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Deserialize)]
-pub enum TestStdioStream {
-  Stdout,
-  Stderr,
 }
 
 #[derive(Debug)]
@@ -674,7 +665,7 @@ fn get_test_reporter(options: &TestSpecifiersOptions) -> Box<dyn TestReporter> {
   reporter
 }
 
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, reason = "TODO: cleanup")]
 async fn configure_main_worker(
   worker_factory: Arc<CliMainWorkerFactory>,
   specifier: &Url,
@@ -736,7 +727,7 @@ async fn configure_main_worker(
 
 /// Test a single specifier as documentation containing test programs, an executable test module or
 /// both.
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, reason = "TODO: cleanup")]
 pub async fn test_specifier(
   worker_factory: Arc<CliMainWorkerFactory>,
   permissions_container: PermissionsContainer,
@@ -1017,7 +1008,7 @@ where
   Ok(())
 }
 
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, reason = "TODO: cleanup")]
 async fn run_tests_for_worker_inner(
   worker: &mut MainWorker,
   specifier: &ModuleSpecifier,
@@ -1401,11 +1392,14 @@ pub async fn report_tests(
           &test_steps,
         );
 
-        #[allow(clippy::print_stderr)]
+        #[allow(clippy::print_stderr, reason = "force outputting on failure")]
         if let Err(err) = reporter.flush_report(&elapsed, &tests, &test_steps) {
           eprint!("Test reporter failed to flush: {}", err)
         }
-        #[allow(clippy::disallowed_methods)]
+        #[allow(
+          clippy::disallowed_methods,
+          reason = "TODO: why is this not using deno_runtime::exit?"
+        )]
         std::process::exit(130);
       }
     }
@@ -1737,7 +1731,10 @@ pub async fn run_tests_with_watch(
     loop {
       deno_signals::ctrl_c().await.unwrap();
       if !HAS_TEST_RUN_SIGINT_HANDLER.load(Ordering::Relaxed) {
-        #[allow(clippy::disallowed_methods)]
+        #[allow(
+          clippy::disallowed_methods,
+          reason = "TODO: why is this not using deno_runtime::exit?"
+        )]
         std::process::exit(130);
       }
     }
@@ -1821,8 +1818,7 @@ pub async fn run_tests_with_watch(
           // If an env file changed, reload all test modules since any
           // test could depend on environment variables.
           let env_file_changed = cli_options
-            .env_file_paths()
-            .filter_map(|path| canonicalize_path(&path).ok())
+            .possible_env_file_paths_for_watch()
             .any(|path| changed_paths.contains(&path));
           if env_file_changed {
             test_modules.clone()

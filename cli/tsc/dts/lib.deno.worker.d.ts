@@ -5,7 +5,6 @@
 /// <reference lib="deno.shared_globals" />
 /// <reference lib="esnext" />
 /// <reference lib="deno.cache" />
-/// <reference lib="deno.temporal" />
 
 /**
  * Event map for WorkerGlobalScope event handlers.

@@ -110,7 +110,7 @@ pub struct Options {
   ///
   /// For more info on what can be configured, see [`hyper_util::client::legacy::Builder`].
   pub client_builder_hook: Option<fn(HyperClientBuilder) -> HyperClientBuilder>,
-  #[allow(clippy::type_complexity)]
+  #[allow(clippy::type_complexity, reason = "TODO: improve")]
   pub request_builder_hook:
     Option<fn(&mut http::Request<ReqBody>) -> Result<(), JsErrorBox>>,
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
@@ -221,6 +221,9 @@ pub enum FetchError {
   #[class(inherit)]
   #[error(transparent)]
   Url(#[from] url::ParseError),
+  #[class(inherit)]
+  #[error(transparent)]
+  UrlToFilePath(#[from] deno_path_util::UrlToFilePathError),
   #[class(type)]
   #[error(transparent)]
   Method(#[from] http::method::InvalidMethod),
@@ -340,7 +343,7 @@ pub fn create_client_from_options(
   )
 }
 
-#[allow(clippy::type_complexity)]
+#[allow(clippy::type_complexity, reason = "TODO: improve")]
 pub struct ResourceToBodyAdapter(
   Rc<dyn Resource>,
   Option<Pin<Box<dyn Future<Output = Result<BufView, JsErrorBox>>>>>,
@@ -409,9 +412,9 @@ impl Drop for ResourceToBodyAdapter {
 }
 
 #[op2(stack_trace)]
-#[allow(clippy::too_many_arguments)]
-#[allow(clippy::large_enum_variant)]
-#[allow(clippy::result_large_err)]
+#[allow(clippy::too_many_arguments, reason = "op")]
+#[allow(clippy::large_enum_variant, reason = "TODO: investigate")]
+#[allow(clippy::result_large_err, reason = "TODO: investigate")]
 pub fn op_fetch(
   state: &mut OpState,
   #[scoped] method: ByteString,
@@ -838,7 +841,7 @@ pub struct CreateHttpClientArgs {
 
 #[op2(stack_trace)]
 #[smi]
-#[allow(clippy::result_large_err)]
+#[allow(clippy::result_large_err, reason = "TODO: investigate")]
 pub fn op_fetch_custom_client(
   state: &mut OpState,
   #[scoped] mut args: CreateHttpClientArgs,
@@ -1192,8 +1195,10 @@ impl Client {
 
 type Connector = proxy::ProxyConnector<HttpConnector<dns::Resolver>>;
 
-// clippy is wrong here
-#[allow(clippy::declare_interior_mutable_const)]
+#[allow(
+  clippy::declare_interior_mutable_const,
+  reason = "clippy is wrong here"
+)]
 const STAR_STAR: HeaderValue = HeaderValue::from_static("*/*");
 
 #[derive(Debug, deno_error::JsError)]
@@ -1512,6 +1517,30 @@ fn is_error_retryable(err: &(dyn std::error::Error + 'static)) -> bool {
     {
       return true;
     }
+  }
+
+  // HTTP/1.1: The connection was closed before the message completed.
+  // This happens when a pooled keep-alive connection is stale (e.g. the
+  // server shut down between requests). Safe to retry because the server
+  // never received/processed the request on this connection.
+  if let Some(err) = find_source::<hyper::Error>(err)
+    && err.is_incomplete_message()
+  {
+    return true;
+  }
+
+  // Connection reset/aborted by the server before we could send the request.
+  // This is another manifestation of stale pooled connections.
+  // ConnectionReset (ECONNRESET) on Unix, ConnectionAborted (WSAECONNABORTED /
+  // os error 10053) on Windows.
+  if let Some(err) = find_source::<std::io::Error>(err)
+    && matches!(
+      err.kind(),
+      std::io::ErrorKind::ConnectionReset
+        | std::io::ErrorKind::ConnectionAborted
+    )
+  {
+    return true;
   }
 
   false

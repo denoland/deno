@@ -18,7 +18,7 @@ use crate::ops::handle_wrap::AsyncWrap;
 // Http2Headers
 
 pub struct Http2Headers {
-  #[allow(dead_code)]
+  #[allow(dead_code, reason = "owns the backing memory for nva pointers")]
   backing_store: String,
   nva: Vec<ffi::nghttp2_nv>,
 }
@@ -146,7 +146,7 @@ pub struct Http2StreamState {
 pub struct Http2Stream {
   pub(crate) session: *mut Session,
   pub(crate) id: i32,
-  #[allow(dead_code)]
+  #[allow(dead_code, reason = "stored for future use")]
   pub(crate) current_headers_category: ffi::nghttp2_headers_category,
   pub(crate) available_outbound_length: RefCell<usize>,
   pub(crate) pending_data: RefCell<bytes::BytesMut>,
@@ -332,7 +332,7 @@ impl Http2Stream {
     }
 
     let has_data = (options & STREAM_OPTION_EMPTY_PAYLOAD) == 0;
-    let mut data_provider = ffi::nghttp2_data_provider {
+    let mut data_provider = ffi::nghttp2_data_provider2 {
       source: ffi::nghttp2_data_source {
         ptr: std::ptr::null_mut(),
       },
@@ -347,7 +347,7 @@ impl Http2Stream {
 
     // SAFETY: session pointer is valid during stream lifetime
     unsafe {
-      ffi::nghttp2_submit_response(
+      ffi::nghttp2_submit_response2(
         session_ptr,
         self.id,
         headers.data(),
@@ -438,7 +438,7 @@ impl Http2Stream {
     let session_ptr = self.nghttp2_session();
 
     if headers.1 == 0 {
-      let mut data_provider = ffi::nghttp2_data_provider {
+      let mut data_provider = ffi::nghttp2_data_provider2 {
         source: ffi::nghttp2_data_source {
           ptr: std::ptr::null_mut(),
         },
@@ -447,7 +447,7 @@ impl Http2Stream {
 
       // SAFETY: session pointer is valid during stream lifetime
       unsafe {
-        ffi::nghttp2_submit_data(
+        ffi::nghttp2_submit_data2(
           session_ptr,
           ffi::NGHTTP2_FLAG_END_STREAM as u8,
           self.id,

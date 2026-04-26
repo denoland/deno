@@ -168,3 +168,72 @@ pub fn get_tls_config(
     None => Err(io::Error::other("Cannot find key")),
   }
 }
+
+/// Like `get_tls_listener_stream`, but the server requires a valid client
+/// certificate signed by the test CA
+pub async fn get_tls_listener_stream_with_required_client_auth(
+  name: &'static str,
+  port: u16,
+) -> impl Stream<Item = Result<TlsStream<TcpStream>, std::io::Error>> + Unpin {
+  let cert_file = "tls/localhost.crt";
+  let key_file = "tls/localhost.key";
+  let ca_cert_file = "tls/RootCA.pem";
+  let tls_config =
+    get_tls_config_with_required_client_auth(cert_file, key_file, ca_cert_file)
+      .unwrap();
+
+  let tcp = get_tcp_listener_stream(name, port).await;
+  get_tls_listener_stream_from_tcp(tls_config, tcp)
+}
+
+fn get_tls_config_with_required_client_auth(
+  cert: &str,
+  key: &str,
+  ca: &str,
+) -> io::Result<Arc<rustls::ServerConfig>> {
+  let cert_path = testdata_path().join(cert);
+  let key_path = testdata_path().join(key);
+  let ca_path = testdata_path().join(ca);
+
+  let cert_file = std::fs::File::open(cert_path)?;
+  let key_file = std::fs::File::open(key_path)?;
+  let ca_file = std::fs::File::open(ca_path)?;
+
+  let certs: Vec<CertificateDer<'static>> = {
+    let mut cert_reader = io::BufReader::new(cert_file);
+    rustls_pemfile::certs(&mut cert_reader).collect::<Result<_, _>>()?
+  };
+
+  let mut ca_cert_reader = io::BufReader::new(ca_file);
+  let ca_cert = rustls_pemfile::certs(&mut ca_cert_reader)
+    .collect::<Vec<_>>()
+    .remove(0)?;
+
+  let key = {
+    let mut key_reader = io::BufReader::new(key_file);
+    let pkcs8_keys = rustls_pemfile::pkcs8_private_keys(&mut key_reader)
+      .collect::<Result<Vec<_>, _>>()?;
+    if !pkcs8_keys.is_empty() {
+      PrivateKeyDer::from(pkcs8_keys[0].clone_key())
+    } else {
+      return Err(io::Error::other("Cannot find key"));
+    }
+  };
+
+  let mut root_cert_store = rustls::RootCertStore::empty();
+  root_cert_store.add(ca_cert).unwrap();
+
+  let client_verifier =
+    rustls::server::WebPkiClientVerifier::builder(Arc::new(root_cert_store))
+      .build()
+      .unwrap();
+
+  let mut config = rustls::ServerConfig::builder()
+    .with_client_cert_verifier(client_verifier)
+    .with_single_cert(certs, key)
+    .map_err(|e| io::Error::other(format!("Error setting cert: {:?}", e)))?;
+
+  config.alpn_protocols = vec!["h2".into(), "http/1.1".into()];
+
+  Ok(Arc::new(config))
+}

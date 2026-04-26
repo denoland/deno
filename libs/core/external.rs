@@ -34,7 +34,7 @@ pub trait Externalizable {
 
 #[doc(hidden)]
 pub struct ExternalDefinition {
-  #[allow(unused)]
+  #[allow(unused, reason = "used for documentation and debugging")]
   pub name: &'static str,
 }
 

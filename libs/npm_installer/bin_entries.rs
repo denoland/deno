@@ -412,7 +412,6 @@ fn make_executable_if_exists(
 }
 
 pub enum EntrySetupOutcome<'a> {
-  #[cfg_attr(windows, allow(dead_code))]
   MissingEntrypoint {
     bin_name: &'a str,
     package_path: &'a Path,

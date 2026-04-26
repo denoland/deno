@@ -6,14 +6,9 @@ import { promisify } from "ext:deno_node/internal/util.mjs";
 import * as constants from "ext:deno_node/_fs/_fs_constants.ts";
 import { copyFilePromise } from "ext:deno_node/_fs/_fs_copy.ts";
 import { cpPromise } from "ext:deno_node/_fs/_fs_cp.ts";
-import { lstatPromise } from "ext:deno_node/_fs/_fs_lstat.ts";
 import { lutimesPromise } from "ext:deno_node/_fs/_fs_lutimes.ts";
 import { readdirPromise } from "ext:deno_node/_fs/_fs_readdir.ts";
-import { readFilePromise } from "ext:deno_node/_fs/_fs_readFile.ts";
-import { readlinkPromise } from "ext:deno_node/_fs/_fs_readlink.ts";
-import { realpathPromise } from "ext:deno_node/_fs/_fs_realpath.ts";
-import { statPromise } from "ext:deno_node/_fs/_fs_stat.ts";
-import { statfsPromise } from "ext:deno_node/_fs/_fs_statfs.ts";
+import { lstatPromise } from "ext:deno_node/_fs/_fs_lstat.ts";
 import {
   access,
   appendFile,
@@ -25,9 +20,14 @@ import {
   mkdtemp,
   open,
   opendir,
+  readFile,
+  readlink,
+  realpath,
   rename,
   rm,
   rmdir,
+  stat,
+  statfs,
   symlink,
   truncate,
   unlink,
@@ -83,10 +83,10 @@ const lchmodPromise: (
   mode: number,
 ) => Promise<void> = !isMacOS
   ? () => PromiseReject(new ERR_METHOD_NOT_IMPLEMENTED("lchmod()"))
-  : (path: string | Buffer | URL, mode: number) => {
+  : async (path: string | Buffer | URL, mode: number) => {
     path = getValidatedPathToString(path);
     mode = parseFileMode(mode, "mode");
-    return op_node_lchmod(path, mode);
+    return await op_node_lchmod(path, mode);
   };
 
 const lchownPromise = promisify(lchown) as (
@@ -226,6 +226,36 @@ const writeFilePromise = promisify(writeFile) as (
     | AsyncIterable<NodeJS.TypedArray | string>,
   options?: Encodings | WriteFileOptions,
 ) => Promise<void>;
+
+// -- realpath --
+
+const realpathPromise = promisify(realpath) as (
+  path: string | Buffer,
+  options?: string | { encoding?: string },
+) => Promise<string | Buffer>;
+
+// -- stat --
+
+const statPromise = promisify(stat) as (
+  path: string | Buffer | URL,
+  options?: { bigint?: boolean },
+) => Promise<unknown>;
+
+// -- statfs --
+
+const statfsPromise = promisify(statfs) as (
+  path: string | Buffer | URL,
+  options?: { bigint?: boolean },
+) => Promise<unknown>;
+
+// -- readFile / readlink --
+
+const readFilePromise = promisify(readFile);
+
+const readlinkPromise = promisify(readlink) as (
+  path: string | Buffer | URL,
+  opt?: { encoding?: string | null },
+) => Promise<string | Uint8Array>;
 
 // -- promises object --
 

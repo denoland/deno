@@ -72,11 +72,11 @@ use crate::glob::PathOrPatternSet;
 
 mod discovery;
 
-#[allow(clippy::disallowed_types)]
+#[allow(clippy::disallowed_types, reason = "definition")]
 type UrlRc = deno_maybe_sync::MaybeArc<Url>;
-#[allow(clippy::disallowed_types)]
+#[allow(clippy::disallowed_types, reason = "definition")]
 pub type WorkspaceRc = deno_maybe_sync::MaybeArc<Workspace>;
-#[allow(clippy::disallowed_types)]
+#[allow(clippy::disallowed_types, reason = "definition")]
 pub type WorkspaceDirectoryRc = deno_maybe_sync::MaybeArc<WorkspaceDirectory>;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -801,7 +801,7 @@ impl Workspace {
       .filter_map(|f| f.pkg_json.as_ref())
   }
 
-  #[allow(clippy::needless_lifetimes)] // clippy issue
+  #[allow(clippy::needless_lifetimes, reason = "clippy false positive")]
   pub fn jsr_packages<'a>(
     self: &'a WorkspaceRc,
   ) -> impl Iterator<Item = JsrPackageConfig> + 'a {
@@ -1548,9 +1548,9 @@ impl Workspace {
 
 #[derive(Debug, Clone)]
 struct WorkspaceDirConfig<T> {
-  #[allow(clippy::disallowed_types)]
+  #[allow(clippy::disallowed_types, reason = "field uses MaybeArc")]
   member: Option<deno_maybe_sync::MaybeArc<T>>,
-  #[allow(clippy::disallowed_types)]
+  #[allow(clippy::disallowed_types, reason = "field uses MaybeArc")]
   root: Option<deno_maybe_sync::MaybeArc<T>>,
 }
 
@@ -2095,6 +2095,14 @@ impl WorkspaceDirectory {
           .options
           .space_surrounding_properties
           .or(root_config.options.space_surrounding_properties),
+        vue_component_case: member_config
+          .options
+          .vue_component_case
+          .or(root_config.options.vue_component_case),
+        angular_next_control_flow_same_line: member_config
+          .options
+          .angular_next_control_flow_same_line
+          .or(root_config.options.angular_next_control_flow_same_line),
       },
       files: combine_patterns(root_config.files, member_config.files),
     })
@@ -2172,9 +2180,15 @@ impl WorkspaceDirectory {
     };
     let root_config = match &self.deno_json.root {
       Some(root) => root.to_compile_config(permissions)?,
-      None => Default::default(),
+      None => return Ok(member_config),
     };
+    let mut include = root_config.include;
+    include.extend(member_config.include);
+    let mut exclude = root_config.exclude;
+    exclude.extend(member_config.exclude);
     Ok(CompileConfig {
+      include,
+      exclude,
       permissions: match (root_config.permissions, member_config.permissions) {
         (_, Some(m)) => Some(m),
         (Some(r), _) => Some(r),
@@ -2670,7 +2684,7 @@ fn combine_files_config_with_cli_args(
   }
 }
 
-#[allow(clippy::owned_cow)]
+#[allow(clippy::owned_cow, reason = "Cow is used for conditional borrowing")]
 struct CombineOptionVecsWithOverride<'a, T: Clone> {
   root: Option<Vec<T>>,
   member: Option<Cow<'a, Vec<T>>>,
@@ -2870,7 +2884,7 @@ pub mod test {
       workspace_dir
         .workspace
         .deno_jsons()
-        .map(|d| d.specifier.to_file_path().unwrap())
+        .map(|d| deno_path_util::url_to_file_path(&d.specifier).unwrap())
         .collect::<Vec<_>>(),
       vec![root_dir().join("sub_dir").join("deno.json")]
     );
@@ -3151,7 +3165,7 @@ pub mod test {
       workspace_dir.workspace.diagnostics(),
       vec![WorkspaceDiagnostic {
         kind: WorkspaceDiagnosticKind::RootOnlyOption("importMap"),
-        config_url: Url::from_file_path(root_dir().join("member/deno.json"))
+        config_url: url_from_file_path(&root_dir().join("member/deno.json"))
           .unwrap(),
       }]
     );
@@ -3176,7 +3190,7 @@ pub mod test {
       workspace_dir.workspace.diagnostics(),
       vec![WorkspaceDiagnostic {
         kind: WorkspaceDiagnosticKind::RootOnlyOption("links"),
-        config_url: Url::from_file_path(root_dir().join("member/deno.json"))
+        config_url: url_from_file_path(&root_dir().join("member/deno.json"))
           .unwrap(),
       }]
     );
@@ -3341,7 +3355,7 @@ pub mod test {
       workspace_dir.workspace.diagnostics(),
       vec![WorkspaceDiagnostic {
         kind: WorkspaceDiagnosticKind::RootOnlyOption("scopes"),
-        config_url: Url::from_file_path(root_dir().join("member/deno.json"))
+        config_url: url_from_file_path(&root_dir().join("member/deno.json"))
           .unwrap(),
       }]
     );
@@ -3362,7 +3376,7 @@ pub mod test {
       workspace_dir.workspace.diagnostics(),
       vec![WorkspaceDiagnostic {
         kind: WorkspaceDiagnosticKind::DeprecatedPatch,
-        config_url: Url::from_file_path(root_dir().join("deno.json")).unwrap(),
+        config_url: url_from_file_path(&root_dir().join("deno.json")).unwrap(),
       }]
     );
     assert_eq!(workspace_dir.workspace.link_folders().len(), 1); // should still work though
@@ -3392,7 +3406,7 @@ pub mod test {
       workspace_dir.workspace.diagnostics(),
       vec![WorkspaceDiagnostic {
         kind: WorkspaceDiagnosticKind::ImportMapReferencingImportMap,
-        config_url: Url::from_file_path(root_dir().join("deno.json")).unwrap(),
+        config_url: url_from_file_path(&root_dir().join("deno.json")).unwrap(),
       }]
     );
   }
@@ -3413,7 +3427,7 @@ pub mod test {
       workspace_dir.workspace.diagnostics(),
       vec![WorkspaceDiagnostic {
         kind: WorkspaceDiagnosticKind::MemberImportsScopesIgnored,
-        config_url: Url::from_file_path(root_dir().join("member/deno.json"))
+        config_url: url_from_file_path(&root_dir().join("member/deno.json"))
           .unwrap(),
       }]
     );
@@ -3499,7 +3513,7 @@ pub mod test {
       workspace_dir.workspace.diagnostics(),
       vec![WorkspaceDiagnostic {
         kind: WorkspaceDiagnosticKind::RootOnlyOption("lint.report"),
-        config_url: Url::from_file_path(root_dir().join("member/deno.json"))
+        config_url: url_from_file_path(&root_dir().join("member/deno.json"))
           .unwrap(),
       }]
     );
@@ -3647,6 +3661,8 @@ pub mod test {
           type_literal_separator_kind: Some(SeparatorKind::SemiColon),
           space_around: Some(true),
           space_surrounding_properties: Some(true),
+          vue_component_case: None,
+          angular_next_control_flow_same_line: None,
         },
         files: FilePatterns {
           base: root_dir().join("member"),
@@ -3689,6 +3705,8 @@ pub mod test {
           type_literal_separator_kind: Some(SeparatorKind::Comma),
           space_around: Some(false),
           space_surrounding_properties: Some(false),
+          vue_component_case: None,
+          angular_next_control_flow_same_line: None,
         },
         files: FilePatterns {
           base: root_dir(),
@@ -3985,32 +4003,32 @@ pub mod test {
             previous: false,
             suggestion: NodeModulesDirMode::Manual,
           },
-          config_url: Url::from_file_path(root_dir().join("deno.json"))
+          config_url: url_from_file_path(&root_dir().join("deno.json"))
             .unwrap(),
         },
         WorkspaceDiagnostic {
           kind: WorkspaceDiagnosticKind::RootOnlyOption("lock"),
-          config_url: Url::from_file_path(root_dir().join("member/deno.json"))
+          config_url: url_from_file_path(&root_dir().join("member/deno.json"))
             .unwrap(),
         },
         WorkspaceDiagnostic {
           kind: WorkspaceDiagnosticKind::RootOnlyOption("minimumDependencyAge"),
-          config_url: Url::from_file_path(root_dir().join("member/deno.json"))
+          config_url: url_from_file_path(&root_dir().join("member/deno.json"))
             .unwrap(),
         },
         WorkspaceDiagnostic {
           kind: WorkspaceDiagnosticKind::RootOnlyOption("nodeModulesDir"),
-          config_url: Url::from_file_path(root_dir().join("member/deno.json"))
+          config_url: url_from_file_path(&root_dir().join("member/deno.json"))
             .unwrap(),
         },
         WorkspaceDiagnostic {
           kind: WorkspaceDiagnosticKind::RootOnlyOption("unstable"),
-          config_url: Url::from_file_path(root_dir().join("member/deno.json"))
+          config_url: url_from_file_path(&root_dir().join("member/deno.json"))
             .unwrap(),
         },
         WorkspaceDiagnostic {
           kind: WorkspaceDiagnosticKind::RootOnlyOption("vendor"),
-          config_url: Url::from_file_path(root_dir().join("member/deno.json"))
+          config_url: url_from_file_path(&root_dir().join("member/deno.json"))
             .unwrap(),
         },
       ]
@@ -4066,7 +4084,7 @@ pub mod test {
           previous,
           suggestion,
         },
-        config_url: Url::from_file_path(root_dir().join("deno.json")).unwrap(),
+        config_url: url_from_file_path(&root_dir().join("deno.json")).unwrap(),
       }
     }
 
@@ -4154,7 +4172,7 @@ pub mod test {
       workspace_dir.workspace.diagnostics(),
       vec![WorkspaceDiagnostic {
         kind: WorkspaceDiagnosticKind::RootOnlyOption("workspace"),
-        config_url: Url::from_file_path(root_dir().join("member/deno.json"))
+        config_url: url_from_file_path(&root_dir().join("member/deno.json"))
           .unwrap(),
       }]
     );
@@ -4222,7 +4240,7 @@ pub mod test {
         .map(|kind| {
           WorkspaceDiagnostic {
             kind,
-            config_url: Url::from_file_path(root_dir().join("deno.json"))
+            config_url: url_from_file_path(&root_dir().join("deno.json"))
               .unwrap(),
           }
         })
@@ -4270,12 +4288,12 @@ pub mod test {
           assert_eq!(name, "@scope/pkg");
           assert_eq!(
             deno_json_url,
-            Url::from_file_path(root_dir().join("member2").join("deno.json"))
+            url_from_file_path(&root_dir().join("member2").join("deno.json"))
               .unwrap()
           );
           assert_eq!(
             other_deno_json_url,
-            Url::from_file_path(root_dir().join("member1").join("deno.json"))
+            url_from_file_path(&root_dir().join("member1").join("deno.json"))
               .unwrap()
           );
         }
@@ -4717,7 +4735,7 @@ pub mod test {
           );
           assert_eq!(
             config_url,
-            &Url::from_file_path(config_file_path).unwrap()
+            &url_from_file_path(config_file_path).unwrap()
           );
         }
         _ => unreachable!(),
@@ -4783,7 +4801,7 @@ pub mod test {
         workspace_dir
           .workspace
           .deno_jsons()
-          .map(|c| c.specifier.to_file_path().unwrap())
+          .map(|c| deno_path_util::url_to_file_path(&c.specifier).unwrap())
           .collect::<Vec<_>>(),
         vec![config_file_path]
       );
@@ -4815,7 +4833,7 @@ pub mod test {
       workspace_dir
         .workspace
         .deno_jsons()
-        .map(|c| c.specifier.to_file_path().unwrap())
+        .map(|c| deno_path_util::url_to_file_path(&c.specifier).unwrap())
         .collect::<Vec<_>>(),
       vec![root_config_path, member_a_config]
     );
@@ -5059,10 +5077,7 @@ pub mod test {
     assert_eq!(workspace_dir.workspace.diagnostics(), Vec::new());
     assert_eq!(workspace_dir.workspace.deno_jsons().count(), 1);
     assert_eq!(
-      workspace_dir
-        .workspace
-        .root_dir_url()
-        .to_file_path()
+      deno_path_util::url_to_file_path(workspace_dir.workspace.root_dir_url(),)
         .unwrap(),
       root_dir().join("member")
     );
@@ -5107,10 +5122,7 @@ pub mod test {
     );
     assert_eq!(workspace_dir.workspace.deno_jsons().count(), 1);
     assert_eq!(
-      workspace_dir
-        .workspace
-        .root_dir_url()
-        .to_file_path()
+      deno_path_util::url_to_file_path(workspace_dir.workspace.root_dir_url(),)
         .unwrap(),
       root_dir()
     );
@@ -5155,10 +5167,7 @@ pub mod test {
     );
     assert_eq!(workspace_dir.workspace.deno_jsons().count(), 1);
     assert_eq!(
-      workspace_dir
-        .workspace
-        .root_dir_url()
-        .to_file_path()
+      deno_path_util::url_to_file_path(workspace_dir.workspace.root_dir_url(),)
         .unwrap(),
       root_dir()
     );
@@ -5195,7 +5204,8 @@ pub mod test {
     assert_eq!(workspace_dir.workspace.diagnostics().len(), 2); // for each unstable
     assert_eq!(workspace_dir.workspace.deno_jsons().count(), 2);
     assert_eq!(
-      workspace_dir.workspace.root_dir_url.to_file_path().unwrap(),
+      deno_path_util::url_to_file_path(&workspace_dir.workspace.root_dir_url)
+        .unwrap(),
       root_dir()
     );
     assert_eq!(workspace_dir.workspace.package_jsons().count(), 3);
@@ -5220,10 +5230,7 @@ pub mod test {
     assert_eq!(workspace_dir.workspace.diagnostics(), Vec::new());
     assert_eq!(workspace_dir.workspace.deno_jsons().count(), 0);
     assert_eq!(
-      workspace_dir
-        .workspace
-        .root_dir_url()
-        .to_file_path()
+      deno_path_util::url_to_file_path(workspace_dir.workspace.root_dir_url())
         .unwrap(),
       root_dir().join("member")
     );
@@ -5397,7 +5404,7 @@ pub mod test {
         .deno_jsons()
         .map(|d| d.specifier.clone())
         .collect::<Vec<_>>(),
-      vec![Url::from_file_path(&other_deno_json).unwrap()]
+      vec![deno_path_util::url_from_file_path(&other_deno_json).unwrap()]
     );
   }
 
@@ -5426,7 +5433,7 @@ pub mod test {
       workspace_dir
         .workspace
         .deno_jsons()
-        .map(|c| c.specifier.to_file_path().unwrap())
+        .map(|c| deno_path_util::url_to_file_path(&c.specifier).unwrap())
         .collect::<Vec<_>>(),
       vec![root_config_path, member_a_config]
     );
@@ -6110,7 +6117,8 @@ pub mod test {
     );
     let new_config_file = ConfigFile::new(
       r#"{ "nodeModulesDir": false }"#,
-      Url::from_file_path(root_dir().join("deno.json")).unwrap(),
+      deno_path_util::url_from_file_path(&root_dir().join("deno.json"))
+        .unwrap(),
     )
     .unwrap();
     cache
@@ -6336,7 +6344,7 @@ pub mod test {
           .workspace
           .config_folders_sorted_by_dependencies()
           .keys()
-          .map(|k| k.to_file_path().unwrap())
+          .map(|k| deno_path_util::url_to_file_path(k).unwrap())
           .collect::<Vec<_>>(),
         expected,
       );

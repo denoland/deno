@@ -12,6 +12,7 @@ import {
 } from "ext:core/ops";
 const {
   ArrayPrototypeFilter,
+  ArrayPrototypeJoin,
   Error,
   ObjectPrototypeIsPrototypeOf,
   String,
@@ -101,6 +102,21 @@ class Worker extends EventTarget {
       name,
       type = "classic",
     } = options;
+
+    if (options.env !== undefined || options.workerData !== undefined) {
+      const unsupported = [];
+      if (options.env !== undefined) unsupported[unsupported.length] = "env";
+      if (options.workerData !== undefined) {
+        unsupported[unsupported.length] = "workerData";
+      }
+      globalThis.console.warn(
+        `Warning: ${
+          ArrayPrototypeJoin(unsupported, ", ")
+        } option(s) are not supported ` +
+          "for web Workers and will be ignored. Use the " +
+          "node:worker_threads module instead.",
+      );
+    }
 
     const workerType = webidl.converters["WorkerType"](type);
 

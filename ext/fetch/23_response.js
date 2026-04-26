@@ -30,6 +30,7 @@ import {
   headerListFromHeaders,
   headersFromHeaderList,
 } from "ext:deno_fetch/20_headers.js";
+import { markNotSerializable } from "ext:deno_web/13_message_port.js";
 const {
   ArrayPrototypeMap,
   ArrayPrototypePush,
@@ -446,6 +447,7 @@ ObjectDefineProperties(Response, {
   error: { __proto__: null, enumerable: true },
 });
 const ResponsePrototype = Response.prototype;
+markNotSerializable(ResponsePrototype);
 mixinBody(ResponsePrototype, _body, _mimeType);
 
 webidl.converters["Response"] = webidl.createInterfaceConverter(

@@ -336,7 +336,11 @@ fn generate_coverage_report(
         }
       }
 
-      // We reset the count if any block with a zero count overlaps with the line range.
+      // Reset the count if a zero-count range overlaps the line and reaches
+      // at least one edge (start or end) of the line. A zero-count range
+      // floating in the middle of a line (not reaching either edge) is
+      // typically just a tiny gap between blocks (e.g. the unreachable path
+      // between catch's return and finally) and should not zero out the line.
       for function in &options.script_coverage.functions {
         for range in &function.ranges {
           if range.count > 0 {
@@ -345,7 +349,9 @@ fn generate_coverage_report(
 
           let overlaps = range.start_char_offset < line_end_char_offset
             && range.end_char_offset > line_start_char_offset;
-          if overlaps {
+          let reaches_edge = range.start_char_offset <= line_start_char_offset
+            || range.end_char_offset >= line_end_char_offset;
+          if overlaps && reaches_edge {
             count = 0;
           }
         }

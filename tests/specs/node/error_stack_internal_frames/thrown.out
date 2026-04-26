@@ -1,6 +1,6 @@
 error: Uncaught Error: ENOENT: no such file or directory, open '/non/existent/file'
   readFileSync("/non/existent/file");
   ^
-    at readFileSync (ext:deno_node/_fs/_fs_readFile.ts:[WILDCARD])
+    at readFileSync (node:fs:[WILDCARD])
     at [WILDCARD]thrown.ts:5:3
     at processTicksAndRejections (ext:core/01_core.js:[WILDCARD])

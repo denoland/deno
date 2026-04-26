@@ -184,15 +184,10 @@
     "readable-stream.html": {
       "expectedFailures": [
         "cancel should be propagated to the original",
-        "cancel should abort a pending read()",
-        "transferring a non-serializable chunk should error both sides"
+        "cancel should abort a pending read()"
       ]
     },
-    "reason.html": {
-      "expectedFailures": [
-        "DOMException errors should be preserved"
-      ]
-    },
+    "reason.html": true,
     "service-worker.https.html": false,
     "shared-worker.html": false,
     "transform-stream-members.any.html": true,
@@ -204,10 +199,6 @@
       ]
     },
     "worker.html": true,
-    "writable-stream.html": {
-      "expectedFailures": [
-        "writing a unclonable object should error the stream"
-      ]
-    }
+    "writable-stream.html": true
   }
 }

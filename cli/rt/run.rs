@@ -46,8 +46,8 @@ use deno_lib::worker::LibMainWorkerOptions;
 use deno_lib::worker::ModuleLoaderFactory;
 use deno_lib::worker::StorageKeyResolver;
 use deno_media_type::MediaType;
-use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm::resolution::NpmResolutionSnapshot;
+use deno_npmrc::ResolvedNpmRc;
 use deno_package_json::PackageJsonDepValue;
 use deno_resolver::DenoResolveErrorKind;
 use deno_resolver::cjs::CjsTracker;
@@ -90,6 +90,7 @@ use node_resolver::analyze::CjsModuleExportAnalyzer;
 use node_resolver::analyze::NodeCodeTranslator;
 use node_resolver::cache::NodeResolutionSys;
 use node_resolver::errors::PackageJsonLoadError;
+use sys_traits::EnvCurrentDir;
 
 use crate::binary::DenoCompileModuleSource;
 use crate::binary::StandaloneData;
@@ -165,9 +166,12 @@ impl ModuleLoader for EmbeddedModuleLoader {
     _kind: ResolutionKind,
   ) -> Result<Url, ModuleLoaderError> {
     let referrer = if referrer == "." {
-      #[allow(clippy::disallowed_methods)] // ok to use current_dir here
+      #[allow(
+        clippy::disallowed_methods,
+        reason = "ok to use current_dir here"
+      )]
       let current_dir =
-        std::env::current_dir().map_err(JsErrorBox::from_err)?;
+        self.sys.env_current_dir().map_err(JsErrorBox::from_err)?;
       deno_core::resolve_path(".", &current_dir)
         .map_err(JsErrorBox::from_err)?
     } else {
@@ -714,6 +718,7 @@ impl ModuleLoaderFactory for StandaloneModuleLoaderFactory {
 }
 
 struct StandaloneRootCertStoreProvider {
+  sys: DenoRtSys,
   ca_stores: Option<Vec<String>>,
   ca_data: Option<CaData>,
   cell: OnceLock<Result<RootCertStore, RootCertStoreLoadError>>,
@@ -725,7 +730,12 @@ impl RootCertStoreProvider for StandaloneRootCertStoreProvider {
       .cell
       // get_or_try_init was not stable yet when this was written
       .get_or_init(|| {
-        get_root_cert_store(None, self.ca_stores.clone(), self.ca_data.clone())
+        get_root_cert_store(
+          &self.sys,
+          None,
+          self.ca_stores.clone(),
+          self.ca_data.clone(),
+        )
       })
       .as_ref()
       .map_err(|err| JsErrorBox::from_err(err.clone()))
@@ -746,6 +756,7 @@ pub async fn run(
   } = data;
 
   let root_cert_store_provider = Arc::new(StandaloneRootCertStoreProvider {
+    sys: sys.clone(),
     ca_stores: metadata.ca_stores,
     ca_data: metadata.ca_data.map(CaData::Bytes),
     cell: Default::default(),
@@ -781,7 +792,7 @@ pub async fn run(
     Some(NodeModules::Managed { node_modules_dir }) => {
       // create an npmrc that uses the fake npm_registry_url to resolve packages
       let npmrc = Arc::new(ResolvedNpmRc {
-        default_config: deno_npm::npm_rc::RegistryConfigWithUrl {
+        default_config: deno_npmrc::RegistryConfigWithUrl {
           registry_url: npm_registry_url.clone(),
           config: Default::default(),
         },
@@ -809,7 +820,7 @@ pub async fn run(
         NpmResolverCreateOptions::Managed(ManagedNpmResolverCreateOptions {
           npm_resolution,
           npm_cache_dir,
-          sys: sys.clone(),
+          sys: node_resolution_sys.clone(),
           maybe_node_modules_path,
           npm_system_info: Default::default(),
           npmrc,
@@ -854,7 +865,7 @@ pub async fn run(
       let npm_resolver = NpmResolver::<DenoRtSys>::new::<DenoRtSys>(
         NpmResolverCreateOptions::Managed(ManagedNpmResolverCreateOptions {
           npm_resolution,
-          sys: sys.clone(),
+          sys: node_resolution_sys.clone(),
           npm_cache_dir,
           maybe_node_modules_path: None,
           npm_system_info: Default::default(),
@@ -1129,8 +1140,8 @@ fn create_default_npmrc() -> Arc<ResolvedNpmRc> {
   // this is fine because multiple registries are combined into
   // one when compiling the binary
   Arc::new(ResolvedNpmRc {
-    default_config: deno_npm::npm_rc::RegistryConfigWithUrl {
-      registry_url: Url::parse("https://registry.npmjs.org").unwrap(),
+    default_config: deno_npmrc::RegistryConfigWithUrl {
+      registry_url: Url::parse(deno_npmrc::NPM_DEFAULT_REGISTRY).unwrap(),
       config: Default::default(),
     },
     scopes: Default::default(),

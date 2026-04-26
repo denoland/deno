@@ -89,7 +89,10 @@ where
       let handle = tokio::runtime::Handle::current();
       let runtime_monitor = RuntimeMonitor::new(&handle);
       tokio::spawn(async move {
-        #[allow(clippy::print_stderr)]
+        #[allow(
+          clippy::print_stderr,
+          reason = "we actually want to output here"
+        )]
         for interval in runtime_monitor.intervals() {
           eprintln!("{:#?}", interval);
           // wait 500ms

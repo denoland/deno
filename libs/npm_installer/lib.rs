@@ -176,7 +176,7 @@ pub struct NpmInstaller<
 impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmInstallerSys>
   NpmInstaller<TNpmCacheHttpClient, TSys>
 {
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "construction")]
   pub fn new<TReporter: Reporter>(
     install_reporter: Option<Arc<dyn InstallReporter>>,
     lifecycle_scripts_executor: Arc<dyn LifecycleScriptsExecutor>,

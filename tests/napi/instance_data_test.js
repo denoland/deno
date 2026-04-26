@@ -27,9 +27,9 @@ if (import.meta.main) {
     assertEquals(code, 0);
 
     const stdoutText = new TextDecoder().decode(stdout);
-    const stdoutLines = stdoutText.split("\n");
-    assertEquals(stdoutLines.length, 3);
-    assertEquals(stdoutLines[0], "set instance data");
-    assertEquals(stdoutLines[1], "instance_data_free(42)");
+    assertEquals(
+      stdoutText,
+      "set instance data\ninstance_data_free(42)\n",
+    );
   });
 }

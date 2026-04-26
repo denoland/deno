@@ -25,10 +25,11 @@ mod util;
 mod worker;
 
 pub(crate) mod sys {
-  #[allow(clippy::disallowed_types)] // ok, definition
+  #[allow(clippy::disallowed_types, reason = "definition")]
   pub type CliSys = sys_traits::impls::RealSys;
 }
 
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::env;
 use std::future::Future;
@@ -415,7 +416,7 @@ async fn run_subcommand(
           // this is set in order to ensure spawned processes use the same
           // coverage directory
 
-          #[allow(clippy::undocumented_unsafe_blocks)]
+          // SAFETY: called during single-threaded CLI startup
           unsafe {
             env::set_var(
               "DENO_COVERAGE_DIR",
@@ -513,7 +514,7 @@ fn should_fallback_on_run_error(script_err: &str) -> bool {
   re.is_match(script_err)
 }
 
-#[allow(clippy::print_stderr)]
+#[allow(clippy::print_stderr, reason = "panic hook")]
 fn setup_panic_hook() {
   // This function does two things inside of the panic hook:
   // - Tokio does not exit the process when a task panics, so we define a custom
@@ -662,7 +663,10 @@ pub fn main() {
       (None, None, None);
 
     let args = waited_args.unwrap_or(args);
-    #[allow(clippy::disallowed_methods)] // ok because initialization of cwd
+    #[allow(
+      clippy::disallowed_methods,
+      reason = "ok because initialization of cwd"
+    )]
     let initial_cwd =
       waited_cwd
         .map(Some)
@@ -732,13 +736,23 @@ async fn resolve_flags_and_init(
   if flags.subcommand.watch_flags().is_some() {
     WatchEnvTracker::snapshot();
   }
-  let env_file_paths: Option<Vec<std::path::PathBuf>> = flags
-    .env_file
-    .as_ref()
-    .map(|files| files.iter().map(PathBuf::from).collect());
-  load_env_variables_from_env_files(env_file_paths.as_ref(), flags.log_level);
 
-  if deno_lib::args::has_flag_env_var("DENO_CONNECTED") {
+  if let Some(files) = &flags.env_file {
+    let cwd = match &flags.initial_cwd {
+      Some(cwd) => Cow::Borrowed(cwd),
+      None => match resolve_cwd(None) {
+        Ok(cwd) => {
+          flags.initial_cwd = Some(cwd.into_owned());
+          Cow::Borrowed(flags.initial_cwd.as_ref().unwrap())
+        }
+        Err(_) => Cow::Owned(PathBuf::from(".")),
+      },
+    };
+    load_env_variables_from_env_files(&cwd, files, flags.log_level);
+  }
+
+  let sys = crate::sys::CliSys::default();
+  if deno_lib::args::has_flag_env_var(&sys, "DENO_CONNECTED") {
     flags.tunnel = true;
   }
 
@@ -756,7 +770,7 @@ async fn resolve_flags_and_init(
     }
   }
 
-  flags.unstable_config.fill_with_env();
+  flags.unstable_config.fill_with_env(&sys);
   if std::env::var("DENO_COMPAT").is_ok() {
     flags.unstable_config.enable_node_compat();
   }
@@ -772,6 +786,7 @@ async fn resolve_flags_and_init(
   let otel_config = flags.otel_config();
   init_logging(flags.log_level, Some(otel_config.clone()));
   deno_telemetry::init(
+    &sys,
     deno_lib::version::otel_runtime_config(),
     otel_config.clone(),
   )?;
@@ -869,7 +884,7 @@ fn init_logging(
 }
 
 #[cfg(unix)]
-#[allow(clippy::type_complexity)]
+#[allow(clippy::type_complexity, reason = "private code")]
 fn wait_for_start(
   args: &[std::ffi::OsString],
   roots: LibWorkerFactoryRoots,
@@ -884,10 +899,8 @@ fn wait_for_start(
   let startup_snapshot = deno_snapshots::CLI_SNAPSHOT?;
   let addr = std::env::var("DENO_UNSTABLE_CONTROL_SOCK").ok()?;
 
-  #[allow(clippy::undocumented_unsafe_blocks)]
-  unsafe {
-    std::env::remove_var("DENO_UNSTABLE_CONTROL_SOCK")
-  };
+  // SAFETY: single-threaded at this point in startup
+  unsafe { std::env::remove_var("DENO_UNSTABLE_CONTROL_SOCK") };
 
   let argv0 = args[0].clone();
 
@@ -1052,7 +1065,6 @@ async fn auth_tunnel(
   Ok(output)
 }
 
-#[allow(clippy::print_stderr)]
 async fn initialize_tunnel(
   flags: &Flags,
 ) -> Result<(), deno_core::anyhow::Error> {
@@ -1157,10 +1169,13 @@ async fn initialize_tunnel(
 
         // We explicitly use eprintln instead of log here since
         // there is a circular dep between tunnel and telemetry
-        eprintln!(
-          "{}",
-          colors::green(format!("You are connected to {endpoint}"))
-        );
+        #[allow(clippy::print_stderr, reason = "can't use log crate yet")]
+        {
+          eprintln!(
+            "{}",
+            colors::green(format!("You are connected to {endpoint}"))
+          );
+        }
       }
       Event::Reconnect(duration, reason) => {
         let reason = if let Some(reason) = reason {
@@ -1170,14 +1185,17 @@ async fn initialize_tunnel(
         };
         // We explicitly use eprintln instead of log here since
         // there is a circular dep between tunnel and telemetry
-        eprintln!(
-          "{}",
-          colors::green(format!(
-            "Reconnecting tunnel in {}s...{}",
-            duration.as_secs(),
-            reason
-          ))
-        );
+        #[allow(clippy::print_stderr, reason = "can't use log crate yet")]
+        {
+          eprintln!(
+            "{}",
+            colors::green(format!(
+              "Reconnecting tunnel in {}s...{}",
+              duration.as_secs(),
+              reason
+            ))
+          );
+        }
       }
       _ => {}
     }

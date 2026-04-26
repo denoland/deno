@@ -34,10 +34,13 @@ use rsa::Oaep;
 use rsa::Pkcs1v15Encrypt;
 use rsa::RsaPrivateKey;
 use rsa::RsaPublicKey;
+use rsa::hazmat::rsa_decrypt_and_check;
+use rsa::hazmat::rsa_encrypt;
 use rsa::pkcs1::DecodeRsaPrivateKey;
 use rsa::pkcs1::DecodeRsaPublicKey;
 use rsa::pkcs8::DecodePrivateKey;
 use rsa::pkcs8::DecodePublicKey;
+use rsa::traits::PublicKeyParts;
 
 pub mod cipher;
 pub(crate) mod dh;
@@ -93,6 +96,7 @@ deno_core::extension!(
     op_node_pbkdf2_validate,
     op_node_private_decrypt,
     op_node_private_encrypt,
+    op_node_public_decrypt,
     op_node_public_encrypt,
     op_node_random_int,
     op_node_scrypt_async,
@@ -173,6 +177,8 @@ deno_core::extension!(
     x509::op_node_x509_check_private_key,
     x509::op_node_x509_verify,
     x509::op_node_x509_get_info_access,
+    x509::op_node_x509_get_signature_algorithm_name,
+    x509::op_node_x509_get_signature_algorithm_oid,
     x509::op_node_x509_to_legacy_object,
   ],
   objects = [digest::Hasher,],
@@ -292,6 +298,75 @@ pub enum PrivateEncryptDecryptError {
   #[class(type)]
   #[error("Unknown padding")]
   UnknownPadding,
+  #[class(generic)]
+  #[error("Invalid digest used")]
+  InvalidDigest,
+}
+
+/// PKCS#1 v1.5 type 1 padding for private key encryption (signing).
+/// EM = 0x00 || 0x01 || PS || 0x00 || M
+/// where PS is filled with 0xFF bytes and has length k - mLen - 3.
+fn pkcs1v15_type1_pad(
+  msg: &[u8],
+  k: usize,
+) -> Result<Vec<u8>, PrivateEncryptDecryptError> {
+  if msg.len() > k - 11 {
+    return Err(PrivateEncryptDecryptError::Rsa(rsa::Error::MessageTooLong));
+  }
+  let mut em = vec![0xffu8; k];
+  em[0] = 0;
+  em[1] = 1;
+  em[k - msg.len() - 1] = 0;
+  em[k - msg.len()..].copy_from_slice(msg);
+  Ok(em)
+}
+
+/// Remove PKCS#1 v1.5 type 1 padding.
+/// EM = 0x00 || 0x01 || PS (0xFF bytes) || 0x00 || M
+fn pkcs1v15_type1_unpad(
+  em: &[u8],
+  k: usize,
+) -> Result<Vec<u8>, PrivateEncryptDecryptError> {
+  if k < 11 || em.len() != k || em[0] != 0 || em[1] != 1 {
+    return Err(PrivateEncryptDecryptError::Rsa(rsa::Error::Decryption));
+  }
+  // Find the 0x00 separator after the 0xFF padding
+  let mut sep = None;
+  for (i, &byte) in em.iter().enumerate().take(k).skip(2) {
+    if byte == 0 {
+      sep = Some(i);
+      break;
+    }
+    if byte != 0xff {
+      return Err(PrivateEncryptDecryptError::Rsa(rsa::Error::Decryption));
+    }
+  }
+  let sep =
+    sep.ok_or(PrivateEncryptDecryptError::Rsa(rsa::Error::Decryption))?;
+  if sep < 10 {
+    // PS must be at least 8 bytes
+    return Err(PrivateEncryptDecryptError::Rsa(rsa::Error::Decryption));
+  }
+  Ok(em[sep + 1..].to_vec())
+}
+
+fn create_oaep(
+  hash: Option<&str>,
+  label: Option<&[u8]>,
+) -> Result<Oaep, PrivateEncryptDecryptError> {
+  let hash = hash.unwrap_or("sha1");
+  let mut oaep = digest::match_fixed_digest!(hash, fn <D>() {
+    Oaep::new::<D>()
+  }, _ => {
+    return Err(PrivateEncryptDecryptError::InvalidDigest);
+  });
+  if let Some(label) = label {
+    // The rsa crate stores the label as String but only uses
+    // .as_bytes() on it, so the UTF-8 invariant is not relied upon.
+    // SAFETY: label bytes are only ever hashed, never interpreted as text.
+    oaep.label = Some(unsafe { String::from_utf8_unchecked(label.to_vec()) });
+  }
+  Ok(oaep)
 }
 
 #[op2]
@@ -299,6 +374,8 @@ pub fn op_node_private_encrypt(
   #[serde] key: StringOrBuffer,
   #[serde] msg: StringOrBuffer,
   #[smi] padding: u32,
+  #[string] oaep_hash: Option<String>,
+  #[serde] oaep_label: Option<JsBuffer>,
 ) -> Result<Uint8Array, PrivateEncryptDecryptError> {
   let key = match std::str::from_utf8(&key) {
     Ok(pem) => RsaPrivateKey::from_pkcs8_pem(pem)
@@ -309,20 +386,25 @@ pub fn op_node_private_encrypt(
     })?,
   };
 
+  let k = key.size();
   let mut rng = rand::thread_rng();
   match padding {
-    1 => Ok(
-      key
-        .as_ref()
-        .encrypt(&mut rng, Pkcs1v15Encrypt, &msg)?
-        .into(),
-    ),
-    4 => Ok(
-      key
-        .as_ref()
-        .encrypt(&mut rng, Oaep::new::<sha1::Sha1>(), &msg)?
-        .into(),
-    ),
+    1 => {
+      // PKCS1 type 1 padding + raw RSA private key operation
+      let em = pkcs1v15_type1_pad(&msg, k)?;
+      let int = num_bigint_dig::BigUint::from_bytes_be(&em);
+      let result = rsa_decrypt_and_check(&key, Some(&mut rng), &int)?;
+      let mut result_bytes = result.to_bytes_be();
+      // Left-pad with zeros to key size
+      while result_bytes.len() < k {
+        result_bytes.insert(0, 0);
+      }
+      Ok(result_bytes.into())
+    }
+    4 => {
+      let oaep = create_oaep(oaep_hash.as_deref(), oaep_label.as_deref())?;
+      Ok(key.as_ref().encrypt(&mut rng, oaep, &msg)?.into())
+    }
     _ => Err(PrivateEncryptDecryptError::UnknownPadding),
   }
 }
@@ -332,6 +414,8 @@ pub fn op_node_private_decrypt(
   #[serde] key: StringOrBuffer,
   #[serde] msg: StringOrBuffer,
   #[smi] padding: u32,
+  #[string] oaep_hash: Option<String>,
+  #[serde] oaep_label: Option<JsBuffer>,
 ) -> Result<Uint8Array, PrivateEncryptDecryptError> {
   let key = match std::str::from_utf8(&key) {
     Ok(pem) => RsaPrivateKey::from_pkcs8_pem(pem)
@@ -344,7 +428,10 @@ pub fn op_node_private_decrypt(
 
   match padding {
     1 => Ok(key.decrypt(Pkcs1v15Encrypt, &msg)?.into()),
-    4 => Ok(key.decrypt(Oaep::new::<sha1::Sha1>(), &msg)?.into()),
+    4 => {
+      let oaep = create_oaep(oaep_hash.as_deref(), oaep_label.as_deref())?;
+      Ok(key.decrypt(oaep, &msg)?.into())
+    }
     _ => Err(PrivateEncryptDecryptError::UnknownPadding),
   }
 }
@@ -354,24 +441,95 @@ pub fn op_node_public_encrypt(
   #[serde] key: StringOrBuffer,
   #[serde] msg: StringOrBuffer,
   #[smi] padding: u32,
+  #[string] oaep_hash: Option<String>,
+  #[serde] oaep_label: Option<JsBuffer>,
 ) -> Result<Uint8Array, PrivateEncryptDecryptError> {
   let key = match std::str::from_utf8(&key) {
     Ok(pem) => RsaPublicKey::from_public_key_pem(pem)
       .or_else(|_| rsa::pkcs1::DecodeRsaPublicKey::from_pkcs1_pem(pem))
+      .or_else(|_| {
+        RsaPrivateKey::from_pkcs8_pem(pem)
+          .or_else(|_| {
+            rsa::pkcs1::DecodeRsaPrivateKey::from_pkcs1_pem(pem)
+              .map_err(pkcs8::Error::from)
+          })
+          .map(|k| k.to_public_key())
+      })
       .map_err(|e| PrivateEncryptDecryptError::Spki(e.into()))?,
-    Err(_) => RsaPublicKey::from_public_key_der(&key).or_else(|_| {
-      RsaPublicKey::from_pkcs1_der(&key).map_err(spki::Error::from)
-    })?,
+    Err(_) => RsaPublicKey::from_public_key_der(&key)
+      .or_else(|_| {
+        RsaPublicKey::from_pkcs1_der(&key).map_err(spki::Error::from)
+      })
+      .or_else(|_| {
+        RsaPrivateKey::from_pkcs8_der(&key)
+          .or_else(|_| {
+            RsaPrivateKey::from_pkcs1_der(&key).map_err(pkcs8::Error::from)
+          })
+          .map(|k| k.to_public_key())
+          .map_err(spki::Error::from)
+      })?,
   };
 
   let mut rng = rand::thread_rng();
   match padding {
     1 => Ok(key.encrypt(&mut rng, Pkcs1v15Encrypt, &msg)?.into()),
-    4 => Ok(
-      key
-        .encrypt(&mut rng, Oaep::new::<sha1::Sha1>(), &msg)?
-        .into(),
-    ),
+    4 => {
+      let oaep = create_oaep(oaep_hash.as_deref(), oaep_label.as_deref())?;
+      Ok(key.encrypt(&mut rng, oaep, &msg)?.into())
+    }
+    _ => Err(PrivateEncryptDecryptError::UnknownPadding),
+  }
+}
+
+#[op2]
+pub fn op_node_public_decrypt(
+  #[serde] key: StringOrBuffer,
+  #[serde] msg: StringOrBuffer,
+  #[smi] padding: u32,
+) -> Result<Uint8Array, PrivateEncryptDecryptError> {
+  let key = match std::str::from_utf8(&key) {
+    Ok(pem) => RsaPublicKey::from_public_key_pem(pem)
+      .or_else(|_| rsa::pkcs1::DecodeRsaPublicKey::from_pkcs1_pem(pem))
+      .or_else(|_| {
+        RsaPrivateKey::from_pkcs8_pem(pem)
+          .or_else(|_| {
+            rsa::pkcs1::DecodeRsaPrivateKey::from_pkcs1_pem(pem)
+              .map_err(pkcs8::Error::from)
+          })
+          .map(|k| k.to_public_key())
+      })
+      .map_err(|e| PrivateEncryptDecryptError::Spki(e.into()))?,
+    Err(_) => RsaPublicKey::from_public_key_der(&key)
+      .or_else(|_| {
+        RsaPublicKey::from_pkcs1_der(&key).map_err(spki::Error::from)
+      })
+      .or_else(|_| {
+        RsaPrivateKey::from_pkcs8_der(&key)
+          .or_else(|_| {
+            RsaPrivateKey::from_pkcs1_der(&key).map_err(pkcs8::Error::from)
+          })
+          .map(|k| k.to_public_key())
+          .map_err(spki::Error::from)
+      })?,
+  };
+
+  let k = key.size();
+  match padding {
+    1 => {
+      // Raw RSA with public key, then remove PKCS1 type 1 padding
+      let int = num_bigint_dig::BigUint::from_bytes_be(&msg);
+      let result = rsa_encrypt(&key, &int)?;
+      let mut em = result.to_bytes_be();
+      // Left-pad with zeros to key size
+      while em.len() < k {
+        em.insert(0, 0);
+      }
+      Ok(pkcs1v15_type1_unpad(&em, k)?.into())
+    }
+    4 => {
+      // OAEP not supported for public decrypt
+      Err(PrivateEncryptDecryptError::UnknownPadding)
+    }
     _ => Err(PrivateEncryptDecryptError::UnknownPadding),
   }
 }
@@ -531,7 +689,7 @@ pub fn op_node_sign(
   #[cppgc] handle: &KeyObjectHandle,
   #[buffer] digest: &[u8],
   #[string] digest_type: &str,
-  #[smi] pss_salt_length: Option<u32>,
+  #[smi] pss_salt_length: Option<i32>,
   #[smi] padding: Option<u32>,
   #[smi] dsa_signature_encoding: u32,
 ) -> Result<Box<[u8]>, sign::KeyObjectHandlePrehashedSignAndVerifyError> {
@@ -550,7 +708,7 @@ pub fn op_node_verify(
   #[buffer] digest: &[u8],
   #[string] digest_type: &str,
   #[buffer] signature: &[u8],
-  #[smi] pss_salt_length: Option<u32>,
+  #[smi] pss_salt_length: Option<i32>,
   #[smi] padding: Option<u32>,
   #[smi] dsa_signature_encoding: u32,
 ) -> Result<bool, sign::KeyObjectHandlePrehashedSignAndVerifyError> {
@@ -565,7 +723,7 @@ pub fn op_node_verify(
 }
 
 #[derive(Debug, PartialEq, Eq)]
-#[allow(non_camel_case_types)]
+#[allow(non_camel_case_types, reason = "matches Node.js error code naming")]
 enum ErrorCode {
   ERR_CRYPTO_INVALID_DIGEST,
 }
@@ -781,7 +939,7 @@ pub fn op_node_random_int(#[number] min: i64, #[number] max: i64) -> i64 {
   dist.sample(&mut rng)
 }
 
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, reason = "all arguments are needed")]
 fn scrypt(
   password: StringOrBuffer,
   salt: StringOrBuffer,
@@ -811,7 +969,7 @@ fn scrypt(
   }
 }
 
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, reason = "all arguments are needed")]
 #[op2]
 pub fn op_node_scrypt_sync(
   #[serde] password: StringOrBuffer,
@@ -1159,20 +1317,65 @@ pub fn op_node_ecdh_compute_public_key(
 }
 
 #[inline]
-fn gen_prime(size: usize) -> Uint8Array {
-  primes::Prime::generate(size).0.to_bytes_be().into()
+fn gen_prime(
+  size: usize,
+  safe: bool,
+  add: Option<&[u8]>,
+  rem: Option<&[u8]>,
+) -> Result<Uint8Array, GeneratePrimeError> {
+  if safe || add.is_some() || rem.is_some() {
+    let prime = primes::Prime::generate_with_options(size, safe, add, rem)?;
+    Ok(prime.0.to_bytes_be().into())
+  } else {
+    Ok(primes::Prime::generate(size).0.to_bytes_be().into())
+  }
+}
+
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+pub enum GeneratePrimeError {
+  #[class("ERR_OUT_OF_RANGE")]
+  #[error("invalid options.add")]
+  InvalidAdd,
+  #[class("ERR_OUT_OF_RANGE")]
+  #[error("invalid options.rem")]
+  InvalidRem,
+  #[class("ERR_OUT_OF_RANGE")]
+  #[error("prime generation failed: no suitable prime found in range")]
+  OutOfRange,
+  #[class(generic)]
+  #[error(transparent)]
+  JoinError(#[from] tokio::task::JoinError),
+}
+
+impl From<primes::GeneratePrimeError> for GeneratePrimeError {
+  fn from(e: primes::GeneratePrimeError) -> Self {
+    match e {
+      primes::GeneratePrimeError::InvalidAdd => GeneratePrimeError::InvalidAdd,
+      primes::GeneratePrimeError::InvalidRem => GeneratePrimeError::InvalidRem,
+      primes::GeneratePrimeError::OutOfRange => GeneratePrimeError::OutOfRange,
+    }
+  }
 }
 
 #[op2]
-pub fn op_node_gen_prime(#[number] size: usize) -> Uint8Array {
-  gen_prime(size)
+pub fn op_node_gen_prime(
+  #[number] size: usize,
+  safe: bool,
+  #[buffer] add: Option<JsBuffer>,
+  #[buffer] rem: Option<JsBuffer>,
+) -> Result<Uint8Array, GeneratePrimeError> {
+  gen_prime(size, safe, add.as_deref(), rem.as_deref())
 }
 
 #[op2]
 pub async fn op_node_gen_prime_async(
   #[number] size: usize,
-) -> Result<Uint8Array, tokio::task::JoinError> {
-  spawn_blocking(move || gen_prime(size)).await
+  safe: bool,
+  #[buffer] add: Option<JsBuffer>,
+  #[buffer] rem: Option<JsBuffer>,
+) -> Result<Uint8Array, GeneratePrimeError> {
+  spawn_blocking(move || gen_prime(size, safe, add.as_deref(), rem.as_deref()))
+    .await?
 }
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]

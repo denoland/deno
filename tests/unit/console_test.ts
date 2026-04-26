@@ -343,7 +343,7 @@ Deno.test(function consoleTestStringifyCircular() {
   debug: [Function: debug],
   info: [Function: info],
   dir: [Function: dir],
-  dirxml: [Function: dir],
+  dirxml: [Function: dirxml],
   warn: [Function: warn],
   error: [Function: error],
   assert: [Function: assert],
@@ -375,6 +375,27 @@ Deno.test(function consoleTestStringifyCircular() {
   );
   // test inspect is working the same
   assertEquals(stripAnsiCode(Deno.inspect(nestedObj)), nestedObjExpected);
+});
+
+Deno.test(function consoleTestStringifyToStringTagGetterThrows() {
+  // Symbol.toStringTag getter that throws should not crash console.log
+  // https://github.com/denoland/deno/issues/32894
+  class Circular {
+    self: Circular;
+    constructor() {
+      this.self = this;
+    }
+    get [Symbol.toStringTag]() {
+      // This throws due to circular reference
+      JSON.stringify(this);
+      return "Circular";
+    }
+  }
+  const obj = new Circular();
+  // Should not throw, should handle the error gracefully
+  const result = stringify(obj);
+  assertStringIncludes(result, "Circular");
+  assertStringIncludes(result, "[Circular");
 });
 
 Deno.test(function consoleTestStringifyMultipleCircular() {
@@ -1212,6 +1233,26 @@ Deno.test(function consoleTestWithObjectFormatSpecifier() {
     stringify("%o", { a: { b: { c: { d: new Set([1]) } } } }),
     "{\n  a: {\n    b: { c: { d: Set(1) { 1 } } }\n  }\n}",
   );
+});
+
+Deno.test(function consoleTestWithJsonFormatSpecifier() {
+  assertEquals(stringify("%j"), "%j");
+  assertEquals(stringify("%j", { foo: "bar" }), `{"foo":"bar"}`);
+  assertEquals(stringify("%j", 42), "42");
+  assertEquals(stringify("%j", "foo"), `"foo"`);
+  assertEquals(stringify("%j", null), "null");
+  assertEquals(stringify("%j", [1, 2, 3]), "[1,2,3]");
+  assertEquals(
+    stringify("%j %s", { foo: "bar" }, "Hello"),
+    `{"foo":"bar"} Hello`,
+  );
+  assertEquals(stringify("%j %j", { a: 1 }, { b: 2 }), `{"a":1} {"b":2}`);
+  // Circular reference
+  const circular: Record<string, unknown> = {};
+  circular.self = circular;
+  assertEquals(stringify("%j", circular), "[Circular]");
+  // Non-circular errors (e.g., BigInt) should be re-thrown
+  assertThrows(() => stringify("%j", BigInt(1)));
 });
 
 Deno.test(function consoleTestWithStyleSpecifier() {
@@ -2074,15 +2115,16 @@ Deno.test(function consoleDir() {
   });
 });
 
-// console.dir test
+// console.dirxml forwards to log per the WHATWG console spec; extra args
+// are passed through like log, not interpreted as dir-style options.
 Deno.test(function consoleDirXml() {
   mockConsole((console, out) => {
     console.dirxml("DIRXML");
     assertEquals(out.toString(), "DIRXML\n");
   });
   mockConsole((console, out) => {
-    console.dirxml("DIRXML", { indentLevel: 2 });
-    assertEquals(out.toString(), "    DIRXML\n");
+    console.dirxml("DIRXML", "extra");
+    assertEquals(out.toString(), "DIRXML extra\n");
   });
 });
 
@@ -2334,6 +2376,36 @@ Deno.test(function inspectProxy() {
       }),
     )),
     "{}",
+  );
+});
+
+Deno.test(function inspectProxyWithNodeCustomInspect() {
+  // Proxy that hides symbols from `has`/`ownKeys` but exposes them via `get`.
+  // This pattern is used by nodejs-polars DataFrames (issue #33236).
+  const nodeInspect = Symbol.for("nodejs.util.inspect.custom");
+  const target = {
+    [nodeInspect]() {
+      return "custom proxy output";
+    },
+  };
+  const proxy = new Proxy(target, {
+    has(_t, p) {
+      return typeof p === "string" && p === "x";
+    },
+    ownKeys() {
+      return ["x"];
+    },
+    getOwnPropertyDescriptor(_t, p) {
+      if (p === "x") return { configurable: true, enumerable: true, value: 1 };
+      return undefined;
+    },
+    get(t, p, r) {
+      return Reflect.get(t, p, r);
+    },
+  });
+  assertEquals(
+    stripAnsiCode(Deno.inspect(proxy)),
+    "custom proxy output",
   );
 });
 

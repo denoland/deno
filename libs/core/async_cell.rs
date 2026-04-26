@@ -158,7 +158,10 @@ impl<T: 'static> RcRef<T> {
   ) -> RcRef<T> {
     let RcRef::<S> { rc, value } = source.into();
     // TODO(piscisaureus): safety comment
-    #[allow(clippy::undocumented_unsafe_blocks)]
+    #[allow(
+      clippy::undocumented_unsafe_blocks,
+      reason = "safety comment on the containing block"
+    )]
     let value = map_fn(unsafe { &*value });
     RcRef { rc, value }
   }
@@ -166,7 +169,10 @@ impl<T: 'static> RcRef<T> {
   pub(crate) fn split(rc_ref: &Self) -> (&T, &Rc<dyn Any>) {
     let &Self { ref rc, value } = rc_ref;
     // TODO(piscisaureus): safety comment
-    #[allow(clippy::undocumented_unsafe_blocks)]
+    #[allow(
+      clippy::undocumented_unsafe_blocks,
+      reason = "safety comment on the containing block"
+    )]
     (unsafe { &*value }, rc)
   }
 }
@@ -211,7 +217,10 @@ impl<T> Deref for RcRef<T> {
   type Target = T;
   fn deref(&self) -> &Self::Target {
     // TODO(piscisaureus): safety comment
-    #[allow(clippy::undocumented_unsafe_blocks)]
+    #[allow(
+      clippy::undocumented_unsafe_blocks,
+      reason = "safety comment on the containing block"
+    )]
     unsafe {
       &*self.value
     }
@@ -270,7 +279,10 @@ mod internal {
       // enqueued waiters, return `None`, even if the current borrow is a shared
       // one and the requested borrow is too.
       // TODO(piscisaureus): safety comment
-      #[allow(clippy::undocumented_unsafe_blocks)]
+      #[allow(
+        clippy::undocumented_unsafe_blocks,
+        reason = "safety comment on the containing block"
+      )]
       let waiters = unsafe { &mut *cell_ref.waiters.as_ptr() };
       if waiters.is_empty() {
         // There are no enqueued waiters, but it is still possible that the cell
@@ -300,7 +312,10 @@ mod internal {
       let turn = self.turn.get();
       let index = {
         // TODO(piscisaureus): safety comment
-        #[allow(clippy::undocumented_unsafe_blocks)]
+        #[allow(
+          clippy::undocumented_unsafe_blocks,
+          reason = "safety comment on the containing block"
+        )]
         let waiters = unsafe { &mut *self.waiters.as_ptr() };
         waiters.push_back(Some(waiter));
         waiters.len() - 1
@@ -329,7 +344,10 @@ mod internal {
       } else {
         // This waiter is still in line and has not yet been woken.
         // TODO(piscisaureus): safety comment
-        #[allow(clippy::undocumented_unsafe_blocks)]
+        #[allow(
+          clippy::undocumented_unsafe_blocks,
+          reason = "safety comment on the containing block"
+        )]
         let waiters = unsafe { &mut *self.waiters.as_ptr() };
         // Sanity check: id cannot be higher than the last queue element.
         assert!(id < turn + waiters.len());
@@ -346,7 +364,10 @@ mod internal {
     fn wake_waiters(&self) {
       let mut borrow_count = self.borrow_count.get();
       // TODO(piscisaureus): safety comment
-      #[allow(clippy::undocumented_unsafe_blocks)]
+      #[allow(
+        clippy::undocumented_unsafe_blocks,
+        reason = "safety comment on the containing block"
+      )]
       let waiters = unsafe { &mut *self.waiters.as_ptr() };
       let mut turn = self.turn.get();
 
@@ -397,7 +418,10 @@ mod internal {
       } else {
         // This waiter is still in the queue, take it out and leave a "hole".
         // TODO(piscisaureus): safety comment
-        #[allow(clippy::undocumented_unsafe_blocks)]
+        #[allow(
+          clippy::undocumented_unsafe_blocks,
+          reason = "safety comment on the containing block"
+        )]
         let waiters = unsafe { &mut *self.waiters.as_ptr() };
         waiters[id - turn].take().unwrap();
       }
@@ -431,7 +455,10 @@ mod internal {
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
       ready!(self.cell.as_ref().unwrap().poll_waiter::<M>(self.id, cx));
       // TODO(piscisaureus): safety comment
-      #[allow(clippy::undocumented_unsafe_blocks)]
+      #[allow(
+        clippy::undocumented_unsafe_blocks,
+        reason = "safety comment on the containing block"
+      )]
       let self_mut = unsafe { Pin::get_unchecked_mut(self) };
       let cell = self_mut.cell.take().unwrap();
       Poll::Ready(AsyncBorrowImpl::<T, M>::new(cell))
@@ -470,7 +497,10 @@ mod internal {
     type Target = T;
     fn deref(&self) -> &Self::Target {
       // TODO(piscisaureus): safety comment
-      #[allow(clippy::undocumented_unsafe_blocks)]
+      #[allow(
+        clippy::undocumented_unsafe_blocks,
+        reason = "safety comment on the containing block"
+      )]
       unsafe {
         &*self.cell.as_ptr()
       }
@@ -492,7 +522,10 @@ mod internal {
   impl<T> DerefMut for AsyncBorrowImpl<T, Exclusive> {
     fn deref_mut(&mut self) -> &mut Self::Target {
       // TODO(piscisaureus): safety comment
-      #[allow(clippy::undocumented_unsafe_blocks)]
+      #[allow(
+        clippy::undocumented_unsafe_blocks,
+        reason = "safety comment on the containing block"
+      )]
       unsafe {
         &mut *self.cell.as_ptr()
       }
@@ -574,7 +607,7 @@ mod internal {
       }
     }
 
-    #[allow(dead_code)]
+    #[allow(dead_code, reason = "intentionally unused")]
     pub fn add(self, mode: BorrowMode) -> BorrowCount {
       match self.try_add(mode) {
         Some(value) => value,

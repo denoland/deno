@@ -25,11 +25,12 @@ import {
   op_node_export_secret_key,
   op_node_private_decrypt,
   op_node_private_encrypt,
+  op_node_public_decrypt,
   op_node_public_encrypt,
 } from "ext:core/ops";
 
 import { Buffer } from "node:buffer";
-import { notImplemented } from "ext:deno_node/_utils.ts";
+import process from "node:process";
 import type { TransformOptions } from "ext:deno_node/_stream.d.ts";
 import { Transform } from "node:stream";
 import {
@@ -47,6 +48,7 @@ import { getDefaultEncoding } from "ext:deno_node/internal/crypto/util.ts";
 import {
   ERR_INVALID_ARG_VALUE,
   ERR_UNKNOWN_ENCODING,
+  NodeError,
 } from "ext:deno_node/internal/errors.ts";
 
 import {
@@ -59,6 +61,12 @@ import assert from "node:assert";
 import { normalizeEncoding } from "ext:deno_node/internal/util.mjs";
 
 const FastBuffer = Buffer[SymbolSpecies];
+
+function opensslError(code: string, reason: string): NodeError {
+  const err = new NodeError(code, reason);
+  (err as any).reason = reason;
+  return err;
+}
 
 export function isStringOrBuffer(
   val: unknown,
@@ -214,7 +222,7 @@ export function Cipheriv(
   this._needsBlockCache =
     !(cipher == "aes-128-gcm" || cipher == "aes-256-gcm" ||
       cipher == "aes-128-ctr" || cipher == "aes-192-ctr" ||
-      cipher == "aes-256-ctr");
+      cipher == "aes-256-ctr" || cipher == "chacha20-poly1305");
   this._authTag = undefined;
   this._autoPadding = true;
   this._finalized = false;
@@ -250,7 +258,10 @@ Cipheriv.prototype.final = function (
   }
 
   if (!this._autoPadding && this._cache.cache.byteLength != bs) {
-    throw new Error("Invalid final block size");
+    throw opensslError(
+      "ERR_OSSL_EVP_WRONG_FINAL_BLOCK_LENGTH",
+      "wrong final block length",
+    );
   }
   const maybeTag = op_node_cipheriv_final(
     this._context,
@@ -285,6 +296,9 @@ Cipheriv.prototype.setAAD = function (
     plaintextLength: number;
   },
 ) {
+  if (this._finalized) {
+    throw new ERR_CRYPTO_INVALID_STATE("setAAD");
+  }
   op_node_cipheriv_set_aad(this._context, buffer);
   return this;
 };
@@ -308,6 +322,12 @@ Cipheriv.prototype.update = function (
   if (typeof data === "string") {
     buf = Buffer.from(data, inputEncoding);
   }
+
+  // Match Node.js/OpenSSL behavior: reject inputs >= INT_MAX bytes
+  if (buf.length >= 2 ** 31 - 1) {
+    throw new Error("Trying to add data in unsupported state");
+  }
+
   _lazyInitCipherDecoder(this, outputEncoding);
 
   let output: Buffer;
@@ -454,7 +474,10 @@ export function Decipheriv(
   this._needsBlockCache =
     !(cipher == "aes-128-gcm" || cipher == "aes-256-gcm" ||
       cipher == "aes-128-ctr" || cipher == "aes-192-ctr" ||
-      cipher == "aes-256-ctr");
+      cipher == "aes-256-ctr" || cipher == "chacha20-poly1305");
+  this._isGcmMode = cipher == "aes-128-gcm" || cipher == "aes-192-gcm" ||
+    cipher == "aes-256-gcm";
+  this._authTagLength = authTagLength;
   this._authTag = undefined;
   this._finalized = false;
   this._decoder = undefined;
@@ -491,13 +514,19 @@ Decipheriv.prototype.final = function (
     return encoding === "buffer" ? Buffer.from([]) : "";
   }
   if (this._cache.cache.byteLength != bs) {
-    throw new Error("Invalid final block size");
+    throw opensslError(
+      "ERR_OSSL_EVP_WRONG_FINAL_BLOCK_LENGTH",
+      "wrong final block length",
+    );
   }
 
   if (this._autoPadding) {
     const padLen = buf.at(-1);
     if (padLen === 0 || padLen > bs) {
-      throw new Error("bad decrypt");
+      throw opensslError(
+        "ERR_OSSL_EVP_BAD_DECRYPT",
+        "bad decrypt",
+      );
     }
     buf = buf.subarray(0, bs - padLen); // Padded in Pkcs7 mode
   }
@@ -515,14 +544,37 @@ Decipheriv.prototype.setAAD = function (
     plaintextLength: number;
   },
 ) {
+  if (this._finalized) {
+    throw new ERR_CRYPTO_INVALID_STATE("setAAD");
+  }
   op_node_decipheriv_set_aad(this._context, buffer);
   return this;
 };
+
+let gcmShortTagDeprecationEmitted = false;
 
 Decipheriv.prototype.setAuthTag = function (
   buffer: BinaryLike,
   _encoding?: string,
 ) {
+  if (this._authTag) {
+    throw new ERR_CRYPTO_INVALID_STATE("setAuthTag");
+  }
+  // DEP0182: warn once per process when using a short GCM auth tag without
+  // an explicit `authTagLength` option at decipher creation time.
+  if (
+    this._isGcmMode && this._authTagLength === -1 &&
+    buffer.byteLength !== 16 && !gcmShortTagDeprecationEmitted
+  ) {
+    gcmShortTagDeprecationEmitted = true;
+    process.emitWarning(
+      "Using AES-GCM authentication tags of less than 128 bits without " +
+        "specifying the authTagLength option when initializing decryption " +
+        "is deprecated.",
+      "DeprecationWarning",
+      "DEP0182",
+    );
+  }
   op_node_decipheriv_auth_tag(this._context, buffer.byteLength);
   this._authTag = buffer;
   return this;
@@ -548,6 +600,12 @@ Decipheriv.prototype.update = function (
   if (typeof data === "string") {
     buf = Buffer.from(data, inputEncoding);
   }
+
+  // Match Node.js/OpenSSL behavior: reject inputs >= INT_MAX bytes
+  if (buf.length >= 2 ** 31 - 1) {
+    throw new Error("Trying to add data in unsupported state");
+  }
+
   _lazyInitDecipherDecoder(this, outputEncoding);
 
   let output;
@@ -594,37 +652,79 @@ function _lazyInitDecipherDecoder(self: any, encoding: string) {
   }
 }
 
+const ENCRYPT_UNSUPPORTED_KEY_TYPES = new Set([
+  "rsa-pss",
+  "dsa",
+  "ec",
+  "ed25519",
+  "ed448",
+  "x25519",
+  "x448",
+]);
+
+function checkUnsupportedKeyType(key) {
+  const keyType = isKeyObject(key)
+    ? key.asymmetricKeyType
+    : key?.key?.asymmetricKeyType;
+  if (keyType && ENCRYPT_UNSUPPORTED_KEY_TYPES.has(keyType)) {
+    throw new Error("operation not supported for this keytype");
+  }
+}
+
+function normalizeOaepHash(hash: string | undefined): string | undefined {
+  if (!hash) return undefined;
+  // Normalize to lowercase and strip WebCrypto-style hyphens
+  // (e.g. "SHA-256" -> "sha256") but keep sha3/sha512 sub-variants
+  // (e.g. "sha3-256", "sha512-224") intact.
+  return hash.toLowerCase().replace(/^(sha)-(?!3-)/, "$1");
+}
+
 export function privateEncrypt(
   privateKey: ArrayBufferView | string | KeyObject,
-  buffer: ArrayBufferView | string | KeyObject,
+  buffer: ArrayBufferView,
 ): Buffer {
+  checkUnsupportedKeyType(privateKey);
   const { data } = prepareKey(privateKey);
   const padding = privateKey.padding || 1;
+  const oaepHash = normalizeOaepHash(privateKey.oaepHash);
+  const oaepLabel = privateKey.oaepLabel || undefined;
 
   buffer = getArrayBufferOrView(buffer, "buffer");
-  return Buffer.from(op_node_private_encrypt(data, buffer, padding));
+  return Buffer.from(
+    op_node_private_encrypt(data, buffer, padding, oaepHash, oaepLabel),
+  );
 }
 
 export function privateDecrypt(
   privateKey: ArrayBufferView | string | KeyObject,
-  buffer: ArrayBufferView | string | KeyObject,
+  buffer: ArrayBufferView,
 ): Buffer {
+  checkUnsupportedKeyType(privateKey);
   const { data } = prepareKey(privateKey);
   const padding = privateKey.padding || 1;
+  const oaepHash = normalizeOaepHash(privateKey.oaepHash);
+  const oaepLabel = privateKey.oaepLabel || undefined;
 
   buffer = getArrayBufferOrView(buffer, "buffer");
-  return Buffer.from(op_node_private_decrypt(data, buffer, padding));
+  return Buffer.from(
+    op_node_private_decrypt(data, buffer, padding, oaepHash, oaepLabel),
+  );
 }
 
 export function publicEncrypt(
   publicKey: ArrayBufferView | string | KeyObject,
-  buffer: ArrayBufferView | string | KeyObject,
+  buffer: ArrayBufferView,
 ): Buffer {
+  checkUnsupportedKeyType(publicKey);
   const { data } = prepareKey(publicKey);
   const padding = publicKey.padding || 1;
+  const oaepHash = normalizeOaepHash(publicKey.oaepHash);
+  const oaepLabel = publicKey.oaepLabel || undefined;
 
   buffer = getArrayBufferOrView(buffer, "buffer");
-  return Buffer.from(op_node_public_encrypt(data, buffer, padding));
+  return Buffer.from(
+    op_node_public_encrypt(data, buffer, padding, oaepHash, oaepLabel),
+  );
 }
 
 export function prepareKey(key) {
@@ -640,6 +740,9 @@ export function prepareKey(key) {
     return { data: getArrayBufferOrView(data, "key") };
   } else if (typeof key == "object") {
     const { key: data, encoding } = key;
+    if (isKeyObject(data)) {
+      return prepareKey(data);
+    }
     if (!isStringOrBuffer(data)) {
       throw new TypeError("Invalid key type");
     }
@@ -650,8 +753,16 @@ export function prepareKey(key) {
   throw new TypeError("Invalid key type");
 }
 
-export function publicDecrypt() {
-  notImplemented("crypto.publicDecrypt");
+export function publicDecrypt(
+  publicKey: ArrayBufferView | string | KeyObject,
+  buffer: ArrayBufferView,
+): Buffer {
+  checkUnsupportedKeyType(publicKey);
+  const { data } = prepareKey(publicKey);
+  const padding = publicKey.padding || 1;
+
+  buffer = getArrayBufferOrView(buffer, "buffer");
+  return Buffer.from(op_node_public_decrypt(data, buffer, padding));
 }
 
 export default {

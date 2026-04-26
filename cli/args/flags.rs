@@ -269,9 +269,10 @@ pub struct CpuProfFlags {
   pub name: Option<String>,
   pub interval: Option<u32>,
   pub md: bool,
+  pub flamegraph: bool,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Default, Debug, Eq, PartialEq)]
 pub struct EvalFlags {
   pub print: bool,
   pub code: String,
@@ -570,6 +571,8 @@ pub struct UpgradeFlags {
   pub output: Option<String>,
   pub version_or_hash_or_channel: Option<String>,
   pub checksum: Option<String>,
+  pub pr: Option<u64>,
+  pub branch: Option<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -1902,7 +1905,7 @@ pub fn flags_from_vec_with_initial_cwd(
         "types" => types_parse(&mut flags, &mut m),
         "uninstall" => uninstall_parse(&mut flags, &mut m),
         "update" => outdated_parse(&mut flags, &mut m, true)?,
-        "upgrade" => upgrade_parse(&mut flags, &mut m),
+        "upgrade" => upgrade_parse(&mut flags, &mut m)?,
         "vendor" => vendor_parse(&mut flags, &mut m),
         "publish" => publish_parse(&mut flags, &mut m)?,
         "x" => x_parse(&mut flags, &mut m)?,
@@ -4497,8 +4500,13 @@ pub static UPGRADE_USAGE: &str = cstr!(
 
 <g>Channel</>
   <bold>deno upgrade</> <p(245)>stable</>
+  <bold>deno upgrade</> <p(245)>alpha</>
+  <bold>deno upgrade</> <p(245)>beta</>
   <bold>deno upgrade</> <p(245)>rc</>
-  <bold>deno upgrade</> <p(245)>canary</>"
+  <bold>deno upgrade</> <p(245)>canary</>
+
+<g>From a pull request</> <p(245)>(requires gh CLI)</>
+  <bold>deno upgrade</> <p(245)>pr 12345</>"
 );
 
 fn upgrade_subcommand() -> Command {
@@ -4571,7 +4579,7 @@ update to a different location, use the <c>--output</> flag:
       )
       .arg(
         Arg::new("version-or-hash-or-channel")
-          .help(cstr!("Version <p(245)>(v1.46.0)</>, channel <p(245)>(rc, canary)</> or commit hash <p(245)>(9bc2dd29ad6ba334fd57a20114e367d3c04763d4)</>"))
+          .help(cstr!("Version <p(245)>(v1.46.0)</>, channel <p(245)>(alpha, beta, rc, canary)</>, commit hash <p(245)>(9bc2dd29ad6ba334fd57a20114e367d3c04763d4)</>, or <p(245)>pr 12345</> to install from a PR"))
           .value_name("VERSION")
           .action(ArgAction::Append)
           .trailing_var_arg(true),
@@ -5471,14 +5479,14 @@ fn hmr_arg(takes_files: bool) -> Arg {
       .require_equals(true)
       .help(
         cstr!(
-        "Watch for file changes and restart process automatically.
+        "Watch for file changes and hot-replace modules. The process restarts if hot replacement fails.
   <p(245)>Local files from entry point module graph are watched by default.
   Additional paths might be watched by passing them as arguments to this flag.</>"),
       )
       .value_hint(ValueHint::AnyPath)
   } else {
     arg.action(ArgAction::SetTrue).help(cstr!(
-      "Watch for file changes and restart process automatically.
+      "Watch for file changes and hot-replace modules. The process restarts if hot replacement fails.
   <p(245)>Only local files from entry point module graph are watched.</>"
     ))
   }
@@ -5548,6 +5556,7 @@ fn cpu_prof_args(cmd: Command) -> Command {
     .arg(cpu_prof_name_arg())
     .arg(cpu_prof_interval_arg())
     .arg(cpu_prof_md_arg())
+    .arg(cpu_prof_flamegraph_arg())
 }
 
 fn cpu_prof_parse(matches: &mut ArgMatches) -> Option<CpuProfFlags> {
@@ -5556,12 +5565,20 @@ fn cpu_prof_parse(matches: &mut ArgMatches) -> Option<CpuProfFlags> {
   let name = matches.remove_one::<String>("cpu-prof-name");
   let interval = matches.remove_one::<u32>("cpu-prof-interval");
   let md = matches.get_flag("cpu-prof-md");
-  if enabled || dir.is_some() || name.is_some() || interval.is_some() || md {
+  let flamegraph = matches.get_flag("cpu-prof-flamegraph");
+  if enabled
+    || dir.is_some()
+    || name.is_some()
+    || interval.is_some()
+    || md
+    || flamegraph
+  {
     Some(CpuProfFlags {
       dir,
       name,
       interval,
       md,
+      flamegraph,
     })
   } else {
     None
@@ -5604,6 +5621,13 @@ fn cpu_prof_md_arg() -> Arg {
   Arg::new("cpu-prof-md")
     .long("cpu-prof-md")
     .help("Generate a human-readable markdown report alongside the CPU profile")
+    .action(ArgAction::SetTrue)
+}
+
+fn cpu_prof_flamegraph_arg() -> Arg {
+  Arg::new("cpu-prof-flamegraph")
+    .long("cpu-prof-flamegraph")
+    .help("Generate an SVG flamegraph alongside the CPU profile")
     .action(ArgAction::SetTrue)
 }
 
@@ -6047,6 +6071,7 @@ fn outdated_parse(
     recursive,
     kind,
   });
+  lock_args_parse(flags, matches);
   min_dep_age_arg_parse(flags, matches);
   Ok(())
 }
@@ -6658,7 +6683,7 @@ fn info_parse(
   import_map_arg_parse(flags, matches);
   location_arg_parse(flags, matches);
   ca_file_arg_parse(flags, matches);
-  unsafely_ignore_certificate_errors_parse(flags, matches);
+  unsafely_ignore_certificate_errors_parse(flags, matches)?;
   node_modules_and_vendor_dir_arg_parse(flags, matches);
   lock_args_parse(flags, matches);
   no_remote_arg_parse(flags, matches);
@@ -7362,9 +7387,12 @@ fn types_parse(flags: &mut Flags, _matches: &mut ArgMatches) {
   flags.subcommand = DenoSubcommand::Types;
 }
 
-fn upgrade_parse(flags: &mut Flags, matches: &mut ArgMatches) {
+fn upgrade_parse(
+  flags: &mut Flags,
+  matches: &mut ArgMatches,
+) -> clap::error::Result<()> {
   ca_file_arg_parse(flags, matches);
-  unsafely_ignore_certificate_errors_parse(flags, matches);
+  unsafely_ignore_certificate_errors_parse(flags, matches)?;
 
   let dry_run = matches.get_flag("dry-run");
   let force = matches.get_flag("force");
@@ -7372,8 +7400,29 @@ fn upgrade_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   let release_candidate = matches.get_flag("release-candidate");
   let version = matches.remove_one::<String>("version");
   let output = matches.remove_one::<String>("output");
-  let version_or_hash_or_channel =
-    matches.remove_one::<String>("version-or-hash-or-channel");
+  let positional_args: Vec<String> = matches
+    .remove_many::<String>("version-or-hash-or-channel")
+    .map(|v| v.collect())
+    .unwrap_or_default();
+
+  let first_arg = positional_args.first().map(|s| s.as_str());
+  let (version_or_hash_or_channel, pr, branch) = if first_arg == Some("pr") {
+    let pr_number = positional_args
+      .get(1)
+      .and_then(|s| s.strip_prefix('#').unwrap_or(s).parse::<u64>().ok());
+    if pr_number.is_none() {
+      return Err(clap::Error::raw(
+        clap::error::ErrorKind::InvalidValue,
+        "Missing or invalid PR number. Usage: deno upgrade pr <number>\n",
+      ));
+    }
+    (None, pr_number, None)
+  } else if first_arg == Some("compass") {
+    (None, None, Some("compass".to_string()))
+  } else {
+    (positional_args.into_iter().next(), None, None)
+  };
+
   let checksum = matches.remove_one::<String>("checksum");
   flags.subcommand = DenoSubcommand::Upgrade(UpgradeFlags {
     dry_run,
@@ -7384,7 +7433,10 @@ fn upgrade_parse(flags: &mut Flags, matches: &mut ArgMatches) {
     output,
     version_or_hash_or_channel,
     checksum,
+    pr,
+    branch,
   });
+  Ok(())
 }
 
 fn vendor_parse(flags: &mut Flags, _matches: &mut ArgMatches) {
@@ -7436,7 +7488,7 @@ fn compile_args_without_check_parse(
   reload_arg_parse(flags, matches)?;
   lock_args_parse(flags, matches);
   ca_file_arg_parse(flags, matches);
-  unsafely_ignore_certificate_errors_parse(flags, matches);
+  unsafely_ignore_certificate_errors_parse(flags, matches)?;
   min_dep_age_arg_parse(flags, matches);
   Ok(())
 }
@@ -7627,7 +7679,7 @@ fn permission_args_parse(
 
   if matches.get_flag("allow-hrtime") || matches.get_flag("deny-hrtime") {
     // use eprintln instead of log::warn because logging hasn't been initialized yet
-    #[allow(clippy::print_stderr)]
+    #[allow(clippy::print_stderr, reason = "can't use log crate yet")]
     {
       eprintln!(
         "{} `allow-hrtime` and `deny-hrtime` have been removed in Deno 2, as high resolution time is now always allowed",
@@ -7667,13 +7719,14 @@ fn allow_and_deny_import_parse(
 fn unsafely_ignore_certificate_errors_parse(
   flags: &mut Flags,
   matches: &mut ArgMatches,
-) {
+) -> clap::error::Result<()> {
   if let Some(ic_wl) =
     matches.remove_many::<String>("unsafely-ignore-certificate-errors")
   {
-    let ic_allowlist = flags_net::parse(ic_wl.collect()).unwrap();
+    let ic_allowlist = flags_net::parse(ic_wl.collect())?;
     flags.unsafely_ignore_certificate_errors = Some(ic_allowlist);
   }
+  Ok(())
 }
 
 fn runtime_args_parse(
@@ -8084,6 +8137,8 @@ mod tests {
           output: None,
           version_or_hash_or_channel: None,
           checksum: None,
+          pr: None,
+          branch: None,
         }),
         ..Flags::default()
       }
@@ -8105,6 +8160,8 @@ mod tests {
           output: Some(String::from("example.txt")),
           version_or_hash_or_channel: None,
           checksum: None,
+          pr: None,
+          branch: None,
         }),
         ..Flags::default()
       }
@@ -12175,6 +12232,8 @@ mod tests {
           output: None,
           version_or_hash_or_channel: None,
           checksum: None,
+          pr: None,
+          branch: None,
         }),
         ca_data: Some(CaData::File("example.crt".to_owned())),
         ..Flags::default()
@@ -12197,6 +12256,8 @@ mod tests {
           output: None,
           version_or_hash_or_channel: None,
           checksum: None,
+          pr: None,
+          branch: None,
         }),
         ..Flags::default()
       }
@@ -12206,6 +12267,88 @@ mod tests {
     assert!(r.is_err());
 
     let r = flags_from_vec(svec!["deno", "upgrade", "--rc", "--version"]);
+    assert!(r.is_err());
+  }
+
+  #[test]
+  fn upgrade_pr() {
+    let r = flags_from_vec(svec!["deno", "upgrade", "pr", "12345"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Upgrade(UpgradeFlags {
+          force: false,
+          dry_run: false,
+          canary: false,
+          release_candidate: false,
+          version: None,
+          output: None,
+          version_or_hash_or_channel: None,
+          checksum: None,
+          pr: Some(12345),
+          branch: None,
+        }),
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn upgrade_pr_with_hash_prefix() {
+    let r = flags_from_vec(svec!["deno", "upgrade", "pr", "#6789"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Upgrade(UpgradeFlags {
+          force: false,
+          dry_run: false,
+          canary: false,
+          release_candidate: false,
+          version: None,
+          output: None,
+          version_or_hash_or_channel: None,
+          checksum: None,
+          pr: Some(6789),
+          branch: None,
+        }),
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn upgrade_pr_with_flags() {
+    let r =
+      flags_from_vec(svec!["deno", "upgrade", "--dry-run", "pr", "33250"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Upgrade(UpgradeFlags {
+          force: false,
+          dry_run: true,
+          canary: false,
+          release_candidate: false,
+          version: None,
+          output: None,
+          version_or_hash_or_channel: None,
+          checksum: None,
+          pr: Some(33250),
+          branch: None,
+        }),
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn upgrade_pr_missing_number() {
+    let r = flags_from_vec(svec!["deno", "upgrade", "pr"]);
+    assert!(r.is_err());
+  }
+
+  #[test]
+  fn upgrade_pr_invalid_number() {
+    let r = flags_from_vec(svec!["deno", "upgrade", "pr", "abc"]);
     assert!(r.is_err());
   }
 
@@ -14652,6 +14795,22 @@ Usage: deno repl [OPTIONS] [-- [ARGS]...]\n"
   }
 
   #[test]
+  fn update_subcommand_frozen_flag() {
+    let r = flags_from_vec(svec!["deno", "update", "--frozen=false"]).unwrap();
+    assert_eq!(r.frozen_lockfile, Some(false));
+
+    let r = flags_from_vec(svec!["deno", "update", "--frozen"]).unwrap();
+    assert_eq!(r.frozen_lockfile, Some(true));
+  }
+
+  #[test]
+  fn outdated_subcommand_frozen_flag() {
+    let r =
+      flags_from_vec(svec!["deno", "outdated", "--frozen=false"]).unwrap();
+    assert_eq!(r.frozen_lockfile, Some(false));
+  }
+
+  #[test]
   fn approve_scripts_subcommand() {
     let cases = [
       (
@@ -14771,7 +14930,7 @@ Usage: deno repl [OPTIONS] [-- [ARGS]...]\n"
       args.extend(input);
       let r = flags_from_vec(args.clone())
         .inspect_err(|e| {
-          #[allow(clippy::print_stderr)]
+          #[allow(clippy::print_stderr, reason = "actually want to output")]
           {
             eprintln!("error: {:?} on input: {:?}", e, args);
           }

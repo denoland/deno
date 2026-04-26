@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_node"
-version = "0.176.0"
+version = "0.184.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -70,6 +70,9 @@ zstd.workspace = true
 [target.'cfg(unix)'.dependencies]
 errno = "0.3.10"
 nix = { workspace = true, features = ["user"] }
+
+[build-dependencies]
+cc = "1"
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { workspace = true, features = ["Win32_Networking_WinSock", "Win32_NetworkManagement_IpHelper"] }

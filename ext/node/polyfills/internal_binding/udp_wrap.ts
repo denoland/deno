@@ -63,27 +63,31 @@ const AF_INET6 = 10;
 
 const UDP_DGRAM_MAXSIZE = 64 * 1024;
 
-/** Validate that the multicast and optional interface addresses are parseable IPv4 addresses. */
-function isValidIPv4Address(
+/** Validate that the address is a parseable IPv4 address. */
+function isValidIPv4Address(address: string): boolean {
+  return isIP(address) === 4;
+}
+
+/** Validate multicast address matches the socket family. */
+function isValidMulticastAddress(
   multicastAddress: string,
+  family: string | undefined,
   interfaceAddress?: string,
 ): boolean {
-  // Quick validation: each octet must be 0-255
-  const parts = multicastAddress.split(".");
-  if (parts.length !== 4) return false;
-  for (const part of parts) {
-    const n = Number(part);
-    if (!Number.isInteger(n) || n < 0 || n > 255) return false;
-  }
-  if (interfaceAddress !== undefined) {
-    const ifaceParts = interfaceAddress.split(".");
-    if (ifaceParts.length !== 4) return false;
-    for (const part of ifaceParts) {
-      const n = Number(part);
-      if (!Number.isInteger(n) || n < 0 || n > 255) return false;
+  if (family === "IPv6") {
+    // IPv6 multicast - interface can be address, name, or address%zone
+    // Validation of interface is done in Rust
+    return isIP(multicastAddress) === 6;
+  } else {
+    // IPv4 multicast
+    if (!isValidIPv4Address(multicastAddress)) return false;
+    if (
+      interfaceAddress !== undefined && !isValidIPv4Address(interfaceAddress)
+    ) {
+      return false;
     }
+    return true;
   }
-  return true;
 }
 
 export class SendWrap extends AsyncWrap {
@@ -144,7 +148,9 @@ export class UDP extends HandleWrap {
   }
 
   addMembership(multicastAddress: string, interfaceAddress?: string): number {
-    if (!isValidIPv4Address(multicastAddress, interfaceAddress)) {
+    if (
+      !isValidMulticastAddress(multicastAddress, this.#family, interfaceAddress)
+    ) {
       return codeMap.get("EINVAL")!;
     }
 
@@ -154,7 +160,11 @@ export class UDP extends HandleWrap {
 
     try {
       if (this.#family === "IPv6") {
-        op_node_udp_join_multi_v6(this.#rid, multicastAddress, 0);
+        op_node_udp_join_multi_v6(
+          this.#rid,
+          multicastAddress,
+          interfaceAddress ?? null,
+        );
       } else {
         op_node_udp_join_multi_v4(
           this.#rid,
@@ -265,7 +275,9 @@ export class UDP extends HandleWrap {
     multicastAddress: string,
     interfaceAddress?: string,
   ): number {
-    if (!isValidIPv4Address(multicastAddress, interfaceAddress)) {
+    if (
+      !isValidMulticastAddress(multicastAddress, this.#family, interfaceAddress)
+    ) {
       return codeMap.get("EINVAL")!;
     }
 
@@ -275,7 +287,11 @@ export class UDP extends HandleWrap {
 
     try {
       if (this.#family === "IPv6") {
-        op_node_udp_leave_multi_v6(this.#rid, multicastAddress, 0);
+        op_node_udp_leave_multi_v6(
+          this.#rid,
+          multicastAddress,
+          interfaceAddress ?? null,
+        );
       } else {
         op_node_udp_leave_multi_v4(
           this.#rid,
