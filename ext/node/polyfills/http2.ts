@@ -803,6 +803,37 @@ function onGoawayData(code, lastStreamID, buf) {
   }
 }
 
+// Returns true if the stream's outgoing request headers carry a non-zero
+// content-length value. Handles both object-form (kSentHeaders) and
+// array-form (kRawHeaders) headers.
+function hasNonZeroContentLength(stream) {
+  const sent = stream[kSentHeaders];
+  if (sent !== undefined) {
+    const keys = ObjectKeys(sent);
+    for (let i = 0; i < keys.length; ++i) {
+      if (
+        StringPrototypeToLowerCase(keys[i]) === HTTP2_HEADER_CONTENT_LENGTH
+      ) {
+        const v = sent[keys[i]];
+        if (v !== undefined && Number(v) !== 0) return true;
+      }
+    }
+    return false;
+  }
+  const raw = stream[kRawHeaders];
+  if (raw !== undefined) {
+    for (let i = 0; i < raw.length; i += 2) {
+      if (
+        StringPrototypeToLowerCase(raw[i]) === HTTP2_HEADER_CONTENT_LENGTH
+      ) {
+        const v = raw[i + 1];
+        if (v !== undefined && Number(v) !== 0) return true;
+      }
+    }
+  }
+  return false;
+}
+
 // When a ClientHttp2Session is first created, the socket may not yet be
 // connected. If request() is called during this time, the actual request
 // will be deferred until the socket is ready to go.
@@ -824,6 +855,21 @@ function requestOnConnect(headersList, options) {
   }
 
   debugSessionObj(session, "connected, initializing request");
+
+  // Match newer nghttp2 / Node.js behavior: a request with content-length > 0
+  // but END_STREAM (no body, e.g. GET with content-length) is an HTTP
+  // messaging violation. nghttp2 1.68 (vendored by libnghttp2) terminates
+  // the entire session with PROTOCOL_ERROR when the server detects this;
+  // newer nghttp2 only RST_STREAMs the offending stream. Emulate the modern
+  // server-side rejection locally so the session survives and the stream
+  // emits ERR_HTTP2_STREAM_ERROR("NGHTTP2_PROTOCOL_ERROR").
+  if (options.endStream && hasNonZeroContentLength(this)) {
+    process.nextTick(() => {
+      if (this.destroyed) return;
+      this.destroy(new ERR_HTTP2_STREAM_ERROR("NGHTTP2_PROTOCOL_ERROR"));
+    });
+    return;
+  }
 
   let streamOptions = 0;
   if (options.endStream) {

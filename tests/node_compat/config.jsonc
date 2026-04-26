@@ -1509,6 +1509,7 @@
     "parallel/test-http2-methods.js": {},
     "parallel/test-http2-misc-util.js": {},
     "parallel/test-http2-misused-pseudoheaders.js": {},
+    "parallel/test-http2-multi-content-length.js": {},
     "parallel/test-http2-multiheaders-raw.js": {},
     "parallel/test-http2-multiheaders.js": {},
     "parallel/test-http2-multiplex.js": {},
