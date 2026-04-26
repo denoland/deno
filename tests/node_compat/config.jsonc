@@ -1502,6 +1502,7 @@
     "parallel/test-http2-goaway-opaquedata.js": {},
     "parallel/test-http2-graceful-close.js": {},
     "parallel/test-http2-head-request.js": {},
+    "parallel/test-http2-https-fallback.js": {},
     "parallel/test-http2-info-headers.js": {},
     "parallel/test-http2-invalidargtypes-errors.js": {},
     "parallel/test-http2-invalidheaderfield.js": {},
