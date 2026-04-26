@@ -679,6 +679,16 @@ function normalizeOaepHash(hash: string | undefined): string | undefined {
   return hash.toLowerCase().replace(/^(sha)-(?!3-)/, "$1");
 }
 
+// Read the optional `encoding` field from the key-options object. When the
+// caller passes `{ key: "<hex/base64>", encoding: "hex" | ... }`, Node applies
+// that encoding to *both* the key string and the buffer argument; we need to
+// thread it through to `getArrayBufferOrView` for the buffer too. For the
+// other shapes (string/Buffer/TypedArray/KeyObject) `.encoding` is undefined,
+// matching the existing pattern used for `.padding` / `.oaepHash`.
+function bufferEncodingFrom(keyOptions: unknown): string | undefined {
+  return (keyOptions as { encoding?: string } | null)?.encoding;
+}
+
 export function privateEncrypt(
   privateKey: ArrayBufferView | string | KeyObject,
   buffer: ArrayBufferView,
@@ -689,7 +699,11 @@ export function privateEncrypt(
   const oaepHash = normalizeOaepHash(privateKey.oaepHash);
   const oaepLabel = privateKey.oaepLabel || undefined;
 
-  buffer = getArrayBufferOrView(buffer, "buffer");
+  buffer = getArrayBufferOrView(
+    buffer,
+    "buffer",
+    bufferEncodingFrom(privateKey),
+  );
   return Buffer.from(
     op_node_private_encrypt(data, buffer, padding, oaepHash, oaepLabel),
   );
@@ -705,7 +719,11 @@ export function privateDecrypt(
   const oaepHash = normalizeOaepHash(privateKey.oaepHash);
   const oaepLabel = privateKey.oaepLabel || undefined;
 
-  buffer = getArrayBufferOrView(buffer, "buffer");
+  buffer = getArrayBufferOrView(
+    buffer,
+    "buffer",
+    bufferEncodingFrom(privateKey),
+  );
   return Buffer.from(
     op_node_private_decrypt(data, buffer, padding, oaepHash, oaepLabel),
   );
@@ -721,7 +739,11 @@ export function publicEncrypt(
   const oaepHash = normalizeOaepHash(publicKey.oaepHash);
   const oaepLabel = publicKey.oaepLabel || undefined;
 
-  buffer = getArrayBufferOrView(buffer, "buffer");
+  buffer = getArrayBufferOrView(
+    buffer,
+    "buffer",
+    bufferEncodingFrom(publicKey),
+  );
   return Buffer.from(
     op_node_public_encrypt(data, buffer, padding, oaepHash, oaepLabel),
   );
@@ -761,7 +783,11 @@ export function publicDecrypt(
   const { data } = prepareKey(publicKey);
   const padding = publicKey.padding || 1;
 
-  buffer = getArrayBufferOrView(buffer, "buffer");
+  buffer = getArrayBufferOrView(
+    buffer,
+    "buffer",
+    bufferEncodingFrom(publicKey),
+  );
   return Buffer.from(op_node_public_decrypt(data, buffer, padding));
 }
 

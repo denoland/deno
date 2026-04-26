@@ -1,0 +1,14 @@
+// Regression test: when `crypto.publicEncrypt` / `privateDecrypt` /
+// `privateEncrypt` / `publicDecrypt` are called with the
+// `{ key, encoding: "<enc>" }` options form, the `encoding` is applied
+// not only to the key string but also to the `buffer` argument when it's
+// a string -- matching Node behaviour. Previously the buffer was always
+// decoded as UTF-8.
+{
+  "tests": {
+    "encoding_round_trip": {
+      "args": "run -A main.mjs",
+      "output": "main.out"
+    }
+  }
+}
