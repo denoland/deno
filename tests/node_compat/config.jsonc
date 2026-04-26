@@ -439,6 +439,10 @@
     "parallel/test-crypto-default-shake-lengths-oneshot.js": {},
     "parallel/test-crypto-des3-wrap.js": {},
     "parallel/test-crypto-dh-constructor.js": {},
+    "parallel/test-crypto-dh-curves.js": {
+      "ignore": true,
+      "reason": "Asserts on OpenSSL `DH_check()` flag values via `dh.verifyError` (e.g. that `createDiffieHellman('02')` reports a non-zero verifyError indicating the prime is non-safe), plus several OpenSSL-shape error strings later in the file ('Failed to convert Buffer to EC_POINT', 'Failed to get ECDH public/private key'). Deno's pure-Rust DH does not compute or expose `DH_check`-equivalent flags. Could be revisited if a port of `DH_check`'s safe-prime / generator validation lands"
+    },
     "parallel/test-crypto-dh-errors.js": {},
     "parallel/test-crypto-dh-generate-keys.js": {},
     "parallel/test-crypto-dh-group-setters.js": {},
