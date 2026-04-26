@@ -1045,6 +1045,7 @@
     "parallel/test-fs-mkdir.js": {},
     "parallel/test-fs-mkdtemp-prefix-check.js": {},
     "parallel/test-fs-mkdtemp.js": {},
+    "parallel/test-fs-mkdtempDisposableSync.js": {},
     "parallel/test-fs-non-number-arguments-throw.js": {},
     "parallel/test-fs-open-flags.js": {},
     "parallel/test-fs-open-mode-mask.js": {
@@ -1067,6 +1068,7 @@
     "parallel/test-fs-promises-file-handle-truncate.js": {},
     "parallel/test-fs-promises-file-handle-write.js": {},
     "parallel/test-fs-promises-file-handle-writeFile.js": {},
+    "parallel/test-fs-promises-mkdtempDisposable.js": {},
     "parallel/test-fs-promises-readfile-empty.js": {},
     "parallel/test-fs-promises-readfile-with-fd.js": {},
     "parallel/test-fs-promises-statfs-validate-path.js": {},
