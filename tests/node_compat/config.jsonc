@@ -3068,6 +3068,10 @@
     "parallel/test-weakref.js": {},
     "parallel/test-webcrypto-cryptokey-workers.js": {},
     "parallel/test-webcrypto-derivebits-argon2.js": {},
+    "parallel/test-webcrypto-derivekey-cfrg.js": {
+      "ignore": true,
+      "reason": "Asserts that `subtle.deriveKey({ name: 'X25519' })` (no `public` field) rejects with `code: 'ERR_MISSING_OPTION'`. Deno's WebIDL dictionary converter throws `TypeError(\"...is required in 'EcdhKeyDeriveParams'...\")` without attaching Node's `code` property. Same shape as `test-webcrypto-derivekey-ecdh.js`. Could be revisited if the WebIDL `required: true` throw is generalised to attach `ERR_MISSING_OPTION` (the analogue of the existing `ERR_INVALID_THIS` / `ERR_ILLEGAL_CONSTRUCTOR` code attachments)"
+    },
     "parallel/test-webcrypto-encap-decap-ml-kem.js": {},
     "parallel/test-webcrypto-encrypt-decrypt-chacha20-poly1305.js": {},
     "parallel/test-webcrypto-encrypt-decrypt-rsa.js": {},
