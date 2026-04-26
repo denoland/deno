@@ -3072,6 +3072,10 @@
     "parallel/test-webcrypto-encrypt-decrypt-chacha20-poly1305.js": {},
     "parallel/test-webcrypto-encrypt-decrypt-rsa.js": {},
     "parallel/test-webcrypto-encrypt-decrypt.js": {},
+    "parallel/test-webcrypto-export-import-ec.js": {
+      "ignore": true,
+      "reason": "Asserts on the exact reject message regex `/Invalid key /` for cross-algorithm EC import attempts (e.g. importing a P-256 SPKI as P-384). Deno's importKey path emits `unsupported algorithm` instead. Same shape and root cause as the already-ignored `test-webcrypto-export-import-rsa.js`. Could be revisited if Deno's WebCrypto importKey path's mismatched-algorithm error string is brought into line with the WebCrypto spec / Node's wording"
+    },
     "parallel/test-webcrypto-export-import-ml-dsa.js": {},
     "parallel/test-webcrypto-export-import-ml-kem.js": {},
     "parallel/test-webcrypto-getRandomValues.js": {},
