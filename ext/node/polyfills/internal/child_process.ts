@@ -1952,6 +1952,12 @@ export function setupChannel(
     // if false, the sender should slow down.
     // this acts as a backpressure mechanism.
     const queueOk = [true];
+    // Ref the IPC channel while a write is logically in-flight.
+    // Even though the write is synchronous, we defer the unref
+    // to the next tick so the event loop stays alive long enough
+    // to process incoming messages (matching the old async behavior
+    // where the channel stayed ref'd until the write promise resolved).
+    control.refCounted();
     try {
       writeFn(ipc, message, queueOk);
       if (callback) {
@@ -1968,6 +1974,7 @@ export function setupChannel(
         }
       }
     }
+    nextTick(() => control.unrefCounted());
     return queueOk[0];
   };
 
