@@ -3068,6 +3068,10 @@
     "parallel/test-weakref.js": {},
     "parallel/test-webcrypto-cryptokey-workers.js": {},
     "parallel/test-webcrypto-derivebits-argon2.js": {},
+    "parallel/test-webcrypto-digest.js": {
+      "ignore": true,
+      "reason": "Tests SubtleCrypto.digest with cSHAKE128 / cSHAKE256 (Customizable SHAKE per NIST SP 800-185, a Node-specific WebCrypto extension that requires OpenSSL >= 3 for the customization-string wrapper). Deno's ext/crypto/ does not register cSHAKE as a recognised digest algorithm (only the underlying SHAKE128/SHAKE256 are supported). Could be revisited if a SHA3-based cSHAKE implementation lands -- the cshake-rs crate (or a small wrapper around the existing sha3 / cshake crates) would cover the customization-string path"
+    },
     "parallel/test-webcrypto-encap-decap-ml-kem.js": {},
     "parallel/test-webcrypto-encrypt-decrypt-chacha20-poly1305.js": {},
     "parallel/test-webcrypto-encrypt-decrypt-rsa.js": {},
