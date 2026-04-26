@@ -1559,6 +1559,7 @@
     "parallel/test-http2-stream-removelisteners-after-close.js": {},
     "parallel/test-http2-timeouts.js": {},
     "parallel/test-http2-too-many-headers.js": {},
+    "parallel/test-http2-too-many-streams.js": {},
     "parallel/test-http2-trailers-after-session-close.js": {},
     "parallel/test-http2-trailers.js": {},
     "parallel/test-http2-util-assert-valid-pseudoheader.js": {},
