@@ -59,6 +59,7 @@ import {
   kServerResponse,
   Server as HttpServer,
   setupConnectionsTracking,
+  STATUS_CODES,
 } from "node:_http_server";
 import { Duplex } from "node:stream";
 import tls from "node:tls";
@@ -3530,7 +3531,17 @@ class Http2Session extends EventEmitter {
     switch (event) {
       case "stream": {
         const stream = args[0];
-        stream.destroy(err);
+        // If the stream was already torn down by the time the listener
+        // rejected (e.g. a server push that completed before the client's
+        // 'stream' event listener ran), stream.destroy(err) is a no-op
+        // and the error would be swallowed. Surface it as an 'error'
+        // event so callers like async listeners with .on('error', ...)
+        // still observe the rejection.
+        if (stream.destroyed) {
+          process.nextTick(() => stream.emit("error", err));
+        } else {
+          stream.destroy(err);
+        }
         break;
       }
       default:
@@ -4122,6 +4133,41 @@ class Http2SecureServer extends tls.Server {
       ReflectApply(HttpServer.prototype.closeIdleConnections, this, arguments);
     }
   }
+
+  [EventEmitter.captureRejectionSymbol](err, event, ...args) {
+    switch (event) {
+      case "stream": {
+        const stream = args[0];
+        if (stream.sentHeaders) {
+          stream.destroy(err);
+        } else {
+          stream.respond({ [HTTP2_HEADER_STATUS]: 500 });
+          stream.end();
+        }
+        break;
+      }
+      case "request": {
+        const res = args[1];
+        if (!res.headersSent && !res.finished) {
+          for (const name of res.getHeaderNames()) {
+            res.removeHeader(name);
+          }
+          res.statusCode = 500;
+          res.end(STATUS_CODES[500]);
+        } else {
+          res.destroy();
+        }
+        break;
+      }
+      default:
+        ArrayPrototypePush(args, err);
+        ReflectApply(
+          tls.Server.prototype[EventEmitter.captureRejectionSymbol],
+          this,
+          args,
+        );
+    }
+  }
 }
 
 class Http2Server extends net.Server {
@@ -4159,6 +4205,41 @@ class Http2Server extends net.Server {
 
   async [SymbolAsyncDispose]() {
     await FunctionPrototypeCall(promisify(super.close), this);
+  }
+
+  [EventEmitter.captureRejectionSymbol](err, event, ...args) {
+    switch (event) {
+      case "stream": {
+        const stream = args[0];
+        if (stream.sentHeaders) {
+          stream.destroy(err);
+        } else {
+          stream.respond({ [HTTP2_HEADER_STATUS]: 500 });
+          stream.end();
+        }
+        break;
+      }
+      case "request": {
+        const res = args[1];
+        if (!res.headersSent && !res.finished) {
+          for (const name of res.getHeaderNames()) {
+            res.removeHeader(name);
+          }
+          res.statusCode = 500;
+          res.end(STATUS_CODES[500]);
+        } else {
+          res.destroy();
+        }
+        break;
+      }
+      default:
+        ArrayPrototypePush(args, err);
+        ReflectApply(
+          net.Server.prototype[EventEmitter.captureRejectionSymbol],
+          this,
+          args,
+        );
+    }
   }
 }
 

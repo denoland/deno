@@ -1435,6 +1435,7 @@
     "parallel/test-http2-alpn.js": {},
     "parallel/test-http2-altsvc.js": {},
     "parallel/test-http2-buffersize.js": {},
+    "parallel/test-http2-capture-rejection.js": {},
     "parallel/test-http2-clean-output.js": {},
     "parallel/test-http2-client-port-80.js": {},
     "parallel/test-http2-client-priority-before-connect.js": {},
