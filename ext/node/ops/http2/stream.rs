@@ -253,8 +253,13 @@ impl Http2Stream {
 
     // Reject the header (and the whole stream) if adding it would exceed
     // either the configured max header pair count or the local
-    // SETTINGS_MAX_HEADER_LIST_SIZE limit. Mirrors Node's
-    // Http2Stream::AddHeader behaviour.
+    // SETTINGS_MAX_HEADER_LIST_SIZE limit. Returning false here causes
+    // nghttp2 to RST_STREAM with NGHTTP2_ENHANCE_YOUR_CALM.
+    //
+    // Node's `Http2Stream::AddHeader` additionally rejects when the session
+    // would exceed its `maxSessionMemory` budget (see `src/node_http2.cc`).
+    // Deno does not yet track per-session memory, so that arm is omitted; if
+    // session memory accounting is added later, gate it here as well.
     if current_pairs >= max_header_pairs
       || current_length.saturating_add(header_length as u64) > max_header_length
     {
