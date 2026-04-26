@@ -1547,6 +1547,7 @@
     "parallel/test-http2-server-session-destroy.js": {},
     "parallel/test-http2-server-stream-session-destroy.js": {},
     "parallel/test-http2-server-push-disabled.js": {},
+    "parallel/test-http2-server-push-stream-head.js": {},
     "parallel/test-http2-server-set-header.js": {},
     "parallel/test-http2-server-setLocalWindowSize.js": {},
     "parallel/test-http2-server-shutdown-before-respond.js": {},
