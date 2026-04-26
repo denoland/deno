@@ -203,7 +203,24 @@ class TestSuite {
           undefined,
         );
         try {
-          return await prepared.fn(newNodeTextContext);
+          if (prepared.fn.length >= 2) {
+            await new Promise((testResolve, testReject) => {
+              const done = (err?) => {
+                if (err) {
+                  testReject(err);
+                } else {
+                  testResolve(undefined);
+                }
+              };
+              try {
+                prepared.fn(newNodeTextContext, done);
+              } catch (err2) {
+                testReject(err2);
+              }
+            });
+          } else {
+            return await prepared.fn(newNodeTextContext);
+          }
         } catch (err) {
           if (newNodeTextContext[skippedSymbol]) {
             return undefined;

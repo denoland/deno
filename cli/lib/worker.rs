@@ -715,7 +715,6 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
     let mut worker =
       MainWorker::bootstrap_from_options(&main_module, services, options);
     worker.setup_memory_trim_handler();
-    worker.setup_sigint_trace_handler();
 
     // Store the main inspector session sender for worker debugging
     let inspector = worker.js_runtime.inspector();

@@ -751,29 +751,6 @@ impl MainWorker {
     // Noop
   }
 
-  /// Sets up a handler that responds to SIGINT by capturing the current
-  /// JavaScript stack trace, printing it to stderr, and exiting with code 130.
-  /// This is useful for debugging hanging scripts.
-  pub fn setup_sigint_trace_handler(&mut self) {
-    let isolate_handle = self.js_runtime.v8_isolate().thread_safe_handle();
-
-    // Store the main context as a Global so the interrupt callback can use it
-    // to create a ContextScope and capture the stack trace.
-    let context = self.js_runtime.main_context();
-    let context_ptr = Box::into_raw(Box::new(context)) as usize;
-
-    let _ = deno_signals::register(
-      libc::SIGINT,
-      true,
-      Box::new(move || {
-        isolate_handle.request_interrupt(
-          sigint_interrupt_callback,
-          context_ptr as *mut std::ffi::c_void,
-        );
-      }),
-    );
-  }
-
   /// Sets up a handler that responds to SIGUSR2 signals by trimming unused
   /// memory and notifying V8 of low memory conditions.
   /// Note that this must be called within a tokio runtime.
@@ -1367,31 +1344,4 @@ impl ModuleLoader for PlaceholderModuleLoader {
       .unwrap()
       .get_host_defined_options(scope, name)
   }
-}
-
-unsafe extern "C" fn sigint_interrupt_callback(
-  isolate_ptr: v8::UnsafeRawIsolatePtr,
-  data: *mut std::ffi::c_void,
-) {
-  // SAFETY: V8 guarantees the isolate pointer is valid during the interrupt
-  // callback and we are on the V8 thread.
-  let mut raw_ptr = isolate_ptr.clone();
-  let isolate =
-    unsafe { v8::Isolate::ref_from_raw_isolate_ptr_mut(&mut raw_ptr) };
-  // SAFETY: data points to a Box<v8::Global<v8::Context>> that we allocated
-  // in setup_sigint_trace_handler. We intentionally don't free it since we
-  // exit immediately after.
-  let context_global = unsafe { &*(data as *const v8::Global<v8::Context>) };
-
-  v8::scope!(scope, isolate);
-  let context = v8::Local::new(scope, context_global);
-  let scope = &mut v8::ContextScope::new(scope, context);
-
-  let msg = v8::String::new(scope, "SIGINT").unwrap();
-  let exception = v8::Exception::error(scope, msg);
-
-  let js_error = JsError::from_v8_exception(scope, exception);
-  let formatted = crate::fmt_errors::format_js_error(&js_error, None);
-  eprintln!("{formatted}");
-  std::process::exit(130);
 }

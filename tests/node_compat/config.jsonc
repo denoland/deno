@@ -2966,6 +2966,7 @@
     "parallel/test-util-parse-env.js": {},
     "parallel/test-util-primordial-monkeypatching.js": {},
     "parallel/test-util-promisify-custom-names.mjs": {},
+    "parallel/test-util-sigint-watchdog.js": {},
     "parallel/test-util-stripvtcontrolcharacters.js": {},
     "parallel/test-util-text-decoder.js": {},
     "parallel/test-util-types-exists.js": {},

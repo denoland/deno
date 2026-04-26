@@ -1,3 +1,7 @@
+import { setTraceSigInt } from "node:util";
+
+setTraceSigInt(true);
+
 function innerWork() {
   let sum = 0;
   for (let i = 0; i < 100_000_000_000; i++) {
