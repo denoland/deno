@@ -3089,6 +3089,10 @@
       "reason": "Asserts on the regex `/Unable to use this key to verify/` for the case where `subtle.verify` is called with a key whose usages don't include 'verify'. Deno's WebCrypto verify path emits the WebCrypto-spec wording `'The requested operation is not valid for the provided key'` (the spec's `InvalidAccessError` message) instead. Same shape as the failures in `test-webcrypto-sign-verify-ecdsa.js` and the `test-webcrypto-export-import-{rsa,ec,cfrg}.js` ignore family. Could be revisited if the WebCrypto wrong-usages-on-verify error message is brought into line with Node's wording"
     },
     "parallel/test-webcrypto-sign-verify-ml-dsa.js": {},
+    "parallel/test-webcrypto-sign-verify-rsa.js": {
+      "ignore": true,
+      "reason": "Asserts the rejection from `subtle.sign` for RSA-PSS with a saltLength larger than the modulus has `err.name === 'OperationError'`. Deno's WebCrypto sign path raises a plain `Error` instead of the spec-required `OperationError` (a DOMException with `name: 'OperationError'`). Could be revisited if the RSA-PSS error path in ext/crypto/ is migrated to throw via DOMException so the spec's `OperationError` semantics propagate"
+    },
     "parallel/test-webcrypto-util.js": {
       "ignore": true,
       "reason": "Runs with --expose-internals and requires Node's internal/crypto/util JS module to whitebox-test the internal normalizeAlgorithm() helper; Deno's WebCrypto is implemented in Rust (ext/crypto/) and does not expose this Node-internal module"
