@@ -565,8 +565,11 @@ function structuredClone(value, options) {
   // still silently serialize as {} because V8's ValueSerializer doesn't
   // know about Web API platform types. Fixing this fully requires a
   // custom V8 serializer delegate in C++/Rust.
+  // Skip the check when the value itself is in the transfer list, since
+  // transferring is not the same as serializing.
   if (
-    value !== null && typeof value === "object" && value[kNotSerializable]
+    value !== null && typeof value === "object" && value[kNotSerializable] &&
+    !ArrayPrototypeIncludes(options.transfer, value)
   ) {
     throw new DOMException(
       "Cannot clone object of unsupported type.",
