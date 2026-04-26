@@ -239,13 +239,11 @@ impl Http2Stream {
 
     // SAFETY: session pointer is valid for the stream's lifetime
     let session = unsafe { &*self.session };
-    // SAFETY: session.session is a valid nghttp2 session pointer
-    let max_header_length = unsafe {
-      ffi::nghttp2_session_get_local_settings(
-        session.session,
-        ffi::NGHTTP2_SETTINGS_MAX_HEADER_LIST_SIZE,
-      )
-    } as u64;
+    // Use the value captured from the constructor's initial settings, not
+    // `nghttp2_session_get_local_settings` — the latter reflects post-ACK
+    // updates from later `session.settings()` calls, which Node does not
+    // retroactively enforce.
+    let max_header_length = session.local_max_header_list_size as u64;
 
     let max_header_pairs = session.max_header_pairs as usize;
     let current_pairs = self.current_headers.borrow().len();
