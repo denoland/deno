@@ -1510,6 +1510,7 @@
     "parallel/test-http2-large-write-multiple-requests.js": {},
     "parallel/test-http2-malformed-altsvc.js": {},
     "parallel/test-http2-many-writes-and-destroy.js": {},
+    "parallel/test-http2-max-invalid-frames.js": {},
     "parallel/test-http2-methods.js": {},
     "parallel/test-http2-misc-util.js": {},
     "parallel/test-http2-misused-pseudoheaders.js": {},
