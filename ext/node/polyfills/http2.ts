@@ -365,9 +365,6 @@ const kQuotedString = new SafeRegExp(
   "^[\\x09\\x20-\\x5b\\x5d-\\x7e\\x80-\\xff]*$",
 );
 
-// Placeholder classes and functions - these need proper implementation
-class JSStreamSocket {}
-
 // Validates that priority options are correct, specifically:
 // 1. options.weight must be a number
 // 2. options.parent must be a positive number
@@ -2750,11 +2747,10 @@ function setupHandle(socket, type, options) {
     return;
   }
 
-  assert(
-    socket._handle !== undefined,
-    "Internal HTTP/2 Failure. The socket is not connected. Please " +
-      "report this as a bug",
-  );
+  // Deno's nghttp2 driver communicates with the socket purely via JS
+  // events (socket.on("data")) and socket.write below, so we don't need
+  // socket._handle to exist; a plain Duplex (createConnection in tests)
+  // works just like a real net.Socket.
 
   debugSession(type, "setting up session handle");
   this[kState].flags |= SESSION_FLAGS_READY;
@@ -2785,17 +2781,25 @@ function setupHandle(socket, type, options) {
   // Override sendPending to write via JS socket instead of native uv_write.
   // This is needed because consume_stream is not used - self.stream is None
   // in the Rust session, so send_pending_data is a no-op.
+  //
+  // Drain nghttp2's send queue one chunk at a time and issue one
+  // socket.write per chunk. nghttp2_session_mem_send returns one frame
+  // per call; matching that on the wire keeps frame boundaries (preface,
+  // SETTINGS, HEADERS, DATA, ...) visible to the peer's data events,
+  // which is what Node's per-uv_buf_t writes do (and is what
+  // test-http2-padding-aligned asserts byte-by-byte).
   const origSendPending = FunctionPrototypeBind(handle.sendPending, handle);
   handle.sendPending = () => {
-    const pending = handle.getOutgoingData();
-    if (pending && pending.byteLength > 0) {
-      socket.write(pending);
+    while (true) {
+      const chunk = handle.getOutgoingChunk();
+      if (!chunk || chunk.byteLength === 0) break;
+      socket.write(chunk);
     }
     // Trigger graceful-close check AFTER the data has been queued on the
-    // socket.  getOutgoingData() drains nghttp2's output but must not
-    // trigger the destroy chain itself -- the data would never be written
-    // because destroy -> socket.end() would run before socket.write().
-    // The native send_pending_data() (stream==None path) only checks
+    // socket.  Draining nghttp2's output must not trigger the destroy
+    // chain itself -- the data would never be written because destroy ->
+    // socket.end() would run before socket.write(). The native
+    // send_pending_data() (stream==None path) only checks
     // maybe_notify_graceful_close_complete, so this is safe.
     origSendPending();
   };
@@ -3119,9 +3123,11 @@ class Http2Session extends EventEmitter {
 
     socket[kBoundSession] = this;
 
-    if (!socket._handle) {
-      socket = new JSStreamSocket(socket);
-    }
+    // Node.js wraps non-handle-backed streams (e.g. duplexPair Duplex
+    // streams used in tests) with JSStreamSocket so its native nghttp2
+    // binding has a uniform stream interface. Deno's polyfill drives
+    // nghttp2 entirely from JS (see setupHandle's socket.on("data") /
+    // socket.write), so any Duplex with on/write is usable directly.
     socket.on("error", socketOnError);
     socket.on("close", socketOnClose);
 

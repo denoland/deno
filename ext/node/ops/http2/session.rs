@@ -2040,6 +2040,31 @@ impl Http2Session {
     output.into_boxed_slice()
   }
 
+  /// Drain a single outgoing h2 chunk from nghttp2's send queue.
+  ///
+  /// Returns one buffer per `nghttp2_session_mem_send` call so the JS
+  /// write path can issue one socket.write per frame, matching the
+  /// libuv consume_stream path which queues a separate uv_write per
+  /// chunk in `send_pending_data`. An empty buffer signals no more
+  /// pending data.
+  #[buffer]
+  #[reentrant]
+  fn get_outgoing_chunk(&self) -> Box<[u8]> {
+    // SAFETY: self.inner was allocated by Box::into_raw and is valid
+    let session = unsafe { &mut *self.inner };
+    let mut src = std::ptr::null();
+    let src_len =
+      // SAFETY: session.session is a valid nghttp2 session pointer
+      unsafe { ffi::nghttp2_session_mem_send(session.session, &mut src) };
+    if src_len > 0 {
+      // SAFETY: src and src_len are valid per nghttp2_session_mem_send
+      let data = unsafe { std::slice::from_raw_parts(src, src_len as usize) };
+      data.to_vec().into_boxed_slice()
+    } else {
+      Box::new([])
+    }
+  }
+
   #[fast]
   #[reentrant]
   fn destroy(
