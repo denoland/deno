@@ -476,6 +476,10 @@
     "parallel/test-crypto-keygen-async-elliptic-curve-jwk.js": {},
     "parallel/test-crypto-keygen-async-elliptic-curve-jwk-rsa.js": {},
     "parallel/test-crypto-keygen-async-named-elliptic-curve.js": {},
+    "parallel/test-crypto-keygen-async-named-elliptic-curve-encrypted.js": {
+      "ignore": true,
+      "reason": "Generates a P-256 keypair with `type: 'sec1', cipher: 'aes-128-cbc', passphrase: 'secret'` for the SEC1 PEM private key. Deno does not currently emit the legacy `BEGIN EC PRIVATE KEY` + `Proc-Type: 4,ENCRYPTED` / `DEK-Info` form (only PKCS#8 encrypted PEM is supported -- same bucket as the existing `test-crypto-keygen-async-rsa.js` ignore), and the test additionally asserts on the OpenSSL-3-specific error string `error:07880109:common libcrypto routines::interrupted or cancelled` when calling testSignVerify without the passphrase. Could be revisited if SEC1 encrypted PEM emission lands; the OpenSSL error-string assertion would still need addressing separately"
+    },
     "parallel/test-crypto-keygen-async-rsa.js": {
       "ignore": true,
       "reason": "Decrypting legacy PEM encrypted private keys (Proc-Type/DEK-Info format) is not yet supported; only PKCS#8 encrypted key import works"
