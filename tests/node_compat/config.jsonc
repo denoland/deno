@@ -3080,6 +3080,10 @@
       "ignore": true,
       "reason": "Tests SubtleCrypto generateKey for KMAC128 / KMAC256, a Node-specific WebCrypto extension that requires OpenSSL >= 3 (test gates on hasOpenSSL(3)); Deno's ext/crypto/ does not register KMAC as a recognised SubtleCrypto algorithm. Could be revisited if KMAC is added — a SHA-3-based KMAC is implementable via the sha3 / cshake Rust crates"
     },
+    "parallel/test-webcrypto-sign-verify-hmac.js": {
+      "ignore": true,
+      "reason": "Asserts on the regex `/Unable to use this key to verify/` for the case where `subtle.verify` is called with a key whose usages don't include 'verify'. Deno's WebCrypto verify path emits the WebCrypto-spec wording `'The requested operation is not valid for the provided key'` (the spec's `InvalidAccessError` message) instead. Same shape as the failures in `test-webcrypto-sign-verify-ecdsa.js` and the `test-webcrypto-export-import-{rsa,ec,cfrg}.js` ignore family. Could be revisited if the WebCrypto wrong-usages-on-verify error message is brought into line with Node's wording"
+    },
     "parallel/test-webcrypto-sign-verify-ml-dsa.js": {},
     "parallel/test-webcrypto-util.js": {
       "ignore": true,
