@@ -1004,7 +1004,7 @@ export function normalizeSpawnArguments(
     validateObject(options, "options");
   }
 
-  let cwd = options.cwd;
+  let cwd = ObjectHasOwn(options, "cwd") ? options.cwd : undefined;
 
   // Validate the cwd, if present.
   if (cwd != null) {
@@ -1013,34 +1013,33 @@ export function normalizeSpawnArguments(
   }
 
   // Validate detached, if present.
-  if (options.detached != null) {
+  if (ObjectHasOwn(options, "detached") && options.detached != null) {
     validateBoolean(options.detached, "options.detached");
   }
 
   // Validate the uid, if present.
-  if (options.uid != null) {
+  if (ObjectHasOwn(options, "uid") && options.uid != null) {
     validateInt32(options.uid, "options.uid");
   }
 
   // Validate the gid, if present.
-  if (options.gid != null) {
+  if (ObjectHasOwn(options, "gid") && options.gid != null) {
     validateInt32(options.gid, "options.gid");
   }
 
   // Validate the shell, if present.
-  if (
-    options.shell != null &&
-    typeof options.shell !== "boolean" &&
-    typeof options.shell !== "string"
-  ) {
-    throw new ERR_INVALID_ARG_TYPE(
-      "options.shell",
-      ["boolean", "string"],
-      options.shell,
-    );
-  }
-  if (typeof options.shell === "string") {
-    validateNullByteNotInArg(options.shell, "options.shell");
+  const shell = ObjectHasOwn(options, "shell") ? options.shell : undefined;
+  if (shell != null) {
+    if (typeof shell !== "boolean" && typeof shell !== "string") {
+      throw new ERR_INVALID_ARG_TYPE(
+        "options.shell",
+        ["boolean", "string"],
+        shell,
+      );
+    }
+    if (typeof shell === "string") {
+      validateNullByteNotInArg(shell, "options.shell");
+    }
   }
 
   // Validate argv0, if present.
@@ -1069,7 +1068,7 @@ export function normalizeSpawnArguments(
     "advanced",
   ]);
 
-  if (options.shell) {
+  if (shell) {
     // When args are provided, escape them to prevent shell injection.
     // When no args are provided (just a string command), the user intends
     // for shell interpretation, so don't escape.
@@ -1094,8 +1093,8 @@ export function normalizeSpawnArguments(
     // already handles it for both `-c` (POSIX) and `/d /s /c` (cmd.exe) cases.
     // Calling it here would cause double transformation.
     if (process.platform === "win32") {
-      if (typeof options.shell === "string") {
-        file = options.shell;
+      if (typeof shell === "string") {
+        file = shell;
       } else {
         file = Deno.env.get("comspec") || "cmd.exe";
       }
@@ -1108,8 +1107,8 @@ export function normalizeSpawnArguments(
       }
     } else {
       /** TODO: add Android condition */
-      if (typeof options.shell === "string") {
-        file = options.shell;
+      if (typeof shell === "string") {
+        file = shell;
       } else {
         file = "/bin/sh";
       }
@@ -1176,6 +1175,9 @@ export function normalizeSpawnArguments(
     env,
     envPairs,
     file,
+    shell,
+    uid: ObjectHasOwn(options, "uid") ? options.uid : undefined,
+    gid: ObjectHasOwn(options, "gid") ? options.gid : undefined,
     windowsHide: !!options.windowsHide,
     windowsVerbatimArguments: !!windowsVerbatimArguments,
     serialization: options.serialization || "json",
