@@ -898,7 +898,8 @@ function requestOnConnect(headersList, options) {
   // `ret` will be either the reserved stream ID (if positive)
   // or an error code (if negative)
   const ret = session[kHandle].request(
-    headersList,
+    headersList[0],
+    headersList[1],
     streamOptions,
     options.parent | 0,
     NGHTTP2_DEFAULT_WEIGHT,
@@ -1345,7 +1346,7 @@ function finishSendTrailers(stream, headersList) {
 
   stream[kState].flags &= ~STREAM_FLAGS_HAS_TRAILERS;
 
-  const ret = stream[kHandle].trailers(headersList);
+  const ret = stream[kHandle].trailers(headersList[0], headersList[1]);
   scheduleSendPending(stream[kSession]);
   if (ret < 0) {
     stream.destroy(new NghttpError(ret));
@@ -2159,7 +2160,11 @@ function processRespondWithFD(
     self.end();
   }
 
-  const ret = self[kHandle].respond(headersList, streamOptions);
+  const ret = self[kHandle].respond(
+    headersList[0],
+    headersList[1],
+    streamOptions,
+  );
 
   if (ret < 0) {
     self.destroy(new NghttpError(ret));
@@ -2389,7 +2394,11 @@ class ServerHttp2Stream extends Http2Stream {
 
     const streamOptions = options.endStream ? STREAM_OPTION_EMPTY_PAYLOAD : 0;
 
-    const ret = this[kHandle].pushPromise(headersList, streamOptions);
+    const ret = this[kHandle].pushPromise(
+      headersList[0],
+      headersList[1],
+      streamOptions,
+    );
     let err;
     if (typeof ret === "number") {
       switch (ret) {
@@ -2492,7 +2501,11 @@ class ServerHttp2Stream extends Http2Stream {
       this.end();
     }
 
-    const ret = this[kHandle].respond(headersList, streamOptions);
+    const ret = this[kHandle].respond(
+      headersList[0],
+      headersList[1],
+      streamOptions,
+    );
     scheduleSendPending(this[kSession]);
     if (ret < 0) {
       this.destroy(new NghttpError(ret));
@@ -2714,7 +2727,7 @@ class ServerHttp2Stream extends Http2Stream {
       ArrayPrototypePush(this[kInfoHeaders], headers);
     }
 
-    const ret = this[kHandle].info(headersList);
+    const ret = this[kHandle].info(headersList[0], headersList[1]);
     if (ret < 0) {
       this.destroy(new NghttpError(ret));
     }

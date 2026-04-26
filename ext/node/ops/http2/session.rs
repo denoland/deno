@@ -809,8 +809,14 @@ fn handle_headers_frame(session: &Session, frame: *const ffi::nghttp2_frame) {
 
   let headers_array = v8::Array::new(scope, (headers.len() * 2) as i32);
   for (i, (name, value, _flags)) in headers.iter().enumerate() {
-    let name_str = v8::String::new(scope, name).unwrap();
-    let value_str = v8::String::new(scope, value).unwrap();
+    // Header bytes are arbitrary; decode as Latin-1 (one byte per code unit)
+    // to match Node's LATIN1 path and preserve non-UTF-8 byte values.
+    let name_str =
+      v8::String::new_from_one_byte(scope, name, v8::NewStringType::Normal)
+        .unwrap();
+    let value_str =
+      v8::String::new_from_one_byte(scope, value, v8::NewStringType::Normal)
+        .unwrap();
     headers_array.set_index(scope, (i * 2) as u32, name_str.into());
     headers_array.set_index(scope, (i * 2 + 1) as u32, value_str.into());
   }
@@ -2464,14 +2470,15 @@ impl Http2Session {
   fn request<'s>(
     &self,
     scope: &mut v8::PinScope<'s, '_>,
-    #[serde] headers: (String, usize),
+    headers: v8::Local<v8::String>,
+    count: u32,
     options: i32,
     stream_id: i32,
     weight: i32,
     exclusive: bool,
   ) -> v8::Local<'s, v8::Value> {
     let priority = Http2Priority::new(stream_id, weight, exclusive);
-    let headers = Http2Headers::from(headers);
+    let headers = Http2Headers::from_v8_string(scope, headers, count as usize);
 
     let ret = self.submit_request(priority, headers, options);
     if ret <= 0 {
