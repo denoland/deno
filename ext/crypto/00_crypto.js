@@ -4935,8 +4935,14 @@ async function deriveBits(normalizedAlgorithm, baseKey, length) {
   switch (normalizedAlgorithm.name) {
     case "PBKDF2": {
       // 1.
-      if (length == null || length == 0 || length % 8 !== 0) {
+      if (length == null || length % 8 !== 0) {
         throw new DOMException("Invalid length", "OperationError");
+      }
+      // Per the WebCrypto spec change in w3c/webcrypto#380, deriveBits
+      // with length == 0 returns an empty ArrayBuffer rather than
+      // throwing.
+      if (length === 0) {
+        return new ArrayBuffer(0);
       }
 
       if (normalizedAlgorithm.iterations == 0) {
@@ -5026,8 +5032,14 @@ async function deriveBits(normalizedAlgorithm, baseKey, length) {
     }
     case "HKDF": {
       // 1.
-      if (length === null || length === 0 || length % 8 !== 0) {
+      if (length === null || length % 8 !== 0) {
         throw new DOMException("Invalid length", "OperationError");
+      }
+      // Per the WebCrypto spec change in w3c/webcrypto#380, deriveBits
+      // with length == 0 returns an empty ArrayBuffer rather than
+      // throwing. Required for Node compat (e.g. test-webcrypto-derivebits-hkdf).
+      if (length === 0) {
+        return new ArrayBuffer(0);
       }
 
       const handle = baseKey[_handle];
