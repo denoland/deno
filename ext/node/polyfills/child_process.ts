@@ -116,8 +116,8 @@ export function fork(
     }
   }
 
-  // Validate null bytes in execPath
-  if (options.execPath != null) {
+  // Validate null bytes in execPath (guard against Object.prototype pollution)
+  if (Object.hasOwn(options, "execPath") && options.execPath != null) {
     validateString(options.execPath, "options.execPath");
     validateNullByteNotInArg(options.execPath, "options.execPath");
   }
@@ -201,7 +201,8 @@ export function fork(
     throw new ERR_CHILD_PROCESS_IPC_REQUIRED("options.stdio");
   }
 
-  options.execPath = options.execPath || Deno.execPath();
+  options.execPath = (Object.hasOwn(options, "execPath") && options.execPath) ||
+    Deno.execPath();
   options.shell = false;
 
   // deno-lint-ignore no-explicit-any
