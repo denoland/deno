@@ -472,6 +472,10 @@
     "parallel/test-crypto-hmac.js": {},
     "parallel/test-crypto-keygen.js": {},
     "parallel/test-crypto-keygen-async-dsa-key-object.js": {},
+    "parallel/test-crypto-keygen-async-encrypted-private-key.js": {
+      "ignore": true,
+      "reason": "Generates an RSA keypair with `format: 'der', cipher: 'aes-256-cbc'` for an encrypted PKCS#8 DER private key, then expects `testSignVerify` against the encrypted DER (without passphrase) to throw `ERR_MISSING_PASSPHRASE`. Deno's encrypted-PKCS#8-DER detection path does not detect the missing passphrase and the assert.throws collects 'Missing expected exception (TypeError)'. Could be revisited once Deno's DER PKCS#8 parser distinguishes `EncryptedPrivateKeyInfo` (rfc5958) from `PrivateKeyInfo` and surfaces the missing-passphrase case as a TypeError"
+    },
     "parallel/test-crypto-keygen-async-elliptic-curve-jwk-ec.js": {},
     "parallel/test-crypto-keygen-async-elliptic-curve-jwk.js": {},
     "parallel/test-crypto-keygen-async-elliptic-curve-jwk-rsa.js": {},
