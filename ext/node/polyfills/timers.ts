@@ -224,6 +224,7 @@ export function clearImmediate(immediate: Immediate) {
   if (!immediate?._onImmediate || immediate._destroyed) {
     return;
   }
+  immediate._destroyed = true;
   core.clearImmediate(immediate);
 }
 
@@ -290,6 +291,7 @@ async function* setIntervalAsync(
         yield value;
       }
     }
+    throw new AbortError(undefined, { cause: signal?.reason });
   } catch (error) {
     if (signal?.aborted) {
       throw new AbortError(undefined, { cause: signal?.reason });

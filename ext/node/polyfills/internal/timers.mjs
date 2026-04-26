@@ -24,6 +24,7 @@ const {
   SafeArrayIterator,
   SafeMap,
   Symbol,
+  SymbolDispose,
   SymbolToPrimitive,
 } = primordials;
 import {
@@ -163,6 +164,8 @@ Timeout.prototype[createTimer] = function () {
     } else if (self._repeat) {
       // timeout was converted to interval inside callback
       self[kTimerId] = self[createTimer]();
+    } else {
+      self._destroyed = true;
     }
     return ret;
   }
@@ -274,6 +277,10 @@ Timeout.prototype.close = function () {
   return this;
 };
 
+Timeout.prototype[SymbolDispose] = function () {
+  this[kDestroy]();
+};
+
 Timeout.prototype.hasRef = function () {
   return this[kRefed];
 };
@@ -365,6 +372,17 @@ export class Immediate {
 
   hasRef() {
     return !!this[kRefed];
+  }
+
+  [SymbolDispose]() {
+    if (!this._destroyed) {
+      this._destroyed = true;
+      core.clearImmediate(this);
+      if (this[kRefed]) {
+        this[kRefed] = false;
+        immediateRefCount(false);
+      }
+    }
   }
 
   [inspect.custom] = function (_, options) {
