@@ -2767,26 +2767,24 @@ impl rustls::client::danger::ServerCertVerifier for NodeServerCertVerifier {
         if matches!(cert_error, rustls::CertificateError::BadEncoding) {
           return Ok(rustls::client::danger::ServerCertVerified::assertion());
         }
-        if let rustls::CertificateError::Other(other) = cert_error {
-          if let Some(webpki_err) = other.0.downcast_ref::<webpki::Error>() {
-            // OpenSSL accepts X.509v1 certificates; webpki does not.
-            if matches!(webpki_err, webpki::Error::UnsupportedCertVersion) {
+        if let rustls::CertificateError::Other(other) = cert_error
+          && let Some(webpki_err) = other.0.downcast_ref::<webpki::Error>()
+        {
+          // OpenSSL accepts X.509v1 certificates; webpki does not.
+          if matches!(webpki_err, webpki::Error::UnsupportedCertVersion) {
+            return Ok(rustls::client::danger::ServerCertVerified::assertion());
+          }
+          // CaUsedAsEndEntity is a webpki-specific check that OpenSSL
+          // does not have. If the cert is actually in our root store,
+          // trust it silently. Otherwise store the error.
+          if matches!(webpki_err, webpki::Error::CaUsedAsEndEntity) {
+            let ee_bytes: &[u8] = end_entity.as_ref();
+            let is_trusted =
+              self.root_cert_ders.iter().any(|r| r.as_slice() == ee_bytes);
+            if is_trusted {
               return Ok(
                 rustls::client::danger::ServerCertVerified::assertion(),
               );
-            }
-            // CaUsedAsEndEntity is a webpki-specific check that OpenSSL
-            // does not have. If the cert is actually in our root store,
-            // trust it silently. Otherwise store the error.
-            if matches!(webpki_err, webpki::Error::CaUsedAsEndEntity) {
-              let ee_bytes: &[u8] = end_entity.as_ref();
-              let is_trusted =
-                self.root_cert_ders.iter().any(|r| r.as_slice() == ee_bytes);
-              if is_trusted {
-                return Ok(
-                  rustls::client::danger::ServerCertVerified::assertion(),
-                );
-              }
             }
           }
         }
