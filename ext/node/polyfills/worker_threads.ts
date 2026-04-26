@@ -6,8 +6,10 @@ import {
   op_create_worker,
   op_host_get_worker_cpu_usage,
   op_host_post_message,
+  op_host_post_message_raw,
   op_host_recv_ctrl,
   op_host_recv_message,
+  op_host_recv_message_sync,
   op_host_terminate_worker,
   op_mark_as_untransferable,
   op_message_port_recv_message_sync,
@@ -611,6 +613,42 @@ class NodeWorker extends EventEmitter {
     }
   };
 
+  #dispatchWorkerThreadMessage(data) {
+    let message, _transferables;
+    try {
+      const v = deserializeJsMessageData(data);
+      message = v[0];
+      _transferables = v[1];
+    } catch (err) {
+      this.emit("messageerror", err);
+      return false;
+    }
+    if (
+      // only emit "online" event once, and since the message
+      // has to come before user messages, we are safe to assume
+      // it came from us
+      !this.#workerOnline && isWorkerOnlineMsg(message)
+    ) {
+      this.#workerOnline = true;
+      this.emit("online");
+    } else if (isWorkerStdoutMsg(message)) {
+      FunctionPrototypeCall(
+        Readable.prototype.push,
+        this.stdout,
+        message.data,
+      );
+    } else if (isWorkerStderrMsg(message)) {
+      FunctionPrototypeCall(
+        Readable.prototype.push,
+        this.stderr,
+        message.data,
+      );
+    } else {
+      this.emit("message", message);
+    }
+    return true;
+  }
+
   #pollMessages = async () => {
     while (this.#status !== "TERMINATED") {
       this.#messagePromise = op_host_recv_message(this.#id);
@@ -621,37 +659,15 @@ class NodeWorker extends EventEmitter {
       if (this.#status === "TERMINATED" || data === null) {
         return;
       }
-      let message, _transferables;
-      try {
-        const v = deserializeJsMessageData(data);
-        message = v[0];
-        _transferables = v[1];
-      } catch (err) {
-        this.emit("messageerror", err);
-        return;
-      }
-      if (
-        // only emit "online" event once, and since the message
-        // has to come before user messages, we are safe to assume
-        // it came from us
-        !this.#workerOnline && isWorkerOnlineMsg(message)
-      ) {
-        this.#workerOnline = true;
-        this.emit("online");
-      } else if (isWorkerStdoutMsg(message)) {
-        FunctionPrototypeCall(
-          Readable.prototype.push,
-          this.stdout,
-          message.data,
-        );
-      } else if (isWorkerStderrMsg(message)) {
-        FunctionPrototypeCall(
-          Readable.prototype.push,
-          this.stderr,
-          message.data,
-        );
-      } else {
-        this.emit("message", message);
+      if (!this.#dispatchWorkerThreadMessage(data)) return;
+      // Sync drain: process a limited batch of already-queued messages
+      // without going through the async op machinery. The batch limit
+      // prevents starvation of the event loop when message handlers
+      // synchronously post new messages (e.g. ping-pong patterns).
+      for (let i = 0; i < 1000 && this.#status !== "TERMINATED"; i++) {
+        const syncData = op_host_recv_message_sync(this.#id);
+        if (syncData === null) break;
+        if (!this.#dispatchWorkerThreadMessage(syncData)) return;
       }
     }
   };
@@ -659,6 +675,19 @@ class NodeWorker extends EventEmitter {
   postMessage(message, transferOrOptions = { __proto__: null }) {
     const prefix = "Failed to execute 'postMessage' on 'MessagePort'";
     webidl.requiredArguments(arguments.length, 1, prefix);
+    if (this.#status !== "RUNNING") return;
+    // Fast path: no transferables
+    if (
+      transferOrOptions === undefined ||
+      transferOrOptions === null ||
+      (arguments.length <= 1)
+    ) {
+      op_host_post_message_raw(
+        this.#id,
+        core.serialize(message),
+      );
+      return;
+    }
     message = webidl.converters.any(message);
     let options;
     if (
@@ -681,9 +710,7 @@ class NodeWorker extends EventEmitter {
     }
     const { transfer } = options;
     const data = serializeJsMessageData(message, transfer);
-    if (this.#status === "RUNNING") {
-      op_host_post_message(this.#id, data);
-    }
+    op_host_post_message(this.#id, data);
   }
 
   // https://nodejs.org/api/worker_threads.html#workerterminate
