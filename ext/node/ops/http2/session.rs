@@ -1613,7 +1613,7 @@ impl Session {
       None => {
         // JS write path: no consumed stream, but still check for graceful
         // close completion. The JS side handles data serialization via
-        // getOutgoingData/sendPending, but the graceful close notification
+        // getOutgoingChunk/sendPending, but the graceful close notification
         // must still fire when nghttp2 reports no more pending I/O.
         self.maybe_notify_graceful_close_complete();
         return;
@@ -2016,37 +2016,16 @@ impl Http2Session {
     session.send_pending_data();
   }
 
-  /// Get all pending outgoing h2 frames as a single buffer.
-  /// Used by the JS write path when consume_stream is not active.
-  #[buffer]
-  #[reentrant]
-  fn get_outgoing_data(&self) -> Box<[u8]> {
-    // SAFETY: self.inner was allocated by Box::into_raw and is valid
-    let session = unsafe { &mut *self.inner };
-    let mut output = Vec::new();
-    loop {
-      let mut src = std::ptr::null();
-      let src_len =
-        // SAFETY: session.session is a valid nghttp2 session pointer
-        unsafe { ffi::nghttp2_session_mem_send(session.session, &mut src) };
-      if src_len > 0 {
-        // SAFETY: src and src_len are valid per nghttp2_session_mem_send
-        let data = unsafe { std::slice::from_raw_parts(src, src_len as usize) };
-        output.extend_from_slice(data);
-      } else {
-        break;
-      }
-    }
-    output.into_boxed_slice()
-  }
-
   /// Drain a single outgoing h2 chunk from nghttp2's send queue.
   ///
   /// Returns one buffer per `nghttp2_session_mem_send` call so the JS
   /// write path can issue one socket.write per frame, matching the
   /// libuv consume_stream path which queues a separate uv_write per
-  /// chunk in `send_pending_data`. An empty buffer signals no more
-  /// pending data.
+  /// chunk in `send_pending_data`. An empty buffer signals "no more
+  /// pending data" *and* "fatal nghttp2 error" — fatal errors get
+  /// surfaced via the on_nghttp_error_callback / subsequent op failures
+  /// (mem_recv will fail too) and are logged here with the strerror
+  /// description so they aren't silently swallowed.
   #[buffer]
   #[reentrant]
   fn get_outgoing_chunk(&self) -> Box<[u8]> {
@@ -2061,6 +2040,14 @@ impl Http2Session {
       let data = unsafe { std::slice::from_raw_parts(src, src_len as usize) };
       data.to_vec().into_boxed_slice()
     } else {
+      if src_len < 0 {
+        // SAFETY: nghttp2_strerror returns a static C string for any input
+        let msg = unsafe {
+          let p = ffi::nghttp2_strerror(src_len as i32);
+          std::ffi::CStr::from_ptr(p).to_string_lossy()
+        };
+        log::debug!("nghttp2_session_mem_send failed: {} ({})", msg, src_len);
+      }
       Box::new([])
     }
   }

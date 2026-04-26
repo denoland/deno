@@ -2896,7 +2896,7 @@ function setupHandle(socket, type, options) {
   // Flush the client connection preface + SETTINGS frame to the socket.
   // The Rust send_pending_data() is a no-op when the stream is not consumed
   // (JS write path), so we must explicitly drain nghttp2's output buffer
-  // via the JS sendPending override that calls getOutgoingData + socket.write.
+  // via the JS sendPending override that loops getOutgoingChunk + socket.write.
   handle.sendPending();
 
   if (
@@ -3011,7 +3011,7 @@ function closeSession(session, code, error) {
     // is the ongracefulclosecomplete follow-up. Also skip when code is
     // not a numeric code (same path: destroy(null) from kMaybeDestroy).
     // The state.flags |= SESSION_FLAGS_DESTROYED above ensures the
-    // getOutgoingData -> maybe_notify_graceful_close_complete ->
+    // getOutgoingChunk -> maybe_notify_graceful_close_complete ->
     // kMaybeDestroy -> destroy re-entry short-circuits on this.destroyed.
     if (
       typeof code === "number" &&
@@ -3019,9 +3019,10 @@ function closeSession(session, code, error) {
       socket && !socket.destroyed && typeof handle.goaway === "function"
     ) {
       handle.goaway(code, 0);
-      const pending = handle.getOutgoingData();
-      if (pending && pending.byteLength > 0 && !socket.destroyed) {
-        socket.write(pending);
+      while (!socket.destroyed) {
+        const chunk = handle.getOutgoingChunk();
+        if (!chunk || chunk.byteLength === 0) break;
+        socket.write(chunk);
       }
     }
     handle.ondone = FunctionPrototypeBind(
