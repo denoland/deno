@@ -19,12 +19,12 @@ import {
   normalizeSpawnArguments,
   setupChannel,
   type SpawnOptions,
-  spawnSync as _spawnSync,
   type SpawnSyncOptions,
   type SpawnSyncResult,
   stdioStringToArray,
   validateNullByteNotInArg,
 } from "ext:deno_node/internal/child_process.ts";
+import internalChildProcess from "ext:deno_node/internal/child_process.ts";
 import {
   validateAbortSignal,
   validateFunction,
@@ -304,9 +304,9 @@ export function spawnSync(
   validateMaxBuffer(options.maxBuffer);
 
   // Validate and translate the kill signal, if present.
-  sanitizeKillSignal(options.killSignal);
+  options.killSignal = sanitizeKillSignal(options.killSignal);
 
-  return _spawnSync(options.file, options.args, options);
+  return internalChildProcess.spawnSync(options);
 }
 
 interface ExecOptions extends

@@ -1562,6 +1562,8 @@ export interface SpawnSyncOptions extends
     | "windowsVerbatimArguments"
     | "windowsHide"
   > {
+  file?: string;
+  args?: string[];
   input?: string | Buffer | DataView;
   timeout?: number;
   maxBuffer?: number;
@@ -1601,8 +1603,6 @@ function normalizeInput(input: unknown) {
 }
 
 export function spawnSync(
-  command: string,
-  args: string[],
   options: SpawnSyncOptions,
 ): SpawnSyncResult {
   const {
@@ -1618,6 +1618,8 @@ export function spawnSync(
     killSignal,
     windowsVerbatimArguments = false,
   } = options;
+  let command = options.file || "";
+  let args: string[] = options.args || [];
   const [
     stdin_ = "pipe",
     stdout_ = "pipe",
