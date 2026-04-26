@@ -1738,8 +1738,13 @@ class Http2Stream extends Duplex {
       done();
     };
     // Shutdown write stream right after last chunk is sent
-    // so final DATA frame can include END_STREAM flag
-    process.nextTick(() => {
+    // so final DATA frame can include END_STREAM flag.
+    // setImmediate (not nextTick): writeBuffer queues data into nghttp2 but
+    // cannot transmit past the flow-control window without an inbound
+    // WINDOW_UPDATE; using nextTick turns Readable.pipe(req) into a microtask
+    // treadmill that starves the I/O phase, so the peer's WINDOW_UPDATE never
+    // gets read. setImmediate yields to I/O between write batches.
+    setImmediate(() => {
       if (
         writeCallbackErr ||
         !this._writableState.ending ||
