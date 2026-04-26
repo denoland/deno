@@ -234,6 +234,9 @@ mod impl_ {
     #[class(type)]
     #[error("Failed to read value")]
     ReadValueFailed,
+    #[class(inherit)]
+    #[error(transparent)]
+    Io(#[from] io::Error),
   }
 
   #[op2]
@@ -764,6 +767,67 @@ mod impl_ {
       };
       Ok(value)
     }
+  }
+
+  /// Synchronous IPC write for JSON serialization.
+  /// Matches Node.js behavior where process.send() writes synchronously
+  /// to the pipe, ensuring messages aren't lost on process.exit().
+  #[op2(nofast)]
+  pub fn op_node_ipc_write_json_sync<'a>(
+    scope: &mut v8::PinScope<'a, '_>,
+    state: &mut OpState,
+    #[smi] rid: ResourceId,
+    value: v8::Local<'a, v8::Value>,
+    queue_ok: v8::Local<'a, v8::Array>,
+  ) -> Result<(), IpcError> {
+    let mut serialized = Vec::with_capacity(64);
+    let mut ser = serde_json::Serializer::new(&mut serialized);
+    serialize_v8_value(scope, value, &mut ser).map_err(IpcError::SerdeJson)?;
+    serialized.push(b'\n');
+
+    let stream = state.resource_table.get::<IpcJsonStreamResource>(rid)?;
+    let old = stream
+      .queued_bytes
+      .fetch_add(serialized.len(), std::sync::atomic::Ordering::Relaxed);
+    if old + serialized.len() > 2 * INITIAL_CAPACITY {
+      let v = false.to_v8(scope).unwrap(); // Infallible
+      queue_ok.set_index(scope, 0, v);
+    }
+    let result = stream.write_msg_bytes_sync(&serialized);
+    stream
+      .queued_bytes
+      .fetch_sub(serialized.len(), std::sync::atomic::Ordering::Relaxed);
+    result?;
+    Ok(())
+  }
+
+  /// Synchronous IPC write for advanced (V8) serialization.
+  #[op2(nofast)]
+  pub fn op_node_ipc_write_advanced_sync<'a>(
+    scope: &mut v8::PinScope<'a, '_>,
+    state: &mut OpState,
+    #[smi] rid: ResourceId,
+    value: v8::Local<'a, v8::Value>,
+    queue_ok: v8::Local<'a, v8::Array>,
+  ) -> Result<(), IpcError> {
+    let constants = state.borrow::<AdvancedIpcConstants>().clone();
+    let serializer = AdvancedSerializer::new(scope, constants);
+    let serialized = serializer.serialize(scope, value)?;
+
+    let stream = state.resource_table.get::<IpcAdvancedStreamResource>(rid)?;
+    let old = stream
+      .queued_bytes
+      .fetch_add(serialized.len(), std::sync::atomic::Ordering::Relaxed);
+    if old + serialized.len() > 2 * INITIAL_CAPACITY {
+      let Ok(v) = false.to_v8(scope);
+      queue_ok.set_index(scope, 0, v);
+    }
+    let result = stream.write_msg_bytes_sync(&serialized);
+    stream
+      .queued_bytes
+      .fetch_sub(serialized.len(), std::sync::atomic::Ordering::Relaxed);
+    result?;
+    Ok(())
   }
 
   #[op2]

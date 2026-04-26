@@ -88,12 +88,61 @@ impl IpcRefTracker {
   }
 }
 
+/// Synchronous write to a raw file descriptor/handle.
+/// Handles EAGAIN/EWOULDBLOCK by yielding and retrying, matching
+/// Node.js behavior where IPC pipe writes are synchronous.
+fn write_all_sync(raw_handle: i64, msg: &[u8]) -> Result<(), io::Error> {
+  #[cfg(unix)]
+  {
+    let fd = raw_handle as std::os::unix::io::RawFd;
+    let mut written = 0;
+    while written < msg.len() {
+      // SAFETY: fd is a valid file descriptor owned by the BiPipe.
+      let result = unsafe {
+        libc::write(
+          fd,
+          msg[written..].as_ptr() as *const libc::c_void,
+          msg.len() - written,
+        )
+      };
+      if result >= 0 {
+        written += result as usize;
+      } else {
+        let err = io::Error::last_os_error();
+        if err.kind() == io::ErrorKind::WouldBlock
+          || err.kind() == io::ErrorKind::Interrupted
+        {
+          std::thread::yield_now();
+          continue;
+        }
+        return Err(err);
+      }
+    }
+    Ok(())
+  }
+  #[cfg(windows)]
+  {
+    use std::os::windows::io::FromRawHandle;
+    // SAFETY: raw_write_handle is a valid Windows HANDLE owned by the BiPipe.
+    let mut file = unsafe { std::fs::File::from_raw_handle(raw_handle as _) };
+    let result = std::io::Write::write_all(&mut file, msg);
+    // Don't close the handle - it's still owned by the BiPipe.
+    mem::forget(file);
+    result
+  }
+}
+
 pub struct IpcJsonStreamResource {
   pub read_half: AsyncRefCell<IpcJsonStream>,
   pub write_half: AsyncRefCell<BiPipeWrite>,
   pub cancel: Rc<CancelHandle>,
   pub queued_bytes: AtomicUsize,
   pub ref_tracker: IpcRefTracker,
+  /// Raw handle for synchronous writes. Matches Node.js behavior where
+  /// IPC writes are synchronous, ensuring messages aren't lost on
+  /// process.exit(). On Unix this is a file descriptor, on Windows a
+  /// HANDLE cast to i64.
+  pub raw_write_handle: i64,
 }
 
 impl deno_core::Resource for IpcJsonStreamResource {
@@ -114,6 +163,7 @@ impl IpcJsonStreamResource {
       cancel: Default::default(),
       queued_bytes: Default::default(),
       ref_tracker,
+      raw_write_handle: stream,
     })
   }
 
@@ -122,6 +172,8 @@ impl IpcJsonStreamResource {
     stream: tokio::net::UnixStream,
     ref_tracker: IpcRefTracker,
   ) -> Self {
+    use std::os::unix::io::AsRawFd;
+    let raw_write_handle = stream.as_raw_fd() as i64;
     let (read_half, write_half) = stream.into_split();
     Self {
       read_half: AsyncRefCell::new(IpcJsonStream::new(read_half.into())),
@@ -129,6 +181,7 @@ impl IpcJsonStreamResource {
       cancel: Default::default(),
       queued_bytes: Default::default(),
       ref_tracker,
+      raw_write_handle,
     }
   }
 
@@ -137,6 +190,8 @@ impl IpcJsonStreamResource {
     pipe: tokio::net::windows::named_pipe::NamedPipeClient,
     ref_tracker: IpcRefTracker,
   ) -> Self {
+    use std::os::windows::io::AsRawHandle;
+    let raw_write_handle = pipe.as_raw_handle() as i64;
     let (read_half, write_half) = tokio::io::split(pipe);
     Self {
       read_half: AsyncRefCell::new(IpcJsonStream::new(read_half.into())),
@@ -144,6 +199,7 @@ impl IpcJsonStreamResource {
       cancel: Default::default(),
       queued_bytes: Default::default(),
       ref_tracker,
+      raw_write_handle,
     }
   }
 
@@ -155,6 +211,13 @@ impl IpcJsonStreamResource {
     let mut write_half = RcRef::map(self, |r| &r.write_half).borrow_mut().await;
     write_half.write_all(msg).await?;
     Ok(())
+  }
+
+  /// Synchronous write to the IPC pipe.
+  /// This matches Node.js behavior where IPC writes are synchronous,
+  /// ensuring messages are flushed before process.exit().
+  pub fn write_msg_bytes_sync(&self, msg: &[u8]) -> Result<(), io::Error> {
+    write_all_sync(self.raw_write_handle, msg)
   }
 }
 
@@ -343,6 +406,7 @@ pub struct IpcAdvancedStreamResource {
   pub cancel: Rc<CancelHandle>,
   pub queued_bytes: AtomicUsize,
   pub ref_tracker: IpcRefTracker,
+  pub raw_write_handle: i64,
 }
 
 impl IpcAdvancedStreamResource {
@@ -357,6 +421,7 @@ impl IpcAdvancedStreamResource {
       cancel: Default::default(),
       queued_bytes: Default::default(),
       ref_tracker,
+      raw_write_handle: stream,
     })
   }
 
@@ -368,6 +433,11 @@ impl IpcAdvancedStreamResource {
     let mut write_half = RcRef::map(self, |r| &r.write_half).borrow_mut().await;
     write_half.write_all(msg).await?;
     Ok(())
+  }
+
+  /// Synchronous write to the IPC pipe.
+  pub fn write_msg_bytes_sync(&self, msg: &[u8]) -> Result<(), io::Error> {
+    write_all_sync(self.raw_write_handle, msg)
   }
 }
 
