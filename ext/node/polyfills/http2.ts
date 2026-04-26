@@ -77,6 +77,9 @@ import {
 } from "ext:deno_node/internal/async_hooks.ts";
 const { async_id_symbol } = symbols;
 import { kTimeout } from "ext:deno_node/internal/timers.mjs";
+// Use node:timers' setTimeout/clearTimeout so the returned Timeout object
+// supports unref() -- globalThis.setTimeout returns a plain number.
+import { clearTimeout, setTimeout } from "node:timers";
 import { addAbortListener } from "ext:deno_node/internal/events/abort_listener.mjs";
 export { addAbortListener } from "ext:deno_node/internal/events/abort_listener.mjs";
 import fs from "node:fs";
@@ -141,6 +144,7 @@ import {
   ERR_INVALID_CHAR,
   ERR_OUT_OF_RANGE,
   ERR_SOCKET_CLOSED,
+  ERR_TLS_ALPN_CALLBACK_WITH_PROTOCOLS,
   hideStackFrames,
 } from "ext:deno_node/internal/errors.ts";
 import {
@@ -319,15 +323,23 @@ const nameForErrorCode = [
   "NGHTTP2_HTTP_1_1_REQUIRED",
 ];
 
-// Session field indices
-const kSessionUint8FieldCount = 2;
-const kSessionRemoteSettingsIsUpToDate = 0;
-const kSessionPriorityListenerCount = 0;
-const kSessionFrameErrorListenerCount = 1;
+// Session field byte offsets and total size, matching Node.js
+// `SessionJSFields` (see src/node_http2.h). The buffer is 12 bytes:
+//   bitfield: u8 @ 0
+//   priority_listener_count: u8 @ 1
+//   frame_error_listener_count: u8 @ 2
+//   (1 byte padding @ 3)
+//   max_invalid_frames: u32 @ 4
+//   max_rejected_streams: u32 @ 8
 const kBitfield = 0;
-const kSessionHasRemoteSettingsListeners = 1;
-const kSessionMaxInvalidFrames = 0;
-const kSessionMaxRejectedStreams = 1;
+const kSessionPriorityListenerCount = 1;
+const kSessionFrameErrorListenerCount = 2;
+const kSessionMaxInvalidFrames = 4;
+const kSessionMaxRejectedStreams = 8;
+const kSessionUint8FieldCount = 12;
+// Bit positions inside the bitfield byte at kBitfield.
+const kSessionHasRemoteSettingsListeners = 0;
+const kSessionRemoteSettingsIsUpToDate = 1;
 
 // Private symbols
 const kAlpnProtocol = Symbol("alpnProtocol");
@@ -1040,35 +1052,27 @@ const validateSettings = hideStackFrames((settings) => {
   }
 });
 
-// Wrap a typed array in a proxy, and allow selectively copying the entries
-// that have explicitly been set to another typed array.
+// Allow selectively copying the entries that have explicitly been set to
+// another typed array. In upstream Node this wraps the TypedArray in a Proxy
+// to track index assignments. Deno's polyfill does not (yet) replace this
+// buffer with a native one, so the Proxy would only add overhead AND break
+// callers like TypedArrayPrototypeGetBuffer(...) which require the receiver
+// to have TypedArray internal slots (a Proxy does not). Instead, attach
+// copyAssigned as a property that copies all entries; it is only invoked when
+// the polyfill later swaps in handle.fields, which never happens here.
 function trackAssignmentsTypedArray(typedArray) {
-  const typedArrayLength = typedArray.length;
-  const modifiedEntries = new Uint8Array(typedArrayLength);
-
-  function copyAssigned(target) {
-    for (let i = 0; i < typedArrayLength; i++) {
-      if (modifiedEntries[i]) {
+  ObjectDefineProperty(typedArray, "copyAssigned", {
+    __proto__: null,
+    value: function copyAssigned(target) {
+      for (let i = 0; i < typedArray.length; i++) {
         target[i] = typedArray[i];
       }
-    }
-  }
-
-  return new Proxy(typedArray, {
-    __proto__: null,
-    get(obj, prop, receiver) {
-      if (prop === "copyAssigned") {
-        return copyAssigned;
-      }
-      return ReflectGet(obj, prop, receiver);
     },
-    set(obj, prop, value) {
-      if (`${+prop}` === prop) {
-        modifiedEntries[prop] = 1;
-      }
-      return ReflectSet(obj, prop, value);
-    },
+    writable: false,
+    enumerable: false,
+    configurable: true,
   });
+  return typedArray;
 }
 
 const STREAM_FLAGS_PENDING = 0x0;
@@ -2779,6 +2783,20 @@ function setupHandle(socket, type, options) {
       // After receiving, nghttp2 may have generated response frames
       // (SETTINGS_ACK, WINDOW_UPDATE, etc.). Flush them to the socket.
       handle.sendPending();
+      // If nghttp2 has terminated the session (e.g. sent GOAWAY due to a
+      // protocol error or HTTP semantic violation), it stops wanting to read
+      // or write. Tear down the JS session so the socket closes; otherwise
+      // the peer would never see the connection end and would hang.
+      if (!handle.hasPendingData() && !this.destroyed) {
+        handle.onstreamclose();
+        // After GOAWAY has been written, forcibly destroy the underlying
+        // socket so the peer observes the connection close (graceful FIN
+        // alone may not fire an 'error' event on a peer that is still
+        // writing requests).
+        if (!socket.destroyed) {
+          socket.destroy();
+        }
+      }
     }
   });
   socket.resume();
@@ -2884,6 +2902,7 @@ function setupHandle(socket, type, options) {
       1,
     );
     uint32[0] = options.maxSessionInvalidFrames;
+    handle.setMaxInvalidFrames(options.maxSessionInvalidFrames);
   }
 
   if (isUint32(options.maxSessionRejectedStreams)) {
@@ -3174,6 +3193,13 @@ class Http2Session extends EventEmitter {
       socket.disableRenegotiation();
     }
 
+    // Initialize kNativeFields before setupHandle runs so options like
+    // maxSessionInvalidFrames/maxSessionRejectedStreams have a backing buffer
+    // to write into when the polyfill handle has no native fields of its own.
+    this[kNativeFields] = trackAssignmentsTypedArray(
+      new Uint8Array(kSessionUint8FieldCount),
+    );
+
     const setupFn = FunctionPrototypeBind(
       setupHandle,
       this,
@@ -3196,10 +3222,6 @@ class Http2Session extends EventEmitter {
     } else {
       setupFn();
     }
-
-    this[kNativeFields] ||= trackAssignmentsTypedArray(
-      new Uint8Array(kSessionUint8FieldCount),
-    );
     this.on("newListener", sessionListenerAdded);
     this.on("removeListener", sessionListenerRemoved);
 
@@ -4005,7 +4027,28 @@ function initializeOptions(options) {
 function initializeTLSOptions(options, servername) {
   options = initializeOptions(options);
 
-  if (!options.ALPNCallback) {
+  if (options.ALPNCallback) {
+    if (options.ALPNProtocols !== undefined) {
+      throw new ERR_TLS_ALPN_CALLBACK_WITH_PROTOCOLS();
+    }
+    // rustls does not expose a per-handshake ALPN selection callback, so
+    // we approximate it by pre-evaluating the user's ALPNCallback once
+    // and advertising the returned protocol. This only correctly handles
+    // callbacks that synchronously return a fixed protocol string; richer
+    // selection (rejecting handshakes via false/undefined, choosing per
+    // client-offered protocols) is not supported, so reject those shapes
+    // up-front rather than silently advertising an empty ALPN list.
+    const selected = options.ALPNCallback({ servername, protocols: [] });
+    if (typeof selected !== "string" || selected.length === 0) {
+      throw new ERR_INVALID_ARG_VALUE(
+        "options.ALPNCallback",
+        selected,
+        "must synchronously return a non-empty protocol string; " +
+          "dynamic per-handshake ALPN selection is not supported",
+      );
+    }
+    options.ALPNProtocols = [selected];
+  } else {
     options.ALPNProtocols = ["h2"];
     if (options.allowHTTP1 === true) {
       ArrayPrototypePush(options.ALPNProtocols, "http/1.1");

@@ -1376,9 +1376,7 @@ unsafe extern "C" fn on_send_data_callback(
     // Pad length octet: value is the trailing-zero byte count, i.e.
     // padlen - 1. nghttp2 reserved this byte slot in the framebuf via
     // frame_set_pad's `framehd_only` shift but didn't fill it.
-    session
-      .outgoing_chunks
-      .push_back(vec![(padlen - 1) as u8]);
+    session.outgoing_chunks.push_back(vec![(padlen - 1) as u8]);
   }
 
   if length > 0 {
@@ -1417,8 +1415,19 @@ unsafe extern "C" fn on_invalid_frame_recv_callback(
   _session: *mut ffi::nghttp2_session,
   _frame: *const ffi::nghttp2_frame,
   _lib_error_code: i32,
-  _data: *mut c_void,
+  data: *mut c_void,
 ) -> i32 {
+  // SAFETY: data is the user_data pointer set during session creation
+  let session = unsafe { Session::from_user_data(data) };
+  let count = session.invalid_frame_count;
+  session.invalid_frame_count = count.saturating_add(1);
+  // Node.js compares post-increment against the limit (see node_http2.cc
+  // OnInvalidFrame). Returning a non-zero value tells nghttp2 to terminate
+  // the session immediately, which surfaces as a connection close on the
+  // peer's socket.
+  if session.max_invalid_frames > 0 && count >= session.max_invalid_frames {
+    return 1;
+  }
   0
 }
 
@@ -1562,9 +1571,15 @@ pub struct Session {
   /// frames). `get_outgoing_chunk` drains this before falling through to
   /// `nghttp2_session_mem_send`, so each part of a padded DATA frame
   /// (header / pad_length / payload / padding) becomes its own
-  /// socket.write — matching the per-uv_buf_t output of Node's libuv send
+  /// socket.write, matching the per-uv_buf_t output of Node's libuv send
   /// path that test-http2-padding-aligned asserts.
   pub outgoing_chunks: VecDeque<Vec<u8>>,
+  /// Maximum number of invalid HTTP/2 frames the peer may send before the
+  /// session is terminated. Mirrors Node.js's `maxSessionInvalidFrames`
+  /// option (default 1000). 0 disables the check.
+  pub max_invalid_frames: u32,
+  /// Running count of invalid frames received on this session.
+  pub invalid_frame_count: u32,
 }
 
 impl Session {
@@ -1984,6 +1999,8 @@ impl Http2Session {
       orig_stream_data: std::ptr::null_mut(),
       max_header_pairs: options.max_header_pairs(),
       outgoing_chunks: VecDeque::new(),
+      max_invalid_frames: 1000,
+      invalid_frame_count: 0,
     }));
 
     // SAFETY: inner is valid (just allocated); callbacks and options are valid
@@ -2472,6 +2489,13 @@ impl Http2Session {
     }
     log::debug!("set next stream id to {}", id);
     true
+  }
+
+  #[fast]
+  fn set_max_invalid_frames(&self, value: u32) {
+    // SAFETY: self.inner was allocated by Box::into_raw and is valid
+    let session = unsafe { &mut *self.inner };
+    session.max_invalid_frames = value;
   }
 
   #[fast]
