@@ -136,6 +136,7 @@ impl LspLinterResolver {
           let load_plugins_result = LOAD_PLUGINS_THREAD.load_plugins(
             lint_options.plugins.clone(),
             lint_options.rules.exclude.clone(),
+            lint_options.rules.include.clone(),
           );
           match load_plugins_result {
             Ok(runner) => {
@@ -165,6 +166,7 @@ impl LspLinterResolver {
 struct LoadPluginsRequest {
   plugins: Vec<Url>,
   exclude: Option<Vec<String>>,
+  include: Option<Vec<String>>,
   response_tx: std::sync::mpsc::Sender<Result<PluginHostProxy, AnyError>>,
 }
 
@@ -187,6 +189,7 @@ impl LoadPluginsThread {
               lsp_log!("pluggin runner - {}", msg);
             }),
             request.exclude,
+            request.include,
           )
           .await;
           request.response_tx.send(result).unwrap();
@@ -203,12 +206,14 @@ impl LoadPluginsThread {
     &self,
     plugins: Vec<Url>,
     exclude: Option<Vec<String>>,
+    include: Option<Vec<String>>,
   ) -> Result<PluginHostProxy, AnyError> {
     let request_tx = self.request_tx.as_ref().unwrap();
     let (response_tx, response_rx) = std::sync::mpsc::channel();
     let _ = request_tx.send(LoadPluginsRequest {
       plugins,
       exclude,
+      include,
       response_tx,
     });
     response_rx.recv().unwrap()
