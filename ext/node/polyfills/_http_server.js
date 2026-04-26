@@ -992,18 +992,34 @@ function Server(options, requestListener) {
   this[kUniqueHeaders] = parseUniqueHeadersOption(options.uniqueHeaders);
 }
 
+// Wraps a deno_core system interval ID so the stored handle exposes a
+// Node-compatible `_destroyed` flag. Tests (and Node user code) read
+// `server[kConnectionsCheckingInterval]._destroyed` to confirm the
+// interval was cleared.
+class ConnectionsCheckingInterval {
+  _timerId = 0;
+  _destroyed = false;
+}
+
 function setupConnectionsTracking() {
   this[kConnectionsKey] ||= new ConnectionsList();
 
-  if (this[kConnectionsCheckingInterval]) {
-    core.cancelTimer(this[kConnectionsCheckingInterval]);
-  }
+  destroyConnectionsCheckingInterval(this[kConnectionsCheckingInterval]);
 
   const interval = this.connectionsCheckingInterval || 30_000;
-  this[kConnectionsCheckingInterval] = core.createSystemInterval(
+  const handle = new ConnectionsCheckingInterval();
+  handle._timerId = core.createSystemInterval(
     checkConnections.bind(this),
     interval,
   );
+  this[kConnectionsCheckingInterval] = handle;
+}
+
+function destroyConnectionsCheckingInterval(handle) {
+  if (handle && !handle._destroyed) {
+    core.cancelTimer(handle._timerId);
+    handle._destroyed = true;
+  }
 }
 
 function checkConnections() {
@@ -1026,10 +1042,7 @@ function checkConnections() {
 
 function httpServerPreClose(server) {
   server.closeIdleConnections();
-  if (server[kConnectionsCheckingInterval]) {
-    core.cancelTimer(server[kConnectionsCheckingInterval]);
-    server[kConnectionsCheckingInterval] = null;
-  }
+  destroyConnectionsCheckingInterval(server[kConnectionsCheckingInterval]);
 }
 
 function storeHTTPOptions(options) {
@@ -1151,6 +1164,7 @@ Server.prototype.closeIdleConnections = function closeIdleConnections() {
 export {
   connectionListener as _connectionListener,
   httpServerPreClose,
+  kConnectionsCheckingInterval,
   kIncomingMessage,
   kServerResponse,
   Server,
@@ -1163,6 +1177,7 @@ export {
 export default {
   _connectionListener: connectionListener,
   httpServerPreClose,
+  kConnectionsCheckingInterval,
   kIncomingMessage,
   kServerResponse,
   Server,

@@ -104,6 +104,14 @@
       "cwd": "./deno",
       "args": "task -r --filter @deno/foo dev",
       "output": "deno_filter_recursive.out"
+    },
+    // Regression test for https://github.com/denoland/deno/issues/28620
+    // `--filter` should also match the workspace member's directory name,
+    // not just the `name` field in its deno.json / package.json.
+    "deno_dir_name_match": {
+      "cwd": "./deno_dir_name_match",
+      "args": "task --filter foo-dir dev",
+      "output": "deno_dir_name_match.out"
     }
   }
 }
