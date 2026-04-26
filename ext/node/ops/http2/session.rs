@@ -2293,8 +2293,7 @@ impl Http2Session {
     // SAFETY: self.inner was allocated by Box::into_raw and is valid
     let session = unsafe { &mut *self.inner };
     // SAFETY: session.isolate is valid for this session's lifetime
-    let isolate =
-      unsafe { v8::Isolate::from_raw_isolate_ptr(session.isolate) };
+    let isolate = unsafe { v8::Isolate::from_raw_isolate_ptr(session.isolate) };
     session
       .pending_settings_acks
       .push(v8::Global::new(&isolate, cb));
