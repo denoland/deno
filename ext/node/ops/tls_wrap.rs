@@ -3200,7 +3200,10 @@ fn build_server_config(
     Ok(()) => {}
     Err(rustls::Error::InvalidCertificate(
       rustls::CertificateError::Other(ref other),
-    )) if other.to_string().contains("UnsupportedCertVersion") => {}
+    )) if other
+      .0
+      .downcast_ref::<webpki::Error>()
+      .is_some_and(|e| matches!(e, webpki::Error::UnsupportedCertVersion)) => {}
     Err(e) => {
       log::debug!("TLSWrap: cert/key validation failed: {e}");
       return None;

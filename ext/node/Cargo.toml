@@ -55,6 +55,9 @@ node_shim.workspace = true
 once_cell.workspace = true
 rand.workspace = true
 rustls-tokio-stream.workspace = true
+# Pinned to the same major rustls 0.23.x uses internally so we can downcast
+# to `webpki::Error` from a `rustls::CertificateError::Other` payload.
+rustls-webpki = "0.103"
 serde.workspace = true
 socket2.workspace = true
 sys_traits = { workspace = true, features = ["real", "winapi", "libc"] }
