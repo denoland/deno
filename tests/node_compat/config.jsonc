@@ -467,6 +467,10 @@
     "parallel/test-crypto-hmac.js": {},
     "parallel/test-crypto-keygen.js": {},
     "parallel/test-crypto-keygen-async-dsa-key-object.js": {},
+    "parallel/test-crypto-keygen-async-dsa.js": {
+      "ignore": true,
+      "reason": "Generates a DSA keypair (modulusLength=2048, divisorLength=256) and exports the private key as encrypted PKCS#8 DER (`cipher: 'aes-128-cbc', passphrase: 'secret'`); the test then uses `assertApproximateSize(privateKeyDER, 721)` (OpenSSL 3 baseline). Deno emits a 617-byte DER -- the Rust `dsa` crate produces a tighter ASN.1 encoding for the DSA params (P/Q/G integers without OpenSSL's leading-zero padding) and the PBES2 wrapper layout differs slightly from OpenSSL's `EVP_PKEY_encrypt`. Same crate-shape divergence as the existing `test-crypto-keygen-bit-length.js` ignore. Could be revisited if Deno's DSA encoding is brought to parity with OpenSSL's"
+    },
     "parallel/test-crypto-keygen-async-elliptic-curve-jwk-ec.js": {},
     "parallel/test-crypto-keygen-async-elliptic-curve-jwk.js": {},
     "parallel/test-crypto-keygen-async-elliptic-curve-jwk-rsa.js": {},
