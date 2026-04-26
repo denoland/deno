@@ -1318,8 +1318,19 @@ unsafe extern "C" fn on_invalid_frame_recv_callback(
   _session: *mut ffi::nghttp2_session,
   _frame: *const ffi::nghttp2_frame,
   _lib_error_code: i32,
-  _data: *mut c_void,
+  data: *mut c_void,
 ) -> i32 {
+  // SAFETY: data is the user_data pointer set during session creation
+  let session = unsafe { Session::from_user_data(data) };
+  let count = session.invalid_frame_count;
+  session.invalid_frame_count = count.saturating_add(1);
+  // Node.js compares post-increment against the limit (see node_http2.cc
+  // OnInvalidFrame). Returning a non-zero value tells nghttp2 to terminate
+  // the session immediately, which surfaces as a connection close on the
+  // peer's socket.
+  if session.max_invalid_frames > 0 && count >= session.max_invalid_frames {
+    return 1;
+  }
   0
 }
 
@@ -1459,6 +1470,12 @@ pub struct Session {
   /// per-session limit derived from the `maxHeaderListPairs` option.
   /// Streams that receive more headers are reset with NGHTTP2_ENHANCE_YOUR_CALM.
   pub max_header_pairs: u32,
+  /// Maximum number of invalid HTTP/2 frames the peer may send before the
+  /// session is terminated. Mirrors Node.js's `maxSessionInvalidFrames`
+  /// option (default 1000). 0 disables the check.
+  pub max_invalid_frames: u32,
+  /// Running count of invalid frames received on this session.
+  pub invalid_frame_count: u32,
 }
 
 impl Session {
@@ -1851,6 +1868,8 @@ impl Http2Session {
       pending_rst_streams: Vec::new(),
       orig_stream_data: std::ptr::null_mut(),
       max_header_pairs: options.max_header_pairs(),
+      max_invalid_frames: 1000,
+      invalid_frame_count: 0,
     }));
 
     // SAFETY: inner is valid (just allocated); callbacks and options are valid
@@ -2314,6 +2333,13 @@ impl Http2Session {
     }
     log::debug!("set next stream id to {}", id);
     true
+  }
+
+  #[fast]
+  fn set_max_invalid_frames(&self, value: u32) {
+    // SAFETY: self.inner was allocated by Box::into_raw and is valid
+    let session = unsafe { &mut *self.inner };
+    session.max_invalid_frames = value;
   }
 
   #[fast]
