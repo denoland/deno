@@ -92,7 +92,7 @@ impl<'a> FromV8<'a> for DatabaseSyncOptions {
 
     let Ok(obj) = v8::Local::<v8::Object>::try_from(value) else {
       return Err(Error::InvalidArgType(
-        "The \"options\" argument must be an object.",
+        "The \"options\" argument must be an object.".into(),
       ));
     };
 
@@ -120,7 +120,7 @@ impl<'a> FromV8<'a> for DatabaseSyncOptions {
       options.open = v8::Local::<v8::Boolean>::try_from(open)
         .map_err(|_| {
           Error::InvalidArgType(
-            "The \"options.open\" argument must be a boolean.",
+            "The \"options.open\" argument must be a boolean.".into(),
           )
         })?
         .is_true();
@@ -133,7 +133,7 @@ impl<'a> FromV8<'a> for DatabaseSyncOptions {
       options.read_only = v8::Local::<v8::Boolean>::try_from(read_only)
         .map_err(|_| {
           Error::InvalidArgType(
-            "The \"options.readOnly\" argument must be a boolean.",
+            "The \"options.readOnly\" argument must be a boolean.".into(),
           )
         })?
         .is_true();
@@ -150,9 +150,7 @@ impl<'a> FromV8<'a> for DatabaseSyncOptions {
       options.enable_foreign_key_constraints =
           v8::Local::<v8::Boolean>::try_from(enable_foreign_key_constraints)
             .map_err(|_| {
-              Error::InvalidArgType(
-              "The \"options.enableForeignKeyConstraints\" argument must be a boolean.",
-            )
+              Error::InvalidArgType("The \"options.enableForeignKeyConstraints\" argument must be a boolean.".into())
             })?
             .is_true();
     }
@@ -166,7 +164,8 @@ impl<'a> FromV8<'a> for DatabaseSyncOptions {
         v8::Local::<v8::Boolean>::try_from(allow_extension)
           .map_err(|_| {
             Error::InvalidArgType(
-              "The \"options.allowExtension\" argument must be a boolean.",
+              "The \"options.allowExtension\" argument must be a boolean."
+                .into(),
             )
           })?
           .is_true();
@@ -183,9 +182,7 @@ impl<'a> FromV8<'a> for DatabaseSyncOptions {
       options.enable_double_quoted_string_literals =
             v8::Local::<v8::Boolean>::try_from(enable_double_quoted_string_literals)
                 .map_err(|_| {
-                Error::InvalidArgType(
-                    "The \"options.enableDoubleQuotedStringLiterals\" argument must be a boolean.",
-                )
+                Error::InvalidArgType("The \"options.enableDoubleQuotedStringLiterals\" argument must be a boolean.".into())
                 })?
                 .is_true();
     }
@@ -197,7 +194,7 @@ impl<'a> FromV8<'a> for DatabaseSyncOptions {
       let timeout = v8::Local::<v8::Integer>::try_from(timeout)
         .map_err(|_| {
           Error::InvalidArgType(
-            "The \"options.timeout\" argument must be an integer.",
+            "The \"options.timeout\" argument must be an integer.".into(),
           )
         })?
         .value();
@@ -215,7 +212,7 @@ impl<'a> FromV8<'a> for DatabaseSyncOptions {
         v8::Local::<v8::Boolean>::try_from(read_big_ints)
           .map_err(|_| {
             Error::InvalidArgType(
-              "The \"options.readBigInts\" argument must be a boolean.",
+              "The \"options.readBigInts\" argument must be a boolean.".into(),
             )
           })?
           .is_true();
@@ -228,7 +225,7 @@ impl<'a> FromV8<'a> for DatabaseSyncOptions {
       options.return_arrays = v8::Local::<v8::Boolean>::try_from(return_arrays)
         .map_err(|_| {
           Error::InvalidArgType(
-            "The \"options.returnArrays\" argument must be a boolean.",
+            "The \"options.returnArrays\" argument must be a boolean.".into(),
           )
         })?
         .is_true();
@@ -243,9 +240,7 @@ impl<'a> FromV8<'a> for DatabaseSyncOptions {
       options.allow_bare_named_params =
         v8::Local::<v8::Boolean>::try_from(allow_bare_named_params)
           .map_err(|_| {
-            Error::InvalidArgType(
-              "The \"options.allowBareNamedParameters\" argument must be a boolean.",
-            )
+            Error::InvalidArgType("The \"options.allowBareNamedParameters\" argument must be a boolean.".into())
           })?
           .is_true();
     }
@@ -259,9 +254,7 @@ impl<'a> FromV8<'a> for DatabaseSyncOptions {
       options.allow_unknown_named_params =
         v8::Local::<v8::Boolean>::try_from(allow_unknown_named_params)
           .map_err(|_| {
-            Error::InvalidArgType(
-              "The \"options.allowUnknownNamedParameters\" argument must be a boolean.",
-            )
+            Error::InvalidArgType("The \"options.allowUnknownNamedParameters\" argument must be a boolean.".into())
           })?
           .is_true();
     }
@@ -274,7 +267,7 @@ impl<'a> FromV8<'a> for DatabaseSyncOptions {
         v8::Local::<v8::Boolean>::try_from(is_defensive_mode)
           .map_err(|_| {
             Error::InvalidArgType(
-              "The \"options.defensive\" argument must be a boolean.",
+              "The \"options.defensive\" argument must be a boolean.".into(),
             )
           })?
           .is_true();
@@ -287,13 +280,13 @@ impl<'a> FromV8<'a> for DatabaseSyncOptions {
       let limits_obj = v8::Local::<v8::Object>::try_from(limits_value)
         .map_err(|_| {
           Error::InvalidArgType(
-            "The \"options.limits\" argument must be an object.",
+            "The \"options.limits\" argument must be an object.".into(),
           )
         })?;
 
       for (idx, &(js_name, _limit)) in LIMIT_MAPPING.iter().enumerate() {
         let key = v8::String::new(scope, js_name).ok_or({
-          Error::InvalidArgType("Failed to create limit key string.")
+          Error::InvalidArgType("Failed to create limit key string.".into())
         })?;
 
         if let Some(val) = limits_obj.get(scope, key.into())
@@ -301,24 +294,24 @@ impl<'a> FromV8<'a> for DatabaseSyncOptions {
         {
           let int_val =
             v8::Local::<v8::Int32>::try_from(val).map_err(|_| {
-              Error::InvalidArgType(Box::leak(
+              Error::InvalidArgType(
                 format!(
                   "The \"options.limits.{}\" argument must be an integer.",
                   js_name
                 )
-                .into_boxed_str(),
-              ))
+                .into(),
+              )
             })?;
 
           let limit_val = int_val.value();
           if limit_val < 0 {
-            return Err(Error::InvalidArgValue(Box::leak(
+            return Err(Error::InvalidArgValue(
               format!(
                 "The \"options.limits.{}\" argument must be non-negative.",
                 js_name
               )
-              .into_boxed_str(),
-            )));
+              .into(),
+            ));
           }
 
           options.initial_limits[idx] = Some(limit_val);
@@ -369,7 +362,7 @@ impl<'a> AggregateFunctionOption<'a> {
 
     if !value.is_object() {
       return Err(Error::InvalidArgType(
-        "The \"options\" argument must be an object.",
+        "The \"options\" argument must be an object.".into(),
       ));
     }
 
@@ -390,9 +383,7 @@ impl<'a> AggregateFunctionOption<'a> {
       .get(scope, start_key.into())
       .unwrap();
     if start_value.is_undefined() {
-      return Err(Error::InvalidArgType(
-        "The \"options.start\" argument must be a function or a primitive value.",
-      ));
+      return Err(Error::InvalidArgType("The \"options.start\" argument must be a function or a primitive value.".into()));
     }
 
     let step_key = STEP_STRING.v8_string(scope).unwrap();
@@ -403,7 +394,7 @@ impl<'a> AggregateFunctionOption<'a> {
     let step_function = v8::Local::<v8::Function>::try_from(step_value)
       .map_err(|_| {
         Error::InvalidArgType(
-          "The \"options.step\" argument must be a function.",
+          "The \"options.step\" argument must be a function.".into(),
         )
       })?;
 
@@ -418,7 +409,7 @@ impl<'a> AggregateFunctionOption<'a> {
       let func =
         v8::Local::<v8::Function>::try_from(result_value).map_err(|_| {
           Error::InvalidArgType(
-            "The \"options.result\" argument must be a function.",
+            "The \"options.result\" argument must be a function.".into(),
           )
         })?;
       Some(func)
@@ -437,7 +428,7 @@ impl<'a> AggregateFunctionOption<'a> {
     if !deterministic_value.is_undefined() {
       if !deterministic_value.is_boolean() {
         return Err(Error::InvalidArgType(
-          "The \"options.deterministic\" argument must be a boolean.",
+          "The \"options.deterministic\" argument must be a boolean.".into(),
         ));
       }
       deterministic = deterministic_value.boolean_value(scope);
@@ -451,7 +442,8 @@ impl<'a> AggregateFunctionOption<'a> {
     if !bigint_value.is_undefined() {
       if !bigint_value.is_boolean() {
         return Err(Error::InvalidArgType(
-          "The \"options.useBigIntArguments\" argument must be a boolean.",
+          "The \"options.useBigIntArguments\" argument must be a boolean."
+            .into(),
         ));
       }
       use_big_int_arguments = bigint_value.boolean_value(scope);
@@ -465,7 +457,7 @@ impl<'a> AggregateFunctionOption<'a> {
     if !varargs_value.is_undefined() {
       if !varargs_value.is_boolean() {
         return Err(Error::InvalidArgType(
-          "The \"options.varargs\" argument must be a boolean.",
+          "The \"options.varargs\" argument must be a boolean.".into(),
         ));
       }
       varargs = varargs_value.boolean_value(scope);
@@ -479,7 +471,7 @@ impl<'a> AggregateFunctionOption<'a> {
     if !direct_only_value.is_undefined() {
       if !direct_only_value.is_boolean() {
         return Err(Error::InvalidArgType(
-          "The \"options.directOnly\" argument must be a boolean.",
+          "The \"options.directOnly\" argument must be a boolean.".into(),
         ));
       }
       direct_only = direct_only_value.boolean_value(scope);
@@ -496,7 +488,7 @@ impl<'a> AggregateFunctionOption<'a> {
       let func =
         v8::Local::<v8::Function>::try_from(inverse_value).map_err(|_| {
           Error::InvalidArgType(
-            "The \"options.inverse\" argument must be a function.",
+            "The \"options.inverse\" argument must be a function.".into(),
           )
         })?;
       Some(func)
@@ -534,7 +526,9 @@ impl<'a> ApplyChangesetOptions<'a> {
     }
 
     let obj = v8::Local::<v8::Object>::try_from(value).map_err(|_| {
-      Error::InvalidArgType("The \"options\" argument must be an object.")
+      Error::InvalidArgType(
+        "The \"options\" argument must be an object.".into(),
+      )
     })?;
 
     let mut options = Self {
@@ -553,7 +547,7 @@ impl<'a> ApplyChangesetOptions<'a> {
     {
       if !filter.is_function() {
         return Err(Error::InvalidArgType(
-          "The \"options.filter\" argument must be a function.",
+          "The \"options.filter\" argument must be a function.".into(),
         ));
       }
 
@@ -566,7 +560,7 @@ impl<'a> ApplyChangesetOptions<'a> {
     {
       if !on_conflict.is_function() {
         return Err(Error::InvalidArgType(
-          "The \"options.onConflict\" argument must be a function.",
+          "The \"options.onConflict\" argument must be a function.".into(),
         ));
       }
 
@@ -963,7 +957,7 @@ impl DatabaseSync {
           let options =
             v8::Local::<v8::Object>::try_from(options).map_err(|_| {
               SqliteError::Validation(validators::Error::InvalidArgType(
-                "The \"options\" argument must be an object.",
+                "The \"options\" argument must be an object.".into(),
               ))
             })?;
 
@@ -982,11 +976,14 @@ impl DatabaseSync {
                   $target = v8::Local::<v8::Boolean>::try_from(val)
                     .map_err(|_| {
                       SqliteError::Validation(
-                        validators::Error::InvalidArgType(concat!(
-                          "The \"",
-                          $name,
-                          "\" argument must be a boolean."
-                        )),
+                        validators::Error::InvalidArgType(
+                          concat!(
+                            "The \"",
+                            $name,
+                            "\" argument must be a boolean."
+                          )
+                          .into(),
+                        ),
                       )
                     })?
                     .is_true();
@@ -1040,7 +1037,7 @@ impl DatabaseSync {
     let Some(args) = args.filter(|args| args.length() > 0) else {
       return Err(
         validators::Error::InvalidArgType(
-          "The \"name\" argument must be a string.",
+          "The \"name\" argument must be a string.".into(),
         )
         .into(),
       );
@@ -1049,7 +1046,7 @@ impl DatabaseSync {
     if !args.get(0).is_string() {
       return Err(
         validators::Error::InvalidArgType(
-          "The \"name\" argument must be a string.",
+          "The \"name\" argument must be a string.".into(),
         )
         .into(),
       );
@@ -1066,7 +1063,7 @@ impl DatabaseSync {
     else {
       return Err(
         validators::Error::InvalidArgType(
-          "The \"function\" argument must be a function.",
+          "The \"function\" argument must be a function.".into(),
         )
         .into(),
       );
@@ -1083,7 +1080,7 @@ impl DatabaseSync {
       if value.is_null() || !value.is_object() {
         return Err(
           validators::Error::InvalidArgType(
-            "The \"options\" argument must be an object.",
+            "The \"options\" argument must be an object.".into(),
           )
           .into(),
         );
@@ -1104,7 +1101,8 @@ impl DatabaseSync {
         if !bigint_value.is_boolean() {
           return Err(
             validators::Error::InvalidArgType(
-              "The \"options.useBigIntArguments\" argument must be a boolean.",
+              "The \"options.useBigIntArguments\" argument must be a boolean."
+                .into(),
             )
             .into(),
           );
@@ -1118,7 +1116,7 @@ impl DatabaseSync {
         if !varargs_value.is_boolean() {
           return Err(
             validators::Error::InvalidArgType(
-              "The \"options.varargs\" argument must be a boolean.",
+              "The \"options.varargs\" argument must be a boolean.".into(),
             )
             .into(),
           );
@@ -1133,7 +1131,8 @@ impl DatabaseSync {
         if !deterministic_value.is_boolean() {
           return Err(
             validators::Error::InvalidArgType(
-              "The \"options.deterministic\" argument must be a boolean.",
+              "The \"options.deterministic\" argument must be a boolean."
+                .into(),
             )
             .into(),
           );
@@ -1148,7 +1147,7 @@ impl DatabaseSync {
         if !direct_only_value.is_boolean() {
           return Err(
             validators::Error::InvalidArgType(
-              "The \"options.directOnly\" argument must be a boolean.",
+              "The \"options.directOnly\" argument must be a boolean.".into(),
             )
             .into(),
           );
@@ -1525,7 +1524,7 @@ impl DatabaseSync {
       if !name_value.is_string() {
         return Err(SqliteError::Validation(
           validators::Error::InvalidArgType(
-            "The \"dbName\" argument must be a string.",
+            "The \"dbName\" argument must be a string.".into(),
           ),
         ));
       }
@@ -1617,7 +1616,7 @@ impl DatabaseSync {
     let Ok(function) = v8::Local::<v8::Function>::try_from(callback) else {
       return Err(
         validators::Error::InvalidArgType(
-          "The \"callback\" argument must be a function or null.",
+          "The \"callback\" argument must be a function or null.".into(),
         )
         .into(),
       );
