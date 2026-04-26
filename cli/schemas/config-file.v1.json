@@ -952,8 +952,7 @@
         }
       }, {
         "description": "Disable publishing this package with deno publish",
-        "type": "boolean",
-        "const": "false"
+        "const": false
       }]
     },
     "bench": {

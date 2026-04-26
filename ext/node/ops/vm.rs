@@ -628,11 +628,7 @@ pub fn init_global_template<'a>(
 
 // Using thread_local! to get around compiler bug.
 //
-// NOTE(bartlomieju): somehow calling `.map_fn_to()` multiple times on a
-// function returns two different pointers. That shouldn't be the case as
-// `.map_fn_to()` creates a thin wrapper that is a pure function.
-// @piscisaureus suggests it might be a bug in Rust compiler; so for now we
-// just create and store these mapped functions per-thread.
+// See NOTE in ext/node/global.rs#L12
 thread_local! {
   pub static QUERY_MAP_FN: v8::NamedPropertyQueryCallback = property_query.map_fn_to();
   pub static GETTER_MAP_FN: v8::NamedPropertyGetterCallback = property_getter.map_fn_to();
@@ -722,15 +718,26 @@ fn property_query<'s>(
     return v8::Intercepted::kNo;
   };
 
-  match sandbox.has_real_named_property(scope, property) {
+  // Use `Has` rather than `HasRealNamedProperty` for the sandbox so the
+  // `in` operator walks the sandbox's prototype chain, matching Node's
+  // behaviour. With the own-only check, a user that does
+  // `Object.setPrototypeOf(sandbox, someProto)` would not see properties
+  // from `someProto` reachable via `propName in window` inside the vm
+  // context.
+  //
+  // The fallback path on the global proxy keeps using
+  // `HasRealNamedProperty` to avoid recursing back into this interceptor:
+  // the global proxy carries the named-property handler that brought us
+  // here, so a regular `Has` would re-enter `property_query` infinitely.
+  let property_value: v8::Local<v8::Value> = property.into();
+  match sandbox.has(scope, property_value) {
     None => v8::Intercepted::kNo,
     Some(true) => {
-      let Some(attr) =
-        sandbox.get_real_named_property_attributes(scope, property)
-      else {
-        return v8::Intercepted::kNo;
-      };
-      rv.set_uint32(attr.as_u32());
+      let attr = sandbox
+        .get_property_attributes(scope, property_value)
+        .map(|a| a.as_u32())
+        .unwrap_or(0);
+      rv.set_uint32(attr);
       v8::Intercepted::kYes
     }
     Some(false) => {

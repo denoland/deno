@@ -32,7 +32,6 @@ const {
   Error,
   ErrorPrototype,
   FunctionPrototypeBind,
-  FunctionPrototypeCall,
   ObjectAssign,
   ObjectDefineProperties,
   ObjectDefineProperty,
@@ -56,7 +55,6 @@ import * as event from "ext:deno_web/02_event.js";
 import * as location from "ext:deno_web/12_location.js";
 import * as version from "ext:runtime/01_version.ts";
 import * as os from "ext:deno_os/30_os.js";
-import * as timers from "ext:deno_web/02_timers.js";
 import {
   getConsoleInspectOptions,
   getDefaultInspectOptions,
@@ -93,6 +91,7 @@ import {
 } from "ext:runtime/98_global_scope_worker.js";
 import { SymbolMetadata } from "ext:deno_web/00_infra.js";
 import { bootstrap as bootstrapOtel } from "ext:deno_telemetry/telemetry.ts";
+import { nodeGlobals } from "ext:deno_node/00_globals.js";
 
 // deno-lint-ignore prefer-primordials
 if (Symbol.metadata) {
@@ -147,10 +146,14 @@ function windowClose() {
     PromisePrototypeThen(
       PromiseResolve(),
       () =>
-        FunctionPrototypeCall(timers.setTimeout, null, () => {
-          // This should be fine, since only Window/MainWorker has .close()
-          os.exit(0);
-        }, 0),
+        core.createSystemTimer(
+          () => {
+            // This should be fine, since only Window/MainWorker has .close()
+            os.exit(0);
+          },
+          0,
+          true,
+        ),
     );
   }
 }
@@ -560,7 +563,7 @@ function removeImportedOps() {
 // FIXME(bartlomieju): temporarily add whole `Deno.core` to
 // `Deno[Deno.internal]` namespace. It should be removed and only necessary
 // methods should be left there.
-ObjectAssign(internals, { core });
+ObjectAssign(internals, { core, nodeGlobals: { ...nodeGlobals } });
 const internalSymbol = Symbol("Deno.internal");
 const finalDenoNs = {
   internal: internalSymbol,

@@ -339,19 +339,30 @@ const OPTIONS_FLAG_NO_AUTO_WINDOW_UPDATE: u32 = 0x1;
 const OPTIONS_FLAG_NO_RECV_CLIENT_MAGIC: u32 = 0x2;
 const OPTIONS_FLAG_NO_HTTP_MESSAGING: u32 = 0x4;
 
+const DEFAULT_MAX_HEADER_LIST_PAIRS: u32 = 128;
+
 struct Http2Options {
   options: *mut ffi::nghttp2_option,
   padding_strategy: PaddingStrategy,
+  max_header_pairs: u32,
 }
 
 impl Http2Options {
-  fn new(session_type: SessionType) -> Self {
+  fn new(
+    session_type: SessionType,
+    no_strict_field_ws_validation: bool,
+  ) -> Self {
     let mut options: *mut ffi::nghttp2_option = std::ptr::null_mut();
     // SAFETY: passing valid pointer to be initialized by nghttp2
     unsafe { ffi::nghttp2_option_new(&mut options) };
 
+    let mut max_header_pairs: u32 = DEFAULT_MAX_HEADER_LIST_PAIRS;
     let padding_strategy = with_options(|buffer| {
       let flags = buffer[OptionsIndex::Flags as usize];
+
+      if flags & (1 << OptionsIndex::MaxHeaderListPairs as u32) != 0 {
+        max_header_pairs = buffer[OptionsIndex::MaxHeaderListPairs as usize];
+      }
 
       // SAFETY: options was successfully initialized by nghttp2_option_new
       unsafe {
@@ -435,6 +446,16 @@ impl Http2Options {
             ffi::NGHTTP2_ORIGIN as u8,
           );
         }
+
+        // strictFieldWhitespaceValidation: when disabled, tell nghttp2 to skip
+        // RFC 9113 leading/trailing whitespace validation so headers with
+        // surrounding whitespace are delivered to on_header_callback instead
+        // of being routed to on_invalid_header_callback (and dropped).
+        if no_strict_field_ws_validation {
+          ffi::nghttp2_option_set_no_rfc9113_leading_and_trailing_ws_validation(
+            options, 1,
+          );
+        }
       }
 
       let padding = buffer[OptionsIndex::PaddingStrategy as usize];
@@ -446,9 +467,18 @@ impl Http2Options {
       }
     });
 
+    // Apply Node.js semantics: server min 4, client min 1.
+    // See node_http_common-inl.h: GetServerMaxHeaderPairs / GetClientMaxHeaderPairs.
+    let min_pairs = match session_type {
+      SessionType::Server => 4,
+      SessionType::Client => 1,
+    };
+    let max_header_pairs = std::cmp::max(max_header_pairs, min_pairs);
+
     Self {
       options,
       padding_strategy,
+      max_header_pairs,
     }
   }
 
@@ -458,6 +488,10 @@ impl Http2Options {
 
   fn padding_strategy(&self) -> PaddingStrategy {
     self.padding_strategy
+  }
+
+  fn max_header_pairs(&self) -> u32 {
+    self.max_header_pairs
   }
 }
 
@@ -793,7 +827,18 @@ fn handle_headers_frame(session: &Session, frame: *const ffi::nghttp2_frame) {
 
   let handle = v8::Local::new(scope, stream_obj);
   let id_num = v8::Number::new(scope, id.into());
-  let cat = v8::null(scope);
+  // For HEADERS frames, expose the nghttp2 category so the JS polyfill can
+  // distinguish 'response', 'push', 'trailers', 'headers'. PUSH_PROMISE
+  // frames don't carry a category — leave it null and let the polyfill
+  // treat the new-stream branch (the stream is still being created).
+  let cat: v8::Local<v8::Value> =
+    if frame_type(frame) as u32 == ffi::NGHTTP2_HEADERS as u32 {
+      // SAFETY: frame is a HEADERS frame per the type check above
+      let c = unsafe { (*frame).headers.cat } as i32;
+      v8::Integer::new(scope, c).into()
+    } else {
+      v8::null(scope).into()
+    };
   let flags = v8::Number::new(scope, frame_flags(frame).into());
 
   callback.call(
@@ -802,7 +847,7 @@ fn handle_headers_frame(session: &Session, frame: *const ffi::nghttp2_frame) {
     &[
       handle.into(),
       id_num.into(),
-      cat.into(),
+      cat,
       flags.into(),
       headers_array.into(),
     ],
@@ -1407,6 +1452,13 @@ pub struct Session {
   /// double-free a stream (with no_closed_streams=1). Instead, we
   /// defer and flush them after send_pending_data completes.
   pub pending_rst_streams: Vec<(i32, u32)>,
+  /// Original stream.data pointer saved before consume_stream overwrites it.
+  /// Restored when the session releases the stream.
+  pub orig_stream_data: *mut std::ffi::c_void,
+  /// Maximum number of header pairs allowed per stream. Mirrors Node.js's
+  /// per-session limit derived from the `maxHeaderListPairs` option.
+  /// Streams that receive more headers are reset with NGHTTP2_ENHANCE_YOUR_CALM.
+  pub max_header_pairs: u32,
 }
 
 impl Session {
@@ -1558,7 +1610,14 @@ impl Session {
     }
     let stream = match self.stream {
       Some(stream) => stream,
-      None => return,
+      None => {
+        // JS write path: no consumed stream, but still check for graceful
+        // close completion. The JS side handles data serialization via
+        // getOutgoingData/sendPending, but the graceful close notification
+        // must still fire when nghttp2 reports no more pending I/O.
+        self.maybe_notify_graceful_close_complete();
+        return;
+      }
     };
 
     // Safety check: ensure the stream handle is still a valid TCP handle
@@ -1675,6 +1734,12 @@ impl Session {
     if self.pending_destroy {
       self.pending_destroy = false;
       if let Some(stream) = self.stream.take() {
+        // Restore original stream.data that was saved in consume_stream
+        // SAFETY: stream is a valid libuv handle
+        unsafe {
+          (*stream).data = self.orig_stream_data;
+        }
+        self.orig_stream_data = std::ptr::null_mut();
         // SAFETY: stream is a valid libuv handle
         unsafe {
           deno_core::uv_compat::uv_read_stop(stream);
@@ -1758,9 +1823,11 @@ impl Http2Session {
     scope: &mut v8::PinScope<'_, '_>,
     op_state: Rc<RefCell<OpState>>,
     session_type: SessionType,
+    no_strict_field_ws_validation: bool,
   ) -> Self {
     let mut session: *mut ffi::nghttp2_session = std::ptr::null_mut();
-    let options = Http2Options::new(session_type);
+    let options =
+      Http2Options::new(session_type, no_strict_field_ws_validation);
 
     let context = scope.get_current_context();
     let context = v8::Global::new(scope, context);
@@ -1782,6 +1849,8 @@ impl Http2Session {
       is_sending: false,
       pending_destroy: false,
       pending_rst_streams: Vec::new(),
+      orig_stream_data: std::ptr::null_mut(),
+      max_header_pairs: options.max_header_pairs(),
     }));
 
     // SAFETY: inner is valid (just allocated); callbacks and options are valid
@@ -1876,6 +1945,7 @@ impl Http2Session {
     scope: &mut v8::PinScope<'_, '_>,
     op_state: Rc<RefCell<OpState>>,
     #[smi] type_: i32,
+    no_strict_field_ws_validation: bool,
   ) -> Http2Session {
     Http2Session::create(
       this,
@@ -1887,14 +1957,21 @@ impl Http2Session {
         1 => SessionType::Client,
         _ => unreachable!(),
       },
+      no_strict_field_ws_validation,
     )
   }
 
   #[fast]
-  fn consume_stream(&self, #[cppgc] tcp: &crate::ops::libuv_stream::TCP) {
+  fn consume_stream(&self, #[cppgc] tcp: &crate::ops::tcp_wrap::TCPWrap) {
     // SAFETY: self.inner was allocated by Box::into_raw and is valid
     let session = unsafe { &mut *self.inner };
-    let stream = tcp.stream();
+    let stream = tcp.stream_ptr();
+
+    // Save the original stream.data (LibUvStreamWrap's StreamHandleData)
+    // before overwriting it with our session pointer.
+    // SAFETY: stream is a valid libuv stream handle from TCPWrap
+    let orig_data = unsafe { (*stream).data };
+    session.orig_stream_data = orig_data;
 
     // Stop the existing read on the TCP handle
     // SAFETY: stream is a valid libuv stream handle from TCP object
@@ -1924,6 +2001,7 @@ impl Http2Session {
   }
 
   #[fast]
+  #[reentrant]
   fn receive(&self, #[buffer] data: &[u8]) {
     // SAFETY: self.inner was allocated by Box::into_raw and is valid
     let session = unsafe { &mut *self.inner };
@@ -1936,6 +2014,30 @@ impl Http2Session {
     // SAFETY: self.inner was allocated by Box::into_raw and is valid
     let session = unsafe { &mut *self.inner };
     session.send_pending_data();
+  }
+
+  /// Get all pending outgoing h2 frames as a single buffer.
+  /// Used by the JS write path when consume_stream is not active.
+  #[buffer]
+  #[reentrant]
+  fn get_outgoing_data(&self) -> Box<[u8]> {
+    // SAFETY: self.inner was allocated by Box::into_raw and is valid
+    let session = unsafe { &mut *self.inner };
+    let mut output = Vec::new();
+    loop {
+      let mut src = std::ptr::null();
+      let src_len =
+        // SAFETY: session.session is a valid nghttp2 session pointer
+        unsafe { ffi::nghttp2_session_mem_send(session.session, &mut src) };
+      if src_len > 0 {
+        // SAFETY: src and src_len are valid per nghttp2_session_mem_send
+        let data = unsafe { std::slice::from_raw_parts(src, src_len as usize) };
+        output.extend_from_slice(data);
+      } else {
+        break;
+      }
+    }
+    output.into_boxed_slice()
   }
 
   #[fast]

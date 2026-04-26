@@ -2252,17 +2252,15 @@ unsafe extern "C" fn custom_function_handler(
 
 unsafe extern "C" fn custom_function_destroy(data: *mut c_void) {
   // SAFETY: `data` is a valid pointer to CustomFunctionData.
-  // The v8 handles are properly dropped here.
+  // Drop the Box to free the raw pointers stored in it.
+  // We intentionally do NOT convert the raw v8::Global handles back
+  // via `Global::from_raw` because this callback can fire during
+  // isolate teardown (e.g. sqlite3_close during GC) when the
+  // isolate annex is already disposed, making scope creation unsafe.
+  // The leaked Global pointers are harmless: the isolate is being
+  // destroyed and will reclaim all V8 heap memory anyway.
   unsafe {
-    let data = Box::from_raw(data as *mut CustomFunctionData);
-    let context_local: v8::Local<v8::Context> =
-      std::mem::transmute(data.context.as_ptr());
-
-    v8::callback_scope!(unsafe cb_scope, context_local);
-    v8::scope!(scope, cb_scope);
-
-    let _ = v8::Global::from_raw(scope, data.callback);
-    let _ = v8::Global::from_raw(scope, data.context);
+    let _ = Box::from_raw(data as *mut CustomFunctionData);
   }
 }
 

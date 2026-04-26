@@ -6,6 +6,98 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 2.7.13 / 2026.04.22
+
+- feat(ext/node): implement node:repl module (#32799)
+- feat(ext/node): rewrite node:http with llhttp and native TCPWrap (#33208)
+- feat(upgrade): support installing from a PR (#33252)
+- fix(audit): migrate to bulk advisory endpoint (#33292)
+- fix(console): find nodejs.util.inspect.custom on Proxy objects via get trap
+  (#33265)
+- fix(doc): Add Prism support for JSX/TSX code blocks (#33255)
+- fix(ext/http): treat empty Host header as missing in request URL (#33234)
+- fix(ext/napi): defer GC weak-callback finalizers to the event loop (#33260)
+- fix(ext/napi): implement real V8 handle scopes and callback scopes (#33281)
+- fix(ext/napi): implement zero-copy external Latin-1 strings (#33283)
+- fix(ext/node): ChildProcess.kill() returns false when process already exited
+  (#33305)
+- fix(ext/node): address node:http rewrite review comments (#33299)
+- fix(ext/node): auto-start server-side STARTTLS handshake, add TLS upgrade
+  tests (#33303)
+- fix(ext/node): defer JS stream encOut to avoid reentrant CppGC borrow (#33304)
+- fix(ext/node): enable HTTP parser consume fast path (#33354)
+- fix(ext/node): enforce maxHeaderSize in HTTP parser (#33306)
+- fix(ext/node): fix EEXIST error and file corruption with writeFileSync on
+  Windows (#33253)
+- fix(ext/node): fix Module._resolveLookupPaths and require.resolve compat
+  (#33261)
+- fix(ext/node): fix multiple http2 bugs (#33315)
+- fix(ext/node): fix playwright on windows (#33295)
+- fix(ext/node): flush HTTP/2 HEADERS frame after client request (#33300)
+- fix(ext/node): free uv_write and uv_shutdown requests in every exit path
+  (#33350)
+- fix(ext/node): http client compat improvements (#33337)
+- fix(ext/node): http2 improvements — constants, error codes, settings,
+  validation (#33332)
+- fix(ext/node): improve node:tls compat (validation, pipes, JS streams)
+  (#33331)
+- fix(ext/node): support FD-indexed stdio inheritance in spawnSync (#33341)
+- fix(ext/node): support RSA-PSS keys in crypto.verify with null algorithm
+  (#33314)
+- fix(runtime): warn on unsupported web Worker options and fix recv panic
+  (#33310)
+- fix(test): fix specific_canary upgrade test on Windows (#33286)
+- fix: add note for canary's 30-day retention period (#33271)
+- fix: restore glibc < 2.27 compatibility for Linux release builds (#33259)
+- fix: update v8 crate to 147.2.1 (#33318)
+- perf(ext/node): elide async_hooks emit in timers when no hooks registered
+  (#33355)
+- perf(ext/node): flush-free header fast path in HTTP parser (#33351)
+- perf(ext/node): reduce writev op allocations and write copies (#33352)
+- perf(libs/core): poll only ready handles and yield between I/O batches
+  (#33349)
+- perf: reduce memory usage of Command.output() (#33335)
+
+### 2.7.12 / 2026.04.09
+
+- feat(ext/node): add fs.SyncWriteStream (#33226)
+- feat(ext/node): add llhttp-based HTTPParser with native cppgc binding (#33202)
+- feat(ext/node): add native TLSWrap cppgc object (Rust core) (#33183)
+- feat: native uv_pipe_t implementation with NativePipe and FdTable (#33165)
+- fix(core): fix uv_pipe_open handle lifecycle to match libuv (#33225)
+- fix(core): free UvLoopInner on uv_loop_t drop to prevent worker memory leak
+  (#33200)
+- fix(core): handle WouldBlock in op_print for non-blocking stdio (#33221)
+- fix(core): use c_char instead of i8 in uv_buf_t base cast (#33179)
+- fix(ext/napi): use per-isolate Private key for napi_wrap/napi_unwrap (#33204)
+- fix(ext/node): add dns.getDefaultResultOrder() API (#33197)
+- fix(ext/node): create net.Socket from file descriptors (#33150)
+- fix(ext/node): implement TCP.open(fd) (#33155)
+- fix(ext/node): implement timeout, killSignal, and pid for child_process
+  spawnSync (#32810)
+- fix(ext/node): implement uv_ref for native TCP handles (#33174)
+- fix(ext/node): remove dead legacy TCP server accept path (#33172)
+- fix(ext/node): return real OS file descriptors from node:fs APIs (#33039)
+- fix(ext/node): rewrite Pipe.open(fd) to use raw fd ops (#33136)
+- fix(ext/node): support numeric FDs in child_process stdio array (#33140)
+- fix(ext/node): throw on cipher update with input >= 2^31-1 bytes (#33201)
+- fix(ext/webgpu): accept `ArrayBuffer` in `GPUQueue.writeBuffer()` as data
+  source (#33152)
+- fix(io): remove global stdio statics, handle non-blocking stdin (#33219)
+- fix(node): validate resolved main path stays within package directory (#33170)
+- fix(otel): add timeout to OTEL HTTP exporter to prevent hangs (#33159)
+- fix(permissions): check deny rules against resolved IPs to prevent numeric
+  hostname bypass (#33203)
+- fix(permissions): normalize IPv4-mapped IPv6 addresses in net permission
+  checks (#33223)
+- fix(repl): surface CDP protocol errors and fix race in wait_for_response
+  (#33190)
+- fix(runtime): cache canonicalized watch paths, fix spurious events (#33123)
+- fix(schema): fix the `publish: false` of deno.json schema (#33196)
+- fix: linked packages with peer deps failing to cache from lockfile (#33143)
+- fix: update release template workflow URLs to .generated.yml (#33116)
+- perf(ext/node): use aws-lc-sys EVP API for chacha20-poly1305 (#33110)
+
 ### 2.7.11 / 2026.04.01
 
 - feat: add alpha and beta release channel support (#33098)

@@ -6,7 +6,7 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-import { core, internals } from "ext:core/mod.js";
+import { core } from "ext:core/mod.js";
 import {
   op_node_in_npm_package,
   op_node_ipc_buffer_constructor,
@@ -53,7 +53,10 @@ import {
 } from "ext:deno_node/internal/errors.ts";
 import { Buffer } from "node:buffer";
 import { FastBuffer } from "ext:deno_node/internal/buffer.mjs";
-import { errnoException } from "ext:deno_node/internal/errors.ts";
+import {
+  ERR_IPC_DISCONNECTED,
+  errnoException,
+} from "ext:deno_node/internal/errors.ts";
 import { ErrnoException } from "ext:deno_node/_global.d.ts";
 import { codeMap } from "ext:deno_node/internal_binding/uv.ts";
 import {
@@ -67,17 +70,13 @@ import { kEmptyObject } from "ext:deno_node/internal/util.mjs";
 import { getValidatedPath } from "ext:deno_node/internal/fs/utils.mjs";
 import process from "node:process";
 import { StringPrototypeSlice } from "ext:deno_node/internal/primordials.mjs";
-import { StreamBase } from "ext:deno_node/internal_binding/stream_wrap.ts";
 import { Pipe, socketType } from "ext:deno_node/internal_binding/pipe_wrap.ts";
 import { Server as NetServer, Socket } from "node:net";
 import { Socket as DgramSocket } from "node:dgram";
 import {
-  kArgv0,
-  kExtraStdio,
-  kInputOption,
-  kIpc,
   kNeedsNpmProcessState,
-  kSerialization,
+  nodeSpawnChild,
+  nodeSpawnSyncChild,
 } from "ext:deno_process/40_process.js";
 
 export function mapValues<T, O>(
@@ -159,57 +158,6 @@ function flushStdio(subprocess: ChildProcess) {
   }
 }
 
-// Wraps a resource in a class that implements
-// StreamBase, so it can be used with node streams
-class StreamResource implements StreamBase {
-  #rid: number;
-  #isUnref = false;
-  #pendingPromises: Set<Promise<number>> = new Set();
-  constructor(rid: number) {
-    this.#rid = rid;
-  }
-  close(): void {
-    core.close(this.#rid);
-  }
-  async read(p: Uint8Array): Promise<number | null> {
-    const readPromise = core.read(this.#rid, p);
-    this.#pendingPromises.add(readPromise);
-    if (this.#isUnref) {
-      core.unrefOpPromise(readPromise);
-    }
-    try {
-      const nread = await readPromise;
-      return nread > 0 ? nread : null;
-    } finally {
-      this.#pendingPromises.delete(readPromise);
-    }
-  }
-  ref(): void {
-    this.#isUnref = false;
-    for (const promise of this.#pendingPromises) {
-      core.refOpPromise(promise);
-    }
-  }
-  unref(): void {
-    this.#isUnref = true;
-    for (const promise of this.#pendingPromises) {
-      core.unrefOpPromise(promise);
-    }
-  }
-  async write(p: Uint8Array): Promise<number> {
-    const writePromise = core.write(this.#rid, p);
-    this.#pendingPromises.add(writePromise);
-    if (this.#isUnref) {
-      core.unrefOpPromise(writePromise);
-    }
-    try {
-      return await writePromise;
-    } finally {
-      this.#pendingPromises.delete(writePromise);
-    }
-  }
-}
-
 export class ChildProcess extends EventEmitter {
   /**
    * The exit code of the child process. This property will be `null` until the child process exits.
@@ -267,7 +215,8 @@ export class ChildProcess extends EventEmitter {
 
   disconnect?: () => void;
 
-  #process!: Deno.ChildProcess;
+  // deno-lint-ignore no-explicit-any
+  #process!: any;
   #spawned = Promise.withResolvers<void>();
   [kClosesNeeded] = 1;
   [kClosesReceived] = 0;
@@ -392,7 +341,13 @@ export class ChildProcess extends EventEmitter {
     const extraStdioNormalized: DenoStdio[] = [];
     for (let i = 0; i < extraStdio.length; i++) {
       const fd = i + extraStdioOffset;
-      if (fd === ipc) extraStdioNormalized.push("null");
+      if (fd === ipc) {
+        // IPC fd is handled separately in Rust via the kIpc option.
+        // Push a placeholder so the array indices stay aligned with
+        // fd numbers, but don't double-push.
+        extraStdioNormalized.push("null");
+        continue;
+      }
       extraStdioNormalized.push(toDenoStdio(extraStdio[i]));
     }
 
@@ -402,7 +357,7 @@ export class ChildProcess extends EventEmitter {
     }
 
     try {
-      this.#process = new Deno.Command(cmd, {
+      this.#process = nodeSpawnChild(cmd, {
         args: cmdArgs,
         clearEnv: true,
         cwd,
@@ -414,34 +369,23 @@ export class ChildProcess extends EventEmitter {
         uid,
         gid,
         detached,
-        [kSerialization]: serialization,
-        [kIpc]: ipc, // internal
-        [kExtraStdio]: extraStdioNormalized,
-        [kNeedsNpmProcessState]: options[kNeedsNpmProcessState] ||
+        serialization,
+        ipc,
+        extraStdio: extraStdioNormalized,
+        needsNpmProcessState: options[kNeedsNpmProcessState] ||
           includeNpmProcessState,
-        [kArgv0]: argv0 !== cmd ? argv0 : undefined,
-      }).spawn();
+        argv0: argv0 !== cmd ? argv0 : undefined,
+      });
       this.pid = this.#process.pid;
 
-      // Get stdio rids to create Socket instances
-      const stdioRids = internals.getStdioRids(this.#process);
-
-      if (stdin === "pipe") {
-        assert(this.#process.stdin);
-        if (stdioRids.stdinRid !== null) {
-          // Create Socket instance for stdin (like Node.js does)
-          this.stdin = new Socket({
-            handle: new Pipe(
-              socketType.SOCKET,
-              new StreamResource(stdioRids.stdinRid),
-            ),
-            writable: true,
-            readable: false,
-          });
-        } else {
-          // Fallback to web stream conversion
-          this.stdin = Writable.fromWeb(this.#process.stdin);
-        }
+      if (stdin === "pipe" && this.#process.stdinFd != null) {
+        const pipe = new Pipe(socketType.SOCKET);
+        pipe.open(this.#process.stdinFd);
+        this.stdin = new Socket({
+          handle: pipe,
+          writable: true,
+          readable: false,
+        });
       }
 
       if (stdin instanceof Stream) {
@@ -454,45 +398,29 @@ export class ChildProcess extends EventEmitter {
         this.stderr = stderr;
       }
 
-      if (stdout === "pipe") {
-        assert(this.#process.stdout);
+      if (stdout === "pipe" && this.#process.stdoutFd != null) {
         this[kClosesNeeded]++;
-        if (stdioRids.stdoutRid !== null) {
-          // Create Socket instance for stdout (like Node.js does)
-          this.stdout = new Socket({
-            handle: new Pipe(
-              socketType.SOCKET,
-              new StreamResource(stdioRids.stdoutRid),
-            ),
-            writable: false,
-            readable: true,
-          });
-        } else {
-          // Fallback to web stream conversion
-          this.stdout = Readable.fromWeb(this.#process.stdout);
-        }
+        const pipe = new Pipe(socketType.SOCKET);
+        pipe.open(this.#process.stdoutFd);
+        this.stdout = new Socket({
+          handle: pipe,
+          writable: false,
+          readable: true,
+        });
         this.stdout.on("close", () => {
           maybeClose(this);
         });
       }
 
-      if (stderr === "pipe") {
-        assert(this.#process.stderr);
+      if (stderr === "pipe" && this.#process.stderrFd != null) {
         this[kClosesNeeded]++;
-        if (stdioRids.stderrRid !== null) {
-          // Create Socket instance for stderr (like Node.js does)
-          this.stderr = new Socket({
-            handle: new Pipe(
-              socketType.SOCKET,
-              new StreamResource(stdioRids.stderrRid),
-            ),
-            writable: false,
-            readable: true,
-          });
-        } else {
-          // Fallback to web stream conversion
-          this.stderr = Readable.fromWeb(this.#process.stderr);
-        }
+        const pipe = new Pipe(socketType.SOCKET);
+        pipe.open(this.#process.stderrFd);
+        this.stderr = new Socket({
+          handle: pipe,
+          writable: false,
+          readable: true,
+        });
         this.stderr.on("close", () => {
           maybeClose(this);
         });
@@ -506,18 +434,17 @@ export class ChildProcess extends EventEmitter {
         this.stdio[ipc] = null;
       }
 
-      const pipeRids = internals.getExtraPipeRids(this.#process);
-      for (let i = 0; i < pipeRids.length; i++) {
-        const rid: number | null = pipeRids[i];
+      const extraPipeFds = this.#process.extraPipeFds;
+      for (let i = 0; i < extraPipeFds.length; i++) {
+        const extraFd: number | null = extraPipeFds[i];
         const fd = i + extraStdioOffset;
-        if (rid) {
+        if (extraFd !== null && extraFd !== undefined) {
           this[kClosesNeeded]++;
+          const pipe = new Pipe(socketType.SOCKET);
+          pipe.open(extraFd);
           this.stdio[fd] = new Socket(
             {
-              handle: new Pipe(
-                socketType.IPC,
-                new StreamResource(rid),
-              ),
+              handle: pipe,
               // deno-lint-ignore no-explicit-any
             } as any,
           );
@@ -560,7 +487,7 @@ export class ChildProcess extends EventEmitter {
         }
       }
 
-      const pipeRid = internals.getIpcPipeRid(this.#process);
+      const pipeRid = this.#process.ipcPipeRid;
       if (typeof pipeRid == "number") {
         setupChannel(this, pipeRid, serialization);
         this[kClosesNeeded]++;
@@ -647,12 +574,10 @@ export class ChildProcess extends EventEmitter {
    * @param signal NOTE: this parameter is not yet implemented.
    */
   kill(signal?: number | string): boolean {
-    if (this.killed) {
-      return this.killed;
-    }
-
     // Signal 0 is a special case: it checks if the process exists
-    // without sending a signal (POSIX kill(pid, 0)).
+    // without sending a signal (POSIX kill(pid, 0)). This must run
+    // before the `killed` check because kill(0) is an existence probe
+    // that should work even after a prior successful kill().
     if (signal === 0 || signal === "0") {
       try {
         process.kill(this.pid!, 0);
@@ -662,15 +587,37 @@ export class ChildProcess extends EventEmitter {
       }
     }
 
-    const denoSignal = signal == null ? "SIGTERM" : toDenoSignal(signal);
+    if (this.killed) {
+      return false;
+    }
+
+    let signalName = signal == null ? "SIGTERM" : toDenoSignal(signal);
     this.#closePipes();
     try {
-      this.#process.kill(denoSignal);
+      this.#process.kill(signalName as Deno.Signal);
     } catch (err) {
-      const alreadyClosed = err instanceof TypeError ||
-        err instanceof Deno.errors.PermissionDenied;
-      if (!alreadyClosed) {
-        throw err;
+      if (isWindows) {
+        // On Windows, unsupported signals fall back to SIGKILL
+        // (matching Node's TerminateProcess behavior).
+        try {
+          this.#process.kill("SIGKILL");
+          signalName = "SIGKILL";
+        } catch (err2) {
+          const alreadyClosed = err2 instanceof TypeError ||
+            err2 instanceof Deno.errors.PermissionDenied;
+          if (!alreadyClosed) {
+            throw err2;
+          }
+          return false;
+        }
+      } else {
+        const alreadyClosed = err instanceof TypeError ||
+          err instanceof Deno.errors.PermissionDenied;
+        if (!alreadyClosed) {
+          throw err;
+        }
+        // Process already exited, signal was not delivered.
+        return false;
       }
     }
 
@@ -680,8 +627,8 @@ export class ChildProcess extends EventEmitter {
     }
 
     this.killed = true;
-    this.signalCode = denoSignal;
-    return this.killed;
+    this.signalCode = signalName;
+    return true;
   }
 
   [Symbol.dispose]() {
@@ -735,12 +682,6 @@ export class ChildProcess extends EventEmitter {
   }
 }
 
-const supportedNodeStdioTypes: NodeStdio[] = [
-  "pipe",
-  "ignore",
-  "inherit",
-  "ipc",
-];
 function toDenoStdio(
   pipe: NodeStdio | number | Stream | null | undefined,
 ): DenoStdio {
@@ -748,17 +689,11 @@ function toDenoStdio(
     return "inherit";
   }
   if (typeof pipe === "number") {
-    /* Assume it's a rid returned by fs APIs */
     return pipe;
-  }
-
-  if (
-    !supportedNodeStdioTypes.includes(pipe as NodeStdio)
-  ) {
-    notImplemented(`toDenoStdio pipe=${typeof pipe} (${pipe})`);
   }
   switch (pipe) {
     case "pipe":
+    case "overlapped":
     case undefined:
     case null:
       return "piped";
@@ -769,23 +704,28 @@ function toDenoStdio(
     case "ipc":
       return "ipc_for_internal_use";
     default:
-      notImplemented(`toDenoStdio pipe=${typeof pipe} (${pipe})`);
+      throw new ERR_INVALID_ARG_VALUE("stdio", pipe);
   }
 }
 
 function toDenoSignal(signal: number | string): Deno.Signal {
+  const nodeSignals = os.signals as Record<string, number>;
   if (typeof signal === "number") {
-    for (const name of keys(os.signals)) {
-      if (os.signals[name] === signal) {
+    for (const name of keys(nodeSignals)) {
+      if (nodeSignals[name] === signal) {
         return name as Deno.Signal;
       }
     }
     throw new ERR_UNKNOWN_SIGNAL(String(signal));
   }
 
-  const denoSignal = signal as Deno.Signal;
-  if (denoSignal in os.signals) {
-    return denoSignal;
+  if (signal in nodeSignals) {
+    return signal as Deno.Signal;
+  }
+  // On Windows, os.signals only lists native signals. Accept any
+  // POSIX signal name so the caller can remap it to SIGTERM.
+  if (isWindows && signal.startsWith("SIG")) {
+    return signal as Deno.Signal;
   }
   throw new ERR_UNKNOWN_SIGNAL(signal);
 }
@@ -895,7 +835,7 @@ function normalizeStdioOption(
     // `[null, null, null]` is equivalent to `"pipe"
     if (
       stdio.length === 3 &&
-        stdio[0] === null || stdio[1] === null || stdio[2] === null
+      (stdio[0] === null && stdio[1] === null && stdio[2] === null)
     ) {
       return ["pipe", "pipe", "pipe"];
     }
@@ -1574,6 +1514,20 @@ function restorePrototype(obj: any) {
   }
 }
 
+/** Convert a killSignal (string name or number) to its string name. */
+function _resolveKillSignalName(
+  killSignal: string | number | undefined,
+): string {
+  if (typeof killSignal === "string") return killSignal;
+  if (typeof killSignal === "number") {
+    for (const [name, num] of Object.entries(os.signals)) {
+      if (num === killSignal) return name;
+    }
+    return String(killSignal);
+  }
+  return "SIGTERM";
+}
+
 function _createSpawnError(
   status: string,
   command: string,
@@ -1628,19 +1582,6 @@ export interface SpawnSyncResult {
   error?: Error;
 }
 
-function parseSpawnSyncOutputStreams(
-  output: Deno.CommandOutput,
-  name: "stdout" | "stderr",
-): string | Buffer | null {
-  // new Deno.Command().outputSync() returns getters for stdout and stderr that throw when set
-  // to 'inherit'.
-  try {
-    return Buffer.from(output[name]) as string | Buffer;
-  } catch {
-    return null;
-  }
-}
-
 function normalizeInput(input: unknown) {
   if (input == null) {
     return null;
@@ -1673,14 +1614,32 @@ export function spawnSync(
     uid,
     gid,
     maxBuffer,
+    timeout,
+    killSignal,
     windowsVerbatimArguments = false,
   } = options;
   const [
     stdin_ = "pipe",
     stdout_ = "pipe",
     stderr_ = "pipe",
-    _channel, // TODO(kt3k): handle this correctly
+    ...extraStdio_
   ] = normalizeStdioOption(stdio);
+
+  const extraStdioNormalized: DenoStdio[] = [];
+  for (let i = 0; i < extraStdio_.length; i++) {
+    const val = extraStdio_[i];
+    const fd = i + 3; // extra stdio starts at FD 3
+    // null/undefined means "don't pass this fd"
+    if (val == null) {
+      extraStdioNormalized.push("null");
+    } else if (val === "inherit") {
+      // "inherit" for extra FDs means pass the parent's FD at this index
+      extraStdioNormalized.push(fd);
+    } else {
+      extraStdioNormalized.push(toDenoStdio(val));
+    }
+  }
+
   let includeNpmProcessState = false;
   // args[0] is argv0 (prepended by normalizeSpawnArguments). Capture it
   // before slicing so we can pass it via kArgv0 for OS-level argv[0].
@@ -1695,26 +1654,32 @@ export function spawnSync(
 
   const result: SpawnSyncResult = {};
   try {
-    const output = new Deno.Command(command, {
-      args,
+    const output = nodeSpawnSyncChild({
+      args: [command, ...args],
       cwd,
       env: mapValues(env, (value) => value.toString()),
-      [kArgv0]: argv0 !== command ? argv0 : undefined,
+      argv0: argv0 !== command ? argv0 : undefined,
       stdout: toDenoStdio(stdout_),
       stderr: toDenoStdio(stderr_),
       stdin: stdin_ == "inherit" ? "inherit" : "null",
       uid,
       gid,
+      clearEnv: false,
+      extraStdio: extraStdioNormalized,
       windowsRawArguments: windowsVerbatimArguments,
-      [kInputOption]: input_,
       // deno-lint-ignore no-explicit-any
-      [kNeedsNpmProcessState]: (options as any)[kNeedsNpmProcessState] ||
+      needsNpmProcessState: (options as any)[kNeedsNpmProcessState] ||
         includeNpmProcessState,
-    }).outputSync();
+      input: input_,
+      timeout,
+      killSignal,
+    });
 
     const status = output.signal ? null : output.code;
-    let stdout = parseSpawnSyncOutputStreams(output, "stdout");
-    let stderr = parseSpawnSyncOutputStreams(output, "stderr");
+    // deno-lint-ignore no-explicit-any
+    let stdout: any = output.stdout ? Buffer.from(output.stdout) : null;
+    // deno-lint-ignore no-explicit-any
+    let stderr: any = output.stderr ? Buffer.from(output.stderr) : null;
 
     if (
       (stdout && stdout.length > maxBuffer!) ||
@@ -1723,15 +1688,23 @@ export function spawnSync(
       result.error = _createSpawnError("ENOBUFS", command, args, true);
     }
 
+    if (output.killedByTimeout) {
+      result.error = _createSpawnError("ETIMEDOUT", command, args, true);
+    }
+
     if (encoding && encoding !== "buffer") {
       stdout = stdout && stdout.toString(encoding);
       stderr = stderr && stderr.toString(encoding);
     }
 
-    // deno-lint-ignore no-explicit-any
-    result.pid = (output as any)._pid;
-    result.status = status;
-    result.signal = output.signal;
+    result.pid = output.pid;
+    // When killed by timeout, report the killSignal (matching Node.js behavior).
+    // On Windows there are no real Unix signals, but Node still reports the
+    // configured killSignal so callers can detect the timeout.
+    result.status = output.killedByTimeout ? null : status;
+    result.signal = output.killedByTimeout
+      ? _resolveKillSignalName(killSignal)
+      : output.signal;
     result.stdout = stdout;
     result.stderr = stderr;
     result.output = [output.signal, stdout, stderr];
@@ -2000,8 +1973,7 @@ export function setupChannel(
 
   target.disconnect = function () {
     if (!target.connected) {
-      target.emit("error", new Error("IPC channel is already disconnected"));
-      return;
+      throw new ERR_IPC_DISCONNECTED();
     }
 
     target.connected = false;

@@ -6,10 +6,8 @@ import { core, internals } from "ext:core/mod.js";
 const requireImpl = internals.requireImpl;
 
 import { op_stream_base_register_state } from "ext:core/ops";
-import {
-  kStreamBaseField,
-  streamBaseState,
-} from "ext:deno_node/internal_binding/stream_wrap.ts";
+import { nodeGlobals } from "ext:deno_node/00_globals.js";
+import { streamBaseState } from "ext:deno_node/internal_binding/stream_wrap.ts";
 import "node:module";
 
 let initialized = false;
@@ -79,44 +77,9 @@ function closeIdleConnections() {
   // Close all idle connections in Node.js HTTP Agent pools.
   // This is called by the test runner before sanitizer checks to prevent
   // false positive resource leak detection for pooled keepAlive connections.
-  const { internalRidSymbol } = core;
-
-  // Collect resource IDs that need to be closed.
-  // We do this in two phases:
-  // 1. Destroy sockets via agent.destroy() (graceful cleanup)
-  // 2. Close any remaining resources directly (force cleanup)
-  const ridsToClose = [];
-
-  function collectRidsFromAgent(agent) {
-    if (!agent) return;
-    const sets = [agent.freeSockets, agent.sockets];
-    for (const set of sets) {
-      if (!set) continue;
-      for (const key of Object.keys(set)) {
-        const sockets = set[key];
-        if (!Array.isArray(sockets)) continue;
-        for (const socket of sockets) {
-          try {
-            const stream = socket?._handle?.[kStreamBaseField];
-            if (stream) {
-              const rid = stream[internalRidSymbol];
-              if (rid !== undefined) {
-                ridsToClose.push(rid);
-              }
-            }
-          } catch {
-            // Ignore
-          }
-        }
-      }
-    }
-  }
-
-  // Phase 1: Collect RIDs and destroy agents
   try {
     const http = nativeModuleExports["http"];
     if (http?.globalAgent) {
-      collectRidsFromAgent(http.globalAgent);
       http.globalAgent.destroy();
     }
   } catch {
@@ -125,21 +88,10 @@ function closeIdleConnections() {
   try {
     const https = nativeModuleExports["https"];
     if (https?.globalAgent) {
-      collectRidsFromAgent(https.globalAgent);
       https.globalAgent.destroy();
     }
   } catch {
     // Ignore
-  }
-
-  // Phase 2: Force close any remaining resources
-  // This handles the case where socket.destroy() is a no-op due to HandleWrap state
-  for (const rid of ridsToClose) {
-    try {
-      core.tryClose(rid);
-    } catch {
-      // Ignore - already closed
-    }
   }
 }
 
@@ -150,6 +102,16 @@ internals.node = {
 };
 
 const nativeModuleExports = requireImpl.nativeModuleExports;
+nodeGlobals.Buffer = nativeModuleExports["buffer"].Buffer;
+nodeGlobals.clearImmediate = nativeModuleExports["timers"].clearImmediate;
+nodeGlobals.clearInterval = nativeModuleExports["timers"].clearInterval;
+nodeGlobals.clearTimeout = nativeModuleExports["timers"].clearTimeout;
+nodeGlobals.global = globalThis;
+nodeGlobals.process = nativeModuleExports["process"];
+nodeGlobals.setImmediate = nativeModuleExports["timers"].setImmediate;
+nodeGlobals.setInterval = nativeModuleExports["timers"].setInterval;
+nodeGlobals.setTimeout = nativeModuleExports["timers"].setTimeout;
+
 nativeModuleExports["internal/console/constructor"].bindStreamsLazy(
   nativeModuleExports["console"],
   nativeModuleExports["process"],

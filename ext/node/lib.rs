@@ -29,6 +29,7 @@ use node_resolver::errors::PackageJsonLoadError;
 
 extern crate libz_sys as zlib;
 
+mod global;
 pub mod ops;
 
 use deno_dotenv::parse_env_content_hook;
@@ -42,6 +43,10 @@ pub use ops::vm::ContextInitMode;
 pub use ops::vm::VM_CONTEXT_INDEX;
 pub use ops::vm::create_v8_context;
 pub use ops::vm::init_global_template;
+
+pub use crate::global::GlobalsStorage;
+use crate::global::global_object_middleware;
+use crate::global::global_template_middleware;
 
 pub fn is_builtin_node_module(module_name: &str) -> bool {
   DenoIsBuiltInNodeModuleChecker.is_builtin_node_module(module_name)
@@ -204,7 +209,8 @@ deno_core::extension!(deno_node,
     ops::fs::op_node_rmdir,
     ops::fs::op_node_statfs_sync,
     ops::fs::op_node_statfs,
-    ops::fs::op_node_file_from_fd,
+    ops::fs::op_node_create_pipe,
+    ops::fs::op_node_fd_set_blocking,
     ops::fs::op_node_fs_close,
     ops::fs::op_node_fs_read_sync,
     ops::fs::op_node_fs_read_deferred,
@@ -276,12 +282,6 @@ deno_core::extension!(deno_node,
     ops::zlib::op_zlib_crc32,
     ops::zlib::op_zlib_crc32_string,
     ops::handle_wrap::op_node_new_async_id,
-    ops::http::op_node_http_fetch_response_upgrade,
-    ops::http::op_node_http_request_with_conn,
-    ops::http::op_node_http_response_reclaim_conn,
-    ops::http::op_node_http_await_information,
-    ops::http::op_node_http_await_response,
-    ops::http2::op_http2_constants,
     ops::http2::op_http2_callbacks,
     ops::http2::op_http2_http_state,
     ops::os::op_node_os_get_priority,
@@ -385,13 +385,17 @@ deno_core::extension!(deno_node,
     ops::zlib::Zlib,
     ops::zlib::ZstdCompress,
     ops::zlib::ZstdDecompress,
-    ops::libuv_stream::TCP,
+    ops::tcp_wrap::TCPWrap,
+    ops::pipe_wrap::PipeWrap,
+    ops::tls_wrap::TLSWrap,
+    ops::llhttp::binding::HTTPParser,
     ops::http2::Http2Session,
     ops::http2::Http2Stream,
   ],
   esm_entry_point = "ext:deno_node/02_init.js",
   esm = [
     dir "polyfills",
+    "00_globals.js",
     "02_init.js",
     "_events.mjs",
     "internal/fs/promises.ts",
@@ -415,7 +419,6 @@ deno_core::extension!(deno_node,
     "_process/streams.mjs",
     "_readline.mjs",
     "_util/_util_callbackify.js",
-    "_util/async.ts",
     "_util/os.ts",
     "_utils.ts",
     "_zlib_binding.mjs",
@@ -428,7 +431,6 @@ deno_core::extension!(deno_node,
     "internal_binding/async_wrap.ts",
     "internal_binding/buffer.ts",
     "internal_binding/cares_wrap.ts",
-    "internal_binding/connection_wrap.ts",
     "internal_binding/constants.ts",
     "internal_binding/crypto.ts",
     "internal_binding/handle_wrap.ts",
@@ -441,6 +443,7 @@ deno_core::extension!(deno_node,
     "internal_binding/string_decoder.ts",
     "internal_binding/symbols.ts",
     "internal_binding/tcp_wrap.ts",
+    "internal_binding/tls_wrap.ts",
     "internal_binding/tty_wrap.ts",
     "internal_binding/types.ts",
     "internal_binding/udp_wrap.ts",
@@ -487,13 +490,16 @@ deno_core::extension!(deno_node,
     "internal/events/abort_listener.mjs",
     "internal/fs/stat_utils.ts",
     "internal/fs/streams.mjs",
+    "internal/fs/sync_write_stream.js",
     "internal/fs/utils.mjs",
     "internal/fs/handle.ts",
     "internal/hide_stack_frames.ts",
     "internal/http.ts",
+    "internal/http2/constants.ts",
     "internal/http2/util.ts",
     "internal/http2/compat.js",
     "internal/idna.ts",
+    "internal/js_stream_socket.js",
     "internal/mime.ts",
     "internal/net.ts",
     "internal/normalize_encoding.ts",
@@ -524,6 +530,7 @@ deno_core::extension!(deno_node,
     "internal/streams/state.js",
     "internal/streams/utils.js",
     "internal/test/binding.ts",
+    "internal/tls_common.js",
     "internal/timers.mjs",
     "internal/tty.js",
     "internal/url.ts",
@@ -546,10 +553,12 @@ deno_core::extension!(deno_node,
     "path/mod.ts",
     "path/separator.ts",
     "readline/promises.ts",
-    "node:_http_agent" = "_http_agent.mjs",
-    "node:_http_common" = "_http_common.ts",
+    "node:_http_agent" = "_http_agent.js",
+    "node:_http_client" = "_http_client.js",
+    "node:_http_common" = "_http_common.js",
+    "node:_http_incoming" = "_http_incoming.js",
     "node:_http_outgoing" = "_http_outgoing.ts",
-    "node:_http_server" = "_http_server.ts",
+    "node:_http_server" = "_http_server.js",
     "node:_stream_duplex" = "internal/streams/duplex.js",
     "node:_stream_passthrough" = "internal/streams/passthrough.js",
     "node:_stream_readable" = "internal/streams/readable.js",
@@ -624,7 +633,6 @@ deno_core::extension!(deno_node,
   },
   state = |state, options| {
     state.put(options.fs.clone());
-    state.put(ops::fs::NodeFsState::new());
 
     if let Some(init) = &options.maybe_init {
       state.put(init.sys.clone());
@@ -634,6 +642,8 @@ deno_core::extension!(deno_node,
     }
 
   },
+  global_template_middleware = global_template_middleware,
+  global_object_middleware = global_object_middleware,
   customizer = |ext: &mut deno_core::Extension| {
     let external_references = [
       vm::QUERY_MAP_FN.with(|query| {
@@ -708,6 +718,41 @@ deno_core::extension!(deno_node,
         }
       }),
 
+      global::GETTER_MAP_FN.with(|getter| {
+        ExternalReference {
+          named_getter: *getter,
+        }
+      }),
+      global::SETTER_MAP_FN.with(|setter| {
+        ExternalReference {
+          named_setter: *setter,
+        }
+      }),
+      global::QUERY_MAP_FN.with(|query| {
+        ExternalReference {
+          named_query: *query,
+        }
+      }),
+      global::DELETER_MAP_FN.with(|deleter| {
+        ExternalReference {
+          named_deleter: *deleter,
+        }
+      }),
+      global::ENUMERATOR_MAP_FN.with(|enumerator| {
+        ExternalReference {
+          enumerator: *enumerator,
+        }
+      }),
+      global::DEFINER_MAP_FN.with(|definer| {
+        ExternalReference {
+          named_definer: *definer,
+        }
+      }),
+      global::DESCRIPTOR_MAP_FN.with(|descriptor| {
+        ExternalReference {
+          named_getter: *descriptor,
+        }
+      }),
     ];
 
     ext.external_references.to_mut().extend(external_references);

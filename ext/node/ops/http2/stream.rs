@@ -230,6 +230,12 @@ impl Http2Stream {
       return false;
     };
 
+    // SAFETY: session outlives the stream
+    let max_header_pairs = unsafe { (*self.session).max_header_pairs } as usize;
+    if self.current_headers.borrow().len() >= max_header_pairs {
+      return false;
+    }
+
     let header_length = name.len() + value.len() + 32;
     self.current_headers.borrow_mut().push((
       name_str.to_string(),
@@ -521,16 +527,17 @@ impl Http2Stream {
     }
   }
 
-  fn push_promise(
+  fn push_promise<'s>(
     &self,
+    scope: &mut v8::PinScope<'s, '_>,
     #[serde] headers: (String, usize),
-    _options: i32,
-  ) -> i32 {
+    options: i32,
+  ) -> v8::Local<'s, v8::Value> {
     let session_ptr = self.nghttp2_session();
     let http2_headers = Http2Headers::from(headers);
 
     // SAFETY: session pointer is valid during stream lifetime
-    unsafe {
+    let ret = unsafe {
       ffi::nghttp2_submit_push_promise(
         session_ptr,
         ffi::NGHTTP2_FLAG_NONE as u8,
@@ -539,7 +546,24 @@ impl Http2Stream {
         http2_headers.len(),
         std::ptr::null_mut(),
       )
+    };
+
+    if ret <= 0 {
+      return v8::Integer::new(scope, ret).into();
     }
+
+    // SAFETY: self.session is valid for the lifetime of the stream
+    let session = unsafe { &mut *self.session };
+    let (obj, stream) =
+      Http2Stream::new(session, ret, ffi::NGHTTP2_HCAT_HEADERS);
+    stream.start_headers(ffi::NGHTTP2_HCAT_HEADERS);
+    if (options & STREAM_OPTION_GET_TRAILERS) != 0 {
+      stream.set_has_trailers(true);
+    }
+    let local = v8::Local::new(scope, &obj);
+    session.streams.insert(ret, (obj, stream));
+    session.send_pending_data();
+    local.into()
   }
 
   fn info(&self, #[serde] headers: (String, usize)) -> i32 {
