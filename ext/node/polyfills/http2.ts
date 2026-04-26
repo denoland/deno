@@ -2710,7 +2710,10 @@ function setupHandle(socket, type, options) {
   if (options.remoteCustomSettings) {
     remoteCustomSettingsToBuffer(options.remoteCustomSettings);
   }
-  const handle = new InternalHttp2Session(type);
+  const handle = new InternalHttp2Session(
+    type,
+    options.strictFieldWhitespaceValidation === false,
+  );
   handle[kOwner] = this;
 
   // Pump data from socket to session via JS events.
@@ -4148,6 +4151,26 @@ function connect(authority, options, listener) {
 
   return session;
 }
+
+// Support util.promisify
+const promisifyConnect = function (authority, options) {
+  return new Promise((resolve, reject) => {
+    const server = connect(authority, options, () => {
+      server.removeListener("error", reject);
+      return resolve(server);
+    });
+
+    server.once("error", reject);
+  });
+};
+ObjectDefineProperty(promisifyConnect, "name", {
+  value: "connect",
+  configurable: true,
+});
+ObjectDefineProperty(connect, promisify.custom, {
+  __proto__: null,
+  value: promisifyConnect,
+});
 
 let _init = false;
 function initCallbacks() {
