@@ -881,6 +881,11 @@ Object.defineProperty(process, "config", {
           default_configuration: "Release",
         }),
         variables: Object.freeze({
+          // Match Node's lib/internal/process/per_thread.js process.config:
+          // `node_module_version` is an integer ABI version exposed for native
+          // addons. Mirror process.versions.modules so a single source of truth
+          // wins.
+          node_module_version: Number(versions.modules),
           llvm_version: "0.0",
           enable_lto: "false",
           host_arch: arch,
