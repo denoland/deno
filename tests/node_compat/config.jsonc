@@ -474,6 +474,10 @@
     "parallel/test-crypto-hmac.js": {},
     "parallel/test-crypto-keygen.js": {},
     "parallel/test-crypto-keygen-async-dsa-key-object.js": {},
+    "parallel/test-crypto-keygen-async-encrypted-private-key-der.js": {
+      "ignore": true,
+      "reason": "Generates an RSA keypair as PKCS#8 DER without specifying `cipher`/`passphrase` in `privateKeyEncoding`, then later passes the unencrypted DER to `testSignVerify` with a stray `passphrase: 'secret'`. Node tolerates the unused passphrase; Deno's `createPrivateKey({ key, passphrase })` path treats the presence of `passphrase` as a signal that the input is encrypted and rejects with `TypeError: invalid encrypted PKCS#8 private key`. Could be revisited once Deno's createPrivateKey only attempts decryption when the input ASN.1 actually has the EncryptedPrivateKeyInfo wrapper"
+    },
     "parallel/test-crypto-keygen-async-elliptic-curve-jwk-ec.js": {},
     "parallel/test-crypto-keygen-async-elliptic-curve-jwk.js": {},
     "parallel/test-crypto-keygen-async-elliptic-curve-jwk-rsa.js": {},
