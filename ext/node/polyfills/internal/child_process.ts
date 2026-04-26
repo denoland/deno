@@ -424,7 +424,10 @@ export class ChildProcess extends EventEmitter {
             readable: true,
           });
           if (typeof stdout.write === "function") {
-            stdoutSocket.pipe(stdout);
+            // Don't end the target stream when this child exits -- other
+            // children may also be piping into the same destination (e.g.
+            // multiple children sharing p3.stdin as their stdout).
+            stdoutSocket.pipe(stdout, { end: false });
           }
           this.stdout = stdoutSocket;
           stdoutSocket.on("close", () => {
@@ -445,7 +448,7 @@ export class ChildProcess extends EventEmitter {
             readable: true,
           });
           if (typeof stderr.write === "function") {
-            stderrSocket.pipe(stderr);
+            stderrSocket.pipe(stderr, { end: false });
           }
           this.stderr = stderrSocket;
           stderrSocket.on("close", () => {
