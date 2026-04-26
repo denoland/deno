@@ -12,7 +12,6 @@ import {
   op_message_port_post_message,
   op_message_port_post_message_raw,
   op_message_port_recv_message,
-  op_message_port_recv_message_sync,
 } from "ext:core/ops";
 const {
   ArrayBufferPrototypeGetByteLength,
@@ -285,13 +284,6 @@ class MessagePort extends EventTarget {
           break;
         }
         if (!dispatchPortMessageData(this, data)) return;
-        // Sync drain: process any already-queued messages without
-        // going through the async op machinery
-        while (this[_id] !== null) {
-          data = op_message_port_recv_message_sync(this[_id]);
-          if (data === null) break;
-          if (!dispatchPortMessageData(this, data)) return;
-        }
       }
       this[_enabled] = false;
     })();
