@@ -9,6 +9,7 @@
 use std::cell::RefCell;
 use std::cell::UnsafeCell;
 use std::collections::HashMap;
+use std::collections::VecDeque;
 use std::ffi::c_void;
 use std::rc::Rc;
 
@@ -1188,34 +1189,66 @@ pub unsafe extern "C" fn on_stream_read_callback(
   // session.streams HashMap) while JS callbacks fire, which could
   // invalidate the references.
   //
-  // Unlike Node.js, we don't use NGHTTP2_DATA_FLAG_NO_COPY; we copy
-  // data directly into the provided buffer.
+  // For aligned padding, switch to NGHTTP2_DATA_FLAG_NO_COPY so the
+  // actual payload is emitted by `on_send_data_callback` as separate
+  // chunks (header / pad_length / data / padding). For the default
+  // strategy (no padding) we keep the in-place copy: nghttp2 packs the
+  // data into the framebuf and OB_SEND_DATA returns it as one chunk,
+  // matching how Deno previously framed unpadded responses (and what
+  // tests like test-http2-res-corked rely on for chunk count).
+  let no_copy = matches!(session.padding_strategy, PaddingStrategy::Aligned);
+
   let mut amount: usize = 0;
   let mut need_eof = false;
   let mut need_trailers = false;
   let mut is_deferred = false;
+  let mut have_data = false;
 
   if let Some(stream) = session.find_stream(stream_id) {
-    let mut pending_data = stream.pending_data.borrow_mut();
-    if !pending_data.is_empty() {
-      let amt = std::cmp::min(pending_data.len(), length);
-      if amt > 0 {
-        let data_slice = pending_data.split_to(amt);
-        // SAFETY: buf has capacity for `length` bytes per nghttp2 contract
-        unsafe { std::ptr::copy_nonoverlapping(data_slice.as_ptr(), buf, amt) };
-        *stream.available_outbound_length.borrow_mut() -= amt;
-        amount = amt;
-
-        if pending_data.is_empty() && *stream.writable_ended.borrow() {
-          need_eof = true;
-          need_trailers = stream.has_trailers();
+    if no_copy {
+      let pending_data = stream.pending_data.borrow();
+      if !pending_data.is_empty() {
+        let amt = std::cmp::min(pending_data.len(), length);
+        if amt > 0 {
+          amount = amt;
+          have_data = true;
+          // pending_data is consumed in on_send_data_callback so the
+          // bytes survive across the read -> send transition.
+          if pending_data.len() == amt && *stream.writable_ended.borrow() {
+            need_eof = true;
+            need_trailers = stream.has_trailers();
+          }
         }
+      } else if *stream.writable_ended.borrow() {
+        need_eof = true;
+        need_trailers = stream.has_trailers();
+      } else {
+        is_deferred = true;
       }
-    } else if *stream.writable_ended.borrow() {
-      need_eof = true;
-      need_trailers = stream.has_trailers();
     } else {
-      is_deferred = true;
+      let mut pending_data = stream.pending_data.borrow_mut();
+      if !pending_data.is_empty() {
+        let amt = std::cmp::min(pending_data.len(), length);
+        if amt > 0 {
+          let data_slice = pending_data.split_to(amt);
+          // SAFETY: buf has capacity for `length` bytes per nghttp2 contract
+          unsafe {
+            std::ptr::copy_nonoverlapping(data_slice.as_ptr(), buf, amt)
+          };
+          *stream.available_outbound_length.borrow_mut() -= amt;
+          amount = amt;
+
+          if pending_data.is_empty() && *stream.writable_ended.borrow() {
+            need_eof = true;
+            need_trailers = stream.has_trailers();
+          }
+        }
+      } else if *stream.writable_ended.borrow() {
+        need_eof = true;
+        need_trailers = stream.has_trailers();
+      } else {
+        is_deferred = true;
+      }
     }
     // pending_data borrow and stream reference are dropped here
   } else {
@@ -1224,6 +1257,11 @@ pub unsafe extern "C" fn on_stream_read_callback(
 
   if is_deferred {
     return ffi::NGHTTP2_ERR_DEFERRED as _;
+  }
+
+  if no_copy && have_data {
+    // SAFETY: data_flags is a valid out-pointer per nghttp2 contract
+    unsafe { *data_flags |= ffi::NGHTTP2_DATA_FLAG_NO_COPY as u32 };
   }
 
   if need_eof {
@@ -1305,12 +1343,73 @@ unsafe extern "C" fn on_nghttp_error_callback(
 
 unsafe extern "C" fn on_send_data_callback(
   _session: *mut ffi::nghttp2_session,
-  _frame: *mut ffi::nghttp2_frame,
-  _framehd: *const u8,
-  _length: usize,
+  frame: *mut ffi::nghttp2_frame,
+  framehd: *const u8,
+  length: usize,
   _source: *mut ffi::nghttp2_data_source,
-  _data: *mut c_void,
+  user_data: *mut c_void,
 ) -> i32 {
+  // SAFETY: user_data is the user_data pointer set during session creation
+  let session = unsafe { Session::from_user_data(user_data) };
+
+  // SAFETY: frame is valid for the duration of the callback. `data`
+  // and `hd` are union fields in `nghttp2_frame`; accessing them is
+  // unsafe but valid because pack_data set the active variant before
+  // dispatching this callback.
+  let (stream_id, padlen) = unsafe {
+    let frame = &*frame;
+    // padlen is total trailing padding INCLUDING the pad_length byte,
+    // so pad_length value (the byte itself) = padlen - 1, and the
+    // zero-padding bytes count = padlen - 1.
+    (frame.hd.stream_id, frame.data.padlen)
+  };
+
+  // Header (NGHTTP2_FRAME_HDLEN = 9 bytes per RFC 7540 §4.1) packed
+  // into the framebuf by pack_data; emit it as one chunk on the wire.
+  let header_len = 9usize;
+  // SAFETY: framehd points to the header packed by nghttp2; we copy
+  // it before returning so it doesn't outlive the callback.
+  let header = unsafe { std::slice::from_raw_parts(framehd, header_len) };
+  session.outgoing_chunks.push_back(header.to_vec());
+
+  if padlen > 0 {
+    // Pad length octet: value is the trailing-zero byte count, i.e.
+    // padlen - 1. nghttp2 reserved this byte slot in the framebuf via
+    // frame_set_pad's `framehd_only` shift but didn't fill it.
+    session
+      .outgoing_chunks
+      .push_back(vec![(padlen - 1) as u8]);
+  }
+
+  if length > 0 {
+    let chunk_opt = session.find_stream(stream_id).and_then(|stream| {
+      let mut pending = stream.pending_data.borrow_mut();
+      let amt = std::cmp::min(pending.len(), length);
+      if amt > 0 {
+        let chunk = pending.split_to(amt);
+        *stream.available_outbound_length.borrow_mut() -= amt;
+        Some(chunk.to_vec())
+      } else {
+        None
+      }
+    });
+    // Borrow released; safe to mutate session now.
+    if let Some(chunk) = chunk_opt {
+      session.outgoing_chunks.push_back(chunk);
+    }
+    // If pending shrank short of `length` (shouldn't happen — read
+    // callback already promised this many bytes), the wire will be
+    // short by the missing amount; nghttp2 will fail the session via
+    // its error callback rather than silently corrupt the stream.
+  }
+
+  if padlen > 1 {
+    // Trailing padding bytes (zeros). padlen - 1 of them.
+    session
+      .outgoing_chunks
+      .push_back(vec![0u8; (padlen - 1) as usize]);
+  }
+
   0
 }
 
@@ -1459,6 +1558,13 @@ pub struct Session {
   /// per-session limit derived from the `maxHeaderListPairs` option.
   /// Streams that receive more headers are reset with NGHTTP2_ENHANCE_YOUR_CALM.
   pub max_header_pairs: u32,
+  /// Pre-formatted chunks queued by `on_send_data_callback` (NO_COPY DATA
+  /// frames). `get_outgoing_chunk` drains this before falling through to
+  /// `nghttp2_session_mem_send`, so each part of a padded DATA frame
+  /// (header / pad_length / payload / padding) becomes its own
+  /// socket.write — matching the per-uv_buf_t output of Node's libuv send
+  /// path that test-http2-padding-aligned asserts.
+  pub outgoing_chunks: VecDeque<Vec<u8>>,
 }
 
 impl Session {
@@ -1631,6 +1737,32 @@ impl Session {
 
     self.is_sending = true;
     loop {
+      // Drain any chunks queued by on_send_data_callback (NO_COPY DATA
+      // frames) before pulling the next frame from nghttp2.
+      while let Some(chunk) = self.outgoing_chunks.pop_front() {
+        let write_req = Box::new(H2WriteReq {
+          uv_req: deno_core::uv_compat::new_write(),
+          data: chunk,
+        });
+        let write_ptr = Box::into_raw(write_req);
+        // SAFETY: write_ptr is freshly allocated; stream is a valid libuv handle
+        unsafe {
+          let buf = deno_core::uv_compat::UvBuf {
+            base: (*write_ptr).data.as_ptr() as *mut _,
+            len: (*write_ptr).data.len(),
+          };
+          let ret = deno_core::uv_compat::uv_write(
+            &mut (*write_ptr).uv_req,
+            stream,
+            &buf,
+            1,
+            Some(h2_write_cb),
+          );
+          if ret != 0 {
+            let _ = Box::from_raw(write_ptr);
+          }
+        }
+      }
       let mut src = std::ptr::null();
       let src_len =
         // SAFETY: self.session is a valid nghttp2 session pointer
@@ -1663,7 +1795,7 @@ impl Session {
             let _ = Box::from_raw(write_ptr);
           }
         }
-      } else {
+      } else if self.outgoing_chunks.is_empty() {
         break;
       }
     }
@@ -1851,6 +1983,7 @@ impl Http2Session {
       pending_rst_streams: Vec::new(),
       orig_stream_data: std::ptr::null_mut(),
       max_header_pairs: options.max_header_pairs(),
+      outgoing_chunks: VecDeque::new(),
     }));
 
     // SAFETY: inner is valid (just allocated); callbacks and options are valid
@@ -2018,28 +2151,33 @@ impl Http2Session {
 
   /// Drain a single outgoing h2 chunk from nghttp2's send queue.
   ///
-  /// Returns one buffer per `nghttp2_session_mem_send` call so the JS
-  /// write path can issue one socket.write per frame, matching the
-  /// libuv consume_stream path which queues a separate uv_write per
-  /// chunk in `send_pending_data`. An empty buffer signals "no more
-  /// pending data" *and* "fatal nghttp2 error" — fatal errors get
-  /// surfaced via the on_nghttp_error_callback / subsequent op failures
-  /// (mem_recv will fail too) and are logged here with the strerror
-  /// description so they aren't silently swallowed.
+  /// Returns one buffer per logical frame slice so the JS write path
+  /// can issue one socket.write per chunk, matching the libuv
+  /// consume_stream path that queues a separate uv_write per chunk in
+  /// `send_pending_data`. For NO_COPY DATA frames, `on_send_data_callback`
+  /// pushes header / pad_length / payload / padding into
+  /// `session.outgoing_chunks`, which we drain first; non-DATA frames
+  /// come straight from `nghttp2_session_mem_send`. An empty buffer
+  /// signals "no more pending data"; fatal nghttp2 errors are logged
+  /// here via `nghttp2_strerror` so they aren't silently swallowed.
   #[buffer]
   #[reentrant]
   fn get_outgoing_chunk(&self) -> Box<[u8]> {
     // SAFETY: self.inner was allocated by Box::into_raw and is valid
     let session = unsafe { &mut *self.inner };
-    let mut src = std::ptr::null();
-    let src_len =
-      // SAFETY: session.session is a valid nghttp2 session pointer
-      unsafe { ffi::nghttp2_session_mem_send(session.session, &mut src) };
-    if src_len > 0 {
-      // SAFETY: src and src_len are valid per nghttp2_session_mem_send
-      let data = unsafe { std::slice::from_raw_parts(src, src_len as usize) };
-      data.to_vec().into_boxed_slice()
-    } else {
+    loop {
+      if let Some(chunk) = session.outgoing_chunks.pop_front() {
+        return chunk.into_boxed_slice();
+      }
+      let mut src = std::ptr::null();
+      let src_len =
+        // SAFETY: session.session is a valid nghttp2 session pointer
+        unsafe { ffi::nghttp2_session_mem_send(session.session, &mut src) };
+      if src_len > 0 {
+        // SAFETY: src and src_len are valid per nghttp2_session_mem_send
+        let data = unsafe { std::slice::from_raw_parts(src, src_len as usize) };
+        return data.to_vec().into_boxed_slice();
+      }
       if src_len < 0 {
         // SAFETY: nghttp2_strerror returns a static C string for any input
         let msg = unsafe {
@@ -2047,8 +2185,16 @@ impl Http2Session {
           std::ffi::CStr::from_ptr(p).to_string_lossy()
         };
         log::debug!("nghttp2_session_mem_send failed: {} ({})", msg, src_len);
+        return Box::new([]);
       }
-      Box::new([])
+      // src_len == 0: nghttp2 has nothing more directly, but
+      // on_send_data_callback may have just pushed chunks (NO_COPY
+      // DATA) — loop and pop them. If the queue is also empty, the
+      // next iteration's pop returns None and we hit mem_send again
+      // which returns 0, exiting via the early return below.
+      if session.outgoing_chunks.is_empty() {
+        return Box::new([]);
+      }
     }
   }
 

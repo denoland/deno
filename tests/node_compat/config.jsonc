@@ -1519,7 +1519,7 @@
     "parallel/test-http2-options-server-response.js": {},
     "parallel/test-http2-padding-aligned.js": {
       "ignore": true,
-      "reason": "Asserts byte-exact wire layout that depends on Node-only nghttp2 send sequencing (NGHTTP2_DATA_FLAG_NO_COPY / send_data_callback per-uv_buf_t splits and uv_write batching against an in-process JSStream). Deno's JS-driven mem_send loop produces equivalent HTTP/2 frames but different per-write boundaries."
+      "reason": "DATA chunks now split via NGHTTP2_DATA_FLAG_NO_COPY + send_data_callback (matches Node's per-uv_buf_t layout: header / pad_length / payload / padding) and HEADERS submission is deferred via setImmediate so it lands after SETTINGS_ACK in priority order. Remaining gap: when stream.end(data) is the only write, our impl emits a DATA frame without END_STREAM followed by an empty padded DATA frame carrying END_STREAM, while Node coalesces END_STREAM onto the data frame. Coalescing requires write-vs-end boundary detection in the polyfill that goes beyond the current scope."
     },
     "parallel/test-http2-pipe.js": {},
     "parallel/test-http2-priority-cycle-.js": {},

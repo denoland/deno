@@ -916,7 +916,13 @@ function requestOnConnect(headersList, options) {
     return;
   }
   this[kInit](ret.id(), ret);
-  scheduleSendPending(session);
+  // Defer the HEADERS flush via setImmediate so any pending I/O
+  // (incoming server SETTINGS for an in-process Duplex pair, or just-
+  // queued data writes that the writer wants to coalesce with the
+  // next end()) runs first. nghttp2 then drains SETTINGS_ACK +
+  // HEADERS together in priority order; settings frames come out
+  // first, matching Node's libuv-driven write sequence.
+  setImmediate(scheduleSendPending, session);
   if (onClientStreamStartChannel.hasSubscribers) {
     onClientStreamStartChannel.publish({
       stream: this,
