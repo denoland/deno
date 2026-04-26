@@ -3053,6 +3053,10 @@
     "parallel/test-webcrypto-cryptokey-workers.js": {},
     "parallel/test-webcrypto-derivebits-argon2.js": {},
     "parallel/test-webcrypto-encap-decap-ml-kem.js": {},
+    "parallel/test-webcrypto-encrypt-decrypt-aes.js": {
+      "ignore": true,
+      "reason": "AES-CBC / -CTR / -GCM paths work; the test additionally runs an AES-OCB block (gated only on hasOpenSSL(3), which Deno reports true) that imports keys via the Node-specific 'raw-secret' KeyFormat and uses the AES-OCB algorithm -- neither is implemented in Deno's WebCrypto. The test fails at the first AES-OCB importKey before any of the other AES algorithm paths get exercised. Could be revisited if AES-OCB and 'raw-secret' land in ext/crypto/"
+    },
     "parallel/test-webcrypto-encrypt-decrypt-chacha20-poly1305.js": {},
     "parallel/test-webcrypto-encrypt-decrypt-rsa.js": {},
     "parallel/test-webcrypto-encrypt-decrypt.js": {},
