@@ -3082,6 +3082,10 @@
       "ignore": true,
       "reason": "Tests Node's internal/crypto/webidl JS module (WebIDL converters such as converters.boolean, converters.DOMString, requiredArguments) via require('internal/crypto/webidl') with --expose-internals; Deno's WebCrypto is implemented in Rust (ext/crypto/) and does not expose this internal module"
     },
+    "parallel/test-webcrypto-wrap-unwrap.js": {
+      "ignore": true,
+      "reason": "Iterates wrap/unwrap pairs across SubtleCrypto algorithms. The AES-KW / Curve448 paths self-skip via `printSkipMessage`, but the loop continues into algorithms Deno's WebCrypto doesn't recognise (e.g. ChaCha20-Poly1305 wrapping, KMAC) and `subtle.generateKey` rejects with `NotSupportedError: Unrecognized algorithm name`. Could be revisited as Deno's algorithm coverage grows -- this test is effectively a coverage census of the full SubtleCrypto algorithm matrix"
+    },
     "parallel/test-websocket.js": {},
     "parallel/test-webstorage-without-sqlite.js": {},
     "parallel/test-webstream-string-tag.js": {},
