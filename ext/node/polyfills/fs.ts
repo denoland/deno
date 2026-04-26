@@ -178,6 +178,7 @@ const {
   SafeMap,
   StringPrototypeToString,
   SymbolAsyncIterator,
+  SymbolDispose,
   SymbolFor,
   ArrayPrototypePush,
   TypedArrayPrototypeGetByteLength,
@@ -1980,7 +1981,7 @@ function mkdtempDisposableSync(
   return {
     path,
     remove,
-    [Symbol.dispose]() {
+    [SymbolDispose]() {
       remove();
     },
   };
