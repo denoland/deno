@@ -3186,14 +3186,26 @@ fn build_server_config(
     builder.with_no_client_auth()
   };
 
-  // Skip rustls' built-in `keys_match` validation by constructing the
-  // CertifiedKey manually and registering it via a resolver.  `keys_match`
-  // calls webpki's certificate parser, which rejects X.509v1 certs
-  // (UnsupportedCertVersion).  Node uses OpenSSL, which accepts v1 certs,
-  // and several upstream Node test fixtures (e.g. agent2, agent3) are v1.
+  // `with_single_cert` runs `CertifiedKey::keys_match()`, which parses the
+  // end-entity cert via webpki and rejects X.509v1 certs with
+  // UnsupportedCertVersion.  Node uses OpenSSL, which accepts v1 certs, and
+  // several upstream Node test fixtures (e.g. agent2, agent3) are v1, so we
+  // build the CertifiedKey manually and call `keys_match` ourselves to keep
+  // the cert/key pairing check and the empty-chain check, while translating
+  // only UnsupportedCertVersion to success.
   let provider = builder.crypto_provider().clone();
   let signing_key = provider.key_provider.load_private_key(private_key).ok()?;
   let certified_key = rustls::sign::CertifiedKey::new(certs, signing_key);
+  match certified_key.keys_match() {
+    Ok(()) => {}
+    Err(rustls::Error::InvalidCertificate(
+      rustls::CertificateError::Other(ref other),
+    )) if other.to_string().contains("UnsupportedCertVersion") => {}
+    Err(e) => {
+      log::debug!("TLSWrap: cert/key validation failed: {e}");
+      return None;
+    }
+  }
   let resolver = rustls::sign::SingleCertAndKey::from(certified_key);
   Some(builder.with_cert_resolver(Arc::new(resolver)))
 }
