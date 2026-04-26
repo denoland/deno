@@ -847,7 +847,7 @@ fn handle_headers_frame(session: &Session, frame: *const ffi::nghttp2_frame) {
     &[
       handle.into(),
       id_num.into(),
-      cat.into(),
+      cat,
       flags.into(),
       headers_array.into(),
     ],
