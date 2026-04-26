@@ -533,8 +533,10 @@
     "parallel/test-crypto-pqc-key-objects-ml-kem.js": {},
     "parallel/test-crypto-pqc-key-objects-slh-dsa.js": {},
     "parallel/test-crypto-psychic-signatures.js": {},
-    // TODO(bartlomieju): requires encrypted PEM export (cipher+passphrase in privateKeyEncoding)
-    // "parallel/test-crypto-publicDecrypt-fails-first-time.js": {},
+    "parallel/test-crypto-publicDecrypt-fails-first-time.js": {
+      "ignore": true,
+      "reason": "Encrypts the PKCS#8 PEM private key with `cipher: 'aes-128-ecb'`. Deno's PEM PBES2 encoder rejects ECB modes (no IV, not in the PKCS#5 v2 recommended cipher list) with 'Unsupported cipher for PEM encryption: aes-128-ecb'. Adding ECB to the PBES2 emitter would be a security-questionable change. Could be revisited if there's a real-world need; the upstream Node test exists only as a regression for nodejs/node#40814 (a bug in OpenSSL's first-call EVP error stack)"
+    },
     "parallel/test-crypto-random.js": {},
     "parallel/test-crypto-randomfillsync-regression.js": {},
     "parallel/test-crypto-randomuuid.js": {},
