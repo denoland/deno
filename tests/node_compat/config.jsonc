@@ -303,6 +303,10 @@
     "parallel/test-child-process-spawnsync-env.js": {},
     "parallel/test-child-process-spawnsync-input.js": {},
     "parallel/test-child-process-spawnsync-maxbuf.js": {},
+    "parallel/test-child-process-spawnsync-shell.js": {
+      "ignore": true,
+      "reason": "Requires monkey-patching internal/child_process.spawnSync, which doesn't work with ESM static bindings"
+    },
     "parallel/test-child-process-spawnsync-timeout.js": {},
     "parallel/test-child-process-spawnsync-validation-errors.js": {},
     "parallel/test-child-process-spawnsync.js": {},
