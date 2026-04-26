@@ -2777,6 +2777,7 @@ dependencies = [
  "once_cell",
  "rand 0.8.5",
  "rustls-tokio-stream",
+ "rustls-webpki 0.103.3",
  "serde",
  "socket2 0.5.5",
  "sys_traits",

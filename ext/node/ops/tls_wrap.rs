@@ -3186,7 +3186,31 @@ fn build_server_config(
     builder.with_no_client_auth()
   };
 
-  builder.with_single_cert(certs, private_key).ok()
+  // `with_single_cert` runs `CertifiedKey::keys_match()`, which parses the
+  // end-entity cert via webpki and rejects X.509v1 certs with
+  // UnsupportedCertVersion.  Node uses OpenSSL, which accepts v1 certs, and
+  // several upstream Node test fixtures (e.g. agent2, agent3) are v1, so we
+  // build the CertifiedKey manually and call `keys_match` ourselves to keep
+  // the cert/key pairing check and the empty-chain check, while translating
+  // only UnsupportedCertVersion to success.
+  let provider = builder.crypto_provider().clone();
+  let signing_key = provider.key_provider.load_private_key(private_key).ok()?;
+  let certified_key = rustls::sign::CertifiedKey::new(certs, signing_key);
+  match certified_key.keys_match() {
+    Ok(()) => {}
+    Err(rustls::Error::InvalidCertificate(
+      rustls::CertificateError::Other(ref other),
+    )) if other
+      .0
+      .downcast_ref::<webpki::Error>()
+      .is_some_and(|e| matches!(e, webpki::Error::UnsupportedCertVersion)) => {}
+    Err(e) => {
+      log::debug!("TLSWrap: cert/key validation failed: {e}");
+      return None;
+    }
+  }
+  let resolver = rustls::sign::SingleCertAndKey::from(certified_key);
+  Some(builder.with_cert_resolver(Arc::new(resolver)))
 }
 
 #[cfg(test)]
