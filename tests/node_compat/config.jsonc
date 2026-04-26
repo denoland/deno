@@ -1554,6 +1554,7 @@
     "parallel/test-http2-respond-file-range.js": {},
     "parallel/test-http2-respond-file.js": {},
     "parallel/test-http2-respond-no-data.js": {},
+    "parallel/test-http2-response-splitting.js": {},
     "parallel/test-http2-sent-headers.js": {},
     "parallel/test-http2-server-async-dispose.js": {},
     "parallel/test-http2-server-close-callback.js": {},

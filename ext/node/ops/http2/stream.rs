@@ -15,11 +15,14 @@ use super::types::STREAM_OPTION_EMPTY_PAYLOAD;
 use super::types::STREAM_OPTION_GET_TRAILERS;
 use crate::ops::handle_wrap::AsyncWrap;
 
+/// (name bytes, value bytes, NGHTTP2 NV flags).
+pub type HeaderEntry = (Vec<u8>, Vec<u8>, u8);
+
 // Http2Headers
 
 pub struct Http2Headers {
   #[allow(dead_code, reason = "owns the backing memory for nva pointers")]
-  backing_store: String,
+  backing_store: Vec<u8>,
   nva: Vec<ffi::nghttp2_nv>,
 }
 
@@ -32,8 +35,7 @@ impl Http2Headers {
     self.nva.len()
   }
 
-  pub fn parse(content: String, count: usize) -> Self {
-    let bytes = content.as_bytes();
+  pub fn parse(bytes: Vec<u8>, count: usize) -> Self {
     let mut nva = Vec::with_capacity(count);
     let mut offset = 0;
 
@@ -87,15 +89,32 @@ impl Http2Headers {
     }
 
     Self {
-      backing_store: content,
+      backing_store: bytes,
       nva,
     }
   }
-}
 
-impl From<(String, usize)> for Http2Headers {
-  fn from((content, count): (String, usize)) -> Self {
-    Self::parse(content, count)
+  /// Decode the V8 string as Latin-1 (one byte per UTF-16 unit, truncated to
+  /// the low byte) — matches Node's `StringBytes::Write(LATIN1)` so that JS
+  /// chars like `Ċ` (U+010A) become the byte 0x0a (LF), letting nghttp2's
+  /// receiver-side validation reject crafted header values for response
+  /// splitting. UTF-8 encoding would hide the LF in a multibyte sequence.
+  pub fn from_v8_string(
+    scope: &mut v8::PinScope,
+    string: v8::Local<v8::String>,
+    count: usize,
+  ) -> Self {
+    let len = string.length();
+    let mut buf: Vec<u8> = Vec::with_capacity(len);
+    string.write_one_byte_uninit_v2(
+      scope,
+      0,
+      buf.spare_capacity_mut(),
+      v8::WriteFlags::empty(),
+    );
+    // SAFETY: write_one_byte_uninit_v2 initialized exactly `len` bytes.
+    unsafe { buf.set_len(len) };
+    Self::parse(buf, count)
   }
 }
 
@@ -150,7 +169,7 @@ pub struct Http2Stream {
   pub(crate) current_headers_category: ffi::nghttp2_headers_category,
   pub(crate) available_outbound_length: RefCell<usize>,
   pub(crate) pending_data: RefCell<bytes::BytesMut>,
-  pub(crate) current_headers: RefCell<Vec<(String, String, u8)>>,
+  pub(crate) current_headers: RefCell<Vec<HeaderEntry>>,
   pub(crate) current_headers_length: RefCell<usize>,
   pub(crate) has_trailers: RefCell<bool>,
   /// Set to true when shutdown is called (writable side ended).
@@ -223,13 +242,6 @@ impl Http2Stream {
   }
 
   pub fn add_header(&self, name: &[u8], value: &[u8], flags: u8) -> bool {
-    let Ok(name_str) = std::str::from_utf8(name) else {
-      return false;
-    };
-    let Ok(value_str) = std::str::from_utf8(value) else {
-      return false;
-    };
-
     // Empty header names are ignored (matches Node's Http2Stream::AddHeader).
     if name.is_empty() {
       return true;
@@ -267,8 +279,8 @@ impl Http2Stream {
     }
 
     self.current_headers.borrow_mut().push((
-      name_str.to_string(),
-      value_str.to_string(),
+      name.to_vec(),
+      value.to_vec(),
       flags,
     ));
     *self.current_headers_length.borrow_mut() += header_length;
@@ -358,8 +370,15 @@ impl Http2Stream {
     self.id
   }
 
-  fn respond(&self, #[serde] headers: (String, usize), options: i32) {
-    let headers = Http2Headers::from(headers);
+  #[nofast]
+  fn respond(
+    &self,
+    scope: &mut v8::PinScope,
+    headers: v8::Local<v8::String>,
+    count: u32,
+    options: i32,
+  ) {
+    let headers = Http2Headers::from_v8_string(scope, headers, count as usize);
     let session_ptr = self.nghttp2_session();
 
     if (options & STREAM_OPTION_GET_TRAILERS) != 0 {
@@ -469,10 +488,16 @@ impl Http2Stream {
     }
   }
 
-  fn trailers(&self, #[serde] headers: (String, usize)) -> i32 {
+  #[nofast]
+  fn trailers(
+    &self,
+    scope: &mut v8::PinScope,
+    headers: v8::Local<v8::String>,
+    count: u32,
+  ) -> i32 {
     let session_ptr = self.nghttp2_session();
 
-    if headers.1 == 0 {
+    if count == 0 {
       let mut data_provider = ffi::nghttp2_data_provider2 {
         source: ffi::nghttp2_data_source {
           ptr: std::ptr::null_mut(),
@@ -490,7 +515,8 @@ impl Http2Stream {
         )
       }
     } else {
-      let http2_headers = Http2Headers::from(headers);
+      let http2_headers =
+        Http2Headers::from_v8_string(scope, headers, count as usize);
       // SAFETY: session pointer and headers are valid
       unsafe {
         ffi::nghttp2_submit_trailer(
@@ -559,11 +585,13 @@ impl Http2Stream {
   fn push_promise<'s>(
     &self,
     scope: &mut v8::PinScope<'s, '_>,
-    #[serde] headers: (String, usize),
+    headers: v8::Local<v8::String>,
+    count: u32,
     options: i32,
   ) -> v8::Local<'s, v8::Value> {
     let session_ptr = self.nghttp2_session();
-    let http2_headers = Http2Headers::from(headers);
+    let http2_headers =
+      Http2Headers::from_v8_string(scope, headers, count as usize);
 
     // SAFETY: session pointer is valid during stream lifetime
     let ret = unsafe {
@@ -595,9 +623,16 @@ impl Http2Stream {
     local.into()
   }
 
-  fn info(&self, #[serde] headers: (String, usize)) -> i32 {
+  #[nofast]
+  fn info(
+    &self,
+    scope: &mut v8::PinScope,
+    headers: v8::Local<v8::String>,
+    count: u32,
+  ) -> i32 {
     let session_ptr = self.nghttp2_session();
-    let http2_headers = Http2Headers::from(headers);
+    let http2_headers =
+      Http2Headers::from_v8_string(scope, headers, count as usize);
 
     // SAFETY: session pointer is valid during stream lifetime
     unsafe {
