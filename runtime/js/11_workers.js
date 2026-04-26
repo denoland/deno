@@ -7,7 +7,6 @@ import {
   op_host_post_message_raw,
   op_host_recv_ctrl,
   op_host_recv_message,
-  op_host_recv_message_sync,
   op_host_terminate_worker,
 } from "ext:core/ops";
 const {
@@ -275,15 +274,6 @@ class Worker extends EventTarget {
         return;
       }
       if (!this.#dispatchWorkerMessage(data)) return;
-      // Sync drain: process a limited batch of already-queued messages
-      // without going through the async op machinery. The batch limit
-      // prevents starvation of the event loop when message handlers
-      // synchronously post new messages (e.g. ping-pong patterns).
-      for (let i = 0; i < 1000 && this.#status !== "TERMINATED"; i++) {
-        const syncData = op_host_recv_message_sync(this.#id);
-        if (syncData === null) break;
-        if (!this.#dispatchWorkerMessage(syncData)) return;
-      }
     }
   };
 
