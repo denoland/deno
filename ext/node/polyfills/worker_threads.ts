@@ -891,6 +891,9 @@ internals.__initWorkerThreads = (
     // onmessage handler (globalThis.onmessage) since both would fire
     // for the same MessageEvent.
     let messageListenerCount = 0;
+    // Track Web API message listeners to prevent underflow on
+    // double-remove (same concern as the Node-style off() path).
+    const webMessageListeners = new SafeSet();
 
     parentPort = ObjectCreate(null) as ParentPort;
     parentPort.postMessage = function (message, transferOrOptions?) {
@@ -898,11 +901,17 @@ internals.__initWorkerThreads = (
     };
     parentPort.addEventListener = function (name, listener, options?) {
       nativeAddEventListener(name, listener, options);
-      if (name === "message") messageListenerCount++;
+      if (name === "message" && !webMessageListeners.has(listener)) {
+        webMessageListeners.add(listener);
+        messageListenerCount++;
+      }
     };
     parentPort.removeEventListener = function (name, listener) {
       nativeRemoveEventListener(name, listener);
-      if (name === "message") messageListenerCount--;
+      if (name === "message" && webMessageListeners.has(listener)) {
+        webMessageListeners.delete(listener);
+        messageListenerCount--;
+      }
     };
     // Delegate parentPort.onmessage to globalThis.onmessage so that
     // setting parentPort.onmessage = handler works like the old code
