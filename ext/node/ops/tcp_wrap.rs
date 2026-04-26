@@ -277,6 +277,46 @@ impl TCPWrap {
   pub fn stream_ptr(&self) -> *mut UvStream {
     self.base.stream_ptr()
   }
+
+  fn bind_inner(
+    &self,
+    state: &mut OpState,
+    address: &str,
+    port: i32,
+    flags: u32,
+  ) -> Result<i32, deno_permissions::PermissionCheckError> {
+    state
+      .borrow_mut::<PermissionsContainer>()
+      .check_net(&(address, Some(port as u16)), "node:net.listen()")?;
+
+    let addr_str = format!("{}:{}", address, port);
+    let socket_addr = match addr_str.to_socket_addrs() {
+      Ok(mut addrs) => match addrs.next() {
+        Some(addr) => addr,
+        None => return Ok(-1),
+      },
+      Err(_) => return Ok(-1),
+    };
+
+    // SAFETY: tcp is valid; socket2 SockAddr is properly initialized from
+    // a resolved std::net::SocketAddr.
+    unsafe {
+      let tcp = self.tcp_ptr();
+      if tcp.is_null() {
+        return Ok(-1);
+      }
+      let sock_addr = Socket2SockAddr::from(socket_addr);
+      Ok(uv_compat::uv_tcp_bind(
+        tcp,
+        sock_addr.as_ptr() as *const _,
+        #[allow(clippy::unnecessary_cast, reason = "depends on platform")]
+        {
+          sock_addr.len() as u32
+        },
+        flags,
+      ))
+    }
+  }
 }
 
 // -- ops --
@@ -357,37 +397,19 @@ impl TCPWrap {
     #[string] address: &str,
     #[smi] port: i32,
   ) -> Result<i32, deno_permissions::PermissionCheckError> {
-    state
-      .borrow_mut::<PermissionsContainer>()
-      .check_net(&(address, Some(port as u16)), "node:net.listen()")?;
+    self.bind_inner(state, address, port, 0)
+  }
 
-    let addr_str = format!("{}:{}", address, port);
-    let socket_addr = match addr_str.to_socket_addrs() {
-      Ok(mut addrs) => match addrs.next() {
-        Some(addr) => addr,
-        None => return Ok(-1),
-      },
-      Err(_) => return Ok(-1),
-    };
-
-    // SAFETY: tcp is valid; socket2 SockAddr is properly initialized from
-    // a resolved std::net::SocketAddr.
-    unsafe {
-      let tcp = self.tcp_ptr();
-      if tcp.is_null() {
-        return Ok(-1);
-      }
-      let sock_addr = Socket2SockAddr::from(socket_addr);
-      Ok(uv_compat::uv_tcp_bind(
-        tcp,
-        sock_addr.as_ptr() as *const _,
-        #[allow(clippy::unnecessary_cast, reason = "depends on platform")]
-        {
-          sock_addr.len() as u32
-        },
-        0,
-      ))
-    }
+  #[nofast]
+  #[rename("bindWithFlags")]
+  fn bind_with_flags(
+    &self,
+    state: &mut OpState,
+    #[string] address: &str,
+    #[smi] port: i32,
+    #[smi] flags: u32,
+  ) -> Result<i32, deno_permissions::PermissionCheckError> {
+    self.bind_inner(state, address, port, flags)
   }
 
   #[nofast]
@@ -396,6 +418,7 @@ impl TCPWrap {
     state: &mut OpState,
     #[string] address: &str,
     #[smi] port: i32,
+    #[smi] flags: u32,
   ) -> Result<i32, deno_permissions::PermissionCheckError> {
     state
       .borrow_mut::<PermissionsContainer>()
@@ -424,7 +447,7 @@ impl TCPWrap {
         {
           sock_addr.len() as u32
         },
-        0,
+        flags,
       ))
     }
   }

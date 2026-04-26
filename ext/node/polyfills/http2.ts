@@ -158,6 +158,7 @@ import {
 import {
   assertIsArray,
   assertIsObject,
+  assertValidPseudoHeader,
   assertValidPseudoHeaderResponse,
   assertValidPseudoHeaderTrailer,
   assertWithinRange,
