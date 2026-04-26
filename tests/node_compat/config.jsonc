@@ -3078,6 +3078,10 @@
     "parallel/test-webcrypto-encrypt-decrypt.js": {},
     "parallel/test-webcrypto-export-import-ml-dsa.js": {},
     "parallel/test-webcrypto-export-import-ml-kem.js": {},
+    "parallel/test-webcrypto-get-public-key.mjs": {
+      "ignore": true,
+      "reason": "Tests `subtle.getPublicKey(privateKey, usages)` -- the WebCrypto Level 2 method that derives a public CryptoKey from a private one. Deno does not implement this method (`TypeError: subtle.getPublicKey is not a function`). Implementable on top of Deno's existing per-algorithm export/import paths, but would need to handle every supported algorithm (ECDH, ECDSA, Ed25519, RSA-OAEP, RSA-PSS, RSASSA-PKCS1-v1_5, X25519). Could be revisited as a discrete WebCrypto Level 2 add-on"
+    },
     "parallel/test-webcrypto-getRandomValues.js": {},
     "parallel/test-webcrypto-random.js": {},
     "parallel/test-webcrypto-keygen-kmac.js": {
