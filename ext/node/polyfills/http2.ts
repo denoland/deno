@@ -2710,7 +2710,10 @@ function setupHandle(socket, type, options) {
   if (options.remoteCustomSettings) {
     remoteCustomSettingsToBuffer(options.remoteCustomSettings);
   }
-  const handle = new InternalHttp2Session(type);
+  const handle = new InternalHttp2Session(
+    type,
+    options.strictFieldWhitespaceValidation === false,
+  );
   handle[kOwner] = this;
 
   // Pump data from socket to session via JS events.

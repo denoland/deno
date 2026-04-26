@@ -348,7 +348,10 @@ struct Http2Options {
 }
 
 impl Http2Options {
-  fn new(session_type: SessionType) -> Self {
+  fn new(
+    session_type: SessionType,
+    no_strict_field_ws_validation: bool,
+  ) -> Self {
     let mut options: *mut ffi::nghttp2_option = std::ptr::null_mut();
     // SAFETY: passing valid pointer to be initialized by nghttp2
     unsafe { ffi::nghttp2_option_new(&mut options) };
@@ -441,6 +444,16 @@ impl Http2Options {
           ffi::nghttp2_option_set_builtin_recv_extension_type(
             options,
             ffi::NGHTTP2_ORIGIN as u8,
+          );
+        }
+
+        // strictFieldWhitespaceValidation: when disabled, tell nghttp2 to skip
+        // RFC 9113 leading/trailing whitespace validation so headers with
+        // surrounding whitespace are delivered to on_header_callback instead
+        // of being routed to on_invalid_header_callback (and dropped).
+        if no_strict_field_ws_validation {
+          ffi::nghttp2_option_set_no_rfc9113_leading_and_trailing_ws_validation(
+            options, 1,
           );
         }
       }
@@ -1799,9 +1812,11 @@ impl Http2Session {
     scope: &mut v8::PinScope<'_, '_>,
     op_state: Rc<RefCell<OpState>>,
     session_type: SessionType,
+    no_strict_field_ws_validation: bool,
   ) -> Self {
     let mut session: *mut ffi::nghttp2_session = std::ptr::null_mut();
-    let options = Http2Options::new(session_type);
+    let options =
+      Http2Options::new(session_type, no_strict_field_ws_validation);
 
     let context = scope.get_current_context();
     let context = v8::Global::new(scope, context);
@@ -1919,6 +1934,7 @@ impl Http2Session {
     scope: &mut v8::PinScope<'_, '_>,
     op_state: Rc<RefCell<OpState>>,
     #[smi] type_: i32,
+    no_strict_field_ws_validation: bool,
   ) -> Http2Session {
     Http2Session::create(
       this,
@@ -1930,6 +1946,7 @@ impl Http2Session {
         1 => SessionType::Client,
         _ => unreachable!(),
       },
+      no_strict_field_ws_validation,
     )
   }
 
