@@ -107,10 +107,14 @@ nodeGlobals.clearImmediate = nativeModuleExports["timers"].clearImmediate;
 nodeGlobals.clearInterval = nativeModuleExports["timers"].clearInterval;
 nodeGlobals.clearTimeout = nativeModuleExports["timers"].clearTimeout;
 nodeGlobals.global = globalThis;
+nodeGlobals.self = undefined;
 nodeGlobals.process = nativeModuleExports["process"];
 nodeGlobals.setImmediate = nativeModuleExports["timers"].setImmediate;
 nodeGlobals.setInterval = nativeModuleExports["timers"].setInterval;
 nodeGlobals.setTimeout = nativeModuleExports["timers"].setTimeout;
+
+denoGlobals.self = globalThis;
+delete globalThis.self;
 
 nativeModuleExports["internal/console/constructor"].bindStreamsLazy(
   nativeModuleExports["console"],

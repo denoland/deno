@@ -12,7 +12,7 @@ import {
   // provides.
   register,
 } from "node:module";
-import { assert, assertEquals } from "@std/assert";
+import { assert, assertEquals, assertStringIncludes } from "@std/assert";
 import process from "node:process";
 import * as path from "node:path";
 
@@ -36,6 +36,19 @@ Deno.test("[node/module runMain] loads module using the current process.argv", (
   (Module as any).runMain();
   // deno-lint-ignore no-explicit-any
   assertEquals((globalThis as any).calledViaRunMain, true);
+});
+
+Deno.test("[node/module] npm package does not expose self in node mode", async () => {
+  const command = new Deno.Command(Deno.execPath(), {
+    args: ["run", "--quiet", "npm:@denotest/node-self-undefined"],
+    stdout: "piped",
+    stderr: "piped",
+  });
+  const { success, stdout, stderr } = await command.output();
+  if (!success) {
+    throw new Error(new TextDecoder().decode(stderr));
+  }
+  assertStringIncludes(new TextDecoder().decode(stdout), "ok");
 });
 
 Deno.test("[node/module _nodeModulePaths] prevents duplicate /node_modules/node_modules suffix", () => {
