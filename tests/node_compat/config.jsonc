@@ -2792,6 +2792,12 @@
     "parallel/test-timers-api-refs.js": {},
     "parallel/test-timers-args.js": {},
     "parallel/test-timers-clear-null-does-not-throw-error.js": {},
+    "parallel/test-timers-destroyed.js": {},
+    "parallel/test-timers-dispose.js": {},
+    "parallel/test-timers-fast-calls.js": {
+      "ignore": true,
+      "reason": "Tests V8 fast API call counts via internalBinding('timers') and %PrepareFunctionForOptimization natives syntax"
+    },
     "parallel/test-timers-clear-object-does-not-throw-error.js": {},
     "parallel/test-timers-clear-timeout-interval-equivalent.js": {},
     "parallel/test-timers-clearImmediate-als.js": {},
@@ -2803,7 +2809,12 @@
     "parallel/test-timers-immediate.js": {},
     "parallel/test-timers-immediate-queue.js": {},
     "parallel/test-timers-invalid-clear.js": {},
+    "parallel/test-timers-interval-promisified.js": {},
     "parallel/test-timers-interval-throw.js": {},
+    "parallel/test-timers-linked-list.js": {
+      "ignore": true,
+      "reason": "Tests internal/linkedlist which is a Node.js internal module not implemented in Deno"
+    },
     "parallel/test-timers-max-duration-warning.js": {},
     "parallel/test-timers-nan-duration-emit-once-per-process.js": {},
     "parallel/test-timers-nan-duration-warning.js": {},

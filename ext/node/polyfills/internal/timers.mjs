@@ -24,6 +24,7 @@ const {
   SafeArrayIterator,
   SafeMap,
   Symbol,
+  SymbolDispose,
   SymbolToPrimitive,
 } = primordials;
 import {
@@ -163,6 +164,8 @@ Timeout.prototype[createTimer] = function () {
     } else if (self._repeat) {
       // timeout was converted to interval inside callback
       self[kTimerId] = self[createTimer]();
+    } else {
+      self._destroyed = true;
     }
     return ret;
   }
@@ -218,6 +221,7 @@ Timeout.prototype[createTimer] = function () {
 Timeout.prototype[kDestroy] = function () {
   if (!this._destroyed) {
     this._destroyed = true;
+    this._onTimeout = null;
     cancelTimer_(this._timer);
     MapPrototypeDelete(activeTimers, this[kTimerId]);
     if (
@@ -243,7 +247,15 @@ Timeout.prototype[inspect.custom] = function (_, options) {
 };
 
 Timeout.prototype.refresh = function () {
-  if (!this._destroyed) {
+  if (this._destroyed) {
+    // Reactivate a timer that fired naturally (callback still set).
+    // Do NOT reactivate a timer cancelled via clearTimeout (callback
+    // nulled by kDestroy or _onTimeout explicitly cleared).
+    if (this._onTimeout !== null) {
+      this._destroyed = false;
+      this[kTimerId] = this[createTimer]();
+    }
+  } else {
     refreshTimer_(this._timer);
   }
   return this;
@@ -272,6 +284,10 @@ Timeout.prototype.ref = function () {
 Timeout.prototype.close = function () {
   this[kDestroy]();
   return this;
+};
+
+Timeout.prototype[SymbolDispose] = function () {
+  this[kDestroy]();
 };
 
 Timeout.prototype.hasRef = function () {
@@ -365,6 +381,10 @@ export class Immediate {
 
   hasRef() {
     return !!this[kRefed];
+  }
+
+  [SymbolDispose]() {
+    core.clearImmediate(this);
   }
 
   [inspect.custom] = function (_, options) {
