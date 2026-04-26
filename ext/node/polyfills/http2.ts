@@ -141,6 +141,7 @@ import {
   ERR_INVALID_CHAR,
   ERR_OUT_OF_RANGE,
   ERR_SOCKET_CLOSED,
+  ERR_TLS_ALPN_CALLBACK_WITH_PROTOCOLS,
   hideStackFrames,
 } from "ext:deno_node/internal/errors.ts";
 import {
@@ -3992,7 +3993,19 @@ function initializeOptions(options) {
 function initializeTLSOptions(options, servername) {
   options = initializeOptions(options);
 
-  if (!options.ALPNCallback) {
+  if (options.ALPNCallback) {
+    if (options.ALPNProtocols !== undefined) {
+      throw new ERR_TLS_ALPN_CALLBACK_WITH_PROTOCOLS();
+    }
+    // rustls does not expose a per-handshake ALPN selection callback, so
+    // we approximate it by pre-evaluating the user's ALPNCallback once
+    // and advertising the returned protocol. This handles callbacks that
+    // unconditionally return a fixed protocol (the common case).
+    const selected = options.ALPNCallback({ servername, protocols: [] });
+    if (typeof selected === "string") {
+      options.ALPNProtocols = [selected];
+    }
+  } else {
     options.ALPNProtocols = ["h2"];
     if (options.allowHTTP1 === true) {
       ArrayPrototypePush(options.ALPNProtocols, "http/1.1");

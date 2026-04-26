@@ -1430,6 +1430,7 @@
     "parallel/test-http-write-callbacks.js": {},
     "parallel/test-http-write-empty-string.js": {},
     "parallel/test-http-zerolengthbuffer.js": {},
+    "parallel/test-http2-alpn.js": {},
     "parallel/test-http2-altsvc.js": {},
     "parallel/test-http2-buffersize.js": {},
     "parallel/test-http2-clean-output.js": {},
