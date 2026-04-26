@@ -3999,12 +3999,21 @@ function initializeTLSOptions(options, servername) {
     }
     // rustls does not expose a per-handshake ALPN selection callback, so
     // we approximate it by pre-evaluating the user's ALPNCallback once
-    // and advertising the returned protocol. This handles callbacks that
-    // unconditionally return a fixed protocol (the common case).
+    // and advertising the returned protocol. This only correctly handles
+    // callbacks that synchronously return a fixed protocol string; richer
+    // selection (rejecting handshakes via false/undefined, choosing per
+    // client-offered protocols) is not supported, so reject those shapes
+    // up-front rather than silently advertising an empty ALPN list.
     const selected = options.ALPNCallback({ servername, protocols: [] });
-    if (typeof selected === "string") {
-      options.ALPNProtocols = [selected];
+    if (typeof selected !== "string" || selected.length === 0) {
+      throw new ERR_INVALID_ARG_VALUE(
+        "options.ALPNCallback",
+        selected,
+        "must synchronously return a non-empty protocol string; " +
+          "dynamic per-handshake ALPN selection is not supported",
+      );
     }
+    options.ALPNProtocols = [selected];
   } else {
     options.ALPNProtocols = ["h2"];
     if (options.allowHTTP1 === true) {
