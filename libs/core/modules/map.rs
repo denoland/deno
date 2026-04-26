@@ -36,7 +36,6 @@ use super::RequestedModuleType;
 use super::loaders::ModuleLoadOptions;
 use super::module_map_data::ModuleMapData;
 use super::module_map_data::ModuleMapSnapshotData;
-use super::recursive_load::SideModuleKind;
 use crate::FastStaticString;
 use crate::JsRuntime;
 use crate::ModuleCodeBytes;
@@ -119,11 +118,101 @@ fn strip_bom(source_code: &[u8]) -> &[u8] {
   }
 }
 
+/// A `FuturesUnordered` paired with a `Cell<bool>` flag that tracks whether
+/// the collection has pending items. The flag avoids borrowing the `RefCell`
+/// just to check `is_empty()`.
+struct TrackedFutures<F> {
+  futs: RefCell<FuturesUnordered<F>>,
+  pending: Cell<bool>,
+}
+
+impl<F> Default for TrackedFutures<F> {
+  fn default() -> Self {
+    Self {
+      futs: Default::default(),
+      pending: Cell::new(false),
+    }
+  }
+}
+
+impl<F: Future + Unpin> TrackedFutures<F> {
+  fn is_pending(&self) -> bool {
+    self.pending.get()
+  }
+
+  fn push(&self, fut: F) {
+    self.futs.borrow_mut().push(fut);
+    self.pending.set(true);
+  }
+
+  /// Polls the inner `FuturesUnordered`. When the result is not
+  /// `Ready(Some(_))` (i.e., no more ready items), the pending flag is
+  /// synced from the collection's emptiness.
+  fn poll_next_unpin(&self, cx: &mut Context) -> Poll<Option<F::Output>> {
+    let poll = self.futs.borrow_mut().poll_next_unpin(cx);
+    if !matches!(poll, Poll::Ready(Some(_))) {
+      self.pending.set(!self.futs.borrow().is_empty());
+    }
+    poll
+  }
+
+  fn clear(&self) {
+    self.futs.borrow_mut().clear();
+    self.pending.set(false);
+  }
+}
+
+/// A `Vec<T>` paired with a `Cell<bool>` flag that tracks whether the
+/// collection has pending items.
+struct TrackedVec<T> {
+  vec: RefCell<Vec<T>>,
+  pending: Cell<bool>,
+}
+
+impl<T> Default for TrackedVec<T> {
+  fn default() -> Self {
+    Self {
+      vec: RefCell::new(Vec::new()),
+      pending: Cell::new(false),
+    }
+  }
+}
+
+impl<T> TrackedVec<T> {
+  fn is_pending(&self) -> bool {
+    self.pending.get()
+  }
+
+  fn push(&self, item: T) {
+    self.vec.borrow_mut().push(item);
+    self.pending.set(true);
+  }
+
+  fn take(&self) -> Vec<T> {
+    let v = std::mem::take(self.vec.borrow_mut().deref_mut());
+    self.pending.set(false);
+    v
+  }
+
+  fn set(&self, items: Vec<T>) {
+    self.pending.set(!items.is_empty());
+    *self.vec.borrow_mut() = items;
+  }
+
+  fn borrow(&self) -> std::cell::Ref<'_, Vec<T>> {
+    self.vec.borrow()
+  }
+
+  fn clear(&self) {
+    self.vec.borrow_mut().clear();
+    self.pending.set(false);
+  }
+}
+
 struct DynImportModEvaluate {
   load_id: ModuleLoadId,
   module_id: ModuleId,
   promise: v8::Global<v8::Promise>,
-  module: v8::Global<v8::Module>,
 }
 
 #[derive(Debug, Clone)]
@@ -142,20 +231,17 @@ pub(crate) struct ModuleMap {
   pub(crate) source_mapper: Rc<RefCell<SourceMapper>>,
   exception_state: Rc<ExceptionState>,
   dynamic_import_map: RefCell<HashMap<ModuleLoadId, DynImportState>>,
-  preparing_dynamic_imports:
-    RefCell<FuturesUnordered<Pin<Box<PrepareLoadFuture>>>>,
-  preparing_dynamic_imports_pending: Cell<bool>,
-  pending_dynamic_imports:
-    RefCell<FuturesUnordered<StreamFuture<RecursiveModuleLoad>>>,
-  pending_dynamic_imports_pending: Cell<bool>,
-  pending_dyn_mod_evaluations: RefCell<Vec<DynImportModEvaluate>>,
-  pending_dyn_mod_evaluations_pending: Cell<bool>,
+  preparing_dynamic_imports: TrackedFutures<Pin<Box<PrepareLoadFuture>>>,
+  pending_dynamic_imports: TrackedFutures<StreamFuture<RecursiveModuleLoad>>,
+  pending_dyn_mod_evaluations: TrackedVec<DynImportModEvaluate>,
   pending_tla_waiters:
     RefCell<HashMap<ModuleId, Vec<v8::Global<v8::PromiseResolver>>>>,
   pending_mod_evaluation: Cell<bool>,
-  code_cache_ready_futs:
-    RefCell<FuturesUnordered<Pin<Box<CodeCacheReadyFuture>>>>,
-  pending_code_cache_ready: Cell<bool>,
+  /// Set to `true` while inside `module.evaluate()` in `mod_evaluate`.
+  /// Used to suppress microtask checkpoints in `lazy_load_es_module_with_code`
+  /// during module evaluation, preventing premature draining of TLA-related microtasks.
+  evaluating_top_level: Cell<bool>,
+  code_cache_ready_futs: TrackedFutures<Pin<Box<CodeCacheReadyFuture>>>,
   module_waker: AtomicWaker,
   data: RefCell<ModuleMapData>,
   will_snapshot: bool,
@@ -170,10 +256,11 @@ impl ModuleMap {
   /// so when destroying the module map we need to clear the pending futures.
   pub(crate) fn destroy(&self) {
     self.dynamic_import_map.borrow_mut().clear();
-    self.preparing_dynamic_imports.borrow_mut().clear();
-    self.pending_dynamic_imports.borrow_mut().clear();
+    self.preparing_dynamic_imports.clear();
+    self.pending_dynamic_imports.clear();
+    self.pending_dyn_mod_evaluations.clear();
     self.pending_tla_waiters.borrow_mut().clear();
-    self.code_cache_ready_futs.borrow_mut().clear();
+    self.code_cache_ready_futs.clear();
     std::mem::take(&mut *self.data.borrow_mut());
   }
 
@@ -233,15 +320,12 @@ impl ModuleMap {
       dyn_module_evaluate_idle_counter: Default::default(),
       dynamic_import_map: Default::default(),
       preparing_dynamic_imports: Default::default(),
-      preparing_dynamic_imports_pending: Default::default(),
       pending_dynamic_imports: Default::default(),
-      pending_dynamic_imports_pending: Default::default(),
       pending_dyn_mod_evaluations: Default::default(),
-      pending_dyn_mod_evaluations_pending: Default::default(),
       pending_tla_waiters: Default::default(),
       pending_mod_evaluation: Default::default(),
+      evaluating_top_level: Default::default(),
       code_cache_ready_futs: Default::default(),
-      pending_code_cache_ready: Default::default(),
       module_waker: Default::default(),
       data: Default::default(),
     }
@@ -603,7 +687,7 @@ impl ModuleMap {
   /// and attached to associated [`ModuleInfo`].
   ///
   /// Returns an ID of newly created module.
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "TODO: cleanup")]
   pub(crate) fn new_module_from_js_source(
     &self,
     scope: &mut v8::PinScope,
@@ -695,8 +779,7 @@ impl ModuleMap {
       let fut =
         async move { (code_cache_info.ready_callback)(&code_cache).await }
           .boxed_local();
-      self.code_cache_ready_futs.borrow_mut().push(fut);
-      self.pending_code_cache_ready.set(true);
+      self.code_cache_ready_futs.push(fut);
     }
 
     // Extract native source map URL from V8
@@ -706,8 +789,12 @@ impl ModuleMap {
     if !source_mapping_url_value.is_undefined()
       && !source_mapping_url_value.is_null()
     {
-      let source_mapping_url =
-        source_mapping_url_value.to_rust_string_lossy(tc_scope);
+      let mut source_mapping_url_buf: [std::mem::MaybeUninit<u8>; 1024] =
+        [std::mem::MaybeUninit::uninit(); 1024];
+      let source_mapping_url: v8::Local<v8::String> =
+        source_mapping_url_value.try_cast().unwrap();
+      let source_mapping_url = source_mapping_url
+        .to_rust_cow_lossy(tc_scope, &mut source_mapping_url_buf);
 
       let module_name = name
         .try_clone()
@@ -731,7 +818,7 @@ impl ModuleMap {
               .unwrap_or(module_url)
               .to_string()
           } else {
-            source_mapping_url
+            source_mapping_url.into_owned()
           };
 
         self
@@ -750,9 +837,11 @@ impl ModuleMap {
         module_requests.get(tc_scope, i).unwrap(),
       )
       .unwrap();
+      let mut import_specifier_buf: [std::mem::MaybeUninit<u8>; 1024] =
+        [std::mem::MaybeUninit::uninit(); 1024];
       let import_specifier = module_request
         .get_specifier()
-        .to_rust_string_lossy(tc_scope);
+        .to_rust_cow_lossy(tc_scope, &mut import_specifier_buf);
 
       let import_attributes = module_request.get_import_attributes();
 
@@ -806,7 +895,7 @@ impl ModuleMap {
           specifier: module_specifier,
           requested_module_type,
         },
-        specifier_key: Some(import_specifier),
+        specifier_key: Some(import_specifier.into_owned()),
         referrer_source_offset,
         phase: match module_request.get_phase() {
           v8::ModuleImportPhase::kEvaluation => ModuleImportPhase::Evaluation,
@@ -932,7 +1021,10 @@ impl ModuleMap {
     Ok(self.new_synthetic_module(tc_scope, name, ModuleType::Json, exports))
   }
 
-  #[allow(clippy::unnecessary_wraps)]
+  #[allow(
+    clippy::unnecessary_wraps,
+    reason = "consistent return type with other module constructors"
+  )]
   pub(crate) fn new_text_module(
     &self,
     scope: &mut v8::PinScope,
@@ -955,7 +1047,10 @@ impl ModuleMap {
     Ok(self.new_synthetic_module(scope, name, ModuleType::Text, exports))
   }
 
-  #[allow(clippy::unnecessary_wraps)]
+  #[allow(
+    clippy::unnecessary_wraps,
+    reason = "consistent return type with other module constructors"
+  )]
   pub(crate) fn new_bytes_module(
     &self,
     scope: &mut v8::PinScope,
@@ -1046,7 +1141,9 @@ impl ModuleMap {
       .get_name_by_module(&referrer_global)
       .expect("ModuleInfo not found");
 
-    let specifier_str = specifier.to_rust_string_lossy(scope);
+    let mut specifier_buf: [std::mem::MaybeUninit<u8>; 1024] =
+      [std::mem::MaybeUninit::uninit(); 1024];
+    let specifier_str = specifier.to_rust_cow_lossy(scope, &mut specifier_buf);
 
     let attributes = parse_import_attributes(
       scope,
@@ -1085,7 +1182,9 @@ impl ModuleMap {
       // SAFETY: We retrieve the pointer from the slot, having just set it a few stack frames up
       unsafe { scope.get_slot::<*const Self>().unwrap().as_ref().unwrap() };
 
-    let specifier_str = specifier.to_rust_string_lossy(scope);
+    let mut specifier_buf: [std::mem::MaybeUninit<u8>; 1024] =
+      [std::mem::MaybeUninit::uninit(); 1024];
+    let specifier_str = specifier.to_rust_cow_lossy(scope, &mut specifier_buf);
     let referrer_global = v8::Global::new(scope, referrer);
     let attributes = parse_import_attributes(
       scope,
@@ -1197,28 +1296,8 @@ impl ModuleMap {
     self.data.borrow().info.get(id).map(|i| i.requests.clone())
   }
 
-  pub(crate) async fn load_main(
-    module_map_rc: Rc<ModuleMap>,
-    specifier: String,
-  ) -> Result<RecursiveModuleLoad, CoreError> {
-    let load = RecursiveModuleLoad::main(specifier, module_map_rc);
-    load.prepare().await?;
-    Ok(load)
-  }
-
-  pub(crate) async fn load_side(
-    module_map_rc: Rc<ModuleMap>,
-    specifier: String,
-    kind: SideModuleKind,
-    code: Option<String>,
-  ) -> Result<RecursiveModuleLoad, CoreError> {
-    let load = RecursiveModuleLoad::side(specifier, module_map_rc, kind, code);
-    load.prepare().await?;
-    Ok(load)
-  }
-
   // Initiate loading of a module graph imported using `import()`.
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "internal code")]
   pub(crate) fn load_dynamic_import(
     self: Rc<Self>,
     scope: &mut v8::PinScope,
@@ -1283,7 +1362,7 @@ impl ModuleMap {
     );
 
     self.dynamic_import_map.borrow_mut().insert(
-      load.id,
+      load.id(),
       DynImportState {
         resolver: resolver_handle,
         cped: cped_handle,
@@ -1291,28 +1370,31 @@ impl ModuleMap {
       },
     );
 
+    let load_id = load.id();
     let fut = match resolve_result {
-      Ok(_) => async move { (load.id, load.prepare().await.map(|()| load)) }
-        .boxed_local(),
-      Err(error) => async move { (load.id, Err(error)) }.boxed_local(),
+      Ok(_) => async move {
+        let mut load = load;
+        (load_id, load.prepare().await.map(|()| load))
+      }
+      .boxed_local(),
+      Err(error) => async move { (load_id, Err(error)) }.boxed_local(),
     };
 
-    self.preparing_dynamic_imports.borrow_mut().push(fut);
-    self.preparing_dynamic_imports_pending.set(true);
+    self.preparing_dynamic_imports.push(fut);
 
     true
   }
 
   pub(crate) fn has_pending_dynamic_imports(&self) -> bool {
-    self.preparing_dynamic_imports_pending.get()
-      || self.pending_dynamic_imports_pending.get()
+    self.preparing_dynamic_imports.is_pending()
+      || self.pending_dynamic_imports.is_pending()
   }
 
   pub(crate) fn has_pending_module_evaluation(&self) -> bool {
     self.pending_mod_evaluation.get()
   }
   pub(crate) fn has_pending_dyn_module_evaluation(&self) -> bool {
-    self.pending_dyn_mod_evaluations_pending.get()
+    self.pending_dyn_mod_evaluations.is_pending()
   }
 
   /// See [`JsRuntime::mod_evaluate`].
@@ -1349,7 +1431,9 @@ impl ModuleMap {
         .unwrap_or_else(|_| Err(CoreErrorKind::ExecutionTerminated.into_box()))
     });
 
+    self.evaluating_top_level.set(true);
     let Some(value) = module.evaluate(tc_scope) else {
+      self.evaluating_top_level.set(false);
       if tc_scope.has_terminated() || tc_scope.is_execution_terminating() {
         let undefined = v8::undefined(tc_scope).into();
         _ = sender
@@ -1359,6 +1443,7 @@ impl ModuleMap {
       }
       return Either::Right(receiver);
     };
+    self.evaluating_top_level.set(false);
 
     self.pending_mod_evaluation.set(true);
 
@@ -1481,7 +1566,12 @@ impl ModuleMap {
         }
       }
 
-      tc_scope.perform_microtask_checkpoint();
+      // Under Explicit microtask policy, guard this checkpoint so that
+      // nextTick callbacks can run before promise microtasks queued during
+      // module evaluation (e.g., Promise.resolve().then(...)).
+      if !JsRealm::state_from_scope(tc_scope).has_tick_scheduled() {
+        tc_scope.perform_microtask_checkpoint();
+      }
     }
 
     Either::Right(receiver)
@@ -1528,6 +1618,11 @@ impl ModuleMap {
           .into_box(),
       );
     };
+
+    // Under Explicit microtask policy, V8 won't drain microtasks after
+    // module.evaluate(). We must do it ourselves so that the module
+    // evaluation promise resolves for synchronous modules.
+    tc_scope.perform_microtask_checkpoint();
 
     if let Some(exception) = tc_scope.exception() {
       return Err(
@@ -1639,21 +1734,15 @@ impl ModuleMap {
         // It doesn't really matter though, because they're just for waking the
         // event loop.
       }
-      let promise_global = v8::Global::new(tc_scope, promise);
-      let module_global = v8::Global::new(tc_scope, module);
-
       let dyn_import_mod_evaluate = DynImportModEvaluate {
         load_id,
         module_id: id,
-        promise: promise_global,
-        module: module_global,
+        promise: v8::Global::new(tc_scope, promise),
       };
 
       self
         .pending_dyn_mod_evaluations
-        .borrow_mut()
         .push(dyn_import_mod_evaluate);
-      self.pending_dyn_mod_evaluations_pending.set(true);
     } else if tc_scope.has_terminated() || tc_scope.is_execution_terminating() {
       return Err(CoreErrorKind::EvaluateDynamicImportedModule.into_box());
     } else {
@@ -1665,55 +1754,33 @@ impl ModuleMap {
 
   // Returns true if some dynamic import was resolved.
   fn evaluate_dyn_imports(&self, scope: &mut v8::PinScope) -> bool {
-    if !self.pending_dyn_mod_evaluations_pending.get() {
+    if !self.pending_dyn_mod_evaluations.is_pending() {
       return false;
     }
 
-    let pending =
-      std::mem::take(self.pending_dyn_mod_evaluations.borrow_mut().deref_mut());
+    let pending = self.pending_dyn_mod_evaluations.take();
     let mut resolved_any = false;
     let mut still_pending = vec![];
-    for pending_dyn_evaluate in pending {
-      let maybe_result = {
-        let module_id = pending_dyn_evaluate.module_id;
-        let promise = pending_dyn_evaluate.promise.open(scope);
-        let _module = pending_dyn_evaluate.module.open(scope);
-        let promise_state = promise.state();
-
-        match promise_state {
-          v8::PromiseState::Pending => {
-            still_pending.push(pending_dyn_evaluate);
-            None
-          }
-          v8::PromiseState::Fulfilled => {
-            Some(Ok((pending_dyn_evaluate.load_id, module_id)))
-          }
-          v8::PromiseState::Rejected => {
-            let exception = promise.result(scope);
-            let exception = v8::Global::new(scope, exception);
-            Some(Err((pending_dyn_evaluate.load_id, module_id, exception)))
-          }
+    for eval in pending {
+      let promise = eval.promise.open(scope);
+      match promise.state() {
+        v8::PromiseState::Pending => {
+          still_pending.push(eval);
         }
-      };
-
-      if let Some(result) = maybe_result {
-        resolved_any = true;
-        match result {
-          Ok((dyn_import_id, module_id)) => {
-            self.dynamic_import_resolve(scope, dyn_import_id, module_id);
-            self.resolve_tla_waiters(scope, module_id);
-          }
-          Err((dyn_import_id, module_id, exception)) => {
-            self.dynamic_import_reject(scope, dyn_import_id, exception.clone());
-            self.reject_tla_waiters(scope, module_id, exception);
-          }
+        v8::PromiseState::Fulfilled => {
+          resolved_any = true;
+          self.dynamic_import_resolve(scope, eval.load_id, eval.module_id);
+          self.resolve_tla_waiters(scope, eval.module_id);
+        }
+        v8::PromiseState::Rejected => {
+          resolved_any = true;
+          let exception = v8::Global::new(scope, promise.result(scope));
+          self.dynamic_import_reject(scope, eval.load_id, exception.clone());
+          self.reject_tla_waiters(scope, eval.module_id, exception);
         }
       }
     }
-    self
-      .pending_dyn_mod_evaluations_pending
-      .set(!still_pending.is_empty());
-    *self.pending_dyn_mod_evaluations.borrow_mut() = still_pending;
+    self.pending_dyn_mod_evaluations.set(still_pending);
     resolved_any
   }
 
@@ -1733,7 +1800,9 @@ impl ModuleMap {
         let resolver = resolver_handle.open(scope);
         resolver.resolve(scope, module_namespace).unwrap();
       }
-      scope.perform_microtask_checkpoint();
+      if !JsRealm::state_from_scope(scope).has_tick_scheduled() {
+        scope.perform_microtask_checkpoint();
+      }
     }
   }
 
@@ -1751,7 +1820,9 @@ impl ModuleMap {
         let resolver = resolver_handle.open(scope);
         resolver.reject(scope, exception).unwrap();
       }
-      scope.perform_microtask_checkpoint();
+      if !JsRealm::state_from_scope(scope).has_tick_scheduled() {
+        scope.perform_microtask_checkpoint();
+      }
     }
   }
 
@@ -1771,7 +1842,9 @@ impl ModuleMap {
 
     let exception = v8::Local::new(scope, exception);
     resolver.reject(scope, exception).unwrap();
-    scope.perform_microtask_checkpoint();
+    if !JsRealm::state_from_scope(scope).has_tick_scheduled() {
+      scope.perform_microtask_checkpoint();
+    }
   }
 
   pub(crate) fn dynamic_import_resolve(
@@ -1804,11 +1877,17 @@ impl ModuleMap {
     let module_namespace = module.get_module_namespace();
     resolver.resolve(scope, module_namespace).unwrap();
     self.dyn_module_evaluate_idle_counter.set(0);
-    scope.perform_microtask_checkpoint();
+    if !JsRealm::state_from_scope(scope).has_tick_scheduled() {
+      scope.perform_microtask_checkpoint();
+    }
   }
 
-  /// Poll for progress in the module loading logic. Note that this takes a waker but
-  /// doesn't act like a normal polling method.
+  /// Drain all ready module loading work: preparing dynamic imports,
+  /// loading dynamic imports, evaluating them, and flushing code cache
+  /// futures. Loops until no more progress can be made.
+  ///
+  /// The waker from `cx` is registered so the event loop is woken when
+  /// any module future makes progress.
   pub(crate) fn poll_progress(
     &self,
     cx: &mut Context,
@@ -1840,14 +1919,9 @@ impl ModuleMap {
     while has_evaluated {
       has_evaluated = false;
       loop {
-        let poll_imports = self.poll_prepare_dyn_imports(cx, scope);
-        assert!(poll_imports.is_ready());
-
-        let poll_imports = self.poll_dyn_imports(cx, scope)?;
-        assert!(poll_imports.is_ready());
-
-        let poll_code_cache_ready = self.poll_code_cache_ready(cx)?;
-        assert!(poll_code_cache_ready.is_ready());
+        self.drain_prepare_dyn_imports(cx, scope);
+        self.drain_dyn_imports(cx, scope)?;
+        self.drain_code_cache_ready(cx);
 
         if self.evaluate_dyn_imports(scope) {
           has_evaluated = true;
@@ -1860,184 +1934,134 @@ impl ModuleMap {
     Ok(())
   }
 
-  fn poll_prepare_dyn_imports(
+  /// Drain all ready preparing-dynamic-import futures, moving successful
+  /// loads into `pending_dynamic_imports` and rejecting failures.
+  fn drain_prepare_dyn_imports(
     &self,
     cx: &mut Context,
     scope: &mut v8::PinScope,
-  ) -> Poll<()> {
-    if !self.preparing_dynamic_imports_pending.get() {
-      return Poll::Ready(());
+  ) {
+    if !self.preparing_dynamic_imports.is_pending() {
+      return;
     }
 
-    loop {
-      let poll_result = self
-        .preparing_dynamic_imports
-        .borrow_mut()
-        .poll_next_unpin(cx);
-
-      if let Poll::Ready(Some(prepare_poll)) = poll_result {
-        let dyn_import_id = prepare_poll.0;
-        let prepare_result = prepare_poll.1;
-
-        match prepare_result {
-          Ok(load) => {
-            self
-              .pending_dynamic_imports
-              .borrow_mut()
-              .push(StreamExt::into_future(load));
-            self.pending_dynamic_imports_pending.set(true);
-          }
-          Err(err) => {
-            let exception = err.to_v8_error(scope);
-            self.dynamic_import_reject(scope, dyn_import_id, exception);
-          }
+    while let Poll::Ready(Some((dyn_import_id, prepare_result))) =
+      self.preparing_dynamic_imports.poll_next_unpin(cx)
+    {
+      match prepare_result {
+        Ok(load) => {
+          self
+            .pending_dynamic_imports
+            .push(StreamExt::into_future(load));
         }
-        // Continue polling for more prepared dynamic imports.
-        continue;
+        Err(err) => {
+          let exception = err.to_v8_error(scope);
+          self.dynamic_import_reject(scope, dyn_import_id, exception);
+        }
       }
-
-      // There are no active dynamic import loads, or none are ready.
-      self
-        .preparing_dynamic_imports_pending
-        .set(!self.preparing_dynamic_imports.borrow().is_empty());
-      return Poll::Ready(());
     }
   }
 
-  fn poll_dyn_imports(
+  /// Drain all ready pending-dynamic-import streams, registering loaded
+  /// modules and instantiating/evaluating completed imports.
+  fn drain_dyn_imports(
     &self,
     cx: &mut Context,
     scope: &mut v8::PinScope,
-  ) -> Poll<Result<(), CoreError>> {
-    if !self.pending_dynamic_imports_pending.get() {
-      return Poll::Ready(Ok(()));
+  ) -> Result<(), CoreError> {
+    if !self.pending_dynamic_imports.is_pending() {
+      return Ok(());
     }
 
-    loop {
-      let poll_result = self
-        .pending_dynamic_imports
-        .borrow_mut()
-        .poll_next_unpin(cx);
+    while let Poll::Ready(Some((maybe_result, mut load))) =
+      self.pending_dynamic_imports.poll_next_unpin(cx)
+    {
+      let dyn_import_id = load.id();
 
-      if let Poll::Ready(Some(load_stream_poll)) = poll_result {
-        let maybe_result = load_stream_poll.0;
-        let mut load = load_stream_poll.1;
-        let dyn_import_id = load.id;
-
-        match maybe_result {
-          Some(load_stream_result) => {
-            match load_stream_result {
-              Ok((request, info)) => {
-                // A module (not necessarily the one dynamically imported) has been
-                // fetched. Create and register it, and if successful, poll for the
-                // next recursive-load event related to this dynamic import.
-                let register_result =
-                  load.register_and_recurse(scope, &request, info);
-
-                match register_result {
-                  Ok(()) => {
-                    // Keep importing until it's fully drained
-                    self
-                      .pending_dynamic_imports
-                      .borrow_mut()
-                      .push(StreamExt::into_future(load));
-                    self.pending_dynamic_imports_pending.set(true);
-                  }
-                  Err(err) => {
-                    let exception = match err {
-                      ModuleError::Exception(e) => e,
-                      ModuleError::Core(e) => e.to_v8_error(scope),
-                      ModuleError::Concrete(e) => {
-                        CoreErrorKind::Module(e).to_v8_error(scope)
-                      }
-                    };
-                    self.dynamic_import_reject(scope, dyn_import_id, exception)
-                  }
+      match maybe_result {
+        Some(Ok((request, info))) => {
+          // A module (not necessarily the one dynamically imported) has been
+          // fetched. Create and register it, and if successful, poll for the
+          // next recursive-load event related to this dynamic import.
+          match load.register_and_recurse(scope, &request, info) {
+            Ok(()) => {
+              // Keep importing until it's fully drained
+              self
+                .pending_dynamic_imports
+                .push(StreamExt::into_future(load));
+            }
+            Err(err) => {
+              let exception = match err {
+                ModuleError::Exception(e) => e,
+                ModuleError::Core(e) => e.to_v8_error(scope),
+                ModuleError::Concrete(e) => {
+                  CoreErrorKind::Module(e).to_v8_error(scope)
                 }
-              }
-              Err(err) => {
-                // A non-javascript error occurred; this could be due to an invalid
-                // module specifier, or a problem with the source map, or a failure
-                // to fetch the module source code.
-                let exception = err.to_v8_error(scope);
+              };
+              self.dynamic_import_reject(scope, dyn_import_id, exception);
+            }
+          }
+        }
+        Some(Err(err)) => {
+          // A non-javascript error occurred; this could be due to an invalid
+          // module specifier, or a problem with the source map, or a failure
+          // to fetch the module source code.
+          let exception = err.to_v8_error(scope);
+          self.dynamic_import_reject(scope, dyn_import_id, exception);
+        }
+        None => {
+          // Stream finished — the full module graph has been loaded.
+          let state = self
+            .dynamic_import_map
+            .borrow()
+            .get(&dyn_import_id)
+            .unwrap()
+            .clone();
+          match state.phase {
+            ModuleImportPhase::Defer | ModuleImportPhase::Evaluation => {
+              let module_id =
+                load.root_module_id().expect("Root module should be loaded");
+              let result = self.instantiate_module(scope, module_id);
+              if let Err(exception) = result {
                 self.dynamic_import_reject(scope, dyn_import_id, exception);
               }
+              self.dynamic_import_module_evaluate(
+                scope,
+                module_id,
+                dyn_import_id,
+                state,
+              )?;
             }
-          }
-          _ => {
-            let state = self
-              .dynamic_import_map
-              .borrow()
-              .get(&dyn_import_id)
-              .unwrap()
-              .clone();
-            match state.phase {
-              ModuleImportPhase::Defer | ModuleImportPhase::Evaluation => {
-                // The top-level module from a dynamic import has been instantiated.
-                // Load is done.
-                let module_id =
-                  load.root_module_id.expect("Root module should be loaded");
-                let result = self.instantiate_module(scope, module_id);
-                if let Err(exception) = result {
-                  self.dynamic_import_reject(scope, dyn_import_id, exception);
-                }
-                self.dynamic_import_module_evaluate(
-                  scope,
-                  module_id,
-                  dyn_import_id,
-                  state,
-                )?;
-              }
-              ModuleImportPhase::Source => {
-                let module_reference = load.root_module_reference.as_ref().expect("Root module reference had to have been resolved to get here.");
-                let key = ModuleSourceKey::from_reference(module_reference);
-                let source = {
-                  let data = self.data.borrow();
-                  let source = data.sources.get(&key).expect("Source had to have been inserted successfully, or recursion would error.").as_ref();
-                  v8::Local::new(scope, source).into()
-                };
-                {
-                  let resolver = state.resolver.open(scope);
-                  resolver.resolve(scope, source).unwrap();
-                }
-              }
+            ModuleImportPhase::Source => {
+              let module_reference = load.root_module_reference().expect(
+                "Root module reference had to have been resolved to get here.",
+              );
+              let key = ModuleSourceKey::from_reference(module_reference);
+              let source = {
+                let data = self.data.borrow();
+                let source = data.sources.get(&key).expect("Source had to have been inserted successfully, or recursion would error.").as_ref();
+                v8::Local::new(scope, source).into()
+              };
+              let resolver = state.resolver.open(scope);
+              resolver.resolve(scope, source).unwrap();
             }
           }
         }
-
-        // Continue polling for more ready dynamic imports.
-        continue;
       }
-
-      // There are no active dynamic import loads, or none are ready.
-      self
-        .pending_dynamic_imports_pending
-        .set(!self.pending_dynamic_imports.borrow().is_empty());
-      return Poll::Ready(Ok(()));
     }
+
+    Ok(())
   }
 
-  fn poll_code_cache_ready(
-    &self,
-    cx: &mut Context,
-  ) -> Poll<Result<(), CoreError>> {
-    if !self.pending_code_cache_ready.get() {
-      return Poll::Ready(Ok(()));
+  /// Drain all ready code-cache futures.
+  fn drain_code_cache_ready(&self, cx: &mut Context) {
+    if !self.code_cache_ready_futs.is_pending() {
+      return;
     }
 
-    loop {
-      let poll_result =
-        self.code_cache_ready_futs.borrow_mut().poll_next_unpin(cx);
-
-      if let Poll::Ready(Some(_)) = poll_result {
-        continue;
-      }
-
-      self
-        .pending_code_cache_ready
-        .set(!self.code_cache_ready_futs.borrow().is_empty());
-      return Poll::Ready(Ok(()));
-    }
+    while let Poll::Ready(Some(_)) =
+      self.code_cache_ready_futs.poll_next_unpin(cx)
+    {}
   }
 
   pub(crate) fn get_module<'s, 'i>(
@@ -2182,6 +2206,18 @@ impl ModuleMap {
     assert_eq!(status, v8::ModuleStatus::Instantiated);
 
     let value = module_local.evaluate(scope).unwrap();
+    // Under Explicit microtask policy, drain microtasks so the module
+    // evaluation promise resolves for synchronous modules.
+    //
+    // However, skip the checkpoint when we are inside a top-level
+    // `module.evaluate()` call (i.e. `evaluating_top_level` is set).
+    // Draining microtasks at this point can prematurely resolve
+    // TLA-related microtasks (e.g. `await` resume jobs from eagerly-
+    // resolved async ops), which prevents the module evaluation promise
+    // from settling correctly later.
+    if !self.evaluating_top_level.get() {
+      scope.perform_microtask_checkpoint();
+    }
     let promise = v8::Local::<v8::Promise>::try_from(value).unwrap();
     let result = promise.result(scope);
     if !result.is_undefined() {
@@ -2277,7 +2313,10 @@ impl ModuleMap {
 
 // Clippy thinks the return value doesn't need to be an Option, it's unaware
 // of the mapping that MapFnFrom<F> does for ResolveModuleCallback.
-#[allow(clippy::unnecessary_wraps)]
+#[allow(
+  clippy::unnecessary_wraps,
+  reason = "required by MapFnFrom<F> for ResolveModuleCallback"
+)]
 pub(crate) fn synthetic_module_evaluation_steps<'s>(
   context: v8::Local<'s, v8::Context>,
   module: v8::Local<'s, v8::Module>,

@@ -8,12 +8,15 @@ import { core, internals, primordials } from "ext:core/mod.js";
 import { initializeDebugEnv } from "ext:deno_node/internal/util/debuglog.ts";
 import { format } from "ext:deno_node/internal/util/inspect.mjs";
 import {
+  op_current_thread_cpu_usage,
   op_fs_umask,
   op_getegid,
   op_geteuid,
+  op_getgroups,
   op_node_load_env_file,
   op_node_process_constrained_memory,
   op_node_process_kill,
+  op_node_process_set_title,
   op_node_process_setegid,
   op_node_process_seteuid,
   op_node_process_setgid,
@@ -21,13 +24,13 @@ import {
   op_process_abort,
 } from "ext:core/ops";
 
-import { warnNotImplemented } from "ext:deno_node/_utils.ts";
 import { EventEmitter } from "node:events";
 import Module, { getBuiltinModule } from "node:module";
 import { report } from "ext:deno_node/internal/process/report.ts";
 import { onWarning } from "ext:deno_node/internal/process/warning.ts";
 import {
   parseFileMode,
+  validateBoolean,
   validateNumber,
   validateObject,
   validateString,
@@ -38,6 +41,7 @@ import {
   ERR_INVALID_ARG_TYPE,
   ERR_INVALID_ARG_VALUE_RANGE,
   ERR_OUT_OF_RANGE,
+  ERR_UNCAUGHT_EXCEPTION_CAPTURE_ALREADY_SET,
   ERR_UNKNOWN_SIGNAL,
   ERR_WORKER_UNSUPPORTED_OPERATION,
   errnoException,
@@ -71,12 +75,7 @@ import {
   initStdin,
 } from "ext:deno_node/_process/streams.mjs";
 import { WriteStream as TTYWriteStream } from "ext:deno_node/internal/tty.js";
-import {
-  enableNextTick,
-  processTicksAndRejections,
-  runNextTicks,
-} from "ext:deno_node/_next_tick.ts";
-import { runImmediates } from "ext:deno_node/internal/timers.mjs";
+import { enableNextTick } from "ext:deno_node/_next_tick.ts";
 import { isAndroid, isWindows } from "ext:deno_node/_util/os.ts";
 import * as io from "ext:deno_io/12_io.js";
 import * as denoOs from "ext:deno_os/30_os.js";
@@ -107,14 +106,11 @@ const lazyLoadFsUtils = core.createLazyLoader<typeof fsUtils>(
 );
 
 const {
+  ArrayIsArray,
   NumberMAX_SAFE_INTEGER,
   ObjectDefineProperty,
   ObjectPrototypeIsPrototypeOf,
 } = primordials;
-
-const notImplementedEvents = [
-  "multipleResolves",
-];
 
 export const argv: string[] = ["", ""];
 
@@ -126,10 +122,8 @@ export const execArgv: string[] = [];
 
 /** https://nodejs.org/api/process.html#process_process_exit_code */
 export const exit = (code?: number | string) => {
-  if (code || code === 0) {
+  if (code !== undefined) {
     process.exitCode = code;
-  } else if (Number.isNaN(code)) {
-    process.exitCode = 1;
   }
 
   ProcessExitCode = denoOs.getExitCode();
@@ -239,6 +233,46 @@ export function cpuUsage(previousValue?: CpuUsage): CpuUsage {
   return cpuValues;
 }
 
+const threadCpuValues = new Float64Array(2);
+
+export function threadCpuUsage(
+  previousValue?: CpuUsage,
+): CpuUsage {
+  if (previousValue) {
+    if (!previousCpuUsageValueIsValid(previousValue.user)) {
+      validateObject(previousValue, "prevValue");
+
+      validateNumber(previousValue.user, "prevValue.user");
+      throw new ERR_INVALID_ARG_VALUE_RANGE(
+        "prevValue.user",
+        previousValue.user,
+      );
+    }
+
+    if (!previousCpuUsageValueIsValid(previousValue.system)) {
+      validateNumber(previousValue.system, "prevValue.system");
+      throw new ERR_INVALID_ARG_VALUE_RANGE(
+        "prevValue.system",
+        previousValue.system,
+      );
+    }
+  }
+
+  op_current_thread_cpu_usage(threadCpuValues);
+
+  if (previousValue) {
+    return {
+      user: threadCpuValues[0] - previousValue.user,
+      system: threadCpuValues[1] - previousValue.system,
+    };
+  }
+
+  return {
+    user: threadCpuValues[0],
+    system: threadCpuValues[1],
+  };
+}
+
 function createWarningObject(
   warning: string,
   type: string,
@@ -342,8 +376,20 @@ export function hrtime(time?: [number, number]): [number, number] {
   if (!time) {
     return [sec, nano];
   }
+  if (!ArrayIsArray(time)) {
+    throw new ERR_INVALID_ARG_TYPE("time", "Array", time);
+  }
+  if (time.length !== 2) {
+    throw new ERR_OUT_OF_RANGE("time", 2, time.length);
+  }
   const [prevSec, prevNano] = time;
-  return [sec - prevSec, nano - prevNano];
+  let diffSec = sec - prevSec;
+  let diffNano = nano - prevNano;
+  if (diffNano < 0) {
+    diffSec -= 1;
+    diffNano += 1_000_000_000;
+  }
+  return [diffSec, diffNano];
 }
 
 hrtime.bigint = function (): bigint {
@@ -476,8 +522,7 @@ function uncaughtExceptionHandler(err: any, origin: string) {
   // module are reported as 'unhandledRejection'. Deno does not have a true
   // CommonJS implementation, so all exceptions thrown from the top level are
   // reported as 'uncaughtException'.
-  process.emit("uncaughtExceptionMonitor", err, origin);
-  process.emit("uncaughtException", err, origin);
+  process._fatalException(err, origin === "unhandledRejection");
 }
 
 export let execPath: string = "";
@@ -485,14 +530,95 @@ export let execPath: string = "";
 // The process class needs to be an ES5 class because it can be instantiated
 // in Node without the `new` keyword. It's not a true class in Node. Popular
 // test runners like Jest rely on this.
+//
+// Use a named function expression so the syntactic name ("process") is
+// captured at parse time. V8 uses that name for runtime class strings
+// in error messages like "Cannot delete property 'exitCode' of
+// #<process>", which `Object.defineProperty(F, "name", ...)` does not
+// affect. Match Node's FunctionTemplate-based binding (see
+// CreateProcessObject in src/node_process_object.cc).
 // deno-lint-ignore no-explicit-any
-function Process(this: any) {
+const Process = function process(this: any) {
   // deno-lint-ignore no-explicit-any
   if (!(this instanceof Process)) return new (Process as any)();
 
   EventEmitter.call(this);
-}
+};
 Process.prototype = Object.create(EventEmitter.prototype);
+// Point the prototype's `constructor` at the real class with the same
+// descriptor Node uses (writable, non-enumerable, configurable) so
+// `process instanceof process.constructor` is true.
+Object.defineProperty(Process.prototype, "constructor", {
+  __proto__: null,
+  value: Process,
+  writable: true,
+  enumerable: false,
+  configurable: true,
+});
+
+// Maps original user listeners to wrapped versions that pass the signal name.
+// Node.js calls signal listeners with the signal name as the first argument,
+// but Deno.addSignalListener calls them with no arguments.
+type SignalListener = (...args: string[]) => void;
+const _signalListenerWrappers = new WeakMap<
+  SignalListener,
+  Map<string, SignalListener>
+>();
+
+function _wrapSignalListener(
+  event: string,
+  listener: SignalListener,
+): SignalListener {
+  let wrappersByEvent = _signalListenerWrappers.get(listener);
+  if (!wrappersByEvent) {
+    wrappersByEvent = new Map();
+    _signalListenerWrappers.set(listener, wrappersByEvent);
+  }
+  let wrapper = wrappersByEvent.get(event);
+  if (!wrapper) {
+    wrapper = () => listener(event);
+    wrappersByEvent.set(event, wrapper);
+  }
+  return wrapper;
+}
+
+function _unwrapSignalListener(
+  event: string,
+  listener: SignalListener,
+): SignalListener {
+  const wrappersByEvent = _signalListenerWrappers.get(listener);
+  if (!wrappersByEvent) return listener;
+  const wrapper = wrappersByEvent.get(event);
+  if (wrapper) {
+    wrappersByEvent.delete(event);
+  }
+  return wrapper ?? listener;
+}
+
+// Look up the actual registered listener for a signal event. When `once()` is
+// used, EventEmitter wraps the listener in a function with a `.listener`
+// property. We need the wrapper to pass to `Deno.removeSignalListener`.
+function _findSignalListener(
+  // deno-lint-ignore no-explicit-any
+  target: any,
+  event: string,
+  // deno-lint-ignore no-explicit-any
+  listener: (...args: any[]) => void,
+  // deno-lint-ignore no-explicit-any
+): ((...args: any[]) => void) | undefined {
+  const events = target._events;
+  if (events === undefined) return undefined;
+  const list = events[event];
+  if (list === undefined) return undefined;
+  if (typeof list === "function") {
+    if (list !== listener && list.listener === listener) return list;
+    return undefined;
+  }
+  for (let i = list.length - 1; i >= 0; i--) {
+    if (list[i] !== listener && list[i].listener === listener) return list[i];
+  }
+  return undefined;
+}
 
 /** https://nodejs.org/api/process.html#process_process_events */
 Process.prototype.on = function (
@@ -502,10 +628,7 @@ Process.prototype.on = function (
   // deno-lint-ignore no-explicit-any
   listener: (...args: any[]) => void,
 ) {
-  if (notImplementedEvents.includes(event)) {
-    warnNotImplemented(`process.on("${event}")`);
-    EventEmitter.prototype.on.call(this, event, listener);
-  } else if (typeof event === "string" && event.startsWith("SIG")) {
+  if (typeof event === "string" && event.startsWith("SIG")) {
     if (event === "SIGBREAK" && Deno.build.os !== "windows") {
       // Ignores SIGBREAK if the platform is not windows.
     } else if (event === "SIGTERM" && Deno.build.os === "windows") {
@@ -517,7 +640,10 @@ Process.prototype.on = function (
       // TODO(#26331): Ignores all signals except SIGBREAK, SIGINT, and SIGWINCH on windows.
     } else {
       EventEmitter.prototype.on.call(this, event, listener);
-      Deno.addSignalListener(event as Deno.Signal, listener);
+      Deno.addSignalListener(
+        event as Deno.Signal,
+        _wrapSignalListener(event, listener),
+      );
     }
   } else {
     EventEmitter.prototype.on.call(this, event, listener);
@@ -533,10 +659,7 @@ Process.prototype.off = function (
   // deno-lint-ignore no-explicit-any
   listener: (...args: any[]) => void,
 ) {
-  if (notImplementedEvents.includes(event)) {
-    warnNotImplemented(`process.off("${event}")`);
-    EventEmitter.prototype.off.call(this, event, listener);
-  } else if (typeof event === "string" && event.startsWith("SIG")) {
+  if (typeof event === "string" && event.startsWith("SIG")) {
     if (event === "SIGBREAK" && Deno.build.os !== "windows") {
       // Ignores SIGBREAK if the platform is not windows.
     } else if (
@@ -545,8 +668,17 @@ Process.prototype.off = function (
     ) {
       // Ignores all signals except SIGBREAK, SIGINT, and SIGWINCH on windows.
     } else {
+      // Find the actual registered listener before EventEmitter removes it.
+      // When using `once()`, EventEmitter wraps the original listener in a
+      // wrapper with a `.listener` property pointing to the original. We need
+      // to pass the wrapper (not the original) to Deno.removeSignalListener.
+      const registered = _findSignalListener(this, event, listener);
       EventEmitter.prototype.off.call(this, event, listener);
-      Deno.removeSignalListener(event as Deno.Signal, listener);
+      const unwrapped = _unwrapSignalListener(event, registered ?? listener);
+      Deno.removeSignalListener(
+        event as Deno.Signal,
+        unwrapped,
+      );
     }
   } else {
     EventEmitter.prototype.off.call(this, event, listener);
@@ -572,15 +704,15 @@ Process.prototype.prependListener = function (
   // deno-lint-ignore no-explicit-any
   listener: (...args: any[]) => void,
 ) {
-  if (notImplementedEvents.includes(event)) {
-    warnNotImplemented(`process.prependListener("${event}")`);
-    EventEmitter.prototype.prependListener.call(this, event, listener);
-  } else if (typeof event === "string" && event.startsWith("SIG")) {
+  if (typeof event === "string" && event.startsWith("SIG")) {
     if (event === "SIGBREAK" && Deno.build.os !== "windows") {
       // Ignores SIGBREAK if the platform is not windows.
     } else {
       EventEmitter.prototype.prependListener.call(this, event, listener);
-      Deno.addSignalListener(event as Deno.Signal, listener);
+      Deno.addSignalListener(
+        event as Deno.Signal,
+        _wrapSignalListener(event, listener),
+      );
     }
   } else {
     EventEmitter.prototype.prependListener.call(this, event, listener);
@@ -596,10 +728,6 @@ Process.prototype.addListener = function (
   // deno-lint-ignore no-explicit-any
   listener: (...args: any[]) => void,
 ) {
-  if (notImplementedEvents.includes(event)) {
-    warnNotImplemented(`process.addListener("${event}")`);
-  }
-
   return this.on(event, listener);
 };
 
@@ -609,12 +737,51 @@ Process.prototype.removeListener = function (
   event: string, // deno-lint-ignore no-explicit-any
   listener: (...args: any[]) => void,
 ) {
-  if (notImplementedEvents.includes(event)) {
-    warnNotImplemented(`process.removeListener("${event}")`);
-  }
-
   return this.off(event, listener);
 };
+
+Process.prototype.removeAllListeners = function (
+  // deno-lint-ignore no-explicit-any
+  event?: string | any,
+) {
+  if (arguments.length === 0) {
+    // Remove all listeners for all events - find all signal events and
+    // unregister their Deno signal listeners before clearing.
+    const events = this._events;
+    if (events !== undefined) {
+      for (const key of Object.keys(events)) {
+        if (typeof key === "string" && key.startsWith("SIG")) {
+          _removeAllSignalListeners(this, key);
+        }
+      }
+    }
+    return EventEmitter.prototype.removeAllListeners.call(this);
+  }
+  if (typeof event === "string" && event.startsWith("SIG")) {
+    _removeAllSignalListeners(this, event);
+  }
+  return EventEmitter.prototype.removeAllListeners.call(this, event);
+};
+
+function _removeAllSignalListeners(
+  // deno-lint-ignore no-explicit-any
+  target: any,
+  event: string,
+) {
+  const events = target._events;
+  if (events === undefined) return;
+  const list = events[event];
+  if (list === undefined) return;
+  if (typeof list === "function") {
+    const actual = list.listener ?? list;
+    Deno.removeSignalListener(event as Deno.Signal, actual);
+  } else {
+    for (let i = 0; i < list.length; i++) {
+      const actual = list[i].listener ?? list[i];
+      Deno.removeSignalListener(event as Deno.Signal, actual);
+    }
+  }
+}
 
 /** https://nodejs.org/api/process.html#process_process */
 // @ts-ignore TS doesn't work well with ES5 classes
@@ -647,14 +814,17 @@ Object.defineProperty(process, "report", {
   },
 });
 
+let processTitle: string | undefined;
 Object.defineProperty(process, "title", {
   get() {
-    return "deno";
+    if (processTitle == null) {
+      return String(execPath);
+    }
+    return processTitle;
   },
-  set(_value) {
-    // NOTE(bartlomieju): this is a noop. Node.js doesn't guarantee that the
-    // process name will be properly set and visible from other tools anyway.
-    // Might revisit in the future.
+  set(value) {
+    processTitle = `${value}`;
+    op_node_process_set_title(processTitle);
   },
 });
 
@@ -669,6 +839,33 @@ Object.defineProperty(process, "argv0", {
     return argv0;
   },
   set(_val) {},
+});
+
+/**
+ * https://nodejs.org/api/process.html#processdebugport
+ *
+ * Node coerces the value via v8's ToInt32 (so numeric strings convert to
+ * numbers, objects/arrays/NaN/Infinity become 0, booleans become 0 or 1,
+ * and Symbols throw TypeError). Out-of-range values throw RangeError.
+ */
+// Node's default inspector port (kDefaultInspectorPort in src/node_options.h).
+let _debugPort = 9229;
+Object.defineProperty(process, "debugPort", {
+  get() {
+    return _debugPort;
+  },
+  set(val) {
+    // `| 0` performs ToInt32, matching Int32Value() in node_process_object.cc.
+    const port = val | 0;
+    if ((port !== 0 && port < 1024) || port > 65535) {
+      throw new RangeError(
+        "process.debugPort must be 0 or in range 1024 to 65535",
+      );
+    }
+    _debugPort = port;
+  },
+  enumerable: true,
+  configurable: true,
 });
 
 /** https://nodejs.org/api/process.html#process_process_chdir_directory */
@@ -696,6 +893,7 @@ Object.defineProperty(process, "config", {
 });
 
 process.cpuUsage = cpuUsage;
+process.threadCpuUsage = threadCpuUsage;
 
 /** https://nodejs.org/api/process.html#process_process_cwd */
 process.cwd = cwd;
@@ -737,10 +935,39 @@ process.reallyExit = (code: number) => {
 
 process._exiting = _exiting;
 
+// Exception capture callback (used by node:domain)
+// deno-lint-ignore no-explicit-any
+let _uncaughtExceptionCaptureFn: ((err: any) => void) | null = null;
+
+// deno-lint-ignore no-explicit-any
+process.setUncaughtExceptionCaptureCallback = function (fn: any) {
+  if (fn === null) {
+    _uncaughtExceptionCaptureFn = null;
+    synchronizeListeners();
+    return;
+  }
+  if (typeof fn !== "function") {
+    throw new ERR_INVALID_ARG_TYPE("fn", ["function", "null"], fn);
+  }
+  if (_uncaughtExceptionCaptureFn !== null) {
+    throw new ERR_UNCAUGHT_EXCEPTION_CAPTURE_ALREADY_SET();
+  }
+  _uncaughtExceptionCaptureFn = fn;
+  synchronizeListeners();
+};
+
+process.hasUncaughtExceptionCaptureCallback = function () {
+  return _uncaughtExceptionCaptureFn !== null;
+};
+
 // deno-lint-ignore no-explicit-any
 process._fatalException = function (err: any, fromPromise?: boolean) {
   const origin = fromPromise ? "unhandledRejection" : "uncaughtException";
   process.emit("uncaughtExceptionMonitor", err, origin);
+  if (_uncaughtExceptionCaptureFn !== null) {
+    _uncaughtExceptionCaptureFn(err);
+    return true;
+  }
   if (process.listenerCount("uncaughtException") > 0) {
     process.emit("uncaughtException", err, origin);
     return true;
@@ -758,15 +985,20 @@ Object.defineProperty(process, "exitCode", {
     if (code == null) {
       parsedCode = 0;
     } else if (typeof code === "number") {
+      if (!Number.isInteger(code)) {
+        throw new ERR_OUT_OF_RANGE("code", "an integer", code);
+      }
       parsedCode = code;
     } else if (typeof code === "string") {
+      if (
+        code === "" || !Number.isFinite(Number(code)) ||
+        !Number.isInteger(Number(code))
+      ) {
+        throw new ERR_INVALID_ARG_TYPE("code", "integer", code);
+      }
       parsedCode = Number(code);
     } else {
-      throw new ERR_INVALID_ARG_TYPE("code", "number", code);
-    }
-
-    if (!Number.isInteger(parsedCode)) {
-      throw new ERR_OUT_OF_RANGE("code", "an integer", parsedCode);
+      throw new ERR_INVALID_ARG_TYPE("code", "integer", code);
     }
 
     denoOs.setExitCode(parsedCode);
@@ -808,7 +1040,8 @@ Object.defineProperty(process, "platform", {
 });
 
 // https://nodejs.org/api/process.html#processsetsourcemapsenabledval
-process.setSourceMapsEnabled = (_val: boolean) => {
+process.setSourceMapsEnabled = (val: boolean) => {
+  validateBoolean(val, "val");
   // This is a no-op in Deno. Source maps are always enabled.
   // TODO(@satyarohith): support disabling source maps if needed.
 };
@@ -881,6 +1114,9 @@ process.getgid = getgid;
 
 /** This method is removed on Windows */
 process.getuid = getuid;
+
+/** This method is removed on Windows */
+process.getgroups = () => op_getgroups();
 
 /** This method is removed on Windows */
 process.getegid = getegid;
@@ -964,8 +1200,10 @@ const features = {
   // deno-lint-ignore camelcase
   tls_ocsp: true,
   tls: true,
+  // Deno uses aws-lc, which is BoringSSL-based.
   // deno-lint-ignore camelcase
-  openssl_is_boringssl: false,
+  openssl_is_boringssl: true,
+  quic: false,
   // deno-lint-ignore camelcase
   cached_builtins: true,
   // deno-lint-ignore camelcase
@@ -996,6 +1234,7 @@ if (isWindows) {
   delete process.getuid;
   delete process.getegid;
   delete process.geteuid;
+  delete process.getgroups;
 }
 
 Object.defineProperty(process, Symbol.toStringTag, {
@@ -1088,7 +1327,7 @@ function dispatchProcessBeforeExitEvent() {
     dispatchProcessExitEvent();
     Deno.exit(process.exitCode || 0);
   }
-  processTicksAndRejections();
+  core.processTicksAndRejections();
   return core.eventLoopHasMoreWork();
 }
 
@@ -1103,7 +1342,9 @@ function synchronizeListeners() {
   // Install special "unhandledrejection" handler, that will be called
   // last.
   if (
-    unhandledRejectionListenerCount > 0 || uncaughtExceptionListenerCount > 0
+    unhandledRejectionListenerCount > 0 ||
+    uncaughtExceptionListenerCount > 0 ||
+    _uncaughtExceptionCaptureFn !== null
   ) {
     internals.nodeProcessUnhandledRejectionCallback = (event) => {
       if (process.listenerCount("unhandledRejection") === 0) {
@@ -1112,7 +1353,29 @@ function synchronizeListeners() {
         // listeners.
 
         event.preventDefault();
-        uncaughtExceptionHandler(event.reason, "unhandledRejection");
+
+        let reason = event.reason;
+        // If the rejection reason is not an Error, wrap it in an
+        // ERR_UNHANDLED_REJECTION error, matching Node.js behavior.
+        if (!(reason instanceof Error)) {
+          const message = "This error originated either by throwing " +
+            "inside of an async function without a catch block, or by rejecting a " +
+            "promise which was not handled with .catch(). The promise rejected with the" +
+            ` reason "${reason}".`;
+          const err = new Error(message);
+          // deno-lint-ignore no-explicit-any
+          (err as any).code = "ERR_UNHANDLED_REJECTION";
+          // deno-lint-ignore no-explicit-any
+          (err as any).reason = event.reason;
+          Object.defineProperty(err, "name", {
+            value: "UnhandledPromiseRejection",
+            writable: true,
+            configurable: true,
+          });
+          reason = err;
+        }
+
+        uncaughtExceptionHandler(reason, "unhandledRejection");
         return;
       }
 
@@ -1133,7 +1396,9 @@ function synchronizeListeners() {
     internals.nodeProcessRejectionHandledCallback = undefined;
   }
 
-  if (uncaughtExceptionListenerCount > 0) {
+  if (
+    uncaughtExceptionListenerCount > 0 || _uncaughtExceptionCaptureFn !== null
+  ) {
     globalThis.addEventListener("error", processOnError);
   } else {
     globalThis.removeEventListener("error", processOnError);
@@ -1150,11 +1415,14 @@ internals.__bootstrapNodeProcess = function (
   denoVersions: Record<string, string>,
   nodeDebug: string,
   warmup = false,
+  runningOnMainThread = true,
 ) {
   if (!warmup) {
     argv0 = argv0Val || "";
-    argv[0] = argv0;
-    argv[1] = Deno.mainModule?.startsWith("file:")
+    argv[0] = Deno.execPath();
+    argv[1] = Deno.build.standalone
+      ? Deno.execPath()
+      : Deno.mainModule?.startsWith("file:")
       ? pathFromURL(new URL(Deno.mainModule))
       : join(Deno.cwd(), "$deno$node.mjs");
     // Manually concatenate these arrays to avoid triggering the getter
@@ -1166,15 +1434,31 @@ internals.__bootstrapNodeProcess = function (
       versions[key] = value;
     }
 
-    core.setNextTickCallback(processTicksAndRejections);
-    core.setImmediateCallback(runImmediates);
-    core.setMacrotaskCallback(runNextTicks);
     enableNextTick();
 
     // Replace warmup stdout/stderr with proper streams
     if (io.stdout.isTerminal()) {
       /** https://nodejs.org/api/process.html#process_process_stdout */
       stdout = process.stdout = new TTYWriteStream(1);
+      // For supporting legacy API we put the FD here.
+      // Ref: https://github.com/nodejs/node/blob/main/lib/internal/bootstrap/switches/is_main_thread.js
+      stdout.fd = 1;
+      // Match Node.js: stdio streams are indestructible.
+      // Libraries like mute-stream (@inquirer/prompts) call destroy()/end()
+      // on process.stdout between prompts. Without this, the underlying TTY
+      // handle is closed, breaking subsequent I/O.
+      // _isStdio also prevents Stream.pipe() from calling end() on stdout
+      // when a piped source stream ends.
+      // Ref: https://github.com/nodejs/node/blob/main/lib/internal/bootstrap/switches/is_main_thread.js
+      stdout._isStdio = true;
+      stdout.destroySoon = stdout.destroy;
+      stdout._destroy = function (err, cb) {
+        cb(err);
+        this._undestroy();
+        if (!this._writableState.emitClose) {
+          nextTick(() => this.emit("close"));
+        }
+      };
     } else {
       stdout = process.stdout = createWritableStdioStream(
         io.stdout,
@@ -1185,6 +1469,17 @@ internals.__bootstrapNodeProcess = function (
     if (io.stderr.isTerminal()) {
       /** https://nodejs.org/api/process.html#process_process_stderr */
       stderr = process.stderr = new TTYWriteStream(2);
+      // For supporting legacy API we put the FD here.
+      stderr.fd = 2;
+      stderr._isStdio = true;
+      stderr.destroySoon = stderr.destroy;
+      stderr._destroy = function (err, cb) {
+        cb(err);
+        this._undestroy();
+        if (!this._writableState.emitClose) {
+          nextTick(() => this.emit("close"));
+        }
+      };
     } else {
       stderr = process.stderr = createWritableStdioStream(
         io.stderr,
@@ -1199,6 +1494,11 @@ internals.__bootstrapNodeProcess = function (
     execPath = Deno.execPath();
     initializeDebugEnv(nodeDebug);
 
+    const title = getOptionValue("--title");
+    if (title) {
+      process.title = title;
+    }
+
     if (getOptionValue("--warnings")) {
       process.on("warning", onWarning);
     }
@@ -1207,6 +1507,46 @@ internals.__bootstrapNodeProcess = function (
     const newStdin = initStdin();
     if (newStdin) {
       stdin = process.stdin = newStdin;
+    }
+
+    // In worker threads, replace certain process functions with stubs
+    // that throw ERR_WORKER_UNSUPPORTED_OPERATION and have .disabled = true.
+    // Ref: https://github.com/nodejs/node/blob/main/lib/internal/bootstrap/switches/is_not_main_thread.js
+    if (!runningOnMainThread) {
+      const disabledFns = [
+        "abort",
+        "chdir",
+        "send",
+        "disconnect",
+        "setuid",
+        "seteuid",
+        "setgid",
+        "setegid",
+        "setgroups",
+        "initgroups",
+      ];
+      for (const fn of disabledFns) {
+        const stub = function () {
+          throw new ERR_WORKER_UNSUPPORTED_OPERATION(
+            `process.${fn}()`,
+          );
+        };
+        stub.disabled = true;
+        process[fn] = stub;
+      }
+
+      Object.defineProperty(process, "channel", {
+        get() {
+          throw new ERR_WORKER_UNSUPPORTED_OPERATION("process.channel");
+        },
+        configurable: true,
+      });
+      Object.defineProperty(process, "connected", {
+        get() {
+          throw new ERR_WORKER_UNSUPPORTED_OPERATION("process.connected");
+        },
+        configurable: true,
+      });
     }
 
     delete internals.__bootstrapNodeProcess;

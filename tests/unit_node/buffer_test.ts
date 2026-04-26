@@ -4,6 +4,7 @@ import {
   constants,
   File as BufferFile,
   resolveObjectURL,
+  transcode,
 } from "node:buffer";
 import { assertEquals, assertThrows } from "@std/assert";
 import { strictEqual } from "node:assert";
@@ -275,6 +276,29 @@ Deno.test({
       Buffer.concat([buffer3, buffer4], maxLength2).length,
       maxLength2,
     );
+  },
+});
+
+Deno.test({
+  name: "[node/buffer] Buffer.allocUnsafe does not truncate lengths > 2^32",
+  ignore: true, // requires >4GB of memory
+  fn() {
+    const size = 2 ** 32 + 5;
+    const buf = Buffer.allocUnsafe(size);
+    assertEquals(buf.length, size);
+  },
+});
+
+Deno.test({
+  name: "[node/buffer] Buffer concat does not truncate buffers larger than 4GB",
+  ignore: true, // requires >4GB of memory
+  fn() {
+    const size = 2 ** 32 + 5;
+    const largeBuffer = Buffer.alloc(size);
+    largeBuffer.fill(111);
+    const result = Buffer.concat([largeBuffer]);
+    assertEquals(result.length, size);
+    assertEquals(Array.from(result.subarray(0, 5)), [111, 111, 111, 111, 111]);
   },
 });
 
@@ -804,5 +828,26 @@ Deno.test({
     assertEquals(resolveObjectURL(1 as any), undefined);
     // deno-lint-ignore no-explicit-any
     assertEquals(resolveObjectURL({} as any), undefined);
+  },
+});
+
+Deno.test({
+  name: "[node/buffer] transcode UTF-16LE to UTF-8 with odd-length input",
+  fn() {
+    // Odd-length: trailing byte is dropped (matches Node.js)
+    const odd = Buffer.from([0x61, 0x00, 0x62]);
+    assertEquals(transcode(odd, "utf16le", "utf8").toString(), "a");
+
+    // Even-length: normal case
+    const even = Buffer.from([0x48, 0x00, 0x69, 0x00]);
+    assertEquals(transcode(even, "utf16le", "utf8").toString(), "Hi");
+
+    // Empty buffer
+    const empty = Buffer.alloc(0);
+    assertEquals(transcode(empty, "utf16le", "utf8").toString(), "");
+
+    // Single byte (all trailing, dropped)
+    const single = Buffer.from([0x41]);
+    assertEquals(transcode(single, "utf16le", "utf8").toString(), "");
   },
 });

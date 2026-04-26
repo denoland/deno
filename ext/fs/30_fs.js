@@ -663,7 +663,12 @@ class FsFile {
 
   get writable() {
     if (this.#writable === undefined) {
-      this.#writable = writableStreamForRid(this.#rid);
+      this.#writable = writableStreamForRid(
+        this.#rid,
+        true,
+        undefined,
+        { bufferSize: 64 * 1024 },
+      );
     }
     return this.#writable;
   }

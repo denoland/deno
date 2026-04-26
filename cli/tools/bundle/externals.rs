@@ -126,9 +126,9 @@ impl ExternalsMatcher {
   }
 }
 
+#[allow(clippy::print_stderr, reason = "test code")]
 #[cfg(test)]
 mod tests {
-  #![allow(clippy::print_stderr)]
   use std::path::Path;
 
   use super::ExternalsMatcher;

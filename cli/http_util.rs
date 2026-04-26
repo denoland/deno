@@ -1,8 +1,11 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
+use std::io::BufReader;
+use std::path::Path;
 use std::sync::Arc;
 
 use boxed_error::Boxed;
+use dashmap::DashMap;
 use deno_cache_dir::file_fetcher::RedirectHeaderParseError;
 use deno_core::error::AnyError;
 use deno_core::futures::StreamExt;
@@ -17,6 +20,9 @@ use deno_runtime::deno_fetch::CreateHttpClientOptions;
 use deno_runtime::deno_fetch::ResBody;
 use deno_runtime::deno_fetch::create_http_client;
 use deno_runtime::deno_tls::RootCertStoreProvider;
+use deno_runtime::deno_tls::TlsKey;
+use deno_runtime::deno_tls::load_certs;
+use deno_runtime::deno_tls::load_private_keys;
 use http::HeaderMap;
 use http::StatusCode;
 use http::header::CONTENT_LENGTH;
@@ -40,6 +46,7 @@ pub struct HttpClientProvider {
   options: CreateHttpClientOptions,
   root_cert_store_provider: Option<Arc<dyn RootCertStoreProvider>>,
   client: OnceCell<deno_fetch::Client>,
+  cert_clients: DashMap<(String, String), deno_fetch::Client>,
 }
 
 impl std::fmt::Debug for HttpClientProvider {
@@ -62,6 +69,7 @@ impl HttpClientProvider {
       },
       root_cert_store_provider,
       client: OnceCell::new(),
+      cert_clients: DashMap::new(),
     }
   }
 
@@ -80,6 +88,66 @@ impl HttpClientProvider {
       .map_err(JsErrorBox::from_err)
     })?;
     Ok(HttpClient::new(client.clone()))
+  }
+
+  pub fn get_or_create_with_client_cert(
+    &self,
+    certfile: &Path,
+    keyfile: &Path,
+  ) -> Result<HttpClient, JsErrorBox> {
+    let cache_key = (
+      certfile.to_string_lossy().into_owned(),
+      keyfile.to_string_lossy().into_owned(),
+    );
+    if let Some(client) = self.cert_clients.get(&cache_key) {
+      return Ok(HttpClient::new(client.clone()));
+    }
+    let cert_data = std::fs::read(certfile).map_err(|e| {
+      JsErrorBox::generic(format!(
+        "Failed to read npmrc certfile '{}': {e}",
+        certfile.display()
+      ))
+    })?;
+    let key_data = std::fs::read(keyfile).map_err(|e| {
+      JsErrorBox::generic(format!(
+        "Failed to read npmrc keyfile '{}': {e}",
+        keyfile.display()
+      ))
+    })?;
+    let certs =
+      load_certs(&mut BufReader::new(cert_data.as_slice())).map_err(|e| {
+        JsErrorBox::generic(format!(
+          "Failed to parse npmrc certfile '{}': {e}",
+          certfile.display()
+        ))
+      })?;
+    let mut keys = load_private_keys(&key_data).map_err(|e| {
+      JsErrorBox::generic(format!(
+        "Failed to parse npmrc keyfile '{}': {e}",
+        keyfile.display()
+      ))
+    })?;
+    if keys.is_empty() {
+      return Err(JsErrorBox::generic(format!(
+        "No private keys found in npmrc keyfile '{}'",
+        keyfile.display()
+      )));
+    }
+    let tls_key = TlsKey(certs, keys.remove(0));
+    let client = create_http_client(
+      DENO_VERSION_INFO.user_agent,
+      CreateHttpClientOptions {
+        root_cert_store: match &self.root_cert_store_provider {
+          Some(provider) => Some(provider.get_or_try_init()?.clone()),
+          None => None,
+        },
+        client_cert_chain_and_key: Some(tls_key),
+        ..self.options.clone()
+      },
+    )
+    .map_err(JsErrorBox::from_err)?;
+    self.cert_clients.insert(cache_key, client.clone());
+    Ok(HttpClient::new(client))
   }
 }
 
@@ -351,8 +419,7 @@ impl HttpClient {
         let mut req = self.get(new_url.clone())?.build();
 
         let mut headers = headers.clone();
-        // SECURITY: Do NOT forward auth headers to a new origin
-        if new_url.origin() != url.origin() {
+        if should_strip_auth_on_redirect(&url, &new_url) {
           headers.remove(http::header::AUTHORIZATION);
         }
         *req.headers_mut() = headers;
@@ -376,6 +443,16 @@ impl HttpClient {
       Ok((response, url))
     }
   }
+}
+
+/// Returns true if auth headers should be stripped when redirecting from
+/// `original` to `new_url`. Auth is stripped when the host or port changes,
+/// or on a scheme downgrade (https -> http) to avoid leaking credentials
+/// over plaintext. Same-host scheme upgrades (http -> https) are allowed.
+fn should_strip_auth_on_redirect(original: &Url, new_url: &Url) -> bool {
+  new_url.host() != original.host()
+    || new_url.port() != original.port()
+    || (original.scheme() == "https" && new_url.scheme() == "http")
 }
 
 pub async fn get_response_body_with_progress(
@@ -468,8 +545,8 @@ impl RequestBuilder {
   }
 }
 
-#[allow(clippy::print_stdout)]
-#[allow(clippy::print_stderr)]
+#[allow(clippy::print_stdout, reason = "test code")]
+#[allow(clippy::print_stderr, reason = "test code")]
 #[cfg(test)]
 mod test {
   use std::collections::HashSet;
@@ -727,5 +804,38 @@ mod test {
     );
     assert_eq!(headers.get("etag"), None);
     assert_eq!(headers.get("x-typescript-types"), None);
+  }
+
+  #[test]
+  fn test_should_strip_auth_on_redirect() {
+    // http -> https same host: safe upgrade, retain auth
+    assert!(!should_strip_auth_on_redirect(
+      &Url::parse("http://npm.pkg.github.com/package").unwrap(),
+      &Url::parse("https://npm.pkg.github.com/package").unwrap(),
+    ));
+
+    // same origin: retain auth
+    assert!(!should_strip_auth_on_redirect(
+      &Url::parse("https://registry.example.com/a").unwrap(),
+      &Url::parse("https://registry.example.com/b").unwrap(),
+    ));
+
+    // different host: strip auth
+    assert!(should_strip_auth_on_redirect(
+      &Url::parse("https://registry.example.com/package").unwrap(),
+      &Url::parse("https://other.example.com/package").unwrap(),
+    ));
+
+    // different port: strip auth
+    assert!(should_strip_auth_on_redirect(
+      &Url::parse("https://registry.example.com:8080/package").unwrap(),
+      &Url::parse("https://registry.example.com:9090/package").unwrap(),
+    ));
+
+    // https -> http same host: scheme downgrade, strip auth
+    assert!(should_strip_auth_on_redirect(
+      &Url::parse("https://npm.pkg.github.com/package").unwrap(),
+      &Url::parse("http://npm.pkg.github.com/package").unwrap(),
+    ));
   }
 }

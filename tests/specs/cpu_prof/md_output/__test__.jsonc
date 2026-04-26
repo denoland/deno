@@ -1,0 +1,17 @@
+{
+  "tempDir": true,
+  "tests": {
+    "md_output": {
+      "steps": [
+        {
+          "args": "run --cpu-prof-dir=. --cpu-prof-md main.js",
+          "output": "main.out"
+        },
+        {
+          "args": "run --allow-read verify.js",
+          "output": "Valid markdown report\n"
+        }
+      ]
+    }
+  }
+}

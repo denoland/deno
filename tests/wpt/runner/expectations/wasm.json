@@ -1,0 +1,622 @@
+{
+  "jsapi": {
+    "constructor": {
+      "compile.any.html": true,
+      "compile.any.worker.html": true,
+      "instantiate-bad-imports.any.html": true,
+      "instantiate-bad-imports.any.worker.html": true,
+      "instantiate.any.html": true,
+      "instantiate.any.worker.html": true,
+      "multi-value.any.html": true,
+      "multi-value.any.worker.html": true,
+      "toStringTag.any.html": true,
+      "toStringTag.any.worker.html": true,
+      "validate.any.html": true,
+      "validate.any.worker.html": true
+    },
+    "global": {
+      "constructor.any.html": true,
+      "constructor.any.worker.html": true,
+      "toString.any.html": true,
+      "toString.any.worker.html": true,
+      "type.tentative.any.html": false,
+      "type.tentative.any.worker.html": false,
+      "value-get-set.any.html": true,
+      "value-get-set.any.worker.html": true,
+      "valueOf.any.html": true,
+      "valueOf.any.worker.html": true
+    },
+    "idlharness.any.html": {
+      "expectedFailures": [
+        "Module interface: existence and properties of interface object",
+        "Module interface: existence and properties of interface prototype object"
+      ]
+    },
+    "idlharness.any.worker.html": {
+      "expectedFailures": [
+        "Module interface: existence and properties of interface object",
+        "Module interface: existence and properties of interface prototype object"
+      ]
+    },
+    "instance": {
+      "constructor-bad-imports.any.html": true,
+      "constructor-bad-imports.any.worker.html": true,
+      "constructor-caching.any.html": true,
+      "constructor-caching.any.worker.html": true,
+      "constructor.any.html": true,
+      "constructor.any.worker.html": true,
+      "exports.any.html": true,
+      "exports.any.worker.html": true,
+      "toString.any.html": true,
+      "toString.any.worker.html": true
+    },
+    "interface.any.html": true,
+    "interface.any.worker.html": true,
+    "memory": {
+      "buffer.any.html": true,
+      "buffer.any.worker.html": true,
+      "constructor.any.html": true,
+      "constructor.any.worker.html": true,
+      "grow.any.html": true,
+      "grow.any.worker.html": true,
+      "toString.any.html": true,
+      "toString.any.worker.html": true,
+      "type.tentative.any.html": false,
+      "type.tentative.any.worker.html": false,
+      "constructor-shared.tentative.any.html": true,
+      "constructor-shared.tentative.any.worker.html": true,
+      "constructor-types.tentative.any.html": false,
+      "constructor-types.tentative.any.worker.html": false,
+      "to-fixed-length-buffer-shared.any.html": true,
+      "to-fixed-length-buffer-shared.any.worker.html": true,
+      "to-fixed-length-buffer.any.html": {
+        "expectedFailures": [
+          "toFixedLengthBuffer caching behavior"
+        ]
+      },
+      "to-fixed-length-buffer.any.worker.html": {
+        "expectedFailures": [
+          "toFixedLengthBuffer caching behavior"
+        ]
+      },
+      "to-resizable-buffer-shared.any.html": true,
+      "to-resizable-buffer-shared.any.worker.html": true,
+      "to-resizable-buffer.any.html": {
+        "expectedFailures": [
+          "toResizableBuffer caching behavior",
+          "toResizableBuffer max size",
+          "Resizable buffers from Memory cannot be detached by JS"
+        ]
+      },
+      "to-resizable-buffer.any.worker.html": {
+        "expectedFailures": [
+          "toResizableBuffer caching behavior",
+          "toResizableBuffer max size",
+          "Resizable buffers from Memory cannot be detached by JS"
+        ]
+      }
+    },
+    "module": {
+      "constructor.any.html": true,
+      "constructor.any.worker.html": true,
+      "customSections.any.html": true,
+      "customSections.any.worker.html": true,
+      "exports.any.html": true,
+      "exports.any.worker.html": true,
+      "imports.any.html": true,
+      "imports.any.worker.html": true,
+      "toString.any.html": true,
+      "toString.any.worker.html": true,
+      "moduleSource.tentative.any.html": {
+        "expectedFailures": [
+          "AbstractModuleSourceProto toStringTag brand check"
+        ]
+      },
+      "moduleSource.tentative.any.worker.html": {
+        "expectedFailures": [
+          "AbstractModuleSourceProto toStringTag brand check"
+        ]
+      }
+    },
+    "prototypes.any.html": true,
+    "prototypes.any.worker.html": true,
+    "table": {
+      "constructor.any.html": true,
+      "constructor.any.worker.html": true,
+      "get-set.any.html": true,
+      "get-set.any.worker.html": true,
+      "grow.any.html": true,
+      "grow.any.worker.html": true,
+      "length.any.html": true,
+      "length.any.worker.html": true,
+      "toString.any.html": true,
+      "toString.any.worker.html": true,
+      "constructor-types.tentative.any.html": false,
+      "constructor-types.tentative.any.worker.html": false,
+      "type.tentative.any.html": false,
+      "type.tentative.any.worker.html": false
+    },
+    "exception": {
+      "basic.tentative.any.html": true,
+      "basic.tentative.any.worker.html": true,
+      "constructor.tentative.any.html": true,
+      "constructor.tentative.any.worker.html": true,
+      "getArg.tentative.any.html": {
+        "expectedFailures": [
+          "Getting out-of-range argument"
+        ]
+      },
+      "getArg.tentative.any.worker.html": {
+        "expectedFailures": [
+          "Getting out-of-range argument"
+        ]
+      },
+      "is.tentative.any.html": true,
+      "is.tentative.any.worker.html": true,
+      "toString.tentative.any.html": true,
+      "toString.tentative.any.worker.html": true,
+      "identity.tentative.any.html": true,
+      "identity.tentative.any.worker.html": true
+    },
+    "tag": {
+      "constructor.tentative.any.html": true,
+      "constructor.tentative.any.worker.html": true,
+      "toString.tentative.any.html": true,
+      "toString.tentative.any.worker.html": true,
+      "type.tentative.any.html": false,
+      "type.tentative.any.worker.html": false
+    },
+    "function": {
+      "call.tentative.any.html": false,
+      "call.tentative.any.worker.html": false,
+      "constructor.tentative.any.html": false,
+      "constructor.tentative.any.worker.html": false,
+      "table.tentative.any.html": false,
+      "table.tentative.any.worker.html": false,
+      "type.tentative.any.html": false,
+      "type.tentative.any.worker.html": false
+    },
+    "functions": {
+      "entry-different-function-realm.html": false,
+      "entry.html": false,
+      "incumbent.html": false
+    },
+    "gc": {
+      "casts.tentative.any.html": true,
+      "casts.tentative.any.worker.html": true,
+      "exported-object.tentative.any.html": true,
+      "exported-object.tentative.any.worker.html": true,
+      "i31.tentative.any.html": true,
+      "i31.tentative.any.worker.html": true
+    },
+    "js-string": {
+      "basic.any.html": true,
+      "basic.any.worker.html": true,
+      "constants.any.html": true,
+      "constants.any.worker.html": true,
+      "imports.any.html": true,
+      "imports.any.worker.html": true
+    },
+    "jspi": {
+      "js-promise-integration.any.html": true,
+      "js-promise-integration.any.worker.html": true,
+      "notraps.any.html": true,
+      "notraps.any.worker.html": true,
+      "rejects.any.html": true,
+      "rejects.any.worker.html": true
+    },
+    "proto-from-ctor-realm.html": false
+  },
+  "serialization": {
+    "module": {
+      "serialization-via-idb.any.html": false,
+      "serialization-via-idb.any.worker.html": false,
+      "serialization-via-notifications-api.any.html": false,
+      "serialization-via-notifications-api.any.worker.html": false,
+      "nested-worker-success.any.worker.html": true,
+      "broadcastchannel-success-and-failure.html": false,
+      "broadcastchannel-success.html": false,
+      "cross-origin-module-sharing-fails.html": false,
+      "identity-not-preserved.html": false,
+      "no-transferring.html": false,
+      "serialization-via-history.html": false,
+      "share-module-cross-origin-fails.sub.html": false,
+      "window-domain-success.sub.html": false,
+      "window-messagechannel-success.html": false,
+      "window-similar-but-cross-origin-success.sub.html": false,
+      "window-simple-success.html": false
+    },
+    "arraybuffer": {
+      "transfer.window.html": false
+    }
+  },
+  "webapi": {
+    "abort.any.html": true,
+    "abort.any.worker.html": true,
+    "body.any.html": true,
+    "body.any.worker.html": true,
+    "contenttype.any.html": true,
+    "contenttype.any.worker.html": true,
+    "empty-body.any.html": true,
+    "empty-body.any.worker.html": true,
+    "historical.any.html": false,
+    "historical.any.worker.html": false,
+    "idlharness.any.html": true,
+    "idlharness.any.worker.html": true,
+    "instantiateStreaming-bad-imports.any.html": true,
+    "instantiateStreaming-bad-imports.any.worker.html": true,
+    "instantiateStreaming.any.html": true,
+    "instantiateStreaming.any.worker.html": true,
+    "invalid-args.any.html": true,
+    "invalid-args.any.worker.html": true,
+    "invalid-code.any.html": true,
+    "invalid-code.any.worker.html": true,
+    "modified-contenttype.any.html": true,
+    "modified-contenttype.any.worker.html": true,
+    "origin.sub.any.html": {
+      "expectedFailures": [
+        "Opaque response: compileStreaming",
+        "Opaque response: instantiateStreaming"
+      ]
+    },
+    "origin.sub.any.worker.html": {
+      "expectedFailures": [
+        "Opaque response: compileStreaming",
+        "Opaque response: instantiateStreaming"
+      ]
+    },
+    "rejected-arg.any.html": true,
+    "rejected-arg.any.worker.html": true,
+    "status.any.html": true,
+    "status.any.worker.html": true,
+    "esm-integration": {
+      "execute-start.tentative.html": false,
+      "exported-names.tentative.html": false,
+      "invalid-bytecode.tentative.html": false,
+      "js-wasm-cycle-errors.tentative.html": false,
+      "js-wasm-cycle.tentative.html": false,
+      "module-parse-error.tentative.html": false,
+      "resolve-export.tentative.html": false,
+      "script-src-allows-source-phase-wasm.tentative.html": false,
+      "script-src-allows-wasm.tentative.html": false,
+      "script-src-blocks-wasm.tentative.sub.html": false,
+      "source-phase-blocked-by-csp.tentative.html": false,
+      "source-phase-preload.tentative.html": false,
+      "source-phase.tentative.html": false,
+      "wasm-import-wasm-export.tentative.html": false,
+      "wasm-import.tentative.html": false,
+      "wasm-js-cycle.tentative.html": false,
+      "wasm-to-wasm-link-error.tentative.html": false,
+      "worker-import-source-phase.tentative.html": false,
+      "worker-import.tentative.html": false,
+      "worker.tentative.html": false,
+      "worklet-import-source-phase.tentative.https.html": false
+    },
+    "wasm_stream_compile_test.html": {
+      "expectedFailures": [
+        "compileStreaming raise error if no-cors"
+      ]
+    },
+    "wasm_stream_instantiate_test.html": {
+      "expectedFailures": [
+        "instantiateStreaming raise error if no-cors"
+      ]
+    }
+  },
+  "create_multiple_memory.worker.html": true,
+  "core": {
+    "address.wast.js.html": true,
+    "align.wast.js.html": true,
+    "binary-leb128.wast.js.html": true,
+    "binary.wast.js.html": {
+      "expectedFailures": [
+        "#40 Test that WebAssembly compilation fails",
+        "#41 Test that WebAssembly compilation fails",
+        "#42 Test that WebAssembly compilation fails",
+        "#43 Test that WebAssembly compilation fails",
+        "#45 Test that WebAssembly compilation fails",
+        "#46 Test that WebAssembly compilation fails",
+        "#47 Test that WebAssembly compilation fails",
+        "#48 Test that WebAssembly compilation fails",
+        "#161 Test that WebAssembly compilation fails",
+        "#162 Test that WebAssembly compilation fails",
+        "#163 Test that WebAssembly compilation fails",
+        "#164 Test that WebAssembly compilation fails",
+        "#166 Test that WebAssembly compilation fails",
+        "#167 Test that WebAssembly compilation fails",
+        "#168 Test that WebAssembly compilation fails",
+        "#169 Test that WebAssembly compilation fails"
+      ]
+    },
+    "block.wast.js.html": true,
+    "br.wast.js.html": true,
+    "br_if.wast.js.html": true,
+    "br_table.wast.js.html": true,
+    "bulk.wast.js.html": true,
+    "call.wast.js.html": true,
+    "call_indirect.wast.js.html": true,
+    "comments.wast.js.html": true,
+    "const.wast.js.html": true,
+    "conversions.wast.js.html": true,
+    "custom.wast.js.html": true,
+    "data.wast.js.html": {
+      "expectedFailures": [
+        "#2 Test that WebAssembly compilation fails",
+        "#3 Test that WebAssembly compilation fails",
+        "#34 Test that WebAssembly compilation fails",
+        "#35 Test that WebAssembly compilation fails",
+        "#63 Test that a WebAssembly module is uninstantiable",
+        "#67 Test that a WebAssembly module is uninstantiable",
+        "#75 Test that a WebAssembly module is uninstantiable",
+        "#79 Test that a WebAssembly module is uninstantiable"
+      ]
+    },
+    "elem.wast.js.html": {
+      "expectedFailures": [
+        "#2 Test that WebAssembly compilation fails",
+        "#3 Test that WebAssembly compilation fails",
+        "#43 Test that WebAssembly compilation fails",
+        "#44 Test that WebAssembly compilation fails",
+        "#66 Test that a WebAssembly module is uninstantiable",
+        "#70 Test that a WebAssembly module is uninstantiable",
+        "#74 Test that a WebAssembly module is uninstantiable",
+        "#78 Test that a WebAssembly module is uninstantiable"
+      ]
+    },
+    "endianness.wast.js.html": true,
+    "exports.wast.js.html": true,
+    "f32.wast.js.html": true,
+    "f32_bitwise.wast.js.html": true,
+    "f32_cmp.wast.js.html": true,
+    "f64.wast.js.html": true,
+    "f64_bitwise.wast.js.html": true,
+    "f64_cmp.wast.js.html": true,
+    "fac.wast.js.html": true,
+    "float_exprs.wast.js.html": true,
+    "float_literals.wast.js.html": true,
+    "float_memory.wast.js.html": true,
+    "float_misc.wast.js.html": true,
+    "forward.wast.js.html": true,
+    "func.wast.js.html": true,
+    "func_ptrs.wast.js.html": true,
+    "global.wast.js.html": {
+      "expectedFailures": [
+        "#17 Test that WebAssembly compilation fails",
+        "#18 Test that WebAssembly compilation fails",
+        "#144 Test that WebAssembly compilation fails",
+        "#145 Test that WebAssembly compilation fails"
+      ]
+    },
+    "i32.wast.js.html": true,
+    "i64.wast.js.html": true,
+    "if.wast.js.html": true,
+    "imports.wast.js.html": {
+      "expectedFailures": [
+        "#3 Test that WebAssembly compilation fails",
+        "#4 Test that WebAssembly compilation fails",
+        "#5 Test that WebAssembly compilation fails",
+        "#41 Test that a WebAssembly module is unlinkable",
+        "#43 Test that a WebAssembly module is unlinkable",
+        "#45 Test that a WebAssembly module is unlinkable",
+        "#47 Test that a WebAssembly module is unlinkable",
+        "#49 Test that a WebAssembly module is unlinkable",
+        "#51 Test that a WebAssembly module is unlinkable",
+        "#53 Test that a WebAssembly module is unlinkable",
+        "#55 Test that a WebAssembly module is unlinkable",
+        "#57 Test that a WebAssembly module is unlinkable",
+        "#59 Test that a WebAssembly module is unlinkable",
+        "#61 Test that a WebAssembly module is unlinkable",
+        "#63 Test that a WebAssembly module is unlinkable",
+        "#65 Test that a WebAssembly module is unlinkable",
+        "#67 Test that a WebAssembly module is unlinkable",
+        "#69 Test that a WebAssembly module is unlinkable",
+        "#71 Test that a WebAssembly module is unlinkable",
+        "#73 Test that a WebAssembly module is unlinkable",
+        "#75 Test that a WebAssembly module is unlinkable",
+        "#77 Test that a WebAssembly module is unlinkable",
+        "#79 Test that a WebAssembly module is unlinkable",
+        "#81 Test that a WebAssembly module is unlinkable",
+        "#83 Test that a WebAssembly module is unlinkable",
+        "#85 Test that a WebAssembly module is unlinkable",
+        "#87 Test that a WebAssembly module is unlinkable",
+        "#103 Test that a WebAssembly module is unlinkable",
+        "#105 Test that a WebAssembly module is unlinkable",
+        "#107 Test that a WebAssembly module is unlinkable",
+        "#109 Test that a WebAssembly module is unlinkable",
+        "#111 Test that a WebAssembly module is unlinkable",
+        "#113 Test that a WebAssembly module is unlinkable",
+        "#115 Test that a WebAssembly module is unlinkable",
+        "#117 Test that a WebAssembly module is unlinkable",
+        "#119 Test that a WebAssembly module is unlinkable",
+        "#121 Test that a WebAssembly module is unlinkable",
+        "#123 Test that a WebAssembly module is unlinkable",
+        "#125 Test that a WebAssembly module is unlinkable",
+        "#127 Test that a WebAssembly module is unlinkable",
+        "#129 Test that a WebAssembly module is unlinkable",
+        "#131 Test that a WebAssembly module is unlinkable",
+        "#133 Test that a WebAssembly module is unlinkable",
+        "#135 Test that a WebAssembly module is unlinkable",
+        "#137 Test that a WebAssembly module is unlinkable",
+        "#139 Test that a WebAssembly module is unlinkable",
+        "#141 Test that a WebAssembly module is unlinkable",
+        "#176 Test that a WebAssembly module is unlinkable",
+        "#178 Test that a WebAssembly module is unlinkable",
+        "#180 Test that a WebAssembly module is unlinkable",
+        "#182 Test that a WebAssembly module is unlinkable",
+        "#184 Test that a WebAssembly module is unlinkable",
+        "#186 Test that a WebAssembly module is unlinkable",
+        "#188 Test that a WebAssembly module is unlinkable",
+        "#190 Test that a WebAssembly module is unlinkable",
+        "#192 Test that a WebAssembly module is unlinkable",
+        "#194 Test that a WebAssembly module is unlinkable",
+        "#196 Test that a WebAssembly module is unlinkable",
+        "#198 Test that a WebAssembly module is unlinkable",
+        "#209 Test that WebAssembly compilation fails",
+        "#210 Test that WebAssembly compilation fails",
+        "#211 Test that WebAssembly compilation fails",
+        "#222 Test that a WebAssembly module is unlinkable",
+        "#224 Test that a WebAssembly module is unlinkable",
+        "#226 Test that a WebAssembly module is unlinkable",
+        "#228 Test that a WebAssembly module is unlinkable",
+        "#230 Test that a WebAssembly module is unlinkable",
+        "#232 Test that a WebAssembly module is unlinkable",
+        "#234 Test that a WebAssembly module is unlinkable",
+        "#236 Test that a WebAssembly module is unlinkable",
+        "#238 Test that a WebAssembly module is unlinkable",
+        "#240 Test that a WebAssembly module is unlinkable",
+        "#242 Test that a WebAssembly module is unlinkable",
+        "#244 Test that a WebAssembly module is unlinkable",
+        "#246 Test that a WebAssembly module is unlinkable",
+        "#248 Test that a WebAssembly module is unlinkable",
+        "#273 Test that a WebAssembly module is unlinkable"
+      ]
+    },
+    "inline-module.wast.js.html": true,
+    "int_exprs.wast.js.html": true,
+    "int_literals.wast.js.html": true,
+    "labels.wast.js.html": true,
+    "left-to-right.wast.js.html": true,
+    "linking.wast.js.html": {
+      "expectedFailures": [
+        "#11 Test that a WebAssembly module is unlinkable",
+        "#13 Test that a WebAssembly module is unlinkable",
+        "#36 Test that a WebAssembly module is unlinkable",
+        "#38 Test that a WebAssembly module is unlinkable",
+        "#42 Test that a WebAssembly module is unlinkable",
+        "#44 Test that a WebAssembly module is unlinkable",
+        "#46 Test that a WebAssembly module is unlinkable",
+        "#48 Test that a WebAssembly module is unlinkable",
+        "#95 Test that a WebAssembly module is uninstantiable",
+        "#97 Test that a WebAssembly module is unlinkable",
+        "#100 Test that a WebAssembly module is uninstantiable",
+        "#101 Test that a WebAssembly code returns a specific result",
+        "#104 Test that a WebAssembly module is uninstantiable",
+        "#105 Test that a WebAssembly code returns a specific result",
+        "#109 Test that a WebAssembly module is unlinkable",
+        "#111 Test that a WebAssembly module is unlinkable",
+        "#124 Test that a WebAssembly module is uninstantiable",
+        "#135 Test that a WebAssembly module is unlinkable",
+        "#138 Test that a WebAssembly module is uninstantiable",
+        "#139 Test that a WebAssembly code returns a specific result",
+        "#142 Test that a WebAssembly module is uninstantiable",
+        "#143 Test that a WebAssembly code returns a specific result",
+        "#146 Test that a WebAssembly module is uninstantiable",
+        "#147 Test that a WebAssembly code returns a specific result",
+        "#148 Test that a WebAssembly code returns a specific result"
+      ]
+    },
+    "load.wast.js.html": true,
+    "local_get.wast.js.html": true,
+    "local_set.wast.js.html": true,
+    "local_tee.wast.js.html": true,
+    "loop.wast.js.html": true,
+    "memory.wast.js.html": {
+      "expectedFailures": [
+        "#2 Test that WebAssembly compilation fails",
+        "#3 Test that WebAssembly compilation fails",
+        "#33 Test that WebAssembly compilation fails",
+        "#34 Test that WebAssembly compilation fails"
+      ]
+    },
+    "memory_copy.wast.js.html": true,
+    "memory_fill.wast.js.html": true,
+    "memory_grow.wast.js.html": true,
+    "memory_init.wast.js.html": true,
+    "memory_redundancy.wast.js.html": true,
+    "memory_size.wast.js.html": true,
+    "memory_trap.wast.js.html": true,
+    "names.wast.js.html": true,
+    "nop.wast.js.html": true,
+    "obsolete-keywords.wast.js.html": true,
+    "ref_func.wast.js.html": true,
+    "ref_is_null.wast.js.html": true,
+    "ref_null.wast.js.html": true,
+    "return.wast.js.html": true,
+    "select.wast.js.html": true,
+    "simd": {
+      "simd_address.wast.js.html": true,
+      "simd_align.wast.js.html": true,
+      "simd_bit_shift.wast.js.html": true,
+      "simd_bitwise.wast.js.html": true,
+      "simd_boolean.wast.js.html": true,
+      "simd_const.wast.js.html": true,
+      "simd_conversions.wast.js.html": true,
+      "simd_f32x4.wast.js.html": true,
+      "simd_f32x4_arith.wast.js.html": true,
+      "simd_f32x4_cmp.wast.js.html": true,
+      "simd_f32x4_pmin_pmax.wast.js.html": true,
+      "simd_f32x4_rounding.wast.js.html": true,
+      "simd_f64x2.wast.js.html": true,
+      "simd_f64x2_arith.wast.js.html": true,
+      "simd_f64x2_cmp.wast.js.html": true,
+      "simd_f64x2_pmin_pmax.wast.js.html": true,
+      "simd_f64x2_rounding.wast.js.html": true,
+      "simd_i16x8_arith.wast.js.html": true,
+      "simd_i16x8_arith2.wast.js.html": true,
+      "simd_i16x8_cmp.wast.js.html": true,
+      "simd_i16x8_extadd_pairwise_i8x16.wast.js.html": true,
+      "simd_i16x8_extmul_i8x16.wast.js.html": true,
+      "simd_i16x8_q15mulr_sat_s.wast.js.html": true,
+      "simd_i16x8_sat_arith.wast.js.html": true,
+      "simd_i32x4_arith.wast.js.html": true,
+      "simd_i32x4_arith2.wast.js.html": true,
+      "simd_i32x4_cmp.wast.js.html": true,
+      "simd_i32x4_dot_i16x8.wast.js.html": true,
+      "simd_i32x4_extadd_pairwise_i16x8.wast.js.html": true,
+      "simd_i32x4_extmul_i16x8.wast.js.html": true,
+      "simd_i32x4_trunc_sat_f32x4.wast.js.html": true,
+      "simd_i32x4_trunc_sat_f64x2.wast.js.html": true,
+      "simd_i64x2_arith.wast.js.html": true,
+      "simd_i64x2_arith2.wast.js.html": true,
+      "simd_i64x2_cmp.wast.js.html": true,
+      "simd_i64x2_extmul_i32x4.wast.js.html": true,
+      "simd_i8x16_arith.wast.js.html": true,
+      "simd_i8x16_arith2.wast.js.html": true,
+      "simd_i8x16_cmp.wast.js.html": true,
+      "simd_i8x16_sat_arith.wast.js.html": true,
+      "simd_int_to_int_extend.wast.js.html": true,
+      "simd_lane.wast.js.html": true,
+      "simd_linking.wast.js.html": true,
+      "simd_load.wast.js.html": true,
+      "simd_load16_lane.wast.js.html": true,
+      "simd_load32_lane.wast.js.html": true,
+      "simd_load64_lane.wast.js.html": true,
+      "simd_load8_lane.wast.js.html": true,
+      "simd_load_extend.wast.js.html": true,
+      "simd_load_splat.wast.js.html": true,
+      "simd_load_zero.wast.js.html": true,
+      "simd_select.wast.js.html": true,
+      "simd_splat.wast.js.html": true,
+      "simd_store.wast.js.html": true,
+      "simd_store16_lane.wast.js.html": true,
+      "simd_store32_lane.wast.js.html": true,
+      "simd_store64_lane.wast.js.html": true,
+      "simd_store8_lane.wast.js.html": true
+    },
+    "skip-stack-guard-page.wast.js.html": true,
+    "stack.wast.js.html": true,
+    "start.wast.js.html": true,
+    "store.wast.js.html": true,
+    "switch.wast.js.html": true,
+    "table-sub.wast.js.html": true,
+    "table.wast.js.html": true,
+    "table_copy.wast.js.html": true,
+    "table_fill.wast.js.html": true,
+    "table_get.wast.js.html": true,
+    "table_grow.wast.js.html": true,
+    "table_init.wast.js.html": true,
+    "table_set.wast.js.html": true,
+    "table_size.wast.js.html": true,
+    "token.wast.js.html": true,
+    "traps.wast.js.html": true,
+    "type.wast.js.html": true,
+    "unreachable.wast.js.html": true,
+    "unreached-invalid.wast.js.html": true,
+    "unreached-valid.wast.js.html": true,
+    "unwind.wast.js.html": true,
+    "utf8-custom-section-id.wast.js.html": true,
+    "utf8-import-field.wast.js.html": true,
+    "utf8-import-module.wast.js.html": true,
+    "utf8-invalid-encoding.wast.js.html": true
+  }
+}

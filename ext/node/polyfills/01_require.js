@@ -54,7 +54,9 @@ const {
   RegExpPrototypeTest,
   SafeArrayIterator,
   SafeMap,
+  SafeSet,
   SafeWeakMap,
+  SetPrototypeHas,
   String,
   StringPrototypeCharCodeAt,
   StringPrototypeEndsWith,
@@ -81,6 +83,12 @@ import _tlsWrap from "node:_tls_wrap";
 import assert from "node:assert";
 import assertStrict from "node:assert/strict";
 import asyncHooks from "node:async_hooks";
+import {
+  emitAfter as internalAsyncHooksEmitAfter,
+  emitBefore as internalAsyncHooksEmitBefore,
+  emitDestroy as internalAsyncHooksEmitDestroy,
+  emitInit as internalAsyncHooksEmitInit,
+} from "ext:deno_node/internal/async_hooks.ts";
 import buffer from "node:buffer";
 import childProcess from "node:child_process";
 import cluster from "node:cluster";
@@ -117,6 +125,7 @@ import internalCryptoUtil from "ext:deno_node/internal/crypto/util.ts";
 import internalCryptoX509 from "ext:deno_node/internal/crypto/x509.ts";
 import internalDgram from "ext:deno_node/internal/dgram.ts";
 import internalDnsPromises from "ext:deno_node/internal/dns/promises.ts";
+import internalBuffer from "ext:deno_node/internal/buffer.mjs";
 import internalErrors from "ext:deno_node/internal/errors.ts";
 import internalEventTarget from "ext:deno_node/internal/event_target.mjs";
 import internalFsUtils from "ext:deno_node/internal/fs/utils.mjs";
@@ -222,6 +231,7 @@ function setupBuiltinModules() {
     "internal/crypto/x509": internalCryptoX509,
     "internal/dgram": internalDgram,
     "internal/dns/promises": internalDnsPromises,
+    "internal/buffer": internalBuffer,
     "internal/errors": internalErrors,
     "internal/event_target": internalEventTarget,
     "internal/fs/utils": internalFsUtils,
@@ -267,7 +277,7 @@ function setupBuiltinModules() {
     timers,
     "timers/promises": timersPromises,
     tls,
-    traceEvents,
+    trace_events: traceEvents,
     tty,
     url,
     util,
@@ -278,9 +288,27 @@ function setupBuiltinModules() {
     worker_threads: workerThreads,
     zlib,
   };
+  // Match Node's schemelessBlockList: these modules can only be imported
+  // via the `node:` scheme (see lib/internal/bootstrap/realm.js), so they
+  // appear in `builtinModules` as `node:<name>` rather than `<name>`.
+  const schemelessBlockList = new SafeSet([
+    "sea",
+    "sqlite",
+    "test",
+    "test/reporters",
+  ]);
   for (const [name, moduleExports] of ObjectEntries(nodeModules)) {
     nativeModuleExports[name] = moduleExports;
-    ArrayPrototypePush(builtinModules, name);
+    // `internal/*` modules are only exposed under --expose-internals, so
+    // they aren't part of the public builtinModules list.
+    if (StringPrototypeStartsWith(name, "internal/")) {
+      continue;
+    }
+    if (SetPrototypeHas(schemelessBlockList, name)) {
+      ArrayPrototypePush(builtinModules, `node:${name}`);
+    } else {
+      ArrayPrototypePush(builtinModules, name);
+    }
   }
 }
 setupBuiltinModules();
@@ -357,6 +385,22 @@ function tryPackage(requestPath, exts, isMain, originalPath) {
   }
 
   const filename = pathResolve(requestPath, pkg);
+  // Ensure the resolved main path doesn't escape the package directory
+  // via path traversal (e.g. "main": "../../secret.json")
+  if (
+    !StringPrototypeStartsWith(filename, requestPath + "/") &&
+    !StringPrototypeStartsWith(filename, requestPath + "\\") &&
+    filename !== requestPath
+  ) {
+    const err = new Error(
+      `Cannot find module '${filename}'. ` +
+        'Please verify that the package.json has a valid "main" entry',
+    );
+    err.code = "MODULE_NOT_FOUND";
+    err.path = pathResolve(requestPath, "package.json");
+    err.requestPath = originalPath;
+    throw err;
+  }
   let actual = tryFile(filename, isMain) ||
     tryExtensions(filename, exts, isMain) ||
     tryExtensions(
@@ -635,6 +679,26 @@ Module._nodeModulePaths = function (fromPath) {
 };
 
 Module._resolveLookupPaths = function (request, parent) {
+  if (typeof request !== "string") {
+    throw new internalErrors.ERR_INVALID_ARG_TYPE(
+      "request",
+      "string",
+      request,
+    );
+  }
+
+  // Return null for built-in modules, matching Node.js behavior.
+  // Libraries like requizzle rely on this to detect native modules.
+  const normalizedRequest = StringPrototypeStartsWith(request, "node:")
+    ? StringPrototypeSlice(request, 5)
+    : request;
+  if (
+    isBuiltin(request) ||
+    normalizedRequest in nativeModuleExports
+  ) {
+    return null;
+  }
+
   const paths = [];
 
   if (op_require_is_request_relative(request)) {
@@ -767,21 +831,55 @@ Module._resolveFilename = function (
   isMain,
   options,
 ) {
-  if (
-    StringPrototypeStartsWith(request, "node:") ||
-    nativeModuleCanBeRequiredByUsers(request)
-  ) {
+  if (typeof request !== "string") {
+    throw new internalErrors.ERR_INVALID_ARG_TYPE(
+      "request",
+      "string",
+      request,
+    );
+  }
+
+  if (nativeModuleCanBeRequiredByUsers(request)) {
     return request;
+  }
+
+  if (StringPrototypeStartsWith(request, "node:")) {
+    const id = StringPrototypeSlice(request, 5);
+    if (nativeModuleExports[id]) {
+      return request;
+    }
+    const err = new Error(`Cannot find module '${request}'`);
+    err.code = "MODULE_NOT_FOUND";
+    throw err;
   }
 
   let paths;
 
   if (typeof options === "object" && options !== null) {
     if (ArrayIsArray(options.paths)) {
+      // Validate all path entries are strings before using them.
+      for (let i = 0; i < options.paths.length; i++) {
+        if (typeof options.paths[i] !== "string") {
+          throw new internalErrors.ERR_INVALID_ARG_TYPE(
+            "options.paths",
+            "string",
+            options.paths[i],
+          );
+        }
+      }
+
       const isRelative = op_require_is_request_relative(request);
 
       if (isRelative) {
-        paths = options.paths;
+        // Resolve relative entries to absolute paths so _findPath can
+        // stat them correctly.
+        paths = [];
+        for (let i = 0; i < options.paths.length; i++) {
+          ArrayPrototypePush(
+            paths,
+            pathResolve(process.cwd(), options.paths[i]),
+          );
+        }
       } else {
         const fakeParent = new Module("", null);
         paths = [];
@@ -801,9 +899,10 @@ Module._resolveFilename = function (
     } else if (options.paths === undefined) {
       paths = Module._resolveLookupPaths(request, parent);
     } else {
-      // TODO:
-      // throw new ERR_INVALID_ARG_VALUE("options.paths", options.paths);
-      throw new Error("Invalid arg value options.paths", options.path);
+      throw new internalErrors.ERR_INVALID_ARG_VALUE(
+        "options.paths",
+        options.paths,
+      );
     }
   } else {
     paths = Module._resolveLookupPaths(request, parent);
@@ -1176,6 +1275,20 @@ Module._extensions[".json"] = function (module, filename) {
   }
 };
 
+// Async hooks wrappers for NAPI - called from Rust via V8 function calls.
+function napiAsyncHooksEmitInit(asyncId, type, triggerAsyncId, resource) {
+  internalAsyncHooksEmitInit(asyncId, type, triggerAsyncId, resource);
+}
+function napiAsyncHooksEmitBefore(asyncId) {
+  internalAsyncHooksEmitBefore(asyncId);
+}
+function napiAsyncHooksEmitAfter(asyncId) {
+  internalAsyncHooksEmitAfter(asyncId);
+}
+function napiAsyncHooksEmitDestroy(asyncId) {
+  internalAsyncHooksEmitDestroy(asyncId);
+}
+
 // Native extension for .node
 Module._extensions[".node"] = function (module, filename) {
   if (filename.endsWith("cpufeatures.node")) {
@@ -1186,6 +1299,10 @@ Module._extensions[".node"] = function (module, filename) {
     globalThis,
     buffer.Buffer.from,
     reportError,
+    napiAsyncHooksEmitInit,
+    napiAsyncHooksEmitBefore,
+    napiAsyncHooksEmitAfter,
+    napiAsyncHooksEmitDestroy,
   );
 };
 
@@ -1232,25 +1349,35 @@ function isAbsolute(filenameOrUrl) {
   return RE_START_OF_ABS_PATH.test(filenameOrUrl);
 }
 
+// Match Node's error reason (see lib/internal/modules/cjs/loader.js).
+const kCreateRequireError =
+  "must be a file URL object, file URL string, or absolute path string";
+
 function createRequire(filenameOrUrl) {
   let fileUrlStr;
   if (filenameOrUrl instanceof URL) {
     if (filenameOrUrl.protocol !== "file:") {
-      throw new Error(
-        `The argument 'filename' must be a file URL object, file URL string, or absolute path string. Received ${filenameOrUrl}`,
+      throw new internalErrors.ERR_INVALID_ARG_VALUE(
+        "filename",
+        filenameOrUrl,
+        kCreateRequireError,
       );
     }
     fileUrlStr = filenameOrUrl.toString();
   } else if (typeof filenameOrUrl === "string") {
     if (!filenameOrUrl.startsWith("file:") && !isAbsolute(filenameOrUrl)) {
-      throw new Error(
-        `The argument 'filename' must be a file URL object, file URL string, or absolute path string. Received ${filenameOrUrl}`,
+      throw new internalErrors.ERR_INVALID_ARG_VALUE(
+        "filename",
+        filenameOrUrl,
+        kCreateRequireError,
       );
     }
     fileUrlStr = filenameOrUrl;
   } else {
-    throw new Error(
-      `The argument 'filename' must be a file URL object, file URL string, or absolute path string. Received ${filenameOrUrl}`,
+    throw new internalErrors.ERR_INVALID_ARG_VALUE(
+      "filename",
+      filenameOrUrl,
+      kCreateRequireError,
     );
   }
   const filename = op_require_as_file_path(fileUrlStr) ?? fileUrlStr;
@@ -1275,6 +1402,9 @@ function isBuiltin(moduleName) {
 }
 
 function getBuiltinModule(id) {
+  if (typeof id !== "string") {
+    throw new internalErrors.ERR_INVALID_ARG_TYPE("id", "string", id);
+  }
   if (!isBuiltin(id)) {
     return undefined;
   }

@@ -758,7 +758,7 @@ fn split_host_port(arg: &str, errors: &mut Vec<String>) -> HostPort {
 }
 
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
+#[allow(dead_code, reason = "unsure why these are not used")] // TODO: investigate
 struct OptionInfo {
   option_type: OptionType,
   env_setting: OptionEnvvarSettings,

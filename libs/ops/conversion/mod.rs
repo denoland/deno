@@ -16,7 +16,7 @@ mod kw {
   syn::custom_keyword!(serde);
 }
 
-#[allow(dead_code)]
+#[allow(dead_code, reason = "unused properties")]
 enum StructFieldArgumentShared {
   Rename {
     name_token: kw::rename,
@@ -79,7 +79,7 @@ impl StructFieldArgumentShared {
   }
 }
 
-#[allow(dead_code)]
+#[allow(dead_code, reason = "unused properties")]
 enum StructTupleFieldArgumentShared {
   Serde { name_token: kw::serde },
 }

@@ -490,6 +490,11 @@ impl CronHandler for SocketCronHandler {
       return Err(CronError::RejectedError(reason.clone()));
     }
 
+    spec
+      .cron_schedule
+      .parse::<saffron::Cron>()
+      .map_err(|_| CronError::InvalidCron)?;
+
     let (invocation_tx, invocation_rx) = mpsc::channel::<Traceparent>(1);
     let socket_task_tx = self.socket_task_tx.clone();
     let socket_task_exit_error = self.socket_task_exit_error.clone();

@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_permissions"
-version = "0.93.0"
+version = "0.105.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -34,6 +34,9 @@ thiserror.workspace = true
 url.workspace = true
 which.workspace = true
 
+[target.'cfg(target_os = "macos")'.dependencies]
+unicode-normalization = { workspace = true }
+
 [target.'cfg(windows)'.dependencies]
 winapi = { workspace = true, features = ["commapi", "knownfolders", "mswsock", "objbase", "psapi", "shlobj", "tlhelp32", "winbase", "winerror", "winuser", "winsock2", "processenv", "wincon", "wincontypes"] }
 windows-sys = { workspace = true, features = ["Win32_Storage_FileSystem"] }
@@ -42,4 +45,5 @@ windows-sys = { workspace = true, features = ["Win32_Storage_FileSystem"] }
 nix = { workspace = true, features = ["fs"] }
 
 [dev-dependencies]
+proptest = { workspace = true }
 sys_traits = { workspace = true, features = ["libc", "real", "winapi"] }

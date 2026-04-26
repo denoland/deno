@@ -1,8 +1,9 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-import { primordials } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 const {
   FunctionPrototypeBind,
+  ObjectCreate,
   ObjectDefineProperty,
   Promise,
   PromiseReject,
@@ -10,14 +11,10 @@ const {
   SafeArrayIterator,
   SafePromisePrototypeFinally,
 } = primordials;
-import { op_immediate_count, op_immediate_ref_count } from "ext:core/ops";
 import {
   getActiveTimer,
   Immediate,
-  immediateQueue,
   kDestroy,
-  kRefed,
-  setUnrefTimeout,
   Timeout,
 } from "ext:deno_node/internal/timers.mjs";
 import {
@@ -28,18 +25,16 @@ import {
   validateObject,
 } from "ext:deno_node/internal/validators.mjs";
 import { kEmptyObject, promisify } from "ext:deno_node/internal/util.mjs";
-export { setUnrefTimeout } from "ext:deno_node/internal/timers.mjs";
-import * as timers from "ext:deno_web/02_timers.js";
-import { AbortError } from "ext:deno_node/internal/errors.ts";
+import {
+  AbortError,
+  ERR_ILLEGAL_CONSTRUCTOR,
+} from "ext:deno_node/internal/errors.ts";
 import { kResistStopPropagation } from "ext:deno_node/internal/event_target.mjs";
 import type { Abortable } from "node:events";
 
 interface TimerOptions extends Abortable {
   ref?: boolean | undefined;
 }
-
-const clearTimeout_ = timers.clearTimeout;
-const clearInterval_ = timers.clearInterval;
 
 export function setTimeout(
   callback: (...args: unknown[]) => void,
@@ -116,6 +111,11 @@ function setTimeoutPromise<T = void>(
     : promise;
 }
 
+ObjectDefineProperty(setTimeoutPromise, "name", {
+  __proto__: null,
+  value: "setTimeout",
+});
+
 ObjectDefineProperty(setTimeout, promisify.custom, {
   __proto__: null,
   enumerable: true,
@@ -130,7 +130,6 @@ export function clearTimeout(timeout?: Timeout | number) {
   }
   const id = +timeout;
   getActiveTimer(id)?.[kDestroy]();
-  clearTimeout_(id);
 }
 export function setInterval(
   callback: (...args: unknown[]) => void,
@@ -146,7 +145,6 @@ export function clearInterval(timeout?: Timeout | number | string) {
   }
   const id = +timeout;
   getActiveTimer(id)?.[kDestroy]();
-  clearInterval_(id);
 }
 export function setImmediate(
   cb: (...args: unknown[]) => void,
@@ -226,18 +224,7 @@ export function clearImmediate(immediate: Immediate) {
   if (!immediate?._onImmediate || immediate._destroyed) {
     return;
   }
-
-  op_immediate_count(false);
-  immediate._destroyed = true;
-
-  if (immediate[kRefed]) {
-    op_immediate_ref_count(false);
-  }
-  immediate[kRefed] = null;
-
-  immediate._onImmediate = null;
-
-  immediateQueue.remove(immediate);
+  core.clearImmediate(immediate);
 }
 
 async function* setIntervalAsync(
@@ -324,15 +311,23 @@ export const promises = {
   setInterval: setIntervalAsync,
 };
 
-promises.scheduler = {
+class Scheduler {
+  constructor() {
+    throw new ERR_ILLEGAL_CONSTRUCTOR();
+  }
   async wait(
     delay: number,
     options?: { signal?: AbortSignal },
   ): Promise<void> {
     return await setTimeoutPromise(delay, undefined, options);
-  },
-  yield: promises.setImmediate,
-};
+  }
+  yield() {
+    return promises.setImmediate();
+  }
+}
+
+const scheduler = ObjectCreate(Scheduler.prototype);
+promises.scheduler = scheduler;
 
 export default {
   setTimeout,
@@ -340,7 +335,6 @@ export default {
   setInterval,
   clearInterval,
   setImmediate,
-  setUnrefTimeout,
   clearImmediate,
   promises,
 };

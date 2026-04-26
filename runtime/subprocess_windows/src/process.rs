@@ -22,7 +22,7 @@
  */
 // Ported partly from https://github.com/libuv/libuv/blob/b00c5d1a09c094020044e79e19f478a25b8e1431/src/win/process.c
 
-#![allow(nonstandard_style)]
+#![allow(nonstandard_style, reason = "matches libuv naming conventions")]
 use std::borrow::Cow;
 use std::ffi::CStr;
 use std::ffi::OsStr;
@@ -552,8 +552,11 @@ pub fn spawn(options: &SpawnOptions) -> Result<ChildProcess, std::io::Error> {
     WCString::new(cwd_option)
   } else {
     // Inherit cwd
-    #[allow(clippy::disallowed_methods)]
-    let cwd = std::env::current_dir().unwrap();
+    #[allow(
+      clippy::disallowed_methods,
+      reason = "use real, consider making with with a virtual cwd in future"
+    )]
+    let cwd = std::env::current_dir()?;
     WCString::new(cwd)
   };
 

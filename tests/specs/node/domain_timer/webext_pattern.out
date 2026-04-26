@@ -1,0 +1,5 @@
+Retry 0: connection refused
+Retry 1: connection refused
+Retry 2: connection refused
+All retries exhausted (expected)
+ok - web-ext retry pattern works

@@ -1,0 +1,1326 @@
+{
+  "semantics": {
+    "scripting-1": {
+      "the-script-element": {
+        "json-module": {
+          "charset-bom.any.html": true,
+          "charset-bom.any.worker.html": true,
+          "invalid-content-type.any.html": true,
+          "invalid-content-type.any.worker.html": true,
+          "non-object.any.html": true,
+          "non-object.any.worker.html": true,
+          "repeated-imports.any.html": {
+            "expectedFailures": [
+              "Two modules of different type with the same specifier can load if the server changes its responses"
+            ]
+          },
+          "repeated-imports.any.worker.html": {
+            "expectedFailures": [
+              "Two modules of different type with the same specifier can load if the server changes its responses"
+            ]
+          },
+          "charset-2.html": false,
+          "charset.html": false,
+          "cors-crossorigin-requests.html": false,
+          "credentials.sub.html": false,
+          "http-accept-header.sub.html": false,
+          "integrity.html": false,
+          "json-module-service-worker-test.https.html": false,
+          "load-error-events.html": false,
+          "module.html": false,
+          "parse-error-location.tentative.html": false,
+          "parse-error.html": false,
+          "referrer-policies.sub.html": false,
+          "script-element-json-src.html": false,
+          "valid-content-type.html": false
+        },
+        "microtasks": {
+          "checkpoint-importScripts.any.worker.html": true,
+          "evaluation-order-1-nothrow-importScripts.any.worker.html": true,
+          "evaluation-order-1-nothrow-static-import.any.worker-module.html": true,
+          "evaluation-order-1-throw-importScripts.any.worker.html": false,
+          "evaluation-order-1-throw-static-import.any.worker-module.html": false,
+          "evaluation-order-2.any.worker-module.html": false,
+          "evaluation-order-3.any.worker-module.html": true,
+          "checkpoint-after-window-onerror-module.html": false,
+          "checkpoint-after-window-onerror.html": false,
+          "checkpoint-after-workerglobalscope-onerror-module.html": false,
+          "checkpoint-after-workerglobalscope-onerror.html": false,
+          "evaluation-order-1.html": false,
+          "evaluation-order-2.html": false,
+          "evaluation-order-3.html": true,
+          "evaluation-order-4.html": false
+        },
+        "module": {
+          "dynamic-import": {
+            "blob-url.any.html": {
+              "expectedFailures": [
+                "Revoking a blob URL immediately after calling import will not fail"
+              ]
+            },
+            "blob-url.any.worker.html": {
+              "expectedFailures": [
+                "Revoking a blob URL immediately after calling import will not fail"
+              ]
+            },
+            "blob-url.any.worker-module.html": {
+              "expectedFailures": [
+                "Revoking a blob URL immediately after calling import will not fail"
+              ]
+            },
+            "blob-url-workers.window.html": true,
+            "microtasks": {
+              "basic.any.html": {
+                "expectedFailures": [
+                  "import() should not drain the microtask queue if it fails during specifier resolution"
+                ]
+              },
+              "basic.any.worker.html": {
+                "expectedFailures": [
+                  "import() should not drain the microtask queue if it fails during specifier resolution"
+                ]
+              },
+              "css-import-in-worker.any.worker.html": true,
+              "with-import-assertions.any.html": true,
+              "with-import-assertions.any.worker.html": true
+            },
+            "alpha": {
+              "base-url-worker-importScripts.html": false,
+              "base-url-worker.sub.html": false,
+              "base-url.sub.html": {
+                "expectedFailures": [
+                  "Relative URL-like from same origin classic <script>",
+                  "Relative URL-like from cross origin classic <script> without crossorigin attribute",
+                  "Relative URL-like from cross origin classic <script> with crossorigin attribute",
+                  "Relative URL-like from cross origin module <script>"
+                ]
+              }
+            },
+            "code-cache-base-url.html": {
+              "expectedFailures": [
+                "beta - Function",
+                "gamma - Function"
+              ]
+            },
+            "code-cache-nonce.html": false,
+            "delay-load-event.html": true,
+            "dynamic-imports-credentials-setTimeout.sub.html": false,
+            "dynamic-imports-credentials.sub.html": false,
+            "dynamic-imports-fetch-error.sub.html": {
+              "expectedFailures": [
+                "import() must reject when there is a cross-origin module (without CORS)",
+                "import() must reject with a different error object for each import when there is a cross-origin module (without CORS)",
+                "import() must reject when there is a cross-origin module dependency (without CORS)",
+                "import() must reject with a different error object for each import when there is a cross-origin module dependency (without CORS)"
+              ]
+            },
+            "dynamic-imports-script-error.html": false,
+            "dynamic-imports.html": true,
+            "inline-event-handler.html": false,
+            "propagate-nonce-external-classic.html": true,
+            "propagate-nonce-external-module.html": true,
+            "propagate-nonce-inline-classic.html": true,
+            "propagate-nonce-inline-module.html": true,
+            "string-compilation-base-url-external-classic.html": false,
+            "string-compilation-base-url-external-module.html": false,
+            "string-compilation-base-url-inline-classic.html": false,
+            "string-compilation-base-url-inline-module.html": false,
+            "string-compilation-classic.html": false,
+            "string-compilation-module.html": false,
+            "string-compilation-nonce-classic.html": false,
+            "string-compilation-nonce-module.html": false,
+            "string-compilation-of-promise-result.html": false,
+            "string-compilation-other-document.html": false,
+            "v8-code-cache.html": false
+          },
+          "import-meta": {
+            "import-meta-url.any.worker-module.html": true,
+            "import-meta-object.any.worker-module.html": true,
+            "import-meta-resolve.any.worker-module.html": {
+              "expectedFailures": [
+                "import.meta.resolve is a function with the right properties",
+                "import.meta.resolve is not a constructor"
+              ]
+            },
+            "import-meta-resolve-importmap.html": false,
+            "import-meta-resolve-multiple-scripts.html": false,
+            "import-meta-url.html": false
+          },
+          "charset-01.html": true,
+          "charset-02.html": false,
+          "charset-03.html": false,
+          "choice-of-error-1.html": false,
+          "choice-of-error-2.html": false,
+          "choice-of-error-3.html": false,
+          "compilation-error-1.html": false,
+          "compilation-error-2.html": false,
+          "credentials.sub.html": false,
+          "crossorigin.html": false,
+          "currentScript-null.html": false,
+          "custom-element-exception.html": false,
+          "duplicated-imports-1.html": false,
+          "duplicated-imports-2.html": false,
+          "error-and-slow-dependency.html": false,
+          "error-type-1.html": false,
+          "error-type-2.html": false,
+          "error-type-3.html": false,
+          "errorhandling.html": false,
+          "evaluation-error-1.html": false,
+          "evaluation-error-2.html": false,
+          "evaluation-error-3.html": false,
+          "evaluation-error-4.html": false,
+          "execorder.html": false,
+          "fetch-error-1.html": false,
+          "fetch-error-2.html": false,
+          "import-subgraph-404.html": false,
+          "imports.html": false,
+          "inactive-context-import.html": false,
+          "inline-async-execorder.html": false,
+          "inline-async-inserted-execorder.html": false,
+          "inline-async-onload.html": true,
+          "inline-defer-onload.html": true,
+          "inline-no-async-onload.html": true,
+          "instantiation-error-1.html": false,
+          "instantiation-error-2.html": false,
+          "instantiation-error-3.html": false,
+          "instantiation-error-4.html": false,
+          "instantiation-error-5.html": false,
+          "instantiation-error-6.html": false,
+          "instantiation-error-7.html": false,
+          "instantiation-error-8.html": false,
+          "integrity.html": false,
+          "late-namespace-request.html": false,
+          "late-star-export-request.html": false,
+          "load-error-events-inline.html": false,
+          "load-error-events.html": false,
+          "module-import-referrer.html": false,
+          "module-vs-script-1.html": false,
+          "module-vs-script-2.html": false,
+          "nested-imports.html": false,
+          "nomodule-attribute.html": false,
+          "referrer-no-referrer.sub.html": false,
+          "referrer-origin-when-cross-origin.sub.html": false,
+          "referrer-origin.sub.html": false,
+          "referrer-policy-for-descendants.sub.html": false,
+          "referrer-same-origin.sub.html": false,
+          "referrer-strict-policies.sub.html": false,
+          "referrer-unsafe-url.sub.html": false,
+          "script-for-event.html": {
+            "expectedFailures": [
+              "Script 0",
+              "Script 1",
+              "Script 2",
+              "Script 3",
+              "Script 4",
+              "Script 5",
+              "Script 6",
+              "Script 7",
+              "Script 8",
+              "Script 9",
+              "Script 10",
+              "Script 11",
+              "Script 12",
+              "Script 13",
+              "Script 14",
+              "Script 15",
+              "Script 16"
+            ]
+          },
+          "single-evaluation-1.html": false,
+          "single-evaluation-2.html": false,
+          "slow-cycle.html": false,
+          "specifier-error.html": false,
+          "top-level-await": {
+            "sibling-imports-not-blocked.any.html": true,
+            "sibling-imports-not-blocked.any.worker.html": true
+          },
+          "type.html": true
+        },
+        "import-attributes": {
+          "dynamic-import-with-attributes-argument.any.html": true,
+          "dynamic-import-with-attributes-argument.any.worker.html": true,
+          "empty-attributes-clause.html": false,
+          "invalid-import-errors-order.html": false,
+          "invalid-type-attribute-error.html": false,
+          "unsupported-attribute.html": false
+        },
+        "change-src-attr-prepare-a-script.html": false,
+        "css-module": {
+          "charset-2.html": false,
+          "charset-bom.html": false,
+          "charset.html": false,
+          "content-type-checking.html": false,
+          "cors-crossorigin-requests.html": false,
+          "credentials.sub.html": false,
+          "css-module-worker-test.html": false,
+          "import-css-module-basic.html": false,
+          "import-css-module-dynamic.html": {
+            "expectedFailures": [
+              "Load a CSS module with dynamic import()"
+            ]
+          },
+          "integrity.html": false,
+          "load-error-events.html": false,
+          "referrer-policies.sub.html": false,
+          "relative-urls.html": false,
+          "script-element-css-src.html": false
+        },
+        "data-url.html": false,
+        "emptyish-script-elements.html": false,
+        "execution-timing": {
+          "001.html": false,
+          "002.html": false,
+          "003.html": false,
+          "004.html": false,
+          "005.html": false,
+          "006.html": false,
+          "007.html": false,
+          "008.html": false,
+          "009.html": false,
+          "010.html": false,
+          "011.html": false,
+          "012.html": false,
+          "013.html": false,
+          "014.html": false,
+          "015.html": false,
+          "015a.html": false,
+          "016.html": false,
+          "017.html": false,
+          "018.html": false,
+          "019.html": false,
+          "020.html": false,
+          "021.html": false,
+          "022.html": false,
+          "023.html": false,
+          "024.html": false,
+          "025.html": false,
+          "026.html": false,
+          "027.html": false,
+          "028.html": false,
+          "030.html": false,
+          "031.html": false,
+          "032.html": false,
+          "033.html": false,
+          "034.html": false,
+          "035.html": false,
+          "036.html": false,
+          "037.html": false,
+          "038.html": false,
+          "039.html": false,
+          "040.html": false,
+          "041.html": false,
+          "042.html": false,
+          "043.html": false,
+          "044.html": false,
+          "045.html": false,
+          "046.html": false,
+          "047.html": false,
+          "048.html": false,
+          "049.html": false,
+          "050.html": false,
+          "051.html": false,
+          "052.html": false,
+          "053.html": false,
+          "054.html": false,
+          "055.html": false,
+          "056.html": false,
+          "057.html": false,
+          "058.html": false,
+          "059.html": false,
+          "060.html": false,
+          "061.html": false,
+          "062.html": false,
+          "063.html": false,
+          "064.html": false,
+          "065.html": false,
+          "066.html": false,
+          "067.html": false,
+          "068.html": false,
+          "069.html": false,
+          "070.html": false,
+          "071.html": false,
+          "072.html": false,
+          "073.html": false,
+          "074.html": false,
+          "075.html": false,
+          "076.html": false,
+          "077.html": false,
+          "078.html": false,
+          "079.html": false,
+          "081.html": false,
+          "082.html": false,
+          "083.html": false,
+          "084.html": false,
+          "085.html": false,
+          "086.html": false,
+          "087.html": false,
+          "088.html": false,
+          "089.html": false,
+          "090.html": false,
+          "091.html": false,
+          "092.html": false,
+          "094.html": false,
+          "095.html": false,
+          "096.html": false,
+          "097.html": false,
+          "099.html": false,
+          "101.html": false,
+          "103.html": false,
+          "104.html": false,
+          "105.html": false,
+          "106-defer-import.html": false,
+          "106-defer-noimport.html": false,
+          "106-external-import.html": false,
+          "106-external-module-import.html": false,
+          "106-external-module-noimport.html": false,
+          "106-external-noimport.html": false,
+          "106-import.html": false,
+          "106-module-import.html": false,
+          "106-module-noimport.html": false,
+          "106-noimport.html": false,
+          "107-import.html": false,
+          "107-noimport.html": false,
+          "108.html": false,
+          "109.html": false,
+          "110.html": false,
+          "111.html": false,
+          "112.html": false,
+          "113.html": false,
+          "114.html": false,
+          "115.html": false,
+          "116.html": false,
+          "117.html": false,
+          "118.html": false,
+          "119.html": false,
+          "120.html": false,
+          "121.html": false,
+          "122.html": false,
+          "123.html": false,
+          "124.html": false,
+          "125.html": false,
+          "126.html": false,
+          "127.html": false,
+          "128.html": false,
+          "129.html": false,
+          "130.html": false,
+          "131.html": false,
+          "132.html": false,
+          "133.html": false,
+          "134.html": false,
+          "135.html": false,
+          "136.html": false,
+          "137.html": false,
+          "138.html": false,
+          "139.html": false,
+          "140.html": false,
+          "141.html": false,
+          "142.html": false,
+          "143.html": false,
+          "144.html": false,
+          "145.html": false,
+          "146-href.html": false,
+          "146.html": false,
+          "147.html": false,
+          "148.html": false,
+          "149.html": false,
+          "150-import.html": false,
+          "150-noimport.html": false,
+          "non-external-no-import.html": false
+        },
+        "fetch-src": {
+          "alpha": {
+            "base.html": false
+          },
+          "empty-with-base.html": false,
+          "empty.html": false,
+          "failure.html": false
+        },
+        "historical.html": {
+          "expectedFailures": [
+            "script.onbeforescriptexecute should not be supported",
+            "script.onafterscriptexecute should not be supported"
+          ]
+        },
+        "load-error-events-1.html": false,
+        "load-error-events-2.html": true,
+        "load-error-events-3.html": false,
+        "moving-between-documents": {
+          "after-prepare-createHTMLDocument-fetch-error-external-classic.html": false,
+          "after-prepare-createHTMLDocument-fetch-error-external-module.html": false,
+          "after-prepare-createHTMLDocument-parse-error-external-classic.html": false,
+          "after-prepare-createHTMLDocument-parse-error-external-module.html": false,
+          "after-prepare-createHTMLDocument-success-external-classic.html": false,
+          "after-prepare-createHTMLDocument-success-external-module.html": false,
+          "after-prepare-iframe-fetch-error-external-classic.html": false,
+          "after-prepare-iframe-fetch-error-external-module.html": false,
+          "after-prepare-iframe-parse-error-external-classic.html": false,
+          "after-prepare-iframe-parse-error-external-module.html": false,
+          "after-prepare-iframe-parse-error-inline-classic.html": false,
+          "after-prepare-iframe-success-external-classic.html": false,
+          "after-prepare-iframe-success-external-module.html": false,
+          "after-prepare-iframe-success-inline-classic.html": false,
+          "before-prepare-createHTMLDocument-fetch-error-external-classic.html": false,
+          "before-prepare-createHTMLDocument-fetch-error-external-module.html": false,
+          "before-prepare-createHTMLDocument-parse-error-external-classic.html": false,
+          "before-prepare-createHTMLDocument-parse-error-external-module.html": false,
+          "before-prepare-createHTMLDocument-parse-error-inline-classic.html": false,
+          "before-prepare-createHTMLDocument-parse-error-inline-module.html": false,
+          "before-prepare-createHTMLDocument-success-empty-src-classic.html": false,
+          "before-prepare-createHTMLDocument-success-empty-src-module.html": false,
+          "before-prepare-createHTMLDocument-success-external-classic.html": false,
+          "before-prepare-createHTMLDocument-success-external-module.html": false,
+          "before-prepare-createHTMLDocument-success-inline-classic.html": false,
+          "before-prepare-createHTMLDocument-success-inline-module.html": false,
+          "before-prepare-iframe-fetch-error-external-classic.html": false,
+          "before-prepare-iframe-fetch-error-external-module.html": false,
+          "before-prepare-iframe-parse-error-external-classic.html": false,
+          "before-prepare-iframe-parse-error-external-module.html": false,
+          "before-prepare-iframe-parse-error-inline-classic.html": false,
+          "before-prepare-iframe-parse-error-inline-module.html": false,
+          "before-prepare-iframe-success-empty-src-classic.html": false,
+          "before-prepare-iframe-success-empty-src-module.html": false,
+          "before-prepare-iframe-success-external-classic.html": false,
+          "before-prepare-iframe-success-external-module.html": false,
+          "before-prepare-iframe-success-inline-classic.html": false,
+          "before-prepare-iframe-success-inline-module.html": false,
+          "move-back-createHTMLDocument-fetch-error-external-classic.html": false,
+          "move-back-createHTMLDocument-fetch-error-external-module.html": false,
+          "move-back-createHTMLDocument-parse-error-external-classic.html": false,
+          "move-back-createHTMLDocument-parse-error-external-module.html": false,
+          "move-back-createHTMLDocument-success-external-classic.html": false,
+          "move-back-createHTMLDocument-success-external-module.html": false,
+          "move-back-iframe-fetch-error-external-classic.html": false,
+          "move-back-iframe-fetch-error-external-module.html": false,
+          "move-back-iframe-parse-error-external-classic.html": false,
+          "move-back-iframe-parse-error-external-module.html": false,
+          "move-back-iframe-parse-error-inline-classic.html": false,
+          "move-back-iframe-success-external-classic.html": false,
+          "move-back-iframe-success-external-module.html": false,
+          "move-back-iframe-success-inline-classic.html": false,
+          "ordering": {
+            "delay-load-event-1.html": false,
+            "delay-load-event-2.html": false,
+            "in-order.html": false,
+            "parser-blocking.html": false
+          }
+        },
+        "moving-between-documents-during-evaluation.html": false,
+        "muted-errors.sub.html": false,
+        "nomodule-reflect.html": false,
+        "nomodule-set-on-async-classic-script.html": false,
+        "nomodule-set-on-external-module-script.html": false,
+        "nomodule-set-on-inline-classic-scripts.html": {
+          "expectedFailures": [
+            "An inline classic script with nomodule content attribute must not run",
+            "An inline classic script element dynamically inserted after noModule was set to false must run.",
+            "An inline classic script element dynamically inserted after noModule was set to true must not run."
+          ]
+        },
+        "nomodule-set-on-inline-module-script.html": false,
+        "nomodule-set-on-synchronously-loaded-classic-scripts.html": false,
+        "promise-reject-and-remove.html": true,
+        "remove-src-attr-prepare-a-script.html": false,
+        "script-charset-01.html": {
+          "expectedFailures": [
+            "Script @type: unknown parameters 1",
+            "Script @type: unknown parameters 3"
+          ]
+        },
+        "script-charset-02.html": false,
+        "script-charset-03.html": false,
+        "script-crossorigin-network.sub.html": false,
+        "script-crossorigin.html": false,
+        "script-defer.html": false,
+        "script-for-event.html": {
+          "expectedFailures": [
+            "Script 0",
+            "Script 1",
+            "Script 2",
+            "Script 3",
+            "Script 4",
+            "Script 5",
+            "Script 6",
+            "Script 7",
+            "Script 8",
+            "Script 9",
+            "Script 10",
+            "Script 11",
+            "Script 12",
+            "Script 13",
+            "Script 14",
+            "Script 15",
+            "Script 16"
+          ]
+        },
+        "script-not-executed-after-shutdown.html": false,
+        "script-not-found-not-executed.html": true,
+        "script-onerror-insertion-point-1.html": false,
+        "script-onerror-insertion-point-2.html": false,
+        "script-onload-insertion-point.html": false,
+        "script-onload-string.html": false,
+        "script-referrerpolicy-idl.html": false,
+        "script-supports.html": false,
+        "script-text-modifications-csp.html": false,
+        "script-text-modifications.html": false,
+        "script-text.html": false,
+        "script-type-and-language-empty.html": true,
+        "script-type-and-language-js.html": false,
+        "script-type-and-language-with-params.html": false,
+        "script-type-whitespace.html": false,
+        "scripting-enabled.html": false
+      },
+      "the-noscript-element": {
+        "non-html-noscript.html": false
+      },
+      "the-template-element": {
+        "additions-to-parsing-xhtml-documents": {
+          "node-document.html": false,
+          "template-child-nodes.html": false
+        },
+        "additions-to-serializing-xhtml-documents": {
+          "outerhtml.html": false
+        },
+        "additions-to-the-steps-to-clone-a-node": {
+          "template-clone-children.html": false,
+          "templates-copy-document-owner.html": false
+        },
+        "definitions": {
+          "template-contents-owner-document-type.html": false,
+          "template-contents-owner-test-001.html": false,
+          "template-contents-owner-test-002.html": false,
+          "template-contents.html": false
+        },
+        "innerhtml-on-templates": {
+          "innerhtml.html": false
+        },
+        "serializing-html-templates": {
+          "outerhtml.html": false
+        },
+        "template-element": {
+          "content-attribute.html": false,
+          "node-document-changes.html": false,
+          "template-as-a-descendant.html": false,
+          "template-content-hierarcy.html": false,
+          "template-content-node-document.html": false,
+          "template-content.html": false,
+          "template-descendant-body.html": false,
+          "template-descendant-frameset.html": false,
+          "template-descendant-head.html": false
+        }
+      }
+    },
+    "embedded-content": {
+      "the-canvas-element": {
+        "imagedata.html": true,
+        "2d-getcontext-options.html": false,
+        "canvas-descendants-focusability-001.html": false,
+        "canvas-descendants-focusability-002.html": false,
+        "canvas-descendants-focusability-003.tentative.html": false,
+        "canvas-descendants-focusability-004.tentative.html": false,
+        "canvas-descendants-focusability-005.html": false,
+        "context.arguments.missing.html": false,
+        "context.casesensitive.html": false,
+        "context.emptystring.html": false,
+        "context.unrecognised.badname.html": false,
+        "context.unrecognised.badsuffix.html": false,
+        "context.unrecognised.nullsuffix.html": false,
+        "context.unrecognised.unicode.html": false,
+        "fallback.basic.html": false,
+        "fallback.multiple.html": false,
+        "fallback.nested.html": false,
+        "historical.html": false,
+        "security.dataURI.html": false,
+        "security.drawImage.canvas.cross.html": false,
+        "security.drawImage.canvas.redirect.html": false,
+        "security.drawImage.image.cross.html": false,
+        "security.drawImage.image.redirect.html": false,
+        "security.pattern.canvas.fillStyle.cross.html": false,
+        "security.pattern.canvas.fillStyle.redirect.html": false,
+        "security.pattern.canvas.strokeStyle.cross.html": false,
+        "security.pattern.canvas.strokeStyle.redirect.html": false,
+        "security.pattern.canvas.timing.cross.html": false,
+        "security.pattern.canvas.timing.redirect.html": false,
+        "security.pattern.create.cross.html": false,
+        "security.pattern.create.redirect.html": false,
+        "security.pattern.cross.cross.html": false,
+        "security.pattern.cross.redirect.html": false,
+        "security.pattern.fillStyle.sub.html": false,
+        "security.pattern.image.fillStyle.cross.html": false,
+        "security.pattern.image.fillStyle.redirect.html": false,
+        "security.pattern.image.strokeStyle.cross.html": false,
+        "security.pattern.image.strokeStyle.redirect.html": false,
+        "security.reset.cross.html": false,
+        "security.reset.redirect.html": false,
+        "size.attributes.style.html": false,
+        "toBlob-cross-realm-callback-report-exception.html": false,
+        "toBlob.jpeg.html": false,
+        "toBlob.null.html": false,
+        "toBlob.png.html": false,
+        "toDataURL.arguments.1.html": false,
+        "toDataURL.arguments.2.html": false,
+        "toDataURL.arguments.3.html": false,
+        "toDataURL.bogustype.html": false,
+        "toDataURL.default.html": false,
+        "toDataURL.jpeg.alpha.html": false,
+        "toDataURL.jpeg.primarycolours.html": false,
+        "toDataURL.jpeg.quality.basic.html": false,
+        "toDataURL.jpeg.quality.notnumber.html": false,
+        "toDataURL.jpeg.quality.outsiderange.html": false,
+        "toDataURL.jpg.html": false,
+        "toDataURL.lowercase.ascii.html": false,
+        "toDataURL.lowercase.unicode.html": false,
+        "toDataURL.nocontext.html": false,
+        "toDataURL.png.complexcolours.html": false,
+        "toDataURL.png.html": false,
+        "toDataURL.png.primarycolours.html": false,
+        "toDataURL.unrecognised.html": false,
+        "toDataURL.zeroheight.html": false,
+        "toDataURL.zerosize.html": false,
+        "toDataURL.zerowidth.html": false,
+        "type.exists.html": false
+      },
+      "the-iframe-element": {
+        "cross-origin-to-whom-part-2.window.html": false,
+        "cross-origin-to-whom.window.html": false,
+        "change_parentage.html": false,
+        "content_document_changes_only_after_load_matures.html": false,
+        "cross_origin_parentage.sub.html": false,
+        "document-getters-return-null-for-cross-origin.html": false,
+        "historical.html": false,
+        "iframe-allow.html": false,
+        "iframe-allowfullscreen.html": false,
+        "iframe-append-to-child-document.html": false,
+        "iframe-display-none-with-object.html": false,
+        "iframe-first-load-canceled-second-load-blank.html": false,
+        "iframe-load-event.html": false,
+        "iframe-loading-eager.html": false,
+        "iframe-loading-lazy-adopt-lazy-iframe-from-script-disabled-document.html": false,
+        "iframe-loading-lazy-base-url-2.html": false,
+        "iframe-loading-lazy-base-url-3.html": false,
+        "iframe-loading-lazy-base-url.html": false,
+        "iframe-loading-lazy-history-pushState.html": false,
+        "iframe-loading-lazy-history-replaceState.html": false,
+        "iframe-loading-lazy-in-script-disabled-iframe.html": false,
+        "iframe-loading-lazy-in-scroller-far.html": true,
+        "iframe-loading-lazy-in-scroller-horizontal-far.html": true,
+        "iframe-loading-lazy-in-scroller-horizontal.html": false,
+        "iframe-loading-lazy-in-scroller-nested-2.html": false,
+        "iframe-loading-lazy-in-scroller-nested-3.html": false,
+        "iframe-loading-lazy-in-scroller-nested-4.html": false,
+        "iframe-loading-lazy-in-scroller-nested-5.html": false,
+        "iframe-loading-lazy-in-scroller-nested.html": false,
+        "iframe-loading-lazy-in-scroller.html": false,
+        "iframe-loading-lazy-load-event.html": false,
+        "iframe-loading-lazy-multiple-queued-navigations.html": false,
+        "iframe-loading-lazy-multiple-times.html": false,
+        "iframe-loading-lazy-nav-form-submit.html": false,
+        "iframe-loading-lazy-nav-link-click-fragment.html": false,
+        "iframe-loading-lazy-nav-link-click.html": false,
+        "iframe-loading-lazy-nav-location-assign.html": false,
+        "iframe-loading-lazy-nav-location-replace-cross-origin.html": false,
+        "iframe-loading-lazy-nav-location-replace-set-src.html": false,
+        "iframe-loading-lazy-nav-location-replace.html": false,
+        "iframe-loading-lazy-nav-meta-refresh.optional.html": false,
+        "iframe-loading-lazy-nav-navigation-navigate.html": false,
+        "iframe-loading-lazy-nav-window-open.html": false,
+        "iframe-loading-lazy-referrerpolicy-change.sub.html": false,
+        "iframe-loading-lazy-reload-location-reload.html": false,
+        "iframe-loading-lazy-reload-navigation-reload.html": false,
+        "iframe-loading-lazy-to-eager.html": false,
+        "iframe-loading-lazy.html": false,
+        "iframe-network-error.sub.html": false,
+        "iframe-nosrc.html": false,
+        "iframe-synchronously-discard.html": false,
+        "iframe_javascript_url_initial_insertion.html": false,
+        "iframe_javascript_url_not_about_blank.html": false,
+        "iframe_javascript_url_remove_srcdoc.html": false,
+        "iframe_navigate_ancestor-1.sub.html": false,
+        "iframe_remove_src.html": false,
+        "iframe_sandbox_allow_script.html": false,
+        "iframe_sandbox_allow_top_navigation-1.html": false,
+        "iframe_sandbox_allow_top_navigation-2.html": false,
+        "iframe_sandbox_allow_top_navigation-3.html": false,
+        "iframe_sandbox_allow_top_navigation_by_user_activation_without_user_gesture.html": false,
+        "iframe_sandbox_anchor_download_allow_downloads.tentative.html": false,
+        "iframe_sandbox_anchor_download_block_downloads.tentative.html": false,
+        "iframe_sandbox_block_modals-1.html": false,
+        "iframe_sandbox_block_modals-2.html": false,
+        "iframe_sandbox_block_modals-3.html": false,
+        "iframe_sandbox_block_modals-4.html": false,
+        "iframe_sandbox_navigate_ancestor-1.html": false,
+        "iframe_sandbox_navigate_ancestor-2.html": false,
+        "iframe_sandbox_navigate_descendants.html": false,
+        "iframe_sandbox_navigate_history_go_back-2.html": false,
+        "iframe_sandbox_navigate_history_go_back.html": false,
+        "iframe_sandbox_navigate_history_go_forward.html": false,
+        "iframe_sandbox_navigate_itself.html": false,
+        "iframe_sandbox_navigate_other_frame_popup.sub.html": false,
+        "iframe_sandbox_navigation_download_allow_downloads.sub.tentative.html": false,
+        "iframe_sandbox_navigation_download_block_downloads.sub.tentative.html": false,
+        "iframe_sandbox_popups_escaping-1.html": false,
+        "iframe_sandbox_popups_escaping-2.html": false,
+        "iframe_sandbox_popups_escaping-3.html": false,
+        "iframe_sandbox_popups_nonescaping-1.html": false,
+        "iframe_sandbox_popups_nonescaping-2.html": false,
+        "iframe_sandbox_popups_nonescaping-3.html": false,
+        "iframe_sandbox_window_open_download_allow_downloads.tentative.html": false,
+        "iframe_sandbox_window_open_download_block_downloads.tentative.html": false,
+        "move_iframe_in_dom_01.html": false,
+        "move_iframe_in_dom_02.html": false,
+        "move_iframe_in_dom_03.html": false,
+        "move_iframe_in_dom_04.html": false,
+        "same_origin_parentage.html": false,
+        "sandbox-ascii-case-insensitive.html": false,
+        "sandbox-inherit-to-blank-document-unsandboxed-frame.html": false,
+        "sandbox-inherit-to-blank-document-unsandboxed.html": false,
+        "sandbox-top-navigation-child-cross-origin-frame.tentative.sub.window.html": false,
+        "sandbox-top-navigation-child-delivered-both.tentative.sub.window.html": false,
+        "sandbox-top-navigation-child-delivered.tentative.sub.window.html": false,
+        "sandbox-top-navigation-child-unsandboxed.tentative.sub.window.html": false,
+        "sandbox-top-navigation-grandchild-allow-same-origin.tentative.sub.window.html": false,
+        "sandbox-top-navigation-grandchild-frame-allow-top.tentative.sub.window.html": false,
+        "sandbox-top-navigation-grandchild-sandboxed-cross-origin-parent.tentative.sub.window.html": false,
+        "sandbox-top-navigation-grandchild-sandboxed.tentative.sub.window.html": false,
+        "sandbox-top-navigation-grandchild-unsandboxed-cross-origin-parent.tentative.sub.window.html": false,
+        "sandbox-top-navigation-grandchild-unsandboxed-inherit.tentative.sub.window.html": false,
+        "src-repeated-in-ancestor.html": false,
+        "srcdoc-anchor.html": false,
+        "srcdoc-attribute-reset.html": false,
+        "srcdoc_change_hash.html": false,
+        "srcdoc_process_attributes.html": false
+      }
+    }
+  },
+  "webappapis": {
+    "atob": {
+      "base64.any.html": true,
+      "base64.any.worker.html": true
+    },
+    "timers": {
+      "clearinterval-from-callback.any.html": true,
+      "clearinterval-from-callback.any.worker.html": true,
+      "cleartimeout-clearinterval.any.html": true,
+      "cleartimeout-clearinterval.any.worker.html": true,
+      "evil-spec-example.any.html": true,
+      "evil-spec-example.any.worker.html": true,
+      "missing-timeout-setinterval.any.html": true,
+      "missing-timeout-setinterval.any.worker.html": true,
+      "negative-setinterval.any.html": true,
+      "negative-setinterval.any.worker.html": true,
+      "negative-settimeout.any.html": true,
+      "negative-settimeout.any.worker.html": true,
+      "type-long-setinterval.any.html": true,
+      "type-long-setinterval.any.worker.html": true,
+      "type-long-settimeout.any.html": true,
+      "type-long-settimeout.any.worker.html": true,
+      "setinterval-cross-realm-callback-report-exception.html": false,
+      "setinterval-settimeout-clamping.html": true,
+      "settimeout-cross-realm-callback-report-exception.html": false
+    },
+    "microtask-queuing": {
+      "queue-microtask-exceptions.any.html": true,
+      "queue-microtask.any.html": true,
+      "queue-microtask.any.worker.html": true,
+      "queue-microtask-exceptions.any.worker.html": true,
+      "queue-microtask.window.html": false,
+      "queue-microtask-cross-realm-callback-report-exception.html": false
+    },
+    "scripting": {
+      "reporterror.any.html": false,
+      "reporterror.any.worker.html": false,
+      "events": {
+        "event-handler-processing-algorithm-error": {
+          "synthetic-errorevent-click.worker.html": true,
+          "workerglobalscope-runtime-error.worker.html": true,
+          "workerglobalscope-synthetic-errorevent.worker.html": true,
+          "workerglobalscope-synthetic-event.worker.html": true,
+          "body-element-synthetic-errorevent.html": false,
+          "body-element-synthetic-event.html": false,
+          "document-synthetic-errorevent.html": {
+            "expectedFailures": [
+              "error event is normal (return true does not cancel; one arg) on Document, with a synthetic ErrorEvent"
+            ]
+          },
+          "document-synthetic-event.html": false,
+          "frameset-element-synthetic-errorevent.html": false,
+          "frameset-element-synthetic-event.html": false,
+          "script-element.html": false,
+          "synthetic-errorevent-click.html": {
+            "expectedFailures": [
+              "click event is normal (return true does not cancel; one arg) on Document, with a synthetic ErrorEvent",
+              "click event is normal (return true does not cancel; one arg) on a script element, with a synthetic ErrorEvent"
+            ]
+          },
+          "window-runtime-error.html": false,
+          "window-synthetic-errorevent.html": false,
+          "window-synthetic-event.html": true,
+          "worker.html": true
+        },
+        "event-handler-removal.window.html": false,
+        "event-handler-spec-example.window.html": false,
+        "invalid-uncompiled-raw-handler-compiled-late.window.html": false,
+        "invalid-uncompiled-raw-handler-compiled-once.window.html": false,
+        "invalid-uncompiled-raw-handler-keeps-position.window.html": false,
+        "body-onload.html": false,
+        "compile-event-handler-lexical-scopes-form-owner.html": false,
+        "compile-event-handler-lexical-scopes.html": false,
+        "compile-event-handler-settings-objects.html": false,
+        "compile-event-handler-symbol-unscopables.html": false,
+        "event-handler-all-global-events.html": false,
+        "event-handler-attributes-body-window.html": false,
+        "event-handler-attributes-frameset-window.html": false,
+        "event-handler-attributes-windowless-body.html": false,
+        "event-handler-handleEvent-ignored.html": false,
+        "event-handler-javascript.html": false,
+        "event-handler-non-content-document-idl-attributes.html": false,
+        "event-handler-onmove-01.tentative.html": false,
+        "event-handler-onmove-02.tentative.html": false,
+        "event-handler-onresize.html": false,
+        "event-handler-processing-algorithm.html": false,
+        "event-handler-sourcetext.html": false,
+        "eventhandler-cancellation.html": false,
+        "inline-event-handler-ordering.html": false,
+        "messageevent-constructor.https.html": {
+          "expectedFailures": [
+            "Default event values",
+            "MessageEventInit dictionary",
+            "Passing null for ports member",
+            "ports attribute should be a FrozenArray",
+            "initMessageEvent operation",
+            "Passing null for ports parameter to initMessageEvent",
+            "initMessageEvent operation default parameter values",
+            "Passing ServiceWorker for source member"
+          ]
+        },
+        "onerroreventhandler.html": false,
+        "uncompiled_event_handler_with_scripting_disabled.html": false
+      },
+      "processing-model-2": {
+        "integration-with-the-javascript-agent-formalism": {
+          "requires-failure.https.any.html": false,
+          "requires-success.any.worker.html": true,
+          "atomics-wait-async.https.any.html": false,
+          "atomics-wait-async.https.any.worker.html": true
+        },
+        "addEventListener.html": false,
+        "body-onerror-compile-error-data-url.html": false,
+        "body-onerror-compile-error.html": false,
+        "body-onerror-runtime-error.html": false,
+        "compile-error-cross-origin-setInterval.html": false,
+        "compile-error-cross-origin-setTimeout.html": false,
+        "compile-error-cross-origin.html": false,
+        "compile-error-data-url.html": false,
+        "compile-error-in-attribute.html": false,
+        "compile-error-in-body-onerror.html": false,
+        "compile-error-in-setInterval.html": false,
+        "compile-error-in-setTimeout.html": false,
+        "compile-error-same-origin-with-hash.html": false,
+        "compile-error-same-origin.html": false,
+        "compile-error.html": false,
+        "integration-with-the-javascript-job-queue": {
+          "promise-job-entry-different-function-realm.html": false,
+          "promise-job-entry.html": false,
+          "promise-job-incumbent.html": false
+        },
+        "runtime-error-cross-origin-setInterval.html": false,
+        "runtime-error-cross-origin-setTimeout.html": false,
+        "runtime-error-cross-origin.html": false,
+        "runtime-error-data-url.html": false,
+        "runtime-error-in-attribute.html": false,
+        "runtime-error-in-body-onerror.html": false,
+        "runtime-error-in-setInterval.html": false,
+        "runtime-error-in-setTimeout.html": false,
+        "runtime-error-in-window-onerror.html": false,
+        "runtime-error-same-origin-with-hash.html": false,
+        "runtime-error-same-origin.html": false,
+        "runtime-error.html": false,
+        "unhandled-promise-rejections": {
+          "allow-crossorigin.html": false,
+          "disallow-crossorigin.html": false,
+          "promise-rejection-event-constructor.html": false,
+          "promise-rejection-event-during-parse.html": false,
+          "promise-rejection-events-attached-in-event.html": false,
+          "promise-rejection-events-iframe.html": false,
+          "promise-rejection-events-onerror.html": false,
+          "promise-rejection-events.dedicatedworker.html": false,
+          "promise-rejection-events.html": false,
+          "promise-resolution-order.html": false
+        },
+        "window-onerror-parse-error.html": false,
+        "window-onerror-runtime-error-throw.html": false,
+        "window-onerror-runtime-error.html": false,
+        "window-onerror-with-cross-frame-event-listeners-1.html": false,
+        "window-onerror-with-cross-frame-event-listeners-2.html": false,
+        "window-onerror-with-cross-frame-event-listeners-3.html": false,
+        "window-onerror-with-cross-frame-event-listeners-4.html": false,
+        "window-onerror-with-cross-frame-event-listeners-5.html": false
+      },
+      "event-loops": {
+        "microtask_after_raf.html": false,
+        "microtask_after_script.html": true,
+        "new-scroll-event-dispatched-at-next-updating-rendering-time.html": false,
+        "task_microtask_ordering.html": {
+          "expectedFailures": [
+            "Level 1 bossfight (synthetic click)"
+          ]
+        },
+        "update-the-rendering-resize-autofocus.html": false
+      },
+      "reporterror-cross-realm-method.html": false
+    },
+    "structured-clone": {
+      "structured-clone.any.html": {
+        "expectedFailures": [
+          "Blob basic",
+          "Blob unpaired high surrogate (invalid utf-8)",
+          "Blob unpaired low surrogate (invalid utf-8)",
+          "Blob paired surrogates (invalid utf-8)",
+          "Blob empty",
+          "Blob NUL",
+          "Array Blob object, Blob basic",
+          "Array Blob object, Blob unpaired high surrogate (invalid utf-8)",
+          "Array Blob object, Blob unpaired low surrogate (invalid utf-8)",
+          "Array Blob object, Blob paired surrogates (invalid utf-8)",
+          "Array Blob object, Blob empty",
+          "Array Blob object, Blob NUL",
+          "Array Blob object, two Blobs",
+          "Object Blob object, Blob basic",
+          "Object Blob object, Blob unpaired high surrogate (invalid utf-8)",
+          "Object Blob object, Blob unpaired low surrogate (invalid utf-8)",
+          "Object Blob object, Blob paired surrogates (invalid utf-8)",
+          "Object Blob object, Blob empty",
+          "Object Blob object, Blob NUL",
+          "File basic",
+          "An object whose interface is deleted from the global must still deserialize",
+          "A subclass instance will deserialize as its closest serializable superclass",
+          "Growable SharedArrayBuffer",
+          "Transferring OOB TypedArray throws"
+        ]
+      },
+      "structured-clone.any.worker.html": {
+        "expectedFailures": [
+          "Blob basic",
+          "Blob unpaired high surrogate (invalid utf-8)",
+          "Blob unpaired low surrogate (invalid utf-8)",
+          "Blob paired surrogates (invalid utf-8)",
+          "Blob empty",
+          "Blob NUL",
+          "Array Blob object, Blob basic",
+          "Array Blob object, Blob unpaired high surrogate (invalid utf-8)",
+          "Array Blob object, Blob unpaired low surrogate (invalid utf-8)",
+          "Array Blob object, Blob paired surrogates (invalid utf-8)",
+          "Array Blob object, Blob empty",
+          "Array Blob object, Blob NUL",
+          "Array Blob object, two Blobs",
+          "Object Blob object, Blob basic",
+          "Object Blob object, Blob unpaired high surrogate (invalid utf-8)",
+          "Object Blob object, Blob unpaired low surrogate (invalid utf-8)",
+          "Object Blob object, Blob paired surrogates (invalid utf-8)",
+          "Object Blob object, Blob empty",
+          "Object Blob object, Blob NUL",
+          "File basic",
+          "An object whose interface is deleted from the global must still deserialize",
+          "A subclass instance will deserialize as its closest serializable superclass",
+          "Growable SharedArrayBuffer",
+          "Transferring OOB TypedArray throws"
+        ]
+      },
+      "structured-clone-cross-realm-method.html": false
+    },
+    "system-state-and-capabilities": {
+      "the-navigator-object": {
+        "clientinformation.window.html": {
+          "expectedFailures": [
+            "window.clientInformation exists and equals window.navigator"
+          ]
+        },
+        "historical.https.window.html": {
+          "expectedFailures": [
+            "registerProtocolHandler has no third argument"
+          ]
+        },
+        "navigator.any.html": {
+          "expectedFailures": [
+            "appCodeName",
+            "appName",
+            "appVersion",
+            "product",
+            "productSub",
+            "userAgent value",
+            "vendor",
+            "vendorSub",
+            "taintEnabled",
+            "oscpu"
+          ]
+        },
+        "navigator.any.worker.html": {
+          "expectedFailures": [
+            "appCodeName",
+            "appName",
+            "appVersion",
+            "product",
+            "userAgent value"
+          ]
+        },
+        "per-global.window.html": false,
+        "navigator-indexed.html": true,
+        "navigator-window-controls-overlay.tentative.html": false,
+        "navigator_user_agent.https.tentative.html": false,
+        "navigator_user_agent.tentative.html": true,
+        "navigatorcookies-cookieenabled-true.html": false,
+        "navigatorlanguage.html": true,
+        "plugins-and-mimetypes.html": false,
+        "protocol-handler-fragment-nosw.https.html": false,
+        "protocol-handler-fragment.https.html": false,
+        "protocol-handler-path.https.html": false,
+        "protocol-handler-query-nosw.https.html": false,
+        "protocol-handler-query.https.html": false,
+        "protocol.https.html": false,
+        "protocol.tentative.https.html": false,
+        "secure_context.html": true
+      }
+    }
+  },
+  "infrastructure": {
+    "safe-passing-of-structured-data": {
+      "messagechannel.any.html": false,
+      "messagechannel.any.worker.html": false,
+      "shared-array-buffers": {
+        "no-coop-coep.https.any.html": false,
+        "no-coop-coep.https.any.worker.html": false,
+        "serialization-via-idb.any.html": false,
+        "serialization-via-idb.any.worker.html": false,
+        "serialization-via-notifications-api.any.html": false,
+        "serialization-via-notifications-api.any.worker.html": false,
+        "blob-data.https.html": false,
+        "broadcastchannel-success-and-failure.https.html": false,
+        "broadcastchannel-success.https.html": false,
+        "identity-not-preserved.https.html": {
+          "expectedFailures": [
+            "postMessaging to this window does not give back the same SharedArrayBuffer (but does use the same backing block)",
+            "postMessaging to an iframe and back does not give back the same SharedArrayBuffer"
+          ]
+        },
+        "nested-worker-success.https.html": {
+          "expectedFailures": [
+            "Bonus: self.crossOriginIsolated"
+          ]
+        },
+        "no-transferring.https.html": {
+          "expectedFailures": [
+            "Trying to transfer a SharedArrayBuffer to this window throws"
+          ]
+        },
+        "serialization-via-history.https.html": false,
+        "window-domain-failure.https.sub.html": false,
+        "window-failure.https.html": false,
+        "window-iframe-messagechannel.https.html": false,
+        "window-messagechannel-success.https.html": true,
+        "window-simple-success.https.html": {
+          "expectedFailures": [
+            "postMessaging to a same-origin iframe allows them to see each others' modifications",
+            "postMessaging to a same-origin deeply-nested iframe allows them to see each others' modifications",
+            "postMessaging to a same-origin opened window allows them to see each others' modifications"
+          ]
+        }
+      },
+      "structured-cloning-error-stack-optional.sub.window.html": {
+        "expectedFailures": [
+          "page-created Error (cross-site iframe)",
+          "page-created Error (same-origin iframe)",
+          "page-created DOMException (cross-site iframe)",
+          "page-created DOMException (same-origin iframe)",
+          "JS-engine-created TypeError (cross-site iframe)",
+          "JS-engine-created TypeError (same-origin iframe)",
+          "web API-created TypeError (cross-site iframe)",
+          "web API-created TypeError (same-origin iframe)",
+          "web API-created DOMException (cross-site iframe)",
+          "web API-created DOMException (same-origin iframe)"
+        ]
+      },
+      "transfer-errors.window.html": false,
+      "window-postmessage.window.html": false,
+      "cross-origin-transfer-resizable-arraybuffer.html": false,
+      "structured-cloning-error-extra.html": {
+        "expectedFailures": [
+          "Errors sent across realms should preserve their type"
+        ]
+      },
+      "structuredclone_0.html": {
+        "expectedFailures": [
+          "Value 'undefined' is cloned",
+          "ImageData object can be cloned",
+          "ImageData expandos are not cloned",
+          "Document objects cannot be cloned",
+          "URIError objects from other realms are treated as URIError"
+        ]
+      }
+    },
+    "urls": {
+      "terminology-0": {
+        "document-base-url-about-srcdoc.https.window.html": false,
+        "document-base-url-changes-about-srcdoc.https.window.html": false,
+        "document-base-url.html": false,
+        "multiple-base.sub.html": false,
+        "nontraditional-about-srcdoc.html": false
+      },
+      "base-url": {
+        "base-url-detached-document.https.window.html": false,
+        "base-url-javascript-nav.https.window.html": false,
+        "document-base-uri-synthetic-document.html": false,
+        "document-base-url-changes-about-srcdoc-2.https.html": false,
+        "document-base-url-changes-after-nav-about-srcdoc.https.window.html": false,
+        "document-base-url-initiated-grand-parent.https.window.html": false,
+        "document-base-url-window-initiator-is-not-opener.https.window.html": false,
+        "document-base-url-window-open-about-blank.https.window.html": false,
+        "matches-about-blank-base-url.window.html": false
+      },
+      "dynamic-changes-to-base-urls": {
+        "dynamic-urls.sub.html": false
+      },
+      "resolving-urls": {
+        "query-encoding": {
+          "attributes.sub.html?encoding=utf8": false,
+          "attributes.sub.html?encoding=windows-1252": false,
+          "attributes.sub.html?encoding=x-cp1251": false,
+          "location.sub.html?encoding=utf8": false,
+          "location.sub.html?encoding=windows-1252": false,
+          "location.sub.html?encoding=x-cp1251": false,
+          "lone-surrogates.sub.html?encoding=utf8": false,
+          "lone-surrogates.sub.html?encoding=windows-1252": false,
+          "navigation.sub.html?encoding=utf8": false,
+          "navigation.sub.html?encoding=windows-1252": false,
+          "navigation.sub.html?encoding=x-cp1251": false,
+          "utf-16be.html?include=base-href": false,
+          "utf-16be.html?include=css": false,
+          "utf-16be.html?include=eventsource": false,
+          "utf-16be.html?include=history": false,
+          "utf-16be.html?include=hyperlink-search": false,
+          "utf-16be.html?include=loading": false,
+          "utf-16be.html?include=nested-browsing": false,
+          "utf-16be.html?include=scheme": false,
+          "utf-16be.html?include=submit": false,
+          "utf-16be.html?include=svg": false,
+          "utf-16be.html?include=url": false,
+          "utf-16be.html?include=websocket": false,
+          "utf-16be.html?include=window-open": false,
+          "utf-16be.html?include=workers": false,
+          "utf-16be.html?include=xhr": false,
+          "utf-16be.html?include=xml": false,
+          "utf-16le.html?include=base-href": false,
+          "utf-16le.html?include=css": false,
+          "utf-16le.html?include=eventsource": false,
+          "utf-16le.html?include=history": false,
+          "utf-16le.html?include=hyperlink-search": false,
+          "utf-16le.html?include=loading": false,
+          "utf-16le.html?include=nested-browsing": false,
+          "utf-16le.html?include=scheme": false,
+          "utf-16le.html?include=submit": false,
+          "utf-16le.html?include=svg": false,
+          "utf-16le.html?include=url": false,
+          "utf-16le.html?include=websocket": false,
+          "utf-16le.html?include=window-open": false,
+          "utf-16le.html?include=workers": false,
+          "utf-16le.html?include=xhr": false,
+          "utf-16le.html?include=xml": false,
+          "utf-8.html?include=base-href": false,
+          "utf-8.html?include=css": false,
+          "utf-8.html?include=eventsource": true,
+          "utf-8.html?include=history": false,
+          "utf-8.html?include=hyperlink-search": false,
+          "utf-8.html?include=loading": false,
+          "utf-8.html?include=nested-browsing": false,
+          "utf-8.html?include=scheme": false,
+          "utf-8.html?include=submit": false,
+          "utf-8.html?include=svg": false,
+          "utf-8.html?include=url": true,
+          "utf-8.html?include=websocket": true,
+          "utf-8.html?include=window-open": false,
+          "utf-8.html?include=workers": {
+            "expectedFailures": [
+              "SharedWorker constructor",
+              "importScripts() in a shared worker",
+              "Worker() in a shared worker"
+            ]
+          },
+          "utf-8.html?include=xhr": false,
+          "utf-8.html?include=xml": false,
+          "windows-1251.html?include=base-href": false,
+          "windows-1251.html?include=css": false,
+          "windows-1251.html?include=eventsource": false,
+          "windows-1251.html?include=history": false,
+          "windows-1251.html?include=hyperlink-search": false,
+          "windows-1251.html?include=loading": false,
+          "windows-1251.html?include=nested-browsing": false,
+          "windows-1251.html?include=scheme": false,
+          "windows-1251.html?include=submit": false,
+          "windows-1251.html?include=svg": false,
+          "windows-1251.html?include=url": true,
+          "windows-1251.html?include=websocket": true,
+          "windows-1251.html?include=window-open": false,
+          "windows-1251.html?include=workers": {
+            "expectedFailures": [
+              "SharedWorker constructor",
+              "importScripts() in a shared worker",
+              "Worker() in a shared worker",
+              "Worker constructor"
+            ]
+          },
+          "windows-1251.html?include=xhr": false,
+          "windows-1251.html?include=xml": false,
+          "windows-1252.html?include=base-href": false,
+          "windows-1252.html?include=css": false,
+          "windows-1252.html?include=eventsource": false,
+          "windows-1252.html?include=history": false,
+          "windows-1252.html?include=hyperlink-search": false,
+          "windows-1252.html?include=loading": false,
+          "windows-1252.html?include=nested-browsing": false,
+          "windows-1252.html?include=scheme": false,
+          "windows-1252.html?include=submit": false,
+          "windows-1252.html?include=svg": false,
+          "windows-1252.html?include=url": true,
+          "windows-1252.html?include=websocket": true,
+          "windows-1252.html?include=window-open": false,
+          "windows-1252.html?include=workers": {
+            "expectedFailures": [
+              "SharedWorker constructor",
+              "importScripts() in a shared worker",
+              "Worker() in a shared worker",
+              "Worker constructor"
+            ]
+          },
+          "windows-1252.html?include=xhr": false,
+          "windows-1252.html?include=xml": false
+        }
+      }
+    },
+    "common-dom-interfaces": {
+      "collections": {
+        "domstringlist.html": false,
+        "historical.html": false,
+        "htmlallcollection.html": false,
+        "htmlformcontrolscollection.html": false,
+        "htmloptionscollection.html": false,
+        "radionodelist.html": false
+      }
+    },
+    "conformance-requirements": {
+      "extensibility": {
+        "foreign.html": false
+      }
+    },
+    "fetching-resources": {
+      "crossorigin-enumerated-ascii-case-insensitive.html": false
+    },
+    "terminology": {
+      "plugins": {
+        "text-plain.html": false
+      }
+    }
+  },
+  "interaction": {
+    "focus": {
+      "composed.window.html": false
+    }
+  }
+}

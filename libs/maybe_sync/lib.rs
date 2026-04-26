@@ -4,7 +4,10 @@ pub use inner::*;
 
 #[cfg(feature = "sync")]
 mod inner {
-  #![allow(clippy::disallowed_types)]
+  #![allow(
+    clippy::disallowed_types,
+    reason = "implementation the rule says to use"
+  )]
 
   pub use core::marker::Send as MaybeSend;
   pub use core::marker::Sync as MaybeSync;
@@ -99,13 +102,19 @@ mod inner {
   }
 }
 
-#[allow(clippy::disallowed_types)]
+#[allow(
+  clippy::disallowed_types,
+  reason = "implementation the rule says to use"
+)]
 #[inline]
 pub fn new_rc<T>(value: T) -> MaybeArc<T> {
   MaybeArc::new(value)
 }
 
-#[allow(clippy::disallowed_types)]
+#[allow(
+  clippy::disallowed_types,
+  reason = "implementation the rule says to use"
+)]
 #[inline]
 pub fn new_arc<T>(value: T) -> std::sync::Arc<T> {
   std::sync::Arc::new(value)

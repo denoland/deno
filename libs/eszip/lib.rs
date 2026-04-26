@@ -221,6 +221,7 @@ pub enum ModuleKind {
 
 #[cfg(test)]
 mod tests {
+  #![allow(clippy::disallowed_methods, reason = "test code")]
   use futures::StreamExt;
   use futures::TryStreamExt;
   use futures::io::AllowStdIo;

@@ -32,7 +32,6 @@ const {
   Error,
   ErrorPrototype,
   FunctionPrototypeBind,
-  FunctionPrototypeCall,
   ObjectAssign,
   ObjectDefineProperties,
   ObjectDefineProperty,
@@ -56,7 +55,6 @@ import * as event from "ext:deno_web/02_event.js";
 import * as location from "ext:deno_web/12_location.js";
 import * as version from "ext:runtime/01_version.ts";
 import * as os from "ext:deno_os/30_os.js";
-import * as timers from "ext:deno_web/02_timers.js";
 import {
   getConsoleInspectOptions,
   getDefaultInspectOptions,
@@ -76,7 +74,10 @@ import {
 } from "ext:runtime/90_deno_ns.js";
 import { errors } from "ext:runtime/01_errors.js";
 import * as webidl from "ext:deno_webidl/00_webidl.js";
-import { DOMException } from "ext:deno_web/01_dom_exception.js";
+import {
+  DOMException,
+  QuotaExceededError,
+} from "ext:deno_web/01_dom_exception.js";
 import {
   unstableForWindowOrWorkerGlobalScope,
   windowOrWorkerGlobalScope,
@@ -145,10 +146,14 @@ function windowClose() {
     PromisePrototypeThen(
       PromiseResolve(),
       () =>
-        FunctionPrototypeCall(timers.setTimeout, null, () => {
-          // This should be fine, since only Window/MainWorker has .close()
-          os.exit(0);
-        }, 0),
+        core.createSystemTimer(
+          () => {
+            // This should be fine, since only Window/MainWorker has .close()
+            os.exit(0);
+          },
+          0,
+          true,
+        ),
     );
   }
 }
@@ -351,7 +356,7 @@ core.registerErrorBuilder(
 core.registerErrorBuilder(
   "DOMExceptionQuotaExceededError",
   function DOMExceptionQuotaExceededError(msg) {
-    return new DOMException(msg, "QuotaExceededError");
+    return new QuotaExceededError(msg);
   },
 );
 core.registerErrorBuilder(

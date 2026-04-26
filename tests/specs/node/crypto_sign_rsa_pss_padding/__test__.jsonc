@@ -1,0 +1,8 @@
+{
+  "tests": {
+    "rsa_pss_padding": {
+      "args": "run --allow-all main.ts",
+      "output": "main.out"
+    }
+  }
+}

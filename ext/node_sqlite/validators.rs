@@ -18,7 +18,7 @@ impl Error {
   }
 }
 
-#[allow(non_camel_case_types)]
+#[allow(non_camel_case_types, reason = "matches Node.js error code naming")]
 pub enum ErrorCode {
   ERR_INVALID_ARG_TYPE,
 }

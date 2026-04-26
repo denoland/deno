@@ -133,7 +133,7 @@ pub enum SqliteError {
 }
 
 #[derive(Debug, PartialEq, Eq)]
-#[allow(non_camel_case_types)]
+#[allow(non_camel_case_types, reason = "matches Node.js error code naming")]
 enum ErrorCode {
   ERR_SQLITE_ERROR,
   ERR_ILLEGAL_CONSTRUCTOR,

@@ -1,7 +1,7 @@
 Error: ENOENT: no such file or directory, open '/non/existent/file'
-    at readFileSync (ext:deno_node/_fs/_fs_readFile.ts:[WILDCARD])
+    at readFileSync (node:fs:[WILDCARD])
     at [WILDCARD]console_log.ts:6:5
-    at Array.processTicksAndRejections (ext:deno_node/_next_tick.ts:[WILDCARD]) {
+    at processTicksAndRejections (ext:core/01_core.js:[WILDCARD]) {
   errno: [WILDCARD],
   syscall: "open",
   code: "ENOENT",

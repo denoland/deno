@@ -143,6 +143,8 @@ pub async fn run_all_servers() {
     npm_registry::private_npm_registry2(PRIVATE_NPM_REGISTRY_2_PORT);
   let private_npm_registry_3_server_futs =
     npm_registry::private_npm_registry3(PRIVATE_NPM_REGISTRY_3_PORT);
+  let private_npm_registry_mtls_futs =
+    npm_registry::private_npm_registry_mtls(PRIVATE_NPM_REGISTRY_MTLS_PORT);
   let npm_jsr_registry_server_futs =
     npm_registry::public_npm_jsr_registry(PUBLIC_NPM_JSR_REGISTRY_PORT);
   let socket_dev_api_futs = socket_dev::api(SOCKET_DEV_API_PORT);
@@ -150,10 +152,6 @@ pub async fn run_all_servers() {
   // for serving node header files to node-gyp in tests
   let node_js_mirror_server_fut =
     nodejs_org_mirror::nodejs_org_mirror(NODEJS_ORG_MIRROR_SERVER_PORT);
-
-  if let Err(e) = ensure_tsgo_prebuilt().await {
-    eprintln!("failed to ensure tsgo prebuilt: {e}");
-  }
 
   let mut futures = vec![
     redirect_server_fut.boxed_local(),
@@ -188,6 +186,7 @@ pub async fn run_all_servers() {
   futures.extend(private_npm_registry_2_server_futs);
   futures.extend(private_npm_registry_3_server_futs);
   futures.extend(npm_jsr_registry_server_futs);
+  futures.extend(private_npm_registry_mtls_futs);
   futures.extend(socket_dev_api_futs);
 
   assert_eq!(futures.len(), TEST_SERVERS_COUNT);
@@ -1471,37 +1470,4 @@ pub fn custom_headers(
   }
 
   response
-}
-
-pub async fn ensure_tsgo_prebuilt() -> Result<(), anyhow::Error> {
-  let tsgo_path = crate::consts::tsgo_prebuilt_path();
-  if tsgo_path.exists() {
-    return Ok(());
-  }
-
-  let archive_name = format!(
-    "typescript-go-{}-{}.zip",
-    crate::consts::tsgo::VERSION,
-    crate::consts::TSGO_PLATFORM
-  );
-
-  let url =
-    format!("{}/{archive_name}", crate::consts::tsgo::DOWNLOAD_BASE_URL);
-
-  let response = reqwest::get(url).await?;
-  let bytes = response.bytes().await?;
-
-  let mut archive = zip::ZipArchive::new(std::io::Cursor::new(bytes))?;
-  if !tsgo_path.parent().exists() {
-    tsgo_path.parent().create_dir_all();
-  }
-  archive.extract(tsgo_path.parent().as_path())?;
-
-  if cfg!(windows) {
-    tsgo_path.parent().join("tsgo.exe").rename(tsgo_path);
-  } else {
-    tsgo_path.parent().join("tsgo").rename(tsgo_path);
-  }
-
-  Ok(())
 }
