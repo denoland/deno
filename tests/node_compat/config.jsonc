@@ -284,9 +284,6 @@
     "parallel/test-child-process-kill.js": {},
     "parallel/test-child-process-no-deprecation.js": {},
     "parallel/test-child-process-promisified.js": {},
-    "parallel/test-child-process-prototype-tampering.mjs": {
-      "flaky": true
-    },
     "parallel/test-child-process-reject-null-bytes.js": {},
     "parallel/test-child-process-send-after-close.js": {},
     "parallel/test-child-process-send-cb.js": {},
