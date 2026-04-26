@@ -827,7 +827,18 @@ fn handle_headers_frame(session: &Session, frame: *const ffi::nghttp2_frame) {
 
   let handle = v8::Local::new(scope, stream_obj);
   let id_num = v8::Number::new(scope, id.into());
-  let cat = v8::null(scope);
+  // For HEADERS frames, expose the nghttp2 category so the JS polyfill can
+  // distinguish 'response', 'push', 'trailers', 'headers'. PUSH_PROMISE
+  // frames don't carry a category — leave it null and let the polyfill
+  // treat the new-stream branch (the stream is still being created).
+  let cat: v8::Local<v8::Value> =
+    if frame_type(frame) as u32 == ffi::NGHTTP2_HEADERS as u32 {
+      // SAFETY: frame is a HEADERS frame per the type check above
+      let c = unsafe { (*frame).headers.cat } as i32;
+      v8::Integer::new(scope, c).into()
+    } else {
+      v8::null(scope).into()
+    };
   let flags = v8::Number::new(scope, frame_flags(frame).into());
 
   callback.call(
