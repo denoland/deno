@@ -32,6 +32,32 @@ use crate::ops::constant::UV_FS_COPYFILE_EXCL;
 /// On Windows, this duplicates the OS HANDLE and converts it to a CRT
 /// file descriptor. The duplicate ensures the CRT fd and the File trait
 /// object own independent handles, avoiding double-close on cleanup.
+/// Read CRT errno and map it to a Win32 error code for std::io::Error.
+///
+/// `open_osfhandle` (and other CRT functions) report failures via errno,
+/// NOT GetLastError(). Calling `std::io::Error::last_os_error()` after a
+/// CRT failure reads a stale Win32 error from a prior API call — e.g.
+/// ERROR_ALREADY_EXISTS (183) left over from CreateFileW(CREATE_ALWAYS),
+/// which would be misreported as EEXIST.
+#[cfg(windows)]
+fn crt_error() -> std::io::Error {
+  // SAFETY: _errno() is a standard MSVC CRT function that returns a
+  // pointer to the thread-local errno value. Always valid to call.
+  unsafe extern "C" {
+    fn _errno() -> *mut i32;
+  }
+  // SAFETY: _errno() returns a valid pointer to thread-local errno.
+  let crt_errno = unsafe { *_errno() };
+  let win32_code = match crt_errno {
+    libc::EMFILE => 4,  // ERROR_TOO_MANY_OPEN_FILES
+    libc::EBADF => 6,   // ERROR_INVALID_HANDLE
+    libc::ENOMEM => 8,  // ERROR_NOT_ENOUGH_MEMORY
+    libc::EINVAL => 87, // ERROR_INVALID_PARAMETER
+    _ => 0,             // Unmapped → maps to UV "UNKNOWN"
+  };
+  std::io::Error::from_raw_os_error(win32_code)
+}
+
 fn raw_fd_for_file(file: Rc<dyn deno_io::fs::File>) -> Result<i32, FsError> {
   let handle_fd = file.backing_fd().ok_or_else(|| {
     FsError::Io(std::io::Error::other(
@@ -79,7 +105,7 @@ fn raw_fd_for_file(file: Rc<dyn deno_io::fs::File>) -> Result<i32, FsError> {
     if crt_fd == -1 {
       // SAFETY: Clean up the duplicated handle on failure.
       unsafe { CloseHandle(dup_handle) };
-      return Err(FsError::Io(std::io::Error::last_os_error()));
+      return Err(FsError::Io(crt_error()));
     }
     Ok(crt_fd)
   }
@@ -329,8 +355,37 @@ pub fn op_node_open_sync(
     open_options_to_access_kind(&options),
     Some("node:fs.openSync"),
   )?;
-  let file = fs.open_sync(&path, options)?;
+
+  // On Windows, opening with create + truncate uses CREATE_ALWAYS which
+  // truncates the file to 0 bytes immediately. If the subsequent CRT fd
+  // creation (open_osfhandle) fails, the file is left at 0 bytes — causing
+  // permanent data loss. To prevent this, open without truncation first,
+  // create the fd, and then truncate.
+  #[cfg(windows)]
+  let deferred_truncate =
+    options.truncate && options.create && !options.create_new;
+  #[cfg(windows)]
+  let open_options = if deferred_truncate {
+    OpenOptions {
+      truncate: false,
+      ..options
+    }
+  } else {
+    options
+  };
+  #[cfg(not(windows))]
+  let open_options = options;
+
+  let file = fs.open_sync(&path, open_options)?;
   let fd = raw_fd_for_file(file.clone())?;
+
+  #[cfg(windows)]
+  if deferred_truncate && let Err(e) = file.clone().truncate_sync(0) {
+    // SAFETY: fd is a valid CRT fd just created by raw_fd_for_file.
+    unsafe { libc::close(fd) };
+    return Err(e.into());
+  }
+
   state.borrow_mut::<deno_io::FdTable>().register(fd, file);
   Ok(fd)
 }
@@ -357,8 +412,32 @@ pub async fn op_node_open(
       )?,
     )
   };
-  let file = fs.open_async(path.as_owned(), options).await?;
+
+  // See op_node_open_sync for why we defer truncation on Windows.
+  #[cfg(windows)]
+  let deferred_truncate =
+    options.truncate && options.create && !options.create_new;
+  #[cfg(windows)]
+  let open_options = if deferred_truncate {
+    OpenOptions {
+      truncate: false,
+      ..options
+    }
+  } else {
+    options
+  };
+  #[cfg(not(windows))]
+  let open_options = options;
+
+  let file = fs.open_async(path.as_owned(), open_options).await?;
   let fd = raw_fd_for_file(file.clone())?;
+
+  #[cfg(windows)]
+  if deferred_truncate && let Err(e) = file.clone().truncate_sync(0) {
+    // SAFETY: fd is a valid CRT fd just created by raw_fd_for_file.
+    unsafe { libc::close(fd) };
+    return Err(e.into());
+  }
 
   let mut state = state.borrow_mut();
   state.borrow_mut::<deno_io::FdTable>().register(fd, file);
