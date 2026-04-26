@@ -470,6 +470,10 @@
       "ignore": true,
       "reason": "Tests EC keypair generation with `paramEncoding: 'explicit'`, which emits the curve parameters (prime / a / b / generator / order / cofactor) explicitly inside the SPKI/SEC1/PKCS#8 DER instead of just the curve OID. Deno's keygen path returns 'Explicit encoding is not supported' -- the Rust `p224`/`p256`/`p384`/`p521` crates don't expose an API for emitting the explicit parameter ASN.1, and OpenSSL's `EVP_PKEY_paramgen` is what Node uses. Could be revisited if a pure-Rust DER builder for explicit EC params lands"
     },
+    "parallel/test-crypto-keygen-async-explicit-elliptic-curve-encrypted.js.js": {
+      "ignore": true,
+      "reason": "Same `paramEncoding: 'explicit'` blocker as test-crypto-keygen-async-explicit-elliptic-curve.js, plus asserts on the OpenSSL-3-specific error string `error:07880109:common libcrypto routines::interrupted or cancelled` when signing without the passphrase. Both depend on OpenSSL internals Deno doesn't embed; the explicit-encoding side is the harder requirement"
+    },
     "parallel/test-crypto-keygen-async-elliptic-curve-jwk-ec.js": {},
     "parallel/test-crypto-keygen-async-elliptic-curve-jwk.js": {},
     "parallel/test-crypto-keygen-async-elliptic-curve-jwk-rsa.js": {},
