@@ -902,6 +902,7 @@
     "parallel/test-eventtarget-once-twice.js": {},
     "parallel/test-exception-handler.js": {},
     "parallel/test-exception-handler2.js": {},
+    "parallel/test-fastutf8stream-sync.js": {},
     "parallel/test-fetch-mock.js": {},
     "parallel/test-fetch.mjs": {},
     "parallel/test-file-read-noexist.js": {},

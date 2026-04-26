@@ -52,6 +52,7 @@ import {
   WriteStream,
 } from "ext:deno_node/internal/fs/streams.mjs";
 import SyncWriteStream from "ext:deno_node/internal/fs/sync_write_stream.js";
+import Utf8Stream from "ext:deno_node/internal/streams/fast-utf8-stream.js";
 import {
   arrayBufferViewToUint8Array,
   BigIntStats,
@@ -3622,6 +3623,7 @@ export default {
   WriteStream,
   writeSync,
   SyncWriteStream,
+  Utf8Stream,
   // For tests
   _toUnixTimestamp,
 };
@@ -3727,6 +3729,7 @@ export {
   unlink,
   unlinkSync,
   unwatchFile,
+  Utf8Stream,
   utimes,
   utimesSync,
   watch,
