@@ -304,6 +304,7 @@
     "parallel/test-child-process-spawnsync-args.js": {},
     "parallel/test-child-process-spawnsync-env.js": {},
     "parallel/test-child-process-spawnsync-input.js": {},
+    "parallel/test-child-process-spawnsync-kill-signal.js": {},
     "parallel/test-child-process-spawnsync-maxbuf.js": {},
     "parallel/test-child-process-spawnsync-shell.js": {
       "ignore": true,
