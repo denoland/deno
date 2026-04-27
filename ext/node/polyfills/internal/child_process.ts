@@ -1083,6 +1083,8 @@ export function normalizeSpawnArguments(
     validateObject(options, "options");
   }
 
+  options = { __proto__: null, ...options } as typeof options;
+
   let cwd = options.cwd;
 
   // Validate the cwd, if present.
@@ -1248,6 +1250,7 @@ export function normalizeSpawnArguments(
 
   return {
     // Make a shallow copy so we don't clobber the user's options object.
+    __proto__: null,
     ...options,
     args,
     cwd,
@@ -1641,6 +1644,8 @@ export interface SpawnSyncOptions extends
     | "windowsVerbatimArguments"
     | "windowsHide"
   > {
+  file?: string;
+  args?: string[];
   input?: string | Buffer | DataView;
   timeout?: number;
   maxBuffer?: number;
@@ -1680,8 +1685,6 @@ function normalizeInput(input: unknown) {
 }
 
 export function spawnSync(
-  command: string,
-  args: string[],
   options: SpawnSyncOptions,
 ): SpawnSyncResult {
   const {
@@ -1697,6 +1700,8 @@ export function spawnSync(
     killSignal,
     windowsVerbatimArguments = false,
   } = options;
+  let command = options.file || "";
+  let args: string[] = options.args || [];
   const [
     stdin_ = "pipe",
     stdout_ = "pipe",
