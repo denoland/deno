@@ -246,7 +246,6 @@
     "parallel/test-child-process-disconnect.js": {},
     "parallel/test-child-process-double-pipe.js": {},
     "parallel/test-child-process-env.js": {},
-    "parallel/test-child-process-exec-any-shells-windows.js": {},
     "parallel/test-child-process-exec-cwd.js": {},
     "parallel/test-child-process-exec-env.js": {},
     "parallel/test-child-process-exec-error.js": {},
@@ -1130,7 +1129,6 @@
     "parallel/test-fs-ready-event-stream.js": {},
     "parallel/test-fs-realpath-buffer-encoding.js": {},
     "parallel/test-fs-realpath-native.js": {},
-    "parallel/test-fs-realpath-on-substed-drive.js": {},
     "parallel/test-fs-realpath-pipe.js": {},
     "parallel/test-fs-realpath.js": {
       "windows": false,
