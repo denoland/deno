@@ -52,6 +52,7 @@ import {
   WriteStream,
 } from "ext:deno_node/internal/fs/streams.mjs";
 import SyncWriteStream from "ext:deno_node/internal/fs/sync_write_stream.js";
+import Utf8Stream from "ext:deno_node/internal/streams/fast-utf8-stream.js";
 import {
   arrayBufferViewToUint8Array,
   BigIntStats,
@@ -179,6 +180,7 @@ const {
   SafeMap,
   StringPrototypeToString,
   SymbolAsyncIterator,
+  SymbolDispose,
   SymbolFor,
   ArrayPrototypePush,
   TypedArrayPrototypeGetByteLength,
@@ -2058,6 +2060,33 @@ function mkdtempSync(
   }
 }
 
+// Mirrors Node's lib/fs.js mkdtempDisposableSync(): create the temp dir and
+// return an object with .path, .remove(), and Symbol.dispose. cwd is captured
+// at creation time so a later process.chdir() doesn't break removal.
+function mkdtempDisposableSync(
+  prefix: string | Buffer | Uint8Array | URL,
+  options?: { encoding: string } | string,
+) {
+  const cwd = process.cwd();
+  const path = mkdtempSync(prefix, options as { encoding: string }) as string;
+  const fullPath = resolve(cwd, path);
+  const remove = () => {
+    rmSync(fullPath, {
+      force: true,
+      maxRetries: 0,
+      recursive: true,
+      retryDelay: 0,
+    });
+  };
+  return {
+    path,
+    remove,
+    [SymbolDispose]() {
+      remove();
+    },
+  };
+}
+
 function decodeMkdtemp(str: string, encoding: Encoding): string;
 function decodeMkdtemp(
   str: string,
@@ -3570,6 +3599,7 @@ export default {
   mkdir,
   mkdirSync,
   mkdtemp,
+  mkdtempDisposableSync,
   mkdtempSync,
   open,
   openAsBlob,
@@ -3622,6 +3652,7 @@ export default {
   WriteStream,
   writeSync,
   SyncWriteStream,
+  Utf8Stream,
   // For tests
   _toUnixTimestamp,
 };
@@ -3686,6 +3717,7 @@ export {
   mkdir,
   mkdirSync,
   mkdtemp,
+  mkdtempDisposableSync,
   mkdtempSync,
   open,
   openAsBlob,
@@ -3727,6 +3759,7 @@ export {
   unlink,
   unlinkSync,
   unwatchFile,
+  Utf8Stream,
   utimes,
   utimesSync,
   watch,

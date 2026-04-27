@@ -86,7 +86,7 @@ export function fork(
     execArgv?: string;
     execPath?: string;
     silent?: boolean;
-  } = {};
+  } = { __proto__: null } as typeof options;
   let args: string[] = [];
   let pos = 1;
   if (pos < arguments.length && Array.isArray(arguments[pos])) {
@@ -106,7 +106,7 @@ export function fork(
       );
     }
 
-    options = { ...arguments[pos++] };
+    options = { __proto__: null, ...arguments[pos++] } as typeof options;
   }
 
   // Validate null bytes in args
@@ -116,8 +116,8 @@ export function fork(
     }
   }
 
-  // Validate null bytes in execPath (guard against Object.prototype pollution)
-  if (Object.hasOwn(options, "execPath") && options.execPath != null) {
+  // Validate null bytes in execPath
+  if (options.execPath != null) {
     validateString(options.execPath, "options.execPath");
     validateNullByteNotInArg(options.execPath, "options.execPath");
   }
@@ -201,8 +201,7 @@ export function fork(
     throw new ERR_CHILD_PROCESS_IPC_REQUIRED("options.stdio");
   }
 
-  options.execPath = (Object.hasOwn(options, "execPath") && options.execPath) ||
-    Deno.execPath();
+  options.execPath = options.execPath || Deno.execPath();
   options.shell = false;
 
   // deno-lint-ignore no-explicit-any
@@ -294,9 +293,10 @@ export function spawnSync(
     : maybeOptions as SpawnSyncOptions;
 
   options = {
+    __proto__: null,
     maxBuffer: MAX_BUFFER,
     ...normalizeSpawnArguments(command, args, options),
-  };
+  } as typeof options;
 
   // Validate the timeout, if present.
   validateTimeout(options.timeout);
@@ -353,7 +353,10 @@ function normalizeExecArgs(
   }
 
   // Make a shallow copy so we don't clobber the user's options object.
-  const options: ExecOptions | ExecSyncOptions = { ...optionsOrCallback };
+  const options: ExecOptions | ExecSyncOptions = {
+    __proto__: null,
+    ...optionsOrCallback,
+  } as ExecOptions | ExecSyncOptions;
   options.shell = typeof options.shell === "string" ? options.shell : true;
 
   return {
@@ -519,6 +522,7 @@ export function execFile(
   }
 
   const execOptions = {
+    __proto__: null,
     encoding: "utf8",
     timeout: 0,
     maxBuffer: MAX_BUFFER,

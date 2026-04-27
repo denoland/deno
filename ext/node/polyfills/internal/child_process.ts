@@ -389,13 +389,72 @@ export class ChildProcess extends EventEmitter {
       }
 
       if (stdin instanceof Stream) {
-        this.stdin = stdin;
+        if (streamHandleFd(stdin) >= 0) {
+          // The fd was passed directly to the child via dup(). The child
+          // reads/writes the shared pipe at the OS level. The parent's
+          // Stream is not assigned as this.stdin so the caller retains
+          // independent control of the original stream.
+        } else if (this.#process.stdinFd != null) {
+          // Stream without a usable fd - we created a pipe. Wire up
+          // JS-level piping from the user's readable stream into the
+          // child's stdin pipe.
+          const p = new Pipe(socketType.SOCKET);
+          p.open(this.#process.stdinFd);
+          const stdinSocket = new Socket({
+            handle: p,
+            writable: true,
+            readable: false,
+          });
+          if (typeof stdin.pipe === "function") {
+            stdin.pipe(stdinSocket);
+          }
+          this.stdin = stdinSocket;
+        }
       }
       if (stdout instanceof Stream) {
-        this.stdout = stdout;
+        if (streamHandleFd(stdout) >= 0) {
+          // fd passed directly - see stdin comment above.
+        } else if (this.#process.stdoutFd != null) {
+          this[kClosesNeeded]++;
+          const p = new Pipe(socketType.SOCKET);
+          p.open(this.#process.stdoutFd);
+          const stdoutSocket = new Socket({
+            handle: p,
+            writable: false,
+            readable: true,
+          });
+          if (typeof stdout.write === "function") {
+            // Don't end the target stream when this child exits -- other
+            // children may also be piping into the same destination (e.g.
+            // multiple children sharing p3.stdin as their stdout).
+            stdoutSocket.pipe(stdout, { end: false });
+          }
+          this.stdout = stdoutSocket;
+          stdoutSocket.on("close", () => {
+            maybeClose(this);
+          });
+        }
       }
       if (stderr instanceof Stream) {
-        this.stderr = stderr;
+        if (streamHandleFd(stderr) >= 0) {
+          // fd passed directly - see stdin comment above.
+        } else if (this.#process.stderrFd != null) {
+          this[kClosesNeeded]++;
+          const p = new Pipe(socketType.SOCKET);
+          p.open(this.#process.stderrFd);
+          const stderrSocket = new Socket({
+            handle: p,
+            writable: false,
+            readable: true,
+          });
+          if (typeof stderr.write === "function") {
+            stderrSocket.pipe(stderr, { end: false });
+          }
+          this.stderr = stderrSocket;
+          stderrSocket.on("close", () => {
+            maybeClose(this);
+          });
+        }
       }
 
       if (stdout === "pipe" && this.#process.stdoutFd != null) {
@@ -682,11 +741,31 @@ export class ChildProcess extends EventEmitter {
   }
 }
 
+// deno-lint-ignore no-explicit-any
+function streamHandleFd(stream: any): number {
+  const handle = stream._handle;
+  if (handle && typeof handle.fd === "number" && handle.fd >= 0) {
+    return handle.fd;
+  }
+  return -1;
+}
+
 function toDenoStdio(
   pipe: NodeStdio | number | Stream | null | undefined,
 ): DenoStdio {
   if (pipe instanceof Stream) {
-    return "inherit";
+    // If the stream has an underlying handle with a valid fd (e.g. a Socket
+    // backed by a PipeWrap), pass that fd directly to the child process.
+    // The Rust side will dup() it so both parent and child share the pipe.
+    // This matches Node.js behavior where passing a child's stdout as
+    // another child's stdin shares the underlying OS pipe.
+    const fd = streamHandleFd(pipe);
+    if (fd >= 0) {
+      return fd;
+    }
+    // For streams without a usable fd, create a pipe and set up JS-level
+    // piping after spawn.
+    return "piped";
   }
   if (typeof pipe === "number") {
     return pipe;
@@ -1004,7 +1083,9 @@ export function normalizeSpawnArguments(
     validateObject(options, "options");
   }
 
-  let cwd = ObjectHasOwn(options, "cwd") ? options.cwd : undefined;
+  options = { __proto__: null, ...options } as typeof options;
+
+  let cwd = options.cwd;
 
   // Validate the cwd, if present.
   if (cwd != null) {
@@ -1013,33 +1094,34 @@ export function normalizeSpawnArguments(
   }
 
   // Validate detached, if present.
-  if (ObjectHasOwn(options, "detached") && options.detached != null) {
+  if (options.detached != null) {
     validateBoolean(options.detached, "options.detached");
   }
 
   // Validate the uid, if present.
-  if (ObjectHasOwn(options, "uid") && options.uid != null) {
+  if (options.uid != null) {
     validateInt32(options.uid, "options.uid");
   }
 
   // Validate the gid, if present.
-  if (ObjectHasOwn(options, "gid") && options.gid != null) {
+  if (options.gid != null) {
     validateInt32(options.gid, "options.gid");
   }
 
   // Validate the shell, if present.
-  const shell = ObjectHasOwn(options, "shell") ? options.shell : undefined;
-  if (shell != null) {
-    if (typeof shell !== "boolean" && typeof shell !== "string") {
-      throw new ERR_INVALID_ARG_TYPE(
-        "options.shell",
-        ["boolean", "string"],
-        shell,
-      );
-    }
-    if (typeof shell === "string") {
-      validateNullByteNotInArg(shell, "options.shell");
-    }
+  if (
+    options.shell != null &&
+    typeof options.shell !== "boolean" &&
+    typeof options.shell !== "string"
+  ) {
+    throw new ERR_INVALID_ARG_TYPE(
+      "options.shell",
+      ["boolean", "string"],
+      options.shell,
+    );
+  }
+  if (typeof options.shell === "string") {
+    validateNullByteNotInArg(options.shell, "options.shell");
   }
 
   // Validate argv0, if present.
@@ -1068,7 +1150,7 @@ export function normalizeSpawnArguments(
     "advanced",
   ]);
 
-  if (shell) {
+  if (options.shell) {
     // When args are provided, escape them to prevent shell injection.
     // When no args are provided (just a string command), the user intends
     // for shell interpretation, so don't escape.
@@ -1093,7 +1175,7 @@ export function normalizeSpawnArguments(
     // already handles it for both `-c` (POSIX) and `/d /s /c` (cmd.exe) cases.
     // Calling it here would cause double transformation.
     if (process.platform === "win32") {
-      if (typeof shell === "string") {
+      if (typeof options.shell === "string") {
         file = shell;
       } else {
         file = Deno.env.get("comspec") || "cmd.exe";
@@ -1107,7 +1189,7 @@ export function normalizeSpawnArguments(
       }
     } else {
       /** TODO: add Android condition */
-      if (typeof shell === "string") {
+      if (typeof options.shell === "string") {
         file = shell;
       } else {
         file = "/bin/sh";
@@ -1168,6 +1250,7 @@ export function normalizeSpawnArguments(
 
   return {
     // Make a shallow copy so we don't clobber the user's options object.
+    __proto__: null,
     ...options,
     args,
     cwd,
@@ -1175,9 +1258,6 @@ export function normalizeSpawnArguments(
     env,
     envPairs,
     file,
-    shell,
-    uid: ObjectHasOwn(options, "uid") ? options.uid : undefined,
-    gid: ObjectHasOwn(options, "gid") ? options.gid : undefined,
     windowsHide: !!options.windowsHide,
     windowsVerbatimArguments: !!windowsVerbatimArguments,
     serialization: options.serialization || "json",

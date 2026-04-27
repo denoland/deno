@@ -347,19 +347,14 @@ unsafe fn do_emit_read(
 
     let recv = v8::Local::new(scope, &ctx.js_handle);
 
-    let onread_fn = if let Some(onread) = onread {
-      v8::Local::new(scope, onread)
-    } else {
-      let key =
-        v8::String::new_external_onebyte_static(scope, b"onread").unwrap();
-      match recv.get(scope, key.into()) {
-        Some(val) => match v8::Local::<v8::Function>::try_from(val) {
-          Ok(f) => f,
-          Err(_) => return,
-        },
-        None => return,
-      }
+    let Some(onread) = onread else {
+      // readStop was called (onread is None) -- caller must buffer
+      // the data instead of delivering it.  The old fallback of
+      // looking up "onread" on the JS handle defeated readStop and
+      // broke backpressure.
+      return;
     };
+    let onread_fn = v8::Local::new(scope, onread);
 
     if let Some(bytes) = data {
       let len = bytes.len();
@@ -743,6 +738,12 @@ struct TLSWrapInner {
   /// Set by clear_out when it emitted data — indicates rustls may have
   /// more buffered plaintext. Cleared when clear_out returns no data.
   has_buffered_cleartext: bool,
+  /// Decrypted cleartext that could not be delivered because readStop was
+  /// active (onread was None). Flushed on the next readStart cycle.
+  pending_clear_out: Vec<u8>,
+  /// True when the TLS peer closed but the EOF could not be delivered
+  /// because readStop was active. Delivered on the next readStart cycle.
+  pending_eof: bool,
   in_dowrite: bool,
   write_callback_scheduled: bool,
   /// Number of outstanding uv_write requests for encrypted output.
@@ -852,6 +853,7 @@ fn rustls_error_to_node_error(e: &rustls::Error) -> (String, String) {
         AD::InappropriateFallback => "TLSV1_ALERT_INAPPROPRIATE_FALLBACK",
         AD::UserCanceled => "TLSV1_ALERT_USER_CANCELLED",
         AD::NoRenegotiation => "TLSV1_ALERT_NO_RENEGOTIATION",
+        AD::NoApplicationProtocol => "TLSV1_ALERT_NO_APPLICATION_PROTOCOL",
         _ => "SSLV3_ALERT_HANDSHAKE_FAILURE",
       };
       (format!("{e}"), format!("ERR_SSL_{code}"))
@@ -880,6 +882,8 @@ impl TLSWrapInner {
       cycling: false,
       session_was_set: false,
       has_buffered_cleartext: false,
+      pending_clear_out: Vec::new(),
+      pending_eof: false,
       in_dowrite: false,
       write_callback_scheduled: false,
       enc_writes_in_flight: 0,
@@ -1185,6 +1189,13 @@ impl TLSWrapInner {
           do_emit_handshake_done(&ctx);
         }
 
+        // Defensive: if the handshake_done callback ran teardown
+        // synchronously (e.g. via a finalizer drained off the microtask
+        // queue), bail before touching freed state.
+        if !(*ptr).alive.get() {
+          return;
+        }
+
         // If shutdown was requested before handshake completed, execute
         // the deferred close_notify + underlying shutdown now.
         if (*ptr).shutdown {
@@ -1198,7 +1209,11 @@ impl TLSWrapInner {
       }
 
       if !result.data.is_empty() {
-        if let Some(ctx) = extract_emit_ctx(ptr) {
+        if (*ptr).onread.is_none() {
+          // readStop is active -- buffer the data for later delivery
+          (*ptr).pending_clear_out.extend_from_slice(&result.data);
+          (*ptr).has_buffered_cleartext = true;
+        } else if let Some(ctx) = extract_emit_ctx(ptr) {
           let onread = (*ptr).onread.clone();
           let state = (*ptr).stream_base_state.clone();
           do_emit_read(
@@ -1214,7 +1229,11 @@ impl TLSWrapInner {
         }
       }
       if result.got_eof {
-        if let Some(ctx) = extract_emit_ctx(ptr) {
+        if (*ptr).onread.is_none() {
+          // readStop is active -- defer EOF delivery
+          (*ptr).pending_eof = true;
+          (*ptr).has_buffered_cleartext = true;
+        } else if let Some(ctx) = extract_emit_ctx(ptr) {
           let onread = (*ptr).onread.clone();
           let state = (*ptr).stream_base_state.clone();
           do_emit_read(
@@ -1810,13 +1829,12 @@ impl TLSWrap {
 
   /// ReadStart — start reading cleartext from TLS.
   /// Mirrors Node's TLSWrap::ReadStart().
-  #[fast]
+  #[nofast]
   #[reentrant]
   fn read_start(
     &self,
     #[this] this: v8::Global<v8::Object>,
     scope: &mut v8::PinScope,
-    _op_state: &mut OpState,
   ) -> i32 {
     let inner = unsafe { &mut *self.inner.as_mut_ptr() };
 
@@ -1833,6 +1851,44 @@ impl TLSWrap {
 
     inner.onread = Some(v8::Global::new(scope, onread));
 
+    // Flush any cleartext that was buffered while readStop was active.
+    // This must happen before the cycle below so the consumer sees the
+    // data in the order it was decrypted.
+    let inner_ptr = inner as *mut TLSWrapInner;
+    let pending_data = std::mem::take(&mut inner.pending_clear_out);
+    let pending_eof = inner.pending_eof;
+    inner.pending_eof = false;
+    if (!pending_data.is_empty() || pending_eof)
+      && let Some(ctx) = (unsafe { extract_emit_ctx(inner_ptr) })
+    {
+      if !pending_data.is_empty() {
+        let onread_clone = inner.onread.clone();
+        let state = inner.stream_base_state.clone();
+        unsafe {
+          do_emit_read(
+            &ctx,
+            onread_clone.as_ref(),
+            state.as_ref(),
+            pending_data.len() as isize,
+            Some(&pending_data),
+          );
+        }
+      }
+      if pending_eof {
+        let onread_clone = inner.onread.clone();
+        let state = inner.stream_base_state.clone();
+        unsafe {
+          do_emit_read(
+            &ctx,
+            onread_clone.as_ref(),
+            state.as_ref(),
+            UV_EOF as isize,
+            None,
+          );
+        }
+      }
+    }
+
     // For the Uv case, read interception is done at the JS layer via
     // nativeHandle.onread -> TLSWrap.receive(). The JS layer calls
     // nativeHandle.readStart() separately. We just need to cycle if
@@ -1848,7 +1904,6 @@ impl TLSWrap {
     }
 
     if should_cycle {
-      let inner_ptr = inner as *mut TLSWrapInner;
       // SAFETY: inner_ptr points to heap-allocated TLSWrapInner via OwnedPtr
       unsafe { TLSWrapInner::cycle(inner_ptr) };
     }
@@ -2499,7 +2554,11 @@ impl TLSWrap {
     let inner_ptr = inner as *mut TLSWrapInner;
     unsafe {
       TLSWrapInner::dispatch_clear_out_callbacks(inner_ptr, &result);
-      if let Some(ctx) = extract_emit_ctx(inner_ptr) {
+      if (*inner_ptr).onread.is_none() {
+        // readStop is active -- defer EOF
+        (*inner_ptr).pending_eof = true;
+        (*inner_ptr).has_buffered_cleartext = true;
+      } else if let Some(ctx) = extract_emit_ctx(inner_ptr) {
         let onread = (*inner_ptr).onread.clone();
         let state = (*inner_ptr).stream_base_state.clone();
         do_emit_read(
@@ -2685,7 +2744,11 @@ fn filter_unsupported_cert_version(
   match result {
     Err(rustls::Error::InvalidCertificate(
       rustls::CertificateError::Other(ref other),
-    )) if other.to_string().contains("UnsupportedCertVersion") => {
+    )) if other
+      .0
+      .downcast_ref::<webpki::Error>()
+      .is_some_and(|e| matches!(e, webpki::Error::UnsupportedCertVersion)) =>
+    {
       Ok(rustls::client::danger::HandshakeSignatureValid::assertion())
     }
     Err(rustls::Error::InvalidCertificate(
@@ -2748,19 +2811,33 @@ impl rustls::client::danger::ServerCertVerifier for NodeServerCertVerifier {
         ) {
           return Ok(rustls::client::danger::ServerCertVerified::assertion());
         }
-        // CaUsedAsEndEntity is a rustls/webpki-specific check that
-        // OpenSSL does not have.  If the cert is actually in our
-        // root store, trust it silently.  Otherwise store an error.
+        // OpenSSL accepts X.509v1 certificates; webpki rejects them, sometimes
+        // surfacing as `BadEncoding` rather than the `Other(UnsupportedCertVersion)`
+        // payload below. Mirror the signature-verification side, which already
+        // accepts both.
+        if matches!(cert_error, rustls::CertificateError::BadEncoding) {
+          return Ok(rustls::client::danger::ServerCertVerified::assertion());
+        }
         if let rustls::CertificateError::Other(other) = cert_error
-          && format!("{other}").contains("CaUsedAsEndEntity")
+          && let Some(webpki_err) = other.0.downcast_ref::<webpki::Error>()
         {
-          let ee_bytes: &[u8] = end_entity.as_ref();
-          let is_trusted =
-            self.root_cert_ders.iter().any(|r| r.as_slice() == ee_bytes);
-          if is_trusted {
+          // OpenSSL accepts X.509v1 certificates; webpki does not.
+          if matches!(webpki_err, webpki::Error::UnsupportedCertVersion) {
             return Ok(rustls::client::danger::ServerCertVerified::assertion());
           }
-          // Not trusted — fall through to store the error below.
+          // CaUsedAsEndEntity is a webpki-specific check that OpenSSL
+          // does not have. If the cert is actually in our root store,
+          // trust it silently. Otherwise store the error.
+          if matches!(webpki_err, webpki::Error::CaUsedAsEndEntity) {
+            let ee_bytes: &[u8] = end_entity.as_ref();
+            let is_trusted =
+              self.root_cert_ders.iter().any(|r| r.as_slice() == ee_bytes);
+            if is_trusted {
+              return Ok(
+                rustls::client::danger::ServerCertVerified::assertion(),
+              );
+            }
+          }
         }
         // Store the error for verifyError() and let the handshake
         // proceed.  The JS layer will decide whether to tear down

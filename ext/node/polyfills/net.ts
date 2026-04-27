@@ -840,6 +840,17 @@ function _tryReadStart(socket: Socket) {
 function _onReadableStreamEnd(this: Socket) {
   if (!this.allowHalfOpen) {
     this.write = _writeAfterFIN;
+    if (this.writable) {
+      // Defer end() to nextTick so that user 'end' handlers registered
+      // after the constructor (which registered _onReadableStreamEnd)
+      // see socket.writable === true, matching Node.js behavior where
+      // the writable getter doesn't reflect the ending state immediately.
+      // deno-lint-ignore no-this-alias
+      const socket = this;
+      nextTick(() => {
+        if (socket.writable && !socket.destroyed) socket.end();
+      });
+    }
   }
 }
 
@@ -1225,9 +1236,15 @@ function _addClientAbortSignalOption(socket: Socket, signal: AbortSignal) {
   const onAbort = () => {
     socket.destroy(new AbortError());
   };
-  signal.addEventListener("abort", onAbort, { once: true });
-  socket.once("close", () => {
-    signal.removeEventListener("abort", onAbort);
+  // Match Node: register on nextTick so synchronous listenerCount checks
+  // immediately after Socket construction don't double-count the listener
+  // already attached by Duplex via addAbortSignal.
+  nextTick(() => {
+    if (socket.destroyed) return;
+    signal.addEventListener("abort", onAbort, { once: true });
+    socket.once("close", () => {
+      signal.removeEventListener("abort", onAbort);
+    });
   });
 }
 
@@ -2613,6 +2630,7 @@ Server.prototype.listen = function (...args: unknown[]) {
         backlog,
         undefined,
         options.exclusive,
+        flags,
       );
     }
 
