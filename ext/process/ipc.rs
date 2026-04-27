@@ -172,6 +172,9 @@ impl IpcJsonStreamResource {
   /// the kernel buffer synchronously, so the parent receives them even if
   /// the child terminates the moment it returns.
   pub fn try_write_msg_bytes(self: &Rc<Self>, msg: &[u8]) -> bool {
+    if !msg_fits_atomic_pipe_write(msg) {
+      return false;
+    }
     let Some(write_half) = RcRef::map(self, |r| &r.write_half).try_borrow_mut()
     else {
       // Another writer holds the lock — fall back to async to preserve
@@ -180,6 +183,24 @@ impl IpcJsonStreamResource {
     };
     matches!(write_half.try_write(msg), Ok(n) if n == msg.len())
   }
+}
+
+/// `write(2)` on a pipe is only guaranteed atomic for payloads up to
+/// `PIPE_BUF` bytes; for anything larger the kernel may accept a short
+/// write, leaving partial bytes that the async fallback path would then
+/// duplicate (denoland/deno IPC corruption with 8 MiB buffers). Skip the
+/// sync fast path for messages that wouldn't fit atomically.
+#[cfg(unix)]
+fn msg_fits_atomic_pipe_write(msg: &[u8]) -> bool {
+  msg.len() <= libc::PIPE_BUF
+}
+
+#[cfg(not(unix))]
+fn msg_fits_atomic_pipe_write(_msg: &[u8]) -> bool {
+  // Windows already returns `WouldBlock` from `try_write`, so the fast
+  // path is a no-op there. The size gate is irrelevant; keep it `false`
+  // to make the intent explicit.
+  false
 }
 
 // Initial capacity of the buffered reader and the JSON backing buffer.
@@ -396,6 +417,9 @@ impl IpcAdvancedStreamResource {
 
   /// See [`IpcJsonStreamResource::try_write_msg_bytes`].
   pub fn try_write_msg_bytes(self: &Rc<Self>, msg: &[u8]) -> bool {
+    if !msg_fits_atomic_pipe_write(msg) {
+      return false;
+    }
     let Some(write_half) = RcRef::map(self, |r| &r.write_half).try_borrow_mut()
     else {
       return false;
