@@ -143,18 +143,18 @@ fn getaddrinfo_inner(
             Ok(())
           })
         };
-        if let Ok((_, sa)) = sockaddr {
-          if let Some(ip) = sa.as_socket() {
-            ips.push(ip.ip().to_string());
-          }
+        if let Ok((_, sa)) = sockaddr
+          && let Some(ip) = sa.as_socket()
+        {
+          ips.push(ip.ip().to_string());
         }
       }
       // SAFETY: following the linked list
       addr = unsafe { (*addr).ai_next };
     }
 
-    // SAFETY: freeing the result from getaddrinfo
     if !result.is_null() {
+      // SAFETY: freeing the result from getaddrinfo
       unsafe { libc::freeaddrinfo(result) };
     }
 
@@ -368,8 +368,7 @@ fn assert_success_err(code: i32) -> DnsError {
   use crate::ops::constant;
 
   if code == 0 {
-    return DnsError::Io(std::io::Error::new(
-      std::io::ErrorKind::Other,
+    return DnsError::Io(std::io::Error::other(
       "unexpected success code",
     ));
   }
