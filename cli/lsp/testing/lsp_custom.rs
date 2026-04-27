@@ -186,3 +186,42 @@ impl lsp::notification::Notification for TestRunProgressNotification {
 
   const METHOD: &'static str = "deno/testRunProgress";
 }
+
+
+// === Test Coverage Notification Types ===
+// Implementation for https://github.com/denoland/deno/issues/18147
+
+/// Parameters for the test coverage notification.
+/// Sent to the client after a test run with coverage completes.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TestCoverageNotificationParams {
+  /// The text document that the coverage relates to.
+  pub text_document: lsp::TextDocumentIdentifier,
+  /// List of covered lines with their hit counts.
+  pub covered: Vec<CoverageLine>,
+  /// List of uncovered line ranges.
+  pub uncovered: Vec<lsp::Range>,
+  /// Overall coverage percentage (0-100).
+  pub percentage: f64,
+}
+
+/// A covered line with its execution count.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CoverageLine {
+  /// The range of the covered line.
+  pub range: lsp::Range,
+  /// Number of times this line was executed.
+  pub count: i64,
+}
+
+/// Notification sent when test coverage data is available.
+/// The client can use this to display coverage highlighting in the editor.
+pub enum TestCoverageNotification {}
+
+impl lsp::notification::Notification for TestCoverageNotification {
+  type Params = TestCoverageNotificationParams;
+
+  const METHOD: &'static str = "deno/testCoverage";
+}
