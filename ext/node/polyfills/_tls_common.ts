@@ -12,12 +12,13 @@ import {
 import { isArrayBufferView } from "ext:deno_node/internal/util/types.ts";
 import { validateString } from "ext:deno_node/internal/validators.mjs";
 
-// OpenSSL cipher names consist of uppercase letters, digits, hyphens,
-// and underscores (e.g. "ECDHE-RSA-AES128-GCM-SHA256", "AECDH-NULL-SHA").
+// OpenSSL cipher names consist of letters, digits, hyphens, underscores,
+// and "=" (for @SECLEVEL=N). Examples: "ECDHE-RSA-AES128-GCM-SHA256",
+// "AECDH-NULL-SHA", "aRSA", "kEECDH", "@SECLEVEL=2".
 // Meta-keywords like "ALL", "HIGH", "DEFAULT" also match this pattern.
 // We reject strings where no colon-separated entry looks like a valid
-// cipher name, which catches typos like "no-such-cipher" (lowercase).
-const CIPHER_NAME_RE = /^[!+\-@]?[A-Z0-9][A-Z0-9_-]*$/;
+// cipher name, which catches typos like "no-such-cipher".
+const CIPHER_NAME_RE = /^[!+\-@]?[A-Za-z0-9][A-Za-z0-9_=\-]*$/;
 
 function validateCipherList(ciphers: string): void {
   const entries = ciphers.split(":");
@@ -31,7 +32,7 @@ function validateCipherList(ciphers: string): void {
   }
   if (!hasValidEntry) {
     const err = new Error("no cipher match") as any;
-    err.code = "ERR_SSL_NO_CIPHERS_AVAILABLE";
+    err.code = "ERR_SSL_NO_CIPHER_MATCH";
     throw err;
   }
 }
