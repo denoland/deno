@@ -155,6 +155,7 @@ import { core, primordials } from "ext:core/mod.js";
 
 const {
   ArrayBufferIsView,
+  ArrayIsArray,
   BigInt,
   DatePrototypeGetTime,
   DateUTC,
@@ -175,6 +176,8 @@ const {
   Promise,
   PromisePrototypeThen,
   PromiseResolve,
+  RegExpPrototype,
+  RegExpPrototypeTest,
   SafeMap,
   StringPrototypeToString,
   SymbolAsyncIterator,
@@ -3141,6 +3144,7 @@ type IgnoreOption =
   | undefined
   | null;
 
+// deno-lint-ignore no-explicit-any
 let _lazyMinimatch: any = null;
 function getMinimatch() {
   _lazyMinimatch ??= core.createLazyLoader("ext:deno_node/deps/minimatch.js");
@@ -3158,7 +3162,7 @@ function validateIgnoreOptionElement(value: unknown, name: string) {
     }
     return;
   }
-  if (value instanceof RegExp) return;
+  if (ObjectPrototypeIsPrototypeOf(RegExpPrototype, value)) return;
   if (typeof value === "function") return;
   throw new ERR_INVALID_ARG_TYPE(
     name,
@@ -3169,7 +3173,7 @@ function validateIgnoreOptionElement(value: unknown, name: string) {
 
 function validateIgnoreOption(value: unknown, name: string) {
   if (value == null) return;
-  if (Array.isArray(value)) {
+  if (ArrayIsArray(value)) {
     for (let i = 0; i < value.length; i++) {
       validateIgnoreOptionElement(value[i], `${name}[${i}]`);
     }
@@ -3182,7 +3186,7 @@ function createIgnoreMatcher(
   ignore: IgnoreOption,
 ): ((filename: string) => boolean) | null {
   if (ignore == null) return null;
-  const matchers = Array.isArray(ignore) ? ignore : [ignore];
+  const matchers = ArrayIsArray(ignore) ? ignore : [ignore];
   const compiled: Array<(filename: string) => boolean> = [];
 
   for (let i = 0; i < matchers.length; i++) {
@@ -3200,12 +3204,19 @@ function createIgnoreMatcher(
         // e.g. '*.log' matches 'subdir/file.log'.
         matchBase: true,
       });
-      compiled.push((filename: string) => mm.match(filename));
-    } else if (matcher instanceof RegExp) {
-      compiled.push((filename: string) => matcher.test(filename));
+      ArrayPrototypePush(
+        compiled,
+        // deno-lint-ignore prefer-primordials
+        (filename: string) => mm.match(filename),
+      );
+    } else if (ObjectPrototypeIsPrototypeOf(RegExpPrototype, matcher)) {
+      ArrayPrototypePush(
+        compiled,
+        (filename: string) => RegExpPrototypeTest(matcher as RegExp, filename),
+      );
     } else {
       // Function
-      compiled.push(matcher as (filename: string) => boolean);
+      ArrayPrototypePush(compiled, matcher as (filename: string) => boolean);
     }
   }
 
