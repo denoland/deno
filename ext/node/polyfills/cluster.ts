@@ -108,6 +108,10 @@ export class Worker extends EventEmitter {
       // In a worker, kill() means disconnect and exit. Wait for the IPC
       // disconnect to actually flush before exiting so any in-flight
       // messages aren't dropped (matches Node's lib/internal/cluster/child.js).
+      // TODO(@divy-work): the worker-self path always exits cleanly with
+      // exit(0) and ignores `signal`. Node delivers the signal via
+      // `process.kill(process.pid, signal)` after disconnect, so the parent's
+      // `'exit'` event sees the matching `signalCode`.
       if (!this.process.connected) {
         process.exit(0);
         return;
@@ -205,6 +209,9 @@ export function fork(env?: Record<string, any>): Worker {
 export function setupPrimary(options?: Record<string, any>) {
   if (options) {
     ObjectAssign(settings, options);
+    if (typeof options.schedulingPolicy === "number") {
+      schedulingPolicy = options.schedulingPolicy;
+    }
   }
 }
 /** Deprecated alias for .setupPrimary(). */
