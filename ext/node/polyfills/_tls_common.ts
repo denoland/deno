@@ -146,6 +146,8 @@ function validateKeyCertOption(
   );
 }
 
+const secureContextBrand = new WeakSet<object>();
+
 export class SecureContext {
   context: {
     ca?: string | string[];
@@ -199,6 +201,22 @@ export class SecureContext {
       sigalgs: options.sigalgs,
       ecdhCurve: options.ecdhCurve,
     };
+    secureContextBrand.add(this.context);
+    Object.defineProperty(this.context, "_external", {
+      __proto__: null,
+      configurable: true,
+      enumerable: false,
+      get(this: object) {
+        // In Node, `_external` is the C++ external pointer; reading it on a
+        // non-context receiver hits an internal slot check and throws. Match
+        // that behaviour so prototype-tampering tests don't get a silent
+        // undefined.
+        if (!secureContextBrand.has(this)) {
+          throw new TypeError("Illegal invocation");
+        }
+        return this;
+      },
+    });
   }
 
   // Backward compat: current _tls_wrap.js accesses .ca, .cert, .key directly
