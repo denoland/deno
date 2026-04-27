@@ -30,6 +30,7 @@ import { report } from "ext:deno_node/internal/process/report.ts";
 import { onWarning } from "ext:deno_node/internal/process/warning.ts";
 import {
   parseFileMode,
+  validateBoolean,
   validateNumber,
   validateObject,
   validateString,
@@ -880,6 +881,11 @@ Object.defineProperty(process, "config", {
           default_configuration: "Release",
         }),
         variables: Object.freeze({
+          // Match Node's lib/internal/process/per_thread.js process.config:
+          // `node_module_version` is an integer ABI version exposed for native
+          // addons. Mirror process.versions.modules so a single source of truth
+          // wins.
+          node_module_version: Number(versions.modules),
           llvm_version: "0.0",
           enable_lto: "false",
           host_arch: arch,
@@ -1039,7 +1045,8 @@ Object.defineProperty(process, "platform", {
 });
 
 // https://nodejs.org/api/process.html#processsetsourcemapsenabledval
-process.setSourceMapsEnabled = (_val: boolean) => {
+process.setSourceMapsEnabled = (val: boolean) => {
+  validateBoolean(val, "val");
   // This is a no-op in Deno. Source maps are always enabled.
   // TODO(@satyarohith): support disabling source maps if needed.
 };

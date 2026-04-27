@@ -482,6 +482,10 @@ function findLongestRegisteredExtension(filename) {
 function getExportsForCircularRequire(module) {
   if (
     module.exports &&
+    // Skip Proxy module.exports so the warning machinery never invokes the
+    // user-visible getPrototypeOf / setPrototypeOf traps. Matches the
+    // !isProxy(...) guard in Node's lib/internal/modules/cjs/loader.js.
+    !core.isProxy(module.exports) &&
     ObjectGetPrototypeOf(module.exports) === ObjectPrototype &&
     // Exclude transpiled ES6 modules / TypeScript code because those may
     // employ unusual patterns for accessing 'module.exports'. That should
@@ -533,7 +537,16 @@ const moduleParentCache = new SafeWeakMap();
 function Module(id = "", parent) {
   this.id = id;
   this.path = pathDirname(id);
-  this.exports = {};
+  // Use ObjectDefineProperty so that user-installed Object.prototype.exports
+  // setters/getters are not invoked during module construction. Mirrors
+  // setOwnProperty() in Node's lib/internal/util.js.
+  ObjectDefineProperty(this, "exports", {
+    __proto__: null,
+    configurable: true,
+    enumerable: true,
+    value: {},
+    writable: true,
+  });
   moduleParentCache.set(this, parent);
   updateChildren(parent, this, false);
   this.filename = null;
@@ -815,6 +828,10 @@ Module._load = function (request, parent, isMain) {
       }
     } else if (
       module.exports &&
+      // Skip Proxy module.exports so the cleanup pass after a circular
+      // require doesn't invoke user-visible getPrototypeOf traps. Matches
+      // Node's lib/internal/modules/cjs/loader.js behavior.
+      !core.isProxy(module.exports) &&
       ObjectGetPrototypeOf(module.exports) ===
         CircularRequirePrototypeWarningProxy
     ) {
@@ -1330,7 +1347,16 @@ function makeRequireFunction(mod) {
   }
 
   resolve.paths = paths;
-  require.main = mainModule;
+  // Use ObjectDefineProperty so user-installed Object.prototype.main setters
+  // are not invoked when require() is constructed. Mirrors setOwnProperty()
+  // in Node's lib/internal/modules/helpers.js.
+  ObjectDefineProperty(require, "main", {
+    __proto__: null,
+    configurable: true,
+    enumerable: true,
+    value: mainModule,
+    writable: true,
+  });
   // Enable support to add extra extension types.
   require.extensions = Module._extensions;
   require.cache = Module._cache;
@@ -1349,25 +1375,35 @@ function isAbsolute(filenameOrUrl) {
   return RE_START_OF_ABS_PATH.test(filenameOrUrl);
 }
 
+// Match Node's error reason (see lib/internal/modules/cjs/loader.js).
+const kCreateRequireError =
+  "must be a file URL object, file URL string, or absolute path string";
+
 function createRequire(filenameOrUrl) {
   let fileUrlStr;
   if (filenameOrUrl instanceof URL) {
     if (filenameOrUrl.protocol !== "file:") {
-      throw new Error(
-        `The argument 'filename' must be a file URL object, file URL string, or absolute path string. Received ${filenameOrUrl}`,
+      throw new internalErrors.ERR_INVALID_ARG_VALUE(
+        "filename",
+        filenameOrUrl,
+        kCreateRequireError,
       );
     }
     fileUrlStr = filenameOrUrl.toString();
   } else if (typeof filenameOrUrl === "string") {
     if (!filenameOrUrl.startsWith("file:") && !isAbsolute(filenameOrUrl)) {
-      throw new Error(
-        `The argument 'filename' must be a file URL object, file URL string, or absolute path string. Received ${filenameOrUrl}`,
+      throw new internalErrors.ERR_INVALID_ARG_VALUE(
+        "filename",
+        filenameOrUrl,
+        kCreateRequireError,
       );
     }
     fileUrlStr = filenameOrUrl;
   } else {
-    throw new Error(
-      `The argument 'filename' must be a file URL object, file URL string, or absolute path string. Received ${filenameOrUrl}`,
+    throw new internalErrors.ERR_INVALID_ARG_VALUE(
+      "filename",
+      filenameOrUrl,
+      kCreateRequireError,
     );
   }
   const filename = op_require_as_file_path(fileUrlStr) ?? fileUrlStr;

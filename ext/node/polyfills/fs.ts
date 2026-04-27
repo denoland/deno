@@ -52,6 +52,7 @@ import {
   WriteStream,
 } from "ext:deno_node/internal/fs/streams.mjs";
 import SyncWriteStream from "ext:deno_node/internal/fs/sync_write_stream.js";
+import Utf8Stream from "ext:deno_node/internal/streams/fast-utf8-stream.js";
 import {
   arrayBufferViewToUint8Array,
   BigIntStats,
@@ -149,7 +150,7 @@ import {
   kEmptyObject,
   normalizeEncoding,
 } from "ext:deno_node/internal/util.mjs";
-import { basename, resolve, toNamespacedPath } from "node:path";
+import { basename, relative, resolve, toNamespacedPath } from "node:path";
 import * as pathModule from "node:path";
 import type { Encoding } from "node:crypto";
 import { core, primordials } from "ext:core/mod.js";
@@ -179,6 +180,7 @@ const {
   SafeMap,
   StringPrototypeToString,
   SymbolAsyncIterator,
+  SymbolDispose,
   SymbolFor,
   ArrayPrototypePush,
   TypedArrayPrototypeGetByteLength,
@@ -651,6 +653,7 @@ async function readFileFromFd(fd: number, options?: FileOptions) {
 
   const buffer = new Uint8Array(length);
   const buffers: Uint8Array[] = [];
+  let totalRead = 0;
 
   while (true) {
     readFileCheckAborted(signal);
@@ -659,6 +662,10 @@ async function readFileFromFd(fd: number, options?: FileOptions) {
     const nread = await op_node_fs_read_deferred(fd, buffer, -1);
     if (nread === 0) {
       break;
+    }
+    totalRead += nread;
+    if (totalRead > kIoMaxLength) {
+      throw new ERR_FS_FILE_TOO_LARGE(totalRead);
     }
     ArrayPrototypePush(buffers, TypedArrayPrototypeSubarray(buffer, 0, nread));
   }
@@ -2053,6 +2060,33 @@ function mkdtempSync(
   }
 }
 
+// Mirrors Node's lib/fs.js mkdtempDisposableSync(): create the temp dir and
+// return an object with .path, .remove(), and Symbol.dispose. cwd is captured
+// at creation time so a later process.chdir() doesn't break removal.
+function mkdtempDisposableSync(
+  prefix: string | Buffer | Uint8Array | URL,
+  options?: { encoding: string } | string,
+) {
+  const cwd = process.cwd();
+  const path = mkdtempSync(prefix, options as { encoding: string }) as string;
+  const fullPath = resolve(cwd, path);
+  const remove = () => {
+    rmSync(fullPath, {
+      force: true,
+      maxRetries: 0,
+      recursive: true,
+      retryDelay: 0,
+    });
+  };
+  return {
+    path,
+    remove,
+    [SymbolDispose]() {
+      remove();
+    },
+  };
+}
+
 function decodeMkdtemp(str: string, encoding: Encoding): string;
 function decodeMkdtemp(
   str: string,
@@ -3162,16 +3196,27 @@ function watch(
   // deno-lint-ignore prefer-primordials
   const watchPath = getValidatedPath(filename).toString();
 
+  const recursive = options?.recursive || false;
   const iterator: Deno.FsWatcher = Deno.watchFs(watchPath, {
-    recursive: options?.recursive || false,
+    recursive,
   });
+
+  // Resolve the watched path once so we can compute relative paths.
+  // Use realPathSync to resolve symlinks (e.g. macOS /var -> /private/var)
+  // since Deno.watchFs returns real (symlink-resolved) paths.
+  const resolvedWatchPath = realpathSync(watchPath) as string;
 
   asyncIterableToCallback<Deno.FsEvent>(iterator, (val, done) => {
     if (done) return;
+    // Node.js returns the relative path from the watched directory for
+    // recursive watches, but just the basename for non-recursive watches.
+    const filename = recursive
+      ? relative(resolvedWatchPath, val.paths[0])
+      : basename(val.paths[0]);
     fsWatcher.emit(
       "change",
       convertDenoFsEventToNodeFsEvent(val.kind),
-      basename(val.paths[0]),
+      filename,
     );
   }, (e) => {
     fsWatcher.emit("error", e);
@@ -3213,9 +3258,11 @@ function watchPromise(
   // deno-lint-ignore prefer-primordials
   const watchPath = getValidatedPath(filename).toString();
 
+  const recursive = options?.recursive ?? false;
   const watcher = Deno.watchFs(watchPath, {
-    recursive: options?.recursive ?? false,
+    recursive,
   });
+  const resolvedWatchPath = realpathSync(watchPath) as string;
 
   if (options?.signal) {
     if (options.signal.aborted) {
@@ -3241,8 +3288,11 @@ function watchPromise(
       const eventType = convertDenoFsEventToNodeFsEvent(
         iterResult.value.kind,
       );
+      const fname = recursive
+        ? relative(resolvedWatchPath, iterResult.value.paths[0])
+        : basename(iterResult.value.paths[0]);
       return {
-        value: { eventType, filename: basename(iterResult.value.paths[0]) },
+        value: { eventType, filename: fname },
         done: false,
       };
     },
@@ -3549,6 +3599,7 @@ export default {
   mkdir,
   mkdirSync,
   mkdtemp,
+  mkdtempDisposableSync,
   mkdtempSync,
   open,
   openAsBlob,
@@ -3601,6 +3652,7 @@ export default {
   WriteStream,
   writeSync,
   SyncWriteStream,
+  Utf8Stream,
   // For tests
   _toUnixTimestamp,
 };
@@ -3665,6 +3717,7 @@ export {
   mkdir,
   mkdirSync,
   mkdtemp,
+  mkdtempDisposableSync,
   mkdtempSync,
   open,
   openAsBlob,
@@ -3706,6 +3759,7 @@ export {
   unlink,
   unlinkSync,
   unwatchFile,
+  Utf8Stream,
   utimes,
   utimesSync,
   watch,

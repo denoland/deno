@@ -561,7 +561,7 @@ function _internalConnect(
   addressType: number,
   localAddress: string,
   localPort: number | undefined,
-  flags: number,
+  flags: number = 0,
 ) {
   assert(socket.connecting);
 
@@ -840,6 +840,17 @@ function _tryReadStart(socket: Socket) {
 function _onReadableStreamEnd(this: Socket) {
   if (!this.allowHalfOpen) {
     this.write = _writeAfterFIN;
+    if (this.writable) {
+      // Defer end() to nextTick so that user 'end' handlers registered
+      // after the constructor (which registered _onReadableStreamEnd)
+      // see socket.writable === true, matching Node.js behavior where
+      // the writable getter doesn't reflect the ending state immediately.
+      // deno-lint-ignore no-this-alias
+      const socket = this;
+      nextTick(() => {
+        if (socket.writable && !socket.destroyed) socket.end();
+      });
+    }
   }
 }
 
@@ -1186,6 +1197,7 @@ function _lookupAndConnectMultiple(
         current: 0,
         port,
         localPort,
+        flags: 0,
         timeout,
         [kTimeout]: null,
         errors: [],
@@ -1224,9 +1236,15 @@ function _addClientAbortSignalOption(socket: Socket, signal: AbortSignal) {
   const onAbort = () => {
     socket.destroy(new AbortError());
   };
-  signal.addEventListener("abort", onAbort, { once: true });
-  socket.once("close", () => {
-    signal.removeEventListener("abort", onAbort);
+  // Match Node: register on nextTick so synchronous listenerCount checks
+  // immediately after Socket construction don't double-count the listener
+  // already attached by Duplex via addAbortSignal.
+  nextTick(() => {
+    if (socket.destroyed) return;
+    signal.addEventListener("abort", onAbort, { once: true });
+    socket.once("close", () => {
+      signal.removeEventListener("abort", onAbort);
+    });
   });
 }
 
@@ -2086,8 +2104,15 @@ function _isConnectionListener(
   return typeof connectionListener === "function";
 }
 
-function _getFlags(ipv6Only?: boolean): number {
-  return ipv6Only === true ? TCPConstants.UV_TCP_IPV6ONLY : 0;
+function _getFlags(ipv6Only?: boolean, reusePort?: boolean): number {
+  let flags = 0;
+  if (ipv6Only === true) {
+    flags |= TCPConstants.UV_TCP_IPV6ONLY;
+  }
+  if (reusePort === true) {
+    flags |= TCPConstants.UV_TCP_REUSEPORT;
+  }
+  return flags;
 }
 
 function _listenInCluster(
@@ -2244,8 +2269,10 @@ export function _createServerHandle(
       // }
     } else if (addressType === 6) {
       err = (handle as TCP).bind6(address, port ?? 0, flags ?? 0);
+    } else if (isTCP) {
+      err = (handle as TCP).bindWithFlags(address, port ?? 0, flags ?? 0);
     } else {
-      err = (handle as TCP).bind(address, port ?? 0);
+      err = handle.bind(address);
     }
   }
 
@@ -2535,7 +2562,7 @@ Server.prototype.listen = function (...args: unknown[]) {
 
   // deno-lint-ignore no-explicit-any
   options = (options as any)._handle || (options as any).handle || options;
-  const flags = _getFlags(options.ipv6Only);
+  const flags = _getFlags(options.ipv6Only, options.reusePort);
 
   // (handle[, backlog][, cb]) where handle is an object with a handle
   if (options instanceof TCP) {
@@ -2578,6 +2605,10 @@ Server.prototype.listen = function (...args: unknown[]) {
     validatePort(options.port, "options.port");
     backlog = options.backlog || backlogFromArgs;
 
+    if (options.reusePort === true) {
+      options.exclusive = true;
+    }
+
     // start TCP server listening on host:port
     if (options.host) {
       _lookupAndListen(
@@ -2599,6 +2630,7 @@ Server.prototype.listen = function (...args: unknown[]) {
         backlog,
         undefined,
         options.exclusive,
+        flags,
       );
     }
 

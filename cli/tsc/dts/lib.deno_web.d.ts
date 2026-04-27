@@ -820,7 +820,7 @@ declare var ReadableStreamBYOBReader: {
 
 /** @category Streams */
 interface ReadableStreamBYOBRequest {
-  readonly view: ArrayBufferView | null;
+  readonly view: Uint8Array<ArrayBuffer> | null;
   respond(bytesWritten: number): void;
   respondWithNewView(view: ArrayBufferView): void;
 }

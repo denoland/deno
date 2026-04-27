@@ -27,6 +27,7 @@ export const utimes = fsPromises.utimes;
 export const lutimes = fsPromises.lutimes;
 export const realpath = fsPromises.realpath;
 export const mkdtemp = fsPromises.mkdtemp;
+export const mkdtempDisposable = fsPromises.mkdtempDisposable;
 export const writeFile = fsPromises.writeFile;
 export const appendFile = fsPromises.appendFile;
 export const readFile = fsPromises.readFile;
