@@ -1598,6 +1598,7 @@
     "parallel/test-http2-write-empty-string.js": {},
     "parallel/test-http2-zero-length-header.js": {},
     "parallel/test-http2-zero-length-write.js": {},
+    "parallel/test-https-agent-abort-controller.js": {},
     "parallel/test-https-connecting-to-http.js": {
       "ignore": true,
       "reason": "TLS handshake error not propagated when HTTPS client connects to plain HTTP server"
