@@ -302,7 +302,6 @@
     "parallel/test-child-process-spawn-shell.js": {},
     "parallel/test-child-process-spawn-timeout-kill-signal.js": {},
     "parallel/test-child-process-spawn-typeerror.js": {},
-    "parallel/test-child-process-spawn-windows-batch-file.js": {},
     "parallel/test-child-process-spawnsync-args.js": {},
     "parallel/test-child-process-spawnsync-env.js": {},
     "parallel/test-child-process-spawnsync-input.js": {},
@@ -1183,7 +1182,9 @@
     "parallel/test-fs-util-validateoffsetlength.js": {},
     "parallel/test-fs-utimes-y2K38.js": {},
     "parallel/test-fs-utimes.js": {},
-    "parallel/test-fs-watch-close-when-destroyed.js": {},
+    "parallel/test-fs-watch-close-when-destroyed.js": {
+      "windows": false
+    },
     "parallel/test-fs-watch-file-enoent-after-deletion.js": {},
     "parallel/test-fs-watch-recursive-add-file-to-existing-subfolder.js": {},
     "parallel/test-fs-watch-recursive-add-folder.js": {},
