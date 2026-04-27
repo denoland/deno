@@ -2219,3 +2219,70 @@ Deno.test("crypto.subtle.importKey PKCS#8 with wrong algorithm does not panic", 
     )
   );
 });
+
+// Regression test: TypeErrors thrown by WebIDL dictionary converters when a
+// `required: true` member is absent must carry Node's
+// `code: 'ERR_MISSING_OPTION'`. Required by Node's
+// `parallel/test-webcrypto-derivekey-cfrg.js` and
+// `parallel/test-webcrypto-derivekey-ecdh.js`, both of which assert
+// `code: 'ERR_MISSING_OPTION'` when `subtle.deriveKey({ name: 'X25519' })`
+// (or 'ECDH', etc.) is called without the required `public` field.
+Deno.test("crypto.subtle.deriveKey without 'public' -> ERR_MISSING_OPTION", async () => {
+  const subtle = globalThis.crypto.subtle;
+
+  for (
+    const algo of [
+      { name: "ECDH", namedCurve: "P-256" },
+      "X25519",
+    ] as const
+  ) {
+    const kp = await subtle.generateKey(algo, false, ["deriveKey"]);
+    const algoName = typeof algo === "string" ? algo : algo.name;
+    let caught: unknown;
+    try {
+      await subtle.deriveKey(
+        // deno-lint-ignore no-explicit-any
+        { name: algoName } as any, // missing required `public`
+        kp.privateKey,
+        { name: "AES-CBC", length: 128 },
+        true,
+        ["encrypt", "decrypt"],
+      );
+    } catch (err) {
+      caught = err;
+    }
+    assert(
+      caught instanceof TypeError,
+      `${algoName}: expected TypeError, got ${caught}`,
+    );
+    assertEquals(
+      // deno-lint-ignore no-explicit-any
+      (caught as any).code,
+      "ERR_MISSING_OPTION",
+      `${algoName}: code`,
+    );
+  }
+});
+
+// The existing TypeError message is preserved (additive change).
+Deno.test("crypto.subtle.deriveKey missing 'public' message preserved", async () => {
+  const subtle = globalThis.crypto.subtle;
+  const kp = await subtle.generateKey(
+    { name: "ECDH", namedCurve: "P-256" },
+    false,
+    ["deriveKey"],
+  );
+  await assertRejects(
+    () =>
+      subtle.deriveKey(
+        // deno-lint-ignore no-explicit-any
+        { name: "ECDH" } as any,
+        kp.privateKey,
+        { name: "AES-CBC", length: 128 },
+        true,
+        ["encrypt", "decrypt"],
+      ),
+    TypeError,
+    "'public' is required",
+  );
+});
