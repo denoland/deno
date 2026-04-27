@@ -2428,7 +2428,6 @@ impl WorkspaceDirectory {
     // root, all member files need to be included in the upload manifest.
     // Previously this called append_workspace_members_to_exclude here, which
     // caused `deno deploy` to upload zero files for workspace monorepos
-    // (see https://github.com/denoland/deno/issues/XXXXX).
     Ok(Some(config))
   }
 
