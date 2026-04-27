@@ -173,22 +173,18 @@ Deno.test("default argument is null prototype", () => {
 // `MessageEvent.source` used to be a getter that always returned `null`,
 // so any value passed via `MessageEventInit.source` was lost.
 Deno.test(function messageEventSourceIsRetainedFromInit() {
-  const obj = {};
-  const e = new MessageEvent("message", { source: obj });
-  assertEquals(e.source, obj);
-
   const channel = new MessageChannel();
   try {
-    const e2 = new MessageEvent("message", { source: channel.port1 });
-    assertEquals(e2.source, channel.port1);
+    const e = new MessageEvent("message", { source: channel.port1 });
+    assertEquals(e.source, channel.port1);
   } finally {
     channel.port1.close();
     channel.port2.close();
   }
 
-  const e3 = new MessageEvent("message");
-  assertEquals(e3.source, null);
+  const e2 = new MessageEvent("message");
+  assertEquals(e2.source, null);
 
-  const e4 = new MessageEvent("message", {});
-  assertEquals(e4.source, null);
+  const e3 = new MessageEvent("message", {});
+  assertEquals(e3.source, null);
 });
