@@ -937,6 +937,10 @@ pub enum DnsRecordData {
 pub struct DnsRecordWithTtl {
   #[to_v8(serde)]
   pub data: DnsRecordData,
+  /// Record type name, populated for ANY queries to distinguish
+  /// untagged string variants (A vs AAAA vs NS vs PTR vs CNAME).
+  #[to_v8(serde)]
+  pub record_type: Option<String>,
   pub ttl: u32,
 }
 
@@ -1058,10 +1062,22 @@ pub async fn op_dns_resolve(
     .records()
     .iter()
     .filter_map(|rec| {
-      let r = format_rdata(record_type)(rec.data()).transpose();
+      let is_any = record_type == RecordType::ANY;
+      // For ANY queries, use each record's actual type for formatting
+      let effective_type = if is_any {
+        rec.record_type()
+      } else {
+        record_type
+      };
+      let r = format_rdata(effective_type)(rec.data()).transpose();
       r.map(|maybe_data| {
         maybe_data.map(|data| DnsRecordWithTtl {
           data,
+          record_type: if is_any {
+            Some(effective_type.to_string())
+          } else {
+            None
+          },
           ttl: rec.ttl(),
         })
       })

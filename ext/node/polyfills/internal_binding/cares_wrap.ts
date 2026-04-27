@@ -241,13 +241,15 @@ export class ChannelWrap extends AsyncWrap implements ChannelWrapQuery {
   #servers: [string, number][] | null = null;
   #timeout: number;
   #tries: number;
+  #maxTimeout: number;
   #pendingQueries: Set<QueryReqWrap> = new Set();
 
-  constructor(timeout: number, tries: number) {
+  constructor(timeout: number, tries: number, maxTimeout: number) {
     super(providerType.DNSCHANNEL);
 
     this.#timeout = timeout;
     this.#tries = tries;
+    this.#maxTimeout = maxTimeout;
   }
 
   async #query(
@@ -297,158 +299,150 @@ export class ChannelWrap extends AsyncWrap implements ChannelWrapQuery {
     // deno-lint-ignore no-explicit-any
     ret: any[];
   }> {
-    let ret = [];
-    let code = 0;
+    const tries = this.#tries > 0 ? this.#tries : 1;
 
-    try {
-      let dnsPromise: Promise<Deno.RecordWithTtl[]> = op_dns_resolve({
-        query,
-        recordType,
-        options: resolveOptions,
-      }, /* useEdns0 */ false);
+    for (let attempt = 0; attempt < tries; attempt++) {
+      let ret = [];
+      let code = 0;
 
-      if (this.#timeout >= 0) {
-        dnsPromise = Promise.race([
-          dnsPromise,
-          new Promise<never>((_resolve, reject) => {
-            setTimeout(
-              () => reject(new Error("ETIMEOUT")),
-              this.#timeout,
-            );
-          }),
-        ]);
-      }
+      try {
+        let dnsPromise: Promise<Deno.RecordWithTtl[]> = op_dns_resolve({
+          query,
+          recordType,
+          options: resolveOptions,
+        }, /* useEdns0 */ false);
 
-      const res = await dnsPromise;
-      if (ttl) {
-        ret = res;
-      } else {
-        ret = res.map((recordWithTtl) => recordWithTtl.data);
-      }
-    } catch (e) {
-      if (e instanceof Deno.errors.NotFound) {
-        code = codeMap.get("EAI_NODATA")!;
-      } else if (e instanceof Error && e.message === "ETIMEOUT") {
-        code = "ETIMEOUT";
-      } else {
-        // TODO(cmorten): map errors to appropriate error codes.
-        code = codeMap.get("UNKNOWN")!;
+        if (this.#timeout >= 0) {
+          // c-ares doubles timeout on each retry, capped by maxTimeout
+          let currentTimeout = this.#timeout * Math.pow(2, attempt);
+          if (this.#maxTimeout >= 0) {
+            currentTimeout = Math.min(currentTimeout, this.#maxTimeout);
+          }
+          dnsPromise = Promise.race([
+            dnsPromise,
+            new Promise<never>((_resolve, reject) => {
+              setTimeout(
+                () => reject(new Error("ETIMEOUT")),
+                currentTimeout,
+              );
+            }),
+          ]);
+        }
+
+        const res = await dnsPromise;
+        if (ttl) {
+          ret = res;
+        } else {
+          ret = res.map((recordWithTtl) => recordWithTtl.data);
+        }
+        return { code, ret };
+      } catch (e) {
+        if (e instanceof Error && e.message === "ETIMEOUT") {
+          if (attempt < tries - 1) continue;
+          code = "ETIMEOUT";
+        } else if (e instanceof Deno.errors.NotFound) {
+          code = codeMap.get("EAI_NODATA")!;
+        } else {
+          // TODO(cmorten): map errors to appropriate error codes.
+          code = codeMap.get("UNKNOWN")!;
+        }
+        return { code, ret };
       }
     }
 
-    return { code, ret };
+    return { code: codeMap.get("UNKNOWN")!, ret: [] };
   }
 
   queryAny(req: QueryReqWrap, name: string): number {
-    // TODO(@bartlomieju): implemented temporary measure to allow limited usage of
-    // `resolveAny` like APIs.
-    //
-    // Ideally we move to using the "ANY" / "*" DNS query in future
-    // REF: https://github.com/denoland/deno/issues/14492
     this.#pendingQueries.add(req);
 
-    (async () => {
-      const records: { type: Deno.RecordType; [key: string]: unknown }[] = [];
-
-      await Promise.allSettled([
-        this.#query(name, "A").then(({ ret }) => {
-          ret.forEach((record) =>
-            records.push({ type: "A", address: record, ttl: 0 })
-          );
-        }),
-        this.#query(name, "AAAA").then(({ ret }) => {
-          (ret as string[]).forEach((record) =>
-            records.push({ type: "AAAA", address: record, ttl: 0 })
-          );
-        }),
-        this.#query(name, "CAA").then(({ ret }) => {
-          (ret as Deno.CaaRecord[]).forEach(({ critical, tag, value }) =>
-            records.push({
-              type: "CAA",
-              [tag]: value,
-              critical: +critical && 128,
-            })
-          );
-        }),
-        this.#query(name, "CNAME").then(({ ret }) => {
-          ret.forEach((record) =>
-            records.push({ type: "CNAME", value: record })
-          );
-        }),
-        this.#query(name, "MX").then(({ ret }) => {
-          (ret as Deno.MxRecord[]).forEach(({ preference, exchange }) =>
-            records.push({
-              type: "MX",
-              priority: preference,
-              exchange: fqdnToHostname(exchange),
-            })
-          );
-        }),
-        this.#query(name, "NAPTR").then(({ ret }) => {
-          (ret as Deno.NaptrRecord[]).forEach(
-            ({ order, preference, flags, services, regexp, replacement }) =>
-              records.push({
-                type: "NAPTR",
-                order,
-                preference,
-                flags,
-                service: services,
-                regexp,
-                replacement,
-              }),
-          );
-        }),
-        this.#query(name, "NS").then(({ ret }) => {
-          (ret as string[]).forEach((record) =>
-            records.push({ type: "NS", value: fqdnToHostname(record) })
-          );
-        }),
-        this.#query(name, "PTR").then(({ ret }) => {
-          (ret as string[]).forEach((record) =>
-            records.push({ type: "PTR", value: fqdnToHostname(record) })
-          );
-        }),
-        this.#query(name, "SOA").then(({ ret }) => {
-          (ret as Deno.SoaRecord[]).forEach(
-            ({ mname, rname, serial, refresh, retry, expire, minimum }) =>
-              records.push({
-                type: "SOA",
-                nsname: fqdnToHostname(mname),
-                hostmaster: fqdnToHostname(rname),
-                serial,
-                refresh,
-                retry,
-                expire,
-                minttl: minimum,
-              }),
-          );
-        }),
-        this.#query(name, "SRV").then(({ ret }) => {
-          (ret as Deno.SrvRecord[]).forEach(
-            ({ priority, weight, port, target }) =>
-              records.push({
-                type: "SRV",
-                priority,
-                weight,
-                port,
-                name: fqdnToHostname(target),
-              }),
-          );
-        }),
-        this.#query(name, "TXT").then(({ ret }) => {
-          ret.forEach((record) =>
-            records.push({ type: "TXT", entries: record })
-          );
-        }),
-      ]);
-
+    // deno-lint-ignore no-explicit-any
+    this.#query(name, "ANY" as any, true).then(({ code, ret }) => {
       if (!this.#pendingQueries.has(req)) return;
       this.#pendingQueries.delete(req);
 
-      const err = records.length ? 0 : codeMap.get("EAI_NODATA")!;
+      if (code !== 0) {
+        req.oncomplete(code, []);
+        return;
+      }
 
+      const records: { type: string; [key: string]: unknown }[] = [];
+      for (const entry of ret) {
+        const data = entry?.data ?? entry;
+        const ttl = entry?.ttl ?? 0;
+        const rt = entry?.recordType;
+
+        switch (rt) {
+          case "A":
+            records.push({ type: "A", address: data, ttl });
+            break;
+          case "AAAA":
+            records.push({ type: "AAAA", address: data, ttl });
+            break;
+          case "MX":
+            records.push({
+              type: "MX",
+              priority: data.preference,
+              exchange: fqdnToHostname(data.exchange),
+            });
+            break;
+          case "NS":
+            records.push({ type: "NS", value: fqdnToHostname(data) });
+            break;
+          case "TXT":
+            records.push({ type: "TXT", entries: data });
+            break;
+          case "PTR":
+            records.push({ type: "PTR", value: fqdnToHostname(data) });
+            break;
+          case "SOA":
+            records.push({
+              type: "SOA",
+              nsname: fqdnToHostname(data.mname),
+              hostmaster: fqdnToHostname(data.rname),
+              serial: data.serial,
+              refresh: data.refresh,
+              retry: data.retry,
+              expire: data.expire,
+              minttl: data.minimum,
+            });
+            break;
+          case "CAA":
+            records.push({
+              type: "CAA",
+              [data.tag]: data.value,
+              critical: +data.critical && 128,
+            });
+            break;
+          case "CNAME":
+            records.push({ type: "CNAME", value: data });
+            break;
+          case "NAPTR":
+            records.push({
+              type: "NAPTR",
+              order: data.order,
+              preference: data.preference,
+              flags: data.flags,
+              service: data.services,
+              regexp: data.regexp,
+              replacement: data.replacement,
+            });
+            break;
+          case "SRV":
+            records.push({
+              type: "SRV",
+              priority: data.priority,
+              weight: data.weight,
+              port: data.port,
+              name: fqdnToHostname(data.target),
+            });
+            break;
+        }
+      }
+
+      const err = records.length ? 0 : codeMap.get("EAI_NODATA")!;
       req.oncomplete(err, records);
-    })();
+    });
 
     return 0;
   }
