@@ -64,11 +64,9 @@ let debug = debuglog("tls", (fn) => {
   debug = fn;
 });
 
-// In-process registry of TLS servers, keyed by listening port. Used to
-// emulate session ticket / session-id resumption between client and server
-// running in the same Deno process. The underlying rustls connections do
-// not transparently surface session bytes, so resumption is simulated at
-// the polyfill layer for Node compat tests.
+// rustls does not surface session bytes to JS, so for in-process Node
+// tests we emulate session ticket / session-id resumption by looking up
+// the peer server through this registry.
 const tlsServerRegistry = new Map();
 
 function makeRandomBytes(n) {
@@ -78,9 +76,7 @@ function makeRandomBytes(n) {
 }
 
 function bufferToHex(buf) {
-  return Buffer.isBuffer(buf) ? buf.toString("hex") : Buffer.from(buf).toString(
-    "hex",
-  );
+  return buf.toString("hex");
 }
 
 function canonicalizeIP(ip) {
@@ -1114,12 +1110,9 @@ function onConnectSecure() {
   let session = this[kPendingSession];
   this[kPendingSession] = null;
 
-  // Emulate TLS session resumption between client and server when both
-  // run in the same Deno process. rustls exposes neither client-side
-  // session blobs nor server-side session ticket state to JS, so the
-  // session bytes seen by Node code are synthesized here so APIs like
-  // tls.TLSSocket#getSession()/setSession() and tls.Server#setTicketKeys()
-  // behave the way Node tests expect.
+  // Emulate session resumption when both peers run in the same Deno
+  // process: synthesize session bytes so getSession/setSession and
+  // setTicketKeys behave as Node code expects.
   const port = options?.port;
   const peerServer = port != null
     ? tlsServerRegistry.get(typeof port === "string" ? Number(port) : port)
