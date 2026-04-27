@@ -640,7 +640,11 @@ Deno.test(
 Deno.test(
   { permissions: { net: true } },
   async function netUdpConcurrentSendReceive() {
-    const socket = Deno.listenDatagram({ port: listenPort, transport: "udp" });
+    const socket = Deno.listenDatagram({
+      port: listenPort,
+      transport: "udp",
+      hostname: "127.0.0.1",
+    });
     assert(socket.addr.transport === "udp");
     assertEquals(socket.addr.port, listenPort);
     assertEquals(socket.addr.hostname, "127.0.0.1");
@@ -667,6 +671,7 @@ Deno.test(
     const socket = Deno.listenDatagram({
       port: listenPort,
       transport: "udp",
+      hostname: "127.0.0.1",
     });
     // Panic happened on second send: BorrowMutError
     const a = socket.send(new Uint8Array(), socket.addr);
