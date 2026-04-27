@@ -1839,15 +1839,19 @@ Socket.prototype._destroy = function (exception, cb) {
       }
     }
 
-    this._handle.close(() => {
-      this._handle.onread = _noop;
-      this._handle = null;
-      this._sockname = undefined;
+    const handle = this._handle;
+    // Call cb first so the stream's error emission (via nextTick) is
+    // scheduled before the handle close callback. This ensures 'error'
+    // fires before 'close', matching Node.js behavior.
+    this._handle = null;
+    this._sockname = undefined;
+    cb(exception);
+    handle.close(() => {
+      handle.onread = _noop;
 
       debug("emit close");
       this.emit("close", isException);
     });
-    cb(exception);
   } else {
     cb(exception);
     nextTick(_emitCloseNT, this);
