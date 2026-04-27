@@ -64,9 +64,15 @@ let debug = debuglog("tls", (fn) => {
   debug = fn;
 });
 
-// rustls does not surface session bytes to JS, so for in-process Node
-// tests we emulate session ticket / session-id resumption by looking up
-// the peer server through this registry.
+// In-process emulation only. rustls does not surface real session
+// blobs to JS, so the bytes returned by getSession() / observed via
+// _sessionReused are crypto.getRandomValues(192) tagged with the
+// peer server's current ticket key. This is sufficient for Node
+// compat tests that run client and server in the same process; it
+// will NOT resume across processes (e.g. persisting agent.getSession()
+// to disk and reusing it in another process will silently cache-miss
+// and re-handshake). Real cross-process resumption requires rustls
+// to surface session bytes to JS.
 const tlsServerRegistry = new Map();
 
 function makeRandomBytes(n) {
