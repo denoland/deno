@@ -17545,6 +17545,30 @@ fn lsp_tsconfig_node_modules_dts_diagnostics() {
   client.shutdown();
 }
 
+// Regression test for #33012: the @types/node `globals.d.cts` heuristic for
+// detecting the web fetch surface used `onmessage`, which isn't on Deno's
+// `globalThis` outside of workers, so LSP would fall back to undici types
+// for `RequestInit` and reject otherwise-valid `new Request(url, init)`.
+#[test(timeout = 300)]
+fn lsp_request_init_global_matches_check() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write("deno.json", json!({}).to_string());
+  let file = temp_dir.source_file(
+    "main.ts",
+    concat!(
+      "const init: Parameters<typeof fetch>[1] = {};\n",
+      "const _request = new Request(\"https://deno.com\", init);\n",
+      "console.log(_request);\n",
+    ),
+  );
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  let diagnostics = client.did_open_file(&file);
+  assert_eq!(diagnostics.all(), vec![]);
+  client.shutdown();
+}
+
 #[test(timeout = 300)]
 fn lsp_tsconfig_root_dirs() {
   let context = TestContextBuilder::new()
