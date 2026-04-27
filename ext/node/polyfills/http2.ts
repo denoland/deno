@@ -1745,7 +1745,7 @@ class Http2Stream extends Duplex {
     // via libuv I/O completion, so each write yields to the event loop. In
     // our polyfill, the http2 handle's writev pushes data straight into
     // nghttp2's send buffer and afterWriteDispatched invokes the write
-    // callback synchronously — so a Readable.pipe(req) loop becomes a tight
+    // callback synchronously, so a Readable.pipe(req) loop becomes a tight
     // sync-write -> nextTick -> sync-write chain that never yields. Once the
     // peer's flow-control window fills, the inbound WINDOW_UPDATE never gets
     // read and the pipeline deadlocks. setImmediate forces a check-phase
