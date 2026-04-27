@@ -217,7 +217,7 @@ fn getaddrinfo_inner(
           std::ptr::copy_nonoverlapping(
             addr.ai_addr as *const u8,
             storage as *mut u8,
-            addr.ai_addrlen as usize,
+            addr.ai_addrlen.try_into().unwrap(),
           );
           *len = addr.ai_addrlen as _;
           Ok(())
