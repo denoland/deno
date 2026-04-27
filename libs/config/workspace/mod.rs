@@ -2423,11 +2423,6 @@ impl WorkspaceDirectory {
     };
     self.exclude_includes_with_member_for_base_for_root(&mut config.files);
     combine_files_config_with_cli_args(&mut config.files, cli_args);
-    // NOTE: Unlike lint/fmt/test/bench/publish configs, deploy should NOT
-    // exclude workspace member directories. When deploying from a workspace
-    // root, all member files need to be included in the upload manifest.
-    // Previously this called append_workspace_members_to_exclude here, which
-    // caused `deno deploy` to upload zero files for workspace monorepos
     Ok(Some(config))
   }
 
@@ -6632,12 +6627,10 @@ pub mod test {
       "packages/types should not be excluded from deploy files"
     );
     assert!(
-      deploy_config
-        .files
-        .matches_path(
-          &root_dir().join("packages/backend/main.ts"),
-          PathKind::File,
-        ),
+      deploy_config.files.matches_path(
+        &root_dir().join("packages/backend/main.ts"),
+        PathKind::File,
+      ),
       "packages/backend/main.ts should be included in deploy files"
     );
   }
@@ -6684,10 +6677,9 @@ pub mod test {
 
     // Member's own files must match
     assert!(
-      deploy_config.files.matches_path(
-        &root_dir().join("member/main.ts"),
-        PathKind::File,
-      ),
+      deploy_config
+        .files
+        .matches_path(&root_dir().join("member/main.ts"), PathKind::File,),
       "member/main.ts should be included"
     );
   }
@@ -6760,12 +6752,10 @@ pub mod test {
     }
     // Entrypoint must be accessible
     assert!(
-      deploy_config
-        .files
-        .matches_path(
-          &root_dir().join("packages/backend/main.ts"),
-          PathKind::File,
-        ),
+      deploy_config.files.matches_path(
+        &root_dir().join("packages/backend/main.ts"),
+        PathKind::File,
+      ),
       "packages/backend/main.ts must be included"
     );
   }
@@ -6786,18 +6776,13 @@ pub mod test {
         }
       }),
     );
-    sys.fs_insert_json(
-      root_dir().join("packages/backend/deno.json"),
-      json!({}),
-    );
+    sys
+      .fs_insert_json(root_dir().join("packages/backend/deno.json"), json!({}));
     sys.fs_insert(
       root_dir().join("packages/backend/main.ts"),
       "Deno.serve(() => new Response('hello'));",
     );
-    sys.fs_insert_json(
-      root_dir().join("packages/types/deno.json"),
-      json!({}),
-    );
+    sys.fs_insert_json(root_dir().join("packages/types/deno.json"), json!({}));
     sys.fs_insert(
       root_dir().join("packages/types/mod.ts"),
       "export type Foo = string;",
