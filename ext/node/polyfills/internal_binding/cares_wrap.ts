@@ -677,7 +677,7 @@ export class ChannelWrap extends AsyncWrap implements ChannelWrapQuery {
             expanded.push("0000");
           }
         } else if (part !== "" && part.includes(".")) {
-          // IPv4-mapped IPv6 (e.g. ::ffff:1.2.3.4) — convert dotted
+          // IPv4-mapped IPv6 (e.g. ::ffff:1.2.3.4) - convert dotted
           // quad to two 16-bit hex groups
           const octets = part.split(".").map(Number);
           expanded.push(
