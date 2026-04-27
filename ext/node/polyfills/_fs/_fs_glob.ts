@@ -1028,15 +1028,12 @@ export function glob(
   }
   callback = makeCallback(callback);
 
-  // from NodeJS: TODO: Use iterator helpers when available
-  (async () => {
-    try {
-      const res = await Array.fromAsync(new Glob(pattern, options).glob());
-      callback(null, res);
-    } catch (err) {
-      callback(err);
-    }
-  })();
+  // Mirror Node's lib/fs.js glob(): dispatch via Promise.then so a callback
+  // that throws is not retried via the rejection branch.
+  Array.fromAsync(new Glob(pattern, options).glob()).then(
+    (res) => callback(null, res),
+    callback,
+  );
 }
 
 export function globPromise(pattern, options) {

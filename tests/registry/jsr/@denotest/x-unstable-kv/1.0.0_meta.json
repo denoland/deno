@@ -1,0 +1,8 @@
+{
+  "exports": {
+    ".": "./mod.ts"
+  },
+  "moduleGraph1": {
+    "/mod.ts": {}
+  }
+}

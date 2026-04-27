@@ -2061,7 +2061,6 @@ name = "deno_cache"
 version = "0.179.0"
 dependencies = [
  "async-stream",
- "async-trait",
  "base64 0.22.1",
  "bytes",
  "chrono",
@@ -2800,6 +2799,7 @@ dependencies = [
  "once_cell",
  "rand 0.8.5",
  "rustls-tokio-stream",
+ "rustls-webpki 0.103.13",
  "serde",
  "socket2 0.5.5",
  "sys_traits",
@@ -3114,6 +3114,7 @@ dependencies = [
  "serde_json",
  "sys_traits",
  "thiserror 2.0.12",
+ "unicode-normalization",
  "url",
  "which 8.0.0",
  "winapi",
@@ -3263,6 +3264,7 @@ dependencies = [
  "tokio",
  "tokio-metrics",
  "twox-hash 2.1.0",
+ "unicode-normalization",
  "uuid",
  "winapi",
  "windows-sys 0.59.0",
@@ -6635,7 +6637,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4979f22fdb869068da03c9f7528f8297c6fd2606bc3a4affe42e6a823fdb8da4"
 dependencies = [
  "cfg-if",
- "windows-targets 0.52.6",
+ "windows-targets 0.48.5",
 ]
 
 [[package]]
@@ -8997,7 +8999,7 @@ dependencies = [
  "once_cell",
  "ring",
  "rustls-pki-types",
- "rustls-webpki 0.103.3",
+ "rustls-webpki 0.103.13",
  "subtle",
  "zeroize",
 ]
@@ -9061,9 +9063,9 @@ dependencies = [
 
 [[package]]
 name = "rustls-webpki"
-version = "0.103.3"
+version = "0.103.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e4a72fe2bcf7a6ac6fd7d0b9e5cb68aeb7d4c0a0271730218b3e92d43b4eb435"
+checksum = "61c429a8649f110dddef65e2a5ad240f747e85f7758a6bccc7e5777bd33f756e"
 dependencies = [
  "aws-lc-rs",
  "ring",
@@ -10886,9 +10888,9 @@ dependencies = [
 
 [[package]]
 name = "tokio-eld"
-version = "0.2.0"
+version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9166030f05d6bc5642bdb8f8c2be31eb3c02cd465d662bcdc2df82d4aa41a584"
+checksum = "d06d816c6ab33079aa237f8d8a1f0f2018eb5cbd4096713f42c33aacf2502518"
 dependencies = [
  "hdrhistogram",
  "tokio",
@@ -11481,9 +11483,9 @@ dependencies = [
 
 [[package]]
 name = "v8"
-version = "147.2.1"
+version = "147.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "34ab71899655e8368fa29d66044b4ba011178dc93c65cf0263068432e77e7359"
+checksum = "2df8fffd507fb18ed000673a83d937f58e60fb07f3306b2274284125b15137cd"
 dependencies = [
  "bindgen 0.72.1",
  "bitflags 2.9.3",

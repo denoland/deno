@@ -363,6 +363,10 @@ Object.defineProperties(
       return headers;
     },
 
+    // Match Node: call the standalone write_() helper with `this` as the
+    // first argument instead of a method call on `this`. This keeps the
+    // chunk-type validation reachable when callers pass a fake `this` via
+    // `outgoingMessage.write.call(fake)` (see lib/_http_outgoing.js).
     write(
       chunk: string | Uint8Array | Buffer,
       encoding: string | null,
@@ -372,20 +376,11 @@ Object.defineProperties(
         callback = encoding;
         encoding = null;
       }
-      const ret = this.write_(chunk, encoding, callback, false);
+      const ret = write_(this, chunk, encoding, callback, false);
       if (!ret) {
         this[kNeedDrain] = true;
       }
       return ret;
-    },
-
-    write_(
-      chunk: string | Uint8Array | Buffer,
-      encoding: string | null,
-      callback: () => void,
-      fromEnd: boolean,
-    ): boolean {
-      return write_(this, chunk, encoding, callback, fromEnd);
     },
 
     addTrailers(headers: any) {
@@ -436,7 +431,7 @@ Object.defineProperties(
           this.socket.cork();
         }
 
-        this.write_(chunk, encoding, null, true);
+        write_(this, chunk, encoding, null, true);
       } else if (this.finished) {
         if (typeof callback === "function") {
           if (!this.writableFinished) {
