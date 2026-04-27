@@ -1,6 +1,6 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 import { assertEquals, fail } from "@std/assert";
-import { rmdir, rmdirSync } from "node:fs";
+import { rm, rmdir, rmdirSync, rmSync } from "node:fs";
 import { rmdir as rmdirPromise } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { join } from "@std/path";
@@ -34,7 +34,7 @@ Deno.test({
 });
 
 Deno.test({
-  name: "ASYNC: removing non-empty folder",
+  name: "ASYNC: removing non-empty folder via rm({ recursive })",
   async fn() {
     const dir = Deno.makeTempDirSync();
     using _file1 = Deno.createSync(join(dir, "file1.txt"));
@@ -42,7 +42,7 @@ Deno.test({
     Deno.mkdirSync(join(dir, "some_dir"));
     using _file = Deno.createSync(join(dir, "some_dir", "file.txt"));
     await new Promise<void>((resolve, reject) => {
-      rmdir(dir, { recursive: true }, (err) => {
+      rm(dir, { recursive: true }, (err) => {
         if (err) reject(err);
         resolve();
       });
@@ -55,14 +55,14 @@ Deno.test({
 });
 
 Deno.test({
-  name: "SYNC: removing non-empty folder",
+  name: "SYNC: removing non-empty folder via rmSync({ recursive })",
   fn() {
     const dir = Deno.makeTempDirSync();
     using _file1 = Deno.createSync(join(dir, "file1.txt"));
     using _file2 = Deno.createSync(join(dir, "file2.txt"));
     Deno.mkdirSync(join(dir, "some_dir"));
     using _file = Deno.createSync(join(dir, "some_dir", "file.txt"));
-    rmdirSync(dir, { recursive: true });
+    rmSync(dir, { recursive: true });
     assertEquals(existsSync(dir), false);
   },
 });
