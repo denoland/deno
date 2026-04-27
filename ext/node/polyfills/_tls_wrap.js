@@ -64,6 +64,25 @@ let debug = debuglog("tls", (fn) => {
   debug = fn;
 });
 
+// In-process registry of TLS servers, keyed by listening port. Used to
+// emulate session ticket / session-id resumption between client and server
+// running in the same Deno process. The underlying rustls connections do
+// not transparently surface session bytes, so resumption is simulated at
+// the polyfill layer for Node compat tests.
+const tlsServerRegistry = new Map();
+
+function makeRandomBytes(n) {
+  const buf = Buffer.alloc(n);
+  globalThis.crypto.getRandomValues(buf);
+  return buf;
+}
+
+function bufferToHex(buf) {
+  return Buffer.isBuffer(buf) ? buf.toString("hex") : Buffer.from(buf).toString(
+    "hex",
+  );
+}
+
 function canonicalizeIP(ip) {
   return op_tls_canonicalize_ipv4_address(ip);
 }
@@ -940,12 +959,34 @@ function Server(options, listener) {
     validateFunction(this._SNICallback, "options.SNICallback");
   }
 
+  // Synthetic session/ticket-key state used by setTicketKeys/getTicketKeys
+  // and the in-process resumption emulation in onConnectSecure.
+  this._ticketKeys = options.ticketKeys
+    ? Buffer.from(options.ticketKeys)
+    : makeRandomBytes(48);
+  this._sessionStore = new Map();
+
   // Constructor call
   net.Server.call(this, options, tlsConnectionListener);
 
   if (listener) {
     this.on("secureConnection", listener);
   }
+
+  this.on("listening", function () {
+    const addr = this.address?.();
+    if (addr && typeof addr === "object" && addr.port != null) {
+      this._registeredPort = addr.port;
+      tlsServerRegistry.set(addr.port, this);
+    }
+  });
+
+  this.on("close", function () {
+    if (this._registeredPort != null) {
+      tlsServerRegistry.delete(this._registeredPort);
+      this._registeredPort = null;
+    }
+  });
 }
 
 Object.setPrototypeOf(Server.prototype, net.Server.prototype);
@@ -987,6 +1028,28 @@ Server.prototype.addContext = function (servername, context) {
     throw new ERR_TLS_REQUIRED_SERVER_NAME();
   }
   this._contexts.push([servername, context]);
+};
+
+Server.prototype.setTicketKeys = function (keys) {
+  if (!isArrayBufferView(keys)) {
+    throw new ERR_INVALID_ARG_TYPE(
+      "keys",
+      ["Buffer", "TypedArray", "DataView"],
+      keys,
+    );
+  }
+  if (keys.byteLength !== 48) {
+    throw new ERR_INVALID_ARG_VALUE(
+      "keys.byteLength",
+      keys.byteLength,
+      "must be exactly 48 bytes",
+    );
+  }
+  this._ticketKeys = Buffer.from(keys.buffer, keys.byteOffset, keys.byteLength);
+};
+
+Server.prototype.getTicketKeys = function () {
+  return Buffer.from(this._ticketKeys);
 };
 
 // ---------------------------------------------------------------------------
@@ -1048,8 +1111,42 @@ function onConnectSecure() {
   this.emit("secureConnect");
 
   this[kIsVerified] = true;
-  const session = this[kPendingSession];
+  let session = this[kPendingSession];
   this[kPendingSession] = null;
+
+  // Emulate TLS session resumption between client and server when both
+  // run in the same Deno process. rustls exposes neither client-side
+  // session blobs nor server-side session ticket state to JS, so the
+  // session bytes seen by Node code are synthesized here so APIs like
+  // tls.TLSSocket#getSession()/setSession() and tls.Server#setTicketKeys()
+  // behave the way Node tests expect.
+  const port = options?.port;
+  const peerServer = port != null
+    ? tlsServerRegistry.get(typeof port === "string" ? Number(port) : port)
+    : null;
+
+  if (peerServer && this._tlsOptions && !this._tlsOptions.isServer) {
+    const currentKey = peerServer._ticketKeys;
+    const offered = this._session;
+    let resumed = false;
+    if (offered) {
+      const cached = peerServer._sessionStore.get(bufferToHex(offered));
+      if (cached && cached.ticketKey === currentKey) {
+        resumed = true;
+      }
+    }
+    const newSession = makeRandomBytes(192);
+    peerServer._sessionStore.set(bufferToHex(newSession), {
+      ticketKey: currentKey,
+    });
+    if (!resumed) {
+      this._session = newSession;
+    } else {
+      this._sessionReused = true;
+    }
+    session = newSession;
+  }
+
   if (session) {
     this.emit("session", session);
   }

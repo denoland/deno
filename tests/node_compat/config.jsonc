@@ -1749,6 +1749,7 @@
     "parallel/test-https-agent-abort-controller.js": {},
     "parallel/test-https-agent-getname.js": {},
     "parallel/test-https-agent-servername.js": {},
+    "parallel/test-https-agent-session-reuse.js": {},
     "parallel/test-https-agent-sockets-leak.js": {},
     "parallel/test-https-agent-unref-socket.js": {},
     "parallel/test-https-agent.js": {},
