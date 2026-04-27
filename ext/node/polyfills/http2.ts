@@ -59,6 +59,7 @@ import {
   kServerResponse,
   Server as HttpServer,
   setupConnectionsTracking,
+  STATUS_CODES,
 } from "node:_http_server";
 import { Duplex } from "node:stream";
 import tls from "node:tls";
@@ -3545,7 +3546,25 @@ class Http2Session extends EventEmitter {
     switch (event) {
       case "stream": {
         const stream = args[0];
-        stream.destroy(err);
+        // Deno divergence from upstream Node: Node calls stream.destroy(err)
+        // unconditionally and relies on destroy() short-circuiting on already
+        // destroyed streams. Server-push streams in Deno can complete fully
+        // synchronously inside the nghttp2 callback chain, before the
+        // client's 'stream' listener gets a chance to run, so by the time
+        // we reach captureRejection the stream is already destroyed and
+        // destroy(err) becomes a no-op that swallows the rejection.
+        // Surface the error via an 'error' emit if a listener is attached;
+        // otherwise route the error onto the session so it isn't lost (also
+        // avoids emit('error') throwing as an uncaughtException).
+        if (stream.destroyed) {
+          if (stream.listenerCount("error") > 0) {
+            process.nextTick(() => stream.emit("error", err));
+          } else {
+            this.destroy(err);
+          }
+        } else {
+          stream.destroy(err);
+        }
         break;
       }
       default:
@@ -4083,6 +4102,41 @@ function closeAllSessions(server) {
   }
 }
 
+function http2ServerOnCaptureRejection(superCtor, self, err, event, args) {
+  switch (event) {
+    case "stream": {
+      const stream = args[0];
+      if (stream.sentHeaders) {
+        stream.destroy(err);
+      } else {
+        stream.respond({ [HTTP2_HEADER_STATUS]: 500 });
+        stream.end();
+      }
+      break;
+    }
+    case "request": {
+      const res = args[1];
+      if (!res.headersSent && !res.finished) {
+        for (const name of res.getHeaderNames()) {
+          res.removeHeader(name);
+        }
+        res.statusCode = 500;
+        res.end(STATUS_CODES[500]);
+      } else {
+        res.destroy();
+      }
+      break;
+    }
+    default:
+      ArrayPrototypeUnshift(args, err, event);
+      ReflectApply(
+        superCtor.prototype[EventEmitter.captureRejectionSymbol],
+        self,
+        args,
+      );
+  }
+}
+
 // alpnprotol in listen method
 // tls listen method opts refractor
 
@@ -4137,6 +4191,10 @@ class Http2SecureServer extends tls.Server {
       ReflectApply(HttpServer.prototype.closeIdleConnections, this, arguments);
     }
   }
+
+  [EventEmitter.captureRejectionSymbol](err, event, ...args) {
+    http2ServerOnCaptureRejection(tls.Server, this, err, event, args);
+  }
 }
 
 class Http2Server extends net.Server {
@@ -4174,6 +4232,10 @@ class Http2Server extends net.Server {
 
   async [SymbolAsyncDispose]() {
     await FunctionPrototypeCall(promisify(super.close), this);
+  }
+
+  [EventEmitter.captureRejectionSymbol](err, event, ...args) {
+    http2ServerOnCaptureRejection(net.Server, this, err, event, args);
   }
 }
 
