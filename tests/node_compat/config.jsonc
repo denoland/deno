@@ -3137,6 +3137,7 @@
     "parallel/test-tls-wrap-econnreset-socket.js": {},
     "parallel/test-tls-wrap-econnreset.js": {},
     "parallel/test-tls-wrap-event-emmiter.js": {},
+    "parallel/test-tls-wrap-timeout.js": {},
     "parallel/test-tls-zero-clear-in.js": {},
     "parallel/test-trace-events-api.js": {
       "ignore": true,
