@@ -216,8 +216,13 @@ fn getaddrinfo_inner(
       // SAFETY: addr is not null and was returned by getaddrinfo
       let info = unsafe { &*addr };
       if !info.ai_addr.is_null() {
-        #[allow(clippy::unnecessary_cast)]
+        #[allow(
+          clippy::unnecessary_cast,
+          reason = "ai_addrlen is usize on Windows but u32 on Unix"
+        )]
         let addrlen = info.ai_addrlen as usize;
+        // SAFETY: ai_addr/ai_addrlen are valid from getaddrinfo,
+        // and SockAddr::try_init requires unsafe
         let sa_result = unsafe {
           SockAddr::try_init(|storage, len| {
             std::ptr::copy_nonoverlapping(
@@ -229,18 +234,18 @@ fn getaddrinfo_inner(
             Ok(())
           })
         };
-        if let Ok((_, sa)) = sa_result {
-          if let Some(ip) = sa.as_socket() {
-            ips.push(ip.ip().to_string());
-          }
+        if let Ok((_, sa)) = sa_result
+          && let Some(ip) = sa.as_socket()
+        {
+          ips.push(ip.ip().to_string());
         }
       }
       // SAFETY: following the linked list
       addr = unsafe { (*addr).ai_next };
     }
 
-    // SAFETY: freeing the result from getaddrinfo
     if !result.is_null() {
+      // SAFETY: freeing the result from getaddrinfo
       unsafe { WinSock::freeaddrinfo(result) };
     }
 
