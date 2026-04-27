@@ -84,8 +84,7 @@
     "es-module/test-wasm-simple.js": {},
     "internet/test-dns-ipv4.js": {},
     "internet/test-dns-ipv6.js": {
-      "ignore": true,
-      "reason": "Requires IPv6 connectivity which is not available on all CI runners (Windows)"
+      "windows": false
     },
     "internet/test-snapshot-dns-lookup.js": {
       "ignore": true,
