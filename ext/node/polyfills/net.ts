@@ -1236,9 +1236,15 @@ function _addClientAbortSignalOption(socket: Socket, signal: AbortSignal) {
   const onAbort = () => {
     socket.destroy(new AbortError());
   };
-  signal.addEventListener("abort", onAbort, { once: true });
-  socket.once("close", () => {
-    signal.removeEventListener("abort", onAbort);
+  // Match Node: register on nextTick so synchronous listenerCount checks
+  // immediately after Socket construction don't double-count the listener
+  // already attached by Duplex via addAbortSignal.
+  nextTick(() => {
+    if (socket.destroyed) return;
+    signal.addEventListener("abort", onAbort, { once: true });
+    socket.once("close", () => {
+      signal.removeEventListener("abort", onAbort);
+    });
   });
 }
 
