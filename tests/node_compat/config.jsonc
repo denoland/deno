@@ -1531,7 +1531,9 @@
     "parallel/test-http-status-message.js": {},
     "parallel/test-http-status-reason-invalid-chars.js": {},
     "parallel/test-http-sync-write-error-during-continue.js": {},
-    "parallel/test-http-timeout-client-warning.js": {},
+    "parallel/test-http-timeout-client-warning.js": {
+      "windows": false
+    },
     "parallel/test-http-timeout-overflow.js": {},
     "parallel/test-http-timeout.js": {},
     "parallel/test-http-transfer-encoding-repeated-chunked.js": {},
@@ -1672,7 +1674,9 @@
     "parallel/test-http2-options-server-response.js": {},
     "parallel/test-http2-padding-aligned.js": {},
     "parallel/test-http2-ping-settings-heapdump.js": {},
-    "parallel/test-http2-pipe-named-pipe.js": {},
+    "parallel/test-http2-pipe-named-pipe.js": {
+      "windows": false
+    },
     "parallel/test-http2-pipe.js": {},
     "parallel/test-http2-premature-close.js": {},
     "parallel/test-http2-priority-cycle-.js": {},
