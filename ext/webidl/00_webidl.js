@@ -1138,7 +1138,13 @@ function assertBranded(self, prototype) {
 }
 
 function illegalConstructor() {
-  throw new TypeError("Illegal constructor");
+  const err = new TypeError("Illegal constructor");
+  // Match Node's convention of attaching `code: 'ERR_ILLEGAL_CONSTRUCTOR'`
+  // to TypeErrors thrown when end-user code attempts to construct a Web
+  // Platform interface that disallows direct construction (parallel to
+  // the `ERR_INVALID_THIS` code on `assertBranded` failures).
+  err.code = "ERR_ILLEGAL_CONSTRUCTOR";
+  throw err;
 }
 
 function define(target, source) {
