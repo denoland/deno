@@ -2871,6 +2871,7 @@
     "parallel/test-stream-readable-setEncoding-existing-buffers.js": {},
     "parallel/test-stream-readable-setEncoding-null.js": {},
     "parallel/test-stream-readable-strategy-option.js": {},
+    "parallel/test-stream-readable-to-web-byob.js": {},
     "parallel/test-stream-readable-to-web-termination.js": {},
     "parallel/test-stream-readable-to-web.mjs": {},
     "parallel/test-stream-readable-unpipe-resume.js": {
