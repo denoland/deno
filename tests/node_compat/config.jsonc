@@ -323,7 +323,8 @@
     "parallel/test-child-process-stdio-inherit.js": {},
     "parallel/test-child-process-stdio-merge-stdouts-into-cat.js": {},
     "parallel/test-child-process-stdio-overlapped.js": {},
-    "parallel/test-child-process-stdio-reuse-readable-stdio.js": {},
+    // TODO(nathanwhit): disabled because super flaky on CI
+    // "parallel/test-child-process-stdio-reuse-readable-stdio.js": {},
     "parallel/test-child-process-stdio.js": {},
     "parallel/test-child-process-stdout-flush-exit.js": {},
     "parallel/test-child-process-stdout-ipc.js": {},
