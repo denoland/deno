@@ -285,6 +285,7 @@
     "parallel/test-child-process-net-reuseport.js": {},
     "parallel/test-child-process-no-deprecation.js": {},
     "parallel/test-child-process-promisified.js": {},
+    "parallel/test-child-process-prototype-tampering.mjs": {},
     "parallel/test-child-process-reject-null-bytes.js": {},
     "parallel/test-child-process-send-after-close.js": {},
     "parallel/test-child-process-send-cb.js": {},
@@ -1448,6 +1449,7 @@
     "parallel/test-http2-alpn.js": {},
     "parallel/test-http2-altsvc.js": {},
     "parallel/test-http2-buffersize.js": {},
+    "parallel/test-http2-capture-rejection.js": {},
     "parallel/test-http2-clean-output.js": {},
     "parallel/test-http2-client-port-80.js": {},
     "parallel/test-http2-client-priority-before-connect.js": {},
@@ -1604,6 +1606,7 @@
     "parallel/test-http2-write-empty-string.js": {},
     "parallel/test-http2-zero-length-header.js": {},
     "parallel/test-http2-zero-length-write.js": {},
+    "parallel/test-https-agent-abort-controller.js": {},
     "parallel/test-https-byteswritten.js": {},
     "parallel/test-https-connecting-to-http.js": {
       "ignore": true,
