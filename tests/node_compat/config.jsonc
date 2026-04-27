@@ -99,7 +99,6 @@
       "ignore": true,
       "reason": "Tests Node.js internal modules (require('internal/...')) which are not exposed in Deno"
     },
-    "parallel/test-aborted-util.js": {},
     "parallel/test-arm-math-illegal-instruction.js": {},
     "parallel/test-assert-async.js": {},
     "parallel/test-assert-calltracker-calls.js": {},
@@ -2120,7 +2119,6 @@
     "parallel/test-net-connect-buffer.js": {},
     "parallel/test-net-connect-buffer2.js": {},
     "parallel/test-net-connect-call-socket-connect.js": {},
-    "parallel/test-net-connect-custom-lookup-non-string-address.mjs": {},
     "parallel/test-net-connect-destroy.js": {},
     "parallel/test-net-connect-immediate-destroy.js": {},
     "parallel/test-net-connect-immediate-finish.js": {},
@@ -3372,7 +3370,6 @@
     "parallel/test-webstream-string-tag.js": {},
     "parallel/test-webstream-structured-clone-no-leftovers.mjs": {},
     "parallel/test-webstreams-compose.js": {},
-    "parallel/test-webstreams-compression-buffer-source.js": {},
     "parallel/test-webstreams-decompression-reject-trailing.js": {},
     "parallel/test-webstreams-finished.js": {},
     "parallel/test-webstreams-pipeline.js": {},
