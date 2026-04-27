@@ -1800,21 +1800,26 @@ function internalCmdName(msg: InternalMessage): string {
 let hasSetBufferConstructor = false;
 
 const IPC_HANDLE_NET_SOCKET = "net.Socket";
+const IPC_HANDLE_NET_SERVER = "net.Server";
+
+function rawFdFromTcpHandle(tcpHandle) {
+  if (typeof tcpHandle.fdForIpc !== "function") {
+    notImplemented("ChildProcess.send with handle on this platform");
+  }
+  const rawFd = tcpHandle.fdForIpc();
+  if (rawFd < 0) {
+    throw new ERR_INVALID_HANDLE_TYPE();
+  }
+  return rawFd;
+}
 
 function getIpcHandleInfo(handle, options) {
   if (handle instanceof Socket) {
     if (!(handle._handle instanceof TCP)) {
       notImplemented("ChildProcess.send with non-TCP net.Socket handle");
     }
-    if (typeof handle._handle.fdForIpc !== "function") {
-      notImplemented("ChildProcess.send with handle on this platform");
-    }
-    const rawFd = handle._handle.fdForIpc();
-    if (rawFd < 0) {
-      throw new ERR_INVALID_HANDLE_TYPE();
-    }
     return {
-      rawFd,
+      rawFd: rawFdFromTcpHandle(handle._handle),
       message: {
         cmd: "NODE_HANDLE",
         type: IPC_HANDLE_NET_SOCKET,
@@ -1830,7 +1835,23 @@ function getIpcHandleInfo(handle, options) {
   }
 
   if (handle instanceof NetServer) {
-    notImplemented("ChildProcess.send with net.Server handle");
+    if (!(handle._handle instanceof TCP)) {
+      notImplemented("ChildProcess.send with non-TCP net.Server handle");
+    }
+    return {
+      rawFd: rawFdFromTcpHandle(handle._handle),
+      message: {
+        cmd: "NODE_HANDLE",
+        type: IPC_HANDLE_NET_SERVER,
+        msg: undefined,
+      },
+      // Match Node's handleConversion["net.Server"].postSend, which calls
+      // server.close() once the receiver acknowledges the transfer.
+      closeAfterSend: options.keepOpen !== true,
+      close() {
+        handle.close();
+      },
+    };
   }
   if (handle instanceof DgramSocket) {
     notImplemented("ChildProcess.send with dgram.Socket handle");
@@ -1851,6 +1872,20 @@ function createIpcHandle(message, rawFd) {
       readable: true,
       writable: true,
     });
+  }
+  if (message.type === IPC_HANDLE_NET_SERVER) {
+    const tcp = new TCP(tcpSocketType.SERVER);
+    const err = tcp.open(rawFd);
+    if (err !== 0) {
+      throw errnoException(codeMap.get(err), "open");
+    }
+    // Match Node's handleConversion["net.Server"].got: hand the wrapped
+    // handle to a fresh net.Server via listen(handle), which registers the
+    // connection callback and emits 'listening' on next tick. Our uv_listen
+    // detects an already-listening fd and skips the bind/listen syscalls.
+    const server = new NetServer();
+    server.listen(tcp);
+    return server;
   }
   return undefined;
 }

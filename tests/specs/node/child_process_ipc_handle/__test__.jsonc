@@ -11,6 +11,18 @@
       "args": "run -A main.mjs advanced",
       "output": "main.out",
       "exitCode": 0
+    },
+    "server_json": {
+      "if": "unix",
+      "args": "run -A server_main.mjs json",
+      "output": "server_main.out",
+      "exitCode": 0
+    },
+    "server_advanced": {
+      "if": "unix",
+      "args": "run -A server_main.mjs advanced",
+      "output": "server_main.out",
+      "exitCode": 0
     }
   }
 }
