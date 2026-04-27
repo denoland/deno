@@ -1732,6 +1732,7 @@
     "parallel/test-https-agent-unref-socket.js": {},
     "parallel/test-https-agent.js": {},
     "parallel/test-https-byteswritten.js": {},
+    "parallel/test-https-client-checkServerIdentity.js": {},
     "parallel/test-https-close.js": {},
     "parallel/test-https-connect-address-family.js": {},
     "parallel/test-https-connecting-to-http.js": {
@@ -1756,7 +1757,12 @@
     "parallel/test-https-server-options-server-response.js": {},
     "parallel/test-https-server-request-timeout.js": {},
     "parallel/test-https-set-timeout-server.js": {},
+    "parallel/test-https-simple.js": {},
     "parallel/test-https-socket-options.js": {},
+    "parallel/test-https-strict.js": {
+      "ignore": true,
+      "reason": "NODE_TLS_REJECT_UNAUTHORIZED=0 does not fully suppress cert verification errors"
+    },
     "parallel/test-https-timeout-server-2.js": {},
     "parallel/test-https-timeout.js": {},
     "parallel/test-https-truncate.js": {},
