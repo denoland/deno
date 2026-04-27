@@ -3042,6 +3042,7 @@
     "parallel/test-tls-check-server-identity.js": {},
     "parallel/test-tls-client-abort.js": {},
     "parallel/test-tls-client-abort2.js": {},
+    "parallel/test-tls-client-auth.js": {},
     "parallel/test-tls-client-renegotiation-limit.js": {},
     "parallel/test-tls-clientcertengine-invalid-arg-type.js": {},
     "parallel/test-tls-close-event-after-write.js": {},
