@@ -3459,19 +3459,6 @@ pub fn translate_to_deno_args(
     node_options.push("--pending-deprecation".to_string());
   }
 
-  // Forward trace event flags via NODE_OPTIONS so the child Deno process
-  // can detect them at bootstrap and emit a node_trace.${rotation}.log file.
-  if !opts.trace_event_categories.is_empty() {
-    node_options.push("--trace-event-categories".to_string());
-    node_options.push(opts.trace_event_categories.clone());
-  }
-  if !opts.trace_event_file_pattern.is_empty()
-    && opts.trace_event_file_pattern != "node_trace.${rotation}.log"
-  {
-    node_options.push("--trace-event-file-pattern".to_string());
-    node_options.push(opts.trace_event_file_pattern.clone());
-  }
-
   // Add the script and remaining args
   deno_args.extend(parsed_args.remaining_args);
 

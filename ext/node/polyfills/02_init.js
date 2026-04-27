@@ -5,10 +5,7 @@
 import { core, internals } from "ext:core/mod.js";
 const requireImpl = internals.requireImpl;
 
-import {
-  op_node_maybe_write_trace_events_bootstrap_log,
-  op_stream_base_register_state,
-} from "ext:core/ops";
+import { op_stream_base_register_state } from "ext:core/ops";
 import { nodeGlobals } from "ext:deno_node/00_globals.js";
 import { streamBaseState } from "ext:deno_node/internal_binding/stream_wrap.ts";
 import "node:module";
@@ -34,7 +31,6 @@ function initialize(args) {
     if (usesLocalNodeModulesDir) {
       requireImpl.setUsesLocalNodeModulesDir();
     }
-    op_node_maybe_write_trace_events_bootstrap_log();
 
     // FIXME(bartlomieju): not nice to depend on `Deno` namespace here
     // but it's the only way to get `args` and `version` and this point.
