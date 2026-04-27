@@ -324,13 +324,6 @@ pub unsafe fn uv_pipe_bind(pipe: *mut uv_pipe_t, path: &str) -> c_int {
     // The fd is available immediately for the `fd` property.
     #[cfg(unix)]
     {
-      // Remove existing socket file if present.
-      #[allow(
-        clippy::disallowed_methods,
-        reason = "uv_compat is not compiled to WASM"
-      )]
-      let _ = std::fs::remove_file(path);
-
       // Create a Unix domain stream socket.
       let fd = libc::socket(libc::AF_UNIX, libc::SOCK_STREAM, 0);
       if fd < 0 {
@@ -600,7 +593,15 @@ pub unsafe fn uv_pipe_listen(
       .max_instances((*pipe).pending_instances as usize);
     let server = match opts.create(&path) {
       Ok(s) => s,
-      Err(e) => return io_error_to_uv(&e),
+      Err(e) => {
+        // ERROR_ACCESS_DENIED (5) from CreateNamedPipe with
+        // FILE_FLAG_FIRST_PIPE_INSTANCE means a pipe with that name
+        // already exists. Map to EADDRINUSE to match Node/libuv.
+        if e.raw_os_error() == Some(5) {
+          return super::UV_EADDRINUSE;
+        }
+        return io_error_to_uv(&e);
+      }
     };
 
     // Wrap in Arc so the connect future can hold its own reference.
@@ -663,6 +664,13 @@ pub unsafe fn uv_pipe_accept(
           (*server).internal_win_server = Some(new_server);
           (*server).internal_win_connect_fut = Some(connect_fut);
           (*server).flags |= UV_HANDLE_ACTIVE;
+
+          // Wake the event loop so it polls the new connect future.
+          // Without this, the loop never notices the next client
+          // attaching to the named pipe (same pattern as uv_pipe_listen).
+          if let Some(w) = (*server).internal_waker.as_ref() {
+            w.mark_ready();
+          }
         }
       }
       0
@@ -837,6 +845,17 @@ pub(crate) unsafe fn close_pipe(pipe: *mut uv_pipe_t) {
     (*pipe).internal_read_cb = None;
     (*pipe).internal_connection_cb = None;
     (*pipe).internal_connect = None;
+
+    // Match libuv: unlink the socket file before closing the fd so
+    // another server can bind to the same path immediately.
+    #[cfg(unix)]
+    if let Some(ref path) = (*pipe).internal_bind_path {
+      #[allow(
+        clippy::disallowed_methods,
+        reason = "uv_compat is not compiled to WASM"
+      )]
+      let _ = std::fs::remove_file(path);
+    }
     (*pipe).internal_bind_path = None;
 
     // Cancel pending writes.

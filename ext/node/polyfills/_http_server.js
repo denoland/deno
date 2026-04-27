@@ -314,6 +314,7 @@ ServerResponse.prototype.detachSocket = function detachSocket(socket) {
   assert(socket._httpMessage === this);
   socket.removeListener("close", onServerResponseClose);
   socket._httpMessage = null;
+  socket._httpMessageDetached = true;
   this.socket = null;
 };
 
@@ -992,18 +993,34 @@ function Server(options, requestListener) {
   this[kUniqueHeaders] = parseUniqueHeadersOption(options.uniqueHeaders);
 }
 
+// Wraps a deno_core system interval ID so the stored handle exposes a
+// Node-compatible `_destroyed` flag. Tests (and Node user code) read
+// `server[kConnectionsCheckingInterval]._destroyed` to confirm the
+// interval was cleared.
+class ConnectionsCheckingInterval {
+  _timerId = 0;
+  _destroyed = false;
+}
+
 function setupConnectionsTracking() {
   this[kConnectionsKey] ||= new ConnectionsList();
 
-  if (this[kConnectionsCheckingInterval]) {
-    core.cancelTimer(this[kConnectionsCheckingInterval]);
-  }
+  destroyConnectionsCheckingInterval(this[kConnectionsCheckingInterval]);
 
   const interval = this.connectionsCheckingInterval || 30_000;
-  this[kConnectionsCheckingInterval] = core.createSystemInterval(
+  const handle = new ConnectionsCheckingInterval();
+  handle._timerId = core.createSystemInterval(
     checkConnections.bind(this),
     interval,
   );
+  this[kConnectionsCheckingInterval] = handle;
+}
+
+function destroyConnectionsCheckingInterval(handle) {
+  if (handle && !handle._destroyed) {
+    core.cancelTimer(handle._timerId);
+    handle._destroyed = true;
+  }
 }
 
 function checkConnections() {
@@ -1026,10 +1043,7 @@ function checkConnections() {
 
 function httpServerPreClose(server) {
   server.closeIdleConnections();
-  if (server[kConnectionsCheckingInterval]) {
-    core.cancelTimer(server[kConnectionsCheckingInterval]);
-    server[kConnectionsCheckingInterval] = null;
-  }
+  destroyConnectionsCheckingInterval(server[kConnectionsCheckingInterval]);
 }
 
 function storeHTTPOptions(options) {
@@ -1140,8 +1154,11 @@ Server.prototype.closeIdleConnections = function closeIdleConnections() {
   const connections = this[kConnectionsKey];
   if (connections) {
     for (const socket of connections._all) {
-      // A socket is idle if it has no active HTTP response being written
-      if (!socket._httpMessage) {
+      // A socket is idle if it completed a request-response cycle and
+      // currently has no active HTTP response being written. Sockets
+      // that have never finished a response (e.g. still receiving
+      // headers) are not idle.
+      if (!socket._httpMessage && socket._httpMessageDetached) {
         socket.destroy();
       }
     }
@@ -1151,6 +1168,7 @@ Server.prototype.closeIdleConnections = function closeIdleConnections() {
 export {
   connectionListener as _connectionListener,
   httpServerPreClose,
+  kConnectionsCheckingInterval,
   kIncomingMessage,
   kServerResponse,
   Server,
@@ -1163,6 +1181,7 @@ export {
 export default {
   _connectionListener: connectionListener,
   httpServerPreClose,
+  kConnectionsCheckingInterval,
   kIncomingMessage,
   kServerResponse,
   Server,
