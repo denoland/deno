@@ -69,7 +69,11 @@ export const MAX_INITIAL_WINDOW_SIZE = 2147483647;
 export const PADDING_STRATEGY_NONE = 0;
 export const PADDING_STRATEGY_ALIGNED = 1;
 export const PADDING_STRATEGY_MAX = 2;
-export const PADDING_STRATEGY_CALLBACK = 3;
+// PADDING_STRATEGY_CALLBACK has been aliased to PADDING_STRATEGY_ALIGNED
+// since the per-frame `selectPadding` JS callback was removed; mirror
+// Node's lib/internal/http2/constants.js so user code referencing the
+// old name keeps working.
+export const PADDING_STRATEGY_CALLBACK = PADDING_STRATEGY_ALIGNED;
 
 // HTTP/2 error codes (for RST_STREAM/GOAWAY)
 export const NGHTTP2_NO_ERROR = 0;
