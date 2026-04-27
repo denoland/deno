@@ -1,5 +1,8 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
+use std::cell::RefCell;
+use std::collections::HashMap;
+use std::num::NonZeroI32;
 use std::rc::Rc;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
@@ -1432,4 +1435,339 @@ pub fn op_vm_script_create_cached_data<'s>(
   let backing_store = v8::ArrayBuffer::new_backing_store_from_vec(data);
   v8::ArrayBuffer::with_backing_store(scope, &backing_store.make_shared())
     .into()
+}
+
+/// Wraps a v8::Module compiled in a contextified context.
+pub struct ContextifyModule {
+  module: v8::TracedReference<v8::Module>,
+  context: v8::TracedReference<v8::Context>,
+  microtask_queue: *mut v8::MicrotaskQueue,
+  identifier: String,
+  /// Map of import specifier -> resolved module wrapper.
+  /// Populated by `op_vm_module_link` before instantiation, and consumed by
+  /// the resolve callback during `instantiate_module`.
+  resolutions: RefCell<HashMap<String, v8::TracedReference<v8::Module>>>,
+  /// Top-level evaluation promise, kept alive across calls.
+  evaluation_promise: RefCell<Option<v8::TracedReference<v8::Promise>>>,
+}
+
+// SAFETY: all v8 references are visited during cppgc trace.
+unsafe impl v8::cppgc::GarbageCollected for ContextifyModule {
+  fn trace(&self, visitor: &mut v8::cppgc::Visitor) {
+    visitor.trace(&self.module);
+    visitor.trace(&self.context);
+    for r in self.resolutions.borrow().values() {
+      visitor.trace(r);
+    }
+    if let Some(p) = self.evaluation_promise.borrow().as_ref() {
+      visitor.trace(p);
+    }
+  }
+
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"ContextifyModule"
+  }
+}
+
+#[op2]
+#[cppgc]
+pub fn op_vm_module_create_source_text_module<'a>(
+  scope: &mut v8::PinScope<'a, '_>,
+  source: v8::Local<'a, v8::String>,
+  #[string] identifier: String,
+  line_offset: i32,
+  column_offset: i32,
+  context_object: v8::Local<'a, v8::Object>,
+) -> Option<ContextifyModule> {
+  let contextify = ContextifyContext::from_sandbox_obj(scope, context_object)?;
+  let context = contextify.context(scope);
+  let microtask_queue = contextify.microtask_queue;
+
+  let scope = &mut v8::ContextScope::new(scope, context);
+  let host_defined_options = create_host_defined_options(scope);
+  let filename = v8::String::new(scope, &identifier)?;
+  let origin = v8::ScriptOrigin::new(
+    scope,
+    filename.into(),
+    line_offset,
+    column_offset,
+    true,
+    -1,
+    None,
+    false,
+    false,
+    true, // is_module
+    Some(host_defined_options),
+  );
+
+  let mut compile_source =
+    v8::script_compiler::Source::new(source, Some(&origin));
+
+  v8::tc_scope!(scope, scope);
+  let module = v8::script_compiler::compile_module(scope, &mut compile_source);
+  if scope.has_caught() {
+    scope.rethrow();
+    return None;
+  }
+  let module = module?;
+
+  Some(ContextifyModule {
+    module: v8::TracedReference::new(scope, module),
+    context: v8::TracedReference::new(scope, context),
+    microtask_queue,
+    identifier,
+    resolutions: RefCell::new(HashMap::new()),
+    evaluation_promise: RefCell::new(None),
+  })
+}
+
+#[op2(fast)]
+pub fn op_vm_module_link<'a>(
+  scope: &mut v8::PinScope<'a, '_>,
+  #[cppgc] this: &ContextifyModule,
+  specifiers: v8::Local<'a, v8::Array>,
+  modules: v8::Local<'a, v8::Array>,
+) -> bool {
+  let len = specifiers.length();
+  if modules.length() != len {
+    let message = v8::String::new(
+      scope,
+      "specifiers and modules arrays must have the same length",
+    )
+    .unwrap();
+    let exception = v8::Exception::error(scope, message);
+    scope.throw_exception(exception);
+    return false;
+  }
+
+  let mut resolutions = this.resolutions.borrow_mut();
+  resolutions.clear();
+  for i in 0..len {
+    let Some(specifier) = specifiers.get_index(scope, i) else {
+      return false;
+    };
+    let Some(module_obj) = modules.get_index(scope, i) else {
+      return false;
+    };
+    let specifier_str = specifier.to_rust_string_lossy(scope);
+    let module_obj: v8::Local<v8::Object> = module_obj.try_into().unwrap();
+    let other = deno_core::cppgc::try_unwrap_cppgc_object::<ContextifyModule>(
+      scope,
+      module_obj.into(),
+    );
+    let Some(other) = other else {
+      let message =
+        v8::String::new(scope, "expected ContextifyModule").unwrap();
+      let exception = v8::Exception::error(scope, message);
+      scope.throw_exception(exception);
+      return false;
+    };
+    resolutions.insert(
+      specifier_str,
+      v8::TracedReference::new(scope, other.module.get(scope).unwrap()),
+    );
+  }
+  true
+}
+
+#[op2(fast, reentrant)]
+pub fn op_vm_module_instantiate(
+  scope: &mut v8::PinScope<'_, '_>,
+  #[cppgc] this: &ContextifyModule,
+) -> bool {
+  let context = this.context.get(scope).unwrap();
+  let module = this.module.get(scope).unwrap();
+  let referrer_hash = module.get_identity_hash();
+
+  // Build a map of specifier -> v8::Global<Module> usable from the resolve
+  // callback (which runs inside instantiate_module).
+  let mut specifier_to_module: HashMap<String, v8::Global<v8::Module>> =
+    HashMap::new();
+  {
+    let resolutions = this.resolutions.borrow();
+    for (sp, tref) in resolutions.iter() {
+      let Some(m) = tref.get(scope) else { continue };
+      specifier_to_module.insert(sp.clone(), v8::Global::new(scope, m));
+    }
+  }
+
+  MODULE_RESOLUTIONS.with(|r| {
+    r.borrow_mut().insert(referrer_hash, specifier_to_module);
+  });
+
+  let scope = &mut v8::ContextScope::new(scope, context);
+  v8::tc_scope!(scope, scope);
+
+  let result = module.instantiate_module(scope, module_resolve_callback);
+
+  MODULE_RESOLUTIONS.with(|r| {
+    r.borrow_mut().remove(&referrer_hash);
+  });
+
+  if scope.has_caught() {
+    scope.rethrow();
+    return false;
+  }
+
+  result.unwrap_or(false)
+}
+
+thread_local! {
+  /// Map from referrer module identity hash -> (specifier -> resolved module global).
+  /// Populated only for the duration of an instantiate_module call.
+  static MODULE_RESOLUTIONS: RefCell<HashMap<NonZeroI32, HashMap<String, v8::Global<v8::Module>>>> =
+    RefCell::new(HashMap::new());
+}
+
+fn module_resolve_callback<'s>(
+  context: v8::Local<'s, v8::Context>,
+  specifier: v8::Local<'s, v8::String>,
+  _import_attributes: v8::Local<'s, v8::FixedArray>,
+  referrer: v8::Local<'s, v8::Module>,
+) -> Option<v8::Local<'s, v8::Module>> {
+  // SAFETY: callback runs inside an active V8 callback context.
+  let mut scope_storage = unsafe { v8::CallbackScope::new(context) };
+  // SAFETY: scope_storage stays in scope for the rest of this function.
+  let mut scope_pin =
+    unsafe { std::pin::Pin::new_unchecked(&mut scope_storage) };
+  let scope = &mut scope_pin.as_mut().init();
+
+  let specifier_str = specifier.to_rust_string_lossy(scope);
+  let referrer_hash = referrer.get_identity_hash();
+
+  let resolved_local = MODULE_RESOLUTIONS.with(|r| {
+    let map = r.borrow();
+    let resolved_global = map
+      .get(&referrer_hash)
+      .and_then(|m| m.get(&specifier_str))?;
+    Some(v8::Local::new(scope, resolved_global))
+  });
+
+  if let Some(local) = resolved_local {
+    return Some(local);
+  }
+
+  let message = v8::String::new(
+    scope,
+    &format!(
+      "Cannot find module '{specifier_str}' (linker did not provide it)"
+    ),
+  )?;
+  let exception = v8::Exception::error(scope, message);
+  scope.throw_exception(exception);
+  None
+}
+
+#[op2(reentrant)]
+pub fn op_vm_module_evaluate<'a>(
+  scope: &mut v8::PinScope<'a, '_>,
+  #[cppgc] this: &ContextifyModule,
+) -> Option<v8::Local<'a, v8::Value>> {
+  let inner_context = this.context.get(scope).unwrap();
+  let module = this.module.get(scope).unwrap();
+  let outer_context = scope.get_current_context();
+
+  // Enter the module's context, evaluate the module, then come back out.
+  let inner_result = {
+    let scope = &mut v8::ContextScope::new(scope, inner_context);
+    v8::tc_scope!(scope, scope);
+    let r = module.evaluate(scope);
+    if scope.has_caught() {
+      scope.rethrow();
+      return None;
+    }
+    r
+  };
+  let inner_result = inner_result?;
+
+  // If the module's context has its own microtask queue (microtaskMode:
+  // "afterEvaluate"), wrap the inner promise in an outer-context promise so
+  // that `await` from the outer context isn't queued on the inner queue and
+  // silently dropped (https://github.com/nodejs/node/issues/59541).
+  let returned: v8::Local<v8::Value> = if !this.microtask_queue.is_null()
+    && let Ok(inner_promise) = v8::Local::<v8::Promise>::try_from(inner_result)
+  {
+    // We're currently in `outer_context` (we exited the inner ContextScope).
+    let resolver = v8::PromiseResolver::new(scope)?;
+    let outer_promise = resolver.get_promise(scope);
+    resolver.resolve(scope, inner_promise.into())?;
+
+    // Drain the inner microtask queue so the resolution chain can progress.
+    // SAFETY: pointer is validated as non-null above.
+    let mtask_queue = unsafe { &*this.microtask_queue };
+    mtask_queue.perform_checkpoint(scope);
+
+    *this.evaluation_promise.borrow_mut() =
+      Some(v8::TracedReference::new(scope, outer_promise));
+    outer_promise.into()
+  } else {
+    if let Ok(p) = v8::Local::<v8::Promise>::try_from(inner_result) {
+      *this.evaluation_promise.borrow_mut() =
+        Some(v8::TracedReference::new(scope, p));
+    }
+    inner_result
+  };
+
+  // Suppress unused warning when both contexts are the same.
+  let _ = outer_context;
+  Some(returned)
+}
+
+#[op2(fast)]
+pub fn op_vm_module_get_status(
+  #[cppgc] this: &ContextifyModule,
+  scope: &mut v8::PinScope<'_, '_>,
+) -> u32 {
+  let module = this.module.get(scope).unwrap();
+  module.get_status() as u32
+}
+
+#[op2]
+pub fn op_vm_module_get_namespace<'a>(
+  scope: &mut v8::PinScope<'a, '_>,
+  #[cppgc] this: &ContextifyModule,
+) -> v8::Local<'a, v8::Value> {
+  let module = this.module.get(scope).unwrap();
+  module.get_module_namespace()
+}
+
+#[op2]
+pub fn op_vm_module_get_exception<'a>(
+  scope: &mut v8::PinScope<'a, '_>,
+  #[cppgc] this: &ContextifyModule,
+) -> v8::Local<'a, v8::Value> {
+  let module = this.module.get(scope).unwrap();
+  if module.get_status() != v8::ModuleStatus::Errored {
+    return v8::undefined(scope).into();
+  }
+  module.get_exception()
+}
+
+#[op2]
+#[serde]
+pub fn op_vm_module_get_module_requests(
+  scope: &mut v8::PinScope<'_, '_>,
+  #[cppgc] this: &ContextifyModule,
+) -> Vec<String> {
+  let module = this.module.get(scope).unwrap();
+  let requests = module.get_module_requests();
+  let len = requests.length();
+  let mut out = Vec::with_capacity(len);
+  for i in 0..len {
+    let Some(req) = requests.get(scope, i) else {
+      continue;
+    };
+    let req: v8::Local<v8::ModuleRequest> = req.cast();
+    let specifier = req.get_specifier();
+    out.push(specifier.to_rust_string_lossy(scope));
+  }
+  out
+}
+
+#[op2]
+pub fn op_vm_module_get_identifier<'a>(
+  scope: &mut v8::PinScope<'a, '_>,
+  #[cppgc] this: &ContextifyModule,
+) -> v8::Local<'a, v8::String> {
+  v8::String::new(scope, &this.identifier).unwrap()
 }

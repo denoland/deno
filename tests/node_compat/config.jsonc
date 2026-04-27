@@ -3233,6 +3233,7 @@
     "parallel/test-vm-property-not-on-sandbox.js": {},
     "parallel/test-vm-proxies.js": {},
     "parallel/test-vm-proxy-failure-CP.js": {},
+    "parallel/test-vm-module-after-evaluate.js": {},
     "parallel/test-vm-script-after-evaluate.js": {},
     "parallel/test-vm-script-throw-in-tostring.js": {},
     "parallel/test-vm-set-property-proxy.js": {},
