@@ -2771,13 +2771,24 @@ Deno.test(
     server.listen(0, async () => {
       try {
         const port = (server.address() as AddressInfo).port;
+        const pendingTimers = new Set<ReturnType<typeof setTimeout>>();
         const res = await fetch(`http://127.0.0.1:${port}/`, {
           method: "POST",
           duplex: "half",
           body: new ReadableStream({
             async pull(controller) {
-              await new Promise((r) => setTimeout(r, 50));
+              await new Promise<void>((r) => {
+                const t = setTimeout(() => {
+                  pendingTimers.delete(t);
+                  r();
+                }, 50);
+                pendingTimers.add(t);
+              });
               controller.enqueue(new TextEncoder().encode("hello"));
+            },
+            cancel() {
+              for (const t of pendingTimers) clearTimeout(t);
+              pendingTimers.clear();
             },
           }),
         } as RequestInit);
