@@ -1156,6 +1156,7 @@
       "windows": false
     },
     "parallel/test-fs-rmSync-special-char.js": {},
+    "parallel/test-fs-rmdir-recursive-error.js": {},
     "parallel/test-fs-rmdir-throws-not-found.js": {},
     "parallel/test-fs-rmdir-type-check.js": {},
     "parallel/test-fs-sir-writes-alot.js": {},
