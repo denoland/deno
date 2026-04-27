@@ -1176,7 +1176,7 @@ export function normalizeSpawnArguments(
     // Calling it here would cause double transformation.
     if (process.platform === "win32") {
       if (typeof options.shell === "string") {
-        file = shell;
+        file = options.shell;
       } else {
         file = Deno.env.get("comspec") || "cmd.exe";
       }
@@ -1190,7 +1190,7 @@ export function normalizeSpawnArguments(
     } else {
       /** TODO: add Android condition */
       if (typeof options.shell === "string") {
-        file = shell;
+        file = options.shell;
       } else {
         file = "/bin/sh";
       }
