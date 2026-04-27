@@ -92,7 +92,11 @@ export function getaddrinfo(
     let error = 0;
     let netPermToken: object | undefined;
     try {
-      netPermToken = await op_node_getaddrinfo(hostname, req.port || undefined);
+      netPermToken = await op_node_getaddrinfo(
+        hostname,
+        req.port || undefined,
+        family,
+      );
       addresses.push(...op_net_get_ips_from_perm_token(netPermToken));
       if (addresses.length === 0) {
         error = codeMap.get("EAI_NODATA")!;
@@ -580,9 +584,41 @@ export class ChannelWrap extends AsyncWrap implements ChannelWrapQuery {
     return 0;
   }
 
-  getHostByAddr(_req: QueryReqWrap, _name: string): number {
-    // TODO(@bartlomieju): https://github.com/denoland/deno/issues/14432
-    notImplemented("cares.ChannelWrap.prototype.getHostByAddr");
+  getHostByAddr(req: QueryReqWrap, name: string): number {
+    let reverseName: string;
+
+    if (isIPv4(name)) {
+      const octets = name.split(".");
+      reverseName = octets.reverse().join(".") + ".in-addr.arpa";
+    } else if (isIPv6(name)) {
+      // Expand the IPv6 address to full form
+      const parts = name.split(":");
+      const expanded: string[] = [];
+      let emptyFound = false;
+      for (const part of parts) {
+        if (part === "" && !emptyFound) {
+          emptyFound = true;
+          const missing = 8 - parts.filter((p) => p !== "").length;
+          for (let j = 0; j < missing; j++) {
+            expanded.push("0000");
+          }
+        } else if (part !== "") {
+          expanded.push(part.padStart(4, "0"));
+        }
+      }
+      const fullHex = expanded.join("");
+      reverseName = fullHex.split("").reverse().join(".") + ".ip6.arpa";
+    } else {
+      req.oncomplete(codeMap.get("EINVAL")!, []);
+      return 0;
+    }
+
+    this.#query(reverseName, "PTR").then(({ code, ret }) => {
+      const records = (ret as string[]).map((record) => fqdnToHostname(record));
+      req.oncomplete(code, records);
+    });
+
+    return 0;
   }
 
   getServers(): [string, number][] {

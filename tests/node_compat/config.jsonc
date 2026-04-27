@@ -82,6 +82,10 @@
     "es-module/test-vm-compile-function-lineoffset.js": {},
     "es-module/test-wasm-memory-out-of-bound.js": {},
     "es-module/test-wasm-simple.js": {},
+    "internet/test-dns-ipv4.js": {},
+    "internet/test-dns-ipv6.js": {
+      "windows": false
+    },
     "internet/test-snapshot-dns-lookup.js": {
       "ignore": true,
       "reason": "Node.js snapshot/heap profiling features (--build-snapshot, --heap-prof, --heapsnapshot-near-heap-limit) are not implemented in Deno"
@@ -789,6 +793,10 @@
     "parallel/test-dns-memory-error.js": {},
     "parallel/test-dns-multi-channel.js": {},
     "parallel/test-dns-promises-exists.js": {},
+    "parallel/test-dns-resolve-promises.js": {
+      "ignore": true,
+      "reason": "Requires --expose-internals and internalBinding('cares_wrap') which is not supported in Deno"
+    },
     "parallel/test-dns-resolvens-typeerror.js": {},
     "parallel/test-dns-resolvesrv.js": {},
     "parallel/test-dns-resolvesrv-econnrefused.js": {},
