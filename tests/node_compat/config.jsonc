@@ -470,6 +470,7 @@
       "reason": "Tests Node's FIPS mode (--enable-fips/--force-fips, OPENSSL_CONF, --openssl-config CLI flags) and uses internalBinding('crypto').testFipsCrypto via require('internal/test/binding'); FIPS is an OpenSSL-specific feature and Deno does not embed OpenSSL"
     },
     "parallel/test-crypto-from-binary.js": {},
+    "parallel/test-crypto-gcm-explicit-short-tag.js": {},
     "parallel/test-crypto-gcm-implicit-short-tag.js": {},
     "parallel/test-crypto-getcipherinfo.js": {},
     "parallel/test-crypto-hash-stream-pipe.js": {},
@@ -914,6 +915,7 @@
     "parallel/test-exception-handler2.js": {},
     "parallel/test-fastutf8stream-flush-mocks.js": {},
     "parallel/test-fastutf8stream-sync.js": {},
+    "parallel/test-fastutf8stream-write.js": {},
     "parallel/test-fetch-mock.js": {},
     "parallel/test-fetch.mjs": {},
     "parallel/test-file-read-noexist.js": {},
@@ -1149,6 +1151,7 @@
     "parallel/test-fs-rmdir-type-check.js": {},
     "parallel/test-fs-sir-writes-alot.js": {},
     "parallel/test-fs-stat-bigint.js": {},
+    "parallel/test-fs-stat-date.mjs": {},
     "parallel/test-fs-stat.js": {},
     "parallel/test-fs-statfs.js": {},
     "parallel/test-fs-stream-construct-compat-error-read.js": {},
@@ -1621,6 +1624,7 @@
     "parallel/test-http2-compat-write-head-after-close.js": {},
     "parallel/test-http2-compat-write-head-destroyed.js": {},
     "parallel/test-http2-connect-method.js": {},
+    "parallel/test-http2-connect-options.js": {},
     "parallel/test-http2-connect.js": {},
     "parallel/test-http2-cookies.js": {},
     "parallel/test-http2-create-client-session.js": {},
@@ -2023,6 +2027,7 @@
     "parallel/test-net-autoselectfamily.js": {},
     "parallel/test-net-better-error-messages-listen-path.js": {},
     "parallel/test-net-better-error-messages-listen.js": {},
+    "parallel/test-net-better-error-messages-path.js": {},
     "parallel/test-net-better-error-messages-port-hostname.js": {},
     "parallel/test-net-binary.js": {},
     "parallel/test-net-bind-twice.js": {},
@@ -2723,6 +2728,7 @@
     // "parallel/test-snapshot-console.js": {},
     // "parallel/test-snapshot-coverage.js": {},
     "parallel/test-socket-address.js": {},
+    "parallel/test-socket-options-invalid.js": {},
     "parallel/test-socket-write-after-fin-error.js": {},
     // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
     // "parallel/test-source-map-enable.js": {},
@@ -3299,6 +3305,7 @@
     // Note: Node.js BroadcastChannel message dispatch ordering differs from the Web spec ordering.
     // Deno follows the Web spec.
     "parallel/test-whatwg-writablestream-close.js": {},
+    "parallel/test-windows-abort-exitcode.js": {},
     "parallel/test-worker-abort-on-uncaught-exception.js": {},
     "parallel/test-worker-abort-on-uncaught-exception-terminate.js": {},
     // "parallel/test-worker-broadcastchannel-wpt.js": {},
@@ -3347,6 +3354,7 @@
     "parallel/test-worker-no-stdin-stdout-interaction.js": {},
     "parallel/test-worker-non-fatal-uncaught-exception.js": {},
     "parallel/test-worker-on-process-exit.js": {},
+    "parallel/test-worker-onmessage-not-a-function.js": {},
     "parallel/test-worker-onmessage.js": {},
     "parallel/test-worker-parent-port-ref.js": {},
     "parallel/test-worker-process-argv.js": {},
