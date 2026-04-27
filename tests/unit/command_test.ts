@@ -928,6 +928,46 @@ Deno.test(
   },
 );
 
+// Regression test for #29770: when no `gid` option is given, the child must
+// inherit the parent's supplementary groups rather than have them cleared.
+// /proc requires `permissions: "inherit"` because Deno gates /proc reads on
+// `--allow-all`.
+Deno.test(
+  {
+    permissions: "inherit",
+    ignore: Deno.build.os !== "linux",
+  },
+  async function commandPreservesSupplementaryGroups() {
+    const status = await Deno.readTextFile("/proc/self/status");
+    const groupsLine = status
+      .split("\n")
+      .find((l) => l.startsWith("Groups:"));
+    const parentSupplementary = (groupsLine?.slice("Groups:".length) ?? "")
+      .trim()
+      .split(/\s+/)
+      .filter(Boolean);
+    if (parentSupplementary.length === 0) {
+      return;
+    }
+
+    const { stdout } = await new Deno.Command("id", {
+      args: ["-G"],
+    }).output();
+    const childGroups = new TextDecoder()
+      .decode(stdout)
+      .trim()
+      .split(/\s+/)
+      .filter(Boolean);
+
+    for (const gid of parentSupplementary) {
+      assert(
+        childGroups.includes(gid),
+        `child missing parent's supplementary gid ${gid}; parent=${parentSupplementary}, child=${childGroups}`,
+      );
+    }
+  },
+);
+
 Deno.test(function commandStdinPipedFails() {
   assertThrows(
     () =>
