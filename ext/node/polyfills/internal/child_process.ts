@@ -1805,9 +1805,6 @@ export function setupChannel(
 ) {
   const control = new Control(ipc, serialization);
   target.channel = control;
-  // Ref the IPC channel by default, matching Node.js where the
-  // underlying Pipe handle starts ref'd and keeps the process alive.
-  control.refCounted();
 
   if (!hasSetBufferConstructor) {
     op_node_ipc_buffer_constructor(Buffer, FastBuffer.prototype);
@@ -1955,6 +1952,13 @@ export function setupChannel(
     // if false, the sender should slow down.
     // this acts as a backpressure mechanism.
     const queueOk = [true];
+    // Ref the IPC channel during the write. The old async code did
+    // refCounted() before the write and unrefCounted() when the
+    // promise resolved (after at least one event loop poll). With
+    // sync writes we use setTimeout(0) to defer the unref to the
+    // next event loop iteration, keeping the channel ref'd long
+    // enough for incoming messages to be received.
+    control.refCounted();
     try {
       writeFn(ipc, message, queueOk);
       if (callback) {
@@ -1971,6 +1975,7 @@ export function setupChannel(
         }
       }
     }
+    setTimeout(() => control.unrefCounted(), 0);
     return queueOk[0];
   };
 

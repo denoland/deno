@@ -176,9 +176,9 @@ fn write_all_sync(raw_handle: i64, msg: &[u8]) -> Result<(), io::Error> {
         let err = unsafe { GetLastError() };
         if err == winapi::shared::winerror::ERROR_IO_PENDING {
           // Wait for the overlapped write to complete.
+          let mut transferred: DWORD = 0;
           // SAFETY: handle and ov are valid pointers, bWait=TRUE blocks
           // until the operation completes.
-          let mut transferred: DWORD = 0;
           let ok = unsafe {
             GetOverlappedResult(handle, &mut ov, &mut transferred, 1)
           };
