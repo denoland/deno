@@ -3128,6 +3128,7 @@
     "parallel/test-tls-snicallback-error.js": {},
     "parallel/test-tls-socket-allow-half-open-option.js": {},
     "parallel/test-tls-socket-constructor-alpn-options-parsing.js": {},
+    "parallel/test-tls-socket-destroy.js": {},
     "parallel/test-tls-timeout-server-2.js": {},
     "parallel/test-tls-tlswrap-segfault-2.js": {},
     "parallel/test-tls-transport-destroy-after-own-gc.js": {},
