@@ -991,7 +991,8 @@ pub async fn op_dns_resolve(
         opts.edns0 = true;
       }
       if let Some(ms) = timeout_ms {
-        opts.timeout = std::time::Duration::from_millis(ms);
+        opts.timeout =
+          std::time::Duration::from_millis(ms.max(1));
         opts.attempts = 1;
       }
       opts
