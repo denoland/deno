@@ -3002,6 +3002,7 @@
     "parallel/test-util-primordial-monkeypatching.js": {},
     "parallel/test-util-promisify-custom-names.mjs": {},
     "parallel/test-util-stripvtcontrolcharacters.js": {},
+    "parallel/test-util-styletext.js": {},
     "parallel/test-util-text-decoder.js": {},
     "parallel/test-util-types-exists.js": {},
     "parallel/test-util.js": {},
