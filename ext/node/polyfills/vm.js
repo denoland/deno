@@ -538,7 +538,8 @@ class Module {
     op_vm_module_instantiate(this[kWrap]);
   }
 
-  async evaluate(_options = { __proto__: null }) {
+  async evaluate(options = { __proto__: null }) {
+    validateObject(options, "options");
     const status = op_vm_module_get_status(this[kWrap]);
     // Allow evaluate from linked (2), evaluating (3), evaluated (4), errored (5).
     if (status < 2) {
