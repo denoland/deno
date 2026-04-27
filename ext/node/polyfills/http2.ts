@@ -3100,6 +3100,17 @@ function closeSession(session, code, error) {
   state.flags |= SESSION_FLAGS_DESTROYED;
   state.destroyCode = code;
 
+  // Cancel any outstanding PINGs that will never receive an ACK now that
+  // the session is being destroyed. Matches Http2Session::Close in
+  // src/node_http2.cc which invokes ClearOutstandingPings.
+  if (state.pendingPings && state.pendingPings.length > 0) {
+    const pings = state.pendingPings;
+    state.pendingPings = [];
+    for (let i = 0; i < pings.length; i++) {
+      process.nextTick(pings[i], false, 0.0, undefined);
+    }
+  }
+
   // Clear timeout and remove timeout listeners.
   session.setTimeout(0);
   session.removeAllListeners("timeout");
@@ -3265,6 +3276,7 @@ class Http2Session extends EventEmitter {
       streams: new SafeMap(),
       pendingStreams: new SafeSet(),
       pendingAck: 0,
+      pendingPings: [],
       shutdownWritableCalled: false,
       writeQueueSize: 0,
       originSet: undefined,
@@ -3436,7 +3448,18 @@ class Http2Session extends EventEmitter {
       return;
     }
 
-    return this[kHandle].ping(payload, cb);
+    // nghttp2_submit_ping accepts a NULL pointer (sends 8 zero bytes), but
+    // the Rust op uses #[buffer] which requires a typed array. Match the
+    // upstream behavior by allocating an 8-byte payload here when the caller
+    // didn't supply one.
+    const buf = payload || Buffer.alloc(8);
+
+    // Track the pending ping so it can be cancelled when the session is
+    // destroyed before the PING ACK arrives. Matches Node's
+    // ClearOutstandingPings in src/node_http2.cc.
+    this[kState].pendingPings.push(cb);
+
+    return this[kHandle].ping(buf, cb);
   }
 
   [kInspect](depth, opts) {
