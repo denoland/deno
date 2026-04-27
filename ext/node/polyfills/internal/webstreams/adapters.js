@@ -13,6 +13,7 @@ import { ReadableStream, WritableStream } from "node:stream/web";
 import {
   validateBoolean,
   validateObject,
+  validateOneOf,
 } from "ext:deno_node/internal/validators.mjs";
 import {
   kEmptyObject,
@@ -472,6 +473,10 @@ export function newReadableStreamFromStreamReadable(
       "stream.Readable",
       streamReadable,
     );
+  }
+  validateObject(options, "options");
+  if (options.type !== undefined) {
+    validateOneOf(options.type, "options.type", ["bytes", undefined]);
   }
 
   if (isDestroyed(streamReadable) || !isReadable(streamReadable)) {
