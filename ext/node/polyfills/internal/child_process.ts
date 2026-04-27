@@ -14,8 +14,8 @@ import {
   op_node_ipc_read_json,
   op_node_ipc_ref,
   op_node_ipc_unref,
-  op_node_ipc_write_advanced,
-  op_node_ipc_write_json,
+  op_node_ipc_write_advanced_sync,
+  op_node_ipc_write_json_sync,
   op_node_parse_shell_args,
   op_node_translate_cli_args,
 } from "ext:core/ops";
@@ -1893,9 +1893,12 @@ export function setupChannel(
     hasSetBufferConstructor = true;
   }
 
+  // Use synchronous write ops to match Node.js behavior.
+  // In Node.js, process.send() writes synchronously to the IPC pipe,
+  // so messages are not lost when process.exit() follows immediately.
   const writeFn = serialization === "json"
-    ? op_node_ipc_write_json
-    : op_node_ipc_write_advanced;
+    ? op_node_ipc_write_json_sync
+    : op_node_ipc_write_advanced_sync;
   const readFn = serialization === "json"
     ? op_node_ipc_read_json
     : op_node_ipc_read_advanced;
@@ -2031,25 +2034,30 @@ export function setupChannel(
     // if false, the sender should slow down.
     // this acts as a backpressure mechanism.
     const queueOk = [true];
+    // Ref the IPC channel during the write. The old async code did
+    // refCounted() before the write and unrefCounted() when the
+    // promise resolved (after at least one event loop poll). With
+    // sync writes we use setTimeout(0) to defer the unref to the
+    // next event loop iteration, keeping the channel ref'd long
+    // enough for incoming messages to be received.
     control.refCounted();
-    writeFn(ipc, message, queueOk)
-      .then(() => {
-        control.unrefCounted();
-        if (callback) {
-          nextTick(callback, null);
-        }
-      }, (err: Error) => {
-        control.unrefCounted();
-        if (err instanceof Deno.errors.Interrupted) {
-          // Channel closed on us mid-write.
+    try {
+      writeFn(ipc, message, queueOk);
+      if (callback) {
+        nextTick(callback, null);
+      }
+    } catch (err) {
+      if (err instanceof Deno.errors.Interrupted) {
+        // Channel closed on us mid-write.
+      } else {
+        if (typeof callback === "function") {
+          nextTick(callback, err);
         } else {
-          if (typeof callback === "function") {
-            nextTick(callback, err);
-          } else {
-            nextTick(() => target.emit("error", err));
-          }
+          nextTick(() => target.emit("error", err));
         }
-      });
+      }
+    }
+    setTimeout(() => control.unrefCounted(), 0);
     return queueOk[0];
   };
 
