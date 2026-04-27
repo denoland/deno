@@ -1151,7 +1151,9 @@
     "parallel/test-fs-rmdir-type-check.js": {},
     "parallel/test-fs-sir-writes-alot.js": {},
     "parallel/test-fs-stat-bigint.js": {},
-    "parallel/test-fs-stat-date.mjs": {},
+    "parallel/test-fs-stat-date.mjs": {
+      "darwin": false
+    },
     "parallel/test-fs-stat.js": {},
     "parallel/test-fs-statfs.js": {},
     "parallel/test-fs-stream-construct-compat-error-read.js": {},
