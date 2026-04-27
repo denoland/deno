@@ -9,6 +9,7 @@
 use std::cell::RefCell;
 use std::cell::UnsafeCell;
 use std::collections::HashMap;
+use std::collections::VecDeque;
 use std::ffi::c_void;
 use std::rc::Rc;
 
@@ -922,11 +923,10 @@ fn handle_headers_frame(session: &Session, frame: *const ffi::nghttp2_frame) {
 }
 
 fn handle_settings_ack(session: &mut Session) {
-  if session.pending_settings_acks.is_empty() {
-    return;
-  }
   // FIFO pop. Mirrors Node's BaseObjectPtr<Http2Settings> PopSettings().
-  let cb = session.pending_settings_acks.remove(0);
+  let Some(cb) = session.pending_settings_acks.pop_front() else {
+    return;
+  };
 
   let mut isolate =
     // SAFETY: isolate pointer is valid for the session's lifetime
@@ -1577,7 +1577,14 @@ pub struct Session {
   /// `session.settings()` invocation enqueues one entry; an inbound SETTINGS
   /// frame with the ACK flag pops the front and invokes it with
   /// `(ack=true, duration=0)`. Mirrors Node's `outstanding_settings_` queue.
-  pub pending_settings_acks: Vec<v8::Global<v8::Function>>,
+  ///
+  /// Invariant: every SETTINGS frame submitted via `Http2Settings::send`
+  /// (including the constructor's initial settings, which the JS layer
+  /// submits via `Http2Session.prototype.settings` with a bound
+  /// `settingsCallback`) pushes exactly one entry; every inbound ACK pops
+  /// exactly one. Because the only call site is `fn settings(cb)`, push and
+  /// submit are paired atomically.
+  pub pending_settings_acks: VecDeque<v8::Global<v8::Function>>,
   /// `SETTINGS_MAX_HEADER_LIST_SIZE` captured from the INITIAL settings the
   /// user passed to `http2.createServer({ settings })` /
   /// `http2.connect(url, { settings })`. Used to enforce header size limits
@@ -2066,7 +2073,7 @@ impl Http2Session {
       invalid_frame_count: 0,
       local_custom_settings: Vec::new(),
       remote_custom_settings: Vec::new(),
-      pending_settings_acks: Vec::new(),
+      pending_settings_acks: VecDeque::new(),
       local_max_header_list_size: u32::MAX,
       initial_settings_applied: false,
     }));
@@ -2319,15 +2326,21 @@ impl Http2Session {
 
   #[fast]
   fn settings(&self, cb: v8::Local<v8::Function>) -> bool {
-    let settings = Http2Settings::init(self.inner);
-    settings.send();
     // SAFETY: self.inner was allocated by Box::into_raw and is valid
     let session = unsafe { &mut *self.inner };
     // SAFETY: session.isolate is valid for this session's lifetime
     let isolate = unsafe { v8::Isolate::from_raw_isolate_ptr(session.isolate) };
+    // Enqueue BEFORE submit so the FIFO entry is in place no matter what.
+    // The JS layer guarantees this op is the sole entry point that submits
+    // SETTINGS — including the constructor's initial settings, which flows
+    // through `Http2Session.prototype.settings` with a bound
+    // `settingsCallback`. That keeps `pending_settings_acks` and outbound
+    // SETTINGS frames 1:1.
     session
       .pending_settings_acks
-      .push(v8::Global::new(&isolate, cb));
+      .push_back(v8::Global::new(&isolate, cb));
+    let settings = Http2Settings::init(self.inner);
+    settings.send();
     session.send_pending_data();
     true
   }
