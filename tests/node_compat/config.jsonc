@@ -2027,7 +2027,9 @@
     "parallel/test-net-autoselectfamily.js": {},
     "parallel/test-net-better-error-messages-listen-path.js": {},
     "parallel/test-net-better-error-messages-listen.js": {},
-    "parallel/test-net-better-error-messages-path.js": {},
+    "parallel/test-net-better-error-messages-path.js": {
+      "windows": false
+    },
     "parallel/test-net-better-error-messages-port-hostname.js": {},
     "parallel/test-net-binary.js": {},
     "parallel/test-net-bind-twice.js": {},
@@ -3305,7 +3307,6 @@
     // Note: Node.js BroadcastChannel message dispatch ordering differs from the Web spec ordering.
     // Deno follows the Web spec.
     "parallel/test-whatwg-writablestream-close.js": {},
-    "parallel/test-windows-abort-exitcode.js": {},
     "parallel/test-worker-abort-on-uncaught-exception.js": {},
     "parallel/test-worker-abort-on-uncaught-exception-terminate.js": {},
     // "parallel/test-worker-broadcastchannel-wpt.js": {},
