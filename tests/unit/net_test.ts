@@ -1223,16 +1223,19 @@ Deno.test(
     const sender = Deno.listenDatagram({
       port: 4002,
       transport: "udp",
+      hostname: "127.0.0.1",
     });
     const listener1 = Deno.listenDatagram({
       port: 4000,
       transport: "udp",
       reuseAddress: true,
+      hostname: "127.0.0.1",
     });
     const listener2 = Deno.listenDatagram({
       port: 4000,
       transport: "udp",
       reuseAddress: true,
+      hostname: "127.0.0.1",
     });
 
     const sent = new Uint8Array([1, 2, 3]);
