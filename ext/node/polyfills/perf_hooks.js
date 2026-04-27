@@ -83,11 +83,8 @@ const timerify = (fn, options = {}) => {
   }
 
   function timerified(...args) {
-    const start = performance.now();
-    const result = new.target ? new fn(...args) : fn.apply(this, args);
-    const end = performance.now();
-    // TODO: emit PerformanceEntry with entryType 'function'
-    return result;
+    // TODO(bartlomieju): emit PerformanceEntry with entryType 'function'
+    return new.target ? new fn(...args) : fn.apply(this, args);
   }
 
   Object.defineProperty(timerified, "name", {
