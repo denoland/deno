@@ -3100,6 +3100,7 @@
     "parallel/test-tls-net-connect-prefer-path.js": { "windows": false },
     "parallel/test-tls-net-socket-keepalive-12.js": {},
     "parallel/test-tls-net-socket-keepalive.js": {},
+    "parallel/test-tls-no-cert-required.js": {},
     "parallel/test-tls-no-sslv3.js": {},
     "parallel/test-tls-on-empty-socket.js": {},
     "parallel/test-tls-options-boolean-check.js": {},

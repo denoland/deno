@@ -891,7 +891,7 @@ function Server(options, listener) {
   } else if (options == null || typeof options === "object") {
     options ??= kEmptyObject;
   } else {
-    throw new TypeError("options must be an object");
+    throw new ERR_INVALID_ARG_TYPE("options", "object", options);
   }
 
   this._contexts = [];
