@@ -6694,7 +6694,7 @@ pub mod test {
 
   #[test]
   fn test_deploy_config_root_only_no_member_deploy() {
-    // Customer layout: deploy:{org,app} in root, NO deploy in any member.
+    // deploy:{org,app} in root, NO deploy in any member.
     // When running from root, to_deploy_config should return Some.
     let sys = InMemorySys::default();
     sys.fs_insert_json(
