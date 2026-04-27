@@ -1083,6 +1083,8 @@ export function normalizeSpawnArguments(
     validateObject(options, "options");
   }
 
+  options = { __proto__: null, ...options } as typeof options;
+
   let cwd = options.cwd;
 
   // Validate the cwd, if present.
@@ -1248,6 +1250,7 @@ export function normalizeSpawnArguments(
 
   return {
     // Make a shallow copy so we don't clobber the user's options object.
+    __proto__: null,
     ...options,
     args,
     cwd,
