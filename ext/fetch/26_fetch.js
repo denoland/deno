@@ -67,9 +67,9 @@ import {
   TRACING_ENABLED,
 } from "ext:deno_telemetry/telemetry.ts";
 import {
+  updateSpanFromClientResponse,
   updateSpanFromError,
   updateSpanFromRequest,
-  updateSpanFromResponse,
 } from "ext:deno_telemetry/util.ts";
 
 const REQUEST_BODY_HEADER_NAMES = [
@@ -450,7 +450,7 @@ function fetch(input, init = { __proto__: null }) {
             responseObject = fromInnerResponse(response, "immutable");
 
             if (span) {
-              updateSpanFromResponse(span, responseObject);
+              updateSpanFromClientResponse(span, responseObject);
             }
 
             resolve(responseObject);

@@ -1,0 +1,8 @@
+[WILDCARD]
+Downloaded 34 packages from npm
+++++++++++++++++++++++++++++++++++
+
+Dependencies:
++ npm:chalk 5.0.1
++ npm:cowsay 1.5.0
+

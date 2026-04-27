@@ -1,0 +1,51 @@
+{
+  "version": 1,
+  "roots": [
+    "file://[WILDCARD]/main.ts"
+  ],
+  "modules": [
+    {
+      "kind": "esm",
+      "dependencies": [
+        {
+          "specifier": "npm:/ajv@8.11.0/dist/jtd.js",
+          "code": {
+            "specifier": "npm:/ajv@8.11.0/dist/jtd.js",
+            "span": {
+              "start": {
+                "line": 1,
+                "character": 19
+              },
+              "end": {
+                "line": 1,
+                "character": 48
+              }
+            }
+          },
+          "npmPackage": "ajv@8.11.0"
+        }
+      ],
+      "local": "[WILDCARD]main.ts",
+      "size": 93,
+      "mediaType": "TypeScript",
+      "specifier": "file://[WILDCARD]/main.ts"
+    },
+    {
+      "kind": "npm",
+      "specifier": "npm:/ajv@8.11.0/dist/jtd.js",
+      "npmPackage": "ajv@8.11.0"
+    }
+  ],
+  "redirects": {},
+  "npmPackages": {
+    "ajv@8.11.0": {
+      "name": "ajv",
+      "version": "8.11.0",
+      "dependencies": [
+        [WILDCARD]
+      ],
+      "registryUrl": "http://localhost:4260/"
+    },
+    [WILDCARD]
+  }
+}

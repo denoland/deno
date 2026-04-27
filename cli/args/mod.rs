@@ -61,6 +61,7 @@ use once_cell::sync::Lazy;
 use thiserror::Error;
 
 use crate::sys::CliSys;
+use crate::util::fs::canonicalize_path;
 
 pub type CliLockfile = deno_resolver::lockfile::LockfileLock<CliSys>;
 
@@ -479,7 +480,6 @@ pub struct CliOptions {
 }
 
 impl CliOptions {
-  #[allow(clippy::too_many_arguments)]
   pub fn new(
     flags: Arc<Flags>,
     initial_cwd: PathBuf,
@@ -593,7 +593,7 @@ impl CliOptions {
     };
     if let Some(node_channel_fd) = maybe_node_channel_fd {
       // Remove so that child processes don't inherit this environment variables.
-      #[allow(clippy::undocumented_unsafe_blocks)]
+      // SAFETY: single-threaded at this point in startup
       unsafe {
         std::env::remove_var("NODE_CHANNEL_FD");
         std::env::remove_var("NODE_CHANNEL_SERIALIZATION_MODE");
@@ -640,8 +640,27 @@ impl CliOptions {
     self.flags.no_legacy_abort()
   }
 
-  pub fn env_file_name(&self) -> Option<&Vec<String>> {
-    self.flags.env_file.as_ref()
+  pub fn env_file_names(
+    &self,
+  ) -> impl DoubleEndedIterator<Item = &'_ str> + '_ {
+    self
+      .flags
+      .env_file
+      .as_ref()
+      .into_iter()
+      .flatten()
+      .map(|name| name.as_str())
+  }
+
+  pub fn possible_env_file_paths_for_watch(
+    &self,
+  ) -> impl Iterator<Item = PathBuf> {
+    self
+      .env_file_names()
+      .flat_map(|env_file| {
+        deno_dotenv::candidate_paths(&self.initial_cwd, env_file)
+      })
+      .filter_map(|p| canonicalize_path(&p).ok())
   }
 
   pub fn preload_modules(&self) -> Result<Vec<ModuleSpecifier>, AnyError> {
@@ -969,14 +988,34 @@ impl CliOptions {
     }
   }
 
-  pub fn enable_op_summary_metrics(&self) -> bool {
-    self.flags.enable_op_summary_metrics
-      || matches!(
-        self.flags.subcommand,
-        DenoSubcommand::Test(_)
-          | DenoSubcommand::Repl(_)
-          | DenoSubcommand::Jupyter(_)
-      )
+  pub fn cpu_prof_dir(&self) -> Option<PathBuf> {
+    self.flags.cpu_prof.as_ref().map(|f| {
+      f.dir
+        .as_ref()
+        .map(|d| self.initial_cwd.join(d))
+        .unwrap_or_else(|| self.initial_cwd.clone())
+    })
+  }
+
+  pub fn cpu_prof_name(&self) -> Option<String> {
+    self.flags.cpu_prof.as_ref().and_then(|f| f.name.clone())
+  }
+
+  pub fn cpu_prof_interval(&self) -> u32 {
+    self
+      .flags
+      .cpu_prof
+      .as_ref()
+      .and_then(|f| f.interval)
+      .unwrap_or(1000)
+  }
+
+  pub fn cpu_prof_md(&self) -> bool {
+    self.flags.cpu_prof.as_ref().is_some_and(|f| f.md)
+  }
+
+  pub fn cpu_prof_flamegraph(&self) -> bool {
+    self.flags.cpu_prof.as_ref().is_some_and(|f| f.flamegraph)
   }
 
   pub fn enable_testing_features(&self) -> bool {
@@ -1133,6 +1172,7 @@ impl CliOptions {
         "jsr.io:443",
         "deno.land:443",
         "esm.sh:443",
+        "raw.esm.sh:443",
         "cdn.jsdelivr.net:443",
         "raw.githubusercontent.com:443",
         "gist.githubusercontent.com:443",
@@ -1183,6 +1223,9 @@ impl CliOptions {
           .first()
           .and_then(|url| file_to_url(url))
           .map(|url| vec![url]),
+        DenoSubcommand::Install(InstallFlags::Local(
+          InstallFlagsLocal::Entrypoints(flags),
+        )) => Some(files_to_urls(&flags.entrypoints)),
         DenoSubcommand::Doc(DocFlags {
           source_files: DocSourceFileFlag::Paths(paths),
           ..
@@ -1219,10 +1262,8 @@ impl CliOptions {
           Ok(var) => {
             // remove the env var so that child sub processes won't pick this up
 
-            #[allow(clippy::undocumented_unsafe_blocks)]
-            unsafe {
-              std::env::remove_var(NPM_CMD_NAME_ENV_VAR_NAME)
-            };
+            // SAFETY: single-threaded at this point in startup
+            unsafe { std::env::remove_var(NPM_CMD_NAME_ENV_VAR_NAME) };
             Some(var)
           }
           Err(_) => NpmPackageReqReference::from_str(&flags.script).ok().map(
@@ -1318,11 +1359,21 @@ impl CliOptions {
   }
 
   /// Returns unstable feature flags as CLI arguments (e.g., "--unstable-unsafe-proto").
-  /// This includes features from both CLI flags and config file.
+  /// This includes features from both CLI flags and config file. Features that
+  /// are only valid in `deno.json` (e.g. `fmt-component`, `fmt-sql`) and don't
+  /// have a registered CLI flag are filtered out, otherwise child processes
+  /// spawned with these args (e.g. via `deno x`) would reject them with
+  /// "unexpected argument".
   pub fn unstable_args(&self) -> Vec<String> {
+    let cli_flag_names: std::collections::HashSet<&str> =
+      deno_runtime::UNSTABLE_FEATURES
+        .iter()
+        .map(|f| f.name)
+        .collect();
     self
       .unstable_features()
       .into_iter()
+      .filter(|f| cli_flag_names.contains(*f))
       .map(|f| format!("--unstable-{}", f))
       .collect()
   }
@@ -1485,7 +1536,7 @@ fn resolve_import_map_specifier(
 
 /// Resolves the no_prompt value based on the cli flags and environment.
 pub fn resolve_no_prompt(flags: &PermissionFlags) -> bool {
-  flags.no_prompt || has_flag_env_var("DENO_NO_PROMPT")
+  flags.no_prompt || has_flag_env_var(&CliSys::default(), "DENO_NO_PROMPT")
 }
 
 pub fn config_to_deno_graph_workspace_member(
@@ -1784,13 +1835,14 @@ mod test {
   use pretty_assertions::assert_eq;
 
   use super::*;
+  use crate::util::env::resolve_cwd;
 
   #[test]
   fn resolve_import_map_flags_take_precedence() {
     let config_text = r#"{
       "importMap": "import_map.json"
     }"#;
-    let cwd = &std::env::current_dir().unwrap();
+    let cwd = &resolve_cwd(None).unwrap();
     let config_specifier = Url::parse("file:///deno/deno.jsonc").unwrap();
     let config_file = ConfigFile::new(config_text, config_specifier).unwrap();
     let actual = resolve_import_map_specifier(
@@ -1858,7 +1910,7 @@ mod test {
 
   #[test]
   fn test_flags_to_permission_options() {
-    let base_dir = std::env::current_dir().unwrap().join("sub");
+    let base_dir = resolve_cwd(None).unwrap().join("sub");
     {
       let flags = PermissionFlags::default();
       let config = PermissionsObjectWithBase {

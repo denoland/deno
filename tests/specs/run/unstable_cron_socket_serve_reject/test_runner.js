@@ -23,8 +23,21 @@ const mainProcess = new Deno.Command(Deno.execPath(), {
   },
 }).spawn();
 
-// Give Deno a moment to start and create its control socket
-await new Promise((resolve) => setTimeout(resolve, 100));
+// Wait for control socket to be available
+let i = 0;
+while (true) {
+  try {
+    await Deno.lstat(controlSocketPath);
+    break;
+  } catch {}
+
+  i += 1;
+  if (i > 100) {
+    throw new Error(`${controlSocketPath} did not exist`);
+  }
+
+  await new Promise((r) => setTimeout(r, 10));
+}
 
 // 3. Connect to control socket (Deno is the server, we are the client)
 const controlConn = await Deno.connect({
@@ -58,6 +71,8 @@ const registeredCrons = [];
 
 // 5. Process messages concurrently
 async function readCronMessages() {
+  let receivedRejectAck = false;
+
   while (true) {
     const { value: chunk, done } = await cronReader.read();
     if (done) break;
@@ -84,9 +99,14 @@ async function readCronMessages() {
           );
           Deno.exit(1);
         }
+      } else if (msg.kind === "reject-ack") {
+        console.error("[CRON SERVER] Received reject-ack");
+        receivedRejectAck = true;
       }
     }
   }
+
+  return receivedRejectAck;
 }
 
 async function readControlMessages() {
@@ -123,7 +143,15 @@ async function readControlMessages() {
   }
 }
 
-await Promise.all([readCronMessages(), readControlMessages()]);
+const [receivedRejectAck] = await Promise.all([
+  readCronMessages(),
+  readControlMessages(),
+]);
+
+if (!receivedRejectAck) {
+  console.error("[CRON SERVER] ERROR: Did not receive reject-ack");
+  Deno.exit(1);
+}
 
 console.error("[CRON SERVER] Registered crons:", registeredCrons.join(", "));
 if (registeredCrons.length === 1 && registeredCrons[0] === "early-cron") {

@@ -59,7 +59,6 @@ use super::testing::TestModule;
 use super::text::LineIndex;
 use super::tsc::ChangeKind;
 use super::tsc::NavigationTree;
-use super::urls::COMPONENT;
 use super::urls::normalize_uri;
 use super::urls::uri_is_file_like;
 use super::urls::uri_to_file_path;
@@ -68,6 +67,9 @@ use super::urls::url_to_uri;
 use crate::graph_util::CliJsrUrlProvider;
 use crate::lsp::compiler_options::LspCompilerOptionsData;
 use crate::lsp::compiler_options::LspCompilerOptionsResolver;
+use crate::tsc::BYTES_IMPORT_SOURCE;
+use crate::tsc::RawImportKind;
+use crate::tsc::TEXT_IMPORT_SOURCE;
 
 #[derive(Debug)]
 pub struct OpenDocument {
@@ -155,35 +157,28 @@ impl OpenDocument {
   }
 }
 
-fn remote_url_to_uri(url: &Url) -> Option<Uri> {
-  if !matches!(url.scheme(), "http" | "https") {
+fn remote_or_asset_url_to_uri(url: &Url) -> Option<Uri> {
+  if !matches!(url.scheme(), "http" | "https" | "asset") {
     return None;
   }
-  let mut string = String::with_capacity(url.as_str().len() + 6);
-  string.push_str("deno:/");
-  string.push_str(url.scheme());
-  for p in url[Position::BeforeHost..].split('/') {
-    string.push('/');
-    string.push_str(
-      &percent_encoding::utf8_percent_encode(p, COMPONENT).to_string(),
-    );
-  }
-  Uri::from_str(&string)
-    .inspect_err(|err| {
-      lsp_warn!("Couldn't convert remote URL \"{url}\" to URI: {err}")
-    })
-    .ok()
-}
-
-fn asset_url_to_uri(url: &Url) -> Option<Uri> {
-  if url.scheme() != "asset" {
-    return None;
-  }
-  Uri::from_str(&format!("deno:/asset{}", url.path()))
-    .inspect_err(|err| {
-      lsp_warn!("Couldn't convert asset URL \"{url}\" to URI: {err}")
-    })
-    .ok()
+  let mut encoded_path =
+    fluent_uri::pct_enc::EString::<fluent_uri::pct_enc::encoder::Path>::new();
+  encoded_path.encode_str::<fluent_uri::pct_enc::encoder::Path>("/");
+  encoded_path.encode_str::<fluent_uri::pct_enc::encoder::Path>(url.scheme());
+  encoded_path.encode_str::<fluent_uri::pct_enc::encoder::Path>("/");
+  encoded_path.encode_str::<fluent_uri::pct_enc::encoder::Path>(
+    &percent_encoding::percent_decode_str(
+      url[Position::BeforeUsername..].trim_start_matches('/'),
+    )
+    .decode_utf8_lossy(),
+  );
+  let uri = fluent_uri::Uri::builder()
+    .scheme(fluent_uri::component::Scheme::new_or_panic("deno"))
+    .path(encoded_path.as_ref())
+    .build()
+    .expect("component constraints should be met by the above")
+    .into();
+  Some(uri)
 }
 
 fn data_url_to_uri(url: &Url) -> Option<Uri> {
@@ -194,20 +189,25 @@ fn data_url_to_uri(url: &Url) -> Option<Uri> {
   } else {
     media_type.as_ts_extension()
   };
-  let mut file_name_str = url.path().to_string();
-  if let Some(query) = url.query() {
-    file_name_str.push('?');
-    file_name_str.push_str(query);
-  }
-  let hash = deno_lib::util::checksum::r#gen(&[file_name_str.as_bytes()]);
-  Uri::from_str(&format!("deno:/data_url/{hash}{extension}",))
-    .inspect_err(|err| {
-      lsp_warn!("Couldn't convert data url \"{url}\" to URI: {err}")
-    })
-    .ok()
+  let hash = deno_lib::util::checksum::r#gen(&[url.as_str().as_bytes()]);
+  let mut encoded_path =
+    fluent_uri::pct_enc::EString::<fluent_uri::pct_enc::encoder::Path>::new();
+  encoded_path.encode_str::<fluent_uri::pct_enc::encoder::Path>("/");
+  encoded_path.encode_str::<fluent_uri::pct_enc::encoder::Path>("data-url");
+  encoded_path.encode_str::<fluent_uri::pct_enc::encoder::Path>("/");
+  encoded_path.encode_str::<fluent_uri::pct_enc::encoder::Path>(&hash);
+  encoded_path.encode_str::<fluent_uri::pct_enc::encoder::Path>(extension);
+  let uri = fluent_uri::Uri::builder()
+    .scheme(fluent_uri::component::Scheme::new_or_panic("deno"))
+    .path(encoded_path.as_ref())
+    .build()
+    .expect("component constraints should be met by the above")
+    .into();
+  Some(uri)
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
+#[serde(untagged)]
 pub enum DocumentText {
   Static(&'static str),
   Arc(Arc<str>),
@@ -234,48 +234,53 @@ impl std::ops::Deref for DocumentText {
   }
 }
 
-impl Serialize for DocumentText {
-  fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-  where
-    S: serde::Serializer,
-  {
-    (self as &str).serialize(serializer)
-  }
-}
-
 #[derive(Debug, Clone)]
 pub enum ServerDocumentKind {
   Fs {
     fs_version: String,
+    media_type: MediaType,
     text: Arc<str>,
+    line_index: Arc<LineIndex>,
   },
   RemoteUrl {
     url: Arc<Url>,
     fs_cache_version: String,
+    media_type: MediaType,
     text: Arc<str>,
+    line_index: Arc<LineIndex>,
   },
   DataUrl {
     url: Arc<Url>,
+    media_type: MediaType,
     text: Arc<str>,
+    line_index: Arc<LineIndex>,
   },
   Asset {
     url: Arc<Url>,
+    media_type: MediaType,
     text: &'static str,
+    line_index: Arc<LineIndex>,
+  },
+  RawImportTypes {
+    kind: RawImportKind,
   },
 }
+
+static TEXT_IMPORT_SOURCE_LINE_INDEX: Lazy<Arc<LineIndex>> =
+  Lazy::new(|| Arc::new(LineIndex::new(TEXT_IMPORT_SOURCE)));
+
+static BYTES_IMPORT_SOURCE_LINE_INDEX: Lazy<Arc<LineIndex>> =
+  Lazy::new(|| Arc::new(LineIndex::new(BYTES_IMPORT_SOURCE)));
 
 #[derive(Debug)]
 pub struct ServerDocument {
   pub uri: Arc<Uri>,
-  pub media_type: MediaType,
-  pub line_index: Arc<LineIndex>,
   pub kind: ServerDocumentKind,
 }
 
 impl ServerDocument {
   fn load(uri: &Uri) -> Option<Self> {
-    let scheme = uri.scheme()?;
-    if scheme.eq_lowercase("file") {
+    if uri.scheme().as_str().eq_ignore_ascii_case("file") {
       let url = uri_to_url(uri);
       let path = url_to_file_path(&url).ok()?;
       let bytes = fs::read(&path).ok()?;
@@ -286,9 +291,12 @@ impl ServerDocument {
       let line_index = Arc::new(LineIndex::new(&text));
       return Some(Self {
         uri: Arc::new(uri.clone()),
-        media_type,
-        line_index,
-        kind: ServerDocumentKind::Fs { fs_version, text },
+        kind: ServerDocumentKind::Fs {
+          fs_version,
+          media_type,
+          text,
+          line_index,
+        },
       });
     }
     None
@@ -326,26 +334,29 @@ impl ServerDocument {
     let line_index = Arc::new(LineIndex::new(&text));
     Some(Self {
       uri: Arc::new(uri.clone()),
-      media_type,
-      line_index,
       kind: ServerDocumentKind::RemoteUrl {
         url,
         fs_cache_version,
+        media_type,
         text,
+        line_index,
       },
     })
   }
 
   fn asset(name: &str, text: &'static str) -> Self {
     let url = Arc::new(Url::parse(&format!("asset:///{name}")).unwrap());
-    let uri = asset_url_to_uri(&url).unwrap();
+    let uri = remote_or_asset_url_to_uri(&url).unwrap();
     let media_type = MediaType::from_specifier(&url);
     let line_index = Arc::new(LineIndex::new(text));
     Self {
       uri: Arc::new(uri),
-      media_type,
-      line_index,
-      kind: ServerDocumentKind::Asset { url, text },
+      kind: ServerDocumentKind::Asset {
+        url,
+        media_type,
+        text,
+        line_index,
+      },
     }
   }
 
@@ -357,10 +368,53 @@ impl ServerDocument {
     let line_index = Arc::new(LineIndex::new(&text));
     Some(Self {
       uri: Arc::new(uri.clone()),
-      media_type,
-      line_index,
-      kind: ServerDocumentKind::DataUrl { url, text },
+      kind: ServerDocumentKind::DataUrl {
+        url,
+        media_type,
+        text,
+        line_index,
+      },
     })
+  }
+
+  fn raw_import_types(uri: &Uri) -> Option<Self> {
+    if uri
+      .as_str()
+      .strip_prefix("deno:/text-import-types/")
+      .and_then(|s| s.strip_suffix(".ts"))
+      .is_some()
+    {
+      return Some(ServerDocument {
+        uri: Arc::new(uri.clone()),
+        kind: ServerDocumentKind::RawImportTypes {
+          kind: RawImportKind::Text,
+        },
+      });
+    }
+    if uri
+      .as_str()
+      .strip_prefix("deno:/bytes-import-types/")
+      .and_then(|s| s.strip_suffix(".ts"))
+      .is_some()
+    {
+      return Some(ServerDocument {
+        uri: Arc::new(uri.clone()),
+        kind: ServerDocumentKind::RawImportTypes {
+          kind: RawImportKind::Bytes,
+        },
+      });
+    }
+    None
+  }
+
+  pub fn media_type(&self) -> MediaType {
+    match &self.kind {
+      ServerDocumentKind::Fs { media_type, .. } => *media_type,
+      ServerDocumentKind::RemoteUrl { media_type, .. } => *media_type,
+      ServerDocumentKind::DataUrl { media_type, .. } => *media_type,
+      ServerDocumentKind::Asset { media_type, .. } => *media_type,
+      ServerDocumentKind::RawImportTypes { .. } => MediaType::TypeScript,
+    }
   }
 
   pub fn text(&self) -> DocumentText {
@@ -373,11 +427,36 @@ impl ServerDocument {
         DocumentText::Arc(text.clone())
       }
       ServerDocumentKind::Asset { text, .. } => DocumentText::Static(text),
+      ServerDocumentKind::RawImportTypes {
+        kind: RawImportKind::Text,
+        ..
+      } => DocumentText::Static(TEXT_IMPORT_SOURCE),
+      ServerDocumentKind::RawImportTypes {
+        kind: RawImportKind::Bytes,
+        ..
+      } => DocumentText::Static(BYTES_IMPORT_SOURCE),
+    }
+  }
+
+  pub fn line_index(&self) -> &Arc<LineIndex> {
+    match &self.kind {
+      ServerDocumentKind::Fs { line_index, .. } => line_index,
+      ServerDocumentKind::RemoteUrl { line_index, .. } => line_index,
+      ServerDocumentKind::DataUrl { line_index, .. } => line_index,
+      ServerDocumentKind::Asset { line_index, .. } => line_index,
+      ServerDocumentKind::RawImportTypes {
+        kind: RawImportKind::Text,
+        ..
+      } => &TEXT_IMPORT_SOURCE_LINE_INDEX,
+      ServerDocumentKind::RawImportTypes {
+        kind: RawImportKind::Bytes,
+        ..
+      } => &BYTES_IMPORT_SOURCE_LINE_INDEX,
     }
   }
 
   pub fn is_diagnosable(&self) -> bool {
-    media_type_is_diagnosable(self.media_type)
+    media_type_is_diagnosable(self.media_type())
   }
 
   pub fn is_file_like(&self) -> bool {
@@ -392,6 +471,7 @@ impl ServerDocument {
       } => fs_cache_version.clone(),
       ServerDocumentKind::DataUrl { .. } => "1".to_string(),
       ServerDocumentKind::Asset { .. } => "1".to_string(),
+      ServerDocumentKind::RawImportTypes { .. } => "1".to_string(),
     }
   }
 }
@@ -457,7 +537,7 @@ impl Document {
   pub fn line_index(&self) -> &Arc<LineIndex> {
     match self {
       Self::Open(d) => &d.line_index,
-      Self::Server(d) => &d.line_index,
+      Self::Server(d) => d.line_index(),
     }
   }
 
@@ -508,14 +588,14 @@ impl Documents {
     let uri = normalize_uri(&uri);
     self.server.remove(&uri);
     let doc = Arc::new(OpenDocument::new(
-      uri.as_ref().clone(),
+      uri.clone(),
       version,
       language_id,
       text,
       notebook_uri,
     ));
-    self.open.insert(uri.into_owned(), doc.clone());
-    if !doc.uri.scheme().is_some_and(|s| s.eq_lowercase("file")) {
+    self.open.insert(uri, doc.clone());
+    if !doc.uri.scheme().as_str().eq_ignore_ascii_case("file") {
       let url = uri_to_url(&doc.uri);
       if url.scheme() == "file" {
         self.file_like_uris_by_url.insert(url, doc.uri.clone());
@@ -531,7 +611,7 @@ impl Documents {
     changes: Vec<lsp::TextDocumentContentChangeEvent>,
   ) -> Result<Arc<OpenDocument>, AnyError> {
     let uri = normalize_uri(uri);
-    let Some((uri, doc)) = self.open.shift_remove_entry(uri.as_ref()) else {
+    let Some((uri, doc)) = self.open.shift_remove_entry(&uri) else {
       return Err(
         JsErrorBox::new(
           "NotFound",
@@ -550,10 +630,8 @@ impl Documents {
 
   fn close(&mut self, uri: &Uri) -> Result<Arc<OpenDocument>, AnyError> {
     let uri = normalize_uri(uri);
-    self
-      .file_like_uris_by_url
-      .retain(|_, u| u.as_ref() != uri.as_ref());
-    let doc = self.open.shift_remove(uri.as_ref()).ok_or_else(|| {
+    self.file_like_uris_by_url.retain(|_, u| u.as_ref() != &uri);
+    let doc = self.open.shift_remove(&uri).ok_or_else(|| {
       JsErrorBox::new(
         "NotFound",
         format!(
@@ -570,7 +648,7 @@ impl Documents {
     uri: Uri,
     cells: Vec<lsp::TextDocumentItem>,
   ) -> Vec<Arc<OpenDocument>> {
-    let uri = Arc::new(normalize_uri(&uri).into_owned());
+    let uri = Arc::new(normalize_uri(&uri));
     let mut documents = Vec::with_capacity(cells.len());
     for cell in cells {
       let language_id = cell.language_id.parse().unwrap_or_else(|err| {
@@ -605,7 +683,7 @@ impl Documents {
     structure: Option<lsp::NotebookDocumentCellChangeStructure>,
     content: Option<Vec<lsp::NotebookDocumentChangeTextContent>>,
   ) -> Vec<(Arc<OpenDocument>, ChangeKind)> {
-    let uri = Arc::new(normalize_uri(uri).into_owned());
+    let uri = Arc::new(normalize_uri(uri));
     let mut documents_with_change_kinds = Vec::new();
     if let Some(structure) = structure {
       if let Some(cells) = self.cells_by_notebook_uri.get_mut(&uri) {
@@ -617,7 +695,7 @@ impl Documents {
             .cells
             .into_iter()
             .flatten()
-            .map(|c| Arc::new(normalize_uri(&c.document).into_owned())),
+            .map(|c| Arc::new(normalize_uri(&c.document))),
         );
       }
       for closed in structure.did_close.into_iter().flatten() {
@@ -671,8 +749,7 @@ impl Documents {
 
   pub fn close_notebook(&mut self, uri: &Uri) -> Vec<Arc<OpenDocument>> {
     let uri = normalize_uri(uri);
-    let Some(cell_uris) = self.cells_by_notebook_uri.remove(uri.as_ref())
-    else {
+    let Some(cell_uris) = self.cells_by_notebook_uri.remove(&uri) else {
       lsp_warn!(
         "The URI \"{}\" does not refer to an open notebook document.",
         uri.as_str(),
@@ -695,11 +772,14 @@ impl Documents {
 
   pub fn get(&self, uri: &Uri) -> Option<Document> {
     let uri = normalize_uri(uri);
-    if let Some(doc) = self.open.get(uri.as_ref()) {
+    if let Some(doc) = self.open.get(&uri) {
       return Some(Document::Open(doc.clone()));
     }
     if let Some(doc) = ASSET_DOCUMENTS.get(&uri) {
       return Some(Document::Server(doc.clone()));
+    }
+    if let Some(doc) = ServerDocument::raw_import_types(&uri) {
+      return Some(Document::Server(Arc::new(doc)));
     }
     if let Some(doc) = self.server.get(&uri) {
       return Some(Document::Server(doc.clone()));
@@ -716,14 +796,14 @@ impl Documents {
       },
     };
     let doc = Arc::new(doc);
-    self.server.insert(uri.into_owned(), doc.clone());
+    self.server.insert(uri, doc.clone());
     Some(Document::Server(doc))
   }
 
   /// This will not create any server entries, only retrieve existing entries.
   pub fn inspect(&self, uri: &Uri) -> Option<Document> {
     let uri = normalize_uri(uri);
-    if let Some(doc) = self.open.get(uri.as_ref()) {
+    if let Some(doc) = self.open.get(&uri) {
       return Some(Document::Open(doc.clone()));
     }
     if let Some(doc) = self.server.get(&uri) {
@@ -747,7 +827,7 @@ impl Documents {
         .or_else(|| url_to_uri(specifier).ok().map(Arc::new))?;
       self.get(&uri)
     } else if scheme == "asset" {
-      let uri = asset_url_to_uri(specifier)?;
+      let uri = remote_or_asset_url_to_uri(specifier)?;
       self.get(&uri)
     } else if scheme == "http" || scheme == "https" {
       if let Some(vendored_specifier) =
@@ -756,7 +836,7 @@ impl Documents {
         let uri = url_to_uri(&vendored_specifier).ok()?;
         self.get(&uri)
       } else {
-        let uri = remote_url_to_uri(specifier)?;
+        let uri = remote_or_asset_url_to_uri(specifier)?;
         if let Some(doc) = self.server.get(&uri) {
           return Some(Document::Server(doc.clone()));
         }
@@ -860,7 +940,7 @@ pub struct DocumentModule {
 }
 
 impl DocumentModule {
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "construction")]
   pub fn new(
     document: &Document,
     specifier: Arc<Url>,
@@ -1046,7 +1126,7 @@ pub struct DocumentModules {
   dep_info_by_scope: once_cell::sync::OnceCell<Arc<DepInfoByScope>>,
   modules_unscoped: Arc<WeakDocumentModuleMap>,
   modules_by_scope: Arc<BTreeMap<Arc<Url>, Arc<WeakDocumentModuleMap>>>,
-  assigned_scopes: Arc<DashMap<Arc<Uri>, ScopeInfo>>,
+  assigned_scopes: Arc<RwLock<HashMap<Arc<Uri>, ScopeInfo>>>,
 }
 
 impl DocumentModules {
@@ -1132,7 +1212,7 @@ impl DocumentModules {
     let document = self.documents.close(uri)?;
     // If applicable, try to load the closed document as a server document so
     // it's still included as a ts root etc..
-    if uri.scheme().is_some_and(|s| s.eq_lowercase("file"))
+    if uri.scheme().as_str().eq_ignore_ascii_case("file")
       && self.config.uri_enabled(uri)
     {
       self.documents.get(uri);
@@ -1188,6 +1268,7 @@ impl DocumentModules {
         ServerDocumentKind::RemoteUrl { url, .. } => return Some(url.clone()),
         ServerDocumentKind::DataUrl { url, .. } => return Some(url.clone()),
         ServerDocumentKind::Asset { url, .. } => return Some(url.clone()),
+        ServerDocumentKind::RawImportTypes { .. } => return None,
       }
     }
     let uri = document.uri();
@@ -1195,7 +1276,7 @@ impl DocumentModules {
     if url.scheme() != "file" {
       return None;
     }
-    if uri.scheme().is_some_and(|s| s.eq_lowercase("file"))
+    if uri.scheme().as_str().eq_ignore_ascii_case("file")
       && let Some(remote_specifier) = self.cache.unvendored_specifier(&url)
     {
       return Some(Arc::new(remote_specifier));
@@ -1230,9 +1311,10 @@ impl DocumentModules {
       (key, value)
     } else {
       self.compiler_options_resolver.entry_for_specifier(
-        if scheme != "file" && scope.is_some() {
-          #[allow(clippy::unnecessary_unwrap)]
-          scope.unwrap()
+        if scheme != "file"
+          && let Some(scope) = scope
+        {
+          scope
         } else {
           &specifier
         },
@@ -1286,7 +1368,7 @@ impl DocumentModules {
       compiler_options_key,
     );
     if let Some(module) = &module {
-      self.assigned_scopes.insert(
+      self.assigned_scopes.write().insert(
         document.uri().clone(),
         (module.scope.clone(), module.compiler_options_key.clone()),
       );
@@ -1301,9 +1383,9 @@ impl DocumentModules {
     if let Some(scope) = self.primary_scope(document.uri()) {
       return self.module(document, scope.map(|s| s.as_ref()));
     }
-    if let Some((scope, compiler_options_key)) =
-      self.assigned_scopes.get(document.uri()).map(|e| e.clone())
-    {
+    let assigned_scope =
+      self.assigned_scopes.read().get(document.uri()).cloned();
+    if let Some((scope, compiler_options_key)) = assigned_scope {
       return self.module_inner(
         document,
         None,
@@ -1632,21 +1714,25 @@ impl DocumentModules {
         dependencies.as_ref().and_then(|d| d.get(raw_specifier))
       {
         if let Some(specifier) = dep.maybe_type.maybe_specifier() {
-          self.resolve_dependency(
-            specifier,
-            referrer,
-            resolution_mode,
-            scope,
-            compiler_options_key,
-          )
+          self
+            .resolve_dependency(
+              specifier,
+              referrer,
+              resolution_mode,
+              scope,
+              compiler_options_key,
+            )
+            .map(|(s, t, _)| (s, t))
         } else if let Some(specifier) = dep.maybe_code.maybe_specifier() {
-          self.resolve_dependency(
-            specifier,
-            referrer,
-            resolution_mode,
-            scope,
-            compiler_options_key,
-          )
+          self
+            .resolve_dependency(
+              specifier,
+              referrer,
+              resolution_mode,
+              scope,
+              compiler_options_key,
+            )
+            .map(|(s, t, _)| (s, t))
         } else {
           None
         }
@@ -1658,13 +1744,15 @@ impl DocumentModules {
           resolution_mode,
           NodeResolutionKind::Types,
         ) {
-          Ok(specifier) => self.resolve_dependency(
-            &specifier,
-            referrer,
-            resolution_mode,
-            scope,
-            compiler_options_key,
-          ),
+          Ok(specifier) => self
+            .resolve_dependency(
+              &specifier,
+              referrer,
+              resolution_mode,
+              scope,
+              compiler_options_key,
+            )
+            .map(|(s, t, _)| (s, t)),
           _ => None,
         }
       };
@@ -1681,14 +1769,13 @@ impl DocumentModules {
     resolution_mode: ResolutionMode,
     scope: Option<&Url>,
     compiler_options_key: Option<&CompilerOptionsKey>,
-  ) -> Option<(Url, MediaType)> {
+  ) -> Option<(Url, MediaType, Option<Arc<Uri>>)> {
     if let Some(module_name) = specifier.as_str().strip_prefix("node:")
       && deno_node::is_builtin_node_module(module_name)
     {
-      // return itself for node: specifiers because during type checking
-      // we resolve to the ambient modules in the @types/node package
-      // rather than deno_std/node
-      return Some((specifier.clone(), MediaType::Dts));
+      // Don't resolve node: specifiers because during type checking we resolve
+      // to the ambient modules in the @types/node package.
+      return None;
     }
     let mut specifier = specifier.clone();
     let mut media_type = None;
@@ -1708,7 +1795,7 @@ impl DocumentModules {
     else {
       let media_type =
         media_type.unwrap_or_else(|| MediaType::from_specifier(&specifier));
-      return Some((specifier, media_type));
+      return Some((specifier, media_type, None));
     };
     if let Some(types) = module
       .types_dependency
@@ -1723,7 +1810,11 @@ impl DocumentModules {
         compiler_options_key,
       )
     } else {
-      Some((module.specifier.as_ref().clone(), module.media_type))
+      Some((
+        module.specifier.as_ref().clone(),
+        module.media_type,
+        Some(module.uri.clone()),
+      ))
     }
   }
 }
@@ -1910,7 +2001,7 @@ fn get_maybe_test_module_fut(
   Some(handle)
 }
 
-fn resolve_media_type(
+pub fn resolve_media_type(
   specifier: &ModuleSpecifier,
   maybe_headers: Option<&HashMap<String, String>>,
   maybe_language_id: Option<LanguageId>,
@@ -1999,7 +2090,6 @@ fn parse_and_analyze_module(
   )
 }
 
-#[allow(clippy::result_large_err)]
 fn parse_source(
   specifier: ModuleSpecifier,
   text: Arc<str>,

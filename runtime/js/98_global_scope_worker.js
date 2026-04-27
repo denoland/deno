@@ -9,6 +9,8 @@ import {
 const {
   ObjectDefineProperties,
   ObjectPrototypeIsPrototypeOf,
+  StringPrototypeSlice,
+  StringPrototypeToUpperCase,
   SymbolFor,
 } = primordials;
 
@@ -17,6 +19,44 @@ import * as console from "ext:deno_web/01_console.js";
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 import * as globalInterfaces from "ext:deno_web/04_global_interfaces.js";
 import { loadWebGPU } from "ext:deno_webgpu/00_init.js";
+
+/**
+ * @param {string} arch
+ * @param {string} platform
+ * @returns {string}
+ */
+function getNavigatorPlatform(arch, platform) {
+  switch (platform) {
+    case "darwin":
+      // On macOS, modern browsers return 'MacIntel' even if running on Apple Silicon.
+      return "MacIntel";
+
+    case "windows":
+      // On Windows, modern browsers return 'Win32' even if running on a 64-bit version of Windows.
+      // https://developer.mozilla.org/en-US/docs/Web/API/Navigator/platform#usage_notes
+      return "Win32";
+
+    case "linux":
+      return `Linux ${arch}`;
+
+    case "freebsd":
+      if (arch === "x86_64") {
+        return "FreeBSD amd64";
+      }
+      return `FreeBSD ${arch}`;
+
+    case "solaris":
+      return `SunOS ${arch}`;
+
+    case "aix":
+      return "AIX";
+
+    default:
+      return `${StringPrototypeToUpperCase(platform[0])}${
+        StringPrototypeSlice(platform, 1)
+      } ${arch}`;
+  }
+}
 
 function memoizeLazy(f) {
   let v_ = null;
@@ -31,6 +71,9 @@ function memoizeLazy(f) {
 const numCpus = memoizeLazy(() => op_bootstrap_numcpus());
 const userAgent = memoizeLazy(() => op_bootstrap_user_agent());
 const language = memoizeLazy(() => op_bootstrap_language());
+const platform = memoizeLazy(() =>
+  getNavigatorPlatform(core.build.arch, core.build.os)
+);
 
 class WorkerNavigator {
   constructor() {
@@ -47,6 +90,7 @@ class WorkerNavigator {
           "userAgent",
           "language",
           "languages",
+          "platform",
         ],
       }),
       inspectOptions,
@@ -102,6 +146,15 @@ ObjectDefineProperties(WorkerNavigator.prototype, {
     get() {
       webidl.assertBranded(this, WorkerNavigatorPrototype);
       return [language()];
+    },
+  },
+  platform: {
+    __proto__: null,
+    configurable: true,
+    enumerable: true,
+    get() {
+      webidl.assertBranded(this, WorkerNavigatorPrototype);
+      return platform();
     },
   },
 });

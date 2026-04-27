@@ -33,7 +33,7 @@ pub trait NpmRegistryApiEx: NpmRegistryApi + MaybeSend + MaybeSync {}
 
 impl<T> NpmRegistryApiEx for T where T: NpmRegistryApi + MaybeSend + MaybeSync {}
 
-#[allow(clippy::disallowed_types)]
+#[allow(clippy::disallowed_types, reason = "definition")]
 type NpmRegistryApiRc = deno_maybe_sync::MaybeArc<dyn NpmRegistryApiEx>;
 
 pub struct LockfileNpmPackageInfoApiAdapter {
@@ -190,7 +190,7 @@ pub enum LockfileWriteError {
   Io(#[source] std::io::Error),
 }
 
-#[allow(clippy::disallowed_types)]
+#[allow(clippy::disallowed_types, reason = "definition")]
 pub type LockfileLockRc<TSys> = deno_maybe_sync::MaybeArc<LockfileLock<TSys>>;
 
 #[derive(Debug)]
@@ -454,6 +454,9 @@ impl<TSys: LockfileSys> LockfileLock<TSys> {
           Some((key, value))
         }))
         .collect(),
+      npm_overrides: workspace
+        .npm_overrides()
+        .map(|m| serde_json::Value::Object(m.clone())),
     };
     lockfile.set_workspace_config(deno_lockfile::SetWorkspaceConfigOptions {
       no_npm: flags.no_npm,
@@ -512,8 +515,19 @@ impl<TSys: LockfileSys> LockfileLock<TSys> {
       let diff = crate::display::diff(&contents, &new_contents);
       // has an extra newline at the end
       let diff = diff.trim_end();
+      const MAX_DIFF_LINES: usize = 50;
+      let truncated_diff = {
+        let lines: Vec<&str> = diff.lines().collect();
+        if lines.len() > MAX_DIFF_LINES {
+          let shown: String = lines[..MAX_DIFF_LINES].join("\n");
+          let remaining = lines.len() - MAX_DIFF_LINES;
+          format!("{shown}\n... {remaining} more lines omitted ...")
+        } else {
+          diff.to_string()
+        }
+      };
       Err(JsErrorBox::generic(format!(
-        "The lockfile is out of date. Run `deno install --frozen=false`, or rerun with `--frozen=false` to update it.\nchanges:\n{diff}"
+        "The lockfile is out of date. Run `deno install --frozen=false`, or rerun with `--frozen=false` to update it.\nchanges:\n{truncated_diff}"
       )))
     } else {
       Ok(())

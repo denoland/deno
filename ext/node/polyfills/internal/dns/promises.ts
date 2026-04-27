@@ -32,14 +32,18 @@ import {
 } from "ext:deno_node/internal/validators.mjs";
 import { isIP } from "ext:deno_node/internal/net.ts";
 import {
+  dnsOrderToNumber,
   emitInvalidHostnameWarning,
+  getDefaultDnsOrder,
   getDefaultResolver,
-  getDefaultVerbatim,
   isFamily,
   isLookupOptions,
   Resolver as CallbackResolver,
   validateHints,
+  validDnsOrders,
 } from "ext:deno_node/internal/dns/utils.ts";
+
+export { getDefaultDnsOrder as getDefaultResultOrder };
 import type {
   LookupAddress,
   LookupAllOptions,
@@ -62,7 +66,7 @@ import cares, {
   GetNameInfoReqWrap,
   QueryReqWrap,
 } from "ext:deno_node/internal_binding/cares_wrap.ts";
-import { toASCII } from "node:punycode";
+import { domainToASCII } from "ext:deno_node/internal/idna.ts";
 
 function onlookup(
   this: GetAddrInfoReqWrap,
@@ -108,7 +112,7 @@ function createLookupPromise(
   hostname: string,
   all: boolean,
   hints: number,
-  verbatim: boolean,
+  dnsOrder: string,
 ): Promise<void | LookupAddress | LookupAddress[]> {
   return new Promise((resolve, reject) => {
     if (!hostname) {
@@ -137,10 +141,10 @@ function createLookupPromise(
 
     const err = cares.getaddrinfo(
       req,
-      toASCII(hostname),
+      domainToASCII(hostname),
       family,
       hints,
-      verbatim ? cares.DNS_ORDER_VERBATIM : cares.DNS_ORDER_IPV4_FIRST,
+      dnsOrderToNumber(dnsOrder),
     );
 
     if (err) {
@@ -174,7 +178,7 @@ export function lookup(
   let hints = 0;
   let family = 0;
   let all = false;
-  let verbatim = getDefaultVerbatim();
+  let dnsOrder = getDefaultDnsOrder();
 
   // Parse arguments
   if (hostname) {
@@ -216,11 +220,20 @@ export function lookup(
 
     if (options?.verbatim != null) {
       validateBoolean(options.verbatim, "options.verbatim");
-      verbatim = options.verbatim;
+      dnsOrder = options.verbatim ? "verbatim" : "ipv4first";
+    }
+
+    if ((options as Record<string, unknown>)?.order != null) {
+      validateOneOf(
+        (options as Record<string, unknown>).order,
+        "options.order",
+        validDnsOrders,
+      );
+      dnsOrder = (options as Record<string, unknown>).order as string;
     }
   }
 
-  return createLookupPromise(family, hostname, all, hints, verbatim);
+  return createLookupPromise(family, hostname, all, hints, dnsOrder);
 }
 
 function onresolve(
@@ -307,7 +320,7 @@ function createResolverPromise(
     req.reject = reject;
     req.ttl = ttl;
 
-    const err = resolver._handle[bindingName](req, toASCII(hostname));
+    const err = resolver._handle[bindingName](req, domainToASCII(hostname));
 
     if (err) {
       reject(dnsException(err, bindingName, hostname));
@@ -563,6 +576,7 @@ export default {
   lookup,
   lookupService,
   Resolver,
+  getDefaultResultOrder: getDefaultDnsOrder,
   getServers,
   resolveAny,
   resolve4,

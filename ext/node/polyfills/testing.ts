@@ -98,8 +98,7 @@ class NodeTestContext {
   }
 
   get mock() {
-    notImplemented("test.TestContext.mock");
-    return null;
+    return mock;
   }
 
   runOnly() {
@@ -314,6 +313,7 @@ function prepareDenoTest(name, options, fn, overrides) {
     fn: wrapTestFn(prepared.fn, resolve),
     only: prepared.options.only,
     ignore: prepared.options.todo || prepared.options.skip,
+    sanitizeOnly: false,
     sanitizeExit: false,
     sanitizeOps: false,
     sanitizeResources: false,
@@ -346,6 +346,7 @@ function prepareDenoTestForSuite(name, options, fn, overrides) {
     fn: wrapSuiteFn(prepared.fn, resolve),
     only: prepared.options.only,
     ignore: prepared.options.todo || prepared.options.skip,
+    sanitizeOnly: false,
     sanitizeExit: false,
     sanitizeOps: false,
     sanitizeResources: false,

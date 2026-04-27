@@ -684,7 +684,7 @@ function blobFromObjectUrl(url) {
     totalSize += size;
   }
 
-  const blob = webidl.createBranded(Blob);
+  const blob = new Blob();
   blob[_type] = blobData.media_type;
   blob[_size] = totalSize;
   blob[_parts] = parts;
@@ -709,7 +709,13 @@ function createObjectURL(blob) {
  */
 function revokeObjectURL(url) {
   const prefix = "Failed to execute 'revokeObjectURL' on 'URL'";
-  webidl.requiredArguments(arguments.length, 1, prefix);
+  if (arguments.length < 1) {
+    const err = new TypeError(
+      `${prefix}: 1 argument required, but only 0 present`,
+    );
+    err.code = "ERR_MISSING_ARGS";
+    throw err;
+  }
   url = webidl.converters["DOMString"](url, prefix, "Argument 1");
 
   op_blob_revoke_object_url(url);

@@ -35,9 +35,10 @@ import {
 } from "ext:deno_node/internal/validators.mjs";
 import { isIP } from "ext:deno_node/internal/net.ts";
 import {
+  dnsOrderToNumber,
   emitInvalidHostnameWarning,
+  getDefaultDnsOrder,
   getDefaultResolver,
-  getDefaultVerbatim,
   isFamily,
   isLookupCallback,
   isLookupOptions,
@@ -46,6 +47,7 @@ import {
   setDefaultResolver,
   setDefaultResultOrder,
   validateHints,
+  validDnsOrders,
 } from "ext:deno_node/internal/dns/utils.ts";
 import type {
   AnyAaaaRecord,
@@ -204,7 +206,7 @@ export function lookup(
   let hints = 0;
   let family = 0;
   let all = false;
-  let verbatim = getDefaultVerbatim();
+  let dnsOrder = getDefaultDnsOrder();
   let port = undefined;
 
   // Parse arguments
@@ -256,7 +258,16 @@ export function lookup(
 
     if (options?.verbatim != null) {
       validateBoolean(options.verbatim, "options.verbatim");
-      verbatim = options.verbatim;
+      dnsOrder = options.verbatim ? "verbatim" : "ipv4first";
+    }
+
+    if ((options as Record<string, unknown>)?.order != null) {
+      validateOneOf(
+        (options as Record<string, unknown>).order,
+        "options.order",
+        validDnsOrders,
+      );
+      dnsOrder = (options as Record<string, unknown>).order as string;
     }
 
     if (options?.port != null) {
@@ -303,7 +314,7 @@ export function lookup(
     domainToASCII(hostname),
     family,
     hints,
-    verbatim ? cares.DNS_ORDER_VERBATIM : cares.DNS_ORDER_IPV4_FIRST,
+    dnsOrderToNumber(dnsOrder),
   );
 
   if (err) {
@@ -992,6 +1003,7 @@ export const CANCELLED = "ECANCELLED";
 
 const promises = {
   ...promisesBase,
+  getDefaultResultOrder: getDefaultDnsOrder,
   setDefaultResultOrder,
   setServers,
 
@@ -1021,6 +1033,8 @@ const promises = {
   ADDRGETNETWORKPARAMS,
   CANCELLED,
 };
+
+export { getDefaultDnsOrder as getDefaultResultOrder };
 
 export { ADDRCONFIG, ALL, promises, setDefaultResultOrder, V4MAPPED };
 
@@ -1076,6 +1090,7 @@ export default {
   Resolver,
   reverse,
   setServers,
+  getDefaultResultOrder: getDefaultDnsOrder,
   setDefaultResultOrder,
   promises,
   NODATA,

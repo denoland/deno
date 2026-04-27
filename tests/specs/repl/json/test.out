@@ -2,3 +2,4 @@
 hello
 { type: "RunSuccess", output: "2" }
 { type: "RunFailure", text: "Uncaught" }
+0

@@ -10,6 +10,7 @@ import { core, primordials } from "ext:core/mod.js";
 import {
   op_message_port_create_entangled,
   op_message_port_post_message,
+  op_message_port_post_message_raw,
   op_message_port_recv_message,
 } from "ext:core/ops";
 const {
@@ -17,8 +18,9 @@ const {
   ArrayPrototypeFilter,
   ArrayPrototypeIncludes,
   ArrayPrototypePush,
-  ObjectPrototypeIsPrototypeOf,
   ObjectDefineProperty,
+  ObjectFreeze,
+  ObjectPrototypeIsPrototypeOf,
   Symbol,
   PromiseResolve,
   SafeArrayIterator,
@@ -40,7 +42,12 @@ import {
   setEventTargetData,
   setIsTrusted,
 } from "./02_event.js";
-import { isDetachedBuffer } from "./06_streams.js";
+import {
+  isDetachedBuffer,
+  ReadableStream,
+  TransformStream,
+  WritableStream,
+} from "./06_streams.js";
 import { DOMException } from "./01_dom_exception.js";
 
 // counter of how many message ports are actively refed
@@ -134,6 +141,34 @@ function nodeWorkerThreadMaybeInvokeCloseCb(port) {
 const _isRefed = Symbol("isRefed");
 const _dataPromise = Symbol("dataPromise");
 
+/**
+ * Deserialize and dispatch a message on a target EventTarget.
+ * @returns {boolean} false if dispatch failed with messageerror
+ */
+function dispatchPortMessageData(target, data) {
+  let message, transferables;
+  try {
+    const v = deserializeJsMessageData(data);
+    message = v[0];
+    transferables = v[1];
+  } catch (err) {
+    const event = new MessageEvent("messageerror", { data: err });
+    setIsTrusted(event, true);
+    target.dispatchEvent(event);
+    return false;
+  }
+  const event = new MessageEvent("message", {
+    data: message,
+    ports: ArrayPrototypeFilter(
+      transferables,
+      (t) => ObjectPrototypeIsPrototypeOf(MessagePortPrototype, t),
+    ),
+  });
+  setIsTrusted(event, true);
+  target.dispatchEvent(event);
+  return true;
+}
+
 class MessagePort extends EventTarget {
   /** @type {number | null} */
   [_id] = null;
@@ -172,6 +207,20 @@ class MessagePort extends EventTarget {
     webidl.assertBranded(this, MessagePortPrototype);
     const prefix = "Failed to execute 'postMessage' on 'MessagePort'";
     webidl.requiredArguments(arguments.length, 1, prefix);
+    if (this[_id] === null) return;
+    // Fast path: no transferables - serialize and send in one shot,
+    // bypassing the JsMessageData serde overhead
+    if (
+      transferOrOptions === undefined ||
+      transferOrOptions === null ||
+      (arguments.length <= 1)
+    ) {
+      op_message_port_post_message_raw(
+        this[_id],
+        core.serialize(message, undefined, serializeErrorCb),
+      );
+      return;
+    }
     message = webidl.converters.any(message);
     let options;
     if (
@@ -197,7 +246,6 @@ class MessagePort extends EventTarget {
       throw new DOMException("Can not transfer self", "DataCloneError");
     }
     const data = serializeJsMessageData(message, transfer);
-    if (this[_id] === null) return;
     op_message_port_post_message(this[_id], data);
   }
 
@@ -232,26 +280,7 @@ class MessagePort extends EventTarget {
           nodeWorkerThreadMaybeInvokeCloseCb(this);
           break;
         }
-        let message, transferables;
-        try {
-          const v = deserializeJsMessageData(data);
-          message = v[0];
-          transferables = v[1];
-        } catch (err) {
-          const event = new MessageEvent("messageerror", { data: err });
-          setIsTrusted(event, true);
-          this.dispatchEvent(event);
-          return;
-        }
-        const event = new MessageEvent("message", {
-          data: message,
-          ports: ArrayPrototypeFilter(
-            transferables,
-            (t) => ObjectPrototypeIsPrototypeOf(MessagePortPrototype, t),
-          ),
-        });
-        setIsTrusted(event, true);
-        this.dispatchEvent(event);
+        if (!dispatchPortMessageData(this, data)) return;
       }
       this[_enabled] = false;
     })();
@@ -366,7 +395,18 @@ function opCreateEntangledMessagePort() {
  * @param {messagePort.MessageData} messageData
  * @returns {[any, object[]]}
  */
+const emptyTransferables = ObjectFreeze([]);
+
 function deserializeJsMessageData(messageData) {
+  // Fast path: no transferables (most common case)
+  if (messageData.transferables.length === 0) {
+    const deserializers = core.getCloneableDeserializers();
+    const data = deserializers
+      ? core.deserialize(messageData.data, { deserializers })
+      : core.deserialize(messageData.data);
+    return [data, emptyTransferables];
+  }
+
   /** @type {object[]} */
   const transferables = [];
   const arrayBufferIdsInTransferables = [];
@@ -409,6 +449,12 @@ function deserializeJsMessageData(messageData) {
     };
   }
 
+  const deserializers = core.getCloneableDeserializers();
+  if (!options) {
+    options = { deserializers };
+  } else {
+    options.deserializers = deserializers;
+  }
   const data = core.deserialize(messageData.data, options);
 
   for (let i = 0; i < arrayBufferIdsInTransferables.length; ++i) {
@@ -424,39 +470,48 @@ function deserializeJsMessageData(messageData) {
  * @param {object[]} transferables
  * @returns {messagePort.MessageData}
  */
-function serializeJsMessageData(data, transferables) {
-  let options;
-  const transferredArrayBuffers = [];
-  if (transferables.length > 0) {
-    const hostObjects = [];
-    for (let i = 0, j = 0; i < transferables.length; i++) {
-      const t = transferables[i];
-      if (isArrayBuffer(t)) {
-        if (
-          ArrayBufferPrototypeGetByteLength(t) === 0 &&
-          isDetachedBuffer(t)
-        ) {
-          throw new DOMException(
-            `ArrayBuffer at index ${j} is already detached`,
-            "DataCloneError",
-          );
-        }
-        j++;
-        ArrayPrototypePush(transferredArrayBuffers, t);
-      } else if (t[core.hostObjectBrand]) {
-        ArrayPrototypePush(hostObjects, t);
-      }
-    }
+const emptySerializedTransferables = ObjectFreeze([]);
+const serializeErrorCb = (err) => {
+  throw new DOMException(err, "DataCloneError");
+};
 
-    options = {
-      hostObjects,
-      transferredArrayBuffers,
+function serializeJsMessageData(data, transferables) {
+  // Fast path: no transferables (most common case)
+  if (transferables.length === 0) {
+    const serializedData = core.serialize(data, undefined, serializeErrorCb);
+    return {
+      data: serializedData,
+      transferables: emptySerializedTransferables,
     };
   }
 
-  const serializedData = core.serialize(data, options, (err) => {
-    throw new DOMException(err, "DataCloneError");
-  });
+  const hostObjects = [];
+  const transferredArrayBuffers = [];
+  for (let i = 0, j = 0; i < transferables.length; i++) {
+    const t = transferables[i];
+    if (isArrayBuffer(t)) {
+      if (
+        ArrayBufferPrototypeGetByteLength(t) === 0 &&
+        isDetachedBuffer(t)
+      ) {
+        throw new DOMException(
+          `ArrayBuffer at index ${j} is already detached`,
+          "DataCloneError",
+        );
+      }
+      j++;
+      ArrayPrototypePush(transferredArrayBuffers, t);
+    } else if (t[core.hostObjectBrand]) {
+      ArrayPrototypePush(hostObjects, t);
+    }
+  }
+
+  const options = {
+    hostObjects,
+    transferredArrayBuffers,
+  };
+
+  const serializedData = core.serialize(data, options, serializeErrorCb);
 
   /** @type {messagePort.Transferable[]} */
   const serializedTransferables = [];
@@ -509,6 +564,37 @@ webidl.converters.StructuredSerializeOptions = webidl
     ],
   );
 
+// Marker symbol for Web API types whose specs explicitly mark them as
+// non-serializable. V8's structured clone serialiser doesn't know about Web
+// API "platform" types (they're plain JS objects from V8's perspective with
+// no enumerable own properties), so without this opt-out the fast
+// `core.structuredClone` path silently round-trips them as `{}`, matching
+// neither the Web Platform spec nor Node's behaviour, which both raise
+// `DataCloneError`.
+//
+// Each non-serializable class installs this symbol on its prototype via
+// `markNotSerializable()`. The descriptor is non-enumerable and
+// non-configurable so it can't be hidden, deleted, or overridden on the
+// instance.
+const kNotSerializable = Symbol("[[NotSerializable]]");
+
+function markNotSerializable(target) {
+  ObjectDefineProperty(target, kNotSerializable, {
+    __proto__: null,
+    value: true,
+    enumerable: false,
+    writable: false,
+    configurable: false,
+  });
+}
+
+// Streams are defined in this extension, so mark them here. Fetch types
+// (Headers / Request / Response) call `markNotSerializable` themselves at
+// the bottom of their respective modules.
+markNotSerializable(ReadableStream.prototype);
+markNotSerializable(WritableStream.prototype);
+markNotSerializable(TransformStream.prototype);
+
 function structuredClone(value, options) {
   const prefix = "Failed to execute 'structuredClone'";
   webidl.requiredArguments(arguments.length, 1, prefix);
@@ -517,6 +603,23 @@ function structuredClone(value, options) {
     prefix,
     "Argument 2",
   );
+
+  // NOTE: This only catches non-serializable types at the top level.
+  // Nested non-serializable objects (e.g. { x: new Response() }) will
+  // still silently serialize as {} because V8's ValueSerializer doesn't
+  // know about Web API platform types. Fixing this fully requires a
+  // custom V8 serializer delegate in C++/Rust.
+  // Skip the check when the value itself is in the transfer list, since
+  // transferring is not the same as serializing.
+  if (
+    value !== null && typeof value === "object" && value[kNotSerializable] &&
+    !ArrayPrototypeIncludes(options.transfer, value)
+  ) {
+    throw new DOMException(
+      "Cannot clone object of unsupported type.",
+      "DataCloneError",
+    );
+  }
 
   // Fast-path, avoiding round-trip serialization and deserialization
   if (options.transfer.length === 0) {
@@ -536,12 +639,14 @@ function structuredClone(value, options) {
 
 export {
   deserializeJsMessageData,
+  markNotSerializable,
   MessageChannel,
   MessagePort,
   MessagePortIdSymbol,
   MessagePortPrototype,
   MessagePortReceiveMessageOnPortSymbol,
   nodeWorkerThreadCloseCb,
+  nodeWorkerThreadCloseCbInvoked,
   refedMessagePortsCount,
   serializeJsMessageData,
   structuredClone,

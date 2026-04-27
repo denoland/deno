@@ -1,0 +1,10 @@
+{
+  "0": "SCALAR",
+  "1": "MAPPING",
+  "2": "MAP",
+  "3": "SEQ",
+  SCALAR: 0,
+  MAPPING: 1,
+  MAP: 2,
+  SEQ: 3
+}

@@ -4,6 +4,7 @@
 import { notImplemented } from "ext:deno_node/_utils.ts";
 import tlsCommon from "node:_tls_common";
 import tlsWrap from "node:_tls_wrap";
+import { convertALPNProtocols } from "ext:deno_node/internal/tls_common.js";
 import {
   op_get_ca_certificates,
   op_get_root_certificates,
@@ -14,7 +15,9 @@ import { primordials } from "ext:core/mod.js";
 const {
   ArrayIsArray,
   ArrayPrototypeForEach,
+  ArrayPrototypeMap,
   ArrayPrototypePush,
+  ObjectDefineProperty,
   ObjectKeys,
   ObjectFreeze,
   Proxy,
@@ -27,6 +30,8 @@ const {
   ReflectOwnKeys,
   ReflectPreventExtensions,
   ReflectSet,
+  SafeRegExp,
+  StringPrototypeReplace,
   StringPrototypeToLowerCase,
   TypeError,
 } = primordials;
@@ -64,7 +69,12 @@ function ensureLazyRootCertificates(target: string[]) {
     target.length = 0;
     ArrayPrototypeForEach(
       lazyRootCertificates,
-      (v) => ArrayPrototypePush(target, v),
+      // Strip trailing newline to match Node.js format
+      (v: string) =>
+        ArrayPrototypePush(
+          target,
+          StringPrototypeReplace(v, new SafeRegExp("\\n$"), ""),
+        ),
     );
     ObjectFreeze(target);
   }
@@ -152,7 +162,7 @@ export function createSecurePair() {
   notImplemented("tls.createSecurePair");
 }
 
-export default {
+const defaultExport = {
   CryptoStream,
   SecurePair,
   Server,
@@ -163,8 +173,8 @@ export default {
   createSecurePair,
   createServer: tlsWrap.createServer,
   getCACertificates,
+  convertALPNProtocols,
   getCiphers,
-  rootCertificates,
   setDefaultCACertificates,
   DEFAULT_CIPHERS: tlsWrap.DEFAULT_CIPHERS,
   DEFAULT_ECDH_CURVE,
@@ -173,6 +183,16 @@ export default {
   CLIENT_RENEG_LIMIT,
   CLIENT_RENEG_WINDOW,
 };
+// Make rootCertificates non-writable so `tls.rootCertificates = X` throws
+// TypeError in strict mode (matches Node.js behavior).
+// deno-lint-ignore no-explicit-any
+ObjectDefineProperty(defaultExport as any, "rootCertificates", {
+  __proto__: null,
+  configurable: false,
+  enumerable: true,
+  get: () => rootCertificates,
+});
+export default defaultExport;
 
 export const checkServerIdentity = tlsWrap.checkServerIdentity;
 export const connect = tlsWrap.connect;

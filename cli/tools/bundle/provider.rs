@@ -30,6 +30,7 @@ impl From<RtBundleOptions> for crate::args::BundleFlags {
       external: value.external,
       format: value.format,
       minify: value.minify,
+      keep_names: value.keep_names,
       code_splitting: value.code_splitting,
       platform: value.platform,
       watch: false,

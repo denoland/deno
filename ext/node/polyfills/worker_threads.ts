@@ -4,11 +4,16 @@
 import { core, internals, primordials } from "ext:core/mod.js";
 import {
   op_create_worker,
+  op_host_get_worker_cpu_usage,
   op_host_post_message,
+  op_host_post_message_raw,
   op_host_recv_ctrl,
   op_host_recv_message,
+  op_host_recv_message_sync,
   op_host_terminate_worker,
+  op_mark_as_untransferable,
   op_message_port_recv_message_sync,
+  op_worker_get_resource_limits,
   op_worker_threads_filename,
 } from "ext:core/ops";
 import {
@@ -19,37 +24,87 @@ import {
   MessagePortPrototype,
   MessagePortReceiveMessageOnPortSymbol,
   nodeWorkerThreadCloseCb,
+  nodeWorkerThreadCloseCbInvoked,
   refMessagePort,
   serializeJsMessageData,
   unrefParentPort,
 } from "ext:deno_web/13_message_port.js";
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 import { notImplemented } from "ext:deno_node/_utils.ts";
+import {
+  ERR_INVALID_ARG_TYPE,
+  ERR_INVALID_URL_SCHEME,
+  ERR_OUT_OF_RANGE,
+  ERR_WORKER_INVALID_EXEC_ARGV,
+  ERR_WORKER_NOT_RUNNING,
+  ERR_WORKER_PATH,
+} from "ext:deno_node/internal/errors.ts";
+import {
+  validateArray,
+  validateObject,
+} from "ext:deno_node/internal/validators.mjs";
 import { EventEmitter } from "node:events";
-import { BroadcastChannel } from "ext:deno_web/01_broadcast_channel.js";
+import { Readable, Writable } from "node:stream";
+import {
+  BroadcastChannel as WebBroadcastChannel,
+  refBroadcastChannel,
+} from "ext:deno_web/01_broadcast_channel.js";
 import { untransferableSymbol } from "ext:deno_node/internal_binding/util.ts";
 import process from "node:process";
+import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
 
 const {
-  encodeURIComponent,
+  ArrayIsArray,
   Error,
+  EvalError,
   FunctionPrototypeCall,
-  JSONParse,
-  JSONStringify,
+  NumberIsFinite,
+  NumberIsNaN,
+  ObjectCreate,
+  ObjectDefineProperty,
   ObjectHasOwn,
+  ObjectKeys,
   ObjectPrototypeIsPrototypeOf,
+  PromiseReject,
   PromiseResolve,
   SafeMap,
+  SafeRegExp,
   SafeSet,
   SafeWeakMap,
+  String,
+  StringPrototypeIndexOf,
+  StringPrototypeSlice,
+  StringPrototypeSplit,
   StringPrototypeStartsWith,
   StringPrototypeTrim,
+  SyntaxError,
   Symbol,
+  SymbolAsyncDispose,
   SymbolFor,
   SymbolIterator,
   TypeError,
+  URIError,
+  RangeError,
+  ReferenceError,
+  Float64Array,
+  FunctionPrototypeBind,
 } = primordials;
+
+// Map error names to native constructors so that worker error events
+// preserve err.constructor (e.g. SyntaxError, TypeError).
+const nativeErrorConstructors: Record<string, ErrorConstructor> = {
+  __proto__: null as unknown as ErrorConstructor,
+  Error,
+  EvalError,
+  RangeError,
+  ReferenceError,
+  SyntaxError,
+  TypeError,
+  URIError,
+};
+
+const workerCpuUsageBuffer = new Float64Array(2);
 
 const debugWorkerThreads = false;
 function debugWT(...args) {
@@ -68,6 +123,65 @@ function isWorkerOnlineMsg(data: unknown): data is WorkerOnlineMsg {
     ObjectHasOwn(data, "type") &&
     (data as { "type": unknown })["type"] === "WORKER_ONLINE";
 }
+
+interface WorkerStdioMsg {
+  type: "WORKER_STDERR" | "WORKER_STDOUT";
+  // deno-lint-ignore no-explicit-any
+  data: any;
+}
+
+interface WorkerStdinMsg {
+  type: "WORKER_STDIN";
+  // deno-lint-ignore no-explicit-any
+  data: any;
+}
+
+interface WorkerStdinEndMsg {
+  type: "WORKER_STDIN_END";
+}
+
+function isWorkerStdinMsg(data: unknown): data is WorkerStdinMsg {
+  return typeof data === "object" && data !== null &&
+    ObjectHasOwn(data, "type") &&
+    (data as { "type": unknown })["type"] === "WORKER_STDIN";
+}
+
+function isWorkerStdinEndMsg(data: unknown): data is WorkerStdinEndMsg {
+  return typeof data === "object" && data !== null &&
+    ObjectHasOwn(data, "type") &&
+    (data as { "type": unknown })["type"] === "WORKER_STDIN_END";
+}
+
+function isWorkerStderrMsg(data: unknown): data is WorkerStdioMsg {
+  return typeof data === "object" && data !== null &&
+    ObjectHasOwn(data, "type") &&
+    (data as { "type": unknown })["type"] === "WORKER_STDERR";
+}
+
+function isWorkerStdoutMsg(data: unknown): data is WorkerStdioMsg {
+  return typeof data === "object" && data !== null &&
+    ObjectHasOwn(data, "type") &&
+    (data as { "type": unknown })["type"] === "WORKER_STDOUT";
+}
+
+// Flags that are valid Node.js environment flags but not allowed in workers
+// because they affect per-process state.
+const workerDisallowedFlags = new SafeSet([
+  "--title",
+  "--redirect-warnings",
+  "--trace-event-file-pattern",
+  "--trace-event-categories",
+  "--trace-events-enabled",
+  "--diagnostic-dir",
+  "--report-signal",
+  "--report-filename",
+  "--report-dir",
+  "--report-directory",
+  "--report-compact",
+  "--report-on-signal",
+  "--report-on-fatalerror",
+  "--report-uncaught-exception",
+]);
 
 export interface WorkerOptions {
   // only for typings
@@ -95,9 +209,10 @@ const privateWorkerRef = Symbol("privateWorkerRef");
 class NodeWorker extends EventEmitter {
   #id = 0;
   #name = "";
-  #refCount = 1;
+  #refed = true;
   #messagePromise = undefined;
   #controlPromise = undefined;
+  #messageLoopPromise = undefined;
   #workerOnline = false;
   #exited = false;
   // "RUNNING" | "CLOSED" | "TERMINATED"
@@ -110,32 +225,217 @@ class NodeWorker extends EventEmitter {
   // https://nodejs.org/api/worker_threads.html#workerthreadid
   threadId = this.#id;
   // https://nodejs.org/api/worker_threads.html#workerresourcelimits
-  resourceLimits: Required<
-    NonNullable<WorkerOptions["resourceLimits"]>
-  > = {
-    maxYoungGenerationSizeMb: -1,
-    maxOldGenerationSizeMb: -1,
-    codeRangeSizeMb: -1,
-    stackSizeMb: 4,
-  };
+  resourceLimits: WorkerOptions["resourceLimits"] = {};
+  // https://nodejs.org/api/worker_threads.html#workerstdin
+  stdin: Writable | null = null;
+  // https://nodejs.org/api/worker_threads.html#workerstdout
+  stdout: Readable = new Readable({ read() {} });
+  // https://nodejs.org/api/worker_threads.html#workerstderr
+  stderr: Readable = new Readable({ read() {} });
 
   constructor(specifier: URL | string, options?: WorkerOptions) {
     super();
 
-    if (
-      typeof specifier === "object" &&
-      !(specifier.protocol === "data:" || specifier.protocol === "file:")
-    ) {
-      throw new TypeError(
-        "node:worker_threads support only 'file:' and 'data:' URLs",
-      );
+    if (options?.execArgv) {
+      validateArray(options.execArgv, "options.execArgv");
+      if (options.execArgv.length > 0) {
+        const invalidFlags = [];
+        for (let i = 0; i < options.execArgv.length; i++) {
+          const flag = options.execArgv[i];
+          // Items that don't start with '-' are arguments to the
+          // preceding flag (e.g. "--conditions node"), not flags.
+          if (!StringPrototypeStartsWith(flag, "-")) {
+            continue;
+          }
+          if (!process.allowedNodeEnvironmentFlags.has(flag)) {
+            invalidFlags[invalidFlags.length] = flag;
+            continue;
+          }
+          const eqIdx = StringPrototypeIndexOf(flag, "=");
+          const flagName = eqIdx === -1
+            ? flag
+            : StringPrototypeSlice(flag, 0, eqIdx);
+          if (workerDisallowedFlags.has(flagName)) {
+            invalidFlags[invalidFlags.length] = flag;
+          }
+        }
+        if (invalidFlags.length > 0) {
+          throw new ERR_WORKER_INVALID_EXEC_ARGV(invalidFlags);
+        }
+      }
     }
+
+    if (options?.env) {
+      const nodeOptions = options.env.NODE_OPTIONS;
+      if (typeof nodeOptions === "string" && nodeOptions.length > 0) {
+        // Parse NODE_OPTIONS and validate each flag
+        const parts = StringPrototypeSplit(
+          StringPrototypeTrim(nodeOptions),
+          new SafeRegExp("\\s+"),
+        );
+        let hasInvalid = false;
+        for (let i = 0; i < parts.length; i++) {
+          const part = parts[i];
+          if (StringPrototypeStartsWith(part, "-")) {
+            if (
+              !process.allowedNodeEnvironmentFlags.has(part) ||
+              workerDisallowedFlags.has(part)
+            ) {
+              hasInvalid = true;
+              break;
+            }
+          }
+        }
+        if (hasInvalid) {
+          throw new ERR_WORKER_INVALID_EXEC_ARGV(
+            [nodeOptions],
+            "invalid NODE_OPTIONS env variable",
+          );
+        }
+      }
+    }
+
+    if (typeof specifier === "object") {
+      if (
+        !(specifier.protocol === "data:" || specifier.protocol === "file:")
+      ) {
+        throw new ERR_INVALID_URL_SCHEME(["file", "data"]);
+      }
+    } else if (typeof specifier === "string" && !options?.eval) {
+      // Node.js requires string specifiers to be absolute paths or
+      // relative paths starting with './' or '../'. URLs passed as
+      // strings must be wrapped with `new URL`.
+      if (
+        StringPrototypeStartsWith(specifier, "file://") ||
+        StringPrototypeStartsWith(specifier, "data:") ||
+        StringPrototypeStartsWith(specifier, "http://") ||
+        StringPrototypeStartsWith(specifier, "https://")
+      ) {
+        throw new ERR_WORKER_PATH(specifier);
+      }
+      const path = specifier;
+      if (
+        !StringPrototypeStartsWith(path, "/") &&
+        !StringPrototypeStartsWith(path, "./") &&
+        !StringPrototypeStartsWith(path, "../") &&
+        !StringPrototypeStartsWith(path, ".\\") &&
+        !StringPrototypeStartsWith(path, "..\\")
+      ) {
+        // On Windows, also allow drive-letter absolute paths (e.g. C:\...)
+        const isWindowsAbsolute = path.length >= 3 && path[1] === ":" &&
+          (path[2] === "\\" || path[2] === "/");
+        if (!isWindowsAbsolute) {
+          throw new ERR_WORKER_PATH(specifier);
+        }
+      }
+    }
+
+    // Serialize workerData before resolving the filename so that
+    // DataCloneError is thrown before file-not-found errors,
+    // matching Node.js behavior.
+
+    // Handle the `env` option following Node.js semantics:
+    // - undefined/null: snapshot current process.env (isolated copy)
+    // - SHARE_ENV: worker shares the parent's OS environment
+    // - object: use that object, coercing values to strings
+    // - anything else: throw ERR_INVALID_ARG_TYPE
+    // See https://github.com/denoland/deno/issues/23522.
+    let env_ = undefined;
+    const envOpt = options?.env;
+    if (envOpt != null && envOpt !== SHARE_ENV) {
+      if (typeof envOpt !== "object") {
+        throw new ERR_INVALID_ARG_TYPE(
+          "options.env",
+          ["object", "undefined", "null", "worker_threads.SHARE_ENV"],
+          envOpt,
+        );
+      }
+      // Snapshot the provided env, coercing values to strings like Node.js.
+      // This also handles passing `process.env` (a Proxy in Deno) by
+      // producing a plain object that can be structured-cloned.
+      const envObj = {};
+      const keys = ObjectKeys(envOpt);
+      for (let i = 0; i < keys.length; i++) {
+        envObj[keys[i]] = String(envOpt[keys[i]]);
+      }
+      env_ = envObj;
+    } else if (envOpt !== SHARE_ENV) {
+      // Default: snapshot current process.env so the worker gets an
+      // isolated copy, not a live reference to the OS environment.
+      // Wrap in try/catch because accessing process.env requires
+      // --allow-env permission in Deno. If unavailable, fall back to
+      // shared OS env (env_ stays undefined).
+      try {
+        const envObj = {};
+        const keys = ObjectKeys(process.env);
+        for (let i = 0; i < keys.length; i++) {
+          envObj[keys[i]] = process.env[keys[i]];
+        }
+        env_ = envObj;
+      } catch {
+        // No env permission - worker will share the OS environment.
+      }
+    }
+    // When envOpt === SHARE_ENV, env_ stays undefined and the worker
+    // will use the default process.env backed by Deno.env (shared OS env).
+
+    // Handle the `argv` option: must be an array or undefined.
+    // Values are coerced to strings like Node.js does.
+    let argv_: string[] | undefined = undefined;
+    if (options?.argv != null) {
+      if (!ArrayIsArray(options.argv)) {
+        throw new ERR_INVALID_ARG_TYPE(
+          "options.argv",
+          "Array",
+          options.argv,
+        );
+      }
+      argv_ = [];
+      for (let i = 0; i < options.argv.length; i++) {
+        argv_[i] = String(options.argv[i]);
+      }
+    }
+
+    const resourceLimits_ = options?.resourceLimits ?? undefined;
+
+    const serializedWorkerMetadata = serializeJsMessageData({
+      workerData: options?.workerData,
+      environmentData: environmentData,
+      env: env_,
+      argv: argv_,
+      execArgv: options?.execArgv ?? [],
+      name: this.#name,
+      isEval: !!options?.eval,
+      isWorkerThread: true,
+      hasStdin: !!options?.stdin,
+      resourceLimits: resourceLimits_,
+    }, options?.transferList ?? []);
+
+    let sourceCode = "";
+    let hasSourceCode = false;
+
     if (options?.eval) {
-      const code = typeof specifier === "string"
-        ? encodeURIComponent(specifier)
+      if (typeof specifier !== "string") {
+        throw new TypeError(
+          "The property 'options.eval' must be false when 'filename' is not a string.",
+        );
+      }
+      const code = specifier;
+      // Node.js runs eval workers as CJS (sloppy mode).
+      // Pass as source code for execute_script (sloppy mode).
+      // `require` is already available from the Node worker bootstrap.
+      // See: https://github.com/denoland/deno/issues/26739
+      sourceCode = `var __filename = ${
         // deno-lint-ignore prefer-primordials
-        : specifier.toString();
-      specifier = `data:text/javascript,${code}`;
+        JSON.stringify(process.cwd() + "/[worker eval]")};\n` +
+        `var __dirname = ${
+          // deno-lint-ignore prefer-primordials
+          JSON.stringify(process.cwd())};\n` +
+        `var module = { exports: {} };\n` +
+        `var exports = module.exports;\n` +
+        code;
+      hasSourceCode = true;
+      specifier = `data:text/javascript,`;
     } else if (
       !(typeof specifier === "object" && specifier.protocol === "data:")
     ) {
@@ -152,60 +452,79 @@ class NodeWorker extends EventEmitter {
     }
     this.#name = name;
 
-    // One of the most common usages will be to pass `process.env` here,
-    // but because `process.env` is a Proxy in Deno, we need to get a plain
-    // object out of it - otherwise we'll run in `DataCloneError`s.
-    // See https://github.com/denoland/deno/issues/23522.
-    let env_ = undefined;
-    if (options?.env) {
-      env_ = JSONParse(JSONStringify(options?.env));
-    }
-    const serializedWorkerMetadata = serializeJsMessageData({
-      workerData: options?.workerData,
-      environmentData: environmentData,
-      env: env_,
-      isWorkerThread: true,
-    }, options?.transferList ?? []);
     const id = op_create_worker(
       {
         // deno-lint-ignore prefer-primordials
         specifier: specifier.toString(),
-        hasSourceCode: false,
-        sourceCode: "",
+        hasSourceCode,
+        sourceCode,
         permissions: null,
         name: this.#name,
         workerType: "node",
         closeOnIdle: true,
+        resourceLimits: resourceLimits_,
       },
       serializedWorkerMetadata,
     );
     this.#id = id;
     this.threadId = id;
+
+    if (resourceLimits_) {
+      this.resourceLimits = { ...resourceLimits_ };
+    }
+
+    if (options?.stdin) {
+      // deno-lint-ignore no-this-alias
+      const worker = this;
+      this.stdin = new Writable({
+        write(chunk, _encoding, callback) {
+          try {
+            worker.postMessage({
+              type: "WORKER_STDIN",
+              data: chunk,
+            });
+            callback();
+          } catch (err) {
+            callback(err);
+          }
+        },
+        final(callback) {
+          try {
+            worker.postMessage({
+              type: "WORKER_STDIN_END",
+            });
+            callback();
+          } catch (err) {
+            callback(err);
+          }
+        },
+      });
+    }
+
     this.#pollControl();
-    this.#pollMessages();
+    this.#messageLoopPromise = this.#pollMessages();
     process.nextTick(() => process.emit("worker", this));
   }
 
   [privateWorkerRef](ref) {
-    if (ref) {
-      this.#refCount++;
-    } else {
-      this.#refCount--;
+    if (ref === this.#refed) {
+      return;
     }
+    this.#refed = ref;
 
-    if (!ref && this.#refCount == 0) {
-      if (this.#controlPromise) {
-        core.unrefOpPromise(this.#controlPromise);
-      }
-      if (this.#messagePromise) {
-        core.unrefOpPromise(this.#messagePromise);
-      }
-    } else if (ref && this.#refCount == 1) {
+    if (ref) {
       if (this.#controlPromise) {
         core.refOpPromise(this.#controlPromise);
       }
       if (this.#messagePromise) {
         core.refOpPromise(this.#messagePromise);
+      }
+    } else {
+      if (this.#controlPromise) {
+        core.unrefOpPromise(this.#controlPromise);
+      }
+      if (this.#messagePromise) {
+        core.unrefOpPromise(this.#messagePromise);
       }
     }
   }
@@ -214,10 +533,19 @@ class NodeWorker extends EventEmitter {
     this.emit("error", err);
   }
 
+  #closeStdio() {
+    if (!this.stdout.readableEnded) {
+      FunctionPrototypeCall(Readable.prototype.push, this.stdout, null);
+    }
+    if (!this.stderr.readableEnded) {
+      FunctionPrototypeCall(Readable.prototype.push, this.stderr, null);
+    }
+  }
+
   #pollControl = async () => {
     while (this.#status === "RUNNING") {
       this.#controlPromise = op_host_recv_ctrl(this.#id);
-      if (this.#refCount < 1) {
+      if (!this.#refed) {
         core.unrefOpPromise(this.#controlPromise);
       }
       const { 0: type, 1: data } = await this.#controlPromise;
@@ -230,9 +558,33 @@ class NodeWorker extends EventEmitter {
       switch (type) {
         case 1: { // TerminalError
           this.#status = "CLOSED";
+          this.#closeStdio();
+          if (this.listenerCount("error") > 0) {
+            const errMsg = data.errorMessage ?? data.message;
+            const errName = data.name;
+            let err;
+            if (errName === "ERR_WORKER_OUT_OF_MEMORY") {
+              err = new Error(errMsg);
+              err.code = errName;
+              err.name = "Error";
+            } else {
+              // Use the correct native error constructor so that
+              // err.constructor matches (e.g. SyntaxError, TypeError).
+              const Ctor = nativeErrorConstructors[errName] ?? Error;
+              err = new Ctor(errMsg);
+            }
+            // Stack is unavailable from the worker context (e.g. prepareStackTrace
+            // may have thrown). Match Node.js behavior of setting stack to undefined.
+            err.stack = undefined;
+            this.emit("error", err);
+          }
+          // Drain pending messages before emitting exit so that
+          // all 'message' events fire before 'exit' (Node.js behavior).
+          await this.#messageLoopPromise;
+          this.resourceLimits = {};
           if (!this.#exited) {
             this.#exited = true;
-            this.emit("exit", 1);
+            this.emit("exit", data.exitCode ?? 1);
           }
           return;
         }
@@ -243,9 +595,14 @@ class NodeWorker extends EventEmitter {
         case 3: { // Close
           debugWT(`Host got "close" message from worker: ${this.#name}`);
           this.#status = "CLOSED";
+          this.#closeStdio();
+          // Drain pending messages before emitting exit so that
+          // all 'message' events fire before 'exit' (Node.js behavior).
+          await this.#messageLoopPromise;
+          this.resourceLimits = {};
           if (!this.#exited) {
             this.#exited = true;
-            this.emit("exit", 0);
+            this.emit("exit", data ?? 0);
           }
           return;
         }
@@ -256,35 +613,61 @@ class NodeWorker extends EventEmitter {
     }
   };
 
+  #dispatchWorkerThreadMessage(data) {
+    let message, _transferables;
+    try {
+      const v = deserializeJsMessageData(data);
+      message = v[0];
+      _transferables = v[1];
+    } catch (err) {
+      this.emit("messageerror", err);
+      return false;
+    }
+    if (
+      // only emit "online" event once, and since the message
+      // has to come before user messages, we are safe to assume
+      // it came from us
+      !this.#workerOnline && isWorkerOnlineMsg(message)
+    ) {
+      this.#workerOnline = true;
+      this.emit("online");
+    } else if (isWorkerStdoutMsg(message)) {
+      FunctionPrototypeCall(
+        Readable.prototype.push,
+        this.stdout,
+        message.data,
+      );
+    } else if (isWorkerStderrMsg(message)) {
+      FunctionPrototypeCall(
+        Readable.prototype.push,
+        this.stderr,
+        message.data,
+      );
+    } else {
+      this.emit("message", message);
+    }
+    return true;
+  }
+
   #pollMessages = async () => {
     while (this.#status !== "TERMINATED") {
       this.#messagePromise = op_host_recv_message(this.#id);
-      if (this.#refCount < 1) {
+      if (!this.#refed) {
         core.unrefOpPromise(this.#messagePromise);
       }
       const data = await this.#messagePromise;
       if (this.#status === "TERMINATED" || data === null) {
         return;
       }
-      let message, _transferables;
-      try {
-        const v = deserializeJsMessageData(data);
-        message = v[0];
-        _transferables = v[1];
-      } catch (err) {
-        this.emit("messageerror", err);
-        return;
-      }
-      if (
-        // only emit "online" event once, and since the message
-        // has to come before user messages, we are safe to assume
-        // it came from us
-        !this.#workerOnline && isWorkerOnlineMsg(message)
-      ) {
-        this.#workerOnline = true;
-        this.emit("online");
-      } else {
-        this.emit("message", message);
+      if (!this.#dispatchWorkerThreadMessage(data)) return;
+      // Sync drain: process a limited batch of already-queued messages
+      // without going through the async op machinery. The batch limit
+      // prevents starvation of the event loop when message handlers
+      // synchronously post new messages (e.g. ping-pong patterns).
+      for (let i = 0; i < 1000 && this.#status !== "TERMINATED"; i++) {
+        const syncData = op_host_recv_message_sync(this.#id);
+        if (syncData === null) break;
+        if (!this.#dispatchWorkerThreadMessage(syncData)) return;
       }
     }
   };
@@ -292,6 +675,19 @@ class NodeWorker extends EventEmitter {
   postMessage(message, transferOrOptions = { __proto__: null }) {
     const prefix = "Failed to execute 'postMessage' on 'MessagePort'";
     webidl.requiredArguments(arguments.length, 1, prefix);
+    if (this.#status !== "RUNNING") return;
+    // Fast path: no transferables
+    if (
+      transferOrOptions === undefined ||
+      transferOrOptions === null ||
+      (arguments.length <= 1)
+    ) {
+      op_host_post_message_raw(
+        this.#id,
+        core.serialize(message),
+      );
+      return;
+    }
     message = webidl.converters.any(message);
     let options;
     if (
@@ -314,26 +710,32 @@ class NodeWorker extends EventEmitter {
     }
     const { transfer } = options;
     const data = serializeJsMessageData(message, transfer);
-    if (this.#status === "RUNNING") {
-      op_host_post_message(this.#id, data);
-    }
+    op_host_post_message(this.#id, data);
   }
 
   // https://nodejs.org/api/worker_threads.html#workerterminate
   terminate() {
     if (this.#status === "TERMINATED") {
-      return PromiseResolve(0);
+      return PromiseResolve(undefined);
     }
 
     this.#status = "TERMINATED";
     op_host_terminate_worker(this.#id);
+    this.#closeStdio();
 
     if (!this.#exited) {
       this.#exited = true;
-      this.emit("exit", 0);
+      this.emit("exit", 1);
+      return PromiseResolve(1);
     }
 
-    return PromiseResolve(0);
+    // Worker already exited - Node.js returns undefined in this case
+    // (the internal handle is already null).
+    return PromiseResolve(undefined);
+  }
+
+  async [SymbolAsyncDispose]() {
+    await this.terminate();
   }
 
   ref() {
@@ -344,6 +746,63 @@ class NodeWorker extends EventEmitter {
     this[privateWorkerRef](false);
   }
 
+  cpuUsage(prevValue?: { user: number; system: number }) {
+    if (prevValue != null && !NumberIsNaN(prevValue)) {
+      validateObject(prevValue, "prevValue");
+      if (typeof prevValue.user !== "number") {
+        throw new ERR_INVALID_ARG_TYPE(
+          "prevValue.user",
+          "number",
+          prevValue.user,
+        );
+      }
+      if (!NumberIsFinite(prevValue.user) || prevValue.user < 0) {
+        throw new ERR_OUT_OF_RANGE(
+          "prevValue.user",
+          ">= 0 && <= 2^53",
+          prevValue.user,
+        );
+      }
+      if (typeof prevValue.system !== "number") {
+        throw new ERR_INVALID_ARG_TYPE(
+          "prevValue.system",
+          "number",
+          prevValue.system,
+        );
+      }
+      if (!NumberIsFinite(prevValue.system) || prevValue.system < 0) {
+        throw new ERR_OUT_OF_RANGE(
+          "prevValue.system",
+          ">= 0 && <= 2^53",
+          prevValue.system,
+        );
+      }
+    }
+
+    if (this.#status !== "RUNNING") {
+      return PromiseReject(new ERR_WORKER_NOT_RUNNING());
+    }
+
+    op_host_get_worker_cpu_usage(this.#id, workerCpuUsageBuffer);
+    const user = workerCpuUsageBuffer[0];
+    const system = workerCpuUsageBuffer[1];
+    if (prevValue) {
+      return PromiseResolve({
+        user: user - prevValue.user,
+        system: system - prevValue.system,
+      });
+    }
+    return PromiseResolve({ user, system });
+  }
+
+  // https://nodejs.org/api/worker_threads.html#workerthreadname
+  get threadName(): string | null {
+    if (this.#exited) {
+      return null;
+    }
+    return this.#name;
+  }
+
   readonly getHeapSnapshot = () =>
     notImplemented("Worker.prototype.getHeapSnapshot");
   // fake performance
@@ -352,6 +811,7 @@ class NodeWorker extends EventEmitter {
 
 export let isMainThread;
 export let resourceLimits;
+export let threadName: string = "";
 
 let threadId = 0;
 let workerData: unknown = null;
@@ -375,7 +835,29 @@ interface NodeEventTarget extends
   removeListener: NodeEventTarget["off"];
 }
 
-type ParentPort = typeof self & NodeEventTarget;
+interface ParentPort extends NodeEventTarget {
+  postMessage(message: unknown, transferOrOptions?: unknown): void;
+  addEventListener(
+    name: string,
+    listener: EventListenerOrEventListenerObject,
+    options?: boolean | AddEventListenerOptions,
+  ): void;
+  removeEventListener(
+    name: string,
+    listener: EventListenerOrEventListenerObject,
+  ): void;
+  onmessage: ((ev: Event) => void) | null;
+  // deno-lint-ignore no-explicit-any
+  emit(...args: any[]): any;
+  removeAllListeners(): void;
+  setMaxListeners(n: number): void;
+  getMaxListeners(): number;
+  eventNames(): string[];
+  listenerCount(): number;
+  unref(): void;
+  ref(): void;
+  [key: symbol]: unknown;
+}
 
 // deno-lint-ignore no-explicit-any
 let parentPort: ParentPort = null as any;
@@ -387,16 +869,14 @@ internals.__initWorkerThreads = (
   moduleSpecifier,
 ) => {
   isMainThread = runningOnMainThread;
+  internals.__isWorkerThread = !runningOnMainThread;
 
   defaultExport.isMainThread = isMainThread;
-  // fake resourceLimits
-  resourceLimits = isMainThread ? {} : {
-    maxYoungGenerationSizeMb: 48,
-    maxOldGenerationSizeMb: 2048,
-    codeRangeSizeMb: 0,
-    stackSizeMb: 4,
-  };
-  defaultExport.resourceLimits = resourceLimits;
+
+  if (isMainThread) {
+    resourceLimits = {};
+    defaultExport.resourceLimits = resourceLimits;
+  }
 
   if (!isMainThread) {
     // TODO(bartlomieju): this is a really hacky way to provide
@@ -417,7 +897,102 @@ internals.__initWorkerThreads = (
       (ev: any) => any
     >();
 
-    parentPort = globalThis as ParentPort;
+    // Create parentPort as a separate object that delegates to the web
+    // worker's native APIs. We capture the native methods here (before
+    // user code runs) so that user code overriding globalThis.postMessage
+    // (e.g. Emscripten/z3-solver) doesn't cause infinite recursion.
+    const nativePostMessage = FunctionPrototypeBind(
+      globalThis.postMessage,
+      globalThis,
+    );
+    const nativeAddEventListener = FunctionPrototypeBind(
+      globalThis.addEventListener,
+      globalThis,
+    );
+    const nativeRemoveEventListener = FunctionPrototypeBind(
+      globalThis.removeEventListener,
+      globalThis,
+    );
+    // Track message listener count to prevent double delivery.
+    // When parentPort message listeners exist, suppress the web IDL
+    // onmessage handler (globalThis.onmessage) since both would fire
+    // for the same MessageEvent.
+    let messageListenerCount = 0;
+    // Track Web API message listeners to prevent underflow on
+    // double-remove (same concern as the Node-style off() path).
+    const webMessageListeners = new SafeSet();
+
+    parentPort = ObjectCreate(null) as ParentPort;
+    parentPort.postMessage = function (message, transferOrOptions?) {
+      return nativePostMessage(message, transferOrOptions);
+    };
+    parentPort.addEventListener = function (name, listener, options?) {
+      nativeAddEventListener(name, listener, options);
+      if (name === "message" && !webMessageListeners.has(listener)) {
+        webMessageListeners.add(listener);
+        messageListenerCount++;
+      }
+    };
+    parentPort.removeEventListener = function (name, listener) {
+      nativeRemoveEventListener(name, listener);
+      if (name === "message" && webMessageListeners.has(listener)) {
+        webMessageListeners.delete(listener);
+        messageListenerCount--;
+      }
+    };
+    // Delegate parentPort.onmessage to globalThis.onmessage so that
+    // setting parentPort.onmessage = handler works like the old code
+    // where parentPort === globalThis.
+    ObjectDefineProperty(parentPort, "onmessage", {
+      __proto__: null,
+      get() {
+        return globalThis.onmessage;
+      },
+      set(handler) {
+        globalThis.onmessage = handler;
+      },
+      configurable: true,
+      enumerable: true,
+    });
+
+    // Only intercept globalThis.onmessage for Node worker threads
+    // (not plain Deno web workers) to prevent double message delivery
+    // when both parentPort.on('message') and self.onmessage are set.
+    if (maybeWorkerMetadata) {
+      let storedOnmessage: ((ev: Event) => void) | null = null;
+      // Dynamically add/remove the forwarding listener so we don't
+      // keep a permanent "message" listener on globalThis. A permanent
+      // listener would make hasMessageEventListener() always true and
+      // prevent the worker from exiting.
+      let onmessageForwarder: ((ev: Event) => void) | null = null;
+      ObjectDefineProperty(globalThis, "onmessage", {
+        __proto__: null,
+        get() {
+          return storedOnmessage;
+        },
+        set(handler) {
+          // Remove old forwarder if any
+          if (onmessageForwarder) {
+            nativeRemoveEventListener("message", onmessageForwarder);
+            onmessageForwarder = null;
+          }
+          storedOnmessage = handler;
+          // Add forwarder only when a handler is set
+          if (typeof handler === "function") {
+            onmessageForwarder = (ev: Event) => {
+              if (messageListenerCount > 0) return;
+              if (typeof storedOnmessage === "function") {
+                storedOnmessage(ev);
+              }
+            };
+            nativeAddEventListener("message", onmessageForwarder);
+          }
+        },
+        configurable: true,
+        enumerable: true,
+      });
+    }
+
     threadId = workerId;
     let isWorkerThread = false;
     if (maybeWorkerMetadata) {
@@ -425,28 +1000,138 @@ internals.__initWorkerThreads = (
       workerData = metadata.workerData;
       environmentData = metadata.environmentData;
       isWorkerThread = metadata.isWorkerThread;
+      threadName = metadata.name ?? "";
       const env = metadata.env;
       if (env) {
         process.env = env;
+      }
+
+      // Get resolved resource limits from the Rust side (includes V8
+      // defaults for unspecified fields), matching Node.js behavior.
+      const resolvedLimits = op_worker_get_resource_limits();
+      if (resolvedLimits) {
+        resourceLimits = resolvedLimits;
+      } else {
+        resourceLimits = {};
+      }
+      defaultExport.resourceLimits = resourceLimits;
+
+      // Set process.argv for worker threads.
+      // In Node.js, worker process.argv is [execPath, scriptPath, ...argv].
+      if (isWorkerThread) {
+        let scriptPath;
+        if (metadata.isEval) {
+          scriptPath = "[worker eval]";
+        } else if (
+          moduleSpecifier &&
+          StringPrototypeStartsWith(moduleSpecifier, "file:")
+        ) {
+          scriptPath = fileURLToPath(moduleSpecifier);
+        } else {
+          scriptPath = moduleSpecifier ?? "";
+        }
+        process.argv = [process.execPath, scriptPath];
+        if (metadata.argv) {
+          for (let i = 0; i < metadata.argv.length; i++) {
+            process.argv[i + 2] = metadata.argv[i];
+          }
+        }
+
+        // Set process.execArgv for worker threads.
+        if (metadata.execArgv) {
+          process.execArgv = metadata.execArgv;
+          for (let i = 0; i < metadata.execArgv.length; i++) {
+            if (metadata.execArgv[i] === "--trace-warnings") {
+              process.traceProcessWarnings = true;
+            }
+          }
+        }
+
+        // Replace process.stdin with a Readable that receives
+        // data from the parent via WORKER_STDIN messages.
+        if (metadata.hasStdin) {
+          const workerStdin = new Readable({ read() {} });
+          process.stdin = workerStdin;
+
+          // Register an early listener to intercept stdin messages
+          // before any user-registered handlers. Remove the listener
+          // once stdin ends so the worker can exit cleanly.
+          const stdinHandler = (ev) => {
+            const msg = ev.data;
+            if (isWorkerStdinMsg(msg)) {
+              // deno-lint-ignore prefer-primordials
+              workerStdin.push(msg.data);
+              ev.stopImmediatePropagation();
+            } else if (isWorkerStdinEndMsg(msg)) {
+              // deno-lint-ignore prefer-primordials
+              workerStdin.push(null);
+              parentPort.removeEventListener("message", stdinHandler);
+              ev.stopImmediatePropagation();
+            }
+          };
+          parentPort.addEventListener("message", stdinHandler);
+        }
+
+        // Forward stdout writes to the parent so worker.stdout
+        // is readable from the host side.
+        const origStdoutWrite = FunctionPrototypeBind(
+          process.stdout.write,
+          process.stdout,
+        );
+        process.stdout.write = function (chunk, encoding, callback) {
+          parentPort.postMessage({
+            type: "WORKER_STDOUT",
+            data: chunk,
+          });
+          return FunctionPrototypeCall(
+            origStdoutWrite,
+            process.stdout,
+            chunk,
+            encoding,
+            callback,
+          );
+        };
+
+        // Forward stderr writes to the parent so worker.stderr
+        // is readable from the host side.
+        const origStderrWrite = FunctionPrototypeBind(
+          process.stderr.write,
+          process.stderr,
+        );
+        process.stderr.write = function (chunk, encoding, callback) {
+          parentPort.postMessage({
+            type: "WORKER_STDERR",
+            data: chunk,
+          });
+          return FunctionPrototypeCall(
+            origStderrWrite,
+            process.stderr,
+            chunk,
+            encoding,
+            callback,
+          );
+        };
       }
     }
     defaultExport.workerData = workerData;
     defaultExport.parentPort = parentPort;
     defaultExport.threadId = threadId;
+    defaultExport.threadName = threadName;
 
     patchMessagePortIfFound(workerData);
 
     parentPort.off = parentPort.removeListener = function (
-      this: ParentPort,
       name,
       listener,
     ) {
-      this.removeEventListener(name, listeners.get(listener)!);
-      listeners.delete(listener);
-      return this;
+      if (listeners.has(listener)) {
+        nativeRemoveEventListener(name, listeners.get(listener)!);
+        listeners.delete(listener);
+        if (name === "message") messageListenerCount--;
+      }
+      return parentPort;
     };
     parentPort.on = parentPort.addListener = function (
-      this: ParentPort,
       name,
       listener,
     ) {
@@ -457,20 +1142,24 @@ internals.__initWorkerThreads = (
         return listener(message);
       };
       listeners.set(listener, _listener);
-      this.addEventListener(name, _listener);
-      return this;
+      nativeAddEventListener(name, _listener);
+      if (name === "message") messageListenerCount++;
+      return parentPort;
     };
 
-    parentPort.once = function (this: ParentPort, name, listener) {
+    parentPort.once = function (name, listener) {
       // deno-lint-ignore no-explicit-any
       const _listener = (ev: any) => {
+        listeners.delete(listener);
+        if (name === "message") messageListenerCount--;
         const message = ev.data;
         patchMessagePortIfFound(message);
         return listener(message);
       };
       listeners.set(listener, _listener);
-      this.addEventListener(name, _listener);
-      return this;
+      nativeAddEventListener(name, _listener, { once: true });
+      if (name === "message") messageListenerCount++;
+      return parentPort;
     };
 
     // mocks
@@ -483,14 +1172,18 @@ internals.__initWorkerThreads = (
     parentPort.removeAllListeners = () =>
       notImplemented("parentPort.removeAllListeners");
 
-    parentPort.addEventListener("offline", () => {
+    nativeAddEventListener("offline", () => {
       parentPort.emit("close");
     });
     parentPort.unref = () => {
       parentPort[unrefParentPort] = true;
+      // Also set on globalThis so runtime/js/99_main.js event loop
+      // check (globalThis[unrefParentPort]) still works.
+      globalThis[unrefParentPort] = true;
     };
     parentPort.ref = () => {
       parentPort[unrefParentPort] = false;
+      globalThis[unrefParentPort] = false;
     };
 
     if (isWorkerThread) {
@@ -517,8 +1210,10 @@ export function setEnvironmentData(key: unknown, value?: unknown) {
 }
 
 export const SHARE_ENV = SymbolFor("nodejs.worker_threads.SHARE_ENV");
-export function markAsUntransferable() {
-  notImplemented("markAsUntransferable");
+export function markAsUntransferable(obj: object) {
+  if (core.isArrayBuffer(obj)) {
+    op_mark_as_untransferable(obj as ArrayBuffer);
+  }
 }
 export function moveMessagePortToContext() {
   notImplemented("moveMessagePortToContext");
@@ -552,6 +1247,26 @@ class NodeMessageChannel {
     const { port1, port2 } = new MessageChannel();
     this.port1 = webMessagePortToNodeMessagePort(port1);
     this.port2 = webMessagePortToNodeMessagePort(port2);
+
+    // When one port is closed, the paired port should also receive
+    // a 'close' event (matching Node.js behavior).
+    const origClose1 = FunctionPrototypeBind(port1.close, port1);
+    const origClose2 = FunctionPrototypeBind(port2.close, port2);
+
+    port1.close = () => {
+      origClose1();
+      if (!port2[nodeWorkerThreadCloseCbInvoked]) {
+        port2[nodeWorkerThreadCloseCbInvoked] = true;
+        port2.dispatchEvent(new Event("close"));
+      }
+    };
+    port2.close = () => {
+      origClose2();
+      if (!port1[nodeWorkerThreadCloseCbInvoked]) {
+        port1[nodeWorkerThreadCloseCbInvoked] = true;
+        port1.dispatchEvent(new Event("close"));
+      }
+    };
   }
 }
 
@@ -662,6 +1377,18 @@ function patchMessagePortIfFound(data: any, seen = new SafeSet<any>()) {
   }
 }
 
+class BroadcastChannel extends WebBroadcastChannel {
+  ref() {
+    this[refBroadcastChannel](true);
+    return this;
+  }
+
+  unref() {
+    this[refBroadcastChannel](false);
+    return this;
+  }
+}
+
 export {
   BroadcastChannel,
   MessagePort,
@@ -684,6 +1411,7 @@ const defaultExport = {
   setEnvironmentData,
   SHARE_ENV,
   threadId,
+  threadName,
   workerData,
   resourceLimits,
   parentPort,

@@ -426,11 +426,11 @@ class Tracer {
   }
 }
 
-const SPAN_KEY = SymbolFor("OpenTelemetry Context Key SPAN");
+export const SPAN_KEY = SymbolFor("OpenTelemetry Context Key SPAN");
 
-let getOtelSpan: (span: object) => OtelSpan | null | undefined;
+export let getOtelSpan: (span: object) => OtelSpan | null | undefined;
 
-class Span {
+export class Span {
   #otelSpan: OtelSpan | null;
   #spanContext: SpanContext | undefined;
 
@@ -1184,13 +1184,35 @@ const otelConsoleConfig = {
   replace: 2,
 };
 
+let pendingException: Error | undefined;
+
+const OTEL_CONSOLE_METHODS = ["log", "debug", "info", "warn", "error"];
+
+function wrapOtelConsoleMethods(otelConsole: Console) {
+  for (let i = 0; i < OTEL_CONSOLE_METHODS.length; i++) {
+    const method = OTEL_CONSOLE_METHODS[i];
+    const orig = otelConsole[method];
+    otelConsole[method] = (...args: unknown[]) => {
+      if (args.length >= 1 && core.isNativeError(args[0])) {
+        pendingException = args[0] as Error;
+      }
+      return ReflectApply(orig, otelConsole, args);
+    };
+  }
+}
+
 function otelLog(message: string, level: number) {
+  const exception = pendingException;
+  pendingException = undefined;
+  const excType = exception?.name ?? "";
+  const excMessage = exception?.message ?? "";
+  const excStacktrace = exception?.stack ?? "";
   const currentSpan = CURRENT.get()?.getValue(SPAN_KEY);
   const otelSpan = currentSpan !== undefined
     ? getOtelSpan(currentSpan)
     : undefined;
   if (otelSpan || currentSpan === undefined) {
-    op_otel_log(message, level, otelSpan);
+    op_otel_log(message, level, otelSpan, excType, excMessage, excStacktrace);
   } else {
     const spanContext = currentSpan.spanContext();
     op_otel_log_foreign(
@@ -1199,6 +1221,9 @@ function otelLog(message: string, level: number) {
       spanContext.traceId,
       spanContext.spanId,
       spanContext.traceFlags,
+      excType,
+      excMessage,
+      excStacktrace,
     );
   }
 }
@@ -1849,16 +1874,22 @@ export function bootstrap(
   );
 
   switch (consoleConfig) {
-    case otelConsoleConfig.capture:
-      core.wrapConsole(globalThis.console, new Console(otelLog));
+    case otelConsoleConfig.capture: {
+      const otelConsole = new Console(otelLog);
+      wrapOtelConsoleMethods(otelConsole);
+      core.wrapConsole(globalThis.console, otelConsole);
       break;
-    case otelConsoleConfig.replace:
+    }
+    case otelConsoleConfig.replace: {
+      const otelConsole = new Console(otelLog);
+      wrapOtelConsoleMethods(otelConsole);
       ObjectDefineProperty(
         globalThis,
         "console",
-        core.propNonEnumerable(new Console(otelLog)),
+        core.propNonEnumerable(otelConsole),
       );
       break;
+    }
     default:
       break;
   }

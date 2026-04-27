@@ -8,6 +8,7 @@ use deno_terminal::colors;
 use crate::args::CheckFlags;
 use crate::args::Flags;
 use crate::factory::CliFactory;
+use crate::graph_container::CheckSpecifiersOptions;
 use crate::graph_container::CollectSpecifiersOptions;
 use crate::util::extract;
 
@@ -54,6 +55,12 @@ pub async fn check(
   };
 
   main_graph_container
-    .check_specifiers(&specifiers_for_typecheck, Default::default())
+    .check_specifiers(
+      &specifiers_for_typecheck,
+      CheckSpecifiersOptions {
+        allow_unknown_media_types: true,
+        ..Default::default()
+      },
+    )
     .await
 }

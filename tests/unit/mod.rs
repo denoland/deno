@@ -16,6 +16,19 @@ use test_util::test_runner::flaky_test_ci;
 use test_util::tests_path;
 
 fn main() {
+  let ci_hash = test_util::hash::check_ci_hash("unit", |hasher| {
+    let tests = test_util::tests_path();
+    hasher
+      .hash_dir(tests.join("unit"))
+      .hash_dir(tests.join("util"))
+      .hash_dir(tests.join("testdata"))
+      .hash_file(test_util::deno_exe_path())
+      .hash_file(test_util::test_server_path());
+  });
+  if matches!(ci_hash, test_util::hash::CiHashStatus::Skip) {
+    return;
+  }
+
   let category = collect_tests_or_exit(CollectOptions {
     base: tests_path().join("unit").to_path_buf(),
     strategy: Box::new(TestPerFileCollectionStrategy {
@@ -25,6 +38,9 @@ fn main() {
   });
   if category.is_empty() {
     return; // no tests to run for the filter
+  }
+  if test_util::test_runner::print_tests_if_list_flag(&category) {
+    return;
   }
   let parallelism = Parallelism::default();
   let flaky_test_tracker = Arc::new(FlakyTestTracker::default());
@@ -43,7 +59,10 @@ fn main() {
         run_test(test)
       })
     },
-  )
+  );
+  if let test_util::hash::CiHashStatus::RunThenCommit(pending) = ci_hash {
+    pending.commit();
+  }
 }
 
 fn run_test(test: &CollectedTest) -> TestResult {

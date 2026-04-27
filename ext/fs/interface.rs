@@ -85,7 +85,8 @@ impl From<i32> for OpenOptions {
     }
     if (flags & libc::O_EXCL) == libc::O_EXCL {
       options.create_new = true;
-      options.write = true;
+      // Note: O_EXCL only controls create_new semantics. The write access
+      // mode is determined separately by O_WRONLY or O_RDWR flags.
       flags &= !libc::O_EXCL;
     }
     if (flags & libc::O_RDWR) == libc::O_RDWR {
@@ -139,7 +140,7 @@ pub struct FsDirEntry {
   pub is_symlink: bool,
 }
 
-#[allow(clippy::disallowed_types)]
+#[allow(clippy::disallowed_types, reason = "definition")]
 pub type FileSystemRc = deno_maybe_sync::MaybeArc<dyn FileSystem>;
 
 #[async_trait::async_trait(?Send)]
@@ -264,6 +265,9 @@ pub trait FileSystem: std::fmt::Debug + MaybeSend + MaybeSync {
     oldpath: CheckedPathBuf,
     newpath: CheckedPathBuf,
   ) -> FsResult<()>;
+
+  fn rmdir_sync(&self, path: &CheckedPath) -> FsResult<()>;
+  async fn rmdir_async(&self, path: CheckedPathBuf) -> FsResult<()>;
 
   fn link_sync(
     &self,

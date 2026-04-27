@@ -9,10 +9,12 @@ use std::sync::Arc;
 
 use deno_ast::MediaType;
 use deno_ast::ModuleSpecifier;
+use deno_config::deno_json::NodeModulesDirMode;
 use deno_core::anyhow::Context;
 use deno_core::anyhow::anyhow;
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
+use deno_core::futures::FutureExt;
 use deno_graph::GraphKind;
 use deno_npm_installer::graph::NpmCachingStrategy;
 use deno_path_util::resolve_url_or_path;
@@ -24,12 +26,44 @@ use rand::Rng;
 use super::installer::BinNameResolver;
 use crate::args::CliOptions;
 use crate::args::CompileFlags;
+use crate::args::ConfigFlag;
 use crate::args::Flags;
 use crate::factory::CliFactory;
 use crate::standalone::binary::WriteBinOptions;
 use crate::standalone::binary::is_standalone_binary;
+use crate::util::temp::create_temp_node_modules_dir;
 
 pub async fn compile(
+  mut flags: Flags,
+  compile_flags: CompileFlags,
+) -> Result<(), AnyError> {
+  // use a temporary directory with a node_modules folder when the user
+  // specifies an npm package for better compatibility
+  let _temp_dir =
+    if compile_flags.source_file.to_lowercase().starts_with("npm:")
+      && flags.node_modules_dir.is_none()
+      && !matches!(flags.config_flag, ConfigFlag::Path(_))
+    {
+      let temp_node_modules_dir = create_temp_node_modules_dir()
+        .context("Failed creating temp directory for node_modules folder.")?;
+      flags.initial_cwd = Some(temp_node_modules_dir.parent().to_path_buf());
+      flags.internal.root_node_modules_dir_override =
+        Some(temp_node_modules_dir.node_modules_dir_path().to_path_buf());
+      flags.node_modules_dir = Some(NodeModulesDirMode::Auto);
+      Some(temp_node_modules_dir)
+    } else {
+      None
+    };
+  let flags = Arc::new(flags);
+  // boxed_local() is to avoid large futures
+  if compile_flags.eszip {
+    compile_eszip(flags, compile_flags).boxed_local().await
+  } else {
+    compile_binary(flags, compile_flags).boxed_local().await
+  }
+}
+
+async fn compile_binary(
   flags: Arc<Flags>,
   compile_flags: CompileFlags,
 ) -> Result<(), AnyError> {
@@ -45,9 +79,23 @@ pub async fn compile(
     cli_options.initial_cwd(),
   )
   .await?;
+  let compile_config = cli_options.start_dir.to_compile_config()?;
+  let mut effective_include = compile_config.include.clone();
+  for inc in &compile_flags.include {
+    if !effective_include.contains(inc) {
+      effective_include.push(inc.clone());
+    }
+  }
+  let mut effective_exclude = compile_config.exclude.clone();
+  for exc in &compile_flags.exclude {
+    if !effective_exclude.contains(exc) {
+      effective_exclude.push(exc.clone());
+    }
+  }
   let (module_roots, include_paths) = get_module_roots_and_include_paths(
     entrypoint,
-    &compile_flags,
+    &effective_include,
+    &effective_exclude,
     cli_options,
   )?;
 
@@ -121,8 +169,7 @@ pub async fn compile(
       graph: &graph,
       entrypoint,
       include_paths: &include_paths,
-      exclude_paths: compile_flags
-        .exclude
+      exclude_paths: effective_exclude
         .iter()
         .map(|p| cli_options.initial_cwd().join(p))
         .chain(std::iter::once(
@@ -172,7 +219,7 @@ pub async fn compile(
   Ok(())
 }
 
-pub async fn compile_eszip(
+async fn compile_eszip(
   flags: Arc<Flags>,
   compile_flags: CompileFlags,
 ) -> Result<(), AnyError> {
@@ -193,9 +240,23 @@ pub async fn compile_eszip(
 
   let maybe_import_map_specifier =
     cli_options.resolve_specified_import_map_specifier()?;
+  let compile_config = cli_options.start_dir.to_compile_config()?;
+  let mut effective_include = compile_config.include.clone();
+  for inc in &compile_flags.include {
+    if !effective_include.contains(inc) {
+      effective_include.push(inc.clone());
+    }
+  }
+  let mut effective_exclude = compile_config.exclude.clone();
+  for exc in &compile_flags.exclude {
+    if !effective_exclude.contains(exc) {
+      effective_exclude.push(exc.clone());
+    }
+  }
   let (module_roots, _include_paths) = get_module_roots_and_include_paths(
     entrypoint,
-    &compile_flags,
+    &effective_include,
+    &effective_exclude,
     cli_options,
   )?;
 
@@ -341,7 +402,8 @@ fn validate_output_path(output_path: &Path) -> Result<(), AnyError> {
 
 fn get_module_roots_and_include_paths(
   entrypoint: &ModuleSpecifier,
-  compile_flags: &CompileFlags,
+  include: &[String],
+  exclude: &[String],
   cli_options: &Arc<CliOptions>,
 ) -> Result<(Vec<ModuleSpecifier>, Vec<ModuleSpecifier>), AnyError> {
   let initial_cwd = cli_options.initial_cwd();
@@ -372,6 +434,7 @@ fn get_module_roots_and_include_paths(
       | MediaType::Html
       | MediaType::Jsonc
       | MediaType::Json5
+      | MediaType::Markdown
       | MediaType::SourceMap
       | MediaType::Sql
       | MediaType::Unknown => false,
@@ -414,13 +477,12 @@ fn get_module_roots_and_include_paths(
   let mut searched_paths = HashSet::new();
   let mut module_roots = Vec::new();
   let mut include_paths = Vec::new();
-  let exclude_set = compile_flags
-    .exclude
+  let exclude_set = exclude
     .iter()
     .map(|path| initial_cwd.join(path))
     .collect::<HashSet<_>>();
   module_roots.push(entrypoint.clone());
-  for side_module in &compile_flags.include {
+  for side_module in include {
     let url = resolve_url_or_path(side_module, initial_cwd)?;
     if is_module_graph_module(&url) {
       module_roots.push(url.clone());
@@ -518,6 +580,7 @@ mod test {
 
   pub use super::*;
   use crate::http_util::HttpClientProvider;
+  use crate::util::env::resolve_cwd;
 
   #[tokio::test]
   async fn resolve_compile_executable_output_path_target_linux() {
@@ -538,8 +601,9 @@ mod test {
         include: Default::default(),
         exclude: Default::default(),
         eszip: true,
+        self_extracting: false,
       },
-      &std::env::current_dir().unwrap(),
+      &resolve_cwd(None).unwrap(),
     )
     .await
     .unwrap();
@@ -569,8 +633,9 @@ mod test {
         icon: None,
         no_terminal: false,
         eszip: true,
+        self_extracting: false,
       },
-      &std::env::current_dir().unwrap(),
+      &resolve_cwd(None).unwrap(),
     )
     .await
     .unwrap();

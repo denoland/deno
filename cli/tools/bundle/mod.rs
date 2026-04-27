@@ -59,7 +59,6 @@ use node_resolver::ResolutionMode;
 use node_resolver::errors::PackageNotFoundError;
 use node_resolver::errors::PackageSubpathResolveError;
 pub use provider::CliBundleProvider;
-use sys_traits::EnvCurrentDir;
 
 use crate::args::BundleFlags;
 use crate::args::Flags;
@@ -76,16 +75,15 @@ use crate::node::CliNodeResolver;
 use crate::npm::CliNpmResolver;
 use crate::resolver::CliCjsTracker;
 use crate::resolver::CliResolver;
-use crate::sys::CliSys;
 use crate::tools::bundle::externals::ExternalsMatcher;
 use crate::util::file_watcher::WatcherRestartMode;
+use crate::util::fs::canonicalize_path;
 
 static DISABLE_HACK: LazyLock<bool> =
   LazyLock::new(|| std::env::var("NO_DENO_BUNDLE_HACK").is_err());
 
 pub async fn prepare_inputs(
   resolver: &CliResolver,
-  sys: CliSys,
   npm_resolver: &CliNpmResolver,
   node_resolver: &CliNodeResolver,
   init_cwd: &Path,
@@ -111,8 +109,12 @@ pub async fn prepare_inputs(
       .prepare_module_load(&resolved_entrypoints)
       .await?;
 
-    let roots =
-      resolve_roots(resolved_entrypoints, sys, npm_resolver, node_resolver);
+    let roots = resolve_roots(
+      resolved_entrypoints,
+      init_cwd,
+      npm_resolver,
+      node_resolver,
+    );
     plugin_handler.prepare_module_load(&roots).await?;
     let graph = plugin_handler.module_graph_container.graph();
     let mut fully_resolved_roots = IndexSet::with_capacity(graph.roots.len());
@@ -173,7 +175,7 @@ pub async fn prepare_inputs(
     // Prepare non-HTML entries too
     let _ = plugin_handler.prepare_module_load(&script_entry_urls).await;
     let roots =
-      resolve_roots(script_entry_urls, sys, npm_resolver, node_resolver);
+      resolve_roots(script_entry_urls, init_cwd, npm_resolver, node_resolver);
     let _ = plugin_handler.prepare_module_load(&roots).await;
     for url in roots {
       entries.push(("".into(), url.into()));
@@ -215,13 +217,15 @@ pub async fn bundle_init(
   let node_resolver = factory.node_resolver().await?;
   let cli_options = factory.cli_options()?;
   let module_loader = factory.resolver_factory()?.module_loader()?;
-  let sys = factory.sys();
   let init_cwd = cli_options.initial_cwd().to_path_buf();
   let module_graph_container =
     factory.main_module_graph_container().await?.clone();
 
   let (on_end_tx, on_end_rx) = tokio::sync::mpsc::channel(10);
-  #[allow(clippy::arc_with_non_send_sync)]
+  #[allow(
+    clippy::arc_with_non_send_sync,
+    reason = "fine because only used in output positions"
+  )]
   let mut plugin_handler = Arc::new(DenoPluginHandler {
     file_fetcher: factory.file_fetcher()?.clone(),
     resolver: resolver.clone(),
@@ -241,11 +245,13 @@ pub async fn bundle_init(
     emitter: factory.emitter()?.clone(),
     deferred_resolve_errors: Default::default(),
     virtual_modules: None,
+    initial_cwd: deno_path_util::url_from_directory_path(
+      cli_options.initial_cwd(),
+    )?,
   });
 
   let input = prepare_inputs(
     &resolver,
-    sys,
     npm_resolver,
     node_resolver,
     &init_cwd,
@@ -755,9 +761,12 @@ fn format_message(
     }
   )
 }
+#[derive(Debug, boxed_error::Boxed, JsError)]
+struct BundleError(Box<BundleErrorKind>);
+
 #[derive(Debug, thiserror::Error, JsError)]
 #[class(generic)]
-enum BundleError {
+enum BundleErrorKind {
   #[error(transparent)]
   Resolver(#[from] deno_resolver::graph::ResolveWithGraphError),
   #[error(transparent)]
@@ -782,7 +791,7 @@ enum BundleError {
   PackageReqReferenceParse(
     #[from] deno_semver::package::PackageReqReferenceParseError,
   ),
-  #[allow(dead_code)]
+  #[allow(dead_code, reason = "not used yet")]
   #[error("Http cache error")]
   HttpCache,
 }
@@ -856,6 +865,7 @@ pub struct DenoPluginHandler {
   parsed_source_cache: Arc<ParsedSourceCache>,
   cjs_tracker: Arc<CliCjsTracker>,
   emitter: Arc<CliEmitter>,
+  initial_cwd: Url,
 }
 
 impl DenoPluginHandler {
@@ -868,62 +878,6 @@ impl DenoPluginHandler {
       virtual_modules.insert(path.to_string(), module);
     }
   }
-}
-
-// TODO(bartlomieju): in Rust 1.90 some structs started getting flagged as not used
-#[allow(dead_code)]
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "kebab-case")]
-enum PluginImportKind {
-  EntryPoint,
-  ImportStatement,
-  RequireCall,
-  DynamicImport,
-  RequireResolve,
-  ImportRule,
-  ComposesFrom,
-  UrlToken,
-}
-
-impl From<protocol::ImportKind> for PluginImportKind {
-  fn from(kind: protocol::ImportKind) -> Self {
-    match kind {
-      protocol::ImportKind::EntryPoint => PluginImportKind::EntryPoint,
-      protocol::ImportKind::ImportStatement => {
-        PluginImportKind::ImportStatement
-      }
-      protocol::ImportKind::RequireCall => PluginImportKind::RequireCall,
-      protocol::ImportKind::DynamicImport => PluginImportKind::DynamicImport,
-      protocol::ImportKind::RequireResolve => PluginImportKind::RequireResolve,
-      protocol::ImportKind::ImportRule => PluginImportKind::ImportRule,
-      protocol::ImportKind::ComposesFrom => PluginImportKind::ComposesFrom,
-      protocol::ImportKind::UrlToken => PluginImportKind::UrlToken,
-    }
-  }
-}
-
-// TODO(bartlomieju): in Rust 1.90 some structs started getting flagged as not used
-#[allow(dead_code)]
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct PluginOnResolveArgs {
-  path: String,
-  importer: Option<String>,
-  kind: PluginImportKind,
-  namespace: Option<String>,
-  resolve_dir: Option<String>,
-  with: IndexMap<String, String>,
-}
-
-// TODO(bartlomieju): in Rust 1.90 some structs started getting flagged as not used
-#[allow(dead_code)]
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct PluginOnLoadArgs {
-  path: String,
-  namespace: String,
-  suffix: String,
-  with: IndexMap<String, String>,
 }
 
 #[async_trait::async_trait(?Send)]
@@ -947,6 +901,26 @@ impl esbuild_client::PluginHandler for DenoPluginHandler {
 
     if let Some(matcher) = &self.externals_matcher
       && matcher.is_pre_resolve_match(&args.path)
+    {
+      return Ok(Some(esbuild_client::OnResolveResult {
+        external: Some(true),
+        path: Some(args.path),
+        plugin_name: Some("deno".to_string()),
+        plugin_data: None,
+        ..Default::default()
+      }));
+    }
+
+    // Same-document fragment references in CSS — `url(#default#VML)`,
+    // `url(#gradient)` for SVG paint servers, etc. — are not file imports
+    // and must be left as-is in the output. Without this, `bundle_resolve`
+    // tries to resolve them as package import specifiers and fails (see
+    // denoland/deno#32232).
+    if matches!(
+      args.kind,
+      esbuild_client::protocol::ImportKind::UrlToken
+        | esbuild_client::protocol::ImportKind::ImportRule
+    ) && args.path.starts_with('#')
     {
       return Ok(Some(esbuild_client::OnResolveResult {
         external: Some(true),
@@ -1098,8 +1072,11 @@ fn import_kind_to_resolution_mode(
   }
 }
 
+#[derive(Debug, boxed_error::Boxed, deno_error::JsError)]
+pub struct BundleLoadError(pub Box<BundleLoadErrorKind>);
+
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
-pub enum BundleLoadError {
+pub enum BundleLoadErrorKind {
   #[class(inherit)]
   #[error(transparent)]
   Fetch(#[from] deno_resolver::file_fetcher::FetchError),
@@ -1144,12 +1121,12 @@ pub enum BundleLoadError {
 
 impl BundleLoadError {
   pub fn is_unsupported_media_type(&self) -> bool {
-    match self {
-      BundleLoadError::LoadCodeSource(e) => match e.as_kind() {
+    match self.as_kind() {
+      BundleLoadErrorKind::LoadCodeSource(e) => match e.as_kind() {
         LoadCodeSourceErrorKind::LoadPreparedModule(e) => match e.as_kind() {
           LoadPreparedModuleErrorKind::Graph(e) => matches!(
-            e.error.as_kind(),
-            ModuleErrorKind::UnsupportedMediaType { .. },
+            e.original().as_module_error_kind(),
+            Some(ModuleErrorKind::UnsupportedMediaType { .. }),
           ),
           _ => false,
         },
@@ -1218,7 +1195,6 @@ impl DenoPluginHandler {
     Ok(())
   }
 
-  #[allow(clippy::result_large_err)]
   fn bundle_resolve(
     &self,
     path: &str,
@@ -1235,6 +1211,9 @@ impl DenoPluginHandler {
       kind,
       with
     );
+    if path.starts_with("data:") {
+      return Ok(None);
+    }
     let mut resolve_dir = resolve_dir.unwrap_or("").to_string();
     let resolver = self.resolver.clone();
     if !resolve_dir.ends_with(std::path::MAIN_SEPARATOR) {
@@ -1243,9 +1222,7 @@ impl DenoPluginHandler {
     let resolve_dir_path = Path::new(&resolve_dir);
     let mut referrer =
       resolve_url_or_path(importer.unwrap_or(""), resolve_dir_path)
-        .unwrap_or_else(|_| {
-          Url::from_directory_path(std::env::current_dir().unwrap()).unwrap()
-        });
+        .unwrap_or_else(|_| self.initial_cwd.clone());
     if referrer.scheme() == "file" {
       let pth = referrer.to_file_path().unwrap();
       if (pth.is_dir()) && !pth.ends_with(std::path::MAIN_SEPARATOR_STR) {
@@ -1305,7 +1282,7 @@ impl DenoPluginHandler {
           // for fallible imports/requires
           return Ok(None);
         }
-        Err(BundleError::Resolver(e))
+        Err(BundleErrorKind::Resolver(e).into())
       }
     }
   }
@@ -1329,6 +1306,7 @@ impl DenoPluginHandler {
           ext_overwrite: None,
           allow_unknown_media_types: true,
           skip_graph_roots_validation: true,
+          file_content_overrides: Default::default(),
         },
       )
       .await?;
@@ -1353,6 +1331,9 @@ impl DenoPluginHandler {
       specifier,
       Path::new(""), // should be absolute already, feels kind of hacky though
     )?;
+    if specifier.scheme() == "data" {
+      return Ok(None);
+    }
     let (specifier, media_type) =
       if let RequestedModuleType::Bytes = requested_type {
         (specifier, MediaType::Unknown)
@@ -1368,13 +1349,6 @@ impl DenoPluginHandler {
           deno_terminal::colors::yellow("warn"),
           specifier
         );
-
-        if specifier.scheme() == "data" {
-          return Ok(Some((
-            specifier.to_string().as_bytes().to_vec(),
-            esbuild_client::BuiltinLoader::DataUrl,
-          )));
-        }
 
         let (media_type, _) =
           deno_media_type::resolve_media_type_and_charset_from_content_type(
@@ -1564,7 +1538,6 @@ impl DenoPluginHandler {
     Ok(source)
   }
 
-  #[allow(clippy::result_large_err)]
   fn apply_transform(
     resolved_roots: &IndexSet<ModuleSpecifier>,
     module_graph_container: &MainModuleGraphContainer,
@@ -1603,7 +1576,6 @@ impl DenoPluginHandler {
     Ok(code.text)
   }
 
-  #[allow(clippy::result_large_err)]
   fn specifier_and_type_from_graph(
     &self,
     specifier: &ModuleSpecifier,
@@ -1631,7 +1603,7 @@ impl DenoPluginHandler {
         esbuild_client::BuiltinLoader::Json,
       ),
       deno_graph::Module::Wasm(_) => {
-        return Err(BundleLoadError::WasmUnsupported);
+        return Err(BundleLoadErrorKind::WasmUnsupported.into());
       }
       deno_graph::Module::Npm(_) => {
         let req_ref =
@@ -1685,6 +1657,7 @@ fn media_type_to_loader(
     Json => esbuild_client::BuiltinLoader::Json,
     Jsonc => esbuild_client::BuiltinLoader::Text,
     Json5 => esbuild_client::BuiltinLoader::Text,
+    Markdown => esbuild_client::BuiltinLoader::Text,
     SourceMap => esbuild_client::BuiltinLoader::Text,
     Html => esbuild_client::BuiltinLoader::Text,
     Sql => esbuild_client::BuiltinLoader::Text,
@@ -1703,7 +1676,7 @@ fn resolve_url_or_path_absolute(
   } else {
     let path = current_dir.join(specifier);
     let path = deno_path_util::normalize_path(Cow::Owned(path));
-    let path = path.canonicalize()?;
+    let path = canonicalize_path(&path)?;
     Ok(deno_path_util::url_from_file_path(&path)?)
   }
 }
@@ -1737,7 +1710,7 @@ fn resolve_entrypoints(
 
 fn resolve_roots(
   entrypoints: Vec<Url>,
-  sys: CliSys,
+  cwd: &Path,
   npm_resolver: &CliNpmResolver,
   node_resolver: &CliNodeResolver,
 ) -> Vec<Url> {
@@ -1746,9 +1719,7 @@ fn resolve_roots(
   for url in entrypoints {
     let root = match NpmPackageReqReference::from_specifier(&url) {
       Ok(v) => {
-        let referrer =
-          ModuleSpecifier::from_directory_path(sys.env_current_dir().unwrap())
-            .unwrap();
+        let referrer = ModuleSpecifier::from_directory_path(cwd).unwrap();
         let package_folder = npm_resolver
           .resolve_pkg_folder_from_deno_module_req(v.req(), &referrer)
           .unwrap();
@@ -1813,6 +1784,10 @@ fn configure_esbuild_flags(
       PackageHandling::External => esbuild_client::PackagesHandling::External,
       PackageHandling::Bundle => esbuild_client::PackagesHandling::Bundle,
     });
+
+  if bundle_flags.keep_names {
+    builder.raw_flag("--keep-names");
+  }
 
   if let Some(sourcemap_type) = bundle_flags.sourcemap {
     builder.sourcemap(match sourcemap_type {

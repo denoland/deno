@@ -82,7 +82,7 @@ impl CjsCodeAnalyzer {
       }));
     }
 
-    let cjs_tracker = self.cjs_tracker.clone();
+    let cjs_tracker = &self.cjs_tracker;
     let is_maybe_cjs = cjs_tracker
       .is_maybe_cjs(specifier, media_type)
       .map_err(JsErrorBox::from_err)?;

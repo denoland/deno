@@ -830,15 +830,21 @@ function invokeEventListeners(tuple, eventImpl) {
   }
 }
 
+// https://dom.spec.whatwg.org/#dom-eventtarget-removeeventlistener
 function normalizeEventHandlerOptions(
   options,
 ) {
-  if (typeof options === "boolean" || typeof options === "undefined") {
+  if (
+    typeof options === "boolean" || typeof options === "undefined" ||
+    options === null
+  ) {
     return {
       capture: Boolean(options),
     };
   } else {
-    return options;
+    return {
+      capture: Boolean(options.capture),
+    };
   }
 }
 

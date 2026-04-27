@@ -36,6 +36,7 @@ use deno_tls::TlsKeyLookup;
 use deno_tls::TlsKeys;
 use deno_tls::TlsKeysHolder;
 use deno_tls::create_client_config;
+use deno_tls::get_ssl_key_log;
 use deno_tls::load_certs;
 use deno_tls::load_private_keys;
 use deno_tls::new_resolver;
@@ -461,6 +462,14 @@ pub async fn op_net_connect_tls(
     .await?
     .next()
     .ok_or_else(|| NetError::NoResolvedAddress)?;
+  state
+    .borrow_mut()
+    .borrow_mut::<PermissionsContainer>()
+    .check_net_resolved(
+      &connect_addr.ip(),
+      connect_addr.port(),
+      "Deno.connectTls()",
+    )?;
   let tcp_stream = TcpStream::connect(connect_addr).await?;
   let local_addr = tcp_stream.local_addr()?;
   let remote_addr = tcp_stream.peer_addr()?;
@@ -527,6 +536,13 @@ pub fn op_net_listen_tls(
   let bind_addr = resolve_addr_sync(&addr.hostname, addr.port)?
     .next()
     .ok_or(NetError::NoResolvedAddress)?;
+  state
+    .borrow_mut::<PermissionsContainer>()
+    .check_net_resolved(
+      &bind_addr.ip(),
+      bind_addr.port(),
+      "Deno.listenTls()",
+    )?;
 
   let tcp_listener = if args.load_balanced {
     TcpListener::bind_load_balanced(bind_addr, args.tcp_backlog)
@@ -546,6 +562,7 @@ pub fn op_net_listen_tls(
       let mut tls_config = ServerConfig::builder()
         .with_no_client_auth()
         .with_single_cert(cert, key)?;
+      tls_config.key_log = get_ssl_key_log();
       tls_config.alpn_protocols = alpn;
       TlsListener {
         tcp_listener,

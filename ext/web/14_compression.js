@@ -27,6 +27,7 @@ webidl.converters.CompressionFormat = webidl.createEnumConverter(
     "deflate",
     "deflate-raw",
     "gzip",
+    "brotli",
   ],
 );
 

@@ -1,0 +1,1 @@
+import "./grandchild2.ts";

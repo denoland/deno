@@ -19,11 +19,6 @@
       "args": "run kv.ts",
       "exitCode": 1,
       "output": "kv.out"
-    },
-    "temporal": {
-      "args": "run temporal.ts",
-      "exitCode": 1,
-      "output": "temporal.out"
     }
   }
 }

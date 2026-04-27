@@ -69,6 +69,31 @@ declare var DOMException: {
   readonly DATA_CLONE_ERR: 25;
 };
 
+/** @category Platform */
+interface QuotaExceededErrorOptions {
+  quota?: number;
+  requested?: number;
+}
+
+/**
+ * Represents an error when a quota has been exceeded.
+ *
+ * @category Platform
+ */
+interface QuotaExceededError extends DOMException {
+  readonly quota: number | null;
+  readonly requested: number | null;
+}
+
+/** @category Platform */
+declare var QuotaExceededError: {
+  readonly prototype: QuotaExceededError;
+  new (
+    message?: string,
+    options?: QuotaExceededErrorOptions,
+  ): QuotaExceededError;
+};
+
 /** @category Events */
 interface EventInit {
   bubbles?: boolean;
@@ -795,7 +820,7 @@ declare var ReadableStreamBYOBReader: {
 
 /** @category Streams */
 interface ReadableStreamBYOBRequest {
-  readonly view: ArrayBufferView | null;
+  readonly view: Uint8Array<ArrayBuffer> | null;
   respond(bytesWritten: number): void;
   respondWithNewView(view: ArrayBufferView): void;
 }
@@ -1400,7 +1425,7 @@ interface CompressionStream extends GenericTransformStream {
 }
 
 /** @category Streams */
-type CompressionFormat = "deflate" | "deflate-raw" | "gzip";
+type CompressionFormat = "deflate" | "deflate-raw" | "gzip" | "brotli";
 
 /**
  * An API for compressing a stream of data.

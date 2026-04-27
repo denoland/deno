@@ -119,3 +119,42 @@ fn conditionally_loads_type_graph() {
     .run();
   assert_not_contains!(output.combined_output(), "type_reference.d.ts");
 }
+
+#[test]
+fn workspace_dot_runs_test_module_once() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write("deno.jsonc", r#"{ "workspace": ["./member"] }"#);
+  temp_dir.write("member/deno.json", "{}");
+  temp_dir.write("main_test.ts", "Deno.test('test', () => {});");
+
+  let output = context.new_command().args("test .").run();
+  output.assert_exit_code(0);
+
+  let text = output.combined_output();
+  let test_file_runs = text.matches("running 1 test from").count();
+  assert_eq!(
+    test_file_runs, 1,
+    "expected test module to run once, but saw {test_file_runs} runs:\n{text}"
+  );
+}
+
+#[test]
+fn nested_deno_test_registration_errors() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write(
+    "nested_test.ts",
+    r#"
+Deno.test("outer", () => {
+  Deno.test("inner", () => {});
+});
+"#,
+  );
+
+  let output = context.new_command().args("test nested_test.ts").run();
+  output.assert_exit_code(1);
+  let combined = output.combined_output();
+  assert_contains!(combined, "Nested Deno.test() calls are not supported",);
+  assert_contains!(combined, "Use t.step()");
+}

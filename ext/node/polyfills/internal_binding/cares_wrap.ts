@@ -39,6 +39,7 @@ import { notImplemented } from "ext:deno_node/_utils.ts";
 import {
   op_dns_resolve,
   op_net_get_ips_from_perm_token,
+  op_net_get_system_dns_servers,
   op_node_getaddrinfo,
   op_node_getnameinfo,
 } from "ext:core/ops";
@@ -91,7 +92,11 @@ export function getaddrinfo(
     let error = 0;
     let netPermToken: object | undefined;
     try {
-      netPermToken = await op_node_getaddrinfo(hostname, req.port || undefined);
+      netPermToken = await op_node_getaddrinfo(
+        hostname,
+        req.port || undefined,
+        family,
+      );
       addresses.push(...op_net_get_ips_from_perm_token(netPermToken));
       if (addresses.length === 0) {
         error = codeMap.get("EAI_NODATA")!;
@@ -221,8 +226,19 @@ function fqdnToHostname(fqdn: string): string {
   return fqdn.replace(/\.$/, "");
 }
 
+let systemDnsServers: [string, number][] | null = null;
+
+function getSystemDnsServers(): [string, number][] {
+  if (systemDnsServers !== null) {
+    return systemDnsServers;
+  }
+
+  systemDnsServers = op_net_get_system_dns_servers();
+  return systemDnsServers;
+}
+
 export class ChannelWrap extends AsyncWrap implements ChannelWrapQuery {
-  #servers: [string, number][] = [];
+  #servers: [string, number][] | null = null;
   #timeout: number;
   #tries: number;
 
@@ -237,7 +253,7 @@ export class ChannelWrap extends AsyncWrap implements ChannelWrapQuery {
     let code: number;
     let ret: Awaited<ReturnType<typeof Deno.resolveDns>>;
 
-    if (this.#servers.length) {
+    if (this.#servers !== null && this.#servers.length) {
       for (const [ipAddr, port] of this.#servers) {
         const resolveOptions = {
           nameServer: {
@@ -311,11 +327,13 @@ export class ChannelWrap extends AsyncWrap implements ChannelWrapQuery {
 
       await Promise.allSettled([
         this.#query(name, "A").then(({ ret }) => {
-          ret.forEach((record) => records.push({ type: "A", address: record }));
+          ret.forEach((record) =>
+            records.push({ type: "A", address: record, ttl: 0 })
+          );
         }),
         this.#query(name, "AAAA").then(({ ret }) => {
           (ret as string[]).forEach((record) =>
-            records.push({ type: "AAAA", address: record })
+            records.push({ type: "AAAA", address: record, ttl: 0 })
           );
         }),
         this.#query(name, "CAA").then(({ ret }) => {
@@ -388,7 +406,7 @@ export class ChannelWrap extends AsyncWrap implements ChannelWrapQuery {
                 priority,
                 weight,
                 port,
-                name: target,
+                name: fqdnToHostname(target),
               }),
           );
         }),
@@ -548,7 +566,7 @@ export class ChannelWrap extends AsyncWrap implements ChannelWrapQuery {
           priority,
           weight,
           port,
-          name: target,
+          name: fqdnToHostname(target),
         }),
       );
 
@@ -566,12 +584,47 @@ export class ChannelWrap extends AsyncWrap implements ChannelWrapQuery {
     return 0;
   }
 
-  getHostByAddr(_req: QueryReqWrap, _name: string): number {
-    // TODO(@bartlomieju): https://github.com/denoland/deno/issues/14432
-    notImplemented("cares.ChannelWrap.prototype.getHostByAddr");
+  getHostByAddr(req: QueryReqWrap, name: string): number {
+    let reverseName: string;
+
+    if (isIPv4(name)) {
+      const octets = name.split(".");
+      reverseName = octets.reverse().join(".") + ".in-addr.arpa";
+    } else if (isIPv6(name)) {
+      // Expand the IPv6 address to full form
+      const parts = name.split(":");
+      const expanded: string[] = [];
+      let emptyFound = false;
+      for (const part of parts) {
+        if (part === "" && !emptyFound) {
+          emptyFound = true;
+          const missing = 8 - parts.filter((p) => p !== "").length;
+          for (let j = 0; j < missing; j++) {
+            expanded.push("0000");
+          }
+        } else if (part !== "") {
+          expanded.push(part.padStart(4, "0"));
+        }
+      }
+      const fullHex = expanded.join("");
+      reverseName = fullHex.split("").reverse().join(".") + ".ip6.arpa";
+    } else {
+      req.oncomplete(codeMap.get("EINVAL")!, []);
+      return 0;
+    }
+
+    this.#query(reverseName, "PTR").then(({ code, ret }) => {
+      const records = (ret as string[]).map((record) => fqdnToHostname(record));
+      req.oncomplete(code, records);
+    });
+
+    return 0;
   }
 
   getServers(): [string, number][] {
+    if (this.#servers === null) {
+      return getSystemDnsServers();
+    }
     return this.#servers;
   }
 

@@ -47,12 +47,14 @@ const {
   StringPrototypeCharCodeAt,
   StringPrototypeCodePointAt,
   StringPrototypeNormalize,
+  StringPrototypeIndexOf,
   StringPrototypeReplace,
   StringPrototypeSlice,
   StringPrototypeSplit,
   SymbolFor,
 } = primordials;
 import {
+  validateBoolean,
   validateObject,
   validateOneOf,
   validateString,
@@ -282,9 +284,12 @@ const builtInObjects = new SafeSet(
 // Matches all ansi escape code sequences in a string
 const ansiPattern = "[\\u001B\\u009B][[\\]()#;?]*" +
   "(?:(?:(?:(?:;[-a-zA-Z\\d\\/#&.:=?%@~_]+)*" +
-  "|[a-zA-Z\\d]+(?:;[-a-zA-Z\\d\\/#&.:=?%@~_]*)*)?\\u0007)" +
-  "|(?:(?:\\d{1,4}(?:;\\d{0,4})*)?[\\dA-PR-TZcf-ntqry=><~]))";
+  "|[a-zA-Z\\d]+(?:;[-a-zA-Z\\d\\/#&.:=?%@~_]*)*)" +
+  "?(?:\\u0007|\\u001B\\u005C|\\u009C))" +
+  "|(?:(?:\\d{1,4}(?:;\\d{0,4})*)?[\\dA-PR-TZcf-nq-uy=><~]))";
 const ansi = new SafeRegExp(ansiPattern, "g");
+
+const reEmojiPresentation = new SafeRegExp("^\\p{Emoji_Presentation}$", "u");
 
 /**
  * Returns the number of columns required to display the given string.
@@ -298,7 +303,10 @@ export function getStringWidth(str, removeControlChars = true) {
   str = StringPrototypeNormalize(str, "NFC");
   for (const char of new SafeStringIterator(str)) {
     const code = StringPrototypeCodePointAt(char, 0);
-    if (isFullWidthCodePoint(code)) {
+    if (
+      isFullWidthCodePoint(code) ||
+      RegExpPrototypeTest(reEmojiPresentation, char)
+    ) {
       width += 2;
     } else if (!isZeroWidthCodePoint(code)) {
       width++;
@@ -345,6 +353,14 @@ const isFullWidthCodePoint = (code) => {
     // Miscellaneous Symbols and Pictographs 0x1f300 - 0x1f5ff
     // Emoticons 0x1f600 - 0x1f64f
     (code >= 0x1f300 && code <= 0x1f64f) ||
+    // Transport and Map Symbols
+    (code >= 0x1f680 && code <= 0x1f6ff) ||
+    // Supplemental Symbols and Pictographs
+    (code >= 0x1f900 && code <= 0x1f9ff) ||
+    // Chess Symbols
+    (code >= 0x1fa00 && code <= 0x1fa6f) ||
+    // Symbols and Pictographs Extended-A
+    (code >= 0x1fa70 && code <= 0x1faff) ||
     // CJK Unified Ideographs Extension B .. Tertiary Ideographic Plane
     (code >= 0x20000 && code <= 0x3fffd)
   );
@@ -599,26 +615,99 @@ export function stripVTControlCharacters(str) {
   return StringPrototypeReplace(str, ansi, "");
 }
 
-export function styleText(format, text) {
-  validateString(text, "text");
+// Mirrors Node's lib/util.js styleText(): build openCodes by appending and
+// closeCodes by prepending so an array like ['bold', 'red'] wraps as
+// bold(red(text)) rather than red(bold(text)). Inner close sequences inside
+// `text` are rewritten so subsequent text keeps the outer style ("dim" and
+// "bold" share close 22, so those close sequences are kept and the outer
+// style is re-opened immediately afterward).
+const kStyleTextEscape = "[";
+const kStyleTextEscapeEnd = "m";
+const kStyleTextDimCode = 2;
+const kStyleTextBoldCode = 1;
 
-  if (ArrayIsArray(format)) {
-    for (let i = 0; i < format.length; i++) {
-      const item = format[i];
-      const formatCodes = inspect.colors[item];
-      if (formatCodes == null) {
-        validateOneOf(item, "format", ObjectKeys(inspect.colors));
-      }
-      text = `\u001b[${formatCodes[0]}m${text}\u001b[${formatCodes[1]}m`;
+function replaceCloseCode(str, closeSeq, openSeq, keepClose) {
+  const closeLen = closeSeq.length;
+  let index = StringPrototypeIndexOf(str, closeSeq);
+  if (index === -1) return str;
+
+  let result = "";
+  let lastIndex = 0;
+  const replacement = keepClose ? closeSeq + openSeq : openSeq;
+
+  do {
+    const afterClose = index + closeLen;
+    if (afterClose < str.length) {
+      result += StringPrototypeSlice(str, lastIndex, index) + replacement;
+      lastIndex = afterClose;
+    } else {
+      break;
     }
-    return text;
+    index = StringPrototypeIndexOf(str, closeSeq, lastIndex);
+  } while (index !== -1);
+
+  return result + StringPrototypeSlice(str, lastIndex);
+}
+
+export function styleText(format, text, options) {
+  validateString(text, "text");
+  if (options !== undefined) {
+    validateObject(options, "options");
+  }
+  const validateStream = options?.validateStream ?? true;
+  validateBoolean(validateStream, "options.validateStream");
+
+  if (validateStream) {
+    const stream = options?.stream;
+    if (
+      stream !== undefined && stream !== null &&
+      // Match Node's lib/util.js: bail when `stream` is not a Readable/
+      // Writable/Node Stream. Approximate the duck-type used in those checks.
+      !(typeof stream === "object" && (
+        typeof stream.read === "function" ||
+        typeof stream.write === "function" ||
+        typeof stream.pipe === "function"
+      ))
+    ) {
+      throw new codes.ERR_INVALID_ARG_TYPE(
+        "stream",
+        ["ReadableStream", "WritableStream", "Stream"],
+        stream,
+      );
+    }
   }
 
-  const formatCodes = inspect.colors[format];
-  if (formatCodes == null) {
-    validateOneOf(format, "format", ObjectKeys(inspect.colors));
+  const formatArray = ArrayIsArray(format) ? format : [format];
+
+  let openCodes = "";
+  let closeCodes = "";
+  let processedText = text;
+
+  for (let i = 0; i < formatArray.length; i++) {
+    const key = formatArray[i];
+    if (key === "none") continue;
+
+    const formatCodes = inspect.colors[key];
+    if (formatCodes == null) {
+      validateOneOf(key, "format", ObjectKeys(inspect.colors));
+    }
+    const openNum = formatCodes[0];
+    const closeNum = formatCodes[1];
+    const openSeq = kStyleTextEscape + openNum + kStyleTextEscapeEnd;
+    const closeSeq = kStyleTextEscape + closeNum + kStyleTextEscapeEnd;
+    const keepClose = openNum === kStyleTextDimCode ||
+      openNum === kStyleTextBoldCode;
+    openCodes += openSeq;
+    closeCodes = closeSeq + closeCodes;
+    processedText = replaceCloseCode(
+      processedText,
+      closeSeq,
+      openSeq,
+      keepClose,
+    );
   }
-  return `\u001b[${formatCodes[0]}m${text}\u001b[${formatCodes[1]}m`;
+
+  return `${openCodes}${processedText}${closeCodes}`;
 }
 
 export default {

@@ -1,6 +1,6 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-#![allow(clippy::disallowed_methods)]
+#![allow(clippy::disallowed_methods, reason = "file system implementation")]
 
 use std::borrow::Cow;
 use std::fs;
@@ -43,12 +43,23 @@ impl FileSystem for RealFs {
     std::env::set_current_dir(path).map_err(Into::into)
   }
 
-  #[cfg(not(unix))]
-  fn umask(&self, _mask: Option<u32>) -> FsResult<u32> {
-    // TODO implement umask for Windows
-    // see https://github.com/nodejs/node/blob/master/src/node_process_methods.cc
-    // and https://docs.microsoft.com/fr-fr/cpp/c-runtime-library/reference/umask?view=vs-2019
-    Err(FsError::NotSupported)
+  #[cfg(windows)]
+  fn umask(&self, mask: Option<u32>) -> FsResult<u32> {
+    unsafe extern "C" {
+      fn _umask(mask: std::ffi::c_int) -> std::ffi::c_int;
+    }
+    // SAFETY: `_umask` is a Windows CRT function that sets the file mode
+    // creation mask and returns the previous value.
+    unsafe {
+      let old = if let Some(mask) = mask {
+        _umask(mask as std::ffi::c_int)
+      } else {
+        let prev = _umask(0);
+        _umask(prev);
+        prev
+      };
+      Ok(old as u32)
+    }
   }
 
   #[cfg(unix)]
@@ -299,6 +310,15 @@ impl FileSystem for RealFs {
   }
   async fn read_link_async(&self, path: CheckedPathBuf) -> FsResult<PathBuf> {
     spawn_blocking(move || fs::read_link(path))
+      .await?
+      .map_err(Into::into)
+  }
+
+  fn rmdir_sync(&self, path: &CheckedPath) -> FsResult<()> {
+    fs::remove_dir(path).map_err(Into::into)
+  }
+  async fn rmdir_async(&self, path: CheckedPathBuf) -> FsResult<()> {
+    spawn_blocking(move || fs::remove_dir(path))
       .await?
       .map_err(Into::into)
   }
@@ -674,7 +694,7 @@ fn cp(from: &Path, to: &Path) -> FsResult<()> {
 
     let ty = source_meta.file_type();
     if ty.is_dir() {
-      #[allow(unused_mut)]
+      #[allow(unused_mut, reason = "mutable on unix")]
       let mut builder = fs::DirBuilder::new();
       #[cfg(unix)]
       {
@@ -699,19 +719,27 @@ fn cp(from: &Path, to: &Path) -> FsResult<()> {
       entries
         .into_par_iter()
         .map(|file_name| {
-          cp_(
-            fs::symlink_metadata(from.join(&file_name)).unwrap(),
-            &from.join(&file_name),
-            &to.join(&file_name),
-          )
-          .map_err(|err| {
+          let from_path = from.join(&file_name);
+          let to_path = to.join(&file_name);
+          let meta = fs::symlink_metadata(&from_path).map_err(|err| {
             io::Error::new(
               err.kind(),
               format!(
                 "failed to copy '{}' to '{}': {:?}",
-                from.join(&file_name).display(),
-                to.join(&file_name).display(),
-                err
+                from_path.display(),
+                to_path.display(),
+                err,
+              ),
+            )
+          })?;
+          cp_(meta, &from_path, &to_path).map_err(|err| {
+            io::Error::new(
+              err.kind(),
+              format!(
+                "failed to copy '{}' to '{}': {:?}",
+                from_path.display(),
+                to_path.display(),
+                err,
               ),
             )
           })
@@ -1023,19 +1051,60 @@ fn open_options(options: OpenOptions) -> fs::OpenOptions {
   open_options.read(options.read);
   open_options.create(options.create);
   open_options.write(options.write);
-  open_options.truncate(options.truncate);
+  // On Windows, truncate and create_new produce conflicting
+  // dwCreationDisposition flags (TRUNCATE_EXISTING vs CREATE_NEW).
+  // When create_new is set, the file must not exist, so truncation
+  // is meaningless. Passing both can cause spurious "os error 0"
+  // (ERROR_SUCCESS) failures and file corruption on Windows.
+  open_options.truncate(options.truncate && !options.create_new);
   open_options.append(options.append);
   open_options.create_new(options.create_new);
   open_options
 }
 
-#[inline(always)]
 pub fn open_with_checked_path(
-  options: OpenOptions,
+  opts: OpenOptions,
   path: &CheckedPath,
 ) -> FsResult<std::fs::File> {
-  let opts = open_options_for_checked_path(options, path);
-  Ok(opts.open(path)?)
+  // Rust's std::fs::OpenOptions requires write or append when create is set.
+  // However, POSIX allows O_RDONLY | O_CREAT (create the file if it doesn't
+  // exist, then open for reading). Handle this by creating the file first
+  // if needed, then opening for read only.
+  if opts.create && !opts.write && !opts.append {
+    if !path.exists() {
+      let create_opts = open_options_for_checked_path(
+        OpenOptions {
+          read: false,
+          write: true,
+          create: true,
+          truncate: false,
+          append: false,
+          create_new: opts.create_new,
+          custom_flags: None,
+          mode: opts.mode,
+        },
+        path,
+      );
+      // Create and immediately close the file
+      drop(create_opts.open(path)?);
+    }
+    let read_opts = open_options_for_checked_path(
+      OpenOptions {
+        read: true,
+        write: false,
+        create: false,
+        truncate: false,
+        append: false,
+        create_new: false,
+        custom_flags: opts.custom_flags,
+        mode: None,
+      },
+      path,
+    );
+    return Ok(read_opts.open(path)?);
+  }
+  let std_opts = open_options_for_checked_path(opts, path);
+  Ok(std_opts.open(path)?)
 }
 
 #[inline(always)]

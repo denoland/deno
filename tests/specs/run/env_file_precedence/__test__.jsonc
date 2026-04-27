@@ -1,0 +1,4 @@
+{
+  "args": "run -A index.ts",
+  "output": "index.out"
+}

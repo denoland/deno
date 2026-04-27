@@ -157,7 +157,7 @@ pub struct RefactorCodeActionData {
 }
 
 pub fn prune_invalid_actions(
-  actions: Vec<lsp::CodeAction>,
+  actions: impl Iterator<Item = lsp::CodeAction>,
   number_of_invalid: usize,
 ) -> Vec<lsp::CodeAction> {
   let mut available_actions = Vec::<lsp::CodeAction>::new();

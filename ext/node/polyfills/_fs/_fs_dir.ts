@@ -15,6 +15,8 @@ const {
   Uint8ArrayPrototype,
   PromisePrototypeThen,
   SymbolAsyncIterator,
+  SymbolAsyncDispose,
+  SymbolDispose,
   ArrayIteratorPrototypeNext,
   AsyncGeneratorPrototypeNext,
   SymbolIterator,
@@ -50,12 +52,16 @@ export default class Dir {
         AsyncGeneratorPrototypeNext(this.#asyncIterator),
         (iteratorResult) => {
           resolve(
-            iteratorResult.done ? null : direntFromDeno(iteratorResult.value),
+            iteratorResult.done
+              ? null
+              : direntFromDeno(iteratorResult.value, this.#dirPath),
           );
           if (callback) {
             callback(
               null,
-              iteratorResult.done ? null : direntFromDeno(iteratorResult.value),
+              iteratorResult.done
+                ? null
+                : direntFromDeno(iteratorResult.value, this.#dirPath),
             );
           }
         },
@@ -78,7 +84,7 @@ export default class Dir {
     if (iteratorResult.done) {
       return null;
     } else {
-      return direntFromDeno(iteratorResult.value);
+      return direntFromDeno(iteratorResult.value, this.#dirPath);
     }
   }
 
@@ -104,6 +110,14 @@ export default class Dir {
    */
   closeSync() {
     //No op
+  }
+
+  [SymbolDispose]() {
+    this.closeSync();
+  }
+
+  [SymbolAsyncDispose](): Promise<void> {
+    return this.close();
   }
 
   async *[SymbolAsyncIterator](): AsyncIterableIterator<Dirent> {

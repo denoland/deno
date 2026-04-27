@@ -2052,6 +2052,7 @@ export const SlowBuffer: {
 
 export const atob: typeof globalThis.atob;
 export const Blob: Blob;
+export const File: typeof globalThis.File;
 export const btoa: typeof globalThis.btoa;
 export const constants: {
   MAX_LENGTH: number;
@@ -2063,6 +2064,7 @@ export const kStringMaxLength: number;
 declare const exports: {
   atob: typeof atob;
   Blob: Blob;
+  File: typeof File;
   btoa: typeof btoa;
   Buffer: Buffer;
   constants: typeof constants;

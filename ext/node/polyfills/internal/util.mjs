@@ -12,6 +12,9 @@ import { os } from "ext:deno_node/internal_binding/constants.ts";
 import { primordials } from "ext:core/mod.js";
 import { isNativeError } from "ext:deno_node/internal/util/types.ts";
 
+// deno-lint-ignore prefer-primordials
+const AtomicsWait = Atomics.wait;
+
 const {
   ArrayPrototypePush,
   ErrorPrototype,
@@ -24,6 +27,10 @@ const {
   ObjectSetPrototypeOf,
   Promise,
   ReflectApply,
+  ReflectConstruct,
+  SafeSet,
+  SetPrototypeAdd,
+  SetPrototypeHas,
   SafeWeakRef,
   StringPrototypeReplace,
   SymbolFor,
@@ -158,7 +165,19 @@ export function convertToValidSignal(signal) {
   throw new ERR_UNKNOWN_SIGNAL(signal);
 }
 
-export function deprecateInstantiation() {}
+const codesWarned = new SafeSet();
+
+export function deprecateInstantiation(Constructor, deprecationCode, ...args) {
+  if (!SetPrototypeHas(codesWarned, deprecationCode)) {
+    SetPrototypeAdd(codesWarned, deprecationCode);
+    globalThis.process.emitWarning(
+      `Instantiating ${Constructor.name} without the 'new' keyword has been deprecated.`,
+      "DeprecationWarning",
+      deprecationCode,
+    );
+  }
+  return ReflectConstruct(Constructor, args);
+}
 
 export class WeakReference {
   #weak = null;
@@ -194,6 +213,18 @@ export class WeakReference {
 
 promisify.custom = kCustomPromisifiedSymbol;
 
+let _sleepView;
+
+export function sleep(msec) {
+  if (_sleepView === undefined) {
+    // deno-lint-ignore prefer-primordials
+    const buffer = new SharedArrayBuffer(4);
+    // deno-lint-ignore prefer-primordials
+    _sleepView = new Int32Array(buffer);
+  }
+  AtomicsWait(_sleepView, 0, 0, msec);
+}
+
 export default {
   convertToValidSignal,
   customInspectSymbol,
@@ -206,4 +237,5 @@ export default {
   once,
   promisify,
   removeColors,
+  sleep,
 };
