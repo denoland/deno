@@ -171,6 +171,12 @@ pub struct Http2Stream {
   pub(crate) pending_data: RefCell<bytes::BytesMut>,
   pub(crate) current_headers: RefCell<Vec<HeaderEntry>>,
   pub(crate) current_headers_length: RefCell<usize>,
+  /// `SETTINGS_MAX_HEADER_LIST_SIZE` snapshotted from the session at stream
+  /// construction. Mirrors Node's `Http2Stream::max_header_length_`
+  /// (`src/node_http2.cc`): a stream's enforcement value is fixed at
+  /// construction, so post-init `session.settings({ maxHeaderListSize })`
+  /// only affects streams created after the SETTINGS ACK round-trip.
+  pub(crate) max_header_length: u64,
   pub(crate) has_trailers: RefCell<bool>,
   /// Set to true when shutdown is called (writable side ended).
   /// Used by the data source read callback to decide whether to
@@ -222,6 +228,20 @@ impl Http2Stream {
       AsyncWrap::create(&mut state, 0)
     };
 
+    // Snapshot SETTINGS_MAX_HEADER_LIST_SIZE at stream construction. nghttp2
+    // returns the *current* local value (which has already absorbed any
+    // SETTINGS frames the peer ACKed), so streams created after a successful
+    // post-init `session.settings({ maxHeaderListSize: N })` see N, while
+    // streams created before keep the prior value. Mirrors Node's
+    // `Http2Stream::Http2Stream` in `src/node_http2.cc`.
+    // SAFETY: session.session is a valid nghttp2 session for the stream's lifetime
+    let max_header_length = unsafe {
+      ffi::nghttp2_session_get_local_settings(
+        session.session,
+        ffi::NGHTTP2_SETTINGS_MAX_HEADER_LIST_SIZE,
+      ) as u64
+    };
+
     cppgc::wrap_object(
       scope,
       obj,
@@ -233,6 +253,7 @@ impl Http2Stream {
         pending_data: RefCell::new(bytes::BytesMut::new()),
         current_headers: RefCell::new(Vec::new()),
         current_headers_length: RefCell::new(0),
+        max_header_length,
         has_trailers: RefCell::new(false),
         writable_ended: RefCell::new(false),
         shutdown_req: RefCell::new(None),
@@ -260,13 +281,7 @@ impl Http2Stream {
 
     // SAFETY: session pointer is valid for the stream's lifetime
     let session = unsafe { &*self.session };
-    // SAFETY: session.session is a valid nghttp2 session pointer
-    let max_header_length = unsafe {
-      ffi::nghttp2_session_get_local_settings(
-        session.session,
-        ffi::NGHTTP2_SETTINGS_MAX_HEADER_LIST_SIZE,
-      )
-    } as u64;
+    let max_header_length = self.max_header_length;
 
     let max_header_pairs = session.max_header_pairs as usize;
     let current_pairs = self.current_headers.borrow().len();

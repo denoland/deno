@@ -150,6 +150,41 @@ where
   })
 }
 
+/// Serialize the session's tracked custom settings into the shared settings
+/// buffer so JS's `addCustomSettingsToObj` can read them. Mirrors the custom
+/// settings tail of Node's `Http2Settings::Update`. Entries whose high bits
+/// are set (registered but never received from the peer) are skipped so the
+/// JS object only exposes settings that actually have a value.
+fn write_custom_settings_to_buffer(
+  buffer: &mut [u32; SETTINGS_LEN],
+  list: &[(i32, u32)],
+) {
+  let offset = SettingsIndex::Count as usize + 2;
+  let mut count: usize = 0;
+  for (key, val) in list {
+    let id = *key as u32;
+    if id & !0xffff_u32 != 0 {
+      continue;
+    }
+    let lo = id & 0xffff;
+    let mut updated = false;
+    for j in 0..count {
+      if buffer[offset + j * 2] & 0xffff == lo {
+        buffer[offset + j * 2] = lo;
+        buffer[offset + j * 2 + 1] = *val;
+        updated = true;
+        break;
+      }
+    }
+    if !updated && count < MAX_ADDITIONAL_SETTINGS {
+      buffer[offset + count * 2] = lo;
+      buffer[offset + count * 2 + 1] = *val;
+      count += 1;
+    }
+  }
+  buffer[SettingsIndex::Count as usize + 1] = count as u32;
+}
+
 fn with_options<F, R>(f: F) -> R
 where
   F: FnOnce(&[u32; OPTIONS_LEN]) -> R,
@@ -594,7 +629,8 @@ impl Http2Settings {
   fn send(&self) {
     // SAFETY: self.session points to a valid Session allocated in Http2Session::create
     unsafe {
-      let session = &*self.session;
+      let session = &mut *self.session;
+      session.update_local_custom_settings(&self.entries[..self.count]);
       ffi::nghttp2_submit_settings(
         session.session,
         ffi::NGHTTP2_FLAG_NONE as _,
@@ -741,10 +777,25 @@ unsafe extern "C" fn on_frame_recv_callback(
       handle_data_end_stream(session, frame);
     }
   } else if ft == ffi::NGHTTP2_SETTINGS as u32 {
-    // Only fire for non-ACK SETTINGS frames (the peer's actual settings).
-    // ACK frames are acknowledgments of our own settings.
     if ff & ffi::NGHTTP2_FLAG_ACK as u8 == 0 {
+      // Peer's actual settings. Update our tracked remote custom settings
+      // before firing the JS callback so `session.remoteSettings` returns
+      // the latest values.
+      // SAFETY: frame is a valid SETTINGS frame; the union access matches
+      // the frame type checked above. niv/iv come straight from nghttp2.
+      unsafe {
+        let settings = &(*frame).settings;
+        if settings.niv > 0 && !settings.iv.is_null() {
+          let iv =
+            std::slice::from_raw_parts(settings.iv, settings.niv as usize);
+          session.update_remote_custom_settings_from_iv(iv);
+        }
+      }
       handle_settings_frame(session);
+    } else {
+      // ACK for one of our outgoing SETTINGS frames. Pop the FIFO of pending
+      // callbacks and invoke it so JS can fire the `localSettings` event.
+      handle_settings_ack(session);
     }
   } else if ft == ffi::NGHTTP2_PRIORITY as u32 {
     handle_priority_frame(session, frame);
@@ -859,6 +910,26 @@ fn handle_headers_frame(session: &Session, frame: *const ffi::nghttp2_frame) {
       headers_array.into(),
     ],
   );
+}
+
+fn handle_settings_ack(session: &mut Session) {
+  // FIFO pop. Mirrors Node's BaseObjectPtr<Http2Settings> PopSettings().
+  let Some(cb) = session.pending_settings_acks.pop_front() else {
+    return;
+  };
+
+  let mut isolate =
+    // SAFETY: isolate pointer is valid for the session's lifetime
+    unsafe { v8::Isolate::from_raw_isolate_ptr(session.isolate) };
+  v8::scope!(let scope, &mut isolate);
+  let context = v8::Local::new(scope, session.context.clone());
+  let scope = &mut v8::ContextScope::new(scope, context);
+
+  let recv = v8::undefined(scope);
+  let ack = v8::Boolean::new(scope, true);
+  let duration = v8::Number::new(scope, 0.0);
+  let cb_local = v8::Local::new(scope, &cb);
+  cb_local.call(scope, recv.into(), &[ack.into(), duration.into()]);
 }
 
 fn handle_settings_frame(session: &Session) {
@@ -1593,9 +1664,109 @@ pub struct Session {
   pub max_invalid_frames: u32,
   /// Running count of invalid frames received on this session.
   pub invalid_frame_count: u32,
+  /// Custom settings the local peer has sent. Surfaced via
+  /// `session.localSettings.customSettings`. Mirrors Node's
+  /// `Http2Session::local_custom_settings_`.
+  pub local_custom_settings: Vec<(i32, u32)>,
+  /// Custom settings the remote peer is allowed to send (`remoteCustomSettings`
+  /// option) plus their last-received values. The high bit (1 << 16) of the
+  /// stored ID flags an entry as "registered but no value received yet".
+  /// Mirrors Node's `Http2Session::remote_custom_settings_`.
+  pub remote_custom_settings: Vec<(i32, u32)>,
+  /// FIFO of JS callbacks waiting for SETTINGS ACK from the peer. Each
+  /// `session.settings()` invocation enqueues one entry; an inbound SETTINGS
+  /// frame with the ACK flag pops the front and invokes it with
+  /// `(ack=true, duration=0)`. Mirrors Node's `outstanding_settings_` queue.
+  ///
+  /// Invariant: every SETTINGS frame submitted via `Http2Settings::send`
+  /// (including the constructor's initial settings, which the JS layer
+  /// submits via `Http2Session.prototype.settings` with a bound
+  /// `settingsCallback`) pushes exactly one entry; every inbound ACK pops
+  /// exactly one. Because the only call site is `fn settings(cb)`, push and
+  /// submit are paired atomically.
+  pub pending_settings_acks: VecDeque<v8::Global<v8::Function>>,
 }
 
 impl Session {
+  /// Read the list of remote custom settings IDs the user wants to track.
+  /// JS writes them into the shared settings buffer via
+  /// `remoteCustomSettingsToBuffer` immediately before constructing the
+  /// session. Mirrors Node's `Http2Session::FetchAllowedRemoteCustomSettings`.
+  pub fn fetch_allowed_remote_custom_settings(&mut self) {
+    with_settings(|buffer| {
+      let count = buffer[SettingsIndex::Count as usize + 1] as usize;
+      if count == 0 {
+        return;
+      }
+      let imax = count.min(MAX_ADDITIONAL_SETTINGS);
+      let offset = SettingsIndex::Count as usize + 2;
+      for i in 0..imax {
+        let key = buffer[offset + i * 2] & 0xffff;
+        // bit 16 marks "registered but not yet received".
+        let marked = (key | (1 << 16)) as i32;
+        self.remote_custom_settings.push((marked, 0));
+      }
+      // Reset the count so a later read of localSettings/remoteSettings on
+      // a session without any local custom settings doesn't see leftover.
+      buffer[SettingsIndex::Count as usize + 1] = 0;
+    });
+  }
+
+  /// Record the custom settings we just sent so they can be surfaced via
+  /// `session.localSettings.customSettings`. Mirrors Node's
+  /// `Http2Session::UpdateLocalCustomSettings`.
+  pub fn update_local_custom_settings(
+    &mut self,
+    entries: &[ffi::nghttp2_settings_entry],
+  ) {
+    for entry in entries {
+      // Standard nghttp2 setting IDs are 1..=6 and 8. Node treats anything
+      // >= IDX_SETTINGS_COUNT (7) as custom; we follow the same rule.
+      if entry.settings_id < SettingsIndex::Count as i32 {
+        continue;
+      }
+      let id = entry.settings_id;
+      let mut updated = false;
+      for slot in self.local_custom_settings.iter_mut() {
+        if slot.0 == id {
+          slot.1 = entry.value;
+          updated = true;
+          break;
+        }
+      }
+      if !updated && self.local_custom_settings.len() < MAX_ADDITIONAL_SETTINGS
+      {
+        self.local_custom_settings.push((id, entry.value));
+      }
+    }
+  }
+
+  /// Walk a received SETTINGS frame's iv array and update the registered
+  /// remote custom settings with the new values. Settings whose IDs were
+  /// not registered via `remoteCustomSettings` are dropped, matching Node's
+  /// behaviour in `Http2Session::HandleSettingsFrame`.
+  pub fn update_remote_custom_settings_from_iv(
+    &mut self,
+    iv: &[ffi::nghttp2_settings_entry],
+  ) {
+    if self.remote_custom_settings.is_empty() {
+      return;
+    }
+    for entry in iv {
+      if entry.settings_id < SettingsIndex::Count as i32 {
+        continue;
+      }
+      let id_lo = (entry.settings_id as u32) & 0xffff;
+      for slot in self.remote_custom_settings.iter_mut() {
+        if (slot.0 as u32) & 0xffff == id_lo {
+          slot.0 = id_lo as i32; // clear bit 16 to mark "received".
+          slot.1 = entry.value;
+          break;
+        }
+      }
+    }
+  }
+
   pub fn find_stream(&self, id: i32) -> Option<&cppgc::Ref<Http2Stream>> {
     self.streams.get(&id).map(|v| &v.1)
   }
@@ -2014,6 +2185,9 @@ impl Http2Session {
       outgoing_chunks: VecDeque::new(),
       max_invalid_frames: 1000,
       invalid_frame_count: 0,
+      local_custom_settings: Vec::new(),
+      remote_custom_settings: Vec::new(),
+      pending_settings_acks: VecDeque::new(),
     }));
 
     // SAFETY: inner is valid (just allocated); callbacks and options are valid
@@ -2036,6 +2210,9 @@ impl Http2Session {
         ),
       };
       (*inner).session = session;
+      // Import the user's remoteCustomSettings list (JS writes the IDs to
+      // the shared settings buffer immediately before constructing us).
+      (*inner).fetch_allowed_remote_custom_settings();
     }
 
     Self {
@@ -2285,11 +2462,22 @@ impl Http2Session {
   }
 
   #[fast]
-  fn settings(&self, _cb: v8::Local<v8::Function>) -> bool {
-    let settings = Http2Settings::init(self.inner);
-    settings.send();
+  fn settings(&self, cb: v8::Local<v8::Function>) -> bool {
     // SAFETY: self.inner was allocated by Box::into_raw and is valid
     let session = unsafe { &mut *self.inner };
+    // SAFETY: session.isolate is valid for this session's lifetime
+    let isolate = unsafe { v8::Isolate::from_raw_isolate_ptr(session.isolate) };
+    // Enqueue BEFORE submit so the FIFO entry is in place no matter what.
+    // The JS layer guarantees this op is the sole entry point that submits
+    // SETTINGS — including the constructor's initial settings, which flows
+    // through `Http2Session.prototype.settings` with a bound
+    // `settingsCallback`. That keeps `pending_settings_acks` and outbound
+    // SETTINGS frames 1:1.
+    session
+      .pending_settings_acks
+      .push_back(v8::Global::new(&isolate, cb));
+    let settings = Http2Settings::init(self.inner);
+    settings.send();
     session.send_pending_data();
     true
   }
@@ -2374,6 +2562,8 @@ impl Http2Session {
 
   #[fast]
   fn local_settings(&self) {
+    // SAFETY: self.inner was allocated by Box::into_raw and is valid
+    let session = unsafe { &*self.inner };
     // SAFETY: self.session is a valid nghttp2 session pointer
     with_settings(|buffer| unsafe {
       buffer[SettingsIndex::HeaderTableSize as usize] =
@@ -2411,11 +2601,14 @@ impl Http2Session {
           self.session,
           ffi::NGHTTP2_SETTINGS_ENABLE_CONNECT_PROTOCOL,
         ) as u32;
+      write_custom_settings_to_buffer(buffer, &session.local_custom_settings);
     });
   }
 
   #[fast]
   fn remote_settings(&self) {
+    // SAFETY: self.inner was allocated by Box::into_raw and is valid
+    let session = unsafe { &*self.inner };
     // SAFETY: self.session is a valid nghttp2 session pointer
     with_settings(|buffer| unsafe {
       buffer[SettingsIndex::HeaderTableSize as usize] =
@@ -2453,6 +2646,7 @@ impl Http2Session {
           self.session,
           ffi::NGHTTP2_SETTINGS_ENABLE_CONNECT_PROTOCOL,
         ) as u32;
+      write_custom_settings_to_buffer(buffer, &session.remote_custom_settings);
     });
   }
 

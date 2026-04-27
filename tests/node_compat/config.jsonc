@@ -1704,6 +1704,7 @@
     "parallel/test-http2-server-startup.js": {},
     "parallel/test-http2-server-timeout.js": {},
     "parallel/test-http2-session-graceful-close.js": {},
+    "parallel/test-http2-session-settings.js": {},
     "parallel/test-http2-session-stream-state.js": {},
     "parallel/test-http2-session-timeout.js": {},
     "parallel/test-http2-session-unref.js": {},
