@@ -158,6 +158,7 @@ import { core, primordials } from "ext:core/mod.js";
 
 const {
   ArrayBufferIsView,
+  ArrayIsArray,
   BigInt,
   DatePrototypeGetTime,
   DateUTC,
@@ -178,6 +179,7 @@ const {
   Promise,
   PromisePrototypeThen,
   PromiseResolve,
+  RegExpPrototype,
   SafeMap,
   StringPrototypeToString,
   SymbolAsyncIterator,
@@ -3180,7 +3182,7 @@ function validateIgnoreOptionElement(value: any, name: string) {
     }
     return;
   }
-  if (value instanceof RegExp) return;
+  if (ObjectPrototypeIsPrototypeOf(RegExpPrototype, value)) return;
   if (typeof value === "function") return;
   throw new ERR_INVALID_ARG_TYPE(
     name,
@@ -3192,7 +3194,7 @@ function validateIgnoreOptionElement(value: any, name: string) {
 // deno-lint-ignore no-explicit-any
 function validateIgnoreOption(value: any, name: string) {
   if (value == null) return;
-  if (Array.isArray(value)) {
+  if (ArrayIsArray(value)) {
     for (let i = 0; i < value.length; i++) {
       validateIgnoreOptionElement(value[i], `${name}[${i}]`);
     }
