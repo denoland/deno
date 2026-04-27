@@ -63,9 +63,7 @@ fn der_to_pem(der: &[u8]) -> String {
     .map(|c| c.iter().collect::<String>())
     .collect::<Vec<String>>()
     .join("\n");
-  format!(
-    "-----BEGIN CERTIFICATE-----\n{pem_lines}\n-----END CERTIFICATE-----\n",
-  )
+  format!("-----BEGIN CERTIFICATE-----\n{pem_lines}\n-----END CERTIFICATE-----",)
 }
 
 fn get_bundled_root_certificates() -> Vec<String> {
@@ -86,6 +84,7 @@ pub fn op_get_root_certificates(state: &mut OpState) -> Vec<String> {
   get_bundled_root_certificates()
 }
 
+#[allow(clippy::disallowed_methods, reason = "NODE_EXTRA_CA_CERTS is read from env at runtime")]
 fn parse_extra_ca_certs() -> Vec<String> {
   let Ok(extra_ca_certs_file) = std::env::var("NODE_EXTRA_CA_CERTS") else {
     return vec![];

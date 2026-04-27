@@ -2,6 +2,10 @@
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 
 import { notImplemented } from "ext:deno_node/_utils.ts";
+import {
+  validateOneOf,
+  validateString,
+} from "ext:deno_node/internal/validators.mjs";
 import tlsCommon from "node:_tls_common";
 import tlsWrap from "node:_tls_wrap";
 import { convertALPNProtocols } from "ext:deno_node/internal/tls_common.js";
@@ -30,8 +34,6 @@ const {
   ReflectOwnKeys,
   ReflectPreventExtensions,
   ReflectSet,
-  SafeRegExp,
-  StringPrototypeReplace,
   StringPrototypeToLowerCase,
   TypeError,
 } = primordials;
@@ -69,12 +71,7 @@ function ensureLazyRootCertificates(target: string[]) {
     target.length = 0;
     ArrayPrototypeForEach(
       lazyRootCertificates,
-      // Strip trailing newline to match Node.js format
-      (v: string) =>
-        ArrayPrototypePush(
-          target,
-          StringPrototypeReplace(v, new SafeRegExp("\\n$"), ""),
-        ),
+      (v: string) => ArrayPrototypePush(target, v),
     );
     ObjectFreeze(target);
   }
@@ -154,8 +151,26 @@ export function setDefaultCACertificates(certs: string[]) {
   lazyRootCertificates = null;
 }
 
+const cachedCACertificates: Record<string, string[]> = {
+  __proto__: null as unknown as string[],
+};
+
 export function getCACertificates(type: string = "default"): string[] {
-  return op_get_ca_certificates(type);
+  validateString(type, "type");
+  validateOneOf(type, "type", ["default", "system", "bundled", "extra"]);
+
+  if (cachedCACertificates[type] !== undefined) {
+    return cachedCACertificates[type];
+  }
+
+  let certs: string[];
+  if (type === "bundled") {
+    certs = rootCertificates;
+  } else {
+    certs = ObjectFreeze(op_get_ca_certificates(type)) as string[];
+  }
+  cachedCACertificates[type] = certs;
+  return certs;
 }
 
 export function createSecurePair() {
