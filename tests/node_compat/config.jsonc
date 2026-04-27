@@ -1899,7 +1899,6 @@
     // "parallel/test-inspector-enabled.js": {},
     // "parallel/test-inspector-debug-end.js": {},
 
-    "parallel/test-inspector-debug-async-hook.js": {},
     "parallel/test-inspector-has-idle.js": {},
 
     "parallel/test-inspector-heapdump.js": {},
