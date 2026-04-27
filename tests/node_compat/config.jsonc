@@ -3088,6 +3088,10 @@
       "ignore": true,
       "reason": "Tests SubtleCrypto generateKey for KMAC128 / KMAC256, a Node-specific WebCrypto extension that requires OpenSSL >= 3 (test gates on hasOpenSSL(3)); Deno's ext/crypto/ does not register KMAC as a recognised SubtleCrypto algorithm. Could be revisited if KMAC is added — a SHA-3-based KMAC is implementable via the sha3 / cshake Rust crates"
     },
+    "parallel/test-webcrypto-sign-verify-eddsa.js": {
+      "ignore": true,
+      "reason": "Asserts on the regex `/Unable to use this key to sign/` when `subtle.sign` is called on Ed25519 with a key whose usages don't include 'sign' (the Ed448 portion self-skips). Deno's WebCrypto sign path emits the spec wording `'The requested operation is not valid for the provided key'`. Same root cause as the already-ignored `test-webcrypto-sign-verify-hmac.js` and `test-webcrypto-sign-verify-ecdsa.js`. Will pass automatically when the wrong-usages-on-sign error wording is unified"
+    },
     "parallel/test-webcrypto-sign-verify-ml-dsa.js": {},
     "parallel/test-webcrypto-util.js": {
       "ignore": true,
