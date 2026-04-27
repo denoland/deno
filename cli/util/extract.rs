@@ -432,9 +432,7 @@ impl Visit for ExportCollector {
       fn get_atom(export_name: &ast::ModuleExportName) -> Atom {
         match export_name {
           ast::ModuleExportName::Ident(ident) => ident.sym.clone(),
-          ast::ModuleExportName::Str(s) => {
-            s.value.to_atom_lossy().into_owned()
-          }
+          ast::ModuleExportName::Str(s) => s.value.to_atom_lossy().into_owned(),
         }
       }
       for specifier in &named_export.specifiers {
