@@ -247,7 +247,9 @@
     "parallel/test-child-process-double-pipe.js": {},
     "parallel/test-child-process-env.js": {},
     "parallel/test-child-process-exec-cwd.js": {},
-    "parallel/test-child-process-exec-encoding.js": {},
+    "parallel/test-child-process-exec-encoding.js": {
+      "windows": false
+    },
     "parallel/test-child-process-exec-env.js": {},
     "parallel/test-child-process-exec-error.js": {},
     "parallel/test-child-process-exec-kill-throws.js": { "windows": false },
@@ -1323,7 +1325,9 @@
     "parallel/test-http-client-insecure-http-parser-error.js": {},
     "parallel/test-http-client-invalid-path.js": {},
     "parallel/test-http-client-keep-alive-hint.js": {},
-    "parallel/test-http-client-keep-alive-release-before-finish.js": {},
+    "parallel/test-http-client-keep-alive-release-before-finish.js": {
+      "windows": false
+    },
     "parallel/test-http-client-override-global-agent.js": {},
     "parallel/test-http-client-path-toctou.js": {},
     "parallel/test-http-client-pipe-end.js": {},
@@ -2151,7 +2155,9 @@
     "parallel/test-net-socket-write-error.js": {},
     "parallel/test-net-stream.js": {},
     "parallel/test-net-sync-cork.js": {},
-    "parallel/test-net-throttle.js": {},
+    "parallel/test-net-throttle.js": {
+      "windows": false
+    },
     "parallel/test-net-timeout-no-handle.js": {},
     "parallel/test-net-writable.js": {},
     "parallel/test-net-write-after-close.js": {},
