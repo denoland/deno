@@ -68,7 +68,9 @@ const timerify = (fn, options = {}) => {
     throw new ERR_INVALID_ARG_TYPE("fn", "function", fn);
   }
 
-  if (options !== undefined && (typeof options !== "object" || options === null)) {
+  if (
+    options !== undefined && (typeof options !== "object" || options === null)
+  ) {
     throw new ERR_INVALID_ARG_TYPE("options", "Object", options);
   }
 
