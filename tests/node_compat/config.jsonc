@@ -1651,6 +1651,7 @@
     "parallel/test-http2-multiheaders.js": {},
     "parallel/test-http2-multiplex.js": {},
     "parallel/test-http2-no-wanttrailers-listener.js": {},
+    "parallel/test-http2-options-max-headers-exceeds-nghttp2.js": {},
     "parallel/test-http2-options-server-request.js": {},
     "parallel/test-http2-options-server-response.js": {},
     "parallel/test-http2-pipe.js": {},
