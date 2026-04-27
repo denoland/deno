@@ -842,6 +842,7 @@
     },
     "parallel/test-dsa-fips-invalid-key.js": {},
     "parallel/test-env-newprotomethod-remove-unnecessary-prototypes.js": {},
+    "parallel/test-err-name-deprecation.js": {},
     "parallel/test-error-aggregateTwoErrors.js": {},
     "parallel/test-error-format-list.js": {},
     "parallel/test-errors-aborterror.js": {},
