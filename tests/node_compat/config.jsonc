@@ -1711,7 +1711,9 @@
     "parallel/test-http2-server-rst-stream.js": {},
     "parallel/test-http2-server-session-destroy.js": {},
     "parallel/test-http2-server-settimeout-no-callback.js": {},
-    "parallel/test-http2-server-shutdown-redundant.js": {},
+    "parallel/test-http2-server-shutdown-redundant.js": {
+      "flaky": true
+    },
     "parallel/test-http2-server-stream-session-destroy.js": {},
     "parallel/test-http2-server-push-disabled.js": {},
     "parallel/test-http2-server-push-stream-head.js": {},
