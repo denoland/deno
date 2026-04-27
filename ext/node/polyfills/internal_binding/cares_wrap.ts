@@ -237,6 +237,7 @@ export class ChannelWrap extends AsyncWrap implements ChannelWrapQuery {
   #servers: [string, number][] | null = null;
   #timeout: number;
   #tries: number;
+  #pendingQueries: Set<QueryReqWrap> = new Set();
 
   constructor(timeout: number, tries: number) {
     super(providerType.DNSCHANNEL);
@@ -265,7 +266,10 @@ export class ChannelWrap extends AsyncWrap implements ChannelWrapQuery {
           ttl,
         ));
 
-        if (code === 0 || code === codeMap.get("EAI_NODATA")!) {
+        if (
+          code === 0 || code === codeMap.get("EAI_NODATA")! ||
+          code === "ETIMEOUT"
+        ) {
           break;
         }
       }
@@ -282,26 +286,48 @@ export class ChannelWrap extends AsyncWrap implements ChannelWrapQuery {
     resolveOptions?: Deno.ResolveDnsOptions,
     ttl?: boolean,
   ): Promise<{
-    code: number;
+    // deno-lint-ignore no-explicit-any
+    code: any;
     // deno-lint-ignore no-explicit-any
     ret: any[];
   }> {
     let ret = [];
-    let code = 0;
+    // deno-lint-ignore no-explicit-any
+    let code: any = 0;
 
     try {
-      const res = await op_dns_resolve({
+      const options = this.#timeout >= 0
+        ? {
+          ...resolveOptions,
+          timeout_ms: this.#timeout,
+        }
+        : resolveOptions;
+
+      let dnsPromise: Promise<Deno.RecordWithTtl[]> = op_dns_resolve({
         query,
         recordType,
-        options: resolveOptions,
+        options,
       }, /* useEdns0 */ false);
+
+      if (this.#timeout >= 0) {
+        dnsPromise = Promise.race([
+          dnsPromise,
+          new Promise<never>((_resolve, reject) =>
+            setTimeout(() => reject("ETIMEOUT"), this.#timeout)
+          ),
+        ]);
+      }
+
+      const res = await dnsPromise;
       if (ttl) {
         ret = res;
       } else {
         ret = res.map((recordWithTtl) => recordWithTtl.data);
       }
     } catch (e) {
-      if (e instanceof Deno.errors.NotFound) {
+      if (e === "ETIMEOUT") {
+        code = "ETIMEOUT";
+      } else if (e instanceof Deno.errors.NotFound) {
         code = codeMap.get("EAI_NODATA")!;
       } else {
         // TODO(cmorten): map errors to appropriate error codes.
@@ -318,6 +344,7 @@ export class ChannelWrap extends AsyncWrap implements ChannelWrapQuery {
     //
     // Ideally we move to using the "ANY" / "*" DNS query in future
     // REF: https://github.com/denoland/deno/issues/14492
+    this.#pendingQueries.add(req);
     (async () => {
       const records: { type: Deno.RecordType; [key: string]: unknown }[] = [];
 
@@ -413,6 +440,9 @@ export class ChannelWrap extends AsyncWrap implements ChannelWrapQuery {
         }),
       ]);
 
+      if (!this.#pendingQueries.has(req)) return;
+      this.#pendingQueries.delete(req);
+
       const err = records.length ? 0 : codeMap.get("EAI_NODATA")!;
 
       req.oncomplete(err, records);
@@ -422,7 +452,11 @@ export class ChannelWrap extends AsyncWrap implements ChannelWrapQuery {
   }
 
   queryA(req: QueryReqWrap, name: string): number {
+    this.#pendingQueries.add(req);
     this.#query(name, "A", req.ttl).then(({ code, ret }) => {
+      if (!this.#pendingQueries.has(req)) return;
+      this.#pendingQueries.delete(req);
+
       let recordsWithTtl;
       if (req.ttl) {
         recordsWithTtl = (ret as Deno.RecordWithTtl[]).map((val) => ({
@@ -438,7 +472,11 @@ export class ChannelWrap extends AsyncWrap implements ChannelWrapQuery {
   }
 
   queryAaaa(req: QueryReqWrap, name: string): number {
+    this.#pendingQueries.add(req);
     this.#query(name, "AAAA", req.ttl).then(({ code, ret }) => {
+      if (!this.#pendingQueries.has(req)) return;
+      this.#pendingQueries.delete(req);
+
       let recordsWithTtl;
       if (req.ttl) {
         recordsWithTtl = (ret as Deno.RecordWithTtl[]).map((val) => ({
@@ -454,7 +492,11 @@ export class ChannelWrap extends AsyncWrap implements ChannelWrapQuery {
   }
 
   queryCaa(req: QueryReqWrap, name: string): number {
+    this.#pendingQueries.add(req);
     this.#query(name, "CAA").then(({ code, ret }) => {
+      if (!this.#pendingQueries.has(req)) return;
+      this.#pendingQueries.delete(req);
+
       const records = (ret as Deno.CaaRecord[]).map(
         ({ critical, tag, value }) => ({
           [tag]: value,
@@ -469,7 +511,11 @@ export class ChannelWrap extends AsyncWrap implements ChannelWrapQuery {
   }
 
   queryCname(req: QueryReqWrap, name: string): number {
+    this.#pendingQueries.add(req);
     this.#query(name, "CNAME").then(({ code, ret }) => {
+      if (!this.#pendingQueries.has(req)) return;
+      this.#pendingQueries.delete(req);
+
       req.oncomplete(code, ret);
     });
 
@@ -477,7 +523,11 @@ export class ChannelWrap extends AsyncWrap implements ChannelWrapQuery {
   }
 
   queryMx(req: QueryReqWrap, name: string): number {
+    this.#pendingQueries.add(req);
     this.#query(name, "MX").then(({ code, ret }) => {
+      if (!this.#pendingQueries.has(req)) return;
+      this.#pendingQueries.delete(req);
+
       const records = (ret as Deno.MxRecord[]).map(
         ({ preference, exchange }) => ({
           priority: preference,
@@ -492,7 +542,11 @@ export class ChannelWrap extends AsyncWrap implements ChannelWrapQuery {
   }
 
   queryNaptr(req: QueryReqWrap, name: string): number {
+    this.#pendingQueries.add(req);
     this.#query(name, "NAPTR").then(({ code, ret }) => {
+      if (!this.#pendingQueries.has(req)) return;
+      this.#pendingQueries.delete(req);
+
       const records = (ret as Deno.NaptrRecord[]).map(
         ({ order, preference, flags, services, regexp, replacement }) => ({
           flags,
@@ -511,7 +565,11 @@ export class ChannelWrap extends AsyncWrap implements ChannelWrapQuery {
   }
 
   queryNs(req: QueryReqWrap, name: string): number {
+    this.#pendingQueries.add(req);
     this.#query(name, "NS").then(({ code, ret }) => {
+      if (!this.#pendingQueries.has(req)) return;
+      this.#pendingQueries.delete(req);
+
       const records = (ret as string[]).map((record) => fqdnToHostname(record));
 
       req.oncomplete(code, records);
@@ -521,7 +579,11 @@ export class ChannelWrap extends AsyncWrap implements ChannelWrapQuery {
   }
 
   queryPtr(req: QueryReqWrap, name: string): number {
+    this.#pendingQueries.add(req);
     this.#query(name, "PTR").then(({ code, ret }) => {
+      if (!this.#pendingQueries.has(req)) return;
+      this.#pendingQueries.delete(req);
+
       const records = (ret as string[]).map((record) => fqdnToHostname(record));
 
       req.oncomplete(code, records);
@@ -531,7 +593,11 @@ export class ChannelWrap extends AsyncWrap implements ChannelWrapQuery {
   }
 
   querySoa(req: QueryReqWrap, name: string): number {
+    this.#pendingQueries.add(req);
     this.#query(name, "SOA").then(({ code, ret }) => {
+      if (!this.#pendingQueries.has(req)) return;
+      this.#pendingQueries.delete(req);
+
       let record = {};
 
       if (ret.length) {
@@ -556,7 +622,11 @@ export class ChannelWrap extends AsyncWrap implements ChannelWrapQuery {
   }
 
   querySrv(req: QueryReqWrap, name: string): number {
+    this.#pendingQueries.add(req);
     this.#query(name, "SRV").then(({ code, ret }) => {
+      if (!this.#pendingQueries.has(req)) return;
+      this.#pendingQueries.delete(req);
+
       const records = (ret as Deno.SrvRecord[]).map(
         ({ priority, weight, port, target }) => ({
           priority,
@@ -573,7 +643,11 @@ export class ChannelWrap extends AsyncWrap implements ChannelWrapQuery {
   }
 
   queryTxt(req: QueryReqWrap, name: string): number {
+    this.#pendingQueries.add(req);
     this.#query(name, "TXT").then(({ code, ret }) => {
+      if (!this.#pendingQueries.has(req)) return;
+      this.#pendingQueries.delete(req);
+
       req.oncomplete(code, ret);
     });
 
@@ -613,7 +687,10 @@ export class ChannelWrap extends AsyncWrap implements ChannelWrapQuery {
   }
 
   cancel() {
-    notImplemented("cares.ChannelWrap.prototype.cancel");
+    for (const req of this.#pendingQueries) {
+      req.oncomplete("ECANCELLED", []);
+    }
+    this.#pendingQueries.clear();
   }
 }
 
