@@ -251,7 +251,9 @@
     "parallel/test-child-process-disconnect.js": {},
     "parallel/test-child-process-double-pipe.js": {},
     "parallel/test-child-process-env.js": {},
-    "parallel/test-child-process-exec-any-shells-windows.js": { "windows": false },
+    "parallel/test-child-process-exec-any-shells-windows.js": {
+      "windows": false
+    },
     "parallel/test-child-process-exec-cwd.js": {},
     "parallel/test-child-process-exec-encoding.js": {},
     "parallel/test-child-process-exec-env.js": {},
@@ -310,7 +312,9 @@
     "parallel/test-child-process-spawn-shell.js": {},
     "parallel/test-child-process-spawn-timeout-kill-signal.js": {},
     "parallel/test-child-process-spawn-typeerror.js": {},
-    "parallel/test-child-process-spawn-windows-batch-file.js": { "windows": false },
+    "parallel/test-child-process-spawn-windows-batch-file.js": {
+      "windows": false
+    },
     "parallel/test-child-process-spawnsync-args.js": {},
     "parallel/test-child-process-spawnsync-env.js": {},
     "parallel/test-child-process-spawnsync-input.js": {},
