@@ -402,7 +402,7 @@ export class ChannelWrap extends AsyncWrap implements ChannelWrapQuery {
                 priority,
                 weight,
                 port,
-                name: target,
+                name: fqdnToHostname(target),
               }),
           );
         }),
@@ -562,7 +562,7 @@ export class ChannelWrap extends AsyncWrap implements ChannelWrapQuery {
           priority,
           weight,
           port,
-          name: target,
+          name: fqdnToHostname(target),
         }),
       );
 

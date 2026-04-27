@@ -789,6 +789,8 @@
     "parallel/test-dns-multi-channel.js": {},
     "parallel/test-dns-promises-exists.js": {},
     "parallel/test-dns-resolvens-typeerror.js": {},
+    "parallel/test-dns-resolvesrv.js": {},
+    "parallel/test-dns-resolvesrv-econnrefused.js": {},
     "parallel/test-dns-set-default-order.js": {},
     "parallel/test-dns-setservers-type-check.js": {},
     "parallel/test-domain-add-remove.js": {},
