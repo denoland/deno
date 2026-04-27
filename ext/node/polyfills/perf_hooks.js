@@ -54,34 +54,55 @@ class PerformanceObserver extends WebPerformanceObserver {
   }
 }
 
-performance.eventLoopUtilization = () => {
+const eventLoopUtilization = () => {
   // TODO(@marvinhagemeister): Return actual non-stubbed values
   return { idle: 0, active: 0, utilization: 0 };
 };
 
+performance.eventLoopUtilization = eventLoopUtilization;
+
 performance.nodeTiming = {};
 
-performance.timerify = (fn) => {
+const timerify = (fn, options = {}) => {
   if (typeof fn !== "function") {
-    throw new TypeError("The 'fn' argument must be of type function");
+    throw new ERR_INVALID_ARG_TYPE("fn", "function", fn);
   }
-  const wrapped = (...args) => {
+
+  if (options.histogram !== undefined) {
+    if (
+      typeof options.histogram !== "object" ||
+      options.histogram === null ||
+      typeof options.histogram.record !== "function"
+    ) {
+      throw new ERR_INVALID_ARG_TYPE(
+        "options.histogram",
+        "RecordableHistogram",
+        options.histogram,
+      );
+    }
+  }
+
+  function timerified(...args) {
     const start = performance.now();
-    const result = fn(...args);
+    const result = new.target ? new fn(...args) : fn.apply(this, args);
     const end = performance.now();
-
-    performance.measure(`timerify(${fn.name || "anonymous"})`, { start, end });
-
+    // TODO: emit PerformanceEntry with entryType 'function'
     return result;
-  };
+  }
 
-  Object.defineProperty(wrapped, "name", {
-    value: fn.name || "wrapped",
+  Object.defineProperty(timerified, "name", {
+    value: `timerified ${fn.name}`,
+    configurable: true,
+  });
+  Object.defineProperty(timerified, "length", {
+    value: fn.length,
     configurable: true,
   });
 
-  return wrapped;
+  return timerified;
 };
+
+performance.timerify = timerify;
 // TODO(bartlomieju):
 performance.markResourceTiming = () => {};
 
@@ -97,14 +118,18 @@ export default {
   PerformanceObserverEntryList,
   PerformanceEntry,
   monitorEventLoopDelay,
+  eventLoopUtilization,
+  timerify,
   constants,
 };
 
 export {
   constants,
+  eventLoopUtilization,
   monitorEventLoopDelay,
   performance,
   PerformanceEntry,
   PerformanceObserver,
   PerformanceObserverEntryList,
+  timerify,
 };
