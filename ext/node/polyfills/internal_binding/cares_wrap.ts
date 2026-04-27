@@ -599,7 +599,7 @@ export class ChannelWrap extends AsyncWrap implements ChannelWrapQuery {
         if (part === "" && !emptyFound) {
           emptyFound = true;
           const missing = 8 - parts.filter((p) => p !== "").length;
-          for (let j = 0; j < missing + 1; j++) {
+          for (let j = 0; j < missing; j++) {
             expanded.push("0000");
           }
         } else if (part !== "") {
