@@ -301,7 +301,7 @@ tlsWrap.TLSWrap.prototype.close = function close(cb) {
 
   if (this._parentWrap) {
     if (this._parentWrap._handle === null) {
-      queueMicrotask(done);
+      nextTick(done);
       return;
     }
 
@@ -313,7 +313,7 @@ tlsWrap.TLSWrap.prototype.close = function close(cb) {
   }
 
   // Defer so callers can register "close" listeners after destroy().
-  queueMicrotask(done);
+  nextTick(done);
 };
 
 TLSSocket.prototype._wrapHandle = function (wrap, handle) {
