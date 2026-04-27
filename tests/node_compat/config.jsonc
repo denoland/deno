@@ -1178,6 +1178,7 @@
     "parallel/test-fs-utimes-y2K38.js": {},
     "parallel/test-fs-utimes.js": {},
     "parallel/test-fs-watch-file-enoent-after-deletion.js": {},
+    "parallel/test-fs-watch-ignore-invalid.js": {},
     "parallel/test-fs-watch-recursive-add-file-to-existing-subfolder.js": {},
     "parallel/test-fs-watch-recursive-add-folder.js": {},
     "parallel/test-fs-watch-recursive-delete.js": {},

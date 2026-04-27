@@ -141,6 +141,7 @@ import {
 import {
   ERR_FS_RMDIR_ENOTDIR,
   ERR_INVALID_ARG_TYPE,
+  ERR_INVALID_ARG_VALUE,
   uvException,
 } from "ext:deno_node/internal/errors.ts";
 import { toUnixTimestamp } from "ext:deno_node/internal/fs/utils.mjs";
@@ -3159,9 +3160,46 @@ type watchOptions = {
   persistent?: boolean;
   recursive?: boolean;
   encoding?: string;
+  // deno-lint-ignore no-explicit-any
+  ignore?: string | RegExp | ((path: string) => boolean) | any[];
 };
 
 type watchListener = (eventType: string, filename: string) => void;
+
+// Mirrors Node's `validateIgnoreOption` /
+// `validateIgnoreOptionElement` in lib/internal/validators.js.
+// deno-lint-ignore no-explicit-any
+function validateIgnoreOptionElement(value: any, name: string) {
+  if (typeof value === "string") {
+    if (value.length === 0) {
+      throw new ERR_INVALID_ARG_VALUE(
+        name,
+        value,
+        "must be a non-empty string",
+      );
+    }
+    return;
+  }
+  if (value instanceof RegExp) return;
+  if (typeof value === "function") return;
+  throw new ERR_INVALID_ARG_TYPE(
+    name,
+    ["string", "RegExp", "Function"],
+    value,
+  );
+}
+
+// deno-lint-ignore no-explicit-any
+function validateIgnoreOption(value: any, name: string) {
+  if (value == null) return;
+  if (Array.isArray(value)) {
+    for (let i = 0; i < value.length; i++) {
+      validateIgnoreOptionElement(value[i], `${name}[${i}]`);
+    }
+    return;
+  }
+  validateIgnoreOptionElement(value, name);
+}
 
 function watch(
   filename: string | URL,
@@ -3192,6 +3230,8 @@ function watch(
     : typeof optionsOrListener2 === "object"
     ? optionsOrListener2
     : undefined;
+
+  validateIgnoreOption(options?.ignore, "options.ignore");
 
   // deno-lint-ignore prefer-primordials
   const watchPath = getValidatedPath(filename).toString();
