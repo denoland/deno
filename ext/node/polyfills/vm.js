@@ -47,6 +47,7 @@ const {
   ArrayPrototypeForEach,
   ArrayPrototypePush,
   ObjectFreeze,
+  ObjectPrototypeIsPrototypeOf,
   PromisePrototypeThen,
   PromiseResolve,
   SafePromiseAll,
@@ -521,7 +522,7 @@ class Module {
     const resolvedModules = await SafePromiseAll(linkerPromises);
     for (let i = 0; i < resolvedModules.length; i++) {
       const m = resolvedModules[i];
-      if (!(m instanceof Module)) {
+      if (!ObjectPrototypeIsPrototypeOf(Module.prototype, m)) {
         throw new ERR_VM_MODULE_NOT_MODULE();
       }
       if (m.context !== this[kContext]) {
