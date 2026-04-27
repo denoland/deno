@@ -2798,12 +2798,20 @@ function setupHandle(socket, type, options) {
       // the peer would never see the connection end and would hang.
       if (!handle.hasPendingData() && !this.destroyed) {
         handle.onstreamclose();
-        // After GOAWAY has been written, forcibly destroy the underlying
-        // socket so the peer observes the connection close (graceful FIN
-        // alone may not fire an 'error' event on a peer that is still
-        // writing requests).
+        // After GOAWAY has been written, gracefully shut down the
+        // underlying socket. We must NOT call socket.destroy() here while
+        // socket.write(GOAWAY) is still pending in the writable stream
+        // buffer -- destroy() abandons buffered writes, so the peer never
+        // sees the GOAWAY frame. Use socket.end() so the GOAWAY is flushed
+        // before FIN is sent, then destroy after the writable side drains
+        // to ensure the peer's read side observes connection close (some
+        // peers won't surface an error on a half-open FIN alone).
         if (!socket.destroyed) {
-          socket.destroy();
+          socket.end(() => {
+            if (!socket.destroyed) {
+              socket.destroy();
+            }
+          });
         }
       }
     }
@@ -4411,6 +4419,7 @@ function getUnpackedSettings(buf) {
 const sensitiveHeaders = kSensitiveHeaders;
 
 export {
+  ClientHttp2Session,
   connect,
   constants,
   createSecureServer,
@@ -4420,7 +4429,10 @@ export {
   getUnpackedSettings,
   Http2ServerRequest,
   Http2ServerResponse,
+  Http2Session,
+  Http2Stream,
   sensitiveHeaders,
+  ServerHttp2Session,
 };
 
 export default {
