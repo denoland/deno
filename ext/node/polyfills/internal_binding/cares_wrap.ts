@@ -675,17 +675,21 @@ export class ChannelWrap extends AsyncWrap implements ChannelWrapQuery {
     } else if (isIPv6(name)) {
       // Expand IPv6 address to full form then reverse nibbles
       const parts = name.split(":");
+      const nonEmpty = parts.filter((p) => p !== "");
+      const missing = name.includes("::") ? 8 - nonEmpty.length : 0;
       const expanded: string[] = [];
-      for (let i = 0; i < parts.length; i++) {
-        if (parts[i] === "") {
-          // Handle :: expansion
-          const missing = 8 - parts.filter((p) => p !== "").length;
-          for (let j = 0; j < missing; j++) {
-            expanded.push("0000");
+      let didExpand = false;
+      for (const part of parts) {
+        if (part === "") {
+          if (!didExpand) {
+            for (let j = 0; j < missing; j++) {
+              expanded.push("0000");
+            }
+            didExpand = true;
           }
-        } else {
-          expanded.push(parts[i].padStart(4, "0"));
+          continue;
         }
+        expanded.push(part.padStart(4, "0"));
       }
       reverseName = expanded.join("").split("").reverse().join(".") +
         ".ip6.arpa";

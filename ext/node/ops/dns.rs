@@ -207,23 +207,27 @@ fn getaddrinfo_inner(
 
     let mut ips = Vec::new();
     let mut current = result;
-    // SAFETY: Iterating linked list returned by getaddrinfo
     while !current.is_null() {
+      // SAFETY: current is a valid pointer from getaddrinfo linked list
       let addr = unsafe { &*current };
-      if let Some(sock_addr) = SockAddr::try_init(|storage, len| {
-        std::ptr::copy_nonoverlapping(
-          addr.ai_addr as *const u8,
-          storage as *mut u8,
-          addr.ai_addrlen as usize,
-        );
-        *len = addr.ai_addrlen as _;
-        Ok(())
-      })
-      .ok()
-      .and_then(|(_, sa)| sa.as_socket())
+      // SAFETY: ai_addr/ai_addrlen are valid from getaddrinfo,
+      // and SockAddr::try_init requires unsafe
+      let sa_result = unsafe {
+        SockAddr::try_init(|storage, len| {
+          std::ptr::copy_nonoverlapping(
+            addr.ai_addr as *const u8,
+            storage as *mut u8,
+            addr.ai_addrlen as usize,
+          );
+          *len = addr.ai_addrlen as _;
+          Ok(())
+        })
+      };
+      if let Some(sock_addr) = sa_result.ok().and_then(|(_, sa)| sa.as_socket())
       {
         ips.push(sock_addr.ip().to_string());
       }
+      // SAFETY: Advancing to next node in getaddrinfo linked list
       current = unsafe { (*current).ai_next };
     }
 
