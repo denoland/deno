@@ -1276,6 +1276,13 @@ pub unsafe extern "C" fn on_stream_read_callback(
         stream.on_trailers();
       }
     }
+    // Mark EOF as emitted on this stream so the subsequent shutdown()
+    // op (from Writable._final / shutdownWritable) skips its
+    // resume_data and nghttp2 doesn't pack a redundant empty trailing
+    // DATA frame just to carry END_STREAM.
+    if let Some(stream) = session.find_stream(stream_id) {
+      *stream.eof_sent.borrow_mut() = true;
+    }
     // Complete shutdown now. All borrows have been dropped above,
     // so it's safe to call into JS. This must happen before
     // on_stream_close_callback fires (also during mem_send) so that

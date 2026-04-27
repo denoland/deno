@@ -884,6 +884,7 @@ function requestOnConnect(headersList, options) {
   let streamOptions = 0;
   if (options.endStream) {
     streamOptions |= STREAM_OPTION_EMPTY_PAYLOAD;
+    this[kState].endStream = true;
   }
 
   if (options.waitForTrailers) {
@@ -1288,6 +1289,12 @@ function submitRstStream(code) {
 
 function trackWriteState(stream, bytes) {
   const session = stream[kSession];
+  // The write may have synchronously drained nghttp2's send queue, fired
+  // on_stream_close, and run _destroy (which sets kSession=undefined)
+  // before this call. In Node the underlying writes are async via libuv
+  // so the stream is still alive here; in Deno the polyfill drains
+  // sync inside writeBuffer, so guard the access.
+  if (!session) return;
   stream[kState].writeQueueSize += bytes;
   session[kState].writeQueueSize += bytes;
   session[kHandle].chunksSentSinceLastWrite = 0;
@@ -1331,7 +1338,25 @@ function shutdownWritable(callback) {
   req.callback = callback;
   req.handle = handle;
   const err = handle.shutdown(req);
-  scheduleSendPending(this[kSession]);
+  // For streams created with STREAM_OPTION_EMPTY_PAYLOAD (HEADERS already
+  // carried END_STREAM, e.g. client GET / respond({endStream:true})),
+  // there is no data provider for nghttp2 to call back into, so
+  // handle.shutdown's resume_data is a no-op and the sync drain at this
+  // point would just push HEADERS to the wire ahead of any
+  // requestOnConnect-deferred SETTINGS_ACK ordering. Defer to
+  // setImmediate so the peer's SETTINGS land first
+  // (test-http2-padding-aligned). Skip the deferral if the stream is
+  // already closed (RST_STREAM in flight): drain sync so HEADERS lands
+  // before the RST on the wire, otherwise the server never sees the
+  // request (test-http2-client-rststream-before-connect). For streams
+  // with a data provider, sync drain fires the trailing read_callback
+  // so on_trailers / wantTrailers handlers run in the same JS tick
+  // (test-http2-misused-pseudoheaders).
+  if (state.endStream && !(state.flags & STREAM_FLAGS_CLOSED)) {
+    setImmediate(scheduleSendPending, this[kSession]);
+  } else {
+    scheduleSendPending(this[kSession]);
+  }
   if (err === 1) { // synchronous finish
     return ReflectApply(afterShutdown, req, [0]);
   }
@@ -1773,6 +1798,37 @@ class Http2Stream extends Duplex {
 
   _writev(data, cb) {
     this[kWriteGeneric](true, data, "", cb);
+  }
+
+  end(chunk, encoding, cb) {
+    // When end() is called with a chunk, pre-flag the nghttp2 stream
+    // as ending so the sync writeBuffer drain emits one DATA frame
+    // with END_STREAM instead of a data frame followed by an empty
+    // trailing DATA frame. Restricted to client-initiated streams
+    // (odd IDs); push streams (even IDs) transition straight to
+    // closed when the server sends END_STREAM (no client
+    // acknowledgement is expected), and that destruction would race
+    // with follow-up ops like pushStream() or trailing test
+    // assertions (test-http2-server-push-stream).
+    if (
+      typeof chunk === "function"
+        ? false
+        : chunk !== undefined && chunk !== null
+    ) {
+      const handle = this[kHandle];
+      const id = this[kID];
+      if (
+        handle && typeof handle.markEnding === "function" && !this.pending &&
+        !this._writableState.ending && !this._writableState.writing &&
+        this._writableState.buffered.length === 0 &&
+        !(this[kState].flags & STREAM_FLAGS_HAS_TRAILERS) &&
+        typeof id === "number" && id % 2 === 1 &&
+        this.headersSent
+      ) {
+        handle.markEnding();
+      }
+    }
+    return ReflectApply(Duplex.prototype.end, this, arguments);
   }
 
   _final(cb) {
@@ -2466,6 +2522,7 @@ class ServerHttp2Stream extends Http2Stream {
     let streamOptions = 0;
     if (options.endStream) {
       streamOptions |= STREAM_OPTION_EMPTY_PAYLOAD;
+      state.endStream = true;
     }
 
     if (options.waitForTrailers) {
@@ -2492,6 +2549,7 @@ class ServerHttp2Stream extends Http2Stream {
     ) {
       options.endStream = true;
       streamOptions |= STREAM_OPTION_EMPTY_PAYLOAD;
+      state.endStream = true;
       this.end();
     }
 

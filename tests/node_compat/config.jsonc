@@ -1521,10 +1521,7 @@
     "parallel/test-http2-no-wanttrailers-listener.js": {},
     "parallel/test-http2-options-server-request.js": {},
     "parallel/test-http2-options-server-response.js": {},
-    "parallel/test-http2-padding-aligned.js": {
-      "ignore": true,
-      "reason": "DATA chunks now split via NGHTTP2_DATA_FLAG_NO_COPY + send_data_callback (matches Node's per-uv_buf_t layout: header / pad_length / payload / padding) and HEADERS submission is deferred via setImmediate so it lands after SETTINGS_ACK in priority order. Remaining gap: when stream.end(data) is the only write, our impl emits a DATA frame without END_STREAM followed by an empty padded DATA frame carrying END_STREAM, while Node coalesces END_STREAM onto the data frame. Coalescing requires write-vs-end boundary detection in the polyfill that goes beyond the current scope."
-    },
+    "parallel/test-http2-padding-aligned.js": {},
     "parallel/test-http2-pipe.js": {},
     "parallel/test-http2-priority-cycle-.js": {},
     "parallel/test-http2-raw-headers-defaults.js": {},

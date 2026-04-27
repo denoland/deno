@@ -165,6 +165,14 @@ pub struct Http2Stream {
   /// would re-activate the data provider for a stream that nghttp2 is
   /// about to destroy (causing double-free with no_closed_streams=1).
   pub(crate) closed_by_nghttp2: RefCell<bool>,
+  /// Set true once the data provider returned a chunk with
+  /// NGHTTP2_DATA_FLAG_EOF. shutdown() then suppresses its
+  /// resume_data so nghttp2 doesn't generate a second empty trailing
+  /// DATA frame just to carry END_STREAM. Writable.end(data) hooks
+  /// `mark_ending` to set `writable_ended` *before* the data write
+  /// reaches read_callback, which lets that frame carry END_STREAM
+  /// directly.
+  pub(crate) eof_sent: RefCell<bool>,
 }
 
 // SAFETY: Http2Stream is GC-traced by cppgc
@@ -210,6 +218,7 @@ impl Http2Stream {
         writable_ended: RefCell::new(false),
         shutdown_req: RefCell::new(None),
         closed_by_nghttp2: RefCell::new(false),
+        eof_sent: RefCell::new(false),
       },
     );
 
@@ -435,6 +444,17 @@ impl Http2Stream {
     0
   }
 
+  /// Pre-flag the stream as ended so the very next data frame the
+  /// data provider builds carries NGHTTP2_DATA_FLAG_EOF. The polyfill
+  /// calls this from `Http2Stream.end(chunk)` *before* the chunk's
+  /// write reaches `write_buffer`, which lets `stream.end(data)`
+  /// produce one DATA frame with END_STREAM instead of a data frame
+  /// followed by an empty trailing DATA frame.
+  #[fast]
+  fn mark_ending(&self) {
+    *self.writable_ended.borrow_mut() = true;
+  }
+
   #[fast]
   fn shutdown(&self, req: v8::Local<v8::Object>) -> i32 {
     *self.writable_ended.borrow_mut() = true;
@@ -443,7 +463,13 @@ impl Http2Stream {
     // data provider, but close_stream then destroys the stream with
     // no_closed_streams=1. The re-activated item survives destruction
     // and mem_send later double-frees the stream.
-    if !*self.closed_by_nghttp2.borrow() {
+    //
+    // Also skip when EOF has already been emitted on a previous data
+    // frame (Http2Stream.end(chunk) hooks `mark_ending` so the chunk's
+    // frame carries END_STREAM). Without this guard nghttp2 would call
+    // read_callback again, get 0 + EOF, and pack a redundant empty
+    // trailing DATA frame.
+    if !*self.closed_by_nghttp2.borrow() && !*self.eof_sent.borrow() {
       let session_ptr = self.nghttp2_session();
       // SAFETY: session pointer is valid
       unsafe {
