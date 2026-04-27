@@ -20,6 +20,8 @@ function initialize(args) {
     workerId,
     maybeWorkerMetadata,
     nodeDebug,
+    nodeClusterUniqueId,
+    nodeClusterSchedPolicy,
     warmup = false,
     moduleSpecifier = null,
   } = args;
@@ -49,40 +51,13 @@ function initialize(args) {
       moduleSpecifier,
     );
     internals.__setupChildProcessIpcChannel();
-    // Only initialize node:cluster worker state when NODE_UNIQUE_ID is
-    // actually present in the environment. We querySync first so plain
-    // `deno run` invocations don't prompt for `env` permission, which on
-    // a non-interactive child would deadlock.
-    {
-      let nodeUniqueId;
-      let schedPolicy;
-      try {
-        if (
-          Deno.permissions.querySync({
-            name: "env",
-            variable: "NODE_UNIQUE_ID",
-          }).state === "granted"
-        ) {
-          nodeUniqueId = Deno.env.get("NODE_UNIQUE_ID");
-        }
-      } catch {
-        // ignore
-      }
-      if (nodeUniqueId) {
-        try {
-          if (
-            Deno.permissions.querySync({
-              name: "env",
-              variable: "NODE_CLUSTER_SCHED_POLICY",
-            }).state === "granted"
-          ) {
-            schedPolicy = Deno.env.get("NODE_CLUSTER_SCHED_POLICY");
-          }
-        } catch {
-          // ignore
-        }
-        internals.__initCluster(nodeUniqueId, schedPolicy);
-      }
+    // node:cluster worker state is initialized only when NODE_UNIQUE_ID was
+    // present in the environment at process startup. The Rust side reads the
+    // env var (see `BootstrapOptions::node_cluster_unique_id`) and passes the
+    // value through, so plain `deno run` invocations never touch
+    // `Deno.permissions`/`Deno.env` here and never load `node:cluster`.
+    if (nodeClusterUniqueId) {
+      internals.__initCluster(nodeClusterUniqueId, nodeClusterSchedPolicy);
     }
     op_stream_base_register_state(streamBaseState);
     // `Deno[Deno.internal].requireImpl` will be unreachable after this line.
