@@ -697,7 +697,12 @@ export class ChannelWrap extends AsyncWrap implements ChannelWrapQuery {
       return 0;
     }
 
+    this.#pendingQueries.add(req);
+
     this.#query(reverseName, "PTR").then(({ code, ret }) => {
+      if (!this.#pendingQueries.has(req)) return;
+      this.#pendingQueries.delete(req);
+
       const records = (ret as string[]).map((record) => fqdnToHostname(record));
       req.oncomplete(code, records);
     });
