@@ -665,6 +665,15 @@ TLSSocket.prototype._start = function () {
     tcpHandle.readStop();
     tcpHandle.readStart();
   }
+
+  // Kick-start the TLS readable side. During start(), the handshake cycle
+  // may have received and processed a close_notify (peer called end() before
+  // we set up event listeners). The decrypted EOF is buffered in pending_eof
+  // because inner.onread wasn't set yet. Call readStart() directly on the
+  // TLSWrap to install onread and flush any pending data/EOF.
+  if (this._handle) {
+    this._handle.readStart();
+  }
 };
 
 TLSSocket.prototype.setServername = function (name) {

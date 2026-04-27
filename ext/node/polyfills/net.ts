@@ -840,6 +840,17 @@ function _tryReadStart(socket: Socket) {
 function _onReadableStreamEnd(this: Socket) {
   if (!this.allowHalfOpen) {
     this.write = _writeAfterFIN;
+    if (this.writable) {
+      // Defer end() to nextTick so that user 'end' handlers registered
+      // after the constructor (which registered _onReadableStreamEnd)
+      // see socket.writable === true, matching Node.js behavior where
+      // the writable getter doesn't reflect the ending state immediately.
+      // deno-lint-ignore no-this-alias
+      const socket = this;
+      nextTick(() => {
+        if (socket.writable && !socket.destroyed) socket.end();
+      });
+    }
   }
 }
 

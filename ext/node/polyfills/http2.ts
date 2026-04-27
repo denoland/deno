@@ -59,6 +59,7 @@ import {
   kServerResponse,
   Server as HttpServer,
   setupConnectionsTracking,
+  STATUS_CODES,
 } from "node:_http_server";
 import { Duplex } from "node:stream";
 import tls from "node:tls";
@@ -84,6 +85,7 @@ import { addAbortListener } from "ext:deno_node/internal/events/abort_listener.m
 export { addAbortListener } from "ext:deno_node/internal/events/abort_listener.mjs";
 import fs from "node:fs";
 import { FileHandle as FsFileHandle } from "ext:deno_node/internal/fs/handle.ts";
+import { JSStreamSocket } from "ext:deno_node/internal/js_stream_socket.js";
 import { format } from "node:util";
 import {
   isUint32,
@@ -376,9 +378,6 @@ const kMaxALTSVC = (2 ** 14) - 2;
 const kQuotedString = new SafeRegExp(
   "^[\\x09\\x20-\\x5b\\x5d-\\x7e\\x80-\\xff]*$",
 );
-
-// Placeholder classes and functions - these need proper implementation
-class JSStreamSocket {}
 
 // Validates that priority options are correct, specifically:
 // 1. options.weight must be a number
@@ -898,7 +897,8 @@ function requestOnConnect(headersList, options) {
   // `ret` will be either the reserved stream ID (if positive)
   // or an error code (if negative)
   const ret = session[kHandle].request(
-    headersList,
+    headersList[0],
+    headersList[1],
     streamOptions,
     options.parent | 0,
     NGHTTP2_DEFAULT_WEIGHT,
@@ -1345,7 +1345,7 @@ function finishSendTrailers(stream, headersList) {
 
   stream[kState].flags &= ~STREAM_FLAGS_HAS_TRAILERS;
 
-  const ret = stream[kHandle].trailers(headersList);
+  const ret = stream[kHandle].trailers(headersList[0], headersList[1]);
   scheduleSendPending(stream[kSession]);
   if (ret < 0) {
     stream.destroy(new NghttpError(ret));
@@ -2159,7 +2159,11 @@ function processRespondWithFD(
     self.end();
   }
 
-  const ret = self[kHandle].respond(headersList, streamOptions);
+  const ret = self[kHandle].respond(
+    headersList[0],
+    headersList[1],
+    streamOptions,
+  );
 
   if (ret < 0) {
     self.destroy(new NghttpError(ret));
@@ -2389,7 +2393,11 @@ class ServerHttp2Stream extends Http2Stream {
 
     const streamOptions = options.endStream ? STREAM_OPTION_EMPTY_PAYLOAD : 0;
 
-    const ret = this[kHandle].pushPromise(headersList, streamOptions);
+    const ret = this[kHandle].pushPromise(
+      headersList[0],
+      headersList[1],
+      streamOptions,
+    );
     let err;
     if (typeof ret === "number") {
       switch (ret) {
@@ -2492,7 +2500,11 @@ class ServerHttp2Stream extends Http2Stream {
       this.end();
     }
 
-    const ret = this[kHandle].respond(headersList, streamOptions);
+    const ret = this[kHandle].respond(
+      headersList[0],
+      headersList[1],
+      streamOptions,
+    );
     scheduleSendPending(this[kSession]);
     if (ret < 0) {
       this.destroy(new NghttpError(ret));
@@ -2714,7 +2726,7 @@ class ServerHttp2Stream extends Http2Stream {
       ArrayPrototypePush(this[kInfoHeaders], headers);
     }
 
-    const ret = this[kHandle].info(headersList);
+    const ret = this[kHandle].info(headersList[0], headersList[1]);
     if (ret < 0) {
       this.destroy(new NghttpError(ret));
     }
@@ -3534,7 +3546,25 @@ class Http2Session extends EventEmitter {
     switch (event) {
       case "stream": {
         const stream = args[0];
-        stream.destroy(err);
+        // Deno divergence from upstream Node: Node calls stream.destroy(err)
+        // unconditionally and relies on destroy() short-circuiting on already
+        // destroyed streams. Server-push streams in Deno can complete fully
+        // synchronously inside the nghttp2 callback chain, before the
+        // client's 'stream' listener gets a chance to run, so by the time
+        // we reach captureRejection the stream is already destroyed and
+        // destroy(err) becomes a no-op that swallows the rejection.
+        // Surface the error via an 'error' emit if a listener is attached;
+        // otherwise route the error onto the session so it isn't lost (also
+        // avoids emit('error') throwing as an uncaughtException).
+        if (stream.destroyed) {
+          if (stream.listenerCount("error") > 0) {
+            process.nextTick(() => stream.emit("error", err));
+          } else {
+            this.destroy(err);
+          }
+        } else {
+          stream.destroy(err);
+        }
         break;
       }
       default:
@@ -4072,6 +4102,41 @@ function closeAllSessions(server) {
   }
 }
 
+function http2ServerOnCaptureRejection(superCtor, self, err, event, args) {
+  switch (event) {
+    case "stream": {
+      const stream = args[0];
+      if (stream.sentHeaders) {
+        stream.destroy(err);
+      } else {
+        stream.respond({ [HTTP2_HEADER_STATUS]: 500 });
+        stream.end();
+      }
+      break;
+    }
+    case "request": {
+      const res = args[1];
+      if (!res.headersSent && !res.finished) {
+        for (const name of res.getHeaderNames()) {
+          res.removeHeader(name);
+        }
+        res.statusCode = 500;
+        res.end(STATUS_CODES[500]);
+      } else {
+        res.destroy();
+      }
+      break;
+    }
+    default:
+      ArrayPrototypeUnshift(args, err, event);
+      ReflectApply(
+        superCtor.prototype[EventEmitter.captureRejectionSymbol],
+        self,
+        args,
+      );
+  }
+}
+
 // alpnprotol in listen method
 // tls listen method opts refractor
 
@@ -4126,6 +4191,10 @@ class Http2SecureServer extends tls.Server {
       ReflectApply(HttpServer.prototype.closeIdleConnections, this, arguments);
     }
   }
+
+  [EventEmitter.captureRejectionSymbol](err, event, ...args) {
+    http2ServerOnCaptureRejection(tls.Server, this, err, event, args);
+  }
 }
 
 class Http2Server extends net.Server {
@@ -4163,6 +4232,10 @@ class Http2Server extends net.Server {
 
   async [SymbolAsyncDispose]() {
     await FunctionPrototypeCall(promisify(super.close), this);
+  }
+
+  [EventEmitter.captureRejectionSymbol](err, event, ...args) {
+    http2ServerOnCaptureRejection(net.Server, this, err, event, args);
   }
 }
 
