@@ -368,9 +368,7 @@ fn assert_success_err(code: i32) -> DnsError {
   use crate::ops::constant;
 
   if code == 0 {
-    return DnsError::Io(std::io::Error::other(
-      "unexpected success code",
-    ));
+    return DnsError::Io(std::io::Error::other("unexpected success code"));
   }
 
   #[cfg(unix)]
