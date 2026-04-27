@@ -631,22 +631,6 @@ impl Http2Settings {
     unsafe {
       let session = &mut *self.session;
       session.update_local_custom_settings(&self.entries[..self.count]);
-      // Capture max_header_list_size from the FIRST settings submission only
-      // (the constructor's initial settings). Post-construction calls to
-      // session.settings() change what we advertise but should not retroactively
-      // tighten our local enforcement — matches Node, which only enforces
-      // when the limit was set up-front.
-      if !session.initial_settings_applied {
-        for entry in &self.entries[..self.count] {
-          if entry.settings_id
-            == ffi::NGHTTP2_SETTINGS_MAX_HEADER_LIST_SIZE as i32
-          {
-            session.local_max_header_list_size = entry.value;
-            break;
-          }
-        }
-        session.initial_settings_applied = true;
-      }
       ffi::nghttp2_submit_settings(
         session.session,
         ffi::NGHTTP2_FLAG_NONE as _,
@@ -1585,19 +1569,6 @@ pub struct Session {
   /// exactly one. Because the only call site is `fn settings(cb)`, push and
   /// submit are paired atomically.
   pub pending_settings_acks: VecDeque<v8::Global<v8::Function>>,
-  /// `SETTINGS_MAX_HEADER_LIST_SIZE` captured from the INITIAL settings the
-  /// user passed to `http2.createServer({ settings })` /
-  /// `http2.connect(url, { settings })`. Used to enforce header size limits
-  /// at HPACK-decode time. Post-construction `session.settings()` calls do
-  /// not update this — Node only enforces locally when the limit was set up
-  /// front (via `nghttp2_option_set_max_header_list_size`-style behavior).
-  pub local_max_header_list_size: u32,
-  /// Tracks whether `Http2Settings::send` has been called at least once.
-  /// The first call is the constructor's initial settings submission; the
-  /// max_header_list_size value from that call is captured into
-  /// `local_max_header_list_size`. Subsequent calls (post-construction
-  /// `session.settings(...)`) leave it untouched.
-  pub initial_settings_applied: bool,
 }
 
 impl Session {
@@ -2074,8 +2045,6 @@ impl Http2Session {
       local_custom_settings: Vec::new(),
       remote_custom_settings: Vec::new(),
       pending_settings_acks: VecDeque::new(),
-      local_max_header_list_size: u32::MAX,
-      initial_settings_applied: false,
     }));
 
     // SAFETY: inner is valid (just allocated); callbacks and options are valid

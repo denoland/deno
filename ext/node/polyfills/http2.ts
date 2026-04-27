@@ -2764,9 +2764,13 @@ function setupHandle(socket, type, options) {
   this[kState].flags |= SESSION_FLAGS_READY;
 
   updateOptionsBuffer(options);
-  if (options.remoteCustomSettings) {
-    remoteCustomSettingsToBuffer(options.remoteCustomSettings);
-  }
+  // Always reset the shared settings buffer's custom-settings count slot.
+  // A prior session's `session.settings({ customSettings })` call may have
+  // left it non-zero, and the native constructor reads it as the count of
+  // remoteCustomSettings IDs to register. Passing an empty array writes
+  // count = 0, so a session without `remoteCustomSettings` doesn't pick up
+  // leftover IDs from a previous session.
+  remoteCustomSettingsToBuffer(options.remoteCustomSettings || []);
   const handle = new InternalHttp2Session(
     type,
     options.strictFieldWhitespaceValidation === false,
