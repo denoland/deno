@@ -3068,6 +3068,10 @@
     "parallel/test-weakref.js": {},
     "parallel/test-webcrypto-cryptokey-workers.js": {},
     "parallel/test-webcrypto-derivebits-argon2.js": {},
+    "parallel/test-webcrypto-derivebits-ecdh.js": {
+      "ignore": true,
+      "reason": "Asserts on the regex `/derived bit length is too small/` for ECDH `subtle.deriveBits` with a `length` larger than the EC curve's secret. Deno's WebCrypto deriveBits emits `'Invalid length'` (the spec's `OperationError` message) instead of Node's regex. Could be revisited if the WebCrypto deriveBits length-too-large error wording is brought into line with Node"
+    },
     "parallel/test-webcrypto-encap-decap-ml-kem.js": {},
     "parallel/test-webcrypto-encrypt-decrypt-chacha20-poly1305.js": {},
     "parallel/test-webcrypto-encrypt-decrypt-rsa.js": {},
