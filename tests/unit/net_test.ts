@@ -394,7 +394,7 @@ Deno.test(
   { permissions: { net: true } },
   function netUdpDefaultHostnameIsAnyAddress() {
     const socket = Deno.listenDatagram({ port: 0, transport: "udp" });
-    assertEquals(socket.addr.transport, "udp");
+    assert(socket.addr.transport === "udp");
     assertEquals(socket.addr.hostname, "0.0.0.0");
     socket.close();
   },
