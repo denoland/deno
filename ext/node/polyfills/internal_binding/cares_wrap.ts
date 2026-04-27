@@ -92,7 +92,11 @@ export function getaddrinfo(
     let error = 0;
     let netPermToken: object | undefined;
     try {
-      netPermToken = await op_node_getaddrinfo(hostname, req.port || undefined);
+      netPermToken = await op_node_getaddrinfo(
+        hostname,
+        req.port || undefined,
+        family,
+      );
       addresses.push(...op_net_get_ips_from_perm_token(netPermToken));
       if (addresses.length === 0) {
         error = codeMap.get("EAI_NODATA")!;
@@ -580,9 +584,38 @@ export class ChannelWrap extends AsyncWrap implements ChannelWrapQuery {
     return 0;
   }
 
-  getHostByAddr(_req: QueryReqWrap, _name: string): number {
-    // TODO(@bartlomieju): https://github.com/denoland/deno/issues/14432
-    notImplemented("cares.ChannelWrap.prototype.getHostByAddr");
+  getHostByAddr(req: QueryReqWrap, name: string): number {
+    let reverseName: string;
+
+    if (isIPv4(name)) {
+      reverseName = name.split(".").reverse().join(".") + ".in-addr.arpa";
+    } else if (isIPv6(name)) {
+      // Expand IPv6 address to full form then reverse nibbles
+      const parts = name.split(":");
+      const expanded: string[] = [];
+      for (let i = 0; i < parts.length; i++) {
+        if (parts[i] === "") {
+          // Handle :: expansion
+          const missing = 8 - parts.filter((p) => p !== "").length;
+          for (let j = 0; j < missing; j++) {
+            expanded.push("0000");
+          }
+        } else {
+          expanded.push(parts[i].padStart(4, "0"));
+        }
+      }
+      reverseName = expanded.join("").split("").reverse().join(".") +
+        ".ip6.arpa";
+    } else {
+      return codeMap.get("EINVAL")!;
+    }
+
+    this.#query(reverseName, "PTR").then(({ code, ret }) => {
+      const records = (ret as string[]).map((record) => fqdnToHostname(record));
+      req.oncomplete(code, records);
+    });
+
+    return 0;
   }
 
   getServers(): [string, number][] {

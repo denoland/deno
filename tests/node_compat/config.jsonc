@@ -82,6 +82,8 @@
     "es-module/test-vm-compile-function-lineoffset.js": {},
     "es-module/test-wasm-memory-out-of-bound.js": {},
     "es-module/test-wasm-simple.js": {},
+    "internet/test-dns-ipv4.js": {},
+    "internet/test-dns-ipv6.js": {},
     "internet/test-snapshot-dns-lookup.js": {
       "ignore": true,
       "reason": "Node.js snapshot/heap profiling features (--build-snapshot, --heap-prof, --heapsnapshot-near-heap-limit) are not implemented in Deno"

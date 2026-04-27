@@ -4,7 +4,6 @@ use std::cell::RefCell;
 use std::net::IpAddr;
 use std::net::SocketAddr;
 use std::rc::Rc;
-use std::str::FromStr;
 #[cfg(target_family = "windows")]
 use std::sync::OnceLock;
 
@@ -15,10 +14,7 @@ use deno_error::JsError;
 use deno_net::ops::NetPermToken;
 use deno_permissions::PermissionCheckError;
 use deno_permissions::PermissionsContainer;
-use hyper_util::client::legacy::connect::dns::GaiResolver;
-use hyper_util::client::legacy::connect::dns::Name;
 use socket2::SockAddr;
-use tower_service::Service;
 
 #[derive(Debug, thiserror::Error, JsError)]
 pub enum DnsError {
@@ -66,6 +62,7 @@ pub async fn op_node_getaddrinfo(
   state: Rc<RefCell<OpState>>,
   #[string] hostname: String,
   port: Option<u16>,
+  #[smi] family: i32,
 ) -> Result<NetPermToken, DnsError> {
   {
     let mut state_ = state.borrow_mut();
@@ -73,20 +70,178 @@ pub async fn op_node_getaddrinfo(
     permissions.check_net(&(hostname.as_str(), port), "node:dns.lookup()")?;
   }
 
-  let mut resolver = GaiResolver::new();
-  let name = Name::from_str(&hostname)
-    .map_err(|_| DnsError::Resolution(hostname.clone()))?;
-  let resolved_ips = resolver
-    .call(name)
-    .await
-    .map_err(|_| DnsError::Resolution(hostname.clone()))?
-    .map(|addr| addr.ip().to_string())
-    .collect::<Vec<_>>();
+  let hostname_clone = hostname.clone();
+  let resolved_ips =
+    spawn_blocking(move || getaddrinfo_inner(&hostname_clone, family))
+      .await
+      .map_err(|e| DnsError::Io(e.into()))??;
+
   Ok(NetPermToken {
     hostname,
     port,
     resolved_ips,
   })
+}
+
+fn getaddrinfo_inner(
+  hostname: &str,
+  family: i32,
+) -> Result<Vec<String>, DnsError> {
+  #[cfg(unix)]
+  {
+    use std::ffi::CString;
+
+    let ai_family = match family {
+      4 => libc::AF_INET,
+      6 => libc::AF_INET6,
+      _ => libc::AF_UNSPEC,
+    };
+
+    let c_hostname = CString::new(hostname)
+      .map_err(|_| DnsError::Resolution(hostname.to_string()))?;
+
+    let hints = libc::addrinfo {
+      ai_flags: 0,
+      ai_family,
+      ai_socktype: libc::SOCK_STREAM,
+      ai_protocol: 0,
+      ai_addrlen: 0,
+      ai_addr: std::ptr::null_mut(),
+      ai_canonname: std::ptr::null_mut(),
+      ai_next: std::ptr::null_mut(),
+    };
+
+    let mut result: *mut libc::addrinfo = std::ptr::null_mut();
+
+    // SAFETY: Calling getaddrinfo with valid pointers
+    let code = unsafe {
+      libc::getaddrinfo(
+        c_hostname.as_ptr(),
+        std::ptr::null(),
+        &hints,
+        &mut result,
+      )
+    };
+
+    if code != 0 {
+      return Err(assert_success_err(code));
+    }
+
+    let mut ips = Vec::new();
+    let mut current = result;
+    while !current.is_null() {
+      // SAFETY: current is a valid pointer from getaddrinfo linked list
+      let addr = unsafe { &*current };
+      let sock_addr =
+        // SAFETY: ai_addr/ai_addrlen are valid from getaddrinfo
+        unsafe { SockAddr::new(
+          *(addr.ai_addr as *const libc::sockaddr_storage),
+          addr.ai_addrlen,
+        ) };
+      if let Some(ip) = sock_addr.as_socket() {
+        ips.push(ip.ip().to_string());
+      }
+      // SAFETY: Advancing to next node in getaddrinfo linked list
+      current = unsafe { (*current).ai_next };
+    }
+
+    // SAFETY: Freeing the result from getaddrinfo
+    unsafe { libc::freeaddrinfo(result) };
+
+    if ips.is_empty() {
+      return Err(DnsError::Resolution(hostname.to_string()));
+    }
+
+    Ok(ips)
+  }
+
+  #[cfg(windows)]
+  {
+    use winapi::shared::minwindef::MAKEWORD;
+    use windows_sys::Win32::Networking::WinSock;
+
+    let ai_family = match family {
+      4 => WinSock::AF_INET as i32,
+      6 => WinSock::AF_INET6 as i32,
+      _ => WinSock::AF_UNSPEC as i32,
+    };
+
+    // SAFETY: winapi call
+    let wsa_startup_code = *WINSOCKET_INIT.get_or_init(|| unsafe {
+      let mut wsa_data: WinSock::WSADATA = std::mem::zeroed();
+      WinSock::WSAStartup(MAKEWORD(2, 2), &mut wsa_data)
+    });
+    if wsa_startup_code != 0 {
+      return Err(DnsError::Resolution(hostname.to_string()));
+    }
+
+    let c_hostname: Vec<u8> =
+      hostname.bytes().chain(std::iter::once(0)).collect();
+
+    let hints = WinSock::ADDRINFOA {
+      ai_flags: 0,
+      ai_family,
+      ai_socktype: WinSock::SOCK_STREAM as _,
+      ai_protocol: 0,
+      ai_addrlen: 0,
+      ai_canonname: std::ptr::null_mut(),
+      ai_addr: std::ptr::null_mut(),
+      ai_next: std::ptr::null_mut(),
+    };
+
+    let mut result: *mut WinSock::ADDRINFOA = std::ptr::null_mut();
+
+    // SAFETY: Calling getaddrinfo with valid pointers
+    let code = unsafe {
+      WinSock::getaddrinfo(
+        c_hostname.as_ptr() as _,
+        std::ptr::null(),
+        &hints,
+        &mut result,
+      )
+    };
+
+    if code != 0 {
+      return Err(assert_success_err(code));
+    }
+
+    let mut ips = Vec::new();
+    let mut current = result;
+    // SAFETY: Iterating linked list returned by getaddrinfo
+    while !current.is_null() {
+      let addr = unsafe { &*current };
+      if let Some(sock_addr) = SockAddr::try_init(|storage, len| {
+        std::ptr::copy_nonoverlapping(
+          addr.ai_addr as *const u8,
+          storage as *mut u8,
+          addr.ai_addrlen as usize,
+        );
+        *len = addr.ai_addrlen as _;
+        Ok(())
+      })
+      .ok()
+      .and_then(|(_, sa)| sa.as_socket())
+      {
+        ips.push(sock_addr.ip().to_string());
+      }
+      current = unsafe { (*current).ai_next };
+    }
+
+    // SAFETY: Freeing the result from getaddrinfo
+    unsafe { WinSock::freeaddrinfo(result) };
+
+    if ips.is_empty() {
+      return Err(DnsError::Resolution(hostname.to_string()));
+    }
+
+    Ok(ips)
+  }
+
+  #[cfg(not(any(unix, windows)))]
+  {
+    let _ = (hostname, family);
+    Err(DnsError::UnsupportedPlatform)
+  }
 }
 
 #[op2(stack_trace)]
@@ -198,15 +353,11 @@ fn getnameinfo(socket_addr: SocketAddr) -> Result<(String, String), DnsError> {
 }
 
 #[cfg(any(unix, windows))]
-fn assert_success(code: i32) -> Result<(), DnsError> {
+fn assert_success_err(code: i32) -> DnsError {
   #[cfg(windows)]
   use windows_sys::Win32::Networking::WinSock;
 
   use crate::ops::constant;
-
-  if code == 0 {
-    return Ok(());
-  }
 
   #[cfg(unix)]
   let err = match code {
@@ -238,5 +389,13 @@ fn assert_success(code: i32) -> Result<(), DnsError> {
     _ => DnsError::Io(std::io::Error::from_raw_os_error(code)),
   };
 
-  Err(err)
+  err
+}
+
+#[cfg(any(unix, windows))]
+fn assert_success(code: i32) -> Result<(), DnsError> {
+  if code == 0 {
+    return Ok(());
+  }
+  Err(assert_success_err(code))
 }
