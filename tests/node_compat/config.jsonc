@@ -780,18 +780,10 @@
     // TODO(bartlomieju): this test was disabled during work on `node:inspector`, it never worked
     // "parallel/test-disable-sigusr1.js": {},
     "parallel/test-disable-sigusr1.js": {},
-    "parallel/test-dns-cancel-reverse-lookup.js": {
-      "linux": false
-    },
-    "parallel/test-dns-channel-cancel.js": {
-      "linux": false
-    },
-    "parallel/test-dns-channel-cancel-promise.js": {
-      "linux": false
-    },
-    "parallel/test-dns-channel-timeout.js": {
-      "linux": false
-    },
+    "parallel/test-dns-cancel-reverse-lookup.js": {},
+    "parallel/test-dns-channel-cancel.js": {},
+    "parallel/test-dns-channel-cancel-promise.js": {},
+    "parallel/test-dns-channel-timeout.js": {},
     "parallel/test-dns-default-order-ipv4.js": {},
     "parallel/test-dns-default-order-ipv6.js": {},
     "parallel/test-dns-default-order-verbatim.js": {},

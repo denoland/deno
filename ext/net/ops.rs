@@ -952,7 +952,6 @@ pub struct ResolveAddrArgs {
 #[derive(FromV8)]
 pub struct ResolveDnsOption {
   name_server: Option<NameServer>,
-  timeout_ms: Option<u64>,
 }
 
 #[derive(FromV8)]
@@ -975,8 +974,6 @@ pub async fn op_dns_resolve(
     cancel_rid,
   } = args;
 
-  let timeout_ms = options.as_ref().and_then(|o| o.timeout_ms);
-
   let (config, opts) = if let Some(name_server) =
     options.as_ref().and_then(|o| o.name_server.as_ref())
   {
@@ -989,11 +986,6 @@ pub async fn op_dns_resolve(
       let mut opts = ResolverOpts::default();
       if use_edns {
         opts.edns0 = true;
-      }
-      if let Some(ms) = timeout_ms {
-        opts.timeout =
-          std::time::Duration::from_millis(ms.max(1));
-        opts.attempts = 1;
       }
       opts
     })

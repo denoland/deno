@@ -36,6 +36,7 @@ import {
 } from "ext:deno_node/internal_binding/async_wrap.ts";
 import { ares_strerror } from "ext:deno_node/internal_binding/ares.ts";
 import { notImplemented } from "ext:deno_node/_utils.ts";
+import { core } from "ext:core/mod.js";
 import {
   op_dns_resolve,
   op_net_get_ips_from_perm_token,
@@ -299,37 +300,31 @@ export class ChannelWrap extends AsyncWrap implements ChannelWrapQuery {
     // deno-lint-ignore no-explicit-any
     let code: any = 0;
 
+    let cancelRid: number | undefined;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+
     try {
-      const options = this.#timeout >= 0
-        ? {
-          ...resolveOptions,
-          timeout_ms: this.#timeout,
-        }
-        : resolveOptions;
-
-      let dnsPromise: Promise<Deno.RecordWithTtl[]> = op_dns_resolve({
-        query,
-        recordType,
-        options,
-      }, /* useEdns0 */ false);
-
       if (this.#timeout >= 0) {
-        dnsPromise = Promise.race([
-          dnsPromise,
-          new Promise<never>((_resolve, reject) =>
-            setTimeout(() => reject("ETIMEOUT"), this.#timeout)
-          ),
-        ]);
+        cancelRid = core.createCancelHandle();
+        timer = setTimeout(() => {
+          core.tryClose(cancelRid!);
+          cancelRid = undefined;
+        }, this.#timeout);
       }
 
-      const res = await dnsPromise;
+      const res = await op_dns_resolve({
+        query,
+        recordType,
+        options: resolveOptions,
+        cancelRid,
+      }, /* useEdns0 */ false);
       if (ttl) {
         ret = res;
       } else {
         ret = res.map((recordWithTtl) => recordWithTtl.data);
       }
     } catch (e) {
-      if (e === "ETIMEOUT") {
+      if (e instanceof Deno.errors.Interrupted) {
         code = "ETIMEOUT";
       } else if (e instanceof Deno.errors.NotFound) {
         code = codeMap.get("EAI_NODATA")!;
@@ -337,6 +332,9 @@ export class ChannelWrap extends AsyncWrap implements ChannelWrapQuery {
         // TODO(cmorten): map errors to appropriate error codes.
         code = codeMap.get("UNKNOWN")!;
       }
+    } finally {
+      if (timer !== undefined) clearTimeout(timer);
+      if (cancelRid !== undefined) core.tryClose(cancelRid);
     }
 
     return { code, ret };
