@@ -278,6 +278,10 @@ Object.setPrototypeOf(TLSSocket.prototype, net.Socket.prototype);
 Object.setPrototypeOf(TLSSocket, net.Socket);
 
 tlsWrap.TLSWrap.prototype.close = function close(cb) {
+  // Signal to Rust that this TLSWrap is being closed, so it won't
+  // send buffered application data after a failed identity check.
+  this.setClosing();
+
   let ssl;
   if (this._owner) {
     ssl = this._owner.ssl;
@@ -301,7 +305,7 @@ tlsWrap.TLSWrap.prototype.close = function close(cb) {
 
   if (this._parentWrap) {
     if (this._parentWrap._handle === null) {
-      queueMicrotask(done);
+      nextTick(done);
       return;
     }
 
@@ -313,7 +317,7 @@ tlsWrap.TLSWrap.prototype.close = function close(cb) {
   }
 
   // Defer so callers can register "close" listeners after destroy().
-  queueMicrotask(done);
+  nextTick(done);
 };
 
 TLSSocket.prototype._wrapHandle = function (wrap, handle) {
