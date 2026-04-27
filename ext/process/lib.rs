@@ -576,7 +576,9 @@ fn create_command(
     command.args(args.args);
   }
 
-  command.current_dir(run_env.cwd);
+  if let Some(cwd) = run_env.cwd {
+    command.current_dir(cwd);
+  }
   command.env_clear();
   command.envs(run_env.envs.into_iter().map(|(k, v)| (k.into_inner(), v)));
 
@@ -1138,7 +1140,10 @@ impl std::cmp::PartialEq for EnvVarKey {
 
 struct RunEnv {
   envs: HashMap<EnvVarKey, OsString>,
-  cwd: PathBuf,
+  /// `None` means "inherit the parent's cwd". This happens when no cwd was
+  /// explicitly passed and the current working directory could not be
+  /// resolved (e.g. because it was unlinked, matching Node.js semantics).
+  cwd: Option<PathBuf>,
 }
 
 /// Computes the current environment, which will then be used to inform
@@ -1155,11 +1160,21 @@ fn compute_run_env(
     clippy::disallowed_methods,
     reason = "ok for now because launching a sub process requires the real fs"
   )]
-  let cwd =
-    std::env::current_dir().map_err(ProcessError::FailedResolvingCwd)?;
-  let cwd = arg_cwd
-    .map(|cwd_arg| resolve_path(cwd_arg, &cwd))
-    .unwrap_or(cwd);
+  let current_dir = std::env::current_dir();
+  let cwd = match arg_cwd {
+    Some(cwd_arg) => {
+      let arg_path = Path::new(cwd_arg);
+      if arg_path.is_absolute() {
+        Some(
+          deno_path_util::normalize_path(Cow::Borrowed(arg_path)).into_owned(),
+        )
+      } else {
+        let base = current_dir.map_err(ProcessError::FailedResolvingCwd)?;
+        Some(resolve_path(cwd_arg, &base))
+      }
+    }
+    None => current_dir.ok(),
+  };
   let envs = if arg_clear_env {
     arg_envs
       .iter()
@@ -1182,14 +1197,25 @@ fn resolve_cmd(cmd: &str, env: &RunEnv) -> Result<PathBuf, ProcessError> {
   #[cfg(windows)]
   let is_path = is_path || cmd.contains('\\') || Path::new(&cmd).is_absolute();
   if is_path {
-    Ok(resolve_path(cmd, &env.cwd))
+    let cmd_path = Path::new(cmd);
+    if cmd_path.is_absolute() {
+      Ok(deno_path_util::normalize_path(Cow::Borrowed(cmd_path)).into_owned())
+    } else {
+      let cwd = env.cwd.as_deref().ok_or_else(|| {
+        ProcessError::FailedResolvingCwd(std::io::Error::from(
+          std::io::ErrorKind::NotFound,
+        ))
+      })?;
+      Ok(resolve_path(cmd, cwd))
+    }
   } else {
     let path = env.envs.get(&EnvVarKey::new(OsString::from("PATH")));
+    let lookup_cwd = env.cwd.clone().unwrap_or_else(|| PathBuf::from("."));
     match deno_permissions::which::which_in(
       sys_traits::impls::RealSys,
       cmd,
       path.cloned(),
-      env.cwd.clone(),
+      lookup_cwd,
     ) {
       Ok(cmd) => Ok(cmd),
       Err(deno_permissions::which::Error::CannotFindBinaryPath) => {
@@ -1665,7 +1691,9 @@ mod deprecated {
     for arg in args.iter().skip(1) {
       c.arg(arg);
     }
-    c.current_dir(run_env.cwd);
+    if let Some(cwd) = run_env.cwd {
+      c.current_dir(cwd);
+    }
 
     c.env_clear();
     for (key, value) in run_env.envs {

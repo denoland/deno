@@ -1913,9 +1913,17 @@ pub fn flags_from_vec_with_initial_cwd(
       }
     }
     _ => {
+      // Node.js compatibility: `--interactive` / `-i` at the top level
+      // forces REPL mode regardless of any other flags.
+      let interactive_flag = matches
+        .try_get_one::<bool>("interactive")
+        .ok()
+        .flatten()
+        .copied()
+        .unwrap_or(false);
       let has_non_globals = app
         .get_arguments()
-        .filter(|arg| !arg.is_global_set())
+        .filter(|arg| !arg.is_global_set() && arg.get_id() != "interactive")
         .any(|arg| {
           matches
             .value_source(arg.get_id().as_str())
@@ -1924,7 +1932,9 @@ pub fn flags_from_vec_with_initial_cwd(
             })
         });
 
-      if has_non_globals || matches.contains_id("script_arg") {
+      if !interactive_flag
+        && (has_non_globals || matches.contains_id("script_arg"))
+      {
         run_parse(&mut flags, &mut matches, app, true)?;
       } else {
         handle_repl_flags(
@@ -2136,6 +2146,19 @@ pub fn clap_root() -> Command {
         .help("Suppress diagnostic output")
         .action(ArgAction::SetTrue)
         .global(true),
+    )
+    .arg(
+      // Node.js compatibility: `node --interactive` / `node -i` forces REPL
+      // mode. We accept it as a no-op flag at the top level so that scripts
+      // spawning the binary the same way fall through to Deno's default
+      // REPL behavior. Deliberately not global() — only valid when no
+      // subcommand is given.
+      Arg::new("interactive")
+        .short('i')
+        .long("interactive")
+        .help("Enter REPL mode (Node.js compatibility)")
+        .action(ArgAction::SetTrue)
+        .hide(true),
     )
     .subcommand(run_subcommand())
     .subcommand(serve_subcommand())
