@@ -54,8 +54,16 @@ export function chdir(directory: string): void {
   }
   // Node's chdir error carries `path` (the cwd before chdir), `dest` (the
   // target), and `syscall: 'chdir'`. Snapshot the cwd before attempting the
-  // change so the error's `path` matches Node's behaviour.
-  const fromPath = fs.cwd();
+  // change so the error's `path` matches Node's behaviour. If the current
+  // cwd has been deleted (common in tmpdir cleanup during process exit),
+  // `fs.cwd()` itself throws — fall back to an empty string so the wrapper
+  // still has a sensible `path`, and don't surface the cwd lookup error.
+  let fromPath = "";
+  try {
+    fromPath = fs.cwd();
+  } catch {
+    // Ignore — chdir() below will surface a chdir-shaped error.
+  }
   try {
     fs.chdir(directory);
   } catch (err) {
