@@ -3129,6 +3129,7 @@
       "ignore": true,
       "reason": "Deno's node:trace_events polyfill is a stub (createTracing returns an object without .enable/.disable, getEnabledCategories returns \"\" instead of undefined). These tests were silently skipping via try/catch(require('trace_events')) until that lookup was fixed."
     },
+    "parallel/test-trace-events-bootstrap.js": {},
     "parallel/test-trace-events-dynamic-enable-workers-disabled.js": {},
     // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
     // "parallel/test-trace-events-dynamic-enable.js": {},
