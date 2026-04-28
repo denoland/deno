@@ -342,7 +342,10 @@ export class ChannelWrap extends AsyncWrap implements ChannelWrapQuery {
         }
         return { code, ret };
       } catch (e) {
-        if (e instanceof Deno.errors.Interrupted) {
+        if (
+          e instanceof Deno.errors.Interrupted ||
+          e instanceof Deno.errors.TimedOut
+        ) {
           if (attempt < tries - 1) continue;
           code = "ETIMEOUT";
         } else if (e instanceof Deno.errors.NotFound) {
@@ -364,97 +367,107 @@ export class ChannelWrap extends AsyncWrap implements ChannelWrapQuery {
 
   queryAny(req: QueryReqWrap, name: string): number {
     this.#pendingQueries.add(req);
+    (async () => {
+      const records: { type: Deno.RecordType; [key: string]: unknown }[] = [];
 
-    // deno-lint-ignore no-explicit-any
-    this.#query(name, "ANY" as any, true).then(({ code, ret }) => {
-      if (!this.#pendingQueries.has(req)) return;
-      this.#pendingQueries.delete(req);
-
-      if (code !== 0) {
-        req.oncomplete(code, []);
-        return;
-      }
-
-      const records: { type: string; [key: string]: unknown }[] = [];
-      for (const entry of ret) {
-        const data = entry?.data ?? entry;
-        const ttl = entry?.ttl ?? 0;
-        const rt = entry?.recordType;
-
-        switch (rt) {
-          case "A":
-            records.push({ type: "A", address: data, ttl });
-            break;
-          case "AAAA":
-            records.push({ type: "AAAA", address: data, ttl });
-            break;
-          case "MX":
-            records.push({
-              type: "MX",
-              priority: data.preference,
-              exchange: fqdnToHostname(data.exchange),
-            });
-            break;
-          case "NS":
-            records.push({ type: "NS", value: fqdnToHostname(data) });
-            break;
-          case "TXT":
-            records.push({ type: "TXT", entries: data });
-            break;
-          case "PTR":
-            records.push({ type: "PTR", value: fqdnToHostname(data) });
-            break;
-          case "SOA":
-            records.push({
-              type: "SOA",
-              nsname: fqdnToHostname(data.mname),
-              hostmaster: fqdnToHostname(data.rname),
-              serial: data.serial,
-              refresh: data.refresh,
-              retry: data.retry,
-              expire: data.expire,
-              minttl: data.minimum,
-            });
-            break;
-          case "CAA":
+      await Promise.allSettled([
+        this.#query(name, "A").then(({ ret }) => {
+          ret.forEach((record) =>
+            records.push({ type: "A", address: record, ttl: 0 })
+          );
+        }),
+        this.#query(name, "AAAA").then(({ ret }) => {
+          (ret as string[]).forEach((record) =>
+            records.push({ type: "AAAA", address: record, ttl: 0 })
+          );
+        }),
+        this.#query(name, "CAA").then(({ ret }) => {
+          (ret as Deno.CaaRecord[]).forEach(({ critical, tag, value }) =>
             records.push({
               type: "CAA",
-              [data.tag]: data.value,
-              critical: +data.critical && 128,
-            });
-            break;
-          case "CNAME":
-            records.push({ type: "CNAME", value: data });
-            break;
-          case "NAPTR":
+              [tag]: value,
+              critical: +critical && 128,
+            })
+          );
+        }),
+        this.#query(name, "CNAME").then(({ ret }) => {
+          ret.forEach((record) =>
+            records.push({ type: "CNAME", value: record })
+          );
+        }),
+        this.#query(name, "MX").then(({ ret }) => {
+          (ret as Deno.MxRecord[]).forEach(({ preference, exchange }) =>
             records.push({
-              type: "NAPTR",
-              order: data.order,
-              preference: data.preference,
-              flags: data.flags,
-              service: data.services,
-              regexp: data.regexp,
-              replacement: data.replacement,
-            });
-            break;
-          case "SRV":
-            records.push({
-              type: "SRV",
-              priority: data.priority,
-              weight: data.weight,
-              port: data.port,
-              name: fqdnToHostname(data.target),
-            });
-            break;
-        }
-      }
+              type: "MX",
+              priority: preference,
+              exchange: fqdnToHostname(exchange),
+            })
+          );
+        }),
+        this.#query(name, "NAPTR").then(({ ret }) => {
+          (ret as Deno.NaptrRecord[]).forEach(
+            ({ order, preference, flags, services, regexp, replacement }) =>
+              records.push({
+                type: "NAPTR",
+                order,
+                preference,
+                flags,
+                service: services,
+                regexp,
+                replacement,
+              }),
+          );
+        }),
+        this.#query(name, "NS").then(({ ret }) => {
+          (ret as string[]).forEach((record) =>
+            records.push({ type: "NS", value: fqdnToHostname(record) })
+          );
+        }),
+        this.#query(name, "PTR").then(({ ret }) => {
+          (ret as string[]).forEach((record) =>
+            records.push({ type: "PTR", value: fqdnToHostname(record) })
+          );
+        }),
+        this.#query(name, "SOA").then(({ ret }) => {
+          (ret as Deno.SoaRecord[]).forEach(
+            ({ mname, rname, serial, refresh, retry, expire, minimum }) =>
+              records.push({
+                type: "SOA",
+                nsname: fqdnToHostname(mname),
+                hostmaster: fqdnToHostname(rname),
+                serial,
+                refresh,
+                retry,
+                expire,
+                minttl: minimum,
+              }),
+          );
+        }),
+        this.#query(name, "SRV").then(({ ret }) => {
+          (ret as Deno.SrvRecord[]).forEach(
+            ({ priority, weight, port, target }) =>
+              records.push({
+                type: "SRV",
+                priority,
+                weight,
+                port,
+                name: fqdnToHostname(target),
+              }),
+          );
+        }),
+        this.#query(name, "TXT").then(({ ret }) => {
+          ret.forEach((record) =>
+            records.push({ type: "TXT", entries: record })
+          );
+        }),
+      ]);
 
       if (!this.#pendingQueries.has(req)) return;
       this.#pendingQueries.delete(req);
 
       const err = records.length ? 0 : codeMap.get("EAI_NODATA")!;
       req.oncomplete(err, records);
-    });
+    })();
 
     return 0;
   }
