@@ -26,6 +26,7 @@ import { nextTick as _nextTick } from "ext:deno_node/_next_tick.ts";
 import { _exiting } from "ext:deno_node/_process/exiting.ts";
 import * as fs from "ext:deno_fs/30_fs.js";
 import {
+  denoErrorToNodeError,
   ERR_INVALID_ARG_TYPE,
   ERR_INVALID_OBJECT_DEFINE_PROPERTY,
 } from "ext:deno_node/internal/errors.ts";
@@ -51,7 +52,17 @@ export function chdir(directory: string): void {
   if (typeof directory !== "string") {
     throw new ERR_INVALID_ARG_TYPE("directory", "string", directory);
   }
-  fs.chdir(directory);
+  try {
+    fs.chdir(directory);
+  } catch (e) {
+    // Match Node's error shape: code/syscall/path/dest with a libuv-style
+    // message ("ENOENT: no such file or directory, chdir '<cwd>' -> '<dest>'").
+    throw denoErrorToNodeError(e as Error, {
+      syscall: "chdir",
+      path: fs.cwd(),
+      dest: directory,
+    });
+  }
 }
 
 /** https://nodejs.org/api/process.html#process_process_cwd */
