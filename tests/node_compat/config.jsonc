@@ -1588,6 +1588,7 @@
     "parallel/test-http2-client-request-listeners-warning.js": {},
     "parallel/test-http2-client-request-options-errors.js": {},
     "parallel/test-http2-client-rststream-before-connect.js": {},
+    "parallel/test-http2-client-set-priority.js": {},
     "parallel/test-http2-client-setLocalWindowSize.js": {},
     "parallel/test-http2-client-setNextStreamID-errors.js": {},
     "parallel/test-http2-client-settings-before-connect.js": {},
