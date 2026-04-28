@@ -76,14 +76,13 @@ Deno.test({
 Deno.test({
   name: "process.chdir failure",
   fn() {
-    // deno-lint-ignore no-explicit-any
     const err = assertThrows(
       () => {
         process.chdir("non-existent-directory-name");
       },
       Error,
       "ENOENT",
-    ) as any;
+    ) as Error & { code?: string; syscall?: string; dest?: string };
     assertEquals(err.code, "ENOENT");
     assertEquals(err.syscall, "chdir");
     assertEquals(err.dest, "non-existent-directory-name");
