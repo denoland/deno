@@ -971,11 +971,14 @@ const buildJobs = buildItems.map((rawBuildItem) => {
   const additionalJobs = [];
 
   {
-    const shardedCrates = new Set(["specs", "integration"]);
-    const shardCount = 2;
+    const shardedCrates = new Map([
+      ["specs", 2],
+      ["integration", 2],
+      ["node_compat", 3],
+    ]);
     const testMatrix = defineMatrix({
       include: testCrates.flatMap((tc) => {
-        const total = shardedCrates.has(tc.name) ? shardCount : 1;
+        const total = shardedCrates.get(tc.name) ?? 1;
         return Array.from({ length: total }, (_, i) => ({
           test_crate: tc.name,
           test_package: tc.package,

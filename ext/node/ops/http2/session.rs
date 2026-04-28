@@ -9,6 +9,7 @@
 use std::cell::RefCell;
 use std::cell::UnsafeCell;
 use std::collections::HashMap;
+use std::collections::VecDeque;
 use std::ffi::c_void;
 use std::rc::Rc;
 
@@ -147,6 +148,41 @@ where
     let buffer = unsafe { &mut *cell.get() };
     f(buffer)
   })
+}
+
+/// Serialize the session's tracked custom settings into the shared settings
+/// buffer so JS's `addCustomSettingsToObj` can read them. Mirrors the custom
+/// settings tail of Node's `Http2Settings::Update`. Entries whose high bits
+/// are set (registered but never received from the peer) are skipped so the
+/// JS object only exposes settings that actually have a value.
+fn write_custom_settings_to_buffer(
+  buffer: &mut [u32; SETTINGS_LEN],
+  list: &[(i32, u32)],
+) {
+  let offset = SettingsIndex::Count as usize + 2;
+  let mut count: usize = 0;
+  for (key, val) in list {
+    let id = *key as u32;
+    if id & !0xffff_u32 != 0 {
+      continue;
+    }
+    let lo = id & 0xffff;
+    let mut updated = false;
+    for j in 0..count {
+      if buffer[offset + j * 2] & 0xffff == lo {
+        buffer[offset + j * 2] = lo;
+        buffer[offset + j * 2 + 1] = *val;
+        updated = true;
+        break;
+      }
+    }
+    if !updated && count < MAX_ADDITIONAL_SETTINGS {
+      buffer[offset + count * 2] = lo;
+      buffer[offset + count * 2 + 1] = *val;
+      count += 1;
+    }
+  }
+  buffer[SettingsIndex::Count as usize + 1] = count as u32;
 }
 
 fn with_options<F, R>(f: F) -> R
@@ -564,6 +600,10 @@ impl Http2Settings {
         SettingsIndex::MaxHeaderListSize,
         ffi::NGHTTP2_SETTINGS_MAX_HEADER_LIST_SIZE
       );
+      grab_setting!(
+        SettingsIndex::EnableConnectProtocol,
+        ffi::NGHTTP2_SETTINGS_ENABLE_CONNECT_PROTOCOL
+      );
 
       let num_add_settings = buffer[SettingsIndex::Count as usize + 1] as usize;
 
@@ -593,7 +633,8 @@ impl Http2Settings {
   fn send(&self) {
     // SAFETY: self.session points to a valid Session allocated in Http2Session::create
     unsafe {
-      let session = &*self.session;
+      let session = &mut *self.session;
+      session.update_local_custom_settings(&self.entries[..self.count]);
       ffi::nghttp2_submit_settings(
         session.session,
         ffi::NGHTTP2_FLAG_NONE as _,
@@ -740,10 +781,25 @@ unsafe extern "C" fn on_frame_recv_callback(
       handle_data_end_stream(session, frame);
     }
   } else if ft == ffi::NGHTTP2_SETTINGS as u32 {
-    // Only fire for non-ACK SETTINGS frames (the peer's actual settings).
-    // ACK frames are acknowledgments of our own settings.
     if ff & ffi::NGHTTP2_FLAG_ACK as u8 == 0 {
+      // Peer's actual settings. Update our tracked remote custom settings
+      // before firing the JS callback so `session.remoteSettings` returns
+      // the latest values.
+      // SAFETY: frame is a valid SETTINGS frame; the union access matches
+      // the frame type checked above. niv/iv come straight from nghttp2.
+      unsafe {
+        let settings = &(*frame).settings;
+        if settings.niv > 0 && !settings.iv.is_null() {
+          let iv =
+            std::slice::from_raw_parts(settings.iv, settings.niv as usize);
+          session.update_remote_custom_settings_from_iv(iv);
+        }
+      }
       handle_settings_frame(session);
+    } else {
+      // ACK for one of our outgoing SETTINGS frames. Pop the FIFO of pending
+      // callbacks and invoke it so JS can fire the `localSettings` event.
+      handle_settings_ack(session);
     }
   } else if ft == ffi::NGHTTP2_PRIORITY as u32 {
     handle_priority_frame(session, frame);
@@ -808,11 +864,26 @@ fn handle_headers_frame(session: &Session, frame: *const ffi::nghttp2_frame) {
   }
 
   let headers_array = v8::Array::new(scope, (headers.len() * 2) as i32);
-  for (i, (name, value, _flags)) in headers.iter().enumerate() {
-    let name_str = v8::String::new(scope, name).unwrap();
-    let value_str = v8::String::new(scope, value).unwrap();
+  // Mirrors Node's HandleHeadersFrame: collect names of headers that arrived
+  // with NGHTTP2_NV_FLAG_NO_INDEX so JS can expose them via
+  // headers[http2.sensitiveHeaders].
+  let sensitive_array = v8::Array::new(scope, 0);
+  let mut sensitive_count: u32 = 0;
+  for (i, (name, value, flags)) in headers.iter().enumerate() {
+    // Header bytes are arbitrary; decode as Latin-1 (one byte per code unit)
+    // to match Node's LATIN1 path and preserve non-UTF-8 byte values.
+    let name_str =
+      v8::String::new_from_one_byte(scope, name, v8::NewStringType::Normal)
+        .unwrap();
+    let value_str =
+      v8::String::new_from_one_byte(scope, value, v8::NewStringType::Normal)
+        .unwrap();
     headers_array.set_index(scope, (i * 2) as u32, name_str.into());
     headers_array.set_index(scope, (i * 2 + 1) as u32, value_str.into());
+    if flags & (ffi::NGHTTP2_NV_FLAG_NO_INDEX as u8) != 0 {
+      sensitive_array.set_index(scope, sensitive_count, name_str.into());
+      sensitive_count += 1;
+    }
   }
 
   drop(headers);
@@ -850,8 +921,29 @@ fn handle_headers_frame(session: &Session, frame: *const ffi::nghttp2_frame) {
       cat,
       flags.into(),
       headers_array.into(),
+      sensitive_array.into(),
     ],
   );
+}
+
+fn handle_settings_ack(session: &mut Session) {
+  // FIFO pop. Mirrors Node's BaseObjectPtr<Http2Settings> PopSettings().
+  let Some(cb) = session.pending_settings_acks.pop_front() else {
+    return;
+  };
+
+  let mut isolate =
+    // SAFETY: isolate pointer is valid for the session's lifetime
+    unsafe { v8::Isolate::from_raw_isolate_ptr(session.isolate) };
+  v8::scope!(let scope, &mut isolate);
+  let context = v8::Local::new(scope, session.context.clone());
+  let scope = &mut v8::ContextScope::new(scope, context);
+
+  let recv = v8::undefined(scope);
+  let ack = v8::Boolean::new(scope, true);
+  let duration = v8::Number::new(scope, 0.0);
+  let cb_local = v8::Local::new(scope, &cb);
+  cb_local.call(scope, recv.into(), &[ack.into(), duration.into()]);
 }
 
 fn handle_settings_frame(session: &Session) {
@@ -1188,34 +1280,66 @@ pub unsafe extern "C" fn on_stream_read_callback(
   // session.streams HashMap) while JS callbacks fire, which could
   // invalidate the references.
   //
-  // Unlike Node.js, we don't use NGHTTP2_DATA_FLAG_NO_COPY; we copy
-  // data directly into the provided buffer.
+  // For aligned padding, switch to NGHTTP2_DATA_FLAG_NO_COPY so the
+  // actual payload is emitted by `on_send_data_callback` as separate
+  // chunks (header / pad_length / data / padding). For the default
+  // strategy (no padding) we keep the in-place copy: nghttp2 packs the
+  // data into the framebuf and OB_SEND_DATA returns it as one chunk,
+  // matching how Deno previously framed unpadded responses (and what
+  // tests like test-http2-res-corked rely on for chunk count).
+  let no_copy = matches!(session.padding_strategy, PaddingStrategy::Aligned);
+
   let mut amount: usize = 0;
   let mut need_eof = false;
   let mut need_trailers = false;
   let mut is_deferred = false;
+  let mut have_data = false;
 
   if let Some(stream) = session.find_stream(stream_id) {
-    let mut pending_data = stream.pending_data.borrow_mut();
-    if !pending_data.is_empty() {
-      let amt = std::cmp::min(pending_data.len(), length);
-      if amt > 0 {
-        let data_slice = pending_data.split_to(amt);
-        // SAFETY: buf has capacity for `length` bytes per nghttp2 contract
-        unsafe { std::ptr::copy_nonoverlapping(data_slice.as_ptr(), buf, amt) };
-        *stream.available_outbound_length.borrow_mut() -= amt;
-        amount = amt;
-
-        if pending_data.is_empty() && *stream.writable_ended.borrow() {
-          need_eof = true;
-          need_trailers = stream.has_trailers();
+    if no_copy {
+      let pending_data = stream.pending_data.borrow();
+      if !pending_data.is_empty() {
+        let amt = std::cmp::min(pending_data.len(), length);
+        if amt > 0 {
+          amount = amt;
+          have_data = true;
+          // pending_data is consumed in on_send_data_callback so the
+          // bytes survive across the read -> send transition.
+          if pending_data.len() == amt && *stream.writable_ended.borrow() {
+            need_eof = true;
+            need_trailers = stream.has_trailers();
+          }
         }
+      } else if *stream.writable_ended.borrow() {
+        need_eof = true;
+        need_trailers = stream.has_trailers();
+      } else {
+        is_deferred = true;
       }
-    } else if *stream.writable_ended.borrow() {
-      need_eof = true;
-      need_trailers = stream.has_trailers();
     } else {
-      is_deferred = true;
+      let mut pending_data = stream.pending_data.borrow_mut();
+      if !pending_data.is_empty() {
+        let amt = std::cmp::min(pending_data.len(), length);
+        if amt > 0 {
+          let data_slice = pending_data.split_to(amt);
+          // SAFETY: buf has capacity for `length` bytes per nghttp2 contract
+          unsafe {
+            std::ptr::copy_nonoverlapping(data_slice.as_ptr(), buf, amt)
+          };
+          *stream.available_outbound_length.borrow_mut() -= amt;
+          amount = amt;
+
+          if pending_data.is_empty() && *stream.writable_ended.borrow() {
+            need_eof = true;
+            need_trailers = stream.has_trailers();
+          }
+        }
+      } else if *stream.writable_ended.borrow() {
+        need_eof = true;
+        need_trailers = stream.has_trailers();
+      } else {
+        is_deferred = true;
+      }
     }
     // pending_data borrow and stream reference are dropped here
   } else {
@@ -1224,6 +1348,11 @@ pub unsafe extern "C" fn on_stream_read_callback(
 
   if is_deferred {
     return ffi::NGHTTP2_ERR_DEFERRED as _;
+  }
+
+  if no_copy && have_data {
+    // SAFETY: data_flags is a valid out-pointer per nghttp2 contract
+    unsafe { *data_flags |= ffi::NGHTTP2_DATA_FLAG_NO_COPY as u32 };
   }
 
   if need_eof {
@@ -1237,6 +1366,13 @@ pub unsafe extern "C" fn on_stream_read_callback(
       if let Some(stream) = session.find_stream(stream_id) {
         stream.on_trailers();
       }
+    }
+    // Mark EOF as emitted on this stream so the subsequent shutdown()
+    // op (from Writable._final / shutdownWritable) skips its
+    // resume_data and nghttp2 doesn't pack a redundant empty trailing
+    // DATA frame just to carry END_STREAM.
+    if let Some(stream) = session.find_stream(stream_id) {
+      *stream.eof_sent.borrow_mut() = true;
     }
     // Complete shutdown now. All borrows have been dropped above,
     // so it's safe to call into JS. This must happen before
@@ -1305,12 +1441,71 @@ unsafe extern "C" fn on_nghttp_error_callback(
 
 unsafe extern "C" fn on_send_data_callback(
   _session: *mut ffi::nghttp2_session,
-  _frame: *mut ffi::nghttp2_frame,
-  _framehd: *const u8,
-  _length: usize,
+  frame: *mut ffi::nghttp2_frame,
+  framehd: *const u8,
+  length: usize,
   _source: *mut ffi::nghttp2_data_source,
-  _data: *mut c_void,
+  user_data: *mut c_void,
 ) -> i32 {
+  // SAFETY: user_data is the user_data pointer set during session creation
+  let session = unsafe { Session::from_user_data(user_data) };
+
+  // SAFETY: frame is valid for the duration of the callback. `data`
+  // and `hd` are union fields in `nghttp2_frame`; accessing them is
+  // unsafe but valid because pack_data set the active variant before
+  // dispatching this callback.
+  let (stream_id, padlen) = unsafe {
+    let frame = &*frame;
+    // padlen is total trailing padding INCLUDING the pad_length byte,
+    // so pad_length value (the byte itself) = padlen - 1, and the
+    // zero-padding bytes count = padlen - 1.
+    (frame.hd.stream_id, frame.data.padlen)
+  };
+
+  // Header (NGHTTP2_FRAME_HDLEN = 9 bytes per RFC 7540 §4.1) packed
+  // into the framebuf by pack_data; emit it as one chunk on the wire.
+  let header_len = 9usize;
+  // SAFETY: framehd points to the header packed by nghttp2; we copy
+  // it before returning so it doesn't outlive the callback.
+  let header = unsafe { std::slice::from_raw_parts(framehd, header_len) };
+  session.outgoing_chunks.push_back(header.to_vec());
+
+  if padlen > 0 {
+    // Pad length octet: value is the trailing-zero byte count, i.e.
+    // padlen - 1. nghttp2 reserved this byte slot in the framebuf via
+    // frame_set_pad's `framehd_only` shift but didn't fill it.
+    session.outgoing_chunks.push_back(vec![(padlen - 1) as u8]);
+  }
+
+  if length > 0 {
+    let chunk_opt = session.find_stream(stream_id).and_then(|stream| {
+      let mut pending = stream.pending_data.borrow_mut();
+      let amt = std::cmp::min(pending.len(), length);
+      if amt > 0 {
+        let chunk = pending.split_to(amt);
+        *stream.available_outbound_length.borrow_mut() -= amt;
+        Some(chunk.to_vec())
+      } else {
+        None
+      }
+    });
+    // Borrow released; safe to mutate session now.
+    if let Some(chunk) = chunk_opt {
+      session.outgoing_chunks.push_back(chunk);
+    }
+    // If pending shrank short of `length` (shouldn't happen — read
+    // callback already promised this many bytes), the wire will be
+    // short by the missing amount; nghttp2 will fail the session via
+    // its error callback rather than silently corrupt the stream.
+  }
+
+  if padlen > 1 {
+    // Trailing padding bytes (zeros). padlen - 1 of them.
+    session
+      .outgoing_chunks
+      .push_back(vec![0u8; (padlen - 1) as usize]);
+  }
+
   0
 }
 
@@ -1318,8 +1513,19 @@ unsafe extern "C" fn on_invalid_frame_recv_callback(
   _session: *mut ffi::nghttp2_session,
   _frame: *const ffi::nghttp2_frame,
   _lib_error_code: i32,
-  _data: *mut c_void,
+  data: *mut c_void,
 ) -> i32 {
+  // SAFETY: data is the user_data pointer set during session creation
+  let session = unsafe { Session::from_user_data(data) };
+  let count = session.invalid_frame_count;
+  session.invalid_frame_count = count.saturating_add(1);
+  // Node.js compares post-increment against the limit (see node_http2.cc
+  // OnInvalidFrame). Returning a non-zero value tells nghttp2 to terminate
+  // the session immediately, which surfaces as a connection close on the
+  // peer's socket.
+  if session.max_invalid_frames > 0 && count >= session.max_invalid_frames {
+    return 1;
+  }
   0
 }
 
@@ -1459,9 +1665,122 @@ pub struct Session {
   /// per-session limit derived from the `maxHeaderListPairs` option.
   /// Streams that receive more headers are reset with NGHTTP2_ENHANCE_YOUR_CALM.
   pub max_header_pairs: u32,
+  /// Pre-formatted chunks queued by `on_send_data_callback` (NO_COPY DATA
+  /// frames). `get_outgoing_chunk` drains this before falling through to
+  /// `nghttp2_session_mem_send`, so each part of a padded DATA frame
+  /// (header / pad_length / payload / padding) becomes its own
+  /// socket.write, matching the per-uv_buf_t output of Node's libuv send
+  /// path that test-http2-padding-aligned asserts.
+  pub outgoing_chunks: VecDeque<Vec<u8>>,
+  /// Maximum number of invalid HTTP/2 frames the peer may send before the
+  /// session is terminated. Mirrors Node.js's `maxSessionInvalidFrames`
+  /// option (default 1000). 0 disables the check.
+  pub max_invalid_frames: u32,
+  /// Running count of invalid frames received on this session.
+  pub invalid_frame_count: u32,
+  /// Custom settings the local peer has sent. Surfaced via
+  /// `session.localSettings.customSettings`. Mirrors Node's
+  /// `Http2Session::local_custom_settings_`.
+  pub local_custom_settings: Vec<(i32, u32)>,
+  /// Custom settings the remote peer is allowed to send (`remoteCustomSettings`
+  /// option) plus their last-received values. The high bit (1 << 16) of the
+  /// stored ID flags an entry as "registered but no value received yet".
+  /// Mirrors Node's `Http2Session::remote_custom_settings_`.
+  pub remote_custom_settings: Vec<(i32, u32)>,
+  /// FIFO of JS callbacks waiting for SETTINGS ACK from the peer. Each
+  /// `session.settings()` invocation enqueues one entry; an inbound SETTINGS
+  /// frame with the ACK flag pops the front and invokes it with
+  /// `(ack=true, duration=0)`. Mirrors Node's `outstanding_settings_` queue.
+  ///
+  /// Invariant: every SETTINGS frame submitted via `Http2Settings::send`
+  /// (including the constructor's initial settings, which the JS layer
+  /// submits via `Http2Session.prototype.settings` with a bound
+  /// `settingsCallback`) pushes exactly one entry; every inbound ACK pops
+  /// exactly one. Because the only call site is `fn settings(cb)`, push and
+  /// submit are paired atomically.
+  pub pending_settings_acks: VecDeque<v8::Global<v8::Function>>,
 }
 
 impl Session {
+  /// Read the list of remote custom settings IDs the user wants to track.
+  /// JS writes them into the shared settings buffer via
+  /// `remoteCustomSettingsToBuffer` immediately before constructing the
+  /// session. Mirrors Node's `Http2Session::FetchAllowedRemoteCustomSettings`.
+  pub fn fetch_allowed_remote_custom_settings(&mut self) {
+    with_settings(|buffer| {
+      let count = buffer[SettingsIndex::Count as usize + 1] as usize;
+      if count == 0 {
+        return;
+      }
+      let imax = count.min(MAX_ADDITIONAL_SETTINGS);
+      let offset = SettingsIndex::Count as usize + 2;
+      for i in 0..imax {
+        let key = buffer[offset + i * 2] & 0xffff;
+        // bit 16 marks "registered but not yet received".
+        let marked = (key | (1 << 16)) as i32;
+        self.remote_custom_settings.push((marked, 0));
+      }
+      // Reset the count so a later read of localSettings/remoteSettings on
+      // a session without any local custom settings doesn't see leftover.
+      buffer[SettingsIndex::Count as usize + 1] = 0;
+    });
+  }
+
+  /// Record the custom settings we just sent so they can be surfaced via
+  /// `session.localSettings.customSettings`. Mirrors Node's
+  /// `Http2Session::UpdateLocalCustomSettings`.
+  pub fn update_local_custom_settings(
+    &mut self,
+    entries: &[ffi::nghttp2_settings_entry],
+  ) {
+    for entry in entries {
+      // Standard nghttp2 setting IDs are 1..=6 and 8. Node treats anything
+      // >= IDX_SETTINGS_COUNT (7) as custom; we follow the same rule.
+      if entry.settings_id < SettingsIndex::Count as i32 {
+        continue;
+      }
+      let id = entry.settings_id;
+      let mut updated = false;
+      for slot in self.local_custom_settings.iter_mut() {
+        if slot.0 == id {
+          slot.1 = entry.value;
+          updated = true;
+          break;
+        }
+      }
+      if !updated && self.local_custom_settings.len() < MAX_ADDITIONAL_SETTINGS
+      {
+        self.local_custom_settings.push((id, entry.value));
+      }
+    }
+  }
+
+  /// Walk a received SETTINGS frame's iv array and update the registered
+  /// remote custom settings with the new values. Settings whose IDs were
+  /// not registered via `remoteCustomSettings` are dropped, matching Node's
+  /// behaviour in `Http2Session::HandleSettingsFrame`.
+  pub fn update_remote_custom_settings_from_iv(
+    &mut self,
+    iv: &[ffi::nghttp2_settings_entry],
+  ) {
+    if self.remote_custom_settings.is_empty() {
+      return;
+    }
+    for entry in iv {
+      if entry.settings_id < SettingsIndex::Count as i32 {
+        continue;
+      }
+      let id_lo = (entry.settings_id as u32) & 0xffff;
+      for slot in self.remote_custom_settings.iter_mut() {
+        if (slot.0 as u32) & 0xffff == id_lo {
+          slot.0 = id_lo as i32; // clear bit 16 to mark "received".
+          slot.1 = entry.value;
+          break;
+        }
+      }
+    }
+  }
+
   pub fn find_stream(&self, id: i32) -> Option<&cppgc::Ref<Http2Stream>> {
     self.streams.get(&id).map(|v| &v.1)
   }
@@ -1613,7 +1932,7 @@ impl Session {
       None => {
         // JS write path: no consumed stream, but still check for graceful
         // close completion. The JS side handles data serialization via
-        // getOutgoingData/sendPending, but the graceful close notification
+        // getOutgoingChunk/sendPending, but the graceful close notification
         // must still fire when nghttp2 reports no more pending I/O.
         self.maybe_notify_graceful_close_complete();
         return;
@@ -1631,6 +1950,32 @@ impl Session {
 
     self.is_sending = true;
     loop {
+      // Drain any chunks queued by on_send_data_callback (NO_COPY DATA
+      // frames) before pulling the next frame from nghttp2.
+      while let Some(chunk) = self.outgoing_chunks.pop_front() {
+        let write_req = Box::new(H2WriteReq {
+          uv_req: deno_core::uv_compat::new_write(),
+          data: chunk,
+        });
+        let write_ptr = Box::into_raw(write_req);
+        // SAFETY: write_ptr is freshly allocated; stream is a valid libuv handle
+        unsafe {
+          let buf = deno_core::uv_compat::UvBuf {
+            base: (*write_ptr).data.as_ptr() as *mut _,
+            len: (*write_ptr).data.len(),
+          };
+          let ret = deno_core::uv_compat::uv_write(
+            &mut (*write_ptr).uv_req,
+            stream,
+            &buf,
+            1,
+            Some(h2_write_cb),
+          );
+          if ret != 0 {
+            let _ = Box::from_raw(write_ptr);
+          }
+        }
+      }
       let mut src = std::ptr::null();
       let src_len =
         // SAFETY: self.session is a valid nghttp2 session pointer
@@ -1663,7 +2008,7 @@ impl Session {
             let _ = Box::from_raw(write_ptr);
           }
         }
-      } else {
+      } else if self.outgoing_chunks.is_empty() {
         break;
       }
     }
@@ -1851,6 +2196,12 @@ impl Http2Session {
       pending_rst_streams: Vec::new(),
       orig_stream_data: std::ptr::null_mut(),
       max_header_pairs: options.max_header_pairs(),
+      outgoing_chunks: VecDeque::new(),
+      max_invalid_frames: 1000,
+      invalid_frame_count: 0,
+      local_custom_settings: Vec::new(),
+      remote_custom_settings: Vec::new(),
+      pending_settings_acks: VecDeque::new(),
     }));
 
     // SAFETY: inner is valid (just allocated); callbacks and options are valid
@@ -1873,6 +2224,9 @@ impl Http2Session {
         ),
       };
       (*inner).session = session;
+      // Import the user's remoteCustomSettings list (JS writes the IDs to
+      // the shared settings buffer immediately before constructing us).
+      (*inner).fetch_allowed_remote_custom_settings();
     }
 
     Self {
@@ -2016,15 +2370,26 @@ impl Http2Session {
     session.send_pending_data();
   }
 
-  /// Get all pending outgoing h2 frames as a single buffer.
-  /// Used by the JS write path when consume_stream is not active.
+  /// Drain a single outgoing h2 chunk from nghttp2's send queue.
+  ///
+  /// Returns one buffer per logical frame slice so the JS write path
+  /// can issue one socket.write per chunk, matching the libuv
+  /// consume_stream path that queues a separate uv_write per chunk in
+  /// `send_pending_data`. For NO_COPY DATA frames, `on_send_data_callback`
+  /// pushes header / pad_length / payload / padding into
+  /// `session.outgoing_chunks`, which we drain first; non-DATA frames
+  /// come straight from `nghttp2_session_mem_send`. An empty buffer
+  /// signals "no more pending data"; fatal nghttp2 errors are logged
+  /// here via `nghttp2_strerror` so they aren't silently swallowed.
   #[buffer]
   #[reentrant]
-  fn get_outgoing_data(&self) -> Box<[u8]> {
+  fn get_outgoing_chunk(&self) -> Box<[u8]> {
     // SAFETY: self.inner was allocated by Box::into_raw and is valid
     let session = unsafe { &mut *self.inner };
-    let mut output = Vec::new();
     loop {
+      if let Some(chunk) = session.outgoing_chunks.pop_front() {
+        return chunk.into_boxed_slice();
+      }
       let mut src = std::ptr::null();
       let src_len =
         // SAFETY: session.session is a valid nghttp2 session pointer
@@ -2032,12 +2397,26 @@ impl Http2Session {
       if src_len > 0 {
         // SAFETY: src and src_len are valid per nghttp2_session_mem_send
         let data = unsafe { std::slice::from_raw_parts(src, src_len as usize) };
-        output.extend_from_slice(data);
-      } else {
-        break;
+        return data.to_vec().into_boxed_slice();
+      }
+      if src_len < 0 {
+        // SAFETY: nghttp2_strerror returns a static C string for any input
+        let msg = unsafe {
+          let p = ffi::nghttp2_strerror(src_len as i32);
+          std::ffi::CStr::from_ptr(p).to_string_lossy()
+        };
+        log::debug!("nghttp2_session_mem_send failed: {} ({})", msg, src_len);
+        return Box::new([]);
+      }
+      // src_len == 0: nghttp2 has nothing more directly, but
+      // on_send_data_callback may have just pushed chunks (NO_COPY
+      // DATA) — loop and pop them. If the queue is also empty, the
+      // next iteration's pop returns None and we hit mem_send again
+      // which returns 0, exiting via the early return below.
+      if session.outgoing_chunks.is_empty() {
+        return Box::new([]);
       }
     }
-    output.into_boxed_slice()
   }
 
   #[fast]
@@ -2097,11 +2476,22 @@ impl Http2Session {
   }
 
   #[fast]
-  fn settings(&self, _cb: v8::Local<v8::Function>) -> bool {
-    let settings = Http2Settings::init(self.inner);
-    settings.send();
+  fn settings(&self, cb: v8::Local<v8::Function>) -> bool {
     // SAFETY: self.inner was allocated by Box::into_raw and is valid
     let session = unsafe { &mut *self.inner };
+    // SAFETY: session.isolate is valid for this session's lifetime
+    let isolate = unsafe { v8::Isolate::from_raw_isolate_ptr(session.isolate) };
+    // Enqueue BEFORE submit so the FIFO entry is in place no matter what.
+    // The JS layer guarantees this op is the sole entry point that submits
+    // SETTINGS — including the constructor's initial settings, which flows
+    // through `Http2Session.prototype.settings` with a bound
+    // `settingsCallback`. That keeps `pending_settings_acks` and outbound
+    // SETTINGS frames 1:1.
+    session
+      .pending_settings_acks
+      .push_back(v8::Global::new(&isolate, cb));
+    let settings = Http2Settings::init(self.inner);
+    settings.send();
     session.send_pending_data();
     true
   }
@@ -2186,6 +2576,8 @@ impl Http2Session {
 
   #[fast]
   fn local_settings(&self) {
+    // SAFETY: self.inner was allocated by Box::into_raw and is valid
+    let session = unsafe { &*self.inner };
     // SAFETY: self.session is a valid nghttp2 session pointer
     with_settings(|buffer| unsafe {
       buffer[SettingsIndex::HeaderTableSize as usize] =
@@ -2223,11 +2615,14 @@ impl Http2Session {
           self.session,
           ffi::NGHTTP2_SETTINGS_ENABLE_CONNECT_PROTOCOL,
         ) as u32;
+      write_custom_settings_to_buffer(buffer, &session.local_custom_settings);
     });
   }
 
   #[fast]
   fn remote_settings(&self) {
+    // SAFETY: self.inner was allocated by Box::into_raw and is valid
+    let session = unsafe { &*self.inner };
     // SAFETY: self.session is a valid nghttp2 session pointer
     with_settings(|buffer| unsafe {
       buffer[SettingsIndex::HeaderTableSize as usize] =
@@ -2265,6 +2660,7 @@ impl Http2Session {
           self.session,
           ffi::NGHTTP2_SETTINGS_ENABLE_CONNECT_PROTOCOL,
         ) as u32;
+      write_custom_settings_to_buffer(buffer, &session.remote_custom_settings);
     });
   }
 
@@ -2314,6 +2710,13 @@ impl Http2Session {
     }
     log::debug!("set next stream id to {}", id);
     true
+  }
+
+  #[fast]
+  fn set_max_invalid_frames(&self, value: u32) {
+    // SAFETY: self.inner was allocated by Box::into_raw and is valid
+    let session = unsafe { &mut *self.inner };
+    session.max_invalid_frames = value;
   }
 
   #[fast]
@@ -2438,14 +2841,15 @@ impl Http2Session {
   fn request<'s>(
     &self,
     scope: &mut v8::PinScope<'s, '_>,
-    #[serde] headers: (String, usize),
+    headers: v8::Local<v8::String>,
+    count: u32,
     options: i32,
     stream_id: i32,
     weight: i32,
     exclusive: bool,
   ) -> v8::Local<'s, v8::Value> {
     let priority = Http2Priority::new(stream_id, weight, exclusive);
-    let headers = Http2Headers::from(headers);
+    let headers = Http2Headers::from_v8_string(scope, headers, count as usize);
 
     let ret = self.submit_request(priority, headers, options);
     if ret <= 0 {
