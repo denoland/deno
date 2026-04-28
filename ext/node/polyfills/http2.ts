@@ -10,7 +10,6 @@ const {
   ArrayIsArray,
   ArrayPrototypeForEach,
   ArrayPrototypePush,
-  ArrayPrototypeShift,
   ArrayPrototypeSort,
   ArrayPrototypeUnshift,
   ArrayBuffer,
@@ -77,7 +76,6 @@ import {
   defaultTriggerAsyncIdScope,
   symbols,
 } from "ext:deno_node/internal/async_hooks.ts";
-import { AsyncResource } from "node:async_hooks";
 const { async_id_symbol } = symbols;
 import { kTimeout } from "ext:deno_node/internal/timers.mjs";
 // Use node:timers' setTimeout/clearTimeout so the returned Timeout object
@@ -244,56 +242,6 @@ function debugSessionObj(session, message, ...args) {
   debugSession(session[kType], message, ...new SafeArrayIterator(args));
 }
 
-// `NODE_DEBUG_NATIVE=http2` enables a separate stream of debug messages that
-// upstream Node emits from its C++ http2 binding. Tests like
-// parallel/test-http2-debug.js assert their exact format, so we emit them
-// from JS using the same templates Node's `Http2Session::diagnostic_name()` /
-// `Http2Stream::diagnostic_name()` produce.
-let _nativeDebugHttp2: boolean | undefined;
-function nativeDebugHttp2Enabled(): boolean {
-  if (_nativeDebugHttp2 !== undefined) return _nativeDebugHttp2;
-  const env = process.env.NODE_DEBUG_NATIVE;
-  if (typeof env !== "string" || env.length === 0) {
-    _nativeDebugHttp2 = false;
-    return false;
-  }
-  for (const part of env.split(",")) {
-    if (part.trim().toLowerCase() === "http2") {
-      _nativeDebugHttp2 = true;
-      return true;
-    }
-  }
-  _nativeDebugHttp2 = false;
-  return false;
-}
-
-let nextSessionAsyncId = 1;
-let nextStreamAsyncId = 1;
-
-function sessionDiagnosticName(session): string {
-  return `Http2Session ${sessionName(session[kType])} (${session[kAsyncId]})`;
-}
-
-function nativeDebugSession(session, message: string, ...args) {
-  if (!nativeDebugHttp2Enabled()) return;
-  const formatted = args.length === 0 ? message : format(message, ...args);
-  // deno-lint-ignore no-console
-  console.error(`${sessionDiagnosticName(session)} ${formatted}`);
-}
-
-function nativeDebugStream(stream, message: string, ...args) {
-  if (!nativeDebugHttp2Enabled()) return;
-  const session = stream[kSession];
-  const sname = session
-    ? sessionDiagnosticName(session)
-    : "session already destroyed";
-  const id = stream[kID] ?? 0;
-  const aid = stream[kAsyncId] ?? 0;
-  const formatted = args.length === 0 ? message : format(message, ...args);
-  // deno-lint-ignore no-console
-  console.error(`HttpStream ${id} (${aid}) [${sname}] ${formatted}`);
-}
-
 function getURLOrigin(urlStr) {
   return new URL(urlStr).origin;
 }
@@ -397,7 +345,6 @@ const kSessionRemoteSettingsIsUpToDate = 1;
 
 // Private symbols
 const kAlpnProtocol = Symbol("alpnProtocol");
-const kAsyncId = Symbol("asyncId");
 const kEncrypted = Symbol("encrypted");
 const kID = Symbol("id");
 const kInit = Symbol("init");
@@ -421,7 +368,6 @@ const kWriteGeneric = Symbol("write-generic");
 const kSessions = Symbol("sessions");
 
 const kMaxOutstandingSettings = Symbol("maxOutstandingSettings");
-const kMaxOutstandingPings = Symbol("maxOutstandingPings");
 
 const kMaxFrameSize = (2 ** 24) - 1;
 const kMaxInt = (2 ** 32) - 1;
@@ -656,49 +602,14 @@ const proxySocketHandler = {
   },
 };
 
-function onPing(payload, isAck) {
+function onPing(payload) {
   const session = this[kOwner];
   if (session.destroyed) {
     return;
   }
   session[kUpdateTimer]();
-  if (isAck) {
-    // PING ACK from the peer - pop the FIFO of pending ping callbacks and
-    // invoke it with the round-trip payload so the user sees the same bytes
-    // they sent. nghttp2 acks pings in receive order, matching FIFO.
-    const queue = session[kState].pendingPings;
-    if (queue && queue.length > 0) {
-      const cb = ArrayPrototypeShift(queue);
-      const buf = payload ? Buffer.from(payload) : Buffer.alloc(8);
-      const duration = 0;
-      cb(true, duration, buf);
-    }
-    return;
-  }
   debugSessionObj(session, "new ping received");
   session.emit("ping", payload);
-}
-
-// Wraps the generic onStreamRead used by stream_base_commons.ts to emit the
-// `Http2Session ... handling data frame for stream N` native-style debug
-// message that upstream Node's C++ binding writes for every incoming DATA
-// frame when NODE_DEBUG_NATIVE=http2 is set. The wrapper is installed as the
-// onread handler on the http2 stream's handle so it only runs for http2
-// streams (other duplex streams keep using onStreamRead directly).
-function onStreamReadHttp2(arrayBuffer, nread?: number) {
-  if (nativeDebugHttp2Enabled() && (nread === undefined || nread > 0)) {
-    const stream = this[kOwner];
-    if (stream) {
-      const session = stream[kSession];
-      if (session) {
-        nativeDebugSession(
-          session,
-          `handling data frame for stream ${stream[kID]}`,
-        );
-      }
-    }
-  }
-  return ReflectApply(onStreamRead, this, [arrayBuffer, nread]);
 }
 
 // Called when the stream is closed either by sending or receiving an
@@ -713,7 +624,6 @@ function onStreamClose(code) {
     return false;
   }
 
-  nativeDebugStream(stream, "closed with code %d", code);
   debugStreamObj(
     stream,
     "closed with code %d, closed %s, readable %s",
@@ -1411,7 +1321,6 @@ function trackWriteState(stream, bytes) {
 
 function streamOnResume() {
   if (!this.destroyed) {
-    nativeDebugStream(this, "reading starting");
     this[kHandle].readStart();
   }
 }
@@ -1572,7 +1481,6 @@ class Http2Stream extends Duplex {
     options.autoDestroy = false;
     super(options);
     this[async_id_symbol] = -1;
-    this[kAsyncId] = nextStreamAsyncId++;
 
     // Corking the stream automatically allows writes to happen
     // but ensures that those are buffered until the handle has
@@ -1689,7 +1597,7 @@ class Http2Stream extends Duplex {
       return handle.writeBuffer(req, Buffer.from(data, "utf16le"));
     };
 
-    handle.onread = onStreamReadHttp2;
+    handle.onread = onStreamRead;
     this.uncork();
     this.emit("ready");
   }
@@ -2060,7 +1968,6 @@ class Http2Stream extends Duplex {
     const handle = this[kHandle];
     const id = this[kID];
 
-    nativeDebugStream(this, "tearing down stream");
     debugStream(this[kID] || "pending", session[kType], "destroying stream");
 
     const state = this[kState];
@@ -3402,17 +3309,12 @@ class Http2Session extends EventEmitter {
     this[kEncrypted] = undefined;
     this[kAlpnProtocol] = undefined;
     this[kType] = type;
-    this[kAsyncId] = nextSessionAsyncId++;
     this[kProxySocket] = null;
     this[kSocket] = socket;
     this[kTimeout] = null;
     this[kHandle] = undefined;
     this[kMaxOutstandingSettings] = MathMin(
       options.maxOutstandingSettings | 0,
-      2 ** 31 - 1,
-    ) || 10;
-    this[kMaxOutstandingPings] = MathMin(
-      options.maxOutstandingPings | 0,
       2 ** 31 - 1,
     ) || 10;
     this[kStrictSingleValueFields] = options.strictSingleValueFields !== false;
@@ -3559,69 +3461,29 @@ class Http2Session extends EventEmitter {
     if (payload) {
       validateBuffer(payload, "payload");
     }
-    if (payload && payload.byteLength !== 8) {
+    if (payload && payload.length !== 8) {
       throw new ERR_HTTP2_PING_LENGTH();
     }
     validateFunction(callback, "callback");
 
-    // Wrap the user callback in a HTTP2PING AsyncResource so async_hooks
-    // observers (init/before/after/destroy) receive the same events upstream
-    // Node.js's C++ binding emits for each PING frame.
-    const asyncResource = new AsyncResource("HTTP2PING");
-    let destroyed = false;
-    const wrappedCallback = (...args) => {
-      try {
-        asyncResource.runInAsyncScope(callback, this, ...args);
-      } finally {
-        if (!destroyed) {
-          destroyed = true;
-          asyncResource.emitDestroy();
-        }
-      }
-    };
-
-    const cb = pingCallback(wrappedCallback);
+    const cb = pingCallback(callback);
     if (this.connecting || this.closed) {
       process.nextTick(cb, false, 0.0, payload);
-      return false;
-    }
-
-    // Honor the maxOutstandingPings option (defaults to 10 in Node). When the
-    // limit is reached, the ping is cancelled synchronously: the callback
-    // fires with ERR_HTTP2_PING_CANCEL on the next tick and `ping()` returns
-    // false. Matches Http2Session::Ping in src/node_http2.cc.
-    const max = this[kMaxOutstandingPings];
-    if (
-      typeof max === "number" && this[kState].pendingPings.length >= max
-    ) {
-      process.nextTick(cb, false, 0.0, payload);
-      return false;
+      return;
     }
 
     // nghttp2_submit_ping accepts a NULL pointer (sends 8 zero bytes), but
     // the Rust op uses #[buffer] which requires a typed array. Match the
     // upstream behavior by allocating an 8-byte payload here when the caller
-    // didn't supply one. Normalize TypedArray/DataView inputs to a Buffer
-    // view over the same 8 bytes so the Rust side always sees a Uint8Array.
-    let buf;
-    if (payload) {
-      buf = Buffer.from(
-        payload.buffer,
-        payload.byteOffset,
-        payload.byteLength,
-      );
-    } else {
-      buf = Buffer.alloc(8);
-    }
+    // didn't supply one.
+    const buf = payload || Buffer.alloc(8);
 
-    // Track the pending ping so the FIFO of outstanding pings can be matched
-    // against incoming PING ACKs in onPing, and cancelled when the session is
-    // destroyed before the PING ACK arrives (Node's ClearOutstandingPings in
-    // src/node_http2.cc).
+    // Track the pending ping so it can be cancelled when the session is
+    // destroyed before the PING ACK arrives. Matches Node's
+    // ClearOutstandingPings in src/node_http2.cc.
     this[kState].pendingPings.push(cb);
 
-    const ret = this[kHandle].ping(buf, cb);
-    return ret >= 0;
+    return this[kHandle].ping(buf, cb);
   }
 
   [kInspect](depth, opts) {
