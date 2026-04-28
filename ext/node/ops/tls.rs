@@ -84,7 +84,10 @@ pub fn op_get_root_certificates(state: &mut OpState) -> Vec<String> {
   get_bundled_root_certificates()
 }
 
-#[allow(clippy::disallowed_methods, reason = "NODE_EXTRA_CA_CERTS is read from env at runtime")]
+#[allow(
+  clippy::disallowed_methods,
+  reason = "NODE_EXTRA_CA_CERTS is read from env at runtime"
+)]
 fn parse_extra_ca_certs() -> Vec<String> {
   let Ok(extra_ca_certs_file) = std::env::var("NODE_EXTRA_CA_CERTS") else {
     return vec![];

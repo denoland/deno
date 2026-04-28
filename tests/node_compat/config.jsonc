@@ -3110,10 +3110,12 @@
     "parallel/test-tls-get-ca-certificates-extra.js": {},
     "parallel/test-tls-get-ca-certificates-extra-subset.js": {},
     "parallel/test-tls-get-ca-certificates-system.js": {
-      "skip": "Deno does not support --use-system-ca flag"
+      "ignore": true,
+      "reason": "Deno does not support --use-system-ca flag"
     },
     "parallel/test-tls-get-ca-certificates-system-without-flag.js": {
-      "skip": "Deno does not support --no-use-system-ca flag"
+      "ignore": true,
+      "reason": "Deno does not support --no-use-system-ca flag"
     },
     "parallel/test-tls-getcertificate-x509.js": {},
     "parallel/test-tls-honorcipherorder.js": {},
