@@ -1644,6 +1644,7 @@
     "parallel/test-http2-createsecureserver-options.js": {},
     "parallel/test-http2-createserver-options.js": {},
     "parallel/test-http2-date-header.js": {},
+    "parallel/test-http2-debug.js": {},
     "parallel/test-http2-destroy-after-write.js": {},
     "parallel/test-http2-dont-override.js": {},
     "parallel/test-http2-endafterheaders.js": {},

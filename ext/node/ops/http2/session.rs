@@ -454,14 +454,18 @@ impl Http2Options {
           ffi::nghttp2_option_set_peer_max_concurrent_streams(options, 100);
         }
 
-        let max_outstanding_pings =
+        let _max_outstanding_pings =
           buffer[OptionsIndex::MaxOutstandingPings as usize];
-        if max_outstanding_pings > 0 {
-          ffi::nghttp2_option_set_max_outbound_ack(
-            options,
-            max_outstanding_pings as usize,
-          );
-        }
+        // The user's `maxOutstandingPings` option is enforced JS-side in
+        // Http2Session.ping; here it would map to
+        // `nghttp2_option_set_max_outbound_ack`, which gates how many
+        // outbound SETTINGS/PING ACKs the local nghttp2 will buffer before
+        // declaring the peer misbehaving. Setting that to small values like
+        // 2 falsely bursts the threshold during early SETTINGS exchange and
+        // can stall the connection (parallel/test-http2-ping). Keep
+        // nghttp2's generous default (1000) and rely on the JS-side
+        // outstanding-ping accounting to enforce the user's limit, matching
+        // what userland code actually observes in Node.
 
         let max_outstanding_settings =
           buffer[OptionsIndex::MaxOutstandingSettings as usize];
@@ -806,7 +810,7 @@ unsafe extern "C" fn on_frame_recv_callback(
   } else if ft == ffi::NGHTTP2_GOAWAY as u32 {
     handle_goaway_frame(session, frame);
   } else if ft == ffi::NGHTTP2_PING as u32 {
-    handle_ping_frame(session);
+    handle_ping_frame(session, frame);
   } else if ft == ffi::NGHTTP2_ALTSVC as u32 {
     handle_alt_svc_frame(session, frame);
   } else if ft == ffi::NGHTTP2_ORIGIN as u32 {
@@ -953,7 +957,7 @@ fn handle_settings_frame(session: &Session) {
   callback.call(scope, recv.into(), &[]);
 }
 
-fn handle_ping_frame(session: &Session) {
+fn handle_ping_frame(session: &Session, frame: *const ffi::nghttp2_frame) {
   let mut isolate =
     // SAFETY: isolate pointer is valid for the session's lifetime
     unsafe { v8::Isolate::from_raw_isolate_ptr(session.isolate) };
@@ -961,14 +965,29 @@ fn handle_ping_frame(session: &Session) {
   let context = v8::Local::new(scope, session.context.clone());
   let scope = &mut v8::ContextScope::new(scope, context);
 
+  // SAFETY: frame is a valid PING frame per the on_frame_recv contract.
+  let (opaque_data, is_ack) = unsafe {
+    let ping = &(*frame).ping;
+    let flags = (*frame).hd.flags;
+    (ping.opaque_data, flags & ffi::NGHTTP2_FLAG_ACK as u8 != 0)
+  };
+
   let state = session.op_state.borrow();
   let callbacks = state.borrow::<SessionCallbacks>();
   let recv = v8::Local::new(scope, &session.this);
   let callback = v8::Local::new(scope, &callbacks.ping_frame_cb);
   drop(state);
 
-  let arg = v8::null(scope);
-  callback.call(scope, recv.into(), &[arg.into()]);
+  // Pass the 8 bytes of opaque payload as a Uint8Array so JS can match the
+  // ACK against an outstanding ping. We use a backing ArrayBuffer copy here
+  // to avoid borrowing into the nghttp2 frame across the v8 callback.
+  let bs = v8::ArrayBuffer::new_backing_store_from_vec(opaque_data.to_vec())
+    .make_shared();
+  let ab = v8::ArrayBuffer::with_backing_store(scope, &bs);
+  let payload = v8::Uint8Array::new(scope, ab, 0, opaque_data.len()).unwrap();
+  let ack = v8::Boolean::new(scope, is_ack);
+
+  callback.call(scope, recv.into(), &[payload.into(), ack.into()]);
 }
 
 fn handle_goaway_frame(session: &Session, frame: *const ffi::nghttp2_frame) {

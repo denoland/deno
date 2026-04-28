@@ -11,6 +11,8 @@ import {
 } from "ext:deno_node/internal/validators.mjs";
 import {
   AsyncHook,
+  emitAfter,
+  emitBefore,
   emitDestroy as emitDestroyHook,
   emitInit,
   executionAsyncId as internalExecutionAsyncId,
@@ -64,11 +66,18 @@ export class AsyncResource {
     ...args: unknown[]
   ) {
     const previousContext = getAsyncContext();
+    // Node.js fires the async_hooks before/after pair around the
+    // callback, paired with init at construction time and destroy on GC
+    // (or explicit emitDestroy). Without this, async_hooks observers see
+    // init+destroy but never before+after for resources whose work runs
+    // through runInAsyncScope (e.g. HTTP2PING).
+    emitBefore(this.#asyncId);
     try {
       setAsyncContext(this.#snapshot);
       return ReflectApply(fn, thisArg, args);
     } finally {
       setAsyncContext(previousContext);
+      emitAfter(this.#asyncId);
     }
   }
 
