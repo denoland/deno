@@ -243,6 +243,7 @@ impl ReadBuffer {
     }
     #[cfg(not(unix))]
     {
+      use tokio::io::AsyncReadExt;
       let nread = pipe.read(self.get_mut()).await?;
       self.cap = nread;
       self.pos = 0;

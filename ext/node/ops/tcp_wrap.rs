@@ -381,15 +381,21 @@ impl TCPWrap {
     }
   }
 
-  #[cfg(unix)]
   #[fast]
   fn fd_for_ipc(&self) -> i32 {
-    let tcp = self.tcp_ptr();
-    if tcp.is_null() {
-      return -1;
+    #[cfg(unix)]
+    {
+      let tcp = self.tcp_ptr();
+      if tcp.is_null() {
+        return -1;
+      }
+      // SAFETY: tcp is valid (null-checked above).
+      unsafe { uv_compat::uv_tcp_fd_for_ipc(tcp) }
     }
-    // SAFETY: tcp is valid (null-checked above).
-    unsafe { uv_compat::uv_tcp_fd_for_ipc(tcp) }
+    // Windows IPC handle passing doesn't use SCM_RIGHTS-style fd transfer;
+    // returning -1 surfaces "not supported" to the JS handle-passing path.
+    #[cfg(not(unix))]
+    -1
   }
 
   #[fast]
