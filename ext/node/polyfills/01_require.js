@@ -1060,15 +1060,15 @@ Module.prototype.load = function (filename) {
 // `exports` property.
 Module.prototype.require = function (id) {
   if (typeof id !== "string") {
-    // TODO(bartlomieju): it should use different error type
-    // ("ERR_INVALID_ARG_VALUE")
-    throw new TypeError("Invalid argument type");
+    throw new internalErrors.ERR_INVALID_ARG_TYPE("id", "string", id);
   }
 
   if (id === "") {
-    // TODO(bartlomieju): it should use different error type
-    // ("ERR_INVALID_ARG_VALUE")
-    throw new TypeError("id must be non empty");
+    throw new internalErrors.ERR_INVALID_ARG_VALUE(
+      "id",
+      id,
+      "must be a non-empty string",
+    );
   }
   requireDepth++;
   try {

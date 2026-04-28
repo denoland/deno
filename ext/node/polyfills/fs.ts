@@ -177,6 +177,7 @@ const {
   PromisePrototypeThen,
   PromiseResolve,
   RegExpPrototype,
+  RegExpPrototypeTest,
   SafeMap,
   StringPrototypeToString,
   SymbolAsyncIterator,
@@ -3131,20 +3132,26 @@ function asyncIterableToCallback<T>(
   next();
 }
 
-type watchOptions = {
-  persistent?: boolean;
-  recursive?: boolean;
-  encoding?: string;
-  // deno-lint-ignore no-explicit-any
-  ignore?: string | RegExp | ((path: string) => boolean) | any[];
-};
-
-type watchListener = (eventType: string, filename: string) => void;
-
 // Mirrors Node's `validateIgnoreOption` /
-// `validateIgnoreOptionElement` in lib/internal/validators.js.
+// `createIgnoreMatcher` from `lib/internal/fs/watchers.js`.
+// Accepts a string (minimatch glob), RegExp, function, or array of those.
+// Returns a function `(filename) => boolean` (or `null` if `ignore` is nullish).
+type IgnoreOption =
+  | string
+  | RegExp
+  | ((filename: string) => boolean)
+  | (string | RegExp | ((filename: string) => boolean))[]
+  | undefined
+  | null;
+
 // deno-lint-ignore no-explicit-any
-function validateIgnoreOptionElement(value: any, name: string) {
+let _lazyMinimatch: any = null;
+function getMinimatch() {
+  _lazyMinimatch ??= core.createLazyLoader("ext:deno_node/deps/minimatch.js");
+  return _lazyMinimatch();
+}
+
+function validateIgnoreOptionElement(value: unknown, name: string) {
   if (typeof value === "string") {
     if (value.length === 0) {
       throw new ERR_INVALID_ARG_VALUE(
@@ -3164,8 +3171,7 @@ function validateIgnoreOptionElement(value: any, name: string) {
   );
 }
 
-// deno-lint-ignore no-explicit-any
-function validateIgnoreOption(value: any, name: string) {
+function validateIgnoreOption(value: unknown, name: string) {
   if (value == null) return;
   if (ArrayIsArray(value)) {
     for (let i = 0; i < value.length; i++) {
@@ -3175,6 +3181,61 @@ function validateIgnoreOption(value: any, name: string) {
   }
   validateIgnoreOptionElement(value, name);
 }
+
+function createIgnoreMatcher(
+  ignore: IgnoreOption,
+): ((filename: string) => boolean) | null {
+  if (ignore == null) return null;
+  const matchers = ArrayIsArray(ignore) ? ignore : [ignore];
+  const compiled: Array<(filename: string) => boolean> = [];
+
+  for (let i = 0; i < matchers.length; i++) {
+    const matcher = matchers[i];
+    if (typeof matcher === "string") {
+      const { Minimatch } = getMinimatch().default;
+      const mm = new Minimatch(matcher, {
+        nocase: isMacOS || isWindows,
+        windowsPathsNoEscape: true,
+        nonegate: true,
+        nocomment: true,
+        optimizationLevel: 2,
+        platform: isWindows ? "win32" : "posix",
+        // Allow patterns without slashes to match the basename
+        // e.g. '*.log' matches 'subdir/file.log'.
+        matchBase: true,
+      });
+      ArrayPrototypePush(
+        compiled,
+        // deno-lint-ignore prefer-primordials
+        (filename: string) => mm.match(filename),
+      );
+    } else if (ObjectPrototypeIsPrototypeOf(RegExpPrototype, matcher)) {
+      ArrayPrototypePush(
+        compiled,
+        (filename: string) => RegExpPrototypeTest(matcher as RegExp, filename),
+      );
+    } else {
+      // Function
+      ArrayPrototypePush(compiled, matcher as (filename: string) => boolean);
+    }
+  }
+
+  return (filename: string) => {
+    for (let i = 0; i < compiled.length; i++) {
+      if (compiled[i](filename)) return true;
+    }
+    return false;
+  };
+}
+
+type watchOptions = {
+  persistent?: boolean;
+  recursive?: boolean;
+  encoding?: string;
+  ignore?: IgnoreOption;
+};
+
+type watchListener = (eventType: string, filename: string) => void;
 
 function watch(
   filename: string | URL,
@@ -3211,7 +3272,17 @@ function watch(
   // deno-lint-ignore prefer-primordials
   const watchPath = getValidatedPath(filename).toString();
 
+  // Match Node: validate non-boolean `recursive`/`persistent` up front.
+  // https://github.com/nodejs/node/blob/main/lib/internal/fs/recursive_watch.js
+  if (options != null && options.recursive != null) {
+    validateBoolean(options.recursive, "options.recursive");
+  }
+  if (options != null && options.persistent != null) {
+    validateBoolean(options.persistent, "options.persistent");
+  }
   const recursive = options?.recursive || false;
+  validateIgnoreOption(options?.ignore, "options.ignore");
+  const ignoreMatcher = createIgnoreMatcher(options?.ignore);
   const iterator: Deno.FsWatcher = Deno.watchFs(watchPath, {
     recursive,
   });
@@ -3228,6 +3299,9 @@ function watch(
     const filename = recursive
       ? relative(resolvedWatchPath, val.paths[0])
       : basename(val.paths[0]);
+    if (ignoreMatcher !== null && ignoreMatcher(filename)) {
+      return;
+    }
     fsWatcher.emit(
       "change",
       convertDenoFsEventToNodeFsEvent(val.kind),
@@ -3268,12 +3342,15 @@ function watchPromise(
     recursive?: boolean;
     encoding?: string;
     signal?: AbortSignal;
+    ignore?: IgnoreOption;
   },
 ): AsyncIterable<{ eventType: string; filename: string | Buffer | null }> {
   // deno-lint-ignore prefer-primordials
   const watchPath = getValidatedPath(filename).toString();
 
   const recursive = options?.recursive ?? false;
+  validateIgnoreOption(options?.ignore, "options.ignore");
+  const ignoreMatcher = createIgnoreMatcher(options?.ignore);
   const watcher = Deno.watchFs(watchPath, {
     recursive,
   });
@@ -3296,20 +3373,25 @@ function watchPromise(
     async next(): Promise<
       IteratorResult<{ eventType: string; filename: string | Buffer | null }>
     > {
-      // deno-lint-ignore prefer-primordials
-      const iterResult = await fsIterable.next();
-      if (iterResult.done) return iterResult;
+      while (true) {
+        // deno-lint-ignore prefer-primordials
+        const iterResult = await fsIterable.next();
+        if (iterResult.done) return iterResult;
 
-      const eventType = convertDenoFsEventToNodeFsEvent(
-        iterResult.value.kind,
-      );
-      const fname = recursive
-        ? relative(resolvedWatchPath, iterResult.value.paths[0])
-        : basename(iterResult.value.paths[0]);
-      return {
-        value: { eventType, filename: fname },
-        done: false,
-      };
+        const eventType = convertDenoFsEventToNodeFsEvent(
+          iterResult.value.kind,
+        );
+        const fname = recursive
+          ? relative(resolvedWatchPath, iterResult.value.paths[0])
+          : basename(iterResult.value.paths[0]);
+        if (ignoreMatcher !== null && ignoreMatcher(fname)) {
+          continue;
+        }
+        return {
+          value: { eventType, filename: fname },
+          done: false,
+        };
+      }
     },
     // deno-lint-ignore no-explicit-any
     return(value?: any): Promise<IteratorResult<any>> {
