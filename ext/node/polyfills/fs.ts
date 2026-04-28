@@ -79,6 +79,7 @@ import {
 import { glob, globSync } from "ext:deno_node/_fs/_fs_glob.ts";
 import {
   parseFileMode,
+  validateAbortSignal,
   validateBoolean,
   validateEncoding,
   validateFunction,
@@ -3333,6 +3334,7 @@ function watch(
 
   // Match Node's `fs.watch` AbortSignal handling:
   // https://github.com/nodejs/node/blob/main/lib/fs.js
+  validateAbortSignal(options?.signal, "options.signal");
   if (options?.signal) {
     const signal = options.signal;
     if (signal.aborted) {
@@ -3364,6 +3366,7 @@ function watchPromise(
 
   const recursive = options?.recursive ?? false;
   const signal = options?.signal;
+  validateAbortSignal(signal, "options.signal");
   validateIgnoreOption(options?.ignore, "options.ignore");
   const ignoreMatcher = createIgnoreMatcher(options?.ignore);
   const watcher = Deno.watchFs(watchPath, {
@@ -3371,15 +3374,20 @@ function watchPromise(
   });
   const resolvedWatchPath = realpathSync(watchPath) as string;
 
+  let onAbort: (() => void) | null = null;
+  function cleanupAbort() {
+    if (signal && onAbort) {
+      signal.removeEventListener("abort", onAbort);
+      onAbort = null;
+    }
+  }
+
   if (signal) {
     if (signal.aborted) {
       watcher.close();
     } else {
-      signal.addEventListener(
-        "abort",
-        () => watcher.close(),
-        { once: true },
-      );
+      onAbort = () => watcher.close();
+      signal.addEventListener("abort", onAbort, { once: true });
     }
   }
 
@@ -3396,12 +3404,14 @@ function watchPromise(
       IteratorResult<{ eventType: string; filename: string | Buffer | null }>
     > {
       if (signal?.aborted) {
+        cleanupAbort();
         throw abortError();
       }
       while (true) {
         // deno-lint-ignore prefer-primordials
         const iterResult = await fsIterable.next();
         if (iterResult.done) {
+          cleanupAbort();
           if (signal?.aborted) {
             throw abortError();
           }
@@ -3425,6 +3435,7 @@ function watchPromise(
     },
     // deno-lint-ignore no-explicit-any
     return(value?: any): Promise<IteratorResult<any>> {
+      cleanupAbort();
       watcher.close();
       return PromiseResolve({ value, done: true });
     },
