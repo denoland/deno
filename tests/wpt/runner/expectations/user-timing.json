@@ -31,16 +31,8 @@
   "mark.any.worker.html": true,
   "measure-l3.any.html": true,
   "measure-l3.any.worker.html": true,
-  "measure-with-dict.any.html": {
-    "expectedFailures": [
-      "measure entries' detail and start/end are customizable"
-    ]
-  },
-  "measure-with-dict.any.worker.html": {
-    "expectedFailures": [
-      "measure entries' detail and start/end are customizable"
-    ]
-  },
+  "measure-with-dict.any.html": true,
+  "measure-with-dict.any.worker.html": true,
   "measure_syntax_err.any.html": true,
   "measure_syntax_err.any.worker.html": true,
   "structured-serialize-detail.any.html": true,
