@@ -48,6 +48,7 @@ const NUM_LIMITS: usize = 11;
 
 /// Static mapping of JavaScript property names to SQLite limits.
 /// Order matches SQLite limit constant values (0-10).
+/// Keep in sync with LIMIT_NAMES in ext/node/polyfills/sqlite.ts.
 const LIMIT_MAPPING: [(&str, Limit); NUM_LIMITS] = [
   ("length", Limit::SQLITE_LIMIT_LENGTH),
   ("sqlLength", Limit::SQLITE_LIMIT_SQL_LENGTH),
@@ -292,27 +293,25 @@ impl<'a> FromV8<'a> for DatabaseSyncOptions {
         if let Some(val) = limits_obj.get(scope, key.into())
           && !val.is_undefined()
         {
-          let int_val =
-            v8::Local::<v8::Int32>::try_from(val).map_err(|_| {
-              Error::InvalidArgType(
+          let limit_val = coerce_limit_value(scope, val).map_err(|e| {
+            match e {
+              LimitCoercionError::NotANumber
+              | LimitCoercionError::NotAnInteger => Error::InvalidArgType(
                 format!(
-                  "The \"options.limits.{}\" argument must be an integer.",
+                  "The \"options.limits.{}\" argument must be a non-negative integer or Infinity.",
                   js_name
                 )
                 .into(),
-              )
-            })?;
-
-          let limit_val = int_val.value();
-          if limit_val < 0 {
-            return Err(Error::InvalidArgValue(
-              format!(
-                "The \"options.limits.{}\" argument must be non-negative.",
-                js_name
-              )
-              .into(),
-            ));
-          }
+              ),
+              LimitCoercionError::Negative => Error::OutOfRange(
+                format!(
+                  "The \"options.limits.{}\" argument must be non-negative.",
+                  js_name
+                )
+                .into(),
+              ),
+            }
+          })?;
 
           options.initial_limits[idx] = Some(limit_val);
         }
@@ -611,6 +610,35 @@ fn set_db_config(
 
     set == value as i32
   }
+}
+
+enum LimitCoercionError {
+  NotANumber,
+  NotAnInteger,
+  Negative,
+}
+
+/// Coerce a v8 value to a valid SQLite limit integer.
+/// Accepts non-negative integers and positive Infinity (mapped to i32::MAX).
+fn coerce_limit_value(
+  scope: &mut v8::PinScope<'_, '_>,
+  value: v8::Local<v8::Value>,
+) -> Result<i32, LimitCoercionError> {
+  if !value.is_number() {
+    return Err(LimitCoercionError::NotANumber);
+  }
+  let num_value = value.number_value(scope).unwrap_or(f64::NAN);
+  if num_value.is_infinite() && num_value > 0.0 {
+    return Ok(i32::MAX);
+  }
+  if !value.is_int32() {
+    return Err(LimitCoercionError::NotAnInteger);
+  }
+  let int_val = value.int32_value(scope).unwrap_or(-1);
+  if int_val < 0 {
+    return Err(LimitCoercionError::Negative);
+  }
+  Ok(int_val)
 }
 
 /// Apply initial limits to a connection based on options
@@ -2606,6 +2634,8 @@ impl DatabaseSyncLimits {
     conn.limit(limit).map_err(SqliteError::from)
   }
 
+  // Uses manual v8 exception throwing instead of returning Err because
+  // returning Err from a cppgc setter would produce a double-throw.
   fn set_limit_value(
     &self,
     scope: &mut v8::PinScope<'_, '_>,
@@ -2615,33 +2645,22 @@ impl DatabaseSyncLimits {
     let conn = self.conn.borrow();
     let conn = conn.as_ref().ok_or(SqliteError::AlreadyClosed)?;
 
-    if !value.is_number() {
-      throw_type_error_with_code(
-        scope,
-        "Limit value must be a non-negative integer or Infinity.",
-        "ERR_INVALID_ARG_TYPE",
-      );
-      return Ok(());
-    }
-
-    let num_value = value.number_value(scope).unwrap_or(f64::NAN);
-
-    let new_value = if num_value.is_infinite() && num_value > 0.0 {
-      i32::MAX
-    } else if !value.is_int32() {
-      throw_type_error_with_code(
-        scope,
-        "Limit value must be a non-negative integer or Infinity.",
-        "ERR_INVALID_ARG_TYPE",
-      );
-      return Ok(());
-    } else {
-      let int_val = value.int32_value(scope).unwrap_or(-1);
-      if int_val < 0 {
+    let new_value = match coerce_limit_value(scope, value) {
+      Ok(v) => v,
+      Err(
+        LimitCoercionError::NotANumber | LimitCoercionError::NotAnInteger,
+      ) => {
+        throw_type_error_with_code(
+          scope,
+          "Limit value must be a non-negative integer or Infinity.",
+          "ERR_INVALID_ARG_TYPE",
+        );
+        return Ok(());
+      }
+      Err(LimitCoercionError::Negative) => {
         throw_range_error(scope, "Limit value must be non-negative.");
         return Ok(());
       }
-      int_val
     };
 
     conn.set_limit(limit, new_value)?;

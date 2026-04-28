@@ -29,6 +29,7 @@ const {
   TypeError,
 } = primordials;
 
+// Keep in sync with LIMIT_MAPPING in ext/node_sqlite/database.rs.
 const LIMIT_NAMES = [
   "length",
   "sqlLength",
@@ -48,7 +49,7 @@ const LIMIT_NAMES_SET = new SafeSet(LIMIT_NAMES);
 const nativeLimitsGetter = ObjectGetOwnPropertyDescriptor(
   DatabaseSyncOp.prototype,
   "limits",
-)?.get;
+)!.get;
 
 function createLimitsProxy(nativeLimits: object): object {
   return new Proxy(nativeLimits, {

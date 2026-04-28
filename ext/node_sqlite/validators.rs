@@ -12,14 +12,14 @@ pub enum Error {
   InvalidArgType(Cow<'static, str>),
   #[class(range)]
   #[error("{0}")]
-  InvalidArgValue(Cow<'static, str>),
+  OutOfRange(Cow<'static, str>),
 }
 
 impl Error {
   pub fn code(&self) -> ErrorCode {
     match self {
       Self::InvalidArgType(_) => ErrorCode::ERR_INVALID_ARG_TYPE,
-      Self::InvalidArgValue(_) => ErrorCode::ERR_OUT_OF_RANGE,
+      Self::OutOfRange(_) => ErrorCode::ERR_OUT_OF_RANGE,
     }
   }
 }
