@@ -144,6 +144,7 @@ import {
   ERR_INVALID_ARG_TYPE,
   ERR_INVALID_ARG_VALUE,
   ERR_INVALID_CHAR,
+  ERR_INVALID_URL,
   ERR_OUT_OF_RANGE,
   ERR_SOCKET_CLOSED,
   ERR_TLS_ALPN_CALLBACK_WITH_PROTOCOLS,
@@ -243,7 +244,11 @@ function debugSessionObj(session, message, ...args) {
 }
 
 function getURLOrigin(urlStr) {
-  return new URL(urlStr).origin;
+  try {
+    return new URL(urlStr).origin;
+  } catch {
+    throw new ERR_INVALID_URL(urlStr);
+  }
 }
 
 // Schedule a deferred sendPending() call on the session's native handle.
