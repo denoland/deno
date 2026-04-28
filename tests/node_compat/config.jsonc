@@ -1712,6 +1712,7 @@
     "parallel/test-http2-server-errors.js": {},
     "parallel/test-http2-server-rfc-9113-server.js": {},
     "parallel/test-http2-server-rst-before-respond.js": {},
+    "parallel/test-http2-sensitive-headers.js": {},
     "parallel/test-http2-server-rst-stream.js": {},
     "parallel/test-http2-server-session-destroy.js": {},
     "parallel/test-http2-server-settimeout-no-callback.js": {},
