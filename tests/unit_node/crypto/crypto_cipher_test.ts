@@ -1023,7 +1023,18 @@ Deno.test({
     const key = Buffer.alloc(32);
     const iv = Buffer.alloc(16);
 
-    const invalidValues: unknown[] = [123, true, null, undefined, {}, []];
+    // Node.js uses `ArrayBuffer.isView(data)`, which rejects raw
+    // ArrayBuffer / SharedArrayBuffer (only TypedArray / DataView pass).
+    const invalidValues: unknown[] = [
+      123,
+      true,
+      null,
+      undefined,
+      {},
+      [],
+      new ArrayBuffer(16),
+      new SharedArrayBuffer(16),
+    ];
 
     for (const value of invalidValues) {
       const cipher = crypto.createCipheriv("aes-256-cbc", key, iv);

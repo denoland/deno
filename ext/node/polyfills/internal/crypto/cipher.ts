@@ -318,7 +318,7 @@ Cipheriv.prototype.update = function (
     throw new ERR_CRYPTO_INVALID_STATE("update");
   }
 
-  if (!isStringOrBuffer(data)) {
+  if (typeof data !== "string" && !ArrayBuffer.isView(data)) {
     throw new ERR_INVALID_ARG_TYPE(
       "data",
       ["string", "Buffer", "TypedArray", "DataView"],
@@ -603,7 +603,7 @@ Decipheriv.prototype.update = function (
     throw new ERR_CRYPTO_INVALID_STATE("update");
   }
 
-  if (!isStringOrBuffer(data)) {
+  if (typeof data !== "string" && !ArrayBuffer.isView(data)) {
     throw new ERR_INVALID_ARG_TYPE(
       "data",
       ["string", "Buffer", "TypedArray", "DataView"],
