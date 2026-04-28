@@ -440,6 +440,12 @@ libloading = "0.7"
 libuv-sys-lite = { version = "=1.48.3", features = ["dyn-symbols"] }
 napi_sys = { version = "0.1.0", path = "./libs/napi_sys" }
 
+# geometry
+cssparser = "0.36.0"
+# NOTE: Due to a bug in Cargo's optional dependencies, an unused dependency on "glam" is being included in Cargo.lock
+# https://github.com/rust-lang/cargo/issues/10801
+nalgebra = { version = "0.34.1", default-features = false, features = ["std"] }
+
 # webgpu
 raw-window-handle = "0.6.0"
 wgpu-core = "28.0.0"
