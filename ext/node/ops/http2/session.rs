@@ -1809,15 +1809,13 @@ impl Session {
       return;
     }
 
-    // Flush any pending data first so that response DATA frames are
-    // sent before the RST_STREAM. This matches Node.js's behaviour
-    // in SubmitRstStream.
-    self.send_pending_data();
-
-    // Check if the stream still exists in nghttp2. After
-    // send_pending_data, the stream may already be fully closed
-    // (both sides sent END_STREAM) and freed (no_closed_streams=1).
-    // Submitting RST_STREAM for a freed stream causes a double-free.
+    // Submit RST_STREAM before flushing so nghttp2 can prioritise it over
+    // any queued DATA frames (e.g. an END_STREAM data frame queued by a
+    // prior stream.end()). Flushing first would push the END_STREAM frame
+    // and let nghttp2 free the stream (no_closed_streams=1), after which
+    // the RST_STREAM would be silently dropped and the peer would never
+    // see an error. This matches Node.js's SubmitRstStream which calls
+    // nghttp2_submit_rst_stream directly and then schedules a write.
     // SAFETY: self.session is a valid nghttp2 session pointer
     let stream_ptr =
       unsafe { ffi::nghttp2_session_find_stream(self.session, stream_id) };
@@ -1834,6 +1832,8 @@ impl Session {
         code,
       );
     }
+
+    self.send_pending_data();
   }
 
   /// Flush deferred RST_STREAM submissions. Called after
@@ -1843,16 +1843,16 @@ impl Session {
       return;
     }
     let pending: Vec<_> = std::mem::take(&mut self.pending_rst_streams);
-    self.send_pending_data();
     for (stream_id, code) in pending {
-      // Check if the stream still exists (may have been closed/freed
-      // by send_pending_data above).
+      // Check if the stream still exists.
       // SAFETY: self.session is a valid nghttp2 session pointer
       let stream_ptr =
         unsafe { ffi::nghttp2_session_find_stream(self.session, stream_id) };
       if stream_ptr.is_null() {
         continue;
       }
+      // Submit RST_STREAM before flushing so nghttp2 can prioritise it
+      // over any queued DATA frames (e.g. an END_STREAM data frame).
       // SAFETY: self.session is a valid nghttp2 session pointer
       unsafe {
         ffi::nghttp2_submit_rst_stream(
@@ -1863,6 +1863,7 @@ impl Session {
         );
       }
     }
+    self.send_pending_data();
   }
 
   pub fn is_graceful_closing(&self) -> bool {
