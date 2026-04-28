@@ -600,6 +600,10 @@ impl Http2Settings {
         SettingsIndex::MaxHeaderListSize,
         ffi::NGHTTP2_SETTINGS_MAX_HEADER_LIST_SIZE
       );
+      grab_setting!(
+        SettingsIndex::EnableConnectProtocol,
+        ffi::NGHTTP2_SETTINGS_ENABLE_CONNECT_PROTOCOL
+      );
 
       let num_add_settings = buffer[SettingsIndex::Count as usize + 1] as usize;
 
