@@ -762,6 +762,8 @@ unsafe extern "C" fn on_frame_recv_callback(
   // SAFETY: data is the user_data pointer set during session creation
   let session = unsafe { Session::from_user_data(data) };
 
+  session.frames_received = session.frames_received.saturating_add(1);
+
   let ft = frame_type(frame) as u32;
   let ff = frame_flags(frame);
   #[allow(clippy::unnecessary_cast, reason = "cast needed for type alignment")]
@@ -1518,8 +1520,11 @@ unsafe extern "C" fn on_invalid_frame_recv_callback(
 unsafe extern "C" fn on_frame_send_callback(
   _session: *mut ffi::nghttp2_session,
   _frame: *const ffi::nghttp2_frame,
-  _data: *mut c_void,
+  data: *mut c_void,
 ) -> i32 {
+  // SAFETY: data is the user_data pointer set during session creation
+  let session = unsafe { Session::from_user_data(data) };
+  session.frames_sent = session.frames_sent.saturating_add(1);
   0
 }
 
@@ -1664,6 +1669,12 @@ pub struct Session {
   pub max_invalid_frames: u32,
   /// Running count of invalid frames received on this session.
   pub invalid_frame_count: u32,
+  /// Total HTTP/2 frames received on this session, used for the
+  /// `framesReceived` field of perf_hooks `Http2Session` entries.
+  pub frames_received: u32,
+  /// Total HTTP/2 frames sent on this session, used for the
+  /// `framesSent` field of perf_hooks `Http2Session` entries.
+  pub frames_sent: u32,
   /// Custom settings the local peer has sent. Surfaced via
   /// `session.localSettings.customSettings`. Mirrors Node's
   /// `Http2Session::local_custom_settings_`.
@@ -2185,6 +2196,8 @@ impl Http2Session {
       outgoing_chunks: VecDeque::new(),
       max_invalid_frames: 1000,
       invalid_frame_count: 0,
+      frames_received: 0,
+      frames_sent: 0,
       local_custom_settings: Vec::new(),
       remote_custom_settings: Vec::new(),
       pending_settings_acks: VecDeque::new(),
@@ -2548,6 +2561,22 @@ impl Http2Session {
     // SAFETY: self.inner was allocated by Box::into_raw and is valid
     let session = unsafe { &*self.inner };
     session.active_stream_count() as u32
+  }
+
+  #[fast]
+  #[smi]
+  fn frames_received(&self) -> u32 {
+    // SAFETY: self.inner was allocated by Box::into_raw and is valid
+    let session = unsafe { &*self.inner };
+    session.frames_received
+  }
+
+  #[fast]
+  #[smi]
+  fn frames_sent(&self) -> u32 {
+    // SAFETY: self.inner was allocated by Box::into_raw and is valid
+    let session = unsafe { &*self.inner };
+    session.frames_sent
   }
 
   #[fast]

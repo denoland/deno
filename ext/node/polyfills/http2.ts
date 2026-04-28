@@ -49,6 +49,16 @@ import {
   Http2Session as InternalHttp2Session,
   op_http2_callbacks,
 } from "ext:core/ops";
+import {
+  enqueuePerformanceEntry,
+  performance as webPerformance,
+  registerExtraEntryType,
+} from "ext:deno_web/15_performance.js";
+
+// Make `http2` observable via PerformanceObserver. Registered here (rather
+// than only in `perf_hooks`) so the entry type is recognized regardless of
+// which order user code loads the two modules in.
+registerExtraEntryType("http2");
 import net from "node:net";
 import assert from "node:assert";
 import http from "node:http";
@@ -246,6 +256,89 @@ function getURLOrigin(urlStr) {
   return new URL(urlStr).origin;
 }
 
+function perfNow() {
+  return webPerformance.now();
+}
+
+function emitSessionPerfEntry(session) {
+  if (session[kPerfEmitted]) return;
+  session[kPerfEmitted] = true;
+  const stats = session[kPerfStats];
+  if (!stats) return;
+
+  const startTime = stats.startTime;
+  const duration = perfNow() - startTime;
+  const handle = session[kHandle];
+  const framesReceived = handle && typeof handle.framesReceived === "function"
+    ? handle.framesReceived()
+    : 0;
+  const framesSent = handle && typeof handle.framesSent === "function"
+    ? handle.framesSent()
+    : 0;
+  const streamCount = stats.streamCount;
+  const streamAverageDuration = streamCount > 0
+    ? stats.streamTotalDuration / streamCount
+    : 0;
+  const type = session[kType] === NGHTTP2_SESSION_SERVER ? "server" : "client";
+  const detail = {
+    bytesRead: stats.bytesRead,
+    bytesWritten: stats.bytesWritten,
+    framesReceived,
+    framesSent,
+    maxConcurrentStreams: stats.maxConcurrentStreams,
+    pingRTT: stats.pingRTT,
+    streamAverageDuration,
+    streamCount,
+    type,
+  };
+
+  enqueuePerformanceEntry({
+    name: "Http2Session",
+    entryType: "http2",
+    startTime,
+    duration,
+    detail,
+  });
+}
+
+function emitStreamPerfEntry(stream) {
+  if (stream[kPerfEmitted]) return;
+  stream[kPerfEmitted] = true;
+  const stats = stream[kPerfStats];
+  if (!stats) return;
+
+  const startTime = stats.startTime;
+  const duration = perfNow() - startTime;
+  const detail = {
+    bytesRead: stats.bytesRead,
+    bytesWritten: stats.bytesWritten,
+    timeToFirstByte: stats.firstByte > 0 ? stats.firstByte - startTime : 0,
+    timeToFirstByteSent: stats.firstByteSent > 0
+      ? stats.firstByteSent - startTime
+      : 0,
+    timeToFirstHeader: stats.firstHeader > 0
+      ? stats.firstHeader - startTime
+      : 0,
+  };
+
+  enqueuePerformanceEntry({
+    name: "Http2Stream",
+    entryType: "http2",
+    startTime,
+    duration,
+    detail,
+  });
+
+  // Roll the stream's lifetime into the parent session's averageDuration.
+  const session = stream[kSession];
+  if (session) {
+    const sstats = session[kPerfStats];
+    if (sstats) {
+      sstats.streamTotalDuration += duration;
+    }
+  }
+}
+
 // Schedule a deferred sendPending() call on the session's native handle.
 // This is deferred via queueMicrotask to avoid re-entrancy: nghttp2's
 // send_pending_data can invoke callbacks that call back into JS ops.
@@ -366,6 +459,13 @@ const kState = Symbol("state");
 const kType = Symbol("type");
 const kWriteGeneric = Symbol("write-generic");
 const kSessions = Symbol("sessions");
+
+// Symbols for tracking perf_hooks `http2` performance entry stats. The
+// `pingRTT`, `streamCount`, etc. fields surfaced via `entry.detail` are
+// populated by Http2Session/Http2Stream methods when those events occur,
+// then read back when the entry is enqueued at session/stream destroy.
+const kPerfStats = Symbol("perf-stats");
+const kPerfEmitted = Symbol("perf-emitted");
 
 const kMaxOutstandingSettings = Symbol("maxOutstandingSettings");
 
@@ -1484,6 +1584,16 @@ class Http2Stream extends Duplex {
     this[kRequest] = null;
     this[kProxySocket] = null;
 
+    this[kPerfEmitted] = false;
+    this[kPerfStats] = {
+      startTime: perfNow(),
+      firstByte: 0,
+      firstByteSent: 0,
+      firstHeader: 0,
+      bytesRead: 0,
+      bytesWritten: 0,
+    };
+
     this.on("pause", streamOnPause);
 
     this.on("newListener", streamListenerAdded);
@@ -1509,6 +1619,11 @@ class Http2Stream extends Duplex {
     const session = this[kSession];
     session[kState].pendingStreams.delete(this);
     session[kState].streams.set(id, this);
+
+    const sstats = session[kPerfStats];
+    if (sstats) {
+      sstats.streamCount++;
+    }
 
     this[kID] = id;
     //this[async_id_symbol] = handle.getAsyncId();
@@ -1993,6 +2108,8 @@ class Http2Stream extends Duplex {
     if (err == null && code !== NGHTTP2_NO_ERROR && code !== NGHTTP2_CANCEL) {
       err = new ERR_HTTP2_STREAM_ERROR(nameForErrorCode[code] || code);
     }
+
+    emitStreamPerfEntry(this);
 
     this[kSession] = undefined;
     this[kHandle] = undefined;
@@ -3064,6 +3181,8 @@ function cleanupSession(session) {
 function finishSessionClose(session, error) {
   debugSessionObj(session, "finishSessionClose");
 
+  emitSessionPerfEntry(session);
+
   const socket = session[kSocket];
   cleanupSession(session);
 
@@ -3294,6 +3413,16 @@ class Http2Session extends EventEmitter {
       2 ** 31 - 1,
     ) || 10;
     this[kStrictSingleValueFields] = options.strictSingleValueFields !== false;
+    this[kPerfEmitted] = false;
+    this[kPerfStats] = {
+      startTime: perfNow(),
+      streamCount: 0,
+      streamTotalDuration: 0,
+      pingRTT: 0,
+      bytesRead: 0,
+      bytesWritten: 0,
+      maxConcurrentStreams: 0xffffffff,
+    };
 
     // Do not use nagle's algorithm
     if (typeof socket.setNoDelay === "function") {

@@ -8,9 +8,15 @@ import {
   PerformanceEntry,
   PerformanceObserver as WebPerformanceObserver,
   PerformanceObserverEntryList,
+  registerExtraEntryType,
 } from "ext:deno_web/15_performance.js";
 import { EldHistogram } from "ext:core/ops";
 import { ERR_INVALID_ARG_TYPE } from "ext:deno_node/internal/errors.ts";
+
+// Make Node-only entry types observable through the shared web
+// `PerformanceObserver`. The actual entry production lives in the
+// individual subsystems (e.g. `node:http2`).
+registerExtraEntryType("http2");
 
 const constants = {
   NODE_PERFORMANCE_ENTRY_TYPE_NODE: 0,

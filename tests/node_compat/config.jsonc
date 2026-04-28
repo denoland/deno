@@ -1674,6 +1674,7 @@
     "parallel/test-http2-options-server-request.js": {},
     "parallel/test-http2-options-server-response.js": {},
     "parallel/test-http2-padding-aligned.js": {},
+    "parallel/test-http2-perf_hooks.js": {},
     "parallel/test-http2-ping-settings-heapdump.js": {},
     "parallel/test-http2-pipe.js": {},
     "parallel/test-http2-priority-cycle-.js": {},

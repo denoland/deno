@@ -14,6 +14,9 @@ const {
   ObjectPrototypeIsPrototypeOf,
   queueMicrotask,
   ReflectHas,
+  SafeSet,
+  SetPrototypeAdd,
+  SetPrototypeHas,
   Symbol,
   SymbolFor,
   TypeError,
@@ -32,6 +35,15 @@ const illegalConstructorKey = Symbol("illegalConstructorKey");
 let performanceEntries = [];
 let timeOrigin;
 const performanceObservers = [];
+
+// Entry types registered by extensions (e.g. Node's `perf_hooks` for
+// "http2", "http", "dns", etc.). The web `PerformanceObserver` only knows
+// about "mark" and "measure"; this lets non-web entry types be observed
+// without having to fork the whole observer machinery.
+const extraEntryTypes = new SafeSet();
+function registerExtraEntryType(type) {
+  SetPrototypeAdd(extraEntryTypes, type);
+}
 
 const hrU8 = new Uint8Array(8);
 const hr = new Uint32Array(TypedArrayPrototypeGetBuffer(hrU8));
@@ -392,6 +404,15 @@ function queuePerformanceEntry(entry) {
   }
 }
 
+// Public helper for non-web extensions (Node's perf_hooks) to enqueue a
+// performance entry to interested observers. The entry must already be a
+// plain object (or PerformanceEntry) with `name`, `entryType`, `startTime`,
+// `duration` properties, and any extra fields (`detail`, etc.) the consumer
+// expects.
+function enqueuePerformanceEntry(entry) {
+  queuePerformanceEntry(entry);
+}
+
 const _entries = Symbol("[[entries]]");
 
 class PerformanceObserverEntryList {
@@ -501,14 +522,19 @@ class PerformanceObserver {
       types = ArrayPrototypeFilter(
         entryTypes,
         (t) =>
-          ArrayPrototypeIncludes(PerformanceObserver.supportedEntryTypes, t),
+          ArrayPrototypeIncludes(PerformanceObserver.supportedEntryTypes, t) ||
+          SetPrototypeHas(extraEntryTypes, t),
       );
       if (types.length === 0) {
         return;
       }
     } else {
       if (
-        !ArrayPrototypeIncludes(PerformanceObserver.supportedEntryTypes, type)
+        !ArrayPrototypeIncludes(
+          PerformanceObserver.supportedEntryTypes,
+          type,
+        ) &&
+        !SetPrototypeHas(extraEntryTypes, type)
       ) {
         return;
       }
@@ -805,6 +831,7 @@ webidl.converters["Performance"] = webidl.createInterfaceConverter(
 const performance = new Performance(illegalConstructorKey);
 
 export {
+  enqueuePerformanceEntry,
   Performance,
   performance,
   PerformanceEntry,
@@ -812,5 +839,6 @@ export {
   PerformanceMeasure,
   PerformanceObserver,
   PerformanceObserverEntryList,
+  registerExtraEntryType,
   setTimeOrigin,
 };
