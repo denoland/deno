@@ -293,25 +293,26 @@ impl<'a> FromV8<'a> for DatabaseSyncOptions {
         if let Some(val) = limits_obj.get(scope, key.into())
           && !val.is_undefined()
         {
-          let limit_val = coerce_limit_value(scope, val).map_err(|e| {
-            match e {
-              LimitCoercionError::NotANumber
-              | LimitCoercionError::NotAnInteger => Error::InvalidArgType(
+          let int_val =
+            v8::Local::<v8::Int32>::try_from(val).map_err(|_| {
+              Error::InvalidArgType(
                 format!(
-                  "The \"options.limits.{}\" argument must be a non-negative integer or Infinity.",
+                  "The \"options.limits.{}\" argument must be an integer.",
                   js_name
                 )
                 .into(),
-              ),
-              LimitCoercionError::Negative => Error::OutOfRange(
-                format!(
-                  "The \"options.limits.{}\" argument must be non-negative.",
-                  js_name
-                )
-                .into(),
-              ),
-            }
-          })?;
+              )
+            })?;
+          let limit_val = int_val.value();
+          if limit_val < 0 {
+            return Err(Error::OutOfRange(
+              format!(
+                "The \"options.limits.{}\" argument must be non-negative.",
+                js_name
+              )
+              .into(),
+            ));
+          }
 
           options.initial_limits[idx] = Some(limit_val);
         }
