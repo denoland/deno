@@ -3170,6 +3170,14 @@ function watch(
   // deno-lint-ignore prefer-primordials
   const watchPath = getValidatedPath(filename).toString();
 
+  // Match Node: validate non-boolean `recursive`/`persistent` up front.
+  // https://github.com/nodejs/node/blob/main/lib/internal/fs/recursive_watch.js
+  if (options != null && options.recursive != null) {
+    validateBoolean(options.recursive, "options.recursive");
+  }
+  if (options != null && options.persistent != null) {
+    validateBoolean(options.persistent, "options.persistent");
+  }
   const recursive = options?.recursive || false;
   const iterator: Deno.FsWatcher = Deno.watchFs(watchPath, {
     recursive,
