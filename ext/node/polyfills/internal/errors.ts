@@ -1673,8 +1673,10 @@ export class ERR_INVALID_FILE_URL_HOST extends NodeTypeError {
   }
 }
 export class ERR_INVALID_FILE_URL_PATH extends NodeTypeError {
-  constructor(x: string) {
+  input?: URL;
+  constructor(x: string, input?: URL) {
     super("ERR_INVALID_FILE_URL_PATH", `File URL path ${x}`);
+    this.input = input;
   }
 }
 export class ERR_INVALID_HANDLE_TYPE extends NodeTypeError {
@@ -1691,6 +1693,11 @@ export class ERR_INVALID_HTTP_TOKEN extends NodeTypeError {
 export class ERR_INVALID_IP_ADDRESS extends NodeTypeError {
   constructor(x: string) {
     super("ERR_INVALID_IP_ADDRESS", `Invalid IP address: ${x}`);
+  }
+}
+export class ERR_IP_BLOCKED extends NodeError {
+  constructor(x: string) {
+    super("ERR_IP_BLOCKED", `Address blocked: ${x}`);
   }
 }
 export class ERR_INVALID_MIME_SYNTAX extends NodeTypeError {
@@ -2087,6 +2094,14 @@ export class ERR_SOCKET_CLOSED extends NodeError {
     super("ERR_SOCKET_CLOSED", `Socket is closed`);
   }
 }
+export class ERR_SOCKET_CLOSED_BEFORE_CONNECTION extends NodeError {
+  constructor() {
+    super(
+      "ERR_SOCKET_CLOSED_BEFORE_CONNECTION",
+      `Socket closed before the connection was established`,
+    );
+  }
+}
 export class ERR_SOCKET_CONNECTION_TIMEOUT extends NodeError {
   constructor() {
     super("ERR_SOCKET_CONNECTION_TIMEOUT", `Socket connection timeout`);
@@ -2190,6 +2205,14 @@ export class ERR_TLS_CERT_ALTNAME_INVALID extends NodeError {
     this.reason = reason;
     this.host = host;
     this.cert = cert;
+  }
+}
+export class ERR_TLS_ALPN_CALLBACK_WITH_PROTOCOLS extends NodeTypeError {
+  constructor() {
+    super(
+      "ERR_TLS_ALPN_CALLBACK_WITH_PROTOCOLS",
+      "The ALPNCallback and ALPNProtocols TLS options are mutually exclusive",
+    );
   }
 }
 export class ERR_TLS_DH_PARAM_SIZE extends NodeError {
@@ -2604,7 +2627,7 @@ export class ERR_INVALID_CHAR extends NodeTypeError {
   constructor(name: string, field?: string) {
     super(
       "ERR_INVALID_CHAR",
-      field
+      field === undefined
         ? `Invalid character in ${name}`
         : `Invalid character in ${name} ["${field}"]`,
     );
@@ -2989,6 +3012,7 @@ export function aggregateTwoErrors(
     );
     // deno-lint-ignore no-explicit-any
     (err as any).code = outerError.code;
+    ErrorCaptureStackTrace(err, aggregateTwoErrors);
     return err;
   }
   return innerError || outerError;
@@ -3337,6 +3361,7 @@ export default {
   ERR_STREAM_WRAP,
   ERR_STREAM_WRITE_AFTER_END,
   ERR_SYNTHETIC,
+  ERR_TLS_ALPN_CALLBACK_WITH_PROTOCOLS,
   ERR_TLS_CERT_ALTNAME_INVALID,
   ERR_TLS_DH_PARAM_SIZE,
   ERR_TLS_HANDSHAKE_TIMEOUT,

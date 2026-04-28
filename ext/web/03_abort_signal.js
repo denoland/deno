@@ -101,7 +101,10 @@ class AbortSignal extends EventTarget {
         core.cancelTimer(signal[timerId]);
         signal[timerId] = null;
         signal[signalAbort](
-          new DOMException("Signal timed out.", "TimeoutError"),
+          new DOMException(
+            "The operation was aborted due to timeout",
+            "TimeoutError",
+          ),
         );
       },
       millis,

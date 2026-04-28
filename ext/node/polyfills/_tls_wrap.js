@@ -278,6 +278,10 @@ Object.setPrototypeOf(TLSSocket.prototype, net.Socket.prototype);
 Object.setPrototypeOf(TLSSocket, net.Socket);
 
 tlsWrap.TLSWrap.prototype.close = function close(cb) {
+  // Signal to Rust that this TLSWrap is being closed, so it won't
+  // send buffered application data after a failed identity check.
+  this.setClosing();
+
   let ssl;
   if (this._owner) {
     ssl = this._owner.ssl;
@@ -301,7 +305,7 @@ tlsWrap.TLSWrap.prototype.close = function close(cb) {
 
   if (this._parentWrap) {
     if (this._parentWrap._handle === null) {
-      queueMicrotask(done);
+      nextTick(done);
       return;
     }
 
@@ -313,7 +317,7 @@ tlsWrap.TLSWrap.prototype.close = function close(cb) {
   }
 
   // Defer so callers can register "close" listeners after destroy().
-  queueMicrotask(done);
+  nextTick(done);
 };
 
 TLSSocket.prototype._wrapHandle = function (wrap, handle) {
@@ -331,6 +335,7 @@ TLSSocket.prototype._wrapHandle = function (wrap, handle) {
   const secureContext = {
     ...(context?.context ?? context),
     rejectUnauthorized: options.rejectUnauthorized !== false,
+    requestCert: options.requestCert === true,
   };
 
   // Get the native TCP handle for attachment
@@ -348,6 +353,12 @@ TLSSocket.prototype._wrapHandle = function (wrap, handle) {
     !!options.isServer,
     servername,
   );
+
+  // If TLS initialization failed (e.g. missing cert/key), store the error
+  // so it can be emitted asynchronously instead of crashing the process.
+  if (res._initError) {
+    this._initError = res._initError;
+  }
 
   res._parent = handle; // C++ "wrap" object: TCPWrap, etc.
   res._parentWrap = wrap; // JS object: net.Socket, etc.
@@ -431,7 +442,7 @@ function defineHandleReading(socket, handle) {
   });
 }
 
-TLSSocket.prototype._destroySsl = function _destroySsl() {
+TLSSocket.prototype._destroySSL = function _destroySSL() {
   if (!this.ssl) return;
   this.ssl.destroySsl();
   this.ssl = null;
@@ -588,7 +599,8 @@ TLSSocket.prototype._finishInit = function () {
     this._handle.getAlpnNegotiatedProtocol(alpnOut);
     this.alpnProtocol = alpnOut.alpnProtocol || false;
     if (this.servername === null) {
-      this.servername = this._handle.getServername?.() ?? null;
+      this.servername = this._handle.getServername?.() ??
+        this._tlsOptions?.servername ?? null;
     }
   } catch (_e) {
     // getAlpnNegotiatedProtocol/getServername may not be available
@@ -630,6 +642,15 @@ TLSSocket.prototype._start = function () {
 
   if (!this._handle) return;
 
+  // If TLS init failed (e.g. unsupported protocol on client side),
+  // emit the error and tear down instead of proceeding with the handshake.
+  if (this._initError) {
+    const err = this._initError;
+    this._initError = null;
+    this.destroy(err);
+    return;
+  }
+
   this._handle.start();
 
   // For JS streams, drain any encrypted output produced by start()
@@ -648,6 +669,15 @@ TLSSocket.prototype._start = function () {
     // pick up the new interceptor callback.
     tcpHandle.readStop();
     tcpHandle.readStart();
+  }
+
+  // Kick-start the TLS readable side. During start(), the handshake cycle
+  // may have received and processed a close_notify (peer called end() before
+  // we set up event listeners). The decrypted EOF is buffered in pending_eof
+  // because inner.onread wasn't set yet. Call readStart() directly on the
+  // TLSWrap to install onread and flush any pending data/EOF.
+  if (this._handle) {
+    this._handle.readStart();
   }
 };
 
@@ -832,6 +862,18 @@ function tlsConnectionListener(rawSocket) {
     pauseOnConnect: this.pauseOnConnect,
   });
 
+  // TLS init can fail synchronously (e.g. missing cert/key, unsupported
+  // protocol).  Emit as tlsClientError like Node does for handshake
+  // failures instead of letting it surface as an uncaught exception.
+  if (socket._initError) {
+    const err = socket._initError;
+    socket._initError = null;
+    this.emit("tlsClientError", err, rawSocket);
+    socket.destroy();
+    rawSocket.destroy();
+    return;
+  }
+
   // Start the TLS handshake for server-side sockets
   socket._start();
 
@@ -854,7 +896,7 @@ function Server(options, listener) {
   } else if (options == null || typeof options === "object") {
     options ??= kEmptyObject;
   } else {
-    throw new TypeError("options must be an object");
+    throw new ERR_INVALID_ARG_TYPE("options", "object", options);
   }
 
   this._contexts = [];

@@ -319,6 +319,13 @@ export function onStreamRead(
     return;
   }
 
+  // Bytes arrived on a stream the consumer already destroyed (e.g. during a
+  // re-entrant handshake callback that called socket.destroy()). Drop them;
+  // forwarding a positive nread to errnoException would raise RangeError.
+  if (nread > 0) {
+    return;
+  }
+
   if (nread !== MapPrototypeGet(codeMap, "EOF")) {
     // CallJSOnreadMethod expects the return value to be a buffer.
     // Ref: https://github.com/nodejs/node/pull/34375

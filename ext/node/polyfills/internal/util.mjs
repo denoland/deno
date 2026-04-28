@@ -12,6 +12,9 @@ import { os } from "ext:deno_node/internal_binding/constants.ts";
 import { primordials } from "ext:core/mod.js";
 import { isNativeError } from "ext:deno_node/internal/util/types.ts";
 
+// deno-lint-ignore prefer-primordials
+const AtomicsWait = Atomics.wait;
+
 const {
   ArrayPrototypePush,
   ErrorPrototype,
@@ -210,6 +213,18 @@ export class WeakReference {
 
 promisify.custom = kCustomPromisifiedSymbol;
 
+let _sleepView;
+
+export function sleep(msec) {
+  if (_sleepView === undefined) {
+    // deno-lint-ignore prefer-primordials
+    const buffer = new SharedArrayBuffer(4);
+    // deno-lint-ignore prefer-primordials
+    _sleepView = new Int32Array(buffer);
+  }
+  AtomicsWait(_sleepView, 0, 0, msec);
+}
+
 export default {
   convertToValidSignal,
   customInspectSymbol,
@@ -222,4 +237,5 @@ export default {
   once,
   promisify,
   removeColors,
+  sleep,
 };

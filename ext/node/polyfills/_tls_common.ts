@@ -12,6 +12,30 @@ import {
 import { isArrayBufferView } from "ext:deno_node/internal/util/types.ts";
 import { validateString } from "ext:deno_node/internal/validators.mjs";
 
+// OpenSSL cipher names are uppercase alphanumeric with hyphens/underscores
+// and "=" (for @SECLEVEL=N). Examples: "ECDHE-RSA-AES128-GCM-SHA256",
+// "AECDH-NULL-SHA", "@SECLEVEL=2". Meta-keywords like "ALL", "HIGH",
+// "DEFAULT" also match. We reject strings where no colon-separated entry
+// looks like a valid cipher name, which catches typos like "no-such-cipher".
+const CIPHER_NAME_RE = /^[!+\-@]?[A-Z0-9][A-Z0-9_=\-]*$/;
+
+function validateCipherList(ciphers: string): void {
+  const entries = ciphers.split(":");
+  let hasValidEntry = false;
+  for (const entry of entries) {
+    if (entry === "") continue;
+    if (CIPHER_NAME_RE.test(entry)) {
+      hasValidEntry = true;
+      break;
+    }
+  }
+  if (!hasValidEntry) {
+    const err = new Error("no cipher match") as any;
+    err.code = "ERR_SSL_NO_CIPHER_MATCH";
+    throw err;
+  }
+}
+
 // Map legacy secureProtocol strings to [minVersion, maxVersion] pairs.
 // Node.js maps these in src/crypto/crypto_context.cc.
 const kProtocolMap: Record<string, [string, string]> = {
@@ -146,6 +170,8 @@ function validateKeyCertOption(
   );
 }
 
+const secureContextBrand = new WeakSet<object>();
+
 export class SecureContext {
   context: {
     ca?: string | string[];
@@ -162,6 +188,7 @@ export class SecureContext {
   constructor(options: any = {}) {
     if (options.ciphers != null) {
       validateString(options.ciphers, "options.ciphers");
+      validateCipherList(options.ciphers);
     }
     if (options.key && options.passphrase != null) {
       validateString(options.passphrase, "options.passphrase");
@@ -199,6 +226,22 @@ export class SecureContext {
       sigalgs: options.sigalgs,
       ecdhCurve: options.ecdhCurve,
     };
+    secureContextBrand.add(this.context);
+    Object.defineProperty(this.context, "_external", {
+      __proto__: null,
+      configurable: true,
+      enumerable: false,
+      get(this: object) {
+        // In Node, `_external` is the C++ external pointer; reading it on a
+        // non-context receiver hits an internal slot check and throws. Match
+        // that behaviour so prototype-tampering tests don't get a silent
+        // undefined.
+        if (!secureContextBrand.has(this)) {
+          throw new TypeError("Illegal invocation");
+        }
+        return this;
+      },
+    });
   }
 
   // Backward compat: current _tls_wrap.js accesses .ca, .cert, .key directly

@@ -1302,6 +1302,7 @@ function getPathFromURLWin(url: URL): string {
       ) {
         throw new ERR_INVALID_FILE_URL_PATH(
           "must not include encoded \\ or / characters",
+          url,
         );
       }
     }
@@ -1321,7 +1322,7 @@ function getPathFromURLWin(url: URL): string {
       letter > CHAR_LOWERCASE_Z || // a..z A..Z
       sep !== ":"
     ) {
-      throw new ERR_INVALID_FILE_URL_PATH("must be absolute");
+      throw new ERR_INVALID_FILE_URL_PATH("must be absolute", url);
     }
     return pathname.slice(1);
   }
@@ -1338,6 +1339,7 @@ function getPathFromURLPosix(url: URL): string {
       if (pathname[n + 1] === "2" && third === 102) {
         throw new ERR_INVALID_FILE_URL_PATH(
           "must not include encoded / characters",
+          url,
         );
       }
     }
