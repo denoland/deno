@@ -770,8 +770,21 @@ unsafe extern "C" fn on_frame_recv_callback(
   let ff = frame_flags(frame);
   #[allow(clippy::unnecessary_cast, reason = "cast needed for type alignment")]
   if ft == ffi::NGHTTP2_DATA as u32 {
-    if ff & ffi::NGHTTP2_FLAG_END_STREAM as u8 != 0 {
+    let has_end_stream = ff & ffi::NGHTTP2_FLAG_END_STREAM as u8 != 0;
+    if has_end_stream {
       handle_data_end_stream(session, frame);
+    } else if frame_header_length(frame) == 0 {
+      // Empty DATA frame without END_STREAM. nghttp2 doesn't treat this as
+      // a protocol violation, but Node.js counts it against
+      // `maxSessionInvalidFrames` (see HandleDataFrame in node_http2.cc).
+      // Post-increment comparison: with max=0 the second such frame trips.
+      let count = session.invalid_frame_count;
+      session.invalid_frame_count = count.saturating_add(1);
+      if count > session.max_invalid_frames {
+        session.custom_recv_error_code =
+          Some("ERR_HTTP2_TOO_MANY_INVALID_FRAMES");
+        return 1;
+      }
     }
   } else if ft == ffi::NGHTTP2_PUSH_PROMISE as u32
     || ft == ffi::NGHTTP2_HEADERS as u32
@@ -1614,10 +1627,12 @@ unsafe extern "C" fn on_invalid_frame_recv_callback(
   let count = session.invalid_frame_count;
   session.invalid_frame_count = count.saturating_add(1);
   // Node.js compares post-increment against the limit (see node_http2.cc
-  // OnInvalidFrame). Returning a non-zero value tells nghttp2 to terminate
-  // the session immediately, which surfaces as a connection close on the
-  // peer's socket.
-  if session.max_invalid_frames > 0 && count >= session.max_invalid_frames {
+  // OnInvalidFrame: `if (invalid_frame_count_++ > max_invalid_frames)`).
+  // Returning a non-zero value tells nghttp2 to terminate the session
+  // immediately; receive_data picks up the custom error code below and
+  // surfaces it to JS as ERR_HTTP2_TOO_MANY_INVALID_FRAMES.
+  if count > session.max_invalid_frames {
+    session.custom_recv_error_code = Some("ERR_HTTP2_TOO_MANY_INVALID_FRAMES");
     return 1;
   }
   0
@@ -1768,10 +1783,16 @@ pub struct Session {
   pub outgoing_chunks: VecDeque<Vec<u8>>,
   /// Maximum number of invalid HTTP/2 frames the peer may send before the
   /// session is terminated. Mirrors Node.js's `maxSessionInvalidFrames`
-  /// option (default 1000). 0 disables the check.
+  /// option (default 1000). The check uses post-increment comparison
+  /// (`count++ > max`), so `0` means the second invalid frame triggers.
   pub max_invalid_frames: u32,
   /// Running count of invalid frames received on this session.
   pub invalid_frame_count: u32,
+  /// Custom error code set by an nghttp2 callback when it returns a fatal
+  /// error so that `receive_data` can surface it to JS via
+  /// `session_internal_error_cb`. Mirrors Node's
+  /// `Http2Session::custom_recv_error_code_`.
+  pub custom_recv_error_code: Option<&'static str>,
   /// Custom settings the local peer has sent. Surfaced via
   /// `session.localSettings.customSettings`. Mirrors Node's
   /// `Http2Session::local_custom_settings_`.
@@ -2165,14 +2186,20 @@ impl Session {
     // behavior where sends are deferred until after mem_recv completes.
     self.is_sending = true;
     // SAFETY: self.session is valid; data slice pointer and length are valid
-    unsafe {
+    let ret = unsafe {
       ffi::nghttp2_session_mem_recv(
         self.session,
         data.as_ptr() as _,
         data.len(),
-      );
-    }
+      )
+    };
     self.is_sending = false;
+    if (ret as i64) < 0 {
+      // nghttp2 reported a fatal error processing the inbound frames.
+      // Mirrors Node.js HTTP2Session::OnStreamRead: hand the error to JS
+      // via onSessionInternalError so it can destroy the session.
+      self.emit_session_internal_error(ret as i32);
+    }
     self.send_pending_data();
 
     // Complete deferred destroy: close the TCP handle now that
@@ -2206,6 +2233,36 @@ impl Session {
         }
       }
     }
+  }
+
+  /// Invoke `onSessionInternalError(integerCode, customErrorCode)` on the
+  /// JS handle. Used when nghttp2 returns a fatal error from mem_recv —
+  /// the JS side maps `customErrorCode` (e.g.
+  /// `ERR_HTTP2_TOO_MANY_INVALID_FRAMES`) to the proper error and destroys
+  /// the session, which in turn propagates the error to streams.
+  fn emit_session_internal_error(&mut self, errno: i32) {
+    let custom_code = self.custom_recv_error_code.take();
+
+    let mut isolate =
+      // SAFETY: isolate pointer is valid for the session's lifetime
+      unsafe { v8::Isolate::from_raw_isolate_ptr(self.isolate) };
+    v8::scope!(let scope, &mut isolate);
+    let context = v8::Local::new(scope, self.context.clone());
+    let scope = &mut v8::ContextScope::new(scope, context);
+
+    let state = self.op_state.borrow();
+    let callbacks = state.borrow::<SessionCallbacks>();
+    let callback = v8::Local::new(scope, &callbacks.session_internal_error_cb);
+    let recv = v8::Local::new(scope, &self.this);
+    drop(state);
+
+    let errno_v = v8::Integer::new(scope, errno);
+    let custom_code_v: v8::Local<v8::Value> = match custom_code {
+      Some(code) => v8::String::new(scope, code).unwrap().into(),
+      None => v8::undefined(scope).into(),
+    };
+
+    callback.call(scope, recv.into(), &[errno_v.into(), custom_code_v]);
   }
 
   pub fn on_dword_aligned_padding(
@@ -2300,6 +2357,7 @@ impl Http2Session {
       outgoing_chunks: VecDeque::new(),
       max_invalid_frames: 1000,
       invalid_frame_count: 0,
+      custom_recv_error_code: None,
       local_custom_settings: Vec::new(),
       remote_custom_settings: Vec::new(),
       pending_settings_acks: VecDeque::new(),

@@ -1674,6 +1674,7 @@
     },
     "parallel/test-http2-destroy-after-write.js": {},
     "parallel/test-http2-dont-override.js": {},
+    "parallel/test-http2-empty-frame-without-eof.js": {},
     "parallel/test-http2-endafterheaders.js": {},
     "parallel/test-http2-error-order.js": {},
     "parallel/test-http2-generic-streams-sendfile.js": {},
