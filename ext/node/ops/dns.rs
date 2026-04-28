@@ -376,7 +376,6 @@ fn assert_success_err(code: i32) -> DnsError {
     return DnsError::Io(std::io::Error::other("unexpected success code"));
   }
 
-
   #[cfg(unix)]
   let err = match code {
     libc::EAI_AGAIN => DnsError::RawUvErr(constant::UV_EAI_AGAIN),
