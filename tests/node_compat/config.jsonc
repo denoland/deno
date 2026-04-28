@@ -1843,7 +1843,6 @@
     // "parallel/test-inspect-address-in-use.js": {},
     // "parallel/test-inspector-inspect-brk-node.js": {},
     // "parallel/test-inspector-invalid-args.js": {},
-
     "parallel/test-inspector-close-worker.js": {},
 
     // TODO(bartlomieju): times out
@@ -2638,6 +2637,7 @@
     "parallel/test-require-resolve.js": {},
     "parallel/test-require-resolve-invalid-paths.js": {},
     "parallel/test-require-resolve-opts-paths-relative.js": {},
+    "parallel/test-runner-aliases.js": {},
     "parallel/test-runner-cli-concurrency.js": {
       "ignore": true,
       "reason": "Tests Node.js-specific CLI flags/options that are not supported in Deno"
