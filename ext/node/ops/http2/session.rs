@@ -864,7 +864,12 @@ fn handle_headers_frame(session: &Session, frame: *const ffi::nghttp2_frame) {
   }
 
   let headers_array = v8::Array::new(scope, (headers.len() * 2) as i32);
-  for (i, (name, value, _flags)) in headers.iter().enumerate() {
+  // Mirrors Node's HandleHeadersFrame: collect names of headers that arrived
+  // with NGHTTP2_NV_FLAG_NO_INDEX so JS can expose them via
+  // headers[http2.sensitiveHeaders].
+  let sensitive_array = v8::Array::new(scope, 0);
+  let mut sensitive_count: u32 = 0;
+  for (i, (name, value, flags)) in headers.iter().enumerate() {
     // Header bytes are arbitrary; decode as Latin-1 (one byte per code unit)
     // to match Node's LATIN1 path and preserve non-UTF-8 byte values.
     let name_str =
@@ -875,6 +880,10 @@ fn handle_headers_frame(session: &Session, frame: *const ffi::nghttp2_frame) {
         .unwrap();
     headers_array.set_index(scope, (i * 2) as u32, name_str.into());
     headers_array.set_index(scope, (i * 2 + 1) as u32, value_str.into());
+    if flags & (ffi::NGHTTP2_NV_FLAG_NO_INDEX as u8) != 0 {
+      sensitive_array.set_index(scope, sensitive_count, name_str.into());
+      sensitive_count += 1;
+    }
   }
 
   drop(headers);
@@ -912,6 +921,7 @@ fn handle_headers_frame(session: &Session, frame: *const ffi::nghttp2_frame) {
       cat,
       flags.into(),
       headers_array.into(),
+      sensitive_array.into(),
     ],
   );
 }
