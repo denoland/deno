@@ -1321,6 +1321,7 @@
     "parallel/test-http-client-default-headers-exist.js": {},
     "parallel/test-http-client-defaults.js": {},
     "parallel/test-http-client-encoding.js": {},
+    "parallel/test-http-client-error-rawbytes.js": {},
     "parallel/test-http-client-finished.js": {},
     "parallel/test-http-client-get-url.js": {},
     "parallel/test-http-client-headers-array.js": {},
