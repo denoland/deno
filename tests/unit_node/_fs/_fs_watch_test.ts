@@ -1,7 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 import { unwatchFile, watch, watchFile } from "node:fs";
 import { watch as watchPromise } from "node:fs/promises";
-import { assert, assertEquals } from "@std/assert";
+import { assert, assertEquals, assertRejects } from "@std/assert";
 import { spy } from "@std/testing/mock";
 
 function wait(time: number) {
@@ -94,15 +94,17 @@ Deno.test({
       deferred.resolve();
     }, 100);
 
-    // Node's `fs.promises.watch` throws an AbortError when the signal aborts;
-    // catch it so the test can still assert on what was collected.
-    try {
-      for await (const event of watcher) {
-        result.push(event);
-      }
-    } catch (err) {
-      if ((err as Error)?.name !== "AbortError") throw err;
-    }
+    // Aborting the signal must surface as an AbortError thrown from the
+    // async iterator, matching Node's `fs.promises.watch` behavior.
+    await assertRejects(
+      async () => {
+        for await (const event of watcher) {
+          result.push(event);
+        }
+      },
+      Error,
+      "The operation was aborted",
+    );
     await deferred.promise;
 
     assertEquals(result.length, stopLength);
