@@ -9,8 +9,10 @@
     ErrorCaptureStackTrace,
     FunctionPrototypeBind,
     ObjectAssign,
+    ObjectDefineProperty,
     ObjectFreeze,
     ObjectFromEntries,
+    ObjectGetOwnPropertyDescriptor,
     ObjectKeys,
     ObjectHasOwn,
     setQueueMicrotask,
@@ -839,6 +841,42 @@
     };
   }
 
+  // WebIDL [Replaceable] attribute on a global. The getter returns the
+  // captured value; the setter performs the spec's "replaceable setter"
+  // by defining an own data property on the receiver, shadowing the
+  // accessor. Both functions throw a TypeError when invoked with a
+  // receiver that is not the global, satisfying idlharness's
+  // "wrong-this" checks.
+  function propReplaceable(name, value) {
+    const accessors = {
+      get [name]() {
+        if (this !== null && this !== undefined && this !== globalThis) {
+          throw new TypeError("Illegal invocation");
+        }
+        return value;
+      },
+      set [name](v) {
+        if (this !== null && this !== undefined && this !== globalThis) {
+          throw new TypeError("Illegal invocation");
+        }
+        ObjectDefineProperty(this, name, {
+          __proto__: null,
+          value: v,
+          writable: true,
+          enumerable: true,
+          configurable: true,
+        });
+      },
+    };
+    const desc = ObjectGetOwnPropertyDescriptor(accessors, name);
+    return {
+      get: desc.get,
+      set: desc.set,
+      enumerable: true,
+      configurable: true,
+    };
+  }
+
   function propWritableLazyLoaded(getter, loadFn) {
     let valueIsSet = false;
     let value;
@@ -1168,6 +1206,7 @@
     propWritable,
     propNonEnumerable,
     propGetterOnly,
+    propReplaceable,
     propWritableLazyLoaded,
     propNonEnumerableLazyLoaded,
     createLazyLoader,
