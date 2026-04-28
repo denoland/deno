@@ -769,6 +769,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "bsdiff"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b6709158fe6ca66c1f32eb27b4ae5997c67b0df350ae185831233af3e7a91213"
+
+[[package]]
+name = "bsdiff_helper"
+version = "0.1.0"
+dependencies = [
+ "bsdiff",
+]
+
+[[package]]
 name = "bstr"
 version = "1.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1823,6 +1836,7 @@ dependencies = [
  "base64 0.22.1",
  "bincode",
  "boxed_error",
+ "bsdiff",
  "bytes",
  "bytes-str",
  "capacity_builder",
@@ -10379,6 +10393,7 @@ dependencies = [
  "anyhow",
  "async-stream",
  "base64 0.22.1",
+ "bsdiff",
  "bytes",
  "deno_unsync",
  "denokv_proto",

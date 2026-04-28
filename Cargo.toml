@@ -74,6 +74,7 @@ members = [
   "tests/util/lib",
   "tests/util/server",
   "tests/util/test_macro",
+  "tools/bsdiff_helper",
 ]
 # tests/sqlite_extension is excluded because it requires rusqlite's "loadable_extension"
 # feature, which is incompatible with the "session" feature used by the rest of the workspace.
@@ -189,6 +190,7 @@ bit-set = "0.8.0"
 bit-vec = "0.8.0"
 boxed_error = "0.2.3"
 brotli = { version = "6.0.0", features = ["ffi-api"] }
+bsdiff = "0.2.1"
 bytemuck = "1.17.1"
 bytes = "1.11.1"
 cache_control = "=0.2.0"
