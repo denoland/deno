@@ -367,7 +367,7 @@ function updateChildren(parent, child, scan) {
 }
 
 function tryFile(requestPath, _isMain) {
-  const rc = stat(requestPath);
+  const rc = _stat(requestPath);
   if (rc !== 0) return;
   return toRealPath(requestPath);
 }
@@ -570,10 +570,15 @@ Module._pathCache = ObjectCreate(null);
 //
 // Matches Node's `Module._stat`:
 // https://github.com/nodejs/node/blob/main/lib/internal/modules/cjs/loader.js
+let _stat = stat;
 ObjectDefineProperty(Module, "_stat", {
   __proto__: null,
   get() {
-    return stat;
+    return _stat;
+  },
+  set(fn) {
+    _stat = fn;
+    return true;
   },
   configurable: true,
 });
@@ -636,7 +641,7 @@ Module._findPath = function (request, paths, isMain, parentPath) {
   for (let i = 0; i < paths.length; i++) {
     // Don't search further if path doesn't exist
     const curPath = paths[i];
-    if (curPath && stat(curPath) < 1) continue;
+    if (curPath && _stat(curPath) < 1) continue;
 
     if (!absoluteRequest) {
       const exportsResolved = resolveExports(
@@ -667,7 +672,7 @@ Module._findPath = function (request, paths, isMain, parentPath) {
     }
     let filename;
 
-    const rc = stat(basePath);
+    const rc = _stat(basePath);
     if (!trailingSlash) {
       if (rc === 0) { // File.
         filename = toRealPath(basePath);
