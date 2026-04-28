@@ -1593,6 +1593,7 @@
     "parallel/test-http2-client-priority-before-connect.js": {},
     "parallel/test-http2-client-promisify-connect-error.js": {},
     "parallel/test-http2-client-promisify-connect.js": {},
+    "parallel/test-http2-client-proxy-over-http2.js": {},
     "parallel/test-http2-client-request-listeners-warning.js": {},
     "parallel/test-http2-client-request-options-errors.js": {},
     "parallel/test-http2-client-rststream-before-connect.js": {},
