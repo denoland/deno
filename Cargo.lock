@@ -2432,9 +2432,7 @@ dependencies = [
 
 [[package]]
 name = "deno_graph"
-version = "0.107.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "06518571e56fef9ae4441b93445754f0b3c608404607b8143541ab672e589bf6"
+version = "0.107.2"
 dependencies = [
  "async-trait",
  "boxed_error",
@@ -3265,8 +3263,6 @@ dependencies = [
 [[package]]
 name = "deno_semver"
 version = "0.9.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "92d46d2fd6959170a6e9f6607a6f79683868fa82ceac56ca520ab014e4fa5b21"
 dependencies = [
  "capacity_builder",
  "deno_error",
@@ -3312,8 +3308,6 @@ dependencies = [
 [[package]]
 name = "deno_task_shell"
 version = "0.29.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "29499442dc26a6c025b29beb9ba889d9fd6c9bbbd28a65eab25031c935965846"
 dependencies = [
  "anyhow",
  "bitflags 2.9.3",
@@ -6530,7 +6524,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4979f22fdb869068da03c9f7528f8297c6fd2606bc3a4affe42e6a823fdb8da4"
 dependencies = [
  "cfg-if",
- "windows-targets 0.48.5",
+ "windows-targets 0.52.6",
 ]
 
 [[package]]
@@ -6926,9 +6920,9 @@ dependencies = [
 
 [[package]]
 name = "monch"
-version = "0.5.0"
+version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b52c1b33ff98142aecea13138bd399b68aa7ab5d9546c300988c345004001eea"
+checksum = "6bcc6ad3b93f756f2532d29f7c7291b8d246a2c460a99a3611327bb726830014"
 
 [[package]]
 name = "naga"

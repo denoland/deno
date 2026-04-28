@@ -91,7 +91,7 @@ deno_ast = { version = "=0.53.1", features = ["transpiling"] }
 deno_core_icudata = "0.77.0"
 deno_doc = "=0.197.0"
 deno_error = "=0.7.1"
-deno_graph = { version = "=0.107.1", default-features = false }
+deno_graph = { version = "=0.107.2", default-features = false }
 deno_lint = "=0.83.0"
 deno_media_type = { version = "=0.4.0", features = ["module_specifier"] }
 deno_native_certs = "0.3.0"
@@ -252,7 +252,7 @@ log = { version = "0.4.28", features = ["kv"] }
 lsp-types = { package = "ls-types", version = "=0.0.3" }
 memchr = "2.7.4"
 mime = "0.3.16"
-monch = "=0.5.0"
+monch = "=0.6.0"
 netif = "0.1.6"
 notify = "=6.1.1"
 num-bigint = { version = "0.4", features = ["rand"] }
@@ -610,3 +610,8 @@ opt-level = 3
 opt-level = 3
 [profile.release.package.twox-hash]
 opt-level = 3
+
+[patch.crates-io]
+deno_graph = { path = "../deno_graph" }
+deno_semver = { path = "../deno_semver" }
+deno_task_shell = { path = "../deno_task_shell" }
