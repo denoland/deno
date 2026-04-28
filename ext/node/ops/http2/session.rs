@@ -2952,9 +2952,16 @@ pub fn op_http2_http_state<'a>(
 #[op2]
 #[string]
 pub fn op_http2_error_string(code: i32) -> String {
-  // SAFETY: nghttp2_strerror returns a valid static C string for any input.
-  unsafe {
-    let p = ffi::nghttp2_strerror(code);
-    std::ffi::CStr::from_ptr(p).to_string_lossy().into_owned()
+  // Per https://nghttp2.org/documentation/nghttp2_strerror.html the input
+  // must be one of `nghttp2_error`; for unknown codes the function may
+  // return NULL, so we guard before constructing a `CStr`.
+  // SAFETY: nghttp2_strerror returns either NULL or a static C string.
+  let p = unsafe { ffi::nghttp2_strerror(code) };
+  if p.is_null() {
+    return String::new();
   }
+  // SAFETY: p is a non-null, NUL-terminated static C string from nghttp2.
+  unsafe { std::ffi::CStr::from_ptr(p) }
+    .to_string_lossy()
+    .into_owned()
 }
