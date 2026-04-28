@@ -34,6 +34,7 @@ import {
   TCP,
 } from "ext:deno_node/internal_binding/tcp_wrap.ts";
 import { kMaybeDestroy } from "ext:deno_node/internal/stream_base_commons.ts";
+import { kReinitializeHandle } from "ext:deno_node/internal/net.ts";
 import {
   constants as PipeConstants,
   Pipe,
@@ -276,6 +277,56 @@ function TLSSocket(socket, opts) {
 }
 Object.setPrototypeOf(TLSSocket.prototype, net.Socket.prototype);
 Object.setPrototypeOf(TLSSocket, net.Socket);
+
+// Override kReinitializeHandle so that Happy Eyeballs (autoSelectFamily)
+// re-creates the TLSWrap when falling back to a different address.
+// The base Socket version replaces _handle with a raw TCP handle, which
+// doesn't have TLS methods like start(). We need to re-wrap it.
+TLSSocket.prototype[kReinitializeHandle] = function (handle) {
+  const oldHandle = this._handle;
+  // Save callbacks from the old TLSWrap that were set up by _init() and
+  // _initSocketHandle(). These need to be restored on the new TLSWrap.
+  const savedOnread = oldHandle?.onread;
+  const savedOnhandshakedone = oldHandle?.onhandshakedone;
+  const savedOnhandshakestart = oldHandle?.onhandshakestart;
+  const savedOnerror = oldHandle?.onerror;
+
+  if (oldHandle) {
+    oldHandle.close();
+  }
+
+  // Re-wrap the new TCP handle with a TLSWrap. This creates the
+  // rustls config, attaches to the TCP handle, and sets up read
+  // interception + proxy methods (connect, bind, etc.).
+  const tlsHandle = this._wrapHandle(null, handle);
+
+  this._handle = tlsHandle;
+  this._handle[ownerSymbol] = this;
+  this.ssl = this._handle;
+  this[kRes] = tlsHandle;
+
+  // Restore callbacks on the new TLSWrap.
+  if (savedOnread) this._handle.onread = savedOnread;
+  if (savedOnhandshakedone) this._handle.onhandshakedone = savedOnhandshakedone;
+  if (savedOnhandshakestart) {
+    this._handle.onhandshakestart = savedOnhandshakestart;
+  }
+  if (savedOnerror) this._handle.onerror = savedOnerror;
+
+  // Re-apply verify mode and ALPN from TLS options.
+  const options = this._tlsOptions;
+  const requestCert = !!options.requestCert || !options.isServer;
+  const rejectUnauthorized = !!options.rejectUnauthorized;
+  if (requestCert || rejectUnauthorized) {
+    this._handle.setVerifyMode(requestCert, rejectUnauthorized);
+  }
+  if (options.ALPNProtocols) {
+    this._handle.setAlpnProtocols(options.ALPNProtocols);
+  }
+
+  this._undestroy();
+  this._sockname = undefined;
+};
 
 tlsWrap.TLSWrap.prototype.close = function close(cb) {
   // Signal to Rust that this TLSWrap is being closed, so it won't
