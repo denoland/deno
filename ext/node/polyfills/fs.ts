@@ -3133,6 +3133,7 @@ type watchOptions = {
   persistent?: boolean;
   recursive?: boolean;
   encoding?: string;
+  signal?: AbortSignal;
 };
 
 type watchListener = (eventType: string, filename: string) => void;
@@ -3217,6 +3218,21 @@ function watch(
     );
   }
 
+  // Match Node's `fs.watch` AbortSignal handling:
+  // https://github.com/nodejs/node/blob/main/lib/fs.js
+  if (options?.signal) {
+    const signal = options.signal;
+    if (signal.aborted) {
+      process.nextTick(() => fsWatcher.close());
+    } else {
+      const onAbort = () => fsWatcher.close();
+      signal.addEventListener("abort", onAbort, { once: true });
+      fsWatcher.once("close", () => {
+        signal.removeEventListener("abort", onAbort);
+      });
+    }
+  }
+
   return fsWatcher;
 }
 
@@ -3233,16 +3249,17 @@ function watchPromise(
   const watchPath = getValidatedPath(filename).toString();
 
   const recursive = options?.recursive ?? false;
+  const signal = options?.signal;
   const watcher = Deno.watchFs(watchPath, {
     recursive,
   });
   const resolvedWatchPath = realpathSync(watchPath) as string;
 
-  if (options?.signal) {
-    if (options.signal.aborted) {
+  if (signal) {
+    if (signal.aborted) {
       watcher.close();
     } else {
-      options.signal.addEventListener(
+      signal.addEventListener(
         "abort",
         () => watcher.close(),
         { once: true },
@@ -3250,14 +3267,29 @@ function watchPromise(
     }
   }
 
+  // Match Node: surface signal abort as a thrown AbortError carrying
+  // `signal.reason` as `cause`.
+  // https://github.com/nodejs/node/blob/main/lib/internal/fs/watchers.js
+  function abortError(): AbortError {
+    return new AbortError(undefined, { cause: signal?.reason });
+  }
+
   const fsIterable = watcher[SymbolAsyncIterator]();
   const result = {
     async next(): Promise<
       IteratorResult<{ eventType: string; filename: string | Buffer | null }>
     > {
+      if (signal?.aborted) {
+        throw abortError();
+      }
       // deno-lint-ignore prefer-primordials
       const iterResult = await fsIterable.next();
-      if (iterResult.done) return iterResult;
+      if (iterResult.done) {
+        if (signal?.aborted) {
+          throw abortError();
+        }
+        return iterResult;
+      }
 
       const eventType = convertDenoFsEventToNodeFsEvent(
         iterResult.value.kind,
