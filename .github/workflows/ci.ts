@@ -18,7 +18,7 @@ import {
 // Bump this number when you want to purge the cache.
 // Note: the tools/release/01_bump_crate_versions.ts script will update this version
 // automatically via regex, so ensure that this line maintains this format.
-const cacheVersion = 109;
+const cacheVersion = 110;
 
 const ubuntuX86Runner = "ubuntu-24.04";
 const ubuntuARMRunner = "ubuntu-24.04-arm";
@@ -1035,11 +1035,14 @@ const buildJobs = buildItems.map((rawBuildItem) => {
   const additionalJobs = [];
 
   {
-    const shardedCrates = new Set(["specs", "integration"]);
-    const shardCount = 2;
+    const shardedCrates = new Map([
+      ["specs", 2],
+      ["integration", 2],
+      ["node_compat", 3],
+    ]);
     const testMatrix = defineMatrix({
       include: testCrates.flatMap((tc) => {
-        const total = shardedCrates.has(tc.name) ? shardCount : 1;
+        const total = shardedCrates.get(tc.name) ?? 1;
         return Array.from({ length: total }, (_, i) => ({
           test_crate: tc.name,
           test_package: tc.package,

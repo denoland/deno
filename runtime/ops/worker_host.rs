@@ -9,6 +9,8 @@ use std::sync::atomic::Ordering;
 
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
+use deno_core::DetachedBuffer;
+use deno_core::JsBuffer;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
 use deno_core::op2;
@@ -105,7 +107,9 @@ deno_core::extension!(
     op_host_terminate_worker,
     op_host_post_message,
     op_host_recv_ctrl,
+    op_host_post_message_raw,
     op_host_recv_message,
+    op_host_recv_message_sync,
     op_host_get_worker_cpu_usage,
     op_current_thread_cpu_usage,
   ],
@@ -287,7 +291,11 @@ fn op_create_worker(
   })?;
 
   // Receive WebWorkerHandle from newly created worker
-  let worker_handle = handle_receiver.recv().unwrap();
+  let worker_handle = handle_receiver.recv().map_err(|_| {
+    std::io::Error::other(
+      "Worker thread terminated unexpectedly before initialization completed",
+    )
+  })?;
 
   let worker_thread = WorkerThread {
     worker_handle: worker_handle.into(),
@@ -442,6 +450,22 @@ async fn op_host_recv_message(
   }
 }
 
+#[op2]
+#[serde]
+fn op_host_recv_message_sync(
+  state: &mut OpState,
+  #[serde] id: WorkerId,
+) -> Result<Option<JsMessageData>, MessagePortError> {
+  let worker_handle = {
+    let workers_table = state.borrow::<WorkersTable>();
+    match workers_table.get(&id) {
+      Some(handle) => handle.worker_handle.clone(),
+      None => return Ok(None),
+    }
+  };
+  worker_handle.port.try_recv_sync(state)
+}
+
 /// Post message to guest worker as host
 #[op2]
 fn op_host_post_message(
@@ -455,6 +479,24 @@ fn op_host_post_message(
     worker_handle.port.send(state, data)?;
   } else {
     debug!("tried to post message to non-existent worker {}", id);
+  }
+  Ok(())
+}
+
+/// Fast-path post: takes a pre-serialized buffer directly, bypassing
+/// the JsMessageData serde overhead. Only for messages with no transferables.
+#[op2]
+fn op_host_post_message_raw(
+  state: &mut OpState,
+  #[serde] id: WorkerId,
+  #[buffer(detach)] data: JsBuffer,
+) -> Result<(), MessagePortError> {
+  if let Some(worker_thread) = state.borrow::<WorkersTable>().get(&id) {
+    let worker_handle = worker_thread.worker_handle.clone();
+    let detached = DetachedBuffer::from_v8slice(data.into_parts());
+    if let Some(tx) = &*worker_handle.port.tx.borrow() {
+      tx.send((detached, vec![])).ok();
+    }
   }
   Ok(())
 }

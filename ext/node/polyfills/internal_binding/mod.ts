@@ -60,7 +60,11 @@ const modules = {
   symbols,
   "task_queue": {},
   "tcp_wrap": tcpWrap,
-  timers: {},
+  timers: {
+    getLibuvNow() {
+      return Math.floor(performance.now());
+    },
+  },
   "tls_wrap": {},
   "trace_events": {},
   "tty_wrap": ttyWrap,

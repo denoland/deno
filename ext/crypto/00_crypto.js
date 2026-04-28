@@ -5386,11 +5386,6 @@ class Crypto {
       op_crypto_get_random_values(typedArray);
       return typedArray;
     }
-    typedArray = webidl.converters.ArrayBufferView(
-      typedArray,
-      prefix,
-      "Argument 1",
-    );
     switch (tag) {
       case "Int8Array":
       case "Uint8ClampedArray":
@@ -5403,7 +5398,7 @@ class Crypto {
         break;
       default:
         throw new DOMException(
-          "The provided ArrayBufferView is not an integer array type",
+          "The provided value is not an integer-type TypedArray",
           "TypeMismatchError",
         );
     }

@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_node"
-version = "0.183.0"
+version = "0.184.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -55,6 +55,9 @@ node_shim.workspace = true
 once_cell.workspace = true
 rand.workspace = true
 rustls-tokio-stream.workspace = true
+# Pinned to the same major rustls 0.23.x uses internally so we can downcast
+# `rustls::CertificateError::Other` payloads to `webpki::Error`.
+rustls-webpki = "0.103"
 serde.workspace = true
 socket2.workspace = true
 sys_traits = { workspace = true, features = ["real", "winapi", "libc"] }
