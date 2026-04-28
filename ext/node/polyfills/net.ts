@@ -2255,11 +2255,19 @@ export function _createServerHandle(
 
     if (!address) {
       // Match Node's behavior: when no address is provided, prefer the
-      // IPv6 wildcard (which accepts IPv4 connections via dual-stack on
-      // all platforms supported by libuv) and fall back to IPv4 if the
-      // IPv6 bind fails.
+      // IPv6 wildcard (which accepts IPv4 connections via dual-stack) and
+      // fall back to IPv4 if the IPv6 bind fails.
+      //
+      // Windows is kept on the IPv4-only path because the dual-stack
+      // socket option doesn't reliably accept IPv4 connections there in
+      // our environment (verified via CI: server listening on `::` rejects
+      // `127.0.0.1` clients with ECONNREFUSED).
       //
       // REF: https://github.com/denoland/deno/issues/10762
+      if (isWindows) {
+        return _createServerHandle(DEFAULT_IPV4_ADDR, port, 4, null, flags);
+      }
+
       err = (handle as TCP).bind6(DEFAULT_IPV6_ADDR, port ?? 0, flags ?? 0);
       if (err) {
         handle.close();
@@ -2362,20 +2370,27 @@ function _setupListenHandle(
     let rval = null;
 
     // Try to bind to the unspecified IPv6 address, see if IPv6 is available.
-    // A wildcard IPv6 socket also accepts IPv4 traffic via dual-stack on all
-    // platforms supported by libuv, matching Node's default.
+    // A wildcard IPv6 socket also accepts IPv4 traffic via dual-stack,
+    // matching Node's default. Windows is kept on the IPv4-only path because
+    // the dual-stack socket option doesn't reliably accept IPv4 connections
+    // there in our environment.
     //
     // REF: https://github.com/denoland/deno/issues/10762
     if (!address && typeof fd !== "number") {
-      rval = _createServerHandle(DEFAULT_IPV6_ADDR, port, 6, fd, flags);
-
-      if (typeof rval === "number") {
-        rval = null;
+      if (isWindows) {
         address = DEFAULT_IPV4_ADDR;
         addressType = 4;
       } else {
-        address = DEFAULT_IPV6_ADDR;
-        addressType = 6;
+        rval = _createServerHandle(DEFAULT_IPV6_ADDR, port, 6, fd, flags);
+
+        if (typeof rval === "number") {
+          rval = null;
+          address = DEFAULT_IPV4_ADDR;
+          addressType = 4;
+        } else {
+          address = DEFAULT_IPV6_ADDR;
+          addressType = 6;
+        }
       }
     }
 
