@@ -1,18 +1,23 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-// deno-lint-ignore-file prefer-primordials
-
 import type { CallbackWithError } from "ext:deno_node/_fs/_fs_common.ts";
 import { type Buffer } from "node:buffer";
 import { primordials } from "ext:core/mod.js";
 import { op_node_lutimes, op_node_lutimes_sync } from "ext:core/ops";
 import { promisify } from "ext:deno_node/internal/util.mjs";
 import {
-  getValidatedPath,
+  getValidatedPathToString,
   toUnixTimestamp,
 } from "ext:deno_node/internal/fs/utils.mjs";
 
-const { MathTrunc } = primordials;
+const {
+  Error,
+  MathTrunc,
+  Number,
+  NumberIsFinite,
+  NumberIsNaN,
+  PromisePrototypeThen,
+} = primordials;
 
 type TimeLike = number | string | Date;
 type PathLike = string | Buffer | URL;
@@ -27,7 +32,7 @@ function getValidUnixTime(
 
   if (
     typeof value === "number" &&
-    (Number.isNaN(value) || !Number.isFinite(value))
+    (NumberIsNaN(value) || !NumberIsFinite(value))
   ) {
     throw new Deno.errors.InvalidData(
       `invalid ${name}, must not be infinity or NaN`,
@@ -54,12 +59,13 @@ export function lutimes(
   if (!callback) {
     throw new Error("No callback function supplied");
   }
-  const [atimeSecs, atimeNanos] = getValidUnixTime(atime, "atime");
-  const [mtimeSecs, mtimeNanos] = getValidUnixTime(mtime, "mtime");
+  const { 0: atimeSecs, 1: atimeNanos } = getValidUnixTime(atime, "atime");
+  const { 0: mtimeSecs, 1: mtimeNanos } = getValidUnixTime(mtime, "mtime");
 
-  path = getValidatedPath(path).toString();
+  path = getValidatedPathToString(path);
 
-  op_node_lutimes(path, atimeSecs, atimeNanos, mtimeSecs, mtimeNanos).then(
+  PromisePrototypeThen(
+    op_node_lutimes(path, atimeSecs, atimeNanos, mtimeSecs, mtimeNanos),
     () => callback(null),
     callback,
   );
@@ -73,7 +79,7 @@ export function lutimesSync(
   const { 0: atimeSecs, 1: atimeNanos } = getValidUnixTime(atime, "atime");
   const { 0: mtimeSecs, 1: mtimeNanos } = getValidUnixTime(mtime, "mtime");
 
-  path = getValidatedPath(path).toString();
+  path = getValidatedPathToString(path);
 
   op_node_lutimes_sync(path, atimeSecs, atimeNanos, mtimeSecs, mtimeNanos);
 }
