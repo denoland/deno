@@ -300,7 +300,9 @@
     "parallel/test-child-process-send-cb.js": {},
     "parallel/test-child-process-send-type-error.js": {},
     "parallel/test-child-process-send-utf8.js": {},
-    "parallel/test-child-process-server-close.js": {},
+    "parallel/test-child-process-server-close.js": {
+      "windows": false
+    },
     "parallel/test-child-process-set-blocking.js": {},
     "parallel/test-child-process-silent.js": {},
     "parallel/test-child-process-spawn-args.mjs": {},
@@ -2107,7 +2109,9 @@
     "parallel/test-net-autoselectfamily.js": {},
     "parallel/test-net-better-error-messages-listen-path.js": {},
     "parallel/test-net-better-error-messages-listen.js": {},
-    "parallel/test-net-better-error-messages-path.js": {},
+    "parallel/test-net-better-error-messages-path.js": {
+      "windows": false
+    },
     "parallel/test-net-better-error-messages-port-hostname.js": {},
     "parallel/test-net-binary.js": {},
     "parallel/test-net-bind-twice.js": {},
