@@ -2231,7 +2231,13 @@ fn resolve_pkg_json_import<'a>(
         let key_sub = &key[0..pattern_index];
         if name.starts_with(key_sub) {
           let pattern_trailer = &key[pattern_index + 1..];
-          if name.len() > key.len()
+          // The wildcard `*` in the pattern key matches a non-empty
+          // substring of `name`, so `name.len()` must be at least
+          // `key.len()` (one extra character to fill the wildcard).
+          // Using a strict `>` here required the wildcard to match two
+          // or more characters, so `"#E"` failed to match `"#*"`. See
+          // denoland/deno#30160.
+          if name.len() >= key.len()
             && name.ends_with(&pattern_trailer)
             && pattern_key_compare(best_match, key) == 1
             && key.rfind('*') == Some(pattern_index)
@@ -3089,6 +3095,41 @@ mod tests {
         "ts3.1/file.d.ts"
       );
     }
+  }
+
+  #[test]
+  fn test_resolve_pkg_json_import_single_char_wildcard() {
+    // Regression test for https://github.com/denoland/deno/issues/30160
+    // The pattern key `#*` must match short specifiers like `#E` whose
+    // wildcard segment is a single character. Previously the length
+    // check rejected these.
+    let pkg = build_package_json(serde_json::json!({
+      "name": "pkg",
+      "imports": {
+        "#mask/*": "./lib/private/mask/*.js",
+        "#types/*": "./lib/private/types/*.js",
+        "#*": "./lib/private/*.js"
+      }
+    }));
+    let single_char =
+      resolve_pkg_json_import(&pkg, "#E").expect("#E should match #*");
+    assert_eq!(single_char.package_sub_path, "#*");
+    assert_eq!(single_char.sub_path, "E");
+    assert!(single_char.is_pattern);
+
+    let multi_char =
+      resolve_pkg_json_import(&pkg, "#abc").expect("#abc should match #*");
+    assert_eq!(multi_char.package_sub_path, "#*");
+    assert_eq!(multi_char.sub_path, "abc");
+
+    // The more specific pattern still wins for inputs it can match.
+    let scoped = resolve_pkg_json_import(&pkg, "#mask/x")
+      .expect("#mask/x should match #mask/*");
+    assert_eq!(scoped.package_sub_path, "#mask/*");
+    assert_eq!(scoped.sub_path, "x");
+
+    // The wildcard still has to match a non-empty segment.
+    assert!(resolve_pkg_json_import(&pkg, "#").is_none());
   }
 
   #[test]

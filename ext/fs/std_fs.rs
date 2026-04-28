@@ -719,19 +719,27 @@ fn cp(from: &Path, to: &Path) -> FsResult<()> {
       entries
         .into_par_iter()
         .map(|file_name| {
-          cp_(
-            fs::symlink_metadata(from.join(&file_name)).unwrap(),
-            &from.join(&file_name),
-            &to.join(&file_name),
-          )
-          .map_err(|err| {
+          let from_path = from.join(&file_name);
+          let to_path = to.join(&file_name);
+          let meta = fs::symlink_metadata(&from_path).map_err(|err| {
             io::Error::new(
               err.kind(),
               format!(
                 "failed to copy '{}' to '{}': {:?}",
-                from.join(&file_name).display(),
-                to.join(&file_name).display(),
-                err
+                from_path.display(),
+                to_path.display(),
+                err,
+              ),
+            )
+          })?;
+          cp_(meta, &from_path, &to_path).map_err(|err| {
+            io::Error::new(
+              err.kind(),
+              format!(
+                "failed to copy '{}' to '{}': {:?}",
+                from_path.display(),
+                to_path.display(),
+                err,
               ),
             )
           })
@@ -1043,7 +1051,12 @@ fn open_options(options: OpenOptions) -> fs::OpenOptions {
   open_options.read(options.read);
   open_options.create(options.create);
   open_options.write(options.write);
-  open_options.truncate(options.truncate);
+  // On Windows, truncate and create_new produce conflicting
+  // dwCreationDisposition flags (TRUNCATE_EXISTING vs CREATE_NEW).
+  // When create_new is set, the file must not exist, so truncation
+  // is meaningless. Passing both can cause spurious "os error 0"
+  // (ERROR_SUCCESS) failures and file corruption on Windows.
+  open_options.truncate(options.truncate && !options.create_new);
   open_options.append(options.append);
   open_options.create_new(options.create_new);
   open_options

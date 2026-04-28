@@ -22,7 +22,9 @@ import {
   op_worker_close,
   op_worker_get_type,
   op_worker_post_message,
+  op_worker_post_message_raw,
   op_worker_recv_message,
+  op_worker_recv_message_sync,
   op_worker_sync_fetch,
 } from "ext:core/ops";
 const {
@@ -32,7 +34,6 @@ const {
   Error,
   ErrorPrototype,
   FunctionPrototypeBind,
-  FunctionPrototypeCall,
   ObjectAssign,
   ObjectDefineProperties,
   ObjectDefineProperty,
@@ -56,7 +57,6 @@ import * as event from "ext:deno_web/02_event.js";
 import * as location from "ext:deno_web/12_location.js";
 import * as version from "ext:runtime/01_version.ts";
 import * as os from "ext:deno_os/30_os.js";
-import * as timers from "ext:deno_web/02_timers.js";
 import {
   getConsoleInspectOptions,
   getDefaultInspectOptions,
@@ -147,10 +147,14 @@ function windowClose() {
     PromisePrototypeThen(
       PromiseResolve(),
       () =>
-        FunctionPrototypeCall(timers.setTimeout, null, () => {
-          // This should be fine, since only Window/MainWorker has .close()
-          os.exit(0);
-        }, 0),
+        core.createSystemTimer(
+          () => {
+            // This should be fine, since only Window/MainWorker has .close()
+            os.exit(0);
+          },
+          0,
+          true,
+        ),
     );
   }
 }
@@ -168,6 +172,17 @@ function postMessage(message, transferOrOptions = { __proto__: null }) {
   const prefix =
     "Failed to execute 'postMessage' on 'DedicatedWorkerGlobalScope'";
   webidl.requiredArguments(arguments.length, 1, prefix);
+  // Fast path: no transferables
+  if (
+    transferOrOptions === undefined ||
+    transferOrOptions === null ||
+    (arguments.length <= 1)
+  ) {
+    op_worker_post_message_raw(core.serialize(message, undefined, (err) => {
+      throw new DOMException(err, "DataCloneError");
+    }));
+    return;
+  }
   message = webidl.converters.any(message);
   let options;
   if (
@@ -206,6 +221,52 @@ function hasMessageEventListener() {
     messagePort.refedMessagePortsCount > 0;
 }
 
+function dispatchWorkerMessage(data) {
+  let message, transferables;
+  try {
+    const v = messagePort.deserializeJsMessageData(data);
+    message = v[0];
+    transferables = v[1];
+  } catch (err) {
+    const errorEvent = new event.MessageEvent("messageerror", {
+      cancelable: false,
+      data: err,
+    });
+    event.setIsTrusted(errorEvent, true);
+    globalDispatchEvent(errorEvent);
+    return;
+  }
+
+  const msgEvent = new event.MessageEvent("message", {
+    cancelable: false,
+    data: message,
+    ports: ArrayPrototypeFilter(
+      transferables,
+      (t) => ObjectPrototypeIsPrototypeOf(messagePort.MessagePortPrototype, t),
+    ),
+  });
+  event.setIsTrusted(msgEvent, true);
+
+  try {
+    globalDispatchEvent(msgEvent);
+  } catch (e) {
+    const errorEvent = new event.ErrorEvent("error", {
+      cancelable: true,
+      message: e.message,
+      lineno: e.lineNumber ? e.lineNumber + 1 : undefined,
+      colno: e.columnNumber ? e.columnNumber + 1 : undefined,
+      filename: e.fileName,
+      error: e,
+    });
+
+    event.setIsTrusted(errorEvent, true);
+    globalDispatchEvent(errorEvent);
+    if (!errorEvent.defaultPrevented) {
+      throw e;
+    }
+  }
+}
+
 async function pollForMessages() {
   if (!globalDispatchEvent) {
     globalDispatchEvent = FunctionPrototypeBind(
@@ -222,40 +283,16 @@ async function pollForMessages() {
       core.unrefOpPromise(recvMessage);
     }
     const data = await recvMessage;
-    // const data = await op_worker_recv_message();
     if (data === null) break;
-    const v = messagePort.deserializeJsMessageData(data);
-    const message = v[0];
-    const transferables = v[1];
-
-    const msgEvent = new event.MessageEvent("message", {
-      cancelable: false,
-      data: message,
-      ports: ArrayPrototypeFilter(
-        transferables,
-        (t) =>
-          ObjectPrototypeIsPrototypeOf(messagePort.MessagePortPrototype, t),
-      ),
-    });
-    event.setIsTrusted(msgEvent, true);
-
-    try {
-      globalDispatchEvent(msgEvent);
-    } catch (e) {
-      const errorEvent = new event.ErrorEvent("error", {
-        cancelable: true,
-        message: e.message,
-        lineno: e.lineNumber ? e.lineNumber + 1 : undefined,
-        colno: e.columnNumber ? e.columnNumber + 1 : undefined,
-        filename: e.fileName,
-        error: e,
-      });
-
-      event.setIsTrusted(errorEvent, true);
-      globalDispatchEvent(errorEvent);
-      if (!errorEvent.defaultPrevented) {
-        throw e;
-      }
+    dispatchWorkerMessage(data);
+    // Sync drain: process a limited batch of already-queued messages
+    // without going through the async op machinery. The batch limit
+    // prevents starvation of the event loop when message handlers
+    // synchronously post new messages (e.g. ping-pong patterns).
+    for (let i = 0; i < 1000 && !isClosing; i++) {
+      const syncData = op_worker_recv_message_sync();
+      if (syncData === null) break;
+      dispatchWorkerMessage(syncData);
     }
   }
 }
@@ -390,6 +427,12 @@ core.registerErrorBuilder(
   "DOMExceptionInvalidStateError",
   function DOMExceptionInvalidStateError(msg) {
     return new DOMException(msg, "InvalidStateError");
+  },
+);
+core.registerErrorBuilder(
+  "DOMExceptionSyntaxError",
+  function DOMExceptionSyntaxError(msg) {
+    return new DOMException(msg, "SyntaxError");
   },
 );
 
@@ -639,6 +682,8 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
       13: otelConfig,
       15: standalone,
       16: autoServe,
+      17: nodeClusterUniqueId,
+      18: nodeClusterSchedPolicy,
     } = runtimeOptions;
 
     denoNs.build.standalone = standalone;
@@ -811,6 +856,8 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
         runningOnMainThread: true,
         argv0,
         nodeDebug,
+        nodeClusterUniqueId,
+        nodeClusterSchedPolicy,
       });
     }
   } else {
@@ -842,6 +889,8 @@ function bootstrapWorkerRuntime(
       7: nodeDebug,
       13: otelConfig,
       15: standalone,
+      17: nodeClusterUniqueId,
+      18: nodeClusterSchedPolicy,
     } = runtimeOptions;
 
     denoNs.build.standalone = standalone;
@@ -934,6 +983,8 @@ function bootstrapWorkerRuntime(
         workerId,
         maybeWorkerMetadata: workerMetadata,
         nodeDebug,
+        nodeClusterUniqueId,
+        nodeClusterSchedPolicy,
         moduleSpecifier: workerType === "node" ? moduleSpecifier : null,
       });
     }

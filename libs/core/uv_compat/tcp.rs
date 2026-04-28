@@ -36,6 +36,8 @@ use crate::uv_compat::UV_ECANCELED;
 use crate::uv_compat::UV_EINVAL;
 use crate::uv_compat::UV_ENOBUFS;
 use crate::uv_compat::UV_ENOTCONN;
+#[cfg(unix)]
+use crate::uv_compat::UV_ENOTSUP;
 use crate::uv_compat::UV_EOF;
 use crate::uv_compat::UV_EPIPE;
 use crate::uv_compat::UV_HANDLE_ACTIVE;
@@ -118,6 +120,12 @@ pub struct uv_tcp_t {
   pub(crate) internal_connection_cb: Option<uv_connection_cb>,
   pub(crate) internal_backlog: VecDeque<tokio::net::TcpStream>,
   pub(crate) internal_shutdown: Option<ShutdownPending>,
+  /// Per-handle waker. Used to register interest with tokio's reactor
+  /// and enqueue this handle on the loop's ready queue when the fd
+  /// becomes ready. `None` on handles constructed via `new_tcp()`
+  /// (tests, temporary values); real handles get one in `uv_tcp_init`.
+  pub(crate) internal_waker:
+    Option<std::sync::Arc<crate::uv_compat::waker::TcpHandleWaker>>,
 }
 
 /// In-flight TCP connect operation.
@@ -254,6 +262,9 @@ pub unsafe fn uv_tcp_init(loop_: *mut uv_loop_t, tcp: *mut uv_tcp_t) -> c_int {
     write(addr_of_mut!((*tcp).internal_connection_cb), None);
     write(addr_of_mut!((*tcp).internal_backlog), VecDeque::new());
     write(addr_of_mut!((*tcp).internal_shutdown), None);
+    let shared = crate::uv_compat::get_inner(loop_).shared.clone();
+    let w = crate::uv_compat::waker::TcpHandleWaker::new(tcp as usize, shared);
+    write(addr_of_mut!((*tcp).internal_waker), Some(w));
   }
   0
 }
@@ -293,13 +304,15 @@ pub unsafe fn uv_tcp_open(tcp: *mut uv_tcp_t, fd: c_int) -> c_int {
   }
 }
 
+const UV_TCP_REUSEPORT: u32 = 4;
+
 /// ### Safety
 /// `tcp` must be initialized by `uv_tcp_init`. `addr` must point to a valid sockaddr.
 pub unsafe fn uv_tcp_bind(
   tcp: *mut uv_tcp_t,
   addr: *const c_void,
   _addrlen: u32,
-  _flags: u32,
+  flags: u32,
 ) -> c_int {
   // SAFETY: Caller guarantees addr points to a valid sockaddr.
   let sock_addr = unsafe { sockaddr_to_std(addr) };
@@ -330,32 +343,45 @@ pub unsafe fn uv_tcp_bind(
     #[cfg(unix)]
     socket.set_reuseaddr(true).ok();
 
-    // Match libuv: on Windows, set SO_EXCLUSIVEADDRUSE to prevent other
-    // sockets from binding to the same port. This is the Windows equivalent
-    // of the default Unix behavior (without SO_REUSEADDR's Windows semantics
-    // which would allow port sharing).
-    #[cfg(windows)]
-    {
-      use std::os::windows::io::AsRawSocket;
-      unsafe extern "system" {
-        fn setsockopt(
-          s: usize,
-          level: c_int,
-          optname: c_int,
-          optval: *const c_void,
-          optlen: c_int,
-        ) -> c_int;
+    // SO_REUSEPORT allows multiple sockets to bind to the same port.
+    if flags & UV_TCP_REUSEPORT != 0 {
+      #[cfg(unix)]
+      if socket.set_reuseport(true).is_err() {
+        return UV_ENOTSUP;
       }
-      const SOL_SOCKET: c_int = 0xffff;
-      const SO_EXCLUSIVEADDRUSE: c_int = -5; // ~SO_REUSEADDR
-      let one: c_int = 1;
-      setsockopt(
-        socket.as_raw_socket() as usize,
-        SOL_SOCKET,
-        SO_EXCLUSIVEADDRUSE,
-        &one as *const c_int as *const c_void,
-        std::mem::size_of::<c_int>() as c_int,
-      );
+      // On Windows, SO_REUSEADDR allows multiple sockets to bind to the
+      // same port (unlike Unix where it only affects TIME_WAIT). This is
+      // the Windows equivalent of SO_REUSEPORT.
+      #[cfg(windows)]
+      socket.set_reuseaddr(true).ok();
+    } else {
+      // Match libuv: on Windows, set SO_EXCLUSIVEADDRUSE to prevent other
+      // sockets from binding to the same port. This is the Windows equivalent
+      // of the default Unix behavior (without SO_REUSEADDR's Windows semantics
+      // which would allow port sharing).
+      #[cfg(windows)]
+      {
+        use std::os::windows::io::AsRawSocket;
+        unsafe extern "system" {
+          fn setsockopt(
+            s: usize,
+            level: c_int,
+            optname: c_int,
+            optval: *const c_void,
+            optlen: c_int,
+          ) -> c_int;
+        }
+        const SOL_SOCKET: c_int = 0xffff;
+        const SO_EXCLUSIVEADDRUSE: c_int = -5; // ~SO_REUSEADDR
+        let one: c_int = 1;
+        setsockopt(
+          socket.as_raw_socket() as usize,
+          SOL_SOCKET,
+          SO_EXCLUSIVEADDRUSE,
+          &one as *const c_int as *const c_void,
+          std::mem::size_of::<c_int>() as c_int,
+        );
+      }
     }
 
     // Store the raw fd so uv_tcp_nodelay etc. can
@@ -437,6 +463,9 @@ pub unsafe fn uv_tcp_connect(
     if !handles.iter().any(|&h| std::ptr::eq(h, tcp)) {
       handles.push(tcp);
     }
+    if let Some(w) = (*tcp).internal_waker.as_ref() {
+      w.mark_ready();
+    }
 
     // Take the pre-created socket from bind (if any). This preserves
     // socket identity so options set between bind and connect are retained
@@ -503,6 +532,32 @@ pub unsafe fn uv_tcp_nodelay(tcp: *mut uv_tcp_t, enable: c_int) -> c_int {
         let _ = on;
       }
     }
+  }
+  0
+}
+
+/// Set SO_LINGER to 0 on the TCP socket and close it immediately so
+/// the OS sends RST instead of FIN.  This matches libuv's
+/// `uv_tcp_close_reset`.
+///
+/// The stream is taken and dropped here rather than in `stop_tcp`,
+/// because `stop_tcp` calls `shutdown(Both)` which sends FIN and
+/// defeats the RST behaviour.
+///
+/// ### Safety
+/// `tcp` must be a valid pointer to a `uv_tcp_t` initialized by `uv_tcp_init`.
+pub unsafe fn uv_tcp_reset(tcp: *mut uv_tcp_t) -> c_int {
+  // SAFETY: Caller guarantees tcp is valid and initialized.
+  unsafe {
+    if let Some(ref stream) = (*tcp).internal_stream
+      && stream.set_linger(Some(std::time::Duration::ZERO)).is_err()
+    {
+      return UV_EINVAL;
+    }
+    // Drop the stream immediately so the fd is closed with SO_LINGER=0,
+    // causing the kernel to send RST to the peer.  `stop_tcp` will find
+    // `internal_stream` already `None` and skip the graceful shutdown.
+    let _ = (*tcp).internal_stream.take();
   }
   0
 }
@@ -691,6 +746,9 @@ pub unsafe fn uv_listen(
     if !handles.iter().any(|&h| std::ptr::eq(h, tcp)) {
       handles.push(tcp);
     }
+    if let Some(w) = tcp_ref.internal_waker.as_ref() {
+      w.mark_ready();
+    }
   }
   0
 }
@@ -741,6 +799,7 @@ pub fn new_tcp() -> uv_tcp_t {
     internal_connection_cb: None,
     internal_backlog: VecDeque::new(),
     internal_shutdown: None,
+    internal_waker: None,
   }
 }
 
@@ -774,6 +833,7 @@ pub(crate) unsafe fn poll_tcp_handle(
     }
   };
   if let Some((req, cb, result)) = connect_result {
+    any_work = true;
     // SAFETY: tcp_ptr is valid, no outstanding borrows.
     unsafe {
       let status = match result {
@@ -800,6 +860,12 @@ pub(crate) unsafe fn poll_tcp_handle(
           }
         }
       }
+
+      // After connect completes, clear ACTIVE if no I/O is pending.
+      // The connect path sets ACTIVE, but if the JS side doesn't start
+      // reading (e.g. socket.pause() before connect), the flag must be
+      // cleared so the handle doesn't keep the event loop alive.
+      crate::uv_compat::stream::maybe_clear_tcp_active(tcp_ptr);
     }
   }
 
@@ -895,9 +961,15 @@ pub(crate) unsafe fn poll_tcp_handle(
               if count == 0 {
                 break;
               }
-              // Match libuv: if we didn't fill the buffer, the next
-              // read would likely return EAGAIN. Exit early to save
-              // a syscall (libuv's uv__read does the same).
+              // Match libuv's uv__read (src/unix/stream.c:1147):
+              // break on partial read to skip the predicted-EAGAIN
+              // syscall. tokio's readiness tracking is edge-style
+              // internally (`try_read` only clears the bit on
+              // WouldBlock), so this leaves readiness armed and
+              // unwoken. The re-register block at the end of this
+              // function detects that case and issues `mark_ready()`
+              // to put the handle back on the ready queue for the
+              // next run_io pass.
               if n < buflen {
                 break;
               }
@@ -909,8 +981,29 @@ pub(crate) unsafe fn poll_tcp_handle(
               break;
             }
             Err(ref e) => {
-              // Match libuv: report real error codes, not UV_EOF.
-              let status = io_error_to_uv(e);
+              // Match libuv's uv__process_tcp_read_req on Windows: translate
+              // WSAECONNABORTED to UV_ECONNRESET so consumers see the same
+              // error code as on Unix when the peer aborts the connection.
+              // Node.js's socketOnError in http2 explicitly ignores
+              // ECONNRESET (but not ECONNABORTED) after GOAWAY; without this
+              // mapping the test-http2-compat-serverrequest-end.js test (and
+              // others that rely on the close/GOAWAY race) surface an
+              // uncaught read error on Windows.
+              let status = {
+                let raw = io_error_to_uv(e);
+                #[cfg(windows)]
+                {
+                  if raw == crate::uv_compat::UV_ECONNABORTED {
+                    crate::uv_compat::UV_ECONNRESET
+                  } else {
+                    raw
+                  }
+                }
+                #[cfg(not(windows))]
+                {
+                  raw
+                }
+              };
               read_cb(tcp_ptr as *mut uv_stream_t, status as isize, &buf);
               (*tcp_ptr).internal_reading = false;
               crate::uv_compat::stream::maybe_clear_tcp_active(tcp_ptr);
@@ -1019,7 +1112,9 @@ pub(crate) unsafe fn poll_tcp_handle(
               break;
             }
             match stream.try_write(&pw.data[pw.offset..]) {
-              Ok(n) => pw.offset += n,
+              Ok(n) => {
+                pw.offset += n;
+              }
               Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
                 break;
               }
@@ -1073,6 +1168,37 @@ pub(crate) unsafe fn poll_tcp_handle(
     {
       crate::uv_compat::stream::complete_shutdown(tcp_ptr, cx);
       any_work = true;
+    }
+  }
+
+  // 6. Re-register tokio interest for the next edge.
+  //
+  // `poll_*_ready` stores a waker only when it returns Pending.
+  // Under normal operation the read/write loops above hit
+  // WouldBlock on their last iteration, which clears tokio's
+  // internal readiness bit; the paired poll_*_ready here then
+  // returns Pending and stores the waker, and we're good.
+  //
+  // The count==32 starvation break is an exception: it exits
+  // mid-stream with readiness still armed and no waker. In that
+  // case, poll_*_ready returns Ready (no waker stored) and we
+  // mark_ready to re-queue the handle for another run_io pass.
+  unsafe {
+    if let Some(ref stream) = (*tcp_ptr).internal_stream {
+      let mut needs_requeue = false;
+      if (*tcp_ptr).internal_reading
+        && matches!(stream.poll_read_ready(cx), Poll::Ready(_))
+      {
+        needs_requeue = true;
+      }
+      if !(*tcp_ptr).internal_write_queue.is_empty()
+        && matches!(stream.poll_write_ready(cx), Poll::Ready(_))
+      {
+        needs_requeue = true;
+      }
+      if needs_requeue && let Some(w) = (*tcp_ptr).internal_waker.as_ref() {
+        w.mark_ready();
+      }
     }
   }
 
