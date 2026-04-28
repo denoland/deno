@@ -802,7 +802,10 @@
       "ignore": true,
       "reason": "Requires --expose-internals and internalBinding('cares_wrap') which is not supported in Deno"
     },
+    "parallel/test-dns-resolveany.js": {},
+    "parallel/test-dns-resolveany-bad-ancount.js": {},
     "parallel/test-dns-resolvens-typeerror.js": {},
+    "parallel/test-dns-resolver-max-timeout.js": {},
     "parallel/test-dns-resolvesrv.js": {},
     "parallel/test-dns-resolvesrv-econnrefused.js": {},
     "parallel/test-dns-set-default-order.js": {},
