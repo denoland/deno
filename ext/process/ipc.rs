@@ -88,131 +88,12 @@ impl IpcRefTracker {
   }
 }
 
-/// Synchronous write to a raw file descriptor/handle.
-/// Handles EAGAIN/EWOULDBLOCK by poll(POLLOUT) + retry, matching
-/// Node.js behavior where IPC pipe writes are synchronous.
-fn write_all_sync(raw_handle: i64, msg: &[u8]) -> Result<(), io::Error> {
-  #[cfg(unix)]
-  {
-    let fd = raw_handle as std::os::unix::io::RawFd;
-    let mut written = 0;
-    while written < msg.len() {
-      // SAFETY: fd is a valid file descriptor owned by the BiPipe.
-      let result = unsafe {
-        libc::write(
-          fd,
-          msg[written..].as_ptr() as *const libc::c_void,
-          msg.len() - written,
-        )
-      };
-      if result >= 0 {
-        written += result as usize;
-      } else {
-        let err = io::Error::last_os_error();
-        if err.kind() == io::ErrorKind::WouldBlock {
-          // Wait for the fd to become writable instead of spinning.
-          let mut pollfd = libc::pollfd {
-            fd,
-            events: libc::POLLOUT,
-            revents: 0,
-          };
-          // SAFETY: pollfd is valid and on the stack.
-          unsafe { libc::poll(&mut pollfd, 1, -1) };
-          continue;
-        }
-        if err.kind() == io::ErrorKind::Interrupted {
-          continue;
-        }
-        return Err(err);
-      }
-    }
-    Ok(())
-  }
-  #[cfg(windows)]
-  {
-    use winapi::shared::minwindef::DWORD;
-    use winapi::um::errhandlingapi::GetLastError;
-    use winapi::um::fileapi::WriteFile;
-    use winapi::um::ioapiset::GetOverlappedResult;
-    use winapi::um::minwinbase::OVERLAPPED;
-    use winapi::um::synchapi::CreateEventW;
-    use winapi::um::winnt::HANDLE;
-
-    let handle = raw_handle as HANDLE;
-    let mut written = 0usize;
-    while written < msg.len() {
-      // SAFETY: OVERLAPPED is a POD type, zeroing is valid initialization.
-      let mut ov: OVERLAPPED = unsafe { mem::zeroed() };
-      // SAFETY: Creating an auto-reset event for the OVERLAPPED struct.
-      let event =
-        unsafe { CreateEventW(std::ptr::null_mut(), 0, 0, std::ptr::null()) };
-      if event.is_null() {
-        return Err(io::Error::last_os_error());
-      }
-      // Set the low-order bit of hEvent to prevent the completion from
-      // being queued to tokio's I/O completion port (IOCP). This way
-      // our event is signaled directly and tokio's reactor is not
-      // confused by a spurious completion packet.
-      ov.hEvent = (event as usize | 1) as HANDLE;
-
-      let buf = &msg[written..];
-      let mut bytes_written: DWORD = 0;
-      // SAFETY: handle is a valid HANDLE owned by the BiPipe,
-      // buf and ov are valid pointers on the stack.
-      let ok = unsafe {
-        WriteFile(
-          handle,
-          buf.as_ptr() as *const _,
-          buf.len() as DWORD,
-          &mut bytes_written,
-          &mut ov,
-        )
-      };
-
-      if ok != 0 {
-        written += bytes_written as usize;
-      } else {
-        // SAFETY: Retrieving the last Win32 error code after WriteFile failed.
-        let err = unsafe { GetLastError() };
-        if err == winapi::shared::winerror::ERROR_IO_PENDING {
-          // Wait for the overlapped write to complete.
-          let mut transferred: DWORD = 0;
-          // SAFETY: handle and ov are valid pointers, bWait=TRUE blocks
-          // until the operation completes.
-          let ok = unsafe {
-            GetOverlappedResult(handle, &mut ov, &mut transferred, 1)
-          };
-          if ok != 0 {
-            written += transferred as usize;
-          } else {
-            // SAFETY: event is a valid handle that must be closed.
-            unsafe { winapi::um::handleapi::CloseHandle(event) };
-            return Err(io::Error::last_os_error());
-          }
-        } else {
-          // SAFETY: event is a valid handle that must be closed.
-          unsafe { winapi::um::handleapi::CloseHandle(event) };
-          return Err(io::Error::from_raw_os_error(err as i32));
-        }
-      }
-      // SAFETY: event is a valid handle that must be closed.
-      unsafe { winapi::um::handleapi::CloseHandle(event) };
-    }
-    Ok(())
-  }
-}
-
 pub struct IpcJsonStreamResource {
   pub read_half: AsyncRefCell<IpcJsonStream>,
   pub write_half: AsyncRefCell<BiPipeWrite>,
   pub cancel: Rc<CancelHandle>,
   pub queued_bytes: AtomicUsize,
   pub ref_tracker: IpcRefTracker,
-  /// Raw handle for synchronous writes. Matches Node.js behavior where
-  /// IPC writes are synchronous, ensuring messages aren't lost on
-  /// process.exit(). On Unix this is a file descriptor, on Windows a
-  /// HANDLE cast to i64.
-  pub raw_write_handle: i64,
 }
 
 impl deno_core::Resource for IpcJsonStreamResource {
@@ -233,7 +114,6 @@ impl IpcJsonStreamResource {
       cancel: Default::default(),
       queued_bytes: Default::default(),
       ref_tracker,
-      raw_write_handle: stream,
     })
   }
 
@@ -242,8 +122,6 @@ impl IpcJsonStreamResource {
     stream: tokio::net::UnixStream,
     ref_tracker: IpcRefTracker,
   ) -> Self {
-    use std::os::unix::io::AsRawFd;
-    let raw_write_handle = stream.as_raw_fd() as i64;
     let (read_half, write_half) = stream.into_split();
     Self {
       read_half: AsyncRefCell::new(IpcJsonStream::new(read_half.into())),
@@ -251,7 +129,6 @@ impl IpcJsonStreamResource {
       cancel: Default::default(),
       queued_bytes: Default::default(),
       ref_tracker,
-      raw_write_handle,
     }
   }
 
@@ -260,8 +137,6 @@ impl IpcJsonStreamResource {
     pipe: tokio::net::windows::named_pipe::NamedPipeClient,
     ref_tracker: IpcRefTracker,
   ) -> Self {
-    use std::os::windows::io::AsRawHandle;
-    let raw_write_handle = pipe.as_raw_handle() as i64;
     let (read_half, write_half) = tokio::io::split(pipe);
     Self {
       read_half: AsyncRefCell::new(IpcJsonStream::new(read_half.into())),
@@ -269,7 +144,6 @@ impl IpcJsonStreamResource {
       cancel: Default::default(),
       queued_bytes: Default::default(),
       ref_tracker,
-      raw_write_handle,
     }
   }
 
@@ -281,13 +155,6 @@ impl IpcJsonStreamResource {
     let mut write_half = RcRef::map(self, |r| &r.write_half).borrow_mut().await;
     write_half.write_all(msg).await?;
     Ok(())
-  }
-
-  /// Synchronous write to the IPC pipe.
-  /// This matches Node.js behavior where IPC writes are synchronous,
-  /// ensuring messages are flushed before process.exit().
-  pub fn write_msg_bytes_sync(&self, msg: &[u8]) -> Result<(), io::Error> {
-    write_all_sync(self.raw_write_handle, msg)
   }
 }
 
@@ -476,7 +343,6 @@ pub struct IpcAdvancedStreamResource {
   pub cancel: Rc<CancelHandle>,
   pub queued_bytes: AtomicUsize,
   pub ref_tracker: IpcRefTracker,
-  pub raw_write_handle: i64,
 }
 
 impl IpcAdvancedStreamResource {
@@ -491,7 +357,6 @@ impl IpcAdvancedStreamResource {
       cancel: Default::default(),
       queued_bytes: Default::default(),
       ref_tracker,
-      raw_write_handle: stream,
     })
   }
 
@@ -503,11 +368,6 @@ impl IpcAdvancedStreamResource {
     let mut write_half = RcRef::map(self, |r| &r.write_half).borrow_mut().await;
     write_half.write_all(msg).await?;
     Ok(())
-  }
-
-  /// Synchronous write to the IPC pipe.
-  pub fn write_msg_bytes_sync(&self, msg: &[u8]) -> Result<(), io::Error> {
-    write_all_sync(self.raw_write_handle, msg)
   }
 }
 
