@@ -91,7 +91,11 @@ impl IpcRefTracker {
 async fn write_with_optional_fd(
   write_half: &mut BiPipeWrite,
   msg: &[u8],
-  #[cfg_attr(not(unix), allow(unused_variables))] raw_fd: Option<i32>,
+  #[cfg_attr(
+    not(unix),
+    allow(unused_variables, reason = "fd transfer is unix-only")
+  )]
+  raw_fd: Option<i32>,
 ) -> Result<(), io::Error> {
   #[cfg(unix)]
   if let Some(raw_fd) = raw_fd {
