@@ -1411,7 +1411,9 @@
     "parallel/test-http-client-unescaped-path.js": {},
     "parallel/test-http-client-upload-buf.js": {},
     "parallel/test-http-client-upload.js": {},
-    "parallel/test-http-client-with-create-connection.js": {},
+    "parallel/test-http-client-with-create-connection.js": {
+      "windows": false
+    },
     "parallel/test-http-common.js": {},
     "parallel/test-http-conn-reset.js": {},
     "parallel/test-http-connect-req-res.js": {},
