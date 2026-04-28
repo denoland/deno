@@ -677,6 +677,8 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
       13: otelConfig,
       15: standalone,
       16: autoServe,
+      17: nodeClusterUniqueId,
+      18: nodeClusterSchedPolicy,
     } = runtimeOptions;
 
     denoNs.build.standalone = standalone;
@@ -849,6 +851,8 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
         runningOnMainThread: true,
         argv0,
         nodeDebug,
+        nodeClusterUniqueId,
+        nodeClusterSchedPolicy,
       });
     }
   } else {
@@ -880,6 +884,8 @@ function bootstrapWorkerRuntime(
       7: nodeDebug,
       13: otelConfig,
       15: standalone,
+      17: nodeClusterUniqueId,
+      18: nodeClusterSchedPolicy,
     } = runtimeOptions;
 
     denoNs.build.standalone = standalone;
@@ -972,6 +978,8 @@ function bootstrapWorkerRuntime(
         workerId,
         maybeWorkerMetadata: workerMetadata,
         nodeDebug,
+        nodeClusterUniqueId,
+        nodeClusterSchedPolicy,
         moduleSpecifier: workerType === "node" ? moduleSpecifier : null,
       });
     }

@@ -112,6 +112,21 @@
       "cwd": "./deno_dir_name_match",
       "args": "task --filter foo-dir dev",
       "output": "deno_dir_name_match.out"
+    },
+    // Workspace root should not be matched by its directory name even if it
+    // has a `name` field. Here the filter matches the root's directory name
+    // but not its package name, so the root must not be selected.
+    "deno_root_not_matched_by_dir": {
+      "cwd": "./deno_root_with_name",
+      "args": "task --filter deno_root_with_name dev",
+      "output": "deno_root_not_matched_by_dir.out"
+    },
+    // A workspace member without a `name` field should still be matchable
+    // by its directory name.
+    "deno_member_no_name": {
+      "cwd": "./deno_member_no_name",
+      "args": "task --filter my-lib dev",
+      "output": "deno_member_no_name.out"
     }
   }
 }

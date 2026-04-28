@@ -781,6 +781,11 @@ struct TLSWrapInner {
   /// is freed, so in-flight write callbacks can avoid a dangling deref.
   alive: Rc<Cell<bool>>,
 
+  /// Set to true by JS when the TLSSocket is being destroyed/closed.
+  /// Checked after handshake callback to prevent sending application
+  /// data when checkServerIdentity fails.
+  closing: bool,
+
   // Error string (like Node's error_)
   error: Option<String>,
 
@@ -899,6 +904,7 @@ impl TLSWrapInner {
       bytes_read: 0,
       bytes_written: 0,
       alive: Rc::new(Cell::new(true)),
+      closing: false,
       error: None,
       verify_error: Arc::new(std::sync::Mutex::new(None)),
       pending_client_config: None,
@@ -934,12 +940,36 @@ impl TLSWrapInner {
         return;
       }
       TLSWrapInner::do_enc_out_action(ptr, enc_action);
+
+      // After handshake completes, the JS callback (onhandshakedone ->
+      // onConnectSecure) has run. If the connection was accepted (e.g.
+      // checkServerIdentity passed), drain any pending cleartext that
+      // was buffered before the handshake.  If JS destroyed the socket
+      // (identity check failed), the closing flag prevents sending.
+      if result.handshake_done && !(*ptr).closing {
+        (*ptr).cycling = true;
+        (*ptr).clear_in();
+        let enc_action2 = (*ptr).enc_out_collect();
+        (*ptr).cycling = false;
+        TLSWrapInner::do_enc_out_action(ptr, enc_action2);
+      }
     }
   }
 
   /// Feed pending cleartext into rustls writer.
   /// Mirrors Node's TLSWrap::ClearIn().
   fn clear_in(&mut self) {
+    // Don't feed application data to rustls until the handshake is
+    // complete and JS has confirmed the connection (via onhandshakedone).
+    // In Node.js, the SSL_write for app data effectively happens after
+    // the handshake callback because OpenSSL fires the info callback
+    // synchronously during SSL_read. Without this gate, app data would
+    // be encrypted and sent before checkServerIdentity can reject the
+    // connection.
+    if !self.established || self.closing {
+      return;
+    }
+
     let Some(ref mut conn) = self.tls_conn else {
       return;
     };
@@ -2153,6 +2183,15 @@ impl TLSWrap {
     }
 
     0
+  }
+
+  /// Mark the TLSWrap as closing. Called synchronously from JS
+  /// TLSWrap.close() so the Rust side knows not to send buffered
+  /// application data after a handshake callback rejects the connection.
+  #[fast]
+  fn set_closing(&self) {
+    let inner = unsafe { &mut *self.inner.as_mut_ptr() };
+    inner.closing = true;
   }
 
   /// Destroy the SSL connection. Tears down the TLS state without

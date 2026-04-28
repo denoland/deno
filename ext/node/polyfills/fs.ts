@@ -59,14 +59,12 @@ import {
   constants as fsUtilConstants,
   copyObject,
   Dirent,
-  emitRecursiveRmdirWarning,
   getOptions,
   getValidatedFd,
   getValidatedPath,
   getValidatedPathToString,
   getValidMode,
   kMaxUserId,
-  type RmOptions,
   Stats,
   stringToFlags,
   toUnixTimestamp as _toUnixTimestamp,
@@ -139,7 +137,6 @@ import {
   op_node_statfs_sync,
 } from "ext:core/ops";
 import {
-  ERR_FS_RMDIR_ENOTDIR,
   ERR_INVALID_ARG_TYPE,
   ERR_INVALID_ARG_VALUE,
   uvException,
@@ -1740,26 +1737,6 @@ type rmdirOptions = {
 
 type rmdirCallback = (err?: Error) => void;
 
-const rmdirRecursive =
-  (path: string, callback: rmdirCallback) =>
-  (err: Error | false | null, options?: RmOptions) => {
-    if (err === false) {
-      return callback(new ERR_FS_RMDIR_ENOTDIR(path));
-    }
-    if (err) {
-      return callback(err);
-    }
-
-    PromisePrototypeThen(
-      Deno.remove(path, { recursive: options?.recursive }),
-      (_) => callback(),
-      (err: Error) =>
-        callback(
-          denoErrorToNodeError(err, { syscall: "rmdir", path }),
-        ),
-    );
-  };
-
 function rmdir(
   path: string | Buffer | URL,
   callback: rmdirCallback,
@@ -1778,44 +1755,40 @@ function rmdir(
     callback = options;
     options = undefined;
   }
+
+  if (options?.recursive !== undefined) {
+    // The `recursive` option was deprecated and removed in Node. Throw with a
+    // clear message rather than silently doing the wrong thing.
+    throw new ERR_INVALID_ARG_VALUE(
+      "options.recursive",
+      options.recursive,
+      "is no longer supported",
+    );
+  }
+
   validateFunction(callback, "cb");
   path = getValidatedPathToString(path);
 
-  if (options?.recursive) {
-    emitRecursiveRmdirWarning();
-    validateRmOptions(
-      path,
-      { ...options, force: false },
-      true,
-      rmdirRecursive(path, callback),
-    );
-  } else {
-    validateRmdirOptions(options);
-    PromisePrototypeThen(
-      op_node_rmdir(path),
-      (_) => callback(),
-      (err: Error) =>
-        callback(
-          denoErrorToNodeError(err, { syscall: "rmdir", path }),
-        ),
-    );
-  }
+  validateRmdirOptions(options);
+  PromisePrototypeThen(
+    op_node_rmdir(path),
+    (_) => callback(),
+    (err: Error) =>
+      callback(
+        denoErrorToNodeError(err, { syscall: "rmdir", path }),
+      ),
+  );
 }
 
 function rmdirSync(path: string | Buffer | URL, options?: rmdirOptions) {
   path = getValidatedPathToString(path);
-  if (options?.recursive) {
-    emitRecursiveRmdirWarning();
-    const optionsOrFalse = validateRmOptionsSync(path, {
-      ...options,
-      force: false,
-    }, true);
-    if (optionsOrFalse === false) {
-      throw new ERR_FS_RMDIR_ENOTDIR(path);
-    }
-    return Deno.removeSync(path, {
-      recursive: true,
-    });
+
+  if (options?.recursive !== undefined) {
+    throw new ERR_INVALID_ARG_VALUE(
+      "options.recursive",
+      options.recursive,
+      "is no longer supported",
+    );
   }
 
   validateRmdirOptions(options);
