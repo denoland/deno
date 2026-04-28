@@ -1189,6 +1189,7 @@
     "parallel/test-fs-util-validateoffsetlength.js": {},
     "parallel/test-fs-utimes-y2K38.js": {},
     "parallel/test-fs-utimes.js": {},
+    "parallel/test-fs-watch-encoding.js": {},
     "parallel/test-fs-watch-file-enoent-after-deletion.js": {},
     "parallel/test-fs-watch-recursive-add-file-to-existing-subfolder.js": {},
     "parallel/test-fs-watch-recursive-add-folder.js": {},

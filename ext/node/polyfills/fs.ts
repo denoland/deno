@@ -3135,7 +3135,28 @@ type watchOptions = {
   encoding?: string;
 };
 
-type watchListener = (eventType: string, filename: string) => void;
+type watchListener = (
+  eventType: string,
+  filename: string | Buffer,
+) => void;
+
+// Match Node: `encoding: 'buffer'` returns a Buffer, any other named encoding
+// returns the filename re-encoded from utf8. Default ('utf8' or absent) leaves
+// the string unchanged. https://github.com/nodejs/node/blob/main/lib/internal/fs/watchers.js
+function encodeWatchFilename(
+  filename: string,
+  encoding: string | undefined,
+): string | Buffer {
+  if (!encoding || encoding === "utf8" || encoding === "utf-8") {
+    return filename;
+  }
+  const asBuffer = Buffer.from(filename);
+  if (encoding === "buffer") {
+    return asBuffer;
+  }
+  // deno-lint-ignore prefer-primordials
+  return asBuffer.toString(encoding as BufferEncoding);
+}
 
 function watch(
   filename: string | URL,
@@ -3171,6 +3192,7 @@ function watch(
   const watchPath = getValidatedPath(filename).toString();
 
   const recursive = options?.recursive || false;
+  const encoding = options?.encoding;
   const iterator: Deno.FsWatcher = Deno.watchFs(watchPath, {
     recursive,
   });
@@ -3190,7 +3212,7 @@ function watch(
     fsWatcher.emit(
       "change",
       convertDenoFsEventToNodeFsEvent(val.kind),
-      filename,
+      encodeWatchFilename(filename, encoding),
     );
   }, (e) => {
     fsWatcher.emit("error", e);
