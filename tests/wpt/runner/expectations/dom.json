@@ -78,7 +78,6 @@
     "Event-propagation.html": false,
     "Event-returnValue.html": {
       "expectedFailures": [
-        "returnValue=false should have no effect if cancelable is false.",
         "initEvent should unset returnValue."
       ]
     },
