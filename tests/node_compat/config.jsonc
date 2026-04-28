@@ -1643,6 +1643,7 @@
     "parallel/test-http2-compat-write-early-hints.js": {},
     "parallel/test-http2-compat-write-head-after-close.js": {},
     "parallel/test-http2-compat-write-head-destroyed.js": {},
+    "parallel/test-http2-connect-method-extended.js": {},
     "parallel/test-http2-connect-method.js": {},
     "parallel/test-http2-connect.js": {},
     "parallel/test-http2-cookies.js": {},
