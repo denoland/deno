@@ -562,6 +562,21 @@ Module.builtinModules = builtinModules;
 Module._extensions = ObjectCreate(null);
 Module._cache = ObjectCreate(null);
 Module._pathCache = ObjectCreate(null);
+
+// Returns:
+//   0 for a file
+//   1 for a directory
+//   a negative integer for any error (e.g. ENOENT)
+//
+// Matches Node's `Module._stat`:
+// https://github.com/nodejs/node/blob/main/lib/internal/modules/cjs/loader.js
+ObjectDefineProperty(Module, "_stat", {
+  __proto__: null,
+  get() {
+    return stat;
+  },
+  configurable: true,
+});
 let modulePaths = [];
 Module.globalPaths = modulePaths;
 

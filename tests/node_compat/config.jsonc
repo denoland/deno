@@ -2033,6 +2033,7 @@
     "parallel/test-module-prototype-mutation.js": {},
     "parallel/test-module-readonly.js": {},
     "parallel/test-module-relative-lookup.js": {},
+    "parallel/test-module-stat.js": {},
     "parallel/test-module-strip-types.js": {},
     "parallel/test-module-version.js": {},
     "parallel/test-module-wrap.js": {},
