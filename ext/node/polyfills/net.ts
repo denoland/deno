@@ -2255,17 +2255,11 @@ export function _createServerHandle(
 
     if (!address) {
       // Match Node's behavior: when no address is provided, prefer the
-      // IPv6 wildcard (which on most platforms accepts IPv4 connections
-      // via dual-stack) and fall back to IPv4 if the IPv6 bind fails.
-      //
-      // Windows is kept on the IPv4-only path because the dual-stack
-      // socket option doesn't always behave like Node there.
+      // IPv6 wildcard (which accepts IPv4 connections via dual-stack on
+      // all platforms supported by libuv) and fall back to IPv4 if the
+      // IPv6 bind fails.
       //
       // REF: https://github.com/denoland/deno/issues/10762
-      if (isWindows) {
-        return _createServerHandle(DEFAULT_IPV4_ADDR, port, 4, null, flags);
-      }
-
       err = (handle as TCP).bind6(DEFAULT_IPV6_ADDR, port ?? 0, flags ?? 0);
       if (err) {
         handle.close();
@@ -2368,27 +2362,20 @@ function _setupListenHandle(
     let rval = null;
 
     // Try to bind to the unspecified IPv6 address, see if IPv6 is available.
-    // On most platforms a wildcard IPv6 socket also accepts IPv4 traffic via
-    // dual-stack, matching Node's default. Windows is kept on the IPv4-only
-    // path because the dual-stack socket option doesn't always behave like
-    // Node there.
+    // A wildcard IPv6 socket also accepts IPv4 traffic via dual-stack on all
+    // platforms supported by libuv, matching Node's default.
     //
     // REF: https://github.com/denoland/deno/issues/10762
     if (!address && typeof fd !== "number") {
-      if (isWindows) {
+      rval = _createServerHandle(DEFAULT_IPV6_ADDR, port, 6, fd, flags);
+
+      if (typeof rval === "number") {
+        rval = null;
         address = DEFAULT_IPV4_ADDR;
         addressType = 4;
       } else {
-        rval = _createServerHandle(DEFAULT_IPV6_ADDR, port, 6, fd, flags);
-
-        if (typeof rval === "number") {
-          rval = null;
-          address = DEFAULT_IPV4_ADDR;
-          addressType = 4;
-        } else {
-          address = DEFAULT_IPV6_ADDR;
-          addressType = 6;
-        }
+        address = DEFAULT_IPV6_ADDR;
+        addressType = 6;
       }
     }
 
