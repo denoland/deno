@@ -1411,11 +1411,67 @@ unsafe extern "C" fn on_select_padding(
 
 unsafe extern "C" fn on_frame_not_send_callback(
   _session: *mut ffi::nghttp2_session,
-  _frame: *const ffi::nghttp2_frame,
-  _lib_error_code: i32,
-  _data: *mut c_void,
+  frame: *const ffi::nghttp2_frame,
+  lib_error_code: i32,
+  data: *mut c_void,
 ) -> i32 {
+  // Per Node.js parity, swallow events for frames that fail because the
+  // session/stream is already closing — the close path will surface the
+  // error through other channels.
+  if lib_error_code == ffi::NGHTTP2_ERR_SESSION_CLOSING
+    || lib_error_code == ffi::NGHTTP2_ERR_STREAM_CLOSED
+    || lib_error_code == ffi::NGHTTP2_ERR_STREAM_CLOSING
+  {
+    return 0;
+  }
+
+  // SAFETY: data is the user_data pointer set during session creation
+  let session = unsafe { Session::from_user_data(data) };
+
+  let id = frame_id(frame);
+  let ftype = frame_type(frame);
+  let translated = translate_nghttp2_error_code(lib_error_code);
+
+  let mut isolate =
+    // SAFETY: isolate pointer is valid for the session's lifetime
+    unsafe { v8::Isolate::from_raw_isolate_ptr(session.isolate) };
+  v8::scope!(let scope, &mut isolate);
+  let context = v8::Local::new(scope, session.context.clone());
+  let scope = &mut v8::ContextScope::new(scope, context);
+
+  let stream_id = v8::Integer::new(scope, id);
+  let frame_type_v = v8::Integer::new_from_unsigned(scope, ftype as u32);
+  let code = v8::Integer::new_from_unsigned(scope, translated);
+
+  let state = session.op_state.borrow();
+  let callbacks = state.borrow::<SessionCallbacks>();
+  let recv = v8::Local::new(scope, &session.this);
+  let callback = v8::Local::new(scope, &callbacks.frame_error_cb);
+  drop(state);
+
+  callback.call(
+    scope,
+    recv.into(),
+    &[stream_id.into(), frame_type_v.into(), code.into()],
+  );
   0
+}
+
+// Maps an nghttp2 library error (negative) to the HTTP/2 protocol error
+// code (RFC 7540 §7) surfaced to JavaScript, matching Node's
+// TranslateNghttp2ErrorCode in src/node_http2.cc.
+fn translate_nghttp2_error_code(lib_err: i32) -> u32 {
+  match lib_err {
+    ffi::NGHTTP2_ERR_STREAM_CLOSED => 5, // NGHTTP2_STREAM_CLOSED
+    ffi::NGHTTP2_ERR_HEADER_COMP => 9,   // NGHTTP2_COMPRESSION_ERROR
+    ffi::NGHTTP2_ERR_FRAME_SIZE_ERROR => 6, // NGHTTP2_FRAME_SIZE_ERROR
+    ffi::NGHTTP2_ERR_FLOW_CONTROL => 3,  // NGHTTP2_FLOW_CONTROL_ERROR
+    ffi::NGHTTP2_ERR_REFUSED_STREAM => 7, // NGHTTP2_REFUSED_STREAM
+    ffi::NGHTTP2_ERR_PROTO
+    | ffi::NGHTTP2_ERR_HTTP_HEADER
+    | ffi::NGHTTP2_ERR_HTTP_MESSAGING => 1, // NGHTTP2_PROTOCOL_ERROR
+    _ => 2,                              // NGHTTP2_INTERNAL_ERROR
+  }
 }
 
 unsafe extern "C" fn on_invalid_header_callback(
