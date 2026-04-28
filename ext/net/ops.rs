@@ -993,7 +993,6 @@ pub async fn op_dns_resolve(
     system_conf::read_system_conf()?
   };
 
-
   // When a cancel handle is provided, use a short resolver timeout so
   // that hickory's background connection tasks clean up quickly after
   // cancellation (they are not aborted by the cancel handle itself).
