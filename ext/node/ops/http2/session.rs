@@ -806,7 +806,22 @@ unsafe extern "C" fn on_frame_recv_callback(
   } else if ft == ffi::NGHTTP2_GOAWAY as u32 {
     handle_goaway_frame(session, frame);
   } else if ft == ffi::NGHTTP2_PING as u32 {
-    handle_ping_frame(session);
+    if ff & ffi::NGHTTP2_FLAG_ACK as u8 != 0 {
+      // PING ACK from the peer. If we have an outstanding PING, consume it
+      // and let JS handle the ack. Otherwise the peer sent us an
+      // unsolicited PING ACK — Node treats this as a connection-level
+      // protocol error (see HandlePingFrame in node_http2.cc) and surfaces
+      // it via the session's internal-error callback so the JS layer can
+      // destroy the session with NghttpError(NGHTTP2_ERR_PROTO).
+      if session.pending_pings > 0 {
+        session.pending_pings -= 1;
+        handle_ping_frame(session);
+      } else {
+        handle_unsolicited_ping_ack(session);
+      }
+    } else {
+      handle_ping_frame(session);
+    }
   } else if ft == ffi::NGHTTP2_ALTSVC as u32 {
     handle_alt_svc_frame(session, frame);
   } else if ft == ffi::NGHTTP2_ORIGIN as u32 {
@@ -969,6 +984,29 @@ fn handle_ping_frame(session: &Session) {
 
   let arg = v8::null(scope);
   callback.call(scope, recv.into(), &[arg.into()]);
+}
+
+/// Inbound PING ACK with no matching outstanding PING. Mirrors Node's
+/// HandlePingFrame "unsolicited ack" branch in src/node_http2.cc: surface
+/// `NGHTTP2_ERR_PROTO` to the JS internal-error callback so the session is
+/// destroyed with `NghttpError(-505)` (code `ERR_HTTP2_ERROR`,
+/// message "Protocol error").
+fn handle_unsolicited_ping_ack(session: &Session) {
+  let mut isolate =
+    // SAFETY: isolate pointer is valid for the session's lifetime
+    unsafe { v8::Isolate::from_raw_isolate_ptr(session.isolate) };
+  v8::scope!(let scope, &mut isolate);
+  let context = v8::Local::new(scope, session.context.clone());
+  let scope = &mut v8::ContextScope::new(scope, context);
+
+  let state = session.op_state.borrow();
+  let callbacks = state.borrow::<SessionCallbacks>();
+  let recv = v8::Local::new(scope, &session.this);
+  let callback = v8::Local::new(scope, &callbacks.session_internal_error_cb);
+  drop(state);
+
+  let code = v8::Integer::new(scope, ffi::NGHTTP2_ERR_PROTO);
+  callback.call(scope, recv.into(), &[code.into()]);
 }
 
 fn handle_goaway_frame(session: &Session, frame: *const ffi::nghttp2_frame) {
@@ -1689,6 +1727,12 @@ pub struct Session {
   /// exactly one. Because the only call site is `fn settings(cb)`, push and
   /// submit are paired atomically.
   pub pending_settings_acks: VecDeque<v8::Global<v8::Function>>,
+  /// Count of outstanding outbound PINGs awaiting an ACK from the peer.
+  /// Mirrors Node's `outstanding_pings_` queue depth. Receiving a PING ACK
+  /// when this is zero is treated as a connection-level protocol error
+  /// (see `HandlePingFrame` in node_http2.cc): there is no legitimate
+  /// reason for a peer to send an unsolicited PING ACK.
+  pub pending_pings: u32,
 }
 
 impl Session {
@@ -2192,6 +2236,7 @@ impl Http2Session {
       local_custom_settings: Vec::new(),
       remote_custom_settings: Vec::new(),
       pending_settings_acks: VecDeque::new(),
+      pending_pings: 0,
     }));
 
     // SAFETY: inner is valid (just allocated); callbacks and options are valid
@@ -2824,6 +2869,12 @@ impl Http2Session {
     };
     // SAFETY: self.inner was allocated by Box::into_raw and is valid
     let session = unsafe { &mut *self.inner };
+    if ret == 0 {
+      // Track the outstanding ping so an inbound ACK can be matched. If
+      // an ACK arrives when this counter is zero, the peer sent an
+      // unsolicited PING ACK and we treat it as a protocol error.
+      session.pending_pings = session.pending_pings.saturating_add(1);
+    }
     session.send_pending_data();
     ret
   }
@@ -2891,4 +2942,19 @@ pub fn op_http2_http_state<'a>(
   scope: &mut v8::PinScope<'a, 'a>,
 ) -> JSHttp2State<'a> {
   JSHttp2State::create(scope)
+}
+
+/// Look up the human-readable string for an nghttp2 integer error code via
+/// `nghttp2_strerror`. Used by the JS `NghttpError` class so an
+/// `ERR_HTTP2_ERROR` raised from the binding carries the same `.message`
+/// (e.g. "Protocol error" for `NGHTTP2_ERR_PROTO`) as Node.js produces from
+/// its own binding.
+#[op2]
+#[string]
+pub fn op_http2_error_string(code: i32) -> String {
+  // SAFETY: nghttp2_strerror returns a valid static C string for any input.
+  unsafe {
+    let p = ffi::nghttp2_strerror(code);
+    std::ffi::CStr::from_ptr(p).to_string_lossy().into_owned()
+  }
 }
