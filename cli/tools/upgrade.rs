@@ -544,7 +544,7 @@ fn prune_canary_cache<
   }
 
   // Sort by modification time, most recent first
-  dirs.sort_by(|a, b| b.1.cmp(&a.1));
+  dirs.sort_by_key(|b| std::cmp::Reverse(b.1));
 
   for (path, _) in dirs.into_iter().skip(max_entries) {
     let _ = sys.fs_remove_dir_all(&path);

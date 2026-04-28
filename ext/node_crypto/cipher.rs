@@ -1012,26 +1012,22 @@ impl Decipher {
   fn validate_auth_tag(&self, length: usize) -> Result<(), DecipherError> {
     match self {
       Decipher::Aes128Gcm(_, Some(tag_len))
-      | Decipher::Aes256Gcm(_, Some(tag_len)) => {
-        if *tag_len != length {
-          return Err(DecipherError::InvalidAuthTag(length));
-        }
+      | Decipher::Aes256Gcm(_, Some(tag_len))
+        if *tag_len != length =>
+      {
+        return Err(DecipherError::InvalidAuthTag(length));
       }
-      Decipher::Aes128Gcm(_, None) | Decipher::Aes256Gcm(_, None) => {
-        if !is_valid_gcm_tag_length(length) {
-          return Err(DecipherError::InvalidAuthTag(length));
-        }
+      Decipher::Aes128Gcm(_, None) | Decipher::Aes256Gcm(_, None)
+        if !is_valid_gcm_tag_length(length) =>
+      {
+        return Err(DecipherError::InvalidAuthTag(length));
       }
-      Decipher::ChaCha20Poly1305(_, Some(tag_len)) => {
-        if *tag_len != length {
-          return Err(DecipherError::InvalidAuthTag(length));
-        }
+      Decipher::ChaCha20Poly1305(_, Some(tag_len)) if *tag_len != length => {
+        return Err(DecipherError::InvalidAuthTag(length));
       }
-      Decipher::ChaCha20Poly1305(_, None) => {
+      Decipher::ChaCha20Poly1305(_, None) if length != 16 => {
         // Default tag length is 16; reject anything else
-        if length != 16 {
-          return Err(DecipherError::InvalidAuthTag(length));
-        }
+        return Err(DecipherError::InvalidAuthTag(length));
       }
       _ => {}
     }

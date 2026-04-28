@@ -1104,7 +1104,7 @@ impl Inner {
         }
       }
       workspace_files.extend(dir_files);
-      pending.extend(dir_subdirs.into_iter());
+      pending.extend(dir_subdirs);
     }
     (workspace_files, false)
   }

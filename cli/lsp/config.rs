@@ -1741,16 +1741,16 @@ impl ConfigTree {
   pub fn config_files(&self) -> Vec<&Arc<ConfigFile>> {
     self
       .scopes
-      .iter()
-      .filter_map(|(_, d)| d.maybe_deno_json())
+      .values()
+      .filter_map(|d| d.maybe_deno_json())
       .collect()
   }
 
   pub fn package_jsons(&self) -> Vec<&Arc<PackageJson>> {
     self
       .scopes
-      .iter()
-      .filter_map(|(_, d)| d.maybe_pkg_json())
+      .values()
+      .filter_map(|d| d.maybe_pkg_json())
       .collect()
   }
 

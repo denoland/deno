@@ -155,7 +155,7 @@ pub(crate) fn generate_markdown_report(
 
   // Sort by self time
   let mut sorted_stats: Vec<_> = function_stats.values().cloned().collect();
-  sorted_stats.sort_by(|a, b| b.self_time.cmp(&a.self_time));
+  sorted_stats.sort_by_key(|b| std::cmp::Reverse(b.self_time));
 
   // Filter out idle/root
   let sorted_stats: Vec<_> = sorted_stats

@@ -111,22 +111,22 @@ jobs:
           # to complete.
           sudo apt-get -qq remove --purge -y man-db > /dev/null 2> /dev/null
           # Remove older clang before we install
-          sudo apt-get -qq remove   'clang-12*' 'clang-13*' 'clang-14*' 'clang-15*' 'clang-16*' 'clang-17*' 'clang-18*' 'clang-19*' 'llvm-12*' 'llvm-13*' 'llvm-14*' 'llvm-15*' 'llvm-16*' 'llvm-17*' 'llvm-18*' 'llvm-19*' 'lld-12*' 'lld-13*' 'lld-14*' 'lld-15*' 'lld-16*' 'lld-17*' 'lld-18*' 'lld-19*' > /dev/null 2> /dev/null
+          sudo apt-get -qq remove   'clang-12*' 'clang-13*' 'clang-14*' 'clang-15*' 'clang-16*' 'clang-17*' 'clang-18*' 'clang-19*' 'clang-20*' 'clang-21*' 'llvm-12*' 'llvm-13*' 'llvm-14*' 'llvm-15*' 'llvm-16*' 'llvm-17*' 'llvm-18*' 'llvm-19*' 'llvm-20*' 'llvm-21*' 'lld-12*' 'lld-13*' 'lld-14*' 'lld-15*' 'lld-16*' 'lld-17*' 'lld-18*' 'lld-19*' 'lld-20*' 'lld-21*' > /dev/null 2> /dev/null
 
           # Install clang-XXX, lld-XXX, and debootstrap.
-          echo "deb http://apt.llvm.org/noble/ llvm-toolchain-noble-21 main" |
-            sudo dd of=/etc/apt/sources.list.d/llvm-toolchain-noble-21.list
+          echo "deb http://apt.llvm.org/noble/ llvm-toolchain-noble-22 main" |
+            sudo dd of=/etc/apt/sources.list.d/llvm-toolchain-noble-22.list
           curl https://apt.llvm.org/llvm-snapshot.gpg.key |
             gpg --dearmor                                 |
           sudo dd of=/etc/apt/trusted.gpg.d/llvm-snapshot.gpg
           sudo apt-get update
           # this was unreliable sometimes, so try again if it fails
-          sudo apt-get install -y --no-install-recommends clang-21 lld-21 clang-tools-21 clang-format-21 clang-tidy-21 || (echo 'Failed. Trying again.' && sudo apt-get clean && sudo apt-get update && sudo apt-get install -y --no-install-recommends clang-21 lld-21 clang-tools-21 clang-format-21 clang-tidy-21)
+          sudo apt-get install -y --no-install-recommends clang-22 lld-22 clang-tools-22 clang-format-22 clang-tidy-22 || (echo 'Failed. Trying again.' && sudo apt-get clean && sudo apt-get update && sudo apt-get install -y --no-install-recommends clang-22 lld-22 clang-tools-22 clang-format-22 clang-tidy-22)
           # Fix alternatives
           (yes '' | sudo update-alternatives --force --all) > /dev/null 2> /dev/null || true
 
-          clang-21 -c -o /tmp/memfd_create_shim.o tools/memfd_create_shim.c -fPIC
-          clang-21 -c -o /tmp/glibc_math_shim.o tools/glibc_math_shim.c -fPIC
+          clang-22 -c -o /tmp/memfd_create_shim.o tools/memfd_create_shim.c -fPIC
+          clang-22 -c -o /tmp/glibc_math_shim.o tools/glibc_math_shim.c -fPIC
 
           echo "Decompressing sysroot..."
           wget -q https://github.com/denoland/deno_sysroot_build/releases/download/sysroot-20250207/sysroot-`uname -m`.tar.xz -O /tmp/sysroot.tar.xz
@@ -159,8 +159,8 @@ jobs:
           CARGO_PROFILE_RELEASE_INCREMENTAL=false
           RUSTFLAGS<<__1
             -C linker-plugin-lto=true
-            -C linker=clang-21
-            -C link-arg=-fuse-ld=lld-21
+            -C linker=clang-22
+            -C link-arg=-fuse-ld=lld-22
             -C link-arg=-ldl
             -C link-arg=-Wl,--allow-shlib-undefined
             -C link-arg=-Wl,--thinlto-cache-dir=$(pwd)/target/release/lto-cache
@@ -177,8 +177,8 @@ jobs:
           __1
           RUSTDOCFLAGS<<__1
             -C linker-plugin-lto=true
-            -C linker=clang-21
-            -C link-arg=-fuse-ld=lld-21
+            -C linker=clang-22
+            -C link-arg=-fuse-ld=lld-22
             -C link-arg=-ldl
             -C link-arg=-Wl,--allow-shlib-undefined
             -C link-arg=-Wl,--thinlto-cache-dir=$(pwd)/target/release/lto-cache
@@ -193,7 +193,7 @@ jobs:
             --cfg tokio_unstable
             $RUSTFLAGS
           __1
-          CC=/usr/bin/clang-21
+          CC=/usr/bin/clang-22
           CFLAGS=$CFLAGS
           " > $GITHUB_ENV
       - name: Install Deno
@@ -3417,22 +3417,22 @@ jobs:
           # to complete.
           sudo apt-get -qq remove --purge -y man-db > /dev/null 2> /dev/null
           # Remove older clang before we install
-          sudo apt-get -qq remove   'clang-12*' 'clang-13*' 'clang-14*' 'clang-15*' 'clang-16*' 'clang-17*' 'clang-18*' 'clang-19*' 'llvm-12*' 'llvm-13*' 'llvm-14*' 'llvm-15*' 'llvm-16*' 'llvm-17*' 'llvm-18*' 'llvm-19*' 'lld-12*' 'lld-13*' 'lld-14*' 'lld-15*' 'lld-16*' 'lld-17*' 'lld-18*' 'lld-19*' > /dev/null 2> /dev/null
+          sudo apt-get -qq remove   'clang-12*' 'clang-13*' 'clang-14*' 'clang-15*' 'clang-16*' 'clang-17*' 'clang-18*' 'clang-19*' 'clang-20*' 'clang-21*' 'llvm-12*' 'llvm-13*' 'llvm-14*' 'llvm-15*' 'llvm-16*' 'llvm-17*' 'llvm-18*' 'llvm-19*' 'llvm-20*' 'llvm-21*' 'lld-12*' 'lld-13*' 'lld-14*' 'lld-15*' 'lld-16*' 'lld-17*' 'lld-18*' 'lld-19*' 'lld-20*' 'lld-21*' > /dev/null 2> /dev/null
 
           # Install clang-XXX, lld-XXX, and debootstrap.
-          echo "deb http://apt.llvm.org/noble/ llvm-toolchain-noble-21 main" |
-            sudo dd of=/etc/apt/sources.list.d/llvm-toolchain-noble-21.list
+          echo "deb http://apt.llvm.org/noble/ llvm-toolchain-noble-22 main" |
+            sudo dd of=/etc/apt/sources.list.d/llvm-toolchain-noble-22.list
           curl https://apt.llvm.org/llvm-snapshot.gpg.key |
             gpg --dearmor                                 |
           sudo dd of=/etc/apt/trusted.gpg.d/llvm-snapshot.gpg
           sudo apt-get update
           # this was unreliable sometimes, so try again if it fails
-          sudo apt-get install -y --no-install-recommends clang-21 lld-21 clang-tools-21 clang-format-21 clang-tidy-21 || (echo 'Failed. Trying again.' && sudo apt-get clean && sudo apt-get update && sudo apt-get install -y --no-install-recommends clang-21 lld-21 clang-tools-21 clang-format-21 clang-tidy-21)
+          sudo apt-get install -y --no-install-recommends clang-22 lld-22 clang-tools-22 clang-format-22 clang-tidy-22 || (echo 'Failed. Trying again.' && sudo apt-get clean && sudo apt-get update && sudo apt-get install -y --no-install-recommends clang-22 lld-22 clang-tools-22 clang-format-22 clang-tidy-22)
           # Fix alternatives
           (yes '' | sudo update-alternatives --force --all) > /dev/null 2> /dev/null || true
 
-          clang-21 -c -o /tmp/memfd_create_shim.o tools/memfd_create_shim.c -fPIC
-          clang-21 -c -o /tmp/glibc_math_shim.o tools/glibc_math_shim.c -fPIC
+          clang-22 -c -o /tmp/memfd_create_shim.o tools/memfd_create_shim.c -fPIC
+          clang-22 -c -o /tmp/glibc_math_shim.o tools/glibc_math_shim.c -fPIC
 
           echo "Decompressing sysroot..."
           wget -q https://github.com/denoland/deno_sysroot_build/releases/download/sysroot-20250207/sysroot-`uname -m`.tar.xz -O /tmp/sysroot.tar.xz
@@ -3465,8 +3465,8 @@ jobs:
           CARGO_PROFILE_RELEASE_INCREMENTAL=false
           RUSTFLAGS<<__1
             -C linker-plugin-lto=true
-            -C linker=clang-21
-            -C link-arg=-fuse-ld=lld-21
+            -C linker=clang-22
+            -C link-arg=-fuse-ld=lld-22
             -C link-arg=-ldl
             -C link-arg=-Wl,--allow-shlib-undefined
             -C link-arg=-Wl,--thinlto-cache-dir=$(pwd)/target/release/lto-cache
@@ -3483,8 +3483,8 @@ jobs:
           __1
           RUSTDOCFLAGS<<__1
             -C linker-plugin-lto=true
-            -C linker=clang-21
-            -C link-arg=-fuse-ld=lld-21
+            -C linker=clang-22
+            -C link-arg=-fuse-ld=lld-22
             -C link-arg=-ldl
             -C link-arg=-Wl,--allow-shlib-undefined
             -C link-arg=-Wl,--thinlto-cache-dir=$(pwd)/target/release/lto-cache
@@ -3499,7 +3499,7 @@ jobs:
             --cfg tokio_unstable
             $RUSTFLAGS
           __1
-          CC=/usr/bin/clang-21
+          CC=/usr/bin/clang-22
           CFLAGS=$CFLAGS
           " > $GITHUB_ENV
       - name: Configure canary build
@@ -3773,22 +3773,22 @@ jobs:
           # to complete.
           sudo apt-get -qq remove --purge -y man-db > /dev/null 2> /dev/null
           # Remove older clang before we install
-          sudo apt-get -qq remove   'clang-12*' 'clang-13*' 'clang-14*' 'clang-15*' 'clang-16*' 'clang-17*' 'clang-18*' 'clang-19*' 'llvm-12*' 'llvm-13*' 'llvm-14*' 'llvm-15*' 'llvm-16*' 'llvm-17*' 'llvm-18*' 'llvm-19*' 'lld-12*' 'lld-13*' 'lld-14*' 'lld-15*' 'lld-16*' 'lld-17*' 'lld-18*' 'lld-19*' > /dev/null 2> /dev/null
+          sudo apt-get -qq remove   'clang-12*' 'clang-13*' 'clang-14*' 'clang-15*' 'clang-16*' 'clang-17*' 'clang-18*' 'clang-19*' 'clang-20*' 'clang-21*' 'llvm-12*' 'llvm-13*' 'llvm-14*' 'llvm-15*' 'llvm-16*' 'llvm-17*' 'llvm-18*' 'llvm-19*' 'llvm-20*' 'llvm-21*' 'lld-12*' 'lld-13*' 'lld-14*' 'lld-15*' 'lld-16*' 'lld-17*' 'lld-18*' 'lld-19*' 'lld-20*' 'lld-21*' > /dev/null 2> /dev/null
 
           # Install clang-XXX, lld-XXX, and debootstrap.
-          echo "deb http://apt.llvm.org/noble/ llvm-toolchain-noble-21 main" |
-            sudo dd of=/etc/apt/sources.list.d/llvm-toolchain-noble-21.list
+          echo "deb http://apt.llvm.org/noble/ llvm-toolchain-noble-22 main" |
+            sudo dd of=/etc/apt/sources.list.d/llvm-toolchain-noble-22.list
           curl https://apt.llvm.org/llvm-snapshot.gpg.key |
             gpg --dearmor                                 |
           sudo dd of=/etc/apt/trusted.gpg.d/llvm-snapshot.gpg
           sudo apt-get update
           # this was unreliable sometimes, so try again if it fails
-          sudo apt-get install -y --no-install-recommends clang-21 lld-21 clang-tools-21 clang-format-21 clang-tidy-21 || (echo 'Failed. Trying again.' && sudo apt-get clean && sudo apt-get update && sudo apt-get install -y --no-install-recommends clang-21 lld-21 clang-tools-21 clang-format-21 clang-tidy-21)
+          sudo apt-get install -y --no-install-recommends clang-22 lld-22 clang-tools-22 clang-format-22 clang-tidy-22 || (echo 'Failed. Trying again.' && sudo apt-get clean && sudo apt-get update && sudo apt-get install -y --no-install-recommends clang-22 lld-22 clang-tools-22 clang-format-22 clang-tidy-22)
           # Fix alternatives
           (yes '' | sudo update-alternatives --force --all) > /dev/null 2> /dev/null || true
 
-          clang-21 -c -o /tmp/memfd_create_shim.o tools/memfd_create_shim.c -fPIC
-          clang-21 -c -o /tmp/glibc_math_shim.o tools/glibc_math_shim.c -fPIC
+          clang-22 -c -o /tmp/memfd_create_shim.o tools/memfd_create_shim.c -fPIC
+          clang-22 -c -o /tmp/glibc_math_shim.o tools/glibc_math_shim.c -fPIC
 
           echo "Decompressing sysroot..."
           wget -q https://github.com/denoland/deno_sysroot_build/releases/download/sysroot-20250207/sysroot-`uname -m`.tar.xz -O /tmp/sysroot.tar.xz
@@ -3821,8 +3821,8 @@ jobs:
           CARGO_PROFILE_RELEASE_INCREMENTAL=false
           RUSTFLAGS<<__1
             -C linker-plugin-lto=true
-            -C linker=clang-21
-            -C link-arg=-fuse-ld=lld-21
+            -C linker=clang-22
+            -C link-arg=-fuse-ld=lld-22
             -C link-arg=-ldl
             -C link-arg=-Wl,--allow-shlib-undefined
             -C link-arg=-Wl,--thinlto-cache-dir=$(pwd)/target/release/lto-cache
@@ -3839,8 +3839,8 @@ jobs:
           __1
           RUSTDOCFLAGS<<__1
             -C linker-plugin-lto=true
-            -C linker=clang-21
-            -C link-arg=-fuse-ld=lld-21
+            -C linker=clang-22
+            -C link-arg=-fuse-ld=lld-22
             -C link-arg=-ldl
             -C link-arg=-Wl,--allow-shlib-undefined
             -C link-arg=-Wl,--thinlto-cache-dir=$(pwd)/target/release/lto-cache
@@ -3855,7 +3855,7 @@ jobs:
             --cfg tokio_unstable
             $RUSTFLAGS
           __1
-          CC=/usr/bin/clang-21
+          CC=/usr/bin/clang-22
           CFLAGS=$CFLAGS
           " > $GITHUB_ENV
       - name: Download artifact release-linux-x86_64-deno
@@ -4119,22 +4119,22 @@ jobs:
           # to complete.
           sudo apt-get -qq remove --purge -y man-db > /dev/null 2> /dev/null
           # Remove older clang before we install
-          sudo apt-get -qq remove   'clang-12*' 'clang-13*' 'clang-14*' 'clang-15*' 'clang-16*' 'clang-17*' 'clang-18*' 'clang-19*' 'llvm-12*' 'llvm-13*' 'llvm-14*' 'llvm-15*' 'llvm-16*' 'llvm-17*' 'llvm-18*' 'llvm-19*' 'lld-12*' 'lld-13*' 'lld-14*' 'lld-15*' 'lld-16*' 'lld-17*' 'lld-18*' 'lld-19*' > /dev/null 2> /dev/null
+          sudo apt-get -qq remove   'clang-12*' 'clang-13*' 'clang-14*' 'clang-15*' 'clang-16*' 'clang-17*' 'clang-18*' 'clang-19*' 'clang-20*' 'clang-21*' 'llvm-12*' 'llvm-13*' 'llvm-14*' 'llvm-15*' 'llvm-16*' 'llvm-17*' 'llvm-18*' 'llvm-19*' 'llvm-20*' 'llvm-21*' 'lld-12*' 'lld-13*' 'lld-14*' 'lld-15*' 'lld-16*' 'lld-17*' 'lld-18*' 'lld-19*' 'lld-20*' 'lld-21*' > /dev/null 2> /dev/null
 
           # Install clang-XXX, lld-XXX, and debootstrap.
-          echo "deb http://apt.llvm.org/noble/ llvm-toolchain-noble-21 main" |
-            sudo dd of=/etc/apt/sources.list.d/llvm-toolchain-noble-21.list
+          echo "deb http://apt.llvm.org/noble/ llvm-toolchain-noble-22 main" |
+            sudo dd of=/etc/apt/sources.list.d/llvm-toolchain-noble-22.list
           curl https://apt.llvm.org/llvm-snapshot.gpg.key |
             gpg --dearmor                                 |
           sudo dd of=/etc/apt/trusted.gpg.d/llvm-snapshot.gpg
           sudo apt-get update
           # this was unreliable sometimes, so try again if it fails
-          sudo apt-get install -y --no-install-recommends clang-21 lld-21 clang-tools-21 clang-format-21 clang-tidy-21 || (echo 'Failed. Trying again.' && sudo apt-get clean && sudo apt-get update && sudo apt-get install -y --no-install-recommends clang-21 lld-21 clang-tools-21 clang-format-21 clang-tidy-21)
+          sudo apt-get install -y --no-install-recommends clang-22 lld-22 clang-tools-22 clang-format-22 clang-tidy-22 || (echo 'Failed. Trying again.' && sudo apt-get clean && sudo apt-get update && sudo apt-get install -y --no-install-recommends clang-22 lld-22 clang-tools-22 clang-format-22 clang-tidy-22)
           # Fix alternatives
           (yes '' | sudo update-alternatives --force --all) > /dev/null 2> /dev/null || true
 
-          clang-21 -c -o /tmp/memfd_create_shim.o tools/memfd_create_shim.c -fPIC
-          clang-21 -c -o /tmp/glibc_math_shim.o tools/glibc_math_shim.c -fPIC
+          clang-22 -c -o /tmp/memfd_create_shim.o tools/memfd_create_shim.c -fPIC
+          clang-22 -c -o /tmp/glibc_math_shim.o tools/glibc_math_shim.c -fPIC
 
           echo "Decompressing sysroot..."
           wget -q https://github.com/denoland/deno_sysroot_build/releases/download/sysroot-20250207/sysroot-`uname -m`.tar.xz -O /tmp/sysroot.tar.xz
@@ -4167,8 +4167,8 @@ jobs:
           CARGO_PROFILE_RELEASE_INCREMENTAL=false
           RUSTFLAGS<<__1
             -C linker-plugin-lto=true
-            -C linker=clang-21
-            -C link-arg=-fuse-ld=lld-21
+            -C linker=clang-22
+            -C link-arg=-fuse-ld=lld-22
             -C link-arg=-ldl
             -C link-arg=-Wl,--allow-shlib-undefined
             -C link-arg=-Wl,--thinlto-cache-dir=$(pwd)/target/release/lto-cache
@@ -4185,8 +4185,8 @@ jobs:
           __1
           RUSTDOCFLAGS<<__1
             -C linker-plugin-lto=true
-            -C linker=clang-21
-            -C link-arg=-fuse-ld=lld-21
+            -C linker=clang-22
+            -C link-arg=-fuse-ld=lld-22
             -C link-arg=-ldl
             -C link-arg=-Wl,--allow-shlib-undefined
             -C link-arg=-Wl,--thinlto-cache-dir=$(pwd)/target/release/lto-cache
@@ -4201,7 +4201,7 @@ jobs:
             --cfg tokio_unstable
             $RUSTFLAGS
           __1
-          CC=/usr/bin/clang-21
+          CC=/usr/bin/clang-22
           CFLAGS=$CFLAGS
           " > $GITHUB_ENV
       - name: Build debug
@@ -4381,22 +4381,22 @@ jobs:
           # to complete.
           sudo apt-get -qq remove --purge -y man-db > /dev/null 2> /dev/null
           # Remove older clang before we install
-          sudo apt-get -qq remove   'clang-12*' 'clang-13*' 'clang-14*' 'clang-15*' 'clang-16*' 'clang-17*' 'clang-18*' 'clang-19*' 'llvm-12*' 'llvm-13*' 'llvm-14*' 'llvm-15*' 'llvm-16*' 'llvm-17*' 'llvm-18*' 'llvm-19*' 'lld-12*' 'lld-13*' 'lld-14*' 'lld-15*' 'lld-16*' 'lld-17*' 'lld-18*' 'lld-19*' > /dev/null 2> /dev/null
+          sudo apt-get -qq remove   'clang-12*' 'clang-13*' 'clang-14*' 'clang-15*' 'clang-16*' 'clang-17*' 'clang-18*' 'clang-19*' 'clang-20*' 'clang-21*' 'llvm-12*' 'llvm-13*' 'llvm-14*' 'llvm-15*' 'llvm-16*' 'llvm-17*' 'llvm-18*' 'llvm-19*' 'llvm-20*' 'llvm-21*' 'lld-12*' 'lld-13*' 'lld-14*' 'lld-15*' 'lld-16*' 'lld-17*' 'lld-18*' 'lld-19*' 'lld-20*' 'lld-21*' > /dev/null 2> /dev/null
 
           # Install clang-XXX, lld-XXX, and debootstrap.
-          echo "deb http://apt.llvm.org/noble/ llvm-toolchain-noble-21 main" |
-            sudo dd of=/etc/apt/sources.list.d/llvm-toolchain-noble-21.list
+          echo "deb http://apt.llvm.org/noble/ llvm-toolchain-noble-22 main" |
+            sudo dd of=/etc/apt/sources.list.d/llvm-toolchain-noble-22.list
           curl https://apt.llvm.org/llvm-snapshot.gpg.key |
             gpg --dearmor                                 |
           sudo dd of=/etc/apt/trusted.gpg.d/llvm-snapshot.gpg
           sudo apt-get update
           # this was unreliable sometimes, so try again if it fails
-          sudo apt-get install -y --no-install-recommends clang-21 lld-21 clang-tools-21 clang-format-21 clang-tidy-21 || (echo 'Failed. Trying again.' && sudo apt-get clean && sudo apt-get update && sudo apt-get install -y --no-install-recommends clang-21 lld-21 clang-tools-21 clang-format-21 clang-tidy-21)
+          sudo apt-get install -y --no-install-recommends clang-22 lld-22 clang-tools-22 clang-format-22 clang-tidy-22 || (echo 'Failed. Trying again.' && sudo apt-get clean && sudo apt-get update && sudo apt-get install -y --no-install-recommends clang-22 lld-22 clang-tools-22 clang-format-22 clang-tidy-22)
           # Fix alternatives
           (yes '' | sudo update-alternatives --force --all) > /dev/null 2> /dev/null || true
 
-          clang-21 -c -o /tmp/memfd_create_shim.o tools/memfd_create_shim.c -fPIC
-          clang-21 -c -o /tmp/glibc_math_shim.o tools/glibc_math_shim.c -fPIC
+          clang-22 -c -o /tmp/memfd_create_shim.o tools/memfd_create_shim.c -fPIC
+          clang-22 -c -o /tmp/glibc_math_shim.o tools/glibc_math_shim.c -fPIC
 
           echo "Decompressing sysroot..."
           wget -q https://github.com/denoland/deno_sysroot_build/releases/download/sysroot-20250207/sysroot-`uname -m`.tar.xz -O /tmp/sysroot.tar.xz
@@ -4429,8 +4429,8 @@ jobs:
           CARGO_PROFILE_RELEASE_INCREMENTAL=false
           RUSTFLAGS<<__1
             -C linker-plugin-lto=true
-            -C linker=clang-21
-            -C link-arg=-fuse-ld=lld-21
+            -C linker=clang-22
+            -C link-arg=-fuse-ld=lld-22
             -C link-arg=-ldl
             -C link-arg=-Wl,--allow-shlib-undefined
             -C link-arg=-Wl,--thinlto-cache-dir=$(pwd)/target/release/lto-cache
@@ -4447,8 +4447,8 @@ jobs:
           __1
           RUSTDOCFLAGS<<__1
             -C linker-plugin-lto=true
-            -C linker=clang-21
-            -C link-arg=-fuse-ld=lld-21
+            -C linker=clang-22
+            -C link-arg=-fuse-ld=lld-22
             -C link-arg=-ldl
             -C link-arg=-Wl,--allow-shlib-undefined
             -C link-arg=-Wl,--thinlto-cache-dir=$(pwd)/target/release/lto-cache
@@ -4463,7 +4463,7 @@ jobs:
             --cfg tokio_unstable
             $RUSTFLAGS
           __1
-          CC=/usr/bin/clang-21
+          CC=/usr/bin/clang-22
           CFLAGS=$CFLAGS
           " > $GITHUB_ENV
       - name: Download artifact debug-linux-x86_64-deno
@@ -5137,22 +5137,22 @@ jobs:
           # to complete.
           sudo apt-get -qq remove --purge -y man-db > /dev/null 2> /dev/null
           # Remove older clang before we install
-          sudo apt-get -qq remove   'clang-12*' 'clang-13*' 'clang-14*' 'clang-15*' 'clang-16*' 'clang-17*' 'clang-18*' 'clang-19*' 'llvm-12*' 'llvm-13*' 'llvm-14*' 'llvm-15*' 'llvm-16*' 'llvm-17*' 'llvm-18*' 'llvm-19*' 'lld-12*' 'lld-13*' 'lld-14*' 'lld-15*' 'lld-16*' 'lld-17*' 'lld-18*' 'lld-19*' > /dev/null 2> /dev/null
+          sudo apt-get -qq remove   'clang-12*' 'clang-13*' 'clang-14*' 'clang-15*' 'clang-16*' 'clang-17*' 'clang-18*' 'clang-19*' 'clang-20*' 'clang-21*' 'llvm-12*' 'llvm-13*' 'llvm-14*' 'llvm-15*' 'llvm-16*' 'llvm-17*' 'llvm-18*' 'llvm-19*' 'llvm-20*' 'llvm-21*' 'lld-12*' 'lld-13*' 'lld-14*' 'lld-15*' 'lld-16*' 'lld-17*' 'lld-18*' 'lld-19*' 'lld-20*' 'lld-21*' > /dev/null 2> /dev/null
 
           # Install clang-XXX, lld-XXX, and debootstrap.
-          echo "deb http://apt.llvm.org/noble/ llvm-toolchain-noble-21 main" |
-            sudo dd of=/etc/apt/sources.list.d/llvm-toolchain-noble-21.list
+          echo "deb http://apt.llvm.org/noble/ llvm-toolchain-noble-22 main" |
+            sudo dd of=/etc/apt/sources.list.d/llvm-toolchain-noble-22.list
           curl https://apt.llvm.org/llvm-snapshot.gpg.key |
             gpg --dearmor                                 |
           sudo dd of=/etc/apt/trusted.gpg.d/llvm-snapshot.gpg
           sudo apt-get update
           # this was unreliable sometimes, so try again if it fails
-          sudo apt-get install -y --no-install-recommends clang-21 lld-21 clang-tools-21 clang-format-21 clang-tidy-21 || (echo 'Failed. Trying again.' && sudo apt-get clean && sudo apt-get update && sudo apt-get install -y --no-install-recommends clang-21 lld-21 clang-tools-21 clang-format-21 clang-tidy-21)
+          sudo apt-get install -y --no-install-recommends clang-22 lld-22 clang-tools-22 clang-format-22 clang-tidy-22 || (echo 'Failed. Trying again.' && sudo apt-get clean && sudo apt-get update && sudo apt-get install -y --no-install-recommends clang-22 lld-22 clang-tools-22 clang-format-22 clang-tidy-22)
           # Fix alternatives
           (yes '' | sudo update-alternatives --force --all) > /dev/null 2> /dev/null || true
 
-          clang-21 -c -o /tmp/memfd_create_shim.o tools/memfd_create_shim.c -fPIC
-          clang-21 -c -o /tmp/glibc_math_shim.o tools/glibc_math_shim.c -fPIC
+          clang-22 -c -o /tmp/memfd_create_shim.o tools/memfd_create_shim.c -fPIC
+          clang-22 -c -o /tmp/glibc_math_shim.o tools/glibc_math_shim.c -fPIC
 
           echo "Decompressing sysroot..."
           wget -q https://github.com/denoland/deno_sysroot_build/releases/download/sysroot-20250207/sysroot-`uname -m`.tar.xz -O /tmp/sysroot.tar.xz
@@ -5185,8 +5185,8 @@ jobs:
           CARGO_PROFILE_RELEASE_INCREMENTAL=false
           RUSTFLAGS<<__1
             -C linker-plugin-lto=true
-            -C linker=clang-21
-            -C link-arg=-fuse-ld=lld-21
+            -C linker=clang-22
+            -C link-arg=-fuse-ld=lld-22
             -C link-arg=-ldl
             -C link-arg=-Wl,--allow-shlib-undefined
             -C link-arg=-Wl,--thinlto-cache-dir=$(pwd)/target/release/lto-cache
@@ -5203,8 +5203,8 @@ jobs:
           __1
           RUSTDOCFLAGS<<__1
             -C linker-plugin-lto=true
-            -C linker=clang-21
-            -C link-arg=-fuse-ld=lld-21
+            -C linker=clang-22
+            -C link-arg=-fuse-ld=lld-22
             -C link-arg=-ldl
             -C link-arg=-Wl,--allow-shlib-undefined
             -C link-arg=-Wl,--thinlto-cache-dir=$(pwd)/target/release/lto-cache
@@ -5219,7 +5219,7 @@ jobs:
             --cfg tokio_unstable
             $RUSTFLAGS
           __1
-          CC=/usr/bin/clang-21
+          CC=/usr/bin/clang-22
           CFLAGS=$CFLAGS
           " > $GITHUB_ENV
       - name: Configure canary build
@@ -5477,22 +5477,22 @@ jobs:
           # to complete.
           sudo apt-get -qq remove --purge -y man-db > /dev/null 2> /dev/null
           # Remove older clang before we install
-          sudo apt-get -qq remove   'clang-12*' 'clang-13*' 'clang-14*' 'clang-15*' 'clang-16*' 'clang-17*' 'clang-18*' 'clang-19*' 'llvm-12*' 'llvm-13*' 'llvm-14*' 'llvm-15*' 'llvm-16*' 'llvm-17*' 'llvm-18*' 'llvm-19*' 'lld-12*' 'lld-13*' 'lld-14*' 'lld-15*' 'lld-16*' 'lld-17*' 'lld-18*' 'lld-19*' > /dev/null 2> /dev/null
+          sudo apt-get -qq remove   'clang-12*' 'clang-13*' 'clang-14*' 'clang-15*' 'clang-16*' 'clang-17*' 'clang-18*' 'clang-19*' 'clang-20*' 'clang-21*' 'llvm-12*' 'llvm-13*' 'llvm-14*' 'llvm-15*' 'llvm-16*' 'llvm-17*' 'llvm-18*' 'llvm-19*' 'llvm-20*' 'llvm-21*' 'lld-12*' 'lld-13*' 'lld-14*' 'lld-15*' 'lld-16*' 'lld-17*' 'lld-18*' 'lld-19*' 'lld-20*' 'lld-21*' > /dev/null 2> /dev/null
 
           # Install clang-XXX, lld-XXX, and debootstrap.
-          echo "deb http://apt.llvm.org/noble/ llvm-toolchain-noble-21 main" |
-            sudo dd of=/etc/apt/sources.list.d/llvm-toolchain-noble-21.list
+          echo "deb http://apt.llvm.org/noble/ llvm-toolchain-noble-22 main" |
+            sudo dd of=/etc/apt/sources.list.d/llvm-toolchain-noble-22.list
           curl https://apt.llvm.org/llvm-snapshot.gpg.key |
             gpg --dearmor                                 |
           sudo dd of=/etc/apt/trusted.gpg.d/llvm-snapshot.gpg
           sudo apt-get update
           # this was unreliable sometimes, so try again if it fails
-          sudo apt-get install -y --no-install-recommends clang-21 lld-21 clang-tools-21 clang-format-21 clang-tidy-21 || (echo 'Failed. Trying again.' && sudo apt-get clean && sudo apt-get update && sudo apt-get install -y --no-install-recommends clang-21 lld-21 clang-tools-21 clang-format-21 clang-tidy-21)
+          sudo apt-get install -y --no-install-recommends clang-22 lld-22 clang-tools-22 clang-format-22 clang-tidy-22 || (echo 'Failed. Trying again.' && sudo apt-get clean && sudo apt-get update && sudo apt-get install -y --no-install-recommends clang-22 lld-22 clang-tools-22 clang-format-22 clang-tidy-22)
           # Fix alternatives
           (yes '' | sudo update-alternatives --force --all) > /dev/null 2> /dev/null || true
 
-          clang-21 -c -o /tmp/memfd_create_shim.o tools/memfd_create_shim.c -fPIC
-          clang-21 -c -o /tmp/glibc_math_shim.o tools/glibc_math_shim.c -fPIC
+          clang-22 -c -o /tmp/memfd_create_shim.o tools/memfd_create_shim.c -fPIC
+          clang-22 -c -o /tmp/glibc_math_shim.o tools/glibc_math_shim.c -fPIC
 
           echo "Decompressing sysroot..."
           wget -q https://github.com/denoland/deno_sysroot_build/releases/download/sysroot-20250207/sysroot-`uname -m`.tar.xz -O /tmp/sysroot.tar.xz
@@ -5525,8 +5525,8 @@ jobs:
           CARGO_PROFILE_RELEASE_INCREMENTAL=false
           RUSTFLAGS<<__1
             -C linker-plugin-lto=true
-            -C linker=clang-21
-            -C link-arg=-fuse-ld=lld-21
+            -C linker=clang-22
+            -C link-arg=-fuse-ld=lld-22
             -C link-arg=-ldl
             -C link-arg=-Wl,--allow-shlib-undefined
             -C link-arg=-Wl,--thinlto-cache-dir=$(pwd)/target/release/lto-cache
@@ -5543,8 +5543,8 @@ jobs:
           __1
           RUSTDOCFLAGS<<__1
             -C linker-plugin-lto=true
-            -C linker=clang-21
-            -C link-arg=-fuse-ld=lld-21
+            -C linker=clang-22
+            -C link-arg=-fuse-ld=lld-22
             -C link-arg=-ldl
             -C link-arg=-Wl,--allow-shlib-undefined
             -C link-arg=-Wl,--thinlto-cache-dir=$(pwd)/target/release/lto-cache
@@ -5559,7 +5559,7 @@ jobs:
             --cfg tokio_unstable
             $RUSTFLAGS
           __1
-          CC=/usr/bin/clang-21
+          CC=/usr/bin/clang-22
           CFLAGS=$CFLAGS
           " > $GITHUB_ENV
       - name: Download artifact release-linux-aarch64-deno
@@ -5795,22 +5795,22 @@ jobs:
           # to complete.
           sudo apt-get -qq remove --purge -y man-db > /dev/null 2> /dev/null
           # Remove older clang before we install
-          sudo apt-get -qq remove   'clang-12*' 'clang-13*' 'clang-14*' 'clang-15*' 'clang-16*' 'clang-17*' 'clang-18*' 'clang-19*' 'llvm-12*' 'llvm-13*' 'llvm-14*' 'llvm-15*' 'llvm-16*' 'llvm-17*' 'llvm-18*' 'llvm-19*' 'lld-12*' 'lld-13*' 'lld-14*' 'lld-15*' 'lld-16*' 'lld-17*' 'lld-18*' 'lld-19*' > /dev/null 2> /dev/null
+          sudo apt-get -qq remove   'clang-12*' 'clang-13*' 'clang-14*' 'clang-15*' 'clang-16*' 'clang-17*' 'clang-18*' 'clang-19*' 'clang-20*' 'clang-21*' 'llvm-12*' 'llvm-13*' 'llvm-14*' 'llvm-15*' 'llvm-16*' 'llvm-17*' 'llvm-18*' 'llvm-19*' 'llvm-20*' 'llvm-21*' 'lld-12*' 'lld-13*' 'lld-14*' 'lld-15*' 'lld-16*' 'lld-17*' 'lld-18*' 'lld-19*' 'lld-20*' 'lld-21*' > /dev/null 2> /dev/null
 
           # Install clang-XXX, lld-XXX, and debootstrap.
-          echo "deb http://apt.llvm.org/noble/ llvm-toolchain-noble-21 main" |
-            sudo dd of=/etc/apt/sources.list.d/llvm-toolchain-noble-21.list
+          echo "deb http://apt.llvm.org/noble/ llvm-toolchain-noble-22 main" |
+            sudo dd of=/etc/apt/sources.list.d/llvm-toolchain-noble-22.list
           curl https://apt.llvm.org/llvm-snapshot.gpg.key |
             gpg --dearmor                                 |
           sudo dd of=/etc/apt/trusted.gpg.d/llvm-snapshot.gpg
           sudo apt-get update
           # this was unreliable sometimes, so try again if it fails
-          sudo apt-get install -y --no-install-recommends clang-21 lld-21 clang-tools-21 clang-format-21 clang-tidy-21 || (echo 'Failed. Trying again.' && sudo apt-get clean && sudo apt-get update && sudo apt-get install -y --no-install-recommends clang-21 lld-21 clang-tools-21 clang-format-21 clang-tidy-21)
+          sudo apt-get install -y --no-install-recommends clang-22 lld-22 clang-tools-22 clang-format-22 clang-tidy-22 || (echo 'Failed. Trying again.' && sudo apt-get clean && sudo apt-get update && sudo apt-get install -y --no-install-recommends clang-22 lld-22 clang-tools-22 clang-format-22 clang-tidy-22)
           # Fix alternatives
           (yes '' | sudo update-alternatives --force --all) > /dev/null 2> /dev/null || true
 
-          clang-21 -c -o /tmp/memfd_create_shim.o tools/memfd_create_shim.c -fPIC
-          clang-21 -c -o /tmp/glibc_math_shim.o tools/glibc_math_shim.c -fPIC
+          clang-22 -c -o /tmp/memfd_create_shim.o tools/memfd_create_shim.c -fPIC
+          clang-22 -c -o /tmp/glibc_math_shim.o tools/glibc_math_shim.c -fPIC
 
           echo "Decompressing sysroot..."
           wget -q https://github.com/denoland/deno_sysroot_build/releases/download/sysroot-20250207/sysroot-`uname -m`.tar.xz -O /tmp/sysroot.tar.xz
@@ -5843,8 +5843,8 @@ jobs:
           CARGO_PROFILE_RELEASE_INCREMENTAL=false
           RUSTFLAGS<<__1
             -C linker-plugin-lto=true
-            -C linker=clang-21
-            -C link-arg=-fuse-ld=lld-21
+            -C linker=clang-22
+            -C link-arg=-fuse-ld=lld-22
             -C link-arg=-ldl
             -C link-arg=-Wl,--allow-shlib-undefined
             -C link-arg=-Wl,--thinlto-cache-dir=$(pwd)/target/release/lto-cache
@@ -5861,8 +5861,8 @@ jobs:
           __1
           RUSTDOCFLAGS<<__1
             -C linker-plugin-lto=true
-            -C linker=clang-21
-            -C link-arg=-fuse-ld=lld-21
+            -C linker=clang-22
+            -C link-arg=-fuse-ld=lld-22
             -C link-arg=-ldl
             -C link-arg=-Wl,--allow-shlib-undefined
             -C link-arg=-Wl,--thinlto-cache-dir=$(pwd)/target/release/lto-cache
@@ -5877,7 +5877,7 @@ jobs:
             --cfg tokio_unstable
             $RUSTFLAGS
           __1
-          CC=/usr/bin/clang-21
+          CC=/usr/bin/clang-22
           CFLAGS=$CFLAGS
           " > $GITHUB_ENV
       - name: Install cargo-binstall

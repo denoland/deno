@@ -151,22 +151,14 @@ mod tests {
   #[testing_macros::fixture("webidl/test_cases/*.rs")]
   fn test_proc_macro_sync(input: PathBuf) {
     crate::infra::run_macro_expansion_test(input, |file| {
-      file.items.into_iter().filter_map(|item| {
-        match item {
-          Item::Struct(struct_item) => {
-            if derives_webidl(&struct_item.attrs) {
-              return Some(expand_webidl(struct_item));
-            }
-          }
-          Item::Enum(enum_item) => {
-            if derives_webidl(&enum_item.attrs) {
-              return Some(expand_webidl(enum_item));
-            }
-          }
-          _ => {}
+      file.items.into_iter().filter_map(|item| match item {
+        Item::Struct(struct_item) if derives_webidl(&struct_item.attrs) => {
+          Some(expand_webidl(struct_item))
         }
-
-        None
+        Item::Enum(enum_item) if derives_webidl(&enum_item.attrs) => {
+          Some(expand_webidl(enum_item))
+        }
+        _ => None,
       })
     })
   }

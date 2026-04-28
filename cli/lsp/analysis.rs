@@ -696,14 +696,12 @@ fn try_reverse_map_package_json_exports(
   ) -> Option<String> {
     for (key, value) in exports {
       match value {
-        Value::String(str) => {
-          if root_path.join(str).clean() == target_path {
-            return Some(if let Some(suffix) = key.strip_prefix("./") {
-              suffix.to_string()
-            } else {
-              String::new() // condition (ex. "types"), ignore
-            });
-          }
+        Value::String(str) if root_path.join(str).clean() == target_path => {
+          return Some(if let Some(suffix) = key.strip_prefix("./") {
+            suffix.to_string()
+          } else {
+            String::new() // condition (ex. "types"), ignore
+          });
         }
         Value::Object(obj) => {
           if let Some(result) = try_reverse_map_package_json_exports_inner(

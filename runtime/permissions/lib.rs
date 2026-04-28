@@ -3225,10 +3225,10 @@ impl UnaryPermission<NetDescriptor> {
     for item in self.descriptors.iter() {
       match item {
         UnaryPermissionDesc::FlagDenied(v)
-        | UnaryPermissionDesc::FlagIgnored(v) => {
-          if desc.matches_deny(v) {
-            return Err(denied());
-          }
+        | UnaryPermissionDesc::FlagIgnored(v)
+          if desc.matches_deny(v) =>
+        {
+          return Err(denied());
         }
         _ => {}
       }

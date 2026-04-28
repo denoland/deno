@@ -53,16 +53,13 @@ pub fn init_ops(
   #[cfg(debug_assertions)]
   check_extensions_dependencies(extensions);
 
-  let no_of_ops = extensions
-    .iter()
-    .map(|e| e.op_count())
-    .fold(0, |ext_ops_count, count| count + ext_ops_count);
+  let no_of_ops = extensions.iter().map(|e| e.op_count()).sum::<usize>();
   let mut ops = Vec::with_capacity(no_of_ops + deno_core_ops.len());
 
   let no_of_methods = extensions
     .iter()
     .map(|e| e.method_op_count())
-    .fold(0, |ext_ops_count, count| count + ext_ops_count);
+    .sum::<usize>();
   let mut op_methods = Vec::with_capacity(no_of_methods);
 
   // Collect all middlewares - deno_core extension must not have a middleware!
