@@ -883,7 +883,6 @@
         "messageevent-constructor.https.html": {
           "expectedFailures": [
             "Default event values",
-            "MessageEventInit dictionary",
             "Passing null for ports member",
             "ports attribute should be a FrozenArray",
             "initMessageEvent operation",
