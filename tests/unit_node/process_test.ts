@@ -76,16 +76,17 @@ Deno.test({
 Deno.test({
   name: "process.chdir failure",
   fn() {
-    assertThrows(
+    // deno-lint-ignore no-explicit-any
+    const err = assertThrows(
       () => {
         process.chdir("non-existent-directory-name");
       },
-      Deno.errors.NotFound,
-      "file",
-      // On every OS Deno returns: "No such file" except for Windows, where it's:
-      // "The system cannot find the file specified. (os error 2)" so "file" is
-      // the only common string here.
-    );
+      Error,
+      "ENOENT",
+    ) as any;
+    assertEquals(err.code, "ENOENT");
+    assertEquals(err.syscall, "chdir");
+    assertEquals(err.dest, "non-existent-directory-name");
   },
 });
 
