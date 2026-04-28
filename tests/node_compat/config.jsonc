@@ -1757,6 +1757,7 @@
     "parallel/test-http2-unbound-socket-proxy.js": {},
     "parallel/test-http2-write-callbacks.js": {},
     "parallel/test-http2-write-empty-string.js": {},
+    "parallel/test-http2-write-finishes-after-stream-destroy.js": {},
     "parallel/test-http2-zero-length-header.js": {},
     "parallel/test-http2-zero-length-write.js": {},
     "parallel/test-https-agent-abort-controller.js": {},
