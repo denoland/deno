@@ -243,6 +243,7 @@ export class ChannelWrap extends AsyncWrap implements ChannelWrapQuery {
   #timeout: number;
   #tries: number;
   #pendingQueries: Set<QueryReqWrap> = new Set();
+  #cancelRids: Set<number> = new Set();
 
   constructor(timeout: number, tries: number) {
     super(providerType.DNSCHANNEL);
@@ -300,15 +301,16 @@ export class ChannelWrap extends AsyncWrap implements ChannelWrapQuery {
     // deno-lint-ignore no-explicit-any
     let code: any = 0;
 
-    let cancelRid: number | undefined;
+    // Always create a cancel handle so cancel() can abort in-flight ops.
+    const cancelRid = core.createCancelHandle();
+    this.#cancelRids.add(cancelRid);
     let timer: ReturnType<typeof setTimeout> | undefined;
 
     try {
       if (this.#timeout >= 0) {
-        cancelRid = core.createCancelHandle();
         timer = setTimeout(() => {
-          core.tryClose(cancelRid!);
-          cancelRid = undefined;
+          this.#cancelRids.delete(cancelRid);
+          core.tryClose(cancelRid);
         }, this.#timeout);
       }
 
@@ -334,7 +336,8 @@ export class ChannelWrap extends AsyncWrap implements ChannelWrapQuery {
       }
     } finally {
       if (timer !== undefined) clearTimeout(timer);
-      if (cancelRid !== undefined) core.tryClose(cancelRid);
+      this.#cancelRids.delete(cancelRid);
+      core.tryClose(cancelRid);
     }
 
     return { code, ret };
@@ -740,6 +743,12 @@ export class ChannelWrap extends AsyncWrap implements ChannelWrapQuery {
       req.oncomplete("ECANCELLED", []);
     }
     this.#pendingQueries.clear();
+
+    // Abort in-flight DNS operations so the process can exit.
+    for (const rid of this.#cancelRids) {
+      core.tryClose(rid);
+    }
+    this.#cancelRids.clear();
   }
 }
 
