@@ -36,6 +36,7 @@ import {
 } from "ext:deno_node/internal_binding/async_wrap.ts";
 import { ares_strerror } from "ext:deno_node/internal_binding/ares.ts";
 import { notImplemented } from "ext:deno_node/_utils.ts";
+import { core } from "ext:core/mod.js";
 import {
   op_dns_resolve,
   op_net_get_ips_from_perm_token,
@@ -243,6 +244,7 @@ export class ChannelWrap extends AsyncWrap implements ChannelWrapQuery {
   #tries: number;
   #maxTimeout: number;
   #pendingQueries: Set<QueryReqWrap> = new Set();
+  #cancelRids: Set<number> = new Set();
 
   constructor(timeout: number, tries: number, maxTimeout: number) {
     super(providerType.DNSCHANNEL);
@@ -277,7 +279,10 @@ export class ChannelWrap extends AsyncWrap implements ChannelWrapQuery {
           ttl,
         ));
 
-        if (code === 0 || code === codeMap.get("EAI_NODATA")!) {
+        if (
+          code === 0 || code === codeMap.get("EAI_NODATA")! ||
+          code === "ETIMEOUT"
+        ) {
           break;
         }
       }
@@ -303,33 +308,33 @@ export class ChannelWrap extends AsyncWrap implements ChannelWrapQuery {
 
     for (let attempt = 0; attempt < tries; attempt++) {
       let ret = [];
-      let code = 0;
+      // deno-lint-ignore no-explicit-any
+      let code: any = 0;
+
+      // Always create a cancel handle so cancel() can abort in-flight ops.
+      const cancelRid = core.createCancelHandle();
+      this.#cancelRids.add(cancelRid);
+      let timer: ReturnType<typeof setTimeout> | undefined;
 
       try {
-        let dnsPromise: Promise<Deno.RecordWithTtl[]> = op_dns_resolve({
-          query,
-          recordType,
-          options: resolveOptions,
-        }, /* useEdns0 */ false);
-
         if (this.#timeout >= 0) {
           // c-ares doubles timeout on each retry, capped by maxTimeout
           let currentTimeout = this.#timeout * Math.pow(2, attempt);
           if (this.#maxTimeout >= 0) {
             currentTimeout = Math.min(currentTimeout, this.#maxTimeout);
           }
-          dnsPromise = Promise.race([
-            dnsPromise,
-            new Promise<never>((_resolve, reject) => {
-              setTimeout(
-                () => reject(new Error("ETIMEOUT")),
-                currentTimeout,
-              );
-            }),
-          ]);
+          timer = setTimeout(() => {
+            this.#cancelRids.delete(cancelRid);
+            core.tryClose(cancelRid);
+          }, currentTimeout);
         }
 
-        const res = await dnsPromise;
+        const res = await op_dns_resolve({
+          query,
+          recordType,
+          options: resolveOptions,
+          cancelRid,
+        }, /* useEdns0 */ false);
         if (ttl) {
           ret = res;
         } else {
@@ -337,7 +342,7 @@ export class ChannelWrap extends AsyncWrap implements ChannelWrapQuery {
         }
         return { code, ret };
       } catch (e) {
-        if (e instanceof Error && e.message === "ETIMEOUT") {
+        if (e instanceof Deno.errors.Interrupted) {
           if (attempt < tries - 1) continue;
           code = "ETIMEOUT";
         } else if (e instanceof Deno.errors.NotFound) {
@@ -347,6 +352,10 @@ export class ChannelWrap extends AsyncWrap implements ChannelWrapQuery {
           code = codeMap.get("UNKNOWN")!;
         }
         return { code, ret };
+      } finally {
+        if (timer !== undefined) clearTimeout(timer);
+        this.#cancelRids.delete(cancelRid);
+        core.tryClose(cancelRid);
       }
     }
 
@@ -439,6 +448,9 @@ export class ChannelWrap extends AsyncWrap implements ChannelWrapQuery {
             break;
         }
       }
+
+      if (!this.#pendingQueries.has(req)) return;
+      this.#pendingQueries.delete(req);
 
       const err = records.length ? 0 : codeMap.get("EAI_NODATA")!;
       req.oncomplete(err, records);
@@ -679,6 +691,16 @@ export class ChannelWrap extends AsyncWrap implements ChannelWrapQuery {
           for (let j = 0; j < missing; j++) {
             expanded.push("0000");
           }
+        } else if (part !== "" && part.includes(".")) {
+          // IPv4-mapped IPv6 (e.g. ::ffff:1.2.3.4) - convert dotted
+          // quad to two 16-bit hex groups
+          const octets = part.split(".").map(Number);
+          expanded.push(
+            ((octets[0] << 8) | octets[1]).toString(16).padStart(4, "0"),
+          );
+          expanded.push(
+            ((octets[2] << 8) | octets[3]).toString(16).padStart(4, "0"),
+          );
         } else if (part !== "") {
           expanded.push(part.padStart(4, "0"));
         }
@@ -735,6 +757,12 @@ export class ChannelWrap extends AsyncWrap implements ChannelWrapQuery {
       req.oncomplete("ECANCELLED", []);
     }
     this.#pendingQueries.clear();
+
+    // Abort in-flight DNS operations so the process can exit.
+    for (const rid of this.#cancelRids) {
+      core.tryClose(rid);
+    }
+    this.#cancelRids.clear();
   }
 }
 

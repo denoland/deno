@@ -1411,11 +1411,67 @@ unsafe extern "C" fn on_select_padding(
 
 unsafe extern "C" fn on_frame_not_send_callback(
   _session: *mut ffi::nghttp2_session,
-  _frame: *const ffi::nghttp2_frame,
-  _lib_error_code: i32,
-  _data: *mut c_void,
+  frame: *const ffi::nghttp2_frame,
+  lib_error_code: i32,
+  data: *mut c_void,
 ) -> i32 {
+  // Per Node.js parity, swallow events for frames that fail because the
+  // session/stream is already closing — the close path will surface the
+  // error through other channels.
+  if lib_error_code == ffi::NGHTTP2_ERR_SESSION_CLOSING
+    || lib_error_code == ffi::NGHTTP2_ERR_STREAM_CLOSED
+    || lib_error_code == ffi::NGHTTP2_ERR_STREAM_CLOSING
+  {
+    return 0;
+  }
+
+  // SAFETY: data is the user_data pointer set during session creation
+  let session = unsafe { Session::from_user_data(data) };
+
+  let id = frame_id(frame);
+  let ftype = frame_type(frame);
+  let translated = translate_nghttp2_error_code(lib_error_code);
+
+  let mut isolate =
+    // SAFETY: isolate pointer is valid for the session's lifetime
+    unsafe { v8::Isolate::from_raw_isolate_ptr(session.isolate) };
+  v8::scope!(let scope, &mut isolate);
+  let context = v8::Local::new(scope, session.context.clone());
+  let scope = &mut v8::ContextScope::new(scope, context);
+
+  let stream_id = v8::Integer::new(scope, id);
+  let frame_type_v = v8::Integer::new_from_unsigned(scope, ftype as u32);
+  let code = v8::Integer::new_from_unsigned(scope, translated);
+
+  let state = session.op_state.borrow();
+  let callbacks = state.borrow::<SessionCallbacks>();
+  let recv = v8::Local::new(scope, &session.this);
+  let callback = v8::Local::new(scope, &callbacks.frame_error_cb);
+  drop(state);
+
+  callback.call(
+    scope,
+    recv.into(),
+    &[stream_id.into(), frame_type_v.into(), code.into()],
+  );
   0
+}
+
+// Maps an nghttp2 library error (negative) to the HTTP/2 protocol error
+// code (RFC 7540 §7) surfaced to JavaScript, matching Node's
+// TranslateNghttp2ErrorCode in src/node_http2.cc.
+fn translate_nghttp2_error_code(lib_err: i32) -> u32 {
+  match lib_err {
+    ffi::NGHTTP2_ERR_STREAM_CLOSED => 5, // NGHTTP2_STREAM_CLOSED
+    ffi::NGHTTP2_ERR_HEADER_COMP => 9,   // NGHTTP2_COMPRESSION_ERROR
+    ffi::NGHTTP2_ERR_FRAME_SIZE_ERROR => 6, // NGHTTP2_FRAME_SIZE_ERROR
+    ffi::NGHTTP2_ERR_FLOW_CONTROL => 3,  // NGHTTP2_FLOW_CONTROL_ERROR
+    ffi::NGHTTP2_ERR_REFUSED_STREAM => 7, // NGHTTP2_REFUSED_STREAM
+    ffi::NGHTTP2_ERR_PROTO
+    | ffi::NGHTTP2_ERR_HTTP_HEADER
+    | ffi::NGHTTP2_ERR_HTTP_MESSAGING => 1, // NGHTTP2_PROTOCOL_ERROR
+    _ => 2,                              // NGHTTP2_INTERNAL_ERROR
+  }
 }
 
 unsafe extern "C" fn on_invalid_header_callback(
@@ -1809,15 +1865,13 @@ impl Session {
       return;
     }
 
-    // Flush any pending data first so that response DATA frames are
-    // sent before the RST_STREAM. This matches Node.js's behaviour
-    // in SubmitRstStream.
-    self.send_pending_data();
-
-    // Check if the stream still exists in nghttp2. After
-    // send_pending_data, the stream may already be fully closed
-    // (both sides sent END_STREAM) and freed (no_closed_streams=1).
-    // Submitting RST_STREAM for a freed stream causes a double-free.
+    // Submit RST_STREAM before flushing so nghttp2 can prioritise it over
+    // any queued DATA frames (e.g. an END_STREAM data frame queued by a
+    // prior stream.end()). Flushing first would push the END_STREAM frame
+    // and let nghttp2 free the stream (no_closed_streams=1), after which
+    // the RST_STREAM would be silently dropped and the peer would never
+    // see an error. This matches Node.js's SubmitRstStream which calls
+    // nghttp2_submit_rst_stream directly and then schedules a write.
     // SAFETY: self.session is a valid nghttp2 session pointer
     let stream_ptr =
       unsafe { ffi::nghttp2_session_find_stream(self.session, stream_id) };
@@ -1834,6 +1888,8 @@ impl Session {
         code,
       );
     }
+
+    self.send_pending_data();
   }
 
   /// Flush deferred RST_STREAM submissions. Called after
@@ -1843,16 +1899,16 @@ impl Session {
       return;
     }
     let pending: Vec<_> = std::mem::take(&mut self.pending_rst_streams);
-    self.send_pending_data();
     for (stream_id, code) in pending {
-      // Check if the stream still exists (may have been closed/freed
-      // by send_pending_data above).
+      // Check if the stream still exists.
       // SAFETY: self.session is a valid nghttp2 session pointer
       let stream_ptr =
         unsafe { ffi::nghttp2_session_find_stream(self.session, stream_id) };
       if stream_ptr.is_null() {
         continue;
       }
+      // Submit RST_STREAM before flushing so nghttp2 can prioritise it
+      // over any queued DATA frames (e.g. an END_STREAM data frame).
       // SAFETY: self.session is a valid nghttp2 session pointer
       unsafe {
         ffi::nghttp2_submit_rst_stream(
@@ -1863,6 +1919,7 @@ impl Session {
         );
       }
     }
+    self.send_pending_data();
   }
 
   pub fn is_graceful_closing(&self) -> bool {
@@ -2741,28 +2798,24 @@ impl Http2Session {
 
   #[fast]
   fn origin(&self, #[string] origins: &str, count: i32) -> i32 {
+    // Origins are concatenated and separated by NUL bytes (Node-compatible
+    // serialization from JS: `arr += `${origin}\0``).
     let mut ov: Vec<ffi::nghttp2_origin_entry> =
       Vec::with_capacity(count as usize);
     let origins_bytes = origins.as_bytes();
-    let mut offset = 0;
+    let mut start = 0;
 
-    for _ in 0..count {
-      if offset + 2 > origins_bytes.len() {
-        break;
-      }
-      let len = ((origins_bytes[offset] as usize) << 8)
-        | (origins_bytes[offset + 1] as usize);
-      offset += 2;
-
-      if offset + len > origins_bytes.len() {
-        break;
-      }
-
+    while ov.len() < count as usize && start < origins_bytes.len() {
+      let end = origins_bytes[start..]
+        .iter()
+        .position(|&b| b == 0)
+        .map(|p| start + p)
+        .unwrap_or(origins_bytes.len());
       ov.push(ffi::nghttp2_origin_entry {
-        origin: origins_bytes[offset..].as_ptr() as *mut u8,
-        origin_len: len,
+        origin: origins_bytes[start..end].as_ptr() as *mut u8,
+        origin_len: end - start,
       });
-      offset += len;
+      start = end + 1;
     }
 
     // SAFETY: self.session is valid; ov slice pointer and length are valid

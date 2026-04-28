@@ -144,6 +144,7 @@ import {
   ERR_INVALID_ARG_TYPE,
   ERR_INVALID_ARG_VALUE,
   ERR_INVALID_CHAR,
+  ERR_INVALID_URL,
   ERR_OUT_OF_RANGE,
   ERR_SOCKET_CLOSED,
   ERR_TLS_ALPN_CALLBACK_WITH_PROTOCOLS,
@@ -243,7 +244,11 @@ function debugSessionObj(session, message, ...args) {
 }
 
 function getURLOrigin(urlStr) {
-  return new URL(urlStr).origin;
+  try {
+    return new URL(urlStr).origin;
+  } catch {
+    throw new ERR_INVALID_URL(urlStr);
+  }
 }
 
 // Schedule a deferred sendPending() call on the session's native handle.
@@ -1425,6 +1430,26 @@ function closeStream(stream, code, rstStreamStatus = kSubmitRstStream) {
 
   const { ending } = stream._writableState;
 
+  // Submit RST_STREAM before ending the writable side when we're forcing
+  // an error reset. stream.end() drives a synchronous shutdown chain in
+  // this polyfill: handle.shutdown queues an END_STREAM DATA frame, the
+  // following scheduleSendPending flushes it, nghttp2 closes the stream,
+  // on_stream_close fires and clears kHandle, all before
+  // finishCloseStream would otherwise reach submitRstStream. By queueing
+  // the RST_STREAM frame first, nghttp2 prioritises it over the queued
+  // DATA frame and the peer actually sees the reset.
+  let rstAlreadySubmitted = false;
+  if (
+    rstStreamStatus === kForceRstStream &&
+    code !== NGHTTP2_NO_ERROR &&
+    !ending &&
+    !stream.pending &&
+    stream[kHandle] !== undefined
+  ) {
+    submitRstStream.call(stream, code);
+    rstAlreadySubmitted = true;
+  }
+
   if (!ending) {
     // If the writable side of the Http2Stream is still open, emit the
     // 'aborted' event and set the aborted flag.
@@ -1437,7 +1462,7 @@ function closeStream(stream, code, rstStreamStatus = kSubmitRstStream) {
     stream.end();
   }
 
-  if (rstStreamStatus !== kNoRstStream) {
+  if (rstStreamStatus !== kNoRstStream && !rstAlreadySubmitted) {
     const finishFn = FunctionPrototypeBind(finishCloseStream, stream, code);
     if (
       !ending || stream.writableFinished || code !== NGHTTP2_NO_ERROR ||
@@ -2237,8 +2262,14 @@ function processRespondWithFD(
     }
     fs.read(fd, buf, 0, readLen, pos, (err, bytesRead) => {
       if (err) {
-        self.destroy(err);
         if (self.ownsFd) tryClose(fd);
+        // Match Node: a read failure (e.g. EBADF from a bad fd) resets the
+        // stream with NGHTTP2_INTERNAL_ERROR rather than leaking the
+        // underlying fs error to user code.
+        if (!self.destroyed && !self.closed) {
+          closeStream(self, NGHTTP2_INTERNAL_ERROR, kForceRstStream);
+        }
+        self.destroy();
         return;
       }
       if (bytesRead === 0) {
