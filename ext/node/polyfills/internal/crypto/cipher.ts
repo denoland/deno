@@ -55,7 +55,10 @@ import {
   isAnyArrayBuffer,
   isArrayBufferView,
 } from "ext:deno_node/internal/util/types.ts";
-import { ERR_CRYPTO_INVALID_STATE } from "ext:deno_node/internal/errors.ts";
+import {
+  ERR_CRYPTO_INVALID_STATE,
+  ERR_INVALID_ARG_TYPE,
+} from "ext:deno_node/internal/errors.ts";
 import { StringDecoder } from "node:string_decoder";
 import assert from "node:assert";
 import { normalizeEncoding } from "ext:deno_node/internal/util.mjs";
@@ -317,7 +320,13 @@ Cipheriv.prototype.update = function (
     throw new ERR_CRYPTO_INVALID_STATE("update");
   }
 
-  // TODO(kt3k): throw ERR_INVALID_ARG_TYPE if data is not string, Buffer, or ArrayBufferView
+  if (typeof data !== "string" && !isArrayBufferView(data)) {
+    throw new ERR_INVALID_ARG_TYPE(
+      "data",
+      ["string", "Buffer", "TypedArray", "DataView"],
+      data,
+    );
+  }
   let buf = data;
   if (typeof data === "string") {
     buf = Buffer.from(data, inputEncoding);
@@ -595,7 +604,13 @@ Decipheriv.prototype.update = function (
     throw new ERR_CRYPTO_INVALID_STATE("update");
   }
 
-  // TODO(kt3k): throw ERR_INVALID_ARG_TYPE if data is not string, Buffer, or ArrayBufferView
+  if (typeof data !== "string" && !isArrayBufferView(data)) {
+    throw new ERR_INVALID_ARG_TYPE(
+      "data",
+      ["string", "Buffer", "TypedArray", "DataView"],
+      data,
+    );
+  }
   let buf = data;
   if (typeof data === "string") {
     buf = Buffer.from(data, inputEncoding);

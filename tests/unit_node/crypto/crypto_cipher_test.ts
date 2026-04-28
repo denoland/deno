@@ -1015,3 +1015,37 @@ Deno.test({
     assertEquals(dec, plaintext);
   },
 });
+
+// Regression test for https://github.com/denoland/deno/issues/33646
+// `Cipheriv.update`/`Decipheriv.update` must throw `ERR_INVALID_ARG_TYPE`
+// (matching Node) when `data` is not a string, Buffer, or ArrayBufferView.
+Deno.test({
+  name: "Cipheriv/Decipheriv update - rejects non-string non-buffer data",
+  fn() {
+    const key = Buffer.alloc(32);
+    const iv = Buffer.alloc(16);
+
+    const cipher = crypto.createCipheriv("aes-256-cbc", key, iv);
+    try {
+      // deno-lint-ignore no-explicit-any
+      const err = assertThrows(() => cipher.update(12345 as any), TypeError);
+      assertEquals((err as { code?: string }).code, "ERR_INVALID_ARG_TYPE");
+    } finally {
+      cipher.final();
+    }
+
+    const decipher = crypto.createDecipheriv("aes-256-cbc", key, iv);
+    try {
+      const err = assertThrows(
+        // deno-lint-ignore no-explicit-any
+        () => decipher.update(12345 as any),
+        TypeError,
+      );
+      assertEquals((err as { code?: string }).code, "ERR_INVALID_ARG_TYPE");
+    } finally {
+      try {
+        decipher.final();
+      } catch { /* final may reject the empty input; we just need cleanup */ }
+    }
+  },
+});
