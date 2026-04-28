@@ -1722,6 +1722,7 @@
     "parallel/test-http2-sent-headers.js": {},
     "parallel/test-http2-server-async-dispose.js": {},
     "parallel/test-http2-server-close-callback.js": {},
+    "parallel/test-http2-server-close-idle-connection.js": {},
     "parallel/test-http2-server-errors.js": {},
     "parallel/test-http2-server-rfc-9113-server.js": {},
     "parallel/test-http2-server-rst-before-respond.js": {},
