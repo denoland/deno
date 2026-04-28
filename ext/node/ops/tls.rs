@@ -32,6 +32,8 @@ use deno_net::ops::TlsHandshakeInfo;
 use deno_net::ops_tls::TlsStreamResource;
 use deno_node_crypto::x509::Certificate;
 use deno_node_crypto::x509::CertificateObject;
+use deno_permissions::PermissionCheckError;
+use deno_permissions::PermissionsContainer;
 use deno_tls::SocketUse;
 use deno_tls::TlsClientConfigOptions;
 use deno_tls::TlsKeys;
@@ -53,33 +55,41 @@ pub(crate) struct NodeTlsState {
 }
 
 #[op2]
-pub fn op_get_root_certificates(state: &mut OpState) -> Vec<String> {
+pub fn op_get_root_certificates(
+  state: &mut OpState,
+) -> Result<Vec<String>, PermissionCheckError> {
+  state
+    .borrow_mut::<PermissionsContainer>()
+    .check_sys("ca", "node:tls.rootCertificates")?;
+
   if let Some(tls_state) = state.try_borrow::<NodeTlsState>()
     && let Some(certs) = &tls_state.custom_ca_certs
   {
-    return certs.clone();
+    return Ok(certs.clone());
   }
 
   // Return default root certificates if no custom ones are set
-  webpki_root_certs::TLS_SERVER_ROOT_CERTS
-    .iter()
-    .map(|cert| {
-      let b64 = base64::engine::general_purpose::STANDARD.encode(cert);
-      let pem_lines = b64
-        .chars()
-        .collect::<Vec<char>>()
-        // Node uses 72 characters per line, so we need to follow node even though
-        // it's not spec compliant https://datatracker.ietf.org/doc/html/rfc7468#section-2
-        .chunks(72)
-        .map(|c| c.iter().collect::<String>())
-        .collect::<Vec<String>>()
-        .join("\n");
-      let pem = format!(
-        "-----BEGIN CERTIFICATE-----\n{pem_lines}\n-----END CERTIFICATE-----\n",
-      );
-      pem
-    })
-    .collect::<Vec<String>>()
+  Ok(
+    webpki_root_certs::TLS_SERVER_ROOT_CERTS
+      .iter()
+      .map(|cert| {
+        let b64 = base64::engine::general_purpose::STANDARD.encode(cert);
+        let pem_lines = b64
+          .chars()
+          .collect::<Vec<char>>()
+          // Node uses 72 characters per line, so we need to follow node even though
+          // it's not spec compliant https://datatracker.ietf.org/doc/html/rfc7468#section-2
+          .chunks(72)
+          .map(|c| c.iter().collect::<String>())
+          .collect::<Vec<String>>()
+          .join("\n");
+        let pem = format!(
+          "-----BEGIN CERTIFICATE-----\n{pem_lines}\n-----END CERTIFICATE-----\n",
+        );
+        pem
+      })
+      .collect::<Vec<String>>(),
+  )
 }
 
 #[op2]
