@@ -1354,8 +1354,16 @@ function shutdownWritable(callback) {
   // request (test-http2-client-rststream-before-connect). For streams
   // with a data provider, sync drain fires the trailing read_callback
   // so on_trailers / wantTrailers handlers run in the same JS tick
-  // (test-http2-misused-pseudoheaders).
-  if (state.endStream && !(state.flags & STREAM_FLAGS_CLOSED)) {
+  // (test-http2-misused-pseudoheaders). When err === 1 (no pending data)
+  // and the stream isn't waiting on trailers (which need the sync
+  // wantTrailers fire-up), defer the drain so synchronous JS code after
+  // end() (e.g. pushStream) runs before nghttp2 closes the stream via
+  // on_stream_close (test-http2-respond-file-push).
+  if (
+    (state.endStream ||
+      (err === 1 && !(state.flags & STREAM_FLAGS_HAS_TRAILERS))) &&
+    !(state.flags & STREAM_FLAGS_CLOSED)
+  ) {
     setImmediate(scheduleSendPending, this[kSession]);
   } else {
     scheduleSendPending(this[kSession]);

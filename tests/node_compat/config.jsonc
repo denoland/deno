@@ -1695,6 +1695,7 @@
     "parallel/test-http2-respond-file-fd-errors.js": {},
     "parallel/test-http2-respond-file-fd-range.js": {},
     "parallel/test-http2-respond-file-filehandle.js": {},
+    "parallel/test-http2-respond-file-push.js": {},
     "parallel/test-http2-respond-file-range.js": {},
     "parallel/test-http2-respond-file.js": {},
     "parallel/test-http2-respond-no-data.js": {},
