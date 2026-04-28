@@ -59,14 +59,12 @@ import {
   constants as fsUtilConstants,
   copyObject,
   Dirent,
-  emitRecursiveRmdirWarning,
   getOptions,
   getValidatedFd,
   getValidatedPath,
   getValidatedPathToString,
   getValidMode,
   kMaxUserId,
-  type RmOptions,
   Stats,
   stringToFlags,
   toUnixTimestamp as _toUnixTimestamp,
@@ -139,8 +137,8 @@ import {
   op_node_statfs_sync,
 } from "ext:core/ops";
 import {
-  ERR_FS_RMDIR_ENOTDIR,
   ERR_INVALID_ARG_TYPE,
+  ERR_INVALID_ARG_VALUE,
   uvException,
 } from "ext:deno_node/internal/errors.ts";
 import { toUnixTimestamp } from "ext:deno_node/internal/fs/utils.mjs";
@@ -157,6 +155,7 @@ import { core, primordials } from "ext:core/mod.js";
 
 const {
   ArrayBufferIsView,
+  ArrayIsArray,
   BigInt,
   DatePrototypeGetTime,
   DateUTC,
@@ -177,6 +176,8 @@ const {
   Promise,
   PromisePrototypeThen,
   PromiseResolve,
+  RegExpPrototype,
+  RegExpPrototypeTest,
   SafeMap,
   StringPrototypeToString,
   SymbolAsyncIterator,
@@ -1737,26 +1738,6 @@ type rmdirOptions = {
 
 type rmdirCallback = (err?: Error) => void;
 
-const rmdirRecursive =
-  (path: string, callback: rmdirCallback) =>
-  (err: Error | false | null, options?: RmOptions) => {
-    if (err === false) {
-      return callback(new ERR_FS_RMDIR_ENOTDIR(path));
-    }
-    if (err) {
-      return callback(err);
-    }
-
-    PromisePrototypeThen(
-      Deno.remove(path, { recursive: options?.recursive }),
-      (_) => callback(),
-      (err: Error) =>
-        callback(
-          denoErrorToNodeError(err, { syscall: "rmdir", path }),
-        ),
-    );
-  };
-
 function rmdir(
   path: string | Buffer | URL,
   callback: rmdirCallback,
@@ -1775,44 +1756,40 @@ function rmdir(
     callback = options;
     options = undefined;
   }
+
+  if (options?.recursive !== undefined) {
+    // The `recursive` option was deprecated and removed in Node. Throw with a
+    // clear message rather than silently doing the wrong thing.
+    throw new ERR_INVALID_ARG_VALUE(
+      "options.recursive",
+      options.recursive,
+      "is no longer supported",
+    );
+  }
+
   validateFunction(callback, "cb");
   path = getValidatedPathToString(path);
 
-  if (options?.recursive) {
-    emitRecursiveRmdirWarning();
-    validateRmOptions(
-      path,
-      { ...options, force: false },
-      true,
-      rmdirRecursive(path, callback),
-    );
-  } else {
-    validateRmdirOptions(options);
-    PromisePrototypeThen(
-      op_node_rmdir(path),
-      (_) => callback(),
-      (err: Error) =>
-        callback(
-          denoErrorToNodeError(err, { syscall: "rmdir", path }),
-        ),
-    );
-  }
+  validateRmdirOptions(options);
+  PromisePrototypeThen(
+    op_node_rmdir(path),
+    (_) => callback(),
+    (err: Error) =>
+      callback(
+        denoErrorToNodeError(err, { syscall: "rmdir", path }),
+      ),
+  );
 }
 
 function rmdirSync(path: string | Buffer | URL, options?: rmdirOptions) {
   path = getValidatedPathToString(path);
-  if (options?.recursive) {
-    emitRecursiveRmdirWarning();
-    const optionsOrFalse = validateRmOptionsSync(path, {
-      ...options,
-      force: false,
-    }, true);
-    if (optionsOrFalse === false) {
-      throw new ERR_FS_RMDIR_ENOTDIR(path);
-    }
-    return Deno.removeSync(path, {
-      recursive: true,
-    });
+
+  if (options?.recursive !== undefined) {
+    throw new ERR_INVALID_ARG_VALUE(
+      "options.recursive",
+      options.recursive,
+      "is no longer supported",
+    );
   }
 
   validateRmdirOptions(options);
@@ -3155,10 +3132,107 @@ function asyncIterableToCallback<T>(
   next();
 }
 
+// Mirrors Node's `validateIgnoreOption` /
+// `createIgnoreMatcher` from `lib/internal/fs/watchers.js`.
+// Accepts a string (minimatch glob), RegExp, function, or array of those.
+// Returns a function `(filename) => boolean` (or `null` if `ignore` is nullish).
+type IgnoreOption =
+  | string
+  | RegExp
+  | ((filename: string) => boolean)
+  | (string | RegExp | ((filename: string) => boolean))[]
+  | undefined
+  | null;
+
+// deno-lint-ignore no-explicit-any
+let _lazyMinimatch: any = null;
+function getMinimatch() {
+  _lazyMinimatch ??= core.createLazyLoader("ext:deno_node/deps/minimatch.js");
+  return _lazyMinimatch();
+}
+
+function validateIgnoreOptionElement(value: unknown, name: string) {
+  if (typeof value === "string") {
+    if (value.length === 0) {
+      throw new ERR_INVALID_ARG_VALUE(
+        name,
+        value,
+        "must be a non-empty string",
+      );
+    }
+    return;
+  }
+  if (ObjectPrototypeIsPrototypeOf(RegExpPrototype, value)) return;
+  if (typeof value === "function") return;
+  throw new ERR_INVALID_ARG_TYPE(
+    name,
+    ["string", "RegExp", "Function"],
+    value,
+  );
+}
+
+function validateIgnoreOption(value: unknown, name: string) {
+  if (value == null) return;
+  if (ArrayIsArray(value)) {
+    for (let i = 0; i < value.length; i++) {
+      validateIgnoreOptionElement(value[i], `${name}[${i}]`);
+    }
+    return;
+  }
+  validateIgnoreOptionElement(value, name);
+}
+
+function createIgnoreMatcher(
+  ignore: IgnoreOption,
+): ((filename: string) => boolean) | null {
+  if (ignore == null) return null;
+  const matchers = ArrayIsArray(ignore) ? ignore : [ignore];
+  const compiled: Array<(filename: string) => boolean> = [];
+
+  for (let i = 0; i < matchers.length; i++) {
+    const matcher = matchers[i];
+    if (typeof matcher === "string") {
+      const { Minimatch } = getMinimatch().default;
+      const mm = new Minimatch(matcher, {
+        nocase: isMacOS || isWindows,
+        windowsPathsNoEscape: true,
+        nonegate: true,
+        nocomment: true,
+        optimizationLevel: 2,
+        platform: isWindows ? "win32" : "posix",
+        // Allow patterns without slashes to match the basename
+        // e.g. '*.log' matches 'subdir/file.log'.
+        matchBase: true,
+      });
+      ArrayPrototypePush(
+        compiled,
+        // deno-lint-ignore prefer-primordials
+        (filename: string) => mm.match(filename),
+      );
+    } else if (ObjectPrototypeIsPrototypeOf(RegExpPrototype, matcher)) {
+      ArrayPrototypePush(
+        compiled,
+        (filename: string) => RegExpPrototypeTest(matcher as RegExp, filename),
+      );
+    } else {
+      // Function
+      ArrayPrototypePush(compiled, matcher as (filename: string) => boolean);
+    }
+  }
+
+  return (filename: string) => {
+    for (let i = 0; i < compiled.length; i++) {
+      if (compiled[i](filename)) return true;
+    }
+    return false;
+  };
+}
+
 type watchOptions = {
   persistent?: boolean;
   recursive?: boolean;
   encoding?: string;
+  ignore?: IgnoreOption;
 };
 
 type watchListener = (eventType: string, filename: string) => void;
@@ -3197,6 +3271,8 @@ function watch(
   const watchPath = getValidatedPath(filename).toString();
 
   const recursive = options?.recursive || false;
+  validateIgnoreOption(options?.ignore, "options.ignore");
+  const ignoreMatcher = createIgnoreMatcher(options?.ignore);
   const iterator: Deno.FsWatcher = Deno.watchFs(watchPath, {
     recursive,
   });
@@ -3213,6 +3289,9 @@ function watch(
     const filename = recursive
       ? relative(resolvedWatchPath, val.paths[0])
       : basename(val.paths[0]);
+    if (ignoreMatcher !== null && ignoreMatcher(filename)) {
+      return;
+    }
     fsWatcher.emit(
       "change",
       convertDenoFsEventToNodeFsEvent(val.kind),
@@ -3253,12 +3332,15 @@ function watchPromise(
     recursive?: boolean;
     encoding?: string;
     signal?: AbortSignal;
+    ignore?: IgnoreOption;
   },
 ): AsyncIterable<{ eventType: string; filename: string | Buffer | null }> {
   // deno-lint-ignore prefer-primordials
   const watchPath = getValidatedPath(filename).toString();
 
   const recursive = options?.recursive ?? false;
+  validateIgnoreOption(options?.ignore, "options.ignore");
+  const ignoreMatcher = createIgnoreMatcher(options?.ignore);
   const watcher = Deno.watchFs(watchPath, {
     recursive,
   });
@@ -3281,20 +3363,25 @@ function watchPromise(
     async next(): Promise<
       IteratorResult<{ eventType: string; filename: string | Buffer | null }>
     > {
-      // deno-lint-ignore prefer-primordials
-      const iterResult = await fsIterable.next();
-      if (iterResult.done) return iterResult;
+      while (true) {
+        // deno-lint-ignore prefer-primordials
+        const iterResult = await fsIterable.next();
+        if (iterResult.done) return iterResult;
 
-      const eventType = convertDenoFsEventToNodeFsEvent(
-        iterResult.value.kind,
-      );
-      const fname = recursive
-        ? relative(resolvedWatchPath, iterResult.value.paths[0])
-        : basename(iterResult.value.paths[0]);
-      return {
-        value: { eventType, filename: fname },
-        done: false,
-      };
+        const eventType = convertDenoFsEventToNodeFsEvent(
+          iterResult.value.kind,
+        );
+        const fname = recursive
+          ? relative(resolvedWatchPath, iterResult.value.paths[0])
+          : basename(iterResult.value.paths[0]);
+        if (ignoreMatcher !== null && ignoreMatcher(fname)) {
+          continue;
+        }
+        return {
+          value: { eventType, filename: fname },
+          done: false,
+        };
+      }
     },
     // deno-lint-ignore no-explicit-any
     return(value?: any): Promise<IteratorResult<any>> {

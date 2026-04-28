@@ -89,16 +89,14 @@ fn getaddrinfo_inner(
 ) -> Result<Vec<String>, DnsError> {
   #[cfg(unix)]
   {
-    use std::ffi::CString;
+    let c_hostname = std::ffi::CString::new(hostname)
+      .map_err(|_| DnsError::Resolution(hostname.to_string()))?;
 
     let ai_family = match family {
       4 => libc::AF_INET,
       6 => libc::AF_INET6,
       _ => libc::AF_UNSPEC,
     };
-
-    let c_hostname = CString::new(hostname)
-      .map_err(|_| DnsError::Resolution(hostname.to_string()))?;
 
     let hints = libc::addrinfo {
       ai_flags: 0,
@@ -128,43 +126,44 @@ fn getaddrinfo_inner(
     }
 
     let mut ips = Vec::new();
-    let mut current = result;
-    while !current.is_null() {
-      // SAFETY: current is a valid pointer from getaddrinfo linked list
-      let addr = unsafe { &*current };
-      let sock_addr =
-        // SAFETY: ai_addr/ai_addrlen are valid from getaddrinfo
-        unsafe { SockAddr::new(
-          *(addr.ai_addr as *const libc::sockaddr_storage),
-          addr.ai_addrlen,
-        ) };
-      if let Some(ip) = sock_addr.as_socket() {
-        ips.push(ip.ip().to_string());
+    let mut addr = result;
+    while !addr.is_null() {
+      // SAFETY: addr is not null and was returned by getaddrinfo
+      let info = unsafe { &*addr };
+      if !info.ai_addr.is_null() {
+        // SAFETY: ai_addr is not null
+        let sockaddr = unsafe {
+          SockAddr::try_init(|storage, len| {
+            std::ptr::copy_nonoverlapping(
+              info.ai_addr as *const u8,
+              storage as *mut u8,
+              info.ai_addrlen as usize,
+            );
+            *len = info.ai_addrlen;
+            Ok(())
+          })
+        };
+        if let Ok((_, sa)) = sockaddr
+          && let Some(ip) = sa.as_socket()
+        {
+          ips.push(ip.ip().to_string());
+        }
       }
-      // SAFETY: Advancing to next node in getaddrinfo linked list
-      current = unsafe { (*current).ai_next };
+      // SAFETY: following the linked list
+      addr = unsafe { (*addr).ai_next };
     }
 
-    // SAFETY: Freeing the result from getaddrinfo
-    unsafe { libc::freeaddrinfo(result) };
-
-    if ips.is_empty() {
-      return Err(DnsError::Resolution(hostname.to_string()));
+    if !result.is_null() {
+      // SAFETY: freeing the result from getaddrinfo
+      unsafe { libc::freeaddrinfo(result) };
     }
 
     Ok(ips)
   }
-
   #[cfg(windows)]
   {
     use winapi::shared::minwindef::MAKEWORD;
     use windows_sys::Win32::Networking::WinSock;
-
-    let ai_family = match family {
-      4 => WinSock::AF_INET as i32,
-      6 => WinSock::AF_INET6 as i32,
-      _ => WinSock::AF_UNSPEC as i32,
-    };
 
     // SAFETY: winapi call
     let wsa_startup_code = *WINSOCKET_INIT.get_or_init(|| unsafe {
@@ -172,11 +171,17 @@ fn getaddrinfo_inner(
       WinSock::WSAStartup(MAKEWORD(2, 2), &mut wsa_data)
     });
     if wsa_startup_code != 0 {
-      return Err(DnsError::Resolution(hostname.to_string()));
+      return Err(assert_success_err(wsa_startup_code));
     }
 
-    let c_hostname: Vec<u8> =
-      hostname.bytes().chain(std::iter::once(0)).collect();
+    let c_hostname = std::ffi::CString::new(hostname)
+      .map_err(|_| DnsError::Resolution(hostname.to_string()))?;
+
+    let ai_family = match family {
+      4 => WinSock::AF_INET as i32,
+      6 => WinSock::AF_INET6 as i32,
+      _ => WinSock::AF_UNSPEC as i32,
+    };
 
     let hints = WinSock::ADDRINFOA {
       ai_flags: 0,
@@ -184,8 +189,8 @@ fn getaddrinfo_inner(
       ai_socktype: WinSock::SOCK_STREAM as _,
       ai_protocol: 0,
       ai_addrlen: 0,
-      ai_canonname: std::ptr::null_mut(),
       ai_addr: std::ptr::null_mut(),
+      ai_canonname: std::ptr::null_mut(),
       ai_next: std::ptr::null_mut(),
     };
 
@@ -206,44 +211,48 @@ fn getaddrinfo_inner(
     }
 
     let mut ips = Vec::new();
-    let mut current = result;
-    while !current.is_null() {
-      // SAFETY: current is a valid pointer from getaddrinfo linked list
-      let addr = unsafe { &*current };
-      // SAFETY: ai_addr/ai_addrlen are valid from getaddrinfo,
-      // and SockAddr::try_init requires unsafe
-      let sa_result = unsafe {
-        SockAddr::try_init(|storage, len| {
-          std::ptr::copy_nonoverlapping(
-            addr.ai_addr as *const u8,
-            storage as *mut u8,
-            addr.ai_addrlen.try_into().unwrap(),
-          );
-          *len = addr.ai_addrlen as _;
-          Ok(())
-        })
-      };
-      if let Some(sock_addr) = sa_result.ok().and_then(|(_, sa)| sa.as_socket())
-      {
-        ips.push(sock_addr.ip().to_string());
+    let mut addr = result;
+    while !addr.is_null() {
+      // SAFETY: addr is not null and was returned by getaddrinfo
+      let info = unsafe { &*addr };
+      if !info.ai_addr.is_null() {
+        #[allow(
+          clippy::unnecessary_cast,
+          reason = "ai_addrlen is usize on Windows but u32 on Unix"
+        )]
+        let addrlen = info.ai_addrlen as usize;
+        // SAFETY: ai_addr/ai_addrlen are valid from getaddrinfo,
+        // and SockAddr::try_init requires unsafe
+        let sa_result = unsafe {
+          SockAddr::try_init(|storage, len| {
+            std::ptr::copy_nonoverlapping(
+              info.ai_addr as *const u8,
+              storage as *mut u8,
+              addrlen,
+            );
+            *len = info.ai_addrlen as _;
+            Ok(())
+          })
+        };
+        if let Ok((_, sa)) = sa_result
+          && let Some(ip) = sa.as_socket()
+        {
+          ips.push(ip.ip().to_string());
+        }
       }
-      // SAFETY: Advancing to next node in getaddrinfo linked list
-      current = unsafe { (*current).ai_next };
+      // SAFETY: following the linked list
+      addr = unsafe { (*addr).ai_next };
     }
 
-    // SAFETY: Freeing the result from getaddrinfo
-    unsafe { WinSock::freeaddrinfo(result) };
-
-    if ips.is_empty() {
-      return Err(DnsError::Resolution(hostname.to_string()));
+    if !result.is_null() {
+      // SAFETY: freeing the result from getaddrinfo
+      unsafe { WinSock::freeaddrinfo(result) };
     }
 
     Ok(ips)
   }
-
   #[cfg(not(any(unix, windows)))]
   {
-    let _ = (hostname, family);
     Err(DnsError::UnsupportedPlatform)
   }
 }
@@ -362,6 +371,11 @@ fn assert_success_err(code: i32) -> DnsError {
   use windows_sys::Win32::Networking::WinSock;
 
   use crate::ops::constant;
+
+  if code == 0 {
+    return DnsError::Io(std::io::Error::other("unexpected success code"));
+  }
+
 
   #[cfg(unix)]
   let err = match code {

@@ -665,30 +665,29 @@ export class ChannelWrap extends AsyncWrap implements ChannelWrapQuery {
     let reverseName: string;
 
     if (isIPv4(name)) {
-      reverseName = name.split(".").reverse().join(".") + ".in-addr.arpa";
+      const octets = name.split(".");
+      reverseName = octets.reverse().join(".") + ".in-addr.arpa";
     } else if (isIPv6(name)) {
-      // Expand IPv6 address to full form then reverse nibbles
+      // Expand the IPv6 address to full form
       const parts = name.split(":");
-      const nonEmpty = parts.filter((p) => p !== "");
-      const missing = name.includes("::") ? 8 - nonEmpty.length : 0;
       const expanded: string[] = [];
-      let didExpand = false;
+      let emptyFound = false;
       for (const part of parts) {
-        if (part === "") {
-          if (!didExpand) {
-            for (let j = 0; j < missing; j++) {
-              expanded.push("0000");
-            }
-            didExpand = true;
+        if (part === "" && !emptyFound) {
+          emptyFound = true;
+          const missing = 8 - parts.filter((p) => p !== "").length;
+          for (let j = 0; j < missing; j++) {
+            expanded.push("0000");
           }
-          continue;
+        } else if (part !== "") {
+          expanded.push(part.padStart(4, "0"));
         }
-        expanded.push(part.padStart(4, "0"));
       }
-      reverseName = expanded.join("").split("").reverse().join(".") +
-        ".ip6.arpa";
+      const fullHex = expanded.join("");
+      reverseName = fullHex.split("").reverse().join(".") + ".ip6.arpa";
     } else {
-      return codeMap.get("EINVAL")!;
+      req.oncomplete(codeMap.get("EINVAL")!, []);
+      return 0;
     }
 
     this.#pendingQueries.add(req);
