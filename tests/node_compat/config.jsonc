@@ -1668,6 +1668,10 @@
     "parallel/test-http2-createsecureserver-options.js": {},
     "parallel/test-http2-createserver-options.js": {},
     "parallel/test-http2-date-header.js": {},
+    "parallel/test-http2-debug.js": {
+      "ignore": true,
+      "reason": "Asserts on NODE_DEBUG_NATIVE=http2 native debug log output that mirrors Node's C++ http2 binding diagnostic strings; Deno's http2 polyfill does not emit these native debug logs."
+    },
     "parallel/test-http2-destroy-after-write.js": {},
     "parallel/test-http2-dont-override.js": {},
     "parallel/test-http2-endafterheaders.js": {},
