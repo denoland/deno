@@ -1713,6 +1713,7 @@
     "parallel/test-http2-pipe.js": {},
     "parallel/test-http2-priority-cycle-.js": {},
     "parallel/test-http2-priority-event.js": {},
+    "parallel/test-http2-propagate-session-destroy-code.js": {},
     "parallel/test-http2-raw-headers-defaults.js": {},
     "parallel/test-http2-raw-headers.js": {},
     "parallel/test-http2-removed-header-stays-removed.js": {},

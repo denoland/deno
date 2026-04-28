@@ -3172,7 +3172,50 @@ function closeSession(session, code, error) {
   session.setTimeout(0);
   session.removeAllListeners("timeout");
 
-  // Destroy any pending and open streams
+  // Disassociate from the socket and server.
+  const socket = session[kSocket];
+  const handle = session[kHandle];
+
+  // Match Node.js's Http2Session::Close (src/node_http2.cc): submit a
+  // GOAWAY before destroying so the peer gets a graceful shutdown
+  // notification instead of an abrupt socket close. Without this, a
+  // peer seeing ECONNRESET/RST on Windows (from the local close-with-
+  // unread-data path) has no goawayCode set and socketOnError bubbles
+  // the error as uncaught (e.g. test-http2-zero-length-header.js).
+  //
+  // Submit the GOAWAY *before* destroying open streams (which queues
+  // RST_STREAM frames via per-stream submitRstStream + scheduleSendPending
+  // synchronous drains). When the GOAWAY frame is serialized to the wire
+  // first, the peer sets goawayCode on its session before the RST_STREAM
+  // arrives, so the peer's stream destroy path picks up the session-level
+  // error code (ERR_HTTP2_SESSION_ERROR) instead of falling back to
+  // ERR_HTTP2_STREAM_ERROR (test-http2-propagate-session-destroy-code).
+  //
+  // Skip when the session already walked the graceful close() path
+  // (SESSION_FLAGS_CLOSED): that path submitted the GOAWAY via
+  // submitGoaway + scheduleSendPending, and the later destroy() here
+  // is the ongracefulclosecomplete follow-up. Also skip when code is
+  // not a numeric code (same path: destroy(null) from kMaybeDestroy).
+  // The state.flags |= SESSION_FLAGS_DESTROYED above ensures the
+  // getOutgoingChunk -> maybe_notify_graceful_close_complete ->
+  // kMaybeDestroy -> destroy re-entry short-circuits on this.destroyed.
+  if (
+    handle !== undefined &&
+    typeof code === "number" &&
+    (state.flags & SESSION_FLAGS_CLOSED) === 0 &&
+    socket && !socket.destroyed && typeof handle.goaway === "function"
+  ) {
+    handle.goaway(code, 0);
+    while (!socket.destroyed) {
+      const chunk = handle.getOutgoingChunk();
+      if (!chunk || chunk.byteLength === 0) break;
+      socket.write(chunk);
+    }
+  }
+
+  // Destroy any pending and open streams. Per-stream destroy queues
+  // RST_STREAM frames and drains them synchronously, so this runs after
+  // the GOAWAY above to preserve wire order.
   if (state.pendingStreams.size > 0 || state.streams.size > 0) {
     const cancel = new ERR_HTTP2_STREAM_CANCEL(error);
     // deno-lint-ignore prefer-primordials
@@ -3181,39 +3224,8 @@ function closeSession(session, code, error) {
     state.streams.forEach((stream) => stream.destroy(error));
   }
 
-  // Disassociate from the socket and server.
-  const socket = session[kSocket];
-  const handle = session[kHandle];
-
   // Destroy the handle if it exists at this point.
   if (handle !== undefined) {
-    // Match Node.js's Http2Session::Close (src/node_http2.cc): submit a
-    // GOAWAY before destroying so the peer gets a graceful shutdown
-    // notification instead of an abrupt socket close. Without this, a
-    // peer seeing ECONNRESET/RST on Windows (from the local close-with-
-    // unread-data path) has no goawayCode set and socketOnError bubbles
-    // the error as uncaught (e.g. test-http2-zero-length-header.js).
-    //
-    // Skip when the session already walked the graceful close() path
-    // (SESSION_FLAGS_CLOSED): that path submitted the GOAWAY via
-    // submitGoaway + scheduleSendPending, and the later destroy() here
-    // is the ongracefulclosecomplete follow-up. Also skip when code is
-    // not a numeric code (same path: destroy(null) from kMaybeDestroy).
-    // The state.flags |= SESSION_FLAGS_DESTROYED above ensures the
-    // getOutgoingChunk -> maybe_notify_graceful_close_complete ->
-    // kMaybeDestroy -> destroy re-entry short-circuits on this.destroyed.
-    if (
-      typeof code === "number" &&
-      (state.flags & SESSION_FLAGS_CLOSED) === 0 &&
-      socket && !socket.destroyed && typeof handle.goaway === "function"
-    ) {
-      handle.goaway(code, 0);
-      while (!socket.destroyed) {
-        const chunk = handle.getOutgoingChunk();
-        if (!chunk || chunk.byteLength === 0) break;
-        socket.write(chunk);
-      }
-    }
     handle.ondone = FunctionPrototypeBind(
       finishSessionClose,
       null,
