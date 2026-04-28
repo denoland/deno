@@ -171,6 +171,12 @@ pub struct Http2Stream {
   pub(crate) pending_data: RefCell<bytes::BytesMut>,
   pub(crate) current_headers: RefCell<Vec<HeaderEntry>>,
   pub(crate) current_headers_length: RefCell<usize>,
+  /// `SETTINGS_MAX_HEADER_LIST_SIZE` snapshotted from the session at stream
+  /// construction. Mirrors Node's `Http2Stream::max_header_length_`
+  /// (`src/node_http2.cc`): a stream's enforcement value is fixed at
+  /// construction, so post-init `session.settings({ maxHeaderListSize })`
+  /// only affects streams created after the SETTINGS ACK round-trip.
+  pub(crate) max_header_length: u64,
   pub(crate) has_trailers: RefCell<bool>,
   /// Set to true when shutdown is called (writable side ended).
   /// Used by the data source read callback to decide whether to
@@ -184,6 +190,14 @@ pub struct Http2Stream {
   /// would re-activate the data provider for a stream that nghttp2 is
   /// about to destroy (causing double-free with no_closed_streams=1).
   pub(crate) closed_by_nghttp2: RefCell<bool>,
+  /// Set true once the data provider returned a chunk with
+  /// NGHTTP2_DATA_FLAG_EOF. shutdown() then suppresses its
+  /// resume_data so nghttp2 doesn't generate a second empty trailing
+  /// DATA frame just to carry END_STREAM. Writable.end(data) hooks
+  /// `mark_ending` to set `writable_ended` *before* the data write
+  /// reaches read_callback, which lets that frame carry END_STREAM
+  /// directly.
+  pub(crate) eof_sent: RefCell<bool>,
 }
 
 // SAFETY: Http2Stream is GC-traced by cppgc
@@ -214,6 +228,20 @@ impl Http2Stream {
       AsyncWrap::create(&mut state, 0)
     };
 
+    // Snapshot SETTINGS_MAX_HEADER_LIST_SIZE at stream construction. nghttp2
+    // returns the *current* local value (which has already absorbed any
+    // SETTINGS frames the peer ACKed), so streams created after a successful
+    // post-init `session.settings({ maxHeaderListSize: N })` see N, while
+    // streams created before keep the prior value. Mirrors Node's
+    // `Http2Stream::Http2Stream` in `src/node_http2.cc`.
+    // SAFETY: session.session is a valid nghttp2 session for the stream's lifetime
+    let max_header_length = unsafe {
+      ffi::nghttp2_session_get_local_settings(
+        session.session,
+        ffi::NGHTTP2_SETTINGS_MAX_HEADER_LIST_SIZE,
+      ) as u64
+    };
+
     cppgc::wrap_object(
       scope,
       obj,
@@ -225,10 +253,12 @@ impl Http2Stream {
         pending_data: RefCell::new(bytes::BytesMut::new()),
         current_headers: RefCell::new(Vec::new()),
         current_headers_length: RefCell::new(0),
+        max_header_length,
         has_trailers: RefCell::new(false),
         writable_ended: RefCell::new(false),
         shutdown_req: RefCell::new(None),
         closed_by_nghttp2: RefCell::new(false),
+        eof_sent: RefCell::new(false),
       },
     );
 
@@ -251,13 +281,7 @@ impl Http2Stream {
 
     // SAFETY: session pointer is valid for the stream's lifetime
     let session = unsafe { &*self.session };
-    // SAFETY: session.session is a valid nghttp2 session pointer
-    let max_header_length = unsafe {
-      ffi::nghttp2_session_get_local_settings(
-        session.session,
-        ffi::NGHTTP2_SETTINGS_MAX_HEADER_LIST_SIZE,
-      )
-    } as u64;
+    let max_header_length = self.max_header_length;
 
     let max_header_pairs = session.max_header_pairs as usize;
     let current_pairs = self.current_headers.borrow().len();
@@ -454,6 +478,17 @@ impl Http2Stream {
     0
   }
 
+  /// Pre-flag the stream as ended so the very next data frame the
+  /// data provider builds carries NGHTTP2_DATA_FLAG_EOF. The polyfill
+  /// calls this from `Http2Stream.end(chunk)` *before* the chunk's
+  /// write reaches `write_buffer`, which lets `stream.end(data)`
+  /// produce one DATA frame with END_STREAM instead of a data frame
+  /// followed by an empty trailing DATA frame.
+  #[fast]
+  fn mark_ending(&self) {
+    *self.writable_ended.borrow_mut() = true;
+  }
+
   #[fast]
   fn shutdown(&self, req: v8::Local<v8::Object>) -> i32 {
     *self.writable_ended.borrow_mut() = true;
@@ -462,7 +497,13 @@ impl Http2Stream {
     // data provider, but close_stream then destroys the stream with
     // no_closed_streams=1. The re-activated item survives destruction
     // and mem_send later double-frees the stream.
-    if !*self.closed_by_nghttp2.borrow() {
+    //
+    // Also skip when EOF has already been emitted on a previous data
+    // frame (Http2Stream.end(chunk) hooks `mark_ending` so the chunk's
+    // frame carries END_STREAM). Without this guard nghttp2 would call
+    // read_callback again, get 0 + EOF, and pack a redundant empty
+    // trailing DATA frame.
+    if !*self.closed_by_nghttp2.borrow() && !*self.eof_sent.borrow() {
       let session_ptr = self.nghttp2_session();
       // SAFETY: session pointer is valid
       unsafe {

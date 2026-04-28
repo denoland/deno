@@ -102,6 +102,7 @@ pub async fn execute_script(
     let mut packages_task_info: Vec<PackageTaskInfo> = vec![];
 
     let workspace = cli_options.workspace();
+    let root_dir_url = workspace.root_dir_url();
     for (folder_url, folder) in
       workspace.config_folders_sorted_by_dependencies()
     {
@@ -111,6 +112,7 @@ pub async fn execute_script(
           folder_url,
           force_use_pkg_json,
           &package_regex,
+          folder_url == root_dir_url,
         )
       {
         continue;
@@ -715,6 +717,7 @@ fn matches_package(
   folder_url: &Url,
   force_use_pkg_json: bool,
   regex: &Regex,
+  is_workspace_root: bool,
 ) -> bool {
   if !force_use_pkg_json
     && let Some(deno_json) = &config.deno_json
@@ -731,20 +734,11 @@ fn matches_package(
     return true;
   }
 
-  // Fall back to the workspace member's directory name when neither
-  // deno.json nor package.json carry a `name`. Without this fallback,
-  // `deno task --filter <dir>` silently failed for members whose
-  // package name didn't happen to match the directory (#28620).
-  // Gated on the folder having a name so we never accidentally select
-  // the workspace root (which doesn't carry one and is intentionally
-  // excluded from `--filter *`).
-  let has_name = config
-    .deno_json
-    .as_ref()
-    .and_then(|deno| deno.json.name.as_ref())
-    .or(config.pkg_json.as_ref().and_then(|pkg| pkg.name.as_ref()))
-    .is_some();
-  if has_name
+  // Fall back to matching the workspace member's directory name so that
+  // `deno task --filter <dir>` works when the package name diverges
+  // from the directory (#28620). Skip the workspace root so it is never
+  // accidentally selected by `--filter *`.
+  if !is_workspace_root
     && let Some(dir_name) = workspace_folder_dir_name(folder_url)
     && regex.is_match(dir_name)
   {
@@ -768,11 +762,18 @@ fn print_available_tasks_workspace(
   recursive: bool,
 ) -> Result<(), AnyError> {
   let workspace = cli_options.workspace();
+  let root_dir_url = workspace.root_dir_url();
 
   let mut matched = false;
   for (folder_url, folder) in workspace.config_folders() {
     if !recursive
-      && !matches_package(folder, folder_url, force_use_pkg_json, package_regex)
+      && !matches_package(
+        folder,
+        folder_url,
+        force_use_pkg_json,
+        package_regex,
+        folder_url == root_dir_url,
+      )
     {
       continue;
     }
