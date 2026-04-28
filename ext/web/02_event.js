@@ -1241,10 +1241,29 @@ class CloseEvent extends Event {
 const CloseEventPrototype = CloseEvent.prototype;
 
 class MessageEvent extends Event {
-  #source = null;
+  // Use private fields so that the property accessors brand-check `this`,
+  // matching the WebIDL-defined MessageEvent: every accessor on the
+  // prototype throws TypeError when invoked on a non-MessageEvent receiver.
+  #data;
+  #origin;
+  #lastEventId;
+  #source;
+  #ports;
 
+  get data() {
+    return this.#data;
+  }
+  get origin() {
+    return this.#origin;
+  }
+  get lastEventId() {
+    return this.#lastEventId;
+  }
   get source() {
     return this.#source;
+  }
+  get ports() {
+    return this.#ports;
   }
 
   constructor(type, eventInitDict) {
@@ -1254,15 +1273,15 @@ class MessageEvent extends Event {
       composed: eventInitDict?.composed ?? false,
     });
 
-    this.data = eventInitDict?.data ?? null;
+    this.#data = eventInitDict?.data ?? null;
     const ports = eventInitDict?.ports;
-    this.ports = ports == null ? [] : webidl.converters["sequence<object>"](
+    this.#ports = ports == null ? [] : webidl.converters["sequence<object>"](
       ports,
       "Failed to construct 'MessageEvent'",
       "Argument 2 'ports'",
     );
-    this.origin = eventInitDict?.origin ?? "";
-    this.lastEventId = eventInitDict?.lastEventId ?? "";
+    this.#origin = eventInitDict?.origin ?? "";
+    this.#lastEventId = eventInitDict?.lastEventId ?? "";
     this.#source = eventInitDict?.source ?? null;
   }
 
