@@ -2224,6 +2224,19 @@ function tryClose(fd) {
   });
 }
 
+function handleAsyncFileResponseError(stream, err) {
+  if (
+    !stream.destroyed &&
+    !stream.closed &&
+    (stream[kState].flags & STREAM_FLAGS_HEADERS_SENT)
+  ) {
+    closeStream(stream, NGHTTP2_INTERNAL_ERROR, kForceRstStream);
+    stream.destroy();
+    return;
+  }
+  stream.destroy(err);
+}
+
 function processRespondWithFD(
   self,
   fd,
@@ -2306,7 +2319,7 @@ function processRespondWithFD(
 
 function doSendFD(session, options, fd, headers, streamOptions, err, stat) {
   if (err) {
-    this.destroy(err);
+    handleAsyncFileResponseError(this, err);
     return;
   }
   if (this.destroyed || this.closed) {
@@ -2348,10 +2361,17 @@ function doSendFileFD(session, options, fd, headers, streamOptions, err, stat) {
 
   if (err) {
     tryClose(fd);
-    if (onError) {
+    if (
+      !this.destroyed &&
+      !this.closed &&
+      (this[kState].flags & STREAM_FLAGS_HEADERS_SENT)
+    ) {
+      closeStream(this, NGHTTP2_INTERNAL_ERROR, kForceRstStream);
+      this.destroy();
+    } else if (onError) {
       onError(err);
     } else {
-      this.destroy(err);
+      handleAsyncFileResponseError(this, err);
     }
     return;
   }
@@ -2367,10 +2387,17 @@ function doSendFileFD(session, options, fd, headers, streamOptions, err, stat) {
         ? new ERR_HTTP2_SEND_FILE()
         : new ERR_HTTP2_SEND_FILE_NOSEEK();
       tryClose(fd);
-      if (onError) {
+      if (
+        !this.destroyed &&
+        !this.closed &&
+        (this[kState].flags & STREAM_FLAGS_HEADERS_SENT)
+      ) {
+        closeStream(this, NGHTTP2_INTERNAL_ERROR, kForceRstStream);
+        this.destroy();
+      } else if (onError) {
         onError(err);
       } else {
-        this.destroy(err);
+        handleAsyncFileResponseError(this, err);
       }
       return;
     }
@@ -2422,10 +2449,17 @@ function afterOpen(session, options, headers, streamOptions, err, fd) {
   const state = this[kState];
   const onError = options.onError;
   if (err) {
-    if (onError) {
+    if (
+      !this.destroyed &&
+      !this.closed &&
+      (this[kState].flags & STREAM_FLAGS_HEADERS_SENT)
+    ) {
+      closeStream(this, NGHTTP2_INTERNAL_ERROR, kForceRstStream);
+      this.destroy();
+    } else if (onError) {
       onError(err);
     } else {
-      this.destroy(err);
+      handleAsyncFileResponseError(this, err);
     }
     return;
   }
