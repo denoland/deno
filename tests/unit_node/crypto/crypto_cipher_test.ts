@@ -1016,56 +1016,122 @@ Deno.test({
   },
 });
 
+// Helper for the tests below: assert that a cipher/decipher created with
+// `algorithm` rejects each `invalidValue` from `update()` with a TypeError
+// whose code is ERR_INVALID_ARG_TYPE, and releases the native resource.
+function assertUpdateRejects(
+  algorithm: string,
+  keyLen: number,
+  ivLen: number,
+  invalidValues: readonly unknown[],
+) {
+  const key = Buffer.alloc(keyLen);
+  const iv = ivLen === 0 ? null : Buffer.alloc(ivLen);
+
+  for (const value of invalidValues) {
+    for (
+      const factory of [crypto.createCipheriv, crypto.createDecipheriv]
+    ) {
+      // deno-lint-ignore no-explicit-any
+      const stream = (factory as any)(algorithm, key, iv);
+      const err = assertThrows(
+        // deno-lint-ignore no-explicit-any
+        () => stream.update(value as any),
+        TypeError,
+        'The "data" argument must be of type string or an instance of ' +
+          "Buffer, TypedArray, or DataView",
+      ) as Error & { code?: string };
+      assertEquals(err.code, "ERR_INVALID_ARG_TYPE");
+      try {
+        stream.final();
+      } catch { /* release native resource */ }
+    }
+  }
+}
+
 Deno.test({
   name:
     "Cipheriv/Decipheriv update() throws ERR_INVALID_ARG_TYPE for invalid data type",
   fn() {
-    const key = Buffer.alloc(32);
-    const iv = Buffer.alloc(16);
-
     // Node.js uses `ArrayBuffer.isView(data)`, which rejects raw
     // ArrayBuffer / SharedArrayBuffer (only TypedArray / DataView pass).
-    const invalidValues: unknown[] = [
+    const invalidValues: readonly unknown[] = [
       123,
       true,
       null,
       undefined,
       {},
       [],
+      Symbol("nope"),
+      0n,
       new ArrayBuffer(16),
       new SharedArrayBuffer(16),
     ];
 
-    for (const value of invalidValues) {
+    // Cover several block / stream / AEAD modes to ensure the validation
+    // applies regardless of the underlying cipher type.
+    assertUpdateRejects("aes-256-cbc", 32, 16, invalidValues);
+    assertUpdateRejects("aes-128-cbc", 16, 16, invalidValues);
+    assertUpdateRejects("aes-128-ctr", 16, 16, invalidValues);
+    assertUpdateRejects("aes-256-gcm", 32, 12, invalidValues);
+  },
+});
+
+Deno.test({
+  name:
+    "Cipheriv/Decipheriv update() accepts string, Buffer, and TypedArray without throwing",
+  fn() {
+    const key = Buffer.alloc(32);
+    const iv = Buffer.alloc(16);
+    const validInputs: readonly (string | ArrayBufferView)[] = [
+      "hello world",
+      Buffer.from("hello world"),
+      new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8]),
+      new Uint16Array([1, 2, 3, 4]),
+    ];
+
+    for (const input of validInputs) {
       const cipher = crypto.createCipheriv("aes-256-cbc", key, iv);
-      assertThrows(
-        // deno-lint-ignore no-explicit-any
-        () => cipher.update(value as any),
-        TypeError,
-        'The "data" argument must be of type string or an instance of ' +
-          "Buffer, TypedArray, or DataView",
-      );
-      // Release the native cipher resource.
-      try {
-        cipher.final();
-      } catch { /* ignore */ }
+      const inputEncoding = typeof input === "string" ? "utf8" : undefined;
+      // Round-trip to confirm the validation does not break the happy path.
+      const enc = Buffer.concat([
+        cipher.update(input, inputEncoding),
+        cipher.final(),
+      ]);
+      assert(enc.length > 0);
 
       const decipher = crypto.createDecipheriv("aes-256-cbc", key, iv);
-      assertThrows(
-        // deno-lint-ignore no-explicit-any
-        () => decipher.update(value as any),
-        TypeError,
-        'The "data" argument must be of type string or an instance of ' +
-          "Buffer, TypedArray, or DataView",
-      );
-      try {
-        decipher.final();
-      } catch { /* ignore */ }
+      const dec = Buffer.concat([decipher.update(enc), decipher.final()]);
+      assert(dec.length > 0);
     }
+  },
+});
 
-    // Sanity: a valid string still works.
-    const ok = crypto.createCipheriv("aes-256-cbc", key, iv);
-    ok.update("hello", "utf8");
-    ok.final();
+Deno.test({
+  name:
+    "Cipheriv/Decipheriv update() leaves stream usable after type-error throw",
+  fn() {
+    const key = Buffer.alloc(32);
+    const iv = Buffer.alloc(16);
+
+    // After update() rejects bad input, a subsequent valid update() + final()
+    // should still produce ciphertext that round-trips correctly. This guards
+    // against the validation accidentally finalizing the cipher state.
+    const cipher = crypto.createCipheriv("aes-256-cbc", key, iv);
+    assertThrows(
+      // deno-lint-ignore no-explicit-any
+      () => cipher.update(42 as any),
+      TypeError,
+    );
+    const enc = Buffer.concat([cipher.update("ok", "utf8"), cipher.final()]);
+
+    const decipher = crypto.createDecipheriv("aes-256-cbc", key, iv);
+    assertThrows(
+      // deno-lint-ignore no-explicit-any
+      () => decipher.update(42 as any),
+      TypeError,
+    );
+    const dec = Buffer.concat([decipher.update(enc), decipher.final()]);
+    assertEquals(dec.toString("utf8"), "ok");
   },
 });
