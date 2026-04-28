@@ -3122,6 +3122,7 @@
     "parallel/test-tls-enable-trace-cli.js": {},
     "parallel/test-tls-enable-trace.js": {},
     "parallel/test-tls-env-extra-ca-no-crypto.js": {},
+    "parallel/test-tls-external-accessor.js": {},
     "parallel/test-tls-fast-writing.js": {},
     "parallel/test-tls-finished.js": {},
     "parallel/test-tls-friendly-error-message.js": {},
