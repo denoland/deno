@@ -342,8 +342,8 @@
     } else {
       after *= 1;
     }
-    if (!(after >= 1 && after <= TIMEOUT_MAX)) {
-      after = 1;
+    if (after < 1 || !(after <= TIMEOUT_MAX)) {
+      after = after > TIMEOUT_MAX ? TIMEOUT_MAX : 1;
     }
 
     const id = nextTimerId++;

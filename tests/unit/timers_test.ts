@@ -779,6 +779,20 @@ Deno.test({
   },
 });
 
+Deno.test({
+  name: "AbortSignal.timeout() with large delay does not abort instantly",
+  fn: async () => {
+    const signal = AbortSignal.timeout(2 ** 53 - 1);
+    let aborted = false;
+    signal.onabort = () => {
+      aborted = true;
+    };
+    // Wait 500ms — the signal should NOT have aborted
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    assertEquals(aborted, false);
+  },
+});
+
 Deno.test(async function setTimeoutWithStringCallback() {
   const global = globalThis as unknown as {
     timeoutStringTest: number;
