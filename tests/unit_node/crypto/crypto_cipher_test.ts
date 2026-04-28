@@ -1015,3 +1015,46 @@ Deno.test({
     assertEquals(dec, plaintext);
   },
 });
+
+Deno.test({
+  name:
+    "Cipheriv/Decipheriv update() throws ERR_INVALID_ARG_TYPE for invalid data type",
+  fn() {
+    const key = Buffer.alloc(32);
+    const iv = Buffer.alloc(16);
+
+    const invalidValues: unknown[] = [123, true, null, undefined, {}, []];
+
+    for (const value of invalidValues) {
+      const cipher = crypto.createCipheriv("aes-256-cbc", key, iv);
+      assertThrows(
+        // deno-lint-ignore no-explicit-any
+        () => cipher.update(value as any),
+        TypeError,
+        'The "data" argument must be of type string or an instance of ' +
+          "Buffer, TypedArray, or DataView",
+      );
+      // Release the native cipher resource.
+      try {
+        cipher.final();
+      } catch { /* ignore */ }
+
+      const decipher = crypto.createDecipheriv("aes-256-cbc", key, iv);
+      assertThrows(
+        // deno-lint-ignore no-explicit-any
+        () => decipher.update(value as any),
+        TypeError,
+        'The "data" argument must be of type string or an instance of ' +
+          "Buffer, TypedArray, or DataView",
+      );
+      try {
+        decipher.final();
+      } catch { /* ignore */ }
+    }
+
+    // Sanity: a valid string still works.
+    const ok = crypto.createCipheriv("aes-256-cbc", key, iv);
+    ok.update("hello", "utf8");
+    ok.final();
+  },
+});

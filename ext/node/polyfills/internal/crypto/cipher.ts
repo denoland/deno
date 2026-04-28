@@ -46,6 +46,7 @@ import type {
 } from "ext:deno_node/internal/crypto/types.ts";
 import { getDefaultEncoding } from "ext:deno_node/internal/crypto/util.ts";
 import {
+  ERR_INVALID_ARG_TYPE,
   ERR_INVALID_ARG_VALUE,
   ERR_UNKNOWN_ENCODING,
   NodeError,
@@ -317,7 +318,14 @@ Cipheriv.prototype.update = function (
     throw new ERR_CRYPTO_INVALID_STATE("update");
   }
 
-  // TODO(kt3k): throw ERR_INVALID_ARG_TYPE if data is not string, Buffer, or ArrayBufferView
+  if (!isStringOrBuffer(data)) {
+    throw new ERR_INVALID_ARG_TYPE(
+      "data",
+      ["string", "Buffer", "TypedArray", "DataView"],
+      data,
+    );
+  }
+
   let buf = data;
   if (typeof data === "string") {
     buf = Buffer.from(data, inputEncoding);
@@ -595,7 +603,14 @@ Decipheriv.prototype.update = function (
     throw new ERR_CRYPTO_INVALID_STATE("update");
   }
 
-  // TODO(kt3k): throw ERR_INVALID_ARG_TYPE if data is not string, Buffer, or ArrayBufferView
+  if (!isStringOrBuffer(data)) {
+    throw new ERR_INVALID_ARG_TYPE(
+      "data",
+      ["string", "Buffer", "TypedArray", "DataView"],
+      data,
+    );
+  }
+
   let buf = data;
   if (typeof data === "string") {
     buf = Buffer.from(data, inputEncoding);
