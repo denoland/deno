@@ -12,16 +12,8 @@
   "events": {
     "AddEventListenerOptions-once.any.html": true,
     "AddEventListenerOptions-once.any.worker.html": true,
-    "AddEventListenerOptions-passive.any.html": {
-      "expectedFailures": [
-        "returnValue should be ignored if-and-only-if the passive option is true"
-      ]
-    },
-    "AddEventListenerOptions-passive.any.worker.html": {
-      "expectedFailures": [
-        "returnValue should be ignored if-and-only-if the passive option is true"
-      ]
-    },
+    "AddEventListenerOptions-passive.any.html": true,
+    "AddEventListenerOptions-passive.any.worker.html": true,
     "AddEventListenerOptions-signal.any.html": true,
     "AddEventListenerOptions-signal.any.worker.html": true,
     "Event-isTrusted.any.html": false,
