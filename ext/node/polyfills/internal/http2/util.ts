@@ -25,7 +25,7 @@ const {
   Symbol,
 } = primordials;
 
-import { op_http2_http_state } from "ext:core/ops";
+import { op_http2_error_string, op_http2_http_state } from "ext:core/ops";
 import { _checkIsHttpToken as checkIsHttpToken } from "node:_http_common";
 import { codes, hideStackFrames } from "ext:deno_node/internal/errors.ts";
 import {
@@ -885,7 +885,7 @@ class NghttpError extends Error {
         // TODO(littledivy): add getMessage in errors.ts
         // ? getMessage(customErrorCode, [], null)
         ? undefined
-        : binding.nghttp2ErrorString(integerCode),
+        : op_http2_error_string(integerCode),
     );
     this.code = customErrorCode || "ERR_HTTP2_ERROR";
     this.errno = integerCode;
