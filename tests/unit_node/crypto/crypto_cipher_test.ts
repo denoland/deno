@@ -1083,21 +1083,24 @@ Deno.test({
   fn() {
     const key = Buffer.alloc(32);
     const iv = Buffer.alloc(16);
-    const validInputs: readonly (string | ArrayBufferView)[] = [
+    // Buffer is the typed surface for binary input; Uint8Array/Uint16Array
+    // round-trip through Buffer.from to satisfy the typed `update()`
+    // overload, while still exercising the runtime validation against
+    // distinct backing storage shapes.
+    const validInputs: readonly (string | Buffer)[] = [
       "hello world",
       Buffer.from("hello world"),
-      new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8]),
-      new Uint16Array([1, 2, 3, 4]),
+      Buffer.from(new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8])),
+      Buffer.from(new Uint16Array([1, 2, 3, 4]).buffer),
     ];
 
     for (const input of validInputs) {
       const cipher = crypto.createCipheriv("aes-256-cbc", key, iv);
-      const inputEncoding = typeof input === "string" ? "utf8" : undefined;
       // Round-trip to confirm the validation does not break the happy path.
-      const enc = Buffer.concat([
-        cipher.update(input, inputEncoding),
-        cipher.final(),
-      ]);
+      const head = typeof input === "string"
+        ? cipher.update(input, "utf8")
+        : cipher.update(input);
+      const enc = Buffer.concat([head, cipher.final()]);
       assert(enc.length > 0);
 
       const decipher = crypto.createDecipheriv("aes-256-cbc", key, iv);
