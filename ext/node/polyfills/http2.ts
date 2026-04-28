@@ -1333,6 +1333,10 @@ function trackWriteState(stream, bytes) {
 function streamOnResume() {
   if (!this.destroyed) {
     this[kHandle].readStart();
+    // readStart() may have flushed deferred consume_stream calls, queueing
+    // WINDOW_UPDATE frames inside nghttp2. Flush the session's send queue
+    // so the peer actually receives them and resumes sending data.
+    scheduleSendPending(this[kSession]);
   }
 }
 
