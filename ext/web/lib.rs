@@ -5,6 +5,9 @@ mod blob;
 mod broadcast_channel;
 mod compression;
 mod console;
+mod css_value;
+mod f64;
+mod geometry;
 mod message_port;
 mod stream_resource;
 mod timers;
@@ -91,6 +94,9 @@ deno_core::extension!(deno_web,
     op_now,
     op_time_origin,
     op_defer,
+    geometry::op_geometry_get_enable_css_parser_features,
+    geometry::op_geometry_matrix_set_matrix_value,
+    geometry::op_geometry_matrix_to_string,
     stream_resource::op_readable_stream_resource_allocate,
     stream_resource::op_readable_stream_resource_allocate_sized,
     stream_resource::op_readable_stream_resource_get_sink,
@@ -112,6 +118,15 @@ deno_core::extension!(deno_web,
     broadcast_channel::op_broadcast_unsubscribe,
     broadcast_channel::op_broadcast_send,
     broadcast_channel::op_broadcast_recv,
+  ],
+  objects = [
+    geometry::DOMPointReadOnly,
+    geometry::DOMPoint,
+    geometry::DOMRectReadOnly,
+    geometry::DOMRect,
+    geometry::DOMQuad,
+    geometry::DOMMatrixReadOnly,
+    geometry::DOMMatrix,
   ],
   esm = [
     "00_infra.js",
@@ -137,10 +152,14 @@ deno_core::extension!(deno_web,
     "01_console.js",
     "01_broadcast_channel.js"
   ],
-  lazy_loaded_esm = [ "webtransport.js" ],
+  lazy_loaded_esm = [
+    "geometry.js",
+    "webtransport.js",
+  ],
   options = {
     blob_store: Arc<BlobStore>,
     maybe_location: Option<Url>,
+    enable_css_parser_features: bool,
     bc: InMemoryBroadcastChannel,
   },
   state = |state, options| {
@@ -149,6 +168,7 @@ deno_core::extension!(deno_web,
       state.put(Location(location));
     }
     state.put(StartTime::default());
+    state.put(geometry::State::new(options.enable_css_parser_features));
     state.put(options.bc);
   }
 );
