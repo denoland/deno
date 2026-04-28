@@ -1693,6 +1693,7 @@
     "parallel/test-http2-respond-file-errors.js": {},
     "parallel/test-http2-respond-file-fd.js": {},
     "parallel/test-http2-respond-file-fd-errors.js": {},
+    "parallel/test-http2-respond-file-fd-leak.js": {},
     "parallel/test-http2-respond-file-fd-range.js": {},
     "parallel/test-http2-respond-file-filehandle.js": {},
     "parallel/test-http2-respond-file-range.js": {},

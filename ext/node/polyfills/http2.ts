@@ -2194,6 +2194,7 @@ function processRespondWithFD(
       self.session[kStrictSingleValueFields],
     );
   } catch (err) {
+    if (self.ownsFd) tryClose(fd);
     self.destroy(err);
     return;
   }
@@ -2239,6 +2240,7 @@ function processRespondWithFD(
   );
 
   if (ret < 0) {
+    if (self.ownsFd) tryClose(fd);
     self.destroy(new NghttpError(ret));
     return;
   }
