@@ -1208,6 +1208,7 @@
     "parallel/test-fs-watch-recursive-add-folder.js": {},
     "parallel/test-fs-watch-recursive-delete.js": {},
     "parallel/test-fs-watch-recursive-linux-parallel-remove.js": {},
+    "parallel/test-fs-watch-recursive-validate.js": {},
     "parallel/test-fs-watch-ref-unref.js": {},
     "parallel/test-fs-watch-stop-async.js": {},
     "parallel/test-fs-watch-stop-sync.js": {},
