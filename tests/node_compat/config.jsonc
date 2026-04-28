@@ -299,7 +299,9 @@
     "parallel/test-child-process-send-after-close.js": {},
     "parallel/test-child-process-send-cb.js": {},
     "parallel/test-child-process-send-type-error.js": {},
-    "parallel/test-child-process-send-utf8.js": {},
+    "parallel/test-child-process-send-utf8.js": {
+      "windows": false
+    },
     "parallel/test-child-process-server-close.js": {
       "windows": false
     },
