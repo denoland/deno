@@ -82,6 +82,10 @@
     "es-module/test-vm-compile-function-lineoffset.js": {},
     "es-module/test-wasm-memory-out-of-bound.js": {},
     "es-module/test-wasm-simple.js": {},
+    "internet/test-dns-ipv4.js": {},
+    "internet/test-dns-ipv6.js": {
+      "windows": false
+    },
     "internet/test-snapshot-dns-lookup.js": {
       "ignore": true,
       "reason": "Node.js snapshot/heap profiling features (--build-snapshot, --heap-prof, --heapsnapshot-near-heap-limit) are not implemented in Deno"
@@ -269,7 +273,6 @@
     "parallel/test-child-process-fork-and-spawn.js": {},
     "parallel/test-child-process-fork-close.js": {},
     "parallel/test-child-process-fork-detached.js": {},
-    "parallel/test-child-process-fork-exec-path.js": {},
     "parallel/test-child-process-fork-no-shell.js": {},
     "parallel/test-child-process-fork-stdio-string-variant.js": {},
     // TODO(bartlomieju): flaky on Windows with PipeWrap
@@ -320,7 +323,8 @@
     "parallel/test-child-process-stdio-inherit.js": {},
     "parallel/test-child-process-stdio-merge-stdouts-into-cat.js": {},
     "parallel/test-child-process-stdio-overlapped.js": {},
-    "parallel/test-child-process-stdio-reuse-readable-stdio.js": {},
+    // TODO(nathanwhit): disabled because super flaky on CI
+    // "parallel/test-child-process-stdio-reuse-readable-stdio.js": {},
     "parallel/test-child-process-stdio.js": {},
     "parallel/test-child-process-stdout-flush-exit.js": {},
     "parallel/test-child-process-stdout-ipc.js": {},
@@ -790,6 +794,10 @@
     "parallel/test-dns-memory-error.js": {},
     "parallel/test-dns-multi-channel.js": {},
     "parallel/test-dns-promises-exists.js": {},
+    "parallel/test-dns-resolve-promises.js": {
+      "ignore": true,
+      "reason": "Requires --expose-internals and internalBinding('cares_wrap') which is not supported in Deno"
+    },
     "parallel/test-dns-resolvens-typeerror.js": {},
     "parallel/test-dns-resolvesrv.js": {},
     "parallel/test-dns-resolvesrv-econnrefused.js": {},
@@ -1150,6 +1158,7 @@
       "windows": false
     },
     "parallel/test-fs-rmSync-special-char.js": {},
+    "parallel/test-fs-rmdir-recursive-error.js": {},
     "parallel/test-fs-rmdir-throws-not-found.js": {},
     "parallel/test-fs-rmdir-type-check.js": {},
     "parallel/test-fs-sir-writes-alot.js": {},
@@ -1499,6 +1508,7 @@
     "parallel/test-http-server-clear-timer.js": {},
     "parallel/test-http-server-close-all.js": {},
     "parallel/test-http-server-close-idle-wait-response.js": {},
+    "parallel/test-http-server-close-idle.js": {},
     "parallel/test-http-server-connection-list-when-close.js": {},
     "parallel/test-http-server-consumed-timeout.js": {},
     "parallel/test-http-server-de-chunked-trailer.js": {},
@@ -1753,6 +1763,7 @@
     "parallel/test-https-agent-unref-socket.js": {},
     "parallel/test-https-agent.js": {},
     "parallel/test-https-byteswritten.js": {},
+    "parallel/test-https-client-checkServerIdentity.js": {},
     "parallel/test-https-close.js": {},
     "parallel/test-https-connect-address-family.js": {},
     "parallel/test-https-connecting-to-http.js": {
@@ -1772,12 +1783,18 @@
     "parallel/test-https-request-arguments.js": {},
     "parallel/test-https-selfsigned-no-keycertsign-no-crash.js": {},
     "parallel/test-https-server-close-all.js": {},
+    "parallel/test-https-server-close-idle.js": {},
     "parallel/test-https-server-headers-timeout.js": {},
     "parallel/test-https-server-options-incoming-message.js": {},
     "parallel/test-https-server-options-server-response.js": {},
     "parallel/test-https-server-request-timeout.js": {},
     "parallel/test-https-set-timeout-server.js": {},
+    "parallel/test-https-simple.js": {},
     "parallel/test-https-socket-options.js": {},
+    "parallel/test-https-strict.js": {
+      "ignore": true,
+      "reason": "NODE_TLS_REJECT_UNAUTHORIZED=0 does not fully suppress cert verification errors"
+    },
     "parallel/test-https-timeout-server-2.js": {},
     "parallel/test-https-timeout.js": {},
     "parallel/test-https-truncate.js": {},
@@ -3101,6 +3118,7 @@
     "parallel/test-tls-net-connect-prefer-path.js": { "windows": false },
     "parallel/test-tls-net-socket-keepalive-12.js": {},
     "parallel/test-tls-net-socket-keepalive.js": {},
+    "parallel/test-tls-no-cert-required.js": {},
     "parallel/test-tls-no-sslv3.js": {},
     "parallel/test-tls-on-empty-socket.js": {},
     "parallel/test-tls-options-boolean-check.js": {},
@@ -3119,6 +3137,7 @@
     "parallel/test-tls-snicallback-error.js": {},
     "parallel/test-tls-socket-allow-half-open-option.js": {},
     "parallel/test-tls-socket-constructor-alpn-options-parsing.js": {},
+    "parallel/test-tls-socket-destroy.js": {},
     "parallel/test-tls-timeout-server-2.js": {},
     "parallel/test-tls-tlswrap-segfault-2.js": {},
     "parallel/test-tls-transport-destroy-after-own-gc.js": {},
@@ -3127,6 +3146,7 @@
     "parallel/test-tls-wrap-econnreset-socket.js": {},
     "parallel/test-tls-wrap-econnreset.js": {},
     "parallel/test-tls-wrap-event-emmiter.js": {},
+    "parallel/test-tls-wrap-timeout.js": {},
     "parallel/test-tls-zero-clear-in.js": {},
     "parallel/test-trace-events-api.js": {
       "ignore": true,
@@ -3139,6 +3159,10 @@
     "parallel/test-trace-events-async-hooks-worker.js": {
       "ignore": true,
       "reason": "Deno's node:trace_events polyfill is a stub (createTracing returns an object without .enable/.disable, getEnabledCategories returns \"\" instead of undefined). These tests were silently skipping via try/catch(require('trace_events')) until that lookup was fixed."
+    },
+    "parallel/test-trace-events-bootstrap.js": {
+      "ignore": true,
+      "reason": "Deno does not implement Node.js --trace-event-categories CLI flag, so node_trace.${rotation}.log is never emitted."
     },
     "parallel/test-trace-events-dynamic-enable-workers-disabled.js": {},
     // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
