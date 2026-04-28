@@ -39,5 +39,5 @@ tokio.workspace = true
 nix = { workspace = true, features = ["signal", "process"] }
 
 [target.'cfg(windows)'.dependencies]
-winapi = { workspace = true, features = ["errhandlingapi", "fileapi", "handleapi", "ioapiset", "minwinbase", "minwindef", "synchapi", "winbase", "winerror", "winnt"] }
+winapi = { workspace = true, features = [] }
 windows-sys.workspace = true
