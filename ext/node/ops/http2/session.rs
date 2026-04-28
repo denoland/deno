@@ -2741,28 +2741,24 @@ impl Http2Session {
 
   #[fast]
   fn origin(&self, #[string] origins: &str, count: i32) -> i32 {
+    // Origins are concatenated and separated by NUL bytes (Node-compatible
+    // serialization from JS: `arr += `${origin}\0``).
     let mut ov: Vec<ffi::nghttp2_origin_entry> =
       Vec::with_capacity(count as usize);
     let origins_bytes = origins.as_bytes();
-    let mut offset = 0;
+    let mut start = 0;
 
-    for _ in 0..count {
-      if offset + 2 > origins_bytes.len() {
-        break;
-      }
-      let len = ((origins_bytes[offset] as usize) << 8)
-        | (origins_bytes[offset + 1] as usize);
-      offset += 2;
-
-      if offset + len > origins_bytes.len() {
-        break;
-      }
-
+    while ov.len() < count as usize && start < origins_bytes.len() {
+      let end = origins_bytes[start..]
+        .iter()
+        .position(|&b| b == 0)
+        .map(|p| start + p)
+        .unwrap_or(origins_bytes.len());
       ov.push(ffi::nghttp2_origin_entry {
-        origin: origins_bytes[offset..].as_ptr() as *mut u8,
-        origin_len: len,
+        origin: origins_bytes[start..end].as_ptr() as *mut u8,
+        origin_len: end - start,
       });
-      offset += len;
+      start = end + 1;
     }
 
     // SAFETY: self.session is valid; ov slice pointer and length are valid
