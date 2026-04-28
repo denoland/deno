@@ -2984,6 +2984,7 @@
     "parallel/test-stream2-pipe-error-handling.js": {},
     "parallel/test-stream2-pipe-error-once-listener.js": {},
     "parallel/test-stream2-push.js": {},
+    "parallel/test-stream2-read-correct-num-bytes-in-utf8.js": {},
     "parallel/test-stream2-read-sync-stack.js": {},
     "parallel/test-stream2-readable-empty-buffer-no-eof.js": {},
     "parallel/test-stream2-readable-legacy-drain.js": {},
