@@ -1759,6 +1759,7 @@
     "parallel/test-http2-zero-length-header.js": {},
     "parallel/test-http2-zero-length-write.js": {},
     "parallel/test-https-agent-abort-controller.js": {},
+    "parallel/test-https-agent-constructor.js": {},
     "parallel/test-https-agent-getname.js": {},
     "parallel/test-https-agent-servername.js": {},
     "parallel/test-https-agent-sockets-leak.js": {},
