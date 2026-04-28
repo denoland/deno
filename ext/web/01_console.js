@@ -538,6 +538,14 @@ function formatValue(
   // any proxy handlers.
   // TODO(wafuwafu13): Set Proxy
   const proxyDetails = core.getProxyDetails(value);
+  // For a revoked Proxy, `op_get_proxy_details` returns `[null, null]`.
+  // Any further property access on the proxy (e.g. via `Reflect.has` below)
+  // would throw - match Node's `inspect` behavior and short-circuit with
+  // a `<Revoked Proxy>` placeholder. See
+  // https://github.com/nodejs/node/blob/main/lib/internal/util/inspect.js
+  if (proxyDetails !== null && proxyDetails[0] === null) {
+    return ctx.stylize("<Revoked Proxy>", "special");
+  }
   // const proxy = getProxyDetails(value, !!ctx.showProxy);
   // if (proxy !== undefined) {
   //   if (ctx.showProxy) {
