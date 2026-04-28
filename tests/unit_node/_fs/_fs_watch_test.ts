@@ -94,8 +94,14 @@ Deno.test({
       deferred.resolve();
     }, 100);
 
-    for await (const event of watcher) {
-      result.push(event);
+    // Node's `fs.promises.watch` throws an AbortError when the signal aborts;
+    // catch it so the test can still assert on what was collected.
+    try {
+      for await (const event of watcher) {
+        result.push(event);
+      }
+    } catch (err) {
+      if ((err as Error)?.name !== "AbortError") throw err;
     }
     await deferred.promise;
 
