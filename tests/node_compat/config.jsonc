@@ -1251,7 +1251,6 @@
     "parallel/test-fs-write-buffer.js": {},
     "parallel/test-fs-write-file-buffer.js": {},
     "parallel/test-fs-write-file-invalid-path.js": {},
-    "parallel/test-fs-write-file-sync.js": {},
     "parallel/test-fs-write-file-typedarrays.js": {},
     "parallel/test-fs-write-file.js": {
       "flaky": true
