@@ -8,10 +8,6 @@ https://github.com/denoland/deno_install
 
 ### 2.7.14 / 2026.04.28
 
-- Revert "fix(ext/napi): implement real V8 handle scopes and callback scopes"
-  (#33363)
-- Revert "fix(ext/node): make IPC writes synchronous to match Node.js behavior
-  (#33522)" (#33598)
 - feat(ext/node): add fs.Utf8Stream
 - feat(upgrade): delta updates via bsdiff patches (#33274)
 - fix(bundle): treat CSS same-document fragment URLs as external (#33492)
@@ -131,7 +127,6 @@ https://github.com/denoland/deno_install
 - fix(ext/node): include accepted values in Console colorMode error (#33424)
 - fix(ext/node): isolate parentPort from globalThis in worker_threads (#32596)
 - fix(ext/node): make Buffer.prototype methods generic-callable (#33466)
-- fix(ext/node): make IPC writes synchronous to match Node.js behavior (#33522)
 - fix(ext/node): make http2 session.origin() round-trip origins and respect TLS
   servername (#33629)
 - fix(ext/node): make process.constructor a proper instanceof check (#33447)
