@@ -42,6 +42,11 @@ const performanceObservers = [];
 // without having to fork the whole observer machinery.
 const extraEntryTypes = new SafeSet();
 function registerExtraEntryType(type) {
+  if (typeof type !== "string" || type.length === 0) {
+    throw new TypeError(
+      "registerExtraEntryType: type must be a non-empty string",
+    );
+  }
   SetPrototypeAdd(extraEntryTypes, type);
 }
 
@@ -405,11 +410,36 @@ function queuePerformanceEntry(entry) {
 }
 
 // Public helper for non-web extensions (Node's perf_hooks) to enqueue a
-// performance entry to interested observers. The entry must already be a
-// plain object (or PerformanceEntry) with `name`, `entryType`, `startTime`,
-// `duration` properties, and any extra fields (`detail`, etc.) the consumer
-// expects.
+// performance entry to interested observers. The entry must be a non-null
+// object with at minimum `name` (string), `entryType` (string), `startTime`
+// (number), and `duration` (number); extra fields (`detail`, etc.) are
+// passed through to observers as-is. The `entryType` should already have
+// been registered via `registerExtraEntryType` for any observer to receive
+// it.
 function enqueuePerformanceEntry(entry) {
+  if (entry === null || typeof entry !== "object") {
+    throw new TypeError("enqueuePerformanceEntry: entry must be an object");
+  }
+  if (typeof entry.name !== "string") {
+    throw new TypeError(
+      "enqueuePerformanceEntry: entry.name must be a string",
+    );
+  }
+  if (typeof entry.entryType !== "string") {
+    throw new TypeError(
+      "enqueuePerformanceEntry: entry.entryType must be a string",
+    );
+  }
+  if (typeof entry.startTime !== "number") {
+    throw new TypeError(
+      "enqueuePerformanceEntry: entry.startTime must be a number",
+    );
+  }
+  if (typeof entry.duration !== "number") {
+    throw new TypeError(
+      "enqueuePerformanceEntry: entry.duration must be a number",
+    );
+  }
   queuePerformanceEntry(entry);
 }
 
