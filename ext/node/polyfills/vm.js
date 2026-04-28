@@ -506,6 +506,9 @@ class Module {
     });
   }
 
+  // TODO(divybot): cyclic imports not yet supported. Single-pass linking can
+  // call instantiate on a sub-module before its parent's resolutions are
+  // finalized; needs Node-style two-phase resolve+instantiate.
   async [kLink](linker) {
     const requests = op_vm_module_get_module_requests(this[kWrap]);
     const specifiers = [];

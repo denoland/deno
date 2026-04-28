@@ -1447,8 +1447,6 @@ pub struct ContextifyModule {
   /// Populated by `op_vm_module_link` before instantiation, and consumed by
   /// the resolve callback during `instantiate_module`.
   resolutions: RefCell<HashMap<String, v8::TracedReference<v8::Module>>>,
-  /// Top-level evaluation promise, kept alive across calls.
-  evaluation_promise: RefCell<Option<v8::TracedReference<v8::Promise>>>,
 }
 
 // SAFETY: all v8 references are visited during cppgc trace.
@@ -1458,9 +1456,6 @@ unsafe impl v8::cppgc::GarbageCollected for ContextifyModule {
     visitor.trace(&self.context);
     for r in self.resolutions.borrow().values() {
       visitor.trace(r);
-    }
-    if let Some(p) = self.evaluation_promise.borrow().as_ref() {
-      visitor.trace(p);
     }
   }
 
@@ -1517,7 +1512,6 @@ pub fn op_vm_module_create_source_text_module<'a>(
     microtask_queue,
     identifier,
     resolutions: RefCell::new(HashMap::new()),
-    evaluation_promise: RefCell::new(None),
   })
 }
 
@@ -1697,14 +1691,8 @@ pub fn op_vm_module_evaluate<'a>(
     let mtask_queue = unsafe { &*this.microtask_queue };
     mtask_queue.perform_checkpoint(scope);
 
-    *this.evaluation_promise.borrow_mut() =
-      Some(v8::TracedReference::new(scope, outer_promise));
     outer_promise.into()
   } else {
-    if let Ok(p) = v8::Local::<v8::Promise>::try_from(inner_result) {
-      *this.evaluation_promise.borrow_mut() =
-        Some(v8::TracedReference::new(scope, p));
-    }
     inner_result
   };
 
