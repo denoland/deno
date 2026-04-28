@@ -379,6 +379,18 @@ const kQuotedString = new SafeRegExp(
   "^[\\x09\\x20-\\x5b\\x5d-\\x7e\\x80-\\xff]*$",
 );
 
+let weightDeprecationWarned = false;
+function deprecateWeight(options) {
+  if ("weight" in options && !weightDeprecationWarned) {
+    weightDeprecationWarned = true;
+    process.emitWarning(
+      "Priority signaling has been deprecated as of RFC 9113.",
+      "DeprecationWarning",
+      "DEP0194",
+    );
+  }
+}
+
 // Validates that priority options are correct, specifically:
 // 1. options.weight must be a number
 // 2. options.parent must be a positive number
@@ -387,7 +399,13 @@ const kQuotedString = new SafeRegExp(
 //
 // Also sets the default priority options if they are not set.
 const setAndValidatePriorityOptions = hideStackFrames((options) => {
-  // deprecateWeight(options);
+  deprecateWeight(options);
+
+  if (options.weight === undefined) {
+    options.weight = NGHTTP2_DEFAULT_WEIGHT;
+  } else {
+    validateNumber(options.weight, "options.weight");
+  }
 
   if (options.parent === undefined) {
     options.parent = 0;
@@ -893,8 +911,6 @@ function requestOnConnect(headersList, options) {
     streamOptions |= STREAM_OPTION_GET_TRAILERS;
   }
 
-  // deprecateWeight(options);
-
   // `ret` will be either the reserved stream ID (if positive)
   // or an error code (if negative)
   const ret = session[kHandle].request(
@@ -902,7 +918,7 @@ function requestOnConnect(headersList, options) {
     headersList[1],
     streamOptions,
     options.parent | 0,
-    NGHTTP2_DEFAULT_WEIGHT,
+    options.weight | 0,
     !!options.exclusive,
   );
 
@@ -1354,8 +1370,16 @@ function shutdownWritable(callback) {
   // request (test-http2-client-rststream-before-connect). For streams
   // with a data provider, sync drain fires the trailing read_callback
   // so on_trailers / wantTrailers handlers run in the same JS tick
-  // (test-http2-misused-pseudoheaders).
-  if (state.endStream && !(state.flags & STREAM_FLAGS_CLOSED)) {
+  // (test-http2-misused-pseudoheaders). When err === 1 (no pending data)
+  // and the stream isn't waiting on trailers (which need the sync
+  // wantTrailers fire-up), defer the drain so synchronous JS code after
+  // end() (e.g. pushStream) runs before nghttp2 closes the stream via
+  // on_stream_close (test-http2-respond-file-push).
+  if (
+    (state.endStream ||
+      (err === 1 && !(state.flags & STREAM_FLAGS_HAS_TRAILERS))) &&
+    !(state.flags & STREAM_FLAGS_CLOSED)
+  ) {
     setImmediate(scheduleSendPending, this[kSession]);
   } else {
     scheduleSendPending(this[kSession]);
