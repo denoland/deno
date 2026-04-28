@@ -442,7 +442,7 @@ function defineHandleReading(socket, handle) {
   });
 }
 
-TLSSocket.prototype._destroySsl = function _destroySsl() {
+TLSSocket.prototype._destroySSL = function _destroySSL() {
   if (!this.ssl) return;
   this.ssl.destroySsl();
   this.ssl = null;
