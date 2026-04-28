@@ -32,6 +32,8 @@ use deno_net::ops::TlsHandshakeInfo;
 use deno_net::ops_tls::TlsStreamResource;
 use deno_node_crypto::x509::Certificate;
 use deno_node_crypto::x509::CertificateObject;
+use deno_permissions::PermissionCheckError;
+use deno_permissions::PermissionsContainer;
 use deno_tls::SocketUse;
 use deno_tls::TlsClientConfigOptions;
 use deno_tls::TlsKeys;
@@ -74,14 +76,20 @@ fn get_bundled_root_certificates() -> Vec<String> {
 }
 
 #[op2]
-pub fn op_get_root_certificates(state: &mut OpState) -> Vec<String> {
+pub fn op_get_root_certificates(
+  state: &mut OpState,
+) -> Result<Vec<String>, PermissionCheckError> {
+  state
+    .borrow_mut::<PermissionsContainer>()
+    .check_sys("ca", "node:tls.rootCertificates")?;
+
   if let Some(tls_state) = state.try_borrow::<NodeTlsState>()
     && let Some(certs) = &tls_state.custom_ca_certs
   {
-    return certs.clone();
+    return Ok(certs.clone());
   }
 
-  get_bundled_root_certificates()
+  Ok(get_bundled_root_certificates())
 }
 
 #[allow(
@@ -115,12 +123,20 @@ pub enum CaCertificatesError {
     "The argument 'type' must be one of 'default', 'system', 'bundled', or 'extra'. Received '{0}'"
   )]
   InvalidType(String),
+  #[class(inherit)]
+  #[error(transparent)]
+  Permission(#[from] PermissionCheckError),
 }
 
 #[op2]
 pub fn op_get_ca_certificates(
+  state: &mut OpState,
   #[string] cert_type: String,
 ) -> Result<Vec<String>, CaCertificatesError> {
+  state
+    .borrow_mut::<PermissionsContainer>()
+    .check_sys("ca", "node:tls.getCACertificates()")?;
+
   match cert_type.as_str() {
     "bundled" => Ok(get_bundled_root_certificates()),
     "system" => {
