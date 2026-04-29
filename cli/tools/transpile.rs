@@ -277,7 +277,6 @@ async fn emit_declarations(
       capture_emitted_files: true,
     },
     None,
-    None,
   )?;
 
   if response.diagnostics.has_diagnostic() {

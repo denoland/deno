@@ -518,33 +518,6 @@ Deno.test({
 });
 
 Deno.test({
-  // NB(Tango992): Node.js does not support using symbols as env keys,
-  // thus this test should be omitted once we align with Node.js behavior.
-  name: "process.env: setting and getting a symbol key",
-  fn() {
-    const symbol = Symbol.for("foo");
-    // @ts-expect-error setting a symbol key
-    process.env[symbol] = "foo";
-    // @ts-expect-error getting a symbol key
-    assertEquals(process.env[symbol], "foo");
-    assert(Reflect.has(process.env, symbol));
-
-    // @ts-expect-error deleting a symbol key
-    delete process.env[symbol];
-    assertFalse(Reflect.has(process.env, symbol));
-
-    Object.defineProperty(process.env, symbol, {
-      value: "bar",
-      configurable: true,
-      writable: true,
-      enumerable: true,
-    });
-    // @ts-expect-error getting a symbol key
-    assertEquals(process.env[symbol], "bar");
-  },
-});
-
-Deno.test({
   name: "process.stdin",
   fn() {
     // @ts-ignore `Deno.stdin.rid` was soft-removed in Deno 2.
@@ -1707,5 +1680,22 @@ Deno.test({
     // should load fine as in Node.js
     process.loadEnvFile(envFilePath);
     Deno.removeSync(dirPath, { recursive: true });
+  },
+});
+
+// Regression test: signal handlers receive the signal name as first argument
+Deno.test({
+  name: "[node/process] signal handlers receive signal name",
+  ignore: Deno.build.os === "windows",
+  async fn() {
+    const received: string[] = [];
+    const handler = (signal: string) => {
+      received.push(signal);
+    };
+    process.once("SIGUSR1", handler);
+    process.kill(process.pid, "SIGUSR1");
+    // Signal delivery is async; wait for it
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    assertEquals(received, ["SIGUSR1"]);
   },
 });

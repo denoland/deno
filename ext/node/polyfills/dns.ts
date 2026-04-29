@@ -1003,6 +1003,7 @@ export const CANCELLED = "ECANCELLED";
 
 const promises = {
   ...promisesBase,
+  getDefaultResultOrder: getDefaultDnsOrder,
   setDefaultResultOrder,
   setServers,
 
@@ -1032,6 +1033,8 @@ const promises = {
   ADDRGETNETWORKPARAMS,
   CANCELLED,
 };
+
+export { getDefaultDnsOrder as getDefaultResultOrder };
 
 export { ADDRCONFIG, ALL, promises, setDefaultResultOrder, V4MAPPED };
 
@@ -1087,6 +1090,7 @@ export default {
   Resolver,
   reverse,
   setServers,
+  getDefaultResultOrder: getDefaultDnsOrder,
   setDefaultResultOrder,
   promises,
   NODATA,

@@ -537,7 +537,11 @@ impl CliOptions {
       DenoSubcommand::Add(_) => GraphKind::All,
       DenoSubcommand::Cache(_) => GraphKind::All,
       DenoSubcommand::Check(_) => GraphKind::TypesOnly,
-      DenoSubcommand::Install(InstallFlags::Local(_)) => GraphKind::All,
+      DenoSubcommand::Install(InstallFlags::Local(
+        InstallFlagsLocal::Entrypoints(flags),
+        _,
+      )) if flags.production => GraphKind::CodeOnly,
+      DenoSubcommand::Install(InstallFlags::Local(_, _)) => GraphKind::All,
       _ => self.type_check_mode().as_graph_kind(),
     }
   }
@@ -1225,6 +1229,7 @@ impl CliOptions {
           .map(|url| vec![url]),
         DenoSubcommand::Install(InstallFlags::Local(
           InstallFlagsLocal::Entrypoints(flags),
+          _,
         )) => Some(files_to_urls(&flags.entrypoints)),
         DenoSubcommand::Doc(DocFlags {
           source_files: DocSourceFileFlag::Paths(paths),
@@ -1359,11 +1364,21 @@ impl CliOptions {
   }
 
   /// Returns unstable feature flags as CLI arguments (e.g., "--unstable-unsafe-proto").
-  /// This includes features from both CLI flags and config file.
+  /// This includes features from both CLI flags and config file. Features that
+  /// are only valid in `deno.json` (e.g. `fmt-component`, `fmt-sql`) and don't
+  /// have a registered CLI flag are filtered out, otherwise child processes
+  /// spawned with these args (e.g. via `deno x`) would reject them with
+  /// "unexpected argument".
   pub fn unstable_args(&self) -> Vec<String> {
+    let cli_flag_names: std::collections::HashSet<&str> =
+      deno_runtime::UNSTABLE_FEATURES
+        .iter()
+        .map(|f| f.name)
+        .collect();
     self
       .unstable_features()
       .into_iter()
+      .filter(|f| cli_flag_names.contains(*f))
       .map(|f| format!("--unstable-{}", f))
       .collect()
   }
@@ -1450,7 +1465,8 @@ impl CliOptions {
           | InstallFlagsLocal::Entrypoints(InstallEntrypointsFlags {
             lockfile_only: true,
             ..
-          })
+          }),
+        _,
       )) | DenoSubcommand::Add(_)
         | DenoSubcommand::Outdated(_)
     ) {

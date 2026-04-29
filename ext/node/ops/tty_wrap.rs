@@ -48,6 +48,7 @@ use deno_permissions::PermissionsContainer;
 use crate::ops::handle_wrap::AsyncWrap;
 use crate::ops::handle_wrap::Handle;
 use crate::ops::handle_wrap::HandleWrap;
+use crate::ops::handle_wrap::OwnedPtr;
 use crate::ops::handle_wrap::ProviderType;
 use crate::ops::stream_wrap::LibUvStreamWrap;
 
@@ -69,44 +70,6 @@ pub fn op_tty_check_fd_permission(
   Ok(())
 }
 
-pub struct OwnedPtr<T>(*mut T);
-
-impl<T> OwnedPtr<T> {
-  pub fn from_box(b: Box<T>) -> Self {
-    Self(Box::into_raw(b))
-  }
-
-  pub fn as_mut_ptr(&self) -> *mut T {
-    self.0
-  }
-
-  pub fn as_ptr(&self) -> *const T {
-    self.0
-  }
-
-  /// # Safety
-  /// Caller must ensure T and U are the same type or have identical memory layout.
-  pub unsafe fn cast<U>(self) -> OwnedPtr<U> {
-    const {
-      assert!(size_of::<T>() == size_of::<U>());
-      assert!(align_of::<T>() == align_of::<U>());
-    }
-
-    let ptr = self.0.cast();
-    std::mem::forget(self);
-    OwnedPtr(ptr)
-  }
-}
-
-impl<T> Drop for OwnedPtr<T> {
-  fn drop(&mut self) {
-    // SAFETY: self.0 was created from Box::into_raw and has not been freed yet.
-    unsafe {
-      let _ = Box::from_raw(self.0);
-    }
-  }
-}
-
 #[derive(CppgcInherits)]
 #[cppgc_inherits_from(LibUvStreamWrap)]
 #[repr(C)]
@@ -123,6 +86,12 @@ unsafe impl GarbageCollected for TTY {
 
   fn trace(&self, visitor: &mut deno_core::v8::cppgc::Visitor) {
     self.base.trace(visitor);
+  }
+}
+
+impl Drop for TTY {
+  fn drop(&mut self) {
+    self.base.detach_stream();
   }
 }
 
@@ -146,16 +115,21 @@ impl TTY {
     if err == 0 {
       // SAFETY: uv_tty_init succeeded so the memory is fully initialized as a uv_tty_t.
       let tty = unsafe { tty.cast::<uv_tty_t>() };
+      let base = LibUvStreamWrap::new(
+        HandleWrap::create(
+          AsyncWrap::create(op_state, ProviderType::TtyWrap as i32),
+          Some(Handle::New(tty.as_ptr().cast())),
+        ),
+        fd,
+        tty.as_ptr().cast(),
+      );
+      // SAFETY: tty pointer is valid and initialized; setting data field for libuv callbacks.
+      unsafe {
+        (*tty.as_mut_ptr()).data = base.handle_data_ptr();
+      }
       (
         Self {
-          base: LibUvStreamWrap::new(
-            HandleWrap::create(
-              AsyncWrap::create(op_state, ProviderType::TtyWrap as i32),
-              Some(Handle::New(tty.as_ptr().cast())),
-            ),
-            fd,
-            tty.as_ptr().cast(),
-          ),
+          base,
           handle: Some(tty),
         },
         0,

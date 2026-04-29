@@ -872,6 +872,22 @@ impl KeyObjectHandle {
               SecretDocument::from_sec1_der(doc.as_bytes())
                 .map_err(|_| AsymmetricPrivateKeyError::InvalidSec1PrivateKey)?
             }
+            "DSA PRIVATE KEY" => {
+              // Traditional DSA private key format:
+              // DSAPrivateKey ::= SEQUENCE {
+              //   version  INTEGER,
+              //   p        INTEGER,
+              //   q        INTEGER,
+              //   g        INTEGER,
+              //   pub_key  INTEGER,
+              //   priv_key INTEGER
+              // }
+              let private_key =
+                parse_traditional_dsa_private_key(doc.as_bytes())?;
+              return Ok(KeyObjectHandle::AsymmetricPrivate(
+                AsymmetricPrivateKey::Dsa(private_key),
+              ));
+            }
             _ => {
               return Err(AsymmetricPrivateKeyError::UnsupportedPemLabel(
                 label.to_string(),
@@ -1315,10 +1331,10 @@ impl KeyObjectHandle {
           )
         })?;
 
-        let (label, document) = Document::from_pem(pem)
-          .map_err(|_| AsymmetricPublicKeyError::InvalidPemPublicKey)?;
+        let (label, document) = decode_pem_lenient(pem)
+          .ok_or(AsymmetricPublicKeyError::InvalidPemPublicKey)?;
 
-        match label {
+        match label.as_str() {
           SubjectPublicKeyInfoRef::PEM_LABEL => document,
           rsa::pkcs1::RsaPublicKey::PEM_LABEL => {
             Document::from_pkcs1_der(document.as_bytes())
@@ -1327,7 +1343,8 @@ impl KeyObjectHandle {
           EncryptedPrivateKeyInfo::PEM_LABEL
           | PrivateKeyInfo::PEM_LABEL
           | sec1::EcPrivateKey::PEM_LABEL
-          | rsa::pkcs1::RsaPrivateKey::PEM_LABEL => {
+          | rsa::pkcs1::RsaPrivateKey::PEM_LABEL
+          | "DSA PRIVATE KEY" => {
             let handle = KeyObjectHandle::new_asymmetric_private_key_from_js(
               key, format, typ, passphrase,
             )?;
@@ -1516,6 +1533,103 @@ pub enum RsaPssParamsParseError {
   MalformedOrMissingPssMaskGenAlgorithm,
 }
 
+/// Parse a traditional DSA private key (PEM label "DSA PRIVATE KEY").
+///
+/// The traditional format is:
+/// ```asn1
+/// DSAPrivateKey ::= SEQUENCE {
+///   version  INTEGER,
+///   p        INTEGER,
+///   q        INTEGER,
+///   g        INTEGER,
+///   pub_key  INTEGER,
+///   priv_key INTEGER
+/// }
+/// ```
+fn parse_traditional_dsa_private_key(
+  der: &[u8],
+) -> Result<dsa::SigningKey, AsymmetricPrivateKeyError> {
+  use spki::der::Decode;
+  use spki::der::Reader as _;
+  use spki::der::SliceReader;
+
+  let err = || AsymmetricPrivateKeyError::InvalidDsaPrivateKey;
+
+  let mut reader = SliceReader::new(der).map_err(|_| err())?;
+  reader
+    .sequence(|seq_reader| {
+      // version
+      let _version = asn1::UintRef::decode(seq_reader)?;
+      // p
+      let p_ref = asn1::UintRef::decode(seq_reader)?;
+      // q
+      let q_ref = asn1::UintRef::decode(seq_reader)?;
+      // g
+      let g_ref = asn1::UintRef::decode(seq_reader)?;
+      // y (public key)
+      let y_ref = asn1::UintRef::decode(seq_reader)?;
+      // x (private key)
+      let x_ref = asn1::UintRef::decode(seq_reader)?;
+
+      let p = num_bigint_dig::BigUint::from_bytes_be(p_ref.as_bytes());
+      let q = num_bigint_dig::BigUint::from_bytes_be(q_ref.as_bytes());
+      let g = num_bigint_dig::BigUint::from_bytes_be(g_ref.as_bytes());
+      let y = num_bigint_dig::BigUint::from_bytes_be(y_ref.as_bytes());
+      let x = num_bigint_dig::BigUint::from_bytes_be(x_ref.as_bytes());
+
+      let components = dsa::Components::from_components(p, q, g)
+        .map_err(|_| spki::der::Tag::Sequence.value_error())?;
+      let verifying_key = dsa::VerifyingKey::from_components(components, y)
+        .map_err(|_| spki::der::Tag::Sequence.value_error())?;
+      dsa::SigningKey::from_components(verifying_key, x)
+        .map_err(|_| spki::der::Tag::Sequence.value_error())
+    })
+    .map_err(|_| err())
+}
+
+/// Leniently decode a PEM string, tolerating non-standard line widths.
+/// The strict `Document::from_pem` / `SecretDocument::from_pem` reject PEM
+/// with lines longer than 64 base64 characters (per RFC 7468), but OpenSSL
+/// and Node.js accept any line width. This function falls back to manual
+/// base64 decoding when the strict parser fails.
+fn decode_pem_lenient(pem: &str) -> Option<(String, Document)> {
+  // Try strict parsing first
+  if let Ok((label, doc)) = Document::from_pem(pem) {
+    return Some((label.to_string(), doc));
+  }
+
+  // Fall back to lenient parsing: extract label and base64 manually
+  let pem = pem.trim();
+  let first_line = pem.lines().next()?;
+  let last_line = pem.lines().next_back()?;
+
+  let label = first_line
+    .strip_prefix("-----BEGIN ")
+    .and_then(|s: &str| s.strip_suffix("-----"))?;
+  let end_label = last_line
+    .strip_prefix("-----END ")
+    .and_then(|s: &str| s.strip_suffix("-----"))?;
+
+  if label != end_label {
+    return None;
+  }
+
+  let b64: String = pem
+    .lines()
+    .filter(|line| !line.starts_with("-----"))
+    .flat_map(|line| line.chars())
+    .filter(|c| !c.is_whitespace())
+    .collect();
+
+  let der = base64::engine::general_purpose::STANDARD
+    .decode(&b64)
+    .ok()?;
+
+  let doc = Document::from_der(&der).ok()?;
+
+  Some((label.to_string(), doc))
+}
+
 fn parse_rsa_pss_params(
   parameters: Option<AnyRef<'_>>,
 ) -> Result<Option<RsaPssDetails>, RsaPssParamsParseError> {
@@ -1540,10 +1654,25 @@ fn parse_rsa_pss_params(
         if alg.oid != ID_MFG1 {
           return Err(RsaPssParamsParseError::UnsupportedPssMaskGenAlgorithm);
         }
-        let params = alg.parameters_oid().map_err(|_| {
-          RsaPssParamsParseError::MalformedOrMissingPssMaskGenAlgorithm
-        })?;
-        match params {
+        let mgf1_params_any = alg.parameters.ok_or(
+          RsaPssParamsParseError::MalformedOrMissingPssMaskGenAlgorithm,
+        )?;
+        // MGF1 parameters are an AlgorithmIdentifier (SEQUENCE { OID, params? }).
+        // parameters_oid() fails because it expects a bare OID, but the actual
+        // value is a SEQUENCE. Decode the SEQUENCE to extract the hash OID.
+        let mgf1_hash_oid = mgf1_params_any
+          .sequence(|reader| {
+            let oid = rsa::pkcs8::ObjectIdentifier::decode(reader)?;
+            // Consume optional parameters (e.g. NULL) without failing
+            while !reader.is_finished() {
+              rsa::pkcs8::der::asn1::AnyRef::decode(reader)?;
+            }
+            Ok(oid)
+          })
+          .map_err(|_| {
+            RsaPssParamsParseError::MalformedOrMissingPssMaskGenAlgorithm
+          })?;
+        match mgf1_hash_oid {
           ID_SHA1_OID => RsaPssHashAlgorithm::Sha1,
           ID_SHA224_OID => RsaPssHashAlgorithm::Sha224,
           ID_SHA256_OID => RsaPssHashAlgorithm::Sha256,

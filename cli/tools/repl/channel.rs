@@ -14,8 +14,6 @@ use tokio::sync::mpsc::UnboundedSender;
 use tokio::sync::mpsc::channel;
 use tokio::sync::mpsc::unbounded_channel;
 
-use crate::lsp::ReplCompletionItem;
-
 /// Rustyline uses synchronous methods in its interfaces, but we need to call
 /// async methods. To get around this, we communicate with async code by using
 /// a channel and blocking on the result.
@@ -41,15 +39,10 @@ pub enum RustylineSyncMessage {
     method: String,
     params: Option<Value>,
   },
-  LspCompletions {
-    line_text: String,
-    position: usize,
-  },
 }
 
 pub enum RustylineSyncResponse {
   PostMessage(Value),
-  LspCompletions(Vec<ReplCompletionItem>),
 }
 
 pub struct RustylineSyncMessageSender {
@@ -75,30 +68,7 @@ impl RustylineSyncMessageSender {
       Err(err) => Err(JsErrorBox::from_err(err)),
       _ => match self.response_rx.borrow_mut().blocking_recv().unwrap() {
         RustylineSyncResponse::PostMessage(result) => Ok(result),
-        RustylineSyncResponse::LspCompletions(_) => unreachable!(),
       },
-    }
-  }
-
-  pub fn lsp_completions(
-    &self,
-    line_text: &str,
-    position: usize,
-  ) -> Vec<ReplCompletionItem> {
-    if self
-      .message_tx
-      .blocking_send(RustylineSyncMessage::LspCompletions {
-        line_text: line_text.to_string(),
-        position,
-      })
-      .is_err()
-    {
-      Vec::new()
-    } else {
-      match self.response_rx.borrow_mut().blocking_recv().unwrap() {
-        RustylineSyncResponse::LspCompletions(result) => result,
-        RustylineSyncResponse::PostMessage(_) => unreachable!(),
-      }
     }
   }
 }

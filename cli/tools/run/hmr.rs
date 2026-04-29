@@ -299,22 +299,35 @@ impl HmrRunner {
   }
 
   async fn wait_for_response(&self, msg_id: i32) -> serde_json::Value {
-    if let Some(message_state) = self.state.0.lock().messages.remove(&msg_id) {
-      let InspectorMessageState::Ready(mut value) = message_state else {
-        unreachable!();
-      };
-      return value["result"].take();
-    }
+    let rx = {
+      let mut state = self.state.0.lock();
+      if let Some(message_state) = state.messages.remove(&msg_id) {
+        let InspectorMessageState::Ready(value) = message_state else {
+          unreachable!();
+        };
+        return Self::extract_result(value);
+      }
+      let (tx, rx) = oneshot::channel();
+      state
+        .messages
+        .insert(msg_id, InspectorMessageState::WaitingFor(tx));
+      rx
+    };
 
-    let (tx, rx) = oneshot::channel();
-    self
-      .state
-      .0
-      .lock()
-      .messages
-      .insert(msg_id, InspectorMessageState::WaitingFor(tx));
-    let mut value = rx.await.unwrap();
-    value["result"].take()
+    let value = rx.await.unwrap();
+    Self::extract_result(value)
+  }
+
+  #[allow(clippy::print_stderr, reason = "diagnostic for flaky CDP responses")]
+  fn extract_result(mut value: serde_json::Value) -> serde_json::Value {
+    let result = value["result"].take();
+    if result.is_null() {
+      eprintln!(
+        "CDP response has null result. Full response: {}",
+        serde_json::to_string(&value).unwrap_or_default()
+      );
+    }
+    result
   }
 
   fn set_script_source(&mut self, script_id: &str, source: &str) -> i32 {

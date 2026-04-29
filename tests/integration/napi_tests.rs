@@ -77,6 +77,7 @@ fn napi_tests() {
     .env("RUST_BACKTRACE", "1")
     .arg("test")
     .arg("--allow-read")
+    .arg("--allow-write")
     .arg("--allow-env")
     .arg("--allow-ffi")
     .arg("--allow-run")

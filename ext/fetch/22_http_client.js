@@ -17,6 +17,7 @@ import { loadTlsKeyPair } from "ext:deno_net/02_tls.js";
 const { internalRidSymbol } = core;
 const {
   JSONStringify,
+  ObjectAssign,
   ObjectDefineProperty,
   ObjectHasOwn,
   StringPrototypeStartsWith,
@@ -29,12 +30,19 @@ const {
  * @returns {HttpClient}
  */
 function createHttpClient(options) {
-  options.caCerts ??= [];
+  // Don't mutate the caller's options object. Historically `caCerts` and
+  // `proxy.transport` were written back onto whatever the user passed in,
+  // which broke reuse of a single options object across multiple calls
+  // (denoland/deno#29347).
+  options = ObjectAssign({ __proto__: null }, options);
+  options.caCerts = options.caCerts ?? [];
   if (options.proxy) {
-    if (ObjectHasOwn(options.proxy, "transport")) {
-      switch (options.proxy.transport) {
+    const proxy = ObjectAssign({ __proto__: null }, options.proxy);
+    options.proxy = proxy;
+    if (ObjectHasOwn(proxy, "transport")) {
+      switch (proxy.transport) {
         case "http": {
-          const url = options.proxy.url;
+          const url = proxy.url;
           if (
             StringPrototypeStartsWith(url, "https:") ||
             StringPrototypeStartsWith(url, "socks5:") ||
@@ -44,11 +52,11 @@ function createHttpClient(options) {
               `The url passed into 'proxy.url' has an invalid scheme for this transport.`,
             );
           }
-          options.proxy.transport = "http";
+          proxy.transport = "http";
           break;
         }
         case "https": {
-          const url = options.proxy.url;
+          const url = proxy.url;
           if (
             StringPrototypeStartsWith(url, "http:") ||
             StringPrototypeStartsWith(url, "socks5:") ||
@@ -58,11 +66,11 @@ function createHttpClient(options) {
               `The url passed into 'proxy.url' has an invalid scheme for this transport.`,
             );
           }
-          options.proxy.transport = "http";
+          proxy.transport = "http";
           break;
         }
         case "socks5": {
-          const url = options.proxy.url;
+          const url = proxy.url;
           if (
             !StringPrototypeStartsWith(url, "socks5:") &&
             !StringPrototypeStartsWith(url, "socks5h:")
@@ -71,7 +79,7 @@ function createHttpClient(options) {
               `The url passed into 'proxy.url' has an invalid scheme for this transport.`,
             );
           }
-          options.proxy.transport = "http";
+          proxy.transport = "http";
           break;
         }
         case "tcp":
@@ -82,13 +90,13 @@ function createHttpClient(options) {
         default: {
           throw new TypeError(
             `Invalid value for 'proxy.transport' option: ${
-              JSONStringify(options.proxy.transport)
+              JSONStringify(proxy.transport)
             }`,
           );
         }
       }
     } else {
-      options.proxy.transport = "http";
+      proxy.transport = "http";
     }
   }
   const keyPair = loadTlsKeyPair("Deno.createHttpClient", options);

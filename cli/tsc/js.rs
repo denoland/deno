@@ -677,7 +677,7 @@ mod tests {
       initial_cwd: resolve_cwd(None).unwrap().into_owned(),
       capture_emitted_files: false,
     };
-    crate::tsc::exec(request, code_cache, None)
+    crate::tsc::exec(request, code_cache)
   }
 
   #[tokio::test]
