@@ -2195,7 +2195,8 @@ pub fn clap_root() -> Command {
         .subcommand(update_subcommand())
         .subcommand(upgrade_subcommand())
         .subcommand(bump_version_subcommand())
-        .subcommand(vendor_subcommand());
+        .subcommand(vendor_subcommand())
+        .subcommand(x_subcommand());
 
       let help = help_subcommand(&cmd);
       cmd.subcommand(help)
