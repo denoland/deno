@@ -10,7 +10,7 @@ import {
 import { ERR_UNKNOWN_SIGNAL } from "ext:deno_node/internal/errors.ts";
 import { os } from "ext:deno_node/internal_binding/constants.ts";
 import { primordials } from "ext:core/mod.js";
-import { isNativeError } from "ext:deno_node/internal/util/types.ts";
+import { isNativeError, isPromise } from "ext:deno_node/internal/util/types.ts";
 
 // deno-lint-ignore prefer-primordials
 const AtomicsWait = Atomics.wait;
@@ -119,7 +119,13 @@ export function promisify(
           resolve(values[0]);
         }
       });
-      ReflectApply(original, this, args);
+      if (isPromise(ReflectApply(original, this, args))) {
+        globalThis.process.emitWarning(
+          "Calling promisify on a function that returns a Promise is likely a mistake.",
+          "DeprecationWarning",
+          "DEP0174",
+        );
+      }
     });
   }
 
