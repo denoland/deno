@@ -3,6 +3,7 @@
 use test_util as util;
 use util::TestContextBuilder;
 use util::assert_contains;
+use util::test;
 
 #[test]
 fn bump_version_patch() {

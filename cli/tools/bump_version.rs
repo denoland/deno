@@ -182,6 +182,7 @@ fn load_config(
   bail!("No deno.json or package.json found in the current directory")
 }
 
+#[allow(clippy::print_stdout, reason = "user-facing output")]
 pub fn bump_version_command(
   flags: Arc<Flags>,
   version_flags: VersionFlags,
