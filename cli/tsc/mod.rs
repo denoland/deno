@@ -1279,6 +1279,10 @@ pub static IGNORED_DIAGNOSTIC_CODES: LazyLock<HashSet<u64>> =
       // implicitly has an 'any' type.  This is due to `allowJs` being off by
       // default but importing of a JavaScript module.
       7016,
+      // TS18060: Deferred imports are only supported when the '--module' flag
+      // is set to 'esnext' or 'preserve'. Deno uses its own module resolution
+      // and supports import defer natively.
+      18060,
     ]
     .into_iter()
     .collect()

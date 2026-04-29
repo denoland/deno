@@ -149,7 +149,13 @@ function Console(options /* or: stdout, stderr, ignoreErrors = true */) {
   }
 
   if (typeof colorMode !== "boolean" && colorMode !== "auto") {
-    throw new ERR_INVALID_ARG_VALUE("colorMode", colorMode);
+    // Match Node: reason lists the accepted values (see
+    // lib/internal/console/constructor.js).
+    throw new ERR_INVALID_ARG_VALUE(
+      "colorMode",
+      colorMode,
+      "must be one of: 'auto', true, false",
+    );
   }
 
   if (groupIndentation !== undefined) {

@@ -34,13 +34,21 @@ export function exists(path: string | Buffer | URL, callback: ExistsCallback) {
 // The callback of fs.exists doesn't have standard callback signature.
 // We need to provide special implementation for promisify.
 // See https://github.com/nodejs/node/pull/13316
+const existsPromisified = (path: string | URL) => {
+  return new Promise((resolve) => {
+    exists(path, (exists) => resolve(exists));
+  });
+};
+// Rename so `promisify(fs.exists).name === 'exists'`, matching Node
+// (see lib/fs.js which uses `function exists(path)` as the value).
+ObjectDefineProperty(existsPromisified, "name", {
+  __proto__: null,
+  value: "exists",
+  configurable: true,
+});
 ObjectDefineProperty(exists, kCustomPromisifiedSymbol, {
   __proto__: null,
-  value: (path: string | URL) => {
-    return new Promise((resolve) => {
-      exists(path, (exists) => resolve(exists));
-    });
-  },
+  value: existsPromisified,
   enumerable: false,
   writable: false,
   configurable: true,

@@ -21,19 +21,20 @@
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 import { ownerSymbol } from "ext:deno_node/internal/async_hooks.ts";
+import { HandleWrap } from "ext:deno_node/internal_binding/handle_wrap.ts";
 import {
   kArrayBufferOffset,
   kBytesWritten,
   kLastWriteWasAsync,
   kReadBytesOrError,
-  LibuvStreamWrap,
   streamBaseState,
   WriteWrap,
 } from "ext:deno_node/internal_binding/stream_wrap.ts";
 import { isUint8Array } from "ext:deno_node/internal/util/types.ts";
 import { errnoException } from "ext:deno_node/internal/errors.ts";
 import { getTimerDuration, kTimeout } from "ext:deno_node/internal/timers.mjs";
-import { clearTimeout, setUnrefTimeout } from "node:timers";
+import { clearTimeout } from "node:timers";
+import { setUnrefTimeout } from "ext:deno_node/internal/timers.mjs";
 import { validateFunction } from "ext:deno_node/internal/validators.mjs";
 import { codeMap } from "ext:deno_node/internal_binding/uv.ts";
 import { primordials } from "ext:core/mod.js";
@@ -136,10 +137,10 @@ function onWriteComplete(this: any, status: number) {
 }
 
 function createWriteWrap(
-  handle: LibuvStreamWrap,
+  handle: HandleWrap,
   callback: (err?: Error | null) => void,
 ) {
-  const req = new WriteWrap<LibuvStreamWrap>();
+  const req = new WriteWrap<HandleWrap>();
 
   req.handle = handle;
   req.oncomplete = onWriteComplete;
@@ -173,8 +174,22 @@ export function writevGeneric(
 
     for (let i = 0; i < data.length; i++) {
       const entry = data[i];
-      chunks[i * 2] = entry.chunk;
-      chunks[i * 2 + 1] = entry.encoding;
+      const enc = entry.encoding;
+      // The native writev only handles utf8, latin1, ascii, ucs2, and
+      // buffer.  For other encodings (base64, hex, etc.) pre-convert to
+      // a Buffer so the bytes are correct on the wire.
+      if (
+        typeof entry.chunk === "string" && enc !== "utf8" &&
+        enc !== "utf-8" && enc !== "latin1" && enc !== "binary" &&
+        enc !== "ascii" && enc !== "ucs2" && enc !== "ucs-2" &&
+        enc !== "utf16le" && enc !== "utf-16le" && enc !== "buffer"
+      ) {
+        chunks[i * 2] = Buffer.from(entry.chunk, enc);
+        chunks[i * 2 + 1] = "buffer";
+      } else {
+        chunks[i * 2] = entry.chunk;
+        chunks[i * 2 + 1] = enc;
+      }
     }
   }
 
@@ -301,6 +316,13 @@ export function onStreamRead(
   }
 
   if (nread === 0) {
+    return;
+  }
+
+  // Bytes arrived on a stream the consumer already destroyed (e.g. during a
+  // re-entrant handshake callback that called socket.destroy()). Drop them;
+  // forwarding a positive nread to errnoException would raise RangeError.
+  if (nread > 0) {
     return;
   }
 

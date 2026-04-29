@@ -1149,6 +1149,18 @@
     refreshTimer: __timers.refreshTimer,
     refTimer: __timers.refTimer,
     unrefTimer: __timers.unrefTimer,
+    // System timers bypass Deno's test sanitizer resource tracking.
+    createSystemTimer: (callback, after, isRefed) =>
+      __timers.createTimer(callback, after, undefined, false, !!isRefed, true),
+    createSystemInterval: (callback, interval, isRefed) =>
+      __timers.createTimer(
+        callback,
+        interval,
+        undefined,
+        true,
+        !!isRefed,
+        true,
+      ),
     currentUserCallSite,
     wrapConsole,
     v8Console,
