@@ -2891,6 +2891,7 @@ impl Http2Session {
   }
 
   #[fast]
+  #[rename("setNextStreamID")]
   fn set_next_stream_id(&self, id: i32) -> bool {
     let ret =
       // SAFETY: self.session is a valid nghttp2 session pointer
