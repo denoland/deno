@@ -1,0 +1,6 @@
+--- a/deno.json ---
+[WILDCARD]"version": "1.1.0"[WILDCARD]
+--- b/deno.json ---
+[WILDCARD]"version": "0.6.0"[WILDCARD]
+--- import_map.json ---
+[WILDCARD]jsr:@x/a@^1.1.0[WILDCARD]jsr:@x/b@^0.6.0[WILDCARD]

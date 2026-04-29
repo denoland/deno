@@ -1,0 +1,4 @@
+--- a/deno.json ---
+[WILDCARD]"version": "1.0.0"[WILDCARD]
+--- b/deno.json ---
+[WILDCARD]"version": "2.5.1"[WILDCARD]

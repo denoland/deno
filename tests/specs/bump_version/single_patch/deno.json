@@ -1,0 +1,5 @@
+{
+  "name": "@x/single",
+  "version": "1.4.6",
+  "exports": "./mod.ts"
+}
