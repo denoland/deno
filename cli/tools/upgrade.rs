@@ -10,6 +10,7 @@ use std::ops::Sub;
 use std::path::Path;
 use std::path::PathBuf;
 use std::process::Command;
+use std::process::Stdio;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -735,6 +736,7 @@ fn upgrade_from_pr(
           "--dir",
           &download_dir.to_string_lossy(),
         ])
+        .stderr(Stdio::inherit())
         .output()
         .context("failed to run `gh run download`")?;
 
@@ -746,6 +748,8 @@ fn upgrade_from_pr(
         );
         downloaded = true;
         break;
+      } else {
+        log::info!("{}", colors::gray("not found"));
       }
     }
     if downloaded {
@@ -905,6 +909,7 @@ fn upgrade_from_branch(
           "--dir",
           &download_dir.to_string_lossy(),
         ])
+        .stderr(Stdio::inherit())
         .output()
         .context("failed to run `gh run download`")?;
 
@@ -916,6 +921,8 @@ fn upgrade_from_branch(
         );
         downloaded = true;
         break;
+      } else {
+        log::info!("{}", colors::gray("not found"));
       }
     }
     if downloaded {
