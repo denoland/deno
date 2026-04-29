@@ -284,7 +284,7 @@ Deno.test(async function offscreenCanvasConvertToBlobBmp() {
   assert(blob.size > 0);
 });
 
-Deno.test(async function bitmapRendererCanvasGetter() {
+Deno.test(function bitmapRendererCanvasGetter() {
   const canvas = new OffscreenCanvas(10, 10);
   const ctx = canvas.getContext("bitmaprenderer");
   assert(ctx);
@@ -307,7 +307,7 @@ Deno.test(async function bitmapRendererTransferFromDetachedThrows() {
   assertThrows(() => ctx.transferFromImageBitmap(bitmap), Error);
 });
 
-Deno.test(async function bitmapRendererTransferFromNullClears() {
+Deno.test(function bitmapRendererTransferFromNullClears() {
   const canvas = new OffscreenCanvas(4, 4);
   const ctx = canvas.getContext("bitmaprenderer");
   assert(ctx);
@@ -318,7 +318,7 @@ Deno.test(async function bitmapRendererTransferFromNullClears() {
 Deno.test({
   permissions: { read: true, env: true },
   ignore: isWsl || isCIWithoutGPU,
-}, async function gpuCanvasContextGetConfigurationNullByDefault() {
+}, function gpuCanvasContextGetConfigurationNullByDefault() {
   const canvas = new OffscreenCanvas(10, 10);
   const ctx = canvas.getContext("webgpu");
   assert(ctx);
@@ -386,7 +386,7 @@ Deno.test({
 Deno.test({
   permissions: { read: true, env: true },
   ignore: isWsl || isCIWithoutGPU,
-}, async function gpuCanvasContextGetCurrentTextureRequiresConfigure() {
+}, function gpuCanvasContextGetCurrentTextureRequiresConfigure() {
   const canvas = new OffscreenCanvas(10, 10);
   const ctx = canvas.getContext("webgpu");
   assert(ctx);
