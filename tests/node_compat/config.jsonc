@@ -402,7 +402,6 @@
       "reason": "Tests Node.js-specific CLI flags/options that are not supported in Deno"
     },
     "parallel/test-client-request-destroy.js": {},
-    "parallel/test-cluster-bind-privileged-port.js": {},
     "parallel/test-cluster-call-and-destroy.js": {},
     "parallel/test-cluster-child-index-dgram.js": {},
     "parallel/test-cluster-child-index-net.js": {},
@@ -417,7 +416,6 @@
     "parallel/test-cluster-invalid-message.js": {},
     "parallel/test-cluster-ipc-throw.js": {},
     "parallel/test-cluster-kill-infinite-loop.js": {},
-    "parallel/test-cluster-listen-pipe-readable-writable.js": {},
     "parallel/test-cluster-net-listen.js": {},
     "parallel/test-cluster-net-reuseport.js": {},
     "parallel/test-cluster-rr-handle-close.js": {},
@@ -429,7 +427,6 @@
     "parallel/test-cluster-worker-death.js": {},
     "parallel/test-cluster-worker-destroy.js": {},
     "parallel/test-cluster-worker-disconnect-on-error.js": {},
-    "parallel/test-cluster-worker-isconnected.js": {},
     "parallel/test-cluster-worker-no-exit.js": {},
     "parallel/test-common-countdown.js": {},
     "parallel/test-common-expect-warning.js": {},
