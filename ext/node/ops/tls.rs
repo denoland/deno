@@ -25,6 +25,8 @@ use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_core::op2;
+use deno_error::JsErrorBox;
+use deno_native_certs::load_native_certs;
 use deno_net::DefaultTlsOptions;
 use deno_net::UnsafelyIgnoreCertificateErrors;
 use deno_net::ops::NetError;
@@ -32,8 +34,6 @@ use deno_net::ops::TlsHandshakeInfo;
 use deno_net::ops_tls::TlsStreamResource;
 use deno_node_crypto::x509::Certificate;
 use deno_node_crypto::x509::CertificateObject;
-use deno_permissions::PermissionCheckError;
-use deno_permissions::PermissionsContainer;
 use deno_tls::SocketUse;
 use deno_tls::TlsClientConfigOptions;
 use deno_tls::TlsKeys;
@@ -45,11 +45,7 @@ use rustls_tokio_stream::TlsStream;
 use rustls_tokio_stream::TlsStreamRead;
 use rustls_tokio_stream::TlsStreamWrite;
 use rustls_tokio_stream::UnderlyingStream;
-use sys_traits::EnvVar;
-use sys_traits::FsRead;
 use webpki_root_certs;
-
-use crate::ExtNodeSys;
 
 #[derive(Clone)]
 pub(crate) struct NodeTlsState {
@@ -58,8 +54,8 @@ pub(crate) struct NodeTlsState {
     Arc<dyn deno_tls::rustls::client::ClientSessionStore>,
 }
 
-fn der_to_pem(der: &[u8]) -> String {
-  let b64 = base64::engine::general_purpose::STANDARD.encode(der);
+fn cert_der_to_pem(cert: &[u8]) -> String {
+  let b64 = base64::engine::general_purpose::STANDARD.encode(cert);
   let pem_lines = b64
     .chars()
     .collect::<Vec<char>>()
@@ -69,94 +65,49 @@ fn der_to_pem(der: &[u8]) -> String {
     .map(|c| c.iter().collect::<String>())
     .collect::<Vec<String>>()
     .join("\n");
-  format!("-----BEGIN CERTIFICATE-----\n{pem_lines}\n-----END CERTIFICATE-----",)
-}
-
-fn get_bundled_root_certificates() -> Vec<String> {
-  webpki_root_certs::TLS_SERVER_ROOT_CERTS
-    .iter()
-    .map(|cert| der_to_pem(cert))
-    .collect()
+  format!(
+    "-----BEGIN CERTIFICATE-----\n{pem_lines}\n-----END CERTIFICATE-----\n"
+  )
 }
 
 #[op2]
-pub fn op_get_root_certificates(
-  state: &mut OpState,
-) -> Result<Vec<String>, PermissionCheckError> {
-  state
-    .borrow_mut::<PermissionsContainer>()
-    .check_sys("ca", "node:tls.rootCertificates")?;
-
+pub fn op_get_root_certificates(state: &mut OpState) -> Vec<String> {
   if let Some(tls_state) = state.try_borrow::<NodeTlsState>()
     && let Some(certs) = &tls_state.custom_ca_certs
   {
-    return Ok(certs.clone());
+    return certs.clone();
   }
 
-  Ok(get_bundled_root_certificates())
-}
-
-fn parse_extra_ca_certs(sys: &(impl EnvVar + FsRead)) -> Vec<String> {
-  let Ok(extra_ca_certs_file) = sys.env_var("NODE_EXTRA_CA_CERTS") else {
-    return vec![];
-  };
-  let Ok(contents) = sys.fs_read_to_string(&extra_ca_certs_file) else {
-    return vec![];
-  };
-  contents
-    .split("-----END CERTIFICATE-----")
-    .filter_map(|s| {
-      let trimmed = s.trim();
-      if trimmed.contains("-----BEGIN CERTIFICATE-----") {
-        Some(format!("{trimmed}\n-----END CERTIFICATE-----\n"))
-      } else {
-        None
-      }
-    })
-    .collect()
-}
-
-#[derive(Debug, thiserror::Error, deno_error::JsError)]
-pub enum CaCertificatesError {
-  #[class(type)]
-  #[error(
-    "The argument 'type' must be one of 'default', 'system', 'bundled', or 'extra'. Received '{0}'"
-  )]
-  InvalidType(String),
-  #[class(inherit)]
-  #[error(transparent)]
-  Permission(#[from] PermissionCheckError),
+  // Return default root certificates if no custom ones are set
+  webpki_root_certs::TLS_SERVER_ROOT_CERTS
+    .iter()
+    .map(|cert| cert_der_to_pem(cert))
+    .collect::<Vec<String>>()
 }
 
 #[op2]
-pub fn op_get_ca_certificates<TSys: ExtNodeSys + 'static>(
-  state: &mut OpState,
-  #[string] cert_type: String,
-) -> Result<Vec<String>, CaCertificatesError> {
-  state
-    .borrow_mut::<PermissionsContainer>()
-    .check_sys("ca", "node:tls.getCACertificates()")?;
-
-  let sys = state.borrow::<TSys>();
-  match cert_type.as_str() {
-    "bundled" => Ok(get_bundled_root_certificates()),
-    "system" => {
-      let native_certs =
-        deno_tls::deno_native_certs::load_native_certs().unwrap_or_default();
-      Ok(
-        native_certs
+#[serde]
+pub fn op_node_get_ca_certificates(
+  #[string] kind: String,
+) -> Result<Vec<String>, JsErrorBox> {
+  match kind.as_str() {
+    "bundled" => Ok(
+      webpki_root_certs::TLS_SERVER_ROOT_CERTS
+        .iter()
+        .map(|cert| cert_der_to_pem(cert))
+        .collect(),
+    ),
+    "system" => load_native_certs()
+      .map(|roots| {
+        roots
           .into_iter()
-          .map(|cert| der_to_pem(&cert.0))
-          .collect(),
-      )
-    }
-    "extra" => Ok(parse_extra_ca_certs(sys)),
-    "default" => {
-      let mut certs = get_bundled_root_certificates();
-      certs.extend(parse_extra_ca_certs(sys));
-      Ok(certs)
-    }
-    _ => Err(CaCertificatesError::InvalidType(cert_type)),
+          .map(|cert| cert_der_to_pem(&cert.0))
+          .collect()
+      })
+      .map_err(|err| JsErrorBox::generic(err.to_string())),
+    _ => Err(JsErrorBox::generic(format!(
+      "unsupported CA certificate kind: {kind}"
+    ))),
   }
 }
 

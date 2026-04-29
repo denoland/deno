@@ -30,6 +30,7 @@ deno_fetch.workspace = true
 deno_fs.workspace = true
 deno_inspector_server.workspace = true
 deno_io.workspace = true
+deno_native_certs.workspace = true
 deno_net.workspace = true
 deno_node_crypto.workspace = true
 deno_node_sqlite.workspace = true
