@@ -518,7 +518,21 @@ fn op_encoding_decode_utf8<'a>(
   #[anybuffer] zero_copy: &[u8],
   ignore_bom: bool,
 ) -> Result<v8::Local<'a, v8::String>, WebError> {
-  let buf = &zero_copy;
+  let buf: &[u8] = &zero_copy;
+
+  // ASCII fast path. Pure ASCII inputs (the dominant real-world case for
+  // HTTP/JSON bodies, file reads, etc.) are valid UTF-8 with no BOM, so we
+  // can short-circuit straight to `new_from_one_byte` and skip both the
+  // 3-byte BOM check and V8's internal UTF-8 validation pass.
+  // `simdutf::validate_ascii` is a SIMD high-bit scan (~1ns per 64 bytes).
+  if v8::simdutf::validate_ascii(buf) {
+    return v8::String::new_from_one_byte(
+      scope,
+      buf,
+      v8::NewStringType::Normal,
+    )
+    .ok_or(WebError::BufferTooLong);
+  }
 
   let buf = if !ignore_bom
     && buf.len() >= 3

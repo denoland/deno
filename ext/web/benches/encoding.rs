@@ -20,6 +20,8 @@ fn setup() -> Vec<Extension> {
         globalThis.TextEncoder = TextEncoder;
         globalThis.hello12k = Deno.core.encode("hello world\n".repeat(1e3));
         globalThis.hello120 = Deno.core.encode("hello world\n".repeat(10));
+        // Non-ASCII (4-byte UTF-8 emoji, ~2.4kB): exercises the non-ASCII path.
+        globalThis.utf8_2k = Deno.core.encode("\u{1F600} hello \u{4E2D}".repeat(64));
         globalThis.dec = new TextDecoder();
         globalThis.helloShort = "hello world\n";
         globalThis.encInto = new TextEncoder();
@@ -59,6 +61,10 @@ fn bench_decode_120b_reused(b: &mut Bencher) {
   bench_js_sync(b, r#"dec.decode(hello120);"#, setup);
 }
 
+fn bench_decode_utf8_2k_reused(b: &mut Bencher) {
+  bench_js_sync(b, r#"dec.decode(utf8_2k);"#, setup);
+}
+
 fn bench_encode_into_short(b: &mut Bencher) {
   bench_js_sync(b, r#"encInto.encodeInto(helloShort, dest);"#, setup);
 }
@@ -69,6 +75,7 @@ benchmark_group!(
   bench_decode_12kb_reused,
   bench_decode_120b_fresh,
   bench_decode_120b_reused,
+  bench_decode_utf8_2k_reused,
   bench_encode_into_short,
 );
 bench_or_profile!(benches);
