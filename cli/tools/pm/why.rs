@@ -1,5 +1,6 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
+use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -11,6 +12,26 @@ use crate::args::Flags;
 use crate::args::WhyFlags;
 use crate::colors;
 use crate::factory::CliFactory;
+
+const MAX_PATHS_PER_VERSION: usize = 15;
+
+/// Strip the peer-dependency suffix from an npm lockfile key.
+/// The peer suffix `_` only appears after the version, so we find the `@`
+/// version separator first, then look for `_` only in the version portion.
+/// e.g. "react-dom@18.2.0_react@18.2.0" → "react-dom@18.2.0"
+///       "is_odd@3.0.1"                  → "is_odd@3.0.1"
+fn strip_peer_suffix(key: &str) -> &str {
+  // Find the @ that separates name from version (skip leading @ for scoped pkgs)
+  let Some(at_pos) = key[1..].find('@').map(|p| p + 1) else {
+    return key;
+  };
+  // Look for _ only after the version separator
+  if let Some(underscore_pos) = key[at_pos + 1..].find('_') {
+    &key[..at_pos + 1 + underscore_pos]
+  } else {
+    key
+  }
+}
 
 pub async fn why(
   flags: Arc<Flags>,
@@ -43,8 +64,7 @@ pub async fn why(
     .iter()
     .filter(|(key, _)| {
       let key_str = key.as_str();
-      // Parse name@version from key (may have _peer suffix)
-      let base = key_str.split('_').next().unwrap_or(key_str);
+      let base = strip_peer_suffix(key_str);
       let Some(at_pos) = base[1..].find('@').map(|p| p + 1) else {
         return false;
       };
@@ -65,7 +85,8 @@ pub async fn why(
 
   // Build reverse dependency map from lockfile
   // key: package_key (e.g. "accepts@1.3.8"), value: list of parent package_keys
-  let mut reverse_deps: HashMap<&str, Vec<&str>> = HashMap::new();
+  // Using BTreeMap for deterministic iteration order.
+  let mut reverse_deps: BTreeMap<&str, Vec<&str>> = BTreeMap::new();
   for (key, info) in npm_packages.iter() {
     // Add reverse edges for dependencies, optional_dependencies, and
     // optional_peers so that `deno why` reflects all reasons a package
@@ -111,8 +132,7 @@ pub async fn why(
   }
 
   for (key, _info) in &matching {
-    // Parse name@version from key
-    let base = key.split('_').next().unwrap_or(key);
+    let base = strip_peer_suffix(key);
     println!("{}", colors::bold(base));
 
     let is_root = root_specifier_to_pkg.contains_key(*key);
@@ -126,8 +146,11 @@ pub async fn why(
       }
     } else {
       // Transitive dependency - find paths from root to this package
-      let paths =
+      let mut paths =
         find_paths_to_root(key, &reverse_deps, &root_specifier_to_pkg);
+
+      // Sort by path length so the most direct relationship is shown first
+      paths.sort_by_key(|p| p.len());
 
       if paths.is_empty() {
         println!(
@@ -135,8 +158,18 @@ pub async fn why(
         );
       }
 
-      for path in &paths {
-        print_dependency_path(path, &root_specifier_to_pkg);
+      if paths.len() > MAX_PATHS_PER_VERSION {
+        for path in &paths[..MAX_PATHS_PER_VERSION] {
+          print_dependency_path(path, &root_specifier_to_pkg);
+        }
+        println!(
+          "  ... and {} more paths",
+          paths.len() - MAX_PATHS_PER_VERSION
+        );
+      } else {
+        for path in &paths {
+          print_dependency_path(path, &root_specifier_to_pkg);
+        }
       }
     }
 
@@ -149,7 +182,7 @@ pub async fn why(
 /// Find dependency paths from root packages to the target.
 fn find_paths_to_root<'a>(
   target_key: &'a str,
-  reverse_deps: &HashMap<&'a str, Vec<&'a str>>,
+  reverse_deps: &BTreeMap<&'a str, Vec<&'a str>>,
   root_specifiers: &HashMap<String, Vec<String>>,
 ) -> Vec<Vec<&'a str>> {
   let mut paths: Vec<Vec<&'a str>> = Vec::new();
@@ -159,7 +192,7 @@ fn find_paths_to_root<'a>(
     current_key: &'a str,
     current_path: &mut Vec<&'a str>,
     paths: &mut Vec<Vec<&'a str>>,
-    reverse_deps: &HashMap<&'a str, Vec<&'a str>>,
+    reverse_deps: &BTreeMap<&'a str, Vec<&'a str>>,
     root_specifiers: &HashMap<String, Vec<String>>,
   ) {
     if root_specifiers.contains_key(current_key) {
@@ -204,7 +237,7 @@ fn print_dependency_path(
   }
 
   let root = path[0];
-  let base = root.split('_').next().unwrap_or(root);
+  let base = strip_peer_suffix(root);
 
   // Show the root specifier if available
   if let Some(specs) = root_specifiers.get(root) {
@@ -215,7 +248,7 @@ fn print_dependency_path(
 
   // Print intermediate and final elements
   for key in &path[1..] {
-    let base = key.split('_').next().unwrap_or(key);
+    let base = strip_peer_suffix(key);
     print!(" > {}", base);
   }
 

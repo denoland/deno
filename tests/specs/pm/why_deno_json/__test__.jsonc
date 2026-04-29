@@ -4,6 +4,10 @@
       "args": "why @denotest/bin",
       "output": "direct.out"
     },
+    "transitive_dep": {
+      "args": "why @denotest/transitive-dep",
+      "output": "transitive.out"
+    },
     "not_found": {
       "args": "why nonexistent",
       "output": "not_found.out",

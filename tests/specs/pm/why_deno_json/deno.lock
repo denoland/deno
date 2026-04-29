@@ -6,10 +6,16 @@
   },
   "npm": {
     "@denotest/bin@0.6.0": {
-      "integrity": "sha512-vCNpxFgQN4fw4ZOp63nbTX1ilcDqNpvXCvYyC8nmfxQQAezsEt095I/YXwMIoMGzWtjCvlMf9kVEYfLuT5oEGQ=="
+      "integrity": "sha512-vCNpxFgQN4fw4ZOp63nbTX1ilcDqNpvXCvYyC8nmfxQQAezsEt095I/YXwMIoMGzWtjCvlMf9kVEYfLuT5oEGQ==",
+      "dependencies": [
+        "@denotest/transitive-dep"
+      ]
     },
     "@denotest/breaking-change-between-versions@1.0.0": {
       "integrity": "sha512-bzMGYx+DxxPlI74n/VsDAN7Db1BY7Sz2XqxXruMo9dEznsBZu7Ez3i8YQ8n0leTxAiiMk1RCG4zQHPG1aj3xRw=="
+    },
+    "@denotest/transitive-dep@1.0.0": {
+      "integrity": "sha512-abc123def456ghi789jkl012mno345pqr678stu901vwx234yza567bcd890efg=="
     }
   },
   "workspace": {
