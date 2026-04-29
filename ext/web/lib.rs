@@ -129,13 +129,15 @@ deno_core::extension!(deno_web,
     "13_message_port.js",
     "14_compression.js",
     "15_performance.js",
-    "16_image_data.js",
     "00_url.js",
     "01_urlpattern.js",
     "01_console.js",
     "01_broadcast_channel.js"
   ],
-  lazy_loaded_esm = [ "webtransport.js" ],
+  lazy_loaded_esm = [
+    "16_image_data.js",
+    "webtransport.js",
+  ],
   options = {
     blob_store: Arc<BlobStore>,
     maybe_location: Option<Url>,

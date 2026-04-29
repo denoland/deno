@@ -33,7 +33,6 @@ import {
   QuotaExceededError,
 } from "ext:deno_web/01_dom_exception.js";
 import * as abortSignal from "ext:deno_web/03_abort_signal.js";
-import * as imageData from "ext:deno_web/16_image_data.js";
 import process from "node:process";
 import { Buffer } from "node:buffer";
 import {
@@ -48,6 +47,7 @@ import { loadWebGPU } from "ext:deno_webgpu/00_init.js";
 import * as webgpuSurface from "ext:deno_webgpu/02_surface.js";
 import { unstableIds } from "ext:runtime/90_deno_ns.js";
 
+const loadImageData = core.createLazyLoader("ext:deno_web/16_image_data.js");
 const loadImage = core.createLazyLoader("ext:deno_image/01_image.js");
 const loadWebTransport = core.createLazyLoader("ext:deno_web/webtransport.js");
 
@@ -77,7 +77,10 @@ const windowOrWorkerGlobalScope = {
   FileReader: core.propNonEnumerable(fileReader.FileReader),
   FormData: core.propNonEnumerable(formData.FormData),
   Headers: core.propNonEnumerable(headers.Headers),
-  ImageData: core.propNonEnumerable(imageData.ImageData),
+  ImageData: core.propNonEnumerableLazyLoaded(
+    (imageData) => imageData.ImageData,
+    loadImageData,
+  ),
   ImageBitmap: core.propNonEnumerableLazyLoaded(
     (image) => image.ImageBitmap,
     loadImage,
