@@ -1819,6 +1819,7 @@
     "parallel/test-http2-util-assert-valid-pseudoheader.js": {},
     "parallel/test-http2-util-asserts.js": {},
     "parallel/test-http2-util-headers-list.js": {},
+    "parallel/test-http2-util-update-options-buffer.js": {},
     "parallel/test-http2-window-size.js": {},
     "parallel/test-http2-unbound-socket-proxy.js": {},
     "parallel/test-http2-write-callbacks.js": {},
