@@ -1236,7 +1236,6 @@
     "parallel/test-fs-watch-recursive-add-folder.js": {},
     "parallel/test-fs-watch-recursive-delete.js": {},
     "parallel/test-fs-watch-recursive-linux-parallel-remove.js": {},
-    "parallel/test-fs-watch-recursive-promise.js": {},
     "parallel/test-fs-watch-recursive-sync-write.js": {},
     "parallel/test-fs-watch-recursive-update-file.js": {},
     "parallel/test-fs-watch-recursive-validate.js": {},
