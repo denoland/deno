@@ -180,7 +180,7 @@ const windowOrWorkerGlobalScope = {
   console: core.propNonEnumerable(
     new console.Console((msg, level) => core.print(msg, level > 1)),
   ),
-  crypto: core.propReadOnly(crypto.crypto),
+  crypto: core.propReadOnlyAccessor("crypto", crypto.crypto),
   Crypto: core.propNonEnumerable(crypto.Crypto),
   SubtleCrypto: core.propNonEnumerable(crypto.SubtleCrypto),
   fetch: core.propWritable(fetch.fetch),

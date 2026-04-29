@@ -11,6 +11,7 @@
     ObjectAssign,
     ObjectFreeze,
     ObjectFromEntries,
+    ObjectGetOwnPropertyDescriptor,
     ObjectKeys,
     ObjectHasOwn,
     setQueueMicrotask,
@@ -839,6 +840,32 @@
     };
   }
 
+  // WebIDL readonly attribute on a global, without [Replaceable] /
+  // [PutForwards] / [LegacyLenientSetter]. Produces an accessor with
+  // a named getter ("get <name>") and an undefined setter, satisfying
+  // idlharness's checks that:
+  //   - typeof desc.get === "function"
+  //   - desc.get.name === "get <name>"
+  //   - desc.get.length === 0
+  //   - desc.set === undefined  (per § 3.7.4.1)
+  //   - calling the getter on a wrong receiver throws TypeError
+  function propReadOnlyAccessor(name, value) {
+    const accessors = {
+      get [name]() {
+        if (this !== null && this !== undefined && this !== globalThis) {
+          throw new TypeError("Illegal invocation");
+        }
+        return value;
+      },
+    };
+    const desc = ObjectGetOwnPropertyDescriptor(accessors, name);
+    return {
+      get: desc.get,
+      enumerable: true,
+      configurable: true,
+    };
+  }
+
   function propWritableLazyLoaded(getter, loadFn) {
     let valueIsSet = false;
     let value;
@@ -1168,6 +1195,7 @@
     propWritable,
     propNonEnumerable,
     propGetterOnly,
+    propReadOnlyAccessor,
     propWritableLazyLoaded,
     propNonEnumerableLazyLoaded,
     createLazyLoader,

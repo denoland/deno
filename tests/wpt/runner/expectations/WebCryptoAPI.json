@@ -1225,16 +1225,8 @@
   },
   "historical.any.html": false,
   "historical.any.worker.html": false,
-  "idlharness.https.any.html": {
-    "expectedFailures": [
-      "Window interface: attribute crypto"
-    ]
-  },
-  "idlharness.https.any.worker.html": {
-    "expectedFailures": [
-      "WorkerGlobalScope interface: attribute crypto"
-    ]
-  },
+  "idlharness.https.any.html": true,
+  "idlharness.https.any.worker.html": true,
   "import_export": {
     "ec_importKey.https.any.html": {
       "expectedFailures": [
