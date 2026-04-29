@@ -1591,17 +1591,36 @@
     "parallel/test-http-zero-length-write.js": {},
     "parallel/test-http-zerolengthbuffer.js": {},
     "parallel/test-http.js": {},
+    "parallel/test-http2-allow-http1-upgrade-ws.js": {
+      "ignore": true,
+      "reason": "Requires Node.js internal modules (--expose-internals) which are not exposed in Deno"
+    },
     "parallel/test-http2-alpn.js": {},
     "parallel/test-http2-altsvc.js": {},
     "parallel/test-http2-autoselect-protocol.js": {},
     "parallel/test-http2-backpressure.js": {},
+    "parallel/test-http2-binding.js": {
+      "ignore": true,
+      "reason": "Requires Node.js internal modules (--expose-internals) which are not exposed in Deno"
+    },
     "parallel/test-http2-buffersize.js": {},
     "parallel/test-http2-byteswritten-server.js": {},
     "parallel/test-http2-cancel-while-client-reading.js": {},
     "parallel/test-http2-capture-rejection.js": {},
     "parallel/test-http2-clean-output.js": {},
     "parallel/test-http2-client-connection-tunnelling.js": {},
-    "parallel/test-http2-client-destroy.js": {},
+    "parallel/test-http2-client-destroy.js": {
+      "ignore": true,
+      "reason": "Requires Node.js internal modules (--expose-internals) which are not exposed in Deno"
+    },
+    "parallel/test-http2-client-http1-server.js": {
+      "ignore": true,
+      "reason": "Requires Node.js internal modules (--expose-internals) which are not exposed in Deno"
+    },
+    "parallel/test-http2-client-onconnect-errors.js": {
+      "ignore": true,
+      "reason": "Requires Node.js internal modules (--expose-internals) which are not exposed in Deno"
+    },
     "parallel/test-http2-client-port-80.js": {},
     "parallel/test-http2-client-priority-before-connect.js": {},
     "parallel/test-http2-client-promisify-connect-error.js": {},
@@ -1615,7 +1634,10 @@
     "parallel/test-http2-client-setNextStreamID-errors.js": {},
     "parallel/test-http2-client-settings-before-connect.js": {},
     "parallel/test-http2-client-shutdown-before-connect.js": {},
-    "parallel/test-http2-client-socket-destroy.js": {},
+    "parallel/test-http2-client-socket-destroy.js": {
+      "ignore": true,
+      "reason": "Requires Node.js internal modules (--expose-internals) which are not exposed in Deno"
+    },
     "parallel/test-http2-client-stream-destroy-before-connect.js": {},
     "parallel/test-http2-client-upload-reject.js": {},
     "parallel/test-http2-client-upload.js": {},
@@ -1659,6 +1681,10 @@
     "parallel/test-http2-compat-short-stream-client-server.js": {},
     "parallel/test-http2-compat-socket-destroy-delayed.js": {},
     "parallel/test-http2-compat-socket-set.js": {},
+    "parallel/test-http2-compat-socket.js": {
+      "ignore": true,
+      "reason": "Requires Node.js internal modules (--expose-internals) which are not exposed in Deno"
+    },
     "parallel/test-http2-compat-write-early-hints-invalid-argument-type.js": {},
     "parallel/test-http2-compat-write-early-hints-invalid-argument-value.js": {},
     "parallel/test-http2-compat-write-early-hints.js": {},
@@ -1667,8 +1693,20 @@
     "parallel/test-http2-connect-method-extended-cant-turn-off.js": {},
     "parallel/test-http2-connect-method-extended.js": {},
     "parallel/test-http2-connect-method.js": {},
+    "parallel/test-http2-connect-options.js": {
+      "ignore": true,
+      "reason": "Requires Node.js internal modules (--expose-internals) which are not exposed in Deno"
+    },
+    "parallel/test-http2-connect-tls-with-delay.js": {
+      "ignore": true,
+      "reason": "Requires Node.js internal modules (--expose-internals) which are not exposed in Deno"
+    },
     "parallel/test-http2-connect.js": {},
     "parallel/test-http2-cookies.js": {},
+    "parallel/test-http2-create-client-secure-session.js": {
+      "ignore": true,
+      "reason": "Requires Node.js internal modules (--expose-internals) which are not exposed in Deno"
+    },
     "parallel/test-http2-create-client-session.js": {},
     "parallel/test-http2-createsecureserver-options.js": {},
     "parallel/test-http2-createserver-options.js": {},
@@ -1691,7 +1729,15 @@
     "parallel/test-http2-head-request.js": {},
     "parallel/test-http2-https-fallback.js": {},
     "parallel/test-http2-https-fallback-http-server-options.js": {},
+    "parallel/test-http2-info-headers-errors.js": {
+      "ignore": true,
+      "reason": "Requires Node.js internal modules (--expose-internals) which are not exposed in Deno"
+    },
     "parallel/test-http2-info-headers.js": {},
+    "parallel/test-http2-invalid-last-stream-id.js": {
+      "ignore": true,
+      "reason": "Requires Node.js internal modules (--expose-internals) which are not exposed in Deno"
+    },
     "parallel/test-http2-invalidargtypes-errors.js": {},
     "parallel/test-http2-invalidheaderfield.js": {},
     "parallel/test-http2-invalidheaderfields-client.js": {},
@@ -1707,7 +1753,14 @@
     "parallel/test-http2-max-invalid-frames.js": {},
     "parallel/test-http2-max-session-memory-leak.js": {},
     "parallel/test-http2-methods.js": {},
-    "parallel/test-http2-misc-util.js": {},
+    "parallel/test-http2-misbehaving-multiplex.js": {
+      "ignore": true,
+      "reason": "Requires Node.js internal modules (--expose-internals) which are not exposed in Deno"
+    },
+    "parallel/test-http2-misc-util.js": {
+      "ignore": true,
+      "reason": "Requires Node.js internal modules (--expose-internals) which are not exposed in Deno"
+    },
     "parallel/test-http2-misused-pseudoheaders.js": {},
     "parallel/test-http2-multi-content-length.js": {},
     "parallel/test-http2-multiheaders-raw.js": {},
@@ -1717,7 +1770,10 @@
     "parallel/test-http2-no-more-streams.js": {},
     "parallel/test-http2-no-wanttrailers-listener.js": {},
     "parallel/test-http2-options-max-headers-block-length.js": {},
-    "parallel/test-http2-options-max-headers-exceeds-nghttp2.js": {},
+    "parallel/test-http2-options-max-headers-exceeds-nghttp2.js": {
+      "ignore": true,
+      "reason": "Requires Node.js internal modules (--expose-internals) which are not exposed in Deno"
+    },
     "parallel/test-http2-options-server-request.js": {},
     "parallel/test-http2-options-server-response.js": {},
     "parallel/test-http2-origin.js": {},
@@ -1726,6 +1782,10 @@
     "parallel/test-http2-ping-settings-heapdump.js": {},
     "parallel/test-http2-ping-unsolicited-ack.js": {},
     "parallel/test-http2-pipe.js": {},
+    "parallel/test-http2-premature-close.js": {
+      "ignore": true,
+      "reason": "Requires Node.js internal modules (--expose-internals) which are not exposed in Deno"
+    },
     "parallel/test-http2-priority-cycle-.js": {},
     "parallel/test-http2-priority-event.js": {},
     "parallel/test-http2-propagate-session-destroy-code.js": {},
@@ -1736,6 +1796,10 @@
     "parallel/test-http2-request-response-proto.js": {},
     "parallel/test-http2-res-corked.js": {},
     "parallel/test-http2-res-writable-properties.js": {},
+    "parallel/test-http2-respond-errors.js": {
+      "ignore": true,
+      "reason": "Requires Node.js internal modules (--expose-internals) which are not exposed in Deno"
+    },
     "parallel/test-http2-respond-file-204.js": {},
     "parallel/test-http2-respond-file-304.js": {},
     "parallel/test-http2-respond-file-404.js": {},
@@ -1752,27 +1816,50 @@
     "parallel/test-http2-respond-file-push.js": {},
     "parallel/test-http2-respond-file-range.js": {},
     "parallel/test-http2-respond-file.js": {},
+    "parallel/test-http2-respond-nghttperrors.js": {
+      "ignore": true,
+      "reason": "Requires Node.js internal modules (--expose-internals) which are not exposed in Deno"
+    },
     "parallel/test-http2-respond-no-data.js": {},
+    "parallel/test-http2-respond-with-fd-errors.js": {
+      "ignore": true,
+      "reason": "Requires Node.js internal modules (--expose-internals) which are not exposed in Deno"
+    },
     "parallel/test-http2-response-splitting.js": {},
     "parallel/test-http2-sent-headers.js": {},
     "parallel/test-http2-server-async-dispose.js": {},
     "parallel/test-http2-server-close-callback.js": {},
     "parallel/test-http2-server-close-idle-connection.js": {},
     "parallel/test-http2-server-errors.js": {},
+    "parallel/test-http2-server-http1-client.js": {
+      "ignore": true,
+      "reason": "Requires Node.js internal modules (--expose-internals) which are not exposed in Deno"
+    },
     "parallel/test-http2-server-rfc-9113-server.js": {},
     "parallel/test-http2-server-rst-before-respond.js": {},
     "parallel/test-http2-sensitive-headers.js": {},
     "parallel/test-http2-server-rst-stream.js": {},
     "parallel/test-http2-server-session-destroy.js": {},
-    "parallel/test-http2-server-sessionerror.js": {},
+    "parallel/test-http2-server-sessionerror.js": {
+      "ignore": true,
+      "reason": "Requires Node.js internal modules (--expose-internals) which are not exposed in Deno"
+    },
     "parallel/test-http2-server-settimeout-no-callback.js": {},
     "parallel/test-http2-server-stream-session-destroy.js": {},
     "parallel/test-http2-server-push-disabled.js": {},
+    "parallel/test-http2-server-push-stream-errors.js": {
+      "ignore": true,
+      "reason": "Requires Node.js internal modules (--expose-internals) which are not exposed in Deno"
+    },
     "parallel/test-http2-server-push-stream-head.js": {},
     "parallel/test-http2-server-set-header.js": {},
     "parallel/test-http2-server-setLocalWindowSize.js": {},
     "parallel/test-http2-server-shutdown-before-respond.js": {},
     "parallel/test-http2-server-shutdown-options-errors.js": {},
+    "parallel/test-http2-server-socket-destroy.js": {
+      "ignore": true,
+      "reason": "Requires Node.js internal modules (--expose-internals) which are not exposed in Deno"
+    },
     "parallel/test-http2-server-startup.js": {},
     "parallel/test-http2-server-timeout.js": {},
     "parallel/test-http2-session-graceful-close.js": {},
@@ -1785,6 +1872,10 @@
     "parallel/test-http2-single-headers-validation-disabled.js": {},
     "parallel/test-http2-single-headers-validation.js": {},
     "parallel/test-http2-socket-proxy-handler-for-has.js": {},
+    "parallel/test-http2-socket-proxy.js": {
+      "ignore": true,
+      "reason": "Requires Node.js internal modules (--expose-internals) which are not exposed in Deno"
+    },
     "parallel/test-http2-status-code-invalid.js": {},
     "parallel/test-http2-status-code.js": {},
     "parallel/test-http2-stream-client.js": {},
@@ -1799,8 +1890,26 @@
     "parallel/test-http2-trailers-after-session-close.js": {},
     "parallel/test-http2-trailers.js": {},
     "parallel/test-http2-update-settings.js": {},
-    "parallel/test-http2-util-assert-valid-pseudoheader.js": {},
-    "parallel/test-http2-util-asserts.js": {},
+    "parallel/test-http2-util-assert-valid-pseudoheader.js": {
+      "ignore": true,
+      "reason": "Requires Node.js internal modules (--expose-internals) which are not exposed in Deno"
+    },
+    "parallel/test-http2-util-asserts.js": {
+      "ignore": true,
+      "reason": "Requires Node.js internal modules (--expose-internals) which are not exposed in Deno"
+    },
+    "parallel/test-http2-util-headers-list.js": {
+      "ignore": true,
+      "reason": "Requires Node.js internal modules (--expose-internals) which are not exposed in Deno"
+    },
+    "parallel/test-http2-util-nghttp2error.js": {
+      "ignore": true,
+      "reason": "Requires Node.js internal modules (--expose-internals) which are not exposed in Deno"
+    },
+    "parallel/test-http2-util-update-options-buffer.js": {
+      "ignore": true,
+      "reason": "Requires Node.js internal modules (--expose-internals) which are not exposed in Deno"
+    },
     "parallel/test-http2-window-size.js": {},
     "parallel/test-http2-unbound-socket-proxy.js": {},
     "parallel/test-http2-write-callbacks.js": {},
