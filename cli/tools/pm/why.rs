@@ -96,7 +96,7 @@ pub async fn why(
       &info.optional_dependencies,
       &info.optional_peers,
     ] {
-      for (_dep_name, dep_key) in dep_map {
+      for dep_key in dep_map.values() {
         reverse_deps
           .entry(dep_key.as_str())
           .or_default()
