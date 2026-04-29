@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_web"
-version = "0.275.0"
+version = "0.278.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -17,6 +17,7 @@ path = "lib.rs"
 async-trait.workspace = true
 brotli.workspace = true
 bytes.workspace = true
+cssparser.workspace = true
 deno_core.workspace = true
 deno_error.workspace = true
 deno_features.workspace = true
@@ -24,6 +25,7 @@ deno_permissions.workspace = true
 encoding_rs.workspace = true
 flate2 = { workspace = true, features = ["default"] }
 futures.workspace = true
+nalgebra.workspace = true
 serde.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
@@ -31,6 +33,7 @@ urlpattern.workspace = true
 uuid = { workspace = true, features = ["serde"] }
 
 [dev-dependencies]
+approx = "0.5.1"
 deno_bench_util.workspace = true
 deno_webidl.workspace = true
 

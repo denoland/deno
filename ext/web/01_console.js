@@ -563,8 +563,18 @@ function formatValue(
       // to the `Deno` namespace in web workers. Remove when the `Deno`
       // namespace is always enabled.
       return String(value[privateCustomInspect](inspect, ctx));
-    } else if (ReflectHas(value, nodeCustomInspectSymbol)) {
-      const maybeCustom = value[nodeCustomInspectSymbol];
+    } else {
+      // Access the symbol directly instead of using `ReflectHas` (the `in`
+      // operator). Proxies may override `has` to hide symbols while still
+      // exposing them via `get` (e.g. nodejs-polars DataFrames). Node.js
+      // also accesses the symbol directly. Use try-catch because the
+      // Proxy's `get` trap may throw.
+      let maybeCustom;
+      try {
+        maybeCustom = value[nodeCustomInspectSymbol];
+      } catch {
+        // ignore - the proxy's get trap threw
+      }
       if (
         typeof maybeCustom === "function" &&
         // Filter out the util module, its inspect function is special.
@@ -3723,7 +3733,11 @@ class Console {
     );
   };
 
-  dirxml = this.dir;
+  // Per https://console.spec.whatwg.org/#dirxml, dirxml uses the log
+  // printer (not dir). Node also aliases console.dirxml to log (see
+  // lib/internal/console/constructor.js). Use a fresh arrow so the
+  // method's .name is "dirxml" rather than "dir".
+  dirxml = (...args) => this.log(...new SafeArrayIterator(args));
 
   warn = (...args) => {
     this.#printFunc(

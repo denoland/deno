@@ -211,6 +211,53 @@ Deno.test(
   },
 );
 
+// Regression test for https://github.com/denoland/deno/issues/32000
+// Watching a relative path like "./" must produce event paths free of
+// embedded "./" segments. Previously notify joined "./" with the relative
+// portion of each event, so callers got `<cwd>/./sub/file` instead of
+// `<cwd>/sub/file`.
+Deno.test(
+  { permissions: { read: true, write: true } },
+  async function watchFsRelativePathNoCurDirSegment() {
+    const testDir = await makeTempDir();
+    const subDir = testDir + "/sub";
+    Deno.mkdirSync(subDir);
+    await delay(100);
+
+    const originalCwd = Deno.cwd();
+    Deno.chdir(testDir);
+    try {
+      using watcher = Deno.watchFs("./");
+
+      const target = subDir + "/file.txt";
+      const writePromise = (async () => {
+        await delay(50);
+        Deno.writeFileSync(target, new Uint8Array([1, 2, 3]));
+      })();
+
+      for await (const event of watcher) {
+        for (const path of event.paths) {
+          const sep = Deno.build.os === "windows" ? "\\" : "/";
+          assert(
+            !path.includes(`${sep}.${sep}`),
+            `event path should not contain "${sep}.${sep}": ${path}`,
+          );
+          assert(
+            !path.endsWith(`${sep}.`),
+            `event path should not end with "${sep}.": ${path}`,
+          );
+        }
+        if (event.paths.some((p) => p.endsWith("file.txt"))) {
+          break;
+        }
+      }
+      await writePromise;
+    } finally {
+      Deno.chdir(originalCwd);
+    }
+  },
+);
+
 // On macOS, FSEvents does not reliably emit remove events for individually
 // watched files. The previous implementation masked this by forwarding
 // unrelated events for any non-existent file to all watchers (the bug

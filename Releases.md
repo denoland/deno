@@ -6,6 +6,319 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 2.7.14 / 2026.04.28
+
+- feat(ext/node): add fs.Utf8Stream
+- feat(upgrade): delta updates via bsdiff patches (#33274)
+- fix(bundle): treat CSS same-document fragment URLs as external (#33492)
+- fix(cache): add missing CacheStorage.keys() and Cache.keys() methods (#33275)
+- fix(config): don't exclude workspace members from deploy file patterns
+  (#33562)
+- fix(coverage): exclude transformer-injected helpers from coverage (#33481)
+- fix(doc): remove background from operators in dark mode code blocks (#33267)
+- fix(ext/bundle): clearer error when Deno.bundle is called in compiled binary
+  (#33503)
+- fix(ext/crypto): throw TypeMismatchError for non-TypedArray in getRand
+  (#33470)
+- fix(ext/fetch): don't mutate caller's options in Deno.createHttpClient
+  (#33497)
+- fix(ext/fetch): use byte ReadableStream for Node Readable request bodies
+  (#33432)
+- fix(ext/fs): normalize Deno.watchFs paths so events drop ./ segments (#33490)
+- fix(ext/napi): implement napi_async_init and napi_async_destroy (#33282)
+- fix(ext/net): default Deno.listenDatagram hostname to 0.0.0.0 (#33496)
+- fix(ext/node): accept X.509v1 server certs in tls.createServer (#33505)
+- fix(ext/node): accept string mode in fs.mkdir and fs.mkdirSync (#33409)
+- fix(ext/node): add Server BlockList, asyncDispose, and misc net improvements
+  (#33417)
+- fix(ext/node): add _idleStart and _idleTimeout to Timeout (#33604)
+- fix(ext/node): align crypto random* validation with Node (#33456)
+- fix(ext/node): align fs.truncate / ftruncate argument validation with Node
+  (#33418)
+- fix(ext/node): align module.builtinModules / getBuiltinModule with Node
+  (#33404)
+- fix(ext/node): align node:module behavior with Node (#33482)
+- fix(ext/node): align node:test `it`/`describe` with Node, enable passing
+  compat tests (#33593)
+- fix(ext/node): align util.styleText with Node (#33547)
+- fix(ext/node): allow `https.Agent()` without `new`, enable passing compat
+  tests (#33601)
+- fix(ext/node): async fs.stat/lstat throwIfNoEntry + deprecate fs.Stats
+  (#33436)
+- fix(ext/node): attach input URL to ERR_INVALID_FILE_URL_PATH (#33398)
+- fix(ext/node): attach path/syscall to fs.lstat / realpath / link errors
+  (#33446)
+- fix(ext/node): brand-check SecureContext._external accessor (#33569)
+- fix(ext/node): cache hash digest so it survives stream.pipeline (#33440)
+- fix(ext/node): cancelling Readable.toWeb(req) no longer destroys the socket
+  (#33570)
+- fix(ext/node): close fd on error in http2 stream respondWithFile (#33614)
+- fix(ext/node): correct buffer-length check in `Readable._fromList` decoder
+  branch (#33624)
+- fix(ext/node): defer drain in http2 shutdownWritable so pushStream after end()
+  works (#33619)
+- fix(ext/node): drain pending TLS cleartext in enc_write_cb (#33378)
+- fix(ext/node): emit Buffer for http2 'goaway' opaqueData (#33502)
+- fix(ext/node): emit DEP0031 deprecation warning for ecdh.setPublicKey(
+  (#33468)
+- fix(ext/node): emit DEP0182 deprecation for short AES-GCM auth tag (#33469)
+- fix(ext/node): emit HPE_INVALID_TRANSFER_ENCODING for CL+chunked respo
+  (#33488)
+- fix(ext/node): emit StatWatcher 'stop' event asynchronously (#33448)
+- fix(ext/node): emit TimeoutNaNWarning for invalid timer durations (#33472)
+- fix(ext/node): emit http2 frameError on send failure with translated HTTP/2
+  error code (#33631)
+- fix(ext/node): emit stream-level PROTOCOL_ERROR in node:http2
+- fix(ext/node): emit tlsClientError instead of crashing on TLS init failure
+  (#33429)
+- fix(ext/node): enable test-als-defaultvalue-original (AsyncLocalStorage
+  default value) (#33464)
+- fix(ext/node): encode http2 headers as Latin-1 to fix response splitting
+  (#33531)
+- fix(ext/node): encode more chars in url.pathToFileURL() (#33397)
+- fix(ext/node): enforce HTTP/2 server header list size limits (#33494)
+- fix(ext/node): enforce http2 maxSessionInvalidFrames limit (#33515)
+- fix(ext/node): expose http2 sensitive headers received with NV_FLAG_NO_INDEX
+  flag (#33626)
+- fix(ext/node): fix EEXIST error and data loss in writeFileSync on Windows
+  (#33413)
+- fix(ext/node): fix ERR_INVALID_CHAR message & OutgoingMessage.prototype.write
+  (#33430)
+- fix(ext/node): fix TLS client certificate authentication verification (#33576)
+- fix(ext/node): fix TLS socket error ordering and app data leak before identity
+  verification (#33585)
+- fix(ext/node): fix TLS socket lifecycle and readStop backpressure (#33524)
+- fix(ext/node): fix closeIdleConnections destroying active connections (#33596)
+- fix(ext/node): fix fs.glob skipping siblings with *_/../_ patterns (#33372)
+- fix(ext/node): fix spawnSync internal API for monkey-patching and killSignal
+  (#33545)
+- fix(ext/node): flush GOAWAY before destroying http2 socket and expose
+  internal/http2/core (#33566)
+- fix(ext/node): flush HTTP/2 client preface after settings submission (#33387)
+- fix(ext/node): forward enableConnectProtocol setting to peer in HTTP/2
+  SETTINGS frame (#33616)
+- fix(ext/node): handle undefined http2 ping payload and cancel pending pings on
+  destroy (#33561)
+- fix(ext/node): hide aggregateTwoErrors frame in AggregateError stack (#33402)
+- fix(ext/node): honor http2 strictFieldWhitespaceValidation option (#33506)
+- fix(ext/node): honor requestCert/ca on node:tls server, populate
+  getPeerCertificate() (#33439)
+- fix(ext/node): honor weight option in http2 client.request and emit DEP0194
+  (#33622)
+- fix(ext/node): http2 createConnection support and per-frame socket writes
+  (#33520)
+- fix(ext/node): implement BlockList.rules / isBlockList / toJSON / fromJSON
+  (#33445)
+- fix(ext/node): implement Socket.resetAndDestroy with TCP RST in node:net
+  (#33415)
+- fix(ext/node): implement StatWatcher.ref() / unref() (#33408)
+- fix(ext/node): implement dns Resolver cancel() and timeout support (#33580)
+- fix(ext/node): implement dns.reverse() and fix dns.lookup() family parameter
+  (#33579)
+- fix(ext/node): implement fs.mkdtempDisposableSync /
+  fsPromises.mkdtempDisposable (#33533)
+- fix(ext/node): implement node:cluster fork/Worker and worker-side detection
+  (#33493)
+- fix(ext/node): implement process.debugPort with ToInt32 coercion (#33403)
+- fix(ext/node): import kIncomingMessage/kServerResponse in http2 allowHTTP1
+  fallback (#33435)
+- fix(ext/node): improve Node.js timer compatibility (#33479)
+- fix(ext/node): improve perf_hooks timerify and add missing exports (#33581)
+- fix(ext/node): include accepted values in Console colorMode error (#33424)
+- fix(ext/node): isolate parentPort from globalThis in worker_threads (#32596)
+- fix(ext/node): make Buffer.prototype methods generic-callable (#33466)
+- fix(ext/node): make http2 session.origin() round-trip origins and respect TLS
+  servername (#33629)
+- fix(ext/node): make process.constructor a proper instanceof check (#33447)
+- fix(ext/node): name custom-promisified functions after their originals
+  (#33407)
+- fix(ext/node): null-proto child_process options to block prototype pollution
+  (#33555)
+- fix(ext/node): pass reusePort flags in Server.listen() without host (#33530)
+- fix(ext/node): pass signal name to process signal handlers (#33425)
+- fix(ext/node): pass stream fd to child process stdio instead of inheriting
+  (#33525)
+- fix(ext/node): plumb llhttp error code, reason, and bytes parsed through
+  HTTPParser (#33591)
+- fix(ext/node): prevent duplicate close emit when http2 client socket i
+  (#33538)
+- fix(ext/node): re-arm Windows named pipe server after accept (#33369)
+- fix(ext/node): rebind http2 state buffers post-snapshot, enforce
+  maxHeaderListPairs (#33495)
+- fix(ext/node): reject non-ArrayBufferView data in fs.writeFileSync (#33406)
+- fix(ext/node): rename _destroySsl to _destroySSL to match Node.js API (#33599)
+- fix(ext/node): replace unwrap with error propagation in parallel cp (#33396)
+- fix(ext/node): return relative path from fs.watch with recursive option
+  (#33428)
+- fix(ext/node): strip trailing dot from SRV target in dns.resolveSrv() (#33578)
+- fix(ext/node): submit http2 RST_STREAM before flushing END_STREAM DATA frame
+  on respondWithFD read (#33633)
+- fix(ext/node): support ALPNCallback in http2.createSecureServer (#33521)
+- fix(ext/node): support BlockList, AbortSignal, and constructor options in
+  node:net Socket (#33414)
+- fix(ext/node): support `ignore` option in `fs.watch` and `fs.promises.watch`
+  (#33610)
+- fix(ext/node): support encoding option in fs.readdir; don't double-call glob
+  callback (#33501)
+- fix(ext/node): support http2 pushStream and client push events (#33516)
+- fix(ext/node): support reusePort option and fix bind/pipe handling in node:net
+  (#33416)
+- fix(ext/node): support util.promisify on http2.connect (#33489)
+- fix(ext/node): support v1 X.509 certs and http2 ALPN fallback (#33510)
+- fix(ext/node): throw ERR_INVALID_ARG_VALUE when rmdir gets options.recursive
+  (#33565)
+- fix(ext/node): throw ERR_INVALID_URL from http/https request string URL
+  (#33427)
+- fix(ext/node): throw TypeError for Symbol keys/values in process.env (#33399)
+- fix(ext/node): timer _destroyed flag, Symbol.dispose, and setInterval abort
+  (#33528)
+- fix(ext/node): track http2 custom settings and SETTINGS ACK callbacks (#33518)
+- fix(ext/node): treat unsolicited HTTP/2 PING ACK as connection-level protocol
+  error (#33625)
+- fix(ext/node): use AbortSignal.addEventListener in addAbortListener (#33557)
+- fix(ext/node): use ERR_INVALID_ARG_TYPE for tls.createServer non-object
+  options (#33589)
+- fix(ext/node): use ERR_INVALID_ARG_VALUE in module.createRequire (#33449)
+- fix(ext/node): use Node's address-type check in dgram Socket.send (#33420)
+- fix(ext/node): use node:timers for http server connection checks, expo
+  (#33483)
+- fix(ext/node): use proper error codes for require() invalid arguments (#33609)
+- fix(ext/node): validate `fs.watch` boolean options (#33627)
+- fix(ext/node): validate boolean arg in process.setSourceMapsEnabled (#33473)
+- fix(ext/node): validate ciphers option in tls.createSecureContext() (#33597)
+- fix(ext/node): validate dgram options.recvBufferSize / sendBufferSize (#33444)
+- fix(ext/node): validate oaepHash in publicEncrypt/privateDecrypt (#33388)
+- fix(ext/node): validate options.type in Readable.toWeb (#33560)
+- fix(ext/node): validate process.chdir argument is a string (#33401)
+- fix(ext/node): walk sandbox prototype chain in vm property_query (#33463)
+- fix(ext/node): wire JSStreamSocket handle write/shutdown for http2 (#33526)
+- fix(ext/node): wire up captureRejection handler for http2 servers (#33542)
+- fix(ext/node): yield to I/O in http2 write path so stream pipeline finishes
+  (#33541)
+- fix(ext/web): align AbortSignal.timeout error message with Node (#33460)
+- fix(ext/web): allow transferring non-serializable types in structuredClone
+  (#33491)
+- fix(ext/web): handle late write racing with TransformStream cancel (#33478)
+- fix(ext/web): narrow ReadableStreamBYOBRequest.view to Uint8Array (#33477)
+- fix(ext/web): retain `source` from MessageEventInit (#33500)
+- fix(ext/web): route console.dirxml through the log printer (#33443)
+- fix(ext/web): set ERR_MISSING_ARGS code on URL.revokeObjectURL no-arg (#33471)
+- fix(ext/web): structuredClone of non-serializable Web types throws
+  DataCloneError (#33465)
+- fix(ext/webidl): set ERR_ILLEGAL_CONSTRUCTOR code on illegal constructor calls
+  (#33535)
+- fix(ext/webidl): set ERR_INVALID_THIS code on brand-check TypeError (#33467)
+- fix(node/buffer): fix panic in transcode with odd-length UTF-16LE input
+  (#33390)
+- fix(node/compat): disable flaky test-child-process-exec-kill-throws on Windows
+  (#33426)
+- fix(node/compat): disable flaky test-fs-read-stream-pos on Windows (#33421)
+- fix(node/compat): fix shard report merging and fetching in CI reporting
+  (#33431)
+- fix(permissions): normalize paths for macOS filesystem comparison (#33451)
+- fix(task): match workspace directory name in --filter (#33499)
+- fix(task): use explicit workspace root check in directory-name fallback
+  (#33540)
+- fix(x): forward --unstable-* flags to JSR and URL targets (#33450)
+- fix: bound fs.readFile on non-terminating sources (#33262)
+- fix: drop config-only unstable features from unstable_args() (#33452)
+- fix: match single-char wildcard segments in npm package imports (#33513)
+- perf(ext/node): pool 64KB read buffers to reduce allocation pressure (#33395)
+- perf: optimize worker and MessagePort message passing (#32657)
+- perf: upgrade rusty_v8 to 147.4.0 (#33422)
+
+### 2.7.13 / 2026.04.22
+
+- feat(ext/node): implement node:repl module (#32799)
+- feat(ext/node): rewrite node:http with llhttp and native TCPWrap (#33208)
+- feat(upgrade): support installing from a PR (#33252)
+- fix(audit): migrate to bulk advisory endpoint (#33292)
+- fix(console): find nodejs.util.inspect.custom on Proxy objects via get trap
+  (#33265)
+- fix(doc): Add Prism support for JSX/TSX code blocks (#33255)
+- fix(ext/http): treat empty Host header as missing in request URL (#33234)
+- fix(ext/napi): defer GC weak-callback finalizers to the event loop (#33260)
+- fix(ext/napi): implement real V8 handle scopes and callback scopes (#33281)
+- fix(ext/napi): implement zero-copy external Latin-1 strings (#33283)
+- fix(ext/node): ChildProcess.kill() returns false when process already exited
+  (#33305)
+- fix(ext/node): address node:http rewrite review comments (#33299)
+- fix(ext/node): auto-start server-side STARTTLS handshake, add TLS upgrade
+  tests (#33303)
+- fix(ext/node): defer JS stream encOut to avoid reentrant CppGC borrow (#33304)
+- fix(ext/node): enable HTTP parser consume fast path (#33354)
+- fix(ext/node): enforce maxHeaderSize in HTTP parser (#33306)
+- fix(ext/node): fix EEXIST error and file corruption with writeFileSync on
+  Windows (#33253)
+- fix(ext/node): fix Module._resolveLookupPaths and require.resolve compat
+  (#33261)
+- fix(ext/node): fix multiple http2 bugs (#33315)
+- fix(ext/node): fix playwright on windows (#33295)
+- fix(ext/node): flush HTTP/2 HEADERS frame after client request (#33300)
+- fix(ext/node): free uv_write and uv_shutdown requests in every exit path
+  (#33350)
+- fix(ext/node): http client compat improvements (#33337)
+- fix(ext/node): http2 improvements — constants, error codes, settings,
+  validation (#33332)
+- fix(ext/node): improve node:tls compat (validation, pipes, JS streams)
+  (#33331)
+- fix(ext/node): support FD-indexed stdio inheritance in spawnSync (#33341)
+- fix(ext/node): support RSA-PSS keys in crypto.verify with null algorithm
+  (#33314)
+- fix(runtime): warn on unsupported web Worker options and fix recv panic
+  (#33310)
+- fix(test): fix specific_canary upgrade test on Windows (#33286)
+- fix: add note for canary's 30-day retention period (#33271)
+- fix: restore glibc < 2.27 compatibility for Linux release builds (#33259)
+- fix: update v8 crate to 147.2.1 (#33318)
+- perf(ext/node): elide async_hooks emit in timers when no hooks registered
+  (#33355)
+- perf(ext/node): flush-free header fast path in HTTP parser (#33351)
+- perf(ext/node): reduce writev op allocations and write copies (#33352)
+- perf(libs/core): poll only ready handles and yield between I/O batches
+  (#33349)
+- perf: reduce memory usage of Command.output() (#33335)
+
+### 2.7.12 / 2026.04.09
+
+- feat(ext/node): add fs.SyncWriteStream (#33226)
+- feat(ext/node): add llhttp-based HTTPParser with native cppgc binding (#33202)
+- feat(ext/node): add native TLSWrap cppgc object (Rust core) (#33183)
+- feat: native uv_pipe_t implementation with NativePipe and FdTable (#33165)
+- fix(core): fix uv_pipe_open handle lifecycle to match libuv (#33225)
+- fix(core): free UvLoopInner on uv_loop_t drop to prevent worker memory leak
+  (#33200)
+- fix(core): handle WouldBlock in op_print for non-blocking stdio (#33221)
+- fix(core): use c_char instead of i8 in uv_buf_t base cast (#33179)
+- fix(ext/napi): use per-isolate Private key for napi_wrap/napi_unwrap (#33204)
+- fix(ext/node): add dns.getDefaultResultOrder() API (#33197)
+- fix(ext/node): create net.Socket from file descriptors (#33150)
+- fix(ext/node): implement TCP.open(fd) (#33155)
+- fix(ext/node): implement timeout, killSignal, and pid for child_process
+  spawnSync (#32810)
+- fix(ext/node): implement uv_ref for native TCP handles (#33174)
+- fix(ext/node): remove dead legacy TCP server accept path (#33172)
+- fix(ext/node): return real OS file descriptors from node:fs APIs (#33039)
+- fix(ext/node): rewrite Pipe.open(fd) to use raw fd ops (#33136)
+- fix(ext/node): support numeric FDs in child_process stdio array (#33140)
+- fix(ext/node): throw on cipher update with input >= 2^31-1 bytes (#33201)
+- fix(ext/webgpu): accept `ArrayBuffer` in `GPUQueue.writeBuffer()` as data
+  source (#33152)
+- fix(io): remove global stdio statics, handle non-blocking stdin (#33219)
+- fix(node): validate resolved main path stays within package directory (#33170)
+- fix(otel): add timeout to OTEL HTTP exporter to prevent hangs (#33159)
+- fix(permissions): check deny rules against resolved IPs to prevent numeric
+  hostname bypass (#33203)
+- fix(permissions): normalize IPv4-mapped IPv6 addresses in net permission
+  checks (#33223)
+- fix(repl): surface CDP protocol errors and fix race in wait_for_response
+  (#33190)
+- fix(runtime): cache canonicalized watch paths, fix spurious events (#33123)
+- fix(schema): fix the `publish: false` of deno.json schema (#33196)
+- fix: linked packages with peer deps failing to cache from lockfile (#33143)
+- fix: update release template workflow URLs to .generated.yml (#33116)
+- perf(ext/node): use aws-lc-sys EVP API for chacha20-poly1305 (#33110)
+
 ### 2.7.11 / 2026.04.01
 
 - feat: add alpha and beta release channel support (#33098)

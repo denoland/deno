@@ -1314,15 +1314,35 @@ impl PartialEq<PathDescriptor> for PathQueryDescriptor<'_> {
   }
 }
 
-/// On Windows, returns a lowercased copy of the path for case-insensitive
-/// comparison, matching NTFS behavior. On other platforms, returns a clone.
+/// Returns a normalized copy of the path for filesystem-aware comparison.
+///
+/// - Windows (NTFS): ASCII-lowercased for case-insensitive matching.
+/// - macOS (APFS/HFS+): NFKD-normalized and Unicode-case-folded, because
+///   APFS resolves Unicode-equivalent and case-differing paths to the same
+///   inode (e.g. `ß`/`ss`, `ﬁ`/`fi`, NFC/NFD forms, upper/lower).
+/// - Other platforms: returns a clone (case-sensitive, no normalization).
 #[inline]
+#[cfg(windows)]
 fn comparison_path(path: &Path) -> PathBuf {
-  if cfg!(windows) {
-    PathBuf::from(path.to_string_lossy().to_ascii_lowercase())
-  } else {
-    path.to_path_buf()
-  }
+  PathBuf::from(path.to_string_lossy().to_ascii_lowercase())
+}
+
+#[inline]
+#[cfg(target_os = "macos")]
+fn comparison_path(path: &Path) -> PathBuf {
+  use unicode_normalization::UnicodeNormalization;
+  // NFKD handles canonical decomposition (NFC->NFD) and compatibility
+  // decomposition (ligatures like fi->fi). Uppercase then lowercase
+  // approximates Unicode case folding (maps ss->SS->ss, etc.).
+  let s = path.to_string_lossy();
+  let normalized: String = s.nfkd().collect();
+  PathBuf::from(normalized.to_uppercase().to_lowercase())
+}
+
+#[inline]
+#[cfg(not(any(windows, target_os = "macos")))]
+fn comparison_path(path: &Path) -> PathBuf {
+  path.to_path_buf()
 }
 
 impl<'a> PathQueryDescriptor<'a> {
@@ -1730,6 +1750,19 @@ pub enum SubdomainWildcards {
   Disabled,
 }
 
+/// Normalize IPv4-mapped IPv6 addresses (e.g. `::ffff:127.0.0.1`) to
+/// their IPv4 equivalent so that permission checks treat them identically
+/// to the bare IPv4 form.
+fn normalize_ip(ip: IpAddr) -> IpAddr {
+  match ip {
+    IpAddr::V6(v6) => match v6.to_ipv4_mapped() {
+      Some(v4) => IpAddr::V4(v4),
+      None => IpAddr::V6(v6),
+    },
+    ip => ip,
+  }
+}
+
 #[derive(Clone, Eq, PartialEq, Hash, Debug, PartialOrd, Ord)]
 pub enum Host {
   Fqdn(FQDN),
@@ -1785,7 +1818,7 @@ impl Host {
       let ip = strip_ipv6_zone_index(ip_str)
         .parse::<Ipv6Addr>()
         .map_err(|_| HostParseError::InvalidIpv6(s.to_string()))?;
-      return Ok(Host::Ip(IpAddr::V6(ip)));
+      return Ok(Host::Ip(normalize_ip(IpAddr::V6(ip))));
     }
     let (without_trailing_dot, has_trailing_dot) =
       s.strip_suffix('.').map_or((s, false), |s| (s, true));
@@ -1799,7 +1832,7 @@ impl Host {
           without_trailing_dot.to_string(),
         ));
       }
-      Ok(Host::Ip(ip))
+      Ok(Host::Ip(normalize_ip(ip)))
     } else if let Ok(ip_subnet) = s.parse::<IpNetwork>() {
       Ok(Host::IpSubnet(ip_subnet))
     } else {
@@ -2024,7 +2057,7 @@ impl NetDescriptor {
 
     if let Ok(socket) = hostname.parse::<SocketAddr>() {
       return Ok(NetDescriptor(
-        Host::Ip(socket.ip()),
+        Host::Ip(normalize_ip(socket.ip())),
         Some(socket.port().into()),
       ));
     }
@@ -2056,7 +2089,7 @@ impl NetDescriptor {
           ));
         };
         return Ok(NetDescriptor(
-          Host::Ip(IpAddr::V6(ip)),
+          Host::Ip(normalize_ip(IpAddr::V6(ip))),
           port.map(Into::into),
         ));
       } else {
@@ -5589,6 +5622,118 @@ mod tests {
   }
 
   #[test]
+  #[cfg(target_os = "macos")]
+  fn check_paths_macos_unicode_normalization() {
+    set_prompter(Box::new(TestPrompter));
+    let parser = TestPermissionDescriptorParser;
+
+    // Deny a path containing ß — on APFS this is the same file as one with "ss"
+    let perms = Permissions::from_options(
+      &parser,
+      &PermissionsOptions {
+        allow_read: Some(svec!["/data"]),
+        deny_read: Some(svec!["/data/file_\u{00df}.txt"]),
+        allow_write: Some(svec!["/data"]),
+        deny_write: Some(svec!["/data/file_\u{00df}.txt"]),
+        ..Default::default()
+      },
+    )
+    .unwrap();
+    let perms = PermissionsContainer::new(Arc::new(parser), perms);
+
+    // Access via "ss" form must also be denied (APFS treats ß and ss as same file)
+    assert!(
+      perms
+        .check_open(
+          Cow::Borrowed(Path::new("/data/file_ss.txt")),
+          OpenAccessKind::Read,
+          Some("api")
+        )
+        .is_err(),
+      "deny-read bypass via ß/ss equivalence"
+    );
+    assert!(
+      perms
+        .check_open(
+          Cow::Borrowed(Path::new("/data/file_ss.txt")),
+          OpenAccessKind::Write,
+          Some("api")
+        )
+        .is_err(),
+      "deny-write bypass via ß/ss equivalence"
+    );
+
+    // NFC é (U+00E9) vs NFD e + combining accent (U+0065 U+0301)
+    let parser = TestPermissionDescriptorParser;
+    let perms = Permissions::from_options(
+      &parser,
+      &PermissionsOptions {
+        allow_read: Some(svec!["/data"]),
+        deny_read: Some(svec!["/data/file_\u{00e9}.txt"]),
+        ..Default::default()
+      },
+    )
+    .unwrap();
+    let perms = PermissionsContainer::new(Arc::new(parser), perms);
+    assert!(
+      perms
+        .check_open(
+          Cow::Borrowed(Path::new("/data/file_e\u{0301}.txt")),
+          OpenAccessKind::Read,
+          Some("api")
+        )
+        .is_err(),
+      "deny-read bypass via NFC/NFD equivalence"
+    );
+
+    // Case insensitivity: APFS is case-insensitive by default
+    let parser = TestPermissionDescriptorParser;
+    let perms = Permissions::from_options(
+      &parser,
+      &PermissionsOptions {
+        allow_read: Some(svec!["/data"]),
+        deny_read: Some(svec!["/data/SECRET.txt"]),
+        ..Default::default()
+      },
+    )
+    .unwrap();
+    let perms = PermissionsContainer::new(Arc::new(parser), perms);
+    assert!(
+      perms
+        .check_open(
+          Cow::Borrowed(Path::new("/data/secret.txt")),
+          OpenAccessKind::Read,
+          Some("api")
+        )
+        .is_err(),
+      "deny-read bypass via case insensitivity"
+    );
+
+    // fi ligature (U+FB01) vs "fi" — NFKD compatibility decomposition
+    let parser = TestPermissionDescriptorParser;
+    let perms = Permissions::from_options(
+      &parser,
+      &PermissionsOptions {
+        allow_read: Some(svec!["/data"]),
+        deny_read: Some(svec!["/data/file_\u{fb01}.txt"]),
+        ..Default::default()
+      },
+    )
+    .unwrap();
+    let perms = PermissionsContainer::new(Arc::new(parser), perms);
+    assert!(
+      perms
+        .check_open(
+          Cow::Borrowed(Path::new("/data/file_fi.txt")),
+          OpenAccessKind::Read,
+          Some("api")
+        )
+        .is_err(),
+      "deny-read bypass via fi ligature equivalence"
+    );
+  }
+
+  #[test]
   fn test_check_net_with_values() {
     set_prompter(Box::new(TestPrompter));
     let parser = TestPermissionDescriptorParser;
@@ -7002,6 +7147,75 @@ mod tests {
   }
 
   #[test]
+  fn test_net_ipv4_mapped_ipv6() {
+    set_prompter(Box::new(TestPrompter));
+    let parser = TestPermissionDescriptorParser;
+
+    // Deny an IPv4 address, verify IPv4-mapped IPv6 form is also denied
+    let perms = Permissions::from_options(
+      &parser,
+      &PermissionsOptions {
+        allow_net: Some(vec![]),
+        deny_net: Some(svec!["127.0.0.1"]),
+        ..Default::default()
+      },
+    )
+    .unwrap();
+    let mut perms = PermissionsContainer::new(Arc::new(parser), perms);
+
+    // Direct IPv4 is denied
+    assert!(perms.check_net(&("127.0.0.1", None), "api").is_err());
+    // IPv4-mapped IPv6 form must also be denied
+    assert!(perms.check_net(&("::ffff:127.0.0.1", None), "api").is_err());
+    // Regular IPv6 loopback is a different address, should be allowed
+    assert!(perms.check_net(&("::1", None), "api").is_ok());
+    // Other IPv4 addresses should be allowed
+    assert!(perms.check_net(&("192.168.1.1", None), "api").is_ok());
+
+    // Allow an IPv4-mapped IPv6, verify it's accessible via IPv4 too
+    let parser = TestPermissionDescriptorParser;
+    let perms = Permissions::from_options(
+      &parser,
+      &PermissionsOptions {
+        allow_net: Some(svec!["[::ffff:10.0.0.1]"]),
+        ..Default::default()
+      },
+    )
+    .unwrap();
+    let mut perms = PermissionsContainer::new(Arc::new(parser), perms);
+
+    assert!(perms.check_net(&("10.0.0.1", None), "api").is_ok());
+    assert!(perms.check_net(&("::ffff:10.0.0.1", None), "api").is_ok());
+
+    // Port-qualified: deny 127.0.0.1:8080, verify IPv4-mapped form
+    // with port is also denied (exercises the SocketAddr parse path)
+    let parser = TestPermissionDescriptorParser;
+    let perms = Permissions::from_options(
+      &parser,
+      &PermissionsOptions {
+        allow_net: Some(vec![]),
+        deny_net: Some(svec!["127.0.0.1:8080"]),
+        ..Default::default()
+      },
+    )
+    .unwrap();
+    let mut perms = PermissionsContainer::new(Arc::new(parser), perms);
+
+    assert!(perms.check_net(&("127.0.0.1", Some(8080)), "api").is_err());
+    assert!(
+      perms
+        .check_net(&("::ffff:127.0.0.1", Some(8080)), "api")
+        .is_err()
+    );
+    // Different port should be allowed
+    assert!(
+      perms
+        .check_net(&("::ffff:127.0.0.1", Some(9090)), "api")
+        .is_ok()
+    );
+  }
+
+  #[test]
   fn test_deserialize_child_permissions_arg() {
     set_prompter(Box::new(TestPrompter));
     assert_eq!(
@@ -7338,11 +7552,14 @@ mod tests {
       ("deno.land.", Some(Host::Fqdn(fqdn!("deno.land")))),
       (".deno.land", None),
       ("*.deno.land", None),
+      // IPv4-mapped IPv6 addresses are normalized to IPv4
       (
         "::ffff:1.1.1.1",
-        Some(Host::Ip(IpAddr::V6(Ipv6Addr::new(
-          0, 0, 0, 0, 0, 0xffff, 0x0101, 0x0101,
-        )))),
+        Some(Host::Ip(IpAddr::V4(Ipv4Addr::new(1, 1, 1, 1)))),
+      ),
+      (
+        "[::ffff:127.0.0.1]",
+        Some(Host::Ip(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)))),
       ),
       // IPv6 addresses with zone indices
       (
@@ -7410,11 +7627,14 @@ mod tests {
       ("1::1.", None),
       ("deno.land.", Some(Host::Fqdn(fqdn!("deno.land")))),
       (".deno.land", None),
+      // IPv4-mapped IPv6 addresses are normalized to IPv4
       (
         "::ffff:1.1.1.1",
-        Some(Host::Ip(IpAddr::V6(Ipv6Addr::new(
-          0, 0, 0, 0, 0, 0xffff, 0x0101, 0x0101,
-        )))),
+        Some(Host::Ip(IpAddr::V4(Ipv4Addr::new(1, 1, 1, 1)))),
+      ),
+      (
+        "[::ffff:127.0.0.1]",
+        Some(Host::Ip(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)))),
       ),
       // IPv6 addresses with zone indices
       (

@@ -267,7 +267,7 @@ Options:
     const iter = pooledMap(cores, partitionedTests, async (tests) => {
       for (const test of tests) {
         if (!inParallel) {
-          console.log(`${blue("-".repeat(40))}\n${bold(test.path)}\n`);
+          console.log(`${blue("-".repeat(40))}\n${bold(test.path)}`);
         }
         let result = await runSingleTest(
           test.url,
@@ -319,7 +319,7 @@ Options:
         }
         results.push({ test, result });
         if (inParallel) {
-          console.log(`${blue("-".repeat(40))}\n${bold(test.path)}\n`);
+          console.log(`${blue("-".repeat(40))}\n${bold(test.path)}`);
         }
         reportVariation(result, test.expectation);
       }
@@ -367,6 +367,18 @@ Options:
   }
 
   const code = reportFinal(results, endTime - startTime);
+
+  // Copy non-expectation files (like schema.json) into the tmp dir so
+  // git diff --no-index doesn't show them as spurious deletions.
+  for await (const entry of Deno.readDir(EXPECTATIONS_DIR)) {
+    if (!entry.isFile || !entry.name.endsWith(".json")) continue;
+    const tmpPath = `${tmpDir}/${entry.name}`;
+    try {
+      await Deno.stat(tmpPath);
+    } catch {
+      await Deno.copyFile(`${EXPECTATIONS_DIR}/${entry.name}`, tmpPath);
+    }
+  }
 
   // Run git diff to see what changed
   await runGitDiff(["--no-index", EXPECTATIONS_DIR, tmpDir]);
@@ -522,7 +534,7 @@ Options:
     const results = [];
 
     for (const test of tests) {
-      console.log(`${blue("-".repeat(40))}\n${bold(test.path)}\n`);
+      console.log(`${blue("-".repeat(40))}\n${bold(test.path)}`);
       const result = await runSingleTest(
         test.url,
         test.options,
@@ -731,9 +743,9 @@ function reportFinal(
     (finalExpectedFailedButPassedFiles.length > 0);
 
   console.log(
-    `\nfinal result: ${
+    `final result: ${
       failed ? red("failed") : green("ok")
-    }. ${finalPassedCount} passed; ${finalFailedCount} failed; ${finalExpectedFailedAndFailedCount} expected failure; total ${finalTotalCount} (${duration}ms)\n`,
+    }. ${finalPassedCount} passed; ${finalFailedCount} failed; ${finalExpectedFailedAndFailedCount} expected failure; total ${finalTotalCount} (${duration}ms)`,
   );
 
   // We ignore the exit code of the test run because the CI job reports the
@@ -796,9 +808,9 @@ function reportVariation(
       ? "runner failed during test"
       : "the event loop run out of tasks during the test";
     console.log(
-      `\nfile result: ${
+      `file result: ${
         expectFail ? yellow("failed (expected)") : red("failed")
-      }. ${failReason} (${formatDuration(result.duration)})\n`,
+      }. ${failReason} (${formatDuration(result.duration)})`,
     );
     return;
   }
@@ -836,11 +848,11 @@ function reportVariation(
     console.log("\ntest stderr:\n" + result.stderr);
   }
   console.log(
-    `\nfile result: ${
+    `file result: ${
       failedCount > 0 ? red("failed") : green("ok")
     }. ${passedCount} passed; ${failedCount} failed; ${expectedFailedAndFailedCount} expected failure; total ${totalCount} (${
       formatDuration(result.duration)
-    })\n`,
+    })`,
   );
 }
 
