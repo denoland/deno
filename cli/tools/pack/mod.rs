@@ -57,12 +57,12 @@ pub async fn pack(
   if packages.is_empty() {
     match cli_options.start_dir.member_deno_json() {
       Some(deno_json) => {
-        if deno_json.json.name.is_none() {
+        let Some(name) = deno_json.json.name.clone() else {
           bail!(
             "Missing 'name' field in '{}'. Add a package name like:\n  {{\n    \"name\": \"@scope/package-name\",\n    ...\n  }}",
             deno_json.specifier
           );
-        }
+        };
         if deno_json.json.version.is_none() {
           bail!(
             "Missing 'version' field in '{}'. Add a version like:\n  {{\n    \"version\": \"1.0.0\",\n    ...\n  }}",
@@ -75,7 +75,6 @@ pub async fn pack(
             deno_json.specifier
           );
         }
-        let name = deno_json.json.name.clone().unwrap();
 
         packages.push(JsrPackageConfig {
           name,

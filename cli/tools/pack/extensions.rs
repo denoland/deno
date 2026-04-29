@@ -70,11 +70,23 @@ pub fn js_to_dts_extension(path: &str) -> String {
   }
 }
 
-/// Compute the output path for a file, replacing its extension.
+/// Compute the output path for a file, replacing its extension. Falls back
+/// to string-level extension stripping when the path has no recognizable
+/// stem or contains non-UTF8 bytes (rare but possible on Windows).
 pub fn compute_output_path(relative_path: &str, new_ext: &str) -> String {
   let path = Path::new(relative_path);
-  let stem = path.file_stem().unwrap().to_str().unwrap();
   let parent = path.parent().unwrap_or(Path::new(""));
+  let stem = path
+    .file_stem()
+    .and_then(|s| s.to_str())
+    .map(|s| s.to_string())
+    .unwrap_or_else(|| {
+      // Last-resort: strip after the final '.' in the original string.
+      relative_path
+        .rsplit_once('.')
+        .map(|(s, _)| s.to_string())
+        .unwrap_or_else(|| relative_path.to_string())
+    });
 
   if parent == Path::new("") {
     format!("{}{}", stem, new_ext)

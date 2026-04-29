@@ -11,6 +11,36 @@ use super::ProcessedFile;
 use super::ReadmeOrLicense;
 use super::extensions::js_to_dts_extension;
 
+/// Tar archive paths must use forward slashes, even on Windows. Output paths
+/// are computed with platform separators when they pass through `Path::display`,
+/// so normalize before writing the tar header.
+fn to_tar_path(relative: &str) -> String {
+  if cfg!(windows) {
+    relative.replace('\\', "/")
+  } else {
+    relative.to_string()
+  }
+}
+
+/// Append a file entry with a fixed mode/mtime/uid/gid so two pack runs over
+/// the same source produce a bit-identical tarball. Matches `npm pack`'s
+/// reproducibility guarantees.
+fn append_reproducible(
+  tar: &mut tar::Builder<impl std::io::Write>,
+  path: &str,
+  bytes: &[u8],
+) -> std::io::Result<()> {
+  let mut header = tar::Header::new_gnu();
+  header.set_path(to_tar_path(path))?;
+  header.set_size(bytes.len() as u64);
+  header.set_mode(0o644);
+  header.set_mtime(0);
+  header.set_uid(0);
+  header.set_gid(0);
+  header.set_cksum();
+  tar.append(&header, bytes)
+}
+
 pub fn create_npm_tarball(
   config_file: &ConfigFile,
   version: &str,
@@ -32,6 +62,14 @@ pub fn create_npm_tarball(
   } else {
     // Convert @scope/name to scope-name
     let normalized = name.replace('@', "").replace('/', "-");
+    // Defense-in-depth: even though `validate_package_name` rejects names
+    // with traversal characters, never let a tarball name escape the cwd.
+    if normalized.contains("..") || normalized.contains('/') {
+      return Err(deno_core::anyhow::anyhow!(
+        "refusing to write tarball with unsafe name derived from package: {}",
+        name
+      ));
+    }
     PathBuf::from(format!("{}-{}.tgz", normalized, version))
   };
 
@@ -57,46 +95,34 @@ pub fn create_npm_tarball(
   let enc = GzEncoder::new(tar_file, Compression::default());
   let mut tar = tar::Builder::new(enc);
 
-  // Add package.json
-  let package_json_bytes = package_json.as_bytes();
-  let mut header = tar::Header::new_gnu();
-  header.set_path("package/package.json")?;
-  header.set_size(package_json_bytes.len() as u64);
-  header.set_mode(0o644);
-  header.set_cksum();
-  tar.append(&header, package_json_bytes)?;
+  append_reproducible(
+    &mut tar,
+    "package/package.json",
+    package_json.as_bytes(),
+  )?;
 
-  // Add README and LICENSE files
   for file in readme_license_files {
-    let mut header = tar::Header::new_gnu();
-    header.set_path(format!("package/{}", file.relative_path))?;
-    header.set_size(file.content.len() as u64);
-    header.set_mode(0o644);
-    header.set_cksum();
-    tar.append(&header, file.content.as_slice())?;
+    append_reproducible(
+      &mut tar,
+      &format!("package/{}", file.relative_path),
+      file.content.as_slice(),
+    )?;
   }
 
-  // Add each file
   for file in files {
-    // Add JS file
-    let js_bytes = file.js_content.as_bytes();
-    let mut header = tar::Header::new_gnu();
-    header.set_path(format!("package/{}", file.output_path))?;
-    header.set_size(js_bytes.len() as u64);
-    header.set_mode(0o644);
-    header.set_cksum();
-    tar.append(&header, js_bytes)?;
+    append_reproducible(
+      &mut tar,
+      &format!("package/{}", file.output_path),
+      file.js_content.as_bytes(),
+    )?;
 
-    // Add .d.ts file if present
     if let Some(ref dts) = file.dts_content {
-      let dts_bytes = dts.as_bytes();
       let dts_path = js_to_dts_extension(&file.output_path);
-      let mut header = tar::Header::new_gnu();
-      header.set_path(format!("package/{}", dts_path))?;
-      header.set_size(dts_bytes.len() as u64);
-      header.set_mode(0o644);
-      header.set_cksum();
-      tar.append(&header, dts_bytes)?;
+      append_reproducible(
+        &mut tar,
+        &format!("package/{}", dts_path),
+        dts.as_bytes(),
+      )?;
     }
   }
 

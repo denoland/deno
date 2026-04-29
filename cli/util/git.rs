@@ -21,13 +21,17 @@ pub async fn check_if_git_repo_dirty(cwd: &Path) -> Option<String> {
     return None; // Git is not installed
   }
 
-  // Check if there are uncommitted changes
-  let output = Command::new(bin_name)
+  // Check if there are uncommitted changes. If git fails (killed,
+  // permissions, repo missing), treat it the same as "git not installed":
+  // we just don't have a working-tree signal, so don't block the user.
+  let Ok(output) = Command::new(bin_name)
     .current_dir(cwd)
     .args(["status", "--porcelain"])
     .output()
     .await
-    .expect("Failed to execute command");
+  else {
+    return None;
+  };
 
   let output_str = String::from_utf8_lossy(&output.stdout);
   let text = output_str.trim();

@@ -1708,6 +1708,7 @@ static DENO_HELP: &str = cstr!(
     <g>test</>         Run tests
                   <p(245)>deno test  |  deno test test.ts</>
     <g>pack</>         Create an npm-compatible tarball from a Deno project
+                  <p(245)>deno pack  |  deno pack --set-version 1.2.3</>
     <g>upgrade</>      Upgrade deno executable to given version
                   <p(245)>deno upgrade  |  deno upgrade 1.45.0  |  deno upgrade canary</>
 {after-help}

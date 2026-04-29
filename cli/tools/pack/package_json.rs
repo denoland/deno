@@ -154,8 +154,10 @@ fn convert_exports(
     return Ok(serde_json::Value::Object(result));
   }
 
-  // Fallback
-  Ok(json!("./mod.js"))
+  deno_core::anyhow::bail!(
+    "unsupported 'exports' shape in deno.json: expected a string or object, got {}",
+    exports
+  )
 }
 
 fn extract_main_and_types(

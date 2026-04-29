@@ -1,0 +1,22 @@
+{
+  "tempDir": true,
+  "tests": {
+    "two_packs_produce_identical_tarball": {
+      "steps": [{
+        "args": "pack --output a.tgz",
+        "output": "[WILDCARD]✓[WILDCARD]a.tgz[WILDCARD]"
+      }, {
+        "args": "pack --output b.tgz",
+        "output": "[WILDCARD]✓[WILDCARD]b.tgz[WILDCARD]"
+      }, {
+        "if": "unix",
+        "commandName": "bash",
+        "args": [
+          "-c",
+          "cmp -s a.tgz b.tgz && echo 'identical: true' || echo 'identical: false'"
+        ],
+        "output": "identical: true\n"
+      }]
+    }
+  }
+}
