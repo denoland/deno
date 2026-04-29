@@ -1859,10 +1859,20 @@ Socket.prototype._destroy = function (exception, cb) {
 
   if (this._server) {
     debug("has server");
-    this._server._connections--;
+    const server = this._server;
+    server._connections--;
 
-    if (this._server._emitCloseIfDrained) {
-      this._server._emitCloseIfDrained();
+    if (server._emitCloseIfDrained) {
+      if (
+        !server._handle &&
+        server._connections === 0 &&
+        this._httpMessageDetached === true &&
+        !this._httpMessage
+      ) {
+        nextTick(_emitCloseNT, server);
+      } else {
+        server._emitCloseIfDrained();
+      }
     }
   }
 };
@@ -2909,7 +2919,20 @@ Server.prototype._emitCloseIfDrained = function () {
     return;
   }
 
-  nextTick(_emitCloseNT, this);
+  // We use a deferred timer instead of nextTick here to avoid EADDRINUSE
+  // error when the same port listened immediately after the 'close' event.
+  // ref: https://github.com/denoland/deno_std/issues/2788
+  // deno-lint-ignore no-this-alias
+  const self = this;
+  // Use a system timer to avoid test sanitizer detection.
+  // Must be ref'd so the event loop waits for the close event.
+  core.createSystemTimer(
+    () => {
+      _emitCloseNT(self);
+    },
+    0,
+    true,
+  );
 };
 
 Server.prototype._setupWorker = function (socketList: EventEmitter) {
