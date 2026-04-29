@@ -28,6 +28,7 @@
         "Global object's getter throws when called on incompatible object",
         "Global object's setter throws when called on incompatible object",
         "Global object's operation throws when called on incompatible object",
+        "Global object's operation works when called on null / undefined",
         "Global object's getter works when called on null / undefined",
         "Global object's setter works when called on null / undefined"
       ]
@@ -37,6 +38,7 @@
         "Global object's getter throws when called on incompatible object",
         "Global object's setter throws when called on incompatible object",
         "Global object's operation throws when called on incompatible object",
+        "Global object's operation works when called on null / undefined",
         "Global object's getter works when called on null / undefined",
         "Global object's setter works when called on null / undefined"
       ]
