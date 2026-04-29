@@ -1616,7 +1616,7 @@ class Http2Stream extends Duplex {
       return handle.writeBuffer(req, Buffer.from(data, "latin1"));
     };
     handle.writeAsciiString = function (req, data) {
-      return handle.writeBuffer(req, new TextEncoder().encode(data));
+      return handle.writeBuffer(req, Buffer.from(data, "ascii"));
     };
     handle.writeUcs2String = function (req, data) {
       return handle.writeBuffer(req, Buffer.from(data, "utf16le"));
