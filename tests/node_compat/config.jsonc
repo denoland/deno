@@ -3217,6 +3217,7 @@
     "parallel/test-tls-session-cache.js": {},
     "parallel/test-tls-session-timeout-errors.js": {},
     "parallel/test-tls-set-encoding.js": {},
+    "parallel/test-tls-empty-sni-context.js": {},
     "parallel/test-tls-snicallback-error.js": {},
     "parallel/test-tls-socket-allow-half-open-option.js": {},
     "parallel/test-tls-socket-close.js": {},
