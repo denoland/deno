@@ -38,7 +38,9 @@ use deno_tls::TlsKeys;
 use deno_tls::TlsKeysHolder;
 use deno_tls::create_client_config;
 use deno_tls::rustls::ClientConnection;
+use deno_tls::rustls::pki_types::CertificateDer;
 use deno_tls::rustls::pki_types::ServerName;
+use deno_tls::rustls_pemfile;
 use rustls_tokio_stream::TlsStream;
 use rustls_tokio_stream::TlsStreamRead;
 use rustls_tokio_stream::TlsStreamWrite;
@@ -52,6 +54,22 @@ pub(crate) struct NodeTlsState {
     Arc<dyn deno_tls::rustls::client::ClientSessionStore>,
 }
 
+fn der_to_pem(cert: &[u8]) -> String {
+  let b64 = base64::engine::general_purpose::STANDARD.encode(cert);
+  let pem_lines = b64
+    .chars()
+    .collect::<Vec<char>>()
+    // Node uses 72 characters per line, so we need to follow node even though
+    // it's not spec compliant https://datatracker.ietf.org/doc/html/rfc7468#section-2
+    .chunks(72)
+    .map(|c| c.iter().collect::<String>())
+    .collect::<Vec<String>>()
+    .join("\n");
+  format!(
+    "-----BEGIN CERTIFICATE-----\n{pem_lines}\n-----END CERTIFICATE-----\n",
+  )
+}
+
 #[op2]
 pub fn op_get_root_certificates(state: &mut OpState) -> Vec<String> {
   if let Some(tls_state) = state.try_borrow::<NodeTlsState>()
@@ -63,23 +81,37 @@ pub fn op_get_root_certificates(state: &mut OpState) -> Vec<String> {
   // Return default root certificates if no custom ones are set
   webpki_root_certs::TLS_SERVER_ROOT_CERTS
     .iter()
-    .map(|cert| {
-      let b64 = base64::engine::general_purpose::STANDARD.encode(cert);
-      let pem_lines = b64
-        .chars()
-        .collect::<Vec<char>>()
-        // Node uses 72 characters per line, so we need to follow node even though
-        // it's not spec compliant https://datatracker.ietf.org/doc/html/rfc7468#section-2
-        .chunks(72)
-        .map(|c| c.iter().collect::<String>())
-        .collect::<Vec<String>>()
-        .join("\n");
-      let pem = format!(
-        "-----BEGIN CERTIFICATE-----\n{pem_lines}\n-----END CERTIFICATE-----\n",
-      );
-      pem
-    })
+    .map(|cert| der_to_pem(cert))
     .collect::<Vec<String>>()
+}
+
+#[op2]
+#[serde]
+pub fn op_get_extra_ca_certificates() -> Vec<String> {
+  let path = match std::env::var_os("NODE_EXTRA_CA_CERTS") {
+    Some(p) if !p.is_empty() => p,
+    _ => return Vec::new(),
+  };
+  // NODE_EXTRA_CA_CERTS points at a PEM file specified by the deno
+  // operator (process env), not user code, so we read it directly here
+  // rather than going through the FileSystem permission layer — Node
+  // semantics require this CA bundle to load regardless of `--allow-read`.
+  #[allow(
+    clippy::disallowed_methods,
+    reason = "operator-supplied CA bundle path; bypasses permission layer"
+  )]
+  let bytes = match std::fs::read(&path) {
+    Ok(b) => b,
+    Err(_) => return Vec::new(),
+  };
+  let mut reader = std::io::BufReader::new(std::io::Cursor::new(bytes));
+  let parsed: Result<Vec<CertificateDer<'static>>, _> =
+    rustls_pemfile::certs(&mut reader).collect();
+  let certs = match parsed {
+    Ok(c) => c,
+    Err(_) => return Vec::new(),
+  };
+  certs.iter().map(|c| der_to_pem(c.as_ref())).collect()
 }
 
 #[op2]

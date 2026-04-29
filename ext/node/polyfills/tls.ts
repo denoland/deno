@@ -6,10 +6,13 @@ import tlsCommon from "node:_tls_common";
 import tlsWrap from "node:_tls_wrap";
 import { convertALPNProtocols } from "ext:deno_node/internal/tls_common.js";
 import {
+  op_get_extra_ca_certificates,
   op_get_root_certificates,
   op_set_default_ca_certificates,
 } from "ext:core/ops";
 import { primordials } from "ext:core/mod.js";
+import { ERR_INVALID_ARG_VALUE } from "ext:deno_node/internal/errors.ts";
+import { validateString } from "ext:deno_node/internal/validators.mjs";
 
 const {
   ArrayIsArray,
@@ -132,6 +135,67 @@ export class CryptoStream {}
 export class SecurePair {}
 export const Server = tlsWrap.Server;
 
+let lazyBundledCACertificates: string[] | null = null;
+let lazyExtraCACertificates: string[] | null = null;
+let lazyDefaultCACertificates: string[] | null = null;
+
+function stripTrailingNewline(pem: string) {
+  return StringPrototypeReplace(pem, new SafeRegExp("\\n$"), "");
+}
+
+function cacheBundledRootCertificates() {
+  if (lazyBundledCACertificates === null) {
+    const certs = op_get_root_certificates() as string[];
+    lazyBundledCACertificates = ArrayPrototypeMap(certs, stripTrailingNewline);
+    ObjectFreeze(lazyBundledCACertificates);
+  }
+  return lazyBundledCACertificates;
+}
+
+function cacheExtraCACertificates() {
+  if (lazyExtraCACertificates === null) {
+    const certs = op_get_extra_ca_certificates() as string[];
+    lazyExtraCACertificates = ArrayPrototypeMap(certs, stripTrailingNewline);
+    ObjectFreeze(lazyExtraCACertificates);
+  }
+  return lazyExtraCACertificates;
+}
+
+function cacheDefaultCACertificates() {
+  if (lazyDefaultCACertificates === null) {
+    const result: string[] = [];
+    const bundled = cacheBundledRootCertificates();
+    for (let i = 0; i < bundled.length; ++i) {
+      ArrayPrototypePush(result, bundled[i]);
+    }
+    const extra = cacheExtraCACertificates();
+    for (let i = 0; i < extra.length; ++i) {
+      ArrayPrototypePush(result, extra[i]);
+    }
+    ObjectFreeze(result);
+    lazyDefaultCACertificates = result;
+  }
+  return lazyDefaultCACertificates;
+}
+
+export function getCACertificates(type: string = "default") {
+  validateString(type, "type");
+  switch (type) {
+    case "default":
+      return cacheDefaultCACertificates();
+    case "bundled":
+      return cacheBundledRootCertificates();
+    case "system":
+      // Deno does not expose a separate system CA store yet. Return an
+      // empty (frozen) array to mirror Node's "no system certs loaded".
+      return ObjectFreeze([]);
+    case "extra":
+      return cacheExtraCACertificates();
+    default:
+      throw new ERR_INVALID_ARG_VALUE("type", type);
+  }
+}
+
 export function setDefaultCACertificates(certs: string[]) {
   if (!ArrayIsArray(certs)) {
     throw new TypeError(
@@ -151,6 +215,8 @@ export function setDefaultCACertificates(certs: string[]) {
   op_set_default_ca_certificates(certs);
 
   lazyRootCertificates = null;
+  lazyBundledCACertificates = null;
+  lazyDefaultCACertificates = null;
 }
 
 export function createSecurePair() {
@@ -168,6 +234,7 @@ const defaultExport = {
   createSecurePair,
   createServer: tlsWrap.createServer,
   convertALPNProtocols,
+  getCACertificates,
   getCiphers,
   setDefaultCACertificates,
   DEFAULT_CIPHERS: tlsWrap.DEFAULT_CIPHERS,
