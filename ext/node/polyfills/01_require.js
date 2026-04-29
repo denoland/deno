@@ -342,6 +342,101 @@ let hasInspectBrk = false;
 let usesLocalNodeModulesDir = false;
 let patched = false;
 
+// module.registerHooks() infrastructure
+const hookEntries = [];
+let nextHookId = 0;
+let insideResolveHook = false;
+let insideLoadHook = false;
+
+function executeResolveHookChain(specifier, context) {
+  // Collect resolve hooks from hookEntries in LIFO order
+  const resolveHooks = [];
+  for (let i = hookEntries.length - 1; i >= 0; i--) {
+    if (hookEntries[i].resolve !== null) {
+      ArrayPrototypePush(resolveHooks, hookEntries[i].resolve);
+    }
+  }
+  if (resolveHooks.length === 0) return null;
+
+  let index = 0;
+
+  function nextResolve(spec, ctx) {
+    // Merge context: if ctx provided, merge with original context
+    const mergedContext = ctx !== undefined && ctx !== null
+      ? { ...context, ...ctx }
+      : context;
+
+    if (index >= resolveHooks.length) {
+      // Default resolve: use Module._resolveFilename
+      insideResolveHook = true;
+      try {
+        // Handle node: builtins
+        if (StringPrototypeStartsWith(spec, "node:")) {
+          return { url: spec, shortCircuit: true };
+        }
+        if (nativeModuleCanBeRequiredByUsers(spec)) {
+          return { url: "node:" + spec, shortCircuit: true };
+        }
+        const resolved = Module._resolveFilename(spec, null, false);
+        let resolvedUrl;
+        if (StringPrototypeStartsWith(resolved, "node:")) {
+          resolvedUrl = resolved;
+        } else {
+          resolvedUrl = url.pathToFileURL(resolved).href;
+        }
+        return { url: resolvedUrl, shortCircuit: true };
+      } finally {
+        insideResolveHook = false;
+      }
+    }
+    const hook = resolveHooks[index++];
+    return hook(spec, mergedContext, nextResolve);
+  }
+
+  return nextResolve(specifier, context);
+}
+
+function executeLoadHookChain(fileUrl, context) {
+  // Collect load hooks from hookEntries in LIFO order
+  const loadHooks = [];
+  for (let i = hookEntries.length - 1; i >= 0; i--) {
+    if (hookEntries[i].load !== null) {
+      ArrayPrototypePush(loadHooks, hookEntries[i].load);
+    }
+  }
+  if (loadHooks.length === 0) return null;
+
+  let index = 0;
+
+  function nextLoad(loadUrl, ctx) {
+    if (index >= loadHooks.length) {
+      // Default load: read file from disk
+      // For builtins, return null source
+      if (StringPrototypeStartsWith(loadUrl, "node:")) {
+        return { source: null, format: "builtin", shortCircuit: true };
+      }
+      let source;
+      try {
+        const filePath = StringPrototypeStartsWith(loadUrl, "file://")
+          ? url.fileURLToPath(loadUrl)
+          : loadUrl;
+        source = op_require_read_file(filePath);
+      } catch {
+        source = undefined;
+      }
+      return {
+        source: source ?? "",
+        format: ctx?.format ?? undefined,
+        shortCircuit: true,
+      };
+    }
+    const hook = loadHooks[index++];
+    return hook(loadUrl, ctx ?? context, nextLoad);
+  }
+
+  return nextLoad(fileUrl, context);
+}
+
 function stat(filename) {
   if (statCache !== null) {
     const result = statCache.get(filename);
@@ -774,6 +869,32 @@ Module._load = function (request, parent, isMain) {
     // Slice 'node:' prefix
     const id = StringPrototypeSlice(filename, 5);
 
+    // Run load hooks for builtins if registered
+    if (hookEntries.length > 0 && !insideLoadHook) {
+      let hasLoadHook = false;
+      for (let i = 0; i < hookEntries.length; i++) {
+        if (hookEntries[i].load !== null) {
+          hasLoadHook = true;
+          break;
+        }
+      }
+      if (hasLoadHook) {
+        const context = {
+          format: "builtin",
+          conditions: ["node", "require"],
+          importAttributes: { __proto__: null },
+        };
+        insideLoadHook = true;
+        try {
+          executeLoadHookChain(filename, context);
+        } finally {
+          insideLoadHook = false;
+        }
+        // Always load builtins normally regardless of hook result;
+        // hooks can observe but not replace builtin source.
+      }
+    }
+
     const module = loadNativeModule(id, id);
     if (!module) {
       // TODO:
@@ -858,6 +979,26 @@ Module._resolveFilename = function (
       "string",
       request,
     );
+  }
+
+  // Run resolve hooks if registered (and not already inside a hook)
+  if (hookEntries.length > 0 && !insideResolveHook) {
+    const parentURL = parent?.filename
+      ? url.pathToFileURL(parent.filename).href
+      : undefined;
+    const context = {
+      conditions: ["node", "require"],
+      importAttributes: { __proto__: null },
+      parentURL,
+    };
+    const result = executeResolveHookChain(request, context);
+    if (result != null && result.url != null) {
+      if (StringPrototypeStartsWith(result.url, "file://")) {
+        return url.fileURLToPath(result.url);
+      }
+      // node: and other schemes returned as-is
+      return result.url;
+    }
   }
 
   if (nativeModuleCanBeRequiredByUsers(request)) {
@@ -1049,8 +1190,84 @@ Module.prototype.load = function (filename) {
 
   // Canonicalize the path so it's not pointing to the symlinked directory
   // in `node_modules` directory of the referrer.
-  this.filename = op_require_real_path(filename);
+  // When load hooks are active, the file may not exist on disk (virtual
+  // modules), so we fall back to the original filename.
+  let hasLoadHooks = false;
+  if (hookEntries.length > 0 && !insideLoadHook) {
+    for (let i = 0; i < hookEntries.length; i++) {
+      if (hookEntries[i].load !== null) {
+        hasLoadHooks = true;
+        break;
+      }
+    }
+  }
+  if (hasLoadHooks) {
+    try {
+      this.filename = op_require_real_path(filename);
+    } catch {
+      this.filename = filename;
+    }
+  } else {
+    this.filename = op_require_real_path(filename);
+  }
   this.paths = Module._nodeModulePaths(pathDirname(this.filename));
+
+  // Run load hooks if registered
+  if (hasLoadHooks) {
+    {
+      const fileUrl = StringPrototypeStartsWith(this.filename, "node:")
+        ? this.filename
+        : url.pathToFileURL(this.filename).href;
+      const context = {
+        format: undefined,
+        conditions: ["node", "require"],
+        importAttributes: { __proto__: null },
+      };
+      insideLoadHook = true;
+      let result;
+      try {
+        result = executeLoadHookChain(fileUrl, context);
+      } finally {
+        insideLoadHook = false;
+      }
+      if (result != null && result.source != null) {
+        const format = result.format;
+        if (format === "module") {
+          loadESMFromCJS(this, this.filename, result.source);
+        } else if (format === "commonjs") {
+          this._compile(
+            typeof result.source === "string"
+              ? result.source
+              : new TextDecoder().decode(result.source),
+            this.filename,
+            "commonjs",
+          );
+        } else if (format === "json") {
+          try {
+            this.exports = JSONParse(
+              stripBOM(
+                typeof result.source === "string"
+                  ? result.source
+                  : new TextDecoder().decode(result.source),
+              ),
+            );
+          } catch (err) {
+            err.message = this.filename + ": " + err.message;
+            throw err;
+          }
+        } else {
+          // Auto-detect format: try CJS, fall back to ESM
+          const source = typeof result.source === "string"
+            ? result.source
+            : new TextDecoder().decode(result.source);
+          this._compile(source, this.filename);
+        }
+        this.loaded = true;
+        return;
+      }
+    }
+  }
+
   const extension = findLongestRegisteredExtension(filename);
   Module._extensions[extension](this, this.filename);
   this.loaded = true;
@@ -1527,6 +1744,30 @@ export function findSourceMap(_path) {
 }
 
 Module.findSourceMap = findSourceMap;
+
+/**
+ * Register synchronous module loader hooks.
+ * @param {{ resolve?: Function, load?: Function }} hooks
+ * @returns {{ deregister: () => void }}
+ */
+export function registerHooks(hooks) {
+  const entry = {
+    resolve: typeof hooks.resolve === "function" ? hooks.resolve : null,
+    load: typeof hooks.load === "function" ? hooks.load : null,
+    id: nextHookId++,
+  };
+  ArrayPrototypePush(hookEntries, entry);
+  return {
+    deregister() {
+      const idx = ArrayPrototypeIndexOf(hookEntries, entry);
+      if (idx !== -1) {
+        ArrayPrototypeSplice(hookEntries, idx, 1);
+      }
+    },
+  };
+}
+
+Module.registerHooks = registerHooks;
 
 /**
  * @param {string | URL} _specifier

@@ -1,0 +1,20 @@
+{
+  "tests": {
+    "resolve_hook": {
+      "args": "run -A main_resolve.cjs",
+      "output": "main_resolve.out"
+    },
+    "load_hook": {
+      "args": "run -A main_load.cjs",
+      "output": "main_load.out"
+    },
+    "chained_hooks": {
+      "args": "run -A main_chained.cjs",
+      "output": "main_chained.out"
+    },
+    "deregister": {
+      "args": "run -A main_deregister.cjs",
+      "output": "main_deregister.out"
+    }
+  }
+}
