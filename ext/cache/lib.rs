@@ -107,7 +107,7 @@ deno_core::extension!(deno_cache,
     op_cache_match,
     op_cache_delete,
   ],
-  esm = [ "01_cache.js" ],
+  lazy_loaded_esm = [ "01_cache.js" ],
   options = {
     maybe_create_cache: Option<CreateCache>,
   },

@@ -7,7 +7,6 @@ import * as timers from "ext:deno_web/02_timers.js";
 import * as base64 from "ext:deno_web/05_base64.js";
 import * as encoding from "ext:deno_web/08_text_encoding.js";
 import * as console from "ext:deno_web/01_console.js";
-import * as caches from "ext:deno_cache/01_cache.js";
 import * as compression from "ext:deno_web/14_compression.js";
 import * as worker from "ext:runtime/11_workers.js";
 import * as performance from "ext:deno_web/15_performance.js";
@@ -48,6 +47,7 @@ import { loadWebGPU } from "ext:deno_webgpu/00_init.js";
 import * as webgpuSurface from "ext:deno_webgpu/02_surface.js";
 import { unstableIds } from "ext:runtime/90_deno_ns.js";
 
+const loadCache = core.createLazyLoader("ext:deno_cache/01_cache.js");
 const loadImage = core.createLazyLoader("ext:deno_image/01_image.js");
 const loadWebTransport = core.createLazyLoader("ext:deno_web/webtransport.js");
 
@@ -144,10 +144,18 @@ const windowOrWorkerGlobalScope = {
   caches: {
     enumerable: true,
     configurable: true,
-    get: caches.cacheStorage,
+    get() {
+      return loadCache().cacheStorage();
+    },
   },
-  CacheStorage: core.propNonEnumerable(caches.CacheStorage),
-  Cache: core.propNonEnumerable(caches.Cache),
+  CacheStorage: core.propNonEnumerableLazyLoaded(
+    (cache) => cache.CacheStorage,
+    loadCache,
+  ),
+  Cache: core.propNonEnumerableLazyLoaded(
+    (cache) => cache.Cache,
+    loadCache,
+  ),
   console: core.propNonEnumerable(
     new console.Console((msg, level) => core.print(msg, level > 1)),
   ),
