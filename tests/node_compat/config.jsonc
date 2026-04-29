@@ -1879,6 +1879,7 @@
     // "parallel/test-inspect-address-in-use.js": {},
     // "parallel/test-inspector-inspect-brk-node.js": {},
     // "parallel/test-inspector-invalid-args.js": {},
+    "parallel/test-inspector-invalid-protocol.js": {},
     "parallel/test-inspector-close-worker.js": {},
 
     // TODO(bartlomieju): times out
