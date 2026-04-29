@@ -459,13 +459,13 @@ mod npm {
 
     // ">=X.Y.Z ..." -- most common npm patched_versions format
     if let Some(rest) = trimmed.strip_prefix(">=") {
-      let ver_str = rest.trim_start().split_whitespace().next()?;
+      let ver_str = rest.split_whitespace().next()?;
       return deno_semver::Version::parse_standard(ver_str).ok();
     }
 
     // "=X.Y.Z" -- exact version
     if let Some(rest) = trimmed.strip_prefix('=') {
-      let ver_str = rest.trim_start().split_whitespace().next()?;
+      let ver_str = rest.split_whitespace().next()?;
       return deno_semver::Version::parse_standard(ver_str).ok();
     }
 
