@@ -3453,6 +3453,9 @@
     "parallel/test-worker-message-port-transfer-terminate.js": {},
     "parallel/test-worker-message-port-wasm-module.js": {},
     "parallel/test-worker-message-port-wasm-threads.js": {},
+    "parallel/test-worker-messaging-errors-handler.js": {},
+    "parallel/test-worker-messaging-errors-invalid.js": {},
+    "parallel/test-worker-messaging-errors-timeout.js": {},
     "parallel/test-worker-mjs-workerdata.js": {},
     // TODO(bartlomieju): disabled during work on `node:inspector`, this test didn't actualy run before
     // "parallel/test-worker-name.js": {},

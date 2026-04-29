@@ -875,6 +875,11 @@ function handleMessageFromThread(message: any) {
     case MSG_REGISTER: {
       const { threadId: tid, port } = message;
       threadsPorts.set(tid, port);
+      // Transferred MessagePorts lose nodeWorkerThreadCloseCb which
+      // the recv loop needs to properly unref promises.
+      if (!port[nodeWorkerThreadCloseCb]) {
+        port[nodeWorkerThreadCloseCb] = () => {};
+      }
       port.addEventListener("message", (ev: MessageEvent) => {
         handleMessageFromThread(ev.data);
       });
@@ -920,7 +925,11 @@ function sendMessageToWorker(
   const port = threadsPorts.get(destination);
   if (!port) {
     const status = new Int32Array(memory);
-    Atomics.store(status, WORKER_MESSAGING_RESULT_INDEX, WORKER_MESSAGING_RESULT_NO_LISTENERS);
+    Atomics.store(
+      status,
+      WORKER_MESSAGING_RESULT_INDEX,
+      WORKER_MESSAGING_RESULT_NO_LISTENERS,
+    );
     Atomics.store(status, WORKER_MESSAGING_STATUS_INDEX, 1);
     Atomics.notify(status, WORKER_MESSAGING_STATUS_INDEX, 1);
     return;
@@ -939,7 +948,11 @@ function sendMessageToWorker(
 }
 
 // deno-lint-ignore no-explicit-any
-function receiveMessageFromWorker(source: number, value: any, memory: SharedArrayBuffer) {
+function receiveMessageFromWorker(
+  source: number,
+  value: any,
+  memory: SharedArrayBuffer,
+) {
   let response = WORKER_MESSAGING_RESULT_NO_LISTENERS;
 
   try {
@@ -991,11 +1004,21 @@ function destroyMainThreadPort(workerThreadId: number) {
 
 function setupMainThreadPort(port: MessagePort) {
   mainThreadPort = port;
+  // Transferred MessagePorts lose custom properties like
+  // nodeWorkerThreadCloseCb. The recv loop in MessagePort.start()
+  // only unrefs promises when this callback is set, so we need to
+  // restore it to ensure the port doesn't keep the event loop alive.
+  if (!mainThreadPort[nodeWorkerThreadCloseCb]) {
+    mainThreadPort[nodeWorkerThreadCloseCb] = () => {};
+  }
   mainThreadPort.addEventListener("message", (ev: MessageEvent) => {
     handleMessageFromMainThread(ev.data);
   });
   if (mainThreadPort.start) mainThreadPort.start();
-  // Don't keep the event loop alive just for this routing port
+  // Don't keep the event loop alive just for this routing port.
+  // Workers stay alive via other handles (BroadcastChannel, user
+  // ports, etc.) - matching Node.js where the internal port is
+  // always unrefed.
   if (mainThreadPort[refMessagePort]) mainThreadPort[refMessagePort](false);
 }
 
@@ -1009,7 +1032,9 @@ async function postMessageToThread(
 ) {
   // Handle overloaded signature: (threadId, value, timeout)
   let transferList: any[] = []; // deno-lint-ignore no-explicit-any
-  if (typeof transferListOrTimeout === "number" && typeof timeout === "undefined") {
+  if (
+    typeof transferListOrTimeout === "number" && typeof timeout === "undefined"
+  ) {
     timeout = transferListOrTimeout;
   } else if (transferListOrTimeout !== undefined) {
     transferList = transferListOrTimeout as any[]; // deno-lint-ignore no-explicit-any
@@ -1025,7 +1050,8 @@ async function postMessageToThread(
 
   const memory = new SharedArrayBuffer(WORKER_MESSAGING_SHARED_DATA);
   const status = new Int32Array(memory);
-  const promise = Atomics.waitAsync(status, WORKER_MESSAGING_STATUS_INDEX, 0, timeout).value;
+  const promise =
+    Atomics.waitAsync(status, WORKER_MESSAGING_STATUS_INDEX, 0, timeout).value;
 
   const message = {
     type: MSG_SEND,
@@ -1046,9 +1072,15 @@ async function postMessageToThread(
 
   if (response === "timed-out") {
     throw new ERR_WORKER_MESSAGING_TIMEOUT();
-  } else if (status[WORKER_MESSAGING_RESULT_INDEX] === WORKER_MESSAGING_RESULT_NO_LISTENERS) {
+  } else if (
+    status[WORKER_MESSAGING_RESULT_INDEX] ===
+      WORKER_MESSAGING_RESULT_NO_LISTENERS
+  ) {
     throw new ERR_WORKER_MESSAGING_FAILED();
-  } else if (status[WORKER_MESSAGING_RESULT_INDEX] === WORKER_MESSAGING_RESULT_LISTENER_ERROR) {
+  } else if (
+    status[WORKER_MESSAGING_RESULT_INDEX] ===
+      WORKER_MESSAGING_RESULT_LISTENER_ERROR
+  ) {
     throw new ERR_WORKER_MESSAGING_ERRORED();
   }
 }
