@@ -420,6 +420,31 @@ impl Visit for DenoUsageVisitor {
       self.info.uses_import_meta_main = true;
     }
 
+    // Detect globalThis.Deno / globalThis["Deno"] access. The standalone
+    // `Deno` ident path is handled by visit_ident, but here the `Deno`
+    // token is a member property (MemberProp::Ident / a string literal),
+    // not an Ident node, so visit_ident never sees it.
+    if let swc_ast::Expr::Ident(obj) = node.obj.as_ref()
+      && obj.sym.as_ref() == "globalThis"
+    {
+      let accesses_deno = match &node.prop {
+        swc_ast::MemberProp::Ident(prop) => prop.sym.as_ref() == "Deno",
+        swc_ast::MemberProp::Computed(computed) => {
+          if let swc_ast::Expr::Lit(swc_ast::Lit::Str(s)) =
+            computed.expr.as_ref()
+          {
+            s.value.to_string_lossy() == "Deno"
+          } else {
+            false
+          }
+        }
+        _ => false,
+      };
+      if accesses_deno {
+        self.info.uses_deno = true;
+      }
+    }
+
     node.visit_children_with(self);
   }
 
@@ -952,6 +977,28 @@ mod tests {
     let code = r#"
       import { Deno } from "some-module";
       Deno.something();
+    "#;
+    let parsed = parse_source(code);
+    let info = detect_deno_usage(&parsed);
+    assert!(!info.uses_deno);
+  }
+
+  #[test]
+  fn test_detect_global_this_deno() {
+    let code = r#"
+      const has = typeof globalThis.Deno !== "undefined";
+      globalThis["Deno"].readTextFileSync("a");
+    "#;
+    let parsed = parse_source(code);
+    let info = detect_deno_usage(&parsed);
+    assert!(info.uses_deno);
+  }
+
+  #[test]
+  fn test_no_false_positive_global_this_other() {
+    let code = r#"
+      const x = globalThis.fetch;
+      const y = globalThis["console"];
     "#;
     let parsed = parse_source(code);
     let info = detect_deno_usage(&parsed);
