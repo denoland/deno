@@ -4,14 +4,14 @@ import { op_http2_error_string } from "ext:core/ops";
 import * as constants from "ext:deno_node/internal/http2/constants.ts";
 
 class Http2Session {
-  request(...args) {
-    return this.request(...args);
+  request(headers, count, options, parent, weight, exclusive) {
+    return this.request(headers, count, options, parent, weight, exclusive);
   }
 }
 
 class Http2Stream {
-  info(...args) {
-    return this.info(...args);
+  info(headers, count) {
+    return this.info(headers, count);
   }
 }
 
