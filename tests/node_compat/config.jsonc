@@ -1702,6 +1702,7 @@
     "parallel/test-http2-multiheaders.js": {},
     "parallel/test-http2-multiplex.js": {},
     "parallel/test-http2-multistream-destroy-on-read-tls.js": {},
+    "parallel/test-http2-no-more-streams.js": {},
     "parallel/test-http2-no-wanttrailers-listener.js": {},
     "parallel/test-http2-options-max-headers-block-length.js": {},
     "parallel/test-http2-options-max-headers-exceeds-nghttp2.js": {},
