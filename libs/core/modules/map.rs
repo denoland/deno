@@ -2057,31 +2057,22 @@ impl ModuleMap {
 
               // Gather async transitive dependencies. Returns a promise
               // that resolves when all async deps are ready.
-              let maybe_promise =
-                module.evaluate_for_import_defer(tc_scope);
+              let maybe_promise = module.evaluate_for_import_defer(tc_scope);
 
               let Some(promise_val) = maybe_promise else {
                 let exception = tc_scope.exception().unwrap();
                 let exception = v8::Global::new(tc_scope, exception);
-                self.dynamic_import_reject(
-                  tc_scope,
-                  dyn_import_id,
-                  exception,
-                );
+                self.dynamic_import_reject(tc_scope, dyn_import_id, exception);
                 continue;
               };
 
               // Get the deferred namespace — this triggers evaluation on
               // first property access.
-              let module_namespace = module.get_module_namespace_with_phase(
-                v8::ModuleImportPhase::kDefer,
-              );
+              let module_namespace = module
+                .get_module_namespace_with_phase(v8::ModuleImportPhase::kDefer);
 
-              let promise =
-                v8::Local::<v8::Promise>::try_from(promise_val)
-                  .expect(
-                    "evaluate_for_import_defer should return a promise",
-                  );
+              let promise = v8::Local::<v8::Promise>::try_from(promise_val)
+                .expect("evaluate_for_import_defer should return a promise");
 
               match promise.state() {
                 v8::PromiseState::Fulfilled => {
@@ -2093,19 +2084,13 @@ impl ModuleMap {
                     .expect("Invalid dynamic import id")
                     .resolver;
                   let resolver = resolver_handle.open(tc_scope);
-                  resolver
-                    .resolve(tc_scope, module_namespace)
-                    .unwrap();
+                  resolver.resolve(tc_scope, module_namespace).unwrap();
                   tc_scope.perform_microtask_checkpoint();
                 }
                 v8::PromiseState::Rejected => {
                   let err = promise.result(tc_scope);
                   let err = v8::Global::new(tc_scope, err);
-                  self.dynamic_import_reject(
-                    tc_scope,
-                    dyn_import_id,
-                    err,
-                  );
+                  self.dynamic_import_reject(tc_scope, dyn_import_id, err);
                 }
                 v8::PromiseState::Pending => {
                   // Async deps still loading. Store for later resolution.
@@ -2120,14 +2105,9 @@ impl ModuleMap {
                   }
 
                   let wake_module_cb =
-                    v8::Function::builder(wake_module)
-                      .build(tc_scope);
+                    v8::Function::builder(wake_module).build(tc_scope);
                   if let Some(wake_module_cb) = wake_module_cb {
-                    promise.then2(
-                      tc_scope,
-                      wake_module_cb,
-                      wake_module_cb,
-                    );
+                    promise.then2(tc_scope, wake_module_cb, wake_module_cb);
                   }
 
                   let dyn_import_mod_evaluate = DynImportModEvaluate {
