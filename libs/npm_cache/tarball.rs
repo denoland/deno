@@ -4,8 +4,8 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use deno_error::JsErrorBox;
-use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm::registry::NpmPackageVersionDistInfo;
+use deno_npmrc::ResolvedNpmRc;
 use deno_semver::package::PackageNv;
 use futures::FutureExt;
 use futures::future::LocalBoxFuture;
@@ -42,6 +42,7 @@ enum MemoryCacheItem {
 /// and on macOS APFS has an internal mutex that makes highly parallel filesystem
 /// operations contend heavily. Limiting concurrency reduces this contention.
 /// Decompression (CPU-bound) is not gated by this limit.
+#[cfg(not(target_arch = "wasm32"))]
 const MAX_CONCURRENT_FS_WRITES: usize =
   if cfg!(target_os = "macos") { 4 } else { 128 };
 
@@ -195,8 +196,7 @@ impl<THttpClient: NpmCacheHttpClient, TSys: NpmCacheSys>
       // IMPORTANT: npm registries may specify tarball URLs at different URLS than the
       // registry, so we MUST get the auth for the tarball URL and not the registry URL.
       let tarball_uri = Url::parse(&dist.tarball).map_err(JsErrorBox::from_err)?;
-      let maybe_registry_config =
-        tarball_cache.npmrc.tarball_config(&tarball_uri);
+      let maybe_registry_config = tarball_cache.npmrc.tarball_config(&tarball_uri);
       let maybe_auth_header = maybe_registry_config.and_then(|c| maybe_auth_header_value_for_npm_registry(c).ok()?);
 
       if let Some(reporter) = &reporter {
@@ -204,7 +204,7 @@ impl<THttpClient: NpmCacheHttpClient, TSys: NpmCacheSys>
 
       }
       let result = tarball_cache.http_client
-        .download_with_retries_on_any_tokio_runtime(tarball_uri, maybe_auth_header, None)
+        .download_with_retries_on_any_tokio_runtime(tarball_uri, maybe_auth_header, None, maybe_registry_config.map(|c| c.as_ref()))
         .await;
       if let Some(reporter) = &reporter {
         reporter.downloaded(&package_nv);

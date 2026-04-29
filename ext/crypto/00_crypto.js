@@ -65,6 +65,7 @@ const {
   JSONStringify,
   MathCeil,
   ObjectAssign,
+  ObjectDefineProperty,
   ObjectHasOwn,
   ObjectPrototypeIsPrototypeOf,
   SafeArrayIterator,
@@ -177,6 +178,7 @@ const supportedAlgorithms = {
     "AES-GCM": null,
     "AES-OCB": null,
     "AES-KW": null,
+    "ChaCha20-Poly1305": null,
     "Ed25519": null,
     "X25519": null,
     "X448": null,
@@ -194,6 +196,7 @@ const supportedAlgorithms = {
     "AES-GCM": "AesGcmParams",
     "AES-OCB": "AesGcmParams",
     "AES-CTR": "AesCtrParams",
+    "ChaCha20-Poly1305": null,
   },
   "decrypt": {
     "RSA-OAEP": "RsaOaepParams",
@@ -201,6 +204,7 @@ const supportedAlgorithms = {
     "AES-GCM": "AesGcmParams",
     "AES-OCB": "AesGcmParams",
     "AES-CTR": "AesCtrParams",
+    "ChaCha20-Poly1305": null,
   },
   "get key length": {
     "AES-CBC": "AesDerivedKeyParams",
@@ -435,8 +439,34 @@ function constructKey(type, extractable, usages, algorithm, handle) {
   key[_algorithm] = algorithm;
   key[_handle] = handle;
   key[kKeyObject] = WeakMapPrototypeGet(KEY_STORE, handle);
+  ObjectDefineProperty(key, core.hostObjectBrand, {
+    __proto__: null,
+    value: () => ({
+      type: "CryptoKey",
+      keyType: type,
+      extractable,
+      usages,
+      algorithm,
+      keyData: WeakMapPrototypeGet(KEY_STORE, handle),
+    }),
+    enumerable: false,
+    configurable: false,
+    writable: false,
+  });
   return key;
 }
+
+core.registerCloneableResource("CryptoKey", (data) => {
+  const handle = {};
+  WeakMapPrototypeSet(KEY_STORE, handle, data.keyData);
+  return constructKey(
+    data.keyType,
+    data.extractable,
+    data.usages,
+    data.algorithm,
+    handle,
+  );
+});
 
 // https://w3c.github.io/webcrypto/#concept-usage-intersection
 /**
@@ -1076,6 +1106,10 @@ class SubtleCrypto {
       case "AES-OCB":
       case "AES-KW": {
         result = exportKeyAES(format, key, innerKey);
+        break;
+      }
+      case "ChaCha20-Poly1305": {
+        result = exportKeyChaCha20Poly1305(format, key, innerKey);
         break;
       }
       default:
@@ -2864,6 +2898,65 @@ function exportKeyAES(
   }
 }
 
+function exportKeyChaCha20Poly1305(format, _key, innerKey) {
+  switch (format) {
+    case "raw": {
+      const data = innerKey.data;
+      return TypedArrayPrototypeGetBuffer(data);
+    }
+    default:
+      throw new DOMException("Not implemented", "NotSupportedError");
+  }
+}
+
+function importKeyChaCha20Poly1305(
+  format,
+  keyData,
+  extractable,
+  keyUsages,
+) {
+  const supportedKeyUsages = ["encrypt", "decrypt", "wrapKey", "unwrapKey"];
+  if (
+    ArrayPrototypeFind(
+      keyUsages,
+      (u) => !ArrayPrototypeIncludes(supportedKeyUsages, u),
+    ) !== undefined
+  ) {
+    throw new DOMException("Invalid key usage", "SyntaxError");
+  }
+
+  switch (format) {
+    case "raw": {
+      if (TypedArrayPrototypeGetByteLength(keyData) !== 32) {
+        throw new DOMException(
+          "Invalid key length: ChaCha20-Poly1305 requires 256-bit key",
+          "DataError",
+        );
+      }
+
+      const handle = {};
+      WeakMapPrototypeSet(KEY_STORE, handle, {
+        type: "secret",
+        data: keyData,
+      });
+
+      const algorithm = {
+        name: "ChaCha20-Poly1305",
+      };
+
+      return constructKey(
+        "secret",
+        extractable,
+        usageIntersection(keyUsages, recognisedUsages),
+        algorithm,
+        handle,
+      );
+    }
+    default:
+      throw new DOMException("Not implemented", "NotSupportedError");
+  }
+}
+
 function importKeyAES(
   format,
   normalizedAlgorithm,
@@ -3651,6 +3744,14 @@ async function importKeyInner(
         extractable,
         keyUsages,
         ["wrapKey", "unwrapKey"],
+      );
+    }
+    case "ChaCha20-Poly1305": {
+      return importKeyChaCha20Poly1305(
+        format,
+        keyData,
+        extractable,
+        keyUsages,
       );
     }
     case "X448": {
@@ -5285,11 +5386,6 @@ class Crypto {
       op_crypto_get_random_values(typedArray);
       return typedArray;
     }
-    typedArray = webidl.converters.ArrayBufferView(
-      typedArray,
-      prefix,
-      "Argument 1",
-    );
     switch (tag) {
       case "Int8Array":
       case "Uint8ClampedArray":
@@ -5302,7 +5398,7 @@ class Crypto {
         break;
       default:
         throw new DOMException(
-          "The provided ArrayBufferView is not an integer array type",
+          "The provided value is not an integer-type TypedArray",
           "TypeMismatchError",
         );
     }
@@ -5840,4 +5936,191 @@ const dictEcdhKeyDeriveParams = [
 webidl.converters.EcdhKeyDeriveParams = webidl
   .createDictionaryConverter("EcdhKeyDeriveParams", dictEcdhKeyDeriveParams);
 
-export { Crypto, crypto, CryptoKey, SubtleCrypto };
+// Bridge functions for Node.js KeyObject interop
+
+/**
+ * Export CryptoKey data in a format suitable for creating Node.js KeyObject.
+ * Returns { type, data } where data is DER bytes (spki/pkcs8) or raw bytes (secret).
+ */
+function cryptoKeyExportNodeKeyMaterial(cryptoKey) {
+  const handle = cryptoKey[_handle];
+  const innerKey = WeakMapPrototypeGet(KEY_STORE, handle);
+  const type = cryptoKey[_type];
+  const algorithmName = cryptoKey[_algorithm].name;
+
+  if (type === "secret") {
+    return { type: "secret", data: innerKey.data };
+  }
+
+  if (type === "public") {
+    let data;
+    switch (algorithmName) {
+      case "RSASSA-PKCS1-v1_5":
+      case "RSA-PSS":
+      case "RSA-OAEP":
+        data = op_crypto_export_key(
+          { algorithm: algorithmName, format: "spki" },
+          innerKey,
+        );
+        break;
+      case "ECDH":
+      case "ECDSA":
+        data = op_crypto_export_key({
+          algorithm: algorithmName,
+          namedCurve: cryptoKey[_algorithm].namedCurve,
+          format: "spki",
+        }, innerKey);
+        break;
+      case "Ed25519":
+        data = op_crypto_export_spki_ed25519(innerKey);
+        break;
+      case "X25519":
+        data = op_crypto_export_spki_x25519(innerKey);
+        break;
+      case "X448":
+        data = op_crypto_export_spki_x448(innerKey);
+        break;
+      default:
+        throw new TypeError(`Unsupported algorithm: ${algorithmName}`);
+    }
+    return { type: "public", data };
+  }
+
+  // private
+  let data;
+  switch (algorithmName) {
+    case "RSASSA-PKCS1-v1_5":
+    case "RSA-PSS":
+    case "RSA-OAEP":
+      data = op_crypto_export_key(
+        { algorithm: algorithmName, format: "pkcs8" },
+        innerKey,
+      );
+      break;
+    case "ECDH":
+    case "ECDSA":
+      data = op_crypto_export_key({
+        algorithm: algorithmName,
+        namedCurve: cryptoKey[_algorithm].namedCurve,
+        format: "pkcs8",
+      }, innerKey);
+      break;
+    case "Ed25519": {
+      data = op_crypto_export_pkcs8_ed25519(
+        new Uint8Array([0x04, 0x22, ...new SafeArrayIterator(innerKey)]),
+      );
+      data[15] = 0x20;
+      break;
+    }
+    case "X25519": {
+      data = op_crypto_export_pkcs8_x25519(
+        new Uint8Array([0x04, 0x22, ...new SafeArrayIterator(innerKey)]),
+      );
+      data[15] = 0x20;
+      break;
+    }
+    case "X448": {
+      data = op_crypto_export_pkcs8_x448(
+        new Uint8Array([0x04, 0x22, ...new SafeArrayIterator(innerKey)]),
+      );
+      data[15] = 0x20;
+      break;
+    }
+    default:
+      throw new TypeError(`Unsupported algorithm: ${algorithmName}`);
+  }
+  return { type: "private", data };
+}
+
+/**
+ * Create a CryptoKey from key material (sync). Used by Node.js keyObject.toCryptoKey().
+ * @param {string} format - "raw", "spki", or "pkcs8"
+ * @param {Uint8Array} keyData - key material
+ * @param {object} algorithm - algorithm identifier (string or object)
+ * @param {boolean} extractable
+ * @param {string[]} usages
+ * @returns {CryptoKey}
+ */
+function importCryptoKeySync(format, keyData, algorithm, extractable, usages) {
+  const normalizedAlgorithm = normalizeAlgorithm(algorithm, "importKey");
+  const algorithmName = normalizedAlgorithm.name;
+
+  switch (algorithmName) {
+    case "HMAC":
+      return importKeyHMAC(
+        format,
+        normalizedAlgorithm,
+        keyData,
+        extractable,
+        usages,
+      );
+    case "ECDH":
+    case "ECDSA":
+      return importKeyEC(
+        format,
+        normalizedAlgorithm,
+        keyData,
+        extractable,
+        usages,
+      );
+    case "RSASSA-PKCS1-v1_5":
+    case "RSA-PSS":
+    case "RSA-OAEP":
+      return importKeyRSA(
+        format,
+        normalizedAlgorithm,
+        keyData,
+        extractable,
+        usages,
+      );
+    case "HKDF":
+      return importKeyHKDF(format, keyData, extractable, usages);
+    case "PBKDF2":
+      return importKeyPBKDF2(format, keyData, extractable, usages);
+    case "AES-CTR":
+    case "AES-CBC":
+    case "AES-GCM":
+    case "AES-OCB":
+      return importKeyAES(
+        format,
+        normalizedAlgorithm,
+        keyData,
+        extractable,
+        usages,
+        ["encrypt", "decrypt", "wrapKey", "unwrapKey"],
+      );
+    case "AES-KW":
+      return importKeyAES(
+        format,
+        normalizedAlgorithm,
+        keyData,
+        extractable,
+        usages,
+        ["wrapKey", "unwrapKey"],
+      );
+    case "ChaCha20-Poly1305":
+      return importKeyChaCha20Poly1305(
+        format,
+        keyData,
+        extractable,
+        usages,
+      );
+    case "X448":
+      return importKeyX448(format, keyData, extractable, usages);
+    case "X25519":
+      return importKeyX25519(format, keyData, extractable, usages);
+    case "Ed25519":
+      return importKeyEd25519(format, keyData, extractable, usages);
+    default:
+      throw new DOMException("Not implemented", "NotSupportedError");
+  }
+}
+
+export {
+  Crypto,
+  crypto,
+  CryptoKey,
+  cryptoKeyExportNodeKeyMaterial,
+  importCryptoKeySync,
+  SubtleCrypto,
+};

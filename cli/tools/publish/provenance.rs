@@ -581,7 +581,7 @@ static DEFAULT_REKOR_URL: Lazy<String> = Lazy::new(|| {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LogEntry {
-  #[allow(dead_code)]
+  #[allow(dead_code, reason = "useful for debugging")]
   #[serde(rename = "logID")]
   pub log_id: String,
   pub log_index: u64,
@@ -712,11 +712,13 @@ mod tests {
   use super::Subject;
   use super::SubjectDigest;
 
+  // TODO(dsherret): use sys_traits in the implementation so that this can
+  // be properly tested without polluting the process environment
   #[test]
   fn slsa_github_actions() {
     // Set environment variable
     if env::var("GITHUB_ACTIONS").is_err() {
-      #[allow(clippy::undocumented_unsafe_blocks)]
+      // SAFETY: test code
       unsafe {
         env::set_var("CI", "true");
         env::set_var("GITHUB_ACTIONS", "true");

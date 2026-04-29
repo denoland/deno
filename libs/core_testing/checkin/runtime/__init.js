@@ -20,6 +20,8 @@ globalThis.setTimeout = timers.setTimeout;
 globalThis.setInterval = timers.setInterval;
 globalThis.clearTimeout = timers.clearTimeout;
 globalThis.clearInterval = timers.clearInterval;
+globalThis.setImmediate = timers.setImmediate;
+globalThis.clearImmediate = timers.clearImmediate;
 globalThis.Worker = worker.Worker;
 Deno.core.addMainModuleHandler((module) => {
   if (onMainModuleCb) onMainModuleCb(module);
@@ -81,3 +83,4 @@ Reflect.defineProperty(globalThis, "onrejectionhandled", {
 });
 Deno.unrefTimer = timers.unrefTimer;
 Deno.refTimer = timers.refTimer;
+Deno.unrefImmediate = timers.unrefImmediate;

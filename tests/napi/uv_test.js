@@ -20,3 +20,17 @@ Deno.test({
     assertEquals(called, true);
   },
 });
+
+Deno.test({
+  name: "napi uv async keeps event loop alive",
+  fn: async () => {
+    let called = false;
+    await new Promise((resolve) => {
+      uv.test_uv_async_ref(() => {
+        called = true;
+        resolve();
+      });
+    });
+    assertEquals(called, true);
+  },
+});

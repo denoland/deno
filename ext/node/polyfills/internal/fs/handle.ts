@@ -21,14 +21,33 @@ import {
 } from "node:fs";
 import { createInterface } from "node:readline";
 import type { Interface as ReadlineInterface } from "node:readline";
-import { core, primordials } from "ext:core/mod.js";
+import { primordials } from "ext:core/mod.js";
+import { op_node_fs_close } from "ext:core/ops";
 import {
   BinaryOptionsArgument,
   FileOptionsArgument,
   TextOptionsArgument,
 } from "ext:deno_node/_fs/_fs_common.ts";
-import { writevPromise, WriteVResult } from "ext:deno_node/_fs/_fs_writev.ts";
-import { readvPromise, ReadVResult } from "ext:deno_node/_fs/_fs_readv.ts";
+import { writev } from "node:fs";
+
+export interface WriteVResult {
+  bytesWritten: number;
+  buffers: ReadonlyArray<ArrayBufferView>;
+}
+
+function writevPromise(
+  fd: number,
+  buffers: ArrayBufferView[],
+  position?: number,
+): Promise<WriteVResult> {
+  return new Promise((resolve, reject) => {
+    writev(fd, buffers, position, (err, bytesWritten, buffers) => {
+      if (err) reject(err);
+      else resolve({ bytesWritten, buffers });
+    });
+  });
+}
+import { readvPromise, type ReadVResult } from "node:fs";
 import { fstatPromise } from "ext:deno_node/_fs/_fs_fstat.ts";
 import {
   fchown as fchownCb,
@@ -80,8 +99,8 @@ const kRefs = Symbol("kRefs");
 const kClosePromise = Symbol("kClosePromise");
 const kCloseResolve = Symbol("kCloseResolve");
 const kCloseReject = Symbol("kCloseReject");
-const kRef = Symbol("kRef");
-const kUnref = Symbol("kUnref");
+export const kRef = Symbol("kRef");
+export const kUnref = Symbol("kUnref");
 const kLocked = Symbol("kLocked");
 
 const ftruncatePromise = promisify(ftruncateCb);
@@ -216,7 +235,7 @@ export class FileHandle extends EventEmitter {
   #close(): Promise<void> {
     return new Promise((resolve, reject) => {
       try {
-        core.close(this.fd);
+        op_node_fs_close(this.fd);
         this.#rid = -1;
         resolve();
       } catch (err) {
@@ -291,16 +310,16 @@ export class FileHandle extends EventEmitter {
   }
 
   createReadStream(options?: CreateReadStreamOptions): ReadStream {
-    return new ReadStream(undefined, { ...options, fd: this.fd });
+    return new ReadStream(undefined, { ...options, fd: this });
   }
 
   createWriteStream(options?: CreateWriteStreamOptions): WriteStream {
-    return new WriteStream(undefined, { ...options, fd: this.fd });
+    return new WriteStream(undefined, { ...options, fd: this });
   }
 
   readLines(options?: CreateReadStreamOptions): ReadlineInterface {
     return createInterface({
-      input: this.createReadStream({ ...options, autoClose: false }),
+      input: this.createReadStream(options),
       crlfDelay: Infinity,
     });
   }
@@ -417,12 +436,19 @@ function readPromise(
   position?: number | null,
 ): Promise<ReadResult> {
   if (ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, bufferOrOpt)) {
-    if (typeof length !== "number" && typeof position !== "number") {
+    if (
+      typeof offsetOrOpt !== "number" && typeof length !== "number" &&
+      typeof position !== "number"
+    ) {
+      // fileHandle.read(buffer) or fileHandle.read(buffer, options)
+      const opts = (offsetOrOpt ?? {}) as ReadAsyncOptions<
+        NodeJS.ArrayBufferView
+      >;
       return new Promise((resolve, reject) => {
         readAsync(
           rid,
           bufferOrOpt,
-          offsetOrOpt,
+          opts,
           (err: Error, bytesRead: number, buffer: Buffer) => {
             if (err) reject(err);
             else resolve({ buffer, bytesRead });

@@ -2,8 +2,6 @@
 
 #![doc = include_str!("README.md")]
 #![deny(clippy::unnecessary_wraps)]
-// TODO(bartlomieju): remove println! usage from macro debugging/test code
-#![allow(clippy::print_stdout)]
 
 use proc_macro::TokenStream;
 
@@ -85,6 +83,8 @@ fn get_internalized_string(
 
 #[cfg(test)]
 mod infra {
+  #![allow(clippy::disallowed_methods, reason = "test code")]
+
   use std::path::PathBuf;
 
   use syn::File;
@@ -111,6 +111,7 @@ deno_ops_compile_test_runner::prelude!();";
     let file =
       syn::parse_str::<File>(&source).expect("Failed to parse Rust file");
 
+    #[allow(clippy::print_stdout, reason = "test code")]
     let expected_out = expander(file)
       .map(|tokens| {
         println!("======== Raw tokens ========:\n{}", tokens.clone());

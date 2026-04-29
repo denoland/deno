@@ -100,11 +100,10 @@ builtin_ops! {
   ops_builtin_types::op_is_weak_set,
   ops_builtin_v8::op_add_main_module_handler,
   ops_builtin_v8::op_set_handled_promise_rejection_handler,
-  ops_builtin_v8::op_timer_queue,
-  ops_builtin_v8::op_timer_queue_system,
-  ops_builtin_v8::op_timer_cancel,
-  ops_builtin_v8::op_timer_ref,
-  ops_builtin_v8::op_timer_unref,
+  ops_builtin_v8::op_timer_schedule,
+  ops_builtin_v8::op_timer_track,
+  ops_builtin_v8::op_timer_untrack,
+  ops_builtin_v8::op_timer_now,
   ops_builtin_v8::op_ref_op,
   ops_builtin_v8::op_unref_op,
   ops_builtin_v8::op_lazy_load_esm,
@@ -133,6 +132,7 @@ builtin_ops! {
   ops_builtin_v8::op_current_user_call_site,
   ops_builtin_v8::op_set_format_exception_callback,
   ops_builtin_v8::op_event_loop_has_more_work,
+  ops_builtin_v8::op_immediate_check,
   ops_builtin_v8::op_leak_tracing_enable,
   ops_builtin_v8::op_leak_tracing_submit,
   ops_builtin_v8::op_leak_tracing_get_all,
@@ -142,7 +142,7 @@ builtin_ops! {
 
 #[op2(fast)]
 pub fn op_panic(#[string] message: String) {
-  #[allow(clippy::print_stderr)]
+  #[allow(clippy::print_stderr, reason = "intentional panic output")]
   {
     eprintln!("JS PANIC: {}", message);
   }
@@ -165,7 +165,7 @@ fn op_add(a: i32, b: i32) -> i32 {
   a + b
 }
 
-#[allow(clippy::unused_async)]
+#[allow(clippy::unused_async, reason = "intentially async")]
 #[op2]
 pub async fn op_add_async(a: i32, b: i32) -> i32 {
   a + b
@@ -174,23 +174,23 @@ pub async fn op_add_async(a: i32, b: i32) -> i32 {
 #[op2(fast)]
 pub fn op_void_sync() {}
 
-#[allow(clippy::unused_async)]
+#[allow(clippy::unused_async, reason = "intentially async")]
 #[op2]
 pub async fn op_void_async() {}
 
-#[allow(clippy::unused_async)]
+#[allow(clippy::unused_async, reason = "intentially async")]
 #[op2]
 pub async fn op_error_async() -> Result<(), JsErrorBox> {
   Err(JsErrorBox::generic("error"))
 }
 
-#[allow(clippy::unused_async)]
+#[allow(clippy::unused_async, reason = "intentially async")]
 #[op2(async(deferred), fast)]
 pub async fn op_error_async_deferred() -> Result<(), JsErrorBox> {
   Err(JsErrorBox::generic("error"))
 }
 
-#[allow(clippy::unused_async)]
+#[allow(clippy::unused_async, reason = "intentially async")]
 #[op2(async(deferred), fast)]
 pub async fn op_void_async_deferred() {}
 
@@ -220,13 +220,28 @@ pub fn op_print(
   #[string] msg: &str,
   is_err: bool,
 ) -> Result<(), std::io::Error> {
-  if is_err {
-    stderr().write_all(msg.as_bytes())?;
-    stderr().flush().unwrap();
+  let mut out: Box<dyn Write> = if is_err {
+    Box::new(stderr())
   } else {
-    stdout().write_all(msg.as_bytes())?;
-    stdout().flush().unwrap();
+    Box::new(stdout())
+  };
+  // Use a manual write loop instead of write_all because the fd may be
+  // in non-blocking mode (e.g. when Node's process.stdout sets
+  // O_NONBLOCK via uv_pipe_open/uv_tty_init). write_all does not
+  // retry on WouldBlock.
+  let mut buf = msg.as_bytes();
+  while !buf.is_empty() {
+    match out.write(buf) {
+      Ok(n) => buf = &buf[n..],
+      Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+        std::thread::yield_now();
+        continue;
+      }
+      Err(e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
+      Err(e) => return Err(e),
+    }
   }
+  out.flush().unwrap();
   Ok(())
 }
 
@@ -367,7 +382,7 @@ async fn op_read_all(
   let mut buf = BufMutView::new(buffer_strategy.buffer_size());
 
   loop {
-    #[allow(deprecated)]
+    #[allow(deprecated, reason = "needed for compatibility")]
     buf.maybe_grow(buffer_strategy.buffer_size()).unwrap();
 
     let (n, new_buf) = resource.clone().read_byob(buf).await?;
@@ -602,7 +617,10 @@ fn wrap_module<'s, 'i>(
   let global_module = v8::Global::new(scope, module);
   scope.set_slot(global_module);
 
-  #[allow(clippy::unnecessary_wraps)]
+  #[allow(
+    clippy::unnecessary_wraps,
+    reason = "required by v8 callback signature"
+  )]
   fn resolve_callback<'s>(
     context: v8::Local<'s, v8::Context>,
     specifier: v8::Local<'s, v8::String>,

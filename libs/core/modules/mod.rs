@@ -731,7 +731,6 @@ pub(crate) struct ModuleRequest {
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub(crate) struct ModuleInfo {
-  #[allow(unused)]
   pub id: ModuleId,
   pub main: bool,
   pub name: ModuleName,

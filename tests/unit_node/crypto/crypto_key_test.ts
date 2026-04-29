@@ -787,13 +787,19 @@ Deno.test("X509Certificate inspect", async function () {
   assertEquals(
     trimmedStdout,
     `X509Certificate {
-  subject: 'C=US\\nST=CA\\nL=SF\\nO=Joyent\\nOU=Node.js\\nCN=agent1\\nEmail=ry@tinyclouds.org',
+  subject: 'C=US\\n' +
+    'ST=CA\\n' +
+    'L=SF\\n' +
+    'O=Joyent\\n' +
+    'OU=Node.js\\n' +
+    'CN=agent1\\n' +
+    'emailAddress=ry@tinyclouds.org',
   subjectAltName: undefined,
-  issuer: 'C=US\\nST=CA\\nL=SF\\nO=Joyent\\nOU=Node.js\\nCN=ca1\\nEmail=ry@tinyclouds.org',
+  issuer: 'C=US\\nST=CA\\nL=SF\\nO=Joyent\\nOU=Node.js\\nCN=ca1\\nemailAddress=ry@tinyclouds.org',
   infoAccess: 'OCSP - URI:http://ocsp.nodejs.org/\\n' +
     'CA Issuers - URI:http://ca.nodejs.org/ca.cert',
-  validFrom: 'Sep  3 21:40:37 2022 +00:00',
-  validTo: 'Jun 17 21:40:37 2296 +00:00',
+  validFrom: 'Sep  3 21:40:37 2022 GMT',
+  validTo: 'Jun 17 21:40:37 2296 GMT',
   validFromDate: 2022-09-03T21:40:37.000Z,
   validToDate: 2296-06-17T21:40:37.000Z,
   fingerprint: '8B:89:16:C4:99:87:D2:13:1A:64:94:36:38:A5:32:01:F0:95:3B:53',

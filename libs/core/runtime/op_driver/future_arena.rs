@@ -76,7 +76,10 @@ impl<T, C, M: FutureContextMapper<T, C, F::Output>, F: Future> Future
   }
 }
 
-#[allow(private_interfaces)]
+#[allow(
+  private_interfaces,
+  reason = "variants are implementation details not exposed publicly"
+)]
 pub enum FutureAllocation<T: 'static, C: 'static> {
   /// The future and metadata are small enough to fit in the arena, so let's put it there
   Arena(ArenaBox<DynFutureInfoErased<T, C>>),
@@ -180,7 +183,10 @@ impl<T, C: Clone> FutureArena<T, C> {
   ///
   /// The type of the future provided must convert into the type of the arena itself via [`From`].
   #[inline]
-  #[allow(private_bounds)]
+  #[allow(
+    private_bounds,
+    reason = "bounds are implementation details not exposed publicly"
+  )]
   pub fn allocate<F, R, M: FutureContextMapper<T, C, R> + 'static>(
     &self,
     context: M,

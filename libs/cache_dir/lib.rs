@@ -1,5 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
+#![deny(clippy::disallowed_methods)]
+
 mod cache;
 mod common;
 mod deno_dir;

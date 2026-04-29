@@ -19,15 +19,38 @@ export function updateSpanFromRequest(span: Span, request: Request) {
   span.setAttribute("url.query", StringPrototypeSlice(url.search, 1));
 }
 
-export function updateSpanFromResponse(span: Span, response: Response) {
+function setResponseAttributes(
+  span: Span,
+  response: Response,
+  errorThreshold: number,
+) {
   span.setAttribute(
     "http.response.status_code",
     String(response.status),
   );
-  if (response.status >= 400) {
+  if (response.status >= errorThreshold) {
     span.setAttribute("error.type", String(response.status));
     span.setStatus({ code: 2, message: response.statusText });
   }
+}
+
+// Per OTel HTTP semantic conventions, client spans should have ERROR status
+// for all >= 400 responses.
+export function updateSpanFromClientResponse(
+  span: Span,
+  response: Response,
+) {
+  setResponseAttributes(span, response, 400);
+}
+
+// Per OTel HTTP semantic conventions, server spans should only have ERROR
+// status for 5xx responses. 4xx responses are client errors, not server
+// errors.
+export function updateSpanFromServerResponse(
+  span: Span,
+  response: Response,
+) {
+  setResponseAttributes(span, response, 500);
 }
 
 // deno-lint-ignore no-explicit-any

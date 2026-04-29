@@ -5,7 +5,7 @@ use std::io::IsTerminal;
 /// Represents an underlying handle for a platform. On unix, everything is an `fd`. On Windows, everything
 /// is a Windows handle except for sockets (which are `SOCKET`s).
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
-#[allow(unused)]
+#[allow(unused, reason = "variants used in platform-specific code")]
 pub enum ResourceHandle {
   /// A file handle/descriptor.
   Fd(ResourceHandleFd),

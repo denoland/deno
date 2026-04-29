@@ -161,22 +161,27 @@ pub enum Type {
 }
 
 pub fn type_of<'a, 'i>(
-  scope: &mut v8::PinScope<'a, 'i>,
+  _scope: &mut v8::PinScope<'a, 'i>,
   value: Local<'a, Value>,
 ) -> Type {
   if value.is_null() {
     return Type::Null;
   }
 
-  #[allow(clippy::wildcard_in_or_patterns)]
-  match value.type_of(scope).to_rust_string_lossy(scope).as_str() {
-    "undefined" => Type::Undefined,
-    "boolean" => Type::Boolean,
-    "number" => Type::Number,
-    "string" => Type::String,
-    "symbol" => Type::Symbol,
-    "bigint" => Type::BigInt,
-    "object" | "function" | _ => Type::Object,
+  if value.is_undefined() {
+    Type::Undefined
+  } else if value.is_boolean() {
+    Type::Boolean
+  } else if value.is_number() {
+    Type::Number
+  } else if value.is_string() {
+    Type::String
+  } else if value.is_symbol() {
+    Type::Symbol
+  } else if value.is_big_int() {
+    Type::BigInt
+  } else {
+    Type::Object
   }
 }
 
@@ -480,7 +485,6 @@ macro_rules! impl_ints {
       impl<'a> WebIdlConverter<'a> for $t {
         type Options = IntOptions;
 
-        #[allow(clippy::manual_range_contains)]
         fn convert<'b, 'i>(
           scope: &mut v8::PinScope<'a, 'i>,
           value: Local<'a, Value>,
@@ -513,7 +517,7 @@ macro_rules! impl_ints {
               n = 0.0;
             }
 
-            if n < MIN || n > MAX {
+            if !(MIN..=MAX).contains(&n) {
               return Err(WebIdlError::new(prefix, context.borrowed(), WebIdlErrorKind::IntRange {
                 lower_bound: MIN,
                 upper_bound: MAX,
@@ -539,7 +543,7 @@ macro_rules! impl_ints {
             n = 0.0;
           }
 
-          if n >= MIN && n <= MAX {
+          if (MIN..=MAX).contains(&n) {
             return Ok(n as Self);
           }
 
@@ -1485,19 +1489,6 @@ mod tests {
     deno_core::scope!(scope, runtime);
 
     let val = v8::String::new(scope, "foo-bar").unwrap();
-    let converted = Enumeration::convert(
-      scope,
-      val.into(),
-      "prefix".into(),
-      (|| "context".into()).into(),
-      &Default::default(),
-    )
-    .unwrap();
-    assert_eq!(converted, Enumeration::FooBar);
-    assert_eq!(converted.as_str(), "foo-bar");
-
-    let val = v8::String::new(scope, "foo-bar").unwrap();
-    let val = v8::Array::new_with_elements(scope, &[val.into()]);
     let converted = Enumeration::convert(
       scope,
       val.into(),

@@ -37,6 +37,7 @@ pub fn op_v8_get_heap_statistics(
   buffer[11] = stats.total_global_handles_size() as f64;
   buffer[12] = stats.used_global_handles_size() as f64;
   buffer[13] = stats.external_memory() as f64;
+  buffer[14] = stats.total_allocated_bytes() as f64;
 }
 
 #[op2(fast)]

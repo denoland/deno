@@ -103,8 +103,6 @@ v8_static_strings! {
 pub struct PluginHostProxy {
   tx: mpsc::Sender<PluginHostRequest>,
   pub(crate) plugin_info: Arc<Mutex<Vec<PluginInfo>>>,
-  #[allow(unused)]
-  join_handle: std::thread::JoinHandle<Result<(), AnyError>>,
 }
 
 impl PluginHostProxy {
@@ -233,28 +231,29 @@ impl PluginHost {
     let (tx_req, rx_req) = mpsc::channel(10);
 
     let logger_ = logger.clone();
-    let join_handle = std::thread::spawn(move || {
-      let logger = logger_;
-      log::debug!("Lint PluginHost thread spawned");
-      let start = std::time::Instant::now();
-      let fut = async move {
-        let runner = create_plugin_runner_inner(logger.clone(), rx_req).await?;
-        log::debug!("Lint PlugibnHost running loop");
-        runner.run_loop().await?;
-        log::debug!(
-          "Lint PluginHost thread finished, took {:?}",
-          std::time::Instant::now() - start
-        );
-        Ok(())
-      }
-      .boxed_local();
-      tokio_util::create_and_run_current_thread(fut)
-    });
+    let _join_handle: std::thread::JoinHandle<Result<(), AnyError>> =
+      std::thread::spawn(move || {
+        let logger = logger_;
+        log::debug!("Lint PluginHost thread spawned");
+        let start = std::time::Instant::now();
+        let fut = async move {
+          let runner =
+            create_plugin_runner_inner(logger.clone(), rx_req).await?;
+          log::debug!("Lint PlugibnHost running loop");
+          runner.run_loop().await?;
+          log::debug!(
+            "Lint PluginHost thread finished, took {:?}",
+            std::time::Instant::now() - start
+          );
+          Ok(())
+        }
+        .boxed_local();
+        tokio_util::create_and_run_current_thread(fut)
+      });
 
     let proxy = PluginHostProxy {
       tx: tx_req,
       plugin_info: Arc::new(Mutex::new(vec![])),
-      join_handle,
     };
 
     Ok(proxy)

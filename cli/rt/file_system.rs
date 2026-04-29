@@ -679,8 +679,7 @@ fn not_supported(name: &str) -> std::io::Error {
 impl sys_traits::FsDirEntry for FileBackedVfsDirEntry {
   type Metadata = BoxedFsMetadataValue;
 
-  #[allow(mismatched_lifetime_syntaxes)]
-  fn file_name(&self) -> Cow<std::ffi::OsStr> {
+  fn file_name(&self) -> Cow<'_, std::ffi::OsStr> {
     Cow::Borrowed(self.metadata.name.as_ref())
   }
 
@@ -712,7 +711,10 @@ impl sys_traits::BaseFsReadDir for DenoRtSys {
         entries.map(|entry| Ok(BoxedFsDirEntry::new(entry))),
       ))
     } else {
-      #[allow(clippy::disallowed_types)] // ok because we're implementing the fs
+      #[allow(
+        clippy::disallowed_methods,
+        reason = "ok because we're implementing the sys"
+      )]
       sys_traits::impls::RealSys.fs_read_dir_boxed(path)
     }
   }
@@ -740,7 +742,10 @@ impl sys_traits::BaseFsMetadata for DenoRtSys {
     if self.is_vfs_path(path) {
       Ok(BoxedFsMetadataValue::new(self.vfs.stat(path)?))
     } else {
-      #[allow(clippy::disallowed_types)] // ok because we're implementing the fs
+      #[allow(
+        clippy::disallowed_methods,
+        reason = "ok because we're implementing the sys"
+      )]
       sys_traits::impls::RealSys.fs_metadata_boxed(path)
     }
   }
@@ -753,7 +758,10 @@ impl sys_traits::BaseFsMetadata for DenoRtSys {
     if self.is_vfs_path(path) {
       Ok(BoxedFsMetadataValue::new(self.vfs.lstat(path)?))
     } else {
-      #[allow(clippy::disallowed_types)] // ok because we're implementing the fs
+      #[allow(
+        clippy::disallowed_methods,
+        reason = "ok because we're implementing the sys"
+      )]
       sys_traits::impls::RealSys.fs_symlink_metadata_boxed(path)
     }
   }
@@ -774,7 +782,10 @@ impl sys_traits::BaseFsCopy for DenoRtSys {
         &CheckedPath::unsafe_new(Cow::Borrowed(to)),
       )
     } else {
-      #[allow(clippy::disallowed_types)] // ok because we're implementing the fs
+      #[allow(
+        clippy::disallowed_types,
+        reason = "ok because we're implementing the sys"
+      )]
       sys_traits::impls::RealSys.fs_copy(from, to)
     }
   }
@@ -1018,7 +1029,10 @@ impl sys_traits::BaseFsOpen for DenoRtSys {
     if self.is_vfs_path(path) {
       Ok(FsFileAdapter::Vfs(self.vfs.open_file(path)?))
     } else {
-      #[allow(clippy::disallowed_types)] // ok because we're implementing the fs
+      #[allow(
+        clippy::disallowed_methods,
+        reason = "ok because we're implementing the sys"
+      )]
       Ok(FsFileAdapter::Real(
         sys_traits::impls::RealSys.base_fs_open(path, options)?,
       ))
@@ -1044,7 +1058,10 @@ impl sys_traits::BaseFsSymlinkDir for DenoRtSys {
 impl sys_traits::SystemRandom for DenoRtSys {
   #[inline]
   fn sys_random(&self, buf: &mut [u8]) -> std::io::Result<()> {
-    #[allow(clippy::disallowed_types)] // ok because we're implementing the fs
+    #[allow(
+      clippy::disallowed_methods,
+      reason = "ok because we're implementing the sys"
+    )]
     sys_traits::impls::RealSys.sys_random(buf)
   }
 }
@@ -1052,7 +1069,10 @@ impl sys_traits::SystemRandom for DenoRtSys {
 impl sys_traits::SystemTimeNow for DenoRtSys {
   #[inline]
   fn sys_time_now(&self) -> SystemTime {
-    #[allow(clippy::disallowed_types)] // ok because we're implementing the fs
+    #[allow(
+      clippy::disallowed_types,
+      reason = "ok because we're implementing the sys"
+    )]
     sys_traits::impls::RealSys.sys_time_now()
   }
 }
@@ -1060,7 +1080,10 @@ impl sys_traits::SystemTimeNow for DenoRtSys {
 impl sys_traits::ThreadSleep for DenoRtSys {
   #[inline]
   fn thread_sleep(&self, dur: Duration) {
-    #[allow(clippy::disallowed_types)] // ok because we're implementing the fs
+    #[allow(
+      clippy::disallowed_methods,
+      reason = "ok because we're implementing the sys"
+    )]
     sys_traits::impls::RealSys.thread_sleep(dur)
   }
 }
@@ -1068,8 +1091,10 @@ impl sys_traits::ThreadSleep for DenoRtSys {
 impl sys_traits::EnvCurrentDir for DenoRtSys {
   #[inline]
   fn env_current_dir(&self) -> std::io::Result<PathBuf> {
-    // ok because we're implementing the fs
-    #[allow(clippy::disallowed_types, clippy::disallowed_methods)]
+    #[allow(
+      clippy::disallowed_methods,
+      reason = "ok because we're implementing the sys"
+    )]
     sys_traits::impls::RealSys.env_current_dir()
   }
 }
@@ -1077,7 +1102,10 @@ impl sys_traits::EnvCurrentDir for DenoRtSys {
 impl sys_traits::EnvHomeDir for DenoRtSys {
   #[inline]
   fn env_home_dir(&self) -> Option<PathBuf> {
-    #[allow(clippy::disallowed_types)] // ok because we're implementing the fs
+    #[allow(
+      clippy::disallowed_methods,
+      reason = "ok because we're implementing the sys"
+    )]
     sys_traits::impls::RealSys.env_home_dir()
   }
 }
@@ -1087,7 +1115,10 @@ impl sys_traits::BaseEnvVar for DenoRtSys {
     &self,
     key: &std::ffi::OsStr,
   ) -> Option<std::ffi::OsString> {
-    #[allow(clippy::disallowed_types)] // ok because we're implementing the fs
+    #[allow(
+      clippy::disallowed_methods,
+      reason = "ok because we're implementing the sys"
+    )]
     sys_traits::impls::RealSys.base_env_var_os(key)
   }
 }
@@ -1431,6 +1462,34 @@ impl deno_io::fs::File for FileBackedVfsFile {
 
   // lower level functionality
   fn as_stdio(self: Rc<Self>) -> FsResult<StdStdio> {
+    Err(FsError::NotSupported)
+  }
+  fn read_at_sync(
+    self: Rc<Self>,
+    buf: &mut [u8],
+    position: u64,
+  ) -> FsResult<usize> {
+    self
+      .vfs
+      .read_file(&self.file, position, buf)
+      .map_err(FsError::Io)
+  }
+  async fn read_at_async(
+    self: Rc<Self>,
+    mut buf: BufMutView,
+    position: u64,
+  ) -> FsResult<(usize, BufMutView)> {
+    let nread = self
+      .vfs
+      .read_file(&self.file, position, &mut buf)
+      .map_err(FsError::Io)?;
+    Ok((nread, buf))
+  }
+  fn write_at_sync(
+    self: Rc<Self>,
+    _buf: &[u8],
+    _position: u64,
+  ) -> FsResult<usize> {
     Err(FsError::NotSupported)
   }
   fn backing_fd(self: Rc<Self>) -> Option<ResourceHandleFd> {

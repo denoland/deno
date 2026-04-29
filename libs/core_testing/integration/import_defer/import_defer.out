@@ -1,0 +1,11 @@
+before import defer
+after import defer, before access
+deferred module evaluated
+value: 42
+after first access
+add: 3
+after first access, before dynamic import defer
+after dynamic import defer, before access
+deferred2 module evaluated
+deferred2 value: 99
+done

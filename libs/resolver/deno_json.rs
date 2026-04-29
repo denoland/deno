@@ -47,11 +47,11 @@ use crate::factory::ConfigDiscoveryOption;
 use crate::npm::DenoInNpmPackageChecker;
 use crate::npm::NpmResolverSys;
 
-#[allow(clippy::disallowed_types)]
+#[allow(clippy::disallowed_types, reason = "definition")]
 type UrlRc = deno_maybe_sync::MaybeArc<Url>;
-#[allow(clippy::disallowed_types)]
+#[allow(clippy::disallowed_types, reason = "definition")]
 type CompilerOptionsRc = deno_maybe_sync::MaybeArc<CompilerOptions>;
-#[allow(clippy::disallowed_types)]
+#[allow(clippy::disallowed_types, reason = "definition")]
 pub type CompilerOptionsTypesRc =
   deno_maybe_sync::MaybeArc<Vec<(Url, Vec<String>)>>;
 
@@ -203,7 +203,10 @@ pub fn parse_compiler_options(
   }
 }
 
-#[allow(clippy::disallowed_types)]
+#[allow(
+  clippy::disallowed_types,
+  reason = "Arc needed for cloneable error sharing"
+)]
 pub type SerdeJsonErrorArc = std::sync::Arc<serde_json::Error>;
 
 #[derive(Debug, Clone, Error, JsError)]
@@ -234,7 +237,7 @@ impl JsxImportSourceConfig {
   }
 }
 
-#[allow(clippy::disallowed_types)]
+#[allow(clippy::disallowed_types, reason = "definition")]
 pub type JsxImportSourceConfigRc =
   deno_maybe_sync::MaybeArc<JsxImportSourceConfig>;
 
@@ -375,7 +378,7 @@ pub struct TranspileAndEmitOptions {
 }
 
 #[cfg(feature = "deno_ast")]
-#[allow(clippy::disallowed_types)]
+#[allow(clippy::disallowed_types, reason = "definition")]
 pub type TranspileAndEmitOptionsRc =
   deno_maybe_sync::MaybeArc<TranspileAndEmitOptions>;
 
@@ -478,7 +481,7 @@ struct LoggedWarnings {
   folders: deno_maybe_sync::MaybeDashSet<Url>,
 }
 
-#[allow(clippy::disallowed_types)]
+#[allow(clippy::disallowed_types, reason = "definition")]
 type LoggedWarningsRc = deno_maybe_sync::MaybeArc<LoggedWarnings>;
 
 #[derive(Default, Debug)]
@@ -526,7 +529,10 @@ pub struct CompilerOptionsData {
   workspace_dir_url: Option<UrlRc>,
   memoized: MemoizedValues,
   logged_warnings: LoggedWarningsRc,
-  #[cfg_attr(not(feature = "deno_ast"), allow(unused))]
+  #[cfg_attr(
+    not(feature = "deno_ast"),
+    allow(unused, reason = "simpler to have dead code when feature isn't on")
+  )]
   overrides: CompilerOptionsOverrides,
 }
 
@@ -972,7 +978,7 @@ impl TsConfigFileFilter {
   }
 }
 
-#[allow(clippy::disallowed_types)]
+#[allow(clippy::disallowed_types, reason = "definition")]
 type TsConfigFileFilterRc = deno_maybe_sync::MaybeArc<TsConfigFileFilter>;
 
 #[derive(Debug)]
@@ -1173,10 +1179,10 @@ impl<
       }
     })?;
     log::debug!("tsconfig.json file found at '{}'", path.display());
-    let value = jsonc_parser::parse_to_serde_value(&text, &Default::default())
-      .inspect_err(|e| warn(e))
-      .ok()
-      .flatten();
+    let value: Option<serde_json::Value> =
+      jsonc_parser::parse_to_serde_value(&text, &Default::default())
+        .inspect_err(|e| warn(e))
+        .ok();
     let object = value.as_ref().and_then(|v| v.as_object());
     let extends_targets = object
       .and_then(|o| o.get("extends"))
@@ -1578,19 +1584,15 @@ impl CompilerOptionsResolver {
     }
   }
 
+  /// Returns only `compilerOptions.types` entries as graph imports,
+  /// excluding tsconfig `files` entries.
   #[cfg(feature = "graph")]
-  pub fn to_graph_imports(&self) -> Vec<deno_graph::ReferrerImports> {
-    // Resolve all the imports from every config file. These can be separated
-    // them later based on the folder we're type checking.
+  pub fn to_compiler_options_types_imports(
+    &self,
+  ) -> Vec<deno_graph::ReferrerImports> {
     let mut imports_by_referrer =
       IndexMap::<_, Vec<_>>::with_capacity(self.size());
-    for (_, compiler_options_data, maybe_files) in self.entries() {
-      if let Some((referrer, files)) = maybe_files {
-        imports_by_referrer
-          .entry(referrer.as_ref())
-          .or_default()
-          .extend(files.iter().map(|f| f.relative_specifier.clone()));
-      }
+    for (_, compiler_options_data, _) in self.entries() {
       for (referrer, types) in
         compiler_options_data.compiler_options_types().as_ref()
       {
@@ -1608,6 +1610,33 @@ impl CompilerOptionsResolver {
       })
       .collect()
   }
+
+  #[cfg(feature = "graph")]
+  pub fn to_graph_imports(&self) -> Vec<deno_graph::ReferrerImports> {
+    // Start with compilerOptions.types imports, then add tsconfig files.
+    let mut imports_by_referrer = IndexMap::<Url, Vec<String>>::new();
+    for ri in self.to_compiler_options_types_imports() {
+      imports_by_referrer
+        .entry(ri.referrer)
+        .or_default()
+        .extend(ri.imports);
+    }
+    for (_, _, maybe_files) in self.entries() {
+      if let Some((referrer, files)) = maybe_files {
+        imports_by_referrer
+          .entry(referrer.as_ref().clone())
+          .or_default()
+          .extend(files.iter().map(|f| f.relative_specifier.clone()));
+      }
+    }
+    imports_by_referrer
+      .into_iter()
+      .map(|(referrer, imports)| deno_graph::ReferrerImports {
+        referrer,
+        imports,
+      })
+      .collect()
+  }
 }
 
 #[cfg(feature = "graph")]
@@ -1617,7 +1646,7 @@ impl deno_graph::CheckJsResolver for CompilerOptionsResolver {
   }
 }
 
-#[allow(clippy::disallowed_types)]
+#[allow(clippy::disallowed_types, reason = "definition")]
 pub type CompilerOptionsResolverRc =
   deno_maybe_sync::MaybeArc<CompilerOptionsResolver>;
 

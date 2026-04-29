@@ -544,7 +544,7 @@ fn create_pty(
 
   // SAFETY: Posix APIs
   unsafe {
-    #[allow(clippy::zombie_processes)]
+    #[allow(clippy::zombie_processes, reason = "necessary for pty")]
     let cmd = std::process::Command::new(program)
       .current_dir(cwd)
       .args(args)

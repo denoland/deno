@@ -24,11 +24,11 @@ use sys_traits::FsRead;
 use thiserror::Error;
 use url::Url;
 
-#[allow(clippy::disallowed_types)]
+#[allow(clippy::disallowed_types, reason = "arc wrapper type")]
 pub type PackageJsonRc = deno_maybe_sync::MaybeArc<PackageJson>;
-#[allow(clippy::disallowed_types)]
+#[allow(clippy::disallowed_types, reason = "arc wrapper type")]
 pub type PackageJsonDepsRc = deno_maybe_sync::MaybeArc<PackageJsonDeps>;
-#[allow(clippy::disallowed_types)]
+#[allow(clippy::disallowed_types, reason = "once lock wrapper type")]
 type PackageJsonDepsRcCell = deno_maybe_sync::MaybeOnceLock<PackageJsonDepsRc>;
 
 pub enum PackageJsonCacheResult {

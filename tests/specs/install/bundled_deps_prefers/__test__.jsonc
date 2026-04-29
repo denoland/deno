@@ -1,0 +1,12 @@
+{
+  "tempDir": true,
+  "steps": [{
+    // we have a npm:@denotest/add locally in the lockfile
+    // and we want to ensure that's not used by the npm:@denotest/bundled-deps
+    "args": "install --lockfile-only",
+    "output": "[WILDCARD]"
+  }, {
+    "args": "run -A npm:@denotest/bundled-add 1 2",
+    "output": "output.out"
+  }]
+}

@@ -1263,6 +1263,24 @@ Deno.test({
   },
 });
 
+// Regression test for https://github.com/denoland/deno/issues/25776
+Deno.test(async function killSignalZero() {
+  const child = CP.spawn(Deno.execPath(), [
+    "eval",
+    "setTimeout(() => {}, 60_000)",
+  ]);
+  try {
+    // Signal 0 checks if the process exists without sending a signal
+    const alive = child.kill(0);
+    assertEquals(alive, true);
+    // The child should not be marked as killed
+    assertEquals(child.killed, false);
+  } finally {
+    child.kill();
+    await new Promise((resolve) => child.on("close", resolve));
+  }
+});
+
 Deno.test(async function experimentalFlag() {
   const code = ``;
   const file = await Deno.makeTempFile();
@@ -1325,4 +1343,54 @@ Deno.test(async function stdoutWriteMultipleChunksNotTruncated() {
   } finally {
     await Deno.remove(script);
   }
+});
+
+Deno.test(function spawnSyncShellMetacharactersEscaped() {
+  // Shell metacharacters in args should be escaped, not interpreted.
+  // On Unix, & would launch a background process; on Windows, it
+  // would chain a second command. Either way echo should print
+  // the literal string.
+  const ret = spawnSync(
+    Deno.execPath(),
+    ["eval", "console.log(Deno.args[0])", "--", "a&b|c<d>e"],
+    { shell: true, encoding: "utf-8" },
+  );
+  assertEquals(ret.status, 0);
+  assertEquals(ret.stdout.trim(), "a&b|c<d>e");
+});
+
+Deno.test(function spawnSyncReturnsPid() {
+  const ret = spawnSync(Deno.execPath(), ["eval", "console.log('hi')"]);
+  assertEquals(ret.status, 0);
+  assertEquals(typeof ret.pid, "number");
+  assert(ret.pid > 0);
+});
+
+Deno.test({
+  name: "spawnWithNumericFdInStdioArray",
+  ignore: Deno.build.os === "windows",
+  async fn() {
+    const fs = await import("node:fs");
+    const tmpFile = Deno.makeTempFileSync();
+    try {
+      const fd = fs.openSync(tmpFile, "w");
+      const child = spawn("/bin/sh", [
+        "-c",
+        "echo hello from child >&3",
+      ], {
+        stdio: ["ignore", "pipe", "pipe", fd],
+      });
+      const { promise, resolve } = Promise.withResolvers<number>();
+      child.on("close", (code: number) => {
+        resolve(code);
+      });
+      const code = await promise;
+      fs.closeSync(fd);
+      assertEquals(code, 0);
+      const content = Deno.readTextFileSync(tmpFile);
+      assertEquals(content, "hello from child\n");
+    } finally {
+      Deno.removeSync(tmpFile);
+    }
+  },
 });

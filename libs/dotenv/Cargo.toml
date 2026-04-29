@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_dotenv"
-version = "0.6.0"
+version = "0.16.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -10,7 +10,9 @@ repository.workspace = true
 description = "dotenv file parser for Deno"
 
 [dependencies]
+deno_path_util.workspace = true
 sys_traits.workspace = true
+thiserror.workspace = true
 
 [dev-dependencies]
 sys_traits = { workspace = true, features = ["memory"] }

@@ -1,14 +1,141 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
+use std::collections::HashMap;
+use std::ffi::c_void;
 use std::sync::Mutex;
 use std::sync::Once;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
+use std::time::Duration;
+
+use futures::task::AtomicWaker;
 
 use super::bindings;
 use super::snapshot;
 use super::snapshot::V8Snapshot;
+
+/// Extract the raw isolate address from an `UnsafeRawIsolatePtr`.
+///
+/// `UnsafeRawIsolatePtr` is `#[repr(transparent)]` over `*mut RealIsolate`,
+/// so its bit-pattern is a single pointer-sized value. We use transmute
+/// because the inner field is private.
+///
+/// The compile-time assert below guarantees the layout assumption holds.
+const _: () = assert!(
+  std::mem::size_of::<v8::UnsafeRawIsolatePtr>()
+    == std::mem::size_of::<usize>()
+);
+
+pub(crate) fn isolate_ptr_to_key(ptr: v8::UnsafeRawIsolatePtr) -> usize {
+  // SAFETY: UnsafeRawIsolatePtr is #[repr(transparent)] over *mut RealIsolate,
+  // which is pointer-sized. The compile-time assert above guarantees this.
+  unsafe { std::mem::transmute::<v8::UnsafeRawIsolatePtr, usize>(ptr) }
+}
+
+/// Thread-safe queue of V8 foreground tasks, shared between the global
+/// isolate registry (written by V8 background threads) and the event
+/// loop (drained on the main thread). Cloning is cheap (Arc).
+pub type ForegroundTaskQueue = std::sync::Arc<Mutex<Vec<v8::Task>>>;
+
+/// Per-isolate state stored in the global registry. Kept minimal: just
+/// enough for platform callbacks (which only have an isolate pointer) to
+/// push tasks and wake the event loop.
+struct IsolateEntry {
+  waker: std::sync::Arc<AtomicWaker>,
+  handle: tokio::runtime::Handle,
+  tasks: ForegroundTaskQueue,
+}
+
+static ISOLATE_ENTRIES: std::sync::LazyLock<
+  Mutex<HashMap<usize, IsolateEntry>>,
+> = std::sync::LazyLock::new(|| Mutex::new(HashMap::new()));
+
+/// Register an isolate in the global platform registry. The `tasks`
+/// queue is shared with `JsRuntimeState` so the event loop drains it
+/// directly without touching the global map.
+pub fn register_isolate(
+  isolate_ptr: usize,
+  waker: std::sync::Arc<AtomicWaker>,
+  handle: tokio::runtime::Handle,
+  tasks: ForegroundTaskQueue,
+) {
+  let mut map = ISOLATE_ENTRIES.lock().unwrap();
+  map.insert(
+    isolate_ptr,
+    IsolateEntry {
+      waker,
+      handle,
+      tasks,
+    },
+  );
+}
+
+pub fn unregister_isolate(isolate_ptr: usize) {
+  let mut map = ISOLATE_ENTRIES.lock().unwrap();
+  map.remove(&isolate_ptr);
+}
+
+/// Queue an immediate foreground task and wake the event loop.
+fn queue_task(key: usize, task: v8::Task) {
+  let map = ISOLATE_ENTRIES.lock().unwrap();
+  if let Some(entry) = map.get(&key) {
+    entry.tasks.lock().unwrap().push(task);
+    entry.waker.wake();
+  }
+}
+
+/// Spawn a delayed V8 foreground task on the isolate's tokio runtime.
+/// After the delay, the task is queued for synchronous draining (not
+/// run directly on the tokio worker thread).
+fn spawn_delayed_task(key: usize, task: v8::Task, delay_in_seconds: f64) {
+  let map = ISOLATE_ENTRIES.lock().unwrap();
+  if let Some(entry) = map.get(&key) {
+    let tasks = entry.tasks.clone();
+    let waker = entry.waker.clone();
+    entry.handle.spawn(async move {
+      tokio::time::sleep(Duration::from_secs_f64(delay_in_seconds)).await;
+      tasks.lock().unwrap().push(task);
+      waker.wake();
+    });
+  }
+}
+
+/// Custom V8 platform implementation that queues immediate foreground
+/// tasks for synchronous draining, and spawns delayed tasks on tokio.
+struct DenoPlatformImpl;
+
+impl v8::PlatformImpl for DenoPlatformImpl {
+  fn post_task(&self, isolate_ptr: *mut c_void, task: v8::Task) {
+    queue_task(isolate_ptr as usize, task);
+  }
+
+  fn post_non_nestable_task(&self, isolate_ptr: *mut c_void, task: v8::Task) {
+    queue_task(isolate_ptr as usize, task);
+  }
+
+  fn post_delayed_task(
+    &self,
+    isolate_ptr: *mut c_void,
+    task: v8::Task,
+    delay_in_seconds: f64,
+  ) {
+    spawn_delayed_task(isolate_ptr as usize, task, delay_in_seconds);
+  }
+
+  fn post_non_nestable_delayed_task(
+    &self,
+    isolate_ptr: *mut c_void,
+    task: v8::Task,
+    delay_in_seconds: f64,
+  ) {
+    spawn_delayed_task(isolate_ptr as usize, task, delay_in_seconds);
+  }
+
+  fn post_idle_task(&self, _isolate_ptr: *mut c_void, _task: v8::IdleTask) {
+    unreachable!();
+  }
+}
 
 fn v8_init(
   v8_platform: Option<v8::SharedRef<v8::Platform>>,
@@ -27,7 +154,8 @@ fn v8_init(
     " --harmony-temporal",
     " --js-float16array",
     " --js-explicit-resource-management",
-    " --js-source-phase-imports"
+    " --js-source-phase-imports",
+    " --js-defer-import-eval"
   );
   let snapshot_flags = "--predictable --random-seed=42";
   let expose_natives_flags = "--expose_gc --allow_natives_syntax";
@@ -51,13 +179,10 @@ fn v8_init(
   v8::V8::set_flags_from_string(&flags);
 
   let v8_platform = v8_platform.unwrap_or_else(|| {
-    if cfg!(any(test, feature = "unsafe_use_unprotected_platform")) {
-      // We want to use the unprotected platform for unit tests
-      v8::new_unprotected_default_platform(0, false)
-    } else {
-      v8::new_default_platform(0, false)
-    }
-    .make_shared()
+    let unprotected =
+      cfg!(any(test, feature = "unsafe_use_unprotected_platform"));
+    v8::new_custom_platform(0, false, unprotected, DenoPlatformImpl)
+      .make_shared()
   });
   v8::V8::initialize_platform(v8_platform.clone());
   v8::V8::initialize();

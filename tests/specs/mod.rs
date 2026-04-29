@@ -211,7 +211,10 @@ struct SingleTestMetaData {
   pub step: StepMetaData,
   #[serde(default)]
   pub ignore: bool,
-  #[allow(dead_code)]
+  #[allow(
+    dead_code,
+    reason = "deserialized but used only in multi-step conversion"
+  )]
   #[serde(default)]
   pub variants: BTreeMap<String, JsonMap>,
   /// Timeout in seconds for each step. Defaults to 300 (5 minutes).
@@ -261,6 +264,18 @@ struct StepMetaData {
 }
 
 pub fn main() {
+  // When running from Claude Code, require a test filter (additional arg)
+  // to prevent accidentally running the entire spec test suite.
+  if std::env::var_os("CLAUDE_CODE_ENTRYPOINT").is_some() {
+    let has_arg = std::env::args().skip(1).len() > 0;
+    if !has_arg {
+      panic!(
+        "Running the entire spec test suite from Claude Code is not allowed. \
+         Please provide a test filter, e.g.: ./x test-spec my_test_name"
+      );
+    }
+  }
+
   let ci_hash = test_util::hash::check_ci_hash("specs", |hasher| {
     let tests = test_util::tests_path();
     hasher
@@ -298,6 +313,10 @@ pub fn main() {
 
   if root_category.is_empty() {
     return; // all tests filtered out
+  }
+
+  if test_util::test_runner::print_tests_if_list_flag(&root_category) {
+    return;
   }
 
   let _http_guard = test_util::http_server();
@@ -456,7 +475,10 @@ fn test_context_from_metadata(
 
   if metadata.canonicalized_temp_dir {
     // not actually deprecated, we just want to discourage its use
-    #[allow(deprecated)]
+    #[allow(
+      deprecated,
+      reason = "not actually deprecated, just discouraging use"
+    )]
     {
       builder = builder.use_canonicalized_temp_dir();
     }
@@ -464,7 +486,10 @@ fn test_context_from_metadata(
   if metadata.symlinked_temp_dir {
     // not actually deprecated, we just want to discourage its use
     // because it's mostly used for testing purposes locally
-    #[allow(deprecated)]
+    #[allow(
+      deprecated,
+      reason = "not actually deprecated, just discouraging use"
+    )]
     {
       builder = builder.use_symlinked_temp_dir();
     }
@@ -588,7 +613,10 @@ fn run_step(
   };
   let command = match *NO_CAPTURE {
     // deprecated is only to prevent use, so this is fine here
-    #[allow(deprecated)]
+    #[allow(
+      deprecated,
+      reason = "not actually deprecated, just discouraging use"
+    )]
     true => command.show_output(),
     false => command,
   };

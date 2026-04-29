@@ -64,6 +64,8 @@ use node_resolver::NpmPackageFolderResolver;
 use crate::BootstrapOptions;
 use crate::FeatureChecker;
 use crate::coverage::CoverageCollector;
+use crate::cpu_profiler::CpuProfiler;
+use crate::cpu_profiler::CpuProfilerConfig;
 use crate::deno_inspector_server::MainInspectorSessionChannel;
 use crate::ops;
 use crate::shared::runtime;
@@ -131,7 +133,6 @@ impl<'s> WorkerThreadType {
 }
 /// Events that are sent to host from child
 /// worker.
-#[allow(clippy::large_enum_variant)]
 pub enum WorkerControlEvent {
   TerminalError(CoreError, i32),
   Close(i32),
@@ -206,7 +207,7 @@ pub struct WebWorkerInternalHandle {
 
 impl WebWorkerInternalHandle {
   /// Post WorkerEvent to parent as a worker
-  #[allow(clippy::result_large_err)]
+  #[allow(clippy::result_large_err, reason = "TODO: investigate")]
   pub fn post_event(
     &self,
     event: WorkerControlEvent,
@@ -267,9 +268,7 @@ pub struct SendableWebWorkerHandle {
   port: MessagePort,
   receiver: mpsc::Receiver<WorkerControlEvent>,
   termination_signal: Arc<AtomicBool>,
-  has_terminated: Arc<AtomicBool>,
   terminate_waker: Arc<AtomicWaker>,
-  isolate_handle: v8::IsolateHandle,
 }
 
 impl From<SendableWebWorkerHandle> for WebWorkerHandle {
@@ -278,9 +277,7 @@ impl From<SendableWebWorkerHandle> for WebWorkerHandle {
       receiver: Rc::new(RefCell::new(handle.receiver)),
       port: Rc::new(handle.port),
       termination_signal: handle.termination_signal,
-      has_terminated: handle.has_terminated,
       terminate_waker: handle.terminate_waker,
-      isolate_handle: handle.isolate_handle,
     }
   }
 }
@@ -297,15 +294,16 @@ pub struct WebWorkerHandle {
   pub port: Rc<MessagePort>,
   receiver: Rc<RefCell<mpsc::Receiver<WorkerControlEvent>>>,
   termination_signal: Arc<AtomicBool>,
-  has_terminated: Arc<AtomicBool>,
   terminate_waker: Arc<AtomicWaker>,
-  isolate_handle: v8::IsolateHandle,
 }
 
 impl WebWorkerHandle {
   /// Get the WorkerEvent with lock
   /// Return error if more than one listener tries to get event
-  #[allow(clippy::await_holding_refcell_ref)] // TODO(ry) remove!
+  #[allow(
+    clippy::await_holding_refcell_ref,
+    reason = "TODO: investigate and fix"
+  )] // TODO(ry) remove!
   pub async fn get_control_event(&self) -> Option<WorkerControlEvent> {
     let mut receiver = self.receiver.borrow_mut();
     receiver.next().await
@@ -313,36 +311,16 @@ impl WebWorkerHandle {
 
   /// Terminate the worker
   /// This function will set the termination signal, close the message channel,
-  /// and schedule to terminate the isolate after two seconds.
+  /// and wake the worker's event loop so it can terminate.
   pub fn terminate(self) {
-    use std::thread::sleep;
-    use std::thread::spawn;
-    use std::time::Duration;
-
     let schedule_termination =
       !self.termination_signal.swap(true, Ordering::SeqCst);
 
     self.port.disentangle();
 
-    if schedule_termination && !self.has_terminated.load(Ordering::SeqCst) {
+    if schedule_termination {
       // Wake up the worker's event loop so it can terminate.
       self.terminate_waker.wake();
-
-      let has_terminated = self.has_terminated.clone();
-
-      // Schedule to terminate the isolate's execution.
-      spawn(move || {
-        sleep(Duration::from_secs(2));
-
-        // A worker's isolate can only be terminated once, so we need a guard
-        // here.
-        let already_terminated = has_terminated.swap(true, Ordering::SeqCst);
-
-        if !already_terminated {
-          // Stop javascript execution
-          self.isolate_handle.terminate_execution();
-        }
-      });
     }
   }
 }
@@ -361,9 +339,9 @@ fn create_handles(
     name,
     port: Rc::new(parent_port),
     termination_signal: termination_signal.clone(),
-    has_terminated: has_terminated.clone(),
+    has_terminated,
     terminate_waker: terminate_waker.clone(),
-    isolate_handle: isolate_handle.clone(),
+    isolate_handle,
     cancel: CancelHandle::new_rc(),
     sender: ctrl_tx,
     worker_type,
@@ -372,9 +350,7 @@ fn create_handles(
     receiver: ctrl_rx,
     port: worker_port,
     termination_signal,
-    has_terminated,
     terminate_waker,
-    isolate_handle,
   };
   (internal_handle, external_handle)
 }
@@ -426,6 +402,7 @@ pub struct WebWorkerOptions {
   pub close_on_idle: bool,
   pub maybe_worker_metadata: Option<WorkerMetadata>,
   pub maybe_coverage_dir: Option<PathBuf>,
+  pub maybe_cpu_prof_config: Option<CpuProfilerConfig>,
   pub enable_raw_imports: bool,
   pub enable_stack_trace_arg_in_ops: bool,
 }
@@ -449,6 +426,7 @@ pub struct WebWorker {
   maybe_worker_metadata: Option<WorkerMetadata>,
   memory_trim_handle: Option<tokio::task::JoinHandle<()>>,
   maybe_coverage_dir: Option<PathBuf>,
+  maybe_cpu_prof_config: Option<CpuProfilerConfig>,
   bootstrap_error: Option<CoreError>,
   /// Set to `true` by the near-heap-limit callback when resource limits
   /// are exceeded, so the error handler can emit `ERR_WORKER_OUT_OF_MEMORY`.
@@ -516,7 +494,10 @@ impl WebWorker {
 
             Ok(CacheImpl::Lsc(x))
           };
-          #[allow(clippy::arc_with_non_send_sync)]
+          #[allow(
+            clippy::arc_with_non_send_sync,
+            reason = "fine because the Rc is in the return type"
+          )]
           return Some(CreateCache(Arc::new(create_cache_fn)));
         }
       }
@@ -544,6 +525,7 @@ impl WebWorker {
       deno_web::deno_web::init(
         services.blob_store,
         Some(options.main_module.clone()),
+        Default::default(),
         services.broadcast_channel,
       ),
       deno_webgpu::deno_webgpu::init(),
@@ -641,10 +623,7 @@ impl WebWorker {
     options.startup_snapshot.as_ref().expect("A user snapshot was not provided, even though 'only_snapshotted_js_sources' is used.");
 
     // Get our op metrics
-    let (op_summary_metrics, op_metrics_factory_fn) = create_op_metrics(
-      options.bootstrap.enable_op_summary_metrics,
-      options.trace_ops,
-    );
+    let op_metrics_factory_fn = create_op_metrics(options.trace_ops);
 
     let mut js_runtime = JsRuntime::new(RuntimeOptions {
       module_loader: Some(services.module_loader),
@@ -679,10 +658,6 @@ impl WebWorker {
       eval_context_code_cache_cbs: None,
     });
 
-    if let Some(op_summary_metrics) = op_summary_metrics {
-      js_runtime.op_state().borrow_mut().put(op_summary_metrics);
-    }
-
     {
       let state = js_runtime.op_state();
       let mut state = state.borrow_mut();
@@ -695,6 +670,8 @@ impl WebWorker {
       // executing a CJS entrypoint.
       state.put(js_runtime.inspector());
     }
+
+    // The uv loop is auto-created and registered by JsRuntime::new_inner.
 
     if let Some(main_session_tx) = services.main_inspector_session_tx.get() {
       let (main_proxy, worker_proxy) =
@@ -765,6 +742,7 @@ impl WebWorker {
         maybe_worker_metadata: options.maybe_worker_metadata,
         memory_trim_handle: None,
         maybe_coverage_dir: options.maybe_coverage_dir,
+        maybe_cpu_prof_config: options.maybe_cpu_prof_config,
         bootstrap_error: None,
         oom_triggered: Arc::new(AtomicBool::new(false)),
       },
@@ -867,6 +845,25 @@ impl WebWorker {
     Some(coverage_collector)
   }
 
+  pub fn maybe_setup_cpu_profiler(&mut self) -> Option<CpuProfiler> {
+    let config = self.maybe_cpu_prof_config.as_ref()?;
+    let worker_id = self.id.to_string();
+    let filename =
+      crate::cpu_profiler::cpu_prof_filename(config, Some(&worker_id));
+
+    let mut cpu_profiler = CpuProfiler::new(
+      &mut self.js_runtime,
+      config.dir.clone(),
+      filename,
+      config.interval,
+      config.md,
+      config.flamegraph,
+    );
+    cpu_profiler.start_profiling();
+
+    Some(cpu_profiler)
+  }
+
   #[cfg(not(target_os = "linux"))]
   pub fn setup_memory_trim_handler(&mut self) {
     // Noop
@@ -911,7 +908,6 @@ impl WebWorker {
   }
 
   /// See [JsRuntime::execute_script](deno_core::JsRuntime::execute_script)
-  #[allow(clippy::result_large_err)]
   pub fn execute_script(
     &mut self,
     name: &'static str,
@@ -1109,6 +1105,7 @@ pub async fn run_web_worker(
 ) -> Result<(), CoreError> {
   worker.setup_memory_trim_handler();
   let mut maybe_coverage_collector = worker.maybe_setup_coverage_collector();
+  let mut maybe_cpu_profiler = worker.maybe_setup_cpu_profiler();
 
   let name = worker.name.to_string();
   let mut internal_handle = worker.internal_handle.clone();
@@ -1122,7 +1119,11 @@ pub async fn run_web_worker(
     return Ok(());
   }
 
-  // Execute provided source code immediately
+  // Execute provided source code immediately via V8 script evaluation
+  // (sloppy mode). This path is used by node:worker_threads `{ eval: true }`
+  // when the code doesn't contain ESM syntax (import/export), matching
+  // Node.js behavior where such eval workers run as CJS (sloppy mode).
+  // See: https://github.com/denoland/deno/issues/26739
   let result = if let Some(source_code) = maybe_source_code.take() {
     let r = worker.execute_script(located_script_name!(), source_code.into());
     worker.start_polling_for_messages();
@@ -1145,6 +1146,9 @@ pub async fn run_web_worker(
     if let Some(coverage_collector) = maybe_coverage_collector.as_mut() {
       coverage_collector.stop_collecting()?;
     }
+    if let Some(cpu_profiler) = maybe_cpu_profiler.as_mut() {
+      let _ = cpu_profiler.stop_profiling();
+    }
     return Ok(());
   }
 
@@ -1152,11 +1156,13 @@ pub async fn run_web_worker(
     let r = worker
       .run_event_loop(PollEventLoopOptions {
         wait_for_inspector: true,
-        ..Default::default()
       })
       .await;
     if let Some(coverage_collector) = maybe_coverage_collector.as_mut() {
       coverage_collector.stop_collecting()?;
+    }
+    if let Some(cpu_profiler) = maybe_cpu_profiler.as_mut() {
+      let _ = cpu_profiler.stop_profiling();
     }
     r
   } else {
@@ -1223,6 +1229,10 @@ pub async fn run_web_worker(
     let e = if internal_handle.worker_type == WorkerThreadType::Node {
       let msg = e.to_string();
       if msg.starts_with("Module not found") {
+        #[allow(
+          clippy::disallowed_methods,
+          reason = "don't need the error or Wasm support here"
+        )]
         let path = specifier.to_file_path().ok();
         let display = path
           .as_deref()

@@ -346,7 +346,9 @@ export const initStdin = (warmup = false) => {
   });
   stdin._isRawMode = false;
   stdin.setRawMode = (enable) => {
-    io.stdin?.setRaw?.(enable);
+    if (io.stdin?.isTerminal()) {
+      io.stdin.setRaw(enable);
+    }
     stdin._isRawMode = enable;
     return stdin;
   };

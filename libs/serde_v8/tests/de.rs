@@ -52,7 +52,10 @@ macro_rules! decheck {
   ($fn_name:ident, $t:ty, $src:expr_2021, $x:ident, $check:expr_2021) => {
     #[test]
     fn $fn_name() {
-      #[allow(clippy::bool_assert_comparison)]
+      #[allow(
+        clippy::bool_assert_comparison,
+        reason = "explicit comparison improves clarity in tests"
+      )]
       dedo($src, |scope, v| {
         let rt = serde_v8::from_v8(scope, v);
         assert!(rt.is_ok(), "from_v8(\"{}\"): {:?}", $src, rt.err());
@@ -73,7 +76,11 @@ macro_rules! defail {
   ($fn_name:ident, $t:ty, $src:expr_2021, $failcase:expr_2021) => {
     #[test]
     fn $fn_name() {
-      #[allow(clippy::bool_assert_comparison, clippy::redundant_closure_call)]
+      #[allow(
+        clippy::bool_assert_comparison,
+        clippy::redundant_closure_call,
+        reason = "macro-generated test code"
+      )]
       dedo($src, |scope, v| {
         let rt: serde_v8::Result<$t> = serde_v8::from_v8(scope, v);
         let rtstr = format!("{:?}", rt);

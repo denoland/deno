@@ -43,6 +43,7 @@ import {
   NodeError,
 } from "ext:deno_node/internal/errors.ts";
 import LazyTransform from "ext:deno_node/internal/streams/lazy_transform.js";
+import process from "node:process";
 import {
   getDefaultEncoding,
   getHashBlockSize,
@@ -80,10 +81,24 @@ export function Hash(
     validateUint32(xofLen, "options.outputLength");
   }
 
+  const algoLower = isCopy ? undefined : algorithm.toLowerCase();
+
+  if (
+    !isCopy && xofLen === undefined &&
+    (algoLower === "shake128" ||
+      algoLower === "shake256")
+  ) {
+    process.emitWarning(
+      "Creating SHAKE128/256 digests without an explicit options.outputLength is deprecated.",
+      "DeprecationWarning",
+      "DEP0198",
+    );
+  }
+
   try {
     this[kHandle] = isCopy
       ? op_node_hash_clone(algorithm, xofLen)
-      : op_node_create_hash(algorithm.toLowerCase(), xofLen);
+      : op_node_create_hash(algoLower, xofLen);
   } catch (err) {
     // TODO(lucacasonato): don't do this
     if (err.message === "Output length mismatch for non-extendable algorithm") {
@@ -198,6 +213,7 @@ class HmacImpl extends Transform {
   #ZEROES = Buffer.alloc(128);
   #algorithm: string;
   #hash: Hash;
+  #finalized = false;
 
   constructor(
     hmac: string,
@@ -259,6 +275,14 @@ class HmacImpl extends Transform {
   digest(): Buffer;
   digest(encoding: BinaryToTextEncoding): string;
   digest(encoding?: BinaryToTextEncoding): Buffer | string {
+    if (this.#finalized) {
+      if (encoding && encoding !== "buffer") {
+        return "";
+      }
+      return Buffer.alloc(0);
+    }
+    this.#finalized = true;
+
     const result = this.#hash.digest();
 
     return new Hash(this.#algorithm).update(this.#opad).update(result)

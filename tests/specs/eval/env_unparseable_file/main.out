@@ -1,0 +1,3 @@
+Warning Failed parsing value 'ANOTHER_FOO=c:ath' at index 14 within the specified environment file.
+    at [WILDLINE]env_unparseable
+undefined

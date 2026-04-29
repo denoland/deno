@@ -37,7 +37,7 @@ use crate::npm::managed::ManagedResolvePkgFolderFromDenoReqError;
 use crate::workspace::MappedResolutionDiagnostic;
 use crate::workspace::sloppy_imports_resolve;
 
-#[allow(clippy::disallowed_types)]
+#[allow(clippy::disallowed_types, reason = "definition")]
 pub type FoundPackageJsonDepFlagRc =
   deno_maybe_sync::MaybeArc<FoundPackageJsonDepFlag>;
 
@@ -93,6 +93,17 @@ impl ResolveWithGraphError {
       ResolveWithGraphErrorKind::ResolvePkgFolderFromDenoModule(_) => None,
     }
   }
+
+  pub fn into_deno_graph_error(self) -> deno_graph::source::ResolveError {
+    use deno_graph::source::ResolveError;
+
+    match self.into_kind() {
+      ResolveWithGraphErrorKind::Resolve(deno_resolve_error) => {
+        deno_resolve_error.into_deno_graph_error()
+      }
+      err => ResolveError::from_err(err),
+    }
+  }
 }
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
@@ -146,7 +157,7 @@ pub struct MappedResolutionDiagnosticWithPosition<'a> {
   pub start: deno_graph::Position,
 }
 
-#[allow(clippy::disallowed_types)]
+#[allow(clippy::disallowed_types, reason = "definition")]
 pub type OnMappedResolutionDiagnosticFn = deno_maybe_sync::MaybeArc<
   dyn Fn(MappedResolutionDiagnosticWithPosition) + Send + Sync,
 >;
@@ -168,7 +179,7 @@ pub type DefaultDenoResolverRc<TSys> = DenoResolverRc<
   TSys,
 >;
 
-#[allow(clippy::disallowed_types)]
+#[allow(clippy::disallowed_types, reason = "definition")]
 pub type DenoResolverRc<
   TInNpmPackageChecker,
   TIsBuiltInNodeModuleChecker,
@@ -430,6 +441,7 @@ impl<
     &'a self,
     cjs_tracker: &'a CjsTracker<TInNpmPackageChecker, TSys>,
     jsx_import_source_config_resolver: &'a JsxImportSourceConfigResolver,
+    maybe_graph: Option<&'a deno_graph::ModuleGraph>,
   ) -> DenoGraphResolverAdapter<
     'a,
     TInNpmPackageChecker,
@@ -441,6 +453,7 @@ impl<
       cjs_tracker,
       resolver: self,
       jsx_import_source_config_resolver,
+      maybe_graph,
     }
   }
 }
@@ -460,6 +473,7 @@ pub struct DenoGraphResolverAdapter<
     TSys,
   >,
   jsx_import_source_config_resolver: &'a JsxImportSourceConfigResolver,
+  maybe_graph: Option<&'a deno_graph::ModuleGraph>,
 }
 
 impl<
@@ -523,23 +537,42 @@ impl<
     referrer_range: &deno_graph::Range,
     resolution_kind: deno_graph::source::ResolutionKind,
   ) -> Result<Url, ResolveError> {
-    self
-      .resolver
-      .resolve(
-        raw_specifier,
-        &referrer_range.specifier,
-        referrer_range.range.start,
-        referrer_range
-          .resolution_mode
-          .map(node_resolver::ResolutionMode::from_deno_graph)
-          .unwrap_or_else(|| {
-            self
-              .cjs_tracker
-              .get_referrer_kind(&referrer_range.specifier)
-          }),
-        node_resolver::NodeResolutionKind::from_deno_graph(resolution_kind),
-      )
-      .map_err(|err| err.into_deno_graph_error())
+    let resolution_mode = referrer_range
+      .resolution_mode
+      .map(node_resolver::ResolutionMode::from_deno_graph)
+      .unwrap_or_else(|| {
+        self
+          .cjs_tracker
+          .get_referrer_kind(&referrer_range.specifier)
+      });
+    let node_resolution_kind =
+      node_resolver::NodeResolutionKind::from_deno_graph(resolution_kind);
+    match self.maybe_graph {
+      Some(graph) => self
+        .resolver
+        .resolve_with_graph(
+          graph,
+          raw_specifier,
+          &referrer_range.specifier,
+          referrer_range.range.start,
+          ResolveWithGraphOptions {
+            mode: resolution_mode,
+            kind: node_resolution_kind,
+            maintain_npm_specifiers: false,
+          },
+        )
+        .map_err(|err| err.into_deno_graph_error()),
+      None => self
+        .resolver
+        .resolve(
+          raw_specifier,
+          &referrer_range.specifier,
+          referrer_range.range.start,
+          resolution_mode,
+          node_resolution_kind,
+        )
+        .map_err(|err| err.into_deno_graph_error()),
+    }
   }
 }
 
@@ -927,7 +960,10 @@ mod test {
       let specifier = Url::parse("file:///file.ts").unwrap();
       let err = import_map.resolve(input, &specifier).err().unwrap();
       let err = ResolutionError::ResolverError {
-        #[allow(clippy::disallowed_types)]
+        #[allow(
+          clippy::disallowed_types,
+          reason = "ResolutionError requires Arc"
+        )]
         error: std::sync::Arc::new(ResolveError::from_err(err)),
         specifier: input.to_string(),
         range: Range {

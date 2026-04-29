@@ -1,5 +1,4 @@
 disallowed-methods = [
-  { path = "std::env::current_dir", reason = "File system operations should be done using FileSystem trait" },
   { path = "std::path::Path::exists", reason = "File system operations should be done using FileSystem trait" },
   { path = "std::path::Path::canonicalize", reason = "File system operations should be done using FileSystem trait" },
   { path = "std::path::Path::is_dir", reason = "File system operations should be done using FileSystem trait" },
@@ -27,4 +26,9 @@ disallowed-methods = [
   { path = "std::fs::set_permissions", reason = "File system operations should be done using FileSystem trait" },
   { path = "std::fs::symlink_metadata", reason = "File system operations should be done using FileSystem trait" },
   { path = "std::fs::write", reason = "File system operations should be done using FileSystem trait" },
+  { path = "std::fs::DirBuilder::new", reason = "File system operations should be done using FileSystem trait" },
+  { path = "std::fs::OpenOptions::new", reason = "File system operations should be done using FileSystem trait" },
+  { path = "url::Url::to_file_path", reason = "Use deno_path_util instead" },
+  { path = "url::Url::from_file_path", reason = "Use deno_path_util instead" },
+  { path = "url::Url::from_directory_path", reason = "Use deno_path_util instead" },
 ]

@@ -127,7 +127,7 @@ pub trait PermissionedFileFetcherSys:
 {
 }
 
-#[allow(clippy::disallowed_types)]
+#[allow(clippy::disallowed_types, reason = "definition")]
 type PermissionedFileFetcherRc<TBlobStore, TSys, THttpClient> =
   deno_maybe_sync::MaybeArc<
     PermissionedFileFetcher<TBlobStore, TSys, THttpClient>,
@@ -384,7 +384,10 @@ impl<
 }
 
 pub trait GraphLoaderReporter: Send + Sync {
-  #[allow(unused_variables)]
+  #[allow(
+    unused_variables,
+    reason = "default trait implementation ignores arguments"
+  )]
   fn on_load(
     &self,
     specifier: &Url,
@@ -393,12 +396,17 @@ pub trait GraphLoaderReporter: Send + Sync {
   }
 }
 
-#[allow(clippy::disallowed_types)]
+#[allow(clippy::disallowed_types, reason = "definition")]
 pub type GraphLoaderReporterRc =
   deno_maybe_sync::MaybeArc<dyn GraphLoaderReporter>;
 
 pub struct DenoGraphLoaderOptions {
   pub file_header_overrides: HashMap<Url, HashMap<String, String>>,
+  /// Whether to include npm package sources in the graph.
+  ///
+  /// Generally we don't do this for performance reasons because we
+  /// don't need to pre-analyze npm sources for https specifiers.
+  pub include_npm_sources: bool,
   pub permissions: Option<PermissionsContainer>,
   pub reporter: Option<GraphLoaderReporterRc>,
 }
@@ -417,8 +425,10 @@ pub struct DenoGraphLoader<
   THttpClient: HttpClient,
 > {
   file_header_overrides: HashMap<Url, HashMap<String, String>>,
-  // Arc is ok because this is for the source
-  #[allow(clippy::disallowed_types)]
+  #[allow(
+    clippy::disallowed_types,
+    reason = "Arc is needed for source content"
+  )]
   file_content_overrides: Option<HashMap<Url, std::sync::Arc<[u8]>>>,
   file_fetcher: PermissionedFileFetcherRc<TBlobStore, TSys, THttpClient>,
   global_http_cache: GlobalHttpCacheRc<TSys>,
@@ -426,6 +436,7 @@ pub struct DenoGraphLoader<
   permissions: Option<PermissionsContainer>,
   sys: TSys,
   cache_info_enabled: bool,
+  include_npm_sources: bool,
   reporter: Option<GraphLoaderReporterRc>,
 }
 
@@ -450,13 +461,16 @@ impl<
       file_header_overrides: options.file_header_overrides,
       permissions: options.permissions,
       cache_info_enabled: false,
+      include_npm_sources: options.include_npm_sources,
       reporter: options.reporter,
       file_content_overrides: Default::default(),
     }
   }
 
-  // Arc is ok because this is for the source
-  #[allow(clippy::disallowed_types)]
+  #[allow(
+    clippy::disallowed_types,
+    reason = "Arc is needed for source content"
+  )]
   pub fn set_file_content_overrides(
     &mut self,
     overrides: HashMap<Url, std::sync::Arc<[u8]>>,
@@ -494,7 +508,7 @@ impl<
   fn load_or_cache<TStrategy: LoadOrCacheStrategy + 'static>(
     &self,
     strategy: TStrategy,
-    specifier: &Url,
+    specifier: Url,
     options: deno_graph::source::LoadOptions,
   ) -> LocalBoxFuture<
     'static,
@@ -502,7 +516,6 @@ impl<
   > {
     let file_fetcher = self.file_fetcher.clone();
     let permissions = self.permissions.clone();
-    let specifier = specifier.clone();
     let is_statically_analyzable = !options.was_dynamic_root;
 
     async move {
@@ -624,7 +637,7 @@ impl<
     specifier: &Url,
     options: deno_graph::source::LoadOptions,
   ) -> LoadFuture {
-    if specifier.scheme() == "file"
+    let specifier = if specifier.scheme() == "file"
       && specifier.path().contains("/node_modules/")
     {
       // The specifier might be in a completely different symlinked tree than
@@ -632,15 +645,25 @@ impl<
       // symlinked to `/my-project-2/node_modules`), so first we checked if the path
       // is in a node_modules dir to avoid needlessly canonicalizing, then now compare
       // against the canonicalized specifier.
+      let original_specifier = specifier;
       let specifier = node_resolver::resolve_specifier_into_node_modules(
         &self.sys, specifier,
       );
       if self.in_npm_pkg_checker.in_npm_package(&specifier) {
-        return Box::pin(std::future::ready(Ok(Some(
-          LoadResponse::External { specifier },
-        ))));
+        if self.include_npm_sources {
+          // use the canonical specifier for npm packages
+          Cow::Owned(specifier)
+        } else {
+          return Box::pin(std::future::ready(Ok(Some(
+            LoadResponse::External { specifier },
+          ))));
+        }
+      } else {
+        Cow::Borrowed(original_specifier)
       }
-    }
+    } else {
+      Cow::Borrowed(specifier)
+    };
 
     if !matches!(
       specifier.scheme(),
@@ -648,18 +671,18 @@ impl<
     ) {
       return Box::pin(std::future::ready(Ok(Some(
         deno_graph::source::LoadResponse::External {
-          specifier: specifier.clone(),
+          specifier: specifier.into_owned(),
         },
       ))));
     }
     if let Some(overrides) = &self.file_content_overrides
-      && let Some(content) = overrides.get(specifier)
+      && let Some(content) = overrides.get(&specifier)
     {
       return std::future::ready(Ok(Some(LoadResponse::Module {
         content: content.clone(),
         mtime: None,
-        specifier: specifier.clone(),
-        maybe_headers: self.file_header_overrides.get(specifier).cloned(),
+        maybe_headers: self.file_header_overrides.get(&specifier).cloned(),
+        specifier: specifier.into_owned(),
       })))
       .boxed_local();
     }
@@ -670,7 +693,7 @@ impl<
         file_header_overrides: self.file_header_overrides.clone(),
         reporter: self.reporter.clone(),
       },
-      specifier,
+      specifier.into_owned(),
       options,
     )
   }
@@ -693,7 +716,7 @@ impl<
       CacheStrategy {
         file_fetcher: self.file_fetcher.clone(),
       },
-      specifier,
+      specifier.clone(),
       options,
     )
   }
@@ -803,7 +826,7 @@ impl<TBlobStore: BlobStore, TSys: DenoGraphLoaderSys, THttpClient: HttpClient>
 }
 
 fn load_error(err: JsErrorBox) -> deno_graph::source::LoadError {
-  #[allow(clippy::disallowed_types)] // ok, deno_graph requires an Arc
+  #[allow(clippy::disallowed_types, reason = "deno_graph requires an Arc")]
   let err = std::sync::Arc::new(err);
   deno_graph::source::LoadError::Other(err)
 }
@@ -892,6 +915,7 @@ mod test {
         file_header_overrides: HashMap::new(),
         permissions: None,
         reporter: None,
+        include_npm_sources: false,
       },
     )
   }

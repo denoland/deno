@@ -45,7 +45,7 @@ module.exports = {
       // into the deno package folder
       hardLinkOrCopy(sourceExecutablePath, targetExecutablePath);
       if (os.platform() !== "win32") {
-        // chomd +x
+        // chmod +x
         chmodX(targetExecutablePath);
       }
       return targetExecutablePath;
@@ -60,12 +60,6 @@ module.exports = {
           err,
         );
       }
-      // use the path found in the specific package
-      try {
-        chmodX(sourceExecutablePath);
-      } catch (_err) {
-        // ignore
-      }
       return sourceExecutablePath;
     }
   },
@@ -73,8 +67,13 @@ module.exports = {
 
 /** @filePath {string} */
 function chmodX(filePath) {
-  const perms = fs.statSync(filePath).mode;
-  fs.chmodSync(filePath, perms | 0o111);
+  const fd = fs.openSync(filePath, "r");
+  try {
+    const perms = fs.fstatSync(fd).mode;
+    fs.fchmodSync(fd, perms | 0o111);
+  } finally {
+    fs.closeSync(fd);
+  }
 }
 
 function getTarget() {

@@ -159,6 +159,13 @@ impl GPUQueue {
           // SAFETY: the slice is within the bounds of the backing store
           unsafe { std::slice::from_raw_parts(ptr as *const u8, byte_len) };
       (buf, bpe)
+    } else if let Ok(ab) = v8::Local::<v8::ArrayBuffer>::try_from(data_arg) {
+      let byte_len = ab.byte_length();
+      let ptr = ab.data().unwrap().as_ptr();
+      let buf =
+        // SAFETY: Pointer is non-null and byte_len is within the backing store.
+        unsafe { std::slice::from_raw_parts(ptr as *const u8, byte_len) };
+      (buf, 1)
     } else if let Ok(view) =
       v8::Local::<v8::ArrayBufferView>::try_from(data_arg)
     {
