@@ -632,6 +632,7 @@ fn upgrade_from_pr(
       "-q",
       r#"[.title, .state, .headRefName, .headRefOid] | @tsv"#,
     ])
+    .stderr(Stdio::inherit())
     .output()
     .context("failed to run `gh pr view`")?;
 
@@ -689,6 +690,7 @@ fn upgrade_from_pr(
         "-q",
         &jq_filter,
       ])
+      .stderr(Stdio::inherit())
       .output()
       .context("failed to query CI runs by branch")?;
 
@@ -863,6 +865,7 @@ fn upgrade_from_branch(
       "-q",
       ".[].databaseId",
     ])
+    .stderr(Stdio::inherit())
     .output()
     .context("failed to query CI runs")?;
 
