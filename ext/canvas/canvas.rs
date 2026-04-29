@@ -198,7 +198,7 @@ impl OffscreenCanvas {
     state: Rc<RefCell<OpState>>,
     scope: &mut v8::PinScope<'s, '_>,
     #[webidl] options: ImageEncodeOptions,
-  ) -> Result<v8::Local<'s, v8::Object>, JsErrorBox> {
+  ) -> Result<v8::Local<'s, v8::Promise>, JsErrorBox> {
     let state = state.borrow();
 
     let Some(active_context) = self.active_context.get() else {
@@ -270,11 +270,13 @@ impl OffscreenCanvas {
 
     drop(state);
 
-    Ok(
-      blob_constructor
-        .new_instance(scope, &[data.into(), options.into()])
-        .unwrap(),
-    )
+    let blob = blob_constructor
+      .new_instance(scope, &[data.into(), options.into()])
+      .unwrap();
+
+    let resolver = v8::PromiseResolver::new(scope).unwrap();
+    resolver.resolve(scope, blob.into()).unwrap();
+    Ok(resolver.get_promise(scope))
   }
 }
 

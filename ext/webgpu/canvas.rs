@@ -105,9 +105,10 @@ impl GPUCanvasContext {
   }
 
   #[fast]
-  fn unconfigure(&self) {
+  fn unconfigure(&self, scope: &mut v8::PinScope<'_, '_>) {
     self.configuration.take();
     self.texture_descriptor.take();
+    self.replace_drawing_buffer(scope);
   }
 
   #[fast]
@@ -342,6 +343,7 @@ impl GPUCanvasContext {
 
   fn replace_drawing_buffer(&self, scope: &mut v8::PinScope<'_, '_>) {
     self.expire_current_texture(scope);
+    self.current_texture.borrow_mut().take();
   }
 
   pub fn resize(&self, scope: &mut v8::PinScope<'_, '_>) {
