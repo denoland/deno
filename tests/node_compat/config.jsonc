@@ -2813,6 +2813,7 @@
     "parallel/test-sqlite-data-types.js": {},
     "parallel/test-sqlite-database-sync-dispose.js": {},
     "parallel/test-sqlite-database-sync.js": {},
+    "parallel/test-sqlite-limits.js": {},
     "parallel/test-sqlite-named-parameters.js": {},
     "parallel/test-sqlite-session.js": {
       "flaky": true
