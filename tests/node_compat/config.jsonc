@@ -1800,6 +1800,7 @@
     "parallel/test-http2-single-headers-validation-disabled.js": {},
     "parallel/test-http2-single-headers-validation.js": {},
     "parallel/test-http2-socket-proxy-handler-for-has.js": {},
+    "parallel/test-http2-socket-proxy.js": {},
     "parallel/test-http2-status-code-invalid.js": {},
     "parallel/test-http2-status-code.js": {},
     "parallel/test-http2-stream-client.js": {},
