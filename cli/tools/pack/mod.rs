@@ -44,8 +44,7 @@ pub async fn pack(
   // Check if git repository is clean (unless --allow-dirty)
   if !pack_flags.allow_dirty
     && let Some(dirty) =
-      crate::tools::publish::check_if_git_repo_dirty(cli_options.initial_cwd())
-        .await
+      crate::util::git::check_if_git_repo_dirty(cli_options.initial_cwd()).await
   {
     bail!(
       "Git repository has uncommitted changes. Use --allow-dirty to pack anyway.\n{}",

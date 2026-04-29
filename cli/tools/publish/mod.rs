@@ -5,7 +5,6 @@ use std::collections::HashSet;
 use std::io::IsTerminal;
 use std::path::Path;
 use std::path::PathBuf;
-use std::process::Stdio;
 use std::rc::Rc;
 use std::sync::Arc;
 
@@ -34,7 +33,6 @@ use http_body_util::BodyExt;
 use serde::Deserialize;
 use serde::Serialize;
 use sha2::Digest;
-use tokio::process::Command;
 
 use self::diagnostics::PublishDiagnostic;
 use self::diagnostics::PublishDiagnosticsCollector;
@@ -57,6 +55,7 @@ use crate::tools::lint::collect_no_slow_type_diagnostics;
 use crate::type_checker::CheckOptions;
 use crate::type_checker::TypeChecker;
 use crate::util::display::human_size;
+use crate::util::git::check_if_git_repo_dirty;
 
 mod auth;
 
@@ -1244,39 +1243,6 @@ fn verify_version_manifest(
   }
 
   Ok(())
-}
-
-pub(crate) async fn check_if_git_repo_dirty(cwd: &Path) -> Option<String> {
-  let bin_name = if cfg!(windows) { "git.exe" } else { "git" };
-
-  //  Check if git exists
-  let git_exists = Command::new(bin_name)
-    .arg("--version")
-    .stderr(Stdio::null())
-    .stdout(Stdio::null())
-    .status()
-    .await
-    .is_ok_and(|status| status.success());
-
-  if !git_exists {
-    return None; // Git is not installed
-  }
-
-  // Check if there are uncommitted changes
-  let output = Command::new(bin_name)
-    .current_dir(cwd)
-    .args(["status", "--porcelain"])
-    .output()
-    .await
-    .expect("Failed to execute command");
-
-  let output_str = String::from_utf8_lossy(&output.stdout);
-  let text = output_str.trim();
-  if text.is_empty() {
-    None
-  } else {
-    Some(text.to_string())
-  }
 }
 
 static SUPPORTED_LICENSE_FILE_NAMES: [&str; 12] = [
