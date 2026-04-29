@@ -23,9 +23,9 @@ import { convertALPNProtocols } from "ext:deno_node/internal/tls_common.js";
 import { Buffer } from "node:buffer";
 import {
   connResetException,
-  ERR_TLS_ALPN_CALLBACK_INVALID_RESULT,
   ERR_INVALID_ARG_TYPE,
   ERR_INVALID_ARG_VALUE,
+  ERR_TLS_ALPN_CALLBACK_INVALID_RESULT,
   ERR_TLS_ALPN_CALLBACK_WITH_PROTOCOLS,
   ERR_TLS_CERT_ALTNAME_INVALID,
   ERR_TLS_REQUIRED_SERVER_NAME,
