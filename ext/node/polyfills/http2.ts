@@ -466,6 +466,10 @@ function submitSettings(settings, callback) {
   debugSessionObj(this, "submitting settings");
   this[kUpdateTimer]();
   updateSettingsBuffer(settings);
+  if (this[kState].pendingAck > this[kMaxOutstandingSettings]) {
+    this.destroy(new ERR_HTTP2_MAX_PENDING_SETTINGS_ACK());
+    return;
+  }
   if (
     !this[kHandle].settings(
       FunctionPrototypeBind(settingsCallback, this, callback),
@@ -3627,9 +3631,6 @@ class Http2Session extends EventEmitter {
     }
     debugSessionObj(this, "sending settings");
 
-    if (this[kState].pendingAck >= this[kMaxOutstandingSettings]) {
-      throw new ERR_HTTP2_MAX_PENDING_SETTINGS_ACK();
-    }
     this[kState].pendingAck++;
 
     const settingsFn = FunctionPrototypeBind(
