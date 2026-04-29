@@ -144,10 +144,7 @@ fn bump_version_prerelease_increments_pre_tag() {
 
   // First prerelease
   cwd.join("deno.json").write(r#"{"version": "1.0.0"}"#);
-  context
-    .new_command()
-    .args("bump-version prerelease")
-    .run();
+  context.new_command().args("bump-version prerelease").run();
 
   // Second prerelease should increment the pre-release number
   let output = context
@@ -281,7 +278,9 @@ fn bump_version_defaults_to_0_1_0_when_missing() {
 fn bump_version_major_clears_prerelease() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let cwd = context.temp_dir().path();
-  cwd.join("deno.json").write(r#"{"version": "1.2.3-beta.1"}"#);
+  cwd
+    .join("deno.json")
+    .write(r#"{"version": "1.2.3-beta.1"}"#);
 
   let output = context
     .new_command()

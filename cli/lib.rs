@@ -462,7 +462,9 @@ async fn run_subcommand(
     DenoSubcommand::BumpVersion(version_flags) => spawn_subcommand(async {
       log::warn!(
         "{}",
-        colors::yellow("deno bump-version is experimental and subject to change")
+        colors::yellow(
+          "deno bump-version is experimental and subject to change"
+        )
       );
       tools::bump_version::bump_version_command(Arc::new(flags), version_flags)
     }),
