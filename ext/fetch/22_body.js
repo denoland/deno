@@ -541,6 +541,11 @@ webidl.converters["async iterable<Uint8Array>"] = webidl
   .createAsyncIterableConverter(webidl.converters.Uint8Array);
 
 webidl.converters["BodyInit_DOMString"] = (V, prefix, context, opts) => {
+  // Fast path: a plain string is by far the most common shape for Response
+  // body and `fetch(url, { body: "..." })`. Skip the union-of-types prototype
+  // chain checks and the trailing DOMString conversion (which itself just
+  // returns strings as-is).
+  if (typeof V === "string") return V;
   // Union for (ReadableStream or Blob or ArrayBufferView or ArrayBuffer or FormData or URLSearchParams or USVString)
   if (ObjectPrototypeIsPrototypeOf(ReadableStreamPrototype, V)) {
     return webidl.converters["ReadableStream"](V, prefix, context, opts);
