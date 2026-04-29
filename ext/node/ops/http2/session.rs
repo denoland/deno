@@ -463,13 +463,15 @@ impl Http2Options {
           );
         }
 
-        let max_outstanding_settings =
-          buffer[OptionsIndex::MaxOutstandingSettings as usize];
-        if max_outstanding_settings > 0 {
-          ffi::nghttp2_option_set_max_settings(
-            options,
-            max_outstanding_settings as usize,
-          );
+        // Note: maxOutstandingSettings is a Node.js-internal queue limit for
+        // outbound SETTINGS frames awaiting peer ACK. nghttp2 has no equivalent
+        // option, so we accept the value for API compatibility but do not map
+        // it to nghttp2_option_set_max_settings (which is the maxSettings limit
+        // on inbound SETTINGS *entries* per frame — handled below).
+
+        let max_settings = buffer[OptionsIndex::MaxSettings as usize];
+        if max_settings > 0 {
+          ffi::nghttp2_option_set_max_settings(options, max_settings as usize);
         }
 
         if matches!(session_type, SessionType::Client) {
