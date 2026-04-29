@@ -411,6 +411,7 @@ class NodeWorker extends EventEmitter {
       new MessageChannel();
 
     const userTransferList = options?.transferList ?? [];
+    // deno-lint-ignore prefer-primordials
     const transferList = [mainThreadPortToWorker, ...userTransferList];
 
     const serializedWorkerMetadata = serializeJsMessageData({
@@ -588,7 +589,7 @@ class NodeWorker extends EventEmitter {
         case 1: { // TerminalError
           this.#status = "CLOSED";
           this.#closeStdio();
-          destroyMainThreadPort(this.#id);
+          await destroyMainThreadPort(this.#id);
           if (this.listenerCount("error") > 0) {
             const errMsg = data.errorMessage ?? data.message;
             const errName = data.name;
@@ -626,7 +627,7 @@ class NodeWorker extends EventEmitter {
           debugWT(`Host got "close" message from worker: ${this.#name}`);
           this.#status = "CLOSED";
           this.#closeStdio();
-          destroyMainThreadPort(this.#id);
+          await destroyMainThreadPort(this.#id);
           // Drain pending messages before emitting exit so that
           // all 'message' events fire before 'exit' (Node.js behavior).
           await this.#messageLoopPromise;
@@ -745,24 +746,25 @@ class NodeWorker extends EventEmitter {
   }
 
   // https://nodejs.org/api/worker_threads.html#workerterminate
-  terminate() {
+  async terminate() {
     if (this.#status === "TERMINATED") {
-      return PromiseResolve(undefined);
+      return undefined;
     }
 
     this.#status = "TERMINATED";
     op_host_terminate_worker(this.#id);
     this.#closeStdio();
+    await destroyMainThreadPort(this.#id);
 
     if (!this.#exited) {
       this.#exited = true;
       this.emit("exit", 1);
-      return PromiseResolve(1);
+      return 1;
     }
 
     // Worker already exited - Node.js returns undefined in this case
     // (the internal handle is already null).
-    return PromiseResolve(undefined);
+    return undefined;
   }
 
   async [SymbolAsyncDispose]() {
@@ -947,9 +949,9 @@ function sendMessageToWorker(
   );
 }
 
-// deno-lint-ignore no-explicit-any
 function receiveMessageFromWorker(
   source: number,
+  // deno-lint-ignore no-explicit-any
   value: any,
   memory: SharedArrayBuffer,
 ) {
@@ -965,9 +967,13 @@ function receiveMessageFromWorker(
     response = WORKER_MESSAGING_RESULT_LISTENER_ERROR;
   }
 
+  // deno-lint-ignore prefer-primordials
   const status = new Int32Array(memory);
+  // deno-lint-ignore prefer-primordials
   Atomics.store(status, WORKER_MESSAGING_RESULT_INDEX, response);
+  // deno-lint-ignore prefer-primordials
   Atomics.store(status, WORKER_MESSAGING_STATUS_INDEX, 1);
+  // deno-lint-ignore prefer-primordials
   Atomics.notify(status, WORKER_MESSAGING_STATUS_INDEX, 1);
 }
 
@@ -989,16 +995,22 @@ function createMainThreadPort(workerThreadId: number): MessagePort {
   return port2;
 }
 
-function destroyMainThreadPort(workerThreadId: number) {
-  const unregistrationMessage = {
-    type: MSG_UNREGISTER,
-    threadId: workerThreadId,
-  };
-
+async function destroyMainThreadPort(workerThreadId: number) {
   if (isMainThread) {
-    handleMessageFromThread(unregistrationMessage);
+    const port = threadsPorts.get(workerThreadId);
+    if (port) {
+      threadsPorts.delete(workerThreadId);
+      port.close();
+      // Wait for the port's recv loop to fully terminate after
+      // close() interrupts the pending op. Without this, the test
+      // sanitizer may see the pending op before it resolves.
+      await PromiseResolve();
+    }
   } else {
-    mainThreadPort!.postMessage(unregistrationMessage);
+    mainThreadPort!.postMessage({
+      type: MSG_UNREGISTER,
+      threadId: workerThreadId,
+    });
   }
 }
 
@@ -1022,22 +1034,21 @@ function setupMainThreadPort(port: MessagePort) {
   if (mainThreadPort[refMessagePort]) mainThreadPort[refMessagePort](false);
 }
 
+// deno-lint-ignore no-explicit-any
 async function postMessageToThread(
   destThreadId: number,
-  // deno-lint-ignore no-explicit-any
-  value: any,
-  // deno-lint-ignore no-explicit-any
-  transferListOrTimeout?: any[] | number,
+  value?: any, // deno-lint-ignore-line no-explicit-any
+  transferListOrTimeout?: any[] | number, // deno-lint-ignore-line no-explicit-any
   timeout?: number,
 ) {
   // Handle overloaded signature: (threadId, value, timeout)
-  let transferList: any[] = []; // deno-lint-ignore no-explicit-any
+  let transferList: any[] = []; // deno-lint-ignore-line no-explicit-any
   if (
     typeof transferListOrTimeout === "number" && typeof timeout === "undefined"
   ) {
     timeout = transferListOrTimeout;
   } else if (transferListOrTimeout !== undefined) {
-    transferList = transferListOrTimeout as any[]; // deno-lint-ignore no-explicit-any
+    transferList = transferListOrTimeout as any[]; // deno-lint-ignore-line no-explicit-any
   }
 
   if (typeof timeout !== "undefined") {
