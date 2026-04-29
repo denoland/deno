@@ -474,7 +474,7 @@ export function kvKeyToKeyParts(
       ArrayPrototypePush(parts, { type: "bytes", value: el });
     } else {
       throw new TypeError(
-        `Invalid KvKey element at index ${i}: ${typeof el}`,
+        `invalid type for key part ${i}: expected string, number, bigint, ArrayBufferView, boolean`,
       );
     }
   }

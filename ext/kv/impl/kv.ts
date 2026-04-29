@@ -13,6 +13,7 @@ const {
   Array,
   ArrayFrom,
   ArrayIsArray,
+  ArrayPrototypeJoin,
   ArrayPrototypeMap,
   ArrayPrototypePop,
   ArrayPrototypePush,
@@ -599,31 +600,39 @@ class SqliteKvBackend implements KvBackend {
     // SQLite watch: poll-based implementation
     // For now, return a stream that polls every 500ms
     const backend = this.#backend;
-    const lastVersionstamps: (string | null)[] = ArrayPrototypeMap(
+    const lastVersionstamps: (string | null | undefined)[] = ArrayPrototypeMap(
       keys,
-      () => null,
+      () => undefined,
     );
     let closed = false;
 
     return new ReadableStream({
       async pull(controller) {
         while (!closed) {
-          const ranges: ReadRange[] = [];
-          for (let i = 0; i < keys.length; i++) {
-            const k = keys[i];
-            const kLen = TypedArrayPrototypeGetLength(k);
-            const endKey = new Uint8Array(kLen + 1);
-            TypedArrayPrototypeSet(endKey, k);
-            endKey[kLen] = 0;
-            ArrayPrototypePush(ranges, {
-              start: k,
-              end: endKey,
-              limit: 1,
-              reverse: false,
-            });
+          let results;
+          try {
+            const ranges: ReadRange[] = [];
+            for (let i = 0; i < keys.length; i++) {
+              const k = keys[i];
+              const kLen = TypedArrayPrototypeGetLength(k);
+              const endKey = new Uint8Array(kLen + 1);
+              TypedArrayPrototypeSet(endKey, k);
+              endKey[kLen] = 0;
+              ArrayPrototypePush(ranges, {
+                start: k,
+                end: endKey,
+                limit: 1,
+                reverse: false,
+              });
+            }
+
+            results = backend.snapshotRead(ranges);
+          } catch {
+            // Database was closed - end the stream cleanly
+            controller.close();
+            return;
           }
 
-          const results = backend.snapshotRead(ranges);
           let changed = false;
           const entries: (Deno.KvEntryMaybe<unknown>)[] = [];
 
@@ -1044,7 +1053,19 @@ class Kv {
     value: unknown,
     options?: { expireIn?: number },
   ): Promise<Deno.KvCommitResult> {
-    const encodedKey = encodeKvKey(key);
+    let actualKey = key;
+    let mutationType: "set" | "setSuffixVersionstampedKey" = "set";
+
+    // Handle commitVersionstamp symbol as last key element
+    if (
+      key.length > 0 &&
+      key[key.length - 1] === commitVersionstampSymbol
+    ) {
+      actualKey = ArrayPrototypeSlice(key, 0, -1);
+      mutationType = "setSuffixVersionstampedKey";
+    }
+
+    const encodedKey = encodeKvKey(actualKey);
     validateWriteKey(encodedKey);
     const raw = serializeValue(value);
     validateValue(raw);
@@ -1055,7 +1076,7 @@ class Kv {
         {
           key: encodedKey,
           kind: {
-            type: "set",
+            type: mutationType,
             value: rawValueToKvValue(raw),
           },
           expireAt: options?.expireIn ? DateNow() + options.expireIn : null,
@@ -1370,9 +1391,24 @@ class Kv {
 
 class AtomicOperation {
   #backend: KvBackend;
-  #checks: SqliteCheck[] = [];
+  // Checks store raw versionstamp strings; encoding deferred to commit()
+  #checks: { key: Uint8Array; versionstamp: string | null }[] = [];
   #mutations: SqliteMutation[] = [];
   #enqueues: SqliteEnqueue[] = [];
+  // Display data for custom inspect (stores original user-facing values)
+  #displayChecks: { key: Deno.KvKey; versionstamp: string | null }[] = [];
+  #displayMutations: {
+    type: string;
+    key: Deno.KvKey;
+    value?: unknown;
+    expireIn?: number;
+  }[] = [];
+  #displayEnqueues: {
+    message: unknown;
+    delay: number;
+    keysIfUndelivered: Deno.KvKey[];
+    backoffSchedule: number[] | null;
+  }[] = [];
 
   constructor(backend: KvBackend) {
     this.#backend = backend;
@@ -1383,18 +1419,14 @@ class AtomicOperation {
       const check = checks[ci];
       const encodedKey = encodeKvKey(check.key);
       validateWriteKey(encodedKey);
-      let versionstamp: Uint8Array | null = null;
-      if (check.versionstamp !== null && check.versionstamp !== undefined) {
-        if (
-          typeof check.versionstamp !== "string" ||
-          check.versionstamp.length !== 20 ||
-          !RegExpPrototypeTest(versionstampRe, check.versionstamp)
-        ) {
-          throw new TypeError("invalid versionstamp");
-        }
-        versionstamp = hexDecode(check.versionstamp);
-      }
-      ArrayPrototypePush(this.#checks, { key: encodedKey, versionstamp });
+      const vs = check.versionstamp ?? null;
+      // Store display data for inspect
+      ArrayPrototypePush(this.#displayChecks, {
+        key: ArrayPrototypeSlice(check.key, 0),
+        versionstamp: vs,
+      });
+      // Defer versionstamp validation to commit() - store raw string
+      ArrayPrototypePush(this.#checks, { key: encodedKey, versionstamp: vs });
     }
     return this;
   }
@@ -1478,6 +1510,11 @@ class AtomicOperation {
   }
 
   sum(key: Deno.KvKey, n: bigint): this {
+    ArrayPrototypePush(this.#displayMutations, {
+      type: "sum",
+      key: ArrayPrototypeSlice(key, 0),
+      value: new KvU64(n),
+    });
     ArrayPrototypePush(this.#mutations, {
       key: encodeKvKey(key),
       kind: {
@@ -1493,6 +1530,11 @@ class AtomicOperation {
   }
 
   min(key: Deno.KvKey, n: bigint): this {
+    ArrayPrototypePush(this.#displayMutations, {
+      type: "min",
+      key: ArrayPrototypeSlice(key, 0),
+      value: new KvU64(n),
+    });
     ArrayPrototypePush(this.#mutations, {
       key: encodeKvKey(key),
       kind: { type: "min", value: { kind: "u64", value: new KvU64(n).value } },
@@ -1502,6 +1544,11 @@ class AtomicOperation {
   }
 
   max(key: Deno.KvKey, n: bigint): this {
+    ArrayPrototypePush(this.#displayMutations, {
+      type: "max",
+      key: ArrayPrototypeSlice(key, 0),
+      value: new KvU64(n),
+    });
     ArrayPrototypePush(this.#mutations, {
       key: encodeKvKey(key),
       kind: { type: "max", value: { kind: "u64", value: new KvU64(n).value } },
@@ -1523,6 +1570,21 @@ class AtomicOperation {
       mutationType = "setSuffixVersionstampedKey";
     }
 
+    const displayEntry: {
+      type: string;
+      key: Deno.KvKey;
+      value?: unknown;
+      expireIn?: number;
+    } = {
+      type: "set",
+      key: ArrayPrototypeSlice(actualKey, 0),
+      value,
+    };
+    if (options?.expireIn !== undefined) {
+      displayEntry.expireIn = options.expireIn;
+    }
+    ArrayPrototypePush(this.#displayMutations, displayEntry);
+
     ArrayPrototypePush(this.#mutations, {
       key: encodeKvKey(actualKey),
       kind: {
@@ -1535,6 +1597,10 @@ class AtomicOperation {
   }
 
   delete(key: Deno.KvKey): this {
+    ArrayPrototypePush(this.#displayMutations, {
+      type: "delete",
+      key: ArrayPrototypeSlice(key, 0),
+    });
     ArrayPrototypePush(this.#mutations, {
       key: encodeKvKey(key),
       kind: { type: "delete" },
@@ -1555,6 +1621,12 @@ class AtomicOperation {
     if (opts?.backoffSchedule !== undefined) {
       validateBackoffSchedule(opts.backoffSchedule);
     }
+    ArrayPrototypePush(this.#displayEnqueues, {
+      message,
+      delay: opts?.delay ?? 0,
+      keysIfUndelivered: opts?.keysIfUndelivered ?? [],
+      backoffSchedule: opts?.backoffSchedule ?? null,
+    });
     ArrayPrototypePush(this.#enqueues, {
       payload: core.serialize(message, { forStorage: true }),
       deadlineMs: DateNow() + (opts?.delay ?? 0),
@@ -1565,6 +1637,85 @@ class AtomicOperation {
       backoffSchedule: opts?.backoffSchedule ?? null,
     });
     return this;
+  }
+
+  [SymbolFor("Deno.privateCustomInspect")](
+    inspect: (v: unknown, opts?: unknown) => string,
+    inspectOptions: unknown,
+  ): string {
+    const operations: string[] = [];
+
+    // Format checks
+    for (let i = 0; i < this.#displayChecks.length; i++) {
+      const check = this.#displayChecks[i];
+      const keyStr = inspect(check.key, inspectOptions);
+      const vsStr = check.versionstamp === null
+        ? "null"
+        : `"${check.versionstamp}"`;
+      ArrayPrototypePush(
+        operations,
+        `  check({ key: ${keyStr}, versionstamp: ${vsStr} })`,
+      );
+    }
+
+    // Format mutations
+    for (let i = 0; i < this.#displayMutations.length; i++) {
+      const m = this.#displayMutations[i];
+      const keyStr = inspect(m.key, inspectOptions);
+
+      if (m.type === "delete") {
+        ArrayPrototypePush(operations, `  delete(${keyStr})`);
+      } else {
+        const valueStr = inspect(m.value, inspectOptions);
+        if (m.type === "set" && m.expireIn !== undefined) {
+          ArrayPrototypePush(
+            operations,
+            `  set(${keyStr}, ${valueStr}, { expireIn: ${m.expireIn} })`,
+          );
+        } else {
+          ArrayPrototypePush(
+            operations,
+            `  ${m.type}(${keyStr}, ${valueStr})`,
+          );
+        }
+      }
+    }
+
+    // Format enqueues
+    for (let i = 0; i < this.#displayEnqueues.length; i++) {
+      const e = this.#displayEnqueues[i];
+      const messageStr = inspect(e.message, inspectOptions);
+
+      if (
+        e.delay === 0 && e.keysIfUndelivered.length === 0 &&
+        e.backoffSchedule === null
+      ) {
+        ArrayPrototypePush(operations, `  enqueue(${messageStr})`);
+      } else {
+        const opts: string[] = [];
+        if (e.delay !== 0) {
+          ArrayPrototypePush(opts, `delay: ${e.delay}`);
+        }
+        if (e.keysIfUndelivered.length > 0) {
+          const keysStr = inspect(e.keysIfUndelivered, inspectOptions);
+          ArrayPrototypePush(opts, `keysIfUndelivered: ${keysStr}`);
+        }
+        if (e.backoffSchedule !== null) {
+          const scheduleStr = inspect(e.backoffSchedule, inspectOptions);
+          ArrayPrototypePush(opts, `backoffSchedule: ${scheduleStr}`);
+        }
+        ArrayPrototypePush(
+          operations,
+          `  enqueue(${messageStr}, { ${ArrayPrototypeJoin(opts, ", ")} })`,
+        );
+      }
+    }
+
+    if (operations.length === 0) {
+      return "AtomicOperation (empty)";
+    }
+
+    return `AtomicOperation\n${ArrayPrototypeJoin(operations, "\n")}`;
   }
 
   async commit(): Promise<Deno.KvCommitResult | Deno.KvCommitError> {
@@ -1612,9 +1763,30 @@ class AtomicOperation {
       );
     }
 
+    // Encode checks: validate and convert versionstamp strings to Uint8Array
+    const encodedChecks: SqliteCheck[] = [];
+    for (let i = 0; i < this.#checks.length; i++) {
+      const check = this.#checks[i];
+      let versionstamp: Uint8Array | null = null;
+      if (check.versionstamp !== null) {
+        if (
+          typeof check.versionstamp !== "string" ||
+          check.versionstamp.length !== 20 ||
+          !RegExpPrototypeTest(versionstampRe, check.versionstamp)
+        ) {
+          throw new TypeError("invalid versionstamp");
+        }
+        versionstamp = hexDecode(check.versionstamp);
+      }
+      ArrayPrototypePush(encodedChecks, {
+        key: check.key,
+        versionstamp,
+      });
+    }
+
     const result = await doAtomicWrite(
       this.#backend,
-      this.#checks,
+      encodedChecks,
       this.#mutations,
       this.#enqueues,
     );

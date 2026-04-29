@@ -7,6 +7,8 @@
 
 import { primordials } from "ext:core/mod.js";
 const {
+  ArrayIsArray,
+  ArrayPrototypeIncludes,
   ArrayPrototypeMap,
   Date,
   DateNow,
@@ -14,6 +16,7 @@ const {
   Error,
   JSONStringify,
   MathMax,
+  MathMin,
   MathRandom,
   Promise,
   PromisePrototypeCatch,
@@ -24,9 +27,8 @@ const {
   Uint8Array,
 } = primordials;
 
-// Capture built-ins at load time to prevent monkeypatching
-const globalFetch = globalThis.fetch;
-const GlobalAbortController = globalThis.AbortController;
+import { fetch } from "ext:deno_fetch/26_fetch.js";
+import { AbortController } from "ext:deno_web/03_abort_signal.js";
 
 import {
   type AtomicWriteOutput,
@@ -363,8 +365,9 @@ export class RemoteBackend {
   async #fetchMetadata(): Promise<Metadata> {
     let attempt = 0;
     while (true) {
+      let resp: Response;
       try {
-        const resp = await globalFetch(this.#metadataUrl, {
+        resp = await fetch(this.#metadataUrl, {
           method: "POST",
           headers: {
             "content-type": "application/json",
@@ -372,39 +375,65 @@ export class RemoteBackend {
           },
           body: JSONStringify({ supportedVersions: SUPPORTED_VERSIONS }),
         });
-
-        if (!resp.ok) {
-          const text = await PromisePrototypeCatch(
-            resp.text(),
-            () => "",
-          );
-          throw new Error(
-            `Metadata exchange failed (HTTP ${resp.status}): ${text}`,
-          );
-        }
-
-        const json = await resp.json();
-        const metadata: Metadata = {
-          version: json.version,
-          databaseId: json.databaseId,
-          endpoints: json.endpoints,
-          token: json.token,
-          expiresAt: new Date(json.expiresAt),
-        };
-
-        this.#metadata = metadata;
-        this.#scheduleMetadataRefresh(metadata);
-        return metadata;
       } catch (err) {
+        // Network error - retry with backoff
         attempt++;
-        const delayMs = backoffDelay(METADATA_RETRY_BASE_MS, attempt);
         if (attempt > 5) {
           throw new Error(
             `Failed to fetch KV metadata after ${attempt} attempts: ${err}`,
           );
         }
-        await delay(delayMs);
+        await delay(backoffDelay(METADATA_RETRY_BASE_MS, attempt));
+        continue;
       }
+
+      if (!resp.ok) {
+        const text = await PromisePrototypeCatch(
+          resp.text(),
+          () => "",
+        );
+        // HTTP errors are retryable (server might be temporarily down)
+        attempt++;
+        if (attempt > 5) {
+          throw new Error(
+            `Metadata exchange failed (HTTP ${resp.status}): ${text}`,
+          );
+        }
+        await delay(backoffDelay(METADATA_RETRY_BASE_MS, attempt));
+        continue;
+      }
+
+      // Parse and validate - these errors are not retryable
+      const json = await resp.json();
+
+      if (
+        !ArrayPrototypeIncludes(SUPPORTED_VERSIONS, json.version)
+      ) {
+        throw new Error(
+          `Failed to parse metadata: unsupported metadata version: ${json.version}`,
+        );
+      }
+      if (
+        !ArrayIsArray(json.endpoints) ||
+        !json.token ||
+        !json.expiresAt
+      ) {
+        throw new Error(
+          `Failed to parse metadata: missing required fields in metadata response`,
+        );
+      }
+
+      const metadata: Metadata = {
+        version: json.version,
+        databaseId: json.databaseId,
+        endpoints: json.endpoints,
+        token: json.token,
+        expiresAt: new Date(json.expiresAt),
+      };
+
+      this.#metadata = metadata;
+      this.#scheduleMetadataRefresh(metadata);
+      return metadata;
     }
   }
 
@@ -415,9 +444,14 @@ export class RemoteBackend {
 
     const timeUntilExpiry = DatePrototypeGetTime(metadata.expiresAt) -
       DateNow();
-    const refreshIn = MathMax(
-      MIN_REFRESH_INTERVAL_MS,
-      timeUntilExpiry - REFRESH_BEFORE_EXPIRY_MS,
+    // Clamp to safe setTimeout range (max ~24.8 days) to avoid overflow
+    const MAX_TIMEOUT_MS = 0x7FFFFFFF;
+    const refreshIn = MathMin(
+      MAX_TIMEOUT_MS,
+      MathMax(
+        MIN_REFRESH_INTERVAL_MS,
+        timeUntilExpiry - REFRESH_BEFORE_EXPIRY_MS,
+      ),
     );
 
     this.#metadataRefreshTimer = setTimeout(() => {
@@ -455,7 +489,7 @@ export class RemoteBackend {
     while (true) {
       let resp: Response;
       try {
-        resp = await globalFetch(url, {
+        resp = await fetch(url, {
           method: "POST",
           headers,
           body,
@@ -517,9 +551,9 @@ export class RemoteBackend {
     const headers = this.#buildHeaders(metadata);
     const body = encodeWatch(keys);
 
-    const abortController = new GlobalAbortController();
+    const abortController = new AbortController();
 
-    const resp = await globalFetch(url, {
+    const resp = await fetch(url, {
       method: "POST",
       headers,
       body,

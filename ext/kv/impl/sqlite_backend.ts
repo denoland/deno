@@ -393,7 +393,7 @@ export class SqliteBackend {
 
   #ensureOpen(): void {
     if (this.#closed) {
-      throw new Error("Database is closed.");
+      throw new core.BadResource("Database is closed.");
     }
   }
 
