@@ -17,7 +17,6 @@ const {
   DataViewPrototypeSetBigInt64,
   DataViewPrototypeSetBigUint64,
   DateNow,
-  Error,
   JSONParse,
   JSONStringify,
   MathFloor,
