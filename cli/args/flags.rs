@@ -3635,7 +3635,7 @@ These must be added to the path manually if required."), UnstableArgsConfig::Res
             .long("os")
             .conflicts_with("global")
             .help("Target OS for npm package installation (e.g., linux, darwin, win32)")
-            .value_parser(["aix", "darwin", "freebsd", "linux", "openbsd", "sunos", "win32"]),
+            .value_parser(["aix", "android", "darwin", "freebsd", "linux", "openbsd", "sunos", "win32"]),
         )
         .arg(
           Arg::new("arch")
