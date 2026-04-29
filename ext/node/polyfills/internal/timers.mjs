@@ -341,11 +341,14 @@ export const runImmediates = core.runImmediates;
 export class Immediate {
   constructor(unboundCallback, ...args) {
     const asyncContext = getAsyncContext();
+    // Match Node's `immediate._onImmediate(...argv)` invocation: the callback's
+    // `this` is the Immediate instance, not the global.
+    const self = this;
     const callback = (...argv) => {
       const oldContext = getAsyncContext();
       try {
         setAsyncContext(asyncContext);
-        return ReflectApply(unboundCallback, globalThis, argv);
+        return ReflectApply(unboundCallback, self, argv);
       } finally {
         setAsyncContext(oldContext);
       }
