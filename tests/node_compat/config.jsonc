@@ -1588,6 +1588,9 @@
     "parallel/test-http-zero-length-write.js": {},
     "parallel/test-http-zerolengthbuffer.js": {},
     "parallel/test-http.js": {},
+    "parallel/test-http2-async-local-storage.js": {
+      "windows": false
+    },
     "parallel/test-http2-alpn.js": {},
     "parallel/test-http2-altsvc.js": {},
     "parallel/test-http2-autoselect-protocol.js": {},
