@@ -731,6 +731,7 @@ Deno.test("[node/http2] allowHTTP1 fallback handles HTTP/1.1 clients", async () 
 });
 
 Deno.test("[node/http2] respondWithFile async error after response start maps to stream reset", {
+  // Windows fs/open failure timing differs, making this assertion flaky.
   ignore: Deno.build.os === "windows",
   sanitizeResources: false,
   sanitizeOps: false,
@@ -778,6 +779,7 @@ Deno.test("[node/http2] respondWithFile async error after response start maps to
 });
 
 Deno.test("[node/http2] respondWithFD async error after response start maps to stream reset", {
+  // Windows invalid-fd handling differs from POSIX for this async fstat path.
   ignore: Deno.build.os === "windows",
   sanitizeResources: false,
   sanitizeOps: false,

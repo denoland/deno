@@ -2224,14 +2224,18 @@ function tryClose(fd) {
   });
 }
 
-function handleAsyncFileResponseError(stream, err) {
+function handleAsyncFileResponseError(stream, err, onError) {
   if (
     !stream.destroyed &&
     !stream.closed &&
-    (stream[kState].flags & STREAM_FLAGS_HEADERS_SENT)
+    (stream[kState].flags & STREAM_FLAGS_HEADERS_SENT) !== 0
   ) {
     closeStream(stream, NGHTTP2_INTERNAL_ERROR, kForceRstStream);
     stream.destroy();
+    return;
+  }
+  if (onError) {
+    onError(err);
     return;
   }
   stream.destroy(err);
@@ -2341,7 +2345,7 @@ function doSendFD(session, options, fd, headers, streamOptions, err, stat) {
           headers,
           statOptions,
         ) === false) ||
-    (this[kState].flags & STREAM_FLAGS_HEADERS_SENT)
+    (this[kState].flags & STREAM_FLAGS_HEADERS_SENT) !== 0
   ) {
     return;
   }
@@ -2361,18 +2365,7 @@ function doSendFileFD(session, options, fd, headers, streamOptions, err, stat) {
 
   if (err) {
     tryClose(fd);
-    if (
-      !this.destroyed &&
-      !this.closed &&
-      (this[kState].flags & STREAM_FLAGS_HEADERS_SENT)
-    ) {
-      closeStream(this, NGHTTP2_INTERNAL_ERROR, kForceRstStream);
-      this.destroy();
-    } else if (onError) {
-      onError(err);
-    } else {
-      handleAsyncFileResponseError(this, err);
-    }
+    handleAsyncFileResponseError(this, err, onError);
     return;
   }
 
@@ -2387,18 +2380,7 @@ function doSendFileFD(session, options, fd, headers, streamOptions, err, stat) {
         ? new ERR_HTTP2_SEND_FILE()
         : new ERR_HTTP2_SEND_FILE_NOSEEK();
       tryClose(fd);
-      if (
-        !this.destroyed &&
-        !this.closed &&
-        (this[kState].flags & STREAM_FLAGS_HEADERS_SENT)
-      ) {
-        closeStream(this, NGHTTP2_INTERNAL_ERROR, kForceRstStream);
-        this.destroy();
-      } else if (onError) {
-        onError(err);
-      } else {
-        handleAsyncFileResponseError(this, err);
-      }
+      handleAsyncFileResponseError(this, err, onError);
       return;
     }
 
@@ -2421,7 +2403,7 @@ function doSendFileFD(session, options, fd, headers, streamOptions, err, stat) {
     (typeof options.statCheck === "function" &&
       FunctionPrototypeCall(options.statCheck, this, stat, headers) ===
         false) ||
-    (this[kState].flags & STREAM_FLAGS_HEADERS_SENT)
+    (this[kState].flags & STREAM_FLAGS_HEADERS_SENT) !== 0
   ) {
     tryClose(fd);
     return;
@@ -2449,18 +2431,7 @@ function afterOpen(session, options, headers, streamOptions, err, fd) {
   const state = this[kState];
   const onError = options.onError;
   if (err) {
-    if (
-      !this.destroyed &&
-      !this.closed &&
-      (this[kState].flags & STREAM_FLAGS_HEADERS_SENT)
-    ) {
-      closeStream(this, NGHTTP2_INTERNAL_ERROR, kForceRstStream);
-      this.destroy();
-    } else if (onError) {
-      onError(err);
-    } else {
-      handleAsyncFileResponseError(this, err);
-    }
+    handleAsyncFileResponseError(this, err, onError);
     return;
   }
   if (this.destroyed || this.closed) {
