@@ -6,6 +6,7 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
 
+use deno_core::JsBuffer;
 use deno_core::OpState;
 use deno_core::ResourceId;
 use deno_core::op2;
@@ -15,7 +16,6 @@ use deno_core::v8;
 use deno_fs::FileSystemRc;
 use deno_fs::FsFileType;
 use deno_fs::OpenOptions;
-use deno_io::fs::FileResource;
 use deno_io::fs::FsResult;
 use deno_permissions::CheckedPath;
 use deno_permissions::CheckedPathBuf;
@@ -26,6 +26,114 @@ use serde::Serialize;
 use tokio::task::JoinError;
 
 use crate::ops::constant::UV_FS_COPYFILE_EXCL;
+
+/// Extract the real OS file descriptor from a File trait object.
+/// On Unix, this is the raw fd (already an i32).
+/// On Windows, this duplicates the OS HANDLE and converts it to a CRT
+/// file descriptor. The duplicate ensures the CRT fd and the File trait
+/// object own independent handles, avoiding double-close on cleanup.
+/// Read CRT errno and map it to a Win32 error code for std::io::Error.
+///
+/// `open_osfhandle` (and other CRT functions) report failures via errno,
+/// NOT GetLastError(). Calling `std::io::Error::last_os_error()` after a
+/// CRT failure reads a stale Win32 error from a prior API call — e.g.
+/// ERROR_ALREADY_EXISTS (183) left over from CreateFileW(CREATE_ALWAYS),
+/// which would be misreported as EEXIST.
+#[cfg(windows)]
+fn crt_error() -> std::io::Error {
+  // SAFETY: _errno() is a standard MSVC CRT function that returns a
+  // pointer to the thread-local errno value. Always valid to call.
+  unsafe extern "C" {
+    fn _errno() -> *mut i32;
+  }
+  // SAFETY: _errno() returns a valid pointer to thread-local errno.
+  let crt_errno = unsafe { *_errno() };
+  let win32_code = match crt_errno {
+    libc::EMFILE => 4,  // ERROR_TOO_MANY_OPEN_FILES
+    libc::EBADF => 6,   // ERROR_INVALID_HANDLE
+    libc::ENOMEM => 8,  // ERROR_NOT_ENOUGH_MEMORY
+    libc::EINVAL => 87, // ERROR_INVALID_PARAMETER
+    _ => 0,             // Unmapped → maps to UV "UNKNOWN"
+  };
+  std::io::Error::from_raw_os_error(win32_code)
+}
+
+fn raw_fd_for_file(file: Rc<dyn deno_io::fs::File>) -> Result<i32, FsError> {
+  let handle_fd = file.backing_fd().ok_or_else(|| {
+    FsError::Io(std::io::Error::other(
+      "Failed to get OS file descriptor from file",
+    ))
+  })?;
+
+  #[cfg(unix)]
+  {
+    Ok(handle_fd)
+  }
+
+  #[cfg(windows)]
+  {
+    use windows_sys::Win32::Foundation::CloseHandle;
+    use windows_sys::Win32::Foundation::DUPLICATE_SAME_ACCESS;
+    use windows_sys::Win32::Foundation::DuplicateHandle;
+    use windows_sys::Win32::System::Threading::GetCurrentProcess;
+
+    // Duplicate the OS handle so the CRT fd owns an independent copy.
+    // This prevents double-close: dropping the Rc<dyn File> closes the
+    // original handle, and libc::close(crt_fd) closes the duplicate.
+    let mut dup_handle = std::ptr::null_mut();
+    // SAFETY: `handle_fd` is a valid OS handle from the file. We duplicate
+    // it into the current process with the same access rights.
+    let ok = unsafe {
+      DuplicateHandle(
+        GetCurrentProcess(),
+        handle_fd as _,
+        GetCurrentProcess(),
+        &mut dup_handle,
+        0,
+        0,
+        DUPLICATE_SAME_ACCESS,
+      )
+    };
+    if ok == 0 {
+      return Err(FsError::Io(std::io::Error::last_os_error()));
+    }
+
+    // SAFETY: `dup_handle` is a valid duplicated OS handle.
+    // `open_osfhandle` associates a CRT file descriptor with it so
+    // that node:fs callers receive a POSIX-style fd.
+    let crt_fd = unsafe { libc::open_osfhandle(dup_handle as isize, 0) };
+    if crt_fd == -1 {
+      // SAFETY: Clean up the duplicated handle on failure.
+      unsafe { CloseHandle(dup_handle) };
+      return Err(FsError::Io(crt_error()));
+    }
+    Ok(crt_fd)
+  }
+}
+
+fn ebadf() -> FsError {
+  FsError::Io(std::io::Error::from_raw_os_error(
+    #[cfg(unix)]
+    libc::EBADF,
+    #[cfg(windows)]
+    {
+      // Win32 ERROR_INVALID_HANDLE, which maps to Node's EBADF
+      6
+    },
+  ))
+}
+
+/// Get the File trait object for an OS file descriptor from FdTable.
+fn file_for_fd(
+  state: &OpState,
+  fd: i32,
+) -> Result<Rc<dyn deno_io::fs::File>, FsError> {
+  state
+    .borrow::<deno_io::FdTable>()
+    .get(fd)
+    .cloned()
+    .ok_or_else(ebadf)
+}
 
 /// When `sync_fs` is enabled, `FileSystemRc` is `Arc` (Send) and we can
 /// offload work to a blocking thread. Otherwise, run inline.
@@ -237,7 +345,7 @@ pub fn op_node_open_sync(
   #[string] path: &str,
   #[smi] flags: i32,
   #[smi] mode: u32,
-) -> Result<ResourceId, FsError> {
+) -> Result<i32, FsError> {
   let path = Path::new(path);
   let options = get_open_options(flags, Some(mode));
 
@@ -247,11 +355,39 @@ pub fn op_node_open_sync(
     open_options_to_access_kind(&options),
     Some("node:fs.openSync"),
   )?;
-  let file = fs.open_sync(&path, options)?;
-  let rid = state
-    .resource_table
-    .add(FileResource::new(file, "fsFile".to_string()));
-  Ok(rid)
+
+  // On Windows, opening with create + truncate uses CREATE_ALWAYS which
+  // truncates the file to 0 bytes immediately. If the subsequent CRT fd
+  // creation (open_osfhandle) fails, the file is left at 0 bytes — causing
+  // permanent data loss. To prevent this, open without truncation first,
+  // create the fd, and then truncate.
+  #[cfg(windows)]
+  let deferred_truncate =
+    options.truncate && options.create && !options.create_new;
+  #[cfg(windows)]
+  let open_options = if deferred_truncate {
+    OpenOptions {
+      truncate: false,
+      ..options
+    }
+  } else {
+    options
+  };
+  #[cfg(not(windows))]
+  let open_options = options;
+
+  let file = fs.open_sync(&path, open_options)?;
+  let fd = raw_fd_for_file(file.clone())?;
+
+  #[cfg(windows)]
+  if deferred_truncate && let Err(e) = file.clone().truncate_sync(0) {
+    // SAFETY: fd is a valid CRT fd just created by raw_fd_for_file.
+    unsafe { libc::close(fd) };
+    return Err(e.into());
+  }
+
+  state.borrow_mut::<deno_io::FdTable>().register(fd, file);
+  Ok(fd)
 }
 
 #[op2(stack_trace)]
@@ -261,7 +397,7 @@ pub async fn op_node_open(
   #[string] path: String,
   #[smi] flags: i32,
   #[smi] mode: u32,
-) -> Result<ResourceId, FsError> {
+) -> Result<i32, FsError> {
   let path = PathBuf::from(path);
   let options = get_open_options(flags, Some(mode));
 
@@ -276,13 +412,36 @@ pub async fn op_node_open(
       )?,
     )
   };
-  let file = fs.open_async(path.as_owned(), options).await?;
 
-  let rid = state
-    .borrow_mut()
-    .resource_table
-    .add(FileResource::new(file, "fsFile".to_string()));
-  Ok(rid)
+  // See op_node_open_sync for why we defer truncation on Windows.
+  #[cfg(windows)]
+  let deferred_truncate =
+    options.truncate && options.create && !options.create_new;
+  #[cfg(windows)]
+  let open_options = if deferred_truncate {
+    OpenOptions {
+      truncate: false,
+      ..options
+    }
+  } else {
+    options
+  };
+  #[cfg(not(windows))]
+  let open_options = options;
+
+  let file = fs.open_async(path.as_owned(), open_options).await?;
+  let fd = raw_fd_for_file(file.clone())?;
+
+  #[cfg(windows)]
+  if deferred_truncate && let Err(e) = file.clone().truncate_sync(0) {
+    // SAFETY: fd is a valid CRT fd just created by raw_fd_for_file.
+    unsafe { libc::close(fd) };
+    return Err(e.into());
+  }
+
+  let mut state = state.borrow_mut();
+  state.borrow_mut::<deno_io::FdTable>().register(fd, file);
+  Ok(fd)
 }
 #[derive(Debug, Serialize)]
 pub struct StatFs {
@@ -664,50 +823,6 @@ fn temp_path_append_suffix(prefix: &str) -> String {
   format!("{}{}", prefix, suffix)
 }
 
-/// Create a file resource from a raw file descriptor.
-/// This is used for wrapping PTYs and other non-socket file descriptors
-/// that can't be wrapped as Unix streams.
-#[cfg(unix)]
-#[op2(fast)]
-#[smi]
-pub fn op_node_file_from_fd(
-  state: &mut OpState,
-  fd: i32,
-) -> Result<ResourceId, FsError> {
-  use std::fs::File as StdFile;
-  use std::os::unix::io::FromRawFd;
-
-  if fd < 0 {
-    return Err(FsError::Io(std::io::Error::new(
-      std::io::ErrorKind::InvalidInput,
-      "Invalid file descriptor",
-    )));
-  }
-
-  // SAFETY: The caller is responsible for passing a valid fd that they own.
-  // The fd will be owned by the created File from this point on.
-  let std_file = unsafe { StdFile::from_raw_fd(fd) };
-
-  let file = Rc::new(deno_io::StdFileResourceInner::file(std_file, None));
-  let rid = state
-    .resource_table
-    .add(FileResource::new(file, "pipe".to_string()));
-  Ok(rid)
-}
-
-#[cfg(not(unix))]
-#[op2(fast)]
-#[smi]
-pub fn op_node_file_from_fd(
-  _state: &mut OpState,
-  _fd: i32,
-) -> Result<ResourceId, FsError> {
-  Err(FsError::Io(std::io::Error::new(
-    std::io::ErrorKind::Unsupported,
-    "op_node_file_from_fd is not supported on this platform",
-  )))
-}
-
 #[op2(fast, stack_trace)]
 pub fn op_node_rmdir_sync(
   state: &mut OpState,
@@ -739,6 +854,553 @@ pub async fn op_node_rmdir(
   };
   fs.rmdir_async(path.into_owned()).await?;
   Ok(())
+}
+
+/// Create an anonymous pipe pair and return (read_fd, write_fd).
+/// The returned fds are NOT registered in FdTable; the caller
+/// is responsible for registering or closing them.
+#[cfg(unix)]
+#[op2]
+#[serde]
+pub fn op_node_create_pipe() -> Result<(i32, i32), FsError> {
+  let mut fds = [0i32; 2];
+  // SAFETY: pipe() writes two valid fds into the array on success.
+  let ret = unsafe { libc::pipe(fds.as_mut_ptr()) };
+  if ret != 0 {
+    return Err(FsError::Io(std::io::Error::last_os_error()));
+  }
+  Ok((fds[0], fds[1]))
+}
+
+#[cfg(windows)]
+#[op2]
+#[serde]
+pub fn op_node_create_pipe() -> Result<(i32, i32), FsError> {
+  use windows_sys::Win32::Foundation::CloseHandle;
+  use windows_sys::Win32::System::Pipes::CreatePipe;
+
+  let mut read_handle = std::ptr::null_mut();
+  let mut write_handle = std::ptr::null_mut();
+
+  // SAFETY: CreatePipe writes valid handles on success.
+  let ok = unsafe {
+    CreatePipe(&mut read_handle, &mut write_handle, std::ptr::null(), 0)
+  };
+  if ok == 0 {
+    return Err(FsError::Io(std::io::Error::last_os_error()));
+  }
+
+  // Convert OS handles to CRT file descriptors.
+  // SAFETY: read_handle and write_handle are valid pipe handles from
+  // CreatePipe. open_osfhandle takes ownership of the handle on success.
+  let read_fd = unsafe { libc::open_osfhandle(read_handle as isize, 0) };
+  // SAFETY: Same as above for the write handle.
+  let write_fd = unsafe { libc::open_osfhandle(write_handle as isize, 0) };
+
+  if read_fd == -1 || write_fd == -1 {
+    // Clean up on failure: close whichever succeeded as a CRT fd,
+    // and close the raw OS handle for whichever failed.
+    if read_fd != -1 {
+      // SAFETY: read_fd is a valid CRT fd from open_osfhandle.
+      unsafe {
+        libc::close(read_fd);
+      }
+    } else {
+      // SAFETY: read_handle is still a valid OS handle (open_osfhandle failed).
+      unsafe {
+        CloseHandle(read_handle);
+      }
+    }
+    if write_fd != -1 {
+      // SAFETY: write_fd is a valid CRT fd from open_osfhandle.
+      unsafe {
+        libc::close(write_fd);
+      }
+    } else {
+      // SAFETY: write_handle is still a valid OS handle (open_osfhandle failed).
+      unsafe {
+        CloseHandle(write_handle);
+      }
+    }
+    return Err(ebadf());
+  }
+
+  Ok((read_fd, write_fd))
+}
+
+// ============================================================
+// fd-based ops for node:fs (accept real OS fd, not RID)
+// ============================================================
+
+/// Set blocking or non-blocking mode on an OS file descriptor.
+/// Matches libuv's `uv_stream_set_blocking`.
+#[cfg(unix)]
+#[op2(fast)]
+#[smi]
+pub fn op_node_fd_set_blocking(fd: i32, blocking: bool) -> i32 {
+  // SAFETY: fcntl with F_GETFL/F_SETFL is safe on valid fds.
+  // Returns -1 on invalid fd, which we map to UV_EBADF.
+  unsafe {
+    let flags = libc::fcntl(fd, libc::F_GETFL);
+    if flags == -1 {
+      return -libc::EBADF;
+    }
+    let flags = if blocking {
+      flags & !libc::O_NONBLOCK
+    } else {
+      flags | libc::O_NONBLOCK
+    };
+    if libc::fcntl(fd, libc::F_SETFL, flags) == -1 {
+      return -libc::EBADF;
+    }
+    0
+  }
+}
+
+#[cfg(windows)]
+#[op2(fast)]
+#[smi]
+pub fn op_node_fd_set_blocking(_fd: i32, _blocking: bool) -> i32 {
+  // On Windows, named pipes and console handles don't support
+  // toggling blocking mode via a simple flag. The Windows-specific
+  // behavior is handled at the I/O level instead.
+  0
+}
+
+#[op2(fast)]
+pub fn op_node_fs_close(state: &mut OpState, fd: i32) -> Result<(), FsError> {
+  // FdTable.remove() drops the Rc<dyn File> and cancels the cancel handle,
+  // which will abort any in-flight async reads on this fd.
+  let file = state
+    .borrow_mut::<deno_io::FdTable>()
+    .remove(fd)
+    .ok_or_else(ebadf)?;
+
+  // For stdio fds (0/1/2), also remove the corresponding resource table
+  // entry so that Deno.stdin/stdout/stderr see the fd as closed and
+  // release their Rc clone of the same File.
+  if (0..=2).contains(&fd)
+    && let Ok(resource) = state.resource_table.take_any(fd as ResourceId)
+  {
+    resource.close();
+  }
+
+  // Dropping the Rc<dyn File> will close the underlying OS file descriptor
+  // when the reference count reaches zero (via std::fs::File Drop).
+  drop(file);
+
+  // On Windows, `raw_fd_for_file` creates a CRT file descriptor via
+  // `open_osfhandle` on a duplicated OS handle. The File Drop above closes
+  // the original handle; `libc::close` closes the duplicate and frees the
+  // CRT fd slot.
+  #[cfg(windows)]
+  {
+    // SAFETY: `fd` is a valid CRT file descriptor created by
+    // `open_osfhandle` in `raw_fd_for_file`.
+    unsafe {
+      libc::close(fd);
+    }
+  }
+
+  Ok(())
+}
+
+/// Read from a raw OS fd using libc. No dup, no clone -- the read uses the
+/// fd number directly, so closing the fd from another thread interrupts the
+/// Positioned read: if position >= 0, uses pread to read without moving the
+/// file cursor. If position < 0, reads from the current position.
+fn read_with_position(
+  file: Rc<dyn deno_io::fs::File>,
+  buf: &mut [u8],
+  position: i64,
+) -> Result<u32, FsError> {
+  if position >= 0 {
+    let nread = file.read_at_sync(buf, position as u64)?;
+    Ok(nread as u32)
+  } else {
+    let nread = file.read_sync(buf)?;
+    Ok(nread as u32)
+  }
+}
+
+#[op2(fast)]
+#[smi]
+pub fn op_node_fs_read_sync(
+  state: &mut OpState,
+  fd: i32,
+  #[buffer] buf: &mut [u8],
+  #[number] position: i64,
+) -> Result<u32, FsError> {
+  let file = file_for_fd(state, fd)?;
+  read_with_position(file, buf, position)
+}
+
+/// Async read for node:fs. Runs a blocking read on a spawned thread using
+/// the raw OS fd directly (no dup/clone). When the fd is closed via
+/// Async read for node:fs. Uses the File trait from FdTable for proper
+/// I/O through the file handle.
+#[op2]
+#[smi]
+pub async fn op_node_fs_read_deferred(
+  state: Rc<RefCell<OpState>>,
+  fd: i32,
+  #[buffer] buf: JsBuffer,
+  #[number] position: i64,
+) -> Result<u32, FsError> {
+  let file = file_for_fd(&state.borrow(), fd)?;
+  if position >= 0 {
+    let view = deno_core::BufMutView::from(buf);
+    let (nread, _) = file.read_at_async(view, position as u64).await?;
+    Ok(nread as u32)
+  } else {
+    let view = deno_core::BufMutView::from(buf);
+    let (nread, _) = file.read_byob(view).await?;
+    Ok(nread as u32)
+  }
+}
+
+/// Positioned write: if position >= 0, uses pwrite to write without moving
+/// the file cursor. If position < 0, writes at the current position.
+/// Handles partial writes internally by looping until all bytes are written.
+fn write_with_position(
+  file: Rc<dyn deno_io::fs::File>,
+  buf: &[u8],
+  position: i64,
+) -> Result<u32, FsError> {
+  if position >= 0 {
+    let mut total = 0usize;
+    while total < buf.len() {
+      let nwritten = file
+        .clone()
+        .write_at_sync(&buf[total..], position as u64 + total as u64)?;
+      total += nwritten;
+    }
+    Ok(total as u32)
+  } else {
+    let mut total = 0usize;
+    while total < buf.len() {
+      let nwritten = file.clone().write_sync(&buf[total..])?;
+      total += nwritten;
+    }
+    Ok(total as u32)
+  }
+}
+
+#[op2(fast)]
+#[smi]
+pub fn op_node_fs_write_sync(
+  state: &mut OpState,
+  fd: i32,
+  #[buffer] buf: &[u8],
+  #[number] position: i64,
+) -> Result<u32, FsError> {
+  let file = file_for_fd(state, fd)?;
+  write_with_position(file, buf, position)
+}
+
+/// Async write for node:fs. Performs the write synchronously but resolves
+/// the promise on the next event loop tick.
+#[allow(
+  clippy::unused_async,
+  reason = "async required for deferred op scheduling"
+)]
+#[op2(async(deferred))]
+#[smi]
+pub async fn op_node_fs_write_deferred(
+  state: Rc<RefCell<OpState>>,
+  fd: i32,
+  #[buffer] buf: JsBuffer,
+  #[number] position: i64,
+) -> Result<u32, FsError> {
+  let file = file_for_fd(&state.borrow(), fd)?;
+  write_with_position(file, &buf, position)
+}
+
+#[op2(fast)]
+#[number]
+pub fn op_node_fs_seek_sync(
+  state: &mut OpState,
+  fd: i32,
+  #[number] offset: i64,
+  #[smi] whence: i32,
+) -> Result<u64, FsError> {
+  let file = file_for_fd(state, fd)?;
+  let seek_from = match whence {
+    0 => std::io::SeekFrom::Start(offset as u64),
+    1 => std::io::SeekFrom::Current(offset),
+    2 => std::io::SeekFrom::End(offset),
+    _ => {
+      return Err(FsError::Io(std::io::Error::new(
+        std::io::ErrorKind::InvalidInput,
+        "invalid whence",
+      )));
+    }
+  };
+  let pos = file.seek_sync(seek_from)?;
+  Ok(pos)
+}
+
+#[op2]
+#[number]
+pub async fn op_node_fs_seek(
+  state: Rc<RefCell<OpState>>,
+  fd: i32,
+  #[number] offset: i64,
+  #[smi] whence: i32,
+) -> Result<u64, FsError> {
+  let file = file_for_fd(&state.borrow(), fd)?;
+  let seek_from = match whence {
+    0 => std::io::SeekFrom::Start(offset as u64),
+    1 => std::io::SeekFrom::Current(offset),
+    2 => std::io::SeekFrom::End(offset),
+    _ => {
+      return Err(FsError::Io(std::io::Error::new(
+        std::io::ErrorKind::InvalidInput,
+        "invalid whence",
+      )));
+    }
+  };
+  let pos = file.seek_async(seek_from).await?;
+  Ok(pos)
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+/// Stat result returned to JS. Uses f64 for numeric fields to ensure
+/// they always serialize as JS Number (not BigInt). BigInt conversion
+/// for the bigint stat API is handled on the JS side by CFISBIS.
+pub struct NodeFsStat {
+  pub is_file: bool,
+  pub is_directory: bool,
+  pub is_symlink: bool,
+  pub size: f64,
+  pub mtime_ms: Option<f64>,
+  pub atime_ms: Option<f64>,
+  pub birthtime_ms: Option<f64>,
+  pub ctime_ms: Option<f64>,
+  pub dev: f64,
+  pub ino: f64,
+  pub mode: u32,
+  pub nlink: f64,
+  pub uid: u32,
+  pub gid: u32,
+  pub rdev: f64,
+  pub blksize: f64,
+  pub blocks: f64,
+  pub is_block_device: bool,
+  pub is_char_device: bool,
+  pub is_fifo: bool,
+  pub is_socket: bool,
+}
+
+impl From<deno_io::fs::FsStat> for NodeFsStat {
+  fn from(stat: deno_io::fs::FsStat) -> Self {
+    NodeFsStat {
+      is_file: stat.is_file,
+      is_directory: stat.is_directory,
+      is_symlink: stat.is_symlink,
+      size: stat.size as f64,
+      mtime_ms: stat.mtime.map(|v| v as f64),
+      atime_ms: stat.atime.map(|v| v as f64),
+      birthtime_ms: stat.birthtime.map(|v| v as f64),
+      ctime_ms: stat.ctime.map(|v| v as f64),
+      dev: stat.dev as f64,
+      ino: stat.ino.unwrap_or(0) as f64,
+      mode: stat.mode,
+      nlink: stat.nlink.unwrap_or(0) as f64,
+      uid: stat.uid,
+      gid: stat.gid,
+      rdev: stat.rdev as f64,
+      blksize: stat.blksize as f64,
+      blocks: stat.blocks.unwrap_or(0) as f64,
+      is_block_device: stat.is_block_device,
+      is_char_device: stat.is_char_device,
+      is_fifo: stat.is_fifo,
+      is_socket: stat.is_socket,
+    }
+  }
+}
+
+#[op2]
+#[serde]
+pub fn op_node_fs_fstat_sync(
+  state: &mut OpState,
+  fd: i32,
+) -> Result<NodeFsStat, FsError> {
+  let file = file_for_fd(state, fd)?;
+  let stat = file.stat_sync()?;
+  Ok(NodeFsStat::from(stat))
+}
+
+#[op2]
+#[serde]
+pub async fn op_node_fs_fstat(
+  state: Rc<RefCell<OpState>>,
+  fd: i32,
+) -> Result<NodeFsStat, FsError> {
+  let file = file_for_fd(&state.borrow(), fd)?;
+  let stat = file.stat_async().await?;
+  Ok(NodeFsStat::from(stat))
+}
+
+#[op2(fast)]
+pub fn op_node_fs_ftruncate_sync(
+  state: &mut OpState,
+  fd: i32,
+  #[number] len: u64,
+) -> Result<(), FsError> {
+  let file = file_for_fd(state, fd)?;
+  file.truncate_sync(len)?;
+  Ok(())
+}
+
+#[op2]
+pub async fn op_node_fs_ftruncate(
+  state: Rc<RefCell<OpState>>,
+  fd: i32,
+  #[number] len: u64,
+) -> Result<(), FsError> {
+  let file = file_for_fd(&state.borrow(), fd)?;
+  file.truncate_async(len).await?;
+  Ok(())
+}
+
+#[op2(fast)]
+pub fn op_node_fs_fsync_sync(
+  state: &mut OpState,
+  fd: i32,
+) -> Result<(), FsError> {
+  let file = file_for_fd(state, fd)?;
+  file.sync_sync()?;
+  Ok(())
+}
+
+#[op2]
+pub async fn op_node_fs_fsync(
+  state: Rc<RefCell<OpState>>,
+  fd: i32,
+) -> Result<(), FsError> {
+  let file = file_for_fd(&state.borrow(), fd)?;
+  file.sync_async().await?;
+  Ok(())
+}
+
+#[op2(fast)]
+pub fn op_node_fs_fdatasync_sync(
+  state: &mut OpState,
+  fd: i32,
+) -> Result<(), FsError> {
+  let file = file_for_fd(state, fd)?;
+  file.datasync_sync()?;
+  Ok(())
+}
+
+#[op2]
+pub async fn op_node_fs_fdatasync(
+  state: Rc<RefCell<OpState>>,
+  fd: i32,
+) -> Result<(), FsError> {
+  let file = file_for_fd(&state.borrow(), fd)?;
+  file.datasync_async().await?;
+  Ok(())
+}
+
+#[op2(fast)]
+pub fn op_node_fs_futimes_sync(
+  state: &mut OpState,
+  fd: i32,
+  #[number] atime_secs: i64,
+  #[smi] atime_nanos: u32,
+  #[number] mtime_secs: i64,
+  #[smi] mtime_nanos: u32,
+) -> Result<(), FsError> {
+  let file = file_for_fd(state, fd)?;
+  file.utime_sync(atime_secs, atime_nanos, mtime_secs, mtime_nanos)?;
+  Ok(())
+}
+
+#[op2]
+pub async fn op_node_fs_futimes(
+  state: Rc<RefCell<OpState>>,
+  fd: i32,
+  #[number] atime_secs: i64,
+  #[smi] atime_nanos: u32,
+  #[number] mtime_secs: i64,
+  #[smi] mtime_nanos: u32,
+) -> Result<(), FsError> {
+  let file = file_for_fd(&state.borrow(), fd)?;
+  file
+    .utime_async(atime_secs, atime_nanos, mtime_secs, mtime_nanos)
+    .await?;
+  Ok(())
+}
+
+#[op2(fast)]
+pub fn op_node_fs_fchmod_sync(
+  state: &mut OpState,
+  fd: i32,
+  #[smi] mode: u32,
+) -> Result<(), FsError> {
+  let file = file_for_fd(state, fd)?;
+  file.chmod_sync(mode)?;
+  Ok(())
+}
+
+#[op2]
+pub async fn op_node_fs_fchmod(
+  state: Rc<RefCell<OpState>>,
+  fd: i32,
+  #[smi] mode: u32,
+) -> Result<(), FsError> {
+  let file = file_for_fd(&state.borrow(), fd)?;
+  file.chmod_async(mode).await?;
+  Ok(())
+}
+
+#[op2(fast)]
+pub fn op_node_fs_fchown_sync(
+  state: &mut OpState,
+  fd: i32,
+  #[smi] uid: u32,
+  #[smi] gid: u32,
+) -> Result<(), FsError> {
+  let file = file_for_fd(state, fd)?;
+  file.chown_sync(Some(uid), Some(gid))?;
+  Ok(())
+}
+
+#[op2]
+pub async fn op_node_fs_fchown(
+  state: Rc<RefCell<OpState>>,
+  fd: i32,
+  #[smi] uid: u32,
+  #[smi] gid: u32,
+) -> Result<(), FsError> {
+  let file = file_for_fd(&state.borrow(), fd)?;
+  file.chown_async(Some(uid), Some(gid)).await?;
+  Ok(())
+}
+
+#[op2]
+#[buffer]
+pub fn op_node_fs_read_file_sync(
+  state: &mut OpState,
+  fd: i32,
+) -> Result<Vec<u8>, FsError> {
+  let file = file_for_fd(state, fd)?;
+  let buf = file.read_all_sync()?;
+  Ok(buf.to_vec())
+}
+
+#[op2]
+#[buffer]
+pub async fn op_node_fs_read_file(
+  state: Rc<RefCell<OpState>>,
+  fd: i32,
+) -> Result<Vec<u8>, FsError> {
+  let file = file_for_fd(&state.borrow(), fd)?;
+  let buf = file.read_all_async().await?;
+  Ok(buf.to_vec())
 }
 
 const CP_IS_DEST_EXISTS_FLAG: u64 = 1u64 << 32;
@@ -1561,7 +2223,17 @@ async fn check_parent_paths_impl(
 
     let current_str = current.to_string_lossy();
     let checked_path =
-      check_cp_path(state, &current_str, OpenAccessKind::Read)?;
+      match check_cp_path(state, &current_str, OpenAccessKind::Read) {
+        Ok(p) => p,
+        // When read permission is ignored, the check returns NotFound.
+        // Treat it like a non-existent directory: stop walking.
+        Err(FsError::Permission(e))
+          if e.kind() == std::io::ErrorKind::NotFound =>
+        {
+          return Ok(());
+        }
+        Err(e) => return Err(e),
+      };
     let stat_result = fs.stat_async(checked_path).await;
     match stat_result {
       Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
@@ -1644,7 +2316,17 @@ fn check_parent_paths_impl_sync(
 
     let current_str = current.to_string_lossy();
     let checked_path =
-      check_cp_path(state, &current_str, OpenAccessKind::Read)?;
+      match check_cp_path(state, &current_str, OpenAccessKind::Read) {
+        Ok(p) => p,
+        // When read permission is ignored, the check returns NotFound.
+        // Treat it like a non-existent directory: stop walking.
+        Err(FsError::Permission(e))
+          if e.kind() == std::io::ErrorKind::NotFound =>
+        {
+          return Ok(());
+        }
+        Err(e) => return Err(e),
+      };
     match fs.stat_sync(&checked_path.as_checked_path()) {
       Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
       Err(e) => {

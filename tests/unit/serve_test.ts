@@ -971,8 +971,10 @@ function createUrlTest(
     const conn = await Deno.connect({ port });
 
     const encoder = new TextEncoder();
+    // `null` omits the Host header entirely; `""` sends `Host:` with an
+    // empty value, which is a separate code path.
     const body = `${methodAndPath} HTTP/1.1\r\n${
-      host ? ("Host: " + host + "\r\n") : ""
+      host !== null ? ("Host: " + host + "\r\n") : ""
     }Content-Length: 5\r\n\r\n12345`;
     const writeResult = await conn.write(encoder.encode(body));
     assertEquals(body.length, writeResult);
@@ -1058,6 +1060,16 @@ createUrlTest(
   "CONNECT /path",
   null,
   400,
+);
+
+// Regression test for https://github.com/denoland/deno/issues/29872: an empty
+// `Host:` header must fall back to the listener's authority instead of
+// producing `request.url = "http:///path"` (which parses as hostname "path").
+createUrlTest(
+  "WithEmptyHostHeader",
+  "GET /path",
+  "",
+  "http://HOST:PORT/path",
 );
 
 Deno.test(
@@ -3467,7 +3479,7 @@ Deno.test(
     const { resolve } = Promise.withResolvers<void>();
 
     let reqCount = -1;
-    let timerId: number | undefined;
+    let timerId: ReturnType<typeof setInterval> | undefined;
     await using server = Deno.serve({
       handler: (_req) => {
         reqCount++;
@@ -3481,7 +3493,7 @@ Deno.test(
               }, 1000);
             },
             cancel() {
-              if (typeof timerId === "number") {
+              if (timerId !== undefined) {
                 clearInterval(timerId);
               }
             },

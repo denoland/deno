@@ -462,6 +462,15 @@ async fn run_subcommand(
     DenoSubcommand::Why(why_flags) => spawn_subcommand(async {
       tools::pm::why(Arc::new(flags), why_flags).await
     }),
+    DenoSubcommand::BumpVersion(version_flags) => spawn_subcommand(async {
+      log::warn!(
+        "{}",
+        colors::yellow(
+          "deno bump-version is experimental and subject to change"
+        )
+      );
+      tools::bump_version::bump_version_command(Arc::new(flags), version_flags)
+    }),
     DenoSubcommand::Vendor => exit_with_message(
       "⚠️  `deno vendor` was removed in Deno 2.\n\nSee the Deno 1.x to 2.x Migration Guide for migration instructions: https://docs.deno.com/runtime/manual/advanced/migrate_deprecations",
       1,

@@ -58,3 +58,9 @@ Deno.test("napi object wrap userland owned", function () {
   // force finalize callback to get called
   globalThis.gc();
 });
+
+Deno.test("napi remove_wrap", function () {
+  const obj = {};
+  const result = objectWrap.test_remove_wrap(obj);
+  assertEquals(result, true);
+});

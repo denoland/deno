@@ -47,3 +47,15 @@ Deno.test("napi symbol3", () => {
   assertEquals(object[foo1], 1);
   assertEquals(object[foo2], 2);
 });
+
+Deno.test("napi symbol_for", () => {
+  const sym1 = testSymbol.symbolFor("shared");
+  const sym2 = testSymbol.symbolFor("shared");
+  // symbol_for with the same key returns the same symbol (like Symbol.for)
+  assert(sym1 === sym2);
+  assert(sym1 === Symbol.for("shared"));
+
+  // Different keys produce different symbols
+  const sym3 = testSymbol.symbolFor("other");
+  assert(sym1 !== sym3);
+});

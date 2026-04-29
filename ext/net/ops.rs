@@ -267,6 +267,17 @@ pub async fn op_net_send_udp(
     .next()
     .ok_or(NetError::NoResolvedAddress)?;
 
+  {
+    state
+      .borrow_mut()
+      .borrow_mut::<PermissionsContainer>()
+      .check_net_resolved(
+        &addr.ip(),
+        addr.port(),
+        "Deno.DatagramConn.send()",
+      )?;
+  }
+
   let resource = state
     .borrow_mut()
     .resource_table
@@ -508,6 +519,16 @@ pub async fn op_net_connect_tcp_inner(
     .next()
     .ok_or_else(|| NetError::NoResolvedAddress)?;
 
+  // Post-resolution deny check: verify the resolved IP is not denied.
+  // This prevents bypassing IP-literal deny rules via numeric hostname
+  // aliases (e.g. 2130706433 → 127.0.0.1).
+  {
+    state
+      .borrow_mut()
+      .borrow_mut::<PermissionsContainer>()
+      .check_net_resolved(&addr.ip(), addr.port(), "Deno.connect()")?;
+  }
+
   let cancel_handle = resource_abort_id.and_then(|rid| {
     state
       .borrow_mut()
@@ -576,6 +597,9 @@ pub fn op_net_listen_tcp(
   let addr = resolve_addr_sync(&addr.hostname, addr.port)?
     .next()
     .ok_or_else(|| NetError::NoResolvedAddress)?;
+  state
+    .borrow_mut::<PermissionsContainer>()
+    .check_net_resolved(&addr.ip(), addr.port(), "Deno.listen()")?;
 
   let listener = if load_balanced {
     TcpListener::bind_load_balanced(addr, tcp_backlog)
@@ -601,6 +625,9 @@ fn net_listen_udp(
   let addr = resolve_addr_sync(&addr.hostname, addr.port)?
     .next()
     .ok_or_else(|| NetError::NoResolvedAddress)?;
+  state
+    .borrow_mut::<PermissionsContainer>()
+    .check_net_resolved(&addr.ip(), addr.port(), "Deno.listenDatagram()")?;
 
   let domain = if addr.is_ipv4() {
     Domain::IPV4
@@ -947,7 +974,7 @@ pub async fn op_dns_resolve(
     cancel_rid,
   } = args;
 
-  let (config, opts) = if let Some(name_server) =
+  let (config, mut opts) = if let Some(name_server) =
     options.as_ref().and_then(|o| o.name_server.as_ref())
   {
     let group = NameServerConfigGroup::from_ips_clear(
@@ -965,6 +992,14 @@ pub async fn op_dns_resolve(
   } else {
     system_conf::read_system_conf()?
   };
+
+  // When a cancel handle is provided, use a short resolver timeout so
+  // that hickory's background connection tasks clean up quickly after
+  // cancellation (they are not aborted by the cancel handle itself).
+  if cancel_rid.is_some() {
+    opts.timeout = std::time::Duration::from_secs(1);
+    opts.attempts = 1;
+  }
 
   {
     let mut s = state.borrow_mut();

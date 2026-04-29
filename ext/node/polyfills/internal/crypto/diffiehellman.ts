@@ -31,6 +31,7 @@ import {
   validateString,
 } from "ext:deno_node/internal/validators.mjs";
 import { Buffer } from "node:buffer";
+import { deprecate } from "node:util";
 import {
   EllipticCurve,
   ellipticCurves,
@@ -1517,10 +1518,26 @@ export class ECDHImpl {
     }
     return this.#pubbuf;
   }
+
+  setPublicKey(publicKey: ArrayBufferView): void;
+  setPublicKey(publicKey: string, encoding: BinaryToTextEncoding): void;
+  setPublicKey(
+    publicKey: ArrayBufferView | string,
+    encoding?: BinaryToTextEncoding,
+  ): void {
+    this.#pubbuf = typeof publicKey === "string"
+      ? Buffer.from(publicKey, encoding)
+      : Buffer.from(publicKey);
+  }
 }
 
 ECDH.prototype = ECDHImpl.prototype;
 ECDH.convertKey = ECDHImpl.convertKey;
+ECDH.prototype.setPublicKey = deprecate(
+  ECDHImpl.prototype.setPublicKey,
+  "ecdh.setPublicKey() is deprecated.",
+  "DEP0031",
+);
 
 export function diffieHellman(
   options: {
