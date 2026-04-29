@@ -291,6 +291,7 @@ tlsWrap.TLSWrap.prototype.close = function close(cb) {
   // deno-lint-ignore no-this-alias
   const self = this;
   const done = () => {
+    self.cancelWrite();
     if (ssl) {
       ssl.destroySsl();
     }

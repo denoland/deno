@@ -140,6 +140,22 @@ pub struct RemoveFlags {
   pub lockfile_only: bool,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct VersionFlags {
+  pub increment: Option<VersionIncrement>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum VersionIncrement {
+  Major,
+  Minor,
+  Patch,
+  Premajor,
+  Preminor,
+  Prepatch,
+  Prerelease,
+}
+
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct BenchFlags {
   pub files: FileFlags,
@@ -331,7 +347,7 @@ pub struct InstallFlagsGlobal {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum InstallFlags {
-  Local(InstallFlagsLocal),
+  Local(InstallFlagsLocal, NpmInstallTargetFlags),
   Global(InstallFlagsGlobal),
 }
 
@@ -342,15 +358,26 @@ pub enum InstallFlagsLocal {
   Entrypoints(InstallEntrypointsFlags),
 }
 
+/// Overrides for the target OS and architecture when installing npm packages.
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct NpmInstallTargetFlags {
+  pub os: Option<String>,
+  pub arch: Option<String>,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct InstallTopLevelFlags {
   pub lockfile_only: bool,
+  pub production: bool,
+  pub skip_types: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct InstallEntrypointsFlags {
   pub entrypoints: Vec<String>,
   pub lockfile_only: bool,
+  pub production: bool,
+  pub skip_types: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -649,6 +676,7 @@ pub enum DenoSubcommand {
   Types,
   Upgrade(UpgradeFlags),
   Vendor,
+  BumpVersion(VersionFlags),
   Publish(PublishFlags),
   Help(HelpFlags),
   X(XFlags),
@@ -762,14 +790,26 @@ impl DenoSubcommand {
           }
         }
       }
-      _ => {
-        let arch = std::env::var_os("DENO_INSTALL_ARCH");
-        if let Some(var) = arch.as_ref().and_then(|s| s.to_str()) {
-          NpmSystemInfo::from_rust(std::env::consts::OS, var)
-        } else {
-          NpmSystemInfo::default()
+      DenoSubcommand::Install(InstallFlags::Local(
+        _,
+        NpmInstallTargetFlags { os, arch },
+      )) => {
+        let default = Self::npm_system_info_from_env();
+        NpmSystemInfo {
+          os: os.as_deref().unwrap_or(&default.os).into(),
+          cpu: arch.as_deref().unwrap_or(&default.cpu).into(),
         }
       }
+      _ => Self::npm_system_info_from_env(),
+    }
+  }
+
+  fn npm_system_info_from_env() -> NpmSystemInfo {
+    let arch = std::env::var_os("DENO_INSTALL_ARCH");
+    if let Some(var) = arch.as_ref().and_then(|s| s.to_str()) {
+      NpmSystemInfo::from_rust(std::env::consts::OS, var)
+    } else {
+      NpmSystemInfo::default()
     }
   }
 }
@@ -1360,11 +1400,13 @@ impl Flags {
         }
       }
       Cache(CacheFlags { files, .. })
-      | Install(InstallFlags::Local(InstallFlagsLocal::Entrypoints(
-        InstallEntrypointsFlags {
-          entrypoints: files, ..
-        },
-      ))) => Some(vec![
+      | Install(InstallFlags::Local(
+        InstallFlagsLocal::Entrypoints(InstallEntrypointsFlags {
+          entrypoints: files,
+          ..
+        }),
+        _,
+      )) => Some(vec![
         files
           .iter()
           .filter_map(|file| {
@@ -1650,11 +1692,13 @@ static DENO_HELP: &str = cstr!(
   <y>Dependency management:</>
     <g>add</>          Add dependencies
                   <p(245)>deno add jsr:@std/assert  |  deno add npm:express</>
+    <g>bump-version</> Update version in the configuration file
     <g>install</>      Installs dependencies either in the local project or globally to a bin directory
     <g>uninstall</>    Uninstalls a dependency or an executable script in the installation root's bin directory
     <g>outdated</>     Find and update outdated dependencies
     <g>approve-scripts</> Approve npm lifecycle scripts
     <g>remove</>       Remove dependencies from the configuration file
+    <g>publish</>      Publish the current working directory's package or workspace
 
   <y>Tooling:</>
     <g>bench</>        Run benchmarks
@@ -1675,7 +1719,6 @@ static DENO_HELP: &str = cstr!(
     <g>init</>         Initialize a new project
     <g>test</>         Run tests
                   <p(245)>deno test  |  deno test test.ts</>
-    <g>publish</>      Publish the current working directory's package or workspace
     <g>upgrade</>      Upgrade deno executable to given version
                   <p(245)>deno upgrade  |  deno upgrade 1.45.0  |  deno upgrade canary</>
 {after-help}
@@ -1907,6 +1950,7 @@ pub fn flags_from_vec_with_initial_cwd(
         "uninstall" => uninstall_parse(&mut flags, &mut m),
         "update" => outdated_parse(&mut flags, &mut m, true)?,
         "upgrade" => upgrade_parse(&mut flags, &mut m)?,
+        "bump-version" => bump_version_parse(&mut flags, &mut m),
         "vendor" => vendor_parse(&mut flags, &mut m),
         "publish" => publish_parse(&mut flags, &mut m)?,
         "x" => x_parse(&mut flags, &mut m)?,
@@ -2176,6 +2220,7 @@ pub fn clap_root() -> Command {
         .subcommand(types_subcommand())
         .subcommand(update_subcommand())
         .subcommand(upgrade_subcommand())
+        .subcommand(bump_version_subcommand())
         .subcommand(vendor_subcommand())
         .subcommand(x_subcommand());
 
@@ -3589,6 +3634,37 @@ These must be added to the path manually if required."), UnstableArgsConfig::Res
             .conflicts_with("global"),
         )
         .arg(lockfile_only_arg().conflicts_with("global"))
+        .arg(
+          Arg::new("os")
+            .long("os")
+            .conflicts_with("global")
+            .help("Target OS for npm package installation (e.g., linux, darwin, win32)")
+            .value_parser(["aix", "android", "darwin", "freebsd", "linux", "openbsd", "sunos", "win32"]),
+        )
+        .arg(
+          Arg::new("arch")
+            .long("arch")
+            .conflicts_with("global")
+            .help("Target architecture for npm package installation (e.g., x64, arm64)")
+            .value_parser(["arm", "arm64", "ia32", "mips", "mipsel", "ppc", "ppc64", "s390", "s390x", "x64"]),
+        )
+        .arg(
+          Arg::new("prod")
+            .long("prod")
+            .alias("production")
+            .help("Only install production dependencies (excludes devDependencies)")
+            .action(ArgAction::SetTrue)
+            .conflicts_with("global")
+            .conflicts_with("dev"),
+        )
+        .arg(
+          Arg::new("skip-types")
+            .long("skip-types")
+            .help(cstr!("Exclude @types/* packages from installation.
+<y>Be careful, as it uses a name-based heuristic and may skip packages that ship runtime code.</>"))
+            .action(ArgAction::SetTrue)
+            .requires("prod"),
+        )
     })
 }
 
@@ -4601,6 +4677,39 @@ update to a different location, use the <c>--output</> flag:
       )
       .arg(ca_file_arg())
       .arg(unsafely_ignore_certificate_errors_arg())
+  })
+}
+
+fn bump_version_subcommand() -> Command {
+  command(
+    "bump-version",
+    cstr!(
+      "Update version in the configuration file.
+  <p(245)>deno bump-version patch</>       <p(245)># 1.4.6 -> 1.4.7</>
+  <p(245)>deno bump-version minor</>       <p(245)># 1.4.6 -> 1.5.0</>
+  <p(245)>deno bump-version major</>       <p(245)># 1.4.6 -> 2.0.0</>
+  <p(245)>deno bump-version prepatch</>    <p(245)># 1.4.6 -> 1.4.7-0</>
+  <p(245)>deno bump-version preminor</>    <p(245)># 1.4.6 -> 1.5.0-0</>
+  <p(245)>deno bump-version premajor</>    <p(245)># 1.4.6 -> 2.0.0-0</>
+  <p(245)>deno bump-version prerelease</>  <p(245)># 1.4.7-0 -> 1.4.7-1</>"
+    ),
+    UnstableArgsConfig::None,
+  )
+  .defer(|cmd| {
+    cmd.arg(
+      Arg::new("increment")
+        .help("Version increment type")
+        .value_parser([
+          "major",
+          "minor",
+          "patch",
+          "premajor",
+          "preminor",
+          "prepatch",
+          "prerelease",
+        ])
+        .index(1),
+    )
   })
 }
 
@@ -6051,6 +6160,24 @@ fn remove_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   });
 }
 
+fn bump_version_parse(flags: &mut Flags, matches: &mut ArgMatches) {
+  let increment =
+    matches
+      .remove_one::<String>("increment")
+      .and_then(|s| match s.as_str() {
+        "major" => Some(VersionIncrement::Major),
+        "minor" => Some(VersionIncrement::Minor),
+        "patch" => Some(VersionIncrement::Patch),
+        "premajor" => Some(VersionIncrement::Premajor),
+        "preminor" => Some(VersionIncrement::Preminor),
+        "prepatch" => Some(VersionIncrement::Prepatch),
+        "prerelease" => Some(VersionIncrement::Prerelease),
+        _ => None,
+      });
+
+  flags.subcommand = DenoSubcommand::BumpVersion(VersionFlags { increment });
+}
+
 fn outdated_parse(
   flags: &mut Flags,
   matches: &mut ArgMatches,
@@ -6766,13 +6893,22 @@ fn install_parse(
     return Ok(());
   }
   let lockfile_only = matches.get_flag("lockfile-only");
+  let npm_target = NpmInstallTargetFlags {
+    os: matches.remove_one::<String>("os"),
+    arch: matches.remove_one::<String>("arch"),
+  };
+  let production = matches.get_flag("prod");
+  let skip_types = matches.get_flag("skip-types");
   if matches.get_flag("entrypoint") {
     let entrypoints = matches.remove_many::<String>("cmd").unwrap_or_default();
     flags.subcommand = DenoSubcommand::Install(InstallFlags::Local(
       InstallFlagsLocal::Entrypoints(InstallEntrypointsFlags {
         entrypoints: entrypoints.collect(),
         lockfile_only,
+        production,
+        skip_types,
       }),
+      npm_target,
     ));
   } else if let Some(add_files) = matches
     .remove_many("cmd")
@@ -6787,10 +6923,16 @@ fn install_parse(
 
     flags.subcommand = DenoSubcommand::Install(InstallFlags::Local(
       InstallFlagsLocal::Add(add_files),
+      npm_target,
     ))
   } else {
     flags.subcommand = DenoSubcommand::Install(InstallFlags::Local(
-      InstallFlagsLocal::TopLevel(InstallTopLevelFlags { lockfile_only }),
+      InstallFlagsLocal::TopLevel(InstallTopLevelFlags {
+        lockfile_only,
+        production,
+        skip_types,
+      }),
+      npm_target,
     ));
   }
   Ok(())
@@ -14090,6 +14232,7 @@ mod tests {
           "install" => Flags {
             subcommand: DenoSubcommand::Install(InstallFlags::Local(
               InstallFlagsLocal::Add(flags),
+              Default::default(),
             )),
             ..Flags::default()
           },
@@ -14424,6 +14567,153 @@ mod tests {
         "Note: Permission flags can only be used in a global setting"
       )
     );
+  }
+
+  #[test]
+  fn install_os_arch_flags() {
+    let r = flags_from_vec(svec![
+      "deno", "install", "--os", "linux", "--arch", "arm64"
+    ]);
+    let flags = r.unwrap();
+    assert_eq!(
+      flags.subcommand,
+      DenoSubcommand::Install(InstallFlags::Local(
+        InstallFlagsLocal::TopLevel(InstallTopLevelFlags {
+          lockfile_only: false,
+          production: false,
+          skip_types: false,
+        }),
+        NpmInstallTargetFlags {
+          os: Some("linux".to_string()),
+          arch: Some("arm64".to_string()),
+        },
+      ))
+    );
+    assert_eq!(
+      flags.subcommand.npm_system_info(),
+      NpmSystemInfo {
+        os: "linux".into(),
+        cpu: "arm64".into(),
+      }
+    );
+  }
+
+  #[test]
+  fn install_os_only_flag() {
+    let r = flags_from_vec(svec!["deno", "install", "--os", "win32"]);
+    let flags = r.unwrap();
+    assert_eq!(
+      flags.subcommand,
+      DenoSubcommand::Install(InstallFlags::Local(
+        InstallFlagsLocal::TopLevel(InstallTopLevelFlags {
+          lockfile_only: false,
+          production: false,
+          skip_types: false,
+        }),
+        NpmInstallTargetFlags {
+          os: Some("win32".to_string()),
+          arch: None,
+        },
+      ))
+    );
+    let sys_info = flags.subcommand.npm_system_info();
+    assert_eq!(sys_info.os.as_str(), "win32");
+  }
+
+  #[test]
+  fn install_os_arch_conflicts_with_global() {
+    let r =
+      flags_from_vec(svec!["deno", "install", "-g", "--os", "linux", "mod.ts"]);
+    assert!(r.is_err());
+  }
+
+  #[test]
+  fn install_production() {
+    let r = flags_from_vec(svec!["deno", "install", "--prod"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Install(InstallFlags::Local(
+          InstallFlagsLocal::TopLevel(InstallTopLevelFlags {
+            lockfile_only: false,
+            production: true,
+            skip_types: false,
+          }),
+          NpmInstallTargetFlags::default(),
+        )),
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn install_production_with_entrypoint() {
+    let r = flags_from_vec(svec![
+      "deno",
+      "install",
+      "--prod",
+      "--entrypoint",
+      "main.ts"
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Install(InstallFlags::Local(
+          InstallFlagsLocal::Entrypoints(InstallEntrypointsFlags {
+            entrypoints: svec!["main.ts"],
+            lockfile_only: false,
+            production: true,
+            skip_types: false,
+          }),
+          NpmInstallTargetFlags::default(),
+        )),
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn install_production_with_skip_types() {
+    let r = flags_from_vec(svec!["deno", "install", "--prod", "--skip-types"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Install(InstallFlags::Local(
+          InstallFlagsLocal::TopLevel(InstallTopLevelFlags {
+            lockfile_only: false,
+            production: true,
+            skip_types: true,
+          }),
+          NpmInstallTargetFlags::default(),
+        )),
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn install_skip_types_requires_prod() {
+    let r = flags_from_vec(svec!["deno", "install", "--skip-types"]);
+    assert!(r.is_err());
+  }
+
+  #[test]
+  fn install_production_conflicts_with_global() {
+    let r = flags_from_vec(svec![
+      "deno",
+      "install",
+      "--prod",
+      "--global",
+      "jsr:@std/http/file-server"
+    ]);
+    assert!(r.is_err());
+  }
+
+  #[test]
+  fn install_production_conflicts_with_dev() {
+    let r =
+      flags_from_vec(svec!["deno", "install", "--prod", "--dev", "npm:chalk"]);
+    assert!(r.is_err());
   }
 
   #[test]
@@ -15461,5 +15751,123 @@ Usage: deno repl [OPTIONS] [-- [ARGS]...]\n"
     let flags = flags_from_vec(svec!["deno", "run", "script.ts",]).unwrap();
     set_test_node_options(None);
     assert_eq!(flags.require, vec!["known.js"]);
+  }
+
+  #[test]
+  fn bump_version_patch() {
+    let r = flags_from_vec(svec!["deno", "bump-version", "patch"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::BumpVersion(VersionFlags {
+          increment: Some(VersionIncrement::Patch),
+        }),
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn bump_version_minor() {
+    let r = flags_from_vec(svec!["deno", "bump-version", "minor"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::BumpVersion(VersionFlags {
+          increment: Some(VersionIncrement::Minor),
+        }),
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn bump_version_major() {
+    let r = flags_from_vec(svec!["deno", "bump-version", "major"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::BumpVersion(VersionFlags {
+          increment: Some(VersionIncrement::Major),
+        }),
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn bump_version_prerelease() {
+    let r = flags_from_vec(svec!["deno", "bump-version", "prerelease"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::BumpVersion(VersionFlags {
+          increment: Some(VersionIncrement::Prerelease),
+        }),
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn bump_version_premajor() {
+    let r = flags_from_vec(svec!["deno", "bump-version", "premajor"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::BumpVersion(VersionFlags {
+          increment: Some(VersionIncrement::Premajor),
+        }),
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn bump_version_preminor() {
+    let r = flags_from_vec(svec!["deno", "bump-version", "preminor"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::BumpVersion(VersionFlags {
+          increment: Some(VersionIncrement::Preminor),
+        }),
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn bump_version_prepatch() {
+    let r = flags_from_vec(svec!["deno", "bump-version", "prepatch"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::BumpVersion(VersionFlags {
+          increment: Some(VersionIncrement::Prepatch),
+        }),
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn bump_version_no_args() {
+    let r = flags_from_vec(svec!["deno", "bump-version"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::BumpVersion(VersionFlags {
+          increment: None,
+        }),
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn bump_version_invalid_increment() {
+    let r = flags_from_vec(svec!["deno", "bump-version", "invalid"]);
+    assert!(r.is_err());
   }
 }

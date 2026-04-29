@@ -54,6 +54,10 @@ pub struct NpmInstallerFactoryOptions {
   pub caching_strategy: NpmCachingStrategy,
   pub clean_on_install: bool,
   pub lifecycle_scripts_config: LifecycleScriptsConfig,
+  /// Only install production dependencies (excludes devDependencies).
+  pub production: bool,
+  /// Exclude @types/* packages from installation.
+  pub skip_types: bool,
   /// Resolves the npm resolution snapshot from the environment.
   pub resolve_npm_resolution_snapshot: ResolveNpmResolutionSnapshotFn,
 }
@@ -362,6 +366,8 @@ impl<
             npm_cache.clone(),
             Arc::new(NpmInstallDepsProvider::from_workspace(
               &workspace_factory.workspace_directory()?.workspace,
+              self.options.production,
+              self.options.skip_types,
             )),
             registry_info_provider.clone(),
             self.resolver_factory.npm_resolution().clone(),
