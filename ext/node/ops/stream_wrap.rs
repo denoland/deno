@@ -1417,10 +1417,7 @@ impl LibUvStreamWrap {
           // SAFETY: we wrote `written` bytes starting at str_offset.
           let base =
             unsafe { string_storage_ptr.add(str_offset) as *mut c_char };
-          iovecs.push(uv_buf_t {
-            base,
-            len: written,
-          });
+          iovecs.push(uv_buf_t { base, len: written });
         }
         str_offset += written;
       }
