@@ -39,6 +39,7 @@ use deno_core::ToJsBuffer;
 use deno_core::op2;
 use deno_core::uv_compat;
 use deno_core::uv_compat::UV_EBADF;
+use deno_core::uv_compat::UV_ECANCELED;
 use deno_core::uv_compat::UV_EOF;
 use deno_core::uv_compat::uv_buf_t;
 use deno_core::uv_compat::uv_stream_t;
@@ -2209,6 +2210,21 @@ impl TLSWrap {
   fn set_closing(&self) {
     let inner = unsafe { &mut *self.inner.as_mut_ptr() };
     inner.closing = true;
+  }
+
+  /// Complete any pending JS write request with ECANCELED before teardown.
+  #[nofast]
+  #[reentrant]
+  fn cancel_write(&self) {
+    let ptr = self.inner.as_mut_ptr();
+    // SAFETY: ptr points to this live TLSWrapInner; the helper clears the
+    // stored write object before invoking JS and does not retain references
+    // across the callback.
+    unsafe {
+      if let Some((write_obj, ctx)) = prepare_invoke_queued(ptr) {
+        do_invoke_queued(&ctx, write_obj, UV_ECANCELED);
+      }
+    }
   }
 
   /// Destroy the SSL connection. Tears down the TLS state without
