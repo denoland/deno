@@ -60,9 +60,9 @@ impl OffscreenCanvas {
     #[webidl(options(enforce_range = true))] value: u64,
   ) {
     {
-      self
-        .data
-        .replace_with(|data| data.crop_imm(0, 0, value as _, data.height()));
+      self.data.replace_with(|data| {
+        DynamicImage::new(value as u32, data.height(), ColorType::Rgba8)
+      });
     }
     if let Some((id, active_context)) = self.active_context.get() {
       let active_context = v8::Local::new(scope, active_context);
@@ -85,9 +85,9 @@ impl OffscreenCanvas {
     #[webidl(options(enforce_range = true))] value: u64,
   ) {
     {
-      self
-        .data
-        .replace_with(|data| data.crop_imm(0, 0, data.width(), value as _));
+      self.data.replace_with(|data| {
+        DynamicImage::new(data.width(), value as u32, ColorType::Rgba8)
+      });
     }
     if let Some((id, active_context)) = self.active_context.get() {
       let active_context = v8::Local::new(scope, active_context);

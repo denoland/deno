@@ -7,6 +7,7 @@ use deno_core::WebIDL;
 use deno_core::cppgc::Ref;
 use deno_core::op2;
 use deno_core::v8;
+use deno_core::webidl::WebIdlConverter;
 use deno_error::JsErrorBox;
 use deno_image::image::DynamicImage;
 use deno_image::image::GenericImageView;
@@ -44,6 +45,7 @@ pub struct GPUCanvasContext {
 
   pub texture_descriptor: RefCell<Option<Descriptor>>,
   pub configuration: RefCell<Option<GPUCanvasConfiguration>>,
+  pub configuration_obj: RefCell<Option<v8::Global<v8::Object>>>,
 
   pub current_texture: RefCell<Option<v8::Global<v8::Object>>>,
 }
@@ -64,10 +66,23 @@ impl GPUCanvasContext {
     self.canvas.clone()
   }
 
-  fn configure(
+  fn configure<'s>(
     &self,
-    #[webidl] configuration: GPUCanvasConfiguration,
+    scope: &mut v8::PinScope<'s, '_>,
+    #[webidl] configuration_value: v8::Local<'s, v8::Value>,
   ) -> Result<(), JsErrorBox> {
+    let configuration = GPUCanvasConfiguration::convert(
+      scope,
+      configuration_value,
+      "Failed to execute 'configure' on 'GPUCanvasContext'".into(),
+      (|| "Argument 1".into()).into(),
+      &Default::default(),
+    )
+    .map_err(JsErrorBox::from_err)?;
+    let configuration_obj: v8::Local<v8::Object> = configuration_value
+      .try_into()
+      .map_err(|_| JsErrorBox::type_error("expected object"))?;
+    let configuration_obj = v8::Global::new(scope, configuration_obj);
     if !matches!(
       configuration.format,
       GPUTextureFormat::Bgra8unorm
@@ -99,6 +114,7 @@ impl GPUCanvasContext {
     }
 
     self.configuration.replace(Some(configuration));
+    self.configuration_obj.replace(Some(configuration_obj));
     self.texture_descriptor.replace(Some(descriptor));
 
     Ok(())
@@ -107,13 +123,20 @@ impl GPUCanvasContext {
   #[fast]
   fn unconfigure(&self, scope: &mut v8::PinScope<'_, '_>) {
     self.configuration.take();
+    self.configuration_obj.take();
     self.texture_descriptor.take();
     self.replace_drawing_buffer(scope);
   }
 
-  #[fast]
-  fn get_configuration(&self) -> Result<(), JsErrorBox> {
-    Err(JsErrorBox::generic("not implemented"))
+  fn get_configuration<'s>(
+    &self,
+    scope: &mut v8::PinScope<'s, '_>,
+  ) -> Option<v8::Local<'s, v8::Object>> {
+    self
+      .configuration_obj
+      .borrow()
+      .as_ref()
+      .map(|obj| v8::Local::new(scope, obj))
   }
 
   fn get_current_texture(
@@ -625,6 +648,7 @@ pub fn create<'s>(
       data,
       texture_descriptor: RefCell::new(None),
       configuration: RefCell::new(None),
+      configuration_obj: RefCell::new(None),
       current_texture: RefCell::new(None),
     },
   );
