@@ -60,6 +60,7 @@ import {
   Server as HttpServer,
   setupConnectionsTracking,
   STATUS_CODES,
+  storeHTTPOptions,
 } from "node:_http_server";
 import { Duplex } from "node:stream";
 import tls from "node:tls";
@@ -4198,6 +4199,7 @@ function initializeOptions(options) {
   options = { ...options };
   assertIsObject(options.settings, "options.settings");
   options.settings = { ...options.settings };
+  assertIsObject(options.http1Options, "options.http1Options");
 
   if (options.remoteCustomSettings !== undefined) {
     validateArray(options.remoteCustomSettings, "options.remoteCustomSettings");
@@ -4226,8 +4228,11 @@ function initializeOptions(options) {
   }
 
   // Used only with allowHTTP1
-  options.Http1IncomingMessage ||= http.IncomingMessage;
-  options.Http1ServerResponse ||= http.ServerResponse;
+  const http1Options = options.http1Options ?? {};
+  options.Http1IncomingMessage ||= http1Options.IncomingMessage ||
+    http.IncomingMessage;
+  options.Http1ServerResponse ||= http1Options.ServerResponse ||
+    http.ServerResponse;
 
   options.Http2ServerRequest ||= Http2ServerRequest;
   options.Http2ServerResponse ||= Http2ServerResponse;
@@ -4338,6 +4343,7 @@ class Http2SecureServer extends tls.Server {
     this.timeout = 0;
     this.on("newListener", setupCompat);
     if (options.allowHTTP1 === true) {
+      storeHTTPOptions.call(this, options.http1Options ?? {});
       this.headersTimeout = 60_000; // Minimum between 60 seconds or requestTimeout
       this.requestTimeout = 300_000; // 5 minutes
       this.connectionsCheckingInterval = 30_000; // 30 seconds
