@@ -390,7 +390,7 @@ impl ImageBitmapRenderingContext {
       unreachable!()
     };
 
-    let deno_webgpu::canvas::SurfaceData { id, width, height } =
+    let deno_webgpu::canvas::SurfaceData { id, width, height, .. } =
       &*surface_data.borrow();
 
     let err = instance.surface_configure(
@@ -456,7 +456,7 @@ pub fn create<'s>(
   .map_err(JsErrorBox::from_err)?;
 
   let surface_only = if let ContextData::Surface(surface_data) = &data {
-    let deno_webgpu::canvas::SurfaceData { id, width, height } =
+    let deno_webgpu::canvas::SurfaceData { id, width, height, .. } =
       &*surface_data.borrow();
     let instance = instance.unwrap();
     let backends = std::env::var("DENO_WEBGPU_BACKEND").map_or_else(

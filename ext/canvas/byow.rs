@@ -192,6 +192,7 @@ impl UnsafeWindowSurface {
         width: options.width,
         height: options.height,
         id,
+        instance,
       })),
       active_context: Default::default(),
     })
@@ -209,12 +210,7 @@ impl UnsafeWindowSurface {
       let create_context: CreateCanvasContext = match context_id.as_str() {
         super::bitmaprenderer::CONTEXT_ID => super::bitmaprenderer::create as _,
         deno_webgpu::canvas::CONTEXT_ID => deno_webgpu::canvas::create as _,
-        _ => {
-          return Err(JsErrorBox::new(
-            "DOMExceptionNotSupportedError",
-            format!("Context '{context_id}' not implemented"),
-          ));
-        }
+        _ => return Ok(None),
       };
 
       let instance = state

@@ -32,6 +32,13 @@ pub struct SurfaceData {
   pub width: u32,
   pub height: u32,
   pub id: wgpu_core::id::SurfaceId,
+  pub instance: Instance,
+}
+
+impl Drop for SurfaceData {
+  fn drop(&mut self) {
+    self.instance.surface_drop(self.id);
+  }
 }
 
 pub enum Descriptor {

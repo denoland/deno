@@ -1,6 +1,11 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-import { assert, assertEquals, assertThrows } from "./test_util.ts";
+import {
+  assert,
+  assertEquals,
+  assertRejects,
+  assertThrows,
+} from "./test_util.ts";
 
 let isCI: boolean;
 try {
@@ -227,14 +232,12 @@ Deno.test(function offscreenCanvasGetContextDifferentIdReturnsNull() {
   assertEquals(canvas.getContext("webgpu"), null);
 });
 
-Deno.test(function offscreenCanvasGetContextUnsupportedThrows() {
+Deno.test(function offscreenCanvasGetContextUnsupportedReturnsNull() {
   const canvas = new OffscreenCanvas(10, 10);
-  // TODO: per HTML spec this should return null, not throw.
-  assertThrows(
-    // @ts-expect-error: testing unsupported context id
-    () => canvas.getContext("not-a-real-context"),
-    Error,
-  );
+  // @ts-expect-error: testing unsupported context id
+  assertEquals(canvas.getContext("not-a-real-context"), null);
+  // After an unsupported probe, a supported id still binds.
+  assert(canvas.getContext("bitmaprenderer"));
 });
 
 Deno.test(function offscreenCanvasTransferToImageBitmapWithoutContextThrows() {
@@ -242,11 +245,9 @@ Deno.test(function offscreenCanvasTransferToImageBitmapWithoutContextThrows() {
   assertThrows(() => canvas.transferToImageBitmap(), Error);
 });
 
-Deno.test(function offscreenCanvasConvertToBlobWithoutContextThrows() {
+Deno.test(async function offscreenCanvasConvertToBlobWithoutContextRejects() {
   const canvas = new OffscreenCanvas(10, 10);
-  // TODO: per spec this should reject the returned promise instead of
-  // throwing synchronously.
-  assertThrows(() => canvas.convertToBlob(), Error);
+  await assertRejects(() => canvas.convertToBlob(), Error);
 });
 
 Deno.test(async function offscreenCanvasConvertToBlobReturnsPromise() {
@@ -257,6 +258,14 @@ Deno.test(async function offscreenCanvasConvertToBlobReturnsPromise() {
   const blob = await ret;
   assert(blob instanceof Blob);
   assertEquals(blob.type, "image/png");
+});
+
+Deno.test(async function offscreenCanvasConvertToBlobJpeg() {
+  const canvas = new OffscreenCanvas(2, 2);
+  canvas.getContext("bitmaprenderer");
+  const blob = await canvas.convertToBlob({ type: "image/jpeg" });
+  assertEquals(blob.type, "image/jpeg");
+  assert(blob.size > 0);
 });
 
 Deno.test(async function offscreenCanvasConvertToBlobIco() {

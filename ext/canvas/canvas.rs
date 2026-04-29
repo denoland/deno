@@ -126,12 +126,10 @@ impl OffscreenCanvas {
       let create_context: CreateCanvasContext = match context_id.as_str() {
         super::bitmaprenderer::CONTEXT_ID => super::bitmaprenderer::create as _,
         deno_webgpu::canvas::CONTEXT_ID => deno_webgpu::canvas::create as _,
-        _ => {
-          return Err(JsErrorBox::new(
-            "DOMExceptionNotSupportedError",
-            format!("Context '{context_id}' not implemented"),
-          ));
-        }
+        // https://html.spec.whatwg.org/multipage/canvas.html#dom-offscreencanvas-getcontext
+        // step 1: if the user agent does not support the requested context,
+        // then return null.
+        _ => return Ok(None),
       };
 
       let context = create_context(
@@ -198,7 +196,29 @@ impl OffscreenCanvas {
     state: Rc<RefCell<OpState>>,
     scope: &mut v8::PinScope<'s, '_>,
     #[webidl] options: ImageEncodeOptions,
-  ) -> Result<v8::Local<'s, v8::Promise>, JsErrorBox> {
+  ) -> v8::Local<'s, v8::Promise> {
+    let resolver = v8::PromiseResolver::new(scope).unwrap();
+    let promise = resolver.get_promise(scope);
+    match self.convert_to_blob_inner(state, scope, options) {
+      Ok(blob) => {
+        resolver.resolve(scope, blob.into()).unwrap();
+      }
+      Err(err) => {
+        let exception = deno_core::error::to_v8_error(scope, &err);
+        resolver.reject(scope, exception).unwrap();
+      }
+    }
+    promise
+  }
+}
+
+impl OffscreenCanvas {
+  fn convert_to_blob_inner<'s>(
+    &self,
+    state: Rc<RefCell<OpState>>,
+    scope: &mut v8::PinScope<'s, '_>,
+    options: ImageEncodeOptions,
+  ) -> Result<v8::Local<'s, v8::Object>, JsErrorBox> {
     let state = state.borrow();
 
     let Some(active_context) = self.active_context.get() else {
@@ -226,7 +246,11 @@ impl OffscreenCanvas {
             .quality
             .map_or(75, |quality| (quality.0 * 100.0).clamp(0.0, 100.0) as u8),
         );
-        data.write_with_encoder(encoder).unwrap();
+        // JPEG does not support an alpha channel; per the spec the bitmap
+        // is composited over black before encoding.
+        DynamicImage::ImageRgb8(data.to_rgb8())
+          .write_with_encoder(encoder)
+          .unwrap();
         "image/jpeg"
       }
       "image/bmp" => {
@@ -274,9 +298,7 @@ impl OffscreenCanvas {
       .new_instance(scope, &[data.into(), options.into()])
       .unwrap();
 
-    let resolver = v8::PromiseResolver::new(scope).unwrap();
-    resolver.resolve(scope, blob.into()).unwrap();
-    Ok(resolver.get_promise(scope))
+    Ok(blob)
   }
 }
 
