@@ -1726,6 +1726,7 @@
     "parallel/test-http2-respond-file-404.js": {},
     "parallel/test-http2-respond-file-compat.js": {},
     "parallel/test-http2-respond-file-error-dir.js": {},
+    "parallel/test-http2-respond-file-error-pipe-offset.js": {},
     "parallel/test-http2-respond-file-errors.js": {},
     "parallel/test-http2-respond-file-fd.js": {},
     "parallel/test-http2-respond-file-fd-errors.js": {},
