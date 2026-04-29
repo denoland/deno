@@ -133,7 +133,6 @@ impl<'s> WorkerThreadType {
 }
 /// Events that are sent to host from child
 /// worker.
-#[allow(clippy::large_enum_variant)]
 pub enum WorkerControlEvent {
   TerminalError(CoreError, i32),
   Close(i32),
@@ -208,7 +207,7 @@ pub struct WebWorkerInternalHandle {
 
 impl WebWorkerInternalHandle {
   /// Post WorkerEvent to parent as a worker
-  #[allow(clippy::result_large_err)]
+  #[allow(clippy::result_large_err, reason = "TODO: investigate")]
   pub fn post_event(
     &self,
     event: WorkerControlEvent,
@@ -301,7 +300,10 @@ pub struct WebWorkerHandle {
 impl WebWorkerHandle {
   /// Get the WorkerEvent with lock
   /// Return error if more than one listener tries to get event
-  #[allow(clippy::await_holding_refcell_ref)] // TODO(ry) remove!
+  #[allow(
+    clippy::await_holding_refcell_ref,
+    reason = "TODO: investigate and fix"
+  )] // TODO(ry) remove!
   pub async fn get_control_event(&self) -> Option<WorkerControlEvent> {
     let mut receiver = self.receiver.borrow_mut();
     receiver.next().await
@@ -492,7 +494,10 @@ impl WebWorker {
 
             Ok(CacheImpl::Lsc(x))
           };
-          #[allow(clippy::arc_with_non_send_sync)]
+          #[allow(
+            clippy::arc_with_non_send_sync,
+            reason = "fine because the Rc is in the return type"
+          )]
           return Some(CreateCache(Arc::new(create_cache_fn)));
         }
       }
@@ -520,6 +525,7 @@ impl WebWorker {
       deno_web::deno_web::init(
         services.blob_store,
         Some(options.main_module.clone()),
+        Default::default(),
         services.broadcast_channel,
       ),
       deno_webgpu::deno_webgpu::init(),
@@ -665,24 +671,7 @@ impl WebWorker {
       state.put(js_runtime.inspector());
     }
 
-    // Register the uv_loop_t (created by deno_node extension state callback)
-    // with the JsRuntime so that its event loop phases are driven by
-    // poll_event_loop.
-    {
-      let op_state_rc = js_runtime.op_state();
-      let op_state = op_state_rc.borrow();
-      if let Some(uv_loop) =
-        op_state.try_borrow::<Box<deno_core::uv_compat::UvLoop>>()
-      {
-        let loop_ptr: *mut deno_core::uv_compat::UvLoop =
-          &**uv_loop as *const _ as *mut _;
-        drop(op_state);
-        // SAFETY: loop_ptr points to a valid initialized UvLoop stored in OpState
-        unsafe {
-          js_runtime.register_uv_loop(loop_ptr);
-        }
-      }
-    }
+    // The uv loop is auto-created and registered by JsRuntime::new_inner.
 
     if let Some(main_session_tx) = services.main_inspector_session_tx.get() {
       let (main_proxy, worker_proxy) =
@@ -919,7 +908,6 @@ impl WebWorker {
   }
 
   /// See [JsRuntime::execute_script](deno_core::JsRuntime::execute_script)
-  #[allow(clippy::result_large_err)]
   pub fn execute_script(
     &mut self,
     name: &'static str,
@@ -1168,7 +1156,6 @@ pub async fn run_web_worker(
     let r = worker
       .run_event_loop(PollEventLoopOptions {
         wait_for_inspector: true,
-        ..Default::default()
       })
       .await;
     if let Some(coverage_collector) = maybe_coverage_collector.as_mut() {
@@ -1242,6 +1229,10 @@ pub async fn run_web_worker(
     let e = if internal_handle.worker_type == WorkerThreadType::Node {
       let msg = e.to_string();
       if msg.starts_with("Module not found") {
+        #[allow(
+          clippy::disallowed_methods,
+          reason = "don't need the error or Wasm support here"
+        )]
         let path = specifier.to_file_path().ok();
         let display = path
           .as_deref()

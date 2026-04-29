@@ -14,11 +14,218 @@ use deno_core::Resource;
 use deno_error::JsErrorClass;
 use digest::KeyInit;
 use digest::generic_array::GenericArray;
+use subtle::ConstantTimeEq;
 
 type Tag = Option<Vec<u8>>;
 
 type Aes128Gcm = aead_gcm_stream::AesGcm<aes::Aes128>;
 type Aes256Gcm = aead_gcm_stream::AesGcm<aes::Aes256>;
+
+enum CipherInitError {
+  ContextAllocation,
+  InitFailed,
+}
+
+/// ChaCha20-Poly1305 cipher backed by aws-lc-sys (BoringSSL).
+///
+/// Uses the streaming EVP_CIPHER API for hardware-accelerated performance
+/// on all platforms (NEON on aarch64, AVX2/SSE on x86_64).
+struct ChaCha20Poly1305Cipher {
+  ctx: *mut aws_lc_sys::EVP_CIPHER_CTX,
+  aad_buf: Vec<u8>,
+  aad_flushed: bool,
+  auth_tag_length: usize,
+}
+
+// SAFETY: ChaCha20Poly1305Cipher is only accessed from a single thread
+// (via RefCell in CipherContext/DecipherContext). The EVP_CIPHER_CTX
+// pointer is exclusively owned by this struct.
+unsafe impl Send for ChaCha20Poly1305Cipher {}
+
+impl ChaCha20Poly1305Cipher {
+  fn new(
+    key: &[u8],
+    iv: &[u8],
+    auth_tag_length: usize,
+    encrypting: bool,
+  ) -> Result<Self, CipherInitError> {
+    // SAFETY: We allocate a new EVP_CIPHER_CTX and initialize it with
+    // validated key/iv. The ctx is exclusively owned by this struct and
+    // freed in Drop.
+    unsafe {
+      let ctx = aws_lc_sys::EVP_CIPHER_CTX_new();
+      if ctx.is_null() {
+        return Err(CipherInitError::ContextAllocation);
+      }
+
+      let cipher = aws_lc_sys::EVP_chacha20_poly1305();
+      let enc = if encrypting { 1 } else { 0 };
+      let ret = aws_lc_sys::EVP_CipherInit_ex(
+        ctx,
+        cipher,
+        std::ptr::null_mut(),
+        key.as_ptr(),
+        iv.as_ptr(),
+        enc,
+      );
+      if ret != 1 {
+        aws_lc_sys::EVP_CIPHER_CTX_free(ctx);
+        return Err(CipherInitError::InitFailed);
+      }
+
+      Ok(ChaCha20Poly1305Cipher {
+        ctx,
+        aad_buf: Vec::new(),
+        aad_flushed: false,
+        auth_tag_length,
+      })
+    }
+  }
+
+  fn set_aad(&mut self, aad: &[u8]) {
+    self.aad_buf.extend_from_slice(aad);
+  }
+
+  /// Flush buffered AAD to EVP context. Called lazily before the first
+  /// encrypt/decrypt so that multiple setAAD() calls are concatenated.
+  fn flush_aad(&mut self) {
+    if !self.aad_flushed {
+      self.aad_flushed = true;
+      if !self.aad_buf.is_empty() {
+        // SAFETY: ctx is valid, aad_buf is a valid slice. Passing NULL
+        // output tells EVP this is AAD, not plaintext/ciphertext.
+        // Length is validated to fit in i32 before casting.
+        unsafe {
+          let aad_len: i32 = self
+            .aad_buf
+            .len()
+            .try_into()
+            .expect("AAD length exceeds i32::MAX");
+          let mut outl: i32 = 0;
+          let ret = aws_lc_sys::EVP_CipherUpdate(
+            self.ctx,
+            std::ptr::null_mut(),
+            &mut outl,
+            self.aad_buf.as_ptr(),
+            aad_len,
+          );
+          assert_eq!(ret, 1, "EVP_CipherUpdate for AAD failed");
+        }
+      }
+    }
+  }
+
+  fn encrypt(&mut self, input: &[u8], output: &mut [u8]) {
+    debug_assert!(output.len() >= input.len());
+    self.flush_aad();
+    // SAFETY: ctx is valid and initialized for encryption. output is
+    // caller-provided with at least input.len() bytes. EVP_CipherUpdate
+    // writes at most input.len() bytes for a stream cipher.
+    // Length is validated to fit in i32 before casting.
+    unsafe {
+      let input_len: i32 = input
+        .len()
+        .try_into()
+        .expect("input length exceeds i32::MAX");
+      let mut outl: i32 = 0;
+      let ret = aws_lc_sys::EVP_CipherUpdate(
+        self.ctx,
+        output.as_mut_ptr(),
+        &mut outl,
+        input.as_ptr(),
+        input_len,
+      );
+      assert_eq!(ret, 1, "EVP_CipherUpdate for encryption failed");
+    }
+  }
+
+  fn decrypt(&mut self, input: &[u8], output: &mut [u8]) {
+    debug_assert!(output.len() >= input.len());
+    self.flush_aad();
+    // SAFETY: ctx is valid and initialized for decryption. output is
+    // caller-provided with at least input.len() bytes.
+    // Length is validated to fit in i32 before casting.
+    unsafe {
+      let input_len: i32 = input
+        .len()
+        .try_into()
+        .expect("input length exceeds i32::MAX");
+      let mut outl: i32 = 0;
+      let ret = aws_lc_sys::EVP_CipherUpdate(
+        self.ctx,
+        output.as_mut_ptr(),
+        &mut outl,
+        input.as_ptr(),
+        input_len,
+      );
+      assert_eq!(ret, 1, "EVP_CipherUpdate for decryption failed");
+    }
+  }
+
+  fn compute_tag(mut self) -> Vec<u8> {
+    self.flush_aad();
+    // SAFETY: ctx is valid. CipherFinal_ex finalizes the AEAD operation,
+    // then CTRL_AEAD_GET_TAG retrieves the computed authentication tag.
+    // The tag buffer is freshly allocated with the correct length
+    // (validated to 1..=16 at construction).
+    unsafe {
+      let mut outl: i32 = 0;
+      let ret = aws_lc_sys::EVP_CipherFinal_ex(
+        self.ctx,
+        std::ptr::null_mut(),
+        &mut outl,
+      );
+      assert_eq!(ret, 1, "EVP_CipherFinal_ex failed");
+
+      let mut tag = vec![0u8; self.auth_tag_length];
+      let ret = aws_lc_sys::EVP_CIPHER_CTX_ctrl(
+        self.ctx,
+        aws_lc_sys::EVP_CTRL_AEAD_GET_TAG,
+        self.auth_tag_length as i32,
+        tag.as_mut_ptr() as *mut std::ffi::c_void,
+      );
+      assert_eq!(ret, 1, "EVP_CTRL_AEAD_GET_TAG failed");
+
+      tag
+    }
+  }
+
+  fn verify_tag(mut self, auth_tag: &[u8]) -> bool {
+    self.flush_aad();
+    // SAFETY: ctx is valid and initialized for decryption. We set the
+    // expected tag via CTRL_AEAD_SET_TAG, then CipherFinal_ex performs
+    // constant-time tag comparison internally, returning 0 on mismatch.
+    unsafe {
+      let ret = aws_lc_sys::EVP_CIPHER_CTX_ctrl(
+        self.ctx,
+        aws_lc_sys::EVP_CTRL_AEAD_SET_TAG,
+        auth_tag.len() as i32,
+        auth_tag.as_ptr() as *mut std::ffi::c_void,
+      );
+      if ret != 1 {
+        return false;
+      }
+
+      let mut outl: i32 = 0;
+      let ret = aws_lc_sys::EVP_CipherFinal_ex(
+        self.ctx,
+        std::ptr::null_mut(),
+        &mut outl,
+      );
+      ret == 1
+    }
+  }
+}
+
+impl Drop for ChaCha20Poly1305Cipher {
+  fn drop(&mut self) {
+    // SAFETY: ctx was allocated by EVP_CIPHER_CTX_new and is exclusively
+    // owned by this struct. This is the only place it is freed.
+    unsafe {
+      aws_lc_sys::EVP_CIPHER_CTX_free(self.ctx);
+    }
+  }
+}
 
 enum Cipher {
   Aes128Cbc(Box<cbc::Encryptor<aes::Aes128>>),
@@ -32,6 +239,7 @@ enum Cipher {
   Aes192Ctr(Box<ctr::Ctr128BE<aes::Aes192>>),
   Aes256Ctr(Box<ctr::Ctr128BE<aes::Aes256>>),
   DesEde3Cbc(Box<cbc::Encryptor<des::TdesEde3>>),
+  ChaCha20Poly1305(Box<ChaCha20Poly1305Cipher>),
   // TODO(kt3k): add more algorithms Aes192Cbc, etc.
 }
 
@@ -47,6 +255,7 @@ enum Decipher {
   Aes192Ctr(Box<ctr::Ctr128BE<aes::Aes192>>),
   Aes256Ctr(Box<ctr::Ctr128BE<aes::Aes256>>),
   DesEde3Cbc(Box<cbc::Decryptor<des::TdesEde3>>),
+  ChaCha20Poly1305(Box<ChaCha20Poly1305Cipher>, Option<usize>),
   // TODO(kt3k): add more algorithms Aes192Cbc, Aes128GCM, etc.
 }
 
@@ -210,6 +419,10 @@ pub enum CipherError {
   InvalidAuthTag(usize),
 }
 
+fn is_valid_chacha20_poly1305_tag_length(tag_len: usize) -> bool {
+  (1..=16).contains(&tag_len)
+}
+
 impl Cipher {
   fn new(
     algorithm_name: &str,
@@ -220,14 +433,38 @@ impl Cipher {
     use Cipher::*;
     Ok(match algorithm_name {
       "aes128" | "aes-128-cbc" => {
+        if key.len() != 16 {
+          return Err(CipherError::InvalidKeyLength);
+        }
+        if iv.len() != 16 {
+          return Err(CipherError::InvalidInitializationVector);
+        }
         Aes128Cbc(Box::new(cbc::Encryptor::new(key.into(), iv.into())))
       }
-      "aes-128-ecb" => Aes128Ecb(Box::new(ecb::Encryptor::new(key.into()))),
-      "aes-192-ecb" => Aes192Ecb(Box::new(ecb::Encryptor::new(key.into()))),
-      "aes-256-ecb" => Aes256Ecb(Box::new(ecb::Encryptor::new(key.into()))),
+      "aes-128-ecb" => {
+        if key.len() != 16 {
+          return Err(CipherError::InvalidKeyLength);
+        }
+        Aes128Ecb(Box::new(ecb::Encryptor::new(key.into())))
+      }
+      "aes-192-ecb" => {
+        if key.len() != 24 {
+          return Err(CipherError::InvalidKeyLength);
+        }
+        Aes192Ecb(Box::new(ecb::Encryptor::new(key.into())))
+      }
+      "aes-256-ecb" => {
+        if key.len() != 32 {
+          return Err(CipherError::InvalidKeyLength);
+        }
+        Aes256Ecb(Box::new(ecb::Encryptor::new(key.into())))
+      }
       "aes-128-gcm" => {
         if key.len() != aes::Aes128::key_size() {
           return Err(CipherError::InvalidKeyLength);
+        }
+        if iv.is_empty() {
+          return Err(CipherError::InvalidInitializationVector);
         }
 
         if let Some(tag_len) = auth_tag_length
@@ -244,6 +481,9 @@ impl Cipher {
       "aes-256-gcm" => {
         if key.len() != aes::Aes256::key_size() {
           return Err(CipherError::InvalidKeyLength);
+        }
+        if iv.is_empty() {
+          return Err(CipherError::InvalidInitializationVector);
         }
 
         if let Some(tag_len) = auth_tag_length
@@ -303,6 +543,28 @@ impl Cipher {
         }
         DesEde3Cbc(Box::new(cbc::Encryptor::new(key.into(), iv.into())))
       }
+      "chacha20-poly1305" => {
+        if key.len() != 32 {
+          return Err(CipherError::InvalidKeyLength);
+        }
+        if iv.len() != 12 {
+          return Err(CipherError::InvalidInitializationVector);
+        }
+        let tag_len = auth_tag_length.unwrap_or(16);
+        if !is_valid_chacha20_poly1305_tag_length(tag_len) {
+          return Err(CipherError::InvalidAuthTag(tag_len));
+        }
+        ChaCha20Poly1305(Box::new(
+          ChaCha20Poly1305Cipher::new(key, iv, tag_len, true).map_err(|e| {
+            match e {
+              CipherInitError::ContextAllocation => {
+                panic!("Failed to allocate EVP_CIPHER_CTX")
+              }
+              CipherInitError::InitFailed => CipherError::InvalidKeyLength,
+            }
+          })?,
+        ))
+      }
       _ => return Err(CipherError::UnknownCipher(algorithm_name.to_string())),
     })
   }
@@ -314,6 +576,9 @@ impl Cipher {
         cipher.set_aad(aad);
       }
       Aes256Gcm(cipher, _) => {
+        cipher.set_aad(aad);
+      }
+      ChaCha20Poly1305(cipher) => {
         cipher.set_aad(aad);
       }
       _ => {}
@@ -376,6 +641,9 @@ impl Cipher {
         for (input, output) in input.chunks(8).zip(output.chunks_mut(8)) {
           encryptor.encrypt_block_b2b_mut(input.into(), output.into());
         }
+      }
+      ChaCha20Poly1305(cipher) => {
+        cipher.encrypt(input, output);
       }
     }
   }
@@ -469,6 +737,10 @@ impl Cipher {
         Ok(None)
       }
       (Aes256Ctr(_) | Aes128Ctr(_) | Aes192Ctr(_), _) => Ok(None),
+      (ChaCha20Poly1305(cipher), _) => {
+        let tag = cipher.compute_tag();
+        Ok(Some(tag))
+      }
       (DesEde3Cbc(encryptor), true) => {
         let _ = (*encryptor)
           .encrypt_padded_b2b_mut::<Pkcs7>(input, output)
@@ -502,6 +774,10 @@ impl Cipher {
         }
         Some(tag)
       }
+      ChaCha20Poly1305(cipher) => {
+        let tag = cipher.compute_tag();
+        Some(tag)
+      }
       _ => None,
     }
   }
@@ -531,7 +807,7 @@ pub enum DecipherError {
   #[error("bad decrypt")]
   CannotUnpadInputData,
   #[class(type)]
-  #[error("Failed to authenticate data")]
+  #[error("Unsupported state or unable to authenticate data")]
   DataAuthenticationFailed,
   #[class(type)]
   #[error("Unknown cipher {0}")]
@@ -553,6 +829,9 @@ impl DecipherError {
       Self::InvalidFinalBlockLength => deno_error::PropertyValue::String(
         "ERR_OSSL_WRONG_FINAL_BLOCK_LENGTH".into(),
       ),
+      Self::CannotUnpadInputData => {
+        deno_error::PropertyValue::String("ERR_OSSL_EVP_BAD_DECRYPT".into())
+      }
       _ => deno_error::PropertyValue::String("ERR_CRYPTO_DECIPHER".into()),
     }
   }
@@ -589,14 +868,38 @@ impl Decipher {
     use Decipher::*;
     Ok(match algorithm_name {
       "aes-128-cbc" => {
+        if key.len() != 16 {
+          return Err(DecipherError::InvalidKeyLength);
+        }
+        if iv.len() != 16 {
+          return Err(DecipherError::InvalidInitializationVector);
+        }
         Aes128Cbc(Box::new(cbc::Decryptor::new(key.into(), iv.into())))
       }
-      "aes-128-ecb" => Aes128Ecb(Box::new(ecb::Decryptor::new(key.into()))),
-      "aes-192-ecb" => Aes192Ecb(Box::new(ecb::Decryptor::new(key.into()))),
-      "aes-256-ecb" => Aes256Ecb(Box::new(ecb::Decryptor::new(key.into()))),
+      "aes-128-ecb" => {
+        if key.len() != 16 {
+          return Err(DecipherError::InvalidKeyLength);
+        }
+        Aes128Ecb(Box::new(ecb::Decryptor::new(key.into())))
+      }
+      "aes-192-ecb" => {
+        if key.len() != 24 {
+          return Err(DecipherError::InvalidKeyLength);
+        }
+        Aes192Ecb(Box::new(ecb::Decryptor::new(key.into())))
+      }
+      "aes-256-ecb" => {
+        if key.len() != 32 {
+          return Err(DecipherError::InvalidKeyLength);
+        }
+        Aes256Ecb(Box::new(ecb::Decryptor::new(key.into())))
+      }
       "aes-128-gcm" => {
         if key.len() != aes::Aes128::key_size() {
           return Err(DecipherError::InvalidKeyLength);
+        }
+        if iv.is_empty() {
+          return Err(DecipherError::InvalidInitializationVector);
         }
 
         if let Some(tag_len) = auth_tag_length
@@ -613,6 +916,9 @@ impl Decipher {
       "aes-256-gcm" => {
         if key.len() != aes::Aes256::key_size() {
           return Err(DecipherError::InvalidKeyLength);
+        }
+        if iv.is_empty() {
+          return Err(DecipherError::InvalidInitializationVector);
         }
 
         if let Some(tag_len) = auth_tag_length
@@ -672,6 +978,31 @@ impl Decipher {
         }
         DesEde3Cbc(Box::new(cbc::Decryptor::new(key.into(), iv.into())))
       }
+      "chacha20-poly1305" => {
+        if key.len() != 32 {
+          return Err(DecipherError::InvalidKeyLength);
+        }
+        if iv.len() != 12 {
+          return Err(DecipherError::InvalidInitializationVector);
+        }
+        let tag_len = auth_tag_length.unwrap_or(16);
+        if !is_valid_chacha20_poly1305_tag_length(tag_len) {
+          return Err(DecipherError::InvalidAuthTag(tag_len));
+        }
+        ChaCha20Poly1305(
+          Box::new(
+            ChaCha20Poly1305Cipher::new(key, iv, tag_len, false).map_err(
+              |e| match e {
+                CipherInitError::ContextAllocation => {
+                  panic!("Failed to allocate EVP_CIPHER_CTX")
+                }
+                CipherInitError::InitFailed => DecipherError::InvalidKeyLength,
+              },
+            )?,
+          ),
+          auth_tag_length,
+        )
+      }
       _ => {
         return Err(DecipherError::UnknownCipher(algorithm_name.to_string()));
       }
@@ -683,6 +1014,22 @@ impl Decipher {
       Decipher::Aes128Gcm(_, Some(tag_len))
       | Decipher::Aes256Gcm(_, Some(tag_len)) => {
         if *tag_len != length {
+          return Err(DecipherError::InvalidAuthTag(length));
+        }
+      }
+      Decipher::Aes128Gcm(_, None) | Decipher::Aes256Gcm(_, None) => {
+        if !is_valid_gcm_tag_length(length) {
+          return Err(DecipherError::InvalidAuthTag(length));
+        }
+      }
+      Decipher::ChaCha20Poly1305(_, Some(tag_len)) => {
+        if *tag_len != length {
+          return Err(DecipherError::InvalidAuthTag(length));
+        }
+      }
+      Decipher::ChaCha20Poly1305(_, None) => {
+        // Default tag length is 16; reject anything else
+        if length != 16 {
           return Err(DecipherError::InvalidAuthTag(length));
         }
       }
@@ -698,6 +1045,9 @@ impl Decipher {
         decipher.set_aad(aad);
       }
       Aes256Gcm(decipher, _) => {
+        decipher.set_aad(aad);
+      }
+      ChaCha20Poly1305(decipher, _) => {
         decipher.set_aad(aad);
       }
       _ => {}
@@ -761,6 +1111,9 @@ impl Decipher {
           decryptor.decrypt_block_b2b_mut(input.into(), output.into());
         }
       }
+      ChaCha20Poly1305(decipher, _) => {
+        decipher.decrypt(input, output);
+      }
     }
   }
 
@@ -782,6 +1135,7 @@ impl Decipher {
           | Aes256Ecb(..)
           | Aes128Gcm(..)
           | Aes256Gcm(..)
+          | ChaCha20Poly1305(..)
       )
     {
       return Ok(());
@@ -864,7 +1218,7 @@ impl Decipher {
         } else {
           tag_slice
         };
-        if truncated_tag == auth_tag {
+        if truncated_tag.ct_eq(auth_tag).into() {
           Ok(())
         } else {
           Err(DecipherError::DataAuthenticationFailed)
@@ -878,7 +1232,17 @@ impl Decipher {
         } else {
           tag_slice
         };
-        if truncated_tag == auth_tag {
+        if truncated_tag.ct_eq(auth_tag).into() {
+          Ok(())
+        } else {
+          Err(DecipherError::DataAuthenticationFailed)
+        }
+      }
+      (ChaCha20Poly1305(decipher, _), _) => {
+        if auth_tag.is_empty() {
+          return Err(DecipherError::DataAuthenticationFailed);
+        }
+        if decipher.verify_tag(auth_tag) {
           Ok(())
         } else {
           Err(DecipherError::DataAuthenticationFailed)

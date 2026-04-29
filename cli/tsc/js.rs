@@ -489,7 +489,7 @@ impl Default for State {
 }
 
 impl State {
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "construction")]
   pub fn new(
     graph: Arc<ModuleGraph>,
     jsx_import_source_config_resolver: Arc<JsxImportSourceConfigResolver>,
@@ -660,7 +660,7 @@ mod tests {
       check_mode: TypeCheckMode::All,
       initial_cwd: resolve_cwd(None).unwrap().into_owned(),
     };
-    crate::tsc::exec(request, code_cache, None)
+    crate::tsc::exec(request, code_cache)
   }
 
   #[tokio::test]

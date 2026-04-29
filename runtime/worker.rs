@@ -131,9 +131,8 @@ pub fn make_wait_for_inspector_disconnect_callback() -> Box<dyn Fn()> {
     if !has_notified_of_inspector_disconnect
       .swap(true, std::sync::atomic::Ordering::SeqCst)
     {
-      log::info!(
-        "Program finished. Waiting for inspector to disconnect to exit the process..."
-      );
+      // Match Node.js message format that debugger clients rely on
+      log::info!("Waiting for the debugger to disconnect...");
     }
   })
 }
@@ -323,7 +322,10 @@ pub fn create_op_metrics(
     max_len.set(max_len.get().max(decl.name.len()));
     let max_len = max_len.clone();
     Some(Rc::new(
-      #[allow(clippy::print_stderr)]
+      #[allow(
+        clippy::print_stderr,
+        reason = "we actually want to output here"
+      )]
       move |op: &deno_core::_ops::OpCtx, event, source| {
         eprintln!(
           "[{: >10.3}] {name:max_len$}: {event:?} {source:?}",
@@ -385,7 +387,10 @@ impl MainWorker {
 
             Ok(CacheImpl::Lsc(x))
           };
-          #[allow(clippy::arc_with_non_send_sync)]
+          #[allow(
+            clippy::arc_with_non_send_sync,
+            reason = "fine because the Rc is in the return type"
+          )]
           return Some(CreateCache(Arc::new(create_cache_fn)));
         }
       }
@@ -517,6 +522,7 @@ impl MainWorker {
         deno_web::deno_web::args(
           services.blob_store.clone(),
           options.bootstrap.location.clone(),
+          true,
           services.broadcast_channel.clone(),
         ),
         deno_fetch::deno_fetch::args(deno_fetch::Options {
@@ -599,23 +605,7 @@ impl MainWorker {
     }
 
     // Register the uv_loop_t (created by deno_node extension state callback)
-    // with the JsRuntime so that its event loop phases are driven by
-    // poll_event_loop.
-    {
-      let op_state_rc = js_runtime.op_state();
-      let op_state = op_state_rc.borrow();
-      if let Some(uv_loop) =
-        op_state.try_borrow::<Box<deno_core::uv_compat::UvLoop>>()
-      {
-        let loop_ptr: *mut deno_core::uv_compat::UvLoop =
-          &**uv_loop as *const _ as *mut _;
-        drop(op_state);
-        // SAFETY: loop_ptr points to a valid initialized UvLoop stored in OpState
-        unsafe {
-          js_runtime.register_uv_loop(loop_ptr);
-        }
-      }
-    }
+    // The uv loop is auto-created and registered by JsRuntime::new_inner.
 
     if let Some(server) = get_inspector_server() {
       let inspector_url = server.register_inspector(
@@ -922,10 +912,7 @@ impl MainWorker {
   ) -> Result<(), CoreError> {
     self
       .js_runtime
-      .run_event_loop(PollEventLoopOptions {
-        wait_for_inspector,
-        ..Default::default()
-      })
+      .run_event_loop(PollEventLoopOptions { wait_for_inspector })
       .await
   }
 
@@ -1145,7 +1132,6 @@ struct CommonRuntimeOptions {
 
 struct EnableRawImports(Arc<AtomicBool>);
 
-#[allow(clippy::too_many_arguments)]
 fn common_runtime(opts: CommonRuntimeOptions) -> JsRuntime {
   let enable_raw_imports = Arc::new(AtomicBool::new(false));
 

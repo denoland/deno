@@ -265,17 +265,6 @@ class VsockConn extends Conn {
   }
 }
 
-class PipeConn extends Conn {
-  constructor(rid) {
-    super(rid, null, null);
-    ObjectDefineProperty(this, internalRidSymbol, {
-      __proto__: null,
-      enumerable: false,
-      value: rid,
-    });
-  }
-}
-
 class TunnelConn extends Conn {
   constructor(rid, remoteAddr, localAddr) {
     super(rid, remoteAddr, localAddr);
@@ -671,7 +660,7 @@ function createListenDatagram(udpOpFn, unixOpFn) {
         const port = validatePort(args.port);
         const { 0: rid, 1: addr } = udpOpFn(
           {
-            hostname: args.hostname ?? "127.0.0.1",
+            hostname: args.hostname ?? "0.0.0.0",
             port,
           },
           args.reuseAddress ?? false,
@@ -760,7 +749,6 @@ export {
   listen,
   Listener,
   listenOptionApiName,
-  PipeConn,
   resolveDns,
   setDatagramBroadcast,
   setMulticastLoopback,

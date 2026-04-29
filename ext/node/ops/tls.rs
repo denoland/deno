@@ -46,8 +46,10 @@ use rustls_tokio_stream::UnderlyingStream;
 use webpki_root_certs;
 
 #[derive(Clone)]
-struct NodeTlsState {
-  custom_ca_certs: Option<Vec<String>>,
+pub(crate) struct NodeTlsState {
+  pub(crate) custom_ca_certs: Option<Vec<String>>,
+  pub(crate) client_session_store:
+    Arc<dyn deno_tls::rustls::client::ClientSessionStore>,
 }
 
 #[op2]
@@ -90,6 +92,9 @@ pub fn op_set_default_ca_certificates(
   } else {
     state.put(NodeTlsState {
       custom_ca_certs: Some(certs),
+      client_session_store: Arc::new(
+        deno_tls::rustls::client::ClientSessionMemoryCache::new(256),
+      ),
     });
   }
 }
@@ -354,7 +359,10 @@ impl JSDuplexResource {
     }
   }
 
-  #[allow(clippy::await_holding_lock)]
+  #[allow(
+    clippy::await_holding_lock,
+    reason = "lock is dropped before await points"
+  )]
   pub async fn read(
     self: Rc<Self>,
     data: &mut [u8],

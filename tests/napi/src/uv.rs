@@ -156,7 +156,7 @@ fn make_uv_mutex() -> *mut uv_mutex_t {
   mutex.cast()
 }
 
-#[allow(unused_unsafe)]
+#[allow(unused_unsafe, reason = "napi_sys safe fn in unsafe extern blocks")]
 extern "C" fn test_uv_async(
   env: napi_env,
   info: napi_callback_info,
@@ -243,7 +243,7 @@ struct RefAsync {
   callback: napi_ref,
 }
 
-#[allow(unused_unsafe)]
+#[allow(unused_unsafe, reason = "only unsafe on Windows")]
 extern "C" fn test_uv_async_ref(
   env: napi_env,
   info: napi_callback_info,

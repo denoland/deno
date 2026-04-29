@@ -1,41 +1,9 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-#[cfg(target_os = "windows")]
-#[derive(Debug, thiserror::Error)]
-#[error(
-  "Windows only supports ctrl-c (SIGINT), ctrl-break (SIGBREAK), ctrl-close (SIGHUP), and SIGWINCH, but got {0}"
-)]
-pub struct InvalidSignalStrError(pub String);
-
-#[cfg(any(
-  target_os = "android",
-  target_os = "linux",
-  target_os = "freebsd",
-  target_os = "openbsd",
-  target_os = "macos",
-  target_os = "solaris",
-  target_os = "illumos"
-))]
 #[derive(Debug, thiserror::Error)]
 #[error("Invalid signal: {0}")]
 pub struct InvalidSignalStrError(pub String);
 
-#[cfg(target_os = "windows")]
-#[derive(Debug, thiserror::Error)]
-#[error(
-  "Windows only supports ctrl-c (SIGINT), ctrl-break (SIGBREAK), ctrl-close (SIGHUP), and SIGWINCH, but got {0}"
-)]
-pub struct InvalidSignalIntError(pub libc::c_int);
-
-#[cfg(any(
-  target_os = "android",
-  target_os = "linux",
-  target_os = "freebsd",
-  target_os = "openbsd",
-  target_os = "macos",
-  target_os = "solaris",
-  target_os = "illumos"
-))]
 #[derive(Debug, thiserror::Error)]
 #[error("Invalid signal: {0}")]
 pub struct InvalidSignalIntError(pub libc::c_int);
@@ -260,6 +228,10 @@ signal_dict!(
 signal_dict!(
   (1, "SIGHUP"),
   (2, "SIGINT"),
+  (3, "SIGQUIT"),
+  (9, "SIGKILL"),
+  (15, "SIGTERM"),
   (21, "SIGBREAK"),
+  (22, "SIGABRT"),
   (28, "SIGWINCH")
 );

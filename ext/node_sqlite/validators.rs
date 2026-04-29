@@ -1,5 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
+use std::borrow::Cow;
+
 use deno_core::v8;
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
@@ -7,20 +9,25 @@ use deno_core::v8;
 pub enum Error {
   #[class(type)]
   #[error("{0}")]
-  InvalidArgType(&'static str),
+  InvalidArgType(Cow<'static, str>),
+  #[class(range)]
+  #[error("{0}")]
+  OutOfRange(Cow<'static, str>),
 }
 
 impl Error {
   pub fn code(&self) -> ErrorCode {
     match self {
       Self::InvalidArgType(_) => ErrorCode::ERR_INVALID_ARG_TYPE,
+      Self::OutOfRange(_) => ErrorCode::ERR_OUT_OF_RANGE,
     }
   }
 }
 
-#[allow(non_camel_case_types)]
+#[allow(non_camel_case_types, reason = "matches Node.js error code naming")]
 pub enum ErrorCode {
   ERR_INVALID_ARG_TYPE,
+  ERR_OUT_OF_RANGE,
 }
 
 impl std::fmt::Display for ErrorCode {
@@ -33,6 +40,7 @@ impl ErrorCode {
   pub fn as_str(&self) -> &str {
     match self {
       Self::ERR_INVALID_ARG_TYPE => "ERR_INVALID_ARG_TYPE",
+      Self::ERR_OUT_OF_RANGE => "ERR_OUT_OF_RANGE",
     }
   }
 }
@@ -52,7 +60,7 @@ pub(super) fn sql_str(
   }
 
   Err(Error::InvalidArgType(
-    "The \"sql\" argument must be a string.",
+    "The \"sql\" argument must be a string.".into(),
   ))
 }
 
@@ -65,7 +73,7 @@ pub(super) fn changeset_buffer(
   }
 
   Err(Error::InvalidArgType(
-    "The \"changeset\" argument must be a Uint8Array.",
+    "The \"changeset\" argument must be a Uint8Array.".into(),
   ))
 }
 
@@ -78,7 +86,7 @@ pub(super) fn name_str(
   }
 
   Err(Error::InvalidArgType(
-    "The \"name\" argument must be a string.",
+    "The \"name\" argument must be a string.".into(),
   ))
 }
 
@@ -91,7 +99,7 @@ pub(super) fn path_str(
   }
 
   Err(Error::InvalidArgType(
-    "The \"path\" argument must be a string.",
+    "The \"path\" argument must be a string.".into(),
   ))
 }
 
@@ -104,7 +112,7 @@ pub(super) fn allow_bare_named_params_bool(
   }
 
   Err(Error::InvalidArgType(
-    "The \"allowBareNamedParameters\" argument must be a boolean.",
+    "The \"allowBareNamedParameters\" argument must be a boolean.".into(),
   ))
 }
 
@@ -117,7 +125,7 @@ pub(super) fn allow_unknown_named_params_bool(
   }
 
   Err(Error::InvalidArgType(
-    "The \"enabled\" argument must be a boolean.",
+    "The \"enabled\" argument must be a boolean.".into(),
   ))
 }
 
@@ -130,7 +138,7 @@ pub(super) fn read_big_ints_bool(
   }
 
   Err(Error::InvalidArgType(
-    "The \"readBigInts\" argument must be a boolean.",
+    "The \"readBigInts\" argument must be a boolean.".into(),
   ))
 }
 
@@ -143,7 +151,7 @@ pub(super) fn return_arrays_bool(
   }
 
   Err(Error::InvalidArgType(
-    "The \"returnArrays\" argument must be a boolean.",
+    "The \"returnArrays\" argument must be a boolean.".into(),
   ))
 }
 
@@ -156,6 +164,6 @@ pub(super) fn active_bool(
   }
 
   Err(Error::InvalidArgType(
-    "The \"active\" argument must be a boolean.",
+    "The \"active\" argument must be a boolean.".into(),
   ))
 }

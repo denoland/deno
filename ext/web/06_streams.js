@@ -1191,7 +1191,7 @@ async function readableStreamCollectIntoUint8Array(stream) {
  * @param {boolean=} autoClose If the resource should be auto-closed when the stream closes. Defaults to true.
  * @returns {ReadableStream<Uint8Array>}
  */
-function writableStreamForRid(rid, autoClose = true, cfn) {
+function writableStreamForRid(rid, autoClose = true, cfn, options) {
   const stream = cfn ? cfn(_brand) : new WritableStream(_brand);
   stream[_resourceBacking] = { rid, autoClose };
 
@@ -1205,29 +1205,77 @@ function writableStreamForRid(rid, autoClose = true, cfn) {
     RESOURCE_REGISTRY.register(stream, rid, stream);
   }
 
+  const bufferSize = options?.bufferSize ?? 0;
+  let buffer = null;
+  let bufferOffset = 0;
+
+  async function flushBuffer() {
+    if (bufferOffset > 0) {
+      const toWrite = TypedArrayPrototypeSlice(buffer, 0, bufferOffset);
+      bufferOffset = 0;
+      await core.writeAll(rid, toWrite);
+    }
+  }
+
   const underlyingSink = {
     async write(chunk, controller) {
       try {
-        await core.writeAll(rid, chunk);
+        if (bufferSize > 0) {
+          const chunkLen = TypedArrayPrototypeGetByteLength(chunk);
+          // Large chunks: flush buffer then write directly
+          if (chunkLen >= bufferSize) {
+            await flushBuffer();
+            await core.writeAll(rid, chunk);
+            return;
+          }
+
+          // Lazily allocate buffer
+          if (buffer === null) {
+            buffer = new Uint8Array(bufferSize);
+          }
+
+          // If chunk won't fit, flush first
+          if (bufferOffset + chunkLen > bufferSize) {
+            await flushBuffer();
+          }
+
+          // Copy chunk into buffer
+          TypedArrayPrototypeSet(buffer, chunk, bufferOffset);
+          bufferOffset += chunkLen;
+        } else {
+          await core.writeAll(rid, chunk);
+        }
       } catch (e) {
         controller.error(e);
         tryClose();
       }
     },
-    close() {
+    async close() {
+      try {
+        await flushBuffer();
+      } catch {
+        // ignore errors on flush during close
+      }
       tryClose();
     },
     abort() {
+      bufferOffset = 0;
       tryClose();
     },
   };
+
+  const highWaterMark = bufferSize > 0 ? bufferSize : 1;
+  const sizeAlgorithm = bufferSize > 0
+    ? (chunk) => TypedArrayPrototypeGetByteLength(chunk)
+    : () => 1;
+
   initializeWritableStream(stream);
   setUpWritableStreamDefaultControllerFromUnderlyingSink(
     stream,
     underlyingSink,
     underlyingSink,
-    1,
-    () => 1,
+    highWaterMark,
+    sizeAlgorithm,
   );
   return stream;
 }
@@ -4121,7 +4169,12 @@ function transformStreamDefaultControllerError(controller, e) {
  * @returns {Promise<void>}
  */
 function transformStreamDefaultControllerPerformTransform(controller, chunk) {
-  const transformPromise = controller[_transformAlgorithm](chunk, controller);
+  const transformAlgorithm = controller[_transformAlgorithm];
+  if (transformAlgorithm === undefined) {
+    // Algorithms were cleared by a concurrent cancel/abort/close.
+    return PromiseResolve(undefined);
+  }
+  const transformPromise = transformAlgorithm(chunk, controller);
   return transformPromiseWith(transformPromise, undefined, (r) => {
     transformStreamError(controller[_stream], r);
     throw r;
@@ -5756,10 +5809,10 @@ const ReadableStreamBYOBReaderPrototype = ReadableStreamBYOBReader.prototype;
 class ReadableStreamBYOBRequest {
   /** @type {ReadableByteStreamController} */
   [_controller];
-  /** @type {ArrayBufferView | null} */
+  /** @type {Uint8Array<ArrayBuffer> | null} */
   [_view];
 
-  /** @returns {ArrayBufferView | null} */
+  /** @returns {Uint8Array<ArrayBuffer> | null} */
   get view() {
     webidl.assertBranded(this, ReadableStreamBYOBRequestPrototype);
     return this[_view];

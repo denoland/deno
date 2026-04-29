@@ -918,6 +918,7 @@ impl<TSys: SpecifierUnfurlerSys> SpecifierUnfurler<TSys> {
             match dep.kind {
               StaticDependencyKind::Export
               | StaticDependencyKind::Import
+              | StaticDependencyKind::ImportDefer
               | StaticDependencyKind::ImportSource
               | StaticDependencyKind::ExportEquals
               | StaticDependencyKind::ImportEquals => {
@@ -1161,6 +1162,7 @@ impl Visit for ImportMetaResolveCollector {
   }
 }
 
+#[allow(clippy::disallowed_methods, reason = "test code")]
 #[cfg(test)]
 mod tests {
   use std::path::Path;
@@ -1437,7 +1439,6 @@ export type * from "./c.d.ts";
   #[tokio::test]
   async fn test_unfurl_types_package() {
     async fn run_test(memory_sys: InMemorySys) {
-      #[allow(clippy::disallowed_methods)]
       let cwd = memory_sys.env_current_dir().unwrap();
       memory_sys.fs_insert_json(
         cwd.join("node_modules/package/package.json"),

@@ -333,19 +333,14 @@ pub fn to_v8_error<'s, 'i>(
   match maybe_exception {
     Some(exception) => exception,
     None => {
-      let mut msg =
-        "Custom error class must have a builder registered".to_string();
+      // The JS error builder callback failed. This can happen when the
+      // stack is exhausted (e.g. Maximum call stack size exceeded) and
+      // the callback itself throws. Fall back to a plain V8 error
+      // instead of panicking.
       if tc_scope.has_caught() {
-        let e = tc_scope.exception().unwrap();
-        // If the builder threw a bare `null`/`undefined`, propagate the
-        // original message instead of panicking on an opaque "Uncaught null".
-        if e.is_null_or_undefined() {
-          return message.into();
-        }
-        let js_error = JsError::from_v8_exception(tc_scope, e);
-        msg = format!("{}: {}", msg, js_error.exception_message);
+        tc_scope.reset();
       }
-      panic!("{}", msg);
+      message.into()
     }
   }
 }
@@ -933,7 +928,10 @@ impl JsError {
                 Some(s) => v8_to_rust_string(&s, tc_scope),
                 None => String::new(),
               };
-              #[allow(clippy::print_stderr)]
+              #[allow(
+                clippy::print_stderr,
+                reason = "intentional warning output"
+              )]
               {
                 eprintln!(
                   "warning: Failed to create JsStackFrame from callsite object: {message}. This is a bug in deno"
@@ -1489,10 +1487,8 @@ macro_rules! make_callsite_fn {
 fn maybe_to_path_str(string: &str) -> Option<String> {
   if string.starts_with("file://") {
     Some(
-      Url::parse(string)
-        .unwrap()
-        .to_file_path()
-        .unwrap()
+      deno_path_util::url_to_file_path(&Url::parse(string).ok()?)
+        .ok()?
         .to_string_lossy()
         .into_owned(),
     )
@@ -1990,7 +1986,7 @@ pub fn format_stack_trace<'s, 'i>(
         Some(s) => v8_to_rust_string(&s, tc_scope),
         None => String::new(),
       };
-      #[allow(clippy::print_stderr)]
+      #[allow(clippy::print_stderr, reason = "intentional warning output")]
       {
         eprintln!(
           "warning: Failed to create JsStackFrame from callsite object: {message}; Result so far: {result}. This is a bug in deno"
@@ -2418,6 +2414,40 @@ mod tests {
     let err = CoreErrorKind::TLA;
     let expected_message = err.get_message();
 
+    let value = to_v8_error(scope, &err);
+    let value: v8::Local<v8::String> = value
+      .try_into()
+      .expect("should fall back to message string");
+
+    assert_eq!(value.to_rust_string_lossy(scope), expected_message);
+  }
+
+  #[cfg(not(miri))]
+  #[test]
+  fn test_to_v8_error_handles_stack_overflow_in_builder() {
+    let mut runtime = JsRuntime::new(Default::default());
+
+    deno_core::scope!(scope, runtime);
+
+    // Simulate the error builder throwing RangeError (as happens during
+    // stack overflow when the builder callback itself exceeds the call
+    // stack limit).
+    let throw_range_error_fn: v8::Local<v8::Function> = JsRuntime::eval(
+      scope,
+      "(function () { throw new RangeError('Maximum call stack size exceeded'); })",
+    )
+    .unwrap();
+
+    let exception_state = JsRealm::exception_state_from_scope(scope);
+    exception_state
+      .js_build_custom_error_cb
+      .borrow_mut()
+      .replace(v8::Global::new(scope, throw_range_error_fn));
+
+    let err = CoreErrorKind::TLA;
+    let expected_message = err.get_message();
+
+    // Should not panic, should fall back to the message string
     let value = to_v8_error(scope, &err);
     let value: v8::Local<v8::String> = value
       .try_into()

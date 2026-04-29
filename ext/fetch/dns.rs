@@ -14,7 +14,7 @@ use hyper_util::client::legacy::connect::dns::Name;
 use tokio::task::JoinHandle;
 use tower::Service;
 
-#[allow(clippy::large_enum_variant)]
+#[allow(clippy::large_enum_variant, reason = "TODO: investigate")]
 #[derive(Clone, Debug)]
 pub enum Resolver {
   /// A resolver using blocking `getaddrinfo` calls in a threadpool.

@@ -13,6 +13,10 @@ mod ring_sha2;
 
 pub struct Hasher {
   pub hash: Rc<RefCell<Option<Hash>>>,
+  // Cached digest bytes. Populated on the first call to `digest()` so that
+  // subsequent calls (in different encodings) return the same value, matching
+  // Node's `Hash` semantics where the digest is cached after finalisation.
+  pub cached_digest: Rc<RefCell<Option<Box<[u8]>>>>,
 }
 
 // SAFETY: we're sure this can be GCed
@@ -43,6 +47,7 @@ impl Hasher {
 
     Ok(Self {
       hash: Rc::new(RefCell::new(Some(hash))),
+      cached_digest: Rc::new(RefCell::new(None)),
     })
   }
 
@@ -56,8 +61,20 @@ impl Hasher {
   }
 
   pub fn digest(&self) -> Option<Box<[u8]>> {
+    // Return the cached digest if the hash has already been finalised.
+    // Node caches the digest after the first call (via its native handle)
+    // so that `hash.digest()` can be called multiple times, in different
+    // encodings, without throwing `ERR_CRYPTO_HASH_FINALIZED`. This also
+    // supports the common pattern where the hash is used as a Transform
+    // stream (its `_flush` drives `digest()` internally) and then the user
+    // still calls `hash.digest(encoding)` afterwards.
+    if let Some(cached) = self.cached_digest.borrow().as_ref() {
+      return Some(cached.clone());
+    }
     let hash = self.hash.borrow_mut().take()?;
-    Some(hash.digest_and_drop())
+    let bytes = hash.digest_and_drop();
+    *self.cached_digest.borrow_mut() = Some(bytes.clone());
+    Some(bytes)
   }
 
   pub fn clone_inner(
@@ -71,6 +88,7 @@ impl Hasher {
     let hash = hash.clone_hash(output_length)?;
     Ok(Some(Self {
       hash: Rc::new(RefCell::new(Some(hash))),
+      cached_digest: Rc::new(RefCell::new(None)),
     }))
   }
 }
@@ -86,7 +104,7 @@ macro_rules! match_fixed_digest {
         type $type = ::blake2::Blake2s256;
         $body
       }
-      #[allow(dead_code)]
+      #[allow(dead_code, reason = "wildcard needed for macro expansion")]
       _ => crate::digest::match_fixed_digest_with_eager_block_buffer!($algorithm_name, fn <$type>() $body, _ => $other)
     }
   };

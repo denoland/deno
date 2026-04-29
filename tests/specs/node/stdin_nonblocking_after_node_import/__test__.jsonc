@@ -1,0 +1,13 @@
+{
+  "tests": {
+    "stdin_read_after_node_process_import": {
+      // Pipe data into stdin so Deno.stdin.read() has something to read.
+      // Importing node:process triggers uv_pipe_open(0) which sets
+      // O_NONBLOCK on fd 0. Deno.stdin.read() must handle WouldBlock
+      // internally and not surface EAGAIN to JS.
+      "args": "run main.ts",
+      "input": "hello from stdin",
+      "output": "main.out"
+    }
+  }
+}

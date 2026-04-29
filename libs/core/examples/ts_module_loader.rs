@@ -5,7 +5,8 @@
 //! It will only transpile, not typecheck (like Deno's `--no-check` flag).
 
 // NB(bartlomieju): this is fine for example code
-#![allow(clippy::print_stdout)]
+#![allow(clippy::print_stdout, reason = "example code")]
+#![allow(clippy::disallowed_methods, reason = "example code")]
 
 use std::borrow::Cow;
 use std::cell::RefCell;

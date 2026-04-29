@@ -26,13 +26,13 @@ use deno_lib::npm::create_npm_process_state_provider;
 use deno_lib::worker::LibMainWorkerFactory;
 use deno_lib::worker::LibMainWorkerOptions;
 use deno_lib::worker::LibWorkerFactoryRoots;
-use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm::resolution::NpmVersionResolver;
 use deno_npm_cache::NpmCacheSetting;
 use deno_npm_installer::NpmInstallerFactoryOptions;
 use deno_npm_installer::lifecycle_scripts::LifecycleScriptsExecutor;
 use deno_npm_installer::lifecycle_scripts::NullLifecycleScriptsExecutor;
 use deno_npm_installer::process_state::NpmProcessStateKind;
+use deno_npmrc::ResolvedNpmRc;
 use deno_resolver::cache::ParsedSourceCache;
 use deno_resolver::cjs::IsCjsResolutionMode;
 use deno_resolver::deno_json::CompilerOptionsOverrides;
@@ -142,6 +142,7 @@ impl RootCertStoreProvider for CliRootCertStoreProvider {
       .cell
       .get_or_try_init(|| {
         get_root_cert_store(
+          &CliSys::default(),
           self.maybe_root_path.clone(),
           self.maybe_ca_stores.clone(),
           self.maybe_ca_data.clone(),
@@ -525,20 +526,6 @@ impl CliFactory {
     self.resolver_factory()?.in_npm_package_checker()
   }
 
-  pub async fn tsgo_path(&self) -> Result<Option<&PathBuf>, AnyError> {
-    if self.cli_options()?.unstable_tsgo() {
-      Ok(Some(
-        crate::tsc::ensure_tsgo(
-          self.deno_dir()?,
-          self.http_client_provider().clone(),
-        )
-        .await?,
-      ))
-    } else {
-      Ok(None)
-    }
-  }
-
   pub fn jsr_version_resolver(
     &self,
   ) -> Result<&Arc<JsrVersionResolver>, AnyError> {
@@ -659,7 +646,8 @@ impl CliFactory {
             | DenoSubcommand::Vendor
             | DenoSubcommand::Publish { .. }
             | DenoSubcommand::Help { .. }
-            | DenoSubcommand::X { .. } => false,
+            | DenoSubcommand::X { .. }
+            | DenoSubcommand::BumpVersion { .. } => false,
           },
           cache_setting: NpmCacheSetting::from_cache_setting(
             &cli_options.cache_setting(),
@@ -846,7 +834,6 @@ impl CliFactory {
             } else {
               None
             },
-            self.tsgo_path().await?.cloned(),
           )))
         }
         .boxed_local(),
@@ -1200,6 +1187,9 @@ impl CliFactory {
         .take_binary_npm_command_name()
         .or(std::env::args().next()),
       node_debug: std::env::var("NODE_DEBUG").ok(),
+      node_cluster_unique_id: std::env::var("NODE_UNIQUE_ID").ok(),
+      node_cluster_sched_policy: std::env::var("NODE_CLUSTER_SCHED_POLICY")
+        .ok(),
       origin_data_folder_path: Some(self.deno_dir()?.origin_data_folder_path()),
       seed: cli_options.seed(),
       unsafely_ignore_certificate_errors: cli_options

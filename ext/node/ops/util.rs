@@ -3,8 +3,6 @@
 use std::path::Path;
 
 use deno_core::OpState;
-use deno_core::ResourceHandle;
-use deno_core::ResourceHandleFd;
 use deno_core::op2;
 use deno_core::v8;
 use deno_dotenv::parse_env_content_hook;
@@ -17,89 +15,58 @@ use crate::NodeResolverRc;
 
 #[repr(u32)]
 enum HandleType {
-  #[allow(dead_code)]
+  #[allow(dead_code, reason = "variant kept for repr(u32) mapping")]
   Tcp = 0,
   Tty,
-  #[allow(dead_code)]
+  #[allow(dead_code, reason = "variant kept for repr(u32) mapping")]
   Udp,
   File,
   Pipe,
   Unknown,
 }
 
-/// Check if a raw file descriptor is a TTY.
-/// This is used by Node.js `tty.isatty(fd)`.
 #[op2(fast)]
-pub fn op_node_is_tty(fd: i32) -> bool {
-  if fd < 0 {
-    return false;
-  }
-  is_tty(fd)
+pub fn op_node_guess_handle_type(_state: &mut OpState, fd: u32) -> u32 {
+  guess_handle_type(fd as i32) as u32
 }
 
 #[cfg(unix)]
-fn is_tty(fd: i32) -> bool {
-  // SAFETY: We're checking if the fd is a terminal.
-  // The fd may or may not be valid, but libc::isatty handles that safely.
-  unsafe { libc::isatty(fd) == 1 }
-}
-
-#[cfg(windows)]
-fn is_tty(fd: i32) -> bool {
-  use winapi::um::consoleapi::GetConsoleMode;
-  use winapi::um::processenv::GetStdHandle;
-  use winapi::um::winbase::STD_ERROR_HANDLE;
-  use winapi::um::winbase::STD_INPUT_HANDLE;
-  use winapi::um::winbase::STD_OUTPUT_HANDLE;
-
-  // SAFETY: GetStdHandle returns a borrowed handle to stdin/stdout/stderr.
-  // For fd > 2, we try to use it as a raw handle directly.
-  let handle = match fd {
-    // SAFETY: These are valid standard handles.
-    0 => unsafe { GetStdHandle(STD_INPUT_HANDLE) },
-    // SAFETY: These are valid standard handles.
-    1 => unsafe { GetStdHandle(STD_OUTPUT_HANDLE) },
-    // SAFETY: These are valid standard handles.
-    2 => unsafe { GetStdHandle(STD_ERROR_HANDLE) },
-    _ => fd as winapi::um::winnt::HANDLE,
-  };
-
-  let mut mode = 0;
-  // SAFETY: handle is either a valid standard handle or a raw fd cast to HANDLE.
-  // GetConsoleMode will return 0 if the handle is invalid or not a console.
-  unsafe { GetConsoleMode(handle, &mut mode) != 0 }
-}
-
-#[op2(fast)]
-pub fn op_node_guess_handle_type(state: &mut OpState, rid: u32) -> u32 {
-  let handle = match state.resource_table.get_handle(rid) {
-    Ok(handle) => handle,
-    _ => return HandleType::Unknown as u32,
-  };
-
-  let handle_type = match handle {
-    ResourceHandle::Fd(handle) => guess_handle_type(handle),
+fn guess_handle_type(fd: i32) -> HandleType {
+  use deno_core::uv_compat;
+  match uv_compat::uv_guess_handle(fd) {
+    uv_compat::uv_handle_type::UV_TCP => HandleType::Tcp,
+    uv_compat::uv_handle_type::UV_TTY => HandleType::Tty,
+    uv_compat::uv_handle_type::UV_UDP => HandleType::Unknown,
+    uv_compat::uv_handle_type::UV_FILE => HandleType::File,
+    uv_compat::uv_handle_type::UV_NAMED_PIPE => HandleType::Pipe,
     _ => HandleType::Unknown,
-  };
-
-  handle_type as u32
+  }
 }
 
 #[cfg(windows)]
-fn guess_handle_type(handle: ResourceHandleFd) -> HandleType {
+fn guess_handle_type(fd: i32) -> HandleType {
   use winapi::um::consoleapi::GetConsoleMode;
   use winapi::um::fileapi::GetFileType;
   use winapi::um::winbase::FILE_TYPE_CHAR;
   use winapi::um::winbase::FILE_TYPE_DISK;
   use winapi::um::winbase::FILE_TYPE_PIPE;
 
-  // SAFETY: Call to win32 fileapi. `handle` is a valid fd.
+  if fd < 0 {
+    return HandleType::Unknown;
+  }
+  // SAFETY: get_osfhandle converts a CRT fd to an OS handle.
+  // Returns -1 (INVALID_HANDLE_VALUE) for invalid fds.
+  let handle = unsafe { libc::get_osfhandle(fd) };
+  if handle == -1 {
+    return HandleType::Unknown;
+  }
+  let handle = handle as winapi::shared::ntdef::HANDLE;
+  // SAFETY: handle is a valid OS handle from get_osfhandle.
   match unsafe { GetFileType(handle) } {
     FILE_TYPE_DISK => HandleType::File,
     FILE_TYPE_CHAR => {
       let mut mode = 0;
-      // SAFETY: Call to win32 consoleapi. `handle` is a valid fd.
-      //         `mode` is a valid pointer.
+      // SAFETY: handle is valid, mode is a valid pointer.
       if unsafe { GetConsoleMode(handle, &mut mode) } == 1 {
         HandleType::Tty
       } else {
@@ -107,29 +74,6 @@ fn guess_handle_type(handle: ResourceHandleFd) -> HandleType {
       }
     }
     FILE_TYPE_PIPE => HandleType::Pipe,
-    _ => HandleType::Unknown,
-  }
-}
-
-#[cfg(unix)]
-fn guess_handle_type(handle: ResourceHandleFd) -> HandleType {
-  use std::io::IsTerminal;
-  // SAFETY: The resource remains open for the duration of borrow_raw.
-  if unsafe { std::os::fd::BorrowedFd::borrow_raw(handle).is_terminal() } {
-    return HandleType::Tty;
-  }
-
-  // SAFETY: It is safe to zero-initialize a `libc::stat` struct.
-  let mut s = unsafe { std::mem::zeroed() };
-  // SAFETY: Call to libc
-  if unsafe { libc::fstat(handle, &mut s) } == 1 {
-    return HandleType::Unknown;
-  }
-
-  match s.st_mode & 61440 {
-    libc::S_IFREG | libc::S_IFCHR => HandleType::File,
-    libc::S_IFIFO => HandleType::Pipe,
-    libc::S_IFSOCK => HandleType::Tcp,
     _ => HandleType::Unknown,
   }
 }

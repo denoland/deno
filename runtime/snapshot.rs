@@ -97,7 +97,7 @@ pub fn create_runtime_snapshot(
   let mut snapshot = std::fs::File::create(snapshot_path).unwrap();
   snapshot.write_all(&output.output).unwrap();
 
-  #[allow(clippy::print_stdout)]
+  #[allow(clippy::print_stdout, reason = "necessary for build code")]
   for path in output.files_loaded_during_snapshot {
     println!("cargo:rerun-if-changed={}", path.display());
   }

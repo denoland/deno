@@ -147,7 +147,10 @@ pub struct Smi<T: SmallInt>(pub T);
 pub trait SmallInt {
   const NAME: &'static str;
 
-  #[allow(clippy::wrong_self_convention)]
+  #[allow(
+    clippy::wrong_self_convention,
+    reason = "takes self by value intentionally"
+  )]
   fn as_i32(self) -> i32;
   fn from_i32(value: i32) -> Self;
 }
@@ -157,7 +160,7 @@ macro_rules! impl_smallint {
     $(
       impl SmallInt for $t {
         const NAME: &'static str = stringify!($t);
-        #[allow(clippy::wrong_self_convention)]
+        #[allow(clippy::wrong_self_convention, reason = "takes self by value intentionally")]
         #[inline(always)]
         fn as_i32(self) -> i32 {
           self as _
@@ -218,7 +221,10 @@ pub struct Number<T: Numeric>(pub T);
 /// A trait for types that can represent a JS `number`.
 pub trait Numeric: Sized {
   const NAME: &'static str;
-  #[allow(clippy::wrong_self_convention)]
+  #[allow(
+    clippy::wrong_self_convention,
+    reason = "takes self by value intentionally"
+  )]
   fn as_f64(self) -> f64;
   fn from_value(value: &v8::Value) -> Option<Self>;
 }
@@ -233,7 +239,7 @@ macro_rules! impl_numeric {
           $from(value).map(|v| v as _)
         }
 
-        #[allow(clippy::wrong_self_convention)]
+        #[allow(clippy::wrong_self_convention, reason = "takes self by value intentionally")]
         #[inline(always)]
         fn as_f64(self) -> f64 {
             self as _
@@ -496,7 +502,10 @@ impl<'a> FromV8<'a> for ByteString {
     }
     let len = v8str.length();
     let mut buffer = SmallVec::with_capacity(len);
-    #[allow(clippy::uninit_vec)]
+    #[allow(
+      clippy::uninit_vec,
+      reason = "buffer is immediately written to after set_len"
+    )]
     // SAFETY: we set length == capacity (see previous line),
     // before immediately writing into that buffer and sanity check with an assert
     unsafe {
@@ -513,7 +522,7 @@ impl From<Vec<u8>> for ByteString {
   }
 }
 
-#[allow(clippy::from_over_into)]
+#[allow(clippy::from_over_into, reason = "cannot implement From for Vec")]
 impl Into<Vec<u8>> for ByteString {
   fn into(self) -> Vec<u8> {
     self.0.into_vec()
@@ -960,7 +969,7 @@ macro_rules! impl_tuple {
       {
         type Error = deno_error::JsErrorBox;
         fn to_v8(self, scope: &mut v8::PinScope<'a, '_>) -> Result<v8::Local<'a, v8::Value>, Self::Error> {
-          #[allow(non_snake_case)]
+          #[allow(non_snake_case, reason = "macro-generated bindings match type parameter names")]
           let ($($name,)+) = self;
           let elements = &[$($name.to_v8(scope).map_err(deno_error::JsErrorBox::from_err)?),+];
           Ok(v8::Array::new_with_elements(scope, elements).into())
@@ -982,13 +991,13 @@ macro_rules! impl_tuple {
             return Err(deno_error::JsErrorBox::type_error(format!("Expected {} elements, got {}", $len, array.length())));
           }
           let mut i = 0;
-          #[allow(non_snake_case)]
+          #[allow(non_snake_case, reason = "macro-generated bindings match type parameter names")]
           let ($($name,)+) = (
             $(
               {
                 let element = array.get_index(scope, i).unwrap();
                 let res = $name::from_v8(scope, element).map_err(deno_error::JsErrorBox::from_err)?;
-                #[allow(unused)]
+                #[allow(unused, reason = "counter is used in multi-element tuples")]
                 {
                   i += 1;
                 }
