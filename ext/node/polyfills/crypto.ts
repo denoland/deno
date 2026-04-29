@@ -191,7 +191,10 @@ function getRandomValues(typedArray) {
 function hash(
   algorithm: string,
   data: BinaryLike,
-  outputEncoding: BinaryToTextEncoding = "hex",
+  outputEncodingOrOptions: BinaryToTextEncoding | {
+    outputEncoding?: BinaryToTextEncoding;
+    outputLength?: number;
+  } = "hex",
 ) {
   validateString(algorithm, "algorithm");
   if (typeof data !== "string" && !isArrayBufferView(data)) {
@@ -202,6 +205,17 @@ function hash(
       "string",
     ], data);
   }
+
+  let outputEncoding: string;
+  let outputLength: number | undefined;
+
+  if (typeof outputEncodingOrOptions === "object") {
+    outputEncoding = outputEncodingOrOptions.outputEncoding ?? "hex";
+    outputLength = outputEncodingOrOptions.outputLength;
+  } else {
+    outputEncoding = outputEncodingOrOptions;
+  }
+
   let normalized = outputEncoding;
   // Fast case: if it's 'hex', we don't need to validate it further.
   if (outputEncoding !== "hex") {
@@ -217,9 +231,66 @@ function hash(
       }
     }
   }
-  const hash = createHash(algorithm);
-  hash.update(data);
-  return hash.digest(outputEncoding);
+
+  const algoLower = algorithm.toLowerCase();
+  const isXof = algoLower === "shake128" || algoLower === "shake256";
+
+  if (outputLength != null && !isXof) {
+    // For non-XOF hashes, outputLength must match the algorithm's digest size.
+    const testHash = createHash(algorithm);
+    testHash.update("");
+    const expectedLen = testHash.digest().length;
+    if (outputLength !== expectedLen) {
+      throw new Error(
+        `Output length ${outputLength} is invalid for ${algoLower}, which does not support XOF`,
+      );
+    }
+  }
+
+  const h = createHash(
+    algorithm,
+    outputLength != null ? { outputLength } : undefined,
+  );
+  h.update(data);
+
+  if (outputLength === 0) {
+    return normalized === "buffer" ? globalThis.Buffer.alloc(0) : "";
+  }
+
+  return h.digest(outputEncoding);
+}
+
+function validateCipherivArgs(
+  cipher: unknown,
+  key: unknown,
+  iv: unknown,
+) {
+  if (typeof cipher !== "string") {
+    throw new ERR_INVALID_ARG_TYPE(
+      "cipher",
+      "string",
+      cipher,
+    );
+  }
+  if (
+    typeof key !== "string" && !isArrayBufferView(key) &&
+    !(key && typeof key === "object" && "type" in key)
+  ) {
+    throw new ERR_INVALID_ARG_TYPE(
+      "key",
+      ["string", "ArrayBufferView", "Buffer", "KeyObject"],
+      key,
+    );
+  }
+  if (
+    iv !== null && typeof iv !== "string" && !isArrayBufferView(iv)
+  ) {
+    throw new ERR_INVALID_ARG_TYPE(
+      "iv",
+      ["string", "ArrayBufferView", "Buffer", "null"],
+      iv,
+    );
+  }
 }
 
 function createCipheriv(
@@ -252,7 +323,8 @@ function createCipheriv(
   iv: BinaryLike | null,
   options?: TransformOptions,
 ): Cipher {
-  return new Cipheriv(cipher, key, iv, options);
+  validateCipherivArgs(cipher, key, iv);
+  return Cipheriv(cipher, key, iv, options);
 }
 
 function createDecipheriv(
@@ -279,7 +351,8 @@ function createDecipheriv(
   iv: BinaryLike | null,
   options?: TransformOptions,
 ): Decipher {
-  return new Decipheriv(algorithm, key, iv, options);
+  validateCipherivArgs(algorithm, key, iv);
+  return Decipheriv(algorithm, key, iv, options);
 }
 
 function createDiffieHellman(
@@ -367,7 +440,7 @@ const verify = verifyOneShot;
 /* Deprecated in Node.js, alias of randomBytes */
 const pseudoRandomBytes = randomBytes;
 
-export default {
+const defaultExport = {
   Certificate,
   checkPrime,
   checkPrimeSync,
@@ -416,7 +489,6 @@ export default {
   publicDecrypt,
   publicEncrypt,
   randomBytes,
-  pseudoRandomBytes,
   randomFill,
   randomFillSync,
   randomInt,
@@ -435,6 +507,41 @@ export default {
   subtle,
   X509Certificate,
 };
+
+// Aliases for randomBytes are deprecated; defined as non-enumerable lazy
+// getters to mirror Node's lib/crypto.js getRandomBytesAlias(). With
+// --pending-deprecation, accessing them prints DEP0115.
+function defineRandomBytesAlias(target: object, key: string) {
+  Object.defineProperty(target, key, {
+    enumerable: false,
+    configurable: true,
+    get() {
+      const value = getOptionValue("--pending-deprecation")
+        ? deprecate(randomBytes, `crypto.${key} is deprecated.`, "DEP0115")
+        : randomBytes;
+      Object.defineProperty(this, key, {
+        enumerable: false,
+        configurable: true,
+        writable: true,
+        value,
+      });
+      return value;
+    },
+    set(value) {
+      Object.defineProperty(this, key, {
+        enumerable: false,
+        configurable: true,
+        writable: true,
+        value,
+      });
+    },
+  });
+}
+for (const key of ["pseudoRandomBytes", "prng", "rng"]) {
+  defineRandomBytesAlias(defaultExport, key);
+}
+
+export default defaultExport;
 
 export type {
   Algorithms,

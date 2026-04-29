@@ -74,6 +74,9 @@ use crate::npm::CliNpmResolver;
 use crate::resolver::CliCjsTracker;
 use crate::sys::CliSys;
 use crate::util::archive;
+use crate::util::env::handle_dotenv_error;
+use crate::util::env::handle_dotenv_io_error;
+use crate::util::env::handle_dotenv_not_found;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
 
@@ -211,7 +214,7 @@ pub struct DenoCompileBinaryWriter<'a> {
 }
 
 impl<'a> DenoCompileBinaryWriter<'a> {
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "construction")]
   pub fn new(
     cjs_module_export_analyzer: &'a CliCjsModuleExportAnalyzer,
     cjs_tracker: &'a CliCjsTracker,
@@ -365,7 +368,6 @@ impl<'a> DenoCompileBinaryWriter<'a> {
 
   /// This functions creates a standalone deno binary by appending a bundle
   /// and magic trailer to the currently executing binary.
-  #[allow(clippy::too_many_arguments)]
   async fn write_standalone_binary(
     &self,
     options: WriteBinOptions<'_>,
@@ -566,7 +568,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       match url.scheme() {
         "file" => {
           let file_path = deno_path_util::url_to_file_path(url)?;
-          vfs.add_file_at_path(&file_path)?;
+          vfs.add_path(&file_path)?;
         }
         "http" | "https" => {
           let specifier_id = specifier_store.get_or_add(url);
@@ -711,22 +713,45 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       }),
     };
 
-    let env_vars_from_env_file = match self.cli_options.env_file_name() {
-      Some(env_filenames) => {
-        let mut aggregated_env_vars = IndexMap::new();
-        for env_filename in env_filenames.iter().rev() {
-          log::info!(
-            "{} Environment variables from the file \"{}\" were embedded in the generated executable file",
-            crate::colors::yellow("Warning"),
-            env_filename
-          );
-
-          let env_vars = get_file_env_vars(env_filename.to_string())?;
-          aggregated_env_vars.extend(env_vars);
-        }
-        aggregated_env_vars
+    let env_vars_from_env_file = {
+      let mut aggregated_env_vars = IndexMap::new();
+      for env_file_name in self.cli_options.env_file_names().rev() {
+        match deno_dotenv::find_path_and_content(
+          &CliSys::default(),
+          self.cli_options.initial_cwd(),
+          env_file_name,
+        ) {
+          Ok(Some((env_file_path, content))) => {
+            match get_file_env_vars(&content) {
+              Ok(env_vars) => {
+                aggregated_env_vars.extend(env_vars);
+                log::info!(
+                  "{} Environment variables from the file \"{}\" were embedded in the generated executable file",
+                  crate::colors::yellow("Warning"),
+                  env_file_path.display()
+                );
+              }
+              Err(e) => {
+                handle_dotenv_error(
+                  &e,
+                  &env_file_path,
+                  self.cli_options.log_level(),
+                );
+              }
+            };
+          }
+          Ok(None) => {
+            handle_dotenv_not_found(
+              env_file_name,
+              self.cli_options.log_level(),
+            );
+          }
+          Err(e) => {
+            handle_dotenv_io_error(&e, self.cli_options.log_level());
+          }
+        };
       }
-      None => Default::default(),
+      aggregated_env_vars
     };
 
     output_vfs(&vfs, display_output_filename);
@@ -823,6 +848,16 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       },
       otel_config: self.cli_options.otel_config(),
       vfs_case_sensitivity: vfs.case_sensitivity,
+      self_extracting: if compile_flags.self_extracting {
+        let mut hasher = FastInsecureHasher::new_deno_versioned();
+        for file in &vfs.files {
+          hasher.write_u64(file.len() as u64);
+          hasher.write(file);
+        }
+        Some(format!("{:016x}", hasher.finish()))
+      } else {
+        None
+      },
     };
 
     let (data_section_bytes, section_sizes) = serialize_binary_data_section(
@@ -929,7 +964,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       CliNpmResolver::Byonm(_) => {
         maybe_warn_different_system(&self.npm_system_info);
         for pkg_json in self.cli_options.workspace().package_jsons() {
-          builder.add_file_at_path(&pkg_json.path)?;
+          builder.add_path(&pkg_json.path)?;
         }
         // traverse and add all the node_modules directories in the workspace
         let mut pending_dirs = VecDeque::new();
@@ -1068,7 +1103,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
   }
 }
 
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, reason = "private code")]
 fn write_binary_bytes(
   mut file_writer: File,
   original_bin: Vec<u8>,
@@ -1115,7 +1150,7 @@ struct BinaryDataSectionSizes {
 /// * <vfs_headers_len><vfs_headers>
 /// * <vfs_file_data_len><vfs_file_data>
 /// * d3n0l4nd
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, reason = "private code")]
 fn serialize_binary_data_section(
   metadata: &Metadata,
   npm_snapshot: Option<SerializedNpmResolutionSnapshot>,
@@ -1256,10 +1291,13 @@ fn get_dev_binary_path() -> Option<OsString> {
 /// This function returns the environment variables specified
 /// in the passed environment file.
 fn get_file_env_vars(
-  filename: String,
-) -> Result<IndexMap<String, String>, deno_dotenv::Error> {
+  content: &str,
+) -> Result<IndexMap<String, String>, deno_dotenv::ParseError> {
   let mut file_env_vars = IndexMap::new();
-  for item in deno_dotenv::from_path_sanitized_iter(filename)? {
+  for item in deno_dotenv::from_content_sanitized_iter_with_substitution(
+    &CliSys::default(),
+    content,
+  )? {
     let Ok((key, val)) = item else {
       continue; // this failure will be warned about on load
     };

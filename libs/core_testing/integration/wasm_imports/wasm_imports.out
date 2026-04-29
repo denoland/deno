@@ -1,0 +1,6 @@
+lib.js before
+lib.js after
+import_inner.js before
+import_inner.js after
+abc: 3
+exported_add: 42

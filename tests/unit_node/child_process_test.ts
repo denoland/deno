@@ -1263,6 +1263,24 @@ Deno.test({
   },
 });
 
+// Regression test for https://github.com/denoland/deno/issues/25776
+Deno.test(async function killSignalZero() {
+  const child = CP.spawn(Deno.execPath(), [
+    "eval",
+    "setTimeout(() => {}, 60_000)",
+  ]);
+  try {
+    // Signal 0 checks if the process exists without sending a signal
+    const alive = child.kill(0);
+    assertEquals(alive, true);
+    // The child should not be marked as killed
+    assertEquals(child.killed, false);
+  } finally {
+    child.kill();
+    await new Promise((resolve) => child.on("close", resolve));
+  }
+});
+
 Deno.test(async function experimentalFlag() {
   const code = ``;
   const file = await Deno.makeTempFile();
@@ -1277,4 +1295,102 @@ Deno.test(async function experimentalFlag() {
   });
 
   await timeout.promise;
+});
+
+// Regression test for https://github.com/denoland/deno/issues/26784
+// process.stdout partial writes were silently dropped, causing data
+// truncation when piping >64KB through a subprocess.
+Deno.test(async function stdoutPipePartialWriteNotTruncated() {
+  // Child script: pipe a file to stdout via createReadStream
+  const pipeScript = await Deno.makeTempFile({ suffix: ".mjs" });
+  await Deno.writeTextFile(
+    pipeScript,
+    `import fs from "node:fs";fs.createReadStream(process.argv[2]).pipe(process.stdout);`,
+  );
+  // Create a file >65536 bytes with multiple lines (triggers chunked reads)
+  const dataFile = await Deno.makeTempFile();
+  const content = "x".repeat(40000) + "\n" + "y".repeat(40000) + "\n";
+  await Deno.writeTextFile(dataFile, content);
+  try {
+    const output = execFileSync(Deno.execPath(), [
+      "run",
+      "--allow-read",
+      pipeScript,
+      dataFile,
+    ], { encoding: "utf-8", maxBuffer: 50 * 1024 * 1024 });
+    assertEquals(output.length, content.length);
+    assertEquals(output, content);
+  } finally {
+    await Deno.remove(pipeScript);
+    await Deno.remove(dataFile);
+  }
+});
+
+Deno.test(async function stdoutWriteMultipleChunksNotTruncated() {
+  // Child script: write two large chunks to stdout directly
+  const script = await Deno.makeTempFile({ suffix: ".mjs" });
+  await Deno.writeTextFile(
+    script,
+    `const chunk1 = "A".repeat(50000);const chunk2 = "B".repeat(50000);process.stdout.write(chunk1);process.stdout.write(chunk2);`,
+  );
+  try {
+    const output = execFileSync(Deno.execPath(), ["run", script], {
+      encoding: "utf-8",
+      maxBuffer: 50 * 1024 * 1024,
+    });
+    assertEquals(output.length, 100000);
+    assertEquals(output, "A".repeat(50000) + "B".repeat(50000));
+  } finally {
+    await Deno.remove(script);
+  }
+});
+
+Deno.test(function spawnSyncShellMetacharactersEscaped() {
+  // Shell metacharacters in args should be escaped, not interpreted.
+  // On Unix, & would launch a background process; on Windows, it
+  // would chain a second command. Either way echo should print
+  // the literal string.
+  const ret = spawnSync(
+    Deno.execPath(),
+    ["eval", "console.log(Deno.args[0])", "--", "a&b|c<d>e"],
+    { shell: true, encoding: "utf-8" },
+  );
+  assertEquals(ret.status, 0);
+  assertEquals(ret.stdout.trim(), "a&b|c<d>e");
+});
+
+Deno.test(function spawnSyncReturnsPid() {
+  const ret = spawnSync(Deno.execPath(), ["eval", "console.log('hi')"]);
+  assertEquals(ret.status, 0);
+  assertEquals(typeof ret.pid, "number");
+  assert(ret.pid > 0);
+});
+
+Deno.test({
+  name: "spawnWithNumericFdInStdioArray",
+  ignore: Deno.build.os === "windows",
+  async fn() {
+    const fs = await import("node:fs");
+    const tmpFile = Deno.makeTempFileSync();
+    try {
+      const fd = fs.openSync(tmpFile, "w");
+      const child = spawn("/bin/sh", [
+        "-c",
+        "echo hello from child >&3",
+      ], {
+        stdio: ["ignore", "pipe", "pipe", fd],
+      });
+      const { promise, resolve } = Promise.withResolvers<number>();
+      child.on("close", (code: number) => {
+        resolve(code);
+      });
+      const code = await promise;
+      fs.closeSync(fd);
+      assertEquals(code, 0);
+      const content = Deno.readTextFileSync(tmpFile);
+      assertEquals(content, "hello from child\n");
+    } finally {
+      Deno.removeSync(tmpFile);
+    }
+  },
 });

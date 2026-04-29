@@ -19,6 +19,7 @@ lsp = ["dep:lsp-types", "dep:indexmap", "dep:percent-encoding"]
 anyhow.workspace = true
 console_static_text.workspace = true
 crossterm.workspace = true
+deno_path_util.workspace = true
 file_test_runner.workspace = true
 fluent-uri.workspace = true
 inventory.workspace = true

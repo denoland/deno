@@ -47,11 +47,18 @@ export function createWritableStdioStream(writer, name, warmup = false) {
       // being created from a raw fd (new Socket({ fd: 1 })), process.stdout/stderr
       // should be switched to net.Socket for non-TTY cases and this can be removed.
       try {
-        writer.writeSync(
-          ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, buf)
-            ? buf
-            : Buffer.from(buf, enc),
-        );
+        let data = ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, buf)
+          ? buf
+          : Buffer.from(buf, enc);
+        // Handle partial writes - writeSync may not write all bytes at once
+        // (e.g., when stdout is a pipe and the pipe buffer is near capacity).
+        // deno-lint-ignore prefer-primordials
+        while (data.byteLength > 0) {
+          const nwritten = writer.writeSync(data);
+          // deno-lint-ignore prefer-primordials
+          if (nwritten >= data.byteLength) break;
+          data = TypedArrayPrototypeSlice(data, nwritten);
+        }
       } catch (e) {
         if (
           ObjectPrototypeIsPrototypeOf(Deno.errors.BrokenPipe.prototype, e)
@@ -159,13 +166,10 @@ export function createWritableStdioStream(writer, name, warmup = false) {
     },
   });
 
-  // If we're warming up, create a stdout/stderr stream that assumes a terminal (the most likely case).
-  // If we're wrong at boot time, we'll recreate it.
+  // If we're warming up, add TTY-like methods so snapshot-time code works.
+  // The warmup stream is replaced at boot time with a proper tty.WriteStream
+  // (for TTY) or a fresh Writable (for non-TTY).
   if (warmup || writer?.isTerminal()) {
-    // These belong on tty.WriteStream(), but the TTY streams currently have
-    // following problems:
-    // 1. Using them here introduces a circular dependency.
-    // 2. Creating a net.Socket() from a fd is not currently supported.
     stream.cursorTo = function (x, y, callback) {
       return cursorTo(this, x, y, callback);
     };
@@ -342,7 +346,9 @@ export const initStdin = (warmup = false) => {
   });
   stdin._isRawMode = false;
   stdin.setRawMode = (enable) => {
-    io.stdin?.setRaw?.(enable);
+    if (io.stdin?.isTerminal()) {
+      io.stdin.setRaw(enable);
+    }
     stdin._isRawMode = enable;
     return stdin;
   };

@@ -436,8 +436,8 @@ impl TestEventSender {
   }
 }
 
-#[allow(clippy::print_stdout)]
-#[allow(clippy::print_stderr)]
+#[allow(clippy::print_stdout, reason = "test code")]
+#[allow(clippy::print_stderr, reason = "test code")]
 #[cfg(test)]
 mod tests {
   use deno_core::unsync::spawn;

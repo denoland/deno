@@ -172,3 +172,41 @@ Deno.test(async function worksWithDynamicImports() {
     assertEquals(data, "data");
   });
 });
+
+Deno.test(async function asyncLocalStoragePreservedInStreamFinished() {
+  const http = await import("node:http");
+  const { finished } = await import("node:stream");
+  const als = new AsyncLocalStorage();
+  const store = { foo: "bar" };
+
+  const { promise, resolve, reject } = Promise.withResolvers<void>();
+
+  const server = http.createServer((_req, res) => {
+    als.run(store, () => {
+      finished(res, () => {
+        try {
+          assertEquals(als.getStore(), store);
+          resolve();
+        } catch (e) {
+          reject(e);
+        }
+      });
+    });
+
+    setTimeout(() => res.end(), 0);
+  });
+
+  server.listen(0, () => {
+    const addr = server.address()!;
+    const port = typeof addr === "string" ? addr : addr.port;
+    http.get(`http://127.0.0.1:${port}`, (res) => {
+      res.resume();
+      res.on("end", () => {
+        server.close();
+        http.globalAgent.destroy();
+      });
+    });
+  });
+
+  await promise;
+});

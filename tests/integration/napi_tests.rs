@@ -77,6 +77,7 @@ fn napi_tests() {
     .env("RUST_BACKTRACE", "1")
     .arg("test")
     .arg("--allow-read")
+    .arg("--allow-write")
     .arg("--allow-env")
     .arg("--allow-ffi")
     .arg("--allow-run")
@@ -97,4 +98,106 @@ fn napi_tests() {
     println!("stderr {}", stderr);
   }
   assert!(output.status.success());
+}
+
+/// Test that NAPI wrap finalizers are called at shutdown even when the
+/// wrapped JS object is still reachable. This matches Node.js behavior
+/// and is required for native addons like DuckDB that rely on destructor
+/// cleanup (e.g., WAL checkpointing) during process exit.
+#[test_util::test]
+fn napi_wrap_leak_pointers_finalizer_on_shutdown() {
+  napi_build();
+
+  let output = deno_cmd()
+    .current_dir(napi_tests_path())
+    .arg("run")
+    .arg("--allow-read")
+    .arg("--allow-env")
+    .arg("--allow-ffi")
+    .arg("--config")
+    .arg(deno_config_path())
+    .arg("--no-lock")
+    .arg("wrap_leak.js")
+    .envs(env_vars_for_npm_tests())
+    .output()
+    .unwrap();
+  let stdout = std::str::from_utf8(&output.stdout).unwrap();
+  let stderr = std::str::from_utf8(&output.stderr).unwrap();
+
+  if !output.status.success() {
+    eprintln!("exit code {:?}", output.status.code());
+    println!("stdout {}", stdout);
+    println!("stderr {}", stderr);
+  }
+  assert!(output.status.success());
+  assert!(
+    stdout.contains("pointers released on shutdown"),
+    "Expected wrap finalizer to run at shutdown, got stdout: {}",
+    stdout
+  );
+}
+
+/// Test napi_fatal_error: calling it should abort the process and log the
+/// error message to stderr.
+#[test_util::test]
+fn napi_fatal_error() {
+  napi_build();
+
+  let output = deno_cmd()
+    .current_dir(napi_tests_path())
+    .arg("run")
+    .arg("--allow-read")
+    .arg("--allow-env")
+    .arg("--allow-ffi")
+    .arg("--config")
+    .arg(deno_config_path())
+    .arg("--no-lock")
+    .arg("fatal_error.js")
+    .envs(env_vars_for_npm_tests())
+    .output()
+    .unwrap();
+  let stderr = std::str::from_utf8(&output.stderr).unwrap();
+
+  // Process should have been killed (abort signal)
+  assert!(
+    !output.status.success(),
+    "Expected process to abort, but it exited successfully"
+  );
+  assert!(
+    stderr.contains("NODE API FATAL ERROR"),
+    "Expected fatal error message in stderr, got: {}",
+    stderr
+  );
+}
+
+/// Test napi_fatal_exception: calling it should trigger the uncaught
+/// exception handler and exit with a non-zero code.
+#[test_util::test]
+fn napi_fatal_exception() {
+  napi_build();
+
+  let output = deno_cmd()
+    .current_dir(napi_tests_path())
+    .arg("run")
+    .arg("--allow-read")
+    .arg("--allow-env")
+    .arg("--allow-ffi")
+    .arg("--config")
+    .arg(deno_config_path())
+    .arg("--no-lock")
+    .arg("fatal_exception.js")
+    .envs(env_vars_for_npm_tests())
+    .output()
+    .unwrap();
+  let stderr = std::str::from_utf8(&output.stderr).unwrap();
+
+  assert!(
+    !output.status.success(),
+    "Expected process to exit with error, but it succeeded"
+  );
+  assert!(
+    stderr.contains("fatal exception test"),
+    "Expected error message in stderr, got: {}",
+    stderr
+  );
 }

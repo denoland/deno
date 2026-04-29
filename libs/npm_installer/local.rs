@@ -152,7 +152,7 @@ impl<
   TSys: LocalNpmInstallSys,
 > LocalNpmPackageInstaller<THttpClient, TReporter, TSys>
 {
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "construction")]
   pub fn new(
     lifecycle_scripts_executor: Arc<dyn LifecycleScriptsExecutor>,
     npm_cache: Arc<NpmCache<TSys>>,
@@ -376,31 +376,48 @@ impl<
                   Ok::<_, SyncResolutionWithFsError>(())
                 }
               });
-              let extra_fut = if (package.has_bin
+              let needs_extra_from_disk = package.extra.is_none()
+                // When using abbreviated packument format, has_scripts may
+                // be true (from hasInstallScript) while extra.scripts is
+                // empty. In that case, read from disk to get real scripts.
+                || (package.has_scripts
+                  && package
+                    .extra
+                    .as_ref()
+                    .is_some_and(|e| e.scripts.is_empty()));
+              let extra = if (package.has_bin
                 || package.has_scripts
                 || package.is_deprecated)
-                && package.extra.is_none()
+                && needs_extra_from_disk
               {
+                // Wait for extraction to complete first, since
+                // get_package_extra_info may read from the on-disk
+                // package.json which doesn't exist until extraction finishes.
+                handle
+                  .await
+                  .map_err(JsErrorBox::from_err)?
+                  .map_err(JsErrorBox::from_err)?;
                 extra_info_provider
                   .get_package_extra_info(
                     &package.id.nv,
                     &package_path,
                     ExpectedExtraInfo::from_package(package),
                   )
-                  .boxed_local()
+                  .await
+                  .map_err(JsErrorBox::from_err)?
               } else {
-                std::future::ready(Ok(
-                  package.extra.clone().unwrap_or_default(),
-                ))
-                .boxed_local()
+                let (result, extra) = futures::future::join(
+                  handle,
+                  std::future::ready(Ok::<_, JsErrorBox>(
+                    package.extra.clone().unwrap_or_default(),
+                  )),
+                )
+                .await;
+                result
+                  .map_err(JsErrorBox::from_err)?
+                  .map_err(JsErrorBox::from_err)?;
+                extra?
               };
-
-              let (result, extra) =
-                futures::future::join(handle, extra_fut).await;
-              result
-                .map_err(JsErrorBox::from_err)?
-                .map_err(JsErrorBox::from_err)?;
-              let extra = extra.map_err(JsErrorBox::from_err)?;
 
               if package.has_bin {
                 bin_entries_to_setup.borrow_mut().add(
@@ -700,8 +717,7 @@ impl<
           )?;
         } else {
           // symlink the package into `node_modules/<alias>`
-          if setup_cache
-            .insert_root_symlink(&remote_pkg.id.nv.name, &target_folder_name)
+          if setup_cache.insert_root_symlink(remote_alias, &target_folder_name)
           {
             symlink_package_dir(
               sys.as_ref(),
@@ -852,27 +868,25 @@ impl<
         let mut output = String::new();
         let _ = writeln!(
           &mut output,
-          "{} The following packages are deprecated:",
-          colors::yellow("Warning")
+          "{} {}",
+          colors::yellow("╭"),
+          colors::yellow_bold("Warning")
         );
-        let len = packages_with_deprecation_warnings.len();
-        for (idx, (package_nv, msg)) in
-          packages_with_deprecation_warnings.iter().enumerate()
-        {
-          if idx != len - 1 {
-            let _ = writeln!(
-              &mut output,
-              "┠─ {}",
-              colors::gray(format!("npm:{:?} ({})", package_nv, msg))
-            );
-          } else {
-            let _ = write!(
-              &mut output,
-              "┖─ {}",
-              colors::gray(format!("npm:{:?} ({})", package_nv, msg))
-            );
-          }
+        let _ = writeln!(&mut output, "{}", colors::yellow("│"));
+        let _ = writeln!(
+          &mut output,
+          "{}  The following packages are deprecated:",
+          colors::yellow("│"),
+        );
+        for (package_nv, msg) in packages_with_deprecation_warnings.iter() {
+          let _ = writeln!(
+            &mut output,
+            "{}  {}",
+            colors::yellow("│"),
+            colors::gray(format!("npm:{:?} ({})", package_nv, msg))
+          );
         }
+        let _ = write!(&mut output, "{}", colors::yellow("╰─"));
         if let Some(install_reporter) = &self.install_reporter {
           install_reporter.deprecated_message(output);
         } else {

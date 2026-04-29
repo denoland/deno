@@ -1,7 +1,6 @@
 file:///[WILDLINE]/file.js
-error: Uncaught (in promise) ReferenceError: require is not defined
-console.log(require);
-            ^
+error: Uncaught (in promise) ReferenceError: ReferenceError: require is not defined
+[WILDCARD]
     at [WILDCARD]
 
     info: Deno supports CommonJS modules in .cjs files, or when the closest

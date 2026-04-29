@@ -59,7 +59,11 @@ impl NpmInstallDepsProvider {
     Self::default()
   }
 
-  pub fn from_workspace(workspace: &Arc<Workspace>) -> Self {
+  pub fn from_workspace(
+    workspace: &Arc<Workspace>,
+    production: bool,
+    skip_types: bool,
+  ) -> Self {
     // todo(dsherret): estimate capacity?
     let mut local_pkgs = Vec::new();
     let mut remote_pkgs = Vec::new();
@@ -83,6 +87,11 @@ impl NpmInstallDepsProvider {
               continue;
             };
             let pkg_req = npm_req_ref.into_inner().req;
+
+            if skip_types && pkg_req.name.starts_with("@types/") {
+              continue;
+            }
+
             let workspace_pkg = workspace_npm_pkgs
               .iter()
               .find(|pkg| pkg.matches_req(&pkg_req));
@@ -112,9 +121,13 @@ impl NpmInstallDepsProvider {
         let mut pkg_pkgs = Vec::with_capacity(
           deps.dependencies.len() + deps.dev_dependencies.len(),
         );
-        for (alias, dep) in
-          deps.dependencies.iter().chain(deps.dev_dependencies.iter())
-        {
+        let empty = Default::default();
+        let dev_deps = if production {
+          &empty
+        } else {
+          &deps.dev_dependencies
+        };
+        for (alias, dep) in deps.dependencies.iter().chain(dev_deps.iter()) {
           let dep = match dep {
             Ok(dep) => dep,
             Err(err) => {
@@ -136,6 +149,9 @@ impl NpmInstallDepsProvider {
               })
             }
             PackageJsonDepValue::Req(pkg_req) => {
+              if skip_types && pkg_req.name.starts_with("@types/") {
+                continue;
+              }
               let workspace_pkg = workspace_npm_pkgs.iter().find(|pkg| {
                 pkg.matches_req(pkg_req)
                         // do not resolve to the current package

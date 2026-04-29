@@ -172,6 +172,8 @@ impl HttpPropertyExtractor for DefaultHttpPropertyExtractor {
       ))]
       NetworkStreamAddress::Vsock(vsock) => Some(vsock.port()),
       NetworkStreamAddress::Tunnel(ref addr) => Some(addr.port() as _),
+      #[cfg(windows)]
+      NetworkStreamAddress::WindowsPipe(_) => None,
     };
     let peer_address = match peer_address {
       NetworkStreamAddress::Ip(addr) => Rc::from(addr.ip().to_string()),
@@ -186,6 +188,8 @@ impl HttpPropertyExtractor for DefaultHttpPropertyExtractor {
         Rc::from(format!("vsock:{}", addr.cid()))
       }
       NetworkStreamAddress::Tunnel(ref addr) => Rc::from(addr.hostname()),
+      #[cfg(windows)]
+      NetworkStreamAddress::WindowsPipe(_) => Rc::from("pipe"),
     };
     let local_port = listen_properties.local_port;
     let stream_type = listen_properties.stream_type;
@@ -231,6 +235,8 @@ fn listener_properties(
     ))]
     NetworkStreamAddress::Vsock(vsock) => Some(vsock.port()),
     NetworkStreamAddress::Tunnel(addr) => Some(addr.port() as _),
+    #[cfg(windows)]
+    NetworkStreamAddress::WindowsPipe(_) => None,
   };
   Ok(HttpListenProperties {
     scheme,
@@ -290,6 +296,8 @@ fn req_host_from_addr(
         format!("{}:{}", addr.hostname(), addr.port())
       }
     }
+    #[cfg(windows)]
+    NetworkStreamAddress::WindowsPipe(_) => "localhost".to_owned(),
   }
 }
 
@@ -305,6 +313,8 @@ fn req_scheme_from_stream_type(stream_type: NetworkStreamType) -> &'static str {
       target_os = "macos"
     ))]
     NetworkStreamType::Vsock => "http+vsock://",
+    #[cfg(windows)]
+    NetworkStreamType::WindowsPipe => "http://",
   }
 }
 
@@ -335,12 +345,22 @@ fn req_host<'a>(
         target_os = "macos"
       ))]
       NetworkStreamType::Vsock => {}
+      #[cfg(windows)]
+      NetworkStreamType::WindowsPipe => {}
     }
     return Some(Cow::Borrowed(auth.as_str()));
   }
 
   // TODO(mmastrac): Most requests will use this path and we probably will want to optimize it in the future
   if let Some(host) = headers.get(HOST) {
+    // An empty `Host` header value is treated as if no Host header was sent,
+    // so the listener's fallback authority is used and `request.url` stays a
+    // valid URL. Hyper's HTTP/1 parser already trims OWS from header values,
+    // so whitespace-only `Host:` values reach us as empty bytes.
+    // See https://github.com/denoland/deno/issues/29872.
+    if host.is_empty() {
+      return None;
+    }
     return Some(match host.to_str() {
       Ok(host) => Cow::Borrowed(host),
       Err(_) => Cow::Owned(

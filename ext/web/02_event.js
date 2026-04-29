@@ -830,15 +830,21 @@ function invokeEventListeners(tuple, eventImpl) {
   }
 }
 
+// https://dom.spec.whatwg.org/#dom-eventtarget-removeeventlistener
 function normalizeEventHandlerOptions(
   options,
 ) {
-  if (typeof options === "boolean" || typeof options === "undefined") {
+  if (
+    typeof options === "boolean" || typeof options === "undefined" ||
+    options === null
+  ) {
     return {
       capture: Boolean(options),
     };
   } else {
-    return options;
+    return {
+      capture: Boolean(options.capture),
+    };
   }
 }
 
@@ -1224,8 +1230,10 @@ class CloseEvent extends Event {
 const CloseEventPrototype = CloseEvent.prototype;
 
 class MessageEvent extends Event {
+  #source = null;
+
   get source() {
-    return null;
+    return this.#source;
   }
 
   constructor(type, eventInitDict) {
@@ -1239,6 +1247,7 @@ class MessageEvent extends Event {
     this.ports = eventInitDict?.ports ?? [];
     this.origin = eventInitDict?.origin ?? "";
     this.lastEventId = eventInitDict?.lastEventId ?? "";
+    this.#source = eventInitDict?.source ?? null;
   }
 
   [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {

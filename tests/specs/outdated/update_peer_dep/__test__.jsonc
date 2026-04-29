@@ -1,0 +1,21 @@
+{
+  // Regression test for https://github.com/denoland/deno/issues/31523
+  // `deno update` should update peer dependency references in the lockfile
+  // when the base package is updated, not leave stale references that cause
+  // multiple versions at runtime.
+  "tempDir": true,
+  "steps": [
+    {
+      "args": "install",
+      "output": "[WILDCARD]"
+    },
+    {
+      "args": "outdated --update --latest",
+      "output": "update.out"
+    },
+    {
+      "args": "-A print_file.ts ./deno.lock",
+      "output": "deno.lock.out"
+    }
+  ]
+}

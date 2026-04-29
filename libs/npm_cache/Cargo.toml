@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_npm_cache"
-version = "0.51.0"
+version = "0.66.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -20,6 +20,7 @@ boxed_error.workspace = true
 deno_cache_dir = { workspace = true, features = ["sync"] }
 deno_error = { workspace = true, features = ["serde", "serde_json"] }
 deno_npm.workspace = true
+deno_npmrc.workspace = true
 deno_path_util.workspace = true
 deno_semver.workspace = true
 deno_unsync.workspace = true
@@ -31,8 +32,6 @@ parking_lot.workspace = true
 percent-encoding.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-sha1.workspace = true
-sha2.workspace = true
 sys_traits.workspace = true
 tar.workspace = true
 thiserror.workspace = true
@@ -41,9 +40,14 @@ url.workspace = true
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 deno_error = { workspace = true, features = ["serde", "serde_json", "tokio"] }
 deno_unsync = { workspace = true, features = ["tokio"] }
+aws-lc-rs.workspace = true
+libdeflater.workspace = true
+tokio = { workspace = true, features = ["sync"] }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 flate2 = { workspace = true, features = ["rust_backend"] }
+sha2.workspace = true
+sha1.workspace = true
 
 [dev-dependencies]
 sys_traits = { workspace = true, features = ["real"] }

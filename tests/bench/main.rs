@@ -1,7 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-#![allow(clippy::print_stdout)]
-#![allow(clippy::print_stderr)]
+#![allow(clippy::print_stdout, reason = "benchmark output")]
+#![allow(clippy::print_stderr, reason = "benchmark output")]
 
 use std::collections::HashMap;
 use std::convert::From;

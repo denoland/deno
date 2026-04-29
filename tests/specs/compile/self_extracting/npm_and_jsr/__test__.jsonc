@@ -1,0 +1,19 @@
+{
+  "tempDir": true,
+  "steps": [{
+    "args": "install --allow-scripts",
+    "output": "[WILDCARD]"
+  }, {
+    "args": "compile --self-extracting --no-check -A --output main main.ts",
+    "output": "[WILDCARD]"
+  }, {
+    "commandName": "./main",
+    "args": [],
+    "output": "main.out"
+  }, {
+    // run again to verify idempotent extraction
+    "commandName": "./main",
+    "args": [],
+    "output": "main.out"
+  }]
+}

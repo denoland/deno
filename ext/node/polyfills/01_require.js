@@ -41,6 +41,7 @@ const {
   Error,
   JSONParse,
   ObjectCreate,
+  ObjectDefineProperty,
   ObjectEntries,
   ObjectGetOwnPropertyDescriptor,
   ObjectGetPrototypeOf,
@@ -49,10 +50,13 @@ const {
   ObjectPrototype,
   ObjectSetPrototypeOf,
   Proxy,
+  ReflectSet,
   RegExpPrototypeTest,
   SafeArrayIterator,
   SafeMap,
+  SafeSet,
   SafeWeakMap,
+  SetPrototypeHas,
   String,
   StringPrototypeCharCodeAt,
   StringPrototypeEndsWith,
@@ -79,6 +83,12 @@ import _tlsWrap from "node:_tls_wrap";
 import assert from "node:assert";
 import assertStrict from "node:assert/strict";
 import asyncHooks from "node:async_hooks";
+import {
+  emitAfter as internalAsyncHooksEmitAfter,
+  emitBefore as internalAsyncHooksEmitBefore,
+  emitDestroy as internalAsyncHooksEmitDestroy,
+  emitInit as internalAsyncHooksEmitInit,
+} from "ext:deno_node/internal/async_hooks.ts";
 import buffer from "node:buffer";
 import childProcess from "node:child_process";
 import cluster from "node:cluster";
@@ -115,11 +125,14 @@ import internalCryptoUtil from "ext:deno_node/internal/crypto/util.ts";
 import internalCryptoX509 from "ext:deno_node/internal/crypto/x509.ts";
 import internalDgram from "ext:deno_node/internal/dgram.ts";
 import internalDnsPromises from "ext:deno_node/internal/dns/promises.ts";
+import internalBuffer from "ext:deno_node/internal/buffer.mjs";
 import internalErrors from "ext:deno_node/internal/errors.ts";
 import internalEventTarget from "ext:deno_node/internal/event_target.mjs";
 import internalFsUtils from "ext:deno_node/internal/fs/utils.mjs";
 import internalHttp from "ext:deno_node/internal/http.ts";
+import internalHttp2Core from "ext:deno_node/internal/http2/core.ts";
 import internalHttp2Util from "ext:deno_node/internal/http2/util.ts";
+import internalPriorityQueue from "ext:deno_node/internal/priority_queue.ts";
 import internalReadlineUtils from "ext:deno_node/internal/readline/utils.mjs";
 import internalStreamsAddAbortSignal from "ext:deno_node/internal/streams/add-abort-signal.js";
 import internalStreamsLazyTransform from "ext:deno_node/internal/streams/lazy_transform.js";
@@ -220,11 +233,14 @@ function setupBuiltinModules() {
     "internal/crypto/x509": internalCryptoX509,
     "internal/dgram": internalDgram,
     "internal/dns/promises": internalDnsPromises,
+    "internal/buffer": internalBuffer,
     "internal/errors": internalErrors,
     "internal/event_target": internalEventTarget,
     "internal/fs/utils": internalFsUtils,
     "internal/http": internalHttp,
+    "internal/http2/core": internalHttp2Core,
     "internal/http2/util": internalHttp2Util,
+    "internal/priority_queue": internalPriorityQueue,
     "internal/readline/utils": internalReadlineUtils,
     "internal/streams/add-abort-signal": internalStreamsAddAbortSignal,
     "internal/streams/lazy_transform": internalStreamsLazyTransform,
@@ -265,7 +281,7 @@ function setupBuiltinModules() {
     timers,
     "timers/promises": timersPromises,
     tls,
-    traceEvents,
+    trace_events: traceEvents,
     tty,
     url,
     util,
@@ -276,9 +292,27 @@ function setupBuiltinModules() {
     worker_threads: workerThreads,
     zlib,
   };
+  // Match Node's schemelessBlockList: these modules can only be imported
+  // via the `node:` scheme (see lib/internal/bootstrap/realm.js), so they
+  // appear in `builtinModules` as `node:<name>` rather than `<name>`.
+  const schemelessBlockList = new SafeSet([
+    "sea",
+    "sqlite",
+    "test",
+    "test/reporters",
+  ]);
   for (const [name, moduleExports] of ObjectEntries(nodeModules)) {
     nativeModuleExports[name] = moduleExports;
-    ArrayPrototypePush(builtinModules, name);
+    // `internal/*` modules are only exposed under --expose-internals, so
+    // they aren't part of the public builtinModules list.
+    if (StringPrototypeStartsWith(name, "internal/")) {
+      continue;
+    }
+    if (SetPrototypeHas(schemelessBlockList, name)) {
+      ArrayPrototypePush(builtinModules, `node:${name}`);
+    } else {
+      ArrayPrototypePush(builtinModules, name);
+    }
   }
 }
 setupBuiltinModules();
@@ -306,6 +340,7 @@ let hasBrokenOnInspectBrk = false;
 let hasInspectBrk = false;
 // Are we running with --node-modules-dir flag or byonm?
 let usesLocalNodeModulesDir = false;
+let patched = false;
 
 function stat(filename) {
   if (statCache !== null) {
@@ -354,6 +389,22 @@ function tryPackage(requestPath, exts, isMain, originalPath) {
   }
 
   const filename = pathResolve(requestPath, pkg);
+  // Ensure the resolved main path doesn't escape the package directory
+  // via path traversal (e.g. "main": "../../secret.json")
+  if (
+    !StringPrototypeStartsWith(filename, requestPath + "/") &&
+    !StringPrototypeStartsWith(filename, requestPath + "\\") &&
+    filename !== requestPath
+  ) {
+    const err = new Error(
+      `Cannot find module '${filename}'. ` +
+        'Please verify that the package.json has a valid "main" entry',
+    );
+    err.code = "MODULE_NOT_FOUND";
+    err.path = pathResolve(requestPath, "package.json");
+    err.requestPath = originalPath;
+    throw err;
+  }
   let actual = tryFile(filename, isMain) ||
     tryExtensions(filename, exts, isMain) ||
     tryExtensions(
@@ -435,6 +486,10 @@ function findLongestRegisteredExtension(filename) {
 function getExportsForCircularRequire(module) {
   if (
     module.exports &&
+    // Skip Proxy module.exports so the warning machinery never invokes the
+    // user-visible getPrototypeOf / setPrototypeOf traps. Matches the
+    // !isProxy(...) guard in Node's lib/internal/modules/cjs/loader.js.
+    !core.isProxy(module.exports) &&
     ObjectGetPrototypeOf(module.exports) === ObjectPrototype &&
     // Exclude transpiled ES6 modules / TypeScript code because those may
     // employ unusual patterns for accessing 'module.exports'. That should
@@ -486,7 +541,16 @@ const moduleParentCache = new SafeWeakMap();
 function Module(id = "", parent) {
   this.id = id;
   this.path = pathDirname(id);
-  this.exports = {};
+  // Use ObjectDefineProperty so that user-installed Object.prototype.exports
+  // setters/getters are not invoked during module construction. Mirrors
+  // setOwnProperty() in Node's lib/internal/util.js.
+  ObjectDefineProperty(this, "exports", {
+    __proto__: null,
+    configurable: true,
+    enumerable: true,
+    value: {},
+    writable: true,
+  });
   moduleParentCache.set(this, parent);
   updateChildren(parent, this, false);
   this.filename = null;
@@ -632,6 +696,26 @@ Module._nodeModulePaths = function (fromPath) {
 };
 
 Module._resolveLookupPaths = function (request, parent) {
+  if (typeof request !== "string") {
+    throw new internalErrors.ERR_INVALID_ARG_TYPE(
+      "request",
+      "string",
+      request,
+    );
+  }
+
+  // Return null for built-in modules, matching Node.js behavior.
+  // Libraries like requizzle rely on this to detect native modules.
+  const normalizedRequest = StringPrototypeStartsWith(request, "node:")
+    ? StringPrototypeSlice(request, 5)
+    : request;
+  if (
+    isBuiltin(request) ||
+    normalizedRequest in nativeModuleExports
+  ) {
+    return null;
+  }
+
   const paths = [];
 
   if (op_require_is_request_relative(request)) {
@@ -748,6 +832,10 @@ Module._load = function (request, parent, isMain) {
       }
     } else if (
       module.exports &&
+      // Skip Proxy module.exports so the cleanup pass after a circular
+      // require doesn't invoke user-visible getPrototypeOf traps. Matches
+      // Node's lib/internal/modules/cjs/loader.js behavior.
+      !core.isProxy(module.exports) &&
       ObjectGetPrototypeOf(module.exports) ===
         CircularRequirePrototypeWarningProxy
     ) {
@@ -764,21 +852,55 @@ Module._resolveFilename = function (
   isMain,
   options,
 ) {
-  if (
-    StringPrototypeStartsWith(request, "node:") ||
-    nativeModuleCanBeRequiredByUsers(request)
-  ) {
+  if (typeof request !== "string") {
+    throw new internalErrors.ERR_INVALID_ARG_TYPE(
+      "request",
+      "string",
+      request,
+    );
+  }
+
+  if (nativeModuleCanBeRequiredByUsers(request)) {
     return request;
+  }
+
+  if (StringPrototypeStartsWith(request, "node:")) {
+    const id = StringPrototypeSlice(request, 5);
+    if (nativeModuleExports[id]) {
+      return request;
+    }
+    const err = new Error(`Cannot find module '${request}'`);
+    err.code = "MODULE_NOT_FOUND";
+    throw err;
   }
 
   let paths;
 
   if (typeof options === "object" && options !== null) {
     if (ArrayIsArray(options.paths)) {
+      // Validate all path entries are strings before using them.
+      for (let i = 0; i < options.paths.length; i++) {
+        if (typeof options.paths[i] !== "string") {
+          throw new internalErrors.ERR_INVALID_ARG_TYPE(
+            "options.paths",
+            "string",
+            options.paths[i],
+          );
+        }
+      }
+
       const isRelative = op_require_is_request_relative(request);
 
       if (isRelative) {
-        paths = options.paths;
+        // Resolve relative entries to absolute paths so _findPath can
+        // stat them correctly.
+        paths = [];
+        for (let i = 0; i < options.paths.length; i++) {
+          ArrayPrototypePush(
+            paths,
+            pathResolve(process.cwd(), options.paths[i]),
+          );
+        }
       } else {
         const fakeParent = new Module("", null);
         paths = [];
@@ -798,9 +920,10 @@ Module._resolveFilename = function (
     } else if (options.paths === undefined) {
       paths = Module._resolveLookupPaths(request, parent);
     } else {
-      // TODO:
-      // throw new ERR_INVALID_ARG_VALUE("options.paths", options.paths);
-      throw new Error("Invalid arg value options.paths", options.path);
+      throw new internalErrors.ERR_INVALID_ARG_VALUE(
+        "options.paths",
+        options.paths,
+      );
     }
   } else {
     paths = Module._resolveLookupPaths(request, parent);
@@ -939,15 +1062,15 @@ Module.prototype.load = function (filename) {
 // `exports` property.
 Module.prototype.require = function (id) {
   if (typeof id !== "string") {
-    // TODO(bartlomieju): it should use different error type
-    // ("ERR_INVALID_ARG_VALUE")
-    throw new TypeError("Invalid argument type");
+    throw new internalErrors.ERR_INVALID_ARG_TYPE("id", "string", id);
   }
 
   if (id === "") {
-    // TODO(bartlomieju): it should use different error type
-    // ("ERR_INVALID_ARG_VALUE")
-    throw new TypeError("id must be non empty");
+    throw new internalErrors.ERR_INVALID_ARG_VALUE(
+      "id",
+      id,
+      "must be a non-empty string",
+    );
   }
   requireDepth++;
   try {
@@ -957,19 +1080,49 @@ Module.prototype.require = function (id) {
   }
 };
 
-// The module wrapper looks slightly different to Node. Instead of using one
-// wrapper function, we use two. The first one exists to performance optimize
-// access to magic node globals, like `Buffer`. The second one is the actual
-// wrapper function we run the users code in. The only observable difference is
-// that in Deno `arguments.callee` is not null.
-Module.wrapper = [
-  `(function (exports, require, module, __filename, __dirname) { var { Buffer, clearImmediate, clearInterval, clearTimeout, global, process, setImmediate, setInterval, setTimeout } = Deno[Deno.internal].nodeGlobals; (() => {`,
-  "\n})(); })",
+const wrapper = [
+  "(function (exports, require, module, __filename, __dirname) { ",
+  "\n});",
 ];
-Module.wrap = function (script) {
+
+export let wrap = function (script) {
   script = script.replace(/^#!.*?\n/, "");
   return `${Module.wrapper[0]}${script}${Module.wrapper[1]}`;
 };
+
+let wrapperProxy = new Proxy(wrapper, {
+  set(target, property, value, receiver) {
+    patched = true;
+    return ReflectSet(target, property, value, receiver);
+  },
+
+  defineProperty(target, property, descriptor) {
+    patched = true;
+    return ObjectDefineProperty(target, property, descriptor);
+  },
+});
+
+ObjectDefineProperty(Module, "wrap", {
+  get() {
+    return wrap;
+  },
+
+  set(value) {
+    patched = true;
+    wrap = value;
+  },
+});
+
+ObjectDefineProperty(Module, "wrapper", {
+  get() {
+    return wrapperProxy;
+  },
+
+  set(value) {
+    patched = true;
+    wrapperProxy = value;
+  },
+});
 
 function isEsmSyntaxError(error) {
   return error instanceof SyntaxError && (
@@ -996,12 +1149,29 @@ function wrapSafe(
   cjsModuleInstance,
   format,
 ) {
-  const wrapper = Module.wrap(content);
-  const [f, err] = core.evalContext(
-    wrapper,
-    url.pathToFileURL(filename).toString(),
-    [format !== "module"],
-  );
+  let f;
+  let err;
+
+  if (patched) {
+    [f, err] = core.evalContext(
+      Module.wrap(content),
+      url.pathToFileURL(filename).toString(),
+      [format !== "module"],
+    );
+  } else {
+    [f, err] = core.compileFunction(
+      content,
+      url.pathToFileURL(filename).toString(),
+      [format !== "module"],
+      [
+        "exports",
+        "require",
+        "module",
+        "__filename",
+        "__dirname",
+      ],
+    );
+  }
   if (err) {
     if (process.mainModule === cjsModuleInstance) {
       enrichCJSError(err.thrown);
@@ -1121,6 +1291,20 @@ Module._extensions[".json"] = function (module, filename) {
   }
 };
 
+// Async hooks wrappers for NAPI - called from Rust via V8 function calls.
+function napiAsyncHooksEmitInit(asyncId, type, triggerAsyncId, resource) {
+  internalAsyncHooksEmitInit(asyncId, type, triggerAsyncId, resource);
+}
+function napiAsyncHooksEmitBefore(asyncId) {
+  internalAsyncHooksEmitBefore(asyncId);
+}
+function napiAsyncHooksEmitAfter(asyncId) {
+  internalAsyncHooksEmitAfter(asyncId);
+}
+function napiAsyncHooksEmitDestroy(asyncId) {
+  internalAsyncHooksEmitDestroy(asyncId);
+}
+
 // Native extension for .node
 Module._extensions[".node"] = function (module, filename) {
   if (filename.endsWith("cpufeatures.node")) {
@@ -1131,6 +1315,10 @@ Module._extensions[".node"] = function (module, filename) {
     globalThis,
     buffer.Buffer.from,
     reportError,
+    napiAsyncHooksEmitInit,
+    napiAsyncHooksEmitBefore,
+    napiAsyncHooksEmitAfter,
+    napiAsyncHooksEmitDestroy,
   );
 };
 
@@ -1158,7 +1346,16 @@ function makeRequireFunction(mod) {
   }
 
   resolve.paths = paths;
-  require.main = mainModule;
+  // Use ObjectDefineProperty so user-installed Object.prototype.main setters
+  // are not invoked when require() is constructed. Mirrors setOwnProperty()
+  // in Node's lib/internal/modules/helpers.js.
+  ObjectDefineProperty(require, "main", {
+    __proto__: null,
+    configurable: true,
+    enumerable: true,
+    value: mainModule,
+    writable: true,
+  });
   // Enable support to add extra extension types.
   require.extensions = Module._extensions;
   require.cache = Module._cache;
@@ -1177,25 +1374,35 @@ function isAbsolute(filenameOrUrl) {
   return RE_START_OF_ABS_PATH.test(filenameOrUrl);
 }
 
+// Match Node's error reason (see lib/internal/modules/cjs/loader.js).
+const kCreateRequireError =
+  "must be a file URL object, file URL string, or absolute path string";
+
 function createRequire(filenameOrUrl) {
   let fileUrlStr;
   if (filenameOrUrl instanceof URL) {
     if (filenameOrUrl.protocol !== "file:") {
-      throw new Error(
-        `The argument 'filename' must be a file URL object, file URL string, or absolute path string. Received ${filenameOrUrl}`,
+      throw new internalErrors.ERR_INVALID_ARG_VALUE(
+        "filename",
+        filenameOrUrl,
+        kCreateRequireError,
       );
     }
     fileUrlStr = filenameOrUrl.toString();
   } else if (typeof filenameOrUrl === "string") {
     if (!filenameOrUrl.startsWith("file:") && !isAbsolute(filenameOrUrl)) {
-      throw new Error(
-        `The argument 'filename' must be a file URL object, file URL string, or absolute path string. Received ${filenameOrUrl}`,
+      throw new internalErrors.ERR_INVALID_ARG_VALUE(
+        "filename",
+        filenameOrUrl,
+        kCreateRequireError,
       );
     }
     fileUrlStr = filenameOrUrl;
   } else {
-    throw new Error(
-      `The argument 'filename' must be a file URL object, file URL string, or absolute path string. Received ${filenameOrUrl}`,
+    throw new internalErrors.ERR_INVALID_ARG_VALUE(
+      "filename",
+      filenameOrUrl,
+      kCreateRequireError,
     );
   }
   const filename = op_require_as_file_path(fileUrlStr) ?? fileUrlStr;
@@ -1220,6 +1427,9 @@ function isBuiltin(moduleName) {
 }
 
 function getBuiltinModule(id) {
+  if (typeof id !== "string") {
+    throw new internalErrors.ERR_INVALID_ARG_TYPE("id", "string", id);
+  }
   if (!isBuiltin(id)) {
     return undefined;
   }
@@ -1343,6 +1553,5 @@ export const _preloadModules = Module._preloadModules;
 export const _resolveFilename = Module._resolveFilename;
 export const _resolveLookupPaths = Module._resolveLookupPaths;
 export const globalPaths = Module.globalPaths;
-export const wrap = Module.wrap;
 
 export default Module;

@@ -918,6 +918,7 @@ impl<TSys: SpecifierUnfurlerSys> SpecifierUnfurler<TSys> {
             match dep.kind {
               StaticDependencyKind::Export
               | StaticDependencyKind::Import
+              | StaticDependencyKind::ImportDefer
               | StaticDependencyKind::ImportSource
               | StaticDependencyKind::ExportEquals
               | StaticDependencyKind::ImportEquals => {
@@ -1161,6 +1162,7 @@ impl Visit for ImportMetaResolveCollector {
   }
 }
 
+#[allow(clippy::disallowed_methods, reason = "test code")]
 #[cfg(test)]
 mod tests {
   use std::path::Path;

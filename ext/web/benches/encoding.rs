@@ -15,9 +15,13 @@ fn setup() -> Vec<Extension> {
     esm_entry_point = "ext:bench_setup/setup",
     esm = ["ext:bench_setup/setup" = {
       source = r#"
-        import { TextDecoder } from "ext:deno_web/08_text_encoding.js";
+        import { TextDecoder, TextEncoder } from "ext:deno_web/08_text_encoding.js";
         globalThis.TextDecoder = TextDecoder;
+        globalThis.TextEncoder = TextEncoder;
         globalThis.hello12k = Deno.core.encode("hello world\n".repeat(1e3));
+        globalThis.helloShort = "hello world\n";
+        globalThis.encInto = new TextEncoder();
+        globalThis.dest = new Uint8Array(64);
       "#
     }],
     state = |state| {
@@ -27,7 +31,12 @@ fn setup() -> Vec<Extension> {
 
   vec![
     deno_webidl::deno_webidl::init(),
-    deno_web::deno_web::init(Default::default(), None, Default::default()),
+    deno_web::deno_web::init(
+      Default::default(),
+      None,
+      Default::default(),
+      Default::default(),
+    ),
     bench_setup::init(),
   ]
 }
@@ -36,5 +45,9 @@ fn bench_encode_12kb(b: &mut Bencher) {
   bench_js_sync(b, r#"new TextDecoder().decode(hello12k);"#, setup);
 }
 
-benchmark_group!(benches, bench_encode_12kb);
+fn bench_encode_into_short(b: &mut Bencher) {
+  bench_js_sync(b, r#"encInto.encodeInto(helloShort, dest);"#, setup);
+}
+
+benchmark_group!(benches, bench_encode_12kb, bench_encode_into_short);
 bench_or_profile!(benches);

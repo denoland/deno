@@ -83,7 +83,7 @@ pub fn url_to_notebook_cell_uri(url: &Url) -> lsp_types::Uri {
 
 /// Represents a path on the file system, which can be used
 /// to perform specific actions.
-#[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Hash, Serialize)]
 pub struct PathRef(PathBuf);
 
 impl AsRef<Path> for PathRef {
@@ -235,7 +235,6 @@ impl PathRef {
     )
     .with_context(|| format!("Failed to parse {}", self))
     .unwrap()
-    .unwrap_or_else(|| panic!("JSON file was empty for {}", self))
   }
 
   #[track_caller]

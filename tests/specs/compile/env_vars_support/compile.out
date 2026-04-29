@@ -1,7 +1,8 @@
-Warning Parsing failed within the specified environment file: environment.env at index: 14 of the value: ANOTHER_FOO=c:ath
+Warning Failed parsing value 'ANOTHER_FOO=c:ath' at index 14 within the specified environment file.
+    at [WILDLINE]environment.env
 Check [WILDCARD]main.ts
 Compile [WILDCARD]main.ts to out[WILDCARD]
-Warning Environment variables from the file "environment.env" were embedded in the generated executable file
+Warning Environment variables from the file "[WILDLINE]environment.env" were embedded in the generated executable file
 
 Embedded Files
 

@@ -1,6 +1,5 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 //
-pub mod go;
 mod js;
 
 use std::collections::HashMap;
@@ -42,7 +41,6 @@ use crate::args::CompilerOptions;
 use crate::args::TypeCheckMode;
 use crate::cache::ModuleInfoCache;
 use crate::node::CliNodeResolver;
-use crate::node::CliPackageJsonResolver;
 use crate::npm::CliNpmResolver;
 use crate::resolver::CliCjsTracker;
 use crate::sys::CliSys;
@@ -54,7 +52,6 @@ pub use self::diagnostics::Diagnostic;
 pub use self::diagnostics::DiagnosticCategory;
 pub use self::diagnostics::Diagnostics;
 pub use self::diagnostics::Position;
-pub use self::go::ensure_tsgo;
 pub use self::js::TscConstants;
 
 pub fn get_types_declaration_file_text() -> String {
@@ -73,6 +70,7 @@ pub fn get_types_declaration_file_text() -> String {
     "deno.net",
     "deno.shared_globals",
     "deno.cache",
+    "esnext.temporal",
     "deno.window",
     "deno.unstable",
   ];
@@ -150,11 +148,17 @@ include!(concat!(env!("OUT_DIR"), "/node_types.rs"));
 
 #[derive(Clone)]
 pub enum StaticAssetSource {
-  #[cfg_attr(any(debug_assertions, feature = "hmr"), allow(dead_code))]
+  #[cfg_attr(
+    any(debug_assertions, feature = "hmr"),
+    allow(dead_code, reason = "not used for hmr")
+  )]
   Compressed(CompressedSource),
-  #[allow(dead_code)]
+  #[allow(dead_code, reason = "used for hmr")]
   Uncompressed(&'static str),
-  #[cfg_attr(not(feature = "hmr"), allow(dead_code))]
+  #[cfg_attr(
+    not(feature = "hmr"),
+    allow(dead_code, reason = "not used for hmr")
+  )]
   Owned(&'static str, std::sync::OnceLock<Arc<str>>),
 }
 
@@ -292,11 +296,20 @@ pub static LAZILY_LOADED_STATIC_ASSETS: Lazy<
     maybe_compressed_lib!("lib.es2024.regexp.d.ts"),
     maybe_compressed_lib!("lib.es2024.sharedmemory.d.ts"),
     maybe_compressed_lib!("lib.es2024.string.d.ts"),
+    maybe_compressed_lib!("lib.es2025.collection.d.ts"),
+    maybe_compressed_lib!("lib.es2025.d.ts"),
+    maybe_compressed_lib!("lib.es2025.float16.d.ts"),
+    maybe_compressed_lib!("lib.es2025.full.d.ts"),
+    maybe_compressed_lib!("lib.es2025.intl.d.ts"),
+    maybe_compressed_lib!("lib.es2025.iterator.d.ts"),
+    maybe_compressed_lib!("lib.es2025.promise.d.ts"),
+    maybe_compressed_lib!("lib.es2025.regexp.d.ts"),
     maybe_compressed_lib!("lib.es5.d.ts"),
     maybe_compressed_lib!("lib.es6.d.ts"),
     maybe_compressed_lib!("lib.esnext.array.d.ts"),
     maybe_compressed_lib!("lib.esnext.collection.d.ts"),
     maybe_compressed_lib!("lib.esnext.d.ts"),
+    maybe_compressed_lib!("lib.esnext.date.d.ts"),
     maybe_compressed_lib!("lib.esnext.decorators.d.ts"),
     maybe_compressed_lib!("lib.esnext.disposable.d.ts"),
     maybe_compressed_lib!("lib.esnext.error.d.ts"),
@@ -306,6 +319,8 @@ pub static LAZILY_LOADED_STATIC_ASSETS: Lazy<
     maybe_compressed_lib!("lib.esnext.iterator.d.ts"),
     maybe_compressed_lib!("lib.esnext.promise.d.ts"),
     maybe_compressed_lib!("lib.esnext.sharedmemory.d.ts"),
+    maybe_compressed_lib!("lib.esnext.temporal.d.ts"),
+    maybe_compressed_lib!("lib.esnext.typedarrays.d.ts"),
     maybe_compressed_lib!("lib.node.d.ts"),
     maybe_compressed_lib!("lib.scripthost.d.ts"),
     maybe_compressed_lib!("lib.webworker.asynciterable.d.ts"),
@@ -414,14 +429,6 @@ fn hash_url(specifier: &ModuleSpecifier, media_type: MediaType) -> String {
   )
 }
 
-#[derive(Debug, Clone, Default, Eq, PartialEq)]
-#[allow(dead_code)]
-pub struct EmittedFile {
-  pub data: String,
-  pub maybe_specifiers: Option<Vec<ModuleSpecifier>>,
-  pub media_type: MediaType,
-}
-
 pub fn into_specifier_and_media_type(
   specifier: Option<ModuleSpecifier>,
 ) -> (ModuleSpecifier, MediaType) {
@@ -499,7 +506,6 @@ pub struct RequestNpmState {
   pub cjs_tracker: Arc<TypeCheckingCjsTracker>,
   pub node_resolver: Arc<CliNodeResolver>,
   pub npm_resolver: CliNpmResolver,
-  pub package_json_resolver: Arc<CliPackageJsonResolver>,
 }
 
 /// A structure representing a request to be sent to the tsc runtime.
@@ -578,18 +584,23 @@ pub enum LoadError {
   #[error("{0}")]
   ClosestPkgJson(#[from] node_resolver::errors::PackageJsonLoadError),
 }
+
+pub static BYTES_IMPORT_SOURCE: &str =
+  "const data: Uint8Array<ArrayBuffer>;\nexport default data;\n";
+pub static TEXT_IMPORT_SOURCE: &str =
+  "const data: string;\nexport default data;\n";
+
 pub fn load_raw_import_source(specifier: &Url) -> Option<&'static str> {
   let raw_import = get_specifier_raw_import(specifier)?;
   let source = match raw_import {
-    RawImportKind::Bytes => {
-      "const data: Uint8Array<ArrayBuffer>;\nexport default data;\n"
-    }
-    RawImportKind::Text => "export const data: string;\nexport default data;\n",
+    RawImportKind::Bytes => BYTES_IMPORT_SOURCE,
+    RawImportKind::Text => TEXT_IMPORT_SOURCE,
   };
   Some(source)
 }
 
-enum RawImportKind {
+#[derive(Debug, Copy, Clone)]
+pub enum RawImportKind {
   Bytes,
   Text,
 }
@@ -720,7 +731,11 @@ fn resolve_graph_specifier_types(
           Ok(path_or_url) => Some(path_or_url.into_url()?),
           Err(err) => match err.code() {
             NodeJsErrorCode::ERR_MODULE_NOT_FOUND
-            | NodeJsErrorCode::ERR_TYPES_NOT_FOUND => None,
+            | NodeJsErrorCode::ERR_TYPES_NOT_FOUND
+            | NodeJsErrorCode::ERR_PACKAGE_PATH_NOT_EXPORTED
+            | NodeJsErrorCode::ERR_INVALID_PACKAGE_TARGET
+            | NodeJsErrorCode::ERR_UNSUPPORTED_DIR_IMPORT
+            | NodeJsErrorCode::ERR_PACKAGE_IMPORT_NOT_DEFINED => None,
             _ => return Err(ResolveError::PackageSubpathResolve(err)),
           },
         };
@@ -806,7 +821,11 @@ fn resolve_non_graph_specifier_types(
           Ok(url_or_path) => Some(url_or_path.into_url()?),
           Err(err) => match err.code() {
             NodeJsErrorCode::ERR_MODULE_NOT_FOUND
-            | NodeJsErrorCode::ERR_TYPES_NOT_FOUND => None,
+            | NodeJsErrorCode::ERR_TYPES_NOT_FOUND
+            | NodeJsErrorCode::ERR_PACKAGE_PATH_NOT_EXPORTED
+            | NodeJsErrorCode::ERR_INVALID_PACKAGE_TARGET
+            | NodeJsErrorCode::ERR_UNSUPPORTED_DIR_IMPORT
+            | NodeJsErrorCode::ERR_PACKAGE_IMPORT_NOT_DEFINED => None,
             _ => return Err(err.into()),
           },
         };
@@ -825,10 +844,6 @@ pub enum ExecError {
   #[class(inherit)]
   #[error(transparent)]
   Js(Box<deno_core::error::JsError>),
-
-  #[class(inherit)]
-  #[error(transparent)]
-  Go(#[from] go::ExecError),
 }
 
 #[derive(Clone)]
@@ -838,7 +853,10 @@ pub(crate) struct CompressedSource {
 }
 
 impl CompressedSource {
-  #[cfg_attr(any(debug_assertions, feature = "hmr"), allow(dead_code))]
+  #[cfg_attr(
+    any(debug_assertions, feature = "hmr"),
+    allow(dead_code, reason = "not used for hmr")
+  )]
   pub(crate) const fn new(bytes: &'static [u8]) -> Self {
     Self {
       bytes,
@@ -873,11 +891,9 @@ pub(crate) fn decompress_source(contents: &[u8]) -> Arc<str> {
 /// Execute a request on the supplied snapshot, returning a response which
 /// contains information, like any emitted files, diagnostics, statistics and
 /// optionally an updated TypeScript build info.
-#[allow(clippy::result_large_err)]
 pub fn exec(
   request: Request,
   code_cache: Option<Arc<dyn deno_runtime::code_cache::CodeCache>>,
-  maybe_tsgo_path: Option<&Path>,
 ) -> Result<Response, ExecError> {
   // tsc cannot handle root specifiers that don't have one of the "acceptable"
   // extensions.  Therefore, we have to check the root modules against their
@@ -919,23 +935,13 @@ pub fn exec(
     })
     .collect();
 
-  if let Some(tsgo_path) = maybe_tsgo_path {
-    go::exec_request(
-      request,
-      root_names,
-      root_map,
-      remapped_specifiers,
-      tsgo_path,
-    )
-  } else {
-    js::exec_request(
-      request,
-      root_names,
-      root_map,
-      remapped_specifiers,
-      code_cache,
-    )
-  }
+  js::exec_request(
+    request,
+    root_names,
+    root_map,
+    remapped_specifiers,
+    code_cache,
+  )
 }
 
 pub fn resolve_specifier_for_tsc(
@@ -1255,6 +1261,9 @@ pub static IGNORED_DIAGNOSTIC_CODES: LazyLock<HashSet<u64>> =
       // TS2307: Cannot find module '{0}' or its corresponding type declarations.
       2307, // Relative import errors to add an extension
       2834, 2835,
+      // TS2882: Cannot find module or type declarations for side-effect import
+      // of 'foo'.
+      2882,
       // TS5009: Cannot find the common subdirectory path for the input files.
       5009,
       // TS5055: Cannot write file
@@ -1270,6 +1279,10 @@ pub static IGNORED_DIAGNOSTIC_CODES: LazyLock<HashSet<u64>> =
       // implicitly has an 'any' type.  This is due to `allowJs` being off by
       // default but importing of a JavaScript module.
       7016,
+      // TS18060: Deferred imports are only supported when the '--module' flag
+      // is set to 'esnext' or 'preserve'. Deno uses its own module resolution
+      // and supports import defer natively.
+      18060,
     ]
     .into_iter()
     .collect()
@@ -1317,6 +1330,8 @@ pub static TYPES_NODE_IGNORABLE_NAMES: &[&str] = &[
   "PerformanceMeasure",
   "QueuingStrategy",
   "QueuingStrategySize",
+  "QuotaExceededError",
+  "QuotaExceededErrorOptions",
   "ReadableByteStreamController",
   "ReadableStream",
   "ReadableStreamBYOBReader",

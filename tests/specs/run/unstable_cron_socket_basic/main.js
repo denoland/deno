@@ -4,7 +4,7 @@ Deno.cron("test-cron", "* * * * *", () => {
 });
 
 console.error("[ISOLATE] Registering other-cron");
-Deno.cron("other-cron", "*/5 * * * * *", () => {
+Deno.cron("other-cron", "*/5 * * * *", () => {
   console.error("[ISOLATE] other-cron executed");
 });
 

@@ -229,7 +229,19 @@ Deno.test("[util] styleText()", () => {
 
 Deno.test("[util] styleText() with array of formats", () => {
   const colored = util.styleText(["red", "green"], "error");
-  assertEquals(colored, "\x1b[32m\x1b[31merror\x1b[39m\x1b[39m");
+  assertEquals(colored, "\x1b[31m\x1b[32merror\x1b[39m\x1b[39m");
+});
+
+Deno.test("[util] stripVTControlCharacters() removes OSC 8 hyperlinks", () => {
+  // OSC 8 hyperlink with ESC \ (ST) terminator
+  const input =
+    "\x1b]8;;http://example.com\x1b\\This is a link\x1b]8;;\x1b\\ hello";
+  assertEquals(util.stripVTControlCharacters(input), "This is a link hello");
+
+  // OSC 8 hyperlink with BEL terminator
+  const inputBel =
+    "\x1b]8;;http://example.com\x07This is a link\x1b]8;;\x07 hello";
+  assertEquals(util.stripVTControlCharacters(inputBel), "This is a link hello");
 });
 
 Deno.test("[util] parseEnv()", () => {

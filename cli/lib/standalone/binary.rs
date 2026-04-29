@@ -92,6 +92,10 @@ pub struct Metadata {
   pub unstable_config: UnstableConfig,
   pub otel_config: OtelConfig,
   pub vfs_case_sensitivity: FileSystemCaseSensitivity,
+  /// When set, the binary is self-extracting. The value is a precomputed
+  /// hash of the VFS data used for versioning the extraction directory.
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub self_extracting: Option<String>,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
@@ -189,7 +193,7 @@ impl<'a> DenoRtSerializable<'a> for RemoteModuleEntry<'a> {
 
 impl<'a> DenoRtDeserializable<'a> for RemoteModuleEntry<'a> {
   fn deserialize(input: &'a [u8]) -> std::io::Result<(&'a [u8], Self)> {
-    #[allow(clippy::type_complexity)]
+    #[allow(clippy::type_complexity, reason = "private code")]
     fn deserialize_data_if_has_flag(
       input: &[u8],
       has_data_flags: u8,
@@ -316,7 +320,7 @@ impl<TData> SpecifierDataStore<TData> {
     self.data.iter().map(|(k, v)| (*k, v))
   }
 
-  #[allow(clippy::len_without_is_empty)]
+  #[allow(clippy::len_without_is_empty, reason = "not useful")]
   pub fn len(&self) -> usize {
     self.data.len()
   }

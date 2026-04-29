@@ -2,14 +2,10 @@
 /// FLAGS
 
 import { parseArgs } from "@std/cli/parse-args";
-import {
-  join,
-  resolve,
-  ROOT_PATH,
-  shouldSkipOnCi as shouldSkipOnCiGeneric,
-} from "../../../tools/util.js";
+import { checkCiHash, join, resolve, ROOT_PATH } from "../../../tools/util.js";
 
 export const {
+  all,
   json,
   wptreport,
   quiet,
@@ -22,7 +18,14 @@ export const {
   binary,
 } = parseArgs(Deno.args, {
   "--": true,
-  boolean: ["quiet", "release", "no-interactive", "inspect-brk", "no-ignore"],
+  boolean: [
+    "all",
+    "quiet",
+    "release",
+    "no-interactive",
+    "inspect-brk",
+    "no-ignore",
+  ],
   string: ["json", "wptreport", "binary"],
 });
 
@@ -49,9 +52,8 @@ async function getWptSubmoduleHash(): Promise<string> {
   return new TextDecoder().decode(gitResult.stdout).trim();
 }
 
-export function shouldSkipOnCi(): Promise<boolean> {
-  const targetDir = join(ROOT_PATH, "target");
-  return shouldSkipOnCiGeneric("wpt", targetDir, async (hasher) => {
+export function checkWptCiHash() {
+  return checkCiHash("wpt", async (hasher) => {
     const hashDenoBinaryTask = hasher.hashFile(denoBinary());
     const submoduleHash = await getWptSubmoduleHash();
     await hashDenoBinaryTask;
@@ -80,6 +82,7 @@ export type ManifestTestVariation = [
 export interface ManifestTestOptions {
   // deno-lint-ignore camelcase
   script_metadata: [string, string][];
+  timeout?: string;
 }
 
 const MANIFEST_PATH = join(ROOT_PATH, "./tests/wpt/runner/manifest.json");
@@ -107,45 +110,89 @@ export function getManifest(): Manifest {
 
 /// WPT TEST EXPECTATIONS
 
-export const EXPECTATION_PATH = join(
+export const EXPECTATIONS_DIR = join(
   ROOT_PATH,
-  "./tests/wpt/runner/expectation.json",
+  "./tests/wpt/runner/expectations",
 );
 
+export interface TestExpectation {
+  ignore?: boolean;
+  expectedFailures?: string[];
+  flaky?: boolean;
+}
+
 export interface Expectation {
-  [key: string]: Expectation | boolean | string[] | { ignore: boolean };
+  [key: string]: Expectation | boolean | TestExpectation;
 }
 
 export function getExpectation(): Expectation {
-  const expectationText = Deno.readTextFileSync(EXPECTATION_PATH);
-  return JSON.parse(expectationText);
+  const expectation: Expectation = {};
+  for (const entry of Deno.readDirSync(EXPECTATIONS_DIR)) {
+    if (
+      !entry.isFile || !entry.name.endsWith(".json") ||
+      entry.name === "schema.json"
+    ) continue;
+    const suiteName = entry.name.slice(0, -".json".length);
+    const text = Deno.readTextFileSync(join(EXPECTATIONS_DIR, entry.name));
+    expectation[suiteName] = JSON.parse(text);
+  }
+  return expectation;
 }
 
 export function saveExpectation(
   expectation: Expectation,
-  path: string = EXPECTATION_PATH,
+  path?: string,
 ) {
-  Deno.writeTextFileSync(
-    path,
-    JSON.stringify(expectation, undefined, "  ") + "\n",
-  );
+  if (path) {
+    // Write single merged file (used for tmp diff in `run` command)
+    Deno.writeTextFileSync(
+      path,
+      JSON.stringify(expectation, undefined, "  ") + "\n",
+    );
+    return;
+  }
+
+  // Write each top-level key to its own file in the expectations directory
+  const existingFiles = new Set<string>();
+  for (const entry of Deno.readDirSync(EXPECTATIONS_DIR)) {
+    if (entry.isFile && entry.name.endsWith(".json")) {
+      existingFiles.add(entry.name);
+    }
+  }
+
+  const writtenFiles = new Set<string>();
+  for (const [key, value] of Object.entries(expectation)) {
+    const fileName = `${key}.json`;
+    writtenFiles.add(fileName);
+    Deno.writeTextFileSync(
+      join(EXPECTATIONS_DIR, fileName),
+      JSON.stringify(value, undefined, "  ") + "\n",
+    );
+  }
+
+  // Remove files for keys no longer present (but never remove schema.json)
+  for (const fileName of existingFiles) {
+    if (!writtenFiles.has(fileName) && fileName !== "schema.json") {
+      Deno.removeSync(join(EXPECTATIONS_DIR, fileName));
+    }
+  }
 }
 
 export function getExpectFailForCase(
-  expectation: boolean | string[],
+  expectation: boolean | TestExpectation,
   caseName: string,
 ): boolean {
   if (noIgnore) return false;
   if (typeof expectation === "boolean") {
     return !expectation;
   }
-  return expectation.includes(caseName);
+  return expectation.expectedFailures?.includes(caseName) ?? false;
 }
 
 /// UTILS
 
 class AssertionError extends Error {
-  name = "AssertionError";
+  override name = "AssertionError";
   constructor(message: string) {
     super(message);
   }
@@ -171,7 +218,7 @@ export function runPy<T extends Omit<Deno.CommandOptions, "cwd">>(
   }).spawn();
 }
 
-export async function runGitDiff(args: string[]): string {
+export async function runGitDiff(args: string[]): Promise<void> {
   await new Deno.Command("git", {
     args: ["diff", ...args],
     stdout: "inherit",
@@ -218,7 +265,7 @@ export function escapeLoneSurrogates(input: string | null): string | null {
 /// WPTREPORT
 
 export async function generateRunInfo(): Promise<unknown> {
-  const oses = {
+  const oses: Record<string, string> = {
     "windows": "win",
     "darwin": "mac",
     "linux": "linux",

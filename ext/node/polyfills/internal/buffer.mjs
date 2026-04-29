@@ -22,6 +22,7 @@ const {
   DataViewPrototypeGetByteOffset,
   Float32Array,
   Float64Array,
+  FunctionPrototypeCall,
   MathFloor,
   MathMin,
   MathTrunc,
@@ -33,6 +34,7 @@ const {
   NumberPrototypeToString,
   ObjectCreate,
   ObjectDefineProperty,
+  ObjectPrototypeHasOwnProperty,
   ObjectPrototypeIsPrototypeOf,
   ObjectSetPrototypeOf,
   RangeError,
@@ -62,8 +64,12 @@ const {
   Uint8ArrayPrototype,
 } = primordials;
 import {
+  op_base64_decode_into,
+  op_base64_encode,
+  op_base64_encode_from_buffer,
   op_is_ascii,
   op_is_utf8,
+  op_mark_as_untransferable,
   op_node_buffer_compare,
   op_node_buffer_compare_offset,
   op_node_call_is_from_dependency,
@@ -109,12 +115,9 @@ import {
   NodeError,
 } from "ext:deno_node/internal/errors.ts";
 import { getOptionValue } from "ext:deno_node/internal/options.ts";
-import {
-  forgivingBase64Encode,
-  forgivingBase64UrlEncode,
-} from "ext:deno_web/00_infra.js";
+import { forgivingBase64UrlEncode } from "ext:deno_web/00_infra.js";
 import { atob, btoa } from "ext:deno_web/05_base64.js";
-import { Blob, File } from "ext:deno_web/09_file.js";
+import { Blob, blobFromObjectUrl, File } from "ext:deno_web/09_file.js";
 import { untransferableSymbol } from "ext:deno_node/internal_binding/util.ts";
 
 export { atob, Blob, btoa, File };
@@ -265,6 +268,7 @@ function createPool() {
   allocBuffer = new Uint8Array(poolSize);
   allocPool = TypedArrayPrototypeGetBuffer(allocBuffer);
   allocPool[untransferableSymbol] = true;
+  op_mark_as_untransferable(allocPool);
   poolOffset = 0;
 }
 createPool();
@@ -419,7 +423,7 @@ Buffer.alloc = function alloc(size, fill, encoding) {
 
 function _allocUnsafe(size) {
   assertSize(size);
-  return createBuffer(size < 0 ? 0 : checked(size) | 0);
+  return createBuffer(size < 0 ? 0 : checked(size));
 }
 
 /**
@@ -459,8 +463,9 @@ function fromString(string, encoding) {
   if (!BufferIsEncoding(encoding)) {
     throw new codes.ERR_UNKNOWN_ENCODING(encoding);
   }
+
   const maxLength = Buffer.poolSize >>> 1;
-  const length = byteLength(string, encoding) | 0;
+  const length = MathTrunc(byteLength(string, encoding));
   if (length >= maxLength) {
     let buf = createBuffer(length);
     const actual = buf.write(string, encoding);
@@ -513,7 +518,7 @@ function checked(length) {
         NumberPrototypeToString(kMaxLength, 16) + " bytes",
     );
   }
-  return length | 0;
+  return MathTrunc(length);
 }
 
 export function SlowBuffer(length) {
@@ -566,7 +571,9 @@ Buffer.concat = function concat(list, length) {
     length = 0;
     for (let i = 0; i < list.length; i++) {
       if (list[i].length) {
-        length += list[i].length;
+        length += isUint8Array(list[i])
+          ? TypedArrayPrototypeGetByteLength(list[i])
+          : list[i].length;
       }
     }
   } else {
@@ -586,7 +593,13 @@ Buffer.concat = function concat(list, length) {
         list[i],
       );
     }
-    pos += _copyActual(buf, buffer, pos, 0, buf.length);
+    pos += _copyActual(
+      buf,
+      buffer,
+      pos,
+      0,
+      TypedArrayPrototypeGetByteLength(buf),
+    );
   }
 
   // Note: `length` is always equal to `buffer.length` at this point
@@ -736,6 +749,16 @@ Buffer.prototype.toString = function toString(encoding, start, end) {
     );
   }
 
+  // Fast path for base64 - skip getEncodingOps dispatch overhead
+  if (encoding === "base64") {
+    return FunctionPrototypeCall(
+      Buffer.prototype.base64Slice,
+      this,
+      start,
+      end,
+    );
+  }
+
   const ops = getEncodingOps(encoding);
   if (ops === undefined) {
     throw new codes.ERR_UNKNOWN_ENCODING(encoding);
@@ -769,8 +792,15 @@ Buffer.prototype[customInspectSymbol] =
       let str = "";
       str = StringPrototypeTrim(
         StringPrototypeReplace(
-          // deno-lint-ignore prefer-primordials
-          this.toString("hex", 0, INSPECT_MAX_BYTES_),
+          // Use Buffer.prototype.toString so the inspect output stays
+          // hex-formatted even when the receiver is a Uint8Array.
+          FunctionPrototypeCall(
+            Buffer.prototype.toString,
+            this,
+            "hex",
+            0,
+            INSPECT_MAX_BYTES_,
+          ),
           SPACER_PATTERN,
           "$1 ",
         ),
@@ -805,7 +835,22 @@ Buffer.prototype[customInspectSymbol] =
           );
         }
       }
-      return "<Buffer " + str + ">";
+      // Use the receiver's constructor name so that generic-call usage like
+      // Buffer.prototype.inspect.call(uint8array) prints "<Uint8Array ...>"
+      // (Node's lib/buffer.js does the same).
+      let constructorName = "Buffer";
+      try {
+        const { constructor } = this;
+        if (
+          typeof constructor === "function" &&
+          ObjectPrototypeHasOwnProperty(constructor, "name")
+        ) {
+          constructorName = constructor.name;
+        }
+      } catch {
+        // Ignore and use default name.
+      }
+      return `<${constructorName} ${str}>`;
     };
 
 Buffer.prototype.compare = function compare(
@@ -923,8 +968,10 @@ function bidirectionalIndexOf(buffer, val, byteOffset, encoding, dir) {
 }
 
 Buffer.prototype.includes = function includes(val, byteOffset, encoding) {
-  // deno-lint-ignore prefer-primordials
-  return this.indexOf(val, byteOffset, encoding) !== -1;
+  // Match Node's lib/buffer.js: call bidirectionalIndexOf directly so that
+  // Buffer.prototype.includes.call(uint8array, ...) works generically without
+  // resolving to Uint8Array.prototype.indexOf.
+  return bidirectionalIndexOf(this, val, byteOffset, encoding, true) !== -1;
 };
 
 Buffer.prototype.indexOf = function indexOf(val, byteOffset, encoding) {
@@ -964,13 +1011,14 @@ Buffer.prototype.base64Slice = function base64Slice(
   offset,
   length,
 ) {
-  if (offset === 0 && length === this.length) {
-    return forgivingBase64Encode(this);
-  } else {
-    return forgivingBase64Encode(
-      TypedArrayPrototypeSlice(this, offset, length),
-    );
+  // Use op_base64_encode (#[string] return) for small buffers where
+  // the lighter-weight op2 string path is faster.
+  // Use op_base64_encode_from_buffer (v8::String::new_external_onebyte) for
+  // large buffers where avoiding UTF-8 processing and copying matters.
+  if (offset === 0 && length === this.length && length <= 4096) {
+    return op_base64_encode(this);
   }
+  return op_base64_encode_from_buffer(this, offset, length - offset);
 };
 
 Buffer.prototype.base64Write = function base64Write(
@@ -978,7 +1026,13 @@ Buffer.prototype.base64Write = function base64Write(
   offset,
   length,
 ) {
-  return blitBuffer(base64ToBytes(string), this, offset, length);
+  try {
+    const written = op_base64_decode_into(string, this, offset);
+    return length !== undefined ? MathMin(written, length) : written;
+  } catch {
+    // Fallback for strings with base64url chars or invalid chars
+    return blitBuffer(base64ToBytes(string), this, offset, length);
+  }
 };
 
 Buffer.prototype.base64urlSlice = function base64urlSlice(
@@ -1115,7 +1169,24 @@ Buffer.prototype.write = function write(string, offset, length, encoding) {
   }
 
   if (!encoding) {
-    return this.utf8Write(string, offset, length);
+    return FunctionPrototypeCall(
+      Buffer.prototype.utf8Write,
+      this,
+      string,
+      offset,
+      length,
+    );
+  }
+
+  // Fast path for base64 - skip getEncodingOps dispatch overhead
+  if (encoding === "base64") {
+    return FunctionPrototypeCall(
+      Buffer.prototype.base64Write,
+      this,
+      string,
+      offset,
+      length,
+    );
   }
 
   const ops = getEncodingOps(encoding);
@@ -1165,12 +1236,10 @@ function fromArrayBuffer(obj, byteOffset, length) {
 }
 
 function _base64Slice(buf, start, end) {
-  if (start === 0 && end === buf.length) {
-    return forgivingBase64Encode(buf);
-  } else {
-    // deno-lint-ignore prefer-primordials
-    return forgivingBase64Encode(buf.slice(start, end));
+  if (start === 0 && end === buf.length && end <= 4096) {
+    return op_base64_encode(buf);
   }
+  return op_base64_encode_from_buffer(buf, start, end - start);
 }
 const decoder = new TextDecoder("utf-8", { ignoreBOM: true });
 
@@ -1245,9 +1314,16 @@ Buffer.prototype.subarray = function subarray(start, end) {
 };
 
 Buffer.prototype.slice = function slice(start, end) {
+  // Intentionally `this.subarray` so generic calls on a Uint8Array stay a
+  // Uint8Array (Uint8Array.prototype.subarray) while Buffer instances pick up
+  // Buffer.prototype.subarray and produce a FastBuffer.
   return this.subarray(start, end);
 };
 
+// Use FunctionPrototypeCall on Buffer.prototype methods so that these
+// dispatchers work when invoked generically with a Uint8Array `this`,
+// matching Node's lib/buffer.js (which extracts the read* helpers as
+// standalone functions taking buf as the first arg).
 Buffer.prototype.readUintLE = Buffer.prototype.readUIntLE = function readUIntLE(
   offset,
   byteLength,
@@ -1265,13 +1341,13 @@ Buffer.prototype.readUintLE = Buffer.prototype.readUIntLE = function readUIntLE(
     return readUInt24LE(this, offset);
   }
   if (byteLength === 4) {
-    return this.readUInt32LE(offset);
+    return FunctionPrototypeCall(Buffer.prototype.readUInt32LE, this, offset);
   }
   if (byteLength === 2) {
-    return this.readUInt16LE(offset);
+    return FunctionPrototypeCall(Buffer.prototype.readUInt16LE, this, offset);
   }
   if (byteLength === 1) {
-    return this.readUInt8(offset);
+    return FunctionPrototypeCall(Buffer.prototype.readUInt8, this, offset);
   }
 
   boundsError(byteLength, 6, "byteLength");
@@ -1294,13 +1370,13 @@ Buffer.prototype.readUintBE = Buffer.prototype.readUIntBE = function readUIntBE(
     return readUInt24BE(this, offset);
   }
   if (byteLength === 4) {
-    return this.readUInt32BE(offset);
+    return FunctionPrototypeCall(Buffer.prototype.readUInt32BE, this, offset);
   }
   if (byteLength === 2) {
-    return this.readUInt16BE(offset);
+    return FunctionPrototypeCall(Buffer.prototype.readUInt16BE, this, offset);
   }
   if (byteLength === 1) {
-    return this.readUInt8(offset);
+    return FunctionPrototypeCall(Buffer.prototype.readUInt8, this, offset);
   }
 
   boundsError(byteLength, 6, "byteLength");
@@ -1403,13 +1479,13 @@ Buffer.prototype.readIntLE = function readIntLE(
     return readInt24LE(this, offset);
   }
   if (byteLength === 4) {
-    return this.readInt32LE(offset);
+    return FunctionPrototypeCall(Buffer.prototype.readInt32LE, this, offset);
   }
   if (byteLength === 2) {
-    return this.readInt16LE(offset);
+    return FunctionPrototypeCall(Buffer.prototype.readInt16LE, this, offset);
   }
   if (byteLength === 1) {
-    return this.readInt8(offset);
+    return FunctionPrototypeCall(Buffer.prototype.readInt8, this, offset);
   }
 
   boundsError(byteLength, 6, "byteLength");
@@ -1429,13 +1505,13 @@ Buffer.prototype.readIntBE = function readIntBE(offset, byteLength) {
     return readInt24BE(this, offset);
   }
   if (byteLength === 4) {
-    return this.readInt32BE(offset);
+    return FunctionPrototypeCall(Buffer.prototype.readInt32BE, this, offset);
   }
   if (byteLength === 2) {
-    return this.readInt16BE(offset);
+    return FunctionPrototypeCall(Buffer.prototype.readInt16BE, this, offset);
   }
   if (byteLength === 1) {
-    return this.readInt8(offset);
+    return FunctionPrototypeCall(Buffer.prototype.readInt8, this, offset);
   }
 
   boundsError(byteLength, 6, "byteLength");
@@ -2466,6 +2542,10 @@ for (let i = 0; i < encodings.length; ++i) {
   encodingsMap[encodings[i]] = i;
 }
 
+// Encoding ops dispatch through Buffer.prototype.<method>.call(buf, ...) so
+// that calls like Buffer.prototype.toString.call(uint8array, 'utf16le') work
+// generically without requiring the receiver to carry Buffer's prototype.
+// Matches the standalone-helper shape used in Node's lib/buffer.js encodingOps.
 export const encodingOps = {
   ascii: {
     byteLength: (string) => string.length,
@@ -2479,8 +2559,16 @@ export const encodingOps = {
         encodingsMap.ascii,
         dir,
       ),
-    slice: (buf, start, end) => buf.asciiSlice(start, end),
-    write: (buf, string, offset, len) => buf.asciiWrite(string, offset, len),
+    slice: (buf, start, end) =>
+      FunctionPrototypeCall(Buffer.prototype.asciiSlice, buf, start, end),
+    write: (buf, string, offset, len) =>
+      FunctionPrototypeCall(
+        Buffer.prototype.asciiWrite,
+        buf,
+        string,
+        offset,
+        len,
+      ),
   },
   base64: {
     byteLength: (string) => base64ByteLength(string, string.length),
@@ -2494,8 +2582,16 @@ export const encodingOps = {
         encodingsMap.base64,
         dir,
       ),
-    slice: (buf, start, end) => buf.base64Slice(start, end),
-    write: (buf, string, offset, len) => buf.base64Write(string, offset, len),
+    slice: (buf, start, end) =>
+      FunctionPrototypeCall(Buffer.prototype.base64Slice, buf, start, end),
+    write: (buf, string, offset, len) =>
+      FunctionPrototypeCall(
+        Buffer.prototype.base64Write,
+        buf,
+        string,
+        offset,
+        len,
+      ),
   },
   base64url: {
     byteLength: (string) => base64ByteLength(string, string.length),
@@ -2509,9 +2605,16 @@ export const encodingOps = {
         encodingsMap.base64url,
         dir,
       ),
-    slice: (buf, start, end) => buf.base64urlSlice(start, end),
+    slice: (buf, start, end) =>
+      FunctionPrototypeCall(Buffer.prototype.base64urlSlice, buf, start, end),
     write: (buf, string, offset, len) =>
-      buf.base64urlWrite(string, offset, len),
+      FunctionPrototypeCall(
+        Buffer.prototype.base64urlWrite,
+        buf,
+        string,
+        offset,
+        len,
+      ),
   },
   hex: {
     byteLength: (string) => string.length >>> 1,
@@ -2525,8 +2628,16 @@ export const encodingOps = {
         encodingsMap.hex,
         dir,
       ),
-    slice: (buf, start, end) => buf.hexSlice(start, end),
-    write: (buf, string, offset, len) => buf.hexWrite(string, offset, len),
+    slice: (buf, start, end) =>
+      FunctionPrototypeCall(Buffer.prototype.hexSlice, buf, start, end),
+    write: (buf, string, offset, len) =>
+      FunctionPrototypeCall(
+        Buffer.prototype.hexWrite,
+        buf,
+        string,
+        offset,
+        len,
+      ),
   },
   latin1: {
     byteLength: (string) => string.length,
@@ -2540,8 +2651,16 @@ export const encodingOps = {
         encodingsMap.latin1,
         dir,
       ),
-    slice: (buf, start, end) => buf.latin1Slice(start, end),
-    write: (buf, string, offset, len) => buf.latin1Write(string, offset, len),
+    slice: (buf, start, end) =>
+      FunctionPrototypeCall(Buffer.prototype.latin1Slice, buf, start, end),
+    write: (buf, string, offset, len) =>
+      FunctionPrototypeCall(
+        Buffer.prototype.latin1Write,
+        buf,
+        string,
+        offset,
+        len,
+      ),
   },
   ucs2: {
     byteLength: (string) => string.length * 2,
@@ -2555,8 +2674,16 @@ export const encodingOps = {
         encodingsMap.utf16le,
         dir,
       ),
-    slice: (buf, start, end) => buf.ucs2Slice(start, end),
-    write: (buf, string, offset, len) => buf.ucs2Write(string, offset, len),
+    slice: (buf, start, end) =>
+      FunctionPrototypeCall(Buffer.prototype.ucs2Slice, buf, start, end),
+    write: (buf, string, offset, len) =>
+      FunctionPrototypeCall(
+        Buffer.prototype.ucs2Write,
+        buf,
+        string,
+        offset,
+        len,
+      ),
   },
   utf8: {
     byteLength: byteLengthUtf8,
@@ -2570,8 +2697,16 @@ export const encodingOps = {
         encodingsMap.utf8,
         dir,
       ),
-    slice: (buf, start, end) => buf.utf8Slice(start, end),
-    write: (buf, string, offset, len) => buf.utf8Write(string, offset, len),
+    slice: (buf, start, end) =>
+      FunctionPrototypeCall(Buffer.prototype.utf8Slice, buf, start, end),
+    write: (buf, string, offset, len) =>
+      FunctionPrototypeCall(
+        Buffer.prototype.utf8Write,
+        buf,
+        string,
+        offset,
+        len,
+      ),
   },
   utf16le: {
     byteLength: (string) => string.length * 2,
@@ -2585,8 +2720,16 @@ export const encodingOps = {
         encodingsMap.utf16le,
         dir,
       ),
-    slice: (buf, start, end) => buf.ucs2Slice(start, end),
-    write: (buf, string, offset, len) => buf.ucs2Write(string, offset, len),
+    slice: (buf, start, end) =>
+      FunctionPrototypeCall(Buffer.prototype.ucs2Slice, buf, start, end),
+    write: (buf, string, offset, len) =>
+      FunctionPrototypeCall(
+        Buffer.prototype.ucs2Write,
+        buf,
+        string,
+        offset,
+        len,
+      ),
   },
 };
 
@@ -3031,6 +3174,17 @@ export function transcode(source, fromEnco, toEnco) {
   }
 }
 
+export function resolveObjectURL(url) {
+  if (typeof url !== "string") {
+    return undefined;
+  }
+  try {
+    return blobFromObjectUrl(url) ?? undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 const mod = {
   atob,
   btoa,
@@ -3040,6 +3194,7 @@ const mod = {
   constants,
   isAscii,
   isUtf8,
+  utf8Write: Buffer.prototype.utf8Write,
   get INSPECT_MAX_BYTES() {
     return INSPECT_MAX_BYTES_;
   },
@@ -3049,6 +3204,7 @@ const mod = {
   },
   kMaxLength,
   kStringMaxLength,
+  resolveObjectURL,
   SlowBuffer,
   transcode,
 };
