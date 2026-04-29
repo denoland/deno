@@ -887,6 +887,8 @@ fn rustls_error_to_node_error(
     // Node/OpenSSL raise "no suitable signature algorithm" on the server
     // and `ERR_SSL_SSLV3_ALERT_HANDSHAKE_FAILURE` on the client; mirror
     // both ends so existing Node code (and upstream tests) match.
+    // NOTE: keep this string in sync with rustls upstream — there is no
+    // structured `Error` variant for "resolver returned None".
     E::General(msg) if msg == "no server certificate chain resolved" => (
       "no suitable signature algorithm".to_string(),
       "ERR_SSL_NO_SUITABLE_SIGNATURE_ALGORITHM".to_string(),
