@@ -2882,7 +2882,7 @@ impl SysDescriptor {
       "hostname" | "inspector" | "osRelease" | "osUptime" | "loadavg"
       | "networkInterfaces" | "systemMemoryInfo" | "uid" | "gid" | "cpus"
       | "homedir" | "getegid" | "statfs" | "getPriority" | "setPriority"
-      | "userInfo" | "setegid" | "seteuid" | "setgid" | "setuid" | "ca" => {
+      | "userInfo" | "setegid" | "seteuid" | "setgid" | "setuid" => {
         Ok(Self(kind))
       }
 
