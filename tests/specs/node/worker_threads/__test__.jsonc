@@ -49,6 +49,12 @@
       "args": "run --quiet eval_sloppy_mode.mjs",
       "output": "sloppy mode works, myGlobal=42\n",
       "exitCode": 0
+    },
+    "parent_port_isolation": {
+      // Test for https://github.com/denoland/deno/issues/17171
+      "args": "run --quiet --allow-read parent_port_isolation.mjs",
+      "output": "postMessage isolation: post_message_ok\nno double delivery: count:1\n",
+      "exitCode": 0
     }
   }
 }

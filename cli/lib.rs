@@ -168,6 +168,8 @@ async fn run_subcommand(
         self::args::InstallEntrypointsFlags {
           entrypoints: cache_flags.files,
           lockfile_only: false,
+          production: false,
+          skip_types: false,
         },
       )
       .await
@@ -459,6 +461,15 @@ async fn run_subcommand(
       "This deno was built without the \"upgrade\" feature. Please upgrade using the installation method originally used to install Deno.",
       1,
     ),
+    DenoSubcommand::BumpVersion(version_flags) => spawn_subcommand(async {
+      log::warn!(
+        "{}",
+        colors::yellow(
+          "deno bump-version is experimental and subject to change"
+        )
+      );
+      tools::bump_version::bump_version_command(Arc::new(flags), version_flags)
+    }),
     DenoSubcommand::Vendor => exit_with_message(
       "⚠️  `deno vendor` was removed in Deno 2.\n\nSee the Deno 1.x to 2.x Migration Guide for migration instructions: https://docs.deno.com/runtime/manual/advanced/migrate_deprecations",
       1,

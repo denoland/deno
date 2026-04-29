@@ -3,6 +3,7 @@
 import { core, primordials } from "ext:core/mod.js";
 const {
   FunctionPrototypeBind,
+  ObjectCreate,
   ObjectDefineProperty,
   Promise,
   PromiseReject,
@@ -24,7 +25,10 @@ import {
   validateObject,
 } from "ext:deno_node/internal/validators.mjs";
 import { kEmptyObject, promisify } from "ext:deno_node/internal/util.mjs";
-import { AbortError } from "ext:deno_node/internal/errors.ts";
+import {
+  AbortError,
+  ERR_ILLEGAL_CONSTRUCTOR,
+} from "ext:deno_node/internal/errors.ts";
 import { kResistStopPropagation } from "ext:deno_node/internal/event_target.mjs";
 import type { Abortable } from "node:events";
 
@@ -286,6 +290,7 @@ async function* setIntervalAsync(
         yield value;
       }
     }
+    throw new AbortError(undefined, { cause: signal?.reason });
   } catch (error) {
     if (signal?.aborted) {
       throw new AbortError(undefined, { cause: signal?.reason });
@@ -307,15 +312,23 @@ export const promises = {
   setInterval: setIntervalAsync,
 };
 
-promises.scheduler = {
+class Scheduler {
+  constructor() {
+    throw new ERR_ILLEGAL_CONSTRUCTOR();
+  }
   async wait(
     delay: number,
     options?: { signal?: AbortSignal },
   ): Promise<void> {
     return await setTimeoutPromise(delay, undefined, options);
-  },
-  yield: promises.setImmediate,
-};
+  }
+  yield() {
+    return promises.setImmediate();
+  }
+}
+
+const scheduler = ObjectCreate(Scheduler.prototype);
+promises.scheduler = scheduler;
 
 export default {
   setTimeout,
