@@ -1869,7 +1869,12 @@ Socket.prototype._destroy = function (exception, cb) {
         this._httpMessageDetached === true &&
         !this._httpMessage
       ) {
-        nextTick(_emitCloseNT, server);
+        defaultTriggerAsyncIdScope(
+          server[asyncIdSymbol],
+          nextTick,
+          _emitCloseNT,
+          server,
+        );
       } else {
         server._emitCloseIfDrained();
       }
