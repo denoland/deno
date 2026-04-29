@@ -1,0 +1,6 @@
+{
+  "tempDir": true,
+  "args": "run -A delta_test.ts",
+  "output": "delta_test.out",
+  "exitCode": 0
+}

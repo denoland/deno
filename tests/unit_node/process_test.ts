@@ -1682,3 +1682,20 @@ Deno.test({
     Deno.removeSync(dirPath, { recursive: true });
   },
 });
+
+// Regression test: signal handlers receive the signal name as first argument
+Deno.test({
+  name: "[node/process] signal handlers receive signal name",
+  ignore: Deno.build.os === "windows",
+  async fn() {
+    const received: string[] = [];
+    const handler = (signal: string) => {
+      received.push(signal);
+    };
+    process.once("SIGUSR1", handler);
+    process.kill(process.pid, "SIGUSR1");
+    // Signal delivery is async; wait for it
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    assertEquals(received, ["SIGUSR1"]);
+  },
+});

@@ -25,7 +25,10 @@ const { build, createLazyLoader } = core;
 import { nextTick as _nextTick } from "ext:deno_node/_next_tick.ts";
 import { _exiting } from "ext:deno_node/_process/exiting.ts";
 import * as fs from "ext:deno_fs/30_fs.js";
-import { ERR_INVALID_OBJECT_DEFINE_PROPERTY } from "ext:deno_node/internal/errors.ts";
+import {
+  ERR_INVALID_ARG_TYPE,
+  ERR_INVALID_OBJECT_DEFINE_PROPERTY,
+} from "ext:deno_node/internal/errors.ts";
 
 const loadProcess = createLazyLoader<NodeJS.Process>("node:process");
 let nodeProcess: NodeJS.Process | undefined;
@@ -44,7 +47,12 @@ export function arch(): string {
 }
 
 /** https://nodejs.org/api/process.html#process_process_chdir_directory */
-export const chdir = fs.chdir;
+export function chdir(directory: string): void {
+  if (typeof directory !== "string") {
+    throw new ERR_INVALID_ARG_TYPE("directory", "string", directory);
+  }
+  fs.chdir(directory);
+}
 
 /** https://nodejs.org/api/process.html#process_process_cwd */
 export const cwd = fs.cwd;

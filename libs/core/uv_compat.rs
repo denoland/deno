@@ -93,7 +93,15 @@ pub(crate) fn io_error_to_uv(err: &std::io::Error) -> c_int {
     ErrorKind::InvalidInput => UV_EINVAL,
     ErrorKind::WouldBlock => UV_EAGAIN,
     ErrorKind::TimedOut => UV_ETIMEDOUT,
-    ErrorKind::PermissionDenied => UV_EACCES,
+    ErrorKind::PermissionDenied => {
+      // On Windows, ERROR_PIPE_BUSY (231) is mapped to PermissionDenied
+      // by Rust std, but it means the named pipe is already in use.
+      #[cfg(windows)]
+      if let Some(231) = err.raw_os_error() {
+        return UV_EADDRINUSE;
+      }
+      UV_EACCES
+    }
     _ => {
       // On Unix, try to use the raw OS error for a more accurate mapping.
       #[cfg(unix)]

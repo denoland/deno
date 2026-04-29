@@ -974,8 +974,8 @@ export class Socket extends EventEmitter {
     if (typeof address === "function") {
       callback = address;
       address = undefined;
-    } else if (address && typeof address !== "string") {
-      throw new ERR_INVALID_ARG_TYPE("address", ["string", "falsy"], address);
+    } else if (address != null) {
+      validateString(address, "address");
     }
 
     healthCheck(this);
