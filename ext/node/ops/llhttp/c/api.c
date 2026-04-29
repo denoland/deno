@@ -74,8 +74,9 @@ llhttp_t* llhttp_alloc(llhttp_type_t type) {
   return parser;
 }
 
-void llhttp_free(llhttp_t* parser) {
-  free(parser);
+void llhttp_free(llhttp_t** parser) {
+  free(*parser);
+  *parser = NULL;
 }
 
 #endif  // defined(__wasm__)
