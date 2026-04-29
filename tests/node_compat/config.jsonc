@@ -1790,6 +1790,7 @@
     "parallel/test-http2-tls-disconnect.js": {},
     "parallel/test-http2-too-large-headers.js": {},
     "parallel/test-http2-too-many-headers.js": {},
+    "parallel/test-http2-too-many-settings.js": {},
     "parallel/test-http2-too-many-streams.js": {},
     "parallel/test-http2-trailers-after-session-close.js": {},
     "parallel/test-http2-trailers.js": {},
