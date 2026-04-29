@@ -18,9 +18,12 @@ import * as location from "ext:deno_web/12_location.js";
 import * as console from "ext:deno_web/01_console.js";
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 import * as globalInterfaces from "ext:deno_web/04_global_interfaces.js";
-import * as webStorage from "ext:deno_webstorage/01_webstorage.js";
 import * as prompt from "ext:runtime/41_prompt.js";
 import { loadWebGPU } from "ext:deno_webgpu/00_init.js";
+
+const loadWebStorage = core.createLazyLoader(
+  "ext:deno_webstorage/01_webstorage.js",
+);
 
 /**
  * @param {string} arch
@@ -172,9 +175,12 @@ const mainRuntimeGlobalProperties = {
   alert: core.propWritable(prompt.alert),
   confirm: core.propWritable(prompt.confirm),
   prompt: core.propWritable(prompt.prompt),
-  localStorage: core.propGetterOnly(webStorage.localStorage),
-  sessionStorage: core.propGetterOnly(webStorage.sessionStorage),
-  Storage: core.propNonEnumerable(webStorage.Storage),
+  localStorage: core.propGetterOnly(() => loadWebStorage().localStorage()),
+  sessionStorage: core.propGetterOnly(() => loadWebStorage().sessionStorage()),
+  Storage: core.propNonEnumerableLazyLoaded(
+    (ws) => ws.Storage,
+    loadWebStorage,
+  ),
 };
 
 export { mainRuntimeGlobalProperties, memoizeLazy };
