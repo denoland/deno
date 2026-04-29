@@ -947,6 +947,10 @@
     "parallel/test-filehandle-close.js": {},
     "parallel/test-filehandle-readablestream.js": {},
     "parallel/test-finalization-registry-shutdown.js": {},
+    "parallel/test-fixed-queue.js": {
+      "ignore": true,
+      "reason": "Tests Node.js internal `internal/fixed_queue` module which is not exposed in Deno"
+    },
     "parallel/test-fs-append-file-sync.js": {},
     "parallel/test-fs-buffer.js": {},
     "parallel/test-fs-buffertype-writesync.js": {},
