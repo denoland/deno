@@ -428,6 +428,7 @@
     "parallel/test-compile-cache-typescript-transform.js": {},
     "parallel/test-console-assign-undefined.js": {},
     "parallel/test-console-async-write-error.js": {},
+    "parallel/test-console-formatTime.js": {},
     "parallel/test-console-group.js": {},
     "parallel/test-console-instance.js": {},
     "parallel/test-console-log-stdio-broken-dest.js": {},
