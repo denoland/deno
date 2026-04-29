@@ -522,6 +522,7 @@ async fn setup_config_dir(
   };
   new_flags.subcommand = DenoSubcommand::Install(InstallFlags::Local(
     InstallFlagsLocal::Entrypoints(entrypoint_flags.clone()),
+    Default::default(),
   ));
 
   crate::tools::installer::install_from_entrypoints(

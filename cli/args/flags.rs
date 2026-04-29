@@ -347,7 +347,7 @@ pub struct InstallFlagsGlobal {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum InstallFlags {
-  Local(InstallFlagsLocal),
+  Local(InstallFlagsLocal, NpmInstallTargetFlags),
   Global(InstallFlagsGlobal),
 }
 
@@ -356,6 +356,13 @@ pub enum InstallFlagsLocal {
   Add(AddFlags),
   TopLevel(InstallTopLevelFlags),
   Entrypoints(InstallEntrypointsFlags),
+}
+
+/// Overrides for the target OS and architecture when installing npm packages.
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct NpmInstallTargetFlags {
+  pub os: Option<String>,
+  pub arch: Option<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -783,14 +790,26 @@ impl DenoSubcommand {
           }
         }
       }
-      _ => {
-        let arch = std::env::var_os("DENO_INSTALL_ARCH");
-        if let Some(var) = arch.as_ref().and_then(|s| s.to_str()) {
-          NpmSystemInfo::from_rust(std::env::consts::OS, var)
-        } else {
-          NpmSystemInfo::default()
+      DenoSubcommand::Install(InstallFlags::Local(
+        _,
+        NpmInstallTargetFlags { os, arch },
+      )) => {
+        let default = Self::npm_system_info_from_env();
+        NpmSystemInfo {
+          os: os.as_deref().unwrap_or(&default.os).into(),
+          cpu: arch.as_deref().unwrap_or(&default.cpu).into(),
         }
       }
+      _ => Self::npm_system_info_from_env(),
+    }
+  }
+
+  fn npm_system_info_from_env() -> NpmSystemInfo {
+    let arch = std::env::var_os("DENO_INSTALL_ARCH");
+    if let Some(var) = arch.as_ref().and_then(|s| s.to_str()) {
+      NpmSystemInfo::from_rust(std::env::consts::OS, var)
+    } else {
+      NpmSystemInfo::default()
     }
   }
 }
@@ -1381,11 +1400,13 @@ impl Flags {
         }
       }
       Cache(CacheFlags { files, .. })
-      | Install(InstallFlags::Local(InstallFlagsLocal::Entrypoints(
-        InstallEntrypointsFlags {
-          entrypoints: files, ..
-        },
-      ))) => Some(vec![
+      | Install(InstallFlags::Local(
+        InstallFlagsLocal::Entrypoints(InstallEntrypointsFlags {
+          entrypoints: files,
+          ..
+        }),
+        _,
+      )) => Some(vec![
         files
           .iter()
           .filter_map(|file| {
@@ -3613,6 +3634,20 @@ These must be added to the path manually if required."), UnstableArgsConfig::Res
             .conflicts_with("global"),
         )
         .arg(lockfile_only_arg().conflicts_with("global"))
+        .arg(
+          Arg::new("os")
+            .long("os")
+            .conflicts_with("global")
+            .help("Target OS for npm package installation (e.g., linux, darwin, win32)")
+            .value_parser(["aix", "android", "darwin", "freebsd", "linux", "openbsd", "sunos", "win32"]),
+        )
+        .arg(
+          Arg::new("arch")
+            .long("arch")
+            .conflicts_with("global")
+            .help("Target architecture for npm package installation (e.g., x64, arm64)")
+            .value_parser(["arm", "arm64", "ia32", "mips", "mipsel", "ppc", "ppc64", "s390", "s390x", "x64"]),
+        )
         .arg(
           Arg::new("prod")
             .long("prod")
@@ -6858,6 +6893,10 @@ fn install_parse(
     return Ok(());
   }
   let lockfile_only = matches.get_flag("lockfile-only");
+  let npm_target = NpmInstallTargetFlags {
+    os: matches.remove_one::<String>("os"),
+    arch: matches.remove_one::<String>("arch"),
+  };
   let production = matches.get_flag("prod");
   let skip_types = matches.get_flag("skip-types");
   if matches.get_flag("entrypoint") {
@@ -6869,6 +6908,7 @@ fn install_parse(
         production,
         skip_types,
       }),
+      npm_target,
     ));
   } else if let Some(add_files) = matches
     .remove_many("cmd")
@@ -6883,6 +6923,7 @@ fn install_parse(
 
     flags.subcommand = DenoSubcommand::Install(InstallFlags::Local(
       InstallFlagsLocal::Add(add_files),
+      npm_target,
     ))
   } else {
     flags.subcommand = DenoSubcommand::Install(InstallFlags::Local(
@@ -6891,6 +6932,7 @@ fn install_parse(
         production,
         skip_types,
       }),
+      npm_target,
     ));
   }
   Ok(())
@@ -14190,6 +14232,7 @@ mod tests {
           "install" => Flags {
             subcommand: DenoSubcommand::Install(InstallFlags::Local(
               InstallFlagsLocal::Add(flags),
+              Default::default(),
             )),
             ..Flags::default()
           },
@@ -14527,6 +14570,64 @@ mod tests {
   }
 
   #[test]
+  fn install_os_arch_flags() {
+    let r = flags_from_vec(svec![
+      "deno", "install", "--os", "linux", "--arch", "arm64"
+    ]);
+    let flags = r.unwrap();
+    assert_eq!(
+      flags.subcommand,
+      DenoSubcommand::Install(InstallFlags::Local(
+        InstallFlagsLocal::TopLevel(InstallTopLevelFlags {
+          lockfile_only: false,
+          production: false,
+          skip_types: false,
+        }),
+        NpmInstallTargetFlags {
+          os: Some("linux".to_string()),
+          arch: Some("arm64".to_string()),
+        },
+      ))
+    );
+    assert_eq!(
+      flags.subcommand.npm_system_info(),
+      NpmSystemInfo {
+        os: "linux".into(),
+        cpu: "arm64".into(),
+      }
+    );
+  }
+
+  #[test]
+  fn install_os_only_flag() {
+    let r = flags_from_vec(svec!["deno", "install", "--os", "win32"]);
+    let flags = r.unwrap();
+    assert_eq!(
+      flags.subcommand,
+      DenoSubcommand::Install(InstallFlags::Local(
+        InstallFlagsLocal::TopLevel(InstallTopLevelFlags {
+          lockfile_only: false,
+          production: false,
+          skip_types: false,
+        }),
+        NpmInstallTargetFlags {
+          os: Some("win32".to_string()),
+          arch: None,
+        },
+      ))
+    );
+    let sys_info = flags.subcommand.npm_system_info();
+    assert_eq!(sys_info.os.as_str(), "win32");
+  }
+
+  #[test]
+  fn install_os_arch_conflicts_with_global() {
+    let r =
+      flags_from_vec(svec!["deno", "install", "-g", "--os", "linux", "mod.ts"]);
+    assert!(r.is_err());
+  }
+
+  #[test]
   fn install_production() {
     let r = flags_from_vec(svec!["deno", "install", "--prod"]);
     assert_eq!(
@@ -14537,7 +14638,8 @@ mod tests {
             lockfile_only: false,
             production: true,
             skip_types: false,
-          })
+          }),
+          NpmInstallTargetFlags::default(),
         )),
         ..Flags::default()
       }
@@ -14562,7 +14664,8 @@ mod tests {
             lockfile_only: false,
             production: true,
             skip_types: false,
-          })
+          }),
+          NpmInstallTargetFlags::default(),
         )),
         ..Flags::default()
       }
@@ -14580,7 +14683,8 @@ mod tests {
             lockfile_only: false,
             production: true,
             skip_types: true,
-          })
+          }),
+          NpmInstallTargetFlags::default(),
         )),
         ..Flags::default()
       }
