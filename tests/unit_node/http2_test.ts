@@ -658,7 +658,7 @@ Deno.test("[node/http2] AsyncLocalStorage propagates per request", {
       });
       req.setEncoding("utf8");
       req.on("response", (headers) => {
-        assertEquals(headers[http2.constants.HTTP2_HEADER_STATUS], 200);
+        assertEquals(headers[http2.constants.HTTP2_HEADER_STATUS], "200");
         assertEquals(storage.getStore()?.id, id);
       });
       req.on("data", (chunk: string) => {
