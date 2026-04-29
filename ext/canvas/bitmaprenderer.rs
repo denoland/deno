@@ -51,8 +51,8 @@ pub struct ImageBitmapRenderingContext {
 
   pub surface_only: Option<SurfaceBitmap>,
 
-  #[allow(dead_code)]
-  alpha: bool, // TODO(@crowlkats): support alpha option
+  #[allow(dead_code, reason = "TODO(@crowlkats): support alpha option")]
+  alpha: bool,
 }
 
 // SAFETY: we're sure this can be GCed
@@ -390,8 +390,9 @@ impl ImageBitmapRenderingContext {
       unreachable!()
     };
 
-    let deno_webgpu::canvas::SurfaceData { id, width, height, .. } =
-      &*surface_data.borrow();
+    let deno_webgpu::canvas::SurfaceData {
+      id, width, height, ..
+    } = &*surface_data.borrow();
 
     let err = instance.surface_configure(
       *id,
@@ -456,8 +457,9 @@ pub fn create<'s>(
   .map_err(JsErrorBox::from_err)?;
 
   let surface_only = if let ContextData::Surface(surface_data) = &data {
-    let deno_webgpu::canvas::SurfaceData { id, width, height, .. } =
-      &*surface_data.borrow();
+    let deno_webgpu::canvas::SurfaceData {
+      id, width, height, ..
+    } = &*surface_data.borrow();
     let instance = instance.unwrap();
     let backends = std::env::var("DENO_WEBGPU_BACKEND").map_or_else(
       |_| wgpu_types::Backends::all(),

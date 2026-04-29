@@ -303,7 +303,10 @@ impl OffscreenCanvas {
 }
 
 pub enum Context {
-  #[allow(dead_code)]
+  #[allow(
+    dead_code,
+    reason = "variant carries the bitmap renderer Ref so its lifetime is tied to the match"
+  )]
   Bitmap(
     deno_core::cppgc::Ref<crate::bitmaprenderer::ImageBitmapRenderingContext>,
   ),
