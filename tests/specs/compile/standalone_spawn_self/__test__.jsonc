@@ -1,7 +1,7 @@
 {
   "tempDir": true,
   "tests": {
-    "spawn_self": {
+    "spawn_self_no_args": {
       "steps": [
         {
           "args": "compile -A --unstable-node-globals --unstable-bare-node-builtins --unstable-detect-cjs --output main main.ts",
@@ -10,7 +10,20 @@
         {
           "commandName": "./main",
           "args": [],
-          "output": "main.out"
+          "output": "main_no_args.out"
+        }
+      ]
+    },
+    "spawn_self_with_args": {
+      "steps": [
+        {
+          "args": "compile -A --unstable-node-globals --unstable-bare-node-builtins --unstable-detect-cjs --output main main.ts",
+          "output": "[WILDCARD]"
+        },
+        {
+          "commandName": "./main",
+          "args": ["--foo", "bar"],
+          "output": "main_with_args.out"
         }
       ]
     }

@@ -563,8 +563,18 @@ function formatValue(
       // to the `Deno` namespace in web workers. Remove when the `Deno`
       // namespace is always enabled.
       return String(value[privateCustomInspect](inspect, ctx));
-    } else if (ReflectHas(value, nodeCustomInspectSymbol)) {
-      const maybeCustom = value[nodeCustomInspectSymbol];
+    } else {
+      // Access the symbol directly instead of using `ReflectHas` (the `in`
+      // operator). Proxies may override `has` to hide symbols while still
+      // exposing them via `get` (e.g. nodejs-polars DataFrames). Node.js
+      // also accesses the symbol directly. Use try-catch because the
+      // Proxy's `get` trap may throw.
+      let maybeCustom;
+      try {
+        maybeCustom = value[nodeCustomInspectSymbol];
+      } catch {
+        // ignore - the proxy's get trap threw
+      }
       if (
         typeof maybeCustom === "function" &&
         // Filter out the util module, its inspect function is special.
@@ -2700,8 +2710,9 @@ function formatSetIterInner(
 // Matches all ansi escape code sequences in a string
 const ansiPattern = "[\\u001B\\u009B][[\\]()#;?]*" +
   "(?:(?:(?:(?:;[-a-zA-Z\\d\\/#&.:=?%@~_]+)*" +
-  "|[a-zA-Z\\d]+(?:;[-a-zA-Z\\d\\/#&.:=?%@~_]*)*)?\\u0007)" +
-  "|(?:(?:\\d{1,4}(?:;\\d{0,4})*)?[\\dA-PR-TZcf-ntqry=><~]))";
+  "|[a-zA-Z\\d]+(?:;[-a-zA-Z\\d\\/#&.:=?%@~_]*)*)" +
+  "?(?:\\u0007|\\u001B\\u005C|\\u009C))" +
+  "|(?:(?:\\d{1,4}(?:;\\d{0,4})*)?[\\dA-PR-TZcf-nq-uy=><~]))";
 const ansi = new SafeRegExp(ansiPattern, "g");
 
 /**
@@ -3722,7 +3733,11 @@ class Console {
     );
   };
 
-  dirxml = this.dir;
+  // Per https://console.spec.whatwg.org/#dirxml, dirxml uses the log
+  // printer (not dir). Node also aliases console.dirxml to log (see
+  // lib/internal/console/constructor.js). Use a fresh arrow so the
+  // method's .name is "dirxml" rather than "dir".
+  dirxml = (...args) => this.log(...new SafeArrayIterator(args));
 
   warn = (...args) => {
     this.#printFunc(

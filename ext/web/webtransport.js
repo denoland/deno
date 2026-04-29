@@ -713,9 +713,10 @@ class WebTransportDatagramDuplexStream {
 
       ArrayPrototypePush(queue, { datagram, timestamp: DateNow() });
 
-      const toBeRemoved = queue.length - this.#incomingHighWaterMark;
+      let toBeRemoved = queue.length - this.#incomingHighWaterMark;
       while (toBeRemoved > 0) {
         ArrayPrototypeShift(queue);
+        toBeRemoved--;
       }
 
       while (queue.length > 0) {

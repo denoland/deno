@@ -213,6 +213,7 @@ class HmacImpl extends Transform {
   #ZEROES = Buffer.alloc(128);
   #algorithm: string;
   #hash: Hash;
+  #finalized = false;
 
   constructor(
     hmac: string,
@@ -274,19 +275,15 @@ class HmacImpl extends Transform {
   digest(): Buffer;
   digest(encoding: BinaryToTextEncoding): string;
   digest(encoding?: BinaryToTextEncoding): Buffer | string {
-    let result;
-    try {
-      result = this.#hash.digest();
-    } catch (err) {
-      if (err instanceof ERR_CRYPTO_HASH_FINALIZED) {
-        // Already finalized - return empty like Node.js
-        if (encoding && encoding !== "buffer") {
-          return "";
-        }
-        return Buffer.alloc(0);
+    if (this.#finalized) {
+      if (encoding && encoding !== "buffer") {
+        return "";
       }
-      throw err;
+      return Buffer.alloc(0);
     }
+    this.#finalized = true;
+
+    const result = this.#hash.digest();
 
     return new Hash(this.#algorithm).update(this.#opad).update(result)
       .digest(

@@ -14,7 +14,6 @@ use eszip::v2::Url;
 use http::header::HeaderName;
 use http::header::HeaderValue;
 use serde::Deserialize;
-use serde::Serialize;
 
 use crate::args::AuditFlags;
 use crate::args::Flags;
@@ -24,15 +23,15 @@ use crate::http_util;
 use crate::http_util::HttpClient;
 use crate::http_util::HttpClientProvider;
 
-pub struct AuditResult {
-  pub exit_code: i32,
-  pub fixable_actions: Vec<FixableAction>,
+struct FixableAction {
+  module_name: String,
+  target_version: String,
+  is_major: bool,
 }
 
-pub struct FixableAction {
-  pub module_name: String,
-  pub target_version: String,
-  pub is_major: bool,
+struct AuditResult {
+  exit_code: i32,
+  fixable_actions: Vec<FixableAction>,
 }
 
 pub async fn audit(
@@ -40,7 +39,6 @@ pub async fn audit(
   audit_flags: AuditFlags,
 ) -> Result<i32, AnyError> {
   let factory = CliFactory::from_flags(flags.clone());
-  let workspace = factory.workspace_resolver().await?;
   let npm_resolver = factory.npm_resolver().await?;
   let npm_resolver = npm_resolver.as_managed().unwrap();
   let snapshot = npm_resolver.resolution().snapshot();
@@ -54,14 +52,8 @@ pub async fn audit(
   let use_socket = audit_flags.socket;
   let fix = audit_flags.fix;
 
-  let result = npm::call_audits_api(
-    audit_flags,
-    npm_url,
-    workspace,
-    &snapshot,
-    http_client,
-  )
-  .await?;
+  let result =
+    npm::call_audits_api(audit_flags, npm_url, &snapshot, http_client).await?;
 
   if use_socket {
     socket_dev::call_firewall_api(
@@ -72,82 +64,23 @@ pub async fn audit(
   }
 
   if fix && !result.fixable_actions.is_empty() {
-    apply_fixes(flags, &result.fixable_actions).await?;
+    apply_fixes(&factory, flags, &result.fixable_actions).await?;
   }
 
   Ok(result.exit_code)
 }
 
 async fn apply_fixes(
+  factory: &CliFactory,
   flags: Arc<Flags>,
   fixable_actions: &[FixableAction],
 ) -> Result<(), AnyError> {
-  use deno_cache_dir::GlobalOrLocalHttpCache;
-  use deno_cache_dir::file_fetcher::CacheSetting;
   use deno_semver::VersionReq;
-  use deno_semver::package::PackageReq;
 
   use super::CacheTopLevelDepsOptions;
-  use super::deps::DepManager;
-  use super::deps::DepManagerArgs;
-  use crate::file_fetcher::CreateCliFileFetcherOptions;
-  use crate::file_fetcher::create_cli_file_fetcher;
-  use crate::jsr::JsrFetchResolver;
-  use crate::npm::NpmFetchResolver;
 
-  let factory = CliFactory::from_flags(flags.clone());
-  let cli_options = factory.cli_options()?;
-  let workspace = cli_options.workspace();
-  let http_client = factory.http_client_provider();
-  let deps_http_cache = factory.global_http_cache()?;
-  let file_fetcher = create_cli_file_fetcher(
-    Default::default(),
-    GlobalOrLocalHttpCache::Global(deps_http_cache.clone()),
-    http_client.clone(),
-    factory.memory_files().clone(),
-    factory.sys(),
-    CreateCliFileFetcherOptions {
-      allow_remote: true,
-      cache_setting: CacheSetting::RespectHeaders,
-      download_log_level: log::Level::Trace,
-      progress_bar: None,
-    },
-  );
-  let file_fetcher = Arc::new(file_fetcher);
-  let npm_fetch_resolver = Arc::new(NpmFetchResolver::new(
-    file_fetcher.clone(),
-    factory.npmrc()?.clone(),
-    factory.npm_version_resolver()?.clone(),
-  ));
-  let jsr_fetch_resolver = Arc::new(JsrFetchResolver::new(
-    file_fetcher.clone(),
-    factory.jsr_version_resolver()?.clone(),
-  ));
-
-  let args = DepManagerArgs {
-    module_load_preparer: factory.module_load_preparer().await?.clone(),
-    jsr_fetch_resolver: jsr_fetch_resolver.clone(),
-    npm_fetch_resolver,
-    npm_resolver: factory.npm_resolver().await?.clone(),
-    npm_installer: factory.npm_installer().await?.clone(),
-    npm_version_resolver: factory.npm_version_resolver()?.clone(),
-    progress_bar: factory.text_only_progress_bar().clone(),
-    permissions_container: factory.root_permissions_container()?.clone(),
-    main_module_graph_container: factory
-      .main_module_graph_container()
-      .await?
-      .clone(),
-    lockfile: factory.maybe_lockfile().await?.cloned(),
-  };
-
-  let filter_fn =
-    |_alias: Option<&str>, _req: &PackageReq, _: super::deps::DepKind| true;
-
-  let mut deps = if cli_options.start_dir.has_deno_or_pkg_json() {
-    DepManager::from_workspace_dir(&cli_options.start_dir, filter_fn, args)?
-  } else {
-    DepManager::from_workspace(workspace, filter_fn, args)?
-  };
+  let (mut deps, jsr_fetch_resolver) =
+    super::create_dep_manager_and_resolvers(factory).await?;
 
   let mut fixed = Vec::new();
   let mut unfixable = Vec::new();
@@ -174,7 +107,6 @@ async fn apply_fixes(
   }
 
   for action in fixable_actions {
-    // Skip major upgrades - too risky for automatic fixes
     if action.is_major {
       unfixable.push(format!(
         "{} (major upgrade to {})",
@@ -187,19 +119,15 @@ async fn apply_fixes(
       Some(Some((dep_id, version_req_str))) => {
         // Preserve the original version requirement style.
         // Only handle simple spec styles (caret, tilde, exact pin)
-        // to avoid silently rewriting complex ranges like ">=1 <2",
-        // "1.x", tags, or aliases into a different constraint shape.
+        // to avoid silently rewriting complex ranges.
         let trimmed = version_req_str.trim();
         let new_spec = if trimmed.starts_with('~') {
           format!("~{}", action.target_version)
         } else if trimmed.starts_with('^') {
           format!("^{}", action.target_version)
         } else if trimmed.chars().next().is_some_and(|c| c.is_ascii_digit()) {
-          // Bare version (exact pin) - keep it exact
           action.target_version.clone()
         } else {
-          // Unsupported spec style (e.g. ">=1 <2", "1.x", tags,
-          // aliases) - skip to avoid changing the constraint shape
           unfixable.push(format!(
             "{} (unsupported version spec: {})",
             action.module_name, version_req_str
@@ -214,7 +142,6 @@ async fn apply_fixes(
         ));
       }
       Some(None) => {
-        // Ambiguous - multiple deps with same package name
         unfixable.push(format!(
           "{} (ambiguous: multiple dependencies with this name)",
           action.module_name
@@ -271,13 +198,7 @@ mod npm {
   use std::collections::HashMap;
   use std::collections::HashSet;
 
-  use deno_npm::NpmPackageId;
-  use deno_package_json::PackageJsonDepValue;
-  use deno_resolver::workspace::WorkspaceResolver;
-  use deno_semver::package::PackageNv;
-
   use super::*;
-  use crate::sys::CliSys;
 
   #[derive(Clone, Copy, Debug, PartialEq, PartialOrd)]
   enum AdvisorySeverity {
@@ -299,212 +220,45 @@ mod npm {
     }
   }
 
-  fn get_dependency_descriptors_for_deps(
-    seen: &mut HashSet<PackageNv>,
-    all_dependencies_snapshot: &NpmResolutionSnapshot,
-    dev_dependencies_snapshot: &NpmResolutionSnapshot,
-    package_id: &NpmPackageId,
-  ) -> HashMap<String, Box<DependencyDescriptor>> {
-    let mut is_dev = false;
-
-    let resolution_package =
-      match dev_dependencies_snapshot.package_from_id(package_id) {
-        Some(p) => {
-          is_dev = true;
-          p
-        }
-        None => all_dependencies_snapshot
-          .package_from_id(package_id)
-          .unwrap(),
-      };
-    let mut deps_map =
-      HashMap::with_capacity(resolution_package.dependencies.len());
-    for dep in resolution_package.dependencies.iter() {
-      if !seen.insert(dep.1.nv.clone()) {
-        continue;
-      }
-
-      let dep_deps = get_dependency_descriptors_for_deps(
-        seen,
-        all_dependencies_snapshot,
-        dev_dependencies_snapshot,
-        dep.1,
-      );
-      deps_map.insert(
-        dep.0.to_string(),
-        Box::new(DependencyDescriptor {
-          version: dep.1.nv.version.to_string(),
-          dev: is_dev,
-          requires: dep_deps
-            .iter()
-            .map(|(k, v)| (k.to_string(), v.version.to_string()))
-            .collect(),
-          dependencies: dep_deps,
-        }),
-      );
-    }
-    deps_map
-  }
-
   pub async fn call_audits_api_inner(
     client: &HttpClient,
     npm_url: Url,
     body: serde_json::Value,
-  ) -> Result<AuditResponse, AnyError> {
-    let url = npm_url.join("-/npm/v1/security/audits").unwrap();
+  ) -> Result<BulkAuditResponse, AnyError> {
+    let url = npm_url.join("-/npm/v1/security/advisories/bulk").unwrap();
     let future = client.post_json(url, &body)?.send().boxed_local();
     let response = future.await?;
     let json_str = http_util::body_to_string(response)
       .await
       .context("Failed to read response from the npm registry API")?;
-    let response: AuditResponse = serde_json::from_str(&json_str)
+    let response: BulkAuditResponse = serde_json::from_str(&json_str)
       .context("Failed to deserialize response from the npm registry API")?;
     Ok(response)
-  }
-
-  /// Partition into as few groups as possible so that no partition
-  /// contains two entries with the same `name`.
-  pub fn partition_packages<'a>(
-    pkgs: &'a [&NpmPackageId],
-  ) -> Vec<Vec<&'a NpmPackageId>> {
-    // 1) Group by name
-    let mut by_name: HashMap<&str, Vec<&NpmPackageId>> = HashMap::new();
-    for p in pkgs {
-      by_name.entry(&p.nv.name[..]).or_default().push(p);
-    }
-
-    // 2) The minimal number of partitions is the max multiplicity per name
-    let k = by_name.values().map(|v| v.len()).max().unwrap_or(0);
-    if k == 0 {
-      return Vec::new();
-    }
-
-    // 3) Create k partitions
-    let mut partitions: Vec<Vec<&NpmPackageId>> = vec![Vec::new(); k];
-
-    // 4) Round-robin each name-group across the partitions
-    for group in by_name.values() {
-      for (i, item) in group.iter().enumerate() {
-        partitions[i].push(*item);
-      }
-    }
-
-    partitions
-  }
-
-  /// Merges multiple audit responses into a single consolidated response
-  fn merge_responses(responses: Vec<AuditResponse>) -> AuditResponse {
-    let mut merged_advisories = HashMap::new();
-    let mut merged_actions = Vec::new();
-    let mut total_low = 0;
-    let mut total_moderate = 0;
-    let mut total_high = 0;
-    let mut total_critical = 0;
-
-    for response in responses {
-      // Merge advisories (HashMap by advisory ID)
-      for (id, advisory) in response.advisories {
-        merged_advisories.insert(id, advisory);
-      }
-
-      // Merge actions
-      merged_actions.extend(response.actions);
-
-      // Sum up vulnerability counts
-      total_low += response.metadata.vulnerabilities.low;
-      total_moderate += response.metadata.vulnerabilities.moderate;
-      total_high += response.metadata.vulnerabilities.high;
-      total_critical += response.metadata.vulnerabilities.critical;
-    }
-
-    AuditResponse {
-      advisories: merged_advisories,
-      actions: merged_actions,
-      metadata: AuditMetadata {
-        vulnerabilities: AuditVulnerabilities {
-          low: total_low,
-          moderate: total_moderate,
-          high: total_high,
-          critical: total_critical,
-        },
-      },
-    }
   }
 
   pub async fn call_audits_api(
     audit_flags: AuditFlags,
     npm_url: &Url,
-    workspace: &WorkspaceResolver<CliSys>,
     npm_resolution_snapshot: &NpmResolutionSnapshot,
     client: HttpClient,
   ) -> Result<super::AuditResult, AnyError> {
-    let top_level_packages = npm_resolution_snapshot
-      .top_level_packages()
-      .collect::<Vec<_>>();
-    // In deno.json users might define two different versions of the same package - so we need
-    // to partition top level packages into buckets, to check all versions used.
-    let top_level_packages_partitions = partition_packages(&top_level_packages);
-
-    let mut requires = HashMap::with_capacity(top_level_packages.len());
-    let mut dependencies = HashMap::with_capacity(top_level_packages.len());
-
-    // Collect all dev dependencies, so they can be properly marked in the request body - since
-    // there's no way to specify `devDependencies` in `deno.json`, this is only iterating
-    // through discovered `package.json` files.
-    let mut all_dev_deps = Vec::with_capacity(32);
-    for pkg_json in workspace.package_jsons() {
-      let deps = pkg_json.resolve_local_package_json_deps();
-      for v in deps.dev_dependencies.values() {
-        let Ok(PackageJsonDepValue::Req(package_req)) = v else {
-          continue;
-        };
-        all_dev_deps.push(package_req.clone());
-      }
+    // Build request body for the bulk advisory endpoint:
+    // { "pkg-name": ["ver1", "ver2"], ... }
+    let mut body_map: HashMap<String, HashSet<String>> = HashMap::new();
+    for pkg in npm_resolution_snapshot.all_packages_for_every_system() {
+      body_map
+        .entry(pkg.id.nv.name.to_string())
+        .or_default()
+        .insert(pkg.id.nv.version.to_string());
     }
-    let dev_dependencies_snapshot =
-      npm_resolution_snapshot.subset(&all_dev_deps);
+    let body: HashMap<String, Vec<String>> = body_map
+      .into_iter()
+      .map(|(k, v)| (k, v.into_iter().collect()))
+      .collect();
+    let body = serde_json::to_value(&body).unwrap();
 
-    let mut responses = Vec::with_capacity(top_level_packages_partitions.len());
-    // And now let's construct the request body we need for the npm audits API.
-    let seen = &mut HashSet::with_capacity(top_level_packages.len() * 100);
-    for partition in top_level_packages_partitions {
-      for package in partition {
-        let is_dev =
-          dev_dependencies_snapshot.package_from_id(package).is_some();
-        requires
-          .insert(package.nv.name.to_string(), package.nv.version.to_string());
-        seen.insert(package.nv.clone());
-        let package_deps = get_dependency_descriptors_for_deps(
-          seen,
-          npm_resolution_snapshot,
-          &dev_dependencies_snapshot,
-          package,
-        );
-        dependencies.insert(
-          package.nv.name.to_string(),
-          Box::new(DependencyDescriptor {
-            version: package.nv.version.to_string(),
-            dev: is_dev,
-            requires: package_deps
-              .iter()
-              .map(|(k, v)| (k.to_string(), v.version.to_string()))
-              .collect(),
-            dependencies: package_deps,
-          }),
-        );
-      }
-
-      let body = serde_json::json!({
-          "dev": false,
-          "install": [],
-          "metadata": {},
-          "remove": [],
-          "requires": requires,
-          "dependencies": dependencies,
-      });
-
-      let r = call_audits_api_inner(&client, npm_url.clone(), body).await;
-      let audit_response: AuditResponse = match r {
+    let bulk_response =
+      match call_audits_api_inner(&client, npm_url.clone(), body).await {
         Ok(s) => s,
         Err(err) => {
           if audit_flags.ignore_registry_errors {
@@ -518,56 +272,49 @@ mod npm {
           }
         }
       };
-      responses.push(audit_response);
+
+    // Convert bulk response to flat list of advisories
+    let mut advisories: Vec<AuditAdvisory> = Vec::new();
+    for (pkg_name, pkg_advisories) in &bulk_response {
+      for adv in pkg_advisories {
+        advisories.push(AuditAdvisory {
+          title: adv.title.clone(),
+          severity: adv.severity.clone(),
+          url: adv.url.clone(),
+          module_name: pkg_name.clone(),
+          vulnerable_versions: adv.vulnerable_versions.clone(),
+          patched_versions: adv.patched_versions.clone().unwrap_or_default(),
+          cves: adv.cves.clone(),
+        });
+      }
     }
 
-    // Merge all responses into a single response
-    let response = merge_responses(responses);
-
-    let mut advisories = response.advisories.values().collect::<Vec<_>>();
+    // Build map of installed versions per package for vulnerability filtering
+    // and fix target computation.
+    let mut installed_versions: HashMap<String, Vec<deno_semver::Version>> =
+      HashMap::new();
+    for pkg in npm_resolution_snapshot.all_packages_for_every_system() {
+      installed_versions
+        .entry(pkg.id.nv.name.to_string())
+        .or_default()
+        .push(pkg.id.nv.version.clone());
+    }
 
     // Filter out advisories where no installed version falls within
     // the vulnerable range. This handles package.json overrides that
-    // force a patched version -- the npm audit API returns advisories
-    // based on the dependency tree as declared, but overrides may have
-    // resolved a non-vulnerable version.
-    {
-      // Collect all installed package versions from the snapshot.
-      let mut installed_versions: HashMap<String, Vec<deno_semver::Version>> =
-        HashMap::new();
-      for pkg in npm_resolution_snapshot.all_packages_for_every_system() {
-        installed_versions
-          .entry(pkg.id.nv.name.to_string())
-          .or_default()
-          .push(pkg.id.nv.version.clone());
-      }
-      advisories.retain(|adv| {
-        let Ok(vulnerable_range) =
-          deno_semver::VersionReq::parse_from_npm(&adv.vulnerable_versions)
-        else {
-          // Can't parse the range; keep the advisory to be safe
-          return true;
-        };
-        // Use the finding paths to identify the actual installed
-        // package name (the last segment of each path).
-        let finding_pkg_names: Vec<&str> = adv
-          .findings
-          .iter()
-          .flat_map(|f| f.paths.iter())
-          .filter_map(|p| p.rsplit('>').next().map(str::trim))
-          .collect();
-        // Check if any installed version of the affected packages
-        // falls within the vulnerable range.
-        for name in &finding_pkg_names {
-          if let Some(versions) = installed_versions.get(*name)
-            && versions.iter().any(|v| vulnerable_range.matches(v))
-          {
-            return true;
-          }
-        }
+    // force a patched version.
+    advisories.retain(|adv| {
+      let Ok(vulnerable_range) =
+        deno_semver::VersionReq::parse_from_npm(&adv.vulnerable_versions)
+      else {
+        return true;
+      };
+      if let Some(versions) = installed_versions.get(&adv.module_name) {
+        versions.iter().any(|v| vulnerable_range.matches(v))
+      } else {
         false
-      });
-    }
+      }
+    });
 
     // Filter out ignored CVEs
     if !audit_flags.ignore.is_empty() {
@@ -607,39 +354,19 @@ mod npm {
 
     let minimal_severity =
       AdvisorySeverity::parse(&audit_flags.severity).unwrap();
-
-    // Collect IDs of advisories remaining after ignore filtering
-    let remaining_advisory_ids: std::collections::HashSet<i32> =
-      advisories.iter().map(|adv| adv.id).collect();
-
-    // Extract fixable actions, filtering out actions that only resolve
-    // ignored advisories
-    let fixable_actions = response
-      .actions
-      .iter()
-      .filter(|a| {
-        a.action == "install" && a.module.is_some() && a.target.is_some()
-      })
-      .filter(|a| {
-        // Keep only actions that resolve at least one non-ignored advisory
-        a.resolves
-          .iter()
-          .any(|r| remaining_advisory_ids.contains(&r.id))
-      })
-      .map(|a| super::FixableAction {
-        module_name: a.module.clone().unwrap(),
-        target_version: a.target.clone().unwrap(),
-        is_major: a.is_major,
-      })
-      .collect::<Vec<_>>();
-
     print_report(
       &vulns,
-      advisories,
-      response.actions,
+      &advisories,
       minimal_severity,
       audit_flags.ignore_unfixable,
     );
+
+    // Derive fixable actions from advisories that have patched versions.
+    // The bulk API does not return explicit "actions" like the retired
+    // full audit API did, so we extract the minimum satisfying version
+    // from patched_versions ranges.
+    let fixable_actions =
+      derive_fixable_actions(&advisories, &installed_versions);
 
     // Exit code 1 only if there are vulnerabilities at or above the specified level
     let exit_code = if vulns.count_at_or_above(minimal_severity) > 0 {
@@ -653,10 +380,77 @@ mod npm {
     })
   }
 
+  /// Derive fix actions from advisory patched_versions ranges.
+  ///
+  /// For each vulnerable package, parse the patched_versions range to find
+  /// the minimum version that fixes the vulnerability. If multiple advisories
+  /// affect the same package, pick the highest target version so all are
+  /// resolved. Compare the target major version with the installed major
+  /// version to determine if it is a major upgrade.
+  fn derive_fixable_actions(
+    advisories: &[AuditAdvisory],
+    installed_versions: &HashMap<String, Vec<deno_semver::Version>>,
+  ) -> Vec<super::FixableAction> {
+    use deno_semver::Version;
+
+    // module_name -> (target_version, is_major)
+    let mut best_target: HashMap<String, (Version, bool)> = HashMap::new();
+
+    for adv in advisories {
+      if adv.patched_versions.is_empty() {
+        continue;
+      }
+
+      let Some(target) = min_version_from_range(&adv.patched_versions) else {
+        continue;
+      };
+
+      let installed_major = installed_versions
+        .get(&adv.module_name)
+        .and_then(|vs| vs.first())
+        .map(|v| v.major)
+        .unwrap_or(0);
+      let is_major = target.major > installed_major;
+
+      match best_target.get(&adv.module_name) {
+        Some((existing, _)) if *existing >= target => {}
+        _ => {
+          best_target.insert(adv.module_name.clone(), (target, is_major));
+        }
+      }
+    }
+
+    best_target
+      .into_iter()
+      .map(|(module_name, (target, is_major))| super::FixableAction {
+        module_name,
+        target_version: target.to_string(),
+        is_major,
+      })
+      .collect()
+  }
+
+  /// Extract the minimum version from a npm version range string.
+  ///
+  /// For common patched_versions formats like ">=1.1.0" or ">=2.0.0 <3.0.0",
+  /// this extracts the lower bound version. Returns None if the range cannot
+  /// be parsed or has no usable lower bound.
+  fn min_version_from_range(range: &str) -> Option<deno_semver::Version> {
+    // Common format: ">=X.Y.Z" or ">=X.Y.Z <A.B.C"
+    // deno_semver can parse npm ranges; we look for the first >= comparator
+    let trimmed = range.trim();
+    if let Some(rest) = trimmed.strip_prefix(">=") {
+      // Take the version part (up to first space or end)
+      let ver_str = rest.split_whitespace().next()?;
+      deno_semver::Version::parse_standard(ver_str).ok()
+    } else {
+      None
+    }
+  }
+
   fn print_report(
     vulns: &AuditVulnerabilities,
-    advisories: Vec<&AuditAdvisory>,
-    actions: Vec<AuditAction>,
+    advisories: &[AuditAdvisory],
     minimal_severity: AdvisorySeverity,
     ignore_unfixable: bool,
   ) {
@@ -670,8 +464,8 @@ mod npm {
         continue;
       }
 
-      let actions = adv.find_actions(&actions);
-      if actions.is_empty() && ignore_unfixable {
+      let has_fix = !adv.patched_versions.is_empty();
+      if !has_fix && ignore_unfixable {
         continue;
       }
 
@@ -699,36 +493,23 @@ mod npm {
         colors::gray("Vulnerable:"),
         adv.vulnerable_versions
       );
-      _ = writeln!(
-        stdout,
-        "│ {}    {}",
-        colors::gray("Patched:"),
-        adv.patched_versions
-      );
-      if let Some(finding) = adv.findings.first()
-        && let Some(path) = finding.paths.first()
-      {
-        let path_fmt = path
-          .split(">")
-          .collect::<Vec<_>>()
-          .join(colors::gray(" > ").to_string().as_str());
-        _ = writeln!(stdout, "│ {}       {}", colors::gray("Path:"), path_fmt);
-      }
-      if actions.is_empty() {
-        _ = writeln!(stdout, "╰ {}      {}", colors::gray("Info:"), adv.url);
-      } else {
+      if has_fix {
+        _ = writeln!(
+          stdout,
+          "│ {}    {}",
+          colors::gray("Patched:"),
+          adv.patched_versions
+        );
         _ = writeln!(stdout, "│ {}       {}", colors::gray("Info:"), adv.url);
-      }
-      if actions.len() == 1 {
-        _ =
-          writeln!(stdout, "╰ {}    {}", colors::gray("Actions:"), actions[0]);
-      } else if actions.len() > 1 {
-        _ =
-          writeln!(stdout, "│ {}    {}", colors::gray("Actions:"), actions[0]);
-        for action in &actions[0..actions.len() - 2] {
-          _ = writeln!(stdout, "│             {}", action);
-        }
-        _ = writeln!(stdout, "╰             {}", actions[actions.len() - 1]);
+        _ = writeln!(
+          stdout,
+          "╰ {}    update {} to {}",
+          colors::gray("Actions:"),
+          adv.module_name,
+          adv.patched_versions
+        );
+      } else {
+        _ = writeln!(stdout, "╰ {}       {}", colors::gray("Info:"), adv.url);
       }
       _ = writeln!(stdout);
     }
@@ -752,107 +533,41 @@ mod npm {
     );
   }
 
-  #[derive(Debug, Serialize)]
-  #[serde(rename_all = "camelCase")]
-  struct DependencyDescriptor {
-    version: String,
-    dev: bool,
-    requires: HashMap<String, String>,
-    dependencies: HashMap<String, Box<DependencyDescriptor>>,
-  }
-
+  /// Advisory item from the bulk API response.
   #[derive(Debug, Deserialize)]
-  pub struct AuditActionResolve {
-    pub id: i32,
-    pub path: Option<String>,
-    // TODO(bartlomieju): currently not used, commented out so it's not flagged by clippy
-    // pub dev: bool,
-    // pub optional: bool,
-    // pub bundled: bool,
-  }
-
-  #[derive(Debug, Deserialize)]
-  pub struct AuditAction {
-    #[serde(rename = "isMajor", default)]
-    pub is_major: bool,
-    pub action: String,
-    pub resolves: Vec<AuditActionResolve>,
-    pub module: Option<String>,
-    pub target: Option<String>,
-  }
-
-  #[derive(Debug, Deserialize)]
-  pub struct AdvisoryFinding {
-    // TODO(bartlomieju): currently not used, commented out so it's not flagged by clippy
-    // pub version: String,
-    pub paths: Vec<String>,
-  }
-
-  #[derive(Debug, Deserialize)]
-  pub struct AuditAdvisory {
-    pub id: i32,
+  pub struct BulkAdvisoryItem {
+    pub url: String,
     pub title: String,
-    pub findings: Vec<AdvisoryFinding>,
+    pub severity: String,
+    pub vulnerable_versions: String,
+    #[serde(default)]
+    pub patched_versions: Option<String>,
     #[serde(default)]
     pub cves: Vec<String>,
-    // TODO(bartlomieju): currently not used, commented out so it's not flagged by clippy
-    // pub cwe: Vec<String>,
-    pub severity: String,
-    pub url: String,
-    pub module_name: String,
-    pub vulnerable_versions: String,
-    pub patched_versions: String,
+    #[serde(default)]
+    #[allow(dead_code, reason = "deserialized but not yet displayed")]
+    pub cwe: Vec<String>,
   }
 
-  impl AuditAdvisory {
-    fn find_actions(&self, actions: &[AuditAction]) -> Vec<String> {
-      let mut acts = Vec::new();
+  /// The bulk advisory endpoint response: { "package-name": [advisory, ...] }
+  pub type BulkAuditResponse = HashMap<String, Vec<BulkAdvisoryItem>>;
 
-      for action in actions {
-        if !action.resolves.iter().any(|r| r.id == self.id) {
-          continue;
-        }
-
-        let module = action
-          .module
-          .as_deref()
-          .map(str::to_owned)
-          .or_else(|| {
-            // Fallback to infer from dependency path
-            action.resolves.first().and_then(|r| {
-              r.path
-                .as_deref()
-                .and_then(|p| p.split('>').next_back())
-                .map(|s| s.trim().to_string())
-            })
-          })
-          .unwrap_or_else(|| "<unknown>".to_string());
-
-        let target = action
-          .target
-          .as_deref()
-          .map(|t| format!("@{}", t))
-          .unwrap_or_default();
-
-        let major = if action.is_major {
-          " (major upgrade)"
-        } else {
-          ""
-        };
-
-        acts.push(format!("{} {}{}{}", action.action, module, target, major));
-      }
-
-      acts
-    }
+  /// Internal advisory representation with module name from the response key.
+  struct AuditAdvisory {
+    title: String,
+    severity: String,
+    url: String,
+    module_name: String,
+    vulnerable_versions: String,
+    patched_versions: String,
+    cves: Vec<String>,
   }
 
-  #[derive(Debug, Deserialize)]
-  pub struct AuditVulnerabilities {
-    pub low: i32,
-    pub moderate: i32,
-    pub high: i32,
-    pub critical: i32,
+  struct AuditVulnerabilities {
+    low: i32,
+    moderate: i32,
+    high: i32,
+    critical: i32,
   }
 
   impl AuditVulnerabilities {
@@ -868,25 +583,6 @@ mod npm {
         AdvisorySeverity::Critical => self.critical,
       }
     }
-  }
-
-  #[derive(Debug, Deserialize)]
-  #[serde(rename_all = "camelCase")]
-  pub struct AuditMetadata {
-    pub vulnerabilities: AuditVulnerabilities,
-    // TODO(bartlomieju): currently not used, commented out so it's not flagged by clippy
-    // pub dependencies: i32,
-    // pub dev_dependencies: i32,
-    // pub optional_dependencies: i32,
-    // pub total_dependencies: i32,
-  }
-
-  #[derive(Debug, Deserialize)]
-  pub struct AuditResponse {
-    #[serde(default)]
-    pub actions: Vec<AuditAction>,
-    pub advisories: HashMap<i32, AuditAdvisory>,
-    pub metadata: AuditMetadata,
   }
 }
 
@@ -1208,25 +904,51 @@ mod socket_dev {
 mod tests {
   use deno_core::serde_json;
 
-  use super::npm::AuditResponse;
+  use super::npm::BulkAuditResponse;
 
   #[test]
-  fn test_audit_response_deserialize_without_actions() {
-    // Test that AuditResponse can be deserialized when the `actions` field is missing
-    // This can happen with some npm registry responses
+  fn test_bulk_audit_response_deserialize_empty() {
+    let json = r#"{}"#;
+    let response: BulkAuditResponse = serde_json::from_str(json).unwrap();
+    assert!(response.is_empty());
+  }
+
+  #[test]
+  fn test_bulk_audit_response_deserialize_with_advisory() {
     let json = r#"{
-      "advisories": {},
-      "metadata": {
-        "vulnerabilities": {
-          "low": 0,
-          "moderate": 0,
-          "high": 0,
-          "critical": 0
-        }
-      }
+      "@denotest/with-vuln1": [{
+        "url": "https://example.com/vuln/101010",
+        "title": "test vulnerability",
+        "severity": "high",
+        "vulnerable_versions": "<1.1.0"
+      }]
     }"#;
-    let response: AuditResponse = serde_json::from_str(json).unwrap();
-    assert!(response.actions.is_empty());
-    assert!(response.advisories.is_empty());
+    let response: BulkAuditResponse = serde_json::from_str(json).unwrap();
+    assert_eq!(response.len(), 1);
+    let advisories = &response["@denotest/with-vuln1"];
+    assert_eq!(advisories.len(), 1);
+    assert_eq!(advisories[0].severity, "high");
+    assert!(advisories[0].patched_versions.is_none());
+    assert!(advisories[0].cves.is_empty());
+  }
+
+  #[test]
+  fn test_bulk_audit_response_deserialize_with_optional_fields() {
+    let json = r#"{
+      "test-pkg": [{
+        "url": "https://example.com",
+        "title": "test",
+        "severity": "critical",
+        "vulnerable_versions": "<2.0.0",
+        "patched_versions": ">=2.0.0",
+        "cves": ["CVE-2025-0001"],
+        "cwe": ["CWE-1333"]
+      }]
+    }"#;
+    let response: BulkAuditResponse = serde_json::from_str(json).unwrap();
+    let advisories = &response["test-pkg"];
+    assert_eq!(advisories[0].patched_versions.as_deref(), Some(">=2.0.0"));
+    assert_eq!(advisories[0].cves, vec!["CVE-2025-0001"]);
+    assert_eq!(advisories[0].cwe, vec!["CWE-1333"]);
   }
 }
