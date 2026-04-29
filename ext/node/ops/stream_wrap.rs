@@ -1350,12 +1350,18 @@ impl LibUvStreamWrap {
     // through `Vec::spare_capacity_mut` each time.
     let mut string_storage: Vec<u8> = if string_size > 0 {
       let mut v = Vec::with_capacity(string_size);
+      #[allow(
+        clippy::uninit_vec,
+        reason = "encoders fully fill `string_size` bytes before any read"
+      )]
       // SAFETY: we reserved `string_size` bytes; the encoders write
       // into this range before we expose any slice. `set_len` here
       // claims the full capacity so `as_mut_ptr().add(offset)` is
       // valid for arbitrary `offset < string_size`. Bytes may be
       // uninit at this point, but we never read before writing.
-      unsafe { v.set_len(string_size) };
+      unsafe {
+        v.set_len(string_size)
+      };
       v
     } else {
       Vec::new()

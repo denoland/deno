@@ -322,6 +322,10 @@ pub unsafe fn uv_try_writev(
   }
 }
 
+/// ### Safety
+/// `handle` must be a valid pointer to an initialized stream handle
+/// (`uv_tcp_t`, `uv_tty_t`, or `uv_pipe_t`, cast as `uv_stream_t`).
+/// `data` must reference memory valid for the duration of this call.
 pub unsafe fn uv_try_write(handle: *mut uv_stream_t, data: &[u8]) -> i32 {
   // Dispatch by handle type; `uv_tcp_t`, `uv_pipe_t`, and `uv_tty_t` have
   // different struct layouts, so the TCP path below must only be taken
