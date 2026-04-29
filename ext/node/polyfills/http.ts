@@ -7,7 +7,7 @@ import {
   validateHeaderValue,
 } from "node:_http_outgoing";
 import { ClientRequest } from "node:_http_client";
-import { Agent, globalAgent } from "node:_http_agent";
+import { Agent, globalAgent, setGlobalAgent } from "node:_http_agent";
 import { IncomingMessage } from "node:_http_incoming";
 import {
   _connectionListener,
@@ -119,7 +119,12 @@ export {
 export default {
   _connectionListener,
   Agent,
-  globalAgent,
+  get globalAgent() {
+    return globalAgent;
+  },
+  set globalAgent(value) {
+    setGlobalAgent(value);
+  },
   ClientRequest,
   STATUS_CODES,
   METHODS,

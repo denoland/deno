@@ -28,6 +28,7 @@ import {
 const { async_id_symbol } = symbols;
 import {
   ERR_HTTP_BODY_NOT_ALLOWED,
+  ERR_HTTP_CONTENT_LENGTH_MISMATCH,
   ERR_HTTP_HEADERS_SENT,
   ERR_HTTP_INVALID_HEADER_VALUE,
   ERR_HTTP_TRAILER_INVALID,
@@ -362,6 +363,10 @@ Object.defineProperties(
       return headers;
     },
 
+    // Match Node: call the standalone write_() helper with `this` as the
+    // first argument instead of a method call on `this`. This keeps the
+    // chunk-type validation reachable when callers pass a fake `this` via
+    // `outgoingMessage.write.call(fake)` (see lib/_http_outgoing.js).
     write(
       chunk: string | Uint8Array | Buffer,
       encoding: string | null,
@@ -371,20 +376,11 @@ Object.defineProperties(
         callback = encoding;
         encoding = null;
       }
-      const ret = this.write_(chunk, encoding, callback, false);
+      const ret = write_(this, chunk, encoding, callback, false);
       if (!ret) {
         this[kNeedDrain] = true;
       }
       return ret;
-    },
-
-    write_(
-      chunk: string | Uint8Array | Buffer,
-      encoding: string | null,
-      callback: () => void,
-      fromEnd: boolean,
-    ): boolean {
-      return write_(this, chunk, encoding, callback, fromEnd);
     },
 
     addTrailers(headers: any) {
@@ -435,7 +431,7 @@ Object.defineProperties(
           this.socket.cork();
         }
 
-        this.write_(chunk, encoding, null, true);
+        write_(this, chunk, encoding, null, true);
       } else if (this.finished) {
         if (typeof callback === "function") {
           if (!this.writableFinished) {
@@ -456,6 +452,16 @@ Object.defineProperties(
 
       if (typeof callback === "function") {
         this.once("finish", callback);
+      }
+
+      if (
+        _checkStrictContentLength(this) &&
+        this[kBytesWritten] !== this._contentLength
+      ) {
+        throw new ERR_HTTP_CONTENT_LENGTH_MISMATCH(
+          this[kBytesWritten],
+          this._contentLength,
+        );
       }
 
       const finish = onFinish.bind(undefined, this);
@@ -1115,6 +1121,19 @@ function write_(
     len ??= typeof chunk === "string"
       ? Buffer.byteLength(chunk, encoding)
       : chunk.byteLength;
+
+    if (
+      _checkStrictContentLength(msg) &&
+      (fromEnd
+        ? msg[kBytesWritten] + len !== msg._contentLength
+        : msg[kBytesWritten] + len > msg._contentLength)
+    ) {
+      throw new ERR_HTTP_CONTENT_LENGTH_MISMATCH(
+        len + msg[kBytesWritten],
+        msg._contentLength,
+      );
+    }
+
     msg[kBytesWritten] += len;
   }
 

@@ -56,7 +56,7 @@ import {
   OutgoingMessage,
   parseUniqueHeadersOption,
 } from "node:_http_outgoing";
-import { globalAgent } from "node:_http_agent";
+import httpAgent from "node:_http_agent";
 import { Buffer } from "node:buffer";
 import { urlToHttpOptions } from "ext:deno_node/internal/url.ts";
 import { kOutHeaders } from "ext:deno_node/internal/http.ts";
@@ -66,6 +66,7 @@ import {
   ERR_INVALID_ARG_TYPE,
   ERR_INVALID_HTTP_TOKEN,
   ERR_INVALID_PROTOCOL,
+  ERR_INVALID_URL,
   ERR_UNESCAPED_CHARACTERS,
 } from "ext:deno_node/internal/errors.ts";
 import {
@@ -139,7 +140,17 @@ function ClientRequest(input, options, cb) {
 
   if (typeof input === "string") {
     const urlStr = input;
-    input = urlToHttpOptions(new URL(urlStr));
+    // Match Node: `new URL(...)` in ClientRequest surfaces as
+    // ERR_INVALID_URL (node's internal URL constructor calls
+    // bindingUrl.parse with raiseException=true). Deno's Web URL
+    // throws a generic TypeError, so wrap it to attach the code.
+    let parsed;
+    try {
+      parsed = new URL(urlStr);
+    } catch {
+      throw new ERR_INVALID_URL(urlStr);
+    }
+    input = urlToHttpOptions(parsed);
   } else if (isURL(input)) {
     input = urlToHttpOptions(input);
   } else {
@@ -156,7 +167,7 @@ function ClientRequest(input, options, cb) {
   }
 
   let agent = options.agent;
-  const defaultAgent = options._defaultAgent || globalAgent;
+  const defaultAgent = options._defaultAgent || httpAgent.globalAgent;
   if (agent === false) {
     agent = new defaultAgent.constructor();
   } else if (agent === null || agent === undefined) {
@@ -570,13 +581,8 @@ function socketCloseListener() {
   const socket = this;
   const req = socket._httpMessage;
 
-  // Guard against close firing on a socket whose request was already
-  // handled by responseKeepAlive. In Node.js, the close callback from
-  // uv_close fires on the next event loop iteration (after nextTick),
-  // so responseKeepAlive's removeListener always runs before close.
-  // In Deno, V8TaskSpawner may fire before nextTick, so close can
-  // fire before responseKeepAlive removes the listener.
-  if (!req || req.destroyed) {
+  // Guard against close firing on a socket that has no associated request.
+  if (!req) {
     return;
   }
 
@@ -845,6 +851,8 @@ function responseKeepAlive(req) {
 
   req.destroyed = true;
   if (req.res) {
+    // Detach socket from IncomingMessage to avoid destroying the freed
+    // socket in IncomingMessage.destroy().
     req.res.socket = null;
   }
 }

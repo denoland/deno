@@ -235,6 +235,12 @@ impl PipeWrap {
       None => std::ptr::null_mut(),
     }
   }
+
+  /// Get the underlying uv_stream_t pointer. Used by TLSWrap to attach
+  /// to the pipe stream for encrypted I/O.
+  pub fn stream_ptr(&self) -> *mut uv_compat::uv_stream_t {
+    self.base.stream_ptr()
+  }
 }
 
 // -- ops --

@@ -10,6 +10,7 @@ use std::ptr::NonNull;
 use libc::INT_MAX;
 use napi_sym::napi_sym;
 
+use super::util::SendPtr;
 use super::util::check_new_from_utf8;
 use super::util::check_new_from_utf8_len;
 use super::util::get_array_buffer_ptr;
@@ -128,19 +129,47 @@ impl Reference {
     let finalize_hint = reference.finalize_hint;
     reference.reset();
 
-    // copy this value before the finalize callback, since
-    // it might free the reference (which would be a UAF)
+    // Copy these before any callback, since the finalizer might free
+    // the reference (which would be a UAF).
     let ownership = reference.ownership;
-    if let Some(finalize_cb) = finalize_cb {
-      // Deregister before calling so it won't be called again at shutdown
-      let env = unsafe { &*reference.env };
-      env.remove_ref_finalizer(finalize_data);
-      unsafe {
-        finalize_cb(reference.env as _, finalize_data, finalize_hint);
-      }
-    }
+    let env_ptr = reference.env;
 
-    if ownership == ReferenceOwnership::Runtime {
+    if let Some(finalize_cb) = finalize_cb {
+      // Deregister before dispatching so it won't be called again at shutdown
+      let env = unsafe { &*env_ptr };
+      env.remove_ref_finalizer(finalize_data);
+
+      // Defer the finalizer to after GC completes. Calling user-provided
+      // finalizer callbacks during V8 GC is unsafe — they can re-enter V8,
+      // allocate GC'd objects, or trigger cascading weak callbacks, all of
+      // which lead to undefined behavior. Node.js defers these via
+      // EnqueueFinalizer; we use the cross-thread task spawner to schedule
+      // the callback on the next event loop tick.
+      let sender = env.async_work_sender.clone();
+      let env_send = SendPtr(env_ptr);
+      let data_send = SendPtr(finalize_data);
+      let hint_send = SendPtr(finalize_hint);
+      let ref_ptr = if ownership == ReferenceOwnership::Runtime {
+        SendPtr(reference as *mut Reference)
+      } else {
+        SendPtr(std::ptr::null_mut())
+      };
+      sender.spawn(move |_scope| {
+        unsafe {
+          finalize_cb(
+            env_send.take() as _,
+            data_send.take() as *mut c_void,
+            hint_send.take() as *mut c_void,
+          );
+        }
+        let ref_ptr = ref_ptr.take();
+        if !ref_ptr.is_null() {
+          unsafe { drop(Reference::from_raw(ref_ptr as *mut Reference)) }
+        }
+      });
+    } else if ownership == ReferenceOwnership::Runtime {
+      // No finalizer — just clean up the Reference. This only frees Rust
+      // heap memory (no V8 interaction), so it's safe during GC.
       unsafe { drop(Reference::from_raw(reference)) }
     }
   }
@@ -3145,63 +3174,21 @@ fn napi_get_reference_value(
   napi_clear_last_error(env_ptr)
 }
 
-/// Opaque wrapper for a heap-allocated V8 HandleScope.
-/// Matches Node.js's `HandleScopeWrapper` pattern: the V8 scope is
-/// heap-allocated so it can outlive the stack frame that created it.
-type HandleScopeBox =
-  std::pin::Pin<Box<v8::ScopeStorage<v8::HandleScope<'static, ()>>>>;
-
-/// Tracks whether `napi_escape_handle` has been called on an
-/// escapable handle scope (to prevent double-escape).
-/// The actual V8 scoping is handled by napi_open/close_handle_scope;
-/// the escapable variant just adds the escape-once tracking.
-struct EscapableHandleScopeData {
-  handle_scope_ptr: *mut v8::ScopeStorage<v8::HandleScope<'static, ()>>,
-  escape_called: bool,
-}
-
 #[napi_sym]
 fn napi_open_handle_scope(
   env: *mut Env,
-  result: *mut napi_handle_scope,
+  _result: *mut napi_handle_scope,
 ) -> napi_status {
   let env = check_env!(env);
-  check_arg!(env, result);
-
-  // SAFETY: The isolate pointer is valid for the lifetime of the NAPI
-  // callback. We erase the borrow lifetime via transmute because the
-  // scope is heap-allocated and managed manually via close.
-  let storage = v8::HandleScope::new(env.isolate());
-  let storage: v8::ScopeStorage<v8::HandleScope<'static, ()>> =
-    unsafe { std::mem::transmute(storage) };
-  let mut pinned: HandleScopeBox = Box::pin(storage);
-  let _ = pinned.as_mut().init();
-
-  let ptr =
-    unsafe { Box::into_raw(std::pin::Pin::into_inner_unchecked(pinned)) };
-  unsafe { *result = ptr as napi_handle_scope }
-  env.open_handle_scopes += 1;
   napi_clear_last_error(env)
 }
 
 #[napi_sym]
 fn napi_close_handle_scope(
   env: *mut Env,
-  scope: napi_handle_scope,
+  _scope: napi_handle_scope,
 ) -> napi_status {
   let env = check_env!(env);
-  check_arg!(env, scope);
-  if env.open_handle_scopes == 0 {
-    return napi_set_last_error(env, napi_handle_scope_mismatch);
-  }
-
-  env.open_handle_scopes -= 1;
-  // SAFETY: Reconstruct the Box and drop it, which runs the V8
-  // HandleScope destructor (pops V8's internal scope stack).
-  unsafe {
-    let ptr = scope as *mut v8::ScopeStorage<v8::HandleScope<'static, ()>>;
-    drop(Box::from_raw(ptr));
-  }
   napi_clear_last_error(env)
 }
 
@@ -3213,22 +3200,13 @@ fn napi_open_escapable_handle_scope(
   let env = check_env!(env);
   check_arg!(env, result);
 
-  // Open a real V8 HandleScope (same as napi_open_handle_scope)
-  let storage = v8::HandleScope::new(env.isolate());
-  let storage: v8::ScopeStorage<v8::HandleScope<'static, ()>> =
-    unsafe { std::mem::transmute(storage) };
-  let mut pinned: HandleScopeBox = Box::pin(storage);
-  let _ = pinned.as_mut().init();
-  let scope_ptr =
-    unsafe { Box::into_raw(std::pin::Pin::into_inner_unchecked(pinned)) };
+  // Allocate a bool to track whether escape has been called.
+  // The pointer is cast to napi_escapable_handle_scope (opaque).
+  let escaped_flag = Box::into_raw(Box::new(false));
+  unsafe {
+    *result = escaped_flag as napi_escapable_handle_scope;
+  }
 
-  // Wrap in EscapableHandleScopeData to track double-escape
-  let wrapper = Box::new(EscapableHandleScopeData {
-    handle_scope_ptr: scope_ptr,
-    escape_called: false,
-  });
-  unsafe { *result = Box::into_raw(wrapper) as napi_escapable_handle_scope }
-  env.open_handle_scopes += 1;
   napi_clear_last_error(env)
 }
 
@@ -3238,17 +3216,14 @@ fn napi_close_escapable_handle_scope(
   scope: napi_escapable_handle_scope,
 ) -> napi_status {
   let env = check_env!(env);
-  check_arg!(env, scope);
-  if env.open_handle_scopes == 0 {
-    return napi_set_last_error(env, napi_handle_scope_mismatch);
+
+  if !scope.is_null() {
+    // Reclaim the bool we allocated in open.
+    unsafe {
+      let _ = Box::from_raw(scope as *mut bool);
+    }
   }
 
-  env.open_handle_scopes -= 1;
-  unsafe {
-    let wrapper = Box::from_raw(scope as *mut EscapableHandleScopeData);
-    // Drop the underlying V8 HandleScope
-    drop(Box::from_raw(wrapper.handle_scope_ptr));
-  }
   napi_clear_last_error(env)
 }
 
@@ -3263,14 +3238,15 @@ fn napi_escape_handle<'s>(
   check_arg!(env, scope);
   check_arg!(env, result);
 
-  let wrapper = unsafe { &mut *(scope as *mut EscapableHandleScopeData) };
-  if wrapper.escape_called {
-    return napi_set_last_error(env, napi_escape_called_twice);
+  let escaped_flag = scope as *mut bool;
+  unsafe {
+    if *escaped_flag {
+      return napi_set_last_error(env, napi_escape_called_twice);
+    }
+    *escaped_flag = true;
+    *result = escapee;
   }
-  wrapper.escape_called = true;
-  // Copy the handle value. The V8 handle remains valid in the parent
-  // scope's handle block because we opened a real V8 HandleScope.
-  unsafe { *result = escapee }
+
   napi_clear_last_error(env)
 }
 
@@ -4031,10 +4007,27 @@ fn napi_add_finalizer(
 #[napi_sym]
 fn node_api_post_finalizer(
   env: *mut Env,
-  _finalize_cb: napi_finalize,
-  _finalize_data: *mut c_void,
-  _finalize_hint: *mut c_void,
+  finalize_cb: napi_finalize,
+  finalize_data: *mut c_void,
+  finalize_hint: *mut c_void,
 ) -> napi_status {
+  let env = check_env!(env);
+
+  // Schedule the finalizer to run on the next event loop tick,
+  // matching Node.js behavior. This is the public API equivalent
+  // of the internal deferred-finalizer mechanism.
+  let sender = env.async_work_sender.clone();
+  let env_send = SendPtr(env as *mut Env);
+  let data_send = SendPtr(finalize_data);
+  let hint_send = SendPtr(finalize_hint);
+  sender.spawn(move |_scope| unsafe {
+    finalize_cb(
+      env_send.take() as _,
+      data_send.take() as *mut c_void,
+      hint_send.take() as *mut c_void,
+    );
+  });
+
   napi_clear_last_error(env)
 }
 

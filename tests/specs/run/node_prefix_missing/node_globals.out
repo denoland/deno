@@ -11,9 +11,10 @@ Immediate {
 }
 Timeout {
   _idleTimeout: 1000,
+  _idleStart: [WILDLINE],
   _onTimeout: [Function (anonymous)],
   _timerArgs: [],
-  _isRepeat: false,
+  _repeat: false,
   _destroyed: false,
   _asyncId: [WILDLINE],
   _triggerAsyncId: [WILDLINE],

@@ -143,6 +143,9 @@ pub unsafe fn uv_read_start(
     if !handles.iter().any(|&h| std::ptr::eq(h, tcp)) {
       handles.push(tcp);
     }
+    if let Some(w) = tcp_ref.internal_waker.as_ref() {
+      w.mark_ready();
+    }
   }
   0
 }
@@ -313,15 +316,92 @@ pub unsafe fn uv_write(
 
     let write_data = collect_bufs(bufs, nbufs);
 
-    // Try to write synchronously when the queue is empty, matching libuv's
-    // uv_write2() → uv__write() → uv__try_write() path.  This pushes data
-    // into the kernel buffer immediately.  The callback is NOT fired here;
-    // it is deferred to the poll loop (the entry is queued with the
-    // already-written offset so the poll loop sees it as complete and fires
-    // the callback then).  Deferring the callback is important because
-    // callers like TLSWrap's enc_out() set re-entrancy guards (in_dowrite)
-    // that would suppress the completion notification if it fired
-    // synchronously.
+    uv_write_owned_impl(req, tcp, write_data, cb)
+  }
+}
+
+/// Take an already-owned `Vec<u8>` and queue it as a pending write on
+/// the TCP handle. This avoids the extra allocation + memcpy that
+/// `uv_write` does via `collect_bufs` when the caller has already
+/// materialized the bytes into a single buffer (e.g. the stream_wrap
+/// `writev` op concatenates JS chunks into one Vec before writing).
+///
+/// ### Safety
+/// `req` must be valid until the write callback fires. `tcp` must be
+/// initialized by `uv_tcp_init`.
+pub unsafe fn uv_write_owned_tcp(
+  req: *mut uv_write_t,
+  tcp: *mut uv_tcp_t,
+  data: Vec<u8>,
+  cb: Option<uv_write_cb>,
+) -> c_int {
+  unsafe {
+    (*req).handle = tcp as *mut uv_stream_t;
+    if (*tcp).internal_stream.is_none() {
+      return UV_EBADF;
+    }
+    uv_write_owned_impl(req, tcp, data, cb)
+  }
+}
+
+/// Polymorphic counterpart to `uv_write_owned_tcp` that dispatches on
+/// the runtime stream type. Callers (e.g. the stream_wrap `writev` op)
+/// hold a `*mut uv_stream_t` that may back a TCP, pipe, or TTY handle;
+/// blindly treating it as TCP corrupts the pipe's in-place VecDeque
+/// and trips UB (the write queue is at a different offset in each
+/// struct). For non-TCP types, fall back to the existing `uv_write`
+/// buffer-vector path by materializing a one-entry `uv_buf_t` over
+/// the owned data.
+///
+/// ### Safety
+/// `req` must be valid until the write callback fires. `handle` must
+/// be an initialized stream handle (TCP, pipe, or TTY).
+pub unsafe fn uv_write_owned(
+  req: *mut uv_write_t,
+  handle: *mut uv_stream_t,
+  data: Vec<u8>,
+  cb: Option<uv_write_cb>,
+) -> c_int {
+  unsafe {
+    match (*handle).r#type {
+      uv_handle_type::UV_TCP => {
+        uv_write_owned_tcp(req, handle as *mut uv_tcp_t, data, cb)
+      }
+      // Pipes/TTYs don't have an owned-Vec shortcut — build a single
+      // uv_buf_t and go through the regular `uv_write` dispatch which
+      // knows about the right per-type write queue layouts.
+      _ => {
+        let buf = uv_buf_t {
+          base: data.as_ptr() as *mut c_char,
+          len: data.len(),
+        };
+        // uv_write's pipe/tty paths internally copy the buffer into
+        // their own queue, so releasing ownership of `data` after the
+        // call is safe even though the bufs array lives on the stack.
+        let rc = uv_write(req, handle, &buf, 1, cb);
+        drop(data);
+        rc
+      }
+    }
+  }
+}
+
+/// Shared logic for queuing a pre-built Vec<u8> as a write.
+///
+/// ### Safety
+/// `req` must be valid until the write callback fires. `tcp` must be
+/// initialized and have `internal_stream` set.
+unsafe fn uv_write_owned_impl(
+  req: *mut uv_write_t,
+  tcp: *mut uv_tcp_t,
+  write_data: Vec<u8>,
+  cb: Option<uv_write_cb>,
+) -> c_int {
+  unsafe {
+    // Try sync write when the queue is empty, matching libuv's
+    // uv_write2 → uv__write → uv__try_write path. Callback is
+    // deferred to the poll loop to avoid re-entrancy with callers
+    // like TLSWrap that set `in_dowrite` guards.
     let mut offset = 0;
     if (*tcp).internal_write_queue.is_empty()
       && let Some(ref stream) = (*tcp).internal_stream
@@ -342,12 +422,14 @@ pub unsafe fn uv_write(
       status: None,
     });
 
-    // Ensure the handle is active so poll_tcp_handle drains the queue.
     (*tcp).flags |= UV_HANDLE_ACTIVE;
     let inner = get_inner((*tcp).loop_);
     let mut handles = inner.tcp_handles.borrow_mut();
     if !handles.iter().any(|&h| std::ptr::eq(h, tcp)) {
       handles.push(tcp);
+    }
+    if let Some(w) = (*tcp).internal_waker.as_ref() {
+      w.mark_ready();
     }
     0
   }
@@ -413,6 +495,9 @@ pub unsafe fn uv_shutdown(
       }
       (*pipe).flags |= UV_HANDLE_ACTIVE;
       drop(handles);
+      if let Some(w) = (*pipe).internal_waker.as_ref() {
+        w.mark_ready();
+      }
 
       // Wake the event loop so run_io processes the deferred shutdown.
       if let Some(waker) = inner.waker.borrow().as_ref() {
@@ -443,6 +528,9 @@ pub unsafe fn uv_shutdown(
     }
     (*tcp).flags |= UV_HANDLE_ACTIVE;
     drop(handles);
+    if let Some(w) = (*tcp).internal_waker.as_ref() {
+      w.mark_ready();
+    }
 
     // Wake the event loop so run_io processes the deferred shutdown.
     // Without this, shutdowns scheduled from nextTick/microtask
@@ -625,6 +713,9 @@ unsafe fn write_pipe(
       handles.push(pipe);
     }
     (*pipe).flags |= UV_HANDLE_ACTIVE;
+    if let Some(w) = (*pipe).internal_waker.as_ref() {
+      w.mark_ready();
+    }
   }
   0
 }

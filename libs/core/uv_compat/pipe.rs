@@ -105,6 +105,8 @@ pub struct uv_pipe_t {
   pub(crate) internal_shutdown: Option<super::tcp::ShutdownPending>,
   pub(crate) pending_instances: i32,
   pub(crate) ipc: bool,
+  pub(crate) internal_waker:
+    Option<std::sync::Arc<crate::uv_compat::waker::PipeHandleWaker>>,
 }
 
 /// In-flight pipe connect operation.
@@ -193,6 +195,7 @@ pub fn new_pipe(ipc: bool) -> uv_pipe_t {
     internal_shutdown: None,
     pending_instances: 4, // libuv default
     ipc,
+    internal_waker: None,
   }
 }
 
@@ -210,6 +213,10 @@ pub unsafe fn uv_pipe_init(
     (*pipe).loop_ = loop_;
     // Match libuv: handles start ref'd so they keep the event loop alive.
     (*pipe).flags = super::UV_HANDLE_REF;
+    let shared = super::get_inner(loop_).shared.clone();
+    (*pipe).internal_waker = Some(
+      crate::uv_compat::waker::PipeHandleWaker::new(pipe as usize, shared),
+    );
   }
   0
 }
@@ -317,13 +324,6 @@ pub unsafe fn uv_pipe_bind(pipe: *mut uv_pipe_t, path: &str) -> c_int {
     // The fd is available immediately for the `fd` property.
     #[cfg(unix)]
     {
-      // Remove existing socket file if present.
-      #[allow(
-        clippy::disallowed_methods,
-        reason = "uv_compat is not compiled to WASM"
-      )]
-      let _ = std::fs::remove_file(path);
-
       // Create a Unix domain stream socket.
       let fd = libc::socket(libc::AF_UNIX, libc::SOCK_STREAM, 0);
       if fd < 0 {
@@ -413,6 +413,9 @@ pub unsafe fn uv_pipe_listen(
     let mut handles = inner.pipe_handles.borrow_mut();
     if !handles.iter().any(|&h| std::ptr::eq(h, pipe)) {
       handles.push(pipe);
+    }
+    if let Some(w) = (*pipe).internal_waker.as_ref() {
+      w.mark_ready();
     }
   }
   0
@@ -561,6 +564,9 @@ pub unsafe fn uv_pipe_connect(
     if !handles.iter().any(|&h| std::ptr::eq(h, pipe)) {
       handles.push(pipe);
     }
+    if let Some(w) = (*pipe).internal_waker.as_ref() {
+      w.mark_ready();
+    }
   }
   0
 }
@@ -587,7 +593,15 @@ pub unsafe fn uv_pipe_listen(
       .max_instances((*pipe).pending_instances as usize);
     let server = match opts.create(&path) {
       Ok(s) => s,
-      Err(e) => return io_error_to_uv(&e),
+      Err(e) => {
+        // ERROR_ACCESS_DENIED (5) from CreateNamedPipe with
+        // FILE_FLAG_FIRST_PIPE_INSTANCE means a pipe with that name
+        // already exists. Map to EADDRINUSE to match Node/libuv.
+        if e.raw_os_error() == Some(5) {
+          return super::UV_EADDRINUSE;
+        }
+        return io_error_to_uv(&e);
+      }
     };
 
     // Wrap in Arc so the connect future can hold its own reference.
@@ -605,6 +619,9 @@ pub unsafe fn uv_pipe_listen(
     let mut handles = inner.pipe_handles.borrow_mut();
     if !handles.iter().any(|&h| std::ptr::eq(h, pipe)) {
       handles.push(pipe);
+    }
+    if let Some(w) = (*pipe).internal_waker.as_ref() {
+      w.mark_ready();
     }
   }
   0
@@ -647,6 +664,13 @@ pub unsafe fn uv_pipe_accept(
           (*server).internal_win_server = Some(new_server);
           (*server).internal_win_connect_fut = Some(connect_fut);
           (*server).flags |= UV_HANDLE_ACTIVE;
+
+          // Wake the event loop so it polls the new connect future.
+          // Without this, the loop never notices the next client
+          // attaching to the named pipe (same pattern as uv_pipe_listen).
+          if let Some(w) = (*server).internal_waker.as_ref() {
+            w.mark_ready();
+          }
         }
       }
       0
@@ -705,6 +729,9 @@ pub unsafe fn uv_pipe_connect(
         let mut handles = inner.pipe_handles.borrow_mut();
         if !handles.iter().any(|&h| std::ptr::eq(h, pipe)) {
           handles.push(pipe);
+        }
+        if let Some(w) = (*pipe).internal_waker.as_ref() {
+          w.mark_ready();
         }
         0
       }
@@ -818,6 +845,17 @@ pub(crate) unsafe fn close_pipe(pipe: *mut uv_pipe_t) {
     (*pipe).internal_read_cb = None;
     (*pipe).internal_connection_cb = None;
     (*pipe).internal_connect = None;
+
+    // Match libuv: unlink the socket file before closing the fd so
+    // another server can bind to the same path immediately.
+    #[cfg(unix)]
+    if let Some(ref path) = (*pipe).internal_bind_path {
+      #[allow(
+        clippy::disallowed_methods,
+        reason = "uv_compat is not compiled to WASM"
+      )]
+      let _ = std::fs::remove_file(path);
+    }
     (*pipe).internal_bind_path = None;
 
     // Cancel pending writes.
@@ -897,6 +935,9 @@ pub(crate) unsafe fn read_start_pipe(
     if !handles.iter().any(|&h| std::ptr::eq(h, pipe)) {
       handles.push(pipe);
     }
+    if let Some(w) = (*pipe).internal_waker.as_ref() {
+      w.mark_ready();
+    }
   }
   0
 }
@@ -931,6 +972,9 @@ pub(crate) unsafe fn read_start_pipe(
     let mut handles = inner.pipe_handles.borrow_mut();
     if !handles.iter().any(|&h| std::ptr::eq(h, pipe)) {
       handles.push(pipe);
+    }
+    if let Some(w) = (*pipe).internal_waker.as_ref() {
+      w.mark_ready();
     }
   }
   0
@@ -1220,6 +1264,47 @@ pub(crate) unsafe fn poll_pipe_handle(
       || (*pipe_ptr).internal_shutdown.is_some();
     if !has_pending_work {
       (*pipe_ptr).flags &= !UV_HANDLE_ACTIVE;
+    }
+
+    // Re-register tokio read/write interest for the next edge.
+    //
+    // `NamedPipeServer::poll_{read,write}_ready` only stores a waker
+    // when it returns Pending. If the drain above saw Ready and
+    // consumed all available data/space with `try_read` / `try_write`,
+    // no waker is registered — and since the ready-queue polling
+    // only re-enters `poll_pipe_handle` on a wake, the next event
+    // (EOF after child exit, more data arriving, write-side draining)
+    // would never reach us. Calling poll_*_ready here after the drain
+    // either stores a waker (Pending) or signals us to re-queue
+    // (Ready). Mirrors the re-register block at the end of
+    // `tcp::poll_tcp_handle`.
+    let mut needs_requeue = false;
+    if (*pipe_ptr).internal_reading {
+      if let Some(ref server) = (*pipe_ptr).internal_win_server
+        && matches!(server.poll_read_ready(cx), Poll::Ready(_))
+      {
+        needs_requeue = true;
+      }
+      if let Some(ref client) = (*pipe_ptr).internal_win_client
+        && matches!(client.poll_read_ready(cx), Poll::Ready(_))
+      {
+        needs_requeue = true;
+      }
+    }
+    if !(*pipe_ptr).internal_write_queue.is_empty() {
+      if let Some(ref server) = (*pipe_ptr).internal_win_server
+        && matches!(server.poll_write_ready(cx), Poll::Ready(_))
+      {
+        needs_requeue = true;
+      }
+      if let Some(ref client) = (*pipe_ptr).internal_win_client
+        && matches!(client.poll_write_ready(cx), Poll::Ready(_))
+      {
+        needs_requeue = true;
+      }
+    }
+    if needs_requeue && let Some(w) = (*pipe_ptr).internal_waker.as_ref() {
+      w.mark_ready();
     }
   }
 
@@ -1574,6 +1659,40 @@ pub(crate) unsafe fn poll_pipe_handle(
       || (*pipe_ptr).internal_shutdown.is_some();
     if !has_pending_work {
       (*pipe_ptr).flags &= !UV_HANDLE_ACTIVE;
+    }
+
+    // Re-register tokio readiness interest if the poll paths above
+    // consumed it without leaving a waker. See the matching comment
+    // in tcp::poll_tcp_handle for the full rationale — in short, if
+    // poll_*_ready returns Ready and we fully drain it, no waker is
+    // registered for the *next* edge, so we either re-register here
+    // (if still Pending) or re-queue the handle for another pass
+    // (if still Ready).
+    let mut needs_requeue = false;
+    if (*pipe_ptr).internal_reading {
+      if let Some(ref afd) = (*pipe_ptr).internal_async_fd {
+        if matches!(afd.poll_read_ready(cx), Poll::Ready(_)) {
+          needs_requeue = true;
+        }
+      } else if let Some(ref stream) = (*pipe_ptr).internal_stream
+        && matches!(stream.poll_read_ready(cx), Poll::Ready(_))
+      {
+        needs_requeue = true;
+      }
+    }
+    if !(*pipe_ptr).internal_write_queue.is_empty() {
+      if let Some(ref afd) = (*pipe_ptr).internal_async_fd {
+        if matches!(afd.poll_write_ready(cx), Poll::Ready(_)) {
+          needs_requeue = true;
+        }
+      } else if let Some(ref stream) = (*pipe_ptr).internal_stream
+        && matches!(stream.poll_write_ready(cx), Poll::Ready(_))
+      {
+        needs_requeue = true;
+      }
+    }
+    if needs_requeue && let Some(w) = (*pipe_ptr).internal_waker.as_ref() {
+      w.mark_ready();
     }
   }
 
