@@ -10,7 +10,7 @@
         "commandName": "bash",
         "args": [
           "-c",
-          "tar -tzf test-readme-license-1.0.0.tgz | sort"
+          "tar -tzf test-readme-license-1.0.0.tgz | LC_ALL=C sort"
         ],
         "output": "tarball_contents.out"
       }]
