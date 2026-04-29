@@ -2516,6 +2516,7 @@
       "ignore": true,
       "reason": "Tests Node.js internal modules (require('internal/...')) which are not exposed in Deno"
     },
+    "parallel/test-priority-queue.js": {},
     "parallel/test-process-abort.js": {},
     "parallel/test-process-argv-0.js": {},
     "parallel/test-process-available-memory.js": {},
