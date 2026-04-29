@@ -79,6 +79,9 @@ pub fn op_node_udp_bind(
   let addr = deno_net::resolve_addr::resolve_addr_sync(hostname, port)?
     .next()
     .ok_or(NodeUdpError::NoResolvedAddress)?;
+  state
+    .borrow_mut::<PermissionsContainer>()
+    .check_net_resolved(&addr.ip(), addr.port(), "dgram.createSocket()")?;
 
   let domain = if addr.is_ipv4() {
     Domain::IPV4
@@ -156,31 +159,122 @@ pub fn op_node_udp_leave_multi_v4(
   Ok(())
 }
 
-#[op2(fast)]
+/// Resolve an IPv6 interface address to an interface index.
+/// If the address contains a zone ID (e.g. "fe80::1%eth0"), use that.
+/// Otherwise, try to find the interface by matching the address.
+fn resolve_ipv6_interface(
+  interface_addr: Option<&str>,
+) -> Result<u32, NodeUdpError> {
+  let Some(addr_str) = interface_addr else {
+    return Ok(0);
+  };
+
+  // Check if the address contains a zone ID (e.g. "fe80::1%eth0" or "::1%1")
+  if let Some(zone_idx) = addr_str.find('%') {
+    let zone_id = &addr_str[zone_idx + 1..];
+    // Try parsing as numeric first
+    if let Ok(idx) = zone_id.parse::<u32>() {
+      return Ok(idx);
+    }
+    // Otherwise try as interface name
+    #[cfg(unix)]
+    {
+      use std::ffi::CString;
+      if let Ok(c_name) = CString::new(zone_id) {
+        // SAFETY: if_nametoindex is safe to call with a valid C string
+        let idx = unsafe { libc::if_nametoindex(c_name.as_ptr()) };
+        if idx != 0 {
+          return Ok(idx);
+        }
+      }
+    }
+    #[cfg(windows)]
+    {
+      // On Windows, try parsing as numeric index
+      if let Ok(idx) = zone_id.parse::<u32>() {
+        return Ok(idx);
+      }
+    }
+  }
+
+  // Try to find interface by matching the address
+  #[cfg(unix)]
+  {
+    use std::ffi::CStr;
+    let target_addr =
+      Ipv6Addr::from_str(addr_str.split('%').next().unwrap_or(addr_str))?;
+
+    // Get all interfaces and find one with matching address
+    let mut addrs: *mut libc::ifaddrs = std::ptr::null_mut();
+    // SAFETY: getifaddrs is safe to call with a valid pointer
+    if unsafe { libc::getifaddrs(&mut addrs) } == 0 {
+      let mut current = addrs;
+      while !current.is_null() {
+        // SAFETY: we checked current is not null
+        let ifa = unsafe { &*current };
+        if !ifa.ifa_addr.is_null() {
+          // SAFETY: we checked ifa_addr is not null
+          let family = unsafe { (*ifa.ifa_addr).sa_family };
+          if family == libc::AF_INET6 as libc::sa_family_t {
+            // SAFETY: we verified this is AF_INET6
+            let sockaddr_in6 =
+              unsafe { &*(ifa.ifa_addr as *const libc::sockaddr_in6) };
+            let addr = Ipv6Addr::from(sockaddr_in6.sin6_addr.s6_addr);
+            if addr == target_addr {
+              // SAFETY: ifa_name is a valid C string
+              let name = unsafe { CStr::from_ptr(ifa.ifa_name) };
+              if let Ok(name_str) = name.to_str()
+                && let Ok(c_name) = std::ffi::CString::new(name_str)
+              {
+                // SAFETY: if_nametoindex is safe with valid C string
+                let idx = unsafe { libc::if_nametoindex(c_name.as_ptr()) };
+                // SAFETY: freeifaddrs is safe to call with the pointer from getifaddrs
+                unsafe { libc::freeifaddrs(addrs) };
+                if idx != 0 {
+                  return Ok(idx);
+                }
+              }
+            }
+          }
+        }
+        current = ifa.ifa_next;
+      }
+      // SAFETY: freeifaddrs is safe to call with the pointer from getifaddrs
+      unsafe { libc::freeifaddrs(addrs) };
+    }
+  }
+
+  // Default to 0 if we couldn't resolve
+  Ok(0)
+}
+
+#[op2]
 pub fn op_node_udp_join_multi_v6(
   state: &mut OpState,
   #[smi] rid: ResourceId,
   #[string] address: &str,
-  #[smi] multi_iface: u32,
+  #[string] interface_addr: Option<String>,
 ) -> Result<(), NodeUdpError> {
   let resource = state.resource_table.get::<NodeUdpSocketResource>(rid)?;
 
   let addr = Ipv6Addr::from_str(address)?;
-  resource.socket.join_multicast_v6(&addr, multi_iface)?;
+  let iface = resolve_ipv6_interface(interface_addr.as_deref())?;
+  resource.socket.join_multicast_v6(&addr, iface)?;
   Ok(())
 }
 
-#[op2(fast)]
+#[op2]
 pub fn op_node_udp_leave_multi_v6(
   state: &mut OpState,
   #[smi] rid: ResourceId,
   #[string] address: &str,
-  #[smi] multi_iface: u32,
+  #[string] interface_addr: Option<String>,
 ) -> Result<(), NodeUdpError> {
   let resource = state.resource_table.get::<NodeUdpSocketResource>(rid)?;
 
   let addr = Ipv6Addr::from_str(address)?;
-  resource.socket.leave_multicast_v6(&addr, multi_iface)?;
+  let iface = resolve_ipv6_interface(interface_addr.as_deref())?;
+  resource.socket.leave_multicast_v6(&addr, iface)?;
   Ok(())
 }
 
@@ -476,6 +570,12 @@ pub async fn op_node_udp_send(
     deno_net::resolve_addr::resolve_addr_sync(&hostname, port)?
       .next()
       .ok_or(NodeUdpError::NoResolvedAddress)?;
+  {
+    state
+      .borrow_mut()
+      .borrow_mut::<PermissionsContainer>()
+      .check_net_resolved(&addr.ip(), addr.port(), "socket.send()")?;
+  }
 
   let cancel = RcRef::map(&resource, |r| &r.cancel);
   let nwritten = resource

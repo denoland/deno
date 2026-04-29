@@ -18,9 +18,11 @@ use deno_core::anyhow::Context;
 use deno_core::anyhow::anyhow;
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
+use deno_core::serde_json;
 use deno_core::url::Url;
 use deno_npm_installer::PackagesAllowedScripts;
 use deno_path_util::resolve_url_or_path;
+use deno_semver::jsr::JsrPackageReqReference;
 use deno_semver::npm::NpmPackageReqReference;
 use jsonc_parser::cst::CstInputValue;
 use log::Level;
@@ -42,6 +44,7 @@ use crate::args::UninstallFlags;
 use crate::args::UninstallKind;
 use crate::args::resolve_no_prompt;
 use crate::factory::CliFactory;
+use crate::file_fetcher::CliFileFetcher;
 use crate::file_fetcher::CreateCliFileFetcherOptions;
 use crate::file_fetcher::create_cli_file_fetcher;
 use crate::jsr::JsrFetchResolver;
@@ -59,29 +62,31 @@ pub async fn install_global(
   let cli_options = factory.cli_options()?;
   let http_client = factory.http_client_provider();
   let deps_http_cache = factory.global_http_cache()?;
-  let deps_file_fetcher = create_cli_file_fetcher(
-    Default::default(),
-    deno_cache_dir::GlobalOrLocalHttpCache::Global(deps_http_cache.clone()),
-    http_client.clone(),
-    factory.memory_files().clone(),
-    factory.sys(),
-    CreateCliFileFetcherOptions {
-      allow_remote: true,
-      cache_setting: CacheSetting::ReloadAll,
-      download_log_level: log::Level::Trace,
-      progress_bar: None,
-    },
-  );
+  let create_deps_file_fetcher = |download_log_level: log::Level| {
+    Arc::new(create_cli_file_fetcher(
+      Default::default(),
+      deno_cache_dir::GlobalOrLocalHttpCache::Global(deps_http_cache.clone()),
+      http_client.clone(),
+      factory.memory_files().clone(),
+      factory.sys(),
+      CreateCliFileFetcherOptions {
+        allow_remote: true,
+        cache_setting: CacheSetting::ReloadAll,
+        download_log_level,
+        progress_bar: None,
+      },
+    ))
+  };
 
   let npmrc = factory.npmrc()?;
 
-  let deps_file_fetcher = Arc::new(deps_file_fetcher);
+  let deps_file_fetcher = create_deps_file_fetcher(log::Level::Trace);
   let jsr_resolver = Arc::new(JsrFetchResolver::new(
     deps_file_fetcher.clone(),
     factory.jsr_version_resolver()?.clone(),
   ));
   let npm_resolver = Arc::new(NpmFetchResolver::new(
-    deps_file_fetcher.clone(),
+    deps_file_fetcher,
     npmrc.clone(),
     factory.npm_version_resolver()?.clone(),
   ));
@@ -149,7 +154,7 @@ pub async fn install_global(
       }
     }
 
-    let name_and_url = BinaryNameAndUrl::resolve(
+    let (name_and_url, extra_bin_entries) = BinaryNameAndUrl::resolve(
       &factory.bin_name_resolver()?,
       cli_options.initial_cwd(),
       module_url,
@@ -162,15 +167,71 @@ pub async fn install_global(
       cli_options.initial_cwd(),
       install_flags_global.root.as_deref(),
     )?;
-    setup_config_dir(&name_and_url, &flags, &installation_dir).await?;
+    let npm_package_info_provider = factory
+      .npm_installer_factory()?
+      .lockfile_npm_package_info_provider()?;
+    let deps_file_fetcher = create_deps_file_fetcher(Level::Info);
+    let jsr_lockfile_fetcher = JsrLockfileFetcher {
+      jsr_resolver: Arc::new(JsrFetchResolver::new(
+        deps_file_fetcher.clone(),
+        factory.jsr_version_resolver()?.clone(),
+      )),
+      file_fetcher: deps_file_fetcher,
+      npmrc: npmrc.clone(),
+      npm_package_info_provider,
+    };
+    setup_config_dir(
+      &name_and_url,
+      &flags,
+      &installation_dir,
+      Some(&jsr_lockfile_fetcher),
+    )
+    .await?;
 
-    // create the install shim
+    // create the install shim for the primary entry
     create_install_shim(
       &name_and_url,
       cli_options.initial_cwd(),
       &flags,
       &install_flags_global,
     )?;
+
+    // create install shims for extra bin entries
+    let mut installed_extra: Vec<&str> = Vec::new();
+    let mut extra_install_err = None;
+    for extra_entry in &extra_bin_entries {
+      match create_install_shim(
+        extra_entry,
+        cli_options.initial_cwd(),
+        &flags,
+        &install_flags_global,
+      ) {
+        Ok(()) => installed_extra.push(&extra_entry.name),
+        Err(err) => {
+          extra_install_err = Some(err);
+          break;
+        }
+      }
+    }
+    if let Some(err) = extra_install_err {
+      // rollback: remove the primary shim and any extra shims that were created
+      let _ = remove_shim_files(&installation_dir, &name_and_url.name);
+      for extra_name in &installed_extra {
+        let _ = remove_shim_files(&installation_dir, extra_name);
+      }
+      return Err(err);
+    }
+
+    // store extra bin entry names in the config dir for uninstall
+    if !extra_bin_entries.is_empty() {
+      let config_dir = installation_dir.join(format!(".{}", name_and_url.name));
+      let extra_names: Vec<&str> =
+        extra_bin_entries.iter().map(|e| e.name.as_str()).collect();
+      fs::write(
+        config_dir.join("extra_bin_entries.json"),
+        serde_json::to_string(&extra_names)?,
+      )?;
+    }
   }
   Ok(())
 }
@@ -241,6 +302,18 @@ pub async fn uninstall(
 
   // remove the .<name>/ config directory if it exists
   let config_dir = installation_dir.join(format!(".{}", uninstall_flags.name));
+
+  // check for extra bin entries stored during install and remove their shims
+  let extra_bins_file = config_dir.join("extra_bin_entries.json");
+  if extra_bins_file.is_file()
+    && let Ok(content) = fs::read_to_string(&extra_bins_file)
+    && let Ok(extra_names) = serde_json::from_str::<Vec<String>>(&content)
+  {
+    for extra_name in &extra_names {
+      remove_shim_files(&installation_dir, extra_name)?;
+    }
+  }
+
   if config_dir.is_dir() {
     fs::remove_dir_all(&config_dir).with_context(|| {
       format!("Failed removing directory: {}", config_dir.display())
@@ -347,6 +420,7 @@ async fn setup_config_dir(
   bin_name_and_url: &BinaryNameAndUrl,
   flags: &Flags,
   installation_dir: &Path,
+  jsr_lockfile_fetcher: Option<&JsrLockfileFetcher<'_>>,
 ) -> Result<(), AnyError> {
   fn resolve_implicit_node_modules_dir(
     flags: &Flags,
@@ -423,6 +497,15 @@ async fn setup_config_dir(
     )?;
   }
 
+  // fetch deno.lock from JSR if this is a JSR package
+  if !flags.no_lock
+    && let Some(fetcher) = jsr_lockfile_fetcher
+    && let Some(lockfile_content) =
+      fetcher.fetch_lockfile(&bin_name_and_url.module_url).await
+  {
+    fs::write(dir.join("deno.lock"), lockfile_content)?;
+  }
+
   // create cloned flags to run cache_top_level_deps
   let mut new_flags = flags.clone();
   new_flags.initial_cwd = Some(dir.clone());
@@ -434,6 +517,8 @@ async fn setup_config_dir(
   let entrypoint_flags = InstallEntrypointsFlags {
     lockfile_only: false,
     entrypoints: vec![bin_name_and_url.module_url.to_string()],
+    production: false,
+    skip_types: false,
   };
   new_flags.subcommand = DenoSubcommand::Install(InstallFlags::Local(
     InstallFlagsLocal::Entrypoints(entrypoint_flags.clone()),
@@ -589,7 +674,8 @@ fn resolve_shim_data(
   }
 
   // all config/lock files live under .<name>/ in the bin dir
-  let config_dir = installation_dir.join(format!(".{}", bin_name_and_url.name));
+  let config_dir =
+    installation_dir.join(format!(".{}", bin_name_and_url.config_dir_name()));
 
   let deno_json_path = config_dir.join("deno.json");
   executable_args.push("--config".to_string());
@@ -617,15 +703,23 @@ fn resolve_shim_data(
 struct BinaryNameAndUrl {
   name: String,
   module_url: Url,
+  /// For extra bin entries, this is the primary bin name (used for config dir).
+  /// None means this is the primary entry (config dir uses self.name).
+  config_name: Option<String>,
 }
 
 impl BinaryNameAndUrl {
+  /// Returns the name to use for the config directory.
+  fn config_dir_name(&self) -> &str {
+    self.config_name.as_deref().unwrap_or(&self.name)
+  }
+
   pub async fn resolve(
     bin_name_resolver: &BinNameResolver<'_>,
     cwd: &Path,
     module_url: &str,
     install_flags_global: &InstallFlagsGlobal,
-  ) -> Result<Self, AnyError> {
+  ) -> Result<(Self, Vec<Self>), AnyError> {
     static EXEC_NAME_RE: Lazy<Regex> = Lazy::new(|| {
       RegexBuilder::new(r"^[a-z0-9][\w-]*$")
         .case_insensitive(true)
@@ -658,7 +752,59 @@ impl BinaryNameAndUrl {
       }
     };
     validate_name(&name)?;
-    Ok(BinaryNameAndUrl { name, module_url })
+
+    // Skip extra bin resolution when --name is provided (explicit single-entry
+    // intent) or when the specifier has a sub_path (e.g. npm:cowsay/cowthink).
+    let mut extra_entries = Vec::new();
+    if install_flags_global.name.is_none()
+      && let Ok(npm_ref) = NpmPackageReqReference::from_specifier(&module_url)
+      && npm_ref.sub_path().is_none()
+      && let Some(all_bins) = bin_name_resolver
+        .resolve_all_bin_entries_from_npm(&module_url)
+        .await
+      && all_bins.len() > 1
+    {
+      let req = npm_ref.req();
+      for (bin_name, script_path) in &all_bins {
+        if *bin_name == name {
+          continue; // skip the primary entry
+        }
+        validate_name(bin_name)?;
+        // Strip leading "./" from script paths (common in package.json bin fields)
+        let script_path = script_path
+          .strip_prefix("./")
+          .unwrap_or(script_path.as_str());
+        // Construct the module URL for this bin entry: npm:package@version/script_path
+        let extra_url = if req.version_req.version_text() == "*" {
+          Url::parse(&format!("npm:{}/{}", req.name, script_path))
+        } else {
+          Url::parse(&format!(
+            "npm:{}@{}/{}",
+            req.name,
+            req.version_req.version_text(),
+            script_path
+          ))
+        };
+        if let Ok(extra_url) = extra_url {
+          extra_entries.push(BinaryNameAndUrl {
+            name: bin_name.clone(),
+            module_url: extra_url,
+            config_name: Some(name.clone()),
+          });
+        }
+      }
+    }
+
+    extra_entries.sort_by(|a, b| a.name.cmp(&b.name));
+
+    Ok((
+      BinaryNameAndUrl {
+        name,
+        module_url,
+        config_name: None,
+      },
+      extra_entries,
+    ))
   }
 }
 
@@ -770,6 +916,20 @@ fn get_installer_root() -> Result<PathBuf, AnyError> {
   Ok(home_path)
 }
 
+/// Remove all shim files for a given name (the main file plus .cmd/.exe on Windows).
+fn remove_shim_files(
+  installation_dir: &Path,
+  name: &str,
+) -> Result<(), AnyError> {
+  let path = installation_dir.join(name);
+  remove_file_if_exists(&path)?;
+  if cfg!(windows) {
+    remove_file_if_exists(&path.with_extension("cmd"))?;
+    remove_file_if_exists(&path.with_extension("exe"))?;
+  }
+  Ok(())
+}
+
 fn remove_file_if_exists(file_path: &Path) -> Result<bool, AnyError> {
   if let Err(err) = fs::remove_file(file_path) {
     if err.kind() == ErrorKind::NotFound {
@@ -804,6 +964,110 @@ fn is_in_path(dir: &Path) -> bool {
   false
 }
 
+struct JsrLockfileFetcher<'a> {
+  jsr_resolver: Arc<JsrFetchResolver>,
+  file_fetcher: Arc<CliFileFetcher>,
+  npmrc: Arc<deno_npmrc::ResolvedNpmRc>,
+  npm_package_info_provider: &'a dyn deno_lockfile::NpmPackageInfoProvider,
+}
+
+impl JsrLockfileFetcher<'_> {
+  async fn fetch_lockfile(&self, module_url: &Url) -> Option<String> {
+    let pkg_ref = JsrPackageReqReference::from_specifier(module_url).ok()?;
+    let req = pkg_ref.req();
+    let nv = self.jsr_resolver.req_to_nv(req).await.ok().flatten()?;
+    let lockfile_url = crate::args::jsr_url()
+      .join(&format!("{}/{}/deno.lock", &nv.name, &nv.version))
+      .ok()?;
+    let file = match self
+      .file_fetcher
+      .fetch_bypass_permissions(&lockfile_url)
+      .await
+    {
+      Ok(file) => file,
+      Err(err) => {
+        log::debug!("Not using lockfile for JSR package {}: {}", nv, err);
+        return None;
+      }
+    };
+
+    let content = match std::str::from_utf8(&file.source) {
+      Ok(s) => s,
+      Err(_) => {
+        log::debug!("Lockfile for JSR package {} is not valid UTF-8", nv);
+        return None;
+      }
+    };
+
+    // Parse and upgrade the lockfile to v5
+    let lockfile = match deno_lockfile::Lockfile::new(
+      deno_lockfile::NewLockfileOptions {
+        file_path: std::path::PathBuf::from("deno.lock"),
+        content,
+        overwrite: false,
+      },
+      self.npm_package_info_provider,
+    )
+    .await
+    {
+      Ok(lockfile) => lockfile,
+      Err(err) => {
+        log::warn!(
+          "{} Not using lockfile from JSR package {}: {}",
+          crate::colors::yellow("Warning"),
+          nv,
+          err,
+        );
+        return None;
+      }
+    };
+
+    if let Err(url) = validate_npm_tarball_urls(&lockfile.content, &self.npmrc)
+    {
+      log::warn!(
+        "{} Not using lockfile from JSR package {} because it contains an npm tarball URL (\"{}\") not from a configured npm registry. This may indicate a security issue.",
+        crate::colors::yellow("Warning"),
+        nv,
+        url,
+      );
+      return None;
+    }
+
+    log::debug!("Using lockfile from JSR package {}", nv);
+    Some(lockfile.as_json_string())
+  }
+}
+
+/// Validates that all npm tarball URLs in the lockfile come from
+/// configured npm registries (or the default registry.npmjs.org).
+/// Returns `Err(bad_url)` on the first tarball from an unknown registry.
+fn validate_npm_tarball_urls(
+  content: &deno_lockfile::LockfileContent,
+  npmrc: &deno_npmrc::ResolvedNpmRc,
+) -> Result<(), String> {
+  let mut allowed_registries = npmrc.get_all_known_registries_urls();
+  // always allow the default npm registry
+  let default_npm_registry =
+    Url::parse(deno_npmrc::NPM_DEFAULT_REGISTRY).unwrap();
+  if !allowed_registries.contains(&default_npm_registry) {
+    allowed_registries.push(default_npm_registry);
+  }
+
+  for pkg_info in content.packages.npm.values() {
+    if let Some(tarball) = &pkg_info.tarball {
+      let tarball_str = tarball.as_str();
+      let is_allowed = allowed_registries
+        .iter()
+        .any(|registry_url| tarball_str.starts_with(registry_url.as_str()));
+      if !is_allowed {
+        return Err(tarball_str.to_string());
+      }
+    }
+  }
+
+  Ok(())
+}
+
 #[cfg(test)]
 mod tests {
   use std::process::Command;
@@ -832,7 +1096,7 @@ mod tests {
     let npm_version_resolver = NpmVersionResolver::default();
     let resolver =
       BinNameResolver::new(&http_client, &registry_api, &npm_version_resolver);
-    let binary_name_and_url = BinaryNameAndUrl::resolve(
+    let (binary_name_and_url, _extra_entries) = BinaryNameAndUrl::resolve(
       &resolver,
       &cwd,
       &install_flags_global.module_urls[0],
@@ -842,9 +1106,14 @@ mod tests {
     let installation_dir =
       super::get_installer_bin_dir(&cwd, install_flags_global.root.as_deref())
         .unwrap();
-    super::setup_config_dir(&binary_name_and_url, flags, &installation_dir)
-      .await
-      .unwrap();
+    super::setup_config_dir(
+      &binary_name_and_url,
+      flags,
+      &installation_dir,
+      None,
+    )
+    .await
+    .unwrap();
     super::create_install_shim(
       &binary_name_and_url,
       &cwd,
@@ -873,7 +1142,7 @@ mod tests {
     let npm_version_resolver = NpmVersionResolver::default();
     let resolver =
       BinNameResolver::new(&http_client, &registry_api, &npm_version_resolver);
-    let binary_name_and_url = BinaryNameAndUrl::resolve(
+    let (binary_name_and_url, _extra_entries) = BinaryNameAndUrl::resolve(
       &resolver,
       &cwd,
       &install_flags_global.module_urls[0],
@@ -1708,5 +1977,145 @@ mod tests {
       file_path = file_path.with_extension("cmd");
       assert!(!file_path.exists());
     }
+  }
+
+  fn create_npmrc_with_registries(
+    default_url: &str,
+    scope_urls: &[(&str, &str)],
+  ) -> Arc<deno_npmrc::ResolvedNpmRc> {
+    use deno_npmrc::RegistryConfig;
+    use deno_npmrc::RegistryConfigWithUrl;
+    use deno_npmrc::ResolvedNpmRc;
+
+    let mut scopes = std::collections::HashMap::new();
+    for (scope, url) in scope_urls {
+      scopes.insert(
+        scope.to_string(),
+        RegistryConfigWithUrl {
+          registry_url: Url::parse(url).unwrap(),
+          config: Arc::new(RegistryConfig::default()),
+        },
+      );
+    }
+    Arc::new(ResolvedNpmRc {
+      default_config: RegistryConfigWithUrl {
+        registry_url: Url::parse(default_url).unwrap(),
+        config: Arc::new(RegistryConfig::default()),
+      },
+      scopes,
+      registry_configs: Default::default(),
+    })
+  }
+
+  fn create_lockfile_content_with_npm(
+    packages: &[(&str, Option<&str>)],
+  ) -> deno_lockfile::LockfileContent {
+    use deno_lockfile::NpmPackageInfo;
+    let mut content = deno_lockfile::LockfileContent::default();
+    for (id, tarball) in packages {
+      content.packages.npm.insert(
+        (*id).into(),
+        NpmPackageInfo {
+          integrity: Some("sha512-test".to_string()),
+          dependencies: Default::default(),
+          optional_dependencies: Default::default(),
+          optional_peers: Default::default(),
+          os: Default::default(),
+          cpu: Default::default(),
+          tarball: tarball.map(|t| t.into()),
+          deprecated: false,
+          scripts: false,
+          bin: false,
+        },
+      );
+    }
+    content
+  }
+
+  #[test]
+  fn validate_npm_tarball_urls_allows_default_registry() {
+    let npmrc =
+      create_npmrc_with_registries("https://registry.npmjs.org/", &[]);
+    let content = create_lockfile_content_with_npm(&[(
+      "chalk@5.0.0",
+      Some("https://registry.npmjs.org/chalk/-/chalk-5.0.0.tgz"),
+    )]);
+    assert!(super::validate_npm_tarball_urls(&content, &npmrc).is_ok());
+  }
+
+  #[test]
+  fn validate_npm_tarball_urls_allows_no_tarball() {
+    let npmrc =
+      create_npmrc_with_registries("https://registry.npmjs.org/", &[]);
+    let content = create_lockfile_content_with_npm(&[("chalk@5.0.0", None)]);
+    assert!(super::validate_npm_tarball_urls(&content, &npmrc).is_ok());
+  }
+
+  #[test]
+  fn validate_npm_tarball_urls_rejects_unknown_registry() {
+    let npmrc =
+      create_npmrc_with_registries("https://registry.npmjs.org/", &[]);
+    let content = create_lockfile_content_with_npm(&[(
+      "evil@1.0.0",
+      Some("https://evil.example.com/evil/-/evil-1.0.0.tgz"),
+    )]);
+    let result = super::validate_npm_tarball_urls(&content, &npmrc);
+    assert_eq!(
+      result.unwrap_err(),
+      "https://evil.example.com/evil/-/evil-1.0.0.tgz"
+    );
+  }
+
+  #[test]
+  fn validate_npm_tarball_urls_allows_scoped_registry() {
+    let npmrc = create_npmrc_with_registries(
+      "https://registry.npmjs.org/",
+      &[("myco", "https://npm.mycompany.com/")],
+    );
+    let content = create_lockfile_content_with_npm(&[(
+      "@myco/pkg@1.0.0",
+      Some("https://npm.mycompany.com/@myco/pkg/-/pkg-1.0.0.tgz"),
+    )]);
+    assert!(super::validate_npm_tarball_urls(&content, &npmrc).is_ok());
+  }
+
+  #[test]
+  fn validate_npm_tarball_urls_allows_npmjs_when_custom_default() {
+    // Even with a custom default registry, registry.npmjs.org should be allowed
+    let npmrc = create_npmrc_with_registries("https://npm.mycompany.com/", &[]);
+    let content = create_lockfile_content_with_npm(&[(
+      "chalk@5.0.0",
+      Some("https://registry.npmjs.org/chalk/-/chalk-5.0.0.tgz"),
+    )]);
+    assert!(super::validate_npm_tarball_urls(&content, &npmrc).is_ok());
+  }
+
+  #[test]
+  fn validate_npm_tarball_urls_mixed_valid_and_invalid() {
+    let npmrc =
+      create_npmrc_with_registries("https://registry.npmjs.org/", &[]);
+    let content = create_lockfile_content_with_npm(&[
+      (
+        "chalk@5.0.0",
+        Some("https://registry.npmjs.org/chalk/-/chalk-5.0.0.tgz"),
+      ),
+      (
+        "evil@1.0.0",
+        Some("https://evil.example.com/evil/-/evil-1.0.0.tgz"),
+      ),
+    ]);
+    assert!(super::validate_npm_tarball_urls(&content, &npmrc).is_err());
+  }
+
+  #[test]
+  fn validate_npm_tarball_urls_rejects_subdomain_spoof() {
+    // ensure "https://registry.npmjs.org" (no trailing slash) doesn't
+    // match "https://registry.npmjs.org.evil.com/..." via prefix
+    let npmrc = create_npmrc_with_registries("https://registry.npmjs.org", &[]);
+    let content = create_lockfile_content_with_npm(&[(
+      "evil@1.0.0",
+      Some("https://registry.npmjs.org.evil.com/evil/-/evil-1.0.0.tgz"),
+    )]);
+    assert!(super::validate_npm_tarball_urls(&content, &npmrc).is_err());
   }
 }

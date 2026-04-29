@@ -425,10 +425,17 @@ export function emitInvalidHostnameWarning(hostname: string) {
   );
 }
 
-let dnsOrder = getOptionValue("--dns-result-order") || "ipv4first";
+let dnsOrder: string | undefined;
+
+function ensureDnsOrder(): string {
+  if (dnsOrder === undefined) {
+    dnsOrder = getOptionValue("--dns-result-order") || "ipv4first";
+  }
+  return dnsOrder;
+}
 
 export function getDefaultDnsOrder(): string {
-  return dnsOrder;
+  return ensureDnsOrder();
 }
 
 const validDnsOrders = ["verbatim", "ipv4first", "ipv6first"];

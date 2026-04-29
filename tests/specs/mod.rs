@@ -264,6 +264,18 @@ struct StepMetaData {
 }
 
 pub fn main() {
+  // When running from Claude Code, require a test filter (additional arg)
+  // to prevent accidentally running the entire spec test suite.
+  if std::env::var_os("CLAUDE_CODE_ENTRYPOINT").is_some() {
+    let has_arg = std::env::args().skip(1).len() > 0;
+    if !has_arg {
+      panic!(
+        "Running the entire spec test suite from Claude Code is not allowed. \
+         Please provide a test filter, e.g.: ./x test-spec my_test_name"
+      );
+    }
+  }
+
   let ci_hash = test_util::hash::check_ci_hash("specs", |hasher| {
     let tests = test_util::tests_path();
     hasher

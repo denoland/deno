@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_runtime"
-version = "0.246.0"
+version = "0.255.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -99,6 +99,9 @@ tokio.workspace = true
 tokio-metrics.workspace = true
 twox-hash.workspace = true
 uuid.workspace = true
+
+[target.'cfg(target_os = "macos")'.dependencies]
+unicode-normalization.workspace = true
 
 [target.'cfg(windows)'.dependencies]
 winapi = { workspace = true, features = ["commapi", "handleapi", "knownfolders", "mswsock", "objbase", "processthreadsapi", "psapi", "shlobj", "tlhelp32", "winbase", "winerror", "winnt", "winuser", "winsock2"] }

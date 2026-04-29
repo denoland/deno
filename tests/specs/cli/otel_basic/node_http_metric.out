@@ -377,7 +377,7 @@
             "timeUnixNano": "[WILDCARD]",
             "exemplars": [],
             "flags": 0,
-            "asInt": 0
+            "asDouble": 0
           }
         ],
         "aggregationTemporality": 2,
@@ -402,7 +402,7 @@
               {
                 "key": "http.response.status_code",
                 "value": {
-                  "intValue": "200"
+                  "doubleValue": 200
                 }
               },
               {
@@ -423,27 +423,39 @@
             "count": 3,
             "sum": 0,
             "bucketCounts": [
-              3,
-              0,
-              0,
-              0,
-              0,
-              0,
-              0,
-              0,
-              0,
-              0
+              [WILDLINE],
+              [WILDLINE],
+              [WILDLINE],
+              [WILDLINE],
+              [WILDLINE],
+              [WILDLINE],
+              [WILDLINE],
+              [WILDLINE],
+              [WILDLINE],
+              [WILDLINE],
+              [WILDLINE],
+              [WILDLINE],
+              [WILDLINE],
+              [WILDLINE],
+              [WILDLINE],
+              [WILDLINE]
             ],
             "explicitBounds": [
               0,
+              5,
+              10,
+              25,
+              50,
+              75,
               100,
+              250,
+              500,
+              750,
               1000,
-              10000,
-              100000,
-              1000000,
-              10000000,
-              100000000,
-              1000000000
+              2500,
+              5000,
+              7500,
+              10000
             ],
             "exemplars": [],
             "flags": 0,
@@ -472,7 +484,7 @@
               {
                 "key": "http.response.status_code",
                 "value": {
-                  "intValue": "200"
+                  "doubleValue": 200
                 }
               },
               {
@@ -552,7 +564,7 @@
               {
                 "key": "http.response.status_code",
                 "value": {
-                  "intValue": "200"
+                  "doubleValue": 200
                 }
               },
               {
@@ -582,18 +594,30 @@
               [WILDLINE],
               [WILDLINE],
               [WILDLINE],
+              [WILDLINE],
+              [WILDLINE],
+              [WILDLINE],
+              [WILDLINE],
+              [WILDLINE],
+              [WILDLINE],
               [WILDLINE]
             ],
             "explicitBounds": [
               0,
+              5,
+              10,
+              25,
+              50,
+              75,
               100,
+              250,
+              500,
+              750,
               1000,
-              10000,
-              100000,
-              1000000,
-              10000000,
-              100000000,
-              1000000000
+              2500,
+              5000,
+              7500,
+              10000
             ],
             "exemplars": [],
             "flags": 0,

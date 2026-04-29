@@ -1,10 +1,10 @@
-Defined in file:///[WILDCARD]/referenced_private_types.ts:5:1
+Defined in file:///[WILDCARD]/referenced_private_types.ts:4:1
 
 class MyClass
 
   prop: MyInterface
 
-Defined in file:///[WILDCARD]/referenced_private_types.ts:1:1
+Defined in file:///[WILDCARD]/referenced_private_types.ts:0:1
 
 private interface MyInterface
 

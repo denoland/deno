@@ -5,6 +5,7 @@ import {
   assertEquals,
   assertNotEquals,
   assertRejects,
+  assertThrows,
 } from "./test_util.ts";
 
 // https://github.com/denoland/deno/issues/11664
@@ -2218,4 +2219,31 @@ Deno.test("crypto.subtle.importKey PKCS#8 with wrong algorithm does not panic", 
       ["sign"],
     )
   );
+});
+
+// Regression test: end-user code cannot construct `Crypto`, `SubtleCrypto`,
+// or `CryptoKey` directly. Each must throw a `TypeError` with
+// `code: 'ERR_ILLEGAL_CONSTRUCTOR'`, matching Node and the upstream
+// `parallel/test-webcrypto-constructors.js` shape.
+Deno.test("crypto constructors throw ERR_ILLEGAL_CONSTRUCTOR", () => {
+  for (
+    const [Ctor, label] of [
+      [CryptoKey, "CryptoKey"],
+      [SubtleCrypto, "SubtleCrypto"],
+      [Crypto, "Crypto"],
+    ] as const
+  ) {
+    const err = assertThrows(
+      () => new Ctor(),
+      TypeError,
+      "Illegal constructor",
+      `${label}: expected TypeError`,
+    );
+    assertEquals(
+      // deno-lint-ignore no-explicit-any
+      (err as any).code,
+      "ERR_ILLEGAL_CONSTRUCTOR",
+      `${label}: code`,
+    );
+  }
 });

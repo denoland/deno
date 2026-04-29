@@ -195,16 +195,11 @@ function createIntegerConversion(bitLength, typeOpts) {
   const twoToTheBitLength = MathPow(2, bitLength);
   const twoToOneLessThanTheBitLength = MathPow(2, bitLength - 1);
 
-  return (
-    V,
-    prefix = undefined,
-    context = undefined,
-    opts = { __proto__: null },
-  ) => {
+  return (V, prefix, context, opts) => {
     let x = toNumber(V);
     x = censorNegativeZero(x);
 
-    if (opts.enforceRange) {
+    if (opts && opts.enforceRange) {
       if (!NumberIsFinite(x)) {
         throw makeException(
           TypeError,
@@ -228,7 +223,7 @@ function createIntegerConversion(bitLength, typeOpts) {
       return x;
     }
 
-    if (!NumberIsNaN(x) && opts.clamp) {
+    if (!NumberIsNaN(x) && opts && opts.clamp) {
       x = MathMin(MathMax(x, lowerBound), upperBound);
       x = evenRound(x);
       return x;
@@ -259,16 +254,11 @@ function createLongLongConversion(bitLength, { unsigned }) {
   const lowerBound = unsigned ? 0 : NumberMIN_SAFE_INTEGER;
   const asBigIntN = unsigned ? BigIntAsUintN : BigIntAsIntN;
 
-  return (
-    V,
-    prefix = undefined,
-    context = undefined,
-    opts = { __proto__: null },
-  ) => {
+  return (V, prefix, context, opts) => {
     let x = toNumber(V);
     x = censorNegativeZero(x);
 
-    if (opts.enforceRange) {
+    if (opts && opts.enforceRange) {
       if (!NumberIsFinite(x)) {
         throw makeException(
           TypeError,
@@ -292,7 +282,7 @@ function createLongLongConversion(bitLength, { unsigned }) {
       return x;
     }
 
-    if (!NumberIsNaN(x) && opts.clamp) {
+    if (!NumberIsNaN(x) && opts && opts.clamp) {
       x = MathMin(MathMax(x, lowerBound), upperBound);
       x = evenRound(x);
       return x;
@@ -409,15 +399,10 @@ converters["unrestricted double?"] = createNullableConverter(
   converters["unrestricted double"],
 );
 
-converters.DOMString = function (
-  V,
-  prefix,
-  context,
-  opts = { __proto__: null },
-) {
+converters.DOMString = function (V, prefix, context, opts) {
   if (typeof V === "string") {
     return V;
-  } else if (V === null && opts.treatNullAsEmptyString) {
+  } else if (V === null && opts && opts.treatNullAsEmptyString) {
     return "";
   } else if (typeof V === "symbol") {
     throw makeException(
@@ -690,6 +675,9 @@ converters["UVString?"] = createNullableConverter(
 converters["sequence<double>"] = createSequenceConverter(
   converters.double,
 );
+converters["sequence<unrestricted double>"] = createSequenceConverter(
+  converters["unrestricted double"],
+);
 converters["sequence<object>"] = createSequenceConverter(
   converters.object,
 );
@@ -776,58 +764,52 @@ function createDictionaryConverter(name, ...dictionaries) {
     }
   }
 
-  return function (
-    V,
-    prefix = undefined,
-    context = undefined,
-    opts = { __proto__: null },
-  ) {
-    const typeV = type(V);
-    switch (typeV) {
-      case "Undefined":
-      case "Null":
-      case "Object":
-        break;
-      default:
+  // Pre-compute context strings for each member (avoids allocation in hot path)
+  const memberContexts = [];
+  for (let i = 0; i < allMembers.length; ++i) {
+    memberContexts[i] = `'${allMembers[i].key}' of '${name}'`;
+  }
+
+  return function (V, prefix, context, opts) {
+    if (V === undefined || V === null) {
+      if (hasRequiredKey) {
         throw makeException(
           TypeError,
           "can not be converted to a dictionary",
           prefix,
           context,
         );
-    }
-    const esDict = V;
-
-    const idlDict = ObjectAssign({}, defaultValues);
-
-    // NOTE: fast path Null and Undefined.
-    if ((V === undefined || V === null) && !hasRequiredKey) {
+      }
+      const idlDict = { __proto__: null };
+      ObjectAssign(idlDict, defaultValues);
       return idlDict;
     }
 
+    if (typeof V !== "object" && typeof V !== "function") {
+      throw makeException(
+        TypeError,
+        "can not be converted to a dictionary",
+        prefix,
+        context,
+      );
+    }
+
+    const idlDict = { __proto__: null };
     for (let i = 0; i < allMembers.length; ++i) {
       const member = allMembers[i];
       const key = member.key;
-
-      let esMemberValue;
-      if (typeV === "Undefined" || typeV === "Null") {
-        esMemberValue = undefined;
-      } else {
-        esMemberValue = esDict[key];
-      }
+      const esMemberValue = V[key];
 
       if (esMemberValue !== undefined) {
-        const memberContext = `'${key}' of '${name}'${
-          context ? ` (${context})` : ""
-        }`;
-        const converter = member.converter;
-        const idlMemberValue = converter(
+        const memberContext = context
+          ? memberContexts[i] + ` (${context})`
+          : memberContexts[i];
+        idlDict[key] = member.converter(
           esMemberValue,
           prefix,
           memberContext,
           opts,
         );
-        idlDict[key] = idlMemberValue;
       } else if (member.required) {
         throw makeException(
           TypeError,
@@ -835,6 +817,8 @@ function createDictionaryConverter(name, ...dictionaries) {
           prefix,
           context,
         );
+      } else if (ReflectHas(defaultValues, key)) {
+        idlDict[key] = defaultValues[key];
       }
     }
 
@@ -1150,12 +1134,20 @@ function assertBranded(self, prototype) {
   if (
     !ObjectPrototypeIsPrototypeOf(prototype, self) || self[brand] !== brand
   ) {
-    throw new TypeError("Illegal invocation");
+    const err = new TypeError("Illegal invocation");
+    err.code = "ERR_INVALID_THIS";
+    throw err;
   }
 }
 
 function illegalConstructor() {
-  throw new TypeError("Illegal constructor");
+  const err = new TypeError("Illegal constructor");
+  // Match Node's convention of attaching `code: 'ERR_ILLEGAL_CONSTRUCTOR'`
+  // to TypeErrors thrown when end-user code attempts to construct a Web
+  // Platform interface that disallows direct construction (parallel to
+  // the `ERR_INVALID_THIS` code on `assertBranded` failures).
+  err.code = "ERR_ILLEGAL_CONSTRUCTOR";
+  throw err;
 }
 
 function define(target, source) {
