@@ -17,7 +17,7 @@ fn bump_version_patch() {
     .split_output()
     .run();
 
-  output.assert_exit_code(0);
+  output.assert_exit_code(0).skip_output_check();
   assert_contains!(output.stdout(), "1.4.7");
 
   let content = cwd.join("deno.json").read_to_string();
@@ -36,7 +36,7 @@ fn bump_version_minor() {
     .split_output()
     .run();
 
-  output.assert_exit_code(0);
+  output.assert_exit_code(0).skip_output_check();
   assert_contains!(output.stdout(), "1.5.0");
 
   let content = cwd.join("deno.json").read_to_string();
@@ -55,7 +55,7 @@ fn bump_version_major() {
     .split_output()
     .run();
 
-  output.assert_exit_code(0);
+  output.assert_exit_code(0).skip_output_check();
   assert_contains!(output.stdout(), "3.0.0");
 
   let content = cwd.join("deno.json").read_to_string();
@@ -74,7 +74,7 @@ fn bump_version_premajor() {
     .split_output()
     .run();
 
-  output.assert_exit_code(0);
+  output.assert_exit_code(0).skip_output_check();
   assert_contains!(output.stdout(), "2.0.0-0");
 
   let content = cwd.join("deno.json").read_to_string();
@@ -93,7 +93,7 @@ fn bump_version_preminor() {
     .split_output()
     .run();
 
-  output.assert_exit_code(0);
+  output.assert_exit_code(0).skip_output_check();
   assert_contains!(output.stdout(), "1.5.0-0");
 
   let content = cwd.join("deno.json").read_to_string();
@@ -112,7 +112,7 @@ fn bump_version_prepatch() {
     .split_output()
     .run();
 
-  output.assert_exit_code(0);
+  output.assert_exit_code(0).skip_output_check();
   assert_contains!(output.stdout(), "1.4.7-0");
 
   let content = cwd.join("deno.json").read_to_string();
@@ -131,7 +131,7 @@ fn bump_version_prerelease_from_stable() {
     .split_output()
     .run();
 
-  output.assert_exit_code(0);
+  output.assert_exit_code(0).skip_output_check();
   assert_contains!(output.stdout(), "1.0.1-0");
 
   let content = cwd.join("deno.json").read_to_string();
@@ -145,7 +145,11 @@ fn bump_version_prerelease_increments_pre_tag() {
 
   // First prerelease
   cwd.join("deno.json").write(r#"{"version": "1.0.0"}"#);
-  context.new_command().args("bump-version prerelease").run();
+  context
+    .new_command()
+    .args("bump-version prerelease")
+    .run()
+    .skip_output_check();
 
   // Second prerelease should increment the pre-release number
   let output = context
@@ -154,7 +158,7 @@ fn bump_version_prerelease_increments_pre_tag() {
     .split_output()
     .run();
 
-  output.assert_exit_code(0);
+  output.assert_exit_code(0).skip_output_check();
   assert_contains!(output.stdout(), "1.0.1-1");
 
   let content = cwd.join("deno.json").read_to_string();
@@ -183,7 +187,7 @@ fn bump_version_preserves_deno_json_structure() {
     .split_output()
     .run();
 
-  output.assert_exit_code(0);
+  output.assert_exit_code(0).skip_output_check();
 
   let content = cwd.join("deno.json").read_to_string();
   assert_contains!(content, r#""version": "0.1.1""#);
@@ -213,7 +217,7 @@ fn bump_version_works_with_package_json() {
     .split_output()
     .run();
 
-  output.assert_exit_code(0);
+  output.assert_exit_code(0).skip_output_check();
   assert_contains!(output.stdout(), "1.6.0");
 
   let content = cwd.join("package.json").read_to_string();
@@ -231,7 +235,7 @@ fn bump_version_fails_without_config_files() {
     .split_output()
     .run();
 
-  output.assert_exit_code(1);
+  output.assert_exit_code(1).skip_output_check();
   assert_contains!(output.stderr(), "No deno.json or package.json found");
 }
 
@@ -247,7 +251,7 @@ fn bump_version_no_args_shows_current_version() {
     .split_output()
     .run();
 
-  output.assert_exit_code(0);
+  output.assert_exit_code(0).skip_output_check();
   assert_contains!(output.stdout(), "2.3.4");
 
   // File should not be modified
@@ -267,7 +271,7 @@ fn bump_version_defaults_to_0_1_0_when_missing() {
     .split_output()
     .run();
 
-  output.assert_exit_code(0);
+  output.assert_exit_code(0).skip_output_check();
   assert_contains!(output.stdout(), "0.1.1");
 
   let content = cwd.join("deno.json").read_to_string();
@@ -289,7 +293,7 @@ fn bump_version_major_clears_prerelease() {
     .split_output()
     .run();
 
-  output.assert_exit_code(0);
+  output.assert_exit_code(0).skip_output_check();
   assert_contains!(output.stdout(), "2.0.0");
 
   let content = cwd.join("deno.json").read_to_string();
