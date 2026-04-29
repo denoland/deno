@@ -3199,6 +3199,7 @@
     "parallel/test-tls-pause.js": {},
     "parallel/test-tls-peer-certificate-encoding.js": {},
     "parallel/test-tls-psk-server.js": {},
+    "parallel/test-tls-reduced-SECLEVEL-in-cipher.js": {},
     "parallel/test-tls-request-timeout.js": {},
     "parallel/test-tls-reuse-host-from-socket.js": {},
     "parallel/test-tls-root-certificates.js": {},
