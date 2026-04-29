@@ -154,6 +154,7 @@ import {
   ERR_INVALID_ARG_TYPE,
   ERR_INVALID_ARG_VALUE,
   ERR_INVALID_CHAR,
+  ERR_INVALID_URL,
   ERR_OUT_OF_RANGE,
   ERR_SOCKET_CLOSED,
   ERR_TLS_ALPN_CALLBACK_WITH_PROTOCOLS,
@@ -253,7 +254,11 @@ function debugSessionObj(session, message, ...args) {
 }
 
 function getURLOrigin(urlStr) {
-  return new URL(urlStr).origin;
+  try {
+    return new URL(urlStr).origin;
+  } catch {
+    throw new ERR_INVALID_URL(urlStr);
+  }
 }
 
 function perfNow() {
@@ -1525,6 +1530,26 @@ function closeStream(stream, code, rstStreamStatus = kSubmitRstStream) {
 
   const { ending } = stream._writableState;
 
+  // Submit RST_STREAM before ending the writable side when we're forcing
+  // an error reset. stream.end() drives a synchronous shutdown chain in
+  // this polyfill: handle.shutdown queues an END_STREAM DATA frame, the
+  // following scheduleSendPending flushes it, nghttp2 closes the stream,
+  // on_stream_close fires and clears kHandle, all before
+  // finishCloseStream would otherwise reach submitRstStream. By queueing
+  // the RST_STREAM frame first, nghttp2 prioritises it over the queued
+  // DATA frame and the peer actually sees the reset.
+  let rstAlreadySubmitted = false;
+  if (
+    rstStreamStatus === kForceRstStream &&
+    code !== NGHTTP2_NO_ERROR &&
+    !ending &&
+    !stream.pending &&
+    stream[kHandle] !== undefined
+  ) {
+    submitRstStream.call(stream, code);
+    rstAlreadySubmitted = true;
+  }
+
   if (!ending) {
     // If the writable side of the Http2Stream is still open, emit the
     // 'aborted' event and set the aborted flag.
@@ -1537,7 +1562,7 @@ function closeStream(stream, code, rstStreamStatus = kSubmitRstStream) {
     stream.end();
   }
 
-  if (rstStreamStatus !== kNoRstStream) {
+  if (rstStreamStatus !== kNoRstStream && !rstAlreadySubmitted) {
     const finishFn = FunctionPrototypeBind(finishCloseStream, stream, code);
     if (
       !ending || stream.writableFinished || code !== NGHTTP2_NO_ERROR ||
@@ -1706,7 +1731,7 @@ class Http2Stream extends Duplex {
       return handle.writeBuffer(req, Buffer.from(data, "latin1"));
     };
     handle.writeAsciiString = function (req, data) {
-      return handle.writeBuffer(req, new TextEncoder().encode(data));
+      return handle.writeBuffer(req, Buffer.from(data, "ascii"));
     };
     handle.writeUcs2String = function (req, data) {
       return handle.writeBuffer(req, Buffer.from(data, "utf16le"));
@@ -2335,6 +2360,7 @@ function processRespondWithFD(
       self.session[kStrictSingleValueFields],
     );
   } catch (err) {
+    if (self.ownsFd) tryClose(fd);
     self.destroy(err);
     return;
   }
@@ -2353,8 +2379,14 @@ function processRespondWithFD(
     }
     fs.read(fd, buf, 0, readLen, pos, (err, bytesRead) => {
       if (err) {
-        self.destroy(err);
         if (self.ownsFd) tryClose(fd);
+        // Match Node: a read failure (e.g. EBADF from a bad fd) resets the
+        // stream with NGHTTP2_INTERNAL_ERROR rather than leaking the
+        // underlying fs error to user code.
+        if (!self.destroyed && !self.closed) {
+          closeStream(self, NGHTTP2_INTERNAL_ERROR, kForceRstStream);
+        }
+        self.destroy();
         return;
       }
       if (bytesRead === 0) {
@@ -2380,6 +2412,7 @@ function processRespondWithFD(
   );
 
   if (ret < 0) {
+    if (self.ownsFd) tryClose(fd);
     self.destroy(new NghttpError(ret));
     return;
   }
@@ -3258,7 +3291,50 @@ function closeSession(session, code, error) {
   session.setTimeout(0);
   session.removeAllListeners("timeout");
 
-  // Destroy any pending and open streams
+  // Disassociate from the socket and server.
+  const socket = session[kSocket];
+  const handle = session[kHandle];
+
+  // Match Node.js's Http2Session::Close (src/node_http2.cc): submit a
+  // GOAWAY before destroying so the peer gets a graceful shutdown
+  // notification instead of an abrupt socket close. Without this, a
+  // peer seeing ECONNRESET/RST on Windows (from the local close-with-
+  // unread-data path) has no goawayCode set and socketOnError bubbles
+  // the error as uncaught (e.g. test-http2-zero-length-header.js).
+  //
+  // Submit the GOAWAY *before* destroying open streams (which queues
+  // RST_STREAM frames via per-stream submitRstStream + scheduleSendPending
+  // synchronous drains). When the GOAWAY frame is serialized to the wire
+  // first, the peer sets goawayCode on its session before the RST_STREAM
+  // arrives, so the peer's stream destroy path picks up the session-level
+  // error code (ERR_HTTP2_SESSION_ERROR) instead of falling back to
+  // ERR_HTTP2_STREAM_ERROR (test-http2-propagate-session-destroy-code).
+  //
+  // Skip when the session already walked the graceful close() path
+  // (SESSION_FLAGS_CLOSED): that path submitted the GOAWAY via
+  // submitGoaway + scheduleSendPending, and the later destroy() here
+  // is the ongracefulclosecomplete follow-up. Also skip when code is
+  // not a numeric code (same path: destroy(null) from kMaybeDestroy).
+  // The state.flags |= SESSION_FLAGS_DESTROYED above ensures the
+  // getOutgoingChunk -> maybe_notify_graceful_close_complete ->
+  // kMaybeDestroy -> destroy re-entry short-circuits on this.destroyed.
+  if (
+    handle !== undefined &&
+    typeof code === "number" &&
+    (state.flags & SESSION_FLAGS_CLOSED) === 0 &&
+    socket && !socket.destroyed && typeof handle.goaway === "function"
+  ) {
+    handle.goaway(code, 0);
+    while (!socket.destroyed) {
+      const chunk = handle.getOutgoingChunk();
+      if (!chunk || chunk.byteLength === 0) break;
+      socket.write(chunk);
+    }
+  }
+
+  // Destroy any pending and open streams. Per-stream destroy queues
+  // RST_STREAM frames and drains them synchronously, so this runs after
+  // the GOAWAY above to preserve wire order.
   if (state.pendingStreams.size > 0 || state.streams.size > 0) {
     const cancel = new ERR_HTTP2_STREAM_CANCEL(error);
     // deno-lint-ignore prefer-primordials
@@ -3267,39 +3343,8 @@ function closeSession(session, code, error) {
     state.streams.forEach((stream) => stream.destroy(error));
   }
 
-  // Disassociate from the socket and server.
-  const socket = session[kSocket];
-  const handle = session[kHandle];
-
   // Destroy the handle if it exists at this point.
   if (handle !== undefined) {
-    // Match Node.js's Http2Session::Close (src/node_http2.cc): submit a
-    // GOAWAY before destroying so the peer gets a graceful shutdown
-    // notification instead of an abrupt socket close. Without this, a
-    // peer seeing ECONNRESET/RST on Windows (from the local close-with-
-    // unread-data path) has no goawayCode set and socketOnError bubbles
-    // the error as uncaught (e.g. test-http2-zero-length-header.js).
-    //
-    // Skip when the session already walked the graceful close() path
-    // (SESSION_FLAGS_CLOSED): that path submitted the GOAWAY via
-    // submitGoaway + scheduleSendPending, and the later destroy() here
-    // is the ongracefulclosecomplete follow-up. Also skip when code is
-    // not a numeric code (same path: destroy(null) from kMaybeDestroy).
-    // The state.flags |= SESSION_FLAGS_DESTROYED above ensures the
-    // getOutgoingChunk -> maybe_notify_graceful_close_complete ->
-    // kMaybeDestroy -> destroy re-entry short-circuits on this.destroyed.
-    if (
-      typeof code === "number" &&
-      (state.flags & SESSION_FLAGS_CLOSED) === 0 &&
-      socket && !socket.destroyed && typeof handle.goaway === "function"
-    ) {
-      handle.goaway(code, 0);
-      while (!socket.destroyed) {
-        const chunk = handle.getOutgoingChunk();
-        if (!chunk || chunk.byteLength === 0) break;
-        socket.write(chunk);
-      }
-    }
     handle.ondone = FunctionPrototypeBind(
       finishSessionClose,
       null,

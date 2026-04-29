@@ -25,7 +25,7 @@ const {
   Symbol,
 } = primordials;
 
-import { op_http2_http_state } from "ext:core/ops";
+import { op_http2_error_string, op_http2_http_state } from "ext:core/ops";
 import { _checkIsHttpToken as checkIsHttpToken } from "node:_http_common";
 import { codes, hideStackFrames } from "ext:deno_node/internal/errors.ts";
 import {
@@ -878,14 +878,20 @@ function buildNgHeaderString(
   return [pseudoHeaders + headers, count];
 }
 
+// Messages for the custom error codes that nghttp2 callbacks can hand back
+// from the native binding (see custom_recv_error_code in ext/node/ops/http2).
+// Mirrors the templates in Node's lib/internal/errors.js.
+const kCustomErrorMessages = {
+  __proto__: null,
+  ERR_HTTP2_TOO_MANY_INVALID_FRAMES: "Too many invalid HTTP/2 frames",
+};
+
 class NghttpError extends Error {
   constructor(integerCode, customErrorCode) {
     super(
       customErrorCode
-        // TODO(littledivy): add getMessage in errors.ts
-        // ? getMessage(customErrorCode, [], null)
-        ? undefined
-        : binding.nghttp2ErrorString(integerCode),
+        ? kCustomErrorMessages[customErrorCode] ?? customErrorCode
+        : op_http2_error_string(integerCode),
     );
     this.code = customErrorCode || "ERR_HTTP2_ERROR";
     this.errno = integerCode;
