@@ -128,7 +128,6 @@
     "parallel/test-async-hooks-run-in-async-scope-this-arg.js": {},
     "parallel/test-async-hooks-stack-overflow-nested-async.js": {},
     "parallel/test-async-hooks-stack-overflow-try-catch.js": {},
-    "parallel/test-async-hooks-stack-overflow.js": {},
     "parallel/test-async-hooks-worker-asyncfn-terminate-1.js": {},
     "parallel/test-async-hooks-worker-asyncfn-terminate-2.js": {},
     "parallel/test-async-hooks-worker-asyncfn-terminate-3.js": {},
