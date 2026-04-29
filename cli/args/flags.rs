@@ -1680,6 +1680,7 @@ static DENO_HELP: &str = cstr!(
     <g>approve-scripts</> Approve npm lifecycle scripts
     <g>remove</>       Remove dependencies from the configuration file
     <g>publish</>      Publish the current working directory's package or workspace
+    <g>why</>          Show why a package is installed
 
   <y>Tooling:</>
     <g>bench</>        Run benchmarks
@@ -15686,6 +15687,68 @@ Usage: deno repl [OPTIONS] [-- [ARGS]...]\n"
   #[test]
   fn bump_version_invalid_increment() {
     let r = flags_from_vec(svec!["deno", "bump-version", "invalid"]);
+    assert!(r.is_err());
+  }
+
+  #[test]
+  fn why_package() {
+    let r = flags_from_vec(svec!["deno", "why", "express"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Why(WhyFlags {
+          package: "express".to_string(),
+        }),
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn why_package_with_version() {
+    let r = flags_from_vec(svec!["deno", "why", "express@4.18.2"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Why(WhyFlags {
+          package: "express@4.18.2".to_string(),
+        }),
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn why_scoped_package() {
+    let r = flags_from_vec(svec!["deno", "why", "@scope/pkg"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Why(WhyFlags {
+          package: "@scope/pkg".to_string(),
+        }),
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn why_scoped_package_with_version() {
+    let r = flags_from_vec(svec!["deno", "why", "@scope/pkg@1.0.0"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Why(WhyFlags {
+          package: "@scope/pkg@1.0.0".to_string(),
+        }),
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn why_missing_package() {
+    let r = flags_from_vec(svec!["deno", "why"]);
     assert!(r.is_err());
   }
 }

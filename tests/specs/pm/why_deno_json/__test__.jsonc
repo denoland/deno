@@ -1,0 +1,13 @@
+{
+  "tests": {
+    "direct_dep": {
+      "args": "why @denotest/bin",
+      "output": "direct.out"
+    },
+    "not_found": {
+      "args": "why nonexistent",
+      "output": "not_found.out",
+      "exitCode": 1
+    }
+  }
+}

@@ -8,6 +8,10 @@
       "args": "why ms",
       "output": "transitive.out"
     },
+    "version_filter": {
+      "args": "why ms@2.0.0",
+      "output": "version_filter.out"
+    },
     "not_found": {
       "args": "why nonexistent",
       "output": "not_found.out",

@@ -1,7 +1,6 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::collections::HashMap;
-use std::collections::HashSet;
 use std::sync::Arc;
 
 use deno_core::anyhow::bail;
@@ -61,10 +60,7 @@ pub async fn why(
     .collect();
 
   if matching.is_empty() {
-    bail!(
-      "package '{}' not found in the dependency tree",
-      query
-    );
+    bail!("package '{}' not found in the dependency tree", query);
   }
 
   // Build reverse dependency map from lockfile
@@ -134,7 +130,9 @@ pub async fn why(
         find_paths_to_root(key, &reverse_deps, &root_specifier_to_pkg);
 
       if paths.is_empty() {
-        println!("  (no dependency path found)");
+        println!(
+          "  (no dependency path found — try running `deno install` to refresh the lockfile)"
+        );
       }
 
       for path in &paths {
@@ -156,13 +154,10 @@ fn find_paths_to_root<'a>(
 ) -> Vec<Vec<&'a str>> {
   let mut paths: Vec<Vec<&'a str>> = Vec::new();
   let mut current_path: Vec<&'a str> = vec![target_key];
-  let mut visited: HashSet<&'a str> = HashSet::new();
-  visited.insert(target_key);
 
   fn dfs<'a>(
     current_key: &'a str,
     current_path: &mut Vec<&'a str>,
-    visited: &mut HashSet<&'a str>,
     paths: &mut Vec<Vec<&'a str>>,
     reverse_deps: &HashMap<&'a str, Vec<&'a str>>,
     root_specifiers: &HashMap<String, Vec<String>>,
@@ -175,23 +170,15 @@ fn find_paths_to_root<'a>(
 
     if let Some(parents) = reverse_deps.get(current_key) {
       for parent in parents {
-        if visited.contains(parent) {
+        // Use path-based cycle check: only skip nodes already on the
+        // current path. This prevents infinite loops while still
+        // allowing a node to appear in multiple independent paths.
+        if current_path.contains(parent) {
           continue;
         }
-        visited.insert(parent);
         current_path.push(parent);
-        dfs(
-          parent,
-          current_path,
-          visited,
-          paths,
-          reverse_deps,
-          root_specifiers,
-        );
+        dfs(parent, current_path, paths, reverse_deps, root_specifiers);
         current_path.pop();
-        // Don't remove from visited — prevents infinite loops from
-        // cycles in the dependency graph. This may miss some
-        // alternative paths but guarantees termination.
       }
     }
   }
@@ -199,7 +186,6 @@ fn find_paths_to_root<'a>(
   dfs(
     target_key,
     &mut current_path,
-    &mut visited,
     &mut paths,
     reverse_deps,
     root_specifiers,

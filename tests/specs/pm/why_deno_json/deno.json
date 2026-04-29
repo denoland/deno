@@ -1,0 +1,6 @@
+{
+  "imports": {
+    "@denotest/bin": "npm:@denotest/bin@0.6.0",
+    "@denotest/breaking-change-between-versions": "npm:@denotest/breaking-change-between-versions@1.0.0"
+  }
+}
