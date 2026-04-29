@@ -1827,6 +1827,7 @@
     "parallel/test-https-agent.js": {},
     "parallel/test-https-byteswritten.js": {},
     "parallel/test-https-client-checkServerIdentity.js": {},
+    "parallel/test-https-client-get-url.js": {},
     "parallel/test-https-close.js": {},
     "parallel/test-https-connect-address-family.js": {},
     "parallel/test-https-connecting-to-http.js": {

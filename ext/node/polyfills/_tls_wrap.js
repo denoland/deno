@@ -21,6 +21,7 @@ import {
 import { JSStreamSocket } from "ext:deno_node/internal/js_stream_socket.js";
 import { convertALPNProtocols } from "ext:deno_node/internal/tls_common.js";
 import { Buffer } from "node:buffer";
+import process from "node:process";
 import {
   connResetException,
   ERR_INVALID_ARG_TYPE,
@@ -1164,8 +1165,20 @@ function connect(...args) {
   return tlssock;
 }
 
+let warnOnAllowUnauthorized = true;
 function getAllowUnauthorized() {
-  return false;
+  const allowUnauthorized =
+    process.env.NODE_TLS_REJECT_UNAUTHORIZED === "0";
+  if (allowUnauthorized && warnOnAllowUnauthorized) {
+    warnOnAllowUnauthorized = false;
+    process.emitWarning(
+      "Setting the NODE_TLS_REJECT_UNAUTHORIZED " +
+        "environment variable to '0' makes TLS connections " +
+        "and HTTPS requests insecure by disabling " +
+        "certificate verification.",
+    );
+  }
+  return allowUnauthorized;
 }
 
 function createServer(options, listener) {
