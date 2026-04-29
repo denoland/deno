@@ -124,7 +124,7 @@ deno_core::extension!(deno_crypto,
     ed25519::op_crypto_export_pkcs8_ed25519,
     ed25519::op_crypto_jwk_x_ed25519,
   ],
-  esm = [ "00_crypto.js" ],
+  lazy_loaded_esm = [ "00_crypto.js" ],
   options = {
     maybe_seed: Option<u64>,
   },

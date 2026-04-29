@@ -167,10 +167,37 @@ import type {
 import { normalizeEncoding } from "ext:deno_node/internal/util.mjs";
 import { isArrayBufferView } from "ext:deno_node/internal/util/types.ts";
 import { validateString } from "ext:deno_node/internal/validators.mjs";
-import { crypto as webcrypto } from "ext:deno_crypto/00_crypto.js";
+import { core } from "ext:core/mod.js";
 import { deprecate } from "node:util";
 
-const subtle = webcrypto.subtle;
+const loadCrypto = core.createLazyLoader("ext:deno_crypto/00_crypto.js");
+
+// Lazy proxies so that `import { webcrypto } from "node:crypto"` works
+// without eagerly evaluating ext:deno_crypto at snapshot time.
+// deno-lint-ignore no-explicit-any
+function createLazyProxy(target: () => any) {
+  // deno-lint-ignore no-explicit-any
+  return new Proxy({} as any, {
+    get(_, prop) {
+      const value = Reflect.get(target(), prop);
+      if (typeof value === "function") {
+        return value.bind(target());
+      }
+      return value;
+    },
+    has(_, prop) {
+      return Reflect.has(target(), prop);
+    },
+    ownKeys() {
+      return Reflect.ownKeys(target());
+    },
+    getOwnPropertyDescriptor(_, prop) {
+      return Reflect.getOwnPropertyDescriptor(target(), prop);
+    },
+  });
+}
+export const webcrypto = createLazyProxy(() => loadCrypto().crypto);
+export const subtle = createLazyProxy(() => loadCrypto().crypto.subtle);
 const fipsForced = getOptionValue("--force-fips");
 
 const Hash = deprecate(
@@ -675,10 +702,8 @@ export {
   setFips,
   Sign,
   sign,
-  subtle,
   timingSafeEqual,
   Verify,
   verify,
-  webcrypto,
   X509Certificate,
 };

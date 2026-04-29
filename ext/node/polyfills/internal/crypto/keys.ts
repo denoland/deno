@@ -35,10 +35,8 @@ import {
   op_node_key_type,
 } from "ext:core/ops";
 
-import {
-  cryptoKeyExportNodeKeyMaterial,
-  importCryptoKeySync,
-} from "ext:deno_crypto/00_crypto.js";
+import { core } from "ext:core/mod.js";
+const loadCrypto = core.createLazyLoader("ext:deno_crypto/00_crypto.js");
 
 import { kHandle } from "ext:deno_node/internal/crypto/constants.ts";
 import { isStringOrBuffer } from "ext:deno_node/internal/crypto/cipher.ts";
@@ -215,7 +213,7 @@ export class KeyObject {
     if (!isCryptoKey(key)) {
       throw new ERR_INVALID_ARG_TYPE("key", "CryptoKey", key);
     }
-    const { type, data } = cryptoKeyExportNodeKeyMaterial(key);
+    const { type, data } = loadCrypto().cryptoKeyExportNodeKeyMaterial(key);
     if (type === "secret") {
       const handle = op_node_create_secret_key(data);
       return new SecretKeyObject(handle);
@@ -869,7 +867,13 @@ export class SecretKeyObject extends KeyObject {
       }
     }
 
-    return importCryptoKeySync("raw", rawData, algorithm, extractable, usages);
+    return loadCrypto().importCryptoKeySync(
+      "raw",
+      rawData,
+      algorithm,
+      extractable,
+      usages,
+    );
   }
 
   export(options?: { format?: "buffer" | "jwk" }): Buffer | JsonWebKey {
@@ -938,7 +942,7 @@ export class PrivateKeyObject extends AsymmetricKeyObject {
     const pkcs8Data = Buffer.from(
       op_node_export_private_key_der(this[kHandle], "pkcs8"),
     );
-    return importCryptoKeySync(
+    return loadCrypto().importCryptoKeySync(
       "pkcs8",
       pkcs8Data,
       algorithm,
@@ -993,7 +997,7 @@ export class PublicKeyObject extends AsymmetricKeyObject {
     const spkiData = Buffer.from(
       op_node_export_public_key_der(this[kHandle], "spki"),
     );
-    return importCryptoKeySync(
+    return loadCrypto().importCryptoKeySync(
       "spki",
       spkiData,
       algorithm,
