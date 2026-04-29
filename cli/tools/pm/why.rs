@@ -135,47 +135,42 @@ pub async fn why(
     let base = strip_peer_suffix(key);
     log::info!("{}", colors::bold(base));
 
-    let is_root = root_specifier_to_pkg.contains_key(*key);
-
-    if is_root {
-      // Direct dependency - show the specifier(s)
-      if let Some(specifiers) = root_specifier_to_pkg.get(*key) {
-        for spec in specifiers {
-          log::info!("  {}", colors::green(spec));
-        }
+    // Show direct specifier(s) if this is a root dependency
+    if let Some(specifiers) = root_specifier_to_pkg.get(*key) {
+      for spec in specifiers {
+        log::info!("  {}", colors::green(spec));
       }
+    }
+
+    // Also show transitive paths (even for direct deps that are
+    // reachable transitively through other packages)
+    let mut paths = find_paths_to_root(
+      key,
+      &reverse_deps,
+      &root_specifier_to_pkg,
+      MAX_PATHS_PER_VERSION,
+    );
+
+    // Sort by path length so the most direct relationship is shown first
+    paths.sort_by_key(|p| p.len());
+
+    if paths.is_empty() && !root_specifier_to_pkg.contains_key(*key) {
+      log::info!(
+        "  (no dependency path found -- try running `deno install` to refresh the lockfile)"
+      );
+    }
+
+    if paths.len() > MAX_PATHS_PER_VERSION {
+      for path in &paths[..MAX_PATHS_PER_VERSION] {
+        log::info!("{}", format_dependency_path(path, &root_specifier_to_pkg));
+      }
+      log::info!(
+        "  ... and {} more paths",
+        paths.len() - MAX_PATHS_PER_VERSION
+      );
     } else {
-      // Transitive dependency - find paths from root to this package
-      let mut paths =
-        find_paths_to_root(key, &reverse_deps, &root_specifier_to_pkg);
-
-      // Sort by path length so the most direct relationship is shown first
-      paths.sort_by_key(|p| p.len());
-
-      if paths.is_empty() {
-        log::info!(
-          "  (no dependency path found — try running `deno install` to refresh the lockfile)"
-        );
-      }
-
-      if paths.len() > MAX_PATHS_PER_VERSION {
-        for path in &paths[..MAX_PATHS_PER_VERSION] {
-          log::info!(
-            "{}",
-            format_dependency_path(path, &root_specifier_to_pkg)
-          );
-        }
-        log::info!(
-          "  ... and {} more paths",
-          paths.len() - MAX_PATHS_PER_VERSION
-        );
-      } else {
-        for path in &paths {
-          log::info!(
-            "{}",
-            format_dependency_path(path, &root_specifier_to_pkg)
-          );
-        }
+      for path in &paths {
+        log::info!("{}", format_dependency_path(path, &root_specifier_to_pkg));
       }
     }
 
@@ -186,29 +181,45 @@ pub async fn why(
 }
 
 /// Find dependency paths from root packages to the target.
+///
+/// `max_paths` caps how many paths are collected; once reached the
+/// search short-circuits to avoid exponential expansion on wide
+/// diamond dependency graphs (e.g. `ms` reachable via 30+ routes
+/// in a Next.js app).
 fn find_paths_to_root<'a>(
   target_key: &'a str,
   reverse_deps: &BTreeMap<&'a str, Vec<&'a str>>,
   root_specifiers: &HashMap<String, Vec<String>>,
+  max_paths: usize,
 ) -> Vec<Vec<&'a str>> {
   let mut paths: Vec<Vec<&'a str>> = Vec::new();
   let mut current_path: Vec<&'a str> = vec![target_key];
 
   fn dfs<'a>(
     current_key: &'a str,
+    target_key: &'a str,
     current_path: &mut Vec<&'a str>,
     paths: &mut Vec<Vec<&'a str>>,
     reverse_deps: &BTreeMap<&'a str, Vec<&'a str>>,
     root_specifiers: &HashMap<String, Vec<String>>,
+    max_paths: usize,
   ) {
-    if root_specifiers.contains_key(current_key) {
-      // Found a root - build path from root to target
+    if paths.len() >= max_paths {
+      return;
+    }
+
+    // Check if we reached a root (but not the starting node itself,
+    // since direct specifiers are printed separately by the caller)
+    if current_key != target_key && root_specifiers.contains_key(current_key) {
       paths.push(current_path.iter().rev().copied().collect());
       return;
     }
 
     if let Some(parents) = reverse_deps.get(current_key) {
       for parent in parents {
+        if paths.len() >= max_paths {
+          return;
+        }
         // Use path-based cycle check: only skip nodes already on the
         // current path. This prevents infinite loops while still
         // allowing a node to appear in multiple independent paths.
@@ -216,7 +227,15 @@ fn find_paths_to_root<'a>(
           continue;
         }
         current_path.push(parent);
-        dfs(parent, current_path, paths, reverse_deps, root_specifiers);
+        dfs(
+          parent,
+          target_key,
+          current_path,
+          paths,
+          reverse_deps,
+          root_specifiers,
+          max_paths,
+        );
         current_path.pop();
       }
     }
@@ -224,10 +243,12 @@ fn find_paths_to_root<'a>(
 
   dfs(
     target_key,
+    target_key,
     &mut current_path,
     &mut paths,
     reverse_deps,
     root_specifiers,
+    max_paths,
   );
 
   paths
