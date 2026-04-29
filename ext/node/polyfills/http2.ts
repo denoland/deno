@@ -52,6 +52,7 @@ import {
 import net from "node:net";
 import assert from "node:assert";
 import http from "node:http";
+import { AsyncResource } from "node:async_hooks";
 import {
   _connectionListener as httpConnectionListener,
   httpServerPreClose,
@@ -1627,7 +1628,19 @@ class Http2Stream extends Duplex {
       return handle.writeBuffer(req, Buffer.from(data, "utf16le"));
     };
 
-    handle.onread = onStreamRead;
+    const reqAsync = this[kRequestAsyncResource];
+    if (reqAsync) {
+      handle.onread = function (arrayBuffer, nread) {
+        return reqAsync.runInAsyncScope(
+          onStreamRead,
+          handle,
+          arrayBuffer,
+          nread,
+        );
+      };
+    } else {
+      handle.onread = onStreamRead;
+    }
     this.uncork();
     this.emit("ready");
   }
@@ -4020,8 +4033,7 @@ class ClientHttp2Session extends Http2Session {
     stream[kSentHeaders] = headersObject; // N.b. Only set for object headers, not raw headers
     stream[kRawHeaders] = rawHeaders; // N.b. Only set for raw headers, not object headers
     stream[kOrigin] = `${scheme}://${authority}`;
-    // const reqAsync = new AsyncResource("PendingRequest");
-    // stream[kRequestAsyncResource] = reqAsync;
+    stream[kRequestAsyncResource] = new AsyncResource("PendingRequest");
 
     // Close the writable side of the stream if options.endStream is set.
     if (options.endStream) {
