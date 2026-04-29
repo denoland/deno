@@ -2215,6 +2215,14 @@ export class ERR_TLS_ALPN_CALLBACK_WITH_PROTOCOLS extends NodeTypeError {
     );
   }
 }
+export class ERR_TLS_ALPN_CALLBACK_INVALID_RESULT extends NodeTypeError {
+  constructor(result: string, protocols: string[]) {
+    super(
+      "ERR_TLS_ALPN_CALLBACK_INVALID_RESULT",
+      `ALPN callback returned ${result} but must return one of: ${protocols.join(", ")}`,
+    );
+  }
+}
 export class ERR_TLS_DH_PARAM_SIZE extends NodeError {
   constructor(x: string) {
     super("ERR_TLS_DH_PARAM_SIZE", `DH parameter size ${x} is less than 2048`);
@@ -3361,6 +3369,7 @@ export default {
   ERR_STREAM_WRAP,
   ERR_STREAM_WRITE_AFTER_END,
   ERR_SYNTHETIC,
+  ERR_TLS_ALPN_CALLBACK_INVALID_RESULT,
   ERR_TLS_ALPN_CALLBACK_WITH_PROTOCOLS,
   ERR_TLS_CERT_ALTNAME_INVALID,
   ERR_TLS_DH_PARAM_SIZE,

@@ -23,8 +23,10 @@ import { convertALPNProtocols } from "ext:deno_node/internal/tls_common.js";
 import { Buffer } from "node:buffer";
 import {
   connResetException,
+  ERR_TLS_ALPN_CALLBACK_INVALID_RESULT,
   ERR_INVALID_ARG_TYPE,
   ERR_INVALID_ARG_VALUE,
+  ERR_TLS_ALPN_CALLBACK_WITH_PROTOCOLS,
   ERR_TLS_CERT_ALTNAME_INVALID,
   ERR_TLS_REQUIRED_SERVER_NAME,
 } from "ext:deno_node/internal/errors.ts";
@@ -58,6 +60,7 @@ const kIsVerified = Symbol("verified");
 const kPendingSession = Symbol("pendingSession");
 const kRes = Symbol("res");
 const kErrorEmitted = Symbol("error-emitted");
+const kALPNCallback = Symbol("alpnCallback");
 const noop = () => {};
 
 let debug = debuglog("tls", (fn) => {
@@ -125,6 +128,150 @@ function buildPeerLegacyCertificate(handle) {
   }
 
   return translatePeerCertificate(cert) || {};
+}
+
+function normalizeServerSecureContext(context) {
+  if (context?.context !== undefined && typeof context.context === "object") {
+    return context;
+  }
+  return createSecureContext(context);
+}
+
+function buildServerSecureContextInput(context, tlsOptions) {
+  return {
+    ...(context?.context ?? context),
+    rejectUnauthorized: tlsOptions.rejectUnauthorized !== false,
+    requestCert: tlsOptions.requestCert === true,
+  };
+}
+
+function tryParseClientHello(buffer) {
+  const fragments = [];
+  let fragmentsLength = 0;
+  let handshakeLength = -1;
+  let offset = 0;
+
+  while (offset + 5 <= buffer.length) {
+    const recordLength = buffer.readUInt16BE(offset + 3);
+    if (offset + 5 + recordLength > buffer.length) {
+      return null;
+    }
+    if (buffer[offset] !== 22) {
+      throw new Error("Invalid TLS ClientHello record");
+    }
+
+    const fragment = buffer.subarray(offset + 5, offset + 5 + recordLength);
+    fragments.push(fragment);
+    fragmentsLength += fragment.length;
+
+    if (handshakeLength === -1 && fragmentsLength >= 4) {
+      const header = Buffer.concat(fragments, fragmentsLength);
+      if (header[0] !== 1) {
+        throw new Error("Invalid TLS ClientHello handshake");
+      }
+      handshakeLength = 4 +
+        ((header[1] << 16) | (header[2] << 8) | header[3]);
+    }
+    if (handshakeLength !== -1 && fragmentsLength >= handshakeLength) {
+      break;
+    }
+
+    offset += 5 + recordLength;
+  }
+
+  if (handshakeLength === -1 || fragmentsLength < handshakeLength) {
+    return null;
+  }
+
+  const handshake = Buffer.concat(fragments, fragmentsLength).subarray(
+    4,
+    handshakeLength,
+  );
+  let pos = 0;
+
+  const requireBytes = (count) => {
+    if (pos + count > handshake.length) {
+      throw new Error("Truncated TLS ClientHello");
+    }
+  };
+
+  requireBytes(35);
+  pos += 34;
+
+  const sessionIdLength = handshake[pos];
+  pos += 1;
+  requireBytes(sessionIdLength + 2);
+  pos += sessionIdLength;
+
+  const cipherSuitesLength = handshake.readUInt16BE(pos);
+  pos += 2;
+  requireBytes(cipherSuitesLength + 1);
+  pos += cipherSuitesLength;
+
+  const compressionMethodsLength = handshake[pos];
+  pos += 1;
+  requireBytes(compressionMethodsLength);
+  pos += compressionMethodsLength;
+
+  if (pos === handshake.length) {
+    return { protocols: [], servername: undefined };
+  }
+
+  requireBytes(2);
+  const extensionsLength = handshake.readUInt16BE(pos);
+  pos += 2;
+  requireBytes(extensionsLength);
+
+  const extensionsEnd = pos + extensionsLength;
+  const protocols = [];
+  let servername;
+  while (pos + 4 <= extensionsEnd) {
+    const extensionType = handshake.readUInt16BE(pos);
+    const extensionLength = handshake.readUInt16BE(pos + 2);
+    pos += 4;
+    if (pos + extensionLength > extensionsEnd) {
+      throw new Error("Truncated TLS ClientHello extension");
+    }
+
+    if (extensionType === 0 && extensionLength >= 5) {
+      const listLength = handshake.readUInt16BE(pos);
+      let namePos = pos + 2;
+      const listEnd = namePos + listLength;
+      while (namePos + 3 <= listEnd && namePos + 3 <= pos + extensionLength) {
+        const nameType = handshake[namePos];
+        const nameLength = handshake.readUInt16BE(namePos + 1);
+        namePos += 3;
+        if (nameType === 0 && namePos + nameLength <= listEnd) {
+          servername = handshake.subarray(namePos, namePos + nameLength)
+            .toString("utf8");
+          break;
+        }
+        namePos += nameLength;
+      }
+    } else if (extensionType === 16 && extensionLength >= 2) {
+      const listLength = handshake.readUInt16BE(pos);
+      let protocolPos = pos + 2;
+      const listEnd = protocolPos + listLength;
+      while (
+        protocolPos < listEnd && protocolPos < pos + extensionLength
+      ) {
+        const protocolLength = handshake[protocolPos];
+        protocolPos += 1;
+        if (protocolPos + protocolLength > listEnd) {
+          throw new Error("Truncated TLS ALPN protocol list");
+        }
+        protocols.push(
+          handshake.subarray(protocolPos, protocolPos + protocolLength)
+            .toString("ascii"),
+        );
+        protocolPos += protocolLength;
+      }
+    }
+
+    pos += extensionLength;
+  }
+
+  return { protocols, servername };
 }
 
 // ---------------------------------------------------------------------------
@@ -691,6 +838,31 @@ TLSSocket.prototype.setServername = function (name) {
   this._handle?.setServername(name);
 };
 
+TLSSocket.prototype.setKeyCert = function (context) {
+  if (!this._tlsOptions?.isServer) {
+    throw new ERR_INVALID_ARG_VALUE(
+      "context",
+      context,
+      "setKeyCert is only supported on server sockets",
+    );
+  }
+  validateObject(context, "context");
+
+  const secureContext = normalizeServerSecureContext(context);
+  const initResult = this._handle?.initServerTls?.(
+    buildServerSecureContextInput(secureContext, this._tlsOptions),
+  );
+  if (initResult !== 0) {
+    throw new ERR_INVALID_ARG_VALUE(
+      "context",
+      context,
+      "must include a valid key and cert",
+    );
+  }
+
+  this._tlsOptions.secureContext = secureContext;
+};
+
 TLSSocket.prototype.setSession = function (_session) {
   if (typeof _session === "string") {
     _session = Buffer.from(_session, "latin1");
@@ -849,9 +1021,122 @@ function onSocketClose(err) {
   }
 }
 
+function setupTlsSocket(server, rawSocket, options) {
+  const socket = new TLSSocket(rawSocket, options);
+
+  if (socket._initError) {
+    const err = socket._initError;
+    socket._initError = null;
+    server.emit("tlsClientError", err, rawSocket);
+    socket.destroy();
+    rawSocket.destroy();
+    return;
+  }
+
+  socket._start();
+  socket.on("secure", onServerSocketSecure);
+  socket[kErrorEmitted] = false;
+  socket.on("close", onSocketClose);
+  socket.on("_tlsError", onSocketTLSError);
+  socket.on("error", onSocketTLSError);
+}
+
+function tlsConnectionListenerWithALPNCallback(rawSocket) {
+  rawSocket.pause();
+  let buffered = Buffer.alloc(0);
+
+  const cleanup = () => {
+    rawSocket.off("data", onData);
+    rawSocket.off("error", onError);
+    rawSocket.off("close", onClose);
+    rawSocket.pause();
+  };
+
+  const onError = (err) => {
+    cleanup();
+    this.emit("tlsClientError", err, rawSocket);
+  };
+
+  const onClose = () => {
+    cleanup();
+  };
+
+  const onData = (chunk) => {
+    buffered = Buffer.concat([buffered, chunk]);
+
+    let hello;
+    try {
+      hello = tryParseClientHello(buffered);
+    } catch (err) {
+      cleanup();
+      this.emit("tlsClientError", err, rawSocket);
+      rawSocket.destroy(err);
+      return;
+    }
+
+    if (hello === null) {
+      return;
+    }
+
+    cleanup();
+
+    let secureContext = this._sharedCreds;
+    let selectedProtocol;
+    try {
+      selectedProtocol = this[kALPNCallback].call({
+        setKeyCert: (context) => {
+          validateObject(context, "context");
+          secureContext = normalizeServerSecureContext(context);
+        },
+      }, hello);
+    } catch (err) {
+      this.emit("tlsClientError", err, rawSocket);
+      rawSocket.destroy(err);
+      return;
+    }
+
+    if (selectedProtocol === undefined) {
+      rawSocket.destroy();
+      return;
+    }
+
+    if (!hello.protocols.includes(selectedProtocol)) {
+      const err = new ERR_TLS_ALPN_CALLBACK_INVALID_RESULT(
+        selectedProtocol,
+        hello.protocols,
+      );
+      this.emit("tlsClientError", err, rawSocket);
+      rawSocket.destroy(err);
+      return;
+    }
+
+    rawSocket.unshift(buffered);
+    setupTlsSocket(this, rawSocket, {
+      secureContext,
+      isServer: true,
+      server: this,
+      requestCert: this.requestCert,
+      rejectUnauthorized: this.rejectUnauthorized,
+      ALPNProtocols: [selectedProtocol],
+      SNICallback: this._SNICallback,
+      pauseOnConnect: this.pauseOnConnect,
+    });
+  };
+
+  rawSocket.on("data", onData);
+  rawSocket.once("error", onError);
+  rawSocket.once("close", onClose);
+  rawSocket.resume();
+}
+
 function tlsConnectionListener(rawSocket) {
   debug("net.Server.on(connection): new TLSSocket");
-  const socket = new TLSSocket(rawSocket, {
+  if (this[kALPNCallback]) {
+    tlsConnectionListenerWithALPNCallback.call(this, rawSocket);
+    return;
+  }
+
+  setupTlsSocket(this, rawSocket, {
     secureContext: this._sharedCreds,
     isServer: true,
     server: this,
@@ -861,28 +1146,6 @@ function tlsConnectionListener(rawSocket) {
     SNICallback: this._SNICallback,
     pauseOnConnect: this.pauseOnConnect,
   });
-
-  // TLS init can fail synchronously (e.g. missing cert/key, unsupported
-  // protocol).  Emit as tlsClientError like Node does for handshake
-  // failures instead of letting it surface as an uncaught exception.
-  if (socket._initError) {
-    const err = socket._initError;
-    socket._initError = null;
-    this.emit("tlsClientError", err, rawSocket);
-    socket.destroy();
-    rawSocket.destroy();
-    return;
-  }
-
-  // Start the TLS handshake for server-side sockets
-  socket._start();
-
-  socket.on("secure", onServerSocketSecure);
-
-  socket[kErrorEmitted] = false;
-  socket.on("close", onSocketClose);
-  socket.on("_tlsError", onSocketTLSError);
-  socket.on("error", onSocketTLSError);
 }
 
 function Server(options, listener) {
@@ -902,9 +1165,17 @@ function Server(options, listener) {
   this._contexts = [];
   this.requestCert = options.requestCert === true;
   this.rejectUnauthorized = options.rejectUnauthorized !== false;
+  this[kALPNCallback] = null;
 
   if (options.ALPNProtocols) {
     convertALPNProtocols(options.ALPNProtocols, this);
+  }
+  if (options.ALPNCallback) {
+    if (options.ALPNProtocols) {
+      throw new ERR_TLS_ALPN_CALLBACK_WITH_PROTOCOLS();
+    }
+    validateFunction(options.ALPNCallback, "options.ALPNCallback");
+    this[kALPNCallback] = options.ALPNCallback;
   }
 
   if (options.sessionTimeout != null) {

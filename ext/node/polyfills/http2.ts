@@ -4276,6 +4276,7 @@ function initializeTLSOptions(options, servername) {
       );
     }
     options.ALPNProtocols = [selected];
+    delete options.ALPNCallback;
   } else {
     options.ALPNProtocols = ["h2"];
     if (options.allowHTTP1 === true) {
