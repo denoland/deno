@@ -29,7 +29,6 @@ use node_resolver::errors::PackageJsonLoadError;
 
 extern crate libz_sys as zlib;
 
-mod global;
 pub mod ops;
 
 use deno_dotenv::parse_env_content_hook;
@@ -43,10 +42,6 @@ pub use ops::vm::ContextInitMode;
 pub use ops::vm::VM_CONTEXT_INDEX;
 pub use ops::vm::create_v8_context;
 pub use ops::vm::init_global_template;
-
-pub use crate::global::GlobalsStorage;
-use crate::global::global_object_middleware;
-use crate::global::global_template_middleware;
 
 pub fn is_builtin_node_module(module_name: &str) -> bool {
   DenoIsBuiltInNodeModuleChecker.is_builtin_node_module(module_name)
@@ -283,6 +278,7 @@ deno_core::extension!(deno_node,
     ops::zlib::op_zlib_crc32_string,
     ops::handle_wrap::op_node_new_async_id,
     ops::http2::op_http2_callbacks,
+    ops::http2::op_http2_error_string,
     ops::http2::op_http2_http_state,
     ops::os::op_node_os_get_priority,
     ops::os::op_node_os_set_priority,
@@ -325,13 +321,13 @@ deno_core::extension!(deno_node,
     ops::worker_threads::op_worker_threads_filename<TSys>,
     ops::worker_threads::op_worker_get_resource_limits,
     ops::ipc::op_node_child_ipc_pipe,
+    ops::ipc::op_node_ipc_write_json,
     ops::ipc::op_node_ipc_read_json,
     ops::ipc::op_node_ipc_read_advanced,
+    ops::ipc::op_node_ipc_write_advanced,
     ops::ipc::op_node_ipc_buffer_constructor,
     ops::ipc::op_node_ipc_ref,
     ops::ipc::op_node_ipc_unref,
-    ops::ipc::op_node_ipc_write_json_sync,
-    ops::ipc::op_node_ipc_write_advanced_sync,
     ops::process::op_node_process_set_title,
     ops::process::op_node_process_kill,
     ops::process::op_node_process_setegid,
@@ -395,7 +391,6 @@ deno_core::extension!(deno_node,
   esm_entry_point = "ext:deno_node/02_init.js",
   esm = [
     dir "polyfills",
-    "00_globals.js",
     "02_init.js",
     "_events.mjs",
     "internal/fs/promises.ts",
@@ -506,6 +501,7 @@ deno_core::extension!(deno_node,
     "internal/normalize_encoding.ts",
     "internal/options.ts",
     "internal/primordials.mjs",
+    "internal/priority_queue.ts",
     "internal/process/per_thread.mjs",
     "internal/process/report.ts",
     "internal/process/warning.ts",
@@ -644,8 +640,6 @@ deno_core::extension!(deno_node,
     }
 
   },
-  global_template_middleware = global_template_middleware,
-  global_object_middleware = global_object_middleware,
   customizer = |ext: &mut deno_core::Extension| {
     let external_references = [
       vm::QUERY_MAP_FN.with(|query| {
@@ -720,41 +714,6 @@ deno_core::extension!(deno_node,
         }
       }),
 
-      global::GETTER_MAP_FN.with(|getter| {
-        ExternalReference {
-          named_getter: *getter,
-        }
-      }),
-      global::SETTER_MAP_FN.with(|setter| {
-        ExternalReference {
-          named_setter: *setter,
-        }
-      }),
-      global::QUERY_MAP_FN.with(|query| {
-        ExternalReference {
-          named_query: *query,
-        }
-      }),
-      global::DELETER_MAP_FN.with(|deleter| {
-        ExternalReference {
-          named_deleter: *deleter,
-        }
-      }),
-      global::ENUMERATOR_MAP_FN.with(|enumerator| {
-        ExternalReference {
-          enumerator: *enumerator,
-        }
-      }),
-      global::DEFINER_MAP_FN.with(|definer| {
-        ExternalReference {
-          named_definer: *definer,
-        }
-      }),
-      global::DESCRIPTOR_MAP_FN.with(|descriptor| {
-        ExternalReference {
-          named_getter: *descriptor,
-        }
-      }),
     ];
 
     ext.external_references.to_mut().extend(external_references);

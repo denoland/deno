@@ -39,6 +39,7 @@ use deno_core::ToJsBuffer;
 use deno_core::op2;
 use deno_core::uv_compat;
 use deno_core::uv_compat::UV_EBADF;
+use deno_core::uv_compat::UV_ECANCELED;
 use deno_core::uv_compat::UV_EOF;
 use deno_core::uv_compat::uv_buf_t;
 use deno_core::uv_compat::uv_stream_t;
@@ -809,7 +810,10 @@ struct TLSWrapInner {
 
 /// Convert a rustls error to a (message, code) pair that matches Node's
 /// OpenSSL-style error reporting as closely as possible.
-fn rustls_error_to_node_error(e: &rustls::Error) -> (String, String) {
+fn rustls_error_to_node_error(
+  e: &rustls::Error,
+  protocol_version: Option<rustls::ProtocolVersion>,
+) -> (String, String) {
   use rustls::Error as E;
   match e {
     E::InvalidCertificate(cert_err) => {
@@ -858,6 +862,15 @@ fn rustls_error_to_node_error(e: &rustls::Error) -> (String, String) {
         AD::InappropriateFallback => "TLSV1_ALERT_INAPPROPRIATE_FALLBACK",
         AD::UserCanceled => "TLSV1_ALERT_USER_CANCELLED",
         AD::NoRenegotiation => "TLSV1_ALERT_NO_RENEGOTIATION",
+        AD::CertificateRequired => {
+          // rustls sends CertificateRequired for both TLS 1.2 and 1.3,
+          // but OpenSSL sends HandshakeFailure for TLS 1.2.
+          if protocol_version == Some(rustls::ProtocolVersion::TLSv1_2) {
+            "SSLV3_ALERT_HANDSHAKE_FAILURE"
+          } else {
+            "TLSV13_ALERT_CERTIFICATE_REQUIRED"
+          }
+        }
         AD::NoApplicationProtocol => "TLSV1_ALERT_NO_APPLICATION_PROTOCOL",
         _ => "SSLV3_ALERT_HANDSHAKE_FAILURE",
       };
@@ -1065,7 +1078,8 @@ impl TLSWrapInner {
             if total_consumed > 0 {
               self.enc_in.drain(..total_consumed);
             }
-            let (error_msg, error_code) = rustls_error_to_node_error(&e);
+            let (error_msg, error_code) =
+              rustls_error_to_node_error(&e, conn.protocol_version());
             self.error = Some(error_msg.clone());
             // Flush the error alert to the underlying stream
             self.enc_out_flush_only();
@@ -1712,15 +1726,19 @@ impl TLSWrap {
     scope: &mut v8::PinScope,
     _op_state: &mut OpState,
   ) -> i32 {
-    let server_config = match build_server_config(scope, context) {
-      Some(c) => c,
-      None => {
-        return -1;
-      }
-    };
+    let (server_config, client_cert_verify_error) =
+      match build_server_config(scope, context) {
+        Some(c) => c,
+        None => {
+          return -1;
+        }
+      };
 
     let inner = unsafe { &mut *self.inner.as_mut_ptr() };
     inner.pending_server_config = Some(Arc::new(server_config));
+    // Share the client cert verify error store with the TLSWrap so that
+    // `verifyError()` on the server side returns client cert errors.
+    inner.verify_error = client_cert_verify_error;
     0
   }
 
@@ -2192,6 +2210,21 @@ impl TLSWrap {
   fn set_closing(&self) {
     let inner = unsafe { &mut *self.inner.as_mut_ptr() };
     inner.closing = true;
+  }
+
+  /// Complete any pending JS write request with ECANCELED before teardown.
+  #[nofast]
+  #[reentrant]
+  fn cancel_write(&self) {
+    let ptr = self.inner.as_mut_ptr();
+    // SAFETY: ptr points to this live TLSWrapInner; the helper clears the
+    // stored write object before invoking JS and does not retain references
+    // across the callback.
+    unsafe {
+      if let Some((write_obj, ctx)) = prepare_invoke_queued(ptr) {
+        do_invoke_queued(&ctx, write_obj, UV_ECANCELED);
+      }
+    }
   }
 
   /// Destroy the SSL connection. Tears down the TLS state without
@@ -2797,6 +2830,141 @@ fn filter_unsupported_cert_version(
   }
 }
 
+// ---------------------------------------------------------------------------
+// Minimal DER helpers for chain verification of X.509v1 certificates.
+// webpki rejects v1 certs at parse time, so we do structural chain
+// checking ourselves (issuer/subject matching).
+// ---------------------------------------------------------------------------
+
+/// Read a DER tag-length-value element, returning (full element, remainder).
+fn der_read_element(data: &[u8]) -> Option<(&[u8], &[u8])> {
+  if data.is_empty() {
+    return None;
+  }
+  let len_start = 1;
+  let first_len = *data.get(len_start)?;
+  let (content_len, header_len) = if first_len < 0x80 {
+    (first_len as usize, 2)
+  } else {
+    let num_bytes = (first_len & 0x7F) as usize;
+    if num_bytes == 0 || num_bytes > 4 || data.len() < 2 + num_bytes {
+      return None;
+    }
+    let mut len = 0usize;
+    for i in 0..num_bytes {
+      len = (len << 8) | (data[2 + i] as usize);
+    }
+    (len, 2 + num_bytes)
+  };
+  let total = header_len + content_len;
+  if data.len() < total {
+    return None;
+  }
+  Some((&data[..total], &data[total..]))
+}
+
+/// Skip a DER element, returning the remainder.
+fn der_skip_element(data: &[u8]) -> Option<&[u8]> {
+  der_read_element(data).map(|(_, rest)| rest)
+}
+
+/// Extract raw (issuer, subject) DER Name fields from an X.509 certificate.
+fn extract_issuer_and_subject(cert_der: &[u8]) -> Option<(&[u8], &[u8])> {
+  // Certificate ::= SEQUENCE { tbsCertificate, ... }
+  let (cert_elem, _) = der_read_element(cert_der)?;
+  // TBSCertificate is the first element inside Certificate SEQUENCE.
+  let tbs_content = &cert_elem[cert_elem.len() - der_content_len(cert_elem)?..];
+  let (tbs_elem, _) = der_read_element(tbs_content)?;
+  let mut pos = &tbs_elem[tbs_elem.len() - der_content_len(tbs_elem)?..];
+
+  // Skip optional version [0] EXPLICIT
+  if pos.first() == Some(&0xA0) {
+    pos = der_skip_element(pos)?;
+  }
+  // Skip serialNumber (INTEGER)
+  pos = der_skip_element(pos)?;
+  // Skip signatureAlgorithm (SEQUENCE)
+  pos = der_skip_element(pos)?;
+  // Read issuer (Name = SEQUENCE)
+  let (issuer, pos) = der_read_element(pos)?;
+  // Skip validity (SEQUENCE)
+  let pos = der_skip_element(pos)?;
+  // Read subject (Name = SEQUENCE)
+  let (subject, _) = der_read_element(pos)?;
+  Some((issuer, subject))
+}
+
+/// Return the length of the content portion of a DER element.
+fn der_content_len(element: &[u8]) -> Option<usize> {
+  let first_len = *element.get(1)?;
+  if first_len < 0x80 {
+    Some(first_len as usize)
+  } else {
+    let num_bytes = (first_len & 0x7F) as usize;
+    let mut len = 0usize;
+    for i in 0..num_bytes {
+      len = (len << 8) | (*element.get(2 + i)? as usize);
+    }
+    Some(len)
+  }
+}
+
+/// Check whether a certificate chain (end_entity + intermediates) can be
+/// traced back to a root cert in `root_cert_ders` using issuer/subject
+/// matching. Returns an error code string if the chain cannot be built.
+/// Returns `Ok(())` if the chain reaches a trusted root, or
+/// `Err(code)` with a Node/OpenSSL error code if it does not.
+fn verify_chain_structure(
+  end_entity: &[u8],
+  intermediates: &[rustls::pki_types::CertificateDer<'_>],
+  root_cert_ders: &[Vec<u8>],
+) -> Result<(), &'static str> {
+  // Parse all certs' (issuer, subject) pairs up front.
+  let ee = extract_issuer_and_subject(end_entity)
+    .ok_or("UNABLE_TO_VERIFY_LEAF_SIGNATURE")?;
+  let inter: Vec<_> = intermediates
+    .iter()
+    .filter_map(|c| extract_issuer_and_subject(c.as_ref()))
+    .collect();
+  let roots: Vec<_> = root_cert_ders
+    .iter()
+    .filter_map(|c| extract_issuer_and_subject(c))
+    .collect();
+
+  // Walk the chain from end entity upward.
+  let mut current_issuer = ee.0;
+
+  // Limit iterations to prevent cycles.
+  for _ in 0..(intermediates.len() + 2) {
+    // Check if the issuer is a root cert subject.
+    if roots.iter().any(|(_, subject)| *subject == current_issuer) {
+      return Ok(()); // Chain reaches a trusted root.
+    }
+    // Check if there's an intermediate whose subject matches.
+    if let Some((inter_issuer, _)) =
+      inter.iter().find(|(_, subject)| *subject == current_issuer)
+    {
+      // Self-signed intermediate that isn't a root.
+      if *inter_issuer == current_issuer {
+        return Err("SELF_SIGNED_CERT_IN_CHAIN");
+      }
+      current_issuer = inter_issuer;
+    } else {
+      break;
+    }
+  }
+
+  // Chain doesn't reach a trusted root.
+  if root_cert_ders.is_empty() {
+    // No explicit CA was provided (only system/default roots which
+    // didn't match). OpenSSL reports this as "unable to get local
+    // issuer certificate".
+    Err("UNABLE_TO_GET_ISSUER_CERT_LOCALLY")
+  } else {
+    Err("UNABLE_TO_VERIFY_LEAF_SIGNATURE")
+  }
+}
+
 /// Map a rustls CertificateError to a Node/OpenSSL-style error code.
 fn cert_error_to_node_code(err: &rustls::CertificateError) -> &'static str {
   use rustls::CertificateError as CE;
@@ -2850,20 +3018,48 @@ impl rustls::client::danger::ServerCertVerifier for NodeServerCertVerifier {
         ) {
           return Ok(rustls::client::danger::ServerCertVerified::assertion());
         }
-        // OpenSSL accepts X.509v1 certificates; webpki rejects them, sometimes
-        // surfacing as `BadEncoding` rather than the `Other(UnsupportedCertVersion)`
-        // payload below. Mirror the signature-verification side, which already
-        // accepts both.
-        if matches!(cert_error, rustls::CertificateError::BadEncoding) {
-          return Ok(rustls::client::danger::ServerCertVerified::assertion());
+        // OpenSSL accepts X.509v1 certificates; webpki rejects them with
+        // `UnsupportedCertVersion` or sometimes `BadEncoding`. We can't
+        // simply accept: that would skip chain verification entirely.
+        // Instead, do structural chain checking (issuer/subject matching)
+        // so that v1 certs with a valid chain are accepted while broken
+        // chains still produce the correct Node/OpenSSL error.
+        let is_v1_error = matches!(
+          cert_error,
+          rustls::CertificateError::BadEncoding
+        ) || matches!(
+          cert_error,
+          rustls::CertificateError::Other(other) if other
+            .0
+            .downcast_ref::<webpki::Error>()
+            .is_some_and(|e| matches!(e, webpki::Error::UnsupportedCertVersion))
+        );
+        if is_v1_error {
+          match verify_chain_structure(
+            end_entity.as_ref(),
+            intermediates,
+            &self.root_cert_ders,
+          ) {
+            Ok(()) => {
+              // Chain is structurally valid -- accept.
+              return Ok(
+                rustls::client::danger::ServerCertVerified::assertion(),
+              );
+            }
+            Err(code) => {
+              // Chain is broken -- store the error and let the
+              // handshake proceed so JS can decide.
+              *self.verify_error.lock().unwrap_or_else(|e| e.into_inner()) =
+                Some(code.to_string());
+              return Ok(
+                rustls::client::danger::ServerCertVerified::assertion(),
+              );
+            }
+          }
         }
         if let rustls::CertificateError::Other(other) = cert_error
           && let Some(webpki_err) = other.0.downcast_ref::<webpki::Error>()
         {
-          // OpenSSL accepts X.509v1 certificates; webpki does not.
-          if matches!(webpki_err, webpki::Error::UnsupportedCertVersion) {
-            return Ok(rustls::client::danger::ServerCertVerified::assertion());
-          }
           // CaUsedAsEndEntity is a webpki-specific check that OpenSSL
           // does not have. If the cert is actually in our root store,
           // trust it silently. Otherwise store the error.
@@ -2941,6 +3137,28 @@ impl TLSWrap {
 
     0
   }
+}
+
+/// Normalize PEM data so that `BEGIN TRUSTED CERTIFICATE` and
+/// `BEGIN X509 CERTIFICATE` (which OpenSSL accepts) are rewritten to
+/// `BEGIN CERTIFICATE` (the only form rustls_pemfile recognises).
+fn normalize_pem_headers(pem: &[u8]) -> std::borrow::Cow<'_, [u8]> {
+  // Fast path: avoid allocation when no alternate headers are present.
+  // PEM files are ASCII, so a simple substring search is fine.
+  let needs_rewrite = pem
+    .windows(b"TRUSTED CERTIFICATE".len())
+    .any(|w| w == b"TRUSTED CERTIFICATE")
+    || pem
+      .windows(b"X509 CERTIFICATE".len())
+      .any(|w| w == b"X509 CERTIFICATE");
+  if !needs_rewrite {
+    return std::borrow::Cow::Borrowed(pem);
+  }
+  let s = String::from_utf8_lossy(pem);
+  let s = s
+    .replace("TRUSTED CERTIFICATE", "CERTIFICATE")
+    .replace("X509 CERTIFICATE", "CERTIFICATE");
+  std::borrow::Cow::Owned(s.into_bytes())
 }
 
 /// Build a rustls ClientConfig from a SecureContext JS object.
@@ -3040,7 +3258,9 @@ fn build_client_config(
   let mut root_cert_ders: Vec<Vec<u8>> = Vec::new();
 
   for cert in &ca_certs {
-    let reader = &mut std::io::BufReader::new(std::io::Cursor::new(cert));
+    let normalized = normalize_pem_headers(cert);
+    let reader =
+      &mut std::io::BufReader::new(std::io::Cursor::new(normalized.as_ref()));
     for parsed in rustls_pemfile::certs(reader) {
       match parsed {
         Ok(cert) => {
@@ -3120,6 +3340,8 @@ struct NodeClientCertVerifier {
   inner: Arc<dyn rustls::server::danger::ClientCertVerifier>,
   root_cert_ders: Vec<Vec<u8>>,
   reject_unauthorized: bool,
+  /// Shared with TLSWrapInner so `verifyError()` can return the error.
+  verify_error: VerifyErrorStore,
 }
 
 impl rustls::server::danger::ClientCertVerifier for NodeClientCertVerifier {
@@ -3154,13 +3376,21 @@ impl rustls::server::danger::ClientCertVerifier for NodeClientCertVerifier {
     {
       Ok(v) => Ok(v),
       Err(e) => {
-        if self.reject_unauthorized {
-          Err(e)
+        // Never abort the TLS handshake from client cert verification.
+        // Store the error so verifyError() can return it, and let the
+        // JS layer (onServerSocketSecure) decide whether to tear down
+        // the connection based on `rejectUnauthorized`. This matches
+        // Node/OpenSSL behaviour where client cert failures produce
+        // ECONNRESET on the client (clean close) rather than a TLS
+        // fatal alert.
+        let code = if let rustls::Error::InvalidCertificate(ref cert_err) = e {
+          cert_error_to_node_code(cert_err).to_string()
         } else {
-          // `rejectUnauthorized: false` — succeed the handshake and let the
-          // JS layer decide via `TLSSocket.authorized` / `authorizationError`.
-          Ok(rustls::server::danger::ClientCertVerified::assertion())
-        }
+          format!("{e}")
+        };
+        *self.verify_error.lock().unwrap_or_else(|p| p.into_inner()) =
+          Some(code);
+        Ok(rustls::server::danger::ClientCertVerified::assertion())
       }
     }
   }
@@ -3191,10 +3421,12 @@ impl rustls::server::danger::ClientCertVerifier for NodeClientCertVerifier {
 }
 
 /// Build a rustls ServerConfig from a SecureContext JS object.
+/// Returns (config, verify_error_store) where the store is shared with
+/// `NodeClientCertVerifier` so the server-side JS can read client cert errors.
 fn build_server_config(
   scope: &mut v8::PinScope,
   context: v8::Local<v8::Object>,
-) -> Option<rustls::ServerConfig> {
+) -> Option<(rustls::ServerConfig, VerifyErrorStore)> {
   let protocol_versions = match get_protocol_versions(scope, context) {
     ProtocolVersionSelection::Default => {
       &[&rustls::version::TLS13, &rustls::version::TLS12][..]
@@ -3237,7 +3469,7 @@ fn build_server_config(
   // When `requestCert` is true, the server sends a CertificateRequest during
   // the TLS handshake so the client presents its certificate. Without this
   // the peer certificate is never available to `getPeerCertificate()`.
-  let builder = if request_cert {
+  let (builder, client_cert_verify_error) = if request_cert {
     let mut root_cert_store = rustls::RootCertStore::empty();
     let mut root_cert_ders: Vec<Vec<u8>> = Vec::new();
     v8_static_strings! {
@@ -3261,7 +3493,10 @@ fn build_server_config(
         ca_pems.push(s.to_rust_string_lossy(scope).into_bytes());
       }
       for pem in &ca_pems {
-        let reader = &mut std::io::BufReader::new(std::io::Cursor::new(pem));
+        let normalized = normalize_pem_headers(pem);
+        let reader = &mut std::io::BufReader::new(std::io::Cursor::new(
+          normalized.as_ref(),
+        ));
         for parsed in rustls_pemfile::certs(reader) {
           match parsed {
             Ok(cert) => {
@@ -3285,21 +3520,24 @@ fn build_server_config(
     if !reject_unauthorized {
       verifier_builder = verifier_builder.allow_unauthenticated();
     }
+    let client_verify_error: VerifyErrorStore = Default::default();
     match verifier_builder.build() {
-      Ok(inner) => {
+      Ok(inner) => (
         builder.with_client_cert_verifier(Arc::new(NodeClientCertVerifier {
           inner,
           root_cert_ders,
           reject_unauthorized,
-        }))
-      }
+          verify_error: client_verify_error.clone(),
+        })),
+        client_verify_error,
+      ),
       Err(e) => {
         log::debug!("TLSWrap: failed to build client cert verifier: {e}");
         return None;
       }
     }
   } else {
-    builder.with_no_client_auth()
+    (builder.with_no_client_auth(), Default::default())
   };
 
   // `with_single_cert` runs `CertifiedKey::keys_match()`, which parses the
@@ -3326,7 +3564,10 @@ fn build_server_config(
     }
   }
   let resolver = rustls::sign::SingleCertAndKey::from(certified_key);
-  Some(builder.with_cert_resolver(Arc::new(resolver)))
+  Some((
+    builder.with_cert_resolver(Arc::new(resolver)),
+    client_cert_verify_error,
+  ))
 }
 
 #[cfg(test)]

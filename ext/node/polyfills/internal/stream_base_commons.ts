@@ -108,14 +108,6 @@ function onWriteComplete(this: any, status: number) {
     stream = stream.handle;
   }
 
-  if (stream.destroyed) {
-    if (typeof this.callback === "function") {
-      this.callback(null);
-    }
-
-    return;
-  }
-
   if (status < 0) {
     const ex = errnoException(status, "write", this.error);
 
@@ -123,6 +115,14 @@ function onWriteComplete(this: any, status: number) {
       this.callback(ex);
     } else {
       stream.destroy(ex);
+    }
+
+    return;
+  }
+
+  if (stream.destroyed) {
+    if (typeof this.callback === "function") {
+      this.callback(null);
     }
 
     return;

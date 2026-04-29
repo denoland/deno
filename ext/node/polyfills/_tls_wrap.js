@@ -291,6 +291,7 @@ tlsWrap.TLSWrap.prototype.close = function close(cb) {
   // deno-lint-ignore no-this-alias
   const self = this;
   const done = () => {
+    self.cancelWrite();
     if (ssl) {
       ssl.destroySsl();
     }
@@ -442,7 +443,7 @@ function defineHandleReading(socket, handle) {
   });
 }
 
-TLSSocket.prototype._destroySsl = function _destroySsl() {
+TLSSocket.prototype._destroySSL = function _destroySSL() {
   if (!this.ssl) return;
   this.ssl.destroySsl();
   this.ssl = null;
@@ -599,7 +600,8 @@ TLSSocket.prototype._finishInit = function () {
     this._handle.getAlpnNegotiatedProtocol(alpnOut);
     this.alpnProtocol = alpnOut.alpnProtocol || false;
     if (this.servername === null) {
-      this.servername = this._handle.getServername?.() ?? null;
+      this.servername = this._handle.getServername?.() ??
+        this._tlsOptions?.servername ?? null;
     }
   } catch (_e) {
     // getAlpnNegotiatedProtocol/getServername may not be available

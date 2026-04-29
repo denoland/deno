@@ -3,7 +3,6 @@
 import { core } from "ext:core/mod.js";
 
 import * as event from "ext:deno_web/02_event.js";
-import * as timers from "ext:deno_web/02_timers.js";
 import * as base64 from "ext:deno_web/05_base64.js";
 import * as encoding from "ext:deno_web/08_text_encoding.js";
 import * as console from "ext:deno_web/01_console.js";
@@ -47,6 +46,7 @@ import * as webgpuSurface from "ext:deno_webgpu/02_surface.js";
 import { unstableIds } from "ext:runtime/90_deno_ns.js";
 
 const loadImage = core.createLazyLoader("ext:deno_image/01_image.js");
+const loadGeometry = core.createLazyLoader("ext:deno_web/geometry.js");
 const loadWebSocket = core.createLazyLoader(
   "ext:deno_websocket/01_websocket.js",
 );
@@ -74,6 +74,34 @@ const windowOrWorkerGlobalScope = {
   DecompressionStream: core.propNonEnumerable(compression.DecompressionStream),
   DOMException: core.propNonEnumerable(DOMException),
   QuotaExceededError: core.propNonEnumerable(QuotaExceededError),
+  DOMMatrix: core.propNonEnumerableLazyLoaded(
+    (geometry) => geometry.DOMMatrix,
+    loadGeometry,
+  ),
+  DOMMatrixReadOnly: core.propNonEnumerableLazyLoaded(
+    (geometry) => geometry.DOMMatrixReadOnly,
+    loadGeometry,
+  ),
+  DOMPoint: core.propNonEnumerableLazyLoaded(
+    (geometry) => geometry.DOMPoint,
+    loadGeometry,
+  ),
+  DOMPointReadOnly: core.propNonEnumerableLazyLoaded(
+    (geometry) => geometry.DOMPointReadOnly,
+    loadGeometry,
+  ),
+  DOMQuad: core.propNonEnumerableLazyLoaded(
+    (geometry) => geometry.DOMQuad,
+    loadGeometry,
+  ),
+  DOMRect: core.propNonEnumerableLazyLoaded(
+    (geometry) => geometry.DOMRect,
+    loadGeometry,
+  ),
+  DOMRectReadOnly: core.propNonEnumerableLazyLoaded(
+    (geometry) => geometry.DOMRectReadOnly,
+    loadGeometry,
+  ),
   ErrorEvent: core.propNonEnumerable(event.ErrorEvent),
   Event: core.propNonEnumerable(event.Event),
   EventTarget: core.propNonEnumerable(event.EventTarget),
@@ -146,8 +174,8 @@ const windowOrWorkerGlobalScope = {
     (image) => image.createImageBitmap,
     loadImage,
   ),
-  clearInterval: core.propWritable(timers.clearInterval),
-  clearTimeout: core.propWritable(timers.clearTimeout),
+  clearInterval: core.propWritable(nodeClearInterval),
+  clearTimeout: core.propWritable(nodeClearTimeout),
   caches: {
     enumerable: true,
     configurable: true,
@@ -170,8 +198,8 @@ const windowOrWorkerGlobalScope = {
   Buffer: core.propWritable(Buffer),
   global: core.propWritable(globalThis),
   reportError: core.propWritable(event.reportError),
-  setInterval: core.propWritable(timers.setInterval),
-  setTimeout: core.propWritable(timers.setTimeout),
+  setInterval: core.propWritable(nodeSetInterval),
+  setTimeout: core.propWritable(nodeSetTimeout),
   structuredClone: core.propWritable(messagePort.structuredClone),
   // Branding as a WebIDL object
   [webidl.brand]: core.propNonEnumerable(webidl.brand),
@@ -368,12 +396,5 @@ unstableForWindowOrWorkerGlobalScope[unstableIds.net] = {
 };
 
 unstableForWindowOrWorkerGlobalScope[unstableIds.webgpu] = {};
-
-unstableForWindowOrWorkerGlobalScope[unstableIds.nodeGlobals] = {
-  clearInterval: core.propWritable(nodeClearInterval),
-  clearTimeout: core.propWritable(nodeClearTimeout),
-  setInterval: core.propWritable(nodeSetInterval),
-  setTimeout: core.propWritable(nodeSetTimeout),
-};
 
 export { unstableForWindowOrWorkerGlobalScope, windowOrWorkerGlobalScope };
