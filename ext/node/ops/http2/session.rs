@@ -1619,7 +1619,7 @@ unsafe extern "C" fn on_send_data_callback(
 unsafe extern "C" fn on_invalid_frame_recv_callback(
   _session: *mut ffi::nghttp2_session,
   _frame: *const ffi::nghttp2_frame,
-  _lib_error_code: i32,
+  lib_error_code: i32,
   data: *mut c_void,
 ) -> i32 {
   // SAFETY: data is the user_data pointer set during session creation
@@ -1635,7 +1635,38 @@ unsafe extern "C" fn on_invalid_frame_recv_callback(
     session.custom_recv_error_code = Some("ERR_HTTP2_TOO_MANY_INVALID_FRAMES");
     return 1;
   }
+  // Surface protocol-level violations (e.g. server attempting to disable
+  // SETTINGS_ENABLE_CONNECT_PROTOCOL after enabling it) to JS as a session
+  // 'error' event. Mirrors Node.js OnInvalidFrame which forwards specific
+  // lib error codes to http2session_on_error_function.
+  // SAFETY: nghttp2_is_fatal is a pure function on the lib_error_code.
+  let is_fatal = unsafe { ffi::nghttp2_is_fatal(lib_error_code) } != 0;
+  if is_fatal
+    || lib_error_code == ffi::NGHTTP2_ERR_PROTO as i32
+    || lib_error_code == ffi::NGHTTP2_ERR_STREAM_CLOSED as i32
+    || lib_error_code == ffi::NGHTTP2_ERR_FLOW_CONTROL as i32
+  {
+    invoke_session_internal_error(session, lib_error_code);
+  }
   0
+}
+
+fn invoke_session_internal_error(session: &Session, lib_error_code: i32) {
+  let mut isolate =
+    // SAFETY: isolate pointer is valid for the session's lifetime
+    unsafe { v8::Isolate::from_raw_isolate_ptr(session.isolate) };
+  v8::scope!(let scope, &mut isolate);
+  let context = v8::Local::new(scope, session.context.clone());
+  let scope = &mut v8::ContextScope::new(scope, context);
+
+  let state = session.op_state.borrow();
+  let callbacks = state.borrow::<SessionCallbacks>();
+  let recv = v8::Local::new(scope, &session.this);
+  let callback = v8::Local::new(scope, &callbacks.session_internal_error_cb);
+  drop(state);
+
+  let arg = v8::Integer::new(scope, lib_error_code);
+  callback.call(scope, recv.into(), &[arg.into()]);
 }
 
 unsafe extern "C" fn on_frame_send_callback(
