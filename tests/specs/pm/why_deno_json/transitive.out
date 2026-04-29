@@ -1,3 +1,11 @@
-@denotest/transitive-dep@1.0.0
-  npm:@denotest/bin@0.6.0 > @denotest/transitive-dep@1.0.0
+ms@2.0.0
+  npm:express@4.22.1 > debug@2.6.9 > ms@2.0.0
+  npm:express@4.22.1 > body-parser@1.20.5 > debug@2.6.9 > ms@2.0.0
+  npm:express@4.22.1 > finalhandler@1.3.2 > debug@2.6.9 > ms@2.0.0
+  npm:express@4.22.1 > send@0.19.2 > debug@2.6.9 > ms@2.0.0
+  npm:express@4.22.1 > serve-static@1.16.3 > send@0.19.2 > debug@2.6.9 > ms@2.0.0
+
+ms@2.1.3
+  npm:express@4.22.1 > send@0.19.2 > ms@2.1.3
+  npm:express@4.22.1 > serve-static@1.16.3 > send@0.19.2 > ms@2.1.3
 

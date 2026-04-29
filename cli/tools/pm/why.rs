@@ -133,7 +133,7 @@ pub async fn why(
 
   for (key, _info) in &matching {
     let base = strip_peer_suffix(key);
-    println!("{}", colors::bold(base));
+    log::info!("{}", colors::bold(base));
 
     let is_root = root_specifier_to_pkg.contains_key(*key);
 
@@ -141,7 +141,7 @@ pub async fn why(
       // Direct dependency - show the specifier(s)
       if let Some(specifiers) = root_specifier_to_pkg.get(*key) {
         for spec in specifiers {
-          println!("  {}", colors::green(spec));
+          log::info!("  {}", colors::green(spec));
         }
       }
     } else {
@@ -153,27 +153,33 @@ pub async fn why(
       paths.sort_by_key(|p| p.len());
 
       if paths.is_empty() {
-        println!(
+        log::info!(
           "  (no dependency path found — try running `deno install` to refresh the lockfile)"
         );
       }
 
       if paths.len() > MAX_PATHS_PER_VERSION {
         for path in &paths[..MAX_PATHS_PER_VERSION] {
-          print_dependency_path(path, &root_specifier_to_pkg);
+          log::info!(
+            "{}",
+            format_dependency_path(path, &root_specifier_to_pkg)
+          );
         }
-        println!(
+        log::info!(
           "  ... and {} more paths",
           paths.len() - MAX_PATHS_PER_VERSION
         );
       } else {
         for path in &paths {
-          print_dependency_path(path, &root_specifier_to_pkg);
+          log::info!(
+            "{}",
+            format_dependency_path(path, &root_specifier_to_pkg)
+          );
         }
       }
     }
 
-    println!();
+    log::info!("");
   }
 
   Ok(())
@@ -227,30 +233,32 @@ fn find_paths_to_root<'a>(
   paths
 }
 
-/// Print a dependency path.
-fn print_dependency_path(
+/// Format a dependency path as a string.
+fn format_dependency_path(
   path: &[&str],
   root_specifiers: &HashMap<String, Vec<String>>,
-) {
+) -> String {
   if path.is_empty() {
-    return;
+    return String::new();
   }
 
   let root = path[0];
   let base = strip_peer_suffix(root);
 
+  let mut out = String::new();
+
   // Show the root specifier if available
   if let Some(specs) = root_specifiers.get(root) {
-    print!("  {}", colors::green(&specs[0]));
+    out.push_str(&format!("  {}", colors::green(&specs[0])));
   } else {
-    print!("  {}", base);
+    out.push_str(&format!("  {}", base));
   }
 
-  // Print intermediate and final elements
+  // Append intermediate and final elements
   for key in &path[1..] {
     let base = strip_peer_suffix(key);
-    print!(" > {}", base);
+    out.push_str(&format!(" > {}", base));
   }
 
-  println!();
+  out
 }
