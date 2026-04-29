@@ -1718,6 +1718,7 @@
     "parallel/test-http2-origin.js": {},
     "parallel/test-http2-padding-aligned.js": {},
     "parallel/test-http2-perf_hooks.js": {},
+    "parallel/test-http2-perform-server-handshake.js": {},
     "parallel/test-http2-ping-settings-heapdump.js": {},
     "parallel/test-http2-ping-unsolicited-ack.js": {},
     "parallel/test-http2-pipe.js": {},

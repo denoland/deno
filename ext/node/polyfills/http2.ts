@@ -4790,6 +4790,11 @@ function getUnpackedSettings(buf) {
 
 const sensitiveHeaders = kSensitiveHeaders;
 
+function performServerHandshake(socket, options = {}) {
+  options = initializeOptions(options);
+  return new ServerHttp2Session(options, socket, undefined);
+}
+
 export {
   ClientHttp2Session,
   connect,
@@ -4803,6 +4808,7 @@ export {
   Http2ServerResponse,
   Http2Session,
   Http2Stream,
+  performServerHandshake,
   sensitiveHeaders,
   ServerHttp2Session,
 };
@@ -4817,5 +4823,6 @@ export default {
   getUnpackedSettings,
   Http2ServerRequest,
   Http2ServerResponse,
+  performServerHandshake,
   sensitiveHeaders,
 };
