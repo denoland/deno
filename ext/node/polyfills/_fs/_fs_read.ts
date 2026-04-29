@@ -4,8 +4,10 @@
 // deno-lint-ignore-file prefer-primordials
 
 import { Buffer } from "node:buffer";
-import { ERR_INVALID_ARG_VALUE } from "ext:deno_node/internal/errors.ts";
-import * as io from "ext:deno_io/12_io.js";
+import {
+  denoErrorToNodeError,
+  ERR_INVALID_ARG_VALUE,
+} from "ext:deno_node/internal/errors.ts";
 import {
   arrayBufferViewToUint8Array,
   getValidatedFd,
@@ -19,7 +21,7 @@ import {
   validateObject,
 } from "ext:deno_node/internal/validators.mjs";
 import { isArrayBufferView } from "ext:deno_node/internal/util/types.ts";
-import { op_fs_seek_async, op_fs_seek_sync } from "ext:core/ops";
+import { op_node_fs_read_deferred, op_node_fs_read_sync } from "ext:core/ops";
 import { primordials } from "ext:core/mod.js";
 import {
   customPromisifyArgs,
@@ -142,40 +144,24 @@ export function read(
     validatePosition(position, "position", length as number);
   }
 
-  (async () => {
-    try {
-      let nread: number | null;
-      if (typeof position === "number" && position >= 0) {
-        const currentPosition = await op_fs_seek_async(
-          fd,
-          0,
-          io.SeekMode.Current,
-        );
-        // We use sync calls below to avoid being affected by others during
-        // these calls.
-        op_fs_seek_sync(fd, position, io.SeekMode.Start);
-        nread = io.readSync(
-          fd,
-          arrayBufferViewToUint8Array(buffer).subarray(
-            offset,
-            offset + (length as number),
-          ),
-        );
-        op_fs_seek_sync(fd, currentPosition, io.SeekMode.Start);
-      } else {
-        nread = await io.read(
-          fd,
-          arrayBufferViewToUint8Array(buffer).subarray(
-            offset,
-            offset + (length as number),
-          ),
-        );
-      }
+  // The op handles position seeking internally (pread for positioned reads).
+  // position=-1 means read from current position.
+  const readPos = position != null && position >= 0 ? Number(position) : -1;
+  op_node_fs_read_deferred(
+    fd,
+    arrayBufferViewToUint8Array(buffer).subarray(
+      offset,
+      offset + (length as number),
+    ),
+    readPos,
+  ).then(
+    (nread: number) => {
       callback!(null, nread ?? 0, buffer);
-    } catch (error) {
-      callback!(error as Error, null);
-    }
-  })();
+    },
+    (error: Error) => {
+      callback!(denoErrorToNodeError(error, { syscall: "read" }), null);
+    },
+  );
 }
 
 ObjectDefineProperty(read, customPromisifyArgs, {
@@ -248,20 +234,18 @@ export function readSync(
     validatePosition(position, "position", length);
   }
 
-  let currentPosition = 0;
-  if (typeof position === "number" && position >= 0) {
-    currentPosition = op_fs_seek_sync(fd, 0, io.SeekMode.Current);
-    op_fs_seek_sync(fd, position, io.SeekMode.Start);
+  // The op handles position seeking internally (saves/restores file offset
+  // for positioned reads). position=-1 means read from current position.
+  const pos = position != null ? Number(position) : -1;
+  try {
+    const numberOfBytesRead = op_node_fs_read_sync(
+      fd,
+      arrayBufferViewToUint8Array(buffer).subarray(offset, offset + length!),
+      pos,
+    );
+
+    return numberOfBytesRead ?? 0;
+  } catch (err) {
+    throw denoErrorToNodeError(err as Error, { syscall: "read" });
   }
-
-  const numberOfBytesRead = io.readSync(
-    fd,
-    arrayBufferViewToUint8Array(buffer).subarray(offset, offset + length!),
-  );
-
-  if (typeof position === "number" && position >= 0) {
-    op_fs_seek_sync(fd, currentPosition, io.SeekMode.Start);
-  }
-
-  return numberOfBytesRead ?? 0;
 }

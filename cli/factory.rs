@@ -526,20 +526,6 @@ impl CliFactory {
     self.resolver_factory()?.in_npm_package_checker()
   }
 
-  pub async fn tsgo_path(&self) -> Result<Option<&PathBuf>, AnyError> {
-    if self.cli_options()?.unstable_tsgo() {
-      Ok(Some(
-        crate::tsc::ensure_tsgo(
-          self.deno_dir()?,
-          self.http_client_provider().clone(),
-        )
-        .await?,
-      ))
-    } else {
-      Ok(None)
-    }
-  }
-
   pub fn jsr_version_resolver(
     &self,
   ) -> Result<&Arc<JsrVersionResolver>, AnyError> {
@@ -661,7 +647,8 @@ impl CliFactory {
             | DenoSubcommand::Pack { .. }
             | DenoSubcommand::Publish { .. }
             | DenoSubcommand::Help { .. }
-            | DenoSubcommand::X { .. } => false,
+            | DenoSubcommand::X { .. }
+            | DenoSubcommand::BumpVersion { .. } => false,
           },
           cache_setting: NpmCacheSetting::from_cache_setting(
             &cli_options.cache_setting(),
@@ -848,7 +835,6 @@ impl CliFactory {
             } else {
               None
             },
-            self.tsgo_path().await?.cloned(),
           )))
         }
         .boxed_local(),
@@ -1202,6 +1188,9 @@ impl CliFactory {
         .take_binary_npm_command_name()
         .or(std::env::args().next()),
       node_debug: std::env::var("NODE_DEBUG").ok(),
+      node_cluster_unique_id: std::env::var("NODE_UNIQUE_ID").ok(),
+      node_cluster_sched_policy: std::env::var("NODE_CLUSTER_SCHED_POLICY")
+        .ok(),
       origin_data_folder_path: Some(self.deno_dir()?.origin_data_folder_path()),
       seed: cli_options.seed(),
       unsafely_ignore_certificate_errors: cli_options

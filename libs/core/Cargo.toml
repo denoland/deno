@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_core"
-version = "0.395.0"
+version = "0.400.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -54,11 +54,15 @@ serde_v8.workspace = true
 smallvec.workspace = true
 sourcemap.workspace = true
 static_assertions.workspace = true
+sys_traits = { workspace = true, features = ["real"] }
 thiserror.workspace = true
 tokio.workspace = true
 url.workspace = true
 v8.workspace = true
 wasm_dep_analyzer = "0.4.0"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys.workspace = true
 
 [dev-dependencies]
 bencher.workspace = true
