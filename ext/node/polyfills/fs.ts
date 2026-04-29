@@ -189,6 +189,7 @@ const {
   TypedArrayPrototypeSet,
   TypedArrayPrototypeSubarray,
   Uint8Array,
+  queueMicrotask,
 } = primordials;
 
 const {
