@@ -789,6 +789,9 @@
     "parallel/test-dns-default-order-ipv6.js": {},
     "parallel/test-dns-default-order-verbatim.js": {},
     "parallel/test-dns-get-server.js": {},
+    "parallel/test-dns-resolver-max-timeout.js": {
+      "flaky": true
+    },
     // TODO: test-dns-lookup.js and test-dns-lookup-promises.js fail due to
     // spurious punycode DEP0040 warning and getaddrinfo error mismatch
     // "parallel/test-dns-lookup.js": {},
