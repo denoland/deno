@@ -660,7 +660,7 @@ function createListenDatagram(udpOpFn, unixOpFn) {
         const port = validatePort(args.port);
         const { 0: rid, 1: addr } = udpOpFn(
           {
-            hostname: args.hostname ?? "127.0.0.1",
+            hostname: args.hostname ?? "0.0.0.0",
             port,
           },
           args.reuseAddress ?? false,

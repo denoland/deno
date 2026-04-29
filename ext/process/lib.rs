@@ -64,6 +64,30 @@ use ipc::IpcRefTracker;
 
 pub const UNSTABLE_FEATURE_NAME: &str = "process";
 
+/// Read CRT errno and map it to a Win32 error code for std::io::Error.
+///
+/// CRT functions like `open_osfhandle` report failures via errno, NOT
+/// GetLastError(). Calling `last_os_error()` after a CRT failure reads
+/// a stale Win32 error from a prior API call.
+#[cfg(windows)]
+fn crt_error() -> std::io::Error {
+  // SAFETY: _errno() is a standard MSVC CRT function that returns a
+  // pointer to the thread-local errno value. Always valid to call.
+  unsafe extern "C" {
+    fn _errno() -> *mut i32;
+  }
+  // SAFETY: _errno() returns a valid pointer to thread-local errno.
+  let crt_errno = unsafe { *_errno() };
+  let win32_code = match crt_errno {
+    libc::EMFILE => 4,  // ERROR_TOO_MANY_OPEN_FILES
+    libc::EBADF => 6,   // ERROR_INVALID_HANDLE
+    libc::ENOMEM => 8,  // ERROR_NOT_ENOUGH_MEMORY
+    libc::EINVAL => 87, // ERROR_INVALID_PARAMETER
+    _ => 0,             // Unmapped → maps to UV "UNKNOWN"
+  };
+  std::io::Error::from_raw_os_error(win32_code)
+}
+
 #[derive(Copy, Clone, Eq, PartialEq, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Stdio {
@@ -747,7 +771,23 @@ fn create_command(
           };
           handles_to_close.push(fd2);
           command.extra_handle(Some(fd2));
-          extra_pipe_fds.push(Some(fd1 as i64));
+          // `fd1` is a raw Windows HANDLE, but the JS side treats the
+          // value it receives as a CRT file descriptor (it calls
+          // `Pipe.open(fd)` which ultimately passes the value to
+          // `_get_osfhandle`). Wrap the HANDLE in a CRT fd so the
+          // pipe can be read/written from JS. Ownership of the
+          // HANDLE transfers to the CRT fd; closing the fd closes
+          // the HANDLE.
+          // SAFETY: fd1 is a valid pipe HANDLE from bi_pipe_pair_raw.
+          let crt_fd = unsafe { libc::open_osfhandle(fd1 as isize, 0) };
+          if crt_fd == -1 {
+            // SAFETY: fd1 is a valid HANDLE we just failed to wrap.
+            unsafe {
+              windows_sys::Win32::Foundation::CloseHandle(fd1 as _);
+            }
+            return Err(ProcessError::Io(crt_error()));
+          }
+          extra_pipe_fds.push(Some(crt_fd as i64));
         }
         StdioOrFd::Fd(fd) => {
           // SAFETY: fd is a valid CRT file descriptor passed from the JS stdio array
@@ -971,7 +1011,7 @@ macro_rules! child_stdio_to_fd {
           // SAFETY: raw_handle is a valid OS handle from the child process.
           let crt_fd = unsafe { libc::open_osfhandle(raw_handle as isize, 0) };
           if crt_fd == -1 {
-            return Err(ProcessError::Io(std::io::Error::last_os_error()));
+            return Err(ProcessError::Io(crt_error()));
           }
           Ok(crt_fd as i64)
         })
