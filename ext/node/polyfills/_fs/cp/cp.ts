@@ -1,7 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 // Adapted from Node.js. Copyright Joyent, Inc. and other Node contributors.
 
-import { join, resolve, sep } from "node:path";
+import { join } from "node:path";
 import {
   mkdirPromise,
   opendirPromise,
@@ -26,42 +26,37 @@ import {
   op_node_cp_on_link,
   op_node_cp_validate_and_prepare,
 } from "ext:core/ops";
-import type { CopyOptions } from "ext:deno_node/_fs/cp/cp.d.ts";
+import type { CopyOptions } from "node:fs";
 
-interface StatInfo {
-  destExists: boolean;
-  isDirectory: boolean;
-  isFile: boolean;
-  isCharDevice: boolean;
-  isBlockDevice: boolean;
-  isSymlink: boolean;
-  isSocket: boolean;
-  isFifo: boolean;
-  mode: number;
-}
+/**
+  Layout (bigint):
+  - bits 0..31  : source mode (`st_mode`) masked by `SrcModeMask`
+  - bit 32      : whether destination exists
+  - bits 33..39 : source entry type flags (dir, file, char/block device,
+                  symlink, socket, fifo)
+
+  This keeps the op boundary cheap by passing a single bigint instead of
+  a JS object.
+*/
+const CpEntryFlags = {
+  SrcModeMask: (1n << 32n) - 1n,
+  IsDestExists: 1n << 32n,
+  IsSrcDirectory: 1n << 33n,
+  IsSrcFile: 1n << 34n,
+  IsSrcCharDevice: 1n << 35n,
+  IsSrcBlockDevice: 1n << 36n,
+  IsSrcSymlink: 1n << 37n,
+  IsSrcSocket: 1n << 38n,
+  IsSrcFifo: 1n << 39n,
+} as const;
 
 const {
-  ArrayPrototypeEvery,
-  ArrayPrototypeFilter,
-  Boolean,
+  Number,
   PromiseResolve,
-  StringPrototypeSplit,
 } = primordials;
 
-export type CheckPathsResult = {
-  __proto__: null;
-  srcStat: Deno.FileInfo;
-  destStat: Deno.FileInfo | undefined;
-  skipped: false;
-} | {
-  __proto__: null;
-  srcStat?: undefined;
-  destStat?: undefined;
-  skipped: true;
-};
-
 // deno-lint-ignore no-explicit-any
-function throwCpError(err: any): never {
+export function throwCpError(err: any): never {
   switch (err.kind) {
     case "EINVAL":
       throw new ERR_FS_CP_EINVAL({
@@ -95,6 +90,38 @@ function throwCpError(err: any): never {
         errno: EEXIST,
         code: "EEXIST",
       });
+    case "EISDIR":
+      throw new ERR_FS_EISDIR({
+        message: err.message,
+        path: err.path,
+        syscall: "cp",
+        errno: EISDIR,
+        code: "EISDIR",
+      });
+    case "SOCKET":
+      throw new ERR_FS_CP_SOCKET({
+        message: err.message,
+        path: err.path,
+        syscall: "cp",
+        errno: EINVAL,
+        code: "EINVAL",
+      });
+    case "FIFO":
+      throw new ERR_FS_CP_FIFO_PIPE({
+        message: err.message,
+        path: err.path,
+        syscall: "cp",
+        errno: EINVAL,
+        code: "EINVAL",
+      });
+    case "UNKNOWN":
+      throw new ERR_FS_CP_UNKNOWN({
+        message: err.message,
+        path: err.path,
+        syscall: "cp",
+        errno: EINVAL,
+        code: "EINVAL",
+      });
     case "SYMLINK_TO_SUBDIRECTORY":
       throw new ERR_FS_CP_SYMLINK_TO_SUBDIRECTORY({
         message: err.message,
@@ -116,7 +143,7 @@ export async function cpFn(
   try {
     // deno-lint-ignore prefer-primordials
     if (opts.filter && !(await opts.filter(src, dest))) return;
-    const statInfo = await op_node_cp_validate_and_prepare(
+    const statInfo: bigint = await op_node_cp_validate_and_prepare(
       src,
       dest,
       opts.dereference,
@@ -125,7 +152,6 @@ export async function cpFn(
   } catch (err) {
     if (typeof err?.os_errno === "number") {
       throw denoErrorToNodeError(err, {
-        message: err.message,
         path: err.path,
         dest: err.dest,
         syscall: err.syscall,
@@ -136,34 +162,15 @@ export async function cpFn(
   }
 }
 
-export function areIdentical(
-  srcStat: Deno.FileInfo,
-  destStat: Deno.FileInfo,
-): boolean {
-  return !!(destStat.ino && destStat.dev && destStat.ino === srcStat.ino &&
-    destStat.dev === srcStat.dev);
-}
-
-const normalizePathToArray = (path: string): string[] =>
-  ArrayPrototypeFilter(StringPrototypeSplit(resolve(path), sep), Boolean);
-
-// Return true if dest is a subdir of src, otherwise false.
-// It only checks the path strings.
-export function isSrcSubdir(src: string, dest: string): boolean {
-  const srcArr = normalizePathToArray(src);
-  const destArr = normalizePathToArray(dest);
-  return ArrayPrototypeEvery(srcArr, (cur, i) => destArr[i] === cur);
-}
-
 function getStatsForCopy(
-  statInfo: StatInfo,
+  statInfo: bigint,
   src: string,
   dest: string,
   opts: CopyOptions,
 ) {
-  if (statInfo.isDirectory && opts.recursive) {
+  if ((statInfo & CpEntryFlags.IsSrcDirectory) && opts.recursive) {
     return onDir(statInfo, src, dest, opts);
-  } else if (statInfo.isDirectory) {
+  } else if (statInfo & CpEntryFlags.IsSrcDirectory) {
     throw new ERR_FS_EISDIR({
       message: `${src} is a directory (not copied)`,
       path: src,
@@ -172,14 +179,15 @@ function getStatsForCopy(
       code: "EISDIR",
     });
   } else if (
-    statInfo.isFile ||
-    statInfo.isCharDevice ||
-    statInfo.isBlockDevice
+    (statInfo & CpEntryFlags.IsSrcFile) ||
+    (statInfo & CpEntryFlags.IsSrcCharDevice) ||
+    (statInfo & CpEntryFlags.IsSrcBlockDevice)
   ) {
     return onFile(statInfo, src, dest, opts);
-  } else if (statInfo.isSymlink) {
-    return onLink(statInfo.destExists, src, dest, opts);
-  } else if (statInfo.isSocket) {
+  } else if (statInfo & CpEntryFlags.IsSrcSymlink) {
+    const isDestExists = !!(statInfo & CpEntryFlags.IsDestExists);
+    return onLink(isDestExists, src, dest, opts);
+  } else if (statInfo & CpEntryFlags.IsSrcSocket) {
     throw new ERR_FS_CP_SOCKET({
       message: `cannot copy a socket file: ${dest}`,
       path: dest,
@@ -187,7 +195,7 @@ function getStatsForCopy(
       errno: EINVAL,
       code: "EINVAL",
     });
-  } else if (statInfo.isFifo) {
+  } else if (statInfo & CpEntryFlags.IsSrcFifo) {
     throw new ERR_FS_CP_FIFO_PIPE({
       message: `cannot copy a FIFO pipe: ${dest}`,
       path: dest,
@@ -206,19 +214,22 @@ function getStatsForCopy(
 }
 
 async function onFile(
-  statInfo: StatInfo,
+  statInfo: bigint,
   src: string,
   dest: string,
   opts: CopyOptions,
 ) {
+  const srcMode = Number(statInfo & CpEntryFlags.SrcModeMask);
+  const isDestExists = !!(statInfo & CpEntryFlags.IsDestExists);
   await op_node_cp_on_file(
     src,
     dest,
-    statInfo.mode,
-    statInfo.destExists,
+    srcMode,
+    isDestExists,
     opts.force,
     opts.errorOnExist,
     opts.preserveTimestamps,
+    opts.mode ?? 0,
   );
 }
 
@@ -228,12 +239,15 @@ function setDestMode(dest: string, srcMode: number | null): Promise<void> {
 }
 
 function onDir(
-  statInfo: StatInfo,
+  statInfo: bigint,
   src: string,
   dest: string,
   opts: CopyOptions,
 ): Promise<void> {
-  if (!statInfo.destExists) return mkDirAndCopy(statInfo.mode, src, dest, opts);
+  if (!(statInfo & CpEntryFlags.IsDestExists)) {
+    const srcMode = Number(statInfo & CpEntryFlags.SrcModeMask);
+    return mkDirAndCopy(srcMode, src, dest, opts);
+  }
   return copyDir(src, dest, opts);
 }
 
@@ -260,7 +274,7 @@ async function copyDir(
     const destItem = join(dest, name);
     // deno-lint-ignore prefer-primordials
     if (opts.filter && !(await opts.filter(srcItem, destItem))) continue;
-    const statInfo = await op_node_cp_check_paths_recursive(
+    const statInfo: bigint = await op_node_cp_check_paths_recursive(
       srcItem,
       destItem,
       opts.dereference,

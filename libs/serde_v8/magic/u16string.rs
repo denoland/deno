@@ -90,9 +90,9 @@ impl FromV8 for U16String {
       .map_err(|_| Error::ExpectedString(value.type_repr()))?;
     let len = v8str.length();
     let mut buffer = Vec::with_capacity(len);
-    #[allow(clippy::uninit_vec)]
+    #[allow(clippy::uninit_vec, reason = "see comment below")]
     // SAFETY: we set length == capacity (see previous line),
-    // before immediately writing into that buffer and sanity check with an assert
+    // before immediately writing into that buffer
     unsafe {
       buffer.set_len(len);
       v8str.write_v2(scope, 0, &mut buffer, v8::WriteFlags::empty());

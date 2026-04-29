@@ -42,6 +42,8 @@ import {
   validateHints,
   validDnsOrders,
 } from "ext:deno_node/internal/dns/utils.ts";
+
+export { getDefaultDnsOrder as getDefaultResultOrder };
 import type {
   LookupAddress,
   LookupAllOptions,
@@ -64,7 +66,7 @@ import cares, {
   GetNameInfoReqWrap,
   QueryReqWrap,
 } from "ext:deno_node/internal_binding/cares_wrap.ts";
-import { toASCII } from "node:punycode";
+import { domainToASCII } from "ext:deno_node/internal/idna.ts";
 
 function onlookup(
   this: GetAddrInfoReqWrap,
@@ -139,7 +141,7 @@ function createLookupPromise(
 
     const err = cares.getaddrinfo(
       req,
-      toASCII(hostname),
+      domainToASCII(hostname),
       family,
       hints,
       dnsOrderToNumber(dnsOrder),
@@ -318,7 +320,7 @@ function createResolverPromise(
     req.reject = reject;
     req.ttl = ttl;
 
-    const err = resolver._handle[bindingName](req, toASCII(hostname));
+    const err = resolver._handle[bindingName](req, domainToASCII(hostname));
 
     if (err) {
       reject(dnsException(err, bindingName, hostname));
@@ -574,6 +576,7 @@ export default {
   lookup,
   lookupService,
   Resolver,
+  getDefaultResultOrder: getDefaultDnsOrder,
   getServers,
   resolveAny,
   resolve4,

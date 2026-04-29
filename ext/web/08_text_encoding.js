@@ -38,6 +38,7 @@ const {
   TypedArrayPrototypeGetBuffer,
   TypedArrayPrototypeGetByteLength,
   TypedArrayPrototypeGetByteOffset,
+  TypedArrayPrototypeGetSymbolToStringTag,
   TypedArrayPrototypeSubarray,
   Uint32Array,
   Uint8Array,
@@ -71,7 +72,15 @@ class TextDecoder {
       prefix,
       "Argument 2",
     );
-    const encoding = op_encoding_normalize_label(label);
+    // Fast path for common UTF-8 labels - avoid Rust op call
+    let encoding;
+    if (
+      label === "utf-8" || label === "utf8" || label === "unicode-1-1-utf-8"
+    ) {
+      encoding = "utf-8";
+    } else {
+      encoding = op_encoding_normalize_label(label);
+    }
     this.#encoding = encoding;
     this.#fatal = options.fatal;
     this.#ignoreBOM = options.ignoreBOM;
@@ -103,14 +112,21 @@ class TextDecoder {
    */
   decode(input = new Uint8Array(), options = undefined) {
     webidl.assertBranded(this, TextDecoderPrototype);
-    const prefix = "Failed to execute 'decode' on 'TextDecoder'";
     if (input !== undefined) {
-      input = webidl.converters.BufferSource(input, prefix, "Argument 1", {
-        allowShared: true,
-      });
+      // Fast path: skip full BufferSource validation for Uint8Array
+      if (
+        !(TypedArrayPrototypeGetSymbolToStringTag(input) === "Uint8Array") ||
+        isSharedArrayBuffer(TypedArrayPrototypeGetBuffer(input))
+      ) {
+        const prefix = "Failed to execute 'decode' on 'TextDecoder'";
+        input = webidl.converters.BufferSource(input, prefix, "Argument 1", {
+          allowShared: true,
+        });
+      }
     }
     let stream = false;
     if (options !== undefined) {
+      const prefix = "Failed to execute 'decode' on 'TextDecoder'";
       options = webidl.converters.TextDecodeOptions(
         options,
         prefix,
@@ -228,13 +244,14 @@ class TextEncoder {
    */
   encode(input = "") {
     webidl.assertBranded(this, TextEncoderPrototype);
-    // The WebIDL type of `input` is `USVString`, but `core.encode` already
-    // converts lone surrogates to the replacement character.
-    input = webidl.converters.DOMString(
-      input,
-      "Failed to execute 'encode' on 'TextEncoder'",
-      "Argument 1",
-    );
+    // Fast path: if input is already a string, skip DOMString converter
+    if (typeof input !== "string") {
+      input = webidl.converters.DOMString(
+        input,
+        "Failed to execute 'encode' on 'TextEncoder'",
+        "Argument 1",
+      );
+    }
     return core.encode(input);
   }
 
@@ -245,18 +262,26 @@ class TextEncoder {
    */
   encodeInto(source, destination) {
     webidl.assertBranded(this, TextEncoderPrototype);
-    const prefix = "Failed to execute 'encodeInto' on 'TextEncoder'";
-    // The WebIDL type of `source` is `USVString`, but the ops bindings
-    // already convert lone surrogates to the replacement character.
-    source = webidl.converters.DOMString(source, prefix, "Argument 1");
-    destination = webidl.converters.Uint8Array(
-      destination,
-      prefix,
-      "Argument 2",
-      {
-        allowShared: true,
-      },
-    );
+    // Fast path: source is already a string and destination is already a
+    // regular Uint8Array. Skips the DOMString and Uint8Array WebIDL converters
+    // (and the per-call `{ allowShared: true }` opts allocation that the
+    // Uint8Array converter takes). The op already replaces lone surrogates
+    // with the U+FFFD replacement character (matching USVString semantics).
+    if (
+      typeof source !== "string" ||
+      TypedArrayPrototypeGetSymbolToStringTag(destination) !== "Uint8Array"
+    ) {
+      const prefix = "Failed to execute 'encodeInto' on 'TextEncoder'";
+      // The WebIDL type of `source` is `USVString`, but the ops bindings
+      // already convert lone surrogates to the replacement character.
+      source = webidl.converters.DOMString(source, prefix, "Argument 1");
+      destination = webidl.converters.Uint8Array(
+        destination,
+        prefix,
+        "Argument 2",
+        encodeIntoOpts,
+      );
+    }
     op_encoding_encode_into(source, destination, encodeIntoBuf);
     return {
       read: encodeIntoBuf[0],
@@ -277,6 +302,7 @@ class TextEncoder {
 }
 
 const encodeIntoBuf = new Uint32Array(2);
+const encodeIntoOpts = { __proto__: null, allowShared: true };
 
 webidl.configureInterface(TextEncoder);
 const TextEncoderPrototype = TextEncoder.prototype;

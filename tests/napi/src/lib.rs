@@ -1,12 +1,12 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-#![allow(clippy::all)]
-#![allow(clippy::print_stdout)]
-#![allow(clippy::print_stderr)]
-#![allow(clippy::undocumented_unsafe_blocks)]
+#![allow(clippy::all, reason = "test napi code")]
+#![allow(clippy::print_stdout, reason = "test napi code")]
+#![allow(clippy::print_stderr, reason = "test napi code")]
+#![allow(clippy::undocumented_unsafe_blocks, reason = "test napi code")]
 // napi_sys declares functions as `pub safe fn` inside `unsafe extern "C"` blocks
 // on non-windows, so `unsafe { napi_call(...) }` wrappers become redundant.
-#![allow(unused_unsafe)]
+#![allow(unused_unsafe, reason = "napi_sys safe fn in unsafe extern blocks")]
 
 use std::ffi::c_void;
 
@@ -16,12 +16,20 @@ pub mod array;
 pub mod arraybuffer;
 pub mod r#async;
 pub mod bigint;
+pub mod buffer;
 pub mod callback;
+pub mod callback_scope;
+pub mod cleanup_hook_async;
 pub mod coerce;
+pub mod dataview;
 pub mod date;
 pub mod env;
 pub mod error;
+pub mod exception;
+pub mod fatal;
 pub mod finalizer;
+pub mod general;
+pub mod handle_scope;
 pub mod instance_data;
 pub mod make_callback;
 pub mod mem;
@@ -31,6 +39,7 @@ pub mod object_wrap;
 pub mod primitives;
 pub mod promise;
 pub mod properties;
+pub mod reference;
 pub mod strings;
 pub mod symbol;
 pub mod tsfn;
@@ -47,7 +56,10 @@ macro_rules! assert_napi_ok {
   ($call: expr) => {{
     assert_eq!(
       {
-        #[allow(unused_unsafe)]
+        #[allow(
+          unused_unsafe,
+          reason = "napi_sys safe fn in unsafe extern blocks"
+        )]
         unsafe {
           $call
         }
@@ -184,6 +196,16 @@ unsafe extern "C" fn napi_register_module_v1(
   uv::init(env, exports);
 
   instance_data::init(env, exports);
+  buffer::init(env, exports);
+  dataview::init(env, exports);
+  general::init(env, exports);
+  handle_scope::init(env, exports);
+  reference::init(env, exports);
+  exception::init(env, exports);
+  callback_scope::init(env, exports);
+  fatal::init(env, exports);
+
+  cleanup_hook_async::init(env, exports);
 
   init_cleanup_hook(env, exports);
 

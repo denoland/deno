@@ -578,11 +578,7 @@ impl Inner {
       }),
     );
     let config = Config::default();
-    let ts_server = Arc::new(TsServer::new(
-      performance.clone(),
-      cache.deno_dir(),
-      &http_client_provider,
-    ));
+    let ts_server = Arc::new(TsServer::new(performance.clone()));
     let initial_cwd = resolve_cwd(None).unwrap().into_owned();
 
     Self {
@@ -708,7 +704,8 @@ impl Inner {
             .into()
           })
         });
-    if let TsServer::Js(ts_server) = self.ts_server.as_ref() {
+    {
+      let TsServer::Js(ts_server) = self.ts_server.as_ref();
       ts_server
         .set_tracing_enabled(tracing.as_ref().is_some_and(|t| t.enabled()));
     }
@@ -750,6 +747,7 @@ impl Inner {
       .root_url()
       .and_then(|url| url_to_file_path(url).ok());
     let root_cert_store = get_root_cert_store(
+      &CliSys::default(),
       maybe_root_path,
       workspace_settings.certificate_stores.clone(),
       workspace_settings.tls_certificate.clone().map(CaData::File),
@@ -903,9 +901,11 @@ impl Inner {
           })
           .collect();
       }
-      // rootUri is deprecated by the LSP spec. If it's specified, merge it into
-      // workspace_folders.
-      #[allow(deprecated)]
+
+      #[allow(
+        deprecated,
+        reason = "rootUri is deprecated by the LSP spec. If it's specified, merge it into workspace_folders."
+      )]
       if let Some(root_uri) = params.root_uri
         && !workspace_folders.iter().any(|(_, f)| f.uri == root_uri)
       {
@@ -950,7 +950,8 @@ impl Inner {
       diagnostics_server.start();
       self.diagnostics_server = Some(diagnostics_server);
     }
-    if let TsServer::Js(ts_server) = self.ts_server.as_ref() {
+    {
+      let TsServer::Js(ts_server) = self.ts_server.as_ref();
       ts_server
         .set_inspector_server_addr(self.config.internal_inspect().to_address());
     }
@@ -1648,14 +1649,8 @@ impl Inner {
         ProjectScopesChange::None,
       );
 
-      match self.ts_server.as_ref() {
-        TsServer::Js(ts_server) => {
-          ts_server.cleanup_semantic_cache(self.snapshot()).await;
-        }
-        TsServer::Go(_) => {
-          // TODO(nayeemrmn): Determine if anything needs to be done here.
-        }
-      }
+      let TsServer::Js(ts_server) = self.ts_server.as_ref();
+      ts_server.cleanup_semantic_cache(self.snapshot()).await;
       self.send_diagnostics_update();
       if !self.is_using_push_based_diagnostics()
         && self.config.diagnostic_refresh_capable()
@@ -1778,7 +1773,10 @@ impl Inner {
     let text_edits = deno_core::unsync::spawn_blocking({
       let mut fmt_options = fmt_config.options.clone();
       let config_data = self.config.tree.data_for_specifier(&module.specifier);
-      #[allow(clippy::nonminimal_bool)] // clippy's suggestion is more confusing
+      #[allow(
+        clippy::nonminimal_bool,
+        reason = "clippy's suggestion is more confusing"
+      )]
       if !config_data.is_some_and(|d| d.maybe_deno_json().is_some()) {
         fmt_options.use_tabs = Some(!params.options.insert_spaces);
         fmt_options.indent_width = Some(params.options.tab_size as u8);
@@ -2189,13 +2187,7 @@ impl Inner {
     let mark = self
       .performance
       .mark_with_args("lsp.code_action_resolve", &params);
-    let TsServer::Js(ts_server) = self.ts_server.as_ref() else {
-      lsp_warn!(
-        "Assertion failure: Received a codeAction/resolve request without the JS-based TS server: {:#?}",
-        params
-      );
-      return Ok(params);
-    };
+    let TsServer::Js(ts_server) = self.ts_server.as_ref();
     let (Some(kind), Some(data)) = (params.kind.clone(), params.data.clone())
     else {
       return Ok(params);
@@ -2372,9 +2364,9 @@ impl Inner {
       &self.document_modules,
       module.scope.clone(),
       &self.resolver,
-      match self.ts_server.as_ref() {
-        TsServer::Js(ts_server) => ts_server.specifier_map.clone(),
-        TsServer::Go(_) => Default::default(),
+      {
+        let TsServer::Js(ts_server) = self.ts_server.as_ref();
+        ts_server.specifier_map.clone()
       },
     )
   }
@@ -2751,7 +2743,6 @@ impl Inner {
         });
       }
       CompletionItemData::TsJs(data) => &data.uri,
-      CompletionItemData::TsGo(data) => &data.uri,
     };
     let Some(document) = self.get_document(
       uri,
@@ -4133,14 +4124,8 @@ impl Inner {
     self.resolver.did_cache();
     self.refresh_dep_info();
     self.project_changed(vec![], ProjectScopesChange::Config);
-    match self.ts_server.as_ref() {
-      TsServer::Js(ts_server) => {
-        ts_server.cleanup_semantic_cache(self.snapshot()).await;
-      }
-      TsServer::Go(_) => {
-        // TODO(nayeemrmn): Determine if anything needs to be done here.
-      }
-    }
+    let TsServer::Js(ts_server) = self.ts_server.as_ref();
+    ts_server.cleanup_semantic_cache(self.snapshot()).await;
     self.send_diagnostics_update();
     if !self.is_using_push_based_diagnostics()
       && self.config.diagnostic_refresh_capable()

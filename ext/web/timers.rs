@@ -52,6 +52,6 @@ pub fn op_time_origin(state: &mut OpState, #[buffer] buf: &mut [u8]) {
   expose_time(epoch, buf);
 }
 
-#[allow(clippy::unused_async)]
+#[allow(clippy::unused_async, reason = "op specifically for this purpose")]
 #[op2(async(lazy), fast)]
 pub async fn op_defer() {}

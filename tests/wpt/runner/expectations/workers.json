@@ -486,7 +486,8 @@
   "dedicated-worker-from-blob-url.window.html": {
     "expectedFailures": [
       "Creating a dedicated worker from a blob URL works immediately before revoking."
-    ]
+    ],
+    "flaky": true
   },
   "dedicated-worker-parse-error-failure.html": false,
   "multi-globals": {

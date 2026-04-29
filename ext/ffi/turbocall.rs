@@ -58,7 +58,7 @@ impl Trampoline {
   }
 }
 
-#[allow(unused)]
+#[allow(unused, reason = "used on supported platforms")]
 pub(crate) fn compile_trampoline(
   sym: &Symbol,
 ) -> Result<Trampoline, TurbocallError> {
@@ -343,10 +343,10 @@ pub(crate) fn compile_trampoline(
 pub(crate) struct Turbocall {
   pub trampoline: Trampoline,
   // Held in a box to keep the memory alive for CFunctionInfo
-  #[allow(unused)]
+  #[allow(unused, reason = "kept alive for CFunctionInfo")]
   pub param_info: Box<[fast_api::CTypeInfo]>,
   // Held in a box to keep the memory alive for V8
-  #[allow(unused)]
+  #[allow(unused, reason = "kept alive for V8 fast API")]
   pub c_function_info: Box<fast_api::CFunctionInfo>,
 }
 

@@ -59,8 +59,11 @@ pub struct FailedTypeCheckingError {
   can_skip: bool,
 }
 
+#[derive(Debug, boxed_error::Boxed, deno_error::JsError)]
+pub struct CheckError(pub Box<CheckErrorKind>);
+
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
-pub enum CheckError {
+pub enum CheckErrorKind {
   #[class(inherit)]
   #[error(transparent)]
   FailedTypeChecking(#[from] FailedTypeCheckingError),
@@ -109,11 +112,10 @@ pub struct TypeChecker {
   sys: CliSys,
   compiler_options_resolver: Arc<CompilerOptionsResolver>,
   code_cache: Option<Arc<crate::cache::CodeCache>>,
-  tsgo_path: Option<PathBuf>,
 }
 
 impl TypeChecker {
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "construction")]
   pub fn new(
     caches: Arc<Caches>,
     cjs_tracker: Arc<TypeCheckingCjsTracker>,
@@ -125,7 +127,6 @@ impl TypeChecker {
     sys: CliSys,
     compiler_options_resolver: Arc<CompilerOptionsResolver>,
     code_cache: Option<Arc<crate::cache::CodeCache>>,
-    tsgo_path: Option<PathBuf>,
   ) -> Self {
     Self {
       caches,
@@ -138,7 +139,6 @@ impl TypeChecker {
       sys,
       compiler_options_resolver,
       code_cache,
-      tsgo_path,
     }
   }
 
@@ -146,7 +146,6 @@ impl TypeChecker {
   ///
   /// It is expected that it is determined if a check and/or emit is validated
   /// before the function is called.
-  #[allow(clippy::result_large_err)]
   pub fn check(
     &self,
     graph: ModuleGraph,
@@ -181,7 +180,6 @@ impl TypeChecker {
   ///
   /// It is expected that it is determined if a check and/or emit is validated
   /// before the function is called.
-  #[allow(clippy::result_large_err)]
   pub fn check_diagnostics(
     &self,
     mut graph: ModuleGraph,
@@ -246,7 +244,7 @@ impl TypeChecker {
         ),
         node_resolver: &self.node_resolver,
         npm_resolver: &self.npm_resolver,
-        package_json_resolver: &self.package_json_resolver,
+        _package_json_resolver: &self.package_json_resolver,
         compiler_options_resolver: &self.compiler_options_resolver,
         log_level: self.cli_options.log_level(),
         npm_check_state_hash: check_state_hash(&self.npm_resolver),
@@ -258,19 +256,17 @@ impl TypeChecker {
         options,
         seen_diagnotics: Default::default(),
         code_cache: self.code_cache.clone(),
-        tsgo_path: self.tsgo_path.clone(),
         initial_cwd: self.cli_options.initial_cwd().to_path_buf(),
         current_dir: deno_path_util::url_from_directory_path(
           self.cli_options.initial_cwd(),
         )
-        .map_err(|e| CheckError::Other(JsErrorBox::from_err(e)))?,
+        .map_err(|e| CheckErrorKind::Other(JsErrorBox::from_err(e)))?,
       }),
     ))
   }
 
   /// Groups the roots based on the compiler options, which includes the
   /// resolved CompilerOptions and resolved compilerOptions.types
-  #[allow(clippy::result_large_err)]
   fn group_roots_by_compiler_options<'a>(
     &'a self,
     graph: &ModuleGraph,
@@ -367,7 +363,10 @@ impl Iterator for DiagnosticsByFolderIterator<'_> {
   }
 }
 
-#[allow(clippy::large_enum_variant)]
+#[allow(
+  clippy::large_enum_variant,
+  reason = "large variant is used more often"
+)]
 enum DiagnosticsByFolderIteratorInner<'a> {
   Empty(Arc<ModuleGraph>),
   Real(DiagnosticsByFolderRealIterator<'a>),
@@ -380,7 +379,7 @@ struct DiagnosticsByFolderRealIterator<'a> {
   jsx_import_source_config_resolver: Arc<JsxImportSourceConfigResolver>,
   node_resolver: &'a Arc<CliNodeResolver>,
   npm_resolver: &'a CliNpmResolver,
-  package_json_resolver: &'a Arc<CliPackageJsonResolver>,
+  _package_json_resolver: &'a Arc<CliPackageJsonResolver>,
   compiler_options_resolver: &'a CompilerOptionsResolver,
   type_check_cache: TypeCheckCache,
   groups: Vec<CheckGroup<'a>>,
@@ -390,7 +389,6 @@ struct DiagnosticsByFolderRealIterator<'a> {
   seen_diagnotics: HashSet<String>,
   options: CheckOptions,
   code_cache: Option<Arc<crate::cache::CodeCache>>,
-  tsgo_path: Option<PathBuf>,
   initial_cwd: PathBuf,
   current_dir: Url,
 }
@@ -443,8 +441,6 @@ pub fn ambient_modules_to_regex_string(ambient_modules: &[String]) -> String {
 }
 
 impl DiagnosticsByFolderRealIterator<'_> {
-  #[allow(clippy::too_many_arguments)]
-  #[allow(clippy::result_large_err)]
   fn check_diagnostics_in_folder(
     &self,
     check_group: &CheckGroup,
@@ -552,7 +548,6 @@ impl DiagnosticsByFolderRealIterator<'_> {
           cjs_tracker: self.cjs_tracker.clone(),
           node_resolver: self.node_resolver.clone(),
           npm_resolver: self.npm_resolver.clone(),
-          package_json_resolver: self.package_json_resolver.clone(),
         }),
         maybe_tsbuildinfo,
         root_names,
@@ -560,7 +555,6 @@ impl DiagnosticsByFolderRealIterator<'_> {
         initial_cwd: self.initial_cwd.clone(),
       },
       code_cache,
-      self.tsgo_path.as_deref(),
     )?;
 
     let ambient_modules = response.ambient_modules;
@@ -658,7 +652,7 @@ struct GraphWalker<'a> {
 }
 
 impl<'a> GraphWalker<'a> {
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "construction")]
   pub fn new(
     graph: &'a ModuleGraph,
     sys: &'a CliSys,

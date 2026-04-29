@@ -1,0 +1,10 @@
+{
+  "name": "@scope/root",
+  "workspace": [
+    "./member-pkg"
+  ],
+  "tasks": {
+    "dev": "echo 'root ran'"
+  },
+  "exports": {}
+}

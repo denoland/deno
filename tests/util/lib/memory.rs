@@ -30,7 +30,6 @@ fn mem_info_impl() -> Option<MemInfo> {
   }
 
   // /proc/meminfo has more accurate MemAvailable
-  #[allow(clippy::disallowed_methods)]
   if let Ok(meminfo) = std::fs::read_to_string("/proc/meminfo") {
     for line in meminfo.lines() {
       if line.starts_with("MemTotal:")

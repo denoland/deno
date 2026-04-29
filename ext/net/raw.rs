@@ -21,7 +21,7 @@ pub trait NetworkStreamTrait: Into<NetworkStream> {
   fn peer_address(&self) -> Result<NetworkStreamAddress, std::io::Error>;
 }
 
-#[allow(async_fn_in_trait)]
+#[allow(async_fn_in_trait, reason = "it's fine")]
 pub trait NetworkStreamListenerTrait:
   Into<NetworkStreamListener> + Send + Sync
 {
@@ -39,7 +39,7 @@ pub trait NetworkStreamListenerTrait:
 pub struct NetworkListenerResource<T: NetworkStreamListenerTrait> {
   pub listener: AsyncRefCell<T>,
   /// Associated data for this resource. Not required.
-  #[allow(unused)]
+  #[allow(unused, reason = "someone might not use it")]
   pub data: T::ResourceData,
   pub cancel: CancelHandle,
 }
@@ -90,7 +90,7 @@ macro_rules! network_stream {
   ) => {
     /// A raw stream of one of the types handled by this extension.
     #[pin_project::pin_project(project = NetworkStreamProject)]
-    #[allow(clippy::large_enum_variant)]
+    #[allow(clippy::large_enum_variant, reason = "TODO: investigate")]
     pub enum NetworkStream {
       $(
         $( #[ $meta ] )?

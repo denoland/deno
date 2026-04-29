@@ -201,7 +201,10 @@ Deno.test(async function asyncLocalStoragePreservedInStreamFinished() {
     const port = typeof addr === "string" ? addr : addr.port;
     http.get(`http://127.0.0.1:${port}`, (res) => {
       res.resume();
-      res.on("end", () => server.close());
+      res.on("end", () => {
+        server.close();
+        http.globalAgent.destroy();
+      });
     });
   });
 

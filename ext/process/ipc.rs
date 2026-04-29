@@ -586,6 +586,8 @@ impl<R: AsyncRead + ?Sized + Unpin> Future for ReadMsgInner<'_, R> {
   }
 }
 
+#[allow(clippy::disallowed_methods, reason = "test code")]
+#[allow(clippy::print_stdout, reason = "test code")]
 #[cfg(test)]
 mod tests {
   use std::rc::Rc;
@@ -595,7 +597,7 @@ mod tests {
 
   use super::IpcJsonStreamResource;
 
-  #[allow(clippy::unused_async)]
+  #[allow(clippy::unused_async, reason = "async on windows")]
   #[cfg(unix)]
   pub async fn pair() -> (Rc<IpcJsonStreamResource>, tokio::net::UnixStream) {
     let (a, b) = tokio::net::UnixStream::pair().unwrap();
@@ -631,7 +633,6 @@ mod tests {
     (client, server)
   }
 
-  #[allow(clippy::print_stdout)]
   #[tokio::test]
   async fn bench_ipc() -> Result<(), Box<dyn std::error::Error>> {
     // A simple round trip benchmark for quick dev feedback.

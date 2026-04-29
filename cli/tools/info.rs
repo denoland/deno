@@ -22,9 +22,9 @@ use deno_lib::util::checksum;
 use deno_lib::version::DENO_VERSION_INFO;
 use deno_npm::NpmPackageId;
 use deno_npm::NpmResolutionPackage;
-use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm::resolution::NpmResolutionSnapshot;
 use deno_npm_installer::graph::NpmCachingStrategy;
+use deno_npmrc::ResolvedNpmRc;
 use deno_path_util::resolve_url_or_path;
 use deno_resolver::DenoResolveErrorKind;
 use deno_resolver::display::DisplayTreeNode;
@@ -207,7 +207,7 @@ pub async fn info(
   Ok(())
 }
 
-#[allow(clippy::print_stdout)]
+#[allow(clippy::print_stdout, reason = "print method")]
 fn print_cache_info(
   factory: &CliFactory,
   json: bool,
@@ -215,7 +215,6 @@ fn print_cache_info(
 ) -> Result<(), AnyError> {
   let deno_version = DENO_VERSION_INFO.deno;
   let dir = factory.deno_dir()?;
-  #[allow(deprecated)]
   let modules_cache = factory.global_http_cache()?.dir_path();
   let npm_cache = factory.deno_dir()?.npm_folder_path();
   let typescript_cache = &dir.gen_cache.location;

@@ -1,0 +1,7 @@
+Check mod.ts
+TS2339 [ERROR]: Property 'hot' does not exist on type 'ImportMeta'.
+[WILDCARD]
+Found 2 errors.
+
+error: Type checking failed.
+[WILDCARD]

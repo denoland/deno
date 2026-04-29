@@ -1,5 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
+import { primordials } from "ext:core/mod.js";
+const { ObjectFreeze } = primordials;
 import { op_node_build_os, op_node_fs_constants } from "ext:core/ops";
 
 let os: {
@@ -633,6 +635,8 @@ if (buildOs === "darwin") {
     },
   };
 }
+
+ObjectFreeze(os.signals);
 
 export { os };
 

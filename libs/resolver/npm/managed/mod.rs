@@ -100,7 +100,7 @@ pub struct ManagedNpmResolverCreateOptions<TSys: ManagedNpmResolverSys> {
 #[sys_traits::auto_impl]
 pub trait ManagedNpmResolverSys: GlobalNpmPackageResolverSys + Clone {}
 
-#[allow(clippy::disallowed_types)]
+#[allow(clippy::disallowed_types, reason = "definition")]
 pub type ManagedNpmResolverRc<TSys> =
   deno_maybe_sync::MaybeArc<ManagedNpmResolver<TSys>>;
 
