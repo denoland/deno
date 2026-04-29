@@ -112,6 +112,19 @@ class TextDecoder {
    */
   decode(input = new Uint8Array(), options = undefined) {
     webidl.assertBranded(this, TextDecoderPrototype);
+    // Hyper-fast path: handles the dominant case of
+    // `new TextDecoder().decode(bytes)` on a regular (non-SAB) Uint8Array.
+    // Skips the second buffer/SAB lookup, the options/stream branches and the
+    // try/finally that the slow path needs.
+    if (
+      options === undefined &&
+      this.#utf8SinglePass &&
+      this.#handle === null &&
+      TypedArrayPrototypeGetSymbolToStringTag(input) === "Uint8Array" &&
+      !isSharedArrayBuffer(TypedArrayPrototypeGetBuffer(input))
+    ) {
+      return op_encoding_decode_utf8(input, this.#ignoreBOM);
+    }
     if (input !== undefined) {
       // Fast path: skip full BufferSource validation for Uint8Array
       if (

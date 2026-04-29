@@ -18,6 +18,8 @@ fn setup() -> Vec<Extension> {
         import { TextDecoder } from "ext:deno_web/08_text_encoding.js";
         globalThis.TextDecoder = TextDecoder;
         globalThis.hello12k = Deno.core.encode("hello world\n".repeat(1e3));
+        globalThis.hello120 = Deno.core.encode("hello world\n".repeat(10));
+        globalThis.dec = new TextDecoder();
       "#
     }],
     state = |state| {
@@ -41,5 +43,23 @@ fn bench_encode_12kb(b: &mut Bencher) {
   bench_js_sync(b, r#"new TextDecoder().decode(hello12k);"#, setup);
 }
 
-benchmark_group!(benches, bench_encode_12kb);
+fn bench_decode_12kb_reused(b: &mut Bencher) {
+  bench_js_sync(b, r#"dec.decode(hello12k);"#, setup);
+}
+
+fn bench_decode_120b_fresh(b: &mut Bencher) {
+  bench_js_sync(b, r#"new TextDecoder().decode(hello120);"#, setup);
+}
+
+fn bench_decode_120b_reused(b: &mut Bencher) {
+  bench_js_sync(b, r#"dec.decode(hello120);"#, setup);
+}
+
+benchmark_group!(
+  benches,
+  bench_encode_12kb,
+  bench_decode_12kb_reused,
+  bench_decode_120b_fresh,
+  bench_decode_120b_reused,
+);
 bench_or_profile!(benches);
