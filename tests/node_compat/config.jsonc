@@ -1690,6 +1690,10 @@
     "parallel/test-http2-invalidargtypes-errors.js": {},
     "parallel/test-http2-invalidheaderfield.js": {},
     "parallel/test-http2-invalidheaderfields-client.js": {},
+    "parallel/test-http2-ip-address-host.js": {
+      "windows": false,
+      "reason": "Windows binds Server.listen() to IPv4 only, so the IPv6 portion of the test cannot connect"
+    },
     "parallel/test-http2-large-write-close.js": {},
     "parallel/test-http2-large-write-destroy.js": {},
     "parallel/test-http2-large-write-multiple-requests.js": {},
