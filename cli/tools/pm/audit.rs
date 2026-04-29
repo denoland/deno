@@ -361,12 +361,15 @@ mod npm {
       audit_flags.ignore_unfixable,
     );
 
-    // Derive fixable actions from advisories that have patched versions.
-    // The bulk API does not return explicit "actions" like the retired
-    // full audit API did, so we extract the minimum satisfying version
-    // from patched_versions ranges.
-    let fixable_actions =
-      derive_fixable_actions(&advisories, &installed_versions);
+    // Derive fixable actions from advisories at or above the severity
+    // threshold that have patched versions. The bulk API does not return
+    // explicit "actions" like the retired full audit API did, so we
+    // extract the minimum satisfying version from patched_versions ranges.
+    let fixable_actions = derive_fixable_actions(
+      &advisories,
+      &installed_versions,
+      minimal_severity,
+    );
 
     // Exit code 1 only if there are vulnerabilities at or above the specified level
     let exit_code = if vulns.count_at_or_above(minimal_severity) > 0 {
@@ -382,14 +385,17 @@ mod npm {
 
   /// Derive fix actions from advisory patched_versions ranges.
   ///
-  /// For each vulnerable package, parse the patched_versions range to find
-  /// the minimum version that fixes the vulnerability. If multiple advisories
-  /// affect the same package, pick the highest target version so all are
-  /// resolved. Compare the target major version with the installed major
-  /// version to determine if it is a major upgrade.
+  /// Only considers advisories at or above `min_severity` so that
+  /// `--fix` respects the `--severity` flag. For each vulnerable
+  /// package, parse the patched_versions range to find the minimum
+  /// version that fixes the vulnerability. If multiple advisories
+  /// affect the same package, pick the highest target version so all
+  /// are resolved. Compare the target major version with the installed
+  /// major version to determine if it is a major upgrade.
   fn derive_fixable_actions(
     advisories: &[AuditAdvisory],
     installed_versions: &HashMap<String, Vec<deno_semver::Version>>,
+    min_severity: AdvisorySeverity,
   ) -> Vec<super::FixableAction> {
     use deno_semver::Version;
 
@@ -397,6 +403,14 @@ mod npm {
     let mut best_target: HashMap<String, (Version, bool)> = HashMap::new();
 
     for adv in advisories {
+      // Skip advisories below the severity threshold
+      let Some(severity) = AdvisorySeverity::parse(&adv.severity) else {
+        continue;
+      };
+      if severity < min_severity {
+        continue;
+      }
+
       if adv.patched_versions.is_empty() {
         continue;
       }
@@ -407,7 +421,7 @@ mod npm {
 
       let installed_major = installed_versions
         .get(&adv.module_name)
-        .and_then(|vs| vs.first())
+        .and_then(|vs| vs.iter().min())
         .map(|v| v.major)
         .unwrap_or(0);
       let is_major = target.major > installed_major;
@@ -430,22 +444,41 @@ mod npm {
       .collect()
   }
 
-  /// Extract the minimum version from a npm version range string.
+  /// Extract the minimum patched version from a npm version range string.
   ///
-  /// For common patched_versions formats like ">=1.1.0" or ">=2.0.0 <3.0.0",
-  /// this extracts the lower bound version. Returns None if the range cannot
-  /// be parsed or has no usable lower bound.
+  /// Handles common patched_versions formats from npm advisories:
+  /// - ">=1.1.0" or ">=1.1.0 <2.0.0" (lower-bounded range)
+  /// - ">1.0.0" (exclusive lower bound -- we cannot determine exact
+  ///   min version, so skip)
+  /// - "=1.1.0" or "1.1.0" (exact version)
+  ///
+  /// Returns None if the range cannot be parsed or has no usable lower
+  /// bound, in which case the advisory is skipped for auto-fix.
   fn min_version_from_range(range: &str) -> Option<deno_semver::Version> {
-    // Common format: ">=X.Y.Z" or ">=X.Y.Z <A.B.C"
-    // deno_semver can parse npm ranges; we look for the first >= comparator
     let trimmed = range.trim();
+
+    // ">=X.Y.Z ..." -- most common npm patched_versions format
     if let Some(rest) = trimmed.strip_prefix(">=") {
-      // Take the version part (up to first space or end)
-      let ver_str = rest.split_whitespace().next()?;
-      deno_semver::Version::parse_standard(ver_str).ok()
-    } else {
-      None
+      let ver_str = rest.trim_start().split_whitespace().next()?;
+      return deno_semver::Version::parse_standard(ver_str).ok();
     }
+
+    // "=X.Y.Z" -- exact version
+    if let Some(rest) = trimmed.strip_prefix('=') {
+      let ver_str = rest.trim_start().split_whitespace().next()?;
+      return deno_semver::Version::parse_standard(ver_str).ok();
+    }
+
+    // Bare version "X.Y.Z" (no operator) -- treat as exact
+    if trimmed.chars().next().is_some_and(|c| c.is_ascii_digit()) {
+      let ver_str = trimmed.split_whitespace().next()?;
+      return deno_semver::Version::parse_standard(ver_str).ok();
+    }
+
+    // ">X.Y.Z", "~X.Y.Z", "^X.Y.Z", "||" ranges, etc.
+    // We cannot reliably determine the exact minimum version
+    // for these, so skip them (advisory will not be auto-fixed).
+    None
   }
 
   fn print_report(
