@@ -1167,8 +1167,7 @@ function connect(...args) {
 
 let warnOnAllowUnauthorized = true;
 function getAllowUnauthorized() {
-  const allowUnauthorized =
-    process.env.NODE_TLS_REJECT_UNAUTHORIZED === "0";
+  const allowUnauthorized = process.env.NODE_TLS_REJECT_UNAUTHORIZED === "0";
   if (allowUnauthorized && warnOnAllowUnauthorized) {
     warnOnAllowUnauthorized = false;
     process.emitWarning(
