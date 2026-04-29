@@ -342,10 +342,11 @@ export class ChannelWrap extends AsyncWrap implements ChannelWrapQuery {
         }
         return { code, ret };
       } catch (e) {
-        if (
-          e instanceof Deno.errors.Interrupted ||
-          e instanceof Deno.errors.TimedOut
-        ) {
+        if (e instanceof Deno.errors.Interrupted) {
+          // Interrupted means explicit cancel - don't retry
+          code = "ETIMEOUT";
+        } else if (e instanceof Deno.errors.TimedOut) {
+          // TimedOut from hickory - retry if attempts remain
           if (attempt < tries - 1) continue;
           code = "ETIMEOUT";
         } else if (e instanceof Deno.errors.NotFound) {
