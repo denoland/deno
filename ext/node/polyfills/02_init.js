@@ -7,7 +7,6 @@ const requireImpl = internals.requireImpl;
 
 import { op_stream_base_register_state } from "ext:core/ops";
 import {
-  kStreamBaseField,
   streamBaseState,
 } from "ext:deno_node/internal_binding/stream_wrap.ts";
 import "node:module";
