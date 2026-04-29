@@ -8,8 +8,6 @@ use deno_ast::EmitOptions;
 use deno_ast::MediaType;
 use deno_ast::SourceMapOption;
 use deno_ast::TranspileModuleOptions;
-use deno_ast::TranspileOptions;
-use deno_ast::TranspileResult;
 use deno_config::deno_json::CompilerOptions;
 use deno_core::ModuleSpecifier;
 use deno_core::anyhow;
@@ -78,6 +76,9 @@ pub async fn transpile(
     SourceMapMode::Separate => SourceMapOption::Separate,
   };
 
+  // Resolve transpile options from deno.json compilerOptions
+  let compiler_options_resolver = factory.compiler_options_resolver()?;
+
   // Collect file paths and specifiers
   let mut file_entries = Vec::new();
   for file_path_str in files {
@@ -124,24 +125,31 @@ pub async fn transpile(
       maybe_syntax: None,
     })?;
 
-    let transpile_result = parsed_source.transpile(
-      &TranspileOptions {
-        imports_not_used_as_values: deno_ast::ImportsNotUsedAsValues::Remove,
-        ..Default::default()
-      },
-      &TranspileModuleOptions { module_kind: None },
-      &EmitOptions {
-        source_map: source_map_option,
-        source_map_file: Some(specifier.to_string()),
-        ..Default::default()
-      },
-    )?;
+    // Use transpile options from deno.json, with source map overridden by CLI flag
+    let transpile_and_emit_options = compiler_options_resolver
+      .for_specifier(specifier)
+      .transpile_options()?;
+    let transpile_options = &transpile_and_emit_options.transpile;
 
-    let emitted = match transpile_result {
-      TranspileResult::Owned(source) => source,
-      TranspileResult::Cloned(source) => source,
+    let emit_options = EmitOptions {
+      source_map: source_map_option,
+      source_map_file: Some(
+        file_path
+          .file_name()
+          .unwrap_or_default()
+          .to_string_lossy()
+          .into_owned(),
+      ),
+      ..transpile_and_emit_options.emit.clone()
     };
 
+    let transpile_result = parsed_source.transpile(
+      transpile_options,
+      &TranspileModuleOptions { module_kind: None },
+      &emit_options,
+    )?;
+
+    let emitted = transpile_result.into_source();
     let js_text = &emitted.text;
     let source_map_text = &emitted.source_map;
 
@@ -283,12 +291,24 @@ async fn emit_declarations(
     anyhow::bail!("Type checking failed:\n{}", response.diagnostics);
   }
 
+  // Determine the output directory for .d.ts files.
+  // With -o, place .d.ts next to the output file.
+  // With --outdir, use the outdir.
+  // Otherwise, place next to the source file (handled by TSC path).
+  let output_base_dir = if let Some(output) = &transpile_flags.output {
+    let output_path = cwd.join(output);
+    output_path.parent().map(|p| p.to_path_buf())
+  } else {
+    None
+  };
+
   // Write emitted .d.ts files
   for (file_name, content) in &response.emitted_files {
     // The file names from TSC are specifier-based, convert to output paths
     let output_path = resolve_dts_output_path(
       file_name,
       transpile_flags.output_dir.as_deref(),
+      output_base_dir.as_deref(),
       cwd,
     )?;
 
@@ -317,6 +337,7 @@ async fn emit_declarations(
 fn resolve_dts_output_path(
   tsc_file_name: &str,
   output_dir: Option<&str>,
+  output_base_dir: Option<&Path>,
   cwd: &Path,
 ) -> Result<PathBuf, AnyError> {
   // TSC emits file names like "file:///path/to/file.d.ts"
@@ -329,6 +350,7 @@ fn resolve_dts_output_path(
   };
 
   if let Some(outdir) = output_dir {
+    // --outdir: preserve relative directory structure
     let outdir = cwd.join(outdir);
     let relative = path.strip_prefix(cwd).map_err(|_| {
       anyhow::anyhow!(
@@ -337,7 +359,14 @@ fn resolve_dts_output_path(
       )
     })?;
     Ok(outdir.join(relative))
+  } else if let Some(base_dir) = output_base_dir {
+    // -o: place .d.ts next to the output file
+    let file_name = path
+      .file_name()
+      .ok_or_else(|| anyhow::anyhow!("Invalid declaration file path"))?;
+    Ok(base_dir.join(file_name))
   } else {
+    // No output specified: place next to source file
     Ok(path)
   }
 }

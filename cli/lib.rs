@@ -201,6 +201,10 @@ async fn run_subcommand(
     }),
     DenoSubcommand::Transpile(transpile_flags) => {
       spawn_subcommand(async move {
+        log::warn!(
+          "⚠️  {} is experimental and subject to changes",
+          colors::cyan("deno transpile")
+        );
         tools::transpile::transpile(Arc::new(flags), transpile_flags).await
       })
     }
