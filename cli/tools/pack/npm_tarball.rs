@@ -13,13 +13,10 @@ use super::extensions::js_to_dts_extension;
 
 /// Tar archive paths must use forward slashes, even on Windows. Output paths
 /// are computed with platform separators when they pass through `Path::display`,
-/// so normalize before writing the tar header.
+/// so normalize before writing the tar header. Unconditional — backslash is
+/// not a valid path character on POSIX, so a plain replace is a no-op there.
 fn to_tar_path(relative: &str) -> String {
-  if cfg!(windows) {
-    relative.replace('\\', "/")
-  } else {
-    relative.to_string()
-  }
+  relative.replace('\\', "/")
 }
 
 /// Append a file entry with a fixed mode/mtime/uid/gid so two pack runs over

@@ -4764,7 +4764,7 @@ fn pack_subcommand() -> Command {
       .arg(
         Arg::new("allow-slow-types")
           .long("allow-slow-types")
-          .help("Skip .d.ts generation (types will not be included)")
+          .help("Skip fast-check type extraction; .d.ts files are omitted from the output")
           .action(ArgAction::SetTrue),
       )
       .arg(

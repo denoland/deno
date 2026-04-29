@@ -299,6 +299,21 @@ fn rewrite_registry_specifier(name: &str, sub_path: Option<&str>) -> String {
   }
 }
 
+/// Convert a JSR package name (e.g. `@std/path`) to its npm-published
+/// counterpart (`@jsr/std__path`). JSR mirrors packages onto npm under the
+/// `@jsr/` scope with `__` joining the original scope and name. If the
+/// input doesn't look like a scoped JSR name we return it unchanged so the
+/// caller can degrade gracefully on malformed specifiers.
+fn jsr_name_to_npm(jsr_name: &str) -> String {
+  let Some(stripped) = jsr_name.strip_prefix('@') else {
+    return jsr_name.to_string();
+  };
+  match stripped.split_once('/') {
+    Some((scope, name)) => format!("@jsr/{}__{}", scope, name),
+    None => jsr_name.to_string(),
+  }
+}
+
 /// Rewrite a specifier for npm compatibility.
 /// Returns `Some(rewritten)` if the specifier needs rewriting, `None` if unchanged.
 fn rewrite_specifier(specifier: &str) -> Option<String> {
@@ -314,13 +329,14 @@ fn rewrite_specifier(specifier: &str) -> Option<String> {
     return None;
   }
 
-  // Handle jsr: imports using deno_semver
+  // Handle jsr: imports using deno_semver. JSR packages are mirrored to
+  // the npm registry under the `@jsr/scope__name` scheme, so rewrite to
+  // that form rather than the raw `@scope/name` (which won't resolve via
+  // `npm install`).
   if specifier.starts_with("jsr:") {
     if let Ok(jsr_ref) = JsrPackageReqReference::from_str(specifier) {
-      return Some(rewrite_registry_specifier(
-        &jsr_ref.req().name,
-        jsr_ref.sub_path(),
-      ));
+      let npm_name = jsr_name_to_npm(&jsr_ref.req().name);
+      return Some(rewrite_registry_specifier(&npm_name, jsr_ref.sub_path()));
     }
     // Fallback for malformed specifiers: strip prefix
     log::warn!("Failed to parse jsr specifier: {}", specifier);
@@ -399,7 +415,10 @@ fn extract_package_dependency(specifier: &str) -> Option<(String, String)> {
 
   if specifier.starts_with("jsr:") {
     let jsr_ref = JsrPackageReqReference::from_str(specifier).ok()?;
-    let name = jsr_ref.req().name.to_string();
+    // Use the @jsr/-scoped npm name so the dependency resolves on
+    // `npm install`. The JSR scope/name pair is rewritten by
+    // `jsr_name_to_npm`; see https://jsr.io/docs/npm-compatibility.
+    let name = jsr_name_to_npm(&jsr_ref.req().name);
     let version = normalize_version(jsr_ref.req().version_req.version_text());
     return Some((name, version));
   }
@@ -453,17 +472,18 @@ mod tests {
 
   #[test]
   fn test_rewrite_jsr_specifier() {
+    // JSR packages are mirrored to npm under `@jsr/scope__name`.
     assert_eq!(
       rewrite_specifier("jsr:@std/path"),
-      Some("@std/path".to_string())
+      Some("@jsr/std__path".to_string())
     );
     assert_eq!(
       rewrite_specifier("jsr:@std/path@1.0.0"),
-      Some("@std/path".to_string())
+      Some("@jsr/std__path".to_string())
     );
     assert_eq!(
       rewrite_specifier("jsr:@std/path@1.0.0/posix"),
-      Some("@std/path/posix".to_string())
+      Some("@jsr/std__path/posix".to_string())
     );
   }
 
@@ -501,16 +521,25 @@ mod tests {
   fn test_extract_jsr_dependency() {
     assert_eq!(
       extract_package_dependency("jsr:@std/path@1.0.0"),
-      Some(("@std/path".to_string(), "^1.0.0".to_string()))
+      Some(("@jsr/std__path".to_string(), "^1.0.0".to_string()))
     );
     assert_eq!(
       extract_package_dependency("jsr:@std/path@1.0.0/posix"),
-      Some(("@std/path".to_string(), "^1.0.0".to_string()))
+      Some(("@jsr/std__path".to_string(), "^1.0.0".to_string()))
     );
     assert_eq!(
       extract_package_dependency("jsr:@std/path"),
-      Some(("@std/path".to_string(), "*".to_string()))
+      Some(("@jsr/std__path".to_string(), "*".to_string()))
     );
+  }
+
+  #[test]
+  fn test_jsr_name_to_npm() {
+    assert_eq!(jsr_name_to_npm("@std/path"), "@jsr/std__path");
+    assert_eq!(jsr_name_to_npm("@scope/some-pkg"), "@jsr/scope__some-pkg");
+    // malformed inputs pass through
+    assert_eq!(jsr_name_to_npm("nopackage"), "nopackage");
+    assert_eq!(jsr_name_to_npm("@noslash"), "@noslash");
   }
 
   #[test]

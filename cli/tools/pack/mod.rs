@@ -496,6 +496,20 @@ impl Visit for DenoUsageVisitor {
   }
 }
 
+/// Split a leading shebang line off the source so we can preserve it as
+/// the first line of the emitted JS file without it interfering with
+/// transpilation or the shim-import injection. Returns
+/// `(shebang_with_newline, rest_of_source)`.
+fn split_shebang(source: &str) -> (Option<&str>, &str) {
+  if !source.starts_with("#!") {
+    return (None, source);
+  }
+  match source.find('\n') {
+    Some(nl) => (Some(&source[..=nl]), &source[nl + 1..]),
+    None => (Some(source), ""),
+  }
+}
+
 /// Detect Deno API usage in a parsed source file using AST traversal
 fn detect_deno_usage(parsed: &deno_ast::ParsedSource) -> DenoUsageInfo {
   let mut visitor = DenoUsageVisitor::new();
@@ -671,9 +685,14 @@ fn process_single_module(
   transpile_options: &deno_ast::TranspileOptions,
 ) -> Result<ProcessedFile, AnyError> {
   let media_type = js_module.media_type;
-  let source_text = js_module.source.text.as_ref();
+  let raw_source = js_module.source.text.as_ref();
+  // Strip a leading shebang (e.g. `#!/usr/bin/env deno`) before all other
+  // processing. SWC's module parser rejects shebangs with "Expected
+  // ident", and tools downstream don't want to deal with them either.
+  // We re-prepend the shebang to the final emitted JS so executable
+  // scripts still work after `deno pack`.
+  let (shebang, source_text) = split_shebang(raw_source);
 
-  // Parse the source
   let parsed = parsed_source_cache.remove_or_parse_module(
     &path.specifier,
     media_type,
@@ -699,7 +718,12 @@ fn process_single_module(
       let unfurl_result = unfurl_specifiers(&parsed, &path.specifier, graph);
       let mut text_changes = unfurl_result.text_changes;
 
-      // Inject Deno shim import at the top of the file (as a text change)
+      // Inject Deno shim import at the top of the (shebang-stripped)
+      // source. Module-level `"use strict"` directives and triple-slash
+      // references are rare in Deno code; treating those would require
+      // a statement-level scan and is not worth the complexity for the
+      // common case. The shebang has already been split off above and
+      // is re-prepended after transpilation.
       if deno_usage.uses_deno && !pack_flags.no_shim {
         text_changes.push(deno_ast::TextChange {
           range: 0..0,
@@ -727,7 +751,6 @@ fn process_single_module(
       deno_ast::SourceMapOption::Inline
     };
 
-    // Re-parse the modified source for transpilation
     let modified_parsed = deno_ast::parse_module(deno_ast::ParseParams {
       specifier: path.specifier.clone(),
       text: source_to_transpile.into(),
@@ -756,6 +779,13 @@ fn process_single_module(
   } else {
     // Non-emittable files: use the (possibly rewritten) source directly
     (source_to_transpile, media_type_extension(media_type))
+  };
+
+  // Re-prepend the shebang we stripped earlier so executable scripts
+  // (e.g. `#!/usr/bin/env -S deno run -A`) still work after pack.
+  let js_content = match shebang {
+    Some(line) => format!("{}{}", line, js_content),
+    None => js_content,
   };
 
   // Extract .d.ts if available and not skipped, then unfurl its specifiers
@@ -844,29 +874,35 @@ fn extract_dts(
       ) {
         Ok(emitted) => return Some(emitted.text),
         Err(e) => {
-          log::warn!("Failed to emit DTS: {}", e);
-          // Do not fall through to fast_check.source as it is simplified
-          // TypeScript, not valid .d.ts
-          return Some("export {};".to_string());
+          // No fall-through to fast_check.source: it's simplified
+          // TypeScript, not valid .d.ts. We return None so the .d.ts
+          // file is omitted from the tarball entirely and the
+          // generated package.json drops its `types` field for this
+          // entry, rather than pointing at an empty `export {};` stub
+          // that would make TypeScript conclude the module exports
+          // nothing.
+          log::warn!(
+            "Failed to emit .d.ts for '{}': {}. Types will not be included for this module.",
+            js_module.specifier,
+            e
+          );
+          return None;
         }
       }
     }
 
-    // No DTS module available but we have fast check data.
-    // fast_check.source is simplified TS, not valid .d.ts, so emit a stub.
     log::warn!(
-      "Could not generate .d.ts for '{}'. Fast check available but no DTS module. Emitting empty declaration stub.",
+      "Could not generate .d.ts for '{}': fast check produced no DTS module. Types will not be included for this module.",
       js_module.specifier
     );
-    return Some("export {};".to_string());
+    return None;
   }
 
-  // Fallback: generate a stub — warn the user
   log::warn!(
-    "Could not generate types for '{}'. Emitting empty declaration stub.",
+    "Could not generate types for '{}'. Types will not be included for this module.",
     js_module.specifier
   );
-  Some("export {};".to_string())
+  None
 }
 
 fn detect_deno_api_usage(files: &[ProcessedFile]) -> bool {
