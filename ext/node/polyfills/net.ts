@@ -561,7 +561,7 @@ function _internalConnect(
   addressType: number,
   localAddress: string,
   localPort: number | undefined,
-  flags: number,
+  flags: number = 0,
 ) {
   assert(socket.connecting);
 
@@ -840,6 +840,17 @@ function _tryReadStart(socket: Socket) {
 function _onReadableStreamEnd(this: Socket) {
   if (!this.allowHalfOpen) {
     this.write = _writeAfterFIN;
+    if (this.writable) {
+      // Defer end() to nextTick so that user 'end' handlers registered
+      // after the constructor (which registered _onReadableStreamEnd)
+      // see socket.writable === true, matching Node.js behavior where
+      // the writable getter doesn't reflect the ending state immediately.
+      // deno-lint-ignore no-this-alias
+      const socket = this;
+      nextTick(() => {
+        if (socket.writable && !socket.destroyed) socket.end();
+      });
+    }
   }
 }
 
@@ -1186,6 +1197,7 @@ function _lookupAndConnectMultiple(
         current: 0,
         port,
         localPort,
+        flags: 0,
         timeout,
         [kTimeout]: null,
         errors: [],
@@ -1224,9 +1236,15 @@ function _addClientAbortSignalOption(socket: Socket, signal: AbortSignal) {
   const onAbort = () => {
     socket.destroy(new AbortError());
   };
-  signal.addEventListener("abort", onAbort, { once: true });
-  socket.once("close", () => {
-    signal.removeEventListener("abort", onAbort);
+  // Match Node: register on nextTick so synchronous listenerCount checks
+  // immediately after Socket construction don't double-count the listener
+  // already attached by Duplex via addAbortSignal.
+  nextTick(() => {
+    if (socket.destroyed) return;
+    signal.addEventListener("abort", onAbort, { once: true });
+    socket.once("close", () => {
+      signal.removeEventListener("abort", onAbort);
+    });
   });
 }
 
@@ -1821,15 +1839,19 @@ Socket.prototype._destroy = function (exception, cb) {
       }
     }
 
-    this._handle.close(() => {
-      this._handle.onread = _noop;
-      this._handle = null;
-      this._sockname = undefined;
+    const handle = this._handle;
+    // Call cb first so the stream's error emission (via nextTick) is
+    // scheduled before the handle close callback. This ensures 'error'
+    // fires before 'close', matching Node.js behavior.
+    this._handle = null;
+    this._sockname = undefined;
+    cb(exception);
+    handle.close(() => {
+      handle.onread = _noop;
 
       debug("emit close");
       this.emit("close", isException);
     });
-    cb(exception);
   } else {
     cb(exception);
     nextTick(_emitCloseNT, this);
@@ -2086,8 +2108,15 @@ function _isConnectionListener(
   return typeof connectionListener === "function";
 }
 
-function _getFlags(ipv6Only?: boolean): number {
-  return ipv6Only === true ? TCPConstants.UV_TCP_IPV6ONLY : 0;
+function _getFlags(ipv6Only?: boolean, reusePort?: boolean): number {
+  let flags = 0;
+  if (ipv6Only === true) {
+    flags |= TCPConstants.UV_TCP_IPV6ONLY;
+  }
+  if (reusePort === true) {
+    flags |= TCPConstants.UV_TCP_REUSEPORT;
+  }
+  return flags;
 }
 
 function _listenInCluster(
@@ -2225,27 +2254,31 @@ export function _createServerHandle(
     debug("bind to", address || "any");
 
     if (!address) {
-      // TODO(@bartlomieju): differs from Node which tries to bind to IPv6 first when no
-      // address is provided.
+      // Match Node's behavior: when no address is provided, prefer the
+      // IPv6 wildcard (which accepts IPv4 connections via dual-stack) and
+      // fall back to IPv4 if the IPv6 bind fails.
       //
-      // Forcing IPv4 as a workaround for Deno not aligning with Node on
-      // implicit binding on Windows.
+      // Windows is kept on the IPv4-only path because the dual-stack
+      // socket option doesn't reliably accept IPv4 connections there in
+      // our environment (verified via CI: server listening on `::` rejects
+      // `127.0.0.1` clients with ECONNREFUSED).
       //
       // REF: https://github.com/denoland/deno/issues/10762
+      if (isWindows) {
+        return _createServerHandle(DEFAULT_IPV4_ADDR, port, 4, null, flags);
+      }
 
-      // Try binding to ipv6 first
-      // err = (handle as TCP).bind6(DEFAULT_IPV6_ADDR, port ?? 0, flags ?? 0);
-
-      // if (err) {
-      //   handle.close();
-
-      // Fallback to ipv4
-      return _createServerHandle(DEFAULT_IPV4_ADDR, port, 4, null, flags);
-      // }
+      err = (handle as TCP).bind6(DEFAULT_IPV6_ADDR, port ?? 0, flags ?? 0);
+      if (err) {
+        handle.close();
+        return _createServerHandle(DEFAULT_IPV4_ADDR, port, 4, null, flags);
+      }
     } else if (addressType === 6) {
       err = (handle as TCP).bind6(address, port ?? 0, flags ?? 0);
+    } else if (isTCP) {
+      err = (handle as TCP).bindWithFlags(address, port ?? 0, flags ?? 0);
     } else {
-      err = (handle as TCP).bind(address, port ?? 0);
+      err = handle.bind(address);
     }
   }
 
@@ -2336,25 +2369,29 @@ function _setupListenHandle(
 
     let rval = null;
 
-    // Try to bind to the unspecified IPv6 address, see if IPv6 is available
+    // Try to bind to the unspecified IPv6 address, see if IPv6 is available.
+    // A wildcard IPv6 socket also accepts IPv4 traffic via dual-stack,
+    // matching Node's default. Windows is kept on the IPv4-only path because
+    // the dual-stack socket option doesn't reliably accept IPv4 connections
+    // there in our environment.
+    //
+    // REF: https://github.com/denoland/deno/issues/10762
     if (!address && typeof fd !== "number") {
-      // TODO(@bartlomieju): differs from Node which tries to bind to IPv6 first
-      // when no address is provided.
-      //
-      // Forcing IPv4 as a workaround for Deno not aligning with Node on
-      // implicit binding on Windows.
-      //
-      // REF: https://github.com/denoland/deno/issues/10762
-      // rval = _createServerHandle(DEFAULT_IPV6_ADDR, port, 6, fd, flags);
+      if (isWindows) {
+        address = DEFAULT_IPV4_ADDR;
+        addressType = 4;
+      } else {
+        rval = _createServerHandle(DEFAULT_IPV6_ADDR, port, 6, fd, flags);
 
-      // if (typeof rval === "number") {
-      //   rval = null;
-      address = DEFAULT_IPV4_ADDR;
-      addressType = 4;
-      // } else {
-      //   address = DEFAULT_IPV6_ADDR;
-      //   addressType = 6;
-      // }
+        if (typeof rval === "number") {
+          rval = null;
+          address = DEFAULT_IPV4_ADDR;
+          addressType = 4;
+        } else {
+          address = DEFAULT_IPV6_ADDR;
+          addressType = 6;
+        }
+      }
     }
 
     if (rval === null) {
@@ -2535,7 +2572,7 @@ Server.prototype.listen = function (...args: unknown[]) {
 
   // deno-lint-ignore no-explicit-any
   options = (options as any)._handle || (options as any).handle || options;
-  const flags = _getFlags(options.ipv6Only);
+  const flags = _getFlags(options.ipv6Only, options.reusePort);
 
   // (handle[, backlog][, cb]) where handle is an object with a handle
   if (options instanceof TCP) {
@@ -2578,6 +2615,10 @@ Server.prototype.listen = function (...args: unknown[]) {
     validatePort(options.port, "options.port");
     backlog = options.backlog || backlogFromArgs;
 
+    if (options.reusePort === true) {
+      options.exclusive = true;
+    }
+
     // start TCP server listening on host:port
     if (options.host) {
       _lookupAndListen(
@@ -2599,6 +2640,7 @@ Server.prototype.listen = function (...args: unknown[]) {
         backlog,
         undefined,
         options.exclusive,
+        flags,
       );
     }
 

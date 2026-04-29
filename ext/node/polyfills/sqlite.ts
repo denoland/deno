@@ -13,16 +13,81 @@ import { URLPrototype } from "ext:deno_web/00_url.js";
 import type { URL } from "node:url";
 
 const {
+  FunctionPrototypeCall,
   ObjectDefineProperty,
   ObjectDefineProperties,
+  ObjectGetOwnPropertyDescriptor,
   ObjectPrototypeIsPrototypeOf,
   ObjectSetPrototypeOf,
+  Proxy,
   ReflectConstruct,
+  SafeSet,
+  SafeWeakMap,
   StringPrototypeIncludes,
   SymbolDispose,
   SymbolFor,
   TypeError,
 } = primordials;
+
+// Keep in sync with LIMIT_MAPPING in ext/node_sqlite/database.rs.
+const LIMIT_NAMES = [
+  "length",
+  "sqlLength",
+  "column",
+  "exprDepth",
+  "compoundSelect",
+  "vdbeOp",
+  "functionArg",
+  "attach",
+  "likePatternLength",
+  "variableNumber",
+  "triggerDepth",
+] as const;
+
+const LIMIT_NAMES_SET = new SafeSet(LIMIT_NAMES);
+
+const nativeLimitsGetter = ObjectGetOwnPropertyDescriptor(
+  DatabaseSyncOp.prototype,
+  "limits",
+)!.get;
+
+function createLimitsProxy(nativeLimits: object): object {
+  return new Proxy(nativeLimits, {
+    get(target, prop, _receiver) {
+      if (typeof prop !== "string" || !LIMIT_NAMES_SET.has(prop)) {
+        return undefined;
+      }
+      return target[prop];
+    },
+    set(target, prop, value, _receiver) {
+      if (typeof prop !== "string" || !LIMIT_NAMES_SET.has(prop)) {
+        return false;
+      }
+
+      target[prop] = value;
+      return true;
+    },
+    has(_target, prop) {
+      return typeof prop === "string" &&
+        LIMIT_NAMES_SET.has(prop);
+    },
+    ownKeys(_target) {
+      return LIMIT_NAMES;
+    },
+    getOwnPropertyDescriptor(target, prop) {
+      if (typeof prop !== "string" || !LIMIT_NAMES_SET.has(prop)) {
+        return undefined;
+      }
+
+      return {
+        value: target[prop],
+        writable: true,
+        enumerable: true,
+        configurable: true,
+      };
+    },
+  });
+}
 
 class ConstructCallRequiredError extends TypeError {
   code: string;
@@ -231,6 +296,8 @@ export const constants = {
 };
 
 const sqliteTypeSymbol = SymbolFor("sqlite-type");
+const limitsCache = new SafeWeakMap<object, object>();
+
 ObjectDefineProperties(DatabaseSync.prototype, {
   [sqliteTypeSymbol]: {
     __proto__: null,
@@ -250,6 +317,20 @@ ObjectDefineProperties(DatabaseSync.prototype, {
     enumerable: true,
     configurable: true,
     writable: true,
+  },
+  limits: {
+    __proto__: null,
+    get() {
+      let cached = limitsCache.get(this);
+      if (cached === undefined) {
+        const nativeLimits = FunctionPrototypeCall(nativeLimitsGetter, this);
+        cached = createLimitsProxy(nativeLimits);
+        limitsCache.set(this, cached);
+      }
+      return cached;
+    },
+    enumerable: true,
+    configurable: true,
   },
 });
 
