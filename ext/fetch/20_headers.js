@@ -389,8 +389,19 @@ class Headers {
       throw new TypeError(`Invalid header name: "${name}"`);
     }
 
+    // Inline `getHeader` so we can use the cached lower names and build the
+    // joined value directly. For the dominant single-value case this also
+    // skips the intermediate entries array and the trailing join.
     const list = this[_headerList];
-    return getHeader(list, name);
+    const lowerNames = ensureLowerNames(this);
+    const lowercaseName = byteLowerCase(name);
+    let value = null;
+    for (let i = 0; i < lowerNames.length; i++) {
+      if (lowerNames[i] === lowercaseName) {
+        value = value === null ? list[i][1] : value + "\x2C\x20" + list[i][1];
+      }
+    }
+    return value;
   }
 
   getSetCookie() {

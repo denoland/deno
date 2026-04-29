@@ -68,11 +68,25 @@ fn bench_set_replace(b: &mut Bencher) {
   bench_js_sync(b, r#"h7.set("x-request-id", "xyz-456");"#, setup);
 }
 
+fn bench_get_hit(b: &mut Bencher) {
+  // .get() of a name that exists. Pre-cache: 1 + N/2 toLowerCase calls plus
+  // an entries array allocation and a Join. After: cached lowercase compare
+  // + a single string assignment for the typical single-value match.
+  bench_js_sync(b, r#"h7.get("x-request-id");"#, setup);
+}
+
+fn bench_get_miss(b: &mut Bencher) {
+  // .get() of a name that doesn't exist. Pre-cache: 1 + N toLowerCase calls.
+  bench_js_sync(b, r#"h7.get("authorization");"#, setup);
+}
+
 benchmark_group!(
   benches,
   bench_construct_headers_7,
   bench_has_hit,
   bench_has_miss,
   bench_set_replace,
+  bench_get_hit,
+  bench_get_miss,
 );
 bench_or_profile!(benches);
