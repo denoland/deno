@@ -3175,6 +3175,7 @@
     "parallel/test-tls-fast-writing.js": {},
     "parallel/test-tls-finished.js": {},
     "parallel/test-tls-friendly-error-message.js": {},
+    "parallel/test-tls-get-ca-certificates-default.js": {},
     "parallel/test-tls-getcertificate-x509.js": {},
     "parallel/test-tls-handshake-error.js": {},
     "parallel/test-tls-honorcipherorder.js": {},

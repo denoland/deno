@@ -10,12 +10,15 @@ import {
   op_set_default_ca_certificates,
 } from "ext:core/ops";
 import { primordials } from "ext:core/mod.js";
+import { validateString } from "ext:deno_node/internal/validators.mjs";
+import { ERR_INVALID_ARG_VALUE } from "ext:deno_node/internal/errors.ts";
 
 const {
   ArrayIsArray,
   ArrayPrototypeForEach,
   ArrayPrototypeMap,
   ArrayPrototypePush,
+  ArrayPrototypeSlice,
   ObjectDefineProperty,
   ObjectKeys,
   ObjectFreeze,
@@ -151,6 +154,66 @@ export function setDefaultCACertificates(certs: string[]) {
   op_set_default_ca_certificates(certs);
 
   lazyRootCertificates = null;
+  cachedDefaultCACertificates = null;
+  cachedBundledCACertificates = null;
+  cachedSystemCACertificates = null;
+  cachedExtraCACertificates = null;
+}
+
+let cachedDefaultCACertificates: string[] | null = null;
+let cachedBundledCACertificates: string[] | null = null;
+let cachedSystemCACertificates: string[] | null = null;
+let cachedExtraCACertificates: string[] | null = null;
+
+function getBundled(): string[] {
+  if (cachedBundledCACertificates === null) {
+    cachedBundledCACertificates = ObjectFreeze(
+      ArrayPrototypeMap(
+        op_get_root_certificates() as string[],
+        (v: string) => StringPrototypeReplace(v, new SafeRegExp("\\n$"), ""),
+      ),
+    );
+  }
+  return cachedBundledCACertificates!;
+}
+
+function getExtra(): string[] {
+  if (cachedExtraCACertificates === null) {
+    cachedExtraCACertificates = ObjectFreeze([] as string[]);
+  }
+  return cachedExtraCACertificates!;
+}
+
+function getSystem(): string[] {
+  if (cachedSystemCACertificates === null) {
+    cachedSystemCACertificates = ObjectFreeze([] as string[]);
+  }
+  return cachedSystemCACertificates!;
+}
+
+function getDefault(): string[] {
+  if (cachedDefaultCACertificates === null) {
+    cachedDefaultCACertificates = ObjectFreeze(
+      ArrayPrototypeSlice(getBundled()),
+    );
+  }
+  return cachedDefaultCACertificates!;
+}
+
+export function getCACertificates(type: string = "default"): string[] {
+  validateString(type, "type");
+  switch (type) {
+    case "default":
+      return getDefault();
+    case "bundled":
+      return getBundled();
+    case "system":
+      return getSystem();
+    case "extra":
+      return getExtra();
+    default:
+      throw new ERR_INVALID_ARG_VALUE("type", type);
+  }
 }
 
 export function createSecurePair() {
@@ -168,6 +231,7 @@ const defaultExport = {
   createSecurePair,
   createServer: tlsWrap.createServer,
   convertALPNProtocols,
+  getCACertificates,
   getCiphers,
   setDefaultCACertificates,
   DEFAULT_CIPHERS: tlsWrap.DEFAULT_CIPHERS,
