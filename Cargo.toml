@@ -89,9 +89,9 @@ repository = "https://github.com/denoland/deno"
 [workspace.dependencies]
 deno_ast = { version = "=0.53.1", features = ["transpiling"] }
 deno_core_icudata = "0.77.0"
-deno_doc = "=0.197.0"
+deno_doc = "=0.198.0"
 deno_error = "=0.7.1"
-deno_graph = { version = "=0.107.1", default-features = false }
+deno_graph = { version = "=0.107.2", default-features = false }
 deno_lint = "=0.84.0"
 deno_media_type = { version = "=0.4.0", features = ["module_specifier"] }
 deno_native_certs = "0.3.0"
