@@ -850,6 +850,7 @@
     "parallel/test-error-aggregateTwoErrors.js": {},
     "parallel/test-error-format-list.js": {},
     "parallel/test-errors-aborterror.js": {},
+    "parallel/test-errors-hide-stack-frames.js": {},
     "parallel/test-eslint-alphabetize-errors.js": {},
     "parallel/test-eslint-alphabetize-primordials.js": {},
     "parallel/test-eslint-async-iife-no-unused-result.js": {},
