@@ -1589,6 +1589,7 @@
     "parallel/test-http-zerolengthbuffer.js": {},
     "parallel/test-http.js": {},
     "parallel/test-http2-alpn.js": {},
+    "parallel/test-http2-allow-http1.js": {},
     "parallel/test-http2-altsvc.js": {},
     "parallel/test-http2-autoselect-protocol.js": {},
     "parallel/test-http2-backpressure.js": {},
