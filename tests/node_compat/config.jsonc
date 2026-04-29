@@ -3193,6 +3193,7 @@
     "parallel/test-tls-ip-servername-forbidden.js": {},
     "parallel/test-tls-js-stream.js": {},
     "parallel/test-tls-junk-closes-server.js": {},
+    "parallel/test-tls-junk-server.js": {},
     "parallel/test-tls-keyengine-invalid-arg-type.js": {},
     "parallel/test-tls-multiple-cas-as-string.js": {},
     "parallel/test-tls-net-connect-prefer-path.js": { "windows": false },

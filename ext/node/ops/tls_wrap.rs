@@ -816,6 +816,12 @@ fn rustls_error_to_node_error(
 ) -> (String, String) {
   use rustls::Error as E;
   match e {
+    // Match Node's OpenSSL wording for record-layer decode failures so user
+    // code that pattern-matches err.message keeps working.
+    E::InvalidMessage(_) | E::PeerIncompatible(_) => (
+      format!("{e} (wrong version number)"),
+      "ERR_SSL_WRONG_VERSION_NUMBER".to_string(),
+    ),
     E::InvalidCertificate(cert_err) => {
       let reason = format!("{cert_err}");
       // Map common rustls certificate errors to OpenSSL error codes
