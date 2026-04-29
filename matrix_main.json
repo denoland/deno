@@ -1,0 +1,183 @@
+{
+  "version": 1,
+  "runtime": "Deno/2.7.14 aarch64-apple-darwin",
+  "cpu": "Apple M4",
+  "benches": [
+    {
+      "origin": "file:///Users/hajime_masutani/repository/deno/matrix.ts",
+      "group": null,
+      "name": "2d",
+      "baseline": false,
+      "results": [
+        {
+          "ok": {
+            "n": 463,
+            "min": 90.6042,
+            "max": 272.5417,
+            "avg": 110.64957710583158,
+            "p75": 112.8417,
+            "p99": 203.8708,
+            "p995": 217.3334,
+            "p999": 272.5417,
+            "highPrecision": false,
+            "usedExplicitTimers": false
+          }
+        }
+      ]
+    },
+    {
+      "origin": "file:///Users/hajime_masutani/repository/deno/matrix.ts",
+      "group": null,
+      "name": "2d-readonly",
+      "baseline": false,
+      "results": [
+        {
+          "ok": {
+            "n": 513,
+            "min": 83.9458,
+            "max": 400.0375,
+            "avg": 99.35592729044821,
+            "p75": 96.975,
+            "p99": 199.2708,
+            "p995": 264.6416,
+            "p999": 400.0375,
+            "highPrecision": false,
+            "usedExplicitTimers": false
+          }
+        }
+      ]
+    },
+    {
+      "origin": "file:///Users/hajime_masutani/repository/deno/matrix.ts",
+      "group": null,
+      "name": "2d-sequence",
+      "baseline": false,
+      "results": [
+        {
+          "ok": {
+            "n": 68,
+            "min": 864.7834,
+            "max": 940.25,
+            "avg": 876.818192647059,
+            "p75": 878.6125,
+            "p99": 940.25,
+            "p995": 940.25,
+            "p999": 940.25,
+            "highPrecision": false,
+            "usedExplicitTimers": false
+          }
+        }
+      ]
+    },
+    {
+      "origin": "file:///Users/hajime_masutani/repository/deno/matrix.ts",
+      "group": null,
+      "name": "2d-sequence-readonly",
+      "baseline": false,
+      "results": [
+        {
+          "ok": {
+            "n": 67,
+            "min": 857.7625,
+            "max": 992.9708,
+            "avg": 890.3700343283583,
+            "p75": 904.2875,
+            "p99": 992.9708,
+            "p995": 992.9708,
+            "p999": 992.9708,
+            "highPrecision": false,
+            "usedExplicitTimers": false
+          }
+        }
+      ]
+    },
+    {
+      "origin": "file:///Users/hajime_masutani/repository/deno/matrix.ts",
+      "group": null,
+      "name": "3d",
+      "baseline": false,
+      "results": [
+        {
+          "ok": {
+            "n": 534,
+            "min": 81.95,
+            "max": 318.8458,
+            "avg": 95.50448014981278,
+            "p75": 97.0792,
+            "p99": 145.1,
+            "p995": 212.425,
+            "p999": 318.8458,
+            "highPrecision": false,
+            "usedExplicitTimers": false
+          }
+        }
+      ]
+    },
+    {
+      "origin": "file:///Users/hajime_masutani/repository/deno/matrix.ts",
+      "group": null,
+      "name": "3d-readonly",
+      "baseline": false,
+      "results": [
+        {
+          "ok": {
+            "n": 485,
+            "min": 96.6209,
+            "max": 363.3292,
+            "avg": 105.29127154639168,
+            "p75": 105.4875,
+            "p99": 142.475,
+            "p995": 161.5958,
+            "p999": 363.3292,
+            "highPrecision": false,
+            "usedExplicitTimers": false
+          }
+        }
+      ]
+    },
+    {
+      "origin": "file:///Users/hajime_masutani/repository/deno/matrix.ts",
+      "group": null,
+      "name": "3d-sequence",
+      "baseline": false,
+      "results": [
+        {
+          "ok": {
+            "n": 37,
+            "min": 1836.7125,
+            "max": 2585.5209,
+            "avg": 1888.736697297297,
+            "p75": 1873.3208,
+            "p99": 2585.5209,
+            "p995": 2585.5209,
+            "p999": 2585.5209,
+            "highPrecision": false,
+            "usedExplicitTimers": false
+          }
+        }
+      ]
+    },
+    {
+      "origin": "file:///Users/hajime_masutani/repository/deno/matrix.ts",
+      "group": null,
+      "name": "3d-sequence-readonly",
+      "baseline": false,
+      "results": [
+        {
+          "ok": {
+            "n": 37,
+            "min": 1831.2,
+            "max": 2069.825,
+            "avg": 1863.8611486486486,
+            "p75": 1871.2625,
+            "p99": 2069.825,
+            "p995": 2069.825,
+            "p999": 2069.825,
+            "highPrecision": false,
+            "usedExplicitTimers": false
+          }
+        }
+      ]
+    }
+  ]
+}
