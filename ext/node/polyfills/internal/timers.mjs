@@ -61,26 +61,6 @@ const createTimer = Symbol("createTimer");
  * @type {Map<number, Timeout>}
  */
 const activeTimers = new SafeMap();
-let nextTimersListId = -1;
-
-class TimersList {
-  constructor(timeout) {
-    this._idleNext = timeout;
-    this._idlePrev = timeout;
-    this.expiry = timeout._idleStart + timeout._idleTimeout;
-    this.id = nextTimersListId--;
-    this.msecs = timeout._idleTimeout;
-    this.priorityQueuePosition = 1;
-  }
-
-  [inspect.custom](_, options) {
-    return inspect(this, {
-      ...options,
-      depth: 0,
-      customInspect: false,
-    });
-  }
-}
 
 /**
  * @param {number} id
@@ -127,9 +107,8 @@ export function Timeout(callback, after, args, isRepeat, isRefed) {
   }
   this._idleTimeout = after;
   this._idleStart = DateNow();
-  const timersList = new TimersList(this);
-  this._idlePrev = timersList;
-  this._idleNext = timersList;
+  this._idlePrev = null;
+  this._idleNext = null;
   this._onTimeout = callback;
   this._timerArgs = args;
   this._repeat = isRepeat;
@@ -247,8 +226,6 @@ Timeout.prototype[kDestroy] = function () {
   if (!this._destroyed) {
     this._destroyed = true;
     this._idleTimeout = -1;
-    this._idlePrev = null;
-    this._idleNext = null;
     this._idleStart = DateNow();
     this._onTimeout = null;
     cancelTimer_(this._timer);
@@ -288,14 +265,6 @@ Timeout.prototype.refresh = function () {
     refreshTimer_(this._timer);
   }
   this._idleStart = DateNow();
-  if (this._idlePrev === null || this._idleNext === null) {
-    const timersList = new TimersList(this);
-    this._idlePrev = timersList;
-    this._idleNext = timersList;
-  } else {
-    this._idlePrev.expiry = this._idleStart + this._idleTimeout;
-    this._idlePrev.msecs = this._idleTimeout;
-  }
   return this;
 };
 
