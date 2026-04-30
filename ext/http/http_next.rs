@@ -508,6 +508,23 @@ pub fn op_http_get_request_headers<'scope>(
   v8::Array::new_with_elements(scope, vec.as_slice())
 }
 
+/// Try to drain the entire request body without blocking.
+/// Returns the bytes as a Uint8Array iff the whole body is
+/// already buffered in hyper; returns `null` otherwise, in
+/// which case the JS caller falls through to the streaming
+/// `op_http_read_request_body` path. The body is left intact
+/// on the `null` branch.
+#[op2]
+#[buffer]
+pub fn op_http_try_take_full_request_body(
+  external: *const c_void,
+) -> Option<Vec<u8>> {
+  let http =
+    // SAFETY: op is called with external.
+    unsafe { clone_external!(external, "op_http_try_take_full_request_body") };
+  http.try_take_full_request_body()
+}
+
 #[op2(fast)]
 #[smi]
 pub fn op_http_read_request_body(

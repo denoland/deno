@@ -32,6 +32,7 @@ use tokio::sync::oneshot;
 
 use crate::OtelInfo;
 use crate::OtelInfoAttributes;
+use crate::request_body::BufferedIncoming;
 use crate::request_properties::HttpConnectionProperties;
 use crate::response_body::ResponseBytesInner;
 use crate::response_body::ResponseStreamResult;
@@ -156,15 +157,15 @@ impl std::ops::Deref for HttpServerState {
 }
 
 enum RequestBodyState {
-  Incoming(Incoming),
+  Incoming(BufferedIncoming),
   Resource(
     #[allow(dead_code, reason = "prevent drop until variant is dropped")]
     HttpRequestBodyAutocloser,
   ),
 }
 
-impl From<Incoming> for RequestBodyState {
-  fn from(value: Incoming) -> Self {
+impl From<BufferedIncoming> for RequestBodyState {
+  fn from(value: BufferedIncoming) -> Self {
     RequestBodyState::Incoming(value)
   }
 }
@@ -348,7 +349,7 @@ impl HttpRecord {
     } else {
       None
     };
-    let request_body = Some(request_body.into());
+    let request_body = Some(BufferedIncoming::new(request_body).into());
     let (mut response_parts, _) = http::Response::new(()).into_parts();
     let record = match server_state.borrow_mut().pool.pop() {
       Some((record, headers)) => {
@@ -470,7 +471,7 @@ impl HttpRecord {
   }
 
   /// Take the Hyper body from this record.
-  pub fn take_request_body(&self) -> Option<Incoming> {
+  pub fn take_request_body(&self) -> Option<BufferedIncoming> {
     let body_holder = &mut self.self_mut().request_body;
     let body = body_holder.take();
     match body {
@@ -479,6 +480,21 @@ impl HttpRecord {
         *body_holder = x;
         None
       }
+    }
+  }
+
+  /// Try to drain the request body in one shot without ever
+  /// blocking. Returns `Some(bytes)` iff the entire body is
+  /// already buffered in hyper at the time of the call. On
+  /// `None` the body is left intact for the streaming path
+  /// (any frames that were polled out are kept in the wrapper
+  /// and replayed transparently before further reads).
+  pub fn try_take_full_request_body(&self) -> Option<Vec<u8>> {
+    let body_holder = &mut self.self_mut().request_body;
+    if let Some(RequestBodyState::Incoming(body)) = body_holder.as_mut() {
+      body.try_take_full()
+    } else {
+      None
     }
   }
 
