@@ -134,6 +134,13 @@ impl TlsConnection {
     }
   }
 
+  fn server_name(&self) -> Option<&str> {
+    match self {
+      TlsConnection::Client(_) => None,
+      TlsConnection::Server(c) => c.server_name(),
+    }
+  }
+
   fn protocol_version(&self) -> Option<rustls::ProtocolVersion> {
     match self {
       TlsConnection::Client(c) => c.protocol_version(),
@@ -816,6 +823,12 @@ fn rustls_error_to_node_error(
 ) -> (String, String) {
   use rustls::Error as E;
   match e {
+    // Match Node's OpenSSL wording for record-layer decode failures so user
+    // code that pattern-matches err.message keeps working.
+    E::InvalidMessage(_) => (
+      format!("{e} (wrong version number)"),
+      "ERR_SSL_WRONG_VERSION_NUMBER".to_string(),
+    ),
     E::InvalidCertificate(cert_err) => {
       let reason = format!("{cert_err}");
       // Map common rustls certificate errors to OpenSSL error codes
@@ -879,6 +892,19 @@ fn rustls_error_to_node_error(
     E::NoApplicationProtocol => (
       format!("{e}"),
       "ERR_SSL_NO_APPLICATION_PROTOCOL".to_string(),
+    ),
+    // rustls returns `Error::General("no server certificate chain resolved")`
+    // (and sends an AccessDenied fatal alert) when a server-side cert
+    // resolver returns `None` — e.g. a TLS server configured with only
+    // `SNICallback` whose callback hands back an empty SecureContext.
+    // Node/OpenSSL raise "no suitable signature algorithm" on the server
+    // and `ERR_SSL_SSLV3_ALERT_HANDSHAKE_FAILURE` on the client; mirror
+    // both ends so existing Node code (and upstream tests) match.
+    // NOTE: keep this string in sync with rustls upstream — there is no
+    // structured `Error` variant for "resolver returned None".
+    E::General(msg) if msg == "no server certificate chain resolved" => (
+      "no suitable signature algorithm".to_string(),
+      "ERR_SSL_NO_SUITABLE_SIGNATURE_ALGORITHM".to_string(),
     ),
     _ => (
       format!("{e}"),
@@ -2486,6 +2512,20 @@ impl TLSWrap {
     // After start(), this is a no-op — SNI is already set on the connection.
   }
 
+  /// Get the SNI hostname. On server connections this returns the SNI
+  /// value sent by the client; on client connections returns null.
+  /// Returns empty string when no SNI is available.
+  #[string]
+  fn get_servername(&self) -> String {
+    let inner = unsafe { &*self.inner.as_mut_ptr() };
+    inner
+      .tls_conn
+      .as_ref()
+      .and_then(|c| c.server_name())
+      .map(|s| s.to_string())
+      .unwrap_or_default()
+  }
+
   /// Inject encrypted data (for testing / JSStreamSocket integration).
   /// Mirrors Node's TLSWrap::Receive().
   #[fast]
@@ -3435,29 +3475,33 @@ fn build_server_config(
     ProtocolVersionSelection::Tls13Only => &[&rustls::version::TLS13][..],
     ProtocolVersionSelection::Unsupported => return None,
   };
-  let cert_str = match get_js_string(scope, context, "cert") {
-    Some(value) => value,
-    None => {
-      return None;
-    }
-  };
-  let key_str = match get_js_string(scope, context, "key") {
-    Some(value) => value,
-    None => {
-      return None;
-    }
-  };
+  // `cert` and `key` are both optional: a SecureContext with neither (e.g.
+  // one returned from a server's SNICallback, or the placeholder created by
+  // `tls.createSecureContext()`) is valid input.  In that case rustls will
+  // fail the handshake with a fatal alert when the cert resolver is asked
+  // for a CertifiedKey — matching Node/OpenSSL, which reports a missing
+  // server certificate as `ERR_SSL_SSLV3_ALERT_HANDSHAKE_FAILURE` on the
+  // client and a "no suitable signature algorithm" error server-side.
+  let cert_str = get_js_string(scope, context, "cert");
+  let key_str = get_js_string(scope, context, "key");
+  let no_server_cert = cert_str.is_none() && key_str.is_none();
 
-  let certs: Vec<_> =
-    rustls_pemfile::certs(&mut std::io::BufReader::new(cert_str.as_bytes()))
-      .filter_map(|r| r.ok())
-      .collect();
-
-  let private_key = rustls_pemfile::private_key(&mut std::io::BufReader::new(
-    key_str.as_bytes(),
-  ))
-  .ok()
-  .flatten()?;
+  let (certs, private_key) = if no_server_cert {
+    (Vec::new(), None)
+  } else {
+    let cert_str = cert_str?;
+    let key_str = key_str?;
+    let certs: Vec<_> =
+      rustls_pemfile::certs(&mut std::io::BufReader::new(cert_str.as_bytes()))
+        .filter_map(|r| r.ok())
+        .collect();
+    let private_key = rustls_pemfile::private_key(
+      &mut std::io::BufReader::new(key_str.as_bytes()),
+    )
+    .ok()
+    .flatten()?;
+    (certs, Some(private_key))
+  };
 
   let request_cert = get_js_bool(scope, context, "requestCert", false);
   let reject_unauthorized =
@@ -3540,6 +3584,18 @@ fn build_server_config(
     (builder.with_no_client_auth(), Default::default())
   };
 
+  // No-cert path: when neither `cert` nor `key` is provided, install a
+  // resolver that always returns `None`. rustls then aborts the handshake
+  // with a fatal alert and surfaces `Error::General("no server certificate
+  // chain resolved")`, which `rustls_error_to_node_error` translates back
+  // to Node's "no suitable signature algorithm" error.
+  let Some(private_key) = private_key else {
+    return Some((
+      builder.with_cert_resolver(Arc::new(NoCertResolver)),
+      client_cert_verify_error,
+    ));
+  };
+
   // `with_single_cert` runs `CertifiedKey::keys_match()`, which parses the
   // end-entity cert via webpki and rejects X.509v1 certs with
   // UnsupportedCertVersion.  Node uses OpenSSL, which accepts v1 certs, and
@@ -3568,6 +3624,22 @@ fn build_server_config(
     builder.with_cert_resolver(Arc::new(resolver)),
     client_cert_verify_error,
   ))
+}
+
+/// `ResolvesServerCert` impl that always returns `None`, used when a
+/// `tls.Server` is configured without a default cert/key (e.g. one whose
+/// only configuration source is `SNICallback`, or a SecureContext returned
+/// from `SNICallback` that was created with no cert/key).
+#[derive(Debug)]
+struct NoCertResolver;
+
+impl rustls::server::ResolvesServerCert for NoCertResolver {
+  fn resolve(
+    &self,
+    _client_hello: rustls::server::ClientHello<'_>,
+  ) -> Option<Arc<rustls::sign::CertifiedKey>> {
+    None
+  }
 }
 
 #[cfg(test)]

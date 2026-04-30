@@ -1,0 +1,162 @@
+{
+  "tempDir": true,
+  "tests": {
+    "basic_stdout": {
+      "args": "transpile main.ts",
+      "output": "basic_stdout.out"
+    },
+    "output_flag": {
+      "steps": [
+        {
+          "args": "transpile main.ts -o out.js",
+          "output": "[WILDCARD]deno transpile is experimental and subject to changes\nEmit [WILDCARD]out.js\n"
+        },
+        {
+          "args": "run out.js",
+          "output": "Hello, Alice! You are 30 years old.\n"
+        }
+      ]
+    },
+    "outdir": {
+      "steps": [
+        {
+          "args": "transpile main.ts helpers.ts --outdir dist",
+          "output": "outdir_emit.out"
+        },
+        {
+          "args": "run dist/main.js",
+          "output": "Hello, Alice! You are 30 years old.\n"
+        }
+      ]
+    },
+    "source_map_inline": {
+      "args": "transpile main.ts --source-map inline",
+      "output": "source_map_inline.out"
+    },
+    "source_map_separate": {
+      "steps": [
+        {
+          "args": "transpile main.ts -o out.js --source-map separate",
+          "output": "source_map_separate_emit.out"
+        },
+        {
+          "args": "run --allow-read check_map.ts",
+          "output": "3\nout.js\n"
+        }
+      ]
+    },
+    "declaration": {
+      "steps": [
+        {
+          "args": "transpile main.ts -o out.js --declaration",
+          "output": "declaration_emit.out"
+        },
+        {
+          "args": "run --allow-read check_dts.ts",
+          "output": "declaration_content.out"
+        }
+      ]
+    },
+    "error_output_multiple_files": {
+      "args": "transpile main.ts helpers.ts -o out.js",
+      "output": "[WILDCARD]deno transpile is experimental and subject to changes\nerror: Cannot use --output with multiple input files. Use --outdir instead.\n",
+      "exitCode": 1
+    },
+    "error_output_and_outdir": {
+      "args": "transpile main.ts -o out.js --outdir dist",
+      "output": "[WILDCARD]the argument '--output <output>' cannot be used with '--outdir <outdir>'\n[WILDCARD]",
+      "exitCode": 1
+    },
+    "error_declaration_no_output": {
+      "args": "transpile main.ts --declaration",
+      "output": "error_declaration_no_output.out",
+      "exitCode": 1
+    },
+    "error_separate_sourcemap_stdout": {
+      "args": "transpile main.ts --source-map separate",
+      "output": "error_separate_sourcemap_stdout.out",
+      "exitCode": 1
+    },
+    "skip_js_file": {
+      "args": "transpile plain.js",
+      "output": "skip_js_file.out",
+      "exitCode": 1
+    },
+    "declaration_outdir": {
+      "steps": [
+        {
+          "args": "transpile main.ts helpers.ts --outdir dist --declaration",
+          "output": "declaration_outdir_emit.out"
+        },
+        {
+          "args": "run --allow-read check_dts_outdir.ts",
+          "output": "true\ntrue\n"
+        }
+      ]
+    },
+    "declaration_output_subdir": {
+      "steps": [
+        {
+          "args": "transpile main.ts -o dist/out.js --declaration",
+          "output": "declaration_output_subdir_emit.out"
+        },
+        {
+          "args": "run --allow-read check_dts_subdir.ts",
+          "output": "true\n"
+        }
+      ]
+    },
+    "tsx_file": {
+      "args": "transpile component.tsx",
+      "output": "tsx.out"
+    },
+    "mts_outdir": {
+      "steps": [
+        {
+          "args": "transpile helper.mts --outdir dist",
+          "output": "[WILDCARD]deno transpile is experimental and subject to changes\nEmit [WILDCARD]dist[WILDCARD]helper.mjs\n"
+        },
+        {
+          "args": "run dist/helper.mjs",
+          "output": ""
+        }
+      ]
+    },
+    "cts_outdir": {
+      "steps": [
+        {
+          "args": "transpile helper.cts --outdir dist",
+          "output": "[WILDCARD]deno transpile is experimental and subject to changes\nEmit [WILDCARD]dist[WILDCARD]helper.cjs\n"
+        },
+        {
+          "args": "run --allow-read check_cts_outdir.ts",
+          "output": "true\n"
+        }
+      ]
+    },
+    "cts_source_map_separate": {
+      "steps": [
+        {
+          "args": "transpile helper.cts -o out.cjs --source-map separate",
+          "output": "[WILDCARD]deno transpile is experimental and subject to changes\nEmit [WILDCARD]out.cjs\nEmit [WILDCARD]out.cjs.map\n"
+        },
+        {
+          "args": "run --allow-read check_cts_map.ts",
+          "output": "3\nout.cjs\n"
+        }
+      ]
+    },
+    "mts_source_map_separate": {
+      "steps": [
+        {
+          "args": "transpile helper.mts -o out.mjs --source-map separate",
+          "output": "[WILDCARD]deno transpile is experimental and subject to changes\nEmit [WILDCARD]out.mjs\nEmit [WILDCARD]out.mjs.map\n"
+        },
+        {
+          "args": "run --allow-read check_mts_map.ts",
+          "output": "3\nout.mjs\n"
+        }
+      ]
+    }
+  }
+}
