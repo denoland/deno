@@ -141,6 +141,7 @@ import internalTestBinding from "ext:deno_node/internal/test/binding.ts";
 import internalTimers from "ext:deno_node/internal/timers.mjs";
 import internalUtil from "ext:deno_node/internal/util.mjs";
 import internalUtilInspect from "ext:deno_node/internal/util/inspect.mjs";
+import internalValidators from "ext:deno_node/internal/validators.mjs";
 import internalConsole from "ext:deno_node/internal/console/constructor.mjs";
 import net from "node:net";
 import os from "node:os";
@@ -249,6 +250,7 @@ function setupBuiltinModules() {
     "internal/timers": internalTimers,
     "internal/util/inspect": internalUtilInspect,
     "internal/util": internalUtil,
+    "internal/validators": internalValidators,
     net,
     module: Module,
     os,
