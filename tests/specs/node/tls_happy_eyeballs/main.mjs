@@ -3,20 +3,10 @@
 // kReinitializeHandle must re-wrap the new TCP handle with TLSWrap.
 // Previously this caused "this._handle.start is not a function".
 import https from "node:https";
-import { execSync } from "node:child_process";
 import fs from "node:fs";
-import path from "node:path";
 
-const tmpDir = Deno.makeTempDirSync();
-const keyPath = path.join(tmpDir, "key.pem");
-const certPath = path.join(tmpDir, "cert.pem");
-
-execSync(
-  `openssl req -x509 -newkey rsa:2048 -keyout ${keyPath} -out ${certPath} -days 1 -nodes -subj "/CN=localhost" 2>/dev/null`,
-);
-
-const key = fs.readFileSync(keyPath);
-const cert = fs.readFileSync(certPath);
+const key = fs.readFileSync("localhost.key");
+const cert = fs.readFileSync("localhost.crt");
 
 // Listen ONLY on IPv6. When connecting to "localhost" (which resolves to
 // both 127.0.0.1 and ::1), the IPv4 attempt fails with ECONNREFUSED,
