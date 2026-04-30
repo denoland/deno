@@ -1257,9 +1257,18 @@ Module.prototype.load = function (filename) {
   // Run load hooks if registered
   if (hasLoadHooks) {
     {
-      const fileUrl = StringPrototypeStartsWith(this.filename, "node:")
-        ? this.filename
-        : url.pathToFileURL(this.filename).href;
+      let fileUrl;
+      if (StringPrototypeStartsWith(this.filename, "node:")) {
+        fileUrl = this.filename;
+      } else if (
+        StringPrototypeStartsWith(this.filename, "file://") ||
+        StringPrototypeIncludes(this.filename, "://")
+      ) {
+        // Already a URL (e.g. from a resolve hook returning a virtual URL)
+        fileUrl = this.filename;
+      } else {
+        fileUrl = url.pathToFileURL(this.filename).href;
+      }
       const context = {
         format: undefined,
         conditions: ["node", "require"],
