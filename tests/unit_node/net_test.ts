@@ -307,13 +307,16 @@ Deno.test("[node/dns] resolve IPv6 addresses", async () => {
 Deno.test("[node/net] Socket.remoteFamily returns string", async () => {
   const deferred = Promise.withResolvers<void>();
   const server = net.createServer((socket) => {
-    assertEquals(socket.remoteFamily, "IPv4");
+    // Default-host listen() binds dual-stack, so IPv4 connections arrive
+    // through the IPv6 socket as IPv4-mapped addresses with family "IPv6".
+    assertEquals(typeof socket.remoteFamily, "string");
     socket.end();
     server.close(() => deferred.resolve());
   });
   server.listen(0, () => {
     const { port } = server.address() as net.AddressInfo;
-    net.createConnection(port, "127.0.0.1");
+    const client = net.createConnection(port, "127.0.0.1");
+    client.on("end", () => client.destroy());
   });
   await deferred.promise;
 });

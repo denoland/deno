@@ -1,0 +1,13 @@
+{
+  // Regression test for https://github.com/denoland/deno/issues/32928
+  "tests": {
+    "inner_quotes": {
+      "args": "eval --env-file=env_file console.log(Deno.env.get('INNER_QUOTES'))",
+      "output": "1: foo'bar\"baz`qux\n"
+    },
+    "inner_quotes_with_newline": {
+      "args": "eval --env-file=env_file console.log(Deno.env.get('INNER_QUOTES_WITH_NEWLINE'))",
+      "output": "2: foo bar\ni am \"on\" newline, 'yo'\n"
+    }
+  }
+}

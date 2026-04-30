@@ -123,6 +123,11 @@ pub struct AddFlags {
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct WhyFlags {
+  pub package: String,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct AuditFlags {
   pub severity: String,
   pub ignore_registry_errors: bool,
@@ -132,12 +137,29 @@ pub struct AuditFlags {
   pub optional: bool,
   pub ignore: Vec<String>,
   pub socket: bool,
+  pub fix: bool,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct RemoveFlags {
   pub packages: Vec<String>,
   pub lockfile_only: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct VersionFlags {
+  pub increment: Option<VersionIncrement>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum VersionIncrement {
+  Major,
+  Minor,
+  Patch,
+  Premajor,
+  Preminor,
+  Prepatch,
+  Prerelease,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -331,7 +353,7 @@ pub struct InstallFlagsGlobal {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum InstallFlags {
-  Local(InstallFlagsLocal),
+  Local(InstallFlagsLocal, NpmInstallTargetFlags),
   Global(InstallFlagsGlobal),
 }
 
@@ -342,15 +364,26 @@ pub enum InstallFlagsLocal {
   Entrypoints(InstallEntrypointsFlags),
 }
 
+/// Overrides for the target OS and architecture when installing npm packages.
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct NpmInstallTargetFlags {
+  pub os: Option<String>,
+  pub arch: Option<String>,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct InstallTopLevelFlags {
   pub lockfile_only: bool,
+  pub production: bool,
+  pub skip_types: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct InstallEntrypointsFlags {
   pub entrypoints: Vec<String>,
   pub lockfile_only: bool,
+  pub production: bool,
+  pub skip_types: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -570,10 +603,13 @@ pub struct UpgradeFlags {
   pub force: bool,
   pub release_candidate: bool,
   pub canary: bool,
+  pub no_delta: bool,
   pub version: Option<String>,
   pub output: Option<String>,
   pub version_or_hash_or_channel: Option<String>,
   pub checksum: Option<String>,
+  pub pr: Option<u64>,
+  pub branch: Option<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -649,6 +685,8 @@ pub enum DenoSubcommand {
   Types,
   Upgrade(UpgradeFlags),
   Vendor,
+  Why(WhyFlags),
+  BumpVersion(VersionFlags),
   Publish(PublishFlags),
   Help(HelpFlags),
   X(XFlags),
@@ -762,14 +800,26 @@ impl DenoSubcommand {
           }
         }
       }
-      _ => {
-        let arch = std::env::var_os("DENO_INSTALL_ARCH");
-        if let Some(var) = arch.as_ref().and_then(|s| s.to_str()) {
-          NpmSystemInfo::from_rust(std::env::consts::OS, var)
-        } else {
-          NpmSystemInfo::default()
+      DenoSubcommand::Install(InstallFlags::Local(
+        _,
+        NpmInstallTargetFlags { os, arch },
+      )) => {
+        let default = Self::npm_system_info_from_env();
+        NpmSystemInfo {
+          os: os.as_deref().unwrap_or(&default.os).into(),
+          cpu: arch.as_deref().unwrap_or(&default.cpu).into(),
         }
       }
+      _ => Self::npm_system_info_from_env(),
+    }
+  }
+
+  fn npm_system_info_from_env() -> NpmSystemInfo {
+    let arch = std::env::var_os("DENO_INSTALL_ARCH");
+    if let Some(var) = arch.as_ref().and_then(|s| s.to_str()) {
+      NpmSystemInfo::from_rust(std::env::consts::OS, var)
+    } else {
+      NpmSystemInfo::default()
     }
   }
 }
@@ -1360,11 +1410,13 @@ impl Flags {
         }
       }
       Cache(CacheFlags { files, .. })
-      | Install(InstallFlags::Local(InstallFlagsLocal::Entrypoints(
-        InstallEntrypointsFlags {
-          entrypoints: files, ..
-        },
-      ))) => Some(vec![
+      | Install(InstallFlags::Local(
+        InstallFlagsLocal::Entrypoints(InstallEntrypointsFlags {
+          entrypoints: files,
+          ..
+        }),
+        _,
+      )) => Some(vec![
         files
           .iter()
           .filter_map(|file| {
@@ -1650,11 +1702,14 @@ static DENO_HELP: &str = cstr!(
   <y>Dependency management:</>
     <g>add</>          Add dependencies
                   <p(245)>deno add jsr:@std/assert  |  deno add npm:express</>
+    <g>bump-version</> Update version in the configuration file
     <g>install</>      Installs dependencies either in the local project or globally to a bin directory
     <g>uninstall</>    Uninstalls a dependency or an executable script in the installation root's bin directory
     <g>outdated</>     Find and update outdated dependencies
     <g>approve-scripts</> Approve npm lifecycle scripts
     <g>remove</>       Remove dependencies from the configuration file
+    <g>publish</>      Publish the current working directory's package or workspace
+    <g>why</>          Show why a package is installed
 
   <y>Tooling:</>
     <g>bench</>        Run benchmarks
@@ -1675,7 +1730,6 @@ static DENO_HELP: &str = cstr!(
     <g>init</>         Initialize a new project
     <g>test</>         Run tests
                   <p(245)>deno test  |  deno test test.ts</>
-    <g>publish</>      Publish the current working directory's package or workspace
     <g>upgrade</>      Upgrade deno executable to given version
                   <p(245)>deno upgrade  |  deno upgrade 1.45.0  |  deno upgrade canary</>
 {after-help}
@@ -1906,8 +1960,10 @@ pub fn flags_from_vec_with_initial_cwd(
         "types" => types_parse(&mut flags, &mut m),
         "uninstall" => uninstall_parse(&mut flags, &mut m),
         "update" => outdated_parse(&mut flags, &mut m, true)?,
-        "upgrade" => upgrade_parse(&mut flags, &mut m),
+        "upgrade" => upgrade_parse(&mut flags, &mut m)?,
+        "bump-version" => bump_version_parse(&mut flags, &mut m),
         "vendor" => vendor_parse(&mut flags, &mut m),
+        "why" => why_parse(&mut flags, &mut m),
         "publish" => publish_parse(&mut flags, &mut m)?,
         "x" => x_parse(&mut flags, &mut m)?,
         _ => unreachable!(),
@@ -2176,7 +2232,9 @@ pub fn clap_root() -> Command {
         .subcommand(types_subcommand())
         .subcommand(update_subcommand())
         .subcommand(upgrade_subcommand())
+        .subcommand(bump_version_subcommand())
         .subcommand(vendor_subcommand())
+        .subcommand(why_subcommand())
         .subcommand(x_subcommand());
 
       let help = help_subcommand(&cmd);
@@ -2351,6 +2409,35 @@ Don't error if the audit data can't be retrieved from the registry
           .help("Ignore advisories matching the given CVE IDs")
           .action(ArgAction::Append)
           .value_name("CVE")
+      )
+      .arg(
+        Arg::new("fix")
+          .long("fix")
+          .help("Automatically fix vulnerabilities by upgrading packages")
+          .action(ArgAction::SetTrue)
+      )
+  })
+}
+
+fn why_subcommand() -> Command {
+  command(
+    "why",
+    cstr!(
+      "Show why a package is installed, displaying the dependency chain from your project's direct dependencies to the specified package.
+  <p(245)>deno why express</>
+
+Show why a specific version is installed
+  <p(245)>deno why express@4.18.2</>"
+    ),
+    UnstableArgsConfig::None,
+  )
+  .defer(|cmd| {
+    cmd
+      .args(lock_args())
+      .arg(
+        Arg::new("package")
+          .required(true)
+          .help("The package name (and optional version) to explain"),
       )
   })
 }
@@ -3589,6 +3676,37 @@ These must be added to the path manually if required."), UnstableArgsConfig::Res
             .conflicts_with("global"),
         )
         .arg(lockfile_only_arg().conflicts_with("global"))
+        .arg(
+          Arg::new("os")
+            .long("os")
+            .conflicts_with("global")
+            .help("Target OS for npm package installation (e.g., linux, darwin, win32)")
+            .value_parser(["aix", "android", "darwin", "freebsd", "linux", "openbsd", "sunos", "win32"]),
+        )
+        .arg(
+          Arg::new("arch")
+            .long("arch")
+            .conflicts_with("global")
+            .help("Target architecture for npm package installation (e.g., x64, arm64)")
+            .value_parser(["arm", "arm64", "ia32", "mips", "mipsel", "ppc", "ppc64", "s390", "s390x", "x64"]),
+        )
+        .arg(
+          Arg::new("prod")
+            .long("prod")
+            .alias("production")
+            .help("Only install production dependencies (excludes devDependencies)")
+            .action(ArgAction::SetTrue)
+            .conflicts_with("global")
+            .conflicts_with("dev"),
+        )
+        .arg(
+          Arg::new("skip-types")
+            .long("skip-types")
+            .help(cstr!("Exclude @types/* packages from installation.
+<y>Be careful, as it uses a name-based heuristic and may skip packages that ship runtime code.</>"))
+            .action(ArgAction::SetTrue)
+            .requires("prod"),
+        )
     })
 }
 
@@ -4509,8 +4627,13 @@ pub static UPGRADE_USAGE: &str = cstr!(
 
 <g>Channel</>
   <bold>deno upgrade</> <p(245)>stable</>
+  <bold>deno upgrade</> <p(245)>alpha</>
+  <bold>deno upgrade</> <p(245)>beta</>
   <bold>deno upgrade</> <p(245)>rc</>
-  <bold>deno upgrade</> <p(245)>canary</>"
+  <bold>deno upgrade</> <p(245)>canary</>
+
+<g>From a pull request</> <p(245)>(requires gh CLI)</>
+  <bold>deno upgrade</> <p(245)>pr 12345</>"
 );
 
 fn upgrade_subcommand() -> Command {
@@ -4583,7 +4706,7 @@ update to a different location, use the <c>--output</> flag:
       )
       .arg(
         Arg::new("version-or-hash-or-channel")
-          .help(cstr!("Version <p(245)>(v1.46.0)</>, channel <p(245)>(rc, canary)</> or commit hash <p(245)>(9bc2dd29ad6ba334fd57a20114e367d3c04763d4)</>"))
+          .help(cstr!("Version <p(245)>(v1.46.0)</>, channel <p(245)>(alpha, beta, rc, canary)</>, commit hash <p(245)>(9bc2dd29ad6ba334fd57a20114e367d3c04763d4)</>, or <p(245)>pr 12345</> to install from a PR"))
           .value_name("VERSION")
           .action(ArgAction::Append)
           .trailing_var_arg(true),
@@ -4595,8 +4718,48 @@ update to a different location, use the <c>--output</> flag:
           .value_parser(value_parser!(String))
           .help_heading(UPGRADE_HEADING),
       )
+      .arg(
+        Arg::new("no-delta")
+          .long("no-delta")
+          .help("Disable delta updates and always download the full archive")
+          .action(ArgAction::SetTrue)
+          .help_heading(UPGRADE_HEADING),
+      )
       .arg(ca_file_arg())
       .arg(unsafely_ignore_certificate_errors_arg())
+  })
+}
+
+fn bump_version_subcommand() -> Command {
+  command(
+    "bump-version",
+    cstr!(
+      "Update version in the configuration file.
+  <p(245)>deno bump-version patch</>       <p(245)># 1.4.6 -> 1.4.7</>
+  <p(245)>deno bump-version minor</>       <p(245)># 1.4.6 -> 1.5.0</>
+  <p(245)>deno bump-version major</>       <p(245)># 1.4.6 -> 2.0.0</>
+  <p(245)>deno bump-version prepatch</>    <p(245)># 1.4.6 -> 1.4.7-0</>
+  <p(245)>deno bump-version preminor</>    <p(245)># 1.4.6 -> 1.5.0-0</>
+  <p(245)>deno bump-version premajor</>    <p(245)># 1.4.6 -> 2.0.0-0</>
+  <p(245)>deno bump-version prerelease</>  <p(245)># 1.4.7-0 -> 1.4.7-1</>"
+    ),
+    UnstableArgsConfig::None,
+  )
+  .defer(|cmd| {
+    cmd.arg(
+      Arg::new("increment")
+        .help("Version increment type")
+        .value_parser([
+          "major",
+          "minor",
+          "patch",
+          "premajor",
+          "preminor",
+          "prepatch",
+          "prerelease",
+        ])
+        .index(1),
+    )
   })
 }
 
@@ -5483,14 +5646,14 @@ fn hmr_arg(takes_files: bool) -> Arg {
       .require_equals(true)
       .help(
         cstr!(
-        "Watch for file changes and restart process automatically.
+        "Watch for file changes and hot-replace modules. The process restarts if hot replacement fails.
   <p(245)>Local files from entry point module graph are watched by default.
   Additional paths might be watched by passing them as arguments to this flag.</>"),
       )
       .value_hint(ValueHint::AnyPath)
   } else {
     arg.action(ArgAction::SetTrue).help(cstr!(
-      "Watch for file changes and restart process automatically.
+      "Watch for file changes and hot-replace modules. The process restarts if hot replacement fails.
   <p(245)>Only local files from entry point module graph are watched.</>"
     ))
   }
@@ -5984,6 +6147,7 @@ fn audit_parse(
   let ignore_unfixable = matches.get_flag("ignore-unfixable");
   let ignore_registry_errors = matches.get_flag("ignore-registry-errors");
   let socket = matches.get_flag("socket");
+  let fix = matches.get_flag("fix");
   let dev = true;
   let prod = true;
   let optional = true;
@@ -6001,8 +6165,15 @@ fn audit_parse(
     ignore_unfixable,
     ignore,
     socket,
+    fix,
   });
   Ok(())
+}
+
+fn why_parse(flags: &mut Flags, matches: &mut ArgMatches) {
+  lock_args_parse(flags, matches);
+  let package = matches.remove_one::<String>("package").unwrap();
+  flags.subcommand = DenoSubcommand::Why(WhyFlags { package });
 }
 
 fn add_parse(
@@ -6047,6 +6218,24 @@ fn remove_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   });
 }
 
+fn bump_version_parse(flags: &mut Flags, matches: &mut ArgMatches) {
+  let increment =
+    matches
+      .remove_one::<String>("increment")
+      .and_then(|s| match s.as_str() {
+        "major" => Some(VersionIncrement::Major),
+        "minor" => Some(VersionIncrement::Minor),
+        "patch" => Some(VersionIncrement::Patch),
+        "premajor" => Some(VersionIncrement::Premajor),
+        "preminor" => Some(VersionIncrement::Preminor),
+        "prepatch" => Some(VersionIncrement::Prepatch),
+        "prerelease" => Some(VersionIncrement::Prerelease),
+        _ => None,
+      });
+
+  flags.subcommand = DenoSubcommand::BumpVersion(VersionFlags { increment });
+}
+
 fn outdated_parse(
   flags: &mut Flags,
   matches: &mut ArgMatches,
@@ -6075,6 +6264,7 @@ fn outdated_parse(
     recursive,
     kind,
   });
+  lock_args_parse(flags, matches);
   min_dep_age_arg_parse(flags, matches);
   Ok(())
 }
@@ -6686,7 +6876,7 @@ fn info_parse(
   import_map_arg_parse(flags, matches);
   location_arg_parse(flags, matches);
   ca_file_arg_parse(flags, matches);
-  unsafely_ignore_certificate_errors_parse(flags, matches);
+  unsafely_ignore_certificate_errors_parse(flags, matches)?;
   node_modules_and_vendor_dir_arg_parse(flags, matches);
   lock_args_parse(flags, matches);
   no_remote_arg_parse(flags, matches);
@@ -6761,13 +6951,22 @@ fn install_parse(
     return Ok(());
   }
   let lockfile_only = matches.get_flag("lockfile-only");
+  let npm_target = NpmInstallTargetFlags {
+    os: matches.remove_one::<String>("os"),
+    arch: matches.remove_one::<String>("arch"),
+  };
+  let production = matches.get_flag("prod");
+  let skip_types = matches.get_flag("skip-types");
   if matches.get_flag("entrypoint") {
     let entrypoints = matches.remove_many::<String>("cmd").unwrap_or_default();
     flags.subcommand = DenoSubcommand::Install(InstallFlags::Local(
       InstallFlagsLocal::Entrypoints(InstallEntrypointsFlags {
         entrypoints: entrypoints.collect(),
         lockfile_only,
+        production,
+        skip_types,
       }),
+      npm_target,
     ));
   } else if let Some(add_files) = matches
     .remove_many("cmd")
@@ -6782,10 +6981,16 @@ fn install_parse(
 
     flags.subcommand = DenoSubcommand::Install(InstallFlags::Local(
       InstallFlagsLocal::Add(add_files),
+      npm_target,
     ))
   } else {
     flags.subcommand = DenoSubcommand::Install(InstallFlags::Local(
-      InstallFlagsLocal::TopLevel(InstallTopLevelFlags { lockfile_only }),
+      InstallFlagsLocal::TopLevel(InstallTopLevelFlags {
+        lockfile_only,
+        production,
+        skip_types,
+      }),
+      npm_target,
     ));
   }
   Ok(())
@@ -7390,29 +7595,58 @@ fn types_parse(flags: &mut Flags, _matches: &mut ArgMatches) {
   flags.subcommand = DenoSubcommand::Types;
 }
 
-fn upgrade_parse(flags: &mut Flags, matches: &mut ArgMatches) {
+fn upgrade_parse(
+  flags: &mut Flags,
+  matches: &mut ArgMatches,
+) -> clap::error::Result<()> {
   ca_file_arg_parse(flags, matches);
-  unsafely_ignore_certificate_errors_parse(flags, matches);
+  unsafely_ignore_certificate_errors_parse(flags, matches)?;
 
   let dry_run = matches.get_flag("dry-run");
   let force = matches.get_flag("force");
   let canary = matches.get_flag("canary");
   let release_candidate = matches.get_flag("release-candidate");
+  let no_delta = matches.get_flag("no-delta");
   let version = matches.remove_one::<String>("version");
   let output = matches.remove_one::<String>("output");
-  let version_or_hash_or_channel =
-    matches.remove_one::<String>("version-or-hash-or-channel");
+  let positional_args: Vec<String> = matches
+    .remove_many::<String>("version-or-hash-or-channel")
+    .map(|v| v.collect())
+    .unwrap_or_default();
+
+  let first_arg = positional_args.first().map(|s| s.as_str());
+  let (version_or_hash_or_channel, pr, branch) = if first_arg == Some("pr") {
+    let pr_number = positional_args
+      .get(1)
+      .and_then(|s| s.strip_prefix('#').unwrap_or(s).parse::<u64>().ok());
+    if pr_number.is_none() {
+      return Err(clap::Error::raw(
+        clap::error::ErrorKind::InvalidValue,
+        "Missing or invalid PR number. Usage: deno upgrade pr <number>\n",
+      ));
+    }
+    (None, pr_number, None)
+  } else if first_arg == Some("compass") {
+    (None, None, Some("compass".to_string()))
+  } else {
+    (positional_args.into_iter().next(), None, None)
+  };
+
   let checksum = matches.remove_one::<String>("checksum");
   flags.subcommand = DenoSubcommand::Upgrade(UpgradeFlags {
     dry_run,
     force,
     release_candidate,
     canary,
+    no_delta,
     version,
     output,
     version_or_hash_or_channel,
     checksum,
+    pr,
+    branch,
   });
+  Ok(())
 }
 
 fn vendor_parse(flags: &mut Flags, _matches: &mut ArgMatches) {
@@ -7464,7 +7698,7 @@ fn compile_args_without_check_parse(
   reload_arg_parse(flags, matches)?;
   lock_args_parse(flags, matches);
   ca_file_arg_parse(flags, matches);
-  unsafely_ignore_certificate_errors_parse(flags, matches);
+  unsafely_ignore_certificate_errors_parse(flags, matches)?;
   min_dep_age_arg_parse(flags, matches);
   Ok(())
 }
@@ -7700,13 +7934,14 @@ fn allow_and_deny_import_parse(
 fn unsafely_ignore_certificate_errors_parse(
   flags: &mut Flags,
   matches: &mut ArgMatches,
-) {
+) -> clap::error::Result<()> {
   if let Some(ic_wl) =
     matches.remove_many::<String>("unsafely-ignore-certificate-errors")
   {
-    let ic_allowlist = flags_net::parse(ic_wl.collect()).unwrap();
+    let ic_allowlist = flags_net::parse(ic_wl.collect())?;
     flags.unsafely_ignore_certificate_errors = Some(ic_allowlist);
   }
+  Ok(())
 }
 
 fn runtime_args_parse(
@@ -8112,11 +8347,14 @@ mod tests {
           force: true,
           dry_run: true,
           canary: false,
+          no_delta: false,
           release_candidate: false,
           version: None,
           output: None,
           version_or_hash_or_channel: None,
           checksum: None,
+          pr: None,
+          branch: None,
         }),
         ..Flags::default()
       }
@@ -8133,11 +8371,14 @@ mod tests {
           force: false,
           dry_run: false,
           canary: false,
+          no_delta: false,
           release_candidate: false,
           version: None,
           output: Some(String::from("example.txt")),
           version_or_hash_or_channel: None,
           checksum: None,
+          pr: None,
+          branch: None,
         }),
         ..Flags::default()
       }
@@ -12203,11 +12444,14 @@ mod tests {
           force: false,
           dry_run: false,
           canary: false,
+          no_delta: false,
           release_candidate: false,
           version: None,
           output: None,
           version_or_hash_or_channel: None,
           checksum: None,
+          pr: None,
+          branch: None,
         }),
         ca_data: Some(CaData::File("example.crt".to_owned())),
         ..Flags::default()
@@ -12225,11 +12469,14 @@ mod tests {
           force: false,
           dry_run: false,
           canary: false,
+          no_delta: false,
           release_candidate: true,
           version: None,
           output: None,
           version_or_hash_or_channel: None,
           checksum: None,
+          pr: None,
+          branch: None,
         }),
         ..Flags::default()
       }
@@ -12239,6 +12486,91 @@ mod tests {
     assert!(r.is_err());
 
     let r = flags_from_vec(svec!["deno", "upgrade", "--rc", "--version"]);
+    assert!(r.is_err());
+  }
+
+  #[test]
+  fn upgrade_pr() {
+    let r = flags_from_vec(svec!["deno", "upgrade", "pr", "12345"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Upgrade(UpgradeFlags {
+          force: false,
+          dry_run: false,
+          canary: false,
+          no_delta: false,
+          release_candidate: false,
+          version: None,
+          output: None,
+          version_or_hash_or_channel: None,
+          checksum: None,
+          pr: Some(12345),
+          branch: None,
+        }),
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn upgrade_pr_with_hash_prefix() {
+    let r = flags_from_vec(svec!["deno", "upgrade", "pr", "#6789"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Upgrade(UpgradeFlags {
+          force: false,
+          dry_run: false,
+          canary: false,
+          no_delta: false,
+          release_candidate: false,
+          version: None,
+          output: None,
+          version_or_hash_or_channel: None,
+          checksum: None,
+          pr: Some(6789),
+          branch: None,
+        }),
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn upgrade_pr_with_flags() {
+    let r =
+      flags_from_vec(svec!["deno", "upgrade", "--dry-run", "pr", "33250"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Upgrade(UpgradeFlags {
+          force: false,
+          dry_run: true,
+          canary: false,
+          no_delta: false,
+          release_candidate: false,
+          version: None,
+          output: None,
+          version_or_hash_or_channel: None,
+          checksum: None,
+          pr: Some(33250),
+          branch: None,
+        }),
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn upgrade_pr_missing_number() {
+    let r = flags_from_vec(svec!["deno", "upgrade", "pr"]);
+    assert!(r.is_err());
+  }
+
+  #[test]
+  fn upgrade_pr_invalid_number() {
+    let r = flags_from_vec(svec!["deno", "upgrade", "pr", "abc"]);
     assert!(r.is_err());
   }
 
@@ -13963,6 +14295,7 @@ mod tests {
           "install" => Flags {
             subcommand: DenoSubcommand::Install(InstallFlags::Local(
               InstallFlagsLocal::Add(flags),
+              Default::default(),
             )),
             ..Flags::default()
           },
@@ -14297,6 +14630,153 @@ mod tests {
         "Note: Permission flags can only be used in a global setting"
       )
     );
+  }
+
+  #[test]
+  fn install_os_arch_flags() {
+    let r = flags_from_vec(svec![
+      "deno", "install", "--os", "linux", "--arch", "arm64"
+    ]);
+    let flags = r.unwrap();
+    assert_eq!(
+      flags.subcommand,
+      DenoSubcommand::Install(InstallFlags::Local(
+        InstallFlagsLocal::TopLevel(InstallTopLevelFlags {
+          lockfile_only: false,
+          production: false,
+          skip_types: false,
+        }),
+        NpmInstallTargetFlags {
+          os: Some("linux".to_string()),
+          arch: Some("arm64".to_string()),
+        },
+      ))
+    );
+    assert_eq!(
+      flags.subcommand.npm_system_info(),
+      NpmSystemInfo {
+        os: "linux".into(),
+        cpu: "arm64".into(),
+      }
+    );
+  }
+
+  #[test]
+  fn install_os_only_flag() {
+    let r = flags_from_vec(svec!["deno", "install", "--os", "win32"]);
+    let flags = r.unwrap();
+    assert_eq!(
+      flags.subcommand,
+      DenoSubcommand::Install(InstallFlags::Local(
+        InstallFlagsLocal::TopLevel(InstallTopLevelFlags {
+          lockfile_only: false,
+          production: false,
+          skip_types: false,
+        }),
+        NpmInstallTargetFlags {
+          os: Some("win32".to_string()),
+          arch: None,
+        },
+      ))
+    );
+    let sys_info = flags.subcommand.npm_system_info();
+    assert_eq!(sys_info.os.as_str(), "win32");
+  }
+
+  #[test]
+  fn install_os_arch_conflicts_with_global() {
+    let r =
+      flags_from_vec(svec!["deno", "install", "-g", "--os", "linux", "mod.ts"]);
+    assert!(r.is_err());
+  }
+
+  #[test]
+  fn install_production() {
+    let r = flags_from_vec(svec!["deno", "install", "--prod"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Install(InstallFlags::Local(
+          InstallFlagsLocal::TopLevel(InstallTopLevelFlags {
+            lockfile_only: false,
+            production: true,
+            skip_types: false,
+          }),
+          NpmInstallTargetFlags::default(),
+        )),
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn install_production_with_entrypoint() {
+    let r = flags_from_vec(svec![
+      "deno",
+      "install",
+      "--prod",
+      "--entrypoint",
+      "main.ts"
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Install(InstallFlags::Local(
+          InstallFlagsLocal::Entrypoints(InstallEntrypointsFlags {
+            entrypoints: svec!["main.ts"],
+            lockfile_only: false,
+            production: true,
+            skip_types: false,
+          }),
+          NpmInstallTargetFlags::default(),
+        )),
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn install_production_with_skip_types() {
+    let r = flags_from_vec(svec!["deno", "install", "--prod", "--skip-types"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Install(InstallFlags::Local(
+          InstallFlagsLocal::TopLevel(InstallTopLevelFlags {
+            lockfile_only: false,
+            production: true,
+            skip_types: true,
+          }),
+          NpmInstallTargetFlags::default(),
+        )),
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn install_skip_types_requires_prod() {
+    let r = flags_from_vec(svec!["deno", "install", "--skip-types"]);
+    assert!(r.is_err());
+  }
+
+  #[test]
+  fn install_production_conflicts_with_global() {
+    let r = flags_from_vec(svec![
+      "deno",
+      "install",
+      "--prod",
+      "--global",
+      "jsr:@std/http/file-server"
+    ]);
+    assert!(r.is_err());
+  }
+
+  #[test]
+  fn install_production_conflicts_with_dev() {
+    let r =
+      flags_from_vec(svec!["deno", "install", "--prod", "--dev", "npm:chalk"]);
+    assert!(r.is_err());
   }
 
   #[test]
@@ -14682,6 +15162,22 @@ Usage: deno repl [OPTIONS] [-- [ARGS]...]\n"
         args
       );
     }
+  }
+
+  #[test]
+  fn update_subcommand_frozen_flag() {
+    let r = flags_from_vec(svec!["deno", "update", "--frozen=false"]).unwrap();
+    assert_eq!(r.frozen_lockfile, Some(false));
+
+    let r = flags_from_vec(svec!["deno", "update", "--frozen"]).unwrap();
+    assert_eq!(r.frozen_lockfile, Some(true));
+  }
+
+  #[test]
+  fn outdated_subcommand_frozen_flag() {
+    let r =
+      flags_from_vec(svec!["deno", "outdated", "--frozen=false"]).unwrap();
+    assert_eq!(r.frozen_lockfile, Some(false));
   }
 
   #[test]
@@ -15318,5 +15814,185 @@ Usage: deno repl [OPTIONS] [-- [ARGS]...]\n"
     let flags = flags_from_vec(svec!["deno", "run", "script.ts",]).unwrap();
     set_test_node_options(None);
     assert_eq!(flags.require, vec!["known.js"]);
+  }
+
+  #[test]
+  fn bump_version_patch() {
+    let r = flags_from_vec(svec!["deno", "bump-version", "patch"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::BumpVersion(VersionFlags {
+          increment: Some(VersionIncrement::Patch),
+        }),
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn bump_version_minor() {
+    let r = flags_from_vec(svec!["deno", "bump-version", "minor"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::BumpVersion(VersionFlags {
+          increment: Some(VersionIncrement::Minor),
+        }),
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn bump_version_major() {
+    let r = flags_from_vec(svec!["deno", "bump-version", "major"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::BumpVersion(VersionFlags {
+          increment: Some(VersionIncrement::Major),
+        }),
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn bump_version_prerelease() {
+    let r = flags_from_vec(svec!["deno", "bump-version", "prerelease"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::BumpVersion(VersionFlags {
+          increment: Some(VersionIncrement::Prerelease),
+        }),
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn bump_version_premajor() {
+    let r = flags_from_vec(svec!["deno", "bump-version", "premajor"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::BumpVersion(VersionFlags {
+          increment: Some(VersionIncrement::Premajor),
+        }),
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn bump_version_preminor() {
+    let r = flags_from_vec(svec!["deno", "bump-version", "preminor"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::BumpVersion(VersionFlags {
+          increment: Some(VersionIncrement::Preminor),
+        }),
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn bump_version_prepatch() {
+    let r = flags_from_vec(svec!["deno", "bump-version", "prepatch"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::BumpVersion(VersionFlags {
+          increment: Some(VersionIncrement::Prepatch),
+        }),
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn bump_version_no_args() {
+    let r = flags_from_vec(svec!["deno", "bump-version"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::BumpVersion(VersionFlags {
+          increment: None,
+        }),
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn bump_version_invalid_increment() {
+    let r = flags_from_vec(svec!["deno", "bump-version", "invalid"]);
+    assert!(r.is_err());
+  }
+
+  #[test]
+  fn why_package() {
+    let r = flags_from_vec(svec!["deno", "why", "express"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Why(WhyFlags {
+          package: "express".to_string(),
+        }),
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn why_package_with_version() {
+    let r = flags_from_vec(svec!["deno", "why", "express@4.18.2"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Why(WhyFlags {
+          package: "express@4.18.2".to_string(),
+        }),
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn why_scoped_package() {
+    let r = flags_from_vec(svec!["deno", "why", "@scope/pkg"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Why(WhyFlags {
+          package: "@scope/pkg".to_string(),
+        }),
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn why_scoped_package_with_version() {
+    let r = flags_from_vec(svec!["deno", "why", "@scope/pkg@1.0.0"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Why(WhyFlags {
+          package: "@scope/pkg@1.0.0".to_string(),
+        }),
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn why_missing_package() {
+    let r = flags_from_vec(svec!["deno", "why"]);
+    assert!(r.is_err());
   }
 }

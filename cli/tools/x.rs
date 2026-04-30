@@ -545,20 +545,16 @@ pub async fn run(flags: Arc<Flags>, x_flags: XFlags) -> Result<i32, AnyError> {
       let npm_resolver = new_factory.npm_resolver().await?;
       let npm_process_state = get_npm_process_state(npm_resolver);
 
-      let permission_args = flags.to_permission_args();
+      let mut deno_args = flags.to_permission_args();
+      deno_args.extend(unstable_args.iter().cloned());
       let url =
         deno_core::url::Url::parse(&jsr_package_req_reference.to_string())?;
-      run_js_file(
-        &url,
-        &permission_args,
-        &flags.argv,
-        npm_process_state,
-        false,
-      )
+      run_js_file(&url, &deno_args, &flags.argv, npm_process_state, false)
     }
     ReqRefOrUrl::Url(url) => {
-      let permission_args = flags.to_permission_args();
-      run_js_file(&url, &permission_args, &flags.argv, None, false)
+      let mut deno_args = flags.to_permission_args();
+      deno_args.extend(unstable_args.iter().cloned());
+      run_js_file(&url, &deno_args, &flags.argv, None, false)
     }
   }
 }

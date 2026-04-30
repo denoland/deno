@@ -764,7 +764,7 @@ fn to_utf8_slow(s: v8::Local<v8::String>, scope: &mut v8::PinScope) -> String {
   let capacity = s.utf8_length(scope);
   let mut buf = Vec::with_capacity(capacity);
 
-  s.write_utf8_uninit_v2(
+  let bytes_len = s.write_utf8_uninit_v2(
     scope,
     buf.spare_capacity_mut(),
     v8::WriteFlags::kReplaceInvalidUtf8,
@@ -773,7 +773,7 @@ fn to_utf8_slow(s: v8::Local<v8::String>, scope: &mut v8::PinScope) -> String {
 
   // SAFETY: write_utf8_uninit guarantees `bytes_len` bytes are initialized & valid utf8
   unsafe {
-    buf.set_len(capacity);
+    buf.set_len(bytes_len);
     String::from_utf8_unchecked(buf)
   }
 }
