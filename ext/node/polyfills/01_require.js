@@ -132,6 +132,7 @@ import internalFsUtils from "ext:deno_node/internal/fs/utils.mjs";
 import internalHttp from "ext:deno_node/internal/http.ts";
 import internalHttp2Core from "ext:deno_node/internal/http2/core.ts";
 import internalHttp2Util from "ext:deno_node/internal/http2/util.ts";
+import internalPriorityQueue from "ext:deno_node/internal/priority_queue.ts";
 import internalReadlineUtils from "ext:deno_node/internal/readline/utils.mjs";
 import internalStreamsAddAbortSignal from "ext:deno_node/internal/streams/add-abort-signal.js";
 import internalStreamsLazyTransform from "ext:deno_node/internal/streams/lazy_transform.js";
@@ -239,6 +240,7 @@ function setupBuiltinModules() {
     "internal/http": internalHttp,
     "internal/http2/core": internalHttp2Core,
     "internal/http2/util": internalHttp2Util,
+    "internal/priority_queue": internalPriorityQueue,
     "internal/readline/utils": internalReadlineUtils,
     "internal/streams/add-abort-signal": internalStreamsAddAbortSignal,
     "internal/streams/lazy_transform": internalStreamsLazyTransform,
@@ -1078,14 +1080,9 @@ Module.prototype.require = function (id) {
   }
 };
 
-// The module wrapper looks slightly different to Node. Instead of using one
-// wrapper function, we use two. The first one exists to performance optimize
-// access to magic node globals, like `Buffer`. The second one is the actual
-// wrapper function we run the users code in. The only observable difference is
-// that in Deno `arguments.callee` is not null.
 const wrapper = [
-  `(function (exports, require, module, __filename, __dirname) { var { Buffer, clearImmediate, clearInterval, clearTimeout, global, process, setImmediate, setInterval, setTimeout } = Deno[Deno.internal].nodeGlobals; (() => {`,
-  "\n})(); })",
+  "(function (exports, require, module, __filename, __dirname) { ",
+  "\n});",
 ];
 
 export let wrap = function (script) {

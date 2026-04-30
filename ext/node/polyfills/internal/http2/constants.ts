@@ -161,9 +161,48 @@ export const HTTP2_HEADER_TRANSFER_ENCODING = "transfer-encoding";
 export const HTTP2_HEADER_KEEP_ALIVE = "keep-alive";
 export const HTTP2_HEADER_PROXY_CONNECTION = "proxy-connection";
 export const HTTP2_HEADER_ACCEPT = "accept";
+export const HTTP2_HEADER_ACCEPT_CHARSET = "accept-charset";
 export const HTTP2_HEADER_ACCEPT_ENCODING = "accept-encoding";
 export const HTTP2_HEADER_ACCEPT_LANGUAGE = "accept-language";
 export const HTTP2_HEADER_ACCEPT_RANGES = "accept-ranges";
+export const HTTP2_HEADER_ACCESS_CONTROL_ALLOW_HEADERS =
+  "access-control-allow-headers";
+export const HTTP2_HEADER_ACCESS_CONTROL_ALLOW_METHODS =
+  "access-control-allow-methods";
+export const HTTP2_HEADER_ACCESS_CONTROL_ALLOW_ORIGIN =
+  "access-control-allow-origin";
+export const HTTP2_HEADER_ACCESS_CONTROL_EXPOSE_HEADERS =
+  "access-control-expose-headers";
+export const HTTP2_HEADER_ACCESS_CONTROL_REQUEST_HEADERS =
+  "access-control-request-headers";
+export const HTTP2_HEADER_ALLOW = "allow";
+export const HTTP2_HEADER_ALT_SVC = "alt-svc";
+export const HTTP2_HEADER_CACHE_CONTROL = "cache-control";
+export const HTTP2_HEADER_CONTENT_DISPOSITION = "content-disposition";
+export const HTTP2_HEADER_CONTENT_SECURITY_POLICY = "content-security-policy";
+export const HTTP2_HEADER_EARLY_DATA = "early-data";
+export const HTTP2_HEADER_EXPECT = "expect";
+export const HTTP2_HEADER_EXPECT_CT = "expect-ct";
+export const HTTP2_HEADER_FORWARDED = "forwarded";
+export const HTTP2_HEADER_LINK = "link";
+export const HTTP2_HEADER_ORIGIN = "origin";
+export const HTTP2_HEADER_PREFER = "prefer";
+export const HTTP2_HEADER_PRIORITY = "priority";
+export const HTTP2_HEADER_PROXY_AUTHENTICATE = "proxy-authenticate";
+export const HTTP2_HEADER_PURPOSE = "purpose";
+export const HTTP2_HEADER_REFRESH = "refresh";
+export const HTTP2_HEADER_SERVER = "server";
+export const HTTP2_HEADER_STRICT_TRANSPORT_SECURITY =
+  "strict-transport-security";
+export const HTTP2_HEADER_TIMING_ALLOW_ORIGIN = "timing-allow-origin";
+export const HTTP2_HEADER_TRAILER = "trailer";
+export const HTTP2_HEADER_VARY = "vary";
+export const HTTP2_HEADER_VIA = "via";
+export const HTTP2_HEADER_WARNING = "warning";
+export const HTTP2_HEADER_WWW_AUTHENTICATE = "www-authenticate";
+export const HTTP2_HEADER_X_FORWARDED_FOR = "x-forwarded-for";
+export const HTTP2_HEADER_X_FRAME_OPTIONS = "x-frame-options";
+export const HTTP2_HEADER_X_XSS_PROTECTION = "x-xss-protection";
 
 // HTTP methods
 export const HTTP2_METHOD_CONNECT = "CONNECT";
