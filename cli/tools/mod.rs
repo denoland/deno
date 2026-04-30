@@ -10,6 +10,7 @@ pub mod coverage;
 pub mod deploy;
 pub mod doc;
 pub mod fmt;
+pub mod framework;
 pub mod info;
 pub mod init;
 pub mod installer;
