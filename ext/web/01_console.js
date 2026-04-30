@@ -565,15 +565,18 @@ function formatValue(
       return String(value[privateCustomInspect](inspect, ctx));
     } else {
       // Access the symbol directly instead of using `ReflectHas` (the `in`
-      // operator). Proxies may override `has` to hide symbols while still
-      // exposing them via `get` (e.g. nodejs-polars DataFrames). Node.js
-      // also accesses the symbol directly. Use try-catch because the
-      // Proxy's `get` trap may throw.
+      // operator). Non-proxy objects may override `has` to hide symbols
+      // while still exposing them via `get` (e.g. nodejs-polars
+      // DataFrames). For actual JS Proxy objects, access the unwrapped
+      // target to avoid triggering the proxy's get trap which may cause
+      // side effects (e.g. grammy API proxies). This matches Node.js
+      // which unwraps proxies before this check.
+      const inspectTarget = proxyDetails ? proxyDetails[0] : value;
       let maybeCustom;
       try {
-        maybeCustom = value[nodeCustomInspectSymbol];
+        maybeCustom = inspectTarget[nodeCustomInspectSymbol];
       } catch {
-        // ignore - the proxy's get trap threw
+        // ignore
       }
       if (
         typeof maybeCustom === "function" &&
