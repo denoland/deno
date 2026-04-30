@@ -343,7 +343,9 @@ class Event {
 
   set returnValue(value) {
     if (!webidl.converters.boolean(value)) {
-      this[_canceledFlag] = true;
+      if (this[_attributes].cancelable && !this[_inPassiveListener]) {
+        this[_canceledFlag] = true;
+      }
     }
   }
 
