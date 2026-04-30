@@ -6,6 +6,7 @@ import { isArrayBufferView } from "ext:deno_node/internal/util/types.ts";
 
 const {
   ArrayIsArray,
+  ArrayPrototypeMap,
   SymbolFor,
   TypeError,
   Uint8Array,
@@ -21,7 +22,7 @@ const kGlobalDispatcher = SymbolFor(
 
 function normalizeCaCerts(ca) {
   const certs = ArrayIsArray(ca) ? ca : [ca];
-  return certs.map((cert) => {
+  return ArrayPrototypeMap(certs, (cert) => {
     if (typeof cert === "string") {
       return cert;
     }
