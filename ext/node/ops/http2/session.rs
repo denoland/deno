@@ -1764,7 +1764,19 @@ unsafe extern "C" fn on_frame_send_callback(
       // User-initiated GOAWAY (from the `goaway()` op): consume one pending
       // marker and stay quiet. nghttp2 only ever sends one GOAWAY per
       // submit, so the user counter mirrors what we put on the wire.
-      session.pending_user_goaway -= 1;
+      //
+      // Known race: the marker is associated with a *count*, not with a
+      // specific outgoing frame. If a user `goaway()` and an internal
+      // `terminate_session_with_reason` GOAWAY are queued simultaneously and
+      // ship in the opposite order from how they were submitted, we'll
+      // attribute the internal GOAWAY to the user (no protocol error fired)
+      // and the user GOAWAY to nghttp2 (may fire if the user passed a
+      // non-NO_ERROR code and SETTINGS hasn't arrived yet). This is
+      // acceptable since racing `destroy()` against parser-induced internal
+      // GOAWAYs is not a real-world program shape, and the worst-case
+      // outcome is just a misclassified error -- not a crash or hang.
+      session.pending_user_goaway =
+        session.pending_user_goaway.saturating_sub(1);
     } else if goaway.error_code != ffi::NGHTTP2_NO_ERROR as u32
       && !session.protocol_error_emitted
       && !session.remote_settings_received
@@ -1774,10 +1786,17 @@ unsafe extern "C" fn on_frame_send_callback(
       // looks like an oversize unknown frame). Surface it to JS as
       // `NghttpError("Protocol error")` so the session is destroyed with the
       // same error Node produces (matches `test-http2-client-http1-server`).
-      // Once SETTINGS arrived from the peer, the session is considered
-      // established; later internal GOAWAYs (e.g. server-initiated tear-downs
-      // around timeouts) flow through the normal close path so we don't
-      // over-fire `onSessionInternalError`.
+      //
+      // Why gate on `!remote_settings_received` instead of firing for every
+      // non-NO_ERROR GOAWAY: late connection-level GOAWAYs originating from
+      // server-side state (timeout-driven tear-downs, peer-malformed-frame
+      // GOAWAYs we forward, etc.) are already surfaced through the normal
+      // close path -- `onGoawayData` on the JS side. Firing the protocol
+      // error hook for those too produced regressions in
+      // `test-http2-timeout-large-write-file.js` (uncaught Protocol error
+      // during legitimate session shutdown). Handshake-time failures are the
+      // only case where mem_recv silently swallows the error and we have to
+      // reach in via the send-side callback to surface it.
       session.protocol_error_emitted = true;
       invoke_session_internal_error(session, ffi::NGHTTP2_ERR_PROTO);
     }
