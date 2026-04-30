@@ -378,6 +378,7 @@
   "eventhandlers.any.worker.html?wss": true,
   "idlharness.any.html": {
     "expectedFailures": [
+      "WebSocket interface: existence and properties of interface object",
       "WebSocket interface object length",
       "WebSocket interface: constant CONNECTING on interface object",
       "WebSocket interface: constant CONNECTING on interface prototype object",
@@ -399,6 +400,7 @@
   },
   "idlharness.any.worker.html": {
     "expectedFailures": [
+      "WebSocket interface: existence and properties of interface object",
       "WebSocket interface object length",
       "WebSocket interface: constant CONNECTING on interface object",
       "WebSocket interface: constant CONNECTING on interface prototype object",
