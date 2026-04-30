@@ -134,6 +134,13 @@ impl TlsConnection {
     }
   }
 
+  fn server_name(&self) -> Option<&str> {
+    match self {
+      TlsConnection::Client(_) => None,
+      TlsConnection::Server(c) => c.server_name(),
+    }
+  }
+
   fn protocol_version(&self) -> Option<rustls::ProtocolVersion> {
     match self {
       TlsConnection::Client(c) => c.protocol_version(),
@@ -2484,6 +2491,20 @@ impl TLSWrap {
       inner.pending_server_name = Some(server_name);
     }
     // After start(), this is a no-op — SNI is already set on the connection.
+  }
+
+  /// Get the SNI hostname. On server connections this returns the SNI
+  /// value sent by the client; on client connections returns null.
+  /// Returns empty string when no SNI is available.
+  #[string]
+  fn get_servername(&self) -> String {
+    let inner = unsafe { &*self.inner.as_mut_ptr() };
+    inner
+      .tls_conn
+      .as_ref()
+      .and_then(|c| c.server_name())
+      .map(|s| s.to_string())
+      .unwrap_or_default()
   }
 
   /// Inject encrypted data (for testing / JSStreamSocket integration).
