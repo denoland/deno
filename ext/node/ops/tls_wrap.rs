@@ -968,6 +968,11 @@ impl TLSWrapInner {
         return;
       }
       (*ptr).cycling = true;
+      // Route the (possibly cached process-wide) `NodeServerCertVerifier`'s
+      // writes to *this* connection's `verify_error` slot.  Without this
+      // scope, a cached verifier shared with a previous TLSWrap would
+      // either alias its store or carry stale errors across connections.
+      let _verify_scope = VerifyErrorScope::enter((*ptr).verify_error.clone());
       (*ptr).clear_in();
       let result = (*ptr).clear_out_process();
       let enc_action = (*ptr).enc_out_collect();
@@ -1731,18 +1736,14 @@ impl TLSWrap {
     };
 
     let inner = unsafe { &mut *self.inner.as_mut_ptr() };
-    let (client_config, verify_error) =
-      match build_client_config(scope, context, op_state) {
-        Some(c) => c,
-        None => return -1,
-      };
-    // Replace this connection's verify_error store with the one used by the
-    // cert verifier in the (possibly cached) ClientConfig so verifyError()
-    // returns the right value.  When the verifier is cached process-wide,
-    // multiple connections share the same store; this is fine for the common
-    // path (no errors, or sequential connections) and is a documented
-    // limitation in `NodeTlsState::cached_default_verifier`.
-    inner.verify_error = verify_error;
+    let client_config = match build_client_config(scope, context, op_state) {
+      Some((c, _)) => c,
+      None => return -1,
+    };
+    // The verifier in `client_config` writes errors via the per-connection
+    // `CURRENT_VERIFY_ERROR` thread-local set by `cycle`, so `inner`'s own
+    // pre-allocated `verify_error` slot stays correctly scoped per
+    // connection even when the verifier `Arc` is cached process-wide.
     inner.pending_client_config = Some(Arc::new(client_config));
     inner.pending_server_name = server_name;
     0
@@ -2779,6 +2780,45 @@ fn get_protocol_versions(
 /// and `verifyError()` reads them later — matching Node/OpenSSL behavior.
 type VerifyErrorStore = Arc<std::sync::Mutex<Option<String>>>;
 
+thread_local! {
+  /// Per-connection cert-verification error sink, set just before each
+  /// synchronous rustls handshake step (see `TLSWrapInner::cycle`) and
+  /// cleared on the way out.  The cert verifier writes here instead of to
+  /// its own field so that one process-wide cached `NodeServerCertVerifier`
+  /// instance can serve many `TLSSocket` connections without their
+  /// `verifyError()` results aliasing each other through the verifier's
+  /// `Arc<Mutex<...>>` field.
+  static CURRENT_VERIFY_ERROR: std::cell::RefCell<Option<VerifyErrorStore>> =
+    const { std::cell::RefCell::new(None) };
+}
+
+/// RAII guard that sets `CURRENT_VERIFY_ERROR` for the lifetime of a sync
+/// rustls call (e.g. `process_new_packets`) and clears it on drop, so the
+/// verifier callback writes to *this* connection's error slot.
+struct VerifyErrorScope {
+  prev: Option<VerifyErrorStore>,
+}
+
+impl VerifyErrorScope {
+  fn enter(store: VerifyErrorStore) -> Self {
+    let prev = CURRENT_VERIFY_ERROR.with(|c| c.borrow_mut().replace(store));
+    VerifyErrorScope { prev }
+  }
+}
+
+impl Drop for VerifyErrorScope {
+  fn drop(&mut self) {
+    let prev = self.prev.take();
+    CURRENT_VERIFY_ERROR.with(|c| *c.borrow_mut() = prev);
+  }
+}
+
+fn store_verify_error(fallback: &VerifyErrorStore, code: String) {
+  let stored = CURRENT_VERIFY_ERROR.with(|c| c.borrow().clone());
+  let target = stored.as_ref().unwrap_or(fallback);
+  *target.lock().unwrap_or_else(|e| e.into_inner()) = Some(code);
+}
+
 /// A certificate verifier for Node.js compatibility.
 ///
 /// Unlike rustls's default WebPKI verifier, this does NOT abort the
@@ -3095,8 +3135,7 @@ impl rustls::client::danger::ServerCertVerifier for NodeServerCertVerifier {
             Err(code) => {
               // Chain is broken -- store the error and let the
               // handshake proceed so JS can decide.
-              *self.verify_error.lock().unwrap_or_else(|e| e.into_inner()) =
-                Some(code.to_string());
+              store_verify_error(&self.verify_error, code.to_string());
               return Ok(
                 rustls::client::danger::ServerCertVerified::assertion(),
               );
@@ -3124,8 +3163,7 @@ impl rustls::client::danger::ServerCertVerifier for NodeServerCertVerifier {
         // proceed.  The JS layer will decide whether to tear down
         // the connection based on `rejectUnauthorized`.
         let code = cert_error_to_node_code(cert_error);
-        *self.verify_error.lock().unwrap_or_else(|e| e.into_inner()) =
-          Some(code.to_string());
+        store_verify_error(&self.verify_error, code.to_string());
         Ok(rustls::client::danger::ServerCertVerified::assertion())
       }
       Err(e) => Err(e),
