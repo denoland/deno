@@ -1609,6 +1609,7 @@
     "parallel/test-http2-altsvc.js": {},
     "parallel/test-http2-autoselect-protocol.js": {},
     "parallel/test-http2-backpressure.js": {},
+    "parallel/test-http2-binding.js": {},
     "parallel/test-http2-buffersize.js": {},
     "parallel/test-http2-byteswritten-server.js": {},
     "parallel/test-http2-cancel-while-client-reading.js": {},
