@@ -150,6 +150,10 @@
         "OTEL_EXPORTER_OTLP_PROTOCOL": "grpc"
       },
       "output": "events.out"
+    },
+    "grpc_trailers": {
+      "args": "run -A -q grpc_trailer_main.ts events.ts",
+      "output": "events.out"
     }
   }
 }
