@@ -37,18 +37,10 @@ use super::ops_loader::LoaderHookRegistry;
 type SourceMapStore = Rc<RefCell<HashMap<String, Vec<u8>>>>;
 
 // TODO(bartlomieju): this is duplicated in `core/examples/ts_modules_loader.rs`.
+#[derive(Default)]
 pub struct TypescriptModuleLoader {
   source_maps: SourceMapStore,
   hook_registry: LoaderHookRegistry,
-}
-
-impl Default for TypescriptModuleLoader {
-  fn default() -> Self {
-    Self {
-      source_maps: Default::default(),
-      hook_registry: Default::default(),
-    }
-  }
 }
 
 impl TypescriptModuleLoader {
@@ -131,7 +123,7 @@ impl ModuleLoader for TypescriptModuleLoader {
               // Hook returned null source — delegate to default loading.
               load(source_maps, &specifier, options.requested_module_type)
             }
-            Err(err) => Err(JsErrorBox::generic(err).into()),
+            Err(err) => Err(JsErrorBox::generic(err)),
           }
         }
         .boxed_local(),
