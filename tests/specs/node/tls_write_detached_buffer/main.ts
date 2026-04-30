@@ -40,6 +40,15 @@ server.listen(0, () => {
       handle.writev({}, [view], true);
       handle.writev({}, [view, "buffer"], false);
 
+      // Mixed valid + detached in all_buffers=true: the detached chunk is
+      // silently skipped while the valid chunk is still written.
+      const validBuf = new Uint8Array([5, 6, 7, 8]);
+      handle.writev({}, [view, validBuf], true);
+
+      // Mixed detached buffer + valid string in all_buffers=false: verifies
+      // that skipping the detached chunk does not desync the paired indexing.
+      handle.writev({}, [view, "utf8", "hello", "utf8"], false);
+
       console.log("ok");
 
       client.destroy();

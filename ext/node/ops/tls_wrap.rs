@@ -1996,6 +1996,9 @@ impl TLSWrap {
         if let Ok(buf) = TryInto::<v8::Local<v8::Uint8Array>>::try_into(chunk) {
           let byte_len = buf.byte_length();
           let byte_off = buf.byte_offset();
+          // Skip chunks whose ArrayBuffer has been detached (e.g. during
+          // sandbox teardown). Erroring on each would spam the close path;
+          // surviving chunks are still written.
           let Some(ab) = buf.buffer(scope) else {
             continue;
           };
@@ -2019,6 +2022,7 @@ impl TLSWrap {
         if let Ok(buf) = TryInto::<v8::Local<v8::Uint8Array>>::try_into(chunk) {
           let byte_len = buf.byte_length();
           let byte_off = buf.byte_offset();
+          // Skip detached buffers (see comment in all_buffers=true branch).
           let Some(ab) = buf.buffer(scope) else {
             continue;
           };
