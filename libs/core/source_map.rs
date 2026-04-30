@@ -225,7 +225,6 @@ mod tests {
   use crate::ModuleSpecifier;
   use crate::ResolutionKind;
   use crate::ascii_str;
-  use crate::error::ModuleLoaderError;
   use crate::modules::ModuleLoadOptions;
 
   struct SourceMapLoaderContent {

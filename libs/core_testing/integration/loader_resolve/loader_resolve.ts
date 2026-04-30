@@ -1,11 +1,15 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
-import { registerResolveMapping } from "checkin:loader";
+import { register } from "checkin:loader";
 
-// Register a virtual specifier that maps to a real module via async resolution
-registerResolveMapping(
-  "virtual:greeting",
-  "test:///integration/loader_resolve/greeting.ts",
-);
+// Register a resolve hook that maps virtual:greeting to a real module
+register({
+  async resolve(specifier, _context, nextResolve) {
+    if (specifier === "virtual:greeting") {
+      return { url: "test:///integration/loader_resolve/greeting.ts" };
+    }
+    return nextResolve(specifier);
+  },
+});
 
 // Dynamic import triggers the async resolve path
 const mod = await import("virtual:greeting");
