@@ -1654,6 +1654,7 @@
     "parallel/test-http2-clean-output.js": {},
     "parallel/test-http2-client-connection-tunnelling.js": {},
     "parallel/test-http2-client-destroy.js": {},
+    "parallel/test-http2-client-http1-server.js": {},
     "parallel/test-http2-client-onconnect-errors.js": {},
     "parallel/test-http2-client-port-80.js": {},
     "parallel/test-http2-client-priority-before-connect.js": {},
