@@ -344,9 +344,9 @@ let patched = false;
 
 // module.registerHooks() infrastructure
 const hookEntries = [];
-let nextHookId = 0;
 let insideResolveHook = false;
 let insideLoadHook = false;
+let utf8Decoder;
 
 function executeResolveHookChain(specifier, context, parent, isMain) {
   // Collect resolve hooks from hookEntries in LIFO order
@@ -436,17 +436,12 @@ function executeLoadHookChain(fileUrl, context) {
       if (StringPrototypeStartsWith(loadUrl, "node:")) {
         return { source: null, format: "builtin", shortCircuit: true };
       }
-      let source;
-      try {
-        const filePath = StringPrototypeStartsWith(loadUrl, "file://")
-          ? url.fileURLToPath(loadUrl)
-          : loadUrl;
-        source = op_require_read_file(filePath);
-      } catch {
-        source = undefined;
-      }
+      const filePath = StringPrototypeStartsWith(loadUrl, "file://")
+        ? url.fileURLToPath(loadUrl)
+        : loadUrl;
+      const source = op_require_read_file(filePath);
       return {
-        source: source ?? "",
+        source,
         format: currentContext?.format ?? undefined,
         shortCircuit: true,
       };
@@ -1289,7 +1284,7 @@ Module.prototype.load = function (filename) {
           this._compile(
             typeof result.source === "string"
               ? result.source
-              : new TextDecoder().decode(result.source),
+              : (utf8Decoder ??= new TextDecoder()).decode(result.source),
             this.filename,
             "commonjs",
           );
@@ -1299,7 +1294,7 @@ Module.prototype.load = function (filename) {
               stripBOM(
                 typeof result.source === "string"
                   ? result.source
-                  : new TextDecoder().decode(result.source),
+                  : (utf8Decoder ??= new TextDecoder()).decode(result.source),
               ),
             );
           } catch (err) {
@@ -1307,10 +1302,10 @@ Module.prototype.load = function (filename) {
             throw err;
           }
         } else {
-          // Auto-detect format: try CJS, fall back to ESM
+          // Default to CJS when format is unspecified
           const source = typeof result.source === "string"
             ? result.source
-            : new TextDecoder().decode(result.source);
+            : (utf8Decoder ??= new TextDecoder()).decode(result.source);
           this._compile(source, this.filename);
         }
         this.loaded = true;
@@ -1802,11 +1797,19 @@ Module.findSourceMap = findSourceMap;
  * @returns {{ deregister: () => void }}
  */
 export function registerHooks(hooks) {
-  const entry = {
-    resolve: typeof hooks.resolve === "function" ? hooks.resolve : null,
-    load: typeof hooks.load === "function" ? hooks.load : null,
-    id: nextHookId++,
-  };
+  if (typeof hooks !== "object" || hooks === null) {
+    throw new internalErrors.ERR_INVALID_ARG_TYPE("hooks", "object", hooks);
+  }
+  const resolve = typeof hooks.resolve === "function" ? hooks.resolve : null;
+  const load = typeof hooks.load === "function" ? hooks.load : null;
+  if (resolve === null && load === null) {
+    throw new internalErrors.ERR_INVALID_ARG_VALUE(
+      "hooks",
+      hooks,
+      "must contain at least one of 'resolve' or 'load'",
+    );
+  }
+  const entry = { resolve, load };
   ArrayPrototypePush(hookEntries, entry);
   return {
     deregister() {
