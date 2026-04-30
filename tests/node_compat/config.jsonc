@@ -1774,6 +1774,7 @@
     "parallel/test-http2-respond-file-push.js": {},
     "parallel/test-http2-respond-file-range.js": {},
     "parallel/test-http2-respond-file.js": {},
+    "parallel/test-http2-respond-nghttperrors.js": {},
     "parallel/test-http2-respond-no-data.js": {},
     "parallel/test-http2-respond-with-fd-errors.js": {},
     "parallel/test-http2-response-splitting.js": {},
