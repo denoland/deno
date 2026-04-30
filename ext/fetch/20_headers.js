@@ -549,11 +549,34 @@ function headersFromHeaderList(list, guard) {
 }
 
 /**
+ * Returns the underlying header list for direct mutation (used by
+ * `initializeAResponse` and the `Request` constructor's splice/refill block).
+ *
+ * IMPORTANT: if you mutate the returned list, the parallel
+ * `[_lowerNames]` cache (see `ensureLowerNames`) will desync unless either
+ * (a) your mutation changes the list length (push/splice keeps the cache
+ * invariant satisfied via the length-divergence rebuild trigger), or
+ * (b) you call `invalidateLowerNames(headers)` afterwards.
+ *
+ * In-place name replacement (`list[i] = [...]` or `list[i][0] = ...`) and
+ * pop+push pairs preserve length and would silently keep stale lowercase
+ * entries -- callers doing those should invalidate explicitly.
+ *
  * @param {Headers} headers
  * @returns {HeaderList}
  */
 function headerListFromHeaders(headers) {
   return headers[_headerList];
+}
+
+/**
+ * Reset the lowercased-header-names cache so the next read rebuilds it.
+ * Use after equal-length, in-place mutations to `headerListFromHeaders(headers)`.
+ *
+ * @param {Headers} headers
+ */
+function invalidateLowerNames(headers) {
+  headers[_lowerNames] = null;
 }
 
 /**
@@ -581,4 +604,5 @@ export {
   Headers,
   headersEntries,
   headersFromHeaderList,
+  invalidateLowerNames,
 };
