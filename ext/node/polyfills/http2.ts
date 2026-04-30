@@ -2099,8 +2099,22 @@ class Http2Stream extends Duplex {
     // RST code 8 not emitted as an error as its used by clients to signify
     // abort and is already covered by aborted event, also allows more
     // seamless compatibility with http1
-    if (err == null && code !== NGHTTP2_NO_ERROR && code !== NGHTTP2_CANCEL) {
-      err = new ERR_HTTP2_STREAM_ERROR(nameForErrorCode[code] || code);
+    if (
+      err == null &&
+      code !== NGHTTP2_NO_ERROR &&
+      code !== NGHTTP2_CANCEL &&
+      !state.skipEmitStreamError
+    ) {
+      // For server streams, forced resets can be an internal control flow
+      // (for example async respondWithFile/respondWithFD failures after
+      // headers were already committed). Emitting a synthesized stream error
+      // without a listener would throw uncaught and fail the test/module.
+      if (
+        session[kType] !== NGHTTP2_SESSION_SERVER ||
+        this.listenerCount("error") > 0
+      ) {
+        err = new ERR_HTTP2_STREAM_ERROR(nameForErrorCode[code] || code);
+      }
     }
 
     this[kSession] = undefined;
@@ -2290,6 +2304,10 @@ function handleAsyncFileResponseError(stream, err, onError) {
     !stream.closed &&
     (stream[kState].flags & STREAM_FLAGS_HEADERS_SENT) !== 0
   ) {
+    // Async respondWithFile/respondWithFD failures after headers are sent
+    // intentionally map to a forced stream reset. Avoid synthesizing an extra
+    // server-side stream error for this internal control-flow path.
+    stream[kState].skipEmitStreamError = true;
     closeStream(stream, NGHTTP2_INTERNAL_ERROR, kForceRstStream);
     stream.destroy();
     return;

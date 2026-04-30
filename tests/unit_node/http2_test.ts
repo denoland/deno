@@ -801,94 +801,110 @@ Deno.test("[node/http2] allowHTTP1 fallback handles HTTP/1.1 clients", async () 
   await promise;
 });
 
-Deno.test("[node/http2] respondWithFile async error after response start maps to stream reset", {
-  // Windows fs/open failure timing differs, making this assertion flaky.
-  ignore: Deno.build.os === "windows",
-  sanitizeResources: false,
-  sanitizeOps: false,
-}, async () => {
-  const server = http2.createServer();
-  const missingPath = join(
-    Deno.makeTempDirSync(),
-    "does-not-exist.txt",
-  );
+Deno.test(
+  "[node/http2] respondWithFile async error after response start maps to stream reset",
+  {
+    // Windows fs/open failure timing differs, making this assertion flaky.
+    ignore: Deno.build.os === "windows",
+    sanitizeResources: false,
+    sanitizeOps: false,
+  },
+  async () => {
+    const server = http2.createServer();
+    const missingPath = join(
+      Deno.makeTempDirSync(),
+      "does-not-exist.txt",
+    );
 
-  server.on("stream", (stream) => {
-    stream.respondWithFile(missingPath);
-    // Force a committed response before fs.open() fails asynchronously.
-    process.nextTick(() => {
-      if (!stream.destroyed && !stream.closed && !stream.headersSent) {
-        stream.respond({ ":status": 200 });
-        stream.write("partial");
-      }
-    });
-  });
-
-  await new Promise<void>((resolve, reject) => {
-    server.listen(0, () => {
-      const { port } = server.address() as net.AddressInfo;
-      const client = http2.connect(`http://127.0.0.1:${port}`);
-      client.on("error", reject);
-
-      const req = client.request({ ":path": "/" });
-      req.on("response", () => {});
-      req.resume();
-      req.on("error", (err: NodeJS.ErrnoException) => {
-        try {
-          assertEquals(err.code, "ERR_HTTP2_STREAM_ERROR");
-          assert(String(err.message).includes("NGHTTP2_INTERNAL_ERROR"));
-          client.close();
-          server.close(() => resolve());
-        } catch (e) {
-          client.close();
-          server.close(() => reject(e));
+    server.on("stream", (stream) => {
+      stream.on("error", () => {
+        // Client-side assertion verifies this stream-reset path.
+        // Avoid treating expected server-side stream teardown as uncaught.
+      });
+      stream.respondWithFile(missingPath);
+      // Force a committed response before fs.open() fails asynchronously.
+      process.nextTick(() => {
+        if (!stream.destroyed && !stream.closed && !stream.headersSent) {
+          stream.respond({ ":status": 200 });
+          stream.write("partial");
         }
       });
-      req.end();
     });
-  });
-});
 
-Deno.test("[node/http2] respondWithFD async error after response start maps to stream reset", {
-  // Windows invalid-fd handling differs from POSIX for this async fstat path.
-  ignore: Deno.build.os === "windows",
-  sanitizeResources: false,
-  sanitizeOps: false,
-}, async () => {
-  const server = http2.createServer();
+    await new Promise<void>((resolve, reject) => {
+      server.listen(0, () => {
+        const { port } = server.address() as net.AddressInfo;
+        const client = http2.connect(`http://127.0.0.1:${port}`);
+        client.on("error", reject);
 
-  server.on("stream", (stream) => {
-    stream.respondWithFD(-1, {}, { statCheck: () => true });
-    // Force a committed response before fs.fstat() fails asynchronously.
-    process.nextTick(() => {
-      if (!stream.destroyed && !stream.closed && !stream.headersSent) {
-        stream.respond({ ":status": 200 });
-        stream.write("partial");
-      }
+        const req = client.request({ ":path": "/" });
+        req.on("response", () => {});
+        req.resume();
+        req.on("error", (err: NodeJS.ErrnoException) => {
+          try {
+            assertEquals(err.code, "ERR_HTTP2_STREAM_ERROR");
+            assert(String(err.message).includes("NGHTTP2_INTERNAL_ERROR"));
+            client.close();
+            server.close(() => resolve());
+          } catch (e) {
+            client.close();
+            server.close(() => reject(e));
+          }
+        });
+        req.end();
+      });
     });
-  });
+  },
+);
 
-  await new Promise<void>((resolve, reject) => {
-    server.listen(0, () => {
-      const { port } = server.address() as net.AddressInfo;
-      const client = http2.connect(`http://127.0.0.1:${port}`);
-      client.on("error", reject);
+Deno.test(
+  "[node/http2] respondWithFD async error after response start maps to stream reset",
+  {
+    // Windows invalid-fd handling differs from POSIX for this async fstat path.
+    ignore: Deno.build.os === "windows",
+    sanitizeResources: false,
+    sanitizeOps: false,
+  },
+  async () => {
+    const server = http2.createServer();
 
-      const req = client.request({ ":path": "/" });
-      req.on("response", () => {});
-      req.resume();
-      req.on("error", (err: NodeJS.ErrnoException) => {
-        try {
-          assertEquals(err.code, "ERR_HTTP2_STREAM_ERROR");
-          assert(String(err.message).includes("NGHTTP2_INTERNAL_ERROR"));
-          client.close();
-          server.close(() => resolve());
-        } catch (e) {
-          client.close();
-          server.close(() => reject(e));
+    server.on("stream", (stream) => {
+      stream.on("error", () => {
+        // Client-side assertion verifies this stream-reset path.
+        // Avoid treating expected server-side stream teardown as uncaught.
+      });
+      stream.respondWithFD(-1, {}, { statCheck: () => true });
+      // Force a committed response before fs.fstat() fails asynchronously.
+      process.nextTick(() => {
+        if (!stream.destroyed && !stream.closed && !stream.headersSent) {
+          stream.respond({ ":status": 200 });
+          stream.write("partial");
         }
       });
-      req.end();
     });
-  });
-});
+
+    await new Promise<void>((resolve, reject) => {
+      server.listen(0, () => {
+        const { port } = server.address() as net.AddressInfo;
+        const client = http2.connect(`http://127.0.0.1:${port}`);
+        client.on("error", reject);
+
+        const req = client.request({ ":path": "/" });
+        req.on("response", () => {});
+        req.resume();
+        req.on("error", (err: NodeJS.ErrnoException) => {
+          try {
+            assertEquals(err.code, "ERR_HTTP2_STREAM_ERROR");
+            assert(String(err.message).includes("NGHTTP2_INTERNAL_ERROR"));
+            client.close();
+            server.close(() => resolve());
+          } catch (e) {
+            client.close();
+            server.close(() => reject(e));
+          }
+        });
+        req.end();
+      });
+    });
+  },
+);
