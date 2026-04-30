@@ -34,10 +34,6 @@ use deno_node_crypto::x509::Certificate;
 use deno_node_crypto::x509::CertificateObject;
 use deno_permissions::PermissionCheckError;
 use deno_permissions::PermissionsContainer;
-use sys_traits::EnvVar;
-use sys_traits::FsRead;
-
-use crate::ExtNodeSys;
 use deno_tls::SocketUse;
 use deno_tls::TlsClientConfigOptions;
 use deno_tls::TlsKeys;
@@ -49,7 +45,11 @@ use rustls_tokio_stream::TlsStream;
 use rustls_tokio_stream::TlsStreamRead;
 use rustls_tokio_stream::TlsStreamWrite;
 use rustls_tokio_stream::UnderlyingStream;
+use sys_traits::EnvVar;
+use sys_traits::FsRead;
 use webpki_root_certs;
+
+use crate::ExtNodeSys;
 
 #[derive(Clone)]
 pub(crate) struct NodeTlsState {
