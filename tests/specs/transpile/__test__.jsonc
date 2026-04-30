@@ -41,7 +41,7 @@
         },
         {
           "args": "run --allow-read check_map.ts",
-          "output": "3\n"
+          "output": "3\nout.js\n"
         }
       ]
     },
@@ -109,6 +109,54 @@
     "tsx_file": {
       "args": "transpile component.tsx",
       "output": "tsx.out"
+    },
+    "mts_outdir": {
+      "steps": [
+        {
+          "args": "transpile helper.mts --outdir dist",
+          "output": "[WILDCARD]deno transpile is experimental and subject to changes\nEmit [WILDCARD]dist[WILDCARD]helper.mjs\n"
+        },
+        {
+          "args": "run dist/helper.mjs",
+          "output": ""
+        }
+      ]
+    },
+    "cts_outdir": {
+      "steps": [
+        {
+          "args": "transpile helper.cts --outdir dist",
+          "output": "[WILDCARD]deno transpile is experimental and subject to changes\nEmit [WILDCARD]dist[WILDCARD]helper.cjs\n"
+        },
+        {
+          "args": "run --allow-read check_cts_outdir.ts",
+          "output": "true\n"
+        }
+      ]
+    },
+    "cts_source_map_separate": {
+      "steps": [
+        {
+          "args": "transpile helper.cts -o out.cjs --source-map separate",
+          "output": "[WILDCARD]deno transpile is experimental and subject to changes\nEmit [WILDCARD]out.cjs\nEmit [WILDCARD]out.cjs.map\n"
+        },
+        {
+          "args": "run --allow-read check_cts_map.ts",
+          "output": "3\nout.cjs\n"
+        }
+      ]
+    },
+    "mts_source_map_separate": {
+      "steps": [
+        {
+          "args": "transpile helper.mts -o out.mjs --source-map separate",
+          "output": "[WILDCARD]deno transpile is experimental and subject to changes\nEmit [WILDCARD]out.mjs\nEmit [WILDCARD]out.mjs.map\n"
+        },
+        {
+          "args": "run --allow-read check_mts_map.ts",
+          "output": "3\nout.mjs\n"
+        }
+      ]
     }
   }
 }

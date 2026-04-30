@@ -131,15 +131,43 @@ pub async fn transpile(
       .transpile_options()?;
     let transpile_options = &transpile_and_emit_options.transpile;
 
+    // Compute the output path/filename so source_map_file references the
+    // generated file (e.g. "out.js"), not the input (e.g. "main.ts").
+    let maybe_output_path = if !is_stdout_mode {
+      Some(compute_output_path(
+        file_path,
+        cwd,
+        transpile_flags.output.as_deref(),
+        transpile_flags.output_dir.as_deref(),
+        *media_type,
+      )?)
+    } else {
+      None
+    };
+    let source_map_filename = if let Some(output_path) = &maybe_output_path {
+      output_path
+        .file_name()
+        .unwrap_or_default()
+        .to_string_lossy()
+        .into_owned()
+    } else {
+      // In stdout mode, use the input-derived JS filename
+      let ext = js_extension_for_media_type(*media_type);
+      file_path
+        .with_extension(ext)
+        .file_name()
+        .unwrap_or_default()
+        .to_string_lossy()
+        .into_owned()
+    };
+
+    // Always apply the CLI source map mode. The built-in emit defaults
+    // have inlineSourceMap: true (for the runtime), but `deno transpile`
+    // should produce clean output by default. Users must pass --source-map
+    // explicitly to enable source maps.
     let emit_options = EmitOptions {
       source_map: source_map_option,
-      source_map_file: Some(
-        file_path
-          .file_name()
-          .unwrap_or_default()
-          .to_string_lossy()
-          .into_owned(),
-      ),
+      source_map_file: Some(source_map_filename),
       ..transpile_and_emit_options.emit.clone()
     };
 
@@ -158,13 +186,7 @@ pub async fn transpile(
       // Single file, no output specified: print to stdout
       display::write_to_stdout_ignore_sigpipe(js_text.as_bytes())?;
     } else {
-      let output_path = compute_output_path(
-        file_path,
-        cwd,
-        transpile_flags.output.as_deref(),
-        transpile_flags.output_dir.as_deref(),
-        *media_type,
-      )?;
+      let output_path = maybe_output_path.unwrap();
 
       // Ensure parent directory exists
       if let Some(parent) = output_path.parent() {
@@ -184,7 +206,11 @@ pub async fn transpile(
       if let Some(sm) = source_map_text
         && matches!(transpile_flags.source_map, SourceMapMode::Separate)
       {
-        let map_path = output_path.with_extension("js.map");
+        let ext = output_path
+          .extension()
+          .unwrap_or_default()
+          .to_string_lossy();
+        let map_path = output_path.with_extension(format!("{ext}.map"));
         sys
           .fs_write(&map_path, sm.as_bytes())
           .with_context(|| format!("Failed to write {}", map_path.display()))?;
@@ -234,12 +260,29 @@ async fn emit_declarations(
     )
     .await?;
 
-  // Resolve compiler options, adding declaration-specific settings
+  // Resolve compiler options, adding declaration-specific settings.
+  // Since TSC type-checks all files in a single pass, all files must share
+  // the same compiler options scope. Error if they span different scopes.
   let compiler_options_resolver = factory.compiler_options_resolver()?;
   let first_specifier = &root_names[0].0;
-  let base_compiler_options = compiler_options_resolver
-    .for_specifier(first_specifier)
-    .compiler_options_for_lib(cli_options.ts_type_lib_window())?;
+  let (first_key, first_data) =
+    compiler_options_resolver.entry_for_specifier(first_specifier);
+  for (specifier, _) in root_names.iter().skip(1) {
+    let (key, _) = compiler_options_resolver.entry_for_specifier(specifier);
+    if key != first_key {
+      anyhow::bail!(
+        "Cannot generate declarations for files with different compiler option scopes.\n\
+         '{}' uses scope '{}' but '{}' uses scope '{}'.\n\
+         Separate these files into different invocations.",
+        first_specifier,
+        first_key,
+        specifier,
+        key,
+      );
+    }
+  }
+  let base_compiler_options =
+    first_data.compiler_options_for_lib(cli_options.ts_type_lib_window())?;
 
   // Merge declaration options into the base compiler options
   let mut config_value =
@@ -280,6 +323,8 @@ async fn emit_declarations(
       maybe_npm,
       maybe_tsbuildinfo: None,
       root_names,
+      // Declaration emit requires full type-checking regardless of
+      // the user's type_check_mode setting.
       check_mode: TypeCheckMode::All,
       initial_cwd: cwd.to_path_buf(),
       capture_emitted_files: true,
