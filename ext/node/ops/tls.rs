@@ -34,6 +34,10 @@ use deno_node_crypto::x509::Certificate;
 use deno_node_crypto::x509::CertificateObject;
 use deno_permissions::PermissionCheckError;
 use deno_permissions::PermissionsContainer;
+use sys_traits::EnvVar;
+use sys_traits::FsRead;
+
+use crate::ExtNodeSys;
 use deno_tls::SocketUse;
 use deno_tls::TlsClientConfigOptions;
 use deno_tls::TlsKeys;
@@ -92,15 +96,11 @@ pub fn op_get_root_certificates(
   Ok(get_bundled_root_certificates())
 }
 
-#[allow(
-  clippy::disallowed_methods,
-  reason = "NODE_EXTRA_CA_CERTS is read from env at runtime"
-)]
-fn parse_extra_ca_certs() -> Vec<String> {
-  let Ok(extra_ca_certs_file) = std::env::var("NODE_EXTRA_CA_CERTS") else {
+fn parse_extra_ca_certs(sys: &(impl EnvVar + FsRead)) -> Vec<String> {
+  let Ok(extra_ca_certs_file) = sys.env_var("NODE_EXTRA_CA_CERTS") else {
     return vec![];
   };
-  let Ok(contents) = std::fs::read_to_string(&extra_ca_certs_file) else {
+  let Ok(contents) = sys.fs_read_to_string(&extra_ca_certs_file) else {
     return vec![];
   };
   contents
@@ -129,7 +129,7 @@ pub enum CaCertificatesError {
 }
 
 #[op2]
-pub fn op_get_ca_certificates(
+pub fn op_get_ca_certificates<TSys: ExtNodeSys + 'static>(
   state: &mut OpState,
   #[string] cert_type: String,
 ) -> Result<Vec<String>, CaCertificatesError> {
@@ -137,6 +137,7 @@ pub fn op_get_ca_certificates(
     .borrow_mut::<PermissionsContainer>()
     .check_sys("ca", "node:tls.getCACertificates()")?;
 
+  let sys = state.borrow::<TSys>();
   match cert_type.as_str() {
     "bundled" => Ok(get_bundled_root_certificates()),
     "system" => {
@@ -149,10 +150,10 @@ pub fn op_get_ca_certificates(
           .collect(),
       )
     }
-    "extra" => Ok(parse_extra_ca_certs()),
+    "extra" => Ok(parse_extra_ca_certs(sys)),
     "default" => {
       let mut certs = get_bundled_root_certificates();
-      certs.extend(parse_extra_ca_certs());
+      certs.extend(parse_extra_ca_certs(sys));
       Ok(certs)
     }
     _ => Err(CaCertificatesError::InvalidType(cert_type)),
