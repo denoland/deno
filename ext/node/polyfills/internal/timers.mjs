@@ -107,6 +107,8 @@ export function Timeout(callback, after, args, isRepeat, isRefed) {
   }
   this._idleTimeout = after;
   this._idleStart = DateNow();
+  this._idlePrev = null;
+  this._idleNext = null;
   this._onTimeout = callback;
   this._timerArgs = args;
   this._repeat = isRepeat;
@@ -341,11 +343,14 @@ export const runImmediates = core.runImmediates;
 export class Immediate {
   constructor(unboundCallback, ...args) {
     const asyncContext = getAsyncContext();
+    // Match Node's `immediate._onImmediate(...argv)` invocation: the callback's
+    // `this` is the Immediate instance, not the global.
+    const self = this;
     const callback = (...argv) => {
       const oldContext = getAsyncContext();
       try {
         setAsyncContext(asyncContext);
-        return ReflectApply(unboundCallback, globalThis, argv);
+        return ReflectApply(unboundCallback, self, argv);
       } finally {
         setAsyncContext(oldContext);
       }

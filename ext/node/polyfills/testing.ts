@@ -374,20 +374,6 @@ test.only = function only(name, options, fn) {
   return test(name, options, fn, { only: true });
 };
 
-export function describe(name, options, fn) {
-  return suite(name, options, fn, {});
-}
-
-describe.skip = function skip(name, options, fn) {
-  return suite.skip(name, options, fn);
-};
-describe.todo = function todo(name, options, fn) {
-  return suite.todo(name, options, fn);
-};
-describe.only = function only(name, options, fn) {
-  return suite.only(name, options, fn);
-};
-
 export function suite(name, options, fn, overrides) {
   if (currentSuite) {
     return currentSuite.addSuite(name, options, fn, overrides);
@@ -405,21 +391,10 @@ suite.only = function only(name, options, fn) {
   return suite(name, options, fn, { only: true });
 };
 
-export function it(name, options, fn) {
-  return test(name, options, fn, {});
-}
-
-it.skip = function skip(name, options, fn) {
-  return test.skip(name, options, fn);
-};
-
-it.todo = function todo(name, options, fn) {
-  return test.todo(name, options, fn);
-};
-
-it.only = function only(name, options, fn) {
-  return test.only(name, options, fn);
-};
+// Match Node: `it` is just an alias for `test`, and `describe` for `suite`.
+// See https://github.com/nodejs/node/blob/main/lib/test.js
+export const it = test;
+export const describe = suite;
 
 export function before() {
   notImplemented("test.before");
@@ -437,8 +412,8 @@ export function afterEach() {
   notImplemented("test.afterEach");
 }
 
-test.it = it;
-test.describe = describe;
+test.it = test;
+test.describe = suite;
 test.suite = suite;
 
 // Store all active mocks for restoreAll()
