@@ -874,6 +874,10 @@ impl DepManager {
     &self.deps[id.0]
   }
 
+  pub fn deps_with_ids(&self) -> impl Iterator<Item = (DepId, &Dep)> {
+    self.deps.iter().enumerate().map(|(i, dep)| (DepId(i), dep))
+  }
+
   pub fn update_dep(&mut self, dep_id: DepId, new_version_req: VersionReq) {
     self
       .pending_changes
