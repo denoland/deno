@@ -2,7 +2,7 @@
 
 /// <reference path="../../core/internal.d.ts" />
 
-import { core, primordials } from "ext:core/mod.js";
+import { core, internals, primordials } from "ext:core/mod.js";
 const {
   isAnyArrayBuffer,
   isArrayBuffer,
@@ -73,10 +73,10 @@ import {
 } from "ext:deno_fetch/20_headers.js";
 import { HttpClientPrototype } from "ext:deno_fetch/22_http_client.js";
 
-const kNodeUndiciDispatcherOptions = Symbol.for(
+const kNodeUndiciDispatcherOptions = SymbolFor(
   "Deno.internal.node.undici.dispatcherOptions",
 );
-const kNodeUndiciGlobalDispatcher = Symbol.for(
+const kNodeUndiciGlobalDispatcher = SymbolFor(
   "Deno.internal.node.undici.globalDispatcher",
 );
 
@@ -254,9 +254,9 @@ class WebSocket extends EventTarget {
       let dispatcher = initOrProtocols.dispatcher;
       if (
         dispatcher === undefined &&
-        globalThis[kNodeUndiciGlobalDispatcher] !== undefined
+        internals[kNodeUndiciGlobalDispatcher] !== undefined
       ) {
-        dispatcher = globalThis[kNodeUndiciGlobalDispatcher];
+        dispatcher = internals[kNodeUndiciGlobalDispatcher];
       }
 
       if (clientRid === null && dispatcher !== undefined) {

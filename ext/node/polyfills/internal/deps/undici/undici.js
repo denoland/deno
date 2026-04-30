@@ -1,22 +1,34 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-const kDispatcherOptions = Symbol.for(
+import { core, internals, primordials } from "ext:core/mod.js";
+import { TextDecoder } from "ext:deno_web/08_text_encoding.js";
+import { isArrayBufferView } from "ext:deno_node/internal/util/types.ts";
+
+const {
+  ArrayIsArray,
+  SymbolFor,
+  TypeError,
+  Uint8Array,
+} = primordials;
+const { isAnyArrayBuffer } = core;
+
+const kDispatcherOptions = SymbolFor(
   "Deno.internal.node.undici.dispatcherOptions",
 );
-const kGlobalDispatcher = Symbol.for(
+const kGlobalDispatcher = SymbolFor(
   "Deno.internal.node.undici.globalDispatcher",
 );
 
 function normalizeCaCerts(ca) {
-  const certs = Array.isArray(ca) ? ca : [ca];
+  const certs = ArrayIsArray(ca) ? ca : [ca];
   return certs.map((cert) => {
     if (typeof cert === "string") {
       return cert;
     }
-    if (ArrayBuffer.isView(cert)) {
+    if (isArrayBufferView(cert)) {
       return new TextDecoder().decode(cert);
     }
-    if (cert instanceof ArrayBuffer) {
+    if (isAnyArrayBuffer(cert)) {
       return new TextDecoder().decode(new Uint8Array(cert));
     }
     throw new TypeError(
@@ -43,11 +55,11 @@ class Agent {
 }
 
 function getGlobalDispatcher() {
-  return globalThis[kGlobalDispatcher];
+  return internals[kGlobalDispatcher];
 }
 
 function setGlobalDispatcher(dispatcher) {
-  globalThis[kGlobalDispatcher] = dispatcher;
+  internals[kGlobalDispatcher] = dispatcher;
 }
 
 const EnvHttpProxyAgent = Agent;
