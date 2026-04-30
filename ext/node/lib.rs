@@ -278,6 +278,11 @@ deno_core::extension!(deno_node,
     ops::zlib::op_zlib_crc32_string,
     ops::handle_wrap::op_node_new_async_id,
     ops::http2::op_http2_callbacks,
+    // Keep the HTTP/2 error-string op wired so `internal/test/binding`
+    // can mirror Node's `internalBinding('http2').nghttp2ErrorString()`
+    // and lazily resolve the internal/core constructors via the CJS loader
+    // after process bootstrap in node_compat tests. The JS side also routes
+    // pushStream() through Http2Stream.prototype.pushPromise for test shims.
     ops::http2::op_http2_error_string,
     ops::http2::op_http2_http_state,
     ops::os::op_node_os_get_priority,

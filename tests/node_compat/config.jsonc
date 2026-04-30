@@ -1821,6 +1821,7 @@
     "parallel/test-http2-server-close-idle-connection.js": {},
     "parallel/test-http2-server-errors.js": {},
     "parallel/test-http2-server-http1-client.js": {},
+    "parallel/test-http2-server-push-stream-errors.js": {},
     "parallel/test-http2-server-rfc-9113-server.js": {},
     "parallel/test-http2-server-rst-before-respond.js": {},
     "parallel/test-http2-sensitive-headers.js": {},

@@ -1815,6 +1815,10 @@ class Http2Stream extends Duplex {
     );
   }
 
+  pushPromise(headers, headersCount, streamOptions) {
+    return this[kHandle].pushPromise(headers, headersCount, streamOptions);
+  }
+
   [kAfterAsyncWrite]({ bytes }) {
     this[kState].writeQueueSize -= bytes;
 
@@ -2591,7 +2595,7 @@ class ServerHttp2Stream extends Http2Stream {
 
     const streamOptions = options.endStream ? STREAM_OPTION_EMPTY_PAYLOAD : 0;
 
-    const ret = this[kHandle].pushPromise(
+    const ret = this.pushPromise(
       headersList[0],
       headersList[1],
       streamOptions,

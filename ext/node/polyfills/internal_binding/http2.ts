@@ -3,6 +3,11 @@
 import { Http2Session, op_http2_error_string } from "ext:core/ops";
 import * as constants from "ext:deno_node/internal/http2/constants.ts";
 
+function getNativeHttp2Module() {
+  // deno-lint-ignore no-process-global
+  return process.mainModule.require("internal/http2/core");
+}
+
 class Http2Stream {
   respond(
     this: {
@@ -51,7 +56,17 @@ export { constants, Http2Session, Http2Stream, nghttp2ErrorString };
 
 export default {
   constants,
-  Http2Session,
-  Http2Stream,
+  get ClientHttp2Session() {
+    return getNativeHttp2Module().ClientHttp2Session;
+  },
+  get Http2Session() {
+    return getNativeHttp2Module().Http2Session;
+  },
+  get Http2Stream() {
+    return getNativeHttp2Module().Http2Stream;
+  },
   nghttp2ErrorString,
+  get ServerHttp2Session() {
+    return getNativeHttp2Module().ServerHttp2Session;
+  },
 };
