@@ -5,12 +5,16 @@ import * as constants from "ext:deno_node/internal/http2/constants.ts";
 
 class Http2Session {
   request(headers, count, options, parent, weight, exclusive) {
+    // Tests replace this prototype method; otherwise `this` is the native
+    // handle, so dispatch falls through to the handle's own `request` op.
     return this.request(headers, count, options, parent, weight, exclusive);
   }
 }
 
 class Http2Stream {
   info(headers, count) {
+    // Tests replace this prototype method; otherwise `this` is the native
+    // handle, so dispatch falls through to the handle's own `info` op.
     return this.info(headers, count);
   }
 }
