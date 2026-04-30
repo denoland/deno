@@ -2191,6 +2191,15 @@ impl JsRuntime {
     // Pre-phase: Inspector + drain foreground tasks + microtask checkpoint
     if has_inspector {
       self.inspector().poll_sessions_from_event_loop(cx);
+      // Under Explicit microtask policy, V8 inspector REPL-mode evaluation
+      // (Runtime.evaluate with replMode: true) wraps the expression in an
+      // async function, producing a promise that the inspector tracks via
+      // a weak handle. Without an immediate microtask drain, GC can collect
+      // the weakly-held promise before its resolution microtask runs,
+      // surfacing as "Promise was collected" CDP errors. Mirror the
+      // workaround in cli/tools/repl/session.rs.
+      v8::tc_scope!(let tc_scope, scope);
+      tc_scope.perform_microtask_checkpoint();
     }
     {
       // Drain and run foreground tasks queued by the custom V8 platform.
