@@ -61,6 +61,7 @@ pub fn get_extensions_in_snapshot() -> Vec<Extension> {
     ops::tty::deno_tty::init(),
     ops::http::deno_http_runtime::init(),
     deno_bundle_runtime::deno_bundle_runtime::init(None),
+    ops::desktop::deno_desktop::init(),
     ops::bootstrap::deno_bootstrap::init(None, false),
     runtime::init(),
     ops::web_worker::deno_web_worker::init(),

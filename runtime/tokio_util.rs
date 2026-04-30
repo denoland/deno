@@ -38,6 +38,14 @@ pub fn create_basic_runtime() -> tokio::runtime::Runtime {
       "DENO_TOKIO_MAX_IO_EVENTS_PER_TICK",
       max_io_events_per_tick,
     ))
+    // In debug builds, blocking tasks (like swc parsing/emitting via
+    // spawn_blocking) can overflow the default 2MB thread stack due to
+    // unoptimized stack frames. Use 8MB to match the main thread size.
+    .thread_stack_size(if cfg!(debug_assertions) {
+      8 * 1024 * 1024
+    } else {
+      2 * 1024 * 1024
+    })
     // This limits the number of threads for blocking operations (like for
     // synchronous fs ops) or CPU bound tasks like when we run dprint in
     // parallel for deno fmt.

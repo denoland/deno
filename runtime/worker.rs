@@ -1105,6 +1105,7 @@ fn common_extensions<
     ops::tty::deno_tty::init(),
     ops::http::deno_http_runtime::init(),
     deno_bundle_runtime::deno_bundle_runtime::lazy_init(),
+    ops::desktop::deno_desktop::init(),
     ops::bootstrap::deno_bootstrap::init(
       has_snapshot.then(Default::default),
       unconfigured_runtime,

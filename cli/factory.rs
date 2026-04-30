@@ -624,6 +624,7 @@ impl CliFactory {
             | DenoSubcommand::Clean { .. }
             | DenoSubcommand::Compile { .. }
             | DenoSubcommand::Completions { .. }
+            | DenoSubcommand::Desktop { .. }
             | DenoSubcommand::Coverage { .. }
             | DenoSubcommand::Deploy { .. }
             | DenoSubcommand::Doc { .. }
@@ -1007,6 +1008,7 @@ impl CliFactory {
 
   pub async fn create_compile_binary_writer(
     &self,
+    is_desktop: bool,
   ) -> Result<DenoCompileBinaryWriter<'_>, AnyError> {
     let cli_options = self.cli_options()?;
     Ok(DenoCompileBinaryWriter::new(
@@ -1020,6 +1022,7 @@ impl CliFactory {
       self.npm_resolver().await?,
       self.workspace_resolver().await?.as_ref(),
       cli_options.npm_system_info(),
+      is_desktop,
     ))
   }
 
@@ -1224,6 +1227,7 @@ impl CliFactory {
       no_legacy_abort: cli_options.no_legacy_abort(),
       startup_snapshot: deno_snapshots::CLI_SNAPSHOT,
       enable_raw_imports: cli_options.unstable_raw_imports(),
+      close_on_idle: true,
       maybe_initial_cwd: Some(deno_path_util::url_from_directory_path(
         cli_options.initial_cwd(),
       )?),

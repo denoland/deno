@@ -1,0 +1,37 @@
+# Copyright 2018-2026 the Deno authors. MIT license.
+
+[package]
+name = "denort_desktop"
+version = "2.7.4"
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+repository.workspace = true
+description = "Provides libdenort shared library for WEF desktop apps"
+
+[lib]
+name = "denort"
+path = "lib.rs"
+crate-type = ["cdylib"]
+
+[build-dependencies]
+deno_runtime = { workspace = true, features = ["include_js_files_for_snapshotting", "only_snapshotted_js_sources"] }
+deno_core = { workspace = true, features = ["include_js_files_for_snapshotting"] }
+
+[dependencies]
+deno_core = { workspace = true, features = ["include_js_files_for_snapshotting"] }
+deno_error.workspace = true
+deno_lib.workspace = true
+deno_runtime = { workspace = true, features = ["include_js_files_for_snapshotting"] }
+deno_snapshots.workspace = true
+deno_terminal.workspace = true
+denort = { path = "../rt" }
+libsui.workspace = true
+just-wef = "0.1.0"
+
+log = { workspace = true, features = ["serde"] }
+raw-window-handle.workspace = true
+rustls.workspace = true
+serde_json.workspace = true
+tokio.workspace = true

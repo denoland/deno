@@ -14,6 +14,7 @@ fn compress_decls(out_dir: &Path) {
     "lib.deno.window.d.ts",
     "lib.deno.worker.d.ts",
     "lib.deno.shared_globals.d.ts",
+    "lib.deno.desktop.d.ts",
     "lib.deno.unstable.d.ts",
     "lib.deno_console.d.ts",
     "lib.deno_url.d.ts",
@@ -258,6 +259,40 @@ fn compress_sources(out_dir: &Path) {
   }
 }
 
+/// Read the pinned `wef` capi crate version from the workspace Cargo.lock and
+/// expose it as the `WEF_VERSION` rustc env var. Desktop backend downloads are
+/// resolved against `github.com/denoland/wef/releases/tag/v{WEF_VERSION}`, so
+/// tying this to Cargo.lock keeps a single source of truth.
+fn emit_wef_version() {
+  let manifest_dir = env::var("CARGO_MANIFEST_DIR").unwrap();
+  let lock_path = Path::new(&manifest_dir).join("../Cargo.lock");
+  println!("cargo:rerun-if-changed={}", lock_path.display());
+
+  let lock = match std::fs::read_to_string(&lock_path) {
+    Ok(s) => s,
+    Err(_) => return,
+  };
+
+  let mut in_wef = false;
+  for line in lock.lines() {
+    if line == "name = \"just-wef\"" {
+      in_wef = true;
+      continue;
+    }
+    if in_wef {
+      if let Some(rest) = line.strip_prefix("version = \"")
+        && let Some(version) = rest.strip_suffix('"')
+      {
+        println!("cargo:rustc-env=WEF_VERSION={}", version);
+        return;
+      }
+      if line.starts_with("[[package]]") {
+        break;
+      }
+    }
+  }
+}
+
 fn main() {
   // Skip building from docs.rs.
   if env::var_os("DOCS_RS").is_some() {
@@ -294,6 +329,8 @@ fn main() {
 
   println!("cargo:rustc-env=TARGET={}", env::var("TARGET").unwrap());
   println!("cargo:rustc-env=PROFILE={}", env::var("PROFILE").unwrap());
+
+  emit_wef_version();
 
   #[cfg(target_os = "windows")]
   {

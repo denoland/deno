@@ -183,6 +183,9 @@ async fn run_subcommand(
     DenoSubcommand::Compile(compile_flags) => spawn_subcommand(async {
       tools::compile::compile(flags, compile_flags).await
     }),
+    DenoSubcommand::Desktop(desktop_flags) => spawn_subcommand(async {
+      tools::desktop::desktop(flags, desktop_flags).await
+    }),
     DenoSubcommand::Coverage(coverage_flags) => spawn_subcommand(async move {
       let reporter =
         crate::tools::coverage::reporter::create(coverage_flags.r#type.clone());

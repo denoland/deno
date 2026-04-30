@@ -6,7 +6,7 @@
 
 /// <reference path="../../core/internal.d.ts" />
 
-import { core, primordials } from "ext:core/mod.js";
+import { core, internals, primordials } from "ext:core/mod.js";
 const {
   isArrayBuffer,
   isDataView,
@@ -1444,6 +1444,8 @@ function setlikeObjectWrap(objPrototype, readonly) {
     });
   }
 }
+
+internals.webidlBrand = brand;
 
 export {
   assertBranded,

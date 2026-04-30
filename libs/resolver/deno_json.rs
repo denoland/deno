@@ -329,6 +329,8 @@ pub fn get_base_compiler_options_for_emit(
         (TsTypeLib::DenoWindow, CompilerOptionsSourceKind::TsConfig) => vec!["deno.window", "deno.unstable", "dom", "node"],
         (TsTypeLib::DenoWorker, CompilerOptionsSourceKind::DenoJson) => vec!["deno.worker", "deno.unstable", "node"],
         (TsTypeLib::DenoWorker, CompilerOptionsSourceKind::TsConfig) => vec!["deno.worker", "deno.unstable", "dom", "node"],
+        (TsTypeLib::DenoDesktop, CompilerOptionsSourceKind::DenoJson) => vec!["deno.desktop", "deno.unstable", "node"],
+        (TsTypeLib::DenoDesktop, CompilerOptionsSourceKind::TsConfig) => vec!["deno.desktop", "deno.unstable", "dom", "node"],
       },
       "module": "NodeNext",
       "moduleDetection": "force",
@@ -490,6 +492,8 @@ struct MemoizedValues {
     OnceCell<Result<CompilerOptionsRc, CompilerOptionsParseError>>,
   deno_worker_check_compiler_options:
     OnceCell<Result<CompilerOptionsRc, CompilerOptionsParseError>>,
+  deno_desktop_check_compiler_options:
+    OnceCell<Result<CompilerOptionsRc, CompilerOptionsParseError>>,
   emit_compiler_options:
     OnceCell<Result<CompilerOptionsRc, CompilerOptionsParseError>>,
   #[cfg(feature = "deno_ast")]
@@ -579,6 +583,9 @@ impl CompilerOptionsData {
       CompilerOptionsType::Check {
         lib: TsTypeLib::DenoWorker,
       } => &self.memoized.deno_worker_check_compiler_options,
+      CompilerOptionsType::Check {
+        lib: TsTypeLib::DenoDesktop,
+      } => &self.memoized.deno_desktop_check_compiler_options,
       CompilerOptionsType::Emit => &self.memoized.emit_compiler_options,
     };
     let result = cell.get_or_init(|| {

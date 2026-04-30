@@ -49,6 +49,7 @@ use crate::deno_json::ConfigFileError;
 use crate::deno_json::ConfigFileRc;
 use crate::deno_json::ConfigFileReadError;
 use crate::deno_json::DeployConfig;
+use crate::deno_json::DesktopConfig;
 use crate::deno_json::FmtConfig;
 use crate::deno_json::FmtOptionsConfig;
 use crate::deno_json::LinkConfigParseError;
@@ -1589,6 +1590,7 @@ pub enum TsTypeLib {
   #[default]
   DenoWindow,
   DenoWorker,
+  DenoDesktop,
 }
 
 #[derive(Debug, Clone)]
@@ -1602,6 +1604,7 @@ struct CachedDirectoryValues {
   permissions: OnceLock<PermissionsConfig>,
   bench: OnceLock<BenchConfig>,
   compile: OnceLock<CompileConfig>,
+  desktop: OnceLock<DesktopConfig>,
   test: OnceLock<TestConfig>,
 }
 
@@ -2194,6 +2197,41 @@ impl WorkspaceDirectory {
         (Some(r), _) => Some(r),
         (None, None) => None,
       },
+    })
+  }
+
+  pub fn to_desktop_config(
+    &self,
+  ) -> Result<&DesktopConfig, ToInvalidConfigError> {
+    if let Some(config) = &self.cached.desktop.get() {
+      Ok(config)
+    } else {
+      let config = self.to_desktop_config_no_cache()?;
+      _ = self.cached.desktop.set(config);
+      Ok(self.cached.desktop.get().unwrap())
+    }
+  }
+
+  fn to_desktop_config_no_cache(
+    &self,
+  ) -> Result<DesktopConfig, ToInvalidConfigError> {
+    let member_config = match &self.deno_json.member {
+      Some(member) => member.to_desktop_config()?,
+      None => Default::default(),
+    };
+    let root_config = match &self.deno_json.root {
+      Some(root) => root.to_desktop_config()?,
+      None => Default::default(),
+    };
+    // Member config takes precedence over root for each field.
+    Ok(DesktopConfig {
+      app: member_config.app.or(root_config.app),
+      backend: member_config.backend.or(root_config.backend),
+      output: member_config.output.or(root_config.output),
+      release: member_config.release.or(root_config.release),
+      error_reporting: member_config
+        .error_reporting
+        .or(root_config.error_reporting),
     })
   }
 

@@ -6,6 +6,7 @@ members = [
   "cli",
   "cli/lib",
   "cli/rt",
+  "cli/rt_desktop",
   "cli/snapshot",
   "ext/bundle",
   "ext/cache",
@@ -181,6 +182,7 @@ async-stream = "0.3"
 async-trait = "0.1.73"
 aws-lc-rs = { version = "1.16.1" }
 aws-lc-sys = { version = "0.39.0", features = ["prebuilt-nasm"] }
+backhand = { version = "0.25.1", default-features = false, features = ["xz"] }
 base32 = "=0.5.1"
 base64 = "0.22.1"
 base64-simd = "0.8"
@@ -274,6 +276,7 @@ proc-macro2 = "1.0"
 proptest = "1"
 prost = "0.13"
 prost-build = "0.13"
+qbsdiff = "1.4"
 quick-junit = "0.3.5"
 quinn = { version = "0.11.8", default-features = false }
 rand = "=0.8.5"
@@ -367,7 +370,7 @@ dprint-plugin-typescript = "=0.95.15"
 env_logger = "=0.11.6"
 fancy-regex = "=0.14.0"
 imara-diff = "=0.2.0"
-libsui = "0.12.6"
+libsui = { path = "../sui" }
 malva = "=0.15.2"
 markup_fmt = "=0.27.0"
 open = "5.0.1"

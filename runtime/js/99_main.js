@@ -584,6 +584,21 @@ const NOT_IMPORTED_OPS = [
   "op_set_exit_code",
   "op_napi_open",
 
+  // Related to `Deno.desktop` API (deno compile --desktop)
+  "BrowserWindow",
+  "Dock",
+  "Tray",
+  "op_desktop_apply_patch",
+  "op_desktop_confirm_update",
+  "op_desktop_init",
+  "op_desktop_recv_event",
+  "op_desktop_resolve_bind_call",
+  "op_desktop_reject_bind_call",
+  "op_desktop_alert",
+  "op_desktop_confirm",
+  "op_desktop_prompt",
+  "op_desktop_send_error_report",
+
   // deno deploy subcommand
   "op_deploy_token_get",
   "op_deploy_token_set",

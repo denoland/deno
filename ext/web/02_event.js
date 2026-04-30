@@ -5,7 +5,7 @@
 // parts still exists.  This means you will observe a lot of strange structures
 // and impossible logic branches based on what Deno currently supports.
 
-import { core, primordials } from "ext:core/mod.js";
+import { core, internals, primordials } from "ext:core/mod.js";
 const {
   ArrayPrototypeIncludes,
   ArrayPrototypeIndexOf,
@@ -1566,6 +1566,9 @@ function reportError(error) {
   webidl.requiredArguments(arguments.length, 1, prefix);
   reportException(error);
 }
+
+internals.defineEventHandler = defineEventHandler;
+internals.setEventTargetData = setEventTargetData;
 
 export {
   CloseEvent,

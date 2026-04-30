@@ -94,6 +94,7 @@ node_shim.workspace = true
 anstream.workspace = true
 async-trait.workspace = true
 aws-lc-rs.workspace = true
+backhand.workspace = true
 base64.workspace = true
 bincode.workspace = true
 boxed_error.workspace = true
@@ -120,12 +121,15 @@ dprint-plugin-typescript.workspace = true
 esbuild_client = { version = "0.7.1", features = ["serde"] }
 fancy-regex.workspace = true
 faster-hex.workspace = true
+fastwebsockets.workspace = true
 # If you disable the default __vendored_zlib_ng feature above, you _must_ be able to link against `-lz`.
 flate2.workspace = true
 fluent-uri.workspace = true
 http.workspace = true
 http-body.workspace = true
 http-body-util.workspace = true
+hyper.workspace = true
+hyper-util.workspace = true
 imara-diff.workspace = true
 import_map.workspace = true
 indexmap.workspace = true
