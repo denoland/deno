@@ -1820,6 +1820,12 @@
     "parallel/test-http2-util-assert-valid-pseudoheader.js": {},
     "parallel/test-http2-util-asserts.js": {},
     "parallel/test-http2-util-headers-list.js": {},
+    "parallel/test-http2-util-update-options-buffer.js": {
+      "darwin": false,
+      "linux": false,
+      "windows": false,
+      "reason": "Test pokes the internal http2 state buffers via internalBinding('http2').optionsBuffer; Deno's http2 binding intentionally does not expose these typed-array views over thread-local Rust state to JS"
+    },
     "parallel/test-http2-window-size.js": {},
     "parallel/test-http2-unbound-socket-proxy.js": {},
     "parallel/test-http2-write-callbacks.js": {},
