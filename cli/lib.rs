@@ -470,6 +470,9 @@ async fn run_subcommand(
       "This deno was built without the \"upgrade\" feature. Please upgrade using the installation method originally used to install Deno.",
       1,
     ),
+    DenoSubcommand::Why(why_flags) => spawn_subcommand(async {
+      tools::pm::why(Arc::new(flags), why_flags).await
+    }),
     DenoSubcommand::BumpVersion(version_flags) => spawn_subcommand(async {
       log::warn!(
         "{}",

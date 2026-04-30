@@ -189,6 +189,7 @@ const {
   TypedArrayPrototypeSet,
   TypedArrayPrototypeSubarray,
   Uint8Array,
+  queueMicrotask,
 } = primordials;
 
 const {
@@ -1271,7 +1272,12 @@ function close(
     callback = makeCallback(callback);
   }
 
-  setTimeout(() => {
+  // Defer to a microtask rather than a JS `setTimeout(0)`. Both make the
+  // callback asynchronous, but a real timer trips Deno's test sanitizer as a
+  // leaked timeout when a test ends before the timer fires. Node.js' libuv
+  // libc-backed `close` is invisible to userland timer queues; a microtask
+  // matches that more closely.
+  queueMicrotask(() => {
     let error = null;
     try {
       op_node_fs_close(fd);
@@ -1281,7 +1287,7 @@ function close(
         : new Error("[non-error thrown]");
     }
     callback(error);
-  }, 0);
+  });
 }
 
 function closeSync(fd: number) {

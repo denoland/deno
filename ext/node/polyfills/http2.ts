@@ -88,7 +88,7 @@ export { addAbortListener } from "ext:deno_node/internal/events/abort_listener.m
 import fs from "node:fs";
 import { FileHandle as FsFileHandle } from "ext:deno_node/internal/fs/handle.ts";
 import { JSStreamSocket } from "ext:deno_node/internal/js_stream_socket.js";
-import { format } from "node:util";
+import { format, inspect } from "node:util";
 import {
   isUint32,
   validateAbortSignal,
@@ -544,6 +544,44 @@ function sessionListenerRemoved(name) {
       this[kNativeFields][kSessionFrameErrorListenerCount]--;
       break;
   }
+}
+
+let nextSessionTimeoutTimersListId = -1;
+
+class TimersList {
+  _idleNext;
+  _idlePrev;
+  expiry;
+  id;
+  msecs;
+  priorityQueuePosition;
+
+  constructor(timeout) {
+    this._idleNext = timeout;
+    this._idlePrev = timeout;
+    this.expiry = timeout._idleStart + timeout._idleTimeout;
+    this.id = nextSessionTimeoutTimersListId--;
+    this.msecs = timeout._idleTimeout;
+    this.priorityQueuePosition = 1;
+  }
+
+  [kInspect](_, options) {
+    return inspect(this, {
+      ...options,
+      depth: 0,
+      customInspect: false,
+    });
+  }
+}
+
+function syncSessionTimeoutInspectLinks(timeout) {
+  const list = timeout._idlePrev instanceof TimersList
+    ? timeout._idlePrev
+    : new TimersList(timeout);
+  list.expiry = timeout._idleStart + timeout._idleTimeout;
+  list.msecs = timeout._idleTimeout;
+  timeout._idlePrev = list;
+  timeout._idleNext = list;
 }
 
 const proxySocketHandler = {
@@ -1333,6 +1371,10 @@ function trackWriteState(stream, bytes) {
 function streamOnResume() {
   if (!this.destroyed) {
     this[kHandle].readStart();
+    // readStart() may have flushed deferred consume_stream calls, queueing
+    // WINDOW_UPDATE frames inside nghttp2. Flush the session's send queue
+    // so the peer actually receives them and resumes sending data.
+    scheduleSendPending(this[kSession]);
   }
 }
 
@@ -3475,7 +3517,10 @@ class Http2Session extends EventEmitter {
     if (this.destroyed) {
       return;
     }
-    if (this[kTimeout]) this[kTimeout].refresh();
+    if (this[kTimeout]) {
+      this[kTimeout].refresh();
+      syncSessionTimeoutInspectLinks(this[kTimeout]);
+    }
   }
 
   // Sets the id of the next stream to be created by this Http2Session.
@@ -3822,7 +3867,16 @@ const setTimeoutValue = {
   value: setStreamTimeout,
 };
 ObjectDefineProperty(Http2Stream.prototype, "setTimeout", setTimeoutValue);
-ObjectDefineProperty(Http2Session.prototype, "setTimeout", setTimeoutValue);
+ObjectDefineProperty(Http2Session.prototype, "setTimeout", {
+  ...setTimeoutValue,
+  value: function setSessionTimeout(msecs, callback) {
+    const result = setStreamTimeout.call(this, msecs, callback);
+    if (this[kTimeout]) {
+      syncSessionTimeoutInspectLinks(this[kTimeout]);
+    }
+    return result;
+  },
+});
 
 // ServerHttp2Session instances should never have to wait for the socket
 // to connect as they are always created after the socket has already been
