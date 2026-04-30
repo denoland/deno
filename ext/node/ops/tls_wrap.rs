@@ -979,8 +979,20 @@ impl TLSWrapInner {
       if (*ptr).acceptor.is_some() {
         let got_hello = (*ptr).process_acceptor();
         (*ptr).cycling = false;
-        if got_hello && let Some(ctx) = extract_emit_ctx(ptr) {
-          do_emit_client_hello(&ctx);
+        if got_hello {
+          if let Some(ctx) = extract_emit_ctx(ptr) {
+            do_emit_client_hello(&ctx);
+          }
+        } else if let Some(error) = (*ptr).error.take() {
+          // Acceptor failed (e.g. malformed ClientHello). Surface the
+          // error to JS so the socket doesn't silently hang.
+          if let Some(ctx) = extract_emit_ctx(ptr) {
+            do_emit_error(
+              &ctx,
+              &error,
+              "ERR_SSL_SSLV3_ALERT_HANDSHAKE_FAILURE",
+            );
+          }
         }
         return;
       }
@@ -1042,9 +1054,9 @@ impl TLSWrapInner {
         // Need more data; acceptor retains its state internally.
         false
       }
-      Err((_err, _alert)) => {
+      Err((err, _alert)) => {
         self.acceptor = None;
-        self.error = Some("TLS accept error".to_string());
+        self.error = Some(format!("TLS accept error: {err}"));
         false
       }
     }
@@ -2520,6 +2532,9 @@ impl TLSWrap {
   #[serde]
   fn get_client_hello_alpn(&self) -> Vec<String> {
     let inner = unsafe { &*self.inner.as_mut_ptr() };
+    // ALPN protocol identifiers are opaque byte sequences per RFC 7301,
+    // but all IANA-registered identifiers are ASCII. Non-UTF8 entries
+    // are intentionally dropped since JS can't represent them as strings.
     inner
       .client_hello_alpn
       .iter()

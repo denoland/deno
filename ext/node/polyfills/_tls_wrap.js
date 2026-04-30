@@ -501,6 +501,10 @@ TLSSocket.prototype._init = function (socket, wrap) {
           const context = ctx
             ? (ctx.context || ctx)
             : owner._tlsOptions.secureContext?.context;
+          if (!context) {
+            owner.destroy(new Error("No SecureContext available"));
+            return;
+          }
           handle.finishAccept(
             context,
             selectedAlpn != null ? String(selectedAlpn) : null,
@@ -520,9 +524,7 @@ TLSSocket.prototype._init = function (socket, wrap) {
             }
             selectedAlpn = String(selectedAlpn);
             if (!protocols.includes(selectedAlpn)) {
-              owner._emitTLSError(
-                new ERR_TLS_ALPN_CALLBACK_INVALID_RESULT(),
-              );
+              owner.destroy(new ERR_TLS_ALPN_CALLBACK_INVALID_RESULT());
               return;
             }
           }
