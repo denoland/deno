@@ -2254,23 +2254,25 @@ export function _createServerHandle(
     debug("bind to", address || "any");
 
     if (!address) {
-      // TODO(@bartlomieju): differs from Node which tries to bind to IPv6 first when no
-      // address is provided.
+      // Match Node's behavior: when no address is provided, prefer the
+      // IPv6 wildcard (which accepts IPv4 connections via dual-stack) and
+      // fall back to IPv4 if the IPv6 bind fails.
       //
-      // Forcing IPv4 as a workaround for Deno not aligning with Node on
-      // implicit binding on Windows.
+      // Windows is kept on the IPv4-only path because the dual-stack
+      // socket option doesn't reliably accept IPv4 connections there in
+      // our environment (verified via CI: server listening on `::` rejects
+      // `127.0.0.1` clients with ECONNREFUSED).
       //
       // REF: https://github.com/denoland/deno/issues/10762
+      if (isWindows) {
+        return _createServerHandle(DEFAULT_IPV4_ADDR, port, 4, null, flags);
+      }
 
-      // Try binding to ipv6 first
-      // err = (handle as TCP).bind6(DEFAULT_IPV6_ADDR, port ?? 0, flags ?? 0);
-
-      // if (err) {
-      //   handle.close();
-
-      // Fallback to ipv4
-      return _createServerHandle(DEFAULT_IPV4_ADDR, port, 4, null, flags);
-      // }
+      err = (handle as TCP).bind6(DEFAULT_IPV6_ADDR, port ?? 0, flags ?? 0);
+      if (err) {
+        handle.close();
+        return _createServerHandle(DEFAULT_IPV4_ADDR, port, 4, null, flags);
+      }
     } else if (addressType === 6) {
       err = (handle as TCP).bind6(address, port ?? 0, flags ?? 0);
     } else if (isTCP) {
@@ -2367,25 +2369,29 @@ function _setupListenHandle(
 
     let rval = null;
 
-    // Try to bind to the unspecified IPv6 address, see if IPv6 is available
+    // Try to bind to the unspecified IPv6 address, see if IPv6 is available.
+    // A wildcard IPv6 socket also accepts IPv4 traffic via dual-stack,
+    // matching Node's default. Windows is kept on the IPv4-only path because
+    // the dual-stack socket option doesn't reliably accept IPv4 connections
+    // there in our environment.
+    //
+    // REF: https://github.com/denoland/deno/issues/10762
     if (!address && typeof fd !== "number") {
-      // TODO(@bartlomieju): differs from Node which tries to bind to IPv6 first
-      // when no address is provided.
-      //
-      // Forcing IPv4 as a workaround for Deno not aligning with Node on
-      // implicit binding on Windows.
-      //
-      // REF: https://github.com/denoland/deno/issues/10762
-      // rval = _createServerHandle(DEFAULT_IPV6_ADDR, port, 6, fd, flags);
+      if (isWindows) {
+        address = DEFAULT_IPV4_ADDR;
+        addressType = 4;
+      } else {
+        rval = _createServerHandle(DEFAULT_IPV6_ADDR, port, 6, fd, flags);
 
-      // if (typeof rval === "number") {
-      //   rval = null;
-      address = DEFAULT_IPV4_ADDR;
-      addressType = 4;
-      // } else {
-      //   address = DEFAULT_IPV6_ADDR;
-      //   addressType = 6;
-      // }
+        if (typeof rval === "number") {
+          rval = null;
+          address = DEFAULT_IPV4_ADDR;
+          addressType = 4;
+        } else {
+          address = DEFAULT_IPV6_ADDR;
+          addressType = 6;
+        }
+      }
     }
 
     if (rval === null) {

@@ -79,6 +79,7 @@ import {
 import { glob, globSync } from "ext:deno_node/_fs/_fs_glob.ts";
 import {
   parseFileMode,
+  validateAbortSignal,
   validateBoolean,
   validateEncoding,
   validateFunction,
@@ -155,6 +156,7 @@ import { core, primordials } from "ext:core/mod.js";
 
 const {
   ArrayBufferIsView,
+  ArrayIsArray,
   BigInt,
   DatePrototypeGetTime,
   DateUTC,
@@ -175,6 +177,8 @@ const {
   Promise,
   PromisePrototypeThen,
   PromiseResolve,
+  RegExpPrototype,
+  RegExpPrototypeTest,
   SafeMap,
   StringPrototypeToString,
   SymbolAsyncIterator,
@@ -185,6 +189,7 @@ const {
   TypedArrayPrototypeSet,
   TypedArrayPrototypeSubarray,
   Uint8Array,
+  queueMicrotask,
 } = primordials;
 
 const {
@@ -1267,7 +1272,12 @@ function close(
     callback = makeCallback(callback);
   }
 
-  setTimeout(() => {
+  // Defer to a microtask rather than a JS `setTimeout(0)`. Both make the
+  // callback asynchronous, but a real timer trips Deno's test sanitizer as a
+  // leaked timeout when a test ends before the timer fires. Node.js' libuv
+  // libc-backed `close` is invisible to userland timer queues; a microtask
+  // matches that more closely.
+  queueMicrotask(() => {
     let error = null;
     try {
       op_node_fs_close(fd);
@@ -1277,7 +1287,7 @@ function close(
         : new Error("[non-error thrown]");
     }
     callback(error);
-  }, 0);
+  });
 }
 
 function closeSync(fd: number) {
@@ -3129,10 +3139,108 @@ function asyncIterableToCallback<T>(
   next();
 }
 
+// Mirrors Node's `validateIgnoreOption` /
+// `createIgnoreMatcher` from `lib/internal/fs/watchers.js`.
+// Accepts a string (minimatch glob), RegExp, function, or array of those.
+// Returns a function `(filename) => boolean` (or `null` if `ignore` is nullish).
+type IgnoreOption =
+  | string
+  | RegExp
+  | ((filename: string) => boolean)
+  | (string | RegExp | ((filename: string) => boolean))[]
+  | undefined
+  | null;
+
+// deno-lint-ignore no-explicit-any
+let _lazyMinimatch: any = null;
+function getMinimatch() {
+  _lazyMinimatch ??= core.createLazyLoader("ext:deno_node/deps/minimatch.js");
+  return _lazyMinimatch();
+}
+
+function validateIgnoreOptionElement(value: unknown, name: string) {
+  if (typeof value === "string") {
+    if (value.length === 0) {
+      throw new ERR_INVALID_ARG_VALUE(
+        name,
+        value,
+        "must be a non-empty string",
+      );
+    }
+    return;
+  }
+  if (ObjectPrototypeIsPrototypeOf(RegExpPrototype, value)) return;
+  if (typeof value === "function") return;
+  throw new ERR_INVALID_ARG_TYPE(
+    name,
+    ["string", "RegExp", "Function"],
+    value,
+  );
+}
+
+function validateIgnoreOption(value: unknown, name: string) {
+  if (value == null) return;
+  if (ArrayIsArray(value)) {
+    for (let i = 0; i < value.length; i++) {
+      validateIgnoreOptionElement(value[i], `${name}[${i}]`);
+    }
+    return;
+  }
+  validateIgnoreOptionElement(value, name);
+}
+
+function createIgnoreMatcher(
+  ignore: IgnoreOption,
+): ((filename: string) => boolean) | null {
+  if (ignore == null) return null;
+  const matchers = ArrayIsArray(ignore) ? ignore : [ignore];
+  const compiled: Array<(filename: string) => boolean> = [];
+
+  for (let i = 0; i < matchers.length; i++) {
+    const matcher = matchers[i];
+    if (typeof matcher === "string") {
+      const { Minimatch } = getMinimatch().default;
+      const mm = new Minimatch(matcher, {
+        nocase: isMacOS || isWindows,
+        windowsPathsNoEscape: true,
+        nonegate: true,
+        nocomment: true,
+        optimizationLevel: 2,
+        platform: isWindows ? "win32" : "posix",
+        // Allow patterns without slashes to match the basename
+        // e.g. '*.log' matches 'subdir/file.log'.
+        matchBase: true,
+      });
+      ArrayPrototypePush(
+        compiled,
+        // deno-lint-ignore prefer-primordials
+        (filename: string) => mm.match(filename),
+      );
+    } else if (ObjectPrototypeIsPrototypeOf(RegExpPrototype, matcher)) {
+      ArrayPrototypePush(
+        compiled,
+        (filename: string) => RegExpPrototypeTest(matcher as RegExp, filename),
+      );
+    } else {
+      // Function
+      ArrayPrototypePush(compiled, matcher as (filename: string) => boolean);
+    }
+  }
+
+  return (filename: string) => {
+    for (let i = 0; i < compiled.length; i++) {
+      if (compiled[i](filename)) return true;
+    }
+    return false;
+  };
+}
+
 type watchOptions = {
   persistent?: boolean;
   recursive?: boolean;
   encoding?: string;
+  signal?: AbortSignal;
+  ignore?: IgnoreOption;
 };
 
 type watchListener = (eventType: string, filename: string) => void;
@@ -3170,7 +3278,17 @@ function watch(
   // deno-lint-ignore prefer-primordials
   const watchPath = getValidatedPath(filename).toString();
 
+  // Match Node: validate non-boolean `recursive`/`persistent` up front.
+  // https://github.com/nodejs/node/blob/main/lib/internal/fs/recursive_watch.js
+  if (options != null && options.recursive != null) {
+    validateBoolean(options.recursive, "options.recursive");
+  }
+  if (options != null && options.persistent != null) {
+    validateBoolean(options.persistent, "options.persistent");
+  }
   const recursive = options?.recursive || false;
+  validateIgnoreOption(options?.ignore, "options.ignore");
+  const ignoreMatcher = createIgnoreMatcher(options?.ignore);
   const iterator: Deno.FsWatcher = Deno.watchFs(watchPath, {
     recursive,
   });
@@ -3187,6 +3305,9 @@ function watch(
     const filename = recursive
       ? relative(resolvedWatchPath, val.paths[0])
       : basename(val.paths[0]);
+    if (ignoreMatcher !== null && ignoreMatcher(filename)) {
+      return;
+    }
     fsWatcher.emit(
       "change",
       convertDenoFsEventToNodeFsEvent(val.kind),
@@ -3217,6 +3338,22 @@ function watch(
     );
   }
 
+  // Match Node's `fs.watch` AbortSignal handling:
+  // https://github.com/nodejs/node/blob/main/lib/fs.js
+  validateAbortSignal(options?.signal, "options.signal");
+  if (options?.signal) {
+    const signal = options.signal;
+    if (signal.aborted) {
+      process.nextTick(() => fsWatcher.close());
+    } else {
+      const onAbort = () => fsWatcher.close();
+      signal.addEventListener("abort", onAbort, { once: true });
+      fsWatcher.once("close", () => {
+        signal.removeEventListener("abort", onAbort);
+      });
+    }
+  }
+
   return fsWatcher;
 }
 
@@ -3227,27 +3364,44 @@ function watchPromise(
     recursive?: boolean;
     encoding?: string;
     signal?: AbortSignal;
+    ignore?: IgnoreOption;
   },
 ): AsyncIterable<{ eventType: string; filename: string | Buffer | null }> {
   // deno-lint-ignore prefer-primordials
   const watchPath = getValidatedPath(filename).toString();
 
   const recursive = options?.recursive ?? false;
+  const signal = options?.signal;
+  validateAbortSignal(signal, "options.signal");
+  validateIgnoreOption(options?.ignore, "options.ignore");
+  const ignoreMatcher = createIgnoreMatcher(options?.ignore);
   const watcher = Deno.watchFs(watchPath, {
     recursive,
   });
   const resolvedWatchPath = realpathSync(watchPath) as string;
 
-  if (options?.signal) {
-    if (options.signal.aborted) {
+  let onAbort: (() => void) | null = null;
+  function cleanupAbort() {
+    if (signal && onAbort) {
+      signal.removeEventListener("abort", onAbort);
+      onAbort = null;
+    }
+  }
+
+  if (signal) {
+    if (signal.aborted) {
       watcher.close();
     } else {
-      options.signal.addEventListener(
-        "abort",
-        () => watcher.close(),
-        { once: true },
-      );
+      onAbort = () => watcher.close();
+      signal.addEventListener("abort", onAbort, { once: true });
     }
+  }
+
+  // Match Node: surface signal abort as a thrown AbortError carrying
+  // `signal.reason` as `cause`.
+  // https://github.com/nodejs/node/blob/main/lib/internal/fs/watchers.js
+  function abortError(): AbortError {
+    return new AbortError(undefined, { cause: signal?.reason });
   }
 
   const fsIterable = watcher[SymbolAsyncIterator]();
@@ -3255,23 +3409,39 @@ function watchPromise(
     async next(): Promise<
       IteratorResult<{ eventType: string; filename: string | Buffer | null }>
     > {
-      // deno-lint-ignore prefer-primordials
-      const iterResult = await fsIterable.next();
-      if (iterResult.done) return iterResult;
+      if (signal?.aborted) {
+        cleanupAbort();
+        throw abortError();
+      }
+      while (true) {
+        // deno-lint-ignore prefer-primordials
+        const iterResult = await fsIterable.next();
+        if (iterResult.done) {
+          cleanupAbort();
+          if (signal?.aborted) {
+            throw abortError();
+          }
+          return iterResult;
+        }
 
-      const eventType = convertDenoFsEventToNodeFsEvent(
-        iterResult.value.kind,
-      );
-      const fname = recursive
-        ? relative(resolvedWatchPath, iterResult.value.paths[0])
-        : basename(iterResult.value.paths[0]);
-      return {
-        value: { eventType, filename: fname },
-        done: false,
-      };
+        const eventType = convertDenoFsEventToNodeFsEvent(
+          iterResult.value.kind,
+        );
+        const fname = recursive
+          ? relative(resolvedWatchPath, iterResult.value.paths[0])
+          : basename(iterResult.value.paths[0]);
+        if (ignoreMatcher !== null && ignoreMatcher(fname)) {
+          continue;
+        }
+        return {
+          value: { eventType, filename: fname },
+          done: false,
+        };
+      }
     },
     // deno-lint-ignore no-explicit-any
     return(value?: any): Promise<IteratorResult<any>> {
+      cleanupAbort();
       watcher.close();
       return PromiseResolve({ value, done: true });
     },
