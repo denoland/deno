@@ -66,15 +66,11 @@ fn translate_to_deno_args(
   let use_system_ca = parsed_args.options.use_system_ca;
   let use_bundled_ca = parsed_args.options.use_bundled_ca;
   let result = translate_to_deno_args_impl(parsed_args, &options);
-  let ca_stores = if use_openssl_ca {
-    Some(vec!["system".to_string()])
-  } else {
-    match (use_system_ca, use_bundled_ca) {
-      (true, true) => Some(vec!["system".to_string(), "mozilla".to_string()]),
-      (true, false) => Some(vec!["system".to_string()]),
-      (false, true) => Some(vec!["mozilla".to_string()]),
-      (false, false) => None,
-    }
+  let ca_stores = match (use_system_ca, use_bundled_ca) {
+    (true, true) => Some(vec!["system".to_string(), "mozilla".to_string()]),
+    (true, false) => Some(vec!["system".to_string()]),
+    (false, true) => Some(vec!["mozilla".to_string()]),
+    (false, false) => None,
   };
 
   TranslatedArgs {

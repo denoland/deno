@@ -2,16 +2,18 @@
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 
 import { notImplemented } from "ext:deno_node/_utils.ts";
+import {
+  validateOneOf,
+  validateString,
+} from "ext:deno_node/internal/validators.mjs";
 import tlsCommon from "node:_tls_common";
 import tlsWrap from "node:_tls_wrap";
 import { convertALPNProtocols } from "ext:deno_node/internal/tls_common.js";
-import { ERR_INVALID_ARG_VALUE } from "ext:deno_node/internal/errors.ts";
-import { validateString } from "ext:deno_node/internal/validators.mjs";
-import { readTextFileSync } from "ext:deno_fs/30_fs.js";
 import * as io from "ext:deno_io/12_io.js";
 import { TextEncoder } from "ext:deno_web/08_text_encoding.js";
 import {
   op_get_env_no_permission_check,
+  op_get_root_certificates,
   op_node_get_ca_certificates,
   op_set_default_ca_certificates,
 } from "ext:core/ops";
@@ -36,9 +38,7 @@ const {
   ReflectOwnKeys,
   ReflectPreventExtensions,
   ReflectSet,
-  SafeRegExp,
   StringPrototypeIncludes,
-  StringPrototypeReplace,
   StringPrototypeSplit,
   StringPrototypeTrim,
   StringPrototypeToLowerCase,
@@ -71,12 +71,11 @@ export function getCiphers() {
 }
 
 let lazyRootCertificates: string[] | null = null;
-let lazyBundledCertificates: string[] | null = null;
-let lazySystemCertificates: string[] | null = null;
-let lazyExtraCertificates: string[] | null = null;
-let lazyDefaultCertificates: string[] | null = null;
+const cachedCACertificates: Record<string, string[]> = {
+  __proto__: null as unknown as string[],
+};
 
-function emitNativeCryptoDebug(message: string) {
+function writeNativeCryptoDebug(message: string) {
   const nodeDebugNative = op_get_env_no_permission_check("NODE_DEBUG_NATIVE") ??
     "";
   if (
@@ -88,60 +87,14 @@ function emitNativeCryptoDebug(message: string) {
   io.stderr.writeSync(bytes);
 }
 
-function getPemCertificatesFromFile(path: string): string[] {
-  const content = readTextFileSync(path);
-  const certificates = [];
-  ArrayPrototypeForEach(
-    StringPrototypeSplit(content, "-----END CERTIFICATE-----\n"),
-    (line) => {
-      if (StringPrototypeTrim(line) === "") {
-        return;
-      }
-      ArrayPrototypePush(certificates, `${line}-----END CERTIFICATE-----\n`);
-    },
-  );
-  return certificates;
-}
-
-function getBundledCertificates(): string[] {
-  if (lazyBundledCertificates === null) {
-    lazyBundledCertificates = op_node_get_ca_certificates(
-      "bundled",
-    ) as string[];
-    ObjectFreeze(lazyBundledCertificates);
-  }
-  return lazyBundledCertificates;
-}
-
-function getSystemCertificates(): string[] {
-  if (lazySystemCertificates === null) {
-    lazySystemCertificates = op_node_get_ca_certificates("system") as string[];
-    ObjectFreeze(lazySystemCertificates);
-  }
-  return lazySystemCertificates;
-}
-
-function getExtraCertificates(): string[] {
-  if (lazyExtraCertificates === null) {
-    const path = op_get_env_no_permission_check("NODE_EXTRA_CA_CERTS");
-    lazyExtraCertificates = path ? getPemCertificatesFromFile(path) : [];
-    ObjectFreeze(lazyExtraCertificates);
-  }
-  return lazyExtraCertificates;
-}
-
-function getDefaultCertificates(): string[] {
-  if (lazyDefaultCertificates !== null) {
-    return lazyDefaultCertificates;
+function emitDefaultCertificatesDebug() {
+  const useOpenSslCa =
+    op_get_env_no_permission_check("DENO_NODE_USE_OPENSSL_CA") === "1";
+  if (useOpenSslCa) {
+    return;
   }
 
-  if (lazyRootCertificates !== null) {
-    lazyDefaultCertificates = lazyRootCertificates;
-    return lazyDefaultCertificates;
-  }
-
-  const certs = [];
-  const stores = [];
+  const stores: string[] = [];
   ArrayPrototypeForEach(
     StringPrototypeSplit(
       op_get_env_no_permission_check("DENO_TLS_CA_STORE") ?? "mozilla",
@@ -149,65 +102,36 @@ function getDefaultCertificates(): string[] {
     ),
     (store) => {
       const trimmedStore = StringPrototypeTrim(store);
-      if (trimmedStore.length === 0) {
-        return;
+      if (trimmedStore.length > 0) {
+        ArrayPrototypePush(stores, trimmedStore);
       }
-      ArrayPrototypePush(stores, trimmedStore);
     },
   );
-  const useOpenSslCa =
-    op_get_env_no_permission_check("DENO_NODE_USE_OPENSSL_CA") ===
-      "1";
-  const hasMozillaStore = ArrayPrototypeIncludes(stores, "mozilla");
-  const hasSystemStore = ArrayPrototypeIncludes(stores, "system");
-
-  if (hasMozillaStore) {
-    if (!useOpenSslCa) {
-      emitNativeCryptoDebug(
-        "Started loading bundled root certificates off-thread",
-      );
-    }
-    ArrayPrototypeForEach(
-      getBundledCertificates(),
-      (cert) => ArrayPrototypePush(certs, cert),
+  if (ArrayPrototypeIncludes(stores, "mozilla")) {
+    writeNativeCryptoDebug(
+      "Started loading bundled root certificates off-thread",
     );
   }
-  if (hasSystemStore) {
-    if (!useOpenSslCa && hasMozillaStore) {
-      emitNativeCryptoDebug(
-        "Started loading system root certificates off-thread",
-      );
-    }
-    ArrayPrototypeForEach(
-      getSystemCertificates(),
-      (cert) => ArrayPrototypePush(certs, cert),
+  if (ArrayPrototypeIncludes(stores, "system")) {
+    writeNativeCryptoDebug(
+      "Started loading system root certificates off-thread",
     );
   }
-
-  const extra = getExtraCertificates();
-  if (extra.length > 0 && !useOpenSslCa) {
-    emitNativeCryptoDebug("Started loading extra root certificates off-thread");
+  if (op_get_env_no_permission_check("NODE_EXTRA_CA_CERTS")) {
+    writeNativeCryptoDebug(
+      "Started loading extra root certificates off-thread",
+    );
   }
-  ArrayPrototypeForEach(extra, (cert) => ArrayPrototypePush(certs, cert));
-
-  lazyDefaultCertificates = ObjectFreeze(certs);
-  lazyRootCertificates = lazyDefaultCertificates;
-  return lazyDefaultCertificates;
 }
 
 function ensureLazyRootCertificates(target: string[]) {
   if (lazyRootCertificates === null) {
-    lazyRootCertificates = getDefaultCertificates();
+    lazyRootCertificates = op_get_root_certificates() as string[];
     // Clear target and repopulate
     target.length = 0;
     ArrayPrototypeForEach(
       lazyRootCertificates,
-      // Strip trailing newline to match Node.js format
-      (v: string) =>
-        ArrayPrototypePush(
-          target,
-          StringPrototypeReplace(v, new SafeRegExp("\\n$"), ""),
-        ),
+      (v: string) => ArrayPrototypePush(target, v),
     );
     ObjectFreeze(target);
   }
@@ -284,29 +208,31 @@ export function setDefaultCACertificates(certs: string[]) {
 
   op_set_default_ca_certificates(certs);
 
-  lazyDefaultCertificates = null;
   lazyRootCertificates = null;
+  for (const key of ObjectKeys(cachedCACertificates)) {
+    delete cachedCACertificates[key];
+  }
 }
 
-export function getCACertificates(
-  type: "default" | "system" | "bundled" | "extra" = "default",
-) {
-  if (type !== undefined) {
-    validateString(type, "type");
+export function getCACertificates(type: string = "default"): string[] {
+  validateString(type, "type");
+  validateOneOf(type, "type", ["default", "system", "bundled", "extra"]);
+
+  if (cachedCACertificates[type] !== undefined) {
+    return cachedCACertificates[type];
   }
 
-  switch (type) {
-    case "default":
-      return getDefaultCertificates();
-    case "bundled":
-      return getBundledCertificates();
-    case "system":
-      return getSystemCertificates();
-    case "extra":
-      return getExtraCertificates();
-    default:
-      throw new ERR_INVALID_ARG_VALUE("type", type);
+  let certs: string[];
+  if (type === "bundled") {
+    certs = rootCertificates;
+  } else {
+    certs = ObjectFreeze(op_node_get_ca_certificates(type)) as string[];
+    if (type === "default") {
+      emitDefaultCertificatesDebug();
+    }
   }
+  cachedCACertificates[type] = certs;
+  return certs;
 }
 
 export function createSecurePair() {
