@@ -110,4 +110,47 @@ export function debuglog(
   return logger;
 }
 
-export default { debuglog };
+// One second in milliseconds.
+const kSecond = 1000;
+const kMinute = 60 * kSecond;
+const kHour = 60 * kMinute;
+
+function pad(value: number | string): string {
+  return `${value}`.padStart(2, "0");
+}
+
+export function formatTime(ms: number): string {
+  let hours = 0;
+  let minutes = 0;
+  let seconds = 0;
+
+  if (ms >= kSecond) {
+    if (ms >= kMinute) {
+      if (ms >= kHour) {
+        hours = Math.floor(ms / kHour);
+        ms = ms % kHour;
+      }
+      minutes = Math.floor(ms / kMinute);
+      ms = ms % kMinute;
+    }
+    seconds = ms / kSecond;
+  }
+
+  if (hours !== 0 || minutes !== 0) {
+    const fixed = seconds.toFixed(3).split(".");
+    const secondsStr = fixed[0];
+    const msStr = fixed[1];
+    const res = hours !== 0 ? `${hours}:${pad(minutes)}` : minutes;
+    return `${res}:${pad(secondsStr)}.${msStr} (${
+      hours !== 0 ? "h:m" : ""
+    }m:ss.mmm)`;
+  }
+
+  if (seconds !== 0) {
+    return `${seconds.toFixed(3)}s`;
+  }
+
+  return `${Number(ms.toFixed(3))}ms`;
+}
+
+export default { debuglog, formatTime };

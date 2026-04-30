@@ -607,7 +607,7 @@ impl CliFactory {
             | DenoSubcommand::Cache { .. }
             | DenoSubcommand::Uninstall { .. } => true,
             DenoSubcommand::Install(flags) => match flags {
-              InstallFlags::Local(flags) => match flags {
+              InstallFlags::Local(flags, _) => match flags {
                 InstallFlagsLocal::Add { .. }
                 | InstallFlagsLocal::TopLevel { .. } => true,
                 // someone might be terribly storing dependencies in a
@@ -644,15 +644,37 @@ impl CliFactory {
             | DenoSubcommand::Types
             | DenoSubcommand::Upgrade { .. }
             | DenoSubcommand::Vendor
+            | DenoSubcommand::Why { .. }
             | DenoSubcommand::Publish { .. }
             | DenoSubcommand::Help { .. }
-            | DenoSubcommand::X { .. } => false,
+            | DenoSubcommand::X { .. }
+            | DenoSubcommand::BumpVersion { .. } => false,
           },
           cache_setting: NpmCacheSetting::from_cache_setting(
             &cli_options.cache_setting(),
           ),
           caching_strategy: cli_options.default_npm_caching_strategy(),
           lifecycle_scripts_config: cli_options.lifecycle_scripts_config(),
+          production: match cli_options.sub_command() {
+            DenoSubcommand::Install(InstallFlags::Local(flags, _)) => {
+              match flags {
+                InstallFlagsLocal::TopLevel(f) => f.production,
+                InstallFlagsLocal::Entrypoints(f) => f.production,
+                InstallFlagsLocal::Add(_) => false,
+              }
+            }
+            _ => false,
+          },
+          skip_types: match cli_options.sub_command() {
+            DenoSubcommand::Install(InstallFlags::Local(flags, _)) => {
+              match flags {
+                InstallFlagsLocal::TopLevel(f) => f.skip_types,
+                InstallFlagsLocal::Entrypoints(f) => f.skip_types,
+                InstallFlagsLocal::Add(_) => false,
+              }
+            }
+            _ => false,
+          },
           resolve_npm_resolution_snapshot: Box::new(|| {
             deno_lib::args::resolve_npm_resolution_snapshot(&CliSys::default())
           }),
@@ -675,7 +697,7 @@ impl CliFactory {
       .services
       .install_reporter
       .get_or_try_init(|| match self.cli_options()?.sub_command() {
-        DenoSubcommand::Install(InstallFlags::Local(_))
+        DenoSubcommand::Install(InstallFlags::Local(_, _))
         | DenoSubcommand::Add(_)
         | DenoSubcommand::Cache(_) => Ok(Some(Arc::new(
           crate::tools::installer::InstallReporter::new(),
