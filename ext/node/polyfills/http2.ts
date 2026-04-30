@@ -1815,7 +1815,12 @@ class Http2Stream extends Duplex {
     );
   }
 
-  pushPromise(headers, headersCount, streamOptions) {
+  pushPromise(
+    this: any,
+    headers: any,
+    headersCount: number,
+    streamOptions: number,
+  ) {
     return this[kHandle].pushPromise(headers, headersCount, streamOptions);
   }
 
