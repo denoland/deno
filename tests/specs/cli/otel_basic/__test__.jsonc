@@ -154,6 +154,14 @@
     "grpc_trailers": {
       "args": "run -A -q grpc_trailer_main.ts events.ts",
       "output": "events.out"
+    },
+    "grpc_trailers_error": {
+      "args": "run -A -q grpc_trailer_main.ts events.ts",
+      "envs": {
+        "GRPC_TRAILER_STATUS": "14",
+        "GRPC_TRAILER_MESSAGE": "UNAVAILABLE"
+      },
+      "output": "grpc_trailers_error.out"
     }
   }
 }

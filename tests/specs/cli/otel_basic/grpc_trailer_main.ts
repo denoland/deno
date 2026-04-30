@@ -69,7 +69,9 @@ server.on("stream", (stream, headers) => {
     // Strip the 5-byte gRPC frame prefix (compression flag + length)
     const msgBytes = new Uint8Array(rawBody.buffer, rawBody.byteOffset + 5);
     const body = decodeGrpcBody(path, msgBytes);
-    if (body) collectData(body);
+    // Only collect data on success; skip on error so test output reflects
+    // that the server rejected the export.
+    if (body && grpcStatus === "0") collectData(body);
 
     // Send response headers WITHOUT grpc-status (normal form, not Trailers-Only)
     stream.respond(
