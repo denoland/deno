@@ -43,18 +43,9 @@ import {
   fromInnerRequest,
   newInnerRequest,
 } from "ext:deno_fetch/23_request.js";
-import {
-  _eventLoop,
-  _idleTimeoutDuration,
-  _idleTimeoutTimeout,
-  _protocol,
-  _readyState,
-  _rid,
-  _role,
-  _serverHandleIdleTimeout,
-  SERVER,
-  WebSocket,
-} from "ext:deno_websocket/01_websocket.js";
+const loadWebSocket = core.createLazyLoader(
+  "ext:deno_websocket/01_websocket.js",
+);
 import {
   getReadableStreamResourceBacking,
   readableStreamClose,
@@ -358,6 +349,17 @@ function createRespondWith(
 
       const ws = resp[_ws];
       if (ws) {
+        const {
+          _eventLoop,
+          _idleTimeoutDuration,
+          _idleTimeoutTimeout,
+          _protocol,
+          _readyState,
+          _rid,
+          _role,
+          _serverHandleIdleTimeout,
+          SERVER,
+        } = loadWebSocket();
         const wsRid = await op_http_upgrade_websocket(
           readStreamRid,
         );
@@ -366,7 +368,7 @@ function createRespondWith(
 
         httpConn.close();
 
-        ws[_readyState] = WebSocket.OPEN;
+        ws[_readyState] = 1; // WebSocket.OPEN
         ws[_role] = SERVER;
         const event = new Event("open");
         ws.dispatchEvent(event);

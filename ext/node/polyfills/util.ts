@@ -16,6 +16,7 @@ const {
   NumberPrototypeToString,
   ObjectCreate,
   ObjectDefineProperty,
+  ObjectGetOwnPropertyDescriptor,
   ObjectKeys,
   ObjectSetPrototypeOf,
   ReflectApply,
@@ -201,8 +202,16 @@ const codesWarned = new SafeSet();
 // Mark that a method should not be used.
 // Returns a modified function which warns once by default.
 // If --no-deprecation is set, then it is a no-op.
-// deno-lint-ignore no-explicit-any
-export function deprecate(fn: any, msg: string, code?: any) {
+export function deprecate(
+  // deno-lint-ignore no-explicit-any
+  fn: any,
+  msg: string,
+  // deno-lint-ignore no-explicit-any
+  code?: any,
+  { modifyPrototype = true }: { __proto__: null; modifyPrototype?: boolean } = {
+    __proto__: null,
+  },
+) {
   process ??= lazyLoadProcess();
   if (process.noDeprecation === true) {
     return fn;
@@ -233,13 +242,20 @@ export function deprecate(fn: any, msg: string, code?: any) {
     return ReflectApply(fn, this, args);
   }
 
-  // The wrapper will keep the same prototype as fn to maintain prototype chain
-  ObjectSetPrototypeOf(deprecated, fn);
-  if (fn.prototype) {
-    // Setting this (rather than using Object.setPrototype, as above) ensures
-    // that calling the unwrapped constructor gives an instanceof the wrapped
-    // constructor.
-    deprecated.prototype = fn.prototype;
+  if (modifyPrototype) {
+    // The wrapper will keep the same prototype as fn to maintain prototype chain
+    ObjectSetPrototypeOf(deprecated, fn);
+    if (fn.prototype) {
+      // Setting this (rather than using Object.setPrototype, as above) ensures
+      // that calling the unwrapped constructor gives an instanceof the wrapped
+      // constructor.
+      deprecated.prototype = fn.prototype;
+    }
+
+    ObjectDefineProperty(deprecated, "length", {
+      __proto__: null,
+      ...ObjectGetOwnPropertyDescriptor(fn, "length"),
+    });
   }
 
   return deprecated;
