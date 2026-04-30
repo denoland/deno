@@ -40,16 +40,6 @@ pub enum ModuleResolveResponse {
 }
 
 impl ModuleResolveResponse {
-  /// Unwrap the synchronous result. Panics if this is an `Async` variant.
-  pub fn into_result(self) -> Result<ModuleSpecifier, ModuleLoaderError> {
-    match self {
-      Self::Sync(result) => result,
-      Self::Async(_) => {
-        panic!("Cannot synchronously unwrap an async ModuleResolveResponse")
-      }
-    }
-  }
-
   /// Convert to a future that handles both variants.
   pub async fn into_future(self) -> Result<ModuleSpecifier, ModuleLoaderError> {
     match self {
@@ -106,14 +96,16 @@ pub trait ModuleLoader {
   ) -> ModuleResolveResponse;
 
   /// Override to customize the behavior of `import.meta.resolve` resolution.
+  ///
+  /// Loaders that use async resolution via `ModuleResolveResponse::Async`
+  /// should override this method to provide a synchronous resolution path,
+  /// since `import.meta.resolve` is synchronous.
   fn import_meta_resolve(
     &self,
     specifier: &str,
     referrer: &str,
   ) -> Result<ModuleSpecifier, ModuleLoaderError> {
-    self
-      .resolve(specifier, referrer, ResolutionKind::DynamicImport)
-      .into_result()
+    resolve_import(specifier, referrer).map_err(JsErrorBox::from_err)
   }
 
   /// Given ModuleSpecifier, load its source code.

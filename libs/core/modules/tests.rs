@@ -2138,10 +2138,13 @@ fn ext_module_loader_relative() {
     (("./foo.js", "ext:bar.js"), "ext:foo.js"),
   ];
   for ((specifier, referrer), expected) in cases {
-    let result = loader
-      .resolve(specifier, referrer, ResolutionKind::Import)
-      .into_result()
-      .unwrap();
+    let response = loader.resolve(specifier, referrer, ResolutionKind::Import);
+    let result = match response {
+      ModuleResolveResponse::Sync(r) => r.unwrap(),
+      ModuleResolveResponse::Async(_) => {
+        unreachable!("ExtModuleLoader should resolve synchronously")
+      }
+    };
     assert_eq!(result.as_str(), expected);
   }
 }

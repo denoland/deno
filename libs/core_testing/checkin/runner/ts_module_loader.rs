@@ -81,10 +81,9 @@ impl ModuleLoader for TypescriptModuleLoader {
   ) -> deno_core::ModuleResolveResponse {
     // When hooks are active, delegate resolution to JS via the message bridge.
     if self.hook_registry.active.get() {
-      let receiver = self.hook_registry.push_resolve(
-        specifier.to_string(),
-        referrer.to_string(),
-      );
+      let receiver = self
+        .hook_registry
+        .push_resolve(specifier.to_string(), referrer.to_string());
       return deno_core::ModuleResolveResponse::Async(
         async move {
           let result = receiver
@@ -113,8 +112,7 @@ impl ModuleLoader for TypescriptModuleLoader {
   ) -> ModuleLoadResponse {
     // When hooks are active, delegate loading to JS via the message bridge.
     if self.hook_registry.active.get() {
-      let receiver =
-        self.hook_registry.push_load(module_specifier.to_string());
+      let receiver = self.hook_registry.push_load(module_specifier.to_string());
       let specifier = module_specifier.clone();
       let source_maps = self.source_maps.clone();
       return ModuleLoadResponse::Async(

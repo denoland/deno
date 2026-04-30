@@ -19,7 +19,8 @@ register({
   async load(url, _context, nextLoad) {
     if (url === "test:///integration/loader_register/virtual_greet.js") {
       return {
-        source: `export function greet(name) { return "Hello, " + name + "!"; }`,
+        source:
+          `export function greet(name) { return "Hello, " + name + "!"; }`,
       };
     }
     if (url === "test:///integration/loader_register/virtual_async.js") {

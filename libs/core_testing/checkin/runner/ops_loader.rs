@@ -25,8 +25,7 @@ struct PendingLoad {
   url: String,
 }
 
-type ResolveSender =
-  futures::channel::oneshot::Sender<Result<String, String>>;
+type ResolveSender = futures::channel::oneshot::Sender<Result<String, String>>;
 type LoadSender =
   futures::channel::oneshot::Sender<Result<Option<String>, String>>;
 
@@ -66,11 +65,14 @@ impl LoaderHookRegistry {
     let id = self.next_id();
     let (sender, receiver) = futures::channel::oneshot::channel();
     self.resolve_senders.borrow_mut().insert(id, sender);
-    self.pending_resolves.borrow_mut().push_back(PendingResolve {
-      id,
-      specifier,
-      referrer,
-    });
+    self
+      .pending_resolves
+      .borrow_mut()
+      .push_back(PendingResolve {
+        id,
+        specifier,
+        referrer,
+      });
     if let Some(waker) = self.resolve_waker.borrow_mut().take() {
       waker.wake();
     }
@@ -85,10 +87,10 @@ impl LoaderHookRegistry {
     let id = self.next_id();
     let (sender, receiver) = futures::channel::oneshot::channel();
     self.load_senders.borrow_mut().insert(id, sender);
-    self.pending_loads.borrow_mut().push_back(PendingLoad {
-      id,
-      url,
-    });
+    self
+      .pending_loads
+      .borrow_mut()
+      .push_back(PendingLoad { id, url });
     if let Some(waker) = self.load_waker.borrow_mut().take() {
       waker.wake();
     }

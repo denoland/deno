@@ -16,8 +16,6 @@ use futures::stream::Stream;
 use futures::stream::StreamExt;
 use futures::stream::TryStreamExt;
 
-use deno_error::JsErrorBox;
-
 use super::loaders::ModuleLoadOptions;
 use crate::ModuleLoadResponse;
 use crate::ModuleLoader;
