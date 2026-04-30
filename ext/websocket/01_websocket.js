@@ -243,8 +243,8 @@ class WebSocket extends EventTarget {
       }
 
       if (clientRid === null && initOrProtocols.dispatcher !== undefined) {
-        clientRid =
-          initOrProtocols.dispatcher?.client?.[internalRidSymbol] ?? null;
+        clientRid = initOrProtocols.dispatcher?.client?.[internalRidSymbol] ??
+          null;
       }
     }
 

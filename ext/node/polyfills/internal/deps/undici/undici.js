@@ -41,11 +41,7 @@ function setGlobalDispatcher(dispatcher) {
   globalDispatcher = dispatcher;
 }
 
-export {
-  EnvHttpProxyAgent,
-  getGlobalDispatcher,
-  setGlobalDispatcher,
-};
+export { EnvHttpProxyAgent, getGlobalDispatcher, setGlobalDispatcher };
 
 export default {
   EnvHttpProxyAgent,
