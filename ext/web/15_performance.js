@@ -26,7 +26,7 @@ const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
 import { structuredClone } from "./02_structured_clone.js";
 import { createFilteredInspectProxy } from "./01_console.js";
 import { EventTarget } from "./02_event.js";
-import { DOMException } from "./01_dom_exception.js";
+const { DOMException } = core.loadExtScript("ext:deno_web/01_dom_exception.js");
 
 const illegalConstructorKey = Symbol("illegalConstructorKey");
 let performanceEntries = [];

@@ -39,7 +39,7 @@ import { forgivingBase64Encode } from "./00_infra.js";
 import { EventTarget, ProgressEvent } from "./02_event.js";
 import { decode, TextDecoder } from "./08_text_encoding.js";
 import { parseMimeType } from "./01_mimesniff.js";
-import { DOMException } from "./01_dom_exception.js";
+const { DOMException } = core.loadExtScript("ext:deno_web/01_dom_exception.js");
 
 const state = Symbol("[[state]]");
 const result = Symbol("[[result]]");

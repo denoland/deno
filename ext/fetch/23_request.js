@@ -45,7 +45,7 @@ import {
   newSignal,
   signalAbort,
 } from "ext:deno_web/03_abort_signal.js";
-import { DOMException } from "ext:deno_web/01_dom_exception.js";
+const { DOMException } = core.loadExtScript("ext:deno_web/01_dom_exception.js");
 import { markNotSerializable } from "ext:deno_web/13_message_port.js";
 const { internalRidSymbol } = core;
 

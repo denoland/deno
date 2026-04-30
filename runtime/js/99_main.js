@@ -76,10 +76,10 @@ import {
 } from "ext:runtime/90_deno_ns.js";
 import { errors } from "ext:runtime/01_errors.js";
 const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
-import {
+const {
   DOMException,
   QuotaExceededError,
-} from "ext:deno_web/01_dom_exception.js";
+} = core.loadExtScript("ext:deno_web/01_dom_exception.js");
 import {
   unstableForWindowOrWorkerGlobalScope,
   windowOrWorkerGlobalScope,

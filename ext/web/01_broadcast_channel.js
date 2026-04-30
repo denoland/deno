@@ -27,8 +27,8 @@ import {
   setIsTrusted,
   setTarget,
 } from "ext:deno_web/02_event.js";
-import { defer } from "ext:deno_web/02_timers.js";
-import { DOMException } from "ext:deno_web/01_dom_exception.js";
+const { defer } = core.loadExtScript("ext:deno_web/02_timers.js");
+const { DOMException } = core.loadExtScript("ext:deno_web/01_dom_exception.js");
 
 const _name = Symbol("[[name]]");
 const _closed = Symbol("[[closed]]");

@@ -40,7 +40,7 @@ import {
   MessagePortPrototype,
   serializeJsMessageData,
 } from "ext:deno_web/13_message_port.js";
-import { DOMException } from "ext:deno_web/01_dom_exception.js";
+const { DOMException } = core.loadExtScript("ext:deno_web/01_dom_exception.js");
 
 function createWorker(
   specifier,

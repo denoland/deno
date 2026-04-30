@@ -48,7 +48,7 @@ import {
   TransformStream,
   WritableStream,
 } from "./06_streams.js";
-import { DOMException } from "./01_dom_exception.js";
+const { DOMException } = core.loadExtScript("ext:deno_web/01_dom_exception.js");
 
 // counter of how many message ports are actively refed
 // either due to the existence of "message" event listeners or

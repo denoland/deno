@@ -55,7 +55,7 @@ import {
   EventTargetPrototype,
   setEventTargetData,
 } from "ext:deno_web/02_event.js";
-import { DOMException } from "ext:deno_web/01_dom_exception.js";
+const { DOMException } = core.loadExtScript("ext:deno_web/01_dom_exception.js");
 import { createFilteredInspectProxy } from "ext:deno_web/01_console.js";
 
 const privateCustomInspect = SymbolFor("Deno.privateCustomInspect");

@@ -7,7 +7,10 @@
 /// <reference path="../web/internal.d.ts" />
 /// <reference path="../../cli/tsc/dts/lib.deno_web.d.ts" />
 
-import { core, primordials } from "ext:core/mod.js";
+// deno-fmt-ignore-file
+
+(function () {
+const { core, primordials } = globalThis.__bootstrap;
 const {
   Error,
   ErrorPrototype,
@@ -25,7 +28,18 @@ const {
 } = primordials;
 
 const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
-import { createFilteredInspectProxy } from "./01_console.js";
+
+// Lazy-load createFilteredInspectProxy from console (still ESM) to avoid
+// circular dependency at load time. Only needed for custom inspect.
+let _createFilteredInspectProxy;
+function getCreateFilteredInspectProxy() {
+  if (!_createFilteredInspectProxy) {
+    _createFilteredInspectProxy = core.createLazyLoader(
+      "ext:deno_web/01_console.js",
+    )().createFilteredInspectProxy;
+  }
+  return _createFilteredInspectProxy;
+}
 
 const _name = Symbol("name");
 const _message = Symbol("message");
@@ -177,7 +191,7 @@ class DOMException {
       }
     }
     return inspect(
-      createFilteredInspectProxy({
+      getCreateFilteredInspectProxy()({
         object: this,
         evaluate: ObjectPrototypeIsPrototypeOf(DOMExceptionPrototype, this),
         keys: [
@@ -307,9 +321,10 @@ class QuotaExceededError extends DOMException {
 webidl.configureInterface(QuotaExceededError);
 const QuotaExceededErrorPrototype = QuotaExceededError.prototype;
 
-export {
+return {
   DOMException,
   DOMExceptionPrototype,
   QuotaExceededError,
   QuotaExceededErrorPrototype,
 };
+})()

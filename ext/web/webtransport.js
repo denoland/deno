@@ -8,7 +8,7 @@ import {
   webtransportConnect,
 } from "ext:deno_net/03_quic.js";
 import { assert } from "ext:deno_web/00_infra.js";
-import { DOMException } from "ext:deno_web/01_dom_exception.js";
+const { DOMException } = core.loadExtScript("ext:deno_web/01_dom_exception.js");
 import {
   getReadableStreamResourceBacking,
   getWritableStreamResourceBacking,
