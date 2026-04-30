@@ -884,9 +884,7 @@ mod hyper_client {
         let (parts, body) = response.into_parts();
         let collected = body.collect().await?;
         let trailers = collected.trailers().cloned();
-        Ok::<_, Box<dyn std::error::Error + Send + Sync>>((
-          parts, trailers,
-        ))
+        Ok::<_, Box<dyn std::error::Error + Send + Sync>>((parts, trailers))
       })
       .await
       .map_err(|_| -> Box<dyn std::error::Error + Send + Sync> {

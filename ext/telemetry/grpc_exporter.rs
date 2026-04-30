@@ -144,9 +144,7 @@ async fn grpc_send(
 
   let (parts, trailers) = client.grpc_request(request).await?;
   if !parts.status.is_success() {
-    return Err(
-      format!("gRPC transport error: HTTP {}", parts.status).into(),
-    );
+    return Err(format!("gRPC transport error: HTTP {}", parts.status).into());
   }
 
   // Check grpc-status in initial headers (Trailers-Only form)
