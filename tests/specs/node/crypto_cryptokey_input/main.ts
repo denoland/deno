@@ -44,7 +44,29 @@ const pem = rsaPubFromPub.export({ type: "spki", format: "pem" }) as string;
 console.log("pem starts:", pem.startsWith("-----BEGIN PUBLIC KEY-----"));
 console.log("pem ends:", pem.trimEnd().endsWith("-----END PUBLIC KEY-----"));
 
-// 4. createSecretKey accepts an HMAC CryptoKey.
+// 4. EC (P-256): same flow exercises a different cryptoKeyExportNodeKeyMaterial
+//    branch than RSA.
+const ec = await webcrypto.subtle.generateKey(
+  { name: "ECDSA", namedCurve: "P-256" },
+  true,
+  ["sign", "verify"],
+);
+const ecPub = createPublicKey(ec.publicKey);
+console.log(
+  "ec pub:",
+  ecPub.type,
+  ecPub.asymmetricKeyType,
+  ecPub.asymmetricKeyDetails?.namedCurve,
+);
+const ecPriv = createPrivateKey(ec.privateKey);
+console.log(
+  "ec priv:",
+  ecPriv.type,
+  ecPriv.asymmetricKeyType,
+  ecPriv.asymmetricKeyDetails?.namedCurve,
+);
+
+// 5. createSecretKey accepts an HMAC CryptoKey.
 const secret = await webcrypto.subtle.generateKey(
   { name: "HMAC", hash: "SHA-256", length: 256 },
   true,
@@ -53,7 +75,7 @@ const secret = await webcrypto.subtle.generateKey(
 const secretKo = createSecretKey(secret);
 console.log("secret:", secretKo.type, secretKo.symmetricKeySize);
 
-// 5. createSecretKey rejects an asymmetric CryptoKey.
+// 6. createSecretKey rejects an asymmetric CryptoKey.
 let rejected = false;
 try {
   createSecretKey(rsa.publicKey);
@@ -62,7 +84,7 @@ try {
 }
 console.log("rejects asymmetric:", rejected);
 
-// 6. Passing a public CryptoKey to createPrivateKey is a type error.
+// 7. Passing a public CryptoKey to createPrivateKey is a type error.
 let privRejected = false;
 try {
   createPrivateKey(rsa.publicKey);
