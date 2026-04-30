@@ -504,6 +504,9 @@ pub enum XFlagsKind {
 pub struct XCommandFlags {
   pub yes: bool,
   pub command: String,
+  /// When set via `--package`/`-p`, specifies the package to install
+  /// while `command` is the binary name to execute from that package.
+  pub package: Option<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -3978,6 +3981,14 @@ fn x_subcommand() -> Command {
           .short('y')
           .help("Assume confirmation for all prompts")
           .action(ArgAction::SetTrue)
+          .conflicts_with("install-alias"),
+      )
+      .arg(
+        Arg::new("package")
+          .long("package")
+          .short('p')
+          .help("Package to install (use when the binary name differs from the package name)")
+          .num_args(1)
           .conflicts_with("install-alias"),
       )
       .arg(check_arg(false))
@@ -7822,9 +7833,14 @@ fn x_parse(
   {
     if let Some(command) = script_arg.next() {
       let yes = matches.get_flag("yes");
+      let package = matches.remove_one::<String>("package");
       flags.argv.extend(script_arg);
       runtime_args_parse(flags, matches, true, true, true)?;
-      XFlagsKind::Command(XCommandFlags { yes, command })
+      XFlagsKind::Command(XCommandFlags {
+        yes,
+        command,
+        package,
+      })
     } else {
       XFlagsKind::Print
     }
