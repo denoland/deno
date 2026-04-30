@@ -73,9 +73,6 @@ import {
   ShutdownWrap,
   streamBaseState,
 } from "ext:deno_node/internal_binding/stream_wrap.ts";
-import {
-  Http2Stream as BindingHttp2Stream,
-} from "ext:deno_node/internal_binding/http2.ts";
 import { EventEmitter } from "node:events";
 import {
   defaultTriggerAsyncIdScope,
@@ -2917,11 +2914,7 @@ class ServerHttp2Stream extends Http2Stream {
       ArrayPrototypePush(this[kInfoHeaders], headers);
     }
 
-    const ret = ReflectApply(
-      BindingHttp2Stream.prototype.info,
-      this[kHandle],
-      [headersList[0], headersList[1]],
-    );
+    const ret = this[kHandle].info(headersList[0], headersList[1]);
     if (ret < 0) {
       this.destroy(new NghttpError(ret));
     }
