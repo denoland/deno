@@ -107,6 +107,8 @@ export function Timeout(callback, after, args, isRepeat, isRefed) {
   }
   this._idleTimeout = after;
   this._idleStart = DateNow();
+  this._idlePrev = null;
+  this._idleNext = null;
   this._onTimeout = callback;
   this._timerArgs = args;
   this._repeat = isRepeat;
