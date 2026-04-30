@@ -10,6 +10,12 @@ import { Socket } from "node:net";
 import { nextTick } from "ext:deno_node/_next_tick.ts";
 import { codeMap, UV_ECANCELED } from "ext:deno_node/internal_binding/uv.ts";
 import { setImmediate } from "node:timers";
+import {
+  kBytesWritten,
+  kLastWriteWasAsync,
+  streamBaseState,
+} from "ext:deno_node/internal_binding/stream_wrap.ts";
+import { Buffer } from "node:buffer";
 
 const kCurrentWriteRequest = Symbol("kCurrentWriteRequest");
 const kCurrentShutdownRequest = Symbol("kCurrentShutdownRequest");
@@ -66,6 +72,53 @@ class JSStreamSocket extends Socket {
       },
       readStop() {
         return handle[kOwner].readStop();
+      },
+      // Write methods - delegate to owner.doWrite which writes to the
+      // underlying stream and triggers req.oncomplete via finishWrite.
+      writeBuffer(req, data) {
+        const len = data.byteLength ?? data.length ?? 0;
+        streamBaseState[kBytesWritten] = len;
+        streamBaseState[kLastWriteWasAsync] = 1;
+        return handle[kOwner].doWrite(req, [data]);
+      },
+      writev(req, chunks, allBuffers) {
+        let bufs;
+        let total = 0;
+        if (allBuffers) {
+          bufs = chunks;
+          for (let i = 0; i < bufs.length; i++) {
+            total += bufs[i].byteLength ?? bufs[i].length ?? 0;
+          }
+        } else {
+          bufs = new Array(chunks.length >> 1);
+          for (let i = 0; i < chunks.length; i += 2) {
+            const chunk = chunks[i];
+            const enc = chunks[i + 1];
+            const buf = typeof chunk === "string"
+              ? Buffer.from(chunk, enc)
+              : chunk;
+            bufs[i >> 1] = buf;
+            total += buf.byteLength ?? buf.length ?? 0;
+          }
+        }
+        streamBaseState[kBytesWritten] = total;
+        streamBaseState[kLastWriteWasAsync] = 1;
+        return handle[kOwner].doWrite(req, bufs);
+      },
+      writeAsciiString(req, data) {
+        return this.writeBuffer(req, Buffer.from(data, "ascii"));
+      },
+      writeUtf8String(req, data) {
+        return this.writeBuffer(req, Buffer.from(data, "utf8"));
+      },
+      writeLatin1String(req, data) {
+        return this.writeBuffer(req, Buffer.from(data, "latin1"));
+      },
+      writeUcs2String(req, data) {
+        return this.writeBuffer(req, Buffer.from(data, "utf16le"));
+      },
+      shutdown(req) {
+        return handle[kOwner].doShutdown(req);
       },
       // These are set by TLSWrap after attachJsStream()
       readBuffer: null,
@@ -152,13 +205,13 @@ class JSStreamSocket extends Socket {
     return 0;
   }
 
-  finishShutdown(_handle, _errCode) {
-    if (this[kCurrentShutdownRequest] === null) return;
+  finishShutdown(_handle, errCode) {
+    const req = this[kCurrentShutdownRequest];
+    if (req === null) return;
     this[kCurrentShutdownRequest] = null;
-    // TODO(@bartlomieju): In Node.js this calls handle.finishShutdown(errCode)
-    // to invoke the C++ write completion callback. For now TLSWrap handles
-    // shutdown completion internally. If JS-stream writes hang, this may
-    // need to notify TLSWrap explicitly.
+    if (typeof req.oncomplete === "function") {
+      req.oncomplete(errCode | 0);
+    }
   }
 
   doWrite(req, bufs) {
@@ -200,18 +253,18 @@ class JSStreamSocket extends Socket {
     return 0;
   }
 
-  // TODO(@bartlomieju): In Node.js this calls handle.finishWrite(errCode)
-  // to notify C++ of write completion. Currently we just track request state.
-  // The tls_jsstreamsocket_close test covers the close path, but complex
-  // write patterns over JSStreamSocket may need explicit TLSWrap notification.
-  finishWrite(_handle, _errCode) {
-    if (this[kCurrentWriteRequest] === null) return;
+  finishWrite(_handle, errCode) {
+    const req = this[kCurrentWriteRequest];
+    if (req === null) return;
     this[kCurrentWriteRequest] = null;
+    if (typeof req.oncomplete === "function") {
+      req.oncomplete(errCode | 0);
+    }
 
     if (this[kPendingShutdownRequest]) {
-      const req = this[kPendingShutdownRequest];
+      const sreq = this[kPendingShutdownRequest];
       this[kPendingShutdownRequest] = null;
-      this.doShutdown(req);
+      this.doShutdown(sreq);
     }
   }
 

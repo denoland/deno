@@ -3,6 +3,7 @@
 import {
   assert,
   assertEquals,
+  assertMatch,
   assertStringIncludes,
   assertThrows,
 } from "@std/assert";
@@ -556,6 +557,42 @@ Deno.test("mTLS client certificate authentication", async () => {
   await new Promise<void>((resolve) => server.on("close", resolve));
 });
 
+Deno.test("tls.getCACertificates returns bundled certificates", () => {
+  const certs = tls.getCACertificates("bundled");
+  assert(Array.isArray(certs));
+  assert(certs.length > 0);
+  assert(certs.every((cert) => typeof cert === "string"));
+  assert(certs.every((cert) => cert.startsWith("-----BEGIN CERTIFICATE-----")));
+});
+
+Deno.test("tls.getCACertificates defaults to 'default'", () => {
+  const certs = tls.getCACertificates();
+  assert(Array.isArray(certs));
+  assert(certs.length > 0);
+});
+
+Deno.test("tls.getCACertificates 'system' returns array", () => {
+  const certs = tls.getCACertificates("system");
+  assert(Array.isArray(certs));
+  assert(certs.every((cert) => typeof cert === "string"));
+});
+
+Deno.test("tls.getCACertificates 'extra' returns empty array without NODE_EXTRA_CA_CERTS", () => {
+  const certs = tls.getCACertificates("extra");
+  assert(Array.isArray(certs));
+  assertEquals(certs.length, 0);
+});
+
+Deno.test("tls.getCACertificates throws on invalid type", () => {
+  assertThrows(
+    () => {
+      // deno-lint-ignore no-explicit-any
+      (tls as any).getCACertificates("invalid");
+    },
+    TypeError,
+  );
+});
+
 Deno.test("tls.setDefaultCACertificates exists", () => {
   // deno-lint-ignore no-explicit-any
   assertEquals(typeof (tls as any).setDefaultCACertificates, "function");
@@ -779,6 +816,42 @@ Deno.test("tls.connect socket upgrade derives SNI from socket._host", async () =
 });
 
 // https://github.com/denoland/deno/issues/30170
+// https://github.com/denoland/deno/issues/33391
+// TLS server without cert/key should emit tlsClientError, not crash with
+// an uncaught exception on stdout.  With a real TLS client the cert
+// resolver is asked for a certificate, returns None, and rustls aborts
+// the handshake with a fatal alert — surfaced as "no suitable signature
+// algorithm" server-side.
+Deno.test("tls server without certs emits tlsClientError instead of crashing", async () => {
+  const { promise, resolve, reject } = Promise.withResolvers<Error>();
+
+  // Server with no cert/key — the cert resolver always returns None.
+  const server = tls.createServer((_socket) => {
+    reject(new Error("should not reach request handler"));
+  });
+
+  server.on("tlsClientError", (err: Error) => {
+    resolve(err);
+  });
+
+  server.listen(0, () => {
+    // deno-lint-ignore no-explicit-any
+    const port = (server.address() as any).port;
+    const client = tls.connect({
+      port,
+      host: "127.0.0.1",
+      rejectUnauthorized: false,
+    });
+    client.on("error", () => {});
+  });
+
+  const err = await promise;
+  assertMatch(err.message, /no suitable signature algorithm/i);
+
+  server.close();
+  await new Promise<void>((r) => server.on("close", r));
+});
+
 Deno.test("tls.connect strips trailing dot from servername", async () => {
   const listener = Deno.listenTls({
     port: 0,

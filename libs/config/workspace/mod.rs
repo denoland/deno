@@ -2461,7 +2461,6 @@ impl WorkspaceDirectory {
     };
     self.exclude_includes_with_member_for_base_for_root(&mut config.files);
     combine_files_config_with_cli_args(&mut config.files, cli_args);
-    self.append_workspace_members_to_exclude(&mut config.files);
     Ok(Some(config))
   }
 
@@ -6595,5 +6594,260 @@ pub mod test {
         .to_string()
         .trim_end_matches('/'),
     )
+  }
+
+  // --- Deploy config tests ---
+
+  #[test]
+  fn test_deploy_config_in_root_does_not_exclude_members() {
+    // Regression test: when deploy config is in the workspace root and the
+    // user runs `deno deploy` from the root, workspace member directories
+    // should NOT be excluded from the file patterns.
+    let sys = InMemorySys::default();
+    let root_config = root_dir().join("deno.json");
+    sys.fs_insert_json(
+      root_config.clone(),
+      json!({
+        "workspace": ["./packages/backend", "./packages/types"],
+        "deploy": {
+          "org": "myorg",
+          "app": "myapp"
+        }
+      }),
+    );
+    sys.fs_insert_json(
+      root_dir().join("packages/backend/deno.json"),
+      json!({
+        "version": "0.1.0",
+        "exclude": ["coverage/"]
+      }),
+    );
+    sys.fs_insert(
+      root_dir().join("packages/backend/main.ts"),
+      "Deno.serve(() => new Response('hello'));",
+    );
+    sys.fs_insert_json(
+      root_dir().join("packages/types/deno.json"),
+      json!({
+        "name": "@myapp/types",
+        "exports": "./mod.ts"
+      }),
+    );
+    sys.fs_insert(
+      root_dir().join("packages/types/mod.ts"),
+      "export type Foo = string;",
+    );
+
+    // Discover from workspace root
+    let workspace_dir = workspace_at_start_dir(&sys, &root_dir());
+    let deploy_config = workspace_dir
+      .to_deploy_config(FilePatterns::new_with_base(workspace_dir.dir_path()))
+      .unwrap();
+
+    assert!(deploy_config.is_some(), "deploy config should be resolved");
+    let deploy_config = deploy_config.unwrap();
+    assert_eq!(deploy_config.org, "myorg");
+    assert_eq!(deploy_config.app, Some("myapp".to_string()));
+
+    // The critical check: workspace member paths must NOT be excluded
+    let backend_dir = root_dir().join("packages/backend");
+    let types_dir = root_dir().join("packages/types");
+    assert!(
+      deploy_config
+        .files
+        .matches_path(&backend_dir, PathKind::Directory),
+      "packages/backend should not be excluded from deploy files"
+    );
+    assert!(
+      deploy_config
+        .files
+        .matches_path(&types_dir, PathKind::Directory),
+      "packages/types should not be excluded from deploy files"
+    );
+    assert!(
+      deploy_config.files.matches_path(
+        &root_dir().join("packages/backend/main.ts"),
+        PathKind::File,
+      ),
+      "packages/backend/main.ts should be included in deploy files"
+    );
+  }
+
+  #[test]
+  fn test_deploy_config_in_both_root_and_member() {
+    // When both root and member have deploy configs, running from the
+    // member directory should resolve the deploy config and not exclude
+    // member files.
+    let sys = InMemorySys::default();
+    sys.fs_insert_json(
+      root_dir().join("deno.json"),
+      json!({
+        "workspace": ["./member"],
+        "deploy": {
+          "org": "rootorg"
+        }
+      }),
+    );
+    sys.fs_insert_json(
+      root_dir().join("member/deno.json"),
+      json!({
+        "deploy": {
+          "org": "myorg",
+          "app": "myapp"
+        }
+      }),
+    );
+    sys.fs_insert(
+      root_dir().join("member/main.ts"),
+      "Deno.serve(() => new Response('hello'));",
+    );
+
+    let workspace_dir =
+      workspace_at_start_dir(&sys, &root_dir().join("member"));
+    let deploy_config = workspace_dir
+      .to_deploy_config(FilePatterns::new_with_base(workspace_dir.dir_path()))
+      .unwrap();
+
+    assert!(deploy_config.is_some(), "deploy config should be resolved");
+    let deploy_config = deploy_config.unwrap();
+    // Member's org takes precedence over root's
+    assert_eq!(deploy_config.org, "myorg");
+
+    // Member's own files must match
+    assert!(
+      deploy_config
+        .files
+        .matches_path(&root_dir().join("member/main.ts"), PathKind::File,),
+      "member/main.ts should be included"
+    );
+  }
+
+  #[test]
+  fn test_deploy_config_root_only_no_member_deploy() {
+    // deploy:{org,app} in root, NO deploy in any member.
+    // When running from root, to_deploy_config should return Some.
+    let sys = InMemorySys::default();
+    sys.fs_insert_json(
+      root_dir().join("deno.json"),
+      json!({
+        "workspace": [
+          "./packages/backend",
+          "./packages/types",
+          "./packages/schema"
+        ],
+        "deploy": {
+          "org": "sfdevtools",
+          "app": "prod"
+        }
+      }),
+    );
+    sys.fs_insert_json(
+      root_dir().join("packages/backend/deno.json"),
+      json!({ "version": "0.1.0" }),
+    );
+    sys.fs_insert(
+      root_dir().join("packages/backend/main.ts"),
+      "Deno.serve(() => new Response('hello'));",
+    );
+    sys.fs_insert_json(
+      root_dir().join("packages/types/deno.json"),
+      json!({ "name": "@myapp/types", "exports": "./mod.ts" }),
+    );
+    sys.fs_insert(
+      root_dir().join("packages/types/mod.ts"),
+      "export type Foo = string;",
+    );
+    sys.fs_insert_json(
+      root_dir().join("packages/schema/deno.json"),
+      json!({ "name": "@myapp/schema", "exports": "./mod.ts" }),
+    );
+    sys.fs_insert(
+      root_dir().join("packages/schema/mod.ts"),
+      "export const VERSION = 1;",
+    );
+
+    let workspace_dir = workspace_at_start_dir(&sys, &root_dir());
+    let deploy_config = workspace_dir
+      .to_deploy_config(FilePatterns::new_with_base(workspace_dir.dir_path()))
+      .unwrap();
+
+    assert!(
+      deploy_config.is_some(),
+      "deploy config should be resolved when only root has deploy field"
+    );
+    let deploy_config = deploy_config.unwrap();
+    assert_eq!(deploy_config.org, "sfdevtools");
+
+    // All workspace member directories must be accessible
+    for member in &["packages/backend", "packages/types", "packages/schema"] {
+      let member_dir = root_dir().join(member);
+      assert!(
+        deploy_config
+          .files
+          .matches_path(&member_dir, PathKind::Directory),
+        "{member} should not be excluded from deploy files"
+      );
+    }
+    // Entrypoint must be accessible
+    assert!(
+      deploy_config.files.matches_path(
+        &root_dir().join("packages/backend/main.ts"),
+        PathKind::File,
+      ),
+      "packages/backend/main.ts must be included"
+    );
+  }
+
+  #[test]
+  fn test_deploy_config_with_exclude() {
+    // Deploy config with explicit exclude should respect it but not
+    // additionally exclude workspace members.
+    let sys = InMemorySys::default();
+    sys.fs_insert_json(
+      root_dir().join("deno.json"),
+      json!({
+        "workspace": ["./packages/backend", "./packages/types"],
+        "exclude": ["docs/"],
+        "deploy": {
+          "org": "myorg",
+          "app": "myapp"
+        }
+      }),
+    );
+    sys
+      .fs_insert_json(root_dir().join("packages/backend/deno.json"), json!({}));
+    sys.fs_insert(
+      root_dir().join("packages/backend/main.ts"),
+      "Deno.serve(() => new Response('hello'));",
+    );
+    sys.fs_insert_json(root_dir().join("packages/types/deno.json"), json!({}));
+    sys.fs_insert(
+      root_dir().join("packages/types/mod.ts"),
+      "export type Foo = string;",
+    );
+
+    let workspace_dir = workspace_at_start_dir(&sys, &root_dir());
+    let deploy_config = workspace_dir
+      .to_deploy_config(FilePatterns::new_with_base(workspace_dir.dir_path()))
+      .unwrap();
+
+    assert!(deploy_config.is_some());
+    let deploy_config = deploy_config.unwrap();
+
+    // Workspace members should NOT be excluded
+    assert!(
+      deploy_config.files.matches_path(
+        &root_dir().join("packages/backend/main.ts"),
+        PathKind::File,
+      ),
+      "workspace member files should not be excluded"
+    );
+    // docs/ should be excluded (from top-level exclude)
+    assert!(
+      !deploy_config
+        .files
+        .matches_path(&root_dir().join("docs/readme.md"), PathKind::File),
+      "docs/ should be excluded"
+    );
   }
 }

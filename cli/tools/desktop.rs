@@ -323,10 +323,6 @@ async fn compile_desktop(
 
 /// Launch the desktop app with HMR enabled after compilation.
 ///
-/// The compiled dylib contains the entrypoint with both production and dev
-/// code paths. The `dev_entrypoint_code` is parsed as KEY=VALUE env vars
-/// that switch the entrypoint to dev mode (e.g. DENO_DESKTOP_DEV=1).
-///
 /// Framework dev servers provide HMR via websocket. Since they run inside
 /// the Deno desktop runtime, `Deno.desktop` APIs remain available.
 /// `child_process.fork()` works because forked workers use
@@ -351,13 +347,11 @@ async fn run_desktop_hmr(
     .unwrap_or(source_dir.to_path_buf());
 
   if let Some(fw) = framework {
-    if fw.dev_entrypoint_code.is_some() {
-      log::info!(
-        "{} {} dev server with HMR in desktop mode",
-        colors::green("Running"),
-        fw.name,
-      );
-    }
+    log::info!(
+      "{} {} dev server with HMR in desktop mode",
+      colors::green("Running"),
+      fw.name,
+    );
   }
 
   log::info!(
@@ -373,18 +367,6 @@ async fn run_desktop_hmr(
     .env("WEF_RUNTIME_PATH", &dylib_abs)
     .env("DENO_DESKTOP_HMR", &source_abs)
     .current_dir(&source_abs);
-
-  // Set framework dev env vars (e.g. DENO_DESKTOP_DEV=1) so the
-  // embedded entrypoint branches into dev mode.
-  if let Some(fw) = framework {
-    if let Some(ref dev_env) = fw.dev_entrypoint_code {
-      for line in dev_env.lines() {
-        if let Some((key, value)) = line.split_once('=') {
-          cmd.env(key.trim(), value.trim());
-        }
-      }
-    }
-  }
 
   // Wire up the unified DevTools multiplexer when --inspect is set.
   // The mux runs in this (parent) process and fronts both the Deno runtime

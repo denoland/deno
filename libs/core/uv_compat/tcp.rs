@@ -36,6 +36,8 @@ use crate::uv_compat::UV_ECANCELED;
 use crate::uv_compat::UV_EINVAL;
 use crate::uv_compat::UV_ENOBUFS;
 use crate::uv_compat::UV_ENOTCONN;
+#[cfg(unix)]
+use crate::uv_compat::UV_ENOTSUP;
 use crate::uv_compat::UV_EOF;
 use crate::uv_compat::UV_EPIPE;
 use crate::uv_compat::UV_HANDLE_ACTIVE;
@@ -302,13 +304,15 @@ pub unsafe fn uv_tcp_open(tcp: *mut uv_tcp_t, fd: c_int) -> c_int {
   }
 }
 
+const UV_TCP_REUSEPORT: u32 = 4;
+
 /// ### Safety
 /// `tcp` must be initialized by `uv_tcp_init`. `addr` must point to a valid sockaddr.
 pub unsafe fn uv_tcp_bind(
   tcp: *mut uv_tcp_t,
   addr: *const c_void,
   _addrlen: u32,
-  _flags: u32,
+  flags: u32,
 ) -> c_int {
   // SAFETY: Caller guarantees addr points to a valid sockaddr.
   let sock_addr = unsafe { sockaddr_to_std(addr) };
@@ -339,32 +343,45 @@ pub unsafe fn uv_tcp_bind(
     #[cfg(unix)]
     socket.set_reuseaddr(true).ok();
 
-    // Match libuv: on Windows, set SO_EXCLUSIVEADDRUSE to prevent other
-    // sockets from binding to the same port. This is the Windows equivalent
-    // of the default Unix behavior (without SO_REUSEADDR's Windows semantics
-    // which would allow port sharing).
-    #[cfg(windows)]
-    {
-      use std::os::windows::io::AsRawSocket;
-      unsafe extern "system" {
-        fn setsockopt(
-          s: usize,
-          level: c_int,
-          optname: c_int,
-          optval: *const c_void,
-          optlen: c_int,
-        ) -> c_int;
+    // SO_REUSEPORT allows multiple sockets to bind to the same port.
+    if flags & UV_TCP_REUSEPORT != 0 {
+      #[cfg(unix)]
+      if socket.set_reuseport(true).is_err() {
+        return UV_ENOTSUP;
       }
-      const SOL_SOCKET: c_int = 0xffff;
-      const SO_EXCLUSIVEADDRUSE: c_int = -5; // ~SO_REUSEADDR
-      let one: c_int = 1;
-      setsockopt(
-        socket.as_raw_socket() as usize,
-        SOL_SOCKET,
-        SO_EXCLUSIVEADDRUSE,
-        &one as *const c_int as *const c_void,
-        std::mem::size_of::<c_int>() as c_int,
-      );
+      // On Windows, SO_REUSEADDR allows multiple sockets to bind to the
+      // same port (unlike Unix where it only affects TIME_WAIT). This is
+      // the Windows equivalent of SO_REUSEPORT.
+      #[cfg(windows)]
+      socket.set_reuseaddr(true).ok();
+    } else {
+      // Match libuv: on Windows, set SO_EXCLUSIVEADDRUSE to prevent other
+      // sockets from binding to the same port. This is the Windows equivalent
+      // of the default Unix behavior (without SO_REUSEADDR's Windows semantics
+      // which would allow port sharing).
+      #[cfg(windows)]
+      {
+        use std::os::windows::io::AsRawSocket;
+        unsafe extern "system" {
+          fn setsockopt(
+            s: usize,
+            level: c_int,
+            optname: c_int,
+            optval: *const c_void,
+            optlen: c_int,
+          ) -> c_int;
+        }
+        const SOL_SOCKET: c_int = 0xffff;
+        const SO_EXCLUSIVEADDRUSE: c_int = -5; // ~SO_REUSEADDR
+        let one: c_int = 1;
+        setsockopt(
+          socket.as_raw_socket() as usize,
+          SOL_SOCKET,
+          SO_EXCLUSIVEADDRUSE,
+          &one as *const c_int as *const c_void,
+          std::mem::size_of::<c_int>() as c_int,
+        );
+      }
     }
 
     // Store the raw fd so uv_tcp_nodelay etc. can
@@ -515,6 +532,32 @@ pub unsafe fn uv_tcp_nodelay(tcp: *mut uv_tcp_t, enable: c_int) -> c_int {
         let _ = on;
       }
     }
+  }
+  0
+}
+
+/// Set SO_LINGER to 0 on the TCP socket and close it immediately so
+/// the OS sends RST instead of FIN.  This matches libuv's
+/// `uv_tcp_close_reset`.
+///
+/// The stream is taken and dropped here rather than in `stop_tcp`,
+/// because `stop_tcp` calls `shutdown(Both)` which sends FIN and
+/// defeats the RST behaviour.
+///
+/// ### Safety
+/// `tcp` must be a valid pointer to a `uv_tcp_t` initialized by `uv_tcp_init`.
+pub unsafe fn uv_tcp_reset(tcp: *mut uv_tcp_t) -> c_int {
+  // SAFETY: Caller guarantees tcp is valid and initialized.
+  unsafe {
+    if let Some(ref stream) = (*tcp).internal_stream
+      && stream.set_linger(Some(std::time::Duration::ZERO)).is_err()
+    {
+      return UV_EINVAL;
+    }
+    // Drop the stream immediately so the fd is closed with SO_LINGER=0,
+    // causing the kernel to send RST to the peer.  `stop_tcp` will find
+    // `internal_stream` already `None` and skip the graceful shutdown.
+    let _ = (*tcp).internal_stream.take();
   }
   0
 }

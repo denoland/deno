@@ -262,18 +262,26 @@ class TextEncoder {
    */
   encodeInto(source, destination) {
     webidl.assertBranded(this, TextEncoderPrototype);
-    const prefix = "Failed to execute 'encodeInto' on 'TextEncoder'";
-    // The WebIDL type of `source` is `USVString`, but the ops bindings
-    // already convert lone surrogates to the replacement character.
-    source = webidl.converters.DOMString(source, prefix, "Argument 1");
-    destination = webidl.converters.Uint8Array(
-      destination,
-      prefix,
-      "Argument 2",
-      {
-        allowShared: true,
-      },
-    );
+    // Fast path: source is already a string and destination is already a
+    // regular Uint8Array. Skips the DOMString and Uint8Array WebIDL converters
+    // (and the per-call `{ allowShared: true }` opts allocation that the
+    // Uint8Array converter takes). The op already replaces lone surrogates
+    // with the U+FFFD replacement character (matching USVString semantics).
+    if (
+      typeof source !== "string" ||
+      TypedArrayPrototypeGetSymbolToStringTag(destination) !== "Uint8Array"
+    ) {
+      const prefix = "Failed to execute 'encodeInto' on 'TextEncoder'";
+      // The WebIDL type of `source` is `USVString`, but the ops bindings
+      // already convert lone surrogates to the replacement character.
+      source = webidl.converters.DOMString(source, prefix, "Argument 1");
+      destination = webidl.converters.Uint8Array(
+        destination,
+        prefix,
+        "Argument 2",
+        encodeIntoOpts,
+      );
+    }
     op_encoding_encode_into(source, destination, encodeIntoBuf);
     return {
       read: encodeIntoBuf[0],
@@ -294,6 +302,7 @@ class TextEncoder {
 }
 
 const encodeIntoBuf = new Uint32Array(2);
+const encodeIntoOpts = { __proto__: null, allowShared: true };
 
 webidl.configureInterface(TextEncoder);
 const TextEncoderPrototype = TextEncoder.prototype;

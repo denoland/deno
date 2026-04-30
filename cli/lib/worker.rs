@@ -257,6 +257,8 @@ pub struct LibMainWorkerOptions {
   pub location: Option<Url>,
   pub argv0: Option<String>,
   pub node_debug: Option<String>,
+  pub node_cluster_unique_id: Option<String>,
+  pub node_cluster_sched_policy: Option<String>,
   pub otel_config: OtelConfig,
   pub origin_data_folder_path: Option<PathBuf>,
   pub seed: Option<u64>,
@@ -453,6 +455,11 @@ impl<TSys: DenoLibSys> LibWorkerFactorySharedState<TSys> {
           has_node_modules_dir: shared.options.has_node_modules_dir,
           argv0: shared.options.argv0.clone(),
           node_debug: shared.options.node_debug.clone(),
+          node_cluster_unique_id: shared.options.node_cluster_unique_id.clone(),
+          node_cluster_sched_policy: shared
+            .options
+            .node_cluster_sched_policy
+            .clone(),
           node_ipc_init: None,
           mode: WorkerExecutionMode::Worker,
           serve_port: shared.options.serve_port,
@@ -681,6 +688,11 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
         has_node_modules_dir: shared.options.has_node_modules_dir,
         argv0: shared.options.argv0.clone(),
         node_debug: shared.options.node_debug.clone(),
+        node_cluster_unique_id: shared.options.node_cluster_unique_id.clone(),
+        node_cluster_sched_policy: shared
+          .options
+          .node_cluster_sched_policy
+          .clone(),
         node_ipc_init: shared.options.node_ipc_init,
         mode,
         no_legacy_abort: shared.options.no_legacy_abort,

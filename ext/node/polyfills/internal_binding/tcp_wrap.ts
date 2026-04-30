@@ -72,6 +72,7 @@ export enum constants {
   SOCKET = socketType.SOCKET,
   SERVER = socketType.SERVER,
   UV_TCP_IPV6ONLY,
+  UV_TCP_REUSEPORT = 4,
 }
 
 /**
