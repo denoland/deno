@@ -22,6 +22,7 @@ const {
   ObjectDefineProperty,
   ObjectFreeze,
   ObjectGetPrototypeOf,
+  ObjectGetOwnPropertyDescriptor,
   ObjectGetOwnPropertyDescriptors,
   ObjectPrototypeIsPrototypeOf,
   ObjectSetPrototypeOf,
@@ -167,6 +168,50 @@ export function convertToValidSignal(signal) {
 
 const codesWarned = new SafeSet();
 
+const experimentalWarnings = new SafeSet();
+
+export function emitExperimentalWarning(feature, messagePrefix, code, ctor) {
+  if (SetPrototypeHas(experimentalWarnings, feature)) return;
+  SetPrototypeAdd(experimentalWarnings, feature);
+  let msg =
+    `${feature} is an experimental feature and might change at any time`;
+  if (messagePrefix) {
+    msg = messagePrefix + msg;
+  }
+  globalThis.process.emitWarning(msg, "ExperimentalWarning", code, ctor);
+}
+
+const pendingCodesWarned = new SafeSet();
+
+// Internal deprecator for pending --pending-deprecation. Emits the warning only
+// when --pending-deprecation is set and --no-deprecation is not.
+export function pendingDeprecate(fn, msg, code) {
+  function deprecated(...args) {
+    const process = globalThis.process;
+    if (
+      process.execArgv?.includes("--pending-deprecation") &&
+      !process.noDeprecation
+    ) {
+      if (code !== undefined) {
+        if (!SetPrototypeHas(pendingCodesWarned, code)) {
+          process.emitWarning(msg, "DeprecationWarning", code, deprecated);
+          SetPrototypeAdd(pendingCodesWarned, code);
+        }
+      } else {
+        process.emitWarning(msg, "DeprecationWarning", deprecated);
+      }
+    }
+    return ReflectApply(fn, this, args);
+  }
+
+  ObjectDefineProperty(deprecated, "length", {
+    __proto__: null,
+    ...ObjectGetOwnPropertyDescriptor(fn, "length"),
+  });
+
+  return deprecated;
+}
+
 export function deprecateInstantiation(Constructor, deprecationCode, ...args) {
   if (!SetPrototypeHas(codesWarned, deprecationCode)) {
     SetPrototypeAdd(codesWarned, deprecationCode);
@@ -230,11 +275,13 @@ export default {
   customInspectSymbol,
   customPromisifyArgs,
   deprecateInstantiation,
+  emitExperimentalWarning,
   isError,
   kEmptyObject,
   kEnumerableProperty,
   normalizeEncoding,
   once,
+  pendingDeprecate,
   promisify,
   removeColors,
   sleep,
