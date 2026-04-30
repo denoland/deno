@@ -1029,7 +1029,14 @@ Module._resolveFilename = function (
     const result = executeResolveHookChain(request, context, parent, isMain);
     if (result != null && result.url != null) {
       if (StringPrototypeStartsWith(result.url, "file://")) {
-        return url.fileURLToPath(result.url);
+        try {
+          return url.fileURLToPath(result.url);
+        } catch {
+          // Virtual file:// URLs may not have valid OS paths (e.g.
+          // file:///virtual.js on Windows). Return the URL as-is and
+          // let the load hook handle it.
+          return result.url;
+        }
       }
       // node: and other schemes returned as-is
       return result.url;
