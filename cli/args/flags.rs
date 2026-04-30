@@ -594,6 +594,23 @@ pub struct TestFlags {
   pub hide_stacktraces: bool,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq, Default)]
+pub enum SourceMapMode {
+  #[default]
+  None,
+  Inline,
+  Separate,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct TranspileFlags {
+  pub files: Vec<String>,
+  pub output: Option<String>,
+  pub output_dir: Option<String>,
+  pub declaration: bool,
+  pub source_map: SourceMapMode,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct UpgradeFlags {
   pub dry_run: bool,
@@ -678,6 +695,7 @@ pub enum DenoSubcommand {
   Serve(ServeFlags),
   Task(TaskFlags),
   Test(TestFlags),
+  Transpile(TranspileFlags),
   Outdated(OutdatedFlags),
   Types,
   Upgrade(UpgradeFlags),
@@ -1954,6 +1972,7 @@ pub fn flags_from_vec_with_initial_cwd(
         "serve" => serve_parse(&mut flags, &mut m, app)?,
         "task" => task_parse(&mut flags, &mut m, app)?,
         "test" => test_parse(&mut flags, &mut m)?,
+        "transpile" => transpile_parse(&mut flags, &mut m)?,
         "types" => types_parse(&mut flags, &mut m),
         "uninstall" => uninstall_parse(&mut flags, &mut m),
         "update" => outdated_parse(&mut flags, &mut m, true)?,
@@ -2226,6 +2245,7 @@ pub fn clap_root() -> Command {
         .subcommand(repl_subcommand())
         .subcommand(task_subcommand())
         .subcommand(test_subcommand())
+        .subcommand(transpile_subcommand())
         .subcommand(types_subcommand())
         .subcommand(update_subcommand())
         .subcommand(upgrade_subcommand())
@@ -4589,6 +4609,75 @@ fn parallel_arg(descr: &str) -> Arg {
     .long("parallel")
     .help(format!("Run {descr} in parallel. Parallelism defaults to the number of available CPUs or the value of the DENO_JOBS environment variable"))
     .action(ArgAction::SetTrue)
+}
+
+fn transpile_subcommand() -> Command {
+  command(
+    "transpile",
+    cstr!(
+      "Transpile TypeScript/JSX/TSX files to JavaScript.
+
+  <p(245)>deno transpile main.ts</>
+
+Output to a specific file:
+  <p(245)>deno transpile main.ts -o main.js</>
+
+Output to a directory:
+  <p(245)>deno transpile src/*.ts --outdir dist</>
+
+With source maps:
+  <p(245)>deno transpile main.ts --source-map separate</>
+
+Generate declaration files:
+  <p(245)>deno transpile main.ts -o out.js --declaration</>
+
+Note: --declaration always writes .d.ts files to disk (next to the source or in --outdir)."
+    ),
+    UnstableArgsConfig::ResolutionOnly,
+  )
+  .defer(|cmd| {
+    compile_args_without_check_args(cmd)
+      .arg(
+        Arg::new("file")
+          .num_args(1..)
+          .required_unless_present("help")
+          .value_hint(ValueHint::FilePath),
+      )
+      .arg(
+        Arg::new("output")
+          .long("output")
+          .short('o')
+          .help("Output file path (for single file transpilation)")
+          .num_args(1)
+          .value_parser(value_parser!(String))
+          .value_hint(ValueHint::FilePath)
+          .conflicts_with("outdir"),
+      )
+      .arg(
+        Arg::new("outdir")
+          .long("outdir")
+          .help("Output directory for transpiled files")
+          .num_args(1)
+          .value_parser(value_parser!(String))
+          .value_hint(ValueHint::DirPath),
+      )
+      .arg(
+        Arg::new("source-map")
+          .long("source-map")
+          .help("Source map mode: none, inline, or separate")
+          .num_args(1)
+          .value_parser(["none", "inline", "separate"])
+          .default_value("none"),
+      )
+      .arg(
+        Arg::new("declaration")
+          .long("declaration")
+          .help(
+            "Generate .d.ts declaration files (requires type-checking via tsc)",
+          )
+          .action(ArgAction::SetTrue),
+      )
+  })
 }
 
 fn types_subcommand() -> Command {
@@ -7576,6 +7665,34 @@ fn test_parse(
     reporter,
     junit_path,
     hide_stacktraces,
+  });
+  Ok(())
+}
+
+fn transpile_parse(
+  flags: &mut Flags,
+  matches: &mut ArgMatches,
+) -> clap::error::Result<()> {
+  compile_args_without_check_parse(flags, matches)?;
+  unstable_args_parse(flags, matches, UnstableArgsConfig::ResolutionOnly);
+  let files: Vec<String> = match matches.remove_many::<String>("file") {
+    Some(f) => f.collect(),
+    None => vec![],
+  };
+  let output = matches.remove_one::<String>("output");
+  let output_dir = matches.remove_one::<String>("outdir");
+  let source_map = match matches.remove_one::<String>("source-map").as_deref() {
+    Some("inline") => SourceMapMode::Inline,
+    Some("separate") => SourceMapMode::Separate,
+    _ => SourceMapMode::None,
+  };
+  let declaration = matches.get_flag("declaration");
+  flags.subcommand = DenoSubcommand::Transpile(TranspileFlags {
+    files,
+    output,
+    output_dir,
+    declaration,
+    source_map,
   });
   Ok(())
 }
@@ -15978,5 +16095,173 @@ Usage: deno repl [OPTIONS] [-- [ARGS]...]\n"
   fn why_missing_package() {
     let r = flags_from_vec(svec!["deno", "why"]);
     assert!(r.is_err());
+  }
+
+  #[test]
+  fn transpile_single_file() {
+    let r = flags_from_vec(svec!["deno", "transpile", "main.ts"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Transpile(TranspileFlags {
+          files: svec!["main.ts"],
+          output: None,
+          output_dir: None,
+          declaration: false,
+          source_map: SourceMapMode::None,
+        }),
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn transpile_multiple_files() {
+    let r = flags_from_vec(svec!["deno", "transpile", "main.ts", "helpers.ts"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Transpile(TranspileFlags {
+          files: svec!["main.ts", "helpers.ts"],
+          output: None,
+          output_dir: None,
+          declaration: false,
+          source_map: SourceMapMode::None,
+        }),
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn transpile_with_output() {
+    let r =
+      flags_from_vec(svec!["deno", "transpile", "main.ts", "-o", "out.js"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Transpile(TranspileFlags {
+          files: svec!["main.ts"],
+          output: Some("out.js".to_string()),
+          output_dir: None,
+          declaration: false,
+          source_map: SourceMapMode::None,
+        }),
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn transpile_with_outdir() {
+    let r =
+      flags_from_vec(svec!["deno", "transpile", "main.ts", "--outdir", "dist"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Transpile(TranspileFlags {
+          files: svec!["main.ts"],
+          output: None,
+          output_dir: Some("dist".to_string()),
+          declaration: false,
+          source_map: SourceMapMode::None,
+        }),
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn transpile_with_source_map_inline() {
+    let r = flags_from_vec(svec![
+      "deno",
+      "transpile",
+      "main.ts",
+      "--source-map",
+      "inline"
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Transpile(TranspileFlags {
+          files: svec!["main.ts"],
+          output: None,
+          output_dir: None,
+          declaration: false,
+          source_map: SourceMapMode::Inline,
+        }),
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn transpile_with_source_map_separate() {
+    let r = flags_from_vec(svec![
+      "deno",
+      "transpile",
+      "main.ts",
+      "--source-map",
+      "separate"
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Transpile(TranspileFlags {
+          files: svec!["main.ts"],
+          output: None,
+          output_dir: None,
+          declaration: false,
+          source_map: SourceMapMode::Separate,
+        }),
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn transpile_with_declaration() {
+    let r =
+      flags_from_vec(svec!["deno", "transpile", "main.ts", "--declaration"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Transpile(TranspileFlags {
+          files: svec!["main.ts"],
+          output: None,
+          output_dir: None,
+          declaration: true,
+          source_map: SourceMapMode::None,
+        }),
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn transpile_all_flags() {
+    let r = flags_from_vec(svec![
+      "deno",
+      "transpile",
+      "main.ts",
+      "-o",
+      "out.js",
+      "--source-map",
+      "separate",
+      "--declaration"
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Transpile(TranspileFlags {
+          files: svec!["main.ts"],
+          output: Some("out.js".to_string()),
+          output_dir: None,
+          declaration: true,
+          source_map: SourceMapMode::Separate,
+        }),
+        ..Flags::default()
+      }
+    );
   }
 }
