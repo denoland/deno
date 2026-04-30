@@ -94,6 +94,9 @@
       "ignore": true,
       "reason": "Node.js snapshot/heap profiling features (--build-snapshot, --heap-prof, --heapsnapshot-near-heap-limit) are not implemented in Deno"
     },
+    "module-hooks/test-module-hooks-load-context-optional.js": {},
+    "module-hooks/test-module-hooks-load-short-circuit.js": {},
+    "module-hooks/test-module-hooks-resolve-short-circuit.js": {},
     "parallel/test-abort-controller-any-timeout.js": {},
     "parallel/test-abortcontroller-internal.js": {
       "ignore": true,
