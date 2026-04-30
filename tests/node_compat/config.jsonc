@@ -3198,6 +3198,21 @@
     "parallel/test-tls-fast-writing.js": {},
     "parallel/test-tls-finished.js": {},
     "parallel/test-tls-friendly-error-message.js": {},
+    "parallel/test-tls-get-ca-certificates-bundled.js": {},
+    "parallel/test-tls-get-ca-certificates-bundled-subset.js": {},
+    "parallel/test-tls-get-ca-certificates-default.js": {},
+    "parallel/test-tls-get-ca-certificates-error.js": {},
+    "parallel/test-tls-get-ca-certificates-extra-empty.js": {},
+    "parallel/test-tls-get-ca-certificates-extra.js": {},
+    "parallel/test-tls-get-ca-certificates-extra-subset.js": {},
+    "parallel/test-tls-get-ca-certificates-system.js": {
+      "ignore": true,
+      "reason": "Deno does not support --use-system-ca flag"
+    },
+    "parallel/test-tls-get-ca-certificates-system-without-flag.js": {
+      "ignore": true,
+      "reason": "Deno does not support --no-use-system-ca flag"
+    },
     "parallel/test-tls-getcertificate-x509.js": {},
     "parallel/test-tls-handshake-error.js": {},
     "parallel/test-tls-honorcipherorder.js": {},
