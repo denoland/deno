@@ -75,7 +75,7 @@ import {
   unstableIds,
 } from "ext:runtime/90_deno_ns.js";
 import { errors } from "ext:runtime/01_errors.js";
-import * as webidl from "ext:deno_webidl/00_webidl.js";
+const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
 import {
   DOMException,
   QuotaExceededError,

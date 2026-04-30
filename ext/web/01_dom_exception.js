@@ -24,7 +24,7 @@ const {
   SymbolFor,
 } = primordials;
 
-import * as webidl from "ext:deno_webidl/00_webidl.js";
+const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
 import { createFilteredInspectProxy } from "./01_console.js";
 
 const _name = Symbol("name");

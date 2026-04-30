@@ -1,7 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-import { primordials } from "ext:core/mod.js";
-import * as webidl from "ext:deno_webidl/00_webidl.js";
+import { core, primordials } from "ext:core/mod.js";
+const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
 import {
   connectQuic,
   webtransportAccept,

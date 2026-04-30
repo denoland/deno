@@ -16,7 +16,7 @@ const {
 
 import * as location from "ext:deno_web/12_location.js";
 import * as console from "ext:deno_web/01_console.js";
-import * as webidl from "ext:deno_webidl/00_webidl.js";
+const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
 import * as globalInterfaces from "ext:deno_web/04_global_interfaces.js";
 const webStorage = core.loadExtScript("ext:deno_webstorage/01_webstorage.js");
 import * as prompt from "ext:runtime/41_prompt.js";

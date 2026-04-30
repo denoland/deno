@@ -17,7 +17,7 @@ const {
   ReflectApply,
 } = primordials;
 
-import * as webidl from "ext:deno_webidl/00_webidl.js";
+const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
 
 const loadNodeTimers = core.createLazyLoader(
   "ext:deno_node/internal/timers.mjs",
