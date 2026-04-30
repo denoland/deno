@@ -1848,6 +1848,10 @@
     "parallel/test-https-agent.js": {},
     "parallel/test-https-byteswritten.js": {},
     "parallel/test-https-client-checkServerIdentity.js": {},
+    "parallel/test-https-client-get-url.js": {
+      "ignore": true,
+      "reason": "Test relies on NODE_TLS_REJECT_UNAUTHORIZED env var to disable TLS verification at runtime; Deno uses the --unsafely-ignore-certificate-errors CLI flag instead"
+    },
     "parallel/test-https-close.js": {},
     "parallel/test-https-connect-address-family.js": {},
     "parallel/test-https-connecting-to-http.js": {
