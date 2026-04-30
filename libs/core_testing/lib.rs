@@ -109,3 +109,18 @@ integration_test!(
   worker_terminate,
   worker_terminate_op,
 );
+
+#[cfg(test)]
+mod integration_manual {
+  // TODO(bartlomieju): import.meta.resolve() should invoke registered loader
+  // hooks (matching Node.js behavior). This requires a synchronous resolve
+  // mechanism similar to Node's resolveSync(). See:
+  // https://github.com/nodejs/node/blob/main/test/es-module/test-esm-import-meta-resolve-hooks.mjs
+  #[test]
+  #[ignore = "import.meta.resolve does not yet invoke async loader hooks"]
+  fn loader_import_meta_resolve() {
+    crate::checkin::runner::testing::run_integration_test(
+      "loader_import_meta_resolve",
+    );
+  }
+}
