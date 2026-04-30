@@ -12,7 +12,7 @@ use tokio::io::AsyncWriteExt;
 
 pub type RawBiPipeHandle = super::RawIoHandle;
 
-#[cfg(unix)]
+#[cfg(all(unix, not(target_os = "linux")))]
 fn set_cloexec(fd: std::os::fd::RawFd) {
   // SAFETY: fcntl is called with a valid fd received from the OS. Errors are
   // intentionally ignored here because CLOEXEC is a best-effort leak guard.
