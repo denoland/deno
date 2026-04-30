@@ -2191,31 +2191,6 @@ impl JsRuntime {
     // Pre-phase: Inspector + drain foreground tasks + microtask checkpoint
     if has_inspector {
       self.inspector().poll_sessions_from_event_loop(cx);
-      // Deliberately ungated by has_tick_scheduled (unlike the other
-      // checkpoints in this function): under Explicit microtask policy,
-      // V8 inspector REPL-mode evaluation (Runtime.evaluate with
-      // replMode: true) wraps the expression in an async IIFE and
-      // tracks the resulting promise via a weak handle. If a CDP-
-      // dispatched expression schedules nextTick (which sets
-      // has_tick_scheduled), gating this drain would leave the
-      // weakly-held promise alive long enough for V8 GC to reap it
-      // before its resolution microtask runs, surfacing as
-      // `-32000 "Promise was collected"` CDP errors. The narrower
-      // GC-race fix wins over preserving strict nextTick-before-then
-      // ordering for debugger-attached evaluations — that ordering only
-      // matters when CDP code itself uses nextTick, which is rare, and
-      // the ordering is still recovered for application code paths via
-      // the gated checkpoint a few lines below. Mirrors the workaround
-      // in cli/tools/repl/session.rs::post_message_with_event_loop.
-      v8::tc_scope!(let tc_scope, scope);
-      tc_scope.perform_microtask_checkpoint();
-      if let Some(exception) = tc_scope.exception() {
-        return Poll::Ready(Err(
-          exception_to_err_result::<()>(tc_scope, exception, false, true)
-            .unwrap_err()
-            .into(),
-        ));
-      }
     }
     {
       // Drain and run foreground tasks queued by the custom V8 platform.
