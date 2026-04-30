@@ -359,12 +359,14 @@ function executeResolveHookChain(specifier, context) {
   if (resolveHooks.length === 0) return null;
 
   let index = 0;
+  // Running context accumulates changes across the chain
+  let currentContext = context;
 
   function nextResolve(spec, ctx) {
-    // Merge context: if ctx provided, merge with original context
-    const mergedContext = ctx !== undefined && ctx !== null
-      ? { ...context, ...ctx }
-      : context;
+    // If ctx provided, merge into running context
+    if (ctx !== undefined && ctx !== null) {
+      currentContext = { ...currentContext, ...ctx };
+    }
 
     if (index >= resolveHooks.length) {
       // Default resolve: use Module._resolveFilename
@@ -390,7 +392,21 @@ function executeResolveHookChain(specifier, context) {
       }
     }
     const hook = resolveHooks[index++];
-    return hook(spec, mergedContext, nextResolve);
+    let nextCalled = false;
+    const wrappedNext = (s, c) => {
+      nextCalled = true;
+      return nextResolve(s, c);
+    };
+    const result = hook(spec, currentContext, wrappedNext);
+    if (!nextCalled && !result?.shortCircuit) {
+      throw new internalErrors.ERR_INVALID_RETURN_PROPERTY_VALUE(
+        "true",
+        "resolve",
+        "shortCircuit",
+        result?.shortCircuit,
+      );
+    }
+    return result;
   }
 
   return nextResolve(specifier, context);
@@ -407,8 +423,13 @@ function executeLoadHookChain(fileUrl, context) {
   if (loadHooks.length === 0) return null;
 
   let index = 0;
+  let currentContext = context;
 
   function nextLoad(loadUrl, ctx) {
+    if (ctx !== undefined && ctx !== null) {
+      currentContext = { ...currentContext, ...ctx };
+    }
+
     if (index >= loadHooks.length) {
       // Default load: read file from disk
       // For builtins, return null source
@@ -426,12 +447,26 @@ function executeLoadHookChain(fileUrl, context) {
       }
       return {
         source: source ?? "",
-        format: ctx?.format ?? undefined,
+        format: currentContext?.format ?? undefined,
         shortCircuit: true,
       };
     }
     const hook = loadHooks[index++];
-    return hook(loadUrl, ctx ?? context, nextLoad);
+    let nextCalled = false;
+    const wrappedNext = (u, c) => {
+      nextCalled = true;
+      return nextLoad(u, c);
+    };
+    const result = hook(loadUrl, currentContext, wrappedNext);
+    if (!nextCalled && !result?.shortCircuit) {
+      throw new internalErrors.ERR_INVALID_RETURN_PROPERTY_VALUE(
+        "true",
+        "load",
+        "shortCircuit",
+        result?.shortCircuit,
+      );
+    }
+    return result;
   }
 
   return nextLoad(fileUrl, context);
