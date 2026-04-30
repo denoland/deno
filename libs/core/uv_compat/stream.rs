@@ -9,7 +9,6 @@ use super::UV_EALREADY;
 use super::UV_EBADF;
 use super::UV_EINVAL;
 use super::UV_ENOTCONN;
-use super::UV_EPIPE;
 use super::UV_HANDLE_ACTIVE;
 use super::UV_HANDLE_CLOSING;
 use super::get_inner;
@@ -318,7 +317,7 @@ pub unsafe fn uv_try_writev(
   match stream.try_write_vectored(bufs) {
     Ok(n) => n as i32,
     Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => UV_EAGAIN,
-    Err(_) => UV_EPIPE,
+    Err(ref e) => super::io_error_to_uv(e),
   }
 }
 
@@ -361,7 +360,7 @@ pub unsafe fn uv_try_write(handle: *mut uv_stream_t, data: &[u8]) -> i32 {
   match stream.try_write(data) {
     Ok(n) => n as i32,
     Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => UV_EAGAIN,
-    Err(_) => UV_EPIPE,
+    Err(ref e) => super::io_error_to_uv(e),
   }
 }
 

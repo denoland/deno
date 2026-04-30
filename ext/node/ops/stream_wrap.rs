@@ -1046,6 +1046,29 @@ fn encode_string_into_uninit(
     }
     StringEncoding::Ucs2 => {
       let len_chars = string.length();
+      // V8's `write_v2` writes native-endian u16, which on
+      // little-endian targets is identical to UTF-16LE bytes — Node's
+      // 'ucs2' encoding. On the BE path (no current Deno target) we
+      // fall through to the temp-buffer + byte-swap path. Direct
+      // write requires the destination be u16-aligned and have room
+      // for `len_chars` u16 elements.
+      #[cfg(target_endian = "little")]
+      {
+        let dst_ptr = out.as_mut_ptr();
+        if dst_ptr.align_offset(std::mem::align_of::<u16>()) == 0
+          && out.len() >= len_chars * 2
+        {
+          // SAFETY: `dst_ptr` is u16-aligned and points at
+          // `len_chars * 2` writable bytes = `len_chars` writable
+          // u16 slots. `MaybeUninit<u8>` and `u16` have compatible
+          // representations modulo alignment, which we've verified.
+          let dst: &mut [u16] = unsafe {
+            std::slice::from_raw_parts_mut(dst_ptr as *mut u16, len_chars)
+          };
+          string.write_v2(scope, 0, dst, v8::WriteFlags::empty());
+          return len_chars * 2;
+        }
+      }
       let mut tmp = vec![0u16; len_chars];
       string.write_v2(scope, 0, &mut tmp, v8::WriteFlags::empty());
       for (i, &ch) in tmp.iter().enumerate() {
@@ -1338,35 +1361,25 @@ impl LibUvStreamWrap {
       }
     }
 
-    // Single owned `Vec<u8>` for the concat of all encoded strings.
-    // Functional shape mirrors Node's `NewBackingStore(storage_size)`
-    // at stream_base.cc:247 but stays outside V8 entirely — no
-    // persistent handles, no GC-visible ArrayBuffer objects, just a
-    // heap allocation.
+    // Single owned `Box<[MaybeUninit<u8>]>` for the concat of all
+    // encoded strings. Functional shape mirrors Node's
+    // `NewBackingStore(storage_size)` at stream_base.cc:247 but stays
+    // outside V8 entirely — no persistent handles, no GC-visible
+    // ArrayBuffer objects, just a heap allocation.
     //
-    // Allocate-with-capacity-then-set-len so the pointer is stable
-    // (no realloc during encode) and we can hand raw `&mut
-    // [MaybeUninit<u8>]` windows to the encoders without going
-    // through `Vec::spare_capacity_mut` each time.
-    let mut string_storage: Vec<u8> = if string_size > 0 {
-      let mut v = Vec::with_capacity(string_size);
-      #[allow(
-        clippy::uninit_vec,
-        reason = "encoders fully fill `string_size` bytes before any read"
-      )]
-      // SAFETY: we reserved `string_size` bytes; the encoders write
-      // into this range before we expose any slice. `set_len` here
-      // claims the full capacity so `as_mut_ptr().add(offset)` is
-      // valid for arbitrary `offset < string_size`. Bytes may be
-      // uninit at this point, but we never read before writing.
-      unsafe {
-        v.set_len(string_size)
+    // Typed as `MaybeUninit<u8>` so the "bytes may be uninit until an
+    // encoder fills them" contract is enforced by the type system.
+    // Encoders take `&mut [MaybeUninit<u8>]` windows; iovec base
+    // pointers cast through `*mut u8` and only reference written
+    // sub-ranges.
+    let mut string_storage: Box<[std::mem::MaybeUninit<u8>]> =
+      if string_size > 0 {
+        Box::new_uninit_slice(string_size)
+      } else {
+        Box::new_uninit_slice(0)
       };
-      v
-    } else {
-      Vec::new()
-    };
-    let string_storage_ptr: *mut u8 = string_storage.as_mut_ptr();
+    let string_storage_ptr: *mut std::mem::MaybeUninit<u8> =
+      string_storage.as_mut_ptr();
 
     let mut iovecs: smallvec::SmallVec<[uv_buf_t; 16]> =
       smallvec::SmallVec::new();
@@ -1410,11 +1423,10 @@ impl LibUvStreamWrap {
           continue;
         }
         // SAFETY: string_storage_ptr is non-null (string_size > 0) and
-        // points at a `string_size`-byte buffer (stack or cage-backed).
+        // points at a `string_size`-byte buffer.
         let dst_slice = unsafe {
           std::slice::from_raw_parts_mut(
-            string_storage_ptr.add(str_offset)
-              as *mut std::mem::MaybeUninit<u8>,
+            string_storage_ptr.add(str_offset),
             remaining,
           )
         };
@@ -1490,22 +1502,30 @@ impl LibUvStreamWrap {
     }
 
     // Partial drain: slice iovecs in place, matching libuv's
-    // DoTryWrite pointer advance (stream_wrap.cc:370-382).
+    // DoTryWrite pointer advance (stream_wrap.cc:370-382). Pre-count
+    // fully-consumed iovecs and the partial head offset, then `drain`
+    // the consumed prefix in a single shift — avoids the O(n²) cost of
+    // `remove(0)` in a loop, which matters at large iovec counts (e.g.
+    // chunked-encoding responses approaching `IOV_MAX`).
     if sync_written > 0 {
       let mut remaining = sync_written;
-      while remaining > 0 && !iovecs.is_empty() {
-        let head_len = iovecs[0].len;
+      let mut consumed = 0;
+      while remaining > 0 && consumed < iovecs.len() {
+        let head_len = iovecs[consumed].len;
         if remaining >= head_len {
           remaining -= head_len;
-          iovecs.remove(0);
+          consumed += 1;
         } else {
           // SAFETY: sliced within bounds.
-          iovecs[0].base = unsafe {
-            (iovecs[0].base as *mut u8).add(remaining) as *mut c_char
+          iovecs[consumed].base = unsafe {
+            (iovecs[consumed].base as *mut u8).add(remaining) as *mut c_char
           };
-          iovecs[0].len = head_len - remaining;
+          iovecs[consumed].len = head_len - remaining;
           remaining = 0;
         }
+      }
+      if consumed > 0 {
+        iovecs.drain(0..consumed);
       }
     }
 
@@ -1513,7 +1533,8 @@ impl LibUvStreamWrap {
     // state. Buffer chunks are retained JS-side via `req.buffer =
     // data`, so `owned_buffers` only holds the string storage (or
     // nothing at all if this writev was Buffers-only).
-    let mut owned: smallvec::SmallVec<[Vec<u8>; 1]> = smallvec::SmallVec::new();
+    let mut owned: smallvec::SmallVec<[Box<[std::mem::MaybeUninit<u8>]>; 1]> =
+      smallvec::SmallVec::new();
     if !string_storage.is_empty() {
       owned.push(string_storage);
     }
@@ -1774,7 +1795,7 @@ impl LibUvStreamWrap {
     scope: &mut v8::PinScope,
     stream: *mut uv_stream_t,
     iovecs: smallvec::SmallVec<[uv_buf_t; 16]>,
-    owned_buffers: smallvec::SmallVec<[Vec<u8>; 1]>,
+    owned_buffers: smallvec::SmallVec<[Box<[std::mem::MaybeUninit<u8>]>; 1]>,
     total_bytes: usize,
     req_wrap_obj: v8::Local<v8::Object>,
     state_array: v8::Local<v8::Int32Array>,

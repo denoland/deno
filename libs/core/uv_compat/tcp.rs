@@ -167,20 +167,31 @@ pub(crate) struct WritePending {
   pub(crate) status: Option<c_int>,
 }
 
-/// Cursor over a scatter-gather write: a list of iovecs plus a byte
-/// offset into the first one (entries past the first are always full).
-/// Mirrors libuv's `uv__write`'s queue entry which carries `(bufs,
-/// nbufs, write_index)` through the drain loop.
+/// Cursor over a scatter-gather write: a list of iovecs plus a head
+/// index and byte offset into the head entry (entries past the head
+/// are always full). Mirrors libuv's `uv__write`'s queue entry which
+/// carries `(bufs, nbufs, write_index)` through the drain loop.
+///
+/// `head_index` lets `advance` run in O(1) per consumed iovec instead
+/// of shifting the tail; matters at high iovec counts (`IOV_MAX` is
+/// 1024 on Linux, reachable via chunked-encoding responses).
 pub(crate) struct IovecCursor {
   pub(crate) bufs: smallvec::SmallVec<[uv_buf_t; 4]>,
-  /// Byte offset into `bufs[0]` for the next write. Entries 1.. are
-  /// always consumed whole.
+  /// Index of the head entry. Entries `< head_index` are consumed and
+  /// must not be read.
+  pub(crate) head_index: usize,
+  /// Byte offset into `bufs[head_index]` for the next write. Entries
+  /// `> head_index` are always consumed whole.
   pub(crate) head_off: usize,
 }
 
 impl IovecCursor {
   pub(crate) fn new(bufs: smallvec::SmallVec<[uv_buf_t; 4]>) -> Self {
-    Self { bufs, head_off: 0 }
+    Self {
+      bufs,
+      head_index: 0,
+      head_off: 0,
+    }
   }
 
   /// Unwritten slice at the head of the iovec list. Callers that can't
@@ -190,12 +201,12 @@ impl IovecCursor {
   /// # Safety
   /// The memory pointed to by the head iovec must be valid for reads.
   pub(crate) unsafe fn head_slice(&self) -> &[u8] {
-    if self.bufs.is_empty() {
+    if self.head_index >= self.bufs.len() {
       return &[];
     }
     // SAFETY: caller guarantees iovec memory is valid.
     unsafe {
-      let head = &self.bufs[0];
+      let head = &self.bufs[self.head_index];
       if head.len <= self.head_off || head.base.is_null() {
         return &[];
       }
@@ -209,27 +220,34 @@ impl IovecCursor {
   /// Total unwritten bytes across all iovecs.
   #[allow(dead_code, reason = "public helper for external iovec consumers")]
   pub(crate) fn remaining(&self) -> usize {
-    if self.bufs.is_empty() {
+    if self.head_index >= self.bufs.len() {
       return 0;
     }
-    let first = self.bufs[0].len.saturating_sub(self.head_off);
-    first + self.bufs[1..].iter().map(|b| b.len).sum::<usize>()
+    let first = self.bufs[self.head_index].len.saturating_sub(self.head_off);
+    first
+      + self.bufs[self.head_index + 1..]
+        .iter()
+        .map(|b| b.len)
+        .sum::<usize>()
   }
 
   pub(crate) fn is_empty(&self) -> bool {
-    self.bufs.is_empty()
-      || (self.bufs.len() == 1 && self.head_off >= self.bufs[0].len)
+    self.head_index >= self.bufs.len()
+      || (self.head_index == self.bufs.len() - 1
+        && self.head_off >= self.bufs[self.head_index].len)
   }
 
-  /// Advance the cursor by `n` bytes written. Drops bufs fully consumed
-  /// from the front; slices the partially-written head in place.
-  /// Mirrors the pointer advance loop in libuv's `DoTryWrite`.
+  /// Advance the cursor by `n` bytes written. Skips over bufs fully
+  /// consumed from the front by bumping `head_index`; updates the
+  /// partial-write offset for the head entry. O(consumed entries),
+  /// no tail shift. Mirrors the pointer advance loop in libuv's
+  /// `DoTryWrite`.
   pub(crate) fn advance(&mut self, mut n: usize) {
-    while n > 0 && !self.bufs.is_empty() {
-      let avail = self.bufs[0].len.saturating_sub(self.head_off);
+    while n > 0 && self.head_index < self.bufs.len() {
+      let avail = self.bufs[self.head_index].len.saturating_sub(self.head_off);
       if n >= avail {
         n -= avail;
-        self.bufs.remove(0);
+        self.head_index += 1;
         self.head_off = 0;
       } else {
         self.head_off += n;
@@ -249,18 +267,18 @@ impl IovecCursor {
     &'a self,
     out: &mut smallvec::SmallVec<[std::io::IoSlice<'a>; 16]>,
   ) {
-    if self.bufs.is_empty() {
+    if self.head_index >= self.bufs.len() {
       return;
     }
     // SAFETY: caller guarantees iovecs point to valid readable memory.
     unsafe {
-      let head = &self.bufs[0];
+      let head = &self.bufs[self.head_index];
       if head.len > self.head_off {
         let base = (head.base as *const u8).add(self.head_off);
         let len = head.len - self.head_off;
         out.push(std::io::IoSlice::new(std::slice::from_raw_parts(base, len)));
       }
-      for buf in &self.bufs[1..] {
+      for buf in &self.bufs[self.head_index + 1..] {
         if !buf.base.is_null() && buf.len > 0 {
           out.push(std::io::IoSlice::new(std::slice::from_raw_parts(
             buf.base as *const u8,

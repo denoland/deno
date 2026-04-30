@@ -2505,7 +2505,7 @@ pub(crate) unsafe fn poll_tty_handle(
                 break;
               }
               let (head_base, head_len) = {
-                let first = &iov.bufs[0];
+                let first = &iov.bufs[iov.head_index];
                 (first.base, first.len - iov.head_off)
               };
               let slice = std::slice::from_raw_parts(
