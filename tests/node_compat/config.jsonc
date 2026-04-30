@@ -1946,7 +1946,7 @@
     // "parallel/test-inspector-wait.mjs": {},
     // "parallel/test-inspector-break-when-eval.js": {},
 
-    // TODO(bartlomieju): depends on `setGlobalDispatcher()` support in fetch
+    // TODO(bartlomieju): depends on 'internal/deps/undici/undici' internal module
     // "parallel/test-inspector-network-fetch.js": {},
     "parallel/test-http2-allow-http1-upgrade-ws.js": {},
     "parallel/test-inspector-multisession-ws.js": {},

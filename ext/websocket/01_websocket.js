@@ -73,6 +73,13 @@ import {
 } from "ext:deno_fetch/20_headers.js";
 import { HttpClientPrototype } from "ext:deno_fetch/22_http_client.js";
 
+const kNodeUndiciDispatcherOptions = Symbol.for(
+  "Deno.internal.node.undici.dispatcherOptions",
+);
+const kNodeUndiciGlobalDispatcher = Symbol.for(
+  "Deno.internal.node.undici.globalDispatcher",
+);
+
 webidl.converters["WebSocketInit"] = webidl.createDictionaryConverter(
   "WebSocketInit",
   [
@@ -210,6 +217,8 @@ class WebSocket extends EventTarget {
     let protocols;
     let headers = null;
     let clientRid = null;
+    let caCerts = null;
+    let unsafelyIgnoreCertificateErrors = false;
 
     if (typeof initOrProtocols === "string") {
       protocols = [initOrProtocols];
@@ -242,9 +251,22 @@ class WebSocket extends EventTarget {
         clientRid = initOrProtocols.client?.[internalRidSymbol] ?? null;
       }
 
-      if (clientRid === null && initOrProtocols.dispatcher !== undefined) {
-        clientRid = initOrProtocols.dispatcher?.client?.[internalRidSymbol] ??
-          null;
+      let dispatcher = initOrProtocols.dispatcher;
+      if (
+        dispatcher === undefined &&
+        globalThis[kNodeUndiciGlobalDispatcher] !== undefined
+      ) {
+        dispatcher = globalThis[kNodeUndiciGlobalDispatcher];
+      }
+
+      if (clientRid === null && dispatcher !== undefined) {
+        clientRid = dispatcher?.client?.[internalRidSymbol] ?? null;
+        const dispatcherOptions = dispatcher?.[kNodeUndiciDispatcherOptions];
+        if (dispatcherOptions !== undefined) {
+          caCerts = dispatcherOptions.caCerts ?? null;
+          unsafelyIgnoreCertificateErrors =
+            dispatcherOptions.unsafelyIgnoreCertificateErrors === true;
+        }
       }
     }
 
@@ -290,6 +312,8 @@ class WebSocket extends EventTarget {
         ArrayPrototypeJoin(protocols, ", "),
         cancelRid,
         headers ? headerListFromHeaders(headers) : null,
+        caCerts,
+        unsafelyIgnoreCertificateErrors,
         clientRid,
       ),
       (create) => {
