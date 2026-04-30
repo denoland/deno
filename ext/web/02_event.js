@@ -1253,7 +1253,12 @@ class MessageEvent extends Event {
     });
 
     this.data = eventInitDict?.data ?? null;
-    this.ports = eventInitDict?.ports ?? [];
+    const ports = eventInitDict?.ports;
+    this.ports = ports == null ? [] : webidl.converters["sequence<object>"](
+      ports,
+      "Failed to construct 'MessageEvent'",
+      "Argument 2 'ports'",
+    );
     this.origin = eventInitDict?.origin ?? "";
     this.lastEventId = eventInitDict?.lastEventId ?? "";
     this.#source = eventInitDict?.source ?? null;
