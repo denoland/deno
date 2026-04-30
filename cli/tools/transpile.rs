@@ -8,12 +8,10 @@ use deno_ast::EmitOptions;
 use deno_ast::MediaType;
 use deno_ast::SourceMapOption;
 use deno_ast::TranspileModuleOptions;
-use deno_config::deno_json::CompilerOptions;
 use deno_core::ModuleSpecifier;
 use deno_core::anyhow;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
-use deno_core::serde_json::json;
 use deno_graph::GraphKind;
 use deno_graph::ModuleGraph;
 use deno_terminal::colors;
@@ -22,9 +20,7 @@ use sys_traits::PathsInErrorsExt;
 use crate::args::Flags;
 use crate::args::SourceMapMode;
 use crate::args::TranspileFlags;
-use crate::args::TypeCheckMode;
 use crate::factory::CliFactory;
-use crate::tsc;
 use crate::util::display;
 
 pub async fn transpile(
@@ -260,12 +256,11 @@ async fn emit_declarations(
     )
     .await?;
 
-  // Resolve compiler options, adding declaration-specific settings.
-  // Since TSC type-checks all files in a single pass, all files must share
-  // the same compiler options scope. Error if they span different scopes.
+  // Validate that all files share the same compiler options scope, since
+  // TSC type-checks all files in a single pass.
   let compiler_options_resolver = factory.compiler_options_resolver()?;
   let first_specifier = &root_names[0].0;
-  let (first_key, first_data) =
+  let (first_key, _) =
     compiler_options_resolver.entry_for_specifier(first_specifier);
   for (specifier, _) in root_names.iter().skip(1) {
     let (key, _) = compiler_options_resolver.entry_for_specifier(specifier);
@@ -281,59 +276,16 @@ async fn emit_declarations(
       );
     }
   }
-  let base_compiler_options =
-    first_data.compiler_options_for_lib(cli_options.ts_type_lib_window())?;
 
-  // Merge declaration options into the base compiler options
-  let mut config_value =
-    deno_core::serde_json::to_value(base_compiler_options.as_ref())?;
-  let config_obj = config_value
-    .as_object_mut()
-    .ok_or_else(|| anyhow::anyhow!("Invalid compiler options"))?;
-  config_obj.insert("declaration".into(), json!(true));
-  config_obj.insert("emitDeclarationOnly".into(), json!(true));
-  config_obj.insert("noEmit".into(), json!(false));
-
-  let compiler_options = Arc::new(CompilerOptions::new(config_value));
-
-  let hash_data =
-    deno_lib::util::hash::FastInsecureHasher::new_deno_versioned()
-      .write_hashable(&compiler_options)
-      .finish();
-
-  let jsx_import_source_config_resolver = Arc::new(
-    deno_resolver::deno_json::JsxImportSourceConfigResolver::from_compiler_options_resolver(
-      compiler_options_resolver,
-    )?,
-  );
-
-  // Set up npm state
   let type_checker = factory.type_checker().await?;
-  let maybe_npm = Some(type_checker.create_request_npm_state());
-
-  // Note: We use tsc::exec directly because TypeChecker.check_diagnostics
-  // does not support returning emitted declaration files.
-  let response = tsc::exec(
-    tsc::Request {
-      config: compiler_options,
-      debug: cli_options.log_level() == Some(log::Level::Debug),
-      graph: Arc::new(graph),
-      jsx_import_source_config_resolver,
-      hash_data,
-      maybe_npm,
-      maybe_tsbuildinfo: None,
-      root_names,
-      // Declaration emit requires full type-checking regardless of
-      // the user's type_check_mode setting.
-      check_mode: TypeCheckMode::All,
-      initial_cwd: cwd.to_path_buf(),
-      capture_emitted_files: true,
-    },
-    None,
+  let result = type_checker.emit_declarations(
+    Arc::new(graph),
+    root_names,
+    cli_options.ts_type_lib_window(),
   )?;
 
-  if response.diagnostics.has_diagnostic() {
-    anyhow::bail!("Type checking failed:\n{}", response.diagnostics);
+  if result.diagnostics.has_diagnostic() {
+    anyhow::bail!("Type checking failed:\n{}", result.diagnostics);
   }
 
   // Determine the output directory for .d.ts files.
@@ -348,7 +300,7 @@ async fn emit_declarations(
   };
 
   // Write emitted .d.ts files
-  for (file_name, content) in &response.emitted_files {
+  for (file_name, content) in &result.emitted_files {
     // The file names from TSC are specifier-based, convert to output paths
     let output_path = resolve_dts_output_path(
       file_name,
@@ -369,7 +321,7 @@ async fn emit_declarations(
     log::info!("{} {}", colors::green("Emit"), output_path.display());
   }
 
-  if response.emitted_files.is_empty() {
+  if result.emitted_files.is_empty() {
     log::warn!(
       "{} No declaration files were emitted",
       colors::yellow("Warning")
