@@ -112,6 +112,11 @@ server.listen(0, "localhost", () => {
     ],
     clearEnv: true,
     env: {
+      ...Object.fromEntries(
+        Object.entries(Deno.env.toObject()).filter(([k]) =>
+          !k.startsWith("OTEL_") && !k.startsWith("DENO_UNSTABLE_OTEL")
+        ),
+      ),
       OTEL_EXPORTER_OTLP_ENDPOINT: endpoint,
       OTEL_EXPORTER_OTLP_PROTOCOL: "grpc",
     },
