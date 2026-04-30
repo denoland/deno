@@ -596,6 +596,20 @@ markNotSerializable(WritableStream.prototype);
 markNotSerializable(TransformStream.prototype);
 
 function structuredClone(value, options) {
+  // Fast path for primitives that StructuredSerialize returns by reference:
+  // null, undefined, boolean, number, string, bigint. These don't need the
+  // StructuredSerializeOptions dictionary conversion, the not-serializable
+  // marker check, or the V8 ValueSerializer/Deserializer round-trip.
+  // Symbol falls through to the slow path which throws DataCloneError;
+  // 0-arg calls also fall through so requiredArguments can throw.
+  if (arguments.length >= 1) {
+    if (value === null) return value;
+    const t = typeof value;
+    if (t !== "object" && t !== "function" && t !== "symbol") {
+      return value;
+    }
+  }
+
   const prefix = "Failed to execute 'structuredClone'";
   webidl.requiredArguments(arguments.length, 1, prefix);
   options = webidl.converters.StructuredSerializeOptions(
