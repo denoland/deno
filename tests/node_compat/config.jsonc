@@ -3135,6 +3135,7 @@
     "parallel/test-timers-same-timeout-wrong-list-deleted.js": {},
     "parallel/test-timers-setimmediate-infinite-loop.js": {},
     "parallel/test-timers-socket-timeout-removes-other-socket-unref-timer.js": {},
+    "parallel/test-timers-this.js": {},
     "parallel/test-timers-throw-when-cb-not-function.js": {},
     "parallel/test-timers-timeout-promisified.js": {},
     "parallel/test-timers-timeout-to-interval.js": {},
