@@ -3,6 +3,7 @@
 import {
   assert,
   assertEquals,
+  assertMatch,
   assertStringIncludes,
   assertThrows,
 } from "@std/assert";
@@ -781,11 +782,14 @@ Deno.test("tls.connect socket upgrade derives SNI from socket._host", async () =
 // https://github.com/denoland/deno/issues/30170
 // https://github.com/denoland/deno/issues/33391
 // TLS server without cert/key should emit tlsClientError, not crash with
-// an uncaught "unsupported protocol" exception on stdout.
+// an uncaught exception on stdout.  With a real TLS client the cert
+// resolver is asked for a certificate, returns None, and rustls aborts
+// the handshake with a fatal alert — surfaced as "no suitable signature
+// algorithm" server-side.
 Deno.test("tls server without certs emits tlsClientError instead of crashing", async () => {
   const { promise, resolve, reject } = Promise.withResolvers<Error>();
 
-  // Server with no cert/key — initServerTls will fail for every connection.
+  // Server with no cert/key — the cert resolver always returns None.
   const server = tls.createServer((_socket) => {
     reject(new Error("should not reach request handler"));
   });
@@ -797,17 +801,16 @@ Deno.test("tls server without certs emits tlsClientError instead of crashing", a
   server.listen(0, () => {
     // deno-lint-ignore no-explicit-any
     const port = (server.address() as any).port;
-    // Plain TCP connection triggers tlsConnectionListener on the server.
-    const socket = net.connect(port, "127.0.0.1", () => {
-      socket.write("hello");
+    const client = tls.connect({
+      port,
+      host: "127.0.0.1",
+      rejectUnauthorized: false,
     });
-    socket.on("error", () => {});
+    client.on("error", () => {});
   });
 
   const err = await promise;
-  assertEquals(err.message, "unsupported protocol");
-  // deno-lint-ignore no-explicit-any
-  assertEquals((err as any).code, "ERR_SSL_UNSUPPORTED_PROTOCOL");
+  assertMatch(err.message, /no suitable signature algorithm/i);
 
   server.close();
   await new Promise<void>((r) => server.on("close", r));

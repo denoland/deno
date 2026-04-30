@@ -3183,6 +3183,7 @@
     "parallel/test-tls-ecdh-multiple.js": {},
     "parallel/test-tls-ecdh.js": {},
     "parallel/test-tls-econnreset.js": {},
+    "parallel/test-tls-empty-sni-context.js": {},
     "parallel/test-tls-enable-trace-cli.js": {},
     "parallel/test-tls-enable-trace.js": {},
     "parallel/test-tls-env-extra-ca-no-crypto.js": {},
