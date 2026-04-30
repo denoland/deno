@@ -5,6 +5,7 @@
 // deno-lint-ignore-file prefer-primordials
 
 import {
+  op_node_dh_check,
   op_node_dh_compute_secret,
   op_node_dh_keys_generate_and_export,
   op_node_diffie_hellman,
@@ -12,6 +13,8 @@ import {
   op_node_ecdh_compute_secret,
   op_node_ecdh_encode_pubkey,
   op_node_ecdh_generate_keys,
+  op_node_ecdh_validate_private_key,
+  op_node_ecdh_validate_public_key,
   op_node_gen_prime,
 } from "ext:core/ops";
 
@@ -21,6 +24,7 @@ import {
 } from "ext:deno_node/internal/util/types.ts";
 import {
   ERR_CRYPTO_ECDH_INVALID_FORMAT,
+  ERR_CRYPTO_ECDH_INVALID_PUBLIC_KEY,
   ERR_CRYPTO_INCOMPATIBLE_KEY,
   ERR_CRYPTO_UNKNOWN_DH_GROUP,
   ERR_INVALID_ARG_TYPE,
@@ -177,8 +181,7 @@ export class DiffieHellmanImpl {
 
     this.#checkGenerator();
 
-    // TODO(lev): actually implement this value
-    this.verifyError = 0;
+    this.verifyError = op_node_dh_check(this.#prime, this.#generator);
   }
 
   #checkGenerator(): number {
@@ -1338,10 +1341,30 @@ export function ECDH(curve: string) {
   return new ECDHImpl(curve);
 }
 
+function validateEcdhFormat(format: ECDHKeyFormat | string): void {
+  if (
+    format !== "compressed" &&
+    format !== "uncompressed" &&
+    format !== "hybrid"
+  ) {
+    throw new ERR_CRYPTO_ECDH_INVALID_FORMAT(String(format));
+  }
+}
+
+function ecdhEncode(
+  buffer: Buffer,
+  encoding?: BinaryToTextEncoding | "buffer",
+): Buffer | string {
+  if (encoding === undefined || encoding === "buffer") {
+    return buffer;
+  }
+  return buffer.toString(encoding);
+}
+
 export class ECDHImpl {
   #curve: EllipticCurve; // the selected curve
-  #privbuf: Buffer; // the private key
-  #pubbuf: Buffer; // the public key
+  #privbuf: Buffer | null = null; // the private key
+  #pubbuf: Buffer | null = null; // the public key
 
   constructor(curve: string) {
     validateString(curve, "curve");
@@ -1352,8 +1375,6 @@ export class ECDHImpl {
     }
 
     this.#curve = c;
-    this.#pubbuf = Buffer.alloc(this.#curve.publicKeySize);
-    this.#privbuf = Buffer.alloc(this.#curve.privateKeySize);
   }
 
   static convertKey(
@@ -1424,19 +1445,41 @@ export class ECDHImpl {
   ): string;
   computeSecret(
     otherPublicKey: ArrayBufferView | string,
-    _inputEncoding?: BinaryToTextEncoding,
-    _outputEncoding?: BinaryToTextEncoding,
+    inputEncoding?: BinaryToTextEncoding,
+    outputEncoding?: BinaryToTextEncoding,
   ): Buffer | string {
+    if (this.#privbuf === null) {
+      throw new ERR_CRYPTO_ECDH_INVALID_PUBLIC_KEY();
+    }
+
+    const otherBuf = typeof otherPublicKey === "string"
+      ? Buffer.from(otherPublicKey, inputEncoding)
+      : Buffer.from(
+        otherPublicKey.buffer,
+        otherPublicKey.byteOffset,
+        otherPublicKey.byteLength,
+      );
+
     const secretBuf = Buffer.alloc(this.#curve.sharedSecretSize);
 
-    op_node_ecdh_compute_secret(
-      this.#curve.name,
-      this.#privbuf,
-      otherPublicKey,
-      secretBuf,
-    );
+    try {
+      op_node_ecdh_compute_secret(
+        this.#curve.name,
+        this.#privbuf,
+        this.#pubbuf,
+        otherBuf,
+        secretBuf,
+      );
+    } catch (e) {
+      // deno-lint-ignore no-explicit-any
+      const err = e as any;
+      if (err && err.message === "Invalid key pair") {
+        throw new Error("Invalid key pair");
+      }
+      throw new ERR_CRYPTO_ECDH_INVALID_PUBLIC_KEY();
+    }
 
-    return secretBuf;
+    return ecdhEncode(secretBuf, outputEncoding ?? "buffer");
   }
 
   generateKeys(): Buffer;
@@ -1445,31 +1488,41 @@ export class ECDHImpl {
     encoding?: BinaryToTextEncoding,
     format: ECDHKeyFormat = "uncompressed",
   ): Buffer | string {
-    this.#pubbuf = Buffer.alloc(
+    validateEcdhFormat(format);
+    const pubbuf = Buffer.alloc(
       format == "compressed"
         ? this.#curve.publicKeySizeCompressed
         : this.#curve.publicKeySize,
     );
+    const privbuf = Buffer.alloc(this.#curve.privateKeySize);
     op_node_ecdh_generate_keys(
       this.#curve.name,
-      this.#pubbuf,
-      this.#privbuf,
+      pubbuf,
+      privbuf,
       format,
     );
+    this.#pubbuf = pubbuf;
+    this.#privbuf = privbuf;
 
-    if (encoding !== undefined) {
-      return this.#pubbuf.toString(encoding);
+    if (format === "hybrid") {
+      const compressedBuf = Buffer.from(op_node_ecdh_encode_pubkey(
+        this.#curve.name,
+        pubbuf,
+        true,
+      ));
+      pubbuf[0] = compressedBuf[0] + 4;
     }
-    return this.#pubbuf;
+
+    return ecdhEncode(pubbuf, encoding ?? "buffer");
   }
 
   getPrivateKey(): Buffer;
   getPrivateKey(encoding: BinaryToTextEncoding): string;
   getPrivateKey(encoding?: BinaryToTextEncoding): Buffer | string {
-    if (encoding !== undefined) {
-      return this.#privbuf.toString(encoding);
+    if (this.#privbuf === null) {
+      throw new Error("Failed to get ECDH private key");
     }
-    return this.#privbuf;
+    return ecdhEncode(this.#privbuf, encoding ?? "buffer");
   }
 
   getPublicKey(): Buffer;
@@ -1478,6 +1531,10 @@ export class ECDHImpl {
     encoding?: BinaryToTextEncoding,
     format: ECDHKeyFormat = "uncompressed",
   ): Buffer | string {
+    if (this.#pubbuf === null) {
+      throw new Error("Failed to get ECDH public key");
+    }
+    validateEcdhFormat(format);
     const pubbuf = Buffer.from(op_node_ecdh_encode_pubkey(
       this.#curve.name,
       this.#pubbuf,
@@ -1491,10 +1548,7 @@ export class ECDHImpl {
       ));
       pubbuf[0] = compressedBuf[0] + 4;
     }
-    if (encoding !== undefined) {
-      return pubbuf.toString(encoding);
-    }
-    return pubbuf;
+    return ecdhEncode(pubbuf, encoding ?? "buffer");
   }
 
   setPrivateKey(privateKey: ArrayBufferView): void;
@@ -1503,21 +1557,25 @@ export class ECDHImpl {
     privateKey: ArrayBufferView | string,
     encoding?: BinaryToTextEncoding,
   ): Buffer | string {
-    this.#privbuf = typeof privateKey === "string"
+    const privbuf = typeof privateKey === "string"
       ? Buffer.from(privateKey, encoding)
-      : Buffer.from(privateKey);
-    this.#pubbuf = Buffer.alloc(this.#curve.publicKeySize);
+      : Buffer.from(
+        privateKey.buffer,
+        privateKey.byteOffset,
+        privateKey.byteLength,
+      );
 
-    op_node_ecdh_compute_public_key(
-      this.#curve.name,
-      this.#privbuf,
-      this.#pubbuf,
-    );
-
-    if (encoding !== undefined) {
-      return this.#pubbuf.toString(encoding);
+    if (!op_node_ecdh_validate_private_key(this.#curve.name, privbuf)) {
+      throw new Error("Private key is not valid for specified curve");
     }
-    return this.#pubbuf;
+
+    const pubbuf = Buffer.alloc(this.#curve.publicKeySize);
+    op_node_ecdh_compute_public_key(this.#curve.name, privbuf, pubbuf);
+
+    this.#privbuf = privbuf;
+    this.#pubbuf = pubbuf;
+
+    return pubbuf;
   }
 
   setPublicKey(publicKey: ArrayBufferView): void;
@@ -1526,9 +1584,17 @@ export class ECDHImpl {
     publicKey: ArrayBufferView | string,
     encoding?: BinaryToTextEncoding,
   ): void {
-    this.#pubbuf = typeof publicKey === "string"
+    const pubbuf = typeof publicKey === "string"
       ? Buffer.from(publicKey, encoding)
-      : Buffer.from(publicKey);
+      : Buffer.from(
+        publicKey.buffer,
+        publicKey.byteOffset,
+        publicKey.byteLength,
+      );
+    if (!op_node_ecdh_validate_public_key(this.#curve.name, pubbuf)) {
+      throw new Error("Failed to convert Buffer to EC_POINT");
+    }
+    this.#pubbuf = pubbuf;
   }
 }
 
