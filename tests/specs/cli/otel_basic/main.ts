@@ -85,6 +85,7 @@ function onListen({ port }) {
       "--unstable-cron",
       Deno.args[0],
     ],
+    clearEnv: true,
     env: {
       OTEL_EXPORTER_OTLP_ENDPOINT: endpoint,
       OTEL_EXPORTER_OTLP_PROTOCOL: protocol,
