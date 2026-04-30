@@ -209,9 +209,10 @@ export function setDefaultCACertificates(certs: string[]) {
   op_set_default_ca_certificates(certs);
 
   lazyRootCertificates = null;
-  for (const key of ObjectKeys(cachedCACertificates)) {
-    delete cachedCACertificates[key];
-  }
+  ArrayPrototypeForEach(
+    ObjectKeys(cachedCACertificates),
+    (key) => delete cachedCACertificates[key],
+  );
 }
 
 export function getCACertificates(type: string = "default"): string[] {

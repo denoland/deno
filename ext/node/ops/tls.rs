@@ -101,7 +101,7 @@ fn parse_extra_ca_certs(sys: &(impl EnvVar + FsRead)) -> Vec<String> {
     .filter_map(|cert| {
       let trimmed = cert.trim();
       if trimmed.contains("-----BEGIN CERTIFICATE-----") {
-        Some(format!("{trimmed}\n-----END CERTIFICATE-----"))
+        Some(format!("{trimmed}\n-----END CERTIFICATE-----\n"))
       } else {
         None
       }
