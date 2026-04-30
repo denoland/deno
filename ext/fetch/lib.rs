@@ -827,6 +827,7 @@ pub struct CreateHttpClientArgs {
   ca_certs: Vec<String>,
   #[from_v8(serde)]
   proxy: Option<Proxy>,
+  unsafely_ignore_certificate_errors: Option<Vec<String>>,
   pool_max_idle_per_host: Option<usize>,
   #[from_v8(serde)]
   pool_idle_timeout: Option<serde_json::Value>,
@@ -896,9 +897,9 @@ pub fn op_fetch_custom_client(
       ca_certs,
       proxy: args.proxy,
       dns_resolver: dns::Resolver::default(),
-      unsafely_ignore_certificate_errors: options
+      unsafely_ignore_certificate_errors: args
         .unsafely_ignore_certificate_errors
-        .clone(),
+        .or_else(|| options.unsafely_ignore_certificate_errors.clone()),
       client_cert_chain_and_key: tls_keys.take().try_into().unwrap(),
       pool_max_idle_per_host: args.pool_max_idle_per_host,
       pool_idle_timeout: args.pool_idle_timeout.and_then(

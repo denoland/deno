@@ -85,6 +85,7 @@ webidl.converters["WebSocketInit"] = webidl.createDictionaryConverter(
       converter: webidl.converters["sequence<DOMString>"],
     },
     { key: "client", converter: webidl.converters.any },
+    { key: "dispatcher", converter: webidl.converters.any },
   ],
 );
 
@@ -239,6 +240,11 @@ class WebSocket extends EventTarget {
           );
         }
         clientRid = initOrProtocols.client?.[internalRidSymbol] ?? null;
+      }
+
+      if (clientRid === null && initOrProtocols.dispatcher !== undefined) {
+        clientRid =
+          initOrProtocols.dispatcher?.client?.[internalRidSymbol] ?? null;
       }
     }
 
