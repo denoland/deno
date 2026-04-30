@@ -162,9 +162,12 @@ impl BiPipeRead {
     let stream = self.inner.as_ref();
     let stream_fd = stream.as_raw_fd();
 
+    const MAX_RECV_FDS: usize = 8;
+
     // SAFETY: CMSG_SPACE only computes the required control-buffer size.
     let cmsg_space = unsafe {
-      libc::CMSG_SPACE(size_of::<std::os::fd::RawFd>() as _) as usize
+      libc::CMSG_SPACE((size_of::<std::os::fd::RawFd>() * MAX_RECV_FDS) as _)
+        as usize
     };
     let mut control = vec![0u8; cmsg_space];
 
@@ -182,11 +185,16 @@ impl BiPipeRead {
         msg.msg_control = control.as_mut_ptr().cast();
         msg.msg_controllen = control.len() as _;
 
+        #[cfg(target_os = "linux")]
+        let flags = libc::MSG_CMSG_CLOEXEC;
+        #[cfg(not(target_os = "linux"))]
+        let flags = 0;
+
         // Retry EINTR in place: it doesn't change readiness, so there's no
         // need to bounce back through the outer await.
         let nread = loop {
           // SAFETY: msg points to valid iovec and control buffers for this call.
-          let n = unsafe { libc::recvmsg(stream_fd, &mut msg, 0) };
+          let n = unsafe { libc::recvmsg(stream_fd, &mut msg, flags) };
           if n != -1 {
             break n as usize;
           }
@@ -201,15 +209,28 @@ impl BiPipeRead {
         // SAFETY: msg was populated by recvmsg; CMSG_* helpers inspect the
         // control buffer bounded by msg_controllen.
         unsafe {
-          let cmsg = libc::CMSG_FIRSTHDR(&msg);
-          if !cmsg.is_null()
-            && (*cmsg).cmsg_level == libc::SOL_SOCKET
-            && (*cmsg).cmsg_type == libc::SCM_RIGHTS
-          {
-            let data = libc::CMSG_DATA(cmsg).cast::<std::os::fd::RawFd>();
-            let received_fd = *data;
-            set_cloexec(received_fd);
-            fd = Some(received_fd);
+          let mut cmsg = libc::CMSG_FIRSTHDR(&msg);
+          while !cmsg.is_null() {
+            if (*cmsg).cmsg_level == libc::SOL_SOCKET
+              && (*cmsg).cmsg_type == libc::SCM_RIGHTS
+            {
+              let header_len = libc::CMSG_LEN(0) as usize;
+              let data_len = (*cmsg).cmsg_len as usize;
+              let data_len = data_len.saturating_sub(header_len);
+              let fd_count = data_len / size_of::<std::os::fd::RawFd>();
+              let data = libc::CMSG_DATA(cmsg).cast::<std::os::fd::RawFd>();
+              for i in 0..fd_count {
+                let received_fd = *data.add(i);
+                if fd.is_none() {
+                  #[cfg(not(target_os = "linux"))]
+                  set_cloexec(received_fd);
+                  fd = Some(received_fd);
+                } else {
+                  libc::close(received_fd);
+                }
+              }
+            }
+            cmsg = libc::CMSG_NXTHDR(&msg, cmsg);
           }
         }
         Ok((nread, fd))
@@ -274,37 +295,36 @@ impl BiPipeWrite {
       libc::CMSG_SPACE(size_of::<std::os::fd::RawFd>() as _) as usize
     };
     let mut control = vec![0u8; cmsg_space];
+    let mut iov = libc::iovec {
+      iov_base: buf.as_ptr().cast_mut().cast(),
+      iov_len: buf.len(),
+    };
+    // SAFETY: msghdr is a plain C struct where zero is a valid initial state.
+    let mut msg: libc::msghdr = unsafe { std::mem::zeroed() };
+    msg.msg_iov = &mut iov;
+    msg.msg_iovlen = 1;
+    msg.msg_control = control.as_mut_ptr().cast();
+    msg.msg_controllen = control.len() as _;
+
+    // SAFETY: msg has a valid control buffer large enough for one fd.
+    unsafe {
+      let cmsg = libc::CMSG_FIRSTHDR(&msg);
+      if cmsg.is_null() {
+        return Err(io::Error::other("failed to create control message"));
+      }
+      (*cmsg).cmsg_level = libc::SOL_SOCKET;
+      (*cmsg).cmsg_type = libc::SCM_RIGHTS;
+      (*cmsg).cmsg_len =
+        libc::CMSG_LEN(size_of::<std::os::fd::RawFd>() as _) as _;
+      let data = libc::CMSG_DATA(cmsg).cast::<std::os::fd::RawFd>();
+      *data = fd;
+      msg.msg_controllen =
+        libc::CMSG_SPACE(size_of::<std::os::fd::RawFd>() as _) as _;
+    }
 
     loop {
       stream.writable().await?;
       let res = stream.try_io(Interest::WRITABLE, || {
-        let mut iov = libc::iovec {
-          iov_base: buf.as_ptr().cast_mut().cast(),
-          iov_len: buf.len(),
-        };
-        // SAFETY: msghdr is a plain C struct where zero is a valid initial state.
-        let mut msg: libc::msghdr = unsafe { std::mem::zeroed() };
-        msg.msg_iov = &mut iov;
-        msg.msg_iovlen = 1;
-        msg.msg_control = control.as_mut_ptr().cast();
-        msg.msg_controllen = control.len() as _;
-
-        // SAFETY: msg has a valid control buffer large enough for one fd.
-        unsafe {
-          let cmsg = libc::CMSG_FIRSTHDR(&msg);
-          if cmsg.is_null() {
-            return Err(io::Error::other("failed to create control message"));
-          }
-          (*cmsg).cmsg_level = libc::SOL_SOCKET;
-          (*cmsg).cmsg_type = libc::SCM_RIGHTS;
-          (*cmsg).cmsg_len =
-            libc::CMSG_LEN(size_of::<std::os::fd::RawFd>() as _) as _;
-          let data = libc::CMSG_DATA(cmsg).cast::<std::os::fd::RawFd>();
-          *data = fd;
-          msg.msg_controllen =
-            libc::CMSG_SPACE(size_of::<std::os::fd::RawFd>() as _) as _;
-        }
-
         // Retry EINTR in place (see note in recv_with_fd).
         loop {
           // SAFETY: msg points to valid iovec and control buffers for this call.

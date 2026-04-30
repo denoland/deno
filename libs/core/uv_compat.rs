@@ -779,9 +779,10 @@ impl UvLoopInner {
         }
       }
       // Match libuv's uv__stream_close: plain close(2) on the fd, no
-      // shutdown. The kernel emits FIN when the OFD refcount reaches zero,
-      // which handles both regular closes and IPC-transferred fds (where
-      // the receiver still holds a dup, so FIN is correctly suppressed).
+      // shutdown. The kernel emits FIN when the kernel-level open file
+      // description (OFD) refcount reaches zero, which handles both regular
+      // closes and IPC-transferred fds (where the receiver still holds a dup,
+      // so FIN is correctly suppressed).
       drop(tcp.internal_stream.take());
       tcp.internal_fd = None;
       tcp.internal_socket = None;

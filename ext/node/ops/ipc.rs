@@ -730,18 +730,18 @@ mod impl_ {
   struct AdvancedIpcReadResult {
     msg_bytes: Option<Vec<u8>>,
     constants: AdvancedIpcConstants,
-    raw_fd: Option<i64>,
+    raw_fd: Option<i32>,
   }
 
   fn make_msg_with_fd_array<'s>(
     scope: &mut v8::PinScope<'s, '_>,
     msg: v8::Local<'s, v8::Value>,
-    raw_fd: Option<i64>,
+    raw_fd: Option<i32>,
   ) -> v8::Local<'s, v8::Value> {
     let arr = v8::Array::new(scope, 2);
     arr.set_index(scope, 0, msg);
     let raw_fd = match raw_fd {
-      Some(raw_fd) => v8::Integer::new(scope, raw_fd as i32).into(),
+      Some(raw_fd) => v8::Integer::new(scope, raw_fd).into(),
       None => v8::null(scope).into(),
     };
     arr.set_index(scope, 1, raw_fd);
@@ -833,7 +833,7 @@ mod impl_ {
 
   struct IpcJsonReadResult {
     msg: serde_json::Value,
-    raw_fd: Option<i64>,
+    raw_fd: Option<i32>,
   }
 
   impl<'a> deno_core::ToV8<'a> for IpcJsonReadResult {

@@ -12,6 +12,18 @@
       "output": "main.out",
       "exitCode": 0
     },
+    "destroy_before_ack_json": {
+      "if": "unix",
+      "args": "run -A destroy_before_ack.mjs json",
+      "output": "main.out",
+      "exitCode": 0
+    },
+    "destroy_before_ack_advanced": {
+      "if": "unix",
+      "args": "run -A destroy_before_ack.mjs advanced",
+      "output": "main.out",
+      "exitCode": 0
+    },
     "server_json": {
       "if": "unix",
       "args": "run -A server_main.mjs json",

@@ -1951,11 +1951,16 @@ function createIpcHandle(message, rawFd) {
     if (err !== 0) {
       throw errnoException(codeMap.get(err), "open");
     }
-    return new Socket({
-      handle: tcp,
-      readable: true,
-      writable: true,
-    });
+    try {
+      return new Socket({
+        handle: tcp,
+        readable: true,
+        writable: true,
+      });
+    } catch (err) {
+      tcp.close();
+      throw err;
+    }
   }
   if (message.type === IPC_HANDLE_NET_SERVER) {
     const tcp = new TCP(tcpSocketType.SERVER);
@@ -1968,8 +1973,13 @@ function createIpcHandle(message, rawFd) {
     // connection callback and emits 'listening' on next tick. Our uv_listen
     // detects an already-listening fd and skips the bind/listen syscalls.
     const server = new NetServer();
-    server.listen(tcp);
-    return server;
+    try {
+      server.listen(tcp);
+      return server;
+    } catch (err) {
+      tcp.close();
+      throw err;
+    }
   }
   return undefined;
 }

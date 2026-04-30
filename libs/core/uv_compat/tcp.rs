@@ -284,7 +284,6 @@ pub unsafe fn uv_tcp_open(tcp: *mut uv_tcp_t, fd: c_int) -> c_int {
     #[cfg(unix)]
     {
       use std::os::unix::io::FromRawFd;
-      (*tcp).internal_fd = Some(fd);
       let std_stream = std::net::TcpStream::from_raw_fd(fd);
       std_stream.set_nonblocking(true).ok();
       match tokio::net::TcpStream::from_std(std_stream) {
@@ -292,6 +291,7 @@ pub unsafe fn uv_tcp_open(tcp: *mut uv_tcp_t, fd: c_int) -> c_int {
           if (*tcp).internal_nodelay {
             stream.set_nodelay(true).ok();
           }
+          (*tcp).internal_fd = Some(fd);
           (*tcp).internal_stream = Some(stream);
           0
         }
@@ -302,7 +302,6 @@ pub unsafe fn uv_tcp_open(tcp: *mut uv_tcp_t, fd: c_int) -> c_int {
     {
       use std::os::windows::io::FromRawSocket;
       let sock = fd as std::os::windows::io::RawSocket;
-      (*tcp).internal_fd = Some(sock);
       let std_stream = std::net::TcpStream::from_raw_socket(sock);
       std_stream.set_nonblocking(true).ok();
       match tokio::net::TcpStream::from_std(std_stream) {
@@ -310,6 +309,7 @@ pub unsafe fn uv_tcp_open(tcp: *mut uv_tcp_t, fd: c_int) -> c_int {
           if (*tcp).internal_nodelay {
             stream.set_nodelay(true).ok();
           }
+          (*tcp).internal_fd = Some(sock);
           (*tcp).internal_stream = Some(stream);
           0
         }
@@ -334,11 +334,11 @@ pub unsafe fn uv_tcp_open_listener(tcp: *mut uv_tcp_t, fd: c_int) -> c_int {
   use std::os::unix::io::FromRawFd;
   // SAFETY: Caller guarantees tcp is initialized and fd is valid.
   unsafe {
-    (*tcp).internal_fd = Some(fd);
     let std_listener = std::net::TcpListener::from_raw_fd(fd);
     std_listener.set_nonblocking(true).ok();
     match tokio::net::TcpListener::from_std(std_listener) {
       Ok(listener) => {
+        (*tcp).internal_fd = Some(fd);
         (*tcp).internal_listener_addr = listener.local_addr().ok();
         (*tcp).internal_listener = Some(listener);
         0
@@ -353,11 +353,9 @@ const UV_TCP_REUSEPORT: u32 = 4;
 /// ### Safety
 /// `tcp` must be a valid pointer to an initialized `uv_tcp_t`.
 ///
-/// Returns the underlying socket file descriptor, for use as the payload of
-/// an SCM_RIGHTS cmsg on an IPC channel. The fd is *not* duplicated: the
-/// handle retains ownership, and callers must keep the handle alive (and
-/// avoid closing it) until the receiver acknowledges the transfer, matching
-/// libuv's `uv_write2` + Node's `NODE_HANDLE` / `NODE_HANDLE_ACK` protocol.
+/// Returns a dup of the underlying socket file descriptor, for use as the
+/// payload of an SCM_RIGHTS cmsg on an IPC channel. The caller owns the returned
+/// fd and must close it after `sendmsg` has attached it to the IPC message.
 #[cfg(unix)]
 pub unsafe fn uv_tcp_fd_for_ipc(tcp: *mut uv_tcp_t) -> c_int {
   use std::os::fd::AsRawFd;
@@ -369,11 +367,25 @@ pub unsafe fn uv_tcp_fd_for_ipc(tcp: *mut uv_tcp_t) -> c_int {
   // SAFETY: Caller guarantees tcp is initialized and valid.
   unsafe {
     let tcp = &*tcp;
-    if let Some(stream) = tcp.internal_stream.as_ref() {
+    let fd = if let Some(stream) = tcp.internal_stream.as_ref() {
       stream.as_raw_fd()
+    } else if let Some(listener) = tcp.internal_listener.as_ref() {
+      listener.as_raw_fd()
     } else {
       tcp.internal_fd.unwrap_or(-1)
+    };
+    if fd < 0 {
+      return -1;
     }
+
+    let dup = libc::dup(fd);
+    if dup != -1 {
+      let flags = libc::fcntl(dup, libc::F_GETFD);
+      if flags != -1 {
+        libc::fcntl(dup, libc::F_SETFD, flags | libc::FD_CLOEXEC);
+      }
+    }
+    dup
   }
 }
 

@@ -1,15 +1,9 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-use std::future::Future;
 use std::io;
-use std::mem;
-use std::pin::Pin;
 use std::rc::Rc;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::AtomicUsize;
-use std::task::Context;
-use std::task::Poll;
-use std::task::ready;
 
 use deno_core::AsyncRefCell;
 use deno_core::CancelHandle;
@@ -20,10 +14,24 @@ use deno_io::BiPipe;
 use deno_io::BiPipeRead;
 use deno_io::BiPipeWrite;
 use memchr::memchr;
-use pin_project_lite::pin_project;
-use tokio::io::AsyncRead;
 use tokio::io::AsyncWriteExt;
-use tokio::io::ReadBuf;
+
+#[cfg(unix)]
+type ReceivedRawFd = std::os::fd::OwnedFd;
+
+#[cfg(not(unix))]
+type ReceivedRawFd = i32;
+
+#[cfg(unix)]
+fn into_raw_fd_i32(fd: ReceivedRawFd) -> i32 {
+  use std::os::fd::IntoRawFd;
+  fd.into_raw_fd()
+}
+
+#[cfg(not(unix))]
+fn into_raw_fd_i32(fd: ReceivedRawFd) -> i32 {
+  fd
+}
 
 /// Tracks whether the IPC resources is currently
 /// refed, and allows refing/unrefing it.
@@ -99,9 +107,19 @@ async fn write_with_optional_fd(
 ) -> Result<(), io::Error> {
   #[cfg(unix)]
   if let Some(raw_fd) = raw_fd {
-    use std::os::fd::RawFd;
-    let nwritten = write_half.send_with_fd(msg, raw_fd as RawFd).await?;
+    use std::os::fd::AsRawFd;
+    use std::os::fd::FromRawFd;
+
+    // `raw_fd` is an owned dup created for this IPC transfer. `sendmsg` attaches
+    // it to the first bytes written, then this scope closes our local copy.
+    // SAFETY: callers pass an owned fd returned by `fdForIpc`; this function
+    // assumes ownership and closes it after the send attempt.
+    let raw_fd = unsafe { std::os::fd::OwnedFd::from_raw_fd(raw_fd) };
+    let nwritten = write_half.send_with_fd(msg, raw_fd.as_raw_fd()).await?;
     if nwritten < msg.len() {
+      // The fd has already been delivered with the first sendmsg. If the rest
+      // of the frame fails, the reader must close the received fd while
+      // discarding the malformed message.
       write_half.write_all(&msg[nwritten..]).await?;
     }
     return Ok(());
@@ -170,9 +188,8 @@ impl IpcJsonStreamResource {
   }
 
   /// Writes a newline-terminated JSON message to the IPC pipe. If `raw_fd`
-  /// is `Some`, the fd is sent alongside the first byte via SCM_RIGHTS on
-  /// unix; the caller retains ownership (the JS-side ACK protocol keeps it
-  /// alive until the receiver confirms the transfer).
+  /// is `Some`, it must be an owned dup for this IPC transfer. It is sent
+  /// alongside the first byte via SCM_RIGHTS on unix, then closed locally.
   pub async fn write_msg_bytes(
     self: Rc<Self>,
     msg: &[u8],
@@ -203,7 +220,7 @@ struct ReadBuffer {
   pos: usize,
   cap: usize,
   #[cfg(unix)]
-  raw_fd: Option<std::os::fd::RawFd>,
+  raw_fd: Option<ReceivedRawFd>,
 }
 
 impl ReadBuffer {
@@ -239,10 +256,20 @@ impl ReadBuffer {
   ) -> io::Result<usize> {
     #[cfg(unix)]
     {
+      use std::os::fd::FromRawFd;
+
       let (nread, raw_fd) = pipe.recv_with_fd(self.get_mut()).await?;
       self.cap = nread;
       self.pos = 0;
-      self.raw_fd = raw_fd;
+      if let Some(raw_fd) = raw_fd {
+        debug_assert!(self.raw_fd.is_none());
+        // SAFETY: `recv_with_fd` returns a newly received fd that this buffer
+        // owns until the IPC reader takes it.
+        let raw_fd = unsafe { std::os::fd::OwnedFd::from_raw_fd(raw_fd) };
+        if let Some(previous) = self.raw_fd.replace(raw_fd) {
+          drop(previous);
+        }
+      }
       Ok(nread)
     }
     #[cfg(not(unix))]
@@ -256,7 +283,7 @@ impl ReadBuffer {
   }
 
   #[cfg(unix)]
-  fn take_raw_fd(&mut self) -> Option<std::os::fd::RawFd> {
+  fn take_raw_fd(&mut self) -> Option<ReceivedRawFd> {
     self.raw_fd.take()
   }
 
@@ -324,39 +351,6 @@ impl MessageLengthBuffer {
   }
 }
 
-pin_project! {
-  #[must_use = "futures do nothing unless you `.await` or poll them"]
-  struct ReadMsgBytesInner<'a, R: ?Sized> {
-    length_buffer: &'a mut MessageLengthBuffer,
-    reader: &'a mut R,
-    out_buf: &'a mut Vec<u8>,
-    // The number of bytes appended to buf. This can be less than buf.len() if
-    // the buffer was not empty when the operation was started.
-    read: usize,
-    read_buffer: &'a mut ReadBuffer,
-  }
-}
-
-#[allow(
-  dead_code,
-  reason = "preserved for potential reuse; current reader inlines the loop"
-)]
-fn read_msg_bytes_inner<'a, R: AsyncRead + ?Sized + Unpin>(
-  reader: &'a mut R,
-  length_buffer: &'a mut MessageLengthBuffer,
-  out_buf: &'a mut Vec<u8>,
-  read: usize,
-  read_buffer: &'a mut ReadBuffer,
-) -> ReadMsgBytesInner<'a, R> {
-  ReadMsgBytesInner {
-    length_buffer,
-    reader,
-    out_buf,
-    read,
-    read_buffer,
-  }
-}
-
 impl IpcAdvancedStream {
   fn new(pipe: BiPipeRead) -> Self {
     Self {
@@ -367,7 +361,7 @@ impl IpcAdvancedStream {
 
   pub async fn read_msg_bytes_and_raw_fd(
     &mut self,
-  ) -> Result<Option<(Vec<u8>, Option<i64>)>, IpcAdvancedStreamError> {
+  ) -> Result<Option<(Vec<u8>, Option<i32>)>, IpcAdvancedStreamError> {
     let mut length_buffer = MessageLengthBuffer::new();
     let mut out_buf = Vec::with_capacity(32);
     let mut read = 0usize;
@@ -382,8 +376,11 @@ impl IpcAdvancedStream {
           .map_err(IpcAdvancedStreamError::Io)?;
       }
 
-      if read == 0 && raw_fd.is_none() {
-        raw_fd = self.read_buffer.take_raw_fd().map(|fd| fd as i64);
+      if let Some(fd) = self.read_buffer.take_raw_fd() {
+        debug_assert!(raw_fd.is_none());
+        if raw_fd.is_none() {
+          raw_fd = Some(fd);
+        }
       }
 
       let available = self.read_buffer.available_mut();
@@ -426,25 +423,12 @@ impl IpcAdvancedStream {
       read += used;
 
       if done {
-        return Ok(Some((std::mem::take(&mut out_buf), raw_fd)));
+        return Ok(Some((
+          std::mem::take(&mut out_buf),
+          raw_fd.map(into_raw_fd_i32),
+        )));
       }
     }
-  }
-}
-
-impl<R: AsyncRead + ?Sized + Unpin> Future for ReadMsgBytesInner<'_, R> {
-  type Output = io::Result<usize>;
-
-  fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-    let me = self.project();
-    read_advanced_msg_bytes_internal(
-      Pin::new(me.reader),
-      cx,
-      me.length_buffer,
-      me.read_buffer,
-      me.out_buf,
-      me.read,
-    )
   }
 }
 
@@ -490,69 +474,6 @@ impl deno_core::Resource for IpcAdvancedStreamResource {
   }
 }
 
-fn read_advanced_msg_bytes_internal<R: AsyncRead + ?Sized>(
-  mut reader: Pin<&mut R>,
-  cx: &mut Context<'_>,
-  length_buffer: &mut MessageLengthBuffer,
-  read_buffer: &mut ReadBuffer,
-  out_buffer: &mut Vec<u8>,
-  read: &mut usize,
-) -> Poll<io::Result<usize>> {
-  loop {
-    if read_buffer.needs_fill() {
-      let mut read_buf = ReadBuf::new(read_buffer.get_mut());
-      ready!(reader.as_mut().poll_read(cx, &mut read_buf))?;
-      read_buffer.cap = read_buf.filled().len();
-      read_buffer.pos = 0;
-    }
-    let available = read_buffer.available_mut();
-    let msg_len = length_buffer.message_len();
-    let (done, used) = if let Some(msg_len) = msg_len {
-      if out_buffer.len() >= msg_len {
-        (true, 0)
-      } else if available.is_empty() {
-        if *read == 0 {
-          return Poll::Ready(Ok(0));
-        } else {
-          return Poll::Ready(Err(io::Error::new(
-            io::ErrorKind::UnexpectedEof,
-            "ipc stream closed while reading message",
-          )));
-        }
-      } else {
-        let remaining = msg_len - out_buffer.len();
-        out_buffer.reserve(remaining);
-        let to_copy = available.len().min(remaining);
-        out_buffer.extend_from_slice(&available[..to_copy]);
-        (out_buffer.len() == msg_len, to_copy)
-      }
-    } else {
-      if available.is_empty() {
-        if *read == 0 {
-          return Poll::Ready(Ok(0));
-        } else {
-          return Poll::Ready(Err(io::Error::new(
-            io::ErrorKind::UnexpectedEof,
-            "ipc stream closed before message length",
-          )));
-        }
-      }
-      let len_avail = length_buffer.available_mut();
-      let to_copy = available.len().min(len_avail.len());
-      len_avail[..to_copy].copy_from_slice(&available[..to_copy]);
-      length_buffer.update_pos_by(to_copy);
-      (false, to_copy)
-    };
-
-    read_buffer.consume(used);
-    *read += used;
-
-    if done || *read == 0 {
-      return Poll::Ready(Ok(mem::replace(read, 0)));
-    }
-  }
-}
-
 // JSON serialization stream over IPC pipe.
 //
 // `\n` is used as a delimiter between messages.
@@ -579,7 +500,7 @@ impl IpcJsonStream {
 
   pub async fn read_msg_and_raw_fd(
     &mut self,
-  ) -> Result<Option<(serde_json::Value, Option<i64>)>, IpcJsonStreamError> {
+  ) -> Result<Option<(serde_json::Value, Option<i32>)>, IpcJsonStreamError> {
     let mut read = 0usize;
     let mut raw_fd = None;
     let mut json = None;
@@ -593,8 +514,11 @@ impl IpcJsonStream {
           .map_err(IpcJsonStreamError::Io)?;
       }
 
-      if read == 0 && raw_fd.is_none() {
-        raw_fd = self.read_buffer.take_raw_fd().map(|fd| fd as i64);
+      if let Some(fd) = self.read_buffer.take_raw_fd() {
+        debug_assert!(raw_fd.is_none());
+        if raw_fd.is_none() {
+          raw_fd = Some(fd);
+        }
       }
 
       let available = self.read_buffer.available_mut();
@@ -640,105 +564,9 @@ impl IpcJsonStream {
           self.buffer.set_len(0);
         }
 
-        return Ok(Some((json, raw_fd)));
+        return Ok(Some((json, raw_fd.map(into_raw_fd_i32))));
       }
     }
-  }
-}
-
-pin_project! {
-    #[must_use = "futures do nothing unless you `.await` or poll them"]
-    struct ReadMsgInner<'a, R: ?Sized> {
-        reader: &'a mut R,
-        buf: &'a mut Vec<u8>,
-        json: &'a mut Option<serde_json::Value>,
-        // The number of bytes appended to buf. This can be less than buf.len() if
-        // the buffer was not empty when the operation was started.
-        read: usize,
-        read_buffer: &'a mut ReadBuffer,
-    }
-}
-
-#[allow(
-  dead_code,
-  reason = "preserved for potential reuse; current reader inlines the loop"
-)]
-fn read_msg_inner<'a, R>(
-  reader: &'a mut R,
-  buf: &'a mut Vec<u8>,
-  json: &'a mut Option<serde_json::Value>,
-  read_buffer: &'a mut ReadBuffer,
-) -> ReadMsgInner<'a, R>
-where
-  R: AsyncRead + ?Sized + Unpin,
-{
-  ReadMsgInner {
-    reader,
-    buf,
-    json,
-    read: 0,
-    read_buffer,
-  }
-}
-
-fn read_json_msg_internal<R: AsyncRead + ?Sized>(
-  mut reader: Pin<&mut R>,
-  cx: &mut Context<'_>,
-  buf: &mut Vec<u8>,
-  read_buffer: &mut ReadBuffer,
-  json: &mut Option<serde_json::Value>,
-  read: &mut usize,
-) -> Poll<io::Result<usize>> {
-  loop {
-    let (done, used) = {
-      // effectively a tiny `poll_fill_buf`, but allows us to get a mutable reference to the buffer.
-      if read_buffer.needs_fill() {
-        let mut read_buf = ReadBuf::new(read_buffer.get_mut());
-        ready!(reader.as_mut().poll_read(cx, &mut read_buf))?;
-        read_buffer.cap = read_buf.filled().len();
-        read_buffer.pos = 0;
-      }
-      let available = read_buffer.available_mut();
-      if let Some(i) = memchr(b'\n', available) {
-        if *read == 0 {
-          // Fast path: parse and put into the json slot directly.
-          json.replace(
-            simd_json::from_slice(&mut available[..i + 1])
-              .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?,
-          );
-        } else {
-          // This is not the first read, so we have to copy the data
-          // to make it contiguous.
-          buf.extend_from_slice(&available[..=i]);
-        }
-        (true, i + 1)
-      } else {
-        buf.extend_from_slice(available);
-        (false, available.len())
-      }
-    };
-
-    read_buffer.consume(used);
-    *read += used;
-    if done || used == 0 {
-      return Poll::Ready(Ok(mem::replace(read, 0)));
-    }
-  }
-}
-
-impl<R: AsyncRead + ?Sized + Unpin> Future for ReadMsgInner<'_, R> {
-  type Output = io::Result<usize>;
-
-  fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-    let me = self.project();
-    read_json_msg_internal(
-      Pin::new(*me.reader),
-      cx,
-      me.buf,
-      me.read_buffer,
-      me.json,
-      me.read,
-    )
   }
 }
 
