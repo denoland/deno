@@ -1681,6 +1681,7 @@
     "parallel/test-http2-connect-method.js": {},
     "parallel/test-http2-connect.js": {},
     "parallel/test-http2-cookies.js": {},
+    "parallel/test-http2-create-client-secure-session.js": {},
     "parallel/test-http2-create-client-session.js": {},
     "parallel/test-http2-createsecureserver-options.js": {},
     "parallel/test-http2-createserver-options.js": {},
