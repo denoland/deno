@@ -46,6 +46,7 @@ import {
   signalAbort,
 } from "ext:deno_web/03_abort_signal.js";
 import { DOMException } from "ext:deno_web/01_dom_exception.js";
+import { markNotSerializable } from "ext:deno_web/13_message_port.js";
 const { internalRidSymbol } = core;
 
 const _request = Symbol("request");
@@ -545,6 +546,7 @@ class Request {
 
 webidl.configureInterface(Request);
 const RequestPrototype = Request.prototype;
+markNotSerializable(RequestPrototype);
 mixinBody(RequestPrototype, _body, _mimeType);
 
 webidl.converters["Request"] = webidl.createInterfaceConverter(

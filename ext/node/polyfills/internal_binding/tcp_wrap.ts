@@ -24,58 +24,36 @@
 // - https://github.com/nodejs/node/blob/master/src/tcp_wrap.cc
 // - https://github.com/nodejs/node/blob/master/src/tcp_wrap.h
 
+// TCPWrap is a Rust CppGC object that inherits from LibUvStreamWrap.
+// Read/write/shutdown ops come from the LibUvStreamWrap base class.
+// TCP-specific ops (bind, listen, connect, accept, etc.) are on TCPWrap itself.
+//
+// This module adds thin JS wrappers for listen (to create client handles on
+// accept) and for re-exporting types.
+
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-import { op_net_connect_tcp, TCP as NativeTCP } from "ext:core/ops";
-import { TcpConn } from "ext:deno_net/01_net.js";
-import { primordials } from "ext:core/mod.js";
-const { Error } = primordials;
-import { notImplemented } from "ext:deno_node/_utils.ts";
-import { ConnectionWrap } from "ext:deno_node/internal_binding/connection_wrap.ts";
+import { TCPWrap } from "ext:core/ops";
 import {
   AsyncWrap,
   providerType,
 } from "ext:deno_node/internal_binding/async_wrap.ts";
-import {
-  kArrayBufferOffset,
-  kBytesWritten,
-  kReadBytesOrError,
-  kStreamBaseField,
-  kUseNativeWrap,
-  LibuvStreamWrap,
-  ShutdownWrap,
-  streamBaseState,
-  WriteWrap,
-} from "ext:deno_node/internal_binding/stream_wrap.ts";
-import { ownerSymbol } from "ext:deno_node/internal_binding/symbols.ts";
-import { codeMap } from "ext:deno_node/internal_binding/uv.ts";
-import { delay } from "ext:deno_node/_util/async.ts";
-import { getIPFamily } from "ext:deno_node/internal/net.ts";
-import {
-  ceilPowOf2,
-  INITIAL_ACCEPT_BACKOFF_DELAY,
-  MAX_ACCEPT_BACKOFF_DELAY,
-} from "ext:deno_node/internal_binding/_listen.ts";
-import { nextTick } from "ext:deno_node/_next_tick.ts";
-import { Buffer } from "node:buffer";
+
+// Mark TCPWrap as a StreamBase handle, matching Node's StreamBase::AddMethods.
+// This allows parser.consume(socket._handle) to detect it as consumable.
+TCPWrap.prototype.isStreamBase = true;
 
 /** The type of TCP socket. */
-enum socketType {
+export enum socketType {
   SOCKET,
   SERVER,
-}
-
-interface AddressInfo {
-  address: string;
-  family?: string;
-  port: number;
 }
 
 export class TCPConnectWrap extends AsyncWrap {
   oncomplete!: (
     status: number,
-    handle: ConnectionWrap,
+    handle: unknown,
     req: TCPConnectWrap,
     readable: boolean,
     writeable: boolean,
@@ -94,672 +72,50 @@ export enum constants {
   SOCKET = socketType.SOCKET,
   SERVER = socketType.SERVER,
   UV_TCP_IPV6ONLY,
+  UV_TCP_REUSEPORT = 4,
 }
 
-export class TCP extends ConnectionWrap {
-  [ownerSymbol]: unknown = null;
-  override reading = false;
-
-  #address?: string;
-  #port?: number;
-
-  #remoteAddress?: string;
-  #remoteFamily?: string;
-  #remotePort?: number;
-
-  #backlog?: number;
-  #listener!: Deno.Listener;
-  #connections = 0;
-
-  #closed = false;
-  #acceptBackoffDelay?: number;
-
-  #netPermToken?: object | undefined;
-
-  // deno-lint-ignore no-explicit-any -- Native libuv TCP handle
-  #native: any;
-
-  [kUseNativeWrap]: boolean = false;
-
-  /**
-   * Creates a new TCP class instance.
-   * @param type The socket type.
-   * @param conn Optional connection object to wrap.
-   */
-  constructor(type: number, conn?: Deno.Conn) {
-    let provider: providerType;
-
-    switch (type) {
-      case socketType.SOCKET: {
-        provider = providerType.TCPWRAP;
-
-        break;
+/**
+ * Wrap the native TCPWrap.listen() to handle connection acceptance.
+ * The Rust server_connection_cb fires onconnection(status), and this
+ * wrapper creates client handles and calls uv_accept before forwarding
+ * to the user's onconnection(status, clientHandle).
+ *
+ * TODO: Move this logic into Rust by making the connection callback
+ * allocate a CppGC TCPWrap directly, removing the need for this JS shim.
+ */
+export function setupListenWrap(serverHandle: InstanceType<typeof TCPWrap>) {
+  const userOnConnection = serverHandle.onconnection;
+  serverHandle.onconnection = function (status: number) {
+    if (status !== 0) {
+      if (userOnConnection) {
+        userOnConnection.call(serverHandle, status, undefined);
       }
-      case socketType.SERVER: {
-        provider = providerType.TCPSERVERWRAP;
-
-        break;
-      }
-      default: {
-        throw new Error("Unreachable code");
-      }
-    }
-
-    super(provider, conn);
-
-    // Create native libuv TCP handle
-    this.#native = new NativeTCP(type);
-    this.#native.setOwner();
-
-    // TODO(cmorten): the handling of new connections and construction feels
-    // a little off. Suspect duplicating in some fashion.
-    if (conn && provider === providerType.TCPWRAP) {
-      const localAddr = conn.localAddr as Deno.NetAddr;
-      this.#address = localAddr.hostname;
-      this.#port = localAddr.port;
-
-      const remoteAddr = conn.remoteAddr as Deno.NetAddr;
-      this.#remoteAddress = remoteAddr.hostname;
-      this.#remotePort = remoteAddr.port;
-      this.#remoteFamily = getIPFamily(remoteAddr.hostname);
-    }
-  }
-
-  get fd() {
-    return undefined;
-  }
-
-  get _nativeHandle() {
-    return this.#native;
-  }
-
-  /**
-   * Opens a file descriptor.
-   * @param fd The file descriptor to open.
-   * @return An error status code.
-   */
-  open(fd: number): number {
-    const err = this.#native.open(fd);
-    if (err === 0) {
-      this[kUseNativeWrap] = true;
-    }
-    return err;
-  }
-
-  /**
-   * Bind to an IPv4 address.
-   * @param address The hostname to bind to.
-   * @param port The port to bind to
-   * @return An error status code.
-   */
-  bind(address: string, port: number): number {
-    this.#address = address;
-    this.#port = port;
-    this[kUseNativeWrap] = true;
-    return this.#native.bind(address, port);
-  }
-
-  /**
-   * Bind to an IPv6 address.
-   * @param address The hostname to bind to.
-   * @param port The port to bind to
-   * @return An error status code.
-   */
-  bind6(address: string, port: number, _flags: number): number {
-    this.#address = address;
-    this.#port = port;
-    this[kUseNativeWrap] = true;
-    return this.#native.bind6(address, port);
-  }
-
-  /**
-   * Connect to an IPv4 address.
-   * @param req A TCPConnectWrap instance.
-   * @param address The hostname to connect to.
-   * @param port The port to connect to.
-   * @return An error status code.
-   */
-  connect(req: TCPConnectWrap, address: string, port: number): number {
-    return this.#connect(req, address, port);
-  }
-
-  /**
-   * Connect to an IPv6 address.
-   * @param req A TCPConnectWrap instance.
-   * @param address The hostname to connect to.
-   * @param port The port to connect to.
-   * @return An error status code.
-   */
-  connect6(req: TCPConnectWrap, address: string, port: number): number {
-    return this.#connect(req, address, port);
-  }
-
-  /**
-   * Listen for new connections.
-   * @param backlog The maximum length of the queue of pending connections.
-   * @return An error status code.
-   */
-  listen(backlog: number): number {
-    if (!this[kUseNativeWrap]) {
-      return this.#listenLegacy(backlog);
-    }
-
-    this.#backlog = ceilPowOf2(backlog + 1);
-
-    // deno-lint-ignore no-this-alias
-    const self = this;
-    this.#native.onconnection = function (status: number) {
-      if (status !== 0) {
-        try {
-          self.onconnection!(status, undefined);
-        } catch (_e) {
-          // swallow callback errors.
-        }
-        return;
-      }
-
-      self.#connections++;
-      const clientHandle = new TCP(socketType.SOCKET);
-      clientHandle[kUseNativeWrap] = true;
-      self.#native.accept(clientHandle.#native);
-      clientHandle.#native.setOwner();
-
-      try {
-        self.onconnection!(0, clientHandle);
-      } catch (_e) {
-        // swallow callback errors.
-      }
-    };
-
-    return this.#native.listen(this.#backlog);
-  }
-
-  override readStart(): number {
-    if (!this[kUseNativeWrap] || !this.#native) {
-      return super.readStart();
-    }
-
-    this.reading = true;
-    // deno-lint-ignore no-this-alias
-    const self = this;
-    this.#native.onread = function (
-      nread: number,
-      buf: Uint8Array | undefined,
-    ) {
-      streamBaseState[kReadBytesOrError] = nread;
-      if (nread > 0) {
-        self.bytesRead += nread;
-      }
-      streamBaseState[kArrayBufferOffset] = 0;
-
-      try {
-        self.onread!(buf ?? new Uint8Array(0), nread);
-      } catch {
-        // swallow callback errors.
-      }
-
-      if (nread < 0) {
-        self.reading = false;
-      }
-    };
-
-    return this.#native.readStart();
-  }
-
-  override readStop(): number {
-    if (!this[kUseNativeWrap] || !this.#native) {
-      return super.readStop();
-    }
-
-    this.reading = false;
-    return this.#native.readStop();
-  }
-
-  override writeBuffer(
-    req: WriteWrap<LibuvStreamWrap>,
-    data: Uint8Array,
-  ): number {
-    if (!this[kUseNativeWrap] || !this.#native) {
-      return super.writeBuffer(req, data);
-    }
-
-    const ret = this.#native.writeBuffer(data);
-    streamBaseState[kBytesWritten] = data.byteLength;
-    this.bytesWritten += data.byteLength;
-
-    // Simulate async completion like Node.js
-    queueMicrotask(() => {
-      try {
-        req.oncomplete(ret === 0 ? 0 : codeMap.get("UNKNOWN")!);
-      } catch {
-        // swallow callback errors.
-      }
-    });
-
-    return 0;
-  }
-
-  override writev(
-    req: WriteWrap<LibuvStreamWrap>,
-    chunks: Buffer[] | (string | Buffer)[],
-    allBuffers: boolean,
-  ): number {
-    if (!this[kUseNativeWrap]) {
-      return super.writev(req, chunks, allBuffers);
-    }
-
-    // For native path, concat all chunks and write as single buffer
-    const count = allBuffers ? chunks.length : chunks.length >> 1;
-    const buffers: Buffer[] = new Array(count);
-
-    if (!allBuffers) {
-      for (let i = 0; i < count; i++) {
-        const chunk = chunks[i * 2];
-        if (Buffer.isBuffer(chunk)) {
-          buffers[i] = chunk;
-        } else {
-          const encoding: string = chunks[i * 2 + 1] as string;
-          buffers[i] = Buffer.from(chunk as string, encoding);
-        }
-      }
-    } else {
-      for (let i = 0; i < count; i++) {
-        buffers[i] = chunks[i] as Buffer;
-      }
-    }
-
-    return this.writeBuffer(req, Buffer.concat(buffers));
-  }
-
-  override shutdown(req: ShutdownWrap<LibuvStreamWrap>): number {
-    if (!this[kUseNativeWrap]) {
-      return super.shutdown(req);
-    }
-
-    // Call uv_shutdown to send FIN to the remote side.
-    const ret = this.#native!.shutdown();
-    // Signal async completion like Node.js - the FIN is queued
-    // in libuv and will be sent asynchronously.
-    queueMicrotask(() => {
-      try {
-        req.oncomplete(ret);
-      } catch {
-        // swallow callback errors.
-      }
-    });
-
-    return ret;
-  }
-
-  override ref() {
-    if (this[kUseNativeWrap] && this.#native) {
-      // TODO(@littledivy): implement uv_ref on native handle
       return;
     }
 
-    if (this.#listener) {
-      this.#listener.ref();
-    }
-
-    if (this[kStreamBaseField]) {
-      this[kStreamBaseField].ref();
-    }
-  }
-
-  override unref() {
-    if (this[kUseNativeWrap] && this.#native) {
-      // TODO(@littledivy): implement uv_unref on native handle
-      this.#native.unref();
+    // Create a new client handle and accept the connection
+    const clientHandle = new TCPWrap(socketType.SOCKET);
+    const acceptErr = serverHandle.accept(clientHandle);
+    if (acceptErr !== 0) {
+      if (userOnConnection) {
+        userOnConnection.call(serverHandle, acceptErr, undefined);
+      }
       return;
     }
 
-    if (this.#listener) {
-      this.#listener.unref();
+    if (userOnConnection) {
+      userOnConnection.call(serverHandle, 0, clientHandle);
     }
-
-    if (this[kStreamBaseField]) {
-      this[kStreamBaseField].unref();
-    }
-  }
-
-  /**
-   * Populates the provided object with local address entries.
-   * @param sockname An object to add the local address entries to.
-   * @return An error status code.
-   */
-  getsockname(sockname: Record<string, never> | AddressInfo): number {
-    if (this[kUseNativeWrap] && this.#native) {
-      const info = this.#native.getsockname();
-      if (info) {
-        sockname.address = info.address;
-        sockname.port = info.port;
-        sockname.family = info.family;
-        return 0;
-      }
-      return codeMap.get("EADDRNOTAVAIL")!;
-    }
-
-    if (
-      typeof this.#address === "undefined" ||
-      typeof this.#port === "undefined"
-    ) {
-      return codeMap.get("EADDRNOTAVAIL")!;
-    }
-
-    sockname.address = this.#address;
-    sockname.port = this.#port;
-    sockname.family = getIPFamily(this.#address);
-
-    return 0;
-  }
-
-  /**
-   * Populates the provided object with remote address entries.
-   * @param peername An object to add the remote address entries to.
-   * @return An error status code.
-   */
-  getpeername(peername: Record<string, never> | AddressInfo): number {
-    if (this[kUseNativeWrap] && this.#native) {
-      const info = this.#native.getpeername();
-      if (info) {
-        peername.address = info.address;
-        peername.port = info.port;
-        peername.family = info.family;
-        return 0;
-      }
-      return codeMap.get("EADDRNOTAVAIL")!;
-    }
-
-    if (
-      typeof this.#remoteAddress === "undefined" ||
-      typeof this.#remotePort === "undefined"
-    ) {
-      return codeMap.get("EADDRNOTAVAIL")!;
-    }
-
-    peername.address = this.#remoteAddress;
-    peername.port = this.#remotePort;
-    peername.family = this.#remoteFamily;
-
-    return 0;
-  }
-
-  /**
-   * @param noDelay
-   * @return An error status code.
-   */
-  setNoDelay(noDelay: boolean): number {
-    if (this[kUseNativeWrap]) {
-      return this.#native.setNoDelay(noDelay);
-    }
-
-    if (this[kStreamBaseField] && "setNoDelay" in this[kStreamBaseField]) {
-      this[kStreamBaseField].setNoDelay(noDelay);
-    }
-    return 0;
-  }
-
-  /**
-   * @param enable
-   * @param initialDelay
-   * @return An error status code.
-   */
-  setKeepAlive(_enable: boolean, _initialDelay: number): number {
-    // TODO(bnoordhuis) https://github.com/denoland/deno/pull/13103
-    return 0;
-  }
-
-  /**
-   * Windows only.
-   *
-   * Deprecated by Node.
-   * REF: https://github.com/nodejs/node/blob/master/lib/net.js#L1731
-   *
-   * @param enable
-   * @return An error status code.
-   * @deprecated
-   */
-  setSimultaneousAccepts(_enable: boolean) {
-    // Low priority to implement owing to it being deprecated in Node.
-    notImplemented("TCP.prototype.setSimultaneousAccepts");
-  }
-
-  /**
-   * Legacy listen using Deno.listen.
-   */
-  #listenLegacy(backlog: number): number {
-    this.#backlog = ceilPowOf2(backlog + 1);
-
-    const listenOptions = {
-      hostname: this.#address!,
-      port: this.#port!,
-      transport: "tcp" as const,
-    };
-
-    let listener;
-
-    try {
-      listener = Deno.listen(listenOptions);
-    } catch (e) {
-      if (e instanceof Deno.errors.NotCapable) {
-        throw e;
-      }
-      return codeMap.get(e.code ?? "UNKNOWN") ?? codeMap.get("UNKNOWN")!;
-    }
-
-    const address = listener.addr as Deno.NetAddr;
-    this.#address = address.hostname;
-    this.#port = address.port;
-    this.#listener = listener;
-
-    nextTick(nextTick, () => this.#accept());
-
-    return 0;
-  }
-
-  #nativeConnect(req: TCPConnectWrap, address: string, port: number) {
-    // deno-lint-ignore no-this-alias
-    const self = this;
-    this.#native.onconnect = function (status: number) {
-      if (status === 0) {
-        self[kUseNativeWrap] = true;
-
-        // Populate local address from the native handle
-        const sockname = self.#native.getsockname();
-        if (sockname) {
-          self.#address = req.localAddress = sockname.address;
-          self.#port = req.localPort = sockname.port;
-        }
-
-        // Populate remote address from the native handle
-        const peername = self.#native.getpeername();
-        if (peername) {
-          self.#remoteAddress = peername.address;
-          self.#remotePort = peername.port;
-          self.#remoteFamily = peername.family;
-        }
-
-        try {
-          self.afterConnect(req, 0);
-        } catch {
-          // swallow callback errors.
-        }
-      } else {
-        try {
-          self.afterConnect(req, codeMap.get("ECONNREFUSED")!);
-        } catch {
-          // swallow callback errors.
-        }
-      }
-    };
-
-    const ret = this.#native.connect(address ?? "127.0.0.1", port);
-    if (ret !== 0) {
-      // Synchronous failure (e.g. bad address)
-      nextTick(() => {
-        try {
-          this.afterConnect(req, codeMap.get("ECONNREFUSED")!);
-        } catch {
-          // swallow callback errors.
-        }
-      });
-    }
-  }
-
-  /**
-   * Connect to an IPv4 or IPv6 address.
-   * @param req A TCPConnectWrap instance.
-   * @param address The hostname to connect to.
-   * @param port The port to connect to.
-   * @return An error status code.
-   */
-  #connect(req: TCPConnectWrap, address: string, port: number): number {
-    this.#remoteAddress = address;
-    this.#remotePort = port;
-    this.#remoteFamily = getIPFamily(address);
-
-    if (this[kUseNativeWrap]) {
-      this.#nativeConnect(req, address, port);
-      return 0;
-    } else {
-      this.#remoteAddress = address;
-      this.#remotePort = port;
-      this.#remoteFamily = getIPFamily(address);
-
-      op_net_connect_tcp(
-        { hostname: address ?? "127.0.0.1", port },
-        this.#netPermToken,
-      ).then(
-        ({ 0: rid, 1: localAddr, 2: remoteAddr }) => {
-          // Incorrect / backwards, but correcting the local address and port with
-          // what was actually used given we can't actually specify these in Deno.
-          this.#address = req.localAddress = localAddr.hostname;
-          this.#port = req.localPort = localAddr.port;
-          this[kStreamBaseField] = new TcpConn(rid, remoteAddr, localAddr);
-
-          try {
-            this.afterConnect(req, 0);
-          } catch {
-            // swallow callback errors.
-          }
-        },
-        () => {
-          try {
-            // TODO(cmorten): correct mapping of connection error to status code.
-            this.afterConnect(req, codeMap.get("ECONNREFUSED")!);
-          } catch {
-            // swallow callback errors.
-          }
-        },
-      );
-      return 0;
-    }
-  }
-
-  /** Handle backoff delays following an unsuccessful accept. */
-  async #acceptBackoff() {
-    // Backoff after transient errors to allow time for the system to
-    // recover, and avoid blocking up the event loop with a continuously
-    // running loop.
-    if (!this.#acceptBackoffDelay) {
-      this.#acceptBackoffDelay = INITIAL_ACCEPT_BACKOFF_DELAY;
-    } else {
-      this.#acceptBackoffDelay *= 2;
-    }
-
-    if (this.#acceptBackoffDelay >= MAX_ACCEPT_BACKOFF_DELAY) {
-      this.#acceptBackoffDelay = MAX_ACCEPT_BACKOFF_DELAY;
-    }
-
-    await delay(this.#acceptBackoffDelay);
-
-    this.#accept();
-  }
-
-  /** Accept new connections (legacy path). */
-  async #accept(): Promise<void> {
-    if (this.#closed) {
-      return;
-    }
-
-    if (this.#connections > this.#backlog!) {
-      this.#acceptBackoff();
-
-      return;
-    }
-
-    let connection: Deno.Conn;
-
-    try {
-      connection = await this.#listener.accept();
-    } catch (e) {
-      if (e instanceof Deno.errors.BadResource && this.#closed) {
-        // Listener and server has closed.
-        return;
-      }
-
-      try {
-        // TODO(cmorten): map errors to appropriate error codes.
-        this.onconnection!(codeMap.get("UNKNOWN")!, undefined);
-      } catch {
-        // swallow callback errors.
-      }
-
-      this.#acceptBackoff();
-
-      return;
-    }
-
-    // Reset the backoff delay upon successful accept.
-    this.#acceptBackoffDelay = undefined;
-    const connectionHandle = new TCP(socketType.SOCKET, connection);
-    this.#connections++;
-
-    try {
-      this.onconnection!(0, connectionHandle);
-    } catch {
-      // swallow callback errors.
-    }
-
-    return this.#accept();
-  }
-
-  /** Handle server closure. */
-  override _onClose(): number {
-    this.#closed = true;
-    this.reading = false;
-
-    this.#address = undefined;
-    this.#port = undefined;
-
-    this.#remoteAddress = undefined;
-    this.#remoteFamily = undefined;
-    this.#remotePort = undefined;
-
-    this.#backlog = undefined;
-    this.#connections = 0;
-    this.#acceptBackoffDelay = undefined;
-
-    // Close native libuv handle. uv_close is safe to call at any time -
-    // it cancels pending writes and defers the actual handle free to the
-    // close callback (which fires during the next uv_run).
-    if (this.#native) {
-      this.#native.close();
-      this.#native = null;
-    }
-
-    if (!this[kUseNativeWrap] && this.provider === providerType.TCPSERVERWRAP) {
-      try {
-        this.#listener.close();
-      } catch {
-        // listener already closed
-      }
-    }
-
-    return LibuvStreamWrap.prototype._onClose.call(this);
-  }
-
-  setNetPermToken(netPermToken: object | undefined) {
-    this.#netPermToken = netPermToken;
-  }
+  };
 }
+
+// Re-export the Rust TCPWrap as TCP.
+export { TCPWrap as TCP };
+
+export default {
+  TCPConnectWrap,
+  constants,
+  TCP: TCPWrap,
+  setupListenWrap,
+};

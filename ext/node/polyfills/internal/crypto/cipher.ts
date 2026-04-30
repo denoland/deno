@@ -30,6 +30,7 @@ import {
 } from "ext:core/ops";
 
 import { Buffer } from "node:buffer";
+import process from "node:process";
 import type { TransformOptions } from "ext:deno_node/_stream.d.ts";
 import { Transform } from "node:stream";
 import {
@@ -45,6 +46,7 @@ import type {
 } from "ext:deno_node/internal/crypto/types.ts";
 import { getDefaultEncoding } from "ext:deno_node/internal/crypto/util.ts";
 import {
+  ERR_INVALID_ARG_TYPE,
   ERR_INVALID_ARG_VALUE,
   ERR_UNKNOWN_ENCODING,
   NodeError,
@@ -74,6 +76,19 @@ export function isStringOrBuffer(
     isArrayBufferView(val) ||
     isAnyArrayBuffer(val) ||
     Buffer.isBuffer(val);
+}
+
+// Matches Node's `ArrayBuffer.isView(data)` check in
+// `lib/internal/crypto/cipher.js`: accepts string, Buffer, TypedArray
+// or DataView, but rejects raw ArrayBuffer / SharedArrayBuffer.
+function validateCipherUpdateData(data: unknown): void {
+  if (typeof data !== "string" && !ArrayBuffer.isView(data)) {
+    throw new ERR_INVALID_ARG_TYPE(
+      "data",
+      ["string", "Buffer", "TypedArray", "DataView"],
+      data,
+    );
+  }
 }
 
 const NO_TAG = new Uint8Array();
@@ -316,11 +331,18 @@ Cipheriv.prototype.update = function (
     throw new ERR_CRYPTO_INVALID_STATE("update");
   }
 
-  // TODO(kt3k): throw ERR_INVALID_ARG_TYPE if data is not string, Buffer, or ArrayBufferView
+  validateCipherUpdateData(data);
+
   let buf = data;
   if (typeof data === "string") {
     buf = Buffer.from(data, inputEncoding);
   }
+
+  // Match Node.js/OpenSSL behavior: reject inputs >= INT_MAX bytes
+  if (buf.length >= 2 ** 31 - 1) {
+    throw new Error("Trying to add data in unsupported state");
+  }
+
   _lazyInitCipherDecoder(this, outputEncoding);
 
   let output: Buffer;
@@ -468,6 +490,9 @@ export function Decipheriv(
     !(cipher == "aes-128-gcm" || cipher == "aes-256-gcm" ||
       cipher == "aes-128-ctr" || cipher == "aes-192-ctr" ||
       cipher == "aes-256-ctr" || cipher == "chacha20-poly1305");
+  this._isGcmMode = cipher == "aes-128-gcm" || cipher == "aes-192-gcm" ||
+    cipher == "aes-256-gcm";
+  this._authTagLength = authTagLength;
   this._authTag = undefined;
   this._finalized = false;
   this._decoder = undefined;
@@ -541,12 +566,29 @@ Decipheriv.prototype.setAAD = function (
   return this;
 };
 
+let gcmShortTagDeprecationEmitted = false;
+
 Decipheriv.prototype.setAuthTag = function (
   buffer: BinaryLike,
   _encoding?: string,
 ) {
   if (this._authTag) {
     throw new ERR_CRYPTO_INVALID_STATE("setAuthTag");
+  }
+  // DEP0182: warn once per process when using a short GCM auth tag without
+  // an explicit `authTagLength` option at decipher creation time.
+  if (
+    this._isGcmMode && this._authTagLength === -1 &&
+    buffer.byteLength !== 16 && !gcmShortTagDeprecationEmitted
+  ) {
+    gcmShortTagDeprecationEmitted = true;
+    process.emitWarning(
+      "Using AES-GCM authentication tags of less than 128 bits without " +
+        "specifying the authTagLength option when initializing decryption " +
+        "is deprecated.",
+      "DeprecationWarning",
+      "DEP0182",
+    );
   }
   op_node_decipheriv_auth_tag(this._context, buffer.byteLength);
   this._authTag = buffer;
@@ -568,11 +610,18 @@ Decipheriv.prototype.update = function (
     throw new ERR_CRYPTO_INVALID_STATE("update");
   }
 
-  // TODO(kt3k): throw ERR_INVALID_ARG_TYPE if data is not string, Buffer, or ArrayBufferView
+  validateCipherUpdateData(data);
+
   let buf = data;
   if (typeof data === "string") {
     buf = Buffer.from(data, inputEncoding);
   }
+
+  // Match Node.js/OpenSSL behavior: reject inputs >= INT_MAX bytes
+  if (buf.length >= 2 ** 31 - 1) {
+    throw new Error("Trying to add data in unsupported state");
+  }
+
   _lazyInitDecipherDecoder(this, outputEncoding);
 
   let output;
@@ -638,6 +687,14 @@ function checkUnsupportedKeyType(key) {
   }
 }
 
+function normalizeOaepHash(hash: string | undefined): string | undefined {
+  if (!hash) return undefined;
+  // Normalize to lowercase and strip WebCrypto-style hyphens
+  // (e.g. "SHA-256" -> "sha256") but keep sha3/sha512 sub-variants
+  // (e.g. "sha3-256", "sha512-224") intact.
+  return hash.toLowerCase().replace(/^(sha)-(?!3-)/, "$1");
+}
+
 export function privateEncrypt(
   privateKey: ArrayBufferView | string | KeyObject,
   buffer: ArrayBufferView,
@@ -645,9 +702,13 @@ export function privateEncrypt(
   checkUnsupportedKeyType(privateKey);
   const { data } = prepareKey(privateKey);
   const padding = privateKey.padding || 1;
+  const oaepHash = normalizeOaepHash(privateKey.oaepHash);
+  const oaepLabel = privateKey.oaepLabel || undefined;
 
   buffer = getArrayBufferOrView(buffer, "buffer");
-  return Buffer.from(op_node_private_encrypt(data, buffer, padding));
+  return Buffer.from(
+    op_node_private_encrypt(data, buffer, padding, oaepHash, oaepLabel),
+  );
 }
 
 export function privateDecrypt(
@@ -657,9 +718,13 @@ export function privateDecrypt(
   checkUnsupportedKeyType(privateKey);
   const { data } = prepareKey(privateKey);
   const padding = privateKey.padding || 1;
+  const oaepHash = normalizeOaepHash(privateKey.oaepHash);
+  const oaepLabel = privateKey.oaepLabel || undefined;
 
   buffer = getArrayBufferOrView(buffer, "buffer");
-  return Buffer.from(op_node_private_decrypt(data, buffer, padding));
+  return Buffer.from(
+    op_node_private_decrypt(data, buffer, padding, oaepHash, oaepLabel),
+  );
 }
 
 export function publicEncrypt(
@@ -669,9 +734,13 @@ export function publicEncrypt(
   checkUnsupportedKeyType(publicKey);
   const { data } = prepareKey(publicKey);
   const padding = publicKey.padding || 1;
+  const oaepHash = normalizeOaepHash(publicKey.oaepHash);
+  const oaepLabel = publicKey.oaepLabel || undefined;
 
   buffer = getArrayBufferOrView(buffer, "buffer");
-  return Buffer.from(op_node_public_encrypt(data, buffer, padding));
+  return Buffer.from(
+    op_node_public_encrypt(data, buffer, padding, oaepHash, oaepLabel),
+  );
 }
 
 export function prepareKey(key) {

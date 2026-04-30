@@ -343,7 +343,7 @@ Deno.test(function consoleTestStringifyCircular() {
   debug: [Function: debug],
   info: [Function: info],
   dir: [Function: dir],
-  dirxml: [Function: dir],
+  dirxml: [Function: dirxml],
   warn: [Function: warn],
   error: [Function: error],
   assert: [Function: assert],
@@ -2115,15 +2115,16 @@ Deno.test(function consoleDir() {
   });
 });
 
-// console.dir test
+// console.dirxml forwards to log per the WHATWG console spec; extra args
+// are passed through like log, not interpreted as dir-style options.
 Deno.test(function consoleDirXml() {
   mockConsole((console, out) => {
     console.dirxml("DIRXML");
     assertEquals(out.toString(), "DIRXML\n");
   });
   mockConsole((console, out) => {
-    console.dirxml("DIRXML", { indentLevel: 2 });
-    assertEquals(out.toString(), "    DIRXML\n");
+    console.dirxml("DIRXML", "extra");
+    assertEquals(out.toString(), "DIRXML extra\n");
   });
 });
 
@@ -2375,6 +2376,36 @@ Deno.test(function inspectProxy() {
       }),
     )),
     "{}",
+  );
+});
+
+Deno.test(function inspectProxyWithNodeCustomInspect() {
+  // Proxy that hides symbols from `has`/`ownKeys` but exposes them via `get`.
+  // This pattern is used by nodejs-polars DataFrames (issue #33236).
+  const nodeInspect = Symbol.for("nodejs.util.inspect.custom");
+  const target = {
+    [nodeInspect]() {
+      return "custom proxy output";
+    },
+  };
+  const proxy = new Proxy(target, {
+    has(_t, p) {
+      return typeof p === "string" && p === "x";
+    },
+    ownKeys() {
+      return ["x"];
+    },
+    getOwnPropertyDescriptor(_t, p) {
+      if (p === "x") return { configurable: true, enumerable: true, value: 1 };
+      return undefined;
+    },
+    get(t, p, r) {
+      return Reflect.get(t, p, r);
+    },
+  });
+  assertEquals(
+    stripAnsiCode(Deno.inspect(proxy)),
+    "custom proxy output",
   );
 });
 

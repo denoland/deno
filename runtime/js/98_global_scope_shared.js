@@ -16,8 +16,6 @@ import * as urlPattern from "ext:deno_web/01_urlpattern.js";
 import * as headers from "ext:deno_fetch/20_headers.js";
 import * as streams from "ext:deno_web/06_streams.js";
 import * as fileReader from "ext:deno_web/10_filereader.js";
-import * as webSocket from "ext:deno_websocket/01_websocket.js";
-import * as webSocketStream from "ext:deno_websocket/02_websocketstream.js";
 import * as broadcastChannel from "ext:deno_web/01_broadcast_channel.js";
 import * as file from "ext:deno_web/09_file.js";
 import * as formData from "ext:deno_fetch/21_formdata.js";
@@ -48,6 +46,13 @@ import * as webgpuSurface from "ext:deno_webgpu/02_surface.js";
 import { unstableIds } from "ext:runtime/90_deno_ns.js";
 
 const loadImage = core.createLazyLoader("ext:deno_image/01_image.js");
+const loadGeometry = core.createLazyLoader("ext:deno_web/geometry.js");
+const loadWebSocket = core.createLazyLoader(
+  "ext:deno_websocket/01_websocket.js",
+);
+const loadWebSocketStream = core.createLazyLoader(
+  "ext:deno_websocket/02_websocketstream.js",
+);
 const loadWebTransport = core.createLazyLoader("ext:deno_web/webtransport.js");
 
 // https://developer.mozilla.org/en-US/docs/Web/API/WindowOrWorkerGlobalScope
@@ -69,6 +74,34 @@ const windowOrWorkerGlobalScope = {
   DecompressionStream: core.propNonEnumerable(compression.DecompressionStream),
   DOMException: core.propNonEnumerable(DOMException),
   QuotaExceededError: core.propNonEnumerable(QuotaExceededError),
+  DOMMatrix: core.propNonEnumerableLazyLoaded(
+    (geometry) => geometry.DOMMatrix,
+    loadGeometry,
+  ),
+  DOMMatrixReadOnly: core.propNonEnumerableLazyLoaded(
+    (geometry) => geometry.DOMMatrixReadOnly,
+    loadGeometry,
+  ),
+  DOMPoint: core.propNonEnumerableLazyLoaded(
+    (geometry) => geometry.DOMPoint,
+    loadGeometry,
+  ),
+  DOMPointReadOnly: core.propNonEnumerableLazyLoaded(
+    (geometry) => geometry.DOMPointReadOnly,
+    loadGeometry,
+  ),
+  DOMQuad: core.propNonEnumerableLazyLoaded(
+    (geometry) => geometry.DOMQuad,
+    loadGeometry,
+  ),
+  DOMRect: core.propNonEnumerableLazyLoaded(
+    (geometry) => geometry.DOMRect,
+    loadGeometry,
+  ),
+  DOMRectReadOnly: core.propNonEnumerableLazyLoaded(
+    (geometry) => geometry.DOMRectReadOnly,
+    loadGeometry,
+  ),
   ErrorEvent: core.propNonEnumerable(event.ErrorEvent),
   Event: core.propNonEnumerable(event.Event),
   EventTarget: core.propNonEnumerable(event.EventTarget),
@@ -106,7 +139,10 @@ const windowOrWorkerGlobalScope = {
   URL: core.propNonEnumerable(url.URL),
   URLPattern: core.propNonEnumerable(urlPattern.URLPattern),
   URLSearchParams: core.propNonEnumerable(url.URLSearchParams),
-  WebSocket: core.propNonEnumerable(webSocket.WebSocket),
+  WebSocket: core.propNonEnumerableLazyLoaded(
+    (ws) => ws.WebSocket,
+    loadWebSocket,
+  ),
   MessageChannel: core.propNonEnumerable(messagePort.MessageChannel),
   MessagePort: core.propNonEnumerable(messagePort.MessagePort),
   Worker: core.propNonEnumerable(worker.Worker),
@@ -321,8 +357,14 @@ const windowOrWorkerGlobalScope = {
 
 const unstableForWindowOrWorkerGlobalScope = { __proto__: null };
 unstableForWindowOrWorkerGlobalScope[unstableIds.net] = {
-  WebSocketStream: core.propNonEnumerable(webSocketStream.WebSocketStream),
-  WebSocketError: core.propNonEnumerable(webSocketStream.WebSocketError),
+  WebSocketStream: core.propNonEnumerableLazyLoaded(
+    (wss) => wss.WebSocketStream,
+    loadWebSocketStream,
+  ),
+  WebSocketError: core.propNonEnumerableLazyLoaded(
+    (wss) => wss.WebSocketError,
+    loadWebSocketStream,
+  ),
   WebTransport: core.propNonEnumerableLazyLoaded(
     (wt) => wt.WebTransport,
     loadWebTransport,
