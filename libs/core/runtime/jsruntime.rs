@@ -1352,6 +1352,11 @@ impl JsRuntime {
       module_map.add_lazy_loaded_esm_source(source.specifier, source.code);
     }
 
+    // Add lazy-loaded scripts (loaded on demand via loadExtScript())
+    for source in loaded_sources.lazy_js {
+      module_map.add_lazy_loaded_script_source(source.specifier, source.code);
+    }
+
     // Temporarily override the loader of the `ModuleMap` so we can load
     // extension code.
 
