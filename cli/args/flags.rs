@@ -123,6 +123,11 @@ pub struct AddFlags {
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct WhyFlags {
+  pub package: String,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct AuditFlags {
   pub severity: String,
   pub ignore_registry_errors: bool,
@@ -677,6 +682,7 @@ pub enum DenoSubcommand {
   Types,
   Upgrade(UpgradeFlags),
   Vendor,
+  Why(WhyFlags),
   BumpVersion(VersionFlags),
   Publish(PublishFlags),
   Help(HelpFlags),
@@ -1700,6 +1706,7 @@ static DENO_HELP: &str = cstr!(
     <g>approve-scripts</> Approve npm lifecycle scripts
     <g>remove</>       Remove dependencies from the configuration file
     <g>publish</>      Publish the current working directory's package or workspace
+    <g>why</>          Show why a package is installed
 
   <y>Tooling:</>
     <g>bench</>        Run benchmarks
@@ -1953,6 +1960,7 @@ pub fn flags_from_vec_with_initial_cwd(
         "upgrade" => upgrade_parse(&mut flags, &mut m)?,
         "bump-version" => bump_version_parse(&mut flags, &mut m),
         "vendor" => vendor_parse(&mut flags, &mut m),
+        "why" => why_parse(&mut flags, &mut m),
         "publish" => publish_parse(&mut flags, &mut m)?,
         "x" => x_parse(&mut flags, &mut m)?,
         _ => unreachable!(),
@@ -2223,6 +2231,7 @@ pub fn clap_root() -> Command {
         .subcommand(upgrade_subcommand())
         .subcommand(bump_version_subcommand())
         .subcommand(vendor_subcommand())
+        .subcommand(why_subcommand())
         .subcommand(x_subcommand());
 
       let help = help_subcommand(&cmd);
@@ -2403,6 +2412,29 @@ Don't error if the audit data can't be retrieved from the registry
           .long("fix")
           .help("Automatically fix vulnerabilities by upgrading packages")
           .action(ArgAction::SetTrue)
+      )
+  })
+}
+
+fn why_subcommand() -> Command {
+  command(
+    "why",
+    cstr!(
+      "Show why a package is installed, displaying the dependency chain from your project's direct dependencies to the specified package.
+  <p(245)>deno why express</>
+
+Show why a specific version is installed
+  <p(245)>deno why express@4.18.2</>"
+    ),
+    UnstableArgsConfig::None,
+  )
+  .defer(|cmd| {
+    cmd
+      .args(lock_args())
+      .arg(
+        Arg::new("package")
+          .required(true)
+          .help("The package name (and optional version) to explain"),
       )
   })
 }
@@ -6125,6 +6157,12 @@ fn audit_parse(
     fix,
   });
   Ok(())
+}
+
+fn why_parse(flags: &mut Flags, matches: &mut ArgMatches) {
+  lock_args_parse(flags, matches);
+  let package = matches.remove_one::<String>("package").unwrap();
+  flags.subcommand = DenoSubcommand::Why(WhyFlags { package });
 }
 
 fn add_parse(
@@ -15877,6 +15915,68 @@ Usage: deno repl [OPTIONS] [-- [ARGS]...]\n"
   #[test]
   fn bump_version_invalid_increment() {
     let r = flags_from_vec(svec!["deno", "bump-version", "invalid"]);
+    assert!(r.is_err());
+  }
+
+  #[test]
+  fn why_package() {
+    let r = flags_from_vec(svec!["deno", "why", "express"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Why(WhyFlags {
+          package: "express".to_string(),
+        }),
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn why_package_with_version() {
+    let r = flags_from_vec(svec!["deno", "why", "express@4.18.2"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Why(WhyFlags {
+          package: "express@4.18.2".to_string(),
+        }),
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn why_scoped_package() {
+    let r = flags_from_vec(svec!["deno", "why", "@scope/pkg"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Why(WhyFlags {
+          package: "@scope/pkg".to_string(),
+        }),
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn why_scoped_package_with_version() {
+    let r = flags_from_vec(svec!["deno", "why", "@scope/pkg@1.0.0"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Why(WhyFlags {
+          package: "@scope/pkg@1.0.0".to_string(),
+        }),
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn why_missing_package() {
+    let r = flags_from_vec(svec!["deno", "why"]);
     assert!(r.is_err());
   }
 }
