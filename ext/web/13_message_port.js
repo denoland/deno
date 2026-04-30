@@ -601,8 +601,11 @@ function structuredClone(value, options) {
   // StructuredSerializeOptions dictionary conversion, the not-serializable
   // marker check, or the V8 ValueSerializer/Deserializer round-trip.
   // Symbol falls through to the slow path which throws DataCloneError;
-  // 0-arg calls also fall through so requiredArguments can throw.
-  if (arguments.length >= 1) {
+  // 0-arg calls also fall through so requiredArguments can throw. We also
+  // require `options === undefined` so the slow-path StructuredSerializeOptions
+  // converter still rejects malformed second arguments
+  // (e.g. `structuredClone(42, "not-an-object")` keeps throwing TypeError).
+  if (arguments.length >= 1 && options === undefined) {
     if (value === null) return value;
     const t = typeof value;
     if (t !== "object" && t !== "function" && t !== "symbol") {
