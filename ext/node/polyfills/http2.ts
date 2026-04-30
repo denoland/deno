@@ -73,6 +73,9 @@ import {
   ShutdownWrap,
   streamBaseState,
 } from "ext:deno_node/internal_binding/stream_wrap.ts";
+import {
+  Http2Stream as BindingHttp2Stream,
+} from "ext:deno_node/internal_binding/http2.ts";
 import { EventEmitter } from "node:events";
 import {
   defaultTriggerAsyncIdScope,
@@ -2344,10 +2347,10 @@ function processRespondWithFD(
     self.end();
   }
 
-  const ret = self[kHandle].respond(
-    headersList[0],
-    headersList[1],
-    streamOptions,
+  const ret = ReflectApply(
+    BindingHttp2Stream.prototype.respond,
+    self[kHandle],
+    [headersList[0], headersList[1], streamOptions],
   );
 
   if (ret < 0) {
