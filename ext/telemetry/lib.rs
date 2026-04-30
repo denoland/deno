@@ -774,7 +774,9 @@ mod hyper_client {
   }
 
   impl HyperClient {
-    pub fn new(sys: &impl FsRead) -> deno_core::anyhow::Result<Self> {
+    fn build_connector(
+      sys: &impl FsRead,
+    ) -> deno_core::anyhow::Result<Connector> {
       let connector = if let Some(tunnel) = get_tunnel() {
         Connector::Tunnel(tunnel.clone())
       } else if let Ok(addr) = std::env::var("OTEL_DENO_VSOCK") {
@@ -839,10 +841,61 @@ mod hyper_client {
         Connector::Http(connector)
       };
 
-      Ok(Self {
-        inner: Client::builder(OtelSharedRuntime).build(connector),
+      Ok(connector)
+    }
+
+    pub fn new(sys: &impl FsRead) -> deno_core::anyhow::Result<Self> {
+      let connector = Self::build_connector(sys)?;
+      Ok(Self::from_connector(connector, false))
+    }
+
+    /// Create a client configured for gRPC (HTTP/2 enforced).
+    pub fn new_h2(sys: &impl FsRead) -> deno_core::anyhow::Result<Self> {
+      let connector = Self::build_connector(sys)?;
+      Ok(Self::from_connector(connector, true))
+    }
+
+    fn from_connector(connector: Connector, http2_only: bool) -> Self {
+      let mut builder = Client::builder(OtelSharedRuntime);
+      if http2_only {
+        builder.http2_only(true);
+      }
+      Self {
+        inner: builder.build(connector),
         timeout: parse_otlp_timeout(),
+      }
+    }
+  }
+
+  impl HyperClient {
+    /// Send a gRPC request, preserving HTTP/2 trailers for grpc-status.
+    /// Returns (response_headers, trailers).
+    pub async fn grpc_request(
+      &self,
+      request: Request<Vec<u8>>,
+    ) -> Result<
+      (hyper::http::response::Parts, Option<hyper::HeaderMap>),
+      Box<dyn std::error::Error + Send + Sync>,
+    > {
+      let (parts, body) = request.into_parts();
+      let request = Request::from_parts(parts, Full::from(body));
+      let result = tokio::time::timeout(self.timeout, async {
+        let response = self.inner.request(request).await?;
+        let (parts, body) = response.into_parts();
+        let collected = body.collect().await?;
+        let trailers = collected.trailers().cloned();
+        Ok::<_, Box<dyn std::error::Error + Send + Sync>>((
+          parts, trailers,
+        ))
       })
+      .await
+      .map_err(|_| -> Box<dyn std::error::Error + Send + Sync> {
+        Box::new(std::io::Error::new(
+          std::io::ErrorKind::TimedOut,
+          format!("OTEL export timed out after {}ms", self.timeout.as_millis()),
+        ))
+      })??;
+      Ok(result)
     }
   }
 
@@ -1012,7 +1065,7 @@ pub fn init(
 
     (span_processor, meter_provider, log_processor)
   } else if protocol == Protocol::Grpc {
-    let client = hyper_client::HyperClient::new(sys)?;
+    let client = hyper_client::HyperClient::new_h2(sys)?;
 
     let span_exporter = grpc_exporter::GrpcSpanExporter::new(client.clone());
     let mut span_processor =
