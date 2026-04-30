@@ -1,0 +1,10 @@
+rsa pub-from-pub: public rsa
+rsa pub-from-priv: public rsa
+rsa priv direct: private rsa
+rsa priv via key: private rsa
+pem starts: true
+pem ends: true
+secret: secret 32
+rejects asymmetric: true
+rejects public-as-private: true
+ok
