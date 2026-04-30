@@ -3324,6 +3324,8 @@
     "parallel/test-utf8-scripts.js": {},
     "parallel/test-util-convert-signal-to-exit-code.mjs": {},
     "parallel/test-util-deprecate-invalid-code.js": {},
+    "parallel/test-util-deprecate.js": {},
+    "parallel/test-util-emit-experimental-warning.js": {},
     "parallel/test-util-getcallsites-preparestacktrace.js": {},
     "parallel/test-util-getcallsites.js": {},
     "parallel/test-util-inherits.js": {},
