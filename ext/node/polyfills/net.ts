@@ -118,6 +118,10 @@ import type { DuplexOptions } from "ext:deno_node/_stream.d.ts";
 import type { BufferEncoding } from "ext:deno_node/_global.d.ts";
 import type { Abortable } from "ext:deno_node/_events.d.ts";
 import { channel } from "node:diagnostics_channel";
+// Imported lazily at module top via the cluster <-> net cycle. Only used
+// inside `_listenInCluster()`, which is invoked after cluster.ts has
+// finished evaluating, so the live bindings are fully populated by then.
+import cluster from "node:cluster";
 import { core, primordials } from "ext:core/mod.js";
 
 const {
@@ -2131,22 +2135,44 @@ function _listenInCluster(
 ) {
   exclusive = !!exclusive;
 
-  // TODO(cmorten): here we deviate somewhat from the Node implementation which
-  // makes use of the https://nodejs.org/api/cluster.html module to run servers
-  // across a "cluster" of Node processes to take advantage of multi-core
-  // systems.
-  //
-  // Though Deno has has a Worker capability from which we could simulate this,
-  // for now we assert that we are _always_ on the primary process.
-  const isPrimary = true;
-
-  if (isPrimary || exclusive) {
-    // Will create a new handle
-    // _listen2 sets up the listened handle, it is still named like this
-    // to avoid breaking code that wraps this method
+  // ESM live binding: cluster is statically imported below. Accessing it
+  // inside this function is safe even with the cluster <-> net cycle because
+  // by the time a server is being listen()ed on, both modules are evaluated.
+  if (cluster.isPrimary || exclusive) {
     server._listen2(address, port, addressType, backlog, fd, flags);
-
     return;
+  }
+
+  const serverQuery = {
+    address,
+    port,
+    addressType,
+    // Match Node: pass `undefined` (not null) when no fd was provided so
+    // the primary's `RoundRobinHandle`'s `fd >= 0` check (where `null >= 0`
+    // is `true` in JS) doesn't take the fd branch.
+    fd: fd == null ? undefined : fd,
+    flags,
+    backlog,
+  };
+  const listeningId = server._listeningId;
+  // Get the primary's server handle, and listen on it.
+  cluster._getServer(server, serverQuery, listenOnPrimaryHandle);
+
+  function listenOnPrimaryHandle(err: number, handle: Handle) {
+    if (listeningId !== server._listeningId) {
+      if (handle) handle.close();
+      return;
+    }
+    if (err) {
+      const ex = uvExceptionWithHostPort(err, "bind", address, port);
+      server.emit("error", ex);
+      return;
+    }
+    if (server._handle) {
+      server._handle.close();
+    }
+    server._handle = handle;
+    server._listen2(address, port, addressType, backlog, fd, flags);
   }
 }
 

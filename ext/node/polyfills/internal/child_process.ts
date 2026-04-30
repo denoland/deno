@@ -1885,6 +1885,10 @@ let hasSetBufferConstructor = false;
 
 const IPC_HANDLE_NET_SOCKET = "net.Socket";
 const IPC_HANDLE_NET_SERVER = "net.Server";
+// node:cluster sends raw TCP/Pipe wraps (without a Socket/Server wrapper) for
+// connection handoffs (RoundRobinHandle) and shared listening sockets
+// (SharedHandle). Mirrors Node's `handleConversion["net.Native"]`.
+const IPC_HANDLE_NET_NATIVE = "net.Native";
 
 function rawFdFromTcpHandle(tcpHandle) {
   if (typeof tcpHandle.fdForIpc !== "function") {
@@ -1937,6 +1941,30 @@ function getIpcHandleInfo(handle, options) {
       },
     };
   }
+  if (handle instanceof TCP || handle instanceof Pipe) {
+    return {
+      rawFd: rawFdFromTcpHandle(handle),
+      message: {
+        cmd: "NODE_HANDLE",
+        type: IPC_HANDLE_NET_NATIVE,
+        // 0 = SOCKET, 1 = SERVER. Same encoding for TCP and Pipe.
+        socketType: handle.socketTypeForIpc(),
+        // Distinguishes the wrap type the receiver should reconstruct.
+        nativeKind: handle instanceof TCP ? "tcp" : "pipe",
+        msg: undefined,
+      },
+      // Match Node's handleConversion["net.Native"]: it has no postSend hook,
+      // so the IPC layer doesn't auto-close. Cluster's RoundRobinHandle and
+      // SharedHandle each manage their own lifecycle (the former closes the
+      // client wrap after the worker ACKs; the latter shares the listening
+      // wrap across workers).
+      closeAfterSend: false,
+      close() {
+        handle.close();
+      },
+    };
+  }
+
   if (handle instanceof DgramSocket) {
     notImplemented("ChildProcess.send with dgram.Socket handle");
   }
@@ -1980,6 +2008,31 @@ function createIpcHandle(message, rawFd) {
       tcp.close();
       throw err;
     }
+  }
+  if (message.type === IPC_HANDLE_NET_NATIVE) {
+    if (message.nativeKind === "pipe") {
+      const st = message.socketType === 1
+        ? socketType.SERVER
+        : socketType.SOCKET;
+      const pipe = new Pipe(st);
+      const err = pipe.open(rawFd);
+      if (err !== 0) {
+        throw errnoException(codeMap.get(err), "open");
+      }
+      return pipe;
+    }
+    const st = message.socketType === 1
+      ? tcpSocketType.SERVER
+      : tcpSocketType.SOCKET;
+    const tcp = new TCP(st);
+    const err = tcp.open(rawFd);
+    if (err !== 0) {
+      throw errnoException(codeMap.get(err), "open");
+    }
+    // Match Node's handleConversion["net.Native"].got: just hand the raw
+    // wrap to the listener. Cluster's worker-side onconnection() / shared()
+    // takes ownership.
+    return tcp;
   }
   return undefined;
 }
@@ -2110,6 +2163,14 @@ export function setupChannel(
     if (serialization === "json") {
       restorePrototype(msg);
     }
+    // Match Node: when a handle was attached to an internal command (e.g.
+    // NODE_CLUSTER newconn from the round-robin handle), the unwrapped
+    // payload is itself a NODE_* internal message. Route it as
+    // internalMessage so cluster's listener receives it.
+    if (isInternal(msg)) {
+      target.emit("internalMessage", msg, handle);
+      return;
+    }
     if (target.listenerCount("message") !== 0) {
       target.emit("message", msg, handle);
       return;
@@ -2163,16 +2224,20 @@ export function setupChannel(
     }
 
     let handleInfo;
-    if (handle !== undefined) {
-      // Validate handle type before rejecting as not implemented.
-      // Node.js only accepts net.Server, net.Socket, or dgram.Socket.
+    // Match Node: a falsy `handle` (undefined, null) means "no handle".
+    // Reject only non-falsy values that aren't a recognized handle type.
+    if (handle) {
       if (
         !(handle instanceof Socket) &&
         !(handle instanceof NetServer) &&
-        !(handle instanceof DgramSocket)
+        !(handle instanceof DgramSocket) &&
+        !(handle instanceof TCP) &&
+        !(handle instanceof Pipe)
       ) {
         throw new ERR_INVALID_HANDLE_TYPE();
       }
+    } else {
+      handle = undefined;
     }
 
     if (!target.connected) {

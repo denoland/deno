@@ -382,6 +382,18 @@ impl TCPWrap {
   }
 
   #[fast]
+  fn socket_type_for_ipc(&self) -> i32 {
+    // Match Node's `net.Native` IPC handle type: the receiver needs to know
+    // whether to reopen the fd as a connected stream (`uv_tcp_open`) or as a
+    // listening socket (`uv_tcp_open_listener`). 0 = SOCKET, 1 = SERVER, to
+    // mirror the constructor argument.
+    match self.socket_type.get() {
+      SocketType::Server => 1,
+      SocketType::Socket => 0,
+    }
+  }
+
+  #[fast]
   fn fd_for_ipc(&self) -> i32 {
     #[cfg(unix)]
     {
