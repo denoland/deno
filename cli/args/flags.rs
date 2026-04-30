@@ -132,6 +132,7 @@ pub struct AuditFlags {
   pub optional: bool,
   pub ignore: Vec<String>,
   pub socket: bool,
+  pub fix: bool,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -2396,6 +2397,12 @@ Don't error if the audit data can't be retrieved from the registry
           .help("Ignore advisories matching the given CVE IDs")
           .action(ArgAction::Append)
           .value_name("CVE")
+      )
+      .arg(
+        Arg::new("fix")
+          .long("fix")
+          .help("Automatically fix vulnerabilities by upgrading packages")
+          .action(ArgAction::SetTrue)
       )
   })
 }
@@ -6097,6 +6104,7 @@ fn audit_parse(
   let ignore_unfixable = matches.get_flag("ignore-unfixable");
   let ignore_registry_errors = matches.get_flag("ignore-registry-errors");
   let socket = matches.get_flag("socket");
+  let fix = matches.get_flag("fix");
   let dev = true;
   let prod = true;
   let optional = true;
@@ -6114,6 +6122,7 @@ fn audit_parse(
     ignore_unfixable,
     ignore,
     socket,
+    fix,
   });
   Ok(())
 }
