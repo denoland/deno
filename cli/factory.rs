@@ -640,10 +640,12 @@ impl CliFactory {
             | DenoSubcommand::Serve { .. }
             | DenoSubcommand::Task { .. }
             | DenoSubcommand::Test { .. }
+            | DenoSubcommand::Transpile { .. }
             | DenoSubcommand::Outdated { .. }
             | DenoSubcommand::Types
             | DenoSubcommand::Upgrade { .. }
             | DenoSubcommand::Vendor
+            | DenoSubcommand::Why { .. }
             | DenoSubcommand::Publish { .. }
             | DenoSubcommand::Help { .. }
             | DenoSubcommand::X { .. }

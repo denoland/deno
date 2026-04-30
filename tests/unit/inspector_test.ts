@@ -1036,6 +1036,72 @@ Deno.test("inspector_runtime_evaluate_does_not_crash", async () => {
   }
 });
 
+// Regression test for "Promise was collected" CDP errors when an external
+// debugger sends `Runtime.evaluate({replMode: true})` to `deno repl --inspect`.
+// V8 inspector wraps replMode evaluations in `(async () => EXPR)()` and tracks
+// the result promise via a weak handle — without an immediate microtask drain
+// after each event-loop poll, GC can collect the promise before its resolution
+// microtask runs. `--gc-interval=100` forces a major GC every 100 allocations,
+// which deterministically exposes the race.
+Deno.test("inspector_repl_runtime_evaluate_replmode_under_gc", async () => {
+  const tester = await InspectorTester.create(
+    ["repl", "-A", "--inspect=0", "--v8-flags=--gc-interval=100"],
+    {
+      notificationFilter: ignoreScriptParsed,
+      env: { RUST_BACKTRACE: "1" },
+    },
+  );
+
+  try {
+    await tester.assertStderrForInspect();
+    await tester.nextStdoutLine(); // banner
+    await tester.nextStdoutLine(); // exit hint
+    await tester.nextStderrLine(); // "Debugger session started."
+
+    tester.sendMany([
+      { id: 1, method: "Runtime.enable" },
+      { id: 2, method: "Debugger.enable" },
+    ]);
+    await tester.expectResponse(1, { prefixMatch: '{"id":1,"result":{}}' });
+    await tester.expectResponse(2, {
+      prefixMatch: '{"id":2,"result":{"debuggerId":',
+    });
+    await tester.expectNotification("Runtime.executionContextCreated");
+
+    for (let i = 0; i < 50; i++) {
+      const id = 100 + i;
+      tester.send({
+        id,
+        method: "Runtime.evaluate",
+        params: {
+          expression: `new Array(2048).fill({}); ${i}`,
+          objectGroup: "console",
+          includeCommandLineAPI: true,
+          silent: false,
+          contextId: 1,
+          returnByValue: true,
+          generatePreview: true,
+          userGesture: true,
+          awaitPromise: false,
+          replMode: true,
+        },
+      });
+      const resp = await tester.expectResponse(id);
+      assertEquals(
+        resp.error,
+        undefined,
+        `iter ${i}: unexpected error ${JSON.stringify(resp.error)}`,
+      );
+    }
+
+    await tester.stdin.close();
+  } finally {
+    await tester.close();
+    tester.kill();
+    await tester.waitForExit();
+  }
+});
+
 Deno.test("inspector_break_on_first_line_in_test", async () => {
   if (Deno.build.os === "windows") return;
 
