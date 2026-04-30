@@ -1721,6 +1721,7 @@
     "parallel/test-http2-max-invalid-frames.js": {},
     "parallel/test-http2-max-session-memory-leak.js": {},
     "parallel/test-http2-methods.js": {},
+    "parallel/test-http2-misbehaving-flow-control-paused.js": {},
     "parallel/test-http2-misbehaving-multiplex.js": {},
     "parallel/test-http2-misc-util.js": {},
     "parallel/test-http2-misused-pseudoheaders.js": {},

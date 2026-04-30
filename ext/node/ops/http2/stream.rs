@@ -198,6 +198,18 @@ pub struct Http2Stream {
   /// reaches read_callback, which lets that frame carry END_STREAM
   /// directly.
   pub(crate) eof_sent: RefCell<bool>,
+  /// Mirrors Node's `Http2Stream::reading_` (`src/node_http2.cc`). When
+  /// `false`, `on_data_chunk_recv_callback` defers calling
+  /// `nghttp2_session_consume_stream` so the local stream-level flow
+  /// control window doesn't auto-replenish; instead the consumed byte
+  /// count is accumulated in `inbound_consumed_data_while_paused` and
+  /// flushed by `read_start`. This lets a misbehaving peer that ignores
+  /// flow control trip nghttp2's FLOW_CONTROL_ERROR.
+  pub(crate) reading: RefCell<bool>,
+  /// Bytes received while `reading` was false; flushed via
+  /// `nghttp2_session_consume_stream` when reading resumes. Mirrors
+  /// Node's `Http2Stream::inbound_consumed_data_while_paused_`.
+  pub(crate) inbound_consumed_data_while_paused: RefCell<usize>,
 }
 
 // SAFETY: Http2Stream is GC-traced by cppgc
@@ -259,6 +271,8 @@ impl Http2Stream {
         shutdown_req: RefCell::new(None),
         closed_by_nghttp2: RefCell::new(false),
         eof_sent: RefCell::new(false),
+        reading: RefCell::new(false),
+        inbound_consumed_data_while_paused: RefCell::new(0),
       },
     );
 
@@ -692,15 +706,22 @@ impl Http2Stream {
   #[fast]
   fn read_start(&self) -> i32 {
     let session_ptr = self.nghttp2_session();
+    *self.reading.borrow_mut() = true;
+    // Flush any flow-control consumption that was deferred while paused.
+    // Mirrors Node's `Http2Stream::ReadStart` (`src/node_http2.cc`).
+    let pending = std::mem::take(
+      &mut *self.inbound_consumed_data_while_paused.borrow_mut(),
+    );
     // SAFETY: session pointer is valid during stream lifetime
     unsafe {
-      ffi::nghttp2_session_consume_stream(session_ptr, self.id, 0);
+      ffi::nghttp2_session_consume_stream(session_ptr, self.id, pending);
     }
     0
   }
 
   #[fast]
   fn read_stop(&self) -> i32 {
+    *self.reading.borrow_mut() = false;
     0
   }
 
