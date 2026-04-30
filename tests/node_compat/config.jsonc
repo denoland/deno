@@ -1705,6 +1705,10 @@
     "parallel/test-http2-https-fallback.js": {},
     "parallel/test-http2-https-fallback-http-server-options.js": {},
     "parallel/test-http2-info-headers.js": {},
+    "parallel/test-http2-info-headers-errors.js": {
+      "ignore": true,
+      "reason": "Tests Node.js internal modules (internalBinding('http2')) which are not exposed in Deno"
+    },
     "parallel/test-http2-invalid-last-stream-id.js": {},
     "parallel/test-http2-invalidargtypes-errors.js": {},
     "parallel/test-http2-invalidheaderfield.js": {},
