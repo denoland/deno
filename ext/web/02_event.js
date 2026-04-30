@@ -1074,7 +1074,6 @@ class EventTarget {
       setTarget(event, this);
       return true;
     }
-    const { listeners } = data;
 
     if (getDispatched(event)) {
       throw new DOMException("Invalid event state", "InvalidStateError");
