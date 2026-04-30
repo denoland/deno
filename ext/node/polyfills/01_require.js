@@ -348,7 +348,7 @@ let nextHookId = 0;
 let insideResolveHook = false;
 let insideLoadHook = false;
 
-function executeResolveHookChain(specifier, context) {
+function executeResolveHookChain(specifier, context, parent, isMain) {
   // Collect resolve hooks from hookEntries in LIFO order
   const resolveHooks = [];
   for (let i = hookEntries.length - 1; i >= 0; i--) {
@@ -379,7 +379,7 @@ function executeResolveHookChain(specifier, context) {
         if (nativeModuleCanBeRequiredByUsers(spec)) {
           return { url: "node:" + spec, shortCircuit: true };
         }
-        const resolved = Module._resolveFilename(spec, null, false);
+        const resolved = Module._resolveFilename(spec, parent, isMain);
         let resolvedUrl;
         if (StringPrototypeStartsWith(resolved, "node:")) {
           resolvedUrl = resolved;
@@ -1026,7 +1026,7 @@ Module._resolveFilename = function (
       importAttributes: { __proto__: null },
       parentURL,
     };
-    const result = executeResolveHookChain(request, context);
+    const result = executeResolveHookChain(request, context, parent, isMain);
     if (result != null && result.url != null) {
       if (StringPrototypeStartsWith(result.url, "file://")) {
         return url.fileURLToPath(result.url);
