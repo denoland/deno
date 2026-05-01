@@ -260,6 +260,9 @@ class NodeTestContext {
 
   test(name, options, fn) {
     const prepared = prepareOptions(name, options, fn, {});
+    // Subtests count toward the parent's plan (Node counts both
+    // assertions and subtests).
+    if (this.#plan) this.#plan.increment();
     // deno-lint-ignore no-this-alias
     const parentContext = this;
     const after = async () => {
