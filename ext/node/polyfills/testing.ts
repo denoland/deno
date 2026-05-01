@@ -144,6 +144,27 @@ function noop() {}
 
 const skippedSymbol = Symbol("skipped");
 
+class TestPlan {
+  #expected: number;
+  #actual: number = 0;
+
+  constructor(count: number) {
+    this.#expected = count;
+  }
+
+  increment() {
+    this.#actual++;
+  }
+
+  check() {
+    if (this.#actual !== this.#expected) {
+      throw new Error(
+        `plan expected ${this.#expected} assertion(s) but received ${this.#actual}`,
+      );
+    }
+  }
+}
+
 class NodeTestContext {
   #denoContext: Deno.TestContext;
   #afterHooks: (() => void)[] = [];
@@ -152,6 +173,8 @@ class NodeTestContext {
   #skipped = false;
   #name: string;
   #abortController: AbortController = new AbortController();
+  #plan: TestPlan | undefined;
+  #planAssert: Record<string, unknown> | undefined;
 
   constructor(
     t: Deno.TestContext,
@@ -168,7 +191,31 @@ class NodeTestContext {
   }
 
   get assert() {
+    if (this.#plan) {
+      if (!this.#planAssert) {
+        const plan = this.#plan;
+        const base = getAssertObject();
+        const wrapped = { __proto__: null };
+        ArrayPrototypeForEach(methodsToCopy, (method) => {
+          wrapped[method] = function (...args) {
+            plan.increment();
+            return ReflectApply(base[method], this, args);
+          };
+        });
+        this.#planAssert = wrapped;
+      }
+      return this.#planAssert;
+    }
     return getAssertObject();
+  }
+
+  plan(count: number) {
+    validateInteger(count, "count", 1);
+    this.#plan = new TestPlan(count);
+  }
+
+  _checkPlan() {
+    if (this.#plan) this.#plan.check();
   }
 
   get signal() {
@@ -236,6 +283,7 @@ class NodeTestContext {
           try {
             await before();
             await prepared.fn(newNodeTextContext);
+            newNodeTextContext._checkPlan();
             await after();
           } catch (err) {
             if (!newNodeTextContext[skippedSymbol]) {
@@ -299,7 +347,9 @@ class TestSuite {
           prepared.name,
         );
         try {
-          return await prepared.fn(newNodeTextContext);
+          const result = await prepared.fn(newNodeTextContext);
+          newNodeTextContext._checkPlan();
+          return result;
         } catch (err) {
           if (newNodeTextContext[skippedSymbol]) {
             return undefined;
@@ -404,6 +454,7 @@ function wrapTestFn(fn, resolve, name) {
         // Promise-style or sync test
         await ReflectApply(fn, nodeTestContext, [nodeTestContext]);
       }
+      nodeTestContext._checkPlan();
     } catch (err) {
       if (!nodeTestContext[skippedSymbol]) {
         throw sanitizeThrowValue(err);
