@@ -543,6 +543,7 @@
     "parallel/test-crypto-pqc-keygen-slh-dsa.js": {},
     "parallel/test-crypto-pqc-sign-verify-ml-dsa.js": {},
     "parallel/test-crypto-keygen-empty-passphrase-no-error.js": {},
+    "parallel/test-crypto-keygen-empty-passphrase-no-prompt.js": {},
     "parallel/test-crypto-keygen-invalid-parameter-encoding-dsa.js": {},
     "parallel/test-crypto-keygen-invalid-parameter-encoding-ec.js": {},
     "parallel/test-crypto-keygen-key-object-without-encoding.js": {},
