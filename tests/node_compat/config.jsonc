@@ -1759,6 +1759,7 @@
     "parallel/test-http2-request-response-proto.js": {},
     "parallel/test-http2-res-corked.js": {},
     "parallel/test-http2-res-writable-properties.js": {},
+    "parallel/test-http2-respond-errors.js": {},
     "parallel/test-http2-respond-file-204.js": {},
     "parallel/test-http2-respond-file-304.js": {},
     "parallel/test-http2-respond-file-404.js": {},
