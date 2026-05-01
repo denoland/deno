@@ -1027,10 +1027,12 @@ impl TLSWrapInner {
           if let Some(ctx) = extract_emit_ctx(ptr) {
             do_emit_client_hello(&ctx);
           }
-        } else if let Some(error) = (*ptr).error.take() {
+        } else if let Some(ctx) = extract_emit_ctx(ptr) {
           // Acceptor failed (e.g. malformed ClientHello). Surface the
           // error to JS so the socket doesn't silently hang.
-          if let Some(ctx) = extract_emit_ctx(ptr) {
+          // Check for emit context first so the error stays in
+          // (*ptr).error if there's no context to deliver it to.
+          if let Some(error) = (*ptr).error.take() {
             do_emit_error(
               &ctx,
               &error,
