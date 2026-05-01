@@ -2,7 +2,7 @@
 
 /// <reference path="../../core/internal.d.ts" />
 
-import { primordials } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 const {
   Error,
   ObjectDefineProperties,
@@ -16,7 +16,7 @@ const {
 } = primordials;
 
 import { URL } from "ext:deno_web/00_url.js";
-import { DOMException } from "./01_dom_exception.js";
+const { DOMException } = core.loadExtScript("ext:deno_web/01_dom_exception.js");
 
 const locationConstructorKey = Symbol("locationConstructorKey");
 

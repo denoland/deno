@@ -29,7 +29,7 @@ import {
   serializeJsMessageData,
   unrefParentPort,
 } from "ext:deno_web/13_message_port.js";
-import * as webidl from "ext:deno_webidl/00_webidl.js";
+const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
 import { notImplemented } from "ext:deno_node/_utils.ts";
 import {
   ERR_INVALID_ARG_TYPE,
