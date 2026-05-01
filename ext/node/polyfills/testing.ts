@@ -150,10 +150,17 @@ class NodeTestContext {
   #beforeHooks: (() => void)[] = [];
   #parent: NodeTestContext | undefined;
   #skipped = false;
+  #name: string;
+  #abortController: AbortController = new AbortController();
 
-  constructor(t: Deno.TestContext, parent: NodeTestContext | undefined) {
+  constructor(
+    t: Deno.TestContext,
+    parent: NodeTestContext | undefined,
+    name: string,
+  ) {
     this.#denoContext = t;
     this.#parent = parent;
+    this.#name = name;
   }
 
   get [skippedSymbol]() {
@@ -165,13 +172,18 @@ class NodeTestContext {
   }
 
   get signal() {
-    notImplemented("test.TestContext.signal");
-    return null;
+    return this.#abortController.signal;
   }
 
   get name() {
-    notImplemented("test.TestContext.name");
-    return null;
+    return this.#name;
+  }
+
+  get fullName() {
+    if (this.#parent) {
+      return this.#parent.fullName + " > " + this.#name;
+    }
+    return this.#name;
   }
 
   diagnostic(message) {
@@ -219,6 +231,7 @@ class NodeTestContext {
           const newNodeTextContext = new NodeTestContext(
             denoTestContext,
             parentContext,
+            prepared.name,
           );
           try {
             await before();
@@ -283,6 +296,7 @@ class TestSuite {
         const newNodeTextContext = new NodeTestContext(
           denoTestContext,
           undefined,
+          prepared.name,
         );
         try {
           return await prepared.fn(newNodeTextContext);
@@ -348,9 +362,9 @@ function prepareOptions(name, options, fn, overrides) {
   return { fn, options: finalOptions, name };
 }
 
-function wrapTestFn(fn, resolve) {
+function wrapTestFn(fn, resolve, name) {
   return async function (t) {
-    const nodeTestContext = new NodeTestContext(t, undefined);
+    const nodeTestContext = new NodeTestContext(t, undefined, name);
     try {
       if (fn.length >= 2) {
         // Callback-style test
@@ -414,7 +428,7 @@ function prepareDenoTest(name, options, fn, overrides) {
 
   const denoTestOptions = {
     name: prepared.name,
-    fn: wrapTestFn(prepared.fn, resolve),
+    fn: wrapTestFn(prepared.fn, resolve, prepared.name),
     only: prepared.options.only,
     ignore: !!prepared.options.todo || !!prepared.options.skip,
     sanitizeOnly: false,
