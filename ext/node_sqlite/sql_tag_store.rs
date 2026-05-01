@@ -163,7 +163,8 @@ impl SQLTagStore {
     if args.length() < 1 {
       return Err(SqliteError::Validation(
         super::validators::Error::InvalidArgType(
-          "First argument must be an array of strings (template literal).",
+          "First argument must be an array of strings (template literal)."
+            .into(),
         ),
       ));
     }
@@ -172,7 +173,8 @@ impl SQLTagStore {
     if !first.is_array() {
       return Err(SqliteError::Validation(
         super::validators::Error::InvalidArgType(
-          "First argument must be an array of strings (template literal).",
+          "First argument must be an array of strings (template literal)."
+            .into(),
         ),
       ));
     }
@@ -187,7 +189,7 @@ impl SQLTagStore {
       if !str_val.is_string() {
         return Err(SqliteError::Validation(
           super::validators::Error::InvalidArgType(
-            "Template literal parts must be strings.",
+            "Template literal parts must be strings.".into(),
           ),
         ));
       }
@@ -290,7 +292,7 @@ impl SQLTagStore {
   ) -> Result<v8::Local<'a, v8::Value>, SqliteError> {
     let args = args.ok_or(SqliteError::Validation(
       super::validators::Error::InvalidArgType(
-        "First argument must be an array of strings (template literal).",
+        "First argument must be an array of strings (template literal).".into(),
       ),
     ))?;
 
@@ -311,7 +313,7 @@ impl SQLTagStore {
   ) -> Result<v8::Local<'a, v8::Value>, SqliteError> {
     let args = args.ok_or(SqliteError::Validation(
       super::validators::Error::InvalidArgType(
-        "First argument must be an array of strings (template literal).",
+        "First argument must be an array of strings (template literal).".into(),
       ),
     ))?;
 
@@ -364,7 +366,7 @@ impl SQLTagStore {
   ) -> Result<v8::Local<'a, v8::Array>, SqliteError> {
     let args = args.ok_or(SqliteError::Validation(
       super::validators::Error::InvalidArgType(
-        "First argument must be an array of strings (template literal).",
+        "First argument must be an array of strings (template literal).".into(),
       ),
     ))?;
 
@@ -398,7 +400,7 @@ impl SQLTagStore {
 
     let args = params.ok_or(SqliteError::Validation(
       super::validators::Error::InvalidArgType(
-        "First argument must be an array of strings (template literal).",
+        "First argument must be an array of strings (template literal).".into(),
       ),
     ))?;
 

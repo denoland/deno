@@ -1,0 +1,34 @@
+// Regression test for https://github.com/denoland/deno/issues/31597
+// `Deno.bundle()` is not (yet) wired up in the standalone (`deno compile`)
+// runtime. Make sure the failure surface is a clear user-facing message
+// rather than the historical "default BundleProvider does not do anything"
+// debug string.
+{
+  "tempDir": true,
+  "steps": [
+    {
+      "if": "unix",
+      "args": "compile --unstable-bundle --output main main.ts",
+      "output": "[WILDCARD]"
+    },
+    {
+      "if": "unix",
+      "commandName": "./main",
+      "args": [],
+      "exitCode": 1,
+      "output": "main.out"
+    },
+    {
+      "if": "windows",
+      "args": "compile --unstable-bundle --output main.exe main.ts",
+      "output": "[WILDCARD]"
+    },
+    {
+      "if": "windows",
+      "commandName": "./main.exe",
+      "args": [],
+      "exitCode": 1,
+      "output": "main.out"
+    }
+  ]
+}

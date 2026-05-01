@@ -24,7 +24,7 @@ const {
   TypeError,
 } = primordials;
 
-import * as webidl from "ext:deno_webidl/00_webidl.js";
+const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
 import { createFilteredInspectProxy } from "ext:deno_web/01_console.js";
 import { HTTP_TOKEN_CODE_POINT_RE } from "ext:deno_web/00_infra.js";
 import { URL } from "ext:deno_web/00_url.js";
@@ -45,7 +45,8 @@ import {
   newSignal,
   signalAbort,
 } from "ext:deno_web/03_abort_signal.js";
-import { DOMException } from "ext:deno_web/01_dom_exception.js";
+const { DOMException } = core.loadExtScript("ext:deno_web/01_dom_exception.js");
+import { markNotSerializable } from "ext:deno_web/13_message_port.js";
 const { internalRidSymbol } = core;
 
 const _request = Symbol("request");
@@ -545,6 +546,7 @@ class Request {
 
 webidl.configureInterface(Request);
 const RequestPrototype = Request.prototype;
+markNotSerializable(RequestPrototype);
 mixinBody(RequestPrototype, _body, _mimeType);
 
 webidl.converters["Request"] = webidl.createInterfaceConverter(

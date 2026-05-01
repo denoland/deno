@@ -36,6 +36,7 @@ import {
   TCP,
 } from "ext:deno_node/internal_binding/tcp_wrap.ts";
 import { kMaybeDestroy } from "ext:deno_node/internal/stream_base_commons.ts";
+import { kReinitializeHandle } from "ext:deno_node/internal/net.ts";
 import {
   constants as PipeConstants,
   Pipe,
@@ -279,7 +280,61 @@ function TLSSocket(socket, opts) {
 Object.setPrototypeOf(TLSSocket.prototype, net.Socket.prototype);
 Object.setPrototypeOf(TLSSocket, net.Socket);
 
+// Override kReinitializeHandle so that Happy Eyeballs (autoSelectFamily)
+// re-creates the TLSWrap when falling back to a different address.
+// The base Socket version replaces _handle with a raw TCP handle, which
+// doesn't have TLS methods like start(). We need to re-wrap it.
+TLSSocket.prototype[kReinitializeHandle] = function (handle) {
+  const oldHandle = this._handle;
+  // Save callbacks from the old TLSWrap that were set up by _init() and
+  // _initSocketHandle(). These need to be restored on the new TLSWrap.
+  const savedOnread = oldHandle?.onread;
+  const savedOnhandshakedone = oldHandle?.onhandshakedone;
+  const savedOnhandshakestart = oldHandle?.onhandshakestart;
+  const savedOnerror = oldHandle?.onerror;
+
+  if (oldHandle) {
+    oldHandle.close();
+  }
+
+  // Re-wrap the new TCP handle with a TLSWrap. This creates the
+  // rustls config, attaches to the TCP handle, and sets up read
+  // interception + proxy methods (connect, bind, etc.).
+  const tlsHandle = this._wrapHandle(null, handle);
+
+  this._handle = tlsHandle;
+  this._handle[ownerSymbol] = this;
+  this.ssl = this._handle;
+  this[kRes] = tlsHandle;
+
+  // Restore callbacks on the new TLSWrap.
+  if (savedOnread) this._handle.onread = savedOnread;
+  if (savedOnhandshakedone) this._handle.onhandshakedone = savedOnhandshakedone;
+  if (savedOnhandshakestart) {
+    this._handle.onhandshakestart = savedOnhandshakestart;
+  }
+  if (savedOnerror) this._handle.onerror = savedOnerror;
+
+  // Re-apply verify mode and ALPN from TLS options.
+  const options = this._tlsOptions;
+  const requestCert = !!options.requestCert || !options.isServer;
+  const rejectUnauthorized = !!options.rejectUnauthorized;
+  if (requestCert || rejectUnauthorized) {
+    this._handle.setVerifyMode(requestCert, rejectUnauthorized);
+  }
+  if (options.ALPNProtocols) {
+    this._handle.setAlpnProtocols(options.ALPNProtocols);
+  }
+
+  this._undestroy();
+  this._sockname = undefined;
+};
+
 tlsWrap.TLSWrap.prototype.close = function close(cb) {
+  // Signal to Rust that this TLSWrap is being closed, so it won't
+  // send buffered application data after a failed identity check.
+  this.setClosing();
+
   let ssl;
   if (this._owner) {
     ssl = this._owner.ssl;
@@ -289,6 +344,7 @@ tlsWrap.TLSWrap.prototype.close = function close(cb) {
   // deno-lint-ignore no-this-alias
   const self = this;
   const done = () => {
+    self.cancelWrite();
     if (ssl) {
       ssl.destroySsl();
     }
@@ -303,7 +359,7 @@ tlsWrap.TLSWrap.prototype.close = function close(cb) {
 
   if (this._parentWrap) {
     if (this._parentWrap._handle === null) {
-      queueMicrotask(done);
+      nextTick(done);
       return;
     }
 
@@ -315,7 +371,7 @@ tlsWrap.TLSWrap.prototype.close = function close(cb) {
   }
 
   // Defer so callers can register "close" listeners after destroy().
-  queueMicrotask(done);
+  nextTick(done);
 };
 
 TLSSocket.prototype._wrapHandle = function (wrap, handle) {
@@ -333,6 +389,7 @@ TLSSocket.prototype._wrapHandle = function (wrap, handle) {
   const secureContext = {
     ...(context?.context ?? context),
     rejectUnauthorized: options.rejectUnauthorized !== false,
+    requestCert: options.requestCert === true,
   };
 
   // Get the native TCP handle for attachment
@@ -350,6 +407,12 @@ TLSSocket.prototype._wrapHandle = function (wrap, handle) {
     !!options.isServer,
     servername,
   );
+
+  // If TLS initialization failed (e.g. missing cert/key), store the error
+  // so it can be emitted asynchronously instead of crashing the process.
+  if (res._initError) {
+    this._initError = res._initError;
+  }
 
   res._parent = handle; // C++ "wrap" object: TCPWrap, etc.
   res._parentWrap = wrap; // JS object: net.Socket, etc.
@@ -433,7 +496,7 @@ function defineHandleReading(socket, handle) {
   });
 }
 
-TLSSocket.prototype._destroySsl = function _destroySsl() {
+TLSSocket.prototype._destroySSL = function _destroySSL() {
   if (!this.ssl) return;
   this.ssl.destroySsl();
   this.ssl = null;
@@ -655,7 +718,10 @@ TLSSocket.prototype._finishInit = function () {
     this._handle.getAlpnNegotiatedProtocol(alpnOut);
     this.alpnProtocol = alpnOut.alpnProtocol || false;
     if (this.servername === null) {
-      this.servername = this._handle.getServername?.() ?? null;
+      const sni = this._handle.getServername?.();
+      this.servername = (sni !== undefined && sni !== "")
+        ? sni
+        : (this._tlsOptions?.servername ?? null);
     }
   } catch (_e) {
     // getAlpnNegotiatedProtocol/getServername may not be available
@@ -697,6 +763,15 @@ TLSSocket.prototype._start = function () {
 
   if (!this._handle) return;
 
+  // If TLS init failed (e.g. unsupported protocol on client side),
+  // emit the error and tear down instead of proceeding with the handshake.
+  if (this._initError) {
+    const err = this._initError;
+    this._initError = null;
+    this.destroy(err);
+    return;
+  }
+
   this._handle.start();
 
   // For JS streams, drain any encrypted output produced by start()
@@ -715,6 +790,15 @@ TLSSocket.prototype._start = function () {
     // pick up the new interceptor callback.
     tcpHandle.readStop();
     tcpHandle.readStart();
+  }
+
+  // Kick-start the TLS readable side. During start(), the handshake cycle
+  // may have received and processed a close_notify (peer called end() before
+  // we set up event listeners). The decrypted EOF is buffered in pending_eof
+  // because inner.onread wasn't set yet. Call readStart() directly on the
+  // TLSWrap to install onread and flush any pending data/EOF.
+  if (this._handle) {
+    this._handle.readStart();
   }
 };
 
@@ -900,6 +984,18 @@ function tlsConnectionListener(rawSocket) {
     pauseOnConnect: this.pauseOnConnect,
   });
 
+  // TLS init can fail synchronously (e.g. missing cert/key, unsupported
+  // protocol).  Emit as tlsClientError like Node does for handshake
+  // failures instead of letting it surface as an uncaught exception.
+  if (socket._initError) {
+    const err = socket._initError;
+    socket._initError = null;
+    this.emit("tlsClientError", err, rawSocket);
+    socket.destroy();
+    rawSocket.destroy();
+    return;
+  }
+
   // Start the TLS handshake for server-side sockets
   socket._start();
 
@@ -922,7 +1018,7 @@ function Server(options, listener) {
   } else if (options == null || typeof options === "object") {
     options ??= kEmptyObject;
   } else {
-    throw new TypeError("options must be an object");
+    throw new ERR_INVALID_ARG_TYPE("options", "object", options);
   }
 
   this._contexts = [];

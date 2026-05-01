@@ -343,7 +343,7 @@ Deno.test(function consoleTestStringifyCircular() {
   debug: [Function: debug],
   info: [Function: info],
   dir: [Function: dir],
-  dirxml: [Function: dir],
+  dirxml: [Function: dirxml],
   warn: [Function: warn],
   error: [Function: error],
   assert: [Function: assert],
@@ -2115,15 +2115,16 @@ Deno.test(function consoleDir() {
   });
 });
 
-// console.dir test
+// console.dirxml forwards to log per the WHATWG console spec; extra args
+// are passed through like log, not interpreted as dir-style options.
 Deno.test(function consoleDirXml() {
   mockConsole((console, out) => {
     console.dirxml("DIRXML");
     assertEquals(out.toString(), "DIRXML\n");
   });
   mockConsole((console, out) => {
-    console.dirxml("DIRXML", { indentLevel: 2 });
-    assertEquals(out.toString(), "    DIRXML\n");
+    console.dirxml("DIRXML", "extra");
+    assertEquals(out.toString(), "DIRXML extra\n");
   });
 });
 

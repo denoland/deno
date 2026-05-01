@@ -5,6 +5,9 @@ mod blob;
 mod broadcast_channel;
 mod compression;
 mod console;
+mod css_value;
+mod f64;
+mod geometry;
 mod message_port;
 mod stream_resource;
 mod timers;
@@ -49,6 +52,7 @@ pub use crate::message_port::create_entangled_message_port;
 pub use crate::message_port::deserialize_js_transferables;
 use crate::message_port::op_message_port_create_entangled;
 use crate::message_port::op_message_port_post_message;
+use crate::message_port::op_message_port_post_message_raw;
 use crate::message_port::op_message_port_recv_message;
 use crate::message_port::op_message_port_recv_message_sync;
 pub use crate::message_port::serialize_transferables;
@@ -81,6 +85,7 @@ deno_core::extension!(deno_web,
     op_blob_from_object_url,
     op_message_port_create_entangled,
     op_message_port_post_message,
+    op_message_port_post_message_raw,
     op_message_port_recv_message,
     op_message_port_recv_message_sync,
     compression::op_compression_new,
@@ -89,6 +94,9 @@ deno_core::extension!(deno_web,
     op_now,
     op_time_origin,
     op_defer,
+    geometry::op_geometry_get_enable_css_parser_features,
+    geometry::op_geometry_matrix_set_matrix_value,
+    geometry::op_geometry_matrix_to_string,
     stream_resource::op_readable_stream_resource_allocate,
     stream_resource::op_readable_stream_resource_allocate_sized,
     stream_resource::op_readable_stream_resource_get_sink,
@@ -111,16 +119,22 @@ deno_core::extension!(deno_web,
     broadcast_channel::op_broadcast_send,
     broadcast_channel::op_broadcast_recv,
   ],
+  objects = [
+    geometry::DOMPointReadOnly,
+    geometry::DOMPoint,
+    geometry::DOMRectReadOnly,
+    geometry::DOMRect,
+    geometry::DOMQuad,
+    geometry::DOMMatrixReadOnly,
+    geometry::DOMMatrix,
+  ],
   esm = [
     "00_infra.js",
-    "01_dom_exception.js",
     "01_mimesniff.js",
     "02_event.js",
     "02_structured_clone.js",
-    "02_timers.js",
     "03_abort_signal.js",
     "04_global_interfaces.js",
-    "05_base64.js",
     "06_streams.js",
     "08_text_encoding.js",
     "09_file.js",
@@ -135,10 +149,19 @@ deno_core::extension!(deno_web,
     "01_console.js",
     "01_broadcast_channel.js"
   ],
-  lazy_loaded_esm = [ "webtransport.js" ],
+  lazy_loaded_esm = [
+    "geometry.js",
+    "webtransport.js",
+  ],
+  lazy_loaded_js = [
+    "01_dom_exception.js",
+    "02_timers.js",
+    "05_base64.js",
+  ],
   options = {
     blob_store: Arc<BlobStore>,
     maybe_location: Option<Url>,
+    enable_css_parser_features: bool,
     bc: InMemoryBroadcastChannel,
   },
   state = |state, options| {
@@ -147,6 +170,7 @@ deno_core::extension!(deno_web,
       state.put(Location(location));
     }
     state.put(StartTime::default());
+    state.put(geometry::State::new(options.enable_css_parser_features));
     state.put(options.bc);
   }
 );

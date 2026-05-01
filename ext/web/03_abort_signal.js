@@ -20,7 +20,7 @@ const {
   WeakRefPrototypeDeref,
 } = primordials;
 
-import * as webidl from "ext:deno_webidl/00_webidl.js";
+const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
 import { assert } from "./00_infra.js";
 import { createFilteredInspectProxy } from "./01_console.js";
 import {
@@ -101,7 +101,10 @@ class AbortSignal extends EventTarget {
         core.cancelTimer(signal[timerId]);
         signal[timerId] = null;
         signal[signalAbort](
-          new DOMException("Signal timed out.", "TimeoutError"),
+          new DOMException(
+            "The operation was aborted due to timeout",
+            "TimeoutError",
+          ),
         );
       },
       millis,

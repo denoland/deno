@@ -81,6 +81,15 @@ struct Inner {
   header_overflow: bool,
   initialized: bool,
 
+  /// Bytes consumed up to (but not including) the parse error position
+  /// from the most recent execute() call. Set to 0 on success, valid
+  /// only after execute() returns -1.
+  last_bytes_parsed: u32,
+  /// llhttp errno from the most recent execute() / finish() call.
+  /// Used to surface specific error codes (e.g. HPE_INVALID_TRANSFER_ENCODING)
+  /// to JS instead of the generic HPE_ERROR.
+  last_errno: i32,
+
   /// The stream being consumed (for parser.consume optimization).
   /// When set, the parser reads directly from the stream handle
   /// via a ReadInterceptor, bypassing the JS readable stream.
@@ -137,6 +146,8 @@ impl HTTPParser {
         header_nread: 0,
         header_overflow: false,
         initialized: false,
+        last_bytes_parsed: 0,
+        last_errno: 0,
         consumed_stream: None,
         consume_callbacks: None,
         consume_isolate: v8::UnsafeRawIsolatePtr::null(),
@@ -220,6 +231,9 @@ impl Inner {
     self.got_exception = false;
     self.pending_pause = false;
     self.header_nread = 0;
+    self.last_bytes_parsed = 0;
+    self.last_errno = sys::HPE_OK;
+    self.header_overflow = false;
     self.initialized = true;
   }
 
@@ -819,6 +833,8 @@ unsafe fn consume_read_callback(
       }
     }
   }
+  inner.last_bytes_parsed = nread_result.max(0) as u32;
+  inner.last_errno = err as i32;
 
   if inner.pending_pause {
     inner.pending_pause = false;
@@ -842,7 +858,7 @@ unsafe fn consume_read_callback(
     let is_error =
       inner.got_exception || (inner.parser.upgrade == 0 && err != sys::HPE_OK);
     let result_val: v8::Local<v8::Value> = if is_error {
-      let bytes_parsed = data.len() as i32;
+      let bytes_parsed = nread_result.max(0);
       let parse_err = if inner.header_overflow {
         ParseError::HeaderOverflow { bytes_parsed }
       } else {
@@ -974,6 +990,8 @@ impl HTTPParser {
         }
       }
     }
+    inner.last_bytes_parsed = nread as u32;
+    inner.last_errno = err as i32;
 
     if inner.pending_pause {
       inner.pending_pause = false;
@@ -1061,6 +1079,41 @@ impl HTTPParser {
   #[fast]
   fn has_header_overflow(&self) -> bool {
     self.inner().header_overflow
+  }
+
+  /// Bytes consumed before the parse error. Set by the most recent
+  /// execute() call; only meaningful when execute() returned -1.
+  #[fast]
+  fn get_last_bytes_parsed(&self) -> u32 {
+    self.inner().last_bytes_parsed
+  }
+
+  /// llhttp errno name (e.g. "HPE_INVALID_TRANSFER_ENCODING") for the
+  /// most recent execute() / finish() call. Returns "HPE_OK" when no
+  /// error is recorded.
+  #[string]
+  fn get_last_error_code(&self) -> String {
+    let errno = self.inner().last_errno;
+    let name_ptr = unsafe { sys::llhttp_errno_name(errno) };
+    if name_ptr.is_null() {
+      return String::from("HPE_ERROR");
+    }
+    let cstr = unsafe { CStr::from_ptr(name_ptr) };
+    cstr.to_string_lossy().into_owned()
+  }
+
+  /// Human-readable reason for the most recent parse error
+  /// (e.g. "Transfer-Encoding can't be present with Content-Length").
+  /// Returns the empty string if no reason is set.
+  #[string]
+  fn get_last_error_reason(&self) -> String {
+    let inner = self.inner();
+    let reason_ptr = unsafe { sys::llhttp_get_error_reason(&inner.parser) };
+    if reason_ptr.is_null() {
+      return String::new();
+    }
+    let cstr = unsafe { CStr::from_ptr(reason_ptr) };
+    cstr.to_string_lossy().into_owned()
   }
 
   /// Get the current buffer being parsed (for error reporting).

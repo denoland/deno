@@ -48,14 +48,14 @@ const {
   SymbolFor,
 } = primordials;
 
-import * as webidl from "ext:deno_webidl/00_webidl.js";
+const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
 import {
   defineEventHandler,
   Event,
   EventTargetPrototype,
   setEventTargetData,
 } from "ext:deno_web/02_event.js";
-import { DOMException } from "ext:deno_web/01_dom_exception.js";
+const { DOMException } = core.loadExtScript("ext:deno_web/01_dom_exception.js");
 import { createFilteredInspectProxy } from "ext:deno_web/01_console.js";
 
 const privateCustomInspect = SymbolFor("Deno.privateCustomInspect");
