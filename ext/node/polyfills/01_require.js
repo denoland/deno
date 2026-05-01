@@ -915,13 +915,35 @@ Module._load = function (request, parent, isMain) {
           importAttributes: { __proto__: null },
         };
         insideLoadHook = true;
+        let result;
         try {
-          executeLoadHookChain(filename, context);
+          result = executeLoadHookChain(filename, context);
         } finally {
           insideLoadHook = false;
         }
-        // Always load builtins normally regardless of hook result;
-        // hooks can observe but not replace builtin source.
+        // If the hook changed the format away from "builtin", use the
+        // hook-provided source instead of loading the native module.
+        // This matches Node.js behavior where hooks can replace builtins
+        // by returning a different format (e.g. "commonjs").
+        if (
+          result != null && result.format &&
+          result.format !== "builtin" && result.source != null
+        ) {
+          const mod = new Module(filename, parent);
+          Module._cache[filename] = mod;
+          const source = typeof result.source === "string"
+            ? result.source
+            : (utf8Decoder ??= new TextDecoder()).decode(result.source);
+          if (result.format === "commonjs") {
+            mod._compile(source, filename, "commonjs");
+          } else if (result.format === "json") {
+            mod.exports = JSONParse(stripBOM(source));
+          } else {
+            mod._compile(source, filename);
+          }
+          mod.loaded = true;
+          return mod.exports;
+        }
       }
     }
 

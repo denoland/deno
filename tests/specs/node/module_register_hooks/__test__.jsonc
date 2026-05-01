@@ -15,6 +15,10 @@
     "deregister": {
       "args": "run -A main_deregister.cjs",
       "output": "main_deregister.out"
+    },
+    "builtin_override": {
+      "args": "run -A main_builtin_override.cjs",
+      "output": "main_builtin_override.out"
     }
   }
 }
