@@ -629,9 +629,11 @@ pub enum AsymmetricPrivateKeyError {
   InvalidEncryptedPemPrivateKey,
   #[error("invalid PEM private key")]
   InvalidPemPrivateKey,
+  #[error("encrypted private key requires a passphrase to decrypt")]
+  EncryptedPrivateKeyRequiresPassphraseToDecrypt,
   #[property("code" = "ERR_MISSING_PASSPHRASE")]
   #[error("Passphrase required for encrypted key")]
-  EncryptedPrivateKeyRequiresPassphraseToDecrypt,
+  EncryptedPkcs8DerRequiresPassphrase,
   #[error("invalid PKCS#1 private key")]
   InvalidPkcs1PrivateKey,
   #[error("invalid SEC1 private key")]
@@ -904,7 +906,9 @@ impl KeyObjectHandle {
               |_| AsymmetricPrivateKeyError::InvalidEncryptedPkcs8PrivateKey,
             )?
           } else if EncryptedPrivateKeyInfo::try_from(key).is_ok() {
-            return Err(AsymmetricPrivateKeyError::EncryptedPrivateKeyRequiresPassphraseToDecrypt);
+            return Err(
+              AsymmetricPrivateKeyError::EncryptedPkcs8DerRequiresPassphrase,
+            );
           } else {
             SecretDocument::from_pkcs8_der(key)
               .map_err(|_| AsymmetricPrivateKeyError::InvalidPkcs8PrivateKey)?
