@@ -331,6 +331,10 @@ let currentSuite: TestSuite | null = null;
 class TestSuite {
   #denoTestContext: Deno.TestContext;
   steps: Promise<boolean>[] = [];
+  beforeAllHooks: (() => void | Promise<void>)[] = [];
+  afterAllHooks: (() => void | Promise<void>)[] = [];
+  beforeEachHooks: (() => void | Promise<void>)[] = [];
+  afterEachHooks: (() => void | Promise<void>)[] = [];
 
   constructor(t: Deno.TestContext) {
     this.#denoTestContext = t;
@@ -338,6 +342,8 @@ class TestSuite {
 
   addTest(name, options, fn, overrides) {
     const prepared = prepareOptions(name, options, fn, overrides);
+    const beforeEach = this.beforeEachHooks;
+    const afterEach = this.afterEachHooks;
     const step = this.#denoTestContext.step({
       name: prepared.name,
       fn: async (denoTestContext) => {
@@ -347,6 +353,9 @@ class TestSuite {
           prepared.name,
         );
         try {
+          for (const hook of new SafeArrayIterator(beforeEach)) {
+            await hook();
+          }
           const result = await prepared.fn(newNodeTextContext);
           newNodeTextContext._checkPlan();
           return result;
@@ -355,6 +364,10 @@ class TestSuite {
             return undefined;
           } else {
             throw err;
+          }
+        } finally {
+          for (const hook of new SafeArrayIterator(afterEach)) {
+            await hook();
           }
         }
       },
@@ -492,7 +505,7 @@ function prepareDenoTest(name, options, fn, overrides) {
 }
 
 function wrapSuiteFn(fn, resolve) {
-  return function (t) {
+  return async function (t) {
     const prevSuite = currentSuite;
     const suite = currentSuite = new TestSuite(t);
     try {
@@ -500,10 +513,21 @@ function wrapSuiteFn(fn, resolve) {
     } finally {
       currentSuite = prevSuite;
     }
-    return SafePromisePrototypeFinally(SafePromiseAll(suite.steps), () => {
-      activeNodeTests--;
-      resolve();
-    });
+    try {
+      for (const hook of new SafeArrayIterator(suite.beforeAllHooks)) {
+        await hook();
+      }
+      await SafePromiseAll(suite.steps);
+    } finally {
+      try {
+        for (const hook of new SafeArrayIterator(suite.afterAllHooks)) {
+          await hook();
+        }
+      } finally {
+        activeNodeTests--;
+        resolve();
+      }
+    }
   };
 }
 
@@ -574,20 +598,48 @@ suite.only = function only(name, options, fn) {
 export const it = test;
 export const describe = suite;
 
-export function before() {
-  notImplemented("test.before");
+export function before(fn, _options) {
+  if (typeof fn !== "function") {
+    throw new TypeError("before() requires a function argument");
+  }
+  if (currentSuite) {
+    ArrayPrototypePush(currentSuite.beforeAllHooks, fn);
+    return;
+  }
+  notImplemented("test.before (module-level, outside suite)");
 }
 
-export function after() {
-  notImplemented("test.after");
+export function after(fn, _options) {
+  if (typeof fn !== "function") {
+    throw new TypeError("after() requires a function argument");
+  }
+  if (currentSuite) {
+    ArrayPrototypePush(currentSuite.afterAllHooks, fn);
+    return;
+  }
+  notImplemented("test.after (module-level, outside suite)");
 }
 
-export function beforeEach() {
-  notImplemented("test.beforeEach");
+export function beforeEach(fn, _options) {
+  if (typeof fn !== "function") {
+    throw new TypeError("beforeEach() requires a function argument");
+  }
+  if (currentSuite) {
+    ArrayPrototypePush(currentSuite.beforeEachHooks, fn);
+    return;
+  }
+  notImplemented("test.beforeEach (module-level, outside suite)");
 }
 
-export function afterEach() {
-  notImplemented("test.afterEach");
+export function afterEach(fn, _options) {
+  if (typeof fn !== "function") {
+    throw new TypeError("afterEach() requires a function argument");
+  }
+  if (currentSuite) {
+    ArrayPrototypePush(currentSuite.afterEachHooks, fn);
+    return;
+  }
+  notImplemented("test.afterEach (module-level, outside suite)");
 }
 
 test.it = test;
