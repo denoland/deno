@@ -61,6 +61,9 @@ function unwrapErr(ok: boolean) {
 }
 
 const kHandle = Symbol("kHandle");
+const kFinalized = Symbol("kFinalized");
+
+let warnedShakeOutputLength = false;
 
 export function Hash(
   this: Hash,
@@ -86,8 +89,10 @@ export function Hash(
   if (
     !isCopy && xofLen === undefined &&
     (algoLower === "shake128" ||
-      algoLower === "shake256")
+      algoLower === "shake256") &&
+    !warnedShakeOutputLength
   ) {
+    warnedShakeOutputLength = true;
     process.emitWarning(
       "Creating SHAKE128/256 digests without an explicit options.outputLength is deprecated.",
       "DeprecationWarning",
@@ -118,6 +123,7 @@ export function Hash(
 
 interface Hash {
   [kHandle]: object;
+  [kFinalized]: boolean;
 }
 
 ObjectSetPrototypeOf(Hash.prototype, LazyTransform.prototype);
@@ -137,7 +143,13 @@ Hash.prototype._transform = function _transform(
 };
 
 Hash.prototype._flush = function _flush(callback: () => void) {
-  this.push(this.digest());
+  // Internal Transform flush: pull the digest from the native handle without
+  // marking the JS-level hash as finalised. Node does the same: its `_flush`
+  // calls `this[kHandle].digest()` directly, allowing a single user-level
+  // `hash.digest(encoding)` to still succeed afterwards (e.g. when the hash
+  // is consumed via `stream.pipeline`).
+  const digest = op_node_hash_digest(this[kHandle]);
+  this.push(digest === null ? Buffer.alloc(0) : Buffer.from(digest));
   callback();
 };
 
@@ -169,17 +181,22 @@ Hash.prototype.update = function update(
 };
 
 Hash.prototype.digest = function digest(outputEncoding: Encoding | "buffer") {
+  if (this[kFinalized]) {
+    throw new ERR_CRYPTO_HASH_FINALIZED();
+  }
   outputEncoding = outputEncoding || getDefaultEncoding();
   outputEncoding = `${outputEncoding}`;
 
   if (outputEncoding === "hex") {
     const result = op_node_hash_digest_hex(this[kHandle]);
     if (result === null) throw new ERR_CRYPTO_HASH_FINALIZED();
+    this[kFinalized] = true;
     return result;
   }
 
   const digest = op_node_hash_digest(this[kHandle]);
   if (digest === null) throw new ERR_CRYPTO_HASH_FINALIZED();
+  this[kFinalized] = true;
 
   // TODO(@littedivy): Fast paths for below encodings.
   switch (outputEncoding) {

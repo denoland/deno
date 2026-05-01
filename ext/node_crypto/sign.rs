@@ -434,7 +434,7 @@ impl KeyObjectHandle {
           let signature = if dsa_signature_encoding == 0 {
             p256::ecdsa::Signature::from_der(signature)
           } else {
-            p256::ecdsa::Signature::from_bytes(signature.into())
+            p256::ecdsa::Signature::from_slice(signature)
           };
           let Ok(signature) = signature else {
             return Ok(false);
@@ -446,7 +446,7 @@ impl KeyObjectHandle {
           let signature = if dsa_signature_encoding == 0 {
             p384::ecdsa::Signature::from_der(signature)
           } else {
-            p384::ecdsa::Signature::from_bytes(signature.into())
+            p384::ecdsa::Signature::from_slice(signature)
           };
           let Ok(signature) = signature else {
             return Ok(false);
@@ -460,7 +460,7 @@ impl KeyObjectHandle {
           let signature = if dsa_signature_encoding == 0 {
             p521::ecdsa::Signature::from_der(signature)
           } else {
-            p521::ecdsa::Signature::from_bytes(signature.into())
+            p521::ecdsa::Signature::from_slice(signature)
           };
           let Ok(signature) = signature else {
             return Ok(false);
@@ -472,7 +472,7 @@ impl KeyObjectHandle {
           let signature = if dsa_signature_encoding == 0 {
             k256::ecdsa::Signature::from_der(signature)
           } else {
-            k256::ecdsa::Signature::from_bytes(signature.into())
+            k256::ecdsa::Signature::from_slice(signature)
           };
           let Ok(signature) = signature else {
             return Ok(false);
