@@ -6,7 +6,9 @@
 
 /// <reference path="../../core/internal.d.ts" />
 
-import { core, primordials } from "ext:core/mod.js";
+// deno-fmt-ignore-file
+(function () {
+const { core, primordials } = globalThis.__bootstrap;
 const {
   isArrayBuffer,
   isDataView,
@@ -1445,7 +1447,7 @@ function setlikeObjectWrap(objPrototype, readonly) {
   }
 }
 
-export {
+return {
   assertBranded,
   AsyncIterable,
   brand,
@@ -1470,3 +1472,4 @@ export {
   setlikeObjectWrap,
   type,
 };
+})()

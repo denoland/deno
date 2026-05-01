@@ -74,6 +74,7 @@ import {
   streamBaseState,
 } from "ext:deno_node/internal_binding/stream_wrap.ts";
 import {
+  Http2Session as BindingHttp2Session,
   Http2Stream as BindingHttp2Stream,
 } from "ext:deno_node/internal_binding/http2.ts";
 import { EventEmitter } from "node:events";
@@ -975,13 +976,17 @@ function requestOnConnect(headersList, options) {
 
   // `ret` will be either the reserved stream ID (if positive)
   // or an error code (if negative)
-  const ret = session[kHandle].request(
-    headersList[0],
-    headersList[1],
-    streamOptions,
-    options.parent | 0,
-    options.weight | 0,
-    !!options.exclusive,
+  const ret = ReflectApply(
+    BindingHttp2Session.prototype.request,
+    session[kHandle],
+    [
+      headersList[0],
+      headersList[1],
+      streamOptions,
+      options.parent | 0,
+      options.weight | 0,
+      !!options.exclusive,
+    ],
   );
 
   // In an error condition, one of three possible response codes will be

@@ -558,6 +558,64 @@ fn test_lazy_loaded_esm() {
 }
 
 #[test]
+fn test_lazy_loaded_script() {
+  deno_core::extension!(
+    test_ext,
+    lazy_loaded_js = [dir "modules/testdata", "lazy_script.js", "lazy_script_dep.js"]
+  );
+
+  let mut runtime = JsRuntime::new(RuntimeOptions {
+    extensions: vec![test_ext::init()],
+    ..Default::default()
+  });
+
+  runtime
+    .execute_script(
+      "test_load_ext_script.js",
+      r#"
+      // Load a lazy script
+      const module = Deno.core.loadExtScript("ext:test_ext/lazy_script.js");
+      if (module.foo !== "foo") throw new Error("expected foo");
+      if (module.bar !== 123) throw new Error("expected 123");
+
+      // Should be cached - same object returned
+      const module2 = Deno.core.loadExtScript("ext:test_ext/lazy_script.js");
+      if (module !== module2) throw new Error("should return the same cached object");
+
+      // Load a script that depends on another lazy script
+      const dep = Deno.core.loadExtScript("ext:test_ext/lazy_script_dep.js");
+      if (dep.fromDep !== true) throw new Error("expected fromDep");
+      if (dep.utils.foo !== "foo") throw new Error("expected nested foo");
+
+      Deno.core.print("lazy script test passed\n");
+      "#,
+    )
+    .unwrap();
+}
+
+#[test]
+fn test_lazy_loaded_script_not_found() {
+  deno_core::extension!(test_ext);
+
+  let mut runtime = JsRuntime::new(RuntimeOptions {
+    extensions: vec![test_ext::init()],
+    ..Default::default()
+  });
+
+  let result = runtime.execute_script(
+    "test_not_found.js",
+    r#"Deno.core.loadExtScript("ext:test_ext/nonexistent.js")"#,
+  );
+  assert!(result.is_err());
+  let err = result.unwrap_err();
+  assert!(
+    err.to_string().contains("cannot be lazy-loaded"),
+    "unexpected error: {}",
+    err
+  );
+}
+
+#[test]
 fn test_json_text_bytes_modules() {
   let loader = Rc::new(TestingModuleLoader::new(StaticModuleLoader::default()));
   let mut runtime = JsRuntime::new(RuntimeOptions {

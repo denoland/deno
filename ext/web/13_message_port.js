@@ -33,7 +33,7 @@ const {
   InterruptedPrototype,
   isArrayBuffer,
 } = core;
-import * as webidl from "ext:deno_webidl/00_webidl.js";
+const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
 import { createFilteredInspectProxy } from "./01_console.js";
 import {
   defineEventHandler,
@@ -48,7 +48,7 @@ import {
   TransformStream,
   WritableStream,
 } from "./06_streams.js";
-import { DOMException } from "./01_dom_exception.js";
+const { DOMException } = core.loadExtScript("ext:deno_web/01_dom_exception.js");
 
 // counter of how many message ports are actively refed
 // either due to the existence of "message" event listeners or

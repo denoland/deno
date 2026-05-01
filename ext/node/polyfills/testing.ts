@@ -7,18 +7,100 @@ const {
   ArrayPrototypePush,
   ArrayPrototypeSplice,
   Error,
+  ErrorPrototype,
+  MapPrototypeDelete,
+  MapPrototypeGet,
+  MapPrototypeSet,
   ObjectDefineProperty,
+  ObjectGetOwnPropertyDescriptor,
+  ObjectGetPrototypeOf,
+  ObjectPrototypeIsPrototypeOf,
   Promise,
   PromisePrototypeThen,
   ReflectApply,
   SafeArrayIterator,
+  SafeMap,
   SafePromiseAll,
   SafePromisePrototypeFinally,
   String,
   Symbol,
+  SymbolFor,
   TypeError,
 } = primordials;
+
+// --------------------------------------------------------------------------
+// Unhandled rejection / uncaught exception handling for node:test
+// --------------------------------------------------------------------------
+// In Node.js, unhandled rejections and uncaught exceptions during a test
+// cause test warnings rather than crashing the runner. In Deno, they're
+// fatal for the entire module. We install global handlers that prevent
+// Deno from treating them as fatal module errors.
+
+let errorHandlersInstalled = false;
+
+// Tracks the number of node:test tests currently executing. The global error
+// handlers only suppress events while at least one test is running, so they
+// don't interfere with Deno.test or other code after node:test completes.
+let activeNodeTests = 0;
+
+// When a callback-style test is in progress, this holds a reject function
+// so that caught async errors can unblock the pending done() callback.
+// node:test tests run sequentially via Deno.test (one top-level test at a
+// time), so only one callback test can be pending at any given moment.
+let pendingCallbackReject: ((err: unknown) => void) | null = null;
+
+// Non-Error thrown values with a custom inspect that throws can crash
+// Deno's error formatting. Test the actual formatting path before
+// re-throwing to Deno.test.
+function sanitizeThrowValue(err: unknown): unknown {
+  if (err === null || err === undefined || typeof err !== "object") {
+    return err;
+  }
+  if (ObjectPrototypeIsPrototypeOf(ErrorPrototype, err)) {
+    return err;
+  }
+  // Only objects with a custom inspect symbol need validation
+  const inspectSymbol = SymbolFor("nodejs.util.inspect.custom");
+  if (typeof (err as Record<symbol, unknown>)[inspectSymbol] !== "function") {
+    return err;
+  }
+  try {
+    // Test the actual formatting path that Deno's error reporter uses
+    Deno.inspect(err);
+    return err;
+  } catch {
+    return new Error(
+      "test threw a non-Error object with a throwing custom inspect",
+    );
+  }
+}
+
+function installErrorHandlers() {
+  if (errorHandlersInstalled) return;
+  errorHandlersInstalled = true;
+
+  globalThis.addEventListener("unhandledrejection", (event) => {
+    if (activeNodeTests > 0) {
+      event.preventDefault();
+    }
+  });
+
+  globalThis.addEventListener("error", (event) => {
+    if (activeNodeTests > 0) {
+      event.preventDefault();
+    }
+    // If a callback test is pending, unblock it so the test doesn't hang
+    if (pendingCallbackReject !== null) {
+      pendingCallbackReject(event.error ?? new Error("uncaught error"));
+      pendingCallbackReject = null;
+    }
+  });
+}
 import { notImplemented } from "ext:deno_node/_utils.ts";
+import {
+  validateFunction,
+  validateInteger,
+} from "ext:deno_node/internal/validators.mjs";
 import assert from "node:assert";
 
 const methodsToCopy = [
@@ -151,7 +233,7 @@ class NodeTestContext {
             } catch { /* ignore, test is already failing */ }
           }
         },
-        ignore: prepared.options.todo || prepared.options.skip,
+        ignore: !!prepared.options.todo || !!prepared.options.skip,
         sanitizeExit: false,
         sanitizeOps: false,
         sanitizeResources: false,
@@ -212,7 +294,7 @@ class TestSuite {
           }
         }
       },
-      ignore: prepared.options.todo || prepared.options.skip,
+      ignore: !!prepared.options.todo || !!prepared.options.skip,
       sanitizeExit: false,
       sanitizeOps: false,
       sanitizeResources: false,
@@ -227,7 +309,7 @@ class TestSuite {
     const step = this.#denoTestContext.step({
       name: prepared.name,
       fn: wrapSuiteFn(prepared.fn, resolve),
-      ignore: prepared.options.todo || prepared.options.skip,
+      ignore: !!prepared.options.todo || !!prepared.options.skip,
       sanitizeExit: false,
       sanitizeOps: false,
       sanitizeResources: false,
@@ -270,11 +352,13 @@ function wrapTestFn(fn, resolve) {
   return async function (t) {
     const nodeTestContext = new NodeTestContext(t, undefined);
     try {
-      // Check if the test function expects a done callback (2 parameters)
       if (fn.length >= 2) {
-        // Callback-style async test
+        // Callback-style test
         await new Promise((testResolve, testReject) => {
+          // Allow error handler to unblock this test if an async throw occurs
+          pendingCallbackReject = testReject;
           const done = (err?: Error) => {
+            pendingCallbackReject = null;
             if (err) {
               testReject(err);
             } else {
@@ -282,20 +366,36 @@ function wrapTestFn(fn, resolve) {
             }
           };
           try {
-            fn(nodeTestContext, done);
+            const result = ReflectApply(fn, nodeTestContext, [
+              nodeTestContext,
+              done,
+            ]);
+            // If the function returns a thenable (async fn with done callback),
+            // also listen for its rejection to avoid hanging
+            if (
+              result !== null && result !== undefined &&
+              typeof result.then === "function"
+            ) {
+              PromisePrototypeThen(result, undefined, (err) => {
+                pendingCallbackReject = null;
+                testReject(err);
+              });
+            }
           } catch (err) {
+            pendingCallbackReject = null;
             testReject(err);
           }
         });
       } else {
         // Promise-style or sync test
-        await fn(nodeTestContext);
+        await ReflectApply(fn, nodeTestContext, [nodeTestContext]);
       }
     } catch (err) {
       if (!nodeTestContext[skippedSymbol]) {
-        throw err;
+        throw sanitizeThrowValue(err);
       }
     } finally {
+      activeNodeTests--;
       resolve();
     }
   };
@@ -303,6 +403,10 @@ function wrapTestFn(fn, resolve) {
 
 function prepareDenoTest(name, options, fn, overrides) {
   const prepared = prepareOptions(name, options, fn, overrides);
+
+  // Increment at registration so handlers stay active until all tests complete.
+  // Decremented in wrapTestFn's finally block when the test finishes.
+  activeNodeTests++;
 
   // TODO(iuioiua): Update once there's a primordial for `Promise.withResolvers()`.
   // deno-lint-ignore prefer-primordials
@@ -312,7 +416,7 @@ function prepareDenoTest(name, options, fn, overrides) {
     name: prepared.name,
     fn: wrapTestFn(prepared.fn, resolve),
     only: prepared.options.only,
-    ignore: prepared.options.todo || prepared.options.skip,
+    ignore: !!prepared.options.todo || !!prepared.options.skip,
     sanitizeOnly: false,
     sanitizeExit: false,
     sanitizeOps: false,
@@ -331,12 +435,19 @@ function wrapSuiteFn(fn, resolve) {
     } finally {
       currentSuite = prevSuite;
     }
-    return SafePromisePrototypeFinally(SafePromiseAll(suite.steps), resolve);
+    return SafePromisePrototypeFinally(SafePromiseAll(suite.steps), () => {
+      activeNodeTests--;
+      resolve();
+    });
   };
 }
 
 function prepareDenoTestForSuite(name, options, fn, overrides) {
   const prepared = prepareOptions(name, options, fn, overrides);
+
+  // Increment at registration so handlers stay active until all tests complete.
+  // Decremented in wrapSuiteFn's finally callback when the suite finishes.
+  activeNodeTests++;
 
   // deno-lint-ignore prefer-primordials
   const { promise, resolve } = Promise.withResolvers();
@@ -345,7 +456,7 @@ function prepareDenoTestForSuite(name, options, fn, overrides) {
     name: prepared.name,
     fn: wrapSuiteFn(prepared.fn, resolve),
     only: prepared.options.only,
-    ignore: prepared.options.todo || prepared.options.skip,
+    ignore: !!prepared.options.todo || !!prepared.options.skip,
     sanitizeOnly: false,
     sanitizeExit: false,
     sanitizeOps: false,
@@ -356,6 +467,7 @@ function prepareDenoTestForSuite(name, options, fn, overrides) {
 }
 
 export function test(name, options, fn, overrides) {
+  installErrorHandlers();
   if (currentSuite) {
     return currentSuite.addTest(name, options, fn, overrides);
   }
@@ -375,6 +487,7 @@ test.only = function only(name, options, fn) {
 };
 
 export function suite(name, options, fn, overrides) {
+  installErrorHandlers();
   if (currentSuite) {
     return currentSuite.addSuite(name, options, fn, overrides);
   }
@@ -435,6 +548,10 @@ class MockFunctionContext {
   #implementation: ((...args: unknown[]) => unknown) | undefined;
   #restore: (() => void) | undefined;
   #times: number | undefined;
+  #onceImplementations: Map<
+    number,
+    (...args: unknown[]) => unknown
+  > = new SafeMap();
 
   constructor(
     implementation?: (...args: unknown[]) => unknown,
@@ -446,35 +563,48 @@ class MockFunctionContext {
     this.#times = times;
   }
 
-  /** Array of call information */
   get calls(): readonly MockCall[] {
     return this.#calls;
   }
 
-  /** Number of times the mock has been called */
   callCount(): number {
     return this.#calls.length;
   }
 
-  /** Reset the call history */
+  mockImplementation(
+    implementation: (...args: unknown[]) => unknown,
+  ): void {
+    validateFunction(implementation, "implementation");
+    this.#implementation = implementation;
+  }
+
+  mockImplementationOnce(
+    implementation: (...args: unknown[]) => unknown,
+    onCall?: number,
+  ): void {
+    validateFunction(implementation, "implementation");
+    if (onCall !== undefined) {
+      validateInteger(onCall, "onCall", 0);
+    }
+    const call = onCall ?? this.#calls.length;
+    MapPrototypeSet(this.#onceImplementations, call, implementation);
+  }
+
   resetCalls(): void {
     ArrayPrototypeSplice(this.#calls, 0, this.#calls.length);
   }
 
-  /** Restore the original function */
   restore(): void {
     if (this.#restore) {
       this.#restore();
       this.#restore = undefined;
     }
-    // Remove from active mocks
     const idx = ArrayPrototypeIndexOf(activeMocks, this);
     if (idx !== -1) {
       ArrayPrototypeSplice(activeMocks, idx, 1);
     }
   }
 
-  /** Internal: record a call */
   _recordCall(
     thisArg: unknown,
     args: unknown[],
@@ -490,14 +620,22 @@ class MockFunctionContext {
     });
   }
 
-  /** Internal: check if mock should still be active based on times limit */
   _shouldMock(): boolean {
     if (this.#times === undefined) return true;
     return this.#calls.length < this.#times;
   }
 
-  /** Internal: get the mock implementation */
   _getImplementation(): ((...args: unknown[]) => unknown) | undefined {
+    return this.#implementation;
+  }
+
+  _nextImpl(): ((...args: unknown[]) => unknown) | undefined {
+    const nextCall = this.#calls.length;
+    const onceImpl = MapPrototypeGet(this.#onceImplementations, nextCall);
+    if (onceImpl) {
+      MapPrototypeDelete(this.#onceImplementations, nextCall);
+      return onceImpl as (...args: unknown[]) => unknown;
+    }
     return this.#implementation;
   }
 }
@@ -509,7 +647,9 @@ function createMockFunction(
   ctx: MockFunctionContext,
 ): (...args: unknown[]) => unknown {
   const mockFn = function (this: unknown, ...args: unknown[]): unknown {
-    const impl = ctx._shouldMock() ? (implementation ?? original) : original;
+    const impl = ctx._shouldMock()
+      ? (ctx._nextImpl() ?? implementation ?? original)
+      : original;
 
     let result: unknown;
     let error: Error | undefined;
@@ -538,28 +678,144 @@ function createMockFunction(
   return mockFn;
 }
 
+function findPropertyDescriptor(
+  obj: object,
+  name: string | symbol,
+): PropertyDescriptor | undefined {
+  let current = obj;
+  while (current !== null && current !== undefined) {
+    const desc = ObjectGetOwnPropertyDescriptor(current, name);
+    if (desc) return desc;
+    current = ObjectGetPrototypeOf(current);
+  }
+  return undefined;
+}
+
+type MockMethodOptions = { times?: number; getter?: boolean; setter?: boolean };
+
+function mockMethodImpl<T extends object>(
+  object: T,
+  methodName: keyof T,
+  implementation:
+    | ((...args: unknown[]) => unknown)
+    | Record<string, unknown>
+    | undefined,
+  options?: MockMethodOptions,
+): ((...args: unknown[]) => unknown) & { mock: MockFunctionContext } {
+  // Handle overloaded signature: method(obj, name, options)
+  if (
+    implementation !== null && typeof implementation === "object" &&
+    typeof implementation !== "function"
+  ) {
+    options = implementation as MockMethodOptions;
+    implementation = undefined;
+  }
+
+  const descriptor = findPropertyDescriptor(object, methodName as string);
+  if (!descriptor) {
+    throw new TypeError(
+      `Cannot mock property '${String(methodName)}' because it does not exist`,
+    );
+  }
+
+  const isGetter = options?.getter ?? false;
+  const isSetter = options?.setter ?? false;
+
+  // deno-lint-ignore no-explicit-any
+  let original: ((...args: any[]) => any) | undefined;
+  if (isGetter) {
+    original = descriptor.get;
+  } else if (isSetter) {
+    original = descriptor.set;
+  } else {
+    original = descriptor.value;
+  }
+
+  if (typeof original !== "function") {
+    throw new TypeError(
+      `Cannot mock property '${
+        String(methodName)
+      }' because it is not a function`,
+    );
+  }
+
+  const restore = () => {
+    ObjectDefineProperty(object, methodName as string, descriptor);
+  };
+
+  const impl = implementation === undefined ? original : implementation;
+  const ctx = new MockFunctionContext(
+    impl as (...args: unknown[]) => unknown,
+    restore,
+    options?.times,
+  );
+  ArrayPrototypePush(activeMocks, ctx);
+
+  const mockFn = createMockFunction(
+    original as (...args: unknown[]) => unknown,
+    impl as (...args: unknown[]) => unknown,
+    ctx,
+  );
+
+  const mockDescriptor: PropertyDescriptor = {
+    configurable: descriptor.configurable,
+    enumerable: descriptor.enumerable,
+  };
+
+  if (isGetter) {
+    mockDescriptor.get = mockFn;
+    mockDescriptor.set = descriptor.set;
+  } else if (isSetter) {
+    mockDescriptor.get = descriptor.get;
+    mockDescriptor.set = mockFn;
+  } else {
+    mockDescriptor.writable = descriptor.writable;
+    mockDescriptor.value = mockFn;
+  }
+
+  ObjectDefineProperty(object, methodName as string, mockDescriptor);
+
+  return mockFn as ((...args: unknown[]) => unknown) & {
+    mock: MockFunctionContext;
+  };
+}
+
 export const mock = {
-  /**
-   * Creates a mock function.
-   * @param original - Optional original function to wrap
-   * @param implementation - Optional mock implementation
-   * @param options - Optional configuration
-   */
   fn: (
-    original?: (...args: unknown[]) => unknown,
-    implementation?: (...args: unknown[]) => unknown,
+    original?:
+      | ((...args: unknown[]) => unknown)
+      | Record<string, unknown>,
+    implementation?:
+      | ((...args: unknown[]) => unknown)
+      | Record<string, unknown>,
     options?: { times?: number },
   ): ((...args: unknown[]) => unknown) & { mock: MockFunctionContext } => {
+    // Handle overloaded signatures: fn(options), fn(original, options)
+    if (original !== null && typeof original === "object") {
+      options = original as { times?: number };
+      original = undefined;
+      implementation = undefined;
+    } else if (implementation !== null && typeof implementation === "object") {
+      options = implementation as { times?: number };
+      implementation = original as
+        | ((...args: unknown[]) => unknown)
+        | undefined;
+    }
+
     const ctx = new MockFunctionContext(
-      implementation ?? original,
+      (implementation ?? original) as
+        | ((...args: unknown[]) => unknown)
+        | undefined,
       undefined,
       options?.times,
     );
     ArrayPrototypePush(activeMocks, ctx);
 
     const mockFn = createMockFunction(
-      original,
-      implementation ?? original,
+      original as ((...args: unknown[]) => unknown) | undefined,
+      (implementation ?? original) as
+        | ((...args: unknown[]) => unknown)
+        | undefined,
       ctx,
     );
     return mockFn as ((...args: unknown[]) => unknown) & {
@@ -567,92 +823,64 @@ export const mock = {
     };
   },
 
-  /**
-   * Mocks a getter on an object.
-   */
-  getter: (
-    _object: object,
-    _methodName: string,
-    _implementation?: () => unknown,
-    _options?: { times?: number },
+  getter: <T extends object>(
+    object: T,
+    methodName: keyof T,
+    implementation?:
+      | ((...args: unknown[]) => unknown)
+      | Record<string, unknown>,
+    options?: { times?: number },
   ) => {
-    notImplemented("test.mock.getter");
+    if (implementation !== null && typeof implementation === "object") {
+      options = implementation as { times?: number };
+      implementation = undefined;
+    }
+    return mockMethodImpl(object, methodName, implementation, {
+      ...options,
+      getter: true,
+    });
   },
 
-  /**
-   * Mocks a method on an object.
-   * @param object - The object containing the method
-   * @param methodName - The name of the method to mock
-   * @param implementation - Optional mock implementation
-   * @param options - Optional configuration
-   */
   method: <T extends object>(
     object: T,
     methodName: keyof T,
-    implementation?: (...args: unknown[]) => unknown,
+    implementation?:
+      | ((...args: unknown[]) => unknown)
+      | Record<string, unknown>,
     options?: { times?: number },
   ): ((...args: unknown[]) => unknown) & { mock: MockFunctionContext } => {
-    const original = object[methodName] as (
-      ...args: unknown[]
-    ) => unknown;
-
-    if (typeof original !== "function") {
-      throw new TypeError(
-        `Cannot mock property '${
-          String(methodName)
-        }' because it is not a function`,
-      );
-    }
-
-    const restore = () => {
-      object[methodName] = original as T[keyof T];
-    };
-
-    const ctx = new MockFunctionContext(
-      implementation,
-      restore,
-      options?.times,
-    );
-    ArrayPrototypePush(activeMocks, ctx);
-
-    const mockFn = createMockFunction(original, implementation, ctx);
-    object[methodName] = mockFn as T[keyof T];
-
-    return mockFn as ((...args: unknown[]) => unknown) & {
-      mock: MockFunctionContext;
-    };
+    return mockMethodImpl(object, methodName, implementation, options);
   },
 
-  /**
-   * Resets the call history of all mocks.
-   */
   reset: (): void => {
-    ArrayPrototypeForEach(activeMocks, (ctx) => {
+    ArrayPrototypeForEach(activeMocks, (ctx: MockFunctionContext) => {
       ctx.resetCalls();
     });
   },
 
-  /**
-   * Restores all mocked methods to their original implementations.
-   */
   restoreAll: (): void => {
-    // Restore in reverse order
     while (activeMocks.length > 0) {
       const ctx = activeMocks[activeMocks.length - 1];
       ctx.restore();
     }
   },
 
-  /**
-   * Mocks a setter on an object.
-   */
-  setter: (
-    _object: object,
-    _methodName: string,
-    _implementation?: (value: unknown) => void,
-    _options?: { times?: number },
+  setter: <T extends object>(
+    object: T,
+    methodName: keyof T,
+    implementation?:
+      | ((...args: unknown[]) => unknown)
+      | Record<string, unknown>,
+    options?: { times?: number },
   ) => {
-    notImplemented("test.mock.setter");
+    if (implementation !== null && typeof implementation === "object") {
+      options = implementation as { times?: number };
+      implementation = undefined;
+    }
+    return mockMethodImpl(object, methodName, implementation, {
+      ...options,
+      setter: true,
+    });
   },
 
   timers: {

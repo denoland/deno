@@ -3275,6 +3275,8 @@ function watch(
     ? optionsOrListener2
     : undefined;
 
+  validateIgnoreOption(options?.ignore, "options.ignore");
+
   // deno-lint-ignore prefer-primordials
   const watchPath = getValidatedPath(filename).toString();
 

@@ -2023,8 +2023,16 @@ impl TLSWrap {
         if let Ok(buf) = TryInto::<v8::Local<v8::Uint8Array>>::try_into(chunk) {
           let byte_len = buf.byte_length();
           let byte_off = buf.byte_offset();
-          let ab = buf.buffer(scope).unwrap();
-          let ptr = ab.data().unwrap().as_ptr() as *const u8;
+          // Skip chunks whose ArrayBuffer has been detached (e.g. during
+          // sandbox teardown). Erroring on each would spam the close path;
+          // surviving chunks are still written.
+          let Some(ab) = buf.buffer(scope) else {
+            continue;
+          };
+          let Some(data_ptr) = ab.data() else {
+            continue;
+          };
+          let ptr = data_ptr.as_ptr() as *const u8;
           // SAFETY: ptr + offset is within the ArrayBuffer backing store
           let slice =
             unsafe { std::slice::from_raw_parts(ptr.add(byte_off), byte_len) };
@@ -2041,8 +2049,14 @@ impl TLSWrap {
         if let Ok(buf) = TryInto::<v8::Local<v8::Uint8Array>>::try_into(chunk) {
           let byte_len = buf.byte_length();
           let byte_off = buf.byte_offset();
-          let ab = buf.buffer(scope).unwrap();
-          let ptr = ab.data().unwrap().as_ptr() as *const u8;
+          // Skip detached buffers (see comment in all_buffers=true branch).
+          let Some(ab) = buf.buffer(scope) else {
+            continue;
+          };
+          let Some(data_ptr) = ab.data() else {
+            continue;
+          };
+          let ptr = data_ptr.as_ptr() as *const u8;
           // SAFETY: ptr + offset is within the ArrayBuffer backing store
           let slice =
             unsafe { std::slice::from_raw_parts(ptr.add(byte_off), byte_len) };
@@ -2081,12 +2095,16 @@ impl TLSWrap {
   ) -> i32 {
     let byte_length = buffer.byte_length();
     let byte_offset = buffer.byte_offset();
-    let ab = buffer.buffer(scope).unwrap();
-    let data_ptr = ab.data().unwrap().as_ptr() as *const u8;
-    // SAFETY: ptr + offset is within the ArrayBuffer backing store
-    let data = unsafe {
-      std::slice::from_raw_parts(data_ptr.add(byte_offset), byte_length)
+    let Some(ab) = buffer.buffer(scope) else {
+      return -1;
     };
+    let Some(data_ptr) = ab.data() else {
+      return -1;
+    };
+    let ptr = data_ptr.as_ptr() as *const u8;
+    // SAFETY: ptr + offset is within the ArrayBuffer backing store
+    let data =
+      unsafe { std::slice::from_raw_parts(ptr.add(byte_offset), byte_length) };
 
     self.write_data(req_wrap_obj, data, scope, op_state)
   }

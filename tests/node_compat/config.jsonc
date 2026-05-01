@@ -94,6 +94,16 @@
       "ignore": true,
       "reason": "Node.js snapshot/heap profiling features (--build-snapshot, --heap-prof, --heapsnapshot-near-heap-limit) are not implemented in Deno"
     },
+    "module-hooks/test-module-hooks-load-context-merged.js": {},
+    "module-hooks/test-module-hooks-load-context-optional.js": {},
+    "module-hooks/test-module-hooks-load-short-circuit.js": {},
+    "module-hooks/test-module-hooks-load-short-circuit-required-middle.js": {},
+    "module-hooks/test-module-hooks-load-short-circuit-required-start.js": {},
+    "module-hooks/test-module-hooks-resolve-context-merged.js": {},
+    "module-hooks/test-module-hooks-resolve-context-optional.js": {},
+    "module-hooks/test-module-hooks-resolve-short-circuit.js": {},
+    "module-hooks/test-module-hooks-resolve-short-circuit-required-middle.js": {},
+    "module-hooks/test-module-hooks-resolve-short-circuit-required-start.js": {},
     "parallel/test-abort-controller-any-timeout.js": {},
     "parallel/test-abortcontroller-internal.js": {
       "ignore": true,
@@ -277,6 +287,10 @@
     "parallel/test-child-process-fork-and-spawn.js": {},
     "parallel/test-child-process-fork-close.js": {},
     "parallel/test-child-process-fork-detached.js": {},
+    "parallel/test-child-process-fork-net-socket.js": {
+      "windows": false,
+      "reason": "net.Socket IPC handle passing uses SCM_RIGHTS, not yet implemented on Windows"
+    },
     "parallel/test-child-process-fork-no-shell.js": {},
     "parallel/test-child-process-fork-stdio-string-variant.js": {},
     // TODO(bartlomieju): flaky on Windows with PipeWrap
@@ -296,6 +310,10 @@
     "parallel/test-child-process-reject-null-bytes.js": {},
     "parallel/test-child-process-send-after-close.js": {},
     "parallel/test-child-process-send-cb.js": {},
+    "parallel/test-child-process-send-keep-open.js": {
+      "windows": false,
+      "reason": "net.Socket IPC handle passing uses SCM_RIGHTS, not yet implemented on Windows"
+    },
     "parallel/test-child-process-send-type-error.js": {},
     "parallel/test-child-process-set-blocking.js": {},
     "parallel/test-child-process-silent.js": {},
@@ -1617,6 +1635,7 @@
     "parallel/test-http2-clean-output.js": {},
     "parallel/test-http2-client-connection-tunnelling.js": {},
     "parallel/test-http2-client-destroy.js": {},
+    "parallel/test-http2-client-onconnect-errors.js": {},
     "parallel/test-http2-client-port-80.js": {},
     "parallel/test-http2-client-priority-before-connect.js": {},
     "parallel/test-http2-client-promisify-connect-error.js": {},
