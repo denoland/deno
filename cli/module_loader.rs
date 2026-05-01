@@ -1017,14 +1017,13 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
           {
             Ok(r) => r,
             Err(_) => {
-              return Err(JsErrorBox::generic(
-                "module resolve hook cancelled",
-              ));
+              return Err(JsErrorBox::generic("module resolve hook cancelled"));
             }
           };
           match hook_result {
-            Ok(Some(url)) => ModuleSpecifier::parse(&url)
-              .map_err(JsErrorBox::from_err),
+            Ok(Some(url)) => {
+              ModuleSpecifier::parse(&url).map_err(JsErrorBox::from_err)
+            }
             Ok(None) => {
               // Fallthrough: hooks didn't intercept, use default
               inner.inner_resolve(&specifier, &referrer, kind, false)
@@ -1093,9 +1092,7 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
           {
             Ok(r) => r,
             Err(_) => {
-              return Err(JsErrorBox::generic(
-                "module load hook cancelled",
-              ));
+              return Err(JsErrorBox::generic("module load hook cancelled"));
             }
           };
           match hook_result {
