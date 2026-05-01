@@ -60,9 +60,7 @@ const {
 
 const {
   ReadableStream,
-  ReadableStreamPrototype,
   WritableStream,
-  WritableStreamPrototype,
   TransformStream,
 } = core.loadExtScript("ext:deno_web/06_streams.js");
 

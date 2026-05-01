@@ -48,15 +48,16 @@ import * as webgpuSurface from "ext:deno_webgpu/02_surface.js";
 import { unstableIds } from "ext:runtime/90_deno_ns.js";
 
 const loadImage = core.createLazyLoader("ext:deno_image/01_image.js");
-const loadGeometry = () => core.loadExtScript("ext:deno_web/geometry.js");
+const loadGeometry = core.createLazyLoader("ext:deno_web/geometry.js");
 const loadWebSocket = core.createLazyLoader(
   "ext:deno_websocket/01_websocket.js",
 );
 const loadWebSocketStream = core.createLazyLoader(
   "ext:deno_websocket/02_websocketstream.js",
 );
-const loadWebTransport = () =>
-  core.loadExtScript("ext:deno_web/webtransport.js");
+const loadWebTransport = core.createLazyLoader(
+  "ext:deno_web/webtransport.js",
+);
 
 // https://developer.mozilla.org/en-US/docs/Web/API/WindowOrWorkerGlobalScope
 const windowOrWorkerGlobalScope = {

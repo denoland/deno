@@ -38,8 +38,9 @@ import { bundle } from "ext:deno_bundle_runtime/bundle.ts";
 const { ObjectDefineProperties, Float64Array } = primordials;
 
 const loadQuic = core.createLazyLoader("ext:deno_net/03_quic.js");
-const loadWebTransport = () =>
-  core.loadExtScript("ext:deno_web/webtransport.js");
+const loadWebTransport = core.createLazyLoader(
+  "ext:deno_web/webtransport.js",
+);
 
 // the out buffer for `cpuUsage` and `memoryUsage`
 const usageBuffer = new Float64Array(4);

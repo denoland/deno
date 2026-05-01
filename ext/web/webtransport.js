@@ -1,36 +1,24 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-// deno-fmt-ignore-file
-
-(function () {
-const { core, primordials } = globalThis.__bootstrap;
+import { core, primordials } from "ext:core/mod.js";
 const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
-
-// Lazy-load ext:deno_net/03_quic.js (still ESM from another extension)
-let _quic;
-function getQuic() {
-  if (!_quic) {
-    _quic = core.createLazyLoader("ext:deno_net/03_quic.js")();
-  }
-  return _quic;
-}
-
-const infra = core.loadExtScript("ext:deno_web/00_infra.js");
-function getInfra() {
-  return infra;
-}
-
+import {
+  connectQuic,
+  webtransportAccept,
+  webtransportConnect,
+} from "ext:deno_net/03_quic.js";
+const { assert } = core.loadExtScript("ext:deno_web/00_infra.js");
 const { DOMException } = core.loadExtScript("ext:deno_web/01_dom_exception.js");
-
-const streams = core.loadExtScript("ext:deno_web/06_streams.js");
-function getStreams() {
-  return streams;
-}
-
-const location = core.loadExtScript("ext:deno_web/12_location.js");
-function getLocation() {
-  return location;
-}
+const {
+  getReadableStreamResourceBacking,
+  getWritableStreamResourceBacking,
+  ReadableStream,
+  readableStreamForRid,
+  WritableStream,
+  WritableStreamDefaultWriter,
+  writableStreamForRid,
+} = core.loadExtScript("ext:deno_web/06_streams.js");
+const { getLocationHref } = core.loadExtScript("ext:deno_web/12_location.js");
 
 const {
   ArrayBuffer,
@@ -204,7 +192,7 @@ class WebTransport {
 
       let parsedURL;
       try {
-        parsedURL = new URL(url, getLocation().getLocationHref());
+        parsedURL = new URL(url, getLocationHref());
       } catch (e) {
         throw new DOMException(e.message, "SyntaxError");
       }
@@ -225,7 +213,7 @@ class WebTransport {
         options.anticipatedConcurrentIncomingUnidirectionalStreams;
 
       promise = PromisePrototypeThen(
-        getQuic().connectQuic({
+        connectQuic({
           hostname: parsedURL.hostname,
           port: Number(parsedURL.port) || 443,
           keepAliveInterval: 4e3,
@@ -235,7 +223,7 @@ class WebTransport {
           serverCertificateHashes: options.serverCertificateHashes,
         }),
         async (conn) => {
-          const { connect, settingsTx, settingsRx } = await getQuic().webtransportConnect(
+          const { connect, settingsTx, settingsRx } = await webtransportConnect(
             conn,
             // deno-lint-ignore prefer-primordials
             parsedURL.toString(),
@@ -394,7 +382,7 @@ class WebTransport {
           reader: conn.incomingBidirectionalStreams.getReader(),
         }),
       );
-      this.#incomingBidirectionalStreams = new (getStreams().ReadableStream)({
+      this.#incomingBidirectionalStreams = new ReadableStream({
         pull: async (controller) => {
           const { sessionId, reader } = await readerPromise;
           const { value: bidi, done } = await reader.read();
@@ -461,7 +449,7 @@ class WebTransport {
           reader: conn.incomingUnidirectionalStreams.getReader(),
         }),
       );
-      this.#incomingUnidirectionalStreams = new (getStreams().ReadableStream)({
+      this.#incomingUnidirectionalStreams = new ReadableStream({
         pull: async (controller) => {
           const { reader, sessionId } = await readerPromise;
           const { value: stream, done } = await reader.read();
@@ -515,7 +503,7 @@ webidl.configureInterface(WebTransport);
 const WebTransportPrototype = WebTransport.prototype;
 
 async function upgradeWebTransport(conn) {
-  const { url, connect, settingsTx, settingsRx } = await getQuic().webtransportAccept(
+  const { url, connect, settingsTx, settingsRx } = await webtransportAccept(
     conn,
   );
   const wt = new WebTransport(illegalConstructorKey, {
@@ -529,9 +517,8 @@ async function upgradeWebTransport(conn) {
 }
 
 function readableStream(stream) {
-  const streams = getStreams();
-  return streams.readableStreamForRid(
-    streams.getReadableStreamResourceBacking(stream).rid,
+  return readableStreamForRid(
+    getReadableStreamResourceBacking(stream).rid,
     false, // input stream already has cleanup
     (...args) =>
       ReflectConstruct(
@@ -542,9 +529,8 @@ function readableStream(stream) {
 }
 
 function writableStream(stream) {
-  const streams = getStreams();
-  return streams.writableStreamForRid(
-    streams.getWritableStreamResourceBacking(stream).rid,
+  return writableStreamForRid(
+    getWritableStreamResourceBacking(stream).rid,
     false, // input stream already has cleanup
     (...args) =>
       ReflectConstruct(
@@ -587,7 +573,7 @@ webidl.configureInterface(WebTransportBidirectionalStream);
 const WebTransportBidirectionalStreamPrototype =
   WebTransportBidirectionalStream.prototype;
 
-class WebTransportSendStream extends (getStreams().WritableStream) {
+class WebTransportSendStream extends WritableStream {
   [webidl.brand] = webidl.brand;
   #inner;
   #sendGroup = null;
@@ -645,7 +631,7 @@ class WebTransportSendStream extends (getStreams().WritableStream) {
 webidl.configureInterface(WebTransportSendStream);
 const WebTransportSendStreamPrototype = WebTransportSendStream.prototype;
 
-class WebTransportReceiveStream extends (getStreams().ReadableStream) {
+class WebTransportReceiveStream extends ReadableStream {
   [webidl.brand] = webidl.brand;
   #inner;
 
@@ -668,7 +654,7 @@ class WebTransportReceiveStream extends (getStreams().ReadableStream) {
 webidl.configureInterface(WebTransportReceiveStream);
 const WebTransportReceiveStreamPrototype = WebTransportReceiveStream.prototype;
 
-class WebTransportWriter extends (getStreams().WritableStreamDefaultWriter) {
+class WebTransportWriter extends WritableStreamDefaultWriter {
   [webidl.brand] = webidl.brand;
 }
 webidl.configureInterface(WebTransportWriter);
@@ -865,7 +851,7 @@ class WebTransportDatagramDuplexStream {
   get readable() {
     webidl.assertBranded(this, WebTransportDatagramDuplexStreamPrototype);
     if (!this.#readable) {
-      this.#readable = new (getStreams().ReadableStream)({
+      this.#readable = new ReadableStream({
         type: "bytes",
         start: (controller) => {
           PromisePrototypeThen(
@@ -881,7 +867,7 @@ class WebTransportDatagramDuplexStream {
           this.#readableController = controller;
         },
         pull: (controller) => {
-          getInfra().assert(this.#incomingDatagramsPullPromise === null);
+          assert(this.#incomingDatagramsPullPromise === null);
           const queue = this.#incomingDatagramsQueue;
           if (queue.length === 0) {
             // deno-lint-ignore prefer-primordials
@@ -919,7 +905,7 @@ class WebTransportDatagramDuplexStream {
   get writable() {
     webidl.assertBranded(this, WebTransportDatagramDuplexStreamPrototype);
     if (!this.#writable) {
-      this.#writable = new (getStreams().WritableStream)({
+      this.#writable = new WritableStream({
         write: (data) => {
           if (
             !(ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, data) ||
@@ -1130,7 +1116,7 @@ webidl.converters.WebTransportErrorOptions = webidl.createDictionaryConverter(
   ],
 );
 
-return {
+export {
   upgradeWebTransport,
   WebTransport,
   WebTransportBidirectionalStream,
@@ -1140,4 +1126,3 @@ return {
   WebTransportSendGroup,
   WebTransportSendStream,
 };
-})()
