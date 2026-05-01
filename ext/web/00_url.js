@@ -5,15 +5,17 @@
 /// <reference path="../../core/lib.deno_core.d.ts" />
 /// <reference path="../webidl/internal.d.ts" />
 
-import { core, primordials } from "ext:core/mod.js";
-import {
+// deno-fmt-ignore-file
+(function () {
+const { core, primordials } = globalThis.__bootstrap;
+const {
   op_url_get_serialization,
   op_url_parse,
   op_url_parse_search_params,
   op_url_parse_with_base,
   op_url_reparse,
   op_url_stringify_search_params,
-} from "ext:core/ops";
+} = core.ops;
 const {
   ArrayIsArray,
   ArrayPrototypeMap,
@@ -34,7 +36,7 @@ const {
 } = primordials;
 
 const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
-import { createFilteredInspectProxy } from "./01_console.js";
+const { createFilteredInspectProxy } = core.loadExtScript("ext:deno_web/01_console.js");
 
 const _list = Symbol("list");
 const _urlObject = Symbol("url object");
@@ -898,10 +900,11 @@ webidl
     return webidl.converters.USVString(V, prefix, context, opts);
   };
 
-export {
+return {
   parseUrlEncoded,
   URL,
   URLPrototype,
   URLSearchParams,
   URLSearchParamsPrototype,
 };
+})()

@@ -50,7 +50,7 @@ import {
 import { getOptionValue } from "ext:deno_node/internal/options.ts";
 import assert from "node:assert";
 import { join } from "node:path";
-import { pathFromURL } from "ext:deno_web/00_infra.js";
+const { pathFromURL } = core.loadExtScript("ext:deno_web/00_infra.js");
 import {
   arch as arch_,
   chdir,

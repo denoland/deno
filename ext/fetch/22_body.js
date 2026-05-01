@@ -38,19 +38,19 @@ const {
 } = primordials;
 
 const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
-import {
+const {
   parseUrlEncoded,
   URLSearchParamsPrototype,
-} from "ext:deno_web/00_url.js";
+} = core.loadExtScript("ext:deno_web/00_url.js");
 import {
   formDataFromEntries,
   FormDataPrototype,
   formDataToBlob,
   parseFormData,
 } from "ext:deno_fetch/21_formdata.js";
-import * as mimesniff from "ext:deno_web/01_mimesniff.js";
-import { BlobPrototype } from "ext:deno_web/09_file.js";
-import {
+const mimesniff = core.loadExtScript("ext:deno_web/01_mimesniff.js");
+const { BlobPrototype } = core.loadExtScript("ext:deno_web/09_file.js");
+const {
   createProxy,
   errorReadableStream,
   isReadableStreamDisturbed,
@@ -60,7 +60,7 @@ import {
   ReadableStreamPrototype,
   readableStreamTee,
   readableStreamThrowIfErrored,
-} from "ext:deno_web/06_streams.js";
+} = core.loadExtScript("ext:deno_web/06_streams.js");
 
 /**
  * @param {Uint8Array | string} chunk

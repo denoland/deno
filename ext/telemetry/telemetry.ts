@@ -26,7 +26,7 @@ import {
   OtelSpan,
   OtelTracer,
 } from "ext:core/ops";
-import { Console } from "ext:deno_web/01_console.js";
+const { Console } = core.loadExtScript("ext:deno_web/01_console.js");
 
 const {
   ArrayFrom,

@@ -92,10 +92,6 @@ import {
 import { Buffer } from "node:buffer";
 import process from "node:process";
 import { isArrayBufferView } from "ext:deno_node/internal/util/types.ts";
-import { TextEncoder } from "ext:deno_web/08_text_encoding.js";
-import * as abortSignal from "ext:deno_web/03_abort_signal.js";
-import { pathFromURL } from "ext:deno_web/00_infra.js";
-import { URLPrototype } from "ext:deno_web/00_url.js";
 import { FileHandle } from "ext:deno_node/internal/fs/handle.ts";
 import { isIterable } from "ext:deno_node/internal/streams/utils.js";
 import type { ErrnoException } from "ext:deno_node/_global.d.ts";
@@ -191,6 +187,11 @@ const {
   Uint8Array,
   queueMicrotask,
 } = primordials;
+
+const { TextEncoder } = core.loadExtScript("ext:deno_web/08_text_encoding.js");
+const abortSignal = core.loadExtScript("ext:deno_web/03_abort_signal.js");
+const { pathFromURL } = core.loadExtScript("ext:deno_web/00_infra.js");
+const { URLPrototype } = core.loadExtScript("ext:deno_web/00_url.js");
 
 const {
   kIoMaxLength,

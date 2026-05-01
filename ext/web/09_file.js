@@ -10,14 +10,16 @@
 /// <reference path="./internal.d.ts" />
 /// <reference lib="esnext" />
 
-import { core, primordials } from "ext:core/mod.js";
+// deno-fmt-ignore-file
+(function () {
+const { core, primordials } = globalThis.__bootstrap;
 const {
   isAnyArrayBuffer,
   isArrayBuffer,
   isDataView,
   isTypedArray,
 } = core;
-import {
+const {
   op_blob_create_object_url,
   op_blob_create_part,
   op_blob_from_object_url,
@@ -25,7 +27,7 @@ import {
   op_blob_remove_part,
   op_blob_revoke_object_url,
   op_blob_slice_part,
-} from "ext:core/ops";
+} = core.ops;
 const {
   ArrayBufferIsView,
   ArrayBufferPrototypeGetByteLength,
@@ -57,9 +59,9 @@ const {
 } = primordials;
 
 const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
-import { ReadableStream } from "./06_streams.js";
-import { URL } from "ext:deno_web/00_url.js";
-import { createFilteredInspectProxy } from "./01_console.js";
+const { ReadableStream } = core.loadExtScript("ext:deno_web/06_streams.js");
+const { URL } = core.loadExtScript("ext:deno_web/00_url.js");
+const { createFilteredInspectProxy } = core.loadExtScript("ext:deno_web/01_console.js");
 
 // TODO(lucacasonato): this needs to not be hardcoded and instead depend on
 // host os.
@@ -728,7 +730,7 @@ function isBlob(obj) {
   return ObjectPrototypeIsPrototypeOf(BlobPrototype, obj);
 }
 
-export {
+return {
   Blob,
   blobFromObjectUrl,
   BlobPrototype,
@@ -737,3 +739,4 @@ export {
   getParts,
   isBlob,
 };
+})()

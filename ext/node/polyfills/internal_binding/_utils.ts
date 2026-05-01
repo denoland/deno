@@ -3,10 +3,11 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-import {
+import { core } from "ext:core/mod.js";
+const {
   forgivingBase64Decode,
   forgivingBase64UrlDecode,
-} from "ext:deno_web/00_infra.js";
+} = core.loadExtScript("ext:deno_web/00_infra.js");
 
 export function asciiToBytes(str: string) {
   const length = str.length;

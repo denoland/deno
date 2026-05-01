@@ -2,7 +2,9 @@
 
 /// <reference path="../../core/internal.d.ts" />
 
-import { core, internals, primordials } from "ext:core/mod.js";
+// deno-fmt-ignore-file
+(function () {
+const { core, internals, primordials } = globalThis.__bootstrap;
 const {
   isAnyArrayBuffer,
   isArgumentsObject,
@@ -28,13 +30,19 @@ const {
   isWeakMap,
   isWeakSet,
 } = core;
-import {
+const {
   op_get_constructor_name,
   op_get_non_index_property_names,
   op_preview_entries,
-} from "ext:core/ops";
-import * as ops from "ext:core/ops";
-import { URLPrototype } from "ext:deno_web/00_url.js";
+} = core.ops;
+const ops = core.ops;
+let _URLPrototype;
+function getURLPrototype() {
+  if (!_URLPrototype) {
+    _URLPrototype = core.loadExtScript("ext:deno_web/00_url.js").URLPrototype;
+  }
+  return _URLPrototype;
+}
 const {
   AggregateError,
   AggregateErrorPrototype,
@@ -1017,7 +1025,7 @@ function formatRaw(ctx, value, recurseTimes, typedArray, proxyDetails) {
           return base;
         }
       } else if (
-        ObjectPrototypeIsPrototypeOf(URLPrototype, value) &&
+        ObjectPrototypeIsPrototypeOf(getURLPrototype(), value) &&
         !(recurseTimes > ctx.depth && ctx.depth !== null)
       ) {
         base = value.href;
@@ -2718,7 +2726,7 @@ const ansi = new SafeRegExp(ansiPattern, "g");
 /**
  * Returns the number of columns required to display the given string.
  */
-export function getStringWidth(str, removeControlChars = true) {
+function getStringWidth(str, removeControlChars = true) {
   let width = 0;
 
   if (removeControlChars) {
@@ -2752,7 +2760,7 @@ const isZeroWidthCodePoint = (code) => {
 /**
  * Remove all VT control characters. Use to estimate displayed string width.
  */
-export function stripVTControlCharacters(str) {
+function stripVTControlCharacters(str) {
   return StringPrototypeReplace(str, ansi, "");
 }
 
@@ -4118,7 +4126,7 @@ internals.inspectArgs = inspectArgs;
 internals.parseCss = parseCss;
 internals.parseCssColor = parseCssColor;
 
-export {
+return {
   colors,
   Console,
   createFilteredInspectProxy,
@@ -4131,10 +4139,13 @@ export {
   getConsoleInspectOptions,
   getDefaultInspectOptions,
   getStderrNoColor,
+  getStringWidth,
   getStdoutNoColor,
   inspect,
   inspectArgs,
   quoteString,
   setNoColorFns,
+  stripVTControlCharacters,
   styles,
 };
+})()

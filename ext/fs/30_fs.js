@@ -95,13 +95,13 @@ const {
 } = primordials;
 
 import { read, readSync, write, writeSync } from "ext:deno_io/12_io.js";
-import * as abortSignal from "ext:deno_web/03_abort_signal.js";
-import {
+const abortSignal = core.loadExtScript("ext:deno_web/03_abort_signal.js");
+const {
   readableStreamForRid,
   ReadableStreamPrototype,
   writableStreamForRid,
-} from "ext:deno_web/06_streams.js";
-import { pathFromURL } from "ext:deno_web/00_infra.js";
+} = core.loadExtScript("ext:deno_web/06_streams.js");
+const { pathFromURL } = core.loadExtScript("ext:deno_web/00_infra.js");
 
 function chmodSync(path, mode) {
   op_fs_chmod_sync(pathFromURL(path), mode);

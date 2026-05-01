@@ -6,13 +6,16 @@
 /// <reference path="./internal.d.ts" />
 /// <reference path="../../cli/tsc/dts/lib.deno_web.d.ts" />
 
-import { core, primordials } from "ext:core/mod.js";
-import {
+// deno-fmt-ignore-file
+
+(function () {
+const { core, primordials } = globalThis.__bootstrap;
+const {
   op_message_port_create_entangled,
   op_message_port_post_message,
   op_message_port_post_message_raw,
   op_message_port_recv_message,
-} from "ext:core/ops";
+} = core.ops;
 const {
   ArrayBufferPrototypeGetByteLength,
   ArrayPrototypeFilter,
@@ -34,20 +37,35 @@ const {
   isArrayBuffer,
 } = core;
 const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
-import { createFilteredInspectProxy } from "./01_console.js";
-import {
+
+// Lazy-load createFilteredInspectProxy from console to avoid
+// circular dependency at load time. Only needed for custom inspect.
+let _createFilteredInspectProxy;
+function getCreateFilteredInspectProxy() {
+  if (!_createFilteredInspectProxy) {
+    _createFilteredInspectProxy = core.loadExtScript(
+      "ext:deno_web/01_console.js",
+    ).createFilteredInspectProxy;
+  }
+  return _createFilteredInspectProxy;
+}
+
+const {
   defineEventHandler,
   EventTarget,
   MessageEvent,
   setEventTargetData,
   setIsTrusted,
-} from "./02_event.js";
-import {
-  isDetachedBuffer,
+} = core.loadExtScript("ext:deno_web/02_event.js");
+
+const {
   ReadableStream,
-  TransformStream,
+  ReadableStreamPrototype,
   WritableStream,
-} from "./06_streams.js";
+  WritableStreamPrototype,
+  TransformStream,
+} = core.loadExtScript("ext:deno_web/06_streams.js");
+
 const { DOMException } = core.loadExtScript("ext:deno_web/01_dom_exception.js");
 
 // counter of how many message ports are actively refed
@@ -82,7 +100,7 @@ class MessageChannel {
 
   [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
     return inspect(
-      createFilteredInspectProxy({
+      getCreateFilteredInspectProxy()({
         object: this,
         evaluate: ObjectPrototypeIsPrototypeOf(MessageChannelPrototype, this),
         keys: [
@@ -108,10 +126,10 @@ const _refed = Symbol("refed");
 const _messageEventListenerCount = Symbol("messageEventListenerCount");
 const nodeWorkerThreadCloseCb = Symbol("nodeWorkerThreadCloseCb");
 const nodeWorkerThreadCloseCbInvoked = Symbol("nodeWorkerThreadCloseCbInvoked");
-export const refMessagePort = Symbol("refMessagePort");
+const refMessagePort = Symbol("refMessagePort");
 /** It is used by 99_main.js and worker_threads to
  * unref/ref on the global message event handler count. */
-export const unrefParentPort = Symbol("unrefParentPort");
+const unrefParentPort = Symbol("unrefParentPort");
 
 /**
  * @param {number} id
@@ -341,7 +359,7 @@ class MessagePort extends EventTarget {
 
   [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
     return inspect(
-      createFilteredInspectProxy({
+      getCreateFilteredInspectProxy()({
         object: this,
         evaluate: ObjectPrototypeIsPrototypeOf(MessagePortPrototype, this),
         keys: [
@@ -476,6 +494,8 @@ const serializeErrorCb = (err) => {
 };
 
 function serializeJsMessageData(data, transferables) {
+  const { isDetachedBuffer } = core.loadExtScript("ext:deno_web/06_streams.js");
+
   // Fast path: no transferables (most common case)
   if (transferables.length === 0) {
     const serializedData = core.serialize(data, undefined, serializeErrorCb);
@@ -654,7 +674,7 @@ function structuredClone(value, options) {
   return deserializeJsMessageData(messageData)[0];
 }
 
-export {
+return {
   deserializeJsMessageData,
   markNotSerializable,
   MessageChannel,
@@ -665,6 +685,9 @@ export {
   nodeWorkerThreadCloseCb,
   nodeWorkerThreadCloseCbInvoked,
   refedMessagePortsCount,
+  refMessagePort,
   serializeJsMessageData,
   structuredClone,
+  unrefParentPort,
 };
+})()

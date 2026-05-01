@@ -6,13 +6,15 @@
 /// <reference path="../web/internal.d.ts" />
 /// <reference path="../../cli/tsc/dts/lib.deno_web.d.ts" />
 
-import { core, internals, primordials } from "ext:core/mod.js";
-import {
+// deno-fmt-ignore-file
+(function () {
+const { core, internals, primordials } = globalThis.__bootstrap;
+const {
   op_base64_decode,
   op_base64_decode_into,
   op_base64_encode,
   op_base64_encode_from_buffer,
-} from "ext:core/ops";
+} = core.ops;
 const {
   ArrayPrototypeJoin,
   ArrayPrototypeMap,
@@ -39,7 +41,7 @@ const {
   TypeError,
 } = primordials;
 
-import { URLPrototype } from "ext:deno_web/00_url.js";
+const { URLPrototype } = core.loadExtScript("ext:deno_web/00_url.js");
 
 const ASCII_DIGIT = ["\u0030-\u0039"];
 const ASCII_UPPER_ALPHA = ["\u0041-\u005A"];
@@ -465,9 +467,9 @@ function pathFromURL(pathOrUrl) {
 internals.pathFromURL = pathFromURL;
 
 // deno-lint-ignore prefer-primordials
-export const SymbolMetadata = Symbol.metadata ?? Symbol("Symbol.metadata");
+const SymbolMetadata = Symbol.metadata ?? Symbol("Symbol.metadata");
 
-export {
+return {
   ASCII_ALPHA,
   ASCII_ALPHANUMERIC,
   ASCII_DIGIT,
@@ -499,4 +501,6 @@ export {
   pathFromURL,
   regexMatcher,
   serializeJSValueToJSONString,
+  SymbolMetadata,
 };
+})()

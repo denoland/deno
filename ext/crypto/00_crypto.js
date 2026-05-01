@@ -89,7 +89,9 @@ const {
 } = primordials;
 
 const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
-import { createFilteredInspectProxy } from "ext:deno_web/01_console.js";
+const { createFilteredInspectProxy } = core.loadExtScript(
+  "ext:deno_web/01_console.js",
+);
 const { DOMException } = core.loadExtScript("ext:deno_web/01_dom_exception.js");
 import { kKeyObject } from "ext:deno_node/internal/crypto/constants.ts";
 

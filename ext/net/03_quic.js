@@ -37,14 +37,14 @@ import {
   op_webtransport_accept,
   op_webtransport_connect,
 } from "ext:core/ops";
-import {
+const {
   getReadableStreamResourceBacking,
   getWritableStreamResourceBacking,
   ReadableStream,
   readableStreamForRid,
   WritableStream,
   writableStreamForRid,
-} from "ext:deno_web/06_streams.js";
+} = core.loadExtScript("ext:deno_web/06_streams.js");
 import { loadTlsKeyPair } from "ext:deno_net/02_tls.js";
 const {
   BadResourcePrototype,

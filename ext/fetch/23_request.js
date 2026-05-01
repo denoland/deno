@@ -25,13 +25,17 @@ const {
 } = primordials;
 
 const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
-import { createFilteredInspectProxy } from "ext:deno_web/01_console.js";
-import { HTTP_TOKEN_CODE_POINT_RE } from "ext:deno_web/00_infra.js";
-import { URL } from "ext:deno_web/00_url.js";
+const { createFilteredInspectProxy } = core.loadExtScript(
+  "ext:deno_web/01_console.js",
+);
+const { HTTP_TOKEN_CODE_POINT_RE } = core.loadExtScript(
+  "ext:deno_web/00_infra.js",
+);
+const { URL } = core.loadExtScript("ext:deno_web/00_url.js");
 import { extractBody, mixinBody } from "ext:deno_fetch/22_body.js";
-import { getLocationHref } from "ext:deno_web/12_location.js";
-import { extractMimeType } from "ext:deno_web/01_mimesniff.js";
-import { blobFromObjectUrl } from "ext:deno_web/09_file.js";
+const { getLocationHref } = core.loadExtScript("ext:deno_web/12_location.js");
+const { extractMimeType } = core.loadExtScript("ext:deno_web/01_mimesniff.js");
+const { blobFromObjectUrl } = core.loadExtScript("ext:deno_web/09_file.js");
 import {
   fillHeaders,
   getDecodeSplitHeader,
@@ -40,13 +44,15 @@ import {
   headersFromHeaderList,
 } from "ext:deno_fetch/20_headers.js";
 import { HttpClientPrototype } from "ext:deno_fetch/22_http_client.js";
-import {
+const {
   createDependentAbortSignal,
   newSignal,
   signalAbort,
-} from "ext:deno_web/03_abort_signal.js";
+} = core.loadExtScript("ext:deno_web/03_abort_signal.js");
 const { DOMException } = core.loadExtScript("ext:deno_web/01_dom_exception.js");
-import { markNotSerializable } from "ext:deno_web/13_message_port.js";
+const { markNotSerializable } = core.loadExtScript(
+  "ext:deno_web/13_message_port.js",
+);
 const { internalRidSymbol } = core;
 
 const _request = Symbol("request");

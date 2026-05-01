@@ -1,7 +1,10 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-import { core, primordials } from "ext:core/mod.js";
-import {
+// deno-fmt-ignore-file
+
+(function () {
+const { core, primordials } = globalThis.__bootstrap;
+const {
   DOMMatrix,
   DOMMatrixReadOnly,
   DOMPoint,
@@ -12,7 +15,7 @@ import {
   op_geometry_get_enable_css_parser_features,
   op_geometry_matrix_set_matrix_value,
   op_geometry_matrix_to_string,
-} from "ext:core/ops";
+} = core.ops;
 const {
   ObjectDefineProperty,
   ObjectPrototypeIsPrototypeOf,
@@ -20,7 +23,17 @@ const {
 } = primordials;
 
 const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
-import { createFilteredInspectProxy } from "ext:deno_web/01_console.js";
+
+// Lazy-load createFilteredInspectProxy from console
+let _createFilteredInspectProxy;
+function getCreateFilteredInspectProxy() {
+  if (!_createFilteredInspectProxy) {
+    _createFilteredInspectProxy = core.loadExtScript(
+      "ext:deno_web/01_console.js",
+    ).createFilteredInspectProxy;
+  }
+  return _createFilteredInspectProxy;
+}
 
 const DOMPointPrototype = DOMPoint.prototype;
 const DOMPointReadOnlyPrototype = DOMPointReadOnly.prototype;
@@ -31,7 +44,7 @@ ObjectDefineProperty(
     __proto__: null,
     value: function customInspect(inspect, inspectOptions) {
       return inspect(
-        createFilteredInspectProxy({
+        getCreateFilteredInspectProxy()({
           object: this,
           evaluate: ObjectPrototypeIsPrototypeOf(
             DOMPointReadOnlyPrototype,
@@ -59,7 +72,7 @@ ObjectDefineProperty(
     __proto__: null,
     value: function customInspect(inspect, inspectOptions) {
       return inspect(
-        createFilteredInspectProxy({
+        getCreateFilteredInspectProxy()({
           object: this,
           evaluate: ObjectPrototypeIsPrototypeOf(
             DOMRectReadOnlyPrototype,
@@ -83,7 +96,7 @@ ObjectDefineProperty(DOMQuadPrototype, SymbolFor("Deno.privateCustomInspect"), {
   __proto__: null,
   value: function customInspect(inspect, inspectOptions) {
     return inspect(
-      createFilteredInspectProxy({
+      getCreateFilteredInspectProxy()({
         object: this,
         evaluate: ObjectPrototypeIsPrototypeOf(DOMQuadPrototype, this),
         keys: ["p1", "p2", "p3", "p4"],
@@ -106,7 +119,7 @@ ObjectDefineProperty(
     __proto__: null,
     value: function customInspect(inspect, inspectOptions) {
       return inspect(
-        createFilteredInspectProxy({
+        getCreateFilteredInspectProxy()({
           object: this,
           evaluate: ObjectPrototypeIsPrototypeOf(
             DOMMatrixReadOnlyPrototype,
@@ -178,7 +191,7 @@ if (op_geometry_get_enable_css_parser_features()) {
 webidl.configureInterface(DOMMatrix);
 webidl.configureInterface(DOMMatrixReadOnly);
 
-export {
+return {
   DOMMatrix,
   DOMMatrixPrototype,
   DOMMatrixReadOnly,
@@ -194,3 +207,4 @@ export {
   DOMRectReadOnly,
   DOMRectReadOnlyPrototype,
 };
+})()

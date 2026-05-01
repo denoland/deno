@@ -9,20 +9,22 @@
 /// <reference path="../../cli/tsc/dts/lib.deno_web.d.ts" />
 /// <reference lib="esnext" />
 
-import { core, primordials } from "ext:core/mod.js";
+// deno-fmt-ignore-file
+(function () {
+const { core, primordials } = globalThis.__bootstrap;
 const {
   isDataView,
   isSharedArrayBuffer,
   isTypedArray,
 } = core;
-import {
+const {
   op_encoding_decode,
   op_encoding_decode_single,
   op_encoding_decode_utf8,
   op_encoding_encode_into,
   op_encoding_new_decoder,
   op_encoding_normalize_label,
-} from "ext:core/ops";
+} = core.ops;
 const {
   DataViewPrototypeGetBuffer,
   DataViewPrototypeGetByteLength,
@@ -45,7 +47,7 @@ const {
 } = primordials;
 
 const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
-import { createFilteredInspectProxy } from "./01_console.js";
+const { createFilteredInspectProxy } = core.loadExtScript("ext:deno_web/01_console.js");
 
 class TextDecoder {
   /** @type {string} */
@@ -562,10 +564,11 @@ function BOMSniff(bytes) {
   return null;
 }
 
-export {
+return {
   decode,
   TextDecoder,
   TextDecoderStream,
   TextEncoder,
   TextEncoderStream,
 };
+})()

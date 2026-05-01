@@ -1,7 +1,7 @@
 // deno-lint-ignore-file
 // Copyright 2018-2026 the Deno authors. MIT license.
 import process from "node:process";
-import { primordials } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 
 import {
   isDuplexNodeStream,
@@ -22,8 +22,10 @@ import Duplex from "node:_stream_duplex";
 import Readable from "node:_stream_readable";
 import Writable from "node:_stream_writable";
 import from from "ext:deno_node/internal/streams/from.js";
-import { isBlob } from "ext:deno_web/09_file.js";
-import { AbortController } from "ext:deno_web/03_abort_signal.js";
+const { isBlob } = core.loadExtScript("ext:deno_web/09_file.js");
+const { AbortController } = core.loadExtScript(
+  "ext:deno_web/03_abort_signal.js",
+);
 
 const {
   AbortError,
