@@ -93,7 +93,6 @@ import {
 } from "ext:runtime/98_global_scope_worker.js";
 import { SymbolMetadata } from "ext:deno_web/00_infra.js";
 import { bootstrap as bootstrapOtel } from "ext:deno_telemetry/telemetry.ts";
-import { nodeGlobals } from "ext:deno_node/00_globals.js";
 
 // deno-lint-ignore prefer-primordials
 if (Symbol.metadata) {
@@ -430,6 +429,12 @@ core.registerErrorBuilder(
     return new DOMException(msg, "InvalidStateError");
   },
 );
+core.registerErrorBuilder(
+  "DOMExceptionSyntaxError",
+  function DOMExceptionSyntaxError(msg) {
+    return new DOMException(msg, "SyntaxError");
+  },
+);
 
 function runtimeStart(
   denoVersion,
@@ -598,7 +603,7 @@ function removeImportedOps() {
 // FIXME(bartlomieju): temporarily add whole `Deno.core` to
 // `Deno[Deno.internal]` namespace. It should be removed and only necessary
 // methods should be left there.
-ObjectAssign(internals, { core, nodeGlobals: { ...nodeGlobals } });
+ObjectAssign(internals, { core });
 const internalSymbol = Symbol("Deno.internal");
 const finalDenoNs = {
   internal: internalSymbol,
@@ -677,6 +682,8 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
       13: otelConfig,
       15: standalone,
       16: autoServe,
+      17: nodeClusterUniqueId,
+      18: nodeClusterSchedPolicy,
     } = runtimeOptions;
 
     denoNs.build.standalone = standalone;
@@ -849,6 +856,8 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
         runningOnMainThread: true,
         argv0,
         nodeDebug,
+        nodeClusterUniqueId,
+        nodeClusterSchedPolicy,
       });
     }
   } else {
@@ -880,6 +889,8 @@ function bootstrapWorkerRuntime(
       7: nodeDebug,
       13: otelConfig,
       15: standalone,
+      17: nodeClusterUniqueId,
+      18: nodeClusterSchedPolicy,
     } = runtimeOptions;
 
     denoNs.build.standalone = standalone;
@@ -972,6 +983,8 @@ function bootstrapWorkerRuntime(
         workerId,
         maybeWorkerMetadata: workerMetadata,
         nodeDebug,
+        nodeClusterUniqueId,
+        nodeClusterSchedPolicy,
         moduleSpecifier: workerType === "node" ? moduleSpecifier : null,
       });
     }

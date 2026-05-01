@@ -11,6 +11,9 @@ Immediate {
 }
 Timeout {
   _idleTimeout: 1000,
+  _idleStart: [WILDLINE],
+  _idlePrev: null,
+  _idleNext: null,
   _onTimeout: [Function (anonymous)],
   _timerArgs: [],
   _repeat: false,

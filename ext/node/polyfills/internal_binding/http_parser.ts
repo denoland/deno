@@ -237,10 +237,15 @@ HTTPParser.prototype.execute = function (
       err.reason = "Header overflow";
       err.message = "Parse Error: Header overflow";
     } else {
-      err.code = "HPE_ERROR";
-      err.reason = "Parse Error";
+      const code = this._native.getLastErrorCode();
+      const reason = this._native.getLastErrorReason();
+      err.code = code && code !== "HPE_OK" ? code : "HPE_ERROR";
+      err.reason = reason || "Parse Error";
+      if (reason) {
+        err.message = `Parse Error: ${reason}`;
+      }
     }
-    err.bytesParsed = data.byteLength;
+    err.bytesParsed = this._native.getLastBytesParsed();
     return err;
   }
 

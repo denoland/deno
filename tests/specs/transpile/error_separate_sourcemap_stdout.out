@@ -1,0 +1,2 @@
+[WILDCARD]deno transpile is experimental and subject to changes
+error: Cannot use --source-map separate when outputting to stdout. Use --output or --outdir, or use --source-map inline instead.

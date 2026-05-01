@@ -342,7 +342,13 @@ Deno.test("[node/http] IncomingRequest socket has remoteAddress + remotePort", a
       `http://127.0.0.1:${port}/`,
     );
     await res.arrayBuffer();
-    assertEquals(remoteAddress, "127.0.0.1");
+    // Default-host listen() binds dual-stack, so IPv4 connections arrive
+    // as IPv4-mapped IPv6 addresses. Accept either form.
+    assert(
+      remoteAddress === "127.0.0.1" ||
+        remoteAddress === "::ffff:127.0.0.1",
+      `unexpected remoteAddress: ${remoteAddress}`,
+    );
     assertEquals(typeof remotePort, "number");
     server.close(() => resolve());
   });
