@@ -1,0 +1,6 @@
+before access
+deferred module evaluated
+value: 42
+after first access
+add: 3
+done

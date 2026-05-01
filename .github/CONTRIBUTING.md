@@ -11,10 +11,10 @@
 
 This is the main repository that provides the `deno` CLI.
 
-If you want to fix a bug or add a new feature to `deno` this is the repository
+If you want to fix a bug or add a new feature to `deno`, this is the repository
 to contribute to.
 
-Some systems, including a large part of the Node.js compatibility layer are
+Some systems, including a large part of the Node.js compatibility layer, are
 implemented in JavaScript and TypeScript modules. These are a good place to
 start if you are looking to make your first contribution.
 
@@ -173,7 +173,7 @@ brew install cmake
 
 ##### Mac M1/M2
 
-For Apple aarch64 users `lld` must be installed.
+For Apple aarch64 users, `lld` must be installed.
 
 ```console
 brew install llvm lld
@@ -236,6 +236,9 @@ Windows users can download the latest binary release from
 
 ### Building Deno
 
+_For WSL, make sure you have sufficient memory allocated in `.wslconfig`. It is
+recommended that you allocate at least 16GB._
+
 The recommended way to build Deno is using the `./x` tool:
 
 ```console
@@ -248,9 +251,6 @@ directly:
 ```console
 cargo build -vv
 ```
-
-_For WSL make sure you have sufficient memory allocated in `.wslconfig`. It is
-recommended that you allocate at least 16GB._
 
 If you want to build Deno and V8 from source code (for lower-level V8
 development, or on platforms without precompiled V8):
@@ -274,7 +274,7 @@ Build with the `./x` tool or Cargo:
 # Or with cargo directly:
 cargo build -vv
 
-# Build errors?  Ensure you have latest main and try building again, or if that doesn't work try:
+# Build errors?  Ensure you have latest main and try building again, or if that doesn't work, try:
 cargo clean && cargo build -vv
 
 # Run:
@@ -344,7 +344,7 @@ deno_ast = { path = "../deno_ast" }
 This will build the `deno_ast` crate from the local path and link against that
 version instead of fetching it from `crates.io`.
 
-**Note**: It's important that the version of the dependencies in the
-`Cargo.toml` match the version of the dependencies you have on disk.
+**Note**: It's important that the versions of the dependencies in the
+`Cargo.toml` match the versions of the dependencies you have on disk.
 
 Use `cargo search <dependency_name>` to inspect the versions.

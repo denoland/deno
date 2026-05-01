@@ -298,6 +298,9 @@ pub enum PrivateEncryptDecryptError {
   #[class(type)]
   #[error("Unknown padding")]
   UnknownPadding,
+  #[class(generic)]
+  #[error("Invalid digest used")]
+  InvalidDigest,
 }
 
 /// PKCS#1 v1.5 type 1 padding for private key encryption (signing).
@@ -347,11 +350,32 @@ fn pkcs1v15_type1_unpad(
   Ok(em[sep + 1..].to_vec())
 }
 
+fn create_oaep(
+  hash: Option<&str>,
+  label: Option<&[u8]>,
+) -> Result<Oaep, PrivateEncryptDecryptError> {
+  let hash = hash.unwrap_or("sha1");
+  let mut oaep = digest::match_fixed_digest!(hash, fn <D>() {
+    Oaep::new::<D>()
+  }, _ => {
+    return Err(PrivateEncryptDecryptError::InvalidDigest);
+  });
+  if let Some(label) = label {
+    // The rsa crate stores the label as String but only uses
+    // .as_bytes() on it, so the UTF-8 invariant is not relied upon.
+    // SAFETY: label bytes are only ever hashed, never interpreted as text.
+    oaep.label = Some(unsafe { String::from_utf8_unchecked(label.to_vec()) });
+  }
+  Ok(oaep)
+}
+
 #[op2]
 pub fn op_node_private_encrypt(
   #[serde] key: StringOrBuffer,
   #[serde] msg: StringOrBuffer,
   #[smi] padding: u32,
+  #[string] oaep_hash: Option<String>,
+  #[serde] oaep_label: Option<JsBuffer>,
 ) -> Result<Uint8Array, PrivateEncryptDecryptError> {
   let key = match std::str::from_utf8(&key) {
     Ok(pem) => RsaPrivateKey::from_pkcs8_pem(pem)
@@ -378,14 +402,8 @@ pub fn op_node_private_encrypt(
       Ok(result_bytes.into())
     }
     4 => {
-      // RSA_NO_PADDING is padding=3, OAEP is padding=4
-      // For OAEP with private encrypt, use the public key component
-      Ok(
-        key
-          .as_ref()
-          .encrypt(&mut rng, Oaep::new::<sha1::Sha1>(), &msg)?
-          .into(),
-      )
+      let oaep = create_oaep(oaep_hash.as_deref(), oaep_label.as_deref())?;
+      Ok(key.as_ref().encrypt(&mut rng, oaep, &msg)?.into())
     }
     _ => Err(PrivateEncryptDecryptError::UnknownPadding),
   }
@@ -396,6 +414,8 @@ pub fn op_node_private_decrypt(
   #[serde] key: StringOrBuffer,
   #[serde] msg: StringOrBuffer,
   #[smi] padding: u32,
+  #[string] oaep_hash: Option<String>,
+  #[serde] oaep_label: Option<JsBuffer>,
 ) -> Result<Uint8Array, PrivateEncryptDecryptError> {
   let key = match std::str::from_utf8(&key) {
     Ok(pem) => RsaPrivateKey::from_pkcs8_pem(pem)
@@ -408,7 +428,10 @@ pub fn op_node_private_decrypt(
 
   match padding {
     1 => Ok(key.decrypt(Pkcs1v15Encrypt, &msg)?.into()),
-    4 => Ok(key.decrypt(Oaep::new::<sha1::Sha1>(), &msg)?.into()),
+    4 => {
+      let oaep = create_oaep(oaep_hash.as_deref(), oaep_label.as_deref())?;
+      Ok(key.decrypt(oaep, &msg)?.into())
+    }
     _ => Err(PrivateEncryptDecryptError::UnknownPadding),
   }
 }
@@ -418,6 +441,8 @@ pub fn op_node_public_encrypt(
   #[serde] key: StringOrBuffer,
   #[serde] msg: StringOrBuffer,
   #[smi] padding: u32,
+  #[string] oaep_hash: Option<String>,
+  #[serde] oaep_label: Option<JsBuffer>,
 ) -> Result<Uint8Array, PrivateEncryptDecryptError> {
   let key = match std::str::from_utf8(&key) {
     Ok(pem) => RsaPublicKey::from_public_key_pem(pem)
@@ -448,11 +473,10 @@ pub fn op_node_public_encrypt(
   let mut rng = rand::thread_rng();
   match padding {
     1 => Ok(key.encrypt(&mut rng, Pkcs1v15Encrypt, &msg)?.into()),
-    4 => Ok(
-      key
-        .encrypt(&mut rng, Oaep::new::<sha1::Sha1>(), &msg)?
-        .into(),
-    ),
+    4 => {
+      let oaep = create_oaep(oaep_hash.as_deref(), oaep_label.as_deref())?;
+      Ok(key.encrypt(&mut rng, oaep, &msg)?.into())
+    }
     _ => Err(PrivateEncryptDecryptError::UnknownPadding),
   }
 }
@@ -665,7 +689,7 @@ pub fn op_node_sign(
   #[cppgc] handle: &KeyObjectHandle,
   #[buffer] digest: &[u8],
   #[string] digest_type: &str,
-  #[smi] pss_salt_length: Option<u32>,
+  #[smi] pss_salt_length: Option<i32>,
   #[smi] padding: Option<u32>,
   #[smi] dsa_signature_encoding: u32,
 ) -> Result<Box<[u8]>, sign::KeyObjectHandlePrehashedSignAndVerifyError> {
@@ -684,7 +708,7 @@ pub fn op_node_verify(
   #[buffer] digest: &[u8],
   #[string] digest_type: &str,
   #[buffer] signature: &[u8],
-  #[smi] pss_salt_length: Option<u32>,
+  #[smi] pss_salt_length: Option<i32>,
   #[smi] padding: Option<u32>,
   #[smi] dsa_signature_encoding: u32,
 ) -> Result<bool, sign::KeyObjectHandlePrehashedSignAndVerifyError> {

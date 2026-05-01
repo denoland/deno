@@ -32,6 +32,8 @@ use deno_net::ops::TlsHandshakeInfo;
 use deno_net::ops_tls::TlsStreamResource;
 use deno_node_crypto::x509::Certificate;
 use deno_node_crypto::x509::CertificateObject;
+use deno_permissions::PermissionCheckError;
+use deno_permissions::PermissionsContainer;
 use deno_tls::SocketUse;
 use deno_tls::TlsClientConfigOptions;
 use deno_tls::TlsKeys;
@@ -43,41 +45,119 @@ use rustls_tokio_stream::TlsStream;
 use rustls_tokio_stream::TlsStreamRead;
 use rustls_tokio_stream::TlsStreamWrite;
 use rustls_tokio_stream::UnderlyingStream;
+use sys_traits::EnvVar;
+use sys_traits::FsRead;
 use webpki_root_certs;
 
+use crate::ExtNodeSys;
+
 #[derive(Clone)]
-struct NodeTlsState {
-  custom_ca_certs: Option<Vec<String>>,
+pub(crate) struct NodeTlsState {
+  pub(crate) custom_ca_certs: Option<Vec<String>>,
+  pub(crate) client_session_store:
+    Arc<dyn deno_tls::rustls::client::ClientSessionStore>,
+}
+
+fn der_to_pem(der: &[u8]) -> String {
+  let b64 = base64::engine::general_purpose::STANDARD.encode(der);
+  let pem_lines = b64
+    .chars()
+    .collect::<Vec<char>>()
+    // Node uses 72 characters per line, so we need to follow node even though
+    // it's not spec compliant https://datatracker.ietf.org/doc/html/rfc7468#section-2
+    .chunks(72)
+    .map(|c| c.iter().collect::<String>())
+    .collect::<Vec<String>>()
+    .join("\n");
+  format!("-----BEGIN CERTIFICATE-----\n{pem_lines}\n-----END CERTIFICATE-----",)
+}
+
+fn get_bundled_root_certificates() -> Vec<String> {
+  webpki_root_certs::TLS_SERVER_ROOT_CERTS
+    .iter()
+    .map(|cert| der_to_pem(cert))
+    .collect()
 }
 
 #[op2]
-pub fn op_get_root_certificates(state: &mut OpState) -> Vec<String> {
+pub fn op_get_root_certificates(
+  state: &mut OpState,
+) -> Result<Vec<String>, PermissionCheckError> {
+  state
+    .borrow_mut::<PermissionsContainer>()
+    .check_sys("ca", "node:tls.rootCertificates")?;
+
   if let Some(tls_state) = state.try_borrow::<NodeTlsState>()
     && let Some(certs) = &tls_state.custom_ca_certs
   {
-    return certs.clone();
+    return Ok(certs.clone());
   }
 
-  // Return default root certificates if no custom ones are set
-  webpki_root_certs::TLS_SERVER_ROOT_CERTS
-    .iter()
-    .map(|cert| {
-      let b64 = base64::engine::general_purpose::STANDARD.encode(cert);
-      let pem_lines = b64
-        .chars()
-        .collect::<Vec<char>>()
-        // Node uses 72 characters per line, so we need to follow node even though
-        // it's not spec compliant https://datatracker.ietf.org/doc/html/rfc7468#section-2
-        .chunks(72)
-        .map(|c| c.iter().collect::<String>())
-        .collect::<Vec<String>>()
-        .join("\n");
-      let pem = format!(
-        "-----BEGIN CERTIFICATE-----\n{pem_lines}\n-----END CERTIFICATE-----\n",
-      );
-      pem
+  Ok(get_bundled_root_certificates())
+}
+
+fn parse_extra_ca_certs(sys: &(impl EnvVar + FsRead)) -> Vec<String> {
+  let Ok(extra_ca_certs_file) = sys.env_var("NODE_EXTRA_CA_CERTS") else {
+    return vec![];
+  };
+  let Ok(contents) = sys.fs_read_to_string(&extra_ca_certs_file) else {
+    return vec![];
+  };
+  contents
+    .split("-----END CERTIFICATE-----")
+    .filter_map(|s| {
+      let trimmed = s.trim();
+      if trimmed.contains("-----BEGIN CERTIFICATE-----") {
+        Some(format!("{trimmed}\n-----END CERTIFICATE-----\n"))
+      } else {
+        None
+      }
     })
-    .collect::<Vec<String>>()
+    .collect()
+}
+
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+pub enum CaCertificatesError {
+  #[class(type)]
+  #[error(
+    "The argument 'type' must be one of 'default', 'system', 'bundled', or 'extra'. Received '{0}'"
+  )]
+  InvalidType(String),
+  #[class(inherit)]
+  #[error(transparent)]
+  Permission(#[from] PermissionCheckError),
+}
+
+#[op2]
+pub fn op_get_ca_certificates<TSys: ExtNodeSys + 'static>(
+  state: &mut OpState,
+  #[string] cert_type: String,
+) -> Result<Vec<String>, CaCertificatesError> {
+  state
+    .borrow_mut::<PermissionsContainer>()
+    .check_sys("ca", "node:tls.getCACertificates()")?;
+
+  let sys = state.borrow::<TSys>();
+  match cert_type.as_str() {
+    "bundled" => Ok(get_bundled_root_certificates()),
+    "system" => {
+      let native_certs =
+        deno_tls::deno_native_certs::load_native_certs().unwrap_or_default();
+      Ok(
+        native_certs
+          .into_iter()
+          .map(|cert| der_to_pem(&cert.0))
+          .collect(),
+      )
+    }
+    "extra" => Ok(parse_extra_ca_certs(sys)),
+    "default" => {
+      let mut certs = get_bundled_root_certificates();
+      certs.extend(parse_extra_ca_certs(sys));
+      Ok(certs)
+    }
+    _ => Err(CaCertificatesError::InvalidType(cert_type)),
+  }
 }
 
 #[op2]
@@ -90,6 +170,9 @@ pub fn op_set_default_ca_certificates(
   } else {
     state.put(NodeTlsState {
       custom_ca_certs: Some(certs),
+      client_session_store: Arc::new(
+        deno_tls::rustls::client::ClientSessionMemoryCache::new(256),
+      ),
     });
   }
 }

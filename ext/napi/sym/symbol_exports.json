@@ -95,6 +95,7 @@
     "napi_reference_ref",
     "napi_create_object",
     "node_api_create_object_with_properties",
+    "node_api_create_object_with_named_properties",
     "napi_create_promise",
     "napi_create_int32",
     "napi_escape_handle",

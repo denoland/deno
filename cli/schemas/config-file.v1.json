@@ -127,6 +127,20 @@
       "description": "Configuration for `deno compile`.",
       "additionalProperties": false,
       "properties": {
+        "include": {
+          "type": "array",
+          "description": "List of additional modules or files/directories to include in the compiled executable.",
+          "items": {
+            "type": "string"
+          }
+        },
+        "exclude": {
+          "type": "array",
+          "description": "List of files/directories to exclude from the compiled executable.",
+          "items": {
+            "type": "string"
+          }
+        },
         "permissions": {
           "$ref": "#/$defs/permissionNameOrSet"
         }
@@ -780,6 +794,16 @@
           "default": true,
           "type": "boolean"
         },
+        "vueComponentCase": {
+          "description": "Case style for Vue component tags.",
+          "default": "ignore",
+          "enum": ["ignore", "pascal-case", "kebab-case"]
+        },
+        "angularNextControlFlowSameLine": {
+          "description": "Whether Angular next control-flow clauses stay on the same line.",
+          "default": true,
+          "type": "boolean"
+        },
         "options": {
           "type": "object",
           "properties": {
@@ -936,8 +960,7 @@
         }
       }, {
         "description": "Disable publishing this package with deno publish",
-        "type": "boolean",
-        "const": "false"
+        "const": false
       }]
     },
     "bench": {

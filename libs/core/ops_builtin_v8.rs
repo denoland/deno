@@ -189,6 +189,15 @@ pub fn op_lazy_load_esm(
   module_map_rc.lazy_load_esm_module(scope, &module_specifier)
 }
 
+#[op2(reentrant)]
+pub fn op_load_ext_script(
+  scope: &mut v8::PinScope,
+  #[string] specifier: String,
+) -> Result<v8::Global<v8::Value>, CoreError> {
+  let module_map_rc = JsRealm::module_map_from(scope);
+  module_map_rc.load_ext_script(scope, &specifier)
+}
+
 // We run in a `nofast` op here so we don't get put into a `DisallowJavascriptExecutionScope` and we're
 // allowed to touch JS heap.
 #[op2(nofast)]
@@ -1384,4 +1393,18 @@ pub fn op_get_extras_binding_object<'s, 'i>(
 ) -> v8::Local<'s, v8::Value> {
   let context = scope.get_current_context();
   context.get_extras_binding_object(scope).into()
+}
+
+/// Toggle whether refed immediates keep the event loop alive.
+/// `true` starts the idle handle (loop stays alive), `false` stops it.
+#[op2(fast)]
+pub fn op_immediate_check(scope: &mut v8::PinScope, make_ref: bool) {
+  let context_state = JsRealm::state_from_scope(scope);
+  if let Some(handle) = context_state.immediate_check_handle.borrow().as_ref() {
+    if make_ref {
+      handle.make_ref();
+    } else {
+      handle.make_unref();
+    }
+  }
 }

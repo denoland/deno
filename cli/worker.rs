@@ -94,6 +94,7 @@ impl CliMainWorker {
     {
       let coverage_for_exit = coverage_cell.clone();
       let profiler_for_exit = profiler_cell.clone();
+      let inspector = self.worker.js_runtime().inspector();
       let mut cbs = OpExitCallbacks::default();
       cbs.push(Box::new(move || {
         if let Some(mut cc) = coverage_for_exit.borrow_mut().take() {
@@ -103,6 +104,21 @@ impl CliMainWorker {
       cbs.push(Box::new(move || {
         if let Some(mut cp) = profiler_for_exit.borrow_mut().take() {
           let _ = cp.stop_profiling();
+        }
+      }));
+      // When an inspector session is connected, notify it that the
+      // execution context is being destroyed before exiting. Without this,
+      // process.exit() would call std::process::exit() immediately,
+      // skipping the normal event-loop shutdown path where V8's
+      // context_destroyed is called and Runtime.executionContextDestroyed
+      // is sent to debuggers.
+      cbs.push(Box::new(move || {
+        let sessions_state = inspector.sessions_state();
+        if sessions_state.has_nonblocking_wait_for_disconnect {
+          inspector.broadcast_context_destroyed();
+          // Match Node.js message format that debugger clients rely on
+          log::info!("Waiting for the debugger to disconnect...");
+          inspector.wait_for_sessions_disconnect();
         }
       }));
       self.worker.js_runtime().op_state().borrow_mut().put(cbs);
