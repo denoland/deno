@@ -186,7 +186,6 @@ impl TlsConnection {
         .map(|_| ()),
     }
   }
-
 }
 
 #[derive(serde::Serialize)]
