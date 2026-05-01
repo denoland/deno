@@ -42,9 +42,7 @@ fn allocate_random_port() -> std::io::Result<u16> {
 
 /// WEF-backed implementation of [`denort::desktop::DesktopApi`].
 struct WefDesktopApi {
-  event_tx: tokio::sync::mpsc::UnboundedSender<
-    deno_runtime::ops::desktop::DesktopEvent,
-  >,
+  event_tx: deno_runtime::ops::desktop::DesktopEventTx,
   pending_responses: deno_runtime::ops::desktop::PendingBindResponses,
   closed_windows: Arc<Mutex<HashSet<u32>>>,
   trays: Arc<Mutex<HashMap<u32, just_wef::TrayIcon>>>,
@@ -67,8 +65,8 @@ impl WefDesktopApi {
 
     window
       .on_keyboard_event(move |ev| {
-        let _ =
-          kb_tx.send(deno_runtime::ops::desktop::DesktopEvent::KeyboardEvent {
+        let _ = kb_tx.try_send(
+          deno_runtime::ops::desktop::DesktopEvent::KeyboardEvent {
             window_id: ev.window_id,
             r#type: match ev.state {
               just_wef::KeyState::Pressed => "keydown".to_string(),
@@ -81,10 +79,11 @@ impl WefDesktopApi {
             alt: ev.modifiers.alt,
             meta: ev.modifiers.meta,
             repeat: ev.repeat,
-          });
+          },
+        );
       })
       .on_mouse_click(move |ev| {
-        let _ = mouse_click_tx.send(
+        let _ = mouse_click_tx.try_send(
           deno_runtime::ops::desktop::DesktopEvent::MouseClick {
             window_id: ev.window_id,
             state: match ev.state {
@@ -110,7 +109,7 @@ impl WefDesktopApi {
         );
       })
       .on_mouse_move(move |ev| {
-        let _ = mouse_move_tx.send(
+        let _ = mouse_move_tx.try_send(
           deno_runtime::ops::desktop::DesktopEvent::MouseMove {
             window_id: ev.window_id,
             client_x: ev.x,
@@ -124,7 +123,7 @@ impl WefDesktopApi {
       })
       .on_wheel(move |ev| {
         let _ =
-          wheel_tx.send(deno_runtime::ops::desktop::DesktopEvent::Wheel {
+          wheel_tx.try_send(deno_runtime::ops::desktop::DesktopEvent::Wheel {
             window_id: ev.window_id,
             delta_x: ev.delta_x,
             delta_y: ev.delta_y,
@@ -142,7 +141,7 @@ impl WefDesktopApi {
           });
       })
       .on_cursor_enter_leave(move |ev| {
-        let _ = cursor_tx.send(
+        let _ = cursor_tx.try_send(
           deno_runtime::ops::desktop::DesktopEvent::CursorEnterLeave {
             window_id: ev.window_id,
             entered: ev.entered,
@@ -156,7 +155,7 @@ impl WefDesktopApi {
         );
       })
       .on_focused(move |ev| {
-        let _ = focus_tx.send(
+        let _ = focus_tx.try_send(
           deno_runtime::ops::desktop::DesktopEvent::FocusChanged {
             window_id: ev.window_id,
             focused: ev.focused,
@@ -164,7 +163,7 @@ impl WefDesktopApi {
         );
       })
       .on_resize(move |ev| {
-        let _ = resize_tx.send(
+        let _ = resize_tx.try_send(
           deno_runtime::ops::desktop::DesktopEvent::WindowResize {
             window_id: ev.window_id,
             width: ev.width,
@@ -173,16 +172,17 @@ impl WefDesktopApi {
         );
       })
       .on_move(move |ev| {
-        let _ =
-          move_tx.send(deno_runtime::ops::desktop::DesktopEvent::WindowMove {
+        let _ = move_tx.try_send(
+          deno_runtime::ops::desktop::DesktopEvent::WindowMove {
             window_id: ev.window_id,
             x: ev.x,
             y: ev.y,
-          });
+          },
+        );
       })
       .on_close_requested(move |ev| {
         closed_windows.lock().unwrap().insert(ev.window_id);
-        let _ = close_tx.send(
+        let _ = close_tx.try_send(
           deno_runtime::ops::desktop::DesktopEvent::CloseRequested {
             window_id: ev.window_id,
           },
@@ -309,42 +309,52 @@ impl denort::desktop::DesktopApi for WefDesktopApi {
     let tx = self.event_tx.clone();
     let responses = self.pending_responses.clone();
     let name_owned = name.to_string();
-    just_wef::Window::from_id(window_id).add_binding_async(name, move |js_call| {
-      let tx = tx.clone();
-      let responses = responses.clone();
-      let name = name_owned.clone();
-      async move {
-        let args: Vec<serde_json::Value> =
-          js_call.args.iter().map(wef_value_to_json).collect();
-        let (resp_tx, resp_rx) = tokio::sync::oneshot::channel();
-        let call_id =
-          deno_runtime::ops::desktop::register_bind_call(&responses, resp_tx);
-        let event = deno_runtime::ops::desktop::DesktopEvent::BindCall {
-          window_id: js_call.window_id,
-          name,
-          args: serde_json::Value::Array(args),
-          call_id,
-        };
-        if tx.send(event).is_err() {
-          js_call
-            .reject(just_wef::Value::String("event channel closed".to_string()));
-          return;
+    just_wef::Window::from_id(window_id).add_binding_async(
+      name,
+      move |js_call| {
+        let tx = tx.clone();
+        let responses = responses.clone();
+        let name = name_owned.clone();
+        async move {
+          let args: Vec<serde_json::Value> =
+            js_call.args.iter().map(wef_value_to_json).collect();
+          let (resp_tx, resp_rx) = tokio::sync::oneshot::channel();
+          let call_id =
+            deno_runtime::ops::desktop::register_bind_call(&responses, resp_tx);
+          let event = deno_runtime::ops::desktop::DesktopEvent::BindCall {
+            window_id: js_call.window_id,
+            name,
+            args: serde_json::Value::Array(args),
+            call_id,
+          };
+          if let Err(err) = tx.try_send(event) {
+            let msg = match err {
+              tokio::sync::mpsc::error::TrySendError::Full(_) => {
+                "event channel saturated".to_string()
+              }
+              tokio::sync::mpsc::error::TrySendError::Closed(_) => {
+                "event channel closed".to_string()
+              }
+            };
+            js_call.reject(just_wef::Value::String(msg));
+            return;
+          }
+          match resp_rx.await {
+            Ok(Ok(result)) => {
+              js_call.resolve(json_to_wef_value(&result));
+            }
+            Ok(Err(error)) => {
+              js_call.reject(just_wef::Value::String(error));
+            }
+            Err(_) => {
+              js_call.reject(just_wef::Value::String(
+                "bind response channel dropped".to_string(),
+              ));
+            }
+          }
         }
-        match resp_rx.await {
-          Ok(Ok(result)) => {
-            js_call.resolve(json_to_wef_value(&result));
-          }
-          Ok(Err(error)) => {
-            js_call.reject(just_wef::Value::String(error));
-          }
-          Err(_) => {
-            js_call.reject(just_wef::Value::String(
-              "bind response channel dropped".to_string(),
-            ));
-          }
-        }
-      }
-    });
+      },
+    );
   }
 
   fn unbind(&self, window_id: u32, name: &str) {
@@ -370,10 +380,11 @@ impl denort::desktop::DesktopApi for WefDesktopApi {
       .collect::<Vec<_>>();
     let tx = self.event_tx.clone();
     just_wef::Window::from_id(window_id).set_menu(&menu, move |id: &str| {
-      let _ = tx.send(deno_runtime::ops::desktop::DesktopEvent::AppMenuClick {
-        window_id,
-        id: id.to_string(),
-      });
+      let _ =
+        tx.try_send(deno_runtime::ops::desktop::DesktopEvent::AppMenuClick {
+          window_id,
+          id: id.to_string(),
+        });
     });
   }
 
@@ -394,11 +405,12 @@ impl denort::desktop::DesktopApi for WefDesktopApi {
       y,
       &menu,
       move |id: &str| {
-        let _ =
-          tx.send(deno_runtime::ops::desktop::DesktopEvent::ContextMenuClick {
+        let _ = tx.try_send(
+          deno_runtime::ops::desktop::DesktopEvent::ContextMenuClick {
             window_id,
             id: id.to_string(),
-          });
+          },
+        );
       },
     );
   }
@@ -503,10 +515,11 @@ impl denort::desktop::DesktopApi for WefDesktopApi {
           .collect::<Vec<_>>();
         let tx = self.event_tx.clone();
         just_wef::set_dock_menu(&menu, move |id: &str| {
-          let _ =
-            tx.send(deno_runtime::ops::desktop::DesktopEvent::DockMenuClick {
+          let _ = tx.try_send(
+            deno_runtime::ops::desktop::DesktopEvent::DockMenuClick {
               id: id.to_string(),
-            });
+            },
+          );
         });
       }
       None => just_wef::clear_dock_menu(),
@@ -530,7 +543,7 @@ impl denort::desktop::DesktopApi for WefDesktopApi {
     });
     let dblclick_tx = self.event_tx.clone();
     tray.set_double_click_handler(move || {
-      let _ = dblclick_tx.send(
+      let _ = dblclick_tx.try_send(
         deno_runtime::ops::desktop::DesktopEvent::TrayDoubleClick { tray_id },
       );
     });
@@ -577,11 +590,12 @@ impl denort::desktop::DesktopApi for WefDesktopApi {
           .collect::<Vec<_>>();
         let tx = self.event_tx.clone();
         tray.set_menu(&menu, move |id: &str| {
-          let _ =
-            tx.send(deno_runtime::ops::desktop::DesktopEvent::TrayMenuClick {
+          let _ = tx.try_send(
+            deno_runtime::ops::desktop::DesktopEvent::TrayMenuClick {
               tray_id,
               id: id.to_string(),
-            });
+            },
+          );
         });
       }
       None => tray.clear_menu(),
@@ -614,7 +628,9 @@ fn desktop_menu_item_to_wef_menu_item(
       }
     }
     denort::desktop::MenuItem::Separator => just_wef::MenuItem::Separator,
-    denort::desktop::MenuItem::Role { role } => just_wef::MenuItem::Role { role },
+    denort::desktop::MenuItem::Role { role } => {
+      just_wef::MenuItem::Role { role }
+    }
   }
 }
 
@@ -628,7 +644,9 @@ fn wef_value_to_v8<'a>(
     just_wef::Value::Bool(bool) => v8::Boolean::new(scope, bool).into(),
     just_wef::Value::Int(int) => v8::Integer::new(scope, int).into(),
     just_wef::Value::Double(double) => v8::Number::new(scope, double).into(),
-    just_wef::Value::String(str) => v8::String::new(scope, &str).unwrap().into(),
+    just_wef::Value::String(str) => {
+      v8::String::new(scope, &str).unwrap().into()
+    }
     just_wef::Value::List(list) => {
       let elements = list
         .into_iter()
@@ -808,11 +826,24 @@ fn apply_pending_update(dylib_path: &Path) -> bool {
     // Remove stale sentinel so we can detect if *this* update fails.
     let _ = std::fs::remove_file(&sentinel_path);
     let _ = std::fs::remove_file(&backup_path);
-    if std::fs::rename(dylib_path, &backup_path).is_ok() {
-      if std::fs::rename(&update_path, dylib_path).is_err() {
-        // Failed to move update into place — rollback immediately.
-        let _ = std::fs::rename(&backup_path, dylib_path);
-      }
+
+    // Hard-link (or copy) the live dylib aside as a backup *without*
+    // unlinking the original. If the subsequent swap-in of the update
+    // fails (perms, disk full, EXDEV), the running dylib is still in place
+    // — previously a rename-then-rename pair could leave the app with no
+    // dylib at all on rename #2 failure.
+    let backup_ok = std::fs::hard_link(dylib_path, &backup_path).is_ok()
+      || std::fs::copy(dylib_path, &backup_path).is_ok();
+    if !backup_ok {
+      eprintln!("[desktop] could not stage backup, skipping update");
+      return false;
+    }
+
+    if std::fs::rename(&update_path, dylib_path).is_err() {
+      // Couldn't swap in — drop the staged update and try a copy fallback
+      // before giving up. The original dylib is still present.
+      let _ = std::fs::remove_file(&update_path);
+      eprintln!("[desktop] failed to apply staged update");
     }
     return false;
   }
@@ -1291,11 +1322,9 @@ async fn run_desktop(update_rolled_back: bool) -> Result<(), AnyError> {
       Some(Box::new(move || {
         let id = initial_window_id_for_hmr.load(Ordering::Acquire);
         if id != 0 {
-          just_wef::Window::from_id(id)
-            .execute_js::<fn(Result<just_wef::Value, just_wef::Value>)>(
-              "location.reload()",
-              None,
-            );
+          just_wef::Window::from_id(id).execute_js::<fn(
+            Result<just_wef::Value, just_wef::Value>,
+          )>("location.reload()", None);
         }
       }))
     } else {
@@ -1347,7 +1376,7 @@ async fn run_desktop(update_rolled_back: bool) -> Result<(), AnyError> {
       {
         let reopen_tx = event_tx.0.clone();
         just_wef::on_dock_reopen(move |has_visible_windows| {
-          let _ = reopen_tx.send(
+          let _ = reopen_tx.try_send(
             deno_runtime::ops::desktop::DesktopEvent::DockReopen {
               has_visible_windows,
             },

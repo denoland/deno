@@ -3315,6 +3315,7 @@ name = "deno_runtime"
 version = "0.255.0"
 dependencies = [
  "async-trait",
+ "base64 0.22.1",
  "boxed_error",
  "color-print",
  "deno_ast",
@@ -3352,7 +3353,9 @@ dependencies = [
  "deno_webidl",
  "deno_websocket",
  "deno_webstorage",
+ "ed25519-dalek",
  "encoding_rs",
+ "faster-hex",
  "fastwebsockets 0.8.1",
  "http 1.4.0",
  "http-body-util",
@@ -3372,6 +3375,7 @@ dependencies = [
  "rustyline",
  "same-file",
  "serde",
+ "sha2",
  "sys_traits",
  "test_util",
  "thiserror 2.0.12",

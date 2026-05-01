@@ -265,8 +265,7 @@ pub struct DesktopHmrRunner {
   /// Optional callback to trigger a reload (e.g. refresh the webview).
   on_reload: Option<HmrReloadCallback>,
   /// Optional sender to dispatch errors as DesktopEvents for the error reporter.
-  desktop_event_tx:
-    Option<tokio::sync::mpsc::UnboundedSender<crate::desktop::DesktopEvent>>,
+  desktop_event_tx: Option<crate::desktop::DesktopEventTx>,
 }
 
 impl DesktopHmrRunner {
@@ -344,7 +343,7 @@ impl DesktopHmrRunner {
           if let Some(err) = maybe_error {
             log::error!("HMR exception: {}", err);
             if let Some(tx) = &self.desktop_event_tx {
-              let _ = tx.send(crate::desktop::DesktopEvent::RuntimeError {
+              let _ = tx.try_send(crate::desktop::DesktopEvent::RuntimeError {
                 message: err.to_string(),
                 stack: None,
               });

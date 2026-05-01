@@ -52,6 +52,7 @@ serde_json.workspace = true
 zstd.workspace = true
 flate2 = { workspace = true, features = ["default"] }
 deno_error.workspace = true
+sha2.workspace = true
 
 [target.'cfg(windows)'.build-dependencies]
 winapi.workspace = true

@@ -561,6 +561,7 @@ pub fn desktop_auto_update_js(
     r#"(() => {{
   const {{
     op_desktop_apply_patch,
+    op_desktop_verify_ed25519,
     op_desktop_confirm_update,
   }} = Deno[Deno.internal].core.ops;
   const {{ propReadOnly, propWritable }} = Deno[Deno.internal].core;
@@ -576,11 +577,20 @@ pub fn desktop_auto_update_js(
 
   let autoUpdateTimer = null;
 
+  function isHttpsUrl(u) {{
+    try {{
+      const parsed = new URL(u);
+      return parsed.protocol === "https:";
+    }} catch {{
+      return false;
+    }}
+  }}
+
   function autoUpdate(urlOrOpts) {{
     const opts = typeof urlOrOpts === "string"
       ? {{ url: urlOrOpts }}
       : (urlOrOpts ?? {{}});
-    const {{ url, interval, onUpdateReady, onRollback }} = opts;
+    const {{ url, interval, onUpdateReady, onRollback, publicKey }} = opts;
 
     if (_rolledBack && typeof onRollback === "function") {{
       queueMicrotask(() => {{
@@ -598,36 +608,107 @@ pub fn desktop_auto_update_js(
       console.warn("Deno.autoUpdate: missing 'url' option, skipping");
       return;
     }}
+    if (!isHttpsUrl(url)) {{
+      console.error(
+        "Deno.autoUpdate: refusing non-https url (got %s); ignoring.", url,
+      );
+      return;
+    }}
 
     const base = url.replace(/\/$/, "");
+    const te = new TextEncoder();
 
     const check = async () => {{
       try {{
-        const resp = await fetch(base + "/latest.json");
+        const resp = await fetch(base + "/latest.json", {{
+          cache: "no-store",
+          redirect: "error",
+        }});
         if (!resp.ok) return;
-        const manifest = await resp.json();
+        const manifestText = await resp.text();
+        let manifest;
+        try {{
+          manifest = JSON.parse(manifestText);
+        }} catch {{
+          console.warn("Deno.autoUpdate: latest.json is not valid JSON");
+          return;
+        }}
         if (manifest.version === _version) return;
 
-        const patchName = manifest.patches?.[_version];
-        if (patchName) {{
-          const patchResp = await fetch(base + "/" + patchName);
-          if (patchResp.ok) {{
-            const patchBytes = new Uint8Array(await patchResp.arrayBuffer());
-            op_desktop_apply_patch(patchBytes);
-            if (typeof onUpdateReady === "function") {{
-              try {{ onUpdateReady(manifest.version); }} catch (e) {{
-                console.error("Deno.autoUpdate onUpdateReady threw:", e);
-              }}
-            }}
-            if (autoUpdateTimer) {{
-              clearInterval(autoUpdateTimer);
-              autoUpdateTimer = null;
-            }}
+        if (publicKey) {{
+          const sig = manifest.signature;
+          if (typeof sig !== "string" || !sig) {{
+            console.error(
+              "Deno.autoUpdate: publicKey configured but manifest has no signature",
+            );
             return;
           }}
+          // Signature is computed over the manifest with the `signature` field
+          // removed, serialized canonically. To avoid depending on a JCS
+          // implementation, signers must put the signature on a top-level
+          // `signature` field and include the rest of the manifest verbatim
+          // under a `signed` field (string). We then verify over that string.
+          const signed = manifest.signed;
+          if (typeof signed !== "string") {{
+            console.error(
+              "Deno.autoUpdate: signed manifest must include a `signed` string field",
+            );
+            return;
+          }}
+          if (!op_desktop_verify_ed25519(publicKey, sig, te.encode(signed))) {{
+            console.error("Deno.autoUpdate: manifest signature verification failed");
+            return;
+          }}
+          // Re-parse the signed payload — only its contents are trusted.
+          try {{
+            manifest = JSON.parse(signed);
+          }} catch {{
+            console.error("Deno.autoUpdate: signed payload is not valid JSON");
+            return;
+          }}
+          if (manifest.version === _version) return;
         }}
-        console.warn("Deno.autoUpdate: no patch available for",
-          _version, "->", manifest.version);
+
+        const patchEntry = manifest.patches?.[_version];
+        if (!patchEntry) {{
+          console.warn("Deno.autoUpdate: no patch available for",
+            _version, "->", manifest.version);
+          return;
+        }}
+        // Accept either a string (legacy/unsafe) or {{ name, sha256 }}. The
+        // SHA-256 is required — Rust will reject the patch otherwise.
+        const patchName = typeof patchEntry === "string"
+          ? patchEntry
+          : patchEntry?.name;
+        const patchSha256 = typeof patchEntry === "object"
+          ? patchEntry?.sha256
+          : undefined;
+        if (!patchName) {{
+          console.error("Deno.autoUpdate: malformed patch entry");
+          return;
+        }}
+        if (typeof patchSha256 !== "string" || patchSha256.length !== 64) {{
+          console.error(
+            "Deno.autoUpdate: manifest patch entry must include sha256",
+          );
+          return;
+        }}
+        const patchResp = await fetch(base + "/" + patchName, {{
+          cache: "no-store",
+          redirect: "error",
+        }});
+        if (!patchResp.ok) return;
+        const patchBytes = new Uint8Array(await patchResp.arrayBuffer());
+        op_desktop_apply_patch(patchBytes, patchSha256);
+        if (typeof onUpdateReady === "function") {{
+          try {{ onUpdateReady(manifest.version); }} catch (e) {{
+            console.error("Deno.autoUpdate onUpdateReady threw:", e);
+          }}
+        }}
+        if (autoUpdateTimer) {{
+          clearInterval(autoUpdateTimer);
+          autoUpdateTimer = null;
+        }}
       }} catch (e) {{
         console.warn("Deno.autoUpdate: check failed:", e.message);
       }}
@@ -645,11 +726,7 @@ pub fn desktop_auto_update_js(
   }});
 }})();
 "#,
-    version = match version {
-      Some(v) =>
-        format!("\"{}\"", v.replace('\\', "\\\\").replace('"', "\\\"")),
-      None => "null".to_string(),
-    },
+    version = serde_json::to_string(&version).unwrap(),
     rolled_back = if rolled_back { "true" } else { "false" },
   )
 }
@@ -705,22 +782,15 @@ pub fn desktop_error_reporting_js(
   }});
 }})();
 "#,
-    url = match url {
-      Some(u) =>
-        format!("\"{}\"", u.replace('\\', "\\\\").replace('"', "\\\"")),
-      None => "null".to_string(),
-    },
-    version = match version {
-      Some(v) =>
-        format!("\"{}\"", v.replace('\\', "\\\\").replace('"', "\\\"")),
-      None => "null".to_string(),
-    },
+    url = serde_json::to_string(&url).unwrap(),
+    version = serde_json::to_string(&version).unwrap(),
   )
 }
 
 pub use deno_runtime::ops::desktop::DesktopEvent;
 pub use deno_runtime::ops::desktop::DesktopEventReceiver;
 pub use deno_runtime::ops::desktop::DesktopEventSender;
+pub use deno_runtime::ops::desktop::DesktopEventTx;
 pub use deno_runtime::ops::desktop::InitialWindowId;
 pub use deno_runtime::ops::desktop::PendingBindCall;
 pub use deno_runtime::ops::desktop::PendingBindResponses;

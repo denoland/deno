@@ -261,7 +261,7 @@ fn compress_sources(out_dir: &Path) {
 
 /// Read the pinned `wef` capi crate version from the workspace Cargo.lock and
 /// expose it as the `WEF_VERSION` rustc env var. Desktop backend downloads are
-/// resolved against `github.com/denoland/wef/releases/tag/v{WEF_VERSION}`, so
+/// resolved against `github.com/littledivy/just-wef/releases/tag/v{WEF_VERSION}`, so
 /// tying this to Cargo.lock keeps a single source of truth.
 fn emit_wef_version() {
   let manifest_dir = env::var("CARGO_MANIFEST_DIR").unwrap();
@@ -293,11 +293,50 @@ fn emit_wef_version() {
   }
 }
 
+/// SHA-256 digests of the vendored AppImage Type-2 runtime stubs (from
+/// `cli/tools/appimage_runtime/README.md`). Verified at build time so a
+/// silent local modification (or a bad rebase) of those checked-in binaries
+/// can't slip into a release build undetected.
+const APPIMAGE_RUNTIME_HASHES: &[(&str, &str)] = &[
+  (
+    "tools/appimage_runtime/runtime-x86_64",
+    "2fca8b443c92510f1483a883f60061ad09b46b978b2631c807cd873a47ec260d",
+  ),
+  (
+    "tools/appimage_runtime/runtime-aarch64",
+    "00cbdfcf917cc6c0ff6d3347d59e0ca1f7f45a6df1a428a0d6d8a78664d87444",
+  ),
+];
+
+fn check_appimage_runtime_hashes() {
+  use sha2::Digest;
+  let manifest_dir = env::var("CARGO_MANIFEST_DIR").unwrap();
+  for (rel, expected) in APPIMAGE_RUNTIME_HASHES {
+    let path = Path::new(&manifest_dir).join(rel);
+    println!("cargo:rerun-if-changed={}", path.display());
+    let bytes = match std::fs::read(&path) {
+      Ok(b) => b,
+      Err(_) => continue,
+    };
+    let actual = format!("{:x}", sha2::Sha256::digest(&bytes));
+    if actual != *expected {
+      panic!(
+        "checked-in AppImage runtime stub {} does not match the SHA-256 \
+         pinned in cli/tools/appimage_runtime/README.md (expected {expected}, got {actual}). \
+         If this update is intentional, refresh both the binary and the README.",
+        path.display()
+      );
+    }
+  }
+}
+
 fn main() {
   // Skip building from docs.rs.
   if env::var_os("DOCS_RS").is_some() {
     return;
   }
+
+  check_appimage_runtime_hashes();
 
   deno_napi::print_linker_flags("deno");
   deno_webgpu::print_linker_flags("deno");

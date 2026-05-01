@@ -27,8 +27,8 @@ deno_runtime = { workspace = true, features = ["include_js_files_for_snapshottin
 deno_snapshots.workspace = true
 deno_terminal.workspace = true
 denort = { path = "../rt" }
-libsui.workspace = true
 just-wef = "0.1.0"
+libsui.workspace = true
 
 log = { workspace = true, features = ["serde"] }
 raw-window-handle.workspace = true

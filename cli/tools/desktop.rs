@@ -25,12 +25,19 @@ use crate::util::progress_bar::ProgressBarStyle;
 
 /// Version of the `wef` capi crate pinned in the workspace Cargo.lock.
 /// Populated by `cli/build.rs` and used to resolve matching prebuilt backend
-/// binaries from `github.com/denoland/wef/releases/tag/v{WEF_VERSION}`.
+/// binaries from `github.com/littledivy/just-wef/releases/tag/v{WEF_VERSION}`.
 const WEF_VERSION: &str = env!("WEF_VERSION");
 
 /// Rustc target triple the deno binary was built for. Used as the default
 /// target when selecting a prebuilt wef backend archive.
 const WEF_NATIVE_TARGET: &str = env!("TARGET");
+
+/// Trust anchor for WEF backend downloads: SHA-256 digests of every archive
+/// for the pinned `WEF_VERSION`. Checked into the repo so `SHA256SUMS` does
+/// not need to be fetched (and trusted) at runtime — that file's integrity
+/// previously rested on TOFU against the GitHub releases page. See
+/// `cli/wef_sums.lock` for the format.
+const WEF_PINNED_SUMS: &str = include_str!("../wef_sums.lock");
 
 pub async fn desktop(
   flags: Flags,
@@ -781,18 +788,17 @@ impl WefBackendResolver {
     let archive = wef_archive_name(backend, target);
     let client = self.http_client_provider.get_or_create()?;
 
-    let sums_url = Url::parse(&wef_release_url("SHA256SUMS"))?;
-    let sums = client
-      .download_text(sums_url.clone())
-      .await
-      .with_context(|| {
-        format!(
-          "failed to fetch {sums_url} (wef v{WEF_VERSION} may not be published yet)"
-        )
-      })?;
-    let expected = parse_sha256sum(&sums, &archive).ok_or_else(|| {
+    // Use the in-tree pinned digests rather than fetching SHA256SUMS from the
+    // release page. The latter is unsigned, so trusting it would let anyone
+    // who can write to the wef release host swap both archive and sums
+    // together (TOFU). The lock file is reviewed in PRs when WEF_VERSION
+    // bumps, so this is the trust anchor.
+    check_pinned_sums_version()?;
+    let expected = parse_sha256sum(WEF_PINNED_SUMS, &archive).ok_or_else(|| {
       deno_core::anyhow::anyhow!(
-        "no checksum for {archive} in SHA256SUMS (wef v{WEF_VERSION} release may not include backend '{backend}' for target '{target}')"
+        "no pinned SHA-256 for {archive} in cli/wef_sums.lock \
+         (regenerate when bumping WEF_VERSION to v{WEF_VERSION}; \
+         wef v{WEF_VERSION} release may not include backend '{backend}' for target '{target}')"
       )
     })?;
 
@@ -915,13 +921,47 @@ fn wef_archive_name(backend: &str, target: &str) -> String {
   } else {
     "tar.gz"
   };
-  format!("wef-{backend}-{target}.{ext}")
+  // The `raw` backend ships under the `winit` archive name upstream.
+  let archive_backend = match backend {
+    "raw" => "winit",
+    other => other,
+  };
+  format!("wef-{archive_backend}-{target}.{ext}")
 }
 
 fn wef_release_url(file: &str) -> String {
   format!(
-    "https://github.com/littledivy/wef/releases/download/v{WEF_VERSION}/{file}"
+    "https://github.com/littledivy/just-wef/releases/download/v{WEF_VERSION}/{file}"
   )
+}
+
+/// Confirm the pinned digests file targets the same WEF_VERSION the binary
+/// was built against. The lock file optionally carries a `# version: vX.Y.Z`
+/// directive; when present it must match `WEF_VERSION`.
+fn check_pinned_sums_version() -> Result<(), AnyError> {
+  for line in WEF_PINNED_SUMS.lines() {
+    let trimmed = line.trim_start();
+    let Some(rest) = trimmed.strip_prefix('#') else {
+      continue;
+    };
+    let rest = rest.trim();
+    let Some(version) = rest.strip_prefix("version:") else {
+      continue;
+    };
+    let pinned = version.trim().trim_start_matches('v');
+    if pinned.is_empty() {
+      bail!(
+        "cli/wef_sums.lock has no pinned WEF version — populate it for v{WEF_VERSION} before downloading wef backends"
+      );
+    }
+    if pinned != WEF_VERSION {
+      bail!(
+        "cli/wef_sums.lock pins WEF v{pinned} but this build expects v{WEF_VERSION} — refresh the lock file"
+      );
+    }
+    return Ok(());
+  }
+  Ok(())
 }
 
 /// Pick out the hex digest for `file` from a GNU `sha256sum`-style file. Each
@@ -947,8 +987,41 @@ fn extract_wef_archive(
   if name.ends_with(".tar.gz") {
     let decoder = flate2::read::GzDecoder::new(data);
     let mut archive = tar::Archive::new(decoder);
-    archive.set_preserve_permissions(true);
-    archive.unpack(dest)?;
+    // Strip mode bits from archive entries: a tampered archive could
+    // otherwise ship setuid/setgid binaries into the deno cache. Files keep
+    // the umask-applied default; we re-add execute bits below for entries
+    // that need them.
+    archive.set_preserve_permissions(false);
+    for entry in archive.entries()? {
+      let mut entry = entry?;
+      let path = entry.path()?.into_owned();
+      // Refuse path traversal — `tar` already does this in `unpack_in`, but
+      // we're iterating manually so we re-check.
+      if path.components().any(|c| {
+        matches!(
+          c,
+          std::path::Component::ParentDir | std::path::Component::RootDir
+        )
+      }) {
+        bail!("refusing tar entry with traversal path: {}", path.display());
+      }
+      let dest_path = dest.join(&path);
+      entry.unpack(&dest_path)?;
+      #[cfg(unix)]
+      {
+        use std::os::unix::fs::PermissionsExt;
+        if let Ok(meta) = std::fs::metadata(&dest_path) {
+          if meta.is_file() {
+            // Was the entry executable? If so, mask to 0o755; otherwise 0o644.
+            let mode = entry.header().mode().unwrap_or(0o644);
+            let safe = if mode & 0o111 != 0 { 0o755 } else { 0o644 };
+            let mut perms = meta.permissions();
+            perms.set_mode(safe);
+            let _ = std::fs::set_permissions(&dest_path, perms);
+          }
+        }
+      }
+    }
   } else if name.ends_with(".zip") {
     let mut archive = zip::ZipArchive::new(std::io::Cursor::new(data))?;
     archive.extract(dest)?;

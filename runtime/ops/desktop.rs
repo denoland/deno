@@ -9,6 +9,7 @@
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::path::Path;
 use std::sync::Arc;
 use std::sync::OnceLock;
 use std::sync::atomic::AtomicU32;
@@ -215,16 +216,39 @@ pub enum DesktopEvent {
   TrayMenuClick { tray_id: u32, id: String },
 }
 
+/// Capacity of the runtime-bound event channel. A misbehaving renderer could
+/// otherwise flood mouse-move / wheel events fast enough to OOM the runtime
+/// (the channel was previously unbounded). When full, low-priority events
+/// (motion / wheel) are dropped via `try_send` and a warning is logged.
+const DESKTOP_EVENT_CHANNEL_CAPACITY: usize = 1024;
+
 type DesktopEventRx =
-  tokio::sync::Mutex<tokio::sync::mpsc::UnboundedReceiver<DesktopEvent>>;
-type DesktopEventTx = tokio::sync::mpsc::UnboundedSender<DesktopEvent>;
+  tokio::sync::Mutex<tokio::sync::mpsc::Receiver<DesktopEvent>>;
+pub type DesktopEventTx = tokio::sync::mpsc::Sender<DesktopEvent>;
 
 pub struct DesktopEventReceiver(pub Arc<DesktopEventRx>);
+#[derive(Clone)]
 pub struct DesktopEventSender(pub DesktopEventTx);
+
+impl DesktopEventSender {
+  /// Send an event, dropping it on backpressure rather than blocking or
+  /// allocating. Use this for high-frequency events (mouse move, wheel).
+  pub fn try_send(&self, event: DesktopEvent) {
+    if let Err(tokio::sync::mpsc::error::TrySendError::Full(_)) =
+      self.0.try_send(event)
+    {
+      // Log once per overflow burst would be ideal, but a plain warn is fine
+      // here — this only fires on pathological event rates.
+      log::warn!(
+        "desktop event channel full; dropping event (renderer producing events faster than runtime can drain)"
+      );
+    }
+  }
+}
 
 pub fn create_desktop_event_channel()
 -> (DesktopEventSender, DesktopEventReceiver) {
-  let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+  let (tx, rx) = tokio::sync::mpsc::channel(DESKTOP_EVENT_CHANNEL_CAPACITY);
   (
     DesktopEventSender(tx),
     DesktopEventReceiver(Arc::new(tokio::sync::Mutex::new(rx))),
@@ -380,6 +404,13 @@ struct BrowserWindow {
   api: Arc<dyn DesktopApi>,
   window_id: u32,
   surface: SameObject<deno_webgpu::byow::UnsafeWindowSurface>,
+  /// Set when JS has taken a `getNativeWindow()` surface. Once a webgpu
+  /// surface holds the underlying raw window handles, destroying the OS
+  /// window underneath it would dangle those handles in wgpu-internal state
+  /// (use-after-free at present). We refuse to destroy the window in that
+  /// case and only hide it; the surface keeps the window alive until JS
+  /// releases the BrowserWindow (cppgc) and with it the surface.
+  surface_taken: std::cell::Cell<bool>,
 }
 
 // SAFETY: we're sure this can be GCed
@@ -450,6 +481,7 @@ impl BrowserWindow {
       api,
       window_id,
       surface: SameObject::new(),
+      surface_taken: std::cell::Cell::new(false),
     };
     let window = deno_core::cppgc::make_cppgc_object(scope, window);
     let event_target_setup = state.borrow::<EventTargetSetup>();
@@ -530,6 +562,16 @@ impl BrowserWindow {
 
   #[fast]
   fn close(&self) {
+    if self.surface_taken.get() {
+      // A WebGPU surface is referencing this window's native handles.
+      // Destroying the OS window now would dangle those handles. Hide
+      // instead; cleanup happens when the BrowserWindow is GC'd.
+      log::warn!(
+        "BrowserWindow.close(): a WebGPU surface is still attached; hiding window instead of destroying it"
+      );
+      self.api.hide(self.window_id);
+      return;
+    }
     self.api.close_window(self.window_id);
   }
 
@@ -629,13 +671,17 @@ impl BrowserWindow {
 
     let api = self.api.clone();
     let window_id = self.window_id;
+    self.surface_taken.set(true);
 
     Ok(self.surface.get(scope, move |_| {
       let (win_handle, display_handle) = api.get_raw_window_handle(window_id);
 
-      // SAFETY: The raw handles are valid for the lifetime of the window,
-      // which is guaranteed by the BrowserWindow preventing the window from
-      // being destroyed while this surface exists.
+      // SAFETY: The raw handles are valid for the lifetime of the OS window.
+      // `BrowserWindow.close()` is suppressed (downgraded to hide) once a
+      // surface has been taken (`surface_taken`), and the OS window outlives
+      // both the cached `SameObject<UnsafeWindowSurface>` and the
+      // BrowserWindow itself, so the handles remain valid for the surface's
+      // lifetime.
       let surface_id = unsafe {
         instance
           .instance_create_surface(display_handle, win_handle, None)
@@ -694,16 +740,61 @@ pub struct AutoUpdateState {
   pub rolled_back: bool,
 }
 
+/// Hex-decoded length of a SHA-256 digest.
+const SHA256_HEX_LEN: usize = 64;
+
+fn dylib_magic_ok(bytes: &[u8]) -> bool {
+  if bytes.len() < 4 {
+    return false;
+  }
+  let m = &bytes[..4];
+  // Mach-O (32/64 BE/LE), Mach-O fat, ELF, PE/COFF (MZ).
+  matches!(
+    m,
+    [0xFE, 0xED, 0xFA, 0xCE]
+      | [0xFE, 0xED, 0xFA, 0xCF]
+      | [0xCE, 0xFA, 0xED, 0xFE]
+      | [0xCF, 0xFA, 0xED, 0xFE]
+      | [0xCA, 0xFE, 0xBA, 0xBE]
+      | [0xCA, 0xFE, 0xBA, 0xBF]
+      | [0x7F, b'E', b'L', b'F']
+  ) || m.starts_with(b"MZ")
+}
+
 #[op2(fast)]
 pub fn op_desktop_apply_patch(
   state: &mut OpState,
   #[buffer] patch_bytes: &[u8],
+  #[string] expected_sha256: &str,
 ) -> Result<(), deno_error::JsErrorBox> {
   let update_state =
     state.try_borrow::<AutoUpdateState>().ok_or_else(|| {
       deno_error::JsErrorBox::generic("Auto-update state not initialized")
     })?;
   let dylib_path = &update_state.dylib_path;
+
+  // Verify the patch bytes against the SHA-256 declared in the manifest before
+  // we trust them with `bspatch`. Without this, anyone who can MITM the patch
+  // download (or compromise the release host) could deliver arbitrary native
+  // code. The hash itself is only as trustworthy as the manifest delivery
+  // (TLS) and, when configured, the manifest signature checked in JS.
+  let expected_sha256 = expected_sha256.trim().to_ascii_lowercase();
+  if expected_sha256.len() != SHA256_HEX_LEN
+    || !expected_sha256.chars().all(|c| c.is_ascii_hexdigit())
+  {
+    return Err(deno_error::JsErrorBox::generic(
+      "Auto-update: manifest is missing a valid SHA-256 patch hash",
+    ));
+  }
+  let actual_sha256 = {
+    use sha2::Digest;
+    faster_hex::hex_string(&sha2::Sha256::digest(patch_bytes)).to_lowercase()
+  };
+  if actual_sha256 != expected_sha256 {
+    return Err(deno_error::JsErrorBox::generic(format!(
+      "Auto-update: patch SHA-256 mismatch (expected {expected_sha256}, got {actual_sha256})"
+    )));
+  }
 
   let original = std::fs::read(dylib_path).map_err(|e| {
     deno_error::JsErrorBox::generic(format!(
@@ -724,6 +815,17 @@ pub fn op_desktop_apply_patch(
       deno_error::JsErrorBox::generic(format!("bspatch failed: {}", e))
     })?;
 
+  // Sanity-check the patched bytes look like a real native binary. This
+  // doesn't make the file safe to load (the hash check above does that), but
+  // it catches a malformed or empty payload before we stage the swap and
+  // shrinks the window where rename(2) into place could fail and leave the
+  // app without a working dylib.
+  if !dylib_magic_ok(&patched) {
+    return Err(deno_error::JsErrorBox::generic(
+      "Auto-update: patched dylib does not look like a native binary",
+    ));
+  }
+
   let update_path = dylib_path.with_extension(format!(
     "{}.update",
     dylib_path.extension().unwrap_or_default().to_string_lossy()
@@ -742,6 +844,38 @@ pub fn op_desktop_apply_patch(
   );
 
   Ok(())
+}
+
+/// Verify an Ed25519 signature over `message` using the base64-encoded
+/// 32-byte public key and base64-encoded 64-byte signature. Used by the JS
+/// auto-update path to validate `latest.json` before fetching any patch.
+#[op2(fast)]
+pub fn op_desktop_verify_ed25519(
+  #[string] public_key_b64: &str,
+  #[string] signature_b64: &str,
+  #[buffer] message: &[u8],
+) -> bool {
+  use base64::Engine;
+  let engine = base64::engine::general_purpose::STANDARD;
+  let Ok(pk_bytes) = engine.decode(public_key_b64.trim()) else {
+    return false;
+  };
+  let Ok(sig_bytes) = engine.decode(signature_b64.trim()) else {
+    return false;
+  };
+  let Ok(pk_arr): Result<[u8; 32], _> = pk_bytes.as_slice().try_into() else {
+    return false;
+  };
+  let Ok(sig_arr): Result<[u8; 64], _> = sig_bytes.as_slice().try_into() else {
+    return false;
+  };
+  let Ok(verifying_key) = ed25519_dalek::VerifyingKey::from_bytes(&pk_arr)
+  else {
+    return false;
+  };
+  let signature = ed25519_dalek::Signature::from_bytes(&sig_arr);
+  use ed25519_dalek::Verifier;
+  verifying_key.verify(message, &signature).is_ok()
 }
 
 #[op2]
@@ -843,68 +977,85 @@ pub fn error_report_config() -> Option<(&'static str, Option<&'static str>)> {
     .map(|c| (c.url.as_str(), c.app_version.as_deref()))
 }
 
-/// Send a JSON error report to the given URL.  Handles `file://`,
-/// `http://`, and `https://` URLs.  Best-effort — never panics.
-/// Safe to call from a panic hook (creates its own tokio runtime for HTTP).
+/// Stash of the `OpState` HTTP client for the panic-hook path. The panic
+/// hook can't reach `OpState`, so we capture a client when the runtime
+/// initializes error reporting and reuse it from both code paths. This
+/// keeps a single TLS configuration (the user's roots) — earlier the panic
+/// path constructed an ad-hoc `reqwest`/`fetch` client that bypassed it.
+static ERROR_REPORT_CLIENT: OnceLock<deno_fetch::Client> = OnceLock::new();
+
+/// Capture the OpState HTTP client for use by the panic hook.
+pub fn set_error_report_client(client: deno_fetch::Client) {
+  let _ = ERROR_REPORT_CLIENT.set(client);
+}
+
+fn append_to_file(path: &Path, body: &str) {
+  let mut line = body.to_string();
+  line.push('\n');
+  let _ = std::fs::OpenOptions::new()
+    .create(true)
+    .append(true)
+    .open(path)
+    .and_then(|mut f| std::io::Write::write_all(&mut f, line.as_bytes()));
+}
+
+fn post_error_report(client: deno_fetch::Client, url: String, body: String) {
+  let _ = std::thread::spawn(move || {
+    let Ok(runtime) = tokio::runtime::Builder::new_current_thread()
+      .enable_io()
+      .enable_time()
+      .build()
+    else {
+      return;
+    };
+    runtime.block_on(async move {
+      let Ok(uri) = url.parse::<http::Uri>() else {
+        return;
+      };
+      let mut req = http::Request::new(deno_fetch::ReqBody::full(body.into()));
+      *req.method_mut() = http::Method::POST;
+      *req.uri_mut() = uri;
+      req.headers_mut().insert(
+        http::header::CONTENT_TYPE,
+        http::HeaderValue::from_static("application/json"),
+      );
+      let _ = client.send(req).await;
+    });
+  })
+  .join();
+}
+
+/// Send a JSON error report to the given URL. Best-effort — never panics.
+/// Accepts `file://` (or a bare path) and `https://`. Plain `http://` is
+/// rejected: error reports usually carry stack traces and runtime context,
+/// so anyone on-path could read them.
 pub fn send_error_report(url: &str, body: &str) {
-  let Ok(parsed) = deno_core::url::Url::parse(url) else {
-    // Not a valid URL — treat as a file path.
-    let mut line = body.to_string();
-    line.push('\n');
-    let _ = std::fs::OpenOptions::new()
-      .create(true)
-      .append(true)
-      .open(url)
-      .and_then(|mut f| std::io::Write::write_all(&mut f, line.as_bytes()));
+  let parsed = deno_core::url::Url::parse(url);
+  let Ok(parsed) = parsed else {
+    append_to_file(Path::new(url), body);
     return;
   };
 
   match parsed.scheme() {
     "file" => {
       if let Ok(path) = parsed.to_file_path() {
-        let mut line = body.to_string();
-        line.push('\n');
-        let _ = std::fs::OpenOptions::new()
-          .create(true)
-          .append(true)
-          .open(path)
-          .and_then(|mut f| std::io::Write::write_all(&mut f, line.as_bytes()));
+        append_to_file(&path, body);
       }
     }
-    "http" | "https" => {
-      let url_str = parsed.to_string();
-      let body = body.to_string();
-      let _ = std::thread::spawn(move || {
-        let Ok(runtime) = tokio::runtime::Builder::new_current_thread()
-          .enable_io()
-          .enable_time()
-          .build()
-        else {
-          return;
-        };
-        runtime.block_on(async move {
-          let Ok(client) =
-            deno_fetch::create_http_client("deno-desktop", Default::default())
-          else {
-            return;
-          };
-          let Ok(uri) = url_str.parse::<http::Uri>() else {
-            return;
-          };
-          let mut req =
-            http::Request::new(deno_fetch::ReqBody::full(body.into()));
-          *req.method_mut() = http::Method::POST;
-          *req.uri_mut() = uri;
-          req.headers_mut().insert(
-            http::header::CONTENT_TYPE,
-            http::HeaderValue::from_static("application/json"),
-          );
-          let _ = client.send(req).await;
-        });
-      })
-      .join();
+    "https" => {
+      let Some(client) = ERROR_REPORT_CLIENT.get().cloned() else {
+        log::warn!(
+          "desktop: error-report HTTP client not initialized; dropping report"
+        );
+        return;
+      };
+      post_error_report(client, parsed.to_string(), body.to_string());
     }
-    _ => {}
+    other => {
+      log::warn!(
+        "desktop: refusing to send error report over '{other}' (https only); dropping report",
+      );
+    }
   }
 }
 
@@ -914,44 +1065,14 @@ fn op_desktop_send_error_report(
   #[string] url: &str,
   #[string] body: &str,
 ) {
-  let parsed = deno_core::url::Url::parse(url);
-
-  // For HTTP(S) URLs, prefer the client from OpState (has user's TLS config).
-  if let Ok(ref parsed) = parsed {
-    if matches!(parsed.scheme(), "http" | "https") {
-      if let Ok(client) = deno_fetch::get_or_create_client_from_state(state) {
-        let url_str = parsed.to_string();
-        let body = body.to_string();
-        let _ = std::thread::spawn(move || {
-          let Ok(runtime) = tokio::runtime::Builder::new_current_thread()
-            .enable_io()
-            .enable_time()
-            .build()
-          else {
-            return;
-          };
-          runtime.block_on(async move {
-            let Ok(uri) = url_str.parse::<http::Uri>() else {
-              return;
-            };
-            let mut req =
-              http::Request::new(deno_fetch::ReqBody::full(body.into()));
-            *req.method_mut() = http::Method::POST;
-            *req.uri_mut() = uri;
-            req.headers_mut().insert(
-              http::header::CONTENT_TYPE,
-              http::HeaderValue::from_static("application/json"),
-            );
-            let _ = client.send(req).await;
-          });
-        })
-        .join();
-        return;
-      }
-    }
+  // Make sure the panic-hook path has a client too. The OpState client is
+  // the one configured with the user's TLS roots/permissions, so we share
+  // it across both code paths instead of creating an ad-hoc client.
+  if ERROR_REPORT_CLIENT.get().is_none()
+    && let Ok(client) = deno_fetch::get_or_create_client_from_state(state)
+  {
+    set_error_report_client(client);
   }
-
-  // Fall back to the standalone sender for file URLs and non-HTTP.
   send_error_report(url, body);
 }
 
@@ -1141,6 +1262,7 @@ deno_core::extension!(
   deno_desktop,
   ops = [
     op_desktop_apply_patch,
+    op_desktop_verify_ed25519,
     op_desktop_confirm_update,
     op_desktop_init,
     op_desktop_recv_event,
