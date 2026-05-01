@@ -1,6 +1,6 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use std::collections::HashSet;
 use std::sync::Arc;
 
@@ -268,6 +268,7 @@ fn collect_graph_modules(
         && let Ok(path) = specifier.to_file_path()
         && path.starts_with(package_dir)
         && file_patterns.matches_path(&path, deno_config::glob::PathKind::File)
+        && !is_excluded_path(&path, package_dir)
       {
         let relative = path.strip_prefix(package_dir).unwrap();
         paths.push(CollectedPath {
@@ -278,12 +279,71 @@ fn collect_graph_modules(
     }
   }
 
+  // `graph.modules()` walks deno_graph's internal map, whose iteration
+  // order is not guaranteed across runs. Sort by relative path so the
+  // tarball entries land in a stable order — without this the tar bytes
+  // would drift between runs even when package.json itself is
+  // deterministic. Covered by the `reproducible` spec test.
+  paths.sort_by(|a, b| a.relative_path.cmp(&b.relative_path));
+
   Ok(paths)
+}
+
+/// Hard-exclude well-known directories that should never end up in an
+/// npm tarball, regardless of the user's `files`/`exclude` patterns.
+/// Mirrors `npm pack`'s default ignores so we don't accidentally
+/// publish secrets or VCS state via local `file:` imports under the
+/// package directory.
+fn is_excluded_path(
+  path: &std::path::Path,
+  package_dir: &std::path::Path,
+) -> bool {
+  let Ok(rel) = path.strip_prefix(package_dir) else {
+    return false;
+  };
+  for component in rel.components() {
+    let std::path::Component::Normal(name) = component else {
+      continue;
+    };
+    let Some(name) = name.to_str() else { continue };
+    if name == ".git" || name == "node_modules" {
+      return true;
+    }
+    // .env, .env.local, .env.production, etc.
+    if name == ".env" || name.starts_with(".env.") {
+      return true;
+    }
+  }
+  false
 }
 
 pub struct ReadmeOrLicense {
   pub relative_path: String,
   pub content: Vec<u8>,
+}
+
+/// Read an auto-included file (README/LICENSE) only if it is a regular
+/// file in the package directory. We use `symlink_metadata` rather than
+/// `Path::exists()` + `read()` so a symlink pointing outside the
+/// package — e.g. a `LICENSE` symlink to `~/.ssh/id_rsa` — never gets
+/// packed. Returns `Ok(None)` if the path does not exist or is not a
+/// regular file; returns `Err` only on actual I/O failure when reading
+/// a confirmed regular file.
+fn read_auto_included_file(
+  path: &std::path::Path,
+) -> Result<Option<Vec<u8>>, AnyError> {
+  let metadata = match std::fs::symlink_metadata(path) {
+    Ok(m) => m,
+    Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+    Err(e) => return Err(e.into()),
+  };
+  if !metadata.file_type().is_file() {
+    bail!(
+      "Refusing to include {}: not a regular file (symlinks and special files are excluded)",
+      path.display()
+    );
+  }
+  Ok(Some(std::fs::read(path)?))
 }
 
 fn collect_readme_license_files(
@@ -295,8 +355,7 @@ fn collect_readme_license_files(
   // Look for README files (case-insensitive)
   for name in &["README.md", "README", "readme.md", "Readme.md", "readme"] {
     let path = package_dir.join(name);
-    if path.exists() {
-      let content = std::fs::read(&path)?;
+    if let Some(content) = read_auto_included_file(&path)? {
       files.push(ReadmeOrLicense {
         relative_path: name.to_string(),
         content,
@@ -318,8 +377,7 @@ fn collect_readme_license_files(
     "license.txt",
   ] {
     let path = package_dir.join(name);
-    if path.exists() {
-      let content = std::fs::read(&path)?;
+    if let Some(content) = read_auto_included_file(&path)? {
       files.push(ReadmeOrLicense {
         relative_path: name.to_string(),
         content,
@@ -343,8 +401,10 @@ pub struct ProcessedFile {
   pub dts_content: Option<String>,
   /// Whether this file uses Deno APIs
   pub uses_deno: bool,
-  /// Extracted dependencies (package name -> version)
-  pub dependencies: HashMap<String, String>,
+  /// Extracted dependencies (package name -> version). BTreeMap so the
+  /// merged dependencies in package.json come out in sorted order across
+  /// runs (reproducibility).
+  pub dependencies: BTreeMap<String, String>,
 }
 
 /// Result of Deno API detection
@@ -740,7 +800,7 @@ fn process_single_module(
         (modified, unfurl_result.dependencies)
       }
     } else {
-      (source_text.to_string(), HashMap::new())
+      (source_text.to_string(), BTreeMap::new())
     };
 
   // Phase 2: Transpile the modified source (with rewritten specifiers)

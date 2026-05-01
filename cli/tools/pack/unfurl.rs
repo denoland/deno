@@ -1,6 +1,6 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 
 use deno_ast::ModuleSpecifier;
 use deno_ast::ParsedSource;
@@ -21,7 +21,7 @@ pub struct UnfurlResult {
   /// Text changes to apply to the source.
   pub text_changes: Vec<TextChange>,
   /// Extracted package dependencies (name -> version range).
-  pub dependencies: HashMap<String, String>,
+  pub dependencies: BTreeMap<String, String>,
 }
 
 /// Unfurl specifiers in a module for npm compatibility.
@@ -45,7 +45,7 @@ pub fn unfurl_specifiers(
     deno_graph::ast::ParserModuleAnalyzer::module_info(parsed_source);
 
   let mut text_changes = Vec::new();
-  let mut dependencies = HashMap::new();
+  let mut dependencies = BTreeMap::new();
 
   // Process all static and dynamic dependencies from the module info
   for dep in &module_info.dependencies {
@@ -159,7 +159,7 @@ fn unfurl_specifier_with_range(
   range: &deno_graph::PositionRange,
   text_info: &SourceTextInfo,
   text_changes: &mut Vec<TextChange>,
-  dependencies: &mut HashMap<String, String>,
+  dependencies: &mut BTreeMap<String, String>,
 ) {
   if let Some((name, version)) = extract_package_dependency(spec) {
     dependencies.insert(name, version);
@@ -181,7 +181,7 @@ fn unfurl_static_specifier(
   referrer: &ModuleSpecifier,
   graph: &ModuleGraph,
   text_changes: &mut Vec<TextChange>,
-  dependencies: &mut HashMap<String, String>,
+  dependencies: &mut BTreeMap<String, String>,
 ) {
   // Look up the resolved specifier from the graph to extract dependency info
   if let Some(deno_graph::Module::Js(js_module)) = graph.get(referrer)
@@ -208,7 +208,7 @@ fn unfurl_dynamic_specifier(
   referrer: &ModuleSpecifier,
   graph: &ModuleGraph,
   text_changes: &mut Vec<TextChange>,
-  dependencies: &mut HashMap<String, String>,
+  dependencies: &mut BTreeMap<String, String>,
 ) {
   match &dep.argument {
     DynamicArgument::String(specifier) => {

@@ -16,6 +16,14 @@
           "cmp -s a.tgz b.tgz && echo 'identical: true' || echo 'identical: false'"
         ],
         "output": "identical: true\n"
+      }, {
+        "if": "unix",
+        "commandName": "bash",
+        "args": [
+          "-c",
+          "tar -xzf a.tgz && grep -n '\"ansi-regex\"\\|\"chalk\"' package/package.json"
+        ],
+        "output": "[WILDLINE]\"ansi-regex\":[WILDLINE]\n[WILDLINE]\"chalk\":[WILDLINE]\n"
       }]
     }
   }
