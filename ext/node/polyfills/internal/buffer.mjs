@@ -116,7 +116,7 @@ import {
 } from "ext:deno_node/internal/errors.ts";
 import { getOptionValue } from "ext:deno_node/internal/options.ts";
 import { forgivingBase64UrlEncode } from "ext:deno_web/00_infra.js";
-import { atob, btoa } from "ext:deno_web/05_base64.js";
+const { atob, btoa } = core.loadExtScript("ext:deno_web/05_base64.js");
 import { Blob, blobFromObjectUrl, File } from "ext:deno_web/09_file.js";
 import { untransferableSymbol } from "ext:deno_node/internal_binding/util.ts";
 

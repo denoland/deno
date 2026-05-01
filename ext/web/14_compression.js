@@ -5,7 +5,7 @@
 /// <reference path="./internal.d.ts" />
 /// <reference path="../../cli/tsc/dts/lib.deno_web.d.ts" />
 
-import { primordials } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 import {
   op_compression_finish,
   op_compression_new,
@@ -17,7 +17,7 @@ const {
   TypedArrayPrototypeGetByteLength,
 } = primordials;
 
-import * as webidl from "ext:deno_webidl/00_webidl.js";
+const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
 import { createFilteredInspectProxy } from "./01_console.js";
 import { TransformStream } from "./06_streams.js";
 

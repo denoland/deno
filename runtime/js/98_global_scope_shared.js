@@ -3,7 +3,7 @@
 import { core } from "ext:core/mod.js";
 
 import * as event from "ext:deno_web/02_event.js";
-import * as base64 from "ext:deno_web/05_base64.js";
+const base64 = core.loadExtScript("ext:deno_web/05_base64.js");
 import * as encoding from "ext:deno_web/08_text_encoding.js";
 import * as console from "ext:deno_web/01_console.js";
 import * as caches from "ext:deno_cache/01_cache.js";
@@ -24,11 +24,11 @@ import * as response from "ext:deno_fetch/23_response.js";
 import * as fetch from "ext:deno_fetch/26_fetch.js";
 import * as eventSource from "ext:deno_fetch/27_eventsource.js";
 import * as messagePort from "ext:deno_web/13_message_port.js";
-import * as webidl from "ext:deno_webidl/00_webidl.js";
-import {
+const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
+const {
   DOMException,
   QuotaExceededError,
-} from "ext:deno_web/01_dom_exception.js";
+} = core.loadExtScript("ext:deno_web/01_dom_exception.js");
 import * as abortSignal from "ext:deno_web/03_abort_signal.js";
 import * as imageData from "ext:deno_web/16_image_data.js";
 import process from "node:process";
