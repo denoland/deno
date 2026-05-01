@@ -148,11 +148,17 @@ async fn grpc_send(
   }
 
   // Check grpc-status in initial headers (Trailers-Only form)
-  check_grpc_status(&parts.headers)?;
+  if let Err(e) = check_grpc_status(&parts.headers) {
+    eprintln!("OTLP gRPC export failed: {e}");
+    return Err(e);
+  }
 
   // Check grpc-status in HTTP/2 trailers (normal form)
   if let Some(ref trailers) = trailers {
-    check_grpc_status(trailers)?;
+    if let Err(e) = check_grpc_status(trailers) {
+      eprintln!("OTLP gRPC export failed: {e}");
+      return Err(e);
+    }
   }
 
   Ok(())

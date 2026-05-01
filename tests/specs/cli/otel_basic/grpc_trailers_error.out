@@ -1,5 +1,2 @@
-{
-  "spans": [],
-  "logs": [],
-  "metrics": []
-}
+OTLP gRPC export failed: gRPC error 14: UNAVAILABLE
+[WILDCARD]

@@ -51,6 +51,14 @@ function collectData(body: Record<string, unknown>) {
 }
 
 // The grpc-status to send in trailers. "0" = OK, anything else = error.
+// Forward host env vars except OTEL_*/DENO_UNSTABLE_OTEL* to prevent leaking
+// host telemetry config into the test child process.
+const forwardedEnv = Object.fromEntries(
+  Object.entries(Deno.env.toObject()).filter(
+    ([k]) => !k.startsWith("OTEL_") && !k.startsWith("DENO_UNSTABLE_OTEL"),
+  ),
+);
+
 const grpcStatus = Deno.env.get("GRPC_TRAILER_STATUS") || "0";
 const grpcMessage = Deno.env.get("GRPC_TRAILER_MESSAGE") || "";
 
@@ -69,9 +77,7 @@ server.on("stream", (stream, headers) => {
     // Strip the 5-byte gRPC frame prefix (compression flag + length)
     const msgBytes = new Uint8Array(rawBody.buffer, rawBody.byteOffset + 5);
     const body = decodeGrpcBody(path, msgBytes);
-    // Only collect data on success; skip on error so test output reflects
-    // that the server rejected the export.
-    if (body && grpcStatus === "0") collectData(body);
+    if (body) collectData(body);
 
     // Send response headers WITHOUT grpc-status (normal form, not Trailers-Only)
     stream.respond(
@@ -112,11 +118,7 @@ server.listen(0, "localhost", () => {
     ],
     clearEnv: true,
     env: {
-      ...Object.fromEntries(
-        Object.entries(Deno.env.toObject()).filter(([k]) =>
-          !k.startsWith("OTEL_") && !k.startsWith("DENO_UNSTABLE_OTEL")
-        ),
-      ),
+      ...forwardedEnv,
       OTEL_EXPORTER_OTLP_ENDPOINT: endpoint,
       OTEL_EXPORTER_OTLP_PROTOCOL: "grpc",
     },
