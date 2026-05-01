@@ -1314,6 +1314,10 @@ function transformDenoShellCommand(
     // The command doesn't start with deno, but it may contain a deno
     // invocation after a shell compound operator (&&, ||, ;).
     // Split on the first operator and try to transform the remainder.
+    // NOTE: This regex doesn't handle quoted strings, so an operator
+    // inside quotes (e.g. `echo "foo && bar"`) would be matched.
+    // This is safe because if no real `deno` invocation follows, the
+    // `transformedRest !== rest` guard returns the original command.
     const operatorMatch = command.match(
       /^(.*?)\s*(&&|\|\||;)\s*/,
     );
