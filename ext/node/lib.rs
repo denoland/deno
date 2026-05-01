@@ -338,6 +338,7 @@ deno_core::extension!(deno_node,
     ops::process::op_node_process_constrained_memory<TSys>,
     ops::node_cli_parser::op_node_translate_cli_args,
     ops::shell::op_node_parse_shell_args,
+    ops::tls::op_get_ca_certificates<TSys>,
     ops::tls::op_get_root_certificates,
     ops::tls::op_set_default_ca_certificates,
     ops::tls::op_tls_peer_certificate,
@@ -429,6 +430,7 @@ deno_core::extension!(deno_node,
     "internal_binding/constants.ts",
     "internal_binding/crypto.ts",
     "internal_binding/handle_wrap.ts",
+    "internal_binding/http2.ts",
     "internal_binding/http_parser.ts",
     "internal_binding/mod.ts",
     "internal_binding/node_file.ts",
@@ -501,6 +503,7 @@ deno_core::extension!(deno_node,
     "internal/normalize_encoding.ts",
     "internal/options.ts",
     "internal/primordials.mjs",
+    "internal/priority_queue.ts",
     "internal/process/per_thread.mjs",
     "internal/process/report.ts",
     "internal/process/warning.ts",
@@ -721,7 +724,10 @@ deno_core::extension!(deno_node,
 
 #[sys_traits::auto_impl]
 pub trait ExtNodeSys:
-  node_resolver::NodeResolverSys + sys_traits::EnvCurrentDir + Clone
+  node_resolver::NodeResolverSys
+  + sys_traits::EnvCurrentDir
+  + sys_traits::EnvVar
+  + Clone
 {
 }
 

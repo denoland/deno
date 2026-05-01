@@ -40,7 +40,7 @@ const {
   Float64Array,
 } = primordials;
 
-import { DOMException } from "./01_dom_exception.js";
+const { DOMException } = core.loadExtScript("ext:deno_web/01_dom_exception.js");
 
 const objectCloneMemo = new SafeWeakMap();
 
