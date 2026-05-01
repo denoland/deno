@@ -622,6 +622,9 @@ Deno.test("[node/http2] AsyncLocalStorage propagates per request", {
   const storage = new AsyncLocalStorage<{ id: number }>();
   const server = http2.createServer();
   server.on("stream", (stream) => {
+    // Raw Http2Stream (no Http2ServerRequest): match Node by handling teardown
+    // RST errors so destroy() does not emit an unhandled "error" event.
+    stream.on("error", () => {});
     stream.respond({
       [http2.constants.HTTP2_HEADER_CONTENT_TYPE]: "text/plain; charset=utf-8",
       [http2.constants.HTTP2_HEADER_STATUS]: 200,
@@ -706,6 +709,7 @@ Deno.test("[node/http2 client] connect with pre-created socket", {
 }, async () => {
   const server = http2.createServer();
   server.on("stream", (stream) => {
+    stream.on("error", () => {});
     stream.respond({ ":status": 200, "content-type": "text/plain" });
     stream.end("ok");
   });
@@ -817,6 +821,7 @@ Deno.test(
     );
 
     server.on("stream", (stream) => {
+      stream.on("error", () => {});
       stream.respondWithFile(missingPath);
       // Force a committed response before fs.open() fails asynchronously.
       process.nextTick(() => {
@@ -865,6 +870,7 @@ Deno.test(
     const server = http2.createServer();
 
     server.on("stream", (stream) => {
+      stream.on("error", () => {});
       stream.respondWithFD(-1, {}, { statCheck: () => true });
       // Force a committed response before fs.fstat() fails asynchronously.
       process.nextTick(() => {

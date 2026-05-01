@@ -2117,11 +2117,10 @@ class Http2Stream extends Duplex {
     state.writeQueueSize = 0;
 
     // RST code 8 is not emitted as an error (abort / http1 compat). For other
-    // abnormal RST codes, match Node: synthesize ERR_HTTP2_STREAM_ERROR on
-    // client streams, and on server streams only when user code listens for
-    // 'error'. Otherwise the synthesized error is scheduled on nextTick and
-    // can become uncaught if server/session teardown removes listeners first
-    // (e.g. server.close() from a client stream error handler). Internal
+    // abnormal RST codes, match Node: always synthesize ERR_HTTP2_STREAM_ERROR
+    // when destroying without a prior err. User code that tears down a server
+    // stream without caring about the reset should attach
+    // `stream.on("error", () => {})` (as Node's own tests do). Internal
     // respondWithFile/FD teardown after headers are sent sets skipEmitStreamError.
     if (
       err == null &&
@@ -2129,12 +2128,7 @@ class Http2Stream extends Duplex {
       code !== NGHTTP2_CANCEL &&
       !state.skipEmitStreamError
     ) {
-      if (
-        session[kType] !== NGHTTP2_SESSION_SERVER ||
-        this.listenerCount("error") > 0
-      ) {
-        err = new ERR_HTTP2_STREAM_ERROR(nameForErrorCode[code] || code);
-      }
+      err = new ERR_HTTP2_STREAM_ERROR(nameForErrorCode[code] || code);
     }
 
     this[kSession] = undefined;
