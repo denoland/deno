@@ -548,15 +548,21 @@ function formatValue(
 
   // Provide a hook for user-specified inspect functions.
   // Check that value is an object with an inspect function on it.
+  // For Proxy objects, look up custom inspect symbols on the unwrapped
+  // target (via core.getProxyDetails) to avoid triggering the proxy's
+  // get/has traps which may cause side effects (e.g. grammy API proxies
+  // return functions for any property access). This matches Node.js
+  // behavior. The call itself still uses `value` (the proxy) as `this`.
   if (ctx.customInspect) {
+    const inspectTarget = proxyDetails ? proxyDetails[0] : value;
     if (
-      ReflectHas(value, customInspect) &&
-      typeof value[customInspect] === "function"
+      ReflectHas(inspectTarget, customInspect) &&
+      typeof inspectTarget[customInspect] === "function"
     ) {
       return String(value[customInspect](inspect, ctx));
     } else if (
-      ReflectHas(value, privateCustomInspect) &&
-      typeof value[privateCustomInspect] === "function"
+      ReflectHas(inspectTarget, privateCustomInspect) &&
+      typeof inspectTarget[privateCustomInspect] === "function"
     ) {
       // TODO(nayeemrmn): `inspect` is passed as an argument because custom
       // inspect implementations in `extensions` need it, but may not have access
@@ -564,14 +570,6 @@ function formatValue(
       // namespace is always enabled.
       return String(value[privateCustomInspect](inspect, ctx));
     } else {
-      // Access the symbol directly instead of using `ReflectHas` (the `in`
-      // operator). Non-proxy objects may override `has` to hide symbols
-      // while still exposing them via `get` (e.g. nodejs-polars
-      // DataFrames). For actual JS Proxy objects, access the unwrapped
-      // target to avoid triggering the proxy's get trap which may cause
-      // side effects (e.g. grammy API proxies). This matches Node.js
-      // which unwraps proxies before this check.
-      const inspectTarget = proxyDetails ? proxyDetails[0] : value;
       let maybeCustom;
       try {
         maybeCustom = inspectTarget[nodeCustomInspectSymbol];
