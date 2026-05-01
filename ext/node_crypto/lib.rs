@@ -1379,14 +1379,22 @@ pub async fn op_node_gen_prime_async(
 }
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
-#[class(type)]
 pub enum DiffieHellmanError {
+  #[class(type)]
   #[error("Expected private key")]
   ExpectedPrivateKey,
+  #[class(type)]
   #[error("Expected public key")]
   ExpectedPublicKey,
-  #[error("DH parameters mismatch")]
-  DhParametersMismatch,
+  #[class(generic)]
+  #[error(
+    "error:0308010C:digital envelope routines::mismatching domain parameters"
+  )]
+  MismatchingDomainParameters,
+  #[class(generic)]
+  #[error("error:030000A9:digital envelope routines::failed during derivation")]
+  FailedDuringDerivation,
+  #[class(type)]
   #[error("Unsupported key type for diffie hellman, or key type mismatch")]
   UnsupportedKeyTypeForDiffieHellmanOrKeyTypeMismatch,
 }
@@ -1455,14 +1463,38 @@ pub fn op_node_diffie_hellman(
     .raw_secret_bytes()
     .to_vec()
     .into_boxed_slice(),
+    (AsymmetricPrivateKey::Ec(_), AsymmetricPublicKey::Ec(_)) => {
+      // Both EC keys but on different curves.
+      return Err(DiffieHellmanError::MismatchingDomainParameters);
+    }
     (
       AsymmetricPrivateKey::X25519(private),
       AsymmetricPublicKey::X25519(public),
-    ) => private
-      .diffie_hellman(public)
-      .to_bytes()
-      .into_iter()
-      .collect(),
+    ) => {
+      let shared = private.diffie_hellman(public);
+      let bytes = shared.to_bytes();
+      // Reject all-zero shared secrets (low-order points), matching OpenSSL.
+      if bytes.iter().all(|b| *b == 0) {
+        return Err(DiffieHellmanError::FailedDuringDerivation);
+      }
+      bytes.into_iter().collect()
+    }
+    (
+      AsymmetricPrivateKey::X448(private),
+      AsymmetricPublicKey::X448(public),
+    ) => {
+      let mut scalar_bytes = [0u8; 57];
+      scalar_bytes[..56].copy_from_slice(&private[..56]);
+      let scalar = ed448_goldilocks::EdwardsScalar::from_bytes_mod_order(
+        &scalar_bytes.into(),
+      );
+      let point = ed448_goldilocks::MontgomeryPoint(*public);
+      let shared = &point * &scalar;
+      if shared.0.iter().all(|b| *b == 0) {
+        return Err(DiffieHellmanError::FailedDuringDerivation);
+      }
+      shared.0.to_vec().into_boxed_slice()
+    }
     (AsymmetricPrivateKey::Dh(private), AsymmetricPublicKey::Dh(public)) => {
       // Compare DH parameters by integer value, not byte encoding,
       // since different generation paths may produce different ASN.1
@@ -1472,7 +1504,7 @@ pub fn op_node_diffie_hellman(
       let priv_base = BigUint::from_bytes_be(private.params.base.as_bytes());
       let pub_base = BigUint::from_bytes_be(public.params.base.as_bytes());
       if priv_prime != pub_prime || priv_base != pub_base {
-        return Err(DiffieHellmanError::DhParametersMismatch);
+        return Err(DiffieHellmanError::MismatchingDomainParameters);
       }
 
       // OSIP - Octet-String-to-Integer primitive
@@ -1484,7 +1516,17 @@ pub fn op_node_diffie_hellman(
       let private_key = BigUint::from_bytes_be(&private_key);
       let shared_secret = pubkey.modpow(&private_key, &priv_prime);
 
-      shared_secret.to_bytes_be().into()
+      // Pad to the byte length of the prime, matching OpenSSL's
+      // DH_compute_key_padded behaviour used by EVP_PKEY_derive.
+      let prime_len = priv_prime.bits().div_ceil(8);
+      let secret_bytes = shared_secret.to_bytes_be();
+      if secret_bytes.len() < prime_len {
+        let mut padded = vec![0u8; prime_len];
+        padded[prime_len - secret_bytes.len()..].copy_from_slice(&secret_bytes);
+        padded.into_boxed_slice()
+      } else {
+        secret_bytes.into_boxed_slice()
+      }
     }
     _ => {
       return Err(

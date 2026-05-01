@@ -3118,8 +3118,14 @@ fn dh_generate(
       .skip_while(|&b| b == 0)
       .collect()
   };
+  // Prepend 0x00 if MSB is set, since ASN.1 INTEGERs are signed; without
+  // the sign byte the leading 0xFF bytes of safe primes would be stripped.
+  let mut prime_bytes = prime.0.to_bytes_be();
+  if prime_bytes.first().is_some_and(|b| b & 0x80 != 0) {
+    prime_bytes.insert(0, 0x00);
+  }
   let params = DhParameter {
-    prime: asn1::Int::new(&prime.0.to_bytes_be()).unwrap(),
+    prime: asn1::Int::new(&prime_bytes).unwrap(),
     base: asn1::Int::new(&gen_bytes).unwrap(),
     private_value_length: None,
   };
