@@ -21,7 +21,6 @@ const {
   SafeArrayIterator,
   SafeMap,
   SafePromiseAll,
-  SafePromisePrototypeFinally,
   String,
   Symbol,
   SymbolFor,
