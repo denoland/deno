@@ -25,6 +25,10 @@ const {
   TypeError,
 } = primordials;
 import { notImplemented } from "ext:deno_node/_utils.ts";
+import {
+  validateFunction,
+  validateInteger,
+} from "ext:deno_node/internal/validators.mjs";
 import assert from "node:assert";
 
 const methodsToCopy = [
@@ -467,9 +471,7 @@ class MockFunctionContext {
   mockImplementation(
     implementation: (...args: unknown[]) => unknown,
   ): void {
-    if (typeof implementation !== "function") {
-      throw new TypeError("implementation must be a function");
-    }
+    validateFunction(implementation, "implementation");
     this.#implementation = implementation;
   }
 
@@ -477,8 +479,9 @@ class MockFunctionContext {
     implementation: (...args: unknown[]) => unknown,
     onCall?: number,
   ): void {
-    if (typeof implementation !== "function") {
-      throw new TypeError("implementation must be a function");
+    validateFunction(implementation, "implementation");
+    if (onCall !== undefined) {
+      validateInteger(onCall, "onCall", 0);
     }
     const call = onCall ?? this.#calls.length;
     MapPrototypeSet(this.#onceImplementations, call, implementation);
@@ -541,9 +544,8 @@ function createMockFunction(
   ctx: MockFunctionContext,
 ): (...args: unknown[]) => unknown {
   const mockFn = function (this: unknown, ...args: unknown[]): unknown {
-    const oneTimeImpl = ctx._nextImpl();
     const impl = ctx._shouldMock()
-      ? (oneTimeImpl ?? implementation ?? original)
+      ? (ctx._nextImpl() ?? implementation ?? original)
       : original;
 
     let result: unknown;
