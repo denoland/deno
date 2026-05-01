@@ -2815,6 +2815,7 @@ dependencies = [
  "rustls-tokio-stream",
  "rustls-webpki 0.103.13",
  "serde",
+ "smallvec",
  "socket2 0.5.5",
  "sys_traits",
  "thiserror 2.0.12",
