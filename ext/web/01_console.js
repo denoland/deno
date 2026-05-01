@@ -33,9 +33,9 @@ const {
 const {
   op_get_constructor_name,
   op_get_non_index_property_names,
+  op_now,
   op_preview_entries,
 } = core.ops;
-const ops = core.ops;
 let _URLPrototype;
 function getURLPrototype() {
   if (!_URLPrototype) {
@@ -221,11 +221,11 @@ const lazyLoadModule = core.createLazyLoader(
 );
 
 let currentTime = DateNow;
-if (ops.op_now) {
+if (op_now) {
   const hrU8 = new Uint8Array(8);
   const hr = new Uint32Array(TypedArrayPrototypeGetBuffer(hrU8));
   currentTime = function opNow() {
-    ops.op_now(hrU8);
+    op_now(hrU8);
     return (hr[0] * 1000 + hr[1] / 1e6);
   };
 }
