@@ -183,7 +183,6 @@ export const kConsumePrivate = KeyHandleContext.kConsumePrivate;
 export const kCreatePublic = KeyHandleContext.kCreatePublic;
 export const kCreatePrivate = KeyHandleContext.kCreatePrivate;
 
-
 export type KeyObjectHandle = { ___keyObjectHandle: true };
 
 export class KeyObject {
