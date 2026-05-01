@@ -486,6 +486,9 @@
     "parallel/test-crypto-hkdf.js": {},
     "parallel/test-crypto-hmac.js": {},
     "parallel/test-crypto-keygen.js": {},
+    "parallel/test-crypto-keygen-async-dsa.js": {
+      "flaky": true
+    },
     "parallel/test-crypto-keygen-async-dsa-key-object.js": {},
     "parallel/test-crypto-keygen-async-elliptic-curve-jwk-ec.js": {},
     "parallel/test-crypto-keygen-async-elliptic-curve-jwk.js": {},
