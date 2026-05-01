@@ -760,8 +760,8 @@ mod hyper_client {
   fn parse_otlp_timeout() -> Duration {
     match std::env::var("OTEL_EXPORTER_OTLP_TIMEOUT") {
       Ok(val) => match val.parse::<u64>() {
-        Ok(millis) => Duration::from_millis(millis),
-        Err(_) => DEFAULT_OTEL_EXPORTER_OTLP_TIMEOUT,
+        Ok(millis) if millis > 0 => Duration::from_millis(millis),
+        _ => DEFAULT_OTEL_EXPORTER_OTLP_TIMEOUT,
       },
       Err(_) => DEFAULT_OTEL_EXPORTER_OTLP_TIMEOUT,
     }
@@ -817,7 +817,12 @@ mod hyper_client {
             let cert = sys.fs_read(cert_path)?;
 
             let certs = load_certs(&mut std::io::Cursor::new(cert))?;
-            let key = load_private_keys(&key)?.into_iter().next().unwrap();
+            let key =
+              load_private_keys(&key)?.into_iter().next().ok_or_else(|| {
+                deno_core::anyhow::anyhow!(
+                  "no private key found in OTEL_EXPORTER_OTLP_CLIENT_KEY file"
+                )
+              })?;
 
             TlsKeys::Static(TlsKey(certs, key))
           }
@@ -846,6 +851,14 @@ mod hyper_client {
     }
   }
 
+  const MAX_RESPONSE_BODY_SIZE: usize = 1024 * 1024; // 1 MB
+
+  impl HyperClient {
+    pub fn timeout(&self) -> Duration {
+      self.timeout
+    }
+  }
+
   #[async_trait::async_trait]
   impl opentelemetry_http::HttpClient for HyperClient {
     async fn send(
@@ -857,7 +870,10 @@ mod hyper_client {
       let response = tokio::time::timeout(self.timeout, async {
         let response = self.inner.request(request).await?;
         let (parts, body) = response.into_parts();
-        let body = body.collect().await?.to_bytes();
+        let body = http_body_util::Limited::new(body, MAX_RESPONSE_BODY_SIZE)
+          .collect()
+          .await?
+          .to_bytes();
         Ok::<_, HttpError>(Response::from_parts(parts, body))
       })
       .await
