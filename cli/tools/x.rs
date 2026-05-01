@@ -382,18 +382,28 @@ pub async fn run(flags: Arc<Flags>, x_flags: XFlags) -> Result<i32, AnyError> {
     return Ok(exit_code);
   }
 
-  let is_file_like = command_flags.command.starts_with('.')
-    || command_flags.command.starts_with('/')
-    || command_flags.command.starts_with('~')
-    || command_flags.command.starts_with('\\')
-    || Path::new(&command_flags.command).extension().is_some();
-  if is_file_like && Path::new(&command_flags.command).is_file() {
+  // When --package is specified, the command is the binary name and
+  // the package flag specifies which package to install. Combine them
+  // into a single specifier like "npm:package/binary" so the existing
+  // resolution flow handles it correctly.
+  let effective_command = if let Some(ref package) = command_flags.package {
+    format!("{}/{}", package, command_flags.command)
+  } else {
+    command_flags.command.clone()
+  };
+
+  let is_file_like = effective_command.starts_with('.')
+    || effective_command.starts_with('/')
+    || effective_command.starts_with('~')
+    || effective_command.starts_with('\\')
+    || Path::new(&effective_command).extension().is_some();
+  if is_file_like && Path::new(&effective_command).is_file() {
     return Err(anyhow::anyhow!(
       "Use 'deno run' to run a local file directly, 'deno x' is intended for running commands from packages."
     ));
   }
 
-  let thing_to_run = match deno_core::url::Url::parse(&command_flags.command) {
+  let thing_to_run = match deno_core::url::Url::parse(&effective_command) {
     Ok(url) => {
       if url.scheme() == "npm" {
         let req_ref = NpmPackageReqReference::from_specifier(&url)?;
@@ -406,7 +416,7 @@ pub async fn run(flags: Arc<Flags>, x_flags: XFlags) -> Result<i32, AnyError> {
       }
     }
     Err(deno_core::url::ParseError::RelativeUrlWithoutBase) => {
-      let new_command = format!("npm:{}", command_flags.command);
+      let new_command = format!("npm:{}", effective_command);
       let req_ref = NpmPackageReqReference::from_str(&new_command)?;
       ReqRefOrUrl::Npm(req_ref)
     }
@@ -513,7 +523,7 @@ pub async fn run(flags: Arc<Flags>, x_flags: XFlags) -> Result<i32, AnyError> {
 
         Err(anyhow::anyhow!(
           "Unable to choose binary for {}\n  Available bins:\n{}",
-          command_flags.command,
+          effective_command,
           bin_commands
             .keys()
             .map(|k| format!("    {}", k))
