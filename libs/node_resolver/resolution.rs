@@ -2004,10 +2004,30 @@ impl<
 
     if let Some(main) = maybe_main.as_deref() {
       let package_path = package_json.path.parent().unwrap();
+
+      let mut package_root = package_path.to_path_buf();
+      let mut current = package_path.to_path_buf();
+
+      while let Some(parent) = current.parent() {
+        if let Some(file_name) = parent.file_name() {
+          if file_name == "node_modules" {
+            break;
+          }
+        }
+
+        let p = parent.join("package.json");
+        if self.sys.is_file(Cow::Borrowed(&p)) {
+          package_root = parent.to_path_buf();
+        }
+
+        current = parent.to_path_buf();
+      }
+
       let guess = package_path.join(main).clean();
+
       // Ensure the resolved main path doesn't escape the package
       // directory via path traversal (e.g. "main": "../../../secret.json")
-      if !guess.starts_with(package_path) {
+      if !guess.starts_with(&package_root) {
         return Err(
           ModuleNotFoundError {
             specifier: UrlOrPath::Path(guess),
@@ -2017,6 +2037,7 @@ impl<
           .into(),
         );
       }
+
       if self.sys.is_file(Cow::Borrowed(&guess)) {
         return Ok(self.maybe_resolve_types(
           LocalUrlOrPath::Path(LocalPath {
@@ -2050,7 +2071,7 @@ impl<
       };
       for ending in endings {
         let guess = package_path.join(format!("{main}{ending}")).clean();
-        if guess.starts_with(package_path)
+        if guess.starts_with(&package_root)
           && self.sys.is_file(Cow::Borrowed(&guess))
         {
           // TODO(bartlomieju): emitLegacyIndexDeprecation()

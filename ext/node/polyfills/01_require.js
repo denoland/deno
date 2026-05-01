@@ -389,12 +389,33 @@ function tryPackage(requestPath, exts, isMain, originalPath) {
   }
 
   const filename = pathResolve(requestPath, pkg);
+
+  // Dynamically find the actual package root
+  let packageRoot = requestPath;
+  let current = requestPath;
+
+  while (true) {
+    const parent = pathDirname(current);
+    if (parent === current) break;
+
+    // Stop traversing upward if we hit a node_modules boundary
+    const basename = op_require_path_basename(parent);
+    if (basename === "node_modules") break;
+
+    // If a parent directory also has package.json, we consider it the new root
+    if (stat(pathResolve(parent, "package.json")) === 0) {
+      packageRoot = parent;
+    }
+
+    current = parent;
+  }
+
   // Ensure the resolved main path doesn't escape the package directory
   // via path traversal (e.g. "main": "../../secret.json")
   if (
-    !StringPrototypeStartsWith(filename, requestPath + "/") &&
-    !StringPrototypeStartsWith(filename, requestPath + "\\") &&
-    filename !== requestPath
+    !StringPrototypeStartsWith(filename, packageRoot + "/") &&
+    !StringPrototypeStartsWith(filename, packageRoot + "\\") &&
+    filename !== packageRoot
   ) {
     const err = new Error(
       `Cannot find module '${filename}'. ` +
