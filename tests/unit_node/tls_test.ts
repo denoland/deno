@@ -890,3 +890,31 @@ Deno.test("tls.connect strips trailing dot from servername", async () => {
   listener.close();
   await new Promise((resolve) => conn.on("close", resolve));
 });
+
+// https://github.com/denoland/deno/issues/33743
+Deno.test("TLSSocket.setServername throws Node-compatible coded errors", () => {
+  const clientSocket = new tls.TLSSocket(new net.Socket());
+  const typeErr = assertThrows(
+    // @ts-expect-error testing invalid input
+    () => clientSocket.setServername(123),
+    TypeError,
+  );
+  assertEquals(
+    (typeErr as TypeError & { code?: string }).code,
+    "ERR_INVALID_ARG_TYPE",
+  );
+  clientSocket.destroy();
+
+  const serverSocket = new tls.TLSSocket(new net.Socket(), { isServer: true });
+  const sniErr = assertThrows(
+    // @ts-ignore setServername is missing from the bundled @types/node
+    () => serverSocket.setServername("example.com"),
+    Error,
+    "Cannot issue SNI from a TLS server-side socket",
+  );
+  assertEquals(
+    (sniErr as Error & { code?: string }).code,
+    "ERR_TLS_SNI_FROM_SERVER",
+  );
+  serverSocket.destroy();
+});

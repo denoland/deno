@@ -22,7 +22,7 @@ const {
   SymbolToStringTag,
 } = primordials;
 
-import * as webidl from "ext:deno_webidl/00_webidl.js";
+const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
 import { createFilteredInspectProxy } from "ext:deno_web/01_console.js";
 import { URL } from "ext:deno_web/00_url.js";
 import { getLocationHref } from "ext:deno_web/12_location.js";
@@ -40,7 +40,7 @@ import {
   MessagePortPrototype,
   serializeJsMessageData,
 } from "ext:deno_web/13_message_port.js";
-import { DOMException } from "ext:deno_web/01_dom_exception.js";
+const { DOMException } = core.loadExtScript("ext:deno_web/01_dom_exception.js");
 
 function createWorker(
   specifier,

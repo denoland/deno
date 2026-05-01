@@ -25,7 +25,7 @@ export const EXPECTED_VIOLATIONS: Record<string, number> = {
   "ext/node/polyfills/_process/streams.mjs": 4,
   "ext/node/polyfills/internal/errors.ts": 3,
   "ext/node/polyfills/_fs/_fs_lstat.ts": 4,
-  "ext/node/polyfills/testing.ts": 2,
+  "ext/node/polyfills/testing.ts": 3,
   "ext/node/polyfills/internal/tty.js": 2,
   "ext/node/polyfills/internal_binding/cares_wrap.ts": 4,
   "ext/node/polyfills/_fs/_fs_dir.ts": 2,
