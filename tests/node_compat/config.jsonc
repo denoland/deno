@@ -505,6 +505,10 @@
     "parallel/test-crypto-hkdf.js": {},
     "parallel/test-crypto-hmac.js": {},
     "parallel/test-crypto-keygen.js": {},
+    "parallel/test-crypto-keygen-async-dsa.js": {
+      "flaky": true,
+      "reason": "Pure-Rust DSA 2048/256 keygen is CPU-heavy and can exceed the per-test timeout when scheduled alongside test-crypto-keygen-async-dsa-key-object.js (which also generates a DSA 2048/256 key)"
+    },
     "parallel/test-crypto-keygen-async-dsa-key-object.js": {},
     "parallel/test-crypto-keygen-async-elliptic-curve-jwk-ec.js": {},
     "parallel/test-crypto-keygen-async-elliptic-curve-jwk.js": {},
