@@ -282,6 +282,12 @@ interface OffscreenCanvas extends EventTarget {
     contextId: OffscreenRenderingContextId,
     options?: any,
   ): OffscreenRenderingContext | null;
+  // Spec also defines "2d", "webgl", and "webgl2" context ids; Deno does
+  // not implement those and getContext returns null for them.
+  getContext(
+    contextId: "2d" | "webgl" | "webgl2",
+    options?: any,
+  ): null;
 
   /**
    * Create an ImageBitmap object representing the image contained in the canvas.

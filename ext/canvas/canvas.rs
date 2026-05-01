@@ -238,6 +238,9 @@ impl OffscreenCanvas {
 
     let mut out = vec![];
 
+    let encode_err =
+      |e: image::ImageError| JsErrorBox::generic(format!("Encode failed: {e}"));
+
     let mime_type = match options.r#type.as_str() {
       "image/jpeg" => {
         let encoder = image::codecs::jpeg::JpegEncoder::new_with_quality(
@@ -250,22 +253,22 @@ impl OffscreenCanvas {
         // is composited over black before encoding.
         DynamicImage::ImageRgb8(data.to_rgb8())
           .write_with_encoder(encoder)
-          .unwrap();
+          .map_err(encode_err)?;
         "image/jpeg"
       }
       "image/bmp" => {
         let encoder = image::codecs::bmp::BmpEncoder::new(&mut out);
-        data.write_with_encoder(encoder).unwrap();
+        data.write_with_encoder(encoder).map_err(encode_err)?;
         "image/bmp"
       }
       "image/x-icon" => {
         let encoder = image::codecs::ico::IcoEncoder::new(&mut out);
-        data.write_with_encoder(encoder).unwrap();
+        data.write_with_encoder(encoder).map_err(encode_err)?;
         "image/x-icon"
       }
       _ => {
         let encoder = image::codecs::png::PngEncoder::new(&mut out);
-        data.write_with_encoder(encoder).unwrap();
+        data.write_with_encoder(encoder).map_err(encode_err)?;
         "image/png"
       }
     };

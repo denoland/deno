@@ -20,12 +20,15 @@ use deno_webgpu::wgpu_types;
 #[derive(Clone)]
 pub struct SurfaceBitmap {
   pub instance: deno_webgpu::Instance,
+  pub adapter: wgpu_core::id::AdapterId,
   pub device: wgpu_core::id::DeviceId,
   pub queue: wgpu_core::id::QueueId,
 
   surface_configuration:
     wgpu_types::SurfaceConfiguration<Vec<wgpu_types::TextureFormat>>,
 
+  shader: wgpu_core::id::ShaderModuleId,
+  render_pipeline_layout: wgpu_core::id::PipelineLayoutId,
   render_pipeline: wgpu_core::id::RenderPipelineId,
   vertex_buffer: wgpu_core::id::BufferId,
   index_buffer: wgpu_core::id::BufferId,
@@ -36,12 +39,17 @@ pub struct SurfaceBitmap {
 impl Drop for SurfaceBitmap {
   fn drop(&mut self) {
     self.instance.render_pipeline_drop(self.render_pipeline);
+    self
+      .instance
+      .pipeline_layout_drop(self.render_pipeline_layout);
+    self.instance.shader_module_drop(self.shader);
     self.instance.buffer_drop(self.vertex_buffer);
     self.instance.buffer_drop(self.index_buffer);
     self.instance.bind_group_layout_drop(self.bind_group_layout);
     self.instance.sampler_drop(self.sampler);
     self.instance.queue_drop(self.queue);
     self.instance.device_drop(self.device);
+    self.instance.adapter_drop(self.adapter);
   }
 }
 
@@ -718,9 +726,12 @@ pub fn create<'s>(
 
     Some(SurfaceBitmap {
       instance,
+      adapter,
       device,
       queue,
       surface_configuration: config,
+      shader,
+      render_pipeline_layout,
       render_pipeline,
       vertex_buffer,
       index_buffer,

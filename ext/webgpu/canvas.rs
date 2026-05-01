@@ -524,18 +524,32 @@ pub fn copy_texture_to_vec(
   // as such a pixel has 4 bytes
   const BYTES_PER_PIXEL: u32 = 4;
 
-  let unpadded_bytes_per_row = size.width * BYTES_PER_PIXEL;
+  let overflow =
+    || JsErrorBox::range_error("Texture dimensions overflow buffer-size math");
+
+  let unpadded_bytes_per_row = size
+    .width
+    .checked_mul(BYTES_PER_PIXEL)
+    .ok_or_else(overflow)?;
   let padded_bytes_per_row_padding = (wgpu_types::COPY_BYTES_PER_ROW_ALIGNMENT
     - (unpadded_bytes_per_row % wgpu_types::COPY_BYTES_PER_ROW_ALIGNMENT))
     % wgpu_types::COPY_BYTES_PER_ROW_ALIGNMENT;
-  let padded_bytes_per_row =
-    unpadded_bytes_per_row + padded_bytes_per_row_padding;
+  let padded_bytes_per_row = unpadded_bytes_per_row
+    .checked_add(padded_bytes_per_row_padding)
+    .ok_or_else(overflow)?;
+
+  let buffer_size = (padded_bytes_per_row as u64)
+    .checked_mul(size.height as u64)
+    .ok_or_else(overflow)?;
+  let unpadded_total = (unpadded_bytes_per_row as u64)
+    .checked_mul(size.height as u64)
+    .ok_or_else(overflow)?;
 
   let (buffer, maybe_err) = instance.device_create_buffer(
     device,
     &wgpu_types::BufferDescriptor {
       label: None,
-      size: (padded_bytes_per_row * size.height) as _,
+      size: buffer_size,
       usage: wgpu_types::BufferUsages::MAP_READ
         | wgpu_types::BufferUsages::COPY_DST,
       mapped_at_creation: false,
@@ -615,15 +629,13 @@ pub fn copy_texture_to_vec(
       std::slice::from_raw_parts(slice_pointer.as_ptr(), range_size as usize)
     };
 
-    let mut unpadded =
-      Vec::with_capacity((unpadded_bytes_per_row * size.height) as _);
+    let mut unpadded = Vec::with_capacity(unpadded_total as usize);
 
-    for i in 0..size.height {
-      unpadded.extend_from_slice(
-        &slice[((i * padded_bytes_per_row) as usize)
-          ..(((i + 1) * padded_bytes_per_row) as usize)]
-          [..(unpadded_bytes_per_row as usize)],
-      );
+    let padded = padded_bytes_per_row as usize;
+    let unpadded_row = unpadded_bytes_per_row as usize;
+    for i in 0..size.height as usize {
+      let start = i * padded;
+      unpadded.extend_from_slice(&slice[start..start + padded][..unpadded_row]);
     }
 
     unpadded
