@@ -629,7 +629,7 @@ pub enum AsymmetricPrivateKeyError {
   InvalidEncryptedPemPrivateKey,
   #[error("invalid PEM private key")]
   InvalidPemPrivateKey,
-  #[error("encrypted private key requires a passphrase to decrypt")]
+  #[error("error:07880109:common libcrypto routines::interrupted or cancelled")]
   EncryptedPrivateKeyRequiresPassphraseToDecrypt,
   #[error("invalid PKCS#1 private key")]
   InvalidPkcs1PrivateKey,
@@ -3315,7 +3315,9 @@ fn encrypt_pkcs8_der(
       )));
     }
   }
-  .map_err(|err| ExportPrivateKeyPemError::UnsupportedCipher(err.to_string()))?;
+  .map_err(|err| {
+    ExportPrivateKeyPemError::UnsupportedCipher(err.to_string())
+  })?;
 
   pk_info
     .encrypt_with_params(pbes2_params, passphrase)
