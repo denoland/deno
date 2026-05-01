@@ -2695,10 +2695,10 @@ class ServerHttp2Stream extends Http2Stream {
       this.end();
     }
 
-    const ret = this[kHandle].respond(
-      headersList[0],
-      headersList[1],
-      streamOptions,
+    const ret = ReflectApply(
+      BindingHttp2Stream.prototype.respond,
+      this[kHandle],
+      [headersList[0], headersList[1], streamOptions],
     );
     scheduleSendPending(this[kSession]);
     if (ret < 0) {
