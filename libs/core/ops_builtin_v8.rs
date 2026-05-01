@@ -189,6 +189,15 @@ pub fn op_lazy_load_esm(
   module_map_rc.lazy_load_esm_module(scope, &module_specifier)
 }
 
+#[op2(reentrant)]
+pub fn op_load_ext_script(
+  scope: &mut v8::PinScope,
+  #[string] specifier: String,
+) -> Result<v8::Global<v8::Value>, CoreError> {
+  let module_map_rc = JsRealm::module_map_from(scope);
+  module_map_rc.load_ext_script(scope, &specifier)
+}
+
 // We run in a `nofast` op here so we don't get put into a `DisallowJavascriptExecutionScope` and we're
 // allowed to touch JS heap.
 #[op2(nofast)]

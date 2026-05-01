@@ -2018,7 +2018,7 @@ impl ModuleMap {
             .unwrap()
             .clone();
           match state.phase {
-            ModuleImportPhase::Defer | ModuleImportPhase::Evaluation => {
+            ModuleImportPhase::Evaluation => {
               let module_id =
                 load.root_module_id().expect("Root module should be loaded");
               let result = self.instantiate_module(scope, module_id);
@@ -2031,6 +2031,95 @@ impl ModuleMap {
                 dyn_import_id,
                 state,
               )?;
+            }
+            ModuleImportPhase::Defer => {
+              // For defer phase imports, the module is instantiated but NOT
+              // eagerly evaluated. We call evaluate_for_import_defer which
+              // gathers and evaluates async transitive dependencies, then
+              // resolve with a deferred namespace that triggers evaluation
+              // on first property access.
+              let module_id =
+                load.root_module_id().expect("Root module should be loaded");
+              let result = self.instantiate_module(scope, module_id);
+              if let Err(exception) = result {
+                self.dynamic_import_reject(scope, dyn_import_id, exception);
+                continue;
+              }
+              let module_handle =
+                self.get_handle(module_id).expect("ModuleInfo not found");
+
+              v8::tc_scope!(let tc_scope, scope);
+
+              let cped = v8::Local::new(tc_scope, state.cped.clone());
+              tc_scope.set_continuation_preserved_embedder_data(cped);
+
+              let module = v8::Local::new(tc_scope, &module_handle);
+
+              // Gather async transitive dependencies. Returns a promise
+              // that resolves when all async deps are ready.
+              let maybe_promise = module.evaluate_for_import_defer(tc_scope);
+
+              let Some(promise_val) = maybe_promise else {
+                let exception = tc_scope.exception().unwrap();
+                let exception = v8::Global::new(tc_scope, exception);
+                self.dynamic_import_reject(tc_scope, dyn_import_id, exception);
+                continue;
+              };
+
+              // Get the deferred namespace — this triggers evaluation on
+              // first property access.
+              let module_namespace = module
+                .get_module_namespace_with_phase(v8::ModuleImportPhase::kDefer);
+
+              let promise = v8::Local::<v8::Promise>::try_from(promise_val)
+                .expect("evaluate_for_import_defer should return a promise");
+
+              match promise.state() {
+                v8::PromiseState::Fulfilled => {
+                  // All async deps are ready, resolve immediately.
+                  let resolver_handle = self
+                    .dynamic_import_map
+                    .borrow_mut()
+                    .remove(&dyn_import_id)
+                    .expect("Invalid dynamic import id")
+                    .resolver;
+                  let resolver = resolver_handle.open(tc_scope);
+                  resolver.resolve(tc_scope, module_namespace).unwrap();
+                  tc_scope.perform_microtask_checkpoint();
+                }
+                v8::PromiseState::Rejected => {
+                  let err = promise.result(tc_scope);
+                  let err = v8::Global::new(tc_scope, err);
+                  self.dynamic_import_reject(tc_scope, dyn_import_id, err);
+                }
+                v8::PromiseState::Pending => {
+                  // Async deps still loading. Store for later resolution.
+                  // The module_waker will wake us when the promise settles.
+                  fn wake_module(
+                    scope: &mut v8::PinScope<'_, '_>,
+                    _args: v8::FunctionCallbackArguments<'_>,
+                    _rv: v8::ReturnValue,
+                  ) {
+                    let module_map = JsRealm::module_map_from(scope);
+                    module_map.module_waker.wake();
+                  }
+
+                  let wake_module_cb =
+                    v8::Function::builder(wake_module).build(tc_scope);
+                  if let Some(wake_module_cb) = wake_module_cb {
+                    promise.then2(tc_scope, wake_module_cb, wake_module_cb);
+                  }
+
+                  let dyn_import_mod_evaluate = DynImportModEvaluate {
+                    load_id: dyn_import_id,
+                    module_id,
+                    promise: v8::Global::new(tc_scope, promise),
+                  };
+                  self
+                    .pending_dyn_mod_evaluations
+                    .push(dyn_import_mod_evaluate);
+                }
+              }
             }
             ModuleImportPhase::Source => {
               let module_reference = load.root_module_reference().expect(
@@ -2308,6 +2397,138 @@ impl ModuleMap {
         None
       },
     )
+  }
+
+  pub(crate) fn add_lazy_loaded_script_source(
+    &self,
+    specifier: ModuleName,
+    code: ModuleCodeString,
+  ) {
+    let data = self.data.borrow_mut();
+    assert!(
+      data
+        .lazy_script_sources
+        .borrow_mut()
+        .insert(specifier, code)
+        .is_none(),
+      "Duplicate lazy script source"
+    );
+  }
+
+  /// Load and evaluate a script on demand. Scripts are cached after first
+  /// evaluation. Circular dependencies are detected and cause an error.
+  pub(crate) fn load_ext_script(
+    &self,
+    scope: &mut v8::PinScope,
+    specifier: &str,
+  ) -> Result<v8::Global<v8::Value>, CoreError> {
+    let specifier_str = String::from(specifier);
+    let data = self.data.borrow();
+
+    // Circular dependency detection.
+    {
+      let specifier_key: ModuleName = specifier_str.clone().into();
+      let loading = data.lazy_script_loading.borrow();
+      if loading.contains(&specifier_key) {
+        return Err(
+          JsErrorBox::generic(format!(
+            "Circular dependency detected when loading script \"{specifier}\""
+          ))
+          .into(),
+        );
+      }
+    }
+
+    // Look up source.
+    let source = {
+      let specifier_key: ModuleName = specifier_str.clone().into();
+      let mut sources = data.lazy_script_sources.borrow_mut();
+      sources.remove(&specifier_key)
+    };
+    let source = match source {
+      Some(s) => s,
+      None => {
+        return Err(
+          JsErrorBox::generic(format!(
+            "Script \"{specifier}\" cannot be lazy-loaded as it was not included in the binary."
+          ))
+          .into(),
+        );
+      }
+    };
+
+    // Mark as loading for circular dep detection.
+    data
+      .lazy_script_loading
+      .borrow_mut()
+      .insert(specifier_str.clone().into());
+
+    // We need to drop `data` before executing the script, since the script
+    // may call back into `load_ext_script` for its own dependencies.
+    drop(data);
+
+    // Execute the script as-is. Scripts are expected to be manually wrapped
+    // in an IIFE and use `return` to provide their exports.
+    let source_str =
+      ModuleSource::get_string_source(ModuleSourceCode::String(source));
+    let name = v8::String::new(scope, specifier).unwrap();
+    let origin = v8::ScriptOrigin::new(
+      scope,
+      name.into(),
+      0,
+      0,
+      false,
+      -1,
+      None,
+      false,
+      false,
+      false,
+      None,
+    );
+
+    v8::tc_scope!(let tc_scope, scope);
+
+    let v8_source =
+      v8::String::new(tc_scope, AsRef::<str>::as_ref(&source_str)).unwrap();
+    let script = match v8::Script::compile(tc_scope, v8_source, Some(&origin)) {
+      Some(script) => script,
+      None => {
+        let exception = tc_scope.exception().unwrap();
+        let err = JsError::from_v8_exception(tc_scope, exception);
+        self
+          .data
+          .borrow()
+          .lazy_script_loading
+          .borrow_mut()
+          .remove(&ModuleName::from(specifier_str.clone()));
+        return Err(CoreErrorKind::Js(err).into_box());
+      }
+    };
+    let result = match script.run(tc_scope) {
+      Some(value) => v8::Global::new(tc_scope, value),
+      None => {
+        assert!(tc_scope.has_caught());
+        let exception = tc_scope.exception().unwrap();
+        let err = JsError::from_v8_exception(tc_scope, exception);
+        self
+          .data
+          .borrow()
+          .lazy_script_loading
+          .borrow_mut()
+          .remove(&ModuleName::from(specifier_str.clone()));
+        return Err(CoreErrorKind::Js(err).into_box());
+      }
+    };
+
+    // Remove from loading set.
+    self
+      .data
+      .borrow()
+      .lazy_script_loading
+      .borrow_mut()
+      .remove(&ModuleName::from(specifier_str));
+
+    Ok(result)
   }
 }
 

@@ -342,7 +342,13 @@ Deno.test("[node/http] IncomingRequest socket has remoteAddress + remotePort", a
       `http://127.0.0.1:${port}/`,
     );
     await res.arrayBuffer();
-    assertEquals(remoteAddress, "127.0.0.1");
+    // Default-host listen() binds dual-stack, so IPv4 connections arrive
+    // as IPv4-mapped IPv6 addresses. Accept either form.
+    assert(
+      remoteAddress === "127.0.0.1" ||
+        remoteAddress === "::ffff:127.0.0.1",
+      `unexpected remoteAddress: ${remoteAddress}`,
+    );
     assertEquals(typeof remotePort, "number");
     server.close(() => resolve());
   });
@@ -2740,6 +2746,64 @@ Deno.test(
         body: "hello world",
       });
       assertEquals(await res.text(), "OK");
+    });
+
+    await promise;
+  },
+);
+
+// https://github.com/denoland/deno/issues/33567
+Deno.test(
+  "[node/http] cancelling Readable.toWeb(req) does not destroy the socket",
+  async () => {
+    const { Readable } = await import("node:stream");
+    const { promise, resolve, reject } = Promise.withResolvers<void>();
+
+    const server = http.createServer(async (req, res) => {
+      try {
+        const body = Readable.toWeb(req) as ReadableStream<Uint8Array>;
+        const reader = body.getReader();
+        await reader.read();
+        await reader.cancel();
+
+        await new Promise((r) => setTimeout(r, 50));
+
+        res.end("OK");
+      } catch (e) {
+        reject(e);
+      }
+    });
+
+    server.listen(0, async () => {
+      try {
+        const port = (server.address() as AddressInfo).port;
+        const pendingTimers = new Set<ReturnType<typeof setTimeout>>();
+        const res = await fetch(`http://127.0.0.1:${port}/`, {
+          method: "POST",
+          duplex: "half",
+          body: new ReadableStream({
+            async pull(controller) {
+              await new Promise<void>((r) => {
+                const t = setTimeout(() => {
+                  pendingTimers.delete(t);
+                  r();
+                }, 50);
+                pendingTimers.add(t);
+              });
+              controller.enqueue(new TextEncoder().encode("hello"));
+            },
+            cancel() {
+              for (const t of pendingTimers) clearTimeout(t);
+              pendingTimers.clear();
+            },
+          }),
+        } as RequestInit);
+
+        assertEquals(res.status, 200);
+        assertEquals(await res.text(), "OK");
+      } finally {
+        server.close(() => resolve());
+      }
     });
 
     await promise;

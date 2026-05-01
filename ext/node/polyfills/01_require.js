@@ -130,7 +130,9 @@ import internalErrors from "ext:deno_node/internal/errors.ts";
 import internalEventTarget from "ext:deno_node/internal/event_target.mjs";
 import internalFsUtils from "ext:deno_node/internal/fs/utils.mjs";
 import internalHttp from "ext:deno_node/internal/http.ts";
+import internalHttp2Core from "ext:deno_node/internal/http2/core.ts";
 import internalHttp2Util from "ext:deno_node/internal/http2/util.ts";
+import internalPriorityQueue from "ext:deno_node/internal/priority_queue.ts";
 import internalReadlineUtils from "ext:deno_node/internal/readline/utils.mjs";
 import internalStreamsAddAbortSignal from "ext:deno_node/internal/streams/add-abort-signal.js";
 import internalStreamsLazyTransform from "ext:deno_node/internal/streams/lazy_transform.js";
@@ -138,7 +140,9 @@ import internalStreamsState from "ext:deno_node/internal/streams/state.js";
 import internalTestBinding from "ext:deno_node/internal/test/binding.ts";
 import internalTimers from "ext:deno_node/internal/timers.mjs";
 import internalUtil from "ext:deno_node/internal/util.mjs";
+import internalUtilDebuglog from "ext:deno_node/internal/util/debuglog.ts";
 import internalUtilInspect from "ext:deno_node/internal/util/inspect.mjs";
+import internalValidators from "ext:deno_node/internal/validators.mjs";
 import internalConsole from "ext:deno_node/internal/console/constructor.mjs";
 import net from "node:net";
 import os from "node:os";
@@ -236,15 +240,19 @@ function setupBuiltinModules() {
     "internal/event_target": internalEventTarget,
     "internal/fs/utils": internalFsUtils,
     "internal/http": internalHttp,
+    "internal/http2/core": internalHttp2Core,
     "internal/http2/util": internalHttp2Util,
+    "internal/priority_queue": internalPriorityQueue,
     "internal/readline/utils": internalReadlineUtils,
     "internal/streams/add-abort-signal": internalStreamsAddAbortSignal,
     "internal/streams/lazy_transform": internalStreamsLazyTransform,
     "internal/streams/state": internalStreamsState,
     "internal/test/binding": internalTestBinding,
     "internal/timers": internalTimers,
+    "internal/util/debuglog": internalUtilDebuglog,
     "internal/util/inspect": internalUtilInspect,
     "internal/util": internalUtil,
+    "internal/validators": internalValidators,
     net,
     module: Module,
     os,
@@ -482,6 +490,10 @@ function findLongestRegisteredExtension(filename) {
 function getExportsForCircularRequire(module) {
   if (
     module.exports &&
+    // Skip Proxy module.exports so the warning machinery never invokes the
+    // user-visible getPrototypeOf / setPrototypeOf traps. Matches the
+    // !isProxy(...) guard in Node's lib/internal/modules/cjs/loader.js.
+    !core.isProxy(module.exports) &&
     ObjectGetPrototypeOf(module.exports) === ObjectPrototype &&
     // Exclude transpiled ES6 modules / TypeScript code because those may
     // employ unusual patterns for accessing 'module.exports'. That should
@@ -533,7 +545,16 @@ const moduleParentCache = new SafeWeakMap();
 function Module(id = "", parent) {
   this.id = id;
   this.path = pathDirname(id);
-  this.exports = {};
+  // Use ObjectDefineProperty so that user-installed Object.prototype.exports
+  // setters/getters are not invoked during module construction. Mirrors
+  // setOwnProperty() in Node's lib/internal/util.js.
+  ObjectDefineProperty(this, "exports", {
+    __proto__: null,
+    configurable: true,
+    enumerable: true,
+    value: {},
+    writable: true,
+  });
   moduleParentCache.set(this, parent);
   updateChildren(parent, this, false);
   this.filename = null;
@@ -815,6 +836,10 @@ Module._load = function (request, parent, isMain) {
       }
     } else if (
       module.exports &&
+      // Skip Proxy module.exports so the cleanup pass after a circular
+      // require doesn't invoke user-visible getPrototypeOf traps. Matches
+      // Node's lib/internal/modules/cjs/loader.js behavior.
+      !core.isProxy(module.exports) &&
       ObjectGetPrototypeOf(module.exports) ===
         CircularRequirePrototypeWarningProxy
     ) {
@@ -1041,15 +1066,15 @@ Module.prototype.load = function (filename) {
 // `exports` property.
 Module.prototype.require = function (id) {
   if (typeof id !== "string") {
-    // TODO(bartlomieju): it should use different error type
-    // ("ERR_INVALID_ARG_VALUE")
-    throw new TypeError("Invalid argument type");
+    throw new internalErrors.ERR_INVALID_ARG_TYPE("id", "string", id);
   }
 
   if (id === "") {
-    // TODO(bartlomieju): it should use different error type
-    // ("ERR_INVALID_ARG_VALUE")
-    throw new TypeError("id must be non empty");
+    throw new internalErrors.ERR_INVALID_ARG_VALUE(
+      "id",
+      id,
+      "must be a non-empty string",
+    );
   }
   requireDepth++;
   try {
@@ -1059,14 +1084,9 @@ Module.prototype.require = function (id) {
   }
 };
 
-// The module wrapper looks slightly different to Node. Instead of using one
-// wrapper function, we use two. The first one exists to performance optimize
-// access to magic node globals, like `Buffer`. The second one is the actual
-// wrapper function we run the users code in. The only observable difference is
-// that in Deno `arguments.callee` is not null.
 const wrapper = [
-  `(function (exports, require, module, __filename, __dirname) { var { Buffer, clearImmediate, clearInterval, clearTimeout, global, process, setImmediate, setInterval, setTimeout } = Deno[Deno.internal].nodeGlobals; (() => {`,
-  "\n})(); })",
+  "(function (exports, require, module, __filename, __dirname) { ",
+  "\n});",
 ];
 
 export let wrap = function (script) {
@@ -1330,7 +1350,16 @@ function makeRequireFunction(mod) {
   }
 
   resolve.paths = paths;
-  require.main = mainModule;
+  // Use ObjectDefineProperty so user-installed Object.prototype.main setters
+  // are not invoked when require() is constructed. Mirrors setOwnProperty()
+  // in Node's lib/internal/modules/helpers.js.
+  ObjectDefineProperty(require, "main", {
+    __proto__: null,
+    configurable: true,
+    enumerable: true,
+    value: mainModule,
+    writable: true,
+  });
   // Enable support to add extra extension types.
   require.extensions = Module._extensions;
   require.cache = Module._cache;
