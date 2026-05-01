@@ -1,7 +1,14 @@
 // deno-lint-ignore-file
 
 import assert from "node:assert";
-import test, { describe, it, before, after, beforeEach, afterEach } from "node:test";
+import test, {
+  after,
+  afterEach,
+  before,
+  beforeEach,
+  describe,
+  it,
+} from "node:test";
 
 // --- t.name ---
 test("t.name returns the test name", (t) => {
