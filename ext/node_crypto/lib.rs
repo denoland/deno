@@ -950,13 +950,37 @@ fn scrypt(
   maxmem: usize,
   output_buffer: &mut [u8],
 ) -> Result<(), JsErrorBox> {
+  assert!(
+    output_buffer.len() >= keylen,
+    "output_buffer too small for scrypt keylen",
+  );
+  let cost = u32::try_from(cost)
+    .ok()
+    .filter(|cost| *cost < 64)
+    .ok_or_else(|| JsErrorBox::generic("Invalid scrypt param"))?;
+  let n = 1u64
+    .checked_shl(cost)
+    .ok_or_else(|| JsErrorBox::generic("Invalid scrypt param"))?;
+
+  // SAFETY:
+  // - `password.as_ptr()`/`password.len()` describe a valid contiguous byte
+  //   slice because `StringOrBuffer` dereferences to `[u8]`.
+  // - `salt.as_ptr()`/`salt.len()` likewise describe a valid contiguous byte
+  //   slice.
+  // - `output_buffer.as_mut_ptr()` points to at least `keylen` writable bytes,
+  //   enforced by the assertion above and by the callers allocating a buffer of
+  //   that exact size.
+  // - `n` is derived with `checked_shl`, so the `N` parameter passed to
+  //   `EVP_PBE_scrypt` cannot overflow the shift.
+  // - AWS-LC documents `EVP_PBE_scrypt` as thread-safe for independent inputs;
+  //   this call does not alias mutable state across threads.
   let result = unsafe {
     aws_lc_sys::EVP_PBE_scrypt(
       password.as_ptr().cast(),
       password.len(),
       salt.as_ptr(),
       salt.len(),
-      1u64 << cost,
+      n,
       block_size,
       parallelization,
       maxmem,
