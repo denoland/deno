@@ -3285,6 +3285,9 @@ pub enum ExportPrivateKeyPemError {
     "cipher and passphrase must both be provided for encrypted key export"
   )]
   MissingCipherOrPassphrase,
+  #[class(type)]
+  #[error("invalid PKCS#8 DER: {0}")]
+  InvalidPkcs8Der(String),
 }
 
 fn encrypt_pkcs8_der(
@@ -3293,7 +3296,7 @@ fn encrypt_pkcs8_der(
   passphrase: &[u8],
 ) -> Result<SecretDocument, ExportPrivateKeyPemError> {
   let pk_info = PrivateKeyInfo::try_from(data).map_err(|err| {
-    ExportPrivateKeyPemError::UnsupportedCipher(err.to_string())
+    ExportPrivateKeyPemError::InvalidPkcs8Der(err.to_string())
   })?;
 
   let mut rng = thread_rng();
