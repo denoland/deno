@@ -175,6 +175,8 @@ class NodeTestContext {
   #abortController: AbortController = new AbortController();
   #plan: TestPlan | undefined;
   #planAssert: Record<string, unknown> | undefined;
+  #beforeEachHooks: (() => void | Promise<void>)[] = [];
+  #afterEachHooks: (() => void | Promise<void>)[] = [];
 
   constructor(
     t: Deno.TestContext,
@@ -282,6 +284,13 @@ class NodeTestContext {
           );
           try {
             await before();
+            for (
+              const hook of new SafeArrayIterator(
+                parentContext.#beforeEachHooks,
+              )
+            ) {
+              await hook();
+            }
             await prepared.fn(newNodeTextContext);
             newNodeTextContext._checkPlan();
             await after();
@@ -292,6 +301,14 @@ class NodeTestContext {
             try {
               await after();
             } catch { /* ignore, test is already failing */ }
+          } finally {
+            for (
+              const hook of new SafeArrayIterator(
+                parentContext.#afterEachHooks,
+              )
+            ) {
+              await hook();
+            }
           }
         },
         ignore: !!prepared.options.todo || !!prepared.options.skip,
@@ -317,12 +334,18 @@ class NodeTestContext {
     ArrayPrototypePush(this.#afterHooks, fn);
   }
 
-  beforeEach(_fn, _options) {
-    notImplemented("test.TestContext.beforeEach");
+  beforeEach(fn, _options) {
+    if (typeof fn !== "function") {
+      throw new TypeError("beforeEach() requires a function");
+    }
+    ArrayPrototypePush(this.#beforeEachHooks, fn);
   }
 
-  afterEach(_fn, _options) {
-    notImplemented("test.TestContext.afterEach");
+  afterEach(fn, _options) {
+    if (typeof fn !== "function") {
+      throw new TypeError("afterEach() requires a function");
+    }
+    ArrayPrototypePush(this.#afterEachHooks, fn);
   }
 }
 
