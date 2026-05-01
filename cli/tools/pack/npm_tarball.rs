@@ -59,8 +59,12 @@ pub fn create_npm_tarball(
   } else {
     // Convert @scope/name to scope-name
     let normalized = name.replace('@', "").replace('/', "-");
-    // Defense-in-depth: even though `validate_package_name` rejects names
-    // with traversal characters, never let a tarball name escape the cwd.
+    // The package name shape is checked against `@scope/name` higher up
+    // (see `pack` in mod.rs), but that check is loose — it does not
+    // forbid path-traversal sequences. Treat this as a hard safety
+    // boundary right before we open a file, rejecting any derived
+    // tarball name that contains `..` or path separators so we never
+    // escape the cwd regardless of upstream validation drift.
     if normalized.contains("..") || normalized.contains('/') {
       return Err(deno_core::anyhow::anyhow!(
         "refusing to write tarball with unsafe name derived from package: {}",

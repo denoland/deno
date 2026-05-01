@@ -1,6 +1,6 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use std::collections::HashSet;
 
 use deno_config::deno_json::ConfigFile;
@@ -55,8 +55,12 @@ struct PackageJson {
   types: Option<String>,
   #[serde(skip_serializing_if = "Option::is_none")]
   exports: Option<serde_json::Value>,
+  // BTreeMap (not HashMap): serde_json walks BTreeMap in sorted key
+  // order, so the generated package.json — and therefore the tarball
+  // bytes — are identical across runs even with multiple deps. See the
+  // `reproducible` spec test.
   #[serde(skip_serializing_if = "Option::is_none")]
-  dependencies: Option<HashMap<String, String>>,
+  dependencies: Option<BTreeMap<String, String>>,
 }
 
 pub fn generate_package_json(
@@ -77,8 +81,9 @@ pub fn generate_package_json(
   let (main, types) =
     extract_main_and_types(&config_file.json.exports, &dts_set);
 
-  // Collect dependencies from all files
-  let mut dependencies = HashMap::new();
+  // Collect dependencies from all files. BTreeMap so the serialized
+  // package.json keys come out in sorted order (reproducibility).
+  let mut dependencies: BTreeMap<String, String> = BTreeMap::new();
 
   if include_deno_shim {
     dependencies
@@ -226,11 +231,17 @@ fn extract_main_and_types(
       };
       return (Some(js_path), dts_path);
     } else if let Some(obj) = dot_export.as_object() {
+      // Rewrite the source extension on the way out: deno.json may carry
+      // `{"import": "./foo.ts"}` for the dot-export, but the tarball
+      // contains the transpiled `.js`, so package.json's `main` must
+      // point at the `.js` file or `npm install`-time resolution fails.
+      // The string-export branch above does the same rewrite — keep this
+      // branch in sync.
       let main = obj
         .get("import")
         .or_else(|| obj.get("default"))
         .and_then(|v| v.as_str())
-        .map(|s| s.to_string());
+        .map(|s| format!("./{}", ts_to_js_extension(s)));
       let types = obj
         .get("types")
         .and_then(|v| v.as_str())
