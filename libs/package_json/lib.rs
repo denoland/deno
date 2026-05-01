@@ -67,6 +67,11 @@ pub enum PackageJsonDepValueParseErrorKind {
   #[class(type)]
   #[error("Not implemented scheme '{scheme}'")]
   Unsupported { scheme: String },
+  #[class(type)]
+  #[error(
+    "Named catalogs are not supported (got 'catalog:{name}'). Use 'catalog:' for the default catalog."
+  )]
+  UnsupportedNamedCatalog { name: String },
   #[class(inherit)]
   #[error(transparent)]
   JsrRequiresScope(#[from] JsrDepPackageParseError),
@@ -191,7 +196,22 @@ impl PackageJsonDepValue {
             from_name_and_version_req(value.into(), "*")
           }
         }
-        "catalog" => Ok(Self::Catalog),
+        "catalog" => {
+          // Only the default (unnamed) catalog is supported. Accept
+          // `catalog:` and the explicit `catalog:default` alias used by
+          // pnpm/Bun, but reject any other named catalog rather than
+          // silently falling back to the default.
+          if value.is_empty() || value == "default" {
+            Ok(Self::Catalog)
+          } else {
+            Err(
+              PackageJsonDepValueParseErrorKind::UnsupportedNamedCatalog {
+                name: value.to_string(),
+              }
+              .into_box(),
+            )
+          }
+        }
         "workspace" => {
           let workspace_req = match value {
             "~" => PackageJsonDepWorkspaceReq::Tilde,
@@ -874,6 +894,14 @@ mod test {
       ("work-test-tilde".to_string(), "workspace:~".to_string()),
       ("work-test-caret".to_string(), "workspace:^".to_string()),
       ("catalog-test".to_string(), "catalog:".to_string()),
+      (
+        "catalog-default-test".to_string(),
+        "catalog:default".to_string(),
+      ),
+      (
+        "catalog-named-test".to_string(),
+        "catalog:react18".to_string(),
+      ),
       ("file-test".to_string(), "file:something".to_string()),
       ("git-test".to_string(), "git:something".to_string()),
       ("http-test".to_string(), "http://something".to_string()),
@@ -918,6 +946,16 @@ mod test {
           ))
         ),
         ("catalog-test".to_string(), Ok(PackageJsonDepValue::Catalog),),
+        (
+          "catalog-default-test".to_string(),
+          Ok(PackageJsonDepValue::Catalog),
+        ),
+        (
+          "catalog-named-test".to_string(),
+          Err(PackageJsonDepValueParseErrorKind::UnsupportedNamedCatalog {
+            name: "react18".to_string(),
+          }),
+        ),
         (
           "file-test".to_string(),
           Ok(PackageJsonDepValue::File("something".to_string())),

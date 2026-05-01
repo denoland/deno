@@ -582,6 +582,16 @@ impl<TSys: SpecifierUnfurlerSys> SpecifierUnfurler<TSys> {
                   },
                 );
               }
+              PackageJsonDepValueParseErrorKind::UnsupportedNamedCatalog {
+                name,
+              } => {
+                return Err(
+                  UnfurlSpecifierError::UnsupportedPkgJsonSpecifier {
+                    package_name: alias.to_string(),
+                    scheme: format!("catalog:{}", name),
+                  },
+                );
+              }
               PackageJsonDepValueParseErrorKind::VersionReq { .. }
               | PackageJsonDepValueParseErrorKind::JsrRequiresScope {
                 ..

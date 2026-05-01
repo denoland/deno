@@ -185,6 +185,10 @@ pub enum WorkspaceDiagnosticKind {
     "\"minimumDependencyAge.exclude\" entry \"{entry}\" missing jsr: or npm: prefix."
   )]
   MinimumDependencyAgeExcludeMissingPrefix { entry: String },
+  #[error(
+    "Invalid version requirement '{version_req}' for catalog entry '{name}'."
+  )]
+  InvalidCatalogVersionReq { name: String, version_req: String },
 }
 
 #[derive(Debug, Error, JsError, Clone, PartialEq, Eq)]
@@ -1237,6 +1241,19 @@ impl Workspace {
               config_url: config.specifier.clone(),
               kind: WorkspaceDiagnosticKind::MinimumDependencyAgeExcludeMissingPrefix {
                 entry: value.to_string()
+              },
+            });
+          }
+        }
+      }
+      if let Some(catalog) = &config.json.catalog {
+        for (name, version_req) in catalog {
+          if VersionReq::parse_from_npm(version_req).is_err() {
+            diagnostics.push(WorkspaceDiagnostic {
+              config_url: config.specifier.clone(),
+              kind: WorkspaceDiagnosticKind::InvalidCatalogVersionReq {
+                name: name.clone(),
+                version_req: version_req.clone(),
               },
             });
           }

@@ -1,0 +1,10 @@
+{
+  "tempDir": true,
+  "tests": {
+    "named_catalog_is_rejected": {
+      "args": "install",
+      "output": "named_unsupported.out",
+      "exitCode": 1
+    }
+  }
+}
