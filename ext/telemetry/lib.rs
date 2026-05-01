@@ -760,8 +760,8 @@ mod hyper_client {
   fn parse_otlp_timeout() -> Duration {
     match std::env::var("OTEL_EXPORTER_OTLP_TIMEOUT") {
       Ok(val) => match val.parse::<u64>() {
-        Ok(millis) => Duration::from_millis(millis),
-        Err(_) => DEFAULT_OTEL_EXPORTER_OTLP_TIMEOUT,
+        Ok(millis) if millis > 0 => Duration::from_millis(millis),
+        _ => DEFAULT_OTEL_EXPORTER_OTLP_TIMEOUT,
       },
       Err(_) => DEFAULT_OTEL_EXPORTER_OTLP_TIMEOUT,
     }
@@ -819,7 +819,12 @@ mod hyper_client {
             let cert = sys.fs_read(cert_path)?;
 
             let certs = load_certs(&mut std::io::Cursor::new(cert))?;
-            let key = load_private_keys(&key)?.into_iter().next().unwrap();
+            let key =
+              load_private_keys(&key)?.into_iter().next().ok_or_else(|| {
+                deno_core::anyhow::anyhow!(
+                  "no private key found in OTEL_EXPORTER_OTLP_CLIENT_KEY file"
+                )
+              })?;
 
             TlsKeys::Static(TlsKey(certs, key))
           }
@@ -868,6 +873,10 @@ mod hyper_client {
   }
 
   impl HyperClient {
+    pub fn timeout(&self) -> Duration {
+      self.timeout
+    }
+
     /// Send a gRPC request, preserving HTTP/2 trailers for grpc-status.
     /// Returns (response_headers, trailers).
     pub async fn grpc_request(
@@ -882,7 +891,9 @@ mod hyper_client {
       let result = tokio::time::timeout(self.timeout, async {
         let response = self.inner.request(request).await?;
         let (parts, body) = response.into_parts();
-        let collected = body.collect().await?;
+        let collected = http_body_util::Limited::new(body, 1024 * 1024)
+          .collect()
+          .await?;
         let trailers = collected.trailers().cloned();
         Ok::<_, Box<dyn std::error::Error + Send + Sync>>((parts, trailers))
       })
@@ -908,7 +919,10 @@ mod hyper_client {
       let response = tokio::time::timeout(self.timeout, async {
         let response = self.inner.request(request).await?;
         let (parts, body) = response.into_parts();
-        let body = body.collect().await?.to_bytes();
+        let body = http_body_util::Limited::new(body, 1024 * 1024)
+          .collect()
+          .await?
+          .to_bytes();
         Ok::<_, HttpError>(Response::from_parts(parts, body))
       })
       .await

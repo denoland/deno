@@ -3363,6 +3363,7 @@ dependencies = [
  "deno_signals",
  "deno_terminal",
  "deno_tls",
+ "flate2",
  "http-body-util",
  "hyper 1.6.0",
  "hyper-rustls",
