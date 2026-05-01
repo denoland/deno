@@ -4366,7 +4366,8 @@ declare namespace Deno {
       | "homedir"
       | "statfs"
       | "getPriority"
-      | "setPriority";
+      | "setPriority"
+      | "ca";
   }
 
   /** The permission descriptor for the `allow-ffi` and `deny-ffi` permissions, which controls

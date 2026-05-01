@@ -46,6 +46,7 @@ import type {
 } from "ext:deno_node/internal/crypto/types.ts";
 import { getDefaultEncoding } from "ext:deno_node/internal/crypto/util.ts";
 import {
+  ERR_INVALID_ARG_TYPE,
   ERR_INVALID_ARG_VALUE,
   ERR_UNKNOWN_ENCODING,
   NodeError,
@@ -75,6 +76,19 @@ export function isStringOrBuffer(
     isArrayBufferView(val) ||
     isAnyArrayBuffer(val) ||
     Buffer.isBuffer(val);
+}
+
+// Matches Node's `ArrayBuffer.isView(data)` check in
+// `lib/internal/crypto/cipher.js`: accepts string, Buffer, TypedArray
+// or DataView, but rejects raw ArrayBuffer / SharedArrayBuffer.
+function validateCipherUpdateData(data: unknown): void {
+  if (typeof data !== "string" && !ArrayBuffer.isView(data)) {
+    throw new ERR_INVALID_ARG_TYPE(
+      "data",
+      ["string", "Buffer", "TypedArray", "DataView"],
+      data,
+    );
+  }
 }
 
 const NO_TAG = new Uint8Array();
@@ -317,7 +331,8 @@ Cipheriv.prototype.update = function (
     throw new ERR_CRYPTO_INVALID_STATE("update");
   }
 
-  // TODO(kt3k): throw ERR_INVALID_ARG_TYPE if data is not string, Buffer, or ArrayBufferView
+  validateCipherUpdateData(data);
+
   let buf = data;
   if (typeof data === "string") {
     buf = Buffer.from(data, inputEncoding);
@@ -595,7 +610,8 @@ Decipheriv.prototype.update = function (
     throw new ERR_CRYPTO_INVALID_STATE("update");
   }
 
-  // TODO(kt3k): throw ERR_INVALID_ARG_TYPE if data is not string, Buffer, or ArrayBufferView
+  validateCipherUpdateData(data);
+
   let buf = data;
   if (typeof data === "string") {
     buf = Buffer.from(data, inputEncoding);
