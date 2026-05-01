@@ -151,6 +151,8 @@ pub struct BiPipeWrite {
   #[cfg(unix)]
   #[pin]
   inner: tokio::net::unix::OwnedWriteHalf,
+  #[cfg(unix)]
+  raw_fd: std::os::fd::RawFd,
   #[cfg(windows)]
   #[pin]
   inner: tokio::io::WriteHalf<tokio::net::windows::named_pipe::NamedPipeClient>,
@@ -159,7 +161,10 @@ pub struct BiPipeWrite {
 #[cfg(unix)]
 impl From<tokio::net::unix::OwnedWriteHalf> for BiPipeWrite {
   fn from(value: tokio::net::unix::OwnedWriteHalf) -> Self {
-    Self { inner: value }
+    Self {
+      inner: value,
+      raw_fd: -1,
+    }
   }
 }
 
@@ -202,7 +207,13 @@ fn from_raw(
   unix_stream.set_nonblocking(true)?;
   let unix_stream = tokio::net::UnixStream::from_std(unix_stream)?;
   let (read, write) = unix_stream.into_split();
-  Ok((BiPipeRead { inner: read }, BiPipeWrite { inner: write }))
+  Ok((
+    BiPipeRead { inner: read },
+    BiPipeWrite {
+      inner: write,
+      raw_fd: stream,
+    },
+  ))
 }
 
 #[cfg(windows)]
@@ -284,6 +295,51 @@ macro_rules! impl_async_write {
 
 impl_async_write!(for BiPipeWrite -> self.inner);
 impl_async_write!(for BiPipe -> self.write_end);
+
+impl BiPipeWrite {
+  /// Attempt a non-blocking write to the underlying pipe without going through
+  /// the Tokio readiness machinery. Returns `Ok(n)` on success (possibly
+  /// partial), or `Err(WouldBlock)` if the pipe is not currently writable.
+  ///
+  /// This lets callers (most notably the `node:child_process` IPC channel)
+  /// push data into the kernel buffer synchronously when possible, so that
+  /// e.g. `process.send(...); process.exit(0)` doesn't drop the message
+  /// before Tokio gets a chance to poll the write future.
+  ///
+  /// On Unix this delegates to `tokio::net::unix::OwnedWriteHalf::try_write`.
+  /// On Windows the underlying named-pipe split doesn't expose a `try_write`,
+  /// so this currently always returns `Err(WouldBlock)` on Windows; callers
+  /// should fall back to the async write path.
+  pub fn try_write(&self, buf: &[u8]) -> std::io::Result<usize> {
+    #[cfg(unix)]
+    {
+      // Bypass Tokio's cached readiness — call `write(2)` directly on the
+      // (non-blocking) fd. Tokio's `try_write` requires the socket to have
+      // been polled writable first, so it returns `WouldBlock` on the very
+      // first call even when the kernel buffer would have accepted the
+      // write. We've already set the fd non-blocking in `from_raw`, so a
+      // raw `write(2)` is safe: it returns `EAGAIN` rather than blocking
+      // when the kernel buffer is full.
+      if self.raw_fd < 0 {
+        return Err(std::io::Error::from(std::io::ErrorKind::WouldBlock));
+      }
+      // SAFETY: `raw_fd` is a valid fd kept alive by `inner` for as long as
+      // `&self` is borrowed. `buf` is a valid byte slice for its length.
+      let ret = unsafe {
+        libc::write(self.raw_fd, buf.as_ptr() as *const _, buf.len())
+      };
+      if ret < 0 {
+        return Err(std::io::Error::last_os_error());
+      }
+      Ok(ret as usize)
+    }
+    #[cfg(windows)]
+    {
+      let _ = buf;
+      Err(std::io::Error::from(std::io::ErrorKind::WouldBlock))
+    }
+  }
+}
 
 /// Creates both sides of a bidirectional pipe, returning the raw
 /// handles to the underlying OS resources.

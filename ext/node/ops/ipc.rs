@@ -35,6 +35,7 @@ mod impl_ {
   use deno_core::RcRef;
   use deno_core::ResourceId;
   use deno_core::ToV8;
+  use deno_core::futures::future;
   use deno_core::op2;
   use deno_core::serde;
   use deno_core::serde::Serializer;
@@ -266,7 +267,17 @@ mod impl_ {
       let v = false.to_v8(scope).unwrap(); // Infallible
       queue_ok.set_index(scope, 0, v);
     }
-    Ok(async move {
+    // Fast path: when nothing else is queued ahead of us, attempt a
+    // non-blocking write directly to the kernel pipe. This ensures the
+    // message is in the OS buffer before the op returns, so a subsequent
+    // `process.exit()` doesn't drop it.
+    if old == 0 && stream.try_write_msg_bytes(&serialized) {
+      stream
+        .queued_bytes
+        .fetch_sub(serialized.len(), std::sync::atomic::Ordering::Relaxed);
+      return Ok(future::Either::Left(async { Ok(()) }));
+    }
+    Ok(future::Either::Right(async move {
       let cancel = stream.cancel.clone();
       let result = stream
         .clone()
@@ -279,7 +290,7 @@ mod impl_ {
         .fetch_sub(serialized.len(), std::sync::atomic::Ordering::Relaxed);
       result??;
       Ok(())
-    })
+    }))
   }
 
   pub struct AdvancedSerializerDelegate {
@@ -472,7 +483,15 @@ mod impl_ {
       let Ok(v) = false.to_v8(scope);
       queue_ok.set_index(scope, 0, v);
     }
-    Ok(async move {
+    // See `op_node_ipc_write_json` for why we attempt a non-blocking write
+    // here when the queue is empty.
+    if old == 0 && stream.try_write_msg_bytes(&serialized) {
+      stream
+        .queued_bytes
+        .fetch_sub(serialized.len(), std::sync::atomic::Ordering::Relaxed);
+      return Ok(future::Either::Left(async { Ok(()) }));
+    }
+    Ok(future::Either::Right(async move {
       let cancel = stream.cancel.clone();
       let result = stream
         .clone()
@@ -485,7 +504,7 @@ mod impl_ {
         .fetch_sub(serialized.len(), std::sync::atomic::Ordering::Relaxed);
       result??;
       Ok(())
-    })
+    }))
   }
 
   struct AdvancedSerializer {
