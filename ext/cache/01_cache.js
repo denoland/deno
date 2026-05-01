@@ -12,12 +12,33 @@ import {
 const {
   ArrayPrototypePush,
   ObjectPrototypeIsPrototypeOf,
+  SafeArrayIterator,
   StringPrototypeSplit,
   StringPrototypeTrim,
   Symbol,
   SymbolFor,
   TypeError,
 } = primordials;
+
+import {
+  ContextManager,
+  PROPAGATORS,
+  TRACING_ENABLED,
+} from "ext:deno_telemetry/telemetry.ts";
+
+function getTraceHeaders() {
+  if (!TRACING_ENABLED) return { __proto__: null };
+  const headers = { __proto__: null };
+  const context = ContextManager.active();
+  for (const propagator of new SafeArrayIterator(PROPAGATORS)) {
+    propagator.inject(context, headers, {
+      set(carrier, key, value) {
+        carrier[key] = value;
+      },
+    });
+  }
+  return headers;
+}
 
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 import {
@@ -190,6 +211,7 @@ class Cache {
 
     // Step 9-11.
     // Step 12-19: TODO(@satyarohith): do the insertion in background.
+    const putTraceHeaders = getTraceHeaders();
     await op_cache_put(
       {
         cacheId: this[_id],
@@ -200,6 +222,7 @@ class Cache {
         responseStatus: innerResponse.status,
         responseStatusText: innerResponse.statusMessage,
         responseRid: rid,
+        traceHeaders: putTraceHeaders,
       },
     );
   }
@@ -246,9 +269,11 @@ class Cache {
     ) {
       r = new Request(request);
     }
+    const deleteTraceHeaders = getTraceHeaders();
     return await op_cache_delete({
       cacheId: this[_id],
       requestUrl: r.url,
+      traceHeaders: deleteTraceHeaders,
     });
   }
 
@@ -290,12 +315,14 @@ class Cache {
       const url = new URL(r.url);
       url.hash = "";
       const innerRequest = toInnerRequest(r);
+      const matchTraceHeaders = getTraceHeaders();
       const matchResult = await op_cache_match(
         {
           cacheId: this[_id],
           // deno-lint-ignore prefer-primordials
           requestUrl: url.toString(),
           requestHeaders: innerRequest.headerList,
+          traceHeaders: matchTraceHeaders,
         },
       );
       if (matchResult) {

@@ -379,8 +379,8 @@ impl MainWorker {
           let token = elems[1];
           use deno_cache::CacheShard;
 
-          let shard =
-            Rc::new(CacheShard::new(endpoint.to_string(), token.to_string()));
+          let shard = CacheShard::new(endpoint.to_string(), token.to_string());
+          let shard = Rc::new(shard);
           let create_cache_fn = move || {
             let x = deno_cache::LscBackend::default();
             x.set_shard(shard.clone());

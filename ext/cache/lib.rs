@@ -97,7 +97,7 @@ pub enum CacheError {
 pub struct CreateCache(pub Arc<dyn Fn() -> Result<CacheImpl, CacheError>>);
 
 deno_core::extension!(deno_cache,
-  deps = [ deno_webidl, deno_web, deno_fetch ],
+  deps = [ deno_webidl, deno_web, deno_fetch, deno_telemetry ],
   ops = [
     op_cache_storage_open,
     op_cache_storage_has,
@@ -118,6 +118,13 @@ deno_core::extension!(deno_cache,
   },
 );
 
+#[derive(Deserialize, Serialize, Debug, Clone, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct TraceHeaders {
+  pub traceparent: Option<String>,
+  pub tracestate: Option<String>,
+}
+
 #[derive(Deserialize, Serialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct CachePutRequest {
@@ -128,6 +135,7 @@ pub struct CachePutRequest {
   pub response_status: u16,
   pub response_status_text: String,
   pub response_rid: Option<ResourceId>,
+  pub trace_headers: TraceHeaders,
 }
 
 #[derive(Deserialize, Serialize, Debug)]
@@ -136,6 +144,7 @@ pub struct CacheMatchRequest {
   pub cache_id: i64,
   pub request_url: String,
   pub request_headers: Vec<(ByteString, ByteString)>,
+  pub trace_headers: TraceHeaders,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -156,6 +165,7 @@ pub struct CacheMatchResponseMeta {
 pub struct CacheDeleteRequest {
   pub cache_id: i64,
   pub request_url: String,
+  pub trace_headers: TraceHeaders,
 }
 
 #[derive(Clone)]
