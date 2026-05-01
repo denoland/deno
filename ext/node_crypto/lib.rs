@@ -943,28 +943,31 @@ pub fn op_node_random_int(#[number] min: i64, #[number] max: i64) -> i64 {
 fn scrypt(
   password: StringOrBuffer,
   salt: StringOrBuffer,
-  keylen: u32,
-  cost: u32,
-  block_size: u32,
-  parallelization: u32,
-  _maxmem: u32,
+  keylen: usize,
+  cost: u64,
+  block_size: u64,
+  parallelization: u64,
+  maxmem: usize,
   output_buffer: &mut [u8],
 ) -> Result<(), JsErrorBox> {
-  // Construct Params
-  let params = scrypt::Params::new(
-    cost as u8,
-    block_size,
-    parallelization,
-    keylen as usize,
-  )
-  .map_err(|_| JsErrorBox::generic("Invalid scrypt param"))?;
+  let result = unsafe {
+    aws_lc_sys::EVP_PBE_scrypt(
+      password.as_ptr().cast(),
+      password.len(),
+      salt.as_ptr(),
+      salt.len(),
+      1u64 << cost,
+      block_size,
+      parallelization,
+      maxmem,
+      output_buffer.as_mut_ptr(),
+      keylen,
+    )
+  };
 
-  // Call into scrypt
-  let res = scrypt::scrypt(&password, &salt, &params, output_buffer);
-  if res.is_ok() {
+  if result == 1 {
     Ok(())
   } else {
-    // TODO(lev): key derivation failed, so what?
     Err(JsErrorBox::generic("scrypt key derivation failed"))
   }
 }
@@ -974,11 +977,11 @@ fn scrypt(
 pub fn op_node_scrypt_sync(
   #[serde] password: StringOrBuffer,
   #[serde] salt: StringOrBuffer,
-  #[smi] keylen: u32,
-  #[smi] cost: u32,
-  #[smi] block_size: u32,
-  #[smi] parallelization: u32,
-  #[smi] maxmem: u32,
+  #[number] keylen: usize,
+  #[number] cost: u64,
+  #[number] block_size: u64,
+  #[number] parallelization: u64,
+  #[number] maxmem: usize,
   #[anybuffer] output_buffer: &mut [u8],
 ) -> Result<(), JsErrorBox> {
   scrypt(
@@ -1007,14 +1010,14 @@ pub enum ScryptAsyncError {
 pub async fn op_node_scrypt_async(
   #[serde] password: StringOrBuffer,
   #[serde] salt: StringOrBuffer,
-  #[smi] keylen: u32,
-  #[smi] cost: u32,
-  #[smi] block_size: u32,
-  #[smi] parallelization: u32,
-  #[smi] maxmem: u32,
+  #[number] keylen: usize,
+  #[number] cost: u64,
+  #[number] block_size: u64,
+  #[number] parallelization: u64,
+  #[number] maxmem: usize,
 ) -> Result<Uint8Array, ScryptAsyncError> {
   spawn_blocking(move || {
-    let mut output_buffer = vec![0u8; keylen as usize];
+    let mut output_buffer = vec![0u8; keylen];
 
     scrypt(
       password,

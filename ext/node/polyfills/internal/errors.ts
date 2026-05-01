@@ -1101,6 +1101,15 @@ export class ERR_CRYPTO_INVALID_STATE extends NodeError {
   }
 }
 
+export class ERR_CRYPTO_INVALID_SCRYPT_PARAMS extends NodeRangeError {
+  constructor(details?: string) {
+    super(
+      "ERR_CRYPTO_INVALID_SCRYPT_PARAMS",
+      details ? `Invalid scrypt params: ${details}` : "Invalid scrypt params",
+    );
+  }
+}
+
 export class ERR_CRYPTO_PBKDF2_ERROR extends NodeError {
   constructor() {
     super("ERR_CRYPTO_PBKDF2_ERROR", "PBKDF2 error");
@@ -3173,6 +3182,7 @@ export default {
   ERR_CRYPTO_INVALID_DIGEST,
   ERR_CRYPTO_INVALID_KEY_OBJECT_TYPE,
   ERR_CRYPTO_INVALID_JWK,
+  ERR_CRYPTO_INVALID_SCRYPT_PARAMS,
   ERR_CRYPTO_INVALID_STATE,
   ERR_CRYPTO_PBKDF2_ERROR,
   ERR_CRYPTO_SCRYPT_INVALID_PARAMETER,
