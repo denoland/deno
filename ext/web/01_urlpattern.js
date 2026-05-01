@@ -7,7 +7,7 @@
 /// <reference path="./internal.d.ts" />
 /// <reference path="../../cli/tsc/dts/lib.deno_url.d.ts" />
 
-import { primordials } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 import {
   op_urlpattern_parse,
   op_urlpattern_process_match_input,
@@ -29,7 +29,7 @@ const {
   Uint32Array,
 } = primordials;
 
-import * as webidl from "ext:deno_webidl/00_webidl.js";
+const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
 import { createFilteredInspectProxy } from "./01_console.js";
 
 const _components = Symbol("components");
