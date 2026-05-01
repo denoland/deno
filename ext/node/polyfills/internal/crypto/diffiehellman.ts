@@ -21,6 +21,7 @@ import {
 } from "ext:deno_node/internal/util/types.ts";
 import {
   ERR_CRYPTO_ECDH_INVALID_FORMAT,
+  ERR_CRYPTO_INCOMPATIBLE_KEY,
   ERR_CRYPTO_UNKNOWN_DH_GROUP,
   ERR_INVALID_ARG_TYPE,
   ERR_INVALID_ARG_VALUE,
@@ -1539,6 +1540,45 @@ ECDH.prototype.setPublicKey = deprecate(
   "DEP0031",
 );
 
+function statelessDH(
+  privateKeyObject: KeyObject,
+  publicKeyObject: KeyObject,
+): Buffer {
+  // getKeyObjectHandle validates key.type and throws ERR_CRYPTO_INVALID_KEY_OBJECT_TYPE
+  // for incompatible key kinds (e.g. secret instead of private), so we must
+  // call it before doing the asymmetricKeyType cross-check below.
+  const privateKey = getKeyObjectHandle(privateKeyObject, kConsumePrivate);
+  const publicKey = getKeyObjectHandle(publicKeyObject, kConsumePublic);
+
+  // Check that the asymmetric key types are compatible. EC and DH report
+  // mismatching domain parameters from the underlying op when the curves or
+  // group parameters differ; everything else (e.g. x25519 vs x448) is a key
+  // type mismatch and should surface as ERR_CRYPTO_INCOMPATIBLE_KEY.
+  const privType = privateKeyObject.asymmetricKeyType;
+  const pubType = publicKeyObject.asymmetricKeyType;
+  if (privType !== undefined && pubType !== undefined && privType !== pubType) {
+    throw new ERR_CRYPTO_INCOMPATIBLE_KEY(
+      "key types for Diffie-Hellman",
+      `${privType} and ${pubType}`,
+    );
+  }
+
+  try {
+    const bytes = op_node_diffie_hellman(privateKey, publicKey);
+    return Buffer.from(bytes);
+  } catch (err) {
+    const e = err as Error & { code?: string };
+    if (e && typeof e.message === "string") {
+      if (e.message.includes("mismatching domain parameters")) {
+        e.code = "ERR_OSSL_MISMATCHING_DOMAIN_PARAMETERS";
+      } else if (e.message.includes("failed during derivation")) {
+        e.code = "ERR_OSSL_FAILED_DURING_DERIVATION";
+      }
+    }
+    throw e;
+  }
+}
+
 export function diffieHellman(
   options: {
     privateKey: KeyObject;
@@ -1563,23 +1603,15 @@ export function diffieHellman(
 
   if (callback) {
     try {
-      const privateKey = getKeyObjectHandle(
-        options.privateKey,
-        kConsumePrivate,
-      );
-      const publicKey = getKeyObjectHandle(options.publicKey, kConsumePublic);
-      const bytes = op_node_diffie_hellman(privateKey, publicKey);
-      callback(null, Buffer.from(bytes));
+      const secret = statelessDH(options.privateKey, options.publicKey);
+      callback(null, secret);
     } catch (err) {
       callback(err as Error);
     }
     return;
   }
 
-  const privateKey = getKeyObjectHandle(options.privateKey, kConsumePrivate);
-  const publicKey = getKeyObjectHandle(options.publicKey, kConsumePublic);
-  const bytes = op_node_diffie_hellman(privateKey, publicKey);
-  return Buffer.from(bytes);
+  return statelessDH(options.privateKey, options.publicKey);
 }
 
 export default {
