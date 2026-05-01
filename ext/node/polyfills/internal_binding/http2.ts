@@ -18,6 +18,31 @@ class Http2Stream {
   }
 }
 
+class Http2Session {
+  request(
+    this: {
+      request(
+        headers: string,
+        count: number,
+        options: number,
+        parent: number,
+        weight: number,
+        exclusive: boolean,
+      ): unknown;
+    },
+    headers: string,
+    count: number,
+    options: number,
+    parent: number,
+    weight: number,
+    exclusive: boolean,
+  ): unknown {
+    // Tests replace this prototype method; otherwise `this` is the native
+    // handle, so dispatch falls through to the handle's own `request` op.
+    return this.request(headers, count, options, parent, weight, exclusive);
+  }
+}
+
 function nghttp2ErrorString(integerCode: number) {
   return op_http2_error_string(integerCode);
 }
