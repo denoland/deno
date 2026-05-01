@@ -460,6 +460,8 @@ impl CliModuleLoaderFactory {
     parent_permissions: PermissionsContainer,
     permissions: PermissionsContainer,
   ) -> CreateModuleLoaderResult {
+    let hook_registry =
+      deno_runtime::deno_node::ops::module_hooks::LoaderHookRegistry::default();
     let module_loader =
       Rc::new(CliModuleLoader(Rc::new(CliModuleLoaderInner {
         lib,
@@ -469,6 +471,7 @@ impl CliModuleLoaderFactory {
         graph_container: graph_container.clone(),
         shared: self.shared.clone(),
         loaded_files: Default::default(),
+        hook_registry: hook_registry.clone(),
       })));
     let node_require_loader = Rc::new(CliNodeRequireLoader {
       cjs_tracker: self.shared.cjs_tracker.clone(),
@@ -486,6 +489,7 @@ impl CliModuleLoaderFactory {
     CreateModuleLoaderResult {
       module_loader,
       node_require_loader,
+      hook_registry: Some(hook_registry),
     }
   }
 }
@@ -539,6 +543,7 @@ struct CliModuleLoaderInner<TGraphContainer: ModuleGraphContainer> {
   shared: Arc<SharedCliModuleLoaderState>,
   graph_container: TGraphContainer,
   loaded_files: RefCell<HashSet<ModuleSpecifier>>,
+  hook_registry: deno_runtime::deno_node::ops::module_hooks::LoaderHookRegistry,
 }
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
@@ -998,6 +1003,39 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
     referrer: &str,
     kind: deno_core::ResolutionKind,
   ) -> deno_core::ModuleResolveResponse {
+    if self.0.hook_registry.resolve_active.get() {
+      let receiver = self
+        .0
+        .hook_registry
+        .push_resolve(specifier.to_string(), referrer.to_string());
+      let inner = self.0.clone();
+      let specifier = specifier.to_string();
+      let referrer = referrer.to_string();
+      return deno_core::ModuleResolveResponse::Async(
+        async move {
+          let hook_result: Result<Option<String>, String> = match receiver.await
+          {
+            Ok(r) => r,
+            Err(_) => {
+              return Err(
+                JsErrorBox::generic("module resolve hook cancelled").into(),
+              );
+            }
+          };
+          match hook_result {
+            Ok(Some(url)) => ModuleSpecifier::parse(&url)
+              .map_err(|e| JsErrorBox::from_err(e).into()),
+            Ok(None) => {
+              // Fallthrough: hooks didn't intercept, use default
+              inner.inner_resolve(&specifier, &referrer, kind, false)
+            }
+            Err(err) => Err(JsErrorBox::generic(err).into()),
+          }
+        }
+        .boxed_local(),
+      );
+    }
+
     deno_core::ModuleResolveResponse::Sync(
       self.0.inner_resolve(specifier, referrer, kind, false),
     )
@@ -1045,6 +1083,45 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
 
     let specifier = specifier.clone();
     let maybe_referrer = maybe_referrer.cloned();
+
+    // When load hooks are active, delegate to JS hooks first
+    if self.0.hook_registry.load_active.get() {
+      let receiver = self.0.hook_registry.push_load(specifier.to_string());
+      return deno_core::ModuleLoadResponse::Async(
+        async move {
+          let hook_result: Result<Option<String>, String> = match receiver.await
+          {
+            Ok(r) => r,
+            Err(_) => {
+              return Err(
+                JsErrorBox::generic("module load hook cancelled").into(),
+              );
+            }
+          };
+          match hook_result {
+            Ok(Some(source)) => Ok(deno_core::ModuleSource::new(
+              deno_core::ModuleType::JavaScript,
+              deno_core::ModuleSourceCode::String(source.into()),
+              &specifier,
+              None,
+            )),
+            Ok(None) => {
+              // Fallthrough: hooks didn't intercept, use default
+              inner
+                .load_inner(
+                  &specifier,
+                  maybe_referrer.as_ref().map(|r| &r.specifier),
+                  &options.requested_module_type,
+                )
+                .await
+            }
+            Err(err) => Err(JsErrorBox::generic(err).into()),
+          }
+        }
+        .boxed_local(),
+      );
+    }
+
     deno_core::ModuleLoadResponse::Async(
       async move {
         inner
@@ -1097,6 +1174,15 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
       options.requested_module_type,
       RequestedModuleType::Text | RequestedModuleType::Bytes
     ) {
+      return Box::pin(deno_core::futures::future::ready(Ok(())));
+    }
+
+    // When ESM hooks are active, skip graph preparation — hooked modules
+    // may be virtual and can't be fetched by the module graph builder.
+    if self.0.hook_registry.resolve_active.get()
+      || self.0.hook_registry.load_active.get()
+    {
+      self.0.shared.has_js_execution_started_flag.raise();
       return Box::pin(deno_core::futures::future::ready(Ok(())));
     }
 

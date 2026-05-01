@@ -711,6 +711,7 @@ impl StandaloneModuleLoaderFactory {
     CreateModuleLoaderResult {
       module_loader: loader.clone(),
       node_require_loader: loader,
+      hook_registry: None,
     }
   }
 }
