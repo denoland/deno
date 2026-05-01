@@ -19,6 +19,7 @@ import * as udpWrap from "ext:deno_node/internal_binding/udp_wrap.ts";
 import * as util from "ext:deno_node/internal_binding/util.ts";
 import * as uvNamespace from "ext:deno_node/internal_binding/uv.ts";
 import * as httpParser from "ext:deno_node/internal_binding/http_parser.ts";
+import * as http2Constants from "ext:deno_node/internal/http2/constants.ts";
 
 // Mutable shallow copy so callers can replace properties (e.g. wrap
 // `errname` with a deprecation warning when --pending-deprecation is set).
@@ -53,6 +54,7 @@ const modules = {
   "fs_dir": {},
   "fs_event_wrap": {},
   "heap_utils": {},
+  http2: { constants: http2Constants },
   "http_parser": httpParser,
   icu: {},
   inspector: {},
