@@ -817,10 +817,6 @@ Deno.test(
     );
 
     server.on("stream", (stream) => {
-      stream.on("error", () => {
-        // Client-side assertion verifies this stream-reset path.
-        // Avoid treating expected server-side stream teardown as uncaught.
-      });
       stream.respondWithFile(missingPath);
       // Force a committed response before fs.open() fails asynchronously.
       process.nextTick(() => {
@@ -869,10 +865,6 @@ Deno.test(
     const server = http2.createServer();
 
     server.on("stream", (stream) => {
-      stream.on("error", () => {
-        // Client-side assertion verifies this stream-reset path.
-        // Avoid treating expected server-side stream teardown as uncaught.
-      });
       stream.respondWithFD(-1, {}, { statCheck: () => true });
       // Force a committed response before fs.fstat() fails asynchronously.
       process.nextTick(() => {

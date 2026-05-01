@@ -500,6 +500,12 @@ function submitGoaway(code, lastStreamID, opaqueData) {
 // Also keep track of listeners for the Http2Stream instances, as some events
 // are emitted on those objects.
 function streamListenerAdded(name) {
+  if (name === "error") {
+    // Tracked per-stream so _destroy can branch without listenerCount(),
+    // which is easy to misuse around newListener/removeListener ordering.
+    this[kState].errorListenerCount++;
+    return;
+  }
   const session = this[kSession];
   if (!session) return;
   switch (name) {
@@ -513,6 +519,10 @@ function streamListenerAdded(name) {
 }
 
 function streamListenerRemoved(name) {
+  if (name === "error") {
+    this[kState].errorListenerCount--;
+    return;
+  }
   const session = this[kSession];
   if (!session) return;
   switch (name) {
@@ -1578,6 +1588,8 @@ class Http2Stream extends Duplex {
       writeQueueSize: 0,
       trailersReady: false,
       endAfterHeaders: false,
+      errorListenerCount: 0,
+      skipEmitStreamError: false,
     };
 
     // Fields used by the compat API to avoid megamorphisms.
@@ -2099,19 +2111,19 @@ class Http2Stream extends Duplex {
     sessionState.writeQueueSize -= state.writeQueueSize;
     state.writeQueueSize = 0;
 
-    // RST code 8 not emitted as an error as its used by clients to signify
-    // abort and is already covered by aborted event, also allows more
-    // seamless compatibility with http1
+    // RST code 8 is not emitted as an error (abort / http1 compat). For other
+    // abnormal RST codes, match Node: synthesize ERR_HTTP2_STREAM_ERROR on
+    // client streams, and on server streams only when user code listens for
+    // 'error'. Otherwise the synthesized error is scheduled on nextTick and
+    // can become uncaught if server/session teardown removes listeners first
+    // (e.g. server.close() from a client stream error handler). Internal
+    // respondWithFile/FD teardown after headers are sent sets skipEmitStreamError.
     if (
       err == null &&
       code !== NGHTTP2_NO_ERROR &&
       code !== NGHTTP2_CANCEL &&
       !state.skipEmitStreamError
     ) {
-      // For server streams, forced resets can be an internal control flow
-      // (for example async respondWithFile/respondWithFD failures after
-      // headers were already committed). Emitting a synthesized stream error
-      // without a listener would throw uncaught and fail the test/module.
       if (
         session[kType] !== NGHTTP2_SESSION_SERVER ||
         this.listenerCount("error") > 0
@@ -2304,14 +2316,15 @@ function tryClose(fd) {
 function handleAsyncFileResponseError(stream, err, onError) {
   if (
     !stream.destroyed &&
-    !stream.closed &&
     (stream[kState].flags & STREAM_FLAGS_HEADERS_SENT) !== 0
   ) {
     // Async respondWithFile/respondWithFD failures after headers are sent
     // intentionally map to a forced stream reset. Avoid synthesizing an extra
     // server-side stream error for this internal control-flow path.
     stream[kState].skipEmitStreamError = true;
-    closeStream(stream, NGHTTP2_INTERNAL_ERROR, kForceRstStream);
+    if (!stream.closed) {
+      closeStream(stream, NGHTTP2_INTERNAL_ERROR, kForceRstStream);
+    }
     stream.destroy();
     return;
   }
@@ -2365,6 +2378,10 @@ function processRespondWithFD(
         // stream with NGHTTP2_INTERNAL_ERROR rather than leaking the
         // underlying fs error to user code.
         if (!self.destroyed && !self.closed) {
+          // Same internal-reset path as handleAsyncFileResponseError: headers
+          // were already sent via respond(); avoid synthesizing a stream error
+          // in _destroy for this control-flow teardown.
+          self[kState].skipEmitStreamError = true;
           closeStream(self, NGHTTP2_INTERNAL_ERROR, kForceRstStream);
         }
         self.destroy();
@@ -2512,6 +2529,12 @@ function afterOpen(session, options, headers, streamOptions, err, fd) {
   const state = this[kState];
   const onError = options.onError;
   if (err) {
+    // If another response path (e.g. respond() in a nextTick) committed
+    // headers before this open() failed, ensure _destroy skips synthesizing
+    // ERR_HTTP2_STREAM_ERROR so teardown cannot race listener removal.
+    if ((state.flags & STREAM_FLAGS_HEADERS_SENT) !== 0) {
+      state.skipEmitStreamError = true;
+    }
     handleAsyncFileResponseError(this, err, onError);
     return;
   }
@@ -3832,7 +3855,7 @@ class Http2Session extends EventEmitter {
         // otherwise route the error onto the session so it isn't lost (also
         // avoids emit('error') throwing as an uncaughtException).
         if (stream.destroyed) {
-          if (stream.listenerCount("error") > 0) {
+          if (stream[kState].errorListenerCount > 0) {
             process.nextTick(() => stream.emit("error", err));
           } else {
             this.destroy(err);
