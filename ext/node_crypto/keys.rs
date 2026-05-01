@@ -902,9 +902,18 @@ impl KeyObjectHandle {
       "der" => match typ {
         "pkcs8" => {
           if let Some(passphrase) = passphrase {
-            SecretDocument::from_pkcs8_encrypted_der(key, passphrase).map_err(
-              |_| AsymmetricPrivateKeyError::InvalidEncryptedPkcs8PrivateKey,
-            )?
+            if EncryptedPrivateKeyInfo::try_from(key).is_ok() {
+              SecretDocument::from_pkcs8_encrypted_der(key, passphrase)
+                .map_err(|_| {
+                  AsymmetricPrivateKeyError::InvalidEncryptedPkcs8PrivateKey
+                })?
+            } else {
+              // Node ignores the passphrase when the key isn't actually
+              // encrypted.
+              SecretDocument::from_pkcs8_der(key).map_err(|_| {
+                AsymmetricPrivateKeyError::InvalidPkcs8PrivateKey
+              })?
+            }
           } else if EncryptedPrivateKeyInfo::try_from(key).is_ok() {
             return Err(
               AsymmetricPrivateKeyError::EncryptedPkcs8DerRequiresPassphrase,

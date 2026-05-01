@@ -513,6 +513,7 @@
     "parallel/test-crypto-keygen-async-elliptic-curve-jwk-ec.js": {},
     "parallel/test-crypto-keygen-async-elliptic-curve-jwk.js": {},
     "parallel/test-crypto-keygen-async-elliptic-curve-jwk-rsa.js": {},
+    "parallel/test-crypto-keygen-async-encrypted-private-key.js": {},
     "parallel/test-crypto-keygen-async-named-elliptic-curve.js": {},
     "parallel/test-crypto-keygen-async-rsa.js": {
       "ignore": true,
