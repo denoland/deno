@@ -2009,10 +2009,11 @@ impl<
       let mut current = package_path.to_path_buf();
 
       while let Some(parent) = current.parent() {
-        if let Some(file_name) = parent.file_name() {
-          if file_name == "node_modules" {
-            break;
-          }
+        if parent
+          .file_name()
+          .is_some_and(|name| name == "node_modules")
+        {
+          break;
         }
 
         let p = parent.join("package.json");
