@@ -403,30 +403,74 @@ pub unsafe fn uv_tcp_init(loop_: *mut uv_loop_t, tcp: *mut uv_tcp_t) -> c_int {
 /// `tcp` must be a valid pointer to a `uv_tcp_t` initialized by `uv_tcp_init`.
 /// `fd` must be a valid, open file descriptor / socket.
 pub unsafe fn uv_tcp_open(tcp: *mut uv_tcp_t, fd: c_int) -> c_int {
+  // The default open path wraps the fd as a connected `TcpStream`. Callers
+  // that received a listening fd (e.g. via IPC handle passing for
+  // `net.Server`) must use [`uv_tcp_open_listener`] instead — matching how
+  // Node's child_process layer dispatches on `message.type`. We don't try
+  // to autodetect via `SO_ACCEPTCONN` because macOS returns ENOPROTOOPT for
+  // that probe.
   // SAFETY: Caller guarantees tcp is initialized and fd is valid.
   unsafe {
     #[cfg(unix)]
-    let std_stream = {
+    {
       use std::os::unix::io::FromRawFd;
-      let s = std::net::TcpStream::from_raw_fd(fd);
-      (*tcp).internal_fd = Some(fd);
-      s
-    };
+      let std_stream = std::net::TcpStream::from_raw_fd(fd);
+      std_stream.set_nonblocking(true).ok();
+      match tokio::net::TcpStream::from_std(std_stream) {
+        Ok(stream) => {
+          if (*tcp).internal_nodelay {
+            stream.set_nodelay(true).ok();
+          }
+          (*tcp).internal_fd = Some(fd);
+          (*tcp).internal_stream = Some(stream);
+          0
+        }
+        Err(_) => UV_EINVAL,
+      }
+    }
     #[cfg(windows)]
-    let std_stream = {
+    {
       use std::os::windows::io::FromRawSocket;
       let sock = fd as std::os::windows::io::RawSocket;
-      let s = std::net::TcpStream::from_raw_socket(sock);
-      (*tcp).internal_fd = Some(sock);
-      s
-    };
-    std_stream.set_nonblocking(true).ok();
-    match tokio::net::TcpStream::from_std(std_stream) {
-      Ok(stream) => {
-        if (*tcp).internal_nodelay {
-          stream.set_nodelay(true).ok();
+      let std_stream = std::net::TcpStream::from_raw_socket(sock);
+      std_stream.set_nonblocking(true).ok();
+      match tokio::net::TcpStream::from_std(std_stream) {
+        Ok(stream) => {
+          if (*tcp).internal_nodelay {
+            stream.set_nodelay(true).ok();
+          }
+          (*tcp).internal_fd = Some(sock);
+          (*tcp).internal_stream = Some(stream);
+          0
         }
-        (*tcp).internal_stream = Some(stream);
+        Err(_) => UV_EINVAL,
+      }
+    }
+  }
+}
+
+/// Open `tcp` from an already-listening fd (typically received via IPC
+/// handle passing for `net.Server`). Mirrors how Node's child_process layer
+/// dispatches on the `net.Server` handle type and constructs a fresh
+/// `net.Server` around the inherited fd; libuv's underlying `listen()`
+/// syscall is a no-op on a listening fd, so a subsequent `uv_listen` call
+/// only needs to register the connection callback.
+///
+/// ### Safety
+/// `tcp` must be initialized by `uv_tcp_init`. `fd` must be a valid
+/// listening socket fd that the caller intends to transfer ownership of.
+#[cfg(unix)]
+pub unsafe fn uv_tcp_open_listener(tcp: *mut uv_tcp_t, fd: c_int) -> c_int {
+  use std::os::unix::io::FromRawFd;
+  // SAFETY: Caller guarantees tcp is initialized and fd is valid.
+  unsafe {
+    let std_listener = std::net::TcpListener::from_raw_fd(fd);
+    std_listener.set_nonblocking(true).ok();
+    match tokio::net::TcpListener::from_std(std_listener) {
+      Ok(listener) => {
+        (*tcp).internal_fd = Some(fd);
+        (*tcp).internal_listener_addr = listener.local_addr().ok();
+        (*tcp).internal_listener = Some(listener);
         0
       }
       Err(_) => UV_EINVAL,
@@ -435,6 +479,45 @@ pub unsafe fn uv_tcp_open(tcp: *mut uv_tcp_t, fd: c_int) -> c_int {
 }
 
 const UV_TCP_REUSEPORT: u32 = 4;
+
+/// ### Safety
+/// `tcp` must be a valid pointer to an initialized `uv_tcp_t`.
+///
+/// Returns a dup of the underlying socket file descriptor, for use as the
+/// payload of an SCM_RIGHTS cmsg on an IPC channel. The caller owns the returned
+/// fd and must close it after `sendmsg` has attached it to the IPC message.
+#[cfg(unix)]
+pub unsafe fn uv_tcp_fd_for_ipc(tcp: *mut uv_tcp_t) -> c_int {
+  use std::os::fd::AsRawFd;
+
+  if tcp.is_null() {
+    return -1;
+  }
+
+  // SAFETY: Caller guarantees tcp is initialized and valid.
+  unsafe {
+    let tcp = &*tcp;
+    let fd = if let Some(stream) = tcp.internal_stream.as_ref() {
+      stream.as_raw_fd()
+    } else if let Some(listener) = tcp.internal_listener.as_ref() {
+      listener.as_raw_fd()
+    } else {
+      tcp.internal_fd.unwrap_or(-1)
+    };
+    if fd < 0 {
+      return -1;
+    }
+
+    let dup = libc::dup(fd);
+    if dup != -1 {
+      let flags = libc::fcntl(dup, libc::F_GETFD);
+      if flags != -1 {
+        libc::fcntl(dup, libc::F_SETFD, flags | libc::FD_CLOEXEC);
+      }
+    }
+    dup
+  }
+}
 
 /// ### Safety
 /// `tcp` must be initialized by `uv_tcp_init`. `addr` must point to a valid sockaddr.
@@ -828,46 +911,53 @@ pub unsafe fn uv_listen(
       return err;
     }
 
-    let effective_backlog = if backlog > 0 { backlog as u32 } else { 128 };
+    // If the handle was opened from an already-listening fd (received via
+    // IPC handle passing), skip bind/listen and just register the callback.
+    // libuv's `listen(fd, backlog)` on an already-listening socket is a
+    // no-op too.
+    if tcp_ref.internal_listener.is_none() {
+      let effective_backlog = if backlog > 0 { backlog as u32 } else { 128 };
 
-    // Take the pre-created socket from bind (if any). This preserves socket
-    // identity so options set between bind and listen are retained on the
-    // same fd, matching libuv's behavior.
-    let socket = match tcp_ref.internal_socket.take() {
-      Some(s) => s,
-      None => {
-        // No prior bind — create a socket and bind to 0.0.0.0:0,
-        // matching libuv's implicit bind in uv__tcp_listen.
-        let bind_addr = tcp_ref
-          .internal_bind_addr
-          .unwrap_or_else(|| "0.0.0.0:0".parse().unwrap());
-        let s = if bind_addr.is_ipv4() {
-          match tokio::net::TcpSocket::new_v4() {
-            Ok(s) => s,
-            Err(ref e) => return io_error_to_uv(e),
+      // Take the pre-created socket from bind (if any). This preserves socket
+      // identity so options set between bind and listen are retained on the
+      // same fd, matching libuv's behavior.
+      let socket = match tcp_ref.internal_socket.take() {
+        Some(s) => s,
+        None => {
+          // No prior bind — create a socket and bind to 0.0.0.0:0,
+          // matching libuv's implicit bind in uv__tcp_listen.
+          let bind_addr = tcp_ref
+            .internal_bind_addr
+            .unwrap_or_else(|| "0.0.0.0:0".parse().unwrap());
+          let s = if bind_addr.is_ipv4() {
+            match tokio::net::TcpSocket::new_v4() {
+              Ok(s) => s,
+              Err(ref e) => return io_error_to_uv(e),
+            }
+          } else {
+            match tokio::net::TcpSocket::new_v6() {
+              Ok(s) => s,
+              Err(ref e) => return io_error_to_uv(e),
+            }
+          };
+          s.set_reuseaddr(true).ok();
+          if let Err(ref e) = s.bind(bind_addr) {
+            return io_error_to_uv(e);
           }
-        } else {
-          match tokio::net::TcpSocket::new_v6() {
-            Ok(s) => s,
-            Err(ref e) => return io_error_to_uv(e),
-          }
-        };
-        s.set_reuseaddr(true).ok();
-        if let Err(ref e) = s.bind(bind_addr) {
-          return io_error_to_uv(e);
+          s
         }
-        s
-      }
-    };
+      };
 
-    let tokio_listener = match socket.listen(effective_backlog) {
-      Ok(l) => l,
-      Err(ref e) => return io_error_to_uv(e),
-    };
+      let tokio_listener = match socket.listen(effective_backlog) {
+        Ok(l) => l,
+        Err(ref e) => return io_error_to_uv(e),
+      };
 
-    let listener_addr = tokio_listener.local_addr().ok();
-    tcp_ref.internal_listener = Some(tokio_listener);
-    tcp_ref.internal_listener_addr = listener_addr;
+      let listener_addr = tokio_listener.local_addr().ok();
+      tcp_ref.internal_listener = Some(tokio_listener);
+      tcp_ref.internal_listener_addr = listener_addr;
+    }
+
     tcp_ref.internal_connection_cb = cb;
     tcp_ref.flags |= UV_HANDLE_ACTIVE;
 

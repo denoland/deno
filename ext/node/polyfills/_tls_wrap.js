@@ -27,6 +27,7 @@ import {
   ERR_INVALID_ARG_VALUE,
   ERR_TLS_CERT_ALTNAME_INVALID,
   ERR_TLS_REQUIRED_SERVER_NAME,
+  ERR_TLS_SNI_FROM_SERVER,
 } from "ext:deno_node/internal/errors.ts";
 import { debuglog } from "ext:deno_node/internal/util/debuglog.ts";
 import {
@@ -737,10 +738,10 @@ TLSSocket.prototype._start = function () {
 
 TLSSocket.prototype.setServername = function (name) {
   if (typeof name !== "string") {
-    throw new TypeError("Server name must be a string");
+    throw new ERR_INVALID_ARG_TYPE("name", "string", name);
   }
   if (this._tlsOptions?.isServer) {
-    throw new Error("Cannot set servername on a server socket");
+    throw new ERR_TLS_SNI_FROM_SERVER();
   }
   this._handle?.setServername(name);
 };
