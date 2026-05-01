@@ -3287,6 +3287,41 @@ pub enum ExportPrivateKeyPemError {
   MissingCipherOrPassphrase,
 }
 
+fn encrypt_pkcs8_der(
+  data: &[u8],
+  cipher: &str,
+  passphrase: &[u8],
+) -> Result<SecretDocument, ExportPrivateKeyPemError> {
+  let pk_info = PrivateKeyInfo::try_from(data).map_err(|err| {
+    ExportPrivateKeyPemError::UnsupportedCipher(err.to_string())
+  })?;
+
+  let mut rng = thread_rng();
+  let mut salt = [0u8; 16];
+  rng.fill_bytes(&mut salt);
+  let mut iv = [0u8; 16];
+  rng.fill_bytes(&mut iv);
+
+  let pbes2_params = match cipher {
+    "aes-128-cbc" => pkcs8::pkcs5::pbes2::Parameters::pbkdf2_sha256_aes128cbc(
+      100_000, &salt, &iv,
+    ),
+    "aes-256-cbc" => pkcs8::pkcs5::pbes2::Parameters::pbkdf2_sha256_aes256cbc(
+      100_000, &salt, &iv,
+    ),
+    _ => {
+      return Err(ExportPrivateKeyPemError::UnsupportedCipher(format!(
+        "Unsupported cipher for PKCS#8 encryption: {cipher}"
+      )));
+    }
+  }
+  .map_err(|err| ExportPrivateKeyPemError::UnsupportedCipher(err.to_string()))?;
+
+  pk_info
+    .encrypt_with_params(pbes2_params, passphrase)
+    .map_err(|err| ExportPrivateKeyPemError::UnsupportedCipher(err.to_string()))
+}
+
 /// Derive an encryption key from a passphrase and salt using the legacy
 /// OpenSSL EVP_BytesToKey algorithm (MD5-based). This is used for the
 /// traditional PEM encryption format (Proc-Type/DEK-Info headers).
@@ -3409,6 +3444,14 @@ pub fn op_node_export_private_key_pem(
 
   match (&cipher, &passphrase) {
     (Some(cipher), Some(passphrase)) => {
+      if typ == "pkcs8" {
+        let encrypted_doc =
+          encrypt_pkcs8_der(&data, cipher, passphrase.as_bytes())?;
+        return encrypted_doc
+          .to_pem(EncryptedPrivateKeyInfo::PEM_LABEL, LineEnding::LF)
+          .map(|pem| (*pem).clone())
+          .map_err(ExportPrivateKeyPemError::Der);
+      }
       return encrypt_private_key_pem(
         label,
         &data,
