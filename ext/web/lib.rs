@@ -60,6 +60,7 @@ pub use crate::timers::StartTime;
 use crate::timers::op_defer;
 use crate::timers::op_now;
 use crate::timers::op_time_origin;
+mod locks;
 
 deno_core::extension!(deno_web,
   deps = [ deno_webidl ],
@@ -105,6 +106,9 @@ deno_core::extension!(deno_web,
     stream_resource::op_readable_stream_resource_write_sync,
     stream_resource::op_readable_stream_resource_close,
     stream_resource::op_readable_stream_resource_await_close,
+    locks::op_lock_manager_request,
+    locks::op_lock_manager_release,
+    locks::op_lock_manager_query,
     url::op_url_reparse,
     url::op_url_parse,
     url::op_url_get_serialization,
@@ -144,6 +148,7 @@ deno_core::extension!(deno_web,
     "14_compression.js",
     "15_performance.js",
     "16_image_data.js",
+    "locks.js",
     "00_url.js",
     "01_urlpattern.js",
     "01_console.js",
