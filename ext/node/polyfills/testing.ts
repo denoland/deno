@@ -20,7 +20,6 @@ const {
   ReflectApply,
   SafeArrayIterator,
   SafeMap,
-  SafePromiseAll,
   String,
   Symbol,
   SymbolFor,
@@ -353,9 +352,18 @@ class NodeTestContext {
 
 let currentSuite: TestSuite | null = null;
 
+// Entries are step definitions collected during the suite body. Steps are
+// not created via t.step() until the suite executes, so that before/after
+// hooks run at the correct time.
+interface SuiteEntry {
+  name: string;
+  fn: (t: Deno.TestContext) => Promise<void> | void;
+  ignore: boolean;
+}
+
 class TestSuite {
   #denoTestContext: Deno.TestContext;
-  steps: Promise<boolean>[] = [];
+  entries: SuiteEntry[] = [];
   beforeAllHooks: (() => void | Promise<void>)[] = [];
   afterAllHooks: (() => void | Promise<void>)[] = [];
   beforeEachHooks: (() => void | Promise<void>)[] = [];
@@ -369,7 +377,7 @@ class TestSuite {
     const prepared = prepareOptions(name, options, fn, overrides);
     const beforeEach = this.beforeEachHooks;
     const afterEach = this.afterEachHooks;
-    const step = this.#denoTestContext.step({
+    ArrayPrototypePush(this.entries, {
       name: prepared.name,
       fn: async (denoTestContext) => {
         const newNodeTextContext = new NodeTestContext(
@@ -397,27 +405,32 @@ class TestSuite {
         }
       },
       ignore: !!prepared.options.todo || !!prepared.options.skip,
-      sanitizeExit: false,
-      sanitizeOps: false,
-      sanitizeResources: false,
     });
-    ArrayPrototypePush(this.steps, step);
   }
 
   addSuite(name, options, fn, overrides) {
     const prepared = prepareOptions(name, options, fn, overrides);
     // deno-lint-ignore prefer-primordials
     const { promise, resolve } = Promise.withResolvers();
-    const step = this.#denoTestContext.step({
+    ArrayPrototypePush(this.entries, {
       name: prepared.name,
       fn: wrapSuiteFn(prepared.fn, resolve),
       ignore: !!prepared.options.todo || !!prepared.options.skip,
-      sanitizeExit: false,
-      sanitizeOps: false,
-      sanitizeResources: false,
     });
-    ArrayPrototypePush(this.steps, step);
     return promise;
+  }
+
+  async execute() {
+    for (const entry of new SafeArrayIterator(this.entries)) {
+      await this.#denoTestContext.step({
+        name: entry.name,
+        fn: entry.fn,
+        ignore: entry.ignore,
+        sanitizeExit: false,
+        sanitizeOps: false,
+        sanitizeResources: false,
+      });
+    }
   }
 }
 
@@ -542,7 +555,7 @@ function wrapSuiteFn(fn, resolve) {
       for (const hook of new SafeArrayIterator(suite.beforeAllHooks)) {
         await hook();
       }
-      await SafePromiseAll(suite.steps);
+      await suite.execute();
     } finally {
       try {
         for (const hook of new SafeArrayIterator(suite.afterAllHooks)) {
