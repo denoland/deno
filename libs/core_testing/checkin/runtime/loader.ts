@@ -26,7 +26,7 @@ interface RegisterOptions {
  * Both hooks receive a `next*` function to delegate to the default behavior.
  */
 export function register(hooks: RegisterOptions): void {
-  core.ops.op_loader_register();
+  core.ops.op_loader_register(!!hooks.resolve, !!hooks.load);
 
   if (hooks.resolve) {
     const resolveHook = hooks.resolve;

@@ -97,24 +97,17 @@ pub trait ModuleLoader {
 
   /// Override to customize the behavior of `import.meta.resolve` resolution.
   ///
-  /// The default implementation calls `self.resolve()` and, if the result is
-  /// `ModuleResolveResponse::Sync`, returns it directly. Loaders that return
-  /// `ModuleResolveResponse::Async` from `resolve()` should override this
-  /// method to provide a synchronous resolution path, since
-  /// `import.meta.resolve` is synchronous.
+  /// The default implementation performs basic URL resolution via
+  /// `resolve_import`. Loaders with custom resolution logic should override
+  /// this to share a common `resolve_inner` method with `resolve()`.
+  /// `import.meta.resolve` is synchronous, so this must not require async
+  /// work.
   fn import_meta_resolve(
     &self,
     specifier: &str,
     referrer: &str,
   ) -> Result<ModuleSpecifier, ModuleLoaderError> {
-    match self.resolve(specifier, referrer, ResolutionKind::DynamicImport) {
-      ModuleResolveResponse::Sync(result) => result,
-      ModuleResolveResponse::Async(_) => {
-        // Async resolution is not supported for import.meta.resolve;
-        // fall back to basic URL resolution.
-        resolve_import(specifier, referrer).map_err(JsErrorBox::from_err)
-      }
-    }
+    resolve_import(specifier, referrer).map_err(JsErrorBox::from_err)
   }
 
   /// Given ModuleSpecifier, load its source code.
@@ -342,6 +335,14 @@ impl ModuleLoader for ExtModuleLoader {
     _kind: ResolutionKind,
   ) -> ModuleResolveResponse {
     ModuleResolveResponse::Sync(self.resolve_inner(specifier, referrer))
+  }
+
+  fn import_meta_resolve(
+    &self,
+    specifier: &str,
+    referrer: &str,
+  ) -> Result<ModuleSpecifier, ModuleLoaderError> {
+    self.resolve_inner(specifier, referrer)
   }
 
   fn load(

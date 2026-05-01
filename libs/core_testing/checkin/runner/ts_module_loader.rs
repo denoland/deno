@@ -71,8 +71,8 @@ impl ModuleLoader for TypescriptModuleLoader {
     referrer: &str,
     _kind: ResolutionKind,
   ) -> deno_core::ModuleResolveResponse {
-    // When hooks are active, delegate resolution to JS via the message bridge.
-    if self.hook_registry.active.get() {
+    // When resolve hooks are active, delegate resolution to JS via the message bridge.
+    if self.hook_registry.resolve_active.get() {
       let receiver = self
         .hook_registry
         .push_resolve(specifier.to_string(), referrer.to_string());
@@ -102,8 +102,8 @@ impl ModuleLoader for TypescriptModuleLoader {
     _maybe_referrer: Option<&ModuleLoadReferrer>,
     options: ModuleLoadOptions,
   ) -> ModuleLoadResponse {
-    // When hooks are active, delegate loading to JS via the message bridge.
-    if self.hook_registry.active.get() {
+    // When load hooks are active, delegate loading to JS via the message bridge.
+    if self.hook_registry.load_active.get() {
       let receiver = self.hook_registry.push_load(module_specifier.to_string());
       let specifier = module_specifier.clone();
       let source_maps = self.source_maps.clone();

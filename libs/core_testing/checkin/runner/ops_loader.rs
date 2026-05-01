@@ -37,7 +37,8 @@ type LoadSender =
 /// sends responses back via sync ops.
 #[derive(Clone, Default)]
 pub struct LoaderHookRegistry {
-  pub active: Rc<Cell<bool>>,
+  pub resolve_active: Rc<Cell<bool>>,
+  pub load_active: Rc<Cell<bool>>,
   next_id: Rc<Cell<u32>>,
 
   pending_resolves: Rc<RefCell<VecDeque<PendingResolve>>>,
@@ -100,9 +101,18 @@ impl LoaderHookRegistry {
 
 /// Mark hooks as active. Called from JS when `register()` is invoked.
 #[op2(fast)]
-pub fn op_loader_register(state: &mut OpState) {
+pub fn op_loader_register(
+  state: &mut OpState,
+  has_resolve: bool,
+  has_load: bool,
+) {
   let registry = state.borrow::<LoaderHookRegistry>().clone();
-  registry.active.set(true);
+  if has_resolve {
+    registry.resolve_active.set(true);
+  }
+  if has_load {
+    registry.load_active.set(true);
+  }
 }
 
 /// Poll for a pending resolve request. Returns `[id, specifier, referrer]`
