@@ -11,6 +11,7 @@ use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_core::futures::FutureExt;
 use deno_core::futures::StreamExt;
+use deno_core::url::Url;
 use deno_path_util::url_to_file_path;
 use deno_semver::StackString;
 use deno_semver::Version;
@@ -481,7 +482,21 @@ pub async fn add(
     .with_context(|| format!("Failed to parse package: {}", entry_text))?;
 
     match req {
-      Ok(add_req) => package_reqs.push(add_req),
+      Ok(add_req) => {
+        // Handle tarball specifiers immediately (they need async I/O
+        // to fetch and extract package.json for name/version).
+        if let AddRmPackageReqValue::Tarball(ref source) = add_req.value {
+          let selected =
+            resolve_tarball_package(source, &start_dir, http_client.clone())
+              .await
+              .with_context(|| {
+                format!("Failed to resolve tarball: {}", entry_text)
+              })?;
+          selected_packages.push(selected);
+        } else {
+          package_reqs.push(add_req);
+        }
+      }
       Err(package_req) => {
         if jsr_resolver
           .req_to_nv(&package_req)
@@ -574,6 +589,22 @@ pub async fn add(
     }
   }
 
+  // Collect tarball lockfile info before selected_packages is consumed
+  let tarball_lockfile_entries: Vec<_> = selected_packages
+    .iter()
+    .filter_map(|p| {
+      let info = p.tarball_info.as_ref()?;
+      Some((
+        p.package_name
+          .strip_prefix("npm:")
+          .unwrap_or(&p.package_name)
+          .to_string(),
+        p.selected_version.clone(),
+        info.clone(),
+      ))
+    })
+    .collect();
+
   let dev = add_flags.dev;
   for selected_package in selected_packages {
     log::info!(
@@ -603,7 +634,7 @@ pub async fn add(
     deno.commit()?;
   }
 
-  npm_install_after_modification(
+  let cli_factory = npm_install_after_modification(
     flags,
     Some(jsr_resolver),
     CacheTopLevelDepsOptions {
@@ -611,6 +642,35 @@ pub async fn add(
     },
   )
   .await?;
+
+  // Write tarball package entries to the lockfile
+  if !tarball_lockfile_entries.is_empty() {
+    if let Some(lockfile) = cli_factory.maybe_lockfile().await? {
+      let mut lockfile = lockfile.lock();
+      for (name, version, info) in &tarball_lockfile_entries {
+        let serialized_id =
+          StackString::from(format!("{}@{}", name, version).as_str());
+        lockfile.insert_npm_package(deno_lockfile::NpmPackageLockfileInfo {
+          serialized_id,
+          integrity: Some(info.integrity.clone()),
+          dependencies: Vec::new(),
+          optional_dependencies: Vec::new(),
+          optional_peers: Vec::new(),
+          os: Vec::new(),
+          cpu: Vec::new(),
+          tarball: Some(StackString::from(info.tarball_url.as_str())),
+          deprecated: false,
+          scripts: false,
+          bin: false,
+        });
+      }
+      drop(lockfile);
+      // Write the updated lockfile
+      if let Some(lockfile) = cli_factory.maybe_lockfile().await? {
+        lockfile.write_if_changed()?;
+      }
+    }
+  }
 
   Ok(())
 }
@@ -620,6 +680,17 @@ struct SelectedPackage {
   package_name: String,
   version_req: String,
   selected_version: StackString,
+  /// For tarball installs: the integrity hash and tarball source
+  /// for writing to the lockfile.
+  tarball_info: Option<TarballLockfileInfo>,
+}
+
+#[derive(Clone)]
+struct TarballLockfileInfo {
+  /// sha512 SRI hash of the tarball bytes
+  integrity: String,
+  /// The tarball source (file: path or URL)
+  tarball_url: String,
 }
 
 enum NotFoundHelp {
@@ -635,6 +706,145 @@ enum PackageAndVersion {
     help: Option<NotFoundHelp>,
   },
   Selected(SelectedPackage),
+}
+
+/// Resolve a tarball specifier by fetching the tarball, extracting
+/// package.json, and returning a SelectedPackage.
+async fn resolve_tarball_package(
+  source: &TarballSource,
+  start_dir: &Path,
+  http_client: Arc<crate::http_util::HttpClientProvider>,
+) -> Result<SelectedPackage, AnyError> {
+  use std::io::Read;
+
+  use flate2::read::GzDecoder;
+
+  // Step 1: Get tarball bytes
+  let tarball_bytes = match source {
+    TarballSource::Local(path) => {
+      let abs_path = if path.is_absolute() {
+        path.clone()
+      } else {
+        start_dir.join(path)
+      };
+      std::fs::read(&abs_path).with_context(|| {
+        format!("Failed to read tarball: {}", abs_path.display())
+      })?
+    }
+    TarballSource::Remote(url) => {
+      log::info!("Downloading {}", url);
+      let client = http_client.get_or_create()?;
+      client
+        .download(url.clone())
+        .await
+        .with_context(|| format!("Failed to download tarball: {url}"))?
+    }
+  };
+
+  // Step 2: Decompress gzip and extract package.json from the tar
+  let mut decoder = GzDecoder::new(&tarball_bytes[..]);
+  let mut decompressed = Vec::new();
+  decoder
+    .read_to_end(&mut decompressed)
+    .context("Failed to decompress tarball (not valid gzip)")?;
+
+  let mut archive = tar::Archive::new(&decompressed[..]);
+  let mut package_json: Option<deno_core::serde_json::Value> = None;
+
+  for entry in archive.entries().context("Failed to read tar entries")? {
+    let mut entry = entry.context("Failed to read tar entry")?;
+    let path = entry.path().context("Failed to read tar entry path")?;
+    let path_str = path.to_string_lossy();
+
+    // npm tarballs have entries under package/ (e.g., package/package.json)
+    if path_str == "package/package.json"
+      || path_str.ends_with("/package.json")
+        && path_str.matches('/').count() == 1
+    {
+      let mut contents = String::new();
+      entry
+        .read_to_string(&mut contents)
+        .context("Failed to read package.json from tarball")?;
+      package_json = Some(
+        deno_core::serde_json::from_str(&contents)
+          .context("Failed to parse package.json from tarball")?,
+      );
+      break;
+    }
+  }
+
+  let package_json =
+    package_json.context("No package.json found in tarball")?;
+
+  // Step 3: Extract name and version
+  let name = package_json
+    .get("name")
+    .and_then(|v| v.as_str())
+    .context("package.json in tarball is missing \"name\" field")?
+    .to_string();
+  let version = package_json
+    .get("version")
+    .and_then(|v| v.as_str())
+    .context("package.json in tarball is missing \"version\" field")?
+    .to_string();
+
+  // The tarball is extracted to node_modules by the npm installer's
+  // local package handling (it detects .tgz/.tar.gz targets and
+  // extracts instead of symlinking).
+
+  // Record the dependency with a file: reference pointing to the tarball.
+  // For remote tarballs, save a local copy first so the dep can be
+  // resolved on subsequent `deno install` without re-downloading.
+  let tarball_ref = match source {
+    TarballSource::Local(path) => format!("file:{}", path.display()),
+    TarballSource::Remote(url) => {
+      // Cache the remote tarball locally alongside node_modules
+      let cache_dir = start_dir.join(".deno_tarball_cache");
+      std::fs::create_dir_all(&cache_dir)
+        .context("Failed to create tarball cache directory")?;
+      let filename = format!("{}-{}.tgz", name, version);
+      let cached_path = cache_dir.join(&filename);
+      std::fs::write(&cached_path, &tarball_bytes)
+        .context("Failed to cache tarball")?;
+      format!(
+        "file:{}",
+        cached_path
+          .strip_prefix(start_dir)
+          .unwrap_or(&cached_path)
+          .display()
+      )
+    }
+  };
+
+  // Compute sha512 integrity hash (matching npm/pnpm lockfile format)
+  use base64::Engine;
+  let hash = {
+    use sha2::Digest;
+    let mut hasher = sha2::Sha512::new();
+    hasher.update(&tarball_bytes);
+    let result = hasher.finalize();
+    let b64 = base64::engine::general_purpose::STANDARD.encode(result);
+    format!("sha512-{b64}")
+  };
+
+  let tarball_url_for_lockfile = match source {
+    TarballSource::Local(path) => format!("file:{}", path.display()),
+    TarballSource::Remote(url) => url.to_string(),
+  };
+
+  let package_name = format!("npm:{name}");
+  let import_name = StackString::from(name.as_str());
+
+  Ok(SelectedPackage {
+    import_name,
+    package_name,
+    version_req: tarball_ref,
+    selected_version: StackString::from(version.as_str()),
+    tarball_info: Some(TarballLockfileInfo {
+      integrity: hash,
+      tarball_url: tarball_url_for_lockfile,
+    }),
+  })
 }
 
 fn best_version<'a>(
@@ -719,6 +929,9 @@ async fn find_package_and_select_version_for_req(
     let req = match &add_package_req.value {
       AddRmPackageReqValue::Jsr(req) => req,
       AddRmPackageReqValue::Npm(req) => req,
+      AddRmPackageReqValue::Tarball(_) => {
+        unreachable!("tarball packages are resolved separately")
+      }
     };
     let prefixed_name = format!("{}:{}", T::SPECIFIER_PREFIX, req.name);
     let help_if_found_in_fallback = S::HELP;
@@ -776,6 +989,7 @@ async fn find_package_and_select_version_for_req(
       package_name: prefixed_name,
       version_req: format!("{}{}", range_symbol, &nv.version),
       selected_version: nv.version.to_custom_string::<StackString>(),
+      tarball_info: None,
     }))
   }
 
@@ -786,13 +1000,26 @@ async fn find_package_and_select_version_for_req(
     AddRmPackageReqValue::Npm(_) => {
       select(npm_resolver, jsr_resolver, add_package_req, save_exact).await
     }
+    AddRmPackageReqValue::Tarball(_) => {
+      unreachable!("tarball packages are resolved separately")
+    }
   }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TarballSource {
+  /// A local tarball file path (e.g., ./foo.tgz, ../pkg.tar.gz)
+  Local(PathBuf),
+  /// A remote tarball URL (e.g., https://example.com/pkg.tgz)
+  Remote(Url),
 }
 
 #[derive(Debug, PartialEq, Eq)]
 enum AddRmPackageReqValue {
   Jsr(PackageReq),
   Npm(PackageReq),
+  /// A tarball specifier (local path or remote URL)
+  Tarball(TarballSource),
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -820,6 +1047,15 @@ impl AddRmPackageReq {
     entry_text: &str,
     default_prefix: Option<Prefix>,
   ) -> Result<Result<Self, PackageReq>, AnyError> {
+    // Check for tarball specifiers before attempting prefix parsing.
+    // Local tarballs: ./foo.tgz, ../pkg.tar.gz, /abs/path.tgz
+    // Remote tarballs: any http/https URL that isn't a git+ URL
+    //   (matching npm/pnpm/bun behavior: all http(s) URLs are assumed
+    //    to be tarballs unless they have a git+ prefix)
+    if let Some(tarball) = Self::parse_tarball(entry_text)? {
+      return Ok(Ok(tarball));
+    }
+
     fn parse_prefix(text: &str) -> (Option<Prefix>, &str) {
       if let Some(text) = text.strip_prefix("jsr:") {
         (Some(Prefix::Jsr), text)
@@ -889,6 +1125,59 @@ impl AddRmPackageReq {
         }))
       }
     }
+  }
+
+  /// Detect tarball specifiers:
+  /// - Local: ./foo.tgz, ../pkg.tar.gz, /absolute/path.tgz
+  /// - Remote: http(s) URLs (not git+http(s))
+  fn parse_tarball(entry_text: &str) -> Result<Option<Self>, AnyError> {
+    fn is_tarball_extension(s: &str) -> bool {
+      s.ends_with(".tgz") || s.ends_with(".tar.gz")
+    }
+
+    // Local tarball: starts with ./ or ../ or / and has tarball extension
+    if (entry_text.starts_with("./")
+      || entry_text.starts_with("../")
+      || entry_text.starts_with('/'))
+      && is_tarball_extension(entry_text)
+    {
+      let path = PathBuf::from(entry_text);
+      // Use the file stem as the alias (e.g., "foo" from "foo-1.0.0.tgz")
+      let alias = path
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("unknown")
+        .to_string();
+      // Strip .tar suffix if the original was .tar.gz
+      let alias = alias.strip_suffix(".tar").unwrap_or(&alias);
+      return Ok(Some(AddRmPackageReq {
+        alias: StackString::from(alias),
+        value: AddRmPackageReqValue::Tarball(TarballSource::Local(path)),
+      }));
+    }
+
+    // Remote tarball: http(s) URL that is NOT a git+ URL.
+    // Matching npm/pnpm/bun: all http(s) URLs are treated as tarballs.
+    if (entry_text.starts_with("https://") || entry_text.starts_with("http://"))
+      && !entry_text.starts_with("git+")
+    {
+      let url = Url::parse(entry_text)
+        .with_context(|| format!("Invalid URL: {entry_text}"))?;
+      // Use the last path segment (without extension) as the alias
+      let alias = url
+        .path_segments()
+        .and_then(|mut segments| segments.next_back())
+        .unwrap_or("unknown")
+        .to_string();
+      let alias = alias.strip_suffix(".tgz").unwrap_or(&alias);
+      let alias = alias.strip_suffix(".tar.gz").unwrap_or(alias);
+      return Ok(Some(AddRmPackageReq {
+        alias: StackString::from(alias),
+        value: AddRmPackageReqValue::Tarball(TarballSource::Remote(url)),
+      }));
+    }
+
+    Ok(None)
   }
 }
 

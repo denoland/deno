@@ -71,7 +71,8 @@ pub fn categorize_installed_npm_deps(
         continue;
       };
       match s {
-        deno_package_json::PackageJsonDepValue::File(_) => {
+        deno_package_json::PackageJsonDepValue::File(_)
+        | deno_package_json::PackageJsonDepValue::Tarball(_) => {
           // TODO(nathanwhit)
           // TODO(bartlomieju)
         }
@@ -91,7 +92,8 @@ pub fn categorize_installed_npm_deps(
         continue;
       };
       match s {
-        deno_package_json::PackageJsonDepValue::File(_) => {
+        deno_package_json::PackageJsonDepValue::File(_)
+        | deno_package_json::PackageJsonDepValue::Tarball(_) => {
           // TODO(nathanwhit)
           // TODO(bartlomieju)
         }
@@ -192,12 +194,21 @@ pub fn check_if_installs_a_single_package_globally(
     return Ok(());
   };
   if matches!(url.scheme(), "http" | "https") {
-    bail!(
-      "Failed to install \"{}\" specifier. If you are trying to install {} globally, run again with `-g` flag:\n  deno install -g {}",
-      url.scheme(),
-      url.as_str(),
-      url.as_str()
-    );
+    // Allow tarball URLs to be installed locally (matching npm behavior).
+    // All http(s) URLs that aren't git+ URLs are treated as tarballs
+    // by npm, pnpm, and bun.
+    let path = url.path();
+    let is_tarball_url = path.ends_with(".tgz")
+      || path.ends_with(".tar.gz")
+      || path.contains("/tarball/");
+    if !is_tarball_url {
+      bail!(
+        "Failed to install \"{}\" specifier. If you are trying to install {} globally, run again with `-g` flag:\n  deno install -g {}",
+        url.scheme(),
+        url.as_str(),
+        url.as_str()
+      );
+    }
   }
   Ok(())
 }

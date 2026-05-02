@@ -147,6 +147,9 @@ pub enum PackageJsonDepValue {
   File(String),
   Req(PackageReq),
   Workspace(PackageJsonDepWorkspaceReq),
+  /// A tarball URL (http or https), e.g.
+  /// `"dep": "https://example.com/pkg-1.0.0.tgz"`
+  Tarball(String),
 }
 
 impl PackageJsonDepValue {
@@ -199,6 +202,11 @@ impl PackageJsonDepValue {
             ),
           };
           Ok(Self::Workspace(workspace_req))
+        }
+        // Tarball URLs: http(s)://example.com/pkg.tgz
+        "http" | "https" => {
+          // Reconstruct the full URL (scheme:value)
+          Ok(Self::Tarball(format!("{scheme}:{value}")))
         }
         scheme => Err(
           PackageJsonDepValueParseErrorKind::Unsupported {

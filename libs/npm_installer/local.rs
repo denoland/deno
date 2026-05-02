@@ -852,11 +852,28 @@ impl<
         let Some(pkg_alias) = &pkg.alias else {
           continue;
         };
-        symlink_package_dir(
-          sys.as_ref(),
-          &pkg.target_dir,
-          &self.root_node_modules_path.join(pkg_alias),
-        )?;
+        let dest = self.root_node_modules_path.join(pkg_alias);
+        let target_str = pkg.target_dir.to_string_lossy();
+        if target_str.ends_with(".tgz") || target_str.ends_with(".tar.gz") {
+          // Tarball dependency: extract the tarball to node_modules
+          // instead of symlinking (tarballs are files, not directories).
+          if !sys.fs_exists_no_err(&dest) {
+            let tarball_bytes = std::fs::read(&pkg.target_dir)?;
+            let tar_data = deno_npm_cache::tarball_extract::decompress_tarball(
+              &tarball_bytes,
+            )
+            .map_err(JsErrorBox::from_err)?;
+            deno_npm_cache::tarball_extract::write_extracted_tarball(
+              sys.as_ref(),
+              &tar_data,
+              &dest,
+              deno_npm_cache::tarball_extract::TarballExtractionMode::SiblingTempDir,
+            )
+            .map_err(JsErrorBox::from_err)?;
+          }
+        } else {
+          symlink_package_dir(sys.as_ref(), &pkg.target_dir, &dest)?;
+        }
       }
     }
 
