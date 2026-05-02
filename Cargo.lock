@@ -2006,9 +2006,9 @@ dependencies = [
 
 [[package]]
 name = "deno_ast"
-version = "0.53.1"
+version = "0.53.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "292b1ce21933ce7cea00c69b8de023a6a29707e9b6cb2052ca27499710ddd133"
+checksum = "05792fb2b77938767ffeb0853289e86501fddc84b1cdba9e5dc860c52baa2ff7"
 dependencies = [
  "base64 0.22.1",
  "capacity_builder",
@@ -2305,9 +2305,9 @@ dependencies = [
 
 [[package]]
 name = "deno_doc"
-version = "0.198.0"
+version = "0.199.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2d44b93e82f85f644b9e8595d0fc0d9beeae5ed636d95d54b1edfcf30f8f3399"
+checksum = "638edca809f05908e5725d60c2700c92a6cc2d39a57f0b536008001d1050a16b"
 dependencies = [
  "anyhow",
  "cfg-if",
@@ -2467,9 +2467,9 @@ dependencies = [
 
 [[package]]
 name = "deno_graph"
-version = "0.107.2"
+version = "0.108.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0f8f640f8f0fa2af60bc1c7ed82d6e6f9f658a5869473deaa77cb5b470b77fec"
+checksum = "b0ece7ecde2db52b86b1a1ebbe368bedded631e449dd0293a2c317bb25f7641c"
 dependencies = [
  "async-trait",
  "boxed_error",
@@ -2485,7 +2485,7 @@ dependencies = [
  "futures",
  "indexmap 2.12.0",
  "log",
- "monch 0.5.0",
+ "monch 0.6.0",
  "once_cell",
  "parking_lot",
  "regex",
