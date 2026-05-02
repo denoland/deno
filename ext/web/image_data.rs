@@ -2,12 +2,9 @@
 
 use std::borrow::Cow;
 use std::cell::Cell;
-use std::cell::RefCell;
 
 use deno_core::GarbageCollected;
-use deno_core::OpState;
 use deno_core::WebIDL;
-use deno_core::cppgc;
 use deno_core::op2;
 use deno_core::v8;
 use deno_core::webidl::ContextFn;
@@ -62,9 +59,6 @@ pub enum ImageDataError {
   #[class(generic)]
   #[error("Failed to allocate ImageData backing store")]
   AllocationFailed,
-  #[class(type)]
-  #[error("ImageData internal symbol has not been initialized")]
-  SymbolUninit,
 }
 
 #[derive(WebIDL, Debug, Clone, Copy, PartialEq, Eq)]
@@ -117,50 +111,18 @@ pub struct ImageData {
   height: Cell<u32>,
   pixel_format: Cell<ImageDataPixelFormat>,
   color_space: Cell<PredefinedColorSpace>,
+  data: v8::TracedReference<v8::Object>,
 }
 
-// SAFETY: we're sure `ImageData` can be GCed. The pixel buffer is stored as
-// a JS-Symbol-keyed property on the instance (see `_data` in `image_data.js`),
-// so it is kept alive transitively by the instance itself.
+// SAFETY: we're sure `ImageData` can be GCed.
 unsafe impl GarbageCollected for ImageData {
-  fn trace(&self, _visitor: &mut v8::cppgc::Visitor) {}
+  fn trace(&self, visitor: &mut v8::cppgc::Visitor) {
+    visitor.trace(&self.data);
+  }
 
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"ImageData"
   }
-}
-
-/// Holds the JS `Symbol("[[data]]")` that keys the pixel buffer on each
-/// `ImageData` instance. Initialized once from JS via
-/// `op_image_data_set_data_symbol`.
-#[derive(Default)]
-pub struct ImageDataState {
-  data_symbol: RefCell<Option<v8::Global<v8::Symbol>>>,
-}
-
-#[op2(fast)]
-pub fn op_image_data_set_data_symbol(
-  state: &OpState,
-  scope: &mut v8::PinScope<'_, '_>,
-  symbol: v8::Local<v8::Value>,
-) {
-  let symbol: v8::Local<v8::Symbol> = symbol.try_into().unwrap();
-  let global = v8::Global::new(scope, symbol);
-  *state.borrow::<ImageDataState>().data_symbol.borrow_mut() = Some(global);
-}
-
-#[inline]
-fn data_symbol_key<'s>(
-  scope: &mut v8::PinScope<'s, '_>,
-  state: &OpState,
-) -> Result<v8::Local<'s, v8::Symbol>, ImageDataError> {
-  let global = state
-    .borrow::<ImageDataState>()
-    .data_symbol
-    .borrow()
-    .clone()
-    .ok_or(ImageDataError::SymbolUninit)?;
-  Ok(v8::Local::new(scope, global))
 }
 
 #[inline]
@@ -234,11 +196,11 @@ impl ImageData {
   #[constructor]
   #[reentrant]
   #[required(2)]
+  #[cppgc]
   fn constructor<'a>(
-    state: &OpState,
     scope: &mut v8::PinScope<'a, '_>,
     #[varargs] args: Option<&v8::FunctionCallbackArguments<'a>>,
-  ) -> Result<v8::Local<'a, v8::Object>, ImageDataError> {
+  ) -> Result<ImageData, ImageDataError> {
     // `#[required(2)]` ensures `args` has at least 2 entries.
     let args = args.expect("constructor requires arguments");
     let arg_count = args.length();
@@ -267,10 +229,7 @@ impl ImageData {
       false
     };
 
-    let (width, height, pixel_format, color_space, data_obj) = if arg_count > 3
-      || arg0_is_uint8_clamped
-      || arg0_is_float16
-    {
+    if arg_count > 3 || arg0_is_uint8_clamped || arg0_is_float16 {
       // Overload: new ImageData(data, sw [, sh [, settings ] ])
       let data = arg0_typed_array.ok_or_else(|| {
         WebIdlError::new(
@@ -329,13 +288,18 @@ impl ImageData {
         return Err(ImageDataError::Float16NeedsFloat16);
       }
 
-      (
-        source_width,
-        source_height.unwrap_or(derived_height),
-        settings.pixel_format,
-        settings.color_space.unwrap_or(PredefinedColorSpace::Srgb),
-        data.into(),
-      )
+      let color_space =
+        settings.color_space.unwrap_or(PredefinedColorSpace::Srgb);
+      let height = source_height.unwrap_or(derived_height);
+      let data_obj: v8::Local<v8::Object> = data.into();
+
+      Ok(ImageData {
+        width: Cell::new(source_width),
+        height: Cell::new(height),
+        pixel_format: Cell::new(settings.pixel_format),
+        color_space: Cell::new(color_space),
+        data: v8::TracedReference::new(scope, data_obj),
+      })
     } else {
       // Overload: new ImageData(sw, sh [, settings])
       let source_width = convert_unsigned_long(scope, arg0, "Argument 1")?;
@@ -356,35 +320,17 @@ impl ImageData {
         source_width,
         source_height,
       )?;
-      (
-        source_width,
-        source_height,
-        settings.pixel_format,
-        settings.color_space.unwrap_or(PredefinedColorSpace::Srgb),
-        data_obj,
-      )
-    };
+      let color_space =
+        settings.color_space.unwrap_or(PredefinedColorSpace::Srgb);
 
-    let symbol_key = data_symbol_key(scope, state)?;
-
-    let obj = cppgc::make_cppgc_empty_object::<ImageData>(scope);
-    let obj = cppgc::wrap_object(
-      scope,
-      obj,
-      ImageData {
-        width: Cell::new(width),
-        height: Cell::new(height),
-        pixel_format: Cell::new(pixel_format),
+      Ok(ImageData {
+        width: Cell::new(source_width),
+        height: Cell::new(source_height),
+        pixel_format: Cell::new(settings.pixel_format),
         color_space: Cell::new(color_space),
-      },
-    );
-
-    // Stash the pixel buffer on the instance under the same `Symbol("[[data]]")`
-    // slot the JS implementation used. The `data` getter on the prototype
-    // (defined in `image_data.js`) reads it back via that symbol.
-    obj.set(scope, symbol_key.into(), data_obj.into());
-
-    Ok(obj)
+        data: v8::TracedReference::new(scope, data_obj),
+      })
+    }
   }
 
   #[fast]
@@ -397,6 +343,18 @@ impl ImageData {
   #[getter]
   fn height(&self) -> u32 {
     self.height.get()
+  }
+
+  /// Pixel buffer accessor — exposed under `Symbol.for("Deno_imageData_data")`
+  /// rather than the public `data` name. The `data` attribute getter on the
+  /// prototype (defined in `image_data.js`) calls this method to resolve the
+  /// stored typed array. Same shape as `ImageBitmap`'s `Deno_bitmapData`.
+  #[symbol("Deno_imageData_data")]
+  fn get_data<'a>(
+    &self,
+    scope: &mut v8::PinScope<'a, '_>,
+  ) -> v8::Local<'a, v8::Object> {
+    self.data.get(scope).unwrap()
   }
 
   #[getter]

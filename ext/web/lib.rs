@@ -98,7 +98,6 @@ deno_core::extension!(deno_web,
     geometry::op_geometry_get_enable_css_parser_features,
     geometry::op_geometry_matrix_set_matrix_value,
     geometry::op_geometry_matrix_to_string,
-    image_data::op_image_data_set_data_symbol,
     stream_resource::op_readable_stream_resource_allocate,
     stream_resource::op_readable_stream_resource_allocate_sized,
     stream_resource::op_readable_stream_resource_get_sink,
@@ -172,7 +171,6 @@ deno_core::extension!(deno_web,
     }
     state.put(StartTime::default());
     state.put(geometry::State::new(options.enable_css_parser_features));
-    state.put(image_data::ImageDataState::default());
     state.put(options.bc);
   }
 );

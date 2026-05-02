@@ -1,11 +1,10 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 import { core, primordials } from "ext:core/mod.js";
-import { ImageData, op_image_data_set_data_symbol } from "ext:core/ops";
+import { ImageData } from "ext:core/ops";
 const {
   ObjectDefineProperty,
   ObjectPrototypeIsPrototypeOf,
-  Symbol,
   SymbolFor,
   TypeError,
 } = primordials;
@@ -15,14 +14,13 @@ const { createFilteredInspectProxy } = core.loadExtScript(
   "ext:deno_web/01_console.js",
 );
 
-// Symbol-keyed slot that holds the pixel buffer on each ImageData instance.
-// Kept module-private; the Rust constructor stashes the typed array under
-// this symbol and the `data` getter below reads it back, mirroring the shape
-// of the original JS implementation.
-const _data = Symbol("[[data]]");
-op_image_data_set_data_symbol(_data);
-
 const ImageDataPrototype = ImageData.prototype;
+
+// Pixel buffer is exposed by the Rust side as a `Symbol.for("Deno_imageData_data")`
+// keyed accessor (see `#[symbol(...)]` on `ImageData::get_data` in
+// `image_data.rs`), matching how `ImageBitmap`'s `Deno_bitmapData` is wired.
+// Wrap that in the public `data` attribute getter on the prototype.
+const _data = SymbolFor("Deno_imageData_data");
 
 ObjectDefineProperty(ImageDataPrototype, "data", {
   __proto__: null,
@@ -30,7 +28,7 @@ ObjectDefineProperty(ImageDataPrototype, "data", {
     if (!ObjectPrototypeIsPrototypeOf(ImageDataPrototype, this)) {
       throw new TypeError("Illegal invocation");
     }
-    return this[_data];
+    return this[_data]();
   },
   enumerable: true,
   configurable: true,
