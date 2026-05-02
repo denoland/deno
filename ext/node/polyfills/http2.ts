@@ -2319,8 +2319,11 @@ function processRespondWithFD(
 
   // Read file data synchronously and write to the stream, then respond
   const buf = Buffer.allocUnsafe(16384);
-  let pos = offset;
-  const end = length >= 0 ? offset + length : -1;
+  // offset < 0 signals a non-seekable source (e.g. pipe); read sequentially
+  // from the current file offset by always passing position=null to fs.read.
+  const seekable = offset >= 0;
+  let pos = seekable ? offset : 0;
+  const end = seekable && length >= 0 ? offset + length : -1;
 
   function readAndWrite() {
     const readLen = end >= 0 ? MathMin(buf.length, end - pos) : buf.length;
@@ -2328,7 +2331,7 @@ function processRespondWithFD(
       finish();
       return;
     }
-    fs.read(fd, buf, 0, readLen, pos, (err, bytesRead) => {
+    fs.read(fd, buf, 0, readLen, seekable ? pos : null, (err, bytesRead) => {
       if (err) {
         if (self.ownsFd) tryClose(fd);
         // Match Node: a read failure (e.g. EBADF from a bad fd) resets the
@@ -2344,7 +2347,7 @@ function processRespondWithFD(
         finish();
         return;
       }
-      pos += bytesRead;
+      if (seekable) pos += bytesRead;
       // deno-lint-ignore prefer-primordials
       const chunk = buf.slice(0, bytesRead);
       self.write(chunk, readAndWrite);
