@@ -35,6 +35,7 @@ const {
   SafeMap,
   SafeRegExp,
   SafeSet,
+  StringPrototypeCharCodeAt,
   StringPrototypeSlice,
   StringPrototypeToLowerCase,
   Symbol,
@@ -838,6 +839,43 @@ function onGoawayData(code, lastStreamID, buf) {
   }
 }
 
+// Returns true if `value` would be rejected by nghttp2's pseudo-:path
+// validator (`nghttp2_check_path`): bytes 0x00-0x20 (control chars + space)
+// and 0x7F (DEL) are forbidden. Mirrors that table for ASCII codepoints;
+// higher Unicode codepoints follow nghttp2's permissive rule for 0x80+.
+function pathHasInvalidChars(value) {
+  for (let i = 0; i < value.length; ++i) {
+    const code = StringPrototypeCharCodeAt(value, i);
+    if (code <= 0x20 || code === 0x7F) return true;
+  }
+  return false;
+}
+
+// Returns true if the stream's outgoing request headers carry a `:path`
+// pseudo-header value that nghttp2 would reject. Used to short-circuit the
+// request locally: newer libnghttp2 (>=1.67) terminates the entire session
+// with PROTOCOL_ERROR for a single invalid pseudo-header value, but Node.js
+// (and earlier nghttp2) reset only the offending stream. Match Node's
+// stream-only behavior by RST_STREAMing client-side before nghttp2 gets the
+// chance to GOAWAY the session.
+function hasInvalidPath(stream) {
+  const sent = stream[kSentHeaders];
+  if (sent !== undefined) {
+    const v = sent[HTTP2_HEADER_PATH];
+    return typeof v === "string" && pathHasInvalidChars(v);
+  }
+  const raw = stream[kRawHeaders];
+  if (raw !== undefined) {
+    for (let i = 0; i < raw.length; i += 2) {
+      if (StringPrototypeToLowerCase(raw[i]) === HTTP2_HEADER_PATH) {
+        const v = raw[i + 1];
+        if (typeof v === "string" && pathHasInvalidChars(v)) return true;
+      }
+    }
+  }
+  return false;
+}
+
 // Returns true if the stream's outgoing request headers carry a non-zero
 // content-length value. Handles both object-form (kSentHeaders) and
 // array-form (kRawHeaders) headers.
@@ -899,6 +937,21 @@ function requestOnConnect(headersList, options) {
   // server-side rejection locally so the session survives and the stream
   // emits ERR_HTTP2_STREAM_ERROR("NGHTTP2_PROTOCOL_ERROR").
   if (options.endStream && hasNonZeroContentLength(this)) {
+    process.nextTick(() => {
+      if (this.destroyed) return;
+      this.destroy(new ERR_HTTP2_STREAM_ERROR("NGHTTP2_PROTOCOL_ERROR"));
+    });
+    return;
+  }
+
+  // A `:path` pseudo-header value containing characters that nghttp2's
+  // path validator forbids (bytes 0x00-0x20 or 0x7F) would, with stock
+  // libnghttp2 1.68, cause the server to terminate the whole HTTP/2
+  // session with PROTOCOL_ERROR (the 1.67 change to the path-validation
+  // failure path). Node.js bundles older libnghttp2 that RST_STREAMs only
+  // the offending stream; emit the equivalent stream error locally so
+  // sibling streams on the same session keep working.
+  if (hasInvalidPath(this)) {
     process.nextTick(() => {
       if (this.destroyed) return;
       this.destroy(new ERR_HTTP2_STREAM_ERROR("NGHTTP2_PROTOCOL_ERROR"));

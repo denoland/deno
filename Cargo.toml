@@ -616,6 +616,3 @@ opt-level = 3
 opt-level = 3
 [profile.release.package.twox-hash]
 opt-level = 3
-
-[patch.crates-io]
-libnghttp2 = { path = "ext/node/third_party/libnghttp2" }
