@@ -368,8 +368,34 @@ impl TCPWrap {
         let mut nonblocking: u32 = 1;
         ioctlsocket(fd as usize, FIONBIO, &mut nonblocking);
       }
+      // Match Node: a wrap constructed with `new TCP(SERVER)` opens the
+      // fd as a listener; `new TCP(SOCKET)` as a connected stream. Node's
+      // libuv layer doesn't autodetect — it uses the wrap's intent to
+      // decide how to register the fd, then `listen()` on a listening fd
+      // is a no-op at the kernel level.
+      #[cfg(unix)]
+      if self.socket_type.get() == SocketType::Server {
+        return uv_compat::uv_tcp_open_listener(tcp, fd);
+      }
       uv_compat::uv_tcp_open(tcp, fd)
     }
+  }
+
+  #[fast]
+  fn fd_for_ipc(&self) -> i32 {
+    #[cfg(unix)]
+    {
+      let tcp = self.tcp_ptr();
+      if tcp.is_null() {
+        return -1;
+      }
+      // SAFETY: tcp is valid (null-checked above).
+      unsafe { uv_compat::uv_tcp_fd_for_ipc(tcp) }
+    }
+    // Windows IPC handle passing doesn't use SCM_RIGHTS-style fd transfer;
+    // returning -1 surfaces "not supported" to the JS handle-passing path.
+    #[cfg(not(unix))]
+    -1
   }
 
   #[fast]

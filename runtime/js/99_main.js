@@ -75,11 +75,11 @@ import {
   unstableIds,
 } from "ext:runtime/90_deno_ns.js";
 import { errors } from "ext:runtime/01_errors.js";
-import * as webidl from "ext:deno_webidl/00_webidl.js";
-import {
+const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
+const {
   DOMException,
   QuotaExceededError,
-} from "ext:deno_web/01_dom_exception.js";
+} = core.loadExtScript("ext:deno_web/01_dom_exception.js");
 import {
   unstableForWindowOrWorkerGlobalScope,
   windowOrWorkerGlobalScope,
@@ -93,7 +93,6 @@ import {
 } from "ext:runtime/98_global_scope_worker.js";
 import { SymbolMetadata } from "ext:deno_web/00_infra.js";
 import { bootstrap as bootstrapOtel } from "ext:deno_telemetry/telemetry.ts";
-import { nodeGlobals } from "ext:deno_node/00_globals.js";
 
 // deno-lint-ignore prefer-primordials
 if (Symbol.metadata) {
@@ -430,6 +429,12 @@ core.registerErrorBuilder(
     return new DOMException(msg, "InvalidStateError");
   },
 );
+core.registerErrorBuilder(
+  "DOMExceptionSyntaxError",
+  function DOMExceptionSyntaxError(msg) {
+    return new DOMException(msg, "SyntaxError");
+  },
+);
 
 function runtimeStart(
   denoVersion,
@@ -598,7 +603,7 @@ function removeImportedOps() {
 // FIXME(bartlomieju): temporarily add whole `Deno.core` to
 // `Deno[Deno.internal]` namespace. It should be removed and only necessary
 // methods should be left there.
-ObjectAssign(internals, { core, nodeGlobals: { ...nodeGlobals } });
+ObjectAssign(internals, { core });
 const internalSymbol = Symbol("Deno.internal");
 const finalDenoNs = {
   internal: internalSymbol,
