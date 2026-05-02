@@ -6663,8 +6663,6 @@ checksum = "4ec2a862134d2a7d32d7983ddcdd1c4923530833c9f2ea1a44fc5fa473989058"
 [[package]]
 name = "libnghttp2"
 version = "1.68.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "de061ac7dc8893bbb8b212a03444dc19f0f2f28e2be4c80dbc19aa9cc45586e5"
 dependencies = [
  "bindgen 0.71.1",
  "cc",

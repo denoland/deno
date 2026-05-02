@@ -1,0 +1,19 @@
+[package]
+name = "libnghttp2"
+version = "1.68.0"
+edition = "2024"
+authors = ["Divy Srivastava <me@littledivy.com>"]
+repository = "https://github.com/littledivy/libnghttp2"
+homepage = "https://github.com/littledivy/libnghttp2"
+description = "FFI bindings to the HTTP/2 framing layer of nghttp2 C library"
+license = "Apache-2.0"
+
+[lib]
+doctest = false
+
+[dependencies]
+libc = '0.2'
+
+[build-dependencies]
+cc = "1.0.24"
+bindgen = "0.71"
