@@ -50,5 +50,12 @@ tower-service.workspace = true
 tokio-vsock.workspace = true
 
 [dev-dependencies]
+deno_bench_util.workspace = true
+deno_web.workspace = true
+deno_webidl.workspace = true
 fast-socks5.workspace = true
 rustls.workspace = true
+
+[[bench]]
+name = "headers_methods"
+harness = false
