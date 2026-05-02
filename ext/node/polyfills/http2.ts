@@ -461,6 +461,15 @@ function submitGoaway(code, lastStreamID, opaqueData) {
   }
   debugSessionObj(this, "submitting goaway");
   this[kUpdateTimer]();
+  // Track that this side initiated a GOAWAY with a non-zero error code.
+  // The peer will react by tearing down its streams with that same code,
+  // which arrives at us as RST_STREAM(<code>); nghttp2 then reports stream
+  // close to JS as a non-NO_ERROR rstCode. Without this flag, _destroy
+  // would synthesize an unhandled ERR_HTTP2_STREAM_ERROR for what is just
+  // the peer's expected response to our locally-initiated shutdown.
+  if (code !== NGHTTP2_NO_ERROR && this[kState].sentGoawayCode == null) {
+    this[kState].sentGoawayCode = code;
+  }
   this[kHandle].goaway(code, lastStreamID, opaqueData);
   scheduleSendPending(this);
 }
@@ -1927,8 +1936,19 @@ class Http2Stream extends Duplex {
 
     // RST code 8 not emitted as an error as its used by clients to signify
     // abort and is already covered by aborted event, also allows more
-    // seamless compatibility with http1
-    if (err == null && code !== NGHTTP2_NO_ERROR && code !== NGHTTP2_CANCEL) {
+    // seamless compatibility with http1.
+    //
+    // Also skip when this session locally initiated the shutdown via a
+    // non-NO_ERROR goaway (sentGoawayCode): the peer's RST_STREAM with
+    // that same code is the expected reaction to our own goaway, not a
+    // stream-level error to surface (see test-http2-server-shutdown-
+    // redundant.js).
+    if (
+      err == null &&
+      code !== NGHTTP2_NO_ERROR &&
+      code !== NGHTTP2_CANCEL &&
+      sessionState.sentGoawayCode == null
+    ) {
       err = new ERR_HTTP2_STREAM_ERROR(nameForErrorCode[code] || code);
     }
 
@@ -3184,6 +3204,7 @@ class Http2Session extends EventEmitter {
       flags: SESSION_FLAGS_PENDING,
       goawayCode: null,
       goawayLastStreamID: null,
+      sentGoawayCode: null,
       streams: new SafeMap(),
       pendingStreams: new SafeSet(),
       pendingAck: 0,
