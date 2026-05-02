@@ -2,13 +2,15 @@
 
 /// <reference path="../../core/internal.d.ts" />
 
-import { core, primordials } from "ext:core/mod.js";
-import {
+// deno-fmt-ignore-file
+(function () {
+const { core, primordials } = globalThis.__bootstrap;
+const {
   op_broadcast_recv,
   op_broadcast_send,
   op_broadcast_subscribe,
   op_broadcast_unsubscribe,
-} from "ext:core/ops";
+} = core.ops;
 const {
   ArrayPrototypeIndexOf,
   ArrayPrototypePush,
@@ -19,16 +21,16 @@ const {
   Uint8Array,
 } = primordials;
 
-import * as webidl from "ext:deno_webidl/00_webidl.js";
-import { createFilteredInspectProxy } from "ext:deno_web/01_console.js";
-import {
+const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
+const { createFilteredInspectProxy } = core.loadExtScript("ext:deno_web/01_console.js");
+const {
   defineEventHandler,
   EventTarget,
   setIsTrusted,
   setTarget,
-} from "ext:deno_web/02_event.js";
-import { defer } from "ext:deno_web/02_timers.js";
-import { DOMException } from "ext:deno_web/01_dom_exception.js";
+} = core.loadExtScript("ext:deno_web/02_event.js");
+const { defer } = core.loadExtScript("ext:deno_web/02_timers.js");
+const { DOMException } = core.loadExtScript("ext:deno_web/01_dom_exception.js");
 
 const _name = Symbol("[[name]]");
 const _closed = Symbol("[[closed]]");
@@ -197,4 +199,5 @@ defineEventHandler(BroadcastChannel.prototype, "message");
 defineEventHandler(BroadcastChannel.prototype, "messageerror");
 const BroadcastChannelPrototype = BroadcastChannel.prototype;
 
-export { BroadcastChannel, refBroadcastChannel };
+return { BroadcastChannel, refBroadcastChannel };
+})()

@@ -1352,6 +1352,11 @@ impl JsRuntime {
       module_map.add_lazy_loaded_esm_source(source.specifier, source.code);
     }
 
+    // Add lazy-loaded scripts (loaded on demand via loadExtScript())
+    for source in loaded_sources.lazy_js {
+      module_map.add_lazy_loaded_script_source(source.specifier, source.code);
+    }
+
     // Temporarily override the loader of the `ModuleMap` so we can load
     // extension code.
 
@@ -2296,19 +2301,20 @@ impl JsRuntime {
     }
 
     // ===== Phase 4: I/O =====
-    // Tight I/O loop: when run_io reads data and fires callbacks, the
-    // resulting JS work (nextTick/macrotasks from HTTP2 frame processing)
-    // may produce write calls. Drain those immediately and re-poll for
-    // more data, avoiding kqueue/kevent round-trip latency between batches.
+    // Single run_io call per tick, matching libuv's uv_run (one
+    // uv__io_poll per iteration, callbacks fire, then we return).
+    // Spinning run_io in place until it returns `false` batches more
+    // work per tick but under sustained inbound traffic never exits —
+    // tokio keeps delivering readiness as we poll — and traps the
+    // event loop processing hundreds of handles back-to-back, which
+    // crushes tail latency (p99 30–200 ms vs ~1 ms with a single
+    // call).
     if let Some(uv_inner_ptr) = context_state.uv_loop_inner.get() {
       unsafe {
         (*uv_inner_ptr).set_waker(cx.waker());
       }
-      for _io_spin in 0..8 {
-        let did_io = unsafe { (*uv_inner_ptr).run_io() };
-        if !did_io {
-          break;
-        }
+      let did_io = unsafe { (*uv_inner_ptr).run_io() };
+      if did_io {
         uv_did_io = true;
         // Flush microtasks from I/O callbacks, then drain ticks.
         // processTicksAndRejections runs op_run_microtasks internally,
@@ -2352,6 +2358,14 @@ impl JsRuntime {
     }
     scope.perform_microtask_checkpoint();
 
+    // Drain nextTick queue before close phase, matching Node.js/libuv
+    // where process.nextTick fires between each event loop phase.
+    // This ensures nextTicks from I/O callbacks (Phase 4) fire before
+    // close callbacks (Phase 6).
+    if context_state.has_tick_scheduled() {
+      Self::drain_next_tick_and_macrotasks(scope, context_state)?;
+    }
+
     // ===== Phase 6: Close =====
     exception_state.check_exception_condition(scope)?;
     {
@@ -2361,8 +2375,27 @@ impl JsRuntime {
     if let Some(uv_inner_ptr) = context_state.uv_loop_inner.get() {
       unsafe { (*uv_inner_ptr).run_close() };
     }
+    // Run V8 close callbacks (JS handle.close() callbacks).
+    // These are deferred to Phase 6 to match libuv's uv_close behavior
+    // where close callbacks fire at the END of the event loop iteration,
+    // after all nextTick and microtask queues have drained.
+    {
+      let v8_cbs = context_state
+        .event_loop_phases
+        .borrow_mut()
+        .drain_v8_close_callbacks();
+      for cb in v8_cbs {
+        (cb.callback)(scope);
+      }
+    }
     // libuv close callbacks may call into JS; flush microtasks if present.
-    if has_uv {
+    if has_uv
+      || !context_state
+        .event_loop_phases
+        .borrow()
+        .v8_close_callbacks
+        .is_empty()
+    {
       scope.perform_microtask_checkpoint();
     }
 

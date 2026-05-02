@@ -529,13 +529,6 @@ export class Glob {
       const subPatterns = new SafeSet();
       const nSymlinks = new SafeSet();
       for (const index of pattern.indexes) {
-        // For each child, check potential patterns
-        if (
-          this.#cache.seen(entryPath, pattern, index) ||
-          this.#cache.seen(entryPath, pattern, index + 1)
-        ) {
-          return;
-        }
         const current = pattern.at(index);
         const nextIndex = index + 1;
         const next = pattern.at(nextIndex);
@@ -785,13 +778,6 @@ export class Glob {
       const subPatterns = new SafeSet();
       const nSymlinks = new SafeSet();
       for (const index of pattern.indexes) {
-        // For each child, check potential patterns
-        if (
-          this.#cache.seen(entryPath, pattern, index) ||
-          this.#cache.seen(entryPath, pattern, index + 1)
-        ) {
-          return;
-        }
         const current = pattern.at(index);
         const nextIndex = index + 1;
         const next = pattern.at(nextIndex);
@@ -1042,15 +1028,12 @@ export function glob(
   }
   callback = makeCallback(callback);
 
-  // from NodeJS: TODO: Use iterator helpers when available
-  (async () => {
-    try {
-      const res = await Array.fromAsync(new Glob(pattern, options).glob());
-      callback(null, res);
-    } catch (err) {
-      callback(err);
-    }
-  })();
+  // Mirror Node's lib/fs.js glob(): dispatch via Promise.then so a callback
+  // that throws is not retried via the rejection branch.
+  Array.fromAsync(new Glob(pattern, options).glob()).then(
+    (res) => callback(null, res),
+    callback,
+  );
 }
 
 export function globPromise(pattern, options) {

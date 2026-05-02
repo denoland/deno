@@ -18,7 +18,7 @@ import {
 // Bump this number when you want to purge the cache.
 // Note: the tools/release/01_bump_crate_versions.ts script will update this version
 // automatically via regex, so ensure that this line maintains this format.
-const cacheVersion = 109;
+const cacheVersion = 111;
 
 const ubuntuX86Runner = "ubuntu-24.04";
 const ubuntuARMRunner = "ubuntu-24.04-arm";
@@ -132,6 +132,7 @@ ${installPkgsCommand} || (echo 'Failed. Trying again.' && sudo apt-get clean && 
 (yes '' | sudo update-alternatives --force --all) > /dev/null 2> /dev/null || true
 
 clang-${llvmVersion} -c -o /tmp/memfd_create_shim.o tools/memfd_create_shim.c -fPIC
+clang-${llvmVersion} -c -o /tmp/glibc_math_shim.o tools/glibc_math_shim.c -fPIC
 
 echo "Decompressing sysroot..."
 wget -q https://github.com/denoland/deno_sysroot_build/releases/download/sysroot-20250207/sysroot-\`uname -m\`.tar.xz -O /tmp/sysroot.tar.xz
@@ -171,6 +172,12 @@ RUSTFLAGS<<__1
   -C link-arg=-Wl,--thinlto-cache-dir=$(pwd)/target/release/lto-cache
   -C link-arg=-Wl,--thinlto-cache-policy,cache_size_bytes=700m
   -C link-arg=/tmp/memfd_create_shim.o
+  -C link-arg=/tmp/glibc_math_shim.o
+  -C link-arg=-Wl,--wrap=expf
+  -C link-arg=-Wl,--wrap=powf
+  -C link-arg=-Wl,--wrap=exp2f
+  -C link-arg=-Wl,--wrap=log2f
+  -C link-arg=-Wl,--wrap=logf
   --cfg tokio_unstable
   $RUSTFLAGS
 __1
@@ -183,6 +190,12 @@ RUSTDOCFLAGS<<__1
   -C link-arg=-Wl,--thinlto-cache-dir=$(pwd)/target/release/lto-cache
   -C link-arg=-Wl,--thinlto-cache-policy,cache_size_bytes=700m
   -C link-arg=/tmp/memfd_create_shim.o
+  -C link-arg=/tmp/glibc_math_shim.o
+  -C link-arg=-Wl,--wrap=expf
+  -C link-arg=-Wl,--wrap=powf
+  -C link-arg=-Wl,--wrap=exp2f
+  -C link-arg=-Wl,--wrap=log2f
+  -C link-arg=-Wl,--wrap=logf
   --cfg tokio_unstable
   $RUSTFLAGS
 __1
@@ -642,6 +655,7 @@ const buildJobs = buildItems.map((rawBuildItem) => {
               "cd target/release",
               `./deno -A ../../tools/release/create_symcache.ts deno-${buildItem.arch}-unknown-linux-gnu.symcache`,
               "strip ./deno",
+              `shasum -a 256 deno > deno-${buildItem.arch}-unknown-linux-gnu.sha256sum`,
               `zip -r deno-${buildItem.arch}-unknown-linux-gnu.zip deno`,
               `shasum -a 256 deno-${buildItem.arch}-unknown-linux-gnu.zip > deno-${buildItem.arch}-unknown-linux-gnu.zip.sha256sum`,
               "strip ./denort",
@@ -676,6 +690,7 @@ const buildJobs = buildItems.map((rawBuildItem) => {
               "--p12-file=<(echo $APPLE_CODESIGN_KEY | base64 -d) " +
               "--entitlements-xml-file=cli/entitlements.plist",
               "cd target/release",
+              `shasum -a 256 deno > deno-${buildItem.arch}-apple-darwin.sha256sum`,
               `zip -r deno-${buildItem.arch}-apple-darwin.zip deno`,
               `shasum -a 256 deno-${buildItem.arch}-apple-darwin.zip > deno-${buildItem.arch}-apple-darwin.zip.sha256sum`,
               "strip -x -S ./denort",
@@ -733,11 +748,63 @@ const buildJobs = buildItems.map((rawBuildItem) => {
             if: isWindows.and(isDenoland),
             shell: "pwsh",
             run: [
+              `Get-FileHash target/release/deno.exe -Algorithm SHA256 | Format-List > target/release/deno-${buildItem.arch}-pc-windows-msvc.sha256sum`,
               `Compress-Archive -CompressionLevel Optimal -Force -Path target/release/deno.exe -DestinationPath target/release/deno-${buildItem.arch}-pc-windows-msvc.zip`,
               `Get-FileHash target/release/deno-${buildItem.arch}-pc-windows-msvc.zip -Algorithm SHA256 | Format-List > target/release/deno-${buildItem.arch}-pc-windows-msvc.zip.sha256sum`,
               `Compress-Archive -CompressionLevel Optimal -Force -Path target/release/denort.exe -DestinationPath target/release/denort-${buildItem.arch}-pc-windows-msvc.zip`,
               `Get-FileHash target/release/denort-${buildItem.arch}-pc-windows-msvc.zip -Algorithm SHA256 | Format-List > target/release/denort-${buildItem.arch}-pc-windows-msvc.zip.sha256sum`,
               `target/release/deno.exe -A tools/release/create_symcache.ts target/release/deno-${buildItem.arch}-pc-windows-msvc.symcache`,
+            ],
+          },
+          {
+            name: "Build bsdiff helper",
+            if: isDenoland.and(isTag),
+            run: [
+              "cargo build --release -p bsdiff_helper",
+            ],
+          },
+          {
+            name: "Generate delta patch (linux)",
+            if: isLinux.and(isDenoland).and(isTag),
+            run: [
+              `TARGET="${buildItem.arch}-unknown-linux-gnu"`,
+              'PREV_VERSION=$(curl -sf https://dl.deno.land/release-latest.txt | tr -d "v\\n") || true',
+              'if [ -z "$PREV_VERSION" ]; then echo "No previous version found, skipping delta"; exit 0; fi',
+              'echo "Generating delta from $PREV_VERSION for $TARGET"',
+              'curl -fSL -o prev.zip "https://github.com/denoland/deno/releases/download/v${PREV_VERSION}/deno-${TARGET}.zip" || { echo "Previous release not found, skipping delta"; exit 0; }',
+              "unzip -o prev.zip -d prev/",
+              './target/release/bsdiff_helper prev/deno target/release/deno "target/release/deno-${TARGET}.from-${PREV_VERSION}.bsdiff"',
+              'cd target/release && shasum -a 256 "deno-${TARGET}.from-${PREV_VERSION}.bsdiff" > "deno-${TARGET}.from-${PREV_VERSION}.bsdiff.sha256sum"',
+            ],
+          },
+          {
+            name: "Generate delta patch (mac)",
+            if: isMacos.and(isDenoland).and(isTag),
+            run: [
+              `TARGET="${buildItem.arch}-apple-darwin"`,
+              'PREV_VERSION=$(curl -sf https://dl.deno.land/release-latest.txt | tr -d "v\\n") || true',
+              'if [ -z "$PREV_VERSION" ]; then echo "No previous version found, skipping delta"; exit 0; fi',
+              'echo "Generating delta from $PREV_VERSION for $TARGET"',
+              'curl -fSL -o prev.zip "https://github.com/denoland/deno/releases/download/v${PREV_VERSION}/deno-${TARGET}.zip" || { echo "Previous release not found, skipping delta"; exit 0; }',
+              "unzip -o prev.zip -d prev/",
+              './target/release/bsdiff_helper prev/deno target/release/deno "target/release/deno-${TARGET}.from-${PREV_VERSION}.bsdiff"',
+              'cd target/release && shasum -a 256 "deno-${TARGET}.from-${PREV_VERSION}.bsdiff" > "deno-${TARGET}.from-${PREV_VERSION}.bsdiff.sha256sum"',
+            ],
+          },
+          {
+            name: "Generate delta patch (windows)",
+            if: isWindows.and(isDenoland).and(isTag),
+            shell: "pwsh",
+            run: [
+              `$Target = "${buildItem.arch}-pc-windows-msvc"`,
+              '$PrevVersion = (Invoke-RestMethod https://dl.deno.land/release-latest.txt).Trim() -replace "^v", ""',
+              'if (-not $PrevVersion) { Write-Host "No previous version found, skipping delta"; exit 0 }',
+              'Write-Host "Generating delta from $PrevVersion for $Target"',
+              'try { Invoke-WebRequest -Uri "https://github.com/denoland/deno/releases/download/v$PrevVersion/deno-$Target.zip" -OutFile prev.zip } catch { Write-Host "Previous release not found, skipping delta"; exit 0 }',
+              "Remove-Item -Recurse -Force prev -ErrorAction SilentlyContinue; New-Item -ItemType Directory -Path prev | Out-Null",
+              "Expand-Archive -Force -Path prev.zip -DestinationPath prev",
+              '& .\\target\\release\\bsdiff_helper.exe "prev\\deno.exe" "target\\release\\deno.exe" "target\\release\\deno-$Target.from-$PrevVersion.bsdiff"',
+              'Get-FileHash "target\\release\\deno-$Target.from-$PrevVersion.bsdiff" -Algorithm SHA256 | Format-List > "target\\release\\deno-$Target.from-$PrevVersion.bsdiff.sha256sum"',
             ],
           },
           step({
@@ -847,6 +914,7 @@ const buildJobs = buildItems.map((rawBuildItem) => {
               'aws s3 sync ./target/release/ s3://dl-deno-land/release/${GITHUB_REF#refs/*/}/ --exclude "*" --include "*.zip"',
               'aws s3 sync ./target/release/ s3://dl-deno-land/release/${GITHUB_REF#refs/*/}/ --exclude "*" --include "*.sha256sum"',
               'aws s3 sync ./target/release/ s3://dl-deno-land/release/${GITHUB_REF#refs/*/}/ --exclude "*" --include "*.symcache"',
+              'aws s3 sync ./target/release/ s3://dl-deno-land/release/${GITHUB_REF#refs/*/}/ --exclude "*" --include "*.bsdiff"',
             ],
           }, {
             name: "Upload release to dl.deno.land (windows)",
@@ -859,6 +927,7 @@ const buildJobs = buildItems.map((rawBuildItem) => {
               'aws s3 sync ./target/release/ s3://dl-deno-land/release/${GITHUB_REF#refs/*/}/ --exclude "*" --include "*.zip"',
               'aws s3 sync ./target/release/ s3://dl-deno-land/release/${GITHUB_REF#refs/*/}/ --exclude "*" --include "*.sha256sum"',
               'aws s3 sync ./target/release/ s3://dl-deno-land/release/${GITHUB_REF#refs/*/}/ --exclude "*" --include "*.symcache"',
+              'aws s3 sync ./target/release/ s3://dl-deno-land/release/${GITHUB_REF#refs/*/}/ --exclude "*" --include "*.bsdiff"',
             ],
           }),
           {
@@ -878,30 +947,38 @@ const buildJobs = buildItems.map((rawBuildItem) => {
               files: [
                 "target/release/deno-x86_64-pc-windows-msvc.zip",
                 "target/release/deno-x86_64-pc-windows-msvc.zip.sha256sum",
+                "target/release/deno-x86_64-pc-windows-msvc.sha256sum",
                 "target/release/denort-x86_64-pc-windows-msvc.zip",
                 "target/release/denort-x86_64-pc-windows-msvc.zip.sha256sum",
                 "target/release/deno-aarch64-pc-windows-msvc.zip",
                 "target/release/deno-aarch64-pc-windows-msvc.zip.sha256sum",
+                "target/release/deno-aarch64-pc-windows-msvc.sha256sum",
                 "target/release/denort-aarch64-pc-windows-msvc.zip",
                 "target/release/denort-aarch64-pc-windows-msvc.zip.sha256sum",
                 "target/release/deno-x86_64-unknown-linux-gnu.zip",
                 "target/release/deno-x86_64-unknown-linux-gnu.zip.sha256sum",
+                "target/release/deno-x86_64-unknown-linux-gnu.sha256sum",
                 "target/release/denort-x86_64-unknown-linux-gnu.zip",
                 "target/release/denort-x86_64-unknown-linux-gnu.zip.sha256sum",
                 "target/release/deno-x86_64-apple-darwin.zip",
                 "target/release/deno-x86_64-apple-darwin.zip.sha256sum",
+                "target/release/deno-x86_64-apple-darwin.sha256sum",
                 "target/release/denort-x86_64-apple-darwin.zip",
                 "target/release/denort-x86_64-apple-darwin.zip.sha256sum",
                 "target/release/deno-aarch64-unknown-linux-gnu.zip",
                 "target/release/deno-aarch64-unknown-linux-gnu.zip.sha256sum",
+                "target/release/deno-aarch64-unknown-linux-gnu.sha256sum",
                 "target/release/denort-aarch64-unknown-linux-gnu.zip",
                 "target/release/denort-aarch64-unknown-linux-gnu.zip.sha256sum",
                 "target/release/deno-aarch64-apple-darwin.zip",
                 "target/release/deno-aarch64-apple-darwin.zip.sha256sum",
+                "target/release/deno-aarch64-apple-darwin.sha256sum",
                 "target/release/denort-aarch64-apple-darwin.zip",
                 "target/release/denort-aarch64-apple-darwin.zip.sha256sum",
                 "target/release/deno_src.tar.gz",
                 "target/release/lib.deno.d.ts",
+                "target/release/deno-*.bsdiff",
+                "target/release/deno-*.bsdiff.sha256sum",
               ].join("\n"),
               body_path: "target/release/release-notes.md",
               draft: true,
@@ -958,11 +1035,14 @@ const buildJobs = buildItems.map((rawBuildItem) => {
   const additionalJobs = [];
 
   {
-    const shardedCrates = new Set(["specs", "integration"]);
-    const shardCount = 2;
+    const shardedCrates = new Map([
+      ["specs", 2],
+      ["integration", 2],
+      ["node_compat", 3],
+    ]);
     const testMatrix = defineMatrix({
       include: testCrates.flatMap((tc) => {
-        const total = shardedCrates.has(tc.name) ? shardCount : 1;
+        const total = shardedCrates.get(tc.name) ?? 1;
         return Array.from({ length: total }, (_, i) => ({
           test_crate: tc.name,
           test_package: tc.package,

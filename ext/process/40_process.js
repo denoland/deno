@@ -16,7 +16,11 @@ import {
 const {
   ArrayIsArray,
   ArrayPrototypeMap,
+  ArrayPrototypePush,
   ArrayPrototypeSlice,
+  TypedArrayPrototypeSubarray,
+  TypedArrayPrototypeSet,
+  Uint8Array,
   TypeError,
   ObjectEntries,
   SafeArrayIterator,
@@ -31,10 +35,10 @@ const {
 
 import { FsFile } from "ext:deno_fs/30_fs.js";
 import { readAll } from "ext:deno_io/12_io.js";
-import { assert, pathFromURL } from "ext:deno_web/00_infra.js";
+const { assert, pathFromURL } = core.loadExtScript("ext:deno_web/00_infra.js");
 import { packageData } from "ext:deno_fetch/22_body.js";
-import * as abortSignal from "ext:deno_web/03_abort_signal.js";
-import {
+const abortSignal = core.loadExtScript("ext:deno_web/03_abort_signal.js");
+const {
   ReadableStream,
   readableStreamCollectIntoUint8Array,
   readableStreamForRidUnrefable,
@@ -42,7 +46,7 @@ import {
   readableStreamForRidUnrefableUnref,
   ReadableStreamPrototype,
   writableStreamForRid,
-} from "ext:deno_web/06_streams.js";
+} = core.loadExtScript("ext:deno_web/06_streams.js");
 
 // The key for private `input` option for `Deno.Command`
 const kInputOption = Symbol("kInputOption");
@@ -237,6 +241,31 @@ function collectOutput(readableStream) {
   return readableStreamCollectIntoUint8Array(readableStream);
 }
 
+const READ_PER_ITER = 64 * 1024;
+
+async function readAllRid(rid) {
+  const buffers = [];
+  try {
+    while (true) {
+      const buf = new Uint8Array(READ_PER_ITER);
+      const nread = await core.read(rid, buf);
+      if (nread === 0) break;
+      ArrayPrototypePush(buffers, TypedArrayPrototypeSubarray(buf, 0, nread));
+    }
+  } finally {
+    core.tryClose(rid);
+  }
+  let totalLen = 0;
+  for (let i = 0; i < buffers.length; i++) totalLen += buffers[i].length;
+  const result = new Uint8Array(totalLen);
+  let offset = 0;
+  for (let i = 0; i < buffers.length; i++) {
+    TypedArrayPrototypeSet(result, buffers[i], offset);
+    offset += buffers[i].length;
+  }
+  return result;
+}
+
 const _ipcPipeRid = Symbol("[[ipcPipeRid]]");
 const _extraPipeRids = Symbol("[[_extraPipeRids]]");
 const _stdinRid = Symbol("[[stdinRid]]");
@@ -336,6 +365,7 @@ export function nodeSpawnSyncChild({
   stdin,
   stdout,
   stderr,
+  extraStdio = [],
   windowsRawArguments,
   needsNpmProcessState,
   input,
@@ -354,7 +384,7 @@ export function nodeSpawnSyncChild({
     stdout,
     stderr,
     windowsRawArguments,
-    extraStdio: [],
+    extraStdio,
     detached: false,
     needsNpmProcessState,
     input,
@@ -579,18 +609,75 @@ class ReadableStreamWithCollectors extends ReadableStream {
   }
 }
 
-function spawnInner(command, options) {
-  if (options?.stdin === "piped") {
+function spawnInner(command, {
+  args = [],
+  cwd = undefined,
+  clearEnv = false,
+  env = { __proto__: null },
+  uid = undefined,
+  gid = undefined,
+  stdin = "null",
+  stdout = "piped",
+  stderr = "piped",
+  windowsRawArguments = false,
+  [kNeedsNpmProcessState]: needsNpmProcessState = false,
+} = { __proto__: null }) {
+  if (stdin === "piped") {
     throw new TypeError(
       "Piped stdin is not supported for this function, use 'Deno.Command().spawn()' instead",
     );
   }
-  return spawnChildInner(
-    command,
-    "Deno.Command().output()",
-    options,
-  )
-    .output();
+  // Bypass ChildProcess and ReadableStream machinery. Creating streams
+  // just to immediately collect all data has significant overhead that
+  // causes RSS growth in tight loops. Reading directly from the resource
+  // IDs avoids that overhead.
+  const child = op_spawn_child({
+    cmd: pathFromURL(command),
+    args: ArrayPrototypeMap(args, String),
+    cwd: pathFromURL(cwd),
+    clearEnv,
+    argv0: undefined,
+    env: ObjectEntries(env),
+    uid,
+    gid,
+    stdin,
+    stdout,
+    stderr,
+    windowsRawArguments,
+    ipc: -1,
+    serialization: "json",
+    extraStdio: [],
+    detached: false,
+    needsNpmProcessState,
+  }, "Deno.Command().output()");
+
+  const stdoutRid = child.stdoutRid;
+  const stderrRid = child.stderrRid;
+
+  return PromisePrototypeThen(
+    SafePromiseAll([
+      op_spawn_wait(child.rid),
+      stdoutRid != null ? readAllRid(stdoutRid) : null,
+      stderrRid != null ? readAllRid(stderrRid) : null,
+    ]),
+    ({ 0: status, 1: stdout, 2: stderr }) => ({
+      success: status.success,
+      code: status.code,
+      signal: status.signal,
+      get stdout() {
+        if (stdout == null) {
+          throw new TypeError("Cannot get 'stdout': 'stdout' is not piped");
+        }
+        return stdout;
+      },
+      get stderr() {
+        if (stderr == null) {
+          throw new TypeError("Cannot get 'stderr': 'stderr' is not piped");
+        }
+        return stderr;
+      },
+    }),
+  );
 }
 
 function spawnSyncInner(command, {

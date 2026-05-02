@@ -1,7 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 import { createHash, createHmac, getHashes, hash } from "node:crypto";
 import { Buffer } from "node:buffer";
-import { Readable } from "node:stream";
+import { pipeline, Readable } from "node:stream";
 import { assert, assertEquals, assertThrows } from "@std/assert";
 
 // https://github.com/denoland/deno/issues/18140
@@ -249,4 +249,22 @@ Deno.test({
       "Invalid digest: unknown-algorithm",
     );
   },
+});
+
+// Regression test for https://github.com/denoland/deno/issues/33264
+Deno.test("[node/crypto.Hash] digest after stream.pipeline", async () => {
+  const input = Readable.from(["hello"]);
+  const h = createHash("sha256");
+
+  await new Promise<void>((resolve, reject) => {
+    pipeline(input, h, (err) => {
+      if (err) reject(err);
+      else resolve();
+    });
+  });
+
+  assertEquals(
+    h.digest("hex"),
+    "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824",
+  );
 });

@@ -10,13 +10,13 @@
 /// <reference lib="esnext" />
 
 import { core, primordials } from "ext:core/mod.js";
-import * as webidl from "ext:deno_webidl/00_webidl.js";
-import {
+const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
+const {
   Blob,
   BlobPrototype,
   File,
   FilePrototype,
-} from "ext:deno_web/09_file.js";
+} = core.loadExtScript("ext:deno_web/09_file.js");
 const {
   ArrayPrototypePush,
   ArrayPrototypeSlice,

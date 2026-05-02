@@ -714,7 +714,7 @@ Deno.test("generateKeyPair promisify", async () => {
   });
 
   assert(publicKey.startsWith("-----BEGIN PUBLIC KEY-----"));
-  assert(privateKey.startsWith("-----BEGIN PRIVATE KEY-----"));
+  assert(privateKey.startsWith("-----BEGIN ENCRYPTED PRIVATE KEY-----"));
 });
 
 Deno.test("RSA export private JWK", function () {
