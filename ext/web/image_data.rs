@@ -3,9 +3,9 @@
 use std::borrow::Cow;
 use std::cell::Cell;
 
-use deno_core::CppgcBase;
 use deno_core::GarbageCollected;
 use deno_core::WebIDL;
+use deno_core::cppgc;
 use deno_core::op2;
 use deno_core::v8;
 use deno_core::webidl::ContextFn;
@@ -107,21 +107,18 @@ pub struct ImageDataSettings {
   pixel_format: ImageDataPixelFormat,
 }
 
-#[derive(CppgcBase)]
-#[repr(C)]
 pub struct ImageData {
   width: Cell<u32>,
   height: Cell<u32>,
   pixel_format: Cell<ImageDataPixelFormat>,
   color_space: Cell<PredefinedColorSpace>,
-  data: v8::TracedReference<v8::Object>,
 }
 
-// SAFETY: we're sure `ImageData` can be GCed
+// SAFETY: we're sure `ImageData` can be GCed. The pixel buffer (Uint8ClampedArray
+// or Float16Array) is stored as an own JS data property on the instance, so it is
+// kept alive transitively by the instance itself — no `TracedReference` needed.
 unsafe impl GarbageCollected for ImageData {
-  fn trace(&self, visitor: &mut v8::cppgc::Visitor) {
-    visitor.trace(&self.data);
-  }
+  fn trace(&self, _visitor: &mut v8::cppgc::Visitor) {}
 
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"ImageData"
@@ -194,16 +191,15 @@ fn alloc_typed_array<'a>(
   }
 }
 
-#[op2(base)]
+#[op2]
 impl ImageData {
   #[constructor]
   #[reentrant]
   #[required(2)]
-  #[cppgc]
   fn constructor<'a>(
     scope: &mut v8::PinScope<'a, '_>,
     #[varargs] args: Option<&v8::FunctionCallbackArguments<'a>>,
-  ) -> Result<ImageData, ImageDataError> {
+  ) -> Result<v8::Local<'a, v8::Object>, ImageDataError> {
     // `#[required(2)]` ensures `args` has at least 2 entries.
     let args = args.expect("constructor requires arguments");
     let arg_count = args.length();
@@ -232,7 +228,10 @@ impl ImageData {
       false
     };
 
-    if arg_count > 3 || arg0_is_uint8_clamped || arg0_is_float16 {
+    let (width, height, pixel_format, color_space, data_obj) = if arg_count > 3
+      || arg0_is_uint8_clamped
+      || arg0_is_float16
+    {
       // Overload: new ImageData(data, sw [, sh [, settings ] ])
       let data = arg0_typed_array.ok_or_else(|| {
         WebIdlError::new(
@@ -291,18 +290,13 @@ impl ImageData {
         return Err(ImageDataError::Float16NeedsFloat16);
       }
 
-      let color_space =
-        settings.color_space.unwrap_or(PredefinedColorSpace::Srgb);
-      let height = source_height.unwrap_or(derived_height);
-      let data_obj: v8::Local<v8::Object> = data.into();
-
-      Ok(ImageData {
-        width: Cell::new(source_width),
-        height: Cell::new(height),
-        pixel_format: Cell::new(settings.pixel_format),
-        color_space: Cell::new(color_space),
-        data: v8::TracedReference::new(scope, data_obj),
-      })
+      (
+        source_width,
+        source_height.unwrap_or(derived_height),
+        settings.pixel_format,
+        settings.color_space.unwrap_or(PredefinedColorSpace::Srgb),
+        data.into(),
+      )
     } else {
       // Overload: new ImageData(sw, sh [, settings])
       let source_width = convert_unsigned_long(scope, arg0, "Argument 1")?;
@@ -323,17 +317,39 @@ impl ImageData {
         source_width,
         source_height,
       )?;
-      let color_space =
-        settings.color_space.unwrap_or(PredefinedColorSpace::Srgb);
+      (
+        source_width,
+        source_height,
+        settings.pixel_format,
+        settings.color_space.unwrap_or(PredefinedColorSpace::Srgb),
+        data_obj,
+      )
+    };
 
-      Ok(ImageData {
-        width: Cell::new(source_width),
-        height: Cell::new(source_height),
-        pixel_format: Cell::new(settings.pixel_format),
+    let obj = cppgc::make_cppgc_empty_object::<ImageData>(scope);
+    let obj = cppgc::wrap_object(
+      scope,
+      obj,
+      ImageData {
+        width: Cell::new(width),
+        height: Cell::new(height),
+        pixel_format: Cell::new(pixel_format),
         color_space: Cell::new(color_space),
-        data: v8::TracedReference::new(scope, data_obj),
-      })
-    }
+      },
+    );
+
+    // The pixel data is exposed as an own readonly data property so it
+    // survives structured cloning and is observably the same object on every
+    // access, matching the spec's `[SameObject]`-style semantics for
+    // `ImageData.data`.
+    let data_key = v8::String::new(scope, "data").unwrap().into();
+    let mut data_desc =
+      v8::PropertyDescriptor::new_from_value_writable(data_obj.into(), false);
+    data_desc.set_enumerable(true);
+    data_desc.set_configurable(true);
+    obj.define_property(scope, data_key, &data_desc);
+
+    Ok(obj)
   }
 
   #[fast]
@@ -346,14 +362,6 @@ impl ImageData {
   #[getter]
   fn height(&self) -> u32 {
     self.height.get()
-  }
-
-  #[getter]
-  fn data<'a>(
-    &self,
-    scope: &mut v8::PinScope<'a, '_>,
-  ) -> v8::Local<'a, v8::Object> {
-    self.data.get(scope).unwrap()
   }
 
   #[getter]
