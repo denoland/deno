@@ -139,6 +139,11 @@ function upgradeWebSocket(request, options = { __proto__: null }) {
     if (!handle) {
       throw new TypeError("Socket has no handle - cannot upgrade");
     }
+    if (typeof handle.upgradeToWebsocket !== "function") {
+      throw new TypeError(
+        "Socket is not a TCP socket - only TCP connections can be upgraded to WebSocket",
+      );
+    }
 
     // Extra bytes that were already buffered (e.g., from the upgrade
     // request body that arrived with the headers)
