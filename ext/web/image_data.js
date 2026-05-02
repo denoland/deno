@@ -7,6 +7,7 @@ const {
   ObjectPrototypeIsPrototypeOf,
   Symbol,
   SymbolFor,
+  TypeError,
 } = primordials;
 
 const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
