@@ -2485,7 +2485,7 @@ dependencies = [
  "futures",
  "indexmap 2.12.0",
  "log",
- "monch",
+ "monch 0.5.0",
  "once_cell",
  "parking_lot",
  "regex",
@@ -2930,7 +2930,7 @@ dependencies = [
  "hex",
  "indexmap 2.12.0",
  "log",
- "monch",
+ "monch 0.6.0",
  "pretty_assertions",
  "reqwest",
  "serde",
@@ -3021,7 +3021,7 @@ name = "deno_npmrc"
 version = "0.8.0"
 dependencies = [
  "log",
- "monch",
+ "monch 0.6.0",
  "pretty_assertions",
  "serde",
  "sys_traits",
@@ -3309,7 +3309,7 @@ dependencies = [
  "deno_error",
  "ecow",
  "hipstr",
- "monch",
+ "monch 0.5.0",
  "once_cell",
  "serde",
  "thiserror 2.0.12",
@@ -3348,16 +3348,16 @@ dependencies = [
 
 [[package]]
 name = "deno_task_shell"
-version = "0.29.0"
+version = "0.30.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "29499442dc26a6c025b29beb9ba889d9fd6c9bbbd28a65eab25031c935965846"
+checksum = "9d8e2c943f7b09f1473c7b43e7bbcc85f1edbcf3c27524f0016fe3e3b668d983"
 dependencies = [
  "anyhow",
  "bitflags 2.9.3",
  "deno_path_util",
  "futures",
  "glob",
- "monch",
+ "monch 0.6.0",
  "nix 0.29.0",
  "path-dedot",
  "sys_traits",
@@ -6670,7 +6670,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4979f22fdb869068da03c9f7528f8297c6fd2606bc3a4affe42e6a823fdb8da4"
 dependencies = [
  "cfg-if",
- "windows-targets 0.48.5",
+ "windows-targets 0.52.6",
 ]
 
 [[package]]
@@ -7079,6 +7079,12 @@ name = "monch"
 version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b52c1b33ff98142aecea13138bd399b68aa7ab5d9546c300988c345004001eea"
+
+[[package]]
+name = "monch"
+version = "0.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6bcc6ad3b93f756f2532d29f7c7291b8d246a2c460a99a3611327bb726830014"
 
 [[package]]
 name = "naga"
@@ -10695,7 +10701,7 @@ dependencies = [
  "lazy-regex",
  "libc",
  "ls-types",
- "monch",
+ "monch 0.6.0",
  "nix 0.30.1",
  "once_cell",
  "os_pipe",
