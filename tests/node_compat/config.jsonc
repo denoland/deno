@@ -487,6 +487,7 @@
     "parallel/test-crypto-dh-padding.js": {},
     "parallel/test-crypto-dh-shared.js": {},
     "parallel/test-crypto-dh-stateless-async.js": {},
+    "parallel/test-crypto-dh-stateless.js": {},
     "parallel/test-crypto-dh.js": {},
     "parallel/test-crypto-domain.js": {},
     "parallel/test-crypto-domains.js": {},
