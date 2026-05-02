@@ -1249,6 +1249,7 @@
     "parallel/test-fs-utimes-y2K38.js": {},
     "parallel/test-fs-utimes.js": {},
     "parallel/test-fs-watch-abort-signal.js": {},
+    "parallel/test-fs-watch-encoding.js": {},
     "parallel/test-fs-watch-file-enoent-after-deletion.js": {},
     "parallel/test-fs-watch-ignore-function.js": {},
     "parallel/test-fs-watch-ignore-glob.js": {},
