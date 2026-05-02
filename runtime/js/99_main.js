@@ -56,7 +56,7 @@ import { registerDeclarativeServer } from "ext:deno_http/00_serve.ts";
 const event = core.loadExtScript("ext:deno_web/02_event.js");
 const location = core.loadExtScript("ext:deno_web/12_location.js");
 import * as version from "ext:runtime/01_version.ts";
-import * as os from "ext:deno_os/30_os.js";
+const os = core.loadExtScript("ext:deno_os/30_os.js");
 const {
   getConsoleInspectOptions,
   getDefaultInspectOptions,

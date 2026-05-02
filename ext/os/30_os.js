@@ -1,7 +1,9 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
+// deno-fmt-ignore-file
 
-import { core, primordials } from "ext:core/mod.js";
-import {
+(function () {
+const { core, primordials } = globalThis.__bootstrap;
+const {
   op_delete_env,
   op_env,
   op_exec_path,
@@ -18,7 +20,7 @@ import {
   op_set_exit_code,
   op_system_memory_info,
   op_uid,
-} from "ext:core/ops";
+} = core.ops;
 const {
   Error,
   FunctionPrototypeBind,
@@ -144,7 +146,7 @@ function execPath() {
   return op_exec_path();
 }
 
-export {
+return {
   env,
   execPath,
   exit,
@@ -160,3 +162,4 @@ export {
   systemMemoryInfo,
   uid,
 };
+})()
