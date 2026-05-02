@@ -12,7 +12,7 @@
 
 import { core, primordials } from "ext:core/mod.js";
 import { op_fetch_custom_client } from "ext:core/ops";
-import { loadTlsKeyPair } from "ext:deno_net/02_tls.js";
+const { loadTlsKeyPair } = core.loadExtScript("ext:deno_net/02_tls.js");
 
 const { internalRidSymbol } = core;
 const {
