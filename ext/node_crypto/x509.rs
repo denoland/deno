@@ -30,7 +30,7 @@ enum CertificateSources {
 /// A certificate field value that may have one or multiple values.
 /// Serializes as a plain string when there is exactly one value,
 /// or as an array of strings when there are multiple (matching Node.js behavior).
-#[derive(Default)]
+#[derive(Default, Debug, PartialEq, Eq)]
 struct StringOrArray(Vec<String>);
 
 impl StringOrArray {
@@ -1360,11 +1360,11 @@ r6C3V5F4Z9y8o8i9E4j5V8O5Q7Y8Z4W8n7R8B8l8H8L4P4F8r8c8A4v3O4g8L8S6
 
     let result = extract_subject_or_issuer(cert_inner.subject());
 
-    assert_eq!(result.cn, Some("CN".to_string()));
-    assert_eq!(result.c, None);
-    assert_eq!(result.st, None);
-    assert_eq!(result.l, None);
-    assert_eq!(result.o, None);
-    assert_eq!(result.ou, None);
+    assert_eq!(result.cn, StringOrArray(vec!["CN".to_string()]));
+    assert!(result.c.is_empty());
+    assert!(result.st.is_empty());
+    assert!(result.l.is_empty());
+    assert!(result.o.is_empty());
+    assert!(result.ou.is_empty());
   }
 }

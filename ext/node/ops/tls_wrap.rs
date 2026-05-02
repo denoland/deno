@@ -3548,11 +3548,7 @@ fn build_server_config(
         let reader = &mut std::io::BufReader::new(std::io::Cursor::new(
           normalized.as_ref(),
         ));
-        for parsed in rustls_pemfile::certs(reader) {
-          if let Ok(cert) = parsed {
-            certs.push(cert);
-          }
-        }
+        certs.extend(rustls_pemfile::certs(reader).flatten());
       }
     }
   }
