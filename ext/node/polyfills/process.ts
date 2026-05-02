@@ -99,10 +99,17 @@ import * as uv from "ext:deno_node/internal_binding/uv.ts";
 import type { BindingName } from "ext:deno_node/internal_binding/mod.ts";
 import { buildAllowedFlags } from "ext:deno_node/internal/process/per_thread.mjs";
 import type fsUtils from "ext:deno_node/internal/fs/utils.mjs";
+import type * as utilModule from "ext:deno_node/util.ts";
 
 let fsUtilsModule: typeof fsUtils;
 const lazyLoadFsUtils = core.createLazyLoader<typeof fsUtils>(
   "ext:deno_node/internal/fs/utils.mjs",
+);
+// Lazy-loaded to avoid a static circular import:
+//   process.ts -> util.ts -> internal/util/parse_args/parse_args.js
+//     -> "node:process" -> process.ts
+const lazyLoadUtil = core.createLazyLoader<typeof utilModule>(
+  "node:util",
 );
 
 const {
@@ -881,6 +888,11 @@ Object.defineProperty(process, "config", {
           default_configuration: "Release",
         }),
         variables: Object.freeze({
+          // Match Node's lib/internal/process/per_thread.js process.config:
+          // `node_module_version` is an integer ABI version exposed for native
+          // addons. Mirror process.versions.modules so a single source of truth
+          // wins.
+          node_module_version: Number(versions.modules),
           llvm_version: "0.0",
           enable_lto: "false",
           host_arch: arch,
@@ -1501,6 +1513,27 @@ internals.__bootstrapNodeProcess = function (
 
     if (getOptionValue("--warnings")) {
       process.on("warning", onWarning);
+    }
+
+    // Match Node's pre_execution.js: when --pending-deprecation is set, wrap
+    // `process.binding` with a DEP0111 warning, and wrap the `uv` binding's
+    // `errname` with DEP0119. See lib/internal/process/pre_execution.js and
+    // src/uv.cc (`ErrName`) in the upstream Node.js source.
+    if (getOptionValue("--pending-deprecation")) {
+      const { deprecate } = lazyLoadUtil();
+      const uvBinding = getBinding("uv");
+      uvBinding.errname = deprecate(
+        uvBinding.errname,
+        "Directly calling process.binding('uv').errname(<val>) is being " +
+          "deprecated. Please make sure to use util.getSystemErrorName() " +
+          "instead.",
+        "DEP0119",
+      );
+      process.binding = deprecate(
+        process.binding,
+        "process.binding() is deprecated. Please use public APIs instead.",
+        "DEP0111",
+      );
     }
 
     // Replace stdin if it is not a terminal

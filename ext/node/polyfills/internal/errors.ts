@@ -1101,6 +1101,15 @@ export class ERR_CRYPTO_INVALID_STATE extends NodeError {
   }
 }
 
+export class ERR_CRYPTO_INVALID_SCRYPT_PARAMS extends NodeRangeError {
+  constructor(details?: string) {
+    super(
+      "ERR_CRYPTO_INVALID_SCRYPT_PARAMS",
+      details ? `Invalid scrypt params: ${details}` : "Invalid scrypt params",
+    );
+  }
+}
+
 export class ERR_CRYPTO_PBKDF2_ERROR extends NodeError {
   constructor() {
     super("ERR_CRYPTO_PBKDF2_ERROR", "PBKDF2 error");
@@ -2207,6 +2216,14 @@ export class ERR_TLS_CERT_ALTNAME_INVALID extends NodeError {
     this.cert = cert;
   }
 }
+export class ERR_TLS_ALPN_CALLBACK_WITH_PROTOCOLS extends NodeTypeError {
+  constructor() {
+    super(
+      "ERR_TLS_ALPN_CALLBACK_WITH_PROTOCOLS",
+      "The ALPNCallback and ALPNProtocols TLS options are mutually exclusive",
+    );
+  }
+}
 export class ERR_TLS_DH_PARAM_SIZE extends NodeError {
   constructor(x: string) {
     super("ERR_TLS_DH_PARAM_SIZE", `DH parameter size ${x} is less than 2048`);
@@ -3165,6 +3182,7 @@ export default {
   ERR_CRYPTO_INVALID_DIGEST,
   ERR_CRYPTO_INVALID_KEY_OBJECT_TYPE,
   ERR_CRYPTO_INVALID_JWK,
+  ERR_CRYPTO_INVALID_SCRYPT_PARAMS,
   ERR_CRYPTO_INVALID_STATE,
   ERR_CRYPTO_PBKDF2_ERROR,
   ERR_CRYPTO_SCRYPT_INVALID_PARAMETER,
@@ -3353,6 +3371,7 @@ export default {
   ERR_STREAM_WRAP,
   ERR_STREAM_WRITE_AFTER_END,
   ERR_SYNTHETIC,
+  ERR_TLS_ALPN_CALLBACK_WITH_PROTOCOLS,
   ERR_TLS_CERT_ALTNAME_INVALID,
   ERR_TLS_DH_PARAM_SIZE,
   ERR_TLS_HANDSHAKE_TIMEOUT,

@@ -13,6 +13,7 @@ const {
   immediateRefCount,
 } = core;
 const {
+  DateNow,
   FunctionPrototypeCall,
   MapPrototypeDelete,
   MapPrototypeGet,
@@ -24,6 +25,7 @@ const {
   SafeArrayIterator,
   SafeMap,
   Symbol,
+  SymbolDispose,
   SymbolToPrimitive,
 } = primordials;
 import {
@@ -104,6 +106,9 @@ export function Timeout(callback, after, args, isRepeat, isRefed) {
     after = 1;
   }
   this._idleTimeout = after;
+  this._idleStart = DateNow();
+  this._idlePrev = null;
+  this._idleNext = null;
   this._onTimeout = callback;
   this._timerArgs = args;
   this._repeat = isRepeat;
@@ -163,6 +168,8 @@ Timeout.prototype[createTimer] = function () {
     } else if (self._repeat) {
       // timeout was converted to interval inside callback
       self[kTimerId] = self[createTimer]();
+    } else {
+      self._destroyed = true;
     }
     return ret;
   }
@@ -218,6 +225,9 @@ Timeout.prototype[createTimer] = function () {
 Timeout.prototype[kDestroy] = function () {
   if (!this._destroyed) {
     this._destroyed = true;
+    this._idleTimeout = -1;
+    this._idleStart = DateNow();
+    this._onTimeout = null;
     cancelTimer_(this._timer);
     MapPrototypeDelete(activeTimers, this[kTimerId]);
     if (
@@ -243,9 +253,18 @@ Timeout.prototype[inspect.custom] = function (_, options) {
 };
 
 Timeout.prototype.refresh = function () {
-  if (!this._destroyed) {
+  if (this._destroyed) {
+    // Reactivate a timer that fired naturally (callback still set).
+    // Do NOT reactivate a timer cancelled via clearTimeout (callback
+    // nulled by kDestroy or _onTimeout explicitly cleared).
+    if (this._onTimeout !== null) {
+      this._destroyed = false;
+      this[kTimerId] = this[createTimer]();
+    }
+  } else {
     refreshTimer_(this._timer);
   }
+  this._idleStart = DateNow();
   return this;
 };
 
@@ -272,6 +291,10 @@ Timeout.prototype.ref = function () {
 Timeout.prototype.close = function () {
   this[kDestroy]();
   return this;
+};
+
+Timeout.prototype[SymbolDispose] = function () {
+  this[kDestroy]();
 };
 
 Timeout.prototype.hasRef = function () {
@@ -320,11 +343,14 @@ export const runImmediates = core.runImmediates;
 export class Immediate {
   constructor(unboundCallback, ...args) {
     const asyncContext = getAsyncContext();
+    // Match Node's `immediate._onImmediate(...argv)` invocation: the callback's
+    // `this` is the Immediate instance, not the global.
+    const self = this;
     const callback = (...argv) => {
       const oldContext = getAsyncContext();
       try {
         setAsyncContext(asyncContext);
-        return ReflectApply(unboundCallback, globalThis, argv);
+        return ReflectApply(unboundCallback, self, argv);
       } finally {
         setAsyncContext(oldContext);
       }
@@ -365,6 +391,10 @@ export class Immediate {
 
   hasRef() {
     return !!this[kRefed];
+  }
+
+  [SymbolDispose]() {
+    core.clearImmediate(this);
   }
 
   [inspect.custom] = function (_, options) {

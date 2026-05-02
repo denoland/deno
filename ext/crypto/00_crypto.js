@@ -88,9 +88,9 @@ const {
   WeakMapPrototypeSet,
 } = primordials;
 
-import * as webidl from "ext:deno_webidl/00_webidl.js";
+const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
 import { createFilteredInspectProxy } from "ext:deno_web/01_console.js";
-import { DOMException } from "ext:deno_web/01_dom_exception.js";
+const { DOMException } = core.loadExtScript("ext:deno_web/01_dom_exception.js");
 import { kKeyObject } from "ext:deno_node/internal/crypto/constants.ts";
 
 const supportedNamedCurves = ["P-256", "P-384", "P-521"];

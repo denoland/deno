@@ -1,0 +1,10 @@
+{
+  "tempDir": true,
+  "tests": {
+    "no_framework": {
+      "args": "compile -A --output main .",
+      "output": "error.out",
+      "exitCode": 1
+    }
+  }
+}

@@ -39,6 +39,7 @@ use deno_core::ToJsBuffer;
 use deno_core::op2;
 use deno_core::uv_compat;
 use deno_core::uv_compat::UV_EBADF;
+use deno_core::uv_compat::UV_ECANCELED;
 use deno_core::uv_compat::UV_EOF;
 use deno_core::uv_compat::uv_buf_t;
 use deno_core::uv_compat::uv_stream_t;
@@ -130,6 +131,13 @@ impl TlsConnection {
     match self {
       TlsConnection::Client(c) => c.alpn_protocol(),
       TlsConnection::Server(c) => c.alpn_protocol(),
+    }
+  }
+
+  fn server_name(&self) -> Option<&str> {
+    match self {
+      TlsConnection::Client(_) => None,
+      TlsConnection::Server(c) => c.server_name(),
     }
   }
 
@@ -347,19 +355,14 @@ unsafe fn do_emit_read(
 
     let recv = v8::Local::new(scope, &ctx.js_handle);
 
-    let onread_fn = if let Some(onread) = onread {
-      v8::Local::new(scope, onread)
-    } else {
-      let key =
-        v8::String::new_external_onebyte_static(scope, b"onread").unwrap();
-      match recv.get(scope, key.into()) {
-        Some(val) => match v8::Local::<v8::Function>::try_from(val) {
-          Ok(f) => f,
-          Err(_) => return,
-        },
-        None => return,
-      }
+    let Some(onread) = onread else {
+      // readStop was called (onread is None) -- caller must buffer
+      // the data instead of delivering it.  The old fallback of
+      // looking up "onread" on the JS handle defeated readStop and
+      // broke backpressure.
+      return;
     };
+    let onread_fn = v8::Local::new(scope, onread);
 
     if let Some(bytes) = data {
       let len = bytes.len();
@@ -743,6 +746,12 @@ struct TLSWrapInner {
   /// Set by clear_out when it emitted data — indicates rustls may have
   /// more buffered plaintext. Cleared when clear_out returns no data.
   has_buffered_cleartext: bool,
+  /// Decrypted cleartext that could not be delivered because readStop was
+  /// active (onread was None). Flushed on the next readStart cycle.
+  pending_clear_out: Vec<u8>,
+  /// True when the TLS peer closed but the EOF could not be delivered
+  /// because readStop was active. Delivered on the next readStart cycle.
+  pending_eof: bool,
   in_dowrite: bool,
   write_callback_scheduled: bool,
   /// Number of outstanding uv_write requests for encrypted output.
@@ -780,6 +789,11 @@ struct TLSWrapInner {
   /// is freed, so in-flight write callbacks can avoid a dangling deref.
   alive: Rc<Cell<bool>>,
 
+  /// Set to true by JS when the TLSSocket is being destroyed/closed.
+  /// Checked after handshake callback to prevent sending application
+  /// data when checkServerIdentity fails.
+  closing: bool,
+
   // Error string (like Node's error_)
   error: Option<String>,
 
@@ -803,9 +817,18 @@ struct TLSWrapInner {
 
 /// Convert a rustls error to a (message, code) pair that matches Node's
 /// OpenSSL-style error reporting as closely as possible.
-fn rustls_error_to_node_error(e: &rustls::Error) -> (String, String) {
+fn rustls_error_to_node_error(
+  e: &rustls::Error,
+  protocol_version: Option<rustls::ProtocolVersion>,
+) -> (String, String) {
   use rustls::Error as E;
   match e {
+    // Match Node's OpenSSL wording for record-layer decode failures so user
+    // code that pattern-matches err.message keeps working.
+    E::InvalidMessage(_) => (
+      format!("{e} (wrong version number)"),
+      "ERR_SSL_WRONG_VERSION_NUMBER".to_string(),
+    ),
     E::InvalidCertificate(cert_err) => {
       let reason = format!("{cert_err}");
       // Map common rustls certificate errors to OpenSSL error codes
@@ -852,6 +875,16 @@ fn rustls_error_to_node_error(e: &rustls::Error) -> (String, String) {
         AD::InappropriateFallback => "TLSV1_ALERT_INAPPROPRIATE_FALLBACK",
         AD::UserCanceled => "TLSV1_ALERT_USER_CANCELLED",
         AD::NoRenegotiation => "TLSV1_ALERT_NO_RENEGOTIATION",
+        AD::CertificateRequired => {
+          // rustls sends CertificateRequired for both TLS 1.2 and 1.3,
+          // but OpenSSL sends HandshakeFailure for TLS 1.2.
+          if protocol_version == Some(rustls::ProtocolVersion::TLSv1_2) {
+            "SSLV3_ALERT_HANDSHAKE_FAILURE"
+          } else {
+            "TLSV13_ALERT_CERTIFICATE_REQUIRED"
+          }
+        }
+        AD::NoApplicationProtocol => "TLSV1_ALERT_NO_APPLICATION_PROTOCOL",
         _ => "SSLV3_ALERT_HANDSHAKE_FAILURE",
       };
       (format!("{e}"), format!("ERR_SSL_{code}"))
@@ -859,6 +892,19 @@ fn rustls_error_to_node_error(e: &rustls::Error) -> (String, String) {
     E::NoApplicationProtocol => (
       format!("{e}"),
       "ERR_SSL_NO_APPLICATION_PROTOCOL".to_string(),
+    ),
+    // rustls returns `Error::General("no server certificate chain resolved")`
+    // (and sends an AccessDenied fatal alert) when a server-side cert
+    // resolver returns `None` — e.g. a TLS server configured with only
+    // `SNICallback` whose callback hands back an empty SecureContext.
+    // Node/OpenSSL raise "no suitable signature algorithm" on the server
+    // and `ERR_SSL_SSLV3_ALERT_HANDSHAKE_FAILURE` on the client; mirror
+    // both ends so existing Node code (and upstream tests) match.
+    // NOTE: keep this string in sync with rustls upstream — there is no
+    // structured `Error` variant for "resolver returned None".
+    E::General(msg) if msg == "no server certificate chain resolved" => (
+      "no suitable signature algorithm".to_string(),
+      "ERR_SSL_NO_SUITABLE_SIGNATURE_ALGORITHM".to_string(),
     ),
     _ => (
       format!("{e}"),
@@ -880,6 +926,8 @@ impl TLSWrapInner {
       cycling: false,
       session_was_set: false,
       has_buffered_cleartext: false,
+      pending_clear_out: Vec::new(),
+      pending_eof: false,
       in_dowrite: false,
       write_callback_scheduled: false,
       enc_writes_in_flight: 0,
@@ -895,6 +943,7 @@ impl TLSWrapInner {
       bytes_read: 0,
       bytes_written: 0,
       alive: Rc::new(Cell::new(true)),
+      closing: false,
       error: None,
       verify_error: Arc::new(std::sync::Mutex::new(None)),
       pending_client_config: None,
@@ -930,12 +979,36 @@ impl TLSWrapInner {
         return;
       }
       TLSWrapInner::do_enc_out_action(ptr, enc_action);
+
+      // After handshake completes, the JS callback (onhandshakedone ->
+      // onConnectSecure) has run. If the connection was accepted (e.g.
+      // checkServerIdentity passed), drain any pending cleartext that
+      // was buffered before the handshake.  If JS destroyed the socket
+      // (identity check failed), the closing flag prevents sending.
+      if result.handshake_done && !(*ptr).closing {
+        (*ptr).cycling = true;
+        (*ptr).clear_in();
+        let enc_action2 = (*ptr).enc_out_collect();
+        (*ptr).cycling = false;
+        TLSWrapInner::do_enc_out_action(ptr, enc_action2);
+      }
     }
   }
 
   /// Feed pending cleartext into rustls writer.
   /// Mirrors Node's TLSWrap::ClearIn().
   fn clear_in(&mut self) {
+    // Don't feed application data to rustls until the handshake is
+    // complete and JS has confirmed the connection (via onhandshakedone).
+    // In Node.js, the SSL_write for app data effectively happens after
+    // the handshake callback because OpenSSL fires the info callback
+    // synchronously during SSL_read. Without this gate, app data would
+    // be encrypted and sent before checkServerIdentity can reject the
+    // connection.
+    if !self.established || self.closing {
+      return;
+    }
+
     let Some(ref mut conn) = self.tls_conn else {
       return;
     };
@@ -1031,7 +1104,8 @@ impl TLSWrapInner {
             if total_consumed > 0 {
               self.enc_in.drain(..total_consumed);
             }
-            let (error_msg, error_code) = rustls_error_to_node_error(&e);
+            let (error_msg, error_code) =
+              rustls_error_to_node_error(&e, conn.protocol_version());
             self.error = Some(error_msg.clone());
             // Flush the error alert to the underlying stream
             self.enc_out_flush_only();
@@ -1185,6 +1259,13 @@ impl TLSWrapInner {
           do_emit_handshake_done(&ctx);
         }
 
+        // Defensive: if the handshake_done callback ran teardown
+        // synchronously (e.g. via a finalizer drained off the microtask
+        // queue), bail before touching freed state.
+        if !(*ptr).alive.get() {
+          return;
+        }
+
         // If shutdown was requested before handshake completed, execute
         // the deferred close_notify + underlying shutdown now.
         if (*ptr).shutdown {
@@ -1198,7 +1279,11 @@ impl TLSWrapInner {
       }
 
       if !result.data.is_empty() {
-        if let Some(ctx) = extract_emit_ctx(ptr) {
+        if (*ptr).onread.is_none() {
+          // readStop is active -- buffer the data for later delivery
+          (*ptr).pending_clear_out.extend_from_slice(&result.data);
+          (*ptr).has_buffered_cleartext = true;
+        } else if let Some(ctx) = extract_emit_ctx(ptr) {
           let onread = (*ptr).onread.clone();
           let state = (*ptr).stream_base_state.clone();
           do_emit_read(
@@ -1214,7 +1299,11 @@ impl TLSWrapInner {
         }
       }
       if result.got_eof {
-        if let Some(ctx) = extract_emit_ctx(ptr) {
+        if (*ptr).onread.is_none() {
+          // readStop is active -- defer EOF delivery
+          (*ptr).pending_eof = true;
+          (*ptr).has_buffered_cleartext = true;
+        } else if let Some(ctx) = extract_emit_ctx(ptr) {
           let onread = (*ptr).onread.clone();
           let state = (*ptr).stream_base_state.clone();
           do_emit_read(
@@ -1663,15 +1752,19 @@ impl TLSWrap {
     scope: &mut v8::PinScope,
     _op_state: &mut OpState,
   ) -> i32 {
-    let server_config = match build_server_config(scope, context) {
-      Some(c) => c,
-      None => {
-        return -1;
-      }
-    };
+    let (server_config, client_cert_verify_error) =
+      match build_server_config(scope, context) {
+        Some(c) => c,
+        None => {
+          return -1;
+        }
+      };
 
     let inner = unsafe { &mut *self.inner.as_mut_ptr() };
     inner.pending_server_config = Some(Arc::new(server_config));
+    // Share the client cert verify error store with the TLSWrap so that
+    // `verifyError()` on the server side returns client cert errors.
+    inner.verify_error = client_cert_verify_error;
     0
   }
 
@@ -1810,13 +1903,12 @@ impl TLSWrap {
 
   /// ReadStart — start reading cleartext from TLS.
   /// Mirrors Node's TLSWrap::ReadStart().
-  #[fast]
+  #[nofast]
   #[reentrant]
   fn read_start(
     &self,
     #[this] this: v8::Global<v8::Object>,
     scope: &mut v8::PinScope,
-    _op_state: &mut OpState,
   ) -> i32 {
     let inner = unsafe { &mut *self.inner.as_mut_ptr() };
 
@@ -1833,6 +1925,44 @@ impl TLSWrap {
 
     inner.onread = Some(v8::Global::new(scope, onread));
 
+    // Flush any cleartext that was buffered while readStop was active.
+    // This must happen before the cycle below so the consumer sees the
+    // data in the order it was decrypted.
+    let inner_ptr = inner as *mut TLSWrapInner;
+    let pending_data = std::mem::take(&mut inner.pending_clear_out);
+    let pending_eof = inner.pending_eof;
+    inner.pending_eof = false;
+    if (!pending_data.is_empty() || pending_eof)
+      && let Some(ctx) = (unsafe { extract_emit_ctx(inner_ptr) })
+    {
+      if !pending_data.is_empty() {
+        let onread_clone = inner.onread.clone();
+        let state = inner.stream_base_state.clone();
+        unsafe {
+          do_emit_read(
+            &ctx,
+            onread_clone.as_ref(),
+            state.as_ref(),
+            pending_data.len() as isize,
+            Some(&pending_data),
+          );
+        }
+      }
+      if pending_eof {
+        let onread_clone = inner.onread.clone();
+        let state = inner.stream_base_state.clone();
+        unsafe {
+          do_emit_read(
+            &ctx,
+            onread_clone.as_ref(),
+            state.as_ref(),
+            UV_EOF as isize,
+            None,
+          );
+        }
+      }
+    }
+
     // For the Uv case, read interception is done at the JS layer via
     // nativeHandle.onread -> TLSWrap.receive(). The JS layer calls
     // nativeHandle.readStart() separately. We just need to cycle if
@@ -1848,7 +1978,6 @@ impl TLSWrap {
     }
 
     if should_cycle {
-      let inner_ptr = inner as *mut TLSWrapInner;
       // SAFETY: inner_ptr points to heap-allocated TLSWrapInner via OwnedPtr
       unsafe { TLSWrapInner::cycle(inner_ptr) };
     }
@@ -1894,8 +2023,16 @@ impl TLSWrap {
         if let Ok(buf) = TryInto::<v8::Local<v8::Uint8Array>>::try_into(chunk) {
           let byte_len = buf.byte_length();
           let byte_off = buf.byte_offset();
-          let ab = buf.buffer(scope).unwrap();
-          let ptr = ab.data().unwrap().as_ptr() as *const u8;
+          // Skip chunks whose ArrayBuffer has been detached (e.g. during
+          // sandbox teardown). Erroring on each would spam the close path;
+          // surviving chunks are still written.
+          let Some(ab) = buf.buffer(scope) else {
+            continue;
+          };
+          let Some(data_ptr) = ab.data() else {
+            continue;
+          };
+          let ptr = data_ptr.as_ptr() as *const u8;
           // SAFETY: ptr + offset is within the ArrayBuffer backing store
           let slice =
             unsafe { std::slice::from_raw_parts(ptr.add(byte_off), byte_len) };
@@ -1912,8 +2049,14 @@ impl TLSWrap {
         if let Ok(buf) = TryInto::<v8::Local<v8::Uint8Array>>::try_into(chunk) {
           let byte_len = buf.byte_length();
           let byte_off = buf.byte_offset();
-          let ab = buf.buffer(scope).unwrap();
-          let ptr = ab.data().unwrap().as_ptr() as *const u8;
+          // Skip detached buffers (see comment in all_buffers=true branch).
+          let Some(ab) = buf.buffer(scope) else {
+            continue;
+          };
+          let Some(data_ptr) = ab.data() else {
+            continue;
+          };
+          let ptr = data_ptr.as_ptr() as *const u8;
           // SAFETY: ptr + offset is within the ArrayBuffer backing store
           let slice =
             unsafe { std::slice::from_raw_parts(ptr.add(byte_off), byte_len) };
@@ -1952,12 +2095,16 @@ impl TLSWrap {
   ) -> i32 {
     let byte_length = buffer.byte_length();
     let byte_offset = buffer.byte_offset();
-    let ab = buffer.buffer(scope).unwrap();
-    let data_ptr = ab.data().unwrap().as_ptr() as *const u8;
-    // SAFETY: ptr + offset is within the ArrayBuffer backing store
-    let data = unsafe {
-      std::slice::from_raw_parts(data_ptr.add(byte_offset), byte_length)
+    let Some(ab) = buffer.buffer(scope) else {
+      return -1;
     };
+    let Some(data_ptr) = ab.data() else {
+      return -1;
+    };
+    let ptr = data_ptr.as_ptr() as *const u8;
+    // SAFETY: ptr + offset is within the ArrayBuffer backing store
+    let data =
+      unsafe { std::slice::from_raw_parts(ptr.add(byte_offset), byte_length) };
 
     self.write_data(req_wrap_obj, data, scope, op_state)
   }
@@ -2098,6 +2245,30 @@ impl TLSWrap {
     }
 
     0
+  }
+
+  /// Mark the TLSWrap as closing. Called synchronously from JS
+  /// TLSWrap.close() so the Rust side knows not to send buffered
+  /// application data after a handshake callback rejects the connection.
+  #[fast]
+  fn set_closing(&self) {
+    let inner = unsafe { &mut *self.inner.as_mut_ptr() };
+    inner.closing = true;
+  }
+
+  /// Complete any pending JS write request with ECANCELED before teardown.
+  #[nofast]
+  #[reentrant]
+  fn cancel_write(&self) {
+    let ptr = self.inner.as_mut_ptr();
+    // SAFETY: ptr points to this live TLSWrapInner; the helper clears the
+    // stored write object before invoking JS and does not retain references
+    // across the callback.
+    unsafe {
+      if let Some((write_obj, ctx)) = prepare_invoke_queued(ptr) {
+        do_invoke_queued(&ctx, write_obj, UV_ECANCELED);
+      }
+    }
   }
 
   /// Destroy the SSL connection. Tears down the TLS state without
@@ -2359,6 +2530,20 @@ impl TLSWrap {
     // After start(), this is a no-op — SNI is already set on the connection.
   }
 
+  /// Get the SNI hostname. On server connections this returns the SNI
+  /// value sent by the client; on client connections returns null.
+  /// Returns empty string when no SNI is available.
+  #[string]
+  fn get_servername(&self) -> String {
+    let inner = unsafe { &*self.inner.as_mut_ptr() };
+    inner
+      .tls_conn
+      .as_ref()
+      .and_then(|c| c.server_name())
+      .map(|s| s.to_string())
+      .unwrap_or_default()
+  }
+
   /// Inject encrypted data (for testing / JSStreamSocket integration).
   /// Mirrors Node's TLSWrap::Receive().
   #[fast]
@@ -2499,7 +2684,11 @@ impl TLSWrap {
     let inner_ptr = inner as *mut TLSWrapInner;
     unsafe {
       TLSWrapInner::dispatch_clear_out_callbacks(inner_ptr, &result);
-      if let Some(ctx) = extract_emit_ctx(inner_ptr) {
+      if (*inner_ptr).onread.is_none() {
+        // readStop is active -- defer EOF
+        (*inner_ptr).pending_eof = true;
+        (*inner_ptr).has_buffered_cleartext = true;
+      } else if let Some(ctx) = extract_emit_ctx(inner_ptr) {
         let onread = (*inner_ptr).onread.clone();
         let state = (*inner_ptr).stream_base_state.clone();
         do_emit_read(
@@ -2685,13 +2874,152 @@ fn filter_unsupported_cert_version(
   match result {
     Err(rustls::Error::InvalidCertificate(
       rustls::CertificateError::Other(ref other),
-    )) if other.to_string().contains("UnsupportedCertVersion") => {
+    )) if other
+      .0
+      .downcast_ref::<webpki::Error>()
+      .is_some_and(|e| matches!(e, webpki::Error::UnsupportedCertVersion)) =>
+    {
       Ok(rustls::client::danger::HandshakeSignatureValid::assertion())
     }
     Err(rustls::Error::InvalidCertificate(
       rustls::CertificateError::BadEncoding,
     )) => Ok(rustls::client::danger::HandshakeSignatureValid::assertion()),
     other => other,
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Minimal DER helpers for chain verification of X.509v1 certificates.
+// webpki rejects v1 certs at parse time, so we do structural chain
+// checking ourselves (issuer/subject matching).
+// ---------------------------------------------------------------------------
+
+/// Read a DER tag-length-value element, returning (full element, remainder).
+fn der_read_element(data: &[u8]) -> Option<(&[u8], &[u8])> {
+  if data.is_empty() {
+    return None;
+  }
+  let len_start = 1;
+  let first_len = *data.get(len_start)?;
+  let (content_len, header_len) = if first_len < 0x80 {
+    (first_len as usize, 2)
+  } else {
+    let num_bytes = (first_len & 0x7F) as usize;
+    if num_bytes == 0 || num_bytes > 4 || data.len() < 2 + num_bytes {
+      return None;
+    }
+    let mut len = 0usize;
+    for i in 0..num_bytes {
+      len = (len << 8) | (data[2 + i] as usize);
+    }
+    (len, 2 + num_bytes)
+  };
+  let total = header_len + content_len;
+  if data.len() < total {
+    return None;
+  }
+  Some((&data[..total], &data[total..]))
+}
+
+/// Skip a DER element, returning the remainder.
+fn der_skip_element(data: &[u8]) -> Option<&[u8]> {
+  der_read_element(data).map(|(_, rest)| rest)
+}
+
+/// Extract raw (issuer, subject) DER Name fields from an X.509 certificate.
+fn extract_issuer_and_subject(cert_der: &[u8]) -> Option<(&[u8], &[u8])> {
+  // Certificate ::= SEQUENCE { tbsCertificate, ... }
+  let (cert_elem, _) = der_read_element(cert_der)?;
+  // TBSCertificate is the first element inside Certificate SEQUENCE.
+  let tbs_content = &cert_elem[cert_elem.len() - der_content_len(cert_elem)?..];
+  let (tbs_elem, _) = der_read_element(tbs_content)?;
+  let mut pos = &tbs_elem[tbs_elem.len() - der_content_len(tbs_elem)?..];
+
+  // Skip optional version [0] EXPLICIT
+  if pos.first() == Some(&0xA0) {
+    pos = der_skip_element(pos)?;
+  }
+  // Skip serialNumber (INTEGER)
+  pos = der_skip_element(pos)?;
+  // Skip signatureAlgorithm (SEQUENCE)
+  pos = der_skip_element(pos)?;
+  // Read issuer (Name = SEQUENCE)
+  let (issuer, pos) = der_read_element(pos)?;
+  // Skip validity (SEQUENCE)
+  let pos = der_skip_element(pos)?;
+  // Read subject (Name = SEQUENCE)
+  let (subject, _) = der_read_element(pos)?;
+  Some((issuer, subject))
+}
+
+/// Return the length of the content portion of a DER element.
+fn der_content_len(element: &[u8]) -> Option<usize> {
+  let first_len = *element.get(1)?;
+  if first_len < 0x80 {
+    Some(first_len as usize)
+  } else {
+    let num_bytes = (first_len & 0x7F) as usize;
+    let mut len = 0usize;
+    for i in 0..num_bytes {
+      len = (len << 8) | (*element.get(2 + i)? as usize);
+    }
+    Some(len)
+  }
+}
+
+/// Check whether a certificate chain (end_entity + intermediates) can be
+/// traced back to a root cert in `root_cert_ders` using issuer/subject
+/// matching. Returns an error code string if the chain cannot be built.
+/// Returns `Ok(())` if the chain reaches a trusted root, or
+/// `Err(code)` with a Node/OpenSSL error code if it does not.
+fn verify_chain_structure(
+  end_entity: &[u8],
+  intermediates: &[rustls::pki_types::CertificateDer<'_>],
+  root_cert_ders: &[Vec<u8>],
+) -> Result<(), &'static str> {
+  // Parse all certs' (issuer, subject) pairs up front.
+  let ee = extract_issuer_and_subject(end_entity)
+    .ok_or("UNABLE_TO_VERIFY_LEAF_SIGNATURE")?;
+  let inter: Vec<_> = intermediates
+    .iter()
+    .filter_map(|c| extract_issuer_and_subject(c.as_ref()))
+    .collect();
+  let roots: Vec<_> = root_cert_ders
+    .iter()
+    .filter_map(|c| extract_issuer_and_subject(c))
+    .collect();
+
+  // Walk the chain from end entity upward.
+  let mut current_issuer = ee.0;
+
+  // Limit iterations to prevent cycles.
+  for _ in 0..(intermediates.len() + 2) {
+    // Check if the issuer is a root cert subject.
+    if roots.iter().any(|(_, subject)| *subject == current_issuer) {
+      return Ok(()); // Chain reaches a trusted root.
+    }
+    // Check if there's an intermediate whose subject matches.
+    if let Some((inter_issuer, _)) =
+      inter.iter().find(|(_, subject)| *subject == current_issuer)
+    {
+      // Self-signed intermediate that isn't a root.
+      if *inter_issuer == current_issuer {
+        return Err("SELF_SIGNED_CERT_IN_CHAIN");
+      }
+      current_issuer = inter_issuer;
+    } else {
+      break;
+    }
+  }
+
+  // Chain doesn't reach a trusted root.
+  if root_cert_ders.is_empty() {
+    // No explicit CA was provided (only system/default roots which
+    // didn't match). OpenSSL reports this as "unable to get local
+    // issuer certificate".
+    Err("UNABLE_TO_GET_ISSUER_CERT_LOCALLY")
+  } else {
+    Err("UNABLE_TO_VERIFY_LEAF_SIGNATURE")
   }
 }
 
@@ -2748,19 +3076,61 @@ impl rustls::client::danger::ServerCertVerifier for NodeServerCertVerifier {
         ) {
           return Ok(rustls::client::danger::ServerCertVerified::assertion());
         }
-        // CaUsedAsEndEntity is a rustls/webpki-specific check that
-        // OpenSSL does not have.  If the cert is actually in our
-        // root store, trust it silently.  Otherwise store an error.
-        if let rustls::CertificateError::Other(other) = cert_error
-          && format!("{other}").contains("CaUsedAsEndEntity")
-        {
-          let ee_bytes: &[u8] = end_entity.as_ref();
-          let is_trusted =
-            self.root_cert_ders.iter().any(|r| r.as_slice() == ee_bytes);
-          if is_trusted {
-            return Ok(rustls::client::danger::ServerCertVerified::assertion());
+        // OpenSSL accepts X.509v1 certificates; webpki rejects them with
+        // `UnsupportedCertVersion` or sometimes `BadEncoding`. We can't
+        // simply accept: that would skip chain verification entirely.
+        // Instead, do structural chain checking (issuer/subject matching)
+        // so that v1 certs with a valid chain are accepted while broken
+        // chains still produce the correct Node/OpenSSL error.
+        let is_v1_error = matches!(
+          cert_error,
+          rustls::CertificateError::BadEncoding
+        ) || matches!(
+          cert_error,
+          rustls::CertificateError::Other(other) if other
+            .0
+            .downcast_ref::<webpki::Error>()
+            .is_some_and(|e| matches!(e, webpki::Error::UnsupportedCertVersion))
+        );
+        if is_v1_error {
+          match verify_chain_structure(
+            end_entity.as_ref(),
+            intermediates,
+            &self.root_cert_ders,
+          ) {
+            Ok(()) => {
+              // Chain is structurally valid -- accept.
+              return Ok(
+                rustls::client::danger::ServerCertVerified::assertion(),
+              );
+            }
+            Err(code) => {
+              // Chain is broken -- store the error and let the
+              // handshake proceed so JS can decide.
+              *self.verify_error.lock().unwrap_or_else(|e| e.into_inner()) =
+                Some(code.to_string());
+              return Ok(
+                rustls::client::danger::ServerCertVerified::assertion(),
+              );
+            }
           }
-          // Not trusted — fall through to store the error below.
+        }
+        if let rustls::CertificateError::Other(other) = cert_error
+          && let Some(webpki_err) = other.0.downcast_ref::<webpki::Error>()
+        {
+          // CaUsedAsEndEntity is a webpki-specific check that OpenSSL
+          // does not have. If the cert is actually in our root store,
+          // trust it silently. Otherwise store the error.
+          if matches!(webpki_err, webpki::Error::CaUsedAsEndEntity) {
+            let ee_bytes: &[u8] = end_entity.as_ref();
+            let is_trusted =
+              self.root_cert_ders.iter().any(|r| r.as_slice() == ee_bytes);
+            if is_trusted {
+              return Ok(
+                rustls::client::danger::ServerCertVerified::assertion(),
+              );
+            }
+          }
         }
         // Store the error for verifyError() and let the handshake
         // proceed.  The JS layer will decide whether to tear down
@@ -2825,6 +3195,28 @@ impl TLSWrap {
 
     0
   }
+}
+
+/// Normalize PEM data so that `BEGIN TRUSTED CERTIFICATE` and
+/// `BEGIN X509 CERTIFICATE` (which OpenSSL accepts) are rewritten to
+/// `BEGIN CERTIFICATE` (the only form rustls_pemfile recognises).
+fn normalize_pem_headers(pem: &[u8]) -> std::borrow::Cow<'_, [u8]> {
+  // Fast path: avoid allocation when no alternate headers are present.
+  // PEM files are ASCII, so a simple substring search is fine.
+  let needs_rewrite = pem
+    .windows(b"TRUSTED CERTIFICATE".len())
+    .any(|w| w == b"TRUSTED CERTIFICATE")
+    || pem
+      .windows(b"X509 CERTIFICATE".len())
+      .any(|w| w == b"X509 CERTIFICATE");
+  if !needs_rewrite {
+    return std::borrow::Cow::Borrowed(pem);
+  }
+  let s = String::from_utf8_lossy(pem);
+  let s = s
+    .replace("TRUSTED CERTIFICATE", "CERTIFICATE")
+    .replace("X509 CERTIFICATE", "CERTIFICATE");
+  std::borrow::Cow::Owned(s.into_bytes())
 }
 
 /// Build a rustls ClientConfig from a SecureContext JS object.
@@ -2924,7 +3316,9 @@ fn build_client_config(
   let mut root_cert_ders: Vec<Vec<u8>> = Vec::new();
 
   for cert in &ca_certs {
-    let reader = &mut std::io::BufReader::new(std::io::Cursor::new(cert));
+    let normalized = normalize_pem_headers(cert);
+    let reader =
+      &mut std::io::BufReader::new(std::io::Cursor::new(normalized.as_ref()));
     for parsed in rustls_pemfile::certs(reader) {
       match parsed {
         Ok(cert) => {
@@ -3004,6 +3398,8 @@ struct NodeClientCertVerifier {
   inner: Arc<dyn rustls::server::danger::ClientCertVerifier>,
   root_cert_ders: Vec<Vec<u8>>,
   reject_unauthorized: bool,
+  /// Shared with TLSWrapInner so `verifyError()` can return the error.
+  verify_error: VerifyErrorStore,
 }
 
 impl rustls::server::danger::ClientCertVerifier for NodeClientCertVerifier {
@@ -3038,13 +3434,21 @@ impl rustls::server::danger::ClientCertVerifier for NodeClientCertVerifier {
     {
       Ok(v) => Ok(v),
       Err(e) => {
-        if self.reject_unauthorized {
-          Err(e)
+        // Never abort the TLS handshake from client cert verification.
+        // Store the error so verifyError() can return it, and let the
+        // JS layer (onServerSocketSecure) decide whether to tear down
+        // the connection based on `rejectUnauthorized`. This matches
+        // Node/OpenSSL behaviour where client cert failures produce
+        // ECONNRESET on the client (clean close) rather than a TLS
+        // fatal alert.
+        let code = if let rustls::Error::InvalidCertificate(ref cert_err) = e {
+          cert_error_to_node_code(cert_err).to_string()
         } else {
-          // `rejectUnauthorized: false` — succeed the handshake and let the
-          // JS layer decide via `TLSSocket.authorized` / `authorizationError`.
-          Ok(rustls::server::danger::ClientCertVerified::assertion())
-        }
+          format!("{e}")
+        };
+        *self.verify_error.lock().unwrap_or_else(|p| p.into_inner()) =
+          Some(code);
+        Ok(rustls::server::danger::ClientCertVerified::assertion())
       }
     }
   }
@@ -3075,10 +3479,12 @@ impl rustls::server::danger::ClientCertVerifier for NodeClientCertVerifier {
 }
 
 /// Build a rustls ServerConfig from a SecureContext JS object.
+/// Returns (config, verify_error_store) where the store is shared with
+/// `NodeClientCertVerifier` so the server-side JS can read client cert errors.
 fn build_server_config(
   scope: &mut v8::PinScope,
   context: v8::Local<v8::Object>,
-) -> Option<rustls::ServerConfig> {
+) -> Option<(rustls::ServerConfig, VerifyErrorStore)> {
   let protocol_versions = match get_protocol_versions(scope, context) {
     ProtocolVersionSelection::Default => {
       &[&rustls::version::TLS13, &rustls::version::TLS12][..]
@@ -3087,29 +3493,33 @@ fn build_server_config(
     ProtocolVersionSelection::Tls13Only => &[&rustls::version::TLS13][..],
     ProtocolVersionSelection::Unsupported => return None,
   };
-  let cert_str = match get_js_string(scope, context, "cert") {
-    Some(value) => value,
-    None => {
-      return None;
-    }
-  };
-  let key_str = match get_js_string(scope, context, "key") {
-    Some(value) => value,
-    None => {
-      return None;
-    }
-  };
+  // `cert` and `key` are both optional: a SecureContext with neither (e.g.
+  // one returned from a server's SNICallback, or the placeholder created by
+  // `tls.createSecureContext()`) is valid input.  In that case rustls will
+  // fail the handshake with a fatal alert when the cert resolver is asked
+  // for a CertifiedKey — matching Node/OpenSSL, which reports a missing
+  // server certificate as `ERR_SSL_SSLV3_ALERT_HANDSHAKE_FAILURE` on the
+  // client and a "no suitable signature algorithm" error server-side.
+  let cert_str = get_js_string(scope, context, "cert");
+  let key_str = get_js_string(scope, context, "key");
+  let no_server_cert = cert_str.is_none() && key_str.is_none();
 
-  let certs: Vec<_> =
-    rustls_pemfile::certs(&mut std::io::BufReader::new(cert_str.as_bytes()))
-      .filter_map(|r| r.ok())
-      .collect();
-
-  let private_key = rustls_pemfile::private_key(&mut std::io::BufReader::new(
-    key_str.as_bytes(),
-  ))
-  .ok()
-  .flatten()?;
+  let (certs, private_key) = if no_server_cert {
+    (Vec::new(), None)
+  } else {
+    let cert_str = cert_str?;
+    let key_str = key_str?;
+    let certs: Vec<_> =
+      rustls_pemfile::certs(&mut std::io::BufReader::new(cert_str.as_bytes()))
+        .filter_map(|r| r.ok())
+        .collect();
+    let private_key = rustls_pemfile::private_key(
+      &mut std::io::BufReader::new(key_str.as_bytes()),
+    )
+    .ok()
+    .flatten()?;
+    (certs, Some(private_key))
+  };
 
   let request_cert = get_js_bool(scope, context, "requestCert", false);
   let reject_unauthorized =
@@ -3121,7 +3531,7 @@ fn build_server_config(
   // When `requestCert` is true, the server sends a CertificateRequest during
   // the TLS handshake so the client presents its certificate. Without this
   // the peer certificate is never available to `getPeerCertificate()`.
-  let builder = if request_cert {
+  let (builder, client_cert_verify_error) = if request_cert {
     let mut root_cert_store = rustls::RootCertStore::empty();
     let mut root_cert_ders: Vec<Vec<u8>> = Vec::new();
     v8_static_strings! {
@@ -3145,7 +3555,10 @@ fn build_server_config(
         ca_pems.push(s.to_rust_string_lossy(scope).into_bytes());
       }
       for pem in &ca_pems {
-        let reader = &mut std::io::BufReader::new(std::io::Cursor::new(pem));
+        let normalized = normalize_pem_headers(pem);
+        let reader = &mut std::io::BufReader::new(std::io::Cursor::new(
+          normalized.as_ref(),
+        ));
         for parsed in rustls_pemfile::certs(reader) {
           match parsed {
             Ok(cert) => {
@@ -3169,21 +3582,36 @@ fn build_server_config(
     if !reject_unauthorized {
       verifier_builder = verifier_builder.allow_unauthenticated();
     }
+    let client_verify_error: VerifyErrorStore = Default::default();
     match verifier_builder.build() {
-      Ok(inner) => {
+      Ok(inner) => (
         builder.with_client_cert_verifier(Arc::new(NodeClientCertVerifier {
           inner,
           root_cert_ders,
           reject_unauthorized,
-        }))
-      }
+          verify_error: client_verify_error.clone(),
+        })),
+        client_verify_error,
+      ),
       Err(e) => {
         log::debug!("TLSWrap: failed to build client cert verifier: {e}");
         return None;
       }
     }
   } else {
-    builder.with_no_client_auth()
+    (builder.with_no_client_auth(), Default::default())
+  };
+
+  // No-cert path: when neither `cert` nor `key` is provided, install a
+  // resolver that always returns `None`. rustls then aborts the handshake
+  // with a fatal alert and surfaces `Error::General("no server certificate
+  // chain resolved")`, which `rustls_error_to_node_error` translates back
+  // to Node's "no suitable signature algorithm" error.
+  let Some(private_key) = private_key else {
+    return Some((
+      builder.with_cert_resolver(Arc::new(NoCertResolver)),
+      client_cert_verify_error,
+    ));
   };
 
   // `with_single_cert` runs `CertifiedKey::keys_match()`, which parses the
@@ -3210,7 +3638,26 @@ fn build_server_config(
     }
   }
   let resolver = rustls::sign::SingleCertAndKey::from(certified_key);
-  Some(builder.with_cert_resolver(Arc::new(resolver)))
+  Some((
+    builder.with_cert_resolver(Arc::new(resolver)),
+    client_cert_verify_error,
+  ))
+}
+
+/// `ResolvesServerCert` impl that always returns `None`, used when a
+/// `tls.Server` is configured without a default cert/key (e.g. one whose
+/// only configuration source is `SNICallback`, or a SecureContext returned
+/// from `SNICallback` that was created with no cert/key).
+#[derive(Debug)]
+struct NoCertResolver;
+
+impl rustls::server::ResolvesServerCert for NoCertResolver {
+  fn resolve(
+    &self,
+    _client_hello: rustls::server::ClientHello<'_>,
+  ) -> Option<Arc<rustls::sign::CertifiedKey>> {
+    None
+  }
 }
 
 #[cfg(test)]

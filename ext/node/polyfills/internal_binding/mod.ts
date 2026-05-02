@@ -17,13 +17,33 @@ import * as ttyWrap from "ext:deno_node/internal_binding/tty_wrap.ts";
 import * as types from "ext:deno_node/internal_binding/types.ts";
 import * as udpWrap from "ext:deno_node/internal_binding/udp_wrap.ts";
 import * as util from "ext:deno_node/internal_binding/util.ts";
-import * as uv from "ext:deno_node/internal_binding/uv.ts";
+import * as uvNamespace from "ext:deno_node/internal_binding/uv.ts";
 import * as httpParser from "ext:deno_node/internal_binding/http_parser.ts";
 import {
   op_node_start_sigint_watchdog,
   op_node_stop_sigint_watchdog,
   op_node_watchdog_has_pending_sigint,
 } from "ext:core/ops";
+import * as http2Binding from "ext:deno_node/internal_binding/http2.ts";
+
+// Mutable shallow copy so callers can replace properties (e.g. wrap
+// `errname` with a deprecation warning when --pending-deprecation is set).
+// Match Node's C++ binding: UV_* error code constants are read-only and
+// non-deletable. See `Initialize` in `src/uv.cc`.
+const uv: Record<string, unknown> = {};
+for (const key of Object.keys(uvNamespace)) {
+  const value = (uvNamespace as Record<string, unknown>)[key];
+  if (key.startsWith("UV_")) {
+    Object.defineProperty(uv, key, {
+      value,
+      writable: false,
+      enumerable: true,
+      configurable: false,
+    });
+  } else {
+    uv[key] = value;
+  }
+}
 
 const modules = {
   "async_wrap": asyncWrap,
@@ -44,6 +64,7 @@ const modules = {
   "fs_event_wrap": {},
   "heap_utils": {},
   "http_parser": httpParser,
+  "http2": http2Binding,
   icu: {},
   inspector: {},
   "js_stream": {},
