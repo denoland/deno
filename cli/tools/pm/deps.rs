@@ -380,7 +380,8 @@ fn add_deps_from_package_json(
             alias,
           })
         }
-        deno_package_json::PackageJsonDepValue::Workspace(_) => continue,
+        deno_package_json::PackageJsonDepValue::Workspace(_)
+        | deno_package_json::PackageJsonDepValue::Catalog(_) => continue,
       }
     }
   }
@@ -872,6 +873,10 @@ impl DepManager {
 
   pub fn get_dep(&self, id: DepId) -> &Dep {
     &self.deps[id.0]
+  }
+
+  pub fn deps_with_ids(&self) -> impl Iterator<Item = (DepId, &Dep)> {
+    self.deps.iter().enumerate().map(|(i, dep)| (DepId(i), dep))
   }
 
   pub fn update_dep(&mut self, dep_id: DepId, new_version_req: VersionReq) {

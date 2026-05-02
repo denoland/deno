@@ -448,6 +448,24 @@ impl WorkspaceMainModuleResolver {
               )?
               .into_url()?
           }
+          deno_package_json::PackageJsonDepValue::Catalog(catalog_name) => {
+            match self
+              .workspace_resolver
+              .resolve_catalog_dep(alias, catalog_name)
+            {
+              Some(req) => ModuleSpecifier::parse(&format!(
+                "npm:{}{}",
+                req,
+                sub_path.map(|s| format!("/{}", s)).unwrap_or_default()
+              ))?,
+              None => {
+                return Err(deno_core::anyhow::anyhow!(
+                  "Package '{}' not found in catalog",
+                  alias
+                ));
+              }
+            }
+          }
         }
       }
       deno_resolver::workspace::MappedResolution::PackageJsonImport {
@@ -537,7 +555,11 @@ impl CliOptions {
       DenoSubcommand::Add(_) => GraphKind::All,
       DenoSubcommand::Cache(_) => GraphKind::All,
       DenoSubcommand::Check(_) => GraphKind::TypesOnly,
-      DenoSubcommand::Install(InstallFlags::Local(_)) => GraphKind::All,
+      DenoSubcommand::Install(InstallFlags::Local(
+        InstallFlagsLocal::Entrypoints(flags),
+        _,
+      )) if flags.production => GraphKind::CodeOnly,
+      DenoSubcommand::Install(InstallFlags::Local(_, _)) => GraphKind::All,
       _ => self.type_check_mode().as_graph_kind(),
     }
   }
@@ -1225,6 +1247,7 @@ impl CliOptions {
           .map(|url| vec![url]),
         DenoSubcommand::Install(InstallFlags::Local(
           InstallFlagsLocal::Entrypoints(flags),
+          _,
         )) => Some(files_to_urls(&flags.entrypoints)),
         DenoSubcommand::Doc(DocFlags {
           source_files: DocSourceFileFlag::Paths(paths),
@@ -1460,7 +1483,8 @@ impl CliOptions {
           | InstallFlagsLocal::Entrypoints(InstallEntrypointsFlags {
             lockfile_only: true,
             ..
-          })
+          }),
+        _,
       )) | DenoSubcommand::Add(_)
         | DenoSubcommand::Outdated(_)
     ) {

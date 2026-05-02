@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_runtime"
-version = "0.254.0"
+version = "0.255.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -41,6 +41,7 @@ path = "lib.rs"
 deno_ast = { workspace = true, optional = true }
 deno_bundle_runtime.workspace = true
 deno_cache.workspace = true
+deno_canvas.workspace = true
 deno_core.workspace = true
 deno_cron.workspace = true
 deno_crypto.workspace = true

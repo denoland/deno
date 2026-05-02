@@ -61,7 +61,7 @@ const {
   SafeWeakMap,
 } = primordials;
 
-import { pathFromURL } from "ext:deno_web/00_infra.js";
+const { pathFromURL } = core.loadExtScript("ext:deno_web/00_infra.js");
 
 /**
  * @param {BufferSource} source
