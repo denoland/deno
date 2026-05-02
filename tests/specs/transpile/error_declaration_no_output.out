@@ -1,0 +1,2 @@
+[WILDCARD]deno transpile is experimental and subject to changes
+error: Cannot use --declaration without --output or --outdir. Declaration files must be written to disk.

@@ -1,14 +1,14 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-import { primordials } from "ext:core/mod.js";
-import * as webidl from "ext:deno_webidl/00_webidl.js";
+import { core, primordials } from "ext:core/mod.js";
+const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
 import {
   connectQuic,
   webtransportAccept,
   webtransportConnect,
 } from "ext:deno_net/03_quic.js";
 import { assert } from "ext:deno_web/00_infra.js";
-import { DOMException } from "ext:deno_web/01_dom_exception.js";
+const { DOMException } = core.loadExtScript("ext:deno_web/01_dom_exception.js");
 import {
   getReadableStreamResourceBacking,
   getWritableStreamResourceBacking,

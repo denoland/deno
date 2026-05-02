@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_permissions"
-version = "0.104.0"
+version = "0.106.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -33,6 +33,9 @@ sys_traits.workspace = true
 thiserror.workspace = true
 url.workspace = true
 which.workspace = true
+
+[target.'cfg(target_os = "macos")'.dependencies]
+unicode-normalization = { workspace = true }
 
 [target.'cfg(windows)'.dependencies]
 winapi = { workspace = true, features = ["commapi", "knownfolders", "mswsock", "objbase", "psapi", "shlobj", "tlhelp32", "winbase", "winerror", "winuser", "winsock2", "processenv", "wincon", "wincontypes"] }

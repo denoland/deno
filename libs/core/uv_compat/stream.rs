@@ -9,7 +9,6 @@ use super::UV_EALREADY;
 use super::UV_EBADF;
 use super::UV_EINVAL;
 use super::UV_ENOTCONN;
-use super::UV_EPIPE;
 use super::UV_HANDLE_ACTIVE;
 use super::UV_HANDLE_CLOSING;
 use super::get_inner;
@@ -143,6 +142,9 @@ pub unsafe fn uv_read_start(
     if !handles.iter().any(|&h| std::ptr::eq(h, tcp)) {
       handles.push(tcp);
     }
+    if let Some(w) = tcp_ref.internal_waker.as_ref() {
+      w.mark_ready();
+    }
   }
   0
 }
@@ -234,11 +236,110 @@ pub unsafe fn uv_stream_set_blocking(
 
 /// ### Safety
 /// `handle` must be a valid pointer to an initialized stream handle
-/// (`uv_tcp_t` or `uv_tty_t`, cast as `uv_stream_t`).
-pub unsafe fn uv_try_write(handle: *mut uv_stream_t, data: &[u8]) -> i32 {
+/// (`uv_tcp_t`, `uv_tty_t`, or `uv_pipe_t`, cast as `uv_stream_t`).
+/// Scatter-gather try_write. Mirrors libuv's
+/// `uv_try_write(stream, bufs, nbufs)`: attempts a non-blocking vectored
+/// write and returns the number of bytes written, `UV_EAGAIN` when the
+/// socket would block, or a negative error code. Preferred over
+/// `uv_try_write` for stream_wrap's `writev` op because iovecs can
+/// point at V8 `ArrayBuffer` backing stores with no concat copy.
+///
+/// TCP uses tokio's `try_write_vectored` for true `writev(2)`; pipes
+/// and TTYs fall back to iterating single-buf `try_write_{pipe,tty}`
+/// since their internals already copy into owned queues.
+///
+/// ### Safety
+/// `handle` must be a valid pointer to an initialized stream handle
+/// (`uv_tcp_t`, `uv_tty_t`, or `uv_pipe_t`, cast as `uv_stream_t`).
+/// Each `IoSlice` must reference memory valid for the duration of
+/// this call.
+pub unsafe fn uv_try_writev(
+  handle: *mut uv_stream_t,
+  bufs: &[std::io::IoSlice<'_>],
+) -> i32 {
+  // SAFETY: caller guarantees handle is valid.
+  let handle_type = unsafe { (*handle).r#type };
   unsafe {
-    if (*handle).r#type == uv_handle_type::UV_TTY {
+    if handle_type == uv_handle_type::UV_TTY {
+      // TTY has no native writev path; iterate. Stop on partial to
+      // match libuv's short-write semantics on writev.
+      let mut total = 0i32;
+      for buf in bufs {
+        let rc = super::tty::try_write_tty(handle, buf);
+        if rc < 0 {
+          if total > 0 {
+            return total;
+          }
+          return rc;
+        }
+        total = total.saturating_add(rc);
+        if (rc as usize) != buf.len() {
+          return total;
+        }
+      }
+      return total;
+    }
+    if handle_type == uv_handle_type::UV_NAMED_PIPE {
+      let mut total = 0i32;
+      for buf in bufs {
+        let rc = super::pipe::try_write_pipe(
+          handle as *mut super::pipe::uv_pipe_t,
+          buf,
+        );
+        if rc < 0 {
+          if total > 0 {
+            return total;
+          }
+          return rc;
+        }
+        total = total.saturating_add(rc);
+        if (rc as usize) != buf.len() {
+          return total;
+        }
+      }
+      return total;
+    }
+  }
+  // SAFETY: Caller guarantees handle is a valid, initialized uv_tcp_t.
+  let tcp_ref = unsafe { &mut *(handle as *mut uv_tcp_t) };
+
+  if tcp_ref.internal_connect.is_some()
+    || !tcp_ref.internal_write_queue.is_empty()
+  {
+    return UV_EAGAIN;
+  }
+
+  let stream = match tcp_ref.internal_stream.as_ref() {
+    Some(s) => s,
+    None => return UV_EBADF,
+  };
+
+  match stream.try_write_vectored(bufs) {
+    Ok(n) => n as i32,
+    Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => UV_EAGAIN,
+    Err(ref e) => super::io_error_to_uv(e),
+  }
+}
+
+/// ### Safety
+/// `handle` must be a valid pointer to an initialized stream handle
+/// (`uv_tcp_t`, `uv_tty_t`, or `uv_pipe_t`, cast as `uv_stream_t`).
+/// `data` must reference memory valid for the duration of this call.
+pub unsafe fn uv_try_write(handle: *mut uv_stream_t, data: &[u8]) -> i32 {
+  // Dispatch by handle type; `uv_tcp_t`, `uv_pipe_t`, and `uv_tty_t` have
+  // different struct layouts, so the TCP path below must only be taken
+  // for `UV_TCP` handles.
+  // SAFETY: `handle` is a valid initialized uv stream per caller contract.
+  let handle_type = unsafe { (*handle).r#type };
+  unsafe {
+    if handle_type == uv_handle_type::UV_TTY {
       return super::tty::try_write_tty(handle, data);
+    }
+    if handle_type == uv_handle_type::UV_NAMED_PIPE {
+      return super::pipe::try_write_pipe(
+        handle as *mut super::pipe::uv_pipe_t,
+        data,
+      );
     }
   }
   // SAFETY: Caller guarantees handle is a valid, initialized uv_tcp_t.
@@ -259,7 +360,7 @@ pub unsafe fn uv_try_write(handle: *mut uv_stream_t, data: &[u8]) -> i32 {
   match stream.try_write(data) {
     Ok(n) => n as i32,
     Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => UV_EAGAIN,
-    Err(_) => UV_EPIPE,
+    Err(ref e) => super::io_error_to_uv(e),
   }
 }
 
@@ -302,15 +403,184 @@ pub unsafe fn uv_write(
 
     let write_data = collect_bufs(bufs, nbufs);
 
-    // Try to write synchronously when the queue is empty, matching libuv's
-    // uv_write2() → uv__write() → uv__try_write() path.  This pushes data
-    // into the kernel buffer immediately.  The callback is NOT fired here;
-    // it is deferred to the poll loop (the entry is queued with the
-    // already-written offset so the poll loop sees it as complete and fires
-    // the callback then).  Deferring the callback is important because
-    // callers like TLSWrap's enc_out() set re-entrancy guards (in_dowrite)
-    // that would suppress the completion notification if it fired
-    // synchronously.
+    uv_write_owned_impl(req, tcp, write_data, cb)
+  }
+}
+
+/// Take an already-owned `Vec<u8>` and queue it as a pending write on
+/// the TCP handle. This avoids the extra allocation + memcpy that
+/// `uv_write` does via `collect_bufs` when the caller has already
+/// materialized the bytes into a single buffer (e.g. the stream_wrap
+/// `writev` op concatenates JS chunks into one Vec before writing).
+///
+/// ### Safety
+/// `req` must be valid until the write callback fires. `tcp` must be
+/// initialized by `uv_tcp_init`.
+pub unsafe fn uv_write_owned_tcp(
+  req: *mut uv_write_t,
+  tcp: *mut uv_tcp_t,
+  data: Vec<u8>,
+  cb: Option<uv_write_cb>,
+) -> c_int {
+  unsafe {
+    (*req).handle = tcp as *mut uv_stream_t;
+    if (*tcp).internal_stream.is_none() {
+      return UV_EBADF;
+    }
+    uv_write_owned_impl(req, tcp, data, cb)
+  }
+}
+
+/// Queue a scatter-gather async write with caller-owned retention.
+/// The iovecs in `bufs` may point at memory not owned by uv_compat
+/// (e.g. V8 `ArrayBuffer` backing stores retained on the JS side);
+/// the caller must ensure that memory stays valid until `cb` fires.
+///
+/// Mirrors libuv's `uv_write(req, stream, bufs, nbufs, cb)` with the
+/// key difference that our write queue preserves the iovec layout
+/// across drain calls, allowing true scatter-gather writes on TCP
+/// without ever concatenating into a single buffer.
+///
+/// ### Safety
+/// `req` must be valid until the callback fires. `handle` must be an
+/// initialized stream handle. Each iovec's `base` pointer must remain
+/// valid and readable for its `len` until the callback fires.
+pub unsafe fn uv_writev_owned(
+  req: *mut uv_write_t,
+  handle: *mut uv_stream_t,
+  bufs: smallvec::SmallVec<[uv_buf_t; 4]>,
+  cb: Option<uv_write_cb>,
+) -> c_int {
+  use super::tcp::IovecCursor;
+  use super::tcp::WritePending;
+  // SAFETY: caller contract.
+  unsafe {
+    (*req).handle = handle;
+    match (*handle).r#type {
+      uv_handle_type::UV_TCP => {
+        let tcp = handle as *mut uv_tcp_t;
+        if (*tcp).internal_stream.is_none() {
+          return UV_EBADF;
+        }
+        // Try sync drain first to match uv__write's inline write-loop.
+        // Callback still fires asynchronously (deferred) if everything
+        // drains — we mark status=Some(0) so the poll loop fires it.
+        let mut iov = IovecCursor::new(bufs);
+        if (*tcp).internal_write_queue.is_empty()
+          && let Some(ref stream) = (*tcp).internal_stream
+        {
+          loop {
+            if iov.is_empty() {
+              break;
+            }
+            let write_result = {
+              let mut slices: smallvec::SmallVec<[std::io::IoSlice; 16]> =
+                smallvec::SmallVec::new();
+              iov.io_slices(&mut slices);
+              if slices.is_empty() {
+                break;
+              }
+              stream.try_write_vectored(&slices)
+            };
+            match write_result {
+              Ok(0) => break,
+              Ok(n) => iov.advance(n),
+              Err(_) => break,
+            }
+          }
+        }
+        (*tcp).internal_write_queue.push_back(WritePending {
+          req,
+          data: Vec::new(),
+          offset: 0,
+          iovecs: Some(iov),
+          cb,
+          status: None,
+        });
+        (*tcp).flags |= UV_HANDLE_ACTIVE;
+        let inner = get_inner((*tcp).loop_);
+        let mut handles = inner.tcp_handles.borrow_mut();
+        if !handles.iter().any(|&h| std::ptr::eq(h, tcp)) {
+          handles.push(tcp);
+        }
+        if let Some(w) = (*tcp).internal_waker.as_ref() {
+          w.mark_ready();
+        }
+        0
+      }
+      _ => {
+        // Pipes/TTYs internally copy; go through the regular
+        // `uv_write` buf-vector dispatch.
+        let raw_bufs: smallvec::SmallVec<[uv_buf_t; 4]> = bufs;
+        let nbufs = raw_bufs.len() as u32;
+        let rc = uv_write(req, handle, raw_bufs.as_ptr(), nbufs, cb);
+        // Keep raw_bufs alive through the call; `uv_write` collects
+        // into its own owned Vec, so the iovec array can drop now.
+        drop(raw_bufs);
+        rc
+      }
+    }
+  }
+}
+
+/// Polymorphic counterpart to `uv_write_owned_tcp` that dispatches on
+/// the runtime stream type. Callers (e.g. the stream_wrap `writev` op)
+/// hold a `*mut uv_stream_t` that may back a TCP, pipe, or TTY handle;
+/// blindly treating it as TCP corrupts the pipe's in-place VecDeque
+/// and trips UB (the write queue is at a different offset in each
+/// struct). For non-TCP types, fall back to the existing `uv_write`
+/// buffer-vector path by materializing a one-entry `uv_buf_t` over
+/// the owned data.
+///
+/// ### Safety
+/// `req` must be valid until the write callback fires. `handle` must
+/// be an initialized stream handle (TCP, pipe, or TTY).
+pub unsafe fn uv_write_owned(
+  req: *mut uv_write_t,
+  handle: *mut uv_stream_t,
+  data: Vec<u8>,
+  cb: Option<uv_write_cb>,
+) -> c_int {
+  unsafe {
+    match (*handle).r#type {
+      uv_handle_type::UV_TCP => {
+        uv_write_owned_tcp(req, handle as *mut uv_tcp_t, data, cb)
+      }
+      // Pipes/TTYs don't have an owned-Vec shortcut — build a single
+      // uv_buf_t and go through the regular `uv_write` dispatch which
+      // knows about the right per-type write queue layouts.
+      _ => {
+        let buf = uv_buf_t {
+          base: data.as_ptr() as *mut c_char,
+          len: data.len(),
+        };
+        // uv_write's pipe/tty paths internally copy the buffer into
+        // their own queue, so releasing ownership of `data` after the
+        // call is safe even though the bufs array lives on the stack.
+        let rc = uv_write(req, handle, &buf, 1, cb);
+        drop(data);
+        rc
+      }
+    }
+  }
+}
+
+/// Shared logic for queuing a pre-built Vec<u8> as a write.
+///
+/// ### Safety
+/// `req` must be valid until the write callback fires. `tcp` must be
+/// initialized and have `internal_stream` set.
+unsafe fn uv_write_owned_impl(
+  req: *mut uv_write_t,
+  tcp: *mut uv_tcp_t,
+  write_data: Vec<u8>,
+  cb: Option<uv_write_cb>,
+) -> c_int {
+  unsafe {
+    // Try sync write when the queue is empty, matching libuv's
+    // uv_write2 → uv__write → uv__try_write path. Callback is
+    // deferred to the poll loop to avoid re-entrancy with callers
+    // like TLSWrap that set `in_dowrite` guards.
     let mut offset = 0;
     if (*tcp).internal_write_queue.is_empty()
       && let Some(ref stream) = (*tcp).internal_stream
@@ -327,9 +597,20 @@ pub unsafe fn uv_write(
       req,
       data: write_data,
       offset,
+      iovecs: None,
       cb,
       status: None,
     });
+
+    (*tcp).flags |= UV_HANDLE_ACTIVE;
+    let inner = get_inner((*tcp).loop_);
+    let mut handles = inner.tcp_handles.borrow_mut();
+    if !handles.iter().any(|&h| std::ptr::eq(h, tcp)) {
+      handles.push(tcp);
+    }
+    if let Some(w) = (*tcp).internal_waker.as_ref() {
+      w.mark_ready();
+    }
     0
   }
 }
@@ -393,6 +674,15 @@ pub unsafe fn uv_shutdown(
         handles.push(pipe);
       }
       (*pipe).flags |= UV_HANDLE_ACTIVE;
+      drop(handles);
+      if let Some(w) = (*pipe).internal_waker.as_ref() {
+        w.mark_ready();
+      }
+
+      // Wake the event loop so run_io processes the deferred shutdown.
+      if let Some(waker) = inner.waker.borrow().as_ref() {
+        waker.wake_by_ref();
+      }
       return 0;
     }
 
@@ -417,6 +707,19 @@ pub unsafe fn uv_shutdown(
       handles.push(tcp);
     }
     (*tcp).flags |= UV_HANDLE_ACTIVE;
+    drop(handles);
+    if let Some(w) = (*tcp).internal_waker.as_ref() {
+      w.mark_ready();
+    }
+
+    // Wake the event loop so run_io processes the deferred shutdown.
+    // Without this, shutdowns scheduled from nextTick/microtask
+    // callbacks (e.g. endWritableNT for allowHalfOpen=false sockets)
+    // would stall because the Tokio reactor has no pending future to
+    // wake it.
+    if let Some(waker) = inner.waker.borrow().as_ref() {
+      waker.wake_by_ref();
+    }
   }
   0
 }
@@ -561,6 +864,7 @@ unsafe fn write_pipe(
       req,
       data: write_data,
       offset,
+      iovecs: None,
       cb,
       status,
     });
@@ -590,6 +894,9 @@ unsafe fn write_pipe(
       handles.push(pipe);
     }
     (*pipe).flags |= UV_HANDLE_ACTIVE;
+    if let Some(w) = (*pipe).internal_waker.as_ref() {
+      w.mark_ready();
+    }
   }
   0
 }

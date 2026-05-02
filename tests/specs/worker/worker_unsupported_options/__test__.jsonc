@@ -1,0 +1,14 @@
+{
+  "tests": {
+    "env_option": {
+      "args": "run --quiet --allow-read worker_env.ts",
+      "output": "worker_env.out",
+      "exitCode": 0
+    },
+    "workerData_option": {
+      "args": "run --quiet --allow-read worker_data.ts",
+      "output": "worker_data.out",
+      "exitCode": 0
+    }
+  }
+}

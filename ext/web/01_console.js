@@ -548,23 +548,34 @@ function formatValue(
 
   // Provide a hook for user-specified inspect functions.
   // Check that value is an object with an inspect function on it.
+  // For Proxy objects, look up custom inspect symbols on the unwrapped
+  // target (via core.getProxyDetails) to avoid triggering the proxy's
+  // get/has traps which may cause side effects (e.g. grammy API proxies
+  // return functions for any property access). This matches Node.js
+  // behavior. The call itself still uses `value` (the proxy) as `this`.
   if (ctx.customInspect) {
+    const inspectTarget = proxyDetails ? proxyDetails[0] : value;
     if (
-      ReflectHas(value, customInspect) &&
-      typeof value[customInspect] === "function"
+      ReflectHas(inspectTarget, customInspect) &&
+      typeof inspectTarget[customInspect] === "function"
     ) {
       return String(value[customInspect](inspect, ctx));
     } else if (
-      ReflectHas(value, privateCustomInspect) &&
-      typeof value[privateCustomInspect] === "function"
+      ReflectHas(inspectTarget, privateCustomInspect) &&
+      typeof inspectTarget[privateCustomInspect] === "function"
     ) {
       // TODO(nayeemrmn): `inspect` is passed as an argument because custom
       // inspect implementations in `extensions` need it, but may not have access
       // to the `Deno` namespace in web workers. Remove when the `Deno`
       // namespace is always enabled.
       return String(value[privateCustomInspect](inspect, ctx));
-    } else if (ReflectHas(value, nodeCustomInspectSymbol)) {
-      const maybeCustom = value[nodeCustomInspectSymbol];
+    } else {
+      let maybeCustom;
+      try {
+        maybeCustom = inspectTarget[nodeCustomInspectSymbol];
+      } catch {
+        // ignore
+      }
       if (
         typeof maybeCustom === "function" &&
         // Filter out the util module, its inspect function is special.
@@ -3723,7 +3734,11 @@ class Console {
     );
   };
 
-  dirxml = this.dir;
+  // Per https://console.spec.whatwg.org/#dirxml, dirxml uses the log
+  // printer (not dir). Node also aliases console.dirxml to log (see
+  // lib/internal/console/constructor.js). Use a fresh arrow so the
+  // method's .name is "dirxml" rather than "dir".
+  dirxml = (...args) => this.log(...new SafeArrayIterator(args));
 
   warn = (...args) => {
     this.#printFunc(

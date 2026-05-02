@@ -141,6 +141,14 @@ fn main() {
     });
   }
 
+  // Apply sharding if CI_SHARD_INDEX / CI_SHARD_TOTAL are set
+  let category =
+    if let Some(shard) = test_util::test_runner::ShardConfig::from_env() {
+      test_util::test_runner::filter_to_shard(category, &shard)
+    } else {
+      category
+    };
+
   if category.is_empty() {
     return;
   }
