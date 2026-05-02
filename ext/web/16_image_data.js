@@ -15,12 +15,6 @@ const { createFilteredInspectProxy } = core.loadExtScript(
 
 const ImageDataPrototype = ImageData.prototype;
 
-// Pixel buffer is exposed by the Rust side as a `Symbol.for("Deno_imageData_data")`
-// keyed accessor (see `#[symbol(...)]` on `ImageData::get_data` in
-// `image_data.rs`), matching how `ImageBitmap`'s `Deno_bitmapData` is wired.
-// Wrap that in the public `data` attribute getter on the prototype.
-const _data = SymbolFor("Deno_imageData_data");
-
 ObjectDefineProperty(
   ImageDataPrototype,
   SymbolFor("Deno.privateCustomInspect"),
@@ -32,6 +26,7 @@ ObjectDefineProperty(
           object: this,
           evaluate: ObjectPrototypeIsPrototypeOf(ImageDataPrototype, this),
           keys: [
+            "data",
             "width",
             "height",
             "pixelFormat",

@@ -107,10 +107,10 @@ pub struct ImageDataSettings {
 }
 
 pub struct ImageData {
-  width: Cell<u32>,
-  height: Cell<u32>,
-  pixel_format: Cell<ImageDataPixelFormat>,
-  color_space: Cell<PredefinedColorSpace>,
+  width: u32,
+  height: u32,
+  pixel_format: ImageDataPixelFormat,
+  color_space: PredefinedColorSpace,
   data: v8::TracedReference<v8::Object>,
 }
 
@@ -294,10 +294,10 @@ impl ImageData {
       let data_obj: v8::Local<v8::Object> = data.into();
 
       Ok(ImageData {
-        width: Cell::new(source_width),
-        height: Cell::new(height),
-        pixel_format: Cell::new(settings.pixel_format),
-        color_space: Cell::new(color_space),
+        width: source_width,
+        height,
+        pixel_format: settings.pixel_format,
+        color_space,
         data: v8::TracedReference::new(scope, data_obj),
       })
     } else {
@@ -324,10 +324,10 @@ impl ImageData {
         settings.color_space.unwrap_or(PredefinedColorSpace::Srgb);
 
       Ok(ImageData {
-        width: Cell::new(source_width),
-        height: Cell::new(source_height),
-        pixel_format: Cell::new(settings.pixel_format),
-        color_space: Cell::new(color_space),
+        width: source_width,
+        height: source_height,
+        pixel_format: settings.pixel_format,
+        color_space,
         data: v8::TracedReference::new(scope, data_obj),
       })
     }
@@ -336,21 +336,17 @@ impl ImageData {
   #[fast]
   #[getter]
   fn width(&self) -> u32 {
-    self.width.get()
+    self.width
   }
 
   #[fast]
   #[getter]
   fn height(&self) -> u32 {
-    self.height.get()
+    self.height
   }
 
-  /// Pixel buffer accessor — exposed under `Symbol.for("Deno_imageData_data")`
-  /// rather than the public `data` name. The `data` attribute getter on the
-  /// prototype (defined in `image_data.js`) calls this method to resolve the
-  /// stored typed array. Same shape as `ImageBitmap`'s `Deno_bitmapData`.
-  #[symbol("Deno_imageData_data")]
-  fn get_data<'a>(
+  #[getter]
+  fn data<'a>(
     &self,
     scope: &mut v8::PinScope<'a, '_>,
   ) -> v8::Local<'a, v8::Object> {
@@ -360,12 +356,12 @@ impl ImageData {
   #[getter]
   #[string]
   fn pixel_format(&self) -> &'static str {
-    self.pixel_format.get().name()
+    self.pixel_format.name()
   }
 
   #[getter]
   #[string]
   fn color_space(&self) -> &'static str {
-    self.color_space.get().name()
+    self.color_space.name()
   }
 }
