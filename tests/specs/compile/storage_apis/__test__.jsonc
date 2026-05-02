@@ -1,0 +1,31 @@
+{
+  "tempDir": true,
+  "tests": {
+    "with_location": {
+      "steps": [
+        {
+          "if": "unix",
+          "args": "compile --location https://example.com/main --output main main.ts",
+          "output": "[WILDCARD]"
+        },
+        {
+          "if": "unix",
+          "commandName": "main",
+          "args": [],
+          "output": "A\nB\n"
+        },
+        {
+          "if": "windows",
+          "args": "compile --location https://example.com/main --output main.exe main.ts",
+          "output": "[WILDCARD]"
+        },
+        {
+          "if": "windows",
+          "commandName": "./main.exe",
+          "args": [],
+          "output": "A\nB\n"
+        }
+      ]
+    }
+  }
+}
