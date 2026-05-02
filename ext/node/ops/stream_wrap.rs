@@ -997,6 +997,90 @@ fn encode_string_to_vec(
   }
 }
 
+/// Upper bound on the encoded byte length of `string` under `encoding`.
+/// Mirrors Node's `StringBytes::StorageSize`. For UTF-8 this is the
+/// exact length; for UCS-2 it's length() * 2; for Latin1/ASCII it's
+/// length(). Used as the pre-allocation size for the shared backing
+/// store that holds all encoded strings in a writev call.
+fn encoded_storage_size(
+  scope: &mut v8::PinScope,
+  string: v8::Local<v8::String>,
+  encoding: &StringEncoding,
+) -> usize {
+  match encoding {
+    StringEncoding::Utf8 => string.utf8_length(scope),
+    StringEncoding::Latin1 | StringEncoding::Ascii => string.length(),
+    StringEncoding::Ucs2 => string.length() * 2,
+  }
+}
+
+/// Encode `string` directly into pre-allocated uninit storage. Returns
+/// the number of bytes written. The storage is typically a window
+/// inside a V8 `BackingStore` that will be held alive by the write
+/// request's retention list.
+fn encode_string_into_uninit(
+  scope: &mut v8::PinScope,
+  string: v8::Local<v8::String>,
+  encoding: StringEncoding,
+  out: &mut [std::mem::MaybeUninit<u8>],
+) -> usize {
+  match encoding {
+    StringEncoding::Utf8 => {
+      let len = string.utf8_length(scope);
+      string.write_utf8_uninit_v2(
+        scope,
+        &mut out[..len],
+        v8::WriteFlags::kReplaceInvalidUtf8,
+        None,
+      )
+    }
+    StringEncoding::Latin1 | StringEncoding::Ascii => {
+      let len = string.length();
+      string.write_one_byte_uninit_v2(
+        scope,
+        0,
+        &mut out[..len],
+        v8::WriteFlags::empty(),
+      );
+      len
+    }
+    StringEncoding::Ucs2 => {
+      let len_chars = string.length();
+      // V8's `write_v2` writes native-endian u16, which on
+      // little-endian targets is identical to UTF-16LE bytes — Node's
+      // 'ucs2' encoding. On the BE path (no current Deno target) we
+      // fall through to the temp-buffer + byte-swap path. Direct
+      // write requires the destination be u16-aligned and have room
+      // for `len_chars` u16 elements.
+      #[cfg(target_endian = "little")]
+      {
+        let dst_ptr = out.as_mut_ptr();
+        if dst_ptr.align_offset(std::mem::align_of::<u16>()) == 0
+          && out.len() >= len_chars * 2
+        {
+          // SAFETY: `dst_ptr` is u16-aligned and points at
+          // `len_chars * 2` writable bytes = `len_chars` writable
+          // u16 slots. `MaybeUninit<u8>` and `u16` have compatible
+          // representations modulo alignment, which we've verified.
+          let dst: &mut [u16] = unsafe {
+            std::slice::from_raw_parts_mut(dst_ptr as *mut u16, len_chars)
+          };
+          string.write_v2(scope, 0, dst, v8::WriteFlags::empty());
+          return len_chars * 2;
+        }
+      }
+      let mut tmp = vec![0u16; len_chars];
+      string.write_v2(scope, 0, &mut tmp, v8::WriteFlags::empty());
+      for (i, &ch) in tmp.iter().enumerate() {
+        let bytes = ch.to_le_bytes();
+        out[i * 2] = std::mem::MaybeUninit::new(bytes[0]);
+        out[i * 2 + 1] = std::mem::MaybeUninit::new(bytes[1]);
+      }
+      len_chars * 2
+    }
+  }
+}
+
 #[op2(base, inherit = HandleWrap)]
 impl LibUvStreamWrap {
   /// Called by JS immediately after construction to store the JS object
@@ -1177,6 +1261,7 @@ impl LibUvStreamWrap {
         stream_handle,
         stream_base_state: v8::Global::new(scope, state_array),
         bytes: byte_length,
+        owned_buffers: smallvec::SmallVec::new(),
       }),
     );
     let req_ptr = Box::into_raw(req);
@@ -1234,85 +1319,129 @@ impl LibUvStreamWrap {
     let state_global = &op_state.borrow::<StreamBaseState>().array;
     let state_array = v8::Local::new(scope, state_global);
 
-    // Pre-pass: sum per-chunk upper-bound sizes so the concat Vec is
-    // allocated once with sufficient capacity — no growth reallocs as
-    // chunks are appended. For Uint8Arrays the byte length is exact;
-    // for strings we use `length() * 3` which upper-bounds utf-8
-    // output (a single UTF-16 code unit encodes to ≤ 3 bytes). This
-    // replaces an unallocated `Vec::new()` that previously incurred
-    // ~2-3 growth allocations per writev call on the HTTP
-    // chunked-encoding path.
+    // Scatter-gather writev matching Node's StreamBase::Writev
+    // (src/stream_base.cc:180).
+    //
+    // Retention strategy (matches Node):
+    //   - Buffer chunks: iovec points directly at the ArrayBuffer
+    //     backing store; NO per-chunk retention. JS side keeps chunks
+    //     alive via `req.buffer = data` on the WriteWrap (see
+    //     stream_base_commons.js `writevGeneric`).
+    //   - String chunks: encode into stack storage first. Only
+    //     allocate a V8 BackingStore if we have to go async, and
+    //     only size it to the unwritten tail. Matches Node's stack
+    //     storage optimization in WriteString and its single-alloc
+    //     `ArrayBuffer::NewBackingStore` for the string storage.
     let array_len = chunks.length();
-    let (iter_count, stride): (u32, u32) = if all_buffers {
+    let (count, stride): (u32, u32) = if all_buffers {
       (array_len, 1)
     } else {
       (array_len / 2, 2)
     };
-    let mut total_est: usize = 0;
-    for i in 0..iter_count {
-      let Some(chunk) = chunks.get_index(scope, i * stride) else {
-        continue;
-      };
-      if let Ok(buf) = TryInto::<v8::Local<v8::Uint8Array>>::try_into(chunk) {
-        total_est += buf.byte_length();
-      } else if let Ok(s) = TryInto::<v8::Local<v8::String>>::try_into(chunk) {
-        total_est += s.length() * 3;
-      }
-    }
-    let mut data = Vec::with_capacity(total_est);
 
-    if all_buffers {
-      for i in 0..array_len {
-        let Some(chunk) = chunks.get_index(scope, i) else {
-          continue;
-        };
-        if let Ok(buf) = TryInto::<v8::Local<v8::Uint8Array>>::try_into(chunk) {
-          let byte_len = buf.byte_length();
-          if byte_len > 0 {
-            let byte_off = buf.byte_offset();
-            let ab = buf.buffer(scope).unwrap();
-            let ptr = ab.data().unwrap().as_ptr() as *const u8;
-            // SAFETY: ptr points to the backing store of the ArrayBuffer; byte_off + byte_len is within bounds as guaranteed by the Uint8Array view.
-            let slice = unsafe {
-              std::slice::from_raw_parts(ptr.add(byte_off), byte_len)
-            };
-            data.extend_from_slice(slice);
-          }
-        }
-      }
-    } else {
-      let count = array_len / 2;
+    // Pre-pass: compute string storage size. Buffer chunks contribute
+    // zero since they're zero-copied.
+    let mut string_size: usize = 0;
+    if !all_buffers {
       for i in 0..count {
         let Some(chunk) = chunks.get_index(scope, i * 2) else {
           continue;
         };
-        if let Ok(buf) = TryInto::<v8::Local<v8::Uint8Array>>::try_into(chunk) {
-          let byte_len = buf.byte_length();
-          if byte_len > 0 {
-            let byte_off = buf.byte_offset();
-            let ab = buf.buffer(scope).unwrap();
-            let ptr = ab.data().unwrap().as_ptr() as *const u8;
-            // SAFETY: ptr points to the backing store of the ArrayBuffer; byte_off + byte_len is within bounds as guaranteed by the Uint8Array view.
-            let slice = unsafe {
-              std::slice::from_raw_parts(ptr.add(byte_off), byte_len)
-            };
-            data.extend_from_slice(slice);
-          }
-        } else if let Ok(s) = TryInto::<v8::Local<v8::String>>::try_into(chunk)
-        {
+        if TryInto::<v8::Local<v8::Uint8Array>>::try_into(chunk).is_ok() {
+          continue;
+        }
+        if let Ok(s) = TryInto::<v8::Local<v8::String>>::try_into(chunk) {
           let enc = chunks
             .get_index(scope, i * 2 + 1)
             .and_then(|v| TryInto::<v8::Local<v8::String>>::try_into(v).ok())
             .map(|e| parse_encoding_no_alloc(scope, e))
             .unwrap_or(StringEncoding::Utf8);
-          encode_string_to_vec(scope, s, enc, &mut data);
+          string_size += encoded_storage_size(scope, s, &enc);
         }
       }
     }
 
-    let total_bytes = data.len();
+    // Single owned `Box<[MaybeUninit<u8>]>` for the concat of all
+    // encoded strings. Functional shape mirrors Node's
+    // `NewBackingStore(storage_size)` at stream_base.cc:247 but stays
+    // outside V8 entirely — no persistent handles, no GC-visible
+    // ArrayBuffer objects, just a heap allocation.
+    //
+    // Typed as `MaybeUninit<u8>` so the "bytes may be uninit until an
+    // encoder fills them" contract is enforced by the type system.
+    // Encoders take `&mut [MaybeUninit<u8>]` windows; iovec base
+    // pointers cast through `*mut u8` and only reference written
+    // sub-ranges.
+    let mut string_storage: Box<[std::mem::MaybeUninit<u8>]> =
+      if string_size > 0 {
+        Box::new_uninit_slice(string_size)
+      } else {
+        Box::new_uninit_slice(0)
+      };
+    let string_storage_ptr: *mut std::mem::MaybeUninit<u8> =
+      string_storage.as_mut_ptr();
 
-    // Track bytes_written
+    let mut iovecs: smallvec::SmallVec<[uv_buf_t; 16]> =
+      smallvec::SmallVec::new();
+    let mut str_offset: usize = 0;
+
+    for i in 0..count {
+      let Some(chunk) = chunks.get_index(scope, i * stride) else {
+        continue;
+      };
+      if let Ok(buf) = TryInto::<v8::Local<v8::Uint8Array>>::try_into(chunk) {
+        let byte_len = buf.byte_length();
+        if byte_len == 0 {
+          continue;
+        }
+        let byte_off = buf.byte_offset();
+        let ab = buf.buffer(scope).unwrap();
+        let Some(data_ptr) = ab.data() else {
+          continue;
+        };
+        // SAFETY: data_ptr is the ArrayBuffer backing store start;
+        // the Uint8Array view guarantees byte_off + byte_len is
+        // within the allocation. JS retains the chunk via
+        // `req.buffer = data` on the write request — we don't need
+        // our own retention.
+        let base = unsafe {
+          (data_ptr.as_ptr() as *mut u8).add(byte_off) as *mut c_char
+        };
+        iovecs.push(uv_buf_t {
+          base,
+          len: byte_len,
+        });
+      } else if let Ok(s) = TryInto::<v8::Local<v8::String>>::try_into(chunk) {
+        // Only reached in !all_buffers path.
+        let enc = chunks
+          .get_index(scope, i * 2 + 1)
+          .and_then(|v| TryInto::<v8::Local<v8::String>>::try_into(v).ok())
+          .map(|e| parse_encoding_no_alloc(scope, e))
+          .unwrap_or(StringEncoding::Utf8);
+        let remaining = string_size.saturating_sub(str_offset);
+        if remaining == 0 {
+          continue;
+        }
+        // SAFETY: string_storage_ptr is non-null (string_size > 0) and
+        // points at a `string_size`-byte buffer.
+        let dst_slice = unsafe {
+          std::slice::from_raw_parts_mut(
+            string_storage_ptr.add(str_offset),
+            remaining,
+          )
+        };
+        let written = encode_string_into_uninit(scope, s, enc, dst_slice);
+        if written > 0 {
+          // SAFETY: we wrote `written` bytes starting at str_offset.
+          let base =
+            unsafe { string_storage_ptr.add(str_offset) as *mut c_char };
+          iovecs.push(uv_buf_t { base, len: written });
+        }
+        str_offset += written;
+      }
+    }
+
+    let total_bytes: usize = iovecs.iter().map(|b| b.len).sum();
     self
       .bytes_written
       .set(self.bytes_written.get() + total_bytes as u64);
@@ -1331,7 +1460,94 @@ impl LibUvStreamWrap {
       return 0;
     }
 
-    self.do_write(scope, stream, data, total_bytes, req_wrap_obj, state_array)
+    // Sync scatter-gather try-write. Mirrors Node's
+    // StreamBase::Write → DoTryWrite pre-async path. When this fully
+    // drains (common for small HTTP responses) we skip the async
+    // request entirely — zero heap allocations.
+    let (sync_written, fully_drained) = {
+      let slices: smallvec::SmallVec<[std::io::IoSlice; 16]> = iovecs
+        .iter()
+        .map(|b| {
+          // SAFETY: iovec bases point at live memory for `len` bytes.
+          unsafe {
+            std::io::IoSlice::new(std::slice::from_raw_parts(
+              b.base as *const u8,
+              b.len,
+            ))
+          }
+        })
+        .collect();
+      // SAFETY: stream is a valid non-null uv_stream_t.
+      let rc = unsafe { uv_compat::uv_try_writev(stream, &slices) };
+      if rc >= 0 {
+        let n = rc as usize;
+        (n, n == total_bytes)
+      } else {
+        (0, false)
+      }
+    };
+
+    if fully_drained {
+      state_array.set_index(
+        scope,
+        StreamBaseStateFields::BytesWritten as u32,
+        v8::Number::new(scope, total_bytes as f64).into(),
+      );
+      state_array.set_index(
+        scope,
+        StreamBaseStateFields::LastWriteWasAsync as u32,
+        v8::Integer::new(scope, 0).into(),
+      );
+      return 0;
+    }
+
+    // Partial drain: slice iovecs in place, matching libuv's
+    // DoTryWrite pointer advance (stream_wrap.cc:370-382). Pre-count
+    // fully-consumed iovecs and the partial head offset, then `drain`
+    // the consumed prefix in a single shift — avoids the O(n²) cost of
+    // `remove(0)` in a loop, which matters at large iovec counts (e.g.
+    // chunked-encoding responses approaching `IOV_MAX`).
+    if sync_written > 0 {
+      let mut remaining = sync_written;
+      let mut consumed = 0;
+      while remaining > 0 && consumed < iovecs.len() {
+        let head_len = iovecs[consumed].len;
+        if remaining >= head_len {
+          remaining -= head_len;
+          consumed += 1;
+        } else {
+          // SAFETY: sliced within bounds.
+          iovecs[consumed].base = unsafe {
+            (iovecs[consumed].base as *mut u8).add(remaining) as *mut c_char
+          };
+          iovecs[consumed].len = head_len - remaining;
+          remaining = 0;
+        }
+      }
+      if consumed > 0 {
+        iovecs.drain(0..consumed);
+      }
+    }
+
+    // Own the string concat buffer on the async request's callback
+    // state. Buffer chunks are retained JS-side via `req.buffer =
+    // data`, so `owned_buffers` only holds the string storage (or
+    // nothing at all if this writev was Buffers-only).
+    let mut owned: smallvec::SmallVec<[Box<[std::mem::MaybeUninit<u8>]>; 1]> =
+      smallvec::SmallVec::new();
+    if !string_storage.is_empty() {
+      owned.push(string_storage);
+    }
+
+    self.do_writev_async(
+      scope,
+      stream,
+      iovecs,
+      owned,
+      total_bytes,
+      req_wrap_obj,
+      state_array,
+    )
   }
 
   #[fast]
@@ -1516,6 +1732,7 @@ impl LibUvStreamWrap {
         stream_handle,
         stream_base_state: v8::Global::new(scope, state_array),
         bytes: total_bytes,
+        owned_buffers: smallvec::SmallVec::new(),
       }),
     );
     let req_ptr = Box::into_raw(req);
@@ -1547,6 +1764,92 @@ impl LibUvStreamWrap {
         .borrow_mut()
         .take(req_data);
       // SAFETY: uv_write failed so the callback will never fire; reclaim the request.
+      unsafe {
+        drop(Box::from_raw(req_ptr));
+      }
+      return err;
+    }
+
+    state_array.set_index(
+      scope,
+      StreamBaseStateFields::BytesWritten as u32,
+      v8::Number::new(scope, total_bytes as f64).into(),
+    );
+    state_array.set_index(
+      scope,
+      StreamBaseStateFields::LastWriteWasAsync as u32,
+      v8::Integer::new(scope, 1).into(),
+    );
+
+    0
+  }
+
+  /// Queue an iovec-based async write. The `iovecs` point at memory
+  /// kept alive either JS-side (for Buffer chunks attached to
+  /// `req.buffer`) or by `owned_buffers` on the request's callback
+  /// state (for the encoded-strings concat buffer). Mirrors Node's
+  /// `LibuvStreamWrap::DoWrite(req_wrap, bufs, count, ...)`
+  /// (stream_wrap.cc:391) — no intermediate concat.
+  fn do_writev_async(
+    &self,
+    scope: &mut v8::PinScope,
+    stream: *mut uv_stream_t,
+    iovecs: smallvec::SmallVec<[uv_buf_t; 16]>,
+    owned_buffers: smallvec::SmallVec<[Box<[std::mem::MaybeUninit<u8>]>; 1]>,
+    total_bytes: usize,
+    req_wrap_obj: v8::Local<v8::Object>,
+    state_array: v8::Local<v8::Int32Array>,
+  ) -> i32 {
+    let stream_handle = self
+      .js_handle_global(scope)
+      .unwrap_or_else(|| v8::Global::new(scope, v8::Object::new(scope)));
+    let mut req = Box::new(uv_compat::new_write());
+    req.data = self.handle_data.request_callbacks.borrow_mut().insert(
+      RequestCallbackState::Write(WriteRequestCallbackState {
+        // SAFETY: scope is a valid PinScope for the current isolate.
+        isolate: unsafe { scope.as_raw_isolate_ptr() },
+        req_wrap_obj: v8::Global::new(scope, req_wrap_obj),
+        stream_handle,
+        stream_base_state: v8::Global::new(scope, state_array),
+        bytes: total_bytes,
+        owned_buffers,
+      }),
+    );
+    let req_ptr = Box::into_raw(req);
+
+    // Narrow iovec SmallVec to the queue's inline capacity (4). Node
+    // uses `MaybeStackBuffer<uv_buf_t, 16>` for the caller stack and
+    // libuv's queue stores the array pointer directly; we use a 4-
+    // element inline here because most calls have few chunks.
+    let queue_bufs: smallvec::SmallVec<[uv_buf_t; 4]> =
+      iovecs.into_iter().collect();
+
+    // SAFETY: req_ptr is a valid uv_write_t; stream is a valid
+    // initialized stream handle; each iovec points at memory retained
+    // via `retention` on the callback state, which stays alive until
+    // `after_uv_write` runs.
+    let err = unsafe {
+      uv_compat::uv_writev_owned(
+        req_ptr,
+        stream,
+        queue_bufs,
+        Some(after_uv_write),
+      )
+    };
+
+    if err != 0 {
+      // SAFETY: `req_ptr` is still owned locally because `uv_writev_owned` failed synchronously.
+      let req_data = unsafe { (*req_ptr).data };
+      // SAFETY: `req_ptr` is valid and the callback will never observe this request after the synchronous failure.
+      unsafe {
+        (*req_ptr).data = std::ptr::null_mut();
+      }
+      let _ = self
+        .handle_data
+        .request_callbacks
+        .borrow_mut()
+        .take(req_data);
+      // SAFETY: uv_writev_owned failed so the callback will never fire; reclaim.
       unsafe {
         drop(Box::from_raw(req_ptr));
       }

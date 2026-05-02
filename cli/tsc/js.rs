@@ -1,6 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
+use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::rc::Rc;
@@ -175,6 +176,7 @@ deno_core::extension!(deno_cli_tsc,
       options.root_map,
       options.remapped_specifiers,
       options.request.initial_cwd,
+      options.request.capture_emitted_files,
     ));
   },
   customizer = |ext: &mut deno_core::Extension| {
@@ -235,6 +237,11 @@ fn op_emit_inner(state: &mut OpState, args: EmitArgs) -> bool {
   let state = state.borrow_mut::<State>();
   match args.file_name.as_ref() {
     "internal:///.tsbuildinfo" => state.maybe_tsbuildinfo = Some(args.data),
+    name if name.ends_with(".d.ts") || name.ends_with(".d.ts.map") => {
+      if state.capture_emitted_files {
+        state.emitted_files.insert(args.file_name, args.data);
+      }
+    }
     _ => {
       if cfg!(debug_assertions) {
         panic!("Unhandled emit write: {}", args.file_name);
@@ -380,6 +387,7 @@ pub fn exec_request(
       ambient_modules,
       maybe_tsbuildinfo,
       stats,
+      emitted_files: state.emitted_files,
     })
   } else {
     Err(ExecError::ResponseNotSet)
@@ -470,6 +478,8 @@ struct State {
   remapped_specifiers: HashMap<String, ModuleSpecifier>,
   root_map: HashMap<String, ModuleSpecifier>,
   current_dir: PathBuf,
+  capture_emitted_files: bool,
+  emitted_files: BTreeMap<String, String>,
 }
 
 impl Default for State {
@@ -484,6 +494,8 @@ impl Default for State {
       remapped_specifiers: Default::default(),
       root_map: Default::default(),
       current_dir: Default::default(),
+      capture_emitted_files: false,
+      emitted_files: Default::default(),
     }
   }
 }
@@ -499,6 +511,7 @@ impl State {
     root_map: HashMap<String, ModuleSpecifier>,
     remapped_specifiers: HashMap<String, ModuleSpecifier>,
     current_dir: PathBuf,
+    capture_emitted_files: bool,
   ) -> Self {
     State {
       hash_data,
@@ -510,6 +523,8 @@ impl State {
       remapped_specifiers,
       root_map,
       current_dir,
+      capture_emitted_files,
+      emitted_files: Default::default(),
     }
   }
 
@@ -604,6 +619,7 @@ mod tests {
       HashMap::new(),
       HashMap::new(),
       resolve_cwd(None).unwrap().into_owned(),
+      false,
     );
     let mut op_state = OpState::new(None);
     op_state.put(state);
@@ -659,6 +675,7 @@ mod tests {
       root_names: vec![(specifier.clone(), MediaType::TypeScript)],
       check_mode: TypeCheckMode::All,
       initial_cwd: resolve_cwd(None).unwrap().into_owned(),
+      capture_emitted_files: false,
     };
     crate::tsc::exec(request, code_cache)
   }

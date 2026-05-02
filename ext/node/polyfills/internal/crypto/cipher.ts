@@ -18,10 +18,12 @@ import {
   op_node_cipheriv_take,
   op_node_create_cipheriv,
   op_node_create_decipheriv,
+  op_node_create_private_key,
   op_node_decipheriv_auth_tag,
   op_node_decipheriv_decrypt,
   op_node_decipheriv_final,
   op_node_decipheriv_set_aad,
+  op_node_export_private_key_pem,
   op_node_export_secret_key,
   op_node_private_decrypt,
   op_node_private_encrypt,
@@ -46,6 +48,7 @@ import type {
 } from "ext:deno_node/internal/crypto/types.ts";
 import { getDefaultEncoding } from "ext:deno_node/internal/crypto/util.ts";
 import {
+  ERR_INVALID_ARG_TYPE,
   ERR_INVALID_ARG_VALUE,
   ERR_UNKNOWN_ENCODING,
   NodeError,
@@ -75,6 +78,19 @@ export function isStringOrBuffer(
     isArrayBufferView(val) ||
     isAnyArrayBuffer(val) ||
     Buffer.isBuffer(val);
+}
+
+// Matches Node's `ArrayBuffer.isView(data)` check in
+// `lib/internal/crypto/cipher.js`: accepts string, Buffer, TypedArray
+// or DataView, but rejects raw ArrayBuffer / SharedArrayBuffer.
+function validateCipherUpdateData(data: unknown): void {
+  if (typeof data !== "string" && !ArrayBuffer.isView(data)) {
+    throw new ERR_INVALID_ARG_TYPE(
+      "data",
+      ["string", "Buffer", "TypedArray", "DataView"],
+      data,
+    );
+  }
 }
 
 const NO_TAG = new Uint8Array();
@@ -317,7 +333,8 @@ Cipheriv.prototype.update = function (
     throw new ERR_CRYPTO_INVALID_STATE("update");
   }
 
-  // TODO(kt3k): throw ERR_INVALID_ARG_TYPE if data is not string, Buffer, or ArrayBufferView
+  validateCipherUpdateData(data);
+
   let buf = data;
   if (typeof data === "string") {
     buf = Buffer.from(data, inputEncoding);
@@ -595,7 +612,8 @@ Decipheriv.prototype.update = function (
     throw new ERR_CRYPTO_INVALID_STATE("update");
   }
 
-  // TODO(kt3k): throw ERR_INVALID_ARG_TYPE if data is not string, Buffer, or ArrayBufferView
+  validateCipherUpdateData(data);
+
   let buf = data;
   if (typeof data === "string") {
     buf = Buffer.from(data, inputEncoding);
@@ -739,12 +757,34 @@ export function prepareKey(key) {
     const data = key.export({ type: "pkcs8", format: "pem" });
     return { data: getArrayBufferOrView(data, "key") };
   } else if (typeof key == "object") {
-    const { key: data, encoding } = key;
+    const { key: data, encoding, passphrase, format, type } = key;
     if (isKeyObject(data)) {
       return prepareKey(data);
     }
     if (!isStringOrBuffer(data)) {
       throw new TypeError("Invalid key type");
+    }
+
+    // If a passphrase is supplied with raw key material, decrypt the key via
+    // the native key handle and re-export as unencrypted PKCS#8 PEM so the
+    // downstream RSA ops can parse it.
+    if (passphrase != null) {
+      const keyFormat = format ?? (typeof data === "string" ? "pem" : "der");
+      const keyData = getArrayBufferOrView(data, "key", encoding);
+      const passphraseData = getArrayBufferOrView(passphrase, "passphrase");
+      const handle = op_node_create_private_key(
+        keyData,
+        keyFormat,
+        type ?? "",
+        passphraseData,
+      );
+      const pem = op_node_export_private_key_pem(
+        handle,
+        "pkcs8",
+        null,
+        null,
+      );
+      return { data: getArrayBufferOrView(pem, "key") };
     }
 
     return { data: getArrayBufferOrView(data, "key", encoding) };
