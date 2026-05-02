@@ -322,23 +322,80 @@ pub fn extract_external_image_source<'a>(
 ) -> Option<Result<deno_webgpu::queue::ExternalImageSource, JsErrorBox>> {
   let canvas =
     deno_core::cppgc::try_unwrap_cppgc_object::<OffscreenCanvas>(scope, value)?;
-  Some(extract_offscreen_canvas(scope, &canvas))
+  Some(extract_offscreen_canvas(scope, &canvas, value))
 }
 
-fn extract_offscreen_canvas(
-  scope: &mut v8::PinScope<'_, '_>,
+fn extract_offscreen_canvas<'a>(
+  scope: &mut v8::PinScope<'a, '_>,
   canvas: &OffscreenCanvas,
+  value: v8::Local<'a, v8::Value>,
 ) -> Result<deno_webgpu::queue::ExternalImageSource, JsErrorBox> {
+  let (width, height) = {
+    let data = canvas.data.borrow();
+    (data.width(), data.height())
+  };
+
+  let fast_path =
+    canvas
+      .active_context
+      .get()
+      .and_then(|(id, active_context)| {
+        if id != deno_webgpu::canvas::CONTEXT_ID {
+          return None;
+        }
+        let active_context = v8::Local::new(scope, active_context);
+        let Context::WebGPU(context) = get_context(id, scope, active_context)
+        else {
+          return None;
+        };
+        let configuration = context.configuration.borrow();
+        let configuration = configuration.as_ref()?;
+        let current_texture = context.current_texture.borrow();
+        let current_texture = current_texture.as_ref()?;
+        let local = v8::Local::new(scope, current_texture).cast::<v8::Value>();
+        let texture = deno_core::cppgc::try_unwrap_cppgc_object::<
+          deno_webgpu::texture::GPUTexture,
+        >(scope, local)?;
+        Some(deno_webgpu::queue::ExternalImageFastPath {
+          instance: texture.instance.clone(),
+          device_id: texture.device_id,
+          queue_id: texture.queue_id,
+          texture_id: texture.id,
+          format: texture.format.clone().into(),
+          color_space: configuration.color_space,
+          premultiplied_alpha: matches!(
+            configuration.alpha_mode,
+            deno_webgpu::canvas::GPUCanvasAlphaMode::Premultiplied
+          ),
+        })
+      });
+
+  Ok(deno_webgpu::queue::ExternalImageSource {
+    kind: deno_webgpu::queue::ExternalImageSourceKind::OffscreenCanvas,
+    width,
+    height,
+    fast_path,
+    bitmap: deno_webgpu::queue::ExternalImageBitmap::Lazy {
+      readback: offscreen_canvas_readback,
+      value: v8::Global::new(scope, value),
+    },
+  })
+}
+
+fn offscreen_canvas_readback<'a>(
+  scope: &mut v8::PinScope<'a, '_>,
+  value: v8::Local<'a, v8::Value>,
+) -> Result<DynamicImage, JsErrorBox> {
+  let canvas =
+    deno_core::cppgc::try_unwrap_cppgc_object::<OffscreenCanvas>(scope, value)
+      .ok_or_else(|| JsErrorBox::generic("expected OffscreenCanvas"))?;
   if let Some((id, active_context)) = canvas.active_context.get() {
     let active_context = v8::Local::new(scope, active_context);
     if let Context::WebGPU(context) = get_context(id, scope, active_context) {
       context.bitmap_read_hook(scope)?;
     }
   }
-  Ok(deno_webgpu::queue::ExternalImageSource {
-    data: canvas.data.borrow().clone(),
-    kind: deno_webgpu::queue::ExternalImageSourceKind::OffscreenCanvas,
-  })
+  Ok(canvas.data.borrow().clone())
 }
 
 pub fn get_context<'t>(

@@ -815,29 +815,50 @@ pub fn transform_rgb_color_space(
     ([f32; 3], [f32; 3], [f32; 3]),
     fn(f32) -> f32,
   );
+  fn identity_gamma(x: f32) -> f32 {
+    x
+  }
   let (
     to_linear_fn,
     input_color_transform_matrix,
     output_color_transform_inv_matrix,
     to_gamma_fn,
-  ): Parameters = match (input_color_space, output_color_space) {
-    // if the color space is the same, return the image as is
-    (PredefinedColorSpace::Srgb, PredefinedColorSpace::Srgb)
-    | (PredefinedColorSpace::DisplayP3, PredefinedColorSpace::DisplayP3) => {
+  ): Parameters = {
+    if input_color_space == output_color_space {
       return Ok(image);
     }
-    (PredefinedColorSpace::Srgb, PredefinedColorSpace::DisplayP3) => (
-      srgb_to_linear,
-      SRGB_R65_TO_XYZ_MATRIX,
-      INV_P3_R65_TO_XYZ_MATRIX,
-      linear_to_gamma_p3,
-    ),
-    (PredefinedColorSpace::DisplayP3, PredefinedColorSpace::Srgb) => (
-      p3_to_linear,
-      P3_R65_TO_XYZ_MATRIX,
-      INV_SRGB_R65_TO_XYZ_MATRIX,
-      linear_to_gamma_srgb,
-    ),
+    let to_linear_fn: fn(f32) -> f32 = match input_color_space {
+      PredefinedColorSpace::Srgb => srgb_to_linear,
+      PredefinedColorSpace::DisplayP3 => p3_to_linear,
+      PredefinedColorSpace::SrgbLinear
+      | PredefinedColorSpace::DisplayP3Linear => identity_gamma,
+    };
+    let to_gamma_fn: fn(f32) -> f32 = match output_color_space {
+      PredefinedColorSpace::Srgb => linear_to_gamma_srgb,
+      PredefinedColorSpace::DisplayP3 => linear_to_gamma_p3,
+      PredefinedColorSpace::SrgbLinear
+      | PredefinedColorSpace::DisplayP3Linear => identity_gamma,
+    };
+    let input_color_transform_matrix = match input_color_space {
+      PredefinedColorSpace::Srgb | PredefinedColorSpace::SrgbLinear => {
+        SRGB_R65_TO_XYZ_MATRIX
+      }
+      PredefinedColorSpace::DisplayP3
+      | PredefinedColorSpace::DisplayP3Linear => P3_R65_TO_XYZ_MATRIX,
+    };
+    let output_color_transform_inv_matrix = match output_color_space {
+      PredefinedColorSpace::Srgb | PredefinedColorSpace::SrgbLinear => {
+        INV_SRGB_R65_TO_XYZ_MATRIX
+      }
+      PredefinedColorSpace::DisplayP3
+      | PredefinedColorSpace::DisplayP3Linear => INV_P3_R65_TO_XYZ_MATRIX,
+    };
+    (
+      to_linear_fn,
+      input_color_transform_matrix,
+      output_color_transform_inv_matrix,
+      to_gamma_fn,
+    )
   };
   match image {
     // The color space conversion of the gray scale color types is meaningless

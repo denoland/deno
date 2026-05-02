@@ -255,20 +255,21 @@ impl GPUQueue {
   }
 
   #[required(3)]
-  fn copy_external_image_to_texture(
+  fn copy_external_image_to_texture<'a>(
     &self,
+    scope: &mut v8::PinScope<'a, '_>,
     #[webidl] source: GPUCopyExternalImageSourceInfo,
     #[webidl] destination: GPUCopyExternalImageDestInfo,
     #[webidl] copy_size: GPUExtent3D,
   ) -> Result<(), JsErrorBox> {
-    let data = source.source.data;
     let (copy_size_width, copy_size_height, copy_size_depth_or_array_layers) =
       copy_size.dimensions();
 
     // Content timeline steps:
     // 6.
     let (src_origin_x, src_origin_y) = source.origin.dimensions();
-    let (src_image_width, src_image_height) = data.dimensions();
+    let src_image_width = source.source.width;
+    let src_image_height = source.source.height;
     if src_origin_x + copy_size_width > src_image_width {
       return Err(JsErrorBox::new(
         "DOMExceptionOperationError",
@@ -325,6 +326,43 @@ impl GPUQueue {
         ),
       ));
     }
+
+    let dst_copy_info = wgpu_core::command::TexelCopyTextureInfo {
+      texture: destination.texture.id,
+      mip_level: destination.mip_level,
+      origin: destination.origin.into(),
+      aspect: destination.aspect.into(),
+    };
+
+    // Fast path: source is a GPU-backed canvas whose texture matches the
+    // destination's format/color-space/alpha and no flip is requested. Issue a
+    // single copy_texture_to_texture instead of reading pixels back to CPU.
+    if let Some(fast) = source.source.fast_path.as_ref()
+      && !source.flip_y
+      && fast.format == dst_texture_format
+      && fast.color_space == destination.color_space
+      && fast.premultiplied_alpha == destination.premultiplied_alpha
+      && fast.device_id == destination.texture.device_id
+      && fast.queue_id == self.id
+    {
+      return self.fast_copy_external_image_to_texture(
+        fast,
+        src_origin_x,
+        src_origin_y,
+        &dst_copy_info,
+        copy_size_width,
+        copy_size_height,
+      );
+    }
+
+    let data = match source.source.bitmap {
+      ExternalImageBitmap::Eager(data) => data,
+      ExternalImageBitmap::Lazy { readback, value } => {
+        let value = v8::Local::new(scope, &value);
+        readback(scope, value)?
+      }
+    };
+
     // 5.
     // 5.1
     // crop the rectangle first
@@ -360,18 +398,17 @@ impl GPUQueue {
       match destination.color_space {
         PredefinedColorSpace::Srgb => PredefinedColorSpace::DisplayP3,
         PredefinedColorSpace::DisplayP3 => PredefinedColorSpace::Srgb,
+        PredefinedColorSpace::SrgbLinear => {
+          PredefinedColorSpace::DisplayP3Linear
+        }
+        PredefinedColorSpace::DisplayP3Linear => {
+          PredefinedColorSpace::SrgbLinear
+        }
       },
       destination.color_space,
     )
     // convert to GPUError::GPUValidationError could be better?
     .map_err(JsErrorBox::from_err)?;
-
-    let destination = wgpu_core::command::TexelCopyTextureInfo {
-      texture: destination.texture.id,
-      mip_level: destination.mip_level,
-      origin: destination.origin.into(),
-      aspect: destination.aspect.into(),
-    };
 
     let data_layout = wgpu_types::TexelCopyBufferLayout {
       offset: 0,
@@ -393,7 +430,7 @@ impl GPUQueue {
       .instance
       .queue_write_texture(
         self.id,
-        &destination,
+        &dst_copy_info,
         &data,
         &data_layout,
         &copy_size.into(),
@@ -401,6 +438,74 @@ impl GPUQueue {
       .err();
 
     self.error_handler.push_error(err);
+
+    Ok(())
+  }
+}
+
+impl GPUQueue {
+  fn fast_copy_external_image_to_texture(
+    &self,
+    fast: &ExternalImageFastPath,
+    src_origin_x: u32,
+    src_origin_y: u32,
+    dst_copy_info: &wgpu_core::command::TexelCopyTextureInfo,
+    copy_size_width: u32,
+    copy_size_height: u32,
+  ) -> Result<(), JsErrorBox> {
+    let (encoder, err) = fast.instance.device_create_command_encoder(
+      fast.device_id,
+      &wgpu_types::CommandEncoderDescriptor {
+        label: Some("copyExternalImageToTexture (fast path)".into()),
+      },
+      None,
+    );
+    if let Some(err) = err {
+      self.error_handler.push_error(Some(err));
+      return Ok(());
+    }
+
+    let src_copy = wgpu_types::TexelCopyTextureInfo {
+      texture: fast.texture_id,
+      mip_level: 0,
+      origin: wgpu_types::Origin3d {
+        x: src_origin_x,
+        y: src_origin_y,
+        z: 0,
+      },
+      aspect: wgpu_types::TextureAspect::All,
+    };
+    let extent = wgpu_types::Extent3d {
+      width: copy_size_width,
+      height: copy_size_height,
+      depth_or_array_layers: 1,
+    };
+
+    if let Err(err) = fast.instance.command_encoder_copy_texture_to_texture(
+      encoder,
+      &src_copy,
+      dst_copy_info,
+      &extent,
+    ) {
+      self.error_handler.push_error(Some(err));
+      return Ok(());
+    }
+
+    let (command_buffer, err) = fast.instance.command_encoder_finish(
+      encoder,
+      &wgpu_types::CommandBufferDescriptor { label: None },
+      None,
+    );
+    if let Some((_, err)) = err {
+      self.error_handler.push_error(Some(err));
+      return Ok(());
+    }
+
+    if let Err((_, err)) =
+      fast.instance.queue_submit(self.id, &[command_buffer])
+    {
+      self.error_handler.push_error(Some(err));
+    }
 
     Ok(())
   }
@@ -440,17 +545,53 @@ struct GPUCopyExternalImageSourceInfo {
   flip_y: bool,
 }
 
-/// A snapshot of pixels extracted from one of the WebIDL union variants of
-/// `GPUCopyExternalImageSource` (currently `ImageBitmap` or `OffscreenCanvas`).
+/// One of the WebIDL union variants of `GPUCopyExternalImageSource` (currently
+/// `ImageBitmap` or `OffscreenCanvas`), extracted into a form usable by
+/// `copyExternalImageToTexture`.
 pub struct ExternalImageSource {
-  pub data: DynamicImage,
   pub kind: ExternalImageSourceKind,
+  pub width: u32,
+  pub height: u32,
+  /// Populated when the source is a GPU-backed canvas whose current texture
+  /// can potentially be copied directly to the destination, skipping the
+  /// readback to a CPU bitmap. The op decides whether the destination's
+  /// requested transforms (color space, premultiply, flip, format) actually
+  /// allow taking this fast path.
+  pub fast_path: Option<ExternalImageFastPath>,
+  pub bitmap: ExternalImageBitmap,
 }
 
 pub enum ExternalImageSourceKind {
   ImageBitmap { detached: bool },
   OffscreenCanvas,
 }
+
+pub enum ExternalImageBitmap {
+  /// Pixels already snapshot to CPU (e.g. an `ImageBitmap`).
+  Eager(DynamicImage),
+  /// Pixels are produced on demand. Used for `OffscreenCanvas` so that we can
+  /// skip the GPU→CPU readback when the fast path is taken.
+  Lazy {
+    readback: ExternalImageReadback,
+    value: v8::Global<v8::Value>,
+  },
+}
+
+pub struct ExternalImageFastPath {
+  pub instance: Instance,
+  pub device_id: wgpu_core::id::DeviceId,
+  pub queue_id: wgpu_core::id::QueueId,
+  pub texture_id: wgpu_core::id::TextureId,
+  pub format: wgpu_types::TextureFormat,
+  pub color_space: PredefinedColorSpace,
+  pub premultiplied_alpha: bool,
+}
+
+pub type ExternalImageReadback = for<'a> fn(
+  scope: &mut v8::PinScope<'a, '_>,
+  value: v8::Local<'a, v8::Value>,
+)
+  -> Result<DynamicImage, JsErrorBox>;
 
 /// Function pointer for extracting an `ExternalImageSource` from a v8 value of
 /// a type defined outside of `deno_webgpu` (e.g. `OffscreenCanvas`, which lives
@@ -485,11 +626,16 @@ impl<'a> WebIdlConverter<'a> for ExternalImageSource {
       context.borrowed(),
       options,
     ) {
+      let data = bitmap.data.borrow().clone();
+      let (width, height) = data.dimensions();
       return Ok(ExternalImageSource {
-        data: bitmap.data.borrow().clone(),
         kind: ExternalImageSourceKind::ImageBitmap {
           detached: bitmap.detached.get().is_some(),
         },
+        width,
+        height,
+        fast_path: None,
+        bitmap: ExternalImageBitmap::Eager(data),
       });
     }
 
