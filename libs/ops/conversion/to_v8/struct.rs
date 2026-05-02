@@ -24,12 +24,11 @@ use crate::conversion::to_v8::convert_or_serde;
 pub fn get_body(span: Span, data: DataStruct) -> Result<TokenStream, Error> {
   match data.fields {
     Fields::Named(fields) => {
-      let mut fields = fields
+      let fields = fields
         .named
         .into_iter()
         .map(TryInto::try_into)
         .collect::<Result<Vec<StructField>, Error>>()?;
-      fields.sort_by(|a, b| a.name.cmp(&b.name));
 
       let mut names = Vec::with_capacity(fields.len());
       let mut converters = Vec::with_capacity(fields.len());
