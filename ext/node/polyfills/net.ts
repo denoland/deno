@@ -1859,10 +1859,25 @@ Socket.prototype._destroy = function (exception, cb) {
 
   if (this._server) {
     debug("has server");
-    this._server._connections--;
+    const server = this._server;
+    server._connections--;
 
-    if (this._server._emitCloseIfDrained) {
-      this._server._emitCloseIfDrained();
+    if (server._emitCloseIfDrained) {
+      if (
+        !server._handle &&
+        server._connections === 0 &&
+        this._httpMessageDetached === true &&
+        !this._httpMessage
+      ) {
+        defaultTriggerAsyncIdScope(
+          server[asyncIdSymbol],
+          nextTick,
+          _emitCloseNT,
+          server,
+        );
+      } else {
+        server._emitCloseIfDrained();
+      }
     }
   }
 };

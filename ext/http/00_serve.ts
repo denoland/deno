@@ -79,12 +79,14 @@ const {
   ReadableStreamPrototype,
   resourceForReadableStream,
 } = core.loadExtScript("ext:deno_web/06_streams.js");
-import {
+const {
   listen,
   listenOptionApiName,
   UpgradedConn,
-} from "ext:deno_net/01_net.js";
-import { hasTlsKeyPairOptions, listenTls } from "ext:deno_net/02_tls.js";
+} = core.loadExtScript("ext:deno_net/01_net.js");
+const { hasTlsKeyPairOptions, listenTls } = core.loadExtScript(
+  "ext:deno_net/02_tls.js",
+);
 import {
   builtinTracer,
   ContextManager,

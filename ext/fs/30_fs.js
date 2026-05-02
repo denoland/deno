@@ -94,7 +94,9 @@ const {
   Uint32Array,
 } = primordials;
 
-import { read, readSync, write, writeSync } from "ext:deno_io/12_io.js";
+const { read, readSync, write, writeSync } = core.loadExtScript(
+  "ext:deno_io/12_io.js",
+);
 const abortSignal = core.loadExtScript("ext:deno_web/03_abort_signal.js");
 const {
   readableStreamForRid,

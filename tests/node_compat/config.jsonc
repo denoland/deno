@@ -1249,6 +1249,7 @@
     "parallel/test-fs-utimes-y2K38.js": {},
     "parallel/test-fs-utimes.js": {},
     "parallel/test-fs-watch-abort-signal.js": {},
+    "parallel/test-fs-watch-encoding.js": {},
     "parallel/test-fs-watch-file-enoent-after-deletion.js": {},
     "parallel/test-fs-watch-ignore-function.js": {},
     "parallel/test-fs-watch-ignore-glob.js": {},
@@ -1638,6 +1639,7 @@
     "parallel/test-http.js": {},
     "parallel/test-http2-async-local-storage.js": {},
     "parallel/test-http2-alpn.js": {},
+    "parallel/test-http2-allow-http1.js": {},
     "parallel/test-http2-altsvc.js": {},
     "parallel/test-http2-autoselect-protocol.js": {},
     "parallel/test-http2-backpressure.js": {},
@@ -2584,6 +2586,7 @@
     "parallel/test-process-beforeexit-throw-exit.js": {},
     "parallel/test-process-binding-internalbinding-allowlist.js": {},
     "parallel/test-process-binding.js": {},
+    "parallel/test-process-chdir-errormessage.js": {},
     "parallel/test-process-chdir.js": {},
     "parallel/test-process-config.js": {},
     "parallel/test-process-constants-noatime.js": {
