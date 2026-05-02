@@ -2,37 +2,37 @@
 
 import { core } from "ext:core/mod.js";
 
-import * as event from "ext:deno_web/02_event.js";
-import * as base64 from "ext:deno_web/05_base64.js";
-import * as encoding from "ext:deno_web/08_text_encoding.js";
-import * as console from "ext:deno_web/01_console.js";
+const event = core.loadExtScript("ext:deno_web/02_event.js");
+const base64 = core.loadExtScript("ext:deno_web/05_base64.js");
+const encoding = core.loadExtScript("ext:deno_web/08_text_encoding.js");
+const console = core.loadExtScript("ext:deno_web/01_console.js");
 import * as caches from "ext:deno_cache/01_cache.js";
-import * as compression from "ext:deno_web/14_compression.js";
+const compression = core.loadExtScript("ext:deno_web/14_compression.js");
 import * as worker from "ext:runtime/11_workers.js";
-import * as performance from "ext:deno_web/15_performance.js";
+const performance = core.loadExtScript("ext:deno_web/15_performance.js");
 import * as crypto from "ext:deno_crypto/00_crypto.js";
-import * as url from "ext:deno_web/00_url.js";
-import * as urlPattern from "ext:deno_web/01_urlpattern.js";
+const url = core.loadExtScript("ext:deno_web/00_url.js");
+const urlPattern = core.loadExtScript("ext:deno_web/01_urlpattern.js");
 import * as headers from "ext:deno_fetch/20_headers.js";
-import * as streams from "ext:deno_web/06_streams.js";
-import * as fileReader from "ext:deno_web/10_filereader.js";
-import * as webSocket from "ext:deno_websocket/01_websocket.js";
-import * as webSocketStream from "ext:deno_websocket/02_websocketstream.js";
-import * as broadcastChannel from "ext:deno_web/01_broadcast_channel.js";
-import * as file from "ext:deno_web/09_file.js";
+const streams = core.loadExtScript("ext:deno_web/06_streams.js");
+const fileReader = core.loadExtScript("ext:deno_web/10_filereader.js");
+const broadcastChannel = core.loadExtScript(
+  "ext:deno_web/01_broadcast_channel.js",
+);
+const file = core.loadExtScript("ext:deno_web/09_file.js");
 import * as formData from "ext:deno_fetch/21_formdata.js";
 import * as request from "ext:deno_fetch/23_request.js";
 import * as response from "ext:deno_fetch/23_response.js";
 import * as fetch from "ext:deno_fetch/26_fetch.js";
 import * as eventSource from "ext:deno_fetch/27_eventsource.js";
-import * as messagePort from "ext:deno_web/13_message_port.js";
-import * as webidl from "ext:deno_webidl/00_webidl.js";
-import {
+const messagePort = core.loadExtScript("ext:deno_web/13_message_port.js");
+const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
+const {
   DOMException,
   QuotaExceededError,
-} from "ext:deno_web/01_dom_exception.js";
-import * as abortSignal from "ext:deno_web/03_abort_signal.js";
-import * as imageData from "ext:deno_web/16_image_data.js";
+} = core.loadExtScript("ext:deno_web/01_dom_exception.js");
+const abortSignal = core.loadExtScript("ext:deno_web/03_abort_signal.js");
+const imageData = core.loadExtScript("ext:deno_web/16_image_data.js");
 import process from "node:process";
 import { Buffer } from "node:buffer";
 import {
@@ -44,12 +44,20 @@ import {
   setTimeout as nodeSetTimeout,
 } from "node:timers";
 import { loadWebGPU } from "ext:deno_webgpu/00_init.js";
-import * as webgpuSurface from "ext:deno_webgpu/02_surface.js";
 import { unstableIds } from "ext:runtime/90_deno_ns.js";
 
 const loadImage = core.createLazyLoader("ext:deno_image/01_image.js");
+const loadCanvas = core.createLazyLoader("ext:deno_canvas/01_canvas.js");
 const loadGeometry = core.createLazyLoader("ext:deno_web/geometry.js");
-const loadWebTransport = core.createLazyLoader("ext:deno_web/webtransport.js");
+const loadWebSocket = core.createLazyLoader(
+  "ext:deno_websocket/01_websocket.js",
+);
+const loadWebSocketStream = core.createLazyLoader(
+  "ext:deno_websocket/02_websocketstream.js",
+);
+const loadWebTransport = core.createLazyLoader(
+  "ext:deno_web/webtransport.js",
+);
 
 // https://developer.mozilla.org/en-US/docs/Web/API/WindowOrWorkerGlobalScope
 const windowOrWorkerGlobalScope = {
@@ -135,7 +143,10 @@ const windowOrWorkerGlobalScope = {
   URL: core.propNonEnumerable(url.URL),
   URLPattern: core.propNonEnumerable(urlPattern.URLPattern),
   URLSearchParams: core.propNonEnumerable(url.URLSearchParams),
-  WebSocket: core.propNonEnumerable(webSocket.WebSocket),
+  WebSocket: core.propNonEnumerableLazyLoaded(
+    (ws) => ws.WebSocket,
+    loadWebSocket,
+  ),
   MessageChannel: core.propNonEnumerable(messagePort.MessageChannel),
   MessagePort: core.propNonEnumerable(messagePort.MessagePort),
   Worker: core.propNonEnumerable(worker.Worker),
@@ -196,6 +207,15 @@ const windowOrWorkerGlobalScope = {
   structuredClone: core.propWritable(messagePort.structuredClone),
   // Branding as a WebIDL object
   [webidl.brand]: core.propNonEnumerable(webidl.brand),
+
+  OffscreenCanvas: core.propNonEnumerableLazyLoaded(
+    (canvas) => canvas.OffscreenCanvas,
+    loadCanvas,
+  ),
+  ImageBitmapRenderingContext: core.propNonEnumerableLazyLoaded(
+    (canvas) => canvas.ImageBitmapRenderingContext,
+    loadCanvas,
+  ),
   GPU: core.propNonEnumerableLazyLoaded((webgpu) => webgpu.GPU, loadWebGPU),
   GPUAdapter: core.propNonEnumerableLazyLoaded(
     (webgpu) => webgpu.GPUAdapter,
@@ -213,7 +233,10 @@ const windowOrWorkerGlobalScope = {
     (webgpu) => webgpu.GPUBufferUsage,
     loadWebGPU,
   ),
-  GPUCanvasContext: core.propNonEnumerable(webgpuSurface.GPUCanvasContext),
+  GPUCanvasContext: core.propNonEnumerableLazyLoaded(
+    (webgpu) => webgpu.GPUCanvasContext,
+    loadWebGPU,
+  ),
   GPUColorWrite: core.propNonEnumerableLazyLoaded(
     (webgpu) => webgpu.GPUColorWrite,
     loadWebGPU,
@@ -350,8 +373,14 @@ const windowOrWorkerGlobalScope = {
 
 const unstableForWindowOrWorkerGlobalScope = { __proto__: null };
 unstableForWindowOrWorkerGlobalScope[unstableIds.net] = {
-  WebSocketStream: core.propNonEnumerable(webSocketStream.WebSocketStream),
-  WebSocketError: core.propNonEnumerable(webSocketStream.WebSocketError),
+  WebSocketStream: core.propNonEnumerableLazyLoaded(
+    (wss) => wss.WebSocketStream,
+    loadWebSocketStream,
+  ),
+  WebSocketError: core.propNonEnumerableLazyLoaded(
+    (wss) => wss.WebSocketError,
+    loadWebSocketStream,
+  ),
   WebTransport: core.propNonEnumerableLazyLoaded(
     (wt) => wt.WebTransport,
     loadWebTransport,
@@ -382,6 +411,12 @@ unstableForWindowOrWorkerGlobalScope[unstableIds.net] = {
   ),
 };
 
+unstableForWindowOrWorkerGlobalScope[unstableIds.nodeGlobals] = {
+  clearInterval: core.propWritable(nodeClearInterval),
+  clearTimeout: core.propWritable(nodeClearTimeout),
+  setInterval: core.propWritable(nodeSetInterval),
+  setTimeout: core.propWritable(nodeSetTimeout),
+};
 unstableForWindowOrWorkerGlobalScope[unstableIds.webgpu] = {};
 
 export { unstableForWindowOrWorkerGlobalScope, windowOrWorkerGlobalScope };

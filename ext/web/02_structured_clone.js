@@ -6,7 +6,9 @@
 /// <reference path="../web/internal.d.ts" />
 /// <reference path="../../cli/tsc/dts/lib.deno_web.d.ts" />
 
-import { core, primordials } from "ext:core/mod.js";
+// deno-fmt-ignore-file
+(function () {
+const { core, primordials } = globalThis.__bootstrap;
 const {
   isArrayBuffer,
 } = core;
@@ -40,7 +42,7 @@ const {
   Float64Array,
 } = primordials;
 
-import { DOMException } from "./01_dom_exception.js";
+const { DOMException } = core.loadExtScript("ext:deno_web/01_dom_exception.js");
 
 const objectCloneMemo = new SafeWeakMap();
 
@@ -143,4 +145,5 @@ function structuredClone(value) {
   }
 }
 
-export { structuredClone };
+return { structuredClone };
+})()

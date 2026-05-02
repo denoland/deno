@@ -168,6 +168,8 @@ async fn run_subcommand(
         self::args::InstallEntrypointsFlags {
           entrypoints: cache_flags.files,
           lockfile_only: false,
+          production: false,
+          skip_types: false,
         },
       )
       .await
@@ -197,6 +199,15 @@ async fn run_subcommand(
     DenoSubcommand::Fmt(fmt_flags) => spawn_subcommand(async move {
       tools::fmt::format(Arc::new(flags), fmt_flags).await
     }),
+    DenoSubcommand::Transpile(transpile_flags) => {
+      spawn_subcommand(async move {
+        log::warn!(
+          "⚠️  {} is experimental and subject to changes",
+          colors::cyan("deno transpile")
+        );
+        tools::transpile::transpile(Arc::new(flags), transpile_flags).await
+      })
+    }
     DenoSubcommand::Init(init_flags) => spawn_subcommand(async {
       tools::init::init_project(flags, init_flags).await
     }),
@@ -459,6 +470,9 @@ async fn run_subcommand(
       "This deno was built without the \"upgrade\" feature. Please upgrade using the installation method originally used to install Deno.",
       1,
     ),
+    DenoSubcommand::Why(why_flags) => spawn_subcommand(async {
+      tools::pm::why(Arc::new(flags), why_flags).await
+    }),
     DenoSubcommand::BumpVersion(version_flags) => spawn_subcommand(async {
       log::warn!(
         "{}",

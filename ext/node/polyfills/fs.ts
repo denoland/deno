@@ -92,10 +92,6 @@ import {
 import { Buffer } from "node:buffer";
 import process from "node:process";
 import { isArrayBufferView } from "ext:deno_node/internal/util/types.ts";
-import { TextEncoder } from "ext:deno_web/08_text_encoding.js";
-import * as abortSignal from "ext:deno_web/03_abort_signal.js";
-import { pathFromURL } from "ext:deno_web/00_infra.js";
-import { URLPrototype } from "ext:deno_web/00_url.js";
 import { FileHandle } from "ext:deno_node/internal/fs/handle.ts";
 import { isIterable } from "ext:deno_node/internal/streams/utils.js";
 import type { ErrnoException } from "ext:deno_node/_global.d.ts";
@@ -189,7 +185,13 @@ const {
   TypedArrayPrototypeSet,
   TypedArrayPrototypeSubarray,
   Uint8Array,
+  queueMicrotask,
 } = primordials;
+
+const { TextEncoder } = core.loadExtScript("ext:deno_web/08_text_encoding.js");
+const abortSignal = core.loadExtScript("ext:deno_web/03_abort_signal.js");
+const { pathFromURL } = core.loadExtScript("ext:deno_web/00_infra.js");
+const { URLPrototype } = core.loadExtScript("ext:deno_web/00_url.js");
 
 const {
   kIoMaxLength,
@@ -1271,7 +1273,12 @@ function close(
     callback = makeCallback(callback);
   }
 
-  setTimeout(() => {
+  // Defer to a microtask rather than a JS `setTimeout(0)`. Both make the
+  // callback asynchronous, but a real timer trips Deno's test sanitizer as a
+  // leaked timeout when a test ends before the timer fires. Node.js' libuv
+  // libc-backed `close` is invisible to userland timer queues; a microtask
+  // matches that more closely.
+  queueMicrotask(() => {
     let error = null;
     try {
       op_node_fs_close(fd);
@@ -1281,7 +1288,7 @@ function close(
         : new Error("[non-error thrown]");
     }
     callback(error);
-  }, 0);
+  });
 }
 
 function closeSync(fd: number) {
@@ -3268,6 +3275,8 @@ function watch(
     : typeof optionsOrListener2 === "object"
     ? optionsOrListener2
     : undefined;
+
+  validateIgnoreOption(options?.ignore, "options.ignore");
 
   // deno-lint-ignore prefer-primordials
   const watchPath = getValidatedPath(filename).toString();

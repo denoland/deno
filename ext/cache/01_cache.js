@@ -1,5 +1,5 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
-import { primordials } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 import {
   op_cache_delete,
   op_cache_match,
@@ -19,20 +19,20 @@ const {
   TypeError,
 } = primordials;
 
-import * as webidl from "ext:deno_webidl/00_webidl.js";
+const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
 import {
   Request,
   RequestPrototype,
   toInnerRequest,
 } from "ext:deno_fetch/23_request.js";
 import { toInnerResponse } from "ext:deno_fetch/23_response.js";
-import { URLPrototype } from "ext:deno_web/00_url.js";
+const { URLPrototype } = core.loadExtScript("ext:deno_web/00_url.js");
 import { getHeader } from "ext:deno_fetch/20_headers.js";
-import {
+const {
   getReadableStreamResourceBacking,
   readableStreamForRid,
   resourceForReadableStream,
-} from "ext:deno_web/06_streams.js";
+} = core.loadExtScript("ext:deno_web/06_streams.js");
 
 class CacheStorage {
   constructor() {

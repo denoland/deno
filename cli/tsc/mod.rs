@@ -2,6 +2,7 @@
 //
 mod js;
 
+use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::fmt;
@@ -527,6 +528,9 @@ pub struct Request {
   pub check_mode: TypeCheckMode,
 
   pub initial_cwd: PathBuf,
+  /// When true, .d.ts and .d.ts.map files emitted by TSC will be captured
+  /// in the response. Only set this for `deno transpile --declaration`.
+  pub capture_emitted_files: bool,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -538,6 +542,8 @@ pub struct Response {
   pub ambient_modules: Vec<String>,
   /// Statistics from the check.
   pub stats: Stats,
+  /// Emitted files from the compiler (e.g., .d.ts declaration files).
+  pub emitted_files: BTreeMap<String, String>,
 }
 
 pub fn as_ts_script_kind(media_type: MediaType) -> i32 {

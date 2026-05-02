@@ -20,7 +20,7 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-import { primordials } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 const {
   ArrayIsArray,
   ArrayPrototypeFilter,
@@ -60,14 +60,14 @@ import {
   validateString,
 } from "ext:deno_node/internal/validators.mjs";
 import { codes } from "ext:deno_node/internal/error_codes.ts";
-import {
+const {
   colors,
   createStylizeWithColor,
   formatBigInt,
   formatNumber,
   formatValue,
   styles,
-} from "ext:deno_web/01_console.js";
+} = core.loadExtScript("ext:deno_web/01_console.js");
 
 // Set Graphics Rendition https://en.wikipedia.org/wiki/ANSI_escape_code#graphics
 // Each color consists of an array with the color code as first entry and the
