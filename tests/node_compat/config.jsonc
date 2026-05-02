@@ -3285,6 +3285,8 @@
     "parallel/test-tls-over-http-tunnel.js": {},
     "parallel/test-tls-pause.js": {},
     "parallel/test-tls-peer-certificate-encoding.js": {},
+    "parallel/test-tls-peer-certificate-multi-keys.js": {},
+    "parallel/test-tls-peer-certificate.js": {},
     "parallel/test-tls-psk-server.js": {},
     "parallel/test-tls-reduced-SECLEVEL-in-cipher.js": {},
     "parallel/test-tls-request-timeout.js": {},
