@@ -1916,9 +1916,13 @@ internals.__telemetry = {
   builtinTracer,
   ContextManager,
   enterSpan,
-  PROPAGATORS,
+  get PROPAGATORS() {
+    return PROPAGATORS;
+  },
   restoreSnapshot,
-  TRACING_ENABLED,
+  get TRACING_ENABLED() {
+    return TRACING_ENABLED;
+  },
 };
 
 export const telemetry = {
