@@ -633,7 +633,6 @@ function _activateEsmHooks() {
   if (hasLoad) _startEsmLoadLoop();
 }
 
-
 function stat(filename) {
   if (statCache !== null) {
     const result = statCache.get(filename);
@@ -2000,12 +1999,18 @@ export function registerHooks(hooks) {
   }
   const entry = { resolve, load };
   ArrayPrototypePush(hookEntries, entry);
+
+  // Activate ESM hooks in Rust module loader
+  _activateEsmHooks();
+
   return {
     deregister() {
       const idx = ArrayPrototypeIndexOf(hookEntries, entry);
       if (idx !== -1) {
         ArrayPrototypeSplice(hookEntries, idx, 1);
       }
+      // Update Rust-side active flags
+      _activateEsmHooks();
     },
   };
 }
@@ -2024,42 +2029,6 @@ export function register(_specifier, _parentUrl, _options) {
 
   return undefined;
 }
-
-/**
- * Register synchronous module loader hooks for both CJS and ESM.
- * @param {{ resolve?: Function, load?: Function }} hooks
- * @returns {{ deregister: () => void }}
- */
-export function registerHooks(hooks) {
-  if (typeof hooks !== "object" || hooks === null) {
-    throw new TypeError("hooks must be an object");
-  }
-  const resolve = typeof hooks.resolve === "function" ? hooks.resolve : null;
-  const load = typeof hooks.load === "function" ? hooks.load : null;
-  if (resolve === null && load === null) {
-    throw new TypeError(
-      "hooks must contain at least one of 'resolve' or 'load'",
-    );
-  }
-  const entry = { resolve, load };
-  ArrayPrototypePush(hookEntries, entry);
-
-  // Activate ESM hooks in Rust module loader
-  _activateEsmHooks();
-
-  return {
-    deregister() {
-      const idx = ArrayPrototypeIndexOf(hookEntries, entry);
-      if (idx !== -1) {
-        ArrayPrototypeSplice(hookEntries, idx, 1);
-      }
-      // Update Rust-side active flags
-      _activateEsmHooks();
-    },
-  };
-}
-
-Module.registerHooks = registerHooks;
 
 export { builtinModules, createRequire, getBuiltinModule, isBuiltin, Module };
 export const _cache = Module._cache;
