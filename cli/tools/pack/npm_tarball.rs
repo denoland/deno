@@ -57,10 +57,7 @@ pub fn create_npm_tarball(
   let filename = if let Some(path) = output_path {
     let p = PathBuf::from(path);
     if p.components().any(|c| c == std::path::Component::ParentDir) {
-      log::warn!(
-        "Output path '{}' contains '..' components",
-        path
-      );
+      log::warn!("Output path '{}' contains '..' components", path);
     }
     p
   } else {

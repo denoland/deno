@@ -793,8 +793,7 @@ fn process_single_module(
           0,
           deno_ast::TextChange {
             range: 0..0,
-            new_text: "import { Deno } from \"@deno/shim-deno\";\n"
-              .to_string(),
+            new_text: "import { Deno } from \"@deno/shim-deno\";\n".to_string(),
           },
         );
       }
