@@ -1075,6 +1075,27 @@ pub async fn run(
     }
     checker
   });
+  let (storage_key_resolver, origin_data_folder_path) =
+    match metadata.location.as_ref() {
+      Some(location) => {
+        let deno_dir = deno_resolver::cache::DenoDir::new(
+          sys_traits::impls::RealSys,
+          deno_cache_dir::resolve_deno_dir(
+            &sys_traits::impls::RealSys,
+            deno_cache_dir::ResolveDenoDirOptions {
+              maybe_initial_cwd: None,
+              maybe_custom_root: None,
+            },
+          )?
+          .into_owned(),
+        );
+        (
+          StorageKeyResolver::from_flag(location),
+          Some(deno_dir.compile_origin_data_folder_path()),
+        )
+      }
+      None => (StorageKeyResolver::empty(), None),
+    };
   let lib_main_worker_options = LibMainWorkerOptions {
     argv: metadata.argv,
     log_level: WorkerLogLevel::Info,
@@ -1095,7 +1116,7 @@ pub async fn run(
     node_debug: std::env::var("NODE_DEBUG").ok(),
     node_cluster_unique_id: std::env::var("NODE_UNIQUE_ID").ok(),
     node_cluster_sched_policy: std::env::var("NODE_CLUSTER_SCHED_POLICY").ok(),
-    origin_data_folder_path: None,
+    origin_data_folder_path,
     seed: metadata.seed,
     unsafely_ignore_certificate_errors: metadata
       .unsafely_ignore_certificate_errors,
@@ -1123,7 +1144,7 @@ pub async fn run(
     create_npm_process_state_provider(&npm_resolver),
     pkg_json_resolver,
     root_cert_store_provider,
-    StorageKeyResolver::empty(),
+    storage_key_resolver,
     sys.clone(),
     lib_main_worker_options,
     Default::default(),

@@ -140,6 +140,11 @@ impl<TSys: DiskCacheSys> DenoDir<TSys> {
     self.root.join("location_data")
   }
 
+  /// Path to the origin data folder used by `deno compile` binaries.
+  pub fn compile_origin_data_folder_path(&self) -> PathBuf {
+    self.root.join("origin_data")
+  }
+
   /// File used for the upgrade checker.
   pub fn upgrade_check_file_path(&self) -> PathBuf {
     self.root.join("latest.txt")
