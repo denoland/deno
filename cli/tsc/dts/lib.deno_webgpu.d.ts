@@ -1216,6 +1216,7 @@ interface GPUCopyExternalImageDestInfo extends GPUTexelCopyTextureInfo {
 /** @category GPU */
 type GPUCopyExternalImageSource = ImageBitmap;
 
+/** @category GPU */
 interface GPUCopyExternalImageSourceInfo {
   source: GPUCopyExternalImageSource;
   origin?: GPUOrigin2D;
