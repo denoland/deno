@@ -40,6 +40,7 @@ use crate::FastStaticString;
 use crate::JsRuntime;
 use crate::ModuleCodeBytes;
 use crate::ModuleLoadResponse;
+use crate::ModuleResolveResponse;
 use crate::ModuleSource;
 use crate::ModuleSourceCode;
 use crate::ModuleSpecifier;
@@ -868,17 +869,43 @@ impl ModuleMap {
         return Err(ModuleError::Exception(exception));
       }
 
-      let module_specifier = match self.resolve(
-        &import_specifier,
-        name.as_ref(),
-        if is_dynamic_import {
-          ResolutionKind::DynamicImport
-        } else {
-          ResolutionKind::Import
-        },
-      ) {
-        Ok(s) => s,
-        Err(e) => return Err(ModuleError::Core(e)),
+      let resolve_kind = if is_dynamic_import {
+        ResolutionKind::DynamicImport
+      } else {
+        ResolutionKind::Import
+      };
+      let resolve_response =
+        self.resolve(&import_specifier, name.as_ref(), resolve_kind);
+      let (module_specifier, needs_resolve) = match resolve_response {
+        ModuleResolveResponse::Sync(Ok(s)) => (s, false),
+        ModuleResolveResponse::Sync(Err(e)) => {
+          return Err(ModuleError::Core(e.into()));
+        }
+        ModuleResolveResponse::Async(_) => {
+          // Async resolution for child imports is deferred to
+          // RecursiveModuleLoad. Use the raw specifier as a best-effort
+          // parse for now.
+          let specifier = match ModuleSpecifier::parse(&import_specifier) {
+            Ok(s) => s,
+            Err(_) => {
+              // Try resolving as relative URL with the module name as base
+              match ModuleSpecifier::parse(name.as_ref())
+                .and_then(|base| base.join(&import_specifier))
+              {
+                Ok(s) => s,
+                Err(e) => {
+                  return Err(ModuleError::Core(
+                    JsErrorBox::type_error(format!(
+                      "Cannot resolve module \"{import_specifier}\": {e}"
+                    ))
+                    .into(),
+                  ));
+                }
+              }
+            }
+          };
+          (specifier, true)
+        }
       };
       let requested_module_type =
         get_requested_module_type_from_attributes(&attributes);
@@ -902,6 +929,7 @@ impl ModuleMap {
           v8::ModuleImportPhase::kSource => ModuleImportPhase::Source,
           v8::ModuleImportPhase::kDefer => ModuleImportPhase::Defer,
         },
+        needs_resolve,
       };
       requests.push(request);
     }
@@ -1226,13 +1254,16 @@ impl ModuleMap {
 
   /// Resolve provided module. This function calls out to `loader.resolve`,
   /// but applies some additional checks that disallow resolving/importing
-  /// certain modules (eg. `ext:` or `node:` modules)
+  /// certain modules (eg. `ext:` or `node:` modules).
+  ///
+  /// Returns a `ModuleResolveResponse` which may be sync or async depending
+  /// on the loader implementation.
   pub fn resolve(
     &self,
     specifier: &str,
     referrer: &str,
     kind: ResolutionKind,
-  ) -> Result<ModuleSpecifier, CoreError> {
+  ) -> ModuleResolveResponse {
     if specifier.starts_with("ext:")
       && !referrer.starts_with("ext:")
       && !referrer.starts_with("node:")
@@ -1249,14 +1280,44 @@ impl ModuleMap {
         "Importing ext: modules is only allowed from ext: and node: modules. Tried to import {} from {}",
         specifier, referrer
       );
-      return Err(JsErrorBox::type_error(msg).into());
+      return ModuleResolveResponse::Sync(Err(JsErrorBox::type_error(msg)));
     }
 
-    self
-      .loader
-      .borrow()
-      .resolve(specifier, referrer, kind)
-      .map_err(|e| e.into())
+    self.loader.borrow().resolve(specifier, referrer, kind)
+  }
+
+  /// Synchronously resolve a module. This calls `resolve()` and unwraps the
+  /// sync result. Panics if the loader returns an async response.
+  ///
+  /// This is used in the V8 `module_resolve_callback` path, where by
+  /// instantiation time all modules are already resolved.
+  pub fn resolve_sync(
+    &self,
+    specifier: &str,
+    referrer: &str,
+    kind: ResolutionKind,
+  ) -> Result<ModuleSpecifier, CoreError> {
+    match self.resolve(specifier, referrer, kind) {
+      ModuleResolveResponse::Sync(result) => result.map_err(|e| e.into()),
+      ModuleResolveResponse::Async(_) => {
+        panic!(
+          "Cannot synchronously resolve an async ModuleResolveResponse during module instantiation"
+        )
+      }
+    }
+  }
+
+  /// Asynchronously resolve a module. Handles both sync and async responses.
+  pub async fn resolve_async(
+    &self,
+    specifier: &str,
+    referrer: &str,
+    kind: ResolutionKind,
+  ) -> Result<ModuleSpecifier, CoreError> {
+    match self.resolve(specifier, referrer, kind) {
+      ModuleResolveResponse::Sync(result) => result.map_err(|e| e.into()),
+      ModuleResolveResponse::Async(fut) => fut.await.map_err(|e| e.into()),
+    }
   }
 
   /// Called by `module_resolve_callback` during module instantiation.
@@ -1268,7 +1329,7 @@ impl ModuleMap {
     import_attributes: HashMap<String, String>,
   ) -> Option<v8::Local<'s, v8::Module>> {
     let resolved_specifier =
-      match self.resolve(specifier, referrer, ResolutionKind::Import) {
+      match self.resolve_sync(specifier, referrer, ResolutionKind::Import) {
         Ok(s) => s,
         Err(e) => {
           crate::error::throw_js_error_class(scope, &e);
@@ -1308,11 +1369,14 @@ impl ModuleMap {
     resolver_handle: v8::Global<v8::PromiseResolver>,
     cped_handle: v8::Global<v8::Value>,
   ) -> bool {
-    let resolve_result =
+    let resolve_response =
       self.resolve(&specifier, &referrer, ResolutionKind::DynamicImport);
 
-    if phase == ModuleImportPhase::Evaluation
-      && let Ok(module_specifier) = &resolve_result
+    // Fast path: if resolution is synchronous and module is already loaded,
+    // we can resolve the import immediately without async work.
+    if let ModuleResolveResponse::Sync(ref resolve_result) = resolve_response
+      && phase == ModuleImportPhase::Evaluation
+      && let Ok(module_specifier) = resolve_result
       && let Some(id) = self
         .data
         .borrow()
@@ -1371,14 +1435,11 @@ impl ModuleMap {
     );
 
     let load_id = load.id();
-    let fut = match resolve_result {
-      Ok(_) => async move {
-        let mut load = load;
-        (load_id, load.prepare().await.map(|()| load))
-      }
-      .boxed_local(),
-      Err(error) => async move { (load_id, Err(error)) }.boxed_local(),
-    };
+    let fut = async move {
+      let mut load = load;
+      (load_id, load.prepare().await.map(|()| load))
+    }
+    .boxed_local();
 
     self.preparing_dynamic_imports.push(fut);
 
