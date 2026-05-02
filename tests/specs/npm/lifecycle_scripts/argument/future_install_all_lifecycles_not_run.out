@@ -1,0 +1,16 @@
+Download [WILDCARD]
+Installed [WILDLINE] packages in [WILDCARD]
+Reused [WILDLINE] packages from cache
+Downloaded [WILDLINE] packages from JSR
+Downloaded [WILDLINE] packages from npm
+[WILDLINE]
+
+Dependencies:
+[WILDCARD]
+╭ Warning
+│
+│  Ignored build scripts for packages:
+│  npm:@denotest/node-lifecycle-scripts@1.0.0
+│
+│  Run "deno approve-scripts" to run build scripts.
+╰─

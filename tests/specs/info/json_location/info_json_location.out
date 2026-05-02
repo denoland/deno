@@ -1,5 +1,6 @@
 {
   "version": 1,
+  "denoVersion": "[WILDLINE].[WILDLINE].[WILDLINE]",
   "denoDir": "[WILDCARD]",
   "modulesCache": "[WILDCARD]remote",
   "npmCache": "[WILDCARD]npm",

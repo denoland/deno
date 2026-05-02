@@ -1,0 +1,592 @@
+// Copyright 2018-2026 the Deno authors. MIT license.
+
+mod windows_shim;
+
+use std::borrow::Cow;
+use std::collections::HashMap;
+use std::collections::HashSet;
+use std::collections::VecDeque;
+use std::path::Path;
+use std::path::PathBuf;
+
+use deno_npm::NpmPackageExtraInfo;
+use deno_npm::NpmPackageId;
+use deno_npm::NpmResolutionPackage;
+use deno_npm::resolution::NpmResolutionSnapshot;
+use sys_traits::FsCreateDirAll;
+use sys_traits::FsFileMetadata;
+use sys_traits::FsFileSetPermissions;
+use sys_traits::FsMetadata;
+use sys_traits::FsMetadataValue;
+use sys_traits::FsOpen;
+use sys_traits::FsReadLink;
+use sys_traits::FsRemoveFile;
+use sys_traits::FsSymlinkFile;
+use sys_traits::FsWrite;
+use sys_traits::PathsInErrorsExt;
+use sys_traits::SysWithPathsInErrors;
+
+/// Returns the name of the default binary for the given package.
+/// This is the package name without the organization (`@org/`), if any.
+fn default_bin_name(package: &NpmResolutionPackage) -> &str {
+  package
+    .id
+    .nv
+    .name
+    .as_str()
+    .rsplit_once('/')
+    .map(|(_, name)| name)
+    .unwrap_or(package.id.nv.name.as_str())
+}
+
+pub fn warn_missing_entrypoint(
+  bin_name: &str,
+  package_path: &Path,
+  entrypoint: &Path,
+) {
+  log::warn!(
+    "{} Trying to set up '{}' bin for \"{}\", but the entry point \"{}\" doesn't exist.",
+    deno_terminal::colors::yellow("Warning"),
+    bin_name,
+    package_path.display(),
+    entrypoint.display()
+  );
+}
+
+pub struct BinEntries<'a, TSys: SetupBinEntrySys> {
+  /// Packages that have colliding bin names
+  collisions: HashSet<&'a NpmPackageId>,
+  seen_names: HashMap<String, &'a NpmPackageId>,
+  /// The bin entries
+  entries: Vec<(&'a NpmResolutionPackage, PathBuf, NpmPackageExtraInfo)>,
+  sorted: bool,
+  sys: SysWithPathsInErrors<'a, TSys>,
+}
+
+impl<'a, TSys: SetupBinEntrySys> BinEntries<'a, TSys> {
+  pub fn new(sys: SysWithPathsInErrors<'a, TSys>) -> Self {
+    Self {
+      collisions: Default::default(),
+      seen_names: Default::default(),
+      entries: Default::default(),
+      sorted: false,
+      sys,
+    }
+  }
+
+  /// Add a new bin entry (package with a bin field)
+  pub fn add<'b>(
+    &mut self,
+    package: &'a NpmResolutionPackage,
+    extra: &'b NpmPackageExtraInfo,
+    package_path: PathBuf,
+  ) {
+    let Some(bin) = extra.bin.as_ref() else {
+      // likely lockfile incorrectly said that the package has a bin
+      return;
+    };
+    self.sorted = false;
+    // check for a new collision, if we haven't already
+    // found one
+    match bin {
+      deno_npm::registry::NpmPackageVersionBinEntry::String(_) => {
+        let bin_name = default_bin_name(package);
+
+        if let Some(other) =
+          self.seen_names.insert(bin_name.to_string(), &package.id)
+        {
+          self.collisions.insert(&package.id);
+          self.collisions.insert(other);
+        }
+      }
+      deno_npm::registry::NpmPackageVersionBinEntry::Map(entries) => {
+        for name in entries.keys() {
+          if let Some(other) =
+            self.seen_names.insert(name.to_string(), &package.id)
+          {
+            self.collisions.insert(&package.id);
+            self.collisions.insert(other);
+          }
+        }
+      }
+    }
+
+    self.entries.push((package, package_path, extra.clone()));
+  }
+
+  fn for_each_entry(
+    &mut self,
+    snapshot: &NpmResolutionSnapshot,
+    mut already_seen: impl FnMut(
+      SysWithPathsInErrors<'a, TSys>,
+      &Path,
+      &str, // bin script
+    ) -> Result<(), std::io::Error>,
+    mut new: impl FnMut(
+      SysWithPathsInErrors<'a, TSys>,
+      &NpmResolutionPackage,
+      &NpmPackageExtraInfo,
+      &Path,
+      &str, // bin name
+      &str, // bin script
+    ) -> Result<(), std::io::Error>,
+    mut filter: impl FnMut(&NpmResolutionPackage) -> bool,
+  ) -> Result<(), std::io::Error> {
+    if !self.collisions.is_empty() && !self.sorted {
+      // walking the dependency tree to find out the depth of each package
+      // is sort of expensive, so we only do it if there's a collision
+      sort_by_depth(snapshot, &mut self.entries, &mut self.collisions);
+      self.sorted = true;
+    }
+
+    let mut seen = HashSet::new();
+
+    for (package, package_path, extra) in &self.entries {
+      if !filter(package) {
+        continue;
+      }
+      if let Some(bin_entries) = &extra.bin {
+        match bin_entries {
+          deno_npm::registry::NpmPackageVersionBinEntry::String(script) => {
+            let name = default_bin_name(package);
+            if !seen.insert(name) {
+              already_seen(self.sys, package_path, script)?;
+              // we already set up a bin entry with this name
+              continue;
+            }
+            new(self.sys, package, extra, package_path, name, script)?;
+          }
+          deno_npm::registry::NpmPackageVersionBinEntry::Map(entries) => {
+            for (name, script) in entries {
+              if !seen.insert(name) {
+                already_seen(self.sys, package_path, script)?;
+                // we already set up a bin entry with this name
+                continue;
+              }
+              new(self.sys, package, extra, package_path, name, script)?;
+            }
+          }
+        }
+      }
+    }
+
+    Ok(())
+  }
+
+  /// Collect the bin entries into a vec of (name, script path)
+  pub fn collect_bin_files(
+    &mut self,
+    snapshot: &NpmResolutionSnapshot,
+  ) -> Vec<(String, PathBuf)> {
+    let mut bins = Vec::new();
+    self
+      .for_each_entry(
+        snapshot,
+        |_, _, _| Ok(()),
+        |_, _, _, package_path, name, script| {
+          bins.push((name.to_string(), package_path.join(script)));
+          Ok(())
+        },
+        |_| true,
+      )
+      .unwrap();
+    bins
+  }
+
+  fn set_up_entries_filtered(
+    mut self,
+    snapshot: &NpmResolutionSnapshot,
+    bin_node_modules_dir_path: &Path,
+    filter: impl FnMut(&NpmResolutionPackage) -> bool,
+    mut handler: impl FnMut(&EntrySetupOutcome<'_>),
+  ) -> Result<(), std::io::Error> {
+    // todo(dsherret): change the code below to create this
+    // folder on NotExists error instead of doing this check for
+    // if it exists first
+    if !self.entries.is_empty()
+      && !self.sys.fs_exists_no_err(bin_node_modules_dir_path)
+    {
+      self.sys.fs_create_dir_all(bin_node_modules_dir_path)?;
+    }
+
+    self.for_each_entry(
+      snapshot,
+      |sys, _package_path, _script| {
+        if !sys_traits::impls::is_windows() {
+          let path = _package_path.join(_script);
+          make_executable_if_exists(sys.as_ref(), &path)?;
+        }
+        Ok(())
+      },
+      |sys, package, extra, package_path, name, script| {
+        let outcome = set_up_bin_entry(
+          sys.as_ref(),
+          package,
+          extra,
+          name,
+          script,
+          package_path,
+          bin_node_modules_dir_path,
+        )?;
+        handler(&outcome);
+        Ok(())
+      },
+      filter,
+    )?;
+
+    Ok(())
+  }
+
+  /// Finish setting up the bin entries, writing the necessary files
+  /// to disk.
+  pub fn finish(
+    self,
+    snapshot: &NpmResolutionSnapshot,
+    bin_node_modules_dir_path: &Path,
+    handler: impl FnMut(&EntrySetupOutcome<'_>),
+  ) -> Result<(), std::io::Error> {
+    self.set_up_entries_filtered(
+      snapshot,
+      bin_node_modules_dir_path,
+      |_| true,
+      handler,
+    )
+  }
+
+  /// Finish setting up the bin entries, writing the necessary files
+  /// to disk.
+  pub fn finish_only(
+    self,
+    snapshot: &NpmResolutionSnapshot,
+    bin_node_modules_dir_path: &Path,
+    handler: impl FnMut(&EntrySetupOutcome<'_>),
+    only: &HashSet<&NpmPackageId>,
+  ) -> Result<(), std::io::Error> {
+    self.set_up_entries_filtered(
+      snapshot,
+      bin_node_modules_dir_path,
+      |package| only.contains(&package.id),
+      handler,
+    )
+  }
+}
+
+// walk the dependency tree to find out the depth of each package
+// that has a bin entry, then sort them by depth
+fn sort_by_depth(
+  snapshot: &NpmResolutionSnapshot,
+  bin_entries: &mut [(&NpmResolutionPackage, PathBuf, NpmPackageExtraInfo)],
+  collisions: &mut HashSet<&NpmPackageId>,
+) {
+  enum Entry<'a> {
+    Pkg(&'a NpmPackageId),
+    IncreaseDepth,
+  }
+
+  let mut seen = HashSet::new();
+  let mut depths: HashMap<&NpmPackageId, u64> =
+    HashMap::with_capacity(collisions.len());
+
+  let mut queue = VecDeque::new();
+  queue.extend(snapshot.top_level_packages().map(Entry::Pkg));
+  seen.extend(snapshot.top_level_packages());
+  queue.push_back(Entry::IncreaseDepth);
+
+  let mut current_depth = 0u64;
+
+  while let Some(entry) = queue.pop_front() {
+    if collisions.is_empty() {
+      break;
+    }
+    let id = match entry {
+      Entry::Pkg(id) => id,
+      Entry::IncreaseDepth => {
+        current_depth += 1;
+        if queue.is_empty() {
+          break;
+        }
+        queue.push_back(Entry::IncreaseDepth);
+        continue;
+      }
+    };
+    if let Some(package) = snapshot.package_from_id(id) {
+      if collisions.remove(&package.id) {
+        depths.insert(&package.id, current_depth);
+      }
+      for dep in package.dependencies.values() {
+        if seen.insert(dep) {
+          queue.push_back(Entry::Pkg(dep));
+        }
+      }
+    }
+  }
+
+  bin_entries.sort_by(|(a, _, _), (b, _, _)| {
+    depths
+      .get(&a.id)
+      .unwrap_or(&u64::MAX)
+      .cmp(depths.get(&b.id).unwrap_or(&u64::MAX))
+      .then_with(|| a.id.nv.cmp(&b.id.nv).reverse())
+  });
+}
+
+#[sys_traits::auto_impl]
+pub trait SetupBinEntrySys:
+  FsOpen
+  + FsWrite
+  + FsSymlinkFile
+  + FsRemoveFile
+  + FsCreateDirAll
+  + FsMetadata
+  + FsReadLink
+{
+}
+
+pub fn set_up_bin_entry<'a>(
+  sys: &impl SetupBinEntrySys,
+  package: &'a NpmResolutionPackage,
+  extra: &'a NpmPackageExtraInfo,
+  bin_name: &'a str,
+  bin_script: &str,
+  package_path: &'a Path,
+  bin_node_modules_dir_path: &Path,
+) -> Result<EntrySetupOutcome<'a>, std::io::Error> {
+  if sys_traits::impls::is_windows() {
+    windows_shim::set_up_bin_shim(
+      sys,
+      package,
+      extra,
+      bin_name,
+      bin_script,
+      package_path,
+      bin_node_modules_dir_path,
+    )?;
+    Ok(EntrySetupOutcome::Success)
+  } else {
+    symlink_bin_entry(
+      sys,
+      package,
+      extra,
+      bin_name,
+      bin_script,
+      package_path,
+      bin_node_modules_dir_path,
+    )
+  }
+}
+
+/// Make the file at `path` executable if it exists.
+/// Returns `true` if the file exists, `false` otherwise.
+fn make_executable_if_exists(
+  sys: &impl FsOpen,
+  path: &Path,
+) -> Result<bool, std::io::Error> {
+  let sys = sys.with_paths_in_errors();
+  // Open read-only first to check existing permissions. Some npm tarballs
+  // ship bin files as read+execute without write (e.g. mode 555), so opening
+  // with O_RDWR would fail with EACCES.
+  let mut read_options = sys_traits::OpenOptions::new();
+  read_options.read = true;
+  let file = match sys.fs_open(path, &read_options) {
+    Ok(file) => file,
+    Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+      return Ok(false);
+    }
+    Err(err) => return Err(err),
+  };
+  let metadata = file.fs_file_metadata()?;
+  let mode = metadata.mode()?;
+  drop(file);
+
+  if mode & 0o111 == 0 {
+    // The file is not executable — reopen with write to set permissions.
+    let mut write_options = sys_traits::OpenOptions::new();
+    write_options.read = true;
+    write_options.write = true;
+    write_options.truncate = false;
+    let mut file = sys.fs_open(path, &write_options)?;
+    file.fs_file_set_permissions(mode | 0o111)?;
+  }
+
+  Ok(true)
+}
+
+pub enum EntrySetupOutcome<'a> {
+  MissingEntrypoint {
+    bin_name: &'a str,
+    package_path: &'a Path,
+    entrypoint: PathBuf,
+    package: &'a NpmResolutionPackage,
+    extra: &'a NpmPackageExtraInfo,
+  },
+  Success,
+}
+
+impl EntrySetupOutcome<'_> {
+  pub fn warn_if_failed(&self) {
+    match self {
+      EntrySetupOutcome::MissingEntrypoint {
+        bin_name,
+        package_path,
+        entrypoint,
+        ..
+      } => warn_missing_entrypoint(bin_name, package_path, entrypoint),
+      EntrySetupOutcome::Success => {}
+    }
+  }
+}
+
+fn relative_path(from: &Path, to: &Path) -> Option<PathBuf> {
+  pathdiff::diff_paths(to, from)
+}
+
+fn symlink_bin_entry<'a>(
+  sys: &(impl FsOpen + FsSymlinkFile + FsRemoveFile + FsReadLink),
+  package: &'a NpmResolutionPackage,
+  extra: &'a NpmPackageExtraInfo,
+  bin_name: &'a str,
+  bin_script: &str,
+  package_path: &'a Path,
+  bin_node_modules_dir_path: &Path,
+) -> Result<EntrySetupOutcome<'a>, std::io::Error> {
+  let sys = sys.with_paths_in_errors();
+  let link = bin_node_modules_dir_path.join(bin_name);
+  let original = package_path.join(bin_script);
+
+  let original_relative = relative_path(bin_node_modules_dir_path, &original)
+    .map(Cow::Owned)
+    .unwrap_or_else(|| Cow::Borrowed(&original));
+
+  if let Ok(original_link) = sys.fs_read_link(&link)
+    && *original_link == *original_relative
+  {
+    return Ok(EntrySetupOutcome::Success);
+  }
+
+  let found = make_executable_if_exists(sys.as_ref(), &original)?;
+  if !found {
+    return Ok(EntrySetupOutcome::MissingEntrypoint {
+      bin_name,
+      package_path,
+      entrypoint: original,
+      package,
+      extra,
+    });
+  }
+
+  if let Err(err) = sys.fs_symlink_file(&*original_relative, &link) {
+    if err.kind() == std::io::ErrorKind::AlreadyExists {
+      // remove and retry
+      sys.fs_remove_file(&link)?;
+      sys.fs_symlink_file(&*original_relative, &link)?;
+      return Ok(EntrySetupOutcome::Success);
+    }
+    return Err(err);
+  }
+
+  Ok(EntrySetupOutcome::Success)
+}
+
+#[cfg(test)]
+mod test {
+  use std::path::PathBuf;
+
+  use sys_traits::FsCreateDirAll;
+  use sys_traits::FsRemoveDirAll;
+  #[cfg(unix)]
+  use sys_traits::FsWrite;
+
+  use super::*;
+
+  fn test_dir(name: &str) -> (PathBuf, impl Drop) {
+    static COUNTER: std::sync::atomic::AtomicU64 =
+      std::sync::atomic::AtomicU64::new(0);
+    let id = COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let sys = sys_traits::impls::RealSys;
+    let dir = sys_traits::EnvTempDir::env_temp_dir(&sys)
+      .unwrap()
+      .join(format!("deno_test_bin_entries_{name}_{id}"));
+    sys.fs_create_dir_all(&dir).unwrap();
+    struct Cleanup(PathBuf);
+    impl Drop for Cleanup {
+      fn drop(&mut self) {
+        let _ = sys_traits::impls::RealSys.fs_remove_dir_all(&self.0);
+      }
+    }
+    let cleanup = Cleanup(dir.clone());
+    (dir, cleanup)
+  }
+
+  #[cfg(unix)]
+  fn write_and_chmod(path: &Path, contents: &[u8], mode: u32) {
+    let sys = sys_traits::impls::RealSys;
+    sys.fs_write(path, contents).unwrap();
+    let mut open_options = sys_traits::OpenOptions::new();
+    open_options.read = true;
+    open_options.write = true;
+    let mut file = sys.fs_open(path, &open_options).unwrap();
+    file.fs_file_set_permissions(mode).unwrap();
+  }
+
+  #[cfg(unix)]
+  fn file_mode(path: &Path) -> u32 {
+    let sys = sys_traits::impls::RealSys;
+    let mut open_options = sys_traits::OpenOptions::new();
+    open_options.read = true;
+    let file = sys.fs_open(path, &open_options).unwrap();
+    let metadata = file.fs_file_metadata().unwrap();
+    metadata.mode().unwrap()
+  }
+
+  /// Regression test for https://github.com/denoland/deno/issues/29847
+  /// Some npm tarballs ship bin files with read+execute but no write
+  /// permission (mode 555). make_executable_if_exists must not fail on these.
+  #[cfg(unix)]
+  #[test]
+  fn make_executable_readonly_bin_file() {
+    let sys = sys_traits::impls::RealSys;
+    let (dir, _cleanup) = test_dir("readonly");
+
+    // Create a file with mode 555 (r-xr-xr-x) — executable but not writable
+    let bin_path = dir.join("my-bin");
+    write_and_chmod(&bin_path, b"#!/bin/sh\necho hi", 0o555);
+
+    // Should succeed without EACCES
+    let result = make_executable_if_exists(&sys, &bin_path);
+    assert!(result.is_ok());
+    assert!(result.unwrap()); // file exists
+
+    // Permissions should still include execute
+    assert_ne!(file_mode(&bin_path) & 0o111, 0);
+  }
+
+  /// Verify make_executable_if_exists adds execute bit when missing.
+  #[cfg(unix)]
+  #[test]
+  fn make_executable_non_executable_file() {
+    let sys = sys_traits::impls::RealSys;
+    let (dir, _cleanup) = test_dir("non_exec");
+
+    // Create a file with mode 644 (rw-r--r--) — no execute bit
+    let bin_path = dir.join("my-bin");
+    write_and_chmod(&bin_path, b"#!/bin/sh\necho hi", 0o644);
+
+    let result = make_executable_if_exists(&sys, &bin_path);
+    assert!(result.is_ok());
+    assert!(result.unwrap());
+
+    // Execute bit should now be set
+    assert_ne!(file_mode(&bin_path) & 0o111, 0);
+  }
+
+  #[test]
+  fn make_executable_nonexistent_file() {
+    let sys = sys_traits::impls::RealSys;
+    let (dir, _cleanup) = test_dir("nonexistent");
+    let bin_path = dir.join("does-not-exist");
+
+    let result = make_executable_if_exists(&sys, &bin_path);
+    assert!(result.is_ok());
+    assert!(!result.unwrap()); // file does not exist
+  }
+}

@@ -1,4 +1,4 @@
-Check [WILDCARD]/exit_sanitizer.ts
+Check [WILDCARD]exit_sanitizer.ts
 running 3 tests from [WILDCARD]/exit_sanitizer.ts
 exit(0) ... FAILED ([WILDCARD])
 exit(1) ... FAILED ([WILDCARD])

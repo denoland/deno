@@ -1,4 +1,0 @@
-{
-  "args": "publish --token 'sadfasdf'",
-  "output": "bun_specifier.out"
-}

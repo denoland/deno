@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 // Documentation partially adapted from [MDN](https://developer.mozilla.org/),
 // by Mozilla Contributors, which is licensed under CC-BY-SA 2.5.
@@ -14,6 +14,7 @@
 /// <reference lib="deno.websocket" />
 /// <reference lib="deno.crypto" />
 /// <reference lib="deno.ns" />
+/// <reference lib="deno.broadcast_channel" />
 
 /** @category Wasm */
 declare namespace WebAssembly {
@@ -361,11 +362,8 @@ declare namespace WebAssembly {
  * @category Platform
  */
 declare function setTimeout(
-  /** callback function to execute when timer expires */
-  cb: (...args: any[]) => void,
-  /** delay in ms */
+  cb: string | ((...args: any[]) => void),
   delay?: number,
-  /** arguments passed to callback function */
   ...args: any[]
 ): number;
 
@@ -379,11 +377,8 @@ declare function setTimeout(
  * @category Platform
  */
 declare function setInterval(
-  /** callback function to execute when timer expires */
-  cb: (...args: any[]) => void,
-  /** delay in ms */
+  cb: string | ((...args: any[]) => void),
   delay?: number,
-  /** arguments passed to callback function */
   ...args: any[]
 ): number;
 
@@ -456,9 +451,28 @@ interface DOMStringList {
 }
 
 /** @category Platform */
-type BufferSource = ArrayBufferView | ArrayBuffer;
+type BufferSource = ArrayBufferView<ArrayBuffer> | ArrayBuffer;
 
-/** @category I/O */
+/** @category Platform */
+type AllowSharedBufferSource = ArrayBufferView | ArrayBufferLike;
+
+/**
+ * A global console object that provides methods for logging, debugging, and error reporting.
+ * The console object provides access to the browser's or runtime's debugging console functionality.
+ * It allows developers to output text and data for debugging purposes.
+ *
+ * @example
+ * ```typescript
+ * console.log("Hello, world!");
+ * console.error("An error occurred");
+ * console.warn("Warning message");
+ * console.debug("Debug information");
+ * ```
+ *
+ * @see https://developer.mozilla.org/en-US/docs/Web/API/console
+ *
+ * @category I/O
+ */
 declare var console: Console;
 
 /** @category Events */
@@ -523,39 +537,192 @@ interface WorkerOptions {
   name?: string;
 }
 
-/** @category Workers */
+/**
+ * The Worker interface represents a background task that can be created via the
+ * `new Worker()` constructor. Workers run in a separate thread, allowing for parallel execution
+ * without blocking the main thread.
+ *
+ * Workers can be used to:
+ * - Perform CPU-intensive calculations
+ * - Process large datasets
+ * - Handle tasks in parallel with the main execution thread
+ * - Run code in isolation with its own event loop
+ *
+ * @example
+ * ```ts
+ * // Creating a basic worker (main.ts)
+ * const worker = new Worker(new URL("./worker.ts", import.meta.url).href, {
+ *   type: "module"
+ * });
+ *
+ * // Send data to the worker
+ * worker.postMessage({ command: "start", data: [1, 2, 3, 4] });
+ *
+ * // Receive messages from the worker
+ * worker.onmessage = (e) => {
+ *   console.log("Result from worker:", e.data);
+ *   worker.terminate(); // Stop the worker when done
+ * };
+ *
+ * // Handle worker errors
+ * worker.onerror = (e) => {
+ *   console.error("Worker error:", e.message);
+ * };
+ * ```
+ *
+ * @example
+ * ```ts
+ * // Worker file (worker.ts)
+ * // Worker context: self refers to the worker's global scope
+ * self.onmessage = (e) => {
+ *   if (e.data.command === "start") {
+ *     // Perform calculation with the data
+ *     const result = e.data.data.reduce((sum, num) => sum + num, 0);
+ *     // Send result back to main thread
+ *     self.postMessage(result);
+ *   }
+ * };
+ * ```
+ *
+ * @category Workers
+ */
 interface Worker extends EventTarget {
-  onerror: (this: Worker, e: ErrorEvent) => any | null;
-  onmessage: (this: Worker, e: MessageEvent) => any | null;
-  onmessageerror: (this: Worker, e: MessageEvent) => any | null;
+  /** Event handler for error events. Fired when an error occurs in the worker's execution context. */
+  onerror: ((this: Worker, e: ErrorEvent) => any) | null;
+
+  /** Event handler for message events. Fired when the worker sends data back to the main thread. */
+  onmessage: ((this: Worker, e: MessageEvent) => any) | null;
+
+  /** Event handler for message error events. Fired when a message cannot be deserialized. */
+  onmessageerror: ((this: Worker, e: MessageEvent) => any) | null;
+
+  /**
+   * Sends a message to the worker, transferring ownership of the specified transferable objects.
+   *
+   * @example
+   * ```ts
+   * // Create a buffer to transfer (not copy) to the worker
+   * const buffer = new ArrayBuffer(1024);
+   * worker.postMessage({ data: buffer }, [buffer]);
+   * // After transfer, buffer is no longer usable in the main thread
+   * ```
+   */
   postMessage(message: any, transfer: Transferable[]): void;
+
+  /**
+   * Sends a message to the worker.
+   *
+   * @example
+   * ```ts
+   * // Send a simple message with data
+   * worker.postMessage({
+   *   command: "process",
+   *   data: [1, 2, 3, 4],
+   *   settings: { optimize: true }
+   * });
+   * ```
+   */
   postMessage(message: any, options?: StructuredSerializeOptions): void;
+
+  /** Adds an event listener to the worker. */
   addEventListener<K extends keyof WorkerEventMap>(
     type: K,
     listener: (this: Worker, ev: WorkerEventMap[K]) => any,
     options?: boolean | AddEventListenerOptions,
   ): void;
+
+  /** Adds an event listener for events whose type attribute value is type. */
   addEventListener(
     type: string,
     listener: EventListenerOrEventListenerObject,
     options?: boolean | AddEventListenerOptions,
   ): void;
+
+  /** Removes an event listener from the worker. */
   removeEventListener<K extends keyof WorkerEventMap>(
     type: K,
     listener: (this: Worker, ev: WorkerEventMap[K]) => any,
     options?: boolean | EventListenerOptions,
   ): void;
+
+  /** Removes an event listener from the worker. */
   removeEventListener(
     type: string,
     listener: EventListenerOrEventListenerObject,
     options?: boolean | EventListenerOptions,
   ): void;
+
+  /**
+   * Immediately terminates the worker.
+   * This does not offer the worker an opportunity to finish its operations;
+   * it is stopped at once.
+   *
+   * @example
+   * ```ts
+   * // Create a worker
+   * const worker = new Worker(new URL("./worker.ts", import.meta.url).href, {
+   *   type: "module"
+   * });
+   *
+   * // Some time later, when you're done with the worker
+   * worker.terminate();
+   * // The worker is now terminated and its resources are freed
+   * ```
+   */
   terminate(): void;
 }
 
-/** @category Workers */
+/**
+ * The Worker constructor creates a new Worker object that executes code in a separate thread.
+ *
+ * Workers can import ES modules when created with the `type: "module"` option.
+ *
+ * @category Workers
+ */
 declare var Worker: {
   readonly prototype: Worker;
+
+  /**
+   * Creates a new Worker object.
+   *
+   * @param specifier - URL or file path for the worker's script.
+   *                    When using a relative path, use `new URL("./worker.ts", import.meta.url)`
+   *                    to ensure the path is correctly resolved relative to the current module.
+   * @param options - Worker options including type and name
+   *
+   * @example Module worker with URL resolution
+   * ```ts
+   * // Create a worker that can use ES modules
+   * const worker = new Worker(
+   *   new URL("./workers/heavy_computation.ts", import.meta.url).href,
+   *   { type: "module", name: "computation-worker" }
+   * );
+   * ```
+   *
+   * @example Worker communication pattern
+   * ```ts
+   * // Main thread
+   * const worker = new Worker(new URL("./worker.ts", import.meta.url).href, { type: "module" });
+   *
+   * // Set up communication
+   * worker.postMessage({ action: "start", data: [1, 2, 3, 4, 5] });
+   *
+   * worker.onmessage = (e) => {
+   *   console.log("Worker result:", e.data);
+   *   if (e.data.status === "complete") {
+   *     worker.terminate();
+   *   }
+   * };
+   *
+   * // Worker file (worker.ts)
+   * // self.onmessage = (e) => {
+   * //   if (e.data.action === "start") {
+   * //     const result = e.data.data.reduce((a, b) => a + b, 0);
+   * //     self.postMessage({ status: "complete", result });
+   * //   }
+   * // };
+   * ```
+   */
   new (specifier: string | URL, options?: WorkerOptions): Worker;
 };
 
@@ -572,6 +739,23 @@ interface Performance extends EventTarget {
 
   /** Removes stored timestamp with the associated name. */
   clearMeasures(measureName?: string): void;
+
+  /** Removes all performance entries with an entryType of "resource" from the
+   * performance timeline and sets the size of the performance resource data
+   * buffer to zero.
+   *
+   * Note: Deno does not currently track resource timings, so this method has
+   * no observable effect. It is provided for API compatibility.
+   */
+  clearResourceTimings(): void;
+
+  /** Sets the desired size of the browser's resource timing buffer which
+   * stores the "resource" performance entries.
+   *
+   * Note: Deno does not currently track resource timings, so this method has
+   * no observable effect. It is provided for API compatibility.
+   */
+  setResourceTimingBufferSize(maxSize: number): void;
 
   getEntries(): PerformanceEntryList;
   getEntriesByName(name: string, type?: string): PerformanceEntryList;
@@ -738,6 +922,7 @@ declare var CustomEvent: {
 interface ErrorConstructor {
   /** See https://v8.dev/docs/stack-trace-api#stack-trace-collection-for-custom-exceptions. */
   captureStackTrace(error: Object, constructor?: Function): void;
+  stackTraceLimit: number;
   // TODO(nayeemrmn): Support `Error.prepareStackTrace()`. We currently use this
   // internally in a way that makes it unavailable for users.
 }
@@ -750,6 +935,6 @@ interface ErrorConstructor {
  * @category Fetch
  */
 declare function fetch(
-  input: Request | URL | string,
-  init?: RequestInit & { client: Deno.HttpClient },
+  input: RequestInfo | URL,
+  init?: RequestInit & { client?: Deno.HttpClient },
 ): Promise<Response>;

@@ -1,0 +1,29 @@
+{
+  "tempDir": true,
+  "tests": {
+    "import_meta_main": {
+      "steps": [
+        {
+          "args": "bundle --output=out.js main.ts",
+          "output": "import_meta_main.out"
+        },
+        {
+          "args": "run out.js",
+          "output": "b.ts false\na.ts false\nmain.ts true\na.ts from main.ts false\nb.ts from main.ts false\n"
+        }
+      ]
+    },
+    "jsr_specifier": {
+      "steps": [
+        {
+          "args": "bundle --output=out.js jsr:@denotest/checks-for-main@1.0.0",
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": "run out.js",
+          "output": "running as main\n"
+        }
+      ]
+    }
+  }
+}

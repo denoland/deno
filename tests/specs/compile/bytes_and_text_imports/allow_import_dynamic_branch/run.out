@@ -1,0 +1,5 @@
+[# This error is not ideal, but ok for now. It should say the permission issue instead]
+error: Uncaught (in promise) TypeError: Module not found: http://localhost:4545/run/invalid_utf8.ts
+await import("./branch.ts");
+^
+    at async file:///[WILDLINE]

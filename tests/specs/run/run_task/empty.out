@@ -1,4 +1,7 @@
-error: [SCRIPT_ARG] may only be omitted with --v8-flags=--help
+Please specify a [SCRIPT_ARG] or a task name.
 
-Usage: deno run [OPTIONS] [SCRIPT_ARG]...
-
+Available tasks:
+- main
+    deno run main.ts
+- main:foo
+    deno run main.ts

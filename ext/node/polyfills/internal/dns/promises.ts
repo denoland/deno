@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -27,18 +27,23 @@ import {
   validateBoolean,
   validateNumber,
   validateOneOf,
+  validatePort,
   validateString,
 } from "ext:deno_node/internal/validators.mjs";
 import { isIP } from "ext:deno_node/internal/net.ts";
 import {
+  dnsOrderToNumber,
   emitInvalidHostnameWarning,
+  getDefaultDnsOrder,
   getDefaultResolver,
-  getDefaultVerbatim,
   isFamily,
   isLookupOptions,
   Resolver as CallbackResolver,
   validateHints,
+  validDnsOrders,
 } from "ext:deno_node/internal/dns/utils.ts";
+
+export { getDefaultDnsOrder as getDefaultResultOrder };
 import type {
   LookupAddress,
   LookupAllOptions,
@@ -52,14 +57,16 @@ import {
   dnsException,
   ERR_INVALID_ARG_TYPE,
   ERR_INVALID_ARG_VALUE,
+  ERR_MISSING_ARGS,
+  handleDnsError,
 } from "ext:deno_node/internal/errors.ts";
-import {
-  ChannelWrapQuery,
-  getaddrinfo,
+import cares, {
+  type ChannelWrapQuery,
   GetAddrInfoReqWrap,
+  GetNameInfoReqWrap,
   QueryReqWrap,
 } from "ext:deno_node/internal_binding/cares_wrap.ts";
-import { toASCII } from "node:punycode";
+import { domainToASCII } from "ext:deno_node/internal/idna.ts";
 
 function onlookup(
   this: GetAddrInfoReqWrap,
@@ -105,7 +112,7 @@ function createLookupPromise(
   hostname: string,
   all: boolean,
   hints: number,
-  verbatim: boolean,
+  dnsOrder: string,
 ): Promise<void | LookupAddress | LookupAddress[]> {
   return new Promise((resolve, reject) => {
     if (!hostname) {
@@ -132,7 +139,13 @@ function createLookupPromise(
     req.resolve = resolve;
     req.reject = reject;
 
-    const err = getaddrinfo(req, toASCII(hostname), family, hints, verbatim);
+    const err = cares.getaddrinfo(
+      req,
+      domainToASCII(hostname),
+      family,
+      hints,
+      dnsOrderToNumber(dnsOrder),
+    );
 
     if (err) {
       reject(dnsException(err, "getaddrinfo", hostname));
@@ -165,7 +178,7 @@ export function lookup(
   let hints = 0;
   let family = 0;
   let all = false;
-  let verbatim = getDefaultVerbatim();
+  let dnsOrder = getDefaultDnsOrder();
 
   // Parse arguments
   if (hostname) {
@@ -185,8 +198,19 @@ export function lookup(
     }
 
     if (options?.family != null) {
-      validateOneOf(options.family, "options.family", validFamilies);
-      family = options.family;
+      // Accept both numeric (0, 4, 6) and string ('IPv4', 'IPv6') family values
+      // to match Node.js behavior
+      switch (options.family) {
+        case "IPv4":
+          family = 4;
+          break;
+        case "IPv6":
+          family = 6;
+          break;
+        default:
+          validateOneOf(options.family, "options.family", validFamilies);
+          family = options.family;
+      }
     }
 
     if (options?.all != null) {
@@ -196,11 +220,20 @@ export function lookup(
 
     if (options?.verbatim != null) {
       validateBoolean(options.verbatim, "options.verbatim");
-      verbatim = options.verbatim;
+      dnsOrder = options.verbatim ? "verbatim" : "ipv4first";
+    }
+
+    if ((options as Record<string, unknown>)?.order != null) {
+      validateOneOf(
+        (options as Record<string, unknown>).order,
+        "options.order",
+        validDnsOrders,
+      );
+      dnsOrder = (options as Record<string, unknown>).order as string;
     }
   }
 
-  return createLookupPromise(family, hostname, all, hints, verbatim);
+  return createLookupPromise(family, hostname, all, hints, dnsOrder);
 }
 
 function onresolve(
@@ -225,6 +258,52 @@ function onresolve(
   this.resolve(parsedRecords);
 }
 
+function onlookupservice(
+  this: GetNameInfoReqWrap,
+  err: Error | null,
+  hostname?: string,
+  service?: string,
+) {
+  if (err) {
+    this.reject(handleDnsError(err, "getnameinfo", this.address));
+    return;
+  }
+
+  this.resolve({ hostname: hostname!, service: service! });
+}
+
+function createLookupServicePromise(address: string, port: number) {
+  return new Promise((resolve, reject) => {
+    const req = new GetNameInfoReqWrap();
+
+    req.address = address;
+    req.port = port;
+    req.oncomplete = onlookupservice;
+    req.resolve = resolve;
+    req.reject = reject;
+
+    const errCode = cares.getnameinfo(req, address, port);
+
+    if (errCode) {
+      reject(dnsException(errCode, "getnameinfo", address));
+    }
+  });
+}
+
+export function lookupService(address: string, port: number) {
+  if (arguments.length !== 2) {
+    throw new ERR_MISSING_ARGS("address", "port");
+  }
+
+  if (isIP(address) === 0) {
+    throw new ERR_INVALID_ARG_VALUE("address", address);
+  }
+
+  port = validatePort(port);
+
+  return createLookupServicePromise(address, port);
+}
+
 function createResolverPromise(
   resolver: Resolver,
   bindingName: keyof ChannelWrapQuery,
@@ -241,7 +320,7 @@ function createResolverPromise(
     req.reject = reject;
     req.ttl = ttl;
 
-    const err = resolver._handle[bindingName](req, toASCII(hostname));
+    const err = resolver._handle[bindingName](req, domainToASCII(hostname));
 
     if (err) {
       reject(dnsException(err, bindingName, hostname));
@@ -495,7 +574,9 @@ export { Resolver };
 
 export default {
   lookup,
+  lookupService,
   Resolver,
+  getDefaultResultOrder: getDefaultDnsOrder,
   getServers,
   resolveAny,
   resolve4,

@@ -1,14 +1,14 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::rc::Rc;
 
-use deno_core::error::ResourceError;
 use deno_core::AsyncRefCell;
 use deno_core::CancelHandle;
 use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_core::ResourceTable;
+use deno_core::error::ResourceError;
 use deno_error::JsErrorBox;
 
 use crate::io::TcpStreamResource;
@@ -21,7 +21,7 @@ pub trait NetworkStreamTrait: Into<NetworkStream> {
   fn peer_address(&self) -> Result<NetworkStreamAddress, std::io::Error>;
 }
 
-#[allow(async_fn_in_trait)]
+#[allow(async_fn_in_trait, reason = "it's fine")]
 pub trait NetworkStreamListenerTrait:
   Into<NetworkStreamListener> + Send + Sync
 {
@@ -39,7 +39,7 @@ pub trait NetworkStreamListenerTrait:
 pub struct NetworkListenerResource<T: NetworkStreamListenerTrait> {
   pub listener: AsyncRefCell<T>,
   /// Associated data for this resource. Not required.
-  #[allow(unused)]
+  #[allow(unused, reason = "someone might not use it")]
   pub data: T::ResourceData,
   pub cancel: CancelHandle,
 }
@@ -47,7 +47,7 @@ pub struct NetworkListenerResource<T: NetworkStreamListenerTrait> {
 impl<T: NetworkStreamListenerTrait + 'static> Resource
   for NetworkListenerResource<T>
 {
-  fn name(&self) -> Cow<str> {
+  fn name(&self) -> Cow<'_, str> {
     T::RESOURCE_NAME.into()
   }
 
@@ -82,25 +82,57 @@ impl<T: NetworkStreamListenerTrait + 'static> NetworkListenerResource<T> {
 /// Each of the network streams has the exact same pattern for listening, accepting, etc, so
 /// we just codegen them all via macro to avoid repeating each one of these N times.
 macro_rules! network_stream {
-  ( $([$i:ident, $il:ident, $stream:path, $listener:path, $addr:path, $stream_resource:ty]),* ) => {
+  (
+    $(
+      $( #[ $meta:meta ] )?
+      [$i:ident, $il:ident, $stream:path, $listener:path, $addr:path, $stream_resource:ty, $read_half:ty, $write_half:ty, ]
+    ),*
+  ) => {
     /// A raw stream of one of the types handled by this extension.
     #[pin_project::pin_project(project = NetworkStreamProject)]
+    #[allow(clippy::large_enum_variant, reason = "TODO: investigate")]
     pub enum NetworkStream {
-      $( $i (#[pin] $stream), )*
+      $(
+        $( #[ $meta ] )?
+        $i (#[pin] $stream),
+      )*
     }
 
     /// A raw stream of one of the types handled by this extension.
     #[derive(Copy, Clone, PartialEq, Eq)]
     pub enum NetworkStreamType {
-      $( $i, )*
+      $(
+        $( #[ $meta ] )?
+        $i,
+      )*
     }
 
     /// A raw stream listener of one of the types handled by this extension.
     pub enum NetworkStreamListener {
-      $( $i( $listener ), )*
+      $(
+        $( #[ $meta ] )?
+        $i( $listener ),
+      )*
+    }
+
+    #[pin_project::pin_project(project = NetworkStreamReadHalfProject)]
+    pub enum NetworkStreamReadHalf {
+      $(
+        $( #[ $meta ] )?
+        $i( #[pin] $read_half ),
+      )*
+    }
+
+    #[pin_project::pin_project(project = NetworkStreamWriteHalfProject)]
+    pub enum NetworkStreamWriteHalf {
+      $(
+        $( #[ $meta ] )?
+        $i( #[pin] $write_half ),
+      )*
     }
 
     $(
+      $( #[ $meta ] )?
       impl NetworkStreamListenerTrait for $listener {
         type Stream = $stream;
         type Addr = $addr;
@@ -114,12 +146,14 @@ macro_rules! network_stream {
         }
       }
 
+      $( #[ $meta ] )?
       impl From<$listener> for NetworkStreamListener {
         fn from(value: $listener) -> Self {
           Self::$i(value)
         }
       }
 
+      $( #[ $meta ] )?
       impl NetworkStreamTrait for $stream {
         type Resource = $stream_resource;
         const RESOURCE_NAME: &'static str = concat!(stringify!($il), "Stream");
@@ -131,6 +165,7 @@ macro_rules! network_stream {
         }
       }
 
+      $( #[ $meta ] )?
       impl From<$stream> for NetworkStream {
         fn from(value: $stream) -> Self {
           Self::$i(value)
@@ -141,19 +176,43 @@ macro_rules! network_stream {
     impl NetworkStream {
       pub fn local_address(&self) -> Result<NetworkStreamAddress, std::io::Error> {
         match self {
-          $( Self::$i(stm) => Ok(NetworkStreamAddress::from(stm.local_addr()?)), )*
+          $(
+            $( #[ $meta ] )?
+            Self::$i(stm) => Ok(NetworkStreamAddress::from(stm.local_addr()?)),
+          )*
         }
       }
 
       pub fn peer_address(&self) -> Result<NetworkStreamAddress, std::io::Error> {
         match self {
-          $( Self::$i(stm) => Ok(NetworkStreamAddress::from(stm.peer_addr()?)), )*
+          $(
+            $( #[ $meta ] )?
+            Self::$i(stm) => Ok(NetworkStreamAddress::from(stm.peer_addr()?)),
+          )*
         }
       }
 
       pub fn stream(&self) -> NetworkStreamType {
         match self {
-          $( Self::$i(_) => NetworkStreamType::$i, )*
+          $(
+            $( #[ $meta ] )?
+            Self::$i(_) => NetworkStreamType::$i,
+          )*
+        }
+      }
+
+      pub fn into_split(self) -> (NetworkStreamReadHalf, NetworkStreamWriteHalf) {
+        match self {
+          $(
+            $( #[ $meta ] )?
+            Self::$i(stm) => {
+              let (r, w) = stm.into_split();
+              (
+                NetworkStreamReadHalf::$i(r),
+                NetworkStreamWriteHalf::$i(w),
+              )
+            },
+          )*
         }
       }
     }
@@ -165,7 +224,10 @@ macro_rules! network_stream {
         buf: &mut tokio::io::ReadBuf<'_>,
       ) -> std::task::Poll<std::io::Result<()>> {
         match self.project() {
-          $( NetworkStreamProject::$i(s) => s.poll_read(cx, buf), )*
+          $(
+            $( #[ $meta ] )?
+            NetworkStreamProject::$i(s) => s.poll_read(cx, buf),
+          )*
         }
       }
     }
@@ -177,7 +239,10 @@ macro_rules! network_stream {
         buf: &[u8],
       ) -> std::task::Poll<Result<usize, std::io::Error>> {
         match self.project() {
-          $( NetworkStreamProject::$i(s) => s.poll_write(cx, buf), )*
+          $(
+            $( #[ $meta ] )?
+            NetworkStreamProject::$i(s) => s.poll_write(cx, buf),
+          )*
         }
       }
 
@@ -186,7 +251,10 @@ macro_rules! network_stream {
         cx: &mut std::task::Context<'_>,
       ) -> std::task::Poll<Result<(), std::io::Error>> {
         match self.project() {
-          $( NetworkStreamProject::$i(s) => s.poll_flush(cx), )*
+          $(
+            $( #[ $meta ] )?
+            NetworkStreamProject::$i(s) => s.poll_flush(cx),
+          )*
         }
       }
 
@@ -195,13 +263,19 @@ macro_rules! network_stream {
         cx: &mut std::task::Context<'_>,
       ) -> std::task::Poll<Result<(), std::io::Error>> {
         match self.project() {
-          $( NetworkStreamProject::$i(s) => s.poll_shutdown(cx), )*
+          $(
+            $( #[ $meta ] )?
+            NetworkStreamProject::$i(s) => s.poll_shutdown(cx),
+          )*
         }
       }
 
       fn is_write_vectored(&self) -> bool {
         match self {
-          $( NetworkStream::$i(s) => s.is_write_vectored(), )*
+          $(
+            $( #[ $meta ] )?
+            NetworkStream::$i(s) => s.is_write_vectored(),
+          )*
         }
       }
 
@@ -211,7 +285,86 @@ macro_rules! network_stream {
         bufs: &[std::io::IoSlice<'_>],
       ) -> std::task::Poll<Result<usize, std::io::Error>> {
         match self.project() {
-          $( NetworkStreamProject::$i(s) => s.poll_write_vectored(cx, bufs), )*
+          $(
+            $( #[ $meta ] )?
+            NetworkStreamProject::$i(s) => s.poll_write_vectored(cx, bufs),
+          )*
+        }
+      }
+    }
+
+    impl tokio::io::AsyncRead for NetworkStreamReadHalf {
+      fn poll_read(
+        self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+        buf: &mut tokio::io::ReadBuf<'_>,
+      ) -> std::task::Poll<std::io::Result<()>> {
+        match self.project() {
+          $(
+            $( #[ $meta ] )?
+            NetworkStreamReadHalfProject::$i(s) => s.poll_read(cx, buf),
+          )*
+        }
+      }
+    }
+
+    impl tokio::io::AsyncWrite for NetworkStreamWriteHalf {
+      fn poll_write(
+        self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+        buf: &[u8],
+      ) -> std::task::Poll<Result<usize, std::io::Error>> {
+        match self.project() {
+          $(
+            $( #[ $meta ] )?
+            NetworkStreamWriteHalfProject::$i(s) => s.poll_write(cx, buf),
+          )*
+        }
+      }
+
+      fn poll_flush(
+        self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+      ) -> std::task::Poll<Result<(), std::io::Error>> {
+        match self.project() {
+          $(
+            $( #[ $meta ] )?
+            NetworkStreamWriteHalfProject::$i(s) => s.poll_flush(cx),
+          )*
+        }
+      }
+
+      fn poll_shutdown(
+        self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+      ) -> std::task::Poll<Result<(), std::io::Error>> {
+        match self.project() {
+          $(
+            $( #[ $meta ] )?
+            NetworkStreamWriteHalfProject::$i(s) => s.poll_shutdown(cx),
+          )*
+        }
+      }
+
+      fn is_write_vectored(&self) -> bool {
+        match self {
+          $(
+            $( #[ $meta ] )?
+            NetworkStreamWriteHalf::$i(s) => s.is_write_vectored(),
+          )*
+        }
+      }
+
+      fn poll_write_vectored(
+        self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+        bufs: &[std::io::IoSlice<'_>],
+      ) -> std::task::Poll<Result<usize, std::io::Error>> {
+        match self.project() {
+          $(
+            $( #[ $meta ] )?
+            NetworkStreamWriteHalfProject::$i(s) => s.poll_write_vectored(cx, bufs),
+          )*
         }
       }
     }
@@ -221,6 +374,7 @@ macro_rules! network_stream {
       pub async fn accept(&self) -> Result<(NetworkStream, NetworkStreamAddress), std::io::Error> {
         Ok(match self {
           $(
+            $( #[ $meta ] )?
             Self::$i(s) => {
               let (stm, addr) = s.accept().await?;
               (NetworkStream::$i(stm), addr.into())
@@ -231,13 +385,19 @@ macro_rules! network_stream {
 
       pub fn listen_address(&self) -> Result<NetworkStreamAddress, std::io::Error> {
         match self {
-          $( Self::$i(s) => { Ok(NetworkStreamAddress::from(s.listen_address()?)) } )*
+          $(
+            $( #[ $meta ] )?
+            Self::$i(s) => { Ok(NetworkStreamAddress::from(s.listen_address()?)) }
+          )*
         }
       }
 
       pub fn stream(&self) -> NetworkStreamType {
         match self {
-          $( Self::$i(_) => { NetworkStreamType::$i } )*
+          $(
+            $( #[ $meta ] )?
+            Self::$i(_) => { NetworkStreamType::$i }
+          )*
         }
       }
 
@@ -245,6 +405,7 @@ macro_rules! network_stream {
       /// not locked.
       pub fn take_resource(resource_table: &mut ResourceTable, listener_rid: ResourceId) -> Result<NetworkStreamListener, JsErrorBox> {
         $(
+          $( #[ $meta ] )?
           if let Some(resource) = NetworkListenerResource::<$listener>::take(resource_table, listener_rid)? {
             return Ok(resource)
           }
@@ -255,7 +416,6 @@ macro_rules! network_stream {
   };
 }
 
-#[cfg(unix)]
 network_stream!(
   [
     Tcp,
@@ -263,43 +423,62 @@ network_stream!(
     tokio::net::TcpStream,
     crate::tcp::TcpListener,
     std::net::SocketAddr,
-    TcpStreamResource
+    TcpStreamResource,
+    tokio::net::tcp::OwnedReadHalf,
+    tokio::net::tcp::OwnedWriteHalf,
   ],
   [
     Tls,
     tls,
-    crate::ops_tls::TlsStream,
+    crate::ops_tls::TlsStream<tokio::net::TcpStream>,
     crate::ops_tls::TlsListener,
     std::net::SocketAddr,
-    TlsStreamResource
+    TlsStreamResource,
+    crate::ops_tls::TlsStreamRead<tokio::net::TcpStream>,
+    crate::ops_tls::TlsStreamWrite<tokio::net::TcpStream>,
   ],
+  #[cfg(unix)]
   [
     Unix,
     unix,
     tokio::net::UnixStream,
-    tokio::net::UnixListener,
+    crate::ops_unix::UnixListenerWithPath,
     tokio::net::unix::SocketAddr,
-    crate::io::UnixStreamResource
-  ]
-);
-
-#[cfg(not(unix))]
-network_stream!(
+    crate::io::UnixStreamResource,
+    tokio::net::unix::OwnedReadHalf,
+    tokio::net::unix::OwnedWriteHalf,
+  ],
+  #[cfg(any(target_os = "android", target_os = "linux", target_os = "macos"))]
   [
-    Tcp,
-    tcp,
-    tokio::net::TcpStream,
-    crate::tcp::TcpListener,
-    std::net::SocketAddr,
-    TcpStreamResource
+    Vsock,
+    vsock,
+    tokio_vsock::VsockStream,
+    tokio_vsock::VsockListener,
+    tokio_vsock::VsockAddr,
+    crate::io::VsockStreamResource,
+    tokio_vsock::OwnedReadHalf,
+    tokio_vsock::OwnedWriteHalf,
   ],
   [
-    Tls,
-    tls,
-    crate::ops_tls::TlsStream,
-    crate::ops_tls::TlsListener,
-    std::net::SocketAddr,
-    TlsStreamResource
+    Tunnel,
+    tunnel,
+    crate::tunnel::TunnelStream,
+    crate::tunnel::TunnelConnection,
+    crate::tunnel::TunnelAddr,
+    crate::tunnel::TunnelStreamResource,
+    crate::tunnel::OwnedReadHalf,
+    crate::tunnel::OwnedWriteHalf,
+  ],
+  #[cfg(windows)]
+  [
+    WindowsPipe,
+    windowsPipe,
+    crate::win_pipe::WindowsPipeStream,
+    crate::win_pipe::WindowsPipeListener,
+    crate::win_pipe::WindowsPipeAddr,
+    crate::win_pipe::NamedPipe,
+    tokio::io::ReadHalf<crate::win_pipe::WindowsPipeStream>,
+    tokio::io::WriteHalf<crate::win_pipe::WindowsPipeStream>,
   ]
 );
 
@@ -307,6 +486,11 @@ pub enum NetworkStreamAddress {
   Ip(std::net::SocketAddr),
   #[cfg(unix)]
   Unix(tokio::net::unix::SocketAddr),
+  #[cfg(any(target_os = "android", target_os = "linux", target_os = "macos"))]
+  Vsock(tokio_vsock::VsockAddr),
+  Tunnel(crate::tunnel::TunnelAddr),
+  #[cfg(windows)]
+  WindowsPipe(crate::win_pipe::WindowsPipeAddr),
 }
 
 impl From<std::net::SocketAddr> for NetworkStreamAddress {
@@ -322,6 +506,26 @@ impl From<tokio::net::unix::SocketAddr> for NetworkStreamAddress {
   }
 }
 
+#[cfg(any(target_os = "android", target_os = "linux", target_os = "macos"))]
+impl From<tokio_vsock::VsockAddr> for NetworkStreamAddress {
+  fn from(value: tokio_vsock::VsockAddr) -> Self {
+    NetworkStreamAddress::Vsock(value)
+  }
+}
+
+impl From<crate::tunnel::TunnelAddr> for NetworkStreamAddress {
+  fn from(value: crate::tunnel::TunnelAddr) -> Self {
+    NetworkStreamAddress::Tunnel(value)
+  }
+}
+
+#[cfg(windows)]
+impl From<crate::win_pipe::WindowsPipeAddr> for NetworkStreamAddress {
+  fn from(value: crate::win_pipe::WindowsPipeAddr) -> Self {
+    NetworkStreamAddress::WindowsPipe(value)
+  }
+}
+
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum TakeNetworkStreamError {
   #[class("Busy")]
@@ -334,6 +538,17 @@ pub enum TakeNetworkStreamError {
   #[class("Busy")]
   #[error("Unix socket is currently in use")]
   UnixBusy,
+  #[cfg(any(target_os = "android", target_os = "linux", target_os = "macos"))]
+  #[class("Busy")]
+  #[error("Vsock socket is currently in use")]
+  VsockBusy,
+  #[class("Busy")]
+  #[error("Tunnel socket is currently in use")]
+  TunnelBusy,
+  #[cfg(windows)]
+  #[class("Busy")]
+  #[error("Windows named pipe is currently in use")]
+  WindowsPipeBusy,
   #[class(generic)]
   #[error(transparent)]
   ReuniteTcp(#[from] tokio::net::tcp::ReuniteError),
@@ -341,6 +556,10 @@ pub enum TakeNetworkStreamError {
   #[class(generic)]
   #[error(transparent)]
   ReuniteUnix(#[from] tokio::net::unix::ReuniteError),
+  #[cfg(any(target_os = "android", target_os = "linux", target_os = "macos"))]
+  #[class(generic)]
+  #[error("Cannot reunite halves from different streams")]
+  ReuniteVsock,
   #[class(inherit)]
   #[error(transparent)]
   Resource(deno_core::error::ResourceError),
@@ -371,8 +590,7 @@ pub fn take_network_stream_resource(
     // This TLS connection might be used somewhere else.
     let resource = Rc::try_unwrap(resource_rc)
       .map_err(|_| TakeNetworkStreamError::TlsBusy)?;
-    let (read_half, write_half) = resource.into_inner();
-    let tls_stream = read_half.unsplit(write_half);
+    let tls_stream = resource.into_tls_stream();
     return Ok(NetworkStream::Tls(tls_stream));
   }
 
@@ -386,6 +604,44 @@ pub fn take_network_stream_resource(
     let (read_half, write_half) = resource.into_inner();
     let unix_stream = read_half.reunite(write_half)?;
     return Ok(NetworkStream::Unix(unix_stream));
+  }
+
+  #[cfg(any(target_os = "android", target_os = "linux", target_os = "macos"))]
+  if let Ok(resource_rc) =
+    resource_table.take::<crate::io::VsockStreamResource>(stream_rid)
+  {
+    // This Vsock socket might be used somewhere else.
+    let resource = Rc::try_unwrap(resource_rc)
+      .map_err(|_| TakeNetworkStreamError::VsockBusy)?;
+    let (read_half, write_half) = resource.into_inner();
+    if !read_half.is_pair_of(&write_half) {
+      return Err(TakeNetworkStreamError::ReuniteVsock);
+    }
+    let vsock_stream = read_half.unsplit(write_half);
+    return Ok(NetworkStream::Vsock(vsock_stream));
+  }
+
+  if let Ok(resource_rc) =
+    resource_table.take::<crate::tunnel::TunnelStreamResource>(stream_rid)
+  {
+    let resource = Rc::try_unwrap(resource_rc)
+      .map_err(|_| TakeNetworkStreamError::TunnelBusy)?;
+    let stream = resource.into_inner();
+    return Ok(NetworkStream::Tunnel(stream));
+  }
+
+  #[cfg(windows)]
+  if let Ok(resource_rc) =
+    resource_table.take::<crate::win_pipe::NamedPipe>(stream_rid)
+  {
+    let resource = Rc::try_unwrap(resource_rc)
+      .map_err(|_| TakeNetworkStreamError::WindowsPipeBusy)?;
+    let client = resource.into_client().map_err(|_| {
+      TakeNetworkStreamError::Resource(ResourceError::BadResourceId)
+    })?;
+    return Ok(NetworkStream::WindowsPipe(
+      crate::win_pipe::WindowsPipeStream::new(client),
+    ));
   }
 
   Err(TakeNetworkStreamError::Resource(

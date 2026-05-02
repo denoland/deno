@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use deno_error::JsErrorBox;
 
@@ -49,7 +49,7 @@ impl TryFrom<NativeType> for libffi::middle::Type {
         libffi::middle::Type::pointer()
       }
       NativeType::Struct(fields) => {
-        libffi::middle::Type::structure(match fields.len() > 0 {
+        libffi::middle::Type::structure(match !fields.is_empty() {
           true => fields
             .iter()
             .map(|field| field.clone().try_into())
@@ -57,7 +57,7 @@ impl TryFrom<NativeType> for libffi::middle::Type {
           false => {
             return Err(JsErrorBox::type_error(
               "Struct must have at least one field",
-            ))
+            ));
           }
         })
       }
@@ -67,13 +67,17 @@ impl TryFrom<NativeType> for libffi::middle::Type {
 
 #[derive(Clone)]
 pub struct Symbol {
+  pub name: String,
   pub cif: libffi::middle::Cif,
   pub ptr: libffi::middle::CodePtr,
   pub parameter_types: Vec<NativeType>,
   pub result_type: NativeType,
 }
 
-#[allow(clippy::non_send_fields_in_send_ty)]
+#[allow(
+  clippy::non_send_fields_in_send_ty,
+  reason = "pointers are used for FFI interop"
+)]
 // SAFETY: unsafe trait must have unsafe implementation
 unsafe impl Send for Symbol {}
 // SAFETY: unsafe trait must have unsafe implementation

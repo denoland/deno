@@ -1,20 +1,22 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::sync::Arc;
 
 use deno_core::url::Url;
 use deno_error::JsErrorBox;
-use deno_lib::loader::NpmModuleLoader;
 use deno_lib::standalone::binary::CjsExportAnalysisEntry;
 use deno_media_type::MediaType;
+use deno_resolver::loader::NpmModuleLoader;
 use deno_resolver::npm::DenoInNpmPackageChecker;
 use deno_resolver::npm::NpmReqResolver;
 use deno_runtime::deno_fs::FileSystem;
+use deno_runtime::deno_permissions::CheckedPath;
+use node_resolver::DenoIsBuiltInNodeModuleChecker;
 use node_resolver::analyze::CjsAnalysis;
 use node_resolver::analyze::CjsAnalysisExports;
+use node_resolver::analyze::EsmAnalysisMode;
 use node_resolver::analyze::NodeCodeTranslator;
-use node_resolver::DenoIsBuiltInNodeModuleChecker;
 
 use crate::binary::StandaloneModules;
 use crate::file_system::DenoRtSys;
@@ -80,7 +82,7 @@ impl CjsCodeAnalyzer {
       }));
     }
 
-    let cjs_tracker = self.cjs_tracker.clone();
+    let cjs_tracker = &self.cjs_tracker;
     let is_maybe_cjs = cjs_tracker
       .is_maybe_cjs(specifier, media_type)
       .map_err(JsErrorBox::from_err)?;
@@ -96,11 +98,17 @@ impl CjsCodeAnalyzer {
           match data {
             CjsExportAnalysisEntry::Esm => {
               cjs_tracker.set_is_known_script(specifier, false);
-              CjsAnalysis::Esm(source)
+              CjsAnalysis::Esm(source, None)
             }
-            CjsExportAnalysisEntry::Cjs(analysis) => {
+            CjsExportAnalysisEntry::Cjs(exports) => {
               cjs_tracker.set_is_known_script(specifier, true);
-              CjsAnalysis::Cjs(analysis)
+              CjsAnalysis::Cjs(CjsAnalysisExports {
+                exports,
+                reexports: Vec::new(), // already resolved
+              })
+            }
+            CjsExportAnalysisEntry::Error(err) => {
+              return Err(JsErrorBox::generic(err));
             }
           }
         }
@@ -119,11 +127,11 @@ impl CjsCodeAnalyzer {
             }
           }
           // assume ESM as we don't have access to swc here
-          CjsAnalysis::Esm(source)
+          CjsAnalysis::Esm(source, None)
         }
       }
     } else {
-      CjsAnalysis::Esm(source)
+      CjsAnalysis::Esm(source, None)
     };
 
     Ok(analysis)
@@ -136,14 +144,17 @@ impl node_resolver::analyze::CjsCodeAnalyzer for CjsCodeAnalyzer {
     &self,
     specifier: &Url,
     source: Option<Cow<'a, str>>,
+    _esm_analysis_mode: EsmAnalysisMode,
   ) -> Result<CjsAnalysis<'a>, JsErrorBox> {
     let source = match source {
       Some(source) => source,
       None => {
         if let Ok(path) = deno_path_util::url_to_file_path(specifier) {
+          // PERMISSIONS: This is ok because it's just being used for cjs analysis
+          let path = CheckedPath::unsafe_new(Cow::Owned(path));
           // todo(dsherret): should this use the sync method instead?
           if let Ok(source_from_file) =
-            self.sys.read_text_file_lossy_async(path, None).await
+            self.sys.read_text_file_lossy_async(path.into_owned()).await
           {
             source_from_file
           } else {

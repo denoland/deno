@@ -1,3 +1,5 @@
+import process from "node:process";
+
 class StdoutReader {
   readonly #reader: ReadableStreamDefaultReader<string>;
   text = "";
@@ -53,23 +55,31 @@ if (!isPidAlive(pid)) {
 }
 child.kill();
 // now the grandchild shouldn't be alive
-if (isPidAlive(pid)) {
+if (isPidAlive(child.pid)) {
+  throw new Error("Unexpected.");
+}
+
+let stillAlive = true;
+for (let i = 0; i < 20; i++) {
+  if (!isPidAlive(pid)) {
+    stillAlive = false;
+    break;
+  }
+  await new Promise((resolve) => setTimeout(resolve, 50));
+}
+
+if (stillAlive) {
   throw new Error("Unexpected.");
 }
 
 function isPidAlive(pid: number) {
-  const command = new Deno.Command("cmd", {
-    args: ["/c", `wmic process where processid=${pid} get processid`],
-  });
-
   try {
-    const { stdout } = command.outputSync(); // Execute the command
-    const output = new TextDecoder().decode(stdout);
-
-    console.log("wmic output:", output.trim());
-    return output.includes(pid.toString());
+    return process.kill(pid, 0);
   } catch (error) {
-    console.error("Error checking PID:", error);
-    return false;
+    if (error instanceof Error && "code" in error && error.code === "ESRCH") {
+      return false;
+    }
+    console.log("Error checking PID:", error);
+    throw error;
   }
 }

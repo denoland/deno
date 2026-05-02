@@ -1,49 +1,62 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
+use std::borrow::Cow;
 use std::rc::Rc;
 
-use deno_core::futures::FutureExt;
-use deno_core::futures::TryFutureExt;
-use deno_core::futures::TryStreamExt;
-use deno_core::url::Url;
 use deno_core::CancelFuture;
 use deno_core::OpState;
-use deno_error::JsErrorBox;
-use http::StatusCode;
-use http_body_util::BodyExt;
-use tokio_util::io::ReaderStream;
+use deno_core::futures::FutureExt;
+use deno_core::url::Url;
+use deno_fs::FileSystemRc;
+use deno_fs::OpenOptions;
+use deno_io::fs::FileResource;
+use deno_permissions::CheckedPath;
+use deno_permissions::OpenAccessKind;
+use deno_permissions::PermissionsContainer;
+use http_body_util::combinators::BoxBody;
 
 use crate::CancelHandle;
 use crate::CancelableResponseFuture;
 use crate::FetchHandler;
+use crate::ResourceToBodyAdapter;
 
-/// An implementation which tries to read file URLs from the file system via
-/// tokio::fs.
+/// An implementation which tries to read file URLs via `deno_fs::FileSystem`.
 #[derive(Clone)]
 pub struct FsFetchHandler;
 
 impl FetchHandler for FsFetchHandler {
   fn fetch_file(
     &self,
-    _state: &mut OpState,
+    state: &mut OpState,
     url: &Url,
   ) -> (CancelableResponseFuture, Option<Rc<CancelHandle>>) {
     let cancel_handle = CancelHandle::new_rc();
-    let path_result = url.to_file_path();
+    let path = match deno_path_util::url_to_file_path(url) {
+      Ok(path) => path,
+      Err(err) => {
+        return (
+          async move { Err(super::FetchError::UrlToFilePath(err)) }
+            .or_cancel(&cancel_handle)
+            .boxed_local(),
+          Some(cancel_handle),
+        );
+      }
+    };
+    let fs = state.borrow::<FileSystemRc>().clone();
+    let path = state
+      .borrow::<PermissionsContainer>()
+      .check_open(Cow::Owned(path), OpenAccessKind::Read, Some("fetch()"))
+      .map(CheckedPath::into_owned);
     let response_fut = async move {
-      let path = path_result?;
-      let file = tokio::fs::File::open(path).map_err(|_| ()).await?;
-      let stream = ReaderStream::new(file)
-        .map_ok(hyper::body::Frame::data)
-        .map_err(JsErrorBox::from_err);
-      let body = http_body_util::StreamBody::new(stream).boxed();
-      let response = http::Response::builder()
-        .status(StatusCode::OK)
-        .body(body)
-        .map_err(|_| ())?;
-      Ok::<_, ()>(response)
+      let file = fs
+        .open_async(path?, OpenOptions::read())
+        .await
+        .map_err(|_| super::FetchError::NetworkError)?;
+      let resource = Rc::new(FileResource::new(file, "".to_owned()));
+      let body = BoxBody::new(ResourceToBodyAdapter::new(resource));
+      let response = http::Response::new(body);
+      Ok(response)
     }
-    .map_err(move |_| super::FetchError::NetworkError)
     .or_cancel(&cancel_handle)
     .boxed_local();
 

@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -20,10 +20,41 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-// TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials
-
+import { primordials } from "ext:core/mod.js";
+const {
+  ArrayIsArray,
+  ArrayPrototypeFilter,
+  FunctionPrototypeCall,
+  JSONStringify,
+  Number,
+  NumberParseFloat,
+  NumberParseInt,
+  ObjectAssign,
+  ObjectCreate,
+  ObjectDefineProperty,
+  ObjectGetPrototypeOf,
+  ObjectGetOwnPropertyDescriptor,
+  ObjectGetOwnPropertyNames,
+  ObjectKeys,
+  ObjectPrototypeHasOwnProperty,
+  RegExpPrototypeTest,
+  SafeRegExp,
+  SafeSet,
+  SafeStringIterator,
+  SetPrototypeHas,
+  String,
+  StringPrototypeAt,
+  StringPrototypeCharCodeAt,
+  StringPrototypeCodePointAt,
+  StringPrototypeNormalize,
+  StringPrototypeIndexOf,
+  StringPrototypeReplace,
+  StringPrototypeSlice,
+  StringPrototypeSplit,
+  SymbolFor,
+} = primordials;
 import {
+  validateBoolean,
   validateObject,
   validateOneOf,
   validateString,
@@ -36,7 +67,7 @@ import {
   formatNumber,
   formatValue,
   styles,
-} from "ext:deno_console/01_console.js";
+} from "ext:deno_web/01_console.js";
 
 // Set Graphics Rendition https://en.wikipedia.org/wiki/ANSI_escape_code#graphics
 // Each color consists of an array with the color code as first entry and the
@@ -92,7 +123,8 @@ inspect.colors = {
 };
 
 function defineColorAlias(target, alias) {
-  Object.defineProperty(inspect.colors, alias, {
+  ObjectDefineProperty(inspect.colors, alias, {
+    __proto__: null,
     get() {
       return this[target];
     },
@@ -119,7 +151,7 @@ defineColorAlias("doubleunderline", "doubleUnderline");
 
 // TODO(BridgeAR): Add function style support for more complex styles.
 // Don't use 'blue' not visible on cmd.exe
-inspect.styles = Object.assign(Object.create(null), {
+inspect.styles = ObjectAssign(ObjectCreate(null), {
   special: "cyan",
   number: "yellow",
   bigint: "yellow",
@@ -196,15 +228,14 @@ export function inspect(value, opts) {
     if (typeof opts === "boolean") {
       ctx.showHidden = opts;
     } else if (opts) {
-      const optKeys = Object.keys(opts);
+      const optKeys = ObjectKeys(opts);
       for (let i = 0; i < optKeys.length; ++i) {
         const key = optKeys[i];
         // TODO(BridgeAR): Find a solution what to do about stylize. Either make
         // this function public or add a new API with a similar or better
         // functionality.
         if (
-          // deno-lint-ignore no-prototype-builtins
-          inspectDefaultOptions.hasOwnProperty(key) ||
+          ObjectPrototypeHasOwnProperty(inspectDefaultOptions, key) ||
           key === "stylize"
         ) {
           ctx[key] = opts[key];
@@ -222,16 +253,17 @@ export function inspect(value, opts) {
   if (ctx.maxStringLength === null) ctx.maxStringLength = Infinity;
   return formatValue(ctx, value, 0);
 }
-const customInspectSymbol = Symbol.for("nodejs.util.inspect.custom");
+const customInspectSymbol = SymbolFor("nodejs.util.inspect.custom");
 inspect.custom = customInspectSymbol;
 
-Object.defineProperty(inspect, "defaultOptions", {
+ObjectDefineProperty(inspect, "defaultOptions", {
+  __proto__: null,
   get() {
     return inspectDefaultOptions;
   },
   set(options) {
     validateObject(options, "options");
-    return Object.assign(inspectDefaultOptions, options);
+    return ObjectAssign(inspectDefaultOptions, options);
   },
 });
 
@@ -239,9 +271,10 @@ function stylizeNoColor(str) {
   return str;
 }
 
-const builtInObjects = new Set(
-  Object.getOwnPropertyNames(globalThis).filter((e) =>
-    /^[A-Z][a-zA-Z0-9]+$/.test(e)
+const builtInObjects = new SafeSet(
+  ArrayPrototypeFilter(
+    ObjectGetOwnPropertyNames(globalThis),
+    (e) => RegExpPrototypeTest(new SafeRegExp(/^[A-Z][a-zA-Z0-9]+$/), e),
   ),
 );
 
@@ -251,9 +284,12 @@ const builtInObjects = new Set(
 // Matches all ansi escape code sequences in a string
 const ansiPattern = "[\\u001B\\u009B][[\\]()#;?]*" +
   "(?:(?:(?:(?:;[-a-zA-Z\\d\\/#&.:=?%@~_]+)*" +
-  "|[a-zA-Z\\d]+(?:;[-a-zA-Z\\d\\/#&.:=?%@~_]*)*)?\\u0007)" +
-  "|(?:(?:\\d{1,4}(?:;\\d{0,4})*)?[\\dA-PR-TZcf-ntqry=><~]))";
-const ansi = new RegExp(ansiPattern, "g");
+  "|[a-zA-Z\\d]+(?:;[-a-zA-Z\\d\\/#&.:=?%@~_]*)*)" +
+  "?(?:\\u0007|\\u001B\\u005C|\\u009C))" +
+  "|(?:(?:\\d{1,4}(?:;\\d{0,4})*)?[\\dA-PR-TZcf-nq-uy=><~]))";
+const ansi = new SafeRegExp(ansiPattern, "g");
+
+const reEmojiPresentation = new SafeRegExp("^\\p{Emoji_Presentation}$", "u");
 
 /**
  * Returns the number of columns required to display the given string.
@@ -264,10 +300,13 @@ export function getStringWidth(str, removeControlChars = true) {
   if (removeControlChars) {
     str = stripVTControlCharacters(str);
   }
-  str = str.normalize("NFC");
-  for (const char of str[Symbol.iterator]()) {
-    const code = char.codePointAt(0);
-    if (isFullWidthCodePoint(code)) {
+  str = StringPrototypeNormalize(str, "NFC");
+  for (const char of new SafeStringIterator(str)) {
+    const code = StringPrototypeCodePointAt(char, 0);
+    if (
+      isFullWidthCodePoint(code) ||
+      RegExpPrototypeTest(reEmojiPresentation, char)
+    ) {
       width += 2;
     } else if (!isZeroWidthCodePoint(code)) {
       width++;
@@ -314,6 +353,14 @@ const isFullWidthCodePoint = (code) => {
     // Miscellaneous Symbols and Pictographs 0x1f300 - 0x1f5ff
     // Emoticons 0x1f600 - 0x1f64f
     (code >= 0x1f300 && code <= 0x1f64f) ||
+    // Transport and Map Symbols
+    (code >= 0x1f680 && code <= 0x1f6ff) ||
+    // Supplemental Symbols and Pictographs
+    (code >= 0x1f900 && code <= 0x1f9ff) ||
+    // Chess Symbols
+    (code >= 0x1fa00 && code <= 0x1fa6f) ||
+    // Symbols and Pictographs Extended-A
+    (code >= 0x1fa70 && code <= 0x1faff) ||
     // CJK Unified Ideographs Extension B .. Tertiary Ideographic Plane
     (code >= 0x20000 && code <= 0x3fffd)
   );
@@ -347,7 +394,9 @@ function hasBuiltInToString(value) {
   }
 
   // The object has a own `toString` property. Thus it's not a built-in one.
-  if (Object.prototype.hasOwnProperty.call(value, "toString")) {
+  if (
+    FunctionPrototypeCall(Object.prototype.hasOwnProperty, value, "toString")
+  ) {
     return false;
   }
 
@@ -355,28 +404,31 @@ function hasBuiltInToString(value) {
   // prototype chain.
   let pointer = value;
   do {
-    pointer = Object.getPrototypeOf(pointer);
-  } while (!Object.prototype.hasOwnProperty.call(pointer, "toString"));
+    pointer = ObjectGetPrototypeOf(pointer);
+  } while (
+    !FunctionPrototypeCall(Object.prototype.hasOwnProperty, pointer, "toString")
+  );
 
   // Check closer if the object is a built-in.
-  const descriptor = Object.getOwnPropertyDescriptor(pointer, "constructor");
+  const descriptor = ObjectGetOwnPropertyDescriptor(pointer, "constructor");
   return descriptor !== undefined &&
     typeof descriptor.value === "function" &&
-    builtInObjects.has(descriptor.value.name);
+    SetPrototypeHas(builtInObjects, descriptor.value.name);
 }
 
-const firstErrorLine = (error) => error.message.split("\n", 1)[0];
+const firstErrorLine = (error) =>
+  StringPrototypeAt(StringPrototypeSplit(error.message, "\n", 1), 0);
 let CIRCULAR_ERROR_MESSAGE;
 function tryStringify(arg) {
   try {
-    return JSON.stringify(arg);
+    return JSONStringify(arg);
   } catch (err) {
     // Populate the circular error message lazily
     if (!CIRCULAR_ERROR_MESSAGE) {
       try {
         const a = {};
         a.a = a;
-        JSON.stringify(a);
+        JSONStringify(a);
       } catch (circularError) {
         CIRCULAR_ERROR_MESSAGE = firstErrorLine(circularError);
       }
@@ -436,8 +488,8 @@ function formatWithOptionsInternal(inspectOptions, args) {
     let lastPos = 0;
 
     for (let i = 0; i < first.length - 1; i++) {
-      if (first.charCodeAt(i) === 37) { // '%'
-        const nextChar = first.charCodeAt(++i);
+      if (StringPrototypeCharCodeAt(first, i) === 37) { // '%'
+        const nextChar = StringPrototypeCharCodeAt(first, ++i);
         if (a + 1 !== args.length) {
           switch (nextChar) {
             // deno-lint-ignore no-case-declarations
@@ -496,7 +548,7 @@ function formatWithOptionsInternal(inspectOptions, args) {
                 tempStr = "NaN";
               } else {
                 tempStr = formatNumberNoColor(
-                  Number.parseInt(tempInteger),
+                  NumberParseInt(tempInteger),
                   inspectOptions,
                 );
               }
@@ -508,7 +560,7 @@ function formatWithOptionsInternal(inspectOptions, args) {
                 tempStr = "NaN";
               } else {
                 tempStr = formatNumberNoColor(
-                  Number.parseFloat(tempFloat),
+                  NumberParseFloat(tempFloat),
                   inspectOptions,
                 );
               }
@@ -518,19 +570,19 @@ function formatWithOptionsInternal(inspectOptions, args) {
               tempStr = "";
               break;
             case 37: // '%'
-              str += first.slice(lastPos, i);
+              str += StringPrototypeSlice(first, lastPos, i);
               lastPos = i + 1;
               continue;
             default: // Any other character is not a correct placeholder
               continue;
           }
           if (lastPos !== i - 1) {
-            str += first.slice(lastPos, i - 1);
+            str += StringPrototypeSlice(first, lastPos, i - 1);
           }
           str += tempStr;
           lastPos = i + 1;
         } else if (nextChar === 37) {
-          str += first.slice(lastPos, i);
+          str += StringPrototypeSlice(first, lastPos, i);
           lastPos = i + 1;
         }
       }
@@ -539,7 +591,7 @@ function formatWithOptionsInternal(inspectOptions, args) {
       a++;
       join = " ";
       if (lastPos < first.length) {
-        str += first.slice(lastPos);
+        str += StringPrototypeSlice(first, lastPos);
       }
     }
   }
@@ -560,29 +612,102 @@ function formatWithOptionsInternal(inspectOptions, args) {
 export function stripVTControlCharacters(str) {
   validateString(str, "str");
 
-  return str.replace(ansi, "");
+  return StringPrototypeReplace(str, ansi, "");
 }
 
-export function styleText(format, text) {
-  validateString(text, "text");
+// Mirrors Node's lib/util.js styleText(): build openCodes by appending and
+// closeCodes by prepending so an array like ['bold', 'red'] wraps as
+// bold(red(text)) rather than red(bold(text)). Inner close sequences inside
+// `text` are rewritten so subsequent text keeps the outer style ("dim" and
+// "bold" share close 22, so those close sequences are kept and the outer
+// style is re-opened immediately afterward).
+const kStyleTextEscape = "[";
+const kStyleTextEscapeEnd = "m";
+const kStyleTextDimCode = 2;
+const kStyleTextBoldCode = 1;
 
-  if (Array.isArray(format)) {
-    for (let i = 0; i < format.length; i++) {
-      const item = format[i];
-      const formatCodes = inspect.colors[item];
-      if (formatCodes == null) {
-        validateOneOf(item, "format", Object.keys(inspect.colors));
-      }
-      text = `\u001b[${formatCodes[0]}m${text}\u001b[${formatCodes[1]}m`;
+function replaceCloseCode(str, closeSeq, openSeq, keepClose) {
+  const closeLen = closeSeq.length;
+  let index = StringPrototypeIndexOf(str, closeSeq);
+  if (index === -1) return str;
+
+  let result = "";
+  let lastIndex = 0;
+  const replacement = keepClose ? closeSeq + openSeq : openSeq;
+
+  do {
+    const afterClose = index + closeLen;
+    if (afterClose < str.length) {
+      result += StringPrototypeSlice(str, lastIndex, index) + replacement;
+      lastIndex = afterClose;
+    } else {
+      break;
     }
-    return text;
+    index = StringPrototypeIndexOf(str, closeSeq, lastIndex);
+  } while (index !== -1);
+
+  return result + StringPrototypeSlice(str, lastIndex);
+}
+
+export function styleText(format, text, options) {
+  validateString(text, "text");
+  if (options !== undefined) {
+    validateObject(options, "options");
+  }
+  const validateStream = options?.validateStream ?? true;
+  validateBoolean(validateStream, "options.validateStream");
+
+  if (validateStream) {
+    const stream = options?.stream;
+    if (
+      stream !== undefined && stream !== null &&
+      // Match Node's lib/util.js: bail when `stream` is not a Readable/
+      // Writable/Node Stream. Approximate the duck-type used in those checks.
+      !(typeof stream === "object" && (
+        typeof stream.read === "function" ||
+        typeof stream.write === "function" ||
+        typeof stream.pipe === "function"
+      ))
+    ) {
+      throw new codes.ERR_INVALID_ARG_TYPE(
+        "stream",
+        ["ReadableStream", "WritableStream", "Stream"],
+        stream,
+      );
+    }
   }
 
-  const formatCodes = inspect.colors[format];
-  if (formatCodes == null) {
-    validateOneOf(format, "format", Object.keys(inspect.colors));
+  const formatArray = ArrayIsArray(format) ? format : [format];
+
+  let openCodes = "";
+  let closeCodes = "";
+  let processedText = text;
+
+  for (let i = 0; i < formatArray.length; i++) {
+    const key = formatArray[i];
+    if (key === "none") continue;
+
+    const formatCodes = inspect.colors[key];
+    if (formatCodes == null) {
+      validateOneOf(key, "format", ObjectKeys(inspect.colors));
+    }
+    const openNum = formatCodes[0];
+    const closeNum = formatCodes[1];
+    const openSeq = kStyleTextEscape + openNum + kStyleTextEscapeEnd;
+    const closeSeq = kStyleTextEscape + closeNum + kStyleTextEscapeEnd;
+    const keepClose = openNum === kStyleTextDimCode ||
+      openNum === kStyleTextBoldCode;
+    openCodes += openSeq;
+    closeCodes = closeSeq + closeCodes;
+    processedText = replaceCloseCode(
+      processedText,
+      closeSeq,
+      openSeq,
+      keepClose,
+    );
   }
-  return `\u001b[${formatCodes[0]}m${text}\u001b[${formatCodes[1]}m`;
+
+  return `${openCodes}${processedText}${closeCodes}`;
 }
 
 export default {

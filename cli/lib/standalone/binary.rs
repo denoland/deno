@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::collections::BTreeMap;
@@ -9,7 +9,6 @@ use deno_runtime::deno_permissions::PermissionsOptions;
 use deno_runtime::deno_telemetry::OtelConfig;
 use deno_semver::Version;
 use indexmap::IndexMap;
-use node_resolver::analyze::CjsAnalysisExports;
 use serde::Deserialize;
 use serde::Serialize;
 use url::Url;
@@ -87,10 +86,16 @@ pub struct Metadata {
   pub env_vars_from_env_file: IndexMap<String, String>,
   pub workspace_resolver: SerializedWorkspaceResolver,
   pub entrypoint_key: String,
+  pub preload_modules: Vec<String>,
+  pub require_modules: Vec<String>,
   pub node_modules: Option<NodeModules>,
   pub unstable_config: UnstableConfig,
   pub otel_config: OtelConfig,
   pub vfs_case_sensitivity: FileSystemCaseSensitivity,
+  /// When set, the binary is self-extracting. The value is a precomputed
+  /// hash of the VFS data used for versioning the extraction directory.
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub self_extracting: Option<String>,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
@@ -130,15 +135,18 @@ impl<'a> DenoRtDeserializable<'a> for SpecifierId {
 #[derive(Deserialize, Serialize)]
 pub enum CjsExportAnalysisEntry {
   Esm,
-  Cjs(CjsAnalysisExports),
+  Cjs(Vec<String>),
+  Error(String),
 }
 
 const HAS_TRANSPILED_FLAG: u8 = 1 << 0;
 const HAS_SOURCE_MAP_FLAG: u8 = 1 << 1;
 const HAS_CJS_EXPORT_ANALYSIS_FLAG: u8 = 1 << 2;
+const HAS_VALID_UTF8_FLAG: u8 = 1 << 3;
 
 pub struct RemoteModuleEntry<'a> {
   pub media_type: MediaType,
+  pub is_valid_utf8: bool,
   pub data: Cow<'a, [u8]>,
   pub maybe_transpiled: Option<Cow<'a, [u8]>>,
   pub maybe_source_map: Option<Cow<'a, [u8]>>,
@@ -161,6 +169,9 @@ impl<'a> DenoRtSerializable<'a> for RemoteModuleEntry<'a> {
     }
 
     let mut has_data_flags = 0;
+    if self.is_valid_utf8 {
+      has_data_flags |= HAS_VALID_UTF8_FLAG;
+    }
     if self.maybe_transpiled.is_some() {
       has_data_flags |= HAS_TRANSPILED_FLAG;
     }
@@ -182,12 +193,12 @@ impl<'a> DenoRtSerializable<'a> for RemoteModuleEntry<'a> {
 
 impl<'a> DenoRtDeserializable<'a> for RemoteModuleEntry<'a> {
   fn deserialize(input: &'a [u8]) -> std::io::Result<(&'a [u8], Self)> {
-    #[allow(clippy::type_complexity)]
+    #[allow(clippy::type_complexity, reason = "private code")]
     fn deserialize_data_if_has_flag(
       input: &[u8],
       has_data_flags: u8,
       flag: u8,
-    ) -> std::io::Result<(&[u8], Option<Cow<[u8]>>)> {
+    ) -> std::io::Result<(&[u8], Option<Cow<'_, [u8]>>)> {
       if has_data_flags & flag != 0 {
         let (input, bytes) = read_bytes_with_u32_len(input)?;
         Ok((input, Some(Cow::Borrowed(bytes))))
@@ -203,6 +214,7 @@ impl<'a> DenoRtDeserializable<'a> for RemoteModuleEntry<'a> {
       deserialize_data_if_has_flag(input, has_data_flags, HAS_TRANSPILED_FLAG)?;
     let (input, maybe_source_map) =
       deserialize_data_if_has_flag(input, has_data_flags, HAS_SOURCE_MAP_FLAG)?;
+    let is_valid_utf8 = has_data_flags & HAS_VALID_UTF8_FLAG != 0;
     let (input, maybe_cjs_export_analysis) = deserialize_data_if_has_flag(
       input,
       has_data_flags,
@@ -213,6 +225,7 @@ impl<'a> DenoRtDeserializable<'a> for RemoteModuleEntry<'a> {
       Self {
         media_type,
         data: Cow::Borrowed(data),
+        is_valid_utf8,
         maybe_transpiled,
         maybe_source_map,
         maybe_cjs_export_analysis,
@@ -235,10 +248,15 @@ fn serialize_media_type(media_type: MediaType) -> u8 {
     MediaType::Dcts => 9,
     MediaType::Tsx => 10,
     MediaType::Json => 11,
-    MediaType::Wasm => 12,
-    MediaType::Css => 13,
-    MediaType::SourceMap => 14,
-    MediaType::Unknown => 15,
+    MediaType::Jsonc => 12,
+    MediaType::Json5 => 13,
+    MediaType::Markdown => 14,
+    MediaType::Wasm => 15,
+    MediaType::Css => 16,
+    MediaType::Html => 17,
+    MediaType::SourceMap => 18,
+    MediaType::Sql => 19,
+    MediaType::Unknown => 20,
   }
 }
 
@@ -258,15 +276,20 @@ impl<'a> DenoRtDeserializable<'a> for MediaType {
       9 => MediaType::Dcts,
       10 => MediaType::Tsx,
       11 => MediaType::Json,
-      12 => MediaType::Wasm,
-      13 => MediaType::Css,
-      14 => MediaType::SourceMap,
-      15 => MediaType::Unknown,
+      12 => MediaType::Jsonc,
+      13 => MediaType::Json5,
+      14 => MediaType::Markdown,
+      15 => MediaType::Wasm,
+      16 => MediaType::Css,
+      17 => MediaType::Html,
+      18 => MediaType::SourceMap,
+      19 => MediaType::Sql,
+      20 => MediaType::Unknown,
       value => {
         return Err(std::io::Error::new(
           std::io::ErrorKind::InvalidData,
           format!("Unknown media type value: {value}"),
-        ))
+        ));
       }
     };
     Ok((input, value))
@@ -297,7 +320,7 @@ impl<TData> SpecifierDataStore<TData> {
     self.data.iter().map(|(k, v)| (*k, v))
   }
 
-  #[allow(clippy::len_without_is_empty)]
+  #[allow(clippy::len_without_is_empty, reason = "not useful")]
   pub fn len(&self) -> usize {
     self.data.len()
   }

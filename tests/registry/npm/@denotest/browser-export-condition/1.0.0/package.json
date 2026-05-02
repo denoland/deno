@@ -1,0 +1,14 @@
+{
+  "name": "@denotest/browser-export-condition",
+  "version": "1.0.0",
+  "main": "main.js",
+  "type": "module",
+  "exports": {
+    ".": {
+      "browser": "./browser.mjs",
+      "deno": "./deno.mjs",
+      "node": "./node.js",
+      "default": "./normal.js"
+    }
+  }
+}

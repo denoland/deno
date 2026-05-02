@@ -1,0 +1,17 @@
+Check [WILDCARD]main_test.ts
+------- pre-test output -------
+preload.js starts loading
+preload.js finished loading
+import.js starts loading
+import.js finished loading
+----- pre-test output end -----
+running 1 test from ./main_test.ts
+hello ...
+------- output -------
+Value of __preload__ preload.js
+Value of __import__ import.js
+----- output end -----
+hello ... ok ([WILDCARD])
+
+ok | 1 passed | 0 failed ([WILDCARD])
+

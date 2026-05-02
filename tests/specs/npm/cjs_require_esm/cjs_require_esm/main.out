@@ -1,4 +1,0 @@
-[Module: null prototype] {
-  Test: [Module: null prototype] { Test: [class Test] },
-  default: { Test: [Module: null prototype] { Test: [class Test] } }
-}

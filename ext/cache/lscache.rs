@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -6,28 +6,28 @@ use std::rc::Rc;
 use async_stream::try_stream;
 use base64::Engine;
 use bytes::Bytes;
-use deno_core::unsync::spawn;
 use deno_core::BufMutView;
 use deno_core::ByteString;
 use deno_core::Resource;
+use deno_core::unsync::spawn;
 use futures::StreamExt;
 use futures::TryStreamExt;
-use http::header::VARY;
 use http::HeaderMap;
 use http::HeaderName;
 use http::HeaderValue;
+use http::header::VARY;
 use http_body_util::combinators::UnsyncBoxBody;
 use slab::Slab;
 
-use crate::get_header;
-use crate::get_headers_from_vary_header;
-use crate::lsc_shard::CacheShard;
 use crate::CacheDeleteRequest;
 use crate::CacheError;
 use crate::CacheMatchRequest;
 use crate::CacheMatchResponseMeta;
 use crate::CachePutRequest;
 use crate::CacheResponseResource;
+use crate::get_header;
+use crate::get_headers_from_vary_header;
+use crate::lsc_shard::CacheShard;
 
 const REQHDR_PREFIX: &str = "x-lsc-meta-reqhdr-";
 
@@ -43,7 +43,7 @@ impl LscBackend {
   }
 }
 
-#[allow(clippy::unused_async)]
+#[allow(clippy::unused_async, reason = "trait requires async interface")]
 impl LscBackend {
   /// Open a cache storage. Internally, this allocates an id and maps it
   /// to the provided cache name.
@@ -72,6 +72,18 @@ impl LscBackend {
     _cache_name: String,
   ) -> Result<bool, CacheError> {
     Err(CacheError::DeletionNotSupported)
+  }
+
+  /// List all cache names currently known to this backend.
+  pub async fn storage_keys(&self) -> Result<Vec<String>, CacheError> {
+    let mut seen = std::collections::HashSet::new();
+    let mut names = Vec::new();
+    for (_, name) in self.id2name.borrow().iter() {
+      if seen.insert(name.clone()) {
+        names.push(name.clone());
+      }
+    }
+    Ok(names)
   }
 
   /// Writes an entry to the cache.
@@ -183,14 +195,14 @@ impl LscBackend {
     // From https://w3c.github.io/ServiceWorker/#request-matches-cached-item-algorithm
     // If there's Vary header in the response, ensure all the
     // headers of the cached request match the query request.
-    if let Some(vary_header) = res.headers().get(&VARY) {
-      if !vary_header_matches(
+    if let Some(vary_header) = res.headers().get(&VARY)
+      && !vary_header_matches(
         vary_header.as_bytes(),
         &request.request_headers,
         res.headers(),
-      ) {
-        return Ok(None);
-      }
+      )
+    {
+      return Ok(None);
     }
 
     let mut response_headers: Vec<(ByteString, ByteString)> = res
@@ -209,14 +221,13 @@ impl LscBackend {
       .headers()
       .get("x-lsc-meta-cached-at")
       .and_then(|x| x.to_str().ok())
+      && let Ok(cached_at) = chrono::DateTime::parse_from_rfc3339(x)
     {
-      if let Ok(cached_at) = chrono::DateTime::parse_from_rfc3339(x) {
-        let age = chrono::Utc::now()
-          .signed_duration_since(cached_at)
-          .num_seconds();
-        if age >= 0 {
-          response_headers.push(("age".into(), age.to_string().into()));
-        }
+      let age = chrono::Utc::now()
+        .signed_duration_since(cached_at)
+        .num_seconds();
+      if age >= 0 {
+        response_headers.push(("age".into(), age.to_string().into()));
       }
     }
 
@@ -247,7 +258,7 @@ impl LscBackend {
 
     let body = http_body_util::BodyDataStream::new(res.into_body())
       .into_stream()
-      .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e));
+      .map_err(std::io::Error::other);
     let body = CacheResponseResource::lsc(body);
 
     Ok(Some((meta, Some(body))))
@@ -291,7 +302,7 @@ impl LscBackend {
   }
 }
 impl deno_core::Resource for LscBackend {
-  fn name(&self) -> std::borrow::Cow<str> {
+  fn name(&self) -> std::borrow::Cow<'_, str> {
     "LscBackend".into()
   }
 }

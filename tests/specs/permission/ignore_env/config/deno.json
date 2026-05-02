@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "default": {
+      "env": {
+        "ignore": true
+      }
+    }
+  }
+}

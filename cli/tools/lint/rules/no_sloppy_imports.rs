@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::cell::RefCell;
@@ -7,9 +7,9 @@ use std::sync::Arc;
 
 use deno_ast::SourceRange;
 use deno_error::JsErrorBox;
+use deno_graph::Range;
 use deno_graph::source::ResolutionKind;
 use deno_graph::source::ResolveError;
-use deno_graph::Range;
 use deno_lint::diagnostic::LintDiagnosticDetails;
 use deno_lint::diagnostic::LintDiagnosticRange;
 use deno_lint::diagnostic::LintDocsUrl;
@@ -87,13 +87,12 @@ impl LintRule for NoSloppyImportsRule {
       graph_kind: deno_graph::GraphKind::All,
       specifier: context.specifier().clone(),
       maybe_headers: None,
+      mtime: None,
       parsed_source: context.parsed_source(),
       // ignore resolving dynamic imports like import(`./dir/${something}`)
       file_system: &deno_graph::source::NullFileSystem,
       jsr_url_provider: &CliJsrUrlProvider,
       maybe_resolver: Some(&resolver),
-      // don't bother resolving npm specifiers
-      maybe_npm_resolver: None,
     });
 
     for (referrer, (specifier, sloppy_reason)) in
@@ -174,7 +173,7 @@ struct SloppyImportCaptureResolver<'a> {
   >,
 }
 
-impl<'a> deno_graph::source::Resolver for SloppyImportCaptureResolver<'a> {
+impl deno_graph::source::Resolver for SloppyImportCaptureResolver<'_> {
   fn resolve(
     &self,
     specifier_text: &str,
@@ -218,7 +217,10 @@ impl<'a> deno_graph::source::Resolver for SloppyImportCaptureResolver<'a> {
       | deno_resolver::workspace::MappedResolution::WorkspaceNpmPackage {
         ..
       }
-      | deno_resolver::workspace::MappedResolution::PackageJson { .. } => {
+      | deno_resolver::workspace::MappedResolution::PackageJson { .. }
+      | deno_resolver::workspace::MappedResolution::PackageJsonImport {
+        ..
+      } => {
         // this error is ignored
         Err(ResolveError::Other(JsErrorBox::generic("")))
       }

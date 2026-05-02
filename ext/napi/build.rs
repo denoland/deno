@@ -1,4 +1,6 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
+
+#![allow(clippy::disallowed_methods, reason = "build code")]
 
 fn main() {
   let symbols_file_name = match std::env::consts::OS {
@@ -16,7 +18,7 @@ fn main() {
 
   println!("cargo:rustc-rerun-if-changed={}", symbols_path.display());
 
-  let path = std::path::PathBuf::from(std::env::var("OUT_DIR").unwrap())
+  let path = std::path::PathBuf::from(std::env::var_os("OUT_DIR").unwrap())
     .join("napi_symbol_path.txt");
   std::fs::write(path, symbols_path.as_os_str().as_encoded_bytes()).unwrap();
 }

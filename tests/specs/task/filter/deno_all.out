@@ -1,4 +1,4 @@
-Task dev echo '@deno/bar'
+Task dev (@deno/bar) echo '@deno/bar'
 @deno/bar
-Task dev echo '@deno/foo'
+Task dev (@deno/foo) echo '@deno/foo'
 @deno/foo

@@ -1,12 +1,11 @@
-Compile file:[WILDLINE]main.ts to [WILDLINE]
+Compile main.ts to [WILDCARD]
 
 Embedded Files
 
-[WILDLINE]
-├── deno.json ([WILDLINE])
-└── main.ts ([WILDLINE])
+[WILDCARD]
+├── deno.json ([WILDCARD])
+└── main.ts ([WILDCARD])
 
 Files: [WILDCARD]
 Metadata: [WILDCARD]
 Remote modules: [WILDCARD]
-

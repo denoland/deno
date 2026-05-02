@@ -1,4 +1,5 @@
 {
+  "tempDir": true,
   "steps": [
     {
       "args": "lint a.ts",

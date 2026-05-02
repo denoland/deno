@@ -1,5 +1,5 @@
 {
-  "version": "4",
+  "version": "5",
   "specifiers": {
     "jsr:@denotest/add@*": "1.0.0",
     "jsr:@std/testing@*": "1.0.0",
@@ -15,7 +15,8 @@
   },
   "npm": {
     "@denotest/esm-basic@1.0.0": {
-      "integrity": "[WILDCARD]"
+      "integrity": "[WILDCARD]",
+      "tarball": "http://localhost:4260/@denotest/esm-basic/1.0.0.tgz"
     }
   },
   "remote": {

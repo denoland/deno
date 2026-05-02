@@ -1,0 +1,6 @@
+Error checking: [WILDCARD]parse_error.ts
+  Expected '{', got '<eof>' at [WILDCARD]parse_error.ts:2:1
+
+    class Test
+    ~~~~~
+error: Found 1 not formatted file in 1 file

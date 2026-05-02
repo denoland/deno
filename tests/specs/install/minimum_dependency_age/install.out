@@ -1,0 +1,17 @@
+Add npm:@denotest/add@0.5.0
+Add jsr:@denotest/add@0.2.0
+[UNORDERED_START]
+Download http://localhost:4260/@denotest%2fadd
+Download http://127.0.0.1:4250/@denotest/add/0.2.0/mod.ts
+Download http://localhost:4260/@denotest/add/0.5.0.tgz
+[UNORDERED_END]
+Initialize @denotest/add@0.5.0
+Installed 1 package in [WILDLINE]
+Reused 0 packages from cache
+Downloaded 0 packages from JSR
+Downloaded 1 package from npm
++
+
+Dependencies:
++ npm:@denotest/add 0.5.0
+

@@ -1,20 +1,33 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::cell::RefCell;
 use std::fmt;
+use std::path::PathBuf;
 use std::rc::Rc;
+use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::AtomicU32;
 use std::sync::atomic::Ordering;
-use std::sync::Arc;
 use std::task::Context;
 use std::task::Poll;
 
-use deno_broadcast_channel::InMemoryBroadcastChannel;
 use deno_cache::CacheImpl;
 use deno_cache::CreateCache;
 use deno_cache::SqliteBackedCache;
+use deno_core::CancelHandle;
+use deno_core::CompiledWasmModuleStore;
+use deno_core::DetachedBuffer;
+use deno_core::Extension;
+use deno_core::JsRuntime;
+use deno_core::ModuleCodeString;
+use deno_core::ModuleId;
+use deno_core::ModuleLoader;
+use deno_core::ModuleSpecifier;
+use deno_core::PollEventLoopOptions;
+use deno_core::RuntimeOptions;
+use deno_core::SharedArrayBufferStore;
 use deno_core::error::CoreError;
+use deno_core::error::CoreErrorKind;
 use deno_core::futures::channel::mpsc;
 use deno_core::futures::future::poll_fn;
 use deno_core::futures::stream::StreamExt;
@@ -24,24 +37,12 @@ use deno_core::serde::Deserialize;
 use deno_core::serde::Serialize;
 use deno_core::serde_json::json;
 use deno_core::v8;
-use deno_core::CancelHandle;
-use deno_core::CompiledWasmModuleStore;
-use deno_core::DetachedBuffer;
-use deno_core::Extension;
-use deno_core::FeatureChecker;
-use deno_core::JsRuntime;
-use deno_core::ModuleCodeString;
-use deno_core::ModuleId;
-use deno_core::ModuleLoader;
-use deno_core::ModuleSpecifier;
-use deno_core::PollEventLoopOptions;
-use deno_core::RuntimeOptions;
-use deno_core::SharedArrayBufferStore;
-use deno_cron::local::LocalCronHandler;
+use deno_cron::CronHandlerImpl;
+use deno_error::JsErrorClass;
 use deno_fs::FileSystem;
-use deno_http::DefaultHttpPropertyExtractor;
 use deno_io::Stdio;
 use deno_kv::dynamic::MultiBackendDbHandler;
+use deno_napi::DenoRtNativeAddonLoaderRc;
 use deno_node::ExtNodeSys;
 use deno_node::NodeExtInitServices;
 use deno_permissions::PermissionsContainer;
@@ -49,25 +50,32 @@ use deno_process::NpmProcessStateProviderRc;
 use deno_terminal::colors;
 use deno_tls::RootCertStoreProvider;
 use deno_tls::TlsKeys;
-use deno_web::create_entangled_message_port;
-use deno_web::serialize_transferables;
 use deno_web::BlobStore;
+use deno_web::InMemoryBroadcastChannel;
 use deno_web::JsMessageData;
 use deno_web::MessagePort;
 use deno_web::Transferable;
+use deno_web::create_entangled_message_port;
+use deno_web::serialize_transferables;
 use log::debug;
 use node_resolver::InNpmPackageChecker;
 use node_resolver::NpmPackageFolderResolver;
 
-use crate::inspector_server::InspectorServer;
+use crate::BootstrapOptions;
+use crate::FeatureChecker;
+use crate::coverage::CoverageCollector;
+use crate::cpu_profiler::CpuProfiler;
+use crate::cpu_profiler::CpuProfilerConfig;
+use crate::deno_inspector_server::MainInspectorSessionChannel;
 use crate::ops;
 use crate::shared::runtime;
-use crate::tokio_util::create_and_run_current_thread;
-use crate::worker::create_op_metrics;
-use crate::worker::import_meta_resolve_callback;
-use crate::worker::validate_import_attributes_callback;
 use crate::worker::FormatJsErrorFn;
-use crate::BootstrapOptions;
+#[cfg(target_os = "linux")]
+use crate::worker::MEMORY_TRIM_HANDLER_ENABLED;
+#[cfg(target_os = "linux")]
+use crate::worker::SIGUSR2_RX;
+use crate::worker::create_op_metrics;
+use crate::worker::create_validate_import_attributes_callback;
 
 pub struct WorkerMetadata {
   pub buffer: DetachedBuffer,
@@ -97,16 +105,37 @@ impl Default for WorkerId {
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
-pub enum WebWorkerType {
+pub enum WorkerThreadType {
+  // Used only for testing
   Classic,
+  // Regular Web Worker
   Module,
+  // `node:worker_threads` worker, technically
+  // not a web worker, will be cleaned up in the future.
+  Node,
 }
 
+impl<'s> WorkerThreadType {
+  pub fn to_v8(
+    &self,
+    scope: &mut v8::PinScope<'s, '_>,
+  ) -> v8::Local<'s, v8::String> {
+    v8::String::new(
+      scope,
+      match self {
+        WorkerThreadType::Classic => "classic",
+        WorkerThreadType::Module => "module",
+        WorkerThreadType::Node => "node",
+      },
+    )
+    .unwrap()
+  }
+}
 /// Events that are sent to host from child
 /// worker.
 pub enum WorkerControlEvent {
-  TerminalError(CoreError),
-  Close,
+  TerminalError(CoreError, i32),
+  Close(i32),
 }
 
 use deno_core::serde::Serializer;
@@ -117,33 +146,47 @@ impl Serialize for WorkerControlEvent {
     S: Serializer,
   {
     let type_id = match &self {
-      WorkerControlEvent::TerminalError(_) => 1_i32,
-      WorkerControlEvent::Close => 3_i32,
+      WorkerControlEvent::TerminalError(..) => 1_i32,
+      WorkerControlEvent::Close(_) => 3_i32,
     };
 
     match self {
-      WorkerControlEvent::TerminalError(error) => {
-        let value = match error {
-          CoreError::Js(js_error) => {
+      WorkerControlEvent::TerminalError(error, exit_code) => {
+        let value = match error.as_kind() {
+          CoreErrorKind::Js(js_error) => {
             let frame = js_error.frames.iter().find(|f| match &f.file_name {
               Some(s) => !s.trim_start_matches('[').starts_with("ext:"),
               None => false,
             });
             json!({
               "message": js_error.exception_message,
+              "name": js_error.name,
+              "errorMessage": js_error.message,
               "fileName": frame.map(|f| f.file_name.as_ref()),
               "lineNumber": frame.map(|f| f.line_number.as_ref()),
               "columnNumber": frame.map(|f| f.column_number.as_ref()),
+              "exitCode": exit_code,
+            })
+          }
+          CoreErrorKind::JsBox(js_error_box) => {
+            let class = js_error_box.get_class();
+            json!({
+              "message": js_error_box.to_string(),
+              "name": class,
+              "exitCode": exit_code,
             })
           }
           _ => json!({
             "message": error.to_string(),
+            "exitCode": exit_code,
           }),
         };
 
         Serialize::serialize(&(type_id, value), serializer)
       }
-      _ => Serialize::serialize(&(type_id, ()), serializer),
+      WorkerControlEvent::Close(exit_code) => {
+        Serialize::serialize(&(type_id, exit_code), serializer)
+      }
     }
   }
 }
@@ -159,11 +202,12 @@ pub struct WebWorkerInternalHandle {
   terminate_waker: Arc<AtomicWaker>,
   isolate_handle: v8::IsolateHandle,
   pub name: String,
-  pub worker_type: WebWorkerType,
+  pub worker_type: WorkerThreadType,
 }
 
 impl WebWorkerInternalHandle {
   /// Post WorkerEvent to parent as a worker
+  #[allow(clippy::result_large_err, reason = "TODO: investigate")]
   pub fn post_event(
     &self,
     event: WorkerControlEvent,
@@ -224,9 +268,7 @@ pub struct SendableWebWorkerHandle {
   port: MessagePort,
   receiver: mpsc::Receiver<WorkerControlEvent>,
   termination_signal: Arc<AtomicBool>,
-  has_terminated: Arc<AtomicBool>,
   terminate_waker: Arc<AtomicWaker>,
-  isolate_handle: v8::IsolateHandle,
 }
 
 impl From<SendableWebWorkerHandle> for WebWorkerHandle {
@@ -235,9 +277,7 @@ impl From<SendableWebWorkerHandle> for WebWorkerHandle {
       receiver: Rc::new(RefCell::new(handle.receiver)),
       port: Rc::new(handle.port),
       termination_signal: handle.termination_signal,
-      has_terminated: handle.has_terminated,
       terminate_waker: handle.terminate_waker,
-      isolate_handle: handle.isolate_handle,
     }
   }
 }
@@ -254,15 +294,16 @@ pub struct WebWorkerHandle {
   pub port: Rc<MessagePort>,
   receiver: Rc<RefCell<mpsc::Receiver<WorkerControlEvent>>>,
   termination_signal: Arc<AtomicBool>,
-  has_terminated: Arc<AtomicBool>,
   terminate_waker: Arc<AtomicWaker>,
-  isolate_handle: v8::IsolateHandle,
 }
 
 impl WebWorkerHandle {
   /// Get the WorkerEvent with lock
   /// Return error if more than one listener tries to get event
-  #[allow(clippy::await_holding_refcell_ref)] // TODO(ry) remove!
+  #[allow(
+    clippy::await_holding_refcell_ref,
+    reason = "TODO: investigate and fix"
+  )] // TODO(ry) remove!
   pub async fn get_control_event(&self) -> Option<WorkerControlEvent> {
     let mut receiver = self.receiver.borrow_mut();
     receiver.next().await
@@ -270,36 +311,16 @@ impl WebWorkerHandle {
 
   /// Terminate the worker
   /// This function will set the termination signal, close the message channel,
-  /// and schedule to terminate the isolate after two seconds.
+  /// and wake the worker's event loop so it can terminate.
   pub fn terminate(self) {
-    use std::thread::sleep;
-    use std::thread::spawn;
-    use std::time::Duration;
-
     let schedule_termination =
       !self.termination_signal.swap(true, Ordering::SeqCst);
 
     self.port.disentangle();
 
-    if schedule_termination && !self.has_terminated.load(Ordering::SeqCst) {
+    if schedule_termination {
       // Wake up the worker's event loop so it can terminate.
       self.terminate_waker.wake();
-
-      let has_terminated = self.has_terminated.clone();
-
-      // Schedule to terminate the isolate's execution.
-      spawn(move || {
-        sleep(Duration::from_secs(2));
-
-        // A worker's isolate can only be terminated once, so we need a guard
-        // here.
-        let already_terminated = has_terminated.swap(true, Ordering::SeqCst);
-
-        if !already_terminated {
-          // Stop javascript execution
-          self.isolate_handle.terminate_execution();
-        }
-      });
     }
   }
 }
@@ -307,7 +328,7 @@ impl WebWorkerHandle {
 fn create_handles(
   isolate_handle: v8::IsolateHandle,
   name: String,
-  worker_type: WebWorkerType,
+  worker_type: WorkerThreadType,
 ) -> (WebWorkerInternalHandle, SendableWebWorkerHandle) {
   let (parent_port, worker_port) = create_entangled_message_port();
   let (ctrl_tx, ctrl_rx) = mpsc::channel::<WorkerControlEvent>(1);
@@ -318,9 +339,9 @@ fn create_handles(
     name,
     port: Rc::new(parent_port),
     termination_signal: termination_signal.clone(),
-    has_terminated: has_terminated.clone(),
+    has_terminated,
     terminate_waker: terminate_waker.clone(),
-    isolate_handle: isolate_handle.clone(),
+    isolate_handle,
     cancel: CancelHandle::new_rc(),
     sender: ctrl_tx,
     worker_type,
@@ -329,9 +350,7 @@ fn create_handles(
     receiver: ctrl_rx,
     port: worker_port,
     termination_signal,
-    has_terminated,
     terminate_waker,
-    isolate_handle,
   };
   (internal_handle, external_handle)
 }
@@ -343,10 +362,11 @@ pub struct WebWorkerServiceOptions<
 > {
   pub blob_store: Arc<BlobStore>,
   pub broadcast_channel: InMemoryBroadcastChannel,
+  pub deno_rt_native_addon_loader: Option<DenoRtNativeAddonLoaderRc>,
   pub compiled_wasm_module_store: Option<CompiledWasmModuleStore>,
   pub feature_checker: Arc<FeatureChecker>,
   pub fs: Arc<dyn FileSystem>,
-  pub maybe_inspector_server: Option<Arc<InspectorServer>>,
+  pub main_inspector_session_tx: MainInspectorSessionChannel,
   pub module_loader: Rc<dyn ModuleLoader>,
   pub node_services: Option<
     NodeExtInitServices<
@@ -359,6 +379,7 @@ pub struct WebWorkerServiceOptions<
   pub permissions: PermissionsContainer,
   pub root_cert_store_provider: Option<Arc<dyn RootCertStoreProvider>>,
   pub shared_array_buffer_store: Option<SharedArrayBufferStore>,
+  pub bundle_provider: Option<Arc<dyn deno_bundle_runtime::BundleProvider>>,
 }
 
 pub struct WebWorkerOptions {
@@ -374,12 +395,15 @@ pub struct WebWorkerOptions {
   pub seed: Option<u64>,
   pub create_web_worker_cb: Arc<ops::worker_host::CreateWebWorkerCb>,
   pub format_js_error_fn: Option<Arc<FormatJsErrorFn>>,
-  pub worker_type: WebWorkerType,
+  pub worker_type: WorkerThreadType,
   pub cache_storage_dir: Option<std::path::PathBuf>,
   pub stdio: Stdio,
-  pub strace_ops: Option<Vec<String>>,
+  pub trace_ops: Option<Vec<String>>,
   pub close_on_idle: bool,
   pub maybe_worker_metadata: Option<WorkerMetadata>,
+  pub maybe_coverage_dir: Option<PathBuf>,
+  pub maybe_cpu_prof_config: Option<CpuProfilerConfig>,
+  pub enable_raw_imports: bool,
   pub enable_stack_trace_arg_in_ops: bool,
 }
 
@@ -393,19 +417,30 @@ pub struct WebWorker {
   pub name: String,
   close_on_idle: bool,
   internal_handle: WebWorkerInternalHandle,
-  pub worker_type: WebWorkerType,
+  pub worker_type: WorkerThreadType,
   pub main_module: ModuleSpecifier,
   poll_for_messages_fn: Option<v8::Global<v8::Value>>,
   has_message_event_listener_fn: Option<v8::Global<v8::Value>>,
   bootstrap_fn_global: Option<v8::Global<v8::Function>>,
   // Consumed when `bootstrap_fn` is called
   maybe_worker_metadata: Option<WorkerMetadata>,
+  memory_trim_handle: Option<tokio::task::JoinHandle<()>>,
+  maybe_coverage_dir: Option<PathBuf>,
+  maybe_cpu_prof_config: Option<CpuProfilerConfig>,
+  bootstrap_error: Option<CoreError>,
+  /// Set to `true` by the near-heap-limit callback when resource limits
+  /// are exceeded, so the error handler can emit `ERR_WORKER_OUT_OF_MEMORY`.
+  pub oom_triggered: Arc<AtomicBool>,
 }
 
 impl Drop for WebWorker {
   fn drop(&mut self) {
     // clean up the package.json thread local cache
     node_resolver::PackageJsonThreadLocalCache::clear();
+
+    if let Some(memory_trim_handle) = self.memory_trim_handle.take() {
+      memory_trim_handle.abort();
+    }
   }
 }
 
@@ -428,7 +463,7 @@ impl WebWorker {
     (worker, handle)
   }
 
-  fn from_options<
+  pub fn from_options<
     TInNpmPackageChecker: InNpmPackageChecker + 'static,
     TNpmPackageFolderResolver: NpmPackageFolderResolver + 'static,
     TExtNodeSys: ExtNodeSys + 'static,
@@ -440,17 +475,6 @@ impl WebWorker {
     >,
     mut options: WebWorkerOptions,
   ) -> (Self, SendableWebWorkerHandle, BootstrapOptions) {
-    deno_core::extension!(deno_permissions_web_worker,
-      options = {
-        permissions: PermissionsContainer,
-        enable_testing_features: bool,
-      },
-      state = |state, options| {
-        state.put::<PermissionsContainer>(options.permissions);
-        state.put(ops::TestingFeaturesEnabled(options.enable_testing_features));
-      },
-    );
-
     // Permissions: many ops depend on this
     let enable_testing_features = options.bootstrap.enable_testing_features;
 
@@ -470,7 +494,10 @@ impl WebWorker {
 
             Ok(CacheImpl::Lsc(x))
           };
-          #[allow(clippy::arc_with_non_send_sync)]
+          #[allow(
+            clippy::arc_with_non_send_sync,
+            reason = "fine because the Rc is in the return type"
+          )]
           return Some(CreateCache(Arc::new(create_cache_fn)));
         }
       }
@@ -492,47 +519,39 @@ impl WebWorker {
     // `runtime/worker.rs`, `runtime/web_worker.rs`, `runtime/snapshot_info.rs`
     // and `runtime/snapshot.rs`!
     let mut extensions = vec![
-      deno_telemetry::deno_telemetry::init_ops_and_esm(),
+      deno_telemetry::deno_telemetry::init(),
       // Web APIs
-      deno_webidl::deno_webidl::init_ops_and_esm(),
-      deno_console::deno_console::init_ops_and_esm(),
-      deno_url::deno_url::init_ops_and_esm(),
-      deno_web::deno_web::init_ops_and_esm::<PermissionsContainer>(
+      deno_webidl::deno_webidl::init(),
+      deno_web::deno_web::init(
         services.blob_store,
         Some(options.main_module.clone()),
-      ),
-      deno_webgpu::deno_webgpu::init_ops_and_esm(),
-      deno_canvas::deno_canvas::init_ops_and_esm(),
-      deno_fetch::deno_fetch::init_ops_and_esm::<PermissionsContainer>(
-        deno_fetch::Options {
-          user_agent: options.bootstrap.user_agent.clone(),
-          root_cert_store_provider: services.root_cert_store_provider.clone(),
-          unsafely_ignore_certificate_errors: options
-            .unsafely_ignore_certificate_errors
-            .clone(),
-          file_fetch_handler: Rc::new(deno_fetch::FsFetchHandler),
-          ..Default::default()
-        },
-      ),
-      deno_cache::deno_cache::init_ops_and_esm(create_cache),
-      deno_websocket::deno_websocket::init_ops_and_esm::<PermissionsContainer>(
-        options.bootstrap.user_agent.clone(),
-        services.root_cert_store_provider.clone(),
-        options.unsafely_ignore_certificate_errors.clone(),
-      ),
-      deno_webstorage::deno_webstorage::init_ops_and_esm(None).disable(),
-      deno_crypto::deno_crypto::init_ops_and_esm(options.seed),
-      deno_broadcast_channel::deno_broadcast_channel::init_ops_and_esm(
+        Default::default(),
         services.broadcast_channel,
       ),
-      deno_ffi::deno_ffi::init_ops_and_esm::<PermissionsContainer>(),
-      deno_net::deno_net::init_ops_and_esm::<PermissionsContainer>(
+      deno_webgpu::deno_webgpu::init(),
+      deno_image::deno_image::init(),
+      deno_canvas::deno_canvas::init(),
+      deno_fetch::deno_fetch::init(deno_fetch::Options {
+        user_agent: options.bootstrap.user_agent.clone(),
+        root_cert_store_provider: services.root_cert_store_provider.clone(),
+        unsafely_ignore_certificate_errors: options
+          .unsafely_ignore_certificate_errors
+          .clone(),
+        file_fetch_handler: Rc::new(deno_fetch::FsFetchHandler),
+        ..Default::default()
+      }),
+      deno_cache::deno_cache::init(create_cache),
+      deno_websocket::deno_websocket::init(),
+      deno_webstorage::deno_webstorage::init(None).disable(),
+      deno_crypto::deno_crypto::init(options.seed),
+      deno_ffi::deno_ffi::init(services.deno_rt_native_addon_loader.clone()),
+      deno_net::deno_net::init(
         services.root_cert_store_provider.clone(),
         options.unsafely_ignore_certificate_errors.clone(),
       ),
-      deno_tls::deno_tls::init_ops_and_esm(),
-      deno_kv::deno_kv::init_ops_and_esm(
-        MultiBackendDbHandler::remote_or_sqlite::<PermissionsContainer>(
+      deno_tls::deno_tls::init(),
+      deno_kv::deno_kv::init(
+        MultiBackendDbHandler::remote_or_sqlite(
           None,
           options.seed,
           deno_kv::remote::HttpOptions {
@@ -547,55 +566,49 @@ impl WebWorker {
         ),
         deno_kv::KvConfig::builder().build(),
       ),
-      deno_cron::deno_cron::init_ops_and_esm(LocalCronHandler::new()),
-      deno_napi::deno_napi::init_ops_and_esm::<PermissionsContainer>(),
-      deno_http::deno_http::init_ops_and_esm::<DefaultHttpPropertyExtractor>(
-        deno_http::Options::default(),
-      ),
-      deno_io::deno_io::init_ops_and_esm(Some(options.stdio)),
-      deno_fs::deno_fs::init_ops_and_esm::<PermissionsContainer>(
-        services.fs.clone(),
-      ),
-      deno_os::deno_os_worker::init_ops_and_esm(),
-      deno_process::deno_process::init_ops_and_esm(
-        services.npm_process_state_provider,
-      ),
-      deno_node::deno_node::init_ops_and_esm::<
-        PermissionsContainer,
+      deno_cron::deno_cron::init(CronHandlerImpl::create_from_env()),
+      deno_napi::deno_napi::init(services.deno_rt_native_addon_loader.clone()),
+      deno_http::deno_http::init(deno_http::Options {
+        no_legacy_abort: options.bootstrap.no_legacy_abort,
+        ..Default::default()
+      }),
+      deno_io::deno_io::init(Some(options.stdio)),
+      deno_fs::deno_fs::init(services.fs.clone()),
+      deno_os::deno_os::init(Some(deno_os::ExitCode::default())),
+      deno_process::deno_process::init(services.npm_process_state_provider),
+      deno_node_crypto::deno_node_crypto::init(),
+      deno_node_sqlite::deno_node_sqlite::init(),
+      deno_node::deno_node::init::<
         TInNpmPackageChecker,
         TNpmPackageFolderResolver,
         TExtNodeSys,
       >(services.node_services, services.fs),
       // Runtime ops that are always initialized for WebWorkers
-      ops::runtime::deno_runtime::init_ops_and_esm(options.main_module.clone()),
-      ops::worker_host::deno_worker_host::init_ops_and_esm(
+      ops::runtime::deno_runtime::init(options.main_module.clone()),
+      ops::worker_host::deno_worker_host::init(
         options.create_web_worker_cb,
         options.format_js_error_fn,
       ),
-      ops::fs_events::deno_fs_events::init_ops_and_esm(),
-      ops::permissions::deno_permissions::init_ops_and_esm(),
-      ops::tty::deno_tty::init_ops_and_esm(),
-      ops::http::deno_http_runtime::init_ops_and_esm(),
-      ops::bootstrap::deno_bootstrap::init_ops_and_esm(
-        if options.startup_snapshot.is_some() {
-          None
-        } else {
-          Some(Default::default())
-        },
+      ops::fs_events::deno_fs_events::init(),
+      ops::permissions::deno_permissions::init(),
+      ops::tty::deno_tty::init(),
+      ops::http::deno_http_runtime::init(),
+      deno_bundle_runtime::deno_bundle_runtime::init(services.bundle_provider),
+      ops::bootstrap::deno_bootstrap::init(
+        options.startup_snapshot.and_then(|_| Default::default()),
+        false,
       ),
-      deno_permissions_web_worker::init_ops_and_esm(
-        services.permissions,
-        enable_testing_features,
-      ),
-      runtime::init_ops_and_esm(),
-      ops::web_worker::deno_web_worker::init_ops_and_esm(),
+      runtime::init(),
+      ops::web_worker::deno_web_worker::init(),
     ];
 
     #[cfg(feature = "hmr")]
-    assert!(
-      cfg!(not(feature = "only_snapshotted_js_sources")),
-      "'hmr' is incompatible with 'only_snapshotted_js_sources'."
-    );
+    const {
+      assert!(
+        cfg!(not(feature = "only_snapshotted_js_sources")),
+        "'hmr' is incompatible with 'only_snapshotted_js_sources'."
+      );
+    }
 
     for extension in &mut extensions {
       if options.startup_snapshot.is_some() {
@@ -611,10 +624,7 @@ impl WebWorker {
     options.startup_snapshot.as_ref().expect("A user snapshot was not provided, even though 'only_snapshotted_js_sources' is used.");
 
     // Get our op metrics
-    let (op_summary_metrics, op_metrics_factory_fn) = create_op_metrics(
-      options.bootstrap.enable_op_summary_metrics,
-      options.strace_ops,
-    );
+    let op_metrics_factory_fn = create_op_metrics(options.trace_ops);
 
     let mut js_runtime = JsRuntime::new(RuntimeOptions {
       module_loader: Some(services.module_loader),
@@ -630,41 +640,60 @@ impl WebWorker {
       #[cfg(not(feature = "transpile"))]
       extension_transpiler: None,
       inspector: true,
-      feature_checker: Some(services.feature_checker),
       op_metrics_factory_fn,
-      import_meta_resolve_callback: Some(Box::new(
-        import_meta_resolve_callback,
-      )),
-      validate_import_attributes_cb: Some(Box::new(
-        validate_import_attributes_callback,
-      )),
-      import_assertions_support: deno_core::ImportAssertionsSupport::Error,
-      maybe_op_stack_trace_callback: if options.enable_stack_trace_arg_in_ops {
-        Some(Box::new(|stack| {
-          deno_permissions::prompter::set_current_stacktrace(stack)
-        }))
-      } else {
-        None
-      },
-      ..Default::default()
+      validate_import_attributes_cb: Some(
+        create_validate_import_attributes_callback(Arc::new(AtomicBool::new(
+          options.enable_raw_imports,
+        ))),
+      ),
+      maybe_op_stack_trace_callback: options
+        .enable_stack_trace_arg_in_ops
+        .then(crate::worker::create_permissions_stack_trace_callback),
+      extension_code_cache: None,
+      skip_op_registration: false,
+      v8_platform: None,
+      is_main: false,
+      worker_id: Some(options.worker_id.0),
+      wait_for_inspector_disconnect_callback: None,
+      custom_module_evaluation_cb: None,
+      eval_context_code_cache_cbs: None,
     });
 
-    if let Some(op_summary_metrics) = op_summary_metrics {
-      js_runtime.op_state().borrow_mut().put(op_summary_metrics);
+    {
+      let state = js_runtime.op_state();
+      let mut state = state.borrow_mut();
+
+      state.put::<PermissionsContainer>(services.permissions);
+      state.put(ops::TestingFeaturesEnabled(enable_testing_features));
+      state.put(services.feature_checker);
+
+      // Put inspector handle into the op state so we can put a breakpoint when
+      // executing a CJS entrypoint.
+      state.put(js_runtime.inspector());
     }
 
-    // Put inspector handle into the op state so we can put a breakpoint when
-    // executing a CJS entrypoint.
-    let op_state = js_runtime.op_state();
-    let inspector = js_runtime.inspector();
-    op_state.borrow_mut().put(inspector);
+    // The uv loop is auto-created and registered by JsRuntime::new_inner.
 
-    if let Some(server) = services.maybe_inspector_server {
-      server.register_inspector(
-        options.main_module.to_string(),
-        &mut js_runtime,
-        false,
-      );
+    if let Some(main_session_tx) = services.main_inspector_session_tx.get() {
+      let (main_proxy, worker_proxy) =
+        deno_core::create_worker_inspector_session_pair(
+          options.main_module.to_string(),
+        );
+
+      // Send worker proxy to the main runtime
+      if main_session_tx.unbounded_send(main_proxy).is_err() {
+        log::debug!("Failed to send inspector session proxy to main runtime");
+      }
+
+      // Send worker proxy to the worker runtime
+      if js_runtime
+        .inspector()
+        .get_session_sender()
+        .unbounded_send(worker_proxy)
+        .is_err()
+      {
+        log::debug!("Failed to send inspector session proxy to worker runtime");
+      }
     }
 
     let (internal_handle, external_handle) = {
@@ -679,7 +708,7 @@ impl WebWorker {
 
     let bootstrap_fn_global = {
       let context = js_runtime.main_context();
-      let scope = &mut js_runtime.handle_scope();
+      deno_core::scope!(scope, &mut js_runtime);
       let context_local = v8::Local::new(scope, context);
       let global_obj = context_local.global(scope);
       let bootstrap_str =
@@ -712,6 +741,11 @@ impl WebWorker {
         bootstrap_fn_global: Some(bootstrap_fn_global),
         close_on_idle: options.close_on_idle,
         maybe_worker_metadata: options.maybe_worker_metadata,
+        memory_trim_handle: None,
+        maybe_coverage_dir: options.maybe_coverage_dir,
+        maybe_cpu_prof_config: options.maybe_cpu_prof_config,
+        bootstrap_error: None,
+        oom_triggered: Arc::new(AtomicBool::new(false)),
       },
       external_handle,
       options.bootstrap,
@@ -724,7 +758,8 @@ impl WebWorker {
     // Instead of using name for log we use `worker-${id}` because
     // WebWorkers can have empty string as name.
     {
-      let scope = &mut self.js_runtime.handle_scope();
+      deno_core::scope!(scope, &mut self.js_runtime);
+      v8::tc_scope!(scope, scope);
       let args = options.as_v8(scope);
       let bootstrap_fn = self.bootstrap_fn_global.take().unwrap();
       let bootstrap_fn = v8::Local::new(scope, bootstrap_fn);
@@ -750,13 +785,28 @@ impl WebWorker {
           .into();
       let id: v8::Local<v8::Value> =
         v8::Integer::new(scope, self.id.0 as i32).into();
-      bootstrap_fn
-        .call(
-          scope,
-          undefined.into(),
-          &[args, name_str, id_str, id, worker_data],
-        )
-        .unwrap();
+      let worker_type: v8::Local<v8::Value> =
+        self.worker_type.to_v8(scope).into();
+      let result = bootstrap_fn.call(
+        scope,
+        undefined.into(),
+        &[args, name_str, id_str, id, worker_type, worker_data],
+      );
+
+      if result.is_none() {
+        let error: CoreError = match scope.exception() {
+          Some(exception) => {
+            let js_error =
+              deno_core::error::JsError::from_v8_exception(scope, exception);
+            CoreError::from(js_error)
+          }
+          None => CoreError::from(deno_error::JsErrorBox::generic(
+            "Bootstrap unexpectedly failed",
+          )),
+        };
+        self.bootstrap_error = Some(error);
+        return;
+      }
 
       let context = scope.get_current_context();
       let global = context.global(scope);
@@ -783,6 +833,79 @@ impl WebWorker {
       self.has_message_event_listener_fn =
         Some(v8::Global::new(scope, has_message_event_listener_fn));
     }
+  }
+
+  pub fn maybe_setup_coverage_collector(
+    &mut self,
+  ) -> Option<CoverageCollector> {
+    let coverage_dir = self.maybe_coverage_dir.as_ref()?;
+    let mut coverage_collector =
+      CoverageCollector::new(&mut self.js_runtime, coverage_dir.clone());
+    coverage_collector.start_collecting();
+
+    Some(coverage_collector)
+  }
+
+  pub fn maybe_setup_cpu_profiler(&mut self) -> Option<CpuProfiler> {
+    let config = self.maybe_cpu_prof_config.as_ref()?;
+    let worker_id = self.id.to_string();
+    let filename =
+      crate::cpu_profiler::cpu_prof_filename(config, Some(&worker_id));
+
+    let mut cpu_profiler = CpuProfiler::new(
+      &mut self.js_runtime,
+      config.dir.clone(),
+      filename,
+      config.interval,
+      config.md,
+      config.flamegraph,
+    );
+    cpu_profiler.start_profiling();
+
+    Some(cpu_profiler)
+  }
+
+  #[cfg(not(target_os = "linux"))]
+  pub fn setup_memory_trim_handler(&mut self) {
+    // Noop
+  }
+
+  /// Sets up a handler that responds to SIGUSR2 signals by trimming unused
+  /// memory and notifying V8 of low memory conditions.
+  /// Note that this must be called within a tokio runtime.
+  /// Calling this method multiple times will be a no-op.
+  #[cfg(target_os = "linux")]
+  pub fn setup_memory_trim_handler(&mut self) {
+    if self.memory_trim_handle.is_some() {
+      return;
+    }
+
+    if !*MEMORY_TRIM_HANDLER_ENABLED {
+      return;
+    }
+
+    let mut sigusr2_rx = SIGUSR2_RX.clone();
+
+    let spawner = self
+      .js_runtime
+      .op_state()
+      .borrow()
+      .borrow::<deno_core::V8CrossThreadTaskSpawner>()
+      .clone();
+
+    let memory_trim_handle = tokio::spawn(async move {
+      loop {
+        if sigusr2_rx.changed().await.is_err() {
+          break;
+        }
+
+        spawner.spawn(move |isolate| {
+          isolate.low_memory_notification();
+        });
+      }
+    });
+
+    self.memory_trim_handle = Some(memory_trim_handle);
   }
 
   /// See [JsRuntime::execute_script](deno_core::JsRuntime::execute_script)
@@ -896,7 +1019,7 @@ impl WebWorker {
 
         // TODO(mmastrac): we don't want to test this w/classic workers because
         // WPT triggers a failure here. This is only exposed via --enable-testing-features-do-not-use.
-        if self.worker_type == WebWorkerType::Module {
+        if self.worker_type == WorkerThreadType::Module {
           panic!(
             "coding error: either js is polling or the worker is terminated"
           );
@@ -919,7 +1042,7 @@ impl WebWorker {
   // Starts polling for messages from worker host from JavaScript.
   fn start_polling_for_messages(&mut self) {
     let poll_for_messages_fn = self.poll_for_messages_fn.take().unwrap();
-    let scope = &mut self.js_runtime.handle_scope();
+    deno_core::scope!(scope, &mut self.js_runtime);
     let poll_for_messages =
       v8::Local::<v8::Value>::new(scope, poll_for_messages_fn);
     let fn_ = v8::Local::<v8::Function>::try_from(poll_for_messages).unwrap();
@@ -931,7 +1054,7 @@ impl WebWorker {
   fn has_message_event_listener(&mut self) -> bool {
     let has_message_event_listener_fn =
       self.has_message_event_listener_fn.as_ref().unwrap();
-    let scope = &mut self.js_runtime.handle_scope();
+    deno_core::scope!(scope, &mut self.js_runtime);
     let has_message_event_listener =
       v8::Local::<v8::Value>::new(scope, has_message_event_listener_fn);
     let fn_ =
@@ -950,13 +1073,19 @@ fn print_worker_error(
   name: &str,
   format_js_error_fn: Option<&FormatJsErrorFn>,
 ) {
-  let error_str = match format_js_error_fn {
-    Some(format_js_error_fn) => match error {
-      CoreError::Js(js_error) => format_js_error_fn(js_error),
-      _ => error.to_string(),
-    },
-    None => error.to_string(),
-  };
+  let error_str = format_js_error_fn
+    .as_ref()
+    .and_then(|format_js_error_fn| {
+      let err = match error.as_kind() {
+        CoreErrorKind::Js(js_error) => js_error,
+        CoreErrorKind::JsBox(err) => {
+          err.get_ref().downcast_ref::<deno_core::error::JsError>()?
+        }
+        _ => return None,
+      };
+      Some(format_js_error_fn(err))
+    })
+    .unwrap_or_else(|| error.to_string());
   log::error!(
     "{}: Uncaught (in worker \"{}\") {}",
     colors::red_bold("error"),
@@ -967,66 +1096,206 @@ fn print_worker_error(
 
 /// This function should be called from a thread dedicated to this worker.
 // TODO(bartlomieju): check if order of actions is aligned to Worker spec
-pub fn run_web_worker(
+// TODO(bartlomieju): run following block using "select!"
+// with terminate
+pub async fn run_web_worker(
   mut worker: WebWorker,
   specifier: ModuleSpecifier,
   mut maybe_source_code: Option<String>,
   format_js_error_fn: Option<Arc<FormatJsErrorFn>>,
 ) -> Result<(), CoreError> {
+  worker.setup_memory_trim_handler();
+  let mut maybe_coverage_collector = worker.maybe_setup_coverage_collector();
+  let mut maybe_cpu_profiler = worker.maybe_setup_cpu_profiler();
+
   let name = worker.name.to_string();
+  let mut internal_handle = worker.internal_handle.clone();
 
-  // TODO(bartlomieju): run following block using "select!"
-  // with terminate
+  // If the bootstrap failed, report it as a terminal error.
+  if let Some(error) = worker.bootstrap_error.take() {
+    print_worker_error(&error, &name, format_js_error_fn.as_deref());
+    internal_handle
+      .post_event(WorkerControlEvent::TerminalError(error, 1))
+      .expect("Failed to post message to host");
+    return Ok(());
+  }
 
-  let fut = async move {
-    let internal_handle = worker.internal_handle.clone();
-
-    // Execute provided source code immediately
-    let result = if let Some(source_code) = maybe_source_code.take() {
-      let r = worker.execute_script(located_script_name!(), source_code.into());
-      worker.start_polling_for_messages();
-      r
-    } else {
-      // TODO(bartlomieju): add "type": "classic", ie. ability to load
-      // script instead of module
-      match worker.preload_main_module(&specifier).await {
-        Ok(id) => {
-          worker.start_polling_for_messages();
-          worker.execute_main_module(id).await
-        }
-        Err(e) => Err(e),
+  // Execute provided source code immediately via V8 script evaluation
+  // (sloppy mode). This path is used by node:worker_threads `{ eval: true }`
+  // when the code doesn't contain ESM syntax (import/export), matching
+  // Node.js behavior where such eval workers run as CJS (sloppy mode).
+  // See: https://github.com/denoland/deno/issues/26739
+  let result = if let Some(source_code) = maybe_source_code.take() {
+    let r = worker.execute_script(located_script_name!(), source_code.into());
+    worker.start_polling_for_messages();
+    r
+  } else {
+    // TODO(bartlomieju): add "type": "classic", ie. ability to load
+    // script instead of module
+    match worker.preload_main_module(&specifier).await {
+      Ok(id) => {
+        worker.start_polling_for_messages();
+        worker.execute_main_module(id).await
       }
-    };
-
-    // If sender is closed it means that worker has already been closed from
-    // within using "globalThis.close()"
-    if internal_handle.is_terminated() {
-      return Ok(());
+      Err(e) => Err(e),
     }
+  };
 
-    let result = if result.is_ok() {
-      worker
-        .run_event_loop(PollEventLoopOptions {
-          wait_for_inspector: true,
-          ..Default::default()
-        })
-        .await
-    } else {
-      result
-    };
-
-    if let Err(e) = result {
-      print_worker_error(&e, &name, format_js_error_fn.as_deref());
-      internal_handle
-        .post_event(WorkerControlEvent::TerminalError(e))
-        .expect("Failed to post message to host");
-
-      // Failure to execute script is a terminal error, bye, bye.
-      return Ok(());
+  // If sender is closed it means that worker has already been closed from
+  // within using "globalThis.close()"
+  if internal_handle.is_terminated() {
+    if let Some(coverage_collector) = maybe_coverage_collector.as_mut() {
+      coverage_collector.stop_collecting()?;
     }
+    if let Some(cpu_profiler) = maybe_cpu_profiler.as_mut() {
+      let _ = cpu_profiler.stop_profiling();
+    }
+    return Ok(());
+  }
 
-    debug!("Worker thread shuts down {}", &name);
+  let result = if result.is_ok() {
+    let r = worker
+      .run_event_loop(PollEventLoopOptions {
+        wait_for_inspector: true,
+      })
+      .await;
+    if let Some(coverage_collector) = maybe_coverage_collector.as_mut() {
+      coverage_collector.stop_collecting()?;
+    }
+    if let Some(cpu_profiler) = maybe_cpu_profiler.as_mut() {
+      let _ = cpu_profiler.stop_profiling();
+    }
+    r
+  } else {
     result
   };
-  create_and_run_current_thread(fut)
+
+  if let Err(e) = result {
+    // For Node workers with OOM, skip script execution (V8 is terminated)
+    // and use a dedicated error type with exit code 1.
+    if internal_handle.worker_type == WorkerThreadType::Node
+      && worker.oom_triggered.load(Ordering::SeqCst)
+    {
+      let oom_error: CoreError = CoreErrorKind::JsBox(
+        deno_error::JsErrorBox::new(
+          "ERR_WORKER_OUT_OF_MEMORY",
+          "Worker terminated due to reaching memory limit: JS heap out of memory",
+        ),
+      )
+      .into_box();
+      internal_handle
+        .post_event(WorkerControlEvent::TerminalError(oom_error, 1))
+        .expect("Failed to post message to host");
+      return Ok(());
+    }
+
+    print_worker_error(&e, &name, format_js_error_fn.as_deref());
+
+    // For Node workers, dispatch process 'exit' event before sending
+    // TerminalError so that exit handlers can run and modify the exit code.
+    // If _fatalException was monkey-patched to not be a function, exit
+    // with code 6 (kInvalidFatalExceptionMonkeyPatching) matching Node.js.
+    let exit_code = if internal_handle.worker_type == WorkerThreadType::Node {
+      let _ = worker.execute_script(
+        located_script_name!(),
+        r#"
+        if (typeof globalThis.process !== 'undefined') {
+          if (typeof globalThis.process._fatalException !== 'function') {
+            globalThis.process.exitCode = 6;
+          } else {
+            globalThis.process.exitCode = 1;
+            if (!globalThis.process._exiting) {
+              globalThis.process._exiting = true;
+              globalThis.process.emit("exit", globalThis.process.exitCode);
+            }
+          }
+        }
+        "#
+        .to_string()
+        .into(),
+      );
+      worker
+        .js_runtime
+        .op_state()
+        .borrow()
+        .try_borrow::<deno_os::ExitCode>()
+        .map(|e| e.get())
+        .unwrap_or(1)
+    } else {
+      1
+    };
+
+    // For Node workers, convert "Module not found" to Node-compatible
+    // "Cannot find module" format so it matches Node.js error behavior.
+    let e = if internal_handle.worker_type == WorkerThreadType::Node {
+      let msg = e.to_string();
+      if msg.starts_with("Module not found") {
+        #[allow(
+          clippy::disallowed_methods,
+          reason = "don't need the error or Wasm support here"
+        )]
+        let path = specifier.to_file_path().ok();
+        let display = path
+          .as_deref()
+          .map(|p| p.display().to_string())
+          .unwrap_or_else(|| specifier.to_string());
+        CoreErrorKind::JsBox(deno_error::JsErrorBox::new(
+          "Error",
+          format!("Cannot find module '{display}'"),
+        ))
+        .into_box()
+      } else {
+        e
+      }
+    } else {
+      e
+    };
+
+    // Exit code 6 means _fatalException was not a function. In Node.js
+    // this causes a clean exit without emitting 'error' on the parent Worker.
+    if exit_code == 6 {
+      let _ = internal_handle.post_event(WorkerControlEvent::Close(exit_code));
+      internal_handle.terminate();
+      return Ok(());
+    }
+
+    internal_handle
+      .post_event(WorkerControlEvent::TerminalError(e, exit_code))
+      .expect("Failed to post message to host");
+
+    // Failure to execute script is a terminal error, bye, bye.
+    return Ok(());
+  }
+
+  // For Node workers that exit naturally (event loop idle), dispatch the
+  // process 'exit' event and send the final exit code to the parent.
+  // This matches Node.js behavior where SpinEventLoopInternal calls
+  // EmitProcessExitInternal before the worker thread ends.
+  if worker.worker_type == WorkerThreadType::Node
+    && !internal_handle.is_terminated()
+  {
+    let _ = worker.execute_script(
+      located_script_name!(),
+      r#"
+      if (typeof globalThis.process !== 'undefined' && !globalThis.process._exiting) {
+        globalThis.process._exiting = true;
+        globalThis.process.emit("exit", globalThis.process.exitCode ?? 0);
+      }
+      "#
+      .to_string()
+      .into(),
+    );
+    let exit_code = worker
+      .js_runtime
+      .op_state()
+      .borrow()
+      .try_borrow::<deno_os::ExitCode>()
+      .map(|e| e.get())
+      .unwrap_or(0);
+    let _ = internal_handle.post_event(WorkerControlEvent::Close(exit_code));
+    internal_handle.terminate();
+  }
+
+  debug!("Worker thread shuts down {}", &name);
+  Ok(())
 }

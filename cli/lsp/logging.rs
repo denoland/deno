@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::fs;
 use std::io::prelude::*;
@@ -15,6 +15,7 @@ use deno_core::parking_lot::Mutex;
 
 static LSP_DEBUG_FLAG: AtomicBool = AtomicBool::new(false);
 static LSP_LOG_LEVEL: AtomicUsize = AtomicUsize::new(log::Level::Info as usize);
+#[allow(dead_code, reason = "part of LSP logging infrastructure")]
 static LSP_WARN_LEVEL: AtomicUsize =
   AtomicUsize::new(log::Level::Warn as usize);
 static LOG_FILE: LogFile = LogFile {
@@ -53,12 +54,11 @@ impl LogFile {
   }
 }
 
-pub fn init_log_file(enabled: bool) {
+pub fn init_log_file(enabled: bool, cwd: &Path) {
   let prepare_path = || {
     if !enabled {
       return None;
     }
-    let cwd = std::env::current_dir().ok()?;
     let now = SystemTime::now();
     let now: DateTime<Utc> = now.into();
     let now = now.to_rfc3339().replace(':', "_");
@@ -72,9 +72,11 @@ pub fn init_log_file(enabled: bool) {
     LOG_FILE.buffer.lock().clear();
     return;
   };
-  thread::spawn(move || loop {
-    LOG_FILE.commit(&path);
-    thread::sleep(std::time::Duration::from_secs(1));
+  thread::spawn(move || {
+    loop {
+      LOG_FILE.commit(&path);
+      thread::sleep(std::time::Duration::from_secs(1));
+    }
   });
 }
 
@@ -91,31 +93,27 @@ pub fn lsp_debug_enabled() -> bool {
 }
 
 /// Change the lsp to log at the provided level.
+#[allow(dead_code, reason = "part of LSP logging infrastructure")]
 pub fn set_lsp_log_level(level: log::Level) {
   LSP_LOG_LEVEL.store(level as usize, Ordering::SeqCst)
 }
 
 pub fn lsp_log_level() -> log::Level {
   let level = LSP_LOG_LEVEL.load(Ordering::SeqCst);
-  // TODO(bartlomieju):
-  #[allow(clippy::undocumented_unsafe_blocks)]
-  unsafe {
-    std::mem::transmute(level)
-  }
+  // SAFETY: level is only ever stored from valid log::Level values
+  unsafe { std::mem::transmute(level) }
 }
 
 /// Change the lsp to warn at the provided level.
+#[allow(dead_code, reason = "part of LSP logging infrastructure")]
 pub fn set_lsp_warn_level(level: log::Level) {
   LSP_WARN_LEVEL.store(level as usize, Ordering::SeqCst)
 }
 
 pub fn lsp_warn_level() -> log::Level {
   let level = LSP_LOG_LEVEL.load(Ordering::SeqCst);
-  // TODO(bartlomieju):
-  #[allow(clippy::undocumented_unsafe_blocks)]
-  unsafe {
-    std::mem::transmute(level)
-  }
+  // SAFETY: level is only ever stored from valid log::Level values
+  unsafe { std::mem::transmute(level) }
 }
 
 /// Use this macro to do "info" logs in the lsp code. This allows
@@ -162,6 +160,32 @@ macro_rules! lsp_debug {
   )
 }
 
+macro_rules! lsp_tracing_info_span {
+  ($($arg:tt)*) => {{
+    #[cfg(feature = "lsp-tracing")]
+    {
+      ::tracing::info_span!($($arg)*)
+    }
+    #[cfg(not(feature = "lsp-tracing"))]
+    {
+      $crate::lsp::trace::Span {}
+    }
+  }};
+}
+
+macro_rules! lsp_tracing_info {
+    ($($arg:tt)*) => {
+      #[cfg(feature = "lsp-tracing")]
+      {
+        ::tracing::info!($($arg)*);
+      }
+      #[cfg(not(feature = "lsp-tracing"))]
+      {}
+    };
+}
+
 pub(super) use lsp_debug;
 pub(super) use lsp_log;
+pub(super) use lsp_tracing_info;
+pub(super) use lsp_tracing_info_span;
 pub(super) use lsp_warn;

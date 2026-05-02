@@ -1,0 +1,17 @@
+{
+  "version": "5",
+  "specifiers": {
+    "npm:@denotest/esm-basic@1": "1.0.0"
+  },
+  "npm": {
+    "@denotest/esm-basic@1.0.0": {
+      "integrity": "sha512-[WILDLINE]",
+      "tarball": "http://localhost:4260/@denotest/esm-basic/1.0.0.tgz"
+    }
+  },
+  "workspace": {
+    "dependencies": [
+      "npm:@denotest/esm-basic@1"
+    ]
+  }
+}

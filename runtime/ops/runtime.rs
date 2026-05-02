@@ -1,12 +1,12 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
-use deno_core::op2;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
+use deno_core::op2;
 
 deno_core::extension!(
   deno_runtime,
-  ops = [op_main_module, op_ppid],
+  ops = [op_main_module, op_ppid, op_internal_log],
   options = { main_module: ModuleSpecifier },
   state = |state, options| {
     state.put::<ModuleSpecifier>(options.main_module);
@@ -40,9 +40,9 @@ pub fn op_ppid() -> i64 {
     use winapi::um::handleapi::INVALID_HANDLE_VALUE;
     use winapi::um::processthreadsapi::GetCurrentProcessId;
     use winapi::um::tlhelp32::CreateToolhelp32Snapshot;
+    use winapi::um::tlhelp32::PROCESSENTRY32;
     use winapi::um::tlhelp32::Process32First;
     use winapi::um::tlhelp32::Process32Next;
-    use winapi::um::tlhelp32::PROCESSENTRY32;
     use winapi::um::tlhelp32::TH32CS_SNAPPROCESS;
     // SAFETY: winapi calls
     unsafe {
@@ -84,5 +84,35 @@ pub fn op_ppid() -> i64 {
   {
     use std::os::unix::process::parent_id;
     parent_id().into()
+  }
+}
+
+#[allow(clippy::match_single_binding, reason = "needed for temporary lifetime")]
+#[op2(fast)]
+fn op_internal_log(
+  #[string] url: &str,
+  #[smi] level: u32,
+  #[string] message: &str,
+) {
+  let level = match level {
+    1 => log::Level::Error,
+    2 => log::Level::Warn,
+    3 => log::Level::Info,
+    4 => log::Level::Debug,
+    5 => log::Level::Trace,
+    _ => unreachable!(),
+  };
+  let target = url.replace('/', "::");
+  match format_args!("{message}") {
+    args => {
+      let record = log::Record::builder()
+        .file(Some(url))
+        .module_path(Some(url))
+        .target(&target)
+        .level(level)
+        .args(args)
+        .build();
+      log::logger().log(&record);
+    }
   }
 }

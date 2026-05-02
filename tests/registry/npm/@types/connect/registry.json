@@ -1,0 +1,61 @@
+{
+  "name": "@types/connect",
+  "dist-tags": {
+    "ts5.8": "3.4.38",
+    "ts5.7": "3.4.38",
+    "latest": "3.4.38",
+    "ts4.5": "3.4.38",
+    "ts4.6": "3.4.38",
+    "ts4.7": "3.4.38",
+    "ts4.8": "3.4.38",
+    "ts4.9": "3.4.38",
+    "ts5.0": "3.4.38",
+    "ts5.1": "3.4.38",
+    "ts5.2": "3.4.38",
+    "ts5.3": "3.4.38",
+    "ts5.4": "3.4.38",
+    "ts5.5": "3.4.38",
+    "ts5.9": "3.4.38",
+    "ts5.6": "3.4.38",
+    "ts6.0": "3.4.38"
+  },
+  "versions": {
+    "3.4.38": {
+      "name": "@types/connect",
+      "version": "3.4.38",
+      "license": "MIT",
+      "_id": "@types/connect@3.4.38",
+      "dist": {
+        "shasum": "5ba7f3bc4fbbdeaff8dded952e5ff2cc53f8d858",
+        "tarball": "http://localhost:4260/@types/connect/connect-3.4.38.tgz",
+        "fileCount": 5,
+        "integrity": "sha512-K6uROf1LD88uDQqJCktA4yzL1YYAK6NgfsI0v/mTgyPKWsX1CnJ0XPSDhViejru1GcRkLWb8RlzFYJRqGUbaug==",
+        "unpackedSize": 5907
+      },
+      "main": "",
+      "types": "index.d.ts",
+      "scripts": {},
+      "repository": {
+        "url": "https://github.com/DefinitelyTyped/DefinitelyTyped.git",
+        "type": "git",
+        "directory": "types/connect"
+      },
+      "description": "TypeScript definitions for connect",
+      "directories": {},
+      "dependencies": {
+        "@types/node": "*"
+      },
+      "_hasShrinkwrap": false,
+      "typeScriptVersion": "4.5",
+      "typesPublisherContentHash": "8990242237504bdec53088b79e314b94bec69286df9de56db31f22de403b4092"
+    }
+  },
+  "license": "MIT",
+  "homepage": "https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/connect",
+  "repository": {
+    "url": "https://github.com/DefinitelyTyped/DefinitelyTyped.git",
+    "type": "git",
+    "directory": "types/connect"
+  },
+  "description": "TypeScript definitions for connect"
+}

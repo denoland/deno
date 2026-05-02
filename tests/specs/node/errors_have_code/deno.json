@@ -1,0 +1,6 @@
+{
+  "nodeModulesDir": "auto",
+  "imports": {
+    "chalk": "npm:chalk@^5.4.1"
+  }
+}

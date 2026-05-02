@@ -1,36 +1,87 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Node.js contributors. All rights reserved. MIT License.
-
-// TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials
 
 /** NOT IMPLEMENTED
  * ERR_MANIFEST_ASSERT_INTEGRITY
  * ERR_QUICSESSION_VERSION_NEGOTIATION
  * ERR_REQUIRE_ESM
- * ERR_TLS_CERT_ALTNAME_INVALID
- * ERR_WORKER_INVALID_EXEC_ARGV
- * ERR_WORKER_PATH
  * ERR_QUIC_ERROR
  * ERR_SYSTEM_ERROR //System error, shouldn't ever happen inside Deno
  * ERR_TTY_INIT_FAILED //System error, shouldn't ever happen inside Deno
  * ERR_INVALID_PACKAGE_CONFIG // package.json stuff, probably useless
  */
 
-import { primordials } from "ext:core/mod.js";
-const { JSONStringify, SafeArrayIterator, SymbolFor } = primordials;
+import { core, primordials } from "ext:core/mod.js";
+const {
+  AggregateError,
+  ArrayIsArray,
+  ArrayPrototypeIncludes,
+  ArrayPrototypeIndexOf,
+  ArrayPrototypeMap,
+  ArrayPrototypeJoin,
+  ArrayPrototypePush,
+  ArrayPrototypePop,
+  ArrayPrototypeSlice,
+  ArrayPrototypeSplice,
+  Error,
+  ErrorPrototype,
+  ErrorCaptureStackTrace,
+  JSONStringify,
+  MapPrototypeGet,
+  MathAbs,
+  NumberIsInteger,
+  ObjectAssign,
+  ObjectDefineProperty,
+  ObjectDefineProperties,
+  ObjectGetOwnPropertyDescriptor,
+  ObjectIsExtensible,
+  ObjectKeys,
+  ObjectPrototypeHasOwnProperty,
+  ObjectPrototypeIsPrototypeOf,
+  ObjectSetPrototypeOf,
+  RangeErrorPrototype,
+  RegExpPrototypeTest,
+  SafeArrayIterator,
+  SafeRegExp,
+  String,
+  StringPrototypeEndsWith,
+  StringPrototypeIncludes,
+  StringPrototypeMatch,
+  StringPrototypeSlice,
+  StringPrototypeStartsWith,
+  StringPrototypeToLocaleLowerCase,
+  StringPrototypeToLowerCase,
+  StringPrototypeToString,
+  Symbol,
+  SymbolFor,
+  SymbolPrototypeToString,
+  SyntaxError,
+  SyntaxErrorPrototype,
+  TypeError,
+  TypeErrorPrototype,
+  URIError,
+  URIErrorPrototype,
+} = primordials;
 import { format, inspect } from "ext:deno_node/internal/util/inspect.mjs";
 import { codes } from "ext:deno_node/internal/error_codes.ts";
 import {
   codeMap,
   errorMap,
   mapSysErrnoToUvErrno,
+  UV_EBADF,
 } from "ext:deno_node/internal_binding/uv.ts";
-import { assert } from "ext:deno_node/_util/asserts.ts";
+import type * as nodeAssert from "node:assert";
 import { isWindows } from "ext:deno_node/_util/os.ts";
 import { os as osConstants } from "ext:deno_node/internal_binding/constants.ts";
 import { hideStackFrames } from "ext:deno_node/internal/hide_stack_frames.ts";
 import { getSystemErrorName } from "ext:deno_node/_utils.ts";
+
+let assert: typeof nodeAssert.default;
+const lazyLoadAssert = () => {
+  return core.createLazyLoader<typeof nodeAssert>(
+    "node:assert",
+  )().default;
+};
 
 export { errorMap };
 
@@ -39,7 +90,7 @@ const kIsNodeError = Symbol("kIsNodeError");
 /**
  * @see https://github.com/nodejs/node/blob/f3eb224/lib/internal/errors.js
  */
-const classRegExp = /^([A-Z][a-z0-9]*)+$/;
+const classRegExp = new SafeRegExp(/^([A-Z][a-z0-9]*)+$/);
 
 /**
  * @see https://github.com/nodejs/node/blob/f3eb224/lib/internal/errors.js
@@ -100,24 +151,26 @@ export function isStackOverflowError(err: Error): boolean {
     err.message === maxStackErrorMessage;
 }
 
+export function isErrorStackTraceLimitWritable(): boolean {
+  const desc = ObjectGetOwnPropertyDescriptor(Error, "stackTraceLimit");
+  if (desc === undefined) {
+    return ObjectIsExtensible(Error);
+  }
+
+  return ObjectPrototypeHasOwnProperty(desc, "writable")
+    ? desc.writable
+    : desc.set !== undefined;
+}
+
 function addNumericalSeparator(val: string) {
   let res = "";
   let i = val.length;
   const start = val[0] === "-" ? 1 : 0;
   for (; i >= start + 4; i -= 3) {
-    res = `_${val.slice(i - 3, i)}${res}`;
+    res = `_${StringPrototypeSlice(val, i - 3, i)}${res}`;
   }
-  return `${val.slice(0, i)}${res}`;
+  return `${StringPrototypeSlice(val, 0, i)}${res}`;
 }
-
-const captureLargerStackTrace = hideStackFrames(
-  function captureLargerStackTrace(err) {
-    // @ts-ignore this function is not available in lib.dom.d.ts
-    Error.captureStackTrace(err);
-
-    return err;
-  },
-);
 
 export interface ErrnoException extends Error {
   errno?: number;
@@ -166,7 +219,7 @@ export const uvExceptionWithHostPort = hideStackFrames(
       ex.port = port;
     }
 
-    return captureLargerStackTrace(ex);
+    return ex;
   },
 );
 
@@ -194,11 +247,11 @@ export const errnoException = hideStackFrames(function errnoException(
   ex.code = code;
   ex.syscall = syscall;
 
-  return captureLargerStackTrace(ex);
+  return ex;
 });
 
 function uvErrmapGet(name: number) {
-  return errorMap.get(name);
+  return MapPrototypeGet(errorMap, name);
 }
 
 const uvUnmappedError = ["UNKNOWN", "unknown error"];
@@ -221,18 +274,18 @@ export const uvException = hideStackFrames(function uvException(ctx) {
   let dest;
 
   if (ctx.path) {
-    path = ctx.path.toString();
+    path = StringPrototypeToString(ctx.path);
     message += ` '${path}'`;
   }
   if (ctx.dest) {
-    dest = ctx.dest.toString();
+    dest = StringPrototypeToString(ctx.dest);
     message += ` -> '${dest}'`;
   }
 
   // deno-lint-ignore no-explicit-any
   const err: any = new Error(message);
 
-  for (const prop of Object.keys(ctx)) {
+  for (const prop of new SafeArrayIterator(ObjectKeys(ctx))) {
     if (prop === "message" || prop === "path" || prop === "dest") {
       continue;
     }
@@ -250,7 +303,7 @@ export const uvException = hideStackFrames(function uvException(ctx) {
     err.dest = dest;
   }
 
-  return captureLargerStackTrace(err);
+  return err;
 });
 
 /**
@@ -295,7 +348,23 @@ export const exceptionWithHostPort = hideStackFrames(
       ex.port = port;
     }
 
-    return captureLargerStackTrace(ex);
+    return ex;
+  },
+);
+
+export const handleDnsError = hideStackFrames(
+  (err: Error, syscall: string, address: string) => {
+    //@ts-expect-error code is safe to access with optional chaining
+    if (typeof err?.uv_errcode === "number") {
+      //@ts-expect-error code is safe to access with optional chaining
+      return dnsException(err?.uv_errcode, syscall, address);
+    }
+
+    if (ObjectPrototypeIsPrototypeOf(Deno.errors.NotCapable.prototype, err)) {
+      return dnsException(codeMap.get("EPERM")!, syscall, address);
+    }
+
+    return denoErrorToNodeError(err, { syscall });
   },
 );
 
@@ -314,8 +383,8 @@ export const dnsException = hideStackFrames(function (code, syscall, hostname) {
     // ENOTFOUND is not a proper POSIX error, but this error has been in place
     // long enough that it's not practical to remove it.
     if (
-      code === codeMap.get("EAI_NODATA") ||
-      code === codeMap.get("EAI_NONAME")
+      code === MapPrototypeGet(codeMap, "EAI_NODATA") ||
+      code === MapPrototypeGet(codeMap, "EAI_NONAME")
     ) {
       code = "ENOTFOUND"; // Fabricated error name.
     } else {
@@ -335,7 +404,9 @@ export const dnsException = hideStackFrames(function (code, syscall, hostname) {
     ex.hostname = hostname;
   }
 
-  return captureLargerStackTrace(ex);
+  ErrorCaptureStackTrace(ex, dnsException);
+
+  return ex;
 });
 
 /**
@@ -350,7 +421,9 @@ export class NodeErrorAbstraction extends Error {
     this.code = code;
     this.name = name;
     this.stack = this.stack &&
-      `${name} [${this.code}]${this.stack.slice(this.name.length)}`;
+      `${name} [${this.code}]${
+        StringPrototypeSlice(this.stack, this.name.length)
+      }`;
   }
 
   override toString() {
@@ -368,7 +441,7 @@ export class NodeSyntaxError extends NodeErrorAbstraction
   implements SyntaxError {
   constructor(code: string, message: string) {
     super(SyntaxError.prototype.name, code, message);
-    Object.setPrototypeOf(this, SyntaxError.prototype);
+    ObjectSetPrototypeOf(this, SyntaxErrorPrototype);
     this.toString = function () {
       return `${this.name} [${this.code}]: ${this.message}`;
     };
@@ -378,7 +451,7 @@ export class NodeSyntaxError extends NodeErrorAbstraction
 export class NodeRangeError extends NodeErrorAbstraction {
   constructor(code: string, message: string) {
     super(RangeError.prototype.name, code, message);
-    Object.setPrototypeOf(this, RangeError.prototype);
+    ObjectSetPrototypeOf(this, RangeErrorPrototype);
     this.toString = function () {
       return `${this.name} [${this.code}]: ${this.message}`;
     };
@@ -388,7 +461,7 @@ export class NodeRangeError extends NodeErrorAbstraction {
 export class NodeTypeError extends NodeErrorAbstraction implements TypeError {
   constructor(code: string, message: string) {
     super(TypeError.prototype.name, code, message);
-    Object.setPrototypeOf(this, TypeError.prototype);
+    ObjectSetPrototypeOf(this, TypeErrorPrototype);
     this.toString = function () {
       return `${this.name} [${this.code}]: ${this.message}`;
     };
@@ -398,7 +471,7 @@ export class NodeTypeError extends NodeErrorAbstraction implements TypeError {
 export class NodeURIError extends NodeErrorAbstraction implements URIError {
   constructor(code: string, message: string) {
     super(URIError.prototype.name, code, message);
-    Object.setPrototypeOf(this, URIError.prototype);
+    ObjectSetPrototypeOf(this, URIErrorPrototype);
     this.toString = function () {
       return `${this.name} [${this.code}]: ${this.message}`;
     };
@@ -436,34 +509,39 @@ class NodeSystemError extends Error {
       message += ` => ${context.dest}`;
     }
 
-    captureLargerStackTrace(this);
+    ErrorCaptureStackTrace(this);
 
-    Object.defineProperties(this, {
+    ObjectDefineProperties(this, {
       [kIsNodeError]: {
+        __proto__: null,
         value: true,
         enumerable: false,
         writable: false,
         configurable: true,
       },
       name: {
+        __proto__: null,
         value: "SystemError",
         enumerable: false,
         writable: true,
         configurable: true,
       },
       message: {
+        __proto__: null,
         value: message,
         enumerable: false,
         writable: true,
         configurable: true,
       },
       info: {
+        __proto__: null,
         value: context,
         enumerable: true,
         configurable: true,
         writable: false,
       },
       errno: {
+        __proto__: null,
         get() {
           return context.errno;
         },
@@ -474,6 +552,7 @@ class NodeSystemError extends Error {
         configurable: true,
       },
       syscall: {
+        __proto__: null,
         get() {
           return context.syscall;
         },
@@ -486,7 +565,8 @@ class NodeSystemError extends Error {
     });
 
     if (context.path !== undefined) {
-      Object.defineProperty(this, "path", {
+      ObjectDefineProperty(this, "path", {
+        __proto__: null,
         get() {
           return context.path;
         },
@@ -499,7 +579,8 @@ class NodeSystemError extends Error {
     }
 
     if (context.dest !== undefined) {
-      Object.defineProperty(this, "dest", {
+      ObjectDefineProperty(this, "dest", {
+        __proto__: null,
         get() {
           return context.dest;
         },
@@ -534,9 +615,45 @@ function makeSystemErrorWithCode(key: string, msgPrfix: string) {
   };
 }
 
+export const ERR_FS_CP_DIR_TO_NON_DIR = makeSystemErrorWithCode(
+  "ERR_FS_CP_DIR_TO_NON_DIR",
+  "Cannot overwrite non-directory with directory",
+);
+export const ERR_FS_CP_EEXIST = makeSystemErrorWithCode(
+  "ERR_FS_CP_EEXIST",
+  "Target already exists",
+);
+export const ERR_FS_CP_EINVAL = makeSystemErrorWithCode(
+  "ERR_FS_CP_EINVAL",
+  "Invalid src or dest",
+);
+export const ERR_FS_CP_FIFO_PIPE = makeSystemErrorWithCode(
+  "ERR_FS_CP_FIFO_PIPE",
+  "Cannot copy a FIFO pipe",
+);
+export const ERR_FS_CP_NON_DIR_TO_DIR = makeSystemErrorWithCode(
+  "ERR_FS_CP_NON_DIR_TO_DIR",
+  "Cannot overwrite directory with non-directory",
+);
+export const ERR_FS_CP_SOCKET = makeSystemErrorWithCode(
+  "ERR_FS_CP_SOCKET",
+  "Cannot copy a socket file",
+);
+export const ERR_FS_CP_SYMLINK_TO_SUBDIRECTORY = makeSystemErrorWithCode(
+  "ERR_FS_CP_SYMLINK_TO_SUBDIRECTORY",
+  "Cannot overwrite symlink in subdirectory of self",
+);
+export const ERR_FS_CP_UNKNOWN = makeSystemErrorWithCode(
+  "ERR_FS_CP_UNKNOWN",
+  "Cannot copy an unknown file type",
+);
 export const ERR_FS_EISDIR = makeSystemErrorWithCode(
   "ERR_FS_EISDIR",
   "Path is a directory",
+);
+export const ERR_TTY_INIT_FAILED = makeSystemErrorWithCode(
+  "ERR_TTY_INIT_FAILED",
+  "TTY initialization failed",
 );
 
 function createInvalidArgType(
@@ -544,13 +661,13 @@ function createInvalidArgType(
   expected: string | string[],
 ): string {
   // https://github.com/nodejs/node/blob/f3eb224/lib/internal/errors.js#L1037-L1087
-  expected = Array.isArray(expected) ? expected : [expected];
+  expected = ArrayIsArray(expected) ? expected : [expected];
   let msg = "The ";
-  if (name.endsWith(" argument")) {
+  if (StringPrototypeEndsWith(name, " argument")) {
     // For cases like 'first argument'
     msg += `${name} `;
   } else {
-    const type = name.includes(".") ? "property" : "argument";
+    const type = StringPrototypeIncludes(name, ".") ? "property" : "argument";
     msg += `"${name}" ${type} `;
   }
   msg += "must be ";
@@ -558,30 +675,30 @@ function createInvalidArgType(
   const types = [];
   const instances = [];
   const other = [];
-  for (const value of expected) {
-    if (kTypes.includes(value)) {
-      types.push(value.toLocaleLowerCase());
-    } else if (classRegExp.test(value)) {
-      instances.push(value);
+  for (const value of new SafeArrayIterator(expected)) {
+    if (ArrayPrototypeIncludes(kTypes, value)) {
+      ArrayPrototypePush(types, StringPrototypeToLocaleLowerCase(value));
+    } else if (RegExpPrototypeTest(classRegExp, value)) {
+      ArrayPrototypePush(instances, value);
     } else {
-      other.push(value);
+      ArrayPrototypePush(other, value);
     }
   }
 
   // Special handle `object` in case other instances are allowed to outline
   // the differences between each other.
   if (instances.length > 0) {
-    const pos = types.indexOf("object");
+    const pos = ArrayPrototypeIndexOf(types, "object");
     if (pos !== -1) {
-      types.splice(pos, 1);
-      instances.push("Object");
+      ArrayPrototypeSplice(types, pos, 1);
+      ArrayPrototypePush(instances, "Object");
     }
   }
 
   if (types.length > 0) {
     if (types.length > 2) {
-      const last = types.pop();
-      msg += `one of type ${types.join(", ")}, or ${last}`;
+      const last = ArrayPrototypePop(types);
+      msg += `one of type ${ArrayPrototypeJoin(types, ", ")}, or ${last}`;
     } else if (types.length === 2) {
       msg += `one of type ${types[0]} or ${types[1]}`;
     } else {
@@ -594,8 +711,10 @@ function createInvalidArgType(
 
   if (instances.length > 0) {
     if (instances.length > 2) {
-      const last = instances.pop();
-      msg += `an instance of ${instances.join(", ")}, or ${last}`;
+      const last = ArrayPrototypePop(instances);
+      msg += `an instance of ${
+        ArrayPrototypeJoin(instances, ", ")
+      }, or ${last}`;
     } else {
       msg += `an instance of ${instances[0]}`;
       if (instances.length === 2) {
@@ -609,12 +728,12 @@ function createInvalidArgType(
 
   if (other.length > 0) {
     if (other.length > 2) {
-      const last = other.pop();
-      msg += `one of ${other.join(", ")}, or ${last}`;
+      const last = ArrayPrototypePop(other);
+      msg += `one of ${ArrayPrototypeJoin(other, ", ")}, or ${last}`;
     } else if (other.length === 2) {
       msg += `one of ${other[0]} or ${other[1]}`;
     } else {
-      if (other[0].toLowerCase() !== other[0]) {
+      if (StringPrototypeToLowerCase(other[0]) !== other[0]) {
         msg += "an ";
       }
       msg += `${other[0]}`;
@@ -628,7 +747,7 @@ export class ERR_CRYPTO_TIMING_SAFE_EQUAL_LENGTH extends NodeRangeError {
   constructor() {
     super(
       "ERR_CRYPTO_TIMING_SAFE_EQUAL_LENGTH",
-      "Input buffers must have the same length",
+      "Input buffers must have the same byte length",
     );
   }
 }
@@ -652,7 +771,7 @@ export class ERR_INVALID_ARG_TYPE extends NodeTypeError {
 
 export class ERR_INVALID_ARG_VALUE_RANGE extends NodeRangeError {
   constructor(name: string, value: unknown, reason: string = "is invalid") {
-    const type = name.includes(".") ? "property" : "argument";
+    const type = StringPrototypeIncludes(name, ".") ? "property" : "argument";
     const inspected = inspect(value);
 
     super(
@@ -664,7 +783,7 @@ export class ERR_INVALID_ARG_VALUE_RANGE extends NodeRangeError {
 
 export class ERR_INVALID_ARG_VALUE extends NodeTypeError {
   constructor(name: string, value: unknown, reason: string = "is invalid") {
-    const type = name.includes(".") ? "property" : "argument";
+    const type = StringPrototypeIncludes(name, ".") ? "property" : "argument";
     const inspected = inspect(value);
 
     super(
@@ -682,7 +801,7 @@ function invalidArgTypeHelper(input: any) {
   if (input == null) {
     return ` Received ${input}`;
   }
-  if (typeof input === "function" && input.name) {
+  if (typeof input === "function") {
     return ` Received function ${input.name}`;
   }
   if (typeof input === "object") {
@@ -693,7 +812,7 @@ function invalidArgTypeHelper(input: any) {
   }
   let inspected = inspect(input, { colors: false });
   if (inspected.length > 25) {
-    inspected = `${inspected.slice(0, 25)}...`;
+    inspected = `${StringPrototypeSlice(inspected, 0, 25)}...`;
   }
   return ` Received type ${typeof input} (${inspected})`;
 }
@@ -705,12 +824,13 @@ export class ERR_OUT_OF_RANGE extends NodeRangeError {
     input: unknown,
     replaceDefaultBoolean = false,
   ) {
+    assert ??= lazyLoadAssert();
     assert(range, 'Missing "range" argument');
     let msg = replaceDefaultBoolean
       ? str
       : `The value of "${str}" is out of range.`;
     let received;
-    if (Number.isInteger(input) && Math.abs(input as number) > 2 ** 32) {
+    if (NumberIsInteger(input) && MathAbs(input as number) > 2 ** 32) {
       received = addNumericalSeparator(String(input));
     } else if (typeof input === "bigint") {
       received = String(input);
@@ -760,6 +880,12 @@ export class ERR_ASYNC_TYPE extends NodeTypeError {
 export class ERR_BROTLI_INVALID_PARAM extends NodeRangeError {
   constructor(x: string) {
     super("ERR_BROTLI_INVALID_PARAM", `${x} is not a valid Brotli parameter`);
+  }
+}
+
+export class ERR_ZSTD_INVALID_PARAM extends NodeRangeError {
+  constructor(x: string) {
+    super("ERR_ZSTD_INVALID_PARAM", `${x} is not a valid zstd parameter`);
   }
 }
 
@@ -825,6 +951,15 @@ export class ERR_CONSOLE_WRITABLE_STREAM extends NodeTypeError {
   }
 }
 
+export class ERR_CONSTRUCT_CALL_REQUIRED extends NodeTypeError {
+  constructor(x: string) {
+    super(
+      "ERR_CONSTRUCT_CALL_REQUIRED",
+      `Class constructor ${x} cannot be invoked without \`new\``,
+    );
+  }
+}
+
 export class ERR_CONTEXT_NOT_INITIALIZED extends NodeError {
   constructor() {
     super("ERR_CONTEXT_NOT_INITIALIZED", "context used is not initialized");
@@ -866,6 +1001,15 @@ export class ERR_CRYPTO_UNKNOWN_DH_GROUP extends NodeError {
     super(
       "ERR_CRYPTO_UNKNOWN_DH_GROUP",
       "Unknown DH group",
+    );
+  }
+}
+
+export class ERR_CRYPTO_UNKNOWN_CIPHER extends NodeError {
+  constructor() {
+    super(
+      "ERR_CRYPTO_UNKNOWN_CIPHER",
+      "Unknown cipher",
     );
   }
 }
@@ -922,8 +1066,11 @@ export class ERR_CRYPTO_INCOMPATIBLE_KEY_OPTIONS extends NodeError {
 }
 
 export class ERR_CRYPTO_INVALID_DIGEST extends NodeTypeError {
-  constructor(x: string) {
-    super("ERR_CRYPTO_INVALID_DIGEST", `Invalid digest: ${x}`);
+  constructor(x: string, prefix?: string) {
+    super(
+      "ERR_CRYPTO_INVALID_DIGEST",
+      prefix ? `Invalid ${prefix} digest: ${x}` : `Invalid digest: ${x}`,
+    );
   }
 }
 
@@ -933,6 +1080,12 @@ export class ERR_CRYPTO_INVALID_KEY_OBJECT_TYPE extends NodeTypeError {
       "ERR_CRYPTO_INVALID_KEY_OBJECT_TYPE",
       `Invalid key object type ${x}, expected ${y}.`,
     );
+  }
+}
+
+export class ERR_CRYPTO_INVALID_KEYLEN extends NodeRangeError {
+  constructor() {
+    super("ERR_CRYPTO_INVALID_KEYLEN", "Invalid key length");
   }
 }
 
@@ -1027,7 +1180,7 @@ export class ERR_ENCODING_INVALID_ENCODED_DATA extends NodeErrorAbstraction
       "ERR_ENCODING_INVALID_ENCODED_DATA",
       `The encoded data was not valid for encoding ${encoding}`,
     );
-    Object.setPrototypeOf(this, TypeError.prototype);
+    ObjectSetPrototypeOf(this, TypeErrorPrototype);
 
     this.errno = ret;
   }
@@ -1060,7 +1213,7 @@ export class ERR_FEATURE_UNAVAILABLE_ON_PLATFORM extends NodeTypeError {
   }
 }
 export class ERR_FS_FILE_TOO_LARGE extends NodeRangeError {
-  constructor(x: string) {
+  constructor(x: string | number) {
     super("ERR_FS_FILE_TOO_LARGE", `File size (${x}) is greater than 2 GB`);
   }
 }
@@ -1158,6 +1311,7 @@ export class ERR_HTTP2_INVALID_CONNECTION_HEADERS extends NodeTypeError {
   }
 }
 export class ERR_HTTP2_INVALID_HEADER_VALUE extends NodeTypeError {
+  static HideStackFramesError = this;
   constructor(x: string, y: string) {
     super(
       "ERR_HTTP2_INVALID_HEADER_VALUE",
@@ -1266,6 +1420,7 @@ export class ERR_HTTP2_PING_LENGTH extends NodeRangeError {
   }
 }
 export class ERR_HTTP2_PSEUDOHEADER_NOT_ALLOWED extends NodeTypeError {
+  static HideStackFramesError = this;
   constructor() {
     super(
       "ERR_HTTP2_PSEUDOHEADER_NOT_ALLOWED",
@@ -1364,6 +1519,22 @@ export class ERR_HTTP2_UNSUPPORTED_PROTOCOL extends NodeError {
     super("ERR_HTTP2_UNSUPPORTED_PROTOCOL", `protocol "${x}" is unsupported.`);
   }
 }
+export class ERR_HTTP_BODY_NOT_ALLOWED extends NodeError {
+  constructor() {
+    super(
+      "ERR_HTTP_BODY_NOT_ALLOWED",
+      "Adding content for this request method or response status is not allowed.",
+    );
+  }
+}
+export class ERR_HTTP_CONTENT_LENGTH_MISMATCH extends NodeError {
+  constructor(bodyLength: number, contentLength: number) {
+    super(
+      "ERR_HTTP_CONTENT_LENGTH_MISMATCH",
+      `Response body's content-length of ${bodyLength} byte(s) does not match the content-length of ${contentLength} byte(s) set in header`,
+    );
+  }
+}
 export class ERR_HTTP_HEADERS_SENT extends NodeError {
   constructor(x: string) {
     super(
@@ -1399,6 +1570,11 @@ export class ERR_HTTP_TRAILER_INVALID extends NodeError {
       "ERR_HTTP_TRAILER_INVALID",
       `Trailers are invalid with this transfer encoding`,
     );
+  }
+}
+export class ERR_ILLEGAL_CONSTRUCTOR extends NodeTypeError {
+  constructor() {
+    super("ERR_ILLEGAL_CONSTRUCTOR", "Illegal constructor");
   }
 }
 export class ERR_INCOMPATIBLE_OPTION_PAIR extends NodeTypeError {
@@ -1497,8 +1673,10 @@ export class ERR_INVALID_FILE_URL_HOST extends NodeTypeError {
   }
 }
 export class ERR_INVALID_FILE_URL_PATH extends NodeTypeError {
-  constructor(x: string) {
+  input?: URL;
+  constructor(x: string, input?: URL) {
     super("ERR_INVALID_FILE_URL_PATH", `File URL path ${x}`);
+    this.input = input;
   }
 }
 export class ERR_INVALID_HANDLE_TYPE extends NodeTypeError {
@@ -1507,6 +1685,7 @@ export class ERR_INVALID_HANDLE_TYPE extends NodeTypeError {
   }
 }
 export class ERR_INVALID_HTTP_TOKEN extends NodeTypeError {
+  static HideStackFramesError = this;
   constructor(x: string, y: string) {
     super("ERR_INVALID_HTTP_TOKEN", `${x} must be a valid HTTP token ["${y}"]`);
   }
@@ -1514,6 +1693,28 @@ export class ERR_INVALID_HTTP_TOKEN extends NodeTypeError {
 export class ERR_INVALID_IP_ADDRESS extends NodeTypeError {
   constructor(x: string) {
     super("ERR_INVALID_IP_ADDRESS", `Invalid IP address: ${x}`);
+  }
+}
+export class ERR_IP_BLOCKED extends NodeError {
+  constructor(x: string) {
+    super("ERR_IP_BLOCKED", `Address blocked: ${x}`);
+  }
+}
+export class ERR_INVALID_MIME_SYNTAX extends NodeTypeError {
+  constructor(production: string, str: string, invalidIndex: number) {
+    const msg = invalidIndex !== -1 ? ` at ${invalidIndex}` : "";
+    super(
+      "ERR_INVALID_MIME_SYNTAX",
+      `The MIME syntax for a ${production} in "${str}" is invalid` + msg,
+    );
+  }
+}
+export class ERR_INVALID_OBJECT_DEFINE_PROPERTY extends NodeTypeError {
+  constructor(message: string) {
+    super(
+      "ERR_INVALID_OBJECT_DEFINE_PROPERTY",
+      message,
+    );
   }
 }
 export class ERR_INVALID_OPT_VALUE_ENCODING extends NodeTypeError {
@@ -1646,8 +1847,12 @@ export class ERR_MISSING_ARGS extends NodeTypeError {
 
     const wrap = (a: unknown) => `"${a}"`;
 
-    args = args.map((a) =>
-      Array.isArray(a) ? a.map(wrap).join(" or ") : wrap(a)
+    args = ArrayPrototypeMap(
+      args,
+      (a) =>
+        ArrayIsArray(a)
+          ? ArrayPrototypeJoin(ArrayPrototypeMap(a, wrap), " or ")
+          : wrap(a),
     );
 
     switch (len) {
@@ -1658,7 +1863,7 @@ export class ERR_MISSING_ARGS extends NodeTypeError {
         msg += `${args[0]} and ${args[1]} arguments`;
         break;
       default:
-        msg += args.slice(0, len - 1).join(", ");
+        msg += ArrayPrototypeJoin(ArrayPrototypeSlice(args, 0, len - 1), ", ");
         msg += `, and ${args[len - 1]} arguments`;
         break;
     }
@@ -1852,16 +2057,22 @@ export class ERR_SOCKET_BAD_BUFFER_SIZE extends NodeTypeError {
 }
 export class ERR_SOCKET_BAD_PORT extends NodeRangeError {
   constructor(name: string, port: unknown, allowZero = true) {
+    assert ??= lazyLoadAssert();
     assert(
       typeof allowZero === "boolean",
       "The 'allowZero' argument must be of type boolean.",
     );
 
     const operator = allowZero ? ">=" : ">";
+    const portStr = typeof port === "symbol"
+      ? SymbolPrototypeToString(port)
+      : typeof port === "bigint"
+      ? `${port}n`
+      : String(port);
 
     super(
       "ERR_SOCKET_BAD_PORT",
-      `${name} should be ${operator} 0 and < 65536. Received ${port}.`,
+      `${name} should be ${operator} 0 and < 65536. Received ${portStr}.`,
     );
   }
 }
@@ -1881,6 +2092,14 @@ export class ERR_SOCKET_BUFFER_SIZE extends NodeSystemError {
 export class ERR_SOCKET_CLOSED extends NodeError {
   constructor() {
     super("ERR_SOCKET_CLOSED", `Socket is closed`);
+  }
+}
+export class ERR_SOCKET_CLOSED_BEFORE_CONNECTION extends NodeError {
+  constructor() {
+    super(
+      "ERR_SOCKET_CLOSED_BEFORE_CONNECTION",
+      `Socket closed before the connection was established`,
+    );
   }
 }
 export class ERR_SOCKET_CONNECTION_TIMEOUT extends NodeError {
@@ -1986,6 +2205,14 @@ export class ERR_TLS_CERT_ALTNAME_INVALID extends NodeError {
     this.reason = reason;
     this.host = host;
     this.cert = cert;
+  }
+}
+export class ERR_TLS_ALPN_CALLBACK_WITH_PROTOCOLS extends NodeTypeError {
+  constructor() {
+    super(
+      "ERR_TLS_ALPN_CALLBACK_WITH_PROTOCOLS",
+      "The ALPNCallback and ALPNProtocols TLS options are mutually exclusive",
+    );
   }
 }
 export class ERR_TLS_DH_PARAM_SIZE extends NodeError {
@@ -2226,9 +2453,37 @@ export class ERR_WASI_ALREADY_STARTED extends NodeError {
     super("ERR_WASI_ALREADY_STARTED", `WASI instance has already started`);
   }
 }
+export class ERR_WORKER_INVALID_EXEC_ARGV extends NodeError {
+  constructor(errors: string[], msg = "invalid execArgv flags") {
+    super(
+      "ERR_WORKER_INVALID_EXEC_ARGV",
+      `Initiated Worker with ${msg}: ${ArrayPrototypeJoin(errors, ", ")}`,
+    );
+  }
+}
 export class ERR_WORKER_INIT_FAILED extends NodeError {
   constructor(x: string) {
     super("ERR_WORKER_INIT_FAILED", `Worker initialization failure: ${x}`);
+  }
+}
+export class ERR_WORKER_PATH extends NodeTypeError {
+  constructor(filename: string) {
+    const base =
+      "The worker script or module filename must be an absolute path or a relative path starting with './' or '../'.";
+    let detail = "";
+    if (
+      typeof filename === "string" &&
+      (StringPrototypeStartsWith(filename, "file://") ||
+        StringPrototypeStartsWith(filename, "File://"))
+    ) {
+      detail = " Wrap file:// URLs with `new URL`.";
+    } else if (
+      typeof filename === "string" &&
+      StringPrototypeStartsWith(filename, "data:")
+    ) {
+      detail = " Wrap data: URLs with `new URL`.";
+    }
+    super("ERR_WORKER_PATH", base + detail);
   }
 }
 export class ERR_WORKER_NOT_RUNNING extends NodeError {
@@ -2269,8 +2524,8 @@ export class ERR_WORKER_UNSUPPORTED_OPERATION extends NodeTypeError {
   }
 }
 export class ERR_ZLIB_INITIALIZATION_FAILED extends NodeError {
-  constructor() {
-    super("ERR_ZLIB_INITIALIZATION_FAILED", `Initialization failed`);
+  constructor(message = "Initialization failed") {
+    super("ERR_ZLIB_INITIALIZATION_FAILED", message);
   }
 }
 export class ERR_FALSY_VALUE_REJECTION extends NodeError {
@@ -2290,7 +2545,24 @@ export class ERR_HTTP2_TOO_MANY_CUSTOM_SETTINGS extends NodeError {
   }
 }
 
-export class ERR_HTTP2_INVALID_SETTING_VALUE extends NodeRangeError {
+function _http2InvalidSettingMsg(name: string, actual: unknown) {
+  return `Invalid value for setting "${name}": ${actual}`;
+}
+
+// deno-lint-ignore camelcase
+class _ERR_HTTP2_INVALID_SETTING_VALUE_TypeError extends NodeTypeError {
+  actual: unknown;
+  constructor(name: string, actual: unknown) {
+    super(
+      "ERR_HTTP2_INVALID_SETTING_VALUE",
+      _http2InvalidSettingMsg(name, actual),
+    );
+    this.actual = actual;
+  }
+}
+
+// deno-lint-ignore camelcase
+class _ERR_HTTP2_INVALID_SETTING_VALUE_RangeError extends NodeRangeError {
   actual: unknown;
   min?: number;
   max?: number;
@@ -2298,7 +2570,7 @@ export class ERR_HTTP2_INVALID_SETTING_VALUE extends NodeRangeError {
   constructor(name: string, actual: unknown, min?: number, max?: number) {
     super(
       "ERR_HTTP2_INVALID_SETTING_VALUE",
-      `Invalid value for setting "${name}": ${actual}`,
+      _http2InvalidSettingMsg(name, actual),
     );
     this.actual = actual;
     if (min !== undefined) {
@@ -2307,6 +2579,22 @@ export class ERR_HTTP2_INVALID_SETTING_VALUE extends NodeRangeError {
     }
   }
 }
+
+// In Node.js, ERR_HTTP2_INVALID_SETTING_VALUE has both TypeError and RangeError
+// variants. The access patterns used are:
+//   new ERR_HTTP2_INVALID_SETTING_VALUE.HideStackFramesError(...)            -> TypeError
+//   new ERR_HTTP2_INVALID_SETTING_VALUE.RangeError(...)                      -> RangeError
+//   new ERR_HTTP2_INVALID_SETTING_VALUE.RangeError.HideStackFramesError(...) -> RangeError
+
+// deno-lint-ignore no-explicit-any
+const _RangeErrorWithHSFE: any = _ERR_HTTP2_INVALID_SETTING_VALUE_RangeError;
+_RangeErrorWithHSFE.HideStackFramesError =
+  _ERR_HTTP2_INVALID_SETTING_VALUE_RangeError;
+
+export const ERR_HTTP2_INVALID_SETTING_VALUE = {
+  HideStackFramesError: _ERR_HTTP2_INVALID_SETTING_VALUE_TypeError,
+  RangeError: _RangeErrorWithHSFE,
+};
 export class ERR_HTTP2_STREAM_CANCEL extends NodeError {
   override cause?: Error;
   constructor(error?: Error) {
@@ -2339,7 +2627,7 @@ export class ERR_INVALID_CHAR extends NodeTypeError {
   constructor(name: string, field?: string) {
     super(
       "ERR_INVALID_CHAR",
-      field
+      field === undefined
         ? `Invalid character in ${name}`
         : `Invalid character in ${name} ["${field}"]`,
     );
@@ -2418,7 +2706,7 @@ export class ERR_INVALID_URL extends NodeTypeError {
 
 export class ERR_INVALID_URL_SCHEME extends NodeTypeError {
   constructor(expected: string | [string] | [string, string]) {
-    expected = Array.isArray(expected) ? expected : [expected];
+    expected = ArrayIsArray(expected) ? expected : [expected];
     const res = expected.length === 2
       ? `one of scheme ${expected[0]} or ${expected[1]}`
       : `of scheme ${expected[0]}`;
@@ -2468,16 +2756,17 @@ export class ERR_INVALID_PACKAGE_TARGET extends NodeError {
     const relError = typeof target === "string" &&
       !isImport &&
       target.length &&
-      !target.startsWith("./");
+      !StringPrototypeStartsWith(target, "./");
     if (key === ".") {
+      assert ??= lazyLoadAssert();
       assert(isImport === false);
-      msg = `Invalid "exports" main target ${JSON.stringify(target)} defined ` +
+      msg = `Invalid "exports" main target ${JSONStringify(target)} defined ` +
         `in the package config ${displayJoin(pkgPath, "package.json")}${
           base ? ` imported from ${base}` : ""
         }${relError ? '; targets must start with "./"' : ""}`;
     } else {
       msg = `Invalid "${isImport ? "imports" : "exports"}" target ${
-        JSON.stringify(
+        JSONStringify(
           target,
         )
       } defined for '${key}' in the package config ${
@@ -2599,8 +2888,16 @@ export class ERR_INVALID_STATE extends NodeError {
 interface UvExceptionContext {
   syscall: string;
   path?: string;
+  dest?: string;
 }
 export function denoErrorToNodeError(e: Error, ctx: UvExceptionContext) {
+  if (ObjectPrototypeIsPrototypeOf(Deno.errors.BadResource.prototype, e)) {
+    return uvException({
+      errno: UV_EBADF,
+      ...ctx,
+    });
+  }
+
   const errno = extractOsErrorNumberFromErrorMessage(e);
   if (typeof errno === "undefined") {
     return e;
@@ -2613,9 +2910,72 @@ export function denoErrorToNodeError(e: Error, ctx: UvExceptionContext) {
   return ex;
 }
 
+export function denoWriteFileErrorToNodeError(
+  e: Error,
+  ctx: UvExceptionContext,
+) {
+  if (ObjectPrototypeIsPrototypeOf(Deno.errors.BadResource.prototype, e)) {
+    return uvException({
+      errno: UV_EBADF,
+      ...ctx,
+    });
+  }
+
+  let errno = extractOsErrorNumberFromErrorMessage(e);
+  if (typeof errno === "undefined") {
+    return e;
+  }
+
+  if (isWindows) {
+    // https://learn.microsoft.com/en-us/windows/win32/debug/system-error-codes--0-499-#ERROR_ACCESS_DENIED
+    const ERROR_ACCESS_DENIED = 5;
+    // https://learn.microsoft.com/en-us/windows/win32/debug/system-error-codes--1000-1299-#ERROR_INVALID_FLAGS
+    const ERROR_INVALID_FLAGS = 1004;
+
+    // https://github.com/nodejs/node/blob/70f6b58ac655234435a99d72b857dd7b316d34bf/deps/uv/src/win/fs.c#L1090-L1092
+    if (errno === ERROR_ACCESS_DENIED) {
+      errno = ERROR_INVALID_FLAGS;
+    }
+  }
+
+  return uvException({
+    errno: mapSysErrnoToUvErrno(errno),
+    ...ctx,
+  });
+}
+
+export const denoErrorToNodeSystemError = hideStackFrames((
+  e: Error,
+  syscall: string,
+): Error => {
+  const osErrno = extractOsErrorNumberFromErrorMessage(e);
+  if (typeof osErrno === "undefined") {
+    return e;
+  }
+
+  const uvErrno = mapSysErrnoToUvErrno(osErrno);
+  const { 0: code, 1: message } = uvErrmapGet(uvErrno) || uvUnmappedError;
+  const ctx: NodeSystemErrorCtx = {
+    errno: uvErrno,
+    code,
+    message,
+    syscall,
+  };
+
+  return new NodeSystemError(
+    "ERR_SYSTEM_ERROR",
+    ctx,
+    "A system error occurred",
+  );
+});
+
 function extractOsErrorNumberFromErrorMessage(e: unknown): number | undefined {
-  const match = e instanceof Error
-    ? e.message.match(/\(os error (\d+)\)/)
+  if (typeof e === "object" && typeof e.os_errno === "number") {
+    return e.os_errno;
+  }
+
+  const match = ObjectPrototypeIsPrototypeOf(ErrorPrototype, e)
+    ? StringPrototypeMatch(e.message, new SafeRegExp(/\(os error (\d+)\)/))
     : false;
 
   if (match) {
@@ -2637,9 +2997,9 @@ export function aggregateTwoErrors(
   outerError: AggregateError & { code: string },
 ) {
   if (innerError && outerError && innerError !== outerError) {
-    if (Array.isArray(outerError.errors)) {
+    if (ArrayIsArray(outerError.errors)) {
       // If `outerError` is already an `AggregateError`.
-      outerError.errors.push(innerError);
+      ArrayPrototypePush(outerError.errors, innerError);
       return outerError;
     }
     // eslint-disable-next-line no-restricted-syntax
@@ -2652,6 +3012,7 @@ export function aggregateTwoErrors(
     );
     // deno-lint-ignore no-explicit-any
     (err as any).code = outerError.code;
+    ErrorCaptureStackTrace(err, aggregateTwoErrors);
     return err;
   }
   return innerError || outerError;
@@ -2674,9 +3035,17 @@ export class NodeAggregateError extends AggregateError {
   }
 }
 
+codes.ERR_BUFFER_TOO_LARGE = ERR_BUFFER_TOO_LARGE;
 codes.ERR_IPC_CHANNEL_CLOSED = ERR_IPC_CHANNEL_CLOSED;
+codes.ERR_METHOD_NOT_IMPLEMENTED = ERR_METHOD_NOT_IMPLEMENTED;
+codes.ERR_INVALID_RETURN_VALUE = ERR_INVALID_RETURN_VALUE;
+codes.ERR_MISSING_ARGS = ERR_MISSING_ARGS;
+codes.ERR_MULTIPLE_CALLBACK = ERR_MULTIPLE_CALLBACK;
+codes.ERR_STREAM_WRITE_AFTER_END = ERR_STREAM_WRITE_AFTER_END;
 codes.ERR_INVALID_ARG_TYPE = ERR_INVALID_ARG_TYPE;
 codes.ERR_INVALID_ARG_VALUE = ERR_INVALID_ARG_VALUE;
+codes.ERR_INVALID_HTTP_TOKEN = ERR_INVALID_HTTP_TOKEN;
+codes.ERR_UNAVAILABLE_DURING_EXIT = ERR_UNAVAILABLE_DURING_EXIT;
 codes.ERR_OUT_OF_RANGE = ERR_OUT_OF_RANGE;
 codes.ERR_SOCKET_BAD_PORT = ERR_SOCKET_BAD_PORT;
 codes.ERR_SOCKET_CONNECTION_TIMEOUT = ERR_SOCKET_CONNECTION_TIMEOUT;
@@ -2686,6 +3055,35 @@ codes.ERR_PARSE_ARGS_INVALID_OPTION_VALUE = ERR_PARSE_ARGS_INVALID_OPTION_VALUE;
 codes.ERR_PARSE_ARGS_UNEXPECTED_POSITIONAL =
   ERR_PARSE_ARGS_UNEXPECTED_POSITIONAL;
 codes.ERR_PARSE_ARGS_UNKNOWN_OPTION = ERR_PARSE_ARGS_UNKNOWN_OPTION;
+codes.ERR_STREAM_ALREADY_FINISHED = ERR_STREAM_ALREADY_FINISHED;
+codes.ERR_STREAM_CANNOT_PIPE = ERR_STREAM_CANNOT_PIPE;
+codes.ERR_STREAM_DESTROYED = ERR_STREAM_DESTROYED;
+codes.ERR_STREAM_NULL_VALUES = ERR_STREAM_NULL_VALUES;
+codes.ERR_STREAM_PREMATURE_CLOSE = ERR_STREAM_PREMATURE_CLOSE;
+codes.ERR_STREAM_PUSH_AFTER_EOF = ERR_STREAM_PUSH_AFTER_EOF;
+codes.ERR_STREAM_UNSHIFT_AFTER_END_EVENT = ERR_STREAM_UNSHIFT_AFTER_END_EVENT;
+codes.ERR_STREAM_WRAP = ERR_STREAM_WRAP;
+codes.ERR_STREAM_WRITE_AFTER_END = ERR_STREAM_WRITE_AFTER_END;
+codes.ERR_BROTLI_INVALID_PARAM = ERR_BROTLI_INVALID_PARAM;
+codes.ERR_ZSTD_INVALID_PARAM = ERR_ZSTD_INVALID_PARAM;
+codes.ERR_ZLIB_INITIALIZATION_FAILED = ERR_ZLIB_INITIALIZATION_FAILED;
+codes.ERR_HTTP2_CONNECT_AUTHORITY = ERR_HTTP2_CONNECT_AUTHORITY;
+codes.ERR_HTTP2_CONNECT_PATH = ERR_HTTP2_CONNECT_PATH;
+codes.ERR_HTTP2_CONNECT_SCHEME = ERR_HTTP2_CONNECT_SCHEME;
+codes.ERR_HTTP2_HEADER_SINGLE_VALUE = ERR_HTTP2_HEADER_SINGLE_VALUE;
+codes.ERR_HTTP2_HEADERS_SENT = ERR_HTTP2_HEADERS_SENT;
+codes.ERR_HTTP2_INFO_STATUS_NOT_ALLOWED = ERR_HTTP2_INFO_STATUS_NOT_ALLOWED;
+codes.ERR_HTTP2_INVALID_CONNECTION_HEADERS =
+  ERR_HTTP2_INVALID_CONNECTION_HEADERS;
+codes.ERR_HTTP2_INVALID_HEADER_VALUE = ERR_HTTP2_INVALID_HEADER_VALUE;
+codes.ERR_HTTP2_INVALID_PSEUDOHEADER = ERR_HTTP2_INVALID_PSEUDOHEADER;
+codes.ERR_HTTP2_INVALID_SETTING_VALUE = ERR_HTTP2_INVALID_SETTING_VALUE;
+codes.ERR_HTTP2_INVALID_STREAM = ERR_HTTP2_INVALID_STREAM;
+codes.ERR_HTTP2_NO_SOCKET_MANIPULATION = ERR_HTTP2_NO_SOCKET_MANIPULATION;
+codes.ERR_HTTP2_PAYLOAD_FORBIDDEN = ERR_HTTP2_PAYLOAD_FORBIDDEN;
+codes.ERR_HTTP2_PSEUDOHEADER_NOT_ALLOWED = ERR_HTTP2_PSEUDOHEADER_NOT_ALLOWED;
+codes.ERR_HTTP2_STATUS_INVALID = ERR_HTTP2_STATUS_INVALID;
+codes.ERR_HTTP2_TOO_MANY_CUSTOM_SETTINGS = ERR_HTTP2_TOO_MANY_CUSTOM_SETTINGS;
 
 // TODO(kt3k): assign all error classes here.
 
@@ -2700,7 +3098,7 @@ const genericNodeError = hideStackFrames(
   function genericNodeError(message, errorProperties) {
     // eslint-disable-next-line no-restricted-syntax
     const err = new Error(message);
-    Object.assign(err, errorProperties);
+    ObjectAssign(err, errorProperties);
 
     return err;
   },
@@ -2726,15 +3124,19 @@ function determineSpecificType(value: any) {
     return `${inspect(value, { depth: -1 })}`;
   }
   let inspected = inspect(value, { colors: false });
-  if (inspected.length > 28) inspected = `${inspected.slice(0, 25)}...`;
+  if (inspected.length > 28) {
+    inspected = `${StringPrototypeSlice(inspected, 0, 25)}...`;
+  }
 
   return `type ${typeof value} (${inspected})`;
 }
 
 // Non-robust path join
 function displayJoin(dir: string, fileName: string) {
-  const sep = dir.includes("\\") ? "\\" : "/";
-  return dir.endsWith(sep) ? dir + fileName : dir + sep + fileName;
+  const sep = StringPrototypeIncludes(dir, "\\") ? "\\" : "/";
+  return StringPrototypeEndsWith(dir, sep)
+    ? dir + fileName
+    : dir + sep + fileName;
 }
 
 export { codes, genericNodeError, hideStackFrames };
@@ -2747,6 +3149,7 @@ export default {
   ERR_ASYNC_CALLBACK,
   ERR_ASYNC_TYPE,
   ERR_BROTLI_INVALID_PARAM,
+  ERR_ZSTD_INVALID_PARAM,
   ERR_BUFFER_OUT_OF_BOUNDS,
   ERR_BUFFER_TOO_LARGE,
   ERR_CANNOT_WATCH_SIGINT,
@@ -2754,6 +3157,7 @@ export default {
   ERR_CHILD_PROCESS_IPC_REQUIRED,
   ERR_CHILD_PROCESS_STDIO_MAXBUFFER,
   ERR_CONSOLE_WRITABLE_STREAM,
+  ERR_CONSTRUCT_CALL_REQUIRED,
   ERR_CONTEXT_NOT_INITIALIZED,
   ERR_CPU_USAGE,
   ERR_CRYPTO_CUSTOM_ENGINE_NOT_SUPPORTED,
@@ -2785,7 +3189,15 @@ export default {
   ERR_EVENT_RECURSION,
   ERR_FALSY_VALUE_REJECTION,
   ERR_FEATURE_UNAVAILABLE_ON_PLATFORM,
+  ERR_FS_CP_DIR_TO_NON_DIR,
+  ERR_FS_CP_EEXIST,
+  ERR_FS_CP_EINVAL,
   ERR_FS_EISDIR,
+  ERR_FS_CP_FIFO_PIPE,
+  ERR_FS_CP_NON_DIR_TO_DIR,
+  ERR_FS_CP_SOCKET,
+  ERR_FS_CP_SYMLINK_TO_SUBDIRECTORY,
+  ERR_FS_CP_UNKNOWN,
   ERR_FS_FILE_TOO_LARGE,
   ERR_FS_INVALID_SYMLINK_TYPE,
   ERR_FS_RMDIR_ENOTDIR,
@@ -2832,6 +3244,7 @@ export default {
   ERR_HTTP2_TRAILERS_ALREADY_SENT,
   ERR_HTTP2_TRAILERS_NOT_READY,
   ERR_HTTP2_UNSUPPORTED_PROTOCOL,
+  ERR_HTTP_BODY_NOT_ALLOWED,
   ERR_HTTP_HEADERS_SENT,
   ERR_HTTP_INVALID_HEADER_VALUE,
   ERR_HTTP_INVALID_STATUS_CODE,
@@ -2865,7 +3278,9 @@ export default {
   ERR_INVALID_HANDLE_TYPE,
   ERR_INVALID_HTTP_TOKEN,
   ERR_INVALID_IP_ADDRESS,
+  ERR_INVALID_MIME_SYNTAX,
   ERR_INVALID_MODULE_SPECIFIER,
+  ERR_INVALID_OBJECT_DEFINE_PROPERTY,
   ERR_INVALID_OPT_VALUE,
   ERR_INVALID_OPT_VALUE_ENCODING,
   ERR_INVALID_PACKAGE_CONFIG,
@@ -2946,6 +3361,7 @@ export default {
   ERR_STREAM_WRAP,
   ERR_STREAM_WRITE_AFTER_END,
   ERR_SYNTHETIC,
+  ERR_TLS_ALPN_CALLBACK_WITH_PROTOCOLS,
   ERR_TLS_CERT_ALTNAME_INVALID,
   ERR_TLS_DH_PARAM_SIZE,
   ERR_TLS_HANDSHAKE_TIMEOUT,
@@ -2983,8 +3399,10 @@ export default {
   ERR_VM_MODULE_STATUS,
   ERR_WASI_ALREADY_STARTED,
   ERR_WORKER_INIT_FAILED,
+  ERR_WORKER_INVALID_EXEC_ARGV,
   ERR_WORKER_NOT_RUNNING,
   ERR_WORKER_OUT_OF_MEMORY,
+  ERR_WORKER_PATH,
   ERR_WORKER_UNSERIALIZABLE_ERROR,
   ERR_WORKER_UNSUPPORTED_EXTENSION,
   ERR_WORKER_UNSUPPORTED_OPERATION,
@@ -2999,12 +3417,15 @@ export default {
   codes,
   connResetException,
   denoErrorToNodeError,
+  denoErrorToNodeSystemError,
   dnsException,
+  DNSException: dnsException,
   errnoException,
   errorMap,
   exceptionWithHostPort,
   genericNodeError,
   hideStackFrames,
+  isErrorStackTraceLimitWritable,
   isStackOverflowError,
   uvException,
   uvExceptionWithHostPort,

@@ -1,22 +1,22 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
-use base64::prelude::BASE64_URL_SAFE_NO_PAD;
 use base64::Engine;
+use base64::prelude::BASE64_URL_SAFE_NO_PAD;
 use const_oid::AssociatedOid;
 use const_oid::ObjectIdentifier;
-use deno_core::op2;
 use deno_core::ToJsBuffer;
+use deno_core::op2;
 use elliptic_curve::sec1::ToEncodedPoint;
 use p256::pkcs8::DecodePrivateKey;
 use rsa::pkcs1::der::Decode;
-use rsa::pkcs8::der::asn1::UintRef;
 use rsa::pkcs8::der::Encode;
+use rsa::pkcs8::der::asn1::UintRef;
 use serde::Deserialize;
 use serde::Serialize;
-use spki::der::asn1;
-use spki::der::asn1::BitString;
 use spki::AlgorithmIdentifier;
 use spki::AlgorithmIdentifierOwned;
+use spki::der::asn1;
+use spki::der::asn1::BitString;
 
 use crate::shared::*;
 
@@ -410,7 +410,23 @@ fn export_key_ec(
             Err(SharedError::ExpectedValidPublicECKey.into())
           }
         }
-        _ => Err(ExportKeyError::UnsupportedNamedCurve),
+        EcNamedCurve::P521 => {
+          let ec_key = p521::SecretKey::from_pkcs8_der(private_key)
+            .map_err(|_| SharedError::FailedDecodePrivateKey)?;
+
+          let point = ec_key.public_key().to_encoded_point(false);
+          if let elliptic_curve::sec1::Coordinates::Uncompressed { x, y } =
+            point.coordinates()
+          {
+            Ok(ExportKeyResult::JwkPrivateEc {
+              x: bytes_to_b64(x),
+              y: bytes_to_b64(y),
+              d: bytes_to_b64(&ec_key.to_bytes()),
+            })
+          } else {
+            Err(SharedError::ExpectedValidPublicECKey.into())
+          }
+        }
       }
     }
     ExportKeyFormat::JwkSecret => Err(SharedError::UnsupportedFormat.into()),

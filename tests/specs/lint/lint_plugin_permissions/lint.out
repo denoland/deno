@@ -1,0 +1,7 @@
+Environment Variable MY_ENV_VAR: I'm in a lint plugin
+Content of README.md: This is an example readme file for the lint plugin permissions test suite.
+
+[WILDCARD]a.ts:1:7[WILDCARD]
+
+Found 1 problem (1 fixable via --fix)
+Checked 1 file

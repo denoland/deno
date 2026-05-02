@@ -1,0 +1,13 @@
+{
+  "tempDir": true,
+  "steps": [{
+    "args": "install",
+    "output": "[WILDCARD]"
+  }, {
+    "args": "run -R verify_setup.ts",
+    "output": "yes\n"
+  }, {
+    "args": "task --quiet output",
+    "output": "1\n2\n3\n"
+  }]
+}

@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 import { assertEquals } from "./test_util.ts";
 
 // TODO(@kitsonk) remove when we are no longer patching TypeScript to have

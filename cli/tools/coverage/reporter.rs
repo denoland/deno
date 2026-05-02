@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::collections::HashMap;
 use std::fs;
@@ -13,17 +13,20 @@ use deno_core::error::AnyError;
 use deno_core::url::Url;
 use deno_lib::version::DENO_VERSION_INFO;
 
-use super::util;
 use super::CoverageReport;
+use super::util;
 use crate::args::CoverageType;
 use crate::colors;
+use crate::util::fs::canonicalize_path;
 
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct CoverageStats<'a> {
   pub line_hit: usize,
   pub line_miss: usize,
   pub branch_hit: usize,
   pub branch_miss: usize,
+  pub fn_hit: usize,
+  pub fn_miss: usize,
   pub parent: Option<String>,
   pub file_text: Option<String>,
   pub report: Option<&'a CoverageReport>,
@@ -41,19 +44,17 @@ pub fn create(kind: CoverageType) -> Box<dyn CoverageReporter + Send> {
 }
 
 pub trait CoverageReporter {
-  fn report(
-    &mut self,
-    coverage_report: &CoverageReport,
-    file_text: &str,
-  ) -> Result<(), AnyError>;
-
-  fn done(&mut self, _coverage_root: &Path) {}
+  fn done(
+    &self,
+    coverage_root: &Path,
+    file_reports: &[(CoverageReport, String)],
+  );
 
   /// Collects the coverage summary of each file or directory.
   fn collect_summary<'a>(
     &'a self,
-    file_reports: &'a Vec<(CoverageReport, String)>,
-  ) -> CoverageSummary {
+    file_reports: &'a [(CoverageReport, String)],
+  ) -> CoverageSummary<'a> {
     let urls = file_reports.iter().map(|rep| &rep.0.url).collect();
     let root = match util::find_root(urls)
       .and_then(|root_path| root_path.to_file_path().ok())
@@ -98,6 +99,16 @@ pub trait CoverageReporter {
         stats.branch_hit += report.branches.iter().filter(|b| b.is_hit).count();
         stats.branch_miss +=
           report.branches.iter().filter(|b| !b.is_hit).count();
+        stats.fn_hit += report
+          .named_functions
+          .iter()
+          .filter(|f| f.execution_count > 0)
+          .count();
+        stats.fn_miss += report
+          .named_functions
+          .iter()
+          .filter(|f| f.execution_count == 0)
+          .count();
 
         file_text = None;
         summary_path = path.parent();
@@ -107,16 +118,12 @@ pub trait CoverageReporter {
   }
 }
 
-struct SummaryCoverageReporter {
-  file_reports: Vec<(CoverageReport, String)>,
-}
+pub struct SummaryCoverageReporter {}
 
-#[allow(clippy::print_stdout)]
+#[allow(clippy::print_stdout, reason = "reporter")]
 impl SummaryCoverageReporter {
   pub fn new() -> SummaryCoverageReporter {
-    SummaryCoverageReporter {
-      file_reports: Vec::new(),
-    }
+    SummaryCoverageReporter {}
   }
 
   fn print_coverage_line(
@@ -130,12 +137,16 @@ impl SummaryCoverageReporter {
       line_miss,
       branch_hit,
       branch_miss,
+      fn_hit,
+      fn_miss,
       ..
     } = stats;
     let (_, line_percent, line_class) =
       util::calc_coverage_display_info(*line_hit, *line_miss);
     let (_, branch_percent, branch_class) =
       util::calc_coverage_display_info(*branch_hit, *branch_miss);
+    let (_, fn_percent, fn_class) =
+      util::calc_coverage_display_info(*fn_hit, *fn_miss);
 
     let file_name = format!(
       "{node:node_max$}",
@@ -158,6 +169,14 @@ impl SummaryCoverageReporter {
       format!("{}", colors::red(&format!("{:>8.1}", branch_percent)))
     };
 
+    let fn_percent = if fn_class == "high" {
+      format!("{}", colors::green(&format!("{:>10.1}", fn_percent)))
+    } else if fn_class == "medium" {
+      format!("{}", colors::yellow(&format!("{:>10.1}", fn_percent)))
+    } else {
+      format!("{}", colors::red(&format!("{:>10.1}", fn_percent)))
+    };
+
     let line_percent = if line_class == "high" {
       format!("{}", colors::green(&format!("{:>6.1}", line_percent)))
     } else if line_class == "medium" {
@@ -167,29 +186,23 @@ impl SummaryCoverageReporter {
     };
 
     println!(
-      " {file_name} | {branch_percent} | {line_percent} |",
+      "| {file_name} | {branch_percent} | {fn_percent} | {line_percent} |",
       file_name = file_name,
       branch_percent = branch_percent,
+      fn_percent = fn_percent,
       line_percent = line_percent,
     );
   }
 }
 
-#[allow(clippy::print_stdout)]
+#[allow(clippy::print_stdout, reason = "reporter")]
 impl CoverageReporter for SummaryCoverageReporter {
-  fn report(
-    &mut self,
-    coverage_report: &CoverageReport,
-    file_text: &str,
-  ) -> Result<(), AnyError> {
-    self
-      .file_reports
-      .push((coverage_report.clone(), file_text.to_string()));
-    Ok(())
-  }
-
-  fn done(&mut self, _coverage_root: &Path) {
-    let summary = self.collect_summary(&self.file_reports);
+  fn done(
+    &self,
+    _coverage_root: &Path,
+    file_reports: &[(CoverageReport, String)],
+  ) {
+    let summary = self.collect_summary(file_reports);
     let root_stats = summary.get("").unwrap();
 
     let mut entries = summary
@@ -197,34 +210,67 @@ impl CoverageReporter for SummaryCoverageReporter {
       .filter(|(_, stats)| stats.file_text.is_some())
       .collect::<Vec<_>>();
     entries.sort_by_key(|(node, _)| node.to_owned());
-    let node_max = entries.iter().map(|(node, _)| node.len()).max().unwrap();
+    let node_max = entries
+      .iter()
+      .map(|(node, _)| node.len())
+      .max()
+      .unwrap()
+      .max("All files".len());
 
-    let header =
-      format!("{node:node_max$}  | Branch % | Line % |", node = "File");
-    let separator = "-".repeat(header.len());
-    println!("{}", separator);
+    let header = format!(
+      "| {node:node_max$} | Branch % | Function % | Line % |",
+      node = "File"
+    );
+    let separator = format!(
+      "| {} | {} | {} | {} |",
+      "-".repeat(node_max),
+      "-".repeat(8),
+      "-".repeat(10),
+      "-".repeat(6)
+    );
     println!("{}", header);
     println!("{}", separator);
     entries.iter().for_each(|(node, stats)| {
       self.print_coverage_line(node, node_max, stats);
     });
-    println!("{}", separator);
     self.print_coverage_line("All files", node_max, root_stats);
-    println!("{}", separator);
   }
 }
 
-struct LcovCoverageReporter {}
+pub struct LcovCoverageReporter {}
+
+impl CoverageReporter for LcovCoverageReporter {
+  fn done(
+    &self,
+    _coverage_root: &Path,
+    file_reports: &[(CoverageReport, String)],
+  ) {
+    file_reports.iter().for_each(|(report, file_text)| {
+      self.report(report, file_text).unwrap();
+    });
+    if let Some((report, _)) = file_reports.first()
+      && let Some(ref output) = report.output
+    {
+      if let Ok(path) = canonicalize_path(output) {
+        let url = Url::from_file_path(path).unwrap();
+        log::info!("Lcov coverage report has been generated at {}", url);
+      } else {
+        log::error!(
+          "Failed to resolve the output path of Lcov report: {}",
+          output.display()
+        );
+      }
+    }
+  }
+}
 
 impl LcovCoverageReporter {
   pub fn new() -> LcovCoverageReporter {
     LcovCoverageReporter {}
   }
-}
 
-impl CoverageReporter for LcovCoverageReporter {
   fn report(
-    &mut self,
+    &self,
     coverage_report: &CoverageReport,
     _file_text: &str,
   ) -> Result<(), AnyError> {
@@ -316,16 +362,26 @@ impl CoverageReporter for LcovCoverageReporter {
 
 struct DetailedCoverageReporter {}
 
+impl CoverageReporter for DetailedCoverageReporter {
+  fn done(
+    &self,
+    _coverage_root: &Path,
+    file_reports: &[(CoverageReport, String)],
+  ) {
+    file_reports.iter().for_each(|(report, file_text)| {
+      self.report(report, file_text).unwrap();
+    });
+  }
+}
+
+#[allow(clippy::print_stdout, reason = "reporter")]
 impl DetailedCoverageReporter {
   pub fn new() -> DetailedCoverageReporter {
     DetailedCoverageReporter {}
   }
-}
 
-#[allow(clippy::print_stdout)]
-impl CoverageReporter for DetailedCoverageReporter {
   fn report(
-    &mut self,
+    &self,
     coverage_report: &CoverageReport,
     file_text: &str,
   ) -> Result<(), AnyError> {
@@ -365,11 +421,11 @@ impl CoverageReporter for DetailedCoverageReporter {
       const SEPARATOR: &str = "|";
 
       // Put a horizontal separator between disjoint runs of lines
-      if let Some(last_line) = last_line {
-        if last_line + 1 != line_index {
-          let dash = colors::gray("-".repeat(WIDTH + 1));
-          println!("{}{}{}", dash, colors::gray(SEPARATOR), dash);
-        }
+      if let Some(last_line) = last_line
+        && last_line + 1 != line_index
+      {
+        let dash = colors::gray("-".repeat(WIDTH + 1));
+        println!("{}{}{}", dash, colors::gray(SEPARATOR), dash);
       }
 
       println!(
@@ -386,22 +442,15 @@ impl CoverageReporter for DetailedCoverageReporter {
   }
 }
 
-struct HtmlCoverageReporter {
-  file_reports: Vec<(CoverageReport, String)>,
-}
+pub struct HtmlCoverageReporter {}
 
 impl CoverageReporter for HtmlCoverageReporter {
-  fn report(
-    &mut self,
-    report: &CoverageReport,
-    text: &str,
-  ) -> Result<(), AnyError> {
-    self.file_reports.push((report.clone(), text.to_string()));
-    Ok(())
-  }
-
-  fn done(&mut self, coverage_root: &Path) {
-    let summary = self.collect_summary(&self.file_reports);
+  fn done(
+    &self,
+    coverage_root: &Path,
+    file_reports: &[(CoverageReport, String)],
+  ) {
+    let summary = self.collect_summary(file_reports);
     let now = chrono::Utc::now().to_rfc2822();
 
     for (node, stats) in &summary {
@@ -419,10 +468,7 @@ impl CoverageReporter for HtmlCoverageReporter {
     }
 
     let root_report = Url::from_file_path(
-      coverage_root
-        .join("html")
-        .join("index.html")
-        .canonicalize()
+      canonicalize_path(&coverage_root.join("html").join("index.html"))
         .unwrap(),
     )
     .unwrap();
@@ -433,9 +479,7 @@ impl CoverageReporter for HtmlCoverageReporter {
 
 impl HtmlCoverageReporter {
   pub fn new() -> HtmlCoverageReporter {
-    HtmlCoverageReporter {
-      file_reports: Vec::new(),
-    }
+    HtmlCoverageReporter {}
   }
 
   /// Gets the report path for a single file
@@ -489,12 +533,12 @@ impl HtmlCoverageReporter {
     let footer = self.create_html_footer(timestamp);
     format!(
       "<!doctype html>
-      <html>
+      <html lang='en-US'>
         {head}
         <body>
           <div class='wrapper'>
             {header}
-            <div class='pad1'>
+            <div class='pad1 overflow-auto'>
               {main_content}
             </div>
             <div class='push'></div>
@@ -508,13 +552,15 @@ impl HtmlCoverageReporter {
   /// Creates <head> tag for html report.
   pub fn create_html_head(&self, title: &str) -> String {
     let style_css = include_str!("style.css");
+    let script = include_str!("script.js");
     format!(
       "
       <head>
         <meta charset='utf-8'>
         <title>{title}</title>
         <style>{style_css}</style>
-        <meta name='viewport' content='width=device-width, initial-scale=1' />
+        <script>{script}</script>
+        <meta name='viewport' content='width=device-width, initial-scale=1'>
       </head>"
     )
   }
@@ -530,31 +576,49 @@ impl HtmlCoverageReporter {
       line_miss,
       branch_hit,
       branch_miss,
+      fn_hit,
+      fn_miss,
       ..
     } = stats;
     let (line_total, line_percent, line_class) =
       util::calc_coverage_display_info(*line_hit, *line_miss);
     let (branch_total, branch_percent, _) =
       util::calc_coverage_display_info(*branch_hit, *branch_miss);
+    let (fn_total, fn_percent, _) =
+      util::calc_coverage_display_info(*fn_hit, *fn_miss);
+
+    let moon_svg = include_str!("moon.svg");
+    let sun_svg = include_str!("sun.svg");
 
     format!(
-      "
-      <div class='pad1'>
-        <h1>{breadcrumb_navigation}</h1>
-        <div class='clearfix'>
-          <div class='fl pad1y space-right2'>
-            <span class='strong'>{branch_percent:.2}%</span>
-            <span class='quiet'>Branches</span>
-            <span class='fraction'>{branch_hit}/{branch_total}</span>
-          </div>
-          <div class='fl pad1y space-right2'>
-            <span class='strong'>{line_percent:.2}%</span>
-            <span class='quiet'>Lines</span>
-            <span class='fraction'>{line_hit}/{line_total}</span>
+      r#"
+      <div class='pad1 flex-header'>
+        <div>
+          <h1>{breadcrumb_navigation}</h1>
+          <div class='clearfix'>
+            <div class='fl pad1y space-right2'>
+              <span class='strong'>{branch_percent:.2}%</span>
+              <span class='quiet'>Branches</span>
+              <span class='fraction'>{branch_hit}/{branch_total}</span>
+            </div>
+            <div class='fl pad1y space-right2'>
+              <span class='strong'>{fn_percent:.2}%</span>
+              <span class='quiet'>Functions</span>
+              <span class='fraction'>{fn_hit}/{fn_total}</span>
+            </div>
+            <div class='fl pad1y space-right2'>
+              <span class='strong'>{line_percent:.2}%</span>
+              <span class='quiet'>Lines</span>
+              <span class='fraction'>{line_hit}/{line_total}</span>
+            </div>
           </div>
         </div>
+        <button id="theme-toggle" type="button" aria-label="Toggle dark mode" style="display: none;">
+          {moon_svg}
+          {sun_svg}
+        </button>
       </div>
-      <div class='status-line {line_class}'></div>"
+      <div class='status-line {line_class}'></div>"#
     )
   }
 
@@ -586,13 +650,15 @@ impl HtmlCoverageReporter {
     children.sort();
 
     let table_rows: Vec<String> = children.iter().map(|(is_file, c)| {
-    let CoverageStats { line_hit, line_miss, branch_hit, branch_miss, .. } =
+    let CoverageStats { line_hit, line_miss, branch_hit, branch_miss, fn_hit, fn_miss, .. } =
       summary.get(c).unwrap();
 
     let (line_total, line_percent, line_class) =
       util::calc_coverage_display_info(*line_hit, *line_miss);
     let (branch_total, branch_percent, branch_class) =
       util::calc_coverage_display_info(*branch_hit, *branch_miss);
+    let (fn_total, fn_percent, fn_class) =
+      util::calc_coverage_display_info(*fn_hit, *fn_miss);
 
     let path = Path::new(c.strip_prefix(&format!("{node}{}", std::path::MAIN_SEPARATOR)).unwrap_or(c)).to_str().unwrap();
     let path = path.replace(std::path::MAIN_SEPARATOR, "/");
@@ -609,6 +675,8 @@ impl HtmlCoverageReporter {
         </td>
         <td class='pct {branch_class}'>{branch_percent:.2}%</td>
         <td class='abs {branch_class}'>{branch_hit}/{branch_total}</td>
+        <td class='pct {fn_class}'>{fn_percent:.2}%</td>
+        <td class='abs {fn_class}'>{fn_hit}/{fn_total}</td>
         <td class='pct {line_class}'>{line_percent:.2}%</td>
         <td class='abs {line_class}'>{line_hit}/{line_total}</td>
       </tr>")}).collect();
@@ -622,6 +690,8 @@ impl HtmlCoverageReporter {
             <th class='file'>File</th>
             <th class='pic'></th>
             <th class='pct'>Branches</th>
+            <th class='abs'></th>
+            <th class='pct'>Functions</th>
             <th class='abs'></th>
             <th class='pct'>Lines</th>
             <th class='abs'></th>
@@ -642,7 +712,7 @@ impl HtmlCoverageReporter {
   ) -> String {
     let line_num = file_text.lines().count();
     let line_count = (1..line_num + 1)
-      .map(|i| format!("<a name='L{i}'></a><a href='#L{i}'>{i}</a>"))
+      .map(|i| format!("<a href='#L{i}' id='L{i}'>{i}</a>"))
       .collect::<Vec<_>>()
       .join("\n");
     let line_coverage = (0..line_num)
@@ -651,12 +721,12 @@ impl HtmlCoverageReporter {
           report.found_lines.iter().find(|(line, _)| i == *line)
         {
           if *count == 0 {
-            "<span class='cline-any cline-no'>&nbsp</span>".to_string()
+            "<span class='cline-any cline-no'>&nbsp;</span>".to_string()
           } else {
             format!("<span class='cline-any cline-yes' title='This line is covered {count} time{}'>x{count}</span>", if *count > 1 { "s" } else { "" })
           }
         } else {
-          "<span class='cline-any cline-neutral'>&nbsp</span>".to_string()
+          "<span class='cline-any cline-neutral'>&nbsp;</span>".to_string()
         }
       })
       .collect::<Vec<_>>()

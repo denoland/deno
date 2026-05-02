@@ -1,20 +1,18 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-import { TextDecoder, TextEncoder } from "ext:deno_web/08_text_encoding.js";
-import Dirent from "ext:deno_node/_fs/_fs_dirent.ts";
 import { denoErrorToNodeError } from "ext:deno_node/internal/errors.ts";
-import { getValidatedPath } from "ext:deno_node/internal/fs/utils.mjs";
+import {
+  type Dirent,
+  direntFromDeno,
+  getValidatedPath,
+} from "ext:deno_node/internal/fs/utils.mjs";
 import { Buffer } from "node:buffer";
 import { promisify } from "ext:deno_node/internal/util.mjs";
 import { op_fs_read_dir_async, op_fs_read_dir_sync } from "ext:core/ops";
 import { join, relative } from "node:path";
-
-function toDirent(val: Deno.DirEntry & { parentPath: string }): Dirent {
-  return new Dirent(val);
-}
 
 type readDirOptions = {
   encoding?: string;
@@ -30,42 +28,58 @@ type readDirBoth = (
   ...args: [Error] | [null, string[] | Dirent[] | Array<string | Dirent>]
 ) => void;
 
+// Mirrors Node's lib/internal/fs/utils.js getOptions(): a bare string options
+// arg is treated as { encoding: <string> }.
+function normalizeOptions(
+  options: readDirOptions | string | null | undefined,
+): readDirOptions | null {
+  if (typeof options === "string") {
+    return { encoding: options };
+  }
+  return options ?? null;
+}
+
+function validateEncoding(encoding: string | undefined) {
+  if (!encoding || encoding === "buffer") return;
+  if (!Buffer.isEncoding(encoding)) {
+    throw new Error(
+      `TypeError [ERR_INVALID_OPT_VALUE_ENCODING]: The value "${encoding}" is invalid for option "encoding"`,
+    );
+  }
+}
+
 export function readdir(
   path: string | Buffer | URL,
-  options: readDirOptions,
+  options: readDirOptions | string,
   callback: readDirCallback,
 ): void;
 export function readdir(
   path: string | Buffer | URL,
-  options: readDirOptions,
+  options: readDirOptions | string,
   callback: readDirCallbackDirent,
 ): void;
 export function readdir(path: string | URL, callback: readDirCallback): void;
 export function readdir(
   path: string | Buffer | URL,
-  optionsOrCallback: readDirOptions | readDirCallback | readDirCallbackDirent,
+  optionsOrCallback:
+    | readDirOptions
+    | string
+    | readDirCallback
+    | readDirCallbackDirent,
   maybeCallback?: readDirCallback | readDirCallbackDirent,
 ) {
   const callback =
     (typeof optionsOrCallback === "function"
       ? optionsOrCallback
       : maybeCallback) as readDirBoth | undefined;
-  const options = typeof optionsOrCallback === "object"
-    ? optionsOrCallback
-    : null;
+  const options = normalizeOptions(
+    typeof optionsOrCallback === "function" ? null : optionsOrCallback,
+  );
   path = getValidatedPath(path).toString();
 
   if (!callback) throw new Error("No callback function supplied");
 
-  if (options?.encoding) {
-    try {
-      new TextDecoder(options.encoding);
-    } catch {
-      throw new Error(
-        `TypeError [ERR_INVALID_OPT_VALUE_ENCODING]: The value "${options.encoding}" is invalid for option "encoding"`,
-      );
-    }
-  }
+  validateEncoding(options?.encoding);
 
   const result: Array<string | Dirent> = [];
   const dirs = [path];
@@ -83,13 +97,13 @@ export function readdir(
 
           if (options?.withFileTypes) {
             entry.parentPath = current;
-            result.push(toDirent(entry));
+            result.push(direntFromDeno(entry));
           } else {
-            let name = decode(entry.name, options?.encoding);
+            let name = entry.name;
             if (options?.recursive) {
               name = relative(path, join(current, name));
             }
-            result.push(name);
+            result.push(decode(name, options?.encoding));
           }
         }
       } catch (err) {
@@ -107,13 +121,16 @@ export function readdir(
   })();
 }
 
-function decode(str: string, encoding?: string): string {
-  if (!encoding) return str;
-  else {
-    const decoder = new TextDecoder(encoding);
-    const encoder = new TextEncoder();
-    return decoder.decode(encoder.encode(str));
+function decode(str: string, encoding?: string): string | Buffer {
+  if (!encoding || encoding === "utf8" || encoding === "utf-8") {
+    return str;
   }
+  // "buffer" returns Buffer instances; every other (Node-supported) encoding
+  // re-encodes the UTF-8 filename through Buffer to match Node's
+  // lib/internal/fs/utils.js getDirent / readdir output.
+  const buf = Buffer.from(str, "utf8");
+  if (encoding === "buffer") return buf;
+  return buf.toString(encoding as BufferEncoding);
 }
 
 export const readdirPromise = promisify(readdir) as (
@@ -129,27 +146,20 @@ export const readdirPromise = promisify(readdir) as (
 
 export function readdirSync(
   path: string | Buffer | URL,
-  options: { withFileTypes: true; encoding?: string },
+  options: { withFileTypes: true; encoding?: string } | string,
 ): Dirent[];
 export function readdirSync(
   path: string | Buffer | URL,
-  options?: { withFileTypes?: false; encoding?: string },
+  options?: { withFileTypes?: false; encoding?: string } | string,
 ): string[];
 export function readdirSync(
   path: string | Buffer | URL,
-  options?: readDirOptions,
+  rawOptions?: readDirOptions | string,
 ): Array<string | Dirent> {
+  const options = normalizeOptions(rawOptions);
   path = getValidatedPath(path).toString();
 
-  if (options?.encoding) {
-    try {
-      new TextDecoder(options.encoding);
-    } catch {
-      throw new Error(
-        `TypeError [ERR_INVALID_OPT_VALUE_ENCODING]: The value "${options.encoding}" is invalid for option "encoding"`,
-      );
-    }
-  }
+  validateEncoding(options?.encoding);
 
   const result: Array<string | Dirent> = [];
   const dirs = [path];
@@ -166,13 +176,13 @@ export function readdirSync(
 
         if (options?.withFileTypes) {
           entry.parentPath = current;
-          result.push(toDirent(entry));
+          result.push(direntFromDeno(entry));
         } else {
-          let name = decode(entry.name, options?.encoding);
+          let name = entry.name;
           if (options?.recursive) {
             name = relative(path, join(current, name));
           }
-          result.push(name);
+          result.push(decode(name, options?.encoding));
         }
       }
     } catch (e) {

@@ -1,0 +1,7 @@
+{
+  "name": "@denotest/raw-imports",
+  "version": "0.0.0",
+  "exports": "./main.ts",
+  "license": "MIT",
+  "unstable": ["raw-imports"]
+}

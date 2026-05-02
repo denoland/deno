@@ -1,0 +1,13 @@
+Download http://localhost:4545/run/invalid_utf8.ts
+Check [WILDCARD]main.ts
+Compile [WILDCARD]main.ts to [WILDLINE]
+
+Embedded Files
+
+[WILDLINE]
+├── add_bom.ts ([WILDLINE])
+├── hello_bom.txt ([WILDLINE])
+├── lossy.ts ([WILDLINE])
+└── main.ts ([WILDLINE])
+
+[WILDCARD]

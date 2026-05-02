@@ -1,0 +1,7 @@
+{
+  "name": "package-b",
+  "type": "module",
+  "dependencies": {
+    "cowsay": "*"
+  }
+}

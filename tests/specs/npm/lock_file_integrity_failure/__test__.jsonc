@@ -1,5 +1,5 @@
 {
   "args": "run --allow-read --allow-env --lock lock.json main.js",
   "output": "main.out",
-  "exitCode": 10
+  "exitCode": 1
 }

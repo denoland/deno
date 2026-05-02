@@ -1,18 +1,18 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 // @ts-check
 /// <reference path="../webidl/internal.d.ts" />
 /// <reference path="../web/internal.d.ts" />
 /// <reference path="../url/internal.d.ts" />
-/// <reference path="../web/lib.deno_web.d.ts" />
+/// <reference path="../../cli/tsc/dts/lib.deno_web.d.ts" />
 /// <reference path="./internal.d.ts" />
 /// <reference path="../web/06_streams_types.d.ts" />
-/// <reference path="./lib.deno_fetch.d.ts" />
+/// <reference path="../../cli/tsc/dts/lib.deno_fetch.d.ts" />
 /// <reference lib="esnext" />
 
 import { core, primordials } from "ext:core/mod.js";
-import * as webidl from "ext:deno_webidl/00_webidl.js";
-import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
+const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
+import { createFilteredInspectProxy } from "ext:deno_web/01_console.js";
 import {
   byteLowerCase,
   HTTP_TAB_OR_SPACE,
@@ -22,7 +22,7 @@ import {
 import { extractBody, mixinBody } from "ext:deno_fetch/22_body.js";
 import { getLocationHref } from "ext:deno_web/12_location.js";
 import { extractMimeType } from "ext:deno_web/01_mimesniff.js";
-import { URL } from "ext:deno_url/00_url.js";
+import { URL } from "ext:deno_web/00_url.js";
 import {
   fillHeaders,
   getDecodeSplitHeader,
@@ -30,6 +30,7 @@ import {
   headerListFromHeaders,
   headersFromHeaderList,
 } from "ext:deno_fetch/20_headers.js";
+import { markNotSerializable } from "ext:deno_web/13_message_port.js";
 const {
   ArrayPrototypeMap,
   ArrayPrototypePush,
@@ -446,6 +447,7 @@ ObjectDefineProperties(Response, {
   error: { __proto__: null, enumerable: true },
 });
 const ResponsePrototype = Response.prototype;
+markNotSerializable(ResponsePrototype);
 mixinBody(ResponsePrototype, _body, _mimeType);
 
 webidl.converters["Response"] = webidl.createInterfaceConverter(

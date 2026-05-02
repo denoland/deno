@@ -1,0 +1,4 @@
+Error formatting: [WILDCARD]broken.svg
+   Syntax error (expected attribute name) at file://[WILDCARD]broken.svg:2:0
+
+error: Failed to format 1 of 1 checked file

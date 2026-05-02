@@ -1,0 +1,13 @@
+{
+  "tempDir": true,
+  "tests": {
+    "jsr_markdown": {
+      "args": "doc jsr:@denotest/markdown/readme",
+      "output": "jsr_markdown.out"
+    },
+    "mixed_with_ts": {
+      "args": "doc jsr:@denotest/markdown/readme mod.ts",
+      "output": "mixed.out"
+    }
+  }
+}

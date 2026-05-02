@@ -1,11 +1,10 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 import CP from "node:child_process";
 import { Buffer } from "node:buffer";
 import {
   assert,
   assertEquals,
-  assertExists,
   assertNotStrictEquals,
   assertStrictEquals,
   assertStringIncludes,
@@ -493,30 +492,6 @@ Deno.test({
 });
 
 Deno.test({
-  name: "[node/child_process] ChildProcess.kill()",
-  async fn() {
-    const script = path.join(
-      path.dirname(path.fromFileUrl(import.meta.url)),
-      "./testdata/infinite_loop.js",
-    );
-    const childProcess = spawn(Deno.execPath(), ["run", script]);
-    const p = withTimeout<void>();
-    const pStdout = withTimeout<void>();
-    const pStderr = withTimeout<void>();
-    childProcess.on("exit", () => p.resolve());
-    childProcess.stdout.on("close", () => pStdout.resolve());
-    childProcess.stderr.on("close", () => pStderr.resolve());
-    childProcess.kill("SIGKILL");
-    await p.promise;
-    await pStdout.promise;
-    await pStderr.promise;
-    assert(childProcess.killed);
-    assertEquals(childProcess.signalCode, "SIGKILL");
-    assertExists(childProcess.exitCode);
-  },
-});
-
-Deno.test({
   ignore: true,
   name: "[node/child_process] ChildProcess.unref()",
   async fn() {
@@ -552,6 +527,32 @@ Deno.test({
     );
     const p = Promise.withResolvers<void>();
     const cp = CP.fork(script, [], { cwd: testdataDir, stdio: "pipe" });
+    let output = "";
+    cp.on("close", () => p.resolve());
+    cp.stdout?.on("data", (data) => {
+      output += data;
+    });
+    await p.promise;
+    assertEquals(output, "foo\ntrue\ntrue\ntrue\n");
+  },
+});
+
+Deno.test({
+  name: "[node/child_process] child_process.fork with URL",
+  async fn() {
+    const testdataDir = path.join(
+      path.dirname(path.fromFileUrl(import.meta.url)),
+      "testdata",
+    );
+    const script = path.join(
+      testdataDir,
+      "node_modules",
+      "foo",
+      "index.js",
+    );
+    const scriptUrl = path.toFileUrl(script);
+    const p = Promise.withResolvers<void>();
+    const cp = CP.fork(scriptUrl, [], { cwd: testdataDir, stdio: "pipe" });
     let output = "";
     cp.on("close", () => p.resolve());
     cp.stdout?.on("data", (data) => {
@@ -1006,6 +1007,95 @@ Deno.test(
   },
 );
 
+Deno.test(async function ipcSerializationAdvanced() {
+  const timeout = withTimeout<void>();
+  const script = `
+      if (typeof process.send !== "function") {
+        console.error("process.send is not a function");
+        process.exit(1);
+      }
+
+      class BigIntWrapper {
+        constructor(value) {
+          this.value = value;
+        }
+        toJSON() {
+          return this.value.toString();
+        }
+      }
+
+      const makeSab = (arr) => {
+        const sab = new SharedArrayBuffer(arr.length);
+        const buf = new Uint8Array(sab);
+        for (let i = 0; i < arr.length; i++) {
+          buf[i] = arr[i];
+        }
+        return buf;
+      };
+
+
+      const inputs = [
+        "foo",
+        {
+          foo: "bar",
+        },
+        42,
+        true,
+        null,
+        new Uint8Array([1, 2, 3]),
+        {
+          foo: new Uint8Array([1, 2, 3]),
+          bar: makeSab([4, 5, 6]),
+        },
+        [1, { foo: 2 }, [3, 4]],
+        42n,
+      ];
+      for (const input of inputs) {
+        process.send(input);
+      }
+    `;
+  const makeSab = (arr: number[]) => {
+    const sab = new SharedArrayBuffer(arr.length);
+    const buf = new Uint8Array(sab);
+    for (let i = 0; i < arr.length; i++) {
+      buf[i] = arr[i];
+    }
+    return buf;
+  };
+
+  const file = await Deno.makeTempFile();
+  await Deno.writeTextFile(file, script);
+  const child = CP.fork(file, [], {
+    stdio: ["inherit", "inherit", "inherit", "ipc"],
+    serialization: "advanced",
+  });
+  const expect = [
+    "foo",
+    {
+      foo: "bar",
+    },
+    42,
+    true,
+    null,
+    new Uint8Array([1, 2, 3]),
+    {
+      foo: new Uint8Array([1, 2, 3]),
+      bar: makeSab([4, 5, 6]),
+    },
+    [1, { foo: 2 }, [3, 4]],
+    42n,
+  ];
+  let i = 0;
+
+  child.on("message", (message) => {
+    assertEquals(message, expect[i]);
+    i++;
+  });
+  child.on("close", () => timeout.resolve());
+  await timeout.promise;
+  assertEquals(i, expect.length);
+});
+
 Deno.test(async function childProcessExitsGracefully() {
   const testdataDir = path.join(
     path.dirname(path.fromFileUrl(import.meta.url)),
@@ -1127,4 +1217,180 @@ Deno.test(async function noWarningsFlag() {
   });
 
   await timeout.promise;
+});
+
+Deno.test({
+  name: "[node/child_process] spawnSync supports input option",
+  fn() {
+    const text = "  console.log('hello')";
+    const expected = `console.log("hello");\n`;
+    {
+      const { stdout } = spawnSync(Deno.execPath(), ["fmt", "-"], {
+        input: text,
+      });
+      assertEquals(stdout.toString(), expected);
+    }
+    {
+      const { stdout } = spawnSync(Deno.execPath(), ["fmt", "-"], {
+        input: Buffer.from(text),
+      });
+      assertEquals(stdout.toString(), expected);
+    }
+    {
+      const { stdout } = spawnSync(Deno.execPath(), ["fmt", "-"], {
+        input: new TextEncoder().encode(text),
+      });
+      assertEquals(stdout.toString(), expected);
+    }
+    {
+      const b = Buffer.from(text);
+      const { stdout } = spawnSync(Deno.execPath(), ["fmt", "-"], {
+        input: new DataView(b.buffer, b.byteOffset, b.byteLength),
+      });
+      assertEquals(stdout.toString(), expected);
+    }
+
+    assertThrows(
+      () => {
+        spawnSync(Deno.execPath(), ["fmt", "-"], {
+          // deno-lint-ignore no-explicit-any
+          input: {} as any,
+        });
+      },
+      Error,
+      'The "input" argument must be of type string or an instance of Buffer, TypedArray, or DataView. Received an instance of Object',
+    );
+  },
+});
+
+// Regression test for https://github.com/denoland/deno/issues/25776
+Deno.test(async function killSignalZero() {
+  const child = CP.spawn(Deno.execPath(), [
+    "eval",
+    "setTimeout(() => {}, 60_000)",
+  ]);
+  try {
+    // Signal 0 checks if the process exists without sending a signal
+    const alive = child.kill(0);
+    assertEquals(alive, true);
+    // The child should not be marked as killed
+    assertEquals(child.killed, false);
+  } finally {
+    child.kill();
+    await new Promise((resolve) => child.on("close", resolve));
+  }
+});
+
+Deno.test(async function experimentalFlag() {
+  const code = ``;
+  const file = await Deno.makeTempFile();
+  await Deno.writeTextFile(file, code);
+  const timeout = withTimeout<void>();
+  const child = CP.fork(file, [], {
+    execArgv: ["--experimental-vm-modules"],
+    stdio: ["inherit", "inherit", "inherit", "ipc"],
+  });
+  child.on("close", () => {
+    timeout.resolve();
+  });
+
+  await timeout.promise;
+});
+
+// Regression test for https://github.com/denoland/deno/issues/26784
+// process.stdout partial writes were silently dropped, causing data
+// truncation when piping >64KB through a subprocess.
+Deno.test(async function stdoutPipePartialWriteNotTruncated() {
+  // Child script: pipe a file to stdout via createReadStream
+  const pipeScript = await Deno.makeTempFile({ suffix: ".mjs" });
+  await Deno.writeTextFile(
+    pipeScript,
+    `import fs from "node:fs";fs.createReadStream(process.argv[2]).pipe(process.stdout);`,
+  );
+  // Create a file >65536 bytes with multiple lines (triggers chunked reads)
+  const dataFile = await Deno.makeTempFile();
+  const content = "x".repeat(40000) + "\n" + "y".repeat(40000) + "\n";
+  await Deno.writeTextFile(dataFile, content);
+  try {
+    const output = execFileSync(Deno.execPath(), [
+      "run",
+      "--allow-read",
+      pipeScript,
+      dataFile,
+    ], { encoding: "utf-8", maxBuffer: 50 * 1024 * 1024 });
+    assertEquals(output.length, content.length);
+    assertEquals(output, content);
+  } finally {
+    await Deno.remove(pipeScript);
+    await Deno.remove(dataFile);
+  }
+});
+
+Deno.test(async function stdoutWriteMultipleChunksNotTruncated() {
+  // Child script: write two large chunks to stdout directly
+  const script = await Deno.makeTempFile({ suffix: ".mjs" });
+  await Deno.writeTextFile(
+    script,
+    `const chunk1 = "A".repeat(50000);const chunk2 = "B".repeat(50000);process.stdout.write(chunk1);process.stdout.write(chunk2);`,
+  );
+  try {
+    const output = execFileSync(Deno.execPath(), ["run", script], {
+      encoding: "utf-8",
+      maxBuffer: 50 * 1024 * 1024,
+    });
+    assertEquals(output.length, 100000);
+    assertEquals(output, "A".repeat(50000) + "B".repeat(50000));
+  } finally {
+    await Deno.remove(script);
+  }
+});
+
+Deno.test(function spawnSyncShellMetacharactersEscaped() {
+  // Shell metacharacters in args should be escaped, not interpreted.
+  // On Unix, & would launch a background process; on Windows, it
+  // would chain a second command. Either way echo should print
+  // the literal string.
+  const ret = spawnSync(
+    Deno.execPath(),
+    ["eval", "console.log(Deno.args[0])", "--", "a&b|c<d>e"],
+    { shell: true, encoding: "utf-8" },
+  );
+  assertEquals(ret.status, 0);
+  assertEquals(ret.stdout.trim(), "a&b|c<d>e");
+});
+
+Deno.test(function spawnSyncReturnsPid() {
+  const ret = spawnSync(Deno.execPath(), ["eval", "console.log('hi')"]);
+  assertEquals(ret.status, 0);
+  assertEquals(typeof ret.pid, "number");
+  assert(ret.pid > 0);
+});
+
+Deno.test({
+  name: "spawnWithNumericFdInStdioArray",
+  ignore: Deno.build.os === "windows",
+  async fn() {
+    const fs = await import("node:fs");
+    const tmpFile = Deno.makeTempFileSync();
+    try {
+      const fd = fs.openSync(tmpFile, "w");
+      const child = spawn("/bin/sh", [
+        "-c",
+        "echo hello from child >&3",
+      ], {
+        stdio: ["ignore", "pipe", "pipe", fd],
+      });
+      const { promise, resolve } = Promise.withResolvers<number>();
+      child.on("close", (code: number) => {
+        resolve(code);
+      });
+      const code = await promise;
+      fs.closeSync(fd);
+      assertEquals(code, 0);
+      const content = Deno.readTextFileSync(tmpFile);
+      assertEquals(content, "hello from child\n");
+    } finally {
+      Deno.removeSync(tmpFile);
+    }
+  },
 });

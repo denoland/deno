@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -86,12 +86,18 @@ impl NapiObject {
     unreachable!();
   }
 
-  #[allow(clippy::new_ret_no_self)]
+  #[allow(
+    clippy::new_ret_no_self,
+    reason = "napi constructor returns napi_value"
+  )]
   pub extern "C" fn new(env: napi_env, info: napi_callback_info) -> napi_value {
     Self::new_inner(env, info, None, None)
   }
 
-  #[allow(clippy::new_ret_no_self)]
+  #[allow(
+    clippy::new_ret_no_self,
+    reason = "napi constructor returns napi_value"
+  )]
   pub extern "C" fn new_with_finalizer(
     env: napi_env,
     info: napi_callback_info,
@@ -171,6 +177,172 @@ impl NapiObject {
   }
 }
 
+/// A class that uses getter/setter accessor properties defined via
+/// napi_define_class with napi_default (0) attributes. This tests that
+/// napi_writable is correctly ignored for accessor properties — the
+/// presence of a setter should make the property writable regardless
+/// of whether napi_writable is set.
+pub struct NapiAccessorObject {
+  value: i32,
+}
+
+extern "C" fn accessor_obj_constructor(
+  env: napi_env,
+  info: napi_callback_info,
+) -> napi_value {
+  let mut this: napi_value = ptr::null_mut();
+  assert_napi_ok!(napi_get_cb_info(
+    env,
+    info,
+    &mut 0,
+    ptr::null_mut(),
+    &mut this,
+    ptr::null_mut(),
+  ));
+
+  let obj = Box::new(NapiAccessorObject { value: 0 });
+  let obj_raw = Box::into_raw(obj) as *mut c_void;
+  assert_napi_ok!(napi_wrap(
+    env,
+    this,
+    obj_raw,
+    Some(accessor_obj_release),
+    ptr::null_mut(),
+    ptr::null_mut(),
+  ));
+
+  this
+}
+
+extern "C" fn accessor_obj_release(
+  _env: napi_env,
+  data: *mut c_void,
+  _hint: *mut c_void,
+) {
+  unsafe {
+    drop(Box::from_raw(data as *mut NapiAccessorObject));
+  }
+}
+
+extern "C" fn accessor_getter(
+  env: napi_env,
+  info: napi_callback_info,
+) -> napi_value {
+  let (_args, _argc, this) = napi_get_callback_info!(env, info, 0);
+  let mut obj: *mut NapiAccessorObject = ptr::null_mut();
+  assert_napi_ok!(napi_unwrap(
+    env,
+    this,
+    &mut obj as *mut _ as *mut *mut c_void
+  ));
+
+  let mut result: napi_value = ptr::null_mut();
+  assert_napi_ok!(napi_create_int32(env, (*obj).value, &mut result));
+  result
+}
+
+extern "C" fn accessor_setter(
+  env: napi_env,
+  info: napi_callback_info,
+) -> napi_value {
+  let (args, argc, this) = napi_get_callback_info!(env, info, 1);
+  assert_eq!(argc, 1);
+  let mut obj: *mut NapiAccessorObject = ptr::null_mut();
+  assert_napi_ok!(napi_unwrap(
+    env,
+    this,
+    &mut obj as *mut _ as *mut *mut c_void
+  ));
+
+  assert_napi_ok!(napi_get_value_int32(env, args[0], &mut (*obj).value));
+
+  ptr::null_mut()
+}
+
+/// Test napi_remove_wrap: wraps an object, then removes the wrap.
+extern "C" fn test_remove_wrap(
+  env: napi_env,
+  info: napi_callback_info,
+) -> napi_value {
+  let (args, argc, _) = napi_get_callback_info!(env, info, 1);
+  assert_eq!(argc, 1);
+
+  // Wrap the object with some native data
+  let data = Box::into_raw(Box::new(42i32)) as *mut std::ffi::c_void;
+  assert_napi_ok!(napi_wrap(
+    env,
+    args[0],
+    data,
+    None,
+    ptr::null_mut(),
+    ptr::null_mut(),
+  ));
+
+  // Remove the wrap and verify we get the same pointer back
+  let mut removed_data: *mut std::ffi::c_void = ptr::null_mut();
+  assert_napi_ok!(napi_remove_wrap(env, args[0], &mut removed_data));
+  assert_eq!(removed_data, data);
+
+  // Clean up
+  unsafe {
+    let _ = Box::from_raw(removed_data as *mut i32);
+  }
+
+  let mut result: napi_value = ptr::null_mut();
+  assert_napi_ok!(napi_get_boolean(env, true, &mut result));
+  result
+}
+
+/// Raw napi_wrap: wraps a JS object with an i32 value.
+/// Used for cross-env wrap/unwrap testing.
+extern "C" fn test_raw_wrap(
+  env: napi_env,
+  info: napi_callback_info,
+) -> napi_value {
+  let (args, argc, _) = napi_get_callback_info!(env, info, 2);
+  assert_eq!(argc, 2);
+
+  let mut value: i32 = 0;
+  assert_napi_ok!(napi_get_value_int32(env, args[1], &mut value));
+
+  let data = Box::into_raw(Box::new(value)) as *mut c_void;
+  assert_napi_ok!(napi_wrap(
+    env,
+    args[0],
+    data,
+    None,
+    ptr::null_mut(),
+    ptr::null_mut()
+  ));
+
+  let mut result: napi_value = ptr::null_mut();
+  assert_napi_ok!(napi_get_boolean(env, true, &mut result));
+  result
+}
+
+/// Raw napi_unwrap: retrieves the i32 value from a wrapped JS object.
+/// Used for cross-env wrap/unwrap testing.
+extern "C" fn test_raw_unwrap(
+  env: napi_env,
+  info: napi_callback_info,
+) -> napi_value {
+  let (args, argc, _) = napi_get_callback_info!(env, info, 1);
+  assert_eq!(argc, 1);
+
+  let mut data: *mut c_void = ptr::null_mut();
+  let status = unsafe { napi_unwrap(env, args[0], &mut data) };
+  if status != napi_sys::Status::napi_ok {
+    let mut result: napi_value = ptr::null_mut();
+    assert_napi_ok!(napi_get_null(env, &mut result));
+    return result;
+  }
+
+  let value = unsafe { *(data as *const i32) };
+  let mut result: napi_value = ptr::null_mut();
+  assert_napi_ok!(napi_create_int32(env, value, &mut result));
+  result
+}
+
 pub fn init(env: napi_env, exports: napi_value) {
   let mut static_prop = napi_new_property!(env, "factory", NapiObject::factory);
   static_prop.attributes = PropertyAttributes::static_;
@@ -218,5 +390,50 @@ pub fn init(env: napi_env, exports: napi_value) {
     exports,
     "NapiObjectOwned\0".as_ptr() as *const c_char,
     cons,
+  ));
+
+  // Register NapiAccessorObject — class with getter/setter properties
+  // using napi_default attributes (napi_writable NOT set).
+  let accessor_properties = &[napi_property_descriptor {
+    utf8name: c"value".as_ptr(),
+    name: ptr::null_mut(),
+    method: None,
+    getter: Some(accessor_getter),
+    setter: Some(accessor_setter),
+    data: ptr::null_mut(),
+    attributes: PropertyAttributes::default, // napi_writable is NOT set
+    value: ptr::null_mut(),
+  }];
+
+  let mut cons: napi_value = ptr::null_mut();
+  assert_napi_ok!(napi_define_class(
+    env,
+    c"NapiAccessorObject".as_ptr(),
+    usize::MAX,
+    Some(accessor_obj_constructor),
+    ptr::null_mut(),
+    accessor_properties.len(),
+    accessor_properties.as_ptr(),
+    &mut cons,
+  ));
+
+  assert_napi_ok!(napi_set_named_property(
+    env,
+    exports,
+    c"NapiAccessorObject".as_ptr(),
+    cons,
+  ));
+
+  // Register standalone functions on exports
+  let extra_props = &[
+    napi_new_property!(env, "test_remove_wrap", test_remove_wrap),
+    napi_new_property!(env, "test_raw_wrap", test_raw_wrap),
+    napi_new_property!(env, "test_raw_unwrap", test_raw_unwrap),
+  ];
+  assert_napi_ok!(napi_define_properties(
+    env,
+    exports,
+    extra_props.len(),
+    extra_props.as_ptr()
   ));
 }

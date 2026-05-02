@@ -1,0 +1,5 @@
+{
+  "args": "check --quiet --no-config",
+  "output": "main.out",
+  "exitCode": 1
+}

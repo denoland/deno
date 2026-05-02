@@ -7,7 +7,7 @@
     },
     "run": {
       "args": "run --check --allow-import main.ts",
-      "output": "main.out",
+      "output": "main_run.out",
       "exitCode": 1
     },
     "missing_local_root": {

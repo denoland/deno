@@ -1,8 +1,9 @@
-Check file:///[WILDCARD]/lib.bench.ts
+Check [WILDCARD]lib.bench.ts
     CPU | [WILDCARD]
 Runtime | [WILDCARD]
 
 file:///[WILDCARD]/lib.bench.ts
-[WILDCARD]
------------- ----------------------------- --------------------- --------------------------
-should add  [WILDCARD]
+
+| benchmark    | time/iter (avg) |        iter/s |      (min … max)      |      p75 |      p99 |     p995 |
+| ------------ | --------------- | ------------- | --------------------- | -------- | -------- | -------- |
+| should add   | [WILDCARD]

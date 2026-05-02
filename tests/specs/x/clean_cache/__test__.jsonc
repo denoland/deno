@@ -1,0 +1,17 @@
+{
+  "tempDir": true,
+  "steps": [
+    {
+      "args": "add npm:cowsay",
+      "output": "[WILDCARD]"
+    },
+    {
+      "args": "clean",
+      "output": "[WILDCARD]"
+    },
+    {
+      "args": "x cowsay hello",
+      "output": "hello.out"
+    }
+  ]
+}

@@ -1,0 +1,1 @@
+import "npm:@denotest/esm-basic@1.0.0";

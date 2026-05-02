@@ -1,13 +1,18 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-// `debugImpls` and `testEnabled` are deliberately not initialized so any call
-// to `debuglog()` before `initializeDebugEnv()` is called will throw.
-let debugImpls: Record<string, (...args: unknown[]) => void>;
-let testEnabled: (str: string) => boolean;
+// `debugImpls` and `testEnabled` are initialized with safe defaults so that
+// calls to `debuglog()` before `initializeDebugEnv()` do not crash. This can
+// happen when internal stream code triggers debug logging during bootstrap
+// before the Node process is fully initialized (e.g. when stdin is unavailable
+// in compiled binaries run as Windows services or detached processes).
+let debugImpls: Record<string, (...args: unknown[]) => void> = Object.create(
+  null,
+);
+let testEnabled: (str: string) => boolean = () => false;
 
 // `debugEnv` is initial value of process.env.NODE_DEBUG
 export function initializeDebugEnv(debugEnv: string) {
@@ -105,4 +110,47 @@ export function debuglog(
   return logger;
 }
 
-export default { debuglog };
+// One second in milliseconds.
+const kSecond = 1000;
+const kMinute = 60 * kSecond;
+const kHour = 60 * kMinute;
+
+function pad(value: number | string): string {
+  return `${value}`.padStart(2, "0");
+}
+
+export function formatTime(ms: number): string {
+  let hours = 0;
+  let minutes = 0;
+  let seconds = 0;
+
+  if (ms >= kSecond) {
+    if (ms >= kMinute) {
+      if (ms >= kHour) {
+        hours = Math.floor(ms / kHour);
+        ms = ms % kHour;
+      }
+      minutes = Math.floor(ms / kMinute);
+      ms = ms % kMinute;
+    }
+    seconds = ms / kSecond;
+  }
+
+  if (hours !== 0 || minutes !== 0) {
+    const fixed = seconds.toFixed(3).split(".");
+    const secondsStr = fixed[0];
+    const msStr = fixed[1];
+    const res = hours !== 0 ? `${hours}:${pad(minutes)}` : minutes;
+    return `${res}:${pad(secondsStr)}.${msStr} (${
+      hours !== 0 ? "h:m" : ""
+    }m:ss.mmm)`;
+  }
+
+  if (seconds !== 0) {
+    return `${seconds.toFixed(3)}s`;
+  }
+
+  return `${Number(ms.toFixed(3))}ms`;
+}
+
+export default { debuglog, formatTime };

@@ -1,10 +1,10 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 // @ts-check
 /// <reference path="../../core/internal.d.ts" />
 /// <reference path="../../core/lib.deno_core.d.ts" />
 /// <reference path="../webidl/internal.d.ts" />
-/// <reference path="../web/lib.deno_web.d.ts" />
+/// <reference path="../../cli/tsc/dts/lib.deno_web.d.ts" />
 
 import { core, primordials } from "ext:core/mod.js";
 const {
@@ -65,6 +65,7 @@ const {
   JSONStringify,
   MathCeil,
   ObjectAssign,
+  ObjectDefineProperty,
   ObjectHasOwn,
   ObjectPrototypeIsPrototypeOf,
   SafeArrayIterator,
@@ -87,9 +88,10 @@ const {
   WeakMapPrototypeSet,
 } = primordials;
 
-import * as webidl from "ext:deno_webidl/00_webidl.js";
-import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
-import { DOMException } from "ext:deno_web/01_dom_exception.js";
+const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
+import { createFilteredInspectProxy } from "ext:deno_web/01_console.js";
+const { DOMException } = core.loadExtScript("ext:deno_web/01_dom_exception.js");
+import { kKeyObject } from "ext:deno_node/internal/crypto/constants.ts";
 
 const supportedNamedCurves = ["P-256", "P-384", "P-521"];
 const recognisedUsages = [
@@ -128,6 +130,9 @@ const supportedAlgorithms = {
     "SHA-256": null,
     "SHA-384": null,
     "SHA-512": null,
+    "SHA3-256": null,
+    "SHA3-384": null,
+    "SHA3-512": null,
   },
   "generateKey": {
     "RSASSA-PKCS1-v1_5": "RsaHashedKeyGenParams",
@@ -138,6 +143,7 @@ const supportedAlgorithms = {
     "AES-CTR": "AesKeyGenParams",
     "AES-CBC": "AesKeyGenParams",
     "AES-GCM": "AesKeyGenParams",
+    "AES-OCB": "AesKeyGenParams",
     "AES-KW": "AesKeyGenParams",
     "HMAC": "HmacKeyGenParams",
     "X25519": null,
@@ -170,7 +176,9 @@ const supportedAlgorithms = {
     "AES-CTR": null,
     "AES-CBC": null,
     "AES-GCM": null,
+    "AES-OCB": null,
     "AES-KW": null,
+    "ChaCha20-Poly1305": null,
     "Ed25519": null,
     "X25519": null,
     "X448": null,
@@ -186,13 +194,17 @@ const supportedAlgorithms = {
     "RSA-OAEP": "RsaOaepParams",
     "AES-CBC": "AesCbcParams",
     "AES-GCM": "AesGcmParams",
+    "AES-OCB": "AesGcmParams",
     "AES-CTR": "AesCtrParams",
+    "ChaCha20-Poly1305": null,
   },
   "decrypt": {
     "RSA-OAEP": "RsaOaepParams",
     "AES-CBC": "AesCbcParams",
     "AES-GCM": "AesGcmParams",
+    "AES-OCB": "AesGcmParams",
     "AES-CTR": "AesCtrParams",
+    "ChaCha20-Poly1305": null,
   },
   "get key length": {
     "AES-CBC": "AesDerivedKeyParams",
@@ -358,6 +370,8 @@ class CryptoKey {
   [_usages];
   /** @type {object} */
   [_handle];
+  /** @type {object} */
+  [kKeyObject];
 
   constructor() {
     webidl.illegalConstructor();
@@ -424,8 +438,35 @@ function constructKey(type, extractable, usages, algorithm, handle) {
   key[_usages] = usages;
   key[_algorithm] = algorithm;
   key[_handle] = handle;
+  key[kKeyObject] = WeakMapPrototypeGet(KEY_STORE, handle);
+  ObjectDefineProperty(key, core.hostObjectBrand, {
+    __proto__: null,
+    value: () => ({
+      type: "CryptoKey",
+      keyType: type,
+      extractable,
+      usages,
+      algorithm,
+      keyData: WeakMapPrototypeGet(KEY_STORE, handle),
+    }),
+    enumerable: false,
+    configurable: false,
+    writable: false,
+  });
   return key;
 }
+
+core.registerCloneableResource("CryptoKey", (data) => {
+  const handle = {};
+  WeakMapPrototypeSet(KEY_STORE, handle, data.keyData);
+  return constructKey(
+    data.keyType,
+    data.extractable,
+    data.usages,
+    data.algorithm,
+    handle,
+  );
+});
 
 // https://w3c.github.io/webcrypto/#concept-usage-intersection
 /**
@@ -449,6 +490,7 @@ function getKeyLength(algorithm) {
     case "AES-CBC":
     case "AES-CTR":
     case "AES-GCM":
+    case "AES-OCB":
     case "AES-KW": {
       // 1.
       if (!ArrayPrototypeIncludes([128, 192, 256], algorithm.length)) {
@@ -476,6 +518,15 @@ function getKeyLength(algorithm) {
             length = 1024;
             break;
           case "SHA-512":
+            length = 1024;
+            break;
+          case "SHA3-256":
+            length = 512;
+            break;
+          case "SHA3-384":
+            length = 1024;
+            break;
+          case "SHA3-512":
             length = 1024;
             break;
           default:
@@ -574,7 +625,7 @@ class SubtleCrypto {
     // 9.
     if (!ArrayPrototypeIncludes(key[_usages], "encrypt")) {
       throw new DOMException(
-        "Key does not support the 'encrypt' operation",
+        "The requested operation is not valid for the provided key",
         "InvalidAccessError",
       );
     }
@@ -617,7 +668,7 @@ class SubtleCrypto {
     // 9.
     if (!ArrayPrototypeIncludes(key[_usages], "decrypt")) {
       throw new DOMException(
-        "Key does not support the 'decrypt' operation",
+        "The requested operation is not valid for the provided key",
         "InvalidAccessError",
       );
     }
@@ -710,7 +761,8 @@ class SubtleCrypto {
         // 4.
         return TypedArrayPrototypeGetBuffer(cipherText);
       }
-      case "AES-GCM": {
+      case "AES-GCM":
+      case "AES-OCB": {
         normalizedAlgorithm.iv = copyBuffer(normalizedAlgorithm.iv);
 
         // 1.
@@ -734,22 +786,27 @@ class SubtleCrypto {
             normalizedAlgorithm.tagLength / 8
         ) {
           throw new DOMException(
-            "Tag length overflows ciphertext",
+            "The provided data is too small",
             "OperationError",
           );
         }
 
-        // 3. We only support 96-bit and 128-bit nonce.
-        if (
-          ArrayPrototypeIncludes(
-            [12, 16],
-            TypedArrayPrototypeGetByteLength(normalizedAlgorithm.iv),
-          ) === undefined
-        ) {
-          throw new DOMException(
-            "Initialization vector length not supported",
-            "NotSupportedError",
-          );
+        // 3. We only support 96-bit and 128-bit nonce for GCM, 1-15 bytes for OCB
+        const ivLen = TypedArrayPrototypeGetByteLength(normalizedAlgorithm.iv);
+        if (algorithm.name === "AES-GCM") {
+          if (!ArrayPrototypeIncludes([12, 16], ivLen)) {
+            throw new DOMException(
+              "Initialization vector length not supported",
+              "NotSupportedError",
+            );
+          }
+        } else { // AES-OCB
+          if (ivLen < 1 || ivLen > 15) {
+            throw new DOMException(
+              "Initialization vector length not supported",
+              "NotSupportedError",
+            );
+          }
         }
 
         // 4.
@@ -769,7 +826,7 @@ class SubtleCrypto {
         // 5-8.
         const plaintext = await op_crypto_decrypt({
           key: keyData,
-          algorithm: "AES-GCM",
+          algorithm: algorithm.name,
           length: key[_algorithm].length,
           iv: normalizedAlgorithm.iv,
           additionalData: normalizedAlgorithm.additionalData ||
@@ -823,7 +880,7 @@ class SubtleCrypto {
     // 9.
     if (!ArrayPrototypeIncludes(key[_usages], "sign")) {
       throw new DOMException(
-        "Key does not support the 'sign' operation",
+        "The requested operation is not valid for the provided key",
         "InvalidAccessError",
       );
     }
@@ -882,18 +939,6 @@ class SubtleCrypto {
         const namedCurve = key[_algorithm].namedCurve;
         if (!ArrayPrototypeIncludes(supportedNamedCurves, namedCurve)) {
           throw new DOMException("Curve not supported", "NotSupportedError");
-        }
-
-        if (
-          (key[_algorithm].namedCurve === "P-256" &&
-            hashAlgorithm !== "SHA-256") ||
-          (key[_algorithm].namedCurve === "P-384" &&
-            hashAlgorithm !== "SHA-384")
-        ) {
-          throw new DOMException(
-            "Not implemented",
-            "NotSupportedError",
-          );
         }
 
         const signature = await op_crypto_sign_key({
@@ -1058,8 +1103,13 @@ class SubtleCrypto {
       case "AES-CTR":
       case "AES-CBC":
       case "AES-GCM":
+      case "AES-OCB":
       case "AES-KW": {
         result = exportKeyAES(format, key, innerKey);
+        break;
+      }
+      case "ChaCha20-Poly1305": {
+        result = exportKeyChaCha20Poly1305(format, key, innerKey);
         break;
       }
       default:
@@ -1256,7 +1306,7 @@ class SubtleCrypto {
 
     if (!ArrayPrototypeIncludes(key[_usages], "verify")) {
       throw new DOMException(
-        "Key does not support the 'verify' operation",
+        "The requested operation is not valid for the provided key",
         "InvalidAccessError",
       );
     }
@@ -1314,17 +1364,6 @@ class SubtleCrypto {
         }
         // 2.
         const hash = normalizedAlgorithm.hash.name;
-
-        if (
-          (key[_algorithm].namedCurve === "P-256" && hash !== "SHA-256") ||
-          (key[_algorithm].namedCurve === "P-384" && hash !== "SHA-384")
-        ) {
-          throw new DOMException(
-            "Not implemented",
-            "NotSupportedError",
-          );
-        }
-
         // 3-8.
         return await op_crypto_verify_key({
           key: keyData,
@@ -1394,7 +1433,7 @@ class SubtleCrypto {
     // 9.
     if (!ArrayPrototypeIncludes(wrappingKey[_usages], "wrapKey")) {
       throw new DOMException(
-        "Key does not support the 'wrapKey' operation",
+        "The requested operation is not valid for the provided key",
         "InvalidAccessError",
       );
     }
@@ -1550,7 +1589,7 @@ class SubtleCrypto {
     // 12.
     if (!ArrayPrototypeIncludes(unwrappingKey[_usages], "unwrapKey")) {
       throw new DOMException(
-        "Key does not support the 'unwrapKey' operation",
+        "The requested operation is not valid for the provided key",
         "InvalidAccessError",
       );
     }
@@ -1936,7 +1975,8 @@ async function generateKey(normalizedAlgorithm, extractable, usages) {
     }
     case "AES-CTR":
     case "AES-CBC":
-    case "AES-GCM": {
+    case "AES-GCM":
+    case "AES-OCB": {
       // 1.
       if (
         ArrayPrototypeFind(
@@ -2858,6 +2898,65 @@ function exportKeyAES(
   }
 }
 
+function exportKeyChaCha20Poly1305(format, _key, innerKey) {
+  switch (format) {
+    case "raw": {
+      const data = innerKey.data;
+      return TypedArrayPrototypeGetBuffer(data);
+    }
+    default:
+      throw new DOMException("Not implemented", "NotSupportedError");
+  }
+}
+
+function importKeyChaCha20Poly1305(
+  format,
+  keyData,
+  extractable,
+  keyUsages,
+) {
+  const supportedKeyUsages = ["encrypt", "decrypt", "wrapKey", "unwrapKey"];
+  if (
+    ArrayPrototypeFind(
+      keyUsages,
+      (u) => !ArrayPrototypeIncludes(supportedKeyUsages, u),
+    ) !== undefined
+  ) {
+    throw new DOMException("Invalid key usage", "SyntaxError");
+  }
+
+  switch (format) {
+    case "raw": {
+      if (TypedArrayPrototypeGetByteLength(keyData) !== 32) {
+        throw new DOMException(
+          "Invalid key length: ChaCha20-Poly1305 requires 256-bit key",
+          "DataError",
+        );
+      }
+
+      const handle = {};
+      WeakMapPrototypeSet(KEY_STORE, handle, {
+        type: "secret",
+        data: keyData,
+      });
+
+      const algorithm = {
+        name: "ChaCha20-Poly1305",
+      };
+
+      return constructKey(
+        "secret",
+        extractable,
+        usageIntersection(keyUsages, recognisedUsages),
+        algorithm,
+        handle,
+      );
+    }
+    default:
+      throw new DOMException("Not implemented", "NotSupportedError");
+  }
+}
+
 function importKeyAES(
   format,
   normalizedAlgorithm,
@@ -3127,6 +3226,33 @@ function importKeyHMAC(
           if (jwk.alg !== undefined && jwk.alg !== "HS512") {
             throw new DOMException(
               "'alg' property of JsonWebKey must be 'HS512'",
+              "DataError",
+            );
+          }
+          break;
+        }
+        case "SHA3-256": {
+          if (jwk.alg !== undefined && jwk.alg !== "HS3-256") {
+            throw new DOMException(
+              "'alg' property of JsonWebKey must be 'HS3-256'",
+              "DataError",
+            );
+          }
+          break;
+        }
+        case "SHA3-384": {
+          if (jwk.alg !== undefined && jwk.alg !== "HS3-384") {
+            throw new DOMException(
+              "'alg' property of JsonWebKey must be 'HS3-384'",
+              "DataError",
+            );
+          }
+          break;
+        }
+        case "SHA3-512": {
+          if (jwk.alg !== undefined && jwk.alg !== "HS3-512") {
+            throw new DOMException(
+              "'alg' property of JsonWebKey must be 'HS3-512'",
               "DataError",
             );
           }
@@ -3599,7 +3725,8 @@ async function importKeyInner(
     }
     case "AES-CTR":
     case "AES-CBC":
-    case "AES-GCM": {
+    case "AES-GCM":
+    case "AES-OCB": {
       return importKeyAES(
         format,
         normalizedAlgorithm,
@@ -3617,6 +3744,14 @@ async function importKeyInner(
         extractable,
         keyUsages,
         ["wrapKey", "unwrapKey"],
+      );
+    }
+    case "ChaCha20-Poly1305": {
+      return importKeyChaCha20Poly1305(
+        format,
+        keyData,
+        extractable,
+        keyUsages,
       );
     }
     case "X448": {
@@ -3882,9 +4017,18 @@ function importKeyRSA(
           case "RS512":
             hash = "SHA-512";
             break;
+          case "RS3-256":
+            hash = "SHA3-256";
+            break;
+          case "RS3-384":
+            hash = "SHA3-384";
+            break;
+          case "RS3-512":
+            hash = "SHA3-512";
+            break;
           default:
             throw new DOMException(
-              `'alg' property of JsonWebKey must be one of 'RS1', 'RS256', 'RS384', 'RS512': received ${jwk.alg}`,
+              `'alg' property of JsonWebKey must be one of 'RS1', 'RS256', 'RS384', 'RS512', 'RS3-256', 'RS3-384', 'RS3-512': received ${jwk.alg}`,
               "DataError",
             );
         }
@@ -3905,9 +4049,18 @@ function importKeyRSA(
           case "PS512":
             hash = "SHA-512";
             break;
+          case "PS3-256":
+            hash = "SHA3-256";
+            break;
+          case "PS3-384":
+            hash = "SHA3-384";
+            break;
+          case "PS3-512":
+            hash = "SHA3-512";
+            break;
           default:
             throw new DOMException(
-              `'alg' property of JsonWebKey must be one of 'PS1', 'PS256', 'PS384', 'PS512': received ${jwk.alg}`,
+              `'alg' property of JsonWebKey must be one of 'PS1', 'PS256', 'PS384', 'PS512', 'PS3-256', 'PS3-384', 'PS3-512': received ${jwk.alg}`,
               "DataError",
             );
         }
@@ -3928,9 +4081,18 @@ function importKeyRSA(
           case "RSA-OAEP-512":
             hash = "SHA-512";
             break;
+          case "RSA-OAEP3-256":
+            hash = "SHA3-256";
+            break;
+          case "RSA-OAEP3-384":
+            hash = "SHA3-384";
+            break;
+          case "RSA-OAEP3-512":
+            hash = "SHA3-512";
+            break;
           default:
             throw new DOMException(
-              `'alg' property of JsonWebKey must be one of 'RSA-OAEP', 'RSA-OAEP-256', 'RSA-OAEP-384', or 'RSA-OAEP-512': received ${jwk.alg}`,
+              `'alg' property of JsonWebKey must be one of 'RSA-OAEP', 'RSA-OAEP-256', 'RSA-OAEP-384', 'RSA-OAEP-512', 'RSA-OAEP3-256', 'RSA-OAEP3-384', or 'RSA-OAEP3-512': received ${jwk.alg}`,
               "DataError",
             );
         }
@@ -4221,6 +4383,15 @@ function exportKeyHMAC(format, key, innerKey) {
         case "SHA-512":
           jwk.alg = "HS512";
           break;
+        case "SHA3-256":
+          jwk.alg = "HS3-256";
+          break;
+        case "SHA3-384":
+          jwk.alg = "HS3-384";
+          break;
+        case "SHA3-512":
+          jwk.alg = "HS3-512";
+          break;
         default:
           throw new DOMException(
             "Hash algorithm not supported",
@@ -4301,6 +4472,15 @@ function exportKeyRSA(format, key, innerKey) {
           case "SHA-512":
             jwk.alg = "RS512";
             break;
+          case "SHA3-256":
+            jwk.alg = "RS3-256";
+            break;
+          case "SHA3-384":
+            jwk.alg = "RS3-384";
+            break;
+          case "SHA3-512":
+            jwk.alg = "RS3-512";
+            break;
           default:
             throw new DOMException(
               "Hash algorithm not supported",
@@ -4321,6 +4501,15 @@ function exportKeyRSA(format, key, innerKey) {
           case "SHA-512":
             jwk.alg = "PS512";
             break;
+          case "SHA3-256":
+            jwk.alg = "PS3-256";
+            break;
+          case "SHA3-384":
+            jwk.alg = "PS3-384";
+            break;
+          case "SHA3-512":
+            jwk.alg = "PS3-512";
+            break;
           default:
             throw new DOMException(
               "Hash algorithm not supported",
@@ -4340,6 +4529,15 @@ function exportKeyRSA(format, key, innerKey) {
             break;
           case "SHA-512":
             jwk.alg = "RSA-OAEP-512";
+            break;
+          case "SHA3-256":
+            jwk.alg = "RSA-OAEP3-256";
+            break;
+          case "SHA3-384":
+            jwk.alg = "RSA-OAEP3-384";
+            break;
+          case "SHA3-512":
+            jwk.alg = "RSA-OAEP3-512";
             break;
           default:
             throw new DOMException(
@@ -5111,6 +5309,60 @@ async function encrypt(normalizedAlgorithm, key, data) {
       // 8.
       return TypedArrayPrototypeGetBuffer(cipherText);
     }
+    case "AES-OCB": {
+      normalizedAlgorithm.iv = copyBuffer(normalizedAlgorithm.iv);
+
+      // 1.
+      if (TypedArrayPrototypeGetByteLength(data) > (2 ** 39) - 256) {
+        throw new DOMException(
+          "Plaintext too large",
+          "OperationError",
+        );
+      }
+
+      // 2.
+      // OCB supports nonce sizes from 1 to 15 bytes (recommended: 12 bytes)
+      const ivLen = TypedArrayPrototypeGetByteLength(normalizedAlgorithm.iv);
+      if (ivLen < 1 || ivLen > 15) {
+        throw new DOMException(
+          "Invalid nonce length for AES-OCB (must be 1-15 bytes)",
+          "OperationError",
+        );
+      }
+
+      // 3.
+      if (normalizedAlgorithm.tagLength === undefined) {
+        normalizedAlgorithm.tagLength = 128;
+      } else if (
+        !ArrayPrototypeIncludes(
+          [32, 64, 96, 104, 112, 120, 128],
+          normalizedAlgorithm.tagLength,
+        )
+      ) {
+        throw new DOMException(
+          `Invalid tag length: ${normalizedAlgorithm.tagLength}`,
+          "OperationError",
+        );
+      }
+      // 4.
+      if (normalizedAlgorithm.additionalData) {
+        normalizedAlgorithm.additionalData = copyBuffer(
+          normalizedAlgorithm.additionalData,
+        );
+      }
+      // 5-6.
+      const cipherText = await op_crypto_encrypt({
+        key: keyData,
+        algorithm: "AES-OCB",
+        length: key[_algorithm].length,
+        iv: normalizedAlgorithm.iv,
+        additionalData: normalizedAlgorithm.additionalData || null,
+        tagLength: normalizedAlgorithm.tagLength,
+      }, data);
+
+      // 7.
+      return TypedArrayPrototypeGetBuffer(cipherText);
+    }
     default:
       throw new DOMException("Not implemented", "NotSupportedError");
   }
@@ -5134,11 +5386,6 @@ class Crypto {
       op_crypto_get_random_values(typedArray);
       return typedArray;
     }
-    typedArray = webidl.converters.ArrayBufferView(
-      typedArray,
-      prefix,
-      "Argument 1",
-    );
     switch (tag) {
       case "Int8Array":
       case "Uint8ClampedArray":
@@ -5151,7 +5398,7 @@ class Crypto {
         break;
       default:
         throw new DOMException(
-          "The provided ArrayBufferView is not an integer array type",
+          "The provided value is not an integer-type TypedArray",
           "TypeMismatchError",
         );
     }
@@ -5689,4 +5936,191 @@ const dictEcdhKeyDeriveParams = [
 webidl.converters.EcdhKeyDeriveParams = webidl
   .createDictionaryConverter("EcdhKeyDeriveParams", dictEcdhKeyDeriveParams);
 
-export { Crypto, crypto, CryptoKey, SubtleCrypto };
+// Bridge functions for Node.js KeyObject interop
+
+/**
+ * Export CryptoKey data in a format suitable for creating Node.js KeyObject.
+ * Returns { type, data } where data is DER bytes (spki/pkcs8) or raw bytes (secret).
+ */
+function cryptoKeyExportNodeKeyMaterial(cryptoKey) {
+  const handle = cryptoKey[_handle];
+  const innerKey = WeakMapPrototypeGet(KEY_STORE, handle);
+  const type = cryptoKey[_type];
+  const algorithmName = cryptoKey[_algorithm].name;
+
+  if (type === "secret") {
+    return { type: "secret", data: innerKey.data };
+  }
+
+  if (type === "public") {
+    let data;
+    switch (algorithmName) {
+      case "RSASSA-PKCS1-v1_5":
+      case "RSA-PSS":
+      case "RSA-OAEP":
+        data = op_crypto_export_key(
+          { algorithm: algorithmName, format: "spki" },
+          innerKey,
+        );
+        break;
+      case "ECDH":
+      case "ECDSA":
+        data = op_crypto_export_key({
+          algorithm: algorithmName,
+          namedCurve: cryptoKey[_algorithm].namedCurve,
+          format: "spki",
+        }, innerKey);
+        break;
+      case "Ed25519":
+        data = op_crypto_export_spki_ed25519(innerKey);
+        break;
+      case "X25519":
+        data = op_crypto_export_spki_x25519(innerKey);
+        break;
+      case "X448":
+        data = op_crypto_export_spki_x448(innerKey);
+        break;
+      default:
+        throw new TypeError(`Unsupported algorithm: ${algorithmName}`);
+    }
+    return { type: "public", data };
+  }
+
+  // private
+  let data;
+  switch (algorithmName) {
+    case "RSASSA-PKCS1-v1_5":
+    case "RSA-PSS":
+    case "RSA-OAEP":
+      data = op_crypto_export_key(
+        { algorithm: algorithmName, format: "pkcs8" },
+        innerKey,
+      );
+      break;
+    case "ECDH":
+    case "ECDSA":
+      data = op_crypto_export_key({
+        algorithm: algorithmName,
+        namedCurve: cryptoKey[_algorithm].namedCurve,
+        format: "pkcs8",
+      }, innerKey);
+      break;
+    case "Ed25519": {
+      data = op_crypto_export_pkcs8_ed25519(
+        new Uint8Array([0x04, 0x22, ...new SafeArrayIterator(innerKey)]),
+      );
+      data[15] = 0x20;
+      break;
+    }
+    case "X25519": {
+      data = op_crypto_export_pkcs8_x25519(
+        new Uint8Array([0x04, 0x22, ...new SafeArrayIterator(innerKey)]),
+      );
+      data[15] = 0x20;
+      break;
+    }
+    case "X448": {
+      data = op_crypto_export_pkcs8_x448(
+        new Uint8Array([0x04, 0x22, ...new SafeArrayIterator(innerKey)]),
+      );
+      data[15] = 0x20;
+      break;
+    }
+    default:
+      throw new TypeError(`Unsupported algorithm: ${algorithmName}`);
+  }
+  return { type: "private", data };
+}
+
+/**
+ * Create a CryptoKey from key material (sync). Used by Node.js keyObject.toCryptoKey().
+ * @param {string} format - "raw", "spki", or "pkcs8"
+ * @param {Uint8Array} keyData - key material
+ * @param {object} algorithm - algorithm identifier (string or object)
+ * @param {boolean} extractable
+ * @param {string[]} usages
+ * @returns {CryptoKey}
+ */
+function importCryptoKeySync(format, keyData, algorithm, extractable, usages) {
+  const normalizedAlgorithm = normalizeAlgorithm(algorithm, "importKey");
+  const algorithmName = normalizedAlgorithm.name;
+
+  switch (algorithmName) {
+    case "HMAC":
+      return importKeyHMAC(
+        format,
+        normalizedAlgorithm,
+        keyData,
+        extractable,
+        usages,
+      );
+    case "ECDH":
+    case "ECDSA":
+      return importKeyEC(
+        format,
+        normalizedAlgorithm,
+        keyData,
+        extractable,
+        usages,
+      );
+    case "RSASSA-PKCS1-v1_5":
+    case "RSA-PSS":
+    case "RSA-OAEP":
+      return importKeyRSA(
+        format,
+        normalizedAlgorithm,
+        keyData,
+        extractable,
+        usages,
+      );
+    case "HKDF":
+      return importKeyHKDF(format, keyData, extractable, usages);
+    case "PBKDF2":
+      return importKeyPBKDF2(format, keyData, extractable, usages);
+    case "AES-CTR":
+    case "AES-CBC":
+    case "AES-GCM":
+    case "AES-OCB":
+      return importKeyAES(
+        format,
+        normalizedAlgorithm,
+        keyData,
+        extractable,
+        usages,
+        ["encrypt", "decrypt", "wrapKey", "unwrapKey"],
+      );
+    case "AES-KW":
+      return importKeyAES(
+        format,
+        normalizedAlgorithm,
+        keyData,
+        extractable,
+        usages,
+        ["wrapKey", "unwrapKey"],
+      );
+    case "ChaCha20-Poly1305":
+      return importKeyChaCha20Poly1305(
+        format,
+        keyData,
+        extractable,
+        usages,
+      );
+    case "X448":
+      return importKeyX448(format, keyData, extractable, usages);
+    case "X25519":
+      return importKeyX25519(format, keyData, extractable, usages);
+    case "Ed25519":
+      return importKeyEd25519(format, keyData, extractable, usages);
+    default:
+      throw new DOMException("Not implemented", "NotSupportedError");
+  }
+}
+
+export {
+  Crypto,
+  crypto,
+  CryptoKey,
+  cryptoKeyExportNodeKeyMaterial,
+  importCryptoKeySync,
+  SubtleCrypto,
+};

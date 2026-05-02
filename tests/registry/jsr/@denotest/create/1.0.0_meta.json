@@ -1,0 +1,8 @@
+{
+  "exports": {
+    "./create": "./create.ts"
+  },
+  "moduleGraph1": {
+    "/create.ts": {}
+  }
+}

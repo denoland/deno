@@ -4,7 +4,7 @@
     "args": "lint main.ts",
     "output": "Checked 1 file\n"
   }, {
-    "args": "lint --unstable-sloppy-imports main.ts",
+    "args": "lint --sloppy-imports main.ts",
     "output": "Checked 1 file\n"
   }, {
     "args": [
@@ -13,7 +13,7 @@
     ],
     "output": ""
   }, {
-    "args": "lint --unstable-sloppy-imports main.ts",
+    "args": "lint --sloppy-imports main.ts",
     "output": "fail_js_to_ts.out",
     "exitCode": 1
   }]

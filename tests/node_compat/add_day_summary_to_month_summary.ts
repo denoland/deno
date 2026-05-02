@@ -1,0 +1,174 @@
+// Copyright 2018-2026 the Deno authors. MIT license.
+// This file mostly mirrors the utils in
+// https://github.com/denoland/node_test_viewer/blob/a642f725f2d9595bc8cf217c41967c446814a79e/util/report.ts
+
+// deno-lint-ignore-file no-console
+
+import type {
+  SingleResult,
+  TestReportMetadata,
+} from "./run_all_test_unmodified.ts";
+import { toJson } from "@std/streams/to-json";
+
+/** The test report format, which is stored in JSON file */
+export type TestReport = TestReportMetadata & {
+  results: Record<string, SingleResult>;
+};
+
+export type DayReport = {
+  date: string;
+  windows: TestReport | undefined;
+  linux: TestReport | undefined;
+  darwin: TestReport | undefined;
+};
+
+export type DaySummary = {
+  date: string;
+  windows: TestReportMetadata | undefined;
+  linux: TestReportMetadata | undefined;
+  darwin: TestReportMetadata | undefined;
+};
+
+export type MonthSummary = {
+  reports: Record<string, DaySummary>;
+  month: string;
+};
+
+export async function fetchMonthSummary(
+  month: string,
+): Promise<MonthSummary> {
+  console.log("fetching", month);
+  const res = await fetch(
+    `https://dl.deno.land/node-compat-test/summary-${month}.json.gz`,
+  );
+  if (res.status === 404) {
+    return { reports: {}, month };
+  }
+  try {
+    const summary = await toJson(
+      res.body!.pipeThrough(new DecompressionStream("gzip")),
+    );
+    return summary as MonthSummary;
+  } catch (e) {
+    console.error(e);
+    return { reports: {}, month };
+  }
+}
+
+/** Gets the report summary for the given date. */
+export async function fetchDaySummary(date: string): Promise<DaySummary> {
+  const windows = await fetchReport(date, "windows");
+  const linux = await fetchReport(date, "linux");
+  const darwin = await fetchReport(date, "darwin");
+  return {
+    date,
+    windows: extractMetadata(windows),
+    linux: extractMetadata(linux),
+    darwin: extractMetadata(darwin),
+  };
+}
+
+function extractMetadata(
+  report: TestReport | undefined,
+): TestReportMetadata | undefined {
+  if (!report) {
+    return undefined;
+  }
+  const { date, denoVersion, os, arch, nodeVersion, runId, total, pass } =
+    report;
+  return {
+    date,
+    denoVersion,
+    os,
+    arch,
+    nodeVersion,
+    runId,
+    total,
+    pass,
+  };
+}
+
+async function fetchSingleReport(
+  url: string,
+): Promise<TestReport | undefined> {
+  try {
+    const res = await fetch(url);
+    if (res.status === 404) {
+      return undefined;
+    }
+    const report = await toJson(
+      res.body!.pipeThrough(new DecompressionStream("gzip")),
+    );
+    return report as TestReport;
+  } catch (e) {
+    console.error(e);
+    return undefined;
+  }
+}
+
+const SHARD_COUNT = 3;
+
+export async function fetchReport(
+  date: string,
+  os: "linux" | "windows" | "darwin",
+): Promise<TestReport | undefined> {
+  console.log("fetching", date, os);
+  // Fetch all shard reports and merge them
+  const shardReports: TestReport[] = [];
+  for (let i = 0; i < SHARD_COUNT; i++) {
+    const report = await fetchSingleReport(
+      `https://dl.deno.land/node-compat-test/${date}/report-${os}-${i}.json.gz`,
+    );
+    if (report) {
+      shardReports.push(report);
+    }
+  }
+  // Fall back to unsharded report name for older reports
+  if (shardReports.length === 0) {
+    return await fetchSingleReport(
+      `https://dl.deno.land/node-compat-test/${date}/report-${os}.json.gz`,
+    );
+  }
+  if (shardReports.length === 1) {
+    return shardReports[0];
+  }
+  // Merge shard reports: combine results, recompute counts
+  const merged = { ...shardReports[0] };
+  merged.results = { ...merged.results };
+  for (let i = 1; i < shardReports.length; i++) {
+    const shard = shardReports[i];
+    for (const [key, value] of Object.entries(shard.results)) {
+      merged.results[key] = value;
+    }
+  }
+  // Recompute total/pass from merged results to stay consistent
+  // even if shards overlap due to a bug or retry.
+  // Each result is a tuple [pass: bool | "IGNORE", error, info].
+  const values = Object.values(merged.results);
+  merged.total = values.filter((v) => v[0] !== "IGNORE").length;
+  merged.pass = values.filter((v) => v[0] === true).length;
+  return merged;
+}
+
+async function main() {
+  const date = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+  const month = date.slice(0, 7); // YYYY-MM
+
+  const monthSummary = await fetchMonthSummary(month);
+  const daySummary = await fetchDaySummary(date);
+  monthSummary.reports[date] = daySummary;
+  // sort the reports by date
+  const reports = Object.entries(monthSummary.reports).sort(
+    ([a], [b]) => new Date(a).getTime() - new Date(b).getTime(),
+  );
+  monthSummary.reports = Object.fromEntries(reports);
+  console.log("Generated month summary:", monthSummary);
+  const summaryPath = "tests/node_compat/summary.json";
+  // Store the results in a JSON file
+  console.log("Writing month summary to file", summaryPath);
+  await Deno.writeTextFile(summaryPath, JSON.stringify(monthSummary));
+}
+
+if (import.meta.main) {
+  await main();
+}

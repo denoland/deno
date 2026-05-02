@@ -1,5 +1,14 @@
 {
-  "args": "run -A main.js",
-  "output": "output.out",
-  "exitCode": 1
+  "tests": {
+    "esm_file_loaded_via_require": {
+      "args": "run -A main.js",
+      "output": "output.out",
+      "exitCode": 1
+    },
+    "require_throwing_esm_caught": {
+      "args": "run -A catch_throwing_esm.cjs",
+      "output": "catch_throwing_esm.out",
+      "exitCode": 0
+    }
+  }
 }

@@ -1,11 +1,11 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 // @ts-check
 /// <reference path="../../core/lib.deno_core.d.ts" />
 /// <reference path="./internal.d.ts" />
-/// <reference path="./lib.deno_web.d.ts" />
+/// <reference path="../../cli/tsc/dts/lib.deno_web.d.ts" />
 
-import { primordials } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 import {
   op_compression_finish,
   op_compression_new,
@@ -17,8 +17,8 @@ const {
   TypedArrayPrototypeGetByteLength,
 } = primordials;
 
-import * as webidl from "ext:deno_webidl/00_webidl.js";
-import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
+const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
+import { createFilteredInspectProxy } from "./01_console.js";
 import { TransformStream } from "./06_streams.js";
 
 webidl.converters.CompressionFormat = webidl.createEnumConverter(
@@ -27,6 +27,7 @@ webidl.converters.CompressionFormat = webidl.createEnumConverter(
     "deflate",
     "deflate-raw",
     "gzip",
+    "brotli",
   ],
 );
 

@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::process::Output;
 use std::sync::Arc;
@@ -10,12 +10,14 @@ use chrono::DateTime;
 use chrono::Utc;
 use serde::Deserialize;
 use serde::Serialize;
-use serde_json::json;
 use serde_json::Value;
-use test_util::assertions::assert_json_subset;
+use serde_json::json;
 use test_util::DenoChild;
 use test_util::TestContext;
 use test_util::TestContextBuilder;
+use test_util::assertions::assert_json_subset;
+use test_util::eprintln;
+use test_util::test;
 use tokio::sync::Mutex;
 use tokio::time::timeout;
 use uuid::Uuid;
@@ -233,7 +235,7 @@ struct JupyterClient {
 enum JupyterChannel {
   Control,
   Shell,
-  #[allow(dead_code)]
+  #[allow(dead_code, reason = "variant kept for completeness")]
   Stdin,
   IoPub,
 }
@@ -373,7 +375,7 @@ impl JupyterServerProcess {
   // Ideally we could use this at the end of each test, but the server
   // doesn't seem to exit in a reasonable amount of time after getting
   // a shutdown request.
-  #[allow(dead_code)]
+  #[allow(dead_code, reason = "used in some tests")]
   async fn wait_or_kill(mut self, wait: Duration) -> Output {
     wait_or_kill(self.0.take().unwrap(), wait).await.unwrap()
   }
@@ -486,7 +488,7 @@ async fn setup() -> (TestContext, JupyterClient, JupyterServerProcess) {
   (context, client, process)
 }
 
-#[tokio::test]
+#[test]
 async fn jupyter_heartbeat_echoes() -> Result<()> {
   let (_ctx, client, _process) = setup().await;
   client.send_heartbeat(b"ping").await?;
@@ -496,7 +498,7 @@ async fn jupyter_heartbeat_echoes() -> Result<()> {
   Ok(())
 }
 
-#[tokio::test]
+#[test]
 async fn jupyter_kernel_info() -> Result<()> {
   let (_ctx, client, _process) = setup().await;
   client
@@ -522,7 +524,7 @@ async fn jupyter_kernel_info() -> Result<()> {
   Ok(())
 }
 
-#[tokio::test]
+#[test]
 async fn jupyter_execute_request() -> Result<()> {
   let (_ctx, client, _process) = setup().await;
   let request = client
@@ -599,7 +601,7 @@ async fn jupyter_execute_request() -> Result<()> {
   Ok(())
 }
 
-#[tokio::test]
+#[test]
 async fn jupyter_store_history_false() -> Result<()> {
   let (_ctx, client, _process) = setup().await;
   client
@@ -627,7 +629,130 @@ async fn jupyter_store_history_false() -> Result<()> {
   Ok(())
 }
 
-#[tokio::test]
+#[test]
+async fn jupyter_shutdown_reply() -> Result<()> {
+  let (_ctx, client, process) = setup().await;
+  client
+    .send(
+      Control,
+      "shutdown_request",
+      json!({
+        "restart": false,
+      }),
+    )
+    .await?;
+  let msg = client.recv(Control).await?;
+  assert_eq!(msg.header.msg_type, "shutdown_reply");
+  assert_json_subset(
+    msg.content,
+    json!({
+      "status": "ok",
+      "restart": false,
+    }),
+  );
+
+  // The kernel should exit after the shutdown request
+  let output = process.wait_or_kill(Duration::from_secs(5)).await;
+  assert!(output.status.success());
+
+  Ok(())
+}
+
+#[test]
+async fn jupyter_shutdown_restart_reply() -> Result<()> {
+  let (_ctx, client, _process) = setup().await;
+  client
+    .send(
+      Control,
+      "shutdown_request",
+      json!({
+        "restart": true,
+      }),
+    )
+    .await?;
+  let msg = client.recv(Control).await?;
+  assert_eq!(msg.header.msg_type, "shutdown_reply");
+  assert_json_subset(
+    msg.content,
+    json!({
+      "status": "ok",
+      "restart": true,
+    }),
+  );
+
+  Ok(())
+}
+
+#[test]
+async fn jupyter_interrupt_reply() -> Result<()> {
+  let (_ctx, client, _process) = setup().await;
+  client.send(Control, "interrupt_request", json!({})).await?;
+  let msg = client.recv(Control).await?;
+  assert_eq!(msg.header.msg_type, "interrupt_reply");
+  assert_json_subset(
+    msg.content,
+    json!({
+      "status": "ok",
+    }),
+  );
+
+  Ok(())
+}
+
+#[test]
+async fn jupyter_interrupt_running_code() -> Result<()> {
+  let (_ctx, client, _process) = setup().await;
+
+  // Start an infinite loop
+  client
+    .send(
+      Shell,
+      "execute_request",
+      json!({
+        "silent": false,
+        "store_history": true,
+        "code": "while (true) {}",
+      }),
+    )
+    .await?;
+
+  // Give the code a moment to start executing
+  tokio::time::sleep(Duration::from_millis(100)).await;
+
+  // Send interrupt request on the control channel
+  client.send(Control, "interrupt_request", json!({})).await?;
+  let interrupt_reply = client.recv(Control).await?;
+  assert_eq!(interrupt_reply.header.msg_type, "interrupt_reply");
+
+  // The execute_request should complete (with an error due to interruption)
+  let reply = client.recv(Shell).await?;
+  assert_eq!(reply.header.msg_type, "execute_reply");
+
+  // Verify the kernel is still alive and can execute code after interrupt
+  client
+    .send(
+      Shell,
+      "execute_request",
+      json!({
+        "silent": false,
+        "store_history": true,
+        "code": "42",
+      }),
+    )
+    .await?;
+  let reply = client.recv(Shell).await?;
+  assert_eq!(reply.header.msg_type, "execute_reply");
+  assert_json_subset(
+    reply.content,
+    json!({
+      "status": "ok",
+    }),
+  );
+
+  Ok(())
+}
+
+#[test]
 async fn jupyter_http_server() -> Result<()> {
   let (_ctx, client, _process) = setup().await;
   client

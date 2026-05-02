@@ -1,0 +1,8 @@
+Defined in [WILDLINE]
+
+function getValue(): number
+
+Defined in [WILDLINE]
+
+function setValue(val: number): void
+

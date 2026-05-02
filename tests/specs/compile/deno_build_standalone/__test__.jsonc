@@ -1,0 +1,19 @@
+{
+  "tempDir": true,
+  "tests": {
+    "compiled": {
+      "steps": [{
+        "args": "compile --allow-read --output main --include worker.ts main.ts",
+        "output": "[WILDCARD]"
+      }, {
+        "commandName": "./main",
+        "args": [],
+        "output": "true\ntrue\n"
+      }]
+    },
+    "run": {
+      "args": "run --quiet --check --allow-read main.ts",
+      "output": "false\nfalse\n"
+    }
+  }
+}

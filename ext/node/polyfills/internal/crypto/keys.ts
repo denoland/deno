@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
 
 // TODO(petamoriken): enable prefer-primordials for node polyfills
@@ -7,6 +7,7 @@
 import { primordials } from "ext:core/mod.js";
 
 const {
+  ArrayPrototypeIncludes,
   ObjectDefineProperties,
   SymbolToStringTag,
 } = primordials;
@@ -30,8 +31,14 @@ import {
   op_node_get_asymmetric_key_details,
   op_node_get_asymmetric_key_type,
   op_node_get_symmetric_key_size,
+  op_node_key_equals,
   op_node_key_type,
 } from "ext:core/ops";
+
+import {
+  cryptoKeyExportNodeKeyMaterial,
+  importCryptoKeySync,
+} from "ext:deno_crypto/00_crypto.js";
 
 import { kHandle } from "ext:deno_node/internal/crypto/constants.ts";
 import { isStringOrBuffer } from "ext:deno_node/internal/crypto/cipher.ts";
@@ -95,6 +102,13 @@ export const getArrayBufferOrView = hideStackFrames(
         encoding = "utf8";
       }
       return Buffer.from(buffer, encoding);
+    }
+    if (buffer instanceof DataView) {
+      return new Uint8Array(
+        buffer.buffer,
+        buffer.byteOffset,
+        buffer.byteLength,
+      );
     }
     if (!isArrayBufferView(buffer)) {
       throw new ERR_INVALID_ARG_TYPE(
@@ -185,6 +199,10 @@ export class KeyObject {
       throw new ERR_INVALID_ARG_VALUE("type", type);
     }
 
+    if (typeof handle !== "object") {
+      throw new ERR_INVALID_ARG_TYPE("handle", "object", handle);
+    }
+
     this[kKeyType] = type;
     this[kHandle] = handle;
   }
@@ -193,16 +211,26 @@ export class KeyObject {
     return this[kKeyType];
   }
 
-  get symmetricKeySize(): number | undefined {
-    notImplemented("crypto.KeyObject.prototype.symmetricKeySize");
-    return undefined;
-  }
-
   static from(key: CryptoKey): KeyObject {
     if (!isCryptoKey(key)) {
       throw new ERR_INVALID_ARG_TYPE("key", "CryptoKey", key);
     }
-    notImplemented("crypto.KeyObject.prototype.from");
+    const { type, data } = cryptoKeyExportNodeKeyMaterial(key);
+    if (type === "secret") {
+      const handle = op_node_create_secret_key(data);
+      return new SecretKeyObject(handle);
+    } else if (type === "public") {
+      const handle = op_node_create_public_key(data, "der", "spki");
+      return new PublicKeyObject(handle);
+    } else {
+      const handle = op_node_create_private_key(
+        data,
+        "der",
+        "pkcs8",
+        undefined,
+      );
+      return new PrivateKeyObject(handle);
+    }
   }
 
   equals(otherKeyObject: KeyObject): boolean {
@@ -214,7 +242,7 @@ export class KeyObject {
       );
     }
 
-    notImplemented("crypto.KeyObject.prototype.equals");
+    return op_node_key_equals(this[kHandle], otherKeyObject[kHandle]);
   }
 
   export(options: KeyExportOptions<"pem">): string | Buffer;
@@ -748,6 +776,102 @@ export class SecretKeyObject extends KeyObject {
     return undefined;
   }
 
+  toCryptoKey(
+    algorithm: string | object,
+    extractable: boolean,
+    usages: string[],
+  ): CryptoKey {
+    const algName = typeof algorithm === "string"
+      ? algorithm
+      : (algorithm as { name: string }).name;
+
+    // Node.js-specific validation
+    const rawData = new Uint8Array(op_node_export_secret_key(this[kHandle]));
+
+    if (rawData.byteLength === 0) {
+      throw new DOMException(
+        "Zero-length key is not supported",
+        "DataError",
+      );
+    }
+
+    if (algName === "PBKDF2") {
+      if (extractable) {
+        throw new DOMException(
+          "PBKDF2 keys are not extractable",
+          "SyntaxError",
+        );
+      }
+      if (
+        usages.length > 0 &&
+        usages.some((u: string) =>
+          !ArrayPrototypeIncludes(["deriveKey", "deriveBits"], u)
+        )
+      ) {
+        throw new DOMException(
+          "Unsupported key usage for a PBKDF2 key",
+          "SyntaxError",
+        );
+      }
+    } else if (algName === "HKDF") {
+      if (extractable) {
+        throw new DOMException(
+          "HKDF keys are not extractable",
+          "SyntaxError",
+        );
+      }
+      if (
+        usages.length > 0 &&
+        usages.some((u: string) =>
+          !ArrayPrototypeIncludes(["deriveKey", "deriveBits"], u)
+        )
+      ) {
+        throw new DOMException(
+          "Unsupported key usage for an HKDF key",
+          "SyntaxError",
+        );
+      }
+    } else if (algName === "HMAC") {
+      if (usages.length === 0) {
+        throw new DOMException(
+          "Usages cannot be empty when importing a secret key.",
+          "SyntaxError",
+        );
+      }
+      const alg = algorithm as { length?: number };
+      if (alg.length !== undefined && alg.length === 0) {
+        throw new DOMException(
+          "HmacImportParams.length cannot be 0",
+          "DataError",
+        );
+      }
+    } else if (algName === "KMAC128" || algName === "KMAC256") {
+      if (usages.length === 0) {
+        throw new DOMException(
+          "Usages cannot be empty when importing a secret key.",
+          "SyntaxError",
+        );
+      }
+      const alg = algorithm as { length?: number };
+      if (alg.length !== undefined && alg.length === 0) {
+        throw new DOMException(
+          "KmacImportParams.length cannot be 0",
+          "DataError",
+        );
+      }
+    } else {
+      // AES variants, ChaCha20-Poly1305
+      if (usages.length === 0) {
+        throw new DOMException(
+          "Usages cannot be empty when importing a secret key.",
+          "SyntaxError",
+        );
+      }
+    }
+
+    return importCryptoKeySync("raw", rawData, algorithm, extractable, usages);
+  }
+
   export(options?: { format?: "buffer" | "jwk" }): Buffer | JsonWebKey {
     let format: "buffer" | "jwk" = "buffer";
     if (options !== undefined) {
@@ -781,13 +905,46 @@ class AsymmetricKeyObject extends KeyObject {
   }
 
   get asymmetricKeyDetails() {
-    return op_node_get_asymmetric_key_details(this[kHandle]);
+    return { ...op_node_get_asymmetric_key_details(this[kHandle]) };
   }
 }
 
 export class PrivateKeyObject extends AsymmetricKeyObject {
   constructor(handle: KeyObjectHandle) {
     super("private", handle);
+  }
+
+  toCryptoKey(
+    algorithm: string | object,
+    extractable: boolean,
+    usages: string[],
+  ): CryptoKey {
+    const algName = typeof algorithm === "string"
+      ? algorithm
+      : (algorithm as { name: string }).name;
+
+    _validateAsymmetricKeyAlgorithm(this, algName);
+    if (typeof algorithm === "object") {
+      _validateEcNamedCurve(this, algorithm);
+    }
+
+    if (usages.length === 0) {
+      throw new DOMException(
+        "Usages cannot be empty when importing a private key.",
+        "SyntaxError",
+      );
+    }
+
+    const pkcs8Data = Buffer.from(
+      op_node_export_private_key_der(this[kHandle], "pkcs8", null, null),
+    );
+    return importCryptoKeySync(
+      "pkcs8",
+      pkcs8Data,
+      algorithm,
+      extractable,
+      usages,
+    );
   }
 
   export(options: JwkKeyExportOptions | KeyExportOptions<KeyFormat>) {
@@ -797,12 +954,26 @@ export class PrivateKeyObject extends AsymmetricKeyObject {
     const {
       format,
       type,
+      cipher,
+      passphrase,
     } = parsePrivateKeyEncoding(options, this.asymmetricKeyType);
 
     if (format === "pem") {
-      return op_node_export_private_key_pem(this[kHandle], type);
+      return op_node_export_private_key_pem(
+        this[kHandle],
+        type,
+        cipher ?? null,
+        passphrase != null ? passphrase.toString() : null,
+      );
     } else {
-      return Buffer.from(op_node_export_private_key_der(this[kHandle], type));
+      return Buffer.from(
+        op_node_export_private_key_der(
+          this[kHandle],
+          type,
+          cipher ?? null,
+          passphrase != null ? passphrase.toString() : null,
+        ),
+      );
     }
   }
 }
@@ -810,6 +981,32 @@ export class PrivateKeyObject extends AsymmetricKeyObject {
 export class PublicKeyObject extends AsymmetricKeyObject {
   constructor(handle: KeyObjectHandle) {
     super("public", handle);
+  }
+
+  toCryptoKey(
+    algorithm: string | object,
+    extractable: boolean,
+    usages: string[],
+  ): CryptoKey {
+    const algName = typeof algorithm === "string"
+      ? algorithm
+      : (algorithm as { name: string }).name;
+
+    _validateAsymmetricKeyAlgorithm(this, algName);
+    if (typeof algorithm === "object") {
+      _validateEcNamedCurve(this, algorithm);
+    }
+
+    const spkiData = Buffer.from(
+      op_node_export_public_key_der(this[kHandle], "spki"),
+    );
+    return importCryptoKeySync(
+      "spki",
+      spkiData,
+      algorithm,
+      extractable,
+      usages,
+    );
   }
 
   export(options: JwkKeyExportOptions | KeyExportOptions<KeyFormat>) {
@@ -826,6 +1023,49 @@ export class PublicKeyObject extends AsymmetricKeyObject {
       return op_node_export_public_key_pem(this[kHandle], type);
     } else {
       return Buffer.from(op_node_export_public_key_der(this[kHandle], type));
+    }
+  }
+}
+
+function _validateAsymmetricKeyAlgorithm(
+  keyObject: AsymmetricKeyObject,
+  algName: string,
+) {
+  const keyType = keyObject.asymmetricKeyType;
+
+  // Check algorithm compatibility with the key type
+  if (keyType === "ed25519" || keyType === "x25519") {
+    const expectedAlg = keyType === "ed25519" ? "Ed25519" : "X25519";
+    if (algName !== expectedAlg) {
+      throw new DOMException("Invalid key type", "DataError");
+    }
+  } else if (keyType === "ed448" || keyType === "x448") {
+    const expectedAlg = keyType === "ed448" ? "Ed448" : "X448";
+    if (algName !== expectedAlg) {
+      throw new DOMException("Invalid key type", "DataError");
+    }
+  }
+}
+
+function _validateEcNamedCurve(
+  keyObject: AsymmetricKeyObject,
+  algorithm: object,
+) {
+  const details = keyObject.asymmetricKeyDetails;
+  const alg = algorithm as { namedCurve?: string };
+  if (alg.namedCurve && details?.namedCurve) {
+    // Map Node.js curve names to Web Crypto names
+    const curveMap: Record<string, string> = {
+      "prime256v1": "P-256",
+      "secp384r1": "P-384",
+      "secp521r1": "P-521",
+      "P-256": "P-256",
+      "P-384": "P-384",
+      "P-521": "P-521",
+    };
+    const keyCurve = curveMap[details.namedCurve] || details.namedCurve;
+    if (keyCurve !== alg.namedCurve) {
+      throw new DOMException("Named curve mismatch", "DataError");
     }
   }
 }

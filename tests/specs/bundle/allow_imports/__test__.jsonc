@@ -1,0 +1,14 @@
+{
+  "tempDir": true,
+  "steps": [{
+    "args": "bundle --allow-import main.ts -o bundle.js",
+    "output": "[WILDCARD]"
+  }, {
+    "args": "run bundle.js",
+    "output": "3\n"
+  }, {
+    "args": "bundle --quiet main.ts",
+    "output": "fail.out",
+    "exitCode": 1
+  }]
+}

@@ -1,0 +1,8 @@
+{
+  "tempDir": true,
+  "steps": [{
+    "args": "compile --unstable-raw-imports --output bin main.ts",
+    "output": "compile.out",
+    "exitCode": 1
+  }]
+}

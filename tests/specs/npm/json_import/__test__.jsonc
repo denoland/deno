@@ -1,0 +1,14 @@
+{
+  "tempDir": true,
+  "tests": {
+    "has_attribute": {
+      "args": "run has_attribute.ts",
+      "output": "[WILDCARD]"
+    },
+    "missing_attribute": {
+      "args": "run missing_attribute.ts",
+      "output": "missing.out",
+      "exitCode": 1
+    }
+  }
+}

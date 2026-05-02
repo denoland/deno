@@ -1,25 +1,32 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
-use deno_canvas::image;
-use deno_canvas::image::EncodableLayout;
-use deno_canvas::image::GenericImageView;
-use deno_canvas::webidl::PredefinedColorSpace;
-use deno_canvas::CanvasError;
-use deno_canvas::ImageBitmap;
-use deno_core::cppgc::Ptr;
-use deno_core::op2;
+use std::cell::RefCell;
+use std::rc::Rc;
+use std::time::Duration;
+
+use deno_image::ImageBitmap;
+use deno_image::ImageError;
+use deno_image::image;
+use deno_image::image::EncodableLayout;
+use deno_image::image::GenericImageView;
+use deno_image::webidl::PredefinedColorSpace;
 use deno_core::GarbageCollected;
 use deno_core::WebIDL;
+use deno_core::cppgc::Ref;
+use deno_core::futures::channel::oneshot;
+use deno_core::op2;
+use deno_core::v8;
 use deno_error::JsErrorBox;
 
+use crate::Instance;
 use crate::buffer::GPUBuffer;
 use crate::command_buffer::GPUCommandBuffer;
+use crate::error::GPUGenericError;
 use crate::texture::GPUTexture;
 use crate::texture::GPUTextureAspect;
 use crate::webidl::GPUExtent3D;
 use crate::webidl::GPUOrigin2D;
 use crate::webidl::GPUOrigin3D;
-use crate::Instance;
 
 pub struct GPUQueue {
   pub instance: Instance,
@@ -28,6 +35,7 @@ pub struct GPUQueue {
   pub label: String,
 
   pub id: wgpu_core::id::QueueId,
+  pub device: wgpu_core::id::DeviceId,
 }
 
 impl Drop for GPUQueue {
@@ -36,10 +44,22 @@ impl Drop for GPUQueue {
   }
 }
 
-impl GarbageCollected for GPUQueue {}
+// SAFETY: we're sure this can be GCed
+unsafe impl GarbageCollected for GPUQueue {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"GPUQueue"
+  }
+}
 
 #[op2]
 impl GPUQueue {
+  #[constructor]
+  #[cppgc]
+  fn constructor(_: bool) -> Result<GPUQueue, GPUGenericError> {
+    Err(GPUGenericError::InvalidConstructor)
+  }
+
   #[getter]
   #[string]
   fn label(&self) -> String {
@@ -52,23 +72,15 @@ impl GPUQueue {
   }
 
   #[required(1)]
+  #[undefined]
   fn submit(
     &self,
-    #[webidl] command_buffers: Vec<Ptr<GPUCommandBuffer>>,
+    #[webidl] command_buffers: Vec<Ref<GPUCommandBuffer>>,
   ) -> Result<(), JsErrorBox> {
     let ids = command_buffers
       .into_iter()
-      .enumerate()
-      .map(|(i, cb)| {
-        if cb.consumed.set(()).is_err() {
-          Err(JsErrorBox::type_error(format!(
-            "The command buffer at position {i} has already been submitted."
-          )))
-        } else {
-          Ok(cb.id)
-        }
-      })
-      .collect::<Result<Vec<_>, _>>()?;
+      .map(|cb| cb.id)
+      .collect::<Vec<_>>();
 
     let err = self.instance.queue_submit(self.id, &ids).err();
 
@@ -79,27 +91,114 @@ impl GPUQueue {
     Ok(())
   }
 
-  #[async_method]
+  // In the successful case, the promise should resolve to undefined, but
+  // `#[undefined]` does not seem to work here.
+  // https://github.com/denoland/deno/issues/29603
   async fn on_submitted_work_done(&self) -> Result<(), JsErrorBox> {
-    Err(JsErrorBox::generic(
-      "This operation is currently not supported",
-    ))
+    let (sender, receiver) = oneshot::channel::<()>();
+
+    let callback = Box::new(move || {
+      sender.send(()).unwrap();
+    });
+
+    self
+      .instance
+      .queue_on_submitted_work_done(self.id, callback);
+
+    let done = Rc::new(RefCell::new(false));
+    let done_ = done.clone();
+    let device_poll_fut = async move {
+      while !*done.borrow() {
+        {
+          self
+            .instance
+            .device_poll(self.device, wgpu_types::PollType::wait_indefinitely())
+            .unwrap();
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+      }
+      Ok::<(), JsErrorBox>(())
+    };
+
+    let receiver_fut = async move {
+      receiver
+        .await
+        .map_err(|e| JsErrorBox::generic(e.to_string()))?;
+      let mut done = done_.borrow_mut();
+      *done = true;
+      Ok::<(), JsErrorBox>(())
+    };
+
+    tokio::try_join!(device_poll_fut, receiver_fut)?;
+
+    Ok(())
   }
 
   #[required(3)]
-  fn write_buffer(
+  #[undefined]
+  fn write_buffer<'a>(
     &self,
-    #[webidl] buffer: Ptr<GPUBuffer>,
+    scope: &mut v8::PinScope<'a, '_>,
+    #[webidl] buffer: Ref<GPUBuffer>,
     #[webidl(options(enforce_range = true))] buffer_offset: u64,
-    #[anybuffer] buf: &[u8],
+    data_arg: v8::Local<'a, v8::Value>,
     #[webidl(default = 0, options(enforce_range = true))] data_offset: u64,
     #[webidl(options(enforce_range = true))] size: Option<u64>,
-  ) {
+  ) -> Result<(), JsErrorBox> {
+    // Per the WebGPU spec, dataOffset and size are in elements (not bytes)
+    // when data is a TypedArray, and in bytes otherwise.
+    let (buf, bytes_per_element) = if let Ok(typed_array) =
+      v8::Local::<v8::TypedArray>::try_from(data_arg)
+    {
+      let len = typed_array.length();
+      let bpe = if len > 0 {
+        typed_array.byte_length() / len
+      } else {
+        1
+      };
+      let byte_offset = typed_array.byte_offset();
+      let byte_len = typed_array.byte_length();
+      let ab = typed_array.buffer(scope).unwrap();
+      // SAFETY: Pointer is non-null, and V8 guarantees that the
+      // byte_offset is within the buffer backing store.
+      let ptr = unsafe { ab.data().unwrap().as_ptr().add(byte_offset) };
+      let buf =
+          // SAFETY: the slice is within the bounds of the backing store
+          unsafe { std::slice::from_raw_parts(ptr as *const u8, byte_len) };
+      (buf, bpe)
+    } else if let Ok(ab) = v8::Local::<v8::ArrayBuffer>::try_from(data_arg) {
+      let byte_len = ab.byte_length();
+      let ptr = ab.data().unwrap().as_ptr();
+      let buf =
+        // SAFETY: Pointer is non-null and byte_len is within the backing store.
+        unsafe { std::slice::from_raw_parts(ptr as *const u8, byte_len) };
+      (buf, 1)
+    } else if let Ok(view) =
+      v8::Local::<v8::ArrayBufferView>::try_from(data_arg)
+    {
+      let byte_offset = view.byte_offset();
+      let byte_len = view.byte_length();
+      let ab = view.buffer(scope).unwrap();
+      // SAFETY: Pointer is non-null, and V8 guarantees that the
+      // byte_offset is within the buffer backing store.
+      let ptr = unsafe { ab.data().unwrap().as_ptr().add(byte_offset) };
+      // SAFETY: the slice is within the bounds of the backing store
+      let buf =
+        unsafe { std::slice::from_raw_parts(ptr as *const u8, byte_len) };
+      (buf, 1)
+    } else {
+      return Err(JsErrorBox::type_error(
+        "data must be an ArrayBuffer or ArrayBufferView",
+      ));
+    };
+
+    let data_offset_bytes = data_offset as usize * bytes_per_element;
     let data = match size {
       Some(size) => {
-        &buf[(data_offset as usize)..((data_offset + size) as usize)]
+        let size_bytes = size as usize * bytes_per_element;
+        &buf[data_offset_bytes..(data_offset_bytes + size_bytes)]
       }
-      None => &buf[(data_offset as usize)..],
+      None => &buf[data_offset_bytes..],
     };
 
     let err = self
@@ -108,9 +207,12 @@ impl GPUQueue {
       .err();
 
     self.error_handler.push_error(err);
+
+    Ok(())
   }
 
   #[required(4)]
+  #[undefined]
   fn write_texture(
     &self,
     #[webidl] destination: GPUTexelCopyTextureInfo,
@@ -118,7 +220,7 @@ impl GPUQueue {
     #[webidl] data_layout: GPUTexelCopyBufferLayout,
     #[webidl] size: GPUExtent3D,
   ) {
-    let destination = wgpu_core::command::TexelCopyTextureInfo {
+    let destination = wgpu_types::TexelCopyTextureInfo {
       texture: destination.texture.id,
       mip_level: destination.mip_level,
       origin: destination.origin.into(),
@@ -180,7 +282,7 @@ impl GPUQueue {
     }
     // 7.
     if source.source.detached.get().is_some() {
-      return Err(JsErrorBox::from_err(CanvasError::ImageSourceAleadyDetached));
+      return Err(JsErrorBox::from_err(ImageError::ImageSourceAleadyDetached));
     }
 
     // NOTE: The Device timeline steps are not implemented yet on wgpu side.
@@ -205,7 +307,7 @@ impl GPUQueue {
     // 5.
     // 5.1
     // crop the rectangle first
-    let mut data = deno_canvas::crop(
+    let mut data = deno_image::crop(
       data,
       src_origin_x,
       src_origin_y,
@@ -224,7 +326,7 @@ impl GPUQueue {
     // however it's not any implementation covered by the spec.
     // https://github.com/whatwg/html/issues/11029
     let data = if destination.premultiplied_alpha {
-      deno_canvas::premultiply_alpha(data).map_err(JsErrorBox::from_err)?
+      deno_image::premultiply_alpha(data).map_err(JsErrorBox::from_err)?
     } else {
       data
     };
@@ -232,7 +334,7 @@ impl GPUQueue {
     // It's same issue as the above, there is no way to check
     // when the color space of source.source is ImageBitmap that was aleady transformed or not.
     // We need to not immediately convert ImageBitmap but on-the-fly.
-    let data = deno_canvas::transform_rgb_color_space(
+    let data = deno_image::transform_rgb_color_space(
       data,
       match destination.color_space {
         PredefinedColorSpace::Srgb => PredefinedColorSpace::DisplayP3,
@@ -286,7 +388,7 @@ impl GPUQueue {
 #[derive(WebIDL)]
 #[webidl(dictionary)]
 pub(crate) struct GPUTexelCopyTextureInfo {
-  pub texture: Ptr<GPUTexture>,
+  pub texture: Ref<GPUTexture>,
   #[webidl(default = 0)]
   #[options(enforce_range = true)]
   pub mip_level: u32,
@@ -311,7 +413,7 @@ struct GPUTexelCopyBufferLayout {
 #[derive(WebIDL)]
 #[webidl(dictionary)]
 struct GPUCopyExternalImageSourceInfo {
-  source: Ptr<ImageBitmap>, // TODO: union with ImageData
+  source: Ref<ImageBitmap>, // TODO: union with ImageData
   origin: GPUOrigin2D,
   #[webidl(default = false)]
   flip_y: bool,
@@ -320,7 +422,7 @@ struct GPUCopyExternalImageSourceInfo {
 #[derive(WebIDL)]
 #[webidl(dictionary)]
 struct GPUCopyExternalImageDestInfo {
-  pub texture: Ptr<GPUTexture>,
+  pub texture: Ref<GPUTexture>,
   #[webidl(default = 0)]
   #[options(enforce_range = true)]
   pub mip_level: u32,

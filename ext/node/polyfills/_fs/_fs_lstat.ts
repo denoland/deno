@@ -1,18 +1,25 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
-
-// TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 import { denoErrorToNodeError } from "ext:deno_node/internal/errors.ts";
 import {
-  BigIntStats,
   CFISBIS,
-  statCallback,
-  statCallbackBigInt,
-  statOptions,
+  type statCallback,
+  type statCallbackBigInt,
+  type statOptions,
+} from "ext:deno_node/internal/fs/stat_utils.ts";
+import {
+  BigIntStats,
+  getValidatedPathToString,
   Stats,
-} from "ext:deno_node/_fs/_fs_stat.ts";
+} from "ext:deno_node/internal/fs/utils.mjs";
 import { promisify } from "ext:deno_node/internal/util.mjs";
+import { primordials } from "ext:core/mod.js";
+
+const {
+  Error,
+  PromisePrototypeThen,
+  ObjectPrototypeIsPrototypeOf,
+} = primordials;
 
 export function lstat(path: string | URL, callback: statCallback): void;
 export function lstat(
@@ -42,9 +49,25 @@ export function lstat(
 
   if (!callback) throw new Error("No callback function supplied");
 
-  Deno.lstat(path).then(
+  // Match Node: errors carry the requested path (see lib/fs.js lstat).
+  const validatedPath = getValidatedPathToString(path);
+  PromisePrototypeThen(
+    Deno.lstat(validatedPath),
     (stat) => callback(null, CFISBIS(stat, options.bigint)),
-    (err) => callback(err),
+    (err) => {
+      // Match Node: `{ throwIfNoEntry: false }` suppresses ENOENT and yields
+      // undefined stats (see lib/fs.js lstat()).
+      if (
+        (options as statOptions)?.throwIfNoEntry === false &&
+        ObjectPrototypeIsPrototypeOf(Deno.errors.NotFound.prototype, err)
+      ) {
+        callback(null, undefined);
+        return;
+      }
+      callback(
+        denoErrorToNodeError(err, { syscall: "lstat", path: validatedPath }),
+      );
+    },
   );
 }
 
@@ -67,21 +90,17 @@ export function lstatSync(
   path: string | URL,
   options?: statOptions,
 ): Stats | BigIntStats {
+  const validatedPath = getValidatedPathToString(path);
   try {
-    const origin = Deno.lstatSync(path);
+    const origin = Deno.lstatSync(validatedPath);
     return CFISBIS(origin, options?.bigint || false);
   } catch (err) {
     if (
       options?.throwIfNoEntry === false &&
-      err instanceof Deno.errors.NotFound
+      ObjectPrototypeIsPrototypeOf(Deno.errors.NotFound.prototype, err)
     ) {
       return;
     }
-
-    if (err instanceof Error) {
-      throw denoErrorToNodeError(err, { syscall: "stat" });
-    } else {
-      throw err;
-    }
+    throw denoErrorToNodeError(err, { syscall: "lstat", path: validatedPath });
   }
 }

@@ -1,0 +1,57 @@
+# Copyright 2018-2026 the Deno authors. MIT license.
+
+[package]
+name = "integration_tests"
+version = "0.0.0"
+authors.workspace = true
+autotests = false
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[features]
+upgrade = []
+
+[[test]]
+name = "integration"
+path = "mod.rs"
+harness = false
+
+[dev-dependencies]
+anyhow.workspace = true
+async-trait.workspace = true
+bytes.workspace = true
+chrono = { workspace = true, features = ["now"] }
+deno_cache_dir.workspace = true
+deno_lockfile.workspace = true
+deno_semver.workspace = true
+deno_unsync = { workspace = true, features = ["tokio"] }
+fastwebsockets = { workspace = true, features = ["upgrade", "unstable-split"] }
+file_test_runner.workspace = true
+hickory-proto.workspace = true
+hickory-server.workspace = true
+http.workspace = true
+http-body-util.workspace = true
+hyper.workspace = true
+hyper-util.workspace = true
+lazy-regex.workspace = true
+os_pipe.workspace = true
+pretty_assertions.workspace = true
+regex.workspace = true
+reqwest.workspace = true
+rustls.workspace = true
+rustls-pemfile.workspace = true
+rustls-tokio-stream.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sys_traits = { workspace = true, features = ["real", "getrandom", "libc", "winapi"] }
+tempfile.workspace = true
+test_util = { workspace = true, features = ["lsp"] }
+tokio.workspace = true
+tower-lsp.workspace = true
+url.workspace = true
+uuid = { workspace = true, features = ["serde"] }
+zeromq.workspace = true
+
+[target.'cfg(unix)'.dev-dependencies]
+nix.workspace = true

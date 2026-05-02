@@ -1,0 +1,6 @@
+{
+  "lock": false,
+  "imports": {
+    "mapped": "http://localhost:4545/example.ts"
+  }
+}

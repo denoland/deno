@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 #[cfg(target_family = "windows")]
 use std::sync::Once;
 
@@ -48,7 +48,7 @@ pub fn loadavg() -> LoadAvg {
 pub fn os_release() -> String {
   #[cfg(target_os = "linux")]
   {
-    #[allow(clippy::disallowed_methods)]
+    #[allow(clippy::disallowed_methods, reason = "requires real fs")]
     match std::fs::read_to_string("/proc/sys/kernel/osrelease") {
       Ok(mut s) => {
         s.pop(); // pop '\n'
@@ -101,7 +101,7 @@ pub fn os_release() -> String {
     }
 
     // without the NUL terminator
-    return String::from_utf8_lossy(&s[..len - 1]).to_string();
+    String::from_utf8_lossy(&s[..len - 1]).to_string()
   }
   #[cfg(target_family = "windows")]
   {
@@ -152,7 +152,7 @@ pub fn hostname() -> String {
     buf[len - 1] = 0;
     std::ffi::CStr::from_ptr(buf.as_ptr() as *const libc::c_char)
       .to_string_lossy()
-      .to_string()
+      .into_owned()
   }
   #[cfg(target_family = "windows")]
   {
@@ -233,7 +233,7 @@ pub fn mem_info() -> Option<MemInfo> {
     }
 
     // Gets the available memory from /proc/meminfo in linux for compatibility
-    #[allow(clippy::disallowed_methods)]
+    #[allow(clippy::disallowed_methods, reason = "requires real fs")]
     if let Ok(meminfo) = std::fs::read_to_string("/proc/meminfo") {
       let line = meminfo.lines().find(|l| l.starts_with("MemAvailable:"));
       if let Some(line) = line {
@@ -279,7 +279,7 @@ pub fn mem_info() -> Option<MemInfo> {
       mem_info.swap_total = xs.xsu_total;
       mem_info.swap_free = xs.xsu_avail;
 
-      extern "C" {
+      unsafe extern "C" {
         fn mach_host_self() -> std::ffi::c_uint;
       }
 

@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 import { assertEquals, loadTestLibrary } from "./common.js";
 
@@ -12,4 +12,46 @@ Deno.test("napi string utf8", function () {
 Deno.test("napi string", function () {
   assertEquals(strings.test_utf16(""), "");
   assertEquals(strings.test_utf16("🦕"), "🦕");
+});
+
+Deno.test("napi string utf8 roundtrip", function () {
+  assertEquals(strings.test_utf8_roundtrip(""), "");
+  assertEquals(strings.test_utf8_roundtrip("hello"), "hello");
+  assertEquals(strings.test_utf8_roundtrip("🦕"), "🦕");
+});
+
+Deno.test("napi property key latin1", function () {
+  assertEquals(strings.test_property_key_latin1(), 42);
+});
+
+Deno.test("napi property key utf8", function () {
+  assertEquals(strings.test_property_key_utf8(), 42);
+});
+
+Deno.test("napi property key utf16", function () {
+  assertEquals(strings.test_property_key_utf16(), 42);
+});
+
+Deno.test("napi string latin1 roundtrip", function () {
+  assertEquals(strings.test_latin1_roundtrip("hello"), "hello");
+  assertEquals(strings.test_latin1_roundtrip(""), "");
+});
+
+Deno.test("napi string utf16 roundtrip", function () {
+  assertEquals(strings.test_utf16_roundtrip("hello"), "hello");
+  assertEquals(strings.test_utf16_roundtrip(""), "");
+});
+
+Deno.test("napi external string latin1", function () {
+  // Returns true if zero-copy (not copied), false if copied
+  const zeroCopy = strings.test_external_latin1();
+  // Either outcome is valid -- zero-copy is preferred but copy is acceptable
+  assertEquals(typeof zeroCopy, "boolean");
+});
+
+Deno.test("napi external string utf16", function () {
+  // Returns true if zero-copy (not copied), false if copied
+  const zeroCopy = strings.test_external_utf16();
+  // Either outcome is valid -- zero-copy is preferred but copy is acceptable
+  assertEquals(typeof zeroCopy, "boolean");
 });

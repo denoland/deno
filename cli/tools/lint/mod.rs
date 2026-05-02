@@ -1,12 +1,12 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 //! This module provides file linting utilities using
 //! [`deno_lint`](https://github.com/denoland/deno_lint).
 
 use std::collections::HashSet;
 use std::fs;
-use std::io::stdin;
 use std::io::Read;
+use std::io::stdin;
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -17,10 +17,12 @@ use deno_config::deno_json::LintRulesConfig;
 use deno_config::glob::FileCollector;
 use deno_config::glob::FilePatterns;
 use deno_config::workspace::WorkspaceDirectory;
+use deno_config::workspace::WorkspaceDirectoryRc;
 use deno_core::anyhow::anyhow;
+use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
-use deno_core::futures::future::LocalBoxFuture;
 use deno_core::futures::FutureExt;
+use deno_core::futures::future::LocalBoxFuture;
 use deno_core::parking_lot::Mutex;
 use deno_core::serde_json;
 use deno_core::unsync::future::LocalFutureExt;
@@ -28,12 +30,11 @@ use deno_core::unsync::future::SharedLocal;
 use deno_graph::ModuleGraph;
 use deno_lib::util::hash::FastInsecureHasher;
 use deno_lint::diagnostic::LintDiagnostic;
+use deno_resolver::deno_json::CompilerOptionsResolver;
 use log::debug;
-use reporters::create_reporter;
 use reporters::LintReporter;
-use serde::Serialize;
+use reporters::create_reporter;
 
-use crate::args::deno_json::TsConfigResolver;
 use crate::args::CliOptions;
 use crate::args::Flags;
 use crate::args::LintFlags;
@@ -44,6 +45,7 @@ use crate::cache::Caches;
 use crate::cache::IncrementalCache;
 use crate::colors;
 use crate::factory::CliFactory;
+use crate::graph_util::CreatePublishGraphOptions;
 use crate::graph_util::ModuleGraphCreator;
 use crate::sys::CliSys;
 use crate::tools::fmt::run_parallelized;
@@ -64,11 +66,12 @@ mod rules;
 pub use ast_buffer::serialize_ast_to_buffer;
 pub use linter::CliLinter;
 pub use linter::CliLinterOptions;
-pub use plugins::create_runner_and_load_plugins;
+pub use plugins::PluginHostProxy;
 pub use plugins::PluginLogger;
-pub use rules::collect_no_slow_type_diagnostics;
+pub use plugins::create_runner_and_load_plugins;
 pub use rules::ConfiguredRules;
 pub use rules::LintRuleProvider;
+pub use rules::collect_no_slow_type_diagnostics;
 
 const JSON_SCHEMA_VERSION: u8 = 1;
 
@@ -90,7 +93,7 @@ pub async fn lint(
   let cli_options = factory.cli_options()?;
   let lint_rule_provider = factory.lint_rule_provider().await?;
   let is_stdin = lint_flags.is_stdin();
-  let tsconfig_resolver = factory.tsconfig_resolver()?;
+  let compiler_options_resolver = factory.compiler_options_resolver()?;
   let workspace_lint_options =
     cli_options.resolve_workspace_lint_options(&lint_flags)?;
   let success = if is_stdin {
@@ -99,14 +102,14 @@ pub async fn lint(
       lint_rule_provider,
       workspace_lint_options,
       lint_flags,
-      tsconfig_resolver,
+      compiler_options_resolver,
     )?
   } else {
     let mut linter = WorkspaceLinter::new(
       factory.caches()?.clone(),
       lint_rule_provider,
       factory.module_graph_creator().await?.clone(),
-      tsconfig_resolver.clone(),
+      compiler_options_resolver.clone(),
       cli_options.start_dir.clone(),
       &workspace_lint_options,
     );
@@ -147,15 +150,15 @@ async fn lint_with_watch_inner(
     let files = std::mem::take(&mut paths_with_options.paths);
     paths_with_options.paths = if let Some(paths) = &changed_paths {
       // lint all files on any changed (https://github.com/denoland/deno/issues/12446)
-      files
-        .iter()
-        .any(|path| {
-          canonicalize_path(path)
-            .map(|p| paths.contains(&p))
-            .unwrap_or(false)
-        })
-        .then_some(files)
-        .unwrap_or_else(|| [].to_vec())
+      if files.iter().any(|path| {
+        canonicalize_path(path)
+          .map(|p| paths.contains(&p))
+          .unwrap_or(false)
+      }) {
+        files
+      } else {
+        [].to_vec()
+      }
     } else {
       files
     };
@@ -165,7 +168,7 @@ async fn lint_with_watch_inner(
     factory.caches()?.clone(),
     factory.lint_rule_provider().await?,
     factory.module_graph_creator().await?.clone(),
-    factory.tsconfig_resolver()?.clone(),
+    factory.compiler_options_resolver()?.clone(),
     cli_options.start_dir.clone(),
     &cli_options.resolve_workspace_lint_options(&lint_flags)?,
   );
@@ -209,7 +212,7 @@ async fn lint_with_watch(
 }
 
 struct PathsWithOptions {
-  dir: WorkspaceDirectory,
+  dir: WorkspaceDirectoryRc,
   paths: Vec<PathBuf>,
   options: LintOptions,
 }
@@ -232,7 +235,7 @@ fn resolve_paths_with_options_batches(
       });
     }
   }
-  if paths_with_options_batches.is_empty() {
+  if paths_with_options_batches.is_empty() && !lint_flags.permit_no_files {
     return Err(anyhow!("No target files found."));
   }
   Ok(paths_with_options_batches)
@@ -245,7 +248,7 @@ struct WorkspaceLinter {
   caches: Arc<Caches>,
   lint_rule_provider: LintRuleProvider,
   module_graph_creator: Arc<ModuleGraphCreator>,
-  tsconfig_resolver: Arc<TsConfigResolver>,
+  compiler_options_resolver: Arc<CompilerOptionsResolver>,
   workspace_dir: Arc<WorkspaceDirectory>,
   reporter_lock: Arc<Mutex<Box<dyn LintReporter + Send>>>,
   workspace_module_graph: Option<WorkspaceModuleGraphFuture>,
@@ -258,7 +261,7 @@ impl WorkspaceLinter {
     caches: Arc<Caches>,
     lint_rule_provider: LintRuleProvider,
     module_graph_creator: Arc<ModuleGraphCreator>,
-    tsconfig_resolver: Arc<TsConfigResolver>,
+    compiler_options_resolver: Arc<CompilerOptionsResolver>,
     workspace_dir: Arc<WorkspaceDirectory>,
     workspace_options: &WorkspaceLintOptions,
   ) -> Self {
@@ -268,7 +271,7 @@ impl WorkspaceLinter {
       caches,
       lint_rule_provider,
       module_graph_creator,
-      tsconfig_resolver,
+      compiler_options_resolver,
       workspace_dir,
       reporter_lock,
       workspace_module_graph: None,
@@ -281,7 +284,7 @@ impl WorkspaceLinter {
     &mut self,
     cli_options: &Arc<CliOptions>,
     lint_options: LintOptions,
-    member_dir: WorkspaceDirectory,
+    member_dir: WorkspaceDirectoryRc,
     paths: Vec<PathBuf>,
   ) -> Result<(), AnyError> {
     self.file_count += paths.len();
@@ -289,10 +292,10 @@ impl WorkspaceLinter {
     let exclude = lint_options.rules.exclude.clone();
 
     let plugin_specifiers = lint_options.plugins.clone();
-    let lint_rules = self.lint_rule_provider.resolve_lint_rules_err_empty(
-      lint_options.rules,
-      member_dir.maybe_deno_json().map(|c| c.as_ref()),
-    )?;
+    let lint_rules = self
+      .lint_rule_provider
+      .resolve_lint_rules(lint_options.rules, Some(&member_dir));
+
     let mut maybe_incremental_cache = None;
 
     // TODO(bartlomieju): for now we don't support incremental caching if plugins are being used.
@@ -312,8 +315,8 @@ impl WorkspaceLinter {
       )));
     }
 
-    #[allow(clippy::print_stdout)]
-    #[allow(clippy::print_stderr)]
+    #[allow(clippy::print_stdout, reason = "actually want to output")]
+    #[allow(clippy::print_stderr, reason = "actually want to output")]
     fn logger_printer(msg: &str, is_err: bool) {
       if is_err {
         eprint!("{}", msg);
@@ -332,14 +335,17 @@ impl WorkspaceLinter {
       )
       .await?;
       plugin_runner = Some(Arc::new(runner));
+    } else if lint_rules.rules.is_empty() {
+      bail!("No rules have been configured")
     }
 
     let linter = Arc::new(CliLinter::new(CliLinterOptions {
       configured_rules: lint_rules,
       fix: lint_options.fix,
-      deno_lint_config: self
-        .tsconfig_resolver
-        .deno_lint_config(member_dir.dir_url())?,
+      deno_lint_config: resolve_lint_config(
+        &self.compiler_options_resolver,
+        member_dir.dir_url(),
+      )?,
       maybe_plugin_runner: plugin_runner,
     }));
 
@@ -347,10 +353,10 @@ impl WorkspaceLinter {
     let reporter_lock = self.reporter_lock.clone();
 
     let mut futures = Vec::with_capacity(2);
-    if linter.has_package_rules() {
-      if let Some(fut) = self.run_package_rules(&linter, &member_dir, &paths) {
-        futures.push(fut);
-      }
+    if linter.has_package_rules()
+      && let Some(fut) = self.run_package_rules(&linter, &member_dir, &paths)
+    {
+      futures.push(fut);
     }
 
     let maybe_incremental_cache_ = maybe_incremental_cache.clone();
@@ -361,10 +367,10 @@ impl WorkspaceLinter {
         let file_text = deno_ast::strip_bom(fs::read_to_string(&file_path)?);
 
         // don't bother rechecking this file if it didn't have any diagnostics before
-        if let Some(incremental_cache) = &maybe_incremental_cache_ {
-          if incremental_cache.is_file_same(&file_path, &file_text) {
-            return Ok(());
-          }
+        if let Some(incremental_cache) = &maybe_incremental_cache_
+          && incremental_cache.is_file_same(&file_path, &file_text)
+        {
+          return Ok(());
         }
 
         let r = linter.lint_file(
@@ -372,17 +378,16 @@ impl WorkspaceLinter {
           file_text,
           cli_options.ext_flag().as_deref(),
         );
-        if let Ok((file_source, file_diagnostics)) = &r {
-          if let Some(incremental_cache) = &maybe_incremental_cache_ {
-            if file_diagnostics.is_empty() {
-              // update the incremental cache if there were no diagnostics
-              incremental_cache.update_file(
-                &file_path,
-                // ensure the returned text is used here as it may have been modified via --fix
-                file_source.text(),
-              )
-            }
-          }
+        if let Ok((file_source, file_diagnostics)) = &r
+          && let Some(incremental_cache) = &maybe_incremental_cache_
+          && file_diagnostics.is_empty()
+        {
+          // update the incremental cache if there were no diagnostics
+          incremental_cache.update_file(
+            &file_path,
+            // ensure the returned text is used here as it may have been modified via --fix
+            file_source.text(),
+          )
         }
 
         let success = handle_lint_result(
@@ -422,16 +427,20 @@ impl WorkspaceLinter {
   fn run_package_rules(
     &mut self,
     linter: &Arc<CliLinter>,
-    member_dir: &WorkspaceDirectory,
+    member_dir: &WorkspaceDirectoryRc,
     paths: &[PathBuf],
-  ) -> Option<LocalBoxFuture<Result<(), AnyError>>> {
+  ) -> Option<LocalBoxFuture<'_, Result<(), AnyError>>> {
     if self.workspace_module_graph.is_none() {
       let module_graph_creator = self.module_graph_creator.clone();
       let packages = self.workspace_dir.jsr_packages_for_publish();
       self.workspace_module_graph = Some(
         async move {
           module_graph_creator
-            .create_and_validate_publish_graph(&packages, true)
+            .create_publish_graph(CreatePublishGraphOptions {
+              packages: &packages,
+              build_fast_check_graph: true,
+              validate_graph: false,
+            })
             .await
             .map(Rc::new)
             .map_err(Rc::new)
@@ -495,10 +504,10 @@ fn collect_lint_files(
   .ignore_node_modules()
   .use_gitignore()
   .set_vendor_folder(cli_options.vendor_dir_path().map(ToOwned::to_owned))
-  .collect_file_patterns(&CliSys::default(), files)
+  .collect_file_patterns(&CliSys::default(), &files)
 }
 
-#[allow(clippy::print_stdout)]
+#[allow(clippy::print_stdout, reason = "print method")]
 pub fn print_rules_list(json: bool, maybe_rules_tags: Option<Vec<String>>) {
   let rule_provider = LintRuleProvider::new(None);
   let mut all_rules = rule_provider.all_rules();
@@ -573,7 +582,7 @@ fn lint_stdin(
   lint_rule_provider: LintRuleProvider,
   workspace_lint_options: WorkspaceLintOptions,
   lint_flags: LintFlags,
-  tsconfig_resolver: &TsConfigResolver,
+  compiler_options_resolver: &CompilerOptionsResolver,
 ) -> Result<bool, AnyError> {
   let start_dir = &cli_options.start_dir;
   let reporter_lock = Arc::new(Mutex::new(create_reporter(
@@ -582,13 +591,10 @@ fn lint_stdin(
   let lint_config = start_dir
     .to_lint_config(FilePatterns::new_with_base(start_dir.dir_path()))?;
   let deno_lint_config =
-    tsconfig_resolver.deno_lint_config(start_dir.dir_url())?;
-  let lint_options =
-    LintOptions::resolve(start_dir.dir_path(), lint_config, &lint_flags)?;
-  let configured_rules = lint_rule_provider.resolve_lint_rules_err_empty(
-    lint_options.rules,
-    start_dir.maybe_deno_json().map(|c| c.as_ref()),
-  )?;
+    resolve_lint_config(compiler_options_resolver, start_dir.dir_url())?;
+  let lint_options = LintOptions::resolve(lint_config, &lint_flags)?;
+  let configured_rules = lint_rule_provider
+    .resolve_lint_rules_err_empty(lint_options.rules, Some(start_dir))?;
   let mut file_path = cli_options.initial_cwd().join(STDIN_FILE_NAME);
   if let Some(ext) = cli_options.ext_flag() {
     file_path.set_extension(ext);
@@ -605,9 +611,7 @@ fn lint_stdin(
     maybe_plugin_runner: None,
   });
 
-  let r = linter
-    .lint_file(&file_path, deno_ast::strip_bom(source_code), None)
-    .map_err(AnyError::from);
+  let r = linter.lint_file(&file_path, deno_ast::strip_bom(source_code), None);
 
   let success =
     handle_lint_result(&file_path.to_string_lossy(), r, reporter_lock.clone());
@@ -652,16 +656,31 @@ fn handle_lint_result(
   }
 }
 
-#[derive(Serialize)]
-struct LintError {
-  file_path: String,
-  message: String,
+fn resolve_lint_config(
+  compiler_options_resolver: &CompilerOptionsResolver,
+  specifier: &ModuleSpecifier,
+) -> Result<deno_lint::linter::LintConfig, AnyError> {
+  let transpile_options = &compiler_options_resolver
+    .for_specifier(specifier)
+    .transpile_options()?
+    .transpile;
+  let jsx_classic_options =
+    transpile_options.jsx.as_ref().and_then(|jsx| match jsx {
+      deno_ast::JsxRuntime::Classic(classic) => Some(classic),
+      _ => None,
+    });
+  Ok(deno_lint::linter::LintConfig {
+    default_jsx_factory: jsx_classic_options.map(|o| o.factory.clone()),
+    default_jsx_fragment_factory: jsx_classic_options
+      .map(|o| o.fragment_factory.clone()),
+  })
 }
 
 #[cfg(test)]
 mod tests {
   use pretty_assertions::assert_eq;
   use serde::Deserialize;
+  use serde::Serialize;
   use test_util as util;
 
   use super::*;

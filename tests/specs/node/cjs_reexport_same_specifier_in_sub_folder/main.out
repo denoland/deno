@@ -3,5 +3,6 @@ Download http://localhost:4260/@denotest/cjs-reexport-same-specifier-in-sub-fold
 [Module: null prototype] {
   default: { main: [Getter], sub: [Getter] },
   main: 1,
+  "module.exports": { main: [Getter], sub: [Getter] },
   sub: 2
 }

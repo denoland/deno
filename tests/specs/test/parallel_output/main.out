@@ -1,4 +1,4 @@
-Check [WILDCARD]/main.ts
+Check [WILDCARD]main.ts
 ./main.ts => step output ... step 1 ... ok ([WILDCARD]s)
 ./main.ts => step output ... step 2 ... ok ([WILDCARD]s)
 ------- output -------

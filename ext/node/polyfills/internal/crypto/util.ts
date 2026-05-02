@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
 
 // TODO(petamoriken): enable prefer-primordials for node polyfills
@@ -7,6 +7,7 @@
 import { notImplemented } from "ext:deno_node/_utils.ts";
 import { Buffer } from "node:buffer";
 import {
+  ERR_CRYPTO_INVALID_DIGEST,
   ERR_INVALID_ARG_TYPE,
   hideStackFrames,
 } from "ext:deno_node/internal/errors.ts";
@@ -15,6 +16,10 @@ import {
   isArrayBufferView,
 } from "ext:deno_node/internal/util/types.ts";
 import { crypto as constants } from "ext:deno_node/internal_binding/constants.ts";
+import {
+  validateInt32,
+  validateObject,
+} from "ext:deno_node/internal/validators.mjs";
 import {
   kHandle,
   kKeyObject,
@@ -67,20 +72,192 @@ export const ellipticCurves: Array<EllipticCurve> = [
   }, // NIST P-224 EC
 ];
 
+// OpenSSL NID values and cipher metadata.
+// NID values sourced from OpenSSL's include/openssl/obj_mac.h.
+interface CipherInfoResult {
+  name: string;
+  nid: number;
+  blockSize: number;
+  ivLength: number;
+  keyLength: number;
+  mode: string;
+}
+
+const cipherInfoTable: CipherInfoResult[] = [
+  {
+    name: "aes-128-ecb",
+    nid: 418,
+    blockSize: 16,
+    ivLength: 0,
+    keyLength: 16,
+    mode: "ecb",
+  },
+  {
+    name: "aes-128-cbc",
+    nid: 419,
+    blockSize: 16,
+    ivLength: 16,
+    keyLength: 16,
+    mode: "cbc",
+  },
+  {
+    name: "aes-192-ecb",
+    nid: 422,
+    blockSize: 16,
+    ivLength: 0,
+    keyLength: 24,
+    mode: "ecb",
+  },
+  {
+    name: "aes-192-cbc",
+    nid: 423,
+    blockSize: 16,
+    ivLength: 16,
+    keyLength: 24,
+    mode: "cbc",
+  },
+  {
+    name: "aes-256-ecb",
+    nid: 426,
+    blockSize: 16,
+    ivLength: 0,
+    keyLength: 32,
+    mode: "ecb",
+  },
+  {
+    name: "aes-256-cbc",
+    nid: 427,
+    blockSize: 16,
+    ivLength: 16,
+    keyLength: 32,
+    mode: "cbc",
+  },
+  {
+    name: "aes-128-gcm",
+    nid: 895,
+    blockSize: 1,
+    ivLength: 12,
+    keyLength: 16,
+    mode: "gcm",
+  },
+  {
+    name: "aes-192-gcm",
+    nid: 898,
+    blockSize: 1,
+    ivLength: 12,
+    keyLength: 24,
+    mode: "gcm",
+  },
+  {
+    name: "aes-256-gcm",
+    nid: 901,
+    blockSize: 1,
+    ivLength: 12,
+    keyLength: 32,
+    mode: "gcm",
+  },
+  {
+    name: "des-ede3-cbc",
+    nid: 44,
+    blockSize: 8,
+    ivLength: 8,
+    keyLength: 24,
+    mode: "cbc",
+  },
+  {
+    name: "aes-128-ctr",
+    nid: 904,
+    blockSize: 1,
+    ivLength: 16,
+    keyLength: 16,
+    mode: "ctr",
+  },
+  {
+    name: "aes-192-ctr",
+    nid: 905,
+    blockSize: 1,
+    ivLength: 16,
+    keyLength: 24,
+    mode: "ctr",
+  },
+  {
+    name: "aes-256-ctr",
+    nid: 906,
+    blockSize: 1,
+    ivLength: 16,
+    keyLength: 32,
+    mode: "ctr",
+  },
+  {
+    name: "chacha20-poly1305",
+    nid: 1018,
+    blockSize: 1,
+    ivLength: 12,
+    keyLength: 32,
+    mode: "",
+  },
+];
+
+const cipherInfoByName = new Map<string, CipherInfoResult>();
+const cipherInfoByNid = new Map<number, CipherInfoResult>();
+
+for (const info of cipherInfoTable) {
+  cipherInfoByName.set(info.name, info);
+  cipherInfoByNid.set(info.nid, info);
+}
+
+// Aliases
+cipherInfoByName.set("aes128", cipherInfoByName.get("aes-128-cbc")!);
+cipherInfoByName.set("aes192", cipherInfoByName.get("aes-192-cbc")!);
+cipherInfoByName.set("aes256", cipherInfoByName.get("aes-256-cbc")!);
+
+// Ciphers actually supported by the runtime (subset of cipherInfoTable).
 const supportedCiphers = [
   "aes-128-ecb",
+  "aes-128-cbc",
   "aes-192-ecb",
   "aes-256-ecb",
-  "aes-128-cbc",
   "aes-256-cbc",
-  "aes128",
-  "aes256",
   "aes-128-gcm",
   "aes-256-gcm",
+  "aes-128-ctr",
+  "aes-192-ctr",
+  "aes-256-ctr",
+  "des-ede3-cbc",
+  "aes128",
+  "aes256",
+  "chacha20-poly1305",
 ];
 
 export function getCiphers(): string[] {
   return supportedCiphers;
+}
+
+const hashBlockSizes: Record<string, number> = {
+  md5: 64,
+  rmd160: 64,
+  ripemd160: 64,
+  sha1: 64,
+  sha224: 64,
+  sha256: 64,
+  sha384: 128,
+  sha512: 128,
+  "sha512-224": 128,
+  "sha512-256": 128,
+  "sha3-224": 144,
+  "sha3-256": 136,
+  "sha3-384": 104,
+  "sha3-512": 72,
+  blake2b512: 128,
+  blake2s256: 64,
+};
+
+export function getHashBlockSize(algorithm: string): number {
+  const blockSize = hashBlockSizes[algorithm];
+  if (blockSize === undefined) {
+    throw new ERR_CRYPTO_INVALID_DIGEST(algorithm);
+  }
+  return blockSize;
 }
 
 export function getCipherInfo(
@@ -115,55 +292,23 @@ export function getCipherInfo(
     }
   }
 
-  // This API is heavily based on OpenSSL's EVP_get_cipherbyname(3) and
-  // EVP_get_cipherbynid(3) functions.
-  //
-  // TODO(@littledivy): write proper cipher info utility in Rust
-  // in future refactors
-  const cipher = supportedCiphers.find((c) => c === nameOrNid);
-  if (cipher === undefined) {
+  const info = typeof nameOrNid === "number"
+    ? cipherInfoByNid.get(nameOrNid)
+    : cipherInfoByName.get(nameOrNid);
+
+  if (info === undefined) {
     return undefined;
   }
 
-  const match = cipher.match(/^(aes)-(\d+)-(\w+)$/);
-  if (match) {
-    const [, name, keyLength, mode] = match;
-    return {
-      name: `${name}-${keyLength}-${mode}`,
-      keyLength: parseInt(keyLength) / 8,
-      mode,
-      ivLength: 16,
-    };
+  if (keyLength !== undefined && info.keyLength !== keyLength) {
+    return undefined;
   }
 
-  if (cipher === "aes128") {
-    return {
-      name: "aes-128-cbc",
-      keyLength: 16,
-      mode: "cbc",
-      ivLength: 16,
-    };
+  if (ivLength !== undefined && info.ivLength !== ivLength) {
+    return undefined;
   }
 
-  if (cipher === "aes192") {
-    return {
-      name: "aes-192-cbc",
-      keyLength: 24,
-      mode: "cbc",
-      ivLength: 16,
-    };
-  }
-
-  if (cipher === "aes256") {
-    return {
-      name: "aes-256-cbc",
-      keyLength: 32,
-      mode: "cbc",
-      ivLength: 16,
-    };
-  }
-
-  return undefined;
+  return { ...info };
 }
 
 let defaultEncoding = "buffer";
@@ -225,6 +370,10 @@ export function setEngine(_engine: string, _flags: typeof constants) {
   notImplemented("crypto.setEngine");
 }
 
+export function getOpenSSLSecLevel(): number {
+  return 5; // highest sec level, used in tests.
+}
+
 const kAesKeyLengths = [128, 192, 256];
 
 export { kAesKeyLengths, kHandle, kKeyObject };
@@ -235,6 +384,8 @@ export default {
   getCiphers,
   getCipherInfo,
   getCurves,
+  getHashBlockSize,
+  getOpenSSLSecLevel,
   secureHeapUsed,
   setEngine,
   validateByteSource,

@@ -1,10 +1,11 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
 import { Buffer } from "node:buffer";
 import { encodeStr, hexTable } from "ext:deno_node/internal/querystring.ts";
+import { unhexTable } from "ext:deno_node/internal_binding/_utils.ts";
 
 /**
  * Alias of querystring.parse()
@@ -79,10 +80,10 @@ function addKeyVal(
   decode,
 ) {
   if (key.length > 0 && keyEncoded) {
-    key = decode(key);
+    key = decodeStr(key, decode);
   }
   if (value.length > 0 && valEncoded) {
-    value = decode(value);
+    value = decodeStr(value, decode);
   }
 
   if (obj[key] === undefined) {
@@ -115,7 +116,7 @@ export function parse(
   str,
   sep = "&",
   eq = "=",
-  { decodeURIComponent = unescape, maxKeys = 1000 } = {},
+  { decodeURIComponent, maxKeys = 1000 } = {},
 ) {
   const obj = Object.create(null);
 
@@ -139,7 +140,7 @@ export function parse(
     pairs = maxKeys > 0 ? maxKeys : -1;
   }
 
-  let decode = unescape;
+  let decode = QS.unescape;
   if (decodeURIComponent) {
     decode = decodeURIComponent;
   }
@@ -393,26 +394,6 @@ export function stringify(
   return "";
 }
 
-// deno-fmt-ignore
-const unhexTable = new Int8Array([
-  -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, // 0 - 15
-  -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, // 16 - 31
-  -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, // 32 - 47
-  +0, +1, +2, +3, +4, +5, +6, +7, +8, +9, -1, -1, -1, -1, -1, -1, // 48 - 63
-  -1, 10, 11, 12, 13, 14, 15, -1, -1, -1, -1, -1, -1, -1, -1, -1, // 64 - 79
-  -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, // 80 - 95
-  -1, 10, 11, 12, 13, 14, 15, -1, -1, -1, -1, -1, -1, -1, -1, -1, // 96 - 111
-  -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, // 112 - 127
-  -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, // 128 ...
-  -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-  -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-  -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-  -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-  -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-  -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-  -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, // ... 255
-]);
-
 /**
  * A safe fast alternative to decodeURIComponent
  */
@@ -466,6 +447,14 @@ function qsUnescape(s) {
   }
 }
 
+function decodeStr(s, decoder) {
+  try {
+    return decoder(s);
+  } catch {
+    return QS.unescape(s);
+  }
+}
+
 /**
  * Performs decoding of URL percent-encoded characters on the given `str`.
  * Used by `querystring.parse()` and is generally not expected to be used directly.
@@ -475,7 +464,7 @@ function qsUnescape(s) {
  */
 export const unescape = qsUnescape;
 
-export default {
+const QS = {
   parse,
   stringify,
   decode,
@@ -484,3 +473,5 @@ export default {
   escape,
   unescapeBuffer,
 };
+
+export default QS;

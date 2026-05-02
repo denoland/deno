@@ -1,0 +1,136 @@
+{
+  "tempDir": true,
+  "tests": {
+    // just to make sure install doesn't change the lockfile
+    "sanity_lockfile_up_to_date": {
+      "steps": [
+        {
+          "args": "install",
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": [
+            "eval",
+            "const now = Deno.readTextFileSync('./deno.lock'); console.log(now.trim());"
+          ],
+          "output": "deno.lock.orig.out"
+        }
+      ]
+    },
+    "print_outdated": {
+      "steps": [
+        {
+          "args": "install",
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": "outdated",
+          "output": "outdated.out"
+        },
+        {
+          // Filtering that matches nothing, should exit cleanly
+          "args": "outdated foobar",
+          "output": ""
+        },
+        {
+          // Respect `--quiet flag and don't print hint how to update
+          "args": "outdated --quiet",
+          "output": "outdated_quiet.out"
+        }
+      ]
+    },
+    "print_outdated_compatible": {
+      "steps": [
+        {
+          "args": "install",
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": "outdated --compatible",
+          "output": "outdated_compatible.out"
+        },
+        {
+          // Filtering that matches nothing, should exit cleanly
+          "args": "outdated --compatible foobar",
+          "output": ""
+        }
+      ]
+    },
+    "update_compatible": {
+      "steps": [
+        {
+          "args": "install",
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": "outdated --update",
+          "output": "./update_compatible/update.out"
+        },
+        {
+          "args": "-A print_file.ts ./deno.json",
+          "output": "./update_compatible/deno.json.out"
+        },
+        {
+          "args": "-A print_file.ts ./deno.lock",
+          "output": "./update_compatible/deno.lock.out"
+        }
+      ]
+    },
+    "update_latest": {
+      "steps": [
+        {
+          "args": "install",
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": "outdated --update --latest",
+          "output": "update_latest/update.out"
+        },
+        {
+          "args": "-A print_file.ts ./deno.json",
+          "output": "./update_latest/deno.json.out"
+        },
+        {
+          "args": "-A print_file.ts ./deno.lock",
+          "output": "./update_latest/deno.lock.out"
+        }
+      ]
+    },
+    "update_filtered": {
+      "steps": [
+        {
+          "args": "install",
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": "outdated --update --latest @denotest/add @denotest/b* !@denotest/breaking* @denotest/with-subpath@0.5.0",
+          "output": "filtered/update.out"
+        },
+        {
+          "args": "-A print_file.ts ./deno.json",
+          "output": "filtered/deno.json.out"
+        }
+      ]
+    },
+    "update_latest_lockfile_only": {
+      "steps": [
+        {
+          "args": "install",
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": "outdated --update --latest --lockfile-only",
+          "output": "update_latest_lockfile_only/update.out"
+        },
+        {
+          "args": "-A print_file.ts ./deno.json",
+          "output": "./update_latest/deno.json.out"
+        },
+        {
+          "args": "-A print_file.ts ./deno.lock",
+          "output": "./update_latest/deno.lock.out"
+        }
+      ]
+    }
+  }
+}

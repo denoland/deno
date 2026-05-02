@@ -12,6 +12,587 @@ snapshot[`Plugin - Program 1`] = `
 }
 `;
 
+snapshot[`Plugin - FunctionDeclaration 1`] = `
+{
+  async: false,
+  body: {
+    body: [],
+    range: [
+      15,
+      17,
+    ],
+    type: "BlockStatement",
+  },
+  declare: false,
+  generator: false,
+  id: {
+    name: "foo",
+    optional: false,
+    range: [
+      9,
+      12,
+    ],
+    type: "Identifier",
+    typeAnnotation: undefined,
+  },
+  params: [],
+  range: [
+    0,
+    17,
+  ],
+  returnType: undefined,
+  type: "FunctionDeclaration",
+  typeParameters: undefined,
+}
+`;
+
+snapshot[`Plugin - FunctionDeclaration 2`] = `
+{
+  async: false,
+  body: {
+    body: [],
+    range: [
+      22,
+      24,
+    ],
+    type: "BlockStatement",
+  },
+  declare: false,
+  generator: false,
+  id: {
+    name: "foo",
+    optional: false,
+    range: [
+      9,
+      12,
+    ],
+    type: "Identifier",
+    typeAnnotation: undefined,
+  },
+  params: [
+    {
+      name: "a",
+      optional: false,
+      range: [
+        13,
+        14,
+      ],
+      type: "Identifier",
+      typeAnnotation: undefined,
+    },
+    {
+      argument: {
+        name: "b",
+        optional: false,
+        range: [
+          19,
+          20,
+        ],
+        type: "Identifier",
+        typeAnnotation: undefined,
+      },
+      decorators: [],
+      range: [
+        16,
+        20,
+      ],
+      type: "RestElement",
+      typeAnnotation: undefined,
+    },
+  ],
+  range: [
+    0,
+    24,
+  ],
+  returnType: undefined,
+  type: "FunctionDeclaration",
+  typeParameters: undefined,
+}
+`;
+
+snapshot[`Plugin - FunctionDeclaration 3`] = `
+{
+  async: false,
+  body: {
+    body: [],
+    range: [
+      56,
+      58,
+    ],
+    type: "BlockStatement",
+  },
+  declare: false,
+  generator: false,
+  id: {
+    name: "foo",
+    optional: false,
+    range: [
+      9,
+      12,
+    ],
+    type: "Identifier",
+    typeAnnotation: undefined,
+  },
+  params: [
+    {
+      decorators: [],
+      left: {
+        name: "a",
+        optional: false,
+        range: [
+          13,
+          14,
+        ],
+        type: "Identifier",
+        typeAnnotation: undefined,
+      },
+      range: [
+        13,
+        18,
+      ],
+      right: {
+        range: [
+          17,
+          18,
+        ],
+        raw: "1",
+        type: "Literal",
+        value: 1,
+      },
+      type: "AssignmentPattern",
+    },
+    {
+      decorators: [],
+      optional: false,
+      properties: [
+        {
+          computed: false,
+          key: {
+            name: "a",
+            optional: false,
+            range: [
+              22,
+              23,
+            ],
+            type: "Identifier",
+            typeAnnotation: undefined,
+          },
+          kind: "init",
+          method: false,
+          range: [
+            20,
+            38,
+          ],
+          shorthand: false,
+          type: "Property",
+          value: {
+            decorators: [],
+            left: {
+              name: "a",
+              optional: false,
+              range: [
+                22,
+                23,
+              ],
+              type: "Identifier",
+              typeAnnotation: undefined,
+            },
+            range: [
+              22,
+              27,
+            ],
+            right: {
+              range: [
+                26,
+                27,
+              ],
+              raw: "2",
+              type: "Literal",
+              value: 2,
+            },
+            type: "AssignmentPattern",
+          },
+        },
+        {
+          computed: false,
+          key: {
+            name: "b",
+            optional: false,
+            range: [
+              29,
+              30,
+            ],
+            type: "Identifier",
+            typeAnnotation: undefined,
+          },
+          kind: "init",
+          method: false,
+          range: [
+            20,
+            38,
+          ],
+          shorthand: true,
+          type: "Property",
+          value: {
+            name: "b",
+            optional: false,
+            range: [
+              29,
+              30,
+            ],
+            type: "Identifier",
+            typeAnnotation: undefined,
+          },
+        },
+        {
+          argument: {
+            name: "c",
+            optional: false,
+            range: [
+              35,
+              36,
+            ],
+            type: "Identifier",
+            typeAnnotation: undefined,
+          },
+          decorators: [],
+          range: [
+            32,
+            36,
+          ],
+          type: "RestElement",
+          typeAnnotation: undefined,
+        },
+      ],
+      range: [
+        20,
+        38,
+      ],
+      type: "ObjectPattern",
+      typeAnnotation: undefined,
+    },
+    {
+      decorators: [],
+      elements: [
+        {
+          name: "d",
+          optional: false,
+          range: [
+            41,
+            42,
+          ],
+          type: "Identifier",
+          typeAnnotation: undefined,
+        },
+        {
+          argument: {
+            name: "e",
+            optional: false,
+            range: [
+              46,
+              47,
+            ],
+            type: "Identifier",
+            typeAnnotation: undefined,
+          },
+          decorators: [],
+          range: [
+            43,
+            47,
+          ],
+          type: "RestElement",
+          typeAnnotation: undefined,
+        },
+      ],
+      optional: false,
+      range: [
+        40,
+        48,
+      ],
+      type: "ArrayPattern",
+      typeAnnotation: undefined,
+    },
+    {
+      argument: {
+        name: "f",
+        optional: false,
+        range: [
+          53,
+          54,
+        ],
+        type: "Identifier",
+        typeAnnotation: undefined,
+      },
+      decorators: [],
+      range: [
+        50,
+        54,
+      ],
+      type: "RestElement",
+      typeAnnotation: undefined,
+    },
+  ],
+  range: [
+    0,
+    58,
+  ],
+  returnType: undefined,
+  type: "FunctionDeclaration",
+  typeParameters: undefined,
+}
+`;
+
+snapshot[`Plugin - FunctionDeclaration 4`] = `
+{
+  async: true,
+  body: {
+    body: [],
+    range: [
+      21,
+      23,
+    ],
+    type: "BlockStatement",
+  },
+  declare: false,
+  generator: false,
+  id: {
+    name: "foo",
+    optional: false,
+    range: [
+      15,
+      18,
+    ],
+    type: "Identifier",
+    typeAnnotation: undefined,
+  },
+  params: [],
+  range: [
+    0,
+    23,
+  ],
+  returnType: undefined,
+  type: "FunctionDeclaration",
+  typeParameters: undefined,
+}
+`;
+
+snapshot[`Plugin - FunctionDeclaration 5`] = `
+{
+  async: true,
+  body: {
+    body: [],
+    range: [
+      22,
+      24,
+    ],
+    type: "BlockStatement",
+  },
+  declare: false,
+  generator: true,
+  id: {
+    name: "foo",
+    optional: false,
+    range: [
+      16,
+      19,
+    ],
+    type: "Identifier",
+    typeAnnotation: undefined,
+  },
+  params: [],
+  range: [
+    0,
+    24,
+  ],
+  returnType: undefined,
+  type: "FunctionDeclaration",
+  typeParameters: undefined,
+}
+`;
+
+snapshot[`Plugin - FunctionDeclaration 6`] = `
+{
+  async: false,
+  body: {
+    body: [],
+    range: [
+      16,
+      18,
+    ],
+    type: "BlockStatement",
+  },
+  declare: false,
+  generator: true,
+  id: {
+    name: "foo",
+    optional: false,
+    range: [
+      10,
+      13,
+    ],
+    type: "Identifier",
+    typeAnnotation: undefined,
+  },
+  params: [],
+  range: [
+    0,
+    18,
+  ],
+  returnType: undefined,
+  type: "FunctionDeclaration",
+  typeParameters: undefined,
+}
+`;
+
+snapshot[`Plugin - FunctionDeclaration 7`] = `
+{
+  async: false,
+  body: {
+    body: [],
+    range: [
+      41,
+      43,
+    ],
+    type: "BlockStatement",
+  },
+  declare: false,
+  generator: false,
+  id: {
+    name: "foo",
+    optional: false,
+    range: [
+      9,
+      12,
+    ],
+    type: "Identifier",
+    typeAnnotation: undefined,
+  },
+  params: [
+    {
+      name: "a",
+      optional: true,
+      range: [
+        16,
+        17,
+      ],
+      type: "Identifier",
+      typeAnnotation: {
+        range: [
+          18,
+          21,
+        ],
+        type: "TSTypeAnnotation",
+        typeAnnotation: {
+          literal: {
+            range: [
+              20,
+              21,
+            ],
+            raw: "2",
+            type: "Literal",
+            value: 2,
+          },
+          range: [
+            20,
+            21,
+          ],
+          type: "TSLiteralType",
+        },
+      },
+    },
+    {
+      argument: {
+        name: "b",
+        optional: false,
+        range: [
+          26,
+          27,
+        ],
+        type: "Identifier",
+        typeAnnotation: undefined,
+      },
+      decorators: [],
+      range: [
+        23,
+        34,
+      ],
+      type: "RestElement",
+      typeAnnotation: {
+        range: [
+          27,
+          34,
+        ],
+        type: "TSTypeAnnotation",
+        typeAnnotation: {
+          elementType: {
+            range: [
+              29,
+              32,
+            ],
+            type: "TSAnyKeyword",
+          },
+          range: [
+            29,
+            34,
+          ],
+          type: "TSArrayType",
+        },
+      },
+    },
+  ],
+  range: [
+    0,
+    43,
+  ],
+  returnType: {
+    range: [
+      35,
+      40,
+    ],
+    type: "TSTypeAnnotation",
+    typeAnnotation: {
+      range: [
+        37,
+        40,
+      ],
+      type: "TSAnyKeyword",
+    },
+  },
+  type: "FunctionDeclaration",
+  typeParameters: {
+    params: [
+      {
+        const: false,
+        constraint: null,
+        default: null,
+        in: false,
+        name: {
+          name: "T",
+          optional: false,
+          range: [
+            13,
+            14,
+          ],
+          type: "Identifier",
+          typeAnnotation: undefined,
+        },
+        out: false,
+        range: [
+          13,
+          14,
+        ],
+        type: "TSTypeParameter",
+      },
+    ],
+    range: [
+      12,
+      15,
+    ],
+    type: "TSTypeParameterDeclaration",
+  },
+}
+`;
+
 snapshot[`Plugin - ImportDeclaration 1`] = `
 {
   attributes: [],
@@ -531,6 +1112,7 @@ snapshot[`Plugin - ExportDefaultDeclaration 3`] = `
       type: "ClassBody",
     },
     declare: false,
+    decorators: [],
     id: {
       name: "Foo",
       optional: false,
@@ -571,6 +1153,7 @@ snapshot[`Plugin - ExportDefaultDeclaration 4`] = `
       type: "ClassBody",
     },
     declare: false,
+    decorators: [],
     id: null,
     implements: [],
     range: [
@@ -676,19 +1259,6 @@ snapshot[`Plugin - ExportAllDeclaration 2`] = `
   attributes: [],
   exportKind: "value",
   exported: {
-    range: [
-      21,
-      26,
-    ],
-    raw: '"foo"',
-    type: "Literal",
-    value: "foo",
-  },
-  range: [
-    0,
-    27,
-  ],
-  source: {
     name: "foo",
     optional: false,
     range: [
@@ -697,6 +1267,19 @@ snapshot[`Plugin - ExportAllDeclaration 2`] = `
     ],
     type: "Identifier",
     typeAnnotation: undefined,
+  },
+  range: [
+    0,
+    27,
+  ],
+  source: {
+    range: [
+      21,
+      26,
+    ],
+    raw: '"foo"',
+    type: "Literal",
+    value: "foo",
   },
   type: "ExportAllDeclaration",
 }
@@ -1695,6 +2278,7 @@ snapshot[`Plugin - ArrowFunctionExpression 3`] = `
         type: "Identifier",
         typeAnnotation: undefined,
       },
+      decorators: [],
       range: [
         12,
         23,
@@ -2075,7 +2659,7 @@ snapshot[`Plugin - BinaryExpression 8`] = `
     type: "Identifier",
     typeAnnotation: undefined,
   },
-  operator: "!=",
+  operator: "!==",
   range: [
     0,
     7,
@@ -3731,6 +4315,7 @@ snapshot[`Plugin - FunctionExpression 3`] = `
   id: null,
   params: [
     {
+      decorators: [],
       name: "a",
       optional: true,
       range: [
@@ -3764,6 +4349,7 @@ snapshot[`Plugin - FunctionExpression 3`] = `
         type: "Identifier",
         typeAnnotation: undefined,
       },
+      decorators: [],
       range: [
         26,
         37,
@@ -4877,6 +5463,473 @@ snapshot[`Plugin - YieldExpression 1`] = `
 }
 `;
 
+snapshot[`Plugin - ObjectPattern 1`] = `
+{
+  decorators: [],
+  optional: false,
+  properties: [
+    {
+      computed: false,
+      key: {
+        name: "prop",
+        optional: false,
+        range: [
+          8,
+          12,
+        ],
+        type: "Identifier",
+        typeAnnotation: undefined,
+      },
+      kind: "init",
+      method: false,
+      range: [
+        6,
+        14,
+      ],
+      shorthand: true,
+      type: "Property",
+      value: {
+        name: "prop",
+        optional: false,
+        range: [
+          8,
+          12,
+        ],
+        type: "Identifier",
+        typeAnnotation: undefined,
+      },
+    },
+  ],
+  range: [
+    6,
+    14,
+  ],
+  type: "ObjectPattern",
+  typeAnnotation: undefined,
+}
+`;
+
+snapshot[`Plugin - ObjectPattern 2`] = `
+{
+  decorators: [],
+  optional: false,
+  properties: [
+    {
+      computed: false,
+      key: {
+        name: "prop",
+        optional: false,
+        range: [
+          8,
+          12,
+        ],
+        type: "Identifier",
+        typeAnnotation: undefined,
+      },
+      kind: "init",
+      method: false,
+      range: [
+        8,
+        15,
+      ],
+      shorthand: false,
+      type: "Property",
+      value: {
+        name: "A",
+        optional: false,
+        range: [
+          14,
+          15,
+        ],
+        type: "Identifier",
+        typeAnnotation: undefined,
+      },
+    },
+  ],
+  range: [
+    6,
+    17,
+  ],
+  type: "ObjectPattern",
+  typeAnnotation: undefined,
+}
+`;
+
+snapshot[`Plugin - ObjectPattern 3`] = `
+{
+  decorators: [],
+  optional: false,
+  properties: [
+    {
+      computed: false,
+      key: {
+        range: [
+          8,
+          13,
+        ],
+        raw: "'a.b'",
+        type: "Literal",
+        value: "a.b",
+      },
+      kind: "init",
+      method: false,
+      range: [
+        8,
+        16,
+      ],
+      shorthand: false,
+      type: "Property",
+      value: {
+        name: "A",
+        optional: false,
+        range: [
+          15,
+          16,
+        ],
+        type: "Identifier",
+        typeAnnotation: undefined,
+      },
+    },
+  ],
+  range: [
+    6,
+    18,
+  ],
+  type: "ObjectPattern",
+  typeAnnotation: undefined,
+}
+`;
+
+snapshot[`Plugin - ObjectPattern 4`] = `
+{
+  decorators: [],
+  optional: false,
+  properties: [
+    {
+      computed: false,
+      key: {
+        name: "prop",
+        optional: false,
+        range: [
+          8,
+          12,
+        ],
+        type: "Identifier",
+        typeAnnotation: undefined,
+      },
+      kind: "init",
+      method: false,
+      range: [
+        6,
+        18,
+      ],
+      shorthand: false,
+      type: "Property",
+      value: {
+        decorators: [],
+        left: {
+          name: "prop",
+          optional: false,
+          range: [
+            8,
+            12,
+          ],
+          type: "Identifier",
+          typeAnnotation: undefined,
+        },
+        range: [
+          8,
+          16,
+        ],
+        right: {
+          range: [
+            15,
+            16,
+          ],
+          raw: "2",
+          type: "Literal",
+          value: 2,
+        },
+        type: "AssignmentPattern",
+      },
+    },
+  ],
+  range: [
+    6,
+    18,
+  ],
+  type: "ObjectPattern",
+  typeAnnotation: undefined,
+}
+`;
+
+snapshot[`Plugin - ObjectPattern 5`] = `
+{
+  decorators: [],
+  optional: false,
+  properties: [
+    {
+      computed: false,
+      key: {
+        name: "prop",
+        optional: false,
+        range: [
+          8,
+          12,
+        ],
+        type: "Identifier",
+        typeAnnotation: undefined,
+      },
+      kind: "init",
+      method: false,
+      range: [
+        6,
+        24,
+      ],
+      shorthand: false,
+      type: "Property",
+      value: {
+        decorators: [],
+        left: {
+          name: "prop",
+          optional: false,
+          range: [
+            8,
+            12,
+          ],
+          type: "Identifier",
+          typeAnnotation: undefined,
+        },
+        range: [
+          8,
+          16,
+        ],
+        right: {
+          range: [
+            15,
+            16,
+          ],
+          raw: "2",
+          type: "Literal",
+          value: 2,
+        },
+        type: "AssignmentPattern",
+      },
+    },
+    {
+      argument: {
+        name: "c",
+        optional: false,
+        range: [
+          21,
+          22,
+        ],
+        type: "Identifier",
+        typeAnnotation: undefined,
+      },
+      decorators: [],
+      range: [
+        18,
+        22,
+      ],
+      type: "RestElement",
+      typeAnnotation: undefined,
+    },
+  ],
+  range: [
+    6,
+    24,
+  ],
+  type: "ObjectPattern",
+  typeAnnotation: undefined,
+}
+`;
+
+snapshot[`Plugin - ObjectPattern 6`] = `
+{
+  decorators: [],
+  optional: false,
+  properties: [
+    {
+      computed: false,
+      key: {
+        name: "a",
+        optional: false,
+        range: [
+          3,
+          4,
+        ],
+        type: "Identifier",
+        typeAnnotation: undefined,
+      },
+      kind: "init",
+      method: false,
+      range: [
+        1,
+        10,
+      ],
+      shorthand: false,
+      type: "Property",
+      value: {
+        decorators: [],
+        left: {
+          name: "a",
+          optional: false,
+          range: [
+            3,
+            4,
+          ],
+          type: "Identifier",
+          typeAnnotation: undefined,
+        },
+        range: [
+          3,
+          8,
+        ],
+        right: {
+          name: "b",
+          optional: false,
+          range: [
+            7,
+            8,
+          ],
+          type: "Identifier",
+          typeAnnotation: undefined,
+        },
+        type: "AssignmentPattern",
+      },
+    },
+  ],
+  range: [
+    1,
+    10,
+  ],
+  type: "ObjectPattern",
+  typeAnnotation: undefined,
+}
+`;
+
+snapshot[`Plugin - ArrayPattern 1`] = `
+{
+  decorators: [],
+  elements: [
+    {
+      name: "a",
+      optional: false,
+      range: [
+        7,
+        8,
+      ],
+      type: "Identifier",
+      typeAnnotation: undefined,
+    },
+    {
+      name: "b",
+      optional: false,
+      range: [
+        10,
+        11,
+      ],
+      type: "Identifier",
+      typeAnnotation: undefined,
+    },
+  ],
+  optional: false,
+  range: [
+    6,
+    12,
+  ],
+  type: "ArrayPattern",
+  typeAnnotation: undefined,
+}
+`;
+
+snapshot[`Plugin - ArrayPattern 2`] = `
+{
+  decorators: [],
+  elements: [
+    {
+      decorators: [],
+      left: {
+        name: "a",
+        optional: false,
+        range: [
+          7,
+          8,
+        ],
+        type: "Identifier",
+        typeAnnotation: undefined,
+      },
+      range: [
+        7,
+        12,
+      ],
+      right: {
+        range: [
+          11,
+          12,
+        ],
+        raw: "2",
+        type: "Literal",
+        value: 2,
+      },
+      type: "AssignmentPattern",
+    },
+  ],
+  optional: false,
+  range: [
+    6,
+    13,
+  ],
+  type: "ArrayPattern",
+  typeAnnotation: undefined,
+}
+`;
+
+snapshot[`Plugin - ArrayPattern 3`] = `
+{
+  decorators: [],
+  elements: [
+    {
+      name: "a",
+      optional: false,
+      range: [
+        7,
+        8,
+      ],
+      type: "Identifier",
+      typeAnnotation: undefined,
+    },
+    {
+      argument: {
+        name: "b",
+        optional: false,
+        range: [
+          13,
+          14,
+        ],
+        type: "Identifier",
+        typeAnnotation: undefined,
+      },
+      decorators: [],
+      range: [
+        10,
+        14,
+      ],
+      type: "RestElement",
+      typeAnnotation: undefined,
+    },
+  ],
+  optional: false,
+  range: [
+    6,
+    15,
+  ],
+  type: "ArrayPattern",
+  typeAnnotation: undefined,
+}
+`;
+
 snapshot[`Plugin - Literal 1`] = `
 {
   range: [
@@ -5032,6 +6085,7 @@ snapshot[`Plugin - Abstract class 1`] = `
     type: "ClassBody",
   },
   declare: false,
+  decorators: [],
   id: {
     name: "SomeClass",
     optional: false,
@@ -5117,6 +6171,7 @@ snapshot[`Plugin - Abstract class 2`] = `
     type: "ClassBody",
   },
   declare: false,
+  decorators: [],
   id: {
     name: "SomeClass",
     optional: false,
@@ -5131,6 +6186,639 @@ snapshot[`Plugin - Abstract class 2`] = `
   range: [
     0,
     55,
+  ],
+  superClass: null,
+  type: "ClassDeclaration",
+}
+`;
+
+snapshot[`Plugin - Decorators 1`] = `
+{
+  abstract: false,
+  body: {
+    body: [],
+    range: [
+      0,
+      18,
+    ],
+    type: "ClassBody",
+  },
+  declare: false,
+  decorators: [
+    {
+      expression: {
+        name: "deco",
+        optional: false,
+        range: [
+          1,
+          5,
+        ],
+        type: "Identifier",
+        typeAnnotation: undefined,
+      },
+      range: [
+        0,
+        5,
+      ],
+      type: "Decorator",
+    },
+  ],
+  id: {
+    name: "Foo",
+    optional: false,
+    range: [
+      12,
+      15,
+    ],
+    type: "Identifier",
+    typeAnnotation: undefined,
+  },
+  implements: [],
+  range: [
+    0,
+    18,
+  ],
+  superClass: null,
+  type: "ClassDeclaration",
+}
+`;
+
+snapshot[`Plugin - Decorators 2`] = `
+{
+  abstract: false,
+  body: {
+    body: [
+      {
+        accessibility: undefined,
+        computed: false,
+        declare: false,
+        decorators: [
+          {
+            expression: {
+              name: "deco",
+              optional: false,
+              range: [
+                23,
+                27,
+              ],
+              type: "Identifier",
+              typeAnnotation: undefined,
+            },
+            range: [
+              22,
+              27,
+            ],
+            type: "Decorator",
+          },
+        ],
+        key: {
+          name: "foo",
+          optional: false,
+          range: [
+            28,
+            31,
+          ],
+          type: "Identifier",
+          typeAnnotation: undefined,
+        },
+        kind: "method",
+        optional: false,
+        override: false,
+        range: [
+          22,
+          36,
+        ],
+        static: false,
+        type: "MethodDefinition",
+        value: {
+          async: false,
+          body: {
+            body: [],
+            range: [
+              34,
+              36,
+            ],
+            type: "BlockStatement",
+          },
+          generator: false,
+          id: null,
+          params: [],
+          range: [
+            22,
+            36,
+          ],
+          returnType: undefined,
+          type: "FunctionExpression",
+          typeParameters: undefined,
+        },
+      },
+    ],
+    range: [
+      10,
+      38,
+    ],
+    type: "ClassBody",
+  },
+  declare: false,
+  id: {
+    name: "Foo",
+    optional: false,
+    range: [
+      16,
+      19,
+    ],
+    type: "Identifier",
+    typeAnnotation: undefined,
+  },
+  implements: [],
+  range: [
+    10,
+    38,
+  ],
+  superClass: null,
+  superTypeArguments: undefined,
+  type: "ClassExpression",
+  typeParameters: undefined,
+}
+`;
+
+snapshot[`Plugin - Decorators 3`] = `
+{
+  accessibility: undefined,
+  computed: false,
+  declare: false,
+  decorators: [
+    {
+      expression: {
+        name: "deco",
+        optional: false,
+        range: [
+          13,
+          17,
+        ],
+        type: "Identifier",
+        typeAnnotation: undefined,
+      },
+      range: [
+        12,
+        17,
+      ],
+      type: "Decorator",
+    },
+  ],
+  key: {
+    name: "foobar",
+    optional: false,
+    range: [
+      18,
+      24,
+    ],
+    type: "Identifier",
+    typeAnnotation: undefined,
+  },
+  kind: "method",
+  optional: false,
+  override: false,
+  range: [
+    12,
+    29,
+  ],
+  static: false,
+  type: "MethodDefinition",
+  value: {
+    async: false,
+    body: {
+      body: [],
+      range: [
+        27,
+        29,
+      ],
+      type: "BlockStatement",
+    },
+    generator: false,
+    id: null,
+    params: [],
+    range: [
+      12,
+      29,
+    ],
+    returnType: undefined,
+    type: "FunctionExpression",
+    typeParameters: undefined,
+  },
+}
+`;
+
+snapshot[`Plugin - Decorators 4`] = `
+{
+  accessibility: undefined,
+  computed: false,
+  declare: false,
+  decorators: [
+    {
+      expression: {
+        name: "deco",
+        optional: false,
+        range: [
+          13,
+          17,
+        ],
+        type: "Identifier",
+        typeAnnotation: undefined,
+      },
+      range: [
+        12,
+        17,
+      ],
+      type: "Decorator",
+    },
+  ],
+  key: {
+    name: "foo",
+    optional: false,
+    range: [
+      22,
+      25,
+    ],
+    type: "Identifier",
+    typeAnnotation: undefined,
+  },
+  kind: "get",
+  optional: false,
+  override: false,
+  range: [
+    12,
+    40,
+  ],
+  static: false,
+  type: "MethodDefinition",
+  value: {
+    async: false,
+    body: {
+      body: [
+        {
+          argument: {
+            range: [
+              37,
+              38,
+            ],
+            raw: "2",
+            type: "Literal",
+            value: 2,
+          },
+          range: [
+            30,
+            38,
+          ],
+          type: "ReturnStatement",
+        },
+      ],
+      range: [
+        28,
+        40,
+      ],
+      type: "BlockStatement",
+    },
+    generator: false,
+    id: null,
+    params: [],
+    range: [
+      12,
+      40,
+    ],
+    returnType: undefined,
+    type: "FunctionExpression",
+    typeParameters: undefined,
+  },
+}
+`;
+
+snapshot[`Plugin - Decorators 5`] = `
+{
+  abstract: false,
+  body: {
+    body: [
+      {
+        accessibility: undefined,
+        computed: false,
+        declare: false,
+        decorators: [
+          {
+            expression: {
+              arguments: [
+                {
+                  range: [
+                    18,
+                    23,
+                  ],
+                  raw: '"arg"',
+                  type: "Literal",
+                  value: "arg",
+                },
+              ],
+              callee: {
+                name: "deco",
+                optional: false,
+                range: [
+                  13,
+                  17,
+                ],
+                type: "Identifier",
+                typeAnnotation: undefined,
+              },
+              optional: false,
+              range: [
+                13,
+                24,
+              ],
+              type: "CallExpression",
+              typeArguments: null,
+            },
+            range: [
+              12,
+              24,
+            ],
+            type: "Decorator",
+          },
+        ],
+        key: {
+          name: "foo",
+          optional: false,
+          range: [
+            25,
+            28,
+          ],
+          type: "Identifier",
+          typeAnnotation: undefined,
+        },
+        optional: false,
+        override: false,
+        range: [
+          12,
+          37,
+        ],
+        readonly: false,
+        static: false,
+        type: "PropertyDefinition",
+        typeAnnotation: {
+          range: [
+            28,
+            36,
+          ],
+          type: "TSTypeAnnotation",
+          typeAnnotation: {
+            range: [
+              30,
+              36,
+            ],
+            type: "TSStringKeyword",
+          },
+        },
+        value: null,
+      },
+      {
+        accessibility: undefined,
+        computed: false,
+        declare: false,
+        decorators: [],
+        key: {
+          name: "constructor",
+          optional: false,
+          range: [
+            38,
+            49,
+          ],
+          type: "Identifier",
+          typeAnnotation: undefined,
+        },
+        kind: "constructor",
+        optional: false,
+        override: false,
+        range: [
+          38,
+          72,
+        ],
+        static: false,
+        type: "MethodDefinition",
+        value: {
+          async: false,
+          body: {
+            body: [
+              {
+                expression: {
+                  left: {
+                    computed: false,
+                    object: {
+                      range: [
+                        54,
+                        58,
+                      ],
+                      type: "ThisExpression",
+                    },
+                    optional: false,
+                    property: {
+                      name: "foo",
+                      optional: false,
+                      range: [
+                        59,
+                        62,
+                      ],
+                      type: "Identifier",
+                      typeAnnotation: undefined,
+                    },
+                    range: [
+                      54,
+                      62,
+                    ],
+                    type: "MemberExpression",
+                  },
+                  operator: "=",
+                  range: [
+                    54,
+                    70,
+                  ],
+                  right: {
+                    range: [
+                      65,
+                      70,
+                    ],
+                    raw: '"foo"',
+                    type: "Literal",
+                    value: "foo",
+                  },
+                  type: "AssignmentExpression",
+                },
+                range: [
+                  54,
+                  70,
+                ],
+                type: "ExpressionStatement",
+              },
+            ],
+            range: [
+              52,
+              72,
+            ],
+            type: "BlockStatement",
+          },
+          generator: false,
+          id: null,
+          params: [],
+          range: [
+            38,
+            72,
+          ],
+          returnType: undefined,
+          type: "FunctionExpression",
+          typeParameters: undefined,
+        },
+      },
+    ],
+    range: [
+      0,
+      74,
+    ],
+    type: "ClassBody",
+  },
+  declare: false,
+  decorators: [],
+  id: {
+    name: "Foo",
+    optional: false,
+    range: [
+      6,
+      9,
+    ],
+    type: "Identifier",
+    typeAnnotation: undefined,
+  },
+  implements: [],
+  range: [
+    0,
+    74,
+  ],
+  superClass: null,
+  type: "ClassDeclaration",
+}
+`;
+
+snapshot[`Plugin - Decorators 6`] = `
+{
+  abstract: false,
+  body: {
+    body: [
+      {
+        accessibility: undefined,
+        computed: false,
+        declare: false,
+        decorators: [],
+        key: {
+          name: "foo",
+          optional: false,
+          range: [
+            12,
+            15,
+          ],
+          type: "Identifier",
+          typeAnnotation: undefined,
+        },
+        kind: "method",
+        optional: false,
+        override: false,
+        range: [
+          12,
+          37,
+        ],
+        static: false,
+        type: "MethodDefinition",
+        value: {
+          async: false,
+          body: {
+            body: [],
+            range: [
+              35,
+              37,
+            ],
+            type: "BlockStatement",
+          },
+          generator: false,
+          id: null,
+          params: [
+            {
+              decorators: [
+                {
+                  expression: {
+                    name: "deco",
+                    optional: false,
+                    range: [
+                      17,
+                      21,
+                    ],
+                    type: "Identifier",
+                    typeAnnotation: undefined,
+                  },
+                  range: [
+                    16,
+                    21,
+                  ],
+                  type: "Decorator",
+                },
+              ],
+              name: "foo",
+              optional: false,
+              range: [
+                22,
+                25,
+              ],
+              type: "Identifier",
+              typeAnnotation: {
+                range: [
+                  25,
+                  33,
+                ],
+                type: "TSTypeAnnotation",
+                typeAnnotation: {
+                  range: [
+                    27,
+                    33,
+                  ],
+                  type: "TSStringKeyword",
+                },
+              },
+            },
+          ],
+          range: [
+            12,
+            37,
+          ],
+          returnType: undefined,
+          type: "FunctionExpression",
+          typeParameters: undefined,
+        },
+      },
+    ],
+    range: [
+      0,
+      39,
+    ],
+    type: "ClassBody",
+  },
+  declare: false,
+  decorators: [],
+  id: {
+    name: "Foo",
+    optional: false,
+    range: [
+      6,
+      9,
+    ],
+    type: "Identifier",
+    typeAnnotation: undefined,
+  },
+  implements: [],
+  range: [
+    0,
+    39,
   ],
   superClass: null,
   type: "ClassDeclaration",
@@ -7196,6 +8884,7 @@ snapshot[`Plugin - TSInterfaceDeclaration 12`] = `
               type: "Identifier",
               typeAnnotation: undefined,
             },
+            decorators: [],
             range: [
               30,
               44,
@@ -9220,6 +10909,7 @@ snapshot[`Plugin - TSTupleType + TSArrayType 5`] = `
           type: "Identifier",
           typeAnnotation: undefined,
         },
+        decorators: [],
         range: [
           10,
           15,

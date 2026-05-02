@@ -1,8 +1,14 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
-#![allow(non_camel_case_types)]
-#![allow(non_upper_case_globals)]
-#![allow(clippy::undocumented_unsafe_blocks)]
+#![allow(non_camel_case_types, reason = "matches Node-API naming conventions")]
+#![allow(
+  non_upper_case_globals,
+  reason = "matches Node-API naming conventions"
+)]
+#![allow(
+  clippy::undocumented_unsafe_blocks,
+  reason = "pervasive FFI unsafe blocks throughout NAPI implementation"
+)]
 #![deny(clippy::missing_safety_doc)]
 
 //! Symbols to be exported are now defined in this JSON file.
@@ -22,26 +28,31 @@ pub mod util;
 pub mod uv;
 
 use core::ptr::NonNull;
+use std::borrow::Cow;
+use std::cell::Cell;
 use std::cell::RefCell;
 use std::collections::HashMap;
 pub use std::ffi::CStr;
 pub use std::os::raw::c_char;
 pub use std::os::raw::c_void;
+use std::path::Path;
 use std::path::PathBuf;
 pub use std::ptr;
 use std::rc::Rc;
 use std::thread_local;
 
+use deno_core::ExternalOpsTracker;
+use deno_core::OpState;
+use deno_core::V8CrossThreadTaskSpawner;
 use deno_core::op2;
 use deno_core::parking_lot::RwLock;
 use deno_core::url::Url;
 // Expose common stuff for ease of use.
 // `use deno_napi::*`
 pub use deno_core::v8;
-use deno_core::ExternalOpsTracker;
-use deno_core::OpState;
-use deno_core::V8CrossThreadTaskSpawner;
 use deno_permissions::PermissionCheckError;
+pub use denort_helper::DenoRtNativeAddonLoader;
+pub use denort_helper::DenoRtNativeAddonLoaderRc;
 #[cfg(unix)]
 use libloading::os::unix::*;
 #[cfg(windows)]
@@ -56,6 +67,9 @@ pub enum NApiError {
   #[class(type)]
   #[error("Invalid path")]
   InvalidPath,
+  #[class(type)]
+  #[error(transparent)]
+  DenoRtLoad(#[from] denort_helper::LoadError),
   #[class(type)]
   #[error(transparent)]
   LibLoading(#[from] libloading::Error),
@@ -280,7 +294,7 @@ pub struct napi_extended_error_info {
   pub error_message: *const c_char,
   pub engine_reserved: *mut c_void,
   pub engine_error_code: i32,
-  pub error_code: napi_status,
+  pub error_code: Cell<napi_status>,
 }
 
 #[repr(C)]
@@ -295,13 +309,53 @@ pub struct napi_node_version {
 pub trait PendingNapiAsyncWork: FnOnce() + Send + 'static {}
 impl<T> PendingNapiAsyncWork for T where T: FnOnce() + Send + 'static {}
 
+/// A pending NAPI finalizer callback to be called at environment shutdown.
+/// This matches Node.js's behavior of tracking references with finalize
+/// callbacks and calling them during `napi_env::DeleteMe()`.
+pub struct PendingNapiFinalizer {
+  pub env: napi_env,
+  pub cb: napi_finalize,
+  pub data: *mut c_void,
+  pub hint: *mut c_void,
+}
+
 pub struct NapiState {
   // Thread safe functions.
   pub env_cleanup_hooks: Rc<RefCell<Vec<(napi_cleanup_hook, *mut c_void)>>>,
+  /// Tracked finalizer callbacks that should be called at shutdown.
+  /// Matches Node.js `finalizing_reflist` / `reflist` behavior.
+  pub ref_tracker: Rc<RefCell<Vec<PendingNapiFinalizer>>>,
+  pub env_shared_ptrs: Vec<*mut EnvShared>,
+  /// Raw Env pointers for teardown of external string finalizers.
+  pub env_ptrs: Vec<*mut Env>,
+  /// Per-isolate V8 Private key for napi_wrap/napi_unwrap.
+  /// Node.js stores this per-isolate so that objects wrapped by one addon
+  /// can be unwrapped by another. Lazily initialized on first addon load.
+  pub napi_wrap: Option<v8::Global<v8::Private>>,
+  /// Per-isolate V8 Private key for type tags.
+  pub type_tag: Option<v8::Global<v8::Private>>,
 }
+
+// SAFETY: finalizer pointers in env_shared_ptrs are only accessed during Drop
+// on the same thread that created them.
+unsafe impl Send for NapiState {}
 
 impl Drop for NapiState {
   fn drop(&mut self) {
+    // Drain external string finalizers from all tracked Envs and remove
+    // their entries from the global EXTERNAL_STRING_ENVS map. This
+    // prevents stale Env pointer dereferences if V8 GCs the external
+    // string after the Env is gone.
+    for env_ptr in &self.env_ptrs {
+      let env = unsafe { &mut **env_ptr };
+      let keys: Vec<usize> =
+        env.external_string_finalizers.keys().copied().collect();
+      for key in keys {
+        crate::js_native_api::remove_external_string_env_entry(key);
+      }
+      env.external_string_finalizers.clear();
+    }
+
     let hooks = {
       let h = self.env_cleanup_hooks.borrow_mut();
       h.clone()
@@ -316,7 +370,7 @@ impl Drop for NapiState {
         .env_cleanup_hooks
         .borrow()
         .iter()
-        .any(|pair| pair.0 == hook.0 && pair.1 == hook.1)
+        .any(|pair| std::ptr::fn_addr_eq(pair.0, hook.0) && pair.1 == hook.1)
       {
         continue;
       }
@@ -326,10 +380,39 @@ impl Drop for NapiState {
       }
 
       {
-        self
-          .env_cleanup_hooks
-          .borrow_mut()
-          .retain(|pair| !(pair.0 == hook.0 && pair.1 == hook.1));
+        self.env_cleanup_hooks.borrow_mut().retain(|pair| {
+          !(std::ptr::fn_addr_eq(pair.0, hook.0) && pair.1 == hook.1)
+        });
+      }
+    }
+
+    // Note: remaining ref tracker entries are not finalized here because
+    // V8 is no longer alive. MainWorker::run_napi_ref_finalizers() handles
+    // this by calling finalizers directly while V8 is still alive.
+
+    // Call instance data finalize callbacks for all registered EnvShared instances.
+    // Each entry should be unique since each op_napi_open creates a fresh EnvShared.
+    debug_assert!(
+      {
+        let mut seen = std::collections::HashSet::new();
+        self.env_shared_ptrs.iter().all(|p| seen.insert(*p))
+      },
+      "env_shared_ptrs contains duplicate entries"
+    );
+    for env_shared_ptr in &self.env_shared_ptrs {
+      // SAFETY: env_shared_ptr was created via Box::into_raw in op_napi_open
+      // and the native module library is kept alive (via std::mem::forget).
+      let env_shared = unsafe { &mut **env_shared_ptr };
+      if let Some(instance_data) = env_shared.instance_data.take()
+        && let Some(cb) = instance_data.finalize_cb
+      {
+        unsafe {
+          cb(
+            std::ptr::null_mut(),
+            instance_data.data,
+            instance_data.finalize_hint,
+          );
+        }
       }
     }
   }
@@ -375,52 +458,73 @@ impl EnvShared {
 #[repr(C)]
 pub struct Env {
   context: NonNull<v8::Context>,
-  pub isolate_ptr: *mut v8::Isolate,
+  pub isolate_ptr: v8::UnsafeRawIsolatePtr,
   pub open_handle_scopes: usize,
+  pub open_callback_scopes: usize,
   pub shared: *mut EnvShared,
   pub async_work_sender: V8CrossThreadTaskSpawner,
   cleanup_hooks: Rc<RefCell<Vec<(napi_cleanup_hook, *mut c_void)>>>,
+  ref_tracker: Rc<RefCell<Vec<PendingNapiFinalizer>>>,
   external_ops_tracker: ExternalOpsTracker,
   pub last_error: napi_extended_error_info,
   pub last_exception: Option<v8::Global<v8::Value>>,
   pub global: v8::Global<v8::Object>,
-  pub buffer_constructor: v8::Global<v8::Function>,
+  pub create_buffer: v8::Global<v8::Function>,
   pub report_error: v8::Global<v8::Function>,
+  pub async_hooks_init: v8::Global<v8::Function>,
+  pub async_hooks_before: v8::Global<v8::Function>,
+  pub async_hooks_after: v8::Global<v8::Function>,
+  pub async_hooks_destroy: v8::Global<v8::Function>,
+  pub next_async_id: i64,
+  pub external_string_finalizers: HashMap<usize, (napi_finalize, *mut c_void)>,
 }
 
 unsafe impl Send for Env {}
 unsafe impl Sync for Env {}
 
 impl Env {
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "construction")]
   pub fn new(
-    isolate_ptr: *mut v8::Isolate,
+    isolate_ptr: v8::UnsafeRawIsolatePtr,
     context: v8::Global<v8::Context>,
     global: v8::Global<v8::Object>,
-    buffer_constructor: v8::Global<v8::Function>,
+    create_buffer: v8::Global<v8::Function>,
     report_error: v8::Global<v8::Function>,
+    async_hooks_init: v8::Global<v8::Function>,
+    async_hooks_before: v8::Global<v8::Function>,
+    async_hooks_after: v8::Global<v8::Function>,
+    async_hooks_destroy: v8::Global<v8::Function>,
     sender: V8CrossThreadTaskSpawner,
     cleanup_hooks: Rc<RefCell<Vec<(napi_cleanup_hook, *mut c_void)>>>,
+    ref_tracker: Rc<RefCell<Vec<PendingNapiFinalizer>>>,
     external_ops_tracker: ExternalOpsTracker,
   ) -> Self {
     Self {
       isolate_ptr,
       context: context.into_raw(),
       global,
-      buffer_constructor,
+      create_buffer,
       report_error,
+      async_hooks_init,
+      async_hooks_before,
+      async_hooks_after,
+      async_hooks_destroy,
+      next_async_id: 1,
       shared: std::ptr::null_mut(),
       open_handle_scopes: 0,
+      open_callback_scopes: 0,
       async_work_sender: sender,
       cleanup_hooks,
+      ref_tracker,
       external_ops_tracker,
       last_error: napi_extended_error_info {
         error_message: std::ptr::null(),
         engine_reserved: std::ptr::null_mut(),
         engine_error_code: 0,
-        error_code: napi_ok,
+        error_code: Cell::new(napi_ok),
       },
       last_exception: None,
+      external_string_finalizers: HashMap::new(),
     }
   }
 
@@ -441,22 +545,19 @@ impl Env {
   #[inline]
   pub fn isolate(&mut self) -> &mut v8::Isolate {
     // SAFETY: Lifetime of `Isolate` is longer than `Env`.
-    unsafe { &mut *self.isolate_ptr }
+    unsafe {
+      v8::Isolate::ref_from_raw_isolate_ptr_mut_unchecked(&mut self.isolate_ptr)
+    }
   }
 
-  #[inline]
-  pub fn scope(&self) -> v8::CallbackScope {
-    // SAFETY: `v8::Local` is always non-null pointer; the `HandleScope` is
+  pub fn context<'s>(&'s self) -> v8::Local<'s, v8::Context> {
+    // SAFETY: `v8::Local` is always non-null pointer; the `PinScope<'_, '_>` is
     // already on the stack, but we don't have access to it.
-    let context = unsafe {
+    unsafe {
       std::mem::transmute::<NonNull<v8::Context>, v8::Local<v8::Context>>(
         self.context,
       )
-    };
-    // SAFETY: there must be a `HandleScope` on the stack, this is ensured because
-    // we are in a V8 callback or the module has already opened a `HandleScope`
-    // using `napi_open_handle_scope`.
-    unsafe { v8::CallbackScope::new(context) }
+    }
   }
 
   pub fn threadsafe_function_ref(&mut self) {
@@ -473,7 +574,10 @@ impl Env {
     data: *mut c_void,
   ) {
     let mut hooks = self.cleanup_hooks.borrow_mut();
-    if hooks.iter().any(|pair| pair.0 == hook && pair.1 == data) {
+    if hooks
+      .iter()
+      .any(|pair| std::ptr::fn_addr_eq(pair.0, hook) && pair.1 == data)
+    {
       panic!("Cannot register cleanup hook with same data twice");
     }
     hooks.push((hook, data));
@@ -487,7 +591,7 @@ impl Env {
     let mut hooks = self.cleanup_hooks.borrow_mut();
     match hooks
       .iter()
-      .rposition(|&pair| pair.0 == hook && pair.1 == data)
+      .rposition(|&pair| std::ptr::fn_addr_eq(pair.0, hook) && pair.1 == data)
     {
       Some(index) => {
         hooks.remove(index);
@@ -495,36 +599,55 @@ impl Env {
       None => panic!("Cannot remove cleanup hook which was not registered"),
     }
   }
-}
 
-deno_core::extension!(deno_napi,
-  parameters = [P: NapiPermissions],
-  ops = [
-    op_napi_open<P>
-  ],
-  state = |state| {
-    state.put(NapiState {
-      env_cleanup_hooks: Rc::new(RefCell::new(vec![])),
+  pub fn add_ref_finalizer(
+    &self,
+    env: napi_env,
+    cb: napi_finalize,
+    data: *mut c_void,
+    hint: *mut c_void,
+  ) {
+    self.ref_tracker.borrow_mut().push(PendingNapiFinalizer {
+      env,
+      cb,
+      data,
+      hint,
     });
-  },
-);
+  }
 
-pub trait NapiPermissions {
-  #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
-  fn check(&mut self, path: &str) -> Result<PathBuf, PermissionCheckError>;
-}
-
-// NOTE(bartlomieju): for now, NAPI uses `--allow-ffi` flag, but that might
-// change in the future.
-impl NapiPermissions for deno_permissions::PermissionsContainer {
-  #[inline(always)]
-  fn check(&mut self, path: &str) -> Result<PathBuf, PermissionCheckError> {
-    deno_permissions::PermissionsContainer::check_ffi(self, path)
+  pub fn remove_ref_finalizer(&self, data: *mut c_void) {
+    let mut tracker = self.ref_tracker.borrow_mut();
+    if let Some(pos) = tracker.iter().rposition(|f| f.data == data) {
+      tracker.remove(pos);
+    }
   }
 }
 
+deno_core::extension!(deno_napi,
+  ops = [
+    op_napi_open
+  ],
+  options = {
+    deno_rt_native_addon_loader: Option<DenoRtNativeAddonLoaderRc>,
+  },
+  state = |state, options| {
+    state.put(NapiState {
+      env_cleanup_hooks: Rc::new(RefCell::new(vec![])),
+      ref_tracker: Rc::new(RefCell::new(vec![])),
+      env_shared_ptrs: vec![],
+      env_ptrs: vec![],
+      napi_wrap: None,
+      type_tag: None,
+    });
+    if let Some(loader) = options.deno_rt_native_addon_loader {
+      state.put(loader);
+    }
+  },
+);
+
 unsafe impl Sync for NapiModuleHandle {}
 unsafe impl Send for NapiModuleHandle {}
+
 #[derive(Clone, Copy)]
 struct NapiModuleHandle(*const NapiModule);
 
@@ -533,41 +656,76 @@ static NAPI_LOADED_MODULES: std::sync::LazyLock<
 > = std::sync::LazyLock::new(|| RwLock::new(HashMap::new()));
 
 #[op2(reentrant, stack_trace)]
-fn op_napi_open<NP, 'scope>(
-  scope: &mut v8::HandleScope<'scope>,
-  isolate: *mut v8::Isolate,
+fn op_napi_open<'scope>(
+  scope: &mut v8::PinScope<'scope, '_>,
+  isolate: &mut v8::Isolate,
   op_state: Rc<RefCell<OpState>>,
-  #[string] path: String,
+  #[string] path: &str,
   global: v8::Local<'scope, v8::Object>,
-  buffer_constructor: v8::Local<'scope, v8::Function>,
+  create_buffer: v8::Local<'scope, v8::Function>,
   report_error: v8::Local<'scope, v8::Function>,
-) -> Result<v8::Local<'scope, v8::Value>, NApiError>
-where
-  NP: NapiPermissions + 'static,
-{
+  async_hooks_init: v8::Local<'scope, v8::Function>,
+  async_hooks_before: v8::Local<'scope, v8::Function>,
+  async_hooks_after: v8::Local<'scope, v8::Function>,
+  async_hooks_destroy: v8::Local<'scope, v8::Function>,
+) -> Result<v8::Local<'scope, v8::Value>, NApiError> {
   // We must limit the OpState borrow because this function can trigger a
   // re-borrow through the NAPI module.
-  let (async_work_sender, cleanup_hooks, external_ops_tracker, path) = {
+  let (
+    async_work_sender,
+    cleanup_hooks,
+    ref_tracker,
+    external_ops_tracker,
+    deno_rt_native_addon_loader,
+    path,
+  ) = {
     let mut op_state = op_state.borrow_mut();
-    let permissions = op_state.borrow_mut::<NP>();
-    let path = permissions.check(&path)?;
+    let permissions =
+      op_state.borrow_mut::<deno_permissions::PermissionsContainer>();
+    let path = permissions.check_ffi(Cow::Borrowed(Path::new(path)))?;
     let napi_state = op_state.borrow::<NapiState>();
     (
       op_state.borrow::<V8CrossThreadTaskSpawner>().clone(),
       napi_state.env_cleanup_hooks.clone(),
+      napi_state.ref_tracker.clone(),
       op_state.external_ops_tracker.clone(),
+      op_state.try_borrow::<DenoRtNativeAddonLoaderRc>().cloned(),
       path,
     )
   };
 
-  let napi_wrap_name = v8::String::new(scope, "napi_wrap").unwrap();
-  let napi_wrap = v8::Private::new(scope, Some(napi_wrap_name));
-  let napi_wrap = v8::Global::new(scope, napi_wrap);
+  // Use per-isolate Private keys (like Node.js) so that objects wrapped by one
+  // addon can be unwrapped by another. Lazily create on first addon load.
+  let (napi_wrap, type_tag) = {
+    let mut op_state_mut = op_state.borrow_mut();
+    let napi_state = op_state_mut.borrow_mut::<NapiState>();
+    let napi_wrap = match &napi_state.napi_wrap {
+      Some(existing) => existing.clone(),
+      None => {
+        let name = v8::String::new(scope, "napi_wrap").unwrap();
+        let key = v8::Private::new(scope, Some(name));
+        let global = v8::Global::new(scope, key);
+        napi_state.napi_wrap = Some(global.clone());
+        global
+      }
+    };
+    let type_tag = match &napi_state.type_tag {
+      Some(existing) => existing.clone(),
+      None => {
+        let name = v8::String::new(scope, "type_tag").unwrap();
+        let key = v8::Private::new(scope, Some(name));
+        let global = v8::Global::new(scope, key);
+        napi_state.type_tag = Some(global.clone());
+        global
+      }
+    };
+    (napi_wrap, type_tag)
+  };
 
-  let type_tag_name = v8::String::new(scope, "type_tag").unwrap();
-  let type_tag = v8::Private::new(scope, Some(type_tag_name));
-  let type_tag = v8::Global::new(scope, type_tag);
-
+  #[allow(
+    clippy::disallowed_methods,
+    reason = "napi requires file path URL conversion"
+  )]
   let url_filename =
     Url::from_file_path(&path).map_err(|_| NApiError::InvalidPath)?;
   let env_shared =
@@ -575,30 +733,52 @@ where
 
   let ctx = scope.get_current_context();
   let mut env = Env::new(
-    isolate,
+    unsafe { isolate.as_raw_isolate_ptr() },
     v8::Global::new(scope, ctx),
     v8::Global::new(scope, global),
-    v8::Global::new(scope, buffer_constructor),
+    v8::Global::new(scope, create_buffer),
     v8::Global::new(scope, report_error),
+    v8::Global::new(scope, async_hooks_init),
+    v8::Global::new(scope, async_hooks_before),
+    v8::Global::new(scope, async_hooks_after),
+    v8::Global::new(scope, async_hooks_destroy),
     async_work_sender,
     cleanup_hooks,
+    ref_tracker,
     external_ops_tracker,
   );
   env.shared = Box::into_raw(Box::new(env_shared));
-  let env_ptr = Box::into_raw(Box::new(env)) as _;
+  // Track the EnvShared pointer so we can call instance data finalize
+  // callbacks when the runtime exits. Each op_napi_open call creates a
+  // fresh EnvShared, so entries are always unique.
+  let env_ptr = Box::into_raw(Box::new(env));
+  {
+    let mut state = op_state.borrow_mut();
+    let napi_state = state.borrow_mut::<NapiState>();
+    napi_state
+      .env_shared_ptrs
+      .push(unsafe { (*env_ptr).shared });
+    napi_state.env_ptrs.push(env_ptr);
+  }
+  let env_ptr = env_ptr as _;
 
   #[cfg(unix)]
   let flags = RTLD_LAZY;
   #[cfg(not(unix))]
   let flags = 0x00000008;
 
+  let real_path = match deno_rt_native_addon_loader {
+    Some(loader) => loader.load_and_resolve_path(&path)?,
+    None => Cow::Borrowed(path.as_ref()),
+  };
+
   // SAFETY: opening a DLL calls dlopen
   #[cfg(unix)]
-  let library = unsafe { Library::open(Some(&path), flags) }?;
+  let library = unsafe { Library::open(Some(real_path.as_ref()), flags) }?;
 
   // SAFETY: opening a DLL calls dlopen
   #[cfg(not(unix))]
-  let library = unsafe { Library::load_with_flags(&path, flags) }?;
+  let library = unsafe { Library::load_with_flags(real_path.as_ref(), flags) }?;
 
   let maybe_module = MODULE_TO_REGISTER.with(|cell| {
     let mut slot = cell.borrow_mut();
@@ -609,16 +789,17 @@ where
   let exports = v8::Object::new(scope);
 
   let maybe_exports = if let Some(module_to_register) = maybe_module {
-    NAPI_LOADED_MODULES
-      .write()
-      .insert(path, NapiModuleHandle(module_to_register));
+    NAPI_LOADED_MODULES.write().insert(
+      real_path.to_path_buf(),
+      NapiModuleHandle(module_to_register),
+    );
     // SAFETY: napi_register_module guarantees that `module_to_register` is valid.
     let nm = unsafe { &*module_to_register };
     assert_eq!(nm.nm_version, 1);
     // SAFETY: we are going blind, calling the register function on the other side.
     unsafe { (nm.nm_register_func)(env_ptr, exports.into()) }
   } else if let Some(module_to_register) =
-    { NAPI_LOADED_MODULES.read().get(&path).copied() }
+    { NAPI_LOADED_MODULES.read().get(real_path.as_ref()).copied() }
   {
     // SAFETY: this originated from `napi_register_module`, so the
     // pointer should still be valid.
@@ -626,14 +807,19 @@ where
     assert_eq!(nm.nm_version, 1);
     // SAFETY: we are going blind, calling the register function on the other side.
     unsafe { (nm.nm_register_func)(env_ptr, exports.into()) }
-  } else if let Ok(init) = unsafe {
-    library.get::<napi_register_module_v1>(b"napi_register_module_v1")
-  } {
-    // Initializer callback.
-    // SAFETY: we are going blind, calling the register function on the other side.
-    unsafe { init(env_ptr, exports.into()) }
   } else {
-    return Err(NApiError::ModuleNotFound(path));
+    match unsafe {
+      library.get::<napi_register_module_v1>(b"napi_register_module_v1")
+    } {
+      Ok(init) => {
+        // Initializer callback.
+        // SAFETY: we are going blind, calling the register function on the other side.
+        unsafe { init(env_ptr, exports.into()) }
+      }
+      _ => {
+        return Err(NApiError::ModuleNotFound(path.into_owned()));
+      }
+    }
   };
 
   let exports = maybe_exports.unwrap_or(exports.into());
@@ -645,7 +831,7 @@ where
   Ok(exports)
 }
 
-#[allow(clippy::print_stdout)]
+#[allow(clippy::print_stdout, reason = "cargo build script output")]
 pub fn print_linker_flags(name: &str) {
   let symbols_path =
     include_str!(concat!(env!("OUT_DIR"), "/napi_symbol_path.txt"));

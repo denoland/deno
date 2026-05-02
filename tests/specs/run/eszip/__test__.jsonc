@@ -1,0 +1,5 @@
+{
+  "args": "run --eszip-internal-do-not-use src/main.ts#a.eszip,b.eszip",
+  "exitCode": 0,
+  "output": "main.out"
+}

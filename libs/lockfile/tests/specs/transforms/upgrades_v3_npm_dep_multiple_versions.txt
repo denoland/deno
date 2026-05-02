@@ -1,0 +1,63 @@
+# original
+{
+  "version": "3",
+  "packages": {
+    "npm": {
+      "@a/pkg@2.1.5": {
+        "integrity": "sha512-a1",
+        "dependencies": {
+          "@b/pkg": "@b/pkg@2.0.5",
+          "@c/pkg": "@c/pkg@1.0.0"
+        }
+      },
+      "@b/pkg@2.0.5": {
+        "integrity": "sha512-b1",
+        "dependencies": {
+          "@c/pkg": "@c/pkg@2.0.0"
+        }
+      },
+      "@c/pkg@1.0.0": {
+        "integrity": "sha512-c1",
+        "dependencies": {}
+      },
+      "@c/pkg@2.0.0": {
+        "integrity": "sha512-c2",
+        "dependencies": {}
+      }
+    }
+  },
+  "remote": {}
+}
+
+# output
+{
+  "version": "5",
+  "npm": {
+    "@a/pkg@2.1.5": {
+      "integrity": "sha512-a1",
+      "dependencies": [
+        "@c/pkg@1.0.0"
+      ],
+      "optionalDependencies": [
+        "@b/pkg"
+      ],
+      "os": ["darwin", "linux", "win32"],
+      "cpu": ["x86_64"],
+      "tarball": "https://fake-registry.com/a/pkg-2.1.5.tgz"
+    },
+    "@b/pkg@2.0.5": {
+      "integrity": "sha512-b1",
+      "dependencies": [
+        "@c/pkg@2.0.0"
+      ],
+      "deprecated": true,
+      "tarball": "https://fake-registry.com/b/pkg-2.0.5.tgz"
+    },
+    "@c/pkg@1.0.0": {
+      "integrity": "sha512-c1"
+    },
+    "@c/pkg@2.0.0": {
+      "integrity": "sha512-c2"
+    }
+  }
+}

@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 // deno-lint-ignore-file no-console
 
@@ -28,7 +28,9 @@ Deno.test(async function functionParameterBindingSuccess() {
   assertEquals(count, 1);
 });
 
-Deno.test(async function stringifyAndEvalNonFunctions() {
+// TODO(bartlomieju): this test is not valid, because Node.js timers are
+// used as the default and they don't support string eval callbacks.
+Deno.test.ignore(async function stringifyAndEvalNonFunctions() {
   // eval can only access global scope
   const global = globalThis as unknown as {
     globalPromise: ReturnType<typeof Promise.withResolvers<void>>;
@@ -65,7 +67,9 @@ Deno.test(async function timeoutSuccess() {
   assertEquals(count, 1);
 });
 
-Deno.test(async function timeoutEvalNoScopeLeak() {
+// TODO(bartlomieju): this test is not valid, because Node.js timers are
+// used as the default and they don't support string eval callbacks.
+Deno.test.ignore(async function timeoutEvalNoScopeLeak() {
   // eval can only access global scope
   const global = globalThis as unknown as {
     globalPromise: ReturnType<typeof Promise.withResolvers<Error>>;
@@ -86,7 +90,9 @@ Deno.test(async function timeoutEvalNoScopeLeak() {
   Reflect.deleteProperty(global, "globalPromise");
 });
 
-Deno.test(async function evalPrimordial() {
+// TODO(bartlomieju): this test is not valid, because Node.js timers are
+// used as the default and they don't support string eval callbacks.
+Deno.test.ignore(async function evalPrimordial() {
   const global = globalThis as unknown as {
     globalPromise: ReturnType<typeof Promise.withResolvers<void>>;
   };
@@ -300,7 +306,9 @@ Deno.test(async function fireCallbackImmediatelyWhenDelayOverMaxValue() {
   assertEquals(count, 1);
 });
 
-Deno.test(async function timeoutCallbackThis() {
+// TODO(bartlomieju): this test is not valid, because Node.js timers are
+// used as the default and they bind `this` to the Timeout object.
+Deno.test.ignore(async function timeoutCallbackThis() {
   const { promise, resolve } = Promise.withResolvers<void>();
   let capturedThis: unknown;
   const obj = {
@@ -314,7 +322,9 @@ Deno.test(async function timeoutCallbackThis() {
   assertEquals(capturedThis, globalThis);
 });
 
-Deno.test(async function timeoutBindThis() {
+// TODO(bartlomieju): this test is not valid, because Node.js timers are
+// used as the default and they don't check `this` binding.
+Deno.test.ignore(async function timeoutBindThis() {
   const thisCheckPassed = [null, undefined, globalThis];
 
   const thisCheckFailed = [
@@ -362,7 +372,9 @@ Deno.test(async function timeoutBindThis() {
   }
 });
 
-Deno.test(function clearTimeoutShouldConvertToNumber() {
+// TODO(bartlomieju): this test is not valid, because Node.js timers are
+// used as the default and they use `+timeout` to convert, not webidl.
+Deno.test.ignore(function clearTimeoutShouldConvertToNumber() {
   let called = false;
   const obj = {
     valueOf(): number {
@@ -374,7 +386,9 @@ Deno.test(function clearTimeoutShouldConvertToNumber() {
   assert(called);
 });
 
-Deno.test(function setTimeoutShouldThrowWithBigint() {
+// TODO(bartlomieju): this test is not valid, because Node.js timers are
+// used as the default and they don't throw on BigInt delay.
+Deno.test.ignore(function setTimeoutShouldThrowWithBigint() {
   let hasThrown = 0;
   try {
     setTimeout(() => {}, (1n as unknown) as number);
@@ -389,7 +403,9 @@ Deno.test(function setTimeoutShouldThrowWithBigint() {
   assertEquals(hasThrown, 2);
 });
 
-Deno.test(function clearTimeoutShouldThrowWithBigint() {
+// TODO(bartlomieju): this test is not valid, because Node.js timers are
+// used as the default and clearTimeout uses `+timeout` to convert.
+Deno.test.ignore(function clearTimeoutShouldThrowWithBigint() {
   let hasThrown = 0;
   try {
     clearTimeout((1n as unknown) as number);
@@ -409,7 +425,9 @@ Deno.test(function testFunctionName() {
   assertEquals(clearInterval.name, "clearInterval");
 });
 
-Deno.test(function testFunctionParamsLength() {
+// TODO(bartlomieju): this test is not valid, because Node.js timers are
+// used as the default and they have different function parameter lengths.
+Deno.test.ignore(function testFunctionParamsLength() {
   assertEquals(setTimeout.length, 1);
   assertEquals(setInterval.length, 1);
   assertEquals(clearTimeout.length, 0);
@@ -777,4 +795,43 @@ Deno.test({
   fn: () => {
     AbortSignal.timeout(2000);
   },
+});
+
+// TODO(bartlomieju): this test is not valid, because Node.js timers are
+// used as the default and they don't support string eval callbacks.
+Deno.test.ignore(async function setTimeoutWithStringCallback() {
+  const global = globalThis as unknown as {
+    timeoutStringTest: number;
+    timeoutStringPromise: ReturnType<typeof Promise.withResolvers<void>>;
+  };
+  global.timeoutStringTest = 0;
+  global.timeoutStringPromise = Promise.withResolvers<void>();
+  setTimeout(
+    "globalThis.timeoutStringTest = 42; globalThis.timeoutStringPromise.resolve();",
+    10,
+  );
+  await global.timeoutStringPromise.promise;
+  assertEquals(global.timeoutStringTest, 42);
+  Reflect.deleteProperty(global, "timeoutStringTest");
+  Reflect.deleteProperty(global, "timeoutStringPromise");
+});
+
+// TODO(bartlomieju): this test is not valid, because Node.js timers are
+// used as the default and they don't support string eval callbacks.
+Deno.test.ignore(async function setIntervalWithStringCallback() {
+  const global = globalThis as unknown as {
+    intervalStringTest: number;
+    intervalStringPromise: ReturnType<typeof Promise.withResolvers<void>>;
+  };
+  global.intervalStringTest = 0;
+  global.intervalStringPromise = Promise.withResolvers<void>();
+  const id = setInterval(
+    "globalThis.intervalStringTest += 10; if (globalThis.intervalStringTest >= 20) globalThis.intervalStringPromise.resolve();",
+    10,
+  );
+  global.intervalStringPromise.promise.then(() => clearInterval(id));
+  await global.intervalStringPromise.promise;
+  assert(global.intervalStringTest >= 20);
+  Reflect.deleteProperty(global, "intervalStringTest");
+  Reflect.deleteProperty(global, "intervalStringPromise");
 });

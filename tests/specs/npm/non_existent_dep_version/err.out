@@ -1,0 +1,5 @@
+[UNORDERED_START]
+Download http://localhost:4260/@denotest%2fnon-existent-dep-version
+Download http://localhost:4260/@denotest%2fesm-basic
+[UNORDERED_END]
+error: Could not find npm package '@denotest/esm-basic' matching '=99.99.99'.

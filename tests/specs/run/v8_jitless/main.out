@@ -1,2 +1,1 @@
-[# Using wildcard here because v8 outputs the message with \r\n on Windows, but \r on Unix]
-Warning: disabling flag --expose_wasm due to conflicting flags[WILDCARD]Hello[WILDCARD]
+Hello

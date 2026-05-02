@@ -1,5 +1,5 @@
-Check [WILDCARD]/fail_fast.ts
-Check [WILDCARD]/fail_fast_other.ts
+Check [WILDCARD]fail_fast.ts
+Check [WILDCARD]fail_fast_other.ts
 running 10 tests from ./fail_fast.ts
 test 1 ... FAILED ([WILDCARD])
 

@@ -1,0 +1,53 @@
+{
+  "$id": "https://github.com/denoland/deno/blob/tests/wpt/runner/expectations/schema.json",
+  "$schema": "http://json-schema.org/draft-07/schema",
+  "description": "Schema for WPT expectation files. Each file represents a test suite and mirrors the WPT directory structure.",
+  "title": "WPT expectation schema",
+  "$ref": "#/definitions/expectationNode",
+  "definitions": {
+    "expectationNode": {
+      "description": "A directory level in the WPT test tree. Keys are subdirectory or test file names.",
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/definitions/expectationEntry"
+      }
+    },
+    "expectationEntry": {
+      "description": "An entry for a directory or test file.",
+      "oneOf": [
+        {
+          "type": "boolean",
+          "description": "true = all subtests pass; false = entire test file expected to fail"
+        },
+        {
+          "$ref": "#/definitions/testExpectation"
+        },
+        {
+          "$ref": "#/definitions/expectationNode"
+        }
+      ]
+    },
+    "testExpectation": {
+      "type": "object",
+      "description": "Fine-grained expectation for a test file.",
+      "properties": {
+        "ignore": {
+          "type": "boolean",
+          "description": "If true, skip this test entirely (override with --no-ignore)"
+        },
+        "expectedFailures": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Subtest names expected to fail; all others should pass"
+        },
+        "flaky": {
+          "type": "boolean",
+          "description": "If true, retry test up to 3 times before marking as failed"
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

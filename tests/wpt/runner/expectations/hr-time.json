@@ -1,0 +1,27 @@
+{
+  "monotonic-clock.any.html": true,
+  "monotonic-clock.any.worker.html": true,
+  "basic.any.html": true,
+  "basic.any.worker.html": true,
+  "idlharness.any.html": {
+    "expectedFailures": [
+      "Window interface: attribute performance"
+    ]
+  },
+  "idlharness.any.worker.html": {
+    "expectedFailures": [
+      "WorkerGlobalScope interface: attribute performance",
+      "WorkerGlobalScope interface: self must inherit property \"performance\" with the proper type"
+    ]
+  },
+  "window-worker-timeOrigin.window.html": true,
+  "clamped-time-origin-isolated.https.html": false,
+  "clamped-time-origin.html": false,
+  "cross-origin-isolated-timing-attack.https.html": false,
+  "navigation-start-post-before-unload.html": false,
+  "performance-tojson.html": false,
+  "raf-coarsened-time.https.html": false,
+  "test_cross_frame_start.html": false,
+  "timeOrigin.html": true,
+  "timing-attack.html": false
+}

@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 // @ts-check
 /// <reference no-default-lib="true" />
@@ -6,11 +6,11 @@
 /// <reference path="../../core/internal.d.ts" />
 /// <reference path="../webidl/internal.d.ts" />
 /// <reference path="../web/internal.d.ts" />
-/// <reference path="../web/lib.deno_web.d.ts" />
+/// <reference path="../../cli/tsc/dts/lib.deno_web.d.ts" />
 /// <reference path="./internal.d.ts" />
 /// <reference lib="esnext" />
 
-import { primordials } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 import { op_encode_binary_string } from "ext:core/ops";
 const {
   ArrayPrototypePush,
@@ -33,13 +33,13 @@ const {
   Uint8Array,
 } = primordials;
 
-import * as webidl from "ext:deno_webidl/00_webidl.js";
-import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
+const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
+import { createFilteredInspectProxy } from "./01_console.js";
 import { forgivingBase64Encode } from "./00_infra.js";
 import { EventTarget, ProgressEvent } from "./02_event.js";
 import { decode, TextDecoder } from "./08_text_encoding.js";
 import { parseMimeType } from "./01_mimesniff.js";
-import { DOMException } from "./01_dom_exception.js";
+const { DOMException } = core.loadExtScript("ext:deno_web/01_dom_exception.js");
 
 const state = Symbol("[[state]]");
 const result = Symbol("[[result]]");

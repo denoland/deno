@@ -1,0 +1,3 @@
+error: Uncaught (in promise) Error: Error from file outside cwd
+    at throwError (file:///[WILDCARD]original.ts:3:1)
+    at file:///[WILDCARD]original.ts:6:1

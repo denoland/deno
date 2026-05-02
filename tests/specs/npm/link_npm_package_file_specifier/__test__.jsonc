@@ -1,0 +1,6 @@
+{
+  "tempDir": true,
+  "args": "install",
+  "output": "output.out",
+  "cwd": "main"
+}

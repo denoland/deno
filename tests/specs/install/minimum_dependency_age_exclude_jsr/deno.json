@@ -1,0 +1,8 @@
+{
+  "minimumDependencyAge": {
+    "age": "2025-05-01T20:00:00.000Z",
+    "exclude": [
+      "jsr:@denotest/add"
+    ]
+  }
+}

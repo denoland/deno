@@ -1,0 +1,13 @@
+{
+  "tests": {
+    "enabled": {
+      "args": "run --allow-import=localhost main.ts",
+      "output": "enabled.out"
+    },
+    "not_enabled": {
+      "args": "run main.ts",
+      "output": "not_enabled.out",
+      "exitCode": 1
+    }
+  }
+}

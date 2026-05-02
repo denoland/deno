@@ -1,0 +1,18 @@
+{
+  "tempDir": true,
+  "tests": {
+    "missing_flag": {
+      "args": "test main.ts",
+      "exitCode": 1,
+      "output": "missing_flag.out"
+    },
+    "providing_other_permission": {
+      "args": "test --allow-read main.ts",
+      "output": "[WILDCARD]"
+    },
+    "providing": {
+      "args": "test -P main.ts",
+      "output": "[WILDCARD]"
+    }
+  }
+}

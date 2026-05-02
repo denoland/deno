@@ -1,12 +1,12 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 // @ts-check
 /// <reference path="../webidl/internal.d.ts" />
 /// <reference path="../web/internal.d.ts" />
-/// <reference path="../web/lib.deno_web.d.ts" />
+/// <reference path="../../cli/tsc/dts/lib.deno_web.d.ts" />
 /// <reference path="./internal.d.ts" />
 /// <reference path="../web/06_streams_types.d.ts" />
-/// <reference path="./lib.deno_fetch.d.ts" />
+/// <reference path="../../cli/tsc/dts/lib.deno_fetch.d.ts" />
 /// <reference lib="esnext" />
 
 import { core, internals, primordials } from "ext:core/mod.js";
@@ -18,18 +18,16 @@ const {
   ObjectPrototypeIsPrototypeOf,
   RegExpPrototypeExec,
   StringPrototypeStartsWith,
+  StringPrototypeToUpperCase,
   Symbol,
   SymbolFor,
   TypeError,
 } = primordials;
 
-import * as webidl from "ext:deno_webidl/00_webidl.js";
-import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
-import {
-  byteUpperCase,
-  HTTP_TOKEN_CODE_POINT_RE,
-} from "ext:deno_web/00_infra.js";
-import { URL } from "ext:deno_url/00_url.js";
+const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
+import { createFilteredInspectProxy } from "ext:deno_web/01_console.js";
+import { HTTP_TOKEN_CODE_POINT_RE } from "ext:deno_web/00_infra.js";
+import { URL } from "ext:deno_web/00_url.js";
 import { extractBody, mixinBody } from "ext:deno_fetch/22_body.js";
 import { getLocationHref } from "ext:deno_web/12_location.js";
 import { extractMimeType } from "ext:deno_web/01_mimesniff.js";
@@ -47,7 +45,8 @@ import {
   newSignal,
   signalAbort,
 } from "ext:deno_web/03_abort_signal.js";
-import { DOMException } from "ext:deno_web/01_dom_exception.js";
+const { DOMException } = core.loadExtScript("ext:deno_web/01_dom_exception.js");
+import { markNotSerializable } from "ext:deno_web/13_message_port.js";
 const { internalRidSymbol } = core;
 
 const _request = Symbol("request");
@@ -213,6 +212,7 @@ function cloneInnerRequest(request, skipBody = false) {
 
 // method => normalized method
 const KNOWN_METHODS = {
+  __proto__: null,
   "DELETE": "DELETE",
   "delete": "DELETE",
   "GET": "GET",
@@ -222,7 +222,6 @@ const KNOWN_METHODS = {
   "OPTIONS": "OPTIONS",
   "options": "OPTIONS",
   "PATCH": "PATCH",
-  "patch": "PATCH",
   "POST": "POST",
   "post": "POST",
   "PUT": "PUT",
@@ -237,13 +236,21 @@ function validateAndNormalizeMethod(m) {
   if (RegExpPrototypeExec(HTTP_TOKEN_CODE_POINT_RE, m) === null) {
     throw new TypeError("Method is not valid");
   }
-  const upperCase = byteUpperCase(m);
-  if (
-    upperCase === "CONNECT" || upperCase === "TRACE" || upperCase === "TRACK"
-  ) {
-    throw new TypeError("Method is forbidden");
+  const upperCase = StringPrototypeToUpperCase(m);
+  switch (upperCase) {
+    case "DELETE":
+    case "GET":
+    case "HEAD":
+    case "OPTIONS":
+    case "POST":
+    case "PUT":
+      return upperCase;
+    case "CONNECT":
+    case "TRACE":
+    case "TRACK":
+      throw new TypeError("Method is forbidden");
   }
-  return upperCase;
+  return m;
 }
 
 class Request {
@@ -539,6 +546,7 @@ class Request {
 
 webidl.configureInterface(Request);
 const RequestPrototype = Request.prototype;
+markNotSerializable(RequestPrototype);
 mixinBody(RequestPrototype, _body, _mimeType);
 
 webidl.converters["Request"] = webidl.createInterfaceConverter(

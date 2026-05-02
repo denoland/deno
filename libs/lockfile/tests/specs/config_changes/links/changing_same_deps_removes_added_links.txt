@@ -1,0 +1,63 @@
+# original
+{
+  "version": "5",
+  "specifiers": {
+    "jsr:@scope/package_a@*": "0.0.1",
+    "npm:code-block-writer@*": "12.0.0"
+  },
+  "jsr": {
+    "@scope/package_a@0.0.1": {
+      "integrity": "09154a97e18c4d6a1692e3b3c8a3b1ec2934f00b7c1caf7491d762d963ada045",
+      "dependencies": [
+        "npm:code-block-writer"
+      ]
+    }
+  },
+  "npm": {
+    "code-block-writer@12.0.0": {
+      "integrity": "sha512-q4dMFMlXtKR3XNBHyMHt/3pwYNA69EDk00lloMOaaUMKPUXBw6lpXtbu3MMVG6/uOihGnRDOlkyqsONEUj60+w=="
+    }
+  }
+}
+
+# adds link
+{
+  "links": {
+    "jsr:@scope/package_a@*": {
+      "dependencies": [
+        "npm:code-block-writer@*"
+      ]
+    }
+  }
+}
+
+# output
+{
+  "version": "5",
+  "specifiers": {
+    "jsr:@scope/package_a@*": "0.0.1",
+    "npm:code-block-writer@*": "12.0.0"
+  },
+  "jsr": {
+    "@scope/package_a@0.0.1": {
+      "integrity": "09154a97e18c4d6a1692e3b3c8a3b1ec2934f00b7c1caf7491d762d963ada045",
+      "dependencies": [
+        "npm:code-block-writer"
+      ]
+    }
+  },
+  "npm": {
+    "code-block-writer@12.0.0": {
+      "integrity": "sha512-q4dMFMlXtKR3XNBHyMHt/3pwYNA69EDk00lloMOaaUMKPUXBw6lpXtbu3MMVG6/uOihGnRDOlkyqsONEUj60+w=="
+    }
+  },
+  "workspace": {
+    "links": {
+      "jsr:@scope/package_a@*": {
+        "dependencies": [
+          "npm:code-block-writer@*"
+        ]
+      }
+    }
+  }
+}

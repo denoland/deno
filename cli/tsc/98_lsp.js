@@ -1,8 +1,6 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 import {
-  ASSET_SCOPES,
-  ASSETS_URL_PREFIX,
   clearScriptNamesCache,
   debug,
   error,
@@ -12,8 +10,9 @@ import {
   host,
   IS_NODE_SOURCE_FILE_CACHE,
   LANGUAGE_SERVICE_ENTRIES,
+  LAST_REQUEST_COMPILER_OPTIONS_KEY,
   LAST_REQUEST_METHOD,
-  LAST_REQUEST_SCOPE,
+  LAST_REQUEST_NOTEBOOK_URI,
   OperationCanceledError,
   PROJECT_VERSION_CACHE,
   SCRIPT_SNAPSHOT_CACHE,
@@ -25,9 +24,6 @@ import {
 /** @type {DenoCore} */
 const core = globalThis.Deno.core;
 const ops = core.ops;
-
-/** @type {Map<string | null, string[]>} */
-const ambientModulesCacheByScope = new Map();
 
 const ChangeKind = {
   Opened: 0,
@@ -106,6 +102,9 @@ const documentRegistry = {
         true,
         scriptKind,
       );
+      if (scriptSnapshot.isClassicScript) {
+        sourceFile.externalModuleIndicator = undefined;
+      }
       documentRegistrySourceFileCache.set(mapKey, sourceFile);
     }
     const sourceRefCount = SOURCE_REF_COUNTS.get(fileName) ?? 0;
@@ -168,6 +167,9 @@ const documentRegistry = {
           /** @type {ts.IScriptSnapshot} */ (sourceFile.scriptSnapShot),
         ),
       );
+      if (scriptSnapshot.isClassicScript) {
+        sourceFile.externalModuleIndicator = undefined;
+      }
       documentRegistrySourceFileCache.set(mapKey, sourceFile);
     }
     return sourceFile;
@@ -198,7 +200,7 @@ const documentRegistry = {
       SOURCE_REF_COUNTS.delete(path);
       // We call `cleanupSemanticCache` for other purposes, don't bust the
       // source cache in this case.
-      if (LAST_REQUEST_METHOD.get() != "cleanupSemanticCache") {
+      if (LAST_REQUEST_METHOD.get() != "$cleanupSemanticCache") {
         const mapKey = path + key;
         documentRegistrySourceFileCache.delete(mapKey);
         SCRIPT_SNAPSHOT_CACHE.delete(path);
@@ -215,7 +217,7 @@ const documentRegistry = {
 };
 
 /** @param {Record<string, unknown>} config */
-function normalizeConfig(config) {
+function normalizeCompilerOptions(config) {
   // the typescript compiler doesn't know about the precompile
   // transform at the moment, so just tell it we're using react-jsx
   if (config.jsx === "precompile") {
@@ -228,15 +230,21 @@ function normalizeConfig(config) {
 }
 
 /** @param {Record<string, unknown>} config */
-function lspTsConfigToCompilerOptions(config) {
-  const normalizedConfig = normalizeConfig(config);
+function lspToTsCompilerOptions(config) {
+  const normalizedConfig = normalizeCompilerOptions(config);
   const { options, errors } = ts
     .convertCompilerOptionsFromJson(normalizedConfig, "");
   Object.assign(options, {
     allowNonTsExtensions: true,
     allowImportingTsExtensions: true,
-    module: ts.ModuleKind.NodeNext,
-    moduleResolution: ts.ModuleResolutionKind.NodeNext,
+    module: options.module === ts.ModuleKind.ESNext ||
+        options.module === ts.ModuleKind.Preserve
+      ? options.module
+      : ts.ModuleKind.NodeNext,
+    moduleResolution:
+      options.moduleResolution === ts.ModuleResolutionKind.Bundler
+        ? ts.ModuleResolutionKind.Bundler
+        : ts.ModuleResolutionKind.NodeNext,
   });
   if (errors.length > 0) {
     debug(ts.formatDiagnostics(errors, host));
@@ -272,7 +280,7 @@ function respond(_id, data = null, error = null) {
   }
 }
 
-/** @typedef {[[string, number][], number, [string, any][]] } PendingChange */
+/** @typedef {[[string, number][], number, [string, any][], [string, string][]] } PendingChange */
 /**
  * @template T
  * @typedef {T | null} Option<T> */
@@ -284,37 +292,42 @@ async function pollRequests() {
 
 let hasStarted = false;
 
+function createLs() {
+  let exportInfoMap = undefined;
+  const newHost = {
+    ...host,
+    getCachedExportInfoMap: () => {
+      // this export info map is specific to
+      // the language service instance
+      return exportInfoMap;
+    },
+  };
+  const ls = ts.createLanguageService(
+    newHost,
+    documentRegistry,
+  );
+  exportInfoMap = ts.createCacheableExportInfoMap({
+    getCurrentProgram() {
+      return ls.getProgram();
+    },
+    getGlobalTypingsCacheLocation() {
+      return undefined;
+    },
+    getPackageJsonAutoImportProvider() {
+      return undefined;
+    },
+  });
+  return ls;
+}
+
 /** @param {boolean} enableDebugLogging */
 export async function serverMainLoop(enableDebugLogging) {
+  ts.deno.setEnterSpan(ops.op_make_span);
+  ts.deno.setExitSpan(ops.op_exit_span);
   if (hasStarted) {
     throw new Error("The language server has already been initialized.");
   }
   hasStarted = true;
-  LANGUAGE_SERVICE_ENTRIES.unscoped = {
-    ls: ts.createLanguageService(
-      host,
-      documentRegistry,
-    ),
-    compilerOptions: lspTsConfigToCompilerOptions({
-      "allowJs": true,
-      "esModuleInterop": true,
-      "experimentalDecorators": false,
-      "isolatedModules": true,
-      "lib": ["deno.ns", "deno.window", "deno.unstable"],
-      "module": "NodeNext",
-      "moduleResolution": "NodeNext",
-      "moduleDetection": "force",
-      "noEmit": true,
-      "noImplicitOverride": true,
-      "resolveJsonModule": true,
-      "strict": true,
-      "target": "esnext",
-      "useDefineForClassFields": true,
-      "jsx": "react",
-      "jsxFactory": "React.createElement",
-      "jsxFragmentFactory": "React.Fragment",
-    }),
-  };
   setLogDebug(enableDebugLogging, "TSLS");
   debug("serverInit()");
 
@@ -330,6 +343,7 @@ export async function serverMainLoop(enableDebugLogging) {
         request[2],
         request[3],
         request[4],
+        request[5],
       );
     } catch (err) {
       error(`Internal error occurred processing request: ${err}`);
@@ -354,59 +368,86 @@ function formatErrorWithArgs(error, args) {
 }
 
 /**
- * @param {string[]} a
- * @param {string[]} b
- */
-function arraysEqual(a, b) {
-  if (a === b) {
-    return true;
-  }
-  if (a === null || b === null) {
-    return false;
-  }
-  if (a.length !== b.length) {
-    return false;
-  }
-  for (let i = 0; i < a.length; i++) {
-    if (a[i] !== b[i]) {
-      return false;
-    }
-  }
-  return true;
-}
-
-/**
  * @param {number} id
  * @param {string} method
  * @param {any[]} args
- * @param {string | null} scope
+ * @param {string} compilerOptionsKey
+ * @param {string | null} notebookUri
  * @param {PendingChange | null} maybeChange
  */
-function serverRequest(id, method, args, scope, maybeChange) {
-  debug(`serverRequest()`, id, method, args, scope, maybeChange);
+function serverRequestInner(
+  id,
+  method,
+  args,
+  compilerOptionsKey,
+  notebookUri,
+  maybeChange,
+) {
+  debug(
+    `serverRequest()`,
+    id,
+    method,
+    args,
+    compilerOptionsKey,
+    notebookUri,
+    maybeChange,
+  );
   if (maybeChange !== null) {
     const changedScripts = maybeChange[0];
     const newProjectVersion = maybeChange[1];
-    const newConfigsByScope = maybeChange[2];
-    if (newConfigsByScope) {
+    const newCompilerOptionsByKey = maybeChange[2];
+    const newNotebookKeys = maybeChange[3];
+    if (newCompilerOptionsByKey) {
       IS_NODE_SOURCE_FILE_CACHE.clear();
-      ASSET_SCOPES.clear();
-      /** @type { typeof LANGUAGE_SERVICE_ENTRIES.byScope } */
-      const newByScope = new Map();
-      for (const [scope, config] of newConfigsByScope) {
-        LAST_REQUEST_SCOPE.set(scope);
-        const oldEntry = LANGUAGE_SERVICE_ENTRIES.byScope.get(scope);
-        const ls = oldEntry
-          ? oldEntry.ls
-          : ts.createLanguageService(host, documentRegistry);
-        const compilerOptions = lspTsConfigToCompilerOptions(config);
-        newByScope.set(scope, { ls, compilerOptions });
-        LANGUAGE_SERVICE_ENTRIES.byScope.delete(scope);
+      /** @type { typeof LANGUAGE_SERVICE_ENTRIES.byCompilerOptionsKey } */
+      const newByCompilerOptionsKey = new Map();
+      for (const [compilerOptionsKey, options] of newCompilerOptionsByKey) {
+        LAST_REQUEST_COMPILER_OPTIONS_KEY.set(compilerOptionsKey);
+        LAST_REQUEST_NOTEBOOK_URI.set(null);
+        const oldEntry = LANGUAGE_SERVICE_ENTRIES.byCompilerOptionsKey.get(
+          compilerOptionsKey,
+        );
+        const ls = oldEntry ? oldEntry.ls : createLs();
+        const compilerOptions = lspToTsCompilerOptions(options);
+        newByCompilerOptionsKey.set(compilerOptionsKey, {
+          ls,
+          compilerOptions,
+        });
+        LANGUAGE_SERVICE_ENTRIES.byCompilerOptionsKey.delete(
+          compilerOptionsKey,
+        );
       }
-      for (const oldEntry of LANGUAGE_SERVICE_ENTRIES.byScope.values()) {
+      for (
+        const oldEntry of LANGUAGE_SERVICE_ENTRIES.byCompilerOptionsKey.values()
+      ) {
         oldEntry.ls.dispose();
       }
-      LANGUAGE_SERVICE_ENTRIES.byScope = newByScope;
+      LANGUAGE_SERVICE_ENTRIES.byCompilerOptionsKey = newByCompilerOptionsKey;
+    }
+    if (newNotebookKeys) {
+      /** @type { typeof LANGUAGE_SERVICE_ENTRIES.byNotebookUri } */
+      const newByNotebookUri = new Map();
+      for (const [notebookUri, compilerOptionsKey] of newNotebookKeys) {
+        LAST_REQUEST_COMPILER_OPTIONS_KEY.set(compilerOptionsKey);
+        LAST_REQUEST_NOTEBOOK_URI.set(notebookUri);
+        const oldEntry = LANGUAGE_SERVICE_ENTRIES.byNotebookUri.get(
+          notebookUri,
+        );
+        const ls = oldEntry ? oldEntry.ls : createLs();
+        const compilerOptions = LANGUAGE_SERVICE_ENTRIES.byCompilerOptionsKey
+          .get(compilerOptionsKey)?.compilerOptions;
+        if (!compilerOptions) {
+          throw new Error(
+            `Couldn't find language service entry for key: ${compilerOptionsKey}`,
+          );
+        }
+        newByNotebookUri.set(notebookUri, { ls, compilerOptions });
+        LANGUAGE_SERVICE_ENTRIES.byNotebookUri.delete(notebookUri);
+      }
+      for (const oldEntry of LANGUAGE_SERVICE_ENTRIES.byNotebookUri.values()) {
+        oldEntry.ls.dispose();
+      }
+      LANGUAGE_SERVICE_ENTRIES.byNotebookUri = newByNotebookUri;
     }
 
     PROJECT_VERSION_CACHE.set(newProjectVersion);
@@ -423,22 +464,40 @@ function serverRequest(id, method, args, scope, maybeChange) {
       SCRIPT_SNAPSHOT_CACHE.delete(script);
     }
 
-    if (newConfigsByScope || opened || closed) {
+    if (newCompilerOptionsByKey || newNotebookKeys || opened || closed) {
       clearScriptNamesCache();
     }
   }
 
-  // For requests pertaining to an asset document, we make it so that the
-  // passed scope is just its own specifier. We map it to an actual scope here
-  // based on the first scope that the asset was loaded into.
-  if (scope?.startsWith(ASSETS_URL_PREFIX)) {
-    scope = ASSET_SCOPES.get(scope) ?? null;
-  }
   LAST_REQUEST_METHOD.set(method);
-  LAST_REQUEST_SCOPE.set(scope);
-  const ls = (scope ? LANGUAGE_SERVICE_ENTRIES.byScope.get(scope)?.ls : null) ??
-    LANGUAGE_SERVICE_ENTRIES.unscoped.ls;
+  LAST_REQUEST_COMPILER_OPTIONS_KEY.set(compilerOptionsKey);
+  LAST_REQUEST_NOTEBOOK_URI.set(notebookUri);
+  const ls =
+    (notebookUri
+      ? LANGUAGE_SERVICE_ENTRIES.byNotebookUri.get(notebookUri)?.ls
+      : null) ??
+      LANGUAGE_SERVICE_ENTRIES.byCompilerOptionsKey.get(compilerOptionsKey)?.ls;
+  if (!ls) {
+    throw new Error(
+      `Couldn't find language service entry for key: ${compilerOptionsKey}`,
+    );
+  }
   switch (method) {
+    case "$cleanupSemanticCache": {
+      for (
+        const ls of [
+          ...[...LANGUAGE_SERVICE_ENTRIES.byCompilerOptionsKey.values()].map((
+            e,
+          ) => e.ls),
+          ...[...LANGUAGE_SERVICE_ENTRIES.byNotebookUri.values()].map((e) =>
+            e.ls
+          ),
+        ]
+      ) {
+        ls.cleanupSemanticCache();
+      }
+      return respond(id, null);
+    }
     case "$getSupportedCodeFixes": {
       return respond(
         id,
@@ -453,43 +512,44 @@ function serverRequest(id, method, args, scope, maybeChange) {
       // (it's about to be invalidated anyway).
       const cachedProjectVersion = PROJECT_VERSION_CACHE.get();
       if (cachedProjectVersion && projectVersion !== cachedProjectVersion) {
-        return respond(id, [{}, null]);
+        return respond(id, [[], null]);
       }
       try {
-        /** @type {Record<string, any[]>} */
-        const diagnosticMap = {};
-        for (const specifier of args[0]) {
-          diagnosticMap[specifier] = fromTypeScriptDiagnostics([
-            ...ls.getSemanticDiagnostics(specifier),
-            ...ls.getSuggestionDiagnostics(specifier),
-            ...ls.getSyntacticDiagnostics(specifier),
-          ].filter(filterMapDiagnostic));
-        }
-        let ambient =
-          ls.getProgram()?.getTypeChecker().getAmbientModules().map((symbol) =>
-            symbol.getName()
-          ) ?? [];
-        const previousAmbient = ambientModulesCacheByScope.get(scope);
-        if (
-          ambient && previousAmbient && arraysEqual(ambient, previousAmbient)
-        ) {
-          ambient = null; // null => use previous value
-        } else {
-          ambientModulesCacheByScope.set(scope, ambient);
-        }
-        return respond(id, [diagnosticMap, ambient]);
+        /** @type {string} */
+        const specifier = args[0];
+        const diagnostics = fromTypeScriptDiagnostics([
+          ...ls.getSemanticDiagnostics(specifier),
+          ...ls.getSuggestionDiagnostics(specifier),
+          ...ls.getSyntacticDiagnostics(specifier),
+        ].filter(filterMapDiagnostic));
+        return respond(id, diagnostics);
       } catch (e) {
         if (
           !isCancellationError(e)
         ) {
           return respond(
             id,
-            [{}, null],
-            formatErrorWithArgs(e, [id, method, args, scope, maybeChange]),
+            [[], null],
+            formatErrorWithArgs(e, [
+              id,
+              method,
+              args,
+              compilerOptionsKey,
+              notebookUri,
+              maybeChange,
+            ]),
           );
         }
-        return respond(id, [{}, null]);
+        return respond(id, [[], null]);
       }
+    }
+    case "$getAmbientModules": {
+      return respond(
+        id,
+        ls.getProgram()?.getTypeChecker().getAmbientModules().map((symbol) =>
+          symbol.getName()
+        ) ?? [],
+      );
     }
     default:
       if (typeof ls[method] === "function") {
@@ -505,7 +565,14 @@ function serverRequest(id, method, args, scope, maybeChange) {
             return respond(
               id,
               null,
-              formatErrorWithArgs(e, [id, method, args, scope, maybeChange]),
+              formatErrorWithArgs(e, [
+                id,
+                method,
+                args,
+                compilerOptionsKey,
+                notebookUri,
+                maybeChange,
+              ]),
             );
           }
           return respond(id);
@@ -515,5 +582,36 @@ function serverRequest(id, method, args, scope, maybeChange) {
         // @ts-ignore exhausted case statement sets type to never
         `Invalid request method for request: "${method}" (${id})`,
       );
+  }
+}
+
+/**
+ * @param {number} id
+ * @param {string} method
+ * @param {any[]} args
+ * @param {string} compilerOptionsKey
+ * @param {string | null} notebookUri
+ * @param {PendingChange | null} maybeChange
+ */
+function serverRequest(
+  id,
+  method,
+  args,
+  compilerOptionsKey,
+  notebookUri,
+  maybeChange,
+) {
+  const span = ops.op_make_span(`serverRequest(${method})`, true);
+  try {
+    serverRequestInner(
+      id,
+      method,
+      args,
+      compilerOptionsKey,
+      notebookUri,
+      maybeChange,
+    );
+  } finally {
+    ops.op_exit_span(span, true);
   }
 }

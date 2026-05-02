@@ -1,0 +1,4 @@
+Download http://localhost:4260/@denotest/has-patch-versions/0.1.1.tgz
+Initialize @denotest/has-patch-versions@0.1.1
+Updated 1 dependency:
+ - npm:@denotest/has-patch-versions ^0.1.0 -> ^0.1.1

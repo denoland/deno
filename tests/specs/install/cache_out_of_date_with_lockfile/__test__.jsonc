@@ -1,0 +1,15 @@
+{
+  "tempDir": true,
+  "steps": [{
+    // this would only occur with a lockfile and a package with "extra info" (bin or script)
+    "args": "install npm:@denotest/bin",
+    "output": "[WILDCARD]"
+  }, {
+    "args": "run -A update.ts $DENO_DIR",
+    "output": ""
+  }, {
+    // should not error
+    "args": "install",
+    "output": "[WILDCARD]"
+  }]
+}

@@ -1,0 +1,55 @@
+// Linux only as thread information is read from /proc
+{
+  "tests": {
+    "run_arg": {
+      "if": "linux",
+      "args": "run --allow-all --v8-flags=--single-threaded main.ts",
+      "output": "false\n"
+    },
+    "run_env": {
+      "if": "linux",
+      "args": "run --allow-all --v8-flags=--single-threaded main.ts",
+      "envs": {
+        "DENO_V8_FLAGS": "--single-threaded"
+      },
+      "output": "false\n"
+    },
+    "run_none": {
+      "if": "linux",
+      "args": "run --allow-all main.ts",
+      "output": "true\n"
+    },
+    "compile_arg": {
+      "tempDir": true,
+      "steps": [
+        {
+          "if": "linux",
+          "args": "compile --allow-all --v8-flags=--single-threaded --output main main.ts",
+          "output": "[WILDLINE]"
+        },
+        {
+          "if": "linux",
+          "commandName": "./main",
+          "args": [],
+          "output": "false\n"
+        }
+      ]
+    },
+    "compile_none": {
+      "tempDir": true,
+      "steps": [
+        {
+          "if": "linux",
+          "args": "compile --allow-all --output main main.ts",
+          "output": "[WILDLINE]"
+        },
+        {
+          "if": "linux",
+          "commandName": "./main",
+          "args": [],
+          "output": "true\n"
+        }
+      ]
+    }
+  }
+}

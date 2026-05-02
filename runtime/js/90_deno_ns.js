@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 import { core, primordials } from "ext:core/mod.js";
 import {
@@ -8,9 +8,9 @@ import {
   op_runtime_memory_usage,
 } from "ext:core/ops";
 
-import * as timers from "ext:deno_web/02_timers.js";
+const timers = core.loadExtScript("ext:deno_web/02_timers.js");
 import * as httpClient from "ext:deno_fetch/22_http_client.js";
-import * as console from "ext:deno_console/01_console.js";
+import * as console from "ext:deno_web/01_console.js";
 import * as ffi from "ext:deno_ffi/00_ffi.js";
 import * as net from "ext:deno_net/01_net.js";
 import * as tls from "ext:deno_net/02_tls.js";
@@ -29,13 +29,19 @@ import * as signals from "ext:deno_os/40_signals.js";
 import * as tty from "ext:runtime/40_tty.js";
 import * as kv from "ext:deno_kv/01_db.ts";
 import * as cron from "ext:deno_cron/01_cron.ts";
-import * as webgpuSurface from "ext:deno_webgpu/02_surface.js";
+import * as surface from "ext:deno_canvas/02_surface.js";
 import * as telemetry from "ext:deno_telemetry/telemetry.ts";
+import { unstableIds } from "ext:deno_features/flags.js";
+import { loadWebGPU } from "ext:deno_webgpu/00_init.js";
+import { bundle } from "ext:deno_bundle_runtime/bundle.ts";
 
-const { ObjectDefineProperties } = primordials;
+const { ObjectDefineProperties, Float64Array } = primordials;
 
 const loadQuic = core.createLazyLoader("ext:deno_net/03_quic.js");
 const loadWebTransport = core.createLazyLoader("ext:deno_web/webtransport.js");
+
+// the out buffer for `cpuUsage` and `memoryUsage`
+const usageBuffer = new Float64Array(4);
 
 const denoNs = {
   Process: process.Process,
@@ -61,13 +67,27 @@ const denoNs = {
   makeTempFileSync: fs.makeTempFileSync,
   makeTempFile: fs.makeTempFile,
   cpuUsage: () => {
-    const { 0: system, 1: user } = op_runtime_cpu_usage();
-    return { system, user };
+    op_runtime_cpu_usage(usageBuffer);
+    const { 0: system, 1: user } = usageBuffer;
+    return {
+      system,
+      user,
+    };
   },
   memoryUsage: () => {
-    const { 0: rss, 1: heapTotal, 2: heapUsed, 3: external } =
-      op_runtime_memory_usage();
-    return { rss, heapTotal, heapUsed, external };
+    op_runtime_memory_usage(usageBuffer);
+    const {
+      0: rss,
+      1: heapTotal,
+      2: heapUsed,
+      3: external,
+    } = usageBuffer;
+    return {
+      rss,
+      heapTotal,
+      heapUsed,
+      external,
+    };
   },
   mkdirSync: fs.mkdirSync,
   mkdir: fs.mkdir,
@@ -139,6 +159,9 @@ const denoNs = {
   uid: os.uid,
   Command: process.Command,
   ChildProcess: process.ChildProcess,
+  spawn: process.spawn,
+  spawnAndWait: process.spawnAndWait,
+  spawnAndWaitSync: process.spawnAndWaitSync,
   dlopen: ffi.dlopen,
   UnsafeCallback: ffi.UnsafeCallback,
   UnsafePointer: ffi.UnsafePointer,
@@ -147,27 +170,14 @@ const denoNs = {
   umask: fs.umask,
   HttpClient: httpClient.HttpClient,
   createHttpClient: httpClient.createHttpClient,
-};
-
-// NOTE(bartlomieju): keep IDs in sync with `runtime/lib.rs`
-const unstableIds = {
-  broadcastChannel: 1,
-  cron: 2,
-  ffi: 3,
-  fs: 4,
-  http: 5,
-  kv: 6,
-  net: 7,
-  nodeGlobals: 8,
-  otel: 9,
-  process: 10,
-  temporal: 11,
-  unsafeProto: 12,
-  webgpu: 13,
-  workerOptions: 14,
+  telemetry: telemetry.telemetry,
 };
 
 const denoNsUnstableById = { __proto__: null };
+
+denoNsUnstableById[unstableIds.bundle] = {
+  bundle,
+};
 
 // denoNsUnstableById[unstableIds.broadcastChannel] = { __proto__: null }
 
@@ -217,13 +227,15 @@ ObjectDefineProperties(denoNsUnstableById[unstableIds.net], {
 // denoNsUnstableById[unstableIds.unsafeProto] = { __proto__: null }
 
 denoNsUnstableById[unstableIds.webgpu] = {
-  UnsafeWindowSurface: webgpuSurface.UnsafeWindowSurface,
+  UnsafeWindowSurface: surface.UnsafeWindowSurface,
 };
+ObjectDefineProperties(denoNsUnstableById[unstableIds.webgpu], {
+  webgpu: core.propWritableLazyLoaded(
+    (webgpu) => webgpu.denoNsWebGPU,
+    loadWebGPU,
+  ),
+});
 
 // denoNsUnstableById[unstableIds.workerOptions] = { __proto__: null }
-
-denoNsUnstableById[unstableIds.otel] = {
-  telemetry: telemetry.telemetry,
-};
 
 export { denoNs, denoNsUnstableById, unstableIds };

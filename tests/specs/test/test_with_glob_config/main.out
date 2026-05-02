@@ -1,12 +1,12 @@
-Check [WILDCARD]/glob/pages/[id].ts
-Check [WILDCARD]/glob/data/test1.js
-Check [WILDCARD]/glob/data/test1.ts
-Check [WILDCARD]/glob/nested/fizz/bar.ts
-Check [WILDCARD]/glob/nested/fizz/fizz.ts
-Check [WILDCARD]/glob/nested/fizz/foo.ts
-Check [WILDCARD]/glob/nested/foo/bar.ts
-Check [WILDCARD]/glob/nested/foo/fizz.ts
-Check [WILDCARD]/glob/nested/foo/foo.ts
+Check [WILDCARD][id].ts
+Check [WILDCARD]test1.js
+Check [WILDCARD]test1.ts
+Check [WILDCARD]bar.ts
+Check [WILDCARD]fizz.ts
+Check [WILDCARD]foo.ts
+Check [WILDCARD]bar.ts
+Check [WILDCARD]fizz.ts
+Check [WILDCARD]foo.ts
 running 0 tests from ./glob/pages/[id].ts
 running 0 tests from ./glob/data/test1.js
 running 0 tests from ./glob/data/test1.ts

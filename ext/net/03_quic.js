@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 import { core, primordials } from "ext:core/mod.js";
 import {
   op_quic_connecting_0rtt,
@@ -55,10 +55,13 @@ const {
   ReflectConstruct,
   Symbol,
   SymbolAsyncIterator,
-  SafePromisePrototypeFinally,
 } = primordials;
 
 let getEndpointResource;
+
+function promiseFinallyWithoutUnhandled(p, f) {
+  return PromisePrototypeThen(p, f, f);
+}
 
 function transportOptions({
   keepAliveInterval,
@@ -144,8 +147,8 @@ class QuicListener {
 
   async next() {
     try {
-      const connection = await this.accept();
-      return { value: connection, done: false };
+      const incoming = await this.incoming();
+      return { value: incoming, done: false };
     } catch (error) {
       if (ObjectPrototypeIsPrototypeOf(BadResourcePrototype, error)) {
         return { value: undefined, done: true };
@@ -385,7 +388,7 @@ class QuicReceiveStream extends ReadableStream {
 
 function readableStream(rid, closed) {
   // stream can be indirectly closed by closing connection.
-  SafePromisePrototypeFinally(closed, () => {
+  promiseFinallyWithoutUnhandled(closed, () => {
     core.tryClose(rid);
   });
   return readableStreamForRid(
@@ -397,7 +400,7 @@ function readableStream(rid, closed) {
 
 function writableStream(rid, closed) {
   // stream can be indirectly closed by closing connection.
-  SafePromisePrototypeFinally(closed, () => {
+  promiseFinallyWithoutUnhandled(closed, () => {
     core.tryClose(rid);
   });
   return writableStreamForRid(

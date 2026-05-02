@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
 
 // TODO(petamoriken): enable prefer-primordials for node polyfills
@@ -11,12 +11,17 @@ import {
   PublicKeyObject,
   SecretKeyObject,
 } from "ext:deno_node/internal/crypto/keys.ts";
-import { notImplemented } from "ext:deno_node/_utils.ts";
 import {
+  ERR_CRYPTO_INCOMPATIBLE_KEY_OPTIONS,
+  ERR_CRYPTO_INVALID_DIGEST,
+  ERR_CRYPTO_UNKNOWN_CIPHER,
+  ERR_CRYPTO_UNKNOWN_DH_GROUP,
   ERR_INCOMPATIBLE_OPTION_PAIR,
   ERR_INVALID_ARG_VALUE,
   ERR_MISSING_OPTION,
 } from "ext:deno_node/internal/errors.ts";
+import { getCiphers } from "ext:deno_node/internal/crypto/util.ts";
+import { getHashes } from "ext:deno_node/internal/crypto/hash.ts";
 import {
   validateBuffer,
   validateFunction,
@@ -43,6 +48,8 @@ import {
   op_node_generate_ec_key_async,
   op_node_generate_ed25519_key,
   op_node_generate_ed25519_key_async,
+  op_node_generate_ed448_key,
+  op_node_generate_ed448_key_async,
   op_node_generate_rsa_key,
   op_node_generate_rsa_key_async,
   op_node_generate_rsa_pss_key,
@@ -51,6 +58,8 @@ import {
   op_node_generate_secret_key_async,
   op_node_generate_x25519_key,
   op_node_generate_x25519_key_async,
+  op_node_generate_x448_key,
+  op_node_generate_x448_key_async,
   op_node_get_private_key_from_pair,
   op_node_get_public_key_from_pair,
 } from "ext:core/ops";
@@ -565,16 +574,22 @@ export function generateKeyPair(
 export function generateKeyPair(
   type: KeyType,
   options: unknown,
-  callback: (
+  callback?: (
     err: Error | null,
     publicKey: any,
     privateKey: any,
   ) => void,
 ) {
+  if (typeof options === "function") {
+    callback = options;
+    options = undefined;
+  }
+  validateFunction(callback, "callback");
+
   _generateKeyPair(type, options)
     .then(
-      (res) => callback(null, res.publicKey, res.privateKey),
-      (err) => callback(err, null, null),
+      (res) => callback!(null, res.publicKey, res.privateKey),
+      (err) => callback!(err, null, null),
     );
 }
 
@@ -812,8 +827,187 @@ export function generateKeyPairSync(
 const kSync = 0;
 const kAsync = 1;
 
+function parseKeyFormat(
+  formatStr: string | undefined,
+  defaultFormat: string | undefined,
+  optionName: string,
+): string | undefined {
+  if (formatStr === undefined && defaultFormat !== undefined) {
+    return defaultFormat;
+  } else if (formatStr === "pem") {
+    return "pem";
+  } else if (formatStr === "der") {
+    return "der";
+  } else if (formatStr === "jwk") {
+    return "jwk";
+  }
+  throw new ERR_INVALID_ARG_VALUE(optionName, formatStr);
+}
+
+function parseKeyType(
+  typeStr: string | undefined,
+  required: boolean,
+  keyType: string | undefined,
+  isPublic: boolean | undefined,
+  optionName: string,
+): string | undefined {
+  if (typeStr === undefined && !required) {
+    return undefined;
+  } else if (typeStr === "pkcs1") {
+    if (keyType !== undefined && keyType !== "rsa") {
+      throw new ERR_CRYPTO_INCOMPATIBLE_KEY_OPTIONS(
+        typeStr,
+        "can only be used for RSA keys",
+      );
+    }
+    return "pkcs1";
+  } else if (typeStr === "spki" && isPublic !== false) {
+    return "spki";
+  } else if (typeStr === "pkcs8" && isPublic !== true) {
+    return "pkcs8";
+  } else if (typeStr === "sec1" && isPublic !== true) {
+    if (keyType !== undefined && keyType !== "ec") {
+      throw new ERR_CRYPTO_INCOMPATIBLE_KEY_OPTIONS(
+        typeStr,
+        "can only be used for EC keys",
+      );
+    }
+    return "sec1";
+  }
+
+  throw new ERR_INVALID_ARG_VALUE(optionName, typeStr);
+}
+
+function option(name: string, objName?: string): string {
+  return objName === undefined
+    ? `options.${name}`
+    : `options.${objName}.${name}`;
+}
+
+function isStringOrBuffer(val: unknown): boolean {
+  return typeof val === "string" ||
+    ArrayBuffer.isView(val) ||
+    val instanceof ArrayBuffer ||
+    val instanceof SharedArrayBuffer;
+}
+
+function parseKeyFormatAndType(
+  enc: any,
+  keyType: string | undefined,
+  isPublic: boolean | undefined,
+  objName?: string,
+) {
+  const { format: formatStr, type: typeStr } = enc;
+
+  const isInput = keyType === undefined;
+  const format = parseKeyFormat(
+    formatStr,
+    isInput ? "pem" : undefined,
+    option("format", objName),
+  );
+
+  const isRequired = (!isInput || format === "der") && format !== "jwk";
+  const type = parseKeyType(
+    typeStr,
+    isRequired,
+    keyType,
+    isPublic,
+    option("type", objName),
+  );
+  return { format, type };
+}
+
+function parsePublicKeyEncoding(
+  enc: any,
+  keyType: string | undefined,
+  objName: string,
+) {
+  validateObject(enc, "options");
+
+  const { format, type } = parseKeyFormatAndType(
+    enc,
+    keyType,
+    keyType ? true : undefined,
+    objName,
+  );
+
+  return { format, type };
+}
+
+function parsePrivateKeyEncoding(
+  enc: any,
+  keyType: string | undefined,
+  objName: string,
+) {
+  validateObject(enc, "options");
+
+  const { format, type } = parseKeyFormatAndType(enc, keyType, false, objName);
+
+  const { cipher, passphrase } = enc;
+
+  if (cipher != null) {
+    if (typeof cipher !== "string") {
+      throw new ERR_INVALID_ARG_VALUE(option("cipher", objName), cipher);
+    }
+    if (!getCiphers().includes(cipher)) {
+      throw new ERR_CRYPTO_UNKNOWN_CIPHER();
+    }
+    if (
+      format === "der" &&
+      (type === "pkcs1" || type === "sec1")
+    ) {
+      throw new ERR_CRYPTO_INCOMPATIBLE_KEY_OPTIONS(
+        type,
+        "does not support encryption",
+      );
+    }
+  } else if (passphrase !== undefined) {
+    throw new ERR_INVALID_ARG_VALUE(option("cipher", objName), cipher);
+  }
+
+  if (cipher != null && !isStringOrBuffer(passphrase)) {
+    throw new ERR_INVALID_ARG_VALUE(option("passphrase", objName), passphrase);
+  }
+
+  return { format, type, cipher, passphrase };
+}
+
+function validateKeyEncoding(keyType: string, options: any) {
+  if (options == null || typeof options !== "object") return;
+
+  const { publicKeyEncoding, privateKeyEncoding } = options;
+
+  if (publicKeyEncoding != null) {
+    if (typeof publicKeyEncoding === "object") {
+      parsePublicKeyEncoding(publicKeyEncoding, keyType, "publicKeyEncoding");
+    } else {
+      throw new ERR_INVALID_ARG_VALUE(
+        "options.publicKeyEncoding",
+        publicKeyEncoding,
+      );
+    }
+  }
+
+  if (privateKeyEncoding != null) {
+    if (typeof privateKeyEncoding === "object") {
+      parsePrivateKeyEncoding(
+        privateKeyEncoding,
+        keyType,
+        "privateKeyEncoding",
+      );
+    } else {
+      throw new ERR_INVALID_ARG_VALUE(
+        "options.privateKeyEncoding",
+        privateKeyEncoding,
+      );
+    }
+  }
+}
+
 function createJob(mode, type, options) {
   validateString(type, "type");
+
+  validateKeyEncoding(type, options);
 
   if (options !== undefined) {
     validateObject(options, "options");
@@ -860,9 +1054,15 @@ function createJob(mode, type, options) {
       }
       if (hashAlgorithm !== undefined) {
         validateString(hashAlgorithm, "options.hashAlgorithm");
+        if (!getHashes().includes(hashAlgorithm)) {
+          throw new ERR_CRYPTO_INVALID_DIGEST(hashAlgorithm);
+        }
       }
       if (mgf1HashAlgorithm !== undefined) {
         validateString(mgf1HashAlgorithm, "options.mgf1HashAlgorithm");
+        if (!getHashes().includes(mgf1HashAlgorithm)) {
+          throw new ERR_CRYPTO_INVALID_DIGEST(mgf1HashAlgorithm, "MGF1");
+        }
       }
       if (hash !== undefined) {
         process.emitWarning(
@@ -893,7 +1093,7 @@ function createJob(mode, type, options) {
         return op_node_generate_rsa_pss_key(
           modulusLength,
           publicExponent,
-          hashAlgorithm,
+          hashAlgorithm ?? hash,
           mgf1HashAlgorithm ?? mgf1Hash,
           saltLength,
         );
@@ -901,7 +1101,7 @@ function createJob(mode, type, options) {
         return op_node_generate_rsa_pss_key_async(
           modulusLength,
           publicExponent,
-          hashAlgorithm,
+          hashAlgorithm ?? hash,
           mgf1HashAlgorithm ?? mgf1Hash,
           saltLength,
         );
@@ -914,7 +1114,8 @@ function createJob(mode, type, options) {
 
       let { divisorLength } = options;
       if (divisorLength == null) {
-        divisorLength = 256;
+        // Match OpenSSL defaults based on modulus length (FIPS 186-4)
+        divisorLength = modulusLength <= 1024 ? 160 : 256;
       } else {
         validateInt32(divisorLength, "options.divisorLength", 0);
       }
@@ -960,10 +1161,17 @@ function createJob(mode, type, options) {
       }
       return op_node_generate_x25519_key_async();
     }
-    case "ed448":
+    case "ed448": {
+      if (mode === kSync) {
+        return op_node_generate_ed448_key();
+      }
+      return op_node_generate_ed448_key_async();
+    }
     case "x448": {
-      notImplemented(type);
-      break;
+      if (mode === kSync) {
+        return op_node_generate_x448_key();
+      }
+      return op_node_generate_x448_key_async();
     }
     case "dh": {
       validateObject(options, "options");
@@ -980,6 +1188,13 @@ function createJob(mode, type, options) {
         }
 
         validateString(group, "options.group");
+
+        if (
+          group !== "modp5" && group !== "modp14" && group !== "modp15" &&
+          group !== "modp16" && group !== "modp17" && group !== "modp18"
+        ) {
+          throw new ERR_CRYPTO_UNKNOWN_DH_GROUP();
+        }
 
         if (mode === kSync) {
           return op_node_generate_dh_group_key(group);

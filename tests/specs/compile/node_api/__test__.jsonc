@@ -1,0 +1,14 @@
+{
+  "tempDir": true,
+  "steps": [{
+    "args": "install --allow-scripts",
+    "output": "[WILDCARD]"
+  }, {
+    "args": "compile --no-check --allow-ffi --output out main.ts",
+    "output": "[WILDCARD]"
+  }, {
+    "commandName": "./out",
+    "args": [],
+    "output": "world\n"
+  }]
+}

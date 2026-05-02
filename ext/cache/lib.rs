@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::cell::RefCell;
@@ -7,17 +7,16 @@ use std::pin::Pin;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use async_trait::async_trait;
 use bytes::Bytes;
-use deno_core::op2;
-use deno_core::serde::Deserialize;
-use deno_core::serde::Serialize;
 use deno_core::AsyncRefCell;
 use deno_core::AsyncResult;
 use deno_core::ByteString;
 use deno_core::OpState;
 use deno_core::Resource;
 use deno_core::ResourceId;
+use deno_core::op2;
+use deno_core::serde::Deserialize;
+use deno_core::serde::Serialize;
 use deno_error::JsErrorBox;
 use futures::Stream;
 use tokio::io::AsyncRead;
@@ -98,11 +97,12 @@ pub enum CacheError {
 pub struct CreateCache(pub Arc<dyn Fn() -> Result<CacheImpl, CacheError>>);
 
 deno_core::extension!(deno_cache,
-  deps = [ deno_webidl, deno_web, deno_url, deno_fetch ],
+  deps = [ deno_webidl, deno_web, deno_fetch ],
   ops = [
     op_cache_storage_open,
     op_cache_storage_has,
     op_cache_storage_delete,
+    op_cache_storage_keys,
     op_cache_put,
     op_cache_match,
     op_cache_delete,
@@ -117,10 +117,6 @@ deno_core::extension!(deno_cache,
     }
   },
 );
-
-pub fn get_declaration() -> PathBuf {
-  PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("lib.deno_cache.d.ts")
-}
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -162,62 +158,34 @@ pub struct CacheDeleteRequest {
   pub request_url: String,
 }
 
-#[async_trait(?Send)]
-pub trait Cache: Clone + 'static {
-  type CacheMatchResourceType: Resource;
-
-  async fn storage_open(&self, cache_name: String) -> Result<i64, CacheError>;
-  async fn storage_has(&self, cache_name: String) -> Result<bool, CacheError>;
-  async fn storage_delete(
-    &self,
-    cache_name: String,
-  ) -> Result<bool, CacheError>;
-
-  /// Put a resource into the cache.
-  async fn put(
-    &self,
-    request_response: CachePutRequest,
-    resource: Option<Rc<dyn Resource>>,
-  ) -> Result<(), CacheError>;
-
-  async fn r#match(
-    &self,
-    request: CacheMatchRequest,
-  ) -> Result<
-    Option<(CacheMatchResponseMeta, Option<Self::CacheMatchResourceType>)>,
-    CacheError,
-  >;
-  async fn delete(
-    &self,
-    request: CacheDeleteRequest,
-  ) -> Result<bool, CacheError>;
-}
-
 #[derive(Clone)]
 pub enum CacheImpl {
   Sqlite(SqliteBackedCache),
   Lsc(LscBackend),
 }
 
-#[async_trait(?Send)]
-impl Cache for CacheImpl {
-  type CacheMatchResourceType = CacheResponseResource;
-
-  async fn storage_open(&self, cache_name: String) -> Result<i64, CacheError> {
+impl CacheImpl {
+  pub async fn storage_open(
+    &self,
+    cache_name: String,
+  ) -> Result<i64, CacheError> {
     match self {
       Self::Sqlite(cache) => cache.storage_open(cache_name).await,
       Self::Lsc(cache) => cache.storage_open(cache_name).await,
     }
   }
 
-  async fn storage_has(&self, cache_name: String) -> Result<bool, CacheError> {
+  pub async fn storage_has(
+    &self,
+    cache_name: String,
+  ) -> Result<bool, CacheError> {
     match self {
       Self::Sqlite(cache) => cache.storage_has(cache_name).await,
       Self::Lsc(cache) => cache.storage_has(cache_name).await,
     }
   }
 
-  async fn storage_delete(
+  pub async fn storage_delete(
     &self,
     cache_name: String,
   ) -> Result<bool, CacheError> {
@@ -227,7 +195,14 @@ impl Cache for CacheImpl {
     }
   }
 
-  async fn put(
+  pub async fn storage_keys(&self) -> Result<Vec<String>, CacheError> {
+    match self {
+      Self::Sqlite(cache) => cache.storage_keys().await,
+      Self::Lsc(cache) => cache.storage_keys().await,
+    }
+  }
+
+  pub async fn put(
     &self,
     request_response: CachePutRequest,
     resource: Option<Rc<dyn Resource>>,
@@ -238,11 +213,11 @@ impl Cache for CacheImpl {
     }
   }
 
-  async fn r#match(
+  pub async fn r#match(
     &self,
     request: CacheMatchRequest,
   ) -> Result<
-    Option<(CacheMatchResponseMeta, Option<Self::CacheMatchResourceType>)>,
+    Option<(CacheMatchResponseMeta, Option<CacheResponseResource>)>,
     CacheError,
   > {
     match self {
@@ -251,7 +226,7 @@ impl Cache for CacheImpl {
     }
   }
 
-  async fn delete(
+  pub async fn delete(
     &self,
     request: CacheDeleteRequest,
   ) -> Result<bool, CacheError> {
@@ -308,12 +283,12 @@ impl CacheResponseResource {
 impl Resource for CacheResponseResource {
   deno_core::impl_readable_byob!();
 
-  fn name(&self) -> Cow<str> {
+  fn name(&self) -> Cow<'_, str> {
     "CacheResponseResource".into()
   }
 }
 
-#[op2(async)]
+#[op2]
 #[number]
 pub async fn op_cache_storage_open(
   state: Rc<RefCell<OpState>>,
@@ -323,7 +298,7 @@ pub async fn op_cache_storage_open(
   cache.storage_open(cache_name).await
 }
 
-#[op2(async)]
+#[op2]
 pub async fn op_cache_storage_has(
   state: Rc<RefCell<OpState>>,
   #[string] cache_name: String,
@@ -332,7 +307,7 @@ pub async fn op_cache_storage_has(
   cache.storage_has(cache_name).await
 }
 
-#[op2(async)]
+#[op2]
 pub async fn op_cache_storage_delete(
   state: Rc<RefCell<OpState>>,
   #[string] cache_name: String,
@@ -341,7 +316,16 @@ pub async fn op_cache_storage_delete(
   cache.storage_delete(cache_name).await
 }
 
-#[op2(async)]
+#[op2]
+#[serde]
+pub async fn op_cache_storage_keys(
+  state: Rc<RefCell<OpState>>,
+) -> Result<Vec<String>, CacheError> {
+  let cache = get_cache(&state)?;
+  cache.storage_keys().await
+}
+
+#[op2]
 pub async fn op_cache_put(
   state: Rc<RefCell<OpState>>,
   #[serde] request_response: CachePutRequest,
@@ -360,7 +344,7 @@ pub async fn op_cache_put(
   cache.put(request_response, resource).await
 }
 
-#[op2(async)]
+#[op2]
 #[serde]
 pub async fn op_cache_match(
   state: Rc<RefCell<OpState>>,
@@ -377,7 +361,7 @@ pub async fn op_cache_match(
   }
 }
 
-#[op2(async)]
+#[op2]
 pub async fn op_cache_delete(
   state: Rc<RefCell<OpState>>,
   #[serde] request: CacheDeleteRequest,

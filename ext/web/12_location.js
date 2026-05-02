@@ -1,8 +1,8 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 /// <reference path="../../core/internal.d.ts" />
 
-import { primordials } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 const {
   Error,
   ObjectDefineProperties,
@@ -15,8 +15,8 @@ const {
   WeakMapPrototypeSet,
 } = primordials;
 
-import { URL } from "ext:deno_url/00_url.js";
-import { DOMException } from "./01_dom_exception.js";
+import { URL } from "ext:deno_web/00_url.js";
+const { DOMException } = core.loadExtScript("ext:deno_web/01_dom_exception.js");
 
 const locationConstructorKey = Symbol("locationConstructorKey");
 

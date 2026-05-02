@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::rc::Rc;
 
@@ -11,6 +11,18 @@ use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
 
 pub type RawBiPipeHandle = super::RawIoHandle;
+
+#[cfg(all(unix, not(target_os = "linux")))]
+fn set_cloexec(fd: std::os::fd::RawFd) {
+  // SAFETY: fcntl is called with a valid fd received from the OS. Errors are
+  // intentionally ignored here because CLOEXEC is a best-effort leak guard.
+  unsafe {
+    let flags = libc::fcntl(fd, libc::F_GETFD);
+    if flags != -1 {
+      libc::fcntl(fd, libc::F_SETFD, flags | libc::FD_CLOEXEC);
+    }
+  }
+}
 
 /// One end of a bidirectional pipe. This implements the
 /// `Resource` trait.
@@ -133,6 +145,104 @@ impl From<tokio::net::unix::OwnedReadHalf> for BiPipeRead {
     Self { inner: value }
   }
 }
+
+#[cfg(unix)]
+impl BiPipeRead {
+  pub async fn recv_with_fd(
+    &self,
+    buf: &mut [u8],
+  ) -> Result<(usize, Option<std::os::fd::RawFd>), std::io::Error> {
+    use std::io;
+    use std::mem::size_of;
+    use std::os::fd::AsRawFd;
+
+    use tokio::io::Interest;
+
+    debug_assert!(!buf.is_empty());
+    let stream = self.inner.as_ref();
+    let stream_fd = stream.as_raw_fd();
+
+    const MAX_RECV_FDS: usize = 8;
+
+    // SAFETY: CMSG_SPACE only computes the required control-buffer size.
+    let cmsg_space = unsafe {
+      libc::CMSG_SPACE((size_of::<std::os::fd::RawFd>() * MAX_RECV_FDS) as _)
+        as usize
+    };
+    let mut control = vec![0u8; cmsg_space];
+
+    loop {
+      stream.readable().await?;
+      let res = stream.try_io(Interest::READABLE, || {
+        let mut iov = libc::iovec {
+          iov_base: buf.as_mut_ptr().cast(),
+          iov_len: buf.len(),
+        };
+        // SAFETY: msghdr is a plain C struct where zero is a valid initial state.
+        let mut msg: libc::msghdr = unsafe { std::mem::zeroed() };
+        msg.msg_iov = &mut iov;
+        msg.msg_iovlen = 1;
+        msg.msg_control = control.as_mut_ptr().cast();
+        msg.msg_controllen = control.len() as _;
+
+        #[cfg(target_os = "linux")]
+        let flags = libc::MSG_CMSG_CLOEXEC;
+        #[cfg(not(target_os = "linux"))]
+        let flags = 0;
+
+        // Retry EINTR in place: it doesn't change readiness, so there's no
+        // need to bounce back through the outer await.
+        let nread = loop {
+          // SAFETY: msg points to valid iovec and control buffers for this call.
+          let n = unsafe { libc::recvmsg(stream_fd, &mut msg, flags) };
+          if n != -1 {
+            break n as usize;
+          }
+          let err = io::Error::last_os_error();
+          if err.kind() == io::ErrorKind::Interrupted {
+            continue;
+          }
+          return Err(err);
+        };
+
+        let mut fd = None;
+        // SAFETY: msg was populated by recvmsg; CMSG_* helpers inspect the
+        // control buffer bounded by msg_controllen.
+        unsafe {
+          let mut cmsg = libc::CMSG_FIRSTHDR(&msg);
+          while !cmsg.is_null() {
+            if (*cmsg).cmsg_level == libc::SOL_SOCKET
+              && (*cmsg).cmsg_type == libc::SCM_RIGHTS
+            {
+              let header_len = libc::CMSG_LEN(0) as usize;
+              let data_len = (*cmsg).cmsg_len as usize;
+              let data_len = data_len.saturating_sub(header_len);
+              let fd_count = data_len / size_of::<std::os::fd::RawFd>();
+              let data = libc::CMSG_DATA(cmsg).cast::<std::os::fd::RawFd>();
+              for i in 0..fd_count {
+                let received_fd = *data.add(i);
+                if fd.is_none() {
+                  #[cfg(not(target_os = "linux"))]
+                  set_cloexec(received_fd);
+                  fd = Some(received_fd);
+                } else {
+                  libc::close(received_fd);
+                }
+              }
+            }
+            cmsg = libc::CMSG_NXTHDR(&msg, cmsg);
+          }
+        }
+        Ok((nread, fd))
+      });
+      match res {
+        Ok(v) => return Ok(v),
+        Err(err) if err.kind() == io::ErrorKind::WouldBlock => continue,
+        Err(err) => return Err(err),
+      }
+    }
+  }
+}
 #[cfg(windows)]
 impl From<tokio::io::ReadHalf<tokio::net::windows::named_pipe::NamedPipeClient>>
   for BiPipeRead
@@ -163,6 +273,81 @@ impl From<tokio::net::unix::OwnedWriteHalf> for BiPipeWrite {
   }
 }
 
+#[cfg(unix)]
+impl BiPipeWrite {
+  pub async fn send_with_fd(
+    &self,
+    buf: &[u8],
+    fd: std::os::fd::RawFd,
+  ) -> Result<usize, std::io::Error> {
+    use std::io;
+    use std::mem::size_of;
+    use std::os::fd::AsRawFd;
+
+    use tokio::io::Interest;
+
+    debug_assert!(!buf.is_empty());
+    let stream = self.inner.as_ref();
+    let stream_fd = stream.as_raw_fd();
+
+    // SAFETY: CMSG_SPACE only computes the required control-buffer size.
+    let cmsg_space = unsafe {
+      libc::CMSG_SPACE(size_of::<std::os::fd::RawFd>() as _) as usize
+    };
+    let mut control = vec![0u8; cmsg_space];
+    let mut iov = libc::iovec {
+      iov_base: buf.as_ptr().cast_mut().cast(),
+      iov_len: buf.len(),
+    };
+    // SAFETY: msghdr is a plain C struct where zero is a valid initial state.
+    let mut msg: libc::msghdr = unsafe { std::mem::zeroed() };
+    msg.msg_iov = &mut iov;
+    msg.msg_iovlen = 1;
+    msg.msg_control = control.as_mut_ptr().cast();
+    msg.msg_controllen = control.len() as _;
+
+    // SAFETY: msg has a valid control buffer large enough for one fd.
+    unsafe {
+      let cmsg = libc::CMSG_FIRSTHDR(&msg);
+      if cmsg.is_null() {
+        return Err(io::Error::other("failed to create control message"));
+      }
+      (*cmsg).cmsg_level = libc::SOL_SOCKET;
+      (*cmsg).cmsg_type = libc::SCM_RIGHTS;
+      (*cmsg).cmsg_len =
+        libc::CMSG_LEN(size_of::<std::os::fd::RawFd>() as _) as _;
+      let data = libc::CMSG_DATA(cmsg).cast::<std::os::fd::RawFd>();
+      *data = fd;
+      msg.msg_controllen =
+        libc::CMSG_SPACE(size_of::<std::os::fd::RawFd>() as _) as _;
+    }
+
+    loop {
+      stream.writable().await?;
+      let res = stream.try_io(Interest::WRITABLE, || {
+        // Retry EINTR in place (see note in recv_with_fd).
+        loop {
+          // SAFETY: msg points to valid iovec and control buffers for this call.
+          let nwritten = unsafe { libc::sendmsg(stream_fd, &msg, 0) };
+          if nwritten != -1 {
+            return Ok(nwritten as usize);
+          }
+          let err = io::Error::last_os_error();
+          if err.kind() == io::ErrorKind::Interrupted {
+            continue;
+          }
+          return Err(err);
+        }
+      });
+      match res {
+        Ok(n) => return Ok(n),
+        Err(err) if err.kind() == io::ErrorKind::WouldBlock => continue,
+        Err(err) => return Err(err),
+      }
+    }
+  }
+}
+
 #[cfg(windows)]
 impl
   From<tokio::io::WriteHalf<tokio::net::windows::named_pipe::NamedPipeClient>>
@@ -182,7 +367,21 @@ fn from_raw(
   stream: RawBiPipeHandle,
 ) -> Result<(BiPipeRead, BiPipeWrite), std::io::Error> {
   use std::os::fd::FromRawFd;
-  // Safety: The fd is part of a pair of connected sockets
+
+  use nix::sys::socket::AddressFamily;
+  use nix::sys::socket::SockaddrLike;
+  use nix::sys::socket::SockaddrStorage;
+  use nix::sys::socket::getsockname;
+
+  if getsockname::<SockaddrStorage>(stream)
+    .ok()
+    .and_then(|a| a.family())
+    != Some(AddressFamily::Unix)
+  {
+    return Err(std::io::Error::other("fd is not from BiPipe"));
+  }
+
+  // SAFETY: We validated above that this is from a unix stream.
   let unix_stream =
     unsafe { std::os::unix::net::UnixStream::from_raw_fd(stream) };
   unix_stream.set_nonblocking(true)?;
@@ -273,8 +472,8 @@ impl_async_write!(for BiPipe -> self.write_end);
 
 /// Creates both sides of a bidirectional pipe, returning the raw
 /// handles to the underlying OS resources.
-pub fn bi_pipe_pair_raw(
-) -> Result<(RawBiPipeHandle, RawBiPipeHandle), std::io::Error> {
+pub fn bi_pipe_pair_raw()
+-> Result<(RawBiPipeHandle, RawBiPipeHandle), std::io::Error> {
   #[cfg(unix)]
   {
     // SockFlag is broken on macOS

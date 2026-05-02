@@ -1,9 +1,10 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 // deno-lint-ignore-file no-console
 
 import { assertIsError, assertMatch, assertRejects } from "@std/assert";
 import { Buffer, type Reader } from "@std/io";
+import { delay } from "@std/async/delay";
 import { TextProtoReader } from "../testdata/run/textproto.ts";
 import {
   assert,
@@ -823,42 +824,6 @@ Deno.test({ permissions: { net: true } }, async function httpServerPort0() {
   await server.finished;
 });
 
-Deno.test(
-  { permissions: { net: true } },
-  async function httpServerDefaultOnListenCallback() {
-    const ac = new AbortController();
-
-    const consoleError = console.error;
-    console.error = (msg) => {
-      try {
-        const match = msg.match(
-          /Listening on http:\/\/(localhost|0\.0\.0\.0):(\d+)\//,
-        );
-        assert(!!match, `Didn't match ${msg}`);
-        const port = +match[2];
-        assert(port > 0 && port < 65536);
-      } finally {
-        ac.abort();
-      }
-    };
-
-    try {
-      await using server = Deno.serve({
-        handler() {
-          return new Response("Hello World");
-        },
-        hostname: "0.0.0.0",
-        port: 0,
-        signal: ac.signal,
-      });
-
-      await server.finished;
-    } finally {
-      console.error = consoleError;
-    }
-  },
-);
-
 // https://github.com/denoland/deno/issues/15107
 Deno.test(
   { permissions: { net: true } },
@@ -905,36 +870,6 @@ Deno.test({ permissions: { net: true } }, async function validPortString() {
   assertEquals(server.addr.transport, "tcp");
   assertEquals(server.addr.port, 4501);
   await server.shutdown();
-});
-
-Deno.test({ permissions: { net: true } }, async function ipv6Hostname() {
-  const ac = new AbortController();
-  let url = "";
-
-  const consoleError = console.error;
-  console.error = (msg) => {
-    try {
-      const match = msg.match(/Listening on (http:\/\/(.*?):(\d+)\/)/);
-      assert(!!match, `Didn't match ${msg}`);
-      url = match[1];
-    } finally {
-      ac.abort();
-    }
-  };
-
-  try {
-    await using server = Deno.serve({
-      handler: () => new Response(),
-      hostname: "::1",
-      port: 0,
-      signal: ac.signal,
-    });
-    assertEquals(server.addr.transport, "tcp");
-    assert(new URL(url), `Not a valid URL "${url}"`);
-    await server.shutdown();
-  } finally {
-    console.error = consoleError;
-  }
 });
 
 Deno.test({ permissions: { net: true } }, function invalidPortFloat() {
@@ -1013,7 +948,7 @@ function createUrlTest(
   name: string,
   methodAndPath: string,
   host: string | null,
-  expected: string,
+  expected: string | number,
 ) {
   Deno.test(`httpServerUrl${name}`, async () => {
     const listeningDeferred = Promise.withResolvers<number>();
@@ -1036,18 +971,28 @@ function createUrlTest(
     const conn = await Deno.connect({ port });
 
     const encoder = new TextEncoder();
+    // `null` omits the Host header entirely; `""` sends `Host:` with an
+    // empty value, which is a separate code path.
     const body = `${methodAndPath} HTTP/1.1\r\n${
-      host ? ("Host: " + host + "\r\n") : ""
+      host !== null ? ("Host: " + host + "\r\n") : ""
     }Content-Length: 5\r\n\r\n12345`;
     const writeResult = await conn.write(encoder.encode(body));
     assertEquals(body.length, writeResult);
 
     try {
-      const expectedResult = expected.replace("HOST", "localhost").replace(
-        "PORT",
-        `${port}`,
-      );
-      assertEquals(await urlDeferred.promise, expectedResult);
+      if (typeof expected === "number") {
+        const buf = new Uint8Array(128);
+        const n = await conn.read(buf);
+        assert(n != null);
+        const response = new TextDecoder().decode(buf.subarray(0, n));
+        assert(response.startsWith(`HTTP/1.1 ${expected}`));
+      } else {
+        const expectedResult = expected.replace("HOST", "localhost").replace(
+          "PORT",
+          `${port}`,
+        );
+        assertEquals(await urlDeferred.promise, expectedResult);
+      }
     } finally {
       ac.abort();
       await server.finished;
@@ -1094,22 +1039,37 @@ createUrlTest(
   "http://localhost:1234/path",
 );
 
-createUrlTest("WithAsterisk", "OPTIONS *", null, "*");
+createUrlTest("WithAsterisk", "OPTIONS *", null, "http://localhost:PORT/*");
 createUrlTest(
   "WithAuthorityForm",
   "CONNECT deno.land:80",
   null,
-  "deno.land:80",
+  "http://deno.land:80",
 );
 
-// TODO(mmastrac): These should probably be 400 errors
-createUrlTest("WithInvalidAsterisk", "GET *", null, "*");
-createUrlTest("WithInvalidNakedPath", "GET path", null, "path");
+createUrlTest("WithInvalidAsterisk", "GET *", null, 400);
+createUrlTest("WithInvalidNakedPath", "GET path", null, 400);
 createUrlTest(
   "WithInvalidNakedAuthority",
   "GET deno.land:1234",
   null,
-  "deno.land:1234",
+  400,
+);
+createUrlTest(
+  "WithInvalidConnectAuthority",
+  "CONNECT /path",
+  null,
+  400,
+);
+
+// Regression test for https://github.com/denoland/deno/issues/29872: an empty
+// `Host:` header must fall back to the listener's authority instead of
+// producing `request.url = "http:///path"` (which parses as hostname "path").
+createUrlTest(
+  "WithEmptyHostHeader",
+  "GET /path",
+  "",
+  "http://HOST:PORT/path",
 );
 
 Deno.test(
@@ -1505,15 +1465,26 @@ Deno.test(
     await using server = Deno.serve({
       handler: async (request) => {
         const { conn, response } = upgradeHttpRaw(request);
+        let written;
+
+        written = await conn.write(new TextEncoder().encode("HTTP/1.1 101 Sw"));
+        assertEquals(written, 15);
+
+        written = await conn.write(
+          new TextEncoder().encode("itching Protocols\r\nConnection:"),
+        );
+        assertEquals(written, 30);
+
+        written = await conn.write(
+          new TextEncoder().encode("Upgrade\r\n\r\nExtra"),
+        );
+        assertEquals(written, 11); // note: does not include "Extra"
+
+        written = await conn.write(new TextEncoder().encode("Extra"));
+        assertEquals(written, 5);
+
         const buf = new Uint8Array(1024);
         let read;
-
-        // Write our fake HTTP upgrade
-        await conn.write(
-          new TextEncoder().encode(
-            "HTTP/1.1 101 Switching Protocols\r\nConnection: Upgraded\r\n\r\nExtra",
-          ),
-        );
 
         // Upgrade data
         read = await conn.read(buf);
@@ -1521,6 +1492,7 @@ Deno.test(
           new TextDecoder().decode(buf.subarray(0, read!)),
           "Upgrade data",
         );
+
         // Read the packet to echo
         read = await conn.read(buf);
         // Echo
@@ -3035,6 +3007,8 @@ for (const delay of ["delay", "nodelay"]) {
   }
 }
 
+// NOTE: This test will start failing when we disable "deno_http/legacy_abort" feature.
+//
 // Test for the internal implementation detail of cached request signals. Ensure that the request's
 // signal is aborted if we try to access it after the request has been completed.
 Deno.test(
@@ -3505,7 +3479,7 @@ Deno.test(
     const { resolve } = Promise.withResolvers<void>();
 
     let reqCount = -1;
-    let timerId: number | undefined;
+    let timerId: ReturnType<typeof setInterval> | undefined;
     await using server = Deno.serve({
       handler: (_req) => {
         reqCount++;
@@ -3519,7 +3493,7 @@ Deno.test(
               }, 1000);
             },
             cancel() {
-              if (typeof timerId === "number") {
+              if (timerId !== undefined) {
                 clearInterval(timerId);
               }
             },
@@ -4108,6 +4082,58 @@ Deno.test(
   },
 );
 
+Deno.test(
+  {
+    ignore: Deno.build.os !== "linux",
+    permissions: { run: true, net: true },
+  },
+  async function httpServerVsockSocket() {
+    const { promise, resolve } = Promise.withResolvers<Deno.VsockAddr>();
+    const ac = new AbortController();
+    await using server = Deno.serve(
+      {
+        signal: ac.signal,
+        cid: -1,
+        port: 8000,
+        onListen(info) {
+          resolve(info);
+        },
+        onError: createOnErrorCb(ac),
+      },
+      (_req, { remoteAddr }) => {
+        assertEquals(remoteAddr.transport, "vsock");
+        assertEquals(remoteAddr.cid, 1);
+        assertEquals(remoteAddr.port, conn.localAddr.port);
+        return new Response("hello world!");
+      },
+    );
+
+    assertEquals((await promise).cid, 4294967295);
+    assertEquals((await promise).port, 8000);
+
+    const conn = await Deno.connect({
+      transport: "vsock",
+      cid: 1,
+      port: 8000,
+    });
+    await conn.write(
+      new TextEncoder().encode("GET / HTTP/1.1\r\nhost: example.com\r\n\r\n"),
+    );
+    const data = new Uint8Array(512);
+    const n = await conn.read(data);
+    const body = new TextDecoder().decode(data.subarray(0, n!));
+
+    assertEquals(
+      "hello world!",
+      body.split("\r\n").at(-1),
+    );
+
+    await conn.close();
+    ac.abort();
+    await server.finished;
+  },
+);
+
 // serve Handler must return Response class or promise that resolves Response class
 Deno.test(
   { permissions: { net: true, run: true } },
@@ -4329,6 +4355,27 @@ Deno.test({
   await server.shutdown();
 });
 
+Deno.test({
+  name: "support shutdown while open idle connection exists",
+}, async () => {
+  const { promise, resolve } = Promise.withResolvers<void>();
+
+  await using server = Deno.serve({
+    hostname: "0.0.0.0",
+    port: servePort,
+    onListen: () => resolve(),
+  }, () => new Response("Ok"));
+
+  await promise;
+
+  using conn = await Deno.connect({ port: servePort });
+
+  await server.shutdown();
+
+  const read = await conn.read(new Uint8Array(10));
+  assertEquals(read, null);
+});
+
 // https://github.com/denoland/deno/issues/27083
 Deno.test(
   { permissions: { net: true } },
@@ -4391,6 +4438,7 @@ Deno.test({
 
     try {
       while (true) {
+        await delay(100);
         const { done } = await reader.read();
         if (done) break;
       }
@@ -4406,13 +4454,15 @@ Deno.test({
 
   async function onListen({ port }: { port: number }) {
     const body = "a".repeat(1000);
-    const request = `POST / HTTP/1.1\r\n` +
+    const header = `POST / HTTP/1.1\r\n` +
       `Host: 127.0.0.1:${port}\r\n` +
       `Content-Length: 1000\r\n` +
-      "\r\n" + body;
+      "\r\n";
 
     const connection = await Deno.connect({ hostname: "127.0.0.1", port });
-    await connection.write(new TextEncoder().encode(request));
+    await connection.write(new TextEncoder().encode(header));
+    await delay(100);
+    await connection.write(new TextEncoder().encode(body));
     connection.close();
   }
   await server.finished;
@@ -4423,3 +4473,72 @@ Deno.test({
     "Cannot read request body as underlying resource unavailable",
   );
 });
+
+Deno.test(
+  {
+    ignore: Deno.build.os !== "linux",
+    permissions: { run: true, net: true },
+  },
+  async function httpServerVsockWebSocketUpgrade() {
+    const ac = new AbortController();
+    const { promise, resolve } = Promise.withResolvers<Deno.VsockAddr>();
+    const serverWebSocketClosed = Promise.withResolvers<void>();
+
+    await using server = Deno.serve(
+      {
+        signal: ac.signal,
+        cid: -1,
+        port: 8001,
+        onListen(info) {
+          resolve(info);
+        },
+        onError: createOnErrorCb(ac),
+      },
+      (request) => {
+        const { socket, response } = Deno.upgradeWebSocket(request);
+
+        socket.onmessage = (event) => {
+          // Echo the message back to the client
+          if (socket.readyState === WebSocket.OPEN) {
+            socket.send(event.data);
+          }
+        };
+
+        socket.onclose = () => {
+          serverWebSocketClosed.resolve();
+        };
+
+        return response;
+      },
+    );
+
+    assertEquals((await promise).cid, 4294967295);
+    assertEquals((await promise).port, 8001);
+
+    const conn = await Deno.connect({
+      transport: "vsock",
+      cid: 1,
+      port: 8001,
+    });
+
+    // Send HTTP upgrade request
+    await conn.write(
+      new TextEncoder().encode(
+        "GET / HTTP/1.1\r\nHost: example.com\r\nConnection: Upgrade\r\nUpgrade: websocket\r\nSec-WebSocket-Key: test\r\n\r\n",
+      ),
+    );
+
+    // Read upgrade response
+    const responseData = new Uint8Array(512);
+    const responseRead = await conn.read(responseData);
+    const responseText = new TextDecoder().decode(
+      responseData.subarray(0, responseRead!),
+    );
+    assert(responseText.includes("101 Switching Protocols"));
+
+    await conn.close();
+    await serverWebSocketClosed.promise;
+    ac.abort();
+    await server.finished;
+  },
+);

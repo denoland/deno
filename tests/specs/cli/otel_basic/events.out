@@ -1,0 +1,151 @@
+{
+  "spans": [
+    {
+      "traceId": "00000000000000000000000000000001",
+      "spanId": "0000000000000001",
+      "traceState": "",
+      "parentSpanId": "",
+      "flags": 1,
+      "name": "example span",
+      "kind": 1,
+      "startTimeUnixNano": "[WILDCARD]",
+      "endTimeUnixNano": "[WILDCARD]",
+      "attributes": [],
+      "droppedAttributesCount": 0,
+      "events": [
+        {
+          "timeUnixNano": "[WILDCARD]",
+          "name": "example event",
+          "attributes": [],
+          "droppedAttributesCount": 0
+        }
+      ],
+      "droppedEventsCount": 0,
+      "links": [],
+      "droppedLinksCount": 0,
+      "status": {
+        "message": "",
+        "code": 0
+      }
+    },
+    {
+      "traceId": "00000000000000000000000000000002",
+      "spanId": "0000000000000002",
+      "traceState": "",
+      "parentSpanId": "",
+      "flags": 1,
+      "name": "example span",
+      "kind": 1,
+      "startTimeUnixNano": "[WILDCARD]",
+      "endTimeUnixNano": "[WILDCARD]",
+      "attributes": [],
+      "droppedAttributesCount": 0,
+      "events": [
+        {
+          "timeUnixNano": "[WILDCARD]",
+          "name": "example event",
+          "attributes": [
+            {
+              "key": "key",
+              "value": {
+                "stringValue": "value"
+              }
+            }
+          ],
+          "droppedAttributesCount": 0
+        }
+      ],
+      "droppedEventsCount": 0,
+      "links": [],
+      "droppedLinksCount": 0,
+      "status": {
+        "message": "",
+        "code": 0
+      }
+    },
+    {
+      "traceId": "00000000000000000000000000000003",
+      "spanId": "0000000000000003",
+      "traceState": "",
+      "parentSpanId": "",
+      "flags": 1,
+      "name": "example span",
+      "kind": 1,
+      "startTimeUnixNano": "[WILDCARD]",
+      "endTimeUnixNano": "[WILDCARD]",
+      "attributes": [],
+      "droppedAttributesCount": 0,
+      "events": [
+        {
+          "timeUnixNano": "[WILDCARD]",
+          "name": "example event",
+          "attributes": [
+            {
+              "key": "key",
+              "value": {
+                "stringValue": "value"
+              }
+            }
+          ],
+          "droppedAttributesCount": 0
+        }
+      ],
+      "droppedEventsCount": 0,
+      "links": [],
+      "droppedLinksCount": 0,
+      "status": {
+        "message": "",
+        "code": 0
+      }
+    },
+    {
+      "traceId": "00000000000000000000000000000004",
+      "spanId": "0000000000000004",
+      "traceState": "",
+      "parentSpanId": "",
+      "flags": 1,
+      "name": "example span",
+      "kind": 1,
+      "startTimeUnixNano": "[WILDCARD]",
+      "endTimeUnixNano": "[WILDCARD]",
+      "attributes": [],
+      "droppedAttributesCount": 0,
+      "events": [
+        {
+          "timeUnixNano": "[WILDCARD]",
+          "name": "exception",
+          "attributes": [
+            {
+              "key": "exception.type",
+              "value": {
+                "stringValue": "Error"
+              }
+            },
+            {
+              "key": "exception.message",
+              "value": {
+                "stringValue": "error message"
+              }
+            },
+            {
+              "key": "exception.stacktrace",
+              "value": {
+                "stringValue": "Error: error message\n    at file://[WILDCARD]"
+              }
+            }
+          ],
+          "droppedAttributesCount": 0
+        }
+      ],
+      "droppedEventsCount": 0,
+      "links": [],
+      "droppedLinksCount": 0,
+      "status": {
+        "message": "",
+        "code": 0
+      }
+    }
+  ],
+  "logs": [],
+  "metrics": []
+}

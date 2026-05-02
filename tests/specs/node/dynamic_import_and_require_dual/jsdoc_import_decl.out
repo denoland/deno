@@ -1,4 +1,4 @@
-Check file:///[WILDLINE]/jsdoc_import_decl.js
+Check [WILDCARD]jsdoc_import_decl.js
 TS2345 [ERROR]: Argument of type '"value"' is not assignable to parameter of type '"mjs"'.
 log("value");
     ~~~~~~~

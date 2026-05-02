@@ -1,0 +1,5 @@
+{
+  "dependencies": {
+    "@denotest/exec-fs-permissions": "*"
+  }
+}

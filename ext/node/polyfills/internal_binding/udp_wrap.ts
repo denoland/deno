@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -23,9 +23,22 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
+import { core } from "ext:core/mod.js";
 import {
-  op_node_unstable_net_listen_udp,
-  op_node_unstable_net_listen_unixpacket,
+  op_node_udp_bind,
+  op_node_udp_join_multi_v4,
+  op_node_udp_join_multi_v6,
+  op_node_udp_join_source_specific,
+  op_node_udp_leave_multi_v4,
+  op_node_udp_leave_multi_v6,
+  op_node_udp_leave_source_specific,
+  op_node_udp_recv,
+  op_node_udp_send,
+  op_node_udp_set_broadcast,
+  op_node_udp_set_multicast_interface,
+  op_node_udp_set_multicast_loopback,
+  op_node_udp_set_multicast_ttl,
+  op_node_udp_set_ttl,
 } from "ext:core/ops";
 
 import {
@@ -40,13 +53,8 @@ import { notImplemented } from "ext:deno_node/_utils.ts";
 import { Buffer } from "node:buffer";
 import type { ErrnoException } from "ext:deno_node/internal/errors.ts";
 import { isIP } from "ext:deno_node/internal/net.ts";
-import * as net from "ext:deno_net/01_net.js";
 import { isLinux, isWindows } from "ext:deno_node/_util/os.ts";
-
-const DenoListenDatagram = net.createListenDatagram(
-  op_node_unstable_net_listen_udp,
-  op_node_unstable_net_listen_unixpacket,
-);
+import { os } from "ext:deno_node/internal_binding/constants.ts";
 
 type MessageType = string | Uint8Array | Buffer | DataView;
 
@@ -54,6 +62,33 @@ const AF_INET = 2;
 const AF_INET6 = 10;
 
 const UDP_DGRAM_MAXSIZE = 64 * 1024;
+
+/** Validate that the address is a parseable IPv4 address. */
+function isValidIPv4Address(address: string): boolean {
+  return isIP(address) === 4;
+}
+
+/** Validate multicast address matches the socket family. */
+function isValidMulticastAddress(
+  multicastAddress: string,
+  family: string | undefined,
+  interfaceAddress?: string,
+): boolean {
+  if (family === "IPv6") {
+    // IPv6 multicast - interface can be address, name, or address%zone
+    // Validation of interface is done in Rust
+    return isIP(multicastAddress) === 6;
+  } else {
+    // IPv4 multicast
+    if (!isValidIPv4Address(multicastAddress)) return false;
+    if (
+      interfaceAddress !== undefined && !isValidIPv4Address(interfaceAddress)
+    ) {
+      return false;
+    }
+    return true;
+  }
+}
 
 export class SendWrap extends AsyncWrap {
   list!: MessageType[];
@@ -79,8 +114,9 @@ export class UDP extends HandleWrap {
   #remoteFamily?: string;
   #remotePort?: number;
 
-  #listener?: Deno.DatagramConn;
+  #rid?: number;
   #receiving = false;
+  #recvPromiseId?: number;
   #unrefed = false;
 
   #recvBufferSize = UDP_DGRAM_MAXSIZE;
@@ -111,16 +147,64 @@ export class UDP extends HandleWrap {
     super(providerType.UDPWRAP);
   }
 
-  addMembership(_multicastAddress: string, _interfaceAddress?: string): number {
-    notImplemented("udp.UDP.prototype.addMembership");
+  addMembership(multicastAddress: string, interfaceAddress?: string): number {
+    if (
+      !isValidMulticastAddress(multicastAddress, this.#family, interfaceAddress)
+    ) {
+      return codeMap.get("EINVAL")!;
+    }
+
+    if (this.#rid === undefined) {
+      return codeMap.get("EBADF")!;
+    }
+
+    try {
+      if (this.#family === "IPv6") {
+        op_node_udp_join_multi_v6(
+          this.#rid,
+          multicastAddress,
+          interfaceAddress ?? null,
+        );
+      } else {
+        op_node_udp_join_multi_v4(
+          this.#rid,
+          multicastAddress,
+          interfaceAddress ?? null,
+        );
+      }
+      return 0;
+    } catch {
+      return codeMap.get("EINVAL")!;
+    }
   }
 
   addSourceSpecificMembership(
-    _sourceAddress: string,
-    _groupAddress: string,
-    _interfaceAddress?: string,
+    sourceAddress: string,
+    groupAddress: string,
+    interfaceAddress?: string,
   ): number {
-    notImplemented("udp.UDP.prototype.addSourceSpecificMembership");
+    if (
+      !isValidIPv4Address(sourceAddress) ||
+      !isValidIPv4Address(groupAddress)
+    ) {
+      return codeMap.get("EINVAL")!;
+    }
+
+    if (this.#rid === undefined) {
+      return codeMap.get("EBADF")!;
+    }
+
+    try {
+      op_node_udp_join_source_specific(
+        this.#rid,
+        sourceAddress,
+        groupAddress,
+        interfaceAddress ?? "0.0.0.0",
+      );
+    } catch {
+      return codeMap.get("EINVAL")!;
+    }
+    return 0;
   }
 
   /**
@@ -148,15 +232,8 @@ export class UDP extends HandleWrap {
     buffer: boolean,
     ctx: Record<string, string | number>,
   ): number | undefined {
-    let err: string | undefined;
-
-    if (size > UDP_DGRAM_MAXSIZE) {
-      err = "EINVAL";
-    } else if (!this.#address) {
-      err = isWindows ? "ENOTSOCK" : "EBADF";
-    }
-
-    if (err) {
+    if (!this.#address) {
+      const err = isWindows ? "ENOTSOCK" : "EBADF";
       ctx.errno = codeMap.get(err)!;
       ctx.code = err;
       ctx.message = errorMap.get(ctx.errno)![1];
@@ -195,18 +272,66 @@ export class UDP extends HandleWrap {
   }
 
   dropMembership(
-    _multicastAddress: string,
-    _interfaceAddress?: string,
+    multicastAddress: string,
+    interfaceAddress?: string,
   ): number {
-    notImplemented("udp.UDP.prototype.dropMembership");
+    if (
+      !isValidMulticastAddress(multicastAddress, this.#family, interfaceAddress)
+    ) {
+      return codeMap.get("EINVAL")!;
+    }
+
+    if (this.#rid === undefined) {
+      return codeMap.get("EBADF")!;
+    }
+
+    try {
+      if (this.#family === "IPv6") {
+        op_node_udp_leave_multi_v6(
+          this.#rid,
+          multicastAddress,
+          interfaceAddress ?? null,
+        );
+      } else {
+        op_node_udp_leave_multi_v4(
+          this.#rid,
+          multicastAddress,
+          interfaceAddress ?? null,
+        );
+      }
+      return 0;
+    } catch {
+      return codeMap.get("EINVAL")!;
+    }
   }
 
   dropSourceSpecificMembership(
-    _sourceAddress: string,
-    _groupAddress: string,
-    _interfaceAddress?: string,
+    sourceAddress: string,
+    groupAddress: string,
+    interfaceAddress?: string,
   ): number {
-    notImplemented("udp.UDP.prototype.dropSourceSpecificMembership");
+    if (
+      !isValidIPv4Address(sourceAddress) ||
+      !isValidIPv4Address(groupAddress)
+    ) {
+      return codeMap.get("EINVAL")!;
+    }
+
+    if (this.#rid === undefined) {
+      return codeMap.get("EBADF")!;
+    }
+
+    try {
+      op_node_udp_leave_source_specific(
+        this.#rid,
+        sourceAddress,
+        groupAddress,
+        interfaceAddress ?? "0.0.0.0",
+      );
+    } catch {
+      return codeMap.get("EINVAL")!;
+    }
+    return 0;
   }
 
   /**
@@ -277,7 +402,6 @@ export class UDP extends HandleWrap {
   }
 
   override ref() {
-    this.#listener?.ref();
     this.#unrefed = false;
   }
 
@@ -299,57 +423,114 @@ export class UDP extends HandleWrap {
     return this.#doSend(req, bufs, count, args, AF_INET6);
   }
 
-  setBroadcast(_bool: 0 | 1): number {
-    notImplemented("udp.UDP.prototype.setBroadcast");
+  setBroadcast(bool: 0 | 1): number {
+    if (this.#rid === undefined) {
+      return codeMap.get("EBADF")!;
+    }
+
+    try {
+      op_node_udp_set_broadcast(this.#rid, bool === 1);
+      return 0;
+    } catch {
+      return codeMap.get("EINVAL")!;
+    }
   }
 
-  setMulticastInterface(_interfaceAddress: string): number {
-    notImplemented("udp.UDP.prototype.setMulticastInterface");
+  setMulticastInterface(interfaceAddress: string): number {
+    if (this.#rid === undefined) {
+      return codeMap.get("EBADF")!;
+    }
+
+    try {
+      op_node_udp_set_multicast_interface(
+        this.#rid,
+        this.#family === "IPv6",
+        interfaceAddress,
+      );
+      return 0;
+    } catch {
+      return codeMap.get("EINVAL")!;
+    }
   }
 
-  setMulticastLoopback(_bool: 0 | 1): number {
-    notImplemented("udp.UDP.prototype.setMulticastLoopback");
+  setMulticastLoopback(bool: 0 | 1): number {
+    if (this.#rid === undefined) {
+      return codeMap.get("EBADF")!;
+    }
+
+    try {
+      op_node_udp_set_multicast_loopback(
+        this.#rid,
+        this.#family === "IPv4",
+        bool === 1,
+      );
+      return 0;
+    } catch {
+      return codeMap.get("EINVAL")!;
+    }
   }
 
-  setMulticastTTL(_ttl: number): number {
-    notImplemented("udp.UDP.prototype.setMulticastTTL");
+  setMulticastTTL(ttl: number): number {
+    if (ttl < 1 || ttl > 255) {
+      return codeMap.get("EINVAL")!;
+    }
+
+    if (this.#rid === undefined) {
+      return codeMap.get("EBADF")!;
+    }
+
+    try {
+      if (this.#family === "IPv4") {
+        op_node_udp_set_multicast_ttl(this.#rid, ttl);
+      }
+      return 0;
+    } catch {
+      return codeMap.get("EINVAL")!;
+    }
   }
 
-  setTTL(_ttl: number): number {
-    notImplemented("udp.UDP.prototype.setTTL");
+  setTTL(ttl: number): number {
+    if (ttl < 1 || ttl > 255) {
+      return codeMap.get("EINVAL")!;
+    }
+
+    if (this.#rid === undefined) {
+      return codeMap.get("EBADF")!;
+    }
+
+    try {
+      op_node_udp_set_ttl(this.#rid, ttl);
+      return 0;
+    } catch {
+      return codeMap.get("EINVAL")!;
+    }
   }
 
   override unref() {
-    this.#listener?.unref();
     this.#unrefed = true;
   }
 
-  #doBind(ip: string, port: number, _flags: number, family: number): number {
-    // TODO(cmorten): use flags to inform socket reuse etc.
-    const listenOptions = {
-      port,
-      hostname: ip,
-      transport: "udp" as const,
-    };
-
-    let listener;
-
+  #doBind(ip: string, port: number, flags: number, family: number): number {
     try {
-      listener = DenoListenDatagram(listenOptions);
+      const [rid, hostname, boundPort] = op_node_udp_bind(
+        ip,
+        port,
+        (flags & os.UV_UDP_REUSEADDR) !== 0,
+        (flags & os.UV_UDP_IPV6ONLY) !== 0,
+      );
+      this.#rid = rid;
+      this.#address = hostname;
+      this.#port = boundPort;
+      this.#family = family === AF_INET6
+        ? ("IPv6" as const)
+        : ("IPv4" as const);
+      return 0;
     } catch (e) {
       if (e instanceof Deno.errors.NotCapable) {
         throw e;
       }
       return codeMap.get(e.code ?? "UNKNOWN") ?? codeMap.get("UNKNOWN")!;
     }
-
-    const address = listener.addr as Deno.NetAddr;
-    this.#address = address.hostname;
-    this.#port = address.port;
-    this.#family = family === AF_INET6 ? ("IPv6" as const) : ("IPv4" as const);
-    this.#listener = listener;
-
-    return 0;
   }
 
   #doConnect(ip: string, port: number, family: number): number {
@@ -379,13 +560,6 @@ export class UDP extends HandleWrap {
       hasCallback = args[0] as boolean;
     }
 
-    const addr: Deno.NetAddr = {
-      hostname: this.#remoteAddress!,
-      port: this.#remotePort!,
-      transport: "udp",
-    };
-
-    // Deno.DatagramConn.prototype.send accepts only one Uint8Array
     const payload = new Uint8Array(
       Buffer.concat(
         bufs.map((buf) => {
@@ -403,9 +577,13 @@ export class UDP extends HandleWrap {
       let err: number | null = null;
 
       try {
-        sent = await this.#listener!.send(payload, addr);
+        sent = await op_node_udp_send(
+          this.#rid!,
+          payload,
+          this.#remoteAddress!,
+          this.#remotePort!,
+        );
       } catch (e) {
-        // TODO(cmorten): map errors to appropriate error codes.
         if (e instanceof Deno.errors.BadResource) {
           err = codeMap.get("EBADF")!;
         } else if (
@@ -439,23 +617,20 @@ export class UDP extends HandleWrap {
 
     const p = new Uint8Array(this.#recvBufferSize);
 
-    let buf: Uint8Array;
-    let remoteAddr: Deno.NetAddr | null;
-    let nread: number | null;
-
-    if (this.#unrefed) {
-      this.#listener!.unref();
-    }
+    let nread: number;
+    let remoteHostname: string | null = null;
+    let remotePort: number | null = null;
 
     try {
-      [buf, remoteAddr] = (await this.#listener!.receive(p)) as [
-        Uint8Array,
-        Deno.NetAddr,
-      ];
-
-      nread = buf.length;
+      const promise = op_node_udp_recv(this.#rid!, p);
+      if (this.#unrefed) {
+        core.unrefOpPromise(promise);
+      }
+      const result = await promise;
+      nread = result.nread;
+      remoteHostname = result.hostname;
+      remotePort = result.port;
     } catch (e) {
-      // TODO(cmorten): map errors to appropriate error codes.
       if (
         e instanceof Deno.errors.Interrupted ||
         e instanceof Deno.errors.BadResource
@@ -464,25 +639,24 @@ export class UDP extends HandleWrap {
       } else {
         nread = codeMap.get("UNKNOWN")!;
       }
-
-      buf = new Uint8Array(0);
-      remoteAddr = null;
     }
 
-    nread ??= 0;
-
-    const rinfo = remoteAddr
+    const rinfo = remoteHostname !== null
       ? {
-        address: remoteAddr.hostname,
-        port: remoteAddr.port,
-        family: isIP(remoteAddr.hostname) === 6
+        address: remoteHostname,
+        port: remotePort!,
+        family: isIP(remoteHostname) === 6
           ? ("IPv6" as const)
           : ("IPv4" as const),
       }
       : undefined;
 
+    const buf = remoteHostname !== null
+      ? Buffer.from(p.buffer, p.byteOffset, nread)
+      : Buffer.alloc(0);
+
     try {
-      this.onmessage(nread, this, Buffer.from(buf), rinfo);
+      this.onmessage(nread, this, buf, rinfo);
     } catch {
       // swallow callback errors.
     }
@@ -498,13 +672,14 @@ export class UDP extends HandleWrap {
     this.#port = undefined;
     this.#family = undefined;
 
-    try {
-      this.#listener!.close();
-    } catch {
-      // listener already closed
+    if (this.#rid !== undefined) {
+      try {
+        core.close(this.#rid);
+      } catch {
+        // already closed
+      }
+      this.#rid = undefined;
     }
-
-    this.#listener = undefined;
 
     return 0;
   }

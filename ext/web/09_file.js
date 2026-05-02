@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 // @ts-check
 /// <reference no-default-lib="true" />
@@ -6,7 +6,7 @@
 /// <reference path="../../core/internal.d.ts" />
 /// <reference path="../webidl/internal.d.ts" />
 /// <reference path="../web/internal.d.ts" />
-/// <reference path="../web/lib.deno_web.d.ts" />
+/// <reference path="../../cli/tsc/dts/lib.deno_web.d.ts" />
 /// <reference path="./internal.d.ts" />
 /// <reference lib="esnext" />
 
@@ -56,10 +56,10 @@ const {
   Uint8Array,
 } = primordials;
 
-import * as webidl from "ext:deno_webidl/00_webidl.js";
+const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
 import { ReadableStream } from "./06_streams.js";
-import { URL } from "ext:deno_url/00_url.js";
-import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
+import { URL } from "ext:deno_web/00_url.js";
+import { createFilteredInspectProxy } from "./01_console.js";
 
 // TODO(lucacasonato): this needs to not be hardcoded and instead depend on
 // host os.
@@ -684,7 +684,7 @@ function blobFromObjectUrl(url) {
     totalSize += size;
   }
 
-  const blob = webidl.createBranded(Blob);
+  const blob = new Blob();
   blob[_type] = blobData.media_type;
   blob[_size] = totalSize;
   blob[_parts] = parts;
@@ -709,7 +709,13 @@ function createObjectURL(blob) {
  */
 function revokeObjectURL(url) {
   const prefix = "Failed to execute 'revokeObjectURL' on 'URL'";
-  webidl.requiredArguments(arguments.length, 1, prefix);
+  if (arguments.length < 1) {
+    const err = new TypeError(
+      `${prefix}: 1 argument required, but only 0 present`,
+    );
+    err.code = "ERR_MISSING_ARGS";
+    throw err;
+  }
   url = webidl.converters["DOMString"](url, prefix, "Argument 1");
 
   op_blob_revoke_object_url(url);
@@ -718,6 +724,10 @@ function revokeObjectURL(url) {
 URL.createObjectURL = createObjectURL;
 URL.revokeObjectURL = revokeObjectURL;
 
+function isBlob(obj) {
+  return ObjectPrototypeIsPrototypeOf(BlobPrototype, obj);
+}
+
 export {
   Blob,
   blobFromObjectUrl,
@@ -725,4 +735,5 @@ export {
   File,
   FilePrototype,
   getParts,
+  isBlob,
 };

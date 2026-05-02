@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::io;
 use std::io::Write;
@@ -11,7 +11,6 @@ use deno_core::unsync::spawn_blocking;
 use deno_lib::version::DENO_VERSION_INFO;
 use deno_runtime::WorkerExecutionMode;
 use rustyline::error::ReadlineError;
-use tokio_util::sync::CancellationToken;
 
 use crate::args::CliOptions;
 use crate::args::Flags;
@@ -26,16 +25,15 @@ mod channel;
 mod editor;
 mod session;
 
-use channel::rustyline_channel;
 use channel::RustylineSyncMessage;
 use channel::RustylineSyncMessageHandler;
 use channel::RustylineSyncResponse;
+use channel::rustyline_channel;
 use editor::EditorHelper;
 use editor::ReplEditor;
 pub use session::EvaluationOutput;
 pub use session::ReplSession;
 pub use session::TsEvaluateResponse;
-pub use session::REPL_INTERNALS_NAME;
 
 use super::test::create_single_test_event_channel;
 
@@ -45,7 +43,7 @@ struct Repl {
   message_handler: RustylineSyncMessageHandler,
 }
 
-#[allow(clippy::print_stdout)]
+#[allow(clippy::print_stdout, reason = "repl")]
 impl Repl {
   async fn run(&mut self) -> Result<(), AnyError> {
     loop {
@@ -63,9 +61,13 @@ impl Repl {
 
           // We check for close and break here instead of making it a loop condition to get
           // consistent behavior in when the user evaluates a call to close().
-          if self.session.closing().await? {
-            break;
-          }
+          match self.session.closing().await {
+            Ok(closing) if closing => break,
+            Ok(_) => {}
+            Err(err) => {
+              println!("Error: {:?}", err)
+            }
+          };
 
           println!("{}", output);
         }
@@ -91,7 +93,7 @@ impl Repl {
   }
 }
 
-#[allow(clippy::print_stdout)]
+#[allow(clippy::print_stdout, reason = "repl")]
 async fn read_line_and_poll(
   repl_session: &mut ReplSession,
   message_handler: &mut RustylineSyncMessageHandler,
@@ -115,17 +117,6 @@ async fn read_line_and_poll(
               .await;
             message_handler.send(RustylineSyncResponse::PostMessage(result)).unwrap();
           },
-          Some(RustylineSyncMessage::LspCompletions {
-            line_text,
-            position,
-          }) => {
-            let result = repl_session.language_server.completions(
-              &line_text,
-              position,
-              CancellationToken::new(),
-            ).await;
-            message_handler.send(RustylineSyncResponse::LspCompletions(result)).unwrap();
-          }
           None => {}, // channel closed
         }
 
@@ -154,14 +145,14 @@ async fn read_eval_file(
   eval_file: &str,
 ) -> Result<Arc<str>, AnyError> {
   let specifier =
-    deno_core::resolve_url_or_path(eval_file, cli_options.initial_cwd())?;
+    deno_path_util::resolve_url_or_path(eval_file, cli_options.initial_cwd())?;
 
   let file = file_fetcher.fetch_bypass_permissions(&specifier).await?;
 
   Ok(TextDecodedFile::decode(file)?.source)
 }
 
-#[allow(clippy::print_stdout)]
+#[allow(clippy::print_stdout, reason = "repl")]
 pub async fn run(
   flags: Arc<Flags>,
   repl_flags: ReplFlags,
@@ -170,24 +161,25 @@ pub async fn run(
   let cli_options = factory.cli_options()?;
   let main_module = cli_options.resolve_main_module()?;
   let permissions = factory.root_permissions_container()?;
-  let npm_installer = factory.npm_installer_if_managed()?.cloned();
+  let npm_installer = factory.npm_installer_if_managed().await?.cloned();
   let resolver = factory.resolver().await?.clone();
   let file_fetcher = factory.file_fetcher()?;
-  let tsconfig_resolver = factory.tsconfig_resolver()?;
+  let compiler_options_resolver = factory.compiler_options_resolver()?;
   let worker_factory = factory.create_cli_main_worker_factory().await?;
-  let history_file_path = factory
-    .deno_dir()
-    .ok()
-    .and_then(|dir| dir.repl_history_file_path());
   let (worker, test_event_receiver) = create_single_test_event_channel();
   let test_event_sender = worker.sender;
   let mut worker = worker_factory
     .create_custom_worker(
       WorkerExecutionMode::Repl,
       main_module.clone(),
+      // `deno repl` doesn't support preloading modules
+      vec![],
+      // `deno repl` doesn't support require modules
+      vec![],
       permissions.clone(),
-      vec![crate::ops::testing::deno_test::init_ops(test_event_sender)],
+      vec![crate::ops::testing::deno_test::init(test_event_sender)],
       Default::default(),
+      None,
     )
     .await?;
   worker.setup_repl().await?;
@@ -196,12 +188,18 @@ pub async fn run(
     cli_options,
     npm_installer,
     resolver,
-    tsconfig_resolver,
+    compiler_options_resolver,
     worker,
     main_module.clone(),
     test_event_receiver,
   )
   .await?;
+
+  #[cfg(unix)]
+  if repl_flags.json {
+    return run_json(session).await;
+  }
+
   let rustyline_channel = rustyline_channel();
 
   let helper = EditorHelper {
@@ -209,6 +207,10 @@ pub async fn run(
     sync_sender: rustyline_channel.0,
   };
 
+  let history_file_path = factory
+    .deno_dir()
+    .ok()
+    .and_then(|dir| dir.repl_history_file_path());
   let editor = ReplEditor::new(helper, history_file_path)?;
 
   let mut repl = Repl {
@@ -271,4 +273,138 @@ pub async fn run(
   repl.run().await?;
 
   Ok(repl.session.worker.exit_code())
+}
+
+#[cfg(unix)]
+async fn run_json(mut repl_session: ReplSession) -> Result<i32, AnyError> {
+  use bytes::Buf;
+  use bytes::Bytes;
+  use deno_runtime::deno_io::BiPipe;
+  use tokio::io::AsyncReadExt;
+  use tokio::io::AsyncWriteExt;
+  use tokio::io::BufReader;
+
+  #[derive(serde::Serialize, serde::Deserialize, Debug)]
+  #[serde(tag = "type")]
+  enum ReplMessage {
+    Run { code: String, output: bool },
+    RunSuccess { output: Option<String> },
+    RunFailure { text: String },
+    Error { error: String },
+  }
+
+  let (receiver, mut sender) = BiPipe::from_raw(3)?.split();
+  let mut receiver = BufReader::new(receiver);
+
+  loop {
+    let mut line_fut = std::pin::pin!(async {
+      let len = match receiver.read_u32_le().await {
+        Ok(n) => n,
+        // Treat the case of 0-byte input as "expected" EOF
+        Err(e) if e.kind() == io::ErrorKind::UnexpectedEof => {
+          return Ok(None);
+        }
+        Err(e) => return Err(e),
+      };
+      let mut buf = vec![0; len as usize];
+      receiver.read_exact(&mut buf).await?;
+      Ok(Some(buf))
+    });
+    let mut poll_worker = true;
+    let line = loop {
+      tokio::select! {
+        line = &mut line_fut => match line? {
+          Some(line) => break line,
+          None => return Ok(repl_session.worker.exit_code()),
+        },
+        _ = repl_session.run_event_loop(), if poll_worker => {
+          poll_worker = false;
+          continue;
+        }
+      }
+    };
+    let command: ReplMessage = serde_json::from_slice(&line)?;
+
+    if let ReplMessage::Run { code, output } = command {
+      let result = repl_session.evaluate_line_with_object_wrapping(&code).await;
+
+      // We check for close and break here instead of making it a loop condition to get
+      // consistent behavior in when the user evaluates a call to close().
+      match repl_session.closing().await {
+        Ok(closing) if closing => break,
+        Ok(_) => {}
+        Err(err) => {
+          let buf = serde_json::to_vec(&ReplMessage::Error {
+            error: format!("{}", err),
+          })?;
+          sender
+            .write_all_buf(
+              &mut Bytes::from_owner((buf.len() as u32).to_le_bytes())
+                .chain(Bytes::from(buf)),
+            )
+            .await?;
+        }
+      };
+
+      match result {
+        Ok(evaluate_response) => {
+          let cdp::EvaluateResponse {
+            result,
+            exception_details,
+          } = evaluate_response.value;
+
+          let msg = if let Some(exception_details) = exception_details {
+            repl_session.set_last_thrown_error(&result).await?;
+
+            ReplMessage::RunFailure {
+              text: exception_details.text,
+            }
+          } else {
+            repl_session.set_last_eval_result(&result).await?;
+
+            let output = if output {
+              let response = repl_session
+                .call_function_on_repl_internal_obj(
+                  "function (object) { return this.String(object); }".into(),
+                  &[result],
+                )
+                .await?;
+              let output = response
+                .result
+                .value
+                .map(|v| v.as_str().unwrap().to_string())
+                .or(response.result.description)
+                .unwrap_or_else(|| "something went wrong".into());
+              Some(output)
+            } else {
+              None
+            };
+
+            ReplMessage::RunSuccess { output }
+          };
+
+          let buf = serde_json::to_vec(&msg)?;
+          sender
+            .write_all_buf(
+              &mut Bytes::from_owner((buf.len() as u32).to_le_bytes())
+                .chain(Bytes::from(buf)),
+            )
+            .await?;
+        }
+        Err(err) => {
+          let buf = serde_json::to_vec(&ReplMessage::Error {
+            error: format!("{}", err),
+          })?;
+          sender
+            .write_all_buf(
+              &mut Bytes::from_owner((buf.len() as u32).to_le_bytes())
+                .chain(Bytes::from(buf)),
+            )
+            .await?;
+        }
+      }
+    }
+  }
+
+  Ok(repl_session.worker.exit_code())
 }

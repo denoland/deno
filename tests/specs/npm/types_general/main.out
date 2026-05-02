@@ -6,7 +6,7 @@ Download http://localhost:4260/@denotest/types_imported/1.0.0.tgz
 Download http://localhost:4260/@denotest/types-exports-subpaths/1.0.0.tgz
 Download http://localhost:4260/@denotest/types/1.0.0.tgz
 [UNORDERED_END]
-Check file:///[WILDLINE]/main.ts
+Check [WILDCARD]main.ts
 TS2322 [ERROR]: Type 'number' is not assignable to type 'string'.
   bar: 1,
   ~~~

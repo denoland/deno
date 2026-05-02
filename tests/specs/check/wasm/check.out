@@ -1,5 +1,5 @@
 Download http://localhost:4545/wasm/math.wasm
-Check file:///[WILDLINE]/main.ts
+Check [WILDCARD]main.ts
 TS2345 [ERROR]: Argument of type 'string' is not assignable to parameter of type 'number'.
 console.log(add(1, ""));
                    ~~

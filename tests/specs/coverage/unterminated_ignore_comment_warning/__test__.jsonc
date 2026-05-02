@@ -1,0 +1,13 @@
+{
+  "tempDir": true,
+  "steps": [
+    {
+      "args": "test --coverage main_test.ts",
+      "output": "[WILDCARD]"
+    },
+    {
+      "args": "coverage",
+      "output": "cov.out"
+    }
+  ]
+}

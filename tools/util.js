@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 // deno-lint-ignore-file no-console
 
@@ -8,18 +8,19 @@ import {
   fromFileUrl,
   join,
   resolve,
+  SEPARATOR,
   toFileUrl,
 } from "@std/path";
-import { wait } from "https://deno.land/x/wait@0.1.13/mod.ts";
-export { dirname, extname, fromFileUrl, join, resolve, toFileUrl };
+export { dirname, extname, fromFileUrl, join, resolve, SEPARATOR, toFileUrl };
 export { existsSync, expandGlobSync, walk } from "@std/fs";
 export { TextLineStream } from "@std/streams/text-line-stream";
 export { delay } from "@std/async/delay";
 export { parse as parseJSONC } from "@std/jsonc/parse";
+import { createHash } from "node:crypto";
 
 // [toolName] --version output
 const versions = {
-  "dlint": "dlint 0.68.0",
+  "dlint": "dlint 0.73.0",
 };
 
 const compressed = new Set(["ld64.lld", "rcodesign"]);
@@ -51,7 +52,7 @@ async function getFilesFromGit(baseDir, args) {
   return files;
 }
 
-function gitLsFiles(baseDir, patterns) {
+export function gitLsFiles(baseDir, patterns) {
   baseDir = Deno.realPathSync(baseDir);
   const cmd = [
     "-C",
@@ -186,7 +187,7 @@ export function getPrebuiltToolPath(toolName) {
   return join(PREBUILT_TOOL_DIR, toolName + executableSuffix);
 }
 
-const commitId = "7a3a6fee951b3381c59aa4c907274957f324ce8c";
+const commitId = "aa25a37b0f2bdadc83e99e625e8a074d56d1febd";
 const downloadUrl =
   `https://raw.githubusercontent.com/denoland/deno_third_party/${commitId}/prebuilt/${platformDirName}`;
 
@@ -197,10 +198,7 @@ export async function downloadPrebuilt(toolName) {
   }
 
   const downloadDeferred = DOWNLOAD_TASKS[toolName] = Promise.withResolvers();
-  const spinner = wait({
-    text: "Downloading prebuilt tool: " + toolName,
-    interval: 1000,
-  }).start();
+  console.error("Downloading prebuilt tool:", toolName);
   const toolPath = getPrebuiltToolPath(toolName);
   const tempFile = `${toolPath}.temp`;
 
@@ -212,7 +210,12 @@ export async function downloadPrebuilt(toolName) {
       url += ".gz";
     }
 
-    const resp = await fetch(url);
+    const headers = new Headers();
+    if (Deno.env.has("GITHUB_TOKEN")) {
+      headers.append("authorization", `Bearer ${Deno.env.get("GITHUB_TOKEN")}`);
+    }
+
+    const resp = await fetch(url, { headers });
     if (!resp.ok) {
       throw new Error(`Non-successful response from ${url}: ${resp.status}`);
     }
@@ -230,14 +233,14 @@ export async function downloadPrebuilt(toolName) {
     } else {
       await resp.body.pipeTo(file.writable);
     }
-    spinner.text = `Checking prebuilt tool: ${toolName}`;
+    console.error("Checking prebuilt tool:", toolName);
     await sanityCheckPrebuiltFile(tempFile);
     if (!await verifyVersion(toolName, tempFile)) {
       throw new Error(
         "Didn't get the correct version of the tool after downloading.",
       );
     }
-    spinner.text = `Successfully downloaded: ${toolName}`;
+    console.error("Successfully downloaded:", toolName);
     try {
       // necessary on Windows it seems
       await Deno.remove(toolPath);
@@ -246,12 +249,10 @@ export async function downloadPrebuilt(toolName) {
     }
     await Deno.rename(tempFile, toolPath);
   } catch (e) {
-    spinner.fail();
     downloadDeferred.reject(e);
     throw e;
   }
 
-  spinner.succeed();
   downloadDeferred.resolve(null);
 }
 
@@ -274,4 +275,160 @@ export async function verifyVersion(toolName, toolPath) {
     console.error(e);
     return false;
   }
+}
+
+/// INPUT HASHING
+
+/** A streaming hasher for computing a combined hash of multiple inputs.
+ * Mirrors the Rust InputHasher API in tests/util/lib/hash.rs. */
+export class InputHasher {
+  #hash;
+
+  constructor() {
+    this.#hash = createHash("sha256");
+  }
+
+  /** Create a hasher pre-seeded with the current CLI args. */
+  static newWithCliArgs() {
+    const hasher = new InputHasher();
+    for (const arg of Deno.args) {
+      hasher.writeSync(arg);
+    }
+    return hasher;
+  }
+
+  /** Write raw string data into the hash. */
+  writeSync(data) {
+    this.#hash.update(data);
+  }
+
+  /** Hash a single file's contents (streamed). Skips if file doesn't exist. */
+  async hashFile(path) {
+    try {
+      const file = await Deno.open(path);
+      for await (const chunk of file.readable) {
+        this.#hash.update(chunk);
+      }
+    } catch {
+      // skip if file doesn't exist
+    }
+    return this;
+  }
+
+  /** Recursively hash all file contents in a directory (sorted for
+   * determinism). Skips if directory doesn't exist. */
+  async hashDir(path) {
+    const entries = [];
+    collectEntriesRecursive(path, entries);
+    entries.sort();
+    for (const entryPath of entries) {
+      // hash the relative path for determinism
+      if (entryPath.startsWith(path)) {
+        this.writeSync(entryPath.slice(path.length));
+      }
+      try {
+        const file = await Deno.open(entryPath);
+        for await (const chunk of file.readable) {
+          this.#hash.update(chunk);
+        }
+      } catch {
+        // skip unreadable files
+      }
+    }
+    return this;
+  }
+
+  /** Finalize the hash and return a hex string. */
+  finish() {
+    return this.#hash.digest("hex");
+  }
+}
+
+function collectEntriesRecursive(dir, out) {
+  let entries;
+  try {
+    entries = Deno.readDirSync(dir);
+  } catch {
+    return;
+  }
+  for (const entry of entries) {
+    const fullPath = join(dir, entry.name);
+    if (entry.isDirectory) {
+      collectEntriesRecursive(fullPath, out);
+    } else {
+      out.push(fullPath);
+    }
+  }
+}
+
+const HASHY_URL = "https://hashy.deno.deno.net";
+
+/**
+ * Check if tests can be skipped on CI by comparing input hashes
+ * against the hashy service.
+ *
+ * `name` is used for the hash key and log messages (e.g. "wpt").
+ * `configure` receives an InputHasher to add whatever files/dirs are relevant.
+ *
+ * Returns `{ skip: boolean, commit: () => Promise<void> }`.
+ * Call `commit()` after tests pass to mark the hash as known-good.
+ */
+export async function checkCiHash(name, configure) {
+  const noop = { skip: false, commit: async () => {} };
+  if (!Deno.env.get("CI")) {
+    return noop;
+  }
+
+  const start = performance.now();
+
+  const hasher = InputHasher.newWithCliArgs();
+  await configure(hasher);
+  const hash = await hasher.finish();
+  const key = `${name}_${hash}`;
+
+  const elapsed = Math.round(performance.now() - start);
+  console.log(`ci hash took ${elapsed}ms`);
+
+  const commitFn = async () => {
+    try {
+      await fetch(`${HASHY_URL}/hashes/${key}`, {
+        method: "PUT",
+        signal: AbortSignal.timeout(5000),
+      });
+      console.log(`hashy: committed hash ${key}`);
+    } catch {
+      console.log(`hashy: failed to commit hash ${key}`);
+    }
+  };
+
+  // On main/tag builds, always run tests but still commit on success
+  // to seed the cache for PR builds.
+  if (isMainOrTag()) {
+    console.log(
+      `hashy: main/tag build, running tests (will commit on success)`,
+    );
+    return { skip: false, commit: commitFn };
+  }
+
+  try {
+    const res = await fetch(`${HASHY_URL}/hashes/${key}`, {
+      signal: AbortSignal.timeout(5000),
+    });
+    if (res.ok) {
+      console.log(`hashy: ${name} hash found (${key}), skipping`);
+      return { skip: true, commit: async () => {} };
+    }
+  } catch {
+    // service unreachable — run tests
+    console.log(`hashy: failed to check hash, running tests`);
+    return noop;
+  }
+
+  console.log(`hashy: ${name} hash not found (${key}), will run tests`);
+  return { skip: false, commit: commitFn };
+}
+
+function isMainOrTag() {
+  const ref = Deno.env.get("GITHUB_REF") ?? "";
+  return ref === "refs/heads/main" || ref.startsWith("refs/tags/");
 }

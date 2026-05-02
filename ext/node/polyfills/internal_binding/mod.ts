@@ -1,11 +1,11 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
 import * as asyncWrap from "ext:deno_node/internal_binding/async_wrap.ts";
 import * as buffer from "ext:deno_node/internal_binding/buffer.ts";
-import * as caresWrap from "ext:deno_node/internal_binding/cares_wrap.ts";
+import caresWrap from "ext:deno_node/internal_binding/cares_wrap.ts";
 import * as constants from "ext:deno_node/internal_binding/constants.ts";
 import * as crypto from "ext:deno_node/internal_binding/crypto.ts";
 import * as pipeWrap from "ext:deno_node/internal_binding/pipe_wrap.ts";
@@ -13,11 +13,32 @@ import * as streamWrap from "ext:deno_node/internal_binding/stream_wrap.ts";
 import * as stringDecoder from "ext:deno_node/internal_binding/string_decoder.ts";
 import * as symbols from "ext:deno_node/internal_binding/symbols.ts";
 import * as tcpWrap from "ext:deno_node/internal_binding/tcp_wrap.ts";
+import * as ttyWrap from "ext:deno_node/internal_binding/tty_wrap.ts";
 import * as types from "ext:deno_node/internal_binding/types.ts";
 import * as udpWrap from "ext:deno_node/internal_binding/udp_wrap.ts";
 import * as util from "ext:deno_node/internal_binding/util.ts";
-import * as uv from "ext:deno_node/internal_binding/uv.ts";
+import * as uvNamespace from "ext:deno_node/internal_binding/uv.ts";
 import * as httpParser from "ext:deno_node/internal_binding/http_parser.ts";
+import * as http2Binding from "ext:deno_node/internal_binding/http2.ts";
+
+// Mutable shallow copy so callers can replace properties (e.g. wrap
+// `errname` with a deprecation warning when --pending-deprecation is set).
+// Match Node's C++ binding: UV_* error code constants are read-only and
+// non-deletable. See `Initialize` in `src/uv.cc`.
+const uv: Record<string, unknown> = {};
+for (const key of Object.keys(uvNamespace)) {
+  const value = (uvNamespace as Record<string, unknown>)[key];
+  if (key.startsWith("UV_")) {
+    Object.defineProperty(uv, key, {
+      value,
+      writable: false,
+      enumerable: true,
+      configurable: false,
+    });
+  } else {
+    uv[key] = value;
+  }
+}
 
 const modules = {
   "async_wrap": asyncWrap,
@@ -34,6 +55,7 @@ const modules = {
   "fs_event_wrap": {},
   "heap_utils": {},
   "http_parser": httpParser,
+  "http2": http2Binding,
   icu: {},
   inspector: {},
   "js_stream": {},
@@ -43,7 +65,11 @@ const modules = {
   natives: {},
   options: {},
   os: {},
-  performance: {},
+  performance: {
+    // observerCounts is an array where index is entry type and value is observer count
+    // Initialize with zeros for all entry types (0-8)
+    observerCounts: [0, 0, 0, 0, 0, 0, 0, 0, 0],
+  },
   "pipe_wrap": pipeWrap,
   "process_methods": {},
   report: {},
@@ -55,10 +81,14 @@ const modules = {
   symbols,
   "task_queue": {},
   "tcp_wrap": tcpWrap,
-  timers: {},
+  timers: {
+    getLibuvNow() {
+      return Math.floor(performance.now());
+    },
+  },
   "tls_wrap": {},
   "trace_events": {},
-  "tty_wrap": {},
+  "tty_wrap": ttyWrap,
   types,
   "udp_wrap": udpWrap,
   url: {},

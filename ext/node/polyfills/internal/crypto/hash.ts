@@ -1,10 +1,11 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
 
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
 import {
+  Hasher,
   op_node_create_hash,
   op_node_export_secret_key,
   op_node_get_hashes,
@@ -41,9 +42,11 @@ import {
   ERR_INVALID_ARG_TYPE,
   NodeError,
 } from "ext:deno_node/internal/errors.ts";
-import LazyTransform from "ext:deno_node/internal/streams/lazy_transform.mjs";
+import LazyTransform from "ext:deno_node/internal/streams/lazy_transform.js";
+import process from "node:process";
 import {
   getDefaultEncoding,
+  getHashBlockSize,
   toBuf,
 } from "ext:deno_node/internal/crypto/util.ts";
 import {
@@ -57,9 +60,6 @@ function unwrapErr(ok: boolean) {
   if (!ok) throw new ERR_CRYPTO_HASH_FINALIZED();
 }
 
-declare const __hasher: unique symbol;
-type Hasher = { __hasher: typeof __hasher };
-
 const kHandle = Symbol("kHandle");
 
 export function Hash(
@@ -70,7 +70,8 @@ export function Hash(
   if (!(this instanceof Hash)) {
     return new Hash(algorithm, options);
   }
-  if (!(typeof algorithm === "object")) {
+  const isCopy = algorithm instanceof Hasher;
+  if (!isCopy) {
     validateString(algorithm, "algorithm");
   }
   const xofLen = typeof options === "object" && options !== null
@@ -80,10 +81,24 @@ export function Hash(
     validateUint32(xofLen, "options.outputLength");
   }
 
+  const algoLower = isCopy ? undefined : algorithm.toLowerCase();
+
+  if (
+    !isCopy && xofLen === undefined &&
+    (algoLower === "shake128" ||
+      algoLower === "shake256")
+  ) {
+    process.emitWarning(
+      "Creating SHAKE128/256 digests without an explicit options.outputLength is deprecated.",
+      "DeprecationWarning",
+      "DEP0198",
+    );
+  }
+
   try {
-    this[kHandle] = typeof algorithm === "object"
+    this[kHandle] = isCopy
       ? op_node_hash_clone(algorithm, xofLen)
-      : op_node_create_hash(algorithm.toLowerCase(), xofLen);
+      : op_node_create_hash(algoLower, xofLen);
   } catch (err) {
     // TODO(lucacasonato): don't do this
     if (err.message === "Output length mismatch for non-extendable algorithm") {
@@ -198,6 +213,7 @@ class HmacImpl extends Transform {
   #ZEROES = Buffer.alloc(128);
   #algorithm: string;
   #hash: Hash;
+  #finalized = false;
 
   constructor(
     hmac: string,
@@ -232,7 +248,7 @@ class HmacImpl extends Transform {
 
     const alg = hmac.toLowerCase();
     this.#algorithm = alg;
-    const blockSize = (alg === "sha512" || alg === "sha384") ? 128 : 64;
+    const blockSize = getHashBlockSize(alg);
     const keySize = keyData.length;
 
     let bufKey: Buffer;
@@ -259,6 +275,14 @@ class HmacImpl extends Transform {
   digest(): Buffer;
   digest(encoding: BinaryToTextEncoding): string;
   digest(encoding?: BinaryToTextEncoding): Buffer | string {
+    if (this.#finalized) {
+      if (encoding && encoding !== "buffer") {
+        return "";
+      }
+      return Buffer.alloc(0);
+    }
+    this.#finalized = true;
+
     const result = this.#hash.digest();
 
     return new Hash(this.#algorithm).update(this.#opad).update(result)

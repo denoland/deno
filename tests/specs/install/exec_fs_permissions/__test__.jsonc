@@ -1,0 +1,11 @@
+{
+  "tempDir": true,
+  "if": "unix",
+  "steps": [{
+    "args": "install",
+    "output": "[WILDCARD]"
+  }, {
+    "args": "run -A main.ts",
+    "output": "755\n"
+  }]
+}

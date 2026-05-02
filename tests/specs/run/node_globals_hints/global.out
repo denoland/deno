@@ -1,8 +1,0 @@
-error: Uncaught (in promise) ReferenceError: global is not defined
-global;
-^
-    at [WILDCARD]global.js:1:1
-
-    info: global is not available in the global scope in Deno.
-    hint: Use globalThis instead, or assign globalThis.global = globalThis,
-          or run again with --unstable-node-globals flag to add this global.

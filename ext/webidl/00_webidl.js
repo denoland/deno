@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 // Adapted from https://github.com/jsdom/webidl-conversions.
 // Copyright Domenic Denicola. Licensed under BSD-2-Clause License.
@@ -6,7 +6,9 @@
 
 /// <reference path="../../core/internal.d.ts" />
 
-import { core, primordials } from "ext:core/mod.js";
+// deno-fmt-ignore-file
+(function () {
+const { core, primordials } = globalThis.__bootstrap;
 const {
   isArrayBuffer,
   isDataView,
@@ -195,16 +197,11 @@ function createIntegerConversion(bitLength, typeOpts) {
   const twoToTheBitLength = MathPow(2, bitLength);
   const twoToOneLessThanTheBitLength = MathPow(2, bitLength - 1);
 
-  return (
-    V,
-    prefix = undefined,
-    context = undefined,
-    opts = { __proto__: null },
-  ) => {
+  return (V, prefix, context, opts) => {
     let x = toNumber(V);
     x = censorNegativeZero(x);
 
-    if (opts.enforceRange) {
+    if (opts && opts.enforceRange) {
       if (!NumberIsFinite(x)) {
         throw makeException(
           TypeError,
@@ -228,7 +225,7 @@ function createIntegerConversion(bitLength, typeOpts) {
       return x;
     }
 
-    if (!NumberIsNaN(x) && opts.clamp) {
+    if (!NumberIsNaN(x) && opts && opts.clamp) {
       x = MathMin(MathMax(x, lowerBound), upperBound);
       x = evenRound(x);
       return x;
@@ -259,16 +256,11 @@ function createLongLongConversion(bitLength, { unsigned }) {
   const lowerBound = unsigned ? 0 : NumberMIN_SAFE_INTEGER;
   const asBigIntN = unsigned ? BigIntAsUintN : BigIntAsIntN;
 
-  return (
-    V,
-    prefix = undefined,
-    context = undefined,
-    opts = { __proto__: null },
-  ) => {
+  return (V, prefix, context, opts) => {
     let x = toNumber(V);
     x = censorNegativeZero(x);
 
-    if (opts.enforceRange) {
+    if (opts && opts.enforceRange) {
       if (!NumberIsFinite(x)) {
         throw makeException(
           TypeError,
@@ -292,7 +284,7 @@ function createLongLongConversion(bitLength, { unsigned }) {
       return x;
     }
 
-    if (!NumberIsNaN(x) && opts.clamp) {
+    if (!NumberIsNaN(x) && opts && opts.clamp) {
       x = MathMin(MathMax(x, lowerBound), upperBound);
       x = evenRound(x);
       return x;
@@ -409,15 +401,10 @@ converters["unrestricted double?"] = createNullableConverter(
   converters["unrestricted double"],
 );
 
-converters.DOMString = function (
-  V,
-  prefix,
-  context,
-  opts = { __proto__: null },
-) {
+converters.DOMString = function (V, prefix, context, opts) {
   if (typeof V === "string") {
     return V;
-  } else if (V === null && opts.treatNullAsEmptyString) {
+  } else if (V === null && opts && opts.treatNullAsEmptyString) {
     return "";
   } else if (typeof V === "symbol") {
     throw makeException(
@@ -690,6 +677,9 @@ converters["UVString?"] = createNullableConverter(
 converters["sequence<double>"] = createSequenceConverter(
   converters.double,
 );
+converters["sequence<unrestricted double>"] = createSequenceConverter(
+  converters["unrestricted double"],
+);
 converters["sequence<object>"] = createSequenceConverter(
   converters.object,
 );
@@ -751,19 +741,35 @@ function createDictionaryConverter(name, ...dictionaries) {
   });
 
   const defaultValues = { __proto__: null };
+  // Parallel arrays of pre-resolved primitive defaults so that the
+  // `V === undefined || V === null` fast path can skip the spec-shaped
+  // `ObjectAssign(dict, defaultValues)` -- which has to walk enumerable
+  // own properties and invoke any getter on each call -- and instead just
+  // iterate two flat arrays. A null `nonPrimitiveDefaults` means every
+  // dict member with a default has a primitive default (the common shape
+  // for almost every WebIDL dictionary in this codebase), which lets us
+  // skip the `defaultValues` getter machinery entirely on undefined input.
+  const primitiveDefaultKeys = [];
+  const primitiveDefaultValues = [];
+  let nonPrimitiveDefaults = null;
   for (let i = 0; i < allMembers.length; ++i) {
     const member = allMembers[i];
     if (ReflectHas(member, "defaultValue")) {
       const idlMemberValue = member.defaultValue;
       const imvType = typeof idlMemberValue;
-      // Copy by value types can be directly assigned, copy by reference types
-      // need to be re-created for each allocation.
+      // Copy by value types (including null) can be directly assigned. Copy
+      // by reference types need a fresh instance per call, so they go on the
+      // ObjectAssign-via-getter slow path below.
       if (
+        idlMemberValue === null ||
         imvType === "number" || imvType === "boolean" ||
         imvType === "string" || imvType === "bigint" ||
         imvType === "undefined"
       ) {
-        defaultValues[member.key] = member.converter(idlMemberValue, {});
+        const v = member.converter(idlMemberValue, {});
+        defaultValues[member.key] = v;
+        ArrayPrototypePush(primitiveDefaultKeys, member.key);
+        ArrayPrototypePush(primitiveDefaultValues, v);
       } else {
         ObjectDefineProperty(defaultValues, member.key, {
           __proto__: null,
@@ -772,62 +778,69 @@ function createDictionaryConverter(name, ...dictionaries) {
           },
           enumerable: true,
         });
+        if (nonPrimitiveDefaults === null) nonPrimitiveDefaults = [];
+        ArrayPrototypePush(nonPrimitiveDefaults, member.key);
       }
     }
   }
 
-  return function (
-    V,
-    prefix = undefined,
-    context = undefined,
-    opts = { __proto__: null },
-  ) {
-    const typeV = type(V);
-    switch (typeV) {
-      case "Undefined":
-      case "Null":
-      case "Object":
-        break;
-      default:
+  // Pre-compute context strings for each member (avoids allocation in hot path)
+  const memberContexts = [];
+  for (let i = 0; i < allMembers.length; ++i) {
+    memberContexts[i] = `'${allMembers[i].key}' of '${name}'`;
+  }
+
+  return function (V, prefix, context, opts) {
+    if (V === undefined || V === null) {
+      if (hasRequiredKey) {
         throw makeException(
           TypeError,
           "can not be converted to a dictionary",
           prefix,
           context,
         );
-    }
-    const esDict = V;
-
-    const idlDict = ObjectAssign({}, defaultValues);
-
-    // NOTE: fast path Null and Undefined.
-    if ((V === undefined || V === null) && !hasRequiredKey) {
+      }
+      const idlDict = { __proto__: null };
+      // Fast path: copy primitive defaults via explicit loop (faster than
+      // ObjectAssign over a __proto__: null source). For non-primitive
+      // defaults the getter on `defaultValues` still needs to fire to
+      // re-create the by-reference value, so fall back through ObjectAssign
+      // when any are present.
+      if (nonPrimitiveDefaults === null) {
+        for (let i = 0; i < primitiveDefaultKeys.length; ++i) {
+          idlDict[primitiveDefaultKeys[i]] = primitiveDefaultValues[i];
+        }
+      } else {
+        ObjectAssign(idlDict, defaultValues);
+      }
       return idlDict;
     }
 
+    if (typeof V !== "object" && typeof V !== "function") {
+      throw makeException(
+        TypeError,
+        "can not be converted to a dictionary",
+        prefix,
+        context,
+      );
+    }
+
+    const idlDict = { __proto__: null };
     for (let i = 0; i < allMembers.length; ++i) {
       const member = allMembers[i];
       const key = member.key;
-
-      let esMemberValue;
-      if (typeV === "Undefined" || typeV === "Null") {
-        esMemberValue = undefined;
-      } else {
-        esMemberValue = esDict[key];
-      }
+      const esMemberValue = V[key];
 
       if (esMemberValue !== undefined) {
-        const memberContext = `'${key}' of '${name}'${
-          context ? ` (${context})` : ""
-        }`;
-        const converter = member.converter;
-        const idlMemberValue = converter(
+        const memberContext = context
+          ? memberContexts[i] + ` (${context})`
+          : memberContexts[i];
+        idlDict[key] = member.converter(
           esMemberValue,
           prefix,
           memberContext,
           opts,
         );
-        idlDict[key] = idlMemberValue;
       } else if (member.required) {
         throw makeException(
           TypeError,
@@ -835,6 +848,8 @@ function createDictionaryConverter(name, ...dictionaries) {
           prefix,
           context,
         );
+      } else if (ReflectHas(defaultValues, key)) {
+        idlDict[key] = defaultValues[key];
       }
     }
 
@@ -1150,12 +1165,20 @@ function assertBranded(self, prototype) {
   if (
     !ObjectPrototypeIsPrototypeOf(prototype, self) || self[brand] !== brand
   ) {
-    throw new TypeError("Illegal invocation");
+    const err = new TypeError("Illegal invocation");
+    err.code = "ERR_INVALID_THIS";
+    throw err;
   }
 }
 
 function illegalConstructor() {
-  throw new TypeError("Illegal constructor");
+  const err = new TypeError("Illegal constructor");
+  // Match Node's convention of attaching `code: 'ERR_ILLEGAL_CONSTRUCTOR'`
+  // to TypeErrors thrown when end-user code attempts to construct a Web
+  // Platform interface that disallows direct construction (parallel to
+  // the `ERR_INVALID_THIS` code on `assertBranded` failures).
+  err.code = "ERR_ILLEGAL_CONSTRUCTOR";
+  throw err;
 }
 
 function define(target, source) {
@@ -1424,7 +1447,7 @@ function setlikeObjectWrap(objPrototype, readonly) {
   }
 }
 
-export {
+return {
   assertBranded,
   AsyncIterable,
   brand,
@@ -1449,3 +1472,4 @@ export {
   setlikeObjectWrap,
   type,
 };
+})()

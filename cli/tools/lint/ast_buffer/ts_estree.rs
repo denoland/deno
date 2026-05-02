@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::fmt;
 use std::fmt::Debug;
@@ -8,6 +8,7 @@ use deno_ast::swc::common::Span;
 use deno_ast::view::TruePlusMinus;
 
 use super::buffer::AstBufSerializer;
+use super::buffer::CommentKind;
 use super::buffer::NodeRef;
 use super::buffer::SerializeCtx;
 use crate::util::text_encoding::Utf16Map;
@@ -499,12 +500,16 @@ impl TsEsTreeBuilder {
   pub fn write_program(
     &mut self,
     span: &Span,
-    source_kind: &str,
+    source_kind: SourceKind,
     body: Vec<NodeRef>,
   ) -> NodeRef {
     let id = self.ctx.append_node(AstNode::Program, span);
 
-    self.ctx.write_str(AstProp::SourceType, source_kind);
+    let kind = match source_kind {
+      SourceKind::Module => "module",
+      SourceKind::Script => "script",
+    };
+    self.ctx.write_str(AstProp::SourceType, kind);
     self.ctx.write_ref_vec(AstProp::Body, &id, body);
 
     self.ctx.set_root_idx(id.0);
@@ -736,7 +741,7 @@ impl TsEsTreeBuilder {
     self.ctx.commit_node(id)
   }
 
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "TODO: cleanup")]
   pub fn write_ts_decl_fn(
     &mut self,
     span: &Span,
@@ -766,7 +771,7 @@ impl TsEsTreeBuilder {
     self.ctx.commit_node(id)
   }
 
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "TODO: cleanup")]
   pub fn write_fn_decl(
     &mut self,
     span: &Span,
@@ -805,7 +810,7 @@ impl TsEsTreeBuilder {
     self.ctx.commit_node(id)
   }
 
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "TODO: cleanup")]
   pub fn write_class_decl(
     &mut self,
     span: &Span,
@@ -817,6 +822,7 @@ impl TsEsTreeBuilder {
     super_class: Option<NodeRef>,
     implements: Vec<NodeRef>,
     body: NodeRef,
+    decorators: Vec<NodeRef>,
   ) -> NodeRef {
     let id = self.ctx.append_node(AstNode::ClassDeclaration, span);
     self.ctx.write_bool(AstProp::Declare, is_declare);
@@ -827,11 +833,12 @@ impl TsEsTreeBuilder {
       .write_maybe_ref(AstProp::SuperClass, &id, super_class);
     self.ctx.write_ref_vec(AstProp::Implements, &id, implements);
     self.ctx.write_ref(AstProp::Body, &id, body);
+    self.ctx.write_ref_vec(AstProp::Decorators, &id, decorators);
 
     self.ctx.commit_node(id)
   }
 
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "TODO: cleanup")]
   pub fn write_class_expr(
     &mut self,
     span: &Span,
@@ -881,7 +888,7 @@ impl TsEsTreeBuilder {
     self.ctx.commit_node(id)
   }
 
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "TODO: cleanup")]
   pub fn write_accessor_property(
     &mut self,
     span: &Span,
@@ -912,7 +919,7 @@ impl TsEsTreeBuilder {
     self.ctx.commit_node(id)
   }
 
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "TODO: cleanup")]
   pub fn write_class_prop(
     &mut self,
     span: &Span,
@@ -949,7 +956,7 @@ impl TsEsTreeBuilder {
     self.ctx.commit_node(id)
   }
 
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "TODO: cleanup")]
   pub fn write_class_method(
     &mut self,
     span: &Span,
@@ -962,6 +969,7 @@ impl TsEsTreeBuilder {
     accessibility: Option<String>,
     key: NodeRef,
     value: NodeRef,
+    decorators: Vec<NodeRef>,
   ) -> NodeRef {
     let id = self.ctx.append_node(AstNode::MethodDefinition, span);
 
@@ -980,7 +988,7 @@ impl TsEsTreeBuilder {
     self.write_accessibility(accessibility);
     self.ctx.write_ref(AstProp::Key, &id, key);
     self.ctx.write_ref(AstProp::Value, &id, value);
-    self.ctx.write_ref_vec(AstProp::Decorators, &id, vec![]);
+    self.ctx.write_ref_vec(AstProp::Decorators, &id, decorators);
 
     self.ctx.commit_node(id)
   }
@@ -1276,7 +1284,7 @@ impl TsEsTreeBuilder {
     self.ctx.commit_node(id)
   }
 
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "TODO: cleanup")]
   pub fn write_fn_expr(
     &mut self,
     span: &Span,
@@ -1305,7 +1313,7 @@ impl TsEsTreeBuilder {
     self.ctx.commit_node(id)
   }
 
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "TODO: cleanup")]
   pub fn write_arrow_fn_expr(
     &mut self,
     span: &Span,
@@ -1578,6 +1586,7 @@ impl TsEsTreeBuilder {
     name: &str,
     optional: bool,
     type_annotation: Option<NodeRef>,
+    decorators: Option<Vec<NodeRef>>,
   ) -> NodeRef {
     let id = self.ctx.append_node(AstNode::Identifier, span);
 
@@ -1588,6 +1597,9 @@ impl TsEsTreeBuilder {
       &id,
       type_annotation,
     );
+    self
+      .ctx
+      .write_maybe_ref_vec_skip(AstProp::Decorators, &id, decorators);
 
     self.ctx.commit_node(id)
   }
@@ -1607,11 +1619,15 @@ impl TsEsTreeBuilder {
     span: &Span,
     left: NodeRef,
     right: NodeRef,
+    decorators: Option<Vec<NodeRef>>,
   ) -> NodeRef {
     let id = self.ctx.append_node(AstNode::AssignmentPattern, span);
 
     self.ctx.write_ref(AstProp::Left, &id, left);
     self.ctx.write_ref(AstProp::Right, &id, right);
+    self
+      .ctx
+      .write_ref_vec_or_empty(AstProp::Decorators, &id, decorators);
 
     self.ctx.commit_node(id)
   }
@@ -1622,6 +1638,7 @@ impl TsEsTreeBuilder {
     optional: bool,
     type_ann: Option<NodeRef>,
     elems: Vec<NodeRef>,
+    decorators: Option<Vec<NodeRef>>,
   ) -> NodeRef {
     let id = self.ctx.append_node(AstNode::ArrayPattern, span);
 
@@ -1630,6 +1647,9 @@ impl TsEsTreeBuilder {
       .ctx
       .write_maybe_undef_ref(AstProp::TypeAnnotation, &id, type_ann);
     self.ctx.write_ref_vec(AstProp::Elements, &id, elems);
+    self
+      .ctx
+      .write_ref_vec_or_empty(AstProp::Decorators, &id, decorators);
 
     self.ctx.commit_node(id)
   }
@@ -1640,6 +1660,7 @@ impl TsEsTreeBuilder {
     optional: bool,
     type_ann: Option<NodeRef>,
     props: Vec<NodeRef>,
+    decorators: Option<Vec<NodeRef>>,
   ) -> NodeRef {
     let id = self.ctx.append_node(AstNode::ObjectPattern, span);
 
@@ -1648,6 +1669,9 @@ impl TsEsTreeBuilder {
       .ctx
       .write_maybe_undef_ref(AstProp::TypeAnnotation, &id, type_ann);
     self.ctx.write_ref_vec(AstProp::Properties, &id, props);
+    self
+      .ctx
+      .write_ref_vec_or_empty(AstProp::Decorators, &id, decorators);
 
     self.ctx.commit_node(id)
   }
@@ -1657,6 +1681,7 @@ impl TsEsTreeBuilder {
     span: &Span,
     type_ann: Option<NodeRef>,
     arg: NodeRef,
+    decorators: Option<Vec<NodeRef>>,
   ) -> NodeRef {
     let id = self.ctx.append_node(AstNode::RestElement, span);
 
@@ -1664,6 +1689,9 @@ impl TsEsTreeBuilder {
       .ctx
       .write_maybe_undef_ref(AstProp::TypeAnnotation, &id, type_ann);
     self.ctx.write_ref(AstProp::Argument, &id, arg);
+    self
+      .ctx
+      .write_ref_vec_or_empty(AstProp::Decorators, &id, decorators);
 
     self.ctx.commit_node(id)
   }
@@ -1674,7 +1702,7 @@ impl TsEsTreeBuilder {
     self.ctx.commit_node(id)
   }
 
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "TODO: cleanup")]
   pub fn write_property(
     &mut self,
     span: &Span,
@@ -1994,7 +2022,7 @@ impl TsEsTreeBuilder {
     self.ctx.commit_node(id)
   }
 
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "TODO: cleanup")]
   pub fn write_ts_abstract_method_def(
     &mut self,
     span: &Span,
@@ -2024,7 +2052,7 @@ impl TsEsTreeBuilder {
     self.ctx.commit_node(id)
   }
 
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "TODO: cleanup")]
   pub fn write_ts_abstract_prop_def(
     &mut self,
     span: &Span,
@@ -2064,7 +2092,7 @@ impl TsEsTreeBuilder {
     self.ctx.commit_node(id)
   }
 
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "TODO: cleanup")]
   pub fn write_ts_empty_body_fn_expr(
     &mut self,
     span: &Span,
@@ -2406,7 +2434,7 @@ impl TsEsTreeBuilder {
     self.ctx.commit_node(id)
   }
 
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "TODO: cleanup")]
   pub fn write_ts_method_sig(
     &mut self,
     span: &Span,
@@ -2583,7 +2611,7 @@ impl TsEsTreeBuilder {
     self.ctx.commit_node(id)
   }
 
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "TODO: cleanup")]
   pub fn write_ts_mapped_type(
     &mut self,
     span: &Span,
@@ -2762,7 +2790,7 @@ impl TsEsTreeBuilder {
     self.ctx.commit_node(id)
   }
 
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "TODO: cleanup")]
   pub fn write_ts_type_param(
     &mut self,
     span: &Span,
@@ -2863,6 +2891,10 @@ impl TsEsTreeBuilder {
       _ => self.ctx.write_undefined(prop),
     }
   }
+
+  pub fn write_comment(&mut self, kind: CommentKind, value: &str, span: &Span) {
+    self.ctx.write_comment(kind, value, span);
+  }
 }
 
 #[derive(Debug)]
@@ -2902,4 +2934,10 @@ pub enum MethodKind {
   Get,
   Method,
   Set,
+}
+
+#[derive(Debug)]
+pub enum SourceKind {
+  Module,
+  Script,
 }

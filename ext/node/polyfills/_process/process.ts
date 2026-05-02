@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
 
 // The following are all the process APIs that don't depend on the stream module
@@ -15,13 +15,23 @@ const {
   Proxy,
   ObjectPrototype,
   ObjectPrototypeIsPrototypeOf,
+  ReflectDefineProperty,
+  ReflectHas,
+  TypeError,
   TypeErrorPrototype,
 } = primordials;
-const { build } = core;
+const { build, createLazyLoader } = core;
 
 import { nextTick as _nextTick } from "ext:deno_node/_next_tick.ts";
 import { _exiting } from "ext:deno_node/_process/exiting.ts";
 import * as fs from "ext:deno_fs/30_fs.js";
+import {
+  ERR_INVALID_ARG_TYPE,
+  ERR_INVALID_OBJECT_DEFINE_PROPERTY,
+} from "ext:deno_node/internal/errors.ts";
+
+const loadProcess = createLazyLoader<NodeJS.Process>("node:process");
+let nodeProcess: NodeJS.Process | undefined;
 
 /** Returns the operating system CPU architecture for which the Deno binary was compiled */
 export function arch(): string {
@@ -37,7 +47,12 @@ export function arch(): string {
 }
 
 /** https://nodejs.org/api/process.html#process_process_chdir_directory */
-export const chdir = fs.chdir;
+export function chdir(directory: string): void {
+  if (typeof directory !== "string") {
+    throw new ERR_INVALID_ARG_TYPE("directory", "string", directory);
+  }
+  fs.chdir(directory);
+}
 
 /** https://nodejs.org/api/process.html#process_process_cwd */
 export const cwd = fs.cwd;
@@ -51,11 +66,7 @@ function denoEnvGet(name: string) {
   try {
     return Deno.env.get(name);
   } catch (e) {
-    if (
-      ObjectPrototypeIsPrototypeOf(TypeErrorPrototype, e) ||
-      // TODO(iuioiua): Use `NotCapablePrototype` when it's available
-      ObjectPrototypeIsPrototypeOf(Deno.errors.NotCapable.prototype, e)
-    ) {
+    if (ObjectPrototypeIsPrototypeOf(TypeErrorPrototype, e)) {
       return undefined;
     }
     throw e;
@@ -67,8 +78,9 @@ const OBJECT_PROTO_PROP_NAMES = ObjectGetOwnPropertyNames(ObjectPrototype);
  * https://nodejs.org/api/process.html#process_process_env
  * Requires env permissions
  */
-export const env: InstanceType<ObjectConstructor> & Record<string, string> =
-  new Proxy(Object(), {
+export const env:
+  & InstanceType<ObjectConstructor>
+  & Record<string | symbol, string> = new Proxy(Object(), {
     get: (target, prop) => {
       if (typeof prop === "symbol") {
         return target[prop];
@@ -89,7 +101,7 @@ export const env: InstanceType<ObjectConstructor> & Record<string, string> =
     ownKeys: () => ReflectOwnKeys(Deno.env.toObject()),
     getOwnPropertyDescriptor: (_target, name) => {
       const value = denoEnvGet(String(name));
-      if (value) {
+      if (value !== undefined) {
         return {
           enumerable: true,
           configurable: true,
@@ -98,12 +110,66 @@ export const env: InstanceType<ObjectConstructor> & Record<string, string> =
       }
     },
     set(_target, prop, value) {
+      // Match Node: v8 ToString on a symbol key or value throws TypeError.
+      if (typeof prop === "symbol" || typeof value === "symbol") {
+        throw new TypeError("Cannot convert a Symbol value to a string");
+      }
+
+      if (typeof value !== "string") {
+        nodeProcess ??= loadProcess();
+        nodeProcess.emitWarning(
+          "Assigning any value other than a string, number, or boolean to a " +
+            "process.env property is deprecated. Please make sure to convert the value " +
+            "to a string before setting process.env with it.",
+          "DeprecationWarning",
+          "DEP0104",
+        );
+      }
+
       Deno.env.set(String(prop), String(value));
       return true; // success
     },
-    has: (_target, prop) => typeof denoEnvGet(String(prop)) === "string",
-    deleteProperty(_target, key) {
+    has: (target, prop) => {
+      if (typeof prop === "symbol") {
+        return ReflectHas(target, prop);
+      }
+
+      return typeof denoEnvGet(prop) === "string";
+    },
+    deleteProperty(target, key) {
+      if (typeof key === "symbol") {
+        delete target[key];
+        return true;
+      }
+
       Deno.env.delete(String(key));
+      return true;
+    },
+    defineProperty(target, property, attributes) {
+      if (attributes?.get || attributes?.set) {
+        throw new ERR_INVALID_OBJECT_DEFINE_PROPERTY(
+          "'process.env' does not accept an " +
+            "accessor(getter/setter) descriptor",
+        );
+      }
+
+      if (
+        !attributes?.configurable || !attributes?.enumerable ||
+        !attributes?.writable
+      ) {
+        throw new ERR_INVALID_OBJECT_DEFINE_PROPERTY(
+          "'process.env' only accepts a " +
+            "configurable, writable," +
+            " and enumerable data descriptor",
+        );
+      }
+
+      if (typeof property === "symbol") {
+        ReflectDefineProperty(target, property, attributes);
+        return true;
+      }
+
+      Deno.env.set(String(property), String(attributes?.value));
       return true;
     },
   });
@@ -116,7 +182,7 @@ export const env: InstanceType<ObjectConstructor> & Record<string, string> =
  * it pointed to Deno version, but that led to incompability
  * with some packages.
  */
-export const version = "v20.11.1";
+export const version = "v24.2.0";
 
 /**
  * https://nodejs.org/api/process.html#process_process_versions
@@ -127,14 +193,14 @@ export const version = "v20.11.1";
  * with some packages. Value of `v8` field is still taken from `Deno.version`.
  */
 export const versions = {
-  node: "20.11.1",
+  node: "24.2.0",
   uv: "1.43.0",
   zlib: "1.2.11",
   brotli: "1.0.9",
   ares: "1.18.1",
   modules: "108",
   nghttp2: "1.47.0",
-  napi: "8",
+  napi: "9",
   llhttp: "6.0.10",
   openssl: "3.0.7+quic",
   cldr: "41.0",
@@ -143,6 +209,7 @@ export const versions = {
   unicode: "14.0",
   ngtcp2: "0.8.1",
   nghttp3: "0.7.0",
+  sqlite: "3.49.0",
   // Will be filled when calling "__bootstrapNodeProcess()",
   deno: "",
   v8: "",

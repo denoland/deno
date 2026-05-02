@@ -1,0 +1,26 @@
+{
+  "tempDir": true,
+  "steps": [
+    {
+      "args": "install",
+      "output": "[WILDCARD]"
+    },
+    {
+      "args": "run -A main.js",
+      "output": "no_condition.out"
+    },
+    {
+      "args": "run --conditions react-server -A main.js",
+      "output": "condition.out",
+      "exitCode": 1
+    },
+    {
+      "args": "run -A main.js",
+      "envs": {
+        "DENO_CONDITIONS": "react-server"
+      },
+      "output": "condition.out",
+      "exitCode": 1
+    }
+  ]
+}

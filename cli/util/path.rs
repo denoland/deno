@@ -1,8 +1,7 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::path::Path;
-use std::path::PathBuf;
 
 use deno_ast::MediaType;
 use deno_ast::ModuleSpecifier;
@@ -45,10 +44,10 @@ pub fn is_importable_ext(path: &Path) -> bool {
 
 /// Get the extension of a file in lowercase.
 pub fn get_extension(file_path: &Path) -> Option<String> {
-  return file_path
+  file_path
     .extension()
     .and_then(|e| e.to_str())
-    .map(|e| e.to_lowercase());
+    .map(|e| e.to_lowercase())
 }
 
 /// TypeScript figures out the type of file based on the extension, but we take
@@ -67,7 +66,7 @@ pub fn mapped_specifier_for_tsc(
       && specifier
         .path()
         .split('/')
-        .last()
+        .next_back()
         .map(|last| last.contains(".d."))
         .unwrap_or(false)
     {
@@ -100,25 +99,9 @@ pub fn relative_specifier(
     return Some("./".to_string());
   }
 
-  // workaround using parent directory until https://github.com/servo/rust-url/pull/754 is merged
-  let from = if !from.path().ends_with('/') {
-    if let Some(end_slash) = from.path().rfind('/') {
-      let mut new_from = from.clone();
-      new_from.set_path(&from.path()[..end_slash + 1]);
-      Cow::Owned(new_from)
-    } else {
-      Cow::Borrowed(from)
-    }
-  } else {
-    Cow::Borrowed(from)
-  };
-
   // workaround for url crate not adding a trailing slash for a directory
   // it seems to be fixed once a version greater than 2.2.2 is released
-  let mut text = from.make_relative(to)?;
-  if is_dir && !text.ends_with('/') && to.query().is_none() {
-    text.push('/');
-  }
+  let text = from.make_relative(to)?;
 
   let text = if text.starts_with("../") || text.starts_with("./") {
     text
@@ -128,9 +111,23 @@ pub fn relative_specifier(
   Some(to_percent_decoded_str(&text))
 }
 
-#[cfg_attr(windows, allow(dead_code))]
-pub fn relative_path(from: &Path, to: &Path) -> Option<PathBuf> {
-  pathdiff::diff_paths(to, from)
+pub fn relative_specifier_path_for_display(
+  from: &ModuleSpecifier,
+  to: &ModuleSpecifier,
+) -> String {
+  if to.scheme() == "file" && from.scheme() == "file" {
+    let relative_specifier = relative_specifier(from, to)
+      .map(Cow::Owned)
+      .unwrap_or_else(|| Cow::Borrowed(to.as_str()));
+    let relative_specifier = if relative_specifier.starts_with("../../../") {
+      to.as_str()
+    } else {
+      relative_specifier.trim_start_matches("./")
+    };
+    to_percent_decoded_str(relative_specifier)
+  } else {
+    to_percent_decoded_str(to.as_str())
+  }
 }
 
 /// Slightly different behaviour than the default matching

@@ -1,13 +1,13 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 // @ts-check
 /// <reference path="../../core/lib.deno_core.d.ts" />
 /// <reference path="../web/internal.d.ts" />
 /// <reference path="../url/internal.d.ts" />
-/// <reference path="../web/lib.deno_web.d.ts" />
+/// <reference path="../../cli/tsc/dts/lib.deno_web.d.ts" />
 /// <reference path="../web/06_streams_types.d.ts" />
 /// <reference path="./internal.d.ts" />
-/// <reference path="./lib.deno_fetch.d.ts" />
+/// <reference path="../../cli/tsc/dts/lib.deno_fetch.d.ts" />
 /// <reference lib="esnext" />
 
 import { core, primordials } from "ext:core/mod.js";
@@ -38,7 +38,7 @@ const {
   TypedArrayPrototypeGetSymbolToStringTag,
 } = primordials;
 
-import * as webidl from "ext:deno_webidl/00_webidl.js";
+const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
 import { byteLowerCase } from "ext:deno_web/00_infra.js";
 import {
   errorReadableStream,
@@ -60,13 +60,16 @@ import {
 import * as abortSignal from "ext:deno_web/03_abort_signal.js";
 import {
   builtinTracer,
+  ContextManager,
   enterSpan,
-  restoreContext,
+  PROPAGATORS,
+  restoreSnapshot,
   TRACING_ENABLED,
 } from "ext:deno_telemetry/telemetry.ts";
 import {
+  updateSpanFromClientResponse,
+  updateSpanFromError,
   updateSpanFromRequest,
-  updateSpanFromResponse,
 } from "ext:deno_telemetry/util.ts";
 
 const REQUEST_BODY_HEADER_NAMES = [
@@ -351,11 +354,11 @@ function httpRedirectFetch(request, response, terminator) {
  */
 function fetch(input, init = { __proto__: null }) {
   let span;
-  let context;
+  let snapshot;
   try {
     if (TRACING_ENABLED) {
       span = builtinTracer().startSpan("fetch", { kind: 2 });
-      context = enterSpan(span);
+      snapshot = enterSpan(span);
     }
 
     // There is an async dispatch later that causes a stack trace disconnect.
@@ -371,6 +374,15 @@ function fetch(input, init = { __proto__: null }) {
       const requestObject = new Request(input, init);
 
       if (span) {
+        const context = ContextManager.active();
+        for (const propagator of new SafeArrayIterator(PROPAGATORS)) {
+          propagator.inject(context, requestObject.headers, {
+            set(carrier, key, value) {
+              carrier.append(key, value);
+            },
+          });
+        }
+
         updateSpanFromRequest(span, requestObject);
       }
 
@@ -378,6 +390,11 @@ function fetch(input, init = { __proto__: null }) {
       const request = toInnerRequest(requestObject);
       // 4.
       if (requestObject.signal.aborted) {
+        if (span) {
+          // Handles this case here as this is the only case where `result` promise
+          // is settled immediately.
+          updateSpanFromError(span, requestObject.signal.reason);
+        }
         reject(abortFetch(request, null, requestObject.signal.reason));
         return;
       }
@@ -433,7 +450,7 @@ function fetch(input, init = { __proto__: null }) {
             responseObject = fromInnerResponse(response, "immutable");
 
             if (span) {
-              updateSpanFromResponse(span, responseObject);
+              updateSpanFromClientResponse(span, responseObject);
             }
 
             resolve(responseObject);
@@ -448,7 +465,11 @@ function fetch(input, init = { __proto__: null }) {
     });
 
     if (opPromise) {
-      PromisePrototypeCatch(result, () => {});
+      PromisePrototypeCatch(result, (e) => {
+        if (span) {
+          updateSpanFromError(span, e);
+        }
+      });
       return (async function fetch() {
         try {
           await opPromise;
@@ -477,7 +498,7 @@ function fetch(input, init = { __proto__: null }) {
     }
     return result;
   } finally {
-    if (context) restoreContext(context);
+    if (snapshot) restoreSnapshot(snapshot);
   }
 }
 

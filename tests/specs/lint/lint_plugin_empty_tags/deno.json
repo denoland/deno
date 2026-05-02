@@ -1,0 +1,9 @@
+{
+  "lint": {
+    "rules": {
+      "tags": [],
+      "include": ["test-plugin/my-rule"]
+    },
+    "plugins": ["./plugin.ts"]
+  }
+}

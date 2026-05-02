@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
@@ -21,8 +21,10 @@ export function base64ToBytes(str: string) {
   try {
     return forgivingBase64Decode(str);
   } catch {
-    str = base64clean(str);
+    // Convert base64url characters to standard base64 before cleaning,
+    // so that the padding logic in base64clean works correctly.
     str = str.replaceAll("-", "+").replaceAll("_", "/");
+    str = base64clean(str);
     return forgivingBase64Decode(str);
   }
 }
@@ -42,7 +44,8 @@ function base64clean(str: string) {
     case 0:
       return str;
     case 1:
-      return `${str}===`;
+      // A single base64 char can't encode a full byte; drop it like Node does
+      return str.substring(0, length - 1);
     case 2:
       return `${str}==`;
     case 3:
@@ -58,14 +61,35 @@ export function base64UrlToBytes(str: string) {
   return forgivingBase64UrlDecode(str);
 }
 
+// https://github.com/nodejs/node/blob/591ba692bfe30408e6a67397e7d18bfa1b9c3561/deps/nbytes/src/nbytes.cpp#L144-L158
+// deno-fmt-ignore
+export const unhexTable = new Int8Array([
+  -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, // 0 - 15
+  -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, // 16 - 31
+  -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, // 32 - 47
+   0,  1,  2,  3,  4,  5,  6,  7,  8,  9, -1, -1, -1, -1, -1, -1, // 48 - 63
+  -1, 10, 11, 12, 13, 14, 15, -1, -1, -1, -1, -1, -1, -1, -1, -1, // 64 - 79
+  -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, // 80 - 95
+  -1, 10, 11, 12, 13, 14, 15, -1, -1, -1, -1, -1, -1, -1, -1, -1, // 96 - 111
+  -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, // 112 - 127
+  -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, // 128 ...
+  -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+  -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+  -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+  -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+  -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+  -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+  -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, // ... 255
+]);
+
 export function hexToBytes(str: string) {
   const length = str.length >>> 1;
   const byteArray = new Uint8Array(length);
   let i: number;
   for (i = 0; i < length; i++) {
-    const a = Number.parseInt(str[i * 2], 16);
-    const b = Number.parseInt(str[i * 2 + 1], 16);
-    if (Number.isNaN(a) && Number.isNaN(b)) {
+    const a = unhexTable[str.charCodeAt(i * 2) & 0xff];
+    const b = unhexTable[str.charCodeAt(i * 2 + 1) & 0xff];
+    if (!~a || !~b) {
       break;
     }
     byteArray[i] = (a << 4) | b;

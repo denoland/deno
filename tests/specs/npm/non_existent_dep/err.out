@@ -1,0 +1,5 @@
+[UNORDERED_START]
+Download http://localhost:4260/@denotest%2fnon-existent-dep
+Download http://localhost:4260/@denotest%2fnon-existent
+[UNORDERED_END]
+error: npm package '@denotest/non-existent' does not exist.

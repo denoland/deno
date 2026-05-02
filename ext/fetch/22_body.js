@@ -1,14 +1,14 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 // @ts-check
 /// <reference path="../webidl/internal.d.ts" />
 /// <reference path="../url/internal.d.ts" />
-/// <reference path="../url/lib.deno_url.d.ts" />
+/// <reference path="../../cli/tsc/dts/lib.deno_url.d.ts" />
 /// <reference path="../web/internal.d.ts" />
-/// <reference path="../web/lib.deno_web.d.ts" />
+/// <reference path="../../cli/tsc/dts/lib.deno_web.d.ts" />
 /// <reference path="./internal.d.ts" />
 /// <reference path="../web/06_streams_types.d.ts" />
-/// <reference path="./lib.deno_fetch.d.ts" />
+/// <reference path="../../cli/tsc/dts/lib.deno_fetch.d.ts" />
 /// <reference lib="esnext" />
 
 import { core, primordials } from "ext:core/mod.js";
@@ -37,11 +37,11 @@ const {
   Uint8Array,
 } = primordials;
 
-import * as webidl from "ext:deno_webidl/00_webidl.js";
+const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
 import {
   parseUrlEncoded,
   URLSearchParamsPrototype,
-} from "ext:deno_url/00_url.js";
+} from "ext:deno_web/00_url.js";
 import {
   formDataFromEntries,
   FormDataPrototype,
@@ -486,7 +486,40 @@ function extractBody(object) {
       throw new TypeError("ReadableStream is locked or disturbed");
     }
   } else if (object[webidl.AsyncIterable] === webidl.AsyncIterable) {
-    stream = ReadableStream.from(object.open());
+    // If the underlying body is a Node `Readable` running in binary mode
+    // (e.g. `http.IncomingMessage`), build a byte `ReadableStream` so that
+    // consumers can acquire a BYOB reader. This matches undici's behavior in
+    // Node, where `stream.Readable` bodies go through `Readable.toWeb()`.
+    const original = object.value;
+    const readableState = (original !== null && typeof original === "object")
+      ? original._readableState
+      : undefined;
+    if (
+      typeof readableState === "object" && readableState !== null &&
+      !readableState.objectMode && !readableState.encoding
+    ) {
+      const iter = object.open();
+      stream = new ReadableStream({
+        type: "bytes",
+        async pull(controller) {
+          // deno-lint-ignore prefer-primordials
+          const res = await iter.next();
+          if (res.done) {
+            controller.close();
+          } else {
+            controller.enqueue(res.value);
+          }
+        },
+        async cancel(reason) {
+          if (iter.return !== undefined) {
+            // deno-lint-ignore prefer-primordials
+            await iter.return(reason);
+          }
+        },
+      });
+    } else {
+      stream = ReadableStream.from(object.open());
+    }
   }
   if (typeof source === "string") {
     // WARNING: this deviates from spec (expects length to be set)
@@ -543,4 +576,4 @@ webidl.converters["BodyInit_DOMString?"] = webidl.createNullableConverter(
   webidl.converters["BodyInit_DOMString"],
 );
 
-export { extractBody, InnerBody, mixinBody };
+export { extractBody, InnerBody, mixinBody, packageData };

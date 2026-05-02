@@ -1,10 +1,8 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
 
-import { primordials } from "ext:deno_node/internal/test/binding.ts";
-const { queueMicrotask } = primordials;
-import { SymbolDispose } from "ext:deno_web/00_infra.js";
-import * as abortSignal from "ext:deno_web/03_abort_signal.js";
+import { primordials } from "ext:core/mod.js";
+const { queueMicrotask, SymbolDispose } = primordials;
 import { validateAbortSignal, validateFunction } from "../validators.mjs";
 import { codes } from "../errors.ts";
 const { ERR_INVALID_ARG_TYPE } = codes;
@@ -23,14 +21,14 @@ function addAbortListener(signal, listener) {
 
   let removeEventListener;
   if (signal.aborted) {
-    queueMicrotask(() => listener());
+    queueMicrotask(() => listener({ target: signal }));
   } else {
-    signal[abortSignal.add](() => {
-      removeEventListener?.();
-      listener();
+    signal.addEventListener("abort", listener, {
+      __proto__: null,
+      once: true,
     });
     removeEventListener = () => {
-      signal[abortSignal.remove](listener);
+      signal.removeEventListener("abort", listener);
     };
   }
   return {
@@ -40,5 +38,7 @@ function addAbortListener(signal, listener) {
     },
   };
 }
+
+export default { addAbortListener };
 
 export { addAbortListener };

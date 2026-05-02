@@ -1,9 +1,7 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::fs;
 use std::fs::File;
-use std::io::BufWriter;
-use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -15,166 +13,38 @@ use deno_config::glob::FileCollector;
 use deno_config::glob::FilePatterns;
 use deno_config::glob::PathOrPattern;
 use deno_config::glob::PathOrPatternSet;
-use deno_core::anyhow::anyhow;
 use deno_core::anyhow::Context;
+use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
-use deno_core::error::CoreError;
 use deno_core::serde_json;
 use deno_core::sourcemap::SourceMap;
 use deno_core::url::Url;
-use deno_core::LocalInspectorSession;
-use deno_error::JsErrorBox;
 use deno_resolver::npm::DenoInNpmPackageChecker;
 use node_resolver::InNpmPackageChecker;
 use regex::Regex;
+use reporter::CoverageReporter;
 use text_lines::TextLines;
-use uuid::Uuid;
 
+use self::ignore_directives::has_file_ignore_directive;
+use self::ignore_directives::lex_comments;
+use self::ignore_directives::parse_next_ignore_directives;
+use self::ignore_directives::parse_range_ignore_directives;
 use crate::args::CliOptions;
-use crate::args::CoverageFlags;
 use crate::args::FileFlags;
 use crate::args::Flags;
 use crate::cdp;
 use crate::factory::CliFactory;
 use crate::file_fetcher::TextDecodedFile;
 use crate::sys::CliSys;
-use crate::tools::fmt::format_json;
 use crate::tools::test::is_supported_test_path;
 use crate::util::text_encoding::source_map_from_code;
 
+mod ignore_directives;
 mod merge;
 mod range_tree;
-mod reporter;
+pub mod reporter;
 mod util;
 use merge::ProcessCoverage;
-
-pub struct CoverageCollector {
-  pub dir: PathBuf,
-  session: LocalInspectorSession,
-}
-
-#[async_trait::async_trait(?Send)]
-impl crate::worker::CoverageCollector for CoverageCollector {
-  async fn start_collecting(&mut self) -> Result<(), CoreError> {
-    self.enable_debugger().await?;
-    self.enable_profiler().await?;
-    self
-      .start_precise_coverage(cdp::StartPreciseCoverageArgs {
-        call_count: true,
-        detailed: true,
-        allow_triggered_updates: false,
-      })
-      .await?;
-
-    Ok(())
-  }
-
-  async fn stop_collecting(&mut self) -> Result<(), CoreError> {
-    fs::create_dir_all(&self.dir)?;
-
-    let script_coverages = self.take_precise_coverage().await?.result;
-    for script_coverage in script_coverages {
-      // Filter out internal and http/https JS files and eval'd scripts
-      // from being included in coverage reports
-      if script_coverage.url.starts_with("ext:")
-        || script_coverage.url.starts_with("[ext:")
-        || script_coverage.url.starts_with("http:")
-        || script_coverage.url.starts_with("https:")
-        || script_coverage.url.starts_with("node:")
-        || script_coverage.url.is_empty()
-      {
-        continue;
-      }
-
-      let filename = format!("{}.json", Uuid::new_v4());
-      let filepath = self.dir.join(filename);
-
-      let mut out = BufWriter::new(File::create(&filepath)?);
-      let coverage = serde_json::to_string(&script_coverage)
-        .map_err(JsErrorBox::from_err)?;
-      let formatted_coverage =
-        format_json(&filepath, &coverage, &Default::default())
-          .ok()
-          .flatten()
-          .unwrap_or(coverage);
-
-      out.write_all(formatted_coverage.as_bytes())?;
-      out.flush()?;
-    }
-
-    self.disable_debugger().await?;
-    self.disable_profiler().await?;
-
-    Ok(())
-  }
-}
-
-impl CoverageCollector {
-  pub fn new(dir: PathBuf, session: LocalInspectorSession) -> Self {
-    Self { dir, session }
-  }
-
-  async fn enable_debugger(&mut self) -> Result<(), CoreError> {
-    self
-      .session
-      .post_message::<()>("Debugger.enable", None)
-      .await?;
-    Ok(())
-  }
-
-  async fn enable_profiler(&mut self) -> Result<(), CoreError> {
-    self
-      .session
-      .post_message::<()>("Profiler.enable", None)
-      .await?;
-    Ok(())
-  }
-
-  async fn disable_debugger(&mut self) -> Result<(), CoreError> {
-    self
-      .session
-      .post_message::<()>("Debugger.disable", None)
-      .await?;
-    Ok(())
-  }
-
-  async fn disable_profiler(&mut self) -> Result<(), CoreError> {
-    self
-      .session
-      .post_message::<()>("Profiler.disable", None)
-      .await?;
-    Ok(())
-  }
-
-  async fn start_precise_coverage(
-    &mut self,
-    parameters: cdp::StartPreciseCoverageArgs,
-  ) -> Result<cdp::StartPreciseCoverageResponse, CoreError> {
-    let return_value = self
-      .session
-      .post_message("Profiler.startPreciseCoverage", Some(parameters))
-      .await?;
-
-    let return_object =
-      serde_json::from_value(return_value).map_err(JsErrorBox::from_err)?;
-
-    Ok(return_object)
-  }
-
-  async fn take_precise_coverage(
-    &mut self,
-  ) -> Result<cdp::TakePreciseCoverageResponse, CoreError> {
-    let return_value = self
-      .session
-      .post_message::<()>("Profiler.takePreciseCoverage", None)
-      .await?;
-
-    let return_object =
-      serde_json::from_value(return_value).map_err(JsErrorBox::from_err)?;
-
-    Ok(return_object)
-  }
-}
 
 #[derive(Debug, Clone)]
 struct BranchCoverageItem {
@@ -202,30 +72,42 @@ pub struct CoverageReport {
   output: Option<PathBuf>,
 }
 
+struct GenerateCoverageReportOptions<'a> {
+  script_module_specifier: Url,
+  script_media_type: MediaType,
+  script_coverage: &'a cdp::ScriptCoverage,
+  script_original_source: String,
+  script_runtime_source: String,
+  maybe_source_map: &'a Option<Vec<u8>>,
+  output: &'a Option<PathBuf>,
+}
+
 fn generate_coverage_report(
-  script_coverage: &cdp::ScriptCoverage,
-  script_source: String,
-  maybe_source_map: Option<&[u8]>,
-  output: &Option<PathBuf>,
-) -> CoverageReport {
-  let maybe_source_map = maybe_source_map
+  options: GenerateCoverageReportOptions,
+) -> Result<CoverageReport, AnyError> {
+  let original_comments =
+    lex_comments(&options.script_original_source, options.script_media_type);
+  let url = Url::parse(&options.script_coverage.url).unwrap();
+
+  if has_file_ignore_directive(&original_comments) {
+    return Ok(CoverageReport {
+      url,
+      named_functions: Vec::new(),
+      branches: Vec::new(),
+      found_lines: Vec::new(),
+      output: options.output.clone(),
+    });
+  }
+
+  let maybe_source_map = options
+    .maybe_source_map
     .as_ref()
     .map(|source_map| SourceMap::from_slice(source_map).unwrap());
-  let text_lines = TextLines::new(&script_source);
-
-  let comment_ranges = deno_ast::lex(&script_source, MediaType::JavaScript)
-    .into_iter()
-    .filter(|item| {
-      matches!(item.inner, deno_ast::TokenOrComment::Comment { .. })
-    })
-    .map(|item| item.range)
-    .collect::<Vec<_>>();
-
-  let url = Url::parse(&script_coverage.url).unwrap();
   let mut coverage_report = CoverageReport {
     url,
     named_functions: Vec::with_capacity(
-      script_coverage
+      options
+        .script_coverage
         .functions
         .iter()
         .filter(|f| !f.function_name.is_empty())
@@ -233,19 +115,52 @@ fn generate_coverage_report(
     ),
     branches: Vec::new(),
     found_lines: Vec::new(),
-    output: output.clone(),
+    output: options.output.clone(),
   };
 
-  for function in &script_coverage.functions {
+  let original_text_lines = TextLines::new(&options.script_original_source);
+  let coverage_ignore_next_directives = parse_next_ignore_directives(
+    &original_comments.comments,
+    &original_text_lines,
+  );
+  let coverage_ignore_range_directives = parse_range_ignore_directives(
+    &options.script_module_specifier,
+    &original_comments.comments,
+    &original_text_lines,
+  );
+
+  let runtime_comments =
+    lex_comments(&options.script_runtime_source, MediaType::JavaScript);
+  let runtime_text_lines = TextLines::new(&options.script_runtime_source);
+  for function in &options.script_coverage.functions {
     if function.function_name.is_empty() {
       continue;
     }
 
-    let line_index = range_to_src_line_index(
+    // Skip functions that the source map can't trace back to the original
+    // source — these are injected by the transformer (e.g. SWC's decorator
+    // runtime helpers) and shouldn't show up in user-visible coverage.
+    let Some(line_index) = range_to_src_line_index(
       &function.ranges[0],
-      &text_lines,
+      &runtime_text_lines,
       &maybe_source_map,
-    );
+    ) else {
+      continue;
+    };
+
+    if line_index > 0
+      && coverage_ignore_next_directives.contains(&(line_index - 1_usize))
+    {
+      continue;
+    }
+
+    if coverage_ignore_range_directives.iter().any(|range| {
+      range.start_line_index <= line_index
+        && range.stop_line_index >= line_index
+    }) {
+      continue;
+    }
+
     coverage_report.named_functions.push(FunctionCoverageItem {
       name: function.function_name.clone(),
       line_index,
@@ -253,48 +168,158 @@ fn generate_coverage_report(
     });
   }
 
-  for (block_number, function) in script_coverage.functions.iter().enumerate() {
+  for (block_number, function) in
+    options.script_coverage.functions.iter().enumerate()
+  {
     let block_hits = function.ranges[0].count;
-    for (branch_number, range) in function.ranges[1..].iter().enumerate() {
-      let line_index =
-        range_to_src_line_index(range, &text_lines, &maybe_source_map);
 
-      // From https://manpages.debian.org/unstable/lcov/geninfo.1.en.html:
-      //
-      // Block number and branch number are gcc internal IDs for the branch. Taken is either '-'
-      // if the basic block containing the branch was never executed or a number indicating how
-      // often that branch was taken.
-      //
-      // However with the data we get from v8 coverage profiles it seems we can't actually hit
-      // this as appears it won't consider any nested branches it hasn't seen but its here for
-      // the sake of accuracy.
-      let taken = if block_hits > 0 {
-        Some(range.count)
-      } else {
-        None
+    // For each sub-range, find the parent count: the count of the smallest
+    // enclosing range. V8 ranges are nested (ranges[0] is the function body,
+    // inner ranges are blocks/branches/loops). The parent count is needed to
+    // correctly compute complement branches — e.g. for an if/else inside a
+    // loop, the parent is the loop body, not the function.
+    let mut parent_counts: Vec<i64> =
+      Vec::with_capacity(function.ranges.len().saturating_sub(1));
+    for range in &function.ranges[1..] {
+      let mut parent_count = block_hits;
+      let mut parent_size = usize::MAX;
+      for candidate in &function.ranges {
+        if std::ptr::eq(candidate, range) {
+          continue;
+        }
+        if candidate.start_char_offset <= range.start_char_offset
+          && candidate.end_char_offset >= range.end_char_offset
+        {
+          let size = candidate.end_char_offset - candidate.start_char_offset;
+          if size < parent_size {
+            parent_size = size;
+            parent_count = candidate.count;
+          }
+        }
+      }
+      parent_counts.push(parent_count);
+    }
+
+    // Group sub-ranges by their source line to detect branch points.
+    // When multiple ranges map to the same source line, they represent
+    // different arms of the same branch (e.g. if/else).
+    let mut branches_by_line: std::collections::BTreeMap<
+      usize,
+      Vec<(usize, &cdp::CoverageRange)>,
+    > = std::collections::BTreeMap::new();
+    for (idx, range) in function.ranges[1..].iter().enumerate() {
+      // Same rationale as above: drop sub-ranges with no source mapping —
+      // they belong to transformer-injected helper code, not the user's
+      // source.
+      let Some(line_index) =
+        range_to_src_line_index(range, &runtime_text_lines, &maybe_source_map)
+      else {
+        continue;
       };
+      branches_by_line
+        .entry(line_index)
+        .or_default()
+        .push((idx, range));
+    }
 
-      coverage_report.branches.push(BranchCoverageItem {
-        line_index,
-        block_number,
-        branch_number,
-        taken,
-        is_hit: range.count > 0,
-      })
+    for (line_index, ranges) in &branches_by_line {
+      if *line_index > 0
+        && coverage_ignore_next_directives.contains(&(line_index - 1_usize))
+      {
+        continue;
+      }
+
+      if coverage_ignore_range_directives.iter().any(|range| {
+        range.start_line_index <= *line_index
+          && range.stop_line_index >= *line_index
+      }) {
+        continue;
+      }
+
+      if ranges.len() == 1 {
+        let (idx, range) = &ranges[0];
+        let enclosing_count = parent_counts[*idx];
+
+        if range.count > enclosing_count {
+          // Range executes more often than its enclosing scope — this is a
+          // loop body, not a branch arm. Report it without a complement.
+          coverage_report.branches.push(BranchCoverageItem {
+            line_index: *line_index,
+            block_number,
+            branch_number: 0,
+            taken: if enclosing_count > 0 {
+              Some(range.count)
+            } else {
+              None
+            },
+            is_hit: range.count > 0,
+          });
+        } else {
+          // Single range at this line: one arm of a branch. The complement
+          // (e.g. the else for an if) is implicit with count equal to the
+          // enclosing range's count minus this range's count. Using the
+          // enclosing (parent) range rather than the function-level count
+          // gives correct complements for branches inside loops.
+          let taken = if enclosing_count > 0 {
+            Some(range.count)
+          } else {
+            None
+          };
+          let complement_taken = if enclosing_count > 0 {
+            Some(enclosing_count - range.count)
+          } else {
+            None
+          };
+          coverage_report.branches.push(BranchCoverageItem {
+            line_index: *line_index,
+            block_number,
+            branch_number: 0,
+            taken,
+            is_hit: range.count > 0,
+          });
+          coverage_report.branches.push(BranchCoverageItem {
+            line_index: *line_index,
+            block_number,
+            branch_number: 1,
+            taken: complement_taken,
+            is_hit: complement_taken.is_some_and(|c| c > 0),
+          });
+        }
+      } else {
+        // Multiple ranges at the same line: these are explicit branch arms
+        // (e.g. both if and else blocks reported by V8).
+        for (branch_number, (_, range)) in ranges.iter().enumerate() {
+          let taken = if block_hits > 0 {
+            Some(range.count)
+          } else {
+            None
+          };
+          coverage_report.branches.push(BranchCoverageItem {
+            line_index: *line_index,
+            block_number,
+            branch_number,
+            taken,
+            is_hit: range.count > 0,
+          });
+        }
+      }
     }
   }
 
   // TODO(caspervonb): collect uncovered ranges on the lines so that we can highlight specific
   // parts of a line in color (word diff style) instead of the entire line.
-  let mut line_counts = Vec::with_capacity(text_lines.lines_count());
-  for line_index in 0..text_lines.lines_count() {
-    let line_start_byte_offset = text_lines.line_start(line_index);
-    let line_start_char_offset = text_lines.char_index(line_start_byte_offset);
-    let line_end_byte_offset = text_lines.line_end(line_index);
-    let line_end_char_offset = text_lines.char_index(line_end_byte_offset);
-    let ignore = comment_ranges.iter().any(|range| {
-      range.start <= line_start_byte_offset && range.end >= line_end_byte_offset
-    }) || script_source
+  let mut line_counts = Vec::with_capacity(runtime_text_lines.lines_count());
+  for line_index in 0..runtime_text_lines.lines_count() {
+    let (line_start_byte_offset, line_end_byte_offset) =
+      runtime_text_lines.line_range(line_index);
+    let line_start_char_offset =
+      runtime_text_lines.char_index(line_start_byte_offset);
+    let line_end_char_offset =
+      runtime_text_lines.char_index(line_end_byte_offset);
+    let ignore = runtime_comments.comments.iter().any(|comment| {
+      comment.range.start <= line_start_byte_offset
+        && comment.range.end >= line_end_byte_offset
+    }) || options.script_runtime_source
       [line_start_byte_offset..line_end_byte_offset]
       .trim()
       .is_empty();
@@ -303,20 +328,31 @@ fn generate_coverage_report(
     if ignore {
       count = 1;
     } else {
-      // Count the hits of ranges that include the entire line which will always be at-least one
-      // as long as the code has been evaluated.
-      for function in &script_coverage.functions {
+      // Find the count from the most specific (smallest/innermost) range that
+      // fully covers this line. V8 coverage ranges are nested: ranges[0] is the
+      // function body and ranges[1..] are inner blocks/branches. The innermost
+      // range that covers a line gives the correct execution count for that line.
+      let mut best_range_size = usize::MAX;
+      for function in &options.script_coverage.functions {
         for range in &function.ranges {
           if range.start_char_offset <= line_start_char_offset
             && range.end_char_offset >= line_end_char_offset
           {
-            count += range.count;
+            let range_size = range.end_char_offset - range.start_char_offset;
+            if range_size < best_range_size {
+              best_range_size = range_size;
+              count = range.count;
+            }
           }
         }
       }
 
-      // We reset the count if any block with a zero count overlaps with the line range.
-      for function in &script_coverage.functions {
+      // Reset the count if a zero-count range overlaps the line and reaches
+      // at least one edge (start or end) of the line. A zero-count range
+      // floating in the middle of a line (not reaching either edge) is
+      // typically just a tiny gap between blocks (e.g. the unreachable path
+      // between catch's return and finally) and should not zero out the line.
+      for function in &options.script_coverage.functions {
         for range in &function.ranges {
           if range.count > 0 {
             continue;
@@ -324,7 +360,9 @@ fn generate_coverage_report(
 
           let overlaps = range.start_char_offset < line_end_char_offset
             && range.end_char_offset > line_start_char_offset;
-          if overlaps {
+          let reaches_edge = range.start_char_offset <= line_start_char_offset
+            || range.end_char_offset >= line_end_char_offset;
+          if overlaps && reaches_edge {
             count = 0;
           }
         }
@@ -334,9 +372,32 @@ fn generate_coverage_report(
     line_counts.push(count);
   }
 
+  let found_lines_coverage_filter = |(line, _): &(usize, i64)| -> bool {
+    if coverage_ignore_range_directives.iter().any(|range| {
+      range.start_line_index <= *line && range.stop_line_index >= *line
+    }) {
+      return false;
+    }
+
+    if coverage_ignore_next_directives.contains(line) {
+      return false;
+    }
+
+    if *line == 0_usize {
+      return true;
+    }
+
+    if coverage_ignore_next_directives.contains(&(line - 1_usize)) {
+      return false;
+    }
+
+    true
+  };
+
   coverage_report.found_lines =
     if let Some(source_map) = maybe_source_map.as_ref() {
-      let script_source_lines = script_source.lines().collect::<Vec<_>>();
+      let script_runtime_source_lines =
+        options.script_runtime_source.lines().collect::<Vec<_>>();
       let mut found_lines = line_counts
         .iter()
         .enumerate()
@@ -348,7 +409,7 @@ fn generate_coverage_report(
               let dst_line = token.get_dst_line() as usize;
               dst_line == index && {
                 let dst_col = token.get_dst_col() as usize;
-                let content = script_source_lines
+                let content = script_runtime_source_lines
                   .get(dst_line)
                   .and_then(|line| {
                     line.get(dst_col..std::cmp::min(dst_col + 2, line.len()))
@@ -368,13 +429,18 @@ fn generate_coverage_report(
           results.dedup_by_key(|(index, _)| *index);
           results.into_iter()
         })
+        .filter(found_lines_coverage_filter)
         .collect::<Vec<(usize, i64)>>();
 
       found_lines.sort_unstable_by_key(|(index, _)| *index);
-      // combine duplicated lines
+      // combine duplicated lines - when multiple compiled JS lines map to the
+      // same source line, use the maximum count rather than summing, since
+      // hitting the same source line from different compiled lines doesn't mean
+      // it was executed more times.
       for i in (1..found_lines.len()).rev() {
         if found_lines[i].0 == found_lines[i - 1].0 {
-          found_lines[i - 1].1 += found_lines[i].1;
+          found_lines[i - 1].1 =
+            std::cmp::max(found_lines[i - 1].1, found_lines[i].1);
           found_lines.remove(i);
         }
       }
@@ -383,17 +449,26 @@ fn generate_coverage_report(
       line_counts
         .into_iter()
         .enumerate()
+        .filter(found_lines_coverage_filter)
         .collect::<Vec<(usize, i64)>>()
     };
 
-  coverage_report
+  Ok(coverage_report)
 }
 
+/// Maps a runtime coverage range back to a line in the original source.
+///
+/// Returns `None` when the source map exists but has no mapping for this
+/// position. That happens for code injected by the transformer (e.g. SWC's
+/// decorator runtime helpers like `applyDecs2203R`) — the bytes exist in
+/// the runtime JS but didn't come from the user's source, so callers
+/// should drop these coverage entries rather than reporting them as if
+/// they were the user's own code.
 fn range_to_src_line_index(
   range: &cdp::CoverageRange,
   text_lines: &TextLines,
   maybe_source_map: &Option<SourceMap>,
-) -> usize {
+) -> Option<usize> {
   let source_lc = text_lines.line_and_column_index(
     text_lines.byte_index_from_char_index(range.start_char_offset),
   );
@@ -401,9 +476,8 @@ fn range_to_src_line_index(
     source_map
       .lookup_token(source_lc.line_index as u32, source_lc.column_index as u32)
       .map(|token| token.get_src_line() as usize)
-      .unwrap_or(0)
   } else {
-    source_lc.line_index
+    Some(source_lc.line_index)
   }
 }
 
@@ -435,7 +509,7 @@ fn collect_coverages(
   .ignore_git_folder()
   .ignore_node_modules()
   .set_vendor_folder(cli_options.vendor_dir_path().map(ToOwned::to_owned))
-  .collect_file_patterns(&CliSys::default(), file_patterns);
+  .collect_file_patterns(&CliSys::default(), &file_patterns);
 
   let coverage_patterns = FilePatterns {
     base: initial_cwd.to_path_buf(),
@@ -487,8 +561,11 @@ fn filter_coverages(
     .into_iter()
     .filter(|e| {
       let is_internal = e.url.starts_with("ext:")
+        || e.url.starts_with("data:")
+        || e.url.starts_with("blob:")
         || e.url.ends_with("__anonymous__")
         || e.url.ends_with("$deno$test.mjs")
+        || e.url.contains("/$deno$stdin.")
         || e.url.ends_with(".snap")
         || is_supported_test_path(Path::new(e.url.as_str()))
         || doc_test_re.is_match(e.url.as_str())
@@ -507,9 +584,14 @@ fn filter_coverages(
 
 pub fn cover_files(
   flags: Arc<Flags>,
-  coverage_flags: CoverageFlags,
+  files_include: Vec<String>,
+  files_ignore: Vec<String>,
+  include: Vec<String>,
+  exclude: Vec<String>,
+  output: Option<String>,
+  reporters: &[&dyn CoverageReporter],
 ) -> Result<(), AnyError> {
-  if coverage_flags.files.include.is_empty() {
+  if files_include.is_empty() {
     return Err(anyhow!("No matching coverage profiles found"));
   }
 
@@ -520,26 +602,21 @@ pub fn cover_files(
   let emitter = factory.emitter()?;
   let cjs_tracker = factory.cjs_tracker()?;
 
-  assert!(!coverage_flags.files.include.is_empty());
-
   // Use the first include path as the default output path.
-  let coverage_root = cli_options
-    .initial_cwd()
-    .join(&coverage_flags.files.include[0]);
+  let coverage_root = cli_options.initial_cwd().join(&files_include[0]);
   let script_coverages = collect_coverages(
     cli_options,
-    coverage_flags.files,
+    FileFlags {
+      include: files_include,
+      ignore: files_ignore,
+    },
     cli_options.initial_cwd(),
   )?;
   if script_coverages.is_empty() {
     return Err(anyhow!("No coverage files found"));
   }
-  let script_coverages = filter_coverages(
-    script_coverages,
-    coverage_flags.include,
-    coverage_flags.exclude,
-    in_npm_pkg_checker,
-  );
+  let script_coverages =
+    filter_coverages(script_coverages, include, exclude, in_npm_pkg_checker);
   if script_coverages.is_empty() {
     return Err(anyhow!("No covered files included in the report"));
   }
@@ -556,9 +633,7 @@ pub fn cover_files(
     vec![]
   };
 
-  let mut reporter = reporter::create(coverage_flags.r#type);
-
-  let out_mode = match coverage_flags.output {
+  let out_mode = match output {
     Some(ref path) => match File::create(path) {
       Ok(_) => Some(PathBuf::from(path)),
       Err(e) => {
@@ -569,24 +644,31 @@ pub fn cover_files(
   };
   let get_message = |specifier: &ModuleSpecifier| -> String {
     format!(
-      "Failed to fetch \"{}\" from cache. Before generating coverage report, run `deno test --coverage` to ensure consistent state.",
+      "Source not found for \"{}\" (was it deleted after coverage was collected?). Skipping.",
       specifier,
     )
   };
 
+  let mut file_reports = Vec::with_capacity(script_coverages.len());
+
   for script_coverage in script_coverages {
-    let module_specifier = deno_core::resolve_url_or_path(
+    let module_specifier = deno_path_util::resolve_url_or_path(
       &script_coverage.url,
       cli_options.initial_cwd(),
     )?;
 
-    let maybe_file_result = file_fetcher
-      .get_cached_source_or_local(&module_specifier)
-      .map_err(AnyError::from);
+    let maybe_file_result =
+      file_fetcher.get_cached_source_or_local(&module_specifier);
     let file = match maybe_file_result {
       Ok(Some(file)) => TextDecodedFile::decode(file)?,
-      Ok(None) => return Err(anyhow!("{}", get_message(&module_specifier))),
-      Err(err) => return Err(err).context(get_message(&module_specifier)),
+      Ok(None) => {
+        log::warn!("{}", get_message(&module_specifier),);
+        continue;
+      }
+      Err(err) => {
+        log::warn!("{}: {}", get_message(&module_specifier), err,);
+        continue;
+      }
     };
 
     let original_source = file.source.clone();
@@ -595,10 +677,15 @@ pub fn cover_files(
       MediaType::JavaScript
       | MediaType::Unknown
       | MediaType::Css
+      | MediaType::Html
+      | MediaType::Markdown
+      | MediaType::Sql
       | MediaType::Wasm
       | MediaType::Cjs
       | MediaType::Mjs
-      | MediaType::Json => None,
+      | MediaType::Json
+      | MediaType::Jsonc
+      | MediaType::Json5 => None,
       MediaType::Dts | MediaType::Dmts | MediaType::Dcts => Some(String::new()),
       MediaType::TypeScript
       | MediaType::Jsx
@@ -608,16 +695,22 @@ pub fn cover_files(
         let module_kind = ModuleKind::from_is_cjs(
           cjs_tracker.is_maybe_cjs(&file.specifier, file.media_type)?,
         );
-        Some(match emitter.maybe_cached_emit(&file.specifier, module_kind, &file.source)? {
-          Some(code) => code,
-          None => {
-            return Err(anyhow!(
-              "Missing transpiled source code for: \"{}\".
-              Before generating coverage report, run `deno test --coverage` to ensure consistent state.",
-              file.specifier,
-            ))
-          }
-        })
+        Some(
+          match emitter.maybe_cached_emit(
+            &file.specifier,
+            module_kind,
+            &file.source,
+          )? {
+            Some(code) => code,
+            None => {
+              log::warn!(
+                "Missing transpiled source code for: \"{}\" (was it deleted after coverage was collected?). Skipping.",
+                file.specifier,
+              );
+              continue;
+            }
+          },
+        )
       }
       MediaType::SourceMap => {
         unreachable!()
@@ -629,19 +722,36 @@ pub fn cover_files(
     };
 
     let source_map = source_map_from_code(runtime_code.as_bytes());
-    let coverage_report = generate_coverage_report(
-      &script_coverage,
-      runtime_code.as_str().to_owned(),
-      source_map.as_deref(),
-      &out_mode,
-    );
+    let coverage_report =
+      generate_coverage_report(GenerateCoverageReportOptions {
+        script_module_specifier: module_specifier.clone(),
+        script_media_type: file.media_type,
+        script_coverage: &script_coverage,
+        script_original_source: original_source.to_string(),
+        script_runtime_source: runtime_code.as_str().to_owned(),
+        maybe_source_map: &source_map,
+        output: &out_mode,
+      })
+      .with_context(|| {
+        format!(
+          "Failed to generate coverage report for file ({module_specifier})"
+        )
+      })?;
 
     if !coverage_report.found_lines.is_empty() {
-      reporter.report(&coverage_report, &original_source)?;
+      file_reports.push((coverage_report, original_source.to_string()));
     }
   }
 
-  reporter.done(&coverage_root);
+  // All covered files, might have had ignore directive and we can end up
+  // with no reports at this point.
+  if file_reports.is_empty() {
+    return Err(anyhow!("No covered files included in the report"));
+  }
+
+  for reporter in reporters {
+    reporter.done(&coverage_root, &file_reports);
+  }
 
   Ok(())
 }

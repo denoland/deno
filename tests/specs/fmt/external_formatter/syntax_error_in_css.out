@@ -1,0 +1,3 @@
+Error formatting: [WILDLINE]syntax_error_in_css.js
+   Error formatting tagged template literal at line 1: syntax error at line 1, col 1: expect token `(`, but found `{`
+error: Failed to format 1 of 1 checked file

@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 //
 // Forked from https://github.com/demurgos/v8-coverage/tree/d0ca18da8740198681e0bc68971b0a6cdb11db3e/rust
 // Copyright 2021 Charles Samborski. All rights reserved. MIT license.
@@ -21,7 +21,10 @@ impl<'a> RangeTreeArena<'a> {
     RangeTreeArena(Arena::with_capacity(n))
   }
 
-  #[allow(clippy::mut_from_ref)]
+  #[allow(
+    clippy::mut_from_ref,
+    reason = "Arena::alloc takes &self but returns &mut, which is safe by design"
+  )]
   pub fn alloc(&'a self, value: RangeTree<'a>) -> &'a mut RangeTree<'a> {
     self.0.alloc(value)
   }
@@ -35,7 +38,7 @@ pub struct RangeTree<'a> {
   pub children: Vec<&'a mut RangeTree<'a>>,
 }
 
-impl<'rt> RangeTree<'rt> {
+impl RangeTree<'_> {
   pub fn new<'a>(
     start: usize,
     end: usize,

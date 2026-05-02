@@ -1,0 +1,15 @@
+
+============================================================
+Deno has panicked. This is a bug in Deno. Please report this
+at https://github.com/denoland/deno/issues/new.
+If you can reliably reproduce this panic, include the
+reproduction steps and re-run with the RUST_BACKTRACE=1 env
+var set and include the backtrace in your report.
+
+Platform: [WILDLINE]
+Version: [WILDLINE]
+Args: [[WILDLINE], "test", "main.js"]
+[WILDCARD]
+thread 'tokio-runtime-worker' ([WILDCARD]) panicked at [WILDLINE]
+pledge test permissions called before restoring previous pledge
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace

@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 
 /// <reference path="../../core/internal.d.ts" />
@@ -7,13 +7,15 @@
 // deno-lint-ignore-file prefer-primordials
 
 import { primordials } from "ext:core/mod.js";
-const { ObjectPrototypeToString } = primordials;
+const { ObjectPrototypeToString, SymbolSpecies } = primordials;
 import {
   op_v8_cached_data_version_tag,
+  op_v8_get_heap_code_statistics,
   op_v8_get_heap_statistics,
   op_v8_get_wire_format_version,
   op_v8_new_deserializer,
   op_v8_new_serializer,
+  op_v8_number_of_heap_spaces,
   op_v8_read_double,
   op_v8_read_header,
   op_v8_read_raw_bytes,
@@ -22,8 +24,10 @@ import {
   op_v8_read_value,
   op_v8_release_buffer,
   op_v8_set_treat_array_buffer_views_as_host_objects,
+  op_v8_take_heap_snapshot,
   op_v8_transfer_array_buffer,
   op_v8_transfer_array_buffer_de,
+  op_v8_update_heap_space_statistics,
   op_v8_write_double,
   op_v8_write_header,
   op_v8_write_raw_bytes,
@@ -33,24 +37,57 @@ import {
 } from "ext:core/ops";
 
 import { Buffer } from "node:buffer";
+import { writeFileSync } from "node:fs";
+import { Readable } from "node:stream";
 
 import { notImplemented } from "ext:deno_node/_utils.ts";
 import { isArrayBufferView } from "ext:deno_node/internal/util/types.ts";
+import { getValidatedPath } from "ext:deno_node/internal/fs/utils.mjs";
+import { validateObject } from "ext:deno_node/internal/validators.mjs";
 
 export function cachedDataVersionTag() {
   return op_v8_cached_data_version_tag();
 }
+const heapCodeStatisticsBuffer = new Float64Array(4);
+
 export function getHeapCodeStatistics() {
-  notImplemented("v8.getHeapCodeStatistics");
+  op_v8_get_heap_code_statistics(heapCodeStatisticsBuffer);
+  return {
+    code_and_metadata_size: heapCodeStatisticsBuffer[0],
+    bytecode_and_metadata_size: heapCodeStatisticsBuffer[1],
+    external_script_source_size: heapCodeStatisticsBuffer[2],
+    cpu_profiler_metadata_size: heapCodeStatisticsBuffer[3],
+  };
 }
-export function getHeapSnapshot() {
-  notImplemented("v8.getHeapSnapshot");
+export function getHeapSnapshot(options?: Record<string, unknown>) {
+  if (options !== undefined) {
+    validateObject(options, "options");
+  }
+  const data = op_v8_take_heap_snapshot();
+  return Readable.from(Buffer.from(data));
 }
+const heapSpaceStatisticsBuffer = new Float64Array(4);
+
 export function getHeapSpaceStatistics() {
-  notImplemented("v8.getHeapSpaceStatistics");
+  const numberOfHeapSpaces = op_v8_number_of_heap_spaces();
+  const heapSpaceStatistics = new Array(numberOfHeapSpaces);
+  for (let i = 0; i < numberOfHeapSpaces; i++) {
+    const spaceName = op_v8_update_heap_space_statistics(
+      heapSpaceStatisticsBuffer,
+      i,
+    );
+    heapSpaceStatistics[i] = {
+      space_name: spaceName,
+      space_size: heapSpaceStatisticsBuffer[0],
+      space_used_size: heapSpaceStatisticsBuffer[1],
+      space_available_size: heapSpaceStatisticsBuffer[2],
+      physical_space_size: heapSpaceStatisticsBuffer[3],
+    };
+  }
+  return heapSpaceStatistics;
 }
 
-const buffer = new Float64Array(14);
+const buffer = new Float64Array(15);
 
 export function getHeapStatistics() {
   op_v8_get_heap_statistics(buffer);
@@ -70,6 +107,7 @@ export function getHeapStatistics() {
     total_global_handles_size: buffer[11],
     used_global_handles_size: buffer[12],
     external_memory: buffer[13],
+    total_allocated_bytes: buffer[14],
   };
 }
 
@@ -89,9 +127,39 @@ export function stopCoverage() {
 export function takeCoverage() {
   notImplemented("v8.takeCoverage");
 }
-export function writeHeapSnapshot() {
-  notImplemented("v8.writeHeapSnapshot");
+
+let heapSnapshotCounter = 0;
+
+export function writeHeapSnapshot(
+  filename?: string,
+  options?: Record<string, unknown>,
+) {
+  if (filename !== undefined) {
+    filename = getValidatedPath(filename) as string;
+  } else {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, "0");
+    const day = String(now.getDate()).padStart(2, "0");
+    const hours = String(now.getHours()).padStart(2, "0");
+    const minutes = String(now.getMinutes()).padStart(2, "0");
+    const seconds = String(now.getSeconds()).padStart(2, "0");
+    const pid = globalThis.process?.pid ?? 0;
+    const thread = 0;
+    const seq = ++heapSnapshotCounter;
+    filename =
+      `Heap.${year}${month}${day}.${hours}${minutes}${seconds}.${pid}.${thread}.${
+        String(seq).padStart(3, "0")
+      }.heapsnapshot`;
+  }
+  if (options !== undefined) {
+    validateObject(options, "options");
+  }
+  const data = op_v8_take_heap_snapshot();
+  writeFileSync(filename, data);
+  return filename;
 }
+
 // deno-lint-ignore no-explicit-any
 export function serialize(value: any) {
   const ser = new DefaultSerializer();
@@ -274,7 +342,7 @@ function arrayBufferViewIndexToType(index: number): any {
   if (index === 7) return Float32Array;
   if (index === 8) return Float64Array;
   if (index === 9) return DataView;
-  if (index === 10) return Buffer;
+  if (index === 10) return Buffer[SymbolSpecies];
   if (index === 11) return BigInt64Array;
   if (index === 12) return BigUint64Array;
   if (index === 13) return Float16Array;

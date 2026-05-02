@@ -1,5 +1,5 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
-import { internals, primordials } from "ext:core/mod.js";
+// Copyright 2018-2026 the Deno authors. MIT license.
+import { core, internals, primordials } from "ext:core/mod.js";
 import { op_http_websocket_accept_header } from "ext:core/ops";
 const {
   ArrayPrototypeIncludes,
@@ -18,19 +18,10 @@ import {
   newInnerResponse,
 } from "ext:deno_fetch/23_response.js";
 import { setEventTargetData } from "ext:deno_web/02_event.js";
-import {
-  _eventLoop,
-  _idleTimeoutDuration,
-  _idleTimeoutTimeout,
-  _protocol,
-  _readyState,
-  _rid,
-  _role,
-  _server,
-  _serverHandleIdleTimeout,
-  createWebSocketBranded,
-  WebSocket,
-} from "ext:deno_websocket/01_websocket.js";
+
+const loadWebSocket = core.createLazyLoader(
+  "ext:deno_websocket/01_websocket.js",
+);
 
 const _ws = Symbol("[[associated_ws]]");
 
@@ -88,18 +79,55 @@ function upgradeWebSocket(request, options = { __proto__: null }) {
     }
   }
 
+  const {
+    _eventLoop,
+    _idleTimeoutDuration,
+    _idleTimeoutTimeout,
+    _readyState,
+    _rid,
+    _role,
+    _serverHandleIdleTimeout,
+    createWebSocketBranded,
+    SERVER,
+    WebSocket,
+  } = loadWebSocket();
+
   const socket = createWebSocketBranded(WebSocket);
   setEventTargetData(socket);
-  socket[_server] = true;
+  socket[_role] = SERVER;
   // Nginx timeout is 60s, so default to a lower number: https://github.com/denoland/deno/pull/23985
   socket[_idleTimeoutDuration] = options.idleTimeout ?? 30;
   socket[_idleTimeoutTimeout] = null;
 
   if (inner._wantsUpgrade) {
-    return inner._wantsUpgrade("upgradeWebSocket", r, socket);
+    const wsPromise = inner._wantsUpgrade("upgradeWebSocket");
+
+    // Start the upgrade in the background.
+    (async () => {
+      try {
+        const wsRid = await wsPromise;
+
+        socket[_rid] = wsRid;
+        socket[_readyState] = WebSocket.OPEN;
+        const event = new Event("open");
+        socket.dispatchEvent(event);
+
+        socket[_eventLoop]();
+        if (socket[_idleTimeoutDuration]) {
+          socket.addEventListener(
+            "close",
+            () => clearTimeout(socket[_idleTimeoutTimeout]),
+          );
+        }
+        socket[_serverHandleIdleTimeout]();
+      } catch (error) {
+        const event = new ErrorEvent("error", { error });
+        socket.dispatchEvent(event);
+      }
+    })();
   }
 
-  const response = fromInnerResponse(r, "immutable");
+  const response = fromInnerResponse(r, "response");
 
   response[_ws] = socket;
 

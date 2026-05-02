@@ -1,16 +1,16 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 // NOTE to all: use **cached** prepared statements when interfacing with SQLite.
 
 use std::path::PathBuf;
 
-use deno_core::op2;
 use deno_core::GarbageCollected;
 use deno_core::OpState;
+use deno_core::op2;
 pub use rusqlite;
-use rusqlite::params;
 use rusqlite::Connection;
 use rusqlite::OptionalExtension;
+use rusqlite::params;
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum WebStorageError {
@@ -41,7 +41,7 @@ deno_core::extension!(deno_webstorage,
   objects = [
     Storage
   ],
-  esm = [ "01_webstorage.js" ],
+  lazy_loaded_js = [ "01_webstorage.js" ],
   options = {
       origin_storage_dir: Option<PathBuf>
   },
@@ -51,10 +51,6 @@ deno_core::extension!(deno_webstorage,
     }
   },
 );
-
-pub fn get_declaration() -> PathBuf {
-  PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("lib.deno_webstorage.d.ts")
-}
 
 struct LocalStorage(Connection);
 struct SessionStorage(Connection);
@@ -68,6 +64,10 @@ fn get_webstorage(
       let path = state
         .try_borrow::<OriginStorageDir>()
         .ok_or(WebStorageError::ContextNotSupported)?;
+      #[allow(
+        clippy::disallowed_methods,
+        reason = "web storage manages its own directory"
+      )]
       std::fs::create_dir_all(&path.0).map_err(WebStorageError::Io)?;
       let conn = Connection::open(path.0.join("local_storage"))?;
       // Enable write-ahead-logging and tweak some other stuff.
@@ -124,7 +124,14 @@ struct Storage {
   persistent: bool,
 }
 
-impl GarbageCollected for Storage {}
+// SAFETY: we're sure this can be GCed
+unsafe impl GarbageCollected for Storage {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"Storage"
+  }
+}
 
 #[op2]
 impl Storage {
@@ -233,7 +240,6 @@ impl Storage {
 }
 
 #[op2]
-#[serde]
 fn op_webstorage_iterate_keys(
   #[cppgc] storage: &Storage,
   state: &mut OpState,

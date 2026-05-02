@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use deno_lib::version::DENO_VERSION_INFO;
 use serde::Serialize;
@@ -56,7 +56,7 @@ impl JsonReporter {
   }
 }
 
-#[allow(clippy::print_stdout)]
+#[allow(clippy::print_stdout, reason = "reporter")]
 impl BenchReporter for JsonReporter {
   fn report_group_summary(&mut self) {}
   #[cold]
@@ -125,7 +125,7 @@ impl ConsoleReporter {
   }
 }
 
-#[allow(clippy::print_stdout)]
+#[allow(clippy::print_stdout, reason = "reporter")]
 impl BenchReporter for ConsoleReporter {
   #[cold]
   fn report_plan(&mut self, plan: &BenchPlan) {
@@ -233,7 +233,13 @@ impl BenchReporter for ConsoleReporter {
         );
 
         if !stats.high_precision && stats.used_explicit_timers {
-          println!("{}", colors::yellow(format!("Warning: start() and end() calls in \"{}\" are ignored because it averages less\nthan 10µs per iteration. Remove them for better results.", &desc.name)));
+          println!(
+            "{}",
+            colors::yellow(format!(
+              "Warning: start() and end() calls in \"{}\" are ignored because it averages less\nthan 10µs per iteration. Remove them for better results.",
+              &desc.name
+            ))
+          );
         }
 
         self.group_measurements.push((desc, stats.clone()));
@@ -306,8 +312,12 @@ impl BenchReporter for ConsoleReporter {
       colors::red_bold("error"),
       format_test_error(&error, &TestFailureFormatOptions::default())
     );
-    println!("This error was not caught from a benchmark and caused the bench runner to fail on the referenced module.");
-    println!("It most likely originated from a dangling promise, event/timeout handler or top-level code.");
+    println!(
+      "This error was not caught from a benchmark and caused the bench runner to fail on the referenced module."
+    );
+    println!(
+      "It most likely originated from a dangling promise, event/timeout handler or top-level code."
+    );
     println!();
   }
 }

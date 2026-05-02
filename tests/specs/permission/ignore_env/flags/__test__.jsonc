@@ -1,0 +1,26 @@
+{
+  "envs": {
+    "VAR1": "1",
+    "VAR2": "2"
+  },
+  "tests": {
+    "all": {
+      "args": "run --ignore-env main.ts",
+      "output": "undefined\nundefined\n[Object: null prototype] {}\n"
+    },
+    "some": {
+      "args": "run --ignore-env=VAR1 main.ts",
+      "output": "undefined\nerror: [WILDCARD]\n",
+      "exitCode": 1
+    },
+    "some_allow_env": {
+      "args": "run --ignore-env=VAR1 --allow-env main.ts",
+      "output": "undefined\n2\n[WILDCARD]"
+    },
+    "deny_env": {
+      "args": "run --deny-env --ignore-env=VAR1 main.ts",
+      "output": "undefined\nerror:[WILDCARD]",
+      "exitCode": 1
+    }
+  }
+}

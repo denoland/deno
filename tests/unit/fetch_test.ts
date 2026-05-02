@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 // deno-lint-ignore-file no-console
 
@@ -1229,6 +1229,21 @@ Deno.test(
 );
 
 Deno.test(
+  { permissions: { net: true }, ignore: Deno.build.os !== "linux" },
+  async function createHttpClientLocalAddress() {
+    const client = Deno.createHttpClient({
+      localAddress: "127.0.0.2",
+    });
+    const response = await fetch("http://localhost:4545/local_addr", {
+      client,
+    });
+    const addr = await response.text();
+    assertEquals(addr, "127.0.0.2");
+    client.close();
+  },
+);
+
+Deno.test(
   { permissions: { net: true } },
   async function fetchCustomClientUserAgent(): Promise<
     void
@@ -1248,6 +1263,27 @@ Deno.test(
     client.close();
   },
 );
+
+// Regression test for https://github.com/denoland/deno/issues/29347
+// `Deno.createHttpClient` used to scribble `caCerts` and `proxy.transport`
+// onto the caller's options object, so reusing a single options object
+// across multiple calls would either throw on the second call (the proxy
+// URL no longer matched the auto-rewritten `transport: "http"`) or leave
+// the user with surprising state.
+Deno.test(function createHttpClientDoesNotMutateOptions() {
+  const proxy = { url: "socks5h://127.0.0.1:1080" };
+  const options = { proxy };
+
+  const c1 = Deno.createHttpClient(options);
+  c1.close();
+  // The user's options must be unchanged...
+  assertEquals(options, { proxy: { url: "socks5h://127.0.0.1:1080" } });
+  assertEquals(proxy, { url: "socks5h://127.0.0.1:1080" });
+  // ...so a second call with the same options object still works.
+  const c2 = Deno.createHttpClient(options);
+  c2.close();
+  assertEquals(options, { proxy: { url: "socks5h://127.0.0.1:1080" } });
+});
 
 Deno.test(
   {
@@ -1691,6 +1727,15 @@ Deno.test({ permissions: { read: false } }, async function fetchFilePerm() {
     await fetch(import.meta.resolve("../testdata/subdir/json_1.json"));
   }, Deno.errors.NotCapable);
 });
+
+Deno.test(
+  { permissions: { read: true }, ignore: Deno.build.os !== "linux" },
+  async function fetchSpecialFilePerm() {
+    await assertRejects(async () => {
+      await fetch("file:///proc/self/environ");
+    }, Deno.errors.NotCapable);
+  },
+);
 
 Deno.test(
   { permissions: { read: false } },
@@ -2146,15 +2191,23 @@ Deno.test(
   { permissions: { net: true } },
   async function errorMessageIncludesUrlAndDetailsWithTcpInfo() {
     const listener = Deno.listen({ port: listenPort });
+    // Accept connections in a loop so retries also hit the same error.
+    // This is needed because connection reset is retryable.
     const server = (async () => {
-      const conn = await listener.accept();
-      listener.close();
-      // Immediately close the connection to simulate a connection error
-      conn.close();
+      while (true) {
+        let conn;
+        try {
+          conn = await listener.accept();
+        } catch {
+          break;
+        }
+        conn.close();
+      }
     })();
 
     const url = `http://localhost:${listenPort}`;
     const err = await assertRejects(() => fetch(url));
+    listener.close();
 
     assert(err instanceof TypeError, `${err}`);
     assertStringIncludes(
@@ -2198,3 +2251,189 @@ Deno.test("fetch string object", async () => {
   const res = new Response(Object("hello"));
   assertEquals(await res.text(), "hello");
 });
+
+Deno.test(
+  {
+    permissions: { net: true, read: true, write: true },
+    ignore: Deno.build.os === "windows",
+  },
+  async function fetchUnixSocket() {
+    const tempDir = await Deno.makeTempDir();
+    const socketPath = `${tempDir}/unix.sock`;
+
+    await using _server = Deno.serve({
+      path: socketPath,
+      transport: "unix",
+      onListen: () => {},
+    }, (req) => {
+      const url = new URL(req.url);
+      if (url.pathname === "/ping") {
+        return new Response(url.href, {
+          headers: { "content-type": "text/plain" },
+        });
+      } else {
+        return new Response("Not found", { status: 404 });
+      }
+    });
+
+    // Canonicalize the path, because permission checks are done so that
+    // the symlink doesn't change in between the calls.
+    const resolvedPath = await Deno.realPath(socketPath);
+    using client = Deno.createHttpClient({
+      proxy: {
+        transport: "unix",
+        path: resolvedPath,
+      },
+    });
+
+    const resp1 = await fetch("http://localhost/ping", { client });
+    assertEquals(resp1.status, 200);
+    assertEquals(resp1.headers.get("content-type"), "text/plain");
+    assertEquals(await resp1.text(), "http://localhost/ping");
+
+    const resp2 = await fetch("http://localhost/not-found", { client });
+    assertEquals(resp2.status, 404);
+    assertEquals(await resp2.text(), "Not found");
+  },
+);
+
+Deno.test(
+  {
+    permissions: { net: true },
+  },
+  function createHttpClientThrowsWhenProxyTransportMismatch() {
+    assertThrows(
+      () => {
+        Deno.createHttpClient({
+          proxy: {
+            transport: "socks5", // Mismatch with "http://" URL
+            url: "http://localhost:8080",
+          },
+        });
+      },
+      TypeError,
+    );
+
+    assertThrows(
+      () => {
+        Deno.createHttpClient({
+          proxy: {
+            transport: "http", // Mismatch with "https://" URL
+            url: "https://localhost:8080",
+          },
+        });
+      },
+      TypeError,
+    );
+
+    assertThrows(
+      () => {
+        Deno.createHttpClient({
+          proxy: {
+            transport: "https", // Mismatch with "socks5://" URL
+            url: "socks5://localhost:1080",
+          },
+        });
+      },
+      TypeError,
+    );
+  },
+);
+
+Deno.test(
+  {
+    permissions: { net: true },
+  },
+  function createHttpClientSocks5ProxyAcceptsSocks5Url() {
+    // Test that socks5 transport accepts socks5:// URLs
+    using client = Deno.createHttpClient({
+      proxy: {
+        transport: "socks5",
+        url: "socks5://localhost:1080",
+      },
+    });
+    assert(client instanceof Deno.HttpClient);
+  },
+);
+
+Deno.test(
+  {
+    permissions: { net: true },
+  },
+  function createHttpClientSocks5ProxyAcceptsSocks5hUrl() {
+    // Test that socks5 transport accepts socks5h:// URLs
+    using client = Deno.createHttpClient({
+      proxy: {
+        transport: "socks5",
+        url: "socks5h://localhost:1080",
+      },
+    });
+    assert(client instanceof Deno.HttpClient);
+  },
+);
+
+Deno.test(
+  {
+    permissions: { net: true },
+    ignore: Deno.build.os === "windows",
+  },
+  function createHttpClientWithVsockProxy() {
+    // Test that creating an HttpClient with vsock proxy succeeds
+    using client = Deno.createHttpClient({
+      proxy: {
+        transport: "vsock",
+        cid: 2,
+        port: 80,
+      },
+    });
+    assert(client instanceof Deno.HttpClient);
+  },
+);
+
+Deno.test(
+  {
+    permissions: { net: true, read: true, write: true },
+    ignore: Deno.build.os === "windows",
+  },
+  async function fetchTcpProxy() {
+    const started = Promise.withResolvers<number>();
+    await using _server = Deno.serve({
+      transport: "tcp",
+      port: 0,
+      onListen: ({ port }) => started.resolve(port),
+    }, (req) => {
+      const url = new URL(req.url);
+      if (url.pathname === "/ping") {
+        return new Response(url.href, {
+          headers: { "content-type": "text/plain" },
+        });
+      } else {
+        return new Response("Not found", { status: 404 });
+      }
+    });
+
+    const port = await started.promise;
+
+    using client = Deno.createHttpClient({
+      proxy: {
+        transport: "tcp",
+        hostname: "localhost",
+        port,
+      },
+    });
+
+    const resp1 = await fetch("https://example.com/ping", { client });
+    assertEquals(resp1.status, 200);
+    assertEquals(resp1.headers.get("content-type"), "text/plain");
+    assertEquals(await resp1.text(), "https://example.com/ping");
+
+    const resp2 = await fetch("http://localhost:42424/ping", { client });
+    assertEquals(resp2.status, 200);
+    assertEquals(resp2.headers.get("content-type"), "text/plain");
+    assertEquals(await resp2.text(), "http://localhost:42424/ping");
+
+    const resp3 = await fetch("http://localhost:42424/not-found", { client });
+    assertEquals(resp3.status, 404);
+    assertEquals(await resp3.text(), "Not found");
+  },
+);

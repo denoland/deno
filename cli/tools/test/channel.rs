@@ -1,31 +1,30 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::fmt::Display;
 use std::future::Future;
+use std::future::poll_fn;
 use std::io::Write;
 use std::pin::Pin;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
-use std::task::ready;
 use std::task::Poll;
+use std::task::ready;
 use std::time::Duration;
 
-use deno_core::futures::future::poll_fn;
 use deno_core::parking_lot;
 use deno_core::parking_lot::lock_api::RawMutex;
 use deno_core::parking_lot::lock_api::RawMutexTimed;
-use deno_runtime::deno_io::pipe;
 use deno_runtime::deno_io::AsyncPipeRead;
 use deno_runtime::deno_io::PipeRead;
 use deno_runtime::deno_io::PipeWrite;
-use memmem::Searcher;
+use deno_runtime::deno_io::pipe;
 use tokio::io::AsyncRead;
 use tokio::io::AsyncReadExt;
 use tokio::io::ReadBuf;
-use tokio::sync::mpsc::error::SendError;
 use tokio::sync::mpsc::UnboundedReceiver;
 use tokio::sync::mpsc::UnboundedSender;
 use tokio::sync::mpsc::WeakUnboundedSender;
+use tokio::sync::mpsc::error::SendError;
 
 use super::TestEvent;
 
@@ -86,8 +85,8 @@ pub fn create_test_event_channel() -> (TestEventSenderFactory, TestEventReceiver
 
 /// Create a [`TestEventWorkerSender`] and [`TestEventReceiver`] pair.The [`TestEventReceiver`]
 /// will be kept alive until the [`TestEventSender`] is dropped.
-pub fn create_single_test_event_channel(
-) -> (TestEventWorkerSender, TestEventReceiver) {
+pub fn create_single_test_event_channel()
+-> (TestEventWorkerSender, TestEventReceiver) {
   let (factory, receiver) = create_test_event_channel();
   (factory.worker(), receiver)
 }
@@ -222,10 +221,11 @@ impl TestStream {
           // from before. There's still a possibility that the marker could be split because of a pipe
           // buffer that fills up, forcing the flush to be written across two writes and interleaving
           // data between, but that's a risk we take with this sync marker approach.
-          let searcher = memmem::TwoWaySearcher::new(HALF_SYNC_MARKER);
           let start =
             (flush.len() - read).saturating_sub(HALF_SYNC_MARKER.len());
-          if let Some(offset) = searcher.search_in(&flush[start..]) {
+          if let Some(offset) =
+            memchr::memmem::find(&flush[start..], HALF_SYNC_MARKER)
+          {
             flush.truncate(offset);
             // Try to send our flushed buffer. If the channel is closed, this stream will
             // be marked as not alive.
@@ -436,8 +436,8 @@ impl TestEventSender {
   }
 }
 
-#[allow(clippy::print_stdout)]
-#[allow(clippy::print_stderr)]
+#[allow(clippy::print_stdout, reason = "test code")]
+#[allow(clippy::print_stderr, reason = "test code")]
 #[cfg(test)]
 mod tests {
   use deno_core::unsync::spawn;

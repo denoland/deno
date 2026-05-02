@@ -1,10 +1,10 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 import { assertEquals, assertRejects } from "./test_util.ts";
 
 const prefix = "tests/testdata/image";
 
-function generateNumberedData(n: number): Uint8ClampedArray {
+function generateNumberedData(n: number): Uint8ClampedArray<ArrayBuffer> {
   return new Uint8ClampedArray(
     Array.from({ length: n }, (_, i) => [i + 1, 0, 0, 1]).flat(),
   );
@@ -24,7 +24,6 @@ Deno.test(async function imageBitmapDirect() {
 Deno.test(async function imageBitmapRecivesImageBitmap() {
   const imageData = new Blob(
     [await Deno.readFile(`${prefix}/1x1-red16.png`)],
-    { type: "image/png" },
   );
   const imageBitmap1 = await createImageBitmap(imageData);
   const imageBitmap2 = await createImageBitmap(imageBitmap1);
@@ -111,7 +110,6 @@ Deno.test("imageOrientation", async (t) => {
 
   const imageData = new Blob(
     [await Deno.readFile(`${prefix}/squares_6.jpg`)],
-    { type: "image/jpeg" },
   );
   const WIDTH = 320;
   const CHANNELS = 3;
@@ -188,7 +186,6 @@ Deno.test("imageBitmapPremultiplyAlpha", async (t) => {
   await t.step('"Blob" premultiplyAlpha: "none"', async () => {
     const imageData = new Blob(
       [await Deno.readFile(`${prefix}/2x2-transparent8.png`)],
-      { type: "image/png" },
     );
     const imageBitmap = await createImageBitmap(imageData, {
       premultiplyAlpha: "none",
@@ -206,7 +203,6 @@ Deno.test("imageBitmapFromBlob", async (t) => {
   await t.step("8-bit png", async () => {
     const imageData = new Blob(
       [await Deno.readFile(`${prefix}/1x1-red8.png`)],
-      { type: "image/png" },
     );
     const imageBitmap = await createImageBitmap(imageData);
     // @ts-ignore: Deno[Deno.internal].core allowed
@@ -216,7 +212,6 @@ Deno.test("imageBitmapFromBlob", async (t) => {
   await t.step("16-bit png", async () => {
     const imageData = new Blob(
       [await Deno.readFile(`${prefix}/1x1-red16.png`)],
-      { type: "image/png" },
     );
     const imageBitmap = await createImageBitmap(imageData);
     // @ts-ignore: Deno[Deno.internal].core allowed
@@ -236,7 +231,6 @@ Deno.test("imageBitmapFromBlob", async (t) => {
   await t.step("8-bit jpeg", async () => {
     const imageData = new Blob(
       [await Deno.readFile(`${prefix}/1x1-red8.jpeg`)],
-      { type: "image/jpeg" },
     );
     const imageBitmap = await createImageBitmap(imageData);
     // @ts-ignore: Deno[Deno.internal].core allowed
@@ -246,7 +240,6 @@ Deno.test("imageBitmapFromBlob", async (t) => {
   await t.step("8-bit bmp", async () => {
     const imageData = new Blob(
       [await Deno.readFile(`${prefix}/1x1-red8.bmp`)],
-      { type: "image/bmp" },
     );
     const imageBitmap = await createImageBitmap(imageData);
     // @ts-ignore: Deno[Deno.internal].core allowed
@@ -256,31 +249,24 @@ Deno.test("imageBitmapFromBlob", async (t) => {
   await t.step("8-bit gif", async () => {
     const imageData = new Blob(
       [await Deno.readFile(`${prefix}/1x1-red8.gif`)],
-      { type: "image/gif" },
     );
-    await assertRejects(() => createImageBitmap(imageData), DOMException);
-    // TODO(Hajime-san): remove the comment out when the implementation is ready
-    // const imageBitmap = await createImageBitmap(imageData);
+    const imageBitmap = await createImageBitmap(imageData);
     // @ts-ignore: Deno[Deno.internal].core allowed
     // deno-fmt-ignore
-    // assertEquals(Deno[Deno.internal].getBitmapData(imageBitmap), new Uint8Array([255, 0, 0, 255]));
+    assertEquals(Deno[Deno.internal].getBitmapData(imageBitmap), new Uint8Array([255, 0, 0, 255]));
   });
   await t.step("8-bit webp", async () => {
     const imageData = new Blob(
       [await Deno.readFile(`${prefix}/1x1-red8.webp`)],
-      { type: "image/webp" },
     );
-    await assertRejects(() => createImageBitmap(imageData), DOMException);
-    // TODO(Hajime-san): remove the comment out when the implementation is ready
-    // const imageBitmap = await createImageBitmap(imageData);
+    const imageBitmap = await createImageBitmap(imageData);
     // @ts-ignore: Deno[Deno.internal].core allowed
     // deno-fmt-ignore
-    // assertEquals(Deno[Deno.internal].getBitmapData(imageBitmap), new Uint8Array([255, 0, 0, 255]));
+    assertEquals(Deno[Deno.internal].getBitmapData(imageBitmap), new Uint8Array([255, 0, 0, 255]));
   });
   await t.step("8-bit ico", async () => {
     const imageData = new Blob(
       [await Deno.readFile(`${prefix}/1x1-red8.ico`)],
-      { type: "image/x-icon" },
     );
     const imageBitmap = await createImageBitmap(imageData);
     // @ts-ignore: Deno[Deno.internal].core allowed
@@ -292,7 +278,7 @@ Deno.test("imageBitmapFromBlob", async (t) => {
     // https://www.digipres.org/formats/sources/fdd/formats/#fdd000583
     const imageData = new Blob([
       await Deno.readFile(`${prefix}/1x1-red32f.exr`),
-    ], { type: "image/x-exr" });
+    ]);
     await assertRejects(() => createImageBitmap(imageData), DOMException);
   });
 });
@@ -304,7 +290,7 @@ Deno.test("imageBitmapFromBlobAnimatedImage", async (t) => {
     //   0, 0, 255, 255 ]
     const imageData = new Blob([
       await Deno.readFile(`${prefix}/1x1-2f-animated-has-def.png`),
-    ], { type: "image/png" });
+    ]);
     const imageBitmap = await createImageBitmap(imageData);
     // @ts-ignore: Deno[Deno.internal].core allowed
     // deno-fmt-ignore
@@ -317,7 +303,7 @@ Deno.test("imageBitmapFromBlobAnimatedImage", async (t) => {
     //   0, 0, 255, 255 ]
     const imageData = new Blob([
       await Deno.readFile(`${prefix}/1x1-3f-animated-no-def.png`),
-    ], { type: "image/png" });
+    ]);
     const imageBitmap = await createImageBitmap(imageData);
     // @ts-ignore: Deno[Deno.internal].core allowed
     // deno-fmt-ignore
@@ -333,13 +319,11 @@ Deno.test("imageBitmapFromBlobAnimatedImage", async (t) => {
       await Deno.readFile(
         `${prefix}/1x1-3f-lossless-animated-semi-transparent.webp`,
       ),
-    ], { type: "image/webp" });
-    await assertRejects(() => createImageBitmap(imageData), DOMException);
-    // TODO(Hajime-san): remove the comment out when the implementation is ready
-    // const imageBitmap = await createImageBitmap(imageData);
+    ]);
+    const imageBitmap = await createImageBitmap(imageData);
     // @ts-ignore: Deno[Deno.internal].core allowed
     // deno-fmt-ignore
-    // assertEquals(Deno[Deno.internal].getBitmapData(imageBitmap), new Uint8Array([255, 0, 0, 127]));
+    assertEquals(Deno[Deno.internal].getBitmapData(imageBitmap), new Uint8Array([255, 0, 0, 127]));
   });
   await t.step("animated gif", async () => {
     // the chunk of animated gif is below (3 frames, 1x1, 8-bit, RGBA)
@@ -348,13 +332,11 @@ Deno.test("imageBitmapFromBlobAnimatedImage", async (t) => {
     //   0, 0, 255, 255 ]
     const imageData = new Blob([
       await Deno.readFile(`${prefix}/1x1-3f-animated.gif`),
-    ], { type: "image/gif" });
-    await assertRejects(() => createImageBitmap(imageData), DOMException);
-    // TODO(Hajime-san): remove the comment out when the implementation is ready
-    // const imageBitmap = await createImageBitmap(imageData);
+    ]);
+    const imageBitmap = await createImageBitmap(imageData);
     // @ts-ignore: Deno[Deno.internal].core allowed
     // deno-fmt-ignore
-    // assertEquals(Deno[Deno.internal].getBitmapData(imageBitmap), new Uint8Array([255, 0, 0, 255]));
+    assertEquals(Deno[Deno.internal].getBitmapData(imageBitmap), new Uint8Array([255, 0, 0, 255]));
   });
 });
 
@@ -376,7 +358,7 @@ Deno.test("imageBitmapFromBlobColorspaceConversion", async (t) => {
   await t.step('"Blob" colorSpaceConversion: "none"', async () => {
     const imageData = new Blob([
       await Deno.readFile(`${prefix}/wide-gamut-pattern.png`),
-    ], { type: "image/png" });
+    ]);
     const imageBitmap = await createImageBitmap(imageData, {
       colorSpaceConversion: "none",
     });
@@ -389,7 +371,7 @@ Deno.test("imageBitmapFromBlobColorspaceConversion", async (t) => {
   await t.step('"Blob" colorSpaceConversion: "default"', async () => {
     const imageData = new Blob([
       await Deno.readFile(`${prefix}/wide-gamut-pattern.png`),
-    ], { type: "image/png" });
+    ]);
     const imageBitmap = await createImageBitmap(imageData, {
       colorSpaceConversion: "default",
     });
@@ -399,4 +381,23 @@ Deno.test("imageBitmapFromBlobColorspaceConversion", async (t) => {
     // picking the high bytes of the first pixel
     assertEquals(firstPixel, new Uint8Array([255, 0, 0, 255]));
   });
+});
+
+// reference:
+// https://github.com/web-platform-tests/wpt/blob/ea49709e5880c8133249d919c72d67798afc31ec/html/canvas/element/manual/imagebitmap/createImageBitmap-blob-invalidtype.html
+Deno.test("imageBitmapFromBlobInvalidtype", async () => {
+  const IMAGE = atob(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABAQMAAAAl21bKAAAAA1BMVEUAA" +
+      "ACnej3aAAAAAXRSTlMAQObYZgAAAApJREFUCNdjYAAAAAIAAeIhvDMAAAAASUVORK5CYII=",
+  );
+
+  const bytes = new Array(IMAGE.length);
+  for (let i = 0; i < IMAGE.length; i++) {
+    bytes[i] = IMAGE.charCodeAt(i);
+  }
+
+  const blob = new Blob([new Uint8Array(bytes)], { type: "text/html" });
+  const imageBitmap = await createImageBitmap(blob);
+  assertEquals(imageBitmap.width, 1);
+  assertEquals(imageBitmap.height, 1);
 });

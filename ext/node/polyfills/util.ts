@@ -1,21 +1,23 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
-import { primordials } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
+import { op_node_call_is_from_dependency } from "ext:core/ops";
 const {
   ArrayIsArray,
   ArrayPrototypeJoin,
+  ArrayPrototypeMap,
   Date,
   DatePrototypeGetDate,
   DatePrototypeGetHours,
   DatePrototypeGetMinutes,
   DatePrototypeGetMonth,
   DatePrototypeGetSeconds,
-  ErrorPrototype,
+  ErrorCaptureStackTrace,
   NumberPrototypeToString,
+  ObjectCreate,
   ObjectDefineProperty,
+  ObjectGetOwnPropertyDescriptor,
   ObjectKeys,
-  ObjectPrototypeIsPrototypeOf,
-  ObjectPrototypeToString,
   ObjectSetPrototypeOf,
   ReflectApply,
   ReflectConstruct,
@@ -26,12 +28,10 @@ const {
   StringPrototypePadStart,
   StringPrototypeToWellFormed,
   PromiseResolve,
+  PromiseWithResolvers,
 } = primordials;
 
-import {
-  createDeferredPromise,
-  promisify,
-} from "ext:deno_node/internal/util.mjs";
+import { promisify } from "ext:deno_node/internal/util.mjs";
 import { callbackify } from "ext:deno_node/_util/_util_callbackify.js";
 import { debuglog } from "ext:deno_node/internal/util/debuglog.ts";
 import {
@@ -43,16 +43,25 @@ import {
 } from "ext:deno_node/internal/util/inspect.mjs";
 import { codes } from "ext:deno_node/internal/error_codes.ts";
 import types from "node:util/types";
-import { Buffer } from "node:buffer";
 import { isDeepStrictEqual } from "ext:deno_node/internal/util/comparisons.ts";
-import process from "node:process";
 import {
   validateAbortSignal,
+  validateNumber,
+  validateObject,
   validateString,
 } from "ext:deno_node/internal/validators.mjs";
 import { parseArgs } from "ext:deno_node/internal/util/parse_args/parse_args.js";
+import { MIMEParams, MIMEType } from "ext:deno_node/internal/mime.ts";
 import * as abortSignal from "ext:deno_web/03_abort_signal.js";
 import { ERR_INVALID_ARG_TYPE } from "ext:deno_node/internal/errors.ts";
+import binding from "ext:deno_node/internal_binding/util.ts";
+import { validateOneOf } from "ext:deno_node/internal/validators.mjs";
+import { os as osConstants } from "ext:deno_node/internal_binding/constants.ts";
+
+let process: NodeJS.Process;
+const lazyLoadProcess = core.createLazyLoader<NodeJS.Process>(
+  "node:process",
+);
 
 export {
   callbackify,
@@ -61,6 +70,8 @@ export {
   format,
   formatWithOptions,
   inspect,
+  MIMEParams,
+  MIMEType,
   parseArgs,
   promisify,
   stripVTControlCharacters,
@@ -70,73 +81,6 @@ export {
 
 /** @deprecated - use `Array.isArray()` instead. */
 export const isArray = ArrayIsArray;
-
-/** @deprecated - use `typeof value === "boolean" instead. */
-export function isBoolean(value: unknown): boolean {
-  return typeof value === "boolean";
-}
-
-/** @deprecated - use `value === null` instead. */
-export function isNull(value: unknown): boolean {
-  return value === null;
-}
-
-/** @deprecated - use `value === null || value === undefined` instead. */
-export function isNullOrUndefined(value: unknown): boolean {
-  return value === null || value === undefined;
-}
-
-/** @deprecated - use `typeof value === "number" instead. */
-export function isNumber(value: unknown): boolean {
-  return typeof value === "number";
-}
-
-/** @deprecated - use `typeof value === "string" instead. */
-export function isString(value: unknown): boolean {
-  return typeof value === "string";
-}
-
-/** @deprecated - use `typeof value === "symbol"` instead. */
-export function isSymbol(value: unknown): boolean {
-  return typeof value === "symbol";
-}
-
-/** @deprecated - use `value === undefined` instead. */
-export function isUndefined(value: unknown): boolean {
-  return value === undefined;
-}
-
-/** @deprecated - use `value !== null && typeof value === "object"` instead. */
-export function isObject(value: unknown): boolean {
-  return value !== null && typeof value === "object";
-}
-
-/** @deprecated - use `e instanceof Error` instead. */
-export function isError(e: unknown): boolean {
-  return ObjectPrototypeToString(e) === "[object Error]" ||
-    ObjectPrototypeIsPrototypeOf(ErrorPrototype, e);
-}
-
-/** @deprecated - use `typeof value === "function"` instead. */
-export function isFunction(value: unknown): boolean {
-  return typeof value === "function";
-}
-
-/** @deprecated Use util.types.isRegExp() instead. */
-export const isRegExp = types.isRegExp;
-
-/** @deprecated Use util.types.isDate() instead. */
-export const isDate = types.isDate;
-
-/** @deprecated - use `value === null || (typeof value !== "object" && typeof value !== "function")` instead. */
-export function isPrimitive(value: unknown): boolean {
-  return (
-    value === null || (typeof value !== "object" && typeof value !== "function")
-  );
-}
-
-/** @deprecated  Use Buffer.isBuffer() instead. */
-export const isBuffer = Buffer.isBuffer;
 
 /** @deprecated Use Object.assign() instead. */
 export function _extend(
@@ -190,6 +134,7 @@ export function inherits<T, U>(
 import {
   _TextDecoder,
   _TextEncoder,
+  getSystemErrorMessage,
   getSystemErrorName,
 } from "ext:deno_node/_utils.ts";
 
@@ -257,8 +202,17 @@ const codesWarned = new SafeSet();
 // Mark that a method should not be used.
 // Returns a modified function which warns once by default.
 // If --no-deprecation is set, then it is a no-op.
-// deno-lint-ignore no-explicit-any
-export function deprecate(fn: any, msg: string, code?: any) {
+export function deprecate(
+  // deno-lint-ignore no-explicit-any
+  fn: any,
+  msg: string,
+  // deno-lint-ignore no-explicit-any
+  code?: any,
+  { modifyPrototype = true }: { __proto__: null; modifyPrototype?: boolean } = {
+    __proto__: null,
+  },
+) {
+  process ??= lazyLoadProcess();
   if (process.noDeprecation === true) {
     return fn;
   }
@@ -270,7 +224,7 @@ export function deprecate(fn: any, msg: string, code?: any) {
   let warned = false;
   // deno-lint-ignore no-explicit-any
   function deprecated(this: any, ...args: any[]) {
-    if (!warned) {
+    if (!warned && !op_node_call_is_from_dependency()) {
       warned = true;
       if (code !== undefined) {
         if (!SetPrototypeHas(codesWarned, code)) {
@@ -288,13 +242,20 @@ export function deprecate(fn: any, msg: string, code?: any) {
     return ReflectApply(fn, this, args);
   }
 
-  // The wrapper will keep the same prototype as fn to maintain prototype chain
-  ObjectSetPrototypeOf(deprecated, fn);
-  if (fn.prototype) {
-    // Setting this (rather than using Object.setPrototype, as above) ensures
-    // that calling the unwrapped constructor gives an instanceof the wrapped
-    // constructor.
-    deprecated.prototype = fn.prototype;
+  if (modifyPrototype) {
+    // The wrapper will keep the same prototype as fn to maintain prototype chain
+    ObjectSetPrototypeOf(deprecated, fn);
+    if (fn.prototype) {
+      // Setting this (rather than using Object.setPrototype, as above) ensures
+      // that calling the unwrapped constructor gives an instanceof the wrapped
+      // constructor.
+      deprecated.prototype = fn.prototype;
+    }
+
+    ObjectDefineProperty(deprecated, "length", {
+      __proto__: null,
+      ...ObjectGetOwnPropertyDescriptor(fn, "length"),
+    });
   }
 
   return deprecated;
@@ -313,38 +274,106 @@ export async function aborted(
   if (signal.aborted) {
     return PromiseResolve();
   }
-  const abortPromise = createDeferredPromise();
+  const abortPromise = PromiseWithResolvers();
   signal[abortSignal.add](abortPromise.resolve);
   return abortPromise.promise;
 }
 
-export { getSystemErrorName, isDeepStrictEqual };
+function prepareStackTrace(_error, stackTraces) {
+  return ArrayPrototypeMap(stackTraces, (stack) => {
+    return ({
+      functionName: stack.getFunctionName() ?? "",
+      // TODO(kt3k): This needs to be script's id
+      scriptId: "0",
+      scriptName: stack.getFileName(),
+      lineNumber: stack.getLineNumber(),
+      column: stack.getColumnNumber(),
+      columnNumber: stack.getColumnNumber(),
+    });
+  });
+}
+
+const kDefaultMaxCallStackSizeToCapture = 200;
+
+// deno-lint-ignore-start
+/**
+ * Returns the call sites of the current call stack
+ * @param frameCount The limit of the number of frames to return
+ * @param _options The options
+ * @returns The call sites
+ */
+export function getCallSites(
+  frameCount = 10,
+  options: unknown = { __proto__: null },
+) {
+  validateNumber(
+    frameCount,
+    "frameCount",
+    0,
+    kDefaultMaxCallStackSizeToCapture,
+  );
+  if (options) {
+    validateObject(options, "options");
+  }
+  const target = {};
+  // deno-lint-ignore prefer-primordials
+  const original = Error.prepareStackTrace;
+  // deno-lint-ignore prefer-primordials
+  const limitOriginal = Error.stackTraceLimit;
+
+  // deno-lint-ignore prefer-primordials
+  Error.stackTraceLimit = frameCount;
+  // deno-lint-ignore prefer-primordials
+  Error.prepareStackTrace = prepareStackTrace;
+  ErrorCaptureStackTrace(target, getCallSites);
+
+  const capturedTraces = target.stack;
+  // deno-lint-ignore prefer-primordials
+  Error.prepareStackTrace = original;
+  // deno-lint-ignore prefer-primordials
+  Error.stackTraceLimit = limitOriginal;
+
+  return capturedTraces;
+}
+
+export function parseEnv(
+  input: string,
+): Record<string, string> {
+  validateString(input, "content");
+  const parsed = binding.parseEnv(input);
+  const result = ObjectCreate(null);
+  const keys = ObjectKeys(parsed);
+  for (let i = 0; i < keys.length; i++) {
+    result[keys[i]] = parsed[keys[i]];
+  }
+  return result;
+}
+
+export function convertProcessSignalToExitCode(
+  signalCode: string,
+): number {
+  const { signals } = osConstants;
+  validateOneOf(signalCode, "signalCode", ObjectKeys(signals));
+  return 128 + signals[signalCode];
+}
+
+export { getSystemErrorMessage, getSystemErrorName, isDeepStrictEqual };
 
 export default {
   format,
   formatWithOptions,
   inspect,
-  isArray,
-  isBoolean,
-  isNull,
-  isNullOrUndefined,
-  isNumber,
-  isString,
-  isSymbol,
-  isUndefined,
-  isObject,
-  isError,
-  isFunction,
-  isRegExp,
-  isDate,
-  isPrimitive,
-  isBuffer,
   _extend,
+  convertProcessSignalToExitCode,
+  getCallSites,
   getSystemErrorName,
+  getSystemErrorMessage,
   aborted,
   deprecate,
   callbackify,
   parseArgs,
+  MIMEParams,
+  MIMEType,
   promisify,
   inherits,
   types,
@@ -356,5 +385,7 @@ export default {
   debuglog,
   debug: debuglog,
   isDeepStrictEqual,
+  isArray,
   styleText,
+  parseEnv,
 };

@@ -1,0 +1,6 @@
+TS2322 [ERROR]: Type 'number' is not assignable to type 'string'.
+const value: foo = 1;
+      ~~~~~
+    at [WILDLINE]/main.ts:3:7
+
+error: Type checking failed.

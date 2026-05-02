@@ -1,14 +1,15 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
+use std::rc::Rc;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
 use std::time::Duration;
 
+use deno_core::JsBuffer;
 use deno_core::op2;
 use deno_core::serde_v8;
 use deno_core::v8;
 use deno_core::v8::MapFnTo;
-use deno_core::JsBuffer;
 
 use crate::create_host_defined_options;
 
@@ -20,16 +21,21 @@ pub struct ContextifyScript {
   script: v8::TracedReference<v8::UnboundScript>,
 }
 
-impl v8::cppgc::GarbageCollected for ContextifyScript {
-  fn trace(&self, visitor: &v8::cppgc::Visitor) {
+// SAFETY: we're sure this can be GCed
+unsafe impl v8::cppgc::GarbageCollected for ContextifyScript {
+  fn trace(&self, visitor: &mut v8::cppgc::Visitor) {
     visitor.trace(&self.script);
+  }
+
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"ContextifyScript"
   }
 }
 
 impl ContextifyScript {
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "internal code")]
   fn create<'s>(
-    scope: &mut v8::HandleScope<'s>,
+    scope: &mut v8::PinScope<'s, '_>,
     source: v8::Local<'s, v8::String>,
     filename: v8::Local<'s, v8::Value>,
     line_offset: i32,
@@ -89,7 +95,7 @@ impl ContextifyScript {
       v8::script_compiler::CompileOptions::NoCompileOptions
     };
 
-    let scope = &mut v8::TryCatch::new(scope);
+    v8::tc_scope!(scope, scope);
 
     let Some(unbound_script) = v8::script_compiler::compile_unbound_script(
       scope,
@@ -132,7 +138,7 @@ impl ContextifyScript {
 
   fn run_in_context<'s>(
     &self,
-    scope: &mut v8::HandleScope<'s>,
+    scope: &mut v8::PinScope<'s, '_>,
     sandbox: Option<v8::Local<'s, v8::Object>>,
     timeout: i64,
     display_errors: bool,
@@ -165,18 +171,20 @@ impl ContextifyScript {
     )
   }
 
-  pub fn eval_machine<'s>(
+  pub fn eval_machine<'s, 'i>(
     &self,
-    scope: &mut v8::HandleScope<'s>,
-    context: v8::Local<v8::Context>,
+    scope: &mut v8::PinScope<'s, 'i>,
+    context: v8::Local<'s, v8::Context>,
     timeout: i64,
     _display_errors: bool,
     _break_on_sigint: bool,
     microtask_queue: Option<&v8::MicrotaskQueue>,
   ) -> Option<v8::Local<'s, v8::Value>> {
     let context_scope = &mut v8::ContextScope::new(scope, context);
-    let scope = &mut v8::EscapableHandleScope::new(context_scope);
-    let scope = &mut v8::TryCatch::new(scope);
+    let scope_storage =
+      std::pin::pin!(v8::EscapableHandleScope::new(context_scope));
+    let scope = &mut scope_storage.init();
+    v8::tc_scope!(scope, scope);
 
     let unbound_script = self.script.get(scope).unwrap();
     let script = unbound_script.bind_to_current_context(scope);
@@ -185,15 +193,18 @@ impl ContextifyScript {
 
     let mut run = || {
       let r = script.run(scope);
-      if r.is_some() {
-        if let Some(mtask_queue) = microtask_queue {
-          mtask_queue.perform_checkpoint(scope);
-        }
+      if r.is_some()
+        && let Some(mtask_queue) = microtask_queue
+      {
+        mtask_queue.perform_checkpoint(scope);
       }
       r
     };
 
-    #[allow(clippy::disallowed_types)]
+    #[allow(
+      clippy::disallowed_types,
+      reason = "isolated here and sending to separate thread"
+    )]
     let timed_out = std::sync::Arc::new(AtomicBool::new(false));
     let result = if timeout != -1 {
       let timed_out = timed_out.clone();
@@ -256,10 +267,15 @@ pub struct ContextifyContext {
   sandbox: v8::TracedReference<v8::Object>,
 }
 
-impl deno_core::GarbageCollected for ContextifyContext {
-  fn trace(&self, visitor: &v8::cppgc::Visitor) {
+// SAFETY: we're sure this can be GCed
+unsafe impl deno_core::GarbageCollected for ContextifyContext {
+  fn trace(&self, visitor: &mut v8::cppgc::Visitor) {
     visitor.trace(&self.context);
     visitor.trace(&self.sandbox);
+  }
+
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"ContextifyContext"
   }
 }
 
@@ -288,7 +304,7 @@ extern "C" fn allow_wasm_code_gen(
 
 impl ContextifyContext {
   pub fn attach(
-    scope: &mut v8::HandleScope,
+    scope: &mut v8::PinScope<'_, '_>,
     sandbox_obj: v8::Local<v8::Object>,
     _name: String,
     _origin: String,
@@ -334,7 +350,7 @@ impl ContextifyContext {
 
     scope.set_allow_wasm_code_generation_callback(allow_wasm_code_gen);
     context.set_allow_generation_from_strings(allow_code_gen_strings);
-    context.set_slot(AllowCodeGenWasm(allow_code_gen_wasm));
+    context.set_slot(Rc::new(AllowCodeGenWasm(allow_code_gen_wasm)));
 
     let wrapper = {
       let context = v8::TracedReference::new(scope, context);
@@ -368,8 +384,103 @@ impl ContextifyContext {
     sandbox_obj.set_private(scope, private_symbol, wrapper.into());
   }
 
+  pub fn attach_vanilla<'s>(
+    scope: &mut v8::PinScope<'s, '_>,
+    allow_code_gen_strings: bool,
+    allow_code_gen_wasm: bool,
+    own_microtask_queue: bool,
+  ) -> v8::Local<'s, v8::Object> {
+    let main_context = scope.get_current_context();
+
+    let microtask_queue = if own_microtask_queue {
+      v8::MicrotaskQueue::new(scope, v8::MicrotasksPolicy::Explicit).into_raw()
+    } else {
+      std::ptr::null_mut()
+    };
+
+    // Create a vanilla V8 context without global template (no interceptors)
+    let context = {
+      let esc_scope = std::pin::pin!(v8::EscapableHandleScope::new(scope));
+      let esc_scope = &mut esc_scope.init();
+      let ctx = v8::Context::new(
+        esc_scope,
+        v8::ContextOptions {
+          microtask_queue: Some(microtask_queue),
+          ..Default::default()
+        },
+      );
+      // SAFETY: ContextifyContexts will update this to a pointer to the native object
+      unsafe {
+        ctx.set_aligned_pointer_in_embedder_data(1, std::ptr::null_mut());
+        ctx.set_aligned_pointer_in_embedder_data(2, std::ptr::null_mut());
+        ctx.set_aligned_pointer_in_embedder_data(3, std::ptr::null_mut());
+        ctx.clear_all_slots();
+      };
+      esc_scope.escape(ctx)
+    };
+
+    let context_state = main_context.get_aligned_pointer_from_embedder_data(
+      deno_core::CONTEXT_STATE_SLOT_INDEX,
+    );
+    let module_map = main_context
+      .get_aligned_pointer_from_embedder_data(deno_core::MODULE_MAP_SLOT_INDEX);
+
+    context.set_security_token(main_context.get_security_token(scope));
+    // SAFETY: set embedder data from the creation context
+    unsafe {
+      context.set_aligned_pointer_in_embedder_data(
+        deno_core::CONTEXT_STATE_SLOT_INDEX,
+        context_state,
+      );
+      context.set_aligned_pointer_in_embedder_data(
+        deno_core::MODULE_MAP_SLOT_INDEX,
+        module_map,
+      );
+    }
+
+    scope.set_allow_wasm_code_generation_callback(allow_wasm_code_gen);
+    context.set_allow_generation_from_strings(allow_code_gen_strings);
+    context.set_slot(Rc::new(AllowCodeGenWasm(allow_code_gen_wasm)));
+
+    // For vanilla contexts, the sandbox IS the global proxy
+    let sandbox_obj = context.global(scope);
+
+    let wrapper = {
+      let context = v8::TracedReference::new(scope, context);
+      let sandbox = v8::TracedReference::new(scope, sandbox_obj);
+      deno_core::cppgc::make_cppgc_object(
+        scope,
+        Self {
+          context,
+          sandbox,
+          microtask_queue,
+        },
+      )
+    };
+    let ptr =
+      deno_core::cppgc::try_unwrap_cppgc_object::<Self>(scope, wrapper.into());
+
+    // SAFETY: We are storing a pointer to the ContextifyContext
+    // in the embedder data of the v8::Context. The contextified wrapper
+    // lives longer than the execution context, so this should be safe.
+    unsafe {
+      context.set_aligned_pointer_in_embedder_data(
+        3,
+        &*ptr.unwrap() as *const ContextifyContext as _,
+      );
+    }
+
+    let private_str =
+      v8::String::new_from_onebyte_const(scope, &PRIVATE_SYMBOL_NAME);
+    let private_symbol = v8::Private::for_api(scope, private_str);
+
+    sandbox_obj.set_private(scope, private_symbol, wrapper.into());
+
+    sandbox_obj
+  }
+
   pub fn from_sandbox_obj<'a>(
-    scope: &mut v8::HandleScope<'a>,
+    scope: &mut v8::PinScope<'a, '_>,
     sandbox_obj: v8::Local<v8::Object>,
   ) -> Option<&'a Self> {
     let private_str =
@@ -388,7 +499,7 @@ impl ContextifyContext {
   }
 
   pub fn is_contextify_context(
-    scope: &mut v8::HandleScope,
+    scope: &mut v8::PinScope<'_, '_>,
     object: v8::Local<v8::Object>,
   ) -> bool {
     Self::from_sandbox_obj(scope, object).is_some()
@@ -396,14 +507,14 @@ impl ContextifyContext {
 
   pub fn context<'a>(
     &self,
-    scope: &mut v8::HandleScope<'a>,
+    scope: &mut v8::PinScope<'a, '_>,
   ) -> v8::Local<'a, v8::Context> {
     self.context.get(scope).unwrap()
   }
 
   fn global_proxy<'s>(
     &self,
-    scope: &mut v8::HandleScope<'s>,
+    scope: &mut v8::PinScope<'s, '_>,
   ) -> v8::Local<'s, v8::Object> {
     let ctx = self.context(scope);
     ctx.global(scope)
@@ -411,7 +522,7 @@ impl ContextifyContext {
 
   fn sandbox<'a>(
     &self,
-    scope: &mut v8::HandleScope<'a>,
+    scope: &mut v8::PinScope<'a, '_>,
   ) -> Option<v8::Local<'a, v8::Object>> {
     self.sandbox.get(scope)
   }
@@ -426,7 +537,7 @@ impl ContextifyContext {
   }
 
   fn get<'a, 'c>(
-    scope: &mut v8::HandleScope<'a>,
+    scope: &mut v8::PinScope<'a, '_>,
     object: v8::Local<'a, v8::Object>,
   ) -> Option<&'c ContextifyContext> {
     let context = object.get_creation_context(scope)?;
@@ -450,12 +561,13 @@ pub enum ContextInitMode {
 }
 
 pub fn create_v8_context<'a>(
-  scope: &mut v8::HandleScope<'a, ()>,
+  scope: &mut v8::PinScope<'a, '_, ()>,
   object_template: v8::Local<v8::ObjectTemplate>,
   mode: ContextInitMode,
   microtask_queue: *mut v8::MicrotaskQueue,
 ) -> v8::Local<'a, v8::Context> {
-  let scope = &mut v8::EscapableHandleScope::new(scope);
+  let scope = std::pin::pin!(v8::EscapableHandleScope::new(scope));
+  let scope = &mut scope.init();
 
   let context = if mode == ContextInitMode::UseSnapshot {
     v8::Context::from_snapshot(
@@ -493,13 +605,15 @@ pub fn create_v8_context<'a>(
 struct SlotContextifyGlobalTemplate(v8::Global<v8::ObjectTemplate>);
 
 pub fn init_global_template<'a>(
-  scope: &mut v8::HandleScope<'a, ()>,
+  scope: &mut v8::PinScope<'a, '_, ()>,
   mode: ContextInitMode,
 ) -> v8::Local<'a, v8::ObjectTemplate> {
   let maybe_object_template_slot =
     scope.get_slot::<SlotContextifyGlobalTemplate>();
 
-  if maybe_object_template_slot.is_none() {
+  if let Some(object_template_slot) = maybe_object_template_slot {
+    v8::Local::new(scope, object_template_slot.clone().0)
+  } else {
     let global_object_template = init_global_template_inner(scope);
 
     if mode == ContextInitMode::UseSnapshot {
@@ -509,40 +623,42 @@ pub fn init_global_template<'a>(
       scope.set_slot(contextify_global_template_slot);
     }
     global_object_template
-  } else {
-    let object_template_slot = maybe_object_template_slot
-      .expect("ContextifyGlobalTemplate slot should be already populated.")
-      .clone();
-    v8::Local::new(scope, object_template_slot.0)
   }
 }
 
 // Using thread_local! to get around compiler bug.
 //
-// See NOTE in ext/node/global.rs#L12
+// NOTE(bartlomieju): somehow calling `.map_fn_to()` multiple times on a
+// function returns two different pointers. That shouldn't be the case as
+// `.map_fn_to()` creates a thin wrapper that is a pure function.
+// @piscisaureus suggests it might be a bug in Rust compiler; so for now we
+// just create and store these mapped functions per-thread.
 thread_local! {
-  pub static QUERY_MAP_FN: v8::NamedPropertyQueryCallback<'static> = property_query.map_fn_to();
-  pub static GETTER_MAP_FN: v8::NamedPropertyGetterCallback<'static> = property_getter.map_fn_to();
-  pub static SETTER_MAP_FN: v8::NamedPropertySetterCallback<'static> = property_setter.map_fn_to();
-  pub static DELETER_MAP_FN: v8::NamedPropertyDeleterCallback<'static> = property_deleter.map_fn_to();
-  pub static ENUMERATOR_MAP_FN: v8::NamedPropertyEnumeratorCallback<'static> = property_enumerator.map_fn_to();
-  pub static DEFINER_MAP_FN: v8::NamedPropertyDefinerCallback<'static> = property_definer.map_fn_to();
-  pub static DESCRIPTOR_MAP_FN: v8::NamedPropertyDescriptorCallback<'static> = property_descriptor.map_fn_to();
+  pub static QUERY_MAP_FN: v8::NamedPropertyQueryCallback = property_query.map_fn_to();
+  pub static GETTER_MAP_FN: v8::NamedPropertyGetterCallback = property_getter.map_fn_to();
+  pub static SETTER_MAP_FN: v8::NamedPropertySetterCallback = property_setter.map_fn_to();
+  pub static DELETER_MAP_FN: v8::NamedPropertyDeleterCallback = property_deleter.map_fn_to();
+  pub static ENUMERATOR_MAP_FN: v8::NamedPropertyEnumeratorCallback = property_enumerator.map_fn_to();
+  pub static DEFINER_MAP_FN: v8::NamedPropertyDefinerCallback = property_definer.map_fn_to();
+  pub static DESCRIPTOR_MAP_FN: v8::NamedPropertyDescriptorCallback = property_descriptor.map_fn_to();
 }
 
 thread_local! {
-  pub static INDEXED_GETTER_MAP_FN: v8::IndexedPropertyGetterCallback<'static> = indexed_property_getter.map_fn_to();
-  pub static INDEXED_SETTER_MAP_FN: v8::IndexedPropertySetterCallback<'static> = indexed_property_setter.map_fn_to();
-  pub static INDEXED_DELETER_MAP_FN: v8::IndexedPropertyDeleterCallback<'static> = indexed_property_deleter.map_fn_to();
-  pub static INDEXED_DEFINER_MAP_FN: v8::IndexedPropertyDefinerCallback<'static> = indexed_property_definer.map_fn_to();
-  pub static INDEXED_DESCRIPTOR_MAP_FN: v8::IndexedPropertyDescriptorCallback<'static> = indexed_property_descriptor.map_fn_to();
-  pub static INDEXED_ENUMERATOR_MAP_FN: v8::IndexedPropertyEnumeratorCallback<'static> = indexed_property_enumerator.map_fn_to();
-  pub static INDEXED_QUERY_MAP_FN: v8::IndexedPropertyQueryCallback<'static> = indexed_property_query.map_fn_to();
+  pub static INDEXED_GETTER_MAP_FN: v8::IndexedPropertyGetterCallback = indexed_property_getter.map_fn_to();
+  pub static INDEXED_SETTER_MAP_FN: v8::IndexedPropertySetterCallback = indexed_property_setter.map_fn_to();
+  pub static INDEXED_DELETER_MAP_FN: v8::IndexedPropertyDeleterCallback = indexed_property_deleter.map_fn_to();
+  pub static INDEXED_DEFINER_MAP_FN: v8::IndexedPropertyDefinerCallback = indexed_property_definer.map_fn_to();
+  pub static INDEXED_DESCRIPTOR_MAP_FN: v8::IndexedPropertyDescriptorCallback = indexed_property_descriptor.map_fn_to();
+  pub static INDEXED_ENUMERATOR_MAP_FN: v8::IndexedPropertyEnumeratorCallback = indexed_property_enumerator.map_fn_to();
+  pub static INDEXED_QUERY_MAP_FN: v8::IndexedPropertyQueryCallback = indexed_property_query.map_fn_to();
 }
 
-pub fn init_global_template_inner<'a>(
-  scope: &mut v8::HandleScope<'a, ()>,
+pub fn init_global_template_inner<'a, 'b, 'i>(
+  scope: &'b mut v8::PinScope<'a, 'i, ()>,
 ) -> v8::Local<'a, v8::ObjectTemplate> {
+  let scope = std::pin::pin!(v8::EscapableHandleScope::new(scope));
+  let scope = &mut scope.init();
+
   let global_object_template = v8::ObjectTemplate::new(scope);
   global_object_template.set_internal_field_count(3);
 
@@ -587,73 +703,84 @@ pub fn init_global_template_inner<'a>(
   global_object_template
     .set_indexed_property_handler(indexed_property_handler_config);
 
-  global_object_template
+  scope.escape(global_object_template)
 }
 
 fn property_query<'s>(
-  scope: &mut v8::HandleScope<'s>,
+  scope: &mut v8::PinScope<'s, '_>,
   property: v8::Local<'s, v8::Name>,
   args: v8::PropertyCallbackArguments<'s>,
   mut rv: v8::ReturnValue<v8::Integer>,
 ) -> v8::Intercepted {
-  let Some(ctx) = ContextifyContext::get(scope, args.this()) else {
-    return v8::Intercepted::No;
+  let Some(ctx) = ContextifyContext::get(scope, args.holder()) else {
+    return v8::Intercepted::kNo;
   };
 
   let context = ctx.context(scope);
   let scope = &mut v8::ContextScope::new(scope, context);
   let Some(sandbox) = ctx.sandbox(scope) else {
-    return v8::Intercepted::No;
+    return v8::Intercepted::kNo;
   };
 
-  match sandbox.has_real_named_property(scope, property) {
-    None => v8::Intercepted::No,
+  // Use `Has` rather than `HasRealNamedProperty` for the sandbox so the
+  // `in` operator walks the sandbox's prototype chain, matching Node's
+  // behaviour. With the own-only check, a user that does
+  // `Object.setPrototypeOf(sandbox, someProto)` would not see properties
+  // from `someProto` reachable via `propName in window` inside the vm
+  // context.
+  //
+  // The fallback path on the global proxy keeps using
+  // `HasRealNamedProperty` to avoid recursing back into this interceptor:
+  // the global proxy carries the named-property handler that brought us
+  // here, so a regular `Has` would re-enter `property_query` infinitely.
+  let property_value: v8::Local<v8::Value> = property.into();
+  match sandbox.has(scope, property_value) {
+    None => v8::Intercepted::kNo,
     Some(true) => {
-      let Some(attr) =
-        sandbox.get_real_named_property_attributes(scope, property)
-      else {
-        return v8::Intercepted::No;
-      };
-      rv.set_uint32(attr.as_u32());
-      v8::Intercepted::Yes
+      let attr = sandbox
+        .get_property_attributes(scope, property_value)
+        .map(|a| a.as_u32())
+        .unwrap_or(0);
+      rv.set_uint32(attr);
+      v8::Intercepted::kYes
     }
     Some(false) => {
       match ctx
         .global_proxy(scope)
         .has_real_named_property(scope, property)
       {
-        None => v8::Intercepted::No,
+        None => v8::Intercepted::kNo,
         Some(true) => {
           let Some(attr) = ctx
             .global_proxy(scope)
             .get_real_named_property_attributes(scope, property)
           else {
-            return v8::Intercepted::No;
+            return v8::Intercepted::kNo;
           };
           rv.set_uint32(attr.as_u32());
-          v8::Intercepted::Yes
+          v8::Intercepted::kYes
         }
-        Some(false) => v8::Intercepted::No,
+        Some(false) => v8::Intercepted::kNo,
       }
     }
   }
 }
 
 fn property_getter<'s>(
-  scope: &mut v8::HandleScope<'s>,
+  scope: &mut v8::PinScope<'s, '_>,
   key: v8::Local<'s, v8::Name>,
   args: v8::PropertyCallbackArguments<'s>,
   mut ret: v8::ReturnValue,
 ) -> v8::Intercepted {
-  let Some(ctx) = ContextifyContext::get(scope, args.this()) else {
-    return v8::Intercepted::No;
+  let Some(ctx) = ContextifyContext::get(scope, args.holder()) else {
+    return v8::Intercepted::kNo;
   };
 
   let Some(sandbox) = ctx.sandbox(scope) else {
-    return v8::Intercepted::No;
+    return v8::Intercepted::kNo;
   };
 
-  let tc_scope = &mut v8::TryCatch::new(scope);
+  v8::tc_scope!(tc_scope, scope);
   let maybe_rv = sandbox.get_real_named_property(tc_scope, key).or_else(|| {
     ctx
       .global_proxy(tc_scope)
@@ -670,21 +797,21 @@ fn property_getter<'s>(
     }
 
     ret.set(rv);
-    return v8::Intercepted::Yes;
+    return v8::Intercepted::kYes;
   }
 
-  v8::Intercepted::No
+  v8::Intercepted::kNo
 }
 
 fn property_setter<'s>(
-  scope: &mut v8::HandleScope<'s>,
+  scope: &mut v8::PinScope<'s, '_>,
   key: v8::Local<'s, v8::Name>,
   value: v8::Local<'s, v8::Value>,
   args: v8::PropertyCallbackArguments<'s>,
   _rv: v8::ReturnValue<()>,
 ) -> v8::Intercepted {
-  let Some(ctx) = ContextifyContext::get(scope, args.this()) else {
-    return v8::Intercepted::No;
+  let Some(ctx) = ContextifyContext::get(scope, args.holder()) else {
+    return v8::Intercepted::kNo;
   };
 
   let (attributes, is_declared_on_global_proxy) = match ctx
@@ -696,7 +823,7 @@ fn property_setter<'s>(
   };
   let mut read_only = attributes.is_read_only();
   let Some(sandbox) = ctx.sandbox(scope) else {
-    return v8::Intercepted::No;
+    return v8::Intercepted::kNo;
   };
   let (attributes, is_declared_on_sandbox) =
     match sandbox.get_real_named_property_attributes(scope, key) {
@@ -706,14 +833,14 @@ fn property_setter<'s>(
   read_only |= attributes.is_read_only();
 
   if read_only {
-    return v8::Intercepted::No;
+    return v8::Intercepted::kNo;
   }
 
   // true for x = 5
   // false for this.x = 5
   // false for Object.defineProperty(this, 'foo', ...)
   // false for vmResult.x = 5 where vmResult = vm.runInContext();
-  let is_contextual_store = ctx.global_proxy(scope) != args.this();
+  let is_contextual_store = ctx.global_proxy(scope) != args.holder();
 
   // Indicator to not return before setting (undeclared) function declarations
   // on the sandbox in strict mode, i.e. args.ShouldThrowOnError() = true.
@@ -730,78 +857,77 @@ fn property_setter<'s>(
     && is_contextual_store
     && !is_function
   {
-    return v8::Intercepted::No;
+    return v8::Intercepted::kNo;
   }
 
   if !is_declared && key.is_symbol() {
-    return v8::Intercepted::No;
+    return v8::Intercepted::kNo;
   };
 
   if sandbox.set(scope, key.into(), value).is_none() {
-    return v8::Intercepted::No;
+    return v8::Intercepted::kNo;
   }
 
-  if is_declared_on_sandbox {
-    if let Some(desc) = sandbox.get_own_property_descriptor(scope, key) {
-      if !desc.is_undefined() {
-        let desc_obj: v8::Local<v8::Object> = desc.try_into().unwrap();
-        // We have to specify the return value for any contextual or get/set
-        // property
-        let get_key =
-          v8::String::new_external_onebyte_static(scope, b"get").unwrap();
-        let set_key =
-          v8::String::new_external_onebyte_static(scope, b"set").unwrap();
-        if desc_obj
-          .has_own_property(scope, get_key.into())
-          .unwrap_or(false)
-          || desc_obj
-            .has_own_property(scope, set_key.into())
-            .unwrap_or(false)
-        {
-          return v8::Intercepted::Yes;
-        }
-      }
+  if is_declared_on_sandbox
+    && let Some(desc) = sandbox.get_own_property_descriptor(scope, key)
+    && !desc.is_undefined()
+  {
+    let desc_obj: v8::Local<v8::Object> = desc.try_into().unwrap();
+    // We have to specify the return value for any contextual or get/set
+    // property
+    let get_key =
+      v8::String::new_external_onebyte_static(scope, b"get").unwrap();
+    let set_key =
+      v8::String::new_external_onebyte_static(scope, b"set").unwrap();
+    if desc_obj
+      .has_own_property(scope, get_key.into())
+      .unwrap_or(false)
+      || desc_obj
+        .has_own_property(scope, set_key.into())
+        .unwrap_or(false)
+    {
+      return v8::Intercepted::kYes;
     }
   }
 
-  v8::Intercepted::No
+  v8::Intercepted::kNo
 }
 
 fn property_descriptor<'s>(
-  scope: &mut v8::HandleScope<'s>,
+  scope: &mut v8::PinScope<'s, '_>,
   key: v8::Local<'s, v8::Name>,
   args: v8::PropertyCallbackArguments<'s>,
   mut rv: v8::ReturnValue,
 ) -> v8::Intercepted {
-  let Some(ctx) = ContextifyContext::get(scope, args.this()) else {
-    return v8::Intercepted::No;
+  let Some(ctx) = ContextifyContext::get(scope, args.holder()) else {
+    return v8::Intercepted::kNo;
   };
 
   let context = ctx.context(scope);
   let Some(sandbox) = ctx.sandbox(scope) else {
-    return v8::Intercepted::No;
+    return v8::Intercepted::kNo;
   };
   let scope = &mut v8::ContextScope::new(scope, context);
 
-  if sandbox.has_own_property(scope, key).unwrap_or(false) {
-    if let Some(desc) = sandbox.get_own_property_descriptor(scope, key) {
-      rv.set(desc);
-      return v8::Intercepted::Yes;
-    }
+  if sandbox.has_own_property(scope, key).unwrap_or(false)
+    && let Some(desc) = sandbox.get_own_property_descriptor(scope, key)
+  {
+    rv.set(desc);
+    return v8::Intercepted::kYes;
   }
 
-  v8::Intercepted::No
+  v8::Intercepted::kNo
 }
 
 fn property_definer<'s>(
-  scope: &mut v8::HandleScope<'s>,
+  scope: &mut v8::PinScope<'s, '_>,
   key: v8::Local<'s, v8::Name>,
   desc: &v8::PropertyDescriptor,
   args: v8::PropertyCallbackArguments<'s>,
   _: v8::ReturnValue<()>,
 ) -> v8::Intercepted {
-  let Some(ctx) = ContextifyContext::get(scope, args.this()) else {
-    return v8::Intercepted::No;
+  let Some(ctx) = ContextifyContext::get(scope, args.holder()) else {
+    return v8::Intercepted::kNo;
   };
 
   let context = ctx.context(scope);
@@ -821,15 +947,15 @@ fn property_definer<'s>(
   // If the property is set on the global as read_only, don't change it on
   // the global or sandbox.
   if is_declared && read_only && dont_delete {
-    return v8::Intercepted::No;
+    return v8::Intercepted::kNo;
   }
 
   let Some(sandbox) = ctx.sandbox(scope) else {
-    return v8::Intercepted::No;
+    return v8::Intercepted::kNo;
   };
 
   let define_prop_on_sandbox =
-    |scope: &mut v8::HandleScope,
+    |scope: &mut v8::PinScope<'_, '_>,
      desc_for_sandbox: &mut v8::PropertyDescriptor| {
       if desc.has_enumerable() {
         desc_for_sandbox.set_enumerable(desc.enumerable());
@@ -874,39 +1000,39 @@ fn property_definer<'s>(
     }
   }
 
-  v8::Intercepted::Yes
+  v8::Intercepted::kYes
 }
 
 fn property_deleter<'s>(
-  scope: &mut v8::HandleScope<'s>,
+  scope: &mut v8::PinScope<'s, '_>,
   key: v8::Local<'s, v8::Name>,
   args: v8::PropertyCallbackArguments<'s>,
   mut rv: v8::ReturnValue<v8::Boolean>,
 ) -> v8::Intercepted {
-  let Some(ctx) = ContextifyContext::get(scope, args.this()) else {
-    return v8::Intercepted::No;
+  let Some(ctx) = ContextifyContext::get(scope, args.holder()) else {
+    return v8::Intercepted::kNo;
   };
 
   let context = ctx.context(scope);
   let Some(sandbox) = ctx.sandbox(scope) else {
-    return v8::Intercepted::No;
+    return v8::Intercepted::kNo;
   };
 
   let context_scope = &mut v8::ContextScope::new(scope, context);
   if sandbox.delete(context_scope, key.into()).unwrap_or(false) {
-    return v8::Intercepted::No;
+    return v8::Intercepted::kNo;
   }
 
   rv.set_bool(false);
-  v8::Intercepted::Yes
+  v8::Intercepted::kYes
 }
 
 fn property_enumerator<'s>(
-  scope: &mut v8::HandleScope<'s>,
+  scope: &mut v8::PinScope<'s, '_>,
   args: v8::PropertyCallbackArguments<'s>,
   mut rv: v8::ReturnValue<v8::Array>,
 ) {
-  let Some(ctx) = ContextifyContext::get(scope, args.this()) else {
+  let Some(ctx) = ContextifyContext::get(scope, args.holder()) else {
     return;
   };
 
@@ -916,9 +1042,13 @@ fn property_enumerator<'s>(
   };
 
   let context_scope = &mut v8::ContextScope::new(scope, context);
-  let Some(properties) = sandbox
-    .get_property_names(context_scope, v8::GetPropertyNamesArgs::default())
-  else {
+  let args = v8::GetPropertyNamesArgsBuilder::new()
+    .mode(v8::KeyCollectionMode::OwnOnly)
+    .property_filter(v8::PropertyFilter::ALL_PROPERTIES)
+    .index_filter(v8::IndexFilter::SkipIndices)
+    .key_conversion(v8::KeyConversionMode::ConvertToString)
+    .build();
+  let Some(properties) = sandbox.get_property_names(context_scope, args) else {
     return;
   };
 
@@ -926,11 +1056,11 @@ fn property_enumerator<'s>(
 }
 
 fn indexed_property_enumerator<'s>(
-  scope: &mut v8::HandleScope<'s>,
+  scope: &mut v8::PinScope<'s, '_>,
   args: v8::PropertyCallbackArguments<'s>,
   mut rv: v8::ReturnValue<v8::Array>,
 ) {
-  let Some(ctx) = ContextifyContext::get(scope, args.this()) else {
+  let Some(ctx) = ContextifyContext::get(scope, args.holder()) else {
     return;
   };
   let context = ctx.context(scope);
@@ -939,11 +1069,14 @@ fn indexed_property_enumerator<'s>(
     return;
   };
 
-  // By default, GetPropertyNames returns string and number property names, and
-  // doesn't convert the numbers to strings.
-  let Some(properties) =
-    sandbox.get_property_names(scope, v8::GetPropertyNamesArgs::default())
-  else {
+  // Return only indexed (numeric) own properties, including non-enumerable.
+  let args = v8::GetPropertyNamesArgsBuilder::new()
+    .mode(v8::KeyCollectionMode::OwnOnly)
+    .property_filter(v8::PropertyFilter::ALL_PROPERTIES)
+    .index_filter(v8::IndexFilter::IncludeIndices)
+    .key_conversion(v8::KeyConversionMode::KeepNumbers)
+    .build();
+  let Some(properties) = sandbox.get_property_names(scope, args) else {
     return;
   };
 
@@ -964,7 +1097,7 @@ fn indexed_property_enumerator<'s>(
 }
 
 fn uint32_to_name<'s>(
-  scope: &mut v8::HandleScope<'s>,
+  scope: &mut v8::PinScope<'s, '_>,
   index: u32,
 ) -> v8::Local<'s, v8::Name> {
   let int = v8::Integer::new_from_unsigned(scope, index);
@@ -973,7 +1106,7 @@ fn uint32_to_name<'s>(
 }
 
 fn indexed_property_query<'s>(
-  scope: &mut v8::HandleScope<'s>,
+  scope: &mut v8::PinScope<'s, '_>,
   index: u32,
   args: v8::PropertyCallbackArguments<'s>,
   rv: v8::ReturnValue<v8::Integer>,
@@ -983,7 +1116,7 @@ fn indexed_property_query<'s>(
 }
 
 fn indexed_property_getter<'s>(
-  scope: &mut v8::HandleScope<'s>,
+  scope: &mut v8::PinScope<'s, '_>,
   index: u32,
   args: v8::PropertyCallbackArguments<'s>,
   rv: v8::ReturnValue,
@@ -993,7 +1126,7 @@ fn indexed_property_getter<'s>(
 }
 
 fn indexed_property_setter<'s>(
-  scope: &mut v8::HandleScope<'s>,
+  scope: &mut v8::PinScope<'s, '_>,
   index: u32,
   value: v8::Local<'s, v8::Value>,
   args: v8::PropertyCallbackArguments<'s>,
@@ -1004,7 +1137,7 @@ fn indexed_property_setter<'s>(
 }
 
 fn indexed_property_descriptor<'s>(
-  scope: &mut v8::HandleScope<'s>,
+  scope: &mut v8::PinScope<'s, '_>,
   index: u32,
   args: v8::PropertyCallbackArguments<'s>,
   rv: v8::ReturnValue,
@@ -1014,7 +1147,7 @@ fn indexed_property_descriptor<'s>(
 }
 
 fn indexed_property_definer<'s>(
-  scope: &mut v8::HandleScope<'s>,
+  scope: &mut v8::PinScope<'s, '_>,
   index: u32,
   descriptor: &v8::PropertyDescriptor,
   args: v8::PropertyCallbackArguments<'s>,
@@ -1025,36 +1158,36 @@ fn indexed_property_definer<'s>(
 }
 
 fn indexed_property_deleter<'s>(
-  scope: &mut v8::HandleScope<'s>,
+  scope: &mut v8::PinScope<'s, '_>,
   index: u32,
   args: v8::PropertyCallbackArguments<'s>,
   mut rv: v8::ReturnValue<v8::Boolean>,
 ) -> v8::Intercepted {
-  let Some(ctx) = ContextifyContext::get(scope, args.this()) else {
-    return v8::Intercepted::No;
+  let Some(ctx) = ContextifyContext::get(scope, args.holder()) else {
+    return v8::Intercepted::kNo;
   };
 
   let context = ctx.context(scope);
   let Some(sandbox) = ctx.sandbox(scope) else {
-    return v8::Intercepted::No;
+    return v8::Intercepted::kNo;
   };
 
   let context_scope = &mut v8::ContextScope::new(scope, context);
   if !sandbox.delete_index(context_scope, index).unwrap_or(false) {
-    return v8::Intercepted::No;
+    return v8::Intercepted::kNo;
   }
 
   // Delete failed on the sandbox, intercept and do not delete on
   // the global object.
   rv.set_bool(false);
-  v8::Intercepted::No
+  v8::Intercepted::kNo
 }
 
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, reason = "op")]
 #[op2]
 #[serde]
 pub fn op_vm_create_script<'a>(
-  scope: &mut v8::HandleScope<'a>,
+  scope: &mut v8::PinScope<'a, '_>,
   source: v8::Local<'a, v8::String>,
   filename: v8::Local<'a, v8::Value>,
   line_offset: i32,
@@ -1077,7 +1210,7 @@ pub fn op_vm_create_script<'a>(
 
 #[op2(reentrant)]
 pub fn op_vm_script_run_in_context<'a>(
-  scope: &mut v8::HandleScope<'a>,
+  scope: &mut v8::PinScope<'a, '_>,
   #[cppgc] script: &ContextifyScript,
   sandbox: Option<v8::Local<'a, v8::Object>>,
   #[serde] timeout: i64,
@@ -1095,7 +1228,7 @@ pub fn op_vm_script_run_in_context<'a>(
 
 #[op2(fast)]
 pub fn op_vm_create_context(
-  scope: &mut v8::HandleScope,
+  scope: &mut v8::PinScope<'_, '_>,
   sandbox_obj: v8::Local<v8::Object>,
   #[string] name: String,
   #[string] origin: String,
@@ -1120,9 +1253,25 @@ pub fn op_vm_create_context(
   );
 }
 
+#[op2]
+pub fn op_vm_create_context_without_contextify<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  allow_code_gen_strings: bool,
+  allow_code_gen_wasm: bool,
+  own_microtask_queue: bool,
+) -> v8::Local<'s, v8::Value> {
+  ContextifyContext::attach_vanilla(
+    scope,
+    allow_code_gen_strings,
+    allow_code_gen_wasm,
+    own_microtask_queue,
+  )
+  .into()
+}
+
 #[op2(fast)]
 pub fn op_vm_is_context(
-  scope: &mut v8::HandleScope,
+  scope: &mut v8::PinScope<'_, '_>,
   sandbox_obj: v8::Local<v8::Value>,
 ) -> bool {
   sandbox_obj
@@ -1141,11 +1290,11 @@ struct CompileResult<'s> {
   cached_data_produced: bool,
 }
 
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, reason = "op")]
 #[op2]
 #[serde]
 pub fn op_vm_compile_function<'s>(
-  scope: &mut v8::HandleScope<'s>,
+  scope: &mut v8::PinScope<'s, '_>,
   source: v8::Local<'s, v8::String>,
   filename: v8::Local<'s, v8::Value>,
   line_offset: i32,
@@ -1226,8 +1375,7 @@ pub fn op_vm_compile_function<'s>(
     v8::script_compiler::CompileOptions::NoCompileOptions
   };
 
-  let scope = &mut v8::TryCatch::new(scope);
-
+  v8::tc_scope!(scope, scope);
   let Some(function) = v8::script_compiler::compile_function(
     scope,
     &mut source,
@@ -1268,7 +1416,7 @@ pub fn op_vm_compile_function<'s>(
 
 #[op2]
 pub fn op_vm_script_get_source_map_url<'s>(
-  scope: &mut v8::HandleScope<'s>,
+  scope: &mut v8::PinScope<'s, '_>,
   #[cppgc] script: &ContextifyScript,
 ) -> v8::Local<'s, v8::Value> {
   let unbound_script = script.script.get(scope).unwrap();
@@ -1277,7 +1425,7 @@ pub fn op_vm_script_get_source_map_url<'s>(
 
 #[op2]
 pub fn op_vm_script_create_cached_data<'s>(
-  scope: &mut v8::HandleScope<'s>,
+  scope: &mut v8::PinScope<'s, '_>,
   #[cppgc] script: &ContextifyScript,
 ) -> v8::Local<'s, v8::Value> {
   let unbound_script = script.script.get(scope).unwrap();

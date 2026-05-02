@@ -1,0 +1,80 @@
+const EqualDivider = styled.div`
+  margin: 0.5rem;
+  padding: 1rem;
+  background: papayawhip;
+
+  > * {
+    flex: 1;
+
+    &:not(:first-child) {
+      ${(props) => props.vertical ? "margin-top" : "margin-left"}: 1rem;
+      ${OTHER_STYLES};
+    }
+  }
+
+  div {
+    padding: ${condition
+      ? expression1 + expression2 * expression3
+      : expression4}px;
+  }
+
+  span {
+    ${SOME_STYLE};
+  }
+`;
+
+cssString = css`
+  border: 1px red solid;
+  background-color: red;
+  border-radius: 4px;
+  ${OTHER_STYLES};
+`;
+
+nestedCssString = tw`
+  animate-pulse
+  border-red
+  ${css`
+  background-color: blue;
+  border-radius: 4px;
+`}
+`;
+
+htmlString = html`
+  <body>
+    <header>${header}</header>
+    <main>${main}</main>
+    <footer>${footer}</footer>
+  </body>
+`;
+
+query = sql`
+  SELECT
+    ${table}.${field}
+  FROM
+    ${table};
+`;
+
+icon = svg`
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    width="400"
+    height="400"
+    viewBox="0 0 128 128"
+    fill="none"
+  >
+    <rect width="128" height="128" rx="24" fill="#dddddd" />
+  </svg>
+`;
+
+catalog = xml`
+  <CATALOG>
+    <CD>
+      <TITLE>Empire Burlesque</TITLE>
+      <ARTIST>Bob Dylan</ARTIST>
+      <COUNTRY>USA</COUNTRY>
+      <COMPANY>Columbia</COMPANY>
+      <PRICE>10.90</PRICE>
+      <YEAR>1985</YEAR>
+    </CD>
+  </CATALOG>
+`;

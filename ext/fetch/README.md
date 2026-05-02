@@ -57,8 +57,8 @@ Object.defineProperty(globalThis, "FormData", {
 ```
 
 Then from rust, provide
-`deno_fetch::deno_fetch::init_ops_and_esm<Permissions>(Default::default())` in
-the `extensions` field of your `RuntimeOptions`
+`deno_fetch::deno_fetch::init<Permissions>(Default::default())` in the
+`extensions` field of your `RuntimeOptions`
 
 Where:
 
@@ -69,7 +69,6 @@ Where:
 
 - **deno_webidl**: Provided by the `deno_webidl` crate
 - **deno_web**: Provided by the `deno_web` crate
-- **deno_url**: Provided by the `deno_url` crate
 - **deno_console**: Provided by the `deno_console` crate
 
 ## Provided ops

@@ -1,40 +1,38 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::sync::Arc;
 
+use deno_core::anyhow::Context;
 use deno_core::anyhow::anyhow;
 use deno_core::anyhow::bail;
-use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::futures::FutureExt;
 use deno_core::located_script_name;
-use deno_core::resolve_url_or_path;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::url::Url;
+use deno_path_util::resolve_url_or_path;
+use deno_runtime::WorkerExecutionMode;
 use deno_runtime::deno_io::Stdio;
 use deno_runtime::deno_io::StdioPipe;
 use deno_runtime::deno_permissions::PermissionsContainer;
-use deno_runtime::WorkerExecutionMode;
 use deno_terminal::colors;
-use jupyter_runtime::jupyter::ConnectionInfo;
-use jupyter_runtime::messaging::StreamContent;
+use jupyter_protocol::ConnectionInfo;
+use jupyter_protocol::StreamContent;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::UnboundedSender;
 use tokio::sync::oneshot;
-use tokio_util::sync::CancellationToken;
 
+use crate::CliFactory;
 use crate::args::Flags;
 use crate::args::JupyterFlags;
 use crate::cdp;
-use crate::lsp::ReplCompletionItem;
 use crate::ops;
 use crate::tools::repl;
-use crate::tools::test::create_single_test_event_channel;
-use crate::tools::test::reporters::PrettyTestReporter;
 use crate::tools::test::TestEventWorkerSender;
 use crate::tools::test::TestFailureFormatOptions;
-use crate::CliFactory;
+use crate::tools::test::create_single_test_event_channel;
+use crate::tools::test::reporters::PrettyTestReporter;
 
 mod install;
 pub mod server;
@@ -49,12 +47,16 @@ pub async fn kernel(
   );
 
   if !jupyter_flags.install && !jupyter_flags.kernel {
-    install::status()?;
+    install::status(jupyter_flags.name.as_deref())?;
     return Ok(());
   }
 
   if jupyter_flags.install {
-    install::install()?;
+    install::install(
+      jupyter_flags.name.as_deref(),
+      jupyter_flags.display.as_deref(),
+      jupyter_flags.force,
+    )?;
     return Ok(());
   }
 
@@ -68,8 +70,8 @@ pub async fn kernel(
   // TODO(bartlomieju): should we run with all permissions?
   let permissions =
     PermissionsContainer::allow_all(factory.permission_desc_parser()?.clone());
-  let npm_installer = factory.npm_installer_if_managed()?.cloned();
-  let tsconfig_resolver = factory.tsconfig_resolver()?;
+  let npm_installer = factory.npm_installer_if_managed().await?.cloned();
+  let compiler_options_resolver = factory.compiler_options_resolver()?;
   let resolver = factory.resolver().await?.clone();
   let worker_factory = factory.create_cli_main_worker_factory().await?;
   let (stdio_tx, stdio_rx) = mpsc::unbounded_channel();
@@ -96,10 +98,14 @@ pub async fn kernel(
     .create_custom_worker(
       WorkerExecutionMode::Jupyter,
       main_module.clone(),
+      // `deno jupyter` doesn't support preloading modules
+      vec![],
+      // `deno jupyter` doesn't support require modules
+      vec![],
       permissions,
       vec![
-        ops::jupyter::deno_jupyter::init_ops(stdio_tx.clone()),
-        ops::testing::deno_test::init_ops(test_event_sender),
+        ops::jupyter::deno_jupyter::init(stdio_tx.clone()),
+        ops::testing::deno_test::init(test_event_sender),
       ],
       // FIXME(nayeemrmn): Test output capturing currently doesn't work.
       Stdio {
@@ -107,6 +113,7 @@ pub async fn kernel(
         stdout: StdioPipe::file(stdout),
         stderr: StdioPipe::file(stderr),
       },
+      None,
     )
     .await?;
   worker.setup_repl().await?;
@@ -119,7 +126,7 @@ pub async fn kernel(
     cli_options,
     npm_installer,
     resolver,
-    tsconfig_resolver,
+    compiler_options_resolver,
     worker,
     main_module,
     test_event_receiver,
@@ -171,12 +178,20 @@ pub async fn kernel(
   };
   let repl_session_proxy_channels = JupyterReplProxy { tx: tx1, rx: rx2 };
 
+  let isolate_handle = repl_session_proxy
+    .repl_session
+    .worker
+    .js_runtime
+    .v8_isolate()
+    .thread_safe_handle();
+
   let join_handle = std::thread::spawn(move || {
     let fut = server::JupyterServer::start(
       spec,
       stdio_rx,
       repl_session_proxy_channels,
       startup_data_tx,
+      isolate_handle,
     )
     .boxed_local();
     deno_runtime::tokio_util::create_and_run_current_thread(fut)
@@ -209,38 +224,33 @@ pub async fn kernel(
 }
 
 pub enum JupyterReplRequest {
-  LspCompletions {
-    line_text: String,
-    position: usize,
-  },
-  JsGetProperties {
+  GetProperties {
     object_id: String,
   },
-  JsEvaluate {
+  Evaluate {
     expr: String,
   },
-  JsGlobalLexicalScopeNames,
-  JsEvaluateLineWithObjectWrapping {
+  GlobalLexicalScopeNames,
+  EvaluateLineWithObjectWrapping {
     line: String,
   },
-  JsCallFunctionOnArgs {
+  CallFunctionOnArgs {
     function_declaration: String,
     args: Vec<cdp::RemoteObject>,
   },
-  JsCallFunctionOn {
+  CallFunctionOn {
     arg0: cdp::CallArgument,
     arg1: cdp::CallArgument,
   },
 }
 
 pub enum JupyterReplResponse {
-  LspCompletions(Vec<ReplCompletionItem>),
-  JsGetProperties(Option<cdp::GetPropertiesResponse>),
-  JsEvaluate(Option<cdp::EvaluateResponse>),
-  JsGlobalLexicalScopeNames(cdp::GlobalLexicalScopeNamesResponse),
-  JsEvaluateLineWithObjectWrapping(Result<repl::TsEvaluateResponse, AnyError>),
-  JsCallFunctionOnArgs(Result<cdp::CallFunctionOnResponse, AnyError>),
-  JsCallFunctionOn(Option<cdp::CallFunctionOnResponse>),
+  GetProperties(Option<cdp::GetPropertiesResponse>),
+  Evaluate(Option<cdp::EvaluateResponse>),
+  GlobalLexicalScopeNames(cdp::GlobalLexicalScopeNamesResponse),
+  EvaluateLineWithObjectWrapping(Result<repl::TsEvaluateResponse, AnyError>),
+  CallFunctionOnArgs(Result<cdp::CallFunctionOnResponse, AnyError>),
+  CallFunctionOn(Option<cdp::CallFunctionOnResponse>),
 }
 
 pub struct JupyterReplProxy {
@@ -249,30 +259,14 @@ pub struct JupyterReplProxy {
 }
 
 impl JupyterReplProxy {
-  pub async fn lsp_completions(
-    &mut self,
-    line_text: String,
-    position: usize,
-  ) -> Vec<ReplCompletionItem> {
-    let _ = self.tx.send(JupyterReplRequest::LspCompletions {
-      line_text,
-      position,
-    });
-    let Some(JupyterReplResponse::LspCompletions(resp)) = self.rx.recv().await
-    else {
-      unreachable!()
-    };
-    resp
-  }
-
   pub async fn get_properties(
     &mut self,
     object_id: String,
   ) -> Option<cdp::GetPropertiesResponse> {
     let _ = self
       .tx
-      .send(JupyterReplRequest::JsGetProperties { object_id });
-    let Some(JupyterReplResponse::JsGetProperties(resp)) = self.rx.recv().await
+      .send(JupyterReplRequest::GetProperties { object_id });
+    let Some(JupyterReplResponse::GetProperties(resp)) = self.rx.recv().await
     else {
       unreachable!()
     };
@@ -283,9 +277,8 @@ impl JupyterReplProxy {
     &mut self,
     expr: String,
   ) -> Option<cdp::EvaluateResponse> {
-    let _ = self.tx.send(JupyterReplRequest::JsEvaluate { expr });
-    let Some(JupyterReplResponse::JsEvaluate(resp)) = self.rx.recv().await
-    else {
+    let _ = self.tx.send(JupyterReplRequest::Evaluate { expr });
+    let Some(JupyterReplResponse::Evaluate(resp)) = self.rx.recv().await else {
       unreachable!()
     };
     resp
@@ -294,8 +287,8 @@ impl JupyterReplProxy {
   pub async fn global_lexical_scope_names(
     &mut self,
   ) -> cdp::GlobalLexicalScopeNamesResponse {
-    let _ = self.tx.send(JupyterReplRequest::JsGlobalLexicalScopeNames);
-    let Some(JupyterReplResponse::JsGlobalLexicalScopeNames(resp)) =
+    let _ = self.tx.send(JupyterReplRequest::GlobalLexicalScopeNames);
+    let Some(JupyterReplResponse::GlobalLexicalScopeNames(resp)) =
       self.rx.recv().await
     else {
       unreachable!()
@@ -309,8 +302,8 @@ impl JupyterReplProxy {
   ) -> Result<repl::TsEvaluateResponse, AnyError> {
     let _ = self
       .tx
-      .send(JupyterReplRequest::JsEvaluateLineWithObjectWrapping { line });
-    let Some(JupyterReplResponse::JsEvaluateLineWithObjectWrapping(resp)) =
+      .send(JupyterReplRequest::EvaluateLineWithObjectWrapping { line });
+    let Some(JupyterReplResponse::EvaluateLineWithObjectWrapping(resp)) =
       self.rx.recv().await
     else {
       unreachable!()
@@ -323,11 +316,11 @@ impl JupyterReplProxy {
     function_declaration: String,
     args: Vec<cdp::RemoteObject>,
   ) -> Result<cdp::CallFunctionOnResponse, AnyError> {
-    let _ = self.tx.send(JupyterReplRequest::JsCallFunctionOnArgs {
+    let _ = self.tx.send(JupyterReplRequest::CallFunctionOnArgs {
       function_declaration,
       args,
     });
-    let Some(JupyterReplResponse::JsCallFunctionOnArgs(resp)) =
+    let Some(JupyterReplResponse::CallFunctionOnArgs(resp)) =
       self.rx.recv().await
     else {
       unreachable!()
@@ -343,9 +336,8 @@ impl JupyterReplProxy {
   ) -> Option<cdp::CallFunctionOnResponse> {
     let _ = self
       .tx
-      .send(JupyterReplRequest::JsCallFunctionOn { arg0, arg1 });
-    let Some(JupyterReplResponse::JsCallFunctionOn(resp)) =
-      self.rx.recv().await
+      .send(JupyterReplRequest::CallFunctionOn { arg0, arg1 });
+    let Some(JupyterReplResponse::CallFunctionOn(resp)) = self.rx.recv().await
     else {
       unreachable!()
     };
@@ -387,61 +379,38 @@ impl JupyterReplSession {
     msg: JupyterReplRequest,
   ) -> Result<(), AnyError> {
     let resp = match msg {
-      JupyterReplRequest::LspCompletions {
-        line_text,
-        position,
-      } => JupyterReplResponse::LspCompletions(
-        self
-          .lsp_completions(&line_text, position, CancellationToken::new())
-          .await,
-      ),
-      JupyterReplRequest::JsGetProperties { object_id } => {
-        JupyterReplResponse::JsGetProperties(
-          self.get_properties(object_id).await,
-        )
+      JupyterReplRequest::GetProperties { object_id } => {
+        JupyterReplResponse::GetProperties(self.get_properties(object_id).await)
       }
-      JupyterReplRequest::JsEvaluate { expr } => {
-        JupyterReplResponse::JsEvaluate(self.evaluate(expr).await)
+      JupyterReplRequest::Evaluate { expr } => {
+        JupyterReplResponse::Evaluate(self.evaluate(expr).await)
       }
-      JupyterReplRequest::JsGlobalLexicalScopeNames => {
-        JupyterReplResponse::JsGlobalLexicalScopeNames(
+      JupyterReplRequest::GlobalLexicalScopeNames => {
+        JupyterReplResponse::GlobalLexicalScopeNames(
           self.global_lexical_scope_names().await,
         )
       }
-      JupyterReplRequest::JsEvaluateLineWithObjectWrapping { line } => {
-        JupyterReplResponse::JsEvaluateLineWithObjectWrapping(
+      JupyterReplRequest::EvaluateLineWithObjectWrapping { line } => {
+        JupyterReplResponse::EvaluateLineWithObjectWrapping(
           self.evaluate_line_with_object_wrapping(&line).await,
         )
       }
-      JupyterReplRequest::JsCallFunctionOnArgs {
+      JupyterReplRequest::CallFunctionOnArgs {
         function_declaration,
         args,
-      } => JupyterReplResponse::JsCallFunctionOnArgs(
+      } => JupyterReplResponse::CallFunctionOnArgs(
         self
           .call_function_on_args(function_declaration, &args)
           .await,
       ),
-      JupyterReplRequest::JsCallFunctionOn { arg0, arg1 } => {
-        JupyterReplResponse::JsCallFunctionOn(
+      JupyterReplRequest::CallFunctionOn { arg0, arg1 } => {
+        JupyterReplResponse::CallFunctionOn(
           self.call_function_on(arg0, arg1).await,
         )
       }
     };
 
     self.tx.send(resp).map_err(|e| e.into())
-  }
-
-  pub async fn lsp_completions(
-    &mut self,
-    line_text: &str,
-    position: usize,
-    token: CancellationToken,
-  ) -> Vec<ReplCompletionItem> {
-    self
-      .repl_session
-      .language_server
-      .completions(line_text, position, token)
-      .await
   }
 
   pub async fn get_properties(
@@ -460,8 +429,7 @@ impl JupyterReplSession {
           non_indexed_properties_only: Some(true),
         }),
       )
-      .await
-      .ok()?;
+      .await;
     serde_json::from_value(get_properties_response).ok()
   }
 
@@ -491,8 +459,7 @@ impl JupyterReplSession {
           unique_context_id: None,
         }),
       )
-      .await
-      .ok()?;
+      .await;
     serde_json::from_value(evaluate_response).ok()
   }
 
@@ -507,8 +474,7 @@ impl JupyterReplSession {
           execution_context_id: Some(self.repl_session.context_id),
         }),
       )
-      .await
-      .unwrap();
+      .await;
     serde_json::from_value(evaluate_response).unwrap()
   }
 
@@ -516,6 +482,14 @@ impl JupyterReplSession {
     &mut self,
     line: &str,
   ) -> Result<repl::TsEvaluateResponse, AnyError> {
+    // Clear any pending termination flag from a previous interrupt request,
+    // so that the next evaluation can proceed normally.
+    self
+      .repl_session
+      .worker
+      .js_runtime
+      .v8_isolate()
+      .cancel_terminate_execution();
     self
       .repl_session
       .evaluate_line_with_object_wrapping(line)
@@ -551,7 +525,7 @@ impl JupyterReplSession {
         "awaitPromise": true,
       })),
     )
-    .await.ok()?;
+    .await;
     serde_json::from_value(response).ok()
   }
 }

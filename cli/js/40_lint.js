@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 // @ts-check
 
@@ -16,7 +16,10 @@ const {
   op_is_cancelled,
 } = core.ops;
 
+/** @type {(id: string, message: string, hint: string | undefined, start: number, end: number, fix: Deno.lint.Fix[]) => void} */
 let doReport = op_lint_report;
+/** @type {() => string} */
+let doGetSource = op_lint_get_source;
 
 // Keep these in sync with Rust
 const AST_IDX_INVALID = 0;
@@ -79,6 +82,7 @@ const PropFlags = {
 /** @typedef {import("./40_lint_types.d.ts").LintState} LintState */
 /** @typedef {import("./40_lint_types.d.ts").TransformFn} TransformFn */
 /** @typedef {import("./40_lint_types.d.ts").MatchContext} MatchContext */
+/** @typedef {import("./40_lint_types.d.ts").MatcherFn} MatcherFn */
 
 /** @type {LintState} */
 const state = {
@@ -193,31 +197,184 @@ class Fixer {
 }
 
 /**
+ * @implements {Deno.lint.SourceCode}
+ */
+export class SourceCode {
+  /** @type {string | null} */
+  #source = null;
+
+  /** @type {AstContext} */
+  #ctx;
+
+  /**
+   * @param {AstContext} ctx
+   */
+  constructor(ctx) {
+    this.#ctx = ctx;
+  }
+
+  get text() {
+    return this.#getSource();
+  }
+
+  get ast() {
+    const program = /** @type {*} */ (getNode(
+      this.#ctx,
+      this.#ctx.rootOffset,
+    ));
+
+    return program;
+  }
+
+  /**
+   * @param {Deno.lint.Node} [node]
+   * @returns {string}
+   */
+  getText(node) {
+    const source = this.#getSource();
+    if (node === undefined) {
+      return source;
+    }
+
+    return source.slice(node.range[0], node.range[1]);
+  }
+
+  /**
+   * @param {Deno.lint.Node} node
+   */
+  getAncestors(node) {
+    const { buf } = this.#ctx;
+
+    /** @type {Deno.lint.Node[]} */
+    const ancestors = [];
+
+    let parent = /** @type {*} */ (node)[INTERNAL_IDX];
+    while ((parent = readParent(buf, parent)) > AST_IDX_INVALID) {
+      if (readType(buf, parent) === AST_GROUP_TYPE) continue;
+
+      const parentNode = /** @type {*} */ (getNode(this.#ctx, parent));
+      if (parentNode !== null) {
+        ancestors.push(parentNode);
+      }
+    }
+
+    ancestors.reverse();
+
+    return ancestors;
+  }
+
+  /**
+   * @returns {Array<Deno.lint.LineComment | Deno.lint.BlockComment>}
+   */
+  getAllComments() {
+    materializeComments(this.#ctx);
+    return this.#ctx.comments;
+  }
+
+  /**
+   * @param {Deno.lint.Node} node
+   * @returns {Array<Deno.lint.LineComment | Deno.lint.BlockComment>}
+   */
+  getCommentsBefore(node) {
+    materializeComments(this.#ctx);
+
+    /** @type {Array<Deno.lint.LineComment | Deno.lint.BlockComment>} */
+    const before = [];
+
+    const { comments } = this.#ctx;
+    for (let i = 0; i < comments.length; i++) {
+      const comment = comments[i];
+      if (comment.range[0] <= node.range[0]) {
+        before.push(comment);
+      }
+    }
+
+    return before;
+  }
+
+  /**
+   * @param {Deno.lint.Node} node
+   * @returns {Array<Deno.lint.LineComment | Deno.lint.BlockComment>}
+   */
+  getCommentsAfter(node) {
+    materializeComments(this.#ctx);
+
+    /** @type {Array<Deno.lint.LineComment | Deno.lint.BlockComment>} */
+    const after = [];
+
+    const { comments } = this.#ctx;
+    for (let i = 0; i < comments.length; i++) {
+      const comment = comments[i];
+      if (comment.range[0] >= node.range[1]) {
+        after.push(comment);
+      }
+    }
+
+    return after;
+  }
+
+  /**
+   * @param {Deno.lint.Node} node
+   * @returns {Array<Deno.lint.LineComment | Deno.lint.BlockComment>}
+   */
+  getCommentsInside(node) {
+    materializeComments(this.#ctx);
+
+    /** @type {Array<Deno.lint.LineComment | Deno.lint.BlockComment>} */
+    const inside = [];
+
+    const { comments } = this.#ctx;
+    for (let i = 0; i < comments.length; i++) {
+      const comment = comments[i];
+      if (
+        comment.range[0] >= node.range[0] && comment.range[1] <= node.range[1]
+      ) {
+        inside.push(comment);
+      }
+    }
+
+    return inside;
+  }
+
+  /**
+   * @returns {string}
+   */
+  #getSource() {
+    if (this.#source === null) {
+      this.#source = doGetSource();
+    }
+    return /** @type {string} */ (this.#source);
+  }
+}
+
+/**
  * Every rule gets their own instance of this class. This is the main
  * API lint rules interact with.
  * @implements {Deno.lint.RuleContext}
  */
 export class Context {
   id;
-
-  fileName;
-
-  #source = null;
+  // ESLint uses lowercase
+  filename;
+  sourceCode;
 
   /**
+   * @param {AstContext} ctx
    * @param {string} id
    * @param {string} fileName
    */
-  constructor(id, fileName) {
+  constructor(ctx, id, fileName) {
     this.id = id;
-    this.fileName = fileName;
+    this.filename = fileName;
+    this.sourceCode = new SourceCode(ctx);
   }
 
-  source() {
-    if (this.#source === null) {
-      this.#source = op_lint_get_source();
-    }
-    return /** @type {*} */ (this.#source);
+  getFilename() {
+    return this.filename;
+  }
+
+  getSourceCode() {
+    return this.sourceCode;
   }
 
   /**
@@ -234,7 +391,13 @@ export class Context {
     const start = range[0];
     const end = range[1];
 
-    /** @type {Deno.lint.FixData[]} */
+    if (start > end) {
+      throw new RangeError(
+        `Invalid range. Start value is bigger than end value: [${start}, ${end}]`,
+      );
+    }
+
+    /** @type {Deno.lint.Fix[]} */
     const fixes = [];
 
     if (typeof data.fix === "function") {
@@ -258,6 +421,34 @@ export class Context {
       end,
       fixes,
     );
+  }
+}
+
+/**
+ * @param {AstContext} ctx
+ */
+function materializeComments(ctx) {
+  const { buf, commentsOffset, comments, strTable } = ctx;
+
+  let offset = commentsOffset;
+  const count = readU32(buf, offset);
+  offset += 4;
+
+  if (comments.length === count) return;
+
+  while (offset < buf.length && comments.length < count) {
+    const kind = buf[offset];
+    offset++;
+    const spanId = readU32(buf, offset);
+    offset += 4;
+    const strId = readU32(buf, offset);
+    offset += 4;
+
+    comments.push({
+      type: kind === 0 ? "Line" : "Block",
+      range: readSpan(ctx, spanId),
+      value: getString(strTable, strId),
+    });
   }
 }
 
@@ -405,6 +596,7 @@ class FacadeNode {
 
 /** @type {Set<number>} */
 const appliedGetters = new Set();
+let hasCommenstGetter = false;
 
 /**
  * Add getters for all potential properties found in the message.
@@ -421,6 +613,9 @@ function setNodeGetters(ctx) {
     const name = getString(ctx.strTable, id);
 
     Object.defineProperty(FacadeNode.prototype, name, {
+      // The `parent` key is expected to be non-enumerable.
+      // See the npm `zimmerframe` library.
+      enumerable: name !== "parent",
       get() {
         return readValue(
           this[INTERNAL_CTX],
@@ -428,6 +623,16 @@ function setNodeGetters(ctx) {
           i,
           getNode,
         );
+      },
+    });
+  }
+
+  if (!hasCommenstGetter) {
+    hasCommenstGetter = true;
+    Object.defineProperty(FacadeNode.prototype, "comments", {
+      get() {
+        materializeComments(this[INTERNAL_CTX]);
+        return this[INTERNAL_CTX].comments;
       },
     });
   }
@@ -645,7 +850,12 @@ function readValue(ctx, idx, search, parseNode) {
   } else if (search === AST_PROP_RANGE) {
     return readSpan(ctx, idx);
   } else if (search === AST_PROP_PARENT) {
-    const parent = readParent(buf, idx);
+    let parent = readParent(buf, idx);
+
+    const parentType = readType(buf, parent);
+    if (parentType === AST_GROUP_TYPE) {
+      parent = readParent(buf, parent);
+    }
     return getNode(ctx, parent);
   }
 
@@ -687,11 +897,15 @@ function getString(strTable, id) {
 
 /** @implements {MatchContext} */
 class MatchCtx {
+  parentLimitIdx = 0;
+
   /**
    * @param {AstContext} ctx
+   * @param {CancellationToken} cancellationToken
    */
-  constructor(ctx) {
+  constructor(ctx, cancellationToken) {
     this.ctx = ctx;
+    this.cancellationToken = cancellationToken;
   }
 
   /**
@@ -699,7 +913,15 @@ class MatchCtx {
    * @returns {number}
    */
   getParent(idx) {
-    return readParent(this.ctx.buf, idx);
+    if (idx === this.parentLimitIdx) return AST_IDX_INVALID;
+    const parent = readParent(this.ctx.buf, idx);
+
+    const parentType = readType(this.ctx.buf, parent);
+    if (parentType === AST_GROUP_TYPE) {
+      return readParent(this.ctx.buf, parent);
+    }
+
+    return parent;
   }
 
   /**
@@ -711,13 +933,44 @@ class MatchCtx {
   }
 
   /**
+   * @param {number} idx
+   * @param {number} propId
+   * @returns {number}
+   */
+  getField(idx, propId) {
+    if (idx === AST_IDX_INVALID) return -1;
+
+    // Bail out on fields that can never point to another node
+    switch (propId) {
+      case AST_PROP_TYPE:
+      case AST_PROP_PARENT:
+      case AST_PROP_RANGE:
+        return -1;
+    }
+
+    const { buf } = this.ctx;
+    let offset = readPropOffset(this.ctx, idx);
+    offset = findPropOffset(buf, offset, propId);
+
+    if (offset === -1) return -1;
+    const _prop = buf[offset++];
+    const kind = buf[offset++];
+
+    if (kind === PropFlags.Ref) {
+      return readU32(buf, offset);
+    }
+
+    return -1;
+  }
+
+  /**
    * @param {number} idx - Node idx
    * @param {number[]} propIds
    * @param {number} propIdx
    * @returns {unknown}
    */
   getAttrPathValue(idx, propIds, propIdx) {
-    if (idx === 0) throw -1;
+    if (idx === AST_IDX_INVALID) throw -1;
 
     const { buf, strTable, strByType } = this.ctx;
 
@@ -832,18 +1085,37 @@ class MatchCtx {
 
     return out;
   }
+
+  /**
+   * Used for `:has()` and `:not()`
+   * @param {MatcherFn[]} selectors
+   * @param {number} idx
+   * @returns {boolean}
+   */
+  subSelect(selectors, idx) {
+    const prevLimit = this.parentLimitIdx;
+    this.parentLimitIdx = idx;
+
+    try {
+      return subTraverse(this.ctx, selectors, idx, idx, this.cancellationToken);
+    } finally {
+      this.parentLimitIdx = prevLimit;
+    }
+  }
 }
 
 /**
  * @param {Uint8Array} buf
+ * @param {CancellationToken} token
  * @returns {AstContext}
  */
-function createAstContext(buf) {
+function createAstContext(buf, token) {
   /** @type {Map<number, string>} */
   const strTable = new Map();
 
   // The buffer has a few offsets at the end which allows us to easily
   // jump to the relevant sections of the message.
+  const commentsOffset = readU32(buf, buf.length - 28);
   const propsOffset = readU32(buf, buf.length - 24);
   const spansOffset = readU32(buf, buf.length - 20);
   const typeMapOffset = readU32(buf, buf.length - 16);
@@ -910,7 +1182,9 @@ function createAstContext(buf) {
     rootOffset,
     spansOffset,
     propsOffset,
+    commentsOffset,
     nodes: new Map(),
+    comments: [],
     strTableOffset,
     strByProp,
     strByType,
@@ -918,7 +1192,7 @@ function createAstContext(buf) {
     propByStr,
     matcher: /** @type {*} */ (null),
   };
-  ctx.matcher = new MatchCtx(ctx);
+  ctx.matcher = new MatchCtx(ctx, token);
 
   setNodeGetters(ctx);
 
@@ -939,7 +1213,8 @@ const NOOP = (_node) => {};
  * @param {Uint8Array} serializedAst
  */
 export function runPluginsForFile(fileName, serializedAst) {
-  const ctx = createAstContext(serializedAst);
+  const token = new CancellationToken();
+  const ctx = createAstContext(serializedAst, token);
 
   /** @type {Map<string, CompiledVisitor["info"]>}>} */
   const bySelector = new Map();
@@ -961,8 +1236,8 @@ export function runPluginsForFile(fileName, serializedAst) {
         continue;
       }
 
-      const ctx = new Context(id, fileName);
-      const visitor = rule.create(ctx);
+      const ruleCtx = new Context(ctx, id, fileName);
+      const visitor = rule.create(ruleCtx);
 
       // deno-lint-ignore guard-for-in
       for (let key in visitor) {
@@ -1016,7 +1291,7 @@ export function runPluginsForFile(fileName, serializedAst) {
         const destroyFn = rule.destroy.bind(rule);
         destroyFns.push(() => {
           try {
-            destroyFn(ctx);
+            destroyFn(ruleCtx);
           } catch (err) {
             throw new Error(`Destroy hook of "${id}" errored`, { cause: err });
           }
@@ -1048,7 +1323,6 @@ export function runPluginsForFile(fileName, serializedAst) {
     visitors.push({ info, matcher });
   }
 
-  const token = new CancellationToken();
   // Traverse ast with all visitors at the same time to avoid traversing
   // multiple times.
   try {
@@ -1070,55 +1344,99 @@ export function runPluginsForFile(fileName, serializedAst) {
  * @param {CancellationToken} cancellationToken
  */
 function traverse(ctx, visitors, idx, cancellationToken) {
-  if (idx === AST_IDX_INVALID) return;
-  if (cancellationToken.isCancellationRequested()) return;
-
   const { buf } = ctx;
-  const nodeType = readType(ctx.buf, idx);
 
-  /** @type {VisitorFn[] | null} */
-  let exits = null;
+  while (idx !== AST_IDX_INVALID) {
+    if (cancellationToken.isCancellationRequested()) return;
 
-  // Only visit if it's an actual node
-  if (nodeType !== AST_GROUP_TYPE) {
-    // Loop over visitors and check if any selector matches
-    for (let i = 0; i < visitors.length; i++) {
-      const v = visitors[i];
-      if (v.matcher(ctx.matcher, idx)) {
-        if (v.info.exit !== NOOP) {
-          if (exits === null) {
-            exits = [v.info.exit];
-          } else {
-            exits.push(v.info.exit);
+    const nodeType = readType(buf, idx);
+
+    /** @type {VisitorFn[] | null} */
+    let exits = null;
+
+    // Only visit if it's an actual node
+    if (nodeType !== AST_GROUP_TYPE) {
+      // Loop over visitors and check if any selector matches
+      for (let i = 0; i < visitors.length; i++) {
+        const v = visitors[i];
+        if (v.matcher(ctx.matcher, idx)) {
+          if (v.info.exit !== NOOP) {
+            if (exits === null) {
+              exits = [v.info.exit];
+            } else {
+              exits.push(v.info.exit);
+            }
+          }
+
+          if (v.info.enter !== NOOP) {
+            const node = /** @type {*} */ (getNode(ctx, idx));
+            v.info.enter(node);
           }
         }
+      }
+    }
 
-        if (v.info.enter !== NOOP) {
+    try {
+      const childIdx = readChild(buf, idx);
+      if (childIdx > AST_IDX_INVALID) {
+        traverse(ctx, visitors, childIdx, cancellationToken);
+      }
+    } finally {
+      if (exits !== null) {
+        for (let i = 0; i < exits.length; i++) {
           const node = /** @type {*} */ (getNode(ctx, idx));
-          v.info.enter(node);
+          exits[i](node);
         }
       }
     }
+
+    idx = readNext(buf, idx);
   }
+}
 
-  try {
-    const childIdx = readChild(buf, idx);
-    if (childIdx > AST_IDX_INVALID) {
-      traverse(ctx, visitors, childIdx, cancellationToken);
-    }
+/**
+ * Used for subqueries in `:has()` and `:not()`
+ * @param {AstContext} ctx
+ * @param {MatcherFn[]} selectors
+ * @param {number} rootIdx
+ * @param {number} idx
+ * @param {CancellationToken} cancellationToken
+ * @returns {boolean}
+ */
+function subTraverse(ctx, selectors, rootIdx, idx, cancellationToken) {
+  const { buf } = ctx;
 
-    const nextIdx = readNext(buf, idx);
-    if (nextIdx > AST_IDX_INVALID) {
-      traverse(ctx, visitors, nextIdx, cancellationToken);
-    }
-  } finally {
-    if (exits !== null) {
-      for (let i = 0; i < exits.length; i++) {
-        const node = /** @type {*} */ (getNode(ctx, idx));
-        exits[i](node);
+  while (idx > AST_IDX_INVALID) {
+    if (cancellationToken.isCancellationRequested()) return false;
+
+    const nodeType = readType(buf, idx);
+
+    if (nodeType !== AST_GROUP_TYPE) {
+      for (let i = 0; i < selectors.length; i++) {
+        const sel = selectors[i];
+
+        if (sel(ctx.matcher, idx)) {
+          return true;
+        }
       }
     }
+
+    const childIdx = readChild(buf, idx);
+    if (
+      childIdx > AST_IDX_INVALID &&
+      subTraverse(ctx, selectors, rootIdx, childIdx, cancellationToken)
+    ) {
+      return true;
+    }
+
+    if (idx === rootIdx) {
+      break;
+    }
+
+    idx = readNext(buf, idx);
   }
+
+  return false;
 }
 
 /**
@@ -1270,13 +1588,14 @@ internals.runPluginsForFile = runPluginsForFile;
 internals.resetState = resetState;
 
 /**
- * @param {LintPlugin} plugin
+ * @param {Deno.lint.Plugin} plugin
  * @param {string} fileName
  * @param {string} sourceText
  */
 function runLintPlugin(plugin, fileName, sourceText) {
   installPlugin(plugin);
 
+  /** @type {Deno.lint.Diagnostic[]} */
   const diagnostics = [];
   doReport = (id, message, hint, start, end, fix) => {
     diagnostics.push({
@@ -1287,6 +1606,9 @@ function runLintPlugin(plugin, fileName, sourceText) {
       fix,
     });
   };
+  doGetSource = () => {
+    return sourceText;
+  };
   try {
     const serializedAst = op_lint_create_serialized_ast(fileName, sourceText);
 
@@ -1295,6 +1617,7 @@ function runLintPlugin(plugin, fileName, sourceText) {
     resetState();
   }
   doReport = op_lint_report;
+  doGetSource = op_lint_get_source;
   return diagnostics;
 }
 

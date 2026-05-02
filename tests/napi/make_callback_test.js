@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 import { assertEquals, loadTestLibrary } from "./common.js";
 
@@ -31,6 +31,26 @@ Deno.test("napi makeCallback2", function () {
   }
   assertEquals(mc.makeCallback(resource, globalThis, cb, 1337), 42);
   assertEquals(callCount, 1);
+});
+
+Deno.test("napi makeCallback recursive", function () {
+  const resource = {};
+  let callCount = 0;
+
+  // JS callback that the native side calls via napi_make_callback.
+  // It calls back into the native recurse function with decremented depth.
+  function recursiveCallback(remainingDepth) {
+    callCount++;
+    if (remainingDepth <= 0) {
+      return callCount;
+    }
+    return mc.makeCallbackRecurse(resource, recursiveCallback, remainingDepth);
+  }
+
+  // Start recursion at depth 5
+  const result = mc.makeCallbackRecurse(resource, recursiveCallback, 5);
+  assertEquals(callCount, 5);
+  assertEquals(result, 5);
 });
 
 Deno.test("napi makeCallback3", function () {

@@ -1,6 +1,6 @@
-Check file://[WILDCARD]/mod.ts
+Check [WILDCARD]mod.ts
 Checking for slow types in the public API...
-Check file://[WILDCARD]/mod.ts
+Check [WILDCARD]mod.ts
 warning[unanalyzable-dynamic-import]: unable to analyze dynamic import
  --> [WILDCARD]mod.ts:2:14
   | 

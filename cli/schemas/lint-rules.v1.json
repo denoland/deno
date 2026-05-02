@@ -1,5 +1,6 @@
 {
-  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://deno.land/x/deno/cli/schemas/lint-rules.v1.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
   "oneOf": [
     {
       "type": "string",
@@ -74,6 +75,7 @@
         "no-implicit-declare-namespace-export",
         "no-import-assertions",
         "no-import-assign",
+        "no-import-prefix",
         "no-inferrable-types",
         "no-inner-declarations",
         "no-invalid-regexp",
@@ -109,6 +111,7 @@
         "no-unsafe-negation",
         "no-unused-labels",
         "no-unused-vars",
+        "no-unversioned-import",
         "no-useless-rename",
         "no-var",
         "no-window",

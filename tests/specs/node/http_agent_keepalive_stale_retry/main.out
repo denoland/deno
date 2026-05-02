@@ -1,0 +1,4 @@
+First request: request 1
+Second request: request 2
+Third request: request 3
+All stale retry tests passed!

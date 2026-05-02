@@ -4,3 +4,6 @@ TS2584 [ERROR]: Cannot find name 'document'. Do you need to change your target l
     at [WILDCARD]frontend_work.ts:2:15
 
 error: Type checking failed.
+
+  info: The program failed type-checking, but it still might work correctly.
+  hint: Re-run with --no-check to skip type-checking.

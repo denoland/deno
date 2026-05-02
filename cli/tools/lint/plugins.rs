@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::path::Path;
 use std::path::PathBuf;
@@ -9,28 +9,26 @@ use ::tokio_util::sync::CancellationToken;
 use deno_ast::ModuleSpecifier;
 use deno_ast::ParsedSource;
 use deno_ast::SourceTextInfo;
+use deno_core::PollEventLoopOptions;
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
-use deno_core::error::CoreError;
 use deno_core::error::JsError;
 use deno_core::futures::FutureExt;
 use deno_core::parking_lot::Mutex;
-use deno_core::resolve_url_or_path;
 use deno_core::v8;
-use deno_core::PollEventLoopOptions;
 use deno_lint::diagnostic::LintDiagnostic;
+use deno_path_util::resolve_url_or_path;
 use deno_path_util::url_from_file_path;
-use deno_runtime::deno_permissions::Permissions;
-use deno_runtime::deno_permissions::PermissionsContainer;
+use deno_runtime::WorkerExecutionMode;
 use deno_runtime::tokio_util;
 use deno_runtime::worker::MainWorker;
-use deno_runtime::WorkerExecutionMode;
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
 
 use crate::args::DenoSubcommand;
 use crate::args::Flags;
 use crate::args::LintFlags;
+use crate::args::PermissionFlags;
 use crate::factory::CliFactory;
 use crate::ops::lint::LintPluginContainer;
 use crate::tools::lint::serialize_ast_to_buffer;
@@ -105,8 +103,6 @@ v8_static_strings! {
 pub struct PluginHostProxy {
   tx: mpsc::Sender<PluginHostRequest>,
   pub(crate) plugin_info: Arc<Mutex<Vec<PluginInfo>>>,
-  #[allow(unused)]
-  join_handle: std::thread::JoinHandle<Result<(), AnyError>>,
 }
 
 impl PluginHostProxy {
@@ -136,6 +132,13 @@ async fn create_plugin_runner_inner(
 ) -> Result<PluginHost, AnyError> {
   let flags = Flags {
     subcommand: DenoSubcommand::Lint(LintFlags::default()),
+    // Lint plugins have unconditional access to env vars and file reading.
+    permissions: PermissionFlags {
+      allow_env: Some(vec![]),
+      allow_read: Some(vec![]),
+      no_prompt: true,
+      ..Default::default()
+    },
     ..Default::default()
   };
   let flags = Arc::new(flags);
@@ -143,12 +146,7 @@ async fn create_plugin_runner_inner(
   let cli_options = factory.cli_options()?;
   let main_module =
     resolve_url_or_path("./$deno$lint.mts", cli_options.initial_cwd()).unwrap();
-  let perm_parser = factory.permission_desc_parser()?;
-  let permissions = Permissions::from_options(
-    perm_parser.as_ref(),
-    &cli_options.permissions_options(),
-  )?;
-  let permissions = PermissionsContainer::new(perm_parser.clone(), permissions);
+  let permissions = factory.root_permissions_container()?.clone();
   // let npm_resolver = factory.npm_resolver().await?.clone();
   // let resolver = factory.resolver().await?.clone();
   let worker_factory = factory.create_cli_main_worker_factory().await?;
@@ -158,9 +156,14 @@ async fn create_plugin_runner_inner(
       // TODO(bartlomieju): add "lint" execution mode
       WorkerExecutionMode::Run,
       main_module.clone(),
+      // `deno lint` doesn't support preloading modules
+      vec![],
+      // `deno lint` doesn't support require modules
+      vec![],
       permissions,
-      vec![crate::ops::lint::deno_lint_ext::init_ops(logger.clone())],
+      vec![crate::ops::lint::deno_lint_ext::init(logger.clone())],
       Default::default(),
+      None,
     )
     .await?;
 
@@ -171,7 +174,7 @@ async fn create_plugin_runner_inner(
 
   log::debug!("Lint plugins loaded, capturing default exports");
   let (install_plugins_fn, run_plugins_for_file_fn) = {
-    let scope = &mut runtime.handle_scope();
+    deno_core::scope!(scope, runtime);
     let module_exports: v8::Local<v8::Object> =
       v8::Local::new(scope, obj).try_into().unwrap();
 
@@ -228,28 +231,29 @@ impl PluginHost {
     let (tx_req, rx_req) = mpsc::channel(10);
 
     let logger_ = logger.clone();
-    let join_handle = std::thread::spawn(move || {
-      let logger = logger_;
-      log::debug!("Lint PluginHost thread spawned");
-      let start = std::time::Instant::now();
-      let fut = async move {
-        let runner = create_plugin_runner_inner(logger.clone(), rx_req).await?;
-        log::debug!("Lint PlugibnHost running loop");
-        runner.run_loop().await?;
-        log::debug!(
-          "Lint PluginHost thread finished, took {:?}",
-          std::time::Instant::now() - start
-        );
-        Ok(())
-      }
-      .boxed_local();
-      tokio_util::create_and_run_current_thread(fut)
-    });
+    let _join_handle: std::thread::JoinHandle<Result<(), AnyError>> =
+      std::thread::spawn(move || {
+        let logger = logger_;
+        log::debug!("Lint PluginHost thread spawned");
+        let start = std::time::Instant::now();
+        let fut = async move {
+          let runner =
+            create_plugin_runner_inner(logger.clone(), rx_req).await?;
+          log::debug!("Lint PlugibnHost running loop");
+          runner.run_loop().await?;
+          log::debug!(
+            "Lint PluginHost thread finished, took {:?}",
+            std::time::Instant::now() - start
+          );
+          Ok(())
+        }
+        .boxed_local();
+        tokio_util::create_and_run_current_thread(fut)
+      });
 
     let proxy = PluginHostProxy {
       tx: tx_req,
       plugin_info: Arc::new(Mutex::new(vec![])),
-      join_handle,
     };
 
     Ok(proxy)
@@ -326,7 +330,7 @@ impl PluginHost {
       );
     }
 
-    let scope = &mut self.worker.js_runtime.handle_scope();
+    deno_core::scope!(scope, &mut self.worker.js_runtime);
     let file_name_v8: v8::Local<v8::Value> =
       v8::String::new(scope, &file_path.display().to_string())
         .unwrap()
@@ -343,19 +347,20 @@ impl PluginHost {
       v8::Local::new(scope, &*self.run_plugins_for_file_fn);
     let undefined = v8::undefined(scope);
 
-    let mut tc_scope = v8::TryCatch::new(scope);
-    let _run_plugins_result = run_plugins_for_file.call(
-      &mut tc_scope,
-      undefined.into(),
-      &[file_name_v8, ast_bin_v8],
-    );
+    let _run_plugins_result = {
+      v8::tc_scope!(tc_scope, scope);
+      let _run_plugins_result = run_plugins_for_file.call(
+        tc_scope,
+        undefined.into(),
+        &[file_name_v8, ast_bin_v8],
+      );
 
-    if let Some(exception) = tc_scope.exception() {
-      let error = JsError::from_v8_exception(&mut tc_scope, exception);
-      let core_err = CoreError::Js(error);
-      return Err(core_err.into());
-    }
-    drop(tc_scope);
+      if let Some(exception) = tc_scope.exception() {
+        let error = JsError::from_v8_exception(tc_scope, exception);
+        return Err(error.into());
+      }
+      _run_plugins_result
+    };
     Ok(())
   }
 
@@ -387,7 +392,7 @@ impl PluginHost {
     for (fut, mod_id) in load_futures {
       fut.await?;
       let module = self.worker.js_runtime.get_module_namespace(mod_id).unwrap();
-      let scope = &mut self.worker.js_runtime.handle_scope();
+      deno_core::scope!(scope, &mut self.worker.js_runtime);
       let module_local = v8::Local::new(scope, module);
       let default_export_str = DEFAULT.v8_string(scope).unwrap();
       let default_export =
@@ -396,7 +401,7 @@ impl PluginHost {
       plugin_handles.push(default_export_global);
     }
 
-    let scope = &mut self.worker.js_runtime.handle_scope();
+    deno_core::scope!(scope, &mut self.worker.js_runtime);
     let install_plugins_local =
       v8::Local::new(scope, &*self.install_plugins_fn.clone());
     let exclude_v8: v8::Local<v8::Value> =
@@ -425,14 +430,16 @@ impl PluginHost {
 
     log::debug!("Installing lint plugins...");
 
-    let mut tc_scope = v8::TryCatch::new(scope);
-    let plugins_info_result =
-      install_plugins_local.call(&mut tc_scope, undefined.into(), args);
-    if let Some(exception) = tc_scope.exception() {
-      let error = JsError::from_v8_exception(&mut tc_scope, exception);
-      return Err(error.into());
-    }
-    drop(tc_scope);
+    let plugins_info_result = {
+      v8::tc_scope!(tc_scope, scope);
+      let plugins_info_result =
+        install_plugins_local.call(tc_scope, undefined.into(), args);
+      if let Some(exception) = tc_scope.exception() {
+        let error = JsError::from_v8_exception(tc_scope, exception);
+        return Err(error.into());
+      }
+      plugins_info_result
+    };
     let plugins_info = plugins_info_result.unwrap();
     let infos: Vec<PluginInfo> =
       deno_core::serde_v8::from_v8(scope, plugins_info)?;

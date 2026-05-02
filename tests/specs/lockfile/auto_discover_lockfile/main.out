@@ -1,5 +1,6 @@
 Download http://localhost:4545/subdir/mod2.ts
 Download http://localhost:4545/subdir/print_hello.ts
+Download http://localhost:4545/subdir/print_hello.ts
 error: Integrity check failed for remote specifier. The source code is invalid, as it does not match the expected hash in the lock file.
 
   Specifier: http://localhost:4545/subdir/print_hello.ts

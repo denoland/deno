@@ -1,6 +1,7 @@
 *.orig
 *.pyc
 *.swp
+*.symcache
 .env
 
 /.cargo_home/
@@ -16,6 +17,8 @@ gclient_config.py_entries
 /tests/napi/build
 /tests/napi/third_party_tests/node_modules
 
+/result
+
 # MacOS generated files
 .DS_Store
 .DS_Store?
@@ -30,6 +33,9 @@ gclient_config.py_entries
 
 /ext/websocket/autobahn/reports
 
+# Coverage files
+/coverage
+
 # JUnit files produced by deno test --junit
 junit.xml
 
@@ -39,3 +45,8 @@ Untitled*.ipynb
 
 # playwright browser binary cache
 /.ms-playwright
+
+**/.claude/settings.local.json
+
+# pyenv
+/.python-version
