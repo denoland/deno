@@ -3400,9 +3400,10 @@ fn encrypt_pkcs8_der(
 /// SECURITY: This format is known-weak — it derives the encryption key with a
 /// single MD5 round of EVP_BytesToKey, has no MAC (only PKCS#7 padding to
 /// detect corruption), and reuses the first 8 bytes of the IV as the salt.
-/// PKCS#7 unpadding via `block-padding` is not constant-time, so callers that
-/// expose this to adversarial input may leak through padding-oracle timing.
-/// Acceptable for one-shot local PEM imports; do not use as a transport.
+/// PKCS#7 unpadding is implemented in constant time (`pkcs7_unpad_ct`) so the
+/// decrypt path itself doesn't leak through padding-oracle timing, but the
+/// format-level weaknesses above are inherent to RFC 1421. Acceptable for
+/// one-shot local PEM imports; do not use as a transport.
 fn parse_legacy_encrypted_pem<'a>(
   pem: &'a str,
   passphrase: Option<&[u8]>,
@@ -3505,27 +3506,99 @@ fn decrypt_legacy_pem_data(
 ) -> Result<Vec<u8>, ()> {
   use aes::cipher::BlockDecryptMut;
   use aes::cipher::KeyIvInit;
-  use aes::cipher::block_padding::Pkcs7;
+  use aes::cipher::block_padding::NoPadding;
 
-  match cipher_name {
-    "AES-128-CBC" => cbc::Decryptor::<aes::Aes128>::new_from_slices(key, iv)
-      .map_err(|_| ())?
-      .decrypt_padded_vec_mut::<Pkcs7>(data)
-      .map_err(|_| ()),
-    "AES-192-CBC" => cbc::Decryptor::<aes::Aes192>::new_from_slices(key, iv)
-      .map_err(|_| ())?
-      .decrypt_padded_vec_mut::<Pkcs7>(data)
-      .map_err(|_| ()),
-    "AES-256-CBC" => cbc::Decryptor::<aes::Aes256>::new_from_slices(key, iv)
-      .map_err(|_| ())?
-      .decrypt_padded_vec_mut::<Pkcs7>(data)
-      .map_err(|_| ()),
-    "DES-EDE3-CBC" => cbc::Decryptor::<des::TdesEde3>::new_from_slices(key, iv)
-      .map_err(|_| ())?
-      .decrypt_padded_vec_mut::<Pkcs7>(data)
-      .map_err(|_| ()),
-    _ => Err(()),
+  let (mut decrypted, block_size) = match cipher_name {
+    "AES-128-CBC" => (
+      cbc::Decryptor::<aes::Aes128>::new_from_slices(key, iv)
+        .map_err(|_| ())?
+        .decrypt_padded_vec_mut::<NoPadding>(data)
+        .map_err(|_| ())?,
+      16usize,
+    ),
+    "AES-192-CBC" => (
+      cbc::Decryptor::<aes::Aes192>::new_from_slices(key, iv)
+        .map_err(|_| ())?
+        .decrypt_padded_vec_mut::<NoPadding>(data)
+        .map_err(|_| ())?,
+      16usize,
+    ),
+    "AES-256-CBC" => (
+      cbc::Decryptor::<aes::Aes256>::new_from_slices(key, iv)
+        .map_err(|_| ())?
+        .decrypt_padded_vec_mut::<NoPadding>(data)
+        .map_err(|_| ())?,
+      16usize,
+    ),
+    "DES-EDE3-CBC" => (
+      cbc::Decryptor::<des::TdesEde3>::new_from_slices(key, iv)
+        .map_err(|_| ())?
+        .decrypt_padded_vec_mut::<NoPadding>(data)
+        .map_err(|_| ())?,
+      8usize,
+    ),
+    _ => return Err(()),
+  };
+
+  pkcs7_unpad_ct(&mut decrypted, block_size).ok_or(())?;
+  Ok(decrypted)
+}
+
+/// Constant-time PKCS#7 unpadding. Verifies and strips the trailing padding
+/// from a decrypted CBC buffer without branching on padding-byte values, so
+/// the decrypt path doesn't expose a Vaudenay-style padding oracle.
+///
+/// All bytes in the last block are inspected on every call; the comparison
+/// against the claimed pad length and the equality checks against the pad
+/// byte are computed branchlessly and combined with bitwise AND so the only
+/// data-dependent branch is the final accept/reject.
+fn pkcs7_unpad_ct(buf: &mut Vec<u8>, block_size: usize) -> Option<()> {
+  use subtle::Choice;
+  use subtle::ConstantTimeEq;
+
+  let len = buf.len();
+  if len == 0 || len < block_size || !len.is_multiple_of(block_size) {
+    return None;
   }
+
+  let pad_byte = buf[len - 1];
+
+  // valid_pad_len: pad_byte is in [1, block_size]. Computed branchlessly so
+  // the decision doesn't leak the actual pad length.
+  let pad_nonzero = !pad_byte.ct_eq(&0u8);
+  let pad_in_range = u8_le_ct(pad_byte, block_size as u8);
+  let mut valid: Choice = pad_nonzero & pad_in_range;
+
+  // For each position in the last block, if position-from-end < pad_byte the
+  // byte must equal pad_byte. Loop over all `block_size` positions every time
+  // to avoid leaking pad_byte through loop length.
+  let start = len - block_size;
+  for i in 0..block_size {
+    let pos_from_end = (block_size - 1 - i) as u8;
+    // is_in_pad: pad_byte > pos_from_end. Branchless via i16 subtraction.
+    let is_in_pad = u8_gt_ct(pad_byte, pos_from_end);
+    let byte_matches = buf[start + i].ct_eq(&pad_byte);
+    // valid &= !is_in_pad | byte_matches
+    valid &= !is_in_pad | byte_matches;
+  }
+
+  if !bool::from(valid) {
+    return None;
+  }
+  let pad_len = pad_byte as usize;
+  buf.truncate(len - pad_len);
+  Some(())
+}
+
+#[inline]
+fn u8_gt_ct(a: u8, b: u8) -> subtle::Choice {
+  let diff = (b as i16).wrapping_sub(a as i16);
+  subtle::Choice::from(((diff as u16) >> 15) as u8)
+}
+
+#[inline]
+fn u8_le_ct(a: u8, b: u8) -> subtle::Choice {
+  !u8_gt_ct(a, b)
 }
 
 /// Derive an encryption key from a passphrase and salt using the legacy
