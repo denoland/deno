@@ -4,5 +4,9 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
+import { internals } from "ext:core/mod.js";
+
 export const kHandle = Symbol("kHandle");
 export const kKeyObject = Symbol("kKeyObject");
+
+internals.kKeyObject = kKeyObject;
