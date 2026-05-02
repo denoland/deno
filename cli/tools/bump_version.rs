@@ -11,6 +11,7 @@ use deno_config::workspace::JsrPackageConfig;
 use deno_core::anyhow::Context;
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
+use deno_core::serde_json;
 use deno_semver::SmallStackString;
 use deno_semver::Version;
 use jsonc_parser::cst::CstObject;
@@ -309,6 +310,8 @@ struct WorkspacePackage {
   name: String,
   current_version: Version,
   config_path: PathBuf,
+  /// Path relative to the repo root, for `git show <ref>:<path>`.
+  config_path_relative: String,
 }
 
 #[allow(clippy::print_stdout, reason = "user-facing output")]
@@ -317,7 +320,11 @@ fn bump_workspace(
   version_flags: &VersionFlags,
 ) -> Result<(), AnyError> {
   let workspace = cli_options.workspace();
-  let pkgs = collect_workspace_packages(workspace.jsr_packages().collect())?;
+  let root_dir = workspace.root_dir_path();
+  let pkgs = collect_workspace_packages(
+    workspace.jsr_packages().collect(),
+    &root_dir,
+  )?;
 
   if pkgs.is_empty() {
     bail!(
@@ -337,6 +344,7 @@ fn bump_workspace(
 
 fn collect_workspace_packages(
   jsr_packages: Vec<JsrPackageConfig>,
+  root_dir: &Path,
 ) -> Result<Vec<WorkspacePackage>, AnyError> {
   let mut out = Vec::new();
   for pkg in jsr_packages {
@@ -352,10 +360,16 @@ fn collect_workspace_packages(
     let config_path =
       deno_path_util::url_to_file_path(&pkg.config_file.specifier)
         .context("Failed to convert deno.json URL to path")?;
+    let config_path_relative = config_path
+      .strip_prefix(root_dir)
+      .unwrap_or(&config_path)
+      .to_string_lossy()
+      .into_owned();
     out.push(WorkspacePackage {
       name: pkg.name.clone(),
       current_version: version,
       config_path,
+      config_path_relative,
     });
   }
   Ok(out)
@@ -475,14 +489,51 @@ fn bump_workspace_conventional(
     }
   }
 
-  if bumps_by_pkg.is_empty() {
+  // Detect manual version changes by comparing the version at the start ref
+  // with the current version on disk. If someone manually bumped a version
+  // between releases, use that change as-is instead of computing from commits.
+  let mut manual_changes: BTreeMap<String, (Version, Version)> =
+    BTreeMap::new();
+  for pkg in pkgs.iter() {
+    if let Some(old_version) =
+      read_version_at_ref(&root_dir, &start, &pkg.config_path_relative)
+    {
+      if old_version != pkg.current_version {
+        println!(
+          "Detected manual version change for {}: {} -> {}",
+          pkg.name, old_version, pkg.current_version
+        );
+        manual_changes.insert(
+          pkg.name.clone(),
+          (old_version, pkg.current_version.clone()),
+        );
+      }
+    }
+  }
+
+  if bumps_by_pkg.is_empty() && manual_changes.is_empty() {
     println!("No version bumps inferred from commits.");
     return Ok(());
   }
 
   let mut updates: Vec<(String, Version, Version, PathBuf)> = Vec::new();
   let mut applied_diff_by_pkg: BTreeMap<String, AppliedDiff> = BTreeMap::new();
+  // Track which packages were manually changed so we skip writing their version.
+  let mut manually_bumped: BTreeSet<String> = BTreeSet::new();
   for pkg in pkgs {
+    // Manual changes take precedence over commit-derived bumps.
+    if let Some((old_version, new_version)) = manual_changes.get(&pkg.name) {
+      let applied = diff_from_versions(old_version, new_version);
+      applied_diff_by_pkg.insert(pkg.name.clone(), applied);
+      updates.push((
+        pkg.name.clone(),
+        old_version.clone(),
+        new_version.clone(),
+        pkg.config_path.clone(),
+      ));
+      manually_bumped.insert(pkg.name.clone());
+      continue;
+    }
     let Some(intended_bump) = bumps_by_pkg.get(&pkg.name) else {
       continue;
     };
@@ -521,10 +572,13 @@ fn bump_workspace_conventional(
     return Ok(());
   }
 
-  for (_, _, new_version, path) in &updates {
-    let mut updater = ConfigUpdater::new(path.clone())?;
-    updater.set_version(&new_version.to_string());
-    updater.commit()?;
+  for (name, _, new_version, path) in &updates {
+    // Skip writing versions that were already manually changed on disk.
+    if !manually_bumped.contains(name) {
+      let mut updater = ConfigUpdater::new(path.clone())?;
+      updater.set_version(&new_version.to_string());
+      updater.commit()?;
+    }
   }
 
   rewrite_import_map(cli_options, version_flags, &updates)?;
@@ -879,6 +933,35 @@ fn run_git(cwd: &Path, args: &[&str]) -> Result<String, AnyError> {
     );
   }
   Ok(String::from_utf8_lossy(&output.stdout).into_owned())
+}
+
+/// Read the `"version"` field from a deno.json at a given git ref.
+/// Returns `None` if the file doesn't exist at that ref or has no version.
+fn read_version_at_ref(
+  cwd: &Path,
+  git_ref: &str,
+  relative_path: &str,
+) -> Option<Version> {
+  let refspec = format!("{}:{}", git_ref, relative_path);
+  let content = run_git(cwd, &["show", &refspec]).ok()?;
+  // Parse as JSON/JSONC to extract the version field.
+  let value: serde_json::Value = serde_json::from_str(&content).ok()?;
+  let version_str = value.get("version")?.as_str()?;
+  Version::parse_standard(version_str).ok()
+}
+
+/// Classify the type of change between two versions.
+fn diff_from_versions(old: &Version, new: &Version) -> AppliedDiff {
+  if !new.pre.is_empty() || !old.pre.is_empty() {
+    return AppliedDiff::Prerelease;
+  }
+  if new.major != old.major {
+    return AppliedDiff::Bump(BumpKind::Major);
+  }
+  if new.minor != old.minor {
+    return AppliedDiff::Bump(BumpKind::Minor);
+  }
+  AppliedDiff::Bump(BumpKind::Patch)
 }
 
 const COMMIT_SEPARATOR: &str = "<!--bump-version-commit-separator-->";
@@ -1367,6 +1450,36 @@ mod tests {
     assert!(note.contains("### 2026.04.29"));
     assert!(note.contains("#### @std/foo 0.1.1 (patch)"));
     assert!(note.contains("- fix(foo): a"));
+  }
+
+  #[test]
+  fn diff_from_versions_stable() {
+    assert_eq!(
+      diff_from_versions(&v("1.0.0"), &v("2.0.0")),
+      AppliedDiff::Bump(BumpKind::Major)
+    );
+    assert_eq!(
+      diff_from_versions(&v("1.0.0"), &v("1.1.0")),
+      AppliedDiff::Bump(BumpKind::Minor)
+    );
+    assert_eq!(
+      diff_from_versions(&v("1.0.0"), &v("1.0.1")),
+      AppliedDiff::Bump(BumpKind::Patch)
+    );
+  }
+
+  #[test]
+  fn diff_from_versions_prerelease() {
+    assert_eq!(
+      diff_from_versions(&v("1.0.0-rc.1"), &v("1.0.0-rc.2")),
+      AppliedDiff::Prerelease
+    );
+    // Promoting from prerelease to stable is also classified as prerelease
+    // since the prerelease was involved.
+    assert_eq!(
+      diff_from_versions(&v("1.0.0-rc.1"), &v("1.0.0")),
+      AppliedDiff::Prerelease
+    );
   }
 
   #[test]
