@@ -19,6 +19,11 @@ import * as udpWrap from "ext:deno_node/internal_binding/udp_wrap.ts";
 import * as util from "ext:deno_node/internal_binding/util.ts";
 import * as uvNamespace from "ext:deno_node/internal_binding/uv.ts";
 import * as httpParser from "ext:deno_node/internal_binding/http_parser.ts";
+import {
+  op_node_start_sigint_watchdog,
+  op_node_stop_sigint_watchdog,
+  op_node_watchdog_has_pending_sigint,
+} from "ext:core/ops";
 import * as http2Binding from "ext:deno_node/internal_binding/http2.ts";
 
 // Mutable shallow copy so callers can replace properties (e.g. wrap
@@ -46,7 +51,11 @@ const modules = {
   "cares_wrap": caresWrap,
   config: {},
   constants,
-  contextify: {},
+  contextify: {
+    startSigintWatchdog: op_node_start_sigint_watchdog,
+    stopSigintWatchdog: op_node_stop_sigint_watchdog,
+    watchdogHasPendingSigint: op_node_watchdog_has_pending_sigint,
+  },
   credentials: {},
   crypto,
   errors: {},

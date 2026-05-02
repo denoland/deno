@@ -1,0 +1,8 @@
+{
+  // SIGINT trace handler test — Unix only because Windows uses
+  // GenerateConsoleCtrlEvent which targets the whole console group.
+  "if": "unix",
+  "args": "run --allow-all main.ts",
+  "output": "Error: SIGINT\n[WILDCARD]innerWork[WILDCARD]main.ts[WILDCARD]\n[WILDCARD]",
+  "exitCode": 130
+}
