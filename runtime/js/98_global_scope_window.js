@@ -14,10 +14,12 @@ const {
   StringPrototypeSlice,
 } = primordials;
 
-import * as location from "ext:deno_web/12_location.js";
-import * as console from "ext:deno_web/01_console.js";
+const location = core.loadExtScript("ext:deno_web/12_location.js");
+const console = core.loadExtScript("ext:deno_web/01_console.js");
 const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
-import * as globalInterfaces from "ext:deno_web/04_global_interfaces.js";
+const globalInterfaces = core.loadExtScript(
+  "ext:deno_web/04_global_interfaces.js",
+);
 const webStorage = core.loadExtScript("ext:deno_webstorage/01_webstorage.js");
 import * as prompt from "ext:runtime/41_prompt.js";
 import { loadWebGPU } from "ext:deno_webgpu/00_init.js";

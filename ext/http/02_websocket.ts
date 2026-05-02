@@ -17,7 +17,7 @@ import {
   fromInnerResponse,
   newInnerResponse,
 } from "ext:deno_fetch/23_response.js";
-import { setEventTargetData } from "ext:deno_web/02_event.js";
+const { setEventTargetData } = core.loadExtScript("ext:deno_web/02_event.js");
 
 const loadWebSocket = core.createLazyLoader(
   "ext:deno_websocket/01_websocket.js",

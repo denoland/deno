@@ -10,7 +10,7 @@ import {
 
 const timers = core.loadExtScript("ext:deno_web/02_timers.js");
 import * as httpClient from "ext:deno_fetch/22_http_client.js";
-import * as console from "ext:deno_web/01_console.js";
+const console = core.loadExtScript("ext:deno_web/01_console.js");
 import * as ffi from "ext:deno_ffi/00_ffi.js";
 import * as net from "ext:deno_net/01_net.js";
 import * as tls from "ext:deno_net/02_tls.js";
@@ -38,7 +38,9 @@ import { bundle } from "ext:deno_bundle_runtime/bundle.ts";
 const { ObjectDefineProperties, Float64Array } = primordials;
 
 const loadQuic = core.createLazyLoader("ext:deno_net/03_quic.js");
-const loadWebTransport = core.createLazyLoader("ext:deno_web/webtransport.js");
+const loadWebTransport = core.createLazyLoader(
+  "ext:deno_web/webtransport.js",
+);
 
 // the out buffer for `cpuUsage` and `memoryUsage`
 const usageBuffer = new Float64Array(4);

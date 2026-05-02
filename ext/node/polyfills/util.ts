@@ -52,7 +52,7 @@ import {
 } from "ext:deno_node/internal/validators.mjs";
 import { parseArgs } from "ext:deno_node/internal/util/parse_args/parse_args.js";
 import { MIMEParams, MIMEType } from "ext:deno_node/internal/mime.ts";
-import * as abortSignal from "ext:deno_web/03_abort_signal.js";
+const abortSignal = core.loadExtScript("ext:deno_web/03_abort_signal.js");
 import { ERR_INVALID_ARG_TYPE } from "ext:deno_node/internal/errors.ts";
 import binding from "ext:deno_node/internal_binding/util.ts";
 import { validateOneOf } from "ext:deno_node/internal/validators.mjs";

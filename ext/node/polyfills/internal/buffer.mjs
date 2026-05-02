@@ -77,7 +77,9 @@ import {
   op_transcode,
 } from "ext:core/ops";
 
-import { TextDecoder, TextEncoder } from "ext:deno_web/08_text_encoding.js";
+const { TextDecoder, TextEncoder } = core.loadExtScript(
+  "ext:deno_web/08_text_encoding.js",
+);
 import { codes } from "ext:deno_node/internal/error_codes.ts";
 import { encodings } from "ext:deno_node/internal_binding/string_decoder.ts";
 import {
@@ -115,9 +117,13 @@ import {
   NodeError,
 } from "ext:deno_node/internal/errors.ts";
 import { getOptionValue } from "ext:deno_node/internal/options.ts";
-import { forgivingBase64UrlEncode } from "ext:deno_web/00_infra.js";
+const { forgivingBase64UrlEncode } = core.loadExtScript(
+  "ext:deno_web/00_infra.js",
+);
 const { atob, btoa } = core.loadExtScript("ext:deno_web/05_base64.js");
-import { Blob, blobFromObjectUrl, File } from "ext:deno_web/09_file.js";
+const { Blob, blobFromObjectUrl, File } = core.loadExtScript(
+  "ext:deno_web/09_file.js",
+);
 import { untransferableSymbol } from "ext:deno_node/internal_binding/util.ts";
 
 export { atob, Blob, btoa, File };

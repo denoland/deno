@@ -3,7 +3,7 @@
 // Remove Intl.v8BreakIterator because it is a non-standard API.
 delete Intl.v8BreakIterator;
 
-import * as internalConsole from "ext:deno_web/01_console.js";
+const internalConsole = core.loadExtScript("ext:deno_web/01_console.js");
 import { core, internals, primordials } from "ext:core/mod.js";
 const ops = core.ops;
 import {
@@ -53,22 +53,22 @@ const {
   isNativeError,
 } = core;
 import { registerDeclarativeServer } from "ext:deno_http/00_serve.ts";
-import * as event from "ext:deno_web/02_event.js";
-import * as location from "ext:deno_web/12_location.js";
+const event = core.loadExtScript("ext:deno_web/02_event.js");
+const location = core.loadExtScript("ext:deno_web/12_location.js");
 import * as version from "ext:runtime/01_version.ts";
 import * as os from "ext:deno_os/30_os.js";
-import {
+const {
   getConsoleInspectOptions,
   getDefaultInspectOptions,
   getStderrNoColor,
   inspectArgs,
   quoteString,
   setNoColorFns,
-} from "ext:deno_web/01_console.js";
-import * as performance from "ext:deno_web/15_performance.js";
-import * as url from "ext:deno_web/00_url.js";
+} = core.loadExtScript("ext:deno_web/01_console.js");
+const performance = core.loadExtScript("ext:deno_web/15_performance.js");
+const url = core.loadExtScript("ext:deno_web/00_url.js");
 import * as fetch from "ext:deno_fetch/26_fetch.js";
-import * as messagePort from "ext:deno_web/13_message_port.js";
+const messagePort = core.loadExtScript("ext:deno_web/13_message_port.js");
 import {
   denoNs,
   denoNsUnstableById,
@@ -91,7 +91,7 @@ import {
 import {
   workerRuntimeGlobalProperties,
 } from "ext:runtime/98_global_scope_worker.js";
-import { SymbolMetadata } from "ext:deno_web/00_infra.js";
+const { SymbolMetadata } = core.loadExtScript("ext:deno_web/00_infra.js");
 import { bootstrap as bootstrapOtel } from "ext:deno_telemetry/telemetry.ts";
 
 // deno-lint-ignore prefer-primordials

@@ -15,14 +15,14 @@ import {
   op_node_hash_update,
   op_node_hash_update_str,
 } from "ext:core/ops";
-import { primordials } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 
 import { Buffer } from "node:buffer";
 import { Transform } from "node:stream";
-import {
-  forgivingBase64Encode as encodeToBase64,
-  forgivingBase64UrlEncode as encodeToBase64Url,
-} from "ext:deno_web/00_infra.js";
+const {
+  forgivingBase64Encode: encodeToBase64,
+  forgivingBase64UrlEncode: encodeToBase64Url,
+} = core.loadExtScript("ext:deno_web/00_infra.js");
 import type { TransformOptions } from "ext:deno_node/_stream.d.ts";
 import {
   validateEncoding,

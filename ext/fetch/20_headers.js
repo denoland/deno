@@ -29,8 +29,10 @@ const {
 } = primordials;
 
 const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
-import { markNotSerializable } from "ext:deno_web/13_message_port.js";
-import {
+const { markNotSerializable } = core.loadExtScript(
+  "ext:deno_web/13_message_port.js",
+);
+const {
   byteLowerCase,
   collectHttpQuotedString,
   collectSequenceOfCodepoints,
@@ -38,7 +40,7 @@ import {
   HTTP_TAB_OR_SPACE_SUFFIX_RE,
   HTTP_TOKEN_CODE_POINT_RE,
   httpTrim,
-} from "ext:deno_web/00_infra.js";
+} = core.loadExtScript("ext:deno_web/00_infra.js");
 
 const _headerList = Symbol("header list");
 const _iterableHeaders = Symbol("iterable headers");

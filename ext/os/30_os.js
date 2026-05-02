@@ -1,6 +1,6 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-import { primordials } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 import {
   op_delete_env,
   op_env,
@@ -28,7 +28,7 @@ const {
   TypeError,
 } = primordials;
 
-import { Event, EventTarget } from "ext:deno_web/02_event.js";
+const { Event, EventTarget } = core.loadExtScript("ext:deno_web/02_event.js");
 
 const windowDispatchEvent = FunctionPrototypeBind(
   EventTarget.prototype.dispatchEvent,
