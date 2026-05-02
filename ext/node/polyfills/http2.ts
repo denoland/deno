@@ -655,14 +655,31 @@ const proxySocketHandler = {
   },
 };
 
-function onPing(payload) {
+function onPing(payload, isAck) {
   const session = this[kOwner];
   if (session.destroyed) {
     return;
   }
   session[kUpdateTimer]();
   debugSessionObj(session, "new ping received");
-  session.emit("ping", payload);
+  // Convert the Uint8Array payload to a Buffer so userland sees a Buffer
+  // instance (matches Node.js behaviour and allows deepStrictEqual against
+  // Buffers passed by callers).
+  const buf = payload && Buffer.from(
+    payload.buffer,
+    payload.byteOffset,
+    payload.byteLength,
+  );
+  if (isAck) {
+    // Inbound PING ACK - resolve the oldest outstanding ping callback in
+    // submission order (RFC 7540 6.7 requires PINGs to be ack'd in order).
+    // The Rust binding has already validated this is a solicited ACK
+    // (unsolicited ACKs are routed through the internal-error callback).
+    const cb = session[kState].pendingPings.shift();
+    if (cb) cb(true, 0.0, buf);
+    return;
+  }
+  session.emit("ping", buf);
 }
 
 // Called when the stream is closed either by sending or receiving an
@@ -3596,10 +3613,18 @@ class Http2Session extends EventEmitter {
 
     // Track the pending ping so it can be cancelled when the session is
     // destroyed before the PING ACK arrives. Matches Node's
-    // ClearOutstandingPings in src/node_http2.cc.
+    // ClearOutstandingPings in src/node_http2.cc. The wrapped pingCallback
+    // (registered via Http2Session#ping) is consumed FIFO when an inbound
+    // PING ACK is delivered to onPing below.
     this[kState].pendingPings.push(cb);
 
-    return this[kHandle].ping(buf, cb);
+    const ret = this[kHandle].ping(buf);
+    // The native ping op queues the PING frame inside nghttp2 but the
+    // session's actual transport is owned by the JS socket (setupHandle
+    // overrides handle.sendPending), so we must trigger the flush ourselves
+    // for the PING to leave this peer.
+    scheduleSendPending(this);
+    return ret === 0;
   }
 
   [kInspect](depth, opts) {
