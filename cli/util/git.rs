@@ -33,6 +33,10 @@ pub async fn check_if_git_repo_dirty(cwd: &Path) -> Option<String> {
     return None;
   };
 
+  if !output.status.success() {
+    return None;
+  }
+
   let output_str = String::from_utf8_lossy(&output.stdout);
   let text = output_str.trim();
   if text.is_empty() {

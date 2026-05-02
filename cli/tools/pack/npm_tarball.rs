@@ -55,7 +55,14 @@ pub fn create_npm_tarball(
 
   // Compute output filename
   let filename = if let Some(path) = output_path {
-    PathBuf::from(path)
+    let p = PathBuf::from(path);
+    if p.components().any(|c| c == std::path::Component::ParentDir) {
+      log::warn!(
+        "Output path '{}' contains '..' components",
+        path
+      );
+    }
+    p
   } else {
     // Convert @scope/name to scope-name
     let normalized = name.replace('@', "").replace('/', "-");

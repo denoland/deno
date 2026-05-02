@@ -785,10 +785,18 @@ fn process_single_module(
       // common case. The shebang has already been split off above and
       // is re-prepended after transpilation.
       if deno_usage.uses_deno && !pack_flags.no_shim {
-        text_changes.push(deno_ast::TextChange {
-          range: 0..0,
-          new_text: "import { Deno } from \"@deno/shim-deno\";\n".to_string(),
-        });
+        // Insert at the front so the shim import sorts before any
+        // unfurl text change that also targets position 0 (e.g. a
+        // rewritten leading import). `apply_text_changes` is
+        // stable-sorted by range start, so earlier entries win ties.
+        text_changes.insert(
+          0,
+          deno_ast::TextChange {
+            range: 0..0,
+            new_text: "import { Deno } from \"@deno/shim-deno\";\n"
+              .to_string(),
+          },
+        );
       }
 
       if text_changes.is_empty() {

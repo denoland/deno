@@ -74,6 +74,16 @@ pub fn js_to_dts_extension(path: &str) -> String {
 /// to string-level extension stripping when the path has no recognizable
 /// stem or contains non-UTF8 bytes (rare but possible on Windows).
 pub fn compute_output_path(relative_path: &str, new_ext: &str) -> String {
+  // Declaration files pass through unchanged -- their extension is
+  // meaningful and `file_stem()` would strip only the final `.ts`,
+  // turning `foo.d.ts` into `foo.d.js`.
+  if relative_path.ends_with(".d.ts")
+    || relative_path.ends_with(".d.mts")
+    || relative_path.ends_with(".d.cts")
+  {
+    return relative_path.to_string();
+  }
+
   let path = Path::new(relative_path);
   let parent = path.parent().unwrap_or(Path::new(""));
   let stem = path
@@ -150,5 +160,13 @@ mod tests {
     assert_eq!(compute_output_path("mod.ts", ".js"), "mod.js");
     assert_eq!(compute_output_path("src/mod.ts", ".js"), "src/mod.js");
     assert_eq!(compute_output_path("mod.ts", ".mjs"), "mod.mjs");
+    // Declaration files pass through unchanged
+    assert_eq!(compute_output_path("mod.d.ts", ".js"), "mod.d.ts");
+    assert_eq!(compute_output_path("mod.d.mts", ".mjs"), "mod.d.mts");
+    assert_eq!(compute_output_path("mod.d.cts", ".cjs"), "mod.d.cts");
+    assert_eq!(
+      compute_output_path("src/types.d.ts", ".js"),
+      "src/types.d.ts"
+    );
   }
 }
