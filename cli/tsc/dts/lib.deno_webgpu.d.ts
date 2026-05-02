@@ -1589,7 +1589,7 @@ declare class GPUQueue implements GPUObjectBase {
     source: GPUCopyExternalImageSourceInfo,
     destination: GPUCopyExternalImageDestInfo,
     copySize: GPUExtent3D,
-  );
+  ): undefined;
 }
 
 /** @category GPU */
