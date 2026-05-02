@@ -1,5 +1,7 @@
-// Tests that upgrading a socket whose handle is gone throws a clear
-// synchronous error (not a crash/panic).
+// Tests that upgrading a destroyed socket throws a clear synchronous
+// error. destroy() sets the `destroyed` flag synchronously, so the
+// check is deterministic regardless of when the handle's close
+// callback fires.
 
 import http from "node:http";
 import type { Socket } from "node:net";
@@ -7,14 +9,10 @@ import type { Socket } from "node:net";
 const server = http.createServer();
 
 server.on("upgrade", (req, nodeSocket, head) => {
-  // Save the handle so we can clean up afterwards
-  const origHandle = (nodeSocket as Socket & { _handle: unknown })._handle;
-
-  // Simulate a handle that was already cleared (e.g. socket closed
-  // or handle taken by another path). This is deterministic unlike
-  // nodeSocket.destroy() whose timing of nulling _handle varies.
-  // deno-lint-ignore no-explicit-any
-  (nodeSocket as any)._handle = null;
+  // Destroy the socket before upgrading — simulates the client
+  // disconnecting between sending the upgrade request and the
+  // server writing the 101 response.
+  nodeSocket.destroy();
 
   try {
     Deno.upgradeWebSocket(
@@ -25,11 +23,6 @@ server.on("upgrade", (req, nodeSocket, head) => {
   } catch (err) {
     console.log("upgrade rejected:", (err as Error).message);
   }
-
-  // Restore handle so destroy() can properly close the TCP connection
-  // deno-lint-ignore no-explicit-any
-  (nodeSocket as any)._handle = origHandle;
-  nodeSocket.destroy();
   server.close();
 });
 

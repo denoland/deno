@@ -135,6 +135,11 @@ function upgradeWebSocket(request, options = { __proto__: null }) {
       : "";
     const responseHead = head + protocolHeader + "\r\n";
 
+    if (nodeSocket.destroyed) {
+      throw new TypeError(
+        "Socket is already destroyed - cannot upgrade to WebSocket",
+      );
+    }
     const handle = nodeSocket._handle;
     if (!handle) {
       throw new TypeError("Socket has no handle - cannot upgrade");

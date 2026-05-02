@@ -1,2 +1,2 @@
-upgrade rejected: Socket has no handle - cannot upgrade
+upgrade rejected: Socket is already destroyed - cannot upgrade to WebSocket
 [WILDCARD]
