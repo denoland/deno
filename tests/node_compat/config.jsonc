@@ -502,6 +502,11 @@
     "parallel/test-crypto-gcm-implicit-short-tag.js": {},
     "parallel/test-crypto-getcipherinfo.js": {},
     "parallel/test-crypto-hash-stream-pipe.js": {},
+    "parallel/test-crypto-hash.js": {
+      "exitCode": 1,
+      "output": "[WILDCARD]Mismatched <anonymous> function calls. Expected exactly 2, actual 1.[WILDCARD]",
+      "reason": "Test's expectWarning expects DEP0198 to fire, but the SHAKE128/256 block is gated on `!process.features.openssl_is_boringssl`; Deno reports BoringSSL=true so the SHAKE block — and thus the DEP0198 emit — is skipped"
+    },
     "parallel/test-crypto-hkdf.js": {},
     "parallel/test-crypto-hmac.js": {},
     "parallel/test-crypto-keygen.js": {},
