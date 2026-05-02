@@ -282,7 +282,7 @@ impl<TSys: LockfileSys> LockfileLock<TSys> {
   ) -> Result<Option<Self>, AnyError> {
     fn pkg_json_deps(
       maybe_pkg_json: Option<&PackageJson>,
-      catalog: &IndexMap<String, String>,
+      catalogs: &IndexMap<String, IndexMap<String, String>>,
     ) -> HashSet<JsrDepPackageReq> {
       let Some(pkg_json) = maybe_pkg_json else {
         return Default::default();
@@ -303,7 +303,8 @@ impl<TSys: LockfileSys> LockfileLock<TSys> {
             Some(JsrDepPackageReq::npm(req.clone()))
           }
           PackageJsonDepValue::Workspace(_) => None,
-          PackageJsonDepValue::Catalog => {
+          PackageJsonDepValue::Catalog(catalog_name) => {
+            let catalog = catalogs.get(catalog_name.as_str())?;
             let version_req_str = catalog.get(alias.as_str())?;
             let version_req =
               VersionReq::parse_from_npm(version_req_str).ok()?;
@@ -349,7 +350,7 @@ impl<TSys: LockfileSys> LockfileLock<TSys> {
       root: WorkspaceMemberConfig {
         package_json_deps: pkg_json_deps(
           root_folder.pkg_json.as_deref(),
-          workspace.catalog(),
+          workspace.catalogs(),
         ),
         dependencies: if let Some(map) = maybe_external_import_map {
           deno_config::import_map::import_map_deps_from_value(map)
@@ -382,7 +383,7 @@ impl<TSys: LockfileSys> LockfileLock<TSys> {
               let config = WorkspaceMemberConfig {
                 package_json_deps: pkg_json_deps(
                   folder.pkg_json.as_deref(),
-                  workspace.catalog(),
+                  workspace.catalogs(),
                 ),
                 dependencies: folder
                   .deno_json
@@ -418,7 +419,7 @@ impl<TSys: LockfileSys> LockfileLock<TSys> {
                     // not supported
                     PackageJsonDepValue::File(_)
                     | PackageJsonDepValue::Workspace(_)
-                    | PackageJsonDepValue::Catalog => None,
+                    | PackageJsonDepValue::Catalog(_) => None,
                   })
                   .collect()
               })

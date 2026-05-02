@@ -1,8 +1,8 @@
 {
   "tempDir": true,
   "tests": {
-    "named_catalog_is_rejected": {
-      "args": "install",
+    "missing_named_catalog": {
+      "args": "run -A packages/a/main.js",
       "output": "named_unsupported.out",
       "exitCode": 1
     }

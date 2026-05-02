@@ -1,1 +1,2 @@
-[WILDCARD]Named catalogs are not supported (got 'catalog:react18')[WILDCARD]
+error: Package '@denotest/esm-basic' not found in catalog
+    at [WILDCARD]main.js:[WILDCARD]

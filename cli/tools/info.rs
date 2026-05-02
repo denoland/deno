@@ -126,8 +126,8 @@ pub async fn info(
               sub_path.map(|s| format!("/{}", s)).unwrap_or_default()
             ))?)
           }
-          deno_package_json::PackageJsonDepValue::Catalog => {
-            match resolver.resolve_catalog_dep(alias) {
+          deno_package_json::PackageJsonDepValue::Catalog(catalog_name) => {
+            match resolver.resolve_catalog_dep(alias, catalog_name) {
               Some(req) => Some(ModuleSpecifier::parse(&format!(
                 "npm:{}{}",
                 req,

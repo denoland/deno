@@ -190,9 +190,10 @@ impl NpmInstallDepsProvider {
                 });
               }
             }
-            PackageJsonDepValue::Catalog => {
-              let catalog = workspace.catalog();
-              if let Some(version_req_str) = catalog.get(alias.as_str())
+            PackageJsonDepValue::Catalog(catalog_name) => {
+              let catalogs = workspace.catalogs();
+              if let Some(catalog) = catalogs.get(catalog_name.as_str())
+                && let Some(version_req_str) = catalog.get(alias.as_str())
                 && let Ok(version_req) =
                   VersionReq::parse_from_npm(version_req_str)
               {

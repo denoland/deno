@@ -381,7 +381,7 @@ fn add_deps_from_package_json(
           })
         }
         deno_package_json::PackageJsonDepValue::Workspace(_)
-        | deno_package_json::PackageJsonDepValue::Catalog => continue,
+        | deno_package_json::PackageJsonDepValue::Catalog(_) => continue,
       }
     }
   }

@@ -506,9 +506,12 @@ impl<TSys: SpecifierUnfurlerSys> SpecifierUnfurler<TSys> {
                   .ok()
                 }
               }
-              PackageJsonDepValue::Catalog => {
-                let catalog = self.workspace_resolver.catalog();
-                match catalog.get(alias) {
+              PackageJsonDepValue::Catalog(catalog_name) => {
+                let catalogs = self.workspace_resolver.catalogs();
+                match catalogs
+                  .get(catalog_name.as_str())
+                  .and_then(|c| c.get(alias))
+                {
                   Some(version_req_str) => {
                     match VersionReq::parse_from_npm(version_req_str) {
                       Ok(version_req) => ModuleSpecifier::parse(&format!(
@@ -579,16 +582,6 @@ impl<TSys: SpecifierUnfurlerSys> SpecifierUnfurler<TSys> {
                   UnfurlSpecifierError::UnsupportedPkgJsonSpecifier {
                     package_name: alias.to_string(),
                     scheme: scheme.to_string(),
-                  },
-                );
-              }
-              PackageJsonDepValueParseErrorKind::UnsupportedNamedCatalog {
-                name,
-              } => {
-                return Err(
-                  UnfurlSpecifierError::UnsupportedPkgJsonSpecifier {
-                    package_name: alias.to_string(),
-                    scheme: format!("catalog:{}", name),
                   },
                 );
               }

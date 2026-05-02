@@ -291,8 +291,12 @@ impl ModuleLoader for EmbeddedModuleLoader {
               })?,
           )
         }
-        PackageJsonDepValue::Catalog => {
-          match self.shared.workspace_resolver.resolve_catalog_dep(alias) {
+        PackageJsonDepValue::Catalog(catalog_name) => {
+          match self
+            .shared
+            .workspace_resolver
+            .resolve_catalog_dep(alias, catalog_name)
+          {
             Some(req) => Ok(
               self
                 .shared
@@ -1000,6 +1004,7 @@ pub async fn run(
       },
       Default::default(),
       sys.clone(),
+      metadata.workspace_resolver.catalogs,
     )
   };
   let code_cache = match metadata.code_cache_key {

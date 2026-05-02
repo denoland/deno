@@ -67,11 +67,6 @@ pub enum PackageJsonDepValueParseErrorKind {
   #[class(type)]
   #[error("Not implemented scheme '{scheme}'")]
   Unsupported { scheme: String },
-  #[class(type)]
-  #[error(
-    "Named catalogs are not supported (got 'catalog:{name}'). Use 'catalog:' for the default catalog."
-  )]
-  UnsupportedNamedCatalog { name: String },
   #[class(inherit)]
   #[error(transparent)]
   JsrRequiresScope(#[from] JsrDepPackageParseError),
@@ -152,7 +147,7 @@ pub enum PackageJsonDepValue {
   File(String),
   Req(PackageReq),
   Workspace(PackageJsonDepWorkspaceReq),
-  Catalog,
+  Catalog(String),
 }
 
 impl PackageJsonDepValue {
@@ -197,20 +192,12 @@ impl PackageJsonDepValue {
           }
         }
         "catalog" => {
-          // Only the default (unnamed) catalog is supported. Accept
-          // `catalog:` and the explicit `catalog:default` alias used by
-          // pnpm/Bun, but reject any other named catalog rather than
-          // silently falling back to the default.
-          if value.is_empty() || value == "default" {
-            Ok(Self::Catalog)
+          let name = if value.is_empty() || value == "default" {
+            "default".to_string()
           } else {
-            Err(
-              PackageJsonDepValueParseErrorKind::UnsupportedNamedCatalog {
-                name: value.to_string(),
-              }
-              .into_box(),
-            )
-          }
+            value.to_string()
+          };
+          Ok(Self::Catalog(name))
         }
         "workspace" => {
           let workspace_req = match value {
@@ -314,6 +301,10 @@ pub struct PackageJson {
   pub cpu: Option<Vec<String>>,
   #[serde(skip_serializing_if = "Option::is_none")]
   pub overrides: Option<Map<String, Value>>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub catalog: Option<IndexMap<String, String>>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub catalogs: Option<IndexMap<String, IndexMap<String, String>>>,
   #[serde(skip_serializing)]
   resolved_deps: PackageJsonDepsRcCell,
 }
@@ -386,6 +377,8 @@ impl PackageJson {
         os: None,
         cpu: None,
         overrides: None,
+        catalog: None,
+        catalogs: None,
         resolved_deps: Default::default(),
       });
     }
@@ -536,6 +529,20 @@ impl PackageJson {
     let os = package_json.remove("os").and_then(parse_string_array);
     let cpu = package_json.remove("cpu").and_then(parse_string_array);
     let overrides = package_json.remove("overrides").and_then(map_object);
+    let catalog = package_json.remove("catalog").and_then(parse_string_map);
+    let catalogs = package_json.remove("catalogs").and_then(|v| {
+      if let Value::Object(map) = v {
+        let mut result = IndexMap::with_capacity(map.len());
+        for (k, v) in map {
+          if let Some(inner) = parse_string_map(v) {
+            result.insert(k, inner);
+          }
+        }
+        Some(result)
+      } else {
+        None
+      }
+    });
 
     Ok(PackageJson {
       path,
@@ -562,6 +569,8 @@ impl PackageJson {
       os,
       cpu,
       overrides,
+      catalog,
+      catalogs,
       resolved_deps: Default::default(),
     })
   }
@@ -945,16 +954,17 @@ mod test {
             PackageJsonDepWorkspaceReq::Caret
           ))
         ),
-        ("catalog-test".to_string(), Ok(PackageJsonDepValue::Catalog),),
+        (
+          "catalog-test".to_string(),
+          Ok(PackageJsonDepValue::Catalog("default".to_string())),
+        ),
         (
           "catalog-default-test".to_string(),
-          Ok(PackageJsonDepValue::Catalog),
+          Ok(PackageJsonDepValue::Catalog("default".to_string())),
         ),
         (
           "catalog-named-test".to_string(),
-          Err(PackageJsonDepValueParseErrorKind::UnsupportedNamedCatalog {
-            name: "react18".to_string(),
-          }),
+          Ok(PackageJsonDepValue::Catalog("react18".to_string())),
         ),
         (
           "file-test".to_string(),

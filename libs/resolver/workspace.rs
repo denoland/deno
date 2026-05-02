@@ -845,7 +845,7 @@ pub struct WorkspaceResolver<TSys: FsMetadata + FsRead> {
   fs_cache_options: FsCacheOptions,
   compiler_options_resolver: CompilerOptionsResolverCellRc,
   sloppy_imports_resolver: SloppyImportsResolverRc<TSys>,
-  catalog: IndexMap<String, String>,
+  catalogs: IndexMap<String, IndexMap<String, String>>,
 }
 
 impl<TSys: FsMetadata + FsRead> WorkspaceResolver<TSys> {
@@ -980,7 +980,7 @@ impl<TSys: FsMetadata + FsRead> WorkspaceResolver<TSys> {
       fs_cache_options: options.fs_cache_options,
       compiler_options_resolver,
       sloppy_imports_resolver,
-      catalog: workspace.catalog().clone(),
+      catalogs: workspace.catalogs().clone(),
     })
   }
 
@@ -997,6 +997,7 @@ impl<TSys: FsMetadata + FsRead> WorkspaceResolver<TSys> {
     sloppy_imports_options: SloppyImportsOptions,
     fs_cache_options: FsCacheOptions,
     sys: TSys,
+    catalogs: IndexMap<String, IndexMap<String, String>>,
   ) -> Self {
     let maybe_import_map =
       maybe_import_map.map(|import_map| ImportMapWithDiagnostics {
@@ -1035,7 +1036,7 @@ impl<TSys: FsMetadata + FsRead> WorkspaceResolver<TSys> {
       fs_cache_options,
       compiler_options_resolver,
       sloppy_imports_resolver,
-      catalog: IndexMap::new(),
+      catalogs,
     }
   }
 
@@ -1080,7 +1081,7 @@ impl<TSys: FsMetadata + FsRead> WorkspaceResolver<TSys> {
       pkg_json_resolution: self.pkg_json_dep_resolution(),
       sloppy_imports_options: self.sloppy_imports_options,
       fs_cache_options: self.fs_cache_options,
-      catalog: self.catalog.clone(),
+      catalogs: self.catalogs.clone(),
     }
   }
 
@@ -1143,6 +1144,7 @@ impl<TSys: FsMetadata + FsRead> WorkspaceResolver<TSys> {
       serializable_workspace_resolver.sloppy_imports_options,
       serializable_workspace_resolver.fs_cache_options,
       sys,
+      serializable_workspace_resolver.catalogs,
     ))
   }
 
@@ -1553,12 +1555,17 @@ impl<TSys: FsMetadata + FsRead> WorkspaceResolver<TSys> {
     }
   }
 
-  pub fn catalog(&self) -> &IndexMap<String, String> {
-    &self.catalog
+  pub fn catalogs(&self) -> &IndexMap<String, IndexMap<String, String>> {
+    &self.catalogs
   }
 
-  pub fn resolve_catalog_dep(&self, name: &str) -> Option<PackageReq> {
-    let version_req_str = self.catalog.get(name)?;
+  pub fn resolve_catalog_dep(
+    &self,
+    name: &str,
+    catalog_name: &str,
+  ) -> Option<PackageReq> {
+    let catalog = self.catalogs.get(catalog_name)?;
+    let version_req_str = catalog.get(name)?;
     let version_req = VersionReq::parse_from_npm(version_req_str).ok()?;
     Some(PackageReq {
       name: name.into(),
@@ -1611,7 +1618,7 @@ pub struct SerializableWorkspaceResolver<'a> {
   pub sloppy_imports_options: SloppyImportsOptions,
   pub fs_cache_options: FsCacheOptions,
   #[serde(default)]
-  pub catalog: IndexMap<String, String>,
+  pub catalogs: IndexMap<String, IndexMap<String, String>>,
 }
 
 #[derive(Debug, Clone, Copy)]

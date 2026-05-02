@@ -460,9 +460,9 @@ impl<
                     })
                 })
                 .and_then(|r| Ok(r.into_url()?)),
-              PackageJsonDepValue::Catalog => self
+              PackageJsonDepValue::Catalog(catalog_name) => self
                 .workspace_resolver
-                .resolve_catalog_dep(alias)
+                .resolve_catalog_dep(alias, catalog_name)
                 .ok_or_else(|| {
                   DenoResolveErrorKind::CatalogPackageNotFound(
                     alias.to_string(),

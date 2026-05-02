@@ -81,13 +81,11 @@ pub fn categorize_installed_npm_deps(
         deno_package_json::PackageJsonDepValue::Workspace(_) => {
           // ignore workspace deps
         }
-        deno_package_json::PackageJsonDepValue::Catalog => {
-          // Only insert when the catalog entry resolves to a valid
-          // version_req — `resolve_catalog_dep` returns `None` if the
-          // alias is missing or its version_req fails to parse, so a
-          // typo in the catalog won't silently add the dep here only to
-          // fail later with a misleading "not found in catalog" error.
-          if workspace.resolve_catalog_dep(k.as_str()).is_some() {
+        deno_package_json::PackageJsonDepValue::Catalog(catalog_name) => {
+          if workspace
+            .resolve_catalog_dep(k.as_str(), catalog_name)
+            .is_some()
+          {
             normal_deps.insert(k.to_string());
           }
         }
@@ -109,8 +107,11 @@ pub fn categorize_installed_npm_deps(
         deno_package_json::PackageJsonDepValue::Workspace(_) => {
           // ignore workspace deps
         }
-        deno_package_json::PackageJsonDepValue::Catalog => {
-          if workspace.resolve_catalog_dep(k.as_str()).is_some() {
+        deno_package_json::PackageJsonDepValue::Catalog(catalog_name) => {
+          if workspace
+            .resolve_catalog_dep(k.as_str(), catalog_name)
+            .is_some()
+          {
             dev_deps.insert(k.to_string());
           }
         }
