@@ -943,28 +943,55 @@ pub fn op_node_random_int(#[number] min: i64, #[number] max: i64) -> i64 {
 fn scrypt(
   password: StringOrBuffer,
   salt: StringOrBuffer,
-  keylen: u32,
-  cost: u32,
-  block_size: u32,
-  parallelization: u32,
-  _maxmem: u32,
+  keylen: usize,
+  cost: u64,
+  block_size: u64,
+  parallelization: u64,
+  maxmem: usize,
   output_buffer: &mut [u8],
 ) -> Result<(), JsErrorBox> {
-  // Construct Params
-  let params = scrypt::Params::new(
-    cost as u8,
-    block_size,
-    parallelization,
-    keylen as usize,
-  )
-  .map_err(|_| JsErrorBox::generic("Invalid scrypt param"))?;
+  assert!(
+    output_buffer.len() >= keylen,
+    "output_buffer too small for scrypt keylen",
+  );
+  let cost = u32::try_from(cost)
+    .ok()
+    .filter(|cost| *cost < 64)
+    .ok_or_else(|| JsErrorBox::generic("Invalid scrypt param"))?;
+  let n = 1u64
+    .checked_shl(cost)
+    .ok_or_else(|| JsErrorBox::generic("Invalid scrypt param"))?;
 
-  // Call into scrypt
-  let res = scrypt::scrypt(&password, &salt, &params, output_buffer);
-  if res.is_ok() {
+  // SAFETY:
+  // - `password.as_ptr()`/`password.len()` describe a valid contiguous byte
+  //   slice because `StringOrBuffer` dereferences to `[u8]`.
+  // - `salt.as_ptr()`/`salt.len()` likewise describe a valid contiguous byte
+  //   slice.
+  // - `output_buffer.as_mut_ptr()` points to at least `keylen` writable bytes,
+  //   enforced by the assertion above and by the callers allocating a buffer of
+  //   that exact size.
+  // - `n` is derived with `checked_shl`, so the `N` parameter passed to
+  //   `EVP_PBE_scrypt` cannot overflow the shift.
+  // - AWS-LC documents `EVP_PBE_scrypt` as thread-safe for independent inputs;
+  //   this call does not alias mutable state across threads.
+  let result = unsafe {
+    aws_lc_sys::EVP_PBE_scrypt(
+      password.as_ptr().cast(),
+      password.len(),
+      salt.as_ptr(),
+      salt.len(),
+      n,
+      block_size,
+      parallelization,
+      maxmem,
+      output_buffer.as_mut_ptr(),
+      keylen,
+    )
+  };
+
+  if result == 1 {
     Ok(())
   } else {
-    // TODO(lev): key derivation failed, so what?
     Err(JsErrorBox::generic("scrypt key derivation failed"))
   }
 }
@@ -974,11 +1001,11 @@ fn scrypt(
 pub fn op_node_scrypt_sync(
   #[serde] password: StringOrBuffer,
   #[serde] salt: StringOrBuffer,
-  #[smi] keylen: u32,
-  #[smi] cost: u32,
-  #[smi] block_size: u32,
-  #[smi] parallelization: u32,
-  #[smi] maxmem: u32,
+  #[number] keylen: usize,
+  #[number] cost: u64,
+  #[number] block_size: u64,
+  #[number] parallelization: u64,
+  #[number] maxmem: usize,
   #[anybuffer] output_buffer: &mut [u8],
 ) -> Result<(), JsErrorBox> {
   scrypt(
@@ -1007,14 +1034,14 @@ pub enum ScryptAsyncError {
 pub async fn op_node_scrypt_async(
   #[serde] password: StringOrBuffer,
   #[serde] salt: StringOrBuffer,
-  #[smi] keylen: u32,
-  #[smi] cost: u32,
-  #[smi] block_size: u32,
-  #[smi] parallelization: u32,
-  #[smi] maxmem: u32,
+  #[number] keylen: usize,
+  #[number] cost: u64,
+  #[number] block_size: u64,
+  #[number] parallelization: u64,
+  #[number] maxmem: usize,
 ) -> Result<Uint8Array, ScryptAsyncError> {
   spawn_blocking(move || {
-    let mut output_buffer = vec![0u8; keylen as usize];
+    let mut output_buffer = vec![0u8; keylen];
 
     scrypt(
       password,

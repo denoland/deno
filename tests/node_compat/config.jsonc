@@ -555,6 +555,7 @@
     "parallel/test-crypto-keygen-rfc8017-a-2-3.js": {},
     "parallel/test-crypto-keygen-rsa-pss.js": {},
     "parallel/test-crypto-keygen-sync.js": {},
+    "parallel/test-crypto-scrypt.js": {},
     "parallel/test-crypto-key-objects-messageport.js": {
       "exitCode": 1,
       "reason": "KeyObject structured clone (MessagePort serialization) not yet implemented"
