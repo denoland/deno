@@ -1402,7 +1402,7 @@ function transformDenoShellCommand(
     // Shell-quote translated args that contain metacharacters so they are
     // safe to embed in a shell command string.
     const quotedArgs = isWindows
-      ? result.deno_args.map((a) => {
+      ? result.denoArgs.map((a) => {
         // Windows cmd.exe: use double quotes for args with spaces or
         // special chars. Backslash is a path separator, not an escape.
         if (/[\s"&|<>^]/.test(a)) {
@@ -1412,7 +1412,7 @@ function transformDenoShellCommand(
         }
         return a;
       })
-      : result.deno_args.map((a) => {
+      : result.denoArgs.map((a) => {
         // POSIX shell quoting for translated args.
         const hasShellVarRef = /\$\{[^}]+\}|\$[A-Za-z_]/.test(a);
         const unsafeInDoubleQuotes = /`|\$\(|\\/.test(a);
@@ -1512,12 +1512,12 @@ function buildCommand(
     // Use the Rust parser to translate Node.js args to Deno args
     // The parser handles Deno-style args (e.g., "run -A script.js") by passing them through unchanged
     const result = op_node_translate_cli_args(args, scriptInNpmPackage, true);
-    args = result.deno_args;
-    includeNpmProcessState = result.needs_npm_process_state;
+    args = result.denoArgs;
+    includeNpmProcessState = result.needsNpmProcessState;
 
     // Update NODE_OPTIONS if needed
-    if (result.node_options.length > 0) {
-      const options = result.node_options.join(" ");
+    if (result.nodeOptions.length > 0) {
+      const options = result.nodeOptions.join(" ");
       if (env.NODE_OPTIONS) {
         env.NODE_OPTIONS += " " + options;
       } else {
@@ -1574,7 +1574,7 @@ function buildCommand(
       if (argsForDeno.length > 0) {
         try {
           const result = op_node_translate_cli_args(argsForDeno, false, true);
-          args = [...args.slice(0, denoArgIndex + 1), ...result.deno_args];
+          args = [...args.slice(0, denoArgIndex + 1), ...result.denoArgs];
         } catch {
           // If translation fails (unknown flags), leave args unchanged
         }

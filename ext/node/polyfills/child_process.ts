@@ -156,7 +156,7 @@ export function fork(
     // Use the Rust parser to translate Node.js CLI args to Deno args
     // The parser handles Deno-style args (e.g., from vitest) by passing them through unchanged
     const result = op_node_translate_cli_args(nodeArgs, false, true);
-    const denoArgs = result.deno_args;
+    const denoArgs = result.denoArgs;
     const bootstrapArgs = op_bootstrap_unstable_args();
 
     // Insert bootstrap unstable args after "run" but before other args.
@@ -176,8 +176,8 @@ export function fork(
     }
 
     // Handle NODE_OPTIONS if the parser returned any
-    if (result.node_options.length > 0) {
-      const nodeOptionsStr = result.node_options.join(" ");
+    if (result.nodeOptions.length > 0) {
+      const nodeOptionsStr = result.nodeOptions.join(" ");
       if (options.env) {
         options.env.NODE_OPTIONS = options.env.NODE_OPTIONS
           ? options.env.NODE_OPTIONS + " " + nodeOptionsStr
