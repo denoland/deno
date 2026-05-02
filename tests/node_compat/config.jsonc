@@ -2586,6 +2586,7 @@
     "parallel/test-process-beforeexit-throw-exit.js": {},
     "parallel/test-process-binding-internalbinding-allowlist.js": {},
     "parallel/test-process-binding.js": {},
+    "parallel/test-process-chdir-errormessage.js": {},
     "parallel/test-process-chdir.js": {},
     "parallel/test-process-config.js": {},
     "parallel/test-process-constants-noatime.js": {
