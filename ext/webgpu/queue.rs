@@ -4,12 +4,6 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use std::time::Duration;
 
-use deno_image::ImageBitmap;
-use deno_image::ImageError;
-use deno_image::image;
-use deno_image::image::EncodableLayout;
-use deno_image::image::GenericImageView;
-use deno_image::webidl::PredefinedColorSpace;
 use deno_core::GarbageCollected;
 use deno_core::WebIDL;
 use deno_core::cppgc::Ref;
@@ -17,6 +11,12 @@ use deno_core::futures::channel::oneshot;
 use deno_core::op2;
 use deno_core::v8;
 use deno_error::JsErrorBox;
+use deno_image::ImageBitmap;
+use deno_image::ImageError;
+use deno_image::image;
+use deno_image::image::EncodableLayout;
+use deno_image::image::GenericImageView;
+use deno_image::webidl::PredefinedColorSpace;
 
 use crate::Instance;
 use crate::buffer::GPUBuffer;
@@ -264,15 +264,15 @@ impl GPUQueue {
     let (src_image_width, src_image_height) = data.dimensions();
     if src_origin_x + copy_size_width > src_image_width {
       return Err(JsErrorBox::new(
-          "DOMExceptionOperationError",
-          "source.origin.x + copySize.width must be less than the width of source.source",
-        ));
+        "DOMExceptionOperationError",
+        "source.origin.x + copySize.width must be less than the width of source.source",
+      ));
     }
     if src_origin_y + copy_size_height > src_image_height {
       return Err(JsErrorBox::new(
-          "DOMExceptionOperationError",
-          "source.origin.y + copySize.height must be less than the height of source.source",
-        ));
+        "DOMExceptionOperationError",
+        "source.origin.y + copySize.height must be less than the height of source.source",
+      ));
     }
     if copy_size_depth_or_array_layers > 1 {
       return Err(JsErrorBox::new(
