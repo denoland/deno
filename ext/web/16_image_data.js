@@ -6,7 +6,6 @@ const {
   ObjectDefineProperty,
   ObjectPrototypeIsPrototypeOf,
   SymbolFor,
-  TypeError,
 } = primordials;
 
 const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
@@ -22,18 +21,6 @@ const ImageDataPrototype = ImageData.prototype;
 // Wrap that in the public `data` attribute getter on the prototype.
 const _data = SymbolFor("Deno_imageData_data");
 
-ObjectDefineProperty(ImageDataPrototype, "data", {
-  __proto__: null,
-  get: function data() {
-    if (!ObjectPrototypeIsPrototypeOf(ImageDataPrototype, this)) {
-      throw new TypeError("Illegal invocation");
-    }
-    return this[_data]();
-  },
-  enumerable: true,
-  configurable: true,
-});
-
 ObjectDefineProperty(
   ImageDataPrototype,
   SymbolFor("Deno.privateCustomInspect"),
@@ -45,7 +32,6 @@ ObjectDefineProperty(
           object: this,
           evaluate: ObjectPrototypeIsPrototypeOf(ImageDataPrototype, this),
           keys: [
-            "data",
             "width",
             "height",
             "pixelFormat",
