@@ -8,7 +8,7 @@ import {
   op_runtime_memory_usage,
 } from "ext:core/ops";
 
-import * as timers from "ext:deno_web/02_timers.js";
+const timers = core.loadExtScript("ext:deno_web/02_timers.js");
 import * as httpClient from "ext:deno_fetch/22_http_client.js";
 import * as console from "ext:deno_web/01_console.js";
 import * as ffi from "ext:deno_ffi/00_ffi.js";
@@ -29,7 +29,7 @@ import * as signals from "ext:deno_os/40_signals.js";
 import * as tty from "ext:runtime/40_tty.js";
 import * as kv from "ext:deno_kv/01_db.ts";
 import * as cron from "ext:deno_cron/01_cron.ts";
-import * as webgpuSurface from "ext:deno_webgpu/02_surface.js";
+import * as surface from "ext:deno_canvas/02_surface.js";
 import * as telemetry from "ext:deno_telemetry/telemetry.ts";
 import { unstableIds } from "ext:deno_features/flags.js";
 import { loadWebGPU } from "ext:deno_webgpu/00_init.js";
@@ -227,7 +227,7 @@ ObjectDefineProperties(denoNsUnstableById[unstableIds.net], {
 // denoNsUnstableById[unstableIds.unsafeProto] = { __proto__: null }
 
 denoNsUnstableById[unstableIds.webgpu] = {
-  UnsafeWindowSurface: webgpuSurface.UnsafeWindowSurface,
+  UnsafeWindowSurface: surface.UnsafeWindowSurface,
 };
 ObjectDefineProperties(denoNsUnstableById[unstableIds.webgpu], {
   webgpu: core.propWritableLazyLoaded(

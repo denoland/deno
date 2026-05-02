@@ -525,10 +525,12 @@ impl WebWorker {
       deno_web::deno_web::init(
         services.blob_store,
         Some(options.main_module.clone()),
+        Default::default(),
         services.broadcast_channel,
       ),
       deno_webgpu::deno_webgpu::init(),
       deno_image::deno_image::init(),
+      deno_canvas::deno_canvas::init(),
       deno_fetch::deno_fetch::init(deno_fetch::Options {
         user_agent: options.bootstrap.user_agent.clone(),
         root_cert_store_provider: services.root_cert_store_provider.clone(),

@@ -158,8 +158,8 @@ impl std::fmt::Debug for EmbeddedModuleLoader {
   }
 }
 
-impl ModuleLoader for EmbeddedModuleLoader {
-  fn resolve(
+impl EmbeddedModuleLoader {
+  fn resolve_inner(
     &self,
     raw_specifier: &str,
     referrer: &str,
@@ -363,6 +363,21 @@ impl ModuleLoader for EmbeddedModuleLoader {
       }
       Err(err) => Err(JsErrorBox::from_err(err)),
     }
+  }
+}
+
+impl ModuleLoader for EmbeddedModuleLoader {
+  fn resolve(
+    &self,
+    raw_specifier: &str,
+    referrer: &str,
+    _kind: ResolutionKind,
+  ) -> deno_core::ModuleResolveResponse {
+    deno_core::ModuleResolveResponse::Sync(self.resolve_inner(
+      raw_specifier,
+      referrer,
+      _kind,
+    ))
   }
 
   fn get_host_defined_options<'s>(
