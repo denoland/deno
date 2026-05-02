@@ -447,7 +447,7 @@ const kLink = Symbol("kLink");
 const kLinkingStatus = Symbol("kLinkingStatus");
 let defaultModuleIdIndex = 0;
 
-class Module {
+export class Module {
   constructor() {
     if (new.target === Module) {
       throw new ERR_INVALID_ARG_TYPE(
@@ -506,9 +506,13 @@ class Module {
     });
   }
 
-  // TODO(divybot): cyclic imports not yet supported. Single-pass linking can
-  // call instantiate on a sub-module before its parent's resolutions are
-  // finalized; needs Node-style two-phase resolve+instantiate.
+  // TODO(divybot): cyclic imports not yet supported. Single-pass linking
+  // also makes instantiation order depend on linker resolution order: in a
+  // diamond (A imports B and C; B also imports C) C is instantiated when
+  // B's kLink finishes, so by the time A's instantiate runs, B and C are
+  // already instantiated. V8 tolerates re-instantiating an instantiated
+  // module as a no-op, but a Node-style two-phase resolve+instantiate
+  // would be needed for true cyclic-import support.
   async [kLink](linker) {
     const requests = op_vm_module_get_module_requests(this[kWrap]);
     const specifiers = [];
@@ -587,6 +591,7 @@ export class SourceTextModule extends Module {
 }
 
 export default {
+  Module,
   Script,
   SourceTextModule,
   constants,

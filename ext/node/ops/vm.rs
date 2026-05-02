@@ -1441,6 +1441,13 @@ pub fn op_vm_script_create_cached_data<'s>(
 pub struct ContextifyModule {
   module: v8::TracedReference<v8::Module>,
   context: v8::TracedReference<v8::Context>,
+  // SAFETY invariant: `microtask_queue` aliases the `MicrotaskQueue` owned
+  // by the `ContextifyContext` of `context`. The queue is a separate C++
+  // allocation, but `ContextifyContext` keeps it alive for as long as the
+  // context is reachable, and the `TracedReference<v8::Context>` above
+  // keeps the context reachable for this module's lifetime. Dereferencing
+  // is therefore safe as long as no code path drops the `ContextifyContext`
+  // while a `ContextifyModule` is still live.
   microtask_queue: *mut v8::MicrotaskQueue,
   identifier: String,
   /// Map of import specifier -> resolved module wrapper.
@@ -1621,7 +1628,9 @@ fn module_resolve_callback<'s>(
 ) -> Option<v8::Local<'s, v8::Module>> {
   // SAFETY: callback runs inside an active V8 callback context.
   let mut scope_storage = unsafe { v8::CallbackScope::new(context) };
-  // SAFETY: scope_storage stays in scope for the rest of this function.
+  // SAFETY: `scope_storage` is a local that must not be moved after this
+  // point; the `Pin` below relies on its address staying stable for the
+  // rest of this function.
   let mut scope_pin =
     unsafe { std::pin::Pin::new_unchecked(&mut scope_storage) };
   let scope = &mut scope_pin.as_mut().init();
