@@ -1,19 +1,26 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
+use std::borrow::Cow;
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::time::Duration;
 
 use deno_core::GarbageCollected;
+use deno_core::JsRuntime;
 use deno_core::WebIDL;
 use deno_core::cppgc::Ref;
 use deno_core::futures::channel::oneshot;
 use deno_core::op2;
 use deno_core::v8;
+use deno_core::webidl::ContextFn;
+use deno_core::webidl::WebIdlConverter;
+use deno_core::webidl::WebIdlError;
+use deno_core::webidl::WebIdlErrorKind;
 use deno_error::JsErrorBox;
 use deno_image::ImageBitmap;
 use deno_image::ImageError;
 use deno_image::image;
+use deno_image::image::DynamicImage;
 use deno_image::image::EncodableLayout;
 use deno_image::image::GenericImageView;
 use deno_image::webidl::PredefinedColorSpace;
@@ -254,7 +261,7 @@ impl GPUQueue {
     #[webidl] destination: GPUCopyExternalImageDestInfo,
     #[webidl] copy_size: GPUExtent3D,
   ) -> Result<(), JsErrorBox> {
-    let data = source.source.data.borrow().clone();
+    let data = source.source.data;
     let (copy_size_width, copy_size_height, copy_size_depth_or_array_layers) =
       copy_size.dimensions();
 
@@ -281,8 +288,22 @@ impl GPUQueue {
       ));
     }
     // 7.
-    if source.source.detached.get().is_some() {
-      return Err(JsErrorBox::from_err(ImageError::ImageSourceAleadyDetached));
+    match source.source.kind {
+      ExternalImageSourceKind::ImageBitmap { detached } => {
+        if detached {
+          return Err(JsErrorBox::from_err(
+            ImageError::ImageSourceAleadyDetached,
+          ));
+        }
+      }
+      ExternalImageSourceKind::OffscreenCanvas => {
+        if src_image_width == 0 || src_image_height == 0 {
+          return Err(JsErrorBox::new(
+            "DOMExceptionInvalidStateError",
+            "OffscreenCanvas has a width or height of 0",
+          ));
+        }
+      }
     }
 
     // NOTE: The Device timeline steps are not implemented yet on wgpu side.
@@ -413,10 +434,87 @@ struct GPUTexelCopyBufferLayout {
 #[derive(WebIDL)]
 #[webidl(dictionary)]
 struct GPUCopyExternalImageSourceInfo {
-  source: Ref<ImageBitmap>, // TODO: union with ImageData
+  source: ExternalImageSource,
   origin: GPUOrigin2D,
   #[webidl(default = false)]
   flip_y: bool,
+}
+
+/// A snapshot of pixels extracted from one of the WebIDL union variants of
+/// `GPUCopyExternalImageSource` (currently `ImageBitmap` or `OffscreenCanvas`).
+pub struct ExternalImageSource {
+  pub data: DynamicImage,
+  pub kind: ExternalImageSourceKind,
+}
+
+pub enum ExternalImageSourceKind {
+  ImageBitmap { detached: bool },
+  OffscreenCanvas,
+}
+
+/// Function pointer for extracting an `ExternalImageSource` from a v8 value of
+/// a type defined outside of `deno_webgpu` (e.g. `OffscreenCanvas`, which lives
+/// in `ext/canvas` and depends on `deno_webgpu`).
+///
+/// Returns `None` if the value is not the type this extractor handles.
+pub type ExternalImageSourceExtractor =
+  for<'a> fn(
+    scope: &mut v8::PinScope<'a, '_>,
+    value: v8::Local<'a, v8::Value>,
+  ) -> Option<Result<ExternalImageSource, JsErrorBox>>;
+
+#[derive(Default)]
+pub struct ExternalImageSourceExtractors {
+  pub extractors: Vec<ExternalImageSourceExtractor>,
+}
+
+impl<'a> WebIdlConverter<'a> for ExternalImageSource {
+  type Options = ();
+
+  fn convert<'b>(
+    scope: &mut v8::PinScope<'a, '_>,
+    value: v8::Local<'a, v8::Value>,
+    prefix: Cow<'static, str>,
+    context: ContextFn<'b>,
+    options: &Self::Options,
+  ) -> Result<Self, WebIdlError> {
+    if let Ok(bitmap) = <Ref<ImageBitmap>>::convert(
+      scope,
+      value,
+      prefix.clone(),
+      context.borrowed(),
+      options,
+    ) {
+      return Ok(ExternalImageSource {
+        data: bitmap.data.borrow().clone(),
+        kind: ExternalImageSourceKind::ImageBitmap {
+          detached: bitmap.detached.get().is_some(),
+        },
+      });
+    }
+
+    let extractors = {
+      let state = JsRuntime::op_state_from(&*scope);
+      let state = state.borrow();
+      state
+        .try_borrow::<ExternalImageSourceExtractors>()
+        .map(|s| s.extractors.clone())
+        .unwrap_or_default()
+    };
+    for extractor in extractors {
+      if let Some(result) = extractor(scope, value) {
+        return result.map_err(|e| {
+          WebIdlError::other(prefix.clone(), context.borrowed(), e)
+        });
+      }
+    }
+
+    Err(WebIdlError::new(
+      prefix,
+      context,
+      WebIdlErrorKind::ConvertToConverterType("GPUCopyExternalImageSource"),
+    ))
+  }
 }
 
 #[derive(WebIDL)]

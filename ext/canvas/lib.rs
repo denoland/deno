@@ -19,6 +19,15 @@ deno_core::extension!(
   ],
   esm = ["02_surface.js"],
   lazy_loaded_esm = ["01_canvas.js"],
+  state = |state| {
+    let mut extractors = state
+      .try_take::<deno_webgpu::queue::ExternalImageSourceExtractors>()
+      .unwrap_or_default();
+    extractors
+      .extractors
+      .push(canvas::extract_external_image_source);
+    state.put(extractors);
+  },
 );
 
 #[op2(fast)]

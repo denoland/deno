@@ -316,6 +316,31 @@ pub enum Context {
   WebGPU(deno_core::cppgc::Ref<deno_webgpu::canvas::GPUCanvasContext>),
 }
 
+pub fn extract_external_image_source<'a>(
+  scope: &mut v8::PinScope<'a, '_>,
+  value: v8::Local<'a, v8::Value>,
+) -> Option<Result<deno_webgpu::queue::ExternalImageSource, JsErrorBox>> {
+  let canvas =
+    deno_core::cppgc::try_unwrap_cppgc_object::<OffscreenCanvas>(scope, value)?;
+  Some(extract_offscreen_canvas(scope, &canvas))
+}
+
+fn extract_offscreen_canvas(
+  scope: &mut v8::PinScope<'_, '_>,
+  canvas: &OffscreenCanvas,
+) -> Result<deno_webgpu::queue::ExternalImageSource, JsErrorBox> {
+  if let Some((id, active_context)) = canvas.active_context.get() {
+    let active_context = v8::Local::new(scope, active_context);
+    if let Context::WebGPU(context) = get_context(id, scope, active_context) {
+      context.bitmap_read_hook(scope)?;
+    }
+  }
+  Ok(deno_webgpu::queue::ExternalImageSource {
+    data: canvas.data.borrow().clone(),
+    kind: deno_webgpu::queue::ExternalImageSourceKind::OffscreenCanvas,
+  })
+}
+
 pub fn get_context<'t>(
   id: &'t str,
   scope: &mut v8::PinScope<'_, '_>,
