@@ -435,6 +435,12 @@ core.registerErrorBuilder(
     return new DOMException(msg, "SyntaxError");
   },
 );
+core.registerErrorBuilder(
+  "DOMExceptionIndexSizeError",
+  function DOMExceptionIndexSizeError(msg) {
+    return new DOMException(msg, "IndexSizeError");
+  },
+);
 
 function runtimeStart(
   denoVersion,

@@ -32,7 +32,6 @@ const {
   QuotaExceededError,
 } = core.loadExtScript("ext:deno_web/01_dom_exception.js");
 const abortSignal = core.loadExtScript("ext:deno_web/03_abort_signal.js");
-const imageData = core.loadExtScript("ext:deno_web/16_image_data.js");
 import process from "node:process";
 import { Buffer } from "node:buffer";
 import {
@@ -49,6 +48,7 @@ import { unstableIds } from "ext:runtime/90_deno_ns.js";
 const loadImage = core.createLazyLoader("ext:deno_image/01_image.js");
 const loadCanvas = core.createLazyLoader("ext:deno_canvas/01_canvas.js");
 const loadGeometry = core.createLazyLoader("ext:deno_web/geometry.js");
+const loadImageData = core.createLazyLoader("ext:deno_web/image_data.js");
 const loadWebSocket = core.createLazyLoader(
   "ext:deno_websocket/01_websocket.js",
 );
@@ -113,7 +113,10 @@ const windowOrWorkerGlobalScope = {
   FileReader: core.propNonEnumerable(fileReader.FileReader),
   FormData: core.propNonEnumerable(formData.FormData),
   Headers: core.propNonEnumerable(headers.Headers),
-  ImageData: core.propNonEnumerable(imageData.ImageData),
+  ImageData: core.propNonEnumerableLazyLoaded(
+    (imageData) => imageData.ImageData,
+    loadImageData,
+  ),
   ImageBitmap: core.propNonEnumerableLazyLoaded(
     (image) => image.ImageBitmap,
     loadImage,
