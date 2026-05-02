@@ -30,6 +30,7 @@ import { report } from "ext:deno_node/internal/process/report.ts";
 import { onWarning } from "ext:deno_node/internal/process/warning.ts";
 import {
   parseFileMode,
+  validateBoolean,
   validateNumber,
   validateObject,
   validateString,
@@ -49,7 +50,7 @@ import {
 import { getOptionValue } from "ext:deno_node/internal/options.ts";
 import assert from "node:assert";
 import { join } from "node:path";
-import { pathFromURL } from "ext:deno_web/00_infra.js";
+const { pathFromURL } = core.loadExtScript("ext:deno_web/00_infra.js");
 import {
   arch as arch_,
   chdir,
@@ -98,10 +99,17 @@ import * as uv from "ext:deno_node/internal_binding/uv.ts";
 import type { BindingName } from "ext:deno_node/internal_binding/mod.ts";
 import { buildAllowedFlags } from "ext:deno_node/internal/process/per_thread.mjs";
 import type fsUtils from "ext:deno_node/internal/fs/utils.mjs";
+import type * as utilModule from "ext:deno_node/util.ts";
 
 let fsUtilsModule: typeof fsUtils;
 const lazyLoadFsUtils = core.createLazyLoader<typeof fsUtils>(
   "ext:deno_node/internal/fs/utils.mjs",
+);
+// Lazy-loaded to avoid a static circular import:
+//   process.ts -> util.ts -> internal/util/parse_args/parse_args.js
+//     -> "node:process" -> process.ts
+const lazyLoadUtil = core.createLazyLoader<typeof utilModule>(
+  "node:util",
 );
 
 const {
@@ -529,18 +537,70 @@ export let execPath: string = "";
 // The process class needs to be an ES5 class because it can be instantiated
 // in Node without the `new` keyword. It's not a true class in Node. Popular
 // test runners like Jest rely on this.
+//
+// Use a named function expression so the syntactic name ("process") is
+// captured at parse time. V8 uses that name for runtime class strings
+// in error messages like "Cannot delete property 'exitCode' of
+// #<process>", which `Object.defineProperty(F, "name", ...)` does not
+// affect. Match Node's FunctionTemplate-based binding (see
+// CreateProcessObject in src/node_process_object.cc).
 // deno-lint-ignore no-explicit-any
-function Process(this: any) {
+const Process = function process(this: any) {
   // deno-lint-ignore no-explicit-any
   if (!(this instanceof Process)) return new (Process as any)();
 
   EventEmitter.call(this);
-}
+};
 Process.prototype = Object.create(EventEmitter.prototype);
-// V8 uses the constructor's name for error messages like
-// "Cannot delete property 'exitCode' of #<process>"
-const _process = function process() {};
-Process.prototype.constructor = _process;
+// Point the prototype's `constructor` at the real class with the same
+// descriptor Node uses (writable, non-enumerable, configurable) so
+// `process instanceof process.constructor` is true.
+Object.defineProperty(Process.prototype, "constructor", {
+  __proto__: null,
+  value: Process,
+  writable: true,
+  enumerable: false,
+  configurable: true,
+});
+
+// Maps original user listeners to wrapped versions that pass the signal name.
+// Node.js calls signal listeners with the signal name as the first argument,
+// but Deno.addSignalListener calls them with no arguments.
+type SignalListener = (...args: string[]) => void;
+const _signalListenerWrappers = new WeakMap<
+  SignalListener,
+  Map<string, SignalListener>
+>();
+
+function _wrapSignalListener(
+  event: string,
+  listener: SignalListener,
+): SignalListener {
+  let wrappersByEvent = _signalListenerWrappers.get(listener);
+  if (!wrappersByEvent) {
+    wrappersByEvent = new Map();
+    _signalListenerWrappers.set(listener, wrappersByEvent);
+  }
+  let wrapper = wrappersByEvent.get(event);
+  if (!wrapper) {
+    wrapper = () => listener(event);
+    wrappersByEvent.set(event, wrapper);
+  }
+  return wrapper;
+}
+
+function _unwrapSignalListener(
+  event: string,
+  listener: SignalListener,
+): SignalListener {
+  const wrappersByEvent = _signalListenerWrappers.get(listener);
+  if (!wrappersByEvent) return listener;
+  const wrapper = wrappersByEvent.get(event);
+  if (wrapper) {
+    wrappersByEvent.delete(event);
+  }
+  return wrapper ?? listener;
+}
 
 // Look up the actual registered listener for a signal event. When `once()` is
 // used, EventEmitter wraps the listener in a function with a `.listener`
@@ -587,7 +647,10 @@ Process.prototype.on = function (
       // TODO(#26331): Ignores all signals except SIGBREAK, SIGINT, and SIGWINCH on windows.
     } else {
       EventEmitter.prototype.on.call(this, event, listener);
-      Deno.addSignalListener(event as Deno.Signal, listener);
+      Deno.addSignalListener(
+        event as Deno.Signal,
+        _wrapSignalListener(event, listener),
+      );
     }
   } else {
     EventEmitter.prototype.on.call(this, event, listener);
@@ -618,9 +681,10 @@ Process.prototype.off = function (
       // to pass the wrapper (not the original) to Deno.removeSignalListener.
       const registered = _findSignalListener(this, event, listener);
       EventEmitter.prototype.off.call(this, event, listener);
+      const unwrapped = _unwrapSignalListener(event, registered ?? listener);
       Deno.removeSignalListener(
         event as Deno.Signal,
-        registered ?? listener,
+        unwrapped,
       );
     }
   } else {
@@ -652,7 +716,10 @@ Process.prototype.prependListener = function (
       // Ignores SIGBREAK if the platform is not windows.
     } else {
       EventEmitter.prototype.prependListener.call(this, event, listener);
-      Deno.addSignalListener(event as Deno.Signal, listener);
+      Deno.addSignalListener(
+        event as Deno.Signal,
+        _wrapSignalListener(event, listener),
+      );
     }
   } else {
     EventEmitter.prototype.prependListener.call(this, event, listener);
@@ -821,6 +888,11 @@ Object.defineProperty(process, "config", {
           default_configuration: "Release",
         }),
         variables: Object.freeze({
+          // Match Node's lib/internal/process/per_thread.js process.config:
+          // `node_module_version` is an integer ABI version exposed for native
+          // addons. Mirror process.versions.modules so a single source of truth
+          // wins.
+          node_module_version: Number(versions.modules),
           llvm_version: "0.0",
           enable_lto: "false",
           host_arch: arch,
@@ -980,7 +1052,8 @@ Object.defineProperty(process, "platform", {
 });
 
 // https://nodejs.org/api/process.html#processsetsourcemapsenabledval
-process.setSourceMapsEnabled = (_val: boolean) => {
+process.setSourceMapsEnabled = (val: boolean) => {
+  validateBoolean(val, "val");
   // This is a no-op in Deno. Source maps are always enabled.
   // TODO(@satyarohith): support disabling source maps if needed.
 };
@@ -1440,6 +1513,27 @@ internals.__bootstrapNodeProcess = function (
 
     if (getOptionValue("--warnings")) {
       process.on("warning", onWarning);
+    }
+
+    // Match Node's pre_execution.js: when --pending-deprecation is set, wrap
+    // `process.binding` with a DEP0111 warning, and wrap the `uv` binding's
+    // `errname` with DEP0119. See lib/internal/process/pre_execution.js and
+    // src/uv.cc (`ErrName`) in the upstream Node.js source.
+    if (getOptionValue("--pending-deprecation")) {
+      const { deprecate } = lazyLoadUtil();
+      const uvBinding = getBinding("uv");
+      uvBinding.errname = deprecate(
+        uvBinding.errname,
+        "Directly calling process.binding('uv').errname(<val>) is being " +
+          "deprecated. Please make sure to use util.getSystemErrorName() " +
+          "instead.",
+        "DEP0119",
+      );
+      process.binding = deprecate(
+        process.binding,
+        "process.binding() is deprecated. Please use public APIs instead.",
+        "DEP0111",
+      );
     }
 
     // Replace stdin if it is not a terminal

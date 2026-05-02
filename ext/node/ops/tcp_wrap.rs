@@ -277,6 +277,46 @@ impl TCPWrap {
   pub fn stream_ptr(&self) -> *mut UvStream {
     self.base.stream_ptr()
   }
+
+  fn bind_inner(
+    &self,
+    state: &mut OpState,
+    address: &str,
+    port: i32,
+    flags: u32,
+  ) -> Result<i32, deno_permissions::PermissionCheckError> {
+    state
+      .borrow_mut::<PermissionsContainer>()
+      .check_net(&(address, Some(port as u16)), "node:net.listen()")?;
+
+    let addr_str = format!("{}:{}", address, port);
+    let socket_addr = match addr_str.to_socket_addrs() {
+      Ok(mut addrs) => match addrs.next() {
+        Some(addr) => addr,
+        None => return Ok(-1),
+      },
+      Err(_) => return Ok(-1),
+    };
+
+    // SAFETY: tcp is valid; socket2 SockAddr is properly initialized from
+    // a resolved std::net::SocketAddr.
+    unsafe {
+      let tcp = self.tcp_ptr();
+      if tcp.is_null() {
+        return Ok(-1);
+      }
+      let sock_addr = Socket2SockAddr::from(socket_addr);
+      Ok(uv_compat::uv_tcp_bind(
+        tcp,
+        sock_addr.as_ptr() as *const _,
+        #[allow(clippy::unnecessary_cast, reason = "depends on platform")]
+        {
+          sock_addr.len() as u32
+        },
+        flags,
+      ))
+    }
+  }
 }
 
 // -- ops --
@@ -328,8 +368,34 @@ impl TCPWrap {
         let mut nonblocking: u32 = 1;
         ioctlsocket(fd as usize, FIONBIO, &mut nonblocking);
       }
+      // Match Node: a wrap constructed with `new TCP(SERVER)` opens the
+      // fd as a listener; `new TCP(SOCKET)` as a connected stream. Node's
+      // libuv layer doesn't autodetect — it uses the wrap's intent to
+      // decide how to register the fd, then `listen()` on a listening fd
+      // is a no-op at the kernel level.
+      #[cfg(unix)]
+      if self.socket_type.get() == SocketType::Server {
+        return uv_compat::uv_tcp_open_listener(tcp, fd);
+      }
       uv_compat::uv_tcp_open(tcp, fd)
     }
+  }
+
+  #[fast]
+  fn fd_for_ipc(&self) -> i32 {
+    #[cfg(unix)]
+    {
+      let tcp = self.tcp_ptr();
+      if tcp.is_null() {
+        return -1;
+      }
+      // SAFETY: tcp is valid (null-checked above).
+      unsafe { uv_compat::uv_tcp_fd_for_ipc(tcp) }
+    }
+    // Windows IPC handle passing doesn't use SCM_RIGHTS-style fd transfer;
+    // returning -1 surfaces "not supported" to the JS handle-passing path.
+    #[cfg(not(unix))]
+    -1
   }
 
   #[fast]
@@ -357,37 +423,19 @@ impl TCPWrap {
     #[string] address: &str,
     #[smi] port: i32,
   ) -> Result<i32, deno_permissions::PermissionCheckError> {
-    state
-      .borrow_mut::<PermissionsContainer>()
-      .check_net(&(address, Some(port as u16)), "node:net.listen()")?;
+    self.bind_inner(state, address, port, 0)
+  }
 
-    let addr_str = format!("{}:{}", address, port);
-    let socket_addr = match addr_str.to_socket_addrs() {
-      Ok(mut addrs) => match addrs.next() {
-        Some(addr) => addr,
-        None => return Ok(-1),
-      },
-      Err(_) => return Ok(-1),
-    };
-
-    // SAFETY: tcp is valid; socket2 SockAddr is properly initialized from
-    // a resolved std::net::SocketAddr.
-    unsafe {
-      let tcp = self.tcp_ptr();
-      if tcp.is_null() {
-        return Ok(-1);
-      }
-      let sock_addr = Socket2SockAddr::from(socket_addr);
-      Ok(uv_compat::uv_tcp_bind(
-        tcp,
-        sock_addr.as_ptr() as *const _,
-        #[allow(clippy::unnecessary_cast, reason = "depends on platform")]
-        {
-          sock_addr.len() as u32
-        },
-        0,
-      ))
-    }
+  #[nofast]
+  #[rename("bindWithFlags")]
+  fn bind_with_flags(
+    &self,
+    state: &mut OpState,
+    #[string] address: &str,
+    #[smi] port: i32,
+    #[smi] flags: u32,
+  ) -> Result<i32, deno_permissions::PermissionCheckError> {
+    self.bind_inner(state, address, port, flags)
   }
 
   #[nofast]
@@ -396,6 +444,7 @@ impl TCPWrap {
     state: &mut OpState,
     #[string] address: &str,
     #[smi] port: i32,
+    #[smi] flags: u32,
   ) -> Result<i32, deno_permissions::PermissionCheckError> {
     state
       .borrow_mut::<PermissionsContainer>()
@@ -424,7 +473,7 @@ impl TCPWrap {
         {
           sock_addr.len() as u32
         },
-        0,
+        flags,
       ))
     }
   }

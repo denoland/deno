@@ -25,6 +25,7 @@ import {
   closeSync,
   constants,
   copyFileSync,
+  createReadStream,
   createWriteStream,
   existsSync,
   fchmod,
@@ -57,6 +58,7 @@ import {
   statSync,
   unlink,
   unlinkSync,
+  watch,
   writeFileSync,
 } from "node:fs";
 import { readFile } from "node:fs/promises";
@@ -146,6 +148,24 @@ Deno.test(
     // 'wx' on a new file should succeed
     writeFileSync(filename, "exclusive write", { flag: "wx" });
     assertEquals(readFileSync(filename, "utf8"), "exclusive write");
+  },
+);
+
+Deno.test(
+  "[node/fs writeFileSync] repeated overwrites preserve content on failure",
+  () => {
+    const filename = mkdtempSync(join(tmpdir(), "foo-")) + "/config.json";
+
+    // Simulate a long-running app that repeatedly overwrites a config file
+    for (let i = 0; i < 50; i++) {
+      const content = JSON.stringify({ version: i, data: "x".repeat(100) });
+      writeFileSync(filename, content);
+      assertEquals(readFileSync(filename, "utf8"), content);
+    }
+
+    // Verify file is never corrupted to 0 bytes
+    const stat = Deno.statSync(filename);
+    assert(stat.size > 0, "File should not be empty after repeated writes");
   },
 );
 
@@ -1194,6 +1214,28 @@ Deno.test({
   await Deno.remove(tempFile);
 });
 
+// Regression test for https://github.com/denoland/deno/issues/33712
+// `fs.close` used to defer via `setTimeout(0)`, which Deno's test sanitizer
+// flagged as a leaked timer when a stream auto-closed at end-of-stream.
+// `createReadStream(...).on("end", ...)` triggers exactly that path.
+Deno.test({
+  name: "[node/fs.close] createReadStream auto-close doesn't leak a timer",
+  async fn() {
+    const tempFile = await Deno.makeTempFile();
+    try {
+      await Deno.writeTextFile(tempFile, "hello");
+      await new Promise<void>((resolve, reject) => {
+        const stream = createReadStream(tempFile);
+        stream.on("data", () => {});
+        stream.on("end", () => resolve());
+        stream.on("error", reject);
+      });
+    } finally {
+      await Deno.remove(tempFile);
+    }
+  },
+});
+
 // ==========
 // fsync tests (from _fs_fsync_test.ts)
 // ==========
@@ -1882,5 +1924,68 @@ Deno.test(
     } finally {
       rmSync(tmp, { recursive: true, force: true });
     }
+  },
+);
+
+Deno.test({
+  name: "[node/fs] watch recursive returns relative path for nested files",
+  ignore: Deno.build.os === "windows",
+  async fn() {
+    const tmp = Deno.makeTempDirSync();
+    const subdir = join(tmp, "sub");
+    mkdirSync(subdir, { recursive: true });
+
+    try {
+      const filenames: string[] = [];
+      const { promise, resolve } = Promise.withResolvers<void>();
+
+      const watcher = watch(
+        tmp,
+        { recursive: true },
+        (_event: string, filename: string | null) => {
+          if (filename) filenames.push(filename);
+          if (filenames.length >= 1) resolve();
+        },
+      );
+
+      // Small delay to let the watcher start
+      await new Promise((r) => setTimeout(r, 100));
+      writeFileSync(join(subdir, "test.txt"), "hello");
+
+      await promise;
+      watcher.close();
+
+      // macOS FSEvents only delivers directory-granularity events for
+      // recursive watches, so the filename may be "sub" instead of
+      // "sub/test.txt". Both are correct relative paths.
+      const hasRelative = filenames.some((f) => f.startsWith("sub"));
+      assert(
+        hasRelative,
+        `Expected relative path starting with "sub", got: ${filenames}`,
+      );
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  },
+});
+
+Deno.test(
+  {
+    name: "[node/fs] readFile on non-terminating source respects AbortSignal",
+    ignore: Deno.build.os === "windows",
+  },
+  async () => {
+    const controller = new AbortController();
+    setTimeout(() => controller.abort(), 500);
+
+    await assertRejects(
+      () =>
+        readFile("/dev/urandom", {
+          encoding: "utf8",
+          signal: controller.signal,
+        }),
+      Error,
+      "abort",
+    );
   },
 );

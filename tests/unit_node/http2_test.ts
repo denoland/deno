@@ -3,6 +3,8 @@
 // deno-lint-ignore-file no-console
 
 import * as http2 from "node:http2";
+import * as https from "node:https";
+import { AsyncLocalStorage } from "node:async_hooks";
 import { Buffer } from "node:buffer";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -612,6 +614,76 @@ Deno.test("[node/http2] stream frameError listener does not throw", {
   await promise;
 });
 
+Deno.test("[node/http2] AsyncLocalStorage propagates per request", {
+  ignore: Deno.build.os === "windows",
+  sanitizeResources: false,
+  sanitizeOps: false,
+}, async () => {
+  const storage = new AsyncLocalStorage<{ id: number }>();
+  const server = http2.createServer();
+  server.on("stream", (stream) => {
+    stream.respond({
+      [http2.constants.HTTP2_HEADER_CONTENT_TYPE]: "text/plain; charset=utf-8",
+      [http2.constants.HTTP2_HEADER_STATUS]: 200,
+    });
+    stream.end("data");
+  });
+
+  await new Promise<void>((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, resolve);
+  });
+
+  const port = (server.address() as net.AddressInfo).port;
+  const client = storage.run(
+    { id: 0 },
+    () => http2.connect(`http://localhost:${port}`),
+  );
+
+  const done = Promise.withResolvers<void>();
+  let completed = 0;
+
+  function closeIfDone() {
+    completed++;
+    if (completed === 2) {
+      client.close();
+      server.close((err) => err ? done.reject(err) : done.resolve());
+    }
+  }
+
+  function requestWith(id: number) {
+    storage.run({ id }, () => {
+      const req = client.request({
+        [http2.constants.HTTP2_HEADER_PATH]: "/",
+      });
+      req.setEncoding("utf8");
+      req.on("response", (headers) => {
+        assertEquals(
+          Number(headers[http2.constants.HTTP2_HEADER_STATUS]),
+          200,
+        );
+        assertEquals(storage.getStore()?.id, id);
+      });
+      req.on("data", (chunk: string) => {
+        assertEquals(chunk, "data");
+        assertEquals(storage.getStore()?.id, id);
+      });
+      req.on("end", () => {
+        assertEquals(storage.getStore()?.id, id);
+        closeIfDone();
+      });
+      req.on("error", done.reject);
+      req.end();
+    });
+  }
+
+  client.on("error", done.reject);
+  requestWith(1);
+  requestWith(2);
+
+  await done.promise;
+});
+
 Deno.test("[node/http2 client] connect without net permission", {
   permissions: { net: false },
 }, async () => {
@@ -684,4 +756,47 @@ Deno.test("[node/http2 client] connect with pre-created socket", {
   client.close();
   server.close();
   await new Promise<void>((resolve) => server.on("close", resolve));
+});
+
+// Regression test for https://github.com/denoland/deno/issues/33317
+// `http2.createSecureServer({ allowHTTP1: true })` must handle HTTP/1.1
+// clients without throwing `ReferenceError: kIncomingMessage is not defined`.
+Deno.test("[node/http2] allowHTTP1 fallback handles HTTP/1.1 clients", async () => {
+  const cert = Deno.readTextFileSync("tests/testdata/tls/localhost.crt");
+  const key = Deno.readTextFileSync("tests/testdata/tls/localhost.key");
+  const ca = Deno.readTextFileSync("tests/testdata/tls/RootCA.pem");
+
+  const { promise, resolve } = Promise.withResolvers<void>();
+
+  const server = http2.createSecureServer(
+    { allowHTTP1: true, cert, key },
+    (_req, res) => {
+      res.writeHead(200, { "content-type": "text/plain" });
+      res.end("ok");
+    },
+  );
+
+  server.listen(0, () => {
+    const port = (server.address() as net.AddressInfo).port;
+    const req = https.request(
+      { hostname: "localhost", port, path: "/", method: "GET", ca },
+      (res) => {
+        let data = "";
+        res.setEncoding("utf8");
+        res.on("data", (chunk: string) => (data += chunk));
+        res.on("end", () => {
+          assertEquals(res.statusCode, 200);
+          assertEquals(data, "ok");
+          server.close(() => resolve());
+        });
+      },
+    );
+    req.on("error", (e) => {
+      server.close();
+      throw e;
+    });
+    req.end();
+  });
+
+  await promise;
 });

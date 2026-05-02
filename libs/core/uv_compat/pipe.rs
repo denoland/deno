@@ -324,13 +324,6 @@ pub unsafe fn uv_pipe_bind(pipe: *mut uv_pipe_t, path: &str) -> c_int {
     // The fd is available immediately for the `fd` property.
     #[cfg(unix)]
     {
-      // Remove existing socket file if present.
-      #[allow(
-        clippy::disallowed_methods,
-        reason = "uv_compat is not compiled to WASM"
-      )]
-      let _ = std::fs::remove_file(path);
-
       // Create a Unix domain stream socket.
       let fd = libc::socket(libc::AF_UNIX, libc::SOCK_STREAM, 0);
       if fd < 0 {
@@ -600,7 +593,15 @@ pub unsafe fn uv_pipe_listen(
       .max_instances((*pipe).pending_instances as usize);
     let server = match opts.create(&path) {
       Ok(s) => s,
-      Err(e) => return io_error_to_uv(&e),
+      Err(e) => {
+        // ERROR_ACCESS_DENIED (5) from CreateNamedPipe with
+        // FILE_FLAG_FIRST_PIPE_INSTANCE means a pipe with that name
+        // already exists. Map to EADDRINUSE to match Node/libuv.
+        if e.raw_os_error() == Some(5) {
+          return super::UV_EADDRINUSE;
+        }
+        return io_error_to_uv(&e);
+      }
     };
 
     // Wrap in Arc so the connect future can hold its own reference.
@@ -1068,7 +1069,21 @@ pub(crate) unsafe fn poll_pipe_handle(
         continue;
       }
       // Try writing to whichever pipe type we have.
-      let remaining = &pw.data[pw.offset..];
+      let remaining: &[u8] = if let Some(ref iov) = pw.iovecs {
+        // SAFETY: caller retention keeps iovec memory valid.
+        let s = iov.head_slice();
+        if s.is_empty() {
+          let pw = (*pipe_ptr).internal_write_queue.pop_front().unwrap();
+          any_work = true;
+          if let Some(cb) = pw.cb {
+            cb(pw.req, 0);
+          }
+          continue;
+        }
+        s
+      } else {
+        &pw.data[pw.offset..]
+      };
       use std::io::Write;
       use std::os::windows::io::FromRawHandle;
       // Register write-readiness with the reactor so the waker fires
@@ -1097,8 +1112,14 @@ pub(crate) unsafe fn poll_pipe_handle(
         Ok(n) => {
           any_work = true;
           let pw = (*pipe_ptr).internal_write_queue.front_mut().unwrap();
-          pw.offset += n;
-          if pw.offset >= pw.data.len() {
+          let drained = if let Some(ref mut iov) = pw.iovecs {
+            iov.advance(n);
+            iov.is_empty()
+          } else {
+            pw.offset += n;
+            pw.offset >= pw.data.len()
+          };
+          if drained {
             let pw = (*pipe_ptr).internal_write_queue.pop_front().unwrap();
             if let Some(cb) = pw.cb {
               cb(pw.req, 0);
@@ -1398,7 +1419,24 @@ pub(crate) unsafe fn poll_pipe_handle(
         }
         continue;
       }
-      let remaining = &pw.data[pw.offset..];
+      // When iovecs are set, walk them one head-at-a-time; otherwise
+      // use the legacy single-buf `data`/`offset` view.
+      let remaining: &[u8] = if let Some(ref iov) = pw.iovecs {
+        // SAFETY: caller retention keeps iovec memory valid.
+        let s = iov.head_slice();
+        if s.is_empty() {
+          // Fully drained — pop and fire callback.
+          let pw = (*pipe_ptr).internal_write_queue.pop_front().unwrap();
+          any_work = true;
+          if let Some(cb) = pw.cb {
+            cb(pw.req, 0);
+          }
+          continue;
+        }
+        s
+      } else {
+        &pw.data[pw.offset..]
+      };
       // Prefer AsyncFd for proper readiness tracking, then UnixStream,
       // then fall back to raw libc::write.
       let write_result = if let Some(ref afd) = (*pipe_ptr).internal_async_fd {
@@ -1461,8 +1499,14 @@ pub(crate) unsafe fn poll_pipe_handle(
         Ok(n) => {
           any_work = true;
           let pw = (*pipe_ptr).internal_write_queue.front_mut().unwrap();
-          pw.offset += n;
-          if pw.offset >= pw.data.len() {
+          let drained = if let Some(ref mut iov) = pw.iovecs {
+            iov.advance(n);
+            iov.is_empty()
+          } else {
+            pw.offset += n;
+            pw.offset >= pw.data.len()
+          };
+          if drained {
             let pw = (*pipe_ptr).internal_write_queue.pop_front().unwrap();
             if let Some(cb) = pw.cb {
               cb(pw.req, 0);
