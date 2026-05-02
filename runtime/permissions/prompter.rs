@@ -378,12 +378,10 @@ impl PermissionPrompter for TtyPrompter {
     let api_name = api_name.map(escape_control_characters);
 
     // print to stderr so that if stdout is piped this is still displayed.
-    let opts: String = if is_unary {
-      format!(
-        "[y/n/A] (y = yes, allow; n = no, deny; A = allow all {name} permissions)"
-      )
+    let prompt_hint: String = if is_unary {
+      "[1/2/3]".to_string()
     } else {
-      "[y/n] (y = yes, allow; n = no, deny)".to_string()
+      "[1/2]".to_string()
     };
 
     // output everything in one shot to make the tests more reliable
@@ -393,57 +391,69 @@ impl PermissionPrompter for TtyPrompter {
       write!(&mut output, "{}", colors::bold("Deno requests ")).unwrap();
       write!(&mut output, "{}", colors::bold(message.clone())).unwrap();
       writeln!(&mut output, "{}", colors::bold(".")).unwrap();
+      writeln!(&mut output, "┃").unwrap();
       if let Some(api_name) = api_name.clone() {
         writeln!(
           &mut output,
-          "┠─ Requested by `{}` API.",
+          "┃  Requested by `{}` API",
           colors::bold(api_name)
         )
         .unwrap();
+        writeln!(&mut output, "┃").unwrap();
       }
       let stack_lines_count = if let Some(get_stack) = get_stack {
         let stack = get_stack();
         let len = stack.len();
-        for (idx, frame) in stack.into_iter().enumerate() {
+        writeln!(&mut output, "┃  Stack trace:").unwrap();
+        for frame in stack.into_iter() {
           writeln!(
             &mut output,
-            "┃  {} {}",
-            colors::gray(if idx != len - 1 { "├─" } else { "└─" }),
+            "┃    {}",
             colors::gray(frame),
           )
           .unwrap();
         }
-        len
+        writeln!(&mut output, "┃").unwrap();
+        2 + len
       } else {
-        writeln!(
-          &mut output,
-          "┠─ To see a stack trace for this prompt, set the DENO_TRACE_PERMISSIONS environmental variable.",
-        ).unwrap();
-        1
+        0
       };
       let msg = format!(
-        "Learn more at: {}",
+        "Learn more: {}",
         colors::cyan_with_underline(&format!(
           "https://docs.deno.com/go/--allow-{}",
           name
         ))
       );
-      writeln!(&mut output, "┠─ {}", colors::italic(&msg)).unwrap();
+      writeln!(&mut output, "┃  {}", colors::italic(&msg)).unwrap();
       let msg = if crate::is_standalone() {
         format!(
-          "Specify the required permissions during compile time using `deno compile --allow-{name}`."
+          "Specify the required permissions during compile time using `deno compile --allow-{name}`"
         )
       } else {
         format!("Run again with --allow-{name} to bypass this prompt.")
       };
-      writeln!(&mut output, "┠─ {}", colors::italic(&msg)).unwrap();
-      write!(&mut output, "┗ {}", colors::bold("Allow?")).unwrap();
-      write!(&mut output, " {opts} > ").unwrap();
+      writeln!(&mut output, "┃  {}", colors::italic(&msg)).unwrap();
+      writeln!(&mut output, "┃").unwrap();
+      writeln!(&mut output, "┃  1. Allow   (y)").unwrap();
+      writeln!(&mut output, "┃  2. Deny    (n)").unwrap();
+      if is_unary {
+        writeln!(
+          &mut output,
+          "┃  3. Allow all {name} permissions   (A)"
+        )
+        .unwrap();
+      }
+      writeln!(&mut output, "┃").unwrap();
+      write!(&mut output, "┗ {prompt_hint} > ").unwrap();
 
       stderr_lock.write_all(output.as_bytes()).unwrap();
 
       stack_lines_count
     };
+
+    // Number of option lines: 2 for binary, 3 for unary
+    let option_lines: usize = if is_unary { 3 } else { 2 };
 
     let value = loop {
       // Clear stdin each time we loop around in case the user accidentally pasted
@@ -466,22 +476,23 @@ impl PermissionPrompter for TtyPrompter {
         break PromptResponse::Deny;
       };
 
-      let clear_n = if api_name.is_some() { 5 } else { 4 } + stack_lines_count;
+      // Header(1) + blank(1) + [api(2)] + [stack(2+len)] + info(2) + blank(1) + options + blank(1) + prompt(1)
+      let clear_n = if api_name.is_some() { 10 } else { 8 } + option_lines + stack_lines_count;
 
       match input.as_bytes()[0] as char {
-        'y' | 'Y' => {
+        'y' | 'Y' | '1' => {
           clear_n_lines(&mut stderr_lock, clear_n);
           let msg = format!("Granted {message}.");
           writeln!(stderr_lock, "✅ {}", colors::bold(&msg)).unwrap();
           break PromptResponse::Allow;
         }
-        'n' | 'N' | '\x1b' => {
+        'n' | 'N' | '\x1b' | '2' => {
           clear_n_lines(&mut stderr_lock, clear_n);
           let msg = format!("Denied {message}.");
           writeln!(stderr_lock, "❌ {}", colors::bold(&msg)).unwrap();
           break PromptResponse::Deny;
         }
-        'A' if is_unary => {
+        'A' | '3' if is_unary => {
           clear_n_lines(&mut stderr_lock, clear_n);
           let msg = format!("Granted all {name} access.");
           writeln!(stderr_lock, "✅ {}", colors::bold(&msg)).unwrap();
@@ -492,8 +503,8 @@ impl PermissionPrompter for TtyPrompter {
           clear_n_lines(&mut stderr_lock, 1);
           write!(
             stderr_lock,
-            "┗ {} {opts} > ",
-            colors::bold("Unrecognized option. Allow?")
+            "┗ {} {prompt_hint} > ",
+            colors::bold("Unrecognized option.")
           )
           .unwrap();
         }
