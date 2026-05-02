@@ -39,6 +39,7 @@ use crate::util::fs::canonicalize_path;
 
 const CLEAR_SCREEN: &str = "\x1B[H\x1B[2J\x1B[3J";
 const DEBOUNCE_INTERVAL: Duration = Duration::from_millis(200);
+const GRACEFUL_SHUTDOWN_TIMEOUT: Duration = Duration::from_millis(500);
 
 struct DebouncedReceiver {
   // The `recv()` call could be used in a tokio `select!` macro,
@@ -142,7 +143,7 @@ impl PrintConfig {
 
 fn create_print_after_restart_fn(clear_screen: bool) -> impl Fn() {
   move || {
-    #[allow(clippy::print_stderr)]
+    #[allow(clippy::print_stderr, reason = "want to clear the terminal")]
     if clear_screen && std::io::stderr().is_terminal() {
       eprint!("{}", CLEAR_SCREEN);
     }
@@ -400,17 +401,55 @@ where
       });
     }
 
+    tokio::pin!(operation_future);
+
     select! {
       _ = receiver_future => {},
       _ = deno_signals::ctrl_c() => {
+        // Dispatch SIGINT (matching what Ctrl+C normally sends) and
+        // SIGTERM to give JS code a chance for async cleanup. Some
+        // libraries only listen for SIGINT, others for SIGTERM.
+        // Note: `raise()` works on all platforms (including Windows)
+        // because it synthetically invokes registered JS handlers via
+        // `handle_signal()` rather than using OS-level signal delivery.
+        //
+        // Use bitwise OR (not `||`) to ensure both signals are always
+        // raised regardless of whether the first one has handlers.
+        let has_handlers = deno_signals::raise(deno_signals::SIGINT)
+          | deno_signals::raise(deno_signals::SIGTERM);
+        if has_handlers {
+          info!(
+            "{} Waiting for graceful termination...",
+            colors::intense_blue(banner),
+          );
+          let _ = tokio::time::timeout(
+            GRACEFUL_SHUTDOWN_TIMEOUT,
+            &mut operation_future,
+          )
+          .await;
+        }
         return Ok(());
       },
       _ = restart_rx.recv() => {
+        // Dispatch SIGTERM to give JS code a chance for async cleanup
+        // before restarting. If handlers are registered, wait for the
+        // operation to finish gracefully before restarting.
+        if deno_signals::raise(deno_signals::SIGTERM) {
+          info!(
+            "{} Waiting for graceful termination...",
+            colors::intense_blue(banner),
+          );
+          let _ = tokio::time::timeout(
+            GRACEFUL_SHUTDOWN_TIMEOUT,
+            &mut operation_future,
+          )
+          .await;
+        }
         deno_runtime::deno_inspector_server::notify_restart();
         print_after_restart();
         continue;
       },
-      success = operation_future => {
+      success = &mut operation_future => {
         consume_paths_to_watch(&mut watcher, &mut paths_to_watch_rx, &exclude_set);
         if print_finished {
           // TODO(bartlomieju): print exit code here?

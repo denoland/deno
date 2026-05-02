@@ -1,6 +1,6 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-import { primordials } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 const {
   Error,
   PromisePrototypeThen,
@@ -13,7 +13,9 @@ const {
   FunctionPrototypeApply,
   SafeArrayIterator,
 } = primordials;
-import { TextDecoder, TextEncoder } from "ext:deno_web/08_text_encoding.js";
+const { TextDecoder, TextEncoder } = core.loadExtScript(
+  "ext:deno_web/08_text_encoding.js",
+);
 import { errorMap } from "ext:deno_node/internal_binding/uv.ts";
 import { codes } from "ext:deno_node/internal/error_codes.ts";
 import { ERR_NOT_IMPLEMENTED } from "ext:deno_node/internal/errors.ts";

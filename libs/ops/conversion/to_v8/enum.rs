@@ -286,7 +286,7 @@ impl EnumMode {
   }
 }
 
-#[allow(dead_code)]
+#[allow(dead_code, reason = "unused properties")]
 enum EnumModeArgument {
   Tag {
     name_token: shared_kw::tag,
@@ -377,7 +377,7 @@ impl EnumVariantAttribute {
   }
 }
 
-#[allow(dead_code)]
+#[allow(dead_code, reason = "unused properties")]
 enum EnumVariantArgument {
   Rename {
     name_token: shared_kw::rename,

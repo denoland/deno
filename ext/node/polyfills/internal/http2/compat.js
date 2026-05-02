@@ -24,23 +24,21 @@ const {
   Symbol,
 } = primordials;
 
-import { op_http2_constants } from "ext:core/ops";
-import assert from "node:assert";
-import Stream, { Readable } from "node:stream";
-const {
+import {
   HTTP2_HEADER_AUTHORITY,
   HTTP2_HEADER_CONNECTION,
   HTTP2_HEADER_METHOD,
   HTTP2_HEADER_PATH,
   HTTP2_HEADER_SCHEME,
   HTTP2_HEADER_STATUS,
-
   HTTP_STATUS_CONTINUE,
   HTTP_STATUS_EARLY_HINTS,
   HTTP_STATUS_EXPECTATION_FAILED,
   HTTP_STATUS_METHOD_NOT_ALLOWED,
   HTTP_STATUS_OK,
-} = op_http2_constants();
+} from "ext:deno_node/internal/http2/constants.ts";
+import assert from "node:assert";
+import Stream, { Readable } from "node:stream";
 import { codes, hideStackFrames } from "ext:deno_node/internal/errors.ts";
 const {
   ERR_HTTP2_HEADERS_SENT,

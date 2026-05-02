@@ -59,13 +59,13 @@ const {
   Uint8Array,
 } = primordials;
 
-import {
+const {
   readableStreamForRidUnrefable,
   readableStreamForRidUnrefableRef,
   readableStreamForRidUnrefableUnref,
   writableStreamForRid,
-} from "ext:deno_web/06_streams.js";
-import * as abortSignal from "ext:deno_web/03_abort_signal.js";
+} = core.loadExtScript("ext:deno_web/06_streams.js");
+const abortSignal = core.loadExtScript("ext:deno_web/03_abort_signal.js");
 
 async function write(rid, data) {
   return await core.write(rid, data);
@@ -257,17 +257,6 @@ class UnixConn extends Conn {
 class VsockConn extends Conn {
   constructor(rid, remoteAddr, localAddr) {
     super(rid, remoteAddr, localAddr);
-    ObjectDefineProperty(this, internalRidSymbol, {
-      __proto__: null,
-      enumerable: false,
-      value: rid,
-    });
-  }
-}
-
-class PipeConn extends Conn {
-  constructor(rid) {
-    super(rid, null, null);
     ObjectDefineProperty(this, internalRidSymbol, {
       __proto__: null,
       enumerable: false,
@@ -671,7 +660,7 @@ function createListenDatagram(udpOpFn, unixOpFn) {
         const port = validatePort(args.port);
         const { 0: rid, 1: addr } = udpOpFn(
           {
-            hostname: args.hostname ?? "127.0.0.1",
+            hostname: args.hostname ?? "0.0.0.0",
             port,
           },
           args.reuseAddress ?? false,
@@ -760,7 +749,6 @@ export {
   listen,
   Listener,
   listenOptionApiName,
-  PipeConn,
   resolveDns,
   setDatagramBroadcast,
   setMulticastLoopback,

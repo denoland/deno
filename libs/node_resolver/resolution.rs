@@ -273,7 +273,7 @@ pub trait NodeResolverSys:
 {
 }
 
-#[allow(clippy::disallowed_types)]
+#[allow(clippy::disallowed_types, reason = "definition")]
 pub type NodeResolverRc<
   TInNpmPackageChecker,
   TIsBuiltInNodeModuleChecker,
@@ -446,6 +446,40 @@ impl<
     // TODO(bartlomieju): skipped checking errors for commonJS resolution and
     // "preserveSymlinksMain"/"preserveSymlinks" options.
     Ok(resolve_response)
+  }
+
+  /// Resolve a bare package specifier, skipping the built-in module check
+  /// and URL scheme handling. Only suitable for bare specifiers like
+  /// "events" or "assert" — not for URLs or relative paths.
+  ///
+  /// Used when a specifier resolved as a built-in but may be shadowed
+  /// by an npm package with the same name.
+  pub fn resolve_package(
+    &self,
+    specifier: &str,
+    referrer: &Url,
+    resolution_mode: ResolutionMode,
+    resolution_kind: NodeResolutionKind,
+  ) -> Result<NodeResolution, NodeResolveError> {
+    let conditions = self.condition_resolver.resolve(resolution_mode);
+    let referrer = UrlOrPathRef::from_url(referrer);
+    let (url, resolved_kind) = self.module_resolve(
+      specifier,
+      &referrer,
+      resolution_mode,
+      conditions,
+      resolution_kind,
+    )?;
+
+    let url_or_path = self.finalize_resolution(
+      url,
+      resolved_kind,
+      resolution_mode,
+      conditions,
+      resolution_kind,
+      Some(&referrer),
+    )?;
+    Ok(NodeResolution::Module(url_or_path))
   }
 
   fn module_resolve(
@@ -1007,7 +1041,7 @@ impl<
     })))
   }
 
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "all arguments are needed")]
   pub fn resolve_package_import(
     &self,
     name: &str,
@@ -1028,7 +1062,7 @@ impl<
       .map(|url| url.0.into_url_or_path())
   }
 
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "all arguments are needed")]
   fn package_imports_resolve_internal(
     &self,
     name: &str,
@@ -1080,7 +1114,7 @@ impl<
     )
   }
 
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "all arguments are needed")]
   fn resolve_package_target_string(
     &self,
     target: &str,
@@ -1267,7 +1301,7 @@ impl<
     )?)
   }
 
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "all arguments are needed")]
   fn resolve_package_target(
     &self,
     package_json_path: &Path,
@@ -1323,7 +1357,7 @@ impl<
     }
   }
 
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "all arguments are needed")]
   fn resolve_package_target_inner(
     &self,
     package_json_path: &Path,
@@ -1445,7 +1479,7 @@ impl<
     version_req.matches(ts_version)
   }
 
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "all arguments are needed")]
   pub fn package_exports_resolve(
     &self,
     package_json_path: &Path,
@@ -1469,7 +1503,7 @@ impl<
       .map(|url| url.0.into_url_or_path())
   }
 
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "all arguments are needed")]
   fn package_exports_resolve_internal(
     &self,
     package_json_path: &Path,
@@ -1629,7 +1663,7 @@ impl<
     )
   }
 
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "all arguments are needed")]
   fn resolve_package_subpath_for_package(
     &self,
     package_name: &str,
@@ -1671,7 +1705,7 @@ impl<
     result
   }
 
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "all arguments are needed")]
   fn resolve_package_dir_subpath(
     &self,
     package_dir_path: &Path,
@@ -1733,7 +1767,7 @@ impl<
     }
   }
 
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "all arguments are needed")]
   fn resolve_package_subpath(
     &self,
     package_json: &PackageJson,
@@ -1838,7 +1872,7 @@ impl<
       })
   }
 
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "all arguments are needed")]
   fn resolve_subpath_exact(
     &self,
     directory: &Path,
@@ -1969,7 +2003,20 @@ impl<
     };
 
     if let Some(main) = maybe_main.as_deref() {
-      let guess = package_json.path.parent().unwrap().join(main).clean();
+      let package_path = package_json.path.parent().unwrap();
+      let guess = package_path.join(main).clean();
+      // Ensure the resolved main path doesn't escape the package
+      // directory via path traversal (e.g. "main": "../../../secret.json")
+      if !guess.starts_with(package_path) {
+        return Err(
+          ModuleNotFoundError {
+            specifier: UrlOrPath::Path(guess),
+            maybe_referrer: maybe_referrer.map(|r| r.display()),
+            suggested_ext: None,
+          }
+          .into(),
+        );
+      }
       if self.sys.is_file(Cow::Borrowed(&guess)) {
         return Ok(self.maybe_resolve_types(
           LocalUrlOrPath::Path(LocalPath {
@@ -2002,13 +2049,10 @@ impl<
         vec![".js", "/index.js"]
       };
       for ending in endings {
-        let guess = package_json
-          .path
-          .parent()
-          .unwrap()
-          .join(format!("{main}{ending}"))
-          .clean();
-        if self.sys.is_file(Cow::Borrowed(&guess)) {
+        let guess = package_path.join(format!("{main}{ending}")).clean();
+        if guess.starts_with(package_path)
+          && self.sys.is_file(Cow::Borrowed(&guess))
+        {
           // TODO(bartlomieju): emitLegacyIndexDeprecation()
           return Ok(MaybeTypesResolvedUrl(LocalUrlOrPath::Path(LocalPath {
             path: guess,
@@ -2187,7 +2231,13 @@ fn resolve_pkg_json_import<'a>(
         let key_sub = &key[0..pattern_index];
         if name.starts_with(key_sub) {
           let pattern_trailer = &key[pattern_index + 1..];
-          if name.len() > key.len()
+          // The wildcard `*` in the pattern key matches a non-empty
+          // substring of `name`, so `name.len()` must be at least
+          // `key.len()` (one extra character to fill the wildcard).
+          // Using a strict `>` here required the wildcard to match two
+          // or more characters, so `"#E"` failed to match `"#*"`. See
+          // denoland/deno#30160.
+          if name.len() >= key.len()
             && name.ends_with(&pattern_trailer)
             && pattern_key_compare(best_match, key) == 1
             && key.rfind('*') == Some(pattern_index)
@@ -3045,6 +3095,41 @@ mod tests {
         "ts3.1/file.d.ts"
       );
     }
+  }
+
+  #[test]
+  fn test_resolve_pkg_json_import_single_char_wildcard() {
+    // Regression test for https://github.com/denoland/deno/issues/30160
+    // The pattern key `#*` must match short specifiers like `#E` whose
+    // wildcard segment is a single character. Previously the length
+    // check rejected these.
+    let pkg = build_package_json(serde_json::json!({
+      "name": "pkg",
+      "imports": {
+        "#mask/*": "./lib/private/mask/*.js",
+        "#types/*": "./lib/private/types/*.js",
+        "#*": "./lib/private/*.js"
+      }
+    }));
+    let single_char =
+      resolve_pkg_json_import(&pkg, "#E").expect("#E should match #*");
+    assert_eq!(single_char.package_sub_path, "#*");
+    assert_eq!(single_char.sub_path, "E");
+    assert!(single_char.is_pattern);
+
+    let multi_char =
+      resolve_pkg_json_import(&pkg, "#abc").expect("#abc should match #*");
+    assert_eq!(multi_char.package_sub_path, "#*");
+    assert_eq!(multi_char.sub_path, "abc");
+
+    // The more specific pattern still wins for inputs it can match.
+    let scoped = resolve_pkg_json_import(&pkg, "#mask/x")
+      .expect("#mask/x should match #mask/*");
+    assert_eq!(scoped.package_sub_path, "#mask/*");
+    assert_eq!(scoped.sub_path, "x");
+
+    // The wildcard still has to match a non-empty segment.
+    assert!(resolve_pkg_json_import(&pkg, "#").is_none());
   }
 
   #[test]

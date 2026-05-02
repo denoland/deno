@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_telemetry"
-version = "0.60.0"
+version = "0.69.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -19,7 +19,9 @@ deno_core.workspace = true
 deno_error.workspace = true
 deno_net.workspace = true
 deno_signals.workspace = true
+deno_terminal.workspace = true
 deno_tls.workspace = true
+flate2 = { workspace = true, features = ["default"] }
 http-body-util.workspace = true
 hyper.workspace = true
 hyper-rustls.workspace = true
@@ -29,10 +31,13 @@ once_cell.workspace = true
 opentelemetry.workspace = true
 opentelemetry-http.workspace = true
 opentelemetry-otlp.workspace = true
+opentelemetry-proto.workspace = true
 opentelemetry-semantic-conventions.workspace = true
 opentelemetry_sdk.workspace = true
 pin-project.workspace = true
+prost.workspace = true
 serde.workspace = true
+sys_traits.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
 tower-service.workspace = true

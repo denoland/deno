@@ -2639,7 +2639,8 @@ declare namespace Deno {
    * await Deno.mkdir("restricted_access_dir", { mode: 0o700 });
    * ```
    *
-   * Defaults to throwing error if the directory already exists.
+   * Throws if the directory already exists, unless `recursive` is set to
+   * `true`.
    *
    * Requires `allow-write` permission.
    *
@@ -2659,7 +2660,8 @@ declare namespace Deno {
    * Deno.mkdirSync("restricted_access_dir", { mode: 0o700 });
    * ```
    *
-   * Defaults to throwing error if the directory already exists.
+   * Throws if the directory already exists, unless `recursive` is set to
+   * `true`.
    *
    * Requires `allow-write` permission.
    *
@@ -3694,8 +3696,8 @@ declare namespace Deno {
    * );
    * ```
    *
-   * _Note_: On Windows only `"SIGINT"` (CTRL+C) and `"SIGBREAK"` (CTRL+Break)
-   * are supported.
+   * _Note_: On Windows only `"SIGINT"` (CTRL+C), `"SIGBREAK"` (CTRL+Break),
+   * `"SIGTERM"`, `"SIGQUIT"`, `"SIGHUP"`, and `"SIGWINCH"` are supported.
    *
    * @category Runtime
    */
@@ -3712,8 +3714,8 @@ declare namespace Deno {
    * Deno.removeSignalListener("SIGTERM", listener);
    * ```
    *
-   * _Note_: On Windows only `"SIGINT"` (CTRL+C) and `"SIGBREAK"` (CTRL+Break)
-   * are supported.
+   * _Note_: On Windows only `"SIGINT"` (CTRL+C), `"SIGBREAK"` (CTRL+Break),
+   * `"SIGTERM"`, `"SIGQUIT"`, `"SIGHUP"`, and `"SIGWINCH"` are supported.
    *
    * @category Runtime
    */
@@ -4364,7 +4366,8 @@ declare namespace Deno {
       | "homedir"
       | "statfs"
       | "getPriority"
-      | "setPriority";
+      | "setPriority"
+      | "ca";
   }
 
   /** The permission descriptor for the `allow-ffi` and `deny-ffi` permissions, which controls

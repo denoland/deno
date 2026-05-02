@@ -6,7 +6,7 @@ fn main() {
   // there was previously a deno_lib 2.4.0 published (https://crates.io/crates/deno_lib/versions)
   let version_path = std::path::Path::new(".").join("version.txt");
   println!("cargo:rerun-if-changed={}", version_path.display());
-  #[allow(clippy::disallowed_methods)]
+  #[allow(clippy::disallowed_methods, reason = "build code")]
   let text = std::fs::read_to_string(version_path).unwrap();
   println!("cargo:rustc-env=DENO_VERSION={}", text);
 

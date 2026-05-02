@@ -33,6 +33,7 @@ pub use loaders::ModuleLoadReferrer;
 pub use loaders::ModuleLoadResponse;
 pub use loaders::ModuleLoader;
 pub use loaders::ModuleLoaderError;
+pub use loaders::ModuleResolveResponse;
 pub use loaders::NoopModuleLoader;
 pub use loaders::StaticModuleLoader;
 pub(crate) use map::ModuleMap;
@@ -722,11 +723,14 @@ pub(crate) struct ModuleRequest {
   /// None if this is a root request.
   pub referrer_source_offset: Option<i32>,
   pub phase: ModuleImportPhase,
+  /// If true, the specifier in `reference` is a best-effort parse and
+  /// needs to be properly resolved asynchronously during module loading.
+  #[serde(default)]
+  pub needs_resolve: bool,
 }
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub(crate) struct ModuleInfo {
-  #[allow(unused)]
   pub id: ModuleId,
   pub main: bool,
   pub name: ModuleName,

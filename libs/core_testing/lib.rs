@@ -1,10 +1,13 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 // NB(bartlomieju): these are fine for testing
-#![allow(clippy::print_stdout)]
-#![allow(clippy::print_stderr)]
+#![allow(clippy::print_stdout, reason = "intentional output")]
+#![allow(clippy::print_stderr, reason = "intentional output")]
 // TODO(bartlomieju): add safety comments to unsafe blocks and remove this allow
-#![allow(clippy::undocumented_unsafe_blocks)]
+#![allow(
+  clippy::undocumented_unsafe_blocks,
+  reason = "safety comment on the containing block"
+)]
 
 mod checkin;
 
@@ -44,6 +47,7 @@ macro_rules! integration_test {
 unit_test!(
   encode_decode_test,
   error_test,
+  immediate_test,
   microtask_test,
   ops_async_test,
   ops_buffer_test,
@@ -66,6 +70,7 @@ integration_test!(
   dyn_import_op,
   dyn_import_no_hang,
   dyn_import_pending_tla,
+  import_defer,
   error_async_stack,
   error_callsite,
   error_non_existent_eval_source,
@@ -82,7 +87,9 @@ integration_test!(
   error_get_file_name_to_string,
   error_get_script_name_or_source_url,
   import_sync,
+  loader_resolve,
   import_sync_existing,
+  loader_register,
   import_sync_throw,
   main_module_handler,
   module_types,
@@ -102,3 +109,18 @@ integration_test!(
   worker_terminate,
   worker_terminate_op,
 );
+
+#[cfg(test)]
+mod integration_manual {
+  // TODO(bartlomieju): import.meta.resolve() should invoke registered loader
+  // hooks (matching Node.js behavior). This requires a synchronous resolve
+  // mechanism similar to Node's resolveSync(). See:
+  // https://github.com/nodejs/node/blob/main/test/es-module/test-esm-import-meta-resolve-hooks.mjs
+  #[test]
+  #[ignore = "import.meta.resolve does not yet invoke async loader hooks"]
+  fn loader_import_meta_resolve() {
+    crate::checkin::runner::testing::run_integration_test(
+      "loader_import_meta_resolve",
+    );
+  }
+}

@@ -112,9 +112,9 @@ pub enum KeyData {
     y: String,
   },
   JwkPrivateEc {
-    #[allow(dead_code)]
+    #[allow(dead_code, reason = "deserialized but not directly read")]
     x: String,
-    #[allow(dead_code)]
+    #[allow(dead_code, reason = "deserialized but not directly read")]
     y: String,
     d: String,
   },
@@ -150,7 +150,7 @@ pub enum ImportKeyResult {
   Ec {
     raw_data: RustRawKeyData,
   },
-  #[allow(dead_code)]
+  #[allow(dead_code, reason = "variant kept for completeness")]
   Aes {
     raw_data: RustRawKeyData,
   },

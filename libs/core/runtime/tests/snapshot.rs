@@ -217,7 +217,7 @@ fn es_snapshot() {
     };
     assert_eq!(i + NO_OF_BUILTIN_MODULES, id);
 
-    #[allow(clippy::let_underscore_future)]
+    #[allow(clippy::let_underscore_future, reason = "test code")]
     let _ = runtime.mod_evaluate(id);
     futures::executor::block_on(runtime.run_event_loop(Default::default()))
       .unwrap();
@@ -235,12 +235,13 @@ fn es_snapshot() {
         specifier_key: Some(format!("file:///{prev}.js")),
         referrer_source_offset: Some(25 + prev.to_string().len() as i32),
         phase: crate::modules::ModuleImportPhase::Evaluation,
+        needs_resolve: false,
       }],
       module_type: ModuleType::JavaScript,
     }
   }
 
-  #[allow(clippy::unnecessary_wraps)]
+  #[allow(clippy::unnecessary_wraps, reason = "test code")]
   #[op2]
   #[string]
   fn op_test() -> Result<String, JsErrorBox> {
@@ -262,7 +263,7 @@ fn es_snapshot() {
   ))
   .unwrap();
 
-  #[allow(clippy::let_underscore_future)]
+  #[allow(clippy::let_underscore_future, reason = "test code")]
   let _ = runtime.mod_evaluate(id);
   futures::executor::block_on(runtime.run_event_loop(Default::default()))
     .unwrap();
@@ -321,7 +322,7 @@ fn es_snapshot() {
     return mod.f400() + " " + Deno.core.ops.op_test();
   })();"#;
   let val = runtime3.execute_script(".", source_code).unwrap();
-  #[allow(deprecated)]
+  #[allow(deprecated, reason = "TODO: document")]
   let val = futures::executor::block_on(runtime3.resolve_value(val)).unwrap();
   {
     deno_core::scope!(scope, runtime3);
@@ -377,7 +378,7 @@ pub(crate) fn es_snapshot_without_runtime_module_loader() {
       "import('ext:module_snapshot/test.js')",
     )
     .unwrap();
-  #[allow(deprecated)]
+  #[allow(deprecated, reason = "TODO: document")]
   let dyn_import_result =
     futures::executor::block_on(runtime.resolve_value(dyn_import_promise));
   assert_eq!(
@@ -393,7 +394,7 @@ pub(crate) fn es_snapshot_without_runtime_module_loader() {
       "import('ext:module_snapshot/test2.js')",
     )
     .unwrap();
-  #[allow(deprecated)]
+  #[allow(deprecated, reason = "TODO: document")]
   let dyn_import_result =
     futures::executor::block_on(runtime.resolve_value(dyn_import_promise));
   assert!(dyn_import_result.is_err());

@@ -12,16 +12,8 @@
   "events": {
     "AddEventListenerOptions-once.any.html": true,
     "AddEventListenerOptions-once.any.worker.html": true,
-    "AddEventListenerOptions-passive.any.html": {
-      "expectedFailures": [
-        "returnValue should be ignored if-and-only-if the passive option is true"
-      ]
-    },
-    "AddEventListenerOptions-passive.any.worker.html": {
-      "expectedFailures": [
-        "returnValue should be ignored if-and-only-if the passive option is true"
-      ]
-    },
+    "AddEventListenerOptions-passive.any.html": true,
+    "AddEventListenerOptions-passive.any.worker.html": true,
     "AddEventListenerOptions-signal.any.html": true,
     "AddEventListenerOptions-signal.any.worker.html": true,
     "Event-isTrusted.any.html": false,
@@ -86,7 +78,6 @@
     "Event-propagation.html": false,
     "Event-returnValue.html": {
       "expectedFailures": [
-        "returnValue=false should have no effect if cancelable is false.",
         "initEvent should unset returnValue."
       ]
     },
@@ -1096,15 +1087,15 @@
     "Document-createProcessingInstruction.html": {
       "expectedFailures": [
         "Should throw an INVALID_CHARACTER_ERR for target \"A\" and data \"?>\".",
-        "Should throw an INVALID_CHARACTER_ERR for target \"\u00b7A\" and data \"x\".",
-        "Should throw an INVALID_CHARACTER_ERR for target \"\u00d7A\" and data \"x\".",
-        "Should throw an INVALID_CHARACTER_ERR for target \"A\u00d7\" and data \"x\".",
+        "Should throw an INVALID_CHARACTER_ERR for target \"·A\" and data \"x\".",
+        "Should throw an INVALID_CHARACTER_ERR for target \"×A\" and data \"x\".",
+        "Should throw an INVALID_CHARACTER_ERR for target \"A×\" and data \"x\".",
         "Should throw an INVALID_CHARACTER_ERR for target \"\\\\A\" and data \"x\".",
         "Should throw an INVALID_CHARACTER_ERR for target \"\\f\" and data \"x\".",
         "Should throw an INVALID_CHARACTER_ERR for target 0 and data \"x\".",
         "Should throw an INVALID_CHARACTER_ERR for target \"0\" and data \"x\".",
         "Should get a ProcessingInstruction for target \"xml:fail\" and data \"x\".",
-        "Should get a ProcessingInstruction for target \"A\u00b7A\" and data \"x\".",
+        "Should get a ProcessingInstruction for target \"A·A\" and data \"x\".",
         "Should get a ProcessingInstruction for target \"a0\" and data \"x\"."
       ]
     },
@@ -1282,7 +1273,7 @@
         "setAttributeNode doesn't have case-insensitivity even with an HTMLElement 2",
         "setAttributeNode doesn't have case-insensitivity even with an HTMLElement 3",
         "Basic functionality of setAttributeNodeNS",
-        "If attr\u2019s element is neither null nor element, throw an InUseAttributeError.",
+        "If attr’s element is neither null nor element, throw an InUseAttributeError.",
         "Replacing an attr by itself",
         "Basic functionality of removeAttributeNode",
         "setAttributeNode on bound attribute should throw InUseAttributeError",

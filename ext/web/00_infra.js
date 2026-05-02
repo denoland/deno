@@ -6,8 +6,15 @@
 /// <reference path="../web/internal.d.ts" />
 /// <reference path="../../cli/tsc/dts/lib.deno_web.d.ts" />
 
-import { core, internals, primordials } from "ext:core/mod.js";
-import { op_base64_decode, op_base64_encode } from "ext:core/ops";
+// deno-fmt-ignore-file
+(function () {
+const { core, internals, primordials } = globalThis.__bootstrap;
+const {
+  op_base64_decode,
+  op_base64_decode_into,
+  op_base64_encode,
+  op_base64_encode_from_buffer,
+} = core.ops;
 const {
   ArrayPrototypeJoin,
   ArrayPrototypeMap,
@@ -34,7 +41,7 @@ const {
   TypeError,
 } = primordials;
 
-import { URLPrototype } from "ext:deno_web/00_url.js";
+const { URLPrototype } = core.loadExtScript("ext:deno_web/00_url.js");
 
 const ASCII_DIGIT = ["\u0030-\u0039"];
 const ASCII_UPPER_ALPHA = ["\u0041-\u005A"];
@@ -251,11 +258,31 @@ function forgivingBase64Encode(data) {
 }
 
 /**
+ * @param {Uint8Array} data
+ * @param {number} offset
+ * @param {number} length
+ * @returns {string}
+ */
+function forgivingBase64EncodeFromBuffer(data, offset, length) {
+  return op_base64_encode_from_buffer(data, offset, length);
+}
+
+/**
  * @param {string} data
  * @returns {Uint8Array}
  */
 function forgivingBase64Decode(data) {
   return op_base64_decode(data);
+}
+
+/**
+ * @param {string} data
+ * @param {Uint8Array} target
+ * @param {number} offset
+ * @returns {number}
+ */
+function forgivingBase64DecodeInto(data, target, offset) {
+  return op_base64_decode_into(data, target, offset);
 }
 
 // Taken from std/encoding/base64url.ts
@@ -440,9 +467,9 @@ function pathFromURL(pathOrUrl) {
 internals.pathFromURL = pathFromURL;
 
 // deno-lint-ignore prefer-primordials
-export const SymbolMetadata = Symbol.metadata ?? Symbol("Symbol.metadata");
+const SymbolMetadata = Symbol.metadata ?? Symbol("Symbol.metadata");
 
-export {
+return {
   ASCII_ALPHA,
   ASCII_ALPHANUMERIC,
   ASCII_DIGIT,
@@ -455,7 +482,9 @@ export {
   collectHttpQuotedString,
   collectSequenceOfCodepoints,
   forgivingBase64Decode,
+  forgivingBase64DecodeInto,
   forgivingBase64Encode,
+  forgivingBase64EncodeFromBuffer,
   forgivingBase64UrlDecode,
   forgivingBase64UrlEncode,
   HTTP_QUOTED_STRING_TOKEN_POINT,
@@ -472,4 +501,6 @@ export {
   pathFromURL,
   regexMatcher,
   serializeJSValueToJSONString,
+  SymbolMetadata,
 };
+})()

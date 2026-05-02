@@ -5,7 +5,7 @@
 //! Loads from `testdata/assets`, if we update our node version in `process.versions` we'll need to
 //! update the header tarball there.
 
-#![allow(clippy::print_stderr)]
+#![allow(clippy::print_stderr, reason = "test server diagnostic output")]
 
 use std::collections::HashMap;
 use std::convert::Infallible;

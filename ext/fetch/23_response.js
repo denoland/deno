@@ -11,18 +11,20 @@
 /// <reference lib="esnext" />
 
 import { core, primordials } from "ext:core/mod.js";
-import * as webidl from "ext:deno_webidl/00_webidl.js";
-import { createFilteredInspectProxy } from "ext:deno_web/01_console.js";
-import {
+const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
+const { createFilteredInspectProxy } = core.loadExtScript(
+  "ext:deno_web/01_console.js",
+);
+const {
   byteLowerCase,
   HTTP_TAB_OR_SPACE,
   regexMatcher,
   serializeJSValueToJSONString,
-} from "ext:deno_web/00_infra.js";
+} = core.loadExtScript("ext:deno_web/00_infra.js");
 import { extractBody, mixinBody } from "ext:deno_fetch/22_body.js";
-import { getLocationHref } from "ext:deno_web/12_location.js";
-import { extractMimeType } from "ext:deno_web/01_mimesniff.js";
-import { URL } from "ext:deno_web/00_url.js";
+const { getLocationHref } = core.loadExtScript("ext:deno_web/12_location.js");
+const { extractMimeType } = core.loadExtScript("ext:deno_web/01_mimesniff.js");
+const { URL } = core.loadExtScript("ext:deno_web/00_url.js");
 import {
   fillHeaders,
   getDecodeSplitHeader,
@@ -30,6 +32,9 @@ import {
   headerListFromHeaders,
   headersFromHeaderList,
 } from "ext:deno_fetch/20_headers.js";
+const { markNotSerializable } = core.loadExtScript(
+  "ext:deno_web/13_message_port.js",
+);
 const {
   ArrayPrototypeMap,
   ArrayPrototypePush,
@@ -446,6 +451,7 @@ ObjectDefineProperties(Response, {
   error: { __proto__: null, enumerable: true },
 });
 const ResponsePrototype = Response.prototype;
+markNotSerializable(ResponsePrototype);
 mixinBody(ResponsePrototype, _body, _mimeType);
 
 webidl.converters["Response"] = webidl.createInterfaceConverter(

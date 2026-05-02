@@ -175,6 +175,55 @@ Deno.test("[node/dgram] addSourceSpecificMembership and dropSourceSpecificMember
   await promise;
 });
 
+Deno.test("[node/dgram] send checks destination permission", {
+  permissions: { read: true, write: true, run: true, net: true },
+}, async () => {
+  // Verify that a subprocess with restricted --allow-net cannot send to
+  // destinations outside the allowed set.
+  const tempFile = Deno.makeTempFileSync({ suffix: ".ts" });
+  Deno.writeTextFileSync(
+    tempFile,
+    `import dgram from "node:dgram";
+const socket = dgram.createSocket("udp4");
+socket.bind(0, "0.0.0.0", () => {
+  socket.send("test", 9999, "127.0.0.1", (err) => {
+    if (err) {
+      console.log("SEND_BLOCKED:" + err.message);
+    } else {
+      console.log("SEND_ALLOWED");
+    }
+    socket.close();
+  });
+});
+socket.on("error", (err) => {
+  console.log("ERROR:" + err.message);
+  socket.close();
+});
+`,
+  );
+  try {
+    const { stdout, stderr } = await new Deno.Command(Deno.execPath(), {
+      args: [
+        "run",
+        "--no-prompt",
+        "--allow-net=0.0.0.0:0",
+        "--allow-read=" + tempFile,
+        tempFile,
+      ],
+      stdout: "piped",
+      stderr: "piped",
+    }).output();
+    const output = new TextDecoder().decode(stdout) +
+      new TextDecoder().decode(stderr);
+    assert(
+      !output.includes("SEND_ALLOWED"),
+      `Send should have been blocked, but got: ${output}`,
+    );
+  } finally {
+    Deno.removeSync(tempFile);
+  }
+});
+
 Deno.test("[node/dgram] large recvBufferSize and sendBufferSize do not throw", async () => {
   const { promise, resolve, reject } = Promise.withResolvers<void>();
   const socket = createSocket({

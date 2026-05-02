@@ -40,6 +40,7 @@ use crate::FastStaticString;
 use crate::JsRuntime;
 use crate::ModuleCodeBytes;
 use crate::ModuleLoadResponse;
+use crate::ModuleResolveResponse;
 use crate::ModuleSource;
 use crate::ModuleSourceCode;
 use crate::ModuleSpecifier;
@@ -237,6 +238,10 @@ pub(crate) struct ModuleMap {
   pending_tla_waiters:
     RefCell<HashMap<ModuleId, Vec<v8::Global<v8::PromiseResolver>>>>,
   pending_mod_evaluation: Cell<bool>,
+  /// Set to `true` while inside `module.evaluate()` in `mod_evaluate`.
+  /// Used to suppress microtask checkpoints in `lazy_load_es_module_with_code`
+  /// during module evaluation, preventing premature draining of TLA-related microtasks.
+  evaluating_top_level: Cell<bool>,
   code_cache_ready_futs: TrackedFutures<Pin<Box<CodeCacheReadyFuture>>>,
   module_waker: AtomicWaker,
   data: RefCell<ModuleMapData>,
@@ -320,6 +325,7 @@ impl ModuleMap {
       pending_dyn_mod_evaluations: Default::default(),
       pending_tla_waiters: Default::default(),
       pending_mod_evaluation: Default::default(),
+      evaluating_top_level: Default::default(),
       code_cache_ready_futs: Default::default(),
       module_waker: Default::default(),
       data: Default::default(),
@@ -682,7 +688,7 @@ impl ModuleMap {
   /// and attached to associated [`ModuleInfo`].
   ///
   /// Returns an ID of newly created module.
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "TODO: cleanup")]
   pub(crate) fn new_module_from_js_source(
     &self,
     scope: &mut v8::PinScope,
@@ -784,8 +790,12 @@ impl ModuleMap {
     if !source_mapping_url_value.is_undefined()
       && !source_mapping_url_value.is_null()
     {
-      let source_mapping_url =
-        source_mapping_url_value.to_rust_string_lossy(tc_scope);
+      let mut source_mapping_url_buf: [std::mem::MaybeUninit<u8>; 1024] =
+        [std::mem::MaybeUninit::uninit(); 1024];
+      let source_mapping_url: v8::Local<v8::String> =
+        source_mapping_url_value.try_cast().unwrap();
+      let source_mapping_url = source_mapping_url
+        .to_rust_cow_lossy(tc_scope, &mut source_mapping_url_buf);
 
       let module_name = name
         .try_clone()
@@ -809,7 +819,7 @@ impl ModuleMap {
               .unwrap_or(module_url)
               .to_string()
           } else {
-            source_mapping_url
+            source_mapping_url.into_owned()
           };
 
         self
@@ -828,9 +838,11 @@ impl ModuleMap {
         module_requests.get(tc_scope, i).unwrap(),
       )
       .unwrap();
+      let mut import_specifier_buf: [std::mem::MaybeUninit<u8>; 1024] =
+        [std::mem::MaybeUninit::uninit(); 1024];
       let import_specifier = module_request
         .get_specifier()
-        .to_rust_string_lossy(tc_scope);
+        .to_rust_cow_lossy(tc_scope, &mut import_specifier_buf);
 
       let import_attributes = module_request.get_import_attributes();
 
@@ -857,17 +869,43 @@ impl ModuleMap {
         return Err(ModuleError::Exception(exception));
       }
 
-      let module_specifier = match self.resolve(
-        &import_specifier,
-        name.as_ref(),
-        if is_dynamic_import {
-          ResolutionKind::DynamicImport
-        } else {
-          ResolutionKind::Import
-        },
-      ) {
-        Ok(s) => s,
-        Err(e) => return Err(ModuleError::Core(e)),
+      let resolve_kind = if is_dynamic_import {
+        ResolutionKind::DynamicImport
+      } else {
+        ResolutionKind::Import
+      };
+      let resolve_response =
+        self.resolve(&import_specifier, name.as_ref(), resolve_kind);
+      let (module_specifier, needs_resolve) = match resolve_response {
+        ModuleResolveResponse::Sync(Ok(s)) => (s, false),
+        ModuleResolveResponse::Sync(Err(e)) => {
+          return Err(ModuleError::Core(e.into()));
+        }
+        ModuleResolveResponse::Async(_) => {
+          // Async resolution for child imports is deferred to
+          // RecursiveModuleLoad. Use the raw specifier as a best-effort
+          // parse for now.
+          let specifier = match ModuleSpecifier::parse(&import_specifier) {
+            Ok(s) => s,
+            Err(_) => {
+              // Try resolving as relative URL with the module name as base
+              match ModuleSpecifier::parse(name.as_ref())
+                .and_then(|base| base.join(&import_specifier))
+              {
+                Ok(s) => s,
+                Err(e) => {
+                  return Err(ModuleError::Core(
+                    JsErrorBox::type_error(format!(
+                      "Cannot resolve module \"{import_specifier}\": {e}"
+                    ))
+                    .into(),
+                  ));
+                }
+              }
+            }
+          };
+          (specifier, true)
+        }
       };
       let requested_module_type =
         get_requested_module_type_from_attributes(&attributes);
@@ -884,13 +922,14 @@ impl ModuleMap {
           specifier: module_specifier,
           requested_module_type,
         },
-        specifier_key: Some(import_specifier),
+        specifier_key: Some(import_specifier.into_owned()),
         referrer_source_offset,
         phase: match module_request.get_phase() {
           v8::ModuleImportPhase::kEvaluation => ModuleImportPhase::Evaluation,
           v8::ModuleImportPhase::kSource => ModuleImportPhase::Source,
           v8::ModuleImportPhase::kDefer => ModuleImportPhase::Defer,
         },
+        needs_resolve,
       };
       requests.push(request);
     }
@@ -1010,7 +1049,10 @@ impl ModuleMap {
     Ok(self.new_synthetic_module(tc_scope, name, ModuleType::Json, exports))
   }
 
-  #[allow(clippy::unnecessary_wraps)]
+  #[allow(
+    clippy::unnecessary_wraps,
+    reason = "consistent return type with other module constructors"
+  )]
   pub(crate) fn new_text_module(
     &self,
     scope: &mut v8::PinScope,
@@ -1033,7 +1075,10 @@ impl ModuleMap {
     Ok(self.new_synthetic_module(scope, name, ModuleType::Text, exports))
   }
 
-  #[allow(clippy::unnecessary_wraps)]
+  #[allow(
+    clippy::unnecessary_wraps,
+    reason = "consistent return type with other module constructors"
+  )]
   pub(crate) fn new_bytes_module(
     &self,
     scope: &mut v8::PinScope,
@@ -1124,7 +1169,9 @@ impl ModuleMap {
       .get_name_by_module(&referrer_global)
       .expect("ModuleInfo not found");
 
-    let specifier_str = specifier.to_rust_string_lossy(scope);
+    let mut specifier_buf: [std::mem::MaybeUninit<u8>; 1024] =
+      [std::mem::MaybeUninit::uninit(); 1024];
+    let specifier_str = specifier.to_rust_cow_lossy(scope, &mut specifier_buf);
 
     let attributes = parse_import_attributes(
       scope,
@@ -1163,7 +1210,9 @@ impl ModuleMap {
       // SAFETY: We retrieve the pointer from the slot, having just set it a few stack frames up
       unsafe { scope.get_slot::<*const Self>().unwrap().as_ref().unwrap() };
 
-    let specifier_str = specifier.to_rust_string_lossy(scope);
+    let mut specifier_buf: [std::mem::MaybeUninit<u8>; 1024] =
+      [std::mem::MaybeUninit::uninit(); 1024];
+    let specifier_str = specifier.to_rust_cow_lossy(scope, &mut specifier_buf);
     let referrer_global = v8::Global::new(scope, referrer);
     let attributes = parse_import_attributes(
       scope,
@@ -1205,13 +1254,16 @@ impl ModuleMap {
 
   /// Resolve provided module. This function calls out to `loader.resolve`,
   /// but applies some additional checks that disallow resolving/importing
-  /// certain modules (eg. `ext:` or `node:` modules)
+  /// certain modules (eg. `ext:` or `node:` modules).
+  ///
+  /// Returns a `ModuleResolveResponse` which may be sync or async depending
+  /// on the loader implementation.
   pub fn resolve(
     &self,
     specifier: &str,
     referrer: &str,
     kind: ResolutionKind,
-  ) -> Result<ModuleSpecifier, CoreError> {
+  ) -> ModuleResolveResponse {
     if specifier.starts_with("ext:")
       && !referrer.starts_with("ext:")
       && !referrer.starts_with("node:")
@@ -1228,14 +1280,44 @@ impl ModuleMap {
         "Importing ext: modules is only allowed from ext: and node: modules. Tried to import {} from {}",
         specifier, referrer
       );
-      return Err(JsErrorBox::type_error(msg).into());
+      return ModuleResolveResponse::Sync(Err(JsErrorBox::type_error(msg)));
     }
 
-    self
-      .loader
-      .borrow()
-      .resolve(specifier, referrer, kind)
-      .map_err(|e| e.into())
+    self.loader.borrow().resolve(specifier, referrer, kind)
+  }
+
+  /// Synchronously resolve a module. This calls `resolve()` and unwraps the
+  /// sync result. Panics if the loader returns an async response.
+  ///
+  /// This is used in the V8 `module_resolve_callback` path, where by
+  /// instantiation time all modules are already resolved.
+  pub fn resolve_sync(
+    &self,
+    specifier: &str,
+    referrer: &str,
+    kind: ResolutionKind,
+  ) -> Result<ModuleSpecifier, CoreError> {
+    match self.resolve(specifier, referrer, kind) {
+      ModuleResolveResponse::Sync(result) => result.map_err(|e| e.into()),
+      ModuleResolveResponse::Async(_) => {
+        panic!(
+          "Cannot synchronously resolve an async ModuleResolveResponse during module instantiation"
+        )
+      }
+    }
+  }
+
+  /// Asynchronously resolve a module. Handles both sync and async responses.
+  pub async fn resolve_async(
+    &self,
+    specifier: &str,
+    referrer: &str,
+    kind: ResolutionKind,
+  ) -> Result<ModuleSpecifier, CoreError> {
+    match self.resolve(specifier, referrer, kind) {
+      ModuleResolveResponse::Sync(result) => result.map_err(|e| e.into()),
+      ModuleResolveResponse::Async(fut) => fut.await.map_err(|e| e.into()),
+    }
   }
 
   /// Called by `module_resolve_callback` during module instantiation.
@@ -1247,7 +1329,7 @@ impl ModuleMap {
     import_attributes: HashMap<String, String>,
   ) -> Option<v8::Local<'s, v8::Module>> {
     let resolved_specifier =
-      match self.resolve(specifier, referrer, ResolutionKind::Import) {
+      match self.resolve_sync(specifier, referrer, ResolutionKind::Import) {
         Ok(s) => s,
         Err(e) => {
           crate::error::throw_js_error_class(scope, &e);
@@ -1276,7 +1358,7 @@ impl ModuleMap {
   }
 
   // Initiate loading of a module graph imported using `import()`.
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "internal code")]
   pub(crate) fn load_dynamic_import(
     self: Rc<Self>,
     scope: &mut v8::PinScope,
@@ -1287,11 +1369,14 @@ impl ModuleMap {
     resolver_handle: v8::Global<v8::PromiseResolver>,
     cped_handle: v8::Global<v8::Value>,
   ) -> bool {
-    let resolve_result =
+    let resolve_response =
       self.resolve(&specifier, &referrer, ResolutionKind::DynamicImport);
 
-    if phase == ModuleImportPhase::Evaluation
-      && let Ok(module_specifier) = &resolve_result
+    // Fast path: if resolution is synchronous and module is already loaded,
+    // we can resolve the import immediately without async work.
+    if let ModuleResolveResponse::Sync(ref resolve_result) = resolve_response
+      && phase == ModuleImportPhase::Evaluation
+      && let Ok(module_specifier) = resolve_result
       && let Some(id) = self
         .data
         .borrow()
@@ -1350,14 +1435,11 @@ impl ModuleMap {
     );
 
     let load_id = load.id();
-    let fut = match resolve_result {
-      Ok(_) => async move {
-        let mut load = load;
-        (load_id, load.prepare().await.map(|()| load))
-      }
-      .boxed_local(),
-      Err(error) => async move { (load_id, Err(error)) }.boxed_local(),
-    };
+    let fut = async move {
+      let mut load = load;
+      (load_id, load.prepare().await.map(|()| load))
+    }
+    .boxed_local();
 
     self.preparing_dynamic_imports.push(fut);
 
@@ -1410,7 +1492,9 @@ impl ModuleMap {
         .unwrap_or_else(|_| Err(CoreErrorKind::ExecutionTerminated.into_box()))
     });
 
+    self.evaluating_top_level.set(true);
     let Some(value) = module.evaluate(tc_scope) else {
+      self.evaluating_top_level.set(false);
       if tc_scope.has_terminated() || tc_scope.is_execution_terminating() {
         let undefined = v8::undefined(tc_scope).into();
         _ = sender
@@ -1420,6 +1504,7 @@ impl ModuleMap {
       }
       return Either::Right(receiver);
     };
+    self.evaluating_top_level.set(false);
 
     self.pending_mod_evaluation.set(true);
 
@@ -1994,7 +2079,7 @@ impl ModuleMap {
             .unwrap()
             .clone();
           match state.phase {
-            ModuleImportPhase::Defer | ModuleImportPhase::Evaluation => {
+            ModuleImportPhase::Evaluation => {
               let module_id =
                 load.root_module_id().expect("Root module should be loaded");
               let result = self.instantiate_module(scope, module_id);
@@ -2007,6 +2092,95 @@ impl ModuleMap {
                 dyn_import_id,
                 state,
               )?;
+            }
+            ModuleImportPhase::Defer => {
+              // For defer phase imports, the module is instantiated but NOT
+              // eagerly evaluated. We call evaluate_for_import_defer which
+              // gathers and evaluates async transitive dependencies, then
+              // resolve with a deferred namespace that triggers evaluation
+              // on first property access.
+              let module_id =
+                load.root_module_id().expect("Root module should be loaded");
+              let result = self.instantiate_module(scope, module_id);
+              if let Err(exception) = result {
+                self.dynamic_import_reject(scope, dyn_import_id, exception);
+                continue;
+              }
+              let module_handle =
+                self.get_handle(module_id).expect("ModuleInfo not found");
+
+              v8::tc_scope!(let tc_scope, scope);
+
+              let cped = v8::Local::new(tc_scope, state.cped.clone());
+              tc_scope.set_continuation_preserved_embedder_data(cped);
+
+              let module = v8::Local::new(tc_scope, &module_handle);
+
+              // Gather async transitive dependencies. Returns a promise
+              // that resolves when all async deps are ready.
+              let maybe_promise = module.evaluate_for_import_defer(tc_scope);
+
+              let Some(promise_val) = maybe_promise else {
+                let exception = tc_scope.exception().unwrap();
+                let exception = v8::Global::new(tc_scope, exception);
+                self.dynamic_import_reject(tc_scope, dyn_import_id, exception);
+                continue;
+              };
+
+              // Get the deferred namespace — this triggers evaluation on
+              // first property access.
+              let module_namespace = module
+                .get_module_namespace_with_phase(v8::ModuleImportPhase::kDefer);
+
+              let promise = v8::Local::<v8::Promise>::try_from(promise_val)
+                .expect("evaluate_for_import_defer should return a promise");
+
+              match promise.state() {
+                v8::PromiseState::Fulfilled => {
+                  // All async deps are ready, resolve immediately.
+                  let resolver_handle = self
+                    .dynamic_import_map
+                    .borrow_mut()
+                    .remove(&dyn_import_id)
+                    .expect("Invalid dynamic import id")
+                    .resolver;
+                  let resolver = resolver_handle.open(tc_scope);
+                  resolver.resolve(tc_scope, module_namespace).unwrap();
+                  tc_scope.perform_microtask_checkpoint();
+                }
+                v8::PromiseState::Rejected => {
+                  let err = promise.result(tc_scope);
+                  let err = v8::Global::new(tc_scope, err);
+                  self.dynamic_import_reject(tc_scope, dyn_import_id, err);
+                }
+                v8::PromiseState::Pending => {
+                  // Async deps still loading. Store for later resolution.
+                  // The module_waker will wake us when the promise settles.
+                  fn wake_module(
+                    scope: &mut v8::PinScope<'_, '_>,
+                    _args: v8::FunctionCallbackArguments<'_>,
+                    _rv: v8::ReturnValue,
+                  ) {
+                    let module_map = JsRealm::module_map_from(scope);
+                    module_map.module_waker.wake();
+                  }
+
+                  let wake_module_cb =
+                    v8::Function::builder(wake_module).build(tc_scope);
+                  if let Some(wake_module_cb) = wake_module_cb {
+                    promise.then2(tc_scope, wake_module_cb, wake_module_cb);
+                  }
+
+                  let dyn_import_mod_evaluate = DynImportModEvaluate {
+                    load_id: dyn_import_id,
+                    module_id,
+                    promise: v8::Global::new(tc_scope, promise),
+                  };
+                  self
+                    .pending_dyn_mod_evaluations
+                    .push(dyn_import_mod_evaluate);
+                }
+              }
             }
             ModuleImportPhase::Source => {
               let module_reference = load.root_module_reference().expect(
@@ -2184,7 +2358,16 @@ impl ModuleMap {
     let value = module_local.evaluate(scope).unwrap();
     // Under Explicit microtask policy, drain microtasks so the module
     // evaluation promise resolves for synchronous modules.
-    scope.perform_microtask_checkpoint();
+    //
+    // However, skip the checkpoint when we are inside a top-level
+    // `module.evaluate()` call (i.e. `evaluating_top_level` is set).
+    // Draining microtasks at this point can prematurely resolve
+    // TLA-related microtasks (e.g. `await` resume jobs from eagerly-
+    // resolved async ops), which prevents the module evaluation promise
+    // from settling correctly later.
+    if !self.evaluating_top_level.get() {
+      scope.perform_microtask_checkpoint();
+    }
     let promise = v8::Local::<v8::Promise>::try_from(value).unwrap();
     let result = promise.result(scope);
     if !result.is_undefined() {
@@ -2276,11 +2459,146 @@ impl ModuleMap {
       },
     )
   }
+
+  pub(crate) fn add_lazy_loaded_script_source(
+    &self,
+    specifier: ModuleName,
+    code: ModuleCodeString,
+  ) {
+    let data = self.data.borrow_mut();
+    assert!(
+      data
+        .lazy_script_sources
+        .borrow_mut()
+        .insert(specifier, code)
+        .is_none(),
+      "Duplicate lazy script source"
+    );
+  }
+
+  /// Load and evaluate a script on demand. Scripts are cached after first
+  /// evaluation. Circular dependencies are detected and cause an error.
+  pub(crate) fn load_ext_script(
+    &self,
+    scope: &mut v8::PinScope,
+    specifier: &str,
+  ) -> Result<v8::Global<v8::Value>, CoreError> {
+    let specifier_str = String::from(specifier);
+    let data = self.data.borrow();
+
+    // Circular dependency detection.
+    {
+      let specifier_key: ModuleName = specifier_str.clone().into();
+      let loading = data.lazy_script_loading.borrow();
+      if loading.contains(&specifier_key) {
+        return Err(
+          JsErrorBox::generic(format!(
+            "Circular dependency detected when loading script \"{specifier}\""
+          ))
+          .into(),
+        );
+      }
+    }
+
+    // Look up source.
+    let source = {
+      let specifier_key: ModuleName = specifier_str.clone().into();
+      let mut sources = data.lazy_script_sources.borrow_mut();
+      sources.remove(&specifier_key)
+    };
+    let source = match source {
+      Some(s) => s,
+      None => {
+        return Err(
+          JsErrorBox::generic(format!(
+            "Script \"{specifier}\" cannot be lazy-loaded as it was not included in the binary."
+          ))
+          .into(),
+        );
+      }
+    };
+
+    // Mark as loading for circular dep detection.
+    data
+      .lazy_script_loading
+      .borrow_mut()
+      .insert(specifier_str.clone().into());
+
+    // We need to drop `data` before executing the script, since the script
+    // may call back into `load_ext_script` for its own dependencies.
+    drop(data);
+
+    // Execute the script as-is. Scripts are expected to be manually wrapped
+    // in an IIFE and use `return` to provide their exports.
+    let source_str =
+      ModuleSource::get_string_source(ModuleSourceCode::String(source));
+    let name = v8::String::new(scope, specifier).unwrap();
+    let origin = v8::ScriptOrigin::new(
+      scope,
+      name.into(),
+      0,
+      0,
+      false,
+      -1,
+      None,
+      false,
+      false,
+      false,
+      None,
+    );
+
+    v8::tc_scope!(let tc_scope, scope);
+
+    let v8_source =
+      v8::String::new(tc_scope, AsRef::<str>::as_ref(&source_str)).unwrap();
+    let script = match v8::Script::compile(tc_scope, v8_source, Some(&origin)) {
+      Some(script) => script,
+      None => {
+        let exception = tc_scope.exception().unwrap();
+        let err = JsError::from_v8_exception(tc_scope, exception);
+        self
+          .data
+          .borrow()
+          .lazy_script_loading
+          .borrow_mut()
+          .remove(&ModuleName::from(specifier_str.clone()));
+        return Err(CoreErrorKind::Js(err).into_box());
+      }
+    };
+    let result = match script.run(tc_scope) {
+      Some(value) => v8::Global::new(tc_scope, value),
+      None => {
+        assert!(tc_scope.has_caught());
+        let exception = tc_scope.exception().unwrap();
+        let err = JsError::from_v8_exception(tc_scope, exception);
+        self
+          .data
+          .borrow()
+          .lazy_script_loading
+          .borrow_mut()
+          .remove(&ModuleName::from(specifier_str.clone()));
+        return Err(CoreErrorKind::Js(err).into_box());
+      }
+    };
+
+    // Remove from loading set.
+    self
+      .data
+      .borrow()
+      .lazy_script_loading
+      .borrow_mut()
+      .remove(&ModuleName::from(specifier_str));
+
+    Ok(result)
+  }
 }
 
 // Clippy thinks the return value doesn't need to be an Option, it's unaware
 // of the mapping that MapFnFrom<F> does for ResolveModuleCallback.
-#[allow(clippy::unnecessary_wraps)]
+#[allow(
+  clippy::unnecessary_wraps,
+  reason = "required by MapFnFrom<F> for ResolveModuleCallback"
+)]
 pub(crate) fn synthetic_module_evaluation_steps<'s>(
   context: v8::Local<'s, v8::Context>,
   module: v8::Local<'s, v8::Module>,

@@ -2,7 +2,9 @@
 
 /// <reference path="../../core/internal.d.ts" />
 
-import { core, internals, primordials } from "ext:core/mod.js";
+// deno-fmt-ignore-file
+(function () {
+const { core, internals, primordials } = globalThis.__bootstrap;
 const {
   isAnyArrayBuffer,
   isArgumentsObject,
@@ -28,13 +30,19 @@ const {
   isWeakMap,
   isWeakSet,
 } = core;
-import {
+const {
   op_get_constructor_name,
   op_get_non_index_property_names,
+  op_now,
   op_preview_entries,
-} from "ext:core/ops";
-import * as ops from "ext:core/ops";
-import { URLPrototype } from "ext:deno_web/00_url.js";
+} = core.ops;
+let _URLPrototype;
+function getURLPrototype() {
+  if (!_URLPrototype) {
+    _URLPrototype = core.loadExtScript("ext:deno_web/00_url.js").URLPrototype;
+  }
+  return _URLPrototype;
+}
 const {
   AggregateError,
   AggregateErrorPrototype,
@@ -213,11 +221,11 @@ const lazyLoadModule = core.createLazyLoader(
 );
 
 let currentTime = DateNow;
-if (ops.op_now) {
+if (op_now) {
   const hrU8 = new Uint8Array(8);
   const hr = new Uint32Array(TypedArrayPrototypeGetBuffer(hrU8));
   currentTime = function opNow() {
-    ops.op_now(hrU8);
+    op_now(hrU8);
     return (hr[0] * 1000 + hr[1] / 1e6);
   };
 }
@@ -548,23 +556,34 @@ function formatValue(
 
   // Provide a hook for user-specified inspect functions.
   // Check that value is an object with an inspect function on it.
+  // For Proxy objects, look up custom inspect symbols on the unwrapped
+  // target (via core.getProxyDetails) to avoid triggering the proxy's
+  // get/has traps which may cause side effects (e.g. grammy API proxies
+  // return functions for any property access). This matches Node.js
+  // behavior. The call itself still uses `value` (the proxy) as `this`.
   if (ctx.customInspect) {
+    const inspectTarget = proxyDetails ? proxyDetails[0] : value;
     if (
-      ReflectHas(value, customInspect) &&
-      typeof value[customInspect] === "function"
+      ReflectHas(inspectTarget, customInspect) &&
+      typeof inspectTarget[customInspect] === "function"
     ) {
       return String(value[customInspect](inspect, ctx));
     } else if (
-      ReflectHas(value, privateCustomInspect) &&
-      typeof value[privateCustomInspect] === "function"
+      ReflectHas(inspectTarget, privateCustomInspect) &&
+      typeof inspectTarget[privateCustomInspect] === "function"
     ) {
       // TODO(nayeemrmn): `inspect` is passed as an argument because custom
       // inspect implementations in `extensions` need it, but may not have access
       // to the `Deno` namespace in web workers. Remove when the `Deno`
       // namespace is always enabled.
       return String(value[privateCustomInspect](inspect, ctx));
-    } else if (ReflectHas(value, nodeCustomInspectSymbol)) {
-      const maybeCustom = value[nodeCustomInspectSymbol];
+    } else {
+      let maybeCustom;
+      try {
+        maybeCustom = inspectTarget[nodeCustomInspectSymbol];
+      } catch {
+        // ignore
+      }
       if (
         typeof maybeCustom === "function" &&
         // Filter out the util module, its inspect function is special.
@@ -714,7 +733,11 @@ function formatRaw(ctx, value, recurseTimes, typedArray, proxyDetails) {
 
   let tag;
   if (!proxyDetails) {
-    tag = value[SymbolToStringTag];
+    try {
+      tag = value[SymbolToStringTag];
+    } catch {
+      // Symbol.toStringTag getter may throw (e.g. circular JSON.stringify)
+    }
   }
   // Only list the tag in case it's non-enumerable / not an own property.
   // Otherwise we'd print this twice.
@@ -1003,7 +1026,7 @@ function formatRaw(ctx, value, recurseTimes, typedArray, proxyDetails) {
           return base;
         }
       } else if (
-        ObjectPrototypeIsPrototypeOf(URLPrototype, value) &&
+        ObjectPrototypeIsPrototypeOf(getURLPrototype(), value) &&
         !(recurseTimes > ctx.depth && ctx.depth !== null)
       ) {
         base = value.href;
@@ -2696,14 +2719,15 @@ function formatSetIterInner(
 // Matches all ansi escape code sequences in a string
 const ansiPattern = "[\\u001B\\u009B][[\\]()#;?]*" +
   "(?:(?:(?:(?:;[-a-zA-Z\\d\\/#&.:=?%@~_]+)*" +
-  "|[a-zA-Z\\d]+(?:;[-a-zA-Z\\d\\/#&.:=?%@~_]*)*)?\\u0007)" +
-  "|(?:(?:\\d{1,4}(?:;\\d{0,4})*)?[\\dA-PR-TZcf-ntqry=><~]))";
+  "|[a-zA-Z\\d]+(?:;[-a-zA-Z\\d\\/#&.:=?%@~_]*)*)" +
+  "?(?:\\u0007|\\u001B\\u005C|\\u009C))" +
+  "|(?:(?:\\d{1,4}(?:;\\d{0,4})*)?[\\dA-PR-TZcf-nq-uy=><~]))";
 const ansi = new SafeRegExp(ansiPattern, "g");
 
 /**
  * Returns the number of columns required to display the given string.
  */
-export function getStringWidth(str, removeControlChars = true) {
+function getStringWidth(str, removeControlChars = true) {
   let width = 0;
 
   if (removeControlChars) {
@@ -2737,7 +2761,7 @@ const isZeroWidthCodePoint = (code) => {
 /**
  * Remove all VT control characters. Use to estimate displayed string width.
  */
-export function stripVTControlCharacters(str) {
+function stripVTControlCharacters(str) {
   return StringPrototypeReplace(str, ansi, "");
 }
 
@@ -3639,8 +3663,6 @@ function createStylizeWithColor(styles, colors) {
   };
 }
 
-const countMap = new SafeMap();
-const timerMap = new SafeMap();
 const isConsoleInstance = Symbol("isConsoleInstance");
 
 /** @param noColor {boolean} */
@@ -3654,6 +3676,8 @@ function getConsoleInspectOptions(noColor) {
 
 class Console {
   #printFunc = null;
+  #countMap = new SafeMap();
+  #timerMap = new SafeMap();
   [isConsoleInstance] = false;
 
   constructor(printFunc) {
@@ -3718,7 +3742,11 @@ class Console {
     );
   };
 
-  dirxml = this.dir;
+  // Per https://console.spec.whatwg.org/#dirxml, dirxml uses the log
+  // printer (not dir). Node also aliases console.dirxml to log (see
+  // lib/internal/console/constructor.js). Use a fresh arrow so the
+  // method's .name is "dirxml" rather than "dir".
+  dirxml = (...args) => this.log(...new SafeArrayIterator(args));
 
   warn = (...args) => {
     this.#printFunc(
@@ -3766,23 +3794,26 @@ class Console {
   count = (label = "default") => {
     label = String(label);
 
-    if (MapPrototypeHas(countMap, label)) {
-      const current = MapPrototypeGet(countMap, label) || 0;
-      MapPrototypeSet(countMap, label, current + 1);
+    if (MapPrototypeHas(this.#countMap, label)) {
+      const current = MapPrototypeGet(this.#countMap, label) || 0;
+      MapPrototypeSet(this.#countMap, label, current + 1);
     } else {
-      MapPrototypeSet(countMap, label, 1);
+      MapPrototypeSet(this.#countMap, label, 1);
     }
 
-    this.info(`${label}: ${MapPrototypeGet(countMap, label)}`);
+    this.#printFunc(
+      `${label}: ${MapPrototypeGet(this.#countMap, label)}\n`,
+      1,
+    );
   };
 
   countReset = (label = "default") => {
     label = String(label);
 
-    if (MapPrototypeHas(countMap, label)) {
-      MapPrototypeSet(countMap, label, 0);
+    if (MapPrototypeHas(this.#countMap, label)) {
+      MapPrototypeSet(this.#countMap, label, 0);
     } else {
-      this.warn(`Count for '${label}' does not exist`);
+      this.#printFunc(`Count for '${label}' does not exist\n`, 2);
     }
   };
 
@@ -3892,23 +3923,23 @@ class Console {
   time = (label = "default") => {
     label = String(label);
 
-    if (MapPrototypeHas(timerMap, label)) {
-      this.warn(`Timer '${label}' already exists`);
+    if (MapPrototypeHas(this.#timerMap, label)) {
+      this.#printFunc(`Timer '${label}' already exists\n`, 2);
       return;
     }
 
-    MapPrototypeSet(timerMap, label, currentTime());
+    MapPrototypeSet(this.#timerMap, label, currentTime());
   };
 
   timeLog = (label = "default", ...args) => {
     label = String(label);
 
-    if (!MapPrototypeHas(timerMap, label)) {
-      this.warn(`Timer '${label}' does not exist`);
+    if (!MapPrototypeHas(this.#timerMap, label)) {
+      this.#printFunc(`Timer '${label}' does not exist\n`, 2);
       return;
     }
 
-    const startTime = MapPrototypeGet(timerMap, label);
+    const startTime = MapPrototypeGet(this.#timerMap, label);
     let duration = currentTime() - startTime;
     if (duration < 1) {
       duration = NumberPrototypeToFixed(duration, 3);
@@ -3920,19 +3951,28 @@ class Console {
       duration = NumberPrototypeToFixed(duration, 0);
     }
 
-    this.info(`${label}: ${duration}ms`, ...new SafeArrayIterator(args));
+    this.#printFunc(
+      inspectArgs(
+        [`${label}: ${duration}ms`, ...new SafeArrayIterator(args)],
+        {
+          ...getConsoleInspectOptions(noColorStdout()),
+          indentLevel: this.indentLevel,
+        },
+      ) + "\n",
+      1,
+    );
   };
 
   timeEnd = (label = "default") => {
     label = String(label);
 
-    if (!MapPrototypeHas(timerMap, label)) {
-      this.warn(`Timer '${label}' does not exist`);
+    if (!MapPrototypeHas(this.#timerMap, label)) {
+      this.#printFunc(`Timer '${label}' does not exist\n`, 2);
       return;
     }
 
-    const startTime = MapPrototypeGet(timerMap, label);
-    MapPrototypeDelete(timerMap, label);
+    const startTime = MapPrototypeGet(this.#timerMap, label);
+    MapPrototypeDelete(this.#timerMap, label);
     let duration = currentTime() - startTime;
     if (duration < 1) {
       duration = NumberPrototypeToFixed(duration, 3);
@@ -3944,7 +3984,7 @@ class Console {
       duration = NumberPrototypeToFixed(duration, 0);
     }
 
-    this.info(`${label}: ${duration}ms`);
+    this.#printFunc(`${label}: ${duration}ms\n`, 1);
   };
 
   group = (...label) => {
@@ -4087,7 +4127,7 @@ internals.inspectArgs = inspectArgs;
 internals.parseCss = parseCss;
 internals.parseCssColor = parseCssColor;
 
-export {
+return {
   colors,
   Console,
   createFilteredInspectProxy,
@@ -4100,10 +4140,13 @@ export {
   getConsoleInspectOptions,
   getDefaultInspectOptions,
   getStderrNoColor,
+  getStringWidth,
   getStdoutNoColor,
   inspect,
   inspectArgs,
   quoteString,
   setNoColorFns,
+  stripVTControlCharacters,
   styles,
 };
+})()

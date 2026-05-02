@@ -26,8 +26,7 @@
 // - https://github.com/nodejs/node/blob/master/src/node_file.h
 
 import type * as nodeAssert from "node:assert";
-import * as io from "ext:deno_io/12_io.js";
-import { op_fs_seek_sync } from "ext:core/ops";
+import { op_node_fs_seek_sync, op_node_fs_write_sync } from "ext:core/ops";
 import { core, primordials } from "ext:core/mod.js";
 
 let assert: typeof nodeAssert.default;
@@ -79,13 +78,13 @@ export function writeBuffer(
   );
 
   if (position) {
-    op_fs_seek_sync(fd, position, io.SeekMode.Current);
+    op_node_fs_seek_sync(fd, position, 1); // SeekMode.Current = 1
   }
 
   const subarray = TypedArrayPrototypeSubarray(buffer, offset, offset + length);
 
   try {
-    return io.writeSync(fd, subarray);
+    return op_node_fs_write_sync(fd, subarray, -1);
   } catch (e) {
     ctx.errno = extractOsErrorNumberFromErrorMessage(e);
     return 0;

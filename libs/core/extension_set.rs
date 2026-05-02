@@ -140,7 +140,7 @@ fn check_no_duplicate_op_names(ops: &[OpDecl]) {
   }
 }
 
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, reason = "all arguments are needed")]
 pub fn create_op_ctxs(
   op_decls: Vec<OpDecl>,
   op_method_decls: &mut [OpMethodDecl],
@@ -241,16 +241,20 @@ pub struct LoadedSources {
   pub js: Vec<LoadedSource>,
   pub esm: Vec<LoadedSource>,
   pub lazy_esm: Vec<LoadedSource>,
+  pub lazy_js: Vec<LoadedSource>,
   pub esm_entry_points: Vec<FastString>,
 }
 
 impl LoadedSources {
   pub fn len(&self) -> usize {
-    self.js.len() + self.esm.len() + self.lazy_esm.len()
+    self.js.len() + self.esm.len() + self.lazy_esm.len() + self.lazy_js.len()
   }
 
   pub fn is_empty(&self) -> bool {
-    self.js.is_empty() && self.esm.is_empty() && self.lazy_esm.is_empty()
+    self.js.is_empty()
+      && self.esm.is_empty()
+      && self.lazy_esm.is_empty()
+      && self.lazy_js.is_empty()
   }
 }
 
@@ -325,6 +329,17 @@ pub fn into_sources_and_source_maps(
         load(transpiler, file, &mut load_callback)?;
       sources.lazy_esm.push(LoadedSource {
         source_type: ExtensionSourceType::LazyEsm,
+        specifier: ModuleName::from_static(file.specifier),
+        code,
+        maybe_source_map,
+      });
+    }
+
+    for file in &*extension.lazy_loaded_js_files {
+      let (code, maybe_source_map) =
+        load(transpiler, file, &mut load_callback)?;
+      sources.lazy_js.push(LoadedSource {
+        source_type: ExtensionSourceType::LazyJs,
         specifier: ModuleName::from_static(file.specifier),
         code,
         maybe_source_map,

@@ -2,7 +2,7 @@
 
 /// <reference path="../../core/internal.d.ts" />
 
-import { primordials } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 import { op_utf8_to_byte_string } from "ext:core/ops";
 const {
   ArrayPrototypeFind,
@@ -20,19 +20,22 @@ const {
   SymbolFor,
 } = primordials;
 
-import * as webidl from "ext:deno_webidl/00_webidl.js";
-import { createFilteredInspectProxy } from "ext:deno_web/01_console.js";
-import { URL } from "ext:deno_web/00_url.js";
-import { DOMException } from "ext:deno_web/01_dom_exception.js";
-import {
+const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
+const { createFilteredInspectProxy } = core.loadExtScript(
+  "ext:deno_web/01_console.js",
+);
+const { URL } = core.loadExtScript("ext:deno_web/00_url.js");
+const { DOMException } = core.loadExtScript("ext:deno_web/01_dom_exception.js");
+const {
   defineEventHandler,
   EventTarget,
   setIsTrusted,
-} from "ext:deno_web/02_event.js";
-import { clearTimeout, setTimeout } from "ext:deno_web/02_timers.js";
-import { TransformStream } from "ext:deno_web/06_streams.js";
-import { TextDecoderStream } from "ext:deno_web/08_text_encoding.js";
-import { getLocationHref } from "ext:deno_web/12_location.js";
+} = core.loadExtScript("ext:deno_web/02_event.js");
+const { TransformStream } = core.loadExtScript("ext:deno_web/06_streams.js");
+const { TextDecoderStream } = core.loadExtScript(
+  "ext:deno_web/08_text_encoding.js",
+);
+const { getLocationHref } = core.loadExtScript("ext:deno_web/12_location.js");
 import { newInnerRequest } from "ext:deno_fetch/23_request.js";
 import { mainFetch } from "ext:deno_fetch/26_fetch.js";
 import {
@@ -180,7 +183,7 @@ class EventSource extends EventTarget {
     webidl.assertBranded(this, EventSourcePrototype);
     this.#abortController.abort();
     this.#readyState = CLOSED;
-    clearTimeout(this.#reconnectionTimerId);
+    if (this.#reconnectionTimerId) core.cancelTimer(this.#reconnectionTimerId);
   }
 
   async #loop() {
@@ -334,12 +337,16 @@ class EventSource extends EventTarget {
     }
     this.#readyState = CONNECTING;
     this.dispatchEvent(new Event("error"));
-    this.#reconnectionTimerId = setTimeout(() => {
-      if (this.#readyState !== CONNECTING) {
-        return;
-      }
-      this.#loop();
-    }, this.#reconnectionTime);
+    this.#reconnectionTimerId = core.createSystemTimer(
+      () => {
+        if (this.#readyState !== CONNECTING) {
+          return;
+        }
+        this.#loop();
+      },
+      this.#reconnectionTime,
+      true,
+    );
   }
 
   #failConnection() {

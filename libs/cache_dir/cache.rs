@@ -160,7 +160,7 @@ pub struct HttpCacheItemKey<'a> {
   pub(super) file_path: Option<PathBuf>,
 }
 
-#[allow(clippy::disallowed_types)]
+#[allow(clippy::disallowed_types, reason = "arc wrapper type")]
 pub type HttpCacheRc = deno_maybe_sync::MaybeArc<dyn HttpCache>;
 
 pub trait HttpCache: MaybeSend + MaybeSync + std::fmt::Debug {

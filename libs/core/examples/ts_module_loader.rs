@@ -5,7 +5,8 @@
 //! It will only transpile, not typecheck (like Deno's `--no-check` flag).
 
 // NB(bartlomieju): this is fine for example code
-#![allow(clippy::print_stdout)]
+#![allow(clippy::print_stdout, reason = "example code")]
+#![allow(clippy::disallowed_methods, reason = "example code")]
 
 use std::borrow::Cow;
 use std::cell::RefCell;
@@ -47,8 +48,10 @@ impl ModuleLoader for TypescriptModuleLoader {
     specifier: &str,
     referrer: &str,
     _kind: ResolutionKind,
-  ) -> Result<ModuleSpecifier, ModuleLoaderError> {
-    resolve_import(specifier, referrer).map_err(JsErrorBox::from_err)
+  ) -> deno_core::ModuleResolveResponse {
+    deno_core::ModuleResolveResponse::Sync(
+      resolve_import(specifier, referrer).map_err(JsErrorBox::from_err),
+    )
   }
 
   fn load(

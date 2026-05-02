@@ -2,9 +2,15 @@
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 
 import { notImplemented } from "ext:deno_node/_utils.ts";
+import {
+  validateOneOf,
+  validateString,
+} from "ext:deno_node/internal/validators.mjs";
 import tlsCommon from "node:_tls_common";
 import tlsWrap from "node:_tls_wrap";
+import { convertALPNProtocols } from "ext:deno_node/internal/tls_common.js";
 import {
+  op_get_ca_certificates,
   op_get_root_certificates,
   op_set_default_ca_certificates,
 } from "ext:core/ops";
@@ -13,7 +19,9 @@ import { primordials } from "ext:core/mod.js";
 const {
   ArrayIsArray,
   ArrayPrototypeForEach,
+  ArrayPrototypeMap,
   ArrayPrototypePush,
+  ObjectDefineProperty,
   ObjectKeys,
   ObjectFreeze,
   Proxy,
@@ -63,7 +71,7 @@ function ensureLazyRootCertificates(target: string[]) {
     target.length = 0;
     ArrayPrototypeForEach(
       lazyRootCertificates,
-      (v) => ArrayPrototypePush(target, v),
+      (v: string) => ArrayPrototypePush(target, v),
     );
     ObjectFreeze(target);
   }
@@ -143,11 +151,33 @@ export function setDefaultCACertificates(certs: string[]) {
   lazyRootCertificates = null;
 }
 
+const cachedCACertificates: Record<string, string[]> = {
+  __proto__: null as unknown as string[],
+};
+
+export function getCACertificates(type: string = "default"): string[] {
+  validateString(type, "type");
+  validateOneOf(type, "type", ["default", "system", "bundled", "extra"]);
+
+  if (cachedCACertificates[type] !== undefined) {
+    return cachedCACertificates[type];
+  }
+
+  let certs: string[];
+  if (type === "bundled") {
+    certs = rootCertificates;
+  } else {
+    certs = ObjectFreeze(op_get_ca_certificates(type)) as string[];
+  }
+  cachedCACertificates[type] = certs;
+  return certs;
+}
+
 export function createSecurePair() {
   notImplemented("tls.createSecurePair");
 }
 
-export default {
+const defaultExport = {
   CryptoStream,
   SecurePair,
   Server,
@@ -157,8 +187,9 @@ export default {
   createSecureContext: tlsCommon.createSecureContext,
   createSecurePair,
   createServer: tlsWrap.createServer,
+  getCACertificates,
+  convertALPNProtocols,
   getCiphers,
-  rootCertificates,
   setDefaultCACertificates,
   DEFAULT_CIPHERS: tlsWrap.DEFAULT_CIPHERS,
   DEFAULT_ECDH_CURVE,
@@ -167,6 +198,16 @@ export default {
   CLIENT_RENEG_LIMIT,
   CLIENT_RENEG_WINDOW,
 };
+// Make rootCertificates non-writable so `tls.rootCertificates = X` throws
+// TypeError in strict mode (matches Node.js behavior).
+// deno-lint-ignore no-explicit-any
+ObjectDefineProperty(defaultExport as any, "rootCertificates", {
+  __proto__: null,
+  configurable: false,
+  enumerable: true,
+  get: () => rootCertificates,
+});
+export default defaultExport;
 
 export const checkServerIdentity = tlsWrap.checkServerIdentity;
 export const connect = tlsWrap.connect;

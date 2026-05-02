@@ -30,7 +30,7 @@ import { normalizeEncoding } from "ext:deno_node/internal/util.mjs";
  * @returns {boolean}
  */
 function isInt32(value) {
-  return value === (value | 0);
+  return typeof value === "number" && value === (value | 0);
 }
 
 /**

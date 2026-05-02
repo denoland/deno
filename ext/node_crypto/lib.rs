@@ -34,10 +34,13 @@ use rsa::Oaep;
 use rsa::Pkcs1v15Encrypt;
 use rsa::RsaPrivateKey;
 use rsa::RsaPublicKey;
+use rsa::hazmat::rsa_decrypt_and_check;
+use rsa::hazmat::rsa_encrypt;
 use rsa::pkcs1::DecodeRsaPrivateKey;
 use rsa::pkcs1::DecodeRsaPublicKey;
 use rsa::pkcs8::DecodePrivateKey;
 use rsa::pkcs8::DecodePublicKey;
+use rsa::traits::PublicKeyParts;
 
 pub mod cipher;
 pub(crate) mod dh;
@@ -93,6 +96,7 @@ deno_core::extension!(
     op_node_pbkdf2_validate,
     op_node_private_decrypt,
     op_node_private_encrypt,
+    op_node_public_decrypt,
     op_node_public_encrypt,
     op_node_random_int,
     op_node_scrypt_async,
@@ -294,6 +298,75 @@ pub enum PrivateEncryptDecryptError {
   #[class(type)]
   #[error("Unknown padding")]
   UnknownPadding,
+  #[class(generic)]
+  #[error("Invalid digest used")]
+  InvalidDigest,
+}
+
+/// PKCS#1 v1.5 type 1 padding for private key encryption (signing).
+/// EM = 0x00 || 0x01 || PS || 0x00 || M
+/// where PS is filled with 0xFF bytes and has length k - mLen - 3.
+fn pkcs1v15_type1_pad(
+  msg: &[u8],
+  k: usize,
+) -> Result<Vec<u8>, PrivateEncryptDecryptError> {
+  if msg.len() > k - 11 {
+    return Err(PrivateEncryptDecryptError::Rsa(rsa::Error::MessageTooLong));
+  }
+  let mut em = vec![0xffu8; k];
+  em[0] = 0;
+  em[1] = 1;
+  em[k - msg.len() - 1] = 0;
+  em[k - msg.len()..].copy_from_slice(msg);
+  Ok(em)
+}
+
+/// Remove PKCS#1 v1.5 type 1 padding.
+/// EM = 0x00 || 0x01 || PS (0xFF bytes) || 0x00 || M
+fn pkcs1v15_type1_unpad(
+  em: &[u8],
+  k: usize,
+) -> Result<Vec<u8>, PrivateEncryptDecryptError> {
+  if k < 11 || em.len() != k || em[0] != 0 || em[1] != 1 {
+    return Err(PrivateEncryptDecryptError::Rsa(rsa::Error::Decryption));
+  }
+  // Find the 0x00 separator after the 0xFF padding
+  let mut sep = None;
+  for (i, &byte) in em.iter().enumerate().take(k).skip(2) {
+    if byte == 0 {
+      sep = Some(i);
+      break;
+    }
+    if byte != 0xff {
+      return Err(PrivateEncryptDecryptError::Rsa(rsa::Error::Decryption));
+    }
+  }
+  let sep =
+    sep.ok_or(PrivateEncryptDecryptError::Rsa(rsa::Error::Decryption))?;
+  if sep < 10 {
+    // PS must be at least 8 bytes
+    return Err(PrivateEncryptDecryptError::Rsa(rsa::Error::Decryption));
+  }
+  Ok(em[sep + 1..].to_vec())
+}
+
+fn create_oaep(
+  hash: Option<&str>,
+  label: Option<&[u8]>,
+) -> Result<Oaep, PrivateEncryptDecryptError> {
+  let hash = hash.unwrap_or("sha1");
+  let mut oaep = digest::match_fixed_digest!(hash, fn <D>() {
+    Oaep::new::<D>()
+  }, _ => {
+    return Err(PrivateEncryptDecryptError::InvalidDigest);
+  });
+  if let Some(label) = label {
+    // The rsa crate stores the label as String but only uses
+    // .as_bytes() on it, so the UTF-8 invariant is not relied upon.
+    // SAFETY: label bytes are only ever hashed, never interpreted as text.
+    oaep.label = Some(unsafe { String::from_utf8_unchecked(label.to_vec()) });
+  }
+  Ok(oaep)
 }
 
 #[op2]
@@ -301,6 +374,8 @@ pub fn op_node_private_encrypt(
   #[serde] key: StringOrBuffer,
   #[serde] msg: StringOrBuffer,
   #[smi] padding: u32,
+  #[string] oaep_hash: Option<String>,
+  #[serde] oaep_label: Option<JsBuffer>,
 ) -> Result<Uint8Array, PrivateEncryptDecryptError> {
   let key = match std::str::from_utf8(&key) {
     Ok(pem) => RsaPrivateKey::from_pkcs8_pem(pem)
@@ -311,20 +386,25 @@ pub fn op_node_private_encrypt(
     })?,
   };
 
+  let k = key.size();
   let mut rng = rand::thread_rng();
   match padding {
-    1 => Ok(
-      key
-        .as_ref()
-        .encrypt(&mut rng, Pkcs1v15Encrypt, &msg)?
-        .into(),
-    ),
-    4 => Ok(
-      key
-        .as_ref()
-        .encrypt(&mut rng, Oaep::new::<sha1::Sha1>(), &msg)?
-        .into(),
-    ),
+    1 => {
+      // PKCS1 type 1 padding + raw RSA private key operation
+      let em = pkcs1v15_type1_pad(&msg, k)?;
+      let int = num_bigint_dig::BigUint::from_bytes_be(&em);
+      let result = rsa_decrypt_and_check(&key, Some(&mut rng), &int)?;
+      let mut result_bytes = result.to_bytes_be();
+      // Left-pad with zeros to key size
+      while result_bytes.len() < k {
+        result_bytes.insert(0, 0);
+      }
+      Ok(result_bytes.into())
+    }
+    4 => {
+      let oaep = create_oaep(oaep_hash.as_deref(), oaep_label.as_deref())?;
+      Ok(key.as_ref().encrypt(&mut rng, oaep, &msg)?.into())
+    }
     _ => Err(PrivateEncryptDecryptError::UnknownPadding),
   }
 }
@@ -334,6 +414,8 @@ pub fn op_node_private_decrypt(
   #[serde] key: StringOrBuffer,
   #[serde] msg: StringOrBuffer,
   #[smi] padding: u32,
+  #[string] oaep_hash: Option<String>,
+  #[serde] oaep_label: Option<JsBuffer>,
 ) -> Result<Uint8Array, PrivateEncryptDecryptError> {
   let key = match std::str::from_utf8(&key) {
     Ok(pem) => RsaPrivateKey::from_pkcs8_pem(pem)
@@ -346,7 +428,10 @@ pub fn op_node_private_decrypt(
 
   match padding {
     1 => Ok(key.decrypt(Pkcs1v15Encrypt, &msg)?.into()),
-    4 => Ok(key.decrypt(Oaep::new::<sha1::Sha1>(), &msg)?.into()),
+    4 => {
+      let oaep = create_oaep(oaep_hash.as_deref(), oaep_label.as_deref())?;
+      Ok(key.decrypt(oaep, &msg)?.into())
+    }
     _ => Err(PrivateEncryptDecryptError::UnknownPadding),
   }
 }
@@ -356,6 +441,8 @@ pub fn op_node_public_encrypt(
   #[serde] key: StringOrBuffer,
   #[serde] msg: StringOrBuffer,
   #[smi] padding: u32,
+  #[string] oaep_hash: Option<String>,
+  #[serde] oaep_label: Option<JsBuffer>,
 ) -> Result<Uint8Array, PrivateEncryptDecryptError> {
   let key = match std::str::from_utf8(&key) {
     Ok(pem) => RsaPublicKey::from_public_key_pem(pem)
@@ -386,11 +473,63 @@ pub fn op_node_public_encrypt(
   let mut rng = rand::thread_rng();
   match padding {
     1 => Ok(key.encrypt(&mut rng, Pkcs1v15Encrypt, &msg)?.into()),
-    4 => Ok(
-      key
-        .encrypt(&mut rng, Oaep::new::<sha1::Sha1>(), &msg)?
-        .into(),
-    ),
+    4 => {
+      let oaep = create_oaep(oaep_hash.as_deref(), oaep_label.as_deref())?;
+      Ok(key.encrypt(&mut rng, oaep, &msg)?.into())
+    }
+    _ => Err(PrivateEncryptDecryptError::UnknownPadding),
+  }
+}
+
+#[op2]
+pub fn op_node_public_decrypt(
+  #[serde] key: StringOrBuffer,
+  #[serde] msg: StringOrBuffer,
+  #[smi] padding: u32,
+) -> Result<Uint8Array, PrivateEncryptDecryptError> {
+  let key = match std::str::from_utf8(&key) {
+    Ok(pem) => RsaPublicKey::from_public_key_pem(pem)
+      .or_else(|_| rsa::pkcs1::DecodeRsaPublicKey::from_pkcs1_pem(pem))
+      .or_else(|_| {
+        RsaPrivateKey::from_pkcs8_pem(pem)
+          .or_else(|_| {
+            rsa::pkcs1::DecodeRsaPrivateKey::from_pkcs1_pem(pem)
+              .map_err(pkcs8::Error::from)
+          })
+          .map(|k| k.to_public_key())
+      })
+      .map_err(|e| PrivateEncryptDecryptError::Spki(e.into()))?,
+    Err(_) => RsaPublicKey::from_public_key_der(&key)
+      .or_else(|_| {
+        RsaPublicKey::from_pkcs1_der(&key).map_err(spki::Error::from)
+      })
+      .or_else(|_| {
+        RsaPrivateKey::from_pkcs8_der(&key)
+          .or_else(|_| {
+            RsaPrivateKey::from_pkcs1_der(&key).map_err(pkcs8::Error::from)
+          })
+          .map(|k| k.to_public_key())
+          .map_err(spki::Error::from)
+      })?,
+  };
+
+  let k = key.size();
+  match padding {
+    1 => {
+      // Raw RSA with public key, then remove PKCS1 type 1 padding
+      let int = num_bigint_dig::BigUint::from_bytes_be(&msg);
+      let result = rsa_encrypt(&key, &int)?;
+      let mut em = result.to_bytes_be();
+      // Left-pad with zeros to key size
+      while em.len() < k {
+        em.insert(0, 0);
+      }
+      Ok(pkcs1v15_type1_unpad(&em, k)?.into())
+    }
+    4 => {
+      // OAEP not supported for public decrypt
+      Err(PrivateEncryptDecryptError::UnknownPadding)
+    }
     _ => Err(PrivateEncryptDecryptError::UnknownPadding),
   }
 }
@@ -550,7 +689,7 @@ pub fn op_node_sign(
   #[cppgc] handle: &KeyObjectHandle,
   #[buffer] digest: &[u8],
   #[string] digest_type: &str,
-  #[smi] pss_salt_length: Option<u32>,
+  #[smi] pss_salt_length: Option<i32>,
   #[smi] padding: Option<u32>,
   #[smi] dsa_signature_encoding: u32,
 ) -> Result<Box<[u8]>, sign::KeyObjectHandlePrehashedSignAndVerifyError> {
@@ -569,7 +708,7 @@ pub fn op_node_verify(
   #[buffer] digest: &[u8],
   #[string] digest_type: &str,
   #[buffer] signature: &[u8],
-  #[smi] pss_salt_length: Option<u32>,
+  #[smi] pss_salt_length: Option<i32>,
   #[smi] padding: Option<u32>,
   #[smi] dsa_signature_encoding: u32,
 ) -> Result<bool, sign::KeyObjectHandlePrehashedSignAndVerifyError> {
@@ -584,7 +723,7 @@ pub fn op_node_verify(
 }
 
 #[derive(Debug, PartialEq, Eq)]
-#[allow(non_camel_case_types)]
+#[allow(non_camel_case_types, reason = "matches Node.js error code naming")]
 enum ErrorCode {
   ERR_CRYPTO_INVALID_DIGEST,
 }
@@ -800,46 +939,73 @@ pub fn op_node_random_int(#[number] min: i64, #[number] max: i64) -> i64 {
   dist.sample(&mut rng)
 }
 
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, reason = "all arguments are needed")]
 fn scrypt(
   password: StringOrBuffer,
   salt: StringOrBuffer,
-  keylen: u32,
-  cost: u32,
-  block_size: u32,
-  parallelization: u32,
-  _maxmem: u32,
+  keylen: usize,
+  cost: u64,
+  block_size: u64,
+  parallelization: u64,
+  maxmem: usize,
   output_buffer: &mut [u8],
 ) -> Result<(), JsErrorBox> {
-  // Construct Params
-  let params = scrypt::Params::new(
-    cost as u8,
-    block_size,
-    parallelization,
-    keylen as usize,
-  )
-  .map_err(|_| JsErrorBox::generic("Invalid scrypt param"))?;
+  assert!(
+    output_buffer.len() >= keylen,
+    "output_buffer too small for scrypt keylen",
+  );
+  let cost = u32::try_from(cost)
+    .ok()
+    .filter(|cost| *cost < 64)
+    .ok_or_else(|| JsErrorBox::generic("Invalid scrypt param"))?;
+  let n = 1u64
+    .checked_shl(cost)
+    .ok_or_else(|| JsErrorBox::generic("Invalid scrypt param"))?;
 
-  // Call into scrypt
-  let res = scrypt::scrypt(&password, &salt, &params, output_buffer);
-  if res.is_ok() {
+  // SAFETY:
+  // - `password.as_ptr()`/`password.len()` describe a valid contiguous byte
+  //   slice because `StringOrBuffer` dereferences to `[u8]`.
+  // - `salt.as_ptr()`/`salt.len()` likewise describe a valid contiguous byte
+  //   slice.
+  // - `output_buffer.as_mut_ptr()` points to at least `keylen` writable bytes,
+  //   enforced by the assertion above and by the callers allocating a buffer of
+  //   that exact size.
+  // - `n` is derived with `checked_shl`, so the `N` parameter passed to
+  //   `EVP_PBE_scrypt` cannot overflow the shift.
+  // - AWS-LC documents `EVP_PBE_scrypt` as thread-safe for independent inputs;
+  //   this call does not alias mutable state across threads.
+  let result = unsafe {
+    aws_lc_sys::EVP_PBE_scrypt(
+      password.as_ptr().cast(),
+      password.len(),
+      salt.as_ptr(),
+      salt.len(),
+      n,
+      block_size,
+      parallelization,
+      maxmem,
+      output_buffer.as_mut_ptr(),
+      keylen,
+    )
+  };
+
+  if result == 1 {
     Ok(())
   } else {
-    // TODO(lev): key derivation failed, so what?
     Err(JsErrorBox::generic("scrypt key derivation failed"))
   }
 }
 
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, reason = "all arguments are needed")]
 #[op2]
 pub fn op_node_scrypt_sync(
   #[serde] password: StringOrBuffer,
   #[serde] salt: StringOrBuffer,
-  #[smi] keylen: u32,
-  #[smi] cost: u32,
-  #[smi] block_size: u32,
-  #[smi] parallelization: u32,
-  #[smi] maxmem: u32,
+  #[number] keylen: usize,
+  #[number] cost: u64,
+  #[number] block_size: u64,
+  #[number] parallelization: u64,
+  #[number] maxmem: usize,
   #[anybuffer] output_buffer: &mut [u8],
 ) -> Result<(), JsErrorBox> {
   scrypt(
@@ -868,14 +1034,14 @@ pub enum ScryptAsyncError {
 pub async fn op_node_scrypt_async(
   #[serde] password: StringOrBuffer,
   #[serde] salt: StringOrBuffer,
-  #[smi] keylen: u32,
-  #[smi] cost: u32,
-  #[smi] block_size: u32,
-  #[smi] parallelization: u32,
-  #[smi] maxmem: u32,
+  #[number] keylen: usize,
+  #[number] cost: u64,
+  #[number] block_size: u64,
+  #[number] parallelization: u64,
+  #[number] maxmem: usize,
 ) -> Result<Uint8Array, ScryptAsyncError> {
   spawn_blocking(move || {
-    let mut output_buffer = vec![0u8; keylen as usize];
+    let mut output_buffer = vec![0u8; keylen];
 
     scrypt(
       password,
@@ -1240,14 +1406,22 @@ pub async fn op_node_gen_prime_async(
 }
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
-#[class(type)]
 pub enum DiffieHellmanError {
+  #[class(type)]
   #[error("Expected private key")]
   ExpectedPrivateKey,
+  #[class(type)]
   #[error("Expected public key")]
   ExpectedPublicKey,
-  #[error("DH parameters mismatch")]
-  DhParametersMismatch,
+  #[class(generic)]
+  #[error(
+    "error:0308010C:digital envelope routines::mismatching domain parameters"
+  )]
+  MismatchingDomainParameters,
+  #[class(generic)]
+  #[error("error:030000A9:digital envelope routines::failed during derivation")]
+  FailedDuringDerivation,
+  #[class(type)]
   #[error("Unsupported key type for diffie hellman, or key type mismatch")]
   UnsupportedKeyTypeForDiffieHellmanOrKeyTypeMismatch,
 }
@@ -1316,14 +1490,38 @@ pub fn op_node_diffie_hellman(
     .raw_secret_bytes()
     .to_vec()
     .into_boxed_slice(),
+    (AsymmetricPrivateKey::Ec(_), AsymmetricPublicKey::Ec(_)) => {
+      // Both EC keys but on different curves.
+      return Err(DiffieHellmanError::MismatchingDomainParameters);
+    }
     (
       AsymmetricPrivateKey::X25519(private),
       AsymmetricPublicKey::X25519(public),
-    ) => private
-      .diffie_hellman(public)
-      .to_bytes()
-      .into_iter()
-      .collect(),
+    ) => {
+      let shared = private.diffie_hellman(public);
+      let bytes = shared.to_bytes();
+      // Reject all-zero shared secrets (low-order points), matching OpenSSL.
+      if bytes.iter().all(|b| *b == 0) {
+        return Err(DiffieHellmanError::FailedDuringDerivation);
+      }
+      bytes.into_iter().collect()
+    }
+    (
+      AsymmetricPrivateKey::X448(private),
+      AsymmetricPublicKey::X448(public),
+    ) => {
+      let mut scalar_bytes = [0u8; 57];
+      scalar_bytes[..56].copy_from_slice(&private[..56]);
+      let scalar = ed448_goldilocks::EdwardsScalar::from_bytes_mod_order(
+        &scalar_bytes.into(),
+      );
+      let point = ed448_goldilocks::MontgomeryPoint(*public);
+      let shared = &point * &scalar;
+      if shared.0.iter().all(|b| *b == 0) {
+        return Err(DiffieHellmanError::FailedDuringDerivation);
+      }
+      shared.0.to_vec().into_boxed_slice()
+    }
     (AsymmetricPrivateKey::Dh(private), AsymmetricPublicKey::Dh(public)) => {
       // Compare DH parameters by integer value, not byte encoding,
       // since different generation paths may produce different ASN.1
@@ -1333,7 +1531,7 @@ pub fn op_node_diffie_hellman(
       let priv_base = BigUint::from_bytes_be(private.params.base.as_bytes());
       let pub_base = BigUint::from_bytes_be(public.params.base.as_bytes());
       if priv_prime != pub_prime || priv_base != pub_base {
-        return Err(DiffieHellmanError::DhParametersMismatch);
+        return Err(DiffieHellmanError::MismatchingDomainParameters);
       }
 
       // OSIP - Octet-String-to-Integer primitive
@@ -1345,7 +1543,17 @@ pub fn op_node_diffie_hellman(
       let private_key = BigUint::from_bytes_be(&private_key);
       let shared_secret = pubkey.modpow(&private_key, &priv_prime);
 
-      shared_secret.to_bytes_be().into()
+      // Pad to the byte length of the prime, matching OpenSSL's
+      // DH_compute_key_padded behaviour used by EVP_PKEY_derive.
+      let prime_len = priv_prime.bits().div_ceil(8);
+      let secret_bytes = shared_secret.to_bytes_be();
+      if secret_bytes.len() < prime_len {
+        let mut padded = vec![0u8; prime_len];
+        padded[prime_len - secret_bytes.len()..].copy_from_slice(&secret_bytes);
+        padded.into_boxed_slice()
+      } else {
+        secret_bytes.into_boxed_slice()
+      }
     }
     _ => {
       return Err(

@@ -38,15 +38,15 @@ const {
   TypedArrayPrototypeGetSymbolToStringTag,
 } = primordials;
 
-import * as webidl from "ext:deno_webidl/00_webidl.js";
-import { byteLowerCase } from "ext:deno_web/00_infra.js";
-import {
+const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
+const { byteLowerCase } = core.loadExtScript("ext:deno_web/00_infra.js");
+const {
   errorReadableStream,
   getReadableStreamResourceBacking,
   readableStreamForRid,
   ReadableStreamPrototype,
   resourceForReadableStream,
-} from "ext:deno_web/06_streams.js";
+} = core.loadExtScript("ext:deno_web/06_streams.js");
 import { extractBody, InnerBody } from "ext:deno_fetch/22_body.js";
 import { processUrlList, toInnerRequest } from "ext:deno_fetch/23_request.js";
 import {
@@ -57,7 +57,7 @@ import {
   redirectStatus,
   toInnerResponse,
 } from "ext:deno_fetch/23_response.js";
-import * as abortSignal from "ext:deno_web/03_abort_signal.js";
+const abortSignal = core.loadExtScript("ext:deno_web/03_abort_signal.js");
 import {
   builtinTracer,
   ContextManager,
@@ -67,9 +67,9 @@ import {
   TRACING_ENABLED,
 } from "ext:deno_telemetry/telemetry.ts";
 import {
+  updateSpanFromClientResponse,
   updateSpanFromError,
   updateSpanFromRequest,
-  updateSpanFromResponse,
 } from "ext:deno_telemetry/util.ts";
 
 const REQUEST_BODY_HEADER_NAMES = [
@@ -450,7 +450,7 @@ function fetch(input, init = { __proto__: null }) {
             responseObject = fromInnerResponse(response, "immutable");
 
             if (span) {
-              updateSpanFromResponse(span, responseObject);
+              updateSpanFromClientResponse(span, responseObject);
             }
 
             resolve(responseObject);

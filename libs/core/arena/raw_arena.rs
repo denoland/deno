@@ -497,7 +497,7 @@ mod tests {
 
   #[test]
   fn test_drops_full() {
-    #[allow(dead_code)]
+    #[allow(dead_code, reason = "test code")]
     struct Droppable(String);
 
     let arena = RawArena::<_>::with_capacity(16);

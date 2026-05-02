@@ -5,7 +5,10 @@
 #![deny(clippy::unused_async)]
 #![deny(clippy::unnecessary_wraps)]
 // TODO(bartlomieju): add safety comments to unsafe blocks and remove this allow
-#![allow(clippy::undocumented_unsafe_blocks)]
+#![allow(
+  clippy::undocumented_unsafe_blocks,
+  reason = "TODO: add safety comments"
+)]
 
 pub mod arena;
 mod async_cancel;
@@ -38,7 +41,7 @@ mod tasks;
 #[allow(
   non_camel_case_types,
   non_upper_case_globals,
-  clippy::missing_safety_doc
+  reason = "generated bindings match external API naming"
 )]
 pub mod uv_compat;
 mod web_timeout;
@@ -142,6 +145,7 @@ pub use crate::modules::ModuleLoadReferrer;
 pub use crate::modules::ModuleLoadResponse;
 pub use crate::modules::ModuleLoader;
 pub use crate::modules::ModuleName;
+pub use crate::modules::ModuleResolveResponse;
 pub use crate::modules::ModuleSource;
 pub use crate::modules::ModuleSourceCode;
 pub use crate::modules::ModuleSourceFuture;
@@ -182,7 +186,9 @@ pub use crate::runtime::SharedArrayBufferStore;
 pub use crate::runtime::V8_WRAPPER_OBJECT_INDEX;
 pub use crate::runtime::V8_WRAPPER_TYPE_INDEX;
 pub use crate::runtime::stats;
+pub use crate::source_map::SourceMapApplication;
 pub use crate::source_map::SourceMapData;
+pub use crate::source_map::SourceMapper;
 pub use crate::tasks::V8CrossThreadTaskSpawner;
 pub use crate::tasks::V8TaskSpawner;
 
@@ -222,9 +228,7 @@ pub mod _ops {
 pub mod snapshot {
   pub use crate::runtime::CreateSnapshotOptions;
   pub use crate::runtime::CreateSnapshotOutput;
-  pub use crate::runtime::FilterFn;
   pub use crate::runtime::create_snapshot;
-  pub use crate::runtime::get_js_files;
 }
 
 /// A helper macro that will return a call site in Rust code. Should be
@@ -275,7 +279,10 @@ mod tests {
       .stdout(Stdio::null())
       .status()
     {
-      #[allow(clippy::print_stderr)]
+      #[allow(
+        clippy::print_stderr,
+        reason = "intentional test diagnostic output"
+      )]
       {
         eprintln!("Ignoring test because we couldn't find deno: {e:?}");
       }

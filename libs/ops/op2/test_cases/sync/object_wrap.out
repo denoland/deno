@@ -32,7 +32,7 @@ impl Foo {
                 1usize as u8,
                 false,
                 Self::v8_fn_ptr as _,
-                Self::v8_fn_ptr_metrics as _,
+                Self::slow_function_impl,
                 ::deno_core::AccessorType::None,
                 None,
                 None,
@@ -46,8 +46,9 @@ impl Foo {
                 <Self as deno_core::_ops::Op>::NAME
             }
             fn slow_function_impl<'s>(
-                info: &'s deno_core::v8::FunctionCallbackInfo,
+                info: *const deno_core::v8::FunctionCallbackInfo,
             ) -> usize {
+                let info: &'s _ = unsafe { &*info };
                 #[cfg(debug_assertions)]
                 let _reentrancy_check_guard = deno_core::_ops::reentrancy_check(
                     &<Self as deno_core::_ops::Op>::DECL,
@@ -93,41 +94,8 @@ impl Foo {
                 );
                 return 0;
             }
-            extern "C" fn v8_fn_ptr<'s>(
-                info: *const deno_core::v8::FunctionCallbackInfo,
-            ) {
-                let info: &'s _ = unsafe { &*info };
+            extern "C" fn v8_fn_ptr(info: *const deno_core::v8::FunctionCallbackInfo) {
                 Self::slow_function_impl(info);
-            }
-            extern "C" fn v8_fn_ptr_metrics<'s>(
-                info: *const deno_core::v8::FunctionCallbackInfo,
-            ) {
-                let info: &'s _ = unsafe { &*info };
-                let args = deno_core::v8::FunctionCallbackArguments::from_function_callback_info(
-                    info,
-                );
-                let opctx: &'s _ = unsafe {
-                    &*(deno_core::v8::Local::<
-                        deno_core::v8::External,
-                    >::cast_unchecked(args.data())
-                        .value() as *const deno_core::_ops::OpCtx)
-                };
-                deno_core::_ops::dispatch_metrics_slow(
-                    opctx,
-                    deno_core::_ops::OpMetricsEvent::Dispatched,
-                );
-                let res = Self::slow_function_impl(info);
-                if res == 0 {
-                    deno_core::_ops::dispatch_metrics_slow(
-                        opctx,
-                        deno_core::_ops::OpMetricsEvent::Completed,
-                    );
-                } else {
-                    deno_core::_ops::dispatch_metrics_slow(
-                        opctx,
-                        deno_core::_ops::OpMetricsEvent::Error,
-                    );
-                }
             }
         }
         impl constructor {
@@ -156,7 +124,7 @@ impl Foo {
                 0usize as u8,
                 false,
                 Self::v8_fn_ptr as _,
-                Self::v8_fn_ptr_metrics as _,
+                Self::slow_function_impl,
                 ::deno_core::AccessorType::Getter,
                 None,
                 None,
@@ -170,8 +138,9 @@ impl Foo {
                 <Self as deno_core::_ops::Op>::NAME
             }
             fn slow_function_impl<'s>(
-                info: &'s deno_core::v8::FunctionCallbackInfo,
+                info: *const deno_core::v8::FunctionCallbackInfo,
             ) -> usize {
+                let info: &'s _ = unsafe { &*info };
                 #[cfg(debug_assertions)]
                 let _reentrancy_check_guard = deno_core::_ops::reentrancy_check(
                     &<Self as deno_core::_ops::Op>::DECL,
@@ -197,41 +166,8 @@ impl Foo {
                 deno_core::_ops::RustToV8RetVal::to_v8_rv(result, &mut rv);
                 return 0;
             }
-            extern "C" fn v8_fn_ptr<'s>(
-                info: *const deno_core::v8::FunctionCallbackInfo,
-            ) {
-                let info: &'s _ = unsafe { &*info };
+            extern "C" fn v8_fn_ptr(info: *const deno_core::v8::FunctionCallbackInfo) {
                 Self::slow_function_impl(info);
-            }
-            extern "C" fn v8_fn_ptr_metrics<'s>(
-                info: *const deno_core::v8::FunctionCallbackInfo,
-            ) {
-                let info: &'s _ = unsafe { &*info };
-                let args = deno_core::v8::FunctionCallbackArguments::from_function_callback_info(
-                    info,
-                );
-                let opctx: &'s _ = unsafe {
-                    &*(deno_core::v8::Local::<
-                        deno_core::v8::External,
-                    >::cast_unchecked(args.data())
-                        .value() as *const deno_core::_ops::OpCtx)
-                };
-                deno_core::_ops::dispatch_metrics_slow(
-                    opctx,
-                    deno_core::_ops::OpMetricsEvent::Dispatched,
-                );
-                let res = Self::slow_function_impl(info);
-                if res == 0 {
-                    deno_core::_ops::dispatch_metrics_slow(
-                        opctx,
-                        deno_core::_ops::OpMetricsEvent::Completed,
-                    );
-                } else {
-                    deno_core::_ops::dispatch_metrics_slow(
-                        opctx,
-                        deno_core::_ops::OpMetricsEvent::Error,
-                    );
-                }
             }
         }
         trait Callable {
@@ -261,7 +197,7 @@ impl Foo {
                 1usize as u8,
                 false,
                 Self::v8_fn_ptr as _,
-                Self::v8_fn_ptr_metrics as _,
+                Self::slow_function_impl,
                 ::deno_core::AccessorType::Setter,
                 None,
                 None,
@@ -275,8 +211,9 @@ impl Foo {
                 <Self as deno_core::_ops::Op>::NAME
             }
             fn slow_function_impl<'s>(
-                info: &'s deno_core::v8::FunctionCallbackInfo,
+                info: *const deno_core::v8::FunctionCallbackInfo,
             ) -> usize {
+                let info: &'s _ = unsafe { &*info };
                 #[cfg(debug_assertions)]
                 let _reentrancy_check_guard = deno_core::_ops::reentrancy_check(
                     &<Self as deno_core::_ops::Op>::DECL,
@@ -309,41 +246,8 @@ impl Foo {
                 };
                 return 0;
             }
-            extern "C" fn v8_fn_ptr<'s>(
-                info: *const deno_core::v8::FunctionCallbackInfo,
-            ) {
-                let info: &'s _ = unsafe { &*info };
+            extern "C" fn v8_fn_ptr(info: *const deno_core::v8::FunctionCallbackInfo) {
                 Self::slow_function_impl(info);
-            }
-            extern "C" fn v8_fn_ptr_metrics<'s>(
-                info: *const deno_core::v8::FunctionCallbackInfo,
-            ) {
-                let info: &'s _ = unsafe { &*info };
-                let args = deno_core::v8::FunctionCallbackArguments::from_function_callback_info(
-                    info,
-                );
-                let opctx: &'s _ = unsafe {
-                    &*(deno_core::v8::Local::<
-                        deno_core::v8::External,
-                    >::cast_unchecked(args.data())
-                        .value() as *const deno_core::_ops::OpCtx)
-                };
-                deno_core::_ops::dispatch_metrics_slow(
-                    opctx,
-                    deno_core::_ops::OpMetricsEvent::Dispatched,
-                );
-                let res = Self::slow_function_impl(info);
-                if res == 0 {
-                    deno_core::_ops::dispatch_metrics_slow(
-                        opctx,
-                        deno_core::_ops::OpMetricsEvent::Completed,
-                    );
-                } else {
-                    deno_core::_ops::dispatch_metrics_slow(
-                        opctx,
-                        deno_core::_ops::OpMetricsEvent::Error,
-                    );
-                }
             }
         }
         trait Callable {
@@ -373,7 +277,7 @@ impl Foo {
                 1usize as u8,
                 false,
                 Self::v8_fn_ptr as _,
-                Self::v8_fn_ptr_metrics as _,
+                Self::slow_function_impl,
                 ::deno_core::AccessorType::None,
                 None,
                 None,
@@ -387,8 +291,9 @@ impl Foo {
                 <Self as deno_core::_ops::Op>::NAME
             }
             fn slow_function_impl<'s>(
-                info: &'s deno_core::v8::FunctionCallbackInfo,
+                info: *const deno_core::v8::FunctionCallbackInfo,
             ) -> usize {
+                let info: &'s _ = unsafe { &*info };
                 #[cfg(debug_assertions)]
                 let _reentrancy_check_guard = deno_core::_ops::reentrancy_check(
                     &<Self as deno_core::_ops::Op>::DECL,
@@ -441,41 +346,8 @@ impl Foo {
                 deno_core::_ops::RustToV8RetVal::to_v8_rv(result, &mut rv);
                 return 0;
             }
-            extern "C" fn v8_fn_ptr<'s>(
-                info: *const deno_core::v8::FunctionCallbackInfo,
-            ) {
-                let info: &'s _ = unsafe { &*info };
+            extern "C" fn v8_fn_ptr(info: *const deno_core::v8::FunctionCallbackInfo) {
                 Self::slow_function_impl(info);
-            }
-            extern "C" fn v8_fn_ptr_metrics<'s>(
-                info: *const deno_core::v8::FunctionCallbackInfo,
-            ) {
-                let info: &'s _ = unsafe { &*info };
-                let args = deno_core::v8::FunctionCallbackArguments::from_function_callback_info(
-                    info,
-                );
-                let opctx: &'s _ = unsafe {
-                    &*(deno_core::v8::Local::<
-                        deno_core::v8::External,
-                    >::cast_unchecked(args.data())
-                        .value() as *const deno_core::_ops::OpCtx)
-                };
-                deno_core::_ops::dispatch_metrics_slow(
-                    opctx,
-                    deno_core::_ops::OpMetricsEvent::Dispatched,
-                );
-                let res = Self::slow_function_impl(info);
-                if res == 0 {
-                    deno_core::_ops::dispatch_metrics_slow(
-                        opctx,
-                        deno_core::_ops::OpMetricsEvent::Completed,
-                    );
-                } else {
-                    deno_core::_ops::dispatch_metrics_slow(
-                        opctx,
-                        deno_core::_ops::OpMetricsEvent::Error,
-                    );
-                }
             }
         }
         trait Callable {
@@ -503,7 +375,7 @@ impl Foo {
                 0usize as u8,
                 false,
                 Self::v8_fn_ptr as _,
-                Self::v8_fn_ptr_metrics as _,
+                Self::slow_function_impl,
                 ::deno_core::AccessorType::None,
                 Some({
                     use deno_core::v8::fast_api::Type as CType;
@@ -609,8 +481,9 @@ impl Foo {
                 result as _
             }
             fn slow_function_impl<'s>(
-                info: &'s deno_core::v8::FunctionCallbackInfo,
+                info: *const deno_core::v8::FunctionCallbackInfo,
             ) -> usize {
+                let info: &'s _ = unsafe { &*info };
                 #[cfg(debug_assertions)]
                 let _reentrancy_check_guard = deno_core::_ops::reentrancy_check(
                     &<Self as deno_core::_ops::Op>::DECL,
@@ -636,41 +509,8 @@ impl Foo {
                 deno_core::_ops::RustToV8RetVal::to_v8_rv(result, &mut rv);
                 return 0;
             }
-            extern "C" fn v8_fn_ptr<'s>(
-                info: *const deno_core::v8::FunctionCallbackInfo,
-            ) {
-                let info: &'s _ = unsafe { &*info };
+            extern "C" fn v8_fn_ptr(info: *const deno_core::v8::FunctionCallbackInfo) {
                 Self::slow_function_impl(info);
-            }
-            extern "C" fn v8_fn_ptr_metrics<'s>(
-                info: *const deno_core::v8::FunctionCallbackInfo,
-            ) {
-                let info: &'s _ = unsafe { &*info };
-                let args = deno_core::v8::FunctionCallbackArguments::from_function_callback_info(
-                    info,
-                );
-                let opctx: &'s _ = unsafe {
-                    &*(deno_core::v8::Local::<
-                        deno_core::v8::External,
-                    >::cast_unchecked(args.data())
-                        .value() as *const deno_core::_ops::OpCtx)
-                };
-                deno_core::_ops::dispatch_metrics_slow(
-                    opctx,
-                    deno_core::_ops::OpMetricsEvent::Dispatched,
-                );
-                let res = Self::slow_function_impl(info);
-                if res == 0 {
-                    deno_core::_ops::dispatch_metrics_slow(
-                        opctx,
-                        deno_core::_ops::OpMetricsEvent::Completed,
-                    );
-                } else {
-                    deno_core::_ops::dispatch_metrics_slow(
-                        opctx,
-                        deno_core::_ops::OpMetricsEvent::Error,
-                    );
-                }
             }
         }
         trait Callable {
@@ -698,7 +538,7 @@ impl Foo {
                 1usize as u8,
                 false,
                 Self::v8_fn_ptr as _,
-                Self::v8_fn_ptr_metrics as _,
+                Self::slow_function_impl,
                 ::deno_core::AccessorType::None,
                 None,
                 None,
@@ -712,8 +552,9 @@ impl Foo {
                 <Self as deno_core::_ops::Op>::NAME
             }
             fn slow_function_impl<'s>(
-                info: &'s deno_core::v8::FunctionCallbackInfo,
+                info: *const deno_core::v8::FunctionCallbackInfo,
             ) -> usize {
+                let info: &'s _ = unsafe { &*info };
                 #[cfg(debug_assertions)]
                 let _reentrancy_check_guard = deno_core::_ops::reentrancy_check(
                     &<Self as deno_core::_ops::Op>::DECL,
@@ -742,41 +583,8 @@ impl Foo {
                 deno_core::_ops::RustToV8RetVal::to_v8_rv(result, &mut rv);
                 return 0;
             }
-            extern "C" fn v8_fn_ptr<'s>(
-                info: *const deno_core::v8::FunctionCallbackInfo,
-            ) {
-                let info: &'s _ = unsafe { &*info };
+            extern "C" fn v8_fn_ptr(info: *const deno_core::v8::FunctionCallbackInfo) {
                 Self::slow_function_impl(info);
-            }
-            extern "C" fn v8_fn_ptr_metrics<'s>(
-                info: *const deno_core::v8::FunctionCallbackInfo,
-            ) {
-                let info: &'s _ = unsafe { &*info };
-                let args = deno_core::v8::FunctionCallbackArguments::from_function_callback_info(
-                    info,
-                );
-                let opctx: &'s _ = unsafe {
-                    &*(deno_core::v8::Local::<
-                        deno_core::v8::External,
-                    >::cast_unchecked(args.data())
-                        .value() as *const deno_core::_ops::OpCtx)
-                };
-                deno_core::_ops::dispatch_metrics_slow(
-                    opctx,
-                    deno_core::_ops::OpMetricsEvent::Dispatched,
-                );
-                let res = Self::slow_function_impl(info);
-                if res == 0 {
-                    deno_core::_ops::dispatch_metrics_slow(
-                        opctx,
-                        deno_core::_ops::OpMetricsEvent::Completed,
-                    );
-                } else {
-                    deno_core::_ops::dispatch_metrics_slow(
-                        opctx,
-                        deno_core::_ops::OpMetricsEvent::Error,
-                    );
-                }
             }
         }
         trait Callable {
@@ -804,7 +612,7 @@ impl Foo {
                 0usize as u8,
                 false,
                 Self::v8_fn_ptr as _,
-                Self::v8_fn_ptr_metrics as _,
+                Self::slow_function_impl,
                 ::deno_core::AccessorType::None,
                 None,
                 None,
@@ -818,8 +626,9 @@ impl Foo {
                 <Self as deno_core::_ops::Op>::NAME
             }
             fn slow_function_impl<'s>(
-                info: &'s deno_core::v8::FunctionCallbackInfo,
+                info: *const deno_core::v8::FunctionCallbackInfo,
             ) -> usize {
+                let info: &'s _ = unsafe { &*info };
                 #[cfg(debug_assertions)]
                 let _reentrancy_check_guard = deno_core::_ops::reentrancy_check(
                     &<Self as deno_core::_ops::Op>::DECL,
@@ -845,41 +654,8 @@ impl Foo {
                 deno_core::_ops::RustToV8RetVal::to_v8_rv(result, &mut rv);
                 return 0;
             }
-            extern "C" fn v8_fn_ptr<'s>(
-                info: *const deno_core::v8::FunctionCallbackInfo,
-            ) {
-                let info: &'s _ = unsafe { &*info };
+            extern "C" fn v8_fn_ptr(info: *const deno_core::v8::FunctionCallbackInfo) {
                 Self::slow_function_impl(info);
-            }
-            extern "C" fn v8_fn_ptr_metrics<'s>(
-                info: *const deno_core::v8::FunctionCallbackInfo,
-            ) {
-                let info: &'s _ = unsafe { &*info };
-                let args = deno_core::v8::FunctionCallbackArguments::from_function_callback_info(
-                    info,
-                );
-                let opctx: &'s _ = unsafe {
-                    &*(deno_core::v8::Local::<
-                        deno_core::v8::External,
-                    >::cast_unchecked(args.data())
-                        .value() as *const deno_core::_ops::OpCtx)
-                };
-                deno_core::_ops::dispatch_metrics_slow(
-                    opctx,
-                    deno_core::_ops::OpMetricsEvent::Dispatched,
-                );
-                let res = Self::slow_function_impl(info);
-                if res == 0 {
-                    deno_core::_ops::dispatch_metrics_slow(
-                        opctx,
-                        deno_core::_ops::OpMetricsEvent::Completed,
-                    );
-                } else {
-                    deno_core::_ops::dispatch_metrics_slow(
-                        opctx,
-                        deno_core::_ops::OpMetricsEvent::Error,
-                    );
-                }
             }
         }
         trait Callable {
@@ -907,7 +683,7 @@ impl Foo {
                 0usize as u8,
                 false,
                 Self::v8_fn_ptr as _,
-                Self::v8_fn_ptr_metrics as _,
+                Self::slow_function_impl,
                 ::deno_core::AccessorType::None,
                 None,
                 None,
@@ -921,8 +697,9 @@ impl Foo {
                 <Self as deno_core::_ops::Op>::NAME
             }
             fn slow_function_impl<'s>(
-                info: &'s deno_core::v8::FunctionCallbackInfo,
+                info: *const deno_core::v8::FunctionCallbackInfo,
             ) -> usize {
+                let info: &'s _ = unsafe { &*info };
                 #[cfg(debug_assertions)]
                 let _reentrancy_check_guard = deno_core::_ops::reentrancy_check(
                     &<Self as deno_core::_ops::Op>::DECL,
@@ -934,41 +711,8 @@ impl Foo {
                 deno_core::_ops::RustToV8RetVal::to_v8_rv(result, &mut rv);
                 return 0;
             }
-            extern "C" fn v8_fn_ptr<'s>(
-                info: *const deno_core::v8::FunctionCallbackInfo,
-            ) {
-                let info: &'s _ = unsafe { &*info };
+            extern "C" fn v8_fn_ptr(info: *const deno_core::v8::FunctionCallbackInfo) {
                 Self::slow_function_impl(info);
-            }
-            extern "C" fn v8_fn_ptr_metrics<'s>(
-                info: *const deno_core::v8::FunctionCallbackInfo,
-            ) {
-                let info: &'s _ = unsafe { &*info };
-                let args = deno_core::v8::FunctionCallbackArguments::from_function_callback_info(
-                    info,
-                );
-                let opctx: &'s _ = unsafe {
-                    &*(deno_core::v8::Local::<
-                        deno_core::v8::External,
-                    >::cast_unchecked(args.data())
-                        .value() as *const deno_core::_ops::OpCtx)
-                };
-                deno_core::_ops::dispatch_metrics_slow(
-                    opctx,
-                    deno_core::_ops::OpMetricsEvent::Dispatched,
-                );
-                let res = Self::slow_function_impl(info);
-                if res == 0 {
-                    deno_core::_ops::dispatch_metrics_slow(
-                        opctx,
-                        deno_core::_ops::OpMetricsEvent::Completed,
-                    );
-                } else {
-                    deno_core::_ops::dispatch_metrics_slow(
-                        opctx,
-                        deno_core::_ops::OpMetricsEvent::Error,
-                    );
-                }
             }
         }
         impl __static_doThing {
@@ -993,7 +737,7 @@ impl Foo {
                 0usize as u8,
                 false,
                 Self::v8_fn_ptr as _,
-                Self::v8_fn_ptr_metrics as _,
+                Self::slow_function_impl,
                 ::deno_core::AccessorType::None,
                 None,
                 None,
@@ -1007,8 +751,9 @@ impl Foo {
                 <Self as deno_core::_ops::Op>::NAME
             }
             fn slow_function_impl<'s>(
-                info: &'s deno_core::v8::FunctionCallbackInfo,
+                info: *const deno_core::v8::FunctionCallbackInfo,
             ) -> usize {
+                let info: &'s _ = unsafe { &*info };
                 #[cfg(debug_assertions)]
                 let _reentrancy_check_guard = deno_core::_ops::reentrancy_check(
                     &<Self as deno_core::_ops::Op>::DECL,
@@ -1034,41 +779,8 @@ impl Foo {
                 deno_core::_ops::RustToV8RetVal::to_v8_rv(result, &mut rv);
                 return 0;
             }
-            extern "C" fn v8_fn_ptr<'s>(
-                info: *const deno_core::v8::FunctionCallbackInfo,
-            ) {
-                let info: &'s _ = unsafe { &*info };
+            extern "C" fn v8_fn_ptr(info: *const deno_core::v8::FunctionCallbackInfo) {
                 Self::slow_function_impl(info);
-            }
-            extern "C" fn v8_fn_ptr_metrics<'s>(
-                info: *const deno_core::v8::FunctionCallbackInfo,
-            ) {
-                let info: &'s _ = unsafe { &*info };
-                let args = deno_core::v8::FunctionCallbackArguments::from_function_callback_info(
-                    info,
-                );
-                let opctx: &'s _ = unsafe {
-                    &*(deno_core::v8::Local::<
-                        deno_core::v8::External,
-                    >::cast_unchecked(args.data())
-                        .value() as *const deno_core::_ops::OpCtx)
-                };
-                deno_core::_ops::dispatch_metrics_slow(
-                    opctx,
-                    deno_core::_ops::OpMetricsEvent::Dispatched,
-                );
-                let res = Self::slow_function_impl(info);
-                if res == 0 {
-                    deno_core::_ops::dispatch_metrics_slow(
-                        opctx,
-                        deno_core::_ops::OpMetricsEvent::Completed,
-                    );
-                } else {
-                    deno_core::_ops::dispatch_metrics_slow(
-                        opctx,
-                        deno_core::_ops::OpMetricsEvent::Error,
-                    );
-                }
             }
         }
         trait Callable {
@@ -1096,7 +808,7 @@ impl Foo {
                 0usize as u8,
                 false,
                 Self::v8_fn_ptr as _,
-                Self::v8_fn_ptr_metrics as _,
+                Self::slow_function_impl,
                 ::deno_core::AccessorType::None,
                 Some({
                     use deno_core::v8::fast_api::Type as CType;
@@ -1202,8 +914,9 @@ impl Foo {
                 result as _
             }
             fn slow_function_impl<'s>(
-                info: &'s deno_core::v8::FunctionCallbackInfo,
+                info: *const deno_core::v8::FunctionCallbackInfo,
             ) -> usize {
+                let info: &'s _ = unsafe { &*info };
                 #[cfg(debug_assertions)]
                 let _reentrancy_check_guard = deno_core::_ops::reentrancy_check(
                     &<Self as deno_core::_ops::Op>::DECL,
@@ -1240,41 +953,8 @@ impl Foo {
                 deno_core::_ops::RustToV8RetVal::to_v8_rv(result, &mut rv);
                 return 0;
             }
-            extern "C" fn v8_fn_ptr<'s>(
-                info: *const deno_core::v8::FunctionCallbackInfo,
-            ) {
-                let info: &'s _ = unsafe { &*info };
+            extern "C" fn v8_fn_ptr(info: *const deno_core::v8::FunctionCallbackInfo) {
                 Self::slow_function_impl(info);
-            }
-            extern "C" fn v8_fn_ptr_metrics<'s>(
-                info: *const deno_core::v8::FunctionCallbackInfo,
-            ) {
-                let info: &'s _ = unsafe { &*info };
-                let args = deno_core::v8::FunctionCallbackArguments::from_function_callback_info(
-                    info,
-                );
-                let opctx: &'s _ = unsafe {
-                    &*(deno_core::v8::Local::<
-                        deno_core::v8::External,
-                    >::cast_unchecked(args.data())
-                        .value() as *const deno_core::_ops::OpCtx)
-                };
-                deno_core::_ops::dispatch_metrics_slow(
-                    opctx,
-                    deno_core::_ops::OpMetricsEvent::Dispatched,
-                );
-                let res = Self::slow_function_impl(info);
-                if res == 0 {
-                    deno_core::_ops::dispatch_metrics_slow(
-                        opctx,
-                        deno_core::_ops::OpMetricsEvent::Completed,
-                    );
-                } else {
-                    deno_core::_ops::dispatch_metrics_slow(
-                        opctx,
-                        deno_core::_ops::OpMetricsEvent::Error,
-                    );
-                }
             }
         }
         trait Callable {

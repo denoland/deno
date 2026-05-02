@@ -156,7 +156,7 @@ pub struct PrepareModuleLoadOptions<'a> {
 }
 
 impl ModuleLoadPreparer {
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "construction")]
   pub fn new(
     options: Arc<CliOptions>,
     lockfile: Option<Arc<CliLockfile>>,
@@ -394,7 +394,7 @@ pub struct CliModuleLoaderFactory {
 }
 
 impl CliModuleLoaderFactory {
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "construction")]
   pub fn new(
     options: &CliOptions,
     cjs_tracker: Arc<CliCjsTracker>,
@@ -878,7 +878,7 @@ impl<TGraphContainer: ModuleGraphContainer>
       .and_then(|metadata| metadata.modified().ok())
   }
 
-  #[allow(clippy::result_large_err)]
+  #[allow(clippy::result_large_err, reason = "TODO: investigate")]
   fn resolve_referrer(
     &self,
     referrer: &str,
@@ -898,13 +898,15 @@ impl<TGraphContainer: ModuleGraphContainer>
       deno_path_util::resolve_path(referrer, &self.shared.initial_cwd)?
     } else {
       // this cwd check is slow, so try to avoid it
-      #[allow(clippy::disallowed_methods)] // ok, actually needs the current cwd
+      #[allow(
+        clippy::disallowed_methods,
+        reason = "ok, actually needs the current cwd"
+      )]
       let cwd = std::env::current_dir().map_err(UnableToGetCwdError)?;
       deno_path_util::resolve_path(referrer, &cwd)?
     })
   }
 
-  #[allow(clippy::result_large_err)]
   fn inner_resolve(
     &self,
     raw_specifier: &str,
@@ -995,8 +997,10 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
     specifier: &str,
     referrer: &str,
     kind: deno_core::ResolutionKind,
-  ) -> Result<ModuleSpecifier, ModuleLoaderError> {
-    self.0.inner_resolve(specifier, referrer, kind, false)
+  ) -> deno_core::ModuleResolveResponse {
+    deno_core::ModuleResolveResponse::Sync(
+      self.0.inner_resolve(specifier, referrer, kind, false),
+    )
   }
 
   fn import_meta_resolve(

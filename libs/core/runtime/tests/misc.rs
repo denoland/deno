@@ -257,13 +257,13 @@ async fn test_resolve_value_generic(
   let result_global = if runner == "script" {
     let value_global: v8::Global<v8::Value> =
       runtime.execute_script("a.js", code).unwrap();
-    #[allow(deprecated)]
+    #[allow(deprecated, reason = "test code")]
     runtime.resolve_value(value_global).await
   } else if runner == "call" {
     let value_global = runtime.execute_script("a.js", code).unwrap();
     let function: v8::Global<v8::Function> =
       unsafe { std::mem::transmute(value_global) };
-    #[allow(deprecated)]
+    #[allow(deprecated, reason = "test code")]
     runtime.call_and_await(&function).await
   } else {
     unreachable!()
@@ -320,7 +320,7 @@ fn terminate_execution_webassembly() {
                                 globalThis.wasmInstance = new WebAssembly.Instance(wasmModule);
                                 })()
                                     "#).unwrap();
-  #[allow(deprecated)]
+  #[allow(deprecated, reason = "test code")]
   futures::executor::block_on(runtime.resolve_value(promise)).unwrap();
   let terminator_thread = std::thread::spawn(move || {
     std::thread::sleep(std::time::Duration::from_millis(1000));
@@ -410,7 +410,7 @@ async fn wasm_streaming_op_invocation_in_import() {
                                }
                              });
                             "#).unwrap();
-  #[allow(deprecated)]
+  #[allow(deprecated, reason = "test code")]
   let value = runtime.resolve_value(promise).await.unwrap();
   deno_core::scope!(scope, runtime);
   let val = value.open(scope);
@@ -513,7 +513,7 @@ fn test_get_module_namespace() {
   )
   .unwrap();
 
-  #[allow(clippy::let_underscore_future)]
+  #[allow(clippy::let_underscore_future, reason = "test code")]
   let _ = runtime.mod_evaluate(module_id);
 
   let module_namespace = runtime.get_module_namespace(module_id).unwrap();
@@ -769,7 +769,7 @@ async fn test_set_macrotask_callback_set_next_tick_callback() {
 async fn test_next_tick() {
   static NEXT_TICK: AtomicUsize = AtomicUsize::new(0);
 
-  #[allow(clippy::unnecessary_wraps)]
+  #[allow(clippy::unnecessary_wraps, reason = "test code")]
   #[op2(fast)]
   fn op_next_tick() -> Result<(), JsErrorBox> {
     NEXT_TICK.fetch_add(1, Ordering::Relaxed);
@@ -894,7 +894,7 @@ async fn test_promise_rejection_nexttick_interleave() {
 async fn test_next_tick_error_continues_drain() {
   static TICKS_RUN: AtomicUsize = AtomicUsize::new(0);
 
-  #[allow(clippy::unnecessary_wraps)]
+  #[allow(clippy::unnecessary_wraps, reason = "test code")]
   #[op2(fast)]
   fn op_tick_count() -> Result<(), JsErrorBox> {
     TICKS_RUN.fetch_add(1, Ordering::Relaxed);
@@ -1150,7 +1150,7 @@ async fn test_stalled_tla() {
     .load_main_es_module(&crate::resolve_url("file:///test.js").unwrap())
     .await
     .unwrap();
-  #[allow(clippy::let_underscore_future)]
+  #[allow(clippy::let_underscore_future, reason = "test code")]
   let _ = runtime.mod_evaluate(module_id);
 
   let error = runtime
@@ -1202,7 +1202,7 @@ async fn test_dynamic_import_module_error_stack() {
     .load_main_es_module(&crate::resolve_url("file:///main.js").unwrap())
     .await
     .unwrap();
-  #[allow(clippy::let_underscore_future)]
+  #[allow(clippy::let_underscore_future, reason = "test code")]
   let _ = runtime.mod_evaluate(module_id);
 
   let error = runtime

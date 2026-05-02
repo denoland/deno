@@ -43,7 +43,10 @@ impl ExitCode {
 
 pub fn exit(code: i32) -> ! {
   deno_signals::run_exit();
-  #[allow(clippy::disallowed_methods)]
+  #[allow(
+    clippy::disallowed_methods,
+    reason = "exit is the intended behavior"
+  )]
   std::process::exit(code);
 }
 
@@ -188,7 +191,10 @@ fn op_set_env(
     return Err(OsError::EnvInvalidValue(value.to_string()));
   }
 
-  #[allow(clippy::undocumented_unsafe_blocks)]
+  #[allow(
+    clippy::undocumented_unsafe_blocks,
+    reason = "env::set_var is unsafe since Rust 1.66"
+  )]
   unsafe {
     env::set_var(key, value)
   };
@@ -312,7 +318,10 @@ fn op_delete_env(
     return Err(OsError::EnvInvalidKey(key.to_string()));
   }
 
-  #[allow(clippy::undocumented_unsafe_blocks)]
+  #[allow(
+    clippy::undocumented_unsafe_blocks,
+    reason = "env::remove_var is unsafe since Rust 1.66"
+  )]
   unsafe {
     env::remove_var(key)
   };
@@ -442,7 +451,7 @@ fn op_gid(state: &mut OpState) -> Result<Option<u32>, PermissionCheckError> {
     .borrow_mut::<PermissionsContainer>()
     .check_sys("gid", "Deno.gid()")?;
   // TODO(bartlomieju):
-  #[allow(clippy::undocumented_unsafe_blocks)]
+  #[allow(clippy::undocumented_unsafe_blocks, reason = "libc call")]
   unsafe {
     Ok(Some(libc::getgid()))
   }
@@ -466,7 +475,7 @@ fn op_uid(state: &mut OpState) -> Result<Option<u32>, PermissionCheckError> {
     .borrow_mut::<PermissionsContainer>()
     .check_sys("uid", "Deno.uid()")?;
   // TODO(bartlomieju):
-  #[allow(clippy::undocumented_unsafe_blocks)]
+  #[allow(clippy::undocumented_unsafe_blocks, reason = "libc call")]
   unsafe {
     Ok(Some(libc::getuid()))
   }
@@ -635,7 +644,10 @@ fn rss() -> u64 {
     (out, idx)
   }
 
-  #[allow(clippy::disallowed_methods)]
+  #[allow(
+    clippy::disallowed_methods,
+    reason = "reading /proc/self requires direct fs access"
+  )]
   let statm_content = if let Ok(c) = std::fs::read_to_string("/proc/self/statm")
   {
     c

@@ -1343,7 +1343,7 @@ fn make_temp_check_async<'a>(
 /// files.
 fn validate_temporary_filename_component(
   component: &str,
-  #[allow(unused_variables)] suffix: bool,
+  _suffix: bool,
 ) -> Result<(), FsOpsError> {
   // Ban ASCII and Unicode control characters: these will often fail
   if let Some(c) = component.matches(|c: char| c.is_control()).next() {
@@ -1370,7 +1370,7 @@ fn validate_temporary_filename_component(
 
   // This check is only for Windows
   #[cfg(windows)]
-  if suffix && component.ends_with(|c: char| ". ".contains(c)) {
+  if _suffix && component.ends_with(|c: char| ". ".contains(c)) {
     return Err(FsOpsErrorKind::InvalidTrailingCharacter.into_box());
   }
 
@@ -1429,7 +1429,7 @@ pub fn op_fs_write_file_sync(
 }
 
 #[op2(stack_trace)]
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, reason = "op")]
 pub async fn op_fs_write_file_async(
   state: Rc<RefCell<OpState>>,
   #[string] path: String,
@@ -2025,7 +2025,7 @@ macro_rules! create_struct_writer {
           let value = self.$field as u64;
           buf[offset] = value as u32;
           buf[offset + 1] = (value >> 32) as u32;
-          #[allow(unused_assignments)]
+          #[allow(unused_assignments, reason = "last assignment is unused")]
           {
             offset += 2;
           }

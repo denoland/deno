@@ -269,6 +269,85 @@ Examples:
 Under the hood:
   cargo test -p specs_tests --test specs -- <filter>`,
     }),
+    "test-core": {
+      description: "Run deno_core and related crate tests (nextest)",
+      help:
+        `Runs the deno_core test suite and related crates using cargo-nextest,
+matching what CI runs in the 'deno_core test' job.
+
+This includes tests for: deno_core, deno_ops, serde_v8, deno_core_testing,
+build-your-own-js-snapshot, dcore, and deno_ops_compile_test_runner.
+
+Requires cargo-nextest to be installed:
+  cargo binstall cargo-nextest
+
+Usage:
+  ./x test-core              Run all deno_core tests
+  ./x test-core <filter>     Run tests matching the filter
+
+Under the hood:
+  cargo nextest run --features "deno_core/default deno_core/include_js_files_for_snapshotting deno_core/unsafe_use_unprotected_platform" \\
+    --tests --examples \\
+    -p deno_core -p build-your-own-js-snapshot -p dcore -p deno_ops -p deno_ops_compile_test_runner -p serde_v8 -p deno_core_testing
+  cargo nextest run -p deno_ops_compile_test_runner
+  cargo test --doc -p deno_core -p build-your-own-js-snapshot -p deno_ops -p serde_v8 -p deno_core_testing`,
+      async fn(args: string[]) {
+        const filterArgs = args.length > 0
+          ? ["-E", `test(${args.join(" ")})`]
+          : [];
+        $.logStep("Running deno_core nextest...");
+        await $`cargo nextest run ${filterArgs}
+          --features ${"deno_core/default deno_core/include_js_files_for_snapshotting deno_core/unsafe_use_unprotected_platform"}
+          --tests --examples
+          -p deno_core -p build-your-own-js-snapshot -p dcore -p deno_ops -p deno_ops_compile_test_runner -p serde_v8 -p deno_core_testing`
+          .cwd(root);
+        $.logStep("Running deno_ops compile test runner...");
+        await $`cargo nextest run ${filterArgs} -p deno_ops_compile_test_runner`
+          .cwd(root);
+        if (filterArgs.length === 0) {
+          $.logStep("Running doc tests...");
+          await $`cargo test --doc -p deno_core -p build-your-own-js-snapshot -p deno_ops -p serde_v8 -p deno_core_testing`
+            .cwd(root);
+        }
+        $.logStep("deno_core tests complete.");
+      },
+    },
+    "test-napi": {
+      description: "Run NAPI (native addon) tests",
+      help: `Builds the test_napi native module and runs the NAPI test suite.
+These tests verify Deno's Node-API compatibility by loading a native
+addon (cdylib) and calling its exported functions from JavaScript.
+
+The native module source is in tests/napi/src/ and the JS tests are
+in tests/napi/*_test.js.
+
+An optional filter argument selects which test files to run.
+
+Usage:
+  ./x test-napi             Run all NAPI tests
+  ./x test-napi <filter>    Run test files matching the filter
+
+Examples:
+  ./x test-napi uv          Run tests with "uv" in their filename
+  ./x test-napi async       Run tests with "async" in their filename
+
+Under the hood:
+  cargo build -p test_napi
+  deno test --allow-read --allow-env --allow-ffi --allow-run \\
+    --v8-flags=--expose-gc tests/napi/`,
+      async fn(args: string[]) {
+        $.logStep("Building test_napi native module...");
+        await $`cargo build -p test_napi`.cwd(root);
+        $.logStep("Running NAPI tests...");
+        const filter = args.length > 0 ? args.map((a) => `--filter=${a}`) : [];
+        await $`${
+          root.join("target/debug/deno").toString()
+        } test --allow-read --allow-env --allow-ffi --allow-run --v8-flags=--expose-gc --config ${
+          root.join("tests/config/deno.json").toString()
+        } --no-lock ${filter} .`.cwd(root.join("tests/napi"));
+        $.logStep("NAPI tests complete.");
+      },
+    },
     "fmt": fmtCmd,
     "lint": {
       description: "Lint all code (JS/TS + Rust)",

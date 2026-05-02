@@ -50,7 +50,7 @@ pub fn loadavg() -> LoadAvg {
 pub fn os_release() -> String {
   #[cfg(target_os = "linux")]
   {
-    #[allow(clippy::disallowed_methods)]
+    #[allow(clippy::disallowed_methods, reason = "requires real fs")]
     match std::fs::read_to_string("/proc/sys/kernel/osrelease") {
       Ok(mut s) => {
         s.pop(); // pop '\n'
@@ -234,7 +234,7 @@ pub fn mem_info() -> Option<MemInfo> {
     }
 
     // Gets the available memory from /proc/meminfo in linux for compatibility
-    #[allow(clippy::disallowed_methods)]
+    #[allow(clippy::disallowed_methods, reason = "requires real fs")]
     if let Ok(meminfo) = std::fs::read_to_string("/proc/meminfo") {
       let line = meminfo.lines().find(|l| l.starts_with("MemAvailable:"));
       if let Some(line) = line {

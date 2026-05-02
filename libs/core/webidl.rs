@@ -1,6 +1,9 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
+use std::marker::PhantomData;
+use std::mem::MaybeUninit;
+use std::ops::Deref;
 
 use deno_error::JsError;
 use indexmap::IndexMap;
@@ -120,12 +123,27 @@ impl std::fmt::Display for WebIdlError {
         f,
         "can not be converted to '{converter}' because '{variant}' is not a valid enum value"
       ),
+      WebIdlErrorKind::InvalidSequenceLength { expected, actual } => {
+        write!(f, "must have {expected}, received {actual}")
+      }
       WebIdlErrorKind::Other(other) => std::fmt::Display::fmt(other, f),
     }
   }
 }
 
 impl std::error::Error for WebIdlError {}
+
+#[derive(Debug)]
+pub struct SequenceLengthExpectation {
+  first: usize,
+  second: usize,
+}
+
+impl std::fmt::Display for SequenceLengthExpectation {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    write!(f, "exactly {} or {} elements", self.first, self.second)
+  }
+}
 
 #[derive(Debug)]
 pub enum WebIdlErrorKind {
@@ -145,6 +163,10 @@ pub enum WebIdlErrorKind {
     converter: &'static str,
     variant: String,
   },
+  InvalidSequenceLength {
+    expected: SequenceLengthExpectation,
+    actual: usize,
+  },
   Other(Box<dyn std::error::Error + Send + Sync + 'static>),
 }
 
@@ -161,22 +183,27 @@ pub enum Type {
 }
 
 pub fn type_of<'a, 'i>(
-  scope: &mut v8::PinScope<'a, 'i>,
+  _scope: &mut v8::PinScope<'a, 'i>,
   value: Local<'a, Value>,
 ) -> Type {
   if value.is_null() {
     return Type::Null;
   }
 
-  #[allow(clippy::wildcard_in_or_patterns)]
-  match value.type_of(scope).to_rust_string_lossy(scope).as_str() {
-    "undefined" => Type::Undefined,
-    "boolean" => Type::Boolean,
-    "number" => Type::Number,
-    "string" => Type::String,
-    "symbol" => Type::Symbol,
-    "bigint" => Type::BigInt,
-    "object" | "function" | _ => Type::Object,
+  if value.is_undefined() {
+    Type::Undefined
+  } else if value.is_boolean() {
+    Type::Boolean
+  } else if value.is_number() {
+    Type::Number
+  } else if value.is_string() {
+    Type::String
+  } else if value.is_symbol() {
+    Type::Symbol
+  } else if value.is_big_int() {
+    Type::BigInt
+  } else {
+    Type::Object
   }
 }
 
@@ -277,6 +304,313 @@ thread_local! {
   static VALUE_ETERNAL: v8::Eternal<v8::String> = v8::Eternal::empty();
 }
 
+// helper for iterating over a sequence
+fn for_each_in_sequence<'a, 'b, 'i>(
+  scope: &mut v8::PinScope<'a, 'i>,
+  value: Local<'a, Value>,
+  prefix: Cow<'static, str>,
+  context: ContextFn<'b>,
+  mut cb: impl FnMut(
+    &mut v8::PinScope<'a, 'i>,
+    usize,
+    Local<'a, Value>,
+    Cow<'static, str>,
+    ContextFn<'_>,
+  ) -> Result<(), WebIdlError>,
+) -> Result<usize, WebIdlError> {
+  let Some(obj) = value.to_object(scope) else {
+    return Err(WebIdlError::new(
+      prefix,
+      context.borrowed(),
+      WebIdlErrorKind::ConvertToConverterType("sequence"),
+    ));
+  };
+
+  let iter_key = v8::Symbol::get_iterator(scope);
+  let Some(iter) = obj
+    .get(scope, iter_key.into())
+    .and_then(|iter| iter.try_cast::<v8::Function>().ok())
+    .and_then(|iter| iter.call(scope, obj.cast(), &[]))
+    .and_then(|iter| iter.to_object(scope))
+  else {
+    return Err(WebIdlError::new(
+      prefix,
+      context.borrowed(),
+      WebIdlErrorKind::ConvertToConverterType("sequence"),
+    ));
+  };
+
+  let next_key = NEXT_ETERNAL
+    .with(|eternal| {
+      if let Some(key) = eternal.get(scope) {
+        Ok(key)
+      } else {
+        let key = NEXT.v8_string(scope).map_err(|e| {
+          WebIdlError::other(prefix.clone(), context.borrowed(), e)
+        })?;
+        eternal.set(scope, key);
+        Ok(key)
+      }
+    })?
+    .into();
+
+  let done_key = DONE_ETERNAL
+    .with(|eternal| {
+      if let Some(key) = eternal.get(scope) {
+        Ok(key)
+      } else {
+        let key = DONE.v8_string(scope).map_err(|e| {
+          WebIdlError::other(prefix.clone(), context.borrowed(), e)
+        })?;
+        eternal.set(scope, key);
+        Ok(key)
+      }
+    })?
+    .into();
+
+  let value_key = VALUE_ETERNAL
+    .with(|eternal| {
+      if let Some(key) = eternal.get(scope) {
+        Ok(key)
+      } else {
+        let key = VALUE.v8_string(scope).map_err(|e| {
+          WebIdlError::other(prefix.clone(), context.borrowed(), e)
+        })?;
+        eternal.set(scope, key);
+        Ok(key)
+      }
+    })?
+    .into();
+
+  let mut len = 0;
+
+  loop {
+    let Some(res) = iter
+      .get(scope, next_key)
+      .and_then(|next| next.try_cast::<v8::Function>().ok())
+      .and_then(|next| next.call(scope, iter.cast(), &[]))
+      .and_then(|res| res.to_object(scope))
+    else {
+      return Err(WebIdlError::new(
+        prefix,
+        context.borrowed(),
+        WebIdlErrorKind::ConvertToConverterType("sequence"),
+      ));
+    };
+
+    if res.get(scope, done_key).is_some_and(|val| val.is_true()) {
+      break;
+    }
+
+    let Some(iter_val) = res.get(scope, value_key) else {
+      return Err(WebIdlError::new(
+        prefix,
+        context.borrowed(),
+        WebIdlErrorKind::ConvertToConverterType("sequence"),
+      ));
+    };
+
+    cb(
+      scope,
+      len,
+      iter_val,
+      prefix.clone(),
+      ContextFn::new_borrowed(&|| {
+        format!("{}, index {len}", context.call()).into()
+      }),
+    )?;
+    len += 1;
+  }
+
+  Ok(len)
+}
+
+// TODO: WebGPU API like `GPUExtent3D`, `GPUOrigin3D`
+// or `GPUColor` could be statically allocated sequence
+// due to its size being known at compile time.
+// Extend this helper with additional fixed-size/size-bounded policies
+// like `SequenceLengthExact<N>`, `SequenceLengthAtMost<N>`, or
+// `SequenceLengthRange<MIN, MAX>` when we need.
+pub trait SequenceLengthPolicy {
+  fn accepts(len: usize) -> bool;
+  fn expectation() -> SequenceLengthExpectation;
+}
+
+pub struct SequenceLengthOneOf<const A: usize, const B: usize>;
+
+impl<const A: usize, const B: usize> SequenceLengthPolicy
+  for SequenceLengthOneOf<A, B>
+{
+  fn accepts(len: usize) -> bool {
+    len == A || len == B
+  }
+
+  fn expectation() -> SequenceLengthExpectation {
+    SequenceLengthExpectation {
+      first: A,
+      second: B,
+    }
+  }
+}
+
+pub struct ConstrainedSequence<T, P, const MAX: usize>
+where
+  P: SequenceLengthPolicy,
+{
+  len: usize,
+  data: [MaybeUninit<T>; MAX],
+  _policy: PhantomData<P>,
+}
+
+impl<T, P, const MAX: usize> Deref for ConstrainedSequence<T, P, MAX>
+where
+  P: SequenceLengthPolicy,
+{
+  type Target = [T];
+
+  fn deref(&self) -> &Self::Target {
+    unsafe {
+      std::slice::from_raw_parts(self.data.as_ptr().cast::<T>(), self.len)
+    }
+  }
+}
+
+impl<T, P, const MAX: usize> Drop for ConstrainedSequence<T, P, MAX>
+where
+  P: SequenceLengthPolicy,
+{
+  fn drop(&mut self) {
+    for value in self.data.iter_mut().take(self.len) {
+      unsafe {
+        value.assume_init_drop();
+      }
+    }
+  }
+}
+
+/// Some APIs accept a sequence form as just one branch of a larger conversion.
+/// This helper lets callers distinguish "not a sequence" from actual sequence
+/// conversion failures such as invalid element values or invalid sequence length.
+///
+/// Example:
+/// ```ignore
+/// if let Some(seq) = try_convert_sequence_with_policy::<
+///   MyStruct,
+///   SequenceLengthOneOf<1, 3>,
+///   3,
+/// >(scope, value, prefix, context, &Default::default())? {
+///   // Handle the sequence form here.
+/// } else {
+///   // Fall through to another accepted representation.
+/// }
+/// ```
+pub fn try_convert_sequence_with_policy<'a, 'b, 'i, T, P, const MAX: usize>(
+  scope: &mut v8::PinScope<'a, 'i>,
+  value: Local<'a, Value>,
+  prefix: Cow<'static, str>,
+  context: ContextFn<'b>,
+  options: &T::Options,
+) -> Result<Option<ConstrainedSequence<T, P, MAX>>, WebIdlError>
+where
+  T: WebIdlConverter<'a>,
+  P: SequenceLengthPolicy,
+{
+  match ConstrainedSequence::<T, P, MAX>::convert(
+    scope, value, prefix, context, options,
+  ) {
+    Ok(sequence) => Ok(Some(sequence)),
+    Err(err)
+      if matches!(
+        &err.kind,
+        WebIdlErrorKind::ConvertToConverterType("sequence")
+      ) =>
+    {
+      Ok(None)
+    }
+    Err(err) => Err(err),
+  }
+}
+
+impl<'a, T, P, const MAX: usize> WebIdlConverter<'a>
+  for ConstrainedSequence<T, P, MAX>
+where
+  T: WebIdlConverter<'a>,
+  P: SequenceLengthPolicy,
+{
+  type Options = T::Options;
+
+  fn convert<'b, 'i>(
+    scope: &mut v8::PinScope<'a, 'i>,
+    value: Local<'a, Value>,
+    prefix: Cow<'static, str>,
+    context: ContextFn<'b>,
+    options: &Self::Options,
+  ) -> Result<Self, WebIdlError> {
+    // TODO: Once the toolchain is >= 1.93, consider using `[MaybeUninit<T>]`
+    // helpers like `assume_init_drop` / `assume_init_ref` to simplify this.
+    let mut out: [MaybeUninit<T>; MAX] =
+      std::array::from_fn(|_| MaybeUninit::uninit());
+    let mut len = 0;
+
+    let result = for_each_in_sequence(
+      scope,
+      value,
+      prefix.clone(),
+      context.borrowed(),
+      |scope, idx, iter_val, prefix, context| {
+        if idx == MAX {
+          return Err(WebIdlError::new(
+            prefix,
+            context,
+            WebIdlErrorKind::InvalidSequenceLength {
+              expected: P::expectation(),
+              actual: idx + 1,
+            },
+          ));
+        }
+
+        out[idx].write(T::convert(scope, iter_val, prefix, context, options)?);
+        len += 1;
+        Ok(())
+      },
+    );
+
+    if let Err(err) = result {
+      for value in out.iter_mut().take(len) {
+        // SAFETY: only the first `len` elements are initialized, and they must
+        // be dropped manually here to avoid leaking them on early return.
+        unsafe {
+          value.assume_init_drop();
+        }
+      }
+      return Err(err);
+    }
+
+    if !P::accepts(len) {
+      for value in out.iter_mut().take(len) {
+        // SAFETY: same as above
+        unsafe {
+          value.assume_init_drop();
+        }
+      }
+      return Err(WebIdlError::new(
+        prefix,
+        context,
+        WebIdlErrorKind::InvalidSequenceLength {
+          expected: P::expectation(),
+          actual: len,
+        },
+      ));
+    }
+
+    Ok(Self {
+      len,
+      data: out,
+      _policy: PhantomData,
+    })
+  }
+}
+
 // sequence converter
 impl<'a, T: WebIdlConverter<'a>> WebIdlConverter<'a> for Vec<T> {
   type Options = T::Options;
@@ -288,108 +622,19 @@ impl<'a, T: WebIdlConverter<'a>> WebIdlConverter<'a> for Vec<T> {
     context: ContextFn<'b>,
     options: &Self::Options,
   ) -> Result<Self, WebIdlError> {
-    let Some(obj) = value.to_object(scope) else {
-      return Err(WebIdlError::new(
-        prefix,
-        context.borrowed(),
-        WebIdlErrorKind::ConvertToConverterType("sequence"),
-      ));
-    };
-
-    let iter_key = v8::Symbol::get_iterator(scope);
-    let Some(iter) = obj
-      .get(scope, iter_key.into())
-      .and_then(|iter| iter.try_cast::<v8::Function>().ok())
-      .and_then(|iter| iter.call(scope, obj.cast(), &[]))
-      .and_then(|iter| iter.to_object(scope))
-    else {
-      return Err(WebIdlError::new(
-        prefix,
-        context.borrowed(),
-        WebIdlErrorKind::ConvertToConverterType("sequence"),
-      ));
-    };
-
     let mut out = vec![];
-
-    let next_key = NEXT_ETERNAL
-      .with(|eternal| {
-        if let Some(key) = eternal.get(scope) {
-          Ok(key)
-        } else {
-          let key = NEXT.v8_string(scope).map_err(|e| {
-            WebIdlError::other(prefix.clone(), context.borrowed(), e)
-          })?;
-          eternal.set(scope, key);
-          Ok(key)
-        }
-      })?
-      .into();
-
-    let done_key = DONE_ETERNAL
-      .with(|eternal| {
-        if let Some(key) = eternal.get(scope) {
-          Ok(key)
-        } else {
-          let key = DONE.v8_string(scope).map_err(|e| {
-            WebIdlError::other(prefix.clone(), context.borrowed(), e)
-          })?;
-          eternal.set(scope, key);
-          Ok(key)
-        }
-      })?
-      .into();
-
-    let value_key = VALUE_ETERNAL
-      .with(|eternal| {
-        if let Some(key) = eternal.get(scope) {
-          Ok(key)
-        } else {
-          let key = VALUE.v8_string(scope).map_err(|e| {
-            WebIdlError::other(prefix.clone(), context.borrowed(), e)
-          })?;
-          eternal.set(scope, key);
-          Ok(key)
-        }
-      })?
-      .into();
-
-    loop {
-      let Some(res) = iter
-        .get(scope, next_key)
-        .and_then(|next| next.try_cast::<v8::Function>().ok())
-        .and_then(|next| next.call(scope, iter.cast(), &[]))
-        .and_then(|res| res.to_object(scope))
-      else {
-        return Err(WebIdlError::new(
-          prefix,
-          context.borrowed(),
-          WebIdlErrorKind::ConvertToConverterType("sequence"),
-        ));
-      };
-
-      if res.get(scope, done_key).is_some_and(|val| val.is_true()) {
-        break;
-      }
-
-      let Some(iter_val) = res.get(scope, value_key) else {
-        return Err(WebIdlError::new(
-          prefix,
-          context.borrowed(),
-          WebIdlErrorKind::ConvertToConverterType("sequence"),
-        ));
-      };
-
-      out.push(WebIdlConverter::convert(
-        scope,
-        iter_val,
-        prefix.clone(),
-        ContextFn::new_borrowed(&|| {
-          format!("{}, index {}", context.call(), out.len()).into()
-        }),
-        options,
-      )?);
-    }
+    for_each_in_sequence(
+      scope,
+      value,
+      prefix,
+      context,
+      |scope, _idx, iter_val, prefix, context| {
+        out.push(WebIdlConverter::convert(
+          scope, iter_val, prefix, context, options,
+        )?);
+        Ok(())
+      },
+    )?;
 
     Ok(out)
   }
@@ -480,7 +725,6 @@ macro_rules! impl_ints {
       impl<'a> WebIdlConverter<'a> for $t {
         type Options = IntOptions;
 
-        #[allow(clippy::manual_range_contains)]
         fn convert<'b, 'i>(
           scope: &mut v8::PinScope<'a, 'i>,
           value: Local<'a, Value>,
@@ -513,7 +757,7 @@ macro_rules! impl_ints {
               n = 0.0;
             }
 
-            if n < MIN || n > MAX {
+            if !(MIN..=MAX).contains(&n) {
               return Err(WebIdlError::new(prefix, context.borrowed(), WebIdlErrorKind::IntRange {
                 lower_bound: MIN,
                 upper_bound: MAX,
@@ -539,7 +783,7 @@ macro_rules! impl_ints {
             n = 0.0;
           }
 
-          if n >= MIN && n <= MAX {
+          if (MIN..=MAX).contains(&n) {
             return Ok(n as Self);
           }
 
@@ -1372,6 +1616,29 @@ mod tests {
   }
 
   #[test]
+  fn constrained_sequence_one_of() {
+    let mut runtime = JsRuntime::new(Default::default());
+    deno_core::scope!(scope, runtime);
+
+    let values = [
+      v8::Number::new(scope, 1.0).into(),
+      v8::Number::new(scope, 2.0).into(),
+      v8::Number::new(scope, 3.0).into(),
+      v8::Number::new(scope, 4.0).into(),
+    ];
+    let val = v8::Array::new_with_elements(scope, &values);
+    let converted =
+      ConstrainedSequence::<u8, SequenceLengthOneOf<2, 4>, 4>::convert(
+        scope,
+        val.into(),
+        "prefix".into(),
+        (|| "context".into()).into(),
+        &Default::default(),
+      );
+    assert_eq!(&*converted.unwrap(), &[1, 2, 3, 4]);
+  }
+
+  #[test]
   fn nullable() {
     let mut runtime = JsRuntime::new(Default::default());
     deno_core::scope!(scope, runtime);
@@ -1485,19 +1752,6 @@ mod tests {
     deno_core::scope!(scope, runtime);
 
     let val = v8::String::new(scope, "foo-bar").unwrap();
-    let converted = Enumeration::convert(
-      scope,
-      val.into(),
-      "prefix".into(),
-      (|| "context".into()).into(),
-      &Default::default(),
-    )
-    .unwrap();
-    assert_eq!(converted, Enumeration::FooBar);
-    assert_eq!(converted.as_str(), "foo-bar");
-
-    let val = v8::String::new(scope, "foo-bar").unwrap();
-    let val = v8::Array::new_with_elements(scope, &[val.into()]);
     let converted = Enumeration::convert(
       scope,
       val.into(),
