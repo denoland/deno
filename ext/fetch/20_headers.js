@@ -45,6 +45,7 @@ const {
 const _headerList = Symbol("header list");
 const _iterableHeaders = Symbol("iterable headers");
 const _iterableHeadersCache = Symbol("iterable headers cache");
+const _iterableHeadersCacheLength = Symbol("iterable headers cache length");
 const _guard = Symbol("guard");
 const _brand = webidl.brand;
 
@@ -157,6 +158,7 @@ function appendHeader(headers, name, value) {
     }
   }
   ArrayPrototypePush(list, [name, value]);
+  headers[_iterableHeadersCache] = undefined;
 }
 
 /**
@@ -235,11 +237,16 @@ class Headers {
   get [_iterableHeaders]() {
     const list = this[_headerList];
 
+    // Return the cached entries if it is still valid. The cache is invalidated
+    // on append / set / delete (which clear the cache symbol). The length
+    // check additionally catches direct mutations to the underlying list
+    // (e.g. by `initializeAResponse` pushing a Content-Type header).
+    const cached = this[_iterableHeadersCache];
     if (
-      this[_guard] === "immutable" &&
-      this[_iterableHeadersCache] !== undefined
+      cached !== undefined &&
+      this[_iterableHeadersCacheLength] === list.length
     ) {
-      return this[_iterableHeadersCache];
+      return cached;
     }
 
     // The order of steps are not similar to the ones suggested by the
@@ -287,6 +294,7 @@ class Headers {
     );
 
     this[_iterableHeadersCache] = entries;
+    this[_iterableHeadersCacheLength] = list.length;
 
     return entries;
   }
@@ -347,6 +355,7 @@ class Headers {
         i--;
       }
     }
+    this[_iterableHeadersCache] = undefined;
   }
 
   /**
@@ -445,6 +454,7 @@ class Headers {
     if (!added) {
       ArrayPrototypePush(list, [name, value]);
     }
+    this[_iterableHeadersCache] = undefined;
   }
 
   [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
