@@ -13,18 +13,18 @@ const performance = core.loadExtScript("ext:deno_web/15_performance.js");
 import * as crypto from "ext:deno_crypto/00_crypto.js";
 const url = core.loadExtScript("ext:deno_web/00_url.js");
 const urlPattern = core.loadExtScript("ext:deno_web/01_urlpattern.js");
-import * as headers from "ext:deno_fetch/20_headers.js";
+const headers = core.loadExtScript("ext:deno_fetch/20_headers.js");
 const streams = core.loadExtScript("ext:deno_web/06_streams.js");
 const fileReader = core.loadExtScript("ext:deno_web/10_filereader.js");
 const broadcastChannel = core.loadExtScript(
   "ext:deno_web/01_broadcast_channel.js",
 );
 const file = core.loadExtScript("ext:deno_web/09_file.js");
-import * as formData from "ext:deno_fetch/21_formdata.js";
-import * as request from "ext:deno_fetch/23_request.js";
-import * as response from "ext:deno_fetch/23_response.js";
-import * as fetch from "ext:deno_fetch/26_fetch.js";
-import * as eventSource from "ext:deno_fetch/27_eventsource.js";
+const formData = core.loadExtScript("ext:deno_fetch/21_formdata.js");
+const request = core.loadExtScript("ext:deno_fetch/23_request.js");
+const response = core.loadExtScript("ext:deno_fetch/23_response.js");
+const fetch = core.loadExtScript("ext:deno_fetch/26_fetch.js");
+const eventSource = core.loadExtScript("ext:deno_fetch/27_eventsource.js");
 const messagePort = core.loadExtScript("ext:deno_web/13_message_port.js");
 const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
 const {

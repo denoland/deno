@@ -20,14 +20,14 @@ const {
 } = primordials;
 
 const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
-import {
+const {
   Request,
   RequestPrototype,
   toInnerRequest,
-} from "ext:deno_fetch/23_request.js";
-import { toInnerResponse } from "ext:deno_fetch/23_response.js";
+} = core.loadExtScript("ext:deno_fetch/23_request.js");
+const { toInnerResponse } = core.loadExtScript("ext:deno_fetch/23_response.js");
 const { URLPrototype } = core.loadExtScript("ext:deno_web/00_url.js");
-import { getHeader } from "ext:deno_fetch/20_headers.js";
+const { getHeader } = core.loadExtScript("ext:deno_fetch/20_headers.js");
 const {
   getReadableStreamResourceBacking,
   readableStreamForRid,

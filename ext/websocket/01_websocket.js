@@ -70,12 +70,14 @@ const {
 } = core.loadExtScript("ext:deno_web/02_event.js");
 const { Blob, BlobPrototype } = core.loadExtScript("ext:deno_web/09_file.js");
 const { getLocationHref } = core.loadExtScript("ext:deno_web/12_location.js");
-import {
+const {
   fillHeaders,
   headerListFromHeaders,
   headersFromHeaderList,
-} from "ext:deno_fetch/20_headers.js";
-import { HttpClientPrototype } from "ext:deno_fetch/22_http_client.js";
+} = core.loadExtScript("ext:deno_fetch/20_headers.js");
+const { HttpClientPrototype } = core.loadExtScript(
+  "ext:deno_fetch/22_http_client.js",
+);
 
 webidl.converters["WebSocketInit"] = webidl.createDictionaryConverter(
   "WebSocketInit",

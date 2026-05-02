@@ -1,6 +1,6 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-import { core, primordials } from "ext:core/mod.js";
+import { core, internals, primordials } from "ext:core/mod.js";
 import {
   op_otel_collect_isolate_metrics,
   op_otel_enable_isolate_metrics,
@@ -1911,6 +1911,15 @@ export function bootstrap(
     }
   }
 }
+
+internals.__telemetry = {
+  builtinTracer,
+  ContextManager,
+  enterSpan,
+  PROPAGATORS,
+  restoreSnapshot,
+  TRACING_ENABLED,
+};
 
 export const telemetry = {
   tracerProvider: TracerProvider,
