@@ -19,6 +19,7 @@ import { primordials } from "ext:core/mod.js";
 const { ArrayPrototypeSlice, ArrayPrototypeSort } = primordials;
 import { methods, parsers } from "node:_http_common";
 import { validateInteger } from "ext:deno_node/internal/validators.mjs";
+import { setGlobalProxyFromEnv as _setGlobalProxyFromEnv } from "ext:deno_node/internal/http_proxy.ts";
 const METHODS = ArrayPrototypeSort(ArrayPrototypeSlice(methods));
 
 export interface RequestOptions {
@@ -101,6 +102,12 @@ export function setMaxIdleHTTPParsers(max: number) {
   parsers.max = max;
 }
 
+export function setGlobalProxyFromEnv(
+  config?: Record<string, string>,
+): () => void {
+  return _setGlobalProxyFromEnv(config);
+}
+
 export {
   _connectionListener,
   Agent,
@@ -138,5 +145,6 @@ export default {
   validateHeaderName,
   validateHeaderValue,
   setMaxIdleHTTPParsers,
+  setGlobalProxyFromEnv,
   maxHeaderSize,
 };

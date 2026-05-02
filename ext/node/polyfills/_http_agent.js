@@ -19,6 +19,11 @@ import {
   validateOneOf,
   validateString,
 } from "ext:deno_node/internal/validators.mjs";
+import {
+  getProxyEnv,
+  getProxyForUrl,
+  parseProxyUrl,
+} from "ext:deno_node/internal/http_proxy.ts";
 
 const kOnKeylog = Symbol("onkeylog");
 const kRequestOptions = Symbol("requestOptions");
@@ -92,6 +97,12 @@ export function Agent(options) {
     validateNumber(this.maxTotalSockets, "maxTotalSockets", 1);
   } else {
     this.maxTotalSockets = Infinity;
+  }
+
+  // Proxy environment support: explicit proxyEnv option on the agent,
+  // or auto-detected from NODE_USE_ENV_PROXY / setGlobalProxyFromEnv.
+  if (this.options.proxyEnv) {
+    this._proxyEnv = this.options.proxyEnv;
   }
 
   this.on("free", (socket, options) => {
@@ -248,6 +259,24 @@ Agent.prototype.addRequest = function addRequest(
 
   if (!options.servername && options.servername !== "") {
     options.servername = calculateServerName(options, req);
+  }
+
+  // Resolve proxy for this request. Throws TypeError for invalid proxy URLs.
+  const proxyEnv = getProxyEnv(this);
+  if (proxyEnv && !options._proxyResolved) {
+    const protocol = options.protocol || this.protocol || "http:";
+    const proxyUrl = getProxyForUrl(
+      protocol,
+      options.hostname || options.host || "localhost",
+      options.port,
+      proxyEnv,
+    );
+    if (proxyUrl) {
+      // parseProxyUrl calls new URL() which throws TypeError for invalid URLs
+      const proxy = parseProxyUrl(proxyUrl);
+      options._proxy = proxy;
+      options._proxyResolved = true;
+    }
   }
 
   const name = this.getName(options);
