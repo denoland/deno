@@ -2128,6 +2128,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "deno_canvas"
+version = "0.109.0"
+dependencies = [
+ "bytemuck",
+ "deno_core",
+ "deno_error",
+ "deno_image",
+ "deno_webgpu",
+ "raw-window-handle",
+ "thiserror 2.0.12",
+]
+
+[[package]]
 name = "deno_config"
 version = "0.97.0"
 dependencies = [
@@ -2292,9 +2305,9 @@ dependencies = [
 
 [[package]]
 name = "deno_doc"
-version = "0.197.0"
+version = "0.198.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "72868ff531723780688c97c23a9b78d9a7790ee329b1869deba3ad0f121a1c27"
+checksum = "2d44b93e82f85f644b9e8595d0fc0d9beeae5ed636d95d54b1edfcf30f8f3399"
 dependencies = [
  "anyhow",
  "cfg-if",
@@ -2370,6 +2383,7 @@ dependencies = [
  "base64 0.22.1",
  "bytes",
  "data-url",
+ "deno_bench_util",
  "deno_core",
  "deno_error",
  "deno_fs",
@@ -2377,6 +2391,8 @@ dependencies = [
  "deno_path_util",
  "deno_permissions",
  "deno_tls",
+ "deno_web",
+ "deno_webidl",
  "dyn-clone",
  "error_reporter",
  "fast-socks5",
@@ -2454,9 +2470,9 @@ dependencies = [
 
 [[package]]
 name = "deno_graph"
-version = "0.107.1"
+version = "0.107.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "06518571e56fef9ae4441b93445754f0b3c608404607b8143541ab672e589bf6"
+checksum = "0f8f640f8f0fa2af60bc1c7ed82d6e6f9f658a5869473deaa77cb5b470b77fec"
 dependencies = [
  "async-trait",
  "boxed_error",
@@ -2656,9 +2672,9 @@ dependencies = [
 
 [[package]]
 name = "deno_lint"
-version = "0.83.0"
+version = "0.84.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6cea1d646f340d497057909a086b5668f8c6b377fd50b7d20ea0b99727f20c41"
+checksum = "729efa307e2057d951122a14029b46a865909117b606ed5861815ca5b3e93199"
 dependencies = [
  "anyhow",
  "deno_ast",
@@ -2815,6 +2831,7 @@ dependencies = [
  "rustls-tokio-stream",
  "rustls-webpki 0.103.13",
  "serde",
+ "smallvec",
  "socket2 0.5.5",
  "sys_traits",
  "thiserror 2.0.12",
@@ -3222,6 +3239,7 @@ dependencies = [
  "deno_ast",
  "deno_bundle_runtime",
  "deno_cache",
+ "deno_canvas",
  "deno_core",
  "deno_cron",
  "deno_crypto",
@@ -3363,6 +3381,7 @@ dependencies = [
  "deno_signals",
  "deno_terminal",
  "deno_tls",
+ "flate2",
  "http-body-util",
  "hyper 1.6.0",
  "hyper-rustls",
@@ -3372,9 +3391,11 @@ dependencies = [
  "opentelemetry",
  "opentelemetry-http",
  "opentelemetry-otlp",
+ "opentelemetry-proto",
  "opentelemetry-semantic-conventions",
  "opentelemetry_sdk",
  "pin-project",
+ "prost",
  "serde",
  "sys_traits",
  "thiserror 2.0.12",
@@ -3510,6 +3531,7 @@ version = "0.214.0"
 dependencies = [
  "deno_core",
  "deno_error",
+ "deno_image",
  "deno_unsync",
  "indexmap 2.12.0",
  "raw-window-handle",

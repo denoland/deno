@@ -1,0 +1,9 @@
+[WILDCARD]deno transpile is experimental and subject to changes
+export function greet(user) {
+  return `Hello, ${user.name}! You are ${user.age} years old.`;
+}
+export const DEFAULT_USER = {
+  name: "Alice",
+  age: 30
+};
+console.log(greet(DEFAULT_USER));

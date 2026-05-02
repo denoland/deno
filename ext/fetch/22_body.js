@@ -37,20 +37,20 @@ const {
   Uint8Array,
 } = primordials;
 
-import * as webidl from "ext:deno_webidl/00_webidl.js";
-import {
+const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
+const {
   parseUrlEncoded,
   URLSearchParamsPrototype,
-} from "ext:deno_web/00_url.js";
+} = core.loadExtScript("ext:deno_web/00_url.js");
 import {
   formDataFromEntries,
   FormDataPrototype,
   formDataToBlob,
   parseFormData,
 } from "ext:deno_fetch/21_formdata.js";
-import * as mimesniff from "ext:deno_web/01_mimesniff.js";
-import { BlobPrototype } from "ext:deno_web/09_file.js";
-import {
+const mimesniff = core.loadExtScript("ext:deno_web/01_mimesniff.js");
+const { BlobPrototype } = core.loadExtScript("ext:deno_web/09_file.js");
+const {
   createProxy,
   errorReadableStream,
   isReadableStreamDisturbed,
@@ -60,7 +60,7 @@ import {
   ReadableStreamPrototype,
   readableStreamTee,
   readableStreamThrowIfErrored,
-} from "ext:deno_web/06_streams.js";
+} = core.loadExtScript("ext:deno_web/06_streams.js");
 
 /**
  * @param {Uint8Array | string} chunk
@@ -541,6 +541,11 @@ webidl.converters["async iterable<Uint8Array>"] = webidl
   .createAsyncIterableConverter(webidl.converters.Uint8Array);
 
 webidl.converters["BodyInit_DOMString"] = (V, prefix, context, opts) => {
+  // Fast path: a plain string is by far the most common shape for Response
+  // body and `fetch(url, { body: "..." })`. Skip the union-of-types prototype
+  // chain checks and the trailing DOMString conversion (which itself just
+  // returns strings as-is).
+  if (typeof V === "string") return V;
   // Union for (ReadableStream or Blob or ArrayBufferView or ArrayBuffer or FormData or URLSearchParams or USVString)
   if (ObjectPrototypeIsPrototypeOf(ReadableStreamPrototype, V)) {
     return webidl.converters["ReadableStream"](V, prefix, context, opts);

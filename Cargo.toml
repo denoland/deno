@@ -9,6 +9,7 @@ members = [
   "cli/snapshot",
   "ext/bundle",
   "ext/cache",
+  "ext/canvas",
   "ext/cron",
   "ext/crypto",
   "ext/fetch",
@@ -89,10 +90,10 @@ repository = "https://github.com/denoland/deno"
 [workspace.dependencies]
 deno_ast = { version = "=0.53.1", features = ["transpiling"] }
 deno_core_icudata = "0.77.0"
-deno_doc = "=0.197.0"
+deno_doc = "=0.198.0"
 deno_error = "=0.7.1"
-deno_graph = { version = "=0.107.1", default-features = false }
-deno_lint = "=0.83.0"
+deno_graph = { version = "=0.107.2", default-features = false }
+deno_lint = "=0.84.0"
 deno_media_type = { version = "=0.4.0", features = ["module_specifier"] }
 deno_native_certs = "0.3.0"
 deno_path_util = "=0.6.4"
@@ -111,6 +112,7 @@ denokv_sqlite = { default-features = false, version = "0.13.0" }
 # exts
 deno_bundle_runtime = { version = "0.34.0", path = "./ext/bundle" }
 deno_cache = { version = "0.180.0", path = "./ext/cache" }
+deno_canvas = { version = "0.109.0", path = "./ext/canvas" }
 deno_cron = { version = "0.127.0", path = "./ext/cron" }
 deno_crypto = { version = "0.261.0", path = "./ext/crypto" }
 deno_fetch = { version = "0.271.0", path = "./ext/fetch" }
@@ -344,6 +346,7 @@ zip = { version = "2.4.1", default-features = false, features = ["flate2"] }
 opentelemetry = "0.27.0"
 opentelemetry-http = "0.27.0"
 opentelemetry-otlp = { version = "0.27.0", features = ["logs", "http-proto", "http-json", "populate-logs-event-name"] }
+opentelemetry-proto = { version = "0.27.0", features = ["gen-tonic-messages", "trace", "logs", "metrics"] }
 opentelemetry-semantic-conventions = { version = "0.27.0", features = ["semconv_experimental"] }
 opentelemetry_sdk = { version = "0.27.0", features = ["rt-tokio", "trace"] }
 

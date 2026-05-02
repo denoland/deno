@@ -943,28 +943,55 @@ pub fn op_node_random_int(#[number] min: i64, #[number] max: i64) -> i64 {
 fn scrypt(
   password: StringOrBuffer,
   salt: StringOrBuffer,
-  keylen: u32,
-  cost: u32,
-  block_size: u32,
-  parallelization: u32,
-  _maxmem: u32,
+  keylen: usize,
+  cost: u64,
+  block_size: u64,
+  parallelization: u64,
+  maxmem: usize,
   output_buffer: &mut [u8],
 ) -> Result<(), JsErrorBox> {
-  // Construct Params
-  let params = scrypt::Params::new(
-    cost as u8,
-    block_size,
-    parallelization,
-    keylen as usize,
-  )
-  .map_err(|_| JsErrorBox::generic("Invalid scrypt param"))?;
+  assert!(
+    output_buffer.len() >= keylen,
+    "output_buffer too small for scrypt keylen",
+  );
+  let cost = u32::try_from(cost)
+    .ok()
+    .filter(|cost| *cost < 64)
+    .ok_or_else(|| JsErrorBox::generic("Invalid scrypt param"))?;
+  let n = 1u64
+    .checked_shl(cost)
+    .ok_or_else(|| JsErrorBox::generic("Invalid scrypt param"))?;
 
-  // Call into scrypt
-  let res = scrypt::scrypt(&password, &salt, &params, output_buffer);
-  if res.is_ok() {
+  // SAFETY:
+  // - `password.as_ptr()`/`password.len()` describe a valid contiguous byte
+  //   slice because `StringOrBuffer` dereferences to `[u8]`.
+  // - `salt.as_ptr()`/`salt.len()` likewise describe a valid contiguous byte
+  //   slice.
+  // - `output_buffer.as_mut_ptr()` points to at least `keylen` writable bytes,
+  //   enforced by the assertion above and by the callers allocating a buffer of
+  //   that exact size.
+  // - `n` is derived with `checked_shl`, so the `N` parameter passed to
+  //   `EVP_PBE_scrypt` cannot overflow the shift.
+  // - AWS-LC documents `EVP_PBE_scrypt` as thread-safe for independent inputs;
+  //   this call does not alias mutable state across threads.
+  let result = unsafe {
+    aws_lc_sys::EVP_PBE_scrypt(
+      password.as_ptr().cast(),
+      password.len(),
+      salt.as_ptr(),
+      salt.len(),
+      n,
+      block_size,
+      parallelization,
+      maxmem,
+      output_buffer.as_mut_ptr(),
+      keylen,
+    )
+  };
+
+  if result == 1 {
     Ok(())
   } else {
-    // TODO(lev): key derivation failed, so what?
     Err(JsErrorBox::generic("scrypt key derivation failed"))
   }
 }
@@ -974,11 +1001,11 @@ fn scrypt(
 pub fn op_node_scrypt_sync(
   #[serde] password: StringOrBuffer,
   #[serde] salt: StringOrBuffer,
-  #[smi] keylen: u32,
-  #[smi] cost: u32,
-  #[smi] block_size: u32,
-  #[smi] parallelization: u32,
-  #[smi] maxmem: u32,
+  #[number] keylen: usize,
+  #[number] cost: u64,
+  #[number] block_size: u64,
+  #[number] parallelization: u64,
+  #[number] maxmem: usize,
   #[anybuffer] output_buffer: &mut [u8],
 ) -> Result<(), JsErrorBox> {
   scrypt(
@@ -1007,14 +1034,14 @@ pub enum ScryptAsyncError {
 pub async fn op_node_scrypt_async(
   #[serde] password: StringOrBuffer,
   #[serde] salt: StringOrBuffer,
-  #[smi] keylen: u32,
-  #[smi] cost: u32,
-  #[smi] block_size: u32,
-  #[smi] parallelization: u32,
-  #[smi] maxmem: u32,
+  #[number] keylen: usize,
+  #[number] cost: u64,
+  #[number] block_size: u64,
+  #[number] parallelization: u64,
+  #[number] maxmem: usize,
 ) -> Result<Uint8Array, ScryptAsyncError> {
   spawn_blocking(move || {
-    let mut output_buffer = vec![0u8; keylen as usize];
+    let mut output_buffer = vec![0u8; keylen];
 
     scrypt(
       password,
@@ -1379,14 +1406,22 @@ pub async fn op_node_gen_prime_async(
 }
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
-#[class(type)]
 pub enum DiffieHellmanError {
+  #[class(type)]
   #[error("Expected private key")]
   ExpectedPrivateKey,
+  #[class(type)]
   #[error("Expected public key")]
   ExpectedPublicKey,
-  #[error("DH parameters mismatch")]
-  DhParametersMismatch,
+  #[class(generic)]
+  #[error(
+    "error:0308010C:digital envelope routines::mismatching domain parameters"
+  )]
+  MismatchingDomainParameters,
+  #[class(generic)]
+  #[error("error:030000A9:digital envelope routines::failed during derivation")]
+  FailedDuringDerivation,
+  #[class(type)]
   #[error("Unsupported key type for diffie hellman, or key type mismatch")]
   UnsupportedKeyTypeForDiffieHellmanOrKeyTypeMismatch,
 }
@@ -1455,14 +1490,38 @@ pub fn op_node_diffie_hellman(
     .raw_secret_bytes()
     .to_vec()
     .into_boxed_slice(),
+    (AsymmetricPrivateKey::Ec(_), AsymmetricPublicKey::Ec(_)) => {
+      // Both EC keys but on different curves.
+      return Err(DiffieHellmanError::MismatchingDomainParameters);
+    }
     (
       AsymmetricPrivateKey::X25519(private),
       AsymmetricPublicKey::X25519(public),
-    ) => private
-      .diffie_hellman(public)
-      .to_bytes()
-      .into_iter()
-      .collect(),
+    ) => {
+      let shared = private.diffie_hellman(public);
+      let bytes = shared.to_bytes();
+      // Reject all-zero shared secrets (low-order points), matching OpenSSL.
+      if bytes.iter().all(|b| *b == 0) {
+        return Err(DiffieHellmanError::FailedDuringDerivation);
+      }
+      bytes.into_iter().collect()
+    }
+    (
+      AsymmetricPrivateKey::X448(private),
+      AsymmetricPublicKey::X448(public),
+    ) => {
+      let mut scalar_bytes = [0u8; 57];
+      scalar_bytes[..56].copy_from_slice(&private[..56]);
+      let scalar = ed448_goldilocks::EdwardsScalar::from_bytes_mod_order(
+        &scalar_bytes.into(),
+      );
+      let point = ed448_goldilocks::MontgomeryPoint(*public);
+      let shared = &point * &scalar;
+      if shared.0.iter().all(|b| *b == 0) {
+        return Err(DiffieHellmanError::FailedDuringDerivation);
+      }
+      shared.0.to_vec().into_boxed_slice()
+    }
     (AsymmetricPrivateKey::Dh(private), AsymmetricPublicKey::Dh(public)) => {
       // Compare DH parameters by integer value, not byte encoding,
       // since different generation paths may produce different ASN.1
@@ -1472,7 +1531,7 @@ pub fn op_node_diffie_hellman(
       let priv_base = BigUint::from_bytes_be(private.params.base.as_bytes());
       let pub_base = BigUint::from_bytes_be(public.params.base.as_bytes());
       if priv_prime != pub_prime || priv_base != pub_base {
-        return Err(DiffieHellmanError::DhParametersMismatch);
+        return Err(DiffieHellmanError::MismatchingDomainParameters);
       }
 
       // OSIP - Octet-String-to-Integer primitive
@@ -1484,7 +1543,17 @@ pub fn op_node_diffie_hellman(
       let private_key = BigUint::from_bytes_be(&private_key);
       let shared_secret = pubkey.modpow(&private_key, &priv_prime);
 
-      shared_secret.to_bytes_be().into()
+      // Pad to the byte length of the prime, matching OpenSSL's
+      // DH_compute_key_padded behaviour used by EVP_PKEY_derive.
+      let prime_len = priv_prime.bits().div_ceil(8);
+      let secret_bytes = shared_secret.to_bytes_be();
+      if secret_bytes.len() < prime_len {
+        let mut padded = vec![0u8; prime_len];
+        padded[prime_len - secret_bytes.len()..].copy_from_slice(&secret_bytes);
+        padded.into_boxed_slice()
+      } else {
+        secret_bytes.into_boxed_slice()
+      }
     }
     _ => {
       return Err(

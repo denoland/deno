@@ -371,7 +371,6 @@ unsafe extern "C" fn h2_read_cb(
 
 // Http2Options
 
-const OPTIONS_FLAG_NO_AUTO_WINDOW_UPDATE: u32 = 0x1;
 const OPTIONS_FLAG_NO_RECV_CLIENT_MAGIC: u32 = 0x2;
 const OPTIONS_FLAG_NO_HTTP_MESSAGING: u32 = 0x4;
 
@@ -404,9 +403,14 @@ impl Http2Options {
       unsafe {
         ffi::nghttp2_option_set_no_closed_streams(options, 1);
 
-        if flags & OPTIONS_FLAG_NO_AUTO_WINDOW_UPDATE != 0 {
-          ffi::nghttp2_option_set_no_auto_window_update(options, 1);
-        }
+        // Always disable nghttp2's automatic WINDOW_UPDATE replenishment.
+        // Mirrors Node's `Http2Session::Http2Session` (`src/node_http2.cc`),
+        // which unconditionally sets this so flow control is gated on
+        // application-level consumption (`consume_stream`/`consume_connection`).
+        // Without this, nghttp2 auto-replenishes the local stream window and a
+        // misbehaving peer never trips NGHTTP2_FLOW_CONTROL_ERROR even when its
+        // sends exceed the advertised initial window.
+        ffi::nghttp2_option_set_no_auto_window_update(options, 1);
 
         if flags & OPTIONS_FLAG_NO_RECV_CLIENT_MAGIC != 0 {
           ffi::nghttp2_option_set_no_recv_client_magic(options, 1);
@@ -1267,15 +1271,35 @@ unsafe extern "C" fn on_data_chunk_recv_callback(
   if len == 0 {
     return 0;
   }
+  // SAFETY: user_data is the user_data pointer set during session creation
+  let session = unsafe { Session::from_user_data(user_data) };
+
+  // Always replenish the connection-level flow-control window. Stream-level
+  // consumption is gated on whether the JS Readable side is actively
+  // reading: when paused, defer it so a peer that ignores stream-level
+  // flow control gets a NGHTTP2_FLOW_CONTROL_ERROR. Mirrors Node's
+  // `Http2Session::OnDataChunkReceived` (`src/node_http2.cc`).
   // SAFETY: ng_session is valid per nghttp2 callback contract
   unsafe {
     ffi::nghttp2_session_consume_connection(ng_session, len);
-    ffi::nghttp2_session_consume_stream(ng_session, stream_id, len);
   };
+  if let Some(stream) = session.find_stream(stream_id) {
+    if *stream.reading.borrow() {
+      // SAFETY: ng_session is valid per nghttp2 callback contract
+      unsafe {
+        ffi::nghttp2_session_consume_stream(ng_session, stream_id, len);
+      };
+    } else {
+      *stream.inbound_consumed_data_while_paused.borrow_mut() += len;
+    }
+  } else {
+    // SAFETY: ng_session is valid per nghttp2 callback contract
+    unsafe {
+      ffi::nghttp2_session_consume_stream(ng_session, stream_id, len);
+    };
+  }
 
   // Deliver data to the JS stream via its onread callback
-  // SAFETY: user_data is the user_data pointer set during session creation
-  let session = unsafe { Session::from_user_data(user_data) };
   let Some(stream_obj) = session.find_stream_obj(stream_id) else {
     return 0;
   };
@@ -1682,6 +1706,84 @@ unsafe extern "C" fn on_frame_send_callback(
   0
 }
 
+/// Detect stream-level flow-control violations on inbound DATA frames before
+/// nghttp2 processes the payload. Upstream nghttp2 (>= 1.65) reacts to a
+/// stream-level overflow by tearing down the *whole session* with GOAWAY
+/// (NGHTTP2_FLOW_CONTROL_ERROR), which closes every active stream with code
+/// `NGHTTP2_REFUSED_STREAM`. Node ships an older vendored nghttp2 whose
+/// `nghttp2_session_update_recv_stream_window_size` calls
+/// `nghttp2_session_add_rst_stream(stream_id, NGHTTP2_FLOW_CONTROL_ERROR)`
+/// instead, so the offending stream alone closes with
+/// `NGHTTP2_FLOW_CONTROL_ERROR`. Tests like
+/// `parallel/test-http2-misbehaving-flow-control-paused` assert the
+/// stream-level form, so we replicate it here:
+///
+///   1. peek the DATA frame header
+///   2. if `effective_recv_data_length + length > effective_local_window_size`,
+///      bump the stream's local window to NGHTTP2_MAX_WINDOW_SIZE so nghttp2's
+///      own check won't fire (and won't tear down the whole session), and
+///   3. submit `RST_STREAM(NGHTTP2_FLOW_CONTROL_ERROR)` for the offending
+///      stream, so when nghttp2 closes it the registered close callback emits
+///      `ERR_HTTP2_STREAM_ERROR("Stream closed with error code NGHTTP2_FLOW_CONTROL_ERROR")`.
+unsafe extern "C" fn on_begin_frame_callback(
+  ng_session: *mut ffi::nghttp2_session,
+  hd: *const ffi::nghttp2_frame_hd,
+  _user_data: *mut c_void,
+) -> i32 {
+  // SAFETY: hd is valid per nghttp2 callback contract
+  let hd = unsafe { &*hd };
+  if hd.type_ != ffi::NGHTTP2_DATA as u8 || hd.stream_id == 0 {
+    return 0;
+  }
+
+  // SAFETY: ng_session is valid per nghttp2 callback contract
+  let eff_local_window = unsafe {
+    ffi::nghttp2_session_get_stream_effective_local_window_size(
+      ng_session,
+      hd.stream_id,
+    )
+  };
+  if eff_local_window < 0 {
+    return 0;
+  }
+  // SAFETY: ng_session is valid per nghttp2 callback contract
+  let eff_recv = unsafe {
+    ffi::nghttp2_session_get_stream_effective_recv_data_length(
+      ng_session,
+      hd.stream_id,
+    )
+  };
+  if eff_recv < 0 {
+    return 0;
+  }
+  let projected = (eff_recv as i64) + (hd.length as i64);
+  if projected <= eff_local_window as i64 {
+    return 0;
+  }
+
+  // Disable nghttp2's own flow-control check for this stream by raising
+  // its local window to the protocol maximum. We've already decided to
+  // RST_STREAM the offender; we don't want nghttp2 to also terminate the
+  // entire session before our RST_STREAM frame ships out.
+  // SAFETY: ng_session is valid per nghttp2 callback contract
+  unsafe {
+    // NGHTTP2_MAX_WINDOW_SIZE = (1 << 31) - 1 (RFC 7540).
+    ffi::nghttp2_session_set_local_window_size(
+      ng_session,
+      ffi::NGHTTP2_FLAG_NONE as u8,
+      hd.stream_id,
+      i32::MAX,
+    );
+    ffi::nghttp2_submit_rst_stream(
+      ng_session,
+      ffi::NGHTTP2_FLAG_NONE as u8,
+      hd.stream_id,
+      ffi::NGHTTP2_FLOW_CONTROL_ERROR as u32,
+    );
+  }
+  0
+}
+
 fn create_callbacks() -> *mut ffi::nghttp2_session_callbacks {
   let mut callbacks: *mut ffi::nghttp2_session_callbacks = std::ptr::null_mut();
 
@@ -1736,6 +1838,10 @@ fn create_callbacks() -> *mut ffi::nghttp2_session_callbacks {
     ffi::nghttp2_session_callbacks_set_select_padding_callback2(
       callbacks,
       Some(on_select_padding),
+    );
+    ffi::nghttp2_session_callbacks_set_on_begin_frame_callback(
+      callbacks,
+      Some(on_begin_frame_callback),
     );
   }
 
@@ -2920,6 +3026,7 @@ impl Http2Session {
   }
 
   #[fast]
+  #[rename("setNextStreamID")]
   fn set_next_stream_id(&self, id: i32) -> bool {
     let ret =
       // SAFETY: self.session is a valid nghttp2 session pointer

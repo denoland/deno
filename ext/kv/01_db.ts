@@ -44,7 +44,7 @@ const {
   TypedArrayPrototypeGetSymbolToStringTag,
 } = primordials;
 
-import { ReadableStream } from "ext:deno_web/06_streams.js";
+const { ReadableStream } = core.loadExtScript("ext:deno_web/06_streams.js");
 
 const encodeCursor: (
   selector: [Deno.KvKey | null, Deno.KvKey | null, Deno.KvKey | null],

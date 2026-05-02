@@ -3,13 +3,14 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-import {
+import { core } from "ext:core/mod.js";
+const {
   performance,
   PerformanceEntry,
-  PerformanceObserver as WebPerformanceObserver,
+  PerformanceObserver: WebPerformanceObserver,
   PerformanceObserverEntryList,
   registerExtraEntryType,
-} from "ext:deno_web/15_performance.js";
+} = core.loadExtScript("ext:deno_web/15_performance.js");
 import { EldHistogram } from "ext:core/ops";
 import { ERR_INVALID_ARG_TYPE } from "ext:deno_node/internal/errors.ts";
 

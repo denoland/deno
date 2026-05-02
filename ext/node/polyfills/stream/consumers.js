@@ -2,8 +2,8 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 import { core, primordials } from "ext:core/mod.js";
-import { TextDecoder } from "ext:deno_web/08_text_encoding.js";
-import { Blob } from "ext:deno_web/09_file.js";
+const { TextDecoder } = core.loadExtScript("ext:deno_web/08_text_encoding.js");
+const { Blob } = core.loadExtScript("ext:deno_web/09_file.js");
 import { Buffer } from "node:buffer";
 import {
   ERR_INVALID_ARG_TYPE,

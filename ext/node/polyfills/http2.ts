@@ -49,11 +49,11 @@ import {
   Http2Session as InternalHttp2Session,
   op_http2_callbacks,
 } from "ext:core/ops";
-import {
+const {
   enqueuePerformanceEntry,
-  performance as webPerformance,
+  performance: webPerformance,
   registerExtraEntryType,
-} from "ext:deno_web/15_performance.js";
+} = core.loadExtScript("ext:deno_web/15_performance.js");
 
 // Make `http2` observable via PerformanceObserver. Registered here (rather
 // than only in `perf_hooks`) so the entry type is recognized regardless of
@@ -62,6 +62,7 @@ registerExtraEntryType("http2");
 import net from "node:net";
 import assert from "node:assert";
 import http from "node:http";
+import { AsyncResource } from "node:async_hooks";
 import {
   _connectionListener as httpConnectionListener,
   httpServerPreClose,
@@ -70,6 +71,7 @@ import {
   Server as HttpServer,
   setupConnectionsTracking,
   STATUS_CODES,
+  storeHTTPOptions,
 } from "node:_http_server";
 import { Duplex } from "node:stream";
 import tls from "node:tls";
@@ -81,6 +83,10 @@ import {
   ShutdownWrap,
   streamBaseState,
 } from "ext:deno_node/internal_binding/stream_wrap.ts";
+import {
+  Http2Session as BindingHttp2Session,
+  Http2Stream as BindingHttp2Stream,
+} from "ext:deno_node/internal_binding/http2.ts";
 import { EventEmitter } from "node:events";
 import {
   defaultTriggerAsyncIdScope,
@@ -96,7 +102,7 @@ export { addAbortListener } from "ext:deno_node/internal/events/abort_listener.m
 import fs from "node:fs";
 import { FileHandle as FsFileHandle } from "ext:deno_node/internal/fs/handle.ts";
 import { JSStreamSocket } from "ext:deno_node/internal/js_stream_socket.js";
-import { format } from "node:util";
+import { format, inspect } from "node:util";
 import {
   isUint32,
   validateAbortSignal,
@@ -565,6 +571,10 @@ function submitSettings(settings, callback) {
   debugSessionObj(this, "submitting settings");
   this[kUpdateTimer]();
   updateSettingsBuffer(settings);
+  if (this[kState].pendingAck > this[kMaxOutstandingSettings]) {
+    this.destroy(new ERR_HTTP2_MAX_PENDING_SETTINGS_ACK());
+    return;
+  }
   if (
     !this[kHandle].settings(
       FunctionPrototypeBind(settingsCallback, this, callback),
@@ -638,6 +648,44 @@ function sessionListenerRemoved(name) {
       this[kNativeFields][kSessionFrameErrorListenerCount]--;
       break;
   }
+}
+
+let nextSessionTimeoutTimersListId = -1;
+
+class TimersList {
+  _idleNext;
+  _idlePrev;
+  expiry;
+  id;
+  msecs;
+  priorityQueuePosition;
+
+  constructor(timeout) {
+    this._idleNext = timeout;
+    this._idlePrev = timeout;
+    this.expiry = timeout._idleStart + timeout._idleTimeout;
+    this.id = nextSessionTimeoutTimersListId--;
+    this.msecs = timeout._idleTimeout;
+    this.priorityQueuePosition = 1;
+  }
+
+  [kInspect](_, options) {
+    return inspect(this, {
+      ...options,
+      depth: 0,
+      customInspect: false,
+    });
+  }
+}
+
+function syncSessionTimeoutInspectLinks(timeout) {
+  const list = timeout._idlePrev instanceof TimersList
+    ? timeout._idlePrev
+    : new TimersList(timeout);
+  list.expiry = timeout._idleStart + timeout._idleTimeout;
+  list.msecs = timeout._idleTimeout;
+  timeout._idlePrev = list;
+  timeout._idleNext = list;
 }
 
 const proxySocketHandler = {
@@ -1018,13 +1066,17 @@ function requestOnConnect(headersList, options) {
 
   // `ret` will be either the reserved stream ID (if positive)
   // or an error code (if negative)
-  const ret = session[kHandle].request(
-    headersList[0],
-    headersList[1],
-    streamOptions,
-    options.parent | 0,
-    options.weight | 0,
-    !!options.exclusive,
+  const ret = ReflectApply(
+    BindingHttp2Session.prototype.request,
+    session[kHandle],
+    [
+      headersList[0],
+      headersList[1],
+      streamOptions,
+      options.parent | 0,
+      options.weight | 0,
+      !!options.exclusive,
+    ],
   );
 
   // In an error condition, one of three possible response codes will be
@@ -1427,6 +1479,10 @@ function trackWriteState(stream, bytes) {
 function streamOnResume() {
   if (!this.destroyed) {
     this[kHandle].readStart();
+    // readStart() may have flushed deferred consume_stream calls, queueing
+    // WINDOW_UPDATE frames inside nghttp2. Flush the session's send queue
+    // so the peer actually receives them and resumes sending data.
+    scheduleSendPending(this[kSession]);
   }
 }
 
@@ -1737,7 +1793,19 @@ class Http2Stream extends Duplex {
       return handle.writeBuffer(req, Buffer.from(data, "utf16le"));
     };
 
-    handle.onread = onStreamRead;
+    const reqAsync = this[kRequestAsyncResource];
+    if (reqAsync) {
+      handle.onread = function (arrayBuffer, nread) {
+        return reqAsync.runInAsyncScope(
+          onStreamRead,
+          handle,
+          arrayBuffer,
+          nread,
+        );
+      };
+    } else {
+      handle.onread = onStreamRead;
+    }
     this.uncork();
     this.emit("ready");
   }
@@ -2405,10 +2473,10 @@ function processRespondWithFD(
     self.end();
   }
 
-  const ret = self[kHandle].respond(
-    headersList[0],
-    headersList[1],
-    streamOptions,
+  const ret = ReflectApply(
+    BindingHttp2Stream.prototype.respond,
+    self[kHandle],
+    [headersList[0], headersList[1], streamOptions],
   );
 
   if (ret < 0) {
@@ -2749,10 +2817,10 @@ class ServerHttp2Stream extends Http2Stream {
       this.end();
     }
 
-    const ret = this[kHandle].respond(
-      headersList[0],
-      headersList[1],
-      streamOptions,
+    const ret = ReflectApply(
+      BindingHttp2Stream.prototype.respond,
+      this[kHandle],
+      [headersList[0], headersList[1], streamOptions],
     );
     scheduleSendPending(this[kSession]);
     if (ret < 0) {
@@ -3586,7 +3654,10 @@ class Http2Session extends EventEmitter {
     if (this.destroyed) {
       return;
     }
-    if (this[kTimeout]) this[kTimeout].refresh();
+    if (this[kTimeout]) {
+      this[kTimeout].refresh();
+      syncSessionTimeoutInspectLinks(this[kTimeout]);
+    }
   }
 
   // Sets the id of the next stream to be created by this Http2Session.
@@ -3755,9 +3826,6 @@ class Http2Session extends EventEmitter {
     }
     debugSessionObj(this, "sending settings");
 
-    if (this[kState].pendingAck >= this[kMaxOutstandingSettings]) {
-      throw new ERR_HTTP2_MAX_PENDING_SETTINGS_ACK();
-    }
     this[kState].pendingAck++;
 
     const settingsFn = FunctionPrototypeBind(
@@ -3936,7 +4004,16 @@ const setTimeoutValue = {
   value: setStreamTimeout,
 };
 ObjectDefineProperty(Http2Stream.prototype, "setTimeout", setTimeoutValue);
-ObjectDefineProperty(Http2Session.prototype, "setTimeout", setTimeoutValue);
+ObjectDefineProperty(Http2Session.prototype, "setTimeout", {
+  ...setTimeoutValue,
+  value: function setSessionTimeout(msecs, callback) {
+    const result = setStreamTimeout.call(this, msecs, callback);
+    if (this[kTimeout]) {
+      syncSessionTimeoutInspectLinks(this[kTimeout]);
+    }
+    return result;
+  },
+});
 
 // ServerHttp2Session instances should never have to wait for the socket
 // to connect as they are always created after the socket has already been
@@ -4147,8 +4224,7 @@ class ClientHttp2Session extends Http2Session {
     stream[kSentHeaders] = headersObject; // N.b. Only set for object headers, not raw headers
     stream[kRawHeaders] = rawHeaders; // N.b. Only set for raw headers, not object headers
     stream[kOrigin] = `${scheme}://${authority}`;
-    // const reqAsync = new AsyncResource("PendingRequest");
-    // stream[kRequestAsyncResource] = reqAsync;
+    stream[kRequestAsyncResource] = new AsyncResource("PendingRequest");
 
     // Close the writable side of the stream if options.endStream is set.
     if (options.endStream) {
@@ -4327,6 +4403,7 @@ function initializeOptions(options) {
   options = { ...options };
   assertIsObject(options.settings, "options.settings");
   options.settings = { ...options.settings };
+  assertIsObject(options.http1Options, "options.http1Options");
 
   if (options.remoteCustomSettings !== undefined) {
     validateArray(options.remoteCustomSettings, "options.remoteCustomSettings");
@@ -4355,8 +4432,11 @@ function initializeOptions(options) {
   }
 
   // Used only with allowHTTP1
-  options.Http1IncomingMessage ||= http.IncomingMessage;
-  options.Http1ServerResponse ||= http.ServerResponse;
+  const http1Options = options.http1Options ?? {};
+  options.Http1IncomingMessage ||= http1Options.IncomingMessage ||
+    http.IncomingMessage;
+  options.Http1ServerResponse ||= http1Options.ServerResponse ||
+    http.ServerResponse;
 
   options.Http2ServerRequest ||= Http2ServerRequest;
   options.Http2ServerResponse ||= Http2ServerResponse;
@@ -4467,6 +4547,7 @@ class Http2SecureServer extends tls.Server {
     this.timeout = 0;
     this.on("newListener", setupCompat);
     if (options.allowHTTP1 === true) {
+      storeHTTPOptions.call(this, options.http1Options ?? {});
       this.headersTimeout = 60_000; // Minimum between 60 seconds or requestTimeout
       this.requestTimeout = 300_000; // 5 minutes
       this.connectionsCheckingInterval = 30_000; // 30 seconds

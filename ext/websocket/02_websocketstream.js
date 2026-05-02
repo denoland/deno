@@ -32,11 +32,15 @@ const {
   TypedArrayPrototypeGetSymbolToStringTag,
 } = primordials;
 
-import * as webidl from "ext:deno_webidl/00_webidl.js";
-import { createFilteredInspectProxy } from "ext:deno_web/01_console.js";
-import { Deferred, writableStreamClose } from "ext:deno_web/06_streams.js";
-import { DOMException } from "ext:deno_web/01_dom_exception.js";
-import { add, remove } from "ext:deno_web/03_abort_signal.js";
+const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
+const { createFilteredInspectProxy } = core.loadExtScript(
+  "ext:deno_web/01_console.js",
+);
+const { Deferred, writableStreamClose } = core.loadExtScript(
+  "ext:deno_web/06_streams.js",
+);
+const { DOMException } = core.loadExtScript("ext:deno_web/01_dom_exception.js");
+const { add, remove } = core.loadExtScript("ext:deno_web/03_abort_signal.js");
 import {
   fillHeaders,
   headerListFromHeaders,

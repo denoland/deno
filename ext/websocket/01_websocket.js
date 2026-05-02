@@ -49,12 +49,16 @@ const {
   TypeError,
 } = primordials;
 
-import { URL } from "ext:deno_web/00_url.js";
-import * as webidl from "ext:deno_webidl/00_webidl.js";
-import { createFilteredInspectProxy } from "ext:deno_web/01_console.js";
-import { HTTP_TOKEN_CODE_POINT_RE } from "ext:deno_web/00_infra.js";
-import { DOMException } from "ext:deno_web/01_dom_exception.js";
-import {
+const { URL } = core.loadExtScript("ext:deno_web/00_url.js");
+const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
+const { createFilteredInspectProxy } = core.loadExtScript(
+  "ext:deno_web/01_console.js",
+);
+const { HTTP_TOKEN_CODE_POINT_RE } = core.loadExtScript(
+  "ext:deno_web/00_infra.js",
+);
+const { DOMException } = core.loadExtScript("ext:deno_web/01_dom_exception.js");
+const {
   CloseEvent,
   defineEventHandler,
   dispatch,
@@ -63,9 +67,9 @@ import {
   EventTarget,
   MessageEvent,
   setIsTrusted,
-} from "ext:deno_web/02_event.js";
-import { Blob, BlobPrototype } from "ext:deno_web/09_file.js";
-import { getLocationHref } from "ext:deno_web/12_location.js";
+} = core.loadExtScript("ext:deno_web/02_event.js");
+const { Blob, BlobPrototype } = core.loadExtScript("ext:deno_web/09_file.js");
+const { getLocationHref } = core.loadExtScript("ext:deno_web/12_location.js");
 import {
   fillHeaders,
   headerListFromHeaders,

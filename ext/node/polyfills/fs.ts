@@ -79,6 +79,7 @@ import {
 import { glob, globSync } from "ext:deno_node/_fs/_fs_glob.ts";
 import {
   parseFileMode,
+  validateAbortSignal,
   validateBoolean,
   validateEncoding,
   validateFunction,
@@ -91,10 +92,6 @@ import {
 import { Buffer } from "node:buffer";
 import process from "node:process";
 import { isArrayBufferView } from "ext:deno_node/internal/util/types.ts";
-import { TextEncoder } from "ext:deno_web/08_text_encoding.js";
-import * as abortSignal from "ext:deno_web/03_abort_signal.js";
-import { pathFromURL } from "ext:deno_web/00_infra.js";
-import { URLPrototype } from "ext:deno_web/00_url.js";
 import { FileHandle } from "ext:deno_node/internal/fs/handle.ts";
 import { isIterable } from "ext:deno_node/internal/streams/utils.js";
 import type { ErrnoException } from "ext:deno_node/_global.d.ts";
@@ -188,7 +185,13 @@ const {
   TypedArrayPrototypeSet,
   TypedArrayPrototypeSubarray,
   Uint8Array,
+  queueMicrotask,
 } = primordials;
+
+const { TextEncoder } = core.loadExtScript("ext:deno_web/08_text_encoding.js");
+const abortSignal = core.loadExtScript("ext:deno_web/03_abort_signal.js");
+const { pathFromURL } = core.loadExtScript("ext:deno_web/00_infra.js");
+const { URLPrototype } = core.loadExtScript("ext:deno_web/00_url.js");
 
 const {
   kIoMaxLength,
@@ -1270,7 +1273,12 @@ function close(
     callback = makeCallback(callback);
   }
 
-  setTimeout(() => {
+  // Defer to a microtask rather than a JS `setTimeout(0)`. Both make the
+  // callback asynchronous, but a real timer trips Deno's test sanitizer as a
+  // leaked timeout when a test ends before the timer fires. Node.js' libuv
+  // libc-backed `close` is invisible to userland timer queues; a microtask
+  // matches that more closely.
+  queueMicrotask(() => {
     let error = null;
     try {
       op_node_fs_close(fd);
@@ -1280,7 +1288,7 @@ function close(
         : new Error("[non-error thrown]");
     }
     callback(error);
-  }, 0);
+  });
 }
 
 function closeSync(fd: number) {
@@ -3232,10 +3240,32 @@ type watchOptions = {
   persistent?: boolean;
   recursive?: boolean;
   encoding?: string;
+  signal?: AbortSignal;
   ignore?: IgnoreOption;
 };
 
-type watchListener = (eventType: string, filename: string) => void;
+type watchListener = (
+  eventType: string,
+  filename: string | Buffer,
+) => void;
+
+// Match Node: `encoding: 'buffer'` returns a Buffer, any other named encoding
+// returns the filename re-encoded from utf8. Default ('utf8' or absent) leaves
+// the string unchanged. https://github.com/nodejs/node/blob/main/lib/internal/fs/watchers.js
+function encodeWatchFilename(
+  filename: string,
+  encoding: string | undefined,
+): string | Buffer {
+  if (!encoding || encoding === "utf8" || encoding === "utf-8") {
+    return filename;
+  }
+  const asBuffer = Buffer.from(filename);
+  if (encoding === "buffer") {
+    return asBuffer;
+  }
+  // deno-lint-ignore prefer-primordials
+  return asBuffer.toString(encoding as BufferEncoding);
+}
 
 function watch(
   filename: string | URL,
@@ -3267,6 +3297,8 @@ function watch(
     ? optionsOrListener2
     : undefined;
 
+  validateIgnoreOption(options?.ignore, "options.ignore");
+
   // deno-lint-ignore prefer-primordials
   const watchPath = getValidatedPath(filename).toString();
 
@@ -3279,6 +3311,7 @@ function watch(
     validateBoolean(options.persistent, "options.persistent");
   }
   const recursive = options?.recursive || false;
+  const encoding = options?.encoding;
   validateIgnoreOption(options?.ignore, "options.ignore");
   const ignoreMatcher = createIgnoreMatcher(options?.ignore);
   const iterator: Deno.FsWatcher = Deno.watchFs(watchPath, {
@@ -3303,7 +3336,7 @@ function watch(
     fsWatcher.emit(
       "change",
       convertDenoFsEventToNodeFsEvent(val.kind),
-      filename,
+      encodeWatchFilename(filename, encoding),
     );
   }, (e) => {
     fsWatcher.emit("error", e);
@@ -3330,6 +3363,22 @@ function watch(
     );
   }
 
+  // Match Node's `fs.watch` AbortSignal handling:
+  // https://github.com/nodejs/node/blob/main/lib/fs.js
+  validateAbortSignal(options?.signal, "options.signal");
+  if (options?.signal) {
+    const signal = options.signal;
+    if (signal.aborted) {
+      process.nextTick(() => fsWatcher.close());
+    } else {
+      const onAbort = () => fsWatcher.close();
+      signal.addEventListener("abort", onAbort, { once: true });
+      fsWatcher.once("close", () => {
+        signal.removeEventListener("abort", onAbort);
+      });
+    }
+  }
+
   return fsWatcher;
 }
 
@@ -3347,6 +3396,8 @@ function watchPromise(
   const watchPath = getValidatedPath(filename).toString();
 
   const recursive = options?.recursive ?? false;
+  const signal = options?.signal;
+  validateAbortSignal(signal, "options.signal");
   validateIgnoreOption(options?.ignore, "options.ignore");
   const ignoreMatcher = createIgnoreMatcher(options?.ignore);
   const watcher = Deno.watchFs(watchPath, {
@@ -3354,16 +3405,28 @@ function watchPromise(
   });
   const resolvedWatchPath = realpathSync(watchPath) as string;
 
-  if (options?.signal) {
-    if (options.signal.aborted) {
+  let onAbort: (() => void) | null = null;
+  function cleanupAbort() {
+    if (signal && onAbort) {
+      signal.removeEventListener("abort", onAbort);
+      onAbort = null;
+    }
+  }
+
+  if (signal) {
+    if (signal.aborted) {
       watcher.close();
     } else {
-      options.signal.addEventListener(
-        "abort",
-        () => watcher.close(),
-        { once: true },
-      );
+      onAbort = () => watcher.close();
+      signal.addEventListener("abort", onAbort, { once: true });
     }
+  }
+
+  // Match Node: surface signal abort as a thrown AbortError carrying
+  // `signal.reason` as `cause`.
+  // https://github.com/nodejs/node/blob/main/lib/internal/fs/watchers.js
+  function abortError(): AbortError {
+    return new AbortError(undefined, { cause: signal?.reason });
   }
 
   const fsIterable = watcher[SymbolAsyncIterator]();
@@ -3371,10 +3434,20 @@ function watchPromise(
     async next(): Promise<
       IteratorResult<{ eventType: string; filename: string | Buffer | null }>
     > {
+      if (signal?.aborted) {
+        cleanupAbort();
+        throw abortError();
+      }
       while (true) {
         // deno-lint-ignore prefer-primordials
         const iterResult = await fsIterable.next();
-        if (iterResult.done) return iterResult;
+        if (iterResult.done) {
+          cleanupAbort();
+          if (signal?.aborted) {
+            throw abortError();
+          }
+          return iterResult;
+        }
 
         const eventType = convertDenoFsEventToNodeFsEvent(
           iterResult.value.kind,
@@ -3393,6 +3466,7 @@ function watchPromise(
     },
     // deno-lint-ignore no-explicit-any
     return(value?: any): Promise<IteratorResult<any>> {
+      cleanupAbort();
       watcher.close();
       return PromiseResolve({ value, done: true });
     },
