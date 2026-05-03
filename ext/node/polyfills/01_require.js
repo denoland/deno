@@ -406,7 +406,9 @@ function tryPackage(requestPath, exts, isMain, originalPath) {
       // - node_modules/<pkg>/...  -> root = node_modules/<pkg>
       // - node_modules/@scope/<pkg>/... -> root = node_modules/@scope/<pkg>
       const rel = requestPath.slice(current.length + 1);
-      const sep = rel.indexOf("/") !== -1 ? "/" : "\\";
+      // Detect separator from the node_modules path itself, not from
+      // rel which may be a single component with no separator at all.
+      const sep = current.indexOf("\\") !== -1 ? "\\" : "/";
       const parts = StringPrototypeSplit(rel, sep);
       if (
         parts.length > 0 && StringPrototypeStartsWith(parts[0], "@") &&
