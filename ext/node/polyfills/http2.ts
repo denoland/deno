@@ -3611,20 +3611,23 @@ class Http2Session extends EventEmitter {
     // didn't supply one.
     const buf = payload || Buffer.alloc(8);
 
+    const ret = this[kHandle].ping(buf);
+    if (ret !== 0) {
+      process.nextTick(cb, false, 0.0, payload);
+      return false;
+    }
     // Track the pending ping so it can be cancelled when the session is
     // destroyed before the PING ACK arrives. Matches Node's
     // ClearOutstandingPings in src/node_http2.cc. The wrapped pingCallback
     // (registered via Http2Session#ping) is consumed FIFO when an inbound
     // PING ACK is delivered to onPing below.
     this[kState].pendingPings.push(cb);
-
-    const ret = this[kHandle].ping(buf);
     // The native ping op queues the PING frame inside nghttp2 but the
     // session's actual transport is owned by the JS socket (setupHandle
     // overrides handle.sendPending), so we must trigger the flush ourselves
     // for the PING to leave this peer.
     scheduleSendPending(this);
-    return ret === 0;
+    return true;
   }
 
   [kInspect](depth, opts) {
