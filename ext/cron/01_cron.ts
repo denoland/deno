@@ -11,12 +11,11 @@ const {
   TypeError,
 } = primordials;
 const {
+  otelState,
   builtinTracer,
   ContextManager,
   enterSpan,
-  PROPAGATORS,
   restoreSnapshot,
-  TRACING_ENABLED,
 } = core.loadExtScript("ext:deno_telemetry/telemetry.ts");
 const { updateSpanFromError } = core.loadExtScript(
   "ext:deno_telemetry/util.ts",
@@ -172,10 +171,10 @@ function cron(
         break;
       }
       let span;
-      if (TRACING_ENABLED) {
+      if (otelState.TRACING_ENABLED) {
         let activeContext = ContextManager.active();
         if (r.traceparent) {
-          for (const propagator of new SafeArrayIterator(PROPAGATORS)) {
+          for (const propagator of new SafeArrayIterator(otelState.PROPAGATORS)) {
             activeContext = propagator.extract(activeContext, {}, {
               get(_carrier, key) {
                 if (key === "traceparent") return r.traceparent;

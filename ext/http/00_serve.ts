@@ -88,15 +88,12 @@ const { hasTlsKeyPairOptions, listenTls } = core.loadExtScript(
   "ext:deno_net/02_tls.js",
 );
 const {
+  otelState,
   builtinTracer,
   ContextManager,
   currentSnapshot,
   enterSpan,
-  getOtelSpan,
-  METRICS_ENABLED,
-  PROPAGATORS,
   restoreSnapshot,
-  TRACING_ENABLED,
 } = core.loadExtScript("ext:deno_telemetry/telemetry.ts");
 const {
   updateSpanFromRequest,
@@ -585,7 +582,7 @@ function mapToCallback(context, callback, onError) {
           );
         }
       } catch (error) {
-        if (METRICS_ENABLED) {
+        if (otelState.METRICS_ENABLED) {
           op_http_metric_handle_otel_error(req);
         }
         import.meta.log(
@@ -601,7 +598,7 @@ function mapToCallback(context, callback, onError) {
       updateSpanFromServerResponse(span, response);
       // Copy span attributes (like http.route) to OtelInfo for HTTP metrics.
       // Must be done here, before the request external is invalidated.
-      const otelSpan = getOtelSpan(span);
+      const otelSpan = otelState.getOtelSpan?.(span);
       if (otelSpan) {
         op_http_copy_span_to_otel_info(req, otelSpan);
       }
@@ -643,7 +640,7 @@ function mapToCallback(context, callback, onError) {
     fastSyncResponseOrStream(req, inner.body, status, innerRequest);
   };
 
-  if (TRACING_ENABLED) {
+  if (otelState.TRACING_ENABLED) {
     const origMapped = mapped;
     mapped = function (req, _span) {
       const snapshot = currentSnapshot();
@@ -655,7 +652,7 @@ function mapToCallback(context, callback, onError) {
         ArrayPrototypePush(headers, [reqHeaders[i], reqHeaders[i + 1]]);
       }
       let activeContext = ContextManager.active();
-      for (const propagator of new SafeArrayIterator(PROPAGATORS)) {
+      for (const propagator of new SafeArrayIterator(otelState.PROPAGATORS)) {
         activeContext = propagator.extract(activeContext, headers, {
           get(carrier: [key: string, value: string][], key: string) {
             return ArrayPrototypeFind(

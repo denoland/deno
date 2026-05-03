@@ -1932,22 +1932,40 @@ const telemetry = {
   meterProvider: MeterProvider,
 };
 
+// Mutable state container: consumers destructure a reference to this
+// object, so property access at call-time always reflects the latest
+// values set by bootstrap().
+const otelState = {
+  TRACING_ENABLED: false,
+  METRICS_ENABLED: false,
+  PROPAGATORS: [] as TextMapPropagator[],
+  getOtelSpan: undefined as ((span: object) => OtelSpan | null | undefined) | undefined,
+};
+
+// Keep module-level variables in sync with otelState for internal use
+// (existing code references the bare names).
+const _origBootstrap = bootstrap;
+function wrappedBootstrap(config: Parameters<typeof bootstrap>[0]) {
+  _origBootstrap(config);
+  otelState.TRACING_ENABLED = TRACING_ENABLED;
+  otelState.METRICS_ENABLED = METRICS_ENABLED;
+  otelState.PROPAGATORS = PROPAGATORS;
+  otelState.getOtelSpan = getOtelSpan;
+}
+
 return {
-  get TRACING_ENABLED() { return TRACING_ENABLED; },
-  get METRICS_ENABLED() { return METRICS_ENABLED; },
-  get PROPAGATORS() { return PROPAGATORS; },
+  otelState,
   enterSpan,
   currentSnapshot,
   restoreSnapshot,
   SPAN_KEY,
-  get getOtelSpan() { return getOtelSpan; },
   Span,
   ContextManager,
   baggageEntryMetadataFromString,
   W3CBaggagePropagator,
   CompositePropagator,
   builtinTracer,
-  bootstrap,
+  bootstrap: wrappedBootstrap,
   telemetry,
 };
 })()

@@ -75,12 +75,10 @@ import {
 } from "ext:deno_node/internal/validators.mjs";
 import { nextTick } from "ext:deno_node/_next_tick.ts";
 const {
+  otelState,
   builtinTracer,
   ContextManager,
-  METRICS_ENABLED,
-  PROPAGATORS,
   telemetry,
-  TRACING_ENABLED,
 } = core.loadExtScript("ext:deno_telemetry/telemetry.ts");
 
 const kServerResponse = Symbol("ServerResponse");
@@ -767,11 +765,11 @@ function parserOnIncoming(server, socket, state, req, keepAlive) {
   res[kUniqueHeaders] = server[kUniqueHeaders];
 
   // Start OTel server span and metrics
-  if (TRACING_ENABLED) {
+  if (otelState.TRACING_ENABLED) {
     // Extract trace context from incoming request headers
     let context = ContextManager.active();
-    if (PROPAGATORS.length > 0) {
-      for (const propagator of PROPAGATORS) {
+    if (otelState.PROPAGATORS.length > 0) {
+      for (const propagator of otelState.PROPAGATORS) {
         context = propagator.extract(context, req.headers, {
           get(carrier, key) {
             return carrier[key];
@@ -794,7 +792,7 @@ function parserOnIncoming(server, socket, state, req, keepAlive) {
     span.setAttribute("url.query", url.includes("?") ? url.split("?")[1] : "");
     res[kOtelSpan] = span;
   }
-  if (METRICS_ENABLED) {
+  if (otelState.METRICS_ENABLED) {
     res[kOtelStartTime] = performance.now();
     res[kOtelReqBodySize] = 0;
     const metrics = getOtelMetrics();

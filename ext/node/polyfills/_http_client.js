@@ -88,11 +88,10 @@ const { updateSpanFromError } = core.loadExtScript(
   "ext:deno_telemetry/util.ts",
 );
 const {
+  otelState,
   builtinTracer,
   ContextManager,
-  PROPAGATORS,
   SPAN_KEY,
-  TRACING_ENABLED,
 } = core.loadExtScript("ext:deno_telemetry/telemetry.ts");
 
 const INVALID_PATH_REGEX = /[^\u0021-\u00ff]/;
@@ -439,14 +438,14 @@ ClientRequest.prototype._implicitHeader = function _implicitHeader() {
   }
 
   // Start OTel client span and inject propagation headers before serialization
-  if (TRACING_ENABLED && !this[kOtelSpan]) {
+  if (otelState.TRACING_ENABLED && !this[kOtelSpan]) {
     const span = builtinTracer().startSpan(this.method, { kind: 2 }); // Kind 2 = Client
     this[kOtelSpan] = span;
 
     // Build a context with this span for propagation injection,
     // without entering it into the async context
     const spanContext = ContextManager.active().setValue(SPAN_KEY, span);
-    for (const propagator of PROPAGATORS) {
+    for (const propagator of otelState.PROPAGATORS) {
       propagator.inject(spanContext, this, {
         set(carrier, key, value) {
           carrier.setHeader(key, value);
