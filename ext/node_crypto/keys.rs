@@ -899,9 +899,9 @@ impl KeyObjectHandle {
                   )?
                 }
                 sec1::EcPrivateKey::PEM_LABEL => {
-                  SecretDocument::from_sec1_der(doc.as_bytes()).map_err(|_| {
-                    AsymmetricPrivateKeyError::InvalidSec1PrivateKey
-                  })?
+                  SecretDocument::from_sec1_der(doc.as_bytes()).map_err(
+                    |_| AsymmetricPrivateKeyError::InvalidSec1PrivateKey,
+                  )?
                 }
                 _ => {
                   return Err(
