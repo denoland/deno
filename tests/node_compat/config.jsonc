@@ -1669,6 +1669,7 @@
     "parallel/test-http2-client-shutdown-before-connect.js": {},
     "parallel/test-http2-client-socket-destroy.js": {},
     "parallel/test-http2-client-stream-destroy-before-connect.js": {},
+    "parallel/test-http2-client-unescaped-path.js": {},
     "parallel/test-http2-client-upload-reject.js": {},
     "parallel/test-http2-client-upload.js": {},
     "parallel/test-http2-client-write-before-connect.js": {},
