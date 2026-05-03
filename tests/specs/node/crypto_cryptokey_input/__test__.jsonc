@@ -1,8 +1,0 @@
-{
-  "tests": {
-    "cryptokey_input": {
-      "args": "run --allow-all main.ts",
-      "output": "main.out"
-    }
-  }
-}
