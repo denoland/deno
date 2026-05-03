@@ -1702,7 +1702,10 @@ unsafe extern "C" fn on_frame_send_callback(
   let session = unsafe { Session::from_user_data(data) };
   // SAFETY: frame is valid per nghttp2 callback contract
   let f = unsafe { &*frame };
-  if f.hd.type_ == ffi::NGHTTP2_GOAWAY as u8 {
+  // SAFETY: union access of `hd` is always valid (every nghttp2 frame has a
+  // header). Reading `type_` to discriminate which other variant is active.
+  let frame_type = unsafe { f.hd.type_ };
+  if frame_type == ffi::NGHTTP2_GOAWAY as u8 {
     // SAFETY: union access valid because we verified type_ == NGHTTP2_GOAWAY
     let goaway = unsafe { &f.goaway };
     session.sent_goaway_code = Some(goaway.error_code);
