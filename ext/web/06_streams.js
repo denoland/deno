@@ -6,14 +6,16 @@
 /// <reference path="../../cli/tsc/dts/lib.deno_web.d.ts" />
 /// <reference lib="esnext" />
 
-import { core, internals, primordials } from "ext:core/mod.js";
+// deno-fmt-ignore-file
+(function () {
+const { core, internals, primordials } = globalThis.__bootstrap;
 const {
   isAnyArrayBuffer,
   isArrayBuffer,
   isSharedArrayBuffer,
   isTypedArray,
 } = core;
-import {
+const {
   // TODO(mmastrac): use readAll
   op_read_all,
   op_readable_stream_resource_allocate,
@@ -24,7 +26,7 @@ import {
   op_readable_stream_resource_write_buf,
   op_readable_stream_resource_write_error,
   op_readable_stream_resource_write_sync,
-} from "ext:core/ops";
+} = core.ops;
 const {
   ArrayBuffer,
   ArrayBufferIsView,
@@ -90,18 +92,18 @@ const {
   queueMicrotask,
 } = primordials;
 
-import * as webidl from "ext:deno_webidl/00_webidl.js";
-import { structuredClone } from "./02_structured_clone.js";
-import {
+const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
+const { structuredClone } = core.loadExtScript("ext:deno_web/02_structured_clone.js");
+const {
   AbortSignalPrototype,
   add,
   newSignal,
   remove,
   signalAbort,
-} from "./03_abort_signal.js";
+} = core.loadExtScript("ext:deno_web/03_abort_signal.js");
 
-import { createFilteredInspectProxy } from "./01_console.js";
-import { assert, AssertionError } from "./00_infra.js";
+const { createFilteredInspectProxy } = core.loadExtScript("ext:deno_web/01_console.js");
+const { assert, AssertionError } = core.loadExtScript("ext:deno_web/00_infra.js");
 
 /** @template T */
 class Deferred {
@@ -165,7 +167,7 @@ function resolvePromiseWith(value) {
 function rethrowAssertionErrorRejection(e) {
   if (e && ObjectPrototypeIsPrototypeOf(AssertionError.prototype, e)) {
     queueMicrotask(() => {
-      import.meta.log("error", `Internal Error: ${e.stack}`);
+      core.print(`[error]: Internal Error: ${e.stack}\n`, true);
     });
   }
 }
@@ -4169,7 +4171,12 @@ function transformStreamDefaultControllerError(controller, e) {
  * @returns {Promise<void>}
  */
 function transformStreamDefaultControllerPerformTransform(controller, chunk) {
-  const transformPromise = controller[_transformAlgorithm](chunk, controller);
+  const transformAlgorithm = controller[_transformAlgorithm];
+  if (transformAlgorithm === undefined) {
+    // Algorithms were cleared by a concurrent cancel/abort/close.
+    return PromiseResolve(undefined);
+  }
+  const transformPromise = transformAlgorithm(chunk, controller);
   return transformPromiseWith(transformPromise, undefined, (r) => {
     transformStreamError(controller[_stream], r);
     throw r;
@@ -5804,10 +5811,10 @@ const ReadableStreamBYOBReaderPrototype = ReadableStreamBYOBReader.prototype;
 class ReadableStreamBYOBRequest {
   /** @type {ReadableByteStreamController} */
   [_controller];
-  /** @type {ArrayBufferView | null} */
+  /** @type {Uint8Array<ArrayBuffer> | null} */
   [_view];
 
-  /** @returns {ArrayBufferView | null} */
+  /** @returns {Uint8Array<ArrayBuffer> | null} */
   get view() {
     webidl.assertBranded(this, ReadableStreamBYOBRequestPrototype);
     return this[_view];
@@ -7273,46 +7280,7 @@ internals.resourceForReadableStream = resourceForReadableStream;
 internals.readableStreamForRid = readableStreamForRid;
 internals.writableStreamForRid = writableStreamForRid;
 
-export default {
-  // Non-Public
-  _state,
-  // Exposed in global runtime scope
-  ByteLengthQueuingStrategy,
-  CountQueuingStrategy,
-  createProxy,
-  Deferred,
-  errorReadableStream,
-  getReadableStreamResourceBacking,
-  getWritableStreamResourceBacking,
-  isDetachedBuffer,
-  isReadableStreamDisturbed,
-  ReadableByteStreamController,
-  ReadableStream,
-  ReadableStreamBYOBReader,
-  ReadableStreamBYOBRequest,
-  readableStreamClose,
-  readableStreamCollectIntoUint8Array,
-  ReadableStreamDefaultController,
-  ReadableStreamDefaultReader,
-  readableStreamDisturb,
-  readableStreamForRid,
-  readableStreamForRidUnrefable,
-  readableStreamForRidUnrefableRef,
-  readableStreamForRidUnrefableUnref,
-  ReadableStreamPrototype,
-  readableStreamTee,
-  readableStreamThrowIfErrored,
-  resourceForReadableStream,
-  TransformStream,
-  TransformStreamDefaultController,
-  WritableStream,
-  writableStreamClose,
-  WritableStreamDefaultController,
-  WritableStreamDefaultWriter,
-  writableStreamForRid,
-};
-
-export {
+return {
   _isClosedPromise,
   // Non-Public
   _state,
@@ -7352,3 +7320,4 @@ export {
   WritableStreamDefaultWriter,
   writableStreamForRid,
 };
+})()

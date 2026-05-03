@@ -237,12 +237,21 @@ export function validateTries(options?: { tries?: number }) {
   return tries;
 }
 
+export function validateMaxTimeout(
+  options?: { maxTimeout?: number },
+): number {
+  if (options?.maxTimeout === undefined) return -1; // no cap
+  validateInt32(options.maxTimeout, "options.maxTimeout", 0, 2 ** 31 - 1);
+  return options.maxTimeout;
+}
+
 export interface ResolverOptions {
   timeout?: number | undefined;
   /**
    * @default 4
    */
   tries?: number;
+  maxTimeout?: number | undefined;
 }
 
 /**
@@ -288,7 +297,8 @@ export class Resolver {
   constructor(options?: ResolverOptions) {
     const timeout = validateTimeout(options);
     const tries = validateTries(options);
-    this._handle = new ChannelWrap(timeout, tries);
+    const maxTimeout = validateMaxTimeout(options);
+    this._handle = new ChannelWrap(timeout, tries, maxTimeout);
   }
 
   cancel() {
@@ -425,10 +435,17 @@ export function emitInvalidHostnameWarning(hostname: string) {
   );
 }
 
-let dnsOrder = getOptionValue("--dns-result-order") || "ipv4first";
+let dnsOrder: string | undefined;
+
+function ensureDnsOrder(): string {
+  if (dnsOrder === undefined) {
+    dnsOrder = getOptionValue("--dns-result-order") || "ipv4first";
+  }
+  return dnsOrder;
+}
 
 export function getDefaultDnsOrder(): string {
-  return dnsOrder;
+  return ensureDnsOrder();
 }
 
 const validDnsOrders = ["verbatim", "ipv4first", "ipv6first"];

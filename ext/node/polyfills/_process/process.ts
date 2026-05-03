@@ -17,6 +17,7 @@ const {
   ObjectPrototypeIsPrototypeOf,
   ReflectDefineProperty,
   ReflectHas,
+  TypeError,
   TypeErrorPrototype,
 } = primordials;
 const { build, createLazyLoader } = core;
@@ -24,7 +25,11 @@ const { build, createLazyLoader } = core;
 import { nextTick as _nextTick } from "ext:deno_node/_next_tick.ts";
 import { _exiting } from "ext:deno_node/_process/exiting.ts";
 import * as fs from "ext:deno_fs/30_fs.js";
-import { ERR_INVALID_OBJECT_DEFINE_PROPERTY } from "ext:deno_node/internal/errors.ts";
+import {
+  denoErrorToNodeError,
+  ERR_INVALID_ARG_TYPE,
+  ERR_INVALID_OBJECT_DEFINE_PROPERTY,
+} from "ext:deno_node/internal/errors.ts";
 
 const loadProcess = createLazyLoader<NodeJS.Process>("node:process");
 let nodeProcess: NodeJS.Process | undefined;
@@ -43,7 +48,32 @@ export function arch(): string {
 }
 
 /** https://nodejs.org/api/process.html#process_process_chdir_directory */
-export const chdir = fs.chdir;
+export function chdir(directory: string): void {
+  if (typeof directory !== "string") {
+    throw new ERR_INVALID_ARG_TYPE("directory", "string", directory);
+  }
+  // Node's chdir error carries `path` (the cwd before chdir), `dest` (the
+  // target), and `syscall: 'chdir'`. Snapshot the cwd before attempting the
+  // change so the error's `path` matches Node's behaviour. If the current
+  // cwd has been deleted (common in tmpdir cleanup during process exit),
+  // `fs.cwd()` itself throws -- fall back to an empty string so the wrapper
+  // still has a sensible `path`, and don't surface the cwd lookup error.
+  let fromPath = "";
+  try {
+    fromPath = fs.cwd();
+  } catch {
+    // Ignore -- chdir() below will surface a chdir-shaped error.
+  }
+  try {
+    fs.chdir(directory);
+  } catch (err) {
+    throw denoErrorToNodeError(err as Error, {
+      syscall: "chdir",
+      path: fromPath,
+      dest: directory,
+    });
+  }
+}
 
 /** https://nodejs.org/api/process.html#process_process_cwd */
 export const cwd = fs.cwd;
@@ -100,10 +130,10 @@ export const env:
         };
       }
     },
-    set(target, prop, value) {
-      if (typeof prop === "symbol") {
-        target[prop] = value;
-        return true;
+    set(_target, prop, value) {
+      // Match Node: v8 ToString on a symbol key or value throws TypeError.
+      if (typeof prop === "symbol" || typeof value === "symbol") {
+        throw new TypeError("Cannot convert a Symbol value to a string");
       }
 
       if (typeof value !== "string") {
@@ -191,7 +221,7 @@ export const versions = {
   ares: "1.18.1",
   modules: "108",
   nghttp2: "1.47.0",
-  napi: "8",
+  napi: "9",
   llhttp: "6.0.10",
   openssl: "3.0.7+quic",
   cldr: "41.0",

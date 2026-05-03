@@ -59,7 +59,7 @@
   "errors": [
     {
       "file_path": "[WILDCARD]malformed.js",
-      "message": "Expected '{', got 'B' at [WILDCARD]malformed.js:4:16\n\n  export class A B C\n                 ~"
+      "message": "SyntaxError: Expected '{', got 'B'\n  |\n4 | export class A B C\n  |                ~\n    at file:///[WILDCARD]malformed.js:4:16"
     }
   ],
   "checked_files": [

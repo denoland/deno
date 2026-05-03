@@ -44,6 +44,25 @@ const SQLITE_DBCONFIG_ENABLE_LOAD_EXTENSION: i32 = 1005;
 const SQLITE_DBCONFIG_ENABLE_ATTACH_WRITE: i32 = 1021;
 const MAX_SAFE_JS_INTEGER: i64 = 9_007_199_254_740_991;
 
+const NUM_LIMITS: usize = 11;
+
+/// Static mapping of JavaScript property names to SQLite limits.
+/// Order matches SQLite limit constant values (0-10).
+/// Keep in sync with LIMIT_NAMES in ext/node/polyfills/sqlite.ts.
+const LIMIT_MAPPING: [(&str, Limit); NUM_LIMITS] = [
+  ("length", Limit::SQLITE_LIMIT_LENGTH),
+  ("sqlLength", Limit::SQLITE_LIMIT_SQL_LENGTH),
+  ("column", Limit::SQLITE_LIMIT_COLUMN),
+  ("exprDepth", Limit::SQLITE_LIMIT_EXPR_DEPTH),
+  ("compoundSelect", Limit::SQLITE_LIMIT_COMPOUND_SELECT),
+  ("vdbeOp", Limit::SQLITE_LIMIT_VDBE_OP),
+  ("functionArg", Limit::SQLITE_LIMIT_FUNCTION_ARG),
+  ("attach", Limit::SQLITE_LIMIT_ATTACHED),
+  ("likePatternLength", Limit::SQLITE_LIMIT_LIKE_PATTERN_LENGTH),
+  ("variableNumber", Limit::SQLITE_LIMIT_VARIABLE_NUMBER),
+  ("triggerDepth", Limit::SQLITE_LIMIT_TRIGGER_DEPTH),
+];
+
 struct DatabaseSyncOptions {
   open: bool,
   enable_foreign_key_constraints: bool,
@@ -56,6 +75,7 @@ struct DatabaseSyncOptions {
   allow_unknown_named_params: bool,
   is_defensive_mode: bool,
   timeout: u64,
+  initial_limits: [Option<i32>; NUM_LIMITS],
 }
 
 impl<'a> FromV8<'a> for DatabaseSyncOptions {
@@ -73,7 +93,7 @@ impl<'a> FromV8<'a> for DatabaseSyncOptions {
 
     let Ok(obj) = v8::Local::<v8::Object>::try_from(value) else {
       return Err(Error::InvalidArgType(
-        "The \"options\" argument must be an object.",
+        "The \"options\" argument must be an object.".into(),
       ));
     };
 
@@ -91,6 +111,7 @@ impl<'a> FromV8<'a> for DatabaseSyncOptions {
       ALLOW_BARE_NAMED_PARAMS = "allowBareNamedParameters",
       ALLOW_UNKNOWN_NAMED_PARAMS = "allowUnknownNamedParameters",
       DEFENSIVE_STRING = "defensive",
+      LIMITS_STRING = "limits",
     }
 
     let open_string = OPEN_STRING.v8_string(scope).unwrap();
@@ -100,7 +121,7 @@ impl<'a> FromV8<'a> for DatabaseSyncOptions {
       options.open = v8::Local::<v8::Boolean>::try_from(open)
         .map_err(|_| {
           Error::InvalidArgType(
-            "The \"options.open\" argument must be a boolean.",
+            "The \"options.open\" argument must be a boolean.".into(),
           )
         })?
         .is_true();
@@ -113,7 +134,7 @@ impl<'a> FromV8<'a> for DatabaseSyncOptions {
       options.read_only = v8::Local::<v8::Boolean>::try_from(read_only)
         .map_err(|_| {
           Error::InvalidArgType(
-            "The \"options.readOnly\" argument must be a boolean.",
+            "The \"options.readOnly\" argument must be a boolean.".into(),
           )
         })?
         .is_true();
@@ -130,9 +151,7 @@ impl<'a> FromV8<'a> for DatabaseSyncOptions {
       options.enable_foreign_key_constraints =
           v8::Local::<v8::Boolean>::try_from(enable_foreign_key_constraints)
             .map_err(|_| {
-              Error::InvalidArgType(
-              "The \"options.enableForeignKeyConstraints\" argument must be a boolean.",
-            )
+              Error::InvalidArgType("The \"options.enableForeignKeyConstraints\" argument must be a boolean.".into())
             })?
             .is_true();
     }
@@ -146,7 +165,8 @@ impl<'a> FromV8<'a> for DatabaseSyncOptions {
         v8::Local::<v8::Boolean>::try_from(allow_extension)
           .map_err(|_| {
             Error::InvalidArgType(
-              "The \"options.allowExtension\" argument must be a boolean.",
+              "The \"options.allowExtension\" argument must be a boolean."
+                .into(),
             )
           })?
           .is_true();
@@ -163,9 +183,7 @@ impl<'a> FromV8<'a> for DatabaseSyncOptions {
       options.enable_double_quoted_string_literals =
             v8::Local::<v8::Boolean>::try_from(enable_double_quoted_string_literals)
                 .map_err(|_| {
-                Error::InvalidArgType(
-                    "The \"options.enableDoubleQuotedStringLiterals\" argument must be a boolean.",
-                )
+                Error::InvalidArgType("The \"options.enableDoubleQuotedStringLiterals\" argument must be a boolean.".into())
                 })?
                 .is_true();
     }
@@ -177,7 +195,7 @@ impl<'a> FromV8<'a> for DatabaseSyncOptions {
       let timeout = v8::Local::<v8::Integer>::try_from(timeout)
         .map_err(|_| {
           Error::InvalidArgType(
-            "The \"options.timeout\" argument must be an integer.",
+            "The \"options.timeout\" argument must be an integer.".into(),
           )
         })?
         .value();
@@ -195,7 +213,7 @@ impl<'a> FromV8<'a> for DatabaseSyncOptions {
         v8::Local::<v8::Boolean>::try_from(read_big_ints)
           .map_err(|_| {
             Error::InvalidArgType(
-              "The \"options.readBigInts\" argument must be a boolean.",
+              "The \"options.readBigInts\" argument must be a boolean.".into(),
             )
           })?
           .is_true();
@@ -208,7 +226,7 @@ impl<'a> FromV8<'a> for DatabaseSyncOptions {
       options.return_arrays = v8::Local::<v8::Boolean>::try_from(return_arrays)
         .map_err(|_| {
           Error::InvalidArgType(
-            "The \"options.returnArrays\" argument must be a boolean.",
+            "The \"options.returnArrays\" argument must be a boolean.".into(),
           )
         })?
         .is_true();
@@ -223,9 +241,7 @@ impl<'a> FromV8<'a> for DatabaseSyncOptions {
       options.allow_bare_named_params =
         v8::Local::<v8::Boolean>::try_from(allow_bare_named_params)
           .map_err(|_| {
-            Error::InvalidArgType(
-              "The \"options.allowBareNamedParameters\" argument must be a boolean.",
-            )
+            Error::InvalidArgType("The \"options.allowBareNamedParameters\" argument must be a boolean.".into())
           })?
           .is_true();
     }
@@ -239,9 +255,7 @@ impl<'a> FromV8<'a> for DatabaseSyncOptions {
       options.allow_unknown_named_params =
         v8::Local::<v8::Boolean>::try_from(allow_unknown_named_params)
           .map_err(|_| {
-            Error::InvalidArgType(
-              "The \"options.allowUnknownNamedParameters\" argument must be a boolean.",
-            )
+            Error::InvalidArgType("The \"options.allowUnknownNamedParameters\" argument must be a boolean.".into())
           })?
           .is_true();
     }
@@ -254,10 +268,55 @@ impl<'a> FromV8<'a> for DatabaseSyncOptions {
         v8::Local::<v8::Boolean>::try_from(is_defensive_mode)
           .map_err(|_| {
             Error::InvalidArgType(
-              "The \"options.defensive\" argument must be a boolean.",
+              "The \"options.defensive\" argument must be a boolean.".into(),
             )
           })?
           .is_true();
+    }
+
+    let limits_string = LIMITS_STRING.v8_string(scope).unwrap();
+    if let Some(limits_value) = obj.get(scope, limits_string.into())
+      && !limits_value.is_undefined()
+    {
+      let limits_obj = v8::Local::<v8::Object>::try_from(limits_value)
+        .map_err(|_| {
+          Error::InvalidArgType(
+            "The \"options.limits\" argument must be an object.".into(),
+          )
+        })?;
+
+      for (idx, &(js_name, _limit)) in LIMIT_MAPPING.iter().enumerate() {
+        let key = v8::String::new(scope, js_name).ok_or({
+          Error::InvalidArgType("Failed to create limit key string.".into())
+        })?;
+
+        if let Some(val) = limits_obj.get(scope, key.into())
+          && !val.is_undefined()
+        {
+          let int_val =
+            v8::Local::<v8::Int32>::try_from(val).map_err(|_| {
+              Error::InvalidArgType(
+                format!(
+                  "The \"options.limits.{}\" argument must be an integer.",
+                  js_name
+                )
+                .into(),
+              )
+            })?;
+          let limit_val = int_val.value();
+          if limit_val < 0 {
+            return Err(Error::OutOfRange(
+              format!(
+                "The \"options.limits.{}\" argument must be non-negative.",
+                js_name
+              )
+              .into(),
+            ));
+          }
+
+          options.initial_limits[idx] = Some(limit_val);
+        }
+      }
     }
 
     Ok(options)
@@ -276,8 +335,9 @@ impl Default for DatabaseSyncOptions {
       return_arrays: false,
       allow_bare_named_params: true,
       allow_unknown_named_params: false,
-      is_defensive_mode: false,
+      is_defensive_mode: true,
       timeout: 0,
+      initial_limits: [None; NUM_LIMITS],
     }
   }
 }
@@ -302,7 +362,7 @@ impl<'a> AggregateFunctionOption<'a> {
 
     if !value.is_object() {
       return Err(Error::InvalidArgType(
-        "The \"options\" argument must be an object.",
+        "The \"options\" argument must be an object.".into(),
       ));
     }
 
@@ -323,9 +383,7 @@ impl<'a> AggregateFunctionOption<'a> {
       .get(scope, start_key.into())
       .unwrap();
     if start_value.is_undefined() {
-      return Err(Error::InvalidArgType(
-        "The \"options.start\" argument must be a function or a primitive value.",
-      ));
+      return Err(Error::InvalidArgType("The \"options.start\" argument must be a function or a primitive value.".into()));
     }
 
     let step_key = STEP_STRING.v8_string(scope).unwrap();
@@ -336,7 +394,7 @@ impl<'a> AggregateFunctionOption<'a> {
     let step_function = v8::Local::<v8::Function>::try_from(step_value)
       .map_err(|_| {
         Error::InvalidArgType(
-          "The \"options.step\" argument must be a function.",
+          "The \"options.step\" argument must be a function.".into(),
         )
       })?;
 
@@ -351,7 +409,7 @@ impl<'a> AggregateFunctionOption<'a> {
       let func =
         v8::Local::<v8::Function>::try_from(result_value).map_err(|_| {
           Error::InvalidArgType(
-            "The \"options.result\" argument must be a function.",
+            "The \"options.result\" argument must be a function.".into(),
           )
         })?;
       Some(func)
@@ -370,7 +428,7 @@ impl<'a> AggregateFunctionOption<'a> {
     if !deterministic_value.is_undefined() {
       if !deterministic_value.is_boolean() {
         return Err(Error::InvalidArgType(
-          "The \"options.deterministic\" argument must be a boolean.",
+          "The \"options.deterministic\" argument must be a boolean.".into(),
         ));
       }
       deterministic = deterministic_value.boolean_value(scope);
@@ -384,7 +442,8 @@ impl<'a> AggregateFunctionOption<'a> {
     if !bigint_value.is_undefined() {
       if !bigint_value.is_boolean() {
         return Err(Error::InvalidArgType(
-          "The \"options.useBigIntArguments\" argument must be a boolean.",
+          "The \"options.useBigIntArguments\" argument must be a boolean."
+            .into(),
         ));
       }
       use_big_int_arguments = bigint_value.boolean_value(scope);
@@ -398,7 +457,7 @@ impl<'a> AggregateFunctionOption<'a> {
     if !varargs_value.is_undefined() {
       if !varargs_value.is_boolean() {
         return Err(Error::InvalidArgType(
-          "The \"options.varargs\" argument must be a boolean.",
+          "The \"options.varargs\" argument must be a boolean.".into(),
         ));
       }
       varargs = varargs_value.boolean_value(scope);
@@ -412,7 +471,7 @@ impl<'a> AggregateFunctionOption<'a> {
     if !direct_only_value.is_undefined() {
       if !direct_only_value.is_boolean() {
         return Err(Error::InvalidArgType(
-          "The \"options.directOnly\" argument must be a boolean.",
+          "The \"options.directOnly\" argument must be a boolean.".into(),
         ));
       }
       direct_only = direct_only_value.boolean_value(scope);
@@ -429,7 +488,7 @@ impl<'a> AggregateFunctionOption<'a> {
       let func =
         v8::Local::<v8::Function>::try_from(inverse_value).map_err(|_| {
           Error::InvalidArgType(
-            "The \"options.inverse\" argument must be a function.",
+            "The \"options.inverse\" argument must be a function.".into(),
           )
         })?;
       Some(func)
@@ -467,7 +526,9 @@ impl<'a> ApplyChangesetOptions<'a> {
     }
 
     let obj = v8::Local::<v8::Object>::try_from(value).map_err(|_| {
-      Error::InvalidArgType("The \"options\" argument must be an object.")
+      Error::InvalidArgType(
+        "The \"options\" argument must be an object.".into(),
+      )
     })?;
 
     let mut options = Self {
@@ -486,7 +547,7 @@ impl<'a> ApplyChangesetOptions<'a> {
     {
       if !filter.is_function() {
         return Err(Error::InvalidArgType(
-          "The \"options.filter\" argument must be a function.",
+          "The \"options.filter\" argument must be a function.".into(),
         ));
       }
 
@@ -499,7 +560,7 @@ impl<'a> ApplyChangesetOptions<'a> {
     {
       if !on_conflict.is_function() {
         return Err(Error::InvalidArgType(
-          "The \"options.onConflict\" argument must be a function.",
+          "The \"options.onConflict\" argument must be a function.".into(),
         ));
       }
 
@@ -552,6 +613,48 @@ fn set_db_config(
   }
 }
 
+enum LimitCoercionError {
+  NotANumber,
+  NotAnInteger,
+  Negative,
+}
+
+/// Coerce a v8 value to a valid SQLite limit integer.
+/// Accepts non-negative integers and positive Infinity (mapped to i32::MAX).
+fn coerce_limit_value(
+  scope: &mut v8::PinScope<'_, '_>,
+  value: v8::Local<v8::Value>,
+) -> Result<i32, LimitCoercionError> {
+  if !value.is_number() {
+    return Err(LimitCoercionError::NotANumber);
+  }
+  let num_value = value.number_value(scope).unwrap_or(f64::NAN);
+  if num_value.is_infinite() && num_value > 0.0 {
+    return Ok(i32::MAX);
+  }
+  if !value.is_int32() {
+    return Err(LimitCoercionError::NotAnInteger);
+  }
+  let int_val = value.int32_value(scope).unwrap_or(-1);
+  if int_val < 0 {
+    return Err(LimitCoercionError::Negative);
+  }
+  Ok(int_val)
+}
+
+/// Apply initial limits to a connection based on options
+fn apply_initial_limits(
+  conn: &rusqlite::Connection,
+  options: &DatabaseSyncOptions,
+) -> Result<(), SqliteError> {
+  for (idx, &(_js_name, limit)) in LIMIT_MAPPING.iter().enumerate() {
+    if let Some(value) = options.initial_limits[idx] {
+      conn.set_limit(limit, value)?;
+    }
+  }
+  Ok(())
+}
+
 fn open_db(
   state: &mut OpState,
   location: &str,
@@ -588,6 +691,8 @@ fn open_db(
       SQLITE_DBCONFIG_DEFENSIVE,
       options.is_defensive_mode,
     ));
+
+    apply_initial_limits(&conn, options)?;
 
     return Ok(conn);
   }
@@ -633,6 +738,8 @@ fn open_db(
       options.is_defensive_mode,
     ));
 
+    apply_initial_limits(&conn, options)?;
+
     return Ok(conn);
   }
 
@@ -658,6 +765,8 @@ fn open_db(
     SQLITE_DBCONFIG_DEFENSIVE,
     options.is_defensive_mode,
   ));
+
+  apply_initial_limits(&conn, options)?;
 
   Ok(conn)
 }
@@ -834,9 +943,11 @@ impl DatabaseSync {
   #[cppgc]
   fn prepare(
     &self,
+    scope: &mut v8::PinScope<'_, '_>,
     #[validate(validators::sql_str)]
     #[string]
     sql: &str,
+    #[varargs] args: Option<&v8::FunctionCallbackArguments>,
   ) -> Result<StatementSync, SqliteError> {
     let db = self.conn.borrow();
     let db = db.as_ref().ok_or(SqliteError::InUse)?;
@@ -860,6 +971,72 @@ impl DatabaseSync {
     };
     check_error_code(r, raw_handle)?;
 
+    let mut allow_unknown_named_params =
+      self.options.allow_unknown_named_params;
+    let mut use_big_ints = self.options.use_big_int_arguments;
+    let mut return_arrays = self.options.return_arrays;
+    let mut allow_bare_named_params = self.options.allow_bare_named_params;
+
+    // Parse options object (second argument)
+    if let Some(args) = args {
+      // args[0] is already consumed as `sql`, so options is args[1]
+      if args.length() > 1 {
+        let options = args.get(1);
+        if !options.is_undefined() && !options.is_null() {
+          let options =
+            v8::Local::<v8::Object>::try_from(options).map_err(|_| {
+              SqliteError::Validation(validators::Error::InvalidArgType(
+                "The \"options\" argument must be an object.".into(),
+              ))
+            })?;
+
+          v8_static_strings! {
+            ALLOW_UNKNOWN = "allowUnknownNamedParameters",
+            READ_BIG_INTS = "readBigInts",
+            RETURN_ARRAYS = "returnArrays",
+            ALLOW_BARE = "allowBareNamedParameters",
+          }
+
+          macro_rules! parse_bool_opt {
+            ($key:expr, $name:expr, $target:ident) => {
+              let key = $key.v8_string(scope).unwrap().into();
+              if let Some(val) = options.get(scope, key) {
+                if !val.is_undefined() {
+                  $target = v8::Local::<v8::Boolean>::try_from(val)
+                    .map_err(|_| {
+                      SqliteError::Validation(
+                        validators::Error::InvalidArgType(
+                          concat!(
+                            "The \"",
+                            $name,
+                            "\" argument must be a boolean."
+                          )
+                          .into(),
+                        ),
+                      )
+                    })?
+                    .is_true();
+                }
+              }
+            };
+          }
+
+          parse_bool_opt!(
+            ALLOW_UNKNOWN,
+            "options.allowUnknownNamedParameters",
+            allow_unknown_named_params
+          );
+          parse_bool_opt!(READ_BIG_INTS, "options.readBigInts", use_big_ints);
+          parse_bool_opt!(RETURN_ARRAYS, "options.returnArrays", return_arrays);
+          parse_bool_opt!(
+            ALLOW_BARE,
+            "options.allowBareNamedParameters",
+            allow_bare_named_params
+          );
+        }
+      }
+    }
+
     let stmt_cell = Rc::new(Cell::new(Some(raw_stmt)));
     self.statements.borrow_mut().push(stmt_cell.clone());
 
@@ -868,13 +1045,13 @@ impl DatabaseSync {
       db: self.conn.clone(),
       statements: Rc::clone(&self.statements),
       ignore_next_sqlite_error: Rc::clone(&self.ignore_next_sqlite_error),
-      return_arrays: Cell::new(self.options.return_arrays),
-      use_big_ints: Cell::new(self.options.use_big_int_arguments),
-      allow_bare_named_params: Cell::new(self.options.allow_bare_named_params),
-      allow_unknown_named_params: Cell::new(
-        self.options.allow_unknown_named_params,
-      ),
+      return_arrays: Cell::new(return_arrays),
+      use_big_ints: Cell::new(use_big_ints),
+      allow_bare_named_params: Cell::new(allow_bare_named_params),
+      allow_unknown_named_params: Cell::new(allow_unknown_named_params),
       is_iter_finished: Cell::new(false),
+      iter_generation: Cell::new(0),
+      iter_contexts: RefCell::new(Vec::new()),
     })
   }
 
@@ -889,7 +1066,7 @@ impl DatabaseSync {
     let Some(args) = args.filter(|args| args.length() > 0) else {
       return Err(
         validators::Error::InvalidArgType(
-          "The \"name\" argument must be a string.",
+          "The \"name\" argument must be a string.".into(),
         )
         .into(),
       );
@@ -898,7 +1075,7 @@ impl DatabaseSync {
     if !args.get(0).is_string() {
       return Err(
         validators::Error::InvalidArgType(
-          "The \"name\" argument must be a string.",
+          "The \"name\" argument must be a string.".into(),
         )
         .into(),
       );
@@ -915,7 +1092,7 @@ impl DatabaseSync {
     else {
       return Err(
         validators::Error::InvalidArgType(
-          "The \"function\" argument must be a function.",
+          "The \"function\" argument must be a function.".into(),
         )
         .into(),
       );
@@ -932,7 +1109,7 @@ impl DatabaseSync {
       if value.is_null() || !value.is_object() {
         return Err(
           validators::Error::InvalidArgType(
-            "The \"options\" argument must be an object.",
+            "The \"options\" argument must be an object.".into(),
           )
           .into(),
         );
@@ -953,7 +1130,8 @@ impl DatabaseSync {
         if !bigint_value.is_boolean() {
           return Err(
             validators::Error::InvalidArgType(
-              "The \"options.useBigIntArguments\" argument must be a boolean.",
+              "The \"options.useBigIntArguments\" argument must be a boolean."
+                .into(),
             )
             .into(),
           );
@@ -967,7 +1145,7 @@ impl DatabaseSync {
         if !varargs_value.is_boolean() {
           return Err(
             validators::Error::InvalidArgType(
-              "The \"options.varargs\" argument must be a boolean.",
+              "The \"options.varargs\" argument must be a boolean.".into(),
             )
             .into(),
           );
@@ -982,7 +1160,8 @@ impl DatabaseSync {
         if !deterministic_value.is_boolean() {
           return Err(
             validators::Error::InvalidArgType(
-              "The \"options.deterministic\" argument must be a boolean.",
+              "The \"options.deterministic\" argument must be a boolean."
+                .into(),
             )
             .into(),
           );
@@ -997,7 +1176,7 @@ impl DatabaseSync {
         if !direct_only_value.is_boolean() {
           return Err(
             validators::Error::InvalidArgType(
-              "The \"options.directOnly\" argument must be a boolean.",
+              "The \"options.directOnly\" argument must be a boolean.".into(),
             )
             .into(),
           );
@@ -1374,7 +1553,7 @@ impl DatabaseSync {
       if !name_value.is_string() {
         return Err(SqliteError::Validation(
           validators::Error::InvalidArgType(
-            "The \"dbName\" argument must be a string.",
+            "The \"dbName\" argument must be a string.".into(),
           ),
         ));
       }
@@ -1466,7 +1645,7 @@ impl DatabaseSync {
     let Ok(function) = v8::Local::<v8::Function>::try_from(callback) else {
       return Err(
         validators::Error::InvalidArgType(
-          "The \"callback\" argument must be a function or null.",
+          "The \"callback\" argument must be a function or null.".into(),
         )
         .into(),
       );
@@ -1520,6 +1699,15 @@ impl DatabaseSync {
     // SAFETY: lifetime of the connection is guaranteed by reference counting.
     let res = unsafe { libsqlite3_sys::sqlite3_get_autocommit(db.handle()) };
     Ok(res == 0)
+  }
+
+  #[getter]
+  #[cppgc]
+  fn limits(&self) -> Result<DatabaseSyncLimits, SqliteError> {
+    if self.conn.borrow().is_none() {
+      return Err(SqliteError::AlreadyClosed);
+    }
+    Ok(DatabaseSyncLimits::create(Rc::clone(&self.conn)))
   }
 
   #[fast]
@@ -2092,17 +2280,15 @@ unsafe extern "C" fn custom_function_handler(
 
 unsafe extern "C" fn custom_function_destroy(data: *mut c_void) {
   // SAFETY: `data` is a valid pointer to CustomFunctionData.
-  // The v8 handles are properly dropped here.
+  // Drop the Box to free the raw pointers stored in it.
+  // We intentionally do NOT convert the raw v8::Global handles back
+  // via `Global::from_raw` because this callback can fire during
+  // isolate teardown (e.g. sqlite3_close during GC) when the
+  // isolate annex is already disposed, making scope creation unsafe.
+  // The leaked Global pointers are harmless: the isolate is being
+  // destroyed and will reclaim all V8 heap memory anyway.
   unsafe {
-    let data = Box::from_raw(data as *mut CustomFunctionData);
-    let context_local: v8::Local<v8::Context> =
-      std::mem::transmute(data.context.as_ptr());
-
-    v8::callback_scope!(unsafe cb_scope, context_local);
-    v8::scope!(scope, cb_scope);
-
-    let _ = v8::Global::from_raw(scope, data.callback);
-    let _ = v8::Global::from_raw(scope, data.context);
+    let _ = Box::from_raw(data as *mut CustomFunctionData);
   }
 }
 
@@ -2402,4 +2588,262 @@ fn throw_range_error(scope: &mut v8::PinScope<'_, '_>, message: &str) {
     .unwrap();
 
   scope.throw_exception(error);
+}
+
+fn throw_type_error_with_code(
+  scope: &mut v8::PinScope<'_, '_>,
+  message: &str,
+  code: &str,
+) {
+  let msg = v8::String::new(scope, message).unwrap();
+  let error = v8::Exception::type_error(scope, msg);
+
+  v8_static_strings!(CODE = "code");
+  let code_key = CODE.v8_string(scope).unwrap();
+  let code_value = v8::String::new(scope, code).unwrap();
+  let error_obj: v8::Local<v8::Object> = error.try_into().unwrap();
+  error_obj
+    .set(scope, code_key.into(), code_value.into())
+    .unwrap();
+
+  scope.throw_exception(error);
+}
+
+/// Object representing SQLite database limits.
+/// This is returned by DatabaseSync.limits getter.
+pub struct DatabaseSyncLimits {
+  conn: Rc<RefCell<Option<rusqlite::Connection>>>,
+}
+
+// SAFETY: we're sure this can be GCed
+unsafe impl GarbageCollected for DatabaseSyncLimits {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"DatabaseSyncLimits"
+  }
+}
+
+impl DatabaseSyncLimits {
+  fn create(conn: Rc<RefCell<Option<rusqlite::Connection>>>) -> Self {
+    Self { conn }
+  }
+
+  fn get_limit(&self, limit: Limit) -> Result<i32, SqliteError> {
+    let conn = self.conn.borrow();
+    let conn = conn.as_ref().ok_or(SqliteError::AlreadyClosed)?;
+    conn.limit(limit).map_err(SqliteError::from)
+  }
+
+  // Uses manual v8 exception throwing instead of returning Err because
+  // returning Err from a cppgc setter would produce a double-throw.
+  fn set_limit_value(
+    &self,
+    scope: &mut v8::PinScope<'_, '_>,
+    limit: Limit,
+    value: v8::Local<v8::Value>,
+  ) -> Result<(), SqliteError> {
+    let conn = self.conn.borrow();
+    let conn = conn.as_ref().ok_or(SqliteError::AlreadyClosed)?;
+
+    let new_value = match coerce_limit_value(scope, value) {
+      Ok(v) => v,
+      Err(
+        LimitCoercionError::NotANumber | LimitCoercionError::NotAnInteger,
+      ) => {
+        throw_type_error_with_code(
+          scope,
+          "Limit value must be a non-negative integer or Infinity.",
+          "ERR_INVALID_ARG_TYPE",
+        );
+        return Ok(());
+      }
+      Err(LimitCoercionError::Negative) => {
+        throw_range_error(scope, "Limit value must be non-negative.");
+        return Ok(());
+      }
+    };
+
+    conn.set_limit(limit, new_value)?;
+    Ok(())
+  }
+}
+
+#[op2]
+impl DatabaseSyncLimits {
+  #[constructor]
+  #[cppgc]
+  fn new(_: bool) -> Result<DatabaseSyncLimits, SqliteError> {
+    Err(SqliteError::InvalidConstructor)
+  }
+
+  #[getter]
+  fn length(&self) -> Result<i32, SqliteError> {
+    self.get_limit(Limit::SQLITE_LIMIT_LENGTH)
+  }
+
+  #[setter]
+  fn length(
+    &self,
+    scope: &mut v8::PinScope<'_, '_>,
+    value: v8::Local<v8::Value>,
+  ) -> Result<(), SqliteError> {
+    self.set_limit_value(scope, Limit::SQLITE_LIMIT_LENGTH, value)
+  }
+
+  #[getter]
+  #[rename("sqlLength")]
+  fn sql_length(&self) -> Result<i32, SqliteError> {
+    self.get_limit(Limit::SQLITE_LIMIT_SQL_LENGTH)
+  }
+
+  #[rename("sqlLength")]
+  #[setter]
+  fn sql_length(
+    &self,
+    scope: &mut v8::PinScope<'_, '_>,
+    value: v8::Local<v8::Value>,
+  ) -> Result<(), SqliteError> {
+    self.set_limit_value(scope, Limit::SQLITE_LIMIT_SQL_LENGTH, value)
+  }
+
+  #[getter]
+  fn column(&self) -> Result<i32, SqliteError> {
+    self.get_limit(Limit::SQLITE_LIMIT_COLUMN)
+  }
+
+  #[setter]
+  fn column(
+    &self,
+    scope: &mut v8::PinScope<'_, '_>,
+    value: v8::Local<v8::Value>,
+  ) -> Result<(), SqliteError> {
+    self.set_limit_value(scope, Limit::SQLITE_LIMIT_COLUMN, value)
+  }
+
+  #[getter]
+  #[rename("exprDepth")]
+  fn expr_depth(&self) -> Result<i32, SqliteError> {
+    self.get_limit(Limit::SQLITE_LIMIT_EXPR_DEPTH)
+  }
+
+  #[rename("exprDepth")]
+  #[setter]
+  fn expr_depth(
+    &self,
+    scope: &mut v8::PinScope<'_, '_>,
+    value: v8::Local<v8::Value>,
+  ) -> Result<(), SqliteError> {
+    self.set_limit_value(scope, Limit::SQLITE_LIMIT_EXPR_DEPTH, value)
+  }
+
+  #[getter]
+  #[rename("compoundSelect")]
+  fn compound_select(&self) -> Result<i32, SqliteError> {
+    self.get_limit(Limit::SQLITE_LIMIT_COMPOUND_SELECT)
+  }
+
+  #[rename("compoundSelect")]
+  #[setter]
+  fn compound_select(
+    &self,
+    scope: &mut v8::PinScope<'_, '_>,
+    value: v8::Local<v8::Value>,
+  ) -> Result<(), SqliteError> {
+    self.set_limit_value(scope, Limit::SQLITE_LIMIT_COMPOUND_SELECT, value)
+  }
+
+  #[getter]
+  #[rename("vdbeOp")]
+  fn vdbe_op(&self) -> Result<i32, SqliteError> {
+    self.get_limit(Limit::SQLITE_LIMIT_VDBE_OP)
+  }
+
+  #[rename("vdbeOp")]
+  #[setter]
+  fn vdbe_op(
+    &self,
+    scope: &mut v8::PinScope<'_, '_>,
+    value: v8::Local<v8::Value>,
+  ) -> Result<(), SqliteError> {
+    self.set_limit_value(scope, Limit::SQLITE_LIMIT_VDBE_OP, value)
+  }
+
+  #[getter]
+  #[rename("functionArg")]
+  fn function_arg(&self) -> Result<i32, SqliteError> {
+    self.get_limit(Limit::SQLITE_LIMIT_FUNCTION_ARG)
+  }
+
+  #[rename("functionArg")]
+  #[setter]
+  fn function_arg(
+    &self,
+    scope: &mut v8::PinScope<'_, '_>,
+    value: v8::Local<v8::Value>,
+  ) -> Result<(), SqliteError> {
+    self.set_limit_value(scope, Limit::SQLITE_LIMIT_FUNCTION_ARG, value)
+  }
+
+  #[getter]
+  fn attach(&self) -> Result<i32, SqliteError> {
+    self.get_limit(Limit::SQLITE_LIMIT_ATTACHED)
+  }
+
+  #[setter]
+  fn attach(
+    &self,
+    scope: &mut v8::PinScope<'_, '_>,
+    value: v8::Local<v8::Value>,
+  ) -> Result<(), SqliteError> {
+    self.set_limit_value(scope, Limit::SQLITE_LIMIT_ATTACHED, value)
+  }
+
+  #[getter]
+  #[rename("likePatternLength")]
+  fn like_pattern_length(&self) -> Result<i32, SqliteError> {
+    self.get_limit(Limit::SQLITE_LIMIT_LIKE_PATTERN_LENGTH)
+  }
+
+  #[rename("likePatternLength")]
+  #[setter]
+  fn like_pattern_length(
+    &self,
+    scope: &mut v8::PinScope<'_, '_>,
+    value: v8::Local<v8::Value>,
+  ) -> Result<(), SqliteError> {
+    self.set_limit_value(scope, Limit::SQLITE_LIMIT_LIKE_PATTERN_LENGTH, value)
+  }
+
+  #[getter]
+  #[rename("variableNumber")]
+  fn variable_number(&self) -> Result<i32, SqliteError> {
+    self.get_limit(Limit::SQLITE_LIMIT_VARIABLE_NUMBER)
+  }
+
+  #[rename("variableNumber")]
+  #[setter]
+  fn variable_number(
+    &self,
+    scope: &mut v8::PinScope<'_, '_>,
+    value: v8::Local<v8::Value>,
+  ) -> Result<(), SqliteError> {
+    self.set_limit_value(scope, Limit::SQLITE_LIMIT_VARIABLE_NUMBER, value)
+  }
+
+  #[getter]
+  #[rename("triggerDepth")]
+  fn trigger_depth(&self) -> Result<i32, SqliteError> {
+    self.get_limit(Limit::SQLITE_LIMIT_TRIGGER_DEPTH)
+  }
+
+  #[rename("triggerDepth")]
+  #[setter]
+  fn trigger_depth(
+    &self,
+    scope: &mut v8::PinScope<'_, '_>,
+    value: v8::Local<v8::Value>,
+  ) -> Result<(), SqliteError> {
+    self.set_limit_value(scope, Limit::SQLITE_LIMIT_TRIGGER_DEPTH, value)
+  }
 }

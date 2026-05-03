@@ -1104,6 +1104,7 @@ impl<'a> ResolverFactory<'a> {
               Default::default(),
               Default::default(),
               CliSys::default(),
+              d.member_dir.workspace.catalogs().clone(),
             )
           })
         })
@@ -1118,6 +1119,7 @@ impl<'a> ResolverFactory<'a> {
             Default::default(),
             Default::default(),
             self.sys.clone(),
+            Default::default(),
           )
         });
       let diagnostics = workspace_resolver.diagnostics();

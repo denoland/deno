@@ -38,6 +38,8 @@
     __resolvePromise,
     FixedQueue,
   } = window.__infra;
+  const __timers = window.__timers;
+  delete window.__timers;
   const {
     op_abort_wasm_streaming,
     op_current_user_call_site,
@@ -57,6 +59,7 @@
     op_get_ext_import_meta_proto,
     op_drain_pending_rejections,
     op_lazy_load_esm,
+    op_load_ext_script,
     op_memory_usage,
     op_op_names,
     op_print,
@@ -70,17 +73,13 @@
     op_set_promise_hooks,
     op_set_wasm_streaming_callback,
     op_str_byte_length,
-    op_timer_cancel,
-    op_timer_queue,
-    op_timer_queue_system,
-    op_timer_ref,
-    op_timer_unref,
     op_unref_op,
     op_cancel_handle,
     op_leak_tracing_enable,
     op_leak_tracing_submit,
     op_leak_tracing_get_all,
     op_leak_tracing_get,
+    op_immediate_check,
 
     op_is_any_array_buffer,
     op_is_arguments_object,
@@ -131,16 +130,7 @@
     op_leak_tracing_submit(0, id, StringPrototypeSlice(error.stack, 6));
   }
 
-  function submitTimerTrace(id) {
-    const error = new Error();
-    ErrorCaptureStackTrace(error, submitTimerTrace);
-    // We submit interval and timer traces as type "Timer"
-    // "Error\n".length == 6
-    op_leak_tracing_submit(2, id, StringPrototypeSlice(error.stack, 6));
-  }
-
   let unhandledPromiseRejectionHandler = () => false;
-  let timerDepth = 0;
 
   // ---------------------------------------------------------------------------
   // Immediate queue (ImmediateList linked list + drain loop)
@@ -201,6 +191,9 @@
     immediate._destroyed = true;
     if (immediate[kRefed]) {
       immediateInfo[kImmRefCount]--;
+      if (immediateInfo[kImmRefCount] === 0) {
+        op_immediate_check(false);
+      }
     }
     immediate[kRefed] = null;
     immediate._onImmediate = null;
@@ -236,6 +229,9 @@
       immediateInfo[kImmCount]--;
       if (immediate[kRefed]) {
         immediateInfo[kImmRefCount]--;
+        if (immediateInfo[kImmRefCount] === 0) {
+          op_immediate_check(false);
+        }
       }
       immediate[kRefed] = null;
 
@@ -408,22 +404,65 @@
     setHasRejectionToWarn(false);
   }
 
-  // Matches Node.js runNextTicks() from
-  // lib/internal/process/task_queues.js
-  function runNextTicks() {
+  // Flush microtasks and drain the nextTick queue if work is pending.
+  // Under Explicit microtask policy, microtasks (promise continuations)
+  // don't run automatically. We flush them here so that any ticks they
+  // schedule are discovered and drained in the same iteration.
+  //
+  // IMPORTANT: When ticks are already scheduled, we skip the microtask
+  // flush and go straight to processTicksAndRejections, which drains
+  // ticks BEFORE running microtasks. This preserves the Node.js
+  // invariant that nextTick callbacks fire before Promise.then
+  // continuations in the same event loop phase.
+  //
+  // This is the single drain function used by: __eventLoopTick (from
+  // Rust), __drainNextTickAndMacrotasks (I/O tight loop), runNextTicks
+  // (interleaved between timer/immediate callbacks), and runImmediates.
+  function drainTicks() {
     if (!hasTickScheduled() && !hasRejectionToWarn()) {
       op_run_microtasks();
-    }
-    if (!hasTickScheduled() && !hasRejectionToWarn()) {
-      return;
+      if (!hasTickScheduled() && !hasRejectionToWarn()) {
+        return;
+      }
     }
     processTicksAndRejections();
   }
 
-  // Phase 2: Resolve completed async ops. Called from Rust with flat args:
-  // (promiseId, isOk, res, promiseId, isOk, res, ...)
-  function __resolveOps() {
-    for (let i = 0; i < arguments.length; i += 3) {
+  // Alias for timer/immediate interleaving (matches Node.js name).
+  const runNextTicks = drainTicks;
+
+  // Wire runNextTicks into the timer module so processTimers can
+  // interleave nextTick drains between timer callbacks.
+  __timers.setRunNextTicks(runNextTicks);
+  // Wire reportException so timer callback errors are dispatched
+  // via the uncaught exception handler rather than propagating.
+  // Use a wrapper since reportExceptionCallback is defined later.
+  __timers.setReportException((e) => reportExceptionCallback(e));
+
+  // Shared buffer for timer next-expiry, backed by ContextState::timer_expiry.
+  // JS writes after processing timers; Rust reads to schedule next wake-up.
+  //   positive = next expiry (has refed timers)
+  //   negative = next expiry negated (only unrefed timers)
+  //   0.0 = no timers remain
+  let timerExpiry;
+
+  // Combined event loop tick: process timers + resolve ops.
+  // Called from Rust with args: (timerNow, promiseId, isOk, res, ...)
+  // timerNow > 0 means timers should be processed; 0 means skip.
+  // Remaining args are completed async op results in triplets.
+  //
+  // NOTE: This does NOT drain ticks. Under Explicit microtask policy,
+  // microtasks from op resolution are deferred. Rust calls
+  // __drainNextTickAndMacrotasks separately after this returns,
+  // with the correct microtask checkpoint ordering to preserve
+  // the nextTick-before-then invariant.
+  function __eventLoopTick(timerNow) {
+    // 1. Process expired timers if the timer deadline fired
+    if (timerNow >= 0) {
+      timerExpiry[0] = __timers.processTimers(timerNow);
+    }
+    // 2. Resolve all completed async ops (args after timerNow)
+    for (let i = 1; i < arguments.length; i += 3) {
       const promiseId = arguments[i];
       const isOk = arguments[i + 1];
       const res = arguments[i + 2];
@@ -431,17 +470,10 @@
     }
   }
 
-  // Matches Node.js runNextTicks() from
-  // lib/internal/process/task_queues.js.
-  // Called from Rust at phase 2c of the event loop.
+  // Drain nextTick/microtask queues only (no timers or ops).
+  // Used in the I/O tight loop and when ticks are pending without ops.
   function __drainNextTickAndMacrotasks() {
-    if (!hasTickScheduled() && !hasRejectionToWarn()) {
-      op_run_microtasks();
-    }
-    if (!hasTickScheduled() && !hasRejectionToWarn()) {
-      return;
-    }
-    processTicksAndRejections();
+    drainTicks();
   }
 
   // Phase 2: Handle unhandled promise rejections.
@@ -466,11 +498,6 @@
         setAsyncContext(prevContext);
       }
     }
-  }
-
-  // Set timer depth before each timer callback (called from Rust).
-  function __setTimerDepth(depth) {
-    timerDepth = depth;
   }
 
   // Report an exception (called from Rust for timer callback errors).
@@ -870,6 +897,17 @@
     };
   }
 
+  const loadedScripts = { __proto__: null };
+
+  function loadExtScript(specifier) {
+    if (specifier in loadedScripts) {
+      return loadedScripts[specifier];
+    }
+    const result = op_load_ext_script(specifier);
+    loadedScripts[specifier] = result;
+    return result;
+  }
+
   const getAsyncContext = getContinuationPreservedEmbedderData;
   const setAsyncContext = setContinuationPreservedEmbedderData;
 
@@ -917,22 +955,31 @@
     internalRidSymbol: Symbol("Deno.internal.rid"),
     internalFdSymbol: Symbol("Deno.internal.fd"),
     resources,
-    __resolveOps,
+    __eventLoopTick,
     __setTickInfo(buf) {
       tickInfo = buf;
     },
     __setImmediateInfo(buf) {
       immediateInfo = buf;
     },
+    __setTimerExpiry(buf) {
+      timerExpiry = buf;
+    },
     __drainNextTickAndMacrotasks,
     __handleRejections,
-    __setTimerDepth,
     __reportException,
+    __setTimerInfo: __timers.__setTimerInfo,
     immediateRefCount(increase) {
       if (increase) {
+        if (immediateInfo[kImmRefCount] === 0) {
+          op_immediate_check(true);
+        }
         immediateInfo[kImmRefCount]++;
       } else {
         immediateInfo[kImmRefCount]--;
+        if (immediateInfo[kImmRefCount] === 0) {
+          op_immediate_check(false);
+        }
       }
     },
     runImmediateCallbacks,
@@ -1109,22 +1156,23 @@
       unhandledPromiseRejectionHandler = handler,
     reportUnhandledException: (e) => op_dispatch_exception(e, false),
     reportUnhandledPromiseRejection: (e) => op_dispatch_exception(e, true),
-    queueUserTimer: (depth, repeat, timeout, task) => {
-      const id = op_timer_queue(depth, repeat, timeout, task);
-      if (__isLeakTracingEnabled()) {
-        submitTimerTrace(id);
-      }
-      return id;
-    },
-    // TODO(mmastrac): Hook up associatedOp to tracing
-    queueSystemTimer: (_associatedOp, repeat, timeout, task) =>
-      op_timer_queue_system(repeat, timeout, task),
-    cancelTimer: (id) => {
-      op_timer_cancel(id);
-    },
-    refTimer: (id) => op_timer_ref(id),
-    unrefTimer: (id) => op_timer_unref(id),
-    getTimerDepth: () => timerDepth,
+    createTimer: __timers.createTimer,
+    cancelTimer: __timers.cancelTimer,
+    refreshTimer: __timers.refreshTimer,
+    refTimer: __timers.refTimer,
+    unrefTimer: __timers.unrefTimer,
+    // System timers bypass Deno's test sanitizer resource tracking.
+    createSystemTimer: (callback, after, isRefed) =>
+      __timers.createTimer(callback, after, undefined, false, !!isRefed, true),
+    createSystemInterval: (callback, interval, isRefed) =>
+      __timers.createTimer(
+        callback,
+        interval,
+        undefined,
+        true,
+        !!isRefed,
+        true,
+      ),
     currentUserCallSite,
     wrapConsole,
     v8Console,
@@ -1135,6 +1183,7 @@
     propWritableLazyLoaded,
     propNonEnumerableLazyLoaded,
     createLazyLoader,
+    loadExtScript,
     createCancelHandle: () => op_cancel_handle(),
     getAsyncContext,
     setAsyncContext,

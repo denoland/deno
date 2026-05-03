@@ -19,6 +19,11 @@
       // tests without overrides for comparison
       "args": "run --node-modules-dir=auto no_override/main.ts",
       "output": "[WILDCARD]1\n"
+    },
+    "catalog_override": {
+      // tests that catalog: references in overrides resolve correctly
+      "args": "run --node-modules-dir=auto catalog_override/main.ts",
+      "output": "[WILDCARD]2\n"
     }
   }
 }

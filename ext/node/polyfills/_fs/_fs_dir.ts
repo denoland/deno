@@ -1,13 +1,13 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-import { primordials } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 import {
   type Dirent,
   direntFromDeno,
 } from "ext:deno_node/internal/fs/utils.mjs";
 import assert from "node:assert";
 import { ERR_MISSING_ARGS } from "ext:deno_node/internal/errors.ts";
-import { TextDecoder } from "ext:deno_web/08_text_encoding.js";
+const { TextDecoder } = core.loadExtScript("ext:deno_web/08_text_encoding.js");
 
 const {
   Promise,
@@ -15,6 +15,8 @@ const {
   Uint8ArrayPrototype,
   PromisePrototypeThen,
   SymbolAsyncIterator,
+  SymbolAsyncDispose,
+  SymbolDispose,
   ArrayIteratorPrototypeNext,
   AsyncGeneratorPrototypeNext,
   SymbolIterator,
@@ -108,6 +110,14 @@ export default class Dir {
    */
   closeSync() {
     //No op
+  }
+
+  [SymbolDispose]() {
+    this.closeSync();
+  }
+
+  [SymbolAsyncDispose](): Promise<void> {
+    return this.close();
   }
 
   async *[SymbolAsyncIterator](): AsyncIterableIterator<Dirent> {

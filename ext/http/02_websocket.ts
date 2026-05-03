@@ -1,5 +1,5 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
-import { internals, primordials } from "ext:core/mod.js";
+import { core, internals, primordials } from "ext:core/mod.js";
 import { op_http_websocket_accept_header } from "ext:core/ops";
 const {
   ArrayPrototypeIncludes,
@@ -12,25 +12,16 @@ const {
   TypeError,
   Symbol,
 } = primordials;
-import { toInnerRequest } from "ext:deno_fetch/23_request.js";
-import {
+const { toInnerRequest } = core.loadExtScript("ext:deno_fetch/23_request.js");
+const {
   fromInnerResponse,
   newInnerResponse,
-} from "ext:deno_fetch/23_response.js";
-import { setEventTargetData } from "ext:deno_web/02_event.js";
-import {
-  _eventLoop,
-  _idleTimeoutDuration,
-  _idleTimeoutTimeout,
-  _protocol,
-  _readyState,
-  _rid,
-  _role,
-  _serverHandleIdleTimeout,
-  createWebSocketBranded,
-  SERVER,
-  WebSocket,
-} from "ext:deno_websocket/01_websocket.js";
+} = core.loadExtScript("ext:deno_fetch/23_response.js");
+const { setEventTargetData } = core.loadExtScript("ext:deno_web/02_event.js");
+
+const loadWebSocket = core.createLazyLoader(
+  "ext:deno_websocket/01_websocket.js",
+);
 
 const _ws = Symbol("[[associated_ws]]");
 
@@ -87,6 +78,19 @@ function upgradeWebSocket(request, options = { __proto__: null }) {
       );
     }
   }
+
+  const {
+    _eventLoop,
+    _idleTimeoutDuration,
+    _idleTimeoutTimeout,
+    _readyState,
+    _rid,
+    _role,
+    _serverHandleIdleTimeout,
+    createWebSocketBranded,
+    SERVER,
+    WebSocket,
+  } = loadWebSocket();
 
   const socket = createWebSocketBranded(WebSocket);
   setEventTargetData(socket);

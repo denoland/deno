@@ -11,6 +11,7 @@ import {
   op_http_cancel,
   op_http_close,
   op_http_close_after_finish,
+  op_http_copy_span_to_otel_info,
   op_http_get_request_headers,
   op_http_get_request_method_and_url,
   op_http_metric_handle_otel_error,
@@ -57,46 +58,41 @@ const {
   Number,
 } = primordials;
 
-import { InnerBody } from "ext:deno_fetch/22_body.js";
-import {
+const { InnerBody } = core.loadExtScript("ext:deno_fetch/22_body.js");
+const {
   fromInnerResponse,
   newInnerResponse,
   ResponsePrototype,
   toInnerResponse,
-} from "ext:deno_fetch/23_response.js";
-import {
+} = core.loadExtScript("ext:deno_fetch/23_response.js");
+const {
   abortRequest,
   fromInnerRequest,
   toInnerRequest,
-} from "ext:deno_fetch/23_request.js";
-import { AbortController } from "ext:deno_web/03_abort_signal.js";
-import {
-  _eventLoop,
-  _idleTimeoutDuration,
-  _idleTimeoutTimeout,
-  _protocol,
-  _readyState,
-  _rid,
-  _role,
-  _serverHandleIdleTimeout,
-} from "ext:deno_websocket/01_websocket.js";
-import {
+} = core.loadExtScript("ext:deno_fetch/23_request.js");
+const { AbortController } = core.loadExtScript(
+  "ext:deno_web/03_abort_signal.js",
+);
+const {
   getReadableStreamResourceBacking,
   readableStreamForRid,
   ReadableStreamPrototype,
   resourceForReadableStream,
-} from "ext:deno_web/06_streams.js";
-import {
+} = core.loadExtScript("ext:deno_web/06_streams.js");
+const {
   listen,
   listenOptionApiName,
   UpgradedConn,
-} from "ext:deno_net/01_net.js";
-import { hasTlsKeyPairOptions, listenTls } from "ext:deno_net/02_tls.js";
+} = core.loadExtScript("ext:deno_net/01_net.js");
+const { hasTlsKeyPairOptions, listenTls } = core.loadExtScript(
+  "ext:deno_net/02_tls.js",
+);
 import {
   builtinTracer,
   ContextManager,
   currentSnapshot,
   enterSpan,
+  getOtelSpan,
   METRICS_ENABLED,
   PROPAGATORS,
   restoreSnapshot,
@@ -603,6 +599,12 @@ function mapToCallback(context, callback, onError) {
 
     if (span) {
       updateSpanFromServerResponse(span, response);
+      // Copy span attributes (like http.route) to OtelInfo for HTTP metrics.
+      // Must be done here, before the request external is invalidated.
+      const otelSpan = getOtelSpan(span);
+      if (otelSpan) {
+        op_http_copy_span_to_otel_info(req, otelSpan);
+      }
     }
 
     const inner = toInnerResponse(response);

@@ -25,7 +25,6 @@ use serde::Deserialize;
 use serde::Serialize;
 use thiserror::Error;
 
-pub mod npm_rc;
 pub mod registry;
 pub mod resolution;
 
@@ -158,7 +157,12 @@ impl NpmPackageId {
     }
 
     fn parse_version(input: &str) -> ParseResult<'_, &str> {
-      if_not_empty(substring(skip_while(|c| c != '_')))(input)
+      // `_` is ASCII so the byte-level scan halts on a valid char boundary.
+      let (rest, version) = take_while_byte(|b| b != b'_')(input)?;
+      if version.is_empty() {
+        return ParseError::backtrace();
+      }
+      Ok((rest, version))
     }
 
     fn parse_name_and_version(input: &str) -> ParseResult<'_, (&str, Version)> {
@@ -166,7 +170,6 @@ impl NpmPackageId {
       let (input, _) = ch('@')(input)?;
       let at_version_input = input;
       let (input, version) = parse_version(input)?;
-      // todo: improve monch to provide the error message without source
       match Version::parse_from_npm(version) {
         Ok(version) => Ok((input, (name, version))),
         Err(err) => ParseError::fail(

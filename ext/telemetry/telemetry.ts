@@ -1,6 +1,6 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-import { core, primordials } from "ext:core/mod.js";
+import { core, internals, primordials } from "ext:core/mod.js";
 import {
   op_otel_collect_isolate_metrics,
   op_otel_enable_isolate_metrics,
@@ -26,7 +26,7 @@ import {
   OtelSpan,
   OtelTracer,
 } from "ext:core/ops";
-import { Console } from "ext:deno_web/01_console.js";
+const { Console } = core.loadExtScript("ext:deno_web/01_console.js");
 
 const {
   ArrayFrom,
@@ -426,11 +426,11 @@ class Tracer {
   }
 }
 
-const SPAN_KEY = SymbolFor("OpenTelemetry Context Key SPAN");
+export const SPAN_KEY = SymbolFor("OpenTelemetry Context Key SPAN");
 
-let getOtelSpan: (span: object) => OtelSpan | null | undefined;
+export let getOtelSpan: (span: object) => OtelSpan | null | undefined;
 
-class Span {
+export class Span {
   #otelSpan: OtelSpan | null;
   #spanContext: SpanContext | undefined;
 
@@ -1911,6 +1911,19 @@ export function bootstrap(
     }
   }
 }
+
+internals.__telemetry = {
+  builtinTracer,
+  ContextManager,
+  enterSpan,
+  get PROPAGATORS() {
+    return PROPAGATORS;
+  },
+  restoreSnapshot,
+  get TRACING_ENABLED() {
+    return TRACING_ENABLED;
+  },
+};
 
 export const telemetry = {
   tracerProvider: TracerProvider,

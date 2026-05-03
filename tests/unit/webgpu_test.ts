@@ -690,6 +690,42 @@ Deno.test({
   device.destroy();
 });
 
+Deno.test({
+  permissions: { env: true },
+  ignore: isWsl || isCIWithoutGPU,
+}, async function writeBufferAcceptsArrayBuffer() {
+  const adapter = await navigator.gpu.requestAdapter();
+  assert(adapter);
+  const device = await adapter.requestDevice();
+  assert(device);
+
+  const source = new ArrayBuffer(4 * Float32Array.BYTES_PER_ELEMENT);
+  new Float32Array(source).set([1.0, 2.0, 3.0, 4.0]);
+
+  const gpuBuffer = device.createBuffer({
+    size: source.byteLength,
+    usage: GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST,
+  });
+
+  device.queue.writeBuffer(gpuBuffer, 0, source);
+
+  const readBuffer = device.createBuffer({
+    size: source.byteLength,
+    usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
+  });
+
+  const encoder = device.createCommandEncoder();
+  encoder.copyBufferToBuffer(gpuBuffer, 0, readBuffer, 0, source.byteLength);
+  device.queue.submit([encoder.finish()]);
+
+  await readBuffer.mapAsync(GPUMapMode.READ);
+  const result = new Float32Array(readBuffer.getMappedRange());
+  assertEquals(result, new Float32Array([1.0, 2.0, 3.0, 4.0]));
+
+  readBuffer.unmap();
+  device.destroy();
+});
+
 async function checkIsWsl() {
   return Deno.build.os === "linux" && await hasMicrosoftProcVersion();
 

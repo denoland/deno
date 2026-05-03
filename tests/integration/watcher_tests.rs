@@ -1036,15 +1036,16 @@ async fn test_watch_basic() {
   another_test.write("syntax error ^^");
   assert_contains!(next_line(&mut stderr_lines).await.unwrap(), "Restarting");
   assert_contains!(next_line(&mut stderr_lines).await.unwrap(), "error:");
-  assert_eq!(next_line(&mut stderr_lines).await.unwrap(), "");
+  assert_eq!(next_line(&mut stderr_lines).await.unwrap(), "  |");
   assert_eq!(
     next_line(&mut stderr_lines).await.unwrap(),
-    "  syntax error ^^"
+    "1 | syntax error ^^"
   );
   assert_eq!(
     next_line(&mut stderr_lines).await.unwrap(),
-    "         ~~~~~"
+    "  |        ~~~~~"
   );
+  assert_contains!(next_line(&mut stderr_lines).await.unwrap(), "at file:");
   assert_contains!(next_line(&mut stderr_lines).await.unwrap(), "Test failed");
 
   // Then restore the file
@@ -1444,6 +1445,105 @@ async fn run_watch_process_exit_on_restart() {
   check_alive_then_kill(child);
 }
 
+/// Test that SIGTERM is dispatched to JS signal handlers on watch restart,
+/// giving the process a chance to clean up before restarting.
+#[test(flaky)]
+async fn run_watch_sigterm_on_restart() {
+  let t = TempDir::new();
+  let file_to_watch = t.path().join("file_to_watch.js");
+  file_to_watch.write(
+    r#"
+      Deno.addSignalListener("SIGTERM", () => {
+        console.log("received SIGTERM");
+      });
+      setInterval(() => {}, 1000);
+    "#,
+  );
+
+  let mut child = util::deno_cmd()
+    .current_dir(t.path())
+    .arg("run")
+    .arg("--watch")
+    .arg("-L")
+    .arg("debug")
+    .arg("--allow-all")
+    .arg(&file_to_watch)
+    .env("NO_COLOR", "1")
+    .piped_output()
+    .spawn()
+    .unwrap();
+  let (mut stdout_lines, mut stderr_lines) = child_lines(&mut child);
+
+  wait_for_watcher("file_to_watch.js", &mut stderr_lines).await;
+
+  // Trigger a restart by modifying the file (keep same behavior)
+  file_to_watch.write(
+    r#"
+      Deno.addSignalListener("SIGTERM", () => {
+        console.log("received SIGTERM");
+      });
+      setInterval(() => {}, 1000);
+      // changed
+    "#,
+  );
+
+  // The SIGTERM handler should fire before the process restarts
+  wait_contains("received SIGTERM", &mut stdout_lines).await;
+  wait_contains("Restarting", &mut stderr_lines).await;
+  check_alive_then_kill(child);
+}
+
+/// Test that both SIGINT and SIGTERM are dispatched on Ctrl+C in watch mode.
+#[cfg(unix)]
+#[test(flaky)]
+async fn test_watch_sigint_and_sigterm_on_ctrlc() {
+  use nix::sys::signal;
+  use nix::sys::signal::Signal;
+  use nix::unistd::Pid;
+
+  let t = TempDir::new();
+  let file_to_watch = t.path().join("file_to_watch.js");
+  file_to_watch.write(
+    r#"
+      Deno.addSignalListener("SIGINT", () => {
+        console.log("received SIGINT");
+      });
+      Deno.addSignalListener("SIGTERM", () => {
+        console.log("received SIGTERM");
+      });
+      setInterval(() => {}, 1000);
+    "#,
+  );
+
+  let mut child = util::deno_cmd()
+    .current_dir(t.path())
+    .arg("run")
+    .arg("--watch")
+    .arg("-L")
+    .arg("debug")
+    .arg("--allow-all")
+    .arg(&file_to_watch)
+    .env("NO_COLOR", "1")
+    .piped_output()
+    .spawn()
+    .unwrap();
+  let (mut stdout_lines, mut stderr_lines) = child_lines(&mut child);
+
+  wait_for_watcher("file_to_watch.js", &mut stderr_lines).await;
+
+  // Send SIGINT (simulating Ctrl+C)
+  signal::kill(Pid::from_raw(child.id() as i32), Signal::SIGINT).unwrap();
+
+  // Both signal handlers should fire before exit
+  wait_contains("received SIGINT", &mut stdout_lines).await;
+  wait_contains("received SIGTERM", &mut stdout_lines).await;
+
+  // The watcher handles Ctrl+C gracefully and exits with 0
+  // (not 130) because it intercepts SIGINT via ctrl_c().
+  let exit_status = child.wait().unwrap();
+  assert_eq!(exit_status.code(), Some(0));
+}
+
 #[test(flaky)]
 async fn bench_watch_basic() {
   let t = TempDir::new();
@@ -1526,15 +1626,16 @@ async fn bench_watch_basic() {
   another_test.write("syntax error ^^");
   assert_contains!(next_line(&mut stderr_lines).await.unwrap(), "Restarting");
   assert_contains!(next_line(&mut stderr_lines).await.unwrap(), "error:");
-  assert_eq!(next_line(&mut stderr_lines).await.unwrap(), "");
+  assert_eq!(next_line(&mut stderr_lines).await.unwrap(), "  |");
   assert_eq!(
     next_line(&mut stderr_lines).await.unwrap(),
-    "  syntax error ^^"
+    "1 | syntax error ^^"
   );
   assert_eq!(
     next_line(&mut stderr_lines).await.unwrap(),
-    "         ~~~~~"
+    "  |        ~~~~~"
   );
+  assert_contains!(next_line(&mut stderr_lines).await.unwrap(), "at file:");
   assert_contains!(next_line(&mut stderr_lines).await.unwrap(), "Bench failed");
 
   // Then restore the file

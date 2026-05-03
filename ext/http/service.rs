@@ -242,6 +242,7 @@ pub(crate) async fn handle_request(
         server_address: request.uri().host().map(|host| host.to_string()),
         server_port: request.uri().port_u16().map(|port| port as i64),
         error_type: Default::default(),
+        http_route: None,
         http_response_status_code: Default::default(),
       },
     ))
@@ -643,6 +644,22 @@ impl HttpRecord {
     if let Some(info) = inner.otel_info.as_mut() {
       info.attributes.error_type = Some(error);
       info.handle_duration_and_request_size();
+    }
+  }
+
+  /// Copy relevant attributes (like `http.route`) from a span to OtelInfo
+  /// for metrics.
+  pub fn copy_span_to_otel_info(&self, span: &deno_telemetry::OtelSpan) {
+    let mut inner = self.self_mut();
+    let span_state = span.0.borrow();
+    if let deno_telemetry::OtelSpanState::Recording(data) = &**span_state
+      && let Some(info) = inner.otel_info.as_mut()
+    {
+      for attr in &data.attributes {
+        if attr.key.as_str() == "http.route" {
+          info.attributes.http_route = Some(attr.value.to_string());
+        }
+      }
     }
   }
 

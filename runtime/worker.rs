@@ -131,9 +131,8 @@ pub fn make_wait_for_inspector_disconnect_callback() -> Box<dyn Fn()> {
     if !has_notified_of_inspector_disconnect
       .swap(true, std::sync::atomic::Ordering::SeqCst)
     {
-      log::info!(
-        "Program finished. Waiting for inspector to disconnect to exit the process..."
-      );
+      // Match Node.js message format that debugger clients rely on
+      log::info!("Waiting for the debugger to disconnect...");
     }
   })
 }
@@ -523,6 +522,7 @@ impl MainWorker {
         deno_web::deno_web::args(
           services.blob_store.clone(),
           options.bootstrap.location.clone(),
+          true,
           services.broadcast_channel.clone(),
         ),
         deno_fetch::deno_fetch::args(deno_fetch::Options {
@@ -605,23 +605,7 @@ impl MainWorker {
     }
 
     // Register the uv_loop_t (created by deno_node extension state callback)
-    // with the JsRuntime so that its event loop phases are driven by
-    // poll_event_loop.
-    {
-      let op_state_rc = js_runtime.op_state();
-      let op_state = op_state_rc.borrow();
-      if let Some(uv_loop) =
-        op_state.try_borrow::<Box<deno_core::uv_compat::UvLoop>>()
-      {
-        let loop_ptr: *mut deno_core::uv_compat::UvLoop =
-          &**uv_loop as *const _ as *mut _;
-        drop(op_state);
-        // SAFETY: loop_ptr points to a valid initialized UvLoop stored in OpState
-        unsafe {
-          js_runtime.register_uv_loop(loop_ptr);
-        }
-      }
-    }
+    // The uv loop is auto-created and registered by JsRuntime::new_inner.
 
     if let Some(server) = get_inspector_server() {
       let inspector_url = server.register_inspector(
@@ -928,10 +912,7 @@ impl MainWorker {
   ) -> Result<(), CoreError> {
     self
       .js_runtime
-      .run_event_loop(PollEventLoopOptions {
-        wait_for_inspector,
-        ..Default::default()
-      })
+      .run_event_loop(PollEventLoopOptions { wait_for_inspector })
       .await
   }
 
@@ -1093,6 +1074,7 @@ fn common_extensions<
     deno_web::deno_web::lazy_init(),
     deno_webgpu::deno_webgpu::init(),
     deno_image::deno_image::init(),
+    deno_canvas::deno_canvas::init(),
     deno_fetch::deno_fetch::lazy_init(),
     deno_cache::deno_cache::lazy_init(),
     deno_websocket::deno_websocket::lazy_init(),
@@ -1277,7 +1259,7 @@ impl ModuleLoader for PlaceholderModuleLoader {
     specifier: &str,
     referrer: &str,
     kind: deno_core::ResolutionKind,
-  ) -> Result<ModuleSpecifier, deno_core::error::ModuleLoaderError> {
+  ) -> deno_core::ModuleResolveResponse {
     self
       .0
       .borrow_mut()

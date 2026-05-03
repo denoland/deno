@@ -9,20 +9,22 @@
 /// <reference path="../../cli/tsc/dts/lib.deno_web.d.ts" />
 /// <reference lib="esnext" />
 
-import { core, primordials } from "ext:core/mod.js";
+// deno-fmt-ignore-file
+(function () {
+const { core, primordials } = globalThis.__bootstrap;
 const {
   isDataView,
   isSharedArrayBuffer,
   isTypedArray,
 } = core;
-import {
+const {
   op_encoding_decode,
   op_encoding_decode_single,
   op_encoding_decode_utf8,
   op_encoding_encode_into,
   op_encoding_new_decoder,
   op_encoding_normalize_label,
-} from "ext:core/ops";
+} = core.ops;
 const {
   DataViewPrototypeGetBuffer,
   DataViewPrototypeGetByteLength,
@@ -44,8 +46,8 @@ const {
   Uint8Array,
 } = primordials;
 
-import * as webidl from "ext:deno_webidl/00_webidl.js";
-import { createFilteredInspectProxy } from "./01_console.js";
+const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
+const { createFilteredInspectProxy } = core.loadExtScript("ext:deno_web/01_console.js");
 
 class TextDecoder {
   /** @type {string} */
@@ -112,6 +114,19 @@ class TextDecoder {
    */
   decode(input = new Uint8Array(), options = undefined) {
     webidl.assertBranded(this, TextDecoderPrototype);
+    // Hyper-fast path: handles the dominant case of
+    // `new TextDecoder().decode(bytes)` on a regular (non-SAB) Uint8Array.
+    // Skips the second buffer/SAB lookup, the options/stream branches and the
+    // try/finally that the slow path needs.
+    if (
+      options === undefined &&
+      this.#utf8SinglePass &&
+      this.#handle === null &&
+      TypedArrayPrototypeGetSymbolToStringTag(input) === "Uint8Array" &&
+      !isSharedArrayBuffer(TypedArrayPrototypeGetBuffer(input))
+    ) {
+      return op_encoding_decode_utf8(input, this.#ignoreBOM);
+    }
     if (input !== undefined) {
       // Fast path: skip full BufferSource validation for Uint8Array
       if (
@@ -262,18 +277,26 @@ class TextEncoder {
    */
   encodeInto(source, destination) {
     webidl.assertBranded(this, TextEncoderPrototype);
-    const prefix = "Failed to execute 'encodeInto' on 'TextEncoder'";
-    // The WebIDL type of `source` is `USVString`, but the ops bindings
-    // already convert lone surrogates to the replacement character.
-    source = webidl.converters.DOMString(source, prefix, "Argument 1");
-    destination = webidl.converters.Uint8Array(
-      destination,
-      prefix,
-      "Argument 2",
-      {
-        allowShared: true,
-      },
-    );
+    // Fast path: source is already a string and destination is already a
+    // regular Uint8Array. Skips the DOMString and Uint8Array WebIDL converters
+    // (and the per-call `{ allowShared: true }` opts allocation that the
+    // Uint8Array converter takes). The op already replaces lone surrogates
+    // with the U+FFFD replacement character (matching USVString semantics).
+    if (
+      typeof source !== "string" ||
+      TypedArrayPrototypeGetSymbolToStringTag(destination) !== "Uint8Array"
+    ) {
+      const prefix = "Failed to execute 'encodeInto' on 'TextEncoder'";
+      // The WebIDL type of `source` is `USVString`, but the ops bindings
+      // already convert lone surrogates to the replacement character.
+      source = webidl.converters.DOMString(source, prefix, "Argument 1");
+      destination = webidl.converters.Uint8Array(
+        destination,
+        prefix,
+        "Argument 2",
+        encodeIntoOpts,
+      );
+    }
     op_encoding_encode_into(source, destination, encodeIntoBuf);
     return {
       read: encodeIntoBuf[0],
@@ -294,6 +317,7 @@ class TextEncoder {
 }
 
 const encodeIntoBuf = new Uint32Array(2);
+const encodeIntoOpts = { __proto__: null, allowShared: true };
 
 webidl.configureInterface(TextEncoder);
 const TextEncoderPrototype = TextEncoder.prototype;
@@ -553,10 +577,11 @@ function BOMSniff(bytes) {
   return null;
 }
 
-export {
+return {
   decode,
   TextDecoder,
   TextDecoderStream,
   TextEncoder,
   TextEncoderStream,
 };
+})()

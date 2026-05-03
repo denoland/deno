@@ -279,7 +279,7 @@ impl ModuleLoader for MockLoader {
     specifier: &str,
     referrer: &str,
     _kind: ResolutionKind,
-  ) -> Result<ModuleSpecifier, ModuleLoaderError> {
+  ) -> ModuleResolveResponse {
     let referrer = if referrer == "." {
       "file:///"
     } else {
@@ -289,14 +289,18 @@ impl ModuleLoader for MockLoader {
     let output_specifier = match resolve_import(specifier, referrer) {
       Ok(specifier) => specifier,
       Err(..) => {
-        return Err(JsErrorBox::from_err(MockError::ResolveErr));
+        return ModuleResolveResponse::Sync(Err(JsErrorBox::from_err(
+          MockError::ResolveErr,
+        )));
       }
     };
 
     if mock_source_code(output_specifier.as_ref()).is_some() {
-      Ok(output_specifier)
+      ModuleResolveResponse::Sync(Ok(output_specifier))
     } else {
-      Err(JsErrorBox::from_err(MockError::ResolveErr))
+      ModuleResolveResponse::Sync(Err(JsErrorBox::from_err(
+        MockError::ResolveErr,
+      )))
     }
   }
 
@@ -387,6 +391,7 @@ fn test_recursive_load() {
         specifier_key: Some("/b.js".to_string()),
         referrer_source_offset: Some(19),
         phase: crate::modules::ModuleImportPhase::Evaluation,
+        needs_resolve: false,
       },
       ModuleRequest {
         reference: crate::modules::ModuleReference {
@@ -396,6 +401,7 @@ fn test_recursive_load() {
         specifier_key: Some("/c.js".to_string()),
         referrer_source_offset: Some(46),
         phase: crate::modules::ModuleImportPhase::Evaluation,
+        needs_resolve: false,
       },
     ])
   );
@@ -409,6 +415,7 @@ fn test_recursive_load() {
       specifier_key: Some("/c.js".to_string()),
       referrer_source_offset: Some(19),
       phase: crate::modules::ModuleImportPhase::Evaluation,
+      needs_resolve: false,
     },])
   );
   assert_eq!(
@@ -421,6 +428,7 @@ fn test_recursive_load() {
       specifier_key: Some("/d.js".to_string()),
       referrer_source_offset: Some(19),
       phase: crate::modules::ModuleImportPhase::Evaluation,
+      needs_resolve: false,
     },])
   );
   assert_eq!(modules.get_requested_modules(d_id), Some(vec![]));
@@ -496,6 +504,7 @@ fn test_mods() {
         specifier_key: Some("./b.js".to_string()),
         referrer_source_offset: Some(29),
         phase: crate::modules::ModuleImportPhase::Evaluation,
+        needs_resolve: false,
       },])
     );
 
@@ -555,6 +564,64 @@ fn test_lazy_loaded_esm() {
       "#,
     )
     .unwrap();
+}
+
+#[test]
+fn test_lazy_loaded_script() {
+  deno_core::extension!(
+    test_ext,
+    lazy_loaded_js = [dir "modules/testdata", "lazy_script.js", "lazy_script_dep.js"]
+  );
+
+  let mut runtime = JsRuntime::new(RuntimeOptions {
+    extensions: vec![test_ext::init()],
+    ..Default::default()
+  });
+
+  runtime
+    .execute_script(
+      "test_load_ext_script.js",
+      r#"
+      // Load a lazy script
+      const module = Deno.core.loadExtScript("ext:test_ext/lazy_script.js");
+      if (module.foo !== "foo") throw new Error("expected foo");
+      if (module.bar !== 123) throw new Error("expected 123");
+
+      // Should be cached - same object returned
+      const module2 = Deno.core.loadExtScript("ext:test_ext/lazy_script.js");
+      if (module !== module2) throw new Error("should return the same cached object");
+
+      // Load a script that depends on another lazy script
+      const dep = Deno.core.loadExtScript("ext:test_ext/lazy_script_dep.js");
+      if (dep.fromDep !== true) throw new Error("expected fromDep");
+      if (dep.utils.foo !== "foo") throw new Error("expected nested foo");
+
+      Deno.core.print("lazy script test passed\n");
+      "#,
+    )
+    .unwrap();
+}
+
+#[test]
+fn test_lazy_loaded_script_not_found() {
+  deno_core::extension!(test_ext);
+
+  let mut runtime = JsRuntime::new(RuntimeOptions {
+    extensions: vec![test_ext::init()],
+    ..Default::default()
+  });
+
+  let result = runtime.execute_script(
+    "test_not_found.js",
+    r#"Deno.core.loadExtScript("ext:test_ext/nonexistent.js")"#,
+  );
+  assert!(result.is_err());
+  let err = result.unwrap_err();
+  assert!(
+    err.to_string().contains("cannot be lazy-loaded"),
+    "unexpected error: {}",
+    err
+  );
 }
 
 #[test]
@@ -621,6 +688,7 @@ fn test_json_text_bytes_modules() {
           specifier_key: Some("./c.json".to_string()),
           referrer_source_offset: Some(32),
           phase: crate::modules::ModuleImportPhase::Evaluation,
+          needs_resolve: false,
         },
         ModuleRequest {
           reference: crate::modules::ModuleReference {
@@ -630,6 +698,7 @@ fn test_json_text_bytes_modules() {
           specifier_key: Some("./d.txt".to_string()),
           referrer_source_offset: Some(165),
           phase: crate::modules::ModuleImportPhase::Evaluation,
+          needs_resolve: false,
         },
         ModuleRequest {
           reference: crate::modules::ModuleReference {
@@ -639,6 +708,7 @@ fn test_json_text_bytes_modules() {
           specifier_key: Some("./e.bin".to_string()),
           referrer_source_offset: Some(264),
           phase: crate::modules::ModuleImportPhase::Evaluation,
+          needs_resolve: false,
         },
       ])
     );
@@ -1070,6 +1140,7 @@ export const foo = bytes;
         specifier_key: Some("file:///b.png".to_string()),
         referrer_source_offset: Some(19),
         phase: crate::modules::ModuleImportPhase::Evaluation,
+        needs_resolve: false,
       }],
       module_type: ModuleType::Other("foobar".into()),
     }
@@ -1274,6 +1345,7 @@ fn test_circular_load() {
         specifier_key: Some("/circular2.js".to_string()),
         referrer_source_offset: Some(8),
         phase: crate::modules::ModuleImportPhase::Evaluation,
+        needs_resolve: false,
       }])
     );
 
@@ -1287,6 +1359,7 @@ fn test_circular_load() {
         specifier_key: Some("/circular3.js".to_string()),
         referrer_source_offset: Some(8),
         phase: crate::modules::ModuleImportPhase::Evaluation,
+        needs_resolve: false,
       }])
     );
 
@@ -1309,6 +1382,7 @@ fn test_circular_load() {
           specifier_key: Some("/circular1.js".to_string()),
           referrer_source_offset: Some(8),
           phase: crate::modules::ModuleImportPhase::Evaluation,
+          needs_resolve: false,
         },
         ModuleRequest {
           reference: crate::modules::ModuleReference {
@@ -1318,6 +1392,7 @@ fn test_circular_load() {
           specifier_key: Some("/circular2.js".to_string()),
           referrer_source_offset: Some(32),
           phase: crate::modules::ModuleImportPhase::Evaluation,
+          needs_resolve: false,
         }
       ])
     );
@@ -1572,6 +1647,7 @@ fn recursive_load_main_with_code() {
         specifier_key: Some("/b.js".to_string()),
         referrer_source_offset: Some(23),
         phase: crate::modules::ModuleImportPhase::Evaluation,
+        needs_resolve: false,
       },
       ModuleRequest {
         reference: crate::modules::ModuleReference {
@@ -1581,6 +1657,7 @@ fn recursive_load_main_with_code() {
         specifier_key: Some("/c.js".to_string()),
         referrer_source_offset: Some(54),
         phase: crate::modules::ModuleImportPhase::Evaluation,
+        needs_resolve: false,
       }
     ])
   );
@@ -1594,6 +1671,7 @@ fn recursive_load_main_with_code() {
       specifier_key: Some("/c.js".to_string()),
       referrer_source_offset: Some(19),
       phase: crate::modules::ModuleImportPhase::Evaluation,
+      needs_resolve: false,
     }])
   );
   assert_eq!(
@@ -1606,6 +1684,7 @@ fn recursive_load_main_with_code() {
       specifier_key: Some("/d.js".to_string()),
       referrer_source_offset: Some(19),
       phase: crate::modules::ModuleImportPhase::Evaluation,
+      needs_resolve: false,
     }])
   );
   assert_eq!(modules.get_requested_modules(d_id), Some(vec![]));
@@ -1782,14 +1861,16 @@ async fn no_duplicate_loads() {
       specifier: &str,
       referrer: &str,
       _kind: ResolutionKind,
-    ) -> Result<ModuleSpecifier, ModuleLoaderError> {
+    ) -> ModuleResolveResponse {
       let referrer = if referrer == "." {
         "file:///"
       } else {
         referrer
       };
 
-      resolve_import(specifier, referrer).map_err(JsErrorBox::from_err)
+      ModuleResolveResponse::Sync(
+        resolve_import(specifier, referrer).map_err(JsErrorBox::from_err),
+      )
     }
 
     fn load(
@@ -1856,13 +1937,15 @@ async fn import_meta_resolve() {
       specifier: &str,
       referrer: &str,
       _kind: ResolutionKind,
-    ) -> Result<ModuleSpecifier, ModuleLoaderError> {
+    ) -> ModuleResolveResponse {
       let referrer = if referrer == "." {
         "file:///"
       } else {
         referrer
       };
-      resolve_import(specifier, referrer).map_err(JsErrorBox::from_err)
+      ModuleResolveResponse::Sync(
+        resolve_import(specifier, referrer).map_err(JsErrorBox::from_err),
+      )
     }
 
     fn import_meta_resolve(
@@ -2113,9 +2196,13 @@ fn ext_module_loader_relative() {
     (("./foo.js", "ext:bar.js"), "ext:foo.js"),
   ];
   for ((specifier, referrer), expected) in cases {
-    let result = loader
-      .resolve(specifier, referrer, ResolutionKind::Import)
-      .unwrap();
+    let response = loader.resolve(specifier, referrer, ResolutionKind::Import);
+    let result = match response {
+      ModuleResolveResponse::Sync(r) => r.unwrap(),
+      ModuleResolveResponse::Async(_) => {
+        unreachable!("ExtModuleLoader should resolve synchronously")
+      }
+    };
     assert_eq!(result.as_str(), expected);
   }
 }
@@ -2298,8 +2385,10 @@ impl ModuleLoader for ExternalSourceMapLoader {
     specifier: &str,
     referrer: &str,
     _kind: ResolutionKind,
-  ) -> Result<ModuleSpecifier, ModuleLoaderError> {
-    resolve_import(specifier, referrer).map_err(JsErrorBox::from_err)
+  ) -> ModuleResolveResponse {
+    ModuleResolveResponse::Sync(
+      resolve_import(specifier, referrer).map_err(JsErrorBox::from_err),
+    )
   }
 
   fn load(

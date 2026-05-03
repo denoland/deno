@@ -21,6 +21,7 @@
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 import { promises } from "node:dns";
 export const {
+  getDefaultResultOrder,
   getServers,
   lookup,
   lookupService,
