@@ -1,5 +1,5 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
-import { AsyncLocalStorage, AsyncResource } from "node:async_hooks";
+import { AsyncLocalStorage, AsyncResource, createHook } from "node:async_hooks";
 import process from "node:process";
 import { setImmediate } from "node:timers";
 import { assert, assertEquals } from "@std/assert";
@@ -138,6 +138,29 @@ Deno.test(function emitDestroyStub() {
   assert(typeof resource.emitDestroy === "function");
 });
 
+Deno.test(function runInAsyncScopeFiresBeforeAndAfter() {
+  const events: string[] = [];
+  const resource = new AsyncResource("MYRES");
+  const targetId = resource.asyncId();
+  const hook = createHook({
+    before(asyncId) {
+      if (asyncId === targetId) events.push("before");
+    },
+    after(asyncId) {
+      if (asyncId === targetId) events.push("after");
+    },
+  });
+  hook.enable();
+  try {
+    resource.runInAsyncScope(() => {
+      events.push("fn");
+    }, null);
+  } finally {
+    hook.disable();
+  }
+  assertEquals(events, ["before", "fn", "after"]);
+});
+
 Deno.test(async function worksWithAsyncAPIs() {
   const store = new AsyncLocalStorage();
   const test = () => assertEquals(store.getStore(), "data");
@@ -201,7 +224,10 @@ Deno.test(async function asyncLocalStoragePreservedInStreamFinished() {
     const port = typeof addr === "string" ? addr : addr.port;
     http.get(`http://127.0.0.1:${port}`, (res) => {
       res.resume();
-      res.on("end", () => server.close());
+      res.on("end", () => {
+        server.close();
+        http.globalAgent.destroy();
+      });
     });
   });
 

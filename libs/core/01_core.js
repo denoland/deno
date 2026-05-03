@@ -59,6 +59,7 @@
     op_get_ext_import_meta_proto,
     op_drain_pending_rejections,
     op_lazy_load_esm,
+    op_load_ext_script,
     op_memory_usage,
     op_op_names,
     op_print,
@@ -896,6 +897,17 @@
     };
   }
 
+  const loadedScripts = { __proto__: null };
+
+  function loadExtScript(specifier) {
+    if (specifier in loadedScripts) {
+      return loadedScripts[specifier];
+    }
+    const result = op_load_ext_script(specifier);
+    loadedScripts[specifier] = result;
+    return result;
+  }
+
   const getAsyncContext = getContinuationPreservedEmbedderData;
   const setAsyncContext = setContinuationPreservedEmbedderData;
 
@@ -1149,6 +1161,18 @@
     refreshTimer: __timers.refreshTimer,
     refTimer: __timers.refTimer,
     unrefTimer: __timers.unrefTimer,
+    // System timers bypass Deno's test sanitizer resource tracking.
+    createSystemTimer: (callback, after, isRefed) =>
+      __timers.createTimer(callback, after, undefined, false, !!isRefed, true),
+    createSystemInterval: (callback, interval, isRefed) =>
+      __timers.createTimer(
+        callback,
+        interval,
+        undefined,
+        true,
+        !!isRefed,
+        true,
+      ),
     currentUserCallSite,
     wrapConsole,
     v8Console,
@@ -1159,6 +1183,7 @@
     propWritableLazyLoaded,
     propNonEnumerableLazyLoaded,
     createLazyLoader,
+    loadExtScript,
     createCancelHandle: () => op_cancel_handle(),
     getAsyncContext,
     setAsyncContext,

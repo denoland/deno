@@ -1036,15 +1036,16 @@ async fn test_watch_basic() {
   another_test.write("syntax error ^^");
   assert_contains!(next_line(&mut stderr_lines).await.unwrap(), "Restarting");
   assert_contains!(next_line(&mut stderr_lines).await.unwrap(), "error:");
-  assert_eq!(next_line(&mut stderr_lines).await.unwrap(), "");
+  assert_eq!(next_line(&mut stderr_lines).await.unwrap(), "  |");
   assert_eq!(
     next_line(&mut stderr_lines).await.unwrap(),
-    "  syntax error ^^"
+    "1 | syntax error ^^"
   );
   assert_eq!(
     next_line(&mut stderr_lines).await.unwrap(),
-    "         ~~~~~"
+    "  |        ~~~~~"
   );
+  assert_contains!(next_line(&mut stderr_lines).await.unwrap(), "at file:");
   assert_contains!(next_line(&mut stderr_lines).await.unwrap(), "Test failed");
 
   // Then restore the file
@@ -1625,15 +1626,16 @@ async fn bench_watch_basic() {
   another_test.write("syntax error ^^");
   assert_contains!(next_line(&mut stderr_lines).await.unwrap(), "Restarting");
   assert_contains!(next_line(&mut stderr_lines).await.unwrap(), "error:");
-  assert_eq!(next_line(&mut stderr_lines).await.unwrap(), "");
+  assert_eq!(next_line(&mut stderr_lines).await.unwrap(), "  |");
   assert_eq!(
     next_line(&mut stderr_lines).await.unwrap(),
-    "  syntax error ^^"
+    "1 | syntax error ^^"
   );
   assert_eq!(
     next_line(&mut stderr_lines).await.unwrap(),
-    "         ~~~~~"
+    "  |        ~~~~~"
   );
+  assert_contains!(next_line(&mut stderr_lines).await.unwrap(), "at file:");
   assert_contains!(next_line(&mut stderr_lines).await.unwrap(), "Bench failed");
 
   // Then restore the file

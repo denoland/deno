@@ -253,6 +253,9 @@ pub struct uv_tty_t {
   pub(crate) internal_line_read_result: Option<LineReadResult>,
   #[cfg(windows)]
   pub(crate) internal_line_read_pending: bool,
+
+  pub(crate) internal_waker:
+    Option<std::sync::Arc<crate::uv_compat::waker::TtyHandleWaker>>,
 }
 
 #[cfg(windows)]
@@ -1485,6 +1488,15 @@ pub unsafe fn uv_tty_init(
       write(addr_of_mut!((*tty).internal_line_read_result), None);
       write(addr_of_mut!((*tty).internal_line_read_pending), false);
     }
+
+    let shared = super::get_inner(loop_).shared.clone();
+    write(
+      addr_of_mut!((*tty).internal_waker),
+      Some(crate::uv_compat::waker::TtyHandleWaker::new(
+        tty as usize,
+        shared,
+      )),
+    );
   }
   0
 }
@@ -1750,6 +1762,9 @@ pub(crate) unsafe fn read_start_tty(
       handles.push(tty);
     }
     drop(handles);
+    if let Some(w) = (*tty).internal_waker.as_ref() {
+      w.mark_ready();
+    }
 
     // Wake the event loop so poll_tty_handle runs on the next tick.
     // This registers the RegisterWaitForSingleObject (for future
@@ -1835,6 +1850,7 @@ pub(crate) unsafe fn write_tty(
         req,
         data,
         offset: 0,
+        iovecs: None,
         cb,
         status: None,
       });
@@ -1857,6 +1873,7 @@ pub(crate) unsafe fn write_tty(
                   req,
                   data: Vec::new(),
                   offset: 0,
+                  iovecs: None,
                   cb,
                   status: Some(0),
                 });
@@ -1869,6 +1886,7 @@ pub(crate) unsafe fn write_tty(
                 req,
                 data: data[offset..].to_vec(),
                 offset: 0,
+                iovecs: None,
                 cb,
                 status: None,
               });
@@ -1880,6 +1898,7 @@ pub(crate) unsafe fn write_tty(
                 req,
                 data: Vec::new(),
                 offset: 0,
+                iovecs: None,
                 cb,
                 status: Some(UV_EPIPE),
               });
@@ -1893,6 +1912,7 @@ pub(crate) unsafe fn write_tty(
         req,
         data: Vec::new(),
         offset: 0,
+        iovecs: None,
         cb,
         status: Some(0),
       });
@@ -1907,6 +1927,7 @@ pub(crate) unsafe fn write_tty(
         req,
         data: Vec::new(),
         offset: 0,
+        iovecs: None,
         cb,
         status: Some(0),
       });
@@ -1924,6 +1945,7 @@ pub(crate) unsafe fn write_tty(
               req,
               data: Vec::new(),
               offset: 0,
+              iovecs: None,
               cb,
               status: Some(0),
             });
@@ -1936,6 +1958,7 @@ pub(crate) unsafe fn write_tty(
             req,
             data: data[offset..].to_vec(),
             offset: 0,
+            iovecs: None,
             cb,
             status: None,
           });
@@ -1947,6 +1970,7 @@ pub(crate) unsafe fn write_tty(
             req,
             data: Vec::new(),
             offset: 0,
+            iovecs: None,
             cb,
             status: Some(UV_EPIPE),
           });
@@ -1977,6 +2001,9 @@ unsafe fn ensure_tty_registered(tty: *mut uv_tty_t) {
       handles.push(tty);
     }
     drop(handles);
+    if let Some(w) = (*tty).internal_waker.as_ref() {
+      w.mark_ready();
+    }
 
     // On Windows, wake the event loop so pending write callbacks are
     // processed promptly. Without this, deferred callbacks can stall
@@ -2016,6 +2043,9 @@ pub(crate) unsafe fn shutdown_tty(
       handles.push(tty);
     }
     (*tty).flags |= UV_HANDLE_ACTIVE;
+    if let Some(w) = (*tty).internal_waker.as_ref() {
+      w.mark_ready();
+    }
   }
   0
 }
@@ -2466,19 +2496,48 @@ pub(crate) unsafe fn poll_tty_handle(
           let pw = (*tty_ptr).internal_write_queue.front_mut().unwrap();
           let mut done = false;
           let mut error = false;
-          loop {
-            if pw.offset >= pw.data.len() {
-              done = true;
-              break;
-            }
-            match tty_try_write(tty_ptr, &pw.data[pw.offset..]) {
-              Ok(n) => pw.offset += n,
-              Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+          if let Some(ref mut iov) = pw.iovecs {
+            // TTY has no native writev — iterate across iovecs calling
+            // single-buffer try_write.
+            loop {
+              if iov.is_empty() {
+                done = true;
                 break;
               }
-              Err(_) => {
-                error = true;
+              let (head_base, head_len) = {
+                let first = &iov.bufs[iov.head_index];
+                (first.base, first.len - iov.head_off)
+              };
+              let slice = std::slice::from_raw_parts(
+                (head_base as *const u8).add(iov.head_off),
+                head_len,
+              );
+              match tty_try_write(tty_ptr, slice) {
+                Ok(n) => iov.advance(n),
+                Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                  break;
+                }
+                Err(_) => {
+                  error = true;
+                  break;
+                }
+              }
+            }
+          } else {
+            loop {
+              if pw.offset >= pw.data.len() {
+                done = true;
                 break;
+              }
+              match tty_try_write(tty_ptr, &pw.data[pw.offset..]) {
+                Ok(n) => pw.offset += n,
+                Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                  break;
+                }
+                Err(_) => {
+                  error = true;
+                  break;
+                }
               }
             }
           }
@@ -2546,6 +2605,34 @@ pub(crate) unsafe fn poll_tty_handle(
     }
   }
 
+  // Re-register tokio read interest for the next edge.
+  //
+  // Our read loop hits WouldBlock on its last iteration and calls
+  // `guard.clear_ready()`, which clears tokio's internal readiness
+  // bit but does NOT store a new waker. Without a follow-up
+  // `poll_read_ready(cx)`, no waker is registered when the next
+  // input arrives, so tokio has nothing to fire and the handle
+  // never re-enters the ready queue — the PTY appears dead after
+  // the first read.
+  //
+  // Calling `poll_read_ready(cx)` here stores the per-handle waker
+  // if still Pending, or re-queues the handle for another pass if
+  // already Ready. Mirrors the block at the end of
+  // `tcp::poll_tcp_handle` / `pipe::poll_pipe_handle`.
+  #[cfg(unix)]
+  unsafe {
+    if (*tty_ptr).internal_reading
+      && let Some(ref reactor) = (*tty_ptr).internal_reactor
+      && matches!(
+        reactor.async_fd().poll_read_ready(cx),
+        std::task::Poll::Ready(_)
+      )
+      && let Some(w) = (*tty_ptr).internal_waker.as_ref()
+    {
+      w.mark_ready();
+    }
+  }
+
   any_work
 }
 
@@ -2597,6 +2684,7 @@ pub fn new_tty() -> uv_tty_t {
     internal_line_read_result: None,
     #[cfg(windows)]
     internal_line_read_pending: false,
+    internal_waker: None,
   }
 }
 

@@ -2,18 +2,28 @@
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 
 import { notImplemented } from "ext:deno_node/_utils.ts";
+import {
+  validateOneOf,
+  validateString,
+} from "ext:deno_node/internal/validators.mjs";
 import tlsCommon from "node:_tls_common";
 import tlsWrap from "node:_tls_wrap";
+import { convertALPNProtocols } from "ext:deno_node/internal/tls_common.js";
 import {
+  op_get_env_no_permission_check,
   op_get_root_certificates,
+  op_node_get_ca_certificates,
   op_set_default_ca_certificates,
 } from "ext:core/ops";
-import { primordials } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 
 const {
   ArrayIsArray,
+  ArrayPrototypeIncludes,
   ArrayPrototypeForEach,
+  ArrayPrototypeMap,
   ArrayPrototypePush,
+  ObjectDefineProperty,
   ObjectKeys,
   ObjectFreeze,
   Proxy,
@@ -26,6 +36,9 @@ const {
   ReflectOwnKeys,
   ReflectPreventExtensions,
   ReflectSet,
+  StringPrototypeIncludes,
+  StringPrototypeSplit,
+  StringPrototypeTrim,
   StringPrototypeToLowerCase,
   TypeError,
 } = primordials;
@@ -56,6 +69,58 @@ export function getCiphers() {
 }
 
 let lazyRootCertificates: string[] | null = null;
+const cachedCACertificates: Record<string, string[]> = {
+  __proto__: null as unknown as string[],
+};
+
+function writeNativeCryptoDebug(message: string) {
+  const nodeDebugNative = op_get_env_no_permission_check("NODE_DEBUG_NATIVE") ??
+    "";
+  if (
+    !StringPrototypeIncludes(nodeDebugNative, "crypto")
+  ) {
+    return;
+  }
+  core.print(`${message}\n`, true);
+}
+
+function emitDefaultCertificatesDebug() {
+  const useOpenSslCa =
+    op_get_env_no_permission_check("DENO_NODE_USE_OPENSSL_CA") === "1";
+  if (useOpenSslCa) {
+    return;
+  }
+
+  const stores: string[] = [];
+  ArrayPrototypeForEach(
+    StringPrototypeSplit(
+      op_get_env_no_permission_check("DENO_TLS_CA_STORE") ?? "mozilla",
+      ",",
+    ),
+    (store) => {
+      const trimmedStore = StringPrototypeTrim(store);
+      if (trimmedStore.length > 0) {
+        ArrayPrototypePush(stores, trimmedStore);
+      }
+    },
+  );
+  if (ArrayPrototypeIncludes(stores, "mozilla")) {
+    writeNativeCryptoDebug(
+      "Started loading bundled root certificates off-thread",
+    );
+  }
+  if (ArrayPrototypeIncludes(stores, "system")) {
+    writeNativeCryptoDebug(
+      "Started loading system root certificates off-thread",
+    );
+  }
+  if (op_get_env_no_permission_check("NODE_EXTRA_CA_CERTS")) {
+    writeNativeCryptoDebug(
+      "Started loading extra root certificates off-thread",
+    );
+  }
+}
+
 function ensureLazyRootCertificates(target: string[]) {
   if (lazyRootCertificates === null) {
     lazyRootCertificates = op_get_root_certificates() as string[];
@@ -63,7 +128,7 @@ function ensureLazyRootCertificates(target: string[]) {
     target.length = 0;
     ArrayPrototypeForEach(
       lazyRootCertificates,
-      (v) => ArrayPrototypePush(target, v),
+      (v: string) => ArrayPrototypePush(target, v),
     );
     ObjectFreeze(target);
   }
@@ -141,13 +206,38 @@ export function setDefaultCACertificates(certs: string[]) {
   op_set_default_ca_certificates(certs);
 
   lazyRootCertificates = null;
+  ArrayPrototypeForEach(
+    ObjectKeys(cachedCACertificates),
+    (key) => delete cachedCACertificates[key],
+  );
+}
+
+export function getCACertificates(type: string = "default"): string[] {
+  validateString(type, "type");
+  validateOneOf(type, "type", ["default", "system", "bundled", "extra"]);
+
+  if (cachedCACertificates[type] !== undefined) {
+    return cachedCACertificates[type];
+  }
+
+  let certs: string[];
+  if (type === "bundled") {
+    certs = rootCertificates;
+  } else {
+    certs = ObjectFreeze(op_node_get_ca_certificates(type)) as string[];
+    if (type === "default") {
+      emitDefaultCertificatesDebug();
+    }
+  }
+  cachedCACertificates[type] = certs;
+  return certs;
 }
 
 export function createSecurePair() {
   notImplemented("tls.createSecurePair");
 }
 
-export default {
+const defaultExport = {
   CryptoStream,
   SecurePair,
   Server,
@@ -157,8 +247,9 @@ export default {
   createSecureContext: tlsCommon.createSecureContext,
   createSecurePair,
   createServer: tlsWrap.createServer,
+  convertALPNProtocols,
   getCiphers,
-  rootCertificates,
+  getCACertificates,
   setDefaultCACertificates,
   DEFAULT_CIPHERS: tlsWrap.DEFAULT_CIPHERS,
   DEFAULT_ECDH_CURVE,
@@ -167,6 +258,16 @@ export default {
   CLIENT_RENEG_LIMIT,
   CLIENT_RENEG_WINDOW,
 };
+// Make rootCertificates non-writable so `tls.rootCertificates = X` throws
+// TypeError in strict mode (matches Node.js behavior).
+// deno-lint-ignore no-explicit-any
+ObjectDefineProperty(defaultExport as any, "rootCertificates", {
+  __proto__: null,
+  configurable: false,
+  enumerable: true,
+  get: () => rootCertificates,
+});
+export default defaultExport;
 
 export const checkServerIdentity = tlsWrap.checkServerIdentity;
 export const connect = tlsWrap.connect;

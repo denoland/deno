@@ -58,41 +58,35 @@ const {
   Number,
 } = primordials;
 
-import { InnerBody } from "ext:deno_fetch/22_body.js";
-import {
+const { InnerBody } = core.loadExtScript("ext:deno_fetch/22_body.js");
+const {
   fromInnerResponse,
   newInnerResponse,
   ResponsePrototype,
   toInnerResponse,
-} from "ext:deno_fetch/23_response.js";
-import {
+} = core.loadExtScript("ext:deno_fetch/23_response.js");
+const {
   abortRequest,
   fromInnerRequest,
   toInnerRequest,
-} from "ext:deno_fetch/23_request.js";
-import { AbortController } from "ext:deno_web/03_abort_signal.js";
-import {
-  _eventLoop,
-  _idleTimeoutDuration,
-  _idleTimeoutTimeout,
-  _protocol,
-  _readyState,
-  _rid,
-  _role,
-  _serverHandleIdleTimeout,
-} from "ext:deno_websocket/01_websocket.js";
-import {
+} = core.loadExtScript("ext:deno_fetch/23_request.js");
+const { AbortController } = core.loadExtScript(
+  "ext:deno_web/03_abort_signal.js",
+);
+const {
   getReadableStreamResourceBacking,
   readableStreamForRid,
   ReadableStreamPrototype,
   resourceForReadableStream,
-} from "ext:deno_web/06_streams.js";
-import {
+} = core.loadExtScript("ext:deno_web/06_streams.js");
+const {
   listen,
   listenOptionApiName,
   UpgradedConn,
-} from "ext:deno_net/01_net.js";
-import { hasTlsKeyPairOptions, listenTls } from "ext:deno_net/02_tls.js";
+} = core.loadExtScript("ext:deno_net/01_net.js");
+const { hasTlsKeyPairOptions, listenTls } = core.loadExtScript(
+  "ext:deno_net/02_tls.js",
+);
 import {
   builtinTracer,
   ContextManager,

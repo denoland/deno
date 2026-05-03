@@ -1,13 +1,17 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
-import { primordials } from "ext:core/mod.js";
-import {
+// deno-fmt-ignore-file
+
+(function () {
+const { core, primordials } = globalThis.__bootstrap;
+const {
   op_cache_delete,
   op_cache_match,
   op_cache_put,
   op_cache_storage_delete,
   op_cache_storage_has,
+  op_cache_storage_keys,
   op_cache_storage_open,
-} from "ext:core/ops";
+} = core.ops;
 const {
   ArrayPrototypePush,
   ObjectPrototypeIsPrototypeOf,
@@ -18,21 +22,20 @@ const {
   TypeError,
 } = primordials;
 
-import * as webidl from "ext:deno_webidl/00_webidl.js";
-import {
+const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
+const {
   Request,
   RequestPrototype,
   toInnerRequest,
-} from "ext:deno_fetch/23_request.js";
-import { toInnerResponse } from "ext:deno_fetch/23_response.js";
-import { URLPrototype } from "ext:deno_web/00_url.js";
-import { getHeader } from "ext:deno_fetch/20_headers.js";
-import {
+} = core.loadExtScript("ext:deno_fetch/23_request.js");
+const { toInnerResponse } = core.loadExtScript("ext:deno_fetch/23_response.js");
+const { URLPrototype } = core.loadExtScript("ext:deno_web/00_url.js");
+const { getHeader } = core.loadExtScript("ext:deno_fetch/20_headers.js");
+const {
   getReadableStreamResourceBacking,
   readableStreamForRid,
   resourceForReadableStream,
-} from "ext:deno_web/06_streams.js";
-
+} = core.loadExtScript("ext:deno_web/06_streams.js");
 class CacheStorage {
   constructor() {
     webidl.illegalConstructor();
@@ -63,6 +66,43 @@ class CacheStorage {
     webidl.requiredArguments(arguments.length, 1, prefix);
     cacheName = webidl.converters["DOMString"](cacheName, prefix, "Argument 1");
     return await op_cache_storage_delete(cacheName);
+  }
+
+  async keys() {
+    webidl.assertBranded(this, CacheStoragePrototype);
+    return await op_cache_storage_keys();
+  }
+
+  async match(request, options) {
+    webidl.assertBranded(this, CacheStoragePrototype);
+    const prefix = "Failed to execute 'match' on 'CacheStorage'";
+    webidl.requiredArguments(arguments.length, 1, prefix);
+    request = webidl.converters["RequestInfo_DOMString"](
+      request,
+      prefix,
+      "Argument 1",
+    );
+    const cacheName = options?.cacheName;
+    if (cacheName !== undefined) {
+      if (!(await op_cache_storage_has(cacheName))) {
+        return undefined;
+      }
+      const cache = await this.open(cacheName);
+      // false positive: cache is a local Cache instance, not a global intrinsic
+      // deno-lint-ignore prefer-primordials
+      return await cache.match(request, options);
+    }
+    const names = await op_cache_storage_keys();
+    for (let i = 0; i < names.length; ++i) {
+      const cache = await this.open(names[i]);
+      // false positive: cache is a local Cache instance, not a global intrinsic
+      // deno-lint-ignore prefer-primordials
+      const response = await cache.match(request, options);
+      if (response !== undefined) {
+        return response;
+      }
+    }
+    return undefined;
   }
 
   [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
@@ -300,4 +340,6 @@ function cacheStorage() {
   return cacheStorageStorage;
 }
 
-export { Cache, CacheStorage, cacheStorage };
+
+return { Cache, CacheStorage, cacheStorage };
+})()

@@ -19,8 +19,7 @@ use super::draw_thread::DrawThread;
 
 /// Gets the console size.
 pub fn console_size() -> Option<ConsoleSize> {
-  let stderr = &deno_runtime::deno_io::STDERR_HANDLE;
-  deno_runtime::ops::tty::console_size(stderr).ok()
+  deno_runtime::ops::tty::console_size_of_stderr().ok()
 }
 
 pub fn new_console_static_text() -> ConsoleStaticText {

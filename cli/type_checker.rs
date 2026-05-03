@@ -1,5 +1,6 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
+use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::collections::VecDeque;
@@ -84,6 +85,13 @@ pub enum CheckErrorKind {
   Other(#[from] JsErrorBox),
 }
 
+/// Result of emitting declaration files via [`TypeChecker::emit_declarations`].
+pub struct EmitDeclarationsResult {
+  pub diagnostics: Diagnostics,
+  /// Emitted `.d.ts` files keyed by their specifier (e.g. `file:///path/to/file.d.ts`).
+  pub emitted_files: BTreeMap<String, String>,
+}
+
 /// Options for performing a check of a module graph. Note that the decision to
 /// emit or not is determined by the `compiler_options` settings.
 pub struct CheckOptions {
@@ -140,6 +148,85 @@ impl TypeChecker {
       compiler_options_resolver,
       code_cache,
     }
+  }
+
+  pub fn create_request_npm_state(&self) -> tsc::RequestNpmState {
+    tsc::RequestNpmState {
+      cjs_tracker: self.cjs_tracker.clone(),
+      node_resolver: self.node_resolver.clone(),
+      npm_resolver: self.npm_resolver.clone(),
+    }
+  }
+
+  /// Type-check and emit `.d.ts` declaration files for the given module graph.
+  ///
+  /// This runs the TypeScript compiler with `emitDeclarationOnly: true` and
+  /// returns the emitted `.d.ts` file contents keyed by their specifier paths.
+  pub fn emit_declarations(
+    &self,
+    graph: Arc<ModuleGraph>,
+    root_names: Vec<(ModuleSpecifier, MediaType)>,
+    lib: TsTypeLib,
+  ) -> Result<EmitDeclarationsResult, CheckError> {
+    let first_specifier = &root_names[0].0;
+    let compiler_options_data = self
+      .compiler_options_resolver
+      .for_specifier(first_specifier);
+    let base_compiler_options =
+      compiler_options_data.compiler_options_for_lib(lib)?;
+
+    // Merge declaration-specific options into the base compiler options
+    let mut config_value =
+      deno_core::serde_json::to_value(base_compiler_options.as_ref())
+        .map_err(|e| CheckErrorKind::Other(JsErrorBox::from_err(e)))?;
+    if let Some(config_obj) = config_value.as_object_mut() {
+      config_obj.insert(
+        "declaration".into(),
+        deno_core::serde_json::Value::Bool(true),
+      );
+      config_obj.insert(
+        "emitDeclarationOnly".into(),
+        deno_core::serde_json::Value::Bool(true),
+      );
+      config_obj
+        .insert("noEmit".into(), deno_core::serde_json::Value::Bool(false));
+    }
+
+    let compiler_options = Arc::new(CompilerOptions::new(config_value));
+
+    let hash_data = FastInsecureHasher::new_deno_versioned()
+      .write_hashable(&compiler_options)
+      .finish();
+
+    let jsx_import_source_config_resolver = Arc::new(
+      JsxImportSourceConfigResolver::from_compiler_options_resolver(
+        &self.compiler_options_resolver,
+      )?,
+    );
+
+    let response = tsc::exec(
+      tsc::Request {
+        config: compiler_options,
+        debug: self.cli_options.log_level() == Some(log::Level::Debug),
+        graph,
+        jsx_import_source_config_resolver,
+        hash_data,
+        maybe_npm: Some(self.create_request_npm_state()),
+        maybe_tsbuildinfo: None,
+        root_names,
+        // Declaration emit requires full type-checking regardless of
+        // the user's type_check_mode setting.
+        check_mode: TypeCheckMode::All,
+        initial_cwd: self.cli_options.initial_cwd().to_path_buf(),
+        capture_emitted_files: true,
+      },
+      None,
+    )?;
+
+    Ok(EmitDeclarationsResult {
+      diagnostics: response.diagnostics,
+      emitted_files: response.emitted_files,
+    })
   }
 
   /// Type check the module graph.
@@ -559,6 +646,7 @@ impl DiagnosticsByFolderRealIterator<'_> {
         root_names,
         check_mode: self.options.type_check_mode,
         initial_cwd: self.initial_cwd.clone(),
+        capture_emitted_files: false,
       },
       code_cache,
     )?;

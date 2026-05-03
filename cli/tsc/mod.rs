@@ -2,6 +2,7 @@
 //
 mod js;
 
+use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::fmt;
@@ -529,6 +530,9 @@ pub struct Request {
   pub check_mode: TypeCheckMode,
 
   pub initial_cwd: PathBuf,
+  /// When true, .d.ts and .d.ts.map files emitted by TSC will be captured
+  /// in the response. Only set this for `deno transpile --declaration`.
+  pub capture_emitted_files: bool,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -540,6 +544,8 @@ pub struct Response {
   pub ambient_modules: Vec<String>,
   /// Statistics from the check.
   pub stats: Stats,
+  /// Emitted files from the compiler (e.g., .d.ts declaration files).
+  pub emitted_files: BTreeMap<String, String>,
 }
 
 pub fn as_ts_script_kind(media_type: MediaType) -> i32 {
@@ -1285,6 +1291,10 @@ pub static IGNORED_DIAGNOSTIC_CODES: LazyLock<HashSet<u64>> =
       // implicitly has an 'any' type.  This is due to `allowJs` being off by
       // default but importing of a JavaScript module.
       7016,
+      // TS18060: Deferred imports are only supported when the '--module' flag
+      // is set to 'esnext' or 'preserve'. Deno uses its own module resolution
+      // and supports import defer natively.
+      18060,
     ]
     .into_iter()
     .collect()

@@ -8,28 +8,28 @@ import {
   op_runtime_memory_usage,
 } from "ext:core/ops";
 
-import * as timers from "ext:deno_web/02_timers.js";
-import * as httpClient from "ext:deno_fetch/22_http_client.js";
-import * as console from "ext:deno_web/01_console.js";
-import * as ffi from "ext:deno_ffi/00_ffi.js";
-import * as net from "ext:deno_net/01_net.js";
-import * as tls from "ext:deno_net/02_tls.js";
+const timers = core.loadExtScript("ext:deno_web/02_timers.js");
+const httpClient = core.loadExtScript("ext:deno_fetch/22_http_client.js");
+const console = core.loadExtScript("ext:deno_web/01_console.js");
+const ffi = core.loadExtScript("ext:deno_ffi/00_ffi.js");
+const net = core.loadExtScript("ext:deno_net/01_net.js");
+const tls = core.loadExtScript("ext:deno_net/02_tls.js");
 import * as serve from "ext:deno_http/00_serve.ts";
 import * as http from "ext:deno_http/01_http.js";
 import * as websocket from "ext:deno_http/02_websocket.ts";
 import * as errors from "ext:runtime/01_errors.js";
 import * as version from "ext:runtime/01_version.ts";
 import * as permissions from "ext:runtime/10_permissions.js";
-import * as io from "ext:deno_io/12_io.js";
-import * as fs from "ext:deno_fs/30_fs.js";
-import * as os from "ext:deno_os/30_os.js";
+const io = core.loadExtScript("ext:deno_io/12_io.js");
+const fs = core.loadExtScript("ext:deno_fs/30_fs.js");
+const os = core.loadExtScript("ext:deno_os/30_os.js");
 import * as fsEvents from "ext:runtime/40_fs_events.js";
 import * as process from "ext:deno_process/40_process.js";
-import * as signals from "ext:deno_os/40_signals.js";
+const signals = core.loadExtScript("ext:deno_os/40_signals.js");
 import * as tty from "ext:runtime/40_tty.js";
 import * as kv from "ext:deno_kv/01_db.ts";
 import * as cron from "ext:deno_cron/01_cron.ts";
-import * as webgpuSurface from "ext:deno_webgpu/02_surface.js";
+const surface = core.loadExtScript("ext:deno_canvas/02_surface.js");
 import * as telemetry from "ext:deno_telemetry/telemetry.ts";
 import { unstableIds } from "ext:deno_features/flags.js";
 import { loadWebGPU } from "ext:deno_webgpu/00_init.js";
@@ -38,7 +38,9 @@ import { bundle } from "ext:deno_bundle_runtime/bundle.ts";
 const { ObjectDefineProperties, Float64Array } = primordials;
 
 const loadQuic = core.createLazyLoader("ext:deno_net/03_quic.js");
-const loadWebTransport = core.createLazyLoader("ext:deno_web/webtransport.js");
+const loadWebTransport = core.createLazyLoader(
+  "ext:deno_web/webtransport.js",
+);
 
 // the out buffer for `cpuUsage` and `memoryUsage`
 const usageBuffer = new Float64Array(4);
@@ -227,7 +229,7 @@ ObjectDefineProperties(denoNsUnstableById[unstableIds.net], {
 // denoNsUnstableById[unstableIds.unsafeProto] = { __proto__: null }
 
 denoNsUnstableById[unstableIds.webgpu] = {
-  UnsafeWindowSurface: webgpuSurface.UnsafeWindowSurface,
+  UnsafeWindowSurface: surface.UnsafeWindowSurface,
 };
 ObjectDefineProperties(denoNsUnstableById[unstableIds.webgpu], {
   webgpu: core.propWritableLazyLoaded(

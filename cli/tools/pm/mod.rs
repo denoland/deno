@@ -41,12 +41,14 @@ mod cache_deps;
 pub(crate) mod deps;
 pub(crate) mod interactive_picker;
 mod outdated;
+mod why;
 
 pub use approve_scripts::approve_scripts;
 pub use audit::audit;
 pub use cache_deps::CacheTopLevelDepsOptions;
 pub use cache_deps::cache_top_level_deps;
 pub use outdated::outdated;
+pub use why::why;
 
 #[derive(Debug, Copy, Clone, Hash)]
 enum ConfigKind {
@@ -951,6 +953,70 @@ pub async fn remove(
   }
 
   Ok(())
+}
+
+pub(crate) async fn create_dep_manager_and_resolvers(
+  factory: &CliFactory,
+) -> Result<(deps::DepManager, Arc<crate::jsr::JsrFetchResolver>), AnyError> {
+  let cli_options = factory.cli_options()?;
+  let workspace = cli_options.workspace();
+  let http_client = factory.http_client_provider();
+  let deps_http_cache = factory.global_http_cache()?;
+  let file_fetcher = create_cli_file_fetcher(
+    Default::default(),
+    GlobalOrLocalHttpCache::Global(deps_http_cache.clone()),
+    http_client.clone(),
+    factory.memory_files().clone(),
+    factory.sys(),
+    CreateCliFileFetcherOptions {
+      allow_remote: true,
+      cache_setting: CacheSetting::RespectHeaders,
+      download_log_level: log::Level::Trace,
+      progress_bar: None,
+    },
+  );
+  let file_fetcher = Arc::new(file_fetcher);
+  let npm_fetch_resolver = Arc::new(NpmFetchResolver::new(
+    file_fetcher.clone(),
+    factory.npmrc()?.clone(),
+    factory.npm_version_resolver()?.clone(),
+  ));
+  let jsr_fetch_resolver = Arc::new(JsrFetchResolver::new(
+    file_fetcher.clone(),
+    factory.jsr_version_resolver()?.clone(),
+  ));
+
+  let args = deps::DepManagerArgs {
+    module_load_preparer: factory.module_load_preparer().await?.clone(),
+    jsr_fetch_resolver: jsr_fetch_resolver.clone(),
+    npm_fetch_resolver,
+    npm_resolver: factory.npm_resolver().await?.clone(),
+    npm_installer: factory.npm_installer().await?.clone(),
+    npm_version_resolver: factory.npm_version_resolver()?.clone(),
+    progress_bar: factory.text_only_progress_bar().clone(),
+    permissions_container: factory.root_permissions_container()?.clone(),
+    main_module_graph_container: factory
+      .main_module_graph_container()
+      .await?
+      .clone(),
+    lockfile: factory.maybe_lockfile().await?.cloned(),
+  };
+
+  let filter_fn = |_alias: Option<&str>,
+                   _req: &deno_semver::package::PackageReq,
+                   _: deps::DepKind| true;
+
+  let deps = if cli_options.start_dir.has_deno_or_pkg_json() {
+    deps::DepManager::from_workspace_dir(
+      &cli_options.start_dir,
+      filter_fn,
+      args,
+    )?
+  } else {
+    deps::DepManager::from_workspace(workspace, filter_fn, args)?
+  };
+
+  Ok((deps, jsr_fetch_resolver))
 }
 
 async fn npm_install_after_modification(
