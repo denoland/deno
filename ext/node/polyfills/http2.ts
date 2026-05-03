@@ -951,6 +951,9 @@ function requestOnConnect(headersList, options) {
   // failure path). Node.js bundles older libnghttp2 that RST_STREAMs only
   // the offending stream; emit the equivalent stream error locally so
   // sibling streams on the same session keep working.
+  // TODO(nghttp2): re-evaluate when libnghttp2 is bumped or a per-stream
+  // path-validation hook becomes available; this short-circuit may then be
+  // redundant.
   if (hasInvalidPath(this)) {
     process.nextTick(() => {
       if (this.destroyed) return;
