@@ -1538,6 +1538,14 @@ impl FileBackedVfsMetadata {
 
   pub fn as_fs_stat(&self) -> FsStat {
     // to use lower overhead, use mtime instead of all time params
+    //
+    // VFS files are always readable. Directories also get execute (traverse).
+    // This ensures node:fs access() checks succeed for embedded files.
+    let mode = if self.file_type == sys_traits::FileType::Dir {
+      0o555 // r-xr-xr-x
+    } else {
+      0o444 // r--r--r--
+    };
     FsStat {
       is_directory: self.file_type == sys_traits::FileType::Dir,
       is_file: self.file_type == sys_traits::FileType::File,
@@ -1550,7 +1558,7 @@ impl FileBackedVfsMetadata {
       size: self.len,
       dev: 0,
       ino: None,
-      mode: 0,
+      mode,
       nlink: None,
       uid: 0,
       gid: 0,
