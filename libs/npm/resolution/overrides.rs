@@ -9,7 +9,11 @@ use deno_semver::StackString;
 use deno_semver::Version;
 use deno_semver::VersionReq;
 use deno_semver::package::PackageName;
+use indexmap::IndexMap;
 use thiserror::Error;
+
+/// Workspace catalogs: catalog name → (package name → version string).
+pub type Catalogs = IndexMap<String, IndexMap<String, String>>;
 
 #[derive(Debug, Error)]
 pub enum NpmOverridesError {
@@ -44,6 +48,10 @@ pub enum NpmOverridesError {
     "jsr: override \"{value}\" for key \"{key}\" requires a scoped package name (e.g. jsr:@scope/name)"
   )]
   JsrRequiresScope { key: String, value: String },
+  #[error(
+    "Override \"catalog:{catalog}\" for key \"{key}\" could not be resolved (package not found in catalog)"
+  )]
+  UnresolvedCatalog { key: String, catalog: String },
 }
 
 /// The value an override resolves to.
@@ -99,10 +107,11 @@ impl NpmOverrides {
   pub fn from_value(
     value: serde_json::Value,
     root_deps: &HashMap<PackageName, StackString>,
+    catalogs: &Catalogs,
   ) -> Result<Self, NpmOverridesError> {
     match value {
       serde_json::Value::Object(map) => {
-        let rules = parse_override_rules(&map, root_deps)?;
+        let rules = parse_override_rules(&map, root_deps, catalogs)?;
         Ok(Self { rules })
       }
       serde_json::Value::Null => Ok(Self::default()),
@@ -287,10 +296,11 @@ fn parse_override_value(
   key: &str,
   value: &serde_json::Value,
   root_deps: &HashMap<PackageName, StackString>,
+  catalogs: &Catalogs,
 ) -> Result<(NpmOverrideValue, Vec<Arc<NpmOverrideRule>>), NpmOverridesError> {
   match value {
     serde_json::Value::String(s) => {
-      let value = parse_override_string(key, s, root_deps)?;
+      let value = parse_override_string(key, s, root_deps, catalogs)?;
       Ok((value, Vec::new()))
     }
     serde_json::Value::Object(map) => {
@@ -302,7 +312,7 @@ fn parse_override_value(
           // the "." key overrides the package itself
           match child_value {
             serde_json::Value::String(s) => {
-              self_value = parse_override_string(key, s, root_deps)?;
+              self_value = parse_override_string(key, s, root_deps, catalogs)?;
             }
             _ => {
               return Err(NpmOverridesError::InvalidDotValueType {
@@ -313,7 +323,7 @@ fn parse_override_value(
         } else {
           let (child_name, child_selector) = parse_override_key(child_key)?;
           let (child_val, grandchildren) =
-            parse_override_value(child_key, child_value, root_deps)?;
+            parse_override_value(child_key, child_value, root_deps, catalogs)?;
           children.push(Arc::new(NpmOverrideRule {
             name: child_name,
             selector: child_selector,
@@ -332,11 +342,13 @@ fn parse_override_value(
 }
 
 /// Parses an override string value, handling empty strings, `npm:` aliases,
-/// `$pkg` dollar references, and plain version requirements.
+/// `catalog:` references, `$pkg` dollar references, and plain version
+/// requirements.
 fn parse_override_string(
   key: &str,
   s: &str,
   root_deps: &HashMap<PackageName, StackString>,
+  catalogs: &Catalogs,
 ) -> Result<NpmOverrideValue, NpmOverridesError> {
   if s.is_empty() {
     Ok(NpmOverrideValue::Removed)
@@ -344,6 +356,8 @@ fn parse_override_string(
     parse_npm_alias_override(key, rest)
   } else if let Some(rest) = s.strip_prefix("jsr:") {
     parse_jsr_override(key, rest)
+  } else if let Some(catalog_name) = s.strip_prefix("catalog:") {
+    resolve_catalog_override(key, catalog_name, catalogs)
   } else {
     let version_req = resolve_override_version_string(key, s, root_deps)?;
     Ok(NpmOverrideValue::Version(version_req))
@@ -463,15 +477,53 @@ fn resolve_override_version_string(
 }
 
 /// Parses the top-level override rules from a JSON object.
+/// Resolves a `catalog:` override by looking up the package in the workspace
+/// catalog and parsing the resolved version string.
+fn resolve_catalog_override(
+  key: &str,
+  catalog_name: &str,
+  catalogs: &Catalogs,
+) -> Result<NpmOverrideValue, NpmOverridesError> {
+  let catalog_name = if catalog_name.is_empty() {
+    "default"
+  } else {
+    catalog_name
+  };
+
+  // Extract the package name from the override key, stripping any version
+  // selector (e.g. "@types/bun@^1.0.0" → "@types/bun").
+  let (pkg_name, _) = parse_override_key(key)?;
+
+  let version_str = catalogs
+    .get(catalog_name)
+    .and_then(|c| c.get(pkg_name.as_str()))
+    .ok_or_else(|| NpmOverridesError::UnresolvedCatalog {
+      key: key.to_string(),
+      catalog: catalog_name.to_string(),
+    })?;
+
+  let version_req =
+    VersionReq::parse_from_npm(version_str).map_err(|source| {
+      NpmOverridesError::ValueParse {
+        key: key.to_string(),
+        value: format!("catalog:{catalog_name} → {version_str}"),
+        source,
+      }
+    })?;
+
+  Ok(NpmOverrideValue::Version(version_req))
+}
+
 fn parse_override_rules(
   map: &serde_json::Map<String, serde_json::Value>,
   root_deps: &HashMap<PackageName, StackString>,
+  catalogs: &Catalogs,
 ) -> Result<Vec<Arc<NpmOverrideRule>>, NpmOverridesError> {
   let mut rules = Vec::with_capacity(map.len());
   for (key, value) in map {
     let (name, selector) = parse_override_key(key)?;
     let (override_value, children) =
-      parse_override_value(key, value, root_deps)?;
+      parse_override_value(key, value, root_deps, catalogs)?;
     rules.push(Arc::new(NpmOverrideRule {
       name,
       selector,
@@ -490,12 +542,18 @@ mod test {
     HashMap::new()
   }
 
+  fn empty_catalogs() -> Catalogs {
+    Catalogs::default()
+  }
+
   #[test]
   fn parse_simple_override() {
     let raw = serde_json::json!({
       "foo": "1.0.0"
     });
-    let overrides = NpmOverrides::from_value(raw, &empty_root_deps()).unwrap();
+    let overrides =
+      NpmOverrides::from_value(raw, &empty_root_deps(), &empty_catalogs())
+        .unwrap();
     assert_eq!(overrides.rules.len(), 1);
     let rule = &overrides.rules[0];
     assert_eq!(rule.name.as_str(), "foo");
@@ -514,7 +572,9 @@ mod test {
     let raw = serde_json::json!({
       "foo@^2.0.0": "2.1.0"
     });
-    let overrides = NpmOverrides::from_value(raw, &empty_root_deps()).unwrap();
+    let overrides =
+      NpmOverrides::from_value(raw, &empty_root_deps(), &empty_catalogs())
+        .unwrap();
     assert_eq!(overrides.rules.len(), 1);
     let rule = &overrides.rules[0];
     assert_eq!(rule.name.as_str(), "foo");
@@ -533,7 +593,9 @@ mod test {
     let raw = serde_json::json!({
       "@scope/pkg": "3.0.0"
     });
-    let overrides = NpmOverrides::from_value(raw, &empty_root_deps()).unwrap();
+    let overrides =
+      NpmOverrides::from_value(raw, &empty_root_deps(), &empty_catalogs())
+        .unwrap();
     assert_eq!(overrides.rules.len(), 1);
     let rule = &overrides.rules[0];
     assert_eq!(rule.name.as_str(), "@scope/pkg");
@@ -545,7 +607,9 @@ mod test {
     let raw = serde_json::json!({
       "@scope/pkg@^1.0.0": "1.2.3"
     });
-    let overrides = NpmOverrides::from_value(raw, &empty_root_deps()).unwrap();
+    let overrides =
+      NpmOverrides::from_value(raw, &empty_root_deps(), &empty_catalogs())
+        .unwrap();
     assert_eq!(overrides.rules.len(), 1);
     let rule = &overrides.rules[0];
     assert_eq!(rule.name.as_str(), "@scope/pkg");
@@ -559,7 +623,9 @@ mod test {
         "bar": "2.0.0"
       }
     });
-    let overrides = NpmOverrides::from_value(raw, &empty_root_deps()).unwrap();
+    let overrides =
+      NpmOverrides::from_value(raw, &empty_root_deps(), &empty_catalogs())
+        .unwrap();
     assert_eq!(overrides.rules.len(), 1);
     let rule = &overrides.rules[0];
     assert_eq!(rule.name.as_str(), "foo");
@@ -582,7 +648,9 @@ mod test {
         "bar": "3.0.0"
       }
     });
-    let overrides = NpmOverrides::from_value(raw, &empty_root_deps()).unwrap();
+    let overrides =
+      NpmOverrides::from_value(raw, &empty_root_deps(), &empty_catalogs())
+        .unwrap();
     assert_eq!(overrides.rules.len(), 1);
     let rule = &overrides.rules[0];
     assert_eq!(rule.name.as_str(), "foo");
@@ -604,7 +672,8 @@ mod test {
     let raw = serde_json::json!({
       "bar": "$foo"
     });
-    let overrides = NpmOverrides::from_value(raw, &root_deps).unwrap();
+    let overrides =
+      NpmOverrides::from_value(raw, &root_deps, &empty_catalogs()).unwrap();
     assert_eq!(overrides.rules.len(), 1);
     let rule = &overrides.rules[0];
     assert_eq!(rule.name.as_str(), "bar");
@@ -621,30 +690,109 @@ mod test {
     let raw = serde_json::json!({
       "bar": "$nonexistent"
     });
-    let result = NpmOverrides::from_value(raw, &empty_root_deps());
+    let result =
+      NpmOverrides::from_value(raw, &empty_root_deps(), &empty_catalogs());
     assert!(result.is_err());
     let err = result.unwrap_err();
     assert!(err.to_string().contains("nonexistent"));
   }
 
   #[test]
+  fn parse_catalog_override() {
+    let mut catalogs = Catalogs::default();
+    let mut default_catalog = IndexMap::new();
+    default_catalog.insert("@types/bun".to_string(), "1.3.12".to_string());
+    default_catalog.insert("@types/node".to_string(), "22.13.9".to_string());
+    catalogs.insert("default".to_string(), default_catalog);
+
+    let raw = serde_json::json!({
+      "@types/bun": "catalog:",
+      "@types/node": "catalog:"
+    });
+    let overrides =
+      NpmOverrides::from_value(raw, &empty_root_deps(), &catalogs).unwrap();
+    assert_eq!(overrides.rules.len(), 2);
+    let bun_rule = overrides
+      .rules
+      .iter()
+      .find(|r| r.name.as_str() == "@types/bun")
+      .unwrap();
+    match &bun_rule.value {
+      NpmOverrideValue::Version(req) => {
+        assert_eq!(req.version_text(), "1.3.12");
+      }
+      _ => panic!("expected Version"),
+    }
+    let node_rule = overrides
+      .rules
+      .iter()
+      .find(|r| r.name.as_str() == "@types/node")
+      .unwrap();
+    match &node_rule.value {
+      NpmOverrideValue::Version(req) => {
+        assert_eq!(req.version_text(), "22.13.9");
+      }
+      _ => panic!("expected Version"),
+    }
+  }
+
+  #[test]
+  fn parse_catalog_override_named() {
+    let mut catalogs = Catalogs::default();
+    let mut react18 = IndexMap::new();
+    react18.insert("react".to_string(), "^18.0.0".to_string());
+    catalogs.insert("react18".to_string(), react18);
+
+    let raw = serde_json::json!({
+      "react": "catalog:react18"
+    });
+    let overrides =
+      NpmOverrides::from_value(raw, &empty_root_deps(), &catalogs).unwrap();
+    assert_eq!(overrides.rules.len(), 1);
+    match &overrides.rules[0].value {
+      NpmOverrideValue::Version(req) => {
+        assert_eq!(req.version_text(), "^18.0.0");
+      }
+      _ => panic!("expected Version"),
+    }
+  }
+
+  #[test]
+  fn parse_catalog_override_unresolved() {
+    let raw = serde_json::json!({
+      "foo": "catalog:"
+    });
+    let result =
+      NpmOverrides::from_value(raw, &empty_root_deps(), &empty_catalogs());
+    assert!(result.is_err());
+    let err = result.unwrap_err().to_string();
+    assert!(err.contains("catalog"));
+    assert!(err.contains("foo"));
+  }
+
+  #[test]
   fn parse_empty_overrides() {
     let raw = serde_json::json!({});
-    let overrides = NpmOverrides::from_value(raw, &empty_root_deps()).unwrap();
+    let overrides =
+      NpmOverrides::from_value(raw, &empty_root_deps(), &empty_catalogs())
+        .unwrap();
     assert!(overrides.is_empty());
   }
 
   #[test]
   fn parse_null_overrides() {
     let raw = serde_json::Value::Null;
-    let overrides = NpmOverrides::from_value(raw, &empty_root_deps()).unwrap();
+    let overrides =
+      NpmOverrides::from_value(raw, &empty_root_deps(), &empty_catalogs())
+        .unwrap();
     assert!(overrides.is_empty());
   }
 
   #[test]
   fn parse_invalid_top_level_type() {
     let raw = serde_json::json!(42);
-    let result = NpmOverrides::from_value(raw, &empty_root_deps());
+    let result =
+      NpmOverrides::from_value(raw, &empty_root_deps(), &empty_catalogs());
     assert!(result.is_err());
     let err = result.unwrap_err().to_string();
     assert!(err.contains("expected an object"));
@@ -655,7 +803,9 @@ mod test {
     let raw = serde_json::json!({
       "foo": ""
     });
-    let overrides = NpmOverrides::from_value(raw, &empty_root_deps()).unwrap();
+    let overrides =
+      NpmOverrides::from_value(raw, &empty_root_deps(), &empty_catalogs())
+        .unwrap();
     assert_eq!(overrides.rules.len(), 1);
     assert!(matches!(
       overrides.rules[0].value,
@@ -671,7 +821,9 @@ mod test {
         "bar": "2.0.0"
       }
     });
-    let overrides = NpmOverrides::from_value(raw, &empty_root_deps()).unwrap();
+    let overrides =
+      NpmOverrides::from_value(raw, &empty_root_deps(), &empty_catalogs())
+        .unwrap();
     assert_eq!(overrides.rules.len(), 1);
     assert!(matches!(
       overrides.rules[0].value,
@@ -688,7 +840,8 @@ mod test {
         "bar": "2.0.0"
       }
     });
-    let result = NpmOverrides::from_value(raw, &empty_root_deps());
+    let result =
+      NpmOverrides::from_value(raw, &empty_root_deps(), &empty_catalogs());
     assert!(result.is_err());
     let err = result.unwrap_err().to_string();
     assert!(err.contains("\".\""));
@@ -711,7 +864,9 @@ mod test {
     let raw = serde_json::json!({
       "foo": "1.0.0"
     });
-    let overrides = NpmOverrides::from_value(raw, &empty_root_deps()).unwrap();
+    let overrides =
+      NpmOverrides::from_value(raw, &empty_root_deps(), &empty_catalogs())
+        .unwrap();
 
     // should find override for "foo" (no selector, so None version works)
     let result =
@@ -733,8 +888,10 @@ mod test {
     let raw = serde_json::json!({
       "foo": "1.0.0"
     });
-    let overrides =
-      Rc::new(NpmOverrides::from_value(raw, &empty_root_deps()).unwrap());
+    let overrides = Rc::new(
+      NpmOverrides::from_value(raw, &empty_root_deps(), &empty_catalogs())
+        .unwrap(),
+    );
 
     // descend into "bar@2.0.0" — "foo" override should still be active
     let child = overrides.for_child(
@@ -753,8 +910,10 @@ mod test {
     let raw = serde_json::json!({
       "foo": "1.0.0"
     });
-    let overrides =
-      Rc::new(NpmOverrides::from_value(raw, &empty_root_deps()).unwrap());
+    let overrides = Rc::new(
+      NpmOverrides::from_value(raw, &empty_root_deps(), &empty_catalogs())
+        .unwrap(),
+    );
 
     // descend into "foo@1.0.0" — the override should still be active
     let child = overrides.for_child(
@@ -775,8 +934,10 @@ mod test {
         "bar": "2.0.0"
       }
     });
-    let overrides =
-      Rc::new(NpmOverrides::from_value(raw, &empty_root_deps()).unwrap());
+    let overrides = Rc::new(
+      NpmOverrides::from_value(raw, &empty_root_deps(), &empty_catalogs())
+        .unwrap(),
+    );
 
     // descend into "foo@1.0.0" — the "foo" rule is consumed, "bar" activated
     let child = overrides.for_child(
@@ -801,8 +962,10 @@ mod test {
         "child": "2.0.0"
       }
     });
-    let overrides =
-      Rc::new(NpmOverrides::from_value(raw, &empty_root_deps()).unwrap());
+    let overrides = Rc::new(
+      NpmOverrides::from_value(raw, &empty_root_deps(), &empty_catalogs())
+        .unwrap(),
+    );
 
     // at the top level, there's no override for "child"
     assert!(
@@ -841,8 +1004,10 @@ mod test {
         "bar": "3.0.0"
       }
     });
-    let overrides =
-      Rc::new(NpmOverrides::from_value(raw, &empty_root_deps()).unwrap());
+    let overrides = Rc::new(
+      NpmOverrides::from_value(raw, &empty_root_deps(), &empty_catalogs())
+        .unwrap(),
+    );
 
     // descend into "foo@2.1.0" (matches ^2.0.0) — bar override should be active
     let matching = overrides.for_child(
@@ -890,7 +1055,9 @@ mod test {
         "bar": "3.0.0"
       }
     });
-    let overrides = NpmOverrides::from_value(raw, &empty_root_deps()).unwrap();
+    let overrides =
+      NpmOverrides::from_value(raw, &empty_root_deps(), &empty_catalogs())
+        .unwrap();
 
     // without a resolved version, the selector-based override is not returned
     assert!(
@@ -924,7 +1091,9 @@ mod test {
     let raw = serde_json::json!({
       "foo@^2.0.0": "2.1.0"
     });
-    let overrides = NpmOverrides::from_value(raw, &empty_root_deps()).unwrap();
+    let overrides =
+      NpmOverrides::from_value(raw, &empty_root_deps(), &empty_catalogs())
+        .unwrap();
 
     // without version: not returned (has selector)
     assert!(
@@ -962,8 +1131,10 @@ mod test {
         "foo": ""
       }
     });
-    let overrides =
-      Rc::new(NpmOverrides::from_value(raw, &empty_root_deps()).unwrap());
+    let overrides = Rc::new(
+      NpmOverrides::from_value(raw, &empty_root_deps(), &empty_catalogs())
+        .unwrap(),
+    );
 
     // at top level, "foo" override is active
     let result =
@@ -993,8 +1164,10 @@ mod test {
         "foo@^2.0.0": ""
       }
     });
-    let overrides =
-      Rc::new(NpmOverrides::from_value(raw, &empty_root_deps()).unwrap());
+    let overrides = Rc::new(
+      NpmOverrides::from_value(raw, &empty_root_deps(), &empty_catalogs())
+        .unwrap(),
+    );
 
     let inside_parent = overrides.for_child(
       &PackageName::from_str("parent"),
@@ -1031,7 +1204,9 @@ mod test {
       "foo": "1.0.0",
       "foo@^2.0.0": "2.5.0"
     });
-    let overrides = NpmOverrides::from_value(raw, &empty_root_deps()).unwrap();
+    let overrides =
+      NpmOverrides::from_value(raw, &empty_root_deps(), &empty_catalogs())
+        .unwrap();
 
     // the unconditional "foo": "1.0.0" is first, so it always wins
     let result =
@@ -1055,7 +1230,9 @@ mod test {
       "foo@^2.0.0": "2.5.0",
       "foo": "1.0.0"
     });
-    let overrides = NpmOverrides::from_value(raw, &empty_root_deps()).unwrap();
+    let overrides =
+      NpmOverrides::from_value(raw, &empty_root_deps(), &empty_catalogs())
+        .unwrap();
 
     // without resolved version, selector can't match — falls through to
     // the unconditional rule
@@ -1089,8 +1266,10 @@ mod test {
         "@scope/child": "2.0.0"
       }
     });
-    let overrides =
-      Rc::new(NpmOverrides::from_value(raw, &empty_root_deps()).unwrap());
+    let overrides = Rc::new(
+      NpmOverrides::from_value(raw, &empty_root_deps(), &empty_catalogs())
+        .unwrap(),
+    );
 
     // at top level, no override for @scope/child
     assert!(
@@ -1129,8 +1308,10 @@ mod test {
         "@scope/child": "3.0.0"
       }
     });
-    let overrides =
-      Rc::new(NpmOverrides::from_value(raw, &empty_root_deps()).unwrap());
+    let overrides = Rc::new(
+      NpmOverrides::from_value(raw, &empty_root_deps(), &empty_catalogs())
+        .unwrap(),
+    );
 
     // matching version — children activate
     let matching = overrides.for_child(
@@ -1159,7 +1340,9 @@ mod test {
     let raw = serde_json::json!({
       "foo": "npm:bar@1.0.0"
     });
-    let overrides = NpmOverrides::from_value(raw, &empty_root_deps()).unwrap();
+    let overrides =
+      NpmOverrides::from_value(raw, &empty_root_deps(), &empty_catalogs())
+        .unwrap();
     assert_eq!(overrides.rules.len(), 1);
     let rule = &overrides.rules[0];
     assert_eq!(rule.name.as_str(), "foo");
@@ -1180,7 +1363,9 @@ mod test {
     let raw = serde_json::json!({
       "foo": "npm:@scope/bar@^2.0.0"
     });
-    let overrides = NpmOverrides::from_value(raw, &empty_root_deps()).unwrap();
+    let overrides =
+      NpmOverrides::from_value(raw, &empty_root_deps(), &empty_catalogs())
+        .unwrap();
     let rule = &overrides.rules[0];
     match &rule.value {
       NpmOverrideValue::Alias {
@@ -1199,7 +1384,9 @@ mod test {
     let raw = serde_json::json!({
       "foo": "npm:bar"
     });
-    let overrides = NpmOverrides::from_value(raw, &empty_root_deps()).unwrap();
+    let overrides =
+      NpmOverrides::from_value(raw, &empty_root_deps(), &empty_catalogs())
+        .unwrap();
     let rule = &overrides.rules[0];
     match &rule.value {
       NpmOverrideValue::Alias {
@@ -1219,7 +1406,9 @@ mod test {
     let raw = serde_json::json!({
       "foo": "npm:@scope/bar"
     });
-    let overrides = NpmOverrides::from_value(raw, &empty_root_deps()).unwrap();
+    let overrides =
+      NpmOverrides::from_value(raw, &empty_root_deps(), &empty_catalogs())
+        .unwrap();
     let rule = &overrides.rules[0];
     match &rule.value {
       NpmOverrideValue::Alias {
@@ -1242,7 +1431,9 @@ mod test {
         "baz": "2.0.0"
       }
     });
-    let overrides = NpmOverrides::from_value(raw, &empty_root_deps()).unwrap();
+    let overrides =
+      NpmOverrides::from_value(raw, &empty_root_deps(), &empty_catalogs())
+        .unwrap();
     let rule = &overrides.rules[0];
     match &rule.value {
       NpmOverrideValue::Alias {
@@ -1263,7 +1454,9 @@ mod test {
     let raw = serde_json::json!({
       "foo": "npm:bar@^1.0.0"
     });
-    let overrides = NpmOverrides::from_value(raw, &empty_root_deps()).unwrap();
+    let overrides =
+      NpmOverrides::from_value(raw, &empty_root_deps(), &empty_catalogs())
+        .unwrap();
     let result =
       overrides.get_override_for(&PackageName::from_str("foo"), None);
     assert!(result.is_some());
@@ -1276,7 +1469,9 @@ mod test {
     let raw = serde_json::json!({
       "foo": "npm:bar@^1.0.0"
     });
-    let overrides = NpmOverrides::from_value(raw, &empty_root_deps()).unwrap();
+    let overrides =
+      NpmOverrides::from_value(raw, &empty_root_deps(), &empty_catalogs())
+        .unwrap();
     let alias = overrides.get_alias_for(&PackageName::from_str("foo"));
     assert!(alias.is_some());
     assert_eq!(alias.unwrap().as_str(), "bar");
@@ -1286,7 +1481,8 @@ mod test {
       "foo": "1.0.0"
     });
     let overrides2 =
-      NpmOverrides::from_value(raw2, &empty_root_deps()).unwrap();
+      NpmOverrides::from_value(raw2, &empty_root_deps(), &empty_catalogs())
+        .unwrap();
     assert!(
       overrides2
         .get_alias_for(&PackageName::from_str("foo"))
@@ -1307,8 +1503,10 @@ mod test {
     let raw = serde_json::json!({
       "foo": "npm:bar@1.0.0"
     });
-    let overrides =
-      Rc::new(NpmOverrides::from_value(raw, &empty_root_deps()).unwrap());
+    let overrides = Rc::new(
+      NpmOverrides::from_value(raw, &empty_root_deps(), &empty_catalogs())
+        .unwrap(),
+    );
 
     let child = overrides.for_child(
       &PackageName::from_str("baz"),
@@ -1330,7 +1528,9 @@ mod test {
     let raw = serde_json::json!({
       "foo": "jsr:@std/path@1.0.0"
     });
-    let overrides = NpmOverrides::from_value(raw, &empty_root_deps()).unwrap();
+    let overrides =
+      NpmOverrides::from_value(raw, &empty_root_deps(), &empty_catalogs())
+        .unwrap();
     assert_eq!(overrides.rules.len(), 1);
     let rule = &overrides.rules[0];
     assert_eq!(rule.name.as_str(), "foo");
@@ -1351,7 +1551,9 @@ mod test {
     let raw = serde_json::json!({
       "foo": "jsr:@std/path@^1.0.0"
     });
-    let overrides = NpmOverrides::from_value(raw, &empty_root_deps()).unwrap();
+    let overrides =
+      NpmOverrides::from_value(raw, &empty_root_deps(), &empty_catalogs())
+        .unwrap();
     let rule = &overrides.rules[0];
     match &rule.value {
       NpmOverrideValue::Alias {
@@ -1370,7 +1572,9 @@ mod test {
     let raw = serde_json::json!({
       "foo": "jsr:@foo/bar@~2.0.0"
     });
-    let overrides = NpmOverrides::from_value(raw, &empty_root_deps()).unwrap();
+    let overrides =
+      NpmOverrides::from_value(raw, &empty_root_deps(), &empty_catalogs())
+        .unwrap();
     let rule = &overrides.rules[0];
     match &rule.value {
       NpmOverrideValue::Alias {
@@ -1389,7 +1593,9 @@ mod test {
     let raw = serde_json::json!({
       "foo": "jsr:@std/path"
     });
-    let overrides = NpmOverrides::from_value(raw, &empty_root_deps()).unwrap();
+    let overrides =
+      NpmOverrides::from_value(raw, &empty_root_deps(), &empty_catalogs())
+        .unwrap();
     let rule = &overrides.rules[0];
     match &rule.value {
       NpmOverrideValue::Alias {
@@ -1408,7 +1614,9 @@ mod test {
     let raw = serde_json::json!({
       "foo": "jsr:@std/path-utils@1.0.0"
     });
-    let overrides = NpmOverrides::from_value(raw, &empty_root_deps()).unwrap();
+    let overrides =
+      NpmOverrides::from_value(raw, &empty_root_deps(), &empty_catalogs())
+        .unwrap();
     let rule = &overrides.rules[0];
     match &rule.value {
       NpmOverrideValue::Alias {
@@ -1427,7 +1635,9 @@ mod test {
     let raw = serde_json::json!({
       "foo": "jsr:@my-org/my-pkg@>=1.0.0"
     });
-    let overrides = NpmOverrides::from_value(raw, &empty_root_deps()).unwrap();
+    let overrides =
+      NpmOverrides::from_value(raw, &empty_root_deps(), &empty_catalogs())
+        .unwrap();
     let rule = &overrides.rules[0];
     match &rule.value {
       NpmOverrideValue::Alias {
@@ -1447,7 +1657,8 @@ mod test {
     let raw = serde_json::json!({
       "bar": "jsr:foo"
     });
-    let result = NpmOverrides::from_value(raw, &empty_root_deps());
+    let result =
+      NpmOverrides::from_value(raw, &empty_root_deps(), &empty_catalogs());
     assert!(result.is_err());
     let err = result.unwrap_err().to_string();
     assert!(err.contains("jsr:"));
@@ -1460,7 +1671,8 @@ mod test {
     let raw = serde_json::json!({
       "bar": "jsr:@foo"
     });
-    let result = NpmOverrides::from_value(raw, &empty_root_deps());
+    let result =
+      NpmOverrides::from_value(raw, &empty_root_deps(), &empty_catalogs());
     assert!(result.is_err());
     let err = result.unwrap_err().to_string();
     assert!(err.contains("requires a scoped package name"));
@@ -1472,7 +1684,8 @@ mod test {
     let raw = serde_json::json!({
       "bar": "jsr:foo@1.0.0"
     });
-    let result = NpmOverrides::from_value(raw, &empty_root_deps());
+    let result =
+      NpmOverrides::from_value(raw, &empty_root_deps(), &empty_catalogs());
     assert!(result.is_err());
     let err = result.unwrap_err().to_string();
     assert!(err.contains("requires a scoped package name"));
@@ -1487,7 +1700,9 @@ mod test {
         "baz": "2.0.0"
       }
     });
-    let overrides = NpmOverrides::from_value(raw, &empty_root_deps()).unwrap();
+    let overrides =
+      NpmOverrides::from_value(raw, &empty_root_deps(), &empty_catalogs())
+        .unwrap();
     let rule = &overrides.rules[0];
     match &rule.value {
       NpmOverrideValue::Alias {
@@ -1507,7 +1722,9 @@ mod test {
     let raw = serde_json::json!({
       "foo": "jsr:@std/path@^1.0.0"
     });
-    let overrides = NpmOverrides::from_value(raw, &empty_root_deps()).unwrap();
+    let overrides =
+      NpmOverrides::from_value(raw, &empty_root_deps(), &empty_catalogs())
+        .unwrap();
     let result =
       overrides.get_override_for(&PackageName::from_str("foo"), None);
     assert!(result.is_some());
@@ -1519,7 +1736,9 @@ mod test {
     let raw = serde_json::json!({
       "foo": "jsr:@std/path@^1.0.0"
     });
-    let overrides = NpmOverrides::from_value(raw, &empty_root_deps()).unwrap();
+    let overrides =
+      NpmOverrides::from_value(raw, &empty_root_deps(), &empty_catalogs())
+        .unwrap();
     let alias = overrides.get_alias_for(&PackageName::from_str("foo"));
     assert!(alias.is_some());
     assert_eq!(alias.unwrap().as_str(), "@jsr/std__path");
@@ -1530,8 +1749,10 @@ mod test {
     let raw = serde_json::json!({
       "foo": "jsr:@std/path@1.0.0"
     });
-    let overrides =
-      Rc::new(NpmOverrides::from_value(raw, &empty_root_deps()).unwrap());
+    let overrides = Rc::new(
+      NpmOverrides::from_value(raw, &empty_root_deps(), &empty_catalogs())
+        .unwrap(),
+    );
 
     let child = overrides.for_child(
       &PackageName::from_str("baz"),
@@ -1554,8 +1775,10 @@ mod test {
         "child": "jsr:@std/path@1.0.0"
       }
     });
-    let overrides =
-      Rc::new(NpmOverrides::from_value(raw, &empty_root_deps()).unwrap());
+    let overrides = Rc::new(
+      NpmOverrides::from_value(raw, &empty_root_deps(), &empty_catalogs())
+        .unwrap(),
+    );
 
     // at top level, no override for child
     assert!(
@@ -1585,7 +1808,9 @@ mod test {
     let raw = serde_json::json!({
       "@std/path": "jsr:1"
     });
-    let overrides = NpmOverrides::from_value(raw, &empty_root_deps()).unwrap();
+    let overrides =
+      NpmOverrides::from_value(raw, &empty_root_deps(), &empty_catalogs())
+        .unwrap();
     assert_eq!(overrides.rules.len(), 1);
     let rule = &overrides.rules[0];
     assert_eq!(rule.name.as_str(), "@std/path");
@@ -1606,7 +1831,9 @@ mod test {
     let raw = serde_json::json!({
       "@std/path": "jsr:^1.0.0"
     });
-    let overrides = NpmOverrides::from_value(raw, &empty_root_deps()).unwrap();
+    let overrides =
+      NpmOverrides::from_value(raw, &empty_root_deps(), &empty_catalogs())
+        .unwrap();
     let rule = &overrides.rules[0];
     match &rule.value {
       NpmOverrideValue::Alias {
@@ -1625,7 +1852,9 @@ mod test {
     let raw = serde_json::json!({
       "@foo/bar": "jsr:~2.0.0"
     });
-    let overrides = NpmOverrides::from_value(raw, &empty_root_deps()).unwrap();
+    let overrides =
+      NpmOverrides::from_value(raw, &empty_root_deps(), &empty_catalogs())
+        .unwrap();
     let rule = &overrides.rules[0];
     match &rule.value {
       NpmOverrideValue::Alias {
@@ -1644,7 +1873,9 @@ mod test {
     let raw = serde_json::json!({
       "@std/path": "jsr:*"
     });
-    let overrides = NpmOverrides::from_value(raw, &empty_root_deps()).unwrap();
+    let overrides =
+      NpmOverrides::from_value(raw, &empty_root_deps(), &empty_catalogs())
+        .unwrap();
     let rule = &overrides.rules[0];
     match &rule.value {
       NpmOverrideValue::Alias {
@@ -1665,7 +1896,9 @@ mod test {
     let raw = serde_json::json!({
       "@std/path@^1.0.0": "jsr:2.0.0"
     });
-    let overrides = NpmOverrides::from_value(raw, &empty_root_deps()).unwrap();
+    let overrides =
+      NpmOverrides::from_value(raw, &empty_root_deps(), &empty_catalogs())
+        .unwrap();
     let rule = &overrides.rules[0];
     assert_eq!(rule.name.as_str(), "@std/path");
     assert!(rule.selector.is_some());
@@ -1687,7 +1920,8 @@ mod test {
     let raw = serde_json::json!({
       "foo": "jsr:1.0.0"
     });
-    let result = NpmOverrides::from_value(raw, &empty_root_deps());
+    let result =
+      NpmOverrides::from_value(raw, &empty_root_deps(), &empty_catalogs());
     assert!(result.is_err());
     let err = result.unwrap_err().to_string();
     assert!(err.contains("requires a scoped package name"));
@@ -1698,7 +1932,9 @@ mod test {
     let raw = serde_json::json!({
       "@std/path": "jsr:^1.0.0"
     });
-    let overrides = NpmOverrides::from_value(raw, &empty_root_deps()).unwrap();
+    let overrides =
+      NpmOverrides::from_value(raw, &empty_root_deps(), &empty_catalogs())
+        .unwrap();
     let result =
       overrides.get_override_for(&PackageName::from_str("@std/path"), None);
     assert!(result.is_some());
@@ -1714,8 +1950,10 @@ mod test {
     let raw = serde_json::json!({
       "@std/path": "jsr:1.0.0"
     });
-    let overrides =
-      Rc::new(NpmOverrides::from_value(raw, &empty_root_deps()).unwrap());
+    let overrides = Rc::new(
+      NpmOverrides::from_value(raw, &empty_root_deps(), &empty_catalogs())
+        .unwrap(),
+    );
 
     let child = overrides.for_child(
       &PackageName::from_str("other"),
