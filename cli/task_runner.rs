@@ -2,8 +2,8 @@
 
 use std::collections::HashMap;
 use std::ffi::OsStr;
-use std::io::Write;
 use std::ffi::OsString;
+use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
