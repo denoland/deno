@@ -1836,6 +1836,7 @@
     "parallel/test-http2-server-setLocalWindowSize.js": {},
     "parallel/test-http2-server-shutdown-before-respond.js": {},
     "parallel/test-http2-server-shutdown-options-errors.js": {},
+    "parallel/test-http2-server-shutdown-redundant.js": {},
     "parallel/test-http2-server-startup.js": {},
     "parallel/test-http2-server-timeout.js": {},
     "parallel/test-http2-session-graceful-close.js": {},
