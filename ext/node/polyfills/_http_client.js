@@ -24,7 +24,7 @@
 
 // deno-lint-ignore-file prefer-primordials no-this-alias no-inner-declarations
 
-import { primordials } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 const {
   ArrayIsArray,
   Boolean,
@@ -84,14 +84,16 @@ const onClientRequestCreatedChannel = channel("http.client.request.created");
 const onClientRequestStartChannel = channel("http.client.request.start");
 const onClientRequestErrorChannel = channel("http.client.request.error");
 const onClientResponseFinishChannel = channel("http.client.response.finish");
-import { updateSpanFromError } from "ext:deno_telemetry/util.ts";
-import {
+const { updateSpanFromError } = core.loadExtScript(
+  "ext:deno_telemetry/util.ts",
+);
+const {
   builtinTracer,
   ContextManager,
   PROPAGATORS,
   SPAN_KEY,
   TRACING_ENABLED,
-} from "ext:deno_telemetry/telemetry.ts";
+} = core.loadExtScript("ext:deno_telemetry/telemetry.ts");
 
 const INVALID_PATH_REGEX = /[^\u0021-\u00ff]/;
 const kError = Symbol("kError");

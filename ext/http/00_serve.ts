@@ -87,7 +87,7 @@ const {
 const { hasTlsKeyPairOptions, listenTls } = core.loadExtScript(
   "ext:deno_net/02_tls.js",
 );
-import {
+const {
   builtinTracer,
   ContextManager,
   currentSnapshot,
@@ -97,11 +97,11 @@ import {
   PROPAGATORS,
   restoreSnapshot,
   TRACING_ENABLED,
-} from "ext:deno_telemetry/telemetry.ts";
-import {
+} = core.loadExtScript("ext:deno_telemetry/telemetry.ts");
+const {
   updateSpanFromRequest,
   updateSpanFromServerResponse,
-} from "ext:deno_telemetry/util.ts";
+} = core.loadExtScript("ext:deno_telemetry/util.ts");
 
 const _upgraded = Symbol("_upgraded");
 

@@ -92,7 +92,9 @@ import {
   workerRuntimeGlobalProperties,
 } from "ext:runtime/98_global_scope_worker.js";
 const { SymbolMetadata } = core.loadExtScript("ext:deno_web/00_infra.js");
-import { bootstrap as bootstrapOtel } from "ext:deno_telemetry/telemetry.ts";
+const { bootstrap: bootstrapOtel } = core.loadExtScript(
+  "ext:deno_telemetry/telemetry.ts",
+);
 
 // deno-lint-ignore prefer-primordials
 if (Symbol.metadata) {

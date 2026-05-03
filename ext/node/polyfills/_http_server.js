@@ -74,14 +74,14 @@ import {
   validateObject,
 } from "ext:deno_node/internal/validators.mjs";
 import { nextTick } from "ext:deno_node/_next_tick.ts";
-import {
+const {
   builtinTracer,
   ContextManager,
   METRICS_ENABLED,
   PROPAGATORS,
   telemetry,
   TRACING_ENABLED,
-} from "ext:deno_telemetry/telemetry.ts";
+} = core.loadExtScript("ext:deno_telemetry/telemetry.ts");
 
 const kServerResponse = Symbol("ServerResponse");
 const kConnectionsKey = Symbol("http.server.connections");
