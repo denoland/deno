@@ -25,6 +25,7 @@ use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_core::op2;
+use deno_native_certs::load_native_certs;
 use deno_net::DefaultTlsOptions;
 use deno_net::UnsafelyIgnoreCertificateErrors;
 use deno_net::ops::NetError;
@@ -58,8 +59,8 @@ pub(crate) struct NodeTlsState {
     Arc<dyn deno_tls::rustls::client::ClientSessionStore>,
 }
 
-fn der_to_pem(der: &[u8]) -> String {
-  let b64 = base64::engine::general_purpose::STANDARD.encode(der);
+fn cert_der_to_pem(cert: &[u8]) -> String {
+  let b64 = base64::engine::general_purpose::STANDARD.encode(cert);
   let pem_lines = b64
     .chars()
     .collect::<Vec<char>>()
@@ -69,14 +70,7 @@ fn der_to_pem(der: &[u8]) -> String {
     .map(|c| c.iter().collect::<String>())
     .collect::<Vec<String>>()
     .join("\n");
-  format!("-----BEGIN CERTIFICATE-----\n{pem_lines}\n-----END CERTIFICATE-----",)
-}
-
-fn get_bundled_root_certificates() -> Vec<String> {
-  webpki_root_certs::TLS_SERVER_ROOT_CERTS
-    .iter()
-    .map(|cert| der_to_pem(cert))
-    .collect()
+  format!("-----BEGIN CERTIFICATE-----\n{pem_lines}\n-----END CERTIFICATE-----")
 }
 
 #[op2]
@@ -87,13 +81,12 @@ pub fn op_get_root_certificates(
     .borrow_mut::<PermissionsContainer>()
     .check_sys("ca", "node:tls.rootCertificates")?;
 
-  if let Some(tls_state) = state.try_borrow::<NodeTlsState>()
-    && let Some(certs) = &tls_state.custom_ca_certs
-  {
-    return Ok(certs.clone());
-  }
-
-  Ok(get_bundled_root_certificates())
+  Ok(
+    webpki_root_certs::TLS_SERVER_ROOT_CERTS
+      .iter()
+      .map(|cert| cert_der_to_pem(cert))
+      .collect::<Vec<String>>(),
+  )
 }
 
 fn parse_extra_ca_certs(sys: &(impl EnvVar + FsRead)) -> Vec<String> {
@@ -105,8 +98,8 @@ fn parse_extra_ca_certs(sys: &(impl EnvVar + FsRead)) -> Vec<String> {
   };
   contents
     .split("-----END CERTIFICATE-----")
-    .filter_map(|s| {
-      let trimmed = s.trim();
+    .filter_map(|cert| {
+      let trimmed = cert.trim();
       if trimmed.contains("-----BEGIN CERTIFICATE-----") {
         Some(format!("{trimmed}\n-----END CERTIFICATE-----\n"))
       } else {
@@ -126,37 +119,75 @@ pub enum CaCertificatesError {
   #[class(inherit)]
   #[error(transparent)]
   Permission(#[from] PermissionCheckError),
+  #[class(generic)]
+  #[error("{0}")]
+  Other(String),
 }
 
 #[op2]
-pub fn op_get_ca_certificates<TSys: ExtNodeSys + 'static>(
+#[serde]
+pub fn op_node_get_ca_certificates<TSys: ExtNodeSys + 'static>(
   state: &mut OpState,
-  #[string] cert_type: String,
+  #[string] kind: String,
 ) -> Result<Vec<String>, CaCertificatesError> {
   state
     .borrow_mut::<PermissionsContainer>()
     .check_sys("ca", "node:tls.getCACertificates()")?;
 
+  if kind == "default"
+    && let Some(tls_state) = state.try_borrow::<NodeTlsState>()
+    && let Some(certs) = &tls_state.custom_ca_certs
+  {
+    return Ok(certs.clone());
+  }
+
   let sys = state.borrow::<TSys>();
-  match cert_type.as_str() {
-    "bundled" => Ok(get_bundled_root_certificates()),
-    "system" => {
-      let native_certs =
-        deno_tls::deno_native_certs::load_native_certs().unwrap_or_default();
-      Ok(
-        native_certs
+  match kind.as_str() {
+    "bundled" => Ok(
+      webpki_root_certs::TLS_SERVER_ROOT_CERTS
+        .iter()
+        .map(|cert| cert_der_to_pem(cert))
+        .collect(),
+    ),
+    "system" => load_native_certs()
+      .map(|roots| {
+        roots
           .into_iter()
-          .map(|cert| der_to_pem(&cert.0))
-          .collect(),
-      )
-    }
+          .map(|cert| cert_der_to_pem(&cert.0))
+          .collect()
+      })
+      .map_err(|err| CaCertificatesError::Other(err.to_string())),
     "extra" => Ok(parse_extra_ca_certs(sys)),
     "default" => {
-      let mut certs = get_bundled_root_certificates();
+      let mut certs = Vec::new();
+      let stores_value = sys
+        .env_var("DENO_TLS_CA_STORE")
+        .ok()
+        .unwrap_or_else(|| "mozilla".to_string());
+      let stores = stores_value
+        .split(',')
+        .map(str::trim)
+        .filter(|store| !store.is_empty())
+        .collect::<Vec<_>>();
+      if stores.contains(&"mozilla") {
+        certs.extend(
+          webpki_root_certs::TLS_SERVER_ROOT_CERTS
+            .iter()
+            .map(|cert| cert_der_to_pem(cert)),
+        );
+      }
+      if stores.contains(&"system") {
+        certs.extend(
+          load_native_certs()
+            .map_err(|err| CaCertificatesError::Other(err.to_string()))?
+            .into_iter()
+            .map(|cert| cert_der_to_pem(&cert.0)),
+        );
+      }
       certs.extend(parse_extra_ca_certs(sys));
       Ok(certs)
     }
-    _ => Err(CaCertificatesError::InvalidType(cert_type)),
+    _ => Err(CaCertificatesError::InvalidType(kind)),
   }
 }
 

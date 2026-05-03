@@ -710,6 +710,7 @@ export function createPublicKey(
       res.data,
       res.format,
       res.type ?? "",
+      res.passphrase,
     );
     return new PublicKeyObject(handle);
   }

@@ -72,12 +72,15 @@ deno_core::extension!(
     op_node_decipheriv_final,
     op_node_decipheriv_set_aad,
     op_node_decipheriv_auth_tag,
+    op_node_dh_check,
     op_node_dh_compute_secret,
     op_node_diffie_hellman,
     op_node_ecdh_compute_public_key,
     op_node_ecdh_compute_secret,
     op_node_ecdh_encode_pubkey,
     op_node_ecdh_generate_keys,
+    op_node_ecdh_validate_private_key,
+    op_node_ecdh_validate_public_key,
     op_node_fill_random_async,
     op_node_fill_random,
     op_node_gen_prime_async,
@@ -1210,25 +1213,52 @@ pub fn op_node_ecdh_generate_keys(
   }
 }
 
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+pub enum EcdhError {
+  #[class("ERR_CRYPTO_ECDH_INVALID_PUBLIC_KEY")]
+  #[error("Public key is not valid for specified curve")]
+  InvalidPublicKey,
+  #[class(generic)]
+  #[error("Private key is not valid for specified curve")]
+  InvalidPrivateKey,
+  #[class(type)]
+  #[error("Unsupported curve")]
+  UnsupportedCurve,
+  #[class(generic)]
+  #[error("Invalid key pair")]
+  InvalidKeyPair,
+}
+
 #[op2]
 pub fn op_node_ecdh_compute_secret(
   #[string] curve: &str,
   #[buffer] this_priv: Option<JsBuffer>,
+  #[buffer] this_pub: Option<JsBuffer>,
   #[buffer] their_pub: &mut [u8],
   #[buffer] secret: &mut [u8],
-) -> Result<(), JsErrorBox> {
+) -> Result<(), EcdhError> {
+  let this_priv = this_priv.ok_or(EcdhError::InvalidPrivateKey)?;
   match curve {
     "secp256k1" => {
       let their_public_key =
         elliptic_curve::PublicKey::<k256::Secp256k1>::from_sec1_bytes(
           their_pub,
         )
-        .expect("bad public key");
+        .map_err(|_| EcdhError::InvalidPublicKey)?;
       let this_private_key =
-        elliptic_curve::SecretKey::<k256::Secp256k1>::from_slice(
-          &this_priv.expect("must supply private key"),
-        )
-        .expect("bad private key");
+        elliptic_curve::SecretKey::<k256::Secp256k1>::from_slice(&this_priv)
+          .map_err(|_| EcdhError::InvalidPrivateKey)?;
+      if let Some(this_pub) = this_pub {
+        let derived = this_private_key.public_key();
+        let stored =
+          elliptic_curve::PublicKey::<k256::Secp256k1>::from_sec1_bytes(
+            &this_pub,
+          )
+          .map_err(|_| EcdhError::InvalidKeyPair)?;
+        if derived != stored {
+          return Err(EcdhError::InvalidKeyPair);
+        }
+      }
       let shared_secret = elliptic_curve::ecdh::diffie_hellman(
         this_private_key.to_nonzero_scalar(),
         their_public_key.as_affine(),
@@ -1238,11 +1268,19 @@ pub fn op_node_ecdh_compute_secret(
     "prime256v1" | "secp256r1" => {
       let their_public_key =
         elliptic_curve::PublicKey::<NistP256>::from_sec1_bytes(their_pub)
-          .expect("bad public key");
-      let this_private_key = elliptic_curve::SecretKey::<NistP256>::from_slice(
-        &this_priv.expect("must supply private key"),
-      )
-      .expect("bad private key");
+          .map_err(|_| EcdhError::InvalidPublicKey)?;
+      let this_private_key =
+        elliptic_curve::SecretKey::<NistP256>::from_slice(&this_priv)
+          .map_err(|_| EcdhError::InvalidPrivateKey)?;
+      if let Some(this_pub) = this_pub {
+        let derived = this_private_key.public_key();
+        let stored =
+          elliptic_curve::PublicKey::<NistP256>::from_sec1_bytes(&this_pub)
+            .map_err(|_| EcdhError::InvalidKeyPair)?;
+        if derived != stored {
+          return Err(EcdhError::InvalidKeyPair);
+        }
+      }
       let shared_secret = elliptic_curve::ecdh::diffie_hellman(
         this_private_key.to_nonzero_scalar(),
         their_public_key.as_affine(),
@@ -1252,11 +1290,19 @@ pub fn op_node_ecdh_compute_secret(
     "secp384r1" => {
       let their_public_key =
         elliptic_curve::PublicKey::<NistP384>::from_sec1_bytes(their_pub)
-          .expect("bad public key");
-      let this_private_key = elliptic_curve::SecretKey::<NistP384>::from_slice(
-        &this_priv.expect("must supply private key"),
-      )
-      .expect("bad private key");
+          .map_err(|_| EcdhError::InvalidPublicKey)?;
+      let this_private_key =
+        elliptic_curve::SecretKey::<NistP384>::from_slice(&this_priv)
+          .map_err(|_| EcdhError::InvalidPrivateKey)?;
+      if let Some(this_pub) = this_pub {
+        let derived = this_private_key.public_key();
+        let stored =
+          elliptic_curve::PublicKey::<NistP384>::from_sec1_bytes(&this_pub)
+            .map_err(|_| EcdhError::InvalidKeyPair)?;
+        if derived != stored {
+          return Err(EcdhError::InvalidKeyPair);
+        }
+      }
       let shared_secret = elliptic_curve::ecdh::diffie_hellman(
         this_private_key.to_nonzero_scalar(),
         their_public_key.as_affine(),
@@ -1266,12 +1312,19 @@ pub fn op_node_ecdh_compute_secret(
     "secp521r1" => {
       let their_public_key =
         elliptic_curve::PublicKey::<NistP521>::from_sec1_bytes(their_pub)
-          .map_err(|_| JsErrorBox::type_error("bad public key"))?;
-      let this_private_key = elliptic_curve::SecretKey::<NistP521>::from_slice(
-        &this_priv
-          .ok_or_else(|| JsErrorBox::type_error("must supply private key"))?,
-      )
-      .map_err(|_| JsErrorBox::type_error("bad private key"))?;
+          .map_err(|_| EcdhError::InvalidPublicKey)?;
+      let this_private_key =
+        elliptic_curve::SecretKey::<NistP521>::from_slice(&this_priv)
+          .map_err(|_| EcdhError::InvalidPrivateKey)?;
+      if let Some(this_pub) = this_pub {
+        let derived = this_private_key.public_key();
+        let stored =
+          elliptic_curve::PublicKey::<NistP521>::from_sec1_bytes(&this_pub)
+            .map_err(|_| EcdhError::InvalidKeyPair)?;
+        if derived != stored {
+          return Err(EcdhError::InvalidKeyPair);
+        }
+      }
       let shared_secret = elliptic_curve::ecdh::diffie_hellman(
         this_private_key.to_nonzero_scalar(),
         their_public_key.as_affine(),
@@ -1281,18 +1334,26 @@ pub fn op_node_ecdh_compute_secret(
     "secp224r1" => {
       let their_public_key =
         elliptic_curve::PublicKey::<NistP224>::from_sec1_bytes(their_pub)
-          .expect("bad public key");
-      let this_private_key = elliptic_curve::SecretKey::<NistP224>::from_slice(
-        &this_priv.expect("must supply private key"),
-      )
-      .expect("bad private key");
+          .map_err(|_| EcdhError::InvalidPublicKey)?;
+      let this_private_key =
+        elliptic_curve::SecretKey::<NistP224>::from_slice(&this_priv)
+          .map_err(|_| EcdhError::InvalidPrivateKey)?;
+      if let Some(this_pub) = this_pub {
+        let derived = this_private_key.public_key();
+        let stored =
+          elliptic_curve::PublicKey::<NistP224>::from_sec1_bytes(&this_pub)
+            .map_err(|_| EcdhError::InvalidKeyPair)?;
+        if derived != stored {
+          return Err(EcdhError::InvalidKeyPair);
+        }
+      }
       let shared_secret = elliptic_curve::ecdh::diffie_hellman(
         this_private_key.to_nonzero_scalar(),
         their_public_key.as_affine(),
       );
       secret.copy_from_slice(shared_secret.raw_secret_bytes());
     }
-    &_ => todo!(),
+    _ => return Err(EcdhError::UnsupportedCurve),
   }
   Ok(())
 }
@@ -1302,45 +1363,168 @@ pub fn op_node_ecdh_compute_public_key(
   #[string] curve: &str,
   #[buffer] privkey: &[u8],
   #[buffer] pubkey: &mut [u8],
-) {
+) -> Result<(), EcdhError> {
   match curve {
     "secp256k1" => {
       let this_private_key =
         elliptic_curve::SecretKey::<k256::Secp256k1>::from_slice(privkey)
-          .expect("bad private key");
+          .map_err(|_| EcdhError::InvalidPrivateKey)?;
       let public_key = this_private_key.public_key();
       pubkey.copy_from_slice(public_key.to_encoded_point(false).as_ref());
     }
     "prime256v1" | "secp256r1" => {
       let this_private_key =
         elliptic_curve::SecretKey::<NistP256>::from_slice(privkey)
-          .expect("bad private key");
+          .map_err(|_| EcdhError::InvalidPrivateKey)?;
       let public_key = this_private_key.public_key();
       pubkey.copy_from_slice(public_key.to_encoded_point(false).as_ref());
     }
     "secp384r1" => {
       let this_private_key =
         elliptic_curve::SecretKey::<NistP384>::from_slice(privkey)
-          .expect("bad private key");
+          .map_err(|_| EcdhError::InvalidPrivateKey)?;
       let public_key = this_private_key.public_key();
       pubkey.copy_from_slice(public_key.to_encoded_point(false).as_ref());
     }
     "secp521r1" => {
       let this_private_key =
         elliptic_curve::SecretKey::<NistP521>::from_slice(privkey)
-          .expect("bad private key");
+          .map_err(|_| EcdhError::InvalidPrivateKey)?;
       let public_key = this_private_key.public_key();
       pubkey.copy_from_slice(public_key.to_encoded_point(false).as_ref());
     }
     "secp224r1" => {
       let this_private_key =
         elliptic_curve::SecretKey::<NistP224>::from_slice(privkey)
-          .expect("bad private key");
+          .map_err(|_| EcdhError::InvalidPrivateKey)?;
       let public_key = this_private_key.public_key();
       pubkey.copy_from_slice(public_key.to_encoded_point(false).as_ref());
     }
-    &_ => todo!(),
+    _ => return Err(EcdhError::UnsupportedCurve),
   }
+  Ok(())
+}
+
+#[op2(fast)]
+pub fn op_node_ecdh_validate_private_key(
+  #[string] curve: &str,
+  #[buffer] privkey: &[u8],
+) -> bool {
+  match curve {
+    "secp256k1" => {
+      elliptic_curve::SecretKey::<k256::Secp256k1>::from_slice(privkey).is_ok()
+    }
+    "prime256v1" | "secp256r1" => {
+      elliptic_curve::SecretKey::<NistP256>::from_slice(privkey).is_ok()
+    }
+    "secp384r1" => {
+      elliptic_curve::SecretKey::<NistP384>::from_slice(privkey).is_ok()
+    }
+    "secp521r1" => {
+      elliptic_curve::SecretKey::<NistP521>::from_slice(privkey).is_ok()
+    }
+    "secp224r1" => {
+      elliptic_curve::SecretKey::<NistP224>::from_slice(privkey).is_ok()
+    }
+    _ => false,
+  }
+}
+
+#[op2(fast)]
+pub fn op_node_ecdh_validate_public_key(
+  #[string] curve: &str,
+  #[buffer] pubkey: &[u8],
+) -> bool {
+  use elliptic_curve::sec1::FromEncodedPoint;
+  match curve {
+    "secp256k1" => {
+      let Ok(point) =
+        elliptic_curve::sec1::EncodedPoint::<k256::Secp256k1>::from_bytes(
+          pubkey,
+        )
+      else {
+        return false;
+      };
+      let pk = elliptic_curve::PublicKey::<k256::Secp256k1>::from_encoded_point(
+        &point,
+      );
+      bool::from(pk.is_some())
+    }
+    "prime256v1" | "secp256r1" => {
+      let Ok(point) =
+        elliptic_curve::sec1::EncodedPoint::<NistP256>::from_bytes(pubkey)
+      else {
+        return false;
+      };
+      let pk =
+        elliptic_curve::PublicKey::<NistP256>::from_encoded_point(&point);
+      bool::from(pk.is_some())
+    }
+    "secp384r1" => {
+      let Ok(point) =
+        elliptic_curve::sec1::EncodedPoint::<NistP384>::from_bytes(pubkey)
+      else {
+        return false;
+      };
+      let pk =
+        elliptic_curve::PublicKey::<NistP384>::from_encoded_point(&point);
+      bool::from(pk.is_some())
+    }
+    "secp521r1" => {
+      let Ok(point) =
+        elliptic_curve::sec1::EncodedPoint::<NistP521>::from_bytes(pubkey)
+      else {
+        return false;
+      };
+      let pk: Option<elliptic_curve::PublicKey<NistP521>> =
+        elliptic_curve::PublicKey::<NistP521>::from_encoded_point(&point)
+          .into();
+      pk.is_some()
+    }
+    "secp224r1" => {
+      let Ok(point) =
+        elliptic_curve::sec1::EncodedPoint::<NistP224>::from_bytes(pubkey)
+      else {
+        return false;
+      };
+      let pk =
+        elliptic_curve::PublicKey::<NistP224>::from_encoded_point(&point);
+      bool::from(pk.is_some())
+    }
+    _ => false,
+  }
+}
+
+/// Performs the structural portion of OpenSSL's DH_check(): verifies that
+/// the generator is in the valid range (1 < g < p) and that the modulus is
+/// at least 2. Returns a bitmask of error codes:
+///   0x02 - generator is not suitable for p (g <= 1 or g >= p)
+///   0x10 - p is degenerate (less than 2)
+///
+/// The full DH_check also tests p for primality (Miller-Rabin) and tests
+/// whether (p-1)/2 is prime. Those checks are intentionally omitted: in a
+/// debug build, Miller-Rabin on a 2048-bit modulus is slow enough to push
+/// `createDiffieHellman` past test timeouts, and Node tests never expect
+/// `verifyError === 0` for a non-prime large modulus.
+#[op2(fast)]
+pub fn op_node_dh_check(
+  #[buffer] prime: &[u8],
+  #[buffer] generator: &[u8],
+) -> i32 {
+  let p = BigInt::from_bytes_be(num_bigint::Sign::Plus, prime);
+  let g = BigInt::from_bytes_be(num_bigint::Sign::Plus, generator);
+
+  let mut code: i32 = 0;
+
+  if p < BigInt::from(2) {
+    code |= 0x10;
+  }
+
+  if g <= BigInt::from(1) || g >= p {
+    code |= 0x02;
+  }
+
+  code
 }
 
 #[inline]

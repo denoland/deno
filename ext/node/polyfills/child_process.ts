@@ -186,6 +186,20 @@ export function fork(
         options.env = { ...process.env, NODE_OPTIONS: nodeOptionsStr };
       }
     }
+    if (result.ca_stores?.length) {
+      options.env = {
+        ...(options.env ?? process.env),
+        DENO_TLS_CA_STORE: result.ca_stores.join(","),
+      };
+    }
+    if (result.use_openssl_ca) {
+      options.env = {
+        ...(options.env ?? process.env),
+        DENO_NODE_USE_OPENSSL_CA: "1",
+      };
+    } else if (options.env?.DENO_NODE_USE_OPENSSL_CA) {
+      delete options.env.DENO_NODE_USE_OPENSSL_CA;
+    }
   }
 
   if (typeof options.stdio === "string") {

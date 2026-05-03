@@ -11,7 +11,7 @@ import {
 const timers = core.loadExtScript("ext:deno_web/02_timers.js");
 const httpClient = core.loadExtScript("ext:deno_fetch/22_http_client.js");
 const console = core.loadExtScript("ext:deno_web/01_console.js");
-import * as ffi from "ext:deno_ffi/00_ffi.js";
+const ffi = core.loadExtScript("ext:deno_ffi/00_ffi.js");
 const net = core.loadExtScript("ext:deno_net/01_net.js");
 const tls = core.loadExtScript("ext:deno_net/02_tls.js");
 import * as serve from "ext:deno_http/00_serve.ts";
