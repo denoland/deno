@@ -357,7 +357,6 @@ declare var caches: CacheStorage;
  * @category Platform
  */
 interface Navigator {
-  readonly gpu: GPU;
   readonly hardwareConcurrency: number;
   readonly userAgent: string;
   readonly language: string;
