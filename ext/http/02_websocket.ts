@@ -1,6 +1,9 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 import { internals, primordials } from "ext:core/mod.js";
-import { op_http_websocket_accept_header } from "ext:core/ops";
+import {
+  op_http_websocket_accept_header,
+  op_http_ws_create_from_stream_resource,
+} from "ext:core/ops";
 const {
   ArrayPrototypeIncludes,
   ArrayPrototypeMap,
@@ -126,14 +129,17 @@ function upgradeWebSocket(request, options = { __proto__: null }) {
   } else if (options.socket) {
     // node:http upgrade path: the socket is a node net.Socket from the
     // "upgrade" event. Write the 101 response, take the TCP stream from
-    // libuv, and create a WebSocket directly over it.
+    // libuv, and create a WebSocket over it via ext/http.
     const nodeSocket = options.socket;
-    const head =
-      `HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: ${accept}\r\n`;
-    const protocolHeader = options.protocol
-      ? `Sec-WebSocket-Protocol: ${options.protocol}\r\n`
-      : "";
-    const responseHead = head + protocolHeader + "\r\n";
+
+    // Build the 101 response from r.headerList so the headers stay in
+    // sync with the header-list built above (protocol negotiation, etc.).
+    let responseHead = "HTTP/1.1 101 Switching Protocols\r\n";
+    for (let i = 0; i < r.headerList.length; i++) {
+      const { 0: name, 1: value } = r.headerList[i];
+      responseHead += `${name}: ${value}\r\n`;
+    }
+    responseHead += "\r\n";
 
     if (nodeSocket.destroyed) {
       throw new TypeError(
@@ -144,7 +150,7 @@ function upgradeWebSocket(request, options = { __proto__: null }) {
     if (!handle) {
       throw new TypeError("Socket has no handle - cannot upgrade");
     }
-    if (typeof handle.upgradeToWebsocket !== "function") {
+    if (typeof handle.takeStream !== "function") {
       throw new TypeError(
         "Socket is not a TCP socket - only TCP connections can be upgraded to WebSocket",
       );
@@ -160,8 +166,8 @@ function upgradeWebSocket(request, options = { __proto__: null }) {
       try {
         // Wait for the 101 response to fully flush before taking the
         // stream. A fire-and-forget write could leave data in the
-        // internal_write_queue that would be orphaned once
-        // upgradeToWebsocket() detaches the stream from libuv.
+        // internal_write_queue that would be orphaned once we detach
+        // the stream from libuv.
         await new Promise((resolve, reject) => {
           nodeSocket.write(responseHead, (err) => {
             if (err) reject(err);
@@ -172,9 +178,13 @@ function upgradeWebSocket(request, options = { __proto__: null }) {
         // Stop libuv from reading this socket before we take the stream
         handle.readStop();
 
-        // Take the TCP stream from libuv and create the WebSocket
-        // resource directly in Rust - no fd roundtrip through JS.
-        const wsRid = handle.upgradeToWebsocket(extraBytes);
+        // Take the TCP stream from libuv into a resource, then create
+        // the WebSocket via ext/http (avoids ext/node -> deno_websocket dep).
+        const streamRid = handle.takeStream();
+        const wsRid = op_http_ws_create_from_stream_resource(
+          streamRid,
+          extraBytes,
+        );
 
         // The stream is now owned by the WebSocket. Detach the node
         // socket so it doesn't try to use the gutted handle.
