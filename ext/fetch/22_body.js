@@ -1,17 +1,8 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
+// deno-fmt-ignore-file
 
-// @ts-check
-/// <reference path="../webidl/internal.d.ts" />
-/// <reference path="../url/internal.d.ts" />
-/// <reference path="../../cli/tsc/dts/lib.deno_url.d.ts" />
-/// <reference path="../web/internal.d.ts" />
-/// <reference path="../../cli/tsc/dts/lib.deno_web.d.ts" />
-/// <reference path="./internal.d.ts" />
-/// <reference path="../web/06_streams_types.d.ts" />
-/// <reference path="../../cli/tsc/dts/lib.deno_fetch.d.ts" />
-/// <reference lib="esnext" />
-
-import { core, primordials } from "ext:core/mod.js";
+(function () {
+const { core, primordials } = globalThis.__bootstrap;
 const {
   BadResourcePrototype,
   isAnyArrayBuffer,
@@ -37,20 +28,20 @@ const {
   Uint8Array,
 } = primordials;
 
-import * as webidl from "ext:deno_webidl/00_webidl.js";
-import {
+const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
+const {
   parseUrlEncoded,
   URLSearchParamsPrototype,
-} from "ext:deno_web/00_url.js";
-import {
+} = core.loadExtScript("ext:deno_web/00_url.js");
+const {
   formDataFromEntries,
   FormDataPrototype,
   formDataToBlob,
   parseFormData,
-} from "ext:deno_fetch/21_formdata.js";
-import * as mimesniff from "ext:deno_web/01_mimesniff.js";
-import { BlobPrototype } from "ext:deno_web/09_file.js";
-import {
+} = core.loadExtScript("ext:deno_fetch/21_formdata.js");
+const mimesniff = core.loadExtScript("ext:deno_web/01_mimesniff.js");
+const { BlobPrototype } = core.loadExtScript("ext:deno_web/09_file.js");
+const {
   createProxy,
   errorReadableStream,
   isReadableStreamDisturbed,
@@ -60,7 +51,7 @@ import {
   ReadableStreamPrototype,
   readableStreamTee,
   readableStreamThrowIfErrored,
-} from "ext:deno_web/06_streams.js";
+} = core.loadExtScript("ext:deno_web/06_streams.js");
 
 /**
  * @param {Uint8Array | string} chunk
@@ -486,7 +477,40 @@ function extractBody(object) {
       throw new TypeError("ReadableStream is locked or disturbed");
     }
   } else if (object[webidl.AsyncIterable] === webidl.AsyncIterable) {
-    stream = ReadableStream.from(object.open());
+    // If the underlying body is a Node `Readable` running in binary mode
+    // (e.g. `http.IncomingMessage`), build a byte `ReadableStream` so that
+    // consumers can acquire a BYOB reader. This matches undici's behavior in
+    // Node, where `stream.Readable` bodies go through `Readable.toWeb()`.
+    const original = object.value;
+    const readableState = (original !== null && typeof original === "object")
+      ? original._readableState
+      : undefined;
+    if (
+      typeof readableState === "object" && readableState !== null &&
+      !readableState.objectMode && !readableState.encoding
+    ) {
+      const iter = object.open();
+      stream = new ReadableStream({
+        type: "bytes",
+        async pull(controller) {
+          // deno-lint-ignore prefer-primordials
+          const res = await iter.next();
+          if (res.done) {
+            controller.close();
+          } else {
+            controller.enqueue(res.value);
+          }
+        },
+        async cancel(reason) {
+          if (iter.return !== undefined) {
+            // deno-lint-ignore prefer-primordials
+            await iter.return(reason);
+          }
+        },
+      });
+    } else {
+      stream = ReadableStream.from(object.open());
+    }
   }
   if (typeof source === "string") {
     // WARNING: this deviates from spec (expects length to be set)
@@ -508,6 +532,11 @@ webidl.converters["async iterable<Uint8Array>"] = webidl
   .createAsyncIterableConverter(webidl.converters.Uint8Array);
 
 webidl.converters["BodyInit_DOMString"] = (V, prefix, context, opts) => {
+  // Fast path: a plain string is by far the most common shape for Response
+  // body and `fetch(url, { body: "..." })`. Skip the union-of-types prototype
+  // chain checks and the trailing DOMString conversion (which itself just
+  // returns strings as-is).
+  if (typeof V === "string") return V;
   // Union for (ReadableStream or Blob or ArrayBufferView or ArrayBuffer or FormData or URLSearchParams or USVString)
   if (ObjectPrototypeIsPrototypeOf(ReadableStreamPrototype, V)) {
     return webidl.converters["ReadableStream"](V, prefix, context, opts);
@@ -543,4 +572,5 @@ webidl.converters["BodyInit_DOMString?"] = webidl.createNullableConverter(
   webidl.converters["BodyInit_DOMString"],
 );
 
-export { extractBody, InnerBody, mixinBody, packageData };
+return { extractBody, InnerBody, mixinBody, packageData };
+})()

@@ -42,6 +42,10 @@ pub struct TranslatedArgs {
   pub deno_args: Vec<String>,
   /// Node options that should be added to NODE_OPTIONS env var
   pub node_options: Vec<String>,
+  /// CA store configuration that should be passed to the spawned Deno process.
+  pub ca_stores: Option<Vec<String>>,
+  /// Whether the translated flags selected OpenSSL/system-only CA handling.
+  pub use_openssl_ca: bool,
   /// Whether the child process needs npm process state
   pub needs_npm_process_state: bool,
 }
@@ -58,11 +62,22 @@ fn translate_to_deno_args(
   } else {
     TranslateOptions::for_shell_command()
   };
+  let use_openssl_ca = parsed_args.options.use_openssl_ca;
+  let use_system_ca = parsed_args.options.use_system_ca;
+  let use_bundled_ca = parsed_args.options.use_bundled_ca;
   let result = translate_to_deno_args_impl(parsed_args, &options);
+  let ca_stores = match (use_system_ca, use_bundled_ca) {
+    (true, true) => Some(vec!["system".to_string(), "mozilla".to_string()]),
+    (true, false) => Some(vec!["system".to_string()]),
+    (false, true) => Some(vec!["mozilla".to_string()]),
+    (false, false) => None,
+  };
 
   TranslatedArgs {
     deno_args: result.deno_args,
     node_options: result.node_options,
+    ca_stores,
+    use_openssl_ca,
     needs_npm_process_state: script_in_npm_package,
   }
 }
@@ -89,6 +104,8 @@ pub fn op_node_translate_cli_args(
     return Ok(TranslatedArgs {
       deno_args: vec!["run".to_string(), "-A".to_string(), "-".to_string()],
       node_options: vec![],
+      ca_stores: None,
+      use_openssl_ca: false,
       needs_npm_process_state: script_in_npm_package,
     });
   }

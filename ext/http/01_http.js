@@ -31,36 +31,27 @@ const {
   Uint8Array,
 } = primordials;
 import { _ws } from "ext:deno_http/02_websocket.ts";
-import { InnerBody } from "ext:deno_fetch/22_body.js";
-import { Event } from "ext:deno_web/02_event.js";
-import { BlobPrototype } from "ext:deno_web/09_file.js";
-import {
+const { InnerBody } = core.loadExtScript("ext:deno_fetch/22_body.js");
+const { Event } = core.loadExtScript("ext:deno_web/02_event.js");
+const { BlobPrototype } = core.loadExtScript("ext:deno_web/09_file.js");
+const {
   ResponsePrototype,
   toInnerResponse,
-} from "ext:deno_fetch/23_response.js";
-import {
+} = core.loadExtScript("ext:deno_fetch/23_response.js");
+const {
   abortRequest,
   fromInnerRequest,
   newInnerRequest,
-} from "ext:deno_fetch/23_request.js";
-import {
-  _eventLoop,
-  _idleTimeoutDuration,
-  _idleTimeoutTimeout,
-  _protocol,
-  _readyState,
-  _rid,
-  _role,
-  _serverHandleIdleTimeout,
-  SERVER,
-  WebSocket,
-} from "ext:deno_websocket/01_websocket.js";
-import {
+} = core.loadExtScript("ext:deno_fetch/23_request.js");
+const loadWebSocket = core.createLazyLoader(
+  "ext:deno_websocket/01_websocket.js",
+);
+const {
   getReadableStreamResourceBacking,
   readableStreamClose,
   readableStreamForRid,
   ReadableStreamPrototype,
-} from "ext:deno_web/06_streams.js";
+} = core.loadExtScript("ext:deno_web/06_streams.js");
 
 const connErrorSymbol = Symbol("connError");
 
@@ -358,6 +349,17 @@ function createRespondWith(
 
       const ws = resp[_ws];
       if (ws) {
+        const {
+          _eventLoop,
+          _idleTimeoutDuration,
+          _idleTimeoutTimeout,
+          _protocol,
+          _readyState,
+          _rid,
+          _role,
+          _serverHandleIdleTimeout,
+          SERVER,
+        } = loadWebSocket();
         const wsRid = await op_http_upgrade_websocket(
           readStreamRid,
         );
@@ -366,7 +368,7 @@ function createRespondWith(
 
         httpConn.close();
 
-        ws[_readyState] = WebSocket.OPEN;
+        ws[_readyState] = 1; // WebSocket.OPEN
         ws[_role] = SERVER;
         const event = new Event("open");
         ws.dispatchEvent(event);

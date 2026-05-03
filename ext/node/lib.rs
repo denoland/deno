@@ -29,7 +29,6 @@ use node_resolver::errors::PackageJsonLoadError;
 
 extern crate libz_sys as zlib;
 
-mod global;
 pub mod ops;
 
 use deno_dotenv::parse_env_content_hook;
@@ -43,10 +42,6 @@ pub use ops::vm::ContextInitMode;
 pub use ops::vm::VM_CONTEXT_INDEX;
 pub use ops::vm::create_v8_context;
 pub use ops::vm::init_global_template;
-
-pub use crate::global::GlobalsStorage;
-use crate::global::global_object_middleware;
-use crate::global::global_template_middleware;
 
 pub fn is_builtin_node_module(module_name: &str) -> bool {
   DenoIsBuiltInNodeModuleChecker.is_builtin_node_module(module_name)
@@ -283,6 +278,7 @@ deno_core::extension!(deno_node,
     ops::zlib::op_zlib_crc32_string,
     ops::handle_wrap::op_node_new_async_id,
     ops::http2::op_http2_callbacks,
+    ops::http2::op_http2_error_string,
     ops::http2::op_http2_http_state,
     ops::os::op_node_os_get_priority,
     ops::os::op_node_os_set_priority,
@@ -343,6 +339,7 @@ deno_core::extension!(deno_node,
     ops::node_cli_parser::op_node_translate_cli_args,
     ops::shell::op_node_parse_shell_args,
     ops::tls::op_get_root_certificates,
+    ops::tls::op_node_get_ca_certificates<TSys>,
     ops::tls::op_set_default_ca_certificates,
     ops::tls::op_tls_peer_certificate,
     ops::tls::op_tls_canonicalize_ipv4_address,
@@ -395,7 +392,6 @@ deno_core::extension!(deno_node,
   esm_entry_point = "ext:deno_node/02_init.js",
   esm = [
     dir "polyfills",
-    "00_globals.js",
     "02_init.js",
     "_events.mjs",
     "internal/fs/promises.ts",
@@ -419,7 +415,6 @@ deno_core::extension!(deno_node,
     "_process/streams.mjs",
     "_readline.mjs",
     "_util/_util_callbackify.js",
-    "_util/async.ts",
     "_util/os.ts",
     "_utils.ts",
     "_zlib_binding.mjs",
@@ -435,6 +430,7 @@ deno_core::extension!(deno_node,
     "internal_binding/constants.ts",
     "internal_binding/crypto.ts",
     "internal_binding/handle_wrap.ts",
+    "internal_binding/http2.ts",
     "internal_binding/http_parser.ts",
     "internal_binding/mod.ts",
     "internal_binding/node_file.ts",
@@ -480,6 +476,7 @@ deno_core::extension!(deno_node,
     "internal/crypto/sig.ts",
     "internal/crypto/util.ts",
     "internal/crypto/x509.ts",
+    "internal/deps/undici/undici.js",
     "internal/dgram.ts",
     "internal/dns/promises.ts",
     "internal/dns/utils.ts",
@@ -497,6 +494,7 @@ deno_core::extension!(deno_node,
     "internal/hide_stack_frames.ts",
     "internal/http.ts",
     "internal/http2/constants.ts",
+    "internal/http2/core.ts",
     "internal/http2/util.ts",
     "internal/http2/compat.js",
     "internal/idna.ts",
@@ -506,6 +504,7 @@ deno_core::extension!(deno_node,
     "internal/normalize_encoding.ts",
     "internal/options.ts",
     "internal/primordials.mjs",
+    "internal/priority_queue.ts",
     "internal/process/per_thread.mjs",
     "internal/process/report.ts",
     "internal/process/warning.ts",
@@ -523,6 +522,7 @@ deno_core::extension!(deno_node,
     "internal/streams/duplexify.js",
     "internal/streams/duplexpair.js",
     "internal/streams/end-of-stream.js",
+    "internal/streams/fast-utf8-stream.js",
     "internal/streams/from.js",
     "internal/streams/lazy_transform.js",
     "internal/streams/legacy.js",
@@ -643,8 +643,6 @@ deno_core::extension!(deno_node,
     }
 
   },
-  global_template_middleware = global_template_middleware,
-  global_object_middleware = global_object_middleware,
   customizer = |ext: &mut deno_core::Extension| {
     let external_references = [
       vm::QUERY_MAP_FN.with(|query| {
@@ -719,41 +717,6 @@ deno_core::extension!(deno_node,
         }
       }),
 
-      global::GETTER_MAP_FN.with(|getter| {
-        ExternalReference {
-          named_getter: *getter,
-        }
-      }),
-      global::SETTER_MAP_FN.with(|setter| {
-        ExternalReference {
-          named_setter: *setter,
-        }
-      }),
-      global::QUERY_MAP_FN.with(|query| {
-        ExternalReference {
-          named_query: *query,
-        }
-      }),
-      global::DELETER_MAP_FN.with(|deleter| {
-        ExternalReference {
-          named_deleter: *deleter,
-        }
-      }),
-      global::ENUMERATOR_MAP_FN.with(|enumerator| {
-        ExternalReference {
-          enumerator: *enumerator,
-        }
-      }),
-      global::DEFINER_MAP_FN.with(|definer| {
-        ExternalReference {
-          named_definer: *definer,
-        }
-      }),
-      global::DESCRIPTOR_MAP_FN.with(|descriptor| {
-        ExternalReference {
-          named_getter: *descriptor,
-        }
-      }),
     ];
 
     ext.external_references.to_mut().extend(external_references);
@@ -762,7 +725,10 @@ deno_core::extension!(deno_node,
 
 #[sys_traits::auto_impl]
 pub trait ExtNodeSys:
-  node_resolver::NodeResolverSys + sys_traits::EnvCurrentDir + Clone
+  node_resolver::NodeResolverSys
+  + sys_traits::EnvCurrentDir
+  + sys_traits::EnvVar
+  + Clone
 {
 }
 

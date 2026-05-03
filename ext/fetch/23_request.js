@@ -1,15 +1,8 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
+// deno-fmt-ignore-file
 
-// @ts-check
-/// <reference path="../webidl/internal.d.ts" />
-/// <reference path="../web/internal.d.ts" />
-/// <reference path="../../cli/tsc/dts/lib.deno_web.d.ts" />
-/// <reference path="./internal.d.ts" />
-/// <reference path="../web/06_streams_types.d.ts" />
-/// <reference path="../../cli/tsc/dts/lib.deno_fetch.d.ts" />
-/// <reference lib="esnext" />
-
-import { core, internals, primordials } from "ext:core/mod.js";
+(function () {
+const { core, internals, primordials } = globalThis.__bootstrap;
 const {
   ArrayPrototypeMap,
   ArrayPrototypeSlice,
@@ -24,28 +17,35 @@ const {
   TypeError,
 } = primordials;
 
-import * as webidl from "ext:deno_webidl/00_webidl.js";
-import { createFilteredInspectProxy } from "ext:deno_web/01_console.js";
-import { HTTP_TOKEN_CODE_POINT_RE } from "ext:deno_web/00_infra.js";
-import { URL } from "ext:deno_web/00_url.js";
-import { extractBody, mixinBody } from "ext:deno_fetch/22_body.js";
-import { getLocationHref } from "ext:deno_web/12_location.js";
-import { extractMimeType } from "ext:deno_web/01_mimesniff.js";
-import { blobFromObjectUrl } from "ext:deno_web/09_file.js";
-import {
+const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
+const { createFilteredInspectProxy } = core.loadExtScript(
+  "ext:deno_web/01_console.js",
+);
+const { HTTP_TOKEN_CODE_POINT_RE } = core.loadExtScript(
+  "ext:deno_web/00_infra.js",
+);
+const { URL } = core.loadExtScript("ext:deno_web/00_url.js");
+const { extractBody, mixinBody } = core.loadExtScript("ext:deno_fetch/22_body.js");
+const { getLocationHref } = core.loadExtScript("ext:deno_web/12_location.js");
+const { extractMimeType } = core.loadExtScript("ext:deno_web/01_mimesniff.js");
+const { blobFromObjectUrl } = core.loadExtScript("ext:deno_web/09_file.js");
+const {
   fillHeaders,
   getDecodeSplitHeader,
   guardFromHeaders,
   headerListFromHeaders,
   headersFromHeaderList,
-} from "ext:deno_fetch/20_headers.js";
-import { HttpClientPrototype } from "ext:deno_fetch/22_http_client.js";
-import {
+} = core.loadExtScript("ext:deno_fetch/20_headers.js");
+const { HttpClientPrototype } = core.loadExtScript("ext:deno_fetch/22_http_client.js");
+const {
   createDependentAbortSignal,
   newSignal,
   signalAbort,
-} from "ext:deno_web/03_abort_signal.js";
-import { DOMException } from "ext:deno_web/01_dom_exception.js";
+} = core.loadExtScript("ext:deno_web/03_abort_signal.js");
+const { DOMException } = core.loadExtScript("ext:deno_web/01_dom_exception.js");
+const { markNotSerializable } = core.loadExtScript(
+  "ext:deno_web/13_message_port.js",
+);
 const { internalRidSymbol } = core;
 
 const _request = Symbol("request");
@@ -545,6 +545,7 @@ class Request {
 
 webidl.configureInterface(Request);
 const RequestPrototype = Request.prototype;
+markNotSerializable(RequestPrototype);
 mixinBody(RequestPrototype, _body, _mimeType);
 
 webidl.converters["Request"] = webidl.createInterfaceConverter(
@@ -630,7 +631,7 @@ function getCachedAbortSignal(request) {
 // For testing
 internals.getCachedAbortSignal = getCachedAbortSignal;
 
-export {
+return {
   abortRequest,
   fromInnerRequest,
   newInnerRequest,
@@ -639,3 +640,4 @@ export {
   RequestPrototype,
   toInnerRequest,
 };
+})()

@@ -36,6 +36,7 @@ const {
 } = primordials;
 
 import net from "node:net";
+import { Buffer } from "node:buffer";
 import { ok as assert } from "node:assert";
 import {
   _checkInvalidHeaderChar as checkInvalidHeaderChar,
@@ -303,6 +304,10 @@ ServerResponse.prototype.assignSocket = function assignSocket(socket) {
     throw new ERR_HTTP_SOCKET_ASSIGNED();
   }
   socket._httpMessage = this;
+  if (socket._parent) {
+    socket._parent._httpMessage = this;
+    socket._parent._httpMessageDetached = false;
+  }
   socket.on("close", onServerResponseClose);
   this.socket = socket;
   this.emit("socket", socket);
@@ -313,6 +318,11 @@ ServerResponse.prototype.detachSocket = function detachSocket(socket) {
   assert(socket._httpMessage === this);
   socket.removeListener("close", onServerResponseClose);
   socket._httpMessage = null;
+  socket._httpMessageDetached = true;
+  if (socket._parent) {
+    socket._parent._httpMessage = null;
+    socket._parent._httpMessageDetached = true;
+  }
   this.socket = null;
 };
 
@@ -462,7 +472,8 @@ function connectionListenerInternal(server, socket) {
   if (!server[kConnectionsKey]) server[kConnectionsKey] = new ConnectionsList();
   const connections = server[kConnectionsKey];
   connections.push(socket);
-  socket.on("close", () => connections.pop(socket));
+  const onConnectionClose = () => connections.pop(socket);
+  socket.on("close", onConnectionClose);
 
   if (server.timeout && typeof socket.setTimeout === "function") {
     socket.setTimeout(server.timeout);
@@ -492,6 +503,7 @@ function connectionListenerInternal(server, socket) {
     onData: null,
     onEnd: null,
     onClose: null,
+    onConnectionClose: onConnectionClose,
     onDrain: null,
     outgoing: [],
     incoming: [],
@@ -538,9 +550,18 @@ function connectionListenerInternal(server, socket) {
   socket._paused = false;
 }
 
-function onParserExecute(server, socket, parser, state, ret) {
+function onParserExecute(server, socket, parser, state, ret, d) {
   socket._unrefTimer?.();
-  onParserExecuteCommon(server, socket, parser, state, ret, undefined);
+  // The consume path (parser.consume(handle)) passes `d` as a bare
+  // Uint8Array from the C++ binding. onParserExecuteCommon's upgrade
+  // branch does `d.slice(bytesParsed).toString()` and expects the
+  // Buffer `.toString(encoding)` semantics, not the plain Uint8Array
+  // behavior. Wrap to match the non-consume path where `d` came from
+  // `socket.on('data')` as a Buffer.
+  if (d !== undefined && !Buffer.isBuffer(d)) {
+    d = Buffer.from(d.buffer, d.byteOffset, d.byteLength);
+  }
+  onParserExecuteCommon(server, socket, parser, state, ret, d);
 }
 
 function socketOnTimeout() {
@@ -618,6 +639,19 @@ function onParserExecuteCommon(server, socket, parser, state, ret, d) {
       socket.destroy();
       return;
     }
+
+    // Detach the socket from the server by removing all server-added listeners.
+    // After this point the socket is fully owned by the connect/upgrade handler.
+    socket.removeListener("data", state.onData);
+    socket.removeListener("end", state.onEnd);
+    socket.removeListener("close", state.onClose);
+    socket.removeListener("close", state.onConnectionClose);
+    socket.removeListener("drain", state.onDrain);
+    socket.removeListener("error", socketOnError);
+    socket.removeListener("timeout", socketOnTimeout);
+    // Remove from connection tracking (normally done by the close listener)
+    const connections = server[kConnectionsKey];
+    if (connections) connections.pop(socket);
 
     parser.finish();
     freeParser(parser, req, socket);
@@ -967,18 +1001,34 @@ function Server(options, requestListener) {
   this[kUniqueHeaders] = parseUniqueHeadersOption(options.uniqueHeaders);
 }
 
+// Wraps a deno_core system interval ID so the stored handle exposes a
+// Node-compatible `_destroyed` flag. Tests (and Node user code) read
+// `server[kConnectionsCheckingInterval]._destroyed` to confirm the
+// interval was cleared.
+class ConnectionsCheckingInterval {
+  _timerId = 0;
+  _destroyed = false;
+}
+
 function setupConnectionsTracking() {
   this[kConnectionsKey] ||= new ConnectionsList();
 
-  if (this[kConnectionsCheckingInterval]) {
-    core.cancelTimer(this[kConnectionsCheckingInterval]);
-  }
+  destroyConnectionsCheckingInterval(this[kConnectionsCheckingInterval]);
 
   const interval = this.connectionsCheckingInterval || 30_000;
-  this[kConnectionsCheckingInterval] = core.createSystemInterval(
+  const handle = new ConnectionsCheckingInterval();
+  handle._timerId = core.createSystemInterval(
     checkConnections.bind(this),
     interval,
   );
+  this[kConnectionsCheckingInterval] = handle;
+}
+
+function destroyConnectionsCheckingInterval(handle) {
+  if (handle && !handle._destroyed) {
+    core.cancelTimer(handle._timerId);
+    handle._destroyed = true;
+  }
 }
 
 function checkConnections() {
@@ -1001,10 +1051,7 @@ function checkConnections() {
 
 function httpServerPreClose(server) {
   server.closeIdleConnections();
-  if (server[kConnectionsCheckingInterval]) {
-    core.cancelTimer(server[kConnectionsCheckingInterval]);
-    server[kConnectionsCheckingInterval] = null;
-  }
+  destroyConnectionsCheckingInterval(server[kConnectionsCheckingInterval]);
 }
 
 function storeHTTPOptions(options) {
@@ -1115,8 +1162,11 @@ Server.prototype.closeIdleConnections = function closeIdleConnections() {
   const connections = this[kConnectionsKey];
   if (connections) {
     for (const socket of connections._all) {
-      // A socket is idle if it has no active HTTP response being written
-      if (!socket._httpMessage) {
+      // A socket is idle if it completed a request-response cycle and
+      // currently has no active HTTP response being written. Sockets
+      // that have never finished a response (e.g. still receiving
+      // headers) are not idle.
+      if (!socket._httpMessage && socket._httpMessageDetached) {
         socket.destroy();
       }
     }
@@ -1126,6 +1176,7 @@ Server.prototype.closeIdleConnections = function closeIdleConnections() {
 export {
   connectionListener as _connectionListener,
   httpServerPreClose,
+  kConnectionsCheckingInterval,
   kIncomingMessage,
   kServerResponse,
   Server,
@@ -1138,6 +1189,7 @@ export {
 export default {
   _connectionListener: connectionListener,
   httpServerPreClose,
+  kConnectionsCheckingInterval,
   kIncomingMessage,
   kServerResponse,
   Server,

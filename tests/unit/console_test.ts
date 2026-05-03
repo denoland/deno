@@ -343,7 +343,7 @@ Deno.test(function consoleTestStringifyCircular() {
   debug: [Function: debug],
   info: [Function: info],
   dir: [Function: dir],
-  dirxml: [Function: dir],
+  dirxml: [Function: dirxml],
   warn: [Function: warn],
   error: [Function: error],
   assert: [Function: assert],
@@ -2115,15 +2115,16 @@ Deno.test(function consoleDir() {
   });
 });
 
-// console.dir test
+// console.dirxml forwards to log per the WHATWG console spec; extra args
+// are passed through like log, not interpreted as dir-style options.
 Deno.test(function consoleDirXml() {
   mockConsole((console, out) => {
     console.dirxml("DIRXML");
     assertEquals(out.toString(), "DIRXML\n");
   });
   mockConsole((console, out) => {
-    console.dirxml("DIRXML", { indentLevel: 2 });
-    assertEquals(out.toString(), "    DIRXML\n");
+    console.dirxml("DIRXML", "extra");
+    assertEquals(out.toString(), "DIRXML extra\n");
   });
 });
 
@@ -2673,4 +2674,38 @@ Deno.test(function inspectEscapeSequencesFalse() {
     Deno.inspect("foo\nbar", { escapeSequences: false }),
     '"foo\nbar"',
   );
+});
+
+Deno.test(function inspectProxyDoesNotTriggerGetTrap() {
+  // Regression test for https://github.com/denoland/deno/issues/33719
+  // Proxies that return functions for any property access (e.g. grammy API
+  // client) should not have their get/has traps triggered for custom inspect
+  // symbols during inspection.
+  const accessed: PropertyKey[] = [];
+  const proxy = new Proxy({}, {
+    has(_target, prop) {
+      accessed.push(prop);
+      return false;
+    },
+    get(_target, prop) {
+      accessed.push(prop);
+      return () => {};
+    },
+  });
+
+  accessed.length = 0;
+  Deno.inspect(proxy);
+
+  const inspectSymbols = [
+    Symbol.for("nodejs.util.inspect.custom"),
+    Symbol.for("Deno.customInspect"),
+    Symbol.for("Deno.privateCustomInspect"),
+  ];
+  for (const sym of inspectSymbols) {
+    assertEquals(
+      accessed.filter((p) => p === sym).length,
+      0,
+      `Deno.inspect should not trigger proxy traps for ${String(sym)}`,
+    );
+  }
 });

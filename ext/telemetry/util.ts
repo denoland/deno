@@ -1,6 +1,6 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-import { primordials } from "ext:core/mod.js";
+import { internals, primordials } from "ext:core/mod.js";
 import type { Span } from "ext:deno_telemetry/telemetry.ts";
 
 const { String, StringPrototypeSlice } = primordials;
@@ -66,3 +66,9 @@ export function updateSpanFromError(span: Span, error: any) {
   }
   span.setStatus({ code: 2, message: error.message ?? String(error) });
 }
+
+internals.__telemetryUtil = {
+  updateSpanFromClientResponse,
+  updateSpanFromError,
+  updateSpanFromRequest,
+};

@@ -210,7 +210,7 @@ fn stdio_fd(fd: i32) -> StdFile {
 
 deno_core::extension!(deno_io,
   deps = [ deno_web ],
-  esm = [ "12_io.js" ],
+  lazy_loaded_js = [ "12_io.js" ],
   options = {
     stdio: Option<Stdio>,
   },

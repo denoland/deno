@@ -1,15 +1,8 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
+// deno-fmt-ignore-file
 
-// @ts-check
-/// <reference path="../webidl/internal.d.ts" />
-/// <reference path="../web/internal.d.ts" />
-/// <reference path="../../cli/tsc/dts/lib.deno_web.d.ts" />
-/// <reference path="./internal.d.ts" />
-/// <reference path="../web/06_streams_types.d.ts" />
-/// <reference path="../../cli/tsc/dts/lib.deno_fetch.d.ts" />
-/// <reference lib="esnext" />
-
-import { primordials } from "ext:core/mod.js";
+(function () {
+const { core, primordials } = globalThis.__bootstrap;
 const {
   ArrayIsArray,
   ArrayPrototypePush,
@@ -28,8 +21,11 @@ const {
   TypeError,
 } = primordials;
 
-import * as webidl from "ext:deno_webidl/00_webidl.js";
-import {
+const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
+const { markNotSerializable } = core.loadExtScript(
+  "ext:deno_web/13_message_port.js",
+);
+const {
   byteLowerCase,
   collectHttpQuotedString,
   collectSequenceOfCodepoints,
@@ -37,7 +33,7 @@ import {
   HTTP_TAB_OR_SPACE_SUFFIX_RE,
   HTTP_TOKEN_CODE_POINT_RE,
   httpTrim,
-} from "ext:deno_web/00_infra.js";
+} = core.loadExtScript("ext:deno_web/00_infra.js");
 
 const _headerList = Symbol("header list");
 const _iterableHeaders = Symbol("iterable headers");
@@ -459,6 +455,7 @@ webidl.mixinPairIterable("Headers", Headers, _iterableHeaders, 0, 1);
 
 webidl.configureInterface(Headers);
 const HeadersPrototype = Headers.prototype;
+markNotSerializable(HeadersPrototype);
 
 webidl.converters["HeadersInit"] = (V, prefix, context, opts) => {
   // Union for (sequence<sequence<ByteString>> or record<ByteString, ByteString>)
@@ -526,7 +523,7 @@ function headersEntries(headers) {
   return headers[_iterableHeaders];
 }
 
-export {
+return {
   fillHeaders,
   getDecodeSplitHeader,
   getHeader,
@@ -536,3 +533,4 @@ export {
   headersEntries,
   headersFromHeaderList,
 };
+})()

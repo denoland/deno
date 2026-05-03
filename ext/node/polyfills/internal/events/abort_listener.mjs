@@ -3,7 +3,6 @@
 
 import { primordials } from "ext:core/mod.js";
 const { queueMicrotask, SymbolDispose } = primordials;
-import * as abortSignal from "ext:deno_web/03_abort_signal.js";
 import { validateAbortSignal, validateFunction } from "../validators.mjs";
 import { codes } from "../errors.ts";
 const { ERR_INVALID_ARG_TYPE } = codes;
@@ -24,13 +23,12 @@ function addAbortListener(signal, listener) {
   if (signal.aborted) {
     queueMicrotask(() => listener({ target: signal }));
   } else {
-    const handler = () => {
-      removeEventListener?.();
-      listener({ target: signal });
-    };
-    signal[abortSignal.add](handler);
+    signal.addEventListener("abort", listener, {
+      __proto__: null,
+      once: true,
+    });
     removeEventListener = () => {
-      signal[abortSignal.remove](handler);
+      signal.removeEventListener("abort", listener);
     };
   }
   return {

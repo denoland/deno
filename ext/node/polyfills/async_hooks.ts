@@ -5,9 +5,14 @@
 // deno-lint-ignore-file prefer-primordials
 
 import { core, primordials } from "ext:core/mod.js";
-import { validateFunction } from "ext:deno_node/internal/validators.mjs";
+import {
+  validateFunction,
+  validateObject,
+} from "ext:deno_node/internal/validators.mjs";
 import {
   AsyncHook,
+  emitAfter,
+  emitBefore,
   emitDestroy as emitDestroyHook,
   emitInit,
   executionAsyncId as internalExecutionAsyncId,
@@ -61,11 +66,13 @@ export class AsyncResource {
     ...args: unknown[]
   ) {
     const previousContext = getAsyncContext();
+    emitBefore(this.#asyncId);
     try {
       setAsyncContext(this.#snapshot);
       return ReflectApply(fn, thisArg, args);
     } finally {
       setAsyncContext(previousContext);
+      emitAfter(this.#asyncId);
     }
   }
 
@@ -112,7 +119,22 @@ export class AsyncResource {
 
 export class AsyncLocalStorage {
   #variable = new AsyncVariable();
+  // deno-lint-ignore no-explicit-any
+  #defaultValue: any = undefined;
+  #name = "";
   enabled = false;
+
+  constructor(options: { defaultValue?: unknown; name?: string } = {}) {
+    validateObject(options, "options");
+    this.#defaultValue = options.defaultValue;
+    if (options.name !== undefined) {
+      this.#name = `${options.name}`;
+    }
+  }
+
+  get name() {
+    return this.#name;
+  }
 
   // deno-lint-ignore no-explicit-any
   run(store: any, callback: any, ...args: any[]): any {
@@ -141,9 +163,10 @@ export class AsyncLocalStorage {
   // deno-lint-ignore no-explicit-any
   getStore(): any {
     if (!this.enabled) {
-      return undefined;
+      return this.#defaultValue;
     }
-    return this.#variable.get();
+    const value = this.#variable.get();
+    return value === undefined ? this.#defaultValue : value;
   }
 
   enterWith(store: unknown) {

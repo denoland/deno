@@ -1264,6 +1264,27 @@ Deno.test(
   },
 );
 
+// Regression test for https://github.com/denoland/deno/issues/29347
+// `Deno.createHttpClient` used to scribble `caCerts` and `proxy.transport`
+// onto the caller's options object, so reusing a single options object
+// across multiple calls would either throw on the second call (the proxy
+// URL no longer matched the auto-rewritten `transport: "http"`) or leave
+// the user with surprising state.
+Deno.test(function createHttpClientDoesNotMutateOptions() {
+  const proxy = { url: "socks5h://127.0.0.1:1080" };
+  const options = { proxy };
+
+  const c1 = Deno.createHttpClient(options);
+  c1.close();
+  // The user's options must be unchanged...
+  assertEquals(options, { proxy: { url: "socks5h://127.0.0.1:1080" } });
+  assertEquals(proxy, { url: "socks5h://127.0.0.1:1080" });
+  // ...so a second call with the same options object still works.
+  const c2 = Deno.createHttpClient(options);
+  c2.close();
+  assertEquals(options, { proxy: { url: "socks5h://127.0.0.1:1080" } });
+});
+
 Deno.test(
   {
     permissions: { net: true },
