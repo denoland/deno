@@ -2013,6 +2013,7 @@
 
     // TODO(bartlomieju): depends on 'internal/deps/undici/undici' internal module
     // "parallel/test-inspector-network-fetch.js": {},
+    "parallel/test-http2-allow-http1-upgrade-ws.js": {},
     "parallel/test-inspector-multisession-ws.js": {},
     "parallel/test-inspector-not-blocked-on-idle.js": {},
     "parallel/test-inspector-open-coverage.js": {},
