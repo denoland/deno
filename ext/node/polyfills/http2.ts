@@ -288,6 +288,7 @@ const MAX_ADDITIONAL_SETTINGS = 10;
 import * as constants from "ext:deno_node/internal/http2/constants.ts";
 const {
   NGHTTP2_CANCEL,
+  NGHTTP2_FLOW_CONTROL_ERROR,
   NGHTTP2_REFUSED_STREAM,
   NGHTTP2_DEFAULT_WEIGHT,
   NGHTTP2_FLAG_END_STREAM,
@@ -385,6 +386,11 @@ const kProceed = Symbol("proceed");
 const kRemoteSettings = Symbol("remote-settings");
 const kRequestAsyncResource = Symbol("requestAsyncResource");
 const kSentHeaders = Symbol("sent-headers");
+// Tracks whether the server-side 'stream' event has fired for this stream.
+// Used by onStreamClose to defer destroy/close work when nghttp2 closes a
+// stream in the same mem_recv batch that created it (e.g. peer flow-control
+// violation), so the user's stream handler still sees a live stream.
+const kStreamEventEmitted = Symbol("kStreamEventEmitted");
 const kRawHeaders = Symbol("raw-headers");
 const kSentTrailers = Symbol("sent-trailers");
 const kServer = Symbol("server");
@@ -718,6 +724,32 @@ function onStreamClose(code) {
     return false;
   }
 
+  // If the 'stream' event for this server stream hasn't been emitted
+  // yet (HEADERS and the offending frames arrived in the same mem_recv
+  // batch, e.g. test-http2-misbehaving-flow-control), defer the close
+  // and destroy to a microtask so the user's stream handler runs first
+  // and observes a live stream. Without this, respond()/end() inside
+  // the handler would throw ERR_HTTP2_INVALID_STREAM.
+  //
+  // process.nextTick is FIFO, and onSessionHeaders queued the 'stream'
+  // emit nextTick *before* this callback fired, so nesting our work in
+  // a nextTick keeps the order: emit('stream') -> handler runs ->
+  // closeStream/destroy -> emit('error')/emit('close').
+  if (!stream[kStreamEventEmitted]) {
+    process.nextTick(onStreamCloseDeferred, stream, code);
+    return true;
+  }
+  return doStreamClose(stream, code);
+}
+
+function onStreamCloseDeferred(stream, code) {
+  if (stream.destroyed) {
+    return;
+  }
+  doStreamClose(stream, code);
+}
+
+function doStreamClose(stream, code) {
   debugStreamObj(
     stream,
     "closed with code %d, closed %s, readable %s",
@@ -1281,6 +1313,13 @@ function emit(self, ...args) {
   ReflectApply(self.emit, self, args);
 }
 
+// Mark the stream so onStreamClose stops deferring before user code
+// runs, then emit the 'stream' event on the session.
+function emitStreamNT(session, stream, obj, flags, headers) {
+  stream[kStreamEventEmitted] = true;
+  ReflectApply(session.emit, session, ["stream", stream, obj, flags, headers]);
+}
+
 function callTimeout(self, session) {
   if (self.destroyed) {
     return;
@@ -1389,7 +1428,10 @@ function onSessionHeaders(
     if (endOfStream) {
       stream[kState].endAfterHeaders = true;
     }
-    process.nextTick(emit, session, "stream", stream, obj, flags, headers);
+    // Mark unset so onStreamClose knows it must defer; cleared just
+    // before the user's handler runs.
+    stream[kStreamEventEmitted] = false;
+    process.nextTick(emitStreamNT, session, stream, obj, flags, headers);
   } else {
     let event;
     const status = obj[HTTP2_HEADER_STATUS];
@@ -3164,23 +3206,33 @@ function setupHandle(socket, type, options) {
       // protocol error or HTTP semantic violation), it stops wanting to read
       // or write. Tear down the JS session so the socket closes; otherwise
       // the peer would never see the connection end and would hang.
+      //
+      // Defer the teardown via process.nextTick so that any 'stream' (or
+      // similar) events that mem_recv queued (also via nextTick) run
+      // *first*. Otherwise the user's stream handler would observe an
+      // already-destroyed stream -- see test-http2-misbehaving-flow-control,
+      // where nghttp2 emits a stream-level RST_STREAM and a connection-level
+      // GOAWAY in the same mem_recv batch as the HEADERS frame.
       if (!handle.hasPendingData() && !this.destroyed) {
-        handle.onstreamclose();
-        // After GOAWAY has been written, gracefully shut down the
-        // underlying socket. We must NOT call socket.destroy() here while
-        // socket.write(GOAWAY) is still pending in the writable stream
-        // buffer -- destroy() abandons buffered writes, so the peer never
-        // sees the GOAWAY frame. Use socket.end() so the GOAWAY is flushed
-        // before FIN is sent, then destroy after the writable side drains
-        // to ensure the peer's read side observes connection close (some
-        // peers won't surface an error on a half-open FIN alone).
-        if (!socket.destroyed) {
-          socket.end(() => {
-            if (!socket.destroyed) {
-              socket.destroy();
-            }
-          });
-        }
+        process.nextTick(() => {
+          if (this.destroyed) return;
+          handle.onstreamclose();
+          // After GOAWAY has been written, gracefully shut down the
+          // underlying socket. We must NOT call socket.destroy() here while
+          // socket.write(GOAWAY) is still pending in the writable stream
+          // buffer -- destroy() abandons buffered writes, so the peer never
+          // sees the GOAWAY frame. Use socket.end() so the GOAWAY is flushed
+          // before FIN is sent, then destroy after the writable side drains
+          // to ensure the peer's read side observes connection close (some
+          // peers won't surface an error on a half-open FIN alone).
+          if (!socket.destroyed) {
+            socket.end(() => {
+              if (!socket.destroyed) {
+                socket.destroy();
+              }
+            });
+          }
+        });
       }
     }
   });
@@ -3244,8 +3296,26 @@ function setupHandle(socket, type, options) {
     if (!session.destroyed) {
       const err = session.connecting ? new ERR_SOCKET_CLOSED() : null;
       const state = session[kState];
+      // When nghttp2 1.68 escalates a peer stream-level flow-control
+      // violation directly to a connection-level GOAWAY (skipping the
+      // RST_STREAM that would have fired on_stream_close in 1.67), the
+      // offending stream is still open in JS. Surface the GOAWAY's
+      // FLOW_CONTROL_ERROR on each torn-down stream so user code sees
+      // a real ERR_HTTP2_STREAM_ERROR (test-http2-misbehaving-flow-
+      // control{,-paused}) instead of the silent NGHTTP2_CANCEL.
+      //
+      // Limit this to FLOW_CONTROL_ERROR -- other GOAWAY codes
+      // (PROTOCOL_ERROR, COMPRESSION_ERROR, ...) are connection-level
+      // failures that should surface as session errors, not synthetic
+      // per-stream errors that can mask the real cause (e.g.
+      // test-http2-options-max-headers-exceeds-nghttp2 wants
+      // ERR_HTTP2_SESSION_ERROR, not a stream error).
+      const goawayCode = handle.lastSentGoawayCode();
+      const closeCode = goawayCode === NGHTTP2_FLOW_CONTROL_ERROR
+        ? NGHTTP2_FLOW_CONTROL_ERROR
+        : NGHTTP2_CANCEL;
       // deno-lint-ignore prefer-primordials
-      state.streams.forEach((stream) => stream.close(NGHTTP2_CANCEL));
+      state.streams.forEach((stream) => stream.close(closeCode));
       // deno-lint-ignore prefer-primordials
       state.pendingStreams.forEach((stream) => stream.close(NGHTTP2_CANCEL));
       if (!session.closed) {
