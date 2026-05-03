@@ -215,7 +215,7 @@ function cron(
           updateSpanFromError(span, error);
           span.end();
         }
-        core.print(`[error] Exception in cron handler ${name}: ${error}\n`, true);
+        internals.log("error", `Exception in cron handler ${name}`, error);
         success = false;
       }
     }

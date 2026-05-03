@@ -138,6 +138,17 @@ op_get_ext_import_meta_proto().log = function internalLog(levelStr, ...args) {
   op_internal_log(this.url, level, message);
 };
 
+// Equivalent of import.meta.log for use in lazy-loaded (IIFE) scripts that
+// lack access to import.meta.
+internals.log = function internalLog(levelStr, ...args) {
+  const level = LOG_LEVELS[levelStr];
+  const message = inspectArgs(
+    args,
+    getConsoleInspectOptions(getStderrNoColor()),
+  );
+  op_internal_log("ext:runtime", level, message);
+};
+
 let windowIsClosing = false;
 let globalThis_;
 
