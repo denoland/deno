@@ -227,6 +227,7 @@ pub async fn execute_script(
           },
           kill_signal,
           cli_options.argv(),
+          false,
         )
         .await;
     }
@@ -253,6 +254,7 @@ struct RunSingleOptions<'a> {
   custom_commands: HashMap<String, Rc<dyn ShellCommand>>,
   kill_signal: KillSignal,
   argv: &'a [String],
+  parallel: bool,
 }
 
 struct TaskRunner<'a> {
@@ -315,10 +317,13 @@ impl<'a> TaskRunner<'a> {
     kill_signal: &KillSignal,
     args: &[String],
   ) -> Result<i32, deno_core::anyhow::Error> {
+    let parallel = tasks.len() > 1;
+
     struct PendingTasksContext<'a> {
       completed: HashSet<usize>,
       running: HashSet<usize>,
       tasks: &'a [ResolvedTask<'a>],
+      parallel: bool,
     }
 
     impl<'a> PendingTasksContext<'a> {
@@ -366,6 +371,7 @@ impl<'a> TaskRunner<'a> {
 
           self.running.insert(task.id);
           let kill_signal = kill_signal.clone();
+          let parallel = self.parallel;
           return Some(
             async move {
               match task.task_or_script {
@@ -378,6 +384,7 @@ impl<'a> TaskRunner<'a> {
                       def,
                       kill_signal,
                       args,
+                      parallel,
                     )
                     .await
                 }
@@ -390,6 +397,7 @@ impl<'a> TaskRunner<'a> {
                       &details.tasks,
                       kill_signal,
                       args,
+                      parallel,
                     )
                     .await
                 }
@@ -407,6 +415,7 @@ impl<'a> TaskRunner<'a> {
       completed: HashSet::with_capacity(tasks.len()),
       running: HashSet::with_capacity(self.concurrency),
       tasks: &tasks,
+      parallel,
     };
 
     let mut queue = futures_unordered::FuturesUnordered::new();
@@ -448,6 +457,7 @@ impl<'a> TaskRunner<'a> {
     definition: &TaskDefinition,
     kill_signal: KillSignal,
     argv: &'a [String],
+    parallel: bool,
   ) -> Result<i32, deno_core::anyhow::Error> {
     let Some(command) = &definition.command else {
       self.output_task(
@@ -482,6 +492,7 @@ impl<'a> TaskRunner<'a> {
         custom_commands,
         kill_signal,
         argv,
+        parallel,
       })
       .await
   }
@@ -494,6 +505,7 @@ impl<'a> TaskRunner<'a> {
     scripts: &IndexMap<String, String>,
     kill_signal: KillSignal,
     argv: &[String],
+    parallel: bool,
   ) -> Result<i32, deno_core::anyhow::Error> {
     // ensure the npm packages are installed if using a managed resolver
     self.maybe_npm_install().await?;
@@ -527,6 +539,7 @@ impl<'a> TaskRunner<'a> {
             custom_commands: custom_commands.clone(),
             kill_signal: kill_signal.clone(),
             argv,
+            parallel,
           })
           .await?;
         if exit_code > 0 {
@@ -550,6 +563,7 @@ impl<'a> TaskRunner<'a> {
       custom_commands,
       kill_signal,
       argv,
+      parallel,
     } = opts;
 
     self.output_task(
@@ -558,22 +572,35 @@ impl<'a> TaskRunner<'a> {
       &task_runner::get_script_with_args(script, argv),
     );
 
-    Ok(
-      task_runner::run_task(task_runner::RunTaskOptions {
-        task_name,
-        script,
-        cwd,
-        env_vars: self.env_vars.clone(),
-        custom_commands,
-        init_cwd: self.cli_options.initial_cwd(),
-        argv,
-        root_node_modules_dir: self.npm_resolver.root_node_modules_path(),
-        stdio: None,
-        kill_signal,
-      })
-      .await?
-      .exit_code,
-    )
+    let (stdio, prefix_handles) = if parallel {
+      let prefix =
+        format!("{} ", colors::cyan(format!("[{}]", task_name)));
+      let (io, handles) = task_runner::make_prefixed_task_io(prefix);
+      (Some(io), handles)
+    } else {
+      (None, vec![])
+    };
+
+    let exit_code = task_runner::run_task(task_runner::RunTaskOptions {
+      task_name,
+      script,
+      cwd,
+      env_vars: self.env_vars.clone(),
+      custom_commands,
+      init_cwd: self.cli_options.initial_cwd(),
+      argv,
+      root_node_modules_dir: self.npm_resolver.root_node_modules_path(),
+      stdio,
+      kill_signal,
+    })
+    .await?
+    .exit_code;
+
+    for handle in prefix_handles {
+      let _ = handle.await;
+    }
+
+    Ok(exit_code)
   }
 
   async fn maybe_npm_install(&self) -> Result<(), AnyError> {
