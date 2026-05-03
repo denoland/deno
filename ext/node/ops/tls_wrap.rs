@@ -3504,7 +3504,7 @@ fn build_server_config(
   let key_str = get_js_string(scope, context, "key");
   let no_server_cert = cert_str.is_none() && key_str.is_none();
 
-  let (certs, private_key) = if no_server_cert {
+  let (mut certs, private_key) = if no_server_cert {
     (Vec::new(), None)
   } else {
     let cert_str = cert_str?;
@@ -3520,6 +3520,38 @@ fn build_server_config(
     .flatten()?;
     (certs, Some(private_key))
   };
+
+  // OpenSSL auto-chains: when `ca` certs are provided, it includes them in
+  // the certificate chain sent during the handshake so that clients receive
+  // the full chain (leaf + intermediates + root).  This is needed for
+  // getPeerCertificate(true) to return the issuer chain.
+  {
+    let ca_key = v8::String::new(scope, "ca").unwrap();
+    if let Some(ca_val) = context.get(scope, ca_key.into()) {
+      let mut ca_pems: Vec<Vec<u8>> = Vec::new();
+      if let Ok(arr) = v8::Local::<v8::Array>::try_from(ca_val) {
+        for i in 0..arr.length() {
+          if let Some(v) = arr.get_index(scope, i)
+            && let Some(s) = v.to_string(scope)
+          {
+            ca_pems.push(s.to_rust_string_lossy(scope).into_bytes());
+          }
+        }
+      } else if !ca_val.is_undefined()
+        && !ca_val.is_null()
+        && let Some(s) = ca_val.to_string(scope)
+      {
+        ca_pems.push(s.to_rust_string_lossy(scope).into_bytes());
+      }
+      for pem in &ca_pems {
+        let normalized = normalize_pem_headers(pem);
+        let reader = &mut std::io::BufReader::new(std::io::Cursor::new(
+          normalized.as_ref(),
+        ));
+        certs.extend(rustls_pemfile::certs(reader).flatten());
+      }
+    }
+  }
 
   let request_cert = get_js_bool(scope, context, "requestCert", false);
   let reject_unauthorized =

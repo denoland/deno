@@ -303,6 +303,25 @@ Deno.test("TLSSocket can construct without options", () => {
   new tls.TLSSocket(new stream.PassThrough() as any);
 });
 
+// Regression test for https://github.com/denoland/deno/issues/33743
+// `setServername` must throw with Node's `code` property set, not a plain
+// `TypeError`/`Error`.
+Deno.test("TLSSocket.setServername - throws ERR_INVALID_ARG_TYPE for non-string", () => {
+  // deno-lint-ignore no-explicit-any
+  const sock: any = new tls.TLSSocket(new stream.PassThrough() as any);
+  const err = assertThrows(() => sock.setServername(123), TypeError);
+  assertEquals((err as { code?: string }).code, "ERR_INVALID_ARG_TYPE");
+});
+
+Deno.test("TLSSocket.setServername - throws ERR_TLS_SNI_FROM_SERVER on server-side socket", () => {
+  // deno-lint-ignore no-explicit-any
+  const sock: any = new tls.TLSSocket(new stream.PassThrough() as any, {
+    isServer: true,
+  });
+  const err = assertThrows(() => sock.setServername("example.com"));
+  assertEquals((err as { code?: string }).code, "ERR_TLS_SNI_FROM_SERVER");
+});
+
 Deno.test("tls.connect() throws InvalidData when there's error in certificate", async () => {
   // Uses execCode to avoid `--unsafely-ignore-certificate-errors` option applied
   const [status, output] = await execCode(`

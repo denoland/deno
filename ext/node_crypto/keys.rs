@@ -1392,6 +1392,25 @@ impl KeyObjectHandle {
           )
         })?;
 
+        // Legacy "Proc-Type: 4,ENCRYPTED" PEMs (e.g. EC PRIVATE KEY encrypted
+        // with AES-128-CBC) cannot be parsed by decode_pem_lenient because the
+        // DEK-Info header bytes aren't valid base64. Route directly through
+        // the private key path, which knows how to decrypt them.
+        if pem.contains("Proc-Type: 4,ENCRYPTED") {
+          let handle = KeyObjectHandle::new_asymmetric_private_key_from_js(
+            key, format, typ, passphrase,
+          )?;
+          match handle {
+            KeyObjectHandle::AsymmetricPrivate(private) => {
+              return Ok(KeyObjectHandle::AsymmetricPublic(
+                private.to_public_key(),
+              ));
+            }
+            KeyObjectHandle::AsymmetricPublic(_)
+            | KeyObjectHandle::Secret(_) => unreachable!(),
+          }
+        }
+
         let (label, document) = decode_pem_lenient(pem)
           .ok_or(AsymmetricPublicKeyError::InvalidPemPublicKey)?;
 
