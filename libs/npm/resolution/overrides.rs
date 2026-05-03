@@ -758,6 +758,59 @@ mod test {
   }
 
   #[test]
+  fn parse_catalog_override_with_key_selector() {
+    let mut catalogs = Catalogs::default();
+    let mut default_catalog = IndexMap::new();
+    default_catalog.insert("foo".to_string(), "2.0.0".to_string());
+    catalogs.insert("default".to_string(), default_catalog);
+
+    // Key has a version selector — catalog lookup uses the package name
+    // portion only ("foo"), not the full key ("foo@^1.0.0").
+    let raw = serde_json::json!({
+      "foo@^1.0.0": "catalog:"
+    });
+    let overrides =
+      NpmOverrides::from_value(raw, &empty_root_deps(), &catalogs).unwrap();
+    assert_eq!(overrides.rules.len(), 1);
+    assert_eq!(
+      overrides.rules[0].selector.as_ref().unwrap().version_text(),
+      "^1.0.0"
+    );
+    match &overrides.rules[0].value {
+      NpmOverrideValue::Version(req) => {
+        assert_eq!(req.version_text(), "2.0.0");
+      }
+      _ => panic!("expected Version"),
+    }
+  }
+
+  #[test]
+  fn parse_catalog_override_in_nested_dot_key() {
+    let mut catalogs = Catalogs::default();
+    let mut default_catalog = IndexMap::new();
+    default_catalog.insert("foo".to_string(), "3.0.0".to_string());
+    catalogs.insert("default".to_string(), default_catalog);
+
+    // catalog: value in a nested override's "." key
+    let raw = serde_json::json!({
+      "foo": {
+        ".": "catalog:",
+        "bar": "1.0.0"
+      }
+    });
+    let overrides =
+      NpmOverrides::from_value(raw, &empty_root_deps(), &catalogs).unwrap();
+    assert_eq!(overrides.rules.len(), 1);
+    match &overrides.rules[0].value {
+      NpmOverrideValue::Version(req) => {
+        assert_eq!(req.version_text(), "3.0.0");
+      }
+      _ => panic!("expected Version from dot key catalog"),
+    }
+    assert_eq!(overrides.rules[0].children.len(), 1);
+  }
+
+  #[test]
   fn parse_catalog_override_unresolved() {
     let raw = serde_json::json!({
       "foo": "catalog:"
