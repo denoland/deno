@@ -22,7 +22,6 @@ use deno_config::deno_json::FmtConfig;
 pub use deno_config::deno_json::FmtOptionsConfig;
 pub use deno_config::deno_json::LintRulesConfig;
 use deno_config::deno_json::NodeModulesDirMode;
-use deno_config::deno_json::NodeModulesLinkerMode;
 use deno_config::deno_json::PermissionConfigValue;
 use deno_config::deno_json::PermissionsObjectWithBase;
 pub use deno_config::deno_json::ProseWrap;
@@ -861,18 +860,6 @@ impl CliOptions {
       return Ok(Some(flag));
     }
     self.workspace().node_modules_dir()
-  }
-
-  pub fn specified_node_modules_linker(
-    &self,
-  ) -> Result<
-    Option<NodeModulesLinkerMode>,
-    deno_config::deno_json::NodeModulesLinkerParseError,
-  > {
-    if let Some(flag) = self.flags.node_modules_linker {
-      return Ok(Some(flag));
-    }
-    self.workspace().node_modules_linker()
   }
 
   pub fn vendor_dir_path(&self) -> Option<&PathBuf> {

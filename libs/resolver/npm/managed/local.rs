@@ -6,7 +6,6 @@ use std::borrow::Cow;
 use std::path::Path;
 use std::path::PathBuf;
 
-use deno_config::deno_json::NodeModulesLinkerMode;
 use deno_npm::NpmPackageCacheFolderId;
 use deno_npm::NpmPackageId;
 use deno_path_util::fs::canonicalize_path_maybe_not_exists;
@@ -36,16 +35,13 @@ pub struct LocalNpmPackageResolver<TSys: FsCanonicalize + FsMetadata> {
   sys: NodeResolutionSys<TSys>,
   root_node_modules_path: PathBuf,
   root_node_modules_url: Url,
-  linker_mode: NodeModulesLinkerMode,
 }
 
 impl<TSys: FsCanonicalize + FsMetadata> LocalNpmPackageResolver<TSys> {
-  #[allow(clippy::too_many_arguments, reason = "all arguments are needed")]
   pub fn new(
     resolution: NpmResolutionCellRc,
     sys: NodeResolutionSys<TSys>,
     node_modules_folder: PathBuf,
-    linker_mode: NodeModulesLinkerMode,
   ) -> Self {
     Self {
       resolution,
@@ -53,7 +49,6 @@ impl<TSys: FsCanonicalize + FsMetadata> LocalNpmPackageResolver<TSys> {
       root_node_modules_url: url_from_directory_path(&node_modules_folder)
         .unwrap(),
       root_node_modules_path: node_modules_folder,
-      linker_mode,
     }
   }
 
@@ -62,41 +57,22 @@ impl<TSys: FsCanonicalize + FsMetadata> LocalNpmPackageResolver<TSys> {
   }
 
   pub fn maybe_package_folder(&self, id: &NpmPackageId) -> Option<PathBuf> {
-    match self.linker_mode {
-      NodeModulesLinkerMode::Isolated => {
-        let folder_copy_index = self
-          .resolution
-          .resolve_pkg_cache_folder_copy_index_from_pkg_id(id)?;
-        // package is stored at:
-        // node_modules/.deno/<package_cache_folder_id_folder_name>/node_modules/<package_name>
-        Some(
-          self
-            .root_node_modules_path
-            .join(".deno")
-            .join(get_package_folder_id_folder_name_from_parts(
-              &id.nv,
-              folder_copy_index,
-            ))
-            .join("node_modules")
-            .join(&id.nv.name),
-        )
-      }
-      NodeModulesLinkerMode::Hoisted => {
-        // In hoisted mode, packages are directly at node_modules/<name>/
-        // or nested at node_modules/<parent>/node_modules/<name>/.
-        // First try the top-level location.
-        let top_level = join_package_name_to_path(
-          Cow::Borrowed(&self.root_node_modules_path),
-          &id.nv.name,
-        );
-        if self.sys.is_dir(Cow::Borrowed(&top_level)) {
-          // Verify it's the right version by checking package.json
-          Some(top_level)
-        } else {
-          None
-        }
-      }
-    }
+    let folder_copy_index = self
+      .resolution
+      .resolve_pkg_cache_folder_copy_index_from_pkg_id(id)?;
+    // package is stored at:
+    // node_modules/.deno/<package_cache_folder_id_folder_name>/node_modules/<package_name>
+    Some(
+      self
+        .root_node_modules_path
+        .join(".deno")
+        .join(get_package_folder_id_folder_name_from_parts(
+          &id.nv,
+          folder_copy_index,
+        ))
+        .join("node_modules")
+        .join(&id.nv.name),
+    )
   }
 
   pub fn resolve_package_cache_folder_id_from_specifier(
@@ -108,59 +84,21 @@ impl<TSys: FsCanonicalize + FsMetadata> LocalNpmPackageResolver<TSys> {
     else {
       return Ok(None);
     };
-    match self.linker_mode {
-      NodeModulesLinkerMode::Isolated => {
-        // ex. project/node_modules/.deno/preact@10.24.3/node_modules/preact/
-        let Some(node_modules_ancestor) = folder_path
-          .ancestors()
-          .find(|ancestor| ancestor.ends_with("node_modules"))
-        else {
-          return Ok(None);
-        };
-        let Some(folder_name) =
-          node_modules_ancestor.parent().and_then(|p| p.file_name())
-        else {
-          return Ok(None);
-        };
-        Ok(get_package_folder_id_from_folder_name(
-          &folder_name.to_string_lossy(),
-        ))
-      }
-      NodeModulesLinkerMode::Hoisted => {
-        // In hoisted mode, resolve from the snapshot using the package name
-        // extracted from the folder path.
-        let pkg_name = folder_path
-          .file_name()
-          .and_then(|n| n.to_str())
-          .unwrap_or_default();
-        // Check if it's a scoped package
-        let pkg_name = if let Some(parent) = folder_path.parent()
-          && let Some(parent_name) = parent.file_name()
-          && let Some(parent_str) = parent_name.to_str()
-          && parent_str.starts_with('@')
-        {
-          format!("{}/{}", parent_str, pkg_name)
-        } else {
-          pkg_name.to_string()
-        };
-        let snapshot = self.resolution.snapshot();
-        let Some(pkg_id) = snapshot
-          .top_level_packages()
-          .find(|id| id.nv.name.as_str() == pkg_name)
-        else {
-          return Ok(None);
-        };
-        Ok(
-          self
-            .resolution
-            .resolve_pkg_cache_folder_copy_index_from_pkg_id(pkg_id)
-            .map(|copy_index| NpmPackageCacheFolderId {
-              nv: pkg_id.nv.clone(),
-              copy_index,
-            }),
-        )
-      }
-    }
+    // ex. project/node_modules/.deno/preact@10.24.3/node_modules/preact/
+    let Some(node_modules_ancestor) = folder_path
+      .ancestors()
+      .find(|ancestor| ancestor.ends_with("node_modules"))
+    else {
+      return Ok(None);
+    };
+    let Some(folder_name) =
+      node_modules_ancestor.parent().and_then(|p| p.file_name())
+    else {
+      return Ok(None);
+    };
+    Ok(get_package_folder_id_from_folder_name(
+      &folder_name.to_string_lossy(),
+    ))
   }
 
   fn resolve_package_root(&self, path: &Path) -> PathBuf {
@@ -191,18 +129,9 @@ impl<TSys: FsCanonicalize + FsMetadata> LocalNpmPackageResolver<TSys> {
     let Some(path) = deno_path_util::url_to_file_path(specifier).ok() else {
       return Ok(None);
     };
-    match self.linker_mode {
-      NodeModulesLinkerMode::Isolated => {
-        // Canonicalize the path so it's not pointing to the symlinked directory
-        // in `node_modules` directory of the referrer.
-        canonicalize_path_maybe_not_exists(&self.sys, &path).map(Some)
-      }
-      NodeModulesLinkerMode::Hoisted => {
-        // In hoisted mode, packages are real directories, not symlinks.
-        // No canonicalization needed.
-        Ok(Some(path))
-      }
-    }
+    // Canonicalize the path so it's not pointing to the symlinked directory
+    // in `node_modules` directory of the referrer.
+    canonicalize_path_maybe_not_exists(&self.sys, &path).map(Some)
   }
 
   fn resolve_package_folder_from_specifier(

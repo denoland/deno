@@ -1,3 +1,4 @@
 {
-  "nodeModulesDir": "auto"
+  "nodeModulesDir": "manual",
+  "nodeModulesLinker": "hoisted"
 }

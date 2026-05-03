@@ -330,57 +330,61 @@ impl<TSys: WorkspaceFactorySys> WorkspaceFactory<TSys> {
     self.options.no_npm
   }
 
+  /// Resolves the raw node_modules dir mode before any promotion
+  /// (e.g. Manual → Auto for package manager subcommands).
+  fn raw_node_modules_dir_mode(
+    &self,
+  ) -> Result<NodeModulesDirMode, anyhow::Error> {
+    if let Some(process_state) = &self.options.npm_process_state {
+      if process_state.is_byonm {
+        return Ok(NodeModulesDirMode::Manual);
+      }
+      if process_state.node_modules_dir.is_some() {
+        return Ok(NodeModulesDirMode::Auto);
+      } else {
+        return Ok(NodeModulesDirMode::None);
+      }
+    }
+    if let Some(flag) = self.options.node_modules_dir {
+      return Ok(flag);
+    }
+    let workspace = &self.workspace_directory()?.workspace;
+    if let Some(mode) = workspace.node_modules_dir()? {
+      return Ok(mode);
+    }
+
+    let workspace = &self.workspace_directory()?.workspace;
+
+    if let Some(pkg_json) = workspace.root_pkg_json() {
+      if let Ok(deno_dir) = self.deno_dir() {
+        let deno_dir = &deno_dir.root;
+        // `deno_dir` can be symlink in macOS or on the CI
+        if let Ok(deno_dir) =
+          canonicalize_path_maybe_not_exists(&self.sys, deno_dir)
+          && pkg_json.path.starts_with(deno_dir)
+        {
+          // if the package.json is in deno_dir, then do not use node_modules
+          // next to it as local node_modules dir
+          return Ok(NodeModulesDirMode::None);
+        }
+      }
+
+      Ok(NodeModulesDirMode::Manual)
+    } else if workspace.vendor_dir_path().is_some() {
+      Ok(NodeModulesDirMode::Auto)
+    } else {
+      // use the global cache
+      Ok(NodeModulesDirMode::None)
+    }
+  }
+
   pub fn node_modules_dir_mode(
     &self,
   ) -> Result<NodeModulesDirMode, anyhow::Error> {
     self
       .node_modules_dir_mode
       .get_or_try_init(|| {
-        let raw_resolve = || -> Result<_, anyhow::Error> {
-          if let Some(process_state) = &self.options.npm_process_state {
-            if process_state.is_byonm {
-              return Ok(NodeModulesDirMode::Manual);
-            }
-            if process_state.node_modules_dir.is_some() {
-              return Ok(NodeModulesDirMode::Auto);
-            } else {
-              return Ok(NodeModulesDirMode::None);
-            }
-          }
-          if let Some(flag) = self.options.node_modules_dir {
-            return Ok(flag);
-          }
-          let workspace = &self.workspace_directory()?.workspace;
-          if let Some(mode) = workspace.node_modules_dir()? {
-            return Ok(mode);
-          }
-
-          let workspace = &self.workspace_directory()?.workspace;
-
-          if let Some(pkg_json) = workspace.root_pkg_json() {
-            if let Ok(deno_dir) = self.deno_dir() {
-              let deno_dir = &deno_dir.root;
-              // `deno_dir` can be symlink in macOS or on the CI
-              if let Ok(deno_dir) =
-                canonicalize_path_maybe_not_exists(&self.sys, deno_dir)
-                && pkg_json.path.starts_with(deno_dir)
-              {
-                // if the package.json is in deno_dir, then do not use node_modules
-                // next to it as local node_modules dir
-                return Ok(NodeModulesDirMode::None);
-              }
-            }
-
-            Ok(NodeModulesDirMode::Manual)
-          } else if workspace.vendor_dir_path().is_some() {
-            Ok(NodeModulesDirMode::Auto)
-          } else {
-            // use the global cache
-            Ok(NodeModulesDirMode::None)
-          }
-        };
-
-        let mode = raw_resolve()?;
+        let mode = self.raw_node_modules_dir_mode()?;
         if mode == NodeModulesDirMode::Manual
           && self.options.is_package_manager_subcommand
         {
@@ -405,14 +409,25 @@ impl<TSys: WorkspaceFactorySys> WorkspaceFactory<TSys> {
             return Ok(mode);
           }
         }
-        if let Some(flag) = self.options.node_modules_linker {
-          return Ok(flag);
+        let mode = if let Some(flag) = self.options.node_modules_linker {
+          flag
+        } else {
+          let workspace = &self.workspace_directory()?.workspace;
+          workspace
+            .node_modules_linker()?
+            .unwrap_or_default()
+        };
+        if mode == NodeModulesLinkerMode::Hoisted {
+          let dir_mode = self.raw_node_modules_dir_mode()?;
+          if dir_mode != NodeModulesDirMode::Manual {
+            bail!(
+              "The hoisted node_modules linker requires --node-modules-dir=manual. \
+               Add \"nodeModulesDir\": \"manual\" to your deno.json or pass \
+               --node-modules-dir=manual on the command line."
+            );
+          }
         }
-        let workspace = &self.workspace_directory()?.workspace;
-        if let Some(mode) = workspace.node_modules_linker()? {
-          return Ok(mode);
-        }
-        Ok(NodeModulesLinkerMode::default())
+        Ok(mode)
       })
       .copied()
   }

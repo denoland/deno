@@ -5,7 +5,7 @@
       // Install with hoisted linker and verify packages are directly
       // in node_modules (not under .deno symlinks)
       "steps": [{
-        "args": "install --node-modules-linker=hoisted",
+        "args": "install --node-modules-dir=manual --node-modules-linker=hoisted",
         "output": "install.out"
       }, {
         // chalk should be a real directory, not a symlink
@@ -16,7 +16,7 @@
     "basic_run": {
       // Run a script that imports from a hoisted package
       "steps": [{
-        "args": "install --node-modules-linker=hoisted",
+        "args": "install --node-modules-dir=manual --node-modules-linker=hoisted",
         "output": "[WILDCARD]"
       }, {
         "args": "run --allow-read --allow-env main.ts",
@@ -24,15 +24,22 @@
       }]
     },
     "deno_json_config": {
-      // Test that nodeModulesLinker in deno.json works without CLI flag
+      // Test that nodeModulesLinker + nodeModulesDir in deno.json works
+      // without any CLI flags
       "steps": [{
-        "args": "install --node-modules-linker=hoisted",
+        "args": "install",
         "output": "[WILDCARD]"
       }, {
         // Verify chalk is a real directory (hoisted), not a symlink
         "args": "run --allow-read check_hoisted.ts",
         "output": "hoisted: true\n"
       }]
+    },
+    "requires_manual": {
+      // Hoisted linker must require --node-modules-dir=manual
+      "args": "install --node-modules-dir=auto --node-modules-linker=hoisted",
+      "output": "requires_manual.out",
+      "exitCode": 1
     }
   }
 }

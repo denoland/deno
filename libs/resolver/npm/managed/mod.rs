@@ -125,7 +125,6 @@ impl<TSys: ManagedNpmResolverSys> ManagedNpmResolver<TSys> {
           options.npm_resolution.clone(),
           options.sys.clone(),
           node_modules_folder,
-          options.linker_mode,
         ))
       }
       None => NpmPackageFsResolver::Global(GlobalNpmPackageResolver::new(
