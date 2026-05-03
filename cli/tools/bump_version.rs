@@ -321,10 +321,8 @@ fn bump_workspace(
 ) -> Result<(), AnyError> {
   let workspace = cli_options.workspace();
   let root_dir = workspace.root_dir_path();
-  let pkgs = collect_workspace_packages(
-    workspace.jsr_packages().collect(),
-    &root_dir,
-  )?;
+  let pkgs =
+    collect_workspace_packages(workspace.jsr_packages().collect(), &root_dir)?;
 
   if pkgs.is_empty() {
     bail!(
@@ -364,7 +362,7 @@ fn collect_workspace_packages(
       .strip_prefix(root_dir)
       .unwrap_or(&config_path)
       .to_string_lossy()
-      .into_owned();
+      .replace('\\', "/");
     out.push(WorkspacePackage {
       name: pkg.name.clone(),
       current_version: version,
@@ -503,10 +501,8 @@ fn bump_workspace_conventional(
           "Detected manual version change for {}: {} -> {}",
           pkg.name, old_version, pkg.current_version
         );
-        manual_changes.insert(
-          pkg.name.clone(),
-          (old_version, pkg.current_version.clone()),
-        );
+        manual_changes
+          .insert(pkg.name.clone(), (old_version, pkg.current_version.clone()));
       }
     }
   }
