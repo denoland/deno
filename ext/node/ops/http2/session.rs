@@ -1695,9 +1695,18 @@ fn invoke_session_internal_error(session: &Session, lib_error_code: i32) {
 
 unsafe extern "C" fn on_frame_send_callback(
   _session: *mut ffi::nghttp2_session,
-  _frame: *const ffi::nghttp2_frame,
-  _data: *mut c_void,
+  frame: *const ffi::nghttp2_frame,
+  data: *mut c_void,
 ) -> i32 {
+  // SAFETY: data is the user_data pointer set during session creation
+  let session = unsafe { Session::from_user_data(data) };
+  // SAFETY: frame is valid per nghttp2 callback contract
+  let f = unsafe { &*frame };
+  if f.hd.type_ == ffi::NGHTTP2_GOAWAY as u8 {
+    // SAFETY: union access valid because we verified type_ == NGHTTP2_GOAWAY
+    let goaway = unsafe { &f.goaway };
+    session.sent_goaway_code = Some(goaway.error_code);
+  }
   0
 }
 
@@ -1930,6 +1939,13 @@ pub struct Session {
   /// `session_internal_error_cb`. Mirrors Node's
   /// `Http2Session::custom_recv_error_code_`.
   pub custom_recv_error_code: Option<&'static str>,
+  /// Error code from the last GOAWAY frame this side sent. Set in
+  /// `on_frame_send_callback`. The JS layer reads it via
+  /// `handle.lastSentGoawayCode()` so that streams torn down because
+  /// nghttp2 has already terminated the session can carry the actual
+  /// connection-level error (e.g. NGHTTP2_FLOW_CONTROL_ERROR) instead of
+  /// being papered over with NGHTTP2_CANCEL.
+  pub sent_goaway_code: Option<u32>,
   /// Custom settings the local peer has sent. Surfaced via
   /// `session.localSettings.customSettings`. Mirrors Node's
   /// `Http2Session::local_custom_settings_`.
@@ -2495,6 +2511,7 @@ impl Http2Session {
       max_invalid_frames: 1000,
       invalid_frame_count: 0,
       custom_recv_error_code: None,
+      sent_goaway_code: None,
       local_custom_settings: Vec::new(),
       remote_custom_settings: Vec::new(),
       pending_settings_acks: VecDeque::new(),
@@ -2868,6 +2885,19 @@ impl Http2Session {
       let want_write = ffi::nghttp2_session_want_write(self.session);
       let want_read = ffi::nghttp2_session_want_read(self.session);
       want_write != 0 || want_read != 0
+    }
+  }
+
+  /// Returns the error code from the most recent GOAWAY frame this session
+  /// has sent, or -1 if no GOAWAY has been sent yet.
+  #[fast]
+  #[smi]
+  fn last_sent_goaway_code(&self) -> i32 {
+    // SAFETY: self.inner was allocated by Box::into_raw and is valid
+    let session = unsafe { &*self.inner };
+    match session.sent_goaway_code {
+      Some(code) => code as i32,
+      None => -1,
     }
   }
 
