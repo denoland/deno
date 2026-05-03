@@ -17,9 +17,6 @@ const {
   ObjectPrototypeIsPrototypeOf,
   queueMicrotask,
   ReflectHas,
-  SafeSet,
-  SetPrototypeAdd,
-  SetPrototypeHas,
   Symbol,
   SymbolFor,
   TypeError,
@@ -59,20 +56,6 @@ const illegalConstructorKey = Symbol("illegalConstructorKey");
 let performanceEntries = [];
 let timeOrigin;
 const performanceObservers = [];
-
-// Entry types registered by extensions (e.g. Node's `perf_hooks` for
-// "http2", "http", "dns", etc.). The web `PerformanceObserver` only knows
-// about "mark" and "measure"; this lets non-web entry types be observed
-// without having to fork the whole observer machinery.
-const extraEntryTypes = new SafeSet();
-function registerExtraEntryType(type) {
-  if (typeof type !== "string" || type.length === 0) {
-    throw new TypeError(
-      "registerExtraEntryType: type must be a non-empty string",
-    );
-  }
-  SetPrototypeAdd(extraEntryTypes, type);
-}
 
 const hrU8 = new Uint8Array(8);
 const hr = new Uint32Array(TypedArrayPrototypeGetBuffer(hrU8));
@@ -433,40 +416,6 @@ function queuePerformanceEntry(entry) {
   }
 }
 
-// Public helper for non-web extensions (Node's perf_hooks) to enqueue a
-// performance entry to interested observers. The entry must be a non-null
-// object with at minimum `name` (string), `entryType` (string), `startTime`
-// (number), and `duration` (number); extra fields (`detail`, etc.) are
-// passed through to observers as-is. The `entryType` should already have
-// been registered via `registerExtraEntryType` for any observer to receive
-// it.
-function enqueuePerformanceEntry(entry) {
-  if (entry === null || typeof entry !== "object") {
-    throw new TypeError("enqueuePerformanceEntry: entry must be an object");
-  }
-  if (typeof entry.name !== "string") {
-    throw new TypeError(
-      "enqueuePerformanceEntry: entry.name must be a string",
-    );
-  }
-  if (typeof entry.entryType !== "string") {
-    throw new TypeError(
-      "enqueuePerformanceEntry: entry.entryType must be a string",
-    );
-  }
-  if (typeof entry.startTime !== "number") {
-    throw new TypeError(
-      "enqueuePerformanceEntry: entry.startTime must be a number",
-    );
-  }
-  if (typeof entry.duration !== "number") {
-    throw new TypeError(
-      "enqueuePerformanceEntry: entry.duration must be a number",
-    );
-  }
-  queuePerformanceEntry(entry);
-}
-
 const _entries = Symbol("[[entries]]");
 
 class PerformanceObserverEntryList {
@@ -576,19 +525,14 @@ class PerformanceObserver {
       types = ArrayPrototypeFilter(
         entryTypes,
         (t) =>
-          ArrayPrototypeIncludes(PerformanceObserver.supportedEntryTypes, t) ||
-          SetPrototypeHas(extraEntryTypes, t),
+          ArrayPrototypeIncludes(PerformanceObserver.supportedEntryTypes, t),
       );
       if (types.length === 0) {
         return;
       }
     } else {
       if (
-        !ArrayPrototypeIncludes(
-          PerformanceObserver.supportedEntryTypes,
-          type,
-        ) &&
-        !SetPrototypeHas(extraEntryTypes, type)
+        !ArrayPrototypeIncludes(PerformanceObserver.supportedEntryTypes, type)
       ) {
         return;
       }
@@ -885,7 +829,6 @@ webidl.converters["Performance"] = webidl.createInterfaceConverter(
 const performance = new Performance(illegalConstructorKey);
 
 return {
-  enqueuePerformanceEntry,
   Performance,
   performance,
   PerformanceEntry,
@@ -893,7 +836,6 @@ return {
   PerformanceMeasure,
   PerformanceObserver,
   PerformanceObserverEntryList,
-  registerExtraEntryType,
   setTimeOrigin,
 };
 })()
