@@ -1134,11 +1134,18 @@ function createJob(mode, type, options) {
       const { namedCurve } = options;
       validateString(namedCurve, "options.namedCurve");
       const { paramEncoding } = options;
-      if (
-        paramEncoding == null || paramEncoding === "named" ||
-        paramEncoding === "explicit"
-      ) {
+      if (paramEncoding == null || paramEncoding === "named") {
         // pass.
+      } else if (paramEncoding === "explicit") {
+        // Explicit param encoding embeds full curve parameters instead of a
+        // named curve OID. The underlying crypto library only emits named-curve
+        // encoding, so fall back silently with a warning so callers that rely
+        // on byte-for-byte explicit encoding can detect the mismatch.
+        process.emitWarning(
+          'paramEncoding: "explicit" is not supported; ' +
+            'the generated key will use named-curve encoding instead.',
+          "Warning",
+        );
       } else {
         throw new ERR_INVALID_ARG_VALUE("options.paramEncoding", paramEncoding);
       }
