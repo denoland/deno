@@ -1,10 +1,10 @@
 Task d deno run d.js
-Running d
+[d] Running d
 [UNORDERED_START]
 Task b deno run b.js
-Running b
+[b] Running b
 Task c deno run c.js
-Running c
+[c] Running c
 [UNORDERED_END]
 Task a deno run a.js
-Running a
+[a] Running a
