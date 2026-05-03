@@ -4,7 +4,7 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-import { primordials } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 
 const {
   ArrayPrototypeIncludes,
@@ -35,10 +35,10 @@ import {
   op_node_key_type,
 } from "ext:core/ops";
 
-import {
+const {
   cryptoKeyExportNodeKeyMaterial,
   importCryptoKeySync,
-} from "ext:deno_crypto/00_crypto.js";
+} = core.loadExtScript("ext:deno_crypto/00_crypto.js");
 
 import { kHandle } from "ext:deno_node/internal/crypto/constants.ts";
 import { isStringOrBuffer } from "ext:deno_node/internal/crypto/cipher.ts";
