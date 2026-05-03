@@ -218,10 +218,10 @@ type GPUPresentMode =
 
 /** @category Canvas */
 interface GPUCanvasConfiguration {
-  device: GPUDevice;
-  format: GPUTextureFormat;
-  usage?: GPUTextureUsageFlags;
-  viewFormats?: GPUTextureFormat[];
+  device: any;
+  format: any;
+  usage?: number;
+  viewFormats?: any[];
   colorSpace?: "srgb" | "display-p3";
   alphaMode?: GPUCanvasAlphaMode;
 
@@ -237,7 +237,7 @@ interface GPUCanvasContext {
   configure(configuration: GPUCanvasConfiguration): undefined;
   getConfiguration(): GPUCanvasConfiguration | null;
   unconfigure(): undefined;
-  getCurrentTexture(): GPUTexture;
+  getCurrentTexture(): any;
 }
 /** @category Canvas */
 declare var GPUCanvasContext: {
