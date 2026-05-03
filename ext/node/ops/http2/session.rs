@@ -834,12 +834,12 @@ unsafe extern "C" fn on_frame_recv_callback(
       // destroy the session with NghttpError(NGHTTP2_ERR_PROTO).
       if session.pending_pings > 0 {
         session.pending_pings -= 1;
-        handle_ping_frame(session);
+        handle_ping_frame(session, frame, true);
       } else {
         handle_unsolicited_ping_ack(session);
       }
     } else {
-      handle_ping_frame(session);
+      handle_ping_frame(session, frame, false);
     }
   } else if ft == ffi::NGHTTP2_ALTSVC as u32 {
     handle_alt_svc_frame(session, frame);
@@ -997,7 +997,11 @@ fn handle_settings_frame(session: &Session) {
   callback.call(scope, recv.into(), &[]);
 }
 
-fn handle_ping_frame(session: &Session) {
+fn handle_ping_frame(
+  session: &Session,
+  frame: *const ffi::nghttp2_frame,
+  is_ack: bool,
+) {
   let mut isolate =
     // SAFETY: isolate pointer is valid for the session's lifetime
     unsafe { v8::Isolate::from_raw_isolate_ptr(session.isolate) };
@@ -1005,14 +1009,31 @@ fn handle_ping_frame(session: &Session) {
   let context = v8::Local::new(scope, session.context.clone());
   let scope = &mut v8::ContextScope::new(scope, context);
 
+  // SAFETY: frame is a valid PING frame per nghttp2 callback contract
+  let opaque = unsafe { (*frame).ping.opaque_data };
+  let array_buffer = v8::ArrayBuffer::new(scope, opaque.len());
+  let backing_store = array_buffer.get_backing_store();
+  if let Some(backing_data) = backing_store.data() {
+    // SAFETY: src and dst are valid, non-overlapping, dst has room for 8 bytes
+    unsafe {
+      std::ptr::copy_nonoverlapping(
+        opaque.as_ptr(),
+        backing_data.as_ptr() as *mut u8,
+        opaque.len(),
+      );
+    }
+  }
+  let payload =
+    v8::Uint8Array::new(scope, array_buffer, 0, opaque.len()).unwrap();
+
   let state = session.op_state.borrow();
   let callbacks = state.borrow::<SessionCallbacks>();
   let recv = v8::Local::new(scope, &session.this);
   let callback = v8::Local::new(scope, &callbacks.ping_frame_cb);
   drop(state);
 
-  let arg = v8::null(scope);
-  callback.call(scope, recv.into(), &[arg.into()]);
+  let is_ack_v = v8::Boolean::new(scope, is_ack);
+  callback.call(scope, recv.into(), &[payload.into(), is_ack_v.into()]);
 }
 
 /// Inbound PING ACK with no matching outstanding PING. Mirrors Node's
