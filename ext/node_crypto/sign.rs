@@ -25,6 +25,8 @@ use crate::digest::match_fixed_digest_with_oid;
 const RSA_PKCS1_PADDING: u32 = 1;
 /// OpenSSL RSA_PKCS1_PSS_PADDING constant value.
 const RSA_PKCS1_PSS_PADDING: u32 = 6;
+/// OpenSSL RSA_PKCS1_OAEP_PADDING constant value.
+const RSA_PKCS1_OAEP_PADDING: u32 = 4;
 
 fn dsa_signature<C: elliptic_curve::PrimeCurve>(
   encoding: u32,
@@ -59,6 +61,7 @@ pub enum KeyObjectHandlePrehashedSignAndVerifyError {
   FailedToSignDigestWithRsa,
   #[class(generic)]
   #[error("digest too big for rsa key")]
+  #[property("code" = "ERR_OSSL_RSA_DIGEST_TOO_BIG_FOR_RSA_KEY")]
   DigestTooBigForRsaKey,
   #[error("digest not allowed for RSA-PSS signature: {0}")]
   DigestNotAllowedForRsaPssSignature(String),
@@ -71,31 +74,47 @@ pub enum KeyObjectHandlePrehashedSignAndVerifyError {
     "rsa-pss with different mf1 hash algorithm and hash algorithm is not supported"
   )]
   RsaPssHashAlgorithmUnsupported,
-  #[error("digest not allowed: {actual} (expected {expected})")]
+  #[class(generic)]
+  #[error("{actual} digest not allowed")]
   PrivateKeyDisallowsUsage { actual: String, expected: String },
   #[class(generic)]
   #[error("pss saltlen too small")]
   PssSaltLenTooSmall,
   #[error("failed to sign digest")]
   FailedToSignDigest,
-  #[error("x25519 key cannot be used for signing")]
+  #[class(generic)]
+  #[error("operation not supported for this keytype")]
+  #[property("code" = "ERR_OSSL_EVP_OPERATION_NOT_SUPPORTED_FOR_THIS_KEYTYPE")]
   X25519KeyCannotBeUsedForSigning,
-  #[error("Ed25519 key cannot be used for prehashed signing")]
+  #[class(generic)]
+  #[error("Unsupported crypto operation")]
+  #[property("code" = "ERR_CRYPTO_UNSUPPORTED_OPERATION")]
   Ed25519KeyCannotBeUsedForPrehashedSigning,
-  #[error("DH key cannot be used for signing")]
+  #[class(generic)]
+  #[error("operation not supported for this keytype")]
+  #[property("code" = "ERR_OSSL_EVP_OPERATION_NOT_SUPPORTED_FOR_THIS_KEYTYPE")]
   DhKeyCannotBeUsedForSigning,
   #[error("key is not a public or private key")]
   KeyIsNotPublicOrPrivate,
   #[error("Invalid DSA signature")]
   InvalidDsaSignature,
-  #[error("x25519 key cannot be used for verification")]
+  #[class(generic)]
+  #[error("operation not supported for this keytype")]
+  #[property("code" = "ERR_OSSL_EVP_OPERATION_NOT_SUPPORTED_FOR_THIS_KEYTYPE")]
   X25519KeyCannotBeUsedForVerification,
-  #[error("Ed25519 key cannot be used for prehashed verification")]
+  #[class(generic)]
+  #[error("Unsupported crypto operation")]
+  #[property("code" = "ERR_CRYPTO_UNSUPPORTED_OPERATION")]
   Ed25519KeyCannotBeUsedForPrehashedVerification,
-  #[error("DH key cannot be used for verification")]
+  #[class(generic)]
+  #[error("operation not supported for this keytype")]
+  #[property("code" = "ERR_OSSL_EVP_OPERATION_NOT_SUPPORTED_FOR_THIS_KEYTYPE")]
   DhKeyCannotBeUsedForVerification,
   #[class(generic)]
-  #[error("illegal or unsupported padding mode")]
+  #[error(
+    "error:1C8000A5:Provider routines::illegal or unsupported padding mode"
+  )]
+  #[property("code" = "ERR_OSSL_ILLEGAL_OR_UNSUPPORTED_PADDING_MODE")]
   IllegalOrUnsupportedPaddingMode,
 }
 
@@ -170,6 +189,89 @@ fn new_pss_scheme(
   Ok(pss)
 }
 
+/// Recover the PSS salt length from a signature using AUTO detection.
+/// Performs the RSA raw operation (sig^e mod n) to get the encoded message,
+/// then parses the PSS structure to find the salt length.
+fn recover_pss_salt_len<D>(key: &rsa::RsaPublicKey, sig: &[u8]) -> Option<usize>
+where
+  D: digest::Digest,
+{
+  use rsa::traits::PublicKeyParts;
+
+  let h_len = <D as digest::Digest>::output_size();
+  let key_bits = key.n().bits();
+  let em_bits = key_bits - 1;
+  let em_len = em_bits.div_ceil(8);
+  let key_len = key_bits.div_ceil(8);
+
+  // Compute em = sig^e mod n (raw RSA public key operation)
+  let sig_bn = rsa::BigUint::from_bytes_be(sig);
+  let em_bn = rsa::hazmat::rsa_encrypt(key, &sig_bn).ok()?;
+  let em_be = em_bn.to_bytes_be();
+
+  // Pad em to key_len bytes (big-endian, left-pad with zeros)
+  if em_be.len() > key_len {
+    return None;
+  }
+  let mut em_padded = vec![0u8; key_len];
+  em_padded[key_len - em_be.len()..].copy_from_slice(&em_be);
+
+  // Take the relevant em_len bytes from the right
+  let em = &mut em_padded[key_len - em_len..];
+
+  // Check 0xBC trailer
+  if em[em_len - 1] != 0xBC {
+    return None;
+  }
+  if em_len < h_len + 2 {
+    return None;
+  }
+
+  let db_len = em_len - h_len - 1;
+
+  // H is at em[db_len..db_len+h_len]
+  let h = em[db_len..db_len + h_len].to_vec();
+
+  // Unmask maskedDB using MGF1(H, db_len)
+  let masked_db = &mut em[..db_len];
+  let mut counter: u32 = 0;
+  let mut pos = 0;
+  while pos < db_len {
+    let mut hasher = D::new();
+    hasher.update(h.as_slice());
+    hasher.update(counter.to_be_bytes());
+    let hash_out = hasher.finalize();
+    let hash_bytes: &[u8] = hash_out.as_ref();
+    let end = (pos + h_len).min(db_len);
+    for j in pos..end {
+      masked_db[j] ^= hash_bytes[j - pos];
+    }
+    pos += h_len;
+    counter += 1;
+  }
+
+  // Clear top bits: db[0] &= 0xFF >> (8*em_len - em_bits)
+  let db = masked_db;
+  let top_bits_to_clear = 8 * em_len - em_bits;
+  if top_bits_to_clear < 8 {
+    db[0] &= 0xFF_u8 >> top_bits_to_clear;
+  }
+
+  // Find the 0x01 separator byte: DB = PS (zeros) || 0x01 || salt
+  let mut salt_start = None;
+  for (i, &b) in db.iter().enumerate() {
+    if b == 0x01 {
+      salt_start = Some(i + 1);
+      break;
+    } else if b != 0x00 {
+      return None; // Invalid DB structure
+    }
+  }
+
+  let salt_start = salt_start?;
+  Some(db_len - salt_start)
+}
+
 impl KeyObjectHandle {
   pub fn sign_prehashed(
     &self,
@@ -185,6 +287,10 @@ impl KeyObjectHandle {
 
     match private_key {
       AsymmetricPrivateKey::Rsa(key) => {
+        if padding == Some(RSA_PKCS1_OAEP_PADDING) {
+          return Err(KeyObjectHandlePrehashedSignAndVerifyError::IllegalOrUnsupportedPaddingMode);
+        }
+
         if padding == Some(RSA_PKCS1_PSS_PADDING) {
           let pss = new_pss_scheme(
             digest_type,
@@ -264,7 +370,12 @@ impl KeyObjectHandle {
             // Resolve salt length: explicit pss_salt_length takes priority,
             // then key details, then default (digest length)
             let resolved = if pss_salt_length.is_some() {
-              resolve_pss_salt_length::<D>(pss_salt_length, Some(key.key.n().bits()))
+              let r = resolve_pss_salt_length::<D>(pss_salt_length, Some(key.key.n().bits()));
+              // Enforce key's minimum salt length
+              if let Some(min_salt) = salt_length && r < min_salt {
+                return Err(KeyObjectHandlePrehashedSignAndVerifyError::PssSaltLenTooSmall);
+              }
+              r
             } else if let Some(sl) = salt_length {
               sl
             } else {
@@ -294,7 +405,29 @@ impl KeyObjectHandle {
 
         let signature =
           res.map_err(|_| KeyObjectHandlePrehashedSignAndVerifyError::FailedToSignDigestWithDsa)?;
-        Ok(signature.into())
+
+        if dsa_signature_encoding == 0 {
+          // DER encoding
+          Ok(signature.into())
+        } else {
+          // IEEE P1363: r || s, each padded to q_len bytes
+          let q = key.verifying_key().components().q();
+          let q_len = q.bits().div_ceil(8);
+          let mut result = vec![0u8; q_len * 2];
+          let r_bytes = signature.r().to_bytes_be();
+          let s_bytes = signature.s().to_bytes_be();
+          // Right-align r in first q_len bytes
+          if r_bytes.len() <= q_len {
+            let r_start = q_len - r_bytes.len();
+            result[r_start..q_len].copy_from_slice(&r_bytes);
+          }
+          // Right-align s in second q_len bytes
+          if s_bytes.len() <= q_len {
+            let s_start = 2 * q_len - s_bytes.len();
+            result[s_start..2 * q_len].copy_from_slice(&s_bytes);
+          }
+          Ok(result.into_boxed_slice())
+        }
       }
       AsymmetricPrivateKey::Ec(key) => match key {
         EcPrivateKey::P224(key) => {
@@ -365,9 +498,30 @@ impl KeyObjectHandle {
     match &*public_key {
       AsymmetricPublicKey::Rsa(key) => {
         if padding == Some(RSA_PKCS1_PSS_PADDING) {
+          // AUTO mode: when pss_salt_length == -2 (RSA_PSS_SALTLEN_AUTO),
+          // recover the actual salt length from the signature structure.
+          let effective_salt_length = if pss_salt_length == Some(RSA_PSS_SALTLEN_MAX_SIGN) {
+            let recovered = match_fixed_digest_with_oid!(
+              digest_type,
+              fn <D>(algorithm: Option<RsaPssHashAlgorithm>) {
+                let _: Option<RsaPssHashAlgorithm> = algorithm;
+                recover_pss_salt_len::<D>(key, signature)
+              },
+              _ => {
+                return Err(KeyObjectHandlePrehashedSignAndVerifyError::DigestNotAllowedForRsaPssSignature(digest_type.to_string()));
+              }
+            );
+            match recovered {
+              Some(s) => Some(s as i32),
+              None => return Ok(false),
+            }
+          } else {
+            pss_salt_length
+          };
+
           let pss = new_pss_scheme(
             digest_type,
-            pss_salt_length,
+            effective_salt_length,
             Some(key.n().bits()),
           )?;
           return Ok(pss.verify(key, digest, signature).is_ok());
@@ -428,10 +582,27 @@ impl KeyObjectHandle {
         Ok(pss.verify(&key.key, digest, signature).is_ok())
       }
       AsymmetricPublicKey::Dsa(key) => {
-        let Ok(signature) = dsa::Signature::from_der(signature) else {
-          return Ok(false);
+        let sig = if dsa_signature_encoding == 0 {
+          // DER encoding
+          let Ok(sig) = dsa::Signature::from_der(signature) else {
+            return Ok(false);
+          };
+          sig
+        } else {
+          // IEEE P1363: r || s, each of q_len bytes
+          let q = key.components().q();
+          let q_len = q.bits().div_ceil(8);
+          if signature.len() != 2 * q_len {
+            return Ok(false);
+          }
+          let r = dsa::BigUint::from_bytes_be(&signature[..q_len]);
+          let s = dsa::BigUint::from_bytes_be(&signature[q_len..]);
+          let Ok(sig) = dsa::Signature::from_components(r, s) else {
+            return Ok(false);
+          };
+          sig
         };
-        Ok(key.verify_prehash(digest, &signature).is_ok())
+        Ok(key.verify_prehash(digest, &sig).is_ok())
       }
       AsymmetricPublicKey::Ec(key) => match key {
         EcPublicKey::P224(key) => {
@@ -439,7 +610,7 @@ impl KeyObjectHandle {
           let signature = if dsa_signature_encoding == 0 {
             p224::ecdsa::Signature::from_der(signature)
           } else {
-            p224::ecdsa::Signature::from_bytes(signature.into())
+            p224::ecdsa::Signature::try_from(signature)
           };
           let Ok(signature) = signature else {
             return Ok(false);
@@ -451,7 +622,7 @@ impl KeyObjectHandle {
           let signature = if dsa_signature_encoding == 0 {
             p256::ecdsa::Signature::from_der(signature)
           } else {
-            p256::ecdsa::Signature::from_bytes(signature.into())
+            p256::ecdsa::Signature::try_from(signature)
           };
           let Ok(signature) = signature else {
             return Ok(false);
@@ -463,7 +634,7 @@ impl KeyObjectHandle {
           let signature = if dsa_signature_encoding == 0 {
             p384::ecdsa::Signature::from_der(signature)
           } else {
-            p384::ecdsa::Signature::from_bytes(signature.into())
+            p384::ecdsa::Signature::try_from(signature)
           };
           let Ok(signature) = signature else {
             return Ok(false);
@@ -477,7 +648,7 @@ impl KeyObjectHandle {
           let signature = if dsa_signature_encoding == 0 {
             p521::ecdsa::Signature::from_der(signature)
           } else {
-            p521::ecdsa::Signature::from_bytes(signature.into())
+            p521::ecdsa::Signature::try_from(signature)
           };
           let Ok(signature) = signature else {
             return Ok(false);
@@ -489,7 +660,7 @@ impl KeyObjectHandle {
           let signature = if dsa_signature_encoding == 0 {
             k256::ecdsa::Signature::from_der(signature)
           } else {
-            k256::ecdsa::Signature::from_bytes(signature.into())
+            k256::ecdsa::Signature::try_from(signature)
           };
           let Ok(signature) = signature else {
             return Ok(false);

@@ -439,6 +439,9 @@ export function prepareAsymmetricKey(
         handle: getKeyObjectHandleFromJwk(data, ctx),
         format,
       };
+    } else if (format === "jwk") {
+      // When format is 'jwk', key.key must be a JWK object
+      throw new ERR_INVALID_ARG_TYPE("key.key", "object", data);
     }
     // Either PEM or DER using PKCS#1 or SPKI.
     if (!isStringOrBuffer(data)) {
