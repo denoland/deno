@@ -54,10 +54,9 @@ const {
   builtinTracer,
   ContextManager,
   enterSpan,
-  PROPAGATORS,
   restoreSnapshot,
-  TRACING_ENABLED,
 } = internals.__telemetry;
+const __telemetry = internals.__telemetry;
 const {
   updateSpanFromClientResponse,
   updateSpanFromError,
@@ -348,7 +347,7 @@ function fetch(input, init = { __proto__: null }) {
   let span;
   let snapshot;
   try {
-    if (TRACING_ENABLED) {
+    if (__telemetry.TRACING_ENABLED) {
       span = builtinTracer().startSpan("fetch", { kind: 2 });
       snapshot = enterSpan(span);
     }
@@ -367,7 +366,7 @@ function fetch(input, init = { __proto__: null }) {
 
       if (span) {
         const context = ContextManager.active();
-        for (const propagator of new SafeArrayIterator(PROPAGATORS)) {
+        for (const propagator of new SafeArrayIterator(__telemetry.PROPAGATORS)) {
           propagator.inject(context, requestObject.headers, {
             set(carrier, key, value) {
               carrier.append(key, value);
