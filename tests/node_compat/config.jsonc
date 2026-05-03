@@ -1768,6 +1768,7 @@
     "parallel/test-http2-max-session-memory-leak.js": {},
     "parallel/test-http2-max-settings.js": {},
     "parallel/test-http2-methods.js": {},
+    "parallel/test-http2-misbehaving-flow-control.js": {},
     "parallel/test-http2-misbehaving-flow-control-paused.js": {},
     "parallel/test-http2-misbehaving-multiplex.js": {},
     "parallel/test-http2-misc-util.js": {},
@@ -2013,6 +2014,7 @@
 
     // TODO(bartlomieju): depends on 'internal/deps/undici/undici' internal module
     // "parallel/test-inspector-network-fetch.js": {},
+    "parallel/test-http2-allow-http1-upgrade-ws.js": {},
     "parallel/test-inspector-multisession-ws.js": {},
     "parallel/test-inspector-not-blocked-on-idle.js": {},
     "parallel/test-inspector-open-coverage.js": {},
@@ -3289,6 +3291,9 @@
     "parallel/test-tls-no-cert-required.js": {},
     "parallel/test-tls-no-rsa-key.js": {},
     "parallel/test-tls-no-sslv3.js": {},
+    "parallel/test-tls-off-thread-cert-loading-disabled.js": {},
+    "parallel/test-tls-off-thread-cert-loading-system.js": {},
+    "parallel/test-tls-off-thread-cert-loading.js": {},
     "parallel/test-tls-on-empty-socket.js": {},
     "parallel/test-tls-options-boolean-check.js": {},
     "parallel/test-tls-over-http-tunnel.js": {},

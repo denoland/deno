@@ -10,14 +10,16 @@ import tlsCommon from "node:_tls_common";
 import tlsWrap from "node:_tls_wrap";
 import { convertALPNProtocols } from "ext:deno_node/internal/tls_common.js";
 import {
-  op_get_ca_certificates,
+  op_get_env_no_permission_check,
   op_get_root_certificates,
+  op_node_get_ca_certificates,
   op_set_default_ca_certificates,
 } from "ext:core/ops";
-import { primordials } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 
 const {
   ArrayIsArray,
+  ArrayPrototypeIncludes,
   ArrayPrototypeForEach,
   ArrayPrototypeMap,
   ArrayPrototypePush,
@@ -34,6 +36,9 @@ const {
   ReflectOwnKeys,
   ReflectPreventExtensions,
   ReflectSet,
+  StringPrototypeIncludes,
+  StringPrototypeSplit,
+  StringPrototypeTrim,
   StringPrototypeToLowerCase,
   TypeError,
 } = primordials;
@@ -64,6 +69,58 @@ export function getCiphers() {
 }
 
 let lazyRootCertificates: string[] | null = null;
+const cachedCACertificates: Record<string, string[]> = {
+  __proto__: null as unknown as string[],
+};
+
+function writeNativeCryptoDebug(message: string) {
+  const nodeDebugNative = op_get_env_no_permission_check("NODE_DEBUG_NATIVE") ??
+    "";
+  if (
+    !StringPrototypeIncludes(nodeDebugNative, "crypto")
+  ) {
+    return;
+  }
+  core.print(`${message}\n`, true);
+}
+
+function emitDefaultCertificatesDebug() {
+  const useOpenSslCa =
+    op_get_env_no_permission_check("DENO_NODE_USE_OPENSSL_CA") === "1";
+  if (useOpenSslCa) {
+    return;
+  }
+
+  const stores: string[] = [];
+  ArrayPrototypeForEach(
+    StringPrototypeSplit(
+      op_get_env_no_permission_check("DENO_TLS_CA_STORE") ?? "mozilla",
+      ",",
+    ),
+    (store) => {
+      const trimmedStore = StringPrototypeTrim(store);
+      if (trimmedStore.length > 0) {
+        ArrayPrototypePush(stores, trimmedStore);
+      }
+    },
+  );
+  if (ArrayPrototypeIncludes(stores, "mozilla")) {
+    writeNativeCryptoDebug(
+      "Started loading bundled root certificates off-thread",
+    );
+  }
+  if (ArrayPrototypeIncludes(stores, "system")) {
+    writeNativeCryptoDebug(
+      "Started loading system root certificates off-thread",
+    );
+  }
+  if (op_get_env_no_permission_check("NODE_EXTRA_CA_CERTS")) {
+    writeNativeCryptoDebug(
+      "Started loading extra root certificates off-thread",
+    );
+  }
+}
+
 function ensureLazyRootCertificates(target: string[]) {
   if (lazyRootCertificates === null) {
     lazyRootCertificates = op_get_root_certificates() as string[];
@@ -149,11 +206,11 @@ export function setDefaultCACertificates(certs: string[]) {
   op_set_default_ca_certificates(certs);
 
   lazyRootCertificates = null;
+  ArrayPrototypeForEach(
+    ObjectKeys(cachedCACertificates),
+    (key) => delete cachedCACertificates[key],
+  );
 }
-
-const cachedCACertificates: Record<string, string[]> = {
-  __proto__: null as unknown as string[],
-};
 
 export function getCACertificates(type: string = "default"): string[] {
   validateString(type, "type");
@@ -167,7 +224,10 @@ export function getCACertificates(type: string = "default"): string[] {
   if (type === "bundled") {
     certs = rootCertificates;
   } else {
-    certs = ObjectFreeze(op_get_ca_certificates(type)) as string[];
+    certs = ObjectFreeze(op_node_get_ca_certificates(type)) as string[];
+    if (type === "default") {
+      emitDefaultCertificatesDebug();
+    }
   }
   cachedCACertificates[type] = certs;
   return certs;
@@ -187,9 +247,9 @@ const defaultExport = {
   createSecureContext: tlsCommon.createSecureContext,
   createSecurePair,
   createServer: tlsWrap.createServer,
-  getCACertificates,
   convertALPNProtocols,
   getCiphers,
+  getCACertificates,
   setDefaultCACertificates,
   DEFAULT_CIPHERS: tlsWrap.DEFAULT_CIPHERS,
   DEFAULT_ECDH_CURVE,

@@ -2801,6 +2801,7 @@ dependencies = [
  "deno_fs",
  "deno_inspector_server",
  "deno_io",
+ "deno_native_certs",
  "deno_net",
  "deno_node_crypto",
  "deno_node_sqlite",
