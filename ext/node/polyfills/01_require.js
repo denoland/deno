@@ -408,7 +408,10 @@ function tryPackage(requestPath, exts, isMain, originalPath) {
       const rel = requestPath.slice(current.length + 1);
       const sep = rel.indexOf("/") !== -1 ? "/" : "\\";
       const parts = StringPrototypeSplit(rel, sep);
-      if (parts.length > 0 && StringPrototypeStartsWith(parts[0], "@") && parts.length > 1) {
+      if (
+        parts.length > 0 && StringPrototypeStartsWith(parts[0], "@") &&
+        parts.length > 1
+      ) {
         packageRoot = current + sep + parts[0] + sep + parts[1];
       } else if (parts.length > 0) {
         packageRoot = current + sep + parts[0];

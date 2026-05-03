@@ -2011,9 +2011,8 @@ impl<
       // node_modules/@scope/pkg/). This allows nested package.json files
       // (subpath exports) to have "main" fields that reference sibling
       // directories within the same package.
-      let package_root =
-        find_package_root_from_node_modules(package_path)
-          .unwrap_or_else(|| package_path.to_path_buf());
+      let package_root = find_package_root_from_node_modules(package_path)
+        .unwrap_or_else(|| package_path.to_path_buf());
 
       let guess = package_path.join(main).clean();
 
