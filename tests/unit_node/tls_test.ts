@@ -605,18 +605,18 @@ Deno.test("tls.setDefaultCACertificates validates input - must be array", () => 
       (tls as any).setDefaultCACertificates("not an array");
     },
     TypeError,
-    "must be an array",
+    "must be an instance of Array",
   );
 });
 
-Deno.test("tls.setDefaultCACertificates validates input - array elements must be strings", () => {
+Deno.test("tls.setDefaultCACertificates validates input - array elements must be strings or ArrayBufferView", () => {
   assertThrows(
     () => {
       // deno-lint-ignore no-explicit-any
       (tls as any).setDefaultCACertificates([123, 456]);
     },
     TypeError,
-    "must be a string",
+    "must be of type string or an instance of ArrayBufferView",
   );
 });
 

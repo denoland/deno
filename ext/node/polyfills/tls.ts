@@ -17,14 +17,20 @@ import {
   op_node_get_ca_certificates,
   op_set_default_ca_certificates,
 } from "ext:core/ops";
-import { primordials } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
+import { isArrayBufferView } from "ext:deno_node/internal/util/types.ts";
+import { ERR_INVALID_ARG_TYPE } from "ext:deno_node/internal/errors.ts";
 
+const { isTypedArray } = core;
 const {
   ArrayIsArray,
   ArrayPrototypeIncludes,
   ArrayPrototypeForEach,
   ArrayPrototypeMap,
   ArrayPrototypePush,
+  DataViewPrototypeGetBuffer,
+  DataViewPrototypeGetByteLength,
+  DataViewPrototypeGetByteOffset,
   ObjectDefineProperty,
   ObjectKeys,
   ObjectFreeze,
@@ -42,8 +48,35 @@ const {
   StringPrototypeSplit,
   StringPrototypeTrim,
   StringPrototypeToLowerCase,
-  TypeError,
+  TypedArrayPrototypeGetBuffer,
+  TypedArrayPrototypeGetByteLength,
+  TypedArrayPrototypeGetByteOffset,
+  Uint8Array,
 } = primordials;
+
+// Lazy-init: tls.ts is loaded into the startup snapshot before TextDecoder
+// is registered as a global, so a top-level `new TextDecoder()` would throw.
+let utf8Decoder: TextDecoder | null = null;
+
+// deno-lint-ignore no-explicit-any
+function arrayBufferViewToString(view: any): string {
+  // Use the matching prototype getter so a forged accessor on the view
+  // can't redirect us to a different ArrayBuffer / out-of-bounds region.
+  const isTA = isTypedArray(view);
+  const buffer = isTA
+    ? TypedArrayPrototypeGetBuffer(view)
+    : DataViewPrototypeGetBuffer(view);
+  const byteOffset = isTA
+    ? TypedArrayPrototypeGetByteOffset(view)
+    : DataViewPrototypeGetByteOffset(view);
+  const byteLength = isTA
+    ? TypedArrayPrototypeGetByteLength(view)
+    : DataViewPrototypeGetByteLength(view);
+  if (utf8Decoder === null) {
+    utf8Decoder = new TextDecoder("utf-8");
+  }
+  return utf8Decoder.decode(new Uint8Array(buffer, byteOffset, byteLength));
+}
 
 // openssl -> rustls
 const cipherMap = {
@@ -190,23 +223,30 @@ export class CryptoStream {}
 export class SecurePair {}
 export const Server = tlsWrap.Server;
 
-export function setDefaultCACertificates(certs: string[]) {
+export function setDefaultCACertificates(
+  certs: (string | ArrayBufferView)[],
+) {
   if (!ArrayIsArray(certs)) {
-    throw new TypeError(
-      "The argument 'certs' must be an array of strings",
-    );
+    throw new ERR_INVALID_ARG_TYPE("certs", "Array", certs);
   }
 
+  const normalized: string[] = [];
   for (let i = 0; i < certs.length; ++i) {
     const cert = certs[i];
-    if (typeof cert !== "string") {
-      throw new TypeError(
-        "Each certificate in 'certs' must be a string",
+    if (typeof cert === "string") {
+      ArrayPrototypePush(normalized, cert);
+    } else if (isArrayBufferView(cert)) {
+      ArrayPrototypePush(normalized, arrayBufferViewToString(cert));
+    } else {
+      throw new ERR_INVALID_ARG_TYPE(
+        `certs[${i}]`,
+        ["string", "ArrayBufferView"],
+        cert,
       );
     }
   }
 
-  op_set_default_ca_certificates(certs);
+  op_set_default_ca_certificates(normalized);
 
   lazyRootCertificates = null;
   ArrayPrototypeForEach(
