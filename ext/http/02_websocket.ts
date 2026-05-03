@@ -12,11 +12,11 @@ const {
   TypeError,
   Symbol,
 } = primordials;
-import { toInnerRequest } from "ext:deno_fetch/23_request.js";
-import {
+const { toInnerRequest } = core.loadExtScript("ext:deno_fetch/23_request.js");
+const {
   fromInnerResponse,
   newInnerResponse,
-} from "ext:deno_fetch/23_response.js";
+} = core.loadExtScript("ext:deno_fetch/23_response.js");
 const { setEventTargetData } = core.loadExtScript("ext:deno_web/02_event.js");
 
 const loadWebSocket = core.createLazyLoader(
