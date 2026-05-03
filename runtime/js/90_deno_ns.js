@@ -21,7 +21,7 @@ import * as errors from "ext:runtime/01_errors.js";
 import * as version from "ext:runtime/01_version.ts";
 import * as permissions from "ext:runtime/10_permissions.js";
 const io = core.loadExtScript("ext:deno_io/12_io.js");
-import * as fs from "ext:deno_fs/30_fs.js";
+const fs = core.loadExtScript("ext:deno_fs/30_fs.js");
 const os = core.loadExtScript("ext:deno_os/30_os.js");
 import * as fsEvents from "ext:runtime/40_fs_events.js";
 import * as process from "ext:deno_process/40_process.js";
