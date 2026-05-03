@@ -25,6 +25,8 @@ import {
   connResetException,
   ERR_INVALID_ARG_TYPE,
   ERR_INVALID_ARG_VALUE,
+  ERR_TLS_ALPN_CALLBACK_INVALID_RESULT,
+  ERR_TLS_ALPN_CALLBACK_WITH_PROTOCOLS,
   ERR_TLS_CERT_ALTNAME_INVALID,
   ERR_TLS_REQUIRED_SERVER_NAME,
   ERR_TLS_SNI_FROM_SERVER,
@@ -548,6 +550,71 @@ TLSSocket.prototype._init = function (socket, wrap) {
       }
       owner._finishInit();
     };
+
+    // Enable Acceptor-based handshake when SNICallback or ALPNCallback
+    // is set so we can intercept the ClientHello and invoke the callbacks
+    // before completing the TLS handshake.
+    const sniCb = options.SNICallback;
+    const alpnCb = options.ALPNCallback;
+    if (sniCb || alpnCb) {
+      ssl.enableClientHelloCb();
+      ssl.onclienthello = function () {
+        const owner = this._owner;
+        if (!owner) return;
+        const handle = owner._handle;
+        if (!handle) return;
+
+        const servername = handle.getServername() || "";
+        const alpnProtocols = handle.getClientHelloAlpn();
+
+        const finish = (ctx, selectedAlpn) => {
+          if (owner.destroyed) return;
+          const context = ctx
+            ? (ctx.context || ctx)
+            : owner._tlsOptions.secureContext?.context;
+          if (!context) {
+            owner.destroy(new Error("No SecureContext available"));
+            return;
+          }
+          handle.finishAccept(
+            context,
+            selectedAlpn != null ? String(selectedAlpn) : null,
+          );
+        };
+
+        const handleAlpn = (sniCtx) => {
+          let selectedAlpn = null;
+          if (alpnCb && alpnProtocols.length > 0) {
+            const protocols = Array.from(alpnProtocols);
+            selectedAlpn = alpnCb({ servername, protocols });
+            if (selectedAlpn == null) {
+              // Callback returned undefined/null -- reject ALPN.
+              // Destroy the socket which sends a connection reset.
+              owner.destroy();
+              return;
+            }
+            selectedAlpn = String(selectedAlpn);
+            if (!protocols.includes(selectedAlpn)) {
+              owner.destroy(new ERR_TLS_ALPN_CALLBACK_INVALID_RESULT());
+              return;
+            }
+          }
+          finish(sniCtx, selectedAlpn);
+        };
+
+        if (sniCb) {
+          sniCb(servername, (err, ctx) => {
+            if (err) {
+              owner.destroy(err);
+              return;
+            }
+            handleAlpn(ctx);
+          });
+        } else {
+          handleAlpn(null);
+        }
+      };
+    }
   } else {
     ssl.onhandshakestart = noop;
     ssl.onhandshakedone = onhandshakedone;
@@ -920,6 +987,7 @@ function tlsConnectionListener(rawSocket) {
     requestCert: this.requestCert,
     rejectUnauthorized: this.rejectUnauthorized,
     ALPNProtocols: this.ALPNProtocols,
+    ALPNCallback: this.ALPNCallback,
     SNICallback: this._SNICallback,
     pauseOnConnect: this.pauseOnConnect,
   });
@@ -966,6 +1034,9 @@ function Server(options, listener) {
   this.rejectUnauthorized = options.rejectUnauthorized !== false;
 
   if (options.ALPNProtocols) {
+    if (options.ALPNCallback) {
+      throw new ERR_TLS_ALPN_CALLBACK_WITH_PROTOCOLS();
+    }
     convertALPNProtocols(options.ALPNProtocols, this);
   }
 
@@ -1005,6 +1076,11 @@ function Server(options, listener) {
 
   if (this._SNICallback) {
     validateFunction(this._SNICallback, "options.SNICallback");
+  }
+
+  if (options.ALPNCallback) {
+    validateFunction(options.ALPNCallback, "options.ALPNCallback");
+    this.ALPNCallback = options.ALPNCallback;
   }
 
   // Constructor call

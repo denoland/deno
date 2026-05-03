@@ -2216,14 +2216,6 @@ export class ERR_TLS_CERT_ALTNAME_INVALID extends NodeError {
     this.cert = cert;
   }
 }
-export class ERR_TLS_ALPN_CALLBACK_WITH_PROTOCOLS extends NodeTypeError {
-  constructor() {
-    super(
-      "ERR_TLS_ALPN_CALLBACK_WITH_PROTOCOLS",
-      "The ALPNCallback and ALPNProtocols TLS options are mutually exclusive",
-    );
-  }
-}
 export class ERR_TLS_DH_PARAM_SIZE extends NodeError {
   constructor(x: string) {
     super("ERR_TLS_DH_PARAM_SIZE", `DH parameter size ${x} is less than 2048`);
@@ -2268,6 +2260,22 @@ export class ERR_TLS_RENEGOTIATION_DISABLED extends NodeError {
     super(
       "ERR_TLS_RENEGOTIATION_DISABLED",
       `TLS session renegotiation disabled for this socket`,
+    );
+  }
+}
+export class ERR_TLS_ALPN_CALLBACK_INVALID_RESULT extends NodeError {
+  constructor() {
+    super(
+      "ERR_TLS_ALPN_CALLBACK_INVALID_RESULT",
+      `ALPN callback returned a value not present in the client's ALPN protocols`,
+    );
+  }
+}
+export class ERR_TLS_ALPN_CALLBACK_WITH_PROTOCOLS extends NodeError {
+  constructor() {
+    super(
+      "ERR_TLS_ALPN_CALLBACK_WITH_PROTOCOLS",
+      `ALPNCallback and ALPNProtocols are mutually exclusive`,
     );
   }
 }
@@ -3377,6 +3385,7 @@ export default {
   ERR_TLS_HANDSHAKE_TIMEOUT,
   ERR_TLS_INVALID_CONTEXT,
   ERR_TLS_INVALID_PROTOCOL_VERSION,
+  ERR_TLS_ALPN_CALLBACK_INVALID_RESULT,
   ERR_TLS_INVALID_STATE,
   ERR_TLS_PROTOCOL_VERSION_CONFLICT,
   ERR_TLS_RENEGOTIATION_DISABLED,

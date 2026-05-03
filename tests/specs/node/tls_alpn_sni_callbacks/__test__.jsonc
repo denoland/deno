@@ -1,0 +1,28 @@
+{
+  "tests": {
+    "alpn_callback": {
+      "args": "run --allow-all alpn_callback.ts",
+      "output": "alpn_callback.out"
+    },
+    "sni_callback": {
+      "args": "run --allow-all sni_callback.ts",
+      "output": "sni_callback.out"
+    },
+    "both_callbacks": {
+      "args": "run --allow-all both_callbacks.ts",
+      "output": "both_callbacks.out"
+    },
+    "alpn_callback_invalid_result": {
+      "args": "run --allow-all alpn_callback_invalid_result.ts",
+      "output": "alpn_callback_invalid_result.out"
+    },
+    "alpn_callback_with_protocols": {
+      "args": "run --allow-all alpn_callback_with_protocols.ts",
+      "output": "alpn_callback_with_protocols.out"
+    },
+    "sni_callback_error": {
+      "args": "run --allow-all sni_callback_error.ts",
+      "output": "sni_callback_error.out"
+    }
+  }
+}
