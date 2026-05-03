@@ -62,6 +62,7 @@ const {
   StringPrototypeEndsWith,
   StringPrototypeIncludes,
   StringPrototypeIndexOf,
+  StringPrototypeLastIndexOf,
   StringPrototypeMatch,
   StringPrototypeSlice,
   StringPrototypeSplit,
@@ -368,6 +369,38 @@ function updateChildren(parent, child, scan) {
   }
 }
 
+// Given a path inside a node_modules tree, find the package root by
+// locating the last "node_modules" path component and taking the next
+// segment (or two for scoped packages). Returns null if no node_modules
+// component is found.
+function findPackageRootFromNodeModules(filepath) {
+  // Find the last occurrence of /node_modules/ or \node_modules\ in the path
+  let nmIdx = -1;
+  let sep = "/";
+  const fwdIdx = StringPrototypeLastIndexOf(filepath, "/node_modules/");
+  const bwdIdx = StringPrototypeLastIndexOf(filepath, "\\node_modules\\");
+  if (fwdIdx !== -1 && fwdIdx > bwdIdx) {
+    nmIdx = fwdIdx;
+    sep = "/";
+  } else if (bwdIdx !== -1) {
+    nmIdx = bwdIdx;
+    sep = "\\";
+  }
+  if (nmIdx === -1) return null;
+
+  const afterNm = nmIdx + sep.length + "node_modules".length + sep.length;
+  const rest = StringPrototypeSlice(filepath, afterNm);
+  const parts = StringPrototypeSplit(rest, sep);
+  if (parts.length === 0 || parts[0] === "") return null;
+
+  if (StringPrototypeStartsWith(parts[0], "@") && parts.length > 1) {
+    // Scoped package: @scope/name
+    return StringPrototypeSlice(filepath, 0, afterNm) + parts[0] + sep +
+      parts[1];
+  }
+  return StringPrototypeSlice(filepath, 0, afterNm) + parts[0];
+}
+
 function tryFile(requestPath, _isMain) {
   const rc = stat(requestPath);
   if (rc !== 0) return;
@@ -390,38 +423,12 @@ function tryPackage(requestPath, exts, isMain, originalPath) {
 
   const filename = pathResolve(requestPath, pkg);
 
-  // Find the package root: if the package.json is inside a node_modules
-  // directory, the root is the package folder directly under node_modules
-  // (e.g. node_modules/pkg/ or node_modules/@scope/pkg/). This allows
-  // nested package.json files (subpath exports) to have "main" fields that
-  // reference sibling directories within the same package.
-  let packageRoot = requestPath;
-  let current = requestPath;
-  while (true) {
-    const parent = pathDirname(current);
-    if (parent === current) break;
-    const basename = op_require_path_basename(current);
-    if (basename === "node_modules") {
-      // current is the node_modules dir, so requestPath is either:
-      // - node_modules/<pkg>/...  -> root = node_modules/<pkg>
-      // - node_modules/@scope/<pkg>/... -> root = node_modules/@scope/<pkg>
-      const rel = requestPath.slice(current.length + 1);
-      // Detect separator from the node_modules path itself, not from
-      // rel which may be a single component with no separator at all.
-      const sep = current.indexOf("\\") !== -1 ? "\\" : "/";
-      const parts = StringPrototypeSplit(rel, sep);
-      if (
-        parts.length > 0 && StringPrototypeStartsWith(parts[0], "@") &&
-        parts.length > 1
-      ) {
-        packageRoot = current + sep + parts[0] + sep + parts[1];
-      } else if (parts.length > 0) {
-        packageRoot = current + sep + parts[0];
-      }
-      break;
-    }
-    current = parent;
-  }
+  // Find the package root for the path traversal check. For nested
+  // package.json files inside node_modules (e.g. pkg/sub/package.json with
+  // "main": "../cjs/sub.js"), we allow resolving up to the package root
+  // (node_modules/pkg/) rather than restricting to the nested directory.
+  const packageRoot = findPackageRootFromNodeModules(requestPath) ??
+    requestPath;
 
   // Ensure the resolved main path doesn't escape the package directory
   // via path traversal (e.g. "main": "../../secret.json")

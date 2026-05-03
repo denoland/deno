@@ -2754,31 +2754,38 @@ fn is_pe(data: &[u8]) -> bool {
 }
 
 /// Given a path inside a `node_modules` tree, find the package root by
-/// locating the `node_modules` path component and taking the next segment
-/// (or two for scoped packages like `@scope/pkg`). Returns `None` if no
-/// `node_modules` component is found, in which case the caller should
-/// fall back to the package.json's own directory.
+/// locating the last `node_modules` path component and taking the next
+/// segment (or two for scoped packages like `@scope/pkg`). Uses the last
+/// occurrence to handle nested node_modules trees correctly. Returns
+/// `None` if no `node_modules` component is found, in which case the
+/// caller should fall back to the package.json's own directory.
 fn find_package_root_from_node_modules(path: &Path) -> Option<PathBuf> {
-  let mut components = path.components().peekable();
-  let mut prefix = PathBuf::new();
-  while let Some(c) = components.next() {
-    prefix.push(c);
-    if c.as_os_str() == "node_modules" {
-      // Next component is the package name (or scope).
-      let first = components.next()?;
-      let first_str = first.as_os_str().to_string_lossy();
-      if first_str.starts_with('@') {
-        // Scoped package: @scope/name
-        let second = components.next()?;
-        prefix.push(first);
-        prefix.push(second);
-      } else {
-        prefix.push(first);
-      }
-      return Some(prefix);
-    }
+  let components: Vec<_> = path.components().collect();
+  // Find the last node_modules component
+  let nm_idx = components
+    .iter()
+    .rposition(|c| c.as_os_str() == "node_modules")?;
+  // Need at least one component after node_modules for the package name
+  if nm_idx + 1 >= components.len() {
+    return None;
   }
-  None
+  let mut prefix = PathBuf::new();
+  for c in &components[..=nm_idx] {
+    prefix.push(c);
+  }
+  let first = &components[nm_idx + 1];
+  let first_str = first.as_os_str().to_string_lossy();
+  if first_str.starts_with('@') {
+    // Scoped package: @scope/name - need two components
+    if nm_idx + 2 >= components.len() {
+      return None;
+    }
+    prefix.push(first);
+    prefix.push(&components[nm_idx + 2]);
+  } else {
+    prefix.push(first);
+  }
+  Some(prefix)
 }
 
 #[cfg(test)]
