@@ -333,6 +333,7 @@ impl_number_types!(
   u8, i8, u16, i16, u32, i32, u64, i64, usize, isize, f32, f64
 );
 
+#[derive(Debug)]
 pub struct BigInt {
   pub sign_bit: bool,
   pub words: Vec<u64>,
@@ -365,6 +366,37 @@ impl<'s> FromV8<'s> for BigInt {
     let (sign_bit, _) = bigint.to_words_array(&mut words);
 
     Ok(BigInt { sign_bit, words })
+  }
+}
+
+impl From<num_bigint::BigInt> for BigInt {
+  fn from(big_int: num_bigint::BigInt) -> Self {
+    let (sign, words) = big_int.to_u64_digits();
+    Self {
+      sign_bit: sign == num_bigint::Sign::Minus,
+      words,
+    }
+  }
+}
+
+impl From<BigInt> for num_bigint::BigInt {
+  fn from(big_int: BigInt) -> Self {
+    // SAFETY: Because the alignment of u64 is 8, the alignment of u32 is 4, and
+    // the size of u64 is 8, the size of u32 is 4, the alignment of u32 is a
+    // factor of the alignment of u64, and the size of u32 is a factor of the
+    // size of u64, we can safely transmute the slice of u64 to a slice of u32.
+    let (prefix, slice, suffix) = unsafe { big_int.words.align_to::<u32>() };
+    assert!(prefix.is_empty());
+    assert!(suffix.is_empty());
+    assert_eq!(slice.len(), big_int.words.len() * 2);
+    Self::from_slice(
+      if big_int.sign_bit {
+        num_bigint::Sign::Minus
+      } else {
+        num_bigint::Sign::Plus
+      },
+      slice,
+    )
   }
 }
 
@@ -429,6 +461,17 @@ impl<'s> ToV8<'s> for &'static str {
     scope: &mut v8::PinScope<'s, 'i>,
   ) -> Result<v8::Local<'s, v8::Value>, Self::Error> {
     Ok(v8::String::new(scope, self).unwrap().into()) // TODO
+  }
+}
+
+impl<'s> ToV8<'s> for Box<str> {
+  type Error = Infallible;
+  #[inline]
+  fn to_v8<'i>(
+    self,
+    scope: &mut v8::PinScope<'s, 'i>,
+  ) -> Result<v8::Local<'s, v8::Value>, Self::Error> {
+    Ok(v8::String::new(scope, &self).unwrap().into()) // TODO
   }
 }
 

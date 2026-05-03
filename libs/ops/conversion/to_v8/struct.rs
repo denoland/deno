@@ -3,6 +3,7 @@
 use proc_macro2::Ident;
 use proc_macro2::Span;
 use proc_macro2::TokenStream;
+use quote::format_ident;
 use quote::quote;
 use syn::DataStruct;
 use syn::Error;
@@ -23,12 +24,11 @@ use crate::conversion::to_v8::convert_or_serde;
 pub fn get_body(span: Span, data: DataStruct) -> Result<TokenStream, Error> {
   match data.fields {
     Fields::Named(fields) => {
-      let mut fields = fields
+      let fields = fields
         .named
         .into_iter()
         .map(TryInto::try_into)
         .collect::<Result<Vec<StructField>, Error>>()?;
-      fields.sort_by(|a, b| a.name.cmp(&b.name));
 
       let mut names = Vec::with_capacity(fields.len());
       let mut converters = Vec::with_capacity(fields.len());
@@ -36,11 +36,10 @@ pub fn get_body(span: Span, data: DataStruct) -> Result<TokenStream, Error> {
       for field in fields {
         names.push(crate::get_internalized_string(field.js_name)?);
 
-        let field_name = field.name;
         converters.push(convert_or_serde(
           field.serde,
           field.ty.span(),
-          quote!(self.#field_name),
+          field.name,
         ));
       }
 
@@ -51,7 +50,7 @@ pub fn get_body(span: Span, data: DataStruct) -> Result<TokenStream, Error> {
         *];
         let __converters = &[#(#converters),*];
 
-        Ok(::deno_core::v8::Object::with_prototype_and_properties(
+        Ok::<_, ::deno_error::JsErrorBox>(::deno_core::v8::Object::with_prototype_and_properties(
           __scope,
           __null,
           __keys,
@@ -71,21 +70,20 @@ pub fn get_body(span: Span, data: DataStruct) -> Result<TokenStream, Error> {
 
       let value = if fields.len() == 1 {
         let field = fields.first().unwrap();
-        let converter =
-          convert_or_serde(field.serde, field.span, quote!(self.0));
-        quote!(Ok(#converter))
+        let converter = convert_or_serde(field.serde, field.span, quote!(__0));
+        quote!(Ok::<_, ::deno_error::JsErrorBox>(#converter))
       } else {
         let fields = fields
           .into_iter()
           .map(|field| {
-            let i = syn::Index::from(field.i);
-            convert_or_serde(field.serde, field.span, quote!(self.#i))
+            let i = format_ident!("__{}", field.i, span = field.span);
+            convert_or_serde(field.serde, field.span, i)
           })
           .collect::<Vec<_>>();
 
         quote! {
           let __value = &[#(#fields),*];
-          Ok(::deno_core::v8::Array::new_with_elements(__scope, __value).into())
+          Ok::<_, ::deno_error::JsErrorBox>(::deno_core::v8::Array::new_with_elements(__scope, __value).into())
         }
       };
 
@@ -97,11 +95,11 @@ pub fn get_body(span: Span, data: DataStruct) -> Result<TokenStream, Error> {
   }
 }
 
-struct StructField {
-  name: Ident,
+pub struct StructField {
+  pub name: Ident,
   serde: bool,
   ty: Type,
-  js_name: Ident,
+  pub js_name: Ident,
 }
 
 impl TryFrom<Field> for StructField {
@@ -146,7 +144,7 @@ impl TryFrom<Field> for StructField {
 }
 
 #[allow(dead_code, reason = "unused properties")]
-enum StructFieldArgument {
+pub(crate) enum StructFieldArgument {
   Rename {
     name_token: shared_kw::rename,
     eq_token: Token![=],

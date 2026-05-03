@@ -10,11 +10,11 @@ use std::sync::atomic::Ordering;
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
 use deno_core::DetachedBuffer;
+use deno_core::FromV8;
 use deno_core::JsBuffer;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
 use deno_core::op2;
-use deno_core::serde::Deserialize;
 use deno_permissions::ChildPermissionsArg;
 use deno_permissions::PermissionsContainer;
 use deno_web::JsMessageData;
@@ -37,8 +37,7 @@ use crate::worker::FormatJsErrorFn;
 pub const UNSTABLE_FEATURE_NAME: &str = "worker-options";
 
 /// V8 resource limits for worker isolates, matching Node.js `resourceLimits`.
-#[derive(Deserialize, Default, Clone)]
-#[serde(rename_all = "camelCase")]
+#[derive(FromV8, Default, Clone)]
 pub struct ResourceLimits {
   pub max_young_generation_size_mb: Option<usize>,
   pub max_old_generation_size_mb: Option<usize>,
@@ -129,14 +128,15 @@ deno_core::extension!(
   },
 );
 
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(FromV8)]
 pub struct CreateWorkerArgs {
   has_source_code: bool,
   name: Option<String>,
+  #[from_v8(serde)]
   permissions: Option<ChildPermissionsArg>,
   source_code: String,
   specifier: String,
+  #[from_v8(serde)]
   worker_type: WorkerThreadType,
   close_on_idle: bool,
   resource_limits: Option<ResourceLimits>,
@@ -163,10 +163,9 @@ pub enum CreateWorkerError {
 
 /// Create worker as the host
 #[op2(stack_trace)]
-#[serde]
 fn op_create_worker(
   state: &mut OpState,
-  #[serde] args: CreateWorkerArgs,
+  #[scoped] args: CreateWorkerArgs,
   #[serde] maybe_worker_metadata: Option<JsMessageData>,
 ) -> Result<WorkerId, CreateWorkerError> {
   let specifier = args.specifier.clone();
@@ -315,7 +314,7 @@ fn op_create_worker(
 }
 
 #[op2]
-fn op_host_terminate_worker(state: &mut OpState, #[serde] id: WorkerId) {
+fn op_host_terminate_worker(state: &mut OpState, #[scoped] id: WorkerId) {
   match state.borrow_mut::<WorkersTable>().remove(&id) {
     Some(worker_thread) => {
       worker_thread.terminate();
@@ -371,7 +370,7 @@ fn close_channel(
 #[serde]
 async fn op_host_recv_ctrl(
   state: Rc<RefCell<OpState>>,
-  #[serde] id: WorkerId,
+  #[scoped] id: WorkerId,
 ) -> WorkerControlEvent {
   let (worker_handle, cancel_handle) = {
     let state = state.borrow();
@@ -416,7 +415,7 @@ async fn op_host_recv_ctrl(
 #[serde]
 async fn op_host_recv_message(
   state: Rc<RefCell<OpState>>,
-  #[serde] id: WorkerId,
+  #[scoped] id: WorkerId,
 ) -> Result<Option<JsMessageData>, MessagePortError> {
   let (worker_handle, cancel_handle) = {
     let s = state.borrow();
@@ -454,7 +453,7 @@ async fn op_host_recv_message(
 #[serde]
 fn op_host_recv_message_sync(
   state: &mut OpState,
-  #[serde] id: WorkerId,
+  #[scoped] id: WorkerId,
 ) -> Result<Option<JsMessageData>, MessagePortError> {
   let worker_handle = {
     let workers_table = state.borrow::<WorkersTable>();
@@ -470,7 +469,7 @@ fn op_host_recv_message_sync(
 #[op2]
 fn op_host_post_message(
   state: &mut OpState,
-  #[serde] id: WorkerId,
+  #[scoped] id: WorkerId,
   #[serde] data: JsMessageData,
 ) -> Result<(), MessagePortError> {
   if let Some(worker_thread) = state.borrow::<WorkersTable>().get(&id) {
@@ -488,7 +487,7 @@ fn op_host_post_message(
 #[op2]
 fn op_host_post_message_raw(
   state: &mut OpState,
-  #[serde] id: WorkerId,
+  #[scoped] id: WorkerId,
   #[buffer(detach)] data: JsBuffer,
 ) -> Result<(), MessagePortError> {
   if let Some(worker_thread) = state.borrow::<WorkersTable>().get(&id) {
@@ -504,7 +503,7 @@ fn op_host_post_message_raw(
 #[op2]
 fn op_host_get_worker_cpu_usage(
   state: &mut OpState,
-  #[serde] id: WorkerId,
+  #[scoped] id: WorkerId,
   #[buffer] out: &mut [f64],
 ) {
   if let Some(worker_thread) = state.borrow::<WorkersTable>().get(&id) {

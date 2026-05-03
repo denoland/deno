@@ -1,14 +1,17 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
+mod r#enum;
 mod r#struct;
 
 use proc_macro2::TokenStream;
 use quote::ToTokens;
+use quote::format_ident;
 use quote::quote;
 use quote::quote_spanned;
 use syn::Data;
 use syn::DeriveInput;
 use syn::Error;
+use syn::Fields;
 use syn::parse2;
 use syn::spanned::Spanned;
 
@@ -18,18 +21,65 @@ pub fn to_v8(item: TokenStream) -> Result<TokenStream, Error> {
   let ident = input.ident;
 
   let out = match input.data {
-    Data::Struct(data) => create_impl(ident, r#struct::get_body(span, data)?),
-    Data::Enum(_) => return Err(Error::new(span, "Enums are not supported")),
+    Data::Struct(data) => {
+      let fields = destruct_fields(&data.fields)?;
+      let body = r#struct::get_body(span, data)?;
+
+      create_impl(
+        ident,
+        quote! {
+          let Self #fields = self;
+          #body
+        },
+      )
+    }
+    Data::Enum(data) => {
+      create_impl(ident, r#enum::get_body(span, input.attrs, data)?)
+    }
     Data::Union(_) => return Err(Error::new(span, "Unions are not supported")),
   };
 
   Ok(out)
 }
 
-fn convert_or_serde(
+fn destruct_fields(fields: &Fields) -> Result<TokenStream, Error> {
+  match fields {
+    Fields::Named { 0: named } => {
+      let fields = named
+        .named
+        .iter()
+        .map(|field| field.ident.as_ref().unwrap());
+
+      Ok(quote! {
+        {
+          #(#fields),*
+        }
+      })
+    }
+    Fields::Unnamed(unnamed) => {
+      let fields = unnamed.unnamed.iter().enumerate().map(|(i, field)| {
+        let idx = syn::Index::from(i);
+        let ident = format_ident!("__{i}", span = field.span());
+        quote!(#idx: #ident)
+      });
+
+      Ok(quote! {
+        {
+          #(#fields),*
+        }
+      })
+    }
+    Fields::Unit => Err(Error::new(
+      fields.span(),
+      "Unit structs cannot be destructured",
+    )),
+  }
+}
+
+fn convert_or_serde<T: quote::ToTokens>(
   serde: bool,
   span: proc_macro2::Span,
-  value: TokenStream,
+  value: T,
 ) -> TokenStream {
   if serde {
     quote_spanned! { span =>

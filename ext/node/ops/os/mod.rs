@@ -291,7 +291,6 @@ pub fn op_getgroups(state: &mut OpState) -> Result<Vec<u32>, OsError> {
 }
 
 #[op2(stack_trace)]
-#[serde]
 pub fn op_cpus(state: &mut OpState) -> Result<Vec<cpus::CpuInfo>, OsError> {
   {
     let permissions = state.borrow_mut::<PermissionsContainer>();

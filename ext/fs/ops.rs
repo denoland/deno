@@ -18,6 +18,7 @@ use deno_core::FastString;
 use deno_core::FromV8;
 use deno_core::OpState;
 use deno_core::ResourceId;
+use deno_core::ToV8;
 use deno_core::convert::Uint8Array;
 use deno_core::error::ResourceError;
 use deno_core::op2;
@@ -33,7 +34,6 @@ use deno_permissions::PermissionCheckError;
 use rand::Rng;
 use rand::rngs::ThreadRng;
 use rand::thread_rng;
-use serde::Serialize;
 
 use crate::OpenOptions;
 use crate::interface::FileSystemRc;
@@ -616,7 +616,6 @@ pub fn op_fs_stat_sync(
 }
 
 #[op2(stack_trace)]
-#[serde]
 pub async fn op_fs_stat_async(
   state: Rc<RefCell<OpState>>,
   #[string] path: String,
@@ -660,7 +659,6 @@ pub fn op_fs_lstat_sync(
 }
 
 #[op2(stack_trace)]
-#[serde]
 pub async fn op_fs_lstat_async(
   state: Rc<RefCell<OpState>>,
   #[string] path: String,
@@ -1735,7 +1733,6 @@ pub fn op_fs_file_stat_sync(
 }
 
 #[op2]
-#[serde]
 pub async fn op_fs_file_stat_async(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
@@ -2036,8 +2033,7 @@ macro_rules! create_struct_writer {
       }
     }
 
-    #[derive(Serialize)]
-    #[serde(rename_all = "camelCase")]
+    #[derive(ToV8)]
     pub struct $name {
       $($field: $type),*
     }

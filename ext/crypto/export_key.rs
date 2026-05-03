@@ -4,7 +4,8 @@ use base64::Engine;
 use base64::prelude::BASE64_URL_SAFE_NO_PAD;
 use const_oid::AssociatedOid;
 use const_oid::ObjectIdentifier;
-use deno_core::ToJsBuffer;
+use deno_core::ToV8;
+use deno_core::convert::Uint8Array;
 use deno_core::op2;
 use elliptic_curve::sec1::ToEncodedPoint;
 use p256::pkcs8::DecodePrivateKey;
@@ -12,7 +13,6 @@ use rsa::pkcs1::der::Decode;
 use rsa::pkcs8::der::Encode;
 use rsa::pkcs8::der::asn1::UintRef;
 use serde::Deserialize;
-use serde::Serialize;
 use spki::AlgorithmIdentifier;
 use spki::AlgorithmIdentifierOwned;
 use spki::der::asn1;
@@ -75,12 +75,12 @@ pub enum ExportKeyAlgorithm {
   Hmac {},
 }
 
-#[derive(Serialize)]
-#[serde(untagged)]
+#[derive(ToV8)]
+#[to_v8(untagged)]
 pub enum ExportKeyResult {
-  Raw(ToJsBuffer),
-  Pkcs8(ToJsBuffer),
-  Spki(ToJsBuffer),
+  Raw(Uint8Array),
+  Pkcs8(Uint8Array),
+  Spki(Uint8Array),
   JwkSecret {
     k: String,
   },
@@ -110,7 +110,6 @@ pub enum ExportKeyResult {
 }
 
 #[op2]
-#[serde]
 pub fn op_crypto_export_key(
   #[serde] opts: ExportKeyOptions,
   #[serde] key_data: V8RawKeyData,
