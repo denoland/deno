@@ -1952,9 +1952,7 @@ class Http2Stream extends Duplex {
       // setting writable_ended now lets that data go out with END_STREAM
       // packed instead of a separate empty DATA(END_STREAM) frame
       // (see writeBuffer override + test-http2-pack-end-stream-flag.js).
-      (hasChunk
-        ? !this._writableState.writing
-        : this._writableState.writing) &&
+      (hasChunk ? !this._writableState.writing : this._writableState.writing) &&
       !(this[kState].flags & STREAM_FLAGS_HAS_TRAILERS) &&
       typeof id === "number" && id % 2 === 1 &&
       this.headersSent
