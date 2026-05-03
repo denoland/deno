@@ -9,15 +9,13 @@ import {
 import tlsCommon from "node:_tls_common";
 import tlsWrap from "node:_tls_wrap";
 import { convertALPNProtocols } from "ext:deno_node/internal/tls_common.js";
-import * as io from "ext:deno_io/12_io.js";
-import { TextEncoder } from "ext:deno_web/08_text_encoding.js";
 import {
   op_get_env_no_permission_check,
   op_get_root_certificates,
   op_node_get_ca_certificates,
   op_set_default_ca_certificates,
 } from "ext:core/ops";
-import { primordials } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 
 const {
   ArrayIsArray,
@@ -83,8 +81,7 @@ function writeNativeCryptoDebug(message: string) {
   ) {
     return;
   }
-  const bytes = new TextEncoder().encode(`${message}\n`);
-  io.stderr.writeSync(bytes);
+  core.print(`${message}\n`, true);
 }
 
 function emitDefaultCertificatesDebug() {
