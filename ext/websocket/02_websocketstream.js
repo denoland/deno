@@ -41,11 +41,11 @@ const { Deferred, writableStreamClose } = core.loadExtScript(
 );
 const { DOMException } = core.loadExtScript("ext:deno_web/01_dom_exception.js");
 const { add, remove } = core.loadExtScript("ext:deno_web/03_abort_signal.js");
-import {
+const {
   fillHeaders,
   headerListFromHeaders,
   headersFromHeaderList,
-} from "ext:deno_fetch/20_headers.js";
+} = core.loadExtScript("ext:deno_fetch/20_headers.js");
 
 webidl.converters.WebSocketStreamOptions = webidl.createDictionaryConverter(
   "WebSocketStreamOptions",
