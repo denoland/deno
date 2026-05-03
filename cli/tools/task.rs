@@ -227,7 +227,7 @@ pub async fn execute_script(
           },
           kill_signal,
           cli_options.argv(),
-          false,
+          None,
         )
         .await;
     }
@@ -246,6 +246,22 @@ pub async fn execute_script(
   .await
 }
 
+struct ParallelInfo {
+  color_index: usize,
+  name_pad_width: usize,
+}
+
+fn colorize_task_prefix(label: &str, color_index: usize) -> String {
+  match color_index % 6 {
+    0 => colors::cyan(label).to_string(),
+    1 => colors::magenta(label).to_string(),
+    2 => colors::yellow(label).to_string(),
+    3 => colors::green(label).to_string(),
+    4 => colors::intense_blue(label).to_string(),
+    _ => colors::red(label).to_string(),
+  }
+}
+
 struct RunSingleOptions<'a> {
   task_name: &'a str,
   package_name: Option<&'a str>,
@@ -254,7 +270,7 @@ struct RunSingleOptions<'a> {
   custom_commands: HashMap<String, Rc<dyn ShellCommand>>,
   kill_signal: KillSignal,
   argv: &'a [String],
-  parallel: bool,
+  parallel_info: Option<ParallelInfo>,
 }
 
 struct TaskRunner<'a> {
@@ -317,13 +333,19 @@ impl<'a> TaskRunner<'a> {
     kill_signal: &KillSignal,
     args: &[String],
   ) -> Result<i32, deno_core::anyhow::Error> {
-    let parallel = tasks.len() > 1;
+    let is_parallel = tasks.len() > 1;
+    let max_task_name_len = if is_parallel {
+      tasks.iter().map(|t| t.name.len()).max().unwrap_or(0)
+    } else {
+      0
+    };
 
     struct PendingTasksContext<'a> {
       completed: HashSet<usize>,
       running: HashSet<usize>,
       tasks: &'a [ResolvedTask<'a>],
-      parallel: bool,
+      is_parallel: bool,
+      max_task_name_len: usize,
     }
 
     impl<'a> PendingTasksContext<'a> {
@@ -371,7 +393,14 @@ impl<'a> TaskRunner<'a> {
 
           self.running.insert(task.id);
           let kill_signal = kill_signal.clone();
-          let parallel = self.parallel;
+          let parallel_info = if self.is_parallel {
+            Some(ParallelInfo {
+              color_index: task.id,
+              name_pad_width: self.max_task_name_len,
+            })
+          } else {
+            None
+          };
           return Some(
             async move {
               match task.task_or_script {
@@ -384,7 +413,7 @@ impl<'a> TaskRunner<'a> {
                       def,
                       kill_signal,
                       args,
-                      parallel,
+                      parallel_info,
                     )
                     .await
                 }
@@ -397,7 +426,7 @@ impl<'a> TaskRunner<'a> {
                       &details.tasks,
                       kill_signal,
                       args,
-                      parallel,
+                      parallel_info,
                     )
                     .await
                 }
@@ -415,7 +444,8 @@ impl<'a> TaskRunner<'a> {
       completed: HashSet::with_capacity(tasks.len()),
       running: HashSet::with_capacity(self.concurrency),
       tasks: &tasks,
-      parallel,
+      is_parallel,
+      max_task_name_len,
     };
 
     let mut queue = futures_unordered::FuturesUnordered::new();
@@ -457,7 +487,7 @@ impl<'a> TaskRunner<'a> {
     definition: &TaskDefinition,
     kill_signal: KillSignal,
     argv: &'a [String],
-    parallel: bool,
+    parallel_info: Option<ParallelInfo>,
   ) -> Result<i32, deno_core::anyhow::Error> {
     let Some(command) = &definition.command else {
       self.output_task(
@@ -492,7 +522,7 @@ impl<'a> TaskRunner<'a> {
         custom_commands,
         kill_signal,
         argv,
-        parallel,
+        parallel_info,
       })
       .await
   }
@@ -505,7 +535,7 @@ impl<'a> TaskRunner<'a> {
     scripts: &IndexMap<String, String>,
     kill_signal: KillSignal,
     argv: &[String],
-    parallel: bool,
+    parallel_info: Option<ParallelInfo>,
   ) -> Result<i32, deno_core::anyhow::Error> {
     // ensure the npm packages are installed if using a managed resolver
     self.maybe_npm_install().await?;
@@ -539,7 +569,10 @@ impl<'a> TaskRunner<'a> {
             custom_commands: custom_commands.clone(),
             kill_signal: kill_signal.clone(),
             argv,
-            parallel,
+            parallel_info: parallel_info.as_ref().map(|i| ParallelInfo {
+              color_index: i.color_index,
+              name_pad_width: i.name_pad_width,
+            }),
           })
           .await?;
         if exit_code > 0 {
@@ -563,7 +596,7 @@ impl<'a> TaskRunner<'a> {
       custom_commands,
       kill_signal,
       argv,
-      parallel,
+      parallel_info,
     } = opts;
 
     self.output_task(
@@ -572,8 +605,11 @@ impl<'a> TaskRunner<'a> {
       &task_runner::get_script_with_args(script, argv),
     );
 
-    let (stdio, prefix_handles) = if parallel {
-      let prefix = format!("{} ", colors::cyan(format!("[{}]", task_name)));
+    let (stdio, prefix_handles) = if let Some(info) = parallel_info {
+      let label =
+        format!("[{:<width$}]", task_name, width = info.name_pad_width);
+      let prefix =
+        format!("{} ", colorize_task_prefix(&label, info.color_index));
       let (io, handles) = task_runner::make_prefixed_task_io(prefix);
       (Some(io), handles)
     } else {

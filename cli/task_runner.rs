@@ -79,7 +79,6 @@ impl<W: std::io::Write> std::io::Write for PrefixedWriter<W> {
 
   fn flush(&mut self) -> std::io::Result<()> {
     if !self.line_buf.is_empty() {
-      self.line_buf.push(b'\n');
       self.inner.write_all(&self.line_buf)?;
       self.line_buf.clear();
       self.at_line_start = true;

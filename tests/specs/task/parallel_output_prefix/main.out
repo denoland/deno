@@ -1,0 +1,8 @@
+Task foo echo foo_output
+Task bar echo bar_output
+[UNORDERED_START]
+[foo ] foo_output
+[bar ] bar_output
+[UNORDERED_END]
+Task main echo main_output
+[main] main_output

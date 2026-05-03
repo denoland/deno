@@ -1,0 +1,12 @@
+{
+  "tests": {
+    "prefixes_parallel_output": {
+      "args": "task main",
+      "output": "main.out"
+    },
+    "single_task_no_prefix": {
+      "args": "task single",
+      "output": "single.out"
+    }
+  }
+}
