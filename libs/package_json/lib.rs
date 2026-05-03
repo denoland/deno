@@ -147,6 +147,7 @@ pub enum PackageJsonDepValue {
   File(String),
   Req(PackageReq),
   Workspace(PackageJsonDepWorkspaceReq),
+  Catalog(String),
 }
 
 impl PackageJsonDepValue {
@@ -189,6 +190,14 @@ impl PackageJsonDepValue {
           } else {
             from_name_and_version_req(value.into(), "*")
           }
+        }
+        "catalog" => {
+          let name = if value.is_empty() || value == "default" {
+            "default".to_string()
+          } else {
+            value.to_string()
+          };
+          Ok(Self::Catalog(name))
         }
         "workspace" => {
           let workspace_req = match value {
@@ -292,6 +301,10 @@ pub struct PackageJson {
   pub cpu: Option<Vec<String>>,
   #[serde(skip_serializing_if = "Option::is_none")]
   pub overrides: Option<Map<String, Value>>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub catalog: Option<IndexMap<String, String>>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub catalogs: Option<IndexMap<String, IndexMap<String, String>>>,
   #[serde(skip_serializing)]
   resolved_deps: PackageJsonDepsRcCell,
 }
@@ -364,6 +377,8 @@ impl PackageJson {
         os: None,
         cpu: None,
         overrides: None,
+        catalog: None,
+        catalogs: None,
         resolved_deps: Default::default(),
       });
     }
@@ -514,6 +529,20 @@ impl PackageJson {
     let os = package_json.remove("os").and_then(parse_string_array);
     let cpu = package_json.remove("cpu").and_then(parse_string_array);
     let overrides = package_json.remove("overrides").and_then(map_object);
+    let catalog = package_json.remove("catalog").and_then(parse_string_map);
+    let catalogs = package_json.remove("catalogs").and_then(|v| {
+      if let Value::Object(map) = v {
+        let mut result = IndexMap::with_capacity(map.len());
+        for (k, v) in map {
+          if let Some(inner) = parse_string_map(v) {
+            result.insert(k, inner);
+          }
+        }
+        Some(result)
+      } else {
+        None
+      }
+    });
 
     Ok(PackageJson {
       path,
@@ -540,6 +569,8 @@ impl PackageJson {
       os,
       cpu,
       overrides,
+      catalog,
+      catalogs,
       resolved_deps: Default::default(),
     })
   }
@@ -871,6 +902,15 @@ mod test {
       ("work-test-star".to_string(), "workspace:*".to_string()),
       ("work-test-tilde".to_string(), "workspace:~".to_string()),
       ("work-test-caret".to_string(), "workspace:^".to_string()),
+      ("catalog-test".to_string(), "catalog:".to_string()),
+      (
+        "catalog-default-test".to_string(),
+        "catalog:default".to_string(),
+      ),
+      (
+        "catalog-named-test".to_string(),
+        "catalog:react18".to_string(),
+      ),
       ("file-test".to_string(), "file:something".to_string()),
       ("git-test".to_string(), "git:something".to_string()),
       ("http-test".to_string(), "http://something".to_string()),
@@ -913,6 +953,18 @@ mod test {
           Ok(PackageJsonDepValue::Workspace(
             PackageJsonDepWorkspaceReq::Caret
           ))
+        ),
+        (
+          "catalog-test".to_string(),
+          Ok(PackageJsonDepValue::Catalog("default".to_string())),
+        ),
+        (
+          "catalog-default-test".to_string(),
+          Ok(PackageJsonDepValue::Catalog("default".to_string())),
+        ),
+        (
+          "catalog-named-test".to_string(),
+          Ok(PackageJsonDepValue::Catalog("react18".to_string())),
         ),
         (
           "file-test".to_string(),

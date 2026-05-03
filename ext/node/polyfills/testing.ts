@@ -20,8 +20,6 @@ const {
   ReflectApply,
   SafeArrayIterator,
   SafeMap,
-  SafePromiseAll,
-  SafePromisePrototypeFinally,
   String,
   Symbol,
   SymbolFor,
@@ -144,16 +142,48 @@ function noop() {}
 
 const skippedSymbol = Symbol("skipped");
 
+class TestPlan {
+  #expected: number;
+  #actual: number = 0;
+
+  constructor(count: number) {
+    this.#expected = count;
+  }
+
+  increment() {
+    this.#actual++;
+  }
+
+  check() {
+    if (this.#actual !== this.#expected) {
+      throw new Error(
+        `plan expected ${this.#expected} assertion(s) but received ${this.#actual}`,
+      );
+    }
+  }
+}
+
 class NodeTestContext {
   #denoContext: Deno.TestContext;
   #afterHooks: (() => void)[] = [];
   #beforeHooks: (() => void)[] = [];
   #parent: NodeTestContext | undefined;
   #skipped = false;
+  #name: string;
+  #abortController: AbortController = new AbortController();
+  #plan: TestPlan | undefined;
+  #planAssert: Record<string, unknown> | undefined;
+  #beforeEachHooks: (() => void | Promise<void>)[] = [];
+  #afterEachHooks: (() => void | Promise<void>)[] = [];
 
-  constructor(t: Deno.TestContext, parent: NodeTestContext | undefined) {
+  constructor(
+    t: Deno.TestContext,
+    parent: NodeTestContext | undefined,
+    name: string,
+  ) {
     this.#denoContext = t;
     this.#parent = parent;
+    this.#name = name;
   }
 
   get [skippedSymbol]() {
@@ -161,17 +191,46 @@ class NodeTestContext {
   }
 
   get assert() {
+    if (this.#plan) {
+      if (!this.#planAssert) {
+        const plan = this.#plan;
+        const base = getAssertObject();
+        const wrapped = { __proto__: null };
+        ArrayPrototypeForEach(methodsToCopy, (method) => {
+          wrapped[method] = function (...args) {
+            plan.increment();
+            return ReflectApply(base[method], this, args);
+          };
+        });
+        this.#planAssert = wrapped;
+      }
+      return this.#planAssert;
+    }
     return getAssertObject();
   }
 
+  plan(count: number) {
+    validateInteger(count, "count", 1);
+    this.#plan = new TestPlan(count);
+  }
+
+  _checkPlan() {
+    if (this.#plan) this.#plan.check();
+  }
+
   get signal() {
-    notImplemented("test.TestContext.signal");
-    return null;
+    return this.#abortController.signal;
   }
 
   get name() {
-    notImplemented("test.TestContext.name");
-    return null;
+    return this.#name;
+  }
+
+  get fullName() {
+    if (this.#parent) {
+      return this.#parent.fullName + " > " + this.#name;
+    }
+    return this.#name;
   }
 
   diagnostic(message) {
@@ -200,6 +259,9 @@ class NodeTestContext {
 
   test(name, options, fn) {
     const prepared = prepareOptions(name, options, fn, {});
+    // Subtests count toward the parent's plan (Node counts both
+    // assertions and subtests).
+    if (this.#plan) this.#plan.increment();
     // deno-lint-ignore no-this-alias
     const parentContext = this;
     const after = async () => {
@@ -219,10 +281,19 @@ class NodeTestContext {
           const newNodeTextContext = new NodeTestContext(
             denoTestContext,
             parentContext,
+            prepared.name,
           );
           try {
             await before();
+            for (
+              const hook of new SafeArrayIterator(
+                parentContext.#beforeEachHooks,
+              )
+            ) {
+              await hook();
+            }
             await prepared.fn(newNodeTextContext);
+            newNodeTextContext._checkPlan();
             await after();
           } catch (err) {
             if (!newNodeTextContext[skippedSymbol]) {
@@ -231,6 +302,14 @@ class NodeTestContext {
             try {
               await after();
             } catch { /* ignore, test is already failing */ }
+          } finally {
+            for (
+              const hook of new SafeArrayIterator(
+                parentContext.#afterEachHooks,
+              )
+            ) {
+              await hook();
+            }
           }
         },
         ignore: !!prepared.options.todo || !!prepared.options.skip,
@@ -256,20 +335,39 @@ class NodeTestContext {
     ArrayPrototypePush(this.#afterHooks, fn);
   }
 
-  beforeEach(_fn, _options) {
-    notImplemented("test.TestContext.beforeEach");
+  beforeEach(fn, _options) {
+    if (typeof fn !== "function") {
+      throw new TypeError("beforeEach() requires a function");
+    }
+    ArrayPrototypePush(this.#beforeEachHooks, fn);
   }
 
-  afterEach(_fn, _options) {
-    notImplemented("test.TestContext.afterEach");
+  afterEach(fn, _options) {
+    if (typeof fn !== "function") {
+      throw new TypeError("afterEach() requires a function");
+    }
+    ArrayPrototypePush(this.#afterEachHooks, fn);
   }
 }
 
 let currentSuite: TestSuite | null = null;
 
+// Entries are step definitions collected during the suite body. Steps are
+// not created via t.step() until the suite executes, so that before/after
+// hooks run at the correct time.
+interface SuiteEntry {
+  name: string;
+  fn: (t: Deno.TestContext) => Promise<void> | void;
+  ignore: boolean;
+}
+
 class TestSuite {
   #denoTestContext: Deno.TestContext;
-  steps: Promise<boolean>[] = [];
+  entries: SuiteEntry[] = [];
+  beforeAllHooks: (() => void | Promise<void>)[] = [];
+  afterAllHooks: (() => void | Promise<void>)[] = [];
+  beforeEachHooks: (() => void | Promise<void>)[] = [];
+  afterEachHooks: (() => void | Promise<void>)[] = [];
 
   constructor(t: Deno.TestContext) {
     this.#denoTestContext = t;
@@ -277,45 +375,62 @@ class TestSuite {
 
   addTest(name, options, fn, overrides) {
     const prepared = prepareOptions(name, options, fn, overrides);
-    const step = this.#denoTestContext.step({
+    const beforeEach = this.beforeEachHooks;
+    const afterEach = this.afterEachHooks;
+    ArrayPrototypePush(this.entries, {
       name: prepared.name,
       fn: async (denoTestContext) => {
         const newNodeTextContext = new NodeTestContext(
           denoTestContext,
           undefined,
+          prepared.name,
         );
         try {
-          return await prepared.fn(newNodeTextContext);
+          for (const hook of new SafeArrayIterator(beforeEach)) {
+            await hook();
+          }
+          const result = await prepared.fn(newNodeTextContext);
+          newNodeTextContext._checkPlan();
+          return result;
         } catch (err) {
           if (newNodeTextContext[skippedSymbol]) {
             return undefined;
           } else {
             throw err;
           }
+        } finally {
+          for (const hook of new SafeArrayIterator(afterEach)) {
+            await hook();
+          }
         }
       },
       ignore: !!prepared.options.todo || !!prepared.options.skip,
-      sanitizeExit: false,
-      sanitizeOps: false,
-      sanitizeResources: false,
     });
-    ArrayPrototypePush(this.steps, step);
   }
 
   addSuite(name, options, fn, overrides) {
     const prepared = prepareOptions(name, options, fn, overrides);
     // deno-lint-ignore prefer-primordials
     const { promise, resolve } = Promise.withResolvers();
-    const step = this.#denoTestContext.step({
+    ArrayPrototypePush(this.entries, {
       name: prepared.name,
       fn: wrapSuiteFn(prepared.fn, resolve),
       ignore: !!prepared.options.todo || !!prepared.options.skip,
-      sanitizeExit: false,
-      sanitizeOps: false,
-      sanitizeResources: false,
     });
-    ArrayPrototypePush(this.steps, step);
     return promise;
+  }
+
+  async execute() {
+    for (const entry of new SafeArrayIterator(this.entries)) {
+      await this.#denoTestContext.step({
+        name: entry.name,
+        fn: entry.fn,
+        ignore: entry.ignore,
+        sanitizeExit: false,
+        sanitizeOps: false,
+        sanitizeResources: false,
+      });
+    }
   }
 }
 
@@ -348,9 +463,9 @@ function prepareOptions(name, options, fn, overrides) {
   return { fn, options: finalOptions, name };
 }
 
-function wrapTestFn(fn, resolve) {
+function wrapTestFn(fn, resolve, name) {
   return async function (t) {
-    const nodeTestContext = new NodeTestContext(t, undefined);
+    const nodeTestContext = new NodeTestContext(t, undefined, name);
     try {
       if (fn.length >= 2) {
         // Callback-style test
@@ -390,6 +505,7 @@ function wrapTestFn(fn, resolve) {
         // Promise-style or sync test
         await ReflectApply(fn, nodeTestContext, [nodeTestContext]);
       }
+      nodeTestContext._checkPlan();
     } catch (err) {
       if (!nodeTestContext[skippedSymbol]) {
         throw sanitizeThrowValue(err);
@@ -414,7 +530,7 @@ function prepareDenoTest(name, options, fn, overrides) {
 
   const denoTestOptions = {
     name: prepared.name,
-    fn: wrapTestFn(prepared.fn, resolve),
+    fn: wrapTestFn(prepared.fn, resolve, prepared.name),
     only: prepared.options.only,
     ignore: !!prepared.options.todo || !!prepared.options.skip,
     sanitizeOnly: false,
@@ -427,7 +543,7 @@ function prepareDenoTest(name, options, fn, overrides) {
 }
 
 function wrapSuiteFn(fn, resolve) {
-  return function (t) {
+  return async function (t) {
     const prevSuite = currentSuite;
     const suite = currentSuite = new TestSuite(t);
     try {
@@ -435,10 +551,21 @@ function wrapSuiteFn(fn, resolve) {
     } finally {
       currentSuite = prevSuite;
     }
-    return SafePromisePrototypeFinally(SafePromiseAll(suite.steps), () => {
-      activeNodeTests--;
-      resolve();
-    });
+    try {
+      for (const hook of new SafeArrayIterator(suite.beforeAllHooks)) {
+        await hook();
+      }
+      await suite.execute();
+    } finally {
+      try {
+        for (const hook of new SafeArrayIterator(suite.afterAllHooks)) {
+          await hook();
+        }
+      } finally {
+        activeNodeTests--;
+        resolve();
+      }
+    }
   };
 }
 
@@ -509,20 +636,48 @@ suite.only = function only(name, options, fn) {
 export const it = test;
 export const describe = suite;
 
-export function before() {
-  notImplemented("test.before");
+export function before(fn, _options) {
+  if (typeof fn !== "function") {
+    throw new TypeError("before() requires a function argument");
+  }
+  if (currentSuite) {
+    ArrayPrototypePush(currentSuite.beforeAllHooks, fn);
+    return;
+  }
+  notImplemented("test.before (module-level, outside suite)");
 }
 
-export function after() {
-  notImplemented("test.after");
+export function after(fn, _options) {
+  if (typeof fn !== "function") {
+    throw new TypeError("after() requires a function argument");
+  }
+  if (currentSuite) {
+    ArrayPrototypePush(currentSuite.afterAllHooks, fn);
+    return;
+  }
+  notImplemented("test.after (module-level, outside suite)");
 }
 
-export function beforeEach() {
-  notImplemented("test.beforeEach");
+export function beforeEach(fn, _options) {
+  if (typeof fn !== "function") {
+    throw new TypeError("beforeEach() requires a function argument");
+  }
+  if (currentSuite) {
+    ArrayPrototypePush(currentSuite.beforeEachHooks, fn);
+    return;
+  }
+  notImplemented("test.beforeEach (module-level, outside suite)");
 }
 
-export function afterEach() {
-  notImplemented("test.afterEach");
+export function afterEach(fn, _options) {
+  if (typeof fn !== "function") {
+    throw new TypeError("afterEach() requires a function argument");
+  }
+  if (currentSuite) {
+    ArrayPrototypePush(currentSuite.afterEachHooks, fn);
+    return;
+  }
+  notImplemented("test.afterEach (module-level, outside suite)");
 }
 
 test.it = test;

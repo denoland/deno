@@ -16,7 +16,7 @@ import {
   op_worker_get_resource_limits,
   op_worker_threads_filename,
 } from "ext:core/ops";
-import {
+const {
   deserializeJsMessageData,
   MessageChannel,
   MessagePort,
@@ -28,7 +28,7 @@ import {
   refMessagePort,
   serializeJsMessageData,
   unrefParentPort,
-} from "ext:deno_web/13_message_port.js";
+} = core.loadExtScript("ext:deno_web/13_message_port.js");
 const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
 import { notImplemented } from "ext:deno_node/_utils.ts";
 import {
@@ -45,10 +45,10 @@ import {
 } from "ext:deno_node/internal/validators.mjs";
 import { EventEmitter } from "node:events";
 import { Readable, Writable } from "node:stream";
-import {
-  BroadcastChannel as WebBroadcastChannel,
+const {
+  BroadcastChannel: WebBroadcastChannel,
   refBroadcastChannel,
-} from "ext:deno_web/01_broadcast_channel.js";
+} = core.loadExtScript("ext:deno_web/01_broadcast_channel.js");
 import { untransferableSymbol } from "ext:deno_node/internal_binding/util.ts";
 import process from "node:process";
 import { fileURLToPath } from "node:url";

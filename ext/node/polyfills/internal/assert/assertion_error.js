@@ -3,7 +3,7 @@
 
 // deno-lint-ignore-file prefer-primordials
 
-import { primordials } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 import { inspect } from "ext:deno_node/internal/util/inspect.mjs";
 import { isError } from "ext:deno_node/internal/util.mjs";
 import { isErrorStackTraceLimitWritable } from "ext:deno_node/internal/errors.ts";
@@ -14,7 +14,7 @@ import {
   printSimpleMyersDiff,
 } from "ext:deno_node/internal/assert/myers_diff.js";
 import { validateObject } from "ext:deno_node/internal/validators.mjs";
-import * as io from "ext:deno_io/12_io.js";
+const io = core.loadExtScript("ext:deno_io/12_io.js");
 
 function getConsoleWidth() {
   try {

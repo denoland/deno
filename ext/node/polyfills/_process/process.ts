@@ -26,6 +26,7 @@ import { nextTick as _nextTick } from "ext:deno_node/_next_tick.ts";
 import { _exiting } from "ext:deno_node/_process/exiting.ts";
 import * as fs from "ext:deno_fs/30_fs.js";
 import {
+  denoErrorToNodeError,
   ERR_INVALID_ARG_TYPE,
   ERR_INVALID_OBJECT_DEFINE_PROPERTY,
 } from "ext:deno_node/internal/errors.ts";
@@ -51,7 +52,27 @@ export function chdir(directory: string): void {
   if (typeof directory !== "string") {
     throw new ERR_INVALID_ARG_TYPE("directory", "string", directory);
   }
-  fs.chdir(directory);
+  // Node's chdir error carries `path` (the cwd before chdir), `dest` (the
+  // target), and `syscall: 'chdir'`. Snapshot the cwd before attempting the
+  // change so the error's `path` matches Node's behaviour. If the current
+  // cwd has been deleted (common in tmpdir cleanup during process exit),
+  // `fs.cwd()` itself throws -- fall back to an empty string so the wrapper
+  // still has a sensible `path`, and don't surface the cwd lookup error.
+  let fromPath = "";
+  try {
+    fromPath = fs.cwd();
+  } catch {
+    // Ignore -- chdir() below will surface a chdir-shaped error.
+  }
+  try {
+    fs.chdir(directory);
+  } catch (err) {
+    throw denoErrorToNodeError(err as Error, {
+      syscall: "chdir",
+      path: fromPath,
+      dest: directory,
+    });
+  }
 }
 
 /** https://nodejs.org/api/process.html#process_process_cwd */

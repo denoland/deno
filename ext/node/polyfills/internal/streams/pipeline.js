@@ -2,7 +2,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 import process from "node:process";
-import { primordials } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 import eos from "ext:deno_node/internal/streams/end-of-stream.js";
 import { once } from "ext:deno_node/internal/util.mjs";
 import destroyImpl from "ext:deno_node/internal/streams/destroy.js";
@@ -24,7 +24,9 @@ import {
   isWebStream,
 } from "ext:deno_node/internal/streams/utils.js";
 
-import { AbortController } from "ext:deno_web/03_abort_signal.js";
+const { AbortController } = core.loadExtScript(
+  "ext:deno_web/03_abort_signal.js",
+);
 import _mod3 from "node:_stream_readable";
 import * as _mod4 from "ext:deno_node/internal/events/abort_listener.mjs";
 import _mod5 from "node:_stream_passthrough";

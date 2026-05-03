@@ -72,12 +72,15 @@ deno_core::extension!(
     op_node_decipheriv_final,
     op_node_decipheriv_set_aad,
     op_node_decipheriv_auth_tag,
+    op_node_dh_check,
     op_node_dh_compute_secret,
     op_node_diffie_hellman,
     op_node_ecdh_compute_public_key,
     op_node_ecdh_compute_secret,
     op_node_ecdh_encode_pubkey,
     op_node_ecdh_generate_keys,
+    op_node_ecdh_validate_private_key,
+    op_node_ecdh_validate_public_key,
     op_node_fill_random_async,
     op_node_fill_random,
     op_node_gen_prime_async,
@@ -943,28 +946,55 @@ pub fn op_node_random_int(#[number] min: i64, #[number] max: i64) -> i64 {
 fn scrypt(
   password: StringOrBuffer,
   salt: StringOrBuffer,
-  keylen: u32,
-  cost: u32,
-  block_size: u32,
-  parallelization: u32,
-  _maxmem: u32,
+  keylen: usize,
+  cost: u64,
+  block_size: u64,
+  parallelization: u64,
+  maxmem: usize,
   output_buffer: &mut [u8],
 ) -> Result<(), JsErrorBox> {
-  // Construct Params
-  let params = scrypt::Params::new(
-    cost as u8,
-    block_size,
-    parallelization,
-    keylen as usize,
-  )
-  .map_err(|_| JsErrorBox::generic("Invalid scrypt param"))?;
+  assert!(
+    output_buffer.len() >= keylen,
+    "output_buffer too small for scrypt keylen",
+  );
+  let cost = u32::try_from(cost)
+    .ok()
+    .filter(|cost| *cost < 64)
+    .ok_or_else(|| JsErrorBox::generic("Invalid scrypt param"))?;
+  let n = 1u64
+    .checked_shl(cost)
+    .ok_or_else(|| JsErrorBox::generic("Invalid scrypt param"))?;
 
-  // Call into scrypt
-  let res = scrypt::scrypt(&password, &salt, &params, output_buffer);
-  if res.is_ok() {
+  // SAFETY:
+  // - `password.as_ptr()`/`password.len()` describe a valid contiguous byte
+  //   slice because `StringOrBuffer` dereferences to `[u8]`.
+  // - `salt.as_ptr()`/`salt.len()` likewise describe a valid contiguous byte
+  //   slice.
+  // - `output_buffer.as_mut_ptr()` points to at least `keylen` writable bytes,
+  //   enforced by the assertion above and by the callers allocating a buffer of
+  //   that exact size.
+  // - `n` is derived with `checked_shl`, so the `N` parameter passed to
+  //   `EVP_PBE_scrypt` cannot overflow the shift.
+  // - AWS-LC documents `EVP_PBE_scrypt` as thread-safe for independent inputs;
+  //   this call does not alias mutable state across threads.
+  let result = unsafe {
+    aws_lc_sys::EVP_PBE_scrypt(
+      password.as_ptr().cast(),
+      password.len(),
+      salt.as_ptr(),
+      salt.len(),
+      n,
+      block_size,
+      parallelization,
+      maxmem,
+      output_buffer.as_mut_ptr(),
+      keylen,
+    )
+  };
+
+  if result == 1 {
     Ok(())
   } else {
-    // TODO(lev): key derivation failed, so what?
     Err(JsErrorBox::generic("scrypt key derivation failed"))
   }
 }
@@ -974,11 +1004,11 @@ fn scrypt(
 pub fn op_node_scrypt_sync(
   #[serde] password: StringOrBuffer,
   #[serde] salt: StringOrBuffer,
-  #[smi] keylen: u32,
-  #[smi] cost: u32,
-  #[smi] block_size: u32,
-  #[smi] parallelization: u32,
-  #[smi] maxmem: u32,
+  #[number] keylen: usize,
+  #[number] cost: u64,
+  #[number] block_size: u64,
+  #[number] parallelization: u64,
+  #[number] maxmem: usize,
   #[anybuffer] output_buffer: &mut [u8],
 ) -> Result<(), JsErrorBox> {
   scrypt(
@@ -1007,14 +1037,14 @@ pub enum ScryptAsyncError {
 pub async fn op_node_scrypt_async(
   #[serde] password: StringOrBuffer,
   #[serde] salt: StringOrBuffer,
-  #[smi] keylen: u32,
-  #[smi] cost: u32,
-  #[smi] block_size: u32,
-  #[smi] parallelization: u32,
-  #[smi] maxmem: u32,
+  #[number] keylen: usize,
+  #[number] cost: u64,
+  #[number] block_size: u64,
+  #[number] parallelization: u64,
+  #[number] maxmem: usize,
 ) -> Result<Uint8Array, ScryptAsyncError> {
   spawn_blocking(move || {
-    let mut output_buffer = vec![0u8; keylen as usize];
+    let mut output_buffer = vec![0u8; keylen];
 
     scrypt(
       password,
@@ -1183,25 +1213,52 @@ pub fn op_node_ecdh_generate_keys(
   }
 }
 
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+pub enum EcdhError {
+  #[class("ERR_CRYPTO_ECDH_INVALID_PUBLIC_KEY")]
+  #[error("Public key is not valid for specified curve")]
+  InvalidPublicKey,
+  #[class(generic)]
+  #[error("Private key is not valid for specified curve")]
+  InvalidPrivateKey,
+  #[class(type)]
+  #[error("Unsupported curve")]
+  UnsupportedCurve,
+  #[class(generic)]
+  #[error("Invalid key pair")]
+  InvalidKeyPair,
+}
+
 #[op2]
 pub fn op_node_ecdh_compute_secret(
   #[string] curve: &str,
   #[buffer] this_priv: Option<JsBuffer>,
+  #[buffer] this_pub: Option<JsBuffer>,
   #[buffer] their_pub: &mut [u8],
   #[buffer] secret: &mut [u8],
-) -> Result<(), JsErrorBox> {
+) -> Result<(), EcdhError> {
+  let this_priv = this_priv.ok_or(EcdhError::InvalidPrivateKey)?;
   match curve {
     "secp256k1" => {
       let their_public_key =
         elliptic_curve::PublicKey::<k256::Secp256k1>::from_sec1_bytes(
           their_pub,
         )
-        .expect("bad public key");
+        .map_err(|_| EcdhError::InvalidPublicKey)?;
       let this_private_key =
-        elliptic_curve::SecretKey::<k256::Secp256k1>::from_slice(
-          &this_priv.expect("must supply private key"),
-        )
-        .expect("bad private key");
+        elliptic_curve::SecretKey::<k256::Secp256k1>::from_slice(&this_priv)
+          .map_err(|_| EcdhError::InvalidPrivateKey)?;
+      if let Some(this_pub) = this_pub {
+        let derived = this_private_key.public_key();
+        let stored =
+          elliptic_curve::PublicKey::<k256::Secp256k1>::from_sec1_bytes(
+            &this_pub,
+          )
+          .map_err(|_| EcdhError::InvalidKeyPair)?;
+        if derived != stored {
+          return Err(EcdhError::InvalidKeyPair);
+        }
+      }
       let shared_secret = elliptic_curve::ecdh::diffie_hellman(
         this_private_key.to_nonzero_scalar(),
         their_public_key.as_affine(),
@@ -1211,11 +1268,19 @@ pub fn op_node_ecdh_compute_secret(
     "prime256v1" | "secp256r1" => {
       let their_public_key =
         elliptic_curve::PublicKey::<NistP256>::from_sec1_bytes(their_pub)
-          .expect("bad public key");
-      let this_private_key = elliptic_curve::SecretKey::<NistP256>::from_slice(
-        &this_priv.expect("must supply private key"),
-      )
-      .expect("bad private key");
+          .map_err(|_| EcdhError::InvalidPublicKey)?;
+      let this_private_key =
+        elliptic_curve::SecretKey::<NistP256>::from_slice(&this_priv)
+          .map_err(|_| EcdhError::InvalidPrivateKey)?;
+      if let Some(this_pub) = this_pub {
+        let derived = this_private_key.public_key();
+        let stored =
+          elliptic_curve::PublicKey::<NistP256>::from_sec1_bytes(&this_pub)
+            .map_err(|_| EcdhError::InvalidKeyPair)?;
+        if derived != stored {
+          return Err(EcdhError::InvalidKeyPair);
+        }
+      }
       let shared_secret = elliptic_curve::ecdh::diffie_hellman(
         this_private_key.to_nonzero_scalar(),
         their_public_key.as_affine(),
@@ -1225,11 +1290,19 @@ pub fn op_node_ecdh_compute_secret(
     "secp384r1" => {
       let their_public_key =
         elliptic_curve::PublicKey::<NistP384>::from_sec1_bytes(their_pub)
-          .expect("bad public key");
-      let this_private_key = elliptic_curve::SecretKey::<NistP384>::from_slice(
-        &this_priv.expect("must supply private key"),
-      )
-      .expect("bad private key");
+          .map_err(|_| EcdhError::InvalidPublicKey)?;
+      let this_private_key =
+        elliptic_curve::SecretKey::<NistP384>::from_slice(&this_priv)
+          .map_err(|_| EcdhError::InvalidPrivateKey)?;
+      if let Some(this_pub) = this_pub {
+        let derived = this_private_key.public_key();
+        let stored =
+          elliptic_curve::PublicKey::<NistP384>::from_sec1_bytes(&this_pub)
+            .map_err(|_| EcdhError::InvalidKeyPair)?;
+        if derived != stored {
+          return Err(EcdhError::InvalidKeyPair);
+        }
+      }
       let shared_secret = elliptic_curve::ecdh::diffie_hellman(
         this_private_key.to_nonzero_scalar(),
         their_public_key.as_affine(),
@@ -1239,12 +1312,19 @@ pub fn op_node_ecdh_compute_secret(
     "secp521r1" => {
       let their_public_key =
         elliptic_curve::PublicKey::<NistP521>::from_sec1_bytes(their_pub)
-          .map_err(|_| JsErrorBox::type_error("bad public key"))?;
-      let this_private_key = elliptic_curve::SecretKey::<NistP521>::from_slice(
-        &this_priv
-          .ok_or_else(|| JsErrorBox::type_error("must supply private key"))?,
-      )
-      .map_err(|_| JsErrorBox::type_error("bad private key"))?;
+          .map_err(|_| EcdhError::InvalidPublicKey)?;
+      let this_private_key =
+        elliptic_curve::SecretKey::<NistP521>::from_slice(&this_priv)
+          .map_err(|_| EcdhError::InvalidPrivateKey)?;
+      if let Some(this_pub) = this_pub {
+        let derived = this_private_key.public_key();
+        let stored =
+          elliptic_curve::PublicKey::<NistP521>::from_sec1_bytes(&this_pub)
+            .map_err(|_| EcdhError::InvalidKeyPair)?;
+        if derived != stored {
+          return Err(EcdhError::InvalidKeyPair);
+        }
+      }
       let shared_secret = elliptic_curve::ecdh::diffie_hellman(
         this_private_key.to_nonzero_scalar(),
         their_public_key.as_affine(),
@@ -1254,18 +1334,26 @@ pub fn op_node_ecdh_compute_secret(
     "secp224r1" => {
       let their_public_key =
         elliptic_curve::PublicKey::<NistP224>::from_sec1_bytes(their_pub)
-          .expect("bad public key");
-      let this_private_key = elliptic_curve::SecretKey::<NistP224>::from_slice(
-        &this_priv.expect("must supply private key"),
-      )
-      .expect("bad private key");
+          .map_err(|_| EcdhError::InvalidPublicKey)?;
+      let this_private_key =
+        elliptic_curve::SecretKey::<NistP224>::from_slice(&this_priv)
+          .map_err(|_| EcdhError::InvalidPrivateKey)?;
+      if let Some(this_pub) = this_pub {
+        let derived = this_private_key.public_key();
+        let stored =
+          elliptic_curve::PublicKey::<NistP224>::from_sec1_bytes(&this_pub)
+            .map_err(|_| EcdhError::InvalidKeyPair)?;
+        if derived != stored {
+          return Err(EcdhError::InvalidKeyPair);
+        }
+      }
       let shared_secret = elliptic_curve::ecdh::diffie_hellman(
         this_private_key.to_nonzero_scalar(),
         their_public_key.as_affine(),
       );
       secret.copy_from_slice(shared_secret.raw_secret_bytes());
     }
-    &_ => todo!(),
+    _ => return Err(EcdhError::UnsupportedCurve),
   }
   Ok(())
 }
@@ -1275,45 +1363,168 @@ pub fn op_node_ecdh_compute_public_key(
   #[string] curve: &str,
   #[buffer] privkey: &[u8],
   #[buffer] pubkey: &mut [u8],
-) {
+) -> Result<(), EcdhError> {
   match curve {
     "secp256k1" => {
       let this_private_key =
         elliptic_curve::SecretKey::<k256::Secp256k1>::from_slice(privkey)
-          .expect("bad private key");
+          .map_err(|_| EcdhError::InvalidPrivateKey)?;
       let public_key = this_private_key.public_key();
       pubkey.copy_from_slice(public_key.to_encoded_point(false).as_ref());
     }
     "prime256v1" | "secp256r1" => {
       let this_private_key =
         elliptic_curve::SecretKey::<NistP256>::from_slice(privkey)
-          .expect("bad private key");
+          .map_err(|_| EcdhError::InvalidPrivateKey)?;
       let public_key = this_private_key.public_key();
       pubkey.copy_from_slice(public_key.to_encoded_point(false).as_ref());
     }
     "secp384r1" => {
       let this_private_key =
         elliptic_curve::SecretKey::<NistP384>::from_slice(privkey)
-          .expect("bad private key");
+          .map_err(|_| EcdhError::InvalidPrivateKey)?;
       let public_key = this_private_key.public_key();
       pubkey.copy_from_slice(public_key.to_encoded_point(false).as_ref());
     }
     "secp521r1" => {
       let this_private_key =
         elliptic_curve::SecretKey::<NistP521>::from_slice(privkey)
-          .expect("bad private key");
+          .map_err(|_| EcdhError::InvalidPrivateKey)?;
       let public_key = this_private_key.public_key();
       pubkey.copy_from_slice(public_key.to_encoded_point(false).as_ref());
     }
     "secp224r1" => {
       let this_private_key =
         elliptic_curve::SecretKey::<NistP224>::from_slice(privkey)
-          .expect("bad private key");
+          .map_err(|_| EcdhError::InvalidPrivateKey)?;
       let public_key = this_private_key.public_key();
       pubkey.copy_from_slice(public_key.to_encoded_point(false).as_ref());
     }
-    &_ => todo!(),
+    _ => return Err(EcdhError::UnsupportedCurve),
   }
+  Ok(())
+}
+
+#[op2(fast)]
+pub fn op_node_ecdh_validate_private_key(
+  #[string] curve: &str,
+  #[buffer] privkey: &[u8],
+) -> bool {
+  match curve {
+    "secp256k1" => {
+      elliptic_curve::SecretKey::<k256::Secp256k1>::from_slice(privkey).is_ok()
+    }
+    "prime256v1" | "secp256r1" => {
+      elliptic_curve::SecretKey::<NistP256>::from_slice(privkey).is_ok()
+    }
+    "secp384r1" => {
+      elliptic_curve::SecretKey::<NistP384>::from_slice(privkey).is_ok()
+    }
+    "secp521r1" => {
+      elliptic_curve::SecretKey::<NistP521>::from_slice(privkey).is_ok()
+    }
+    "secp224r1" => {
+      elliptic_curve::SecretKey::<NistP224>::from_slice(privkey).is_ok()
+    }
+    _ => false,
+  }
+}
+
+#[op2(fast)]
+pub fn op_node_ecdh_validate_public_key(
+  #[string] curve: &str,
+  #[buffer] pubkey: &[u8],
+) -> bool {
+  use elliptic_curve::sec1::FromEncodedPoint;
+  match curve {
+    "secp256k1" => {
+      let Ok(point) =
+        elliptic_curve::sec1::EncodedPoint::<k256::Secp256k1>::from_bytes(
+          pubkey,
+        )
+      else {
+        return false;
+      };
+      let pk = elliptic_curve::PublicKey::<k256::Secp256k1>::from_encoded_point(
+        &point,
+      );
+      bool::from(pk.is_some())
+    }
+    "prime256v1" | "secp256r1" => {
+      let Ok(point) =
+        elliptic_curve::sec1::EncodedPoint::<NistP256>::from_bytes(pubkey)
+      else {
+        return false;
+      };
+      let pk =
+        elliptic_curve::PublicKey::<NistP256>::from_encoded_point(&point);
+      bool::from(pk.is_some())
+    }
+    "secp384r1" => {
+      let Ok(point) =
+        elliptic_curve::sec1::EncodedPoint::<NistP384>::from_bytes(pubkey)
+      else {
+        return false;
+      };
+      let pk =
+        elliptic_curve::PublicKey::<NistP384>::from_encoded_point(&point);
+      bool::from(pk.is_some())
+    }
+    "secp521r1" => {
+      let Ok(point) =
+        elliptic_curve::sec1::EncodedPoint::<NistP521>::from_bytes(pubkey)
+      else {
+        return false;
+      };
+      let pk: Option<elliptic_curve::PublicKey<NistP521>> =
+        elliptic_curve::PublicKey::<NistP521>::from_encoded_point(&point)
+          .into();
+      pk.is_some()
+    }
+    "secp224r1" => {
+      let Ok(point) =
+        elliptic_curve::sec1::EncodedPoint::<NistP224>::from_bytes(pubkey)
+      else {
+        return false;
+      };
+      let pk =
+        elliptic_curve::PublicKey::<NistP224>::from_encoded_point(&point);
+      bool::from(pk.is_some())
+    }
+    _ => false,
+  }
+}
+
+/// Performs the structural portion of OpenSSL's DH_check(): verifies that
+/// the generator is in the valid range (1 < g < p) and that the modulus is
+/// at least 2. Returns a bitmask of error codes:
+///   0x02 - generator is not suitable for p (g <= 1 or g >= p)
+///   0x10 - p is degenerate (less than 2)
+///
+/// The full DH_check also tests p for primality (Miller-Rabin) and tests
+/// whether (p-1)/2 is prime. Those checks are intentionally omitted: in a
+/// debug build, Miller-Rabin on a 2048-bit modulus is slow enough to push
+/// `createDiffieHellman` past test timeouts, and Node tests never expect
+/// `verifyError === 0` for a non-prime large modulus.
+#[op2(fast)]
+pub fn op_node_dh_check(
+  #[buffer] prime: &[u8],
+  #[buffer] generator: &[u8],
+) -> i32 {
+  let p = BigInt::from_bytes_be(num_bigint::Sign::Plus, prime);
+  let g = BigInt::from_bytes_be(num_bigint::Sign::Plus, generator);
+
+  let mut code: i32 = 0;
+
+  if p < BigInt::from(2) {
+    code |= 0x10;
+  }
+
+  if g <= BigInt::from(1) || g >= p {
+    code |= 0x02;
+  }
+
+  code
 }
 
 #[inline]

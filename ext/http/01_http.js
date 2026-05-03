@@ -32,8 +32,8 @@ const {
 } = primordials;
 import { _ws } from "ext:deno_http/02_websocket.ts";
 import { InnerBody } from "ext:deno_fetch/22_body.js";
-import { Event } from "ext:deno_web/02_event.js";
-import { BlobPrototype } from "ext:deno_web/09_file.js";
+const { Event } = core.loadExtScript("ext:deno_web/02_event.js");
+const { BlobPrototype } = core.loadExtScript("ext:deno_web/09_file.js");
 import {
   ResponsePrototype,
   toInnerResponse,
@@ -46,12 +46,12 @@ import {
 const loadWebSocket = core.createLazyLoader(
   "ext:deno_websocket/01_websocket.js",
 );
-import {
+const {
   getReadableStreamResourceBacking,
   readableStreamClose,
   readableStreamForRid,
   ReadableStreamPrototype,
-} from "ext:deno_web/06_streams.js";
+} = core.loadExtScript("ext:deno_web/06_streams.js");
 
 const connErrorSymbol = Symbol("connError");
 

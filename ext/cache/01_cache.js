@@ -26,13 +26,13 @@ import {
   toInnerRequest,
 } from "ext:deno_fetch/23_request.js";
 import { toInnerResponse } from "ext:deno_fetch/23_response.js";
-import { URLPrototype } from "ext:deno_web/00_url.js";
+const { URLPrototype } = core.loadExtScript("ext:deno_web/00_url.js");
 import { getHeader } from "ext:deno_fetch/20_headers.js";
-import {
+const {
   getReadableStreamResourceBacking,
   readableStreamForRid,
   resourceForReadableStream,
-} from "ext:deno_web/06_streams.js";
+} = core.loadExtScript("ext:deno_web/06_streams.js");
 
 class CacheStorage {
   constructor() {

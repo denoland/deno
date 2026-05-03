@@ -35,6 +35,7 @@ const {
   SafeMap,
   SafeRegExp,
   SafeSet,
+  StringPrototypeCharCodeAt,
   StringPrototypeSlice,
   StringPrototypeToLowerCase,
   Symbol,
@@ -49,6 +50,7 @@ import {
   Http2Session as InternalHttp2Session,
   op_http2_callbacks,
 } from "ext:core/ops";
+import { enqueueNodePerformanceEntry } from "node:perf_hooks";
 import net from "node:net";
 import assert from "node:assert";
 import http from "node:http";
@@ -267,12 +269,26 @@ function scheduleSendPending(session) {
   handle.sendPending();
 }
 
+// Per-session "writes pending nghttp2 mem_send" counter. Used to skip
+// re-scheduling the nextTick flush when one is already armed and to detect
+// pending writes that need to be drained synchronously by RST_STREAM /
+// destroy paths (otherwise the queued DATA gets dropped behind the RST).
+const kDeferredHttp2WritePending = Symbol("kDeferredHttp2WritePending");
+
+function flushDeferredHttp2Writes(session) {
+  if (!session) return;
+  if (!session[kDeferredHttp2WritePending]) return;
+  session[kDeferredHttp2WritePending] = 0;
+  scheduleSendPending(session);
+}
+
 // HTTP2 Constants
 const MAX_ADDITIONAL_SETTINGS = 10;
 
 import * as constants from "ext:deno_node/internal/http2/constants.ts";
 const {
   NGHTTP2_CANCEL,
+  NGHTTP2_FLOW_CONTROL_ERROR,
   NGHTTP2_REFUSED_STREAM,
   NGHTTP2_DEFAULT_WEIGHT,
   NGHTTP2_FLAG_END_STREAM,
@@ -370,6 +386,11 @@ const kProceed = Symbol("proceed");
 const kRemoteSettings = Symbol("remote-settings");
 const kRequestAsyncResource = Symbol("requestAsyncResource");
 const kSentHeaders = Symbol("sent-headers");
+// Tracks whether the server-side 'stream' event has fired for this stream.
+// Used by onStreamClose to defer destroy/close work when nghttp2 closes a
+// stream in the same mem_recv batch that created it (e.g. peer flow-control
+// violation), so the user's stream handler still sees a live stream.
+const kStreamEventEmitted = Symbol("kStreamEventEmitted");
 const kRawHeaders = Symbol("raw-headers");
 const kSentTrailers = Symbol("sent-trailers");
 const kServer = Symbol("server");
@@ -494,6 +515,15 @@ function submitGoaway(code, lastStreamID, opaqueData) {
   }
   debugSessionObj(this, "submitting goaway");
   this[kUpdateTimer]();
+  // Track that this side initiated a GOAWAY with a non-zero error code.
+  // The peer will react by tearing down its streams with that same code,
+  // which arrives at us as RST_STREAM(<code>); nghttp2 then reports stream
+  // close to JS as a non-NO_ERROR rstCode. Without this flag, _destroy
+  // would synthesize an unhandled ERR_HTTP2_STREAM_ERROR for what is just
+  // the peer's expected response to our locally-initiated shutdown.
+  if (code !== NGHTTP2_NO_ERROR && this[kState].sentGoawayCode == null) {
+    this[kState].sentGoawayCode = code;
+  }
   this[kHandle].goaway(code, lastStreamID, opaqueData);
   scheduleSendPending(this);
 }
@@ -665,14 +695,31 @@ const proxySocketHandler = {
   },
 };
 
-function onPing(payload) {
+function onPing(payload, isAck) {
   const session = this[kOwner];
   if (session.destroyed) {
     return;
   }
   session[kUpdateTimer]();
   debugSessionObj(session, "new ping received");
-  session.emit("ping", payload);
+  // Convert the Uint8Array payload to a Buffer so userland sees a Buffer
+  // instance (matches Node.js behaviour and allows deepStrictEqual against
+  // Buffers passed by callers).
+  const buf = payload && Buffer.from(
+    payload.buffer,
+    payload.byteOffset,
+    payload.byteLength,
+  );
+  if (isAck) {
+    // Inbound PING ACK - resolve the oldest outstanding ping callback in
+    // submission order (RFC 7540 6.7 requires PINGs to be ack'd in order).
+    // The Rust binding has already validated this is a solicited ACK
+    // (unsolicited ACKs are routed through the internal-error callback).
+    const cb = session[kState].pendingPings.shift();
+    if (cb) cb(true, 0.0, buf);
+    return;
+  }
+  session.emit("ping", buf);
 }
 
 // Called when the stream is closed either by sending or receiving an
@@ -687,6 +734,32 @@ function onStreamClose(code) {
     return false;
   }
 
+  // If the 'stream' event for this server stream hasn't been emitted
+  // yet (HEADERS and the offending frames arrived in the same mem_recv
+  // batch, e.g. test-http2-misbehaving-flow-control), defer the close
+  // and destroy to a microtask so the user's stream handler runs first
+  // and observes a live stream. Without this, respond()/end() inside
+  // the handler would throw ERR_HTTP2_INVALID_STREAM.
+  //
+  // process.nextTick is FIFO, and onSessionHeaders queued the 'stream'
+  // emit nextTick *before* this callback fired, so nesting our work in
+  // a nextTick keeps the order: emit('stream') -> handler runs ->
+  // closeStream/destroy -> emit('error')/emit('close').
+  if (!stream[kStreamEventEmitted]) {
+    process.nextTick(onStreamCloseDeferred, stream, code);
+    return true;
+  }
+  return doStreamClose(stream, code);
+}
+
+function onStreamCloseDeferred(stream, code) {
+  if (stream.destroyed) {
+    return;
+  }
+  doStreamClose(stream, code);
+}
+
+function doStreamClose(stream, code) {
   debugStreamObj(
     stream,
     "closed with code %d, closed %s, readable %s",
@@ -702,6 +775,21 @@ function onStreamClose(code) {
   stream[kState].fd = -1;
   // Defer destroy we actually emit end.
   if (!stream.readable || code !== NGHTTP2_NO_ERROR) {
+    // If the writable side is still finalising (state.ending observed but
+    // 'finish' not yet emitted) wait for it. The native EOF DATA frame can
+    // be flushed via the deferred process.nextTick scheduleSendPending,
+    // which fires before kWriteGeneric's setImmediate runs shutdownWritable
+    // and the Writable state machine emits 'finish'. Destroying immediately
+    // would short-circuit the state machine and emit 'close' before
+    // writableFinished flips to true (test-http2-server-close-idle-connection).
+    const ws = stream._writableState;
+    if (
+      code === NGHTTP2_NO_ERROR && ws && ws.ending && !ws.finished &&
+      !ws.destroyed
+    ) {
+      stream.once("finish", () => stream.destroy());
+      return true;
+    }
     // If errored or ended, we can destroy immediately.
     stream.destroy();
   } else {
@@ -896,6 +984,43 @@ function onGoawayData(code, lastStreamID, buf) {
   }
 }
 
+// Returns true if `value` would be rejected by nghttp2's pseudo-:path
+// validator (`nghttp2_check_path`): bytes 0x00-0x20 (control chars + space)
+// and 0x7F (DEL) are forbidden. Mirrors that table for ASCII codepoints;
+// higher Unicode codepoints follow nghttp2's permissive rule for 0x80+.
+function pathHasInvalidChars(value) {
+  for (let i = 0; i < value.length; ++i) {
+    const code = StringPrototypeCharCodeAt(value, i);
+    if (code <= 0x20 || code === 0x7F) return true;
+  }
+  return false;
+}
+
+// Returns true if the stream's outgoing request headers carry a `:path`
+// pseudo-header value that nghttp2 would reject. Used to short-circuit the
+// request locally: newer libnghttp2 (>=1.67) terminates the entire session
+// with PROTOCOL_ERROR for a single invalid pseudo-header value, but Node.js
+// (and earlier nghttp2) reset only the offending stream. Match Node's
+// stream-only behavior by RST_STREAMing client-side before nghttp2 gets the
+// chance to GOAWAY the session.
+function hasInvalidPath(stream) {
+  const sent = stream[kSentHeaders];
+  if (sent !== undefined) {
+    const v = sent[HTTP2_HEADER_PATH];
+    return typeof v === "string" && pathHasInvalidChars(v);
+  }
+  const raw = stream[kRawHeaders];
+  if (raw !== undefined) {
+    for (let i = 0; i < raw.length; i += 2) {
+      if (StringPrototypeToLowerCase(raw[i]) === HTTP2_HEADER_PATH) {
+        const v = raw[i + 1];
+        if (typeof v === "string" && pathHasInvalidChars(v)) return true;
+      }
+    }
+  }
+  return false;
+}
+
 // Returns true if the stream's outgoing request headers carry a non-zero
 // content-length value. Handles both object-form (kSentHeaders) and
 // array-form (kRawHeaders) headers.
@@ -957,6 +1082,24 @@ function requestOnConnect(headersList, options) {
   // server-side rejection locally so the session survives and the stream
   // emits ERR_HTTP2_STREAM_ERROR("NGHTTP2_PROTOCOL_ERROR").
   if (options.endStream && hasNonZeroContentLength(this)) {
+    process.nextTick(() => {
+      if (this.destroyed) return;
+      this.destroy(new ERR_HTTP2_STREAM_ERROR("NGHTTP2_PROTOCOL_ERROR"));
+    });
+    return;
+  }
+
+  // A `:path` pseudo-header value containing characters that nghttp2's
+  // path validator forbids (bytes 0x00-0x20 or 0x7F) would, with stock
+  // libnghttp2 1.68, cause the server to terminate the whole HTTP/2
+  // session with PROTOCOL_ERROR (the 1.67 change to the path-validation
+  // failure path). Node.js bundles older libnghttp2 that RST_STREAMs only
+  // the offending stream; emit the equivalent stream error locally so
+  // sibling streams on the same session keep working.
+  // TODO(nghttp2): re-evaluate when libnghttp2 is bumped or a per-stream
+  // path-validation hook becomes available; this short-circuit may then be
+  // redundant.
+  if (hasInvalidPath(this)) {
     process.nextTick(() => {
       if (this.destroyed) return;
       this.destroy(new ERR_HTTP2_STREAM_ERROR("NGHTTP2_PROTOCOL_ERROR"));
@@ -1180,6 +1323,13 @@ function emit(self, ...args) {
   ReflectApply(self.emit, self, args);
 }
 
+// Mark the stream so onStreamClose stops deferring before user code
+// runs, then emit the 'stream' event on the session.
+function emitStreamNT(session, stream, obj, flags, headers) {
+  stream[kStreamEventEmitted] = true;
+  ReflectApply(session.emit, session, ["stream", stream, obj, flags, headers]);
+}
+
 function callTimeout(self, session) {
   if (self.destroyed) {
     return;
@@ -1288,7 +1438,10 @@ function onSessionHeaders(
     if (endOfStream) {
       stream[kState].endAfterHeaders = true;
     }
-    process.nextTick(emit, session, "stream", stream, obj, flags, headers);
+    // Mark unset so onStreamClose knows it must defer; cleared just
+    // before the user's handler runs.
+    stream[kStreamEventEmitted] = false;
+    process.nextTick(emitStreamNT, session, stream, obj, flags, headers);
   } else {
     let event;
     const status = obj[HTTP2_HEADER_STATUS];
@@ -1368,6 +1521,11 @@ function onStreamTrailers() {
 // This will cause the Http2Stream to be closed.
 function submitRstStream(code) {
   if (this[kHandle] !== undefined) {
+    // Drain any deferred DATA writes BEFORE submitting RST_STREAM. Otherwise
+    // nghttp2 prioritises the RST over queued DATA and the peer never sees
+    // the payload (test-http2-server-errors / test-http2-compat-errors rely
+    // on the client receiving the data the server wrote before the destroy).
+    flushDeferredHttp2Writes(this[kSession]);
     this[kHandle].rstStream(code);
     scheduleSendPending(this[kSession]);
   }
@@ -1646,15 +1804,38 @@ class Http2Stream extends Duplex {
       handle,
     );
     const nativeWriteBuffer = FunctionPrototypeBind(handle.writeBuffer, handle);
+    // The native writeUtf8String / writeBuffer ops queue bytes into
+    // nghttp2's per-stream pending_data and call resume_data. We then need
+    // a mem_send pass to actually frame and emit the DATA. Defer that pass
+    // to a process.nextTick so synchronous JS following the write (e.g.
+    // stream.end()) can set writable_ended on the native handle BEFORE the
+    // data provider runs. With writable_ended observed at frame time,
+    // nghttp2 packs END_STREAM onto the trailing DATA frame instead of
+    // emitting a separate empty DATA(END_STREAM) frame
+    // (test-http2-pack-end-stream-flag.js). The write completion callback
+    // still fires synchronously here (kLastWriteWasAsync = 0); only the
+    // socket flush is deferred. closeStream / submitRstStream drain
+    // pending writes synchronously before submitting RST_STREAM so the
+    // queued DATA frame still reaches the peer.
     handle.writeUtf8String = function (req, data) {
       const err = nativeWriteUtf8String(req, data);
-      scheduleSendPending(session);
+      if (!session[kDeferredHttp2WritePending]) {
+        session[kDeferredHttp2WritePending] = 1;
+        process.nextTick(flushDeferredHttp2Writes, session);
+      } else {
+        session[kDeferredHttp2WritePending]++;
+      }
       streamBaseState[kLastWriteWasAsync] = 0;
       return err;
     };
     handle.writeBuffer = function (req, data) {
       const err = nativeWriteBuffer(req, data);
-      scheduleSendPending(session);
+      if (!session[kDeferredHttp2WritePending]) {
+        session[kDeferredHttp2WritePending] = 1;
+        process.nextTick(flushDeferredHttp2Writes, session);
+      } else {
+        session[kDeferredHttp2WritePending]++;
+      }
       streamBaseState[kLastWriteWasAsync] = 0;
       return err;
     };
@@ -1944,32 +2125,43 @@ class Http2Stream extends Duplex {
   }
 
   end(chunk, encoding, cb) {
-    // When end() is called with a chunk, pre-flag the nghttp2 stream
-    // as ending so the sync writeBuffer drain emits one DATA frame
-    // with END_STREAM instead of a data frame followed by an empty
-    // trailing DATA frame. Restricted to client-initiated streams
-    // (odd IDs); push streams (even IDs) transition straight to
-    // closed when the server sends END_STREAM (no client
-    // acknowledgement is expected), and that destruction would race
-    // with follow-up ops like pushStream() or trailing test
-    // assertions (test-http2-server-push-stream).
+    // Pre-flag the nghttp2 stream as ending so the next DATA frame the
+    // data provider builds carries END_STREAM. Two patterns benefit:
+    //   1) end(chunk) - the trailing chunk's frame can include END_STREAM
+    //      directly instead of being followed by an empty DATA(END_STREAM)
+    //      frame.
+    //   2) write(chunk); end() - the in-flight write's data is still queued
+    //      in pending_data on the Rust side; flagging the stream now lets
+    //      that buffered data go out with END_STREAM packed into the same
+    //      frame, matching Node's "pack end_stream flag" optimization that
+    //      test-http2-pack-end-stream-flag.js asserts. Restricted to
+    //      client-initiated stream IDs (odd); push streams (even IDs)
+    //      transition straight to closed when the server sends END_STREAM
+    //      and that destruction would race with follow-up ops like
+    //      pushStream() or trailing assertions (test-http2-server-push-stream).
+    const hasChunk = typeof chunk === "function"
+      ? false
+      : chunk !== undefined && chunk !== null;
+    const handle = this[kHandle];
+    const id = this[kID];
     if (
-      typeof chunk === "function"
-        ? false
-        : chunk !== undefined && chunk !== null
+      handle && typeof handle.markEnding === "function" && !this.pending &&
+      !this._writableState.ending &&
+      this._writableState.buffered.length === 0 &&
+      // For end(chunk): state.writing must be false; another in-flight
+      // write would have its data provider re-entered with the wrong
+      // EOF flag. For end() without chunk: only mark ending when a write
+      // is currently in flight - the queued data on the Rust side is
+      // still in pending_data (its mem_send is deferred to nextTick) and
+      // setting writable_ended now lets that data go out with END_STREAM
+      // packed instead of a separate empty DATA(END_STREAM) frame
+      // (see writeBuffer override + test-http2-pack-end-stream-flag.js).
+      (hasChunk ? !this._writableState.writing : this._writableState.writing) &&
+      !(this[kState].flags & STREAM_FLAGS_HAS_TRAILERS) &&
+      typeof id === "number" && id % 2 === 1 &&
+      this.headersSent
     ) {
-      const handle = this[kHandle];
-      const id = this[kID];
-      if (
-        handle && typeof handle.markEnding === "function" && !this.pending &&
-        !this._writableState.ending && !this._writableState.writing &&
-        this._writableState.buffered.length === 0 &&
-        !(this[kState].flags & STREAM_FLAGS_HAS_TRAILERS) &&
-        typeof id === "number" && id % 2 === 1 &&
-        this.headersSent
-      ) {
-        handle.markEnding();
-      }
+      handle.markEnding();
     }
     return ReflectApply(Duplex.prototype.end, this, arguments);
   }
@@ -2122,11 +2314,20 @@ class Http2Stream extends Duplex {
     // stream without caring about the reset should attach
     // `stream.on("error", () => {})` (as Node's own tests do). Internal
     // respondWithFile/FD teardown after headers are sent sets skipEmitStreamError.
+    // RST code 8 not emitted as an error as its used by clients to signify
+    // abort and is already covered by aborted event, also allows more
+    // seamless compatibility with http1.
+    //
+    // Also skip when this session locally initiated the shutdown via a
+    // non-NO_ERROR goaway (sentGoawayCode): the peer's RST_STREAM with
+    // that same code is the expected reaction to our own goaway, not a
+    // stream-level error to surface (see test-http2-server-shutdown-
+    // redundant.js).
     if (
       err == null &&
       code !== NGHTTP2_NO_ERROR &&
       code !== NGHTTP2_CANCEL &&
-      !state.skipEmitStreamError
+      sessionState.sentGoawayCode == null
     ) {
       err = new ERR_HTTP2_STREAM_ERROR(nameForErrorCode[code] || code);
     }
@@ -2361,8 +2562,11 @@ function processRespondWithFD(
 
   // Read file data synchronously and write to the stream, then respond
   const buf = Buffer.allocUnsafe(16384);
-  let pos = offset;
-  const end = length >= 0 ? offset + length : -1;
+  // offset < 0 signals a non-seekable source (e.g. pipe); read sequentially
+  // from the current file offset by always passing position=null to fs.read.
+  const seekable = offset >= 0;
+  let pos = seekable ? offset : 0;
+  const end = seekable && length >= 0 ? offset + length : -1;
 
   function readAndWrite() {
     const readLen = end >= 0 ? MathMin(buf.length, end - pos) : buf.length;
@@ -2370,7 +2574,7 @@ function processRespondWithFD(
       finish();
       return;
     }
-    fs.read(fd, buf, 0, readLen, pos, (err, bytesRead) => {
+    fs.read(fd, buf, 0, readLen, seekable ? pos : null, (err, bytesRead) => {
       if (err) {
         if (self.ownsFd) tryClose(fd);
         // Match Node: a read failure (e.g. EBADF from a bad fd) resets the
@@ -2390,7 +2594,7 @@ function processRespondWithFD(
         finish();
         return;
       }
-      pos += bytesRead;
+      if (seekable) pos += bytesRead;
       // deno-lint-ignore prefer-primordials
       const chunk = buf.slice(0, bytesRead);
       self.write(chunk, readAndWrite);
@@ -3040,23 +3244,33 @@ function setupHandle(socket, type, options) {
       // protocol error or HTTP semantic violation), it stops wanting to read
       // or write. Tear down the JS session so the socket closes; otherwise
       // the peer would never see the connection end and would hang.
+      //
+      // Defer the teardown via process.nextTick so that any 'stream' (or
+      // similar) events that mem_recv queued (also via nextTick) run
+      // *first*. Otherwise the user's stream handler would observe an
+      // already-destroyed stream -- see test-http2-misbehaving-flow-control,
+      // where nghttp2 emits a stream-level RST_STREAM and a connection-level
+      // GOAWAY in the same mem_recv batch as the HEADERS frame.
       if (!handle.hasPendingData() && !this.destroyed) {
-        handle.onstreamclose();
-        // After GOAWAY has been written, gracefully shut down the
-        // underlying socket. We must NOT call socket.destroy() here while
-        // socket.write(GOAWAY) is still pending in the writable stream
-        // buffer -- destroy() abandons buffered writes, so the peer never
-        // sees the GOAWAY frame. Use socket.end() so the GOAWAY is flushed
-        // before FIN is sent, then destroy after the writable side drains
-        // to ensure the peer's read side observes connection close (some
-        // peers won't surface an error on a half-open FIN alone).
-        if (!socket.destroyed) {
-          socket.end(() => {
-            if (!socket.destroyed) {
-              socket.destroy();
-            }
-          });
-        }
+        process.nextTick(() => {
+          if (this.destroyed) return;
+          handle.onstreamclose();
+          // After GOAWAY has been written, gracefully shut down the
+          // underlying socket. We must NOT call socket.destroy() here while
+          // socket.write(GOAWAY) is still pending in the writable stream
+          // buffer -- destroy() abandons buffered writes, so the peer never
+          // sees the GOAWAY frame. Use socket.end() so the GOAWAY is flushed
+          // before FIN is sent, then destroy after the writable side drains
+          // to ensure the peer's read side observes connection close (some
+          // peers won't surface an error on a half-open FIN alone).
+          if (!socket.destroyed) {
+            socket.end(() => {
+              if (!socket.destroyed) {
+                socket.destroy();
+              }
+            });
+          }
+        });
       }
     }
   });
@@ -3120,8 +3334,26 @@ function setupHandle(socket, type, options) {
     if (!session.destroyed) {
       const err = session.connecting ? new ERR_SOCKET_CLOSED() : null;
       const state = session[kState];
+      // When nghttp2 1.68 escalates a peer stream-level flow-control
+      // violation directly to a connection-level GOAWAY (skipping the
+      // RST_STREAM that would have fired on_stream_close in 1.67), the
+      // offending stream is still open in JS. Surface the GOAWAY's
+      // FLOW_CONTROL_ERROR on each torn-down stream so user code sees
+      // a real ERR_HTTP2_STREAM_ERROR (test-http2-misbehaving-flow-
+      // control{,-paused}) instead of the silent NGHTTP2_CANCEL.
+      //
+      // Limit this to FLOW_CONTROL_ERROR -- other GOAWAY codes
+      // (PROTOCOL_ERROR, COMPRESSION_ERROR, ...) are connection-level
+      // failures that should surface as session errors, not synthetic
+      // per-stream errors that can mask the real cause (e.g.
+      // test-http2-options-max-headers-exceeds-nghttp2 wants
+      // ERR_HTTP2_SESSION_ERROR, not a stream error).
+      const goawayCode = handle.lastSentGoawayCode();
+      const closeCode = goawayCode === NGHTTP2_FLOW_CONTROL_ERROR
+        ? NGHTTP2_FLOW_CONTROL_ERROR
+        : NGHTTP2_CANCEL;
       // deno-lint-ignore prefer-primordials
-      state.streams.forEach((stream) => stream.close(NGHTTP2_CANCEL));
+      state.streams.forEach((stream) => stream.close(closeCode));
       // deno-lint-ignore prefer-primordials
       state.pendingStreams.forEach((stream) => stream.close(NGHTTP2_CANCEL));
       if (!session.closed) {
@@ -3228,6 +3460,26 @@ function cleanupSession(session) {
 
 function finishSessionClose(session, error) {
   debugSessionObj(session, "finishSessionClose");
+
+  // Emit a `Http2Session` PerformanceObserver entry with frame statistics
+  // from the native session before cleanupSession() drops the handle. Mirrors
+  // Node's `Http2Session::Close` reporting via PerformanceEntry. We surface
+  // only the fields the perf-hooks docs document and the in-tree tests
+  // observe.
+  const perfHandle = session[kHandle];
+  if (perfHandle && typeof perfHandle.framesReceived === "function") {
+    const framesReceived = perfHandle.framesReceived();
+    enqueueNodePerformanceEntry({
+      name: "Http2Session",
+      entryType: "http2",
+      startTime: 0,
+      duration: 0,
+      detail: {
+        type: session[kType] === NGHTTP2_SESSION_CLIENT ? "client" : "server",
+        framesReceived,
+      },
+    });
+  }
 
   const socket = session[kSocket];
   cleanupSession(session);
@@ -3450,6 +3702,7 @@ class Http2Session extends EventEmitter {
       flags: SESSION_FLAGS_PENDING,
       goawayCode: null,
       goawayLastStreamID: null,
+      sentGoawayCode: null,
       streams: new SafeMap(),
       pendingStreams: new SafeSet(),
       pendingAck: 0,
@@ -3634,12 +3887,23 @@ class Http2Session extends EventEmitter {
     // didn't supply one.
     const buf = payload || Buffer.alloc(8);
 
+    const ret = this[kHandle].ping(buf);
+    if (ret !== 0) {
+      process.nextTick(cb, false, 0.0, payload);
+      return false;
+    }
     // Track the pending ping so it can be cancelled when the session is
     // destroyed before the PING ACK arrives. Matches Node's
-    // ClearOutstandingPings in src/node_http2.cc.
+    // ClearOutstandingPings in src/node_http2.cc. The wrapped pingCallback
+    // (registered via Http2Session#ping) is consumed FIFO when an inbound
+    // PING ACK is delivered to onPing below.
     this[kState].pendingPings.push(cb);
-
-    return this[kHandle].ping(buf, cb);
+    // The native ping op queues the PING frame inside nghttp2 but the
+    // session's actual transport is owned by the JS socket (setupHandle
+    // overrides handle.sendPending), so we must trigger the flush ourselves
+    // for the PING to leave this peer.
+    scheduleSendPending(this);
+    return true;
   }
 
   [kInspect](depth, opts) {

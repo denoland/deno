@@ -467,13 +467,15 @@ impl Http2Options {
           );
         }
 
-        let max_outstanding_settings =
-          buffer[OptionsIndex::MaxOutstandingSettings as usize];
-        if max_outstanding_settings > 0 {
-          ffi::nghttp2_option_set_max_settings(
-            options,
-            max_outstanding_settings as usize,
-          );
+        // Note: maxOutstandingSettings is a Node.js-internal queue limit for
+        // outbound SETTINGS frames awaiting peer ACK. nghttp2 has no equivalent
+        // option, so we accept the value for API compatibility but do not map
+        // it to nghttp2_option_set_max_settings (which is the maxSettings limit
+        // on inbound SETTINGS *entries* per frame — handled below).
+
+        let max_settings = buffer[OptionsIndex::MaxSettings as usize];
+        if max_settings > 0 {
+          ffi::nghttp2_option_set_max_settings(options, max_settings as usize);
         }
 
         if matches!(session_type, SessionType::Client) {
@@ -770,6 +772,11 @@ unsafe extern "C" fn on_frame_recv_callback(
   // SAFETY: data is the user_data pointer set during session creation
   let session = unsafe { Session::from_user_data(data) };
 
+  // Count every received frame so the JS layer can surface it via the
+  // `Http2Session` PerformanceObserver entry's `framesReceived` field.
+  // Mirrors Node's `Http2Session::OnFrameReceive` updating `statistics_`.
+  session.frames_received = session.frames_received.saturating_add(1);
+
   let ft = frame_type(frame) as u32;
   let ff = frame_flags(frame);
   #[allow(clippy::unnecessary_cast, reason = "cast needed for type alignment")]
@@ -832,12 +839,12 @@ unsafe extern "C" fn on_frame_recv_callback(
       // destroy the session with NghttpError(NGHTTP2_ERR_PROTO).
       if session.pending_pings > 0 {
         session.pending_pings -= 1;
-        handle_ping_frame(session);
+        handle_ping_frame(session, frame, true);
       } else {
         handle_unsolicited_ping_ack(session);
       }
     } else {
-      handle_ping_frame(session);
+      handle_ping_frame(session, frame, false);
     }
   } else if ft == ffi::NGHTTP2_ALTSVC as u32 {
     handle_alt_svc_frame(session, frame);
@@ -995,7 +1002,11 @@ fn handle_settings_frame(session: &Session) {
   callback.call(scope, recv.into(), &[]);
 }
 
-fn handle_ping_frame(session: &Session) {
+fn handle_ping_frame(
+  session: &Session,
+  frame: *const ffi::nghttp2_frame,
+  is_ack: bool,
+) {
   let mut isolate =
     // SAFETY: isolate pointer is valid for the session's lifetime
     unsafe { v8::Isolate::from_raw_isolate_ptr(session.isolate) };
@@ -1003,14 +1014,31 @@ fn handle_ping_frame(session: &Session) {
   let context = v8::Local::new(scope, session.context.clone());
   let scope = &mut v8::ContextScope::new(scope, context);
 
+  // SAFETY: frame is a valid PING frame per nghttp2 callback contract
+  let opaque = unsafe { (*frame).ping.opaque_data };
+  let array_buffer = v8::ArrayBuffer::new(scope, opaque.len());
+  let backing_store = array_buffer.get_backing_store();
+  if let Some(backing_data) = backing_store.data() {
+    // SAFETY: src and dst are valid, non-overlapping, dst has room for 8 bytes
+    unsafe {
+      std::ptr::copy_nonoverlapping(
+        opaque.as_ptr(),
+        backing_data.as_ptr() as *mut u8,
+        opaque.len(),
+      );
+    }
+  }
+  let payload =
+    v8::Uint8Array::new(scope, array_buffer, 0, opaque.len()).unwrap();
+
   let state = session.op_state.borrow();
   let callbacks = state.borrow::<SessionCallbacks>();
   let recv = v8::Local::new(scope, &session.this);
   let callback = v8::Local::new(scope, &callbacks.ping_frame_cb);
   drop(state);
 
-  let arg = v8::null(scope);
-  callback.call(scope, recv.into(), &[arg.into()]);
+  let is_ack_v = v8::Boolean::new(scope, is_ack);
+  callback.call(scope, recv.into(), &[payload.into(), is_ack_v.into()]);
 }
 
 /// Inbound PING ACK with no matching outstanding PING. Mirrors Node's
@@ -1695,9 +1723,21 @@ fn invoke_session_internal_error(session: &Session, lib_error_code: i32) {
 
 unsafe extern "C" fn on_frame_send_callback(
   _session: *mut ffi::nghttp2_session,
-  _frame: *const ffi::nghttp2_frame,
-  _data: *mut c_void,
+  frame: *const ffi::nghttp2_frame,
+  data: *mut c_void,
 ) -> i32 {
+  // SAFETY: data is the user_data pointer set during session creation
+  let session = unsafe { Session::from_user_data(data) };
+  // SAFETY: frame is valid per nghttp2 callback contract
+  let f = unsafe { &*frame };
+  // SAFETY: union access of `hd` is always valid (every nghttp2 frame has a
+  // header). Reading `type_` to discriminate which other variant is active.
+  let frame_type = unsafe { f.hd.type_ };
+  if frame_type == ffi::NGHTTP2_GOAWAY as u8 {
+    // SAFETY: union access valid because we verified type_ == NGHTTP2_GOAWAY
+    let goaway = unsafe { &f.goaway };
+    session.sent_goaway_code = Some(goaway.error_code);
+  }
   0
 }
 
@@ -1930,6 +1970,13 @@ pub struct Session {
   /// `session_internal_error_cb`. Mirrors Node's
   /// `Http2Session::custom_recv_error_code_`.
   pub custom_recv_error_code: Option<&'static str>,
+  /// Error code from the last GOAWAY frame this side sent. Set in
+  /// `on_frame_send_callback`. The JS layer reads it via
+  /// `handle.lastSentGoawayCode()` so that streams torn down because
+  /// nghttp2 has already terminated the session can carry the actual
+  /// connection-level error (e.g. NGHTTP2_FLOW_CONTROL_ERROR) instead of
+  /// being papered over with NGHTTP2_CANCEL.
+  pub sent_goaway_code: Option<u32>,
   /// Custom settings the local peer has sent. Surfaced via
   /// `session.localSettings.customSettings`. Mirrors Node's
   /// `Http2Session::local_custom_settings_`.
@@ -1957,6 +2004,10 @@ pub struct Session {
   /// (see `HandlePingFrame` in node_http2.cc): there is no legitimate
   /// reason for a peer to send an unsolicited PING ACK.
   pub pending_pings: u32,
+  /// Total number of HTTP/2 frames received on this session. Mirrors
+  /// Node's `Http2Session::statistics_.frame_count`, surfaced via the
+  /// PerformanceObserver `Http2Session` entry's `framesReceived` field.
+  pub frames_received: u32,
 }
 
 impl Session {
@@ -2495,10 +2546,12 @@ impl Http2Session {
       max_invalid_frames: 1000,
       invalid_frame_count: 0,
       custom_recv_error_code: None,
+      sent_goaway_code: None,
       local_custom_settings: Vec::new(),
       remote_custom_settings: Vec::new(),
       pending_settings_acks: VecDeque::new(),
       pending_pings: 0,
+      frames_received: 0,
     }));
 
     // SAFETY: inner is valid (just allocated); callbacks and options are valid
@@ -2871,6 +2924,19 @@ impl Http2Session {
     }
   }
 
+  /// Returns the error code from the most recent GOAWAY frame this session
+  /// has sent, or -1 if no GOAWAY has been sent yet.
+  #[fast]
+  #[smi]
+  fn last_sent_goaway_code(&self) -> i32 {
+    // SAFETY: self.inner was allocated by Box::into_raw and is valid
+    let session = unsafe { &*self.inner };
+    match session.sent_goaway_code {
+      Some(code) => code as i32,
+      None => -1,
+    }
+  }
+
   #[fast]
   fn local_settings(&self) {
     // SAFETY: self.inner was allocated by Box::into_raw and is valid
@@ -3035,6 +3101,13 @@ impl Http2Session {
     // SAFETY: self.inner was allocated by Box::into_raw and is valid
     let session = unsafe { &*self.inner };
     session.outgoing_buffers.len() as u32
+  }
+
+  #[fast]
+  fn frames_received(&self) -> u32 {
+    // SAFETY: self.inner was allocated by Box::into_raw and is valid
+    let session = unsafe { &*self.inner };
+    session.frames_received
   }
 
   #[fast]

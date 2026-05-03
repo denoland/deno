@@ -304,6 +304,10 @@ ServerResponse.prototype.assignSocket = function assignSocket(socket) {
     throw new ERR_HTTP_SOCKET_ASSIGNED();
   }
   socket._httpMessage = this;
+  if (socket._parent) {
+    socket._parent._httpMessage = this;
+    socket._parent._httpMessageDetached = false;
+  }
   socket.on("close", onServerResponseClose);
   this.socket = socket;
   this.emit("socket", socket);
@@ -315,6 +319,10 @@ ServerResponse.prototype.detachSocket = function detachSocket(socket) {
   socket.removeListener("close", onServerResponseClose);
   socket._httpMessage = null;
   socket._httpMessageDetached = true;
+  if (socket._parent) {
+    socket._parent._httpMessage = null;
+    socket._parent._httpMessageDetached = true;
+  }
   this.socket = null;
 };
 
