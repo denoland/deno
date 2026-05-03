@@ -2,6 +2,7 @@
 
 use std::collections::HashMap;
 use std::ffi::OsStr;
+use std::io::Write;
 use std::ffi::OsString;
 use std::path::Path;
 use std::path::PathBuf;
@@ -40,6 +41,78 @@ pub fn get_script_with_args(script: &str, argv: &[String]) -> String {
 }
 
 pub struct TaskStdio(Option<ShellPipeReader>, ShellPipeWriter);
+
+pub struct PrefixedWriter<W: std::io::Write> {
+  prefix: Vec<u8>,
+  inner: W,
+  line_buf: Vec<u8>,
+  at_line_start: bool,
+}
+
+impl<W: std::io::Write> PrefixedWriter<W> {
+  pub fn new(prefix: String, inner: W) -> Self {
+    Self {
+      prefix: prefix.into_bytes(),
+      inner,
+      line_buf: Vec::new(),
+      at_line_start: true,
+    }
+  }
+}
+
+impl<W: std::io::Write> std::io::Write for PrefixedWriter<W> {
+  fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+    for &byte in buf {
+      if self.at_line_start {
+        self.line_buf.extend_from_slice(&self.prefix);
+        self.at_line_start = false;
+      }
+      self.line_buf.push(byte);
+      if byte == b'\n' {
+        self.inner.write_all(&self.line_buf)?;
+        self.line_buf.clear();
+        self.at_line_start = true;
+      }
+    }
+    Ok(buf.len())
+  }
+
+  fn flush(&mut self) -> std::io::Result<()> {
+    if !self.line_buf.is_empty() {
+      self.line_buf.push(b'\n');
+      self.inner.write_all(&self.line_buf)?;
+      self.line_buf.clear();
+      self.at_line_start = true;
+    }
+    self.inner.flush()
+  }
+}
+
+pub fn make_prefixed_task_io(prefix: String) -> (TaskIo, Vec<JoinHandle<()>>) {
+  let (out_r, out_w) = deno_task_shell::pipe();
+  let (err_r, err_w) = deno_task_shell::pipe();
+
+  let out_prefix = prefix.clone();
+  let out_handle = tokio::task::spawn_blocking(move || {
+    let mut writer = PrefixedWriter::new(out_prefix, std::io::stdout());
+    let _ = out_r.pipe_to(&mut writer);
+    let _ = writer.flush();
+  });
+
+  let err_handle = tokio::task::spawn_blocking(move || {
+    let mut writer = PrefixedWriter::new(prefix, std::io::stderr());
+    let _ = err_r.pipe_to(&mut writer);
+    let _ = writer.flush();
+  });
+
+  (
+    TaskIo {
+      stdout: TaskStdio(None, out_w),
+      stderr: TaskStdio(None, err_w),
+    },
+    vec![out_handle, err_handle],
+  )
+}
 
 impl TaskStdio {
   pub fn stdout() -> Self {
