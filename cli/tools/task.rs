@@ -573,8 +573,7 @@ impl<'a> TaskRunner<'a> {
     );
 
     let (stdio, prefix_handles) = if parallel {
-      let prefix =
-        format!("{} ", colors::cyan(format!("[{}]", task_name)));
+      let prefix = format!("{} ", colors::cyan(format!("[{}]", task_name)));
       let (io, handles) = task_runner::make_prefixed_task_io(prefix);
       (Some(io), handles)
     } else {
