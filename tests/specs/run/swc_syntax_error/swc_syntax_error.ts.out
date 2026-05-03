@@ -1,4 +1,4 @@
-error: Unexpected token `}`. Expected an identifier, void, yield, null, await, break, a string literal, a numeric literal, true, false, `, -, import, this, typeof, {, [, (
+error: SyntaxError: Unexpected token `}`. Expected an identifier, void, yield, null, await, break, a string literal, a numeric literal, true, false, `, -, import, this, typeof, {, [, (
   |
 4 | }
   | ~

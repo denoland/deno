@@ -1,4 +1,4 @@
-error: Expression expected
+error: SyntaxError: Expression expected
   |
 2 | setTimeout(() => {}),
   |                      ~

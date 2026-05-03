@@ -1,4 +1,4 @@
-error: Expected ',', got 'following'
+error: SyntaxError: Expected ',', got 'following'
   |
 3 | (the following is a syntax error  ^^ ! )
   |      ~~~~~~~~~
