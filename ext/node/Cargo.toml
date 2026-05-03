@@ -39,10 +39,6 @@ deno_path_util.workspace = true
 deno_permissions.workspace = true
 deno_process.workspace = true
 deno_tls.workspace = true
-# Used by tcp_wrap's upgrade_to_websocket (node:http upgrade → WebSocket).
-# Ideally this would live in ext/http, but passing the raw TcpStream through
-# a resource just to avoid this dep edge adds complexity for little gain.
-deno_websocket.workspace = true
 deno_whoami.workspace = true
 h2.workspace = true
 http.workspace = true

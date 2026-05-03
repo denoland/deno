@@ -2811,7 +2811,6 @@ dependencies = [
  "deno_process",
  "deno_subprocess_windows",
  "deno_tls",
- "deno_websocket",
  "deno_whoami",
  "errno 0.3.10",
  "h2 0.4.7",

@@ -509,13 +509,13 @@ impl TCPWrap {
     }
   }
 
-  /// Take the underlying TCP stream from this handle and create a server
-  /// WebSocket resource from it. This detaches the stream from libuv.
-  /// Returns the WebSocket resource ID.
-  fn upgrade_to_websocket(
+  /// Take the underlying TCP stream from this handle and place it in the
+  /// resource table as a `TcpStreamResource`. This detaches the stream
+  /// from libuv. Returns the resource ID of the stream, which can then
+  /// be passed to ext/http ops (e.g. for WebSocket upgrade).
+  fn take_stream(
     &self,
     state: &mut OpState,
-    #[buffer] extra_bytes: &[u8],
   ) -> Result<ResourceId, deno_error::JsErrorBox> {
     let tcp = self.tcp_ptr();
     if tcp.is_null() {
@@ -524,14 +524,12 @@ impl TCPWrap {
     // SAFETY: tcp is valid (null-checked above)
     let tcp_stream = unsafe { (*tcp).take_stream() }.ok_or_else(|| {
       deno_error::JsErrorBox::generic(
-        "TCP handle has no active stream — already taken or not connected",
+        "TCP handle has no active stream - already taken or not connected",
       )
     })?;
-    let transport = deno_net::raw::NetworkStream::Tcp(tcp_stream);
-    let read_buf = bytes::Bytes::copy_from_slice(extra_bytes);
-    Ok(deno_websocket::ws_create_server_stream(
-      state, transport, read_buf,
-    ))
+    let (read_half, write_half) = tcp_stream.into_split();
+    let resource = TcpStreamResource::new((read_half, write_half));
+    Ok(state.resource_table.add(resource))
   }
 
   #[fast]
