@@ -1,0 +1,271 @@
+{
+  "spans": [
+    {
+      "traceId": "00000000000000000000000000000001",
+      "spanId": "0000000000000001",
+      "traceState": "",
+      "parentSpanId": "",
+      "flags": 1,
+      "name": "chat gpt-4",
+      "kind": 3,
+      "startTimeUnixNano": "[WILDLINE]",
+      "endTimeUnixNano": "[WILDLINE]",
+      "attributes": [
+        {
+          "key": "http.request.method",
+          "value": {
+            "stringValue": "POST"
+          }
+        },
+        {
+          "key": "url.full",
+          "value": {
+            "stringValue": "[WILDCARD]/v1/chat/completions"
+          }
+        },
+        {
+          "key": "url.scheme",
+          "value": {
+            "stringValue": "http"
+          }
+        },
+        {
+          "key": "url.path",
+          "value": {
+            "stringValue": "/v1/chat/completions"
+          }
+        },
+        {
+          "key": "url.query",
+          "value": {
+            "stringValue": ""
+          }
+        },
+        {
+          "key": "gen_ai.operation.name",
+          "value": {
+            "stringValue": "chat"
+          }
+        },
+        {
+          "key": "gen_ai.provider.name",
+          "value": {
+            "stringValue": "openai"
+          }
+        },
+        {
+          "key": "server.address",
+          "value": {
+            "stringValue": "localhost"
+          }
+        },
+        {
+          "key": "server.port",
+          "value": {
+            "stringValue": "[WILDCARD]"
+          }
+        },
+        {
+          "key": "gen_ai.request.model",
+          "value": {
+            "stringValue": "gpt-4"
+          }
+        },
+        {
+          "key": "http.response.status_code",
+          "value": {
+            "stringValue": "200"
+          }
+        },
+        {
+          "key": "gen_ai.response.id",
+          "value": {
+            "stringValue": "chatcmpl-stream1"
+          }
+        },
+        {
+          "key": "gen_ai.response.model",
+          "value": {
+            "stringValue": "gpt-4"
+          }
+        },
+        {
+          "key": "gen_ai.response.finish_reasons",
+          "value": {
+            "arrayValue": {
+              "values": [
+                {
+                  "stringValue": "stop"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "key": "gen_ai.usage.input_tokens",
+          "value": {
+            "stringValue": "8"
+          }
+        },
+        {
+          "key": "gen_ai.usage.output_tokens",
+          "value": {
+            "stringValue": "3"
+          }
+        }
+      ],
+      "droppedAttributesCount": 0,
+      "events": [],
+      "droppedEventsCount": 0,
+      "links": [],
+      "droppedLinksCount": 0,
+      "status": {
+        "message": "",
+        "code": 0
+      }
+    }
+  ],
+  "logs": [],
+  "metrics": [
+    {
+      "name": "gen_ai.client.operation.duration",
+      "description": "GenAI operation duration",
+      "unit": "s",
+      "histogram": {
+        "dataPoints": [
+          {
+            "attributes": [
+              {
+                "key": "gen_ai.operation.name",
+                "value": {
+                  "stringValue": "chat"
+                }
+              },
+              {
+                "key": "gen_ai.provider.name",
+                "value": {
+                  "stringValue": "openai"
+                }
+              },
+              {
+                "key": "gen_ai.request.model",
+                "value": {
+                  "stringValue": "gpt-4"
+                }
+              },
+              {
+                "key": "gen_ai.response.model",
+                "value": {
+                  "stringValue": "gpt-4"
+                }
+              }
+            ],
+            "startTimeUnixNano": "[WILDLINE]",
+            "timeUnixNano": "[WILDLINE]",
+            "count": "1",
+            "sum": [WILDCARD],
+            "bucketCounts": [WILDCARD],
+            "explicitBounds": [WILDCARD],
+            "min": [WILDCARD],
+            "max": [WILDCARD]
+          }
+        ],
+        "aggregationTemporality": 2
+      }
+    },
+    {
+      "name": "gen_ai.client.token.usage",
+      "description": "Number of GenAI input and output tokens used",
+      "unit": "{token}",
+      "histogram": {
+        "dataPoints": [
+          {
+            "attributes": [
+              {
+                "key": "gen_ai.operation.name",
+                "value": {
+                  "stringValue": "chat"
+                }
+              },
+              {
+                "key": "gen_ai.provider.name",
+                "value": {
+                  "stringValue": "openai"
+                }
+              },
+              {
+                "key": "gen_ai.request.model",
+                "value": {
+                  "stringValue": "gpt-4"
+                }
+              },
+              {
+                "key": "gen_ai.response.model",
+                "value": {
+                  "stringValue": "gpt-4"
+                }
+              },
+              {
+                "key": "gen_ai.token.type",
+                "value": {
+                  "stringValue": "input"
+                }
+              }
+            ],
+            "startTimeUnixNano": "[WILDLINE]",
+            "timeUnixNano": "[WILDLINE]",
+            "count": "1",
+            "sum": 8,
+            "bucketCounts": [WILDCARD],
+            "explicitBounds": [WILDCARD],
+            "min": 8,
+            "max": 8
+          },
+          {
+            "attributes": [
+              {
+                "key": "gen_ai.operation.name",
+                "value": {
+                  "stringValue": "chat"
+                }
+              },
+              {
+                "key": "gen_ai.provider.name",
+                "value": {
+                  "stringValue": "openai"
+                }
+              },
+              {
+                "key": "gen_ai.request.model",
+                "value": {
+                  "stringValue": "gpt-4"
+                }
+              },
+              {
+                "key": "gen_ai.response.model",
+                "value": {
+                  "stringValue": "gpt-4"
+                }
+              },
+              {
+                "key": "gen_ai.token.type",
+                "value": {
+                  "stringValue": "output"
+                }
+              }
+            ],
+            "startTimeUnixNano": "[WILDLINE]",
+            "timeUnixNano": "[WILDLINE]",
+            "count": "1",
+            "sum": 3,
+            "bucketCounts": [WILDCARD],
+            "explicitBounds": [WILDCARD],
+            "min": 3,
+            "max": 3
+          }
+        ],
+        "aggregationTemporality": 2
+      }
+    }
+  ]
+}

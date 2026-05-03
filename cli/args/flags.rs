@@ -1312,11 +1312,16 @@ impl Flags {
       HashSet::default()
     };
 
+    let tracing_or_metrics = !disabled
+      && (otel_var("OTEL_DENO_TRACING").unwrap_or(default)
+        || otel_var("OTEL_DENO_METRICS").unwrap_or(default));
     OtelConfig {
       tracing_enabled: !disabled
         && otel_var("OTEL_DENO_TRACING").unwrap_or(default),
       metrics_enabled: !disabled
         && otel_var("OTEL_DENO_METRICS").unwrap_or(default),
+      genai_enabled: tracing_or_metrics
+        && otel_var("OTEL_DENO_GENAI").unwrap_or(true),
       propagators,
       console: match std::env::var("OTEL_DENO_CONSOLE").as_deref() {
         Ok(_) if disabled => OtelConsoleConfig::Ignore,
