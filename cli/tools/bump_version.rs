@@ -495,15 +495,14 @@ fn bump_workspace_conventional(
   for pkg in pkgs.iter() {
     if let Some(old_version) =
       read_version_at_ref(&root_dir, &start, &pkg.config_path_relative)
+        .filter(|v| *v != pkg.current_version)
     {
-      if old_version != pkg.current_version {
-        println!(
-          "Detected manual version change for {}: {} -> {}",
-          pkg.name, old_version, pkg.current_version
-        );
-        manual_changes
-          .insert(pkg.name.clone(), (old_version, pkg.current_version.clone()));
-      }
+      println!(
+        "Detected manual version change for {}: {} -> {}",
+        pkg.name, old_version, pkg.current_version
+      );
+      manual_changes
+        .insert(pkg.name.clone(), (old_version, pkg.current_version.clone()));
     }
   }
 
