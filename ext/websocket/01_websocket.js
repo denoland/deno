@@ -2,7 +2,7 @@
 
 /// <reference path="../../core/internal.d.ts" />
 
-import { core, primordials } from "ext:core/mod.js";
+import { core, internals, primordials } from "ext:core/mod.js";
 const {
   isAnyArrayBuffer,
   isArrayBuffer,
@@ -70,12 +70,21 @@ const {
 } = core.loadExtScript("ext:deno_web/02_event.js");
 const { Blob, BlobPrototype } = core.loadExtScript("ext:deno_web/09_file.js");
 const { getLocationHref } = core.loadExtScript("ext:deno_web/12_location.js");
-import {
+const {
   fillHeaders,
   headerListFromHeaders,
   headersFromHeaderList,
-} from "ext:deno_fetch/20_headers.js";
-import { HttpClientPrototype } from "ext:deno_fetch/22_http_client.js";
+} = core.loadExtScript("ext:deno_fetch/20_headers.js");
+const { HttpClientPrototype } = core.loadExtScript(
+  "ext:deno_fetch/22_http_client.js",
+);
+
+const kNodeUndiciDispatcherOptions = SymbolFor(
+  "Deno.internal.node.undici.dispatcherOptions",
+);
+const kNodeUndiciGlobalDispatcher = SymbolFor(
+  "Deno.internal.node.undici.globalDispatcher",
+);
 
 webidl.converters["WebSocketInit"] = webidl.createDictionaryConverter(
   "WebSocketInit",
@@ -89,6 +98,7 @@ webidl.converters["WebSocketInit"] = webidl.createDictionaryConverter(
       converter: webidl.converters["sequence<DOMString>"],
     },
     { key: "client", converter: webidl.converters.any },
+    { key: "dispatcher", converter: webidl.converters.any },
   ],
 );
 
@@ -213,6 +223,8 @@ class WebSocket extends EventTarget {
     let protocols;
     let headers = null;
     let clientRid = null;
+    let caCerts = null;
+    let unsafelyIgnoreCertificateErrors = false;
 
     if (typeof initOrProtocols === "string") {
       protocols = [initOrProtocols];
@@ -243,6 +255,24 @@ class WebSocket extends EventTarget {
           );
         }
         clientRid = initOrProtocols.client?.[internalRidSymbol] ?? null;
+      }
+
+      let dispatcher = initOrProtocols.dispatcher;
+      if (
+        dispatcher === undefined &&
+        internals[kNodeUndiciGlobalDispatcher] !== undefined
+      ) {
+        dispatcher = internals[kNodeUndiciGlobalDispatcher];
+      }
+
+      if (clientRid === null && dispatcher !== undefined) {
+        clientRid = dispatcher?.client?.[internalRidSymbol] ?? null;
+        const dispatcherOptions = dispatcher?.[kNodeUndiciDispatcherOptions];
+        if (dispatcherOptions !== undefined) {
+          caCerts = dispatcherOptions.caCerts ?? null;
+          unsafelyIgnoreCertificateErrors =
+            dispatcherOptions.unsafelyIgnoreCertificateErrors === true;
+        }
       }
     }
 
@@ -288,6 +318,8 @@ class WebSocket extends EventTarget {
         ArrayPrototypeJoin(protocols, ", "),
         cancelRid,
         headers ? headerListFromHeaders(headers) : null,
+        caCerts,
+        unsafelyIgnoreCertificateErrors,
         clientRid,
       ),
       (create) => {

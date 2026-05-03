@@ -31,18 +31,18 @@ const {
   Uint8Array,
 } = primordials;
 import { _ws } from "ext:deno_http/02_websocket.ts";
-import { InnerBody } from "ext:deno_fetch/22_body.js";
+const { InnerBody } = core.loadExtScript("ext:deno_fetch/22_body.js");
 const { Event } = core.loadExtScript("ext:deno_web/02_event.js");
 const { BlobPrototype } = core.loadExtScript("ext:deno_web/09_file.js");
-import {
+const {
   ResponsePrototype,
   toInnerResponse,
-} from "ext:deno_fetch/23_response.js";
-import {
+} = core.loadExtScript("ext:deno_fetch/23_response.js");
+const {
   abortRequest,
   fromInnerRequest,
   newInnerRequest,
-} from "ext:deno_fetch/23_request.js";
+} = core.loadExtScript("ext:deno_fetch/23_request.js");
 const loadWebSocket = core.createLazyLoader(
   "ext:deno_websocket/01_websocket.js",
 );
