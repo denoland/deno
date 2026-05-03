@@ -5,6 +5,9 @@ mod blob;
 mod broadcast_channel;
 mod compression;
 mod console;
+mod css_value;
+mod f64;
+mod geometry;
 mod message_port;
 mod stream_resource;
 mod timers;
@@ -91,6 +94,9 @@ deno_core::extension!(deno_web,
     op_now,
     op_time_origin,
     op_defer,
+    geometry::op_geometry_get_enable_css_parser_features,
+    geometry::op_geometry_matrix_set_matrix_value,
+    geometry::op_geometry_matrix_to_string,
     stream_resource::op_readable_stream_resource_allocate,
     stream_resource::op_readable_stream_resource_allocate_sized,
     stream_resource::op_readable_stream_resource_get_sink,
@@ -113,10 +119,27 @@ deno_core::extension!(deno_web,
     broadcast_channel::op_broadcast_send,
     broadcast_channel::op_broadcast_recv,
   ],
-  esm = [
+  objects = [
+    geometry::DOMPointReadOnly,
+    geometry::DOMPoint,
+    geometry::DOMRectReadOnly,
+    geometry::DOMRect,
+    geometry::DOMQuad,
+    geometry::DOMMatrixReadOnly,
+    geometry::DOMMatrix,
+  ],
+  lazy_loaded_esm = [
+    "geometry.js",
+    "webtransport.js",
+  ],
+  lazy_loaded_js = [
     "00_infra.js",
+    "00_url.js",
+    "01_broadcast_channel.js",
+    "01_console.js",
     "01_dom_exception.js",
     "01_mimesniff.js",
+    "01_urlpattern.js",
     "02_event.js",
     "02_structured_clone.js",
     "02_timers.js",
@@ -132,15 +155,11 @@ deno_core::extension!(deno_web,
     "14_compression.js",
     "15_performance.js",
     "16_image_data.js",
-    "00_url.js",
-    "01_urlpattern.js",
-    "01_console.js",
-    "01_broadcast_channel.js"
   ],
-  lazy_loaded_esm = [ "webtransport.js" ],
   options = {
     blob_store: Arc<BlobStore>,
     maybe_location: Option<Url>,
+    enable_css_parser_features: bool,
     bc: InMemoryBroadcastChannel,
   },
   state = |state, options| {
@@ -149,6 +168,7 @@ deno_core::extension!(deno_web,
       state.put(Location(location));
     }
     state.put(StartTime::default());
+    state.put(geometry::State::new(options.enable_css_parser_features));
     state.put(options.bc);
   }
 );
@@ -498,17 +518,29 @@ fn op_encoding_decode_utf8<'a>(
   #[anybuffer] zero_copy: &[u8],
   ignore_bom: bool,
 ) -> Result<v8::Local<'a, v8::String>, WebError> {
-  let buf = &zero_copy;
+  // ASCII fast path. Pure ASCII inputs (the dominant real-world case for
+  // HTTP/JSON bodies, file reads, etc.) are valid UTF-8 with no BOM, so we
+  // can short-circuit straight to `new_from_one_byte` and skip both the
+  // 3-byte BOM check and V8's internal UTF-8 validation pass.
+  // `simdutf::validate_ascii` is a SIMD high-bit scan (~1ns per 64 bytes).
+  if v8::simdutf::validate_ascii(zero_copy) {
+    return v8::String::new_from_one_byte(
+      scope,
+      zero_copy,
+      v8::NewStringType::Normal,
+    )
+    .ok_or(WebError::BufferTooLong);
+  }
 
   let buf = if !ignore_bom
-    && buf.len() >= 3
-    && buf[0] == 0xef
-    && buf[1] == 0xbb
-    && buf[2] == 0xbf
+    && zero_copy.len() >= 3
+    && zero_copy[0] == 0xef
+    && zero_copy[1] == 0xbb
+    && zero_copy[2] == 0xbf
   {
-    &buf[3..]
+    &zero_copy[3..]
   } else {
-    buf
+    zero_copy
   };
 
   // If `String::new_from_utf8()` returns `None`, this means that the

@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_process"
-version = "0.61.0"
+version = "0.62.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -39,5 +39,5 @@ tokio.workspace = true
 nix = { workspace = true, features = ["signal", "process"] }
 
 [target.'cfg(windows)'.dependencies]
-winapi = { workspace = true, features = ["errhandlingapi", "fileapi", "handleapi", "ioapiset", "minwinbase", "minwindef", "synchapi", "winbase", "winerror", "winnt"] }
+winapi = { workspace = true, features = [] }
 windows-sys.workspace = true

@@ -10,6 +10,7 @@ use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD_NO_PAD;
 use base64::prelude::BASE64_STANDARD;
 use deno_core::anyhow;
+use deno_core::anyhow::anyhow;
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
@@ -159,20 +160,39 @@ struct Predicate {
 }
 
 impl Predicate {
-  pub fn new_github_actions() -> Self {
-    let repo =
-      std::env::var("GITHUB_REPOSITORY").expect("GITHUB_REPOSITORY not set");
+  pub fn new_github_actions() -> Result<Self, AnyError> {
+    let repo = std::env::var("GITHUB_REPOSITORY").map_err(|_| {
+      anyhow!("GITHUB_REPOSITORY environment variable is not set")
+    })?;
     let rel_ref = std::env::var("GITHUB_WORKFLOW_REF")
       .unwrap_or_default()
       .replace(&format!("{}/", &repo), "");
 
-    let delimn = rel_ref.find('@').unwrap();
-    let (workflow_path, mut workflow_ref) = rel_ref.split_at(delimn);
-    workflow_ref = &workflow_ref[1..];
+    let (workflow_path, workflow_ref) = if let Some(delimn) = rel_ref.find('@')
+    {
+      let (path, ref_) = rel_ref.split_at(delimn);
+      (path, &ref_[1..])
+    } else {
+      (rel_ref.as_str(), "")
+    };
 
-    let server_url = std::env::var("GITHUB_SERVER_URL").unwrap();
+    let server_url = std::env::var("GITHUB_SERVER_URL").map_err(|_| {
+      anyhow!("GITHUB_SERVER_URL environment variable is not set")
+    })?;
+    let github_ref = std::env::var("GITHUB_REF")
+      .map_err(|_| anyhow!("GITHUB_REF environment variable is not set"))?;
+    let github_sha = std::env::var("GITHUB_SHA")
+      .map_err(|_| anyhow!("GITHUB_SHA environment variable is not set"))?;
+    let runner_env = std::env::var("RUNNER_ENVIRONMENT").map_err(|_| {
+      anyhow!("RUNNER_ENVIRONMENT environment variable is not set")
+    })?;
+    let run_id = std::env::var("GITHUB_RUN_ID")
+      .map_err(|_| anyhow!("GITHUB_RUN_ID environment variable is not set"))?;
+    let run_attempt = std::env::var("GITHUB_RUN_ATTEMPT").map_err(|_| {
+      anyhow!("GITHUB_RUN_ATTEMPT environment variable is not set")
+    })?;
 
-    Self {
+    Ok(Self {
       build_definition: BuildDefinition {
         build_type: GITHUB_BUILD_TYPE,
         external_parameters: ExternalParameters {
@@ -192,36 +212,24 @@ impl Predicate {
           },
         },
         resolved_dependencies: [ResourceDescriptor {
-          uri: format!(
-            "git+{}/{}@{}",
-            server_url,
-            &repo,
-            std::env::var("GITHUB_REF").unwrap()
-          ),
+          uri: format!("git+{}/{}@{}", server_url, &repo, github_ref,),
           digest: Some(GhaResourceDigest {
-            git_commit: std::env::var("GITHUB_SHA").unwrap(),
+            git_commit: github_sha,
           }),
         }],
       },
       run_details: RunDetails {
         builder: Builder {
-          id: format!(
-            "{}/{}",
-            &GITHUB_BUILDER_ID_PREFIX,
-            std::env::var("RUNNER_ENVIRONMENT").unwrap()
-          ),
+          id: format!("{}/{}", &GITHUB_BUILDER_ID_PREFIX, runner_env),
         },
         metadata: Metadata {
           invocation_id: format!(
             "{}/{}/actions/runs/{}/attempts/{}",
-            server_url,
-            repo,
-            std::env::var("GITHUB_RUN_ID").unwrap(),
-            std::env::var("GITHUB_RUN_ATTEMPT").unwrap()
+            server_url, repo, run_id, run_attempt,
           ),
         },
       },
-    }
+    })
   }
 }
 
@@ -236,13 +244,13 @@ struct ProvenanceAttestation {
 }
 
 impl ProvenanceAttestation {
-  pub fn new_github_actions(subjects: Vec<Subject>) -> Self {
-    Self {
+  pub fn new_github_actions(subjects: Vec<Subject>) -> Result<Self, AnyError> {
+    Ok(Self {
       _type: INTOTO_STATEMENT_TYPE,
       subject: subjects,
       predicate_type: SLSA_PREDICATE_TYPE,
-      predicate: Predicate::new_github_actions(),
-    }
+      predicate: Predicate::new_github_actions()?,
+    })
   }
 }
 
@@ -309,7 +317,7 @@ pub async fn generate_provenance(
     );
   };
 
-  let slsa = ProvenanceAttestation::new_github_actions(subjects);
+  let slsa = ProvenanceAttestation::new_github_actions(subjects)?;
 
   let attestation = serde_json::to_string(&slsa)?;
   let bundle = attest(http_client, &attestation, INTOTO_PAYLOAD_TYPE).await?;
@@ -343,7 +351,10 @@ pub async fn attest(
     testify(http_client, &content, &key_material.certificate).await?;
 
   // First log entry is the one we're interested in
-  let (_, log_entry) = transparency_logs.iter().next().unwrap();
+  let (_, log_entry) = transparency_logs
+    .iter()
+    .next()
+    .ok_or_else(|| anyhow!("Rekor transparency log returned no entries"))?;
 
   let bundle = ProvenanceBundle {
     media_type: "application/vnd.in-toto+json",
@@ -744,7 +755,8 @@ mod tests {
         sha256: "yourmom".to_string(),
       },
     };
-    let slsa = ProvenanceAttestation::new_github_actions(vec![subject]);
+    let slsa =
+      ProvenanceAttestation::new_github_actions(vec![subject]).unwrap();
     assert_eq!(
       slsa.subject.len(),
       1,

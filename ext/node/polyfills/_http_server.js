@@ -304,6 +304,10 @@ ServerResponse.prototype.assignSocket = function assignSocket(socket) {
     throw new ERR_HTTP_SOCKET_ASSIGNED();
   }
   socket._httpMessage = this;
+  if (socket._parent) {
+    socket._parent._httpMessage = this;
+    socket._parent._httpMessageDetached = false;
+  }
   socket.on("close", onServerResponseClose);
   this.socket = socket;
   this.emit("socket", socket);
@@ -314,6 +318,11 @@ ServerResponse.prototype.detachSocket = function detachSocket(socket) {
   assert(socket._httpMessage === this);
   socket.removeListener("close", onServerResponseClose);
   socket._httpMessage = null;
+  socket._httpMessageDetached = true;
+  if (socket._parent) {
+    socket._parent._httpMessage = null;
+    socket._parent._httpMessageDetached = true;
+  }
   this.socket = null;
 };
 
@@ -1153,8 +1162,11 @@ Server.prototype.closeIdleConnections = function closeIdleConnections() {
   const connections = this[kConnectionsKey];
   if (connections) {
     for (const socket of connections._all) {
-      // A socket is idle if it has no active HTTP response being written
-      if (!socket._httpMessage) {
+      // A socket is idle if it completed a request-response cycle and
+      // currently has no active HTTP response being written. Sockets
+      // that have never finished a response (e.g. still receiving
+      // headers) are not idle.
+      if (!socket._httpMessage && socket._httpMessageDetached) {
         socket.destroy();
       }
     }

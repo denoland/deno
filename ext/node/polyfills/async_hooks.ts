@@ -11,6 +11,8 @@ import {
 } from "ext:deno_node/internal/validators.mjs";
 import {
   AsyncHook,
+  emitAfter,
+  emitBefore,
   emitDestroy as emitDestroyHook,
   emitInit,
   executionAsyncId as internalExecutionAsyncId,
@@ -64,11 +66,13 @@ export class AsyncResource {
     ...args: unknown[]
   ) {
     const previousContext = getAsyncContext();
+    emitBefore(this.#asyncId);
     try {
       setAsyncContext(this.#snapshot);
       return ReflectApply(fn, thisArg, args);
     } finally {
       setAsyncContext(previousContext);
+      emitAfter(this.#asyncId);
     }
   }
 

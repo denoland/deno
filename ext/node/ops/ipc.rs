@@ -26,6 +26,7 @@ pub struct ChildPipeFd(pub i64, pub ChildIpcSerialization);
 
 mod impl_ {
   use std::cell::RefCell;
+  use std::future::Future;
   use std::io;
   use std::rc::Rc;
 
@@ -233,9 +234,63 @@ mod impl_ {
     #[class(type)]
     #[error("Failed to read value")]
     ReadValueFailed,
-    #[class(inherit)]
-    #[error(transparent)]
-    Io(#[from] io::Error),
+  }
+
+  /// Sentinel passed by the JS layer for `raw_fd` when the message has no
+  /// associated handle to transfer.
+  const NO_RAW_FD: i32 = -1;
+
+  fn raw_fd_to_option(raw_fd: i32) -> Option<i32> {
+    if raw_fd == NO_RAW_FD {
+      None
+    } else {
+      Some(raw_fd)
+    }
+  }
+
+  #[op2]
+  pub fn op_node_ipc_write_json<'a>(
+    scope: &mut v8::PinScope<'a, '_>,
+    state: Rc<RefCell<OpState>>,
+    #[smi] rid: ResourceId,
+    value: v8::Local<'a, v8::Value>,
+    // -1 means no handle is being transferred. See `NO_RAW_FD`.
+    #[smi] raw_fd: i32,
+    // Out-parameter: index 0 is set to `false` if the IPC send queue has
+    // exceeded its limit. Used as backpressure signal in JS.
+    queue_ok: v8::Local<'a, v8::Array>,
+  ) -> Result<impl Future<Output = Result<(), io::Error>> + use<>, IpcError> {
+    let mut serialized = Vec::with_capacity(64);
+    let mut ser = serde_json::Serializer::new(&mut serialized);
+    serialize_v8_value(scope, value, &mut ser).map_err(IpcError::SerdeJson)?;
+    serialized.push(b'\n');
+
+    let stream = state
+      .borrow()
+      .resource_table
+      .get::<IpcJsonStreamResource>(rid)?;
+    let old = stream
+      .queued_bytes
+      .fetch_add(serialized.len(), std::sync::atomic::Ordering::Relaxed);
+    if old + serialized.len() > 2 * INITIAL_CAPACITY {
+      let Ok(v) = false.to_v8(scope);
+      queue_ok.set_index(scope, 0, v);
+    }
+    let raw_fd = raw_fd_to_option(raw_fd);
+    Ok(async move {
+      let cancel = stream.cancel.clone();
+      let result = stream
+        .clone()
+        .write_msg_bytes(&serialized, raw_fd)
+        .or_cancel(cancel)
+        .await;
+      // adjust count even on error
+      stream
+        .queued_bytes
+        .fetch_sub(serialized.len(), std::sync::atomic::Ordering::Relaxed);
+      result??;
+      Ok(())
+    })
   }
 
   pub struct AdvancedSerializerDelegate {
@@ -397,6 +452,49 @@ mod impl_ {
       }),
     };
     state.put(constants);
+  }
+
+  #[op2]
+  pub fn op_node_ipc_write_advanced<'a>(
+    scope: &mut v8::PinScope<'a, '_>,
+    state: Rc<RefCell<OpState>>,
+    #[smi] rid: ResourceId,
+    value: v8::Local<'a, v8::Value>,
+    // -1 means no handle is being transferred. See `NO_RAW_FD`.
+    #[smi] raw_fd: i32,
+    // See `op_node_ipc_write_json` for the queue_ok contract.
+    queue_ok: v8::Local<'a, v8::Array>,
+  ) -> Result<impl Future<Output = Result<(), io::Error>> + use<>, IpcError> {
+    let constants = state.borrow().borrow::<AdvancedIpcConstants>().clone();
+    let serializer = AdvancedSerializer::new(scope, constants);
+    let serialized = serializer.serialize(scope, value)?;
+
+    let stream = state
+      .borrow()
+      .resource_table
+      .get::<IpcAdvancedStreamResource>(rid)?;
+    let old = stream
+      .queued_bytes
+      .fetch_add(serialized.len(), std::sync::atomic::Ordering::Relaxed);
+    if old + serialized.len() > 2 * INITIAL_CAPACITY {
+      let Ok(v) = false.to_v8(scope);
+      queue_ok.set_index(scope, 0, v);
+    }
+    let raw_fd = raw_fd_to_option(raw_fd);
+    Ok(async move {
+      let cancel = stream.cancel.clone();
+      let result = stream
+        .clone()
+        .write_msg_bytes(&serialized, raw_fd)
+        .or_cancel(cancel)
+        .await;
+      // adjust count even on error
+      stream
+        .queued_bytes
+        .fetch_sub(serialized.len(), std::sync::atomic::Ordering::Relaxed);
+      result??;
+      Ok(())
+    })
   }
 
   struct AdvancedSerializer {
@@ -632,6 +730,22 @@ mod impl_ {
   struct AdvancedIpcReadResult {
     msg_bytes: Option<Vec<u8>>,
     constants: AdvancedIpcConstants,
+    raw_fd: Option<i32>,
+  }
+
+  fn make_msg_with_fd_array<'s>(
+    scope: &mut v8::PinScope<'s, '_>,
+    msg: v8::Local<'s, v8::Value>,
+    raw_fd: Option<i32>,
+  ) -> v8::Local<'s, v8::Value> {
+    let arr = v8::Array::new(scope, 2);
+    arr.set_index(scope, 0, msg);
+    let raw_fd = match raw_fd {
+      Some(raw_fd) => v8::Integer::new(scope, raw_fd).into(),
+      None => v8::null(scope).into(),
+    };
+    arr.set_index(scope, 1, raw_fd);
+    arr.into()
   }
 
   fn make_stop_sentinel<'s>(
@@ -660,82 +774,24 @@ mod impl_ {
       self,
       scope: &mut v8::PinScope<'a, '_>,
     ) -> Result<v8::Local<'a, v8::Value>, Self::Error> {
-      let Some(msg_bytes) = self.msg_bytes else {
-        return Ok(make_stop_sentinel(scope));
+      let value = if let Some(msg_bytes) = self.msg_bytes {
+        let deser =
+          AdvancedIpcDeserializer::new(scope, self.constants, &msg_bytes);
+        let context = scope.get_current_context();
+        let header_success = deser.inner.read_header(context).unwrap_or(false);
+        if !header_success {
+          return Err(IpcError::ReadHeaderFailed);
+        }
+        let Some(value) = deser.inner.read_value(context) else {
+          return Err(IpcError::ReadValueFailed);
+        };
+        value
+      } else {
+        make_stop_sentinel(scope)
       };
-      let deser =
-        AdvancedIpcDeserializer::new(scope, self.constants, &msg_bytes);
-      let context = scope.get_current_context();
-      let header_success = deser.inner.read_header(context).unwrap_or(false);
-      if !header_success {
-        return Err(IpcError::ReadHeaderFailed);
-      }
-      let Some(value) = deser.inner.read_value(context) else {
-        return Err(IpcError::ReadValueFailed);
-      };
-      Ok(value)
+
+      Ok(make_msg_with_fd_array(scope, value, self.raw_fd))
     }
-  }
-
-  /// Synchronous IPC write for JSON serialization.
-  /// Matches Node.js behavior where process.send() writes synchronously
-  /// to the pipe, ensuring messages aren't lost on process.exit().
-  #[op2(nofast)]
-  pub fn op_node_ipc_write_json_sync<'a>(
-    scope: &mut v8::PinScope<'a, '_>,
-    state: &OpState,
-    #[smi] rid: ResourceId,
-    value: v8::Local<'a, v8::Value>,
-    queue_ok: v8::Local<'a, v8::Array>,
-  ) -> Result<(), IpcError> {
-    let mut serialized = Vec::with_capacity(64);
-    let mut ser = serde_json::Serializer::new(&mut serialized);
-    serialize_v8_value(scope, value, &mut ser).map_err(IpcError::SerdeJson)?;
-    serialized.push(b'\n');
-
-    let stream = state.resource_table.get::<IpcJsonStreamResource>(rid)?;
-    let old = stream
-      .queued_bytes
-      .fetch_add(serialized.len(), std::sync::atomic::Ordering::Relaxed);
-    if old + serialized.len() > 2 * INITIAL_CAPACITY {
-      let v = false.to_v8(scope).unwrap(); // Infallible
-      queue_ok.set_index(scope, 0, v);
-    }
-    let result = stream.write_msg_bytes_sync(&serialized);
-    stream
-      .queued_bytes
-      .fetch_sub(serialized.len(), std::sync::atomic::Ordering::Relaxed);
-    result?;
-    Ok(())
-  }
-
-  /// Synchronous IPC write for advanced (V8) serialization.
-  #[op2(nofast)]
-  pub fn op_node_ipc_write_advanced_sync<'a>(
-    scope: &mut v8::PinScope<'a, '_>,
-    state: &OpState,
-    #[smi] rid: ResourceId,
-    value: v8::Local<'a, v8::Value>,
-    queue_ok: v8::Local<'a, v8::Array>,
-  ) -> Result<(), IpcError> {
-    let constants = state.borrow::<AdvancedIpcConstants>().clone();
-    let serializer = AdvancedSerializer::new(scope, constants);
-    let serialized = serializer.serialize(scope, value)?;
-
-    let stream = state.resource_table.get::<IpcAdvancedStreamResource>(rid)?;
-    let old = stream
-      .queued_bytes
-      .fetch_add(serialized.len(), std::sync::atomic::Ordering::Relaxed);
-    if old + serialized.len() > 2 * INITIAL_CAPACITY {
-      let Ok(v) = false.to_v8(scope);
-      queue_ok.set_index(scope, 0, v);
-    }
-    let result = stream.write_msg_bytes_sync(&serialized);
-    stream
-      .queued_bytes
-      .fetch_sub(serialized.len(), std::sync::atomic::Ordering::Relaxed);
-    result?;
-    Ok(())
   }
 
   #[op2]
@@ -749,10 +805,18 @@ mod impl_ {
       .get::<IpcAdvancedStreamResource>(rid)?;
     let cancel = stream.cancel.clone();
     let mut stream = RcRef::map(stream, |r| &r.read_half).borrow_mut().await;
-    let msg_bytes = stream.read_msg_bytes().or_cancel(cancel).await??;
+    let result = stream
+      .read_msg_bytes_and_raw_fd()
+      .or_cancel(cancel)
+      .await??;
+    let (msg_bytes, raw_fd) = match result {
+      Some((msg_bytes, raw_fd)) => (Some(msg_bytes), raw_fd),
+      None => (None, None),
+    };
 
     Ok(AdvancedIpcReadResult {
       msg_bytes,
+      raw_fd,
       constants: state.borrow().borrow::<AdvancedIpcConstants>().clone(),
     })
   }
@@ -767,12 +831,28 @@ mod impl_ {
     })
   }
 
+  struct IpcJsonReadResult {
+    msg: serde_json::Value,
+    raw_fd: Option<i32>,
+  }
+
+  impl<'a> deno_core::ToV8<'a> for IpcJsonReadResult {
+    type Error = IpcError;
+    fn to_v8(
+      self,
+      scope: &mut v8::PinScope<'a, '_>,
+    ) -> Result<v8::Local<'a, v8::Value>, Self::Error> {
+      let msg = deno_core::serde_v8::to_v8(scope, self.msg)
+        .expect("serde_json::Value to_v8");
+      Ok(make_msg_with_fd_array(scope, msg, self.raw_fd))
+    }
+  }
+
   #[op2]
-  #[serde]
   pub async fn op_node_ipc_read_json(
     state: Rc<RefCell<OpState>>,
     #[smi] rid: ResourceId,
-  ) -> Result<serde_json::Value, IpcError> {
+  ) -> Result<IpcJsonReadResult, IpcError> {
     let stream = state
       .borrow()
       .resource_table
@@ -780,12 +860,12 @@ mod impl_ {
 
     let cancel = stream.cancel.clone();
     let mut stream = RcRef::map(stream, |r| &r.read_half).borrow_mut().await;
-    let msgs = stream.read_msg().or_cancel(cancel).await??;
-    if let Some(msg) = msgs {
-      Ok(msg)
-    } else {
-      Ok(stop_sentinel())
-    }
+    let result = stream.read_msg_and_raw_fd().or_cancel(cancel).await??;
+    let (msg, raw_fd) = match result {
+      Some((msg, raw_fd)) => (msg, raw_fd),
+      None => (stop_sentinel(), None),
+    };
+    Ok(IpcJsonReadResult { msg, raw_fd })
   }
 
   #[op2(fast)]

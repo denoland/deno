@@ -128,6 +128,15 @@ pub struct uv_tcp_t {
     Option<std::sync::Arc<crate::uv_compat::waker::TcpHandleWaker>>,
 }
 
+impl uv_tcp_t {
+  /// Detach and return the underlying TCP stream, e.g. for handing it
+  /// off to a WebSocket. The caller takes ownership of the stream;
+  /// subsequent reads/writes through libuv will see `None`.
+  pub fn take_stream(&mut self) -> Option<tokio::net::TcpStream> {
+    self.internal_stream.take()
+  }
+}
+
 /// In-flight TCP connect operation.
 ///
 /// # Safety
@@ -152,12 +161,142 @@ pub(crate) struct WritePending {
   pub(crate) req: *mut uv_write_t,
   pub(crate) data: Vec<u8>,
   pub(crate) offset: usize,
+  /// When `Some`, iovecs take precedence over `data`/`offset` for the
+  /// write drain. Retention for the memory pointed to by these iovecs
+  /// is the caller's responsibility (typically `stream_wrap` retains
+  /// `v8::Global<v8::ArrayBuffer>` refs on the write request's
+  /// callback state so the memory stays alive until the callback).
+  /// `data` is kept empty in this mode.
+  pub(crate) iovecs: Option<IovecCursor>,
   pub(crate) cb: Option<uv_write_cb>,
   /// Pre-determined completion status. When `Some`, the write is already
   /// complete and the callback should be fired with this status without
   /// attempting any I/O. This is used to defer synchronous write
   /// completions to the event loop, preventing re-entrancy issues.
   pub(crate) status: Option<c_int>,
+}
+
+/// Cursor over a scatter-gather write: a list of iovecs plus a head
+/// index and byte offset into the head entry (entries past the head
+/// are always full). Mirrors libuv's `uv__write`'s queue entry which
+/// carries `(bufs, nbufs, write_index)` through the drain loop.
+///
+/// `head_index` lets `advance` run in O(1) per consumed iovec instead
+/// of shifting the tail; matters at high iovec counts (`IOV_MAX` is
+/// 1024 on Linux, reachable via chunked-encoding responses).
+pub(crate) struct IovecCursor {
+  pub(crate) bufs: smallvec::SmallVec<[uv_buf_t; 4]>,
+  /// Index of the head entry. Entries `< head_index` are consumed and
+  /// must not be read.
+  pub(crate) head_index: usize,
+  /// Byte offset into `bufs[head_index]` for the next write. Entries
+  /// `> head_index` are always consumed whole.
+  pub(crate) head_off: usize,
+}
+
+impl IovecCursor {
+  pub(crate) fn new(bufs: smallvec::SmallVec<[uv_buf_t; 4]>) -> Self {
+    Self {
+      bufs,
+      head_index: 0,
+      head_off: 0,
+    }
+  }
+
+  /// Unwritten slice at the head of the iovec list. Callers that can't
+  /// do true scatter-gather (pipes/TTY) use this to walk one iovec at a
+  /// time while still preserving zero-copy semantics.
+  ///
+  /// # Safety
+  /// The memory pointed to by the head iovec must be valid for reads.
+  pub(crate) unsafe fn head_slice(&self) -> &[u8] {
+    if self.head_index >= self.bufs.len() {
+      return &[];
+    }
+    // SAFETY: caller guarantees iovec memory is valid.
+    unsafe {
+      let head = &self.bufs[self.head_index];
+      if head.len <= self.head_off || head.base.is_null() {
+        return &[];
+      }
+      std::slice::from_raw_parts(
+        (head.base as *const u8).add(self.head_off),
+        head.len - self.head_off,
+      )
+    }
+  }
+
+  /// Total unwritten bytes across all iovecs.
+  #[allow(dead_code, reason = "public helper for external iovec consumers")]
+  pub(crate) fn remaining(&self) -> usize {
+    if self.head_index >= self.bufs.len() {
+      return 0;
+    }
+    let first = self.bufs[self.head_index].len.saturating_sub(self.head_off);
+    first
+      + self.bufs[self.head_index + 1..]
+        .iter()
+        .map(|b| b.len)
+        .sum::<usize>()
+  }
+
+  pub(crate) fn is_empty(&self) -> bool {
+    self.head_index >= self.bufs.len()
+      || (self.head_index == self.bufs.len() - 1
+        && self.head_off >= self.bufs[self.head_index].len)
+  }
+
+  /// Advance the cursor by `n` bytes written. Skips over bufs fully
+  /// consumed from the front by bumping `head_index`; updates the
+  /// partial-write offset for the head entry. O(consumed entries),
+  /// no tail shift. Mirrors the pointer advance loop in libuv's
+  /// `DoTryWrite`.
+  pub(crate) fn advance(&mut self, mut n: usize) {
+    while n > 0 && self.head_index < self.bufs.len() {
+      let avail = self.bufs[self.head_index].len.saturating_sub(self.head_off);
+      if n >= avail {
+        n -= avail;
+        self.head_index += 1;
+        self.head_off = 0;
+      } else {
+        self.head_off += n;
+        n = 0;
+      }
+    }
+  }
+
+  /// Build `IoSlice`s for the unwritten window, appending to `out`.
+  /// Lifetimes borrow from `self`; pointers must remain valid (caller
+  /// guarantees retention).
+  ///
+  /// # Safety
+  /// The memory pointed to by each iovec's `base` must be valid and
+  /// readable for its `len`.
+  pub(crate) unsafe fn io_slices<'a>(
+    &'a self,
+    out: &mut smallvec::SmallVec<[std::io::IoSlice<'a>; 16]>,
+  ) {
+    if self.head_index >= self.bufs.len() {
+      return;
+    }
+    // SAFETY: caller guarantees iovecs point to valid readable memory.
+    unsafe {
+      let head = &self.bufs[self.head_index];
+      if head.len > self.head_off {
+        let base = (head.base as *const u8).add(self.head_off);
+        let len = head.len - self.head_off;
+        out.push(std::io::IoSlice::new(std::slice::from_raw_parts(base, len)));
+      }
+      for buf in &self.bufs[self.head_index + 1..] {
+        if !buf.base.is_null() && buf.len > 0 {
+          out.push(std::io::IoSlice::new(std::slice::from_raw_parts(
+            buf.base as *const u8,
+            buf.len,
+          )));
+        }
+      }
+    }
+  }
 }
 
 /// Pending shutdown request, deferred until the write queue drains.
@@ -273,30 +412,74 @@ pub unsafe fn uv_tcp_init(loop_: *mut uv_loop_t, tcp: *mut uv_tcp_t) -> c_int {
 /// `tcp` must be a valid pointer to a `uv_tcp_t` initialized by `uv_tcp_init`.
 /// `fd` must be a valid, open file descriptor / socket.
 pub unsafe fn uv_tcp_open(tcp: *mut uv_tcp_t, fd: c_int) -> c_int {
+  // The default open path wraps the fd as a connected `TcpStream`. Callers
+  // that received a listening fd (e.g. via IPC handle passing for
+  // `net.Server`) must use [`uv_tcp_open_listener`] instead — matching how
+  // Node's child_process layer dispatches on `message.type`. We don't try
+  // to autodetect via `SO_ACCEPTCONN` because macOS returns ENOPROTOOPT for
+  // that probe.
   // SAFETY: Caller guarantees tcp is initialized and fd is valid.
   unsafe {
     #[cfg(unix)]
-    let std_stream = {
+    {
       use std::os::unix::io::FromRawFd;
-      let s = std::net::TcpStream::from_raw_fd(fd);
-      (*tcp).internal_fd = Some(fd);
-      s
-    };
+      let std_stream = std::net::TcpStream::from_raw_fd(fd);
+      std_stream.set_nonblocking(true).ok();
+      match tokio::net::TcpStream::from_std(std_stream) {
+        Ok(stream) => {
+          if (*tcp).internal_nodelay {
+            stream.set_nodelay(true).ok();
+          }
+          (*tcp).internal_fd = Some(fd);
+          (*tcp).internal_stream = Some(stream);
+          0
+        }
+        Err(_) => UV_EINVAL,
+      }
+    }
     #[cfg(windows)]
-    let std_stream = {
+    {
       use std::os::windows::io::FromRawSocket;
       let sock = fd as std::os::windows::io::RawSocket;
-      let s = std::net::TcpStream::from_raw_socket(sock);
-      (*tcp).internal_fd = Some(sock);
-      s
-    };
-    std_stream.set_nonblocking(true).ok();
-    match tokio::net::TcpStream::from_std(std_stream) {
-      Ok(stream) => {
-        if (*tcp).internal_nodelay {
-          stream.set_nodelay(true).ok();
+      let std_stream = std::net::TcpStream::from_raw_socket(sock);
+      std_stream.set_nonblocking(true).ok();
+      match tokio::net::TcpStream::from_std(std_stream) {
+        Ok(stream) => {
+          if (*tcp).internal_nodelay {
+            stream.set_nodelay(true).ok();
+          }
+          (*tcp).internal_fd = Some(sock);
+          (*tcp).internal_stream = Some(stream);
+          0
         }
-        (*tcp).internal_stream = Some(stream);
+        Err(_) => UV_EINVAL,
+      }
+    }
+  }
+}
+
+/// Open `tcp` from an already-listening fd (typically received via IPC
+/// handle passing for `net.Server`). Mirrors how Node's child_process layer
+/// dispatches on the `net.Server` handle type and constructs a fresh
+/// `net.Server` around the inherited fd; libuv's underlying `listen()`
+/// syscall is a no-op on a listening fd, so a subsequent `uv_listen` call
+/// only needs to register the connection callback.
+///
+/// ### Safety
+/// `tcp` must be initialized by `uv_tcp_init`. `fd` must be a valid
+/// listening socket fd that the caller intends to transfer ownership of.
+#[cfg(unix)]
+pub unsafe fn uv_tcp_open_listener(tcp: *mut uv_tcp_t, fd: c_int) -> c_int {
+  use std::os::unix::io::FromRawFd;
+  // SAFETY: Caller guarantees tcp is initialized and fd is valid.
+  unsafe {
+    let std_listener = std::net::TcpListener::from_raw_fd(fd);
+    std_listener.set_nonblocking(true).ok();
+    match tokio::net::TcpListener::from_std(std_listener) {
+      Ok(listener) => {
+        (*tcp).internal_fd = Some(fd);
+        (*tcp).internal_listener_addr = listener.local_addr().ok();
+        (*tcp).internal_listener = Some(listener);
         0
       }
       Err(_) => UV_EINVAL,
@@ -305,6 +488,45 @@ pub unsafe fn uv_tcp_open(tcp: *mut uv_tcp_t, fd: c_int) -> c_int {
 }
 
 const UV_TCP_REUSEPORT: u32 = 4;
+
+/// ### Safety
+/// `tcp` must be a valid pointer to an initialized `uv_tcp_t`.
+///
+/// Returns a dup of the underlying socket file descriptor, for use as the
+/// payload of an SCM_RIGHTS cmsg on an IPC channel. The caller owns the returned
+/// fd and must close it after `sendmsg` has attached it to the IPC message.
+#[cfg(unix)]
+pub unsafe fn uv_tcp_fd_for_ipc(tcp: *mut uv_tcp_t) -> c_int {
+  use std::os::fd::AsRawFd;
+
+  if tcp.is_null() {
+    return -1;
+  }
+
+  // SAFETY: Caller guarantees tcp is initialized and valid.
+  unsafe {
+    let tcp = &*tcp;
+    let fd = if let Some(stream) = tcp.internal_stream.as_ref() {
+      stream.as_raw_fd()
+    } else if let Some(listener) = tcp.internal_listener.as_ref() {
+      listener.as_raw_fd()
+    } else {
+      tcp.internal_fd.unwrap_or(-1)
+    };
+    if fd < 0 {
+      return -1;
+    }
+
+    let dup = libc::dup(fd);
+    if dup != -1 {
+      let flags = libc::fcntl(dup, libc::F_GETFD);
+      if flags != -1 {
+        libc::fcntl(dup, libc::F_SETFD, flags | libc::FD_CLOEXEC);
+      }
+    }
+    dup
+  }
+}
 
 /// ### Safety
 /// `tcp` must be initialized by `uv_tcp_init`. `addr` must point to a valid sockaddr.
@@ -698,46 +920,53 @@ pub unsafe fn uv_listen(
       return err;
     }
 
-    let effective_backlog = if backlog > 0 { backlog as u32 } else { 128 };
+    // If the handle was opened from an already-listening fd (received via
+    // IPC handle passing), skip bind/listen and just register the callback.
+    // libuv's `listen(fd, backlog)` on an already-listening socket is a
+    // no-op too.
+    if tcp_ref.internal_listener.is_none() {
+      let effective_backlog = if backlog > 0 { backlog as u32 } else { 128 };
 
-    // Take the pre-created socket from bind (if any). This preserves socket
-    // identity so options set between bind and listen are retained on the
-    // same fd, matching libuv's behavior.
-    let socket = match tcp_ref.internal_socket.take() {
-      Some(s) => s,
-      None => {
-        // No prior bind — create a socket and bind to 0.0.0.0:0,
-        // matching libuv's implicit bind in uv__tcp_listen.
-        let bind_addr = tcp_ref
-          .internal_bind_addr
-          .unwrap_or_else(|| "0.0.0.0:0".parse().unwrap());
-        let s = if bind_addr.is_ipv4() {
-          match tokio::net::TcpSocket::new_v4() {
-            Ok(s) => s,
-            Err(ref e) => return io_error_to_uv(e),
+      // Take the pre-created socket from bind (if any). This preserves socket
+      // identity so options set between bind and listen are retained on the
+      // same fd, matching libuv's behavior.
+      let socket = match tcp_ref.internal_socket.take() {
+        Some(s) => s,
+        None => {
+          // No prior bind — create a socket and bind to 0.0.0.0:0,
+          // matching libuv's implicit bind in uv__tcp_listen.
+          let bind_addr = tcp_ref
+            .internal_bind_addr
+            .unwrap_or_else(|| "0.0.0.0:0".parse().unwrap());
+          let s = if bind_addr.is_ipv4() {
+            match tokio::net::TcpSocket::new_v4() {
+              Ok(s) => s,
+              Err(ref e) => return io_error_to_uv(e),
+            }
+          } else {
+            match tokio::net::TcpSocket::new_v6() {
+              Ok(s) => s,
+              Err(ref e) => return io_error_to_uv(e),
+            }
+          };
+          s.set_reuseaddr(true).ok();
+          if let Err(ref e) = s.bind(bind_addr) {
+            return io_error_to_uv(e);
           }
-        } else {
-          match tokio::net::TcpSocket::new_v6() {
-            Ok(s) => s,
-            Err(ref e) => return io_error_to_uv(e),
-          }
-        };
-        s.set_reuseaddr(true).ok();
-        if let Err(ref e) = s.bind(bind_addr) {
-          return io_error_to_uv(e);
+          s
         }
-        s
-      }
-    };
+      };
 
-    let tokio_listener = match socket.listen(effective_backlog) {
-      Ok(l) => l,
-      Err(ref e) => return io_error_to_uv(e),
-    };
+      let tokio_listener = match socket.listen(effective_backlog) {
+        Ok(l) => l,
+        Err(ref e) => return io_error_to_uv(e),
+      };
 
-    let listener_addr = tokio_listener.local_addr().ok();
-    tcp_ref.internal_listener = Some(tokio_listener);
-    tcp_ref.internal_listener_addr = listener_addr;
+      let listener_addr = tokio_listener.local_addr().ok();
+      tcp_ref.internal_listener = Some(tokio_listener);
+      tcp_ref.internal_listener_addr = listener_addr;
+    }
+
     tcp_ref.internal_connection_cb = cb;
     tcp_ref.flags |= UV_HANDLE_ACTIVE;
 
@@ -1106,21 +1335,65 @@ pub(crate) unsafe fn poll_tcp_handle(
           let pw = (*tcp_ptr).internal_write_queue.front_mut().unwrap();
           let mut done = false;
           let mut error = false;
-          loop {
-            if pw.offset >= pw.data.len() {
-              done = true;
-              break;
+          if let Some(ref mut iov) = pw.iovecs {
+            // Scatter-gather write. Loop until drained, WouldBlock, or
+            // error — mirrors uv__write's write-all-the-bytes-you-can
+            // inner loop.
+            loop {
+              if iov.is_empty() {
+                done = true;
+                break;
+              }
+              // Scope the IoSlice borrow so we can advance `iov`
+              // afterwards.
+              let write_result = {
+                let mut slices: smallvec::SmallVec<[std::io::IoSlice; 16]> =
+                  smallvec::SmallVec::new();
+                // SAFETY: iovec memory is kept alive by caller retention.
+                iov.io_slices(&mut slices);
+                if slices.is_empty() {
+                  None
+                } else {
+                  Some(stream.try_write_vectored(&slices))
+                }
+              };
+              match write_result {
+                None => {
+                  done = true;
+                  break;
+                }
+                Some(Ok(0)) => break,
+                Some(Ok(n)) => {
+                  iov.advance(n);
+                }
+                Some(Err(ref e))
+                  if e.kind() == std::io::ErrorKind::WouldBlock =>
+                {
+                  break;
+                }
+                Some(Err(_)) => {
+                  error = true;
+                  break;
+                }
+              }
             }
-            match stream.try_write(&pw.data[pw.offset..]) {
-              Ok(n) => {
-                pw.offset += n;
-              }
-              Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+          } else {
+            loop {
+              if pw.offset >= pw.data.len() {
+                done = true;
                 break;
               }
-              Err(_) => {
-                error = true;
-                break;
+              match stream.try_write(&pw.data[pw.offset..]) {
+                Ok(n) => {
+                  pw.offset += n;
+                }
+                Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                  break;
+                }
+                Err(_) => {
+                  error = true;
+                  break;
+                }
               }
             }
           }

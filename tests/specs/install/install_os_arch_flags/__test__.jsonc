@@ -1,0 +1,23 @@
+{
+  "tempDir": true,
+  "tests": {
+    "install_with_os_and_arch_flags": {
+      "steps": [{
+        "args": "install --os win32 --arch arm64",
+        "output": "[WILDCARD]"
+      }, {
+        "args": "run -A verify.ts arm64 x64",
+        "output": "arm64: FOUND\nx64: NOT FOUND (expected)\n"
+      }]
+    },
+    "install_with_os_and_arch_flags_x64": {
+      "steps": [{
+        "args": "install --os win32 --arch x64",
+        "output": "[WILDCARD]"
+      }, {
+        "args": "run -A verify.ts x64 arm64",
+        "output": "x64: FOUND\narm64: NOT FOUND (expected)\n"
+      }]
+    }
+  }
+}
