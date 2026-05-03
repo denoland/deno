@@ -31,6 +31,7 @@ import {
   guardFromHeaders,
   headerListFromHeaders,
   headersFromHeaderList,
+  invalidateHeaderListCache,
 } from "ext:deno_fetch/20_headers.js";
 const { markNotSerializable } = core.loadExtScript(
   "ext:deno_web/13_message_port.js",
@@ -234,6 +235,7 @@ function initializeAResponse(response, init, bodyWithType) {
       }
       if (!hasContentType) {
         ArrayPrototypePush(list, ["Content-Type", contentType]);
+        invalidateHeaderListCache(headers);
       }
     }
   }

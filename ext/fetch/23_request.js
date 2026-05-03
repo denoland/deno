@@ -42,6 +42,7 @@ import {
   guardFromHeaders,
   headerListFromHeaders,
   headersFromHeaderList,
+  invalidateHeaderListCache,
 } from "ext:deno_fetch/20_headers.js";
 import { HttpClientPrototype } from "ext:deno_fetch/22_http_client.js";
 const {
@@ -424,6 +425,7 @@ class Request {
       );
       if (headerList.length !== 0) {
         ArrayPrototypeSplice(headerList, 0, headerList.length);
+        invalidateHeaderListCache(this[_headers]);
       }
       fillHeaders(this[_headers], headers);
     }
