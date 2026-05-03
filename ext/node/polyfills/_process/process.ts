@@ -24,7 +24,7 @@ const { build, createLazyLoader } = core;
 
 import { nextTick as _nextTick } from "ext:deno_node/_next_tick.ts";
 import { _exiting } from "ext:deno_node/_process/exiting.ts";
-import * as fs from "ext:deno_fs/30_fs.js";
+const fs = core.loadExtScript("ext:deno_fs/30_fs.js");
 import {
   denoErrorToNodeError,
   ERR_INVALID_ARG_TYPE,

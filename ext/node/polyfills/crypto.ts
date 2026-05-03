@@ -167,7 +167,10 @@ import type {
 import { normalizeEncoding } from "ext:deno_node/internal/util.mjs";
 import { isArrayBufferView } from "ext:deno_node/internal/util/types.ts";
 import { validateString } from "ext:deno_node/internal/validators.mjs";
-import { crypto as webcrypto } from "ext:deno_crypto/00_crypto.js";
+import { core } from "ext:core/mod.js";
+const { crypto: webcrypto } = core.loadExtScript(
+  "ext:deno_crypto/00_crypto.js",
+);
 import { deprecate } from "node:util";
 
 const subtle = webcrypto.subtle;

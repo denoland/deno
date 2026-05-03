@@ -1,6 +1,9 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
-import { core, primordials } from "ext:core/mod.js";
-import {
+// deno-fmt-ignore-file
+
+(function () {
+const { core, primordials } = globalThis.__bootstrap;
+const {
   op_cache_delete,
   op_cache_match,
   op_cache_put,
@@ -8,7 +11,7 @@ import {
   op_cache_storage_has,
   op_cache_storage_keys,
   op_cache_storage_open,
-} from "ext:core/ops";
+} = core.ops;
 const {
   ArrayPrototypePush,
   ObjectPrototypeIsPrototypeOf,
@@ -33,7 +36,6 @@ const {
   readableStreamForRid,
   resourceForReadableStream,
 } = core.loadExtScript("ext:deno_web/06_streams.js");
-
 class CacheStorage {
   constructor() {
     webidl.illegalConstructor();
@@ -338,4 +340,6 @@ function cacheStorage() {
   return cacheStorageStorage;
 }
 
-export { Cache, CacheStorage, cacheStorage };
+
+return { Cache, CacheStorage, cacheStorage };
+})()

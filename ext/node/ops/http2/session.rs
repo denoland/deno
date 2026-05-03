@@ -1736,6 +1736,7 @@ unsafe extern "C" fn on_frame_send_callback(
 ) -> i32 {
   // SAFETY: data is the user_data pointer set during session creation
   let session = unsafe { Session::from_user_data(data) };
+  session.frames_sent = session.frames_sent.saturating_add(1);
   // SAFETY: frame is valid per nghttp2 callback contract
   let f = unsafe { &*frame };
   // SAFETY: union access of `hd` is always valid (every nghttp2 frame has a
@@ -1973,6 +1974,12 @@ pub struct Session {
   pub max_invalid_frames: u32,
   /// Running count of invalid frames received on this session.
   pub invalid_frame_count: u32,
+  /// Total HTTP/2 frames received on this session, used for the
+  /// `framesReceived` field of perf_hooks `Http2Session` entries.
+  pub frames_received: u32,
+  /// Total HTTP/2 frames sent on this session, used for the
+  /// `framesSent` field of perf_hooks `Http2Session` entries.
+  pub frames_sent: u32,
   /// Custom error code set by an nghttp2 callback when it returns a fatal
   /// error so that `receive_data` can surface it to JS via
   /// `session_internal_error_cb`. Mirrors Node's
@@ -2012,10 +2019,6 @@ pub struct Session {
   /// (see `HandlePingFrame` in node_http2.cc): there is no legitimate
   /// reason for a peer to send an unsolicited PING ACK.
   pub pending_pings: u32,
-  /// Total number of HTTP/2 frames received on this session. Mirrors
-  /// Node's `Http2Session::statistics_.frame_count`, surfaced via the
-  /// PerformanceObserver `Http2Session` entry's `framesReceived` field.
-  pub frames_received: u32,
 }
 
 impl Session {
@@ -2553,13 +2556,14 @@ impl Http2Session {
       outgoing_chunks: VecDeque::new(),
       max_invalid_frames: 1000,
       invalid_frame_count: 0,
+      frames_received: 0,
+      frames_sent: 0,
       custom_recv_error_code: None,
       sent_goaway_code: None,
       local_custom_settings: Vec::new(),
       remote_custom_settings: Vec::new(),
       pending_settings_acks: VecDeque::new(),
       pending_pings: 0,
-      frames_received: 0,
     }));
 
     // SAFETY: inner is valid (just allocated); callbacks and options are valid
@@ -2923,6 +2927,22 @@ impl Http2Session {
   }
 
   #[fast]
+  #[smi]
+  fn frames_received(&self) -> u32 {
+    // SAFETY: self.inner was allocated by Box::into_raw and is valid
+    let session = unsafe { &*self.inner };
+    session.frames_received
+  }
+
+  #[fast]
+  #[smi]
+  fn frames_sent(&self) -> u32 {
+    // SAFETY: self.inner was allocated by Box::into_raw and is valid
+    let session = unsafe { &*self.inner };
+    session.frames_sent
+  }
+
+  #[fast]
   fn has_pending_data(&self) -> bool {
     // SAFETY: self.session is a valid nghttp2 session pointer
     unsafe {
@@ -3109,13 +3129,6 @@ impl Http2Session {
     // SAFETY: self.inner was allocated by Box::into_raw and is valid
     let session = unsafe { &*self.inner };
     session.outgoing_buffers.len() as u32
-  }
-
-  #[fast]
-  fn frames_received(&self) -> u32 {
-    // SAFETY: self.inner was allocated by Box::into_raw and is valid
-    let session = unsafe { &*self.inner };
-    session.frames_received
   }
 
   #[fast]
