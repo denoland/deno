@@ -479,7 +479,10 @@ impl<'a> TaskRunner<'a> {
     Ok(0)
   }
 
-  #[allow(clippy::too_many_arguments)]
+  #[allow(
+    clippy::too_many_arguments,
+    reason = "parallel_info was added to an already-large signature; refactoring into a struct is deferred"
+  )]
   pub async fn run_deno_task(
     &self,
     dir_url: &Url,
@@ -528,7 +531,10 @@ impl<'a> TaskRunner<'a> {
       .await
   }
 
-  #[allow(clippy::too_many_arguments)]
+  #[allow(
+    clippy::too_many_arguments,
+    reason = "parallel_info was added to an already-large signature; refactoring into a struct is deferred"
+  )]
   pub async fn run_npm_script(
     &self,
     dir_url: &Url,
