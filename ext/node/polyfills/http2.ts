@@ -49,6 +49,7 @@ import {
   Http2Session as InternalHttp2Session,
   op_http2_callbacks,
 } from "ext:core/ops";
+import { enqueueNodePerformanceEntry } from "node:perf_hooks";
 import net from "node:net";
 import assert from "node:assert";
 import http from "node:http";
@@ -259,6 +260,19 @@ function scheduleSendPending(session) {
   const handle = session[kHandle];
   if (!handle) return;
   handle.sendPending();
+}
+
+// Per-session "writes pending nghttp2 mem_send" counter. Used to skip
+// re-scheduling the nextTick flush when one is already armed and to detect
+// pending writes that need to be drained synchronously by RST_STREAM /
+// destroy paths (otherwise the queued DATA gets dropped behind the RST).
+const kDeferredHttp2WritePending = Symbol("kDeferredHttp2WritePending");
+
+function flushDeferredHttp2Writes(session) {
+  if (!session) return;
+  if (!session[kDeferredHttp2WritePending]) return;
+  session[kDeferredHttp2WritePending] = 0;
+  scheduleSendPending(session);
 }
 
 // HTTP2 Constants
@@ -644,6 +658,21 @@ function onStreamClose(code) {
   stream[kState].fd = -1;
   // Defer destroy we actually emit end.
   if (!stream.readable || code !== NGHTTP2_NO_ERROR) {
+    // If the writable side is still finalising (state.ending observed but
+    // 'finish' not yet emitted) wait for it. The native EOF DATA frame can
+    // be flushed via the deferred process.nextTick scheduleSendPending,
+    // which fires before kWriteGeneric's setImmediate runs shutdownWritable
+    // and the Writable state machine emits 'finish'. Destroying immediately
+    // would short-circuit the state machine and emit 'close' before
+    // writableFinished flips to true (test-http2-server-close-idle-connection).
+    const ws = stream._writableState;
+    if (
+      code === NGHTTP2_NO_ERROR && ws && ws.ending && !ws.finished &&
+      !ws.destroyed
+    ) {
+      stream.once("finish", () => stream.destroy());
+      return true;
+    }
     // If errored or ended, we can destroy immediately.
     stream.destroy();
   } else {
@@ -1306,6 +1335,11 @@ function onStreamTrailers() {
 // This will cause the Http2Stream to be closed.
 function submitRstStream(code) {
   if (this[kHandle] !== undefined) {
+    // Drain any deferred DATA writes BEFORE submitting RST_STREAM. Otherwise
+    // nghttp2 prioritises the RST over queued DATA and the peer never sees
+    // the payload (test-http2-server-errors / test-http2-compat-errors rely
+    // on the client receiving the data the server wrote before the destroy).
+    flushDeferredHttp2Writes(this[kSession]);
     this[kHandle].rstStream(code);
     scheduleSendPending(this[kSession]);
   }
@@ -1578,15 +1612,38 @@ class Http2Stream extends Duplex {
       handle,
     );
     const nativeWriteBuffer = FunctionPrototypeBind(handle.writeBuffer, handle);
+    // The native writeUtf8String / writeBuffer ops queue bytes into
+    // nghttp2's per-stream pending_data and call resume_data. We then need
+    // a mem_send pass to actually frame and emit the DATA. Defer that pass
+    // to a process.nextTick so synchronous JS following the write (e.g.
+    // stream.end()) can set writable_ended on the native handle BEFORE the
+    // data provider runs. With writable_ended observed at frame time,
+    // nghttp2 packs END_STREAM onto the trailing DATA frame instead of
+    // emitting a separate empty DATA(END_STREAM) frame
+    // (test-http2-pack-end-stream-flag.js). The write completion callback
+    // still fires synchronously here (kLastWriteWasAsync = 0); only the
+    // socket flush is deferred. closeStream / submitRstStream drain
+    // pending writes synchronously before submitting RST_STREAM so the
+    // queued DATA frame still reaches the peer.
     handle.writeUtf8String = function (req, data) {
       const err = nativeWriteUtf8String(req, data);
-      scheduleSendPending(session);
+      if (!session[kDeferredHttp2WritePending]) {
+        session[kDeferredHttp2WritePending] = 1;
+        process.nextTick(flushDeferredHttp2Writes, session);
+      } else {
+        session[kDeferredHttp2WritePending]++;
+      }
       streamBaseState[kLastWriteWasAsync] = 0;
       return err;
     };
     handle.writeBuffer = function (req, data) {
       const err = nativeWriteBuffer(req, data);
-      scheduleSendPending(session);
+      if (!session[kDeferredHttp2WritePending]) {
+        session[kDeferredHttp2WritePending] = 1;
+        process.nextTick(flushDeferredHttp2Writes, session);
+      } else {
+        session[kDeferredHttp2WritePending]++;
+      }
       streamBaseState[kLastWriteWasAsync] = 0;
       return err;
     };
@@ -1864,32 +1921,45 @@ class Http2Stream extends Duplex {
   }
 
   end(chunk, encoding, cb) {
-    // When end() is called with a chunk, pre-flag the nghttp2 stream
-    // as ending so the sync writeBuffer drain emits one DATA frame
-    // with END_STREAM instead of a data frame followed by an empty
-    // trailing DATA frame. Restricted to client-initiated streams
-    // (odd IDs); push streams (even IDs) transition straight to
-    // closed when the server sends END_STREAM (no client
-    // acknowledgement is expected), and that destruction would race
-    // with follow-up ops like pushStream() or trailing test
-    // assertions (test-http2-server-push-stream).
+    // Pre-flag the nghttp2 stream as ending so the next DATA frame the
+    // data provider builds carries END_STREAM. Two patterns benefit:
+    //   1) end(chunk) - the trailing chunk's frame can include END_STREAM
+    //      directly instead of being followed by an empty DATA(END_STREAM)
+    //      frame.
+    //   2) write(chunk); end() - the in-flight write's data is still queued
+    //      in pending_data on the Rust side; flagging the stream now lets
+    //      that buffered data go out with END_STREAM packed into the same
+    //      frame, matching Node's "pack end_stream flag" optimization that
+    //      test-http2-pack-end-stream-flag.js asserts. Restricted to
+    //      client-initiated stream IDs (odd); push streams (even IDs)
+    //      transition straight to closed when the server sends END_STREAM
+    //      and that destruction would race with follow-up ops like
+    //      pushStream() or trailing assertions (test-http2-server-push-stream).
+    const hasChunk = typeof chunk === "function"
+      ? false
+      : chunk !== undefined && chunk !== null;
+    const handle = this[kHandle];
+    const id = this[kID];
     if (
-      typeof chunk === "function"
-        ? false
-        : chunk !== undefined && chunk !== null
+      handle && typeof handle.markEnding === "function" && !this.pending &&
+      !this._writableState.ending &&
+      this._writableState.buffered.length === 0 &&
+      // For end(chunk): state.writing must be false; another in-flight
+      // write would have its data provider re-entered with the wrong
+      // EOF flag. For end() without chunk: only mark ending when a write
+      // is currently in flight - the queued data on the Rust side is
+      // still in pending_data (its mem_send is deferred to nextTick) and
+      // setting writable_ended now lets that data go out with END_STREAM
+      // packed instead of a separate empty DATA(END_STREAM) frame
+      // (see writeBuffer override + test-http2-pack-end-stream-flag.js).
+      (hasChunk
+        ? !this._writableState.writing
+        : this._writableState.writing) &&
+      !(this[kState].flags & STREAM_FLAGS_HAS_TRAILERS) &&
+      typeof id === "number" && id % 2 === 1 &&
+      this.headersSent
     ) {
-      const handle = this[kHandle];
-      const id = this[kID];
-      if (
-        handle && typeof handle.markEnding === "function" && !this.pending &&
-        !this._writableState.ending && !this._writableState.writing &&
-        this._writableState.buffered.length === 0 &&
-        !(this[kState].flags & STREAM_FLAGS_HAS_TRAILERS) &&
-        typeof id === "number" && id % 2 === 1 &&
-        this.headersSent
-      ) {
-        handle.markEnding();
-      }
+      handle.markEnding();
     }
     return ReflectApply(Duplex.prototype.end, this, arguments);
   }
@@ -3120,6 +3190,26 @@ function cleanupSession(session) {
 
 function finishSessionClose(session, error) {
   debugSessionObj(session, "finishSessionClose");
+
+  // Emit a `Http2Session` PerformanceObserver entry with frame statistics
+  // from the native session before cleanupSession() drops the handle. Mirrors
+  // Node's `Http2Session::Close` reporting via PerformanceEntry. We surface
+  // only the fields the perf-hooks docs document and the in-tree tests
+  // observe.
+  const perfHandle = session[kHandle];
+  if (perfHandle && typeof perfHandle.framesReceived === "function") {
+    const framesReceived = perfHandle.framesReceived();
+    enqueueNodePerformanceEntry({
+      name: "Http2Session",
+      entryType: "http2",
+      startTime: 0,
+      duration: 0,
+      detail: {
+        type: session[kType] === NGHTTP2_SESSION_CLIENT ? "client" : "server",
+        framesReceived,
+      },
+    });
+  }
 
   const socket = session[kSocket];
   cleanupSession(session);
