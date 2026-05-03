@@ -74,7 +74,7 @@ struct HoistedLayout<'a> {
 
 struct NestedPackage<'a> {
   parent: &'a NpmResolutionPackage,
-  #[allow(dead_code)]
+  #[allow(dead_code, reason = "used for future nested package resolution")]
   dep_name: &'a StackString,
   dep: &'a NpmResolutionPackage,
 }
@@ -92,7 +92,7 @@ fn compute_hoisted_layout<'a>(
   let mut version_dependents: HashMap<&PackageNv, usize> = HashMap::new();
 
   for package in packages {
-    for (_name, dep_id) in &package.dependencies {
+    for dep_id in package.dependencies.values() {
       let dep = snapshot.package_from_id(dep_id).unwrap();
       *version_dependents.entry(&dep.id.nv).or_insert(0) += 1;
     }
@@ -137,10 +137,10 @@ fn compute_hoisted_layout<'a>(
         continue;
       }
 
-      if let Some(hoisted) = best_version_for_name.get(&dep.id.nv.name) {
-        if hoisted.id.nv == dep.id.nv {
-          continue; // This version is hoisted, no nesting needed
-        }
+      if let Some(hoisted) = best_version_for_name.get(&dep.id.nv.name)
+        && hoisted.id.nv == dep.id.nv
+      {
+        continue; // This version is hoisted, no nesting needed
       }
 
       nested.push(NestedPackage {
@@ -197,7 +197,7 @@ impl<
   TSys: LocalNpmInstallSys,
 > HoistedNpmPackageInstaller<THttpClient, TReporter, TSys>
 {
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "many dependencies needed for installer construction")]
   pub fn new(
     lifecycle_scripts_executor: Arc<dyn LifecycleScriptsExecutor>,
     npm_cache: Arc<NpmCache<TSys>>,
@@ -534,7 +534,7 @@ impl<
     Ok(())
   }
 
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "many parameters needed for package cloning")]
   async fn clone_package<'a>(
     &'a self,
     package: &'a NpmResolutionPackage,
