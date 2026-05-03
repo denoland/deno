@@ -479,6 +479,7 @@ impl<'a> TaskRunner<'a> {
     Ok(0)
   }
 
+  #[allow(clippy::too_many_arguments)]
   pub async fn run_deno_task(
     &self,
     dir_url: &Url,
@@ -527,6 +528,7 @@ impl<'a> TaskRunner<'a> {
       .await
   }
 
+  #[allow(clippy::too_many_arguments)]
   pub async fn run_npm_script(
     &self,
     dir_url: &Url,
