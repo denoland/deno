@@ -772,6 +772,11 @@ unsafe extern "C" fn on_frame_recv_callback(
   // SAFETY: data is the user_data pointer set during session creation
   let session = unsafe { Session::from_user_data(data) };
 
+  // Count every received frame so the JS layer can surface it via the
+  // `Http2Session` PerformanceObserver entry's `framesReceived` field.
+  // Mirrors Node's `Http2Session::OnFrameReceive` updating `statistics_`.
+  session.frames_received = session.frames_received.saturating_add(1);
+
   let ft = frame_type(frame) as u32;
   let ff = frame_flags(frame);
   #[allow(clippy::unnecessary_cast, reason = "cast needed for type alignment")]
@@ -1980,6 +1985,10 @@ pub struct Session {
   /// (see `HandlePingFrame` in node_http2.cc): there is no legitimate
   /// reason for a peer to send an unsolicited PING ACK.
   pub pending_pings: u32,
+  /// Total number of HTTP/2 frames received on this session. Mirrors
+  /// Node's `Http2Session::statistics_.frame_count`, surfaced via the
+  /// PerformanceObserver `Http2Session` entry's `framesReceived` field.
+  pub frames_received: u32,
 }
 
 impl Session {
@@ -2522,6 +2531,7 @@ impl Http2Session {
       remote_custom_settings: Vec::new(),
       pending_settings_acks: VecDeque::new(),
       pending_pings: 0,
+      frames_received: 0,
     }));
 
     // SAFETY: inner is valid (just allocated); callbacks and options are valid
@@ -3058,6 +3068,13 @@ impl Http2Session {
     // SAFETY: self.inner was allocated by Box::into_raw and is valid
     let session = unsafe { &*self.inner };
     session.outgoing_buffers.len() as u32
+  }
+
+  #[fast]
+  fn frames_received(&self) -> u32 {
+    // SAFETY: self.inner was allocated by Box::into_raw and is valid
+    let session = unsafe { &*self.inner };
+    session.frames_received
   }
 
   #[fast]

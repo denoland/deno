@@ -1784,6 +1784,7 @@
     "parallel/test-http2-options-server-request.js": {},
     "parallel/test-http2-options-server-response.js": {},
     "parallel/test-http2-origin.js": {},
+    "parallel/test-http2-pack-end-stream-flag.js": {},
     "parallel/test-http2-padding-aligned.js": {},
     "parallel/test-http2-perform-server-handshake.js": {},
     "parallel/test-http2-ping-settings-heapdump.js": {},
