@@ -400,6 +400,7 @@ const kWriteGeneric = Symbol("write-generic");
 const kSessions = Symbol("sessions");
 
 const kMaxOutstandingSettings = Symbol("maxOutstandingSettings");
+const kMaxOutstandingPings = Symbol("maxOutstandingPings");
 
 const kMaxFrameSize = (2 ** 24) - 1;
 const kMaxInt = (2 ** 32) - 1;
@@ -3685,6 +3686,10 @@ class Http2Session extends EventEmitter {
       options.maxOutstandingSettings | 0,
       2 ** 31 - 1,
     ) || 10;
+    this[kMaxOutstandingPings] = MathMin(
+      options.maxOutstandingPings | 0,
+      2 ** 31 - 1,
+    ) || 10;
     this[kStrictSingleValueFields] = options.strictSingleValueFields !== false;
 
     // Do not use nagle's algorithm
@@ -3832,22 +3837,54 @@ class Http2Session extends EventEmitter {
     if (payload) {
       validateBuffer(payload, "payload");
     }
-    if (payload && payload.length !== 8) {
+    // Use byteLength rather than length so non-Uint8Array views (e.g. a
+    // Uint16Array of 4 elements = 8 bytes) are correctly accepted, matching
+    // Node's Http2Session#ping which validates the underlying byte length.
+    if (payload && payload.byteLength !== 8) {
       throw new ERR_HTTP2_PING_LENGTH();
     }
     validateFunction(callback, "callback");
 
-    const cb = pingCallback(callback);
+    // Allocate an HTTP2PING async resource so async_hooks observers see
+    // init/before/after/destroy for each ping, matching Node's Http2Ping
+    // AsyncWrap in src/node_http2.cc.
+    const userCb = pingCallback(callback);
+    const asyncResource = new AsyncResource("HTTP2PING");
+    const cb = (ack, duration, ackPayload) => {
+      try {
+        asyncResource.runInAsyncScope(
+          userCb,
+          this,
+          ack,
+          duration,
+          ackPayload,
+        );
+      } finally {
+        asyncResource.emitDestroy();
+      }
+    };
+
     if (this.connecting || this.closed) {
       process.nextTick(cb, false, 0.0, payload);
-      return;
+      return true;
+    }
+
+    // Enforce per-session maxOutstandingPings. Matches Http2Session::AddPing
+    // in src/node_http2.cc: when the queue is full the ping is rejected
+    // synchronously (returns false) and the callback fires as cancelled.
+    const state = this[kState];
+    if (state.pendingPings.length >= this[kMaxOutstandingPings]) {
+      process.nextTick(cb, false, 0.0, undefined);
+      return false;
     }
 
     // nghttp2_submit_ping accepts a NULL pointer (sends 8 zero bytes), but
-    // the Rust op uses #[buffer] which requires a typed array. Match the
-    // upstream behavior by allocating an 8-byte payload here when the caller
-    // didn't supply one.
-    const buf = payload || Buffer.alloc(8);
+    // the Rust op uses #[buffer] which requires a Uint8Array view. Reinterpret
+    // any caller-supplied ArrayBufferView as 8 bytes (so e.g. Uint16Array
+    // payloads work) and allocate a fresh 8-byte buffer when none was given.
+    const buf = payload
+      ? new Uint8Array(payload.buffer, payload.byteOffset, payload.byteLength)
+      : Buffer.alloc(8);
 
     const ret = this[kHandle].ping(buf);
     if (ret !== 0) {
@@ -3859,7 +3896,7 @@ class Http2Session extends EventEmitter {
     // ClearOutstandingPings in src/node_http2.cc. The wrapped pingCallback
     // (registered via Http2Session#ping) is consumed FIFO when an inbound
     // PING ACK is delivered to onPing below.
-    this[kState].pendingPings.push(cb);
+    state.pendingPings.push(cb);
     // The native ping op queues the PING frame inside nghttp2 but the
     // session's actual transport is owned by the JS socket (setupHandle
     // overrides handle.sendPending), so we must trigger the flush ourselves
