@@ -390,23 +390,31 @@ function tryPackage(requestPath, exts, isMain, originalPath) {
 
   const filename = pathResolve(requestPath, pkg);
 
-  // Dynamically find the actual package root
+  // Find the package root: if the package.json is inside a node_modules
+  // directory, the root is the package folder directly under node_modules
+  // (e.g. node_modules/pkg/ or node_modules/@scope/pkg/). This allows
+  // nested package.json files (subpath exports) to have "main" fields that
+  // reference sibling directories within the same package.
   let packageRoot = requestPath;
   let current = requestPath;
-
   while (true) {
     const parent = pathDirname(current);
     if (parent === current) break;
-
-    // Stop traversing upward if we hit a node_modules boundary
-    const basename = op_require_path_basename(parent);
-    if (basename === "node_modules") break;
-
-    // If a parent directory also has package.json, we consider it the new root
-    if (stat(pathResolve(parent, "package.json")) === 0) {
-      packageRoot = parent;
+    const basename = op_require_path_basename(current);
+    if (basename === "node_modules") {
+      // current is the node_modules dir, so requestPath is either:
+      // - node_modules/<pkg>/...  -> root = node_modules/<pkg>
+      // - node_modules/@scope/<pkg>/... -> root = node_modules/@scope/<pkg>
+      const rel = requestPath.slice(current.length + 1);
+      const sep = rel.indexOf("/") !== -1 ? "/" : "\\";
+      const parts = StringPrototypeSplit(rel, sep);
+      if (parts.length > 0 && StringPrototypeStartsWith(parts[0], "@") && parts.length > 1) {
+        packageRoot = current + sep + parts[0] + sep + parts[1];
+      } else if (parts.length > 0) {
+        packageRoot = current + sep + parts[0];
+      }
+      break;
     }
-
     current = parent;
   }
 

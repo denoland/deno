@@ -2005,24 +2005,15 @@ impl<
     if let Some(main) = maybe_main.as_deref() {
       let package_path = package_json.path.parent().unwrap();
 
-      let mut package_root = package_path.to_path_buf();
-      let mut current = package_path.to_path_buf();
-
-      while let Some(parent) = current.parent() {
-        if parent
-          .file_name()
-          .is_some_and(|name| name == "node_modules")
-        {
-          break;
-        }
-
-        let p = parent.join("package.json");
-        if self.sys.is_file(Cow::Borrowed(&p)) {
-          package_root = parent.to_path_buf();
-        }
-
-        current = parent.to_path_buf();
-      }
+      // Find the package root: if the package.json is inside a
+      // node_modules directory, the root is the package folder directly
+      // under node_modules (e.g. node_modules/pkg/ or
+      // node_modules/@scope/pkg/). This allows nested package.json files
+      // (subpath exports) to have "main" fields that reference sibling
+      // directories within the same package.
+      let package_root =
+        find_package_root_from_node_modules(package_path)
+          .unwrap_or_else(|| package_path.to_path_buf());
 
       let guess = package_path.join(main).clean();
 
@@ -2761,6 +2752,34 @@ fn is_pe(data: &[u8]) -> bool {
   }
   let magic = u16::from_le_bytes([data[0], data[1]]);
   magic == 0x5a4d
+}
+
+/// Given a path inside a `node_modules` tree, find the package root by
+/// locating the `node_modules` path component and taking the next segment
+/// (or two for scoped packages like `@scope/pkg`). Returns `None` if no
+/// `node_modules` component is found, in which case the caller should
+/// fall back to the package.json's own directory.
+fn find_package_root_from_node_modules(path: &Path) -> Option<PathBuf> {
+  let mut components = path.components().peekable();
+  let mut prefix = PathBuf::new();
+  while let Some(c) = components.next() {
+    prefix.push(c);
+    if c.as_os_str() == "node_modules" {
+      // Next component is the package name (or scope).
+      let first = components.next()?;
+      let first_str = first.as_os_str().to_string_lossy();
+      if first_str.starts_with('@') {
+        // Scoped package: @scope/name
+        let second = components.next()?;
+        prefix.push(first);
+        prefix.push(second);
+      } else {
+        prefix.push(first);
+      }
+      return Some(prefix);
+    }
+  }
+  None
 }
 
 #[cfg(test)]
