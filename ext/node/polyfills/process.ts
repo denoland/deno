@@ -896,6 +896,11 @@ Object.defineProperty(process, "config", {
           llvm_version: "0.0",
           enable_lto: "false",
           host_arch: arch,
+          // Deno uses aws-lc-rs (a BoringSSL fork), not the Node-bundled
+          // OpenSSL. Setting node_shared_openssl mirrors the "externally-linked
+          // OpenSSL" branch in Node tests, which correctly handles our crypto
+          // behaviour (e.g. PKCS#1 v1.5 decryption that doesn't reject).
+          node_shared_openssl: 1,
         }),
       });
     }
