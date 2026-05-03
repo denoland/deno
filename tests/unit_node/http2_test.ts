@@ -820,6 +820,8 @@ Deno.test(
       "does-not-exist.txt",
     );
 
+    let nextTickCommittedFollowUpResponse = false;
+
     server.on("stream", (stream) => {
       stream.on("error", () => {});
       stream.respondWithFile(missingPath);
@@ -828,6 +830,11 @@ Deno.test(
         if (!stream.destroyed && !stream.closed && !stream.headersSent) {
           stream.respond({ ":status": 200 });
           stream.write("partial");
+          assert(
+            stream.headersSent,
+            "expected respond() to commit headers before open() failure",
+          );
+          nextTickCommittedFollowUpResponse = true;
         }
       });
     });
@@ -845,6 +852,10 @@ Deno.test(
           try {
             assertEquals(err.code, "ERR_HTTP2_STREAM_ERROR");
             assert(String(err.message).includes("NGHTTP2_INTERNAL_ERROR"));
+            assert(
+              nextTickCommittedFollowUpResponse,
+              "expected fs.open failure after follow-up respond() (lost nextTick vs I/O race)",
+            );
             client.close();
             server.close(() => resolve());
           } catch (e) {
@@ -869,6 +880,8 @@ Deno.test(
   async () => {
     const server = http2.createServer();
 
+    let nextTickCommittedFollowUpResponse = false;
+
     server.on("stream", (stream) => {
       stream.on("error", () => {});
       stream.respondWithFD(-1, {}, { statCheck: () => true });
@@ -877,6 +890,11 @@ Deno.test(
         if (!stream.destroyed && !stream.closed && !stream.headersSent) {
           stream.respond({ ":status": 200 });
           stream.write("partial");
+          assert(
+            stream.headersSent,
+            "expected respond() to commit headers before fstat() failure",
+          );
+          nextTickCommittedFollowUpResponse = true;
         }
       });
     });
@@ -894,6 +912,10 @@ Deno.test(
           try {
             assertEquals(err.code, "ERR_HTTP2_STREAM_ERROR");
             assert(String(err.message).includes("NGHTTP2_INTERNAL_ERROR"));
+            assert(
+              nextTickCommittedFollowUpResponse,
+              "expected fstat failure after follow-up respond() (lost nextTick vs I/O race)",
+            );
             client.close();
             server.close(() => resolve());
           } catch (e) {

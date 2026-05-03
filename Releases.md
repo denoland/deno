@@ -106,8 +106,8 @@ https://github.com/denoland/deno_install
 - fix(ext/node): honor weight option in http2 client.request and emit DEP0194
   (#33622)
 - fix(ext/node): match Node http2 server Http2Stream._destroy on abnormal RST
-  teardown (always synthesize ERR_HTTP2_STREAM_ERROR; raw
-  server.on("stream", ...) handlers that ignore peer resets should attach
+  teardown (synthesize ERR_HTTP2_STREAM_ERROR except internal respondWithFile /
+  respondWithFD reset after headers; other handlers should attach
   stream.on("error", () => {}) like Node's tests)
 - fix(ext/node): http2 createConnection support and per-frame socket writes
   (#33520)
