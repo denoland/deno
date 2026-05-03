@@ -304,11 +304,15 @@ pub enum PrivateEncryptDecryptError {
   UnknownPadding,
   #[class(generic)]
   #[property("code" = "ERR_OSSL_EVP_INVALID_DIGEST")]
-  #[error("error:060800A3:digital envelope routines::unknown message digest algorithm")]
+  #[error(
+    "error:060800A3:digital envelope routines::unknown message digest algorithm"
+  )]
   InvalidDigest,
   #[class(generic)]
   #[property("code" = "ERR_OSSL_RSA_OAEP_DECODING_ERROR")]
-  #[error("error:04099079:rsa routines:RSA_padding_check_PKCS1_OAEP_mgf1:oaep decoding error")]
+  #[error(
+    "error:04099079:rsa routines:RSA_padding_check_PKCS1_OAEP_mgf1:oaep decoding error"
+  )]
   OaepDecodingError,
 }
 
@@ -451,7 +455,8 @@ pub fn op_node_private_decrypt(
     }
     4 => {
       let oaep = create_oaep(oaep_hash.as_deref(), oaep_label.as_deref())?;
-      key.decrypt(oaep, &msg)
+      key
+        .decrypt(oaep, &msg)
         .map(|v| v.into())
         .map_err(|_| PrivateEncryptDecryptError::OaepDecodingError)
     }

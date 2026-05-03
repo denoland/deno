@@ -872,8 +872,7 @@ impl KeyObjectHandle {
             "PRIVATE KEY" => SecretDocument::from_pkcs8_der(&decrypted)
               .map_err(|_| AsymmetricPrivateKeyError::InvalidPkcs8PrivateKey)?,
             "DSA PRIVATE KEY" => {
-              let private_key =
-                parse_traditional_dsa_private_key(&decrypted)?;
+              let private_key = parse_traditional_dsa_private_key(&decrypted)?;
               return Ok(KeyObjectHandle::AsymmetricPrivate(
                 AsymmetricPrivateKey::Dsa(private_key),
               ));
