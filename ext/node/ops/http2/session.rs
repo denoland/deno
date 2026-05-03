@@ -827,6 +827,9 @@ unsafe extern "C" fn on_frame_recv_callback(
           session.update_remote_custom_settings_from_iv(iv);
         }
       }
+      // Mark handshake-time as over so on_frame_send_callback's protocol
+      // error hook only fires on early (pre-SETTINGS) GOAWAYs.
+      session.remote_settings_received = true;
       handle_settings_frame(session);
     } else {
       // ACK for one of our outgoing SETTINGS frames. Pop the FIFO of pending
@@ -1746,6 +1749,65 @@ unsafe extern "C" fn on_frame_send_callback(
     // SAFETY: union access valid because we verified type_ == NGHTTP2_GOAWAY
     let goaway = unsafe { &f.goaway };
     session.sent_goaway_code = Some(goaway.error_code);
+    // When nghttp2 detects a connection-level violation while parsing inbound
+    // bytes (e.g. an unknown extension frame whose declared length exceeds
+    // SETTINGS_MAX_FRAME_SIZE, or any other terminate_session_with_reason
+    // path), it queues a GOAWAY whose error_code carries the protocol-level
+    // reason. mem_recv itself returns success in this case, so without
+    // observing the outgoing GOAWAY we'd lose the error and the JS layer
+    // would just see a graceful close. Mirror Node's
+    // `Http2Session::OnFrameSent` GOAWAY branch: if the GOAWAY we're sending
+    // isn't NGHTTP2_NO_ERROR, surface it to JS through
+    // `onSessionInternalError(NGHTTP2_ERR_PROTO)` so the session is destroyed
+    // with the same `NghttpError("Protocol error")` Node produces.
+    if session.pending_user_goaway > 0 {
+      // User-initiated GOAWAY (from the `goaway()` op): consume one pending
+      // marker and stay quiet. nghttp2 only ever sends one GOAWAY per
+      // submit, so the user counter mirrors what we put on the wire.
+      //
+      // Known race: the marker is associated with a *count*, not with a
+      // specific outgoing frame. If a user `goaway()` and an internal
+      // `terminate_session_with_reason` GOAWAY are queued simultaneously and
+      // ship in the opposite order from how they were submitted, we'll
+      // attribute the internal GOAWAY to the user (no protocol error fired)
+      // and the user GOAWAY to nghttp2 (may fire if the user passed a
+      // non-NO_ERROR code and SETTINGS hasn't arrived yet). This is
+      // acceptable since racing `destroy()` against parser-induced internal
+      // GOAWAYs is not a real-world program shape, and the worst-case
+      // outcome is just a misclassified error -- not a crash or hang.
+      session.pending_user_goaway =
+        session.pending_user_goaway.saturating_sub(1);
+    } else if session.is_client
+      && goaway.error_code != ffi::NGHTTP2_NO_ERROR as u32
+      && !session.protocol_error_emitted
+      && !session.remote_settings_received
+    {
+      // nghttp2 itself queued this GOAWAY before SETTINGS exchange completed
+      // (e.g. via `terminate_session_with_reason` after parsing garbage that
+      // looks like an oversize unknown frame). Surface it to JS as
+      // `NghttpError("Protocol error")` so the session is destroyed with the
+      // same error Node produces (matches `test-http2-client-http1-server`).
+      //
+      // Why gate on `is_client`: the only case where nghttp2's internal
+      // GOAWAY otherwise vanishes is on the client side talking to a non-h2
+      // peer (the bytes are queued but never reach a listening h2 stack). On
+      // the server side, internal GOAWAYs are already routed through the
+      // normal close path; firing onSessionInternalError there destroys the
+      // server session before the GOAWAY bytes flush to the client, breaking
+      // tests like `test-http2-max-settings` that rely on the client seeing
+      // a connection-level error.
+      //
+      // Why gate on `!remote_settings_received`: late connection-level
+      // GOAWAYs originating from peer-malformed-frame echoes are surfaced
+      // through `onGoawayData`. Firing the protocol error hook for those too
+      // produced regressions in `test-http2-timeout-large-write-file.js`
+      // (uncaught Protocol error during legitimate session shutdown).
+      // Handshake-time failures are the only case where mem_recv silently
+      // swallows the error and we have to reach in via the send-side
+      // callback to surface it.
+      session.protocol_error_emitted = true;
+      invoke_session_internal_error(session, ffi::NGHTTP2_ERR_PROTO);
+    }
   }
   0
 }
@@ -2019,6 +2081,35 @@ pub struct Session {
   /// (see `HandlePingFrame` in node_http2.cc): there is no legitimate
   /// reason for a peer to send an unsolicited PING ACK.
   pub pending_pings: u32,
+  /// True after we've surfaced an internal protocol error to JS. Used by
+  /// `on_frame_send_callback`'s GOAWAY hook so we don't re-fire the
+  /// `onSessionInternalError` JS callback for every GOAWAY in a teardown
+  /// sequence (e.g. a peer GOAWAY echo).
+  pub protocol_error_emitted: bool,
+  /// Number of GOAWAYs the user has submitted via the `goaway()` op that
+  /// have not yet drained through `on_frame_send_callback`. Used to skip
+  /// the protocol-error hook for user-initiated GOAWAYs (e.g. a normal
+  /// `session.destroy(code)`); only nghttp2-internal GOAWAYs (queued from
+  /// `terminate_session_with_reason` after a protocol/frame-size violation)
+  /// should surface as `NghttpError("Protocol error")` to JS.
+  pub pending_user_goaway: u32,
+  /// Set true once we receive any SETTINGS frame from the peer. We use this
+  /// to gate the `on_frame_send_callback` protocol-error hook so it only
+  /// fires for handshake-time failures (where nghttp2 internally tears the
+  /// session down before SETTINGS exchange completes). Late connection-level
+  /// GOAWAYs originating from server-side state (e.g. timeout-driven
+  /// tear-downs that don't go through the user `goaway()` op) flow through
+  /// the normal close path instead.
+  pub remote_settings_received: bool,
+  /// True if this is a client session, false for server. Used to scope the
+  /// `on_frame_send_callback` protocol-error hook to client sessions only:
+  /// the hook exists to surface "client connected to non-h2 server" as an
+  /// error (otherwise nghttp2's internal GOAWAY is silently swallowed).
+  /// On the server side, an internal GOAWAY (e.g. from maxSettings violation
+  /// in `test-http2-max-settings`) is already handled by the normal close
+  /// path — firing onSessionInternalError there destroys the session before
+  /// the GOAWAY bytes flush, preventing the client from seeing the error.
+  pub is_client: bool,
 }
 
 impl Session {
@@ -2564,6 +2655,10 @@ impl Http2Session {
       remote_custom_settings: Vec::new(),
       pending_settings_acks: VecDeque::new(),
       pending_pings: 0,
+      protocol_error_emitted: false,
+      pending_user_goaway: 0,
+      remote_settings_received: false,
+      is_client: matches!(session_type, SessionType::Client),
     }));
 
     // SAFETY: inner is valid (just allocated); callbacks and options are valid
@@ -2891,6 +2986,9 @@ impl Http2Session {
     }
     // SAFETY: self.inner was allocated by Box::into_raw and is valid
     let session = unsafe { &mut *self.inner };
+    // Mark this GOAWAY as user-initiated so on_frame_send_callback skips the
+    // internal-protocol-error hook when nghttp2 ships it.
+    session.pending_user_goaway = session.pending_user_goaway.saturating_add(1);
     session.send_pending_data();
   }
 
