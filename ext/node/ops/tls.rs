@@ -189,13 +189,19 @@ pub fn op_set_default_ca_certificates(
   state: &mut OpState,
   #[serde] certs: Vec<String>,
 ) {
+  // Treat `setDefaultCACertificates([])` as "use defaults" (None) rather
+  // than "use no custom CAs" (Some(vec![])).  The two are semantically
+  // identical for cert validation, but `Some(vec![])` would force the
+  // default-path verifier cache off in `build_client_config` and silently
+  // disable session resumption.
+  let normalized = if certs.is_empty() { None } else { Some(certs) };
   if let Some(tls_state) = state.try_borrow_mut::<NodeTlsState>() {
-    tls_state.custom_ca_certs = Some(certs);
+    tls_state.custom_ca_certs = normalized;
     // Custom CA list changed; previously cached verifier no longer matches.
     tls_state.cached_default_verifier = None;
   } else {
     state.put(NodeTlsState {
-      custom_ca_certs: Some(certs),
+      custom_ca_certs: normalized,
       client_session_store: Arc::new(
         deno_tls::rustls::client::ClientSessionMemoryCache::new(256),
       ),

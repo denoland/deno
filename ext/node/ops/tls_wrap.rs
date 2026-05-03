@@ -3451,15 +3451,17 @@ fn build_client_config(
 
   // Install a stable "no client cert" resolver Arc on the default path so
   // rustls's `Arc::downgrade(&client_creds)` identity check keeps the
-  // resumed session compatible across `tls.connect()` calls.
+  // resumed session compatible across `tls.connect()` calls.  Seed the
+  // cache from the freshly built config on first call, then unconditionally
+  // overwrite `config.client_auth_cert_resolver` from the cache so every
+  // connection (including the first) hands rustls the same Arc identity.
   if is_default_path {
     let state = op_state.borrow_mut::<NodeTlsState>();
-    if state.cached_no_client_auth.is_none() {
-      state.cached_no_client_auth =
-        Some(config.client_auth_cert_resolver.clone());
-    } else if let Some(resolver) = &state.cached_no_client_auth {
-      config.client_auth_cert_resolver = resolver.clone();
-    }
+    let resolver = state
+      .cached_no_client_auth
+      .get_or_insert_with(|| config.client_auth_cert_resolver.clone())
+      .clone();
+    config.client_auth_cert_resolver = resolver;
   }
 
   Some((config, final_verify_error))
