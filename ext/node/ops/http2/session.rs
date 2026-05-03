@@ -458,13 +458,21 @@ impl Http2Options {
           ffi::nghttp2_option_set_peer_max_concurrent_streams(options, 100);
         }
 
-        let max_outstanding_pings =
-          buffer[OptionsIndex::MaxOutstandingPings as usize];
-        if max_outstanding_pings > 0 {
-          ffi::nghttp2_option_set_max_outbound_ack(
-            options,
-            max_outstanding_pings as usize,
-          );
+        // Gate maxOutstandingPings on its flag bit. The optionsBuffer is a
+        // process-global Uint32Array reused across sessions, so a prior
+        // session's value would otherwise leak into a later session that
+        // didn't pass the option and could lower nghttp2's max_outbound_ack
+        // (e.g. to 1), making a legitimate second concurrent ping trip
+        // NGHTTP2_ERR_FLOODED.
+        if flags & (1 << OptionsIndex::MaxOutstandingPings as u32) != 0 {
+          let max_outstanding_pings =
+            buffer[OptionsIndex::MaxOutstandingPings as usize];
+          if max_outstanding_pings > 0 {
+            ffi::nghttp2_option_set_max_outbound_ack(
+              options,
+              max_outstanding_pings as usize,
+            );
+          }
         }
 
         // Note: maxOutstandingSettings is a Node.js-internal queue limit for
