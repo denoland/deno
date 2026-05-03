@@ -245,10 +245,18 @@ export function setDefaultCACertificates(
 
   op_set_default_ca_certificates(normalized);
 
-  lazyRootCertificates = null;
+  // The bundled root certificates (`rootCertificates` proxy / `lazyRootCertificates`)
+  // come from the webpki Mozilla bundle and don't change here, so don't
+  // invalidate them — doing so would re-enter `ensureLazyRootCertificates`
+  // and try to mutate a frozen target. Only the 'default' cache reflects what
+  // we just wrote.
   ArrayPrototypeForEach(
     ObjectKeys(cachedCACertificates),
-    (key) => delete cachedCACertificates[key],
+    (key) => {
+      if (key !== "bundled") {
+        delete cachedCACertificates[key];
+      }
+    },
   );
 }
 
