@@ -404,10 +404,10 @@ impl<TSys: WorkspaceFactorySys> WorkspaceFactory<TSys> {
     self
       .node_modules_linker_mode
       .get_or_try_init(|| {
-        if let Some(process_state) = &self.options.npm_process_state {
-          if let Some(mode) = process_state.linker_mode {
-            return Ok(mode);
-          }
+        if let Some(process_state) = &self.options.npm_process_state
+          && let Some(mode) = process_state.linker_mode
+        {
+          return Ok(mode);
         }
         let mode = if let Some(flag) = self.options.node_modules_linker {
           flag

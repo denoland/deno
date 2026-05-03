@@ -2776,6 +2776,7 @@ fn clean_subcommand() -> Command {
           .requires("except"),
       )
       .arg(node_modules_dir_arg().requires("except"))
+      .arg(node_modules_linker_arg().requires("except"))
       .arg(vendor_arg().requires("except"))
   })
 }
