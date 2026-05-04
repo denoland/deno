@@ -883,35 +883,33 @@ let _configCache: Record<string, unknown> | undefined;
 Object.defineProperty(process, "config", {
   get() {
     if (_configCache === undefined) {
-      const variables: Record<string, unknown> = {
-        // Match Node's lib/internal/process/per_thread.js process.config:
-        // `node_module_version` is an integer ABI version exposed for native
-        // addons. Mirror process.versions.modules so a single source of truth
-        // wins.
-        node_module_version: Number(versions.modules),
-        llvm_version: "0.0",
-        enable_lto: "false",
-        host_arch: arch,
-      };
       // Internal escape hatch for the node_compat test runner: allows a
       // single test to opt into the "externally-linked OpenSSL" branch of
       // upstream Node test fixtures, where Deno's aws-lc-rs/BoringSSL
       // backend matches that branch's expectations. Not for user code; the
       // env var is reserved (DENO_INTERNAL_*) and undocumented.
+      let forceSharedOpenssl = false;
       try {
-        if (
-          Deno.env.get("DENO_INTERNAL_NODE_TEST_FORCE_SHARED_OPENSSL") === "1"
-        ) {
-          variables.node_shared_openssl = 1;
-        }
+        forceSharedOpenssl =
+          Deno.env.get("DENO_INTERNAL_NODE_TEST_FORCE_SHARED_OPENSSL") === "1";
       } catch {
-        // Permission denied or no env access; leave variables alone.
+        // Permission denied or no env access; leave forceSharedOpenssl false.
       }
       _configCache = Object.freeze({
         target_defaults: Object.freeze({
           default_configuration: "Release",
         }),
-        variables: Object.freeze(variables),
+        variables: Object.freeze({
+          // Match Node's lib/internal/process/per_thread.js process.config:
+          // `node_module_version` is an integer ABI version exposed for native
+          // addons. Mirror process.versions.modules so a single source of truth
+          // wins.
+          "node_module_version": Number(versions.modules),
+          "llvm_version": "0.0",
+          "enable_lto": "false",
+          "host_arch": arch,
+          ...(forceSharedOpenssl ? { "node_shared_openssl": 1 } : {}),
+        }),
       });
     }
     return _configCache;
