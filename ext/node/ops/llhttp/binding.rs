@@ -817,6 +817,7 @@ unsafe fn consume_read_callback(
     callbacks: callbacks_static,
   };
 
+  let saved_data = inner.parser.data;
   inner.parser.data = &mut ctx as *mut ExecuteContext as *mut std::ffi::c_void;
 
   let err = unsafe {
@@ -827,7 +828,7 @@ unsafe fn consume_read_callback(
     )
   };
 
-  inner.parser.data = std::ptr::null_mut();
+  inner.parser.data = saved_data;
   inner.current_buffer_data = std::ptr::null();
   inner.current_buffer_len = 0;
 
@@ -974,6 +975,12 @@ impl HTTPParser {
       callbacks: callbacks_static,
     };
 
+    // Save and restore parser.data to support re-entrant execute() calls.
+    // If a JS callback (e.g. the 'information' event handler for 100 Continue)
+    // triggers another execute() call, the inner execute must restore the outer
+    // context pointer so subsequent callbacks from the outer llhttp_execute
+    // still have a valid ExecuteContext.
+    let saved_data = inner.parser.data;
     inner.parser.data =
       &mut ctx as *mut ExecuteContext as *mut std::ffi::c_void;
 
@@ -985,7 +992,7 @@ impl HTTPParser {
       )
     };
 
-    inner.parser.data = std::ptr::null_mut();
+    inner.parser.data = saved_data;
     inner.current_buffer_data = std::ptr::null();
     inner.current_buffer_len = 0;
 
@@ -1049,12 +1056,13 @@ impl HTTPParser {
       callbacks: callbacks_static,
     };
 
+    let saved_data = inner.parser.data;
     inner.parser.data =
       &mut ctx as *mut ExecuteContext as *mut std::ffi::c_void;
 
     let err = unsafe { sys::llhttp_finish(&mut inner.parser) };
 
-    inner.parser.data = std::ptr::null_mut();
+    inner.parser.data = saved_data;
 
     if err != sys::HPE_OK { -1 } else { 0 }
   }
