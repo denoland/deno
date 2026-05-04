@@ -572,3 +572,21 @@ Deno.test(function urlWindowsFilePathUrlParse() {
   assertEquals(url.protocol, "file:");
   assertEquals(url.pathname, "/C:/folder/file.txt");
 });
+
+Deno.test(function urlWindowsFilePathPercentEncodesSpaces() {
+  assertEquals(
+    new URL("C:\\path with space\\file.txt").href,
+    "file:///C:/path%20with%20space/file.txt",
+  );
+});
+
+// Regression guard: `letter:/...` and `letter://...` shapes must NOT be
+// rewritten to `file:///` — they are scheme URLs, not Windows drive paths.
+Deno.test(function urlSchemeAuthorityNotMisinterpretedAsDrive() {
+  assertEquals(new URL("a://example.net").href, "a://example.net");
+  assertEquals(new URL("h://.").href, "h://.");
+  assertEquals(new URL("w://x:0").href, "w://x:0");
+  // `c:/foo` is a `c:` scheme URL, not a Windows drive path. Forward-slash
+  // drive paths require explicit `file:///C:/foo`.
+  assertEquals(new URL("c:/foo").href, "c:/foo");
+});

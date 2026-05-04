@@ -57,6 +57,12 @@ pub fn op_url_parse(
 /// followed by `\`. This is detected in the "scheme start state" of the URL
 /// parser: the single letter would be parsed as a scheme, but the `:\`
 /// combination signals a Windows path instead.
+///
+/// Forward-slash drive paths (e.g. `C:/path`) are intentionally NOT converted:
+/// the `letter:/` shape is ambiguous with `letter:` schemes (e.g. `c:/foo`,
+/// `a://example.net`), and converting it would regress legitimate scheme URLs.
+/// Callers wanting forward-slash drive paths should pass `file:///C:/path`
+/// explicitly. This matches Node's current behavior.
 #[inline]
 fn maybe_convert_windows_path_to_file_url(href: &str) -> Option<String> {
   let bytes = href.as_bytes();
