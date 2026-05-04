@@ -721,6 +721,20 @@ impl CliFactory {
     self.services.workspace_factory.get_or_try_init(|| {
       let initial_cwd = match self.overrides.initial_cwd.clone() {
         Some(v) => v,
+        // For modes that don't depend on a real cwd (REPL, eval), fall back
+        // to a sentinel path when current_dir() fails — matches Node.js
+        // semantics where `node --interactive` works even after the cwd has
+        // been unlinked.
+        None
+          if matches!(
+            self.flags.subcommand,
+            DenoSubcommand::Repl(_) | DenoSubcommand::Eval(_)
+          ) =>
+        {
+          crate::util::env::resolve_cwd_or_fallback(
+            self.flags.initial_cwd.as_deref(),
+          )
+        }
         None => {
           crate::util::env::resolve_cwd(self.flags.initial_cwd.as_deref())?
             .into_owned()

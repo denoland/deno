@@ -697,6 +697,7 @@
     "parallel/test-crypto-webcrypto-aes-decrypt-tag-too-small.js": {},
     "parallel/test-crypto-worker-thread.js": {},
     "parallel/test-crypto-x509.js": {},
+    "parallel/test-cwd-enoent-repl.js": {},
     "parallel/test-datetime-change-notify.js": {},
     "parallel/test-debugger-address.mjs": {
       "ignore": true,
