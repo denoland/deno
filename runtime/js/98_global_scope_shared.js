@@ -43,7 +43,7 @@ import {
   setInterval as nodeSetInterval,
   setTimeout as nodeSetTimeout,
 } from "node:timers";
-import { loadWebGPU } from "ext:deno_webgpu/00_init.js";
+const { loadWebGPU } = core.loadExtScript("ext:deno_webgpu/00_init.js");
 import { unstableIds } from "ext:runtime/90_deno_ns.js";
 
 const loadImage = core.createLazyLoader("ext:deno_image/01_image.js");
