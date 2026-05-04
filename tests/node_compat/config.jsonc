@@ -1630,6 +1630,7 @@
     "parallel/test-http-uncaught-from-request-callback.js": {},
     "parallel/test-http-unix-socket-keep-alive.js": {},
     "parallel/test-http-unix-socket.js": {},
+    "parallel/test-http-upgrade-advertise.js": {},
     "parallel/test-http-upgrade-agent.js": {},
     "parallel/test-http-upgrade-binary.js": {},
     "parallel/test-http-upgrade-client.js": {},
