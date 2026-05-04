@@ -63,6 +63,10 @@ interface Cache {
     request: RequestInfo | URL,
     options?: CacheQueryOptions,
   ): Promise<boolean>;
+  /**
+   * Return an array of all request objects stored in the cache.
+   */
+  keys(): Promise<Request[]>;
 }
 
 /** @category Cache */

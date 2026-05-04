@@ -5,6 +5,7 @@
 const { core, primordials } = globalThis.__bootstrap;
 const {
   op_cache_delete,
+  op_cache_keys,
   op_cache_match,
   op_cache_put,
   op_cache_storage_delete,
@@ -320,6 +321,19 @@ class Cache {
     // Step 5.4-5.5: don't apply in this context.
 
     return responses;
+  }
+
+  async keys() {
+    webidl.assertBranded(this, CachePrototype);
+    const urls = await op_cache_keys({
+      cacheId: this[_id],
+    });
+    // Convert URLs to Request objects
+    const requests = [];
+    for (let i = 0; i < urls.length; ++i) {
+      requests.push(new Request(urls[i]));
+    }
+    return requests;
   }
 
   [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {

@@ -305,3 +305,42 @@ Deno.test(async function cachePutResource() {
   const res = await cache.match(request);
   assertEquals(await res?.text(), "Contents".repeat(1024));
 });
+
+
+Deno.test(async function cacheKeys() {
+  const cacheName = "cache-keys-test";
+  const cache = await caches.open(cacheName);
+  
+  // Test empty cache
+  const emptyKeys = await cache.keys();
+  assertEquals(emptyKeys.length, 0);
+  
+  // Add some entries
+  const urls = [
+    "https://example.com/a",
+    "https://example.com/b",
+    "https://example.com/c",
+  ];
+  
+  for (const url of urls) {
+    await cache.put(url, new Response(`response for ${url}`));
+  }
+  
+  // Get keys
+  const keys = await cache.keys();
+  assertEquals(keys.length, 3);
+  
+  // Verify all keys are Request objects
+  for (const key of keys) {
+    assert(key instanceof Request);
+  }
+  
+  // Verify all expected URLs are present
+  const keyUrls = keys.map((req) => req.url);
+  for (const url of urls) {
+    assert(keyUrls.includes(url), `Expected URL ${url} to be in keys`);
+  }
+  
+  // Clean up
+  assert(await caches.delete(cacheName));
+});

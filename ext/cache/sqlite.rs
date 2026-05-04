@@ -381,6 +381,26 @@ impl SqliteBackedCache {
     })
     .await?
   }
+
+  pub async fn keys(
+    &self,
+    request: crate::CacheKeysRequest,
+  ) -> Result<Vec<String>, CacheError> {
+    let db = self.connection.clone();
+    spawn_blocking(move || {
+      let db = db.lock();
+      let mut stmt = db.prepare(
+        "SELECT request_url FROM request_response_list WHERE cache_id = ?1 ORDER BY id",
+      )?;
+      let rows = stmt.query_map([request.cache_id], |row| row.get::<_, String>(0))?;
+      let mut urls = Vec::new();
+      for row in rows {
+        urls.push(row?);
+      }
+      Ok::<Vec<String>, CacheError>(urls)
+    })
+    .await?
+  }
 }
 
 async fn insert_cache_asset(

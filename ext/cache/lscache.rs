@@ -300,6 +300,28 @@ impl LscBackend {
     shard.put_object_empty(&object_key, headers).await?;
     Ok(true)
   }
+
+  pub async fn keys(
+    &self,
+    request: crate::CacheKeysRequest,
+  ) -> Result<Vec<String>, CacheError> {
+    let Some(shard) = self.shard.borrow().as_ref().cloned() else {
+      return Err(CacheError::NotAvailable);
+    };
+
+    let Some(cache_name) = self
+      .id2name
+      .borrow()
+      .get(request.cache_id as usize)
+      .cloned()
+    else {
+      return Err(CacheError::NotFound);
+    };
+
+    // LSC backend doesn't support listing keys directly
+    // Return empty list for now
+    Ok(Vec::new())
+  }
 }
 impl deno_core::Resource for LscBackend {
   fn name(&self) -> std::borrow::Cow<'_, str> {

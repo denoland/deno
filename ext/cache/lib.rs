@@ -106,6 +106,7 @@ deno_core::extension!(deno_cache,
     op_cache_put,
     op_cache_match,
     op_cache_delete,
+    op_cache_keys,
   ],
   lazy_loaded_js = [ "01_cache.js" ],
   options = {
@@ -156,6 +157,12 @@ pub struct CacheMatchResponseMeta {
 pub struct CacheDeleteRequest {
   pub cache_id: i64,
   pub request_url: String,
+}
+
+#[derive(Deserialize, Serialize, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct CacheKeysRequest {
+  pub cache_id: i64,
 }
 
 #[derive(Clone)]
@@ -233,6 +240,16 @@ impl CacheImpl {
     match self {
       Self::Sqlite(cache) => cache.delete(request).await,
       Self::Lsc(cache) => cache.delete(request).await,
+    }
+  }
+
+  pub async fn keys(
+    &self,
+    request: CacheKeysRequest,
+  ) -> Result<Vec<String>, CacheError> {
+    match self {
+      Self::Sqlite(cache) => cache.keys(request).await,
+      Self::Lsc(cache) => cache.keys(request).await,
     }
   }
 }
@@ -368,6 +385,16 @@ pub async fn op_cache_delete(
 ) -> Result<bool, CacheError> {
   let cache = get_cache(&state)?;
   cache.delete(request).await
+}
+
+#[op2]
+#[serde]
+pub async fn op_cache_keys(
+  state: Rc<RefCell<OpState>>,
+  #[serde] request: CacheKeysRequest,
+) -> Result<Vec<String>, CacheError> {
+  let cache = get_cache(&state)?;
+  cache.keys(request).await
 }
 
 pub fn get_cache(
