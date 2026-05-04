@@ -1,4 +1,4 @@
-let intervalHandle: number;
+let intervalHandle: ReturnType<typeof setInterval>;
 let firstIntervalPromise: Promise<void>;
 
 addEventListener("load", () => {

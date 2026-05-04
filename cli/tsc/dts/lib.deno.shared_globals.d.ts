@@ -367,6 +367,7 @@ declare function setTimeout<TArgs extends any[]>(
   delay?: number,
   ...args: TArgs
 ): NodeJS.Timeout;
+/** @category Platform */
 declare function setTimeout(
   cb: string | ((...args: any[]) => void),
   delay?: number,
@@ -387,6 +388,7 @@ declare function setInterval<TArgs extends any[]>(
   delay?: number,
   ...args: TArgs
 ): NodeJS.Timeout;
+/** @category Platform */
 declare function setInterval(
   cb: string | ((...args: any[]) => void),
   delay?: number,

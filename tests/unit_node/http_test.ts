@@ -1474,7 +1474,7 @@ Deno.test("[node/http] server closeIdleConnections shutdown", async () => {
 });
 
 Deno.test("[node/http] client closing a streaming response doesn't terminate server", async () => {
-  let interval: number;
+  let interval: ReturnType<typeof setInterval>;
   const server = http.createServer((req, res) => {
     res.writeHead(200, { "Content-Type": "text/plain" });
     interval = setInterval(() => {
@@ -1523,7 +1523,7 @@ Deno.test("[node/http] client closing a streaming response doesn't terminate ser
 });
 
 Deno.test("[node/http] client closing a streaming request doesn't terminate server", async () => {
-  let interval: number;
+  let interval: ReturnType<typeof setInterval>;
   let uploadedData = "";
   let requestError: Error | null = null;
   const deferred1 = Promise.withResolvers<void>();

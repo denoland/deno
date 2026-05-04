@@ -1,4 +1,4 @@
-let interval: number | null = null;
+let interval: ReturnType<typeof setInterval> | null = null;
 addEventListener("load", () => {
   if (interval) {
     throw new Error("Interval is already set");

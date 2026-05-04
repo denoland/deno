@@ -217,7 +217,7 @@ Deno.test(async function intervalCancelSuccess() {
 });
 
 Deno.test(async function intervalOrdering() {
-  const timers: number[] = [];
+  const timers: ReturnType<typeof setTimeout>[] = [];
   let timeouts = 0;
   function onTimeout() {
     ++timeouts;

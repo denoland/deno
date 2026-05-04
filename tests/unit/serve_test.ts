@@ -4211,7 +4211,7 @@ Deno.test(
     const ac = new AbortController();
 
     console.log("Starting server", servePort);
-    let timer: number | undefined = undefined;
+    let timer: ReturnType<typeof setInterval> | undefined = undefined;
     let _controller;
 
     await using server = Deno.serve(

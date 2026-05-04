@@ -23,7 +23,6 @@ const controller = new AbortController();
 controller.abort("reason"); // in the NodeJS declaration it doesn't have a reason
 
 // Some globals are not the same between Node and Deno.
-// @ts-expect-error incompatible types between Node and Deno
 console.log("setTimeout 1", globalThis.setTimeout === globals.getSetTimeout());
 
 // Super edge case where some Node code deletes a global where the
