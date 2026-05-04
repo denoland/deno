@@ -1,0 +1,16 @@
+{
+  "name": "npm-catalog-overrides-workspaces-obj-test",
+  "version": "0.0.1",
+  "dependencies": {
+    "@denotest/different-nested-dep": "1.0.0"
+  },
+  "workspaces": {
+    "packages": ["packages/*"],
+    "catalog": {
+      "@denotest/different-nested-dep-child": "2.0.0"
+    }
+  },
+  "overrides": {
+    "@denotest/different-nested-dep-child": "catalog:"
+  }
+}
