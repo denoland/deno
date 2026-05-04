@@ -2781,7 +2781,7 @@ fn find_package_root_from_node_modules(path: &Path) -> Option<PathBuf> {
       return None;
     }
     prefix.push(first);
-    prefix.push(&components[nm_idx + 2]);
+    prefix.push(components[nm_idx + 2]);
   } else {
     prefix.push(first);
   }
