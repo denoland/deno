@@ -1641,6 +1641,7 @@
     "parallel/test-http-write-empty-string.js": {},
     "parallel/test-http-write-head-2.js": {},
     "parallel/test-http-write-head-after-set-header.js": {},
+    "parallel/test-http-write-head.js": {},
     "parallel/test-http-zero-length-write.js": {},
     "parallel/test-http-zerolengthbuffer.js": {},
     "parallel/test-http.js": {},
