@@ -12,21 +12,26 @@ const {
   SymbolSpecies,
 } = primordials;
 import {
+  op_node_aes_unwrap_key,
+  op_node_aes_wrap_key,
   op_node_cipheriv_encrypt,
   op_node_cipheriv_final,
   op_node_cipheriv_set_aad,
   op_node_cipheriv_take,
   op_node_create_cipheriv,
   op_node_create_decipheriv,
+  op_node_create_private_key,
   op_node_decipheriv_auth_tag,
   op_node_decipheriv_decrypt,
   op_node_decipheriv_final,
   op_node_decipheriv_set_aad,
+  op_node_export_private_key_pem,
   op_node_export_secret_key,
   op_node_private_decrypt,
   op_node_private_encrypt,
   op_node_public_decrypt,
   op_node_public_encrypt,
+  op_node_validate_oaep_hash,
 } from "ext:core/ops";
 
 import { Buffer } from "node:buffer";
@@ -34,6 +39,8 @@ import process from "node:process";
 import type { TransformOptions } from "ext:deno_node/_stream.d.ts";
 import { Transform } from "node:stream";
 import {
+  createPrivateKey,
+  createPublicKey,
   getArrayBufferOrView,
   KeyObject,
 } from "ext:deno_node/internal/crypto/keys.ts";
@@ -67,6 +74,12 @@ function opensslError(code: string, reason: string): NodeError {
   const err = new NodeError(code, reason);
   (err as any).reason = reason;
   return err;
+}
+
+function isAesWrap(cipher: string): boolean {
+  return cipher === "aes128-wrap" || cipher === "aes192-wrap" ||
+    cipher === "aes256-wrap" || cipher === "id-aes128-wrap-pad" ||
+    cipher === "id-aes192-wrap-pad" || cipher === "id-aes256-wrap-pad";
 }
 
 export function isStringOrBuffer(
@@ -227,13 +240,26 @@ export function Cipheriv(
 
   this._blockSize = getBlockSize(cipher);
   this._cache = new BlockModeCache(false, this._blockSize);
-  this._context = op_node_create_cipheriv(
-    cipher,
-    toU8(key),
-    toU8(iv),
-    authTagLength,
-  );
-  this._needsBlockCache =
+  this._isAesWrap = isAesWrap(cipher);
+
+  if (this._isAesWrap) {
+    this._aesWrapAlgorithm = cipher;
+    this._aesWrapKey = toU8(key);
+    this._aesWrapIv = toU8(iv);
+    this._context = 1; // non-zero sentinel; not used for wrap ops
+  } else {
+    this._context = op_node_create_cipheriv(
+      cipher,
+      toU8(key),
+      toU8(iv),
+      authTagLength,
+    );
+    if (this._context == 0) {
+      throw new TypeError("Unknown cipher");
+    }
+  }
+
+  this._needsBlockCache = !this._isAesWrap &&
     !(cipher == "aes-128-gcm" || cipher == "aes-256-gcm" ||
       cipher == "aes-128-ctr" || cipher == "aes-192-ctr" ||
       cipher == "aes-256-ctr" || cipher == "chacha20-poly1305");
@@ -241,10 +267,6 @@ export function Cipheriv(
   this._autoPadding = true;
   this._finalized = false;
   this._decoder = undefined;
-
-  if (this._context == 0) {
-    throw new TypeError("Unknown cipher");
-  }
 }
 
 Object.setPrototypeOf(Cipheriv.prototype, Transform.prototype);
@@ -255,6 +277,11 @@ Cipheriv.prototype.final = function (
 ): Buffer | string {
   if (this._finalized) {
     throw new ERR_CRYPTO_INVALID_STATE("final");
+  }
+
+  if (this._isAesWrap) {
+    this._finalized = true;
+    return encoding === "buffer" ? Buffer.from([]) : "";
   }
 
   _lazyInitCipherDecoder(this, encoding);
@@ -344,6 +371,21 @@ Cipheriv.prototype.update = function (
   }
 
   _lazyInitCipherDecoder(this, outputEncoding);
+
+  if (this._isAesWrap) {
+    const output = Buffer.from(
+      op_node_aes_wrap_key(
+        this._aesWrapAlgorithm,
+        this._aesWrapKey,
+        this._aesWrapIv,
+        buf,
+      ),
+    );
+    if (outputEncoding !== "buffer") {
+      return this._decoder!.write(output);
+    }
+    return output;
+  }
 
   let output: Buffer;
   if (!this._needsBlockCache) {
@@ -480,13 +522,26 @@ export function Decipheriv(
   this._autoPadding = true;
   this._blockSize = getBlockSize(cipher);
   this._cache = new BlockModeCache(this._autoPadding, this._blockSize);
-  this._context = op_node_create_decipheriv(
-    cipher,
-    toU8(key),
-    toU8(iv),
-    authTagLength,
-  );
-  this._needsBlockCache =
+  this._isAesWrap = isAesWrap(cipher);
+
+  if (this._isAesWrap) {
+    this._aesWrapAlgorithm = cipher;
+    this._aesWrapKey = toU8(key);
+    this._aesWrapIv = toU8(iv);
+    this._context = 1; // non-zero sentinel; not used for wrap ops
+  } else {
+    this._context = op_node_create_decipheriv(
+      cipher,
+      toU8(key),
+      toU8(iv),
+      authTagLength,
+    );
+    if (this._context == 0) {
+      throw new TypeError("Unknown cipher");
+    }
+  }
+
+  this._needsBlockCache = !this._isAesWrap &&
     !(cipher == "aes-128-gcm" || cipher == "aes-256-gcm" ||
       cipher == "aes-128-ctr" || cipher == "aes-192-ctr" ||
       cipher == "aes-256-ctr" || cipher == "chacha20-poly1305");
@@ -496,10 +551,6 @@ export function Decipheriv(
   this._authTag = undefined;
   this._finalized = false;
   this._decoder = undefined;
-
-  if (this._context == 0) {
-    throw new TypeError("Unknown cipher");
-  }
 }
 
 Object.setPrototypeOf(Decipheriv.prototype, Transform.prototype);
@@ -510,6 +561,11 @@ Decipheriv.prototype.final = function (
 ): Buffer | string {
   if (this._finalized) {
     throw new ERR_CRYPTO_INVALID_STATE("final");
+  }
+
+  if (this._isAesWrap) {
+    this._finalized = true;
+    return encoding === "buffer" ? Buffer.from([]) : "";
   }
 
   _lazyInitDecipherDecoder(this, encoding);
@@ -624,6 +680,21 @@ Decipheriv.prototype.update = function (
 
   _lazyInitDecipherDecoder(this, outputEncoding);
 
+  if (this._isAesWrap) {
+    const output = Buffer.from(
+      op_node_aes_unwrap_key(
+        this._aesWrapAlgorithm,
+        this._aesWrapKey,
+        this._aesWrapIv,
+        buf,
+      ),
+    );
+    if (outputEncoding !== "buffer") {
+      return this._decoder!.write(output);
+    }
+    return output;
+  }
+
   let output;
   if (!this._needsBlockCache) {
     output = Buffer.allocUnsafe(buf.length);
@@ -687,12 +758,38 @@ function checkUnsupportedKeyType(key) {
   }
 }
 
-function normalizeOaepHash(hash: string | undefined): string | undefined {
+function normalizeOaepHash(hash: unknown): string | undefined {
+  if (hash === undefined) return undefined;
+  if (typeof hash !== "string") {
+    throw new ERR_INVALID_ARG_TYPE("oaepHash", "string", hash);
+  }
   if (!hash) return undefined;
   // Normalize to lowercase and strip WebCrypto-style hyphens
   // (e.g. "SHA-256" -> "sha256") but keep sha3/sha512 sub-variants
   // (e.g. "sha3-256", "sha512-224") intact.
-  return hash.toLowerCase().replace(/^(sha)-(?!3-)/, "$1");
+  const normalized = hash.toLowerCase().replace(/^(sha)-(?!3-)/, "$1");
+  // Validate before key parsing so unknown hash throws ERR_OSSL_EVP_INVALID_DIGEST
+  // even when the key itself cannot be parsed as a private key.
+  op_node_validate_oaep_hash(normalized);
+  return normalized;
+}
+
+function bufferEncodingFrom(keyOptions: unknown): string | undefined {
+  return (keyOptions as { encoding?: string } | null)?.encoding;
+}
+
+function validateOaepLabel(
+  label: unknown,
+): ArrayBufferView | ArrayBuffer | undefined {
+  if (label === undefined) return undefined;
+  if (!isArrayBufferView(label) && !isAnyArrayBuffer(label)) {
+    throw new ERR_INVALID_ARG_TYPE(
+      "oaepLabel",
+      ["Buffer", "TypedArray", "DataView"],
+      label,
+    );
+  }
+  return label as ArrayBufferView | ArrayBuffer;
 }
 
 export function privateEncrypt(
@@ -703,9 +800,13 @@ export function privateEncrypt(
   const { data } = prepareKey(privateKey);
   const padding = privateKey.padding || 1;
   const oaepHash = normalizeOaepHash(privateKey.oaepHash);
-  const oaepLabel = privateKey.oaepLabel || undefined;
+  const oaepLabel = validateOaepLabel(privateKey.oaepLabel);
 
-  buffer = getArrayBufferOrView(buffer, "buffer");
+  buffer = getArrayBufferOrView(
+    buffer,
+    "buffer",
+    bufferEncodingFrom(privateKey),
+  );
   return Buffer.from(
     op_node_private_encrypt(data, buffer, padding, oaepHash, oaepLabel),
   );
@@ -717,11 +818,16 @@ export function privateDecrypt(
 ): Buffer {
   checkUnsupportedKeyType(privateKey);
   const { data } = prepareKey(privateKey);
-  const padding = privateKey.padding || 1;
+  // Node.js defaults privateDecrypt to RSA_PKCS1_OAEP_PADDING (4)
+  const padding = privateKey.padding || 4;
   const oaepHash = normalizeOaepHash(privateKey.oaepHash);
-  const oaepLabel = privateKey.oaepLabel || undefined;
+  const oaepLabel = validateOaepLabel(privateKey.oaepLabel);
 
-  buffer = getArrayBufferOrView(buffer, "buffer");
+  buffer = getArrayBufferOrView(
+    buffer,
+    "buffer",
+    bufferEncodingFrom(privateKey),
+  );
   return Buffer.from(
     op_node_private_decrypt(data, buffer, padding, oaepHash, oaepLabel),
   );
@@ -733,11 +839,16 @@ export function publicEncrypt(
 ): Buffer {
   checkUnsupportedKeyType(publicKey);
   const { data } = prepareKey(publicKey);
-  const padding = publicKey.padding || 1;
+  // Node.js defaults publicEncrypt to RSA_PKCS1_OAEP_PADDING (4)
+  const padding = publicKey.padding || 4;
   const oaepHash = normalizeOaepHash(publicKey.oaepHash);
-  const oaepLabel = publicKey.oaepLabel || undefined;
+  const oaepLabel = validateOaepLabel(publicKey.oaepLabel);
 
-  buffer = getArrayBufferOrView(buffer, "buffer");
+  buffer = getArrayBufferOrView(
+    buffer,
+    "buffer",
+    bufferEncodingFrom(publicKey),
+  );
   return Buffer.from(
     op_node_public_encrypt(data, buffer, padding, oaepHash, oaepLabel),
   );
@@ -755,12 +866,44 @@ export function prepareKey(key) {
     const data = key.export({ type: "pkcs8", format: "pem" });
     return { data: getArrayBufferOrView(data, "key") };
   } else if (typeof key == "object") {
-    const { key: data, encoding } = key;
+    const { key: data, encoding, passphrase, format, type } = key;
     if (isKeyObject(data)) {
       return prepareKey(data);
     }
+    if (format === "jwk") {
+      // Build a KeyObject from the JWK and export it as PEM so the
+      // downstream op can consume it via the existing PEM parsing path.
+      const isPrivate = typeof data === "object" && data !== null &&
+        typeof (data as { d?: unknown }).d === "string";
+      const keyObject = isPrivate
+        ? createPrivateKey({ key: data, format: "jwk" })
+        : createPublicKey({ key: data, format: "jwk" });
+      return prepareKey(keyObject);
+    }
     if (!isStringOrBuffer(data)) {
       throw new TypeError("Invalid key type");
+    }
+
+    // If a passphrase is supplied with raw key material, decrypt the key via
+    // the native key handle and re-export as unencrypted PKCS#8 PEM so the
+    // downstream RSA ops can parse it.
+    if (passphrase != null) {
+      const keyFormat = format ?? (typeof data === "string" ? "pem" : "der");
+      const keyData = getArrayBufferOrView(data, "key", encoding);
+      const passphraseData = getArrayBufferOrView(passphrase, "passphrase");
+      const handle = op_node_create_private_key(
+        keyData,
+        keyFormat,
+        type ?? "",
+        passphraseData,
+      );
+      const pem = op_node_export_private_key_pem(
+        handle,
+        "pkcs8",
+        null,
+        null,
+      );
+      return { data: getArrayBufferOrView(pem, "key") };
     }
 
     return { data: getArrayBufferOrView(data, "key", encoding) };
@@ -777,7 +920,11 @@ export function publicDecrypt(
   const { data } = prepareKey(publicKey);
   const padding = publicKey.padding || 1;
 
-  buffer = getArrayBufferOrView(buffer, "buffer");
+  buffer = getArrayBufferOrView(
+    buffer,
+    "buffer",
+    bufferEncodingFrom(publicKey),
+  );
   return Buffer.from(op_node_public_decrypt(data, buffer, padding));
 }
 

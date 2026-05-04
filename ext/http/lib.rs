@@ -173,6 +173,7 @@ deno_core::extension!(
     http_next::op_http_upgrade_raw,
     http_next::op_http_upgrade_raw_connect,
     http_next::op_http_upgrade_raw_get_head,
+    http_next::op_http_ws_create_from_stream_resource,
     http_next::op_raw_write_vectored,
     http_next::op_can_write_vectored,
     http_next::op_http_try_wait,
@@ -182,7 +183,7 @@ deno_core::extension!(
     http_next::op_http_metric_handle_otel_error,
     http_next::op_http_copy_span_to_otel_info,
   ],
-  esm = ["00_serve.ts", "01_http.js", "02_websocket.ts"],
+  lazy_loaded_js = ["00_serve.ts", "01_http.js", "02_websocket.ts"],
   options = {
     options: Options,
   },
@@ -226,6 +227,7 @@ deno_core::extension!(
     http_next::op_http_upgrade_raw,
     http_next::op_http_upgrade_raw_connect,
     http_next::op_http_upgrade_raw_get_head,
+    http_next::op_http_ws_create_from_stream_resource,
     http_next::op_raw_write_vectored,
     http_next::op_can_write_vectored,
     http_next::op_http_try_wait,
@@ -235,7 +237,7 @@ deno_core::extension!(
     http_next::op_http_metric_handle_otel_error,
     http_next::op_http_copy_span_to_otel_info,
   ],
-  esm = ["00_serve.ts", "01_http.js", "02_websocket.ts"],
+  lazy_loaded_js = ["00_serve.ts", "01_http.js", "02_websocket.ts"],
   options = {
     options: Options,
   },

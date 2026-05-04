@@ -2,7 +2,9 @@
 
 /// <reference path="../../core/internal.d.ts" />
 
-import { core, internals, primordials } from "ext:core/mod.js";
+// deno-fmt-ignore-file
+(function () {
+const { core, internals, primordials } = globalThis.__bootstrap;
 const {
   isAnyArrayBuffer,
   isArgumentsObject,
@@ -28,13 +30,19 @@ const {
   isWeakMap,
   isWeakSet,
 } = core;
-import {
+const {
   op_get_constructor_name,
   op_get_non_index_property_names,
+  op_now,
   op_preview_entries,
-} from "ext:core/ops";
-import * as ops from "ext:core/ops";
-import { URLPrototype } from "ext:deno_web/00_url.js";
+} = core.ops;
+let _URLPrototype;
+function getURLPrototype() {
+  if (!_URLPrototype) {
+    _URLPrototype = core.loadExtScript("ext:deno_web/00_url.js").URLPrototype;
+  }
+  return _URLPrototype;
+}
 const {
   AggregateError,
   AggregateErrorPrototype,
@@ -213,11 +221,11 @@ const lazyLoadModule = core.createLazyLoader(
 );
 
 let currentTime = DateNow;
-if (ops.op_now) {
+if (op_now) {
   const hrU8 = new Uint8Array(8);
   const hr = new Uint32Array(TypedArrayPrototypeGetBuffer(hrU8));
   currentTime = function opNow() {
-    ops.op_now(hrU8);
+    op_now(hrU8);
     return (hr[0] * 1000 + hr[1] / 1e6);
   };
 }
@@ -1018,7 +1026,7 @@ function formatRaw(ctx, value, recurseTimes, typedArray, proxyDetails) {
           return base;
         }
       } else if (
-        ObjectPrototypeIsPrototypeOf(URLPrototype, value) &&
+        ObjectPrototypeIsPrototypeOf(getURLPrototype(), value) &&
         !(recurseTimes > ctx.depth && ctx.depth !== null)
       ) {
         base = value.href;
@@ -2719,7 +2727,7 @@ const ansi = new SafeRegExp(ansiPattern, "g");
 /**
  * Returns the number of columns required to display the given string.
  */
-export function getStringWidth(str, removeControlChars = true) {
+function getStringWidth(str, removeControlChars = true) {
   let width = 0;
 
   if (removeControlChars) {
@@ -2753,7 +2761,7 @@ const isZeroWidthCodePoint = (code) => {
 /**
  * Remove all VT control characters. Use to estimate displayed string width.
  */
-export function stripVTControlCharacters(str) {
+function stripVTControlCharacters(str) {
   return StringPrototypeReplace(str, ansi, "");
 }
 
@@ -4119,7 +4127,7 @@ internals.inspectArgs = inspectArgs;
 internals.parseCss = parseCss;
 internals.parseCssColor = parseCssColor;
 
-export {
+return {
   colors,
   Console,
   createFilteredInspectProxy,
@@ -4132,10 +4140,13 @@ export {
   getConsoleInspectOptions,
   getDefaultInspectOptions,
   getStderrNoColor,
+  getStringWidth,
   getStdoutNoColor,
   inspect,
   inspectArgs,
   quoteString,
   setNoColorFns,
+  stripVTControlCharacters,
   styles,
 };
+})()

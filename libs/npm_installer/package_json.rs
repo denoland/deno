@@ -190,6 +190,36 @@ impl NpmInstallDepsProvider {
                 });
               }
             }
+            PackageJsonDepValue::Catalog(catalog_name) => {
+              let catalogs = workspace.catalogs();
+              if let Some(catalog) = catalogs.get(catalog_name.as_str())
+                && let Some(version_req_str) = catalog.get(alias.as_str())
+                && let Ok(version_req) =
+                  VersionReq::parse_from_npm(version_req_str)
+              {
+                let pkg_req = PackageReq {
+                  name: alias.clone(),
+                  version_req,
+                };
+                let workspace_pkg = workspace_npm_pkgs.iter().find(|pkg| {
+                  pkg.matches_req(&pkg_req)
+                    && pkg.pkg_json.path != pkg_json.path
+                });
+
+                if let Some(pkg) = workspace_pkg {
+                  local_pkgs.push(InstallLocalPkg {
+                    alias: Some(alias.clone()),
+                    target_dir: pkg.pkg_json.dir_path().to_path_buf(),
+                  });
+                } else {
+                  pkg_pkgs.push(InstallNpmRemotePkg {
+                    alias: Some(alias.clone()),
+                    base_dir: pkg_json.dir_path().to_path_buf(),
+                    req: pkg_req,
+                  });
+                }
+              }
+            }
           }
         }
 

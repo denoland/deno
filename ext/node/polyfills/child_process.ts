@@ -6,7 +6,7 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-import { internals, primordials } from "ext:core/mod.js";
+import { core, internals, primordials } from "ext:core/mod.js";
 import {
   op_bootstrap_unstable_args,
   op_node_child_ipc_pipe,
@@ -48,7 +48,9 @@ import {
   kEmptyObject,
 } from "ext:deno_node/internal/util.mjs";
 import { toPathIfFileURL } from "ext:deno_node/internal/url.ts";
-import { kNeedsNpmProcessState } from "ext:deno_process/40_process.js";
+const { kNeedsNpmProcessState } = core.loadExtScript(
+  "ext:deno_process/40_process.js",
+);
 
 const {
   ArrayIsArray,
@@ -185,6 +187,20 @@ export function fork(
       } else {
         options.env = { ...process.env, NODE_OPTIONS: nodeOptionsStr };
       }
+    }
+    if (result.ca_stores?.length) {
+      options.env = {
+        ...(options.env ?? process.env),
+        DENO_TLS_CA_STORE: result.ca_stores.join(","),
+      };
+    }
+    if (result.use_openssl_ca) {
+      options.env = {
+        ...(options.env ?? process.env),
+        DENO_NODE_USE_OPENSSL_CA: "1",
+      };
+    } else if (options.env?.DENO_NODE_USE_OPENSSL_CA) {
+      delete options.env.DENO_NODE_USE_OPENSSL_CA;
     }
   }
 

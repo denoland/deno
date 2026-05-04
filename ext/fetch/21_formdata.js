@@ -1,22 +1,15 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
+// deno-fmt-ignore-file
 
-// @ts-check
-/// <reference path="../webidl/internal.d.ts" />
-/// <reference path="../web/internal.d.ts" />
-/// <reference path="../../cli/tsc/dts/lib.deno_web.d.ts" />
-/// <reference path="./internal.d.ts" />
-/// <reference path="../web/06_streams_types.d.ts" />
-/// <reference path="../../cli/tsc/dts/lib.deno_fetch.d.ts" />
-/// <reference lib="esnext" />
-
-import { core, primordials } from "ext:core/mod.js";
+(function () {
+const { core, primordials } = globalThis.__bootstrap;
 const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
-import {
+const {
   Blob,
   BlobPrototype,
   File,
   FilePrototype,
-} from "ext:deno_web/09_file.js";
+} = core.loadExtScript("ext:deno_web/09_file.js");
 const {
   ArrayPrototypePush,
   ArrayPrototypeSlice,
@@ -554,10 +547,11 @@ function formDataFromEntries(entries) {
 webidl.converters["FormData"] = webidl
   .createInterfaceConverter("FormData", FormDataPrototype);
 
-export {
+return {
   FormData,
   formDataFromEntries,
   FormDataPrototype,
   formDataToBlob,
   parseFormData,
 };
+})()

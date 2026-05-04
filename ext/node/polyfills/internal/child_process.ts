@@ -77,11 +77,11 @@ import {
 } from "ext:deno_node/internal_binding/tcp_wrap.ts";
 import { Server as NetServer, Socket } from "node:net";
 import { Socket as DgramSocket } from "node:dgram";
-import {
+const {
   kNeedsNpmProcessState,
   nodeSpawnChild,
   nodeSpawnSyncChild,
-} from "ext:deno_process/40_process.js";
+} = core.loadExtScript("ext:deno_process/40_process.js");
 
 export function mapValues<T, O>(
   record: Readonly<Record<string, T>>,
@@ -1514,6 +1514,14 @@ function buildCommand(
     const result = op_node_translate_cli_args(args, scriptInNpmPackage, true);
     args = result.deno_args;
     includeNpmProcessState = result.needs_npm_process_state;
+    if (result.ca_stores?.length) {
+      env.DENO_TLS_CA_STORE = result.ca_stores.join(",");
+    }
+    if (result.use_openssl_ca) {
+      env.DENO_NODE_USE_OPENSSL_CA = "1";
+    } else {
+      delete env.DENO_NODE_USE_OPENSSL_CA;
+    }
 
     // Update NODE_OPTIONS if needed
     if (result.node_options.length > 0) {

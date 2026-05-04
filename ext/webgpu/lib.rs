@@ -111,8 +111,8 @@ deno_core::extension!(
     texture::GPUExternalTexture,
     canvas::GPUCanvasContext,
   ],
-  esm = ["00_init.js"],
   lazy_loaded_esm = ["01_webgpu.js"],
+  lazy_loaded_js = ["00_init.js"],
 );
 
 #[op2]

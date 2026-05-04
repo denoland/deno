@@ -196,6 +196,56 @@ const cipherInfoTable: CipherInfoResult[] = [
     keyLength: 32,
     mode: "",
   },
+  // AES Key Wrap (RFC 3394): NID_id_aes{128,192,256}_wrap = 788,789,790
+  {
+    name: "aes128-wrap",
+    nid: 788,
+    blockSize: 8,
+    ivLength: 8,
+    keyLength: 16,
+    mode: "wrap",
+  },
+  {
+    name: "aes192-wrap",
+    nid: 789,
+    blockSize: 8,
+    ivLength: 8,
+    keyLength: 24,
+    mode: "wrap",
+  },
+  {
+    name: "aes256-wrap",
+    nid: 790,
+    blockSize: 8,
+    ivLength: 8,
+    keyLength: 32,
+    mode: "wrap",
+  },
+  // AES Key Wrap with Padding (RFC 5649): NID 897,900,903 (interleaved with GCM/CCM)
+  {
+    name: "id-aes128-wrap-pad",
+    nid: 897,
+    blockSize: 8,
+    ivLength: 4,
+    keyLength: 16,
+    mode: "wrap",
+  },
+  {
+    name: "id-aes192-wrap-pad",
+    nid: 900,
+    blockSize: 8,
+    ivLength: 4,
+    keyLength: 24,
+    mode: "wrap",
+  },
+  {
+    name: "id-aes256-wrap-pad",
+    nid: 903,
+    blockSize: 8,
+    ivLength: 4,
+    keyLength: 32,
+    mode: "wrap",
+  },
 ];
 
 const cipherInfoByName = new Map<string, CipherInfoResult>();
@@ -227,6 +277,12 @@ const supportedCiphers = [
   "aes128",
   "aes256",
   "chacha20-poly1305",
+  "aes128-wrap",
+  "aes192-wrap",
+  "aes256-wrap",
+  "id-aes128-wrap-pad",
+  "id-aes192-wrap-pad",
+  "id-aes256-wrap-pad",
 ];
 
 export function getCiphers(): string[] {
@@ -350,7 +406,17 @@ export const validateByteSource = hideStackFrames((val, name) => {
   );
 });
 
-const curveNames = ellipticCurves.map((x) => x.name);
+// Mirrors the (canonical) curve names exposed by Node.js's `getCurves()`.
+// Notably this drops `secp256r1` because it is just another name for
+// `prime256v1` and exposing both confuses callers that probe for an
+// unsupported curve by exclusion (e.g. crypto tests).
+const curveNames: readonly string[] = [
+  "secp521r1",
+  "secp384r1",
+  "prime256v1",
+  "secp256k1",
+  "secp224r1",
+];
 export function getCurves(): readonly string[] {
   return curveNames;
 }

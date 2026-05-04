@@ -23,6 +23,7 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
+import { core } from "ext:core/mod.js";
 import {
   ERR_INVALID_ARG_TYPE,
   ERR_INVALID_ARG_VALUE,
@@ -78,7 +79,7 @@ import { isWindows, osType } from "ext:deno_node/_util/os.ts";
 import { encodeStr, hexTable } from "ext:deno_node/internal/querystring.ts";
 import querystring from "node:querystring";
 import type { ParsedUrlQuery, ParsedUrlQueryInput } from "node:querystring";
-import { URL, URLSearchParams } from "ext:deno_web/00_url.js";
+const { URL, URLSearchParams } = core.loadExtScript("ext:deno_web/00_url.js");
 import { urlToHttpOptions } from "ext:deno_node/internal/url.ts";
 
 const forwardSlashRegEx = /\//g;

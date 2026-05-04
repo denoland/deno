@@ -63,6 +63,7 @@ import {
   ERR_HTTP_HEADERS_SENT,
   ERR_HTTP_SOCKET_ASSIGNED,
   ERR_INVALID_ARG_TYPE,
+  ERR_INVALID_ARG_VALUE,
   ERR_INVALID_CHAR,
   ERR_OUT_OF_RANGE,
 } from "ext:deno_node/internal/errors.ts";
@@ -74,14 +75,12 @@ import {
   validateObject,
 } from "ext:deno_node/internal/validators.mjs";
 import { nextTick } from "ext:deno_node/_next_tick.ts";
-import {
+const {
+  otelState,
   builtinTracer,
   ContextManager,
-  METRICS_ENABLED,
-  PROPAGATORS,
   telemetry,
-  TRACING_ENABLED,
-} from "ext:deno_telemetry/telemetry.ts";
+} = core.loadExtScript("ext:deno_telemetry/telemetry.ts");
 
 const kServerResponse = Symbol("ServerResponse");
 const kConnectionsKey = Symbol("http.server.connections");
@@ -304,6 +303,10 @@ ServerResponse.prototype.assignSocket = function assignSocket(socket) {
     throw new ERR_HTTP_SOCKET_ASSIGNED();
   }
   socket._httpMessage = this;
+  if (socket._parent) {
+    socket._parent._httpMessage = this;
+    socket._parent._httpMessageDetached = false;
+  }
   socket.on("close", onServerResponseClose);
   this.socket = socket;
   this.emit("socket", socket);
@@ -315,6 +318,10 @@ ServerResponse.prototype.detachSocket = function detachSocket(socket) {
   socket.removeListener("close", onServerResponseClose);
   socket._httpMessage = null;
   socket._httpMessageDetached = true;
+  if (socket._parent) {
+    socket._parent._httpMessage = null;
+    socket._parent._httpMessageDetached = true;
+  }
   this.socket = null;
 };
 
@@ -407,11 +414,7 @@ ServerResponse.prototype.writeHead = function writeHead(
     // Slow-case: progressive API and header fields are passed.
     if (ArrayIsArray(obj)) {
       if (obj.length % 2 !== 0) {
-        throw new ERR_INVALID_ARG_TYPE(
-          "headers",
-          "Array with even length",
-          obj,
-        );
+        throw new ERR_INVALID_ARG_VALUE("headers", obj);
       }
       for (let n = 0; n < obj.length; n += 2) {
         const k = obj[n + 0];
@@ -759,11 +762,11 @@ function parserOnIncoming(server, socket, state, req, keepAlive) {
   res[kUniqueHeaders] = server[kUniqueHeaders];
 
   // Start OTel server span and metrics
-  if (TRACING_ENABLED) {
+  if (otelState.TRACING_ENABLED) {
     // Extract trace context from incoming request headers
     let context = ContextManager.active();
-    if (PROPAGATORS.length > 0) {
-      for (const propagator of PROPAGATORS) {
+    if (otelState.PROPAGATORS.length > 0) {
+      for (const propagator of otelState.PROPAGATORS) {
         context = propagator.extract(context, req.headers, {
           get(carrier, key) {
             return carrier[key];
@@ -786,7 +789,7 @@ function parserOnIncoming(server, socket, state, req, keepAlive) {
     span.setAttribute("url.query", url.includes("?") ? url.split("?")[1] : "");
     res[kOtelSpan] = span;
   }
-  if (METRICS_ENABLED) {
+  if (otelState.METRICS_ENABLED) {
     res[kOtelStartTime] = performance.now();
     res[kOtelReqBodySize] = 0;
     const metrics = getOtelMetrics();

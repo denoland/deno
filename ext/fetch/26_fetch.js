@@ -1,23 +1,15 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
+// deno-fmt-ignore-file
 
-// @ts-check
-/// <reference path="../../core/lib.deno_core.d.ts" />
-/// <reference path="../web/internal.d.ts" />
-/// <reference path="../url/internal.d.ts" />
-/// <reference path="../../cli/tsc/dts/lib.deno_web.d.ts" />
-/// <reference path="../web/06_streams_types.d.ts" />
-/// <reference path="./internal.d.ts" />
-/// <reference path="../../cli/tsc/dts/lib.deno_fetch.d.ts" />
-/// <reference lib="esnext" />
-
-import { core, primordials } from "ext:core/mod.js";
-import {
+(function () {
+const { core, internals, primordials } = globalThis.__bootstrap;
+const {
   op_fetch,
   op_fetch_promise_is_settled,
   op_fetch_send,
   op_wasm_streaming_feed,
   op_wasm_streaming_set_url,
-} from "ext:core/ops";
+} = core.ops;
 const {
   ArrayPrototypePush,
   ArrayPrototypeSplice,
@@ -39,38 +31,37 @@ const {
 } = primordials;
 
 const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
-import { byteLowerCase } from "ext:deno_web/00_infra.js";
-import {
+const { byteLowerCase } = core.loadExtScript("ext:deno_web/00_infra.js");
+const {
   errorReadableStream,
   getReadableStreamResourceBacking,
   readableStreamForRid,
   ReadableStreamPrototype,
   resourceForReadableStream,
-} from "ext:deno_web/06_streams.js";
-import { extractBody, InnerBody } from "ext:deno_fetch/22_body.js";
-import { processUrlList, toInnerRequest } from "ext:deno_fetch/23_request.js";
-import {
+} = core.loadExtScript("ext:deno_web/06_streams.js");
+const { extractBody, InnerBody } = core.loadExtScript("ext:deno_fetch/22_body.js");
+const { processUrlList, Request, toInnerRequest } = core.loadExtScript("ext:deno_fetch/23_request.js");
+const {
   abortedNetworkError,
   fromInnerResponse,
   networkError,
   nullBodyStatus,
   redirectStatus,
   toInnerResponse,
-} from "ext:deno_fetch/23_response.js";
-import * as abortSignal from "ext:deno_web/03_abort_signal.js";
-import {
+} = core.loadExtScript("ext:deno_fetch/23_response.js");
+const abortSignal = core.loadExtScript("ext:deno_web/03_abort_signal.js");
+const {
   builtinTracer,
   ContextManager,
   enterSpan,
-  PROPAGATORS,
   restoreSnapshot,
-  TRACING_ENABLED,
-} from "ext:deno_telemetry/telemetry.ts";
-import {
+} = internals.__telemetry;
+const __telemetry = internals.__telemetry;
+const {
   updateSpanFromClientResponse,
   updateSpanFromError,
   updateSpanFromRequest,
-} from "ext:deno_telemetry/util.ts";
+} = internals.__telemetryUtil;
 
 const REQUEST_BODY_HEADER_NAMES = [
   "content-encoding",
@@ -356,7 +347,7 @@ function fetch(input, init = { __proto__: null }) {
   let span;
   let snapshot;
   try {
-    if (TRACING_ENABLED) {
+    if (__telemetry.TRACING_ENABLED) {
       span = builtinTracer().startSpan("fetch", { kind: 2 });
       snapshot = enterSpan(span);
     }
@@ -375,7 +366,7 @@ function fetch(input, init = { __proto__: null }) {
 
       if (span) {
         const context = ContextManager.active();
-        for (const propagator of new SafeArrayIterator(PROPAGATORS)) {
+        for (const propagator of new SafeArrayIterator(__telemetry.PROPAGATORS)) {
           propagator.inject(context, requestObject.headers, {
             set(carrier, key, value) {
               carrier.append(key, value);
@@ -605,4 +596,5 @@ function handleWasmStreaming(source, rid) {
   }
 }
 
-export { fetch, handleWasmStreaming, mainFetch };
+return { fetch, handleWasmStreaming, mainFetch };
+})()

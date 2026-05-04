@@ -7,9 +7,9 @@ import {
   webtransportAccept,
   webtransportConnect,
 } from "ext:deno_net/03_quic.js";
-import { assert } from "ext:deno_web/00_infra.js";
+const { assert } = core.loadExtScript("ext:deno_web/00_infra.js");
 const { DOMException } = core.loadExtScript("ext:deno_web/01_dom_exception.js");
-import {
+const {
   getReadableStreamResourceBacking,
   getWritableStreamResourceBacking,
   ReadableStream,
@@ -17,8 +17,8 @@ import {
   WritableStream,
   WritableStreamDefaultWriter,
   writableStreamForRid,
-} from "ext:deno_web/06_streams.js";
-import { getLocationHref } from "ext:deno_web/12_location.js";
+} = core.loadExtScript("ext:deno_web/06_streams.js");
+const { getLocationHref } = core.loadExtScript("ext:deno_web/12_location.js");
 
 const {
   ArrayBuffer,

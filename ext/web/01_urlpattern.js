@@ -7,11 +7,14 @@
 /// <reference path="./internal.d.ts" />
 /// <reference path="../../cli/tsc/dts/lib.deno_url.d.ts" />
 
-import { core, primordials } from "ext:core/mod.js";
-import {
+// deno-fmt-ignore-file
+
+(function () {
+const { core, primordials } = globalThis.__bootstrap;
+const {
   op_urlpattern_parse,
   op_urlpattern_process_match_input,
-} from "ext:core/ops";
+} = core.ops;
 const {
   ArrayPrototypePush,
   MathRandom,
@@ -30,7 +33,17 @@ const {
 } = primordials;
 
 const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
-import { createFilteredInspectProxy } from "./01_console.js";
+
+// Lazy-load createFilteredInspectProxy from console
+let _createFilteredInspectProxy;
+function getCreateFilteredInspectProxy() {
+  if (!_createFilteredInspectProxy) {
+    _createFilteredInspectProxy = core.loadExtScript(
+      "ext:deno_web/01_console.js",
+    ).createFilteredInspectProxy;
+  }
+  return _createFilteredInspectProxy;
+}
 
 const _components = Symbol("components");
 const urlPatternSettings = { groupStringFallback: false };
@@ -421,7 +434,7 @@ class URLPattern {
 
   [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
     return inspect(
-      createFilteredInspectProxy({
+      getCreateFilteredInspectProxy()({
         object: this,
         evaluate: ObjectPrototypeIsPrototypeOf(URLPatternPrototype, this),
         keys: [
@@ -474,4 +487,5 @@ webidl.converters.URLPatternOptions = webidl
     },
   ]);
 
-export { URLPattern, urlPatternSettings };
+return { URLPattern, urlPatternSettings };
+})()

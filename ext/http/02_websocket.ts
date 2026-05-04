@@ -1,6 +1,12 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
-import { core, internals, primordials } from "ext:core/mod.js";
-import { op_http_websocket_accept_header } from "ext:core/ops";
+// deno-fmt-ignore-file
+
+(function () {
+const { core, internals, primordials } = globalThis.__bootstrap;
+const {
+  op_http_websocket_accept_header,
+  op_http_ws_create_from_stream_resource,
+} = core.ops;
 const {
   ArrayPrototypeIncludes,
   ArrayPrototypeMap,
@@ -11,13 +17,15 @@ const {
   StringPrototypeToUpperCase,
   TypeError,
   Symbol,
+  Promise,
+  Uint8Array,
 } = primordials;
-import { toInnerRequest } from "ext:deno_fetch/23_request.js";
-import {
+const { toInnerRequest } = core.loadExtScript("ext:deno_fetch/23_request.js");
+const {
   fromInnerResponse,
   newInnerResponse,
-} from "ext:deno_fetch/23_response.js";
-import { setEventTargetData } from "ext:deno_web/02_event.js";
+} = core.loadExtScript("ext:deno_fetch/23_response.js");
+const { setEventTargetData } = core.loadExtScript("ext:deno_web/02_event.js");
 
 const loadWebSocket = core.createLazyLoader(
   "ext:deno_websocket/01_websocket.js",
@@ -125,6 +133,87 @@ function upgradeWebSocket(request, options = { __proto__: null }) {
         socket.dispatchEvent(event);
       }
     })();
+  } else if (options.socket) {
+    // node:http upgrade path: the socket is a node net.Socket from the
+    // "upgrade" event. Write the 101 response, take the TCP stream from
+    // libuv, and create a WebSocket over it via ext/http.
+    const nodeSocket = options.socket;
+
+    // Build the 101 response from r.headerList so the headers stay in
+    // sync with the header-list built above (protocol negotiation, etc.).
+    let responseHead = "HTTP/1.1 101 Switching Protocols\r\n";
+    for (let i = 0; i < r.headerList.length; i++) {
+      const { 0: name, 1: value } = r.headerList[i];
+      responseHead += `${name}: ${value}\r\n`;
+    }
+    responseHead += "\r\n";
+
+    if (nodeSocket.destroyed) {
+      throw new TypeError(
+        "Socket is already destroyed - cannot upgrade to WebSocket",
+      );
+    }
+    const handle = nodeSocket._handle;
+    if (!handle) {
+      throw new TypeError("Socket has no handle - cannot upgrade");
+    }
+    if (typeof handle.takeStream !== "function") {
+      throw new TypeError(
+        "Socket is not a TCP socket - only TCP connections can be upgraded to WebSocket",
+      );
+    }
+
+    // Extra bytes that were already buffered (e.g., from the upgrade
+    // request body that arrived with the headers)
+    const extraBytes = options.head || new Uint8Array(0);
+
+    // Defer setup so the caller can attach event handlers (onopen,
+    // onmessage, etc.) before events fire.
+    (async () => {
+      try {
+        // Wait for the 101 response to fully flush before taking the
+        // stream. A fire-and-forget write could leave data in the
+        // internal_write_queue that would be orphaned once we detach
+        // the stream from libuv.
+        await new Promise((resolve, reject) => {
+          nodeSocket.write(responseHead, (err) => {
+            if (err) reject(err);
+            else resolve();
+          });
+        });
+
+        // Stop libuv from reading this socket before we take the stream
+        handle.readStop();
+
+        // Take the TCP stream from libuv into a resource, then create
+        // the WebSocket via ext/http (avoids ext/node -> deno_websocket dep).
+        const streamRid = handle.takeStream();
+        const wsRid = op_http_ws_create_from_stream_resource(
+          streamRid,
+          extraBytes,
+        );
+
+        // The stream is now owned by the WebSocket. Detach the node
+        // socket so it doesn't try to use the gutted handle.
+        nodeSocket._handle = null;
+        nodeSocket.destroyed = true;
+
+        socket[_rid] = wsRid;
+        socket[_readyState] = WebSocket.OPEN;
+        socket.dispatchEvent(new Event("open"));
+
+        socket[_eventLoop]();
+        if (socket[_idleTimeoutDuration]) {
+          socket.addEventListener(
+            "close",
+            () => clearTimeout(socket[_idleTimeoutTimeout]),
+          );
+        }
+        socket[_serverHandleIdleTimeout]();
+      } catch (error) {
+        socket.dispatchEvent(new ErrorEvent("error", { error }));
+      }
+    })();
   }
 
   const response = fromInnerResponse(r, "response");
@@ -211,4 +300,5 @@ function buildCaseInsensitiveCommaValueFinder(checkText) {
 internals.buildCaseInsensitiveCommaValueFinder =
   buildCaseInsensitiveCommaValueFinder;
 
-export { _ws, upgradeWebSocket };
+return { _ws, upgradeWebSocket };
+})()

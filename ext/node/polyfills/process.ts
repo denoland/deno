@@ -50,7 +50,7 @@ import {
 import { getOptionValue } from "ext:deno_node/internal/options.ts";
 import assert from "node:assert";
 import { join } from "node:path";
-import { pathFromURL } from "ext:deno_web/00_infra.js";
+const { pathFromURL } = core.loadExtScript("ext:deno_web/00_infra.js");
 import {
   arch as arch_,
   chdir,
@@ -77,8 +77,8 @@ import {
 import { WriteStream as TTYWriteStream } from "ext:deno_node/internal/tty.js";
 import { enableNextTick } from "ext:deno_node/_next_tick.ts";
 import { isAndroid, isWindows } from "ext:deno_node/_util/os.ts";
-import * as io from "ext:deno_io/12_io.js";
-import * as denoOs from "ext:deno_os/30_os.js";
+const io = core.loadExtScript("ext:deno_io/12_io.js");
+const denoOs = core.loadExtScript("ext:deno_os/30_os.js");
 
 export let argv0 = "";
 
@@ -883,6 +883,18 @@ let _configCache: Record<string, unknown> | undefined;
 Object.defineProperty(process, "config", {
   get() {
     if (_configCache === undefined) {
+      // Internal escape hatch for the node_compat test runner: allows a
+      // single test to opt into the "externally-linked OpenSSL" branch of
+      // upstream Node test fixtures, where Deno's aws-lc-rs/BoringSSL
+      // backend matches that branch's expectations. Not for user code; the
+      // env var is reserved (DENO_INTERNAL_*) and undocumented.
+      let forceSharedOpenssl = false;
+      try {
+        forceSharedOpenssl =
+          Deno.env.get("DENO_INTERNAL_NODE_TEST_FORCE_SHARED_OPENSSL") === "1";
+      } catch {
+        // Permission denied or no env access; leave forceSharedOpenssl false.
+      }
       _configCache = Object.freeze({
         target_defaults: Object.freeze({
           default_configuration: "Release",
@@ -892,10 +904,11 @@ Object.defineProperty(process, "config", {
           // `node_module_version` is an integer ABI version exposed for native
           // addons. Mirror process.versions.modules so a single source of truth
           // wins.
-          node_module_version: Number(versions.modules),
-          llvm_version: "0.0",
-          enable_lto: "false",
-          host_arch: arch,
+          "node_module_version": Number(versions.modules),
+          "llvm_version": "0.0",
+          "enable_lto": "false",
+          "host_arch": arch,
+          ...(forceSharedOpenssl ? { "node_shared_openssl": 1 } : {}),
         }),
       });
     }
