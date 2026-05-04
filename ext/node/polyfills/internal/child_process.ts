@@ -77,11 +77,11 @@ import {
 } from "ext:deno_node/internal_binding/tcp_wrap.ts";
 import { Server as NetServer, Socket } from "node:net";
 import { Socket as DgramSocket } from "node:dgram";
-import {
+const {
   kNeedsNpmProcessState,
   nodeSpawnChild,
   nodeSpawnSyncChild,
-} from "ext:deno_process/40_process.js";
+} = core.loadExtScript("ext:deno_process/40_process.js");
 
 export function mapValues<T, O>(
   record: Readonly<Record<string, T>>,
