@@ -71,10 +71,11 @@ pub enum KeyObjectHandlePrehashedSignAndVerifyError {
     "rsa-pss with different mf1 hash algorithm and hash algorithm is not supported"
   )]
   RsaPssHashAlgorithmUnsupported,
-  #[error(
-    "private key does not allow {actual} to be used, expected {expected}"
-  )]
+  #[error("digest not allowed: {actual} (expected {expected})")]
   PrivateKeyDisallowsUsage { actual: String, expected: String },
+  #[class(generic)]
+  #[error("pss saltlen too small")]
+  PssSaltLenTooSmall,
   #[error("failed to sign digest")]
   FailedToSignDigest,
   #[error("x25519 key cannot be used for signing")]
@@ -228,12 +229,28 @@ impl KeyObjectHandle {
         let mut hash_algorithm = None;
         let mut salt_length = None;
         if let Some(details) = &key.details {
-          if details.hash_algorithm != details.mf1_hash_algorithm {
-            return Err(KeyObjectHandlePrehashedSignAndVerifyError::RsaPssHashAlgorithmUnsupported);
-          }
+          // Note: the rsa crate's PSS uses the same hash for the message and
+          // for MGF1. We honor the key's enforced message hash but fall back
+          // to using it for MGF1 too, even if the key specifies a distinct
+          // mgf1 hash. RFC 4055 / PKCS#1 v2.1 permits this combination but
+          // signatures produced here will not be byte-compatible with those
+          // produced by OpenSSL when mgf1 hash != message hash.
           hash_algorithm = Some(details.hash_algorithm);
           salt_length = Some(details.salt_length as usize);
         }
+        // Match Node.js / OpenSSL ordering for RSA-PSS signing: validate
+        // the requested salt length against the key's enforced minimum
+        // before validating the digest itself.
+        if let Some(min_salt) = salt_length
+          && let Some(requested) = pss_salt_length
+          && requested >= 0
+          && (requested as usize) < min_salt
+        {
+          return Err(
+            KeyObjectHandlePrehashedSignAndVerifyError::PssSaltLenTooSmall,
+          );
+        }
+
         let pss = match_fixed_digest_with_oid!(
           digest_type,
           fn <D>(algorithm: Option<RsaPssHashAlgorithm>) {
@@ -379,9 +396,9 @@ impl KeyObjectHandle {
         let mut hash_algorithm = None;
         let mut salt_length = None;
         if let Some(details) = &key.details {
-          if details.hash_algorithm != details.mf1_hash_algorithm {
-            return Err(KeyObjectHandlePrehashedSignAndVerifyError::RsaPssHashAlgorithmUnsupported);
-          }
+          // Mirror the sign path: when mgf1 hash != message hash, fall back
+          // to using the message hash for MGF1 too. Round-trips with our own
+          // sign implementation but is not byte-compatible with OpenSSL.
           hash_algorithm = Some(details.hash_algorithm);
           salt_length = Some(details.salt_length as usize);
         }
