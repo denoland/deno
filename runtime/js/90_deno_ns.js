@@ -27,12 +27,12 @@ import * as fsEvents from "ext:runtime/40_fs_events.js";
 const process = core.loadExtScript("ext:deno_process/40_process.js");
 const signals = core.loadExtScript("ext:deno_os/40_signals.js");
 import * as tty from "ext:runtime/40_tty.js";
-import * as kv from "ext:deno_kv/01_db.ts";
+const kv = core.loadExtScript("ext:deno_kv/01_db.ts");
 const cron = core.loadExtScript("ext:deno_cron/01_cron.ts");
 const surface = core.loadExtScript("ext:deno_canvas/02_surface.js");
 const telemetry = core.loadExtScript("ext:deno_telemetry/telemetry.ts");
 import { unstableIds } from "ext:deno_features/flags.js";
-import { loadWebGPU } from "ext:deno_webgpu/00_init.js";
+const { loadWebGPU } = core.loadExtScript("ext:deno_webgpu/00_init.js");
 import { bundle } from "ext:deno_bundle_runtime/bundle.ts";
 
 const { ObjectDefineProperties, Float64Array } = primordials;
